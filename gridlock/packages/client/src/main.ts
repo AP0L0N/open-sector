@@ -1,9 +1,10 @@
 import "./style/ra-feel.css";
 import type { ServerMessage } from "@gridlock/shared";
-import { getMap } from "@gridlock/shared";
+import { DEFAULT_MAP_ID, getMap } from "@gridlock/shared";
 import { GameSocket } from "./net/client.js";
 import type { Ctx, Screen } from "./ctx.js";
 import { bindClicks, getMusic, getSfx, setMusic, setSfx } from "./ui/audio.js";
+import { renderCallsign } from "./ui/callsign.js";
 import { renderMenu } from "./ui/menu.js";
 import { renderPlay } from "./ui/play.js";
 import { renderLobby } from "./ui/lobby.js";
@@ -33,11 +34,13 @@ const roomParam = params.get("room");
 
 const net = new GameSocket();
 
+const savedName = localStorage.getItem(NAME_KEY) ?? "";
+
 const ctx: Ctx = {
   net,
-  screen: roomParam ? "play" : "menu",
+  screen: savedName ? (roomParam ? "play" : "menu") : "callsign",
   playMode: roomParam ? "network" : "skirmish",
-  name: localStorage.getItem(NAME_KEY) ?? "",
+  name: savedName,
   banner: "",
   room: null,
   match: null,
@@ -45,6 +48,7 @@ const ctx: Ctx = {
   inspect: null,
   connected: false,
   pendingJoin: roomParam,
+  pendingSkirmish: false,
   leaveOpen: false,
   winner: null,
   goto(screen: Screen) {
@@ -64,6 +68,24 @@ const ctx: Ctx = {
     ctx.name = name.trim().slice(0, 24);
     localStorage.setItem(NAME_KEY, ctx.name);
   },
+  enterSkirmish() {
+    ctx.playMode = "skirmish";
+    if (!ctx.net.connected) {
+      ctx.pendingSkirmish = true;
+      ctx.banner = "Linking…";
+      ctx.net.connect();
+      ctx.render();
+      return;
+    }
+    ctx.pendingSkirmish = false;
+    ctx.net.send({ type: "hello", name: ctx.name });
+    ctx.net.send({
+      type: "room.create",
+      mapId: DEFAULT_MAP_ID,
+      maxSlots: 1,
+      mode: "skirmish",
+    });
+  },
   render,
 };
 
@@ -78,6 +100,9 @@ function render(): void {
 
   appEl.innerHTML = "";
   switch (ctx.screen) {
+    case "callsign":
+      renderCallsign(appEl, ctx);
+      break;
     case "menu":
       renderMenu(appEl, ctx);
       break;
@@ -116,12 +141,28 @@ function onMessage(msg: ServerMessage): void {
       net.send({ type: "hello", name: ctx.name });
       if (ctx.pendingJoin) {
         net.send({ type: "room.join", code: ctx.pendingJoin });
+      } else if (ctx.pendingSkirmish) {
+        ctx.pendingSkirmish = false;
+        net.send({
+          type: "room.create",
+          mapId: DEFAULT_MAP_ID,
+          maxSlots: 1,
+          mode: "skirmish",
+        });
       }
       break;
     case "room.state":
       ctx.room = msg.room;
+      ctx.playMode = msg.room.mode;
       ctx.banner = "";
-      if (ctx.screen === "play" || ctx.screen === "menu" || ctx.screen === "lobby") {
+      ctx.pendingJoin = null;
+      ctx.pendingSkirmish = false;
+      if (
+        ctx.screen === "play" ||
+        ctx.screen === "menu" ||
+        ctx.screen === "lobby" ||
+        ctx.screen === "callsign"
+      ) {
         ctx.screen = "lobby";
       }
       ctx.render();
@@ -176,14 +217,15 @@ function onMessage(msg: ServerMessage): void {
 net.onMessage = onMessage;
 net.onStatus = (connected) => {
   ctx.connected = connected;
-  if (!connected && ctx.screen !== "menu") {
+  if (!connected && ctx.screen !== "menu" && ctx.screen !== "callsign") {
     ctx.banner = "Link lost.";
     ctx.room = null;
     ctx.match = null;
     ctx.winner = null;
+    ctx.pendingSkirmish = false;
     mapView?.destroy();
     mapView = null;
-    ctx.screen = "menu";
+    ctx.screen = ctx.name ? "menu" : "callsign";
   }
   ctx.render();
 };

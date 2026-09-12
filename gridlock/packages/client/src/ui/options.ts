@@ -27,7 +27,28 @@ export function renderOptions(root: HTMLElement, ctx: Ctx): void {
   const back = el("button", { class: "btn btn-ghost", text: "Back", attrs: { type: "button" } });
   back.addEventListener("click", () => ctx.goto("menu"));
 
+  const name = el("input", {
+    attrs: { type: "text", maxlength: "24", placeholder: "Commander", autocomplete: "nickname" },
+  });
+  name.value = ctx.name;
+  const saveName = (): void => {
+    ctx.setName(name.value);
+    name.value = ctx.name;
+    if (ctx.name) ctx.net.send({ type: "hello", name: ctx.name });
+  };
+  name.addEventListener("change", saveName);
+  name.addEventListener("blur", saveName);
+  name.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      saveName();
+      (e.target as HTMLInputElement).blur();
+    }
+  });
+
   panel.append(
+    el("h2", { text: "Commander" }),
+    el("label", { text: "Callsign" }),
+    name,
     el("h2", { text: "Audio" }),
     el("label", { text: "Effects" }),
     sfx,

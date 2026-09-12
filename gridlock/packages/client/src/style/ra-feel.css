@@ -194,6 +194,10 @@ body {
   text-transform: uppercase;
 }
 
+.panel h2:not(:first-child) {
+  margin-top: 20px;
+}
+
 label {
   display: block;
   font-family: "Share Tech Mono", monospace;
@@ -411,6 +415,13 @@ input[type="range"] { padding: 0; }
   color: var(--danger);
   animation: scrap-shake 0.4s ease;
 }
+#hud-speed.speed-flash {
+  animation: speed-pulse 0.35s ease;
+}
+@keyframes speed-pulse {
+  0% { color: #fff6c8; }
+  100% { color: var(--amber); }
+}
 #hud-scrap.scrap-denied b { color: var(--danger); }
 
 .scrap-toast {
@@ -456,7 +467,7 @@ input[type="range"] { padding: 0; }
 }
 
 #map-canvas.cursor-special {
-  cursor: url("../assets/cursors/special.svg") 3 1, pointer;
+  cursor: none;
 }
 
 .sidebar {

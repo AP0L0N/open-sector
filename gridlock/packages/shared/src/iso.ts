@@ -36,6 +36,16 @@ export function facingToIso(facing: number, tileSize: number): IsoPt {
   return { x: tip.x - origin.x, y: tip.y - origin.y };
 }
 
+/**
+ * 8-way screen facing for unit sprites, 45° steps.
+ * 0=E, 1=SE, 2=S, 3=SW, 4=W, 5=NW, 6=N, 7=NE (canvas +y is down).
+ */
+export function isoDir8(dx: number, dy: number): number {
+  if (dx === 0 && dy === 0) return 2;
+  const i = Math.round(Math.atan2(dy, dx) / (Math.PI / 4));
+  return ((i % 8) + 8) % 8;
+}
+
 export function tileDiamond(
   tx: number,
   ty: number,

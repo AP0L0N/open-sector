@@ -58,7 +58,7 @@ function wrap(err: string | null, fallback: ErrorCode): CmdResult {
     : err.includes("place") || err.includes("far") || err.includes("clear") ? "invalid_place"
     : err.includes("yours") || err.includes("Select") ? "not_yours"
     : err.includes("cap") ? "unit_cap"
-    : err.includes("already") || err.includes("Stop") || err.includes("transform") ? "busy"
+    : err.includes("already") || err.includes("Stop") || err.includes("transform") || err.includes("recharg") ? "busy"
     : err.includes("out of the fight") ? "dead"
     : fallback;
   return fail(code, err);

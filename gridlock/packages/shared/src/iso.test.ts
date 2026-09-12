@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   clampIsoCamera,
   facingToIso,
+  isoDir8,
   isoMapBounds,
   isoToWorld,
   pointInIsoBox,
@@ -56,6 +57,24 @@ describe("iso projection", () => {
     const south = facingToIso(Math.PI / 2, 32);
     assert.ok(south.x < 0);
     assert.ok(south.y > 0);
+  });
+
+  it("maps screen vectors onto 8 sprite rows", () => {
+    assert.equal(isoDir8(1, 0), 0);
+    assert.equal(isoDir8(1, 1), 1);
+    assert.equal(isoDir8(0, 1), 2);
+    assert.equal(isoDir8(-1, 1), 3);
+    assert.equal(isoDir8(-1, 0), 4);
+    assert.equal(isoDir8(-1, -1), 5);
+    assert.equal(isoDir8(0, -1), 6);
+    assert.equal(isoDir8(1, -1), 7);
+  });
+
+  it("picks SE for world-east and SW for world-south", () => {
+    const east = facingToIso(0, 32);
+    assert.equal(isoDir8(east.x, east.y), 1);
+    const south = facingToIso(Math.PI / 2, 32);
+    assert.equal(isoDir8(south.x, south.y), 3);
   });
 
   it("picks a flat tile at its iso center and not far above it", () => {

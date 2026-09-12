@@ -21,10 +21,11 @@ import {
   type ClientMessage,
   type EntityType,
   type EntityView,
+  type ImpactView,
   type IsoPt,
   type MatchSnapshot,
 } from "@gridlock/shared";
-import { TROOPER_WALK, drawTrooperSprite } from "./sprites.js";
+import { TROOPER_SPRITE, drawUnitSprite } from "./sprites.js";
 
 /** Special-action key. D is camera (WASD). */
 export const SPECIAL_HOTKEY = "e";
@@ -40,7 +41,7 @@ const EXTRUDE: Record<EntityType, number> = {
   dynamo: 30,
   rig: 22,
   hauler: 16,
-  warden: 22,
+  warden: 28,
   trooper: 26,
 };
 
@@ -75,6 +76,7 @@ export class MapView {
   private vis: Uint8Array | null = null;
   private exploredMapId = "";
   private ghosts = new Map<number, EntityView>();
+  private fx: (ImpactView & { at: number })[] = [];
   selected = new Set<number>();
   placeMode = false;
   onSelect: (ids: number[]) => void = () => {};
@@ -105,6 +107,9 @@ export class MapView {
       const prev = this.lastHp.get(e.id);
       if (prev !== undefined && e.hp < prev) this.damagedUntil.set(e.id, now + 2000);
       this.lastHp.set(e.id, e.hp);
+    }
+    for (const i of match.impacts ?? []) {
+      if (!this.fx.some((f) => f.id === i.id)) this.fx.push({ ...i, at: now });
     }
     for (const id of [...this.selected]) {
       if (!match.entities.some((e) => e.id === id)) this.selected.delete(id);
@@ -264,6 +269,7 @@ export class MapView {
       this.box.x1 = this.mouseX;
       this.box.y1 = this.mouseY;
     }
+    this.syncCursor();
   };
 
   private onKey = (e: KeyboardEvent): void => {
@@ -278,6 +284,16 @@ export class MapView {
     if (k === "h") {
       e.preventDefault();
       this.centerOnHq();
+      return;
+    }
+    if (this.isSpeedUpKey(e)) {
+      e.preventDefault();
+      this.onCommand({ type: "cmd.speed", delta: 1 });
+      return;
+    }
+    if (this.isSpeedDownKey(e)) {
+      e.preventDefault();
+      this.onCommand({ type: "cmd.speed", delta: -1 });
       return;
     }
     if (k === SPECIAL_HOTKEY) {
@@ -296,8 +312,16 @@ export class MapView {
     return k === "w" || k === "a" || k === "s" || k === "d" || k.startsWith("arrow");
   }
 
+  private isSpeedUpKey(e: KeyboardEvent): boolean {
+    return e.key === "+" || e.key === "=" || e.code === "Equal" || e.code === "NumpadAdd";
+  }
+
+  private isSpeedDownKey(e: KeyboardEvent): boolean {
+    return e.key === "-" || e.key === "_" || e.code === "Minus" || e.code === "NumpadSubtract";
+  }
+
   private canSpecial(e: EntityView): boolean {
-    return e.ownerId === this.curr.youPlayerId && specialReady(e.type, e.state);
+    return e.ownerId === this.curr.youPlayerId && specialReady(e.type, e.state, e.specialCooldown ?? 0);
   }
 
   private useSpecial(e: EntityView): void {
@@ -404,7 +428,7 @@ export class MapView {
         const p = this.lerpEnt(e);
         if (e.type === "trooper") {
           const s = this.toScreen(p.x, p.y);
-          const size = TROOPER_WALK.drawSize;
+          const size = TROOPER_SPRITE.drawSize;
           if (px >= s.x - size * 0.35 && px <= s.x + size * 0.35 && py >= s.y - size * 0.92 && py <= s.y + size * 0.1) {
             return e;
           }
@@ -522,9 +546,9 @@ export class MapView {
       this.camY += (vy / len) * speed * dt;
       this.clamp();
     }
+    this.syncCursor();
     this.draw();
     this.drawMini();
-    this.syncCursor();
     this.raf = requestAnimationFrame((nt) => this.frame(nt));
   }
 
@@ -636,17 +660,22 @@ export class MapView {
 
     for (const p of this.curr.projectiles) {
       const t = Math.min(1, (performance.now() - this.snapAt) / 100);
+      const look = t * 0.1 * (this.curr.gameSpeed || 1);
       const a = this.toScreen(p.x, p.y);
-      const b = this.toScreen(p.x + p.vx * t * 0.1, p.y + p.vy * t * 0.1);
-      ctx.strokeStyle = "#e8b84a";
-      ctx.lineWidth = 2;
+      const b = this.toScreen(p.x + p.vx * look, p.y + p.vy * look);
+      const shell = (p.caliber ?? 0) >= 40;
+      const lift = shell ? 10 : 6;
+      ctx.strokeStyle = shell ? "#f0d070" : "#e8b84a";
+      ctx.lineWidth = shell ? 3 : 1.6;
       ctx.beginPath();
-      ctx.moveTo(a.x, a.y - 6);
-      ctx.lineTo(b.x, b.y - 6);
+      ctx.moveTo(a.x, a.y - lift);
+      ctx.lineTo(b.x, b.y - lift);
       ctx.stroke();
       ctx.fillStyle = "#fff6c8";
-      ctx.fillRect(b.x - 2, b.y - 8, 4, 4);
+      const s = shell ? 5 : 3;
+      ctx.fillRect(b.x - s / 2, b.y - lift - s / 2, s, s);
     }
+    this.drawImpacts();
 
     const toPlace = this.placeMode ? this.readyBuilding() : null;
     if (toPlace && this.mouseX >= 0) {
@@ -659,6 +688,7 @@ export class MapView {
       ctx.lineWidth = 1;
       ctx.strokeRect(Math.min(b.x0, b.x1), Math.min(b.y0, b.y1), Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0));
     }
+    this.drawSpecialCursor();
   }
 
   private tileScreen(tx: number, ty: number): { n: IsoPt; e: IsoPt; s: IsoPt; w: IsoPt } {
@@ -841,9 +871,10 @@ export class MapView {
     const len = Math.hypot(dir.x, dir.y) || 1;
     const ux = dir.x / len;
     const uy = dir.y / len;
-    ctx.fillStyle = "#fff6c8";
+    const barrel = e.type === "warden" ? 18 : 11;
+    ctx.fillStyle = e.type === "warden" ? "#d8c48c" : "#fff6c8";
     ctx.beginPath();
-    ctx.moveTo(top.cx + ux * 11, top.cy + uy * 11);
+    ctx.moveTo(top.cx + ux * barrel, top.cy + uy * barrel);
     ctx.lineTo(top.cx - ux * 5 - uy * 5, top.cy - uy * 5 + ux * 5);
     ctx.lineTo(top.cx - ux * 5 + uy * 5, top.cy - uy * 5 - ux * 5);
     ctx.closePath();
@@ -872,29 +903,78 @@ export class MapView {
   private drawTrooper(e: EntityView): void {
     const ctx = this.ctx;
     const p = this.lerpEnt(e);
-    const size = TROOPER_WALK.drawSize;
+    const size = TROOPER_SPRITE.drawSize;
     const s = this.toScreen(p.x, p.y);
     const hex = this.ownerColor(e);
     const dir = facingToIso(p.facing, this.ts());
     ctx.fillStyle = hex;
-    ctx.globalAlpha = 0.45;
+    ctx.globalAlpha = 0.5;
     ctx.beginPath();
-    ctx.ellipse(s.x, s.y, size * 0.22, size * 0.1, 0, 0, Math.PI * 2);
+    ctx.ellipse(s.x, s.y, size * 0.32, size * 0.15, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
-    const drawn = drawTrooperSprite(ctx, s.x, s.y, p.facing, {
+    const drawn = drawUnitSprite(ctx, TROOPER_SPRITE, s.x, s.y, dir.x, dir.y, {
       moving: e.state === "move",
       id: e.id,
-      now: performance.now(),
-      size,
-      flip: dir.x < 0,
-      feet: true,
+      now: performance.now() * (this.curr.gameSpeed || 1),
     });
     if (!drawn) {
-      this.drawIsoBox(p.x - 6, p.y - 6, 12, 12, 16, hex);
+      this.drawIsoBox(p.x - 4, p.y - 4, 8, 8, 10, hex);
     }
-    if (this.selected.has(e.id)) this.drawGroundMark(p.x, p.y, 10, "#e8b84a");
-    this.maybeHp(e, s.x - size / 2 + 8, s.y - size + 6, size - 16);
+    if (this.selected.has(e.id)) this.drawGroundMark(p.x, p.y, size * 0.45, "#e8b84a");
+    this.maybeHp(e, s.x - size * 0.45, s.y - size + 2, size * 0.9);
+  }
+
+  private drawImpacts(): void {
+    const now = performance.now();
+    const ctx = this.ctx;
+    const keep: (ImpactView & { at: number })[] = [];
+    for (const f of this.fx) {
+      const life =
+        f.kind === "kill" ? 720 : f.kind === "pen" ? 540 : f.kind === "ricochet" ? 460 : f.kind === "miss" ? 300 : 360;
+      const age = now - f.at;
+      if (age > life) continue;
+      keep.push(f);
+      const t = age / life;
+      const s = this.toScreen(f.x, f.y);
+      const lift = 8;
+      ctx.save();
+      ctx.globalAlpha = 1 - t;
+      if (f.kind === "kill" || f.kind === "pen") {
+        const r = (f.kind === "kill" ? 16 : 10) * (0.45 + t);
+        ctx.fillStyle = f.kind === "kill" ? "#ff6a32" : "#e8a040";
+        ctx.beginPath();
+        ctx.ellipse(s.x, s.y - lift, r * 1.15, r * 0.55, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#fff3c0";
+        ctx.beginPath();
+        ctx.ellipse(s.x, s.y - lift - r * 0.2, r * 0.4, r * 0.22, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (f.kind === "ricochet") {
+        const tip = this.toScreen(f.x + f.vx * 0.04, f.y + f.vy * 0.04);
+        ctx.strokeStyle = "#fff6c8";
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 4; i++) {
+          const u = 0.25 + i * 0.2;
+          ctx.beginPath();
+          ctx.moveTo(s.x, s.y - lift);
+          ctx.lineTo(s.x + (tip.x - s.x) * u + (i - 1.5) * 3, s.y - lift + (tip.y - s.y) * u - 6 * t);
+          ctx.stroke();
+        }
+      } else if (f.kind === "miss") {
+        ctx.fillStyle = "#6a5a40";
+        ctx.beginPath();
+        ctx.ellipse(s.x, s.y, 7 + t * 6, 3.5 + t * 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = "#c8b070";
+        ctx.beginPath();
+        ctx.ellipse(s.x, s.y - lift, 5 + t * 4, 2.5 + t * 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    this.fx = keep;
   }
 
   private drawDeployProgress(e: EntityView, x: number, y: number, w: number): void {
@@ -915,16 +995,53 @@ export class MapView {
     ctx.fillText(`${label} ${Math.round(p * 100)}%`, x + w / 2, y + 16);
   }
 
+  private hoverSpecial = false;
+
   private syncCursor(): void {
     let special = false;
-    if (!this.placeMode && !this.overControl && this.mouseX >= 0) {
+    if (!this.placeMode && !this.overControl && !this.box && this.mouseX >= 0) {
       const { w, h } = this.viewSize();
       if (this.mouseX <= w && this.mouseY <= h) {
         const hit = this.hit(this.mouseX, this.mouseY);
         special = !!hit && this.canSpecial(hit);
       }
     }
+    this.hoverSpecial = special;
     this.canvas.classList.toggle("cursor-special", special);
+    this.canvas.style.cursor = special ? "none" : "";
+  }
+
+  private drawSpecialCursor(): void {
+    if (!this.hoverSpecial) return;
+    const x = this.mouseX;
+    const y = this.mouseY;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.fillStyle = "#e8b84a";
+    ctx.strokeStyle = "#140e0a";
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(0.5, 0.5);
+    ctx.lineTo(0.5, 20);
+    ctx.lineTo(6.2, 14.8);
+    ctx.lineTo(10.5, 24);
+    ctx.lineTo(14.2, 22.2);
+    ctx.lineTo(9.4, 13.2);
+    ctx.lineTo(16.5, 13.2);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(17, 4);
+    ctx.lineTo(25, 4);
+    ctx.lineTo(21, 11);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
   }
 
   private maybeHp(e: EntityView, x: number, y: number, w: number): void {

@@ -118,4 +118,73 @@ describe("hub rooms", () => {
       hub.shutdown();
     }
   });
+
+  it("host + / − clamps game speed at 5×", () => {
+    const hub = new Hub();
+    try {
+      const a = client(hub, "A");
+      hub.handle("A", { type: "hello", name: "Alpha" });
+      hub.handle("A", { type: "room.create", mapId: "yard-64", maxSlots: 8 });
+      hub.handle("A", { type: "slot.update", ready: true });
+      hub.handle("A", { type: "room.start" });
+      const roomId = hub.sessions.get("A")!.roomId!;
+      const match = hub.matches.get(roomId)!;
+      assert.equal(match.gameSpeed, 1);
+      for (let n = 2; n <= 5; n++) {
+        hub.handle("A", { type: "cmd.speed", delta: 1 });
+        assert.equal(match.gameSpeed, n);
+      }
+      hub.handle("A", { type: "cmd.speed", delta: 1 });
+      assert.equal(match.gameSpeed, 5);
+      hub.handle("A", { type: "cmd.speed", delta: -1 });
+      assert.equal(match.gameSpeed, 4);
+      const snap = a.of("match.snapshot").at(-1);
+      assert.equal(snap?.match.gameSpeed, 4);
+    } finally {
+      hub.shutdown();
+    }
+  });
+
+  it("skirmish starts without ready and rejects joiners", () => {
+    const hub = new Hub();
+    try {
+      const a = client(hub, "A");
+      const b = client(hub, "B");
+      hub.handle("A", { type: "hello", name: "Alpha" });
+      hub.handle("B", { type: "hello", name: "Bravo" });
+      hub.handle("A", { type: "room.create", mapId: "yard-64", maxSlots: 8, mode: "skirmish" });
+      const created = a.of("room.state")[0];
+      assert.ok(created);
+      assert.equal(created.room.mode, "skirmish");
+      assert.equal(created.room.maxSlots, 1);
+      hub.handle("B", { type: "room.join", code: created.room.id });
+      const err = b.of("room.error").at(-1);
+      assert.equal(err?.code, "closed");
+      hub.handle("A", { type: "room.start" });
+      assert.ok(a.of("match.start")[0]);
+    } finally {
+      hub.shutdown();
+    }
+  });
+
+  it("guest cannot change game speed", () => {
+    const hub = new Hub();
+    try {
+      client(hub, "A");
+      const b = client(hub, "B");
+      hub.handle("A", { type: "hello", name: "Alpha" });
+      hub.handle("B", { type: "hello", name: "Bravo" });
+      hub.handle("A", { type: "room.create", mapId: "yard-64", maxSlots: 8 });
+      hub.handle("B", { type: "room.join", code: hub.sessions.get("A")!.roomId! });
+      hub.handle("A", { type: "slot.update", ready: true });
+      hub.handle("B", { type: "slot.update", ready: true });
+      hub.handle("A", { type: "room.start" });
+      hub.handle("B", { type: "cmd.speed", delta: 1 });
+      const err = b.of("room.error").at(-1);
+      assert.equal(err?.code, "not_host");
+      assert.equal(hub.matches.get(hub.sessions.get("A")!.roomId!)!.gameSpeed, 1);
+    } finally {
+      hub.shutdown();
+    }
+  });
 });

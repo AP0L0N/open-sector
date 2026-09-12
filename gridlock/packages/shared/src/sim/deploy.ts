@@ -1,4 +1,4 @@
-import { catalog, DEPLOY_SECONDS } from "../catalog.js";
+import { catalog, DEPLOY_SECONDS, specialOf, specialCooldownOf } from "../catalog.js";
 import {
   buildingCenter,
   clearOrder,
@@ -18,8 +18,15 @@ export function canDeployAt(state: MatchState, tileX: number, tileY: number): bo
   return true;
 }
 
+function armSpecialCooldown(e: Entity): void {
+  const action = specialOf(e.type);
+  if (!action) return;
+  e.specialCooldown = Math.max(e.specialCooldown, specialCooldownOf(action));
+}
+
 export function beginDeploy(state: MatchState, e: Entity): string | null {
   if (e.type === "rig") {
+    if (e.specialCooldown > 0) return "Special recharging.";
     if (e.waypoints.length > 0 || e.order?.kind === "move") return "Stop the Rig first.";
     if (e.state === "deploy" || e.state === "undeploy") return "Already transforming.";
     const tx = e.tileX - 1;
@@ -29,18 +36,24 @@ export function beginDeploy(state: MatchState, e: Entity): string | null {
     e.deployTime = 0;
     clearOrder(e);
     e.state = "deploy";
+    armSpecialCooldown(e);
     return null;
   }
   if (e.type === "core") {
+    if (e.specialCooldown > 0) return "Special recharging.";
     if (e.state === "deploy" || e.state === "undeploy") return "Already transforming.";
     e.state = "undeploy";
     e.deployTime = 0;
+    armSpecialCooldown(e);
     return null;
   }
   return "That cannot deploy.";
 }
 
 export function tickDeploy(state: MatchState, dt: number): void {
+  for (const e of state.entities.values()) {
+    if (e.specialCooldown > 0) e.specialCooldown = Math.max(0, e.specialCooldown - dt);
+  }
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0) continue;
     if (e.state !== "deploy" && e.state !== "undeploy") continue;
@@ -88,6 +101,7 @@ function finishDeploy(state: MatchState, rig: Entity): void {
     autoHarvest: false,
   };
   state.entities.set(core.id, core);
+  armSpecialCooldown(core);
   occupyEntity(state, core);
   ejectUnits(state, core);
   if (player) player.hqId = core.id;
@@ -127,6 +141,7 @@ function finishUndeploy(state: MatchState, core: Entity): void {
     autoHarvest: false,
   };
   state.entities.set(rig.id, rig);
+  armSpecialCooldown(rig);
   if (player) player.hqId = rig.id;
 }
 
@@ -155,6 +170,7 @@ function structuredCloneBase(e: Entity): Entity {
     harvestTile: null,
     autoHarvest: false,
     deployTime: 0,
+    specialCooldown: e.specialCooldown,
     queue: [],
     attackTarget: null,
   };

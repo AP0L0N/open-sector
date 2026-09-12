@@ -1,5 +1,6 @@
 import {
   BUILDING_TYPES,
+  armorLabel,
   catalog,
   colorHex,
   getMap,
@@ -29,6 +30,7 @@ export function mountBattlefield(
     el("span", { attrs: { id: "hud-scrap" }, html: "SCRAP <b>0</b>" }),
     el("span", { class: "scrap-toast", attrs: { id: "scrap-toast" }, text: "INSUFFICIENT SCRAP" }),
     el("span", { attrs: { id: "hud-power" }, html: "POWER <b>0 / 0</b>" }),
+    el("span", { attrs: { id: "hud-speed" }, html: "SPEED <b>×1</b>" }),
     el("span", { class: "tiny", attrs: { id: "hud-map" }, text: getMap(ctx.match.mapId)?.name ?? ctx.match.mapId }),
   );
 
@@ -154,6 +156,14 @@ export function paintBattleHud(ctx: Ctx): void {
     if (power.innerHTML !== next) power.innerHTML = next;
     power.classList.toggle("low-power", m.you.lowPower);
   }
+  const speed = document.getElementById("hud-speed");
+  if (speed) {
+    const next = `SPEED <b>×${m.gameSpeed || 1}</b>`;
+    if (speed.innerHTML !== next) {
+      speed.innerHTML = next;
+      retrigger(speed, "speed-flash");
+    }
+  }
   const top = document.getElementById("topbar");
   top?.classList.toggle("low-power", m.you.lowPower);
 
@@ -235,11 +245,18 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     e.deployProgress != null
       ? `  ·  ${e.state === "undeploy" ? "packing" : "deploying"} ${Math.round(e.deployProgress * 100)}%`
       : "";
+  const cd = e.specialCooldown ?? 0;
   const special =
-    e.ownerId === ctx.match.youPlayerId && specialReady(e.type, e.state)
-      ? `  ·  ${specialLabel(e.type) ?? "Special"} (${SPECIAL_HOTKEY.toUpperCase()} / click)`
-      : "";
-  box.textContent = `${def.name}  ·  ${e.hp}/${e.hpMax} HP  ·  ${owner?.name ?? "—"}${q}${cargo}${dep}${special}`;
+    e.ownerId !== ctx.match.youPlayerId
+      ? ""
+      : cd > 0 && e.state !== "deploy" && e.state !== "undeploy"
+        ? `  ·  ${specialLabel(e.type) ?? "Special"} ${cd.toFixed(1)}s`
+        : specialReady(e.type, e.state, cd)
+          ? `  ·  ${specialLabel(e.type) ?? "Special"} (${SPECIAL_HOTKEY.toUpperCase()} / click)`
+          : "";
+  const armor = armorLabel(e.type);
+  const plates = armor ? `  ·  armor ${armor}` : "";
+  box.textContent = `${def.name}  ·  ${e.hp}/${e.hpMax} HP${plates}  ·  ${owner?.name ?? "—"}${q}${cargo}${dep}${special}`;
   box.style.borderColor = colorHex(owner?.colorId ?? 0);
 }
 

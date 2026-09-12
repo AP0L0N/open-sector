@@ -1,4 +1,4 @@
-export { createMatch, step } from "./match.js";
+export { createMatch, step, stepMatch } from "./match.js";
 export { applyCommand } from "./commands.js";
 export { snapshotFor } from "./snapshot.js";
 export { previewPlace } from "./preview.js";

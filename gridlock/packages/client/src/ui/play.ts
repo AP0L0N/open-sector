@@ -6,27 +6,13 @@ export function renderPlay(root: HTMLElement, ctx: Ctx): void {
   const maps = listMaps();
   const screen = el("div", { class: "screen" });
   screen.append(
-    el("h1", {
-      class: "wordmark",
-      text: ctx.playMode === "skirmish" ? "SKIRMISH" : "NETWORK",
-    }),
-    el("p", {
-      class: "tagline",
-      text: ctx.playMode === "skirmish" ? "Local-looking  ·  still a server room" : "Create or join by code",
-    }),
+    el("h1", { class: "wordmark", text: "NETWORK" }),
+    el("p", { class: "tagline", text: "Create or join by code" }),
   );
   if (ctx.banner) screen.append(el("div", { class: "banner", text: ctx.banner }));
 
   const panel = el("div", { class: "panel" });
   panel.style.maxWidth = "420px";
-
-  const nameLabel = el("label", { text: "Callsign" });
-  const name = el("input", {
-    attrs: { type: "text", maxlength: "24", value: ctx.name, placeholder: "Commander" },
-  });
-  name.value = ctx.name;
-  name.addEventListener("change", () => ctx.setName(name.value));
-  name.addEventListener("blur", () => ctx.setName(name.value));
 
   const mapLabel = el("label", { text: "Map" });
   const mapSel = el("select");
@@ -50,12 +36,12 @@ export function renderPlay(root: HTMLElement, ctx: Ctx): void {
     attrs: { type: "button" },
   });
   createBtn.addEventListener("click", () => {
-    ctx.setName(name.value);
-    ctx.net.send({ type: "hello", name: name.value });
+    ctx.net.send({ type: "hello", name: ctx.name });
     ctx.net.send({
       type: "room.create",
       mapId: mapSel.value,
       maxSlots: Number(maxSel.value),
+      mode: "network",
     });
   });
 
@@ -66,8 +52,7 @@ export function renderPlay(root: HTMLElement, ctx: Ctx): void {
   code.value = ctx.pendingJoin ?? "";
   const joinBtn = el("button", { class: "btn", text: "Join", attrs: { type: "button" } });
   const doJoin = () => {
-    ctx.setName(name.value);
-    ctx.net.send({ type: "hello", name: name.value });
+    ctx.net.send({ type: "hello", name: ctx.name });
     ctx.net.send({ type: "room.join", code: code.value.trim() });
   };
   joinBtn.addEventListener("click", doJoin);
@@ -79,8 +64,6 @@ export function renderPlay(root: HTMLElement, ctx: Ctx): void {
   back.addEventListener("click", () => ctx.goto("menu"));
 
   panel.append(
-    nameLabel,
-    name,
     mapLabel,
     mapSel,
     maxLabel,

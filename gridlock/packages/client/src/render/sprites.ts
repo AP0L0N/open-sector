@@ -1,41 +1,68 @@
-import sheetUrl from "../assets/units/trooper-walk.png";
+import { isoDir8 } from "@gridlock/shared";
+import trooperSheetUrl from "../assets/units/trooper-walk.png";
 
-/** Horizontal walk sheet: 8 square cells, subject facing right. */
-export const TROOPER_WALK = {
-  frames: 8,
-  frameSize: 128,
-  fps: 12,
-  drawSize: 44,
-} as const;
+/** On-map draw size for infantry / unit sprites, iso pixels. */
+export const UNIT_SPRITE_DRAW_SIZE = 22;
 
-const sheet = new Image();
-sheet.src = sheetUrl;
-
-export function trooperSheetReady(): boolean {
-  return sheet.complete && sheet.naturalWidth > 0;
+/** 8 dirs × N frames. Row = isoDir8, column = walk frame. Feet sit near the cell bottom. */
+export interface UnitSpriteDef {
+  image: HTMLImageElement;
+  dirs: number;
+  frames: number;
+  frameSize: number;
+  fps: number;
+  drawSize: number;
 }
 
-export function drawTrooperSprite(
+function loadSheet(src: string): HTMLImageElement {
+  const img = new Image();
+  img.src = src;
+  return img;
+}
+
+export const TROOPER_SPRITE: UnitSpriteDef = {
+  image: loadSheet(trooperSheetUrl),
+  dirs: 8,
+  frames: 8,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+};
+
+export function spriteReady(def: UnitSpriteDef): boolean {
+  return def.image.complete && def.image.naturalWidth > 0;
+}
+
+export function drawUnitSprite(
   ctx: CanvasRenderingContext2D,
+  def: UnitSpriteDef,
   x: number,
   y: number,
-  facing: number,
-  opts: { moving: boolean; id: number; now: number; size: number; flip?: boolean; feet?: boolean },
+  isoDx: number,
+  isoDy: number,
+  opts: { moving: boolean; id: number; now: number },
 ): boolean {
-  if (!trooperSheetReady()) return false;
-  const { frames, frameSize, fps } = TROOPER_WALK;
+  if (!spriteReady(def)) return false;
+  const dir = isoDir8(isoDx, isoDy);
   const frame = opts.moving
-    ? Math.floor((opts.now / 1000) * fps + opts.id * 0.37) % frames
+    ? Math.floor((opts.now / 1000) * def.fps + opts.id * 0.37) % def.frames
     : 0;
-  const flip = opts.flip ?? Math.cos(facing) < 0;
-  const s = opts.size;
+  const s = def.drawSize;
+  const cell = def.frameSize;
   ctx.save();
-  ctx.translate(x, y);
-  if (flip) ctx.scale(-1, 1);
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  const oy = opts.feet ? -s + s * 0.08 : -s / 2;
-  ctx.drawImage(sheet, frame * frameSize, 0, frameSize, frameSize, -s / 2, oy, s, s);
+  ctx.drawImage(
+    def.image,
+    frame * cell,
+    dir * cell,
+    cell,
+    cell,
+    x - s / 2,
+    y - s + s * 0.1,
+    s,
+    s,
+  );
   ctx.restore();
   return true;
 }

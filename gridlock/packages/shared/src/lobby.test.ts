@@ -169,4 +169,42 @@ describe("lobby rules", () => {
     assert.equal(r.slots[0]?.spawnId, 0);
     assert.equal(r.slots[0]?.ready, false);
   });
+
+  it("skirmish rooms are solo, closed to joiners, and start without ready", () => {
+    const made = createRoom({
+      id: "SKRM",
+      hostId: "host",
+      hostName: "Solo",
+      mapId: "yard-64",
+      maxSlots: 8,
+      mode: "skirmish",
+    });
+    assert.equal(made.ok, true);
+    if (!made.ok) return;
+    const r = made.value;
+    assert.equal(r.mode, "skirmish");
+    assert.equal(r.maxSlots, 1);
+    assert.equal(r.slots.filter((s) => s.status === "open").length, 0);
+    const join = joinRoom(r, "p2", "Two");
+    assert.equal(join.ok, false);
+    if (!join.ok) assert.equal(join.code, "closed");
+    assert.equal(startPreconditions(r).ok, true);
+    assert.equal(startMatch(r, "host").ok, true);
+  });
+
+  it("skirmish host cannot open extra slots", () => {
+    const made = createRoom({
+      id: "SKRM",
+      hostId: "host",
+      hostName: "Solo",
+      mapId: "yard-64",
+      maxSlots: 1,
+      mode: "skirmish",
+    });
+    assert.equal(made.ok, true);
+    if (!made.ok) return;
+    const open = hostSlot(made.value, "host", 1, { status: "open" });
+    assert.equal(open.ok, false);
+    if (!open.ok) assert.equal(open.code, "closed");
+  });
 });

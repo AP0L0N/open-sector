@@ -6,7 +6,7 @@ Original browser RTS (working title). **Not affiliated with EA.**
 
 Menu, lobby, then a match: deploy the **Rig** into a **Core**, build **Dynamo / Smelter / Muster / Armory**, harvest **scrap** with **Haulers**, train **Troopers** and **Wardens**, and fight (halt-to-fire). Radar lives in the right command bar.
 
-Camera: fixed **2:1 isometric** (RA2 / Sudden Strike 2 feel). **WASD** or arrow keys pan in screen space. **H** homes on your HQ. Select the Rig and press **E**, or click it twice, to unpack a Core. The cursor changes when a unit has a special action.
+Camera: fixed **2:1 isometric** (RA2 / Sudden Strike 2 feel). **WASD** or arrow keys pan in screen space. **H** homes on your HQ. **+** / **−** change game speed (1×–5×, host only). Select the Rig and press **E**, or click it twice, to unpack a Core. Hovering a unit with a ready special swaps the crosshair for a gold pointer. Specials have a cooldown (2s for deploy/pack).
 
 ## Prerequisites
 
@@ -22,10 +22,16 @@ Open two Chrome tabs to http://localhost:5173
 
 ## Playtest
 
+Enter a callsign on first launch (saved locally; also in Options).
+
+**Skirmish** is single-player: click Skirmish from the menu and you land in a solo briefing. No Ready switch, no room code, no join.
+
+**Network:**
+
 1. Create a room in one tab.
 2. Join by code in the other.
 3. Ready both players; host hits Start.
-4. You should see a Rig at each spawn. Click it twice (or select it and press **E**). A progress bar fills for 3 seconds, then a Core appears.
+4. You should see a Rig at each spawn. Hover it — the cursor becomes a gold pointer. Click it twice (or select it and press **E**). A progress bar fills for 3 seconds, then a Core appears. Packing is locked for 2 seconds after that.
 
 ## Production build
 

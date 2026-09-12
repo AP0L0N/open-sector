@@ -1,8 +1,9 @@
-import { START_SCRAP, TICK_DT } from "../catalog.js";
+import { clampGameSpeed, GAME_SPEED_DEFAULT, START_SCRAP, TICK_DT } from "../catalog.js";
 import { getMap } from "../maps.js";
 import { humans } from "../lobby.js";
 import type { RoomState } from "../protocol.js";
 import { initGrids, makeEntity, tileCenter } from "./geo.js";
+import { seedRng } from "./rng.js";
 import { tickBuild } from "./build.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
 import { tickDeploy } from "./deploy.js";
@@ -24,6 +25,7 @@ export function createMatch(
     roomId: room.id,
     mapId: room.mapId,
     tick: 0,
+    gameSpeed: GAME_SPEED_DEFAULT,
     nextId: 1,
     tileSize: map.tileSize,
     width: map.width,
@@ -34,6 +36,8 @@ export function createMatch(
     players,
     entities: new Map(),
     projectiles: [],
+    impacts: [],
+    rngState: seedRng(room.id),
     ended: false,
     initialHumans: humans(room).length,
     pendingComms: [],
@@ -68,6 +72,7 @@ export function createMatch(
 export function step(state: MatchState, dt = TICK_DT): void {
   if (state.ended) return;
   state.tick += 1;
+  state.impacts = [];
   tickDeploy(state, dt);
   tickMovement(state, dt);
   tickHarvest(state, dt);
@@ -77,6 +82,15 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickProjectiles(state, dt);
   reapDead(state);
   checkWin(state);
+}
+
+/** One wall-clock tick: `gameSpeed` sim steps (max 5×). */
+export function stepMatch(state: MatchState, dt = TICK_DT): void {
+  const n = clampGameSpeed(state.gameSpeed);
+  for (let i = 0; i < n; i++) {
+    step(state, dt);
+    if (state.ended) break;
+  }
 }
 
 function reapDead(state: MatchState): void {

@@ -1,4 +1,4 @@
-import { DEPLOY_SECONDS } from "../catalog.js";
+import { clampGameSpeed, DEPLOY_SECONDS } from "../catalog.js";
 import { allies } from "./geo.js";
 import { powerOf } from "./power.js";
 import { canSeeWorld, entityOnMask, visionMask } from "./vision.js";
@@ -36,6 +36,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
         e.state === "deploy" || e.state === "undeploy"
           ? Math.min(1, e.deployTime / DEPLOY_SECONDS)
           : undefined,
+      specialCooldown: e.specialCooldown > 0 ? e.specialCooldown : undefined,
     });
   }
   const scrap: ScrapCell[] = [];
@@ -48,6 +49,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
   const hq = you ? state.entities.get(you.hqId) : undefined;
   return {
     tick: state.tick,
+    gameSpeed: clampGameSpeed(state.gameSpeed),
     mapId: state.mapId,
     youPlayerId,
     you: {
@@ -83,7 +85,11 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
         y: p.y,
         vx: p.vx,
         vy: p.vy,
+        caliber: p.caliber,
       })),
+    impacts: state.impacts.filter(
+      (i) => allies(state, youPlayerId, i.ownerId) || canSeeWorld(state, vis, i.x, i.y),
+    ),
     scrap,
     winner: state.winner,
   };

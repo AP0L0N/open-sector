@@ -74,6 +74,7 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
   if (!room) return;
   const you = ctx.net.playerId;
   const isHost = room.hostId === you;
+  const skirmish = room.mode === "skirmish";
   const map = getMap(room.mapId);
   const takenColors = usedColors(room, you ?? undefined);
   const takenSpawns = usedSpawns(room, you ?? undefined);
@@ -82,7 +83,7 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
   const wrap = el("div", { class: "lobby" });
 
   const head = el("div", { class: "lobby-head" });
-  head.append(el("h1", { text: "BRIEFING ROSTER" }));
+  head.append(el("h1", { text: skirmish ? "SKIRMISH" : "BRIEFING ROSTER" }));
   head.append(el("span", { class: "tiny", text: map?.name ?? room.mapId }));
   wrap.append(head);
 
@@ -96,7 +97,10 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
   const table = el("table", { class: "roster" });
   const thead = el("thead");
   const hr = el("tr");
-  for (const h of ["#", "Name", "Color", "Team", "Start", "Ready", ""]) {
+  const headers = skirmish
+    ? ["#", "Name", "Color", "Team", "Start"]
+    : ["#", "Name", "Color", "Team", "Start", "Ready", ""];
+  for (const h of headers) {
     hr.append(el("th", { text: h }));
   }
   thead.append(hr);
@@ -104,6 +108,7 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
   const tbody = el("tbody");
 
   for (const slot of room.slots) {
+    if (skirmish && slot.status !== "human") continue;
     const tr = el("tr");
     if (slot.playerId === you) tr.classList.add("is-you");
     if (slot.status === "closed") tr.classList.add("is-closed");
@@ -179,47 +184,49 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
     }
     tr.append(spawnTd);
 
-    const readyTd = el("td");
-    if (slot.status === "human") {
-      const lamp = el("span", { class: `lamp${slot.ready ? " on" : ""}` });
-      if (slot.playerId === you) {
-        const cb = el("input", { attrs: { type: "checkbox" } });
-        cb.checked = slot.ready;
-        cb.addEventListener("change", () => ctx.net.send({ type: "slot.update", ready: cb.checked }));
-        readyTd.append(cb, lamp);
-      } else {
-        readyTd.append(lamp);
+    if (!skirmish) {
+      const readyTd = el("td");
+      if (slot.status === "human") {
+        const lamp = el("span", { class: `lamp${slot.ready ? " on" : ""}` });
+        if (slot.playerId === you) {
+          const cb = el("input", { attrs: { type: "checkbox" } });
+          cb.checked = slot.ready;
+          cb.addEventListener("change", () => ctx.net.send({ type: "slot.update", ready: cb.checked }));
+          readyTd.append(cb, lamp);
+        } else {
+          readyTd.append(lamp);
+        }
       }
-    }
-    tr.append(readyTd);
+      tr.append(readyTd);
 
-    const act = el("td");
-    if (isHost && slot.playerId && slot.playerId !== you) {
-      const kick = el("button", { class: "btn", text: "Kick", attrs: { type: "button" } });
-      kick.style.padding = "4px 8px";
-      kick.style.fontSize = "0.75rem";
-      kick.addEventListener("click", () =>
-        ctx.net.send({ type: "slot.host", slotIndex: slot.index, kick: true }),
-      );
-      act.append(kick);
-    } else if (isHost && slot.status !== "human" && slot.playerId !== you) {
-      const toggle = el("button", {
-        class: "btn btn-ghost",
-        text: slot.status === "closed" ? "Open" : "Close",
-        attrs: { type: "button" },
-      });
-      toggle.style.padding = "4px 8px";
-      toggle.style.fontSize = "0.75rem";
-      toggle.addEventListener("click", () =>
-        ctx.net.send({
-          type: "slot.host",
-          slotIndex: slot.index,
-          status: slot.status === "closed" ? "open" : "closed",
-        }),
-      );
-      act.append(toggle);
+      const act = el("td");
+      if (isHost && slot.playerId && slot.playerId !== you) {
+        const kick = el("button", { class: "btn", text: "Kick", attrs: { type: "button" } });
+        kick.style.padding = "4px 8px";
+        kick.style.fontSize = "0.75rem";
+        kick.addEventListener("click", () =>
+          ctx.net.send({ type: "slot.host", slotIndex: slot.index, kick: true }),
+        );
+        act.append(kick);
+      } else if (isHost && slot.status !== "human" && slot.playerId !== you) {
+        const toggle = el("button", {
+          class: "btn btn-ghost",
+          text: slot.status === "closed" ? "Open" : "Close",
+          attrs: { type: "button" },
+        });
+        toggle.style.padding = "4px 8px";
+        toggle.style.fontSize = "0.75rem";
+        toggle.addEventListener("click", () =>
+          ctx.net.send({
+            type: "slot.host",
+            slotIndex: slot.index,
+            status: slot.status === "closed" ? "open" : "closed",
+          }),
+        );
+        act.append(toggle);
+      }
+      tr.append(act);
     }
-    tr.append(act);
     tbody.append(tr);
   }
   table.append(tbody);
@@ -244,23 +251,25 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
   brief.append(
     el("p", {
       class: "tiny",
-      text: `${humans} / ${room.maxSlots} commanders`,
+      text: skirmish ? "Single commander" : `${humans} / ${room.maxSlots} commanders`,
     }),
     el("p", { class: "tiny", text: "AI — next plan" }),
   );
-  const codeRow = el("div", { class: "code-row" });
-  codeRow.append(el("span", { class: "tiny", text: "ROOM" }), el("strong", { class: "mono", text: room.id }));
-  const copyBtn = el("button", { class: "btn", text: "Copy", attrs: { type: "button" } });
-  copyBtn.style.padding = "4px 8px";
-  copyBtn.style.fontSize = "0.75rem";
-  const invite = `${location.origin}${location.pathname}?room=${room.id}`;
-  copyBtn.addEventListener("click", () => copyText(room.id));
-  const inviteBtn = el("button", { class: "btn btn-ghost", text: "Invite URL", attrs: { type: "button" } });
-  inviteBtn.style.padding = "4px 8px";
-  inviteBtn.style.fontSize = "0.75rem";
-  inviteBtn.addEventListener("click", () => copyText(invite));
-  codeRow.append(copyBtn, inviteBtn);
-  brief.append(codeRow);
+  if (!skirmish) {
+    const codeRow = el("div", { class: "code-row" });
+    codeRow.append(el("span", { class: "tiny", text: "ROOM" }), el("strong", { class: "mono", text: room.id }));
+    const copyBtn = el("button", { class: "btn", text: "Copy", attrs: { type: "button" } });
+    copyBtn.style.padding = "4px 8px";
+    copyBtn.style.fontSize = "0.75rem";
+    const invite = `${location.origin}${location.pathname}?room=${room.id}`;
+    copyBtn.addEventListener("click", () => copyText(room.id));
+    const inviteBtn = el("button", { class: "btn btn-ghost", text: "Invite URL", attrs: { type: "button" } });
+    inviteBtn.style.padding = "4px 8px";
+    inviteBtn.style.fontSize = "0.75rem";
+    inviteBtn.addEventListener("click", () => copyText(invite));
+    codeRow.append(copyBtn, inviteBtn);
+    brief.append(codeRow);
+  }
   wrap.append(brief);
 
   requestAnimationFrame(() => drawPreview(preview, room.mapId, room.slots));
@@ -278,10 +287,11 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
   const start = el("button", { class: "btn btn-primary", text: "Start", attrs: { type: "button" } });
   start.disabled = !isHost || Boolean(reason);
   start.addEventListener("click", () => ctx.net.send({ type: "room.start" }));
-  const reasonEl = el("div", {
-    class: "lock-reason",
-    text: isHost ? (reason ?? "All commanders ready.") : "Waiting for host.",
-  });
+  let reasonText = "";
+  if (reason) reasonText = isHost ? reason : "Waiting for host.";
+  else if (!isHost) reasonText = "Waiting for host.";
+  else if (!skirmish) reasonText = "All commanders ready.";
+  const reasonEl = el("div", { class: "lock-reason", text: reasonText });
   if (!reason && isHost) reasonEl.style.color = "var(--ready)";
   foot.append(reasonEl, start);
   wrap.append(foot);

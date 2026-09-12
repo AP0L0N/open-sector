@@ -21,13 +21,10 @@ export function renderMenu(root: HTMLElement, ctx: Ctx): void {
   const credits = el("button", { class: "btn", text: "Credits", attrs: { type: "button" } });
   const exit = el("button", { class: "btn btn-ghost", text: "Exit", attrs: { type: "button" } });
 
-  skirmish.addEventListener("click", () => {
-    if (!ctx.net.connected) ctx.net.connect();
-    ctx.playMode = "skirmish";
-    ctx.goto("play");
-  });
+  skirmish.addEventListener("click", () => ctx.enterSkirmish());
   network.addEventListener("click", () => {
     if (!ctx.net.connected) ctx.net.connect();
+    ctx.pendingSkirmish = false;
     ctx.playMode = "network";
     ctx.goto("play");
   });

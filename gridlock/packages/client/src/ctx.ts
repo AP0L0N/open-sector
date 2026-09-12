@@ -1,7 +1,7 @@
 import type { MatchSnapshot, RoomState } from "@gridlock/shared";
 import type { GameSocket } from "./net/client.js";
 
-export type Screen = "menu" | "play" | "lobby" | "deploy" | "battle" | "options" | "credits";
+export type Screen = "callsign" | "menu" | "play" | "lobby" | "deploy" | "battle" | "options" | "credits";
 
 export interface ChatLine {
   name: string;
@@ -21,9 +21,11 @@ export interface Ctx {
   inspect: number | null;
   connected: boolean;
   pendingJoin: string | null;
+  pendingSkirmish: boolean;
   leaveOpen: boolean;
   winner: { playerId: string; team: number } | null;
   goto: (screen: Screen) => void;
   setName: (name: string) => void;
+  enterSkirmish: () => void;
   render: () => void;
 }

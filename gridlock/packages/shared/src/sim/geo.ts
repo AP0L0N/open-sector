@@ -229,6 +229,7 @@ export function makeEntity(
     harvestTile: null,
     autoHarvest: type === "hauler",
     deployTime: 0,
+    specialCooldown: 0,
     queue: [],
     attackTarget: null,
   };

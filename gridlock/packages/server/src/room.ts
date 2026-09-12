@@ -12,14 +12,16 @@ import {
   hostSlot,
   joinRoom,
   leaveRoom,
+  nudgeGameSpeed,
   setMap,
   snapshotFor,
   startMatch,
-  step,
+  stepMatch,
   updateSelf,
   type ClientMessage,
   type ErrorCode,
   type MatchState,
+  type RoomMode,
   type RoomState,
   type ServerMessage,
 } from "@gridlock/shared";
@@ -100,7 +102,7 @@ export class Hub {
         this.onHello(session, msg.name);
         break;
       case "room.create":
-        this.onCreate(session, msg.mapId, msg.maxSlots);
+        this.onCreate(session, msg.mapId, msg.maxSlots, msg.mode);
         break;
       case "room.join":
         this.onJoin(session, msg.code);
@@ -122,6 +124,9 @@ export class Hub {
         break;
       case "chat":
         this.onChat(session, msg.text);
+        break;
+      case "cmd.speed":
+        this.onSpeed(session, msg.delta);
         break;
       default:
         if (msg.type.startsWith("cmd.")) this.onCmd(session, msg);
@@ -177,7 +182,12 @@ export class Hub {
     this.leaveInternal(session.playerId, true);
   }
 
-  private onCreate(session: Session, mapId: string, maxSlots: number): void {
+  private onCreate(
+    session: Session,
+    mapId: string,
+    maxSlots: number,
+    mode?: RoomMode,
+  ): void {
     const cap = canCreateRoom(this.rooms.size);
     if (!cap.ok) return this.err(session, cap.code, cap.message);
     this.detachFromRoom(session);
@@ -193,6 +203,7 @@ export class Hub {
       hostName: session.name,
       mapId,
       maxSlots,
+      mode,
     });
     if (!created.ok) return this.err(session, created.code, created.message);
     this.rooms.set(id, created.value);
@@ -332,7 +343,7 @@ export class Hub {
       this.tickers.delete(roomId);
       return;
     }
-    step(match);
+    stepMatch(match);
     for (const line of match.pendingComms) {
       this.broadcast(roomId, { type: "chat", from: "sys", name: "HQ", text: line, at: Date.now() });
     }
@@ -350,6 +361,21 @@ export class Hub {
         reason: "core",
       });
     }
+  }
+
+  private onSpeed(session: Session, delta: number): void {
+    const room = this.roomOf(session);
+    if (!room) return this.err(session, "not_member", "You are not in a room.");
+    if (room.hostId !== session.playerId) {
+      return this.err(session, "not_host", "Only the host can change game speed.");
+    }
+    const match = this.matches.get(room.id);
+    if (!match) return this.err(session, "started", "No match.");
+    if (match.ended) return this.err(session, "ended", "Match is over.");
+    const next = nudgeGameSpeed(match.gameSpeed, delta);
+    if (next === match.gameSpeed) return;
+    match.gameSpeed = next;
+    this.broadcastSnapshots(room.id);
   }
 
   private onCmd(session: Session, msg: ClientMessage): void {

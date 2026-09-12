@@ -1,5 +1,8 @@
 import { catalog, FACE_FIRE_DEG, PROJECTILE_RADIUS, fires } from "../catalog.js";
+import type { ImpactKind, ImpactView } from "../protocol.js";
+import { aimAngle, resolveHit } from "./ballistics.js";
 import { allies, buildingContains, playerTeam } from "./geo.js";
+import { nextRand } from "./rng.js";
 import { canSeeEntity, visionMask } from "./vision.js";
 import { turnToward } from "./orders.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
@@ -44,7 +47,8 @@ export function tickCombat(state: MatchState, dt: number): void {
     if (Math.abs(remainingDeg) > FACE_FIRE_DEG) continue;
     if (e.cooldown > 0) continue;
 
-    const ang = e.facing;
+    const moving = target.waypoints.length > 0 || target.state === "move";
+    const ang = aimAngle(e.facing, def.spreadDeg, dist, range, () => nextRand(state), moving);
     const speed = def.projectileSpeed;
     const life = range / speed + 0.05;
     const p: Projectile = {
@@ -56,7 +60,10 @@ export function tickCombat(state: MatchState, dt: number): void {
       vx: Math.cos(ang) * speed,
       vy: Math.sin(ang) * speed,
       damage: def.damage,
+      penetration: def.penetration,
+      caliber: def.caliber,
       life,
+      ignoreId: e.id,
     };
     state.projectiles.push(p);
     e.cooldown = def.cooldown;
@@ -65,27 +72,77 @@ export function tickCombat(state: MatchState, dt: number): void {
 
 export function tickProjectiles(state: MatchState, dt: number): void {
   const keep: Projectile[] = [];
+  const rand = () => nextRand(state);
   for (const p of state.projectiles) {
     const x0 = p.x;
     const y0 = p.y;
     p.x += p.vx * dt;
     p.y += p.vy * dt;
     p.life -= dt;
-    if (p.life <= 0) continue;
+    if (p.life <= 0) {
+      pushImpact(state, p, "miss", p.x, p.y);
+      continue;
+    }
     let hit = false;
+    let bounced = false;
     for (const e of state.entities.values()) {
       if (e.hp <= 0) continue;
+      if (e.id === p.ignoreId) continue;
       if (allies(state, p.ownerId, e.ownerId)) continue;
-      if (overlapsSweep(state, x0, y0, p, e)) {
-        e.hp -= p.damage;
-        hit = true;
-        if (e.hp <= 0) e.hp = 0;
-        break;
+      if (!overlapsSweep(state, x0, y0, p, e)) continue;
+      const res = resolveHit({
+        gun: { damage: p.damage, penetration: p.penetration, caliber: p.caliber },
+        target: catalog(e.type),
+        targetFacing: e.facing,
+        targetHp: e.hp,
+        targetHpMax: e.hpMax,
+        vx: p.vx,
+        vy: p.vy,
+        rand,
+      });
+      e.hp -= res.damage;
+      if (e.hp < 0) e.hp = 0;
+      const ix = e.kind === "building" ? p.x : e.x;
+      const iy = e.kind === "building" ? p.y : e.y;
+      const kind: ImpactKind = e.hp <= 0 && res.kind !== "ricochet" ? "kill" : res.kind;
+      pushImpact(state, p, kind, ix, iy, res.kind === "ricochet" ? res.bounceVx : p.vx, res.kind === "ricochet" ? res.bounceVy : p.vy);
+      if (res.kind === "ricochet") {
+        p.vx = res.bounceVx;
+        p.vy = res.bounceVy;
+        p.ignoreId = e.id;
+        p.life *= 0.65;
+        const sp = Math.hypot(p.vx, p.vy) || 1;
+        p.x += (p.vx / sp) * Math.max(8, e.radius * 0.5);
+        p.y += (p.vy / sp) * Math.max(8, e.radius * 0.5);
+        bounced = true;
       }
+      hit = true;
+      break;
     }
-    if (!hit) keep.push(p);
+    if (!hit || bounced) keep.push(p);
   }
   state.projectiles = keep;
+}
+
+function pushImpact(
+  state: MatchState,
+  p: Projectile,
+  kind: ImpactKind,
+  x: number,
+  y: number,
+  vx?: number,
+  vy?: number,
+): void {
+  const impact: ImpactView = {
+    id: state.nextId++,
+    ownerId: p.ownerId,
+    kind,
+    x,
+    y,
+    vx: vx ?? p.vx,
+    vy: vy ?? p.vy,
+  };
+  state.impacts.push(impact);
 }
 
 function overlapsSweep(state: MatchState, x0: number, y0: number, p: Projectile, e: Entity): boolean {

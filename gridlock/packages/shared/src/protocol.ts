@@ -2,7 +2,7 @@
 
 import type { BuildingType, EntityKind, EntityType, TrainType } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 2;
+export const PROTOCOL_VERSION = 5;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -13,6 +13,7 @@ export const MIN_HUMANS_TO_START = 1;
 
 export type Phase = "lobby" | "countdown" | "playing" | "ended";
 export type SlotStatus = "open" | "human" | "closed";
+export type RoomMode = "skirmish" | "network";
 export type EntityState =
   | "idle"
   | "move"
@@ -40,6 +41,7 @@ export interface RoomState {
   hostId: string;
   mapId: string;
   phase: Phase;
+  mode: RoomMode;
   maxSlots: number;
   slots: Slot[];
   createdAt: number;
@@ -71,6 +73,8 @@ export interface EntityView {
   cargo?: number;
   /** 0–1 while state is deploy or undeploy. */
   deployProgress?: number;
+  /** Seconds remaining before the special can fire again. Omitted when idle. */
+  specialCooldown?: number;
 }
 
 export interface PlayerPublic {
@@ -104,16 +108,32 @@ export interface ProjectileView {
   y: number;
   vx: number;
   vy: number;
+  caliber: number;
+}
+
+export type ImpactKind = "miss" | "ricochet" | "glance" | "hit" | "pen" | "kill";
+
+export interface ImpactView {
+  id: number;
+  ownerId: string;
+  kind: ImpactKind;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
 }
 
 export interface MatchSnapshot {
   tick: number;
+  /** Sim multiplier. 1–5. */
+  gameSpeed: number;
   mapId: string;
   youPlayerId: string;
   you: YouState;
   players: PlayerPublic[];
   entities: EntityView[];
   projectiles: ProjectileView[];
+  impacts: ImpactView[];
   scrap: ScrapCell[];
   winner?: { playerId: string; team: number };
 }
@@ -123,7 +143,7 @@ export type MatchView = MatchSnapshot;
 
 export type ClientMessage =
   | { type: "hello"; name: string }
-  | { type: "room.create"; mapId: string; maxSlots: number }
+  | { type: "room.create"; mapId: string; maxSlots: number; mode?: RoomMode }
   | { type: "room.join"; code: string }
   | { type: "room.leave" }
   | { type: "slot.update"; colorId?: number; team?: number; spawnId?: number; ready?: boolean }
@@ -140,7 +160,8 @@ export type ClientMessage =
   | { type: "cmd.train"; unit: TrainType }
   | { type: "cmd.cancel"; what: "structure" | "train"; buildingId?: number }
   | { type: "cmd.sell"; id: number }
-  | { type: "cmd.deploy"; id: number };
+  | { type: "cmd.deploy"; id: number }
+  | { type: "cmd.speed"; delta: number };
 
 export type ServerMessage =
   | { type: "welcome"; playerId: string; protocol: number }

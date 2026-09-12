@@ -4,7 +4,7 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { catalog, HAULER_CARGO, LOW_POWER_MIN_SPEED, START_SCRAP, TICK_DT } from "../catalog.js";
 import { TILE_BLOCKED, TILE_SCRAP, getMap, tileAt } from "../maps.js";
 import { applyCommand } from "./commands.js";
-import { createMatch, step } from "./match.js";
+import { createMatch, step, stepMatch } from "./match.js";
 import { productionSpeed } from "./power.js";
 import { snapshotFor } from "./snapshot.js";
 import { astar } from "./path.js";
@@ -44,6 +44,18 @@ describe("createMatch", () => {
     assert.equal(snap.you.provided, 0);
     assert.equal(snap.entities.filter((e) => e.type === "rig").length, 1);
     assert.equal(snap.entities[0]?.ownerId, "A");
+    assert.equal(state.gameSpeed, 1);
+    assert.equal(snap.gameSpeed, 1);
+  });
+
+  it("stepMatch runs gameSpeed sim ticks per wall-clock tick", () => {
+    const { state } = twoPlayerMatch();
+    const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig")!;
+    assert.equal(applyCommand(state, "A", { type: "cmd.deploy", id: rig.id }).ok, true);
+    state.gameSpeed = 3;
+    for (let i = 0; i < 12; i++) stepMatch(state);
+    const core = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "core");
+    assert.ok(core);
   });
 
   it("does not spawn a Core until deploy finishes", () => {
@@ -59,6 +71,21 @@ describe("createMatch", () => {
     const core = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "core");
     assert.ok(core);
     assert.equal(snapshotFor(state, "A").you.provided, catalog("core").power);
+  });
+
+  it("blocks packing the Core until the special cooldown elapses", () => {
+    const { state } = twoPlayerMatch();
+    const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig")!;
+    assert.equal(applyCommand(state, "A", { type: "cmd.deploy", id: rig.id }).ok, true);
+    ticks(state, 35);
+    const core = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "core")!;
+    assert.ok(core.specialCooldown > 0);
+    const tooSoon = applyCommand(state, "A", { type: "cmd.deploy", id: core.id });
+    assert.equal(tooSoon.ok, false);
+    if (!tooSoon.ok) assert.equal(tooSoon.code, "busy");
+    ticks(state, 25);
+    const packed = applyCommand(state, "A", { type: "cmd.deploy", id: core.id });
+    assert.equal(packed.ok, true, !packed.ok ? packed.message : "");
   });
 });
 
@@ -190,6 +217,45 @@ describe("combat", () => {
       dummy.hp <= 0 || !state.entities.has(dummy.id),
       `hp=${dummy.hp} shots expected ~4 vs trooper; hauler hp ${dummy.hp}`,
     );
+  });
+
+  it("cannot kill a Warden with rifle fire", () => {
+    const { state } = twoPlayerMatch();
+    const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
+    const tank = makeEntity(state, "warden", "B", 23 * 32, 20 * 32);
+    tank.facing = Math.PI;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [t1.id], targetId: tank.id });
+    ticks(state, 120);
+    assert.ok(state.entities.has(tank.id), "warden should still exist");
+    assert.ok(tank.hp > tank.hpMax - 8, `rifle vs armor hp=${tank.hp}`);
+  });
+
+  it("kills a Warden with one rear shot", () => {
+    const { state } = twoPlayerMatch();
+    const a = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
+    const b = makeEntity(state, "warden", "B", 23 * 32, 20 * 32);
+    a.facing = 0;
+    b.facing = 0;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [a.id], targetId: b.id });
+    let sawKill = false;
+    for (let i = 0; i < 12; i++) {
+      step(state);
+      if (state.impacts.some((x) => x.kind === "kill")) sawKill = true;
+    }
+    assert.equal(sawKill, true);
+    assert.ok(b.hp <= 0 || !state.entities.has(b.id), `rear hp=${b.hp}`);
+  });
+
+  it("does not kill a Warden through the front in a short duel", () => {
+    const { state } = twoPlayerMatch();
+    const a = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
+    const b = makeEntity(state, "warden", "B", 23 * 32, 20 * 32);
+    a.facing = 0;
+    b.facing = Math.PI;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [a.id], targetId: b.id });
+    ticks(state, 30);
+    assert.ok(state.entities.has(b.id), "front armor should hold");
+    assert.ok(b.hp > b.hpMax * 0.7, `front hp=${b.hp}`);
   });
 
   it("wipes a player when their Rig dies", () => {

@@ -5,6 +5,7 @@ import {
   MIN_SLOTS,
   SLOT_COUNT,
   type ErrorCode,
+  type RoomMode,
   type RoomState,
   type Slot,
   type SlotStatus,
@@ -60,9 +61,11 @@ export function createRoom(opts: {
   hostName: string;
   mapId: string;
   maxSlots: number;
+  mode?: RoomMode;
   now?: number;
 }): LobbyResult<RoomState> {
-  const maxSlots = clampMaxSlots(opts.maxSlots);
+  const mode: RoomMode = opts.mode === "skirmish" ? "skirmish" : "network";
+  const maxSlots = mode === "skirmish" ? 1 : clampMaxSlots(opts.maxSlots);
   if (!getMap(opts.mapId)) return fail("no_map", "Unknown map.");
   const slots = Array.from({ length: SLOT_COUNT }, (_, i) =>
     emptySlot(i, i === 0 ? "human" : i < maxSlots ? "open" : "closed"),
@@ -80,6 +83,7 @@ export function createRoom(opts: {
     hostId: opts.hostId,
     mapId: opts.mapId,
     phase: "lobby",
+    mode,
     maxSlots,
     slots,
     createdAt: opts.now ?? Date.now(),
@@ -131,6 +135,7 @@ export function findPlayerSlot(room: RoomState, playerId: string): Slot | undefi
 
 export function joinRoom(room: RoomState, playerId: string, name: string): LobbyResult<void> {
   if (room.phase !== "lobby") return fail("started", "Match already started.");
+  if (room.mode === "skirmish") return fail("closed", "Skirmish is single-player.");
   if (findPlayerSlot(room, playerId)) return okVoid();
   const slot = firstOpenSlot(room);
   if (!slot) return fail("full", "Room is full.");
@@ -208,6 +213,9 @@ export function hostSlot(
   if (action.kick || action.status === "closed" || action.status === "open") {
     if (slot.playerId === hostId) return fail("bad_slot", "Host cannot kick or close their own slot.");
   }
+  if (room.mode === "skirmish" && (action.status === "open" || action.kick)) {
+    return fail("closed", "Skirmish is single-player.");
+  }
 
   if (action.kick && slot.playerId) {
     Object.assign(slot, emptySlot(slot.index, "open"));
@@ -247,10 +255,12 @@ export function startPreconditions(room: RoomState): LobbyResult<void> {
   if (filled.length < MIN_HUMANS_TO_START) {
     return fail("too_few", "Need at least one commander.");
   }
-  const waiting = filled.filter((s) => !s.ready);
-  if (waiting.length > 0) {
-    const names = waiting.map((s) => s.name ?? "Unknown").join(", ");
-    return fail("not_ready", `Waiting for ${names}`);
+  if (room.mode !== "skirmish") {
+    const waiting = filled.filter((s) => !s.ready);
+    if (waiting.length > 0) {
+      const names = waiting.map((s) => s.name ?? "Unknown").join(", ");
+      return fail("not_ready", `Waiting for ${names}`);
+    }
   }
   return okVoid();
 }

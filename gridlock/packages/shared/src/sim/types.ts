@@ -1,5 +1,5 @@
 import type { BuildingType, EntityType, TrainType } from "../catalog.js";
-import type { EntityState } from "../protocol.js";
+import type { EntityState, ImpactView } from "../protocol.js";
 
 export interface Vec {
   x: number;
@@ -52,6 +52,8 @@ export interface Entity {
   harvestTile: Vec | null;
   autoHarvest: boolean;
   deployTime: number;
+  /** Seconds remaining before this unit's special can fire again. */
+  specialCooldown: number;
   queue: TrainJob[];
   attackTarget: number | null;
 }
@@ -65,7 +67,11 @@ export interface Projectile {
   vx: number;
   vy: number;
   damage: number;
+  penetration: number;
+  caliber: number;
   life: number;
+  /** Shooter, then last ricochet victim — skip re-collision. */
+  ignoreId: number;
 }
 
 export interface SimPlayer {
@@ -84,6 +90,8 @@ export interface MatchState {
   roomId: string;
   mapId: string;
   tick: number;
+  /** Sim steps per wall-clock tick. 1–5. */
+  gameSpeed: number;
   nextId: number;
   tileSize: number;
   width: number;
@@ -97,6 +105,8 @@ export interface MatchState {
   players: Map<string, SimPlayer>;
   entities: Map<number, Entity>;
   projectiles: Projectile[];
+  impacts: ImpactView[];
+  rngState: number;
   winner?: { playerId: string; team: number };
   ended: boolean;
   initialHumans: number;
