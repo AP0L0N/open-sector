@@ -1,0 +1,26 @@
+{
+  "name": "gridlock",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Original browser RTS — Milestone 2 base building, harvest, and infantry combat",
+  "workspaces": [
+    "packages/shared",
+    "packages/server",
+    "packages/client"
+  ],
+  "scripts": {
+    "predev": "npm run build -w @gridlock/shared",
+    "dev": "concurrently -n shared,server,client -c yellow,red,cyan \"npm run build:watch -w @gridlock/shared\" \"npm run dev -w @gridlock/server\" \"npm run dev -w @gridlock/client\"",
+    "build": "npm run build -w @gridlock/shared && npm run build -w @gridlock/server && npm run build -w @gridlock/client",
+    "start": "npm run start -w @gridlock/server",
+    "test": "npm run build -w @gridlock/shared && npm run test -w @gridlock/shared && npm run test -w @gridlock/server",
+    "typecheck": "npm run typecheck -w @gridlock/shared && npm run typecheck -w @gridlock/server && npm run typecheck -w @gridlock/client"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

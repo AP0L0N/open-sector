@@ -1,0 +1,19 @@
+[Unit]
+Description=Gridlock (Milestone 1)
+After=network.target
+
+[Service]
+Type=simple
+User=gridlock
+Group=gridlock
+# Use User=www-data and Group=www-data if you skip a dedicated account.
+WorkingDirectory=/opt/gridlock
+Environment=NODE_ENV=production
+Environment=PORT=3010
+Environment=HOST=127.0.0.1
+ExecStart=/usr/bin/node packages/server/dist/index.js
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
