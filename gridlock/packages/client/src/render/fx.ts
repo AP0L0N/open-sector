@@ -517,3 +517,32 @@ export function drawWreckFire(
   ctx.fill();
   ctx.restore();
 }
+
+/** Ground click-to-move ping. `t` is 0..1 through the ring's life. */
+export const MOVE_CLICK_MS = 460;
+
+export function drawMoveClick(ctx: CanvasRenderingContext2D, x: number, y: number, t: number): void {
+  if (t <= 0 || t >= 1) return;
+  const ease = 1 - (1 - t) * (1 - t);
+  const fade = (1 - t) * (1 - t);
+  const rx = 3.2 + ease * 13;
+  ctx.save();
+  ctx.beginPath();
+  groundEllipse(ctx, x, y, rx);
+  ctx.strokeStyle = `rgba(232, 184, 74, ${0.55 * fade})`;
+  ctx.lineWidth = 1.35;
+  ctx.stroke();
+  ctx.beginPath();
+  groundEllipse(ctx, x, y, rx * 0.42);
+  ctx.strokeStyle = `rgba(255, 236, 186, ${0.28 * fade})`;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  const pip = 1 - Math.min(1, t / 0.28);
+  if (pip > 0) {
+    ctx.beginPath();
+    groundEllipse(ctx, x, y, 1.6 + (1 - pip) * 2.2);
+    ctx.fillStyle = `rgba(232, 184, 74, ${0.22 * pip})`;
+    ctx.fill();
+  }
+  ctx.restore();
+}

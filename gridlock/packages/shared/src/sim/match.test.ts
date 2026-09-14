@@ -110,6 +110,19 @@ describe("createMatch", () => {
     const packed = applyCommand(state, "A", { type: "cmd.deploy", id: core.id });
     assert.equal(packed.ok, true, !packed.ok ? packed.message : "");
   });
+
+  it("deploys a moving Rig immediately instead of waiting for the walk", () => {
+    const { state } = twoPlayerMatch();
+    const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig")!;
+    applyCommand(state, "A", { type: "cmd.move", ids: [rig.id], x: rig.x + 64, y: rig.y + 64 });
+    ticks(state, 3);
+    assert.equal(rig.order?.kind, "move");
+    const res = applyCommand(state, "A", { type: "cmd.deploy", id: rig.id });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    assert.equal(rig.state, "deploy");
+    assert.equal(rig.order, null);
+    assert.equal(rig.waypoints.length, 0);
+  });
 });
 
 describe("pathfinding", () => {
@@ -217,14 +230,23 @@ describe("construction", () => {
 });
 
 describe("combat", () => {
-  it("does not fire while moving", () => {
+  it("fires on an enemy in range during a move, without dropping the walk", () => {
     const { state } = twoPlayerMatch();
-    const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
-    const dummy = makeEntity(state, "hauler", "B", 22 * 32, 20 * 32);
-    applyCommand(state, "A", { type: "cmd.move", ids: [t1.id], x: 8 * 32, y: 8 * 32 });
-    const hpBefore = dummy.hp;
-    ticks(state, 8);
-    assert.equal(dummy.hp, hpBefore);
+    state.heights.fill(0);
+    const t1 = makeEntity(state, "trooper", "A", 24 * 32, 20 * 32);
+    const dummy = makeEntity(state, "hauler", "B", 28 * 32, 20 * 32);
+    dummy.autoHarvest = false;
+    dummy.hp = 40;
+    dummy.hpMax = 40;
+    t1.facing = 0;
+    const destX = 36 * 32;
+    const destY = 20 * 32;
+    const res = applyCommand(state, "A", { type: "cmd.move", ids: [t1.id], x: destX, y: destY });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    assert.equal(t1.order?.kind, "move");
+    ticks(state, 80);
+    assert.ok(dummy.hp < 40, `should have fired on the way hp=${dummy.hp}`);
+    assert.ok(t1.x > dummy.x - 8, `should keep walking x=${t1.x}`);
   });
 
   it("attack-move stops to shoot then continues to the click", () => {

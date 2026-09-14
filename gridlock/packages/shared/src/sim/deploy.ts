@@ -27,7 +27,6 @@ function armSpecialCooldown(e: Entity): void {
 export function beginDeploy(state: MatchState, e: Entity): string | null {
   if (e.type === "rig") {
     if (e.specialCooldown > 0) return "Special recharging.";
-    if (e.waypoints.length > 0 || e.order?.kind === "move") return "Stop the Rig first.";
     if (e.state === "deploy" || e.state === "undeploy") return "Already transforming.";
     const core = catalog("core");
     const tx = e.tileX - Math.floor(core.tileW / 2);

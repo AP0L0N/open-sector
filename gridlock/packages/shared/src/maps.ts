@@ -213,6 +213,284 @@ function inPad(pads: readonly { x: number; y: number; r: number }[], x: number, 
   return false;
 }
 
+const WATER_ORTHO: readonly [number, number][] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
+
+function inHouseBox(
+  houses: readonly { x0: number; y0: number; x1: number; y1: number }[],
+  x: number,
+  y: number,
+): boolean {
+  for (const h of houses) {
+    if (x >= h.x0 && x <= h.x1 && y >= h.y0 && y <= h.y1) return true;
+  }
+  return false;
+}
+
+function houseBoxes(features: readonly MapFeature[], sub: number): { x0: number; y0: number; x1: number; y1: number }[] {
+  return features.map((f) => {
+    const def = catalog(f.type);
+    const tw = Math.round(def.tileW / TILE_SUBDIV) * sub;
+    const th = Math.round(def.tileH / TILE_SUBDIV) * sub;
+    return { x0: f.x * sub, y0: f.y * sub, x1: f.x * sub + tw - 1, y1: f.y * sub + th - 1 };
+  });
+}
+
+function canPaintWater(
+  tiles: number[],
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  pads: readonly { x: number; y: number; r: number }[],
+  houses: readonly { x0: number; y0: number; x1: number; y1: number }[],
+): boolean {
+  if (x < 1 || y < 1 || x >= width - 1 || y >= height - 1) return false;
+  if (inPad(pads, x, y)) return false;
+  if (inHouseBox(houses, x, y)) return false;
+  const t = tiles[idx(width, x, y)] ?? 1;
+  return t === TILE_EMPTY || t === TILE_WATER;
+}
+
+/** Seeded metaball lake. Overlapping lobes + shoreline warp so ponds are not rectangles. */
+function paintOrganicPond(
+  tiles: number[],
+  width: number,
+  height: number,
+  cx: number,
+  cy: number,
+  radius: number,
+  rng: { n: number },
+  pads: readonly { x: number; y: number; r: number }[],
+  houses: readonly { x0: number; y0: number; x1: number; y1: number }[],
+): number {
+  const rad = Math.max(6, radius);
+  const balls: { x: number; y: number; r: number }[] = [
+    { x: cx, y: cy, r: rad * (0.88 + nextRand(rng) * 0.18) },
+  ];
+  const extra = 1 + Math.floor(nextRand(rng) * 2);
+  for (let i = 0; i < extra; i++) {
+    const ang = nextRand(rng) * Math.PI * 2;
+    const dist = rad * (0.28 + nextRand(rng) * 0.5);
+    balls.push({
+      x: cx + Math.cos(ang) * dist,
+      y: cy + Math.sin(ang) * dist,
+      r: rad * (0.3 + nextRand(rng) * 0.38),
+    });
+  }
+  const bites: { x: number; y: number; r: number }[] = [];
+  const biteCount = 1 + Math.floor(nextRand(rng) * 2);
+  for (let i = 0; i < biteCount; i++) {
+    const ang = nextRand(rng) * Math.PI * 2;
+    bites.push({
+      x: cx + Math.cos(ang) * rad * (0.72 + nextRand(rng) * 0.28),
+      y: cy + Math.sin(ang) * rad * (0.72 + nextRand(rng) * 0.28),
+      r: rad * (0.28 + nextRand(rng) * 0.22),
+    });
+  }
+  const warp = 0.9 + nextRand(rng) * 1.2;
+  const p1 = nextRand(rng) * Math.PI * 2;
+  const p2 = nextRand(rng) * Math.PI * 2;
+  const p3 = nextRand(rng) * Math.PI * 2;
+  const thresh = 1.02 + nextRand(rng) * 0.14;
+  let minX = cx;
+  let maxX = cx;
+  let minY = cy;
+  let maxY = cy;
+  for (const b of balls) {
+    minX = Math.min(minX, b.x - b.r);
+    maxX = Math.max(maxX, b.x + b.r);
+    minY = Math.min(minY, b.y - b.r);
+    maxY = Math.max(maxY, b.y + b.r);
+  }
+  const pad = warp + 3;
+  const x0 = Math.max(1, Math.floor(minX - pad));
+  const x1 = Math.min(width - 2, Math.ceil(maxX + pad));
+  const y0 = Math.max(1, Math.floor(minY - pad));
+  const y1 = Math.min(height - 2, Math.ceil(maxY + pad));
+  let painted = 0;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      if (!canPaintWater(tiles, width, height, x, y, pads, houses)) continue;
+      const wx = x + 0.5 + warp * Math.sin((y + 0.5) * 0.21 + p1) + 0.55 * Math.sin((y + x) * 0.13 + p3);
+      const wy = y + 0.5 + warp * Math.sin((x + 0.5) * 0.19 + p2);
+      let field = 0;
+      for (const b of balls) {
+        const dx = wx - b.x;
+        const dy = wy - b.y;
+        field += (b.r * b.r) / (dx * dx + dy * dy + 0.7);
+      }
+      for (const b of bites) {
+        const dx = wx - b.x;
+        const dy = wy - b.y;
+        field -= 0.9 * (b.r * b.r) / (dx * dx + dy * dy + 0.7);
+      }
+      const ang = Math.atan2(wy - cy, wx - cx);
+      field *= 1 + 0.14 * Math.sin(2 * ang + p1) + 0.09 * Math.sin(3 * ang + p2) + 0.05 * Math.sin(5 * ang + p3);
+      if (field < thresh) continue;
+      const i = idx(width, x, y);
+      if (tiles[i] !== TILE_WATER) {
+        tiles[i] = TILE_WATER;
+        painted += 1;
+      }
+    }
+  }
+  return painted;
+}
+
+function waterNeighbors(tiles: number[], width: number, height: number, x: number, y: number): number {
+  let n = 0;
+  for (const [dx, dy] of WATER_ORTHO) {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+    if (tiles[idx(width, nx, ny)] === TILE_WATER) n += 1;
+  }
+  return n;
+}
+
+/** Nibble and grow the shoreline so coasts are not a smooth metaball. */
+function nibbleWaterShore(
+  tiles: number[],
+  width: number,
+  height: number,
+  rng: { n: number },
+  pads: readonly { x: number; y: number; r: number }[],
+  houses: readonly { x0: number; y0: number; x1: number; y1: number }[],
+): void {
+  const expand: { x: number; y: number; n: number }[] = [];
+  const recede: { x: number; y: number; n: number }[] = [];
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const t = tiles[idx(width, x, y)];
+      const n = waterNeighbors(tiles, width, height, x, y);
+      if (t === TILE_EMPTY && n > 0 && canPaintWater(tiles, width, height, x, y, pads, houses)) {
+        expand.push({ x, y, n });
+      } else if (t === TILE_WATER && n < 4) {
+        recede.push({ x, y, n });
+      }
+    }
+  }
+  for (const c of expand) {
+    const p = c.n >= 3 ? 0.48 : c.n === 2 ? 0.2 : 0.06;
+    if (nextRand(rng) < p) tiles[idx(width, c.x, c.y)] = TILE_WATER;
+  }
+  for (const c of recede) {
+    if (tiles[idx(width, c.x, c.y)] !== TILE_WATER) continue;
+    const n = waterNeighbors(tiles, width, height, c.x, c.y);
+    if (n < 2) continue;
+    const p = n === 2 ? 0.26 : 0.08;
+    if (nextRand(rng) < p) tiles[idx(width, c.x, c.y)] = TILE_EMPTY;
+  }
+}
+
+/** Drop disconnected puddles left by shoreline nibble. */
+function pruneWaterSpecks(tiles: number[], width: number, height: number, minSize = 18): void {
+  const seen = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const start = idx(width, x, y);
+      if (seen[start] || tiles[start] !== TILE_WATER) continue;
+      const cells: { x: number; y: number }[] = [{ x, y }];
+      seen[start] = 1;
+      for (let i = 0; i < cells.length; i++) {
+        const c = cells[i]!;
+        for (const [dx, dy] of WATER_ORTHO) {
+          const nx = c.x + dx;
+          const ny = c.y + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const ni = idx(width, nx, ny);
+          if (seen[ni] || tiles[ni] !== TILE_WATER) continue;
+          seen[ni] = 1;
+          cells.push({ x: nx, y: ny });
+        }
+      }
+      if (cells.length >= minSize) continue;
+      for (const c of cells) tiles[idx(width, c.x, c.y)] = TILE_EMPTY;
+    }
+  }
+}
+
+/** Fill tiny land pockets fully enclosed by water. */
+function fillWaterPockets(tiles: number[], width: number, height: number): void {
+  const seen = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const start = idx(width, x, y);
+      if (seen[start] || tiles[start] !== TILE_EMPTY) continue;
+      const cells: { x: number; y: number }[] = [{ x, y }];
+      seen[start] = 1;
+      let enclosed = true;
+      for (let i = 0; i < cells.length; i++) {
+        const c = cells[i]!;
+        for (const [dx, dy] of WATER_ORTHO) {
+          const nx = c.x + dx;
+          const ny = c.y + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) {
+            enclosed = false;
+            continue;
+          }
+          const ni = idx(width, nx, ny);
+          const t = tiles[ni];
+          if (t === TILE_EMPTY) {
+            if (!seen[ni]) {
+              seen[ni] = 1;
+              cells.push({ x: nx, y: ny });
+            }
+          } else if (t !== TILE_WATER) {
+            enclosed = false;
+          }
+        }
+      }
+      if (!enclosed || cells.length > 22) continue;
+      for (const c of cells) tiles[idx(width, c.x, c.y)] = TILE_WATER;
+    }
+  }
+}
+
+function paintYardPonds(
+  tiles: number[],
+  width: number,
+  height: number,
+  seed: string,
+  spawnPads: readonly { x: number; y: number; r: number }[],
+  features: readonly MapFeature[],
+): void {
+  const rng = { n: hash32(seed) };
+  const sub = TILE_SUBDIV;
+  const houses = houseBoxes(features, sub);
+  for (let i = 0; i < tiles.length; i++) {
+    if (tiles[i] === TILE_WATER) tiles[i] = TILE_EMPTY;
+  }
+  const ponds: readonly { cx: number; cy: number }[] = [
+    { cx: 24, cy: 9.5 },
+    { cx: 41, cy: 42.5 },
+  ];
+  for (const p of ponds) {
+    const radius = (2.55 + nextRand(rng) * 0.7) * sub;
+    const jx = (nextRand(rng) - 0.5) * 0.6 * sub;
+    const jy = (nextRand(rng) - 0.5) * 0.6 * sub;
+    paintOrganicPond(
+      tiles,
+      width,
+      height,
+      p.cx * sub + sub / 2 + jx,
+      p.cy * sub + sub / 2 + jy,
+      radius,
+      rng,
+      spawnPads,
+      houses,
+    );
+  }
+  nibbleWaterShore(tiles, width, height, rng, spawnPads, houses);
+  fillWaterPockets(tiles, width, height);
+  pruneWaterSpecks(tiles, width, height);
+}
+
 function rectFree(
   tiles: number[],
   width: number,
@@ -410,16 +688,22 @@ function scatterCover(
   const rng = { n: hash32(seed) };
   scatterTrees(tiles, width, height, rng, pads);
   const kinds: CivilianType[] = [
+    "shack",
+    "shack",
     "cottage",
     "cottage",
     "cottage",
     "house",
     "house",
+    "inn",
+    "barn",
+    "barn",
+    "chapel",
     "manor",
+    "shack",
+    "inn",
     "cottage",
-    "house",
-    "cottage",
-    "manor",
+    "chapel",
   ];
   const features: MapFeature[] = [];
   for (const type of kinds) {
@@ -540,12 +824,9 @@ export function makeYard64(): MapDef {
   const fineH = height * sub;
   thinIsolatedTrees(fineTiles, fineW, fineH, tiles, width, height, sub);
   const fineSpawns = spawns.map((s) => scaleSpawn(s, sub));
-  const heights = scatterHeights(
-    fineW,
-    fineH,
-    "yard-64-elev",
-    fineSpawns.map((s) => ({ x: s.x, y: s.y, r: 4 * sub })),
-  );
+  const fineSpawnPads = fineSpawns.map((s) => ({ x: s.x, y: s.y, r: 4 * sub }));
+  paintYardPonds(fineTiles, fineW, fineH, "yard-64-ponds", fineSpawnPads, features);
+  const heights = scatterHeights(fineW, fineH, "yard-64-elev", fineSpawnPads);
   flattenTerrain(heights, fineTiles, fineW, fineH, TILE_WATER);
 
   return {

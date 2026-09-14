@@ -1,4 +1,4 @@
-import { catalog, isInfantryType, isMotorVehicle, SCRAP_TILE_YIELD, type EntityType } from "../catalog.js";
+import { catalog, isArmoredType, isInfantryType, isMotorVehicle, SCRAP_TILE_YIELD, type EntityType } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_SCRAP, TILE_TREE, TILE_WATER, type MapDef } from "../maps.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -156,6 +156,52 @@ export function initGrids(map: MapDef): {
     heights[i] = map.heights[i] ?? 0;
   }
   return { blocked, terrain, scrapYield, occupy, heights };
+}
+
+/** Live or wrecked armored hulls. LOS only — does not block walking. */
+export type HullSource = {
+  id: number;
+  kind: string;
+  type: EntityType;
+  x: number;
+  y: number;
+};
+
+export function stampArmoredHull(
+  hull: Int32Array,
+  width: number,
+  height: number,
+  tileSize: number,
+  e: HullSource,
+): void {
+  if (e.kind !== "unit" || !isArmoredType(e.type)) return;
+  const r = catalog(e.type).radius;
+  if (r <= 0) return;
+  const r2 = r * r;
+  const x0 = Math.max(0, worldToTile(e.x - r, tileSize));
+  const x1 = Math.min(width - 1, worldToTile(e.x + r, tileSize));
+  const y0 = Math.max(0, worldToTile(e.y - r, tileSize));
+  const y1 = Math.min(height - 1, worldToTile(e.y + r, tileSize));
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const dx = e.x - tileCenter(x, tileSize);
+      const dy = e.y - tileCenter(y, tileSize);
+      if (dx * dx + dy * dy > r2) continue;
+      const i = y * width + x;
+      if ((hull[i] ?? 0) === 0) hull[i] = e.id;
+    }
+  }
+}
+
+export function fillHullCover(
+  entities: Iterable<HullSource>,
+  tileSize: number,
+  width: number,
+  height: number,
+  out: Int32Array,
+): void {
+  out.fill(0);
+  for (const e of entities) stampArmoredHull(out, width, height, tileSize, e);
 }
 
 export function occupyEntity(state: MatchState, e: Entity): void {

@@ -15,6 +15,7 @@ import { applyCommand } from "./commands.js";
 import { buildingBounds, makeEntity, tileCenter, walkable } from "./geo.js";
 import {
   enterGarrison,
+  exitGarrison,
   garrisonIsHostile,
   garrisonLooksOccupied,
   livingGarrison,
@@ -143,7 +144,22 @@ describe("garrison", () => {
     assert.equal(inf.garrisonedIn, house.id);
   });
 
-  it("does not let infantry garrison an enemy-owned house", () => {
+  it("does not let infantry garrison a house occupied by the enemy", () => {
+    const { state, a, b } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const house = makeEntity(state, "cottage", "", tileCenter(40, ts), tileCenter(16, ts), {
+      tileX: 36,
+      tileY: 12,
+    });
+    const occ = makeEntity(state, "trooper", b, tileCenter(33, ts), tileCenter(12, ts));
+    assert.equal(enterGarrison(state, occ, house), true);
+    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    const res = applyCommand(state, a, { type: "cmd.garrison", ids: [inf.id], buildingId: house.id });
+    assert.equal(res.ok, false);
+    assert.equal(inf.garrisonedIn, null);
+  });
+
+  it("lets anyone enter an empty civilian house, even with a leftover owner id", () => {
     const { state, a, b } = twoPlayerMatch();
     const ts = state.tileSize;
     const house = makeEntity(state, "cottage", b, tileCenter(40, ts), tileCenter(16, ts), {
@@ -152,7 +168,60 @@ describe("garrison", () => {
     });
     const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
     const res = applyCommand(state, a, { type: "cmd.garrison", ids: [inf.id], buildingId: house.id });
-    assert.equal(res.ok, false);
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    for (let i = 0; i < 80; i++) step(state, TICK_DT);
+    assert.equal(inf.garrisonedIn, house.id);
+    assert.equal(house.ownerId, "");
+  });
+
+  it("triples occupant HP inside a civilian house and restores it on exit", () => {
+    const { state, a } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const house = makeEntity(state, "cottage", "", tileCenter(40, ts), tileCenter(16, ts), {
+      tileX: 36,
+      tileY: 12,
+    });
+    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    const streetMax = inf.hpMax;
+    inf.hp = 20;
+    assert.equal(enterGarrison(state, inf, house), true);
+    assert.equal(inf.hpMax, streetMax * 3);
+    assert.equal(inf.hp, 60);
+    exitGarrison(state, inf);
+    assert.equal(inf.hpMax, streetMax);
+    assert.equal(inf.hp, 20);
+    assert.equal(inf.garrisonedIn, null);
+  });
+
+  it("goes neutral and stops auto-attack after the garrison is wiped", () => {
+    const { state, a, b } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    const ts = state.tileSize;
+    const house = makeEntity(state, "cottage", "", tileCenter(40, ts), tileCenter(16, ts), {
+      tileX: 36,
+      tileY: 12,
+    });
+    const occ = makeEntity(state, "trooper", b, tileCenter(34, ts), tileCenter(12, ts));
+    assert.equal(enterGarrison(state, occ, house), true);
+    const inf = makeEntity(state, "trooper", a, tileCenter(32, ts), tileCenter(12, ts));
+    inf.facing = 0;
+    for (let i = 0; i < 12; i++) step(state, TICK_DT);
+    assert.ok(
+      inf.attackTarget === house.id || inf.order?.targetId === house.id,
+      `expected auto-attack on house, order=${inf.order?.kind} target=${inf.attackTarget}`,
+    );
+    occ.hp = 0;
+    for (let i = 0; i < 8; i++) step(state, TICK_DT);
+    assert.equal(livingGarrison(state, house).length, 0);
+    assert.equal(house.ownerId, "");
+    assert.notEqual(inf.attackTarget, house.id);
+    assert.ok(!inf.order || inf.order.targetId !== house.id || inf.order.kind !== "attack");
+    assert.equal(house.captureProgress, 0);
+    const extra = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    assert.equal(enterGarrison(state, extra, house), true);
+    const rival = makeEntity(state, "trooper", b, tileCenter(33, ts), tileCenter(12, ts));
+    assert.equal(enterGarrison(state, rival, house), false);
   });
 
   it("does not let tanks garrison", () => {
@@ -183,9 +252,9 @@ describe("garrison", () => {
     const you = snapshotFor(state, a).entities.find((e) => e.id === house.id);
     const them = snapshotFor(state, b).entities.find((e) => e.id === house.id);
     assert.ok(you?.garrison?.bars);
-    assert.deepEqual(you!.garrison!.bars, [{ hp: 22, hpMax: inf.hpMax }]);
+    assert.deepEqual(you!.garrison!.bars, [{ hp: inf.hp, hpMax: inf.hpMax }]);
     assert.ok(them?.garrison?.bars);
-    assert.deepEqual(them!.garrison!.bars, [{ hp: 22, hpMax: inf.hpMax }]);
+    assert.deepEqual(them!.garrison!.bars, [{ hp: inf.hp, hpMax: inf.hpMax }]);
     assert.equal(snapshotFor(state, b).entities.some((e) => e.id === inf.id), false);
   });
 

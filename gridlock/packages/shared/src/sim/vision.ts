@@ -1,4 +1,10 @@
-import { GARRISON_HIDE_SIGHT, GARRISON_WATCH_SIGHT_BONUS, HEIGHT_MAX, SMOKE_PEEK_TILES } from "../catalog.js";
+import {
+  GARRISON_HIDE_SIGHT,
+  GARRISON_WATCH_SIGHT_BONUS,
+  HEIGHT_MAX,
+  SMOKE_PEEK_TILES,
+  isArmoredType,
+} from "../catalog.js";
 import type { EntityView, MatchSnapshot } from "../protocol.js";
 import { getMap, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import {
@@ -9,7 +15,7 @@ import {
   uphillSightOf,
   type CoverField,
 } from "./elevation.js";
-import { allies, chebyshev, footprint, inBounds, worldToTile } from "./geo.js";
+import { allies, chebyshev, fillHullCover, footprint, inBounds, worldToTile } from "./geo.js";
 import { occupantSightTiles } from "./garrison.js";
 import { fillSmokeMask } from "./smoke.js";
 import type { Entity, MatchState } from "./types.js";
@@ -58,7 +64,7 @@ export function paintEntitySight(
   elev?: ArrayLike<number>,
   cover?: CoverField,
 ): void {
-  const ignore = e.kind === "building" ? (e.id ?? 0) : (e.garrisonedIn ?? 0);
+  const ignore = coverIgnoreId(e);
   if (cover) cover.ignoreOccupyId = ignore;
   if (e.kind === "building") {
     let maxH = 0;
@@ -169,10 +175,19 @@ function paintSightBox(
   }
 }
 
+function coverIgnoreId(e: { kind: string; id?: number; garrisonedIn?: number | null }): number {
+  if (e.kind === "building") return e.id ?? 0;
+  return e.garrisonedIn ?? e.id ?? 0;
+}
+
 function coverOf(state: MatchState): CoverField {
+  const n = state.width * state.height;
+  if (state.hullMask.length !== n) state.hullMask = new Int32Array(n);
+  fillHullCover(state.entities.values(), state.tileSize, state.width, state.height, state.hullMask);
   return {
     terrain: state.terrain,
     occupy: state.occupy,
+    hull: state.hullMask,
     smoke: ensureSmokeMask(state),
   };
 }
@@ -197,7 +212,13 @@ function visionKey(state: MatchState, playerId: string): number {
   let h = 2166136261;
   h = mix(h, state.clearedTrees.length);
   for (const e of state.entities.values()) {
-    if (e.hp <= 0 || e.wreck) continue;
+    if (e.hp <= 0) continue;
+    if (e.kind === "unit" && isArmoredType(e.type)) {
+      h = mix(h, e.id);
+      h = mix(h, worldToTile(e.x, state.tileSize));
+      h = mix(h, worldToTile(e.y, state.tileSize));
+    }
+    if (e.wreck) continue;
     if (!allies(state, playerId, e.ownerId)) continue;
     h = mix(h, e.id);
     if (e.kind === "building") {
@@ -290,15 +311,19 @@ export function visionMaskFromSnapshot(
   const map = getMap(snap.mapId);
   const elev = map?.heights;
   const occupy = new Int32Array(width * height);
+  const hull = new Int32Array(width * height);
   if (map) {
     for (const e of snap.entities) {
-      if (e.kind !== "building" || e.hp <= 0) continue;
-      for (let y = e.tileY; y < e.tileY + e.tileH; y++) {
-        for (let x = e.tileX; x < e.tileX + e.tileW; x++) {
-          if (x >= 0 && y >= 0 && x < width && y < height) occupy[y * width + x] = e.id;
+      if (e.hp <= 0) continue;
+      if (e.kind === "building" || e.wreck) {
+        for (let y = e.tileY; y < e.tileY + e.tileH; y++) {
+          for (let x = e.tileX; x < e.tileX + e.tileW; x++) {
+            if (x >= 0 && y >= 0 && x < width && y < height) occupy[y * width + x] = e.id;
+          }
         }
       }
     }
+    fillHullCover(snap.entities, tileSize, width, height, hull);
   }
   let smoke: Uint8Array | undefined;
   const clouds = snap.smoke ?? [];
@@ -310,6 +335,7 @@ export function visionMaskFromSnapshot(
     ? {
         terrain: coverTerrainFromSnapshot(map.tiles, width, height, snap.clearedTrees),
         occupy,
+        hull,
         smoke,
       }
     : undefined;
@@ -455,7 +481,7 @@ function observerSeesTile(
   const width = state.width;
   const height = state.height;
   const elev = state.heights;
-  const ignore = obs.kind === "building" ? obs.id : (obs.garrisonedIn ?? 0);
+  const ignore = coverIgnoreId(obs);
   cover.ignoreOccupyId = ignore;
   if (obs.kind === "building") {
     if (

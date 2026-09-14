@@ -7,6 +7,10 @@ import armoryUrl from "../assets/buildings/armory.png";
 import cottageUrl from "../assets/buildings/cottage.png";
 import houseUrl from "../assets/buildings/house.png";
 import manorUrl from "../assets/buildings/manor.png";
+import shackUrl from "../assets/buildings/shack.png";
+import barnUrl from "../assets/buildings/barn.png";
+import innUrl from "../assets/buildings/inn.png";
+import chapelUrl from "../assets/buildings/chapel.png";
 import oakUrl from "../assets/terrain/tree-oak.png";
 import pineUrl from "../assets/terrain/tree-pine.png";
 import scrapAUrl from "../assets/terrain/scrap-a.png";
@@ -198,6 +202,10 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   cottage: building(cottageUrl, 957, 479, 753, 735, 36),
   house: building(houseUrl, 957, 479, 863, 735, 32),
   manor: building(manorUrl, 957, 479.5, 878, 742, 44),
+  shack: building(shackUrl, 1151, 575, 895, 883, 42),
+  barn: building(barnUrl, 1069, 535, 959, 821, 36),
+  inn: building(innUrl, 1071, 536, 959, 822, 36),
+  chapel: building(chapelUrl, 1055, 527, 974, 816, 50),
 };
 
 /** Grounded map prop. Contact is the source pixel that sits on the tile. */
@@ -230,6 +238,10 @@ export const PROP_IMAGES: HTMLImageElement[] = [
   BUILDING_SPRITES.cottage!.image,
   BUILDING_SPRITES.house!.image,
   BUILDING_SPRITES.manor!.image,
+  BUILDING_SPRITES.shack!.image,
+  BUILDING_SPRITES.barn!.image,
+  BUILDING_SPRITES.inn!.image,
+  BUILDING_SPRITES.chapel!.image,
 ];
 
 export function whenImagesReady(images: HTMLImageElement[], cb: () => void): void {
@@ -293,6 +305,17 @@ export function drawPropSprite(
 
 export function buildingSpriteFor(type: EntityType): BuildingSpriteDef | undefined {
   return BUILDING_SPRITES[type];
+}
+
+/** Iso-pixel height used to ghost units standing behind this sprite. */
+export function buildingOccludeEz(
+  def: BuildingSpriteDef | undefined,
+  footprintW: number,
+  fallbackEz: number,
+): number {
+  if (!def || !spriteReady(def) || def.padWidth <= 0 || footprintW <= 0) return fallbackEz;
+  const roof = def.padSouthY * (footprintW / def.padWidth) * 0.62;
+  return Math.max(fallbackEz, roof);
 }
 
 export function spriteReady(def: { image: HTMLImageElement }): boolean {

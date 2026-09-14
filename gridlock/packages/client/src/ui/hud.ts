@@ -480,7 +480,11 @@ const TYPE_ORDER: EntityType[] = [
   "muster",
   "armory",
   "cottage",
+  "shack",
   "house",
+  "barn",
+  "inn",
+  "chapel",
   "manor",
 ];
 

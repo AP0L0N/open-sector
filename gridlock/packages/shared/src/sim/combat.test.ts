@@ -439,6 +439,84 @@ describe("hold position", () => {
     assert.equal(tank.holdPosition, true);
     assert.ok(Math.abs(tank.x - x0) < 6, `held tank walked x=${tank.x} from ${x0}`);
   });
+
+  it("stops a move immediately when Hold is issued", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const u = makeEntity(state, "trooper", "A", tileCenter(20, ts), tileCenter(24, ts));
+    applyCommand(state, "A", { type: "cmd.move", ids: [u.id], x: tileCenter(50, ts), y: tileCenter(24, ts) });
+    for (let i = 0; i < 4; i++) step(state, TICK_DT);
+    assert.equal(u.order?.kind, "move");
+    assert.ok(u.waypoints.length > 0);
+    const xStop = u.x;
+    const res = applyCommand(state, "A", { type: "cmd.hold", ids: [u.id], hold: true });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    assert.equal(u.holdPosition, true);
+    assert.equal(u.order, null);
+    assert.equal(u.waypoints.length, 0);
+    for (let i = 0; i < 12; i++) step(state, TICK_DT);
+    assert.ok(Math.abs(u.x - xStop) < 6, `held walker x=${u.x} from ${xStop}`);
+  });
+
+  it("replaces a move with an attack immediately", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const u = makeEntity(state, "trooper", "A", tileCenter(20, ts), tileCenter(24, ts));
+    const t = makeEntity(state, "trooper", "B", tileCenter(24, ts), tileCenter(30, ts));
+    applyCommand(state, "A", { type: "cmd.move", ids: [u.id], x: tileCenter(50, ts), y: tileCenter(24, ts) });
+    for (let i = 0; i < 3; i++) step(state, TICK_DT);
+    assert.equal(u.order?.kind, "move");
+    const hp0 = t.hp;
+    const res = applyCommand(state, "A", { type: "cmd.attack", ids: [u.id], targetId: t.id });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    assert.equal(u.order?.kind, "attack");
+    assert.equal(u.attackTarget, t.id);
+    for (let i = 0; i < 16; i++) step(state, TICK_DT);
+    assert.ok(t.hp < hp0, `target hp ${t.hp} vs ${hp0}`);
+  });
+});
+
+describe("moving units in combat", () => {
+  it("lets an idle enemy fire on a unit that is walking past", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const gun = makeEntity(state, "trooper", "B", tileCenter(24, ts), tileCenter(24, ts));
+    const mover = makeEntity(state, "trooper", "A", tileCenter(28, ts), tileCenter(24, ts));
+    gun.facing = 0;
+    mover.facing = 0;
+    const hp0 = mover.hp;
+    applyCommand(state, "A", { type: "cmd.move", ids: [mover.id], x: tileCenter(50, ts), y: tileCenter(24, ts) });
+    for (let i = 0; i < 20; i++) step(state, TICK_DT);
+    assert.ok(mover.hp < hp0, `mover hp ${mover.hp} vs ${hp0}`);
+    assert.ok(gun.attackTarget === mover.id || mover.hp <= 0, `gun target=${gun.attackTarget}`);
+  });
+
+  it("lets an enemy that is itself moving still engage a passer-by", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const a = makeEntity(state, "trooper", "A", tileCenter(20, ts), tileCenter(24, ts));
+    const b = makeEntity(state, "trooper", "B", tileCenter(36, ts), tileCenter(24, ts));
+    a.facing = 0;
+    b.facing = Math.PI;
+    const hpA0 = a.hp;
+    const hpB0 = b.hp;
+    applyCommand(state, "A", { type: "cmd.move", ids: [a.id], x: tileCenter(50, ts), y: tileCenter(24, ts) });
+    applyCommand(state, "B", { type: "cmd.move", ids: [b.id], x: tileCenter(8, ts), y: tileCenter(24, ts) });
+    for (let i = 0; i < 40; i++) step(state, TICK_DT);
+    assert.ok(a.hp < hpA0 || b.hp < hpB0, `no fire a=${a.hp}/${hpA0} b=${b.hp}/${hpB0}`);
+  });
 });
 
 describe("rotate", () => {

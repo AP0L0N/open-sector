@@ -1,6 +1,11 @@
 import {
+  catalog,
   GARRISON_STRUCTURAL_CALIBER,
   garrisonCapOf,
+  garrisonFloorsOf,
+  garrisonHpMulOf,
+  garrisonWindowsOf,
+  isCivilianType,
   isGarrisonable,
   isInfantryType,
   NEUTRAL_OWNER,
@@ -63,11 +68,39 @@ export function setGarrisonHide(state: MatchState, house: Entity, hide: boolean)
   }
 }
 
-function syncEmptyHide(state: MatchState, house: Entity): void {
+/** Empty civilian houses are always neutral. Anyone may enter. */
+function vacateIfEmpty(state: MatchState, house: Entity): void {
   if (livingGarrison(state, house).length > 0) return;
-  if (!house.garrisonHide) return;
-  house.garrisonHide = false;
-  state.visionTick = -1;
+  let dirty = false;
+  if (house.garrisonHide) {
+    house.garrisonHide = false;
+    dirty = true;
+  }
+  if (isCivilianType(house.type)) {
+    if (house.ownerId !== NEUTRAL_OWNER) {
+      house.ownerId = NEUTRAL_OWNER;
+      dirty = true;
+    }
+    house.captureOwnerId = "";
+    house.captureProgress = 0;
+  }
+  if (dirty) state.visionTick = -1;
+}
+
+function scaleGarrisonHp(unit: Entity, house: Entity): void {
+  const mul = garrisonHpMulOf(house.type);
+  const base = catalog(unit.type).hp;
+  const ratio = unit.hpMax > 0 ? unit.hp / unit.hpMax : 1;
+  unit.hpMax = Math.max(1, Math.round(base * mul));
+  unit.hp = Math.max(0, Math.round(unit.hpMax * ratio));
+}
+
+function unscaleGarrisonHp(unit: Entity): void {
+  const base = catalog(unit.type).hp;
+  if (unit.hpMax === base) return;
+  const ratio = unit.hpMax > 0 ? unit.hp / unit.hpMax : 0;
+  unit.hpMax = base;
+  unit.hp = unit.hp <= 0 ? 0 : Math.max(1, Math.min(base, Math.round(base * ratio)));
 }
 
 /** Occupant HP for the building snapshot. Sorted by id so bars do not shuffle. */
@@ -84,8 +117,9 @@ export function detachGarrisoned(state: MatchState, unit: Entity): void {
   const house = state.entities.get(unit.garrisonedIn);
   if (house) {
     house.garrison = house.garrison.filter((id) => id !== unit.id);
-    syncEmptyHide(state, house);
+    vacateIfEmpty(state, house);
   }
+  unscaleGarrisonHp(unit);
   unit.garrisonedIn = null;
 }
 
@@ -125,7 +159,12 @@ export function canGarrison(state: MatchState, unit: Entity, house: Entity): str
   if (!isGarrisonable(house.type) || house.kind !== "building" || house.hp <= 0) return "Cannot enter that.";
   const occ = garrisonOwner(state, house);
   if (occ && occ !== NEUTRAL_OWNER && !allies(state, unit.ownerId, occ)) return "Held by the enemy.";
-  if (house.ownerId && house.ownerId !== NEUTRAL_OWNER && !allies(state, unit.ownerId, house.ownerId)) {
+  if (
+    !isCivilianType(house.type) &&
+    house.ownerId &&
+    house.ownerId !== NEUTRAL_OWNER &&
+    !allies(state, unit.ownerId, house.ownerId)
+  ) {
     return "Held by the enemy.";
   }
   if (garrisonSpace(state, house) <= 0) return "Building is full.";
@@ -166,6 +205,12 @@ export function enterGarrison(state: MatchState, unit: Entity, house: Entity): b
   unit.attackTarget = null;
   unit.harvestTile = null;
   unit.state = "garrison";
+  if (isCivilianType(house.type)) {
+    house.ownerId = NEUTRAL_OWNER;
+    house.captureOwnerId = "";
+    house.captureProgress = 0;
+  }
+  scaleGarrisonHp(unit, house);
   return true;
 }
 
@@ -175,11 +220,12 @@ export function exitGarrison(
   dest?: { x: number; y: number },
 ): void {
   const house = unit.garrisonedIn != null ? state.entities.get(unit.garrisonedIn) : undefined;
+  unscaleGarrisonHp(unit);
   unit.garrisonedIn = null;
   unit.state = "idle";
   if (house) {
     house.garrison = house.garrison.filter((id) => id !== unit.id);
-    syncEmptyHide(state, house);
+    vacateIfEmpty(state, house);
   }
   const near = house
     ? approachTile(state, house)
@@ -204,6 +250,7 @@ export function spillGarrison(state: MatchState, house: Entity, opts?: { damage?
   house.garrisonHide = false;
   const hurt = opts?.damage !== false;
   for (const u of units) {
+    unscaleGarrisonHp(u);
     u.garrisonedIn = null;
     if (hurt) {
       const frac = nextRand(state);
@@ -221,6 +268,7 @@ export function spillGarrison(state: MatchState, house: Entity, opts?: { damage?
       u.tileY = snap.y;
     }
   }
+  vacateIfEmpty(state, house);
 }
 
 export type GarrisonFace = "e" | "s";
@@ -237,7 +285,7 @@ export function garrisonWindows(house: Entity, tileSize: number): GarrisonMuzzle
   const y0 = house.tileY * tileSize;
   const bw = house.tileW * tileSize;
   const bh = house.tileH * tileSize;
-  const n = house.type === "manor" ? 4 : house.type === "house" ? 3 : 2;
+  const n = garrisonWindowsOf(house.type);
   const pts: GarrisonMuzzle[] = [];
   for (let i = 0; i < n; i++) {
     const t = (i + 1) / (n + 1);
@@ -274,11 +322,10 @@ export function pickGarrisonMuzzle(house: Entity, tileSize: number, ang: number,
 
 /** Screen-pixel lift from the pad to a glowing window, by story. */
 export function garrisonWindowLift(type: Entity["type"], salt: number): number {
-  const floors = type === "manor" ? 3 : type === "house" ? 2 : 1;
+  const floors = Math.max(1, garrisonFloorsOf(type));
   const floor = ((salt % floors) + floors) % floors;
-  if (type === "manor") return 24 + floor * 26;
-  if (type === "house") return 22 + floor * 26;
-  return 20;
+  const base = floors >= 3 ? 24 : floors === 2 ? 22 : 20;
+  return base + floor * 26;
 }
 
 export function tickGarrison(state: MatchState): void {

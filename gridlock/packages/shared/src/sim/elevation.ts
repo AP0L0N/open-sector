@@ -217,6 +217,8 @@ export interface CoverField {
   terrain: ArrayLike<number>;
   occupy: ArrayLike<number>;
   ignoreOccupyId?: number;
+  /** Armored hull id on a tile (LOS only). 0 = none. */
+  hull?: ArrayLike<number>;
   /** 1 when the tile is inside a smoke screen. Preferred over `smokeAt`. */
   smoke?: ArrayLike<number>;
   /** True when this tile is inside a smoke screen. */
@@ -237,9 +239,20 @@ export function coverSmokeAt(
   return !!cover.smokeAt?.(x, y);
 }
 
+function hullIdAt(
+  hull: ArrayLike<number> | undefined,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+): number {
+  if (!hull || x < 0 || y < 0 || x >= width || y >= height) return 0;
+  return hull[y * width + x] ?? 0;
+}
+
 /**
  * Elevation ridges plus map cover. Trees eat a see-through budget;
- * walls and buildings stop the ray outright. Water does not block.
+ * walls, buildings, and armored hulls stop the ray outright. Water does not block.
  */
 export function hasFullLos(
   elev: ArrayLike<number>,
@@ -265,6 +278,7 @@ export function hasFullLos(
   const cap = dx + dy + 2;
   let trees = 0;
   const ignore = cover?.ignoreOccupyId ?? 0;
+  const destHull = hullIdAt(cover?.hull, width, height, x1, y1);
   for (let n = 0; n < cap; n++) {
     if (x === x1 && y === y1) return true;
     const e2 = err * 2;
@@ -288,6 +302,8 @@ export function hasFullLos(
     if (!cover) continue;
     if (x === x1 && y === y1) return true;
     if (hardCoverAt(cover.terrain, cover.occupy, width, height, x, y, ignore)) return false;
+    const hid = hullIdAt(cover.hull, width, height, x, y);
+    if (hid !== 0 && hid !== ignore && hid !== destHull) return false;
     if (coverSmokeAt(cover, width, height, x, y)) return false;
     if (x >= 0 && y >= 0 && x < width && y < height && cover.terrain[y * width + x] === TILE_TREE) {
       trees += 1;

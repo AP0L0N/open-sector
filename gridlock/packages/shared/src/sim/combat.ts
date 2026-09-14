@@ -68,6 +68,12 @@ function canFight(e: Entity): boolean {
   return fires(e.type) && e.hp > 0 && !e.wreck && e.state !== "deploy" && e.state !== "undeploy";
 }
 
+/** Move and attack-move both engage in-range enemies. Attack-move halts; move keeps walking. */
+function travelFights(e: Entity): boolean {
+  const k = e.order?.kind;
+  return k === "attackmove" || k === "move";
+}
+
 function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
   if (e.order?.kind === "forceattack") {
     if (e.order.targetId == null) {
@@ -87,15 +93,15 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
   let target: Entity | undefined;
   if (e.order?.kind === "attack" && e.order.targetId != null) {
     target = state.entities.get(e.order.targetId);
-    if (!target || target.hp <= 0 || skipsFriendly(state, e, target)) {
+    if (!target || target.hp <= 0 || skipsFriendly(state, e, target) || dropsEmptyGarrison(state, e, target)) {
       e.order = null;
       e.attackTarget = null;
       target = undefined;
       if (e.state === "attack") e.state = "idle";
     }
-  } else if (e.order?.kind === "attackmove" && e.attackTarget != null) {
+  } else if (travelFights(e) && e.attackTarget != null) {
     target = state.entities.get(e.attackTarget);
-    if (!target || target.hp <= 0 || skipsFriendly(state, e, target)) {
+    if (!target || target.hp <= 0 || skipsFriendly(state, e, target) || dropsEmptyGarrison(state, e, target)) {
       e.attackTarget = null;
       target = undefined;
     }
@@ -107,7 +113,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       e.attackTarget = null;
       if (e.state === "attack") e.state = "idle";
       target = undefined;
-    } else if (e.order?.kind === "attackmove" || e.order?.kind === "guard") {
+    } else if (travelFights(e) || e.order?.kind === "guard") {
       e.attackTarget = null;
       target = undefined;
     }
@@ -122,13 +128,17 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
 
   const canAcquire =
     !target &&
-    (!e.order || e.order.kind === "attack" || e.order.kind === "attackmove" || e.order.kind === "guard") &&
-    (e.order?.kind === "attackmove" || e.waypoints.length === 0);
+    (!e.order ||
+      e.order.kind === "attack" ||
+      e.order.kind === "attackmove" ||
+      e.order.kind === "move" ||
+      e.order.kind === "guard") &&
+    (travelFights(e) || e.waypoints.length === 0);
   if (canAcquire) {
     target = acquire(state, e);
     if (target) {
       e.attackTarget = target.id;
-      if (e.order?.kind !== "attackmove" && e.order?.kind !== "guard") {
+      if (!travelFights(e) && e.order?.kind !== "guard") {
         e.order = { kind: "attack", targetId: target.id, auto: true };
       }
     }
@@ -144,11 +154,21 @@ function currentTarget(state: MatchState, e: Entity): Entity | undefined {
   const t = state.entities.get(id);
   if (!t || t.hp <= 0 || t.id === e.id) return undefined;
   if (e.order?.kind !== "forceattack" && skipsFriendly(state, e, t)) return undefined;
+  if (e.order?.kind !== "forceattack" && dropsEmptyGarrison(state, e, t)) return undefined;
   return t;
 }
 
 function skipsFriendly(state: MatchState, e: Entity, target: Entity): boolean {
   return !target.wreck && allies(state, e.ownerId, target.ownerId);
+}
+
+/** Auto-fire and infantry stop once a civilian house is empty. Tanks may still demolish on a player order. */
+function dropsEmptyGarrison(state: MatchState, e: Entity, target: Entity): boolean {
+  if (!isGarrisonable(target.type) || target.kind !== "building") return false;
+  if (garrisonIsHostile(state, e.ownerId, target)) return false;
+  if (e.order?.kind === "forceattack") return false;
+  if (e.order?.kind === "attack" && !e.order.auto && !isInfantryType(e.type)) return false;
+  return true;
 }
 
 function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
@@ -185,7 +205,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     if (!holedUp) e.state = "attack";
     return;
   }
-  if (e.waypoints.length > 0 && e.order?.kind !== "attackmove" && !reversing(e) && !holedUp) return;
+  if (e.waypoints.length > 0 && !travelFights(e) && !reversing(e) && !holedUp) return;
 
   if (!holedUp) e.state = "attack";
   if (!turreted && !holedUp) {

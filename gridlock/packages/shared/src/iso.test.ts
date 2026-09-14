@@ -12,6 +12,7 @@ import {
   pickElevatedTile,
   pointInIsoBox,
   tileDiamond,
+  unitBehindIsoBox,
   worldToIso,
   worldToIso3,
 } from "./iso.js";
@@ -199,5 +200,40 @@ describe("iso projection", () => {
       y1: 1,
     });
     assert.equal(excluded?.x === 2 && excluded?.y === 2, false);
+  });
+});
+
+describe("unitBehindIsoBox", () => {
+  const ts = 32;
+  const box = { x: 0, y: 0, w: 32, h: 32, ez: 40 };
+
+  it("ghosts a unit standing north of the box under the roof", () => {
+    assert.equal(unitBehindIsoBox(16, -4, 22, box.x, box.y, box.w, box.h, box.ez, ts), true);
+  });
+
+  it("ghosts a unit standing west of the box", () => {
+    assert.equal(unitBehindIsoBox(-4, 16, 22, box.x, box.y, box.w, box.h, box.ez, ts), true);
+  });
+
+  it("leaves a unit south of the box opaque", () => {
+    assert.equal(unitBehindIsoBox(16, 40, 22, box.x, box.y, box.w, box.h, box.ez, ts), false);
+  });
+
+  it("leaves a unit east of the box opaque", () => {
+    assert.equal(unitBehindIsoBox(40, 16, 22, box.x, box.y, box.w, box.h, box.ez, ts), false);
+  });
+
+  it("ignores a unit far north that does not overlap the silhouette", () => {
+    assert.equal(unitBehindIsoBox(16, -80, 22, box.x, box.y, box.w, box.h, box.ez, ts), false);
+  });
+
+  it("ghosts infantry north of a core-sized box at gameplay tile size", () => {
+    const tile = 8;
+    const w = 96;
+    const h = 96;
+    const ez = 62;
+    assert.equal(unitBehindIsoBox(48, -6, 16, 0, 0, w, h, ez, tile), true);
+    assert.equal(unitBehindIsoBox(48, 110, 16, 0, 0, w, h, ez, tile), false);
+    assert.equal(unitBehindIsoBox(110, 48, 16, 0, 0, w, h, ez, tile), false);
   });
 });

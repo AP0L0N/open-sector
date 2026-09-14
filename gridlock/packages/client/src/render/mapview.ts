@@ -23,6 +23,7 @@ import {
   isoLift,
   isoToWorld,
   maxHeightOf,
+  unitBehindIsoBox,
   pickElevatedTile,
   pointInIsoBox,
   previewPlace,
@@ -53,10 +54,12 @@ import {
   drawWindowMuzzle,
   drawRicochetSparks,
   drawShellTracer,
+  drawMoveClick,
   drawWreckFire,
   fxFrameAt,
   fxLifeMs,
   isShellCaliber,
+  MOVE_CLICK_MS,
   wreckFireAlpha,
   wreckFireCount,
 } from "./fx.js";
@@ -64,6 +67,7 @@ import {
   UNIT_VISUAL_SCALE,
   TREE_OAK,
   TREE_PINE,
+  buildingOccludeEz,
   buildingSpriteFor,
   buildingStackAt,
   critIcon,
@@ -119,7 +123,11 @@ const EXTRUDE: Record<EntityType, number> = {
   warden: 28,
   trooper: 26,
   cottage: 28,
+  shack: 24,
   house: 36,
+  barn: 38,
+  inn: 36,
+  chapel: 42,
   manor: 48,
 };
 
@@ -128,6 +136,12 @@ const HP_FILL_OK = "#6aaa58";
 const HP_FILL_MID = "#b8923c";
 const HP_FILL_LOW = "#b45448";
 const HP_FILL_HOSTILE = "#d24c44";
+const HP_FILL_OK_VIVID = "#8fe86a";
+const HP_FILL_MID_VIVID = "#f0c44a";
+const HP_FILL_LOW_VIVID = "#f25a48";
+const HP_FILL_HOSTILE_VIVID = "#ff5a4a";
+/** Sprite alpha when a building volume sits in front of the unit. */
+const OCCLUDED_UNIT_ALPHA = 0.46;
 
 function mixHash(h: number, v: number): number {
   return Math.imul(h ^ (v | 0), 16777619);
@@ -142,9 +156,11 @@ function ownerAllied(match: MatchSnapshot, ownerId: string | undefined): boolean
   return match.players.find((p) => p.playerId === ownerId)?.team === team;
 }
 
-function hpBarFill(ratio: number, hostile: boolean): string {
-  if (hostile) return HP_FILL_HOSTILE;
-  return ratio > 0.45 ? HP_FILL_OK : ratio > 0.2 ? HP_FILL_MID : HP_FILL_LOW;
+function hpBarFill(ratio: number, hostile: boolean, vivid = false): string {
+  if (hostile) return vivid ? HP_FILL_HOSTILE_VIVID : HP_FILL_HOSTILE;
+  if (ratio > 0.45) return vivid ? HP_FILL_OK_VIVID : HP_FILL_OK;
+  if (ratio > 0.2) return vivid ? HP_FILL_MID_VIVID : HP_FILL_MID;
+  return vivid ? HP_FILL_LOW_VIVID : HP_FILL_LOW;
 }
 
 function snapshotVisKey(match: MatchSnapshot): number {
@@ -231,6 +247,8 @@ export class MapView {
   }[] = [];
   private fxIds = new Set<number>();
   private seenShots = new Set<number>();
+  private moveClicks: { x: number; y: number; at: number }[] = [];
+  private occBuildings: { x: number; y: number; w: number; h: number; ez: number; lift: number }[] = [];
   selected = new Set<number>();
   placeMode = false;
   attackMoveMode = false;
@@ -988,6 +1006,7 @@ export class MapView {
       return;
     }
     const w = this.screenToWorld(px, py);
+    this.pulseMoveClick(w.x, w.y);
     this.onCommand({ type: "cmd.attackmove", ids, x: w.x, y: w.y });
   }
 
@@ -1310,7 +1329,7 @@ export class MapView {
     const hit = this.hit(px, py);
     const inf = own.filter((e) => e.kind === "unit" && isInfantryType(e.type));
     if (hit && isGarrisonable(hit.type) && inf.length) {
-      const held = hit.garrison?.ownerId || hit.ownerId;
+      const held = hit.garrison?.ownerId;
       if (!held || held === this.curr.youPlayerId) {
         this.onCommand({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: hit.id });
         return;
@@ -1326,16 +1345,27 @@ export class MapView {
     const scrap = this.curr.scrap.find((s) => s.x === tile.x && s.y === tile.y && s.yield > 0);
     const haulers = own.filter((e) => e.type === "hauler");
     if (scrap && haulers.length) {
+      const dest = this.screenToWorld(px, py);
+      this.pulseMoveClick(dest.x, dest.y);
       this.onCommand({ type: "cmd.harvest", ids: haulers.map((e) => e.id), tileX: tile.x, tileY: tile.y });
       return;
     }
     if (hit?.type === "smelter" && hit.ownerId === this.curr.youPlayerId && haulers.length) {
       const w = this.screenToWorld(px, py);
+      this.pulseMoveClick(w.x, w.y);
       this.onCommand({ type: "cmd.move", ids: haulers.map((e) => e.id), x: w.x, y: w.y });
       return;
     }
+    const movers = own.filter((e) => e.kind === "unit");
+    if (movers.length === 0) return;
     const w = this.screenToWorld(px, py);
-    this.onCommand({ type: "cmd.move", ids: own.filter((e) => e.kind === "unit").map((e) => e.id), x: w.x, y: w.y });
+    this.pulseMoveClick(w.x, w.y);
+    this.onCommand({ type: "cmd.move", ids: movers.map((e) => e.id), x: w.x, y: w.y });
+  }
+
+  private pulseMoveClick(x: number, y: number): void {
+    this.moveClicks.push({ x, y, at: performance.now() });
+    if (this.moveClicks.length > 8) this.moveClicks.splice(0, this.moveClicks.length - 8);
   }
 
   private frame(t: number): void {
@@ -1440,6 +1470,7 @@ export class MapView {
     }
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "low";
+    this.cacheOccluders();
 
     const liveIds = new Set(this.curr.entities.map((e) => e.id));
     const drawList: EntityView[] = [
@@ -1459,6 +1490,16 @@ export class MapView {
       });
     }
     this.collectTrees(items);
+    for (const m of this.takeMoveClicks()) {
+      items.push({
+        layer: 0,
+        z: isoDepth(m.x, m.y),
+        run: () => {
+          const s = this.toScreen(m.x, m.y);
+          drawMoveClick(this.ctx, s.x, s.y, m.t);
+        },
+      });
+    }
     items.sort((a, b) => a.layer - b.layer || a.z - b.z);
     for (const it of items) it.run();
 
@@ -1935,6 +1976,60 @@ export class MapView {
     ctx.stroke();
   }
 
+  private cacheOccluders(): void {
+    const ts = this.ts();
+    const out: MapView["occBuildings"] = [];
+    for (const e of this.curr.entities) {
+      if (e.kind !== "building") continue;
+      const x = e.tileX * ts;
+      const y = e.tileY * ts;
+      const w = e.tileW * ts;
+      const h = e.tileH * ts;
+      const elev = heightAt(this.map(), e.tileX, e.tileY);
+      const east = this.toScreen(x + w, y, elev);
+      const west = this.toScreen(x, y + h, elev);
+      out.push({
+        x,
+        y,
+        w,
+        h,
+        ez: buildingOccludeEz(buildingSpriteFor(e.type), east.x - west.x, this.extrude(e.type)),
+        lift: isoLift(elev),
+      });
+    }
+    this.occBuildings = out;
+  }
+
+  private unitOccluded(e: EntityView): boolean {
+    const p = this.lerpEnt(e);
+    const spr = spriteFor(e.type, e.stance, e.swimming);
+    const visualLift = spr
+      ? spr.drawSize * spr.contactY * 0.62
+      : this.extrude(e.type) * UNIT_VISUAL_SCALE * 0.7;
+    const ts = this.ts();
+    const unitLift = isoLift(this.elevAt(p.x, p.y));
+    for (const b of this.occBuildings) {
+      if (unitBehindIsoBox(p.x, p.y, visualLift, b.x, b.y, b.w, b.h, b.ez, ts, b.lift, unitLift)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private takeMoveClicks(): { x: number; y: number; t: number }[] {
+    const now = performance.now();
+    const keep: MapView["moveClicks"] = [];
+    const live: { x: number; y: number; t: number }[] = [];
+    for (const m of this.moveClicks) {
+      const t = (now - m.at) / MOVE_CLICK_MS;
+      if (t >= 1) continue;
+      keep.push(m);
+      live.push({ x: m.x, y: m.y, t: Math.max(0, t) });
+    }
+    this.moveClicks = keep;
+    return live;
+  }
+
   private drawUnit(e: EntityView): void {
     const spr = spriteFor(e.type, e.stance, e.swimming);
     if (spr) {
@@ -1947,6 +2042,9 @@ export class MapView {
     const ez = this.extrude(e.type) * UNIT_VISUAL_SCALE;
     const hex = e.wreck ? "#6e6c66" : this.ownerColor(e);
     const s = this.toScreen(p.x, p.y);
+    const occluded = this.unitOccluded(e);
+    ctx.save();
+    if (occluded) ctx.globalAlpha = OCCLUDED_UNIT_ALPHA;
     ctx.fillStyle = "rgba(0,0,0,0.35)";
     ctx.beginPath();
     ctx.ellipse(s.x, s.y, r * 1.2, r * 0.55, 0, 0, Math.PI * 2);
@@ -1967,6 +2065,7 @@ export class MapView {
     ctx.lineTo(top.cx - ux * 5 + uy * 5, top.cy - uy * 5 - ux * 5);
     ctx.closePath();
     ctx.fill();
+    ctx.restore();
     if (e.ownerId === this.curr.youPlayerId && e.type === "rig") {
       const name = this.curr.players.find((pl) => pl.playerId === e.ownerId)?.name ?? "";
       ctx.font = "12px 'Share Tech Mono', monospace";
@@ -1996,12 +2095,15 @@ export class MapView {
     const hex = this.ownerColor(e);
     const dir = facingToIso(p.facing, this.ts());
     const turretDir = facingToIso(p.turretFacing ?? p.facing, this.ts());
+    const occluded = this.unitOccluded(e);
+    const fade = occluded ? OCCLUDED_UNIT_ALPHA : 1;
+    ctx.save();
     ctx.fillStyle = e.wreck ? "#2a2824" : hex;
-    ctx.globalAlpha = e.wreck ? 0.38 : 0.5;
+    ctx.globalAlpha = (e.wreck ? 0.38 : 0.5) * fade;
     ctx.beginPath();
     ctx.ellipse(s.x, s.y, size * 0.32, size * 0.15, 0, 0, Math.PI * 2);
     ctx.fill();
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = fade;
     ctx.save();
     if (e.wreck) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
     const drawn = drawUnitSprite(ctx, def, s.x, s.y, dir.x, dir.y, {
@@ -2012,10 +2114,14 @@ export class MapView {
       turretDy: turretDir.y,
     });
     ctx.restore();
+    ctx.restore();
     if (e.wreck && drawn) this.drawWreckFires(e, s.x, s.y, size, dir.x, dir.y);
     if (!drawn) {
       const r = Math.max(4, size * 0.22);
+      ctx.save();
+      if (occluded) ctx.globalAlpha = OCCLUDED_UNIT_ALPHA;
       this.drawIsoBox(p.x - r, p.y - r, r * 2, r * 2, size * 0.45, e.wreck ? "#6e6c66" : hex);
+      ctx.restore();
       if (e.wreck) this.drawWreckFires(e, s.x, s.y, size, dir.x, dir.y);
     }
     if (e.ownerId === this.curr.youPlayerId && e.type === "rig") {
@@ -2309,14 +2415,27 @@ export class MapView {
     ratio: number,
     alpha: number,
     hostile = false,
+    vivid = false,
   ): void {
     const ctx = this.ctx;
+    const fillW = w * Math.max(0, Math.min(1, ratio));
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = "rgba(8, 6, 4, 0.72)";
+    ctx.fillStyle = vivid ? "rgba(6, 4, 2, 0.88)" : "rgba(8, 6, 4, 0.72)";
     ctx.fillRect(x, y, w, h);
-    ctx.globalAlpha = alpha * 1.15;
-    ctx.fillStyle = hpBarFill(ratio, hostile);
-    ctx.fillRect(x, y, w * Math.max(0, Math.min(1, ratio)), h);
+    ctx.globalAlpha = vivid ? alpha : alpha * 1.15;
+    ctx.fillStyle = hpBarFill(ratio, hostile, vivid);
+    ctx.fillRect(x, y, fillW, h);
+    if (vivid && fillW > 1 && h >= 3) {
+      ctx.globalAlpha = alpha * 0.45;
+      ctx.fillStyle = "rgba(255, 255, 230, 0.7)";
+      ctx.fillRect(x, y, fillW, 1);
+    }
+    if (vivid) {
+      ctx.globalAlpha = alpha;
+      ctx.strokeStyle = "rgba(8, 6, 4, 0.9)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    }
   }
 
   private drawGarrisonBars(e: EntityView, x: number, y: number): void {
@@ -2350,25 +2469,14 @@ export class MapView {
     const capturing = (e.capture?.progress ?? 0) > 0;
     if (!(unit || selected || damaged || capturing)) return;
     const ratio = Math.max(0, Math.min(1, e.hp / e.hpMax));
-    const barW = Math.max(8, w * 0.4);
-    const barH = 2;
+    const barW = Math.max(8, selected ? w * 0.48 : w * 0.4);
+    const barH = selected ? 3 : 2;
     const bx = x + (w - barW) / 2;
-    const by = y - 3;
-    const alpha = selected ? 0.82 : damaged ? 0.42 : 0.28;
+    const by = y - (selected ? 4 : 3);
+    const alpha = selected ? 1 : damaged ? 0.42 : 0.28;
     const ctx = this.ctx;
     ctx.save();
-    if (selected) {
-      const cx = bx + barW / 2;
-      const cy = by + barH / 2;
-      const r = barW / 2 + 4;
-      ctx.strokeStyle = "#e8b84a";
-      ctx.lineWidth = 1.35;
-      ctx.globalAlpha = 0.92;
-      ctx.beginPath();
-      ctx.ellipse(cx, cy, r, r, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    this.paintHpBar(bx, by, barW, barH, ratio, alpha, this.hostileOwner(e.ownerId));
+    this.paintHpBar(bx, by, barW, barH, ratio, alpha, this.hostileOwner(e.ownerId), selected);
     ctx.restore();
   }
 

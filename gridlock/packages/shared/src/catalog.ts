@@ -153,10 +153,22 @@ export type EntityType =
   | "armory"
   | "cottage"
   | "house"
-  | "manor";
+  | "manor"
+  | "shack"
+  | "barn"
+  | "inn"
+  | "chapel";
 export type BuildingType = "dynamo" | "smelter" | "muster" | "armory";
-export type CivilianType = "cottage" | "house" | "manor";
-export const CIVILIAN_TYPES: readonly CivilianType[] = ["cottage", "house", "manor"];
+export type CivilianType = "cottage" | "house" | "manor" | "shack" | "barn" | "inn" | "chapel";
+export const CIVILIAN_TYPES: readonly CivilianType[] = [
+  "cottage",
+  "house",
+  "manor",
+  "shack",
+  "barn",
+  "inn",
+  "chapel",
+];
 export type TrainType = "trooper" | "hauler" | "warden";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
@@ -229,6 +241,12 @@ export interface CatalogEntry {
   wreckHp?: number;
   /** Infantry slots. 0 = cannot garrison. */
   garrisonCap?: number;
+  /** Occupant HP multiplier while inside. 1 = no bonus. */
+  garrisonHpMul?: number;
+  /** Visible-wall windows used for garrison muzzles. */
+  garrisonWindows?: number;
+  /** Stories used for window-flash lift. */
+  garrisonFloors?: number;
 }
 
 export interface ShellDef {
@@ -305,6 +323,23 @@ const UNARMED = {
   caliber: 0,
   spreadDeg: 0,
 } as const;
+
+const CIV_BUILDING = {
+  kind: "building" as const,
+  cost: 0,
+  buildSeconds: 0,
+  power: 0,
+  radius: 0,
+  moveTilesPerSec: 0,
+  turnDegPerSec: 0,
+  rangeTiles: 0,
+  sightTiles: 0,
+  cooldown: 0,
+  damage: 0,
+  projectileSpeed: 0,
+  ...UNARMED,
+  garrisonHpMul: 3,
+};
 
 const ENTRIES: Record<EntityType, CatalogEntry> = {
   rig: {
@@ -515,69 +550,87 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   },
   cottage: {
     type: "cottage",
-    kind: "building",
     name: "Cottage",
     letter: "h",
-    cost: 0,
-    buildSeconds: 0,
     hp: 480,
-    power: 0,
     tileW: t(2),
     tileH: t(2),
-    radius: 0,
-    moveTilesPerSec: 0,
-    turnDegPerSec: 0,
-    rangeTiles: 0,
-    sightTiles: 0,
-    cooldown: 0,
-    damage: 0,
-    projectileSpeed: 0,
-    ...UNARMED,
+    ...CIV_BUILDING,
     garrisonCap: 4,
+    garrisonWindows: 2,
+    garrisonFloors: 1,
+  },
+  shack: {
+    type: "shack",
+    name: "Shack",
+    letter: "k",
+    hp: 320,
+    tileW: t(2),
+    tileH: t(2),
+    ...CIV_BUILDING,
+    garrisonCap: 3,
+    garrisonWindows: 2,
+    garrisonFloors: 1,
   },
   house: {
     type: "house",
-    kind: "building",
     name: "House",
     letter: "H",
-    cost: 0,
-    buildSeconds: 0,
     hp: 820,
-    power: 0,
     tileW: t(3),
     tileH: t(3),
-    radius: 0,
-    moveTilesPerSec: 0,
-    turnDegPerSec: 0,
-    rangeTiles: 0,
-    sightTiles: 0,
-    cooldown: 0,
-    damage: 0,
-    projectileSpeed: 0,
-    ...UNARMED,
+    ...CIV_BUILDING,
     garrisonCap: 8,
+    garrisonWindows: 3,
+    garrisonFloors: 2,
+  },
+  barn: {
+    type: "barn",
+    name: "Barn",
+    letter: "B",
+    hp: 900,
+    tileW: t(3),
+    tileH: t(3),
+    ...CIV_BUILDING,
+    garrisonCap: 8,
+    garrisonWindows: 3,
+    garrisonFloors: 2,
+  },
+  inn: {
+    type: "inn",
+    name: "Inn",
+    letter: "I",
+    hp: 860,
+    tileW: t(3),
+    tileH: t(3),
+    ...CIV_BUILDING,
+    garrisonCap: 8,
+    garrisonWindows: 3,
+    garrisonFloors: 2,
+  },
+  chapel: {
+    type: "chapel",
+    name: "Chapel",
+    letter: "P",
+    hp: 1100,
+    tileW: t(3),
+    tileH: t(3),
+    ...CIV_BUILDING,
+    garrisonCap: 6,
+    garrisonWindows: 3,
+    garrisonFloors: 2,
   },
   manor: {
     type: "manor",
-    kind: "building",
     name: "Manor",
     letter: "N",
-    cost: 0,
-    buildSeconds: 0,
     hp: 1400,
-    power: 0,
     tileW: t(4),
     tileH: t(4),
-    radius: 0,
-    moveTilesPerSec: 0,
-    turnDegPerSec: 0,
-    rangeTiles: 0,
-    sightTiles: 0,
-    cooldown: 0,
-    damage: 0,
-    projectileSpeed: 0,
-    ...UNARMED,
+    ...CIV_BUILDING,
     garrisonCap: 12,
+    garrisonWindows: 4,
+    garrisonFloors: 3,
   },
 };
 
@@ -658,6 +711,24 @@ export function isGarrisonable(type: EntityType): boolean {
 
 export function garrisonCapOf(type: EntityType): number {
   return catalog(type).garrisonCap ?? 0;
+}
+
+/** Occupant HP while inside. Civilian houses are 3×. */
+export function garrisonHpMulOf(type: EntityType): number {
+  return catalog(type).garrisonHpMul ?? 1;
+}
+
+export function garrisonWindowsOf(type: EntityType): number {
+  return catalog(type).garrisonWindows ?? 2;
+}
+
+export function garrisonFloorsOf(type: EntityType): number {
+  return catalog(type).garrisonFloors ?? 1;
+}
+
+/** Player-built structures can change owner. Civilian houses cannot. */
+export function isCapturable(type: EntityType): boolean {
+  return catalog(type).kind === "building" && !isCivilianType(type);
 }
 
 export function hasTurret(type: EntityType): boolean {

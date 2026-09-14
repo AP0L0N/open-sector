@@ -159,6 +159,36 @@ export function pointInIsoBox(
   return pointInPoly(ix, iy, isoBoxSilhouette(x, y, w, h, ez, tileSize, lift));
 }
 
+/**
+ * True when a unit at (ux, uy) sits north/west of an iso box and its sprite
+ * (lifted `visualLift` iso-pixels) overlaps the box silhouette. East or south
+ * of the box is in front of the camera, so those units stay opaque.
+ */
+export function unitBehindIsoBox(
+  ux: number,
+  uy: number,
+  visualLift: number,
+  boxX: number,
+  boxY: number,
+  boxW: number,
+  boxH: number,
+  boxEz: number,
+  tileSize: number,
+  boxElevLift = 0,
+  unitElevLift = 0,
+): boolean {
+  if (boxW <= 0 || boxH <= 0 || boxEz <= 0) return false;
+  if (ux >= boxX + boxW || uy >= boxY + boxH) return false;
+  const p = worldToIso(ux, uy, tileSize);
+  const baseY = p.y - unitElevLift;
+  const lift = Math.max(0, visualLift);
+  return (
+    pointInIsoBox(p.x, baseY - lift, boxX, boxY, boxW, boxH, boxEz, tileSize, boxElevLift) ||
+    (lift > 2 &&
+      pointInIsoBox(p.x, baseY - lift * 0.45, boxX, boxY, boxW, boxH, boxEz, tileSize, boxElevLift))
+  );
+}
+
 function liftPt(p: IsoPt, ez: number): IsoPt {
   return { x: p.x, y: p.y - ez };
 }

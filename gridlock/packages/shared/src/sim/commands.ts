@@ -254,7 +254,7 @@ function cmdHold(state: MatchState, playerId: string, ids: number[], hold: boole
       dropGuard(e);
       continue;
     }
-    if (e.order?.kind === "withdraw") {
+    if (e.order?.kind === "withdraw" || e.order?.kind === "move" || e.order?.kind === "attackmove") {
       e.order = null;
       e.attackTarget = null;
       e.waypoints = [];

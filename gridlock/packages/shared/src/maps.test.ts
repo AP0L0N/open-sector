@@ -115,6 +115,85 @@ describe("maps", () => {
     assert.ok(!yard.features?.some((f) => tileAt(yard, f.x, f.y) === TILE_BLOCKED));
   });
 
+  it("shapes scrap-yard ponds as irregular blobs, not filled rectangles", () => {
+    const yard = MAPS["yard-64"]!;
+    const w = yard.width;
+    const h = yard.height;
+    const seen = new Uint8Array(w * h);
+    const ponds: { size: number; box: number; minX: number; minY: number; maxX: number; maxY: number }[] = [];
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const start = y * w + x;
+        if (seen[start] || yard.tiles[start] !== TILE_WATER) continue;
+        const q = [{ x, y }];
+        seen[start] = 1;
+        let minX = x;
+        let maxX = x;
+        let minY = y;
+        let maxY = y;
+        for (let i = 0; i < q.length; i++) {
+          const c = q[i]!;
+          minX = Math.min(minX, c.x);
+          maxX = Math.max(maxX, c.x);
+          minY = Math.min(minY, c.y);
+          maxY = Math.max(maxY, c.y);
+          for (const [dx, dy] of [
+            [1, 0],
+            [-1, 0],
+            [0, 1],
+            [0, -1],
+          ] as const) {
+            const nx = c.x + dx;
+            const ny = c.y + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            const ni = ny * w + nx;
+            if (seen[ni] || yard.tiles[ni] !== TILE_WATER) continue;
+            seen[ni] = 1;
+            q.push({ x: nx, y: ny });
+          }
+        }
+        ponds.push({
+          size: q.length,
+          box: (maxX - minX + 1) * (maxY - minY + 1),
+          minX,
+          minY,
+          maxX,
+          maxY,
+        });
+      }
+    }
+    const lakes = ponds.filter((p) => p.size >= 40);
+    const water = lakes.reduce((n, p) => n + p.size, 0);
+    assert.ok(lakes.length >= 2, `lakes ${lakes.length}`);
+    assert.ok(water > 400 && water < 2500, `water ${water}`);
+    for (const p of lakes) {
+      assert.ok(p.size < p.box * 0.9, `pond fills its bbox ${p.size}/${p.box} at ${p.minX},${p.minY}`);
+      let fullEdges = 0;
+      let top = 0;
+      let bot = 0;
+      let left = 0;
+      let right = 0;
+      for (let x = p.minX; x <= p.maxX; x++) {
+        if (tileAt(yard, x, p.minY) === TILE_WATER) top++;
+        if (tileAt(yard, x, p.maxY) === TILE_WATER) bot++;
+      }
+      for (let y = p.minY; y <= p.maxY; y++) {
+        if (tileAt(yard, p.minX, y) === TILE_WATER) left++;
+        if (tileAt(yard, p.maxX, y) === TILE_WATER) right++;
+      }
+      const spanX = p.maxX - p.minX + 1;
+      const spanY = p.maxY - p.minY + 1;
+      if (top === spanX) fullEdges++;
+      if (bot === spanX) fullEdges++;
+      if (left === spanY) fullEdges++;
+      if (right === spanY) fullEdges++;
+      assert.ok(fullEdges <= 1, `pond has ${fullEdges} straight bbox edges`);
+    }
+    for (const s of yard.spawns) {
+      assert.notEqual(tileAt(yard, s.x, s.y), TILE_WATER, `spawn ${s.id} in water`);
+    }
+  });
+
   it("mixes isolated trees with connected groves", () => {
     for (const map of Object.values(MAPS)) {
       let trees = 0;

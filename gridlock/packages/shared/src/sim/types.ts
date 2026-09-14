@@ -201,6 +201,8 @@ export interface MatchState {
   /** Packed smoke occupancy for `smokeMaskTick`. */
   smokeMask: Uint8Array;
   smokeMaskTick: number;
+  /** Armored hull ids for LOS. Scratch buffer; rebuilt each cover query. */
+  hullMask: Int32Array;
   /** Tick whose per-player entity-visibility cache is in `seeByPlayer`. */
   seeTick: number;
   seeByPlayer: Map<string, Map<number, boolean>>;

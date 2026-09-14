@@ -132,7 +132,7 @@ export function tickMovement(state: MatchState, dt: number): void {
     }
     if (e.waypoints.length === 0) {
       if (e.state === "move") e.state = "idle";
-      if (e.order?.kind === "attackmove" || e.order?.kind === "withdraw") {
+      if (e.order?.kind === "move" || e.order?.kind === "attackmove" || e.order?.kind === "withdraw") {
         e.order = null;
         e.state = "idle";
       }

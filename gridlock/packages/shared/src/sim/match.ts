@@ -66,6 +66,7 @@ export function createMatch(
     visionKeyByPlayer: new Map(),
     smokeMask: new Uint8Array(map.width * map.height),
     smokeMaskTick: -1,
+    hullMask: new Int32Array(map.width * map.height),
     seeTick: -1,
     seeByPlayer: new Map(),
     clearedTrees: [],

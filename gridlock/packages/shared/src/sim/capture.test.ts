@@ -171,6 +171,25 @@ describe("infantry capture", () => {
     assert.equal(dyn.ownerId, b);
   });
 
+  it("does not capture an empty civilian house", () => {
+    const { state, a } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const house = makeEntity(state, "cottage", "", tileCenter(40, ts), tileCenter(16, ts), {
+      tileX: 36,
+      tileY: 12,
+    });
+    const inf = placeAdjacent(state, "trooper", a, house);
+    applyCommand(state, a, { type: "cmd.attack", ids: [inf.id], targetId: house.id });
+    const wait = Math.ceil(captureDurationSec(house) / TICK_DT) + 8;
+    ticks(state, wait);
+    assert.equal(house.ownerId, "");
+    assert.equal(house.captureProgress, 0);
+    assert.ok(house.hp > 0);
+  });
+
   it("does not capture a house while it is garrisoned", () => {
     const { state, a, b } = twoPlayerMatch();
     state.heights.fill(0);
@@ -182,9 +201,9 @@ describe("infantry capture", () => {
       tileY: 12,
     });
     const occ = makeEntity(state, "trooper", b, tileCenter(34, ts), tileCenter(12, ts));
-    const occHp = occ.hp;
     const houseHp = house.hp;
     assert.equal(enterGarrison(state, occ, house), true);
+    const occHp = occ.hp;
     const inf = placeAdjacent(state, "trooper", a, house);
     applyCommand(state, a, { type: "cmd.attack", ids: [inf.id], targetId: house.id });
     ticks(state, 12);

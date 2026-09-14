@@ -5,6 +5,7 @@ import {
   CAPTURE_SECONDS_MIN,
   NEUTRAL_OWNER,
   catalog,
+  isCapturable,
   isInfantryType,
 } from "../catalog.js";
 import { adjacentToBuilding, allies, tileCenter } from "./geo.js";
@@ -19,6 +20,7 @@ export function wantsCapture(unit: Entity, target: Entity): boolean {
     !unit.wreck &&
     unit.garrisonedIn == null &&
     target.kind === "building" &&
+    isCapturable(target.type) &&
     !target.wreck &&
     target.hp > 0 &&
     target.garrison.length === 0
@@ -113,6 +115,7 @@ export function tickCapture(state: MatchState, dt: number): void {
 }
 
 function completeCapture(state: MatchState, building: Entity, ownerId: string, capturers: Entity[]): void {
+  if (!isCapturable(building.type)) return;
   building.ownerId = ownerId;
   building.captureOwnerId = "";
   building.captureProgress = 0;
