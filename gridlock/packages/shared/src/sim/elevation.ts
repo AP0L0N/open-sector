@@ -2,6 +2,7 @@ import {
   GARRISON_HIDE_SIGHT,
   GARRISON_WATCH_SIGHT_BONUS,
   HANDGUN,
+  HEIGHT_BASE,
   HEIGHT_DOWNHILL_COST,
   HEIGHT_DOWNHILL_SPEED,
   HEIGHT_SIGHT_BONUS,
@@ -97,7 +98,7 @@ export function sightTilesOf(type: EntityType, elev: number, extra = 0): number 
     catalog(type).sightTiles +
     sightBonusTilesOf(type) +
     extra +
-    Math.max(0, elev) * HEIGHT_SIGHT_BONUS
+    Math.max(0, elev - HEIGHT_BASE) * HEIGHT_SIGHT_BONUS
   );
 }
 
@@ -137,8 +138,9 @@ export function weaponRangeWorld(state: MatchState, e: Entity): number {
 }
 
 /**
- * A tile blocks when it sticks up through the sight line from the observer's
- * eye to the destination ground. Linear slopes stay visible; a closer ridge
+ * A tile blocks when it rises through the sight line from the observer's
+ * eye to the destination ground. Descending or level ground never occludes —
+ * a hilltop sees its own slope, including terrace lips. A closer ridge still
  * hides a farther peak even if that peak is taller.
  */
 export function hasTerrainLos(
@@ -164,6 +166,8 @@ export function hasTerrainLos(
   const cap = dx + dy + 2;
   for (let n = 0; n < cap; n++) {
     if (x === x1 && y === y1) return true;
+    const px = x;
+    const py = y;
     const e2 = err * 2;
     let steppedX = false;
     let steppedY = false;
@@ -177,13 +181,12 @@ export function hasTerrainLos(
       y += sy;
       steppedY = true;
     }
+    const prevH = elevAt(elev, width, height, px, py);
     if (steppedX && steppedY) {
-      const cx = x - sx;
-      const cy = y - sy;
-      if (blocksLos(elev, width, height, cx, y, x0, y0, x1, y1, h0, h1)) return false;
-      if (blocksLos(elev, width, height, x, cy, x0, y0, x1, y1, h0, h1)) return false;
+      if (blocksLos(elev, width, height, x - sx, y, x0, y0, x1, y1, h0, h1, prevH)) return false;
+      if (blocksLos(elev, width, height, x, y - sy, x0, y0, x1, y1, h0, h1, prevH)) return false;
     }
-    if (blocksLos(elev, width, height, x, y, x0, y0, x1, y1, h0, h1)) return false;
+    if (blocksLos(elev, width, height, x, y, x0, y0, x1, y1, h0, h1, prevH)) return false;
   }
   return true;
 }
@@ -200,10 +203,12 @@ function blocksLos(
   y1: number,
   h0: number,
   h1: number,
+  prevH: number,
 ): boolean {
   if (x === x0 && y === y0) return false;
   if (x === x1 && y === y1) return false;
   const h = elevAt(elev, width, height, x, y);
+  if (h <= prevH) return false;
   const spanX = x1 - x0;
   const spanY = y1 - y0;
   const len2 = spanX * spanX + spanY * spanY;
@@ -281,6 +286,8 @@ export function hasFullLos(
   const destHull = hullIdAt(cover?.hull, width, height, x1, y1);
   for (let n = 0; n < cap; n++) {
     if (x === x1 && y === y1) return true;
+    const px = x;
+    const py = y;
     const e2 = err * 2;
     let steppedX = false;
     let steppedY = false;
@@ -294,11 +301,12 @@ export function hasFullLos(
       y += sy;
       steppedY = true;
     }
+    const prevH = elevAt(elev, width, height, px, py);
     if (steppedX && steppedY) {
-      if (blocksLos(elev, width, height, x - sx, y, x0, y0, x1, y1, h0, h1)) return false;
-      if (blocksLos(elev, width, height, x, y - sy, x0, y0, x1, y1, h0, h1)) return false;
+      if (blocksLos(elev, width, height, x - sx, y, x0, y0, x1, y1, h0, h1, prevH)) return false;
+      if (blocksLos(elev, width, height, x, y - sy, x0, y0, x1, y1, h0, h1, prevH)) return false;
     }
-    if (blocksLos(elev, width, height, x, y, x0, y0, x1, y1, h0, h1)) return false;
+    if (blocksLos(elev, width, height, x, y, x0, y0, x1, y1, h0, h1, prevH)) return false;
     if (!cover) continue;
     if (x === x1 && y === y1) return true;
     if (hardCoverAt(cover.terrain, cover.occupy, width, height, x, y, ignore)) return false;

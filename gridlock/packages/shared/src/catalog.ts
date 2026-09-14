@@ -98,8 +98,10 @@ export const WATER_PATH_COST = 2.5;
 export const CRIT_ENGINE_TURN = 0.2;
 /** Extra world pixels between unit reserved radii on a group move. */
 export const UNIT_SPACE_PAD = 2;
-/** Peak discrete elevation. 0 is the floor. */
-export const HEIGHT_MAX = t(3);
+/** Default ground. Maps are lifted so valleys can sit below this. */
+export const HEIGHT_BASE = t(2);
+/** Peak discrete elevation. 0 is the valley floor. */
+export const HEIGHT_MAX = t(5);
 /** Adjacent walkable tiles may differ by at most this many levels. */
 export const HEIGHT_STEP_MAX = 1;
 /** Move-speed multiplier per adjacent-tile climb. TILE_SUBDIV steps ≈ one old terrace. */
@@ -110,7 +112,7 @@ export const HEIGHT_DOWNHILL_SPEED = 1.12 ** (1 / TILE_SUBDIV);
 export const HEIGHT_UPHILL_COST = 1.7 ** (1 / TILE_SUBDIV);
 /** A* step-cost multiplier per adjacent-tile descent. */
 export const HEIGHT_DOWNHILL_COST = 0.9 ** (1 / TILE_SUBDIV);
-/** Extra Chebyshev sight tiles per elevation. World reach matches the old 3-band hills. */
+/** Extra Chebyshev sight tiles per elevation step above HEIGHT_BASE. */
 export const HEIGHT_SIGHT_BONUS = 2;
 /** Extra Chebyshev tiles infantry gain per elevation step of a tile above them. */
 export const INFANTRY_UPHILL_SIGHT = 2;

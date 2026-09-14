@@ -461,11 +461,11 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
   const capturing =
     e.capture && e.capture.progress > 0 ? `  ·  capturing ${Math.round(e.capture.progress * 100)}%` : "";
   const holding = e.guardFacing != null ? "  ·  GUARD" : e.holdPosition ? "  ·  HOLD" : "";
-  const who = owner?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${rack}${mg}  ·  ${who}${q}${cargo}${dep}${special}${garrison}${capturing}${holding}`;
   const occ = e.garrison?.ownerId
     ? ctx.match.players.find((p) => p.playerId === e.garrison!.ownerId)
     : owner;
+  const who = occ?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
+  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${rack}${mg}  ·  ${who}${q}${cargo}${dep}${special}${garrison}${capturing}${holding}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
 
@@ -621,7 +621,7 @@ function paintConfig(ctx: Ctx, view: MapView | null): void {
         class: "tiny",
         text: swimming
           ? "Swimming — rifles stay dry, they cannot fire until they reach shore."
-          : "Capture buildings at point-blank. They do not fire on structures.",
+          : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",
       }),
     );
   }

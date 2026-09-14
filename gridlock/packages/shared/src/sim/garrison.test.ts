@@ -66,6 +66,17 @@ describe("cover LOS", () => {
     assert.equal(hasFullLos(elev, 5, 1, 0, 0, 4, 0, { terrain, occupy }), false);
     assert.equal(hasFullLos(elev, 5, 1, 0, 0, 4, 0, { terrain, occupy, ignoreOccupyId: 7 }), true);
   });
+
+  it("stops at an armored hull unless the dest sits on that hull", () => {
+    const elev = new Uint8Array(5);
+    const terrain = new Uint8Array(5);
+    const occupy = new Int32Array(5);
+    const hull = new Int32Array(5);
+    hull[2] = 7;
+    assert.equal(hasFullLos(elev, 5, 1, 0, 0, 4, 0, { terrain, occupy, hull }), false);
+    assert.equal(hasFullLos(elev, 5, 1, 0, 0, 4, 0, { terrain, occupy, hull, ignoreOccupyId: 7 }), true);
+    assert.equal(hasFullLos(elev, 5, 1, 0, 0, 2, 0, { terrain, occupy, hull }), true);
+  });
 });
 
 describe("garrison", () => {

@@ -177,7 +177,7 @@ export interface MatchState {
   blocked: Uint8Array;
   /** Original tile kinds (empty / wall / scrap / water / tree). */
   terrain: Uint8Array;
-  /** Discrete elevation. 0 = floor. */
+  /** Discrete elevation. 0 = valley floor. */
   heights: Uint8Array;
   /** Remaining scrap on each tile. */
   scrapYield: Uint16Array;
