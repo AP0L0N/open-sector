@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { catalog, INFANTRY_EYE_HEIGHT, INFANTRY_UPHILL_SIGHT } from "../catalog.js";
+import { catalog, INFANTRY_UPHILL_SIGHT } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch } from "./match.js";
 import { sightTilesOf } from "./elevation.js";
 import { spawnSmokeCloud } from "./smoke.js";
-import { paintEntitySight, tileOnMask, visionMask, type SightSource } from "./vision.js";
+import { canSeeEntity, paintEntitySight, tileOnMask, visionMask, type SightSource } from "./vision.js";
 import type { MatchState } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
@@ -101,7 +101,7 @@ describe("building sight", () => {
     assert.equal(tileOnMask(infMask, state.width, ox + r, oy), true);
     assert.equal(tileOnMask(bldgMask, state.width, ox + r, oy), true);
 
-    state.heights[oy * state.width + (ox + 2)] = INFANTRY_EYE_HEIGHT;
+    state.heights[oy * state.width + (ox + 2)] = 1;
     const tank = makeEntity(state, "warden", a, tileCenter(ox, ts), tileCenter(oy, ts));
     const peekInf = new Uint8Array(state.width * state.height);
     const peekBldg = new Uint8Array(state.width * state.height);
@@ -142,6 +142,37 @@ describe("building sight", () => {
     paintEntitySight(tankMask, state.width, state.height, ts, tank, state.heights);
     assert.equal(tileOnMask(bldgMask, state.width, ox + dist, oy), true);
     assert.equal(tileOnMask(tankMask, state.width, ox + dist, oy), false);
+  });
+
+  it("does not light a farther peak over a closer lower ridge", () => {
+    const { state, a } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const ox = 20;
+    const oy = 20;
+    const peak = ox + 16;
+    state.heights[oy * state.width + (ox + 4)] = 3;
+    state.heights[oy * state.width + peak] = 6;
+    const tank = makeEntity(state, "warden", a, tileCenter(ox, ts), tileCenter(oy, ts));
+    const mask = new Uint8Array(state.width * state.height);
+    paintEntitySight(mask, state.width, state.height, ts, tank, state.heights);
+    assert.equal(tileOnMask(mask, state.width, ox + 4, oy), true, "ridge itself");
+    assert.equal(tileOnMask(mask, state.width, peak, oy), false, "peak behind ridge");
+  });
+
+  it("does not light floor tiles behind a ridge", () => {
+    const { state, a } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const ox = 20;
+    const oy = 20;
+    const beyond = ox + 12;
+    state.heights[oy * state.width + (ox + 6)] = 3;
+    const inf = makeEntity(state, "trooper", a, tileCenter(ox, ts), tileCenter(oy, ts));
+    const mask = new Uint8Array(state.width * state.height);
+    paintEntitySight(mask, state.width, state.height, ts, inf, state.heights);
+    assert.equal(tileOnMask(mask, state.width, ox + 6, oy), true, "ridge itself");
+    assert.equal(tileOnMask(mask, state.width, beyond, oy), false, "floor behind ridge");
   });
 });
 
@@ -212,14 +243,40 @@ describe("smoke screens", () => {
 });
 
 describe("visionMask cache", () => {
-  it("returns the same mask object twice in one tick and a new one after", () => {
+  it("reuses the mask while observers stay on the same tiles", () => {
     const { state, a } = twoPlayerMatch();
     const first = visionMask(state, a);
-    const again = visionMask(state, a);
-    assert.equal(first, again);
+    assert.equal(visionMask(state, a), first);
     state.tick += 1;
+    assert.equal(visionMask(state, a), first);
+  });
+
+  it("rebuilds after an observer moves to a new tile", () => {
+    const { state, a } = twoPlayerMatch();
+    const first = visionMask(state, a);
+    const rig = [...state.entities.values()].find((e) => e.ownerId === a && e.kind === "unit");
+    assert.ok(rig);
+    rig.x += state.tileSize;
+    rig.y += state.tileSize;
     const next = visionMask(state, a);
     assert.notEqual(next, first);
     assert.equal(visionMask(state, a), next);
+  });
+});
+
+describe("combat visibility", () => {
+  it("matches the fog mask without painting one", () => {
+    const { state, a, b } = twoPlayerMatch();
+    const ts = state.tileSize;
+    makeEntity(state, "trooper", a, tileCenter(40, ts), tileCenter(40, ts));
+    makeEntity(state, "trooper", b, tileCenter(48, ts), tileCenter(40, ts));
+    makeEntity(state, "trooper", b, tileCenter(200, ts), tileCenter(200, ts));
+    const mask = visionMask(state, a);
+    for (const e of state.entities.values()) {
+      if (e.hp <= 0) continue;
+      const cheap = canSeeEntity(state, a, e);
+      const fog = canSeeEntity(state, a, e, mask);
+      assert.equal(cheap, fog, `id=${e.id} type=${e.type} at ${e.x},${e.y}`);
+    }
   });
 });

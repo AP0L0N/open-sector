@@ -192,9 +192,6 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     remainingDeg = turnToward(e, aimX, aimY, def.turnDegPerSec * hullTurnMul(e), dt);
   }
   if (!holedUp && Math.abs(remainingDeg) > FACE_FIRE_DEG) return;
-  if (!ground && target && e.order?.kind !== "forceattack" && !canSeeEntity(state, e.ownerId, target)) {
-    return;
-  }
 
   const useMg = !ground && !e.order?.once && target ? wantsMg(e, target) : false;
   if (useMg && target) {

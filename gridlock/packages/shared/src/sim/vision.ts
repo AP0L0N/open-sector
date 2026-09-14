@@ -159,7 +159,7 @@ function paintSightBox(
     for (let x = x0; x <= x1; x++) {
       if (mask[row + x]) continue;
       const d = chebyshev(x, y, ox, oy);
-      if (d > boxR || d <= minD) continue;
+      if (d > boxR || d < minD) continue;
       const extra = uphillBonus > 0 ? Math.max(0, elevAtSafe(elev, width, height, x, y) - h0) * uphillBonus : 0;
       if (d > catalogR + extra) continue;
       if (!hasFullLos(elev, width, height, ox, oy, x, y, cover, observerEye)) continue;

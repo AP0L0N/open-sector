@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { SHELLS, TICK_DT, catalog, isCivilianType } from "../catalog.js";
+import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
-import { tickProjectiles } from "./combat.js";
+import { tickCombat, tickProjectiles } from "./combat.js";
 import { enterGarrison } from "./garrison.js";
+import { weaponRangeWorld } from "./elevation.js";
 import { buildingBounds, buildingCenter, destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { inSmokeCloud } from "./smoke.js";
 import { createMatch, step } from "./match.js";
+import { canSeeEntity } from "./vision.js";
 import type { MatchState, Projectile } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
@@ -31,6 +34,22 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
 function clearCivilians(state: MatchState): void {
   for (const e of [...state.entities.values()]) {
     if (isCivilianType(e.type)) destroyEntity(state, e);
+  }
+}
+
+function clearCover(state: MatchState): void {
+  state.heights.fill(0);
+  state.occupy.fill(0);
+  for (let i = 0; i < state.terrain.length; i++) {
+    const t = state.terrain[i];
+    if (t === TILE_TREE || t === TILE_BLOCKED) state.terrain[i] = TILE_EMPTY;
+  }
+  clearCivilians(state);
+}
+
+function stripOwner(state: MatchState, ownerId: string): void {
+  for (const e of [...state.entities.values()]) {
+    if (e.ownerId === ownerId) destroyEntity(state, e);
   }
 }
 
@@ -66,6 +85,13 @@ function fireShell(
   };
   state.projectiles.push(p);
   return p;
+}
+
+function angAbs(a: number, b: number): number {
+  let d = a - b;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return Math.abs(d);
 }
 
 describe("tank shells vs buildings", () => {
@@ -670,5 +696,177 @@ describe("withdraw", () => {
     for (let i = 0; i < 8; i++) step(state, TICK_DT);
     assert.equal(inf.garrisonedIn, house.id);
     assert.notEqual(inf.order?.kind, "withdraw");
+  });
+
+  it("Warden reverses with the hull toward unseen fire", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const victim = makeEntity(state, "warden", "A", tileCenter(40, ts), tileCenter(40, ts));
+    const shooter = makeEntity(state, "hauler", "B", tileCenter(110, ts), tileCenter(40, ts));
+    shooter.autoHarvest = false;
+    victim.facing = 0;
+    victim.turretFacing = 0;
+    const x0 = victim.x;
+    const p = fireShell(state, {
+      x: victim.x + 20,
+      y: victim.y,
+      vx: -catalog("warden").projectileSpeed,
+      vy: 0,
+    });
+    p.fromId = shooter.id;
+    p.ownerId = "B";
+    p.team = 2;
+    step(state, TICK_DT);
+    assert.ok(victim.hp > 0 && victim.hp < victim.hpMax, `hp=${victim.hp}`);
+    assert.equal(victim.order?.kind, "withdraw");
+    assert.equal(victim.order?.reverse, true);
+    assert.equal(victim.attackTarget, null);
+    const y0 = victim.y;
+    for (let i = 0; i < 40; i++) step(state, TICK_DT);
+    assert.ok(victim.x < x0 - 12, `should reverse west x=${victim.x} from ${x0}`);
+    assert.ok(Math.abs(victim.y - y0) < ts * 2, `should not slide off the reverse line y=${victim.y}`);
+    assert.ok(angAbs(victim.facing, 0) < 0.35, `hull should keep the bow on the fire facing=${victim.facing}`);
+    assert.ok(angAbs(victim.facing, Math.PI) > 1.2, "must not spin the rear toward the shot");
+  });
+
+  it("Warden reverses when engaged and stationary", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const victim = makeEntity(state, "warden", "A", tileCenter(40, ts), tileCenter(40, ts));
+    const shooter = makeEntity(state, "hauler", "B", tileCenter(48, ts), tileCenter(40, ts));
+    shooter.autoHarvest = false;
+    victim.facing = 0;
+    victim.turretFacing = 0;
+    const x0 = victim.x;
+    const p = fireShell(state, {
+      x: victim.x + 20,
+      y: victim.y,
+      vx: -catalog("warden").projectileSpeed,
+      vy: 0,
+    });
+    p.fromId = shooter.id;
+    p.ownerId = "B";
+    p.team = 2;
+    step(state, TICK_DT);
+    assert.equal(victim.order?.kind, "withdraw");
+    assert.equal(victim.order?.reverse, true);
+    assert.equal(victim.attackTarget, shooter.id);
+    for (let i = 0; i < 36; i++) step(state, TICK_DT);
+    assert.ok(victim.x < x0 - 12, `should reverse west x=${victim.x} from ${x0}`);
+    assert.ok(angAbs(victim.facing, 0) < 0.35, `hull should stay on the shooter facing=${victim.facing}`);
+  });
+
+  it("Warden yaws the hull to the fire before it reverses", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const victim = makeEntity(state, "warden", "A", tileCenter(40, ts), tileCenter(40, ts));
+    const shooter = makeEntity(state, "hauler", "B", tileCenter(110, ts), tileCenter(40, ts));
+    shooter.autoHarvest = false;
+    victim.facing = 0.5;
+    victim.turretFacing = 0.5;
+    const x0 = victim.x;
+    const y0 = victim.y;
+    const p = fireShell(state, {
+      x: victim.x + 20,
+      y: victim.y,
+      vx: -catalog("warden").projectileSpeed,
+      vy: 0,
+    });
+    p.fromId = shooter.id;
+    p.ownerId = "B";
+    p.team = 2;
+    step(state, TICK_DT);
+    assert.equal(victim.order?.kind, "withdraw");
+    assert.ok(victim.hp > 0 && victim.hp < victim.hpMax, `hp=${victim.hp}`);
+    step(state, TICK_DT);
+    assert.ok(victim.facing < 0.5, `should yaw toward the shot facing=${victim.facing}`);
+    assert.ok(victim.facing > 0.15, `must not snap onto the fire in one tick facing=${victim.facing}`);
+    assert.equal(victim.x, x0, "must not reverse until the bow faces the fire");
+    assert.equal(victim.y, y0);
+    for (let i = 0; i < 40; i++) step(state, TICK_DT);
+    assert.ok(victim.x < x0 - 8, `should reverse west after the yaw x=${victim.x}`);
+    assert.ok(angAbs(victim.facing, 0) < 0.35, `hull should finish on the fire facing=${victim.facing}`);
+  });
+
+  it("Warden keeps a player attack instead of reversing", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const victim = makeEntity(state, "warden", "A", tileCenter(40, ts), tileCenter(40, ts));
+    const shooter = makeEntity(state, "hauler", "B", tileCenter(48, ts), tileCenter(40, ts));
+    shooter.autoHarvest = false;
+    victim.facing = 0;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [victim.id], targetId: shooter.id });
+    const x0 = victim.x;
+    const p = fireShell(state, {
+      x: victim.x + 20,
+      y: victim.y,
+      vx: -catalog("warden").projectileSpeed,
+      vy: 0,
+    });
+    p.fromId = shooter.id;
+    p.ownerId = "B";
+    p.team = 2;
+    for (let i = 0; i < 8; i++) step(state, TICK_DT);
+    assert.equal(victim.order?.kind, "attack");
+    assert.notEqual(victim.order?.reverse, true);
+    assert.ok(Math.abs(victim.x - x0) < 8, `player attack fled x=${victim.x}`);
+  });
+});
+
+describe("spotted fire", () => {
+  it("does not auto-attack past own sight even when the gun can reach", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    stripOwner(state, "A");
+    const ts = state.tileSize;
+    const ox = 48;
+    const oy = 16;
+    const tank = makeEntity(state, "warden", "A", tileCenter(ox, ts), tileCenter(oy, ts));
+    const sight = catalog("warden").sightTiles;
+    const range = weaponRangeWorld(state, tank);
+    const gap = sight + Math.floor((range / ts - sight) / 2);
+    assert.ok(gap * ts < range, `gap ${gap} rangeTiles ${range / ts}`);
+    const dummy = makeEntity(state, "hauler", "B", tileCenter(ox + gap, ts), tileCenter(oy, ts));
+    dummy.autoHarvest = false;
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    assert.equal(canSeeEntity(state, "A", dummy), false);
+    tickCombat(state, TICK_DT);
+    assert.equal(tank.attackTarget, null);
+    assert.equal(state.projectiles.length, 0);
+  });
+
+  it("auto-attacks past own sight when an ally spots the target", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    stripOwner(state, "A");
+    const ts = state.tileSize;
+    const ox = 48;
+    const oy = 16;
+    const tank = makeEntity(state, "warden", "A", tileCenter(ox, ts), tileCenter(oy, ts));
+    const sight = catalog("warden").sightTiles;
+    const range = weaponRangeWorld(state, tank);
+    const gap = sight + Math.floor((range / ts - sight) / 2);
+    const dummy = makeEntity(state, "hauler", "B", tileCenter(ox + gap, ts), tileCenter(oy, ts));
+    dummy.autoHarvest = false;
+    makeEntity(state, "trooper", "A", tileCenter(ox + sight - 2, ts), tileCenter(oy, ts));
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    assert.equal(canSeeEntity(state, "A", dummy), true, "spotter must light the target");
+    tickCombat(state, TICK_DT);
+    assert.equal(tank.attackTarget, dummy.id);
+    assert.ok(state.projectiles.length >= 1, `shots=${state.projectiles.length}`);
   });
 });

@@ -632,6 +632,7 @@ export class MapView {
     if (!this.liveMap || this.liveMap.id !== m.id) {
       this.liveMap = { ...m, tiles: m.tiles.slice() };
       this.treeStems = null;
+      this.clearedApplied = 0;
     }
     return this.liveMap;
   }
@@ -1930,7 +1931,7 @@ export class MapView {
     const p = this.lerpEnt(e);
     const r = catalog(e.type).radius * UNIT_VISUAL_SCALE;
     const ez = this.extrude(e.type) * UNIT_VISUAL_SCALE;
-    const hex = this.ownerColor(e);
+    const hex = e.wreck ? "#6e6c66" : this.ownerColor(e);
     const s = this.toScreen(p.x, p.y);
     ctx.fillStyle = "rgba(0,0,0,0.35)";
     ctx.beginPath();
@@ -1945,7 +1946,7 @@ export class MapView {
     const ux = dir.x / len;
     const uy = dir.y / len;
     const barrel = e.type === "warden" ? 18 : 11;
-    ctx.fillStyle = e.type === "warden" ? "#d8c48c" : "#fff6c8";
+    ctx.fillStyle = e.wreck ? "#8a8680" : e.type === "warden" ? "#d8c48c" : "#fff6c8";
     ctx.beginPath();
     ctx.moveTo(top.cx + ux * barrel, top.cy + uy * barrel);
     ctx.lineTo(top.cx - ux * 5 - uy * 5, top.cy - uy * 5 + ux * 5);
@@ -2012,6 +2013,16 @@ export class MapView {
     this.maybeHp(e, s.x - size * 0.45, s.y - size * def.contactY - 2, size * 0.9);
     this.drawCrits(e, s.x + size * 0.48, s.y - size * def.contactY - 20);
     this.drawDeployProgress(e, s.x - size * 0.45, s.y + 6, size * 0.9);
+    if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
+      const prog = e.deployProgress ?? 0;
+      const footprint = this.ts() * (1 + 2 * prog);
+      ctx.strokeStyle = "#fff6c8";
+      ctx.globalAlpha = 0.3 + 0.5 * prog;
+      ctx.lineWidth = 2;
+      this.strokeGroundRect(p.x - footprint / 2, p.y - footprint / 2, footprint, footprint);
+      ctx.globalAlpha = 1;
+    }
+  }
 
   private drawWreckFires(e: EntityView, x: number, y: number, size: number): void {
     let born = this.wreckBornAt.get(e.id);
@@ -2029,16 +2040,6 @@ export class MapView {
       const ox = (i === 0 ? -0.04 : 0.13) * size * side;
       const oy = -(i === 0 ? 0.48 : 0.36) * size;
       drawWreckFire(this.ctx, x + ox, y + oy, now, e.id * 13 + i * 29, a);
-    }
-  }
-    if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
-      const prog = e.deployProgress ?? 0;
-      const footprint = this.ts() * (1 + 2 * prog);
-      ctx.strokeStyle = "#fff6c8";
-      ctx.globalAlpha = 0.3 + 0.5 * prog;
-      ctx.lineWidth = 2;
-      this.strokeGroundRect(p.x - footprint / 2, p.y - footprint / 2, footprint, footprint);
-      ctx.globalAlpha = 1;
     }
   }
 
@@ -2418,7 +2419,7 @@ export class MapView {
     ctx.stroke();
     for (const e of this.curr.entities) {
       if (e.garrisonedIn) continue;
-      ctx.fillStyle = this.ownerColor(e);
+      ctx.fillStyle = e.wreck ? "#6a6860" : this.ownerColor(e);
       const tx = e.kind === "building" ? e.tileX + e.tileW / 2 : e.x / ts;
       const ty = e.kind === "building" ? e.tileY + e.tileH / 2 : e.y / ts;
       const sz = e.kind === "building" ? 4 : 3;

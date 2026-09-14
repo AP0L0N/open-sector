@@ -104,10 +104,21 @@ describe("terrain line of sight", () => {
   });
 
   it("lets infantry peek over a rise that hides a hull", () => {
-    const ridge = INFANTRY_EYE_HEIGHT;
-    const elev = [0, 0, ridge, 0, 0];
+    const elev = [0, 0, 1, 0, 0];
     assert.equal(hasTerrainLos(elev, 5, 1, 0, 0, 4, 0), false);
     assert.equal(hasTerrainLos(elev, 5, 1, 0, 0, 4, 0, INFANTRY_EYE_HEIGHT), true);
+  });
+
+  it("hides a distant peak behind a closer lower ridge", () => {
+    const elev = [0, 0, 3, 0, 0, 0, 0, 0, 5];
+    assert.equal(hasTerrainLos(elev, 9, 1, 0, 0, 8, 0), false);
+    assert.equal(hasTerrainLos(elev, 9, 1, 0, 0, 2, 0), true);
+  });
+
+  it("hides a peak behind a convex bulge on the way up", () => {
+    const elev = [0, 2, 2, 3];
+    assert.equal(hasTerrainLos(elev, 4, 1, 0, 0, 3, 0), false);
+    assert.equal(hasTerrainLos(elev, 4, 1, 0, 0, 1, 0), true);
   });
 });
 

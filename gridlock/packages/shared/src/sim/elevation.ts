@@ -137,8 +137,9 @@ export function weaponRangeWorld(state: MatchState, e: Entity): number {
 }
 
 /**
- * Ridges taller than the observer hide whatever sits at or below the ridge.
- * Looking onto a hillside is allowed; looking past it is not.
+ * A tile blocks when it sticks up through the sight line from the observer's
+ * eye to the destination ground. Linear slopes stay visible; a closer ridge
+ * hides a farther peak even if that peak is taller.
  */
 export function hasTerrainLos(
   elev: ArrayLike<number>,
@@ -203,7 +204,13 @@ function blocksLos(
   if (x === x0 && y === y0) return false;
   if (x === x1 && y === y1) return false;
   const h = elevAt(elev, width, height, x, y);
-  return h > h0 && h >= h1;
+  const spanX = x1 - x0;
+  const spanY = y1 - y0;
+  const len2 = spanX * spanX + spanY * spanY;
+  const t = len2 <= 0 ? 1 : ((x - x0) * spanX + (y - y0) * spanY) / len2;
+  const clamped = t < 0 ? 0 : t > 1 ? 1 : t;
+  const rayH = h0 + (h1 - h0) * clamped;
+  return h > rayH;
 }
 
 export interface CoverField {
