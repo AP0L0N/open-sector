@@ -1,5 +1,5 @@
 import { catalog, FACE_MOVE_DEG, hasTurret } from "../catalog.js";
-import { adjacentToBuilding, worldToTile } from "./geo.js";
+import { adjacentToBuilding, unitInWater, worldToTile } from "./geo.js";
 import { wantsCapture, pathToCapture } from "./capture.js";
 import { moveWithCollision } from "./collision.js";
 import { hullTurnMul, moveSpeedMul } from "./crits.js";
@@ -46,11 +46,21 @@ export function tickMovement(state: MatchState, dt: number): void {
     if (e.state === "deploy" || e.state === "undeploy") continue;
     const def = catalog(e.type);
     const speed = def.moveTilesPerSec * state.tileSize;
-    if (e.order?.kind === "attack" && e.order.targetId != null) {
-      const t = state.entities.get(e.order.targetId);
+    if (e.order?.kind === "rotate" && e.order.x != null && e.order.y != null) {
+      tickRotate(e, dt);
+      e.tileX = worldToTile(e.x, state.tileSize);
+      e.tileY = worldToTile(e.y, state.tileSize);
+      continue;
+    }
+    const chaseId =
+      (e.order?.kind === "attack" || e.order?.kind === "forceattack") && e.order.targetId != null
+        ? e.order.targetId
+        : null;
+    if (chaseId != null) {
+      const t = state.entities.get(chaseId);
       if (t && t.hp > 0) {
         if (wantsCapture(e, t)) {
-          if (adjacentToBuilding(state, e, t)) {
+          if (adjacentToBuilding(state, e, t) || e.holdPosition) {
             e.waypoints = [];
             continue;
           }
@@ -58,7 +68,7 @@ export function tickMovement(state: MatchState, dt: number): void {
         } else {
           const range = weaponRangeWorld(state, e);
           const dist = Math.hypot(t.x - e.x, t.y - e.y);
-          if (dist <= range) {
+          if (dist <= range || e.holdPosition) {
             e.waypoints = [];
             continue;
           }
@@ -68,12 +78,12 @@ export function tickMovement(state: MatchState, dt: number): void {
         }
       }
     }
-    if (e.order?.kind === "forceattack" && e.order.x != null && e.order.y != null) {
+    if (e.order?.kind === "forceattack" && e.order.targetId == null && e.order.x != null && e.order.y != null) {
       const range = weaponRangeWorld(state, e);
       const dist = Math.hypot(e.order.x - e.x, e.order.y - e.y);
-      if (dist <= range) {
+      if (dist <= range || e.holdPosition) {
         e.waypoints = [];
-        e.state = "attack";
+        if (dist <= range) e.state = "attack";
         e.tileX = worldToTile(e.x, state.tileSize);
         e.tileY = worldToTile(e.y, state.tileSize);
         continue;
@@ -95,7 +105,7 @@ export function tickMovement(state: MatchState, dt: number): void {
         } else {
           const range = weaponRangeWorld(state, e);
           const dist = Math.hypot(t.x - e.x, t.y - e.y);
-          if (dist <= range) {
+          if (dist <= range && !unitInWater(state, e)) {
             e.state = "attack";
             e.tileX = worldToTile(e.x, state.tileSize);
             e.tileY = worldToTile(e.y, state.tileSize);
@@ -106,7 +116,7 @@ export function tickMovement(state: MatchState, dt: number): void {
     }
     if (e.waypoints.length === 0) {
       if (e.state === "move") e.state = "idle";
-      if (e.order?.kind === "attackmove") {
+      if (e.order?.kind === "attackmove" || e.order?.kind === "withdraw") {
         e.order = null;
         e.state = "idle";
       }
@@ -138,18 +148,39 @@ export function tickMovement(state: MatchState, dt: number): void {
       : 0;
     const ox = e.x;
     const oy = e.y;
-    moveWithCollision(state, e, speed * slopeSpeedMul(dh) * moveSpeedMul(e), dt);
+    moveWithCollision(state, e, speed * slopeSpeedMul(dh) * moveSpeedMul(e, unitInWater(state, e)), dt);
     e.tileX = worldToTile(e.x, state.tileSize);
     e.tileY = worldToTile(e.y, state.tileSize);
     if (e.waypoints.length > 0 && Math.hypot(e.x - ox, e.y - oy) < 0.25 && state.tick % 10 === 0) {
       const last = e.waypoints[e.waypoints.length - 1];
       if (last) setPath(state, e, last.x, last.y);
     }
-    if (e.waypoints.length === 0 && (e.order?.kind === "move" || e.order?.kind === "attackmove")) {
+    if (
+      e.waypoints.length === 0 &&
+      (e.order?.kind === "move" || e.order?.kind === "attackmove" || e.order?.kind === "withdraw")
+    ) {
       e.order = null;
       e.state = "idle";
     }
   }
+}
+
+function tickRotate(e: Entity, dt: number): void {
+  const def = catalog(e.type);
+  const tx = e.order?.x;
+  const ty = e.order?.y;
+  if (tx == null || ty == null) {
+    e.order = null;
+    return;
+  }
+  const hull = turnToward(e, tx, ty, def.turnDegPerSec * hullTurnMul(e), dt);
+  let gun = 0;
+  if (hasTurret(e.type)) {
+    const rate = def.turretTurnDegPerSec ?? def.turnDegPerSec;
+    gun = turnTurretToward(e, tx, ty, rate, dt);
+  }
+  e.state = "idle";
+  if (Math.abs(hull) <= 0.5 && Math.abs(gun) <= 0.5) e.order = null;
 }
 
 export function repathIfBlocked(state: MatchState, e: Entity): void {

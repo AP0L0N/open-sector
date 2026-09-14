@@ -1,5 +1,5 @@
-import type { EntityType } from "../catalog.js";
-import { nearestWalkable, tileCenter, walkable, worldToTile } from "./geo.js";
+import { WATER_PATH_COST, type EntityType } from "../catalog.js";
+import { isWater, nearestWalkable, tileCenter, walkable, worldToTile } from "./geo.js";
 import { climbableDelta, minSlopeCostMul, slopeCostMul, tileHeight } from "./elevation.js";
 import type { Entity, MatchState, Vec } from "./types.js";
 
@@ -136,7 +136,8 @@ export function astar(
         }
         const dh = tileHeight(state, nx, ny) - tileHeight(state, cur.x, cur.y);
         if (!climbableDelta(dh)) continue;
-        const step = (dx !== 0 && dy !== 0 ? DIAG : ORTHO) * slopeCostMul(dh);
+        const wet = isWater(state, nx, ny) ? WATER_PATH_COST : 1;
+        const step = (dx !== 0 && dy !== 0 ? DIAG : ORTHO) * slopeCostMul(dh) * wet;
         const g = cur.g + step;
         const k = key(nx, ny);
         const prev = best.get(k);

@@ -27,7 +27,8 @@ function tileFree(state: MatchState, e: Entity, x: number, y: number): boolean {
   const tx = worldToTile(x, ts);
   const ty = worldToTile(y, ts);
   if (!inBounds(state, tx, ty)) return false;
-  if (isWall(state, tx, ty) || isWater(state, tx, ty)) return false;
+  if (isWall(state, tx, ty)) return false;
+  if (isWater(state, tx, ty) && !isInfantryType(e.type)) return false;
   if (isTree(state, tx, ty) && !walkable(state, tx, ty, e.type)) return false;
   const occ = occupant(state, tx, ty);
   if (occ !== 0 && occ !== e.id) {

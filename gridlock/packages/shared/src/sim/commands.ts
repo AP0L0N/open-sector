@@ -42,7 +42,7 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
     case "cmd.attackmove":
       return cmdAttackMove(state, playerId, msg.ids, msg.x, msg.y);
     case "cmd.forceattack":
-      return cmdForceAttack(state, playerId, msg.ids, msg.x, msg.y);
+      return cmdForceAttack(state, playerId, msg.ids, msg.x, msg.y, msg.targetId);
     case "cmd.stop":
       return cmdStop(state, playerId, msg.ids);
     case "cmd.harvest":
@@ -83,6 +83,10 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
     case "cmd.stance":
       if (!isStance(msg.stance)) return fail("bad_payload", "Unknown stance.");
       return cmdStance(state, playerId, msg.ids, msg.stance);
+    case "cmd.hold":
+      return cmdHold(state, playerId, msg.ids, msg.hold);
+    case "cmd.rotate":
+      return cmdRotate(state, playerId, msg.ids, msg.x, msg.y);
     default:
       return fail("bad_payload", "Unknown command.");
   }
@@ -153,18 +157,50 @@ function cmdAttackMove(state: MatchState, playerId: string, ids: number[], x: nu
   return ok();
 }
 
-function cmdForceAttack(state: MatchState, playerId: string, ids: number[], x: number, y: number): CmdResult {
+function cmdForceAttack(
+  state: MatchState,
+  playerId: string,
+  ids: number[],
+  x: number,
+  y: number,
+  targetId?: number,
+): CmdResult {
+  let t = targetId != null ? state.entities.get(targetId) : undefined;
+  if (targetId != null) {
+    if (!t || t.hp <= 0) return fail("not_found", "No such target.");
+    if (t.garrisonedIn) t = state.entities.get(t.garrisonedIn) ?? t;
+  }
   const units = owned(state, playerId, ids);
   if (units.length === 0) return fail("not_yours", "No owned units.");
   let n = 0;
   for (const e of units) {
     if (!fires(e.type)) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
-    e.order = { kind: "forceattack", x, y };
-    e.attackTarget = null;
+    if (t && e.id === t.id) continue;
     e.harvestTile = null;
+    if (t) {
+      e.order = { kind: "forceattack", targetId: t.id, x: t.x, y: t.y };
+      e.attackTarget = t.id;
+    } else {
+      e.order = { kind: "forceattack", x, y };
+      e.attackTarget = null;
+    }
     e.state = e.garrisonedIn ? "garrison" : "attack";
-    if (!e.garrisonedIn) setPath(state, e, x, y);
+    if (e.garrisonedIn) {
+      n++;
+      continue;
+    }
+    if (e.holdPosition) {
+      e.waypoints = [];
+      n++;
+      continue;
+    }
+    if (t) {
+      if (wantsCapture(e, t)) pathToCapture(state, e, t);
+      else setPath(state, e, t.x, t.y);
+    } else {
+      setPath(state, e, x, y);
+    }
     n++;
   }
   if (n === 0) return fail("busy", "No guns in that selection.");
@@ -180,12 +216,51 @@ function cmdAttack(state: MatchState, playerId: string, ids: number[], targetId:
   for (const e of units) {
     if (!fires(e.type)) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
+    if (e.id === t.id) continue;
     e.order = { kind: "attack", targetId: t.id };
     e.attackTarget = t.id;
     e.state = e.garrisonedIn ? "garrison" : "attack";
     if (e.garrisonedIn) continue;
+    if (e.holdPosition) {
+      e.waypoints = [];
+      continue;
+    }
     if (wantsCapture(e, t)) pathToCapture(state, e, t);
     else setPath(state, e, t.x, t.y);
+  }
+  return ok();
+}
+
+function cmdHold(state: MatchState, playerId: string, ids: number[], hold: boolean): CmdResult {
+  const units = owned(state, playerId, ids);
+  if (units.length === 0) return fail("not_yours", "No owned units.");
+  for (const e of units) {
+    if (e.state === "deploy" || e.state === "undeploy") continue;
+    e.holdPosition = hold;
+    if (!hold) continue;
+    if (e.order?.kind === "withdraw") {
+      e.order = null;
+      e.attackTarget = null;
+      e.waypoints = [];
+      e.state = e.garrisonedIn ? "garrison" : "idle";
+      continue;
+    }
+    if (e.order?.kind === "attack" || e.order?.kind === "forceattack") e.waypoints = [];
+  }
+  return ok();
+}
+
+function cmdRotate(state: MatchState, playerId: string, ids: number[], x: number, y: number): CmdResult {
+  const units = owned(state, playerId, ids).filter(
+    (e) => e.state !== "deploy" && e.state !== "undeploy" && !e.garrisonedIn,
+  );
+  if (units.length === 0) return fail("not_yours", "No owned units.");
+  for (const e of units) {
+    e.order = { kind: "rotate", x, y };
+    e.attackTarget = null;
+    e.harvestTile = null;
+    e.waypoints = [];
+    e.state = "idle";
   }
   return ok();
 }

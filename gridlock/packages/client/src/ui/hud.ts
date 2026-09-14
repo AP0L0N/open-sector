@@ -459,8 +459,9 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
         : "";
   const capturing =
     e.capture && e.capture.progress > 0 ? `  ·  capturing ${Math.round(e.capture.progress * 100)}%` : "";
+  const holding = e.holdPosition ? "  ·  HOLD" : "";
   const who = owner?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${rack}${mg}  ·  ${who}${q}${cargo}${dep}${special}${garrison}${capturing}`;
+  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${rack}${mg}  ·  ${who}${q}${cargo}${dep}${special}${garrison}${capturing}${holding}`;
   const occ = e.garrison?.ownerId
     ? ctx.match.players.find((p) => p.playerId === e.garrison!.ownerId)
     : owner;
@@ -641,10 +642,31 @@ function paintQuickActions(ctx: Ctx, view: MapView | null): void {
       attrs: {
         type: "button",
         "data-act": "forceattack",
-        title: "Fire at a point even if it is empty (T)",
+        title: "Fire at a point or any unit, including friendlies (T)",
       },
     });
     root.append(force);
+    const holding = units.every((e) => e.holdPosition);
+    const hold = el("button", {
+      class: "qact" + (holding ? " is-on" : ""),
+      text: "Hold",
+      attrs: {
+        type: "button",
+        "data-act": "hold",
+        title: "Hold position — fire in range, no chase, no withdraw (P)",
+      },
+    });
+    root.append(hold);
+    const rotate = el("button", {
+      class: "qact" + (view?.rotateMode ? " is-on" : ""),
+      text: "Rotate",
+      attrs: {
+        type: "button",
+        "data-act": "rotate",
+        title: "Face a direction (R). Tanks turn hull and turret.",
+      },
+    });
+    root.append(rotate);
   }
   const inf = units.filter((e) => isInfantryType(e.type));
   if (inf.length) {
@@ -691,6 +713,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   if (act === "stop") {
     view.setAttackMoveMode(false);
     view.setForceAttackMode(false);
+    view.setRotateMode(false);
     if (units.length) ctx.net.send({ type: "cmd.stop", ids: units.map((e) => e.id) });
     return;
   }
@@ -700,6 +723,17 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   }
   if (act === "forceattack") {
     if (units.length) view.setForceAttackMode(!view.forceAttackMode);
+    return;
+  }
+  if (act === "hold") {
+    if (units.length) {
+      const hold = !units.every((e) => e.holdPosition);
+      ctx.net.send({ type: "cmd.hold", ids: units.map((e) => e.id), hold });
+    }
+    return;
+  }
+  if (act === "rotate") {
+    if (units.length) view.setRotateMode(!view.rotateMode);
     return;
   }
   if (act === "deploy") {

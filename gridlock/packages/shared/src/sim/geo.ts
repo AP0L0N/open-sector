@@ -86,8 +86,9 @@ export function occupant(state: MatchState, x: number, y: number): number {
 
 export function walkable(state: MatchState, x: number, y: number, type?: EntityType): boolean {
   if (!inBounds(state, x, y)) return false;
-  if (state.blocked[tileIndex(state, x, y)] === 1) return false;
   if ((state.occupy[tileIndex(state, x, y)] ?? 0) !== 0) return false;
+  if (isWater(state, x, y)) return !!type && isInfantryType(type);
+  if (state.blocked[tileIndex(state, x, y)] === 1) return false;
   if (isTree(state, x, y)) {
     if (!type) return false;
     if (isInfantryType(type)) return true;
@@ -95,6 +96,15 @@ export function walkable(state: MatchState, x: number, y: number, type?: EntityT
     return false;
   }
   return true;
+}
+
+/** Infantry currently standing in a water tile. Vehicles never count. */
+export function unitInWater(
+  state: MatchState,
+  e: { type: EntityType; x: number; y: number; garrisonedIn?: number | null },
+): boolean {
+  if (!isInfantryType(e.type) || e.garrisonedIn) return false;
+  return isWater(state, worldToTile(e.x, state.tileSize), worldToTile(e.y, state.tileSize));
 }
 
 export function footprint(
@@ -332,6 +342,7 @@ export function makeEntity(
     crits: [],
     stance: "stand",
     stanceOrder: "stand",
+    holdPosition: false,
   };
   state.entities.set(id, e);
   occupyEntity(state, e);

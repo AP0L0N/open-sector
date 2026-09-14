@@ -2,7 +2,7 @@
 
 import type { BuildingType, Crit, EntityKind, EntityType, ShellType, Stance, TrainType } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 14;
+export const PROTOCOL_VERSION = 15;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -106,8 +106,8 @@ export interface EntityView {
   mgOverheat?: number;
   /** Unit is inside this building. Friendly snapshots only. */
   garrisonedIn?: number;
-  /** Occupied civilian house. count is always visible; ids are friendly-only. */
-  garrison?: { count: number; cap: number; ownerId?: string };
+  /** Occupied civilian house. count and occupant HP bars are always visible. */
+  garrison?: { count: number; cap: number; ownerId?: string; bars?: { hp: number; hpMax: number }[] };
   /** Infantry taking this building. Omitted when idle. */
   capture?: { ownerId: string; progress: number };
   /** Lasting injuries. Omitted when none. */
@@ -116,6 +116,8 @@ export interface EntityView {
   stance?: Stance;
   /** Commanded infantry posture. Omitted when it matches stance. */
   stanceOrder?: Stance;
+  /** Stay put: no chase, no withdraw. Friendly snapshots. */
+  holdPosition?: boolean;
 }
 
 export interface PlayerPublic {
@@ -231,7 +233,7 @@ export type ClientMessage =
   | { type: "cmd.move"; ids: number[]; x: number; y: number }
   | { type: "cmd.attack"; ids: number[]; targetId: number }
   | { type: "cmd.attackmove"; ids: number[]; x: number; y: number }
-  | { type: "cmd.forceattack"; ids: number[]; x: number; y: number }
+  | { type: "cmd.forceattack"; ids: number[]; x: number; y: number; targetId?: number }
   | { type: "cmd.stop"; ids: number[] }
   | { type: "cmd.harvest"; ids: number[]; tileX?: number; tileY?: number }
   | { type: "cmd.ammo"; ids: number[]; shell: ShellType }
@@ -245,6 +247,8 @@ export type ClientMessage =
   | { type: "cmd.garrison"; ids: number[]; buildingId: number }
   | { type: "cmd.ungarrison"; ids?: number[]; buildingId?: number; x?: number; y?: number }
   | { type: "cmd.stance"; ids: number[]; stance: Stance }
+  | { type: "cmd.hold"; ids: number[]; hold: boolean }
+  | { type: "cmd.rotate"; ids: number[]; x: number; y: number }
   | { type: "cmd.speed"; delta: number };
 
 export type ServerMessage =

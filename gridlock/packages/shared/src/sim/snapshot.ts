@@ -7,8 +7,8 @@ import {
   isGarrisonable,
   isInfantryType,
 } from "../catalog.js";
-import { garrisonOwner, livingGarrison } from "./garrison.js";
-import { allies } from "./geo.js";
+import { garrisonBars, garrisonOwner } from "./garrison.js";
+import { allies, unitInWater } from "./geo.js";
 import { powerOf } from "./power.js";
 import { canSeeWorld, entityOnMask, visionMask } from "./vision.js";
 import type { MatchState } from "./types.js";
@@ -25,6 +25,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     if (e.garrisonedIn && !friendly) continue;
     if (!friendly && !entityOnMask(e, vis, state.width, state.height, state.tileSize)) continue;
     const job = e.queue[0];
+    const occBars = isGarrisonable(e.type) ? garrisonBars(state, e) : [];
     entities.push({
       id: e.id,
       kind: e.kind,
@@ -61,6 +62,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       crits: e.crits.length > 0 ? [...e.crits] : undefined,
       stance: isInfantryType(e.type) ? e.stance : undefined,
       stanceOrder: isInfantryType(e.type) && e.stanceOrder !== e.stance ? e.stanceOrder : undefined,
+      swimming: isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
+      holdPosition: friendly && e.holdPosition ? true : undefined,
       ammo: friendly && Object.keys(e.ammo).length > 0 ? { ...e.ammo } : undefined,
       shell: friendly && e.shell ? e.shell : undefined,
       mgAmmo: friendly && hasMg(e.type) ? e.mgAmmo : undefined,
@@ -69,9 +72,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       garrisonedIn: friendly && e.garrisonedIn ? e.garrisonedIn : undefined,
       garrison: isGarrisonable(e.type)
         ? {
-            count: livingGarrison(state, e).length,
+            count: occBars.length,
             cap: garrisonCapOf(e.type),
             ownerId: garrisonOwner(state, e) || undefined,
+            bars: occBars.length ? occBars : undefined,
           }
         : undefined,
       capture:

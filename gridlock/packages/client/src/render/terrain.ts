@@ -21,7 +21,6 @@ import {
 import {
   BUSH_A,
   BUSH_B,
-  GRASS_TILES,
   SCRAP_A,
   WATER_TEX,
   WATER_TEX_B,
@@ -186,46 +185,6 @@ function paintWaterOverlay(
     ctx.lineWidth = 0.7;
     ctx.stroke();
   }
-  ctx.restore();
-}
-
-function grassPattern(ctx: CanvasRenderingContext2D, variant: number): CanvasPattern | null {
-  const img = GRASS_TILES[variant % GRASS_TILES.length];
-  if (!img || !img.complete || img.naturalWidth <= 0) return null;
-  return ctx.createPattern(img, "repeat");
-}
-
-function paintGrassOverlay(
-  ctx: CanvasRenderingContext2D,
-  map: MapDef,
-  tx: number,
-  ty: number,
-  originX: number,
-  originY: number,
-): void {
-  const d = tileDiamond(tx, ty, map.tileSize);
-  const n = bakePt(d.n, originX, originY);
-  const e = bakePt(d.e, originX, originY);
-  const s = bakePt(d.s, originX, originY);
-  const w = bakePt(d.w, originX, originY);
-  const v = hash2(tx, ty, 4) % GRASS_TILES.length;
-  const pat = grassPattern(ctx, v);
-  if (!pat) return;
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(n.x, n.y);
-  ctx.lineTo(e.x, e.y);
-  ctx.lineTo(s.x, s.y);
-  ctx.lineTo(w.x, w.y);
-  ctx.closePath();
-  ctx.clip();
-  ctx.globalAlpha = 0.92;
-  ctx.fillStyle = pat;
-  const minX = Math.floor(Math.min(n.x, e.x, s.x, w.x));
-  const minY = Math.floor(Math.min(n.y, e.y, s.y, w.y));
-  const maxX = Math.ceil(Math.max(n.x, e.x, s.x, w.x));
-  const maxY = Math.ceil(Math.max(n.y, e.y, s.y, w.y));
-  ctx.fillRect(minX, minY, Math.max(1, maxX - minX), Math.max(1, maxY - minY));
   ctx.restore();
 }
 
@@ -477,7 +436,6 @@ function paintGround(
   const kind = map.tiles[ty * map.width + tx] ?? 0;
   fillElevatedTile(ctx, map, tx, ty, groundFill(map, tx, ty, kind, scrap), originX, originY);
   if (kind === TILE_WATER) paintWaterOverlay(ctx, map, tx, ty, originX, originY);
-  else if (kind !== TILE_BLOCKED) paintGrassOverlay(ctx, map, tx, ty, originX, originY);
 }
 
 function paintTileStamp(

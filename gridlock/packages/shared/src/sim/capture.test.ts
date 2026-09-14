@@ -5,7 +5,7 @@ import { CAPTURE_SECONDS_MIN, TICK_DT, catalog, isCivilianType } from "../catalo
 import { applyCommand } from "./commands.js";
 import { captureDurationSec } from "./capture.js";
 import { buildingCenter, destroyEntity, makeEntity, tileCenter } from "./geo.js";
-import { enterGarrison, livingGarrison } from "./garrison.js";
+import { enterGarrison } from "./garrison.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import type { MatchState } from "./types.js";
@@ -171,7 +171,7 @@ describe("infantry capture", () => {
     assert.equal(dyn.ownerId, b);
   });
 
-  it("kicks a garrison out without wrecking the house", () => {
+  it("does not capture a house while it is garrisoned", () => {
     const { state, a, b } = twoPlayerMatch();
     state.heights.fill(0);
     state.blocked.fill(0);
@@ -182,17 +182,19 @@ describe("infantry capture", () => {
       tileY: 12,
     });
     const occ = makeEntity(state, "trooper", b, tileCenter(34, ts), tileCenter(12, ts));
+    const occHp = occ.hp;
+    const houseHp = house.hp;
     assert.equal(enterGarrison(state, occ, house), true);
-    house.hpMax = 75;
     const inf = placeAdjacent(state, "trooper", a, house);
     applyCommand(state, a, { type: "cmd.attack", ids: [inf.id], targetId: house.id });
-    const wait = Math.ceil(captureDurationSec(house) / TICK_DT) + 8;
-    ticks(state, wait);
-    assert.equal(house.ownerId, a);
-    assert.equal(occ.garrisonedIn, null);
-    assert.equal(livingGarrison(state, house).length, 0);
-    assert.ok(occ.hp > 0, `evicted trooper hp ${occ.hp}`);
-    assert.ok(house.hp > 0);
+    ticks(state, 12);
+    assert.equal(house.ownerId, "");
+    assert.equal(house.hp, houseHp, "rifles must not chew occupied walls");
+    const stillIn = state.entities.get(occ.id);
+    if (stillIn) {
+      assert.equal(stillIn.garrisonedIn, house.id);
+      assert.ok(stillIn.hp < occHp, `occupant hp ${stillIn.hp} vs ${occHp}`);
+    }
   });
 
   it("eliminates a player whose Core is captured", () => {

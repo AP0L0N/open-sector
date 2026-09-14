@@ -7,6 +7,7 @@ import {
   HANDGUN,
   STANCE_AIM_SPREAD,
   STANCE_SPEED,
+  SWIM_SPEED,
   addCrit,
   catalog,
   gunStatsFor,
@@ -22,8 +23,9 @@ import type { ImpactKind } from "../protocol.js";
 import type { ArmorFace } from "./ballistics.js";
 import type { Entity } from "./types.js";
 
-export function moveSpeedMul(e: Entity): number {
+export function moveSpeedMul(e: Entity, swimming = false): number {
   if (hasCrit(e, "tracks") || hasCrit(e, "engine")) return 0;
+  if (isInfantryType(e.type) && swimming) return SWIM_SPEED;
   if (isInfantryType(e.type)) return STANCE_SPEED[stanceOf(e)];
   return 1;
 }

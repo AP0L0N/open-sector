@@ -2,8 +2,10 @@ import {
   aimFacing,
   catalog,
   FACE_FIRE_DEG,
+  GARRISON_STRUCTURAL_CALIBER,
   PROJECTILE_RADIUS,
   TANK_MG,
+  WITHDRAW_TILES,
   fires,
   hasAmmo,
   hasMg,
@@ -17,11 +19,12 @@ import {
 } from "../catalog.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
 import { aimAngle, resolveHit, RICOCHET_SPARK_SPEED, RICOCHET_TRAVEL } from "./ballistics.js";
-import { fireStats, hullTurnMul, rollCrits } from "./crits.js";
+import { fireStats, hullTurnMul, immobilized, rollCrits } from "./crits.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
 import { weaponRangeWorld } from "./elevation.js";
-import { allies, buildingBounds, playerTeam } from "./geo.js";
-import { pickGarrisonMuzzle } from "./garrison.js";
+import { allies, buildingBounds, nearestWalkable, playerTeam, tileCenter, worldToTile } from "./geo.js";
+import { garrisonIsHostile, livingGarrison, pickGarrisonMuzzle, woundGarrison } from "./garrison.js";
+import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
 import { spawnSmokeCloud } from "./smoke.js";
 import { canSeeEntity, visionMask } from "./vision.js";
@@ -32,11 +35,12 @@ export function tickCombat(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (!canFight(e)) continue;
     tickWeaponClocks(e, dt);
+    if (unitInWater(state, e)) continue;
     resolveTarget(state, e);
   }
   tickStance(state);
   for (const e of state.entities.values()) {
-    if (!canFight(e)) continue;
+    if (!canFight(e) || unitInWater(state, e)) continue;
     fireAtCurrent(state, e, dt);
   }
 }
@@ -47,13 +51,24 @@ function canFight(e: Entity): boolean {
 
 function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
   if (e.order?.kind === "forceattack") {
-    e.attackTarget = null;
-    return undefined;
+    if (e.order.targetId == null) {
+      e.attackTarget = null;
+      return undefined;
+    }
+    const t = state.entities.get(e.order.targetId);
+    if (!t || t.hp <= 0 || t.id === e.id) {
+      e.order = null;
+      e.attackTarget = null;
+      if (e.state === "attack") e.state = "idle";
+      return undefined;
+    }
+    e.attackTarget = t.id;
+    return t;
   }
   let target: Entity | undefined;
   if (e.order?.kind === "attack" && e.order.targetId != null) {
     target = state.entities.get(e.order.targetId);
-    if (!target || target.hp <= 0 || (allies(state, e.ownerId, target.ownerId) && !target.wreck)) {
+    if (!target || target.hp <= 0 || skipsFriendly(state, e, target)) {
       e.order = null;
       e.attackTarget = null;
       target = undefined;
@@ -61,7 +76,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
     }
   } else if (e.order?.kind === "attackmove" && e.attackTarget != null) {
     target = state.entities.get(e.attackTarget);
-    if (!target || target.hp <= 0 || (allies(state, e.ownerId, target.ownerId) && !target.wreck)) {
+    if (!target || target.hp <= 0 || skipsFriendly(state, e, target)) {
       e.attackTarget = null;
       target = undefined;
     }
@@ -75,28 +90,34 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
     target = acquire(state, e);
     if (target) {
       e.attackTarget = target.id;
-      if (e.order?.kind !== "attackmove") e.order = { kind: "attack", targetId: target.id };
+      if (e.order?.kind !== "attackmove") e.order = { kind: "attack", targetId: target.id, auto: true };
     }
   }
   return target;
 }
 
 function currentTarget(state: MatchState, e: Entity): Entity | undefined {
-  const id = e.attackTarget ?? (e.order?.kind === "attack" ? e.order.targetId : undefined);
+  const id =
+    e.attackTarget ??
+    (e.order?.kind === "attack" || e.order?.kind === "forceattack" ? e.order.targetId : undefined);
   if (id == null) return undefined;
   const t = state.entities.get(id);
-  if (!t || t.hp <= 0) return undefined;
-  if (allies(state, e.ownerId, t.ownerId) && !t.wreck) return undefined;
+  if (!t || t.hp <= 0 || t.id === e.id) return undefined;
+  if (e.order?.kind !== "forceattack" && skipsFriendly(state, e, t)) return undefined;
   return t;
+}
+
+function skipsFriendly(state: MatchState, e: Entity, target: Entity): boolean {
+  return !target.wreck && allies(state, e.ownerId, target.ownerId);
 }
 
 function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   const holedUp = e.garrisonedIn != null;
+  const target = currentTarget(state, e);
   const ground =
-    e.order?.kind === "forceattack" && e.order.x != null && e.order.y != null
+    !target && e.order?.kind === "forceattack" && e.order.x != null && e.order.y != null
       ? { x: e.order.x, y: e.order.y }
       : null;
-  const target = ground ? undefined : currentTarget(state, e);
   const def = catalog(e.type);
   const turreted = hasTurret(e.type);
   let remainingDeg = 180;
@@ -110,11 +131,13 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (!ground && (!target || target.hp <= 0)) return;
 
   if (!ground && target && isInfantryType(e.type) && target.kind === "building" && !target.wreck) {
-    if (!holedUp) {
-      e.state = "attack";
-      if (!turreted) turnToward(e, target.x, target.y, def.turnDegPerSec * hullTurnMul(e), dt);
+    if (!garrisonIsHostile(state, e.ownerId, target)) {
+      if (!holedUp) {
+        e.state = "attack";
+        if (!turreted) turnToward(e, target.x, target.y, def.turnDegPerSec * hullTurnMul(e), dt);
+      }
+      return;
     }
-    return;
   }
   const range = weaponRangeWorld(state, e);
   const dist = Math.hypot(aimX - e.x, aimY - e.y);
@@ -243,7 +266,7 @@ function fireRound(
     () => nextRand(state),
     moving,
     stats.spreadPower ?? 1,
-    target ? stanceTargetSpreadMul(target) : 1,
+    target ? stanceTargetSpreadMul(target, unitInWater(state, target)) : 1,
   );
   const speed = stats.projectileSpeed;
   const muzzleReach = e.radius + 2;
@@ -323,13 +346,20 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       vy: p.vy,
       rand,
     });
-    e.hp -= res.damage;
-    if (e.hp < 0) e.hp = 0;
-    if (e.hp > 0) rollCrits(e, res.face, res.kind, res.damage, rand);
+    const occupied = isGarrisonable(e.type) && livingGarrison(state, e).length > 0;
+    const chipWalls = !occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER;
+    if (chipWalls) {
+      e.hp -= res.damage;
+      if (e.hp < 0) e.hp = 0;
+      if (e.hp > 0) rollCrits(e, res.face, res.kind, res.damage, rand);
+      if (e.hp > 0 && res.kind !== "ricochet" && res.damage > 0) maybeWithdraw(state, e, p);
+    }
+    if (occupied) woundGarrison(state, e, res.damage, p.caliber);
     const ix = e.kind === "building" ? struck.x : e.x;
     const iy = e.kind === "building" ? struck.y : e.y;
     const lethal = e.hp <= 0 && res.kind !== "ricochet";
-    const kind: ImpactKind = lethal ? "kill" : res.kind;
+    let kind: ImpactKind = lethal ? "kill" : res.kind;
+    if (!chipWalls && kind === "kill") kind = "hit";
     const blast = lethal && !e.wreck && (e.kind === "building" || leavesWreck(e.type));
     pushImpact(
       state,
@@ -401,7 +431,6 @@ function nearestSweepHit(
     if (e.hp <= 0) continue;
     if (e.id === p.ignoreId) continue;
     if (e.garrisonedIn != null) continue;
-    if (!e.wreck && allies(state, p.ownerId, e.ownerId)) continue;
     const hit = sweepAgainst(state, x0, y0, p, e);
     if (!hit) continue;
     if (!best || hit.t < best.t) best = { e, t: hit.t, x: hit.x, y: hit.y };
@@ -426,7 +455,7 @@ function sweepAgainst(
           p.y,
           e.x,
           e.y,
-          e.radius * stanceHitRadiusMul(e) + PROJECTILE_RADIUS,
+          e.radius * stanceHitRadiusMul(e, unitInWater(state, e)) + PROJECTILE_RADIUS,
         );
   if (t == null) return null;
   return { t, x: x0 + (p.x - x0) * t, y: y0 + (p.y - y0) * t };
@@ -500,11 +529,10 @@ function acquire(state: MatchState, e: Entity): Entity | undefined {
   for (const o of state.entities.values()) {
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
-    if (isInfantryType(e.type) && o.kind === "building") continue;
-    if (isGarrisonable(o.type) && o.garrison.length === 0) continue;
-    if (isGarrisonable(o.type)) {
-      const occ = o.garrison[0] != null ? state.entities.get(o.garrison[0]) : undefined;
-      if (occ && allies(state, e.ownerId, occ.ownerId)) continue;
+    if (isInfantryType(e.type) && o.kind === "building") {
+      if (!garrisonIsHostile(state, e.ownerId, o)) continue;
+    } else if (isGarrisonable(o.type) && !garrisonIsHostile(state, e.ownerId, o)) {
+      continue;
     }
     if (!canSeeEntity(state, e.ownerId, o, vis)) continue;
     const dx = o.x - e.x;
@@ -516,4 +544,67 @@ function acquire(state: MatchState, e: Entity): Entity | undefined {
     }
   }
   return best;
+}
+
+function maybeWithdraw(state: MatchState, victim: Entity, p: Projectile): void {
+  if (victim.kind !== "unit" || victim.wreck || victim.garrisonedIn) return;
+  if (victim.holdPosition || immobilized(victim)) return;
+  if (victim.state === "deploy" || victim.state === "undeploy") return;
+  if (victim.waypoints.length > 0) return;
+  if (keepsStation(victim)) return;
+  const shooter = p.fromId > 0 ? state.entities.get(p.fromId) : undefined;
+  if (threatInSight(state, victim, shooter)) return;
+  const fromX = shooter && shooter.hp > 0 ? shooter.x : p.x - p.vx;
+  const fromY = shooter && shooter.hp > 0 ? shooter.y : p.y - p.vy;
+  const dest = withdrawDest(state, victim, fromX, fromY);
+  if (!dest) return;
+  victim.order = { kind: "withdraw", x: dest.x, y: dest.y };
+  victim.attackTarget = null;
+  victim.harvestTile = null;
+  victim.state = "move";
+  setPath(state, victim, dest.x, dest.y);
+}
+
+function keepsStation(e: Entity): boolean {
+  const k = e.order?.kind;
+  if (!k || k === "withdraw") return false;
+  if (k === "attack" && e.order?.auto) return false;
+  return true;
+}
+
+function threatInSight(state: MatchState, victim: Entity, shooter: Entity | undefined): boolean {
+  if (!shooter || shooter.hp <= 0) return false;
+  const seen =
+    shooter.garrisonedIn != null ? (state.entities.get(shooter.garrisonedIn) ?? shooter) : shooter;
+  return canSeeEntity(state, victim.ownerId, seen);
+}
+
+function withdrawDest(
+  state: MatchState,
+  e: Entity,
+  fromX: number,
+  fromY: number,
+): { x: number; y: number } | null {
+  const ts = state.tileSize;
+  let dx = e.x - fromX;
+  let dy = e.y - fromY;
+  if (dx * dx + dy * dy < 1) {
+    dx = -Math.cos(e.facing);
+    dy = -Math.sin(e.facing);
+  }
+  const ang = Math.atan2(dy, dx);
+  const dist = WITHDRAW_TILES * ts;
+  const offsets = [0, 0.45, -0.45, 0.9, -0.9, 1.35, -1.35];
+  for (const off of offsets) {
+    const a = ang + off;
+    const wx = e.x + Math.cos(a) * dist;
+    const wy = e.y + Math.sin(a) * dist;
+    const tile = nearestWalkable(state, worldToTile(wx, ts), worldToTile(wy, ts), e.type);
+    if (!tile) continue;
+    const cx = tileCenter(tile.x, ts);
+    const cy = tileCenter(tile.y, ts);
+    if (Math.hypot(cx - e.x, cy - e.y) < ts * 2) continue;
+    return { x: cx, y: cy };
+  }
+  return null;
 }

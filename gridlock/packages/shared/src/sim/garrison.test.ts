@@ -11,12 +11,13 @@ import {
 import { TILE_TREE, TILE_WATER } from "../maps.js";
 import { hasFullLos } from "./elevation.js";
 import { applyCommand } from "./commands.js";
-import { makeEntity, tileCenter, walkable } from "./geo.js";
+import { buildingBounds, makeEntity, tileCenter, walkable } from "./geo.js";
 import { enterGarrison, livingGarrison, spillGarrison } from "./garrison.js";
 import { createMatch, step } from "./match.js";
-import { tickCombat } from "./combat.js";
+import { tickCombat, tickProjectiles } from "./combat.js";
+import { snapshotFor } from "./snapshot.js";
 import { TICK_DT } from "../catalog.js";
-import type { MatchState } from "./types.js";
+import type { MatchState, Projectile } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   const r = createRoom({
@@ -156,7 +157,152 @@ describe("garrison", () => {
     const res = applyCommand(state, a, { type: "cmd.garrison", ids: [tank.id], buildingId: house.id });
     assert.equal(res.ok, false);
   });
+
+  it("puts occupant HP bars on snapshots for both sides", () => {
+    const { state, a, b } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    const ts = state.tileSize;
+    const house = makeEntity(state, "cottage", "", tileCenter(40, ts), tileCenter(16, ts), {
+      tileX: 36,
+      tileY: 12,
+    });
+    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    inf.hp = 22;
+    assert.equal(enterGarrison(state, inf, house), true);
+    makeEntity(state, "trooper", b, tileCenter(32, ts), tileCenter(12, ts));
+    const you = snapshotFor(state, a).entities.find((e) => e.id === house.id);
+    const them = snapshotFor(state, b).entities.find((e) => e.id === house.id);
+    assert.ok(you?.garrison?.bars);
+    assert.deepEqual(you!.garrison!.bars, [{ hp: 22, hpMax: inf.hpMax }]);
+    assert.ok(them?.garrison?.bars);
+    assert.deepEqual(them!.garrison!.bars, [{ hp: 22, hpMax: inf.hpMax }]);
+    assert.equal(snapshotFor(state, b).entities.some((e) => e.id === inf.id), false);
+  });
+
+  it("wounds random occupants with small arms without chipping the walls", () => {
+    const { state, b } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    const ts = state.tileSize;
+    const house = makeEntity(state, "cottage", "", tileCenter(40, ts), tileCenter(16, ts), {
+      tileX: 36,
+      tileY: 12,
+    });
+    const occ = makeEntity(state, "trooper", b, tileCenter(34, ts), tileCenter(12, ts));
+    assert.equal(enterGarrison(state, occ, house), true);
+    const houseHp = house.hp;
+    const occHp = occ.hp;
+    const box = buildingBounds(house, ts);
+    fireAt(state, {
+      x: box.x0 - 12,
+      y: house.y,
+      vx: catalog("trooper").projectileSpeed,
+      vy: 0,
+      damage: catalog("trooper").damage,
+      penetration: catalog("trooper").penetration,
+      caliber: catalog("trooper").caliber,
+    });
+    tickProjectiles(state, TICK_DT);
+    assert.equal(house.hp, houseHp);
+    assert.ok(occ.hp < occHp, `occupant hp ${occ.hp} vs ${occHp}`);
+    assert.equal(occ.garrisonedIn, house.id);
+  });
+
+  it("lets a tank shell damage the house and the garrison", () => {
+    const { state, b } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    const ts = state.tileSize;
+    const house = makeEntity(state, "cottage", "", tileCenter(40, ts), tileCenter(16, ts), {
+      tileX: 36,
+      tileY: 12,
+    });
+    const occ = makeEntity(state, "trooper", b, tileCenter(34, ts), tileCenter(12, ts));
+    assert.equal(enterGarrison(state, occ, house), true);
+    const houseHp = house.hp;
+    const occHp = occ.hp;
+    const box = buildingBounds(house, ts);
+    const gun = catalog("warden");
+    fireAt(state, {
+      x: box.x0 - 12,
+      y: house.y,
+      vx: gun.projectileSpeed,
+      vy: 0,
+      damage: gun.damage,
+      penetration: gun.penetration,
+      caliber: gun.caliber,
+    });
+    tickProjectiles(state, TICK_DT);
+    assert.ok(house.hp < houseHp, `house hp ${house.hp} vs ${houseHp}`);
+    assert.ok(occ.hp < occHp, `occupant hp ${occ.hp} vs ${occHp}`);
+  });
+
+  it("lets an occupant die inside while the house still stands", () => {
+    const { state, b } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    const ts = state.tileSize;
+    const house = makeEntity(state, "cottage", "", tileCenter(40, ts), tileCenter(16, ts), {
+      tileX: 36,
+      tileY: 12,
+    });
+    const occ = makeEntity(state, "trooper", b, tileCenter(34, ts), tileCenter(12, ts));
+    const other = makeEntity(state, "trooper", b, tileCenter(33, ts), tileCenter(12, ts));
+    assert.equal(enterGarrison(state, occ, house), true);
+    assert.equal(enterGarrison(state, other, house), true);
+    const box = buildingBounds(house, ts);
+    const gun = catalog("warden");
+    for (let i = 0; i < 6 && livingGarrison(state, house).length === 2; i++) {
+      fireAt(state, {
+        x: box.x0 - 12,
+        y: house.y,
+        vx: gun.projectileSpeed,
+        vy: 0,
+        damage: gun.damage,
+        penetration: gun.penetration,
+        caliber: gun.caliber,
+      });
+      step(state, TICK_DT);
+    }
+    assert.ok(house.hp > 0, `house hp ${house.hp}`);
+    assert.ok(livingGarrison(state, house).length < 2, "someone must die inside");
+    assert.ok(livingGarrison(state, house).every((u) => u.garrisonedIn === house.id));
+  });
 });
+
+function fireAt(
+  state: MatchState,
+  opts: {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    damage: number;
+    penetration: number;
+    caliber: number;
+  },
+): Projectile {
+  const p: Projectile = {
+    id: state.nextId++,
+    ownerId: "A",
+    team: 1,
+    x: opts.x,
+    y: opts.y,
+    vx: opts.vx,
+    vy: opts.vy,
+    damage: opts.damage,
+    penetration: opts.penetration,
+    caliber: opts.caliber,
+    life: 1,
+    ignoreId: -1,
+    fromId: -1,
+    bounced: false,
+    shell: null,
+  };
+  state.projectiles.push(p);
+  return p;
+}
 
 describe("water", () => {
   it("is not walkable on the yard ponds", () => {

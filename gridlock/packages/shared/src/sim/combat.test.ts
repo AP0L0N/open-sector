@@ -4,6 +4,7 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { SHELLS, TICK_DT, catalog, isCivilianType } from "../catalog.js";
 import { applyCommand } from "./commands.js";
 import { tickProjectiles } from "./combat.js";
+import { enterGarrison } from "./garrison.js";
 import { buildingBounds, buildingCenter, destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { inSmokeCloud } from "./smoke.js";
 import { createMatch, step } from "./match.js";
@@ -223,5 +224,228 @@ describe("force attack", () => {
     }
     assert.equal(tank.ammo.ap, ap0 - 1, `ammo ${tank.ammo.ap}`);
     assert.equal(fired, true, "must have fired at the point");
+  });
+
+  it("lets a unit force-attack a friendly", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const gun = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const pal = makeEntity(state, "trooper", "A", tileCenter(28, ts), tileCenter(24, ts));
+    gun.facing = 0;
+    const hp0 = pal.hp;
+    const res = applyCommand(state, "A", {
+      type: "cmd.forceattack",
+      ids: [gun.id],
+      x: pal.x,
+      y: pal.y,
+      targetId: pal.id,
+    });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    assert.equal(gun.order?.kind, "forceattack");
+    assert.equal(gun.order?.targetId, pal.id);
+    for (let i = 0; i < 20; i++) step(state, TICK_DT);
+    assert.ok(pal.hp < hp0, `friendly hp ${pal.hp} vs ${hp0}`);
+  });
+});
+
+describe("friendly fire", () => {
+  it("does not auto-attack an ally", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const a = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const b = makeEntity(state, "trooper", "A", tileCenter(26, ts), tileCenter(24, ts));
+    a.facing = 0;
+    const hpA = a.hp;
+    const hpB = b.hp;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [a.id], targetId: b.id });
+    for (let i = 0; i < 20; i++) step(state, TICK_DT);
+    assert.equal(a.hp, hpA);
+    assert.equal(b.hp, hpB);
+    assert.notEqual(a.order?.kind, "forceattack");
+  });
+
+  it("hits an allied unit standing in the line of fire", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const gun = makeEntity(state, "trooper", "A", tileCenter(20, ts), tileCenter(24, ts));
+    const pal = makeEntity(state, "hauler", "A", tileCenter(22, ts), tileCenter(24, ts));
+    pal.autoHarvest = false;
+    const dummy = makeEntity(state, "hauler", "B", tileCenter(30, ts), tileCenter(24, ts));
+    dummy.autoHarvest = false;
+    gun.facing = 0;
+    const palHp = pal.hp;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [gun.id], targetId: dummy.id });
+    for (let i = 0; i < 16; i++) step(state, TICK_DT);
+    assert.ok(pal.hp < palHp, `blocker hp ${pal.hp} vs ${palHp}`);
+  });
+});
+
+describe("hold position", () => {
+  it("does not walk into range while holding", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(20, ts), tileCenter(24, ts));
+    const dummy = makeEntity(state, "hauler", "B", tileCenter(70, ts), tileCenter(24, ts));
+    dummy.autoHarvest = false;
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    const x0 = tank.x;
+    applyCommand(state, "A", { type: "cmd.hold", ids: [tank.id], hold: true });
+    applyCommand(state, "A", { type: "cmd.attack", ids: [tank.id], targetId: dummy.id });
+    for (let i = 0; i < 30; i++) step(state, TICK_DT);
+    assert.equal(tank.holdPosition, true);
+    assert.ok(Math.abs(tank.x - x0) < 6, `held tank walked x=${tank.x} from ${x0}`);
+  });
+});
+
+describe("rotate", () => {
+  it("turns a Warden hull and turret toward the click", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    const res = applyCommand(state, "A", {
+      type: "cmd.rotate",
+      ids: [tank.id],
+      x: tank.x,
+      y: tank.y + 200,
+    });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    for (let i = 0; i < 24; i++) step(state, TICK_DT);
+    const hull = Math.abs(tank.facing - Math.PI / 2);
+    const gun = Math.abs(tank.turretFacing - Math.PI / 2);
+    assert.ok(hull < 0.12, `hull facing=${tank.facing}`);
+    assert.ok(gun < 0.12, `turret facing=${tank.turretFacing}`);
+    assert.equal(tank.order, null);
+  });
+});
+
+describe("withdraw", () => {
+  it("retreats when idle and hit from out of sight", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const victim = makeEntity(state, "trooper", "A", tileCenter(40, ts), tileCenter(40, ts));
+    const shooter = makeEntity(state, "trooper", "B", tileCenter(110, ts), tileCenter(40, ts));
+    victim.facing = 0;
+    const x0 = victim.x;
+    const p = fireShell(state, {
+      x: victim.x - 16,
+      y: victim.y,
+      vx: catalog("trooper").projectileSpeed,
+      vy: 0,
+      damage: 12,
+      penetration: 6,
+      caliber: 8,
+    });
+    p.fromId = shooter.id;
+    p.ownerId = "B";
+    p.team = 2;
+    for (let i = 0; i < 18; i++) step(state, TICK_DT);
+    assert.ok(victim.hp > 0, "victim should survive the rifle hit");
+    assert.ok(
+      victim.order?.kind === "withdraw" || victim.x < x0 - 8,
+      `expected withdraw x=${victim.x} from ${x0} order=${victim.order?.kind}`,
+    );
+  });
+
+  it("stays put when the shooter is in sight", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const victim = makeEntity(state, "hauler", "A", tileCenter(40, ts), tileCenter(40, ts));
+    victim.autoHarvest = false;
+    const shooter = makeEntity(state, "trooper", "B", tileCenter(44, ts), tileCenter(40, ts));
+    const x0 = victim.x;
+    const p = fireShell(state, {
+      x: victim.x - 16,
+      y: victim.y,
+      vx: catalog("trooper").projectileSpeed,
+      vy: 0,
+      damage: 12,
+      penetration: 6,
+      caliber: 8,
+    });
+    p.fromId = shooter.id;
+    p.ownerId = "B";
+    p.team = 2;
+    for (let i = 0; i < 8; i++) step(state, TICK_DT);
+    assert.notEqual(victim.order?.kind, "withdraw");
+    assert.ok(Math.abs(victim.x - x0) < 8, `visible hit moved x=${victim.x}`);
+  });
+
+  it("stays put while holding even if the shot is from fog", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const victim = makeEntity(state, "trooper", "A", tileCenter(40, ts), tileCenter(40, ts));
+    const shooter = makeEntity(state, "trooper", "B", tileCenter(110, ts), tileCenter(40, ts));
+    applyCommand(state, "A", { type: "cmd.hold", ids: [victim.id], hold: true });
+    const x0 = victim.x;
+    const p = fireShell(state, {
+      x: victim.x - 16,
+      y: victim.y,
+      vx: catalog("trooper").projectileSpeed,
+      vy: 0,
+      damage: 12,
+      penetration: 6,
+      caliber: 8,
+    });
+    p.fromId = shooter.id;
+    p.ownerId = "B";
+    p.team = 2;
+    for (let i = 0; i < 12; i++) step(state, TICK_DT);
+    assert.equal(victim.holdPosition, true);
+    assert.notEqual(victim.order?.kind, "withdraw");
+    assert.ok(Math.abs(victim.x - x0) < 6, `held unit fled x=${victim.x}`);
+  });
+
+  it("does not dump a garrison when the house is hit", () => {
+    const { state, a } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const house = makeEntity(state, "cottage", "", tileCenter(48, ts), tileCenter(40, ts), {
+      tileX: 46,
+      tileY: 38,
+    });
+    const inf = makeEntity(state, "trooper", a, tileCenter(44, ts), tileCenter(38, ts));
+    assert.equal(enterGarrison(state, inf, house), true);
+    const shooter = makeEntity(state, "trooper", "B", tileCenter(110, ts), tileCenter(40, ts));
+    const box = buildingBounds(house, ts);
+    const p = fireShell(state, {
+      x: box.x0 - 12,
+      y: house.y,
+      vx: catalog("warden").projectileSpeed,
+      vy: 0,
+      damage: 12,
+      penetration: 6,
+      caliber: 8,
+    });
+    p.fromId = shooter.id;
+    p.ownerId = "B";
+    p.team = 2;
+    for (let i = 0; i < 8; i++) step(state, TICK_DT);
+    assert.equal(inf.garrisonedIn, house.id);
+    assert.notEqual(inf.order?.kind, "withdraw");
   });
 });

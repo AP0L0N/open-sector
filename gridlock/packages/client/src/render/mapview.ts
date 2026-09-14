@@ -153,6 +153,7 @@ export class MapView {
   private terrain: TerrainBake | null = null;
   private miniTerrain: MiniBake | null = null;
   private liveMap: MapDef | null = null;
+  private treeStems: { tx: number; ty: number }[] | null = null;
   private fog: HTMLCanvasElement | null = null;
   private fogCtx: CanvasRenderingContext2D | null = null;
   private miniFog: HTMLCanvasElement | null = null;
@@ -180,6 +181,7 @@ export class MapView {
   placeMode = false;
   attackMoveMode = false;
   forceAttackMode = false;
+  rotateMode = false;
   onSelect: (ids: number[]) => void = () => {};
   onCommand: (msg: ClientMessage) => void = () => {};
   onPlaceMode: () => void = () => {};
@@ -191,6 +193,7 @@ export class MapView {
     if (on) {
       this.placeMode = false;
       this.forceAttackMode = false;
+      this.rotateMode = false;
     }
     this.onAttackMoveMode();
     this.onPlaceMode();
@@ -202,6 +205,19 @@ export class MapView {
     if (on) {
       this.placeMode = false;
       this.attackMoveMode = false;
+      this.rotateMode = false;
+    }
+    this.onAttackMoveMode();
+    this.onPlaceMode();
+  }
+
+  setRotateMode(on: boolean): void {
+    if (this.rotateMode === on) return;
+    this.rotateMode = on;
+    if (on) {
+      this.placeMode = false;
+      this.attackMoveMode = false;
+      this.forceAttackMode = false;
     }
     this.onAttackMoveMode();
     this.onPlaceMode();
@@ -329,6 +345,7 @@ export class MapView {
     }
     if (this.attackMoveMode && this.ownSelectedIds().length === 0) this.setAttackMoveMode(false);
     if (this.forceAttackMode && this.ownSelectedIds().length === 0) this.setForceAttackMode(false);
+    if (this.rotateMode && this.ownSelectedIds().length === 0) this.setRotateMode(false);
     const placing = this.placeMode;
     if (!this.readyBuilding()) this.placeMode = false;
     if (this.placeMode !== placing) this.onPlaceMode();
@@ -360,6 +377,7 @@ export class MapView {
       dirty.push(i);
     }
     if (dirty.length === 0) return;
+    this.treeStems = null;
     if (this.terrain) restampTiles(this.terrain, map, dirty, this.curr.scrap);
     if (this.miniTerrain) restampMini(this.miniTerrain, map, dirty, this.curr.scrap);
   }
@@ -514,6 +532,7 @@ export class MapView {
     if (!m) throw new Error("missing map");
     if (!this.liveMap || this.liveMap.id !== m.id) {
       this.liveMap = { ...m, tiles: m.tiles.slice() };
+      this.treeStems = null;
     }
     return this.liveMap;
   }
@@ -533,9 +552,10 @@ export class MapView {
       }
       if (e.button === 2) {
         e.preventDefault();
-        if (this.attackMoveMode || this.forceAttackMode) {
+        if (this.attackMoveMode || this.forceAttackMode || this.rotateMode) {
           this.setAttackMoveMode(false);
           this.setForceAttackMode(false);
+          this.setRotateMode(false);
           return;
         }
         this.onRight(mx, my);
@@ -544,6 +564,10 @@ export class MapView {
       if (e.button === 0) {
         if (this.forceAttackMode) {
           this.commitForceAttack(mx, my);
+          return;
+        }
+        if (this.rotateMode) {
+          this.commitRotate(mx, my);
           return;
         }
         if (this.attackMoveMode) {
@@ -656,6 +680,7 @@ export class MapView {
       e.preventDefault();
       this.setAttackMoveMode(false);
       this.setForceAttackMode(false);
+      this.setRotateMode(false);
       const ids = [...this.selected].filter((id) => {
         const ent = this.curr.entities.find((x) => x.id === id);
         return !!ent && ent.ownerId === this.curr.youPlayerId && !ent.wreck && ent.kind === "unit";
@@ -675,6 +700,26 @@ export class MapView {
       if (ids.length) this.setForceAttackMode(!this.forceAttackMode);
       return;
     }
+    if (k === "r") {
+      e.preventDefault();
+      const ids = this.ownSelectedIds();
+      if (ids.length) this.setRotateMode(!this.rotateMode);
+      return;
+    }
+    if (k === "p") {
+      e.preventDefault();
+      const own = this.curr.entities.filter(
+        (ent) =>
+          this.selected.has(ent.id) &&
+          ent.ownerId === this.curr.youPlayerId &&
+          !ent.wreck &&
+          ent.kind === "unit",
+      );
+      if (own.length === 0) return;
+      const hold = !own.every((ent) => ent.holdPosition);
+      this.onCommand({ type: "cmd.hold", ids: own.map((ent) => ent.id), hold });
+      return;
+    }
     if (k === "c") {
       e.preventDefault();
       this.stanceHotkey("crouch");
@@ -686,10 +731,11 @@ export class MapView {
       return;
     }
     if (k === "escape") {
-      if (this.attackMoveMode || this.forceAttackMode) {
+      if (this.attackMoveMode || this.forceAttackMode || this.rotateMode) {
         e.preventDefault();
         this.setAttackMoveMode(false);
         this.setForceAttackMode(false);
+        this.setRotateMode(false);
       }
     }
   };
@@ -783,8 +829,22 @@ export class MapView {
     });
     this.setForceAttackMode(false);
     if (ids.length === 0) return;
+    const hit = this.hit(px, py);
+    if (hit && hit.hp > 0 && ids.some((id) => id !== hit.id)) {
+      this.onCommand({ type: "cmd.forceattack", ids, x: hit.x, y: hit.y, targetId: hit.id });
+      return;
+    }
     const w = this.screenToWorld(px, py);
     this.onCommand({ type: "cmd.forceattack", ids, x: w.x, y: w.y });
+  }
+
+  private commitRotate(px: number, py: number): void {
+    const ids = this.ownSelectedIds();
+    this.setRotateMode(false);
+    if (ids.length === 0) return;
+    const hit = this.hit(px, py);
+    const w = hit ? { x: hit.x, y: hit.y } : this.screenToWorld(px, py);
+    this.onCommand({ type: "cmd.rotate", ids, x: w.x, y: w.y });
   }
 
   private specialSelected(): void {
@@ -900,20 +960,28 @@ export class MapView {
     return EXTRUDE[type];
   }
 
+  /** Structures always paint under units so tanks never slip beneath a corner. */
+  private drawLayer(e: EntityView): number {
+    return e.kind === "building" ? 0 : 1;
+  }
+
   private depthOf(e: EntityView): number {
     const ts = this.ts();
     if (e.kind === "building") return isoDepth((e.tileX + e.tileW) * ts, (e.tileY + e.tileH) * ts);
     const p = this.lerpEnt(e);
-    return isoDepth(p.x, p.y) + 1;
+    return isoDepth(p.x, p.y);
   }
 
   private hit(px: number, py: number): EntityView | null {
     const ts = this.ts();
     const ix = px + this.camX;
     const iy = py + this.camY;
-    const list = [...this.curr.entities].sort((a, b) => this.depthOf(b) - this.depthOf(a));
+    const list = [...this.curr.entities].sort(
+      (a, b) => this.drawLayer(b) - this.drawLayer(a) || this.depthOf(b) - this.depthOf(a),
+    );
     for (const e of list) {
       if (e.kind === "unit") {
+        if (e.garrisonedIn) continue;
         const p = this.lerpEnt(e);
         const spr = spriteFor(e.type, e.stance);
         if (spr) {
@@ -1151,10 +1219,11 @@ export class MapView {
       ...this.curr.entities,
       ...[...this.ghosts.values()].filter((g) => !liveIds.has(g.id)),
     ];
-    const items: { z: number; run: () => void }[] = [];
+    const items: { layer: number; z: number; run: () => void }[] = [];
     for (const e of drawList) {
       const ghost = !liveIds.has(e.id);
       items.push({
+        layer: this.drawLayer(e),
         z: this.depthOf(e),
         run: () => {
           if (e.kind === "building") this.drawBuilding(e, ghost);
@@ -1163,7 +1232,7 @@ export class MapView {
       });
     }
     this.collectTrees(items);
-    items.sort((a, b) => a.z - b.z);
+    items.sort((a, b) => a.layer - b.layer || a.z - b.z);
     for (const it of items) it.run();
 
     for (const p of this.curr.projectiles) {
@@ -1216,6 +1285,7 @@ export class MapView {
     this.drawSpecialCursor();
     this.drawAttackCursor();
     this.drawForceCursor();
+    this.drawRotateCursor();
   }
 
   private drawForceCursor(): void {
@@ -1244,6 +1314,35 @@ export class MapView {
     ctx.strokeStyle = "#140e0a";
     ctx.strokeText("FIRE", x + 12, y + 8);
     ctx.fillText("FIRE", x + 12, y + 8);
+    ctx.restore();
+  }
+
+  private drawRotateCursor(): void {
+    if (!this.rotateMode || this.overControl || this.hoverSpecial) return;
+    if (this.mouseX < 0 || this.mouseY < 0) return;
+    const ctx = this.ctx;
+    const x = this.mouseX;
+    const y = this.mouseY;
+    ctx.save();
+    ctx.strokeStyle = "#e8b84a";
+    ctx.fillStyle = "#e8b84a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(x, y, 9, -Math.PI * 0.15, Math.PI * 1.35);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x + 8, y - 6);
+    ctx.lineTo(x + 14, y - 1);
+    ctx.lineTo(x + 5, y + 1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#140e0a";
+    ctx.strokeText("FACE", x + 14, y + 8);
+    ctx.fillText("FACE", x + 14, y + 8);
     ctx.restore();
   }
 
@@ -1353,37 +1452,52 @@ export class MapView {
     });
   }
 
-  private collectTrees(items: { z: number; run: () => void }[]): void {
+  private stemsOf(map: MapDef): { tx: number; ty: number }[] {
+    if (this.treeStems) return this.treeStems;
+    const out: { tx: number; ty: number }[] = [];
+    for (let ty = 0; ty < map.height; ty++) {
+      for (let tx = 0; tx < map.width; tx++) {
+        if (treePropKind(map, tx, ty)) out.push({ tx, ty });
+      }
+    }
+    this.treeStems = out;
+    return out;
+  }
+
+  private collectTrees(items: { layer: number; z: number; run: () => void }[]): void {
     const map = this.map();
-    const vis = this.visibleTiles();
     const ts = map.tileSize;
     const explored = this.explored;
     const w = map.width;
-    const cleared = new Set((this.curr.clearedTrees ?? []).map((t) => t.y * w + t.x));
-    for (let ty = vis.y0; ty <= vis.y1; ty++) {
-      for (let tx = vis.x0; tx <= vis.x1; tx++) {
-        if (cleared.has(ty * w + tx)) continue;
-        const kind = treePropKind(map, tx, ty);
-        if (!kind) continue;
-        if (explored && !explored[ty * w + tx]) continue;
-        const h = Math.imul(tx * 374761393 + ty * 668265263 + 9, 1103515245) >>> 0;
-        const pine = kind === "lone" ? h % 3 !== 1 : h % 5 === 0;
-        const drawH = kind === "lone" ? (pine ? 50 : 38) : pine ? 34 : 28;
-        const wx = (tx + 0.5) * ts;
-        const wy = (ty + 0.55) * ts;
-        const dim = !this.lit(tx, ty);
-        items.push({
-          z: isoDepth(wx, wy),
-          run: () => {
-            const p = this.toScreen(wx, wy);
-            const ctx = this.ctx;
-            ctx.save();
-            if (dim) ctx.globalAlpha = 0.48;
-            drawPropSprite(ctx, pine ? TREE_PINE : TREE_OAK, p.x, p.y, drawH, (h & 2) === 0 && !pine);
-            ctx.restore();
-          },
-        });
-      }
+    const { w: vw, h: vh } = this.viewSize();
+    for (const { tx, ty } of this.stemsOf(map)) {
+      if (map.tiles[ty * w + tx] !== TILE_TREE) continue;
+      if (explored && !explored[ty * w + tx]) continue;
+      const kind = treePropKind(map, tx, ty);
+      if (!kind) continue;
+      const wx = (tx + 0.5) * ts;
+      const wy = (ty + 0.55) * ts;
+      const p = this.toScreen(wx, wy);
+      // Iso AABB of the viewport covers most of the map; skip sprites that
+      // actually sit off-screen. Source art is ~800–1200px tall.
+      if (p.x < -64 || p.y < -80 || p.x > vw + 64 || p.y > vh + 40) continue;
+      const h = Math.imul(tx * 374761393 + ty * 668265263 + 9, 1103515245) >>> 0;
+      const pine = kind === "lone" ? h % 3 !== 1 : h % 5 === 0;
+      const drawH = kind === "lone" ? (pine ? 50 : 38) : pine ? 34 : 28;
+      const dim = !this.lit(tx, ty);
+      const flip = (h & 2) === 0 && !pine;
+      const spr = pine ? TREE_PINE : TREE_OAK;
+      items.push({
+        layer: 0,
+        z: isoDepth(wx, wy),
+        run: () => {
+          const ctx = this.ctx;
+          ctx.save();
+          if (dim) ctx.globalAlpha = 0.48;
+          drawPropSprite(ctx, spr, p.x, p.y, drawH, flip);
+          ctx.restore();
+        },
+      });
     }
   }
 
@@ -1440,11 +1554,11 @@ export class MapView {
     const hex = this.ownerColor(e);
     const dim = ghost || !this.buildingLit(e);
     const spr = buildingSpriteFor(e.type);
+    const south = this.toScreen(x + bw, y + bh, elev);
+    const east = this.toScreen(x + bw, y, elev);
+    const west = this.toScreen(x, y + bh, elev);
     let top: { cx: number; cy: number };
     if (spr && spriteReady(spr)) {
-      const south = this.toScreen(x + bw, y + bh, elev);
-      const east = this.toScreen(x + bw, y, elev);
-      const west = this.toScreen(x, y + bh, elev);
       const footprintW = east.x - west.x;
       ctx.save();
       ctx.globalAlpha = dim ? 0.5 : 1;
@@ -1475,6 +1589,7 @@ export class MapView {
     const bar = this.toScreen(x + bw / 2, y + bh / 2, elev);
     if (!ghost) {
       this.maybeHp(e, bar.x - bw * 0.28, spr && spriteReady(spr) ? top.cy + 6 : bar.y - ez - 8, bw * 0.56);
+      this.drawGarrisonBars(e, east.x + 5, spr && spriteReady(spr) ? top.cy + 8 : bar.y - ez - 8);
     }
     this.drawDeployProgress(e, bar.x - bw * 0.28, bar.y + 4, bw * 0.56);
     if (!ghost) {
@@ -1506,16 +1621,6 @@ export class MapView {
     ctx.stroke();
   }
 
-  private drawGroundMark(wx: number, wy: number, r: number, color: string): void {
-    const s = this.toScreen(wx, wy);
-    const ctx = this.ctx;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.ellipse(s.x, s.y, r * 1.25, r * 0.62, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  }
-
   private drawUnit(e: EntityView): void {
     const spr = spriteFor(e.type, e.stance);
     if (spr) {
@@ -1533,8 +1638,8 @@ export class MapView {
     ctx.ellipse(s.x, s.y, r * 1.2, r * 0.55, 0, 0, Math.PI * 2);
     ctx.fill();
     const top = this.drawIsoBox(p.x - r, p.y - r, r * 2, r * 2, ez, hex, {
-      stroke: this.selected.has(e.id) ? "#e8b84a" : "#111",
-      strokeW: this.selected.has(e.id) ? 2.8 : 1.4,
+      stroke: "#111",
+      strokeW: 1.4,
     });
     const dir = facingToIso(p.turretFacing ?? p.facing, this.ts());
     const len = Math.hypot(dir.x, dir.y) || 1;
@@ -1548,7 +1653,6 @@ export class MapView {
     ctx.lineTo(top.cx - ux * 5 + uy * 5, top.cy - uy * 5 - ux * 5);
     ctx.closePath();
     ctx.fill();
-    if (this.selected.has(e.id)) this.drawGroundMark(p.x, p.y, r + 4, "#e8b84a");
     if (e.ownerId === this.curr.youPlayerId && e.type === "rig") {
       const name = this.curr.players.find((pl) => pl.playerId === e.ownerId)?.name ?? "";
       ctx.font = "12px 'Share Tech Mono', monospace";
@@ -1605,7 +1709,6 @@ export class MapView {
       const r = Math.max(4, size * 0.22);
       this.drawIsoBox(p.x - r, p.y - r, r * 2, r * 2, size * 0.45, hex);
     }
-    if (this.selected.has(e.id)) this.drawGroundMark(p.x, p.y, size * 0.45, "#e8b84a");
     if (e.ownerId === this.curr.youPlayerId && e.type === "rig") {
       const name = this.curr.players.find((pl) => pl.playerId === e.ownerId)?.name ?? "";
       ctx.font = "12px 'Share Tech Mono', monospace";
@@ -1800,7 +1903,8 @@ export class MapView {
       }
     }
     this.hoverSpecial = special;
-    const attack = (this.attackMoveMode || this.forceAttackMode) && !this.overControl;
+    const attack =
+      (this.attackMoveMode || this.forceAttackMode || this.rotateMode) && !this.overControl;
     this.canvas.classList.toggle("cursor-special", special);
     this.canvas.classList.toggle("cursor-attack", attack && !special);
     this.canvas.style.cursor = special || attack ? "none" : "";
@@ -1854,6 +1958,38 @@ export class MapView {
     }
   }
 
+  private paintHpBar(x: number, y: number, w: number, h: number, ratio: number, alpha: number): void {
+    const fill = ratio > 0.45 ? "#6aaa58" : ratio > 0.2 ? "#b8923c" : "#b45448";
+    const ctx = this.ctx;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "rgba(8, 6, 4, 0.72)";
+    ctx.fillRect(x, y, w, h);
+    ctx.globalAlpha = alpha * 1.15;
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, y, w * Math.max(0, Math.min(1, ratio)), h);
+  }
+
+  private drawGarrisonBars(e: EntityView, x: number, y: number): void {
+    const bars = e.garrison?.bars;
+    if (!bars || bars.length === 0) return;
+    const barW = 18;
+    const barH = 3;
+    const gap = 2;
+    const pad = 2;
+    const totalH = bars.length * (barH + gap) - gap;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.fillStyle = "rgba(8, 6, 4, 0.62)";
+    ctx.fillRect(Math.round(x) - pad, Math.round(y) - pad, barW + pad * 2, totalH + pad * 2);
+    for (let i = 0; i < bars.length; i++) {
+      const b = bars[i]!;
+      const ratio = b.hpMax > 0 ? b.hp / b.hpMax : 0;
+      this.paintHpBar(Math.round(x), Math.round(y) + i * (barH + gap), barW, barH, ratio, 0.9);
+    }
+    ctx.restore();
+  }
+
   private maybeHp(e: EntityView, x: number, y: number, w: number): void {
     const now = performance.now();
     const selected = this.selected.has(e.id);
@@ -1866,11 +2002,10 @@ export class MapView {
     const barH = 2;
     const bx = x + (w - barW) / 2;
     const by = y - 3;
-    const alpha = selected ? (e.kind === "building" ? 0.82 : 0.58) : damaged || e.wreck ? 0.42 : 0.28;
-    const fill = ratio > 0.45 ? "#6aaa58" : ratio > 0.2 ? "#b8923c" : "#b45448";
+    const alpha = selected ? 0.82 : damaged || e.wreck ? 0.42 : 0.28;
     const ctx = this.ctx;
     ctx.save();
-    if (selected && e.kind === "building") {
+    if (selected) {
       const cx = bx + barW / 2;
       const cy = by + barH / 2;
       ctx.strokeStyle = "#e8b84a";
@@ -1880,12 +2015,7 @@ export class MapView {
       ctx.ellipse(cx, cy, barW * 0.62 + 5, 6.5, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = "rgba(8, 6, 4, 0.72)";
-    ctx.fillRect(bx, by, barW, barH);
-    ctx.globalAlpha = alpha * 1.15;
-    ctx.fillStyle = fill;
-    ctx.fillRect(bx, by, barW * ratio, barH);
+    this.paintHpBar(bx, by, barW, barH, ratio, alpha);
     ctx.restore();
   }
 

@@ -23,11 +23,15 @@ export {
   isTree,
   isSingleTree,
   crushTreeAt,
+  unitInWater,
 } from "./geo.js";
 export {
   canGarrison,
   livingGarrison,
   garrisonOwner,
+  garrisonIsHostile,
+  garrisonBars,
+  woundGarrison,
   pickGarrisonMuzzle,
   garrisonWindowLift,
   garrisonWindows,

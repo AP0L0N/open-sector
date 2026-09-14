@@ -15,7 +15,7 @@ import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
 import type { ImpactView, RoomState } from "../protocol.js";
 import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter } from "./geo.js";
 import { tickCapture } from "./capture.js";
-import { spillGarrison, tickGarrison } from "./garrison.js";
+import { detachGarrisoned, spillGarrison, tickGarrison } from "./garrison.js";
 import { seedRng } from "./rng.js";
 import { tickBuild } from "./build.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
@@ -158,6 +158,7 @@ function reapDead(state: MatchState): void {
     const e = state.entities.get(id);
     if (!e) continue;
     if (e.type === "core" || e.type === "rig") hqOwners.add(e.ownerId);
+    if (e.garrisonedIn != null) detachGarrisoned(state, e);
     if (e.garrison.length) spillGarrison(state, e);
     destroyEntity(state, e);
   }

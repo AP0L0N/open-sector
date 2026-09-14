@@ -22,12 +22,23 @@ export interface StructureJob {
 }
 
 export interface Order {
-  kind: "move" | "attack" | "attackmove" | "forceattack" | "harvest" | "unload" | "garrison";
+  kind:
+    | "move"
+    | "attack"
+    | "attackmove"
+    | "forceattack"
+    | "harvest"
+    | "unload"
+    | "garrison"
+    | "rotate"
+    | "withdraw";
   x?: number;
   y?: number;
   targetId?: number;
   tileX?: number;
   tileY?: number;
+  /** Auto-acquired attack. Unseen fire may interrupt this; player orders are kept. */
+  auto?: boolean;
 }
 
 export interface Entity {
@@ -85,6 +96,8 @@ export interface Entity {
   stance: Stance;
   /** Player-commanded posture. Targeted infantry may drop to crawl anyway. */
   stanceOrder: Stance;
+  /** Stay put: fire in range, do not chase or withdraw. */
+  holdPosition: boolean;
 }
 
 export interface Projectile {

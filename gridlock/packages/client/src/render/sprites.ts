@@ -10,9 +10,6 @@ import manorUrl from "../assets/buildings/manor.png";
 import oakUrl from "../assets/terrain/tree-oak.png";
 import pineUrl from "../assets/terrain/tree-pine.png";
 import scrapAUrl from "../assets/terrain/scrap-a.png";
-import grassTileAUrl from "../assets/terrain/grass-tile-a.png";
-import grassTileBUrl from "../assets/terrain/grass-tile-b.png";
-import grassTileCUrl from "../assets/terrain/grass-tile-c.png";
 import bushAUrl from "../assets/terrain/bush-a.png";
 import bushBUrl from "../assets/terrain/bush-b.png";
 import waterUrl from "../assets/terrain/water.png";
@@ -203,17 +200,11 @@ export const BUSH_A = prop(bushAUrl, 364, 573);
 export const BUSH_B = prop(bushBUrl, 346, 371);
 export const WATER_TEX = loadSheet(waterUrl);
 export const WATER_TEX_B = loadSheet(waterBUrl);
-export const GRASS_TILES: HTMLImageElement[] = [
-  loadSheet(grassTileAUrl),
-  loadSheet(grassTileBUrl),
-  loadSheet(grassTileCUrl),
-];
 
 export const PROP_IMAGES: HTMLImageElement[] = [
   TREE_OAK.image,
   TREE_PINE.image,
   SCRAP_A.image,
-  ...GRASS_TILES,
   BUSH_A.image,
   BUSH_B.image,
   WATER_TEX,
@@ -238,6 +229,33 @@ export function whenImagesReady(images: HTMLImageElement[], cb: () => void): voi
   if (left === 0) cb();
 }
 
+const propBlitCache = new Map<string, HTMLCanvasElement>();
+
+function propBlit(def: PropSprite, drawH: number, flip: boolean): HTMLCanvasElement | null {
+  if (!spriteReady(def) || drawH <= 0) return null;
+  const h = Math.max(1, Math.round(drawH));
+  const key = `${def.image.src}@${h}${flip ? "f" : ""}`;
+  const hit = propBlitCache.get(key);
+  if (hit) return hit;
+  const scale = h / def.image.naturalHeight;
+  const dw = Math.max(1, Math.round(def.image.naturalWidth * scale));
+  const dh = Math.max(1, Math.round(def.image.naturalHeight * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = dw;
+  canvas.height = dh;
+  const g = canvas.getContext("2d");
+  if (!g) return null;
+  g.imageSmoothingEnabled = true;
+  g.imageSmoothingQuality = "low";
+  if (flip) {
+    g.translate(dw, 0);
+    g.scale(-1, 1);
+  }
+  g.drawImage(def.image, 0, 0, dw, dh);
+  propBlitCache.set(key, canvas);
+  return canvas;
+}
+
 export function drawPropSprite(
   ctx: CanvasRenderingContext2D,
   def: PropSprite,
@@ -246,21 +264,12 @@ export function drawPropSprite(
   drawH: number,
   flip = false,
 ): boolean {
-  if (!spriteReady(def) || drawH <= 0) return false;
-  const scale = drawH / def.image.naturalHeight;
-  const dw = def.image.naturalWidth * scale;
-  const dh = def.image.naturalHeight * scale;
-  ctx.save();
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "low";
-  if (flip) {
-    ctx.translate(x, y);
-    ctx.scale(-1, 1);
-    ctx.drawImage(def.image, -def.contactX * scale, -def.contactY * scale, dw, dh);
-  } else {
-    ctx.drawImage(def.image, x - def.contactX * scale, y - def.contactY * scale, dw, dh);
-  }
-  ctx.restore();
+  const blit = propBlit(def, drawH, flip);
+  if (!blit) return false;
+  const scale = blit.height / def.image.naturalHeight;
+  const cx = (flip ? def.image.naturalWidth - def.contactX : def.contactX) * scale;
+  const cy = def.contactY * scale;
+  ctx.drawImage(blit, x - cx, y - cy);
   return true;
 }
 

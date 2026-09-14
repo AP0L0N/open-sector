@@ -6,6 +6,7 @@ import {
   stanceOf,
   type Stance,
 } from "../catalog.js";
+import { unitInWater } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
 export function commandedStance(e: Entity): Stance {
@@ -26,7 +27,12 @@ export function targetedIds(state: MatchState): Set<number> {
   for (const e of state.entities.values()) {
     if (e.hp <= 0 || e.wreck) continue;
     if (e.attackTarget != null) ids.add(e.attackTarget);
-    if (e.order?.kind === "attack" && e.order.targetId != null) ids.add(e.order.targetId);
+    if (
+      (e.order?.kind === "attack" || e.order?.kind === "forceattack") &&
+      e.order.targetId != null
+    ) {
+      ids.add(e.order.targetId);
+    }
   }
   return ids;
 }
@@ -36,14 +42,20 @@ export function tickStance(state: MatchState): void {
   for (const e of state.entities.values()) {
     if (!isInfantryType(e.type) || e.hp <= 0) continue;
     if (hasCrit(e, "leg")) e.stanceOrder = "crawl";
+    if (unitInWater(state, e)) {
+      e.stance = e.stanceOrder;
+      continue;
+    }
     e.stance = effectiveStance(e, hot.has(e.id));
   }
 }
 
-export function stanceHitRadiusMul(e: Entity): number {
+export function stanceHitRadiusMul(e: Entity, swimming = false): number {
+  if (swimming) return STANCE_HIT_RADIUS.stand;
   return STANCE_HIT_RADIUS[stanceOf(e)];
 }
 
-export function stanceTargetSpreadMul(e: Entity): number {
+export function stanceTargetSpreadMul(e: Entity, swimming = false): number {
+  if (swimming) return STANCE_TARGET_SPREAD.stand;
   return STANCE_TARGET_SPREAD[stanceOf(e)];
 }

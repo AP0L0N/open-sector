@@ -1,4 +1,5 @@
 import {
+  GARRISON_STRUCTURAL_CALIBER,
   garrisonCapOf,
   isGarrisonable,
   isInfantryType,
@@ -20,6 +21,55 @@ export function livingGarrison(state: MatchState, house: Entity): Entity[] {
 
 export function garrisonOwner(state: MatchState, house: Entity): string {
   return livingGarrison(state, house)[0]?.ownerId ?? NEUTRAL_OWNER;
+}
+
+export function garrisonIsHostile(state: MatchState, ownerId: string, house: Entity): boolean {
+  const occ = livingGarrison(state, house);
+  if (occ.length === 0) return false;
+  return !allies(state, ownerId, occ[0]!.ownerId);
+}
+
+/** Occupant HP for the building snapshot. Sorted by id so bars do not shuffle. */
+export function garrisonBars(state: MatchState, house: Entity): { hp: number; hpMax: number }[] {
+  return livingGarrison(state, house)
+    .slice()
+    .sort((a, b) => a.id - b.id)
+    .map((u) => ({ hp: u.hp, hpMax: u.hpMax }));
+}
+
+/** Drop a dead occupant from the house without spilling the rest. */
+export function detachGarrisoned(state: MatchState, unit: Entity): void {
+  if (unit.garrisonedIn == null) return;
+  const house = state.entities.get(unit.garrisonedIn);
+  if (house) house.garrison = house.garrison.filter((id) => id !== unit.id);
+  unit.garrisonedIn = null;
+}
+
+/**
+ * Incoming fire through the walls. A random occupant eats most of the hit;
+ * others may catch splinters. Heavy calibers wound more of the stack.
+ */
+export function woundGarrison(state: MatchState, house: Entity, incoming: number, caliber = 0): void {
+  const units = livingGarrison(state, house);
+  if (units.length === 0 || incoming <= 0) return;
+  const heavy = caliber >= GARRISON_STRUCTURAL_CALIBER;
+  const primary = units[Math.floor(nextRand(state) * units.length)]!;
+  woundOccupant(primary, incoming * (heavy ? 0.5 + nextRand(state) * 0.7 : 0.4 + nextRand(state) * 0.7));
+  for (const u of units) {
+    if (u.id === primary.id || u.hp <= 0) continue;
+    if (nextRand(state) > (heavy ? 0.5 : 0.18)) continue;
+    woundOccupant(u, incoming * (0.12 + nextRand(state) * (heavy ? 0.45 : 0.25)));
+  }
+}
+
+function woundOccupant(unit: Entity, raw: number): void {
+  const dmg = Math.max(1, Math.round(raw));
+  unit.hp = Math.max(0, unit.hp - dmg);
+  if (unit.hp > 0) return;
+  unit.state = "dead";
+  unit.order = null;
+  unit.waypoints = [];
+  unit.attackTarget = null;
 }
 
 export function garrisonSpace(state: MatchState, house: Entity): number {

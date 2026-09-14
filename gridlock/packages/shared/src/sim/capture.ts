@@ -20,7 +20,8 @@ export function wantsCapture(unit: Entity, target: Entity): boolean {
     unit.garrisonedIn == null &&
     target.kind === "building" &&
     !target.wreck &&
-    target.hp > 0
+    target.hp > 0 &&
+    target.garrison.length === 0
   );
 }
 
