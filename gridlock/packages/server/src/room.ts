@@ -85,7 +85,7 @@ export class Hub {
         session.dropTimer = null;
       }
     }
-    for (const t of this.tickers.values()) clearInterval(t);
+    for (const t of this.tickers.values()) clearTimeout(t);
     this.tickers.clear();
     this.matches.clear();
     this.sessions.clear();
@@ -256,9 +256,7 @@ export class Hub {
     const ids = [...(this.members.get(roomId) ?? [])];
     const room = this.rooms.get(roomId);
     if (room) room.phase = "ended";
-    const ticker = this.tickers.get(roomId);
-    if (ticker) clearInterval(ticker);
-    this.tickers.delete(roomId);
+    this.stopTicker(roomId);
     this.matches.delete(roomId);
     this.rooms.delete(roomId);
     this.members.delete(roomId);
@@ -337,22 +335,39 @@ export class Hub {
     this.startTicker(room.id);
   }
 
+  private stopTicker(roomId: string): void {
+    const t = this.tickers.get(roomId);
+    if (t) clearTimeout(t);
+    this.tickers.delete(roomId);
+  }
+
   private startTicker(roomId: string): void {
-    const existing = this.tickers.get(roomId);
-    if (existing) clearInterval(existing);
-    const timer = setInterval(() => this.tickRoom(roomId), TICK_MS);
+    this.stopTicker(roomId);
+    const run = (): void => {
+      const match = this.matches.get(roomId);
+      if (!match) {
+        this.tickers.delete(roomId);
+        return;
+      }
+      const t0 = Date.now();
+      this.tickRoom(roomId);
+      if (!this.matches.has(roomId) || this.matches.get(roomId)?.ended) {
+        this.tickers.delete(roomId);
+        return;
+      }
+      const wait = Math.max(0, TICK_MS - (Date.now() - t0));
+      const next = setTimeout(run, wait);
+      next.unref?.();
+      this.tickers.set(roomId, next);
+    };
+    const timer = setTimeout(run, TICK_MS);
     timer.unref?.();
     this.tickers.set(roomId, timer);
   }
 
   private tickRoom(roomId: string): void {
     const match = this.matches.get(roomId);
-    if (!match) {
-      const t = this.tickers.get(roomId);
-      if (t) clearInterval(t);
-      this.tickers.delete(roomId);
-      return;
-    }
+    if (!match) return;
     stepMatch(match);
     for (const line of match.pendingComms) {
       this.broadcast(roomId, { type: "chat", from: "sys", name: "HQ", text: line, at: Date.now() });
@@ -360,9 +375,6 @@ export class Hub {
     match.pendingComms = [];
     this.broadcastSnapshots(roomId);
     if (match.ended) {
-      const t = this.tickers.get(roomId);
-      if (t) clearInterval(t);
-      this.tickers.delete(roomId);
       const w = match.winner;
       this.broadcast(roomId, {
         type: "match.end",

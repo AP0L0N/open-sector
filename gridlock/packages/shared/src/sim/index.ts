@@ -50,14 +50,17 @@ export {
   entityOnMask,
   canSeeEntity,
 } from "./vision.js";
-export { inSmokeCloud, tileInSmoke, cloudsCoverTile, spawnSmokeCloud, cloudScale } from "./smoke.js";
+export { inSmokeCloud, tileInSmoke, cloudsCoverTile, fillSmokeMask, spawnSmokeCloud, cloudScale } from "./smoke.js";
 export {
   tileHeight,
   entityHeight,
   sightTilesOf,
+  sightTilesForEntity,
   rangeTilesOf,
+  weaponRangeWorld,
   hasTerrainLos,
   slopeSpeedMul,
   vertexElev,
   hasFullLos,
+  coverSmokeAt,
 } from "./elevation.js";

@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  HEIGHT_RANGE_BONUS,
   HEIGHT_SIGHT_BONUS,
   INFANTRY_EYE_HEIGHT,
   TICK_DT,
   TILE_SUBDIV,
+  WEAPON_RANGE_SIGHT_MUL,
   catalog,
 } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
@@ -59,8 +59,16 @@ describe("high ground bonuses", () => {
     const trooper = catalog("trooper");
     assert.equal(sightTilesOf("trooper", 0), trooper.sightTiles);
     assert.equal(sightTilesOf("trooper", 2), trooper.sightTiles + 2 * HEIGHT_SIGHT_BONUS);
-    assert.equal(rangeTilesOf("trooper", 1), trooper.rangeTiles + HEIGHT_RANGE_BONUS);
+    assert.equal(rangeTilesOf("trooper", 0), trooper.sightTiles * WEAPON_RANGE_SIGHT_MUL);
+    assert.equal(rangeTilesOf("trooper", 1), sightTilesOf("trooper", 1) * WEAPON_RANGE_SIGHT_MUL);
     assert.equal(rangeTilesOf("hauler", 3), 0);
+  });
+
+  it("grows weapon range when extra optics extend sight", () => {
+    const optics = 8;
+    assert.equal(sightTilesOf("warden", 0, optics), catalog("warden").sightTiles + optics);
+    assert.equal(rangeTilesOf("warden", 0, optics), sightTilesOf("warden", 0, optics) * WEAPON_RANGE_SIGHT_MUL);
+    assert.ok(rangeTilesOf("warden", 0, optics) > rangeTilesOf("warden", 0));
   });
 
   it("gives infantry more fog reach than a tank", () => {
@@ -68,6 +76,14 @@ describe("high ground bonuses", () => {
     assert.equal(observerEyeOf("trooper"), INFANTRY_EYE_HEIGHT);
     assert.equal(observerEyeOf("warden"), 0);
     assert.ok(uphillSightOf("trooper") > uphillSightOf("warden"));
+  });
+
+  it("gives structures the same peek and uphill sight as infantry", () => {
+    assert.equal(observerEyeOf("core"), INFANTRY_EYE_HEIGHT);
+    assert.equal(observerEyeOf("dynamo"), INFANTRY_EYE_HEIGHT);
+    assert.equal(observerEyeOf("cottage"), INFANTRY_EYE_HEIGHT);
+    assert.equal(uphillSightOf("core"), uphillSightOf("trooper"));
+    assert.equal(uphillSightOf("warden"), 0);
   });
 });
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { catalog, INFANTRY_UPHILL_SIGHT } from "../catalog.js";
+import { catalog, INFANTRY_EYE_HEIGHT, INFANTRY_UPHILL_SIGHT } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch } from "./match.js";
@@ -72,6 +72,76 @@ describe("building sight", () => {
     for (const v of unitMask) if (v) unitN++;
     assert.ok(coreN >= unitN, `core ${coreN} vs unit ${unitN}`);
     assert.ok(coreN < unitN * 4, `core ${coreN} vs unit ${unitN}`);
+  });
+
+  it("matches infantry fog radius and peeks over a rise that hides a hull", () => {
+    const { state, a } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const ox = 20;
+    const oy = 20;
+    const inf = makeEntity(state, "trooper", a, tileCenter(ox, ts), tileCenter(oy, ts));
+    const bldg: SightSource = {
+      kind: "building",
+      type: "dynamo",
+      ownerId: a,
+      x: tileCenter(ox, ts),
+      y: tileCenter(oy, ts),
+      tileX: ox,
+      tileY: oy,
+      tileW: 1,
+      tileH: 1,
+    };
+    const infMask = new Uint8Array(state.width * state.height);
+    const bldgMask = new Uint8Array(state.width * state.height);
+    paintEntitySight(infMask, state.width, state.height, ts, inf, state.heights);
+    paintEntitySight(bldgMask, state.width, state.height, ts, bldg, state.heights);
+    const r = sightTilesOf("trooper", 0);
+    assert.equal(sightTilesOf("dynamo", 0), r);
+    assert.equal(tileOnMask(infMask, state.width, ox + r, oy), true);
+    assert.equal(tileOnMask(bldgMask, state.width, ox + r, oy), true);
+
+    state.heights[oy * state.width + (ox + 2)] = INFANTRY_EYE_HEIGHT;
+    const tank = makeEntity(state, "warden", a, tileCenter(ox, ts), tileCenter(oy, ts));
+    const peekInf = new Uint8Array(state.width * state.height);
+    const peekBldg = new Uint8Array(state.width * state.height);
+    const peekTank = new Uint8Array(state.width * state.height);
+    paintEntitySight(peekInf, state.width, state.height, ts, inf, state.heights);
+    paintEntitySight(peekBldg, state.width, state.height, ts, bldg, state.heights);
+    paintEntitySight(peekTank, state.width, state.height, ts, tank, state.heights);
+    assert.equal(tileOnMask(peekInf, state.width, ox + 4, oy), true);
+    assert.equal(tileOnMask(peekBldg, state.width, ox + 4, oy), true);
+    assert.equal(tileOnMask(peekTank, state.width, ox + 4, oy), false);
+  });
+
+  it("sees a hilltop past flat sight that a tank still misses", () => {
+    const { state, a } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const ox = 20;
+    const oy = 20;
+    const rise = 6;
+    const dist = catalog("trooper").sightTiles + rise * INFANTRY_UPHILL_SIGHT;
+    assert.ok(dist < state.width - ox);
+    state.heights[oy * state.width + (ox + dist)] = rise;
+    const bldg: SightSource = {
+      kind: "building",
+      type: "core",
+      ownerId: a,
+      x: tileCenter(ox, ts),
+      y: tileCenter(oy, ts),
+      tileX: ox,
+      tileY: oy,
+      tileW: 1,
+      tileH: 1,
+    };
+    const tank = makeEntity(state, "warden", a, tileCenter(ox, ts), tileCenter(oy, ts));
+    const bldgMask = new Uint8Array(state.width * state.height);
+    const tankMask = new Uint8Array(state.width * state.height);
+    paintEntitySight(bldgMask, state.width, state.height, ts, bldg, state.heights);
+    paintEntitySight(tankMask, state.width, state.height, ts, tank, state.heights);
+    assert.equal(tileOnMask(bldgMask, state.width, ox + dist, oy), true);
+    assert.equal(tileOnMask(tankMask, state.width, ox + dist, oy), false);
   });
 });
 

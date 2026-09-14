@@ -12,7 +12,7 @@ export const WEAK_POINT = 0.05;
 /** Incoming speed kept after a bounce. Near-muzzle, so the spark zips away. */
 export const RICOCHET_KEEP = 0.88;
 /** World units a bounced round still flies before it hits dirt. */
-export const RICOCHET_TRAVEL = 80;
+export const RICOCHET_TRAVEL = 120;
 /**
  * Small-arms inbound is faster than a visible tracer. Cap the bounce so the
  * spark still zips instead of vanishing in a single tick.
@@ -20,6 +20,8 @@ export const RICOCHET_TRAVEL = 80;
 export const RICOCHET_SPARK_SPEED = 720;
 export const MIN_COS = 0.14;
 export const MOVING_SPREAD = 1.5;
+/** Extra aim-cone scale once a shot is past own sight (the +20% weapon band). */
+export const LONG_SHOT_SPREAD = 1.7;
 
 export type ArmorFace = "front" | "side" | "rear";
 
@@ -75,11 +77,17 @@ export function aimAngle(
   moving = false,
   spreadPower = 1,
   targetSpreadMul = 1,
+  accurateRange = maxRange,
 ): number {
   if (spreadDeg <= 0) return facing;
-  const t = maxRange <= 1e-6 ? 1 : clamp(dist / maxRange, 0, 1);
+  const reach = accurateRange > 1e-6 ? accurateRange : maxRange;
+  const t = reach <= 1e-6 ? 1 : clamp(dist / reach, 0, 1);
   const falloff = spreadPower > 1 ? 0.15 + 0.85 * t ** spreadPower : 0.35 + 0.65 * t;
   let cone = spreadDeg * falloff;
+  if (dist > reach && maxRange > reach) {
+    const extra = clamp((dist - reach) / (maxRange - reach), 0, 1);
+    cone *= 1 + extra * (LONG_SHOT_SPREAD - 1);
+  }
   if (moving) cone *= MOVING_SPREAD;
   if (targetSpreadMul > 0) cone *= targetSpreadMul;
   return facing + (rand() * 2 - 1) * ((cone * Math.PI) / 180);

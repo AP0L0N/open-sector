@@ -100,6 +100,8 @@ export function astar(
   type?: EntityType,
 ): { x: number; y: number }[] {
   if (sx === gx && sy === gy) return [];
+  const straight = straightPath(state, sx, sy, gx, gy, type);
+  if (straight) return straight;
   const open: Node[] = [];
   const best = new Map<number, number>();
   const start: Node = {
@@ -172,6 +174,51 @@ export function astar(
   path.reverse();
   if (path[0] && path[0].x === sx && path[0].y === sy) path.shift();
   return path;
+}
+
+/** Open-ground shortcut. Water is left to A* so infantry still prefer a land detour. */
+function straightPath(
+  state: MatchState,
+  sx: number,
+  sy: number,
+  gx: number,
+  gy: number,
+  type?: EntityType,
+): { x: number; y: number }[] | null {
+  const path: { x: number; y: number }[] = [];
+  let x = sx;
+  let y = sy;
+  const dx = Math.abs(gx - sx);
+  const dy = Math.abs(gy - sy);
+  const stx = sx < gx ? 1 : -1;
+  const sty = sy < gy ? 1 : -1;
+  let err = dx - dy;
+  const cap = dx + dy + 2;
+  for (let n = 0; n < cap; n++) {
+    if (x === gx && y === gy) return path;
+    const e2 = err * 2;
+    let ndx = 0;
+    let ndy = 0;
+    if (e2 > -dy) {
+      err -= dy;
+      ndx = stx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      ndy = sty;
+    }
+    const nx = x + ndx;
+    const ny = y + ndy;
+    if (ndx !== 0 && ndy !== 0) {
+      if (!walkable(state, x + ndx, y, type) || !walkable(state, x, y + ndy, type)) return null;
+    }
+    if (!walkable(state, nx, ny, type) || isWater(state, nx, ny)) return null;
+    if (!climbableDelta(tileHeight(state, nx, ny) - tileHeight(state, x, y))) return null;
+    path.push({ x: nx, y: ny });
+    x = nx;
+    y = ny;
+  }
+  return null;
 }
 
 function heuristic(ax: number, ay: number, bx: number, by: number): number {

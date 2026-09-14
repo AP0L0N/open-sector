@@ -1,13 +1,11 @@
 import {
-  GARRISON_HIDE_SIGHT,
   GARRISON_STRUCTURAL_CALIBER,
-  GARRISON_WATCH_SIGHT_BONUS,
   garrisonCapOf,
   isGarrisonable,
   isInfantryType,
   NEUTRAL_OWNER,
 } from "../catalog.js";
-import { entityHeight, sightTilesOf } from "./elevation.js";
+import { sightTilesForEntity } from "./elevation.js";
 import { nextRand } from "./rng.js";
 import { adjacentToBuilding, allies, inBounds, nearestWalkable, tileCenter, worldToTile } from "./geo.js";
 import { setPath } from "./path.js";
@@ -48,10 +46,8 @@ export function garrisonIsHiding(state: MatchState, unit: Entity): boolean {
 /** Sight radius for a unit inside a house. Undefined if the unit is not garrisoned. */
 export function occupantSightTiles(state: MatchState, unit: Entity): number | undefined {
   if (unit.garrisonedIn == null) return undefined;
-  const house = state.entities.get(unit.garrisonedIn);
-  if (!house) return undefined;
-  if (house.garrisonHide) return GARRISON_HIDE_SIGHT;
-  return sightTilesOf(unit.type, entityHeight(state, unit)) + GARRISON_WATCH_SIGHT_BONUS;
+  if (!state.entities.get(unit.garrisonedIn)) return undefined;
+  return sightTilesForEntity(state, unit);
 }
 
 export function setGarrisonHide(state: MatchState, house: Entity, hide: boolean): void {

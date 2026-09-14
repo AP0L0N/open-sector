@@ -1,8 +1,9 @@
 import {
+  GARRISON_HIDE_SIGHT,
+  GARRISON_WATCH_SIGHT_BONUS,
   HANDGUN,
   HEIGHT_DOWNHILL_COST,
   HEIGHT_DOWNHILL_SPEED,
-  HEIGHT_RANGE_BONUS,
   HEIGHT_SIGHT_BONUS,
   HEIGHT_STEP_MAX,
   HEIGHT_UPHILL_COST,
@@ -13,6 +14,8 @@ import {
   catalog,
   hasCrit,
   isInfantryType,
+  sightBonusTilesOf,
+  weaponRangeTiles,
   type EntityType,
 } from "../catalog.js";
 import { TILE_TREE } from "../maps.js";
@@ -89,31 +92,48 @@ export function minSlopeCostMul(): number {
   return Math.min(1, HEIGHT_DOWNHILL_COST);
 }
 
-export function sightTilesOf(type: EntityType, elev: number): number {
-  return catalog(type).sightTiles + Math.max(0, elev) * HEIGHT_SIGHT_BONUS;
+export function sightTilesOf(type: EntityType, elev: number, extra = 0): number {
+  return (
+    catalog(type).sightTiles +
+    sightBonusTilesOf(type) +
+    extra +
+    Math.max(0, elev) * HEIGHT_SIGHT_BONUS
+  );
+}
+
+function usesInfantrySight(type: EntityType): boolean {
+  return isInfantryType(type) || catalog(type).kind === "building";
 }
 
 /** Extra observer height used only for terrain LOS. */
 export function observerEyeOf(type: EntityType): number {
-  return isInfantryType(type) ? INFANTRY_EYE_HEIGHT : 0;
+  return usesInfantrySight(type) ? INFANTRY_EYE_HEIGHT : 0;
 }
 
 /** Extra Chebyshev reach per elevation step of a looked-at tile above the observer. */
 export function uphillSightOf(type: EntityType): number {
-  return isInfantryType(type) ? INFANTRY_UPHILL_SIGHT : 0;
+  return usesInfantrySight(type) ? INFANTRY_UPHILL_SIGHT : 0;
 }
 
-export function rangeTilesOf(type: EntityType, elev: number): number {
-  const base = catalog(type).rangeTiles;
-  if (base <= 0) return 0;
-  return base + Math.max(0, elev) * HEIGHT_RANGE_BONUS;
+export function rangeTilesOf(type: EntityType, elev: number, extraSight = 0): number {
+  if (catalog(type).rangeTiles <= 0) return 0;
+  return weaponRangeTiles(sightTilesOf(type, elev, extraSight));
+}
+
+/** Live fog radius: height, garrison watch/hide, catalog optics. */
+export function sightTilesForEntity(state: MatchState, e: Entity): number {
+  if (e.garrisonedIn != null) {
+    const house = state.entities.get(e.garrisonedIn);
+    if (house?.garrisonHide) return GARRISON_HIDE_SIGHT;
+    if (house) return sightTilesOf(e.type, entityHeight(state, e)) + GARRISON_WATCH_SIGHT_BONUS;
+  }
+  return sightTilesOf(e.type, entityHeight(state, e));
 }
 
 export function weaponRangeWorld(state: MatchState, e: Entity): number {
-  const handgun = isInfantryType(e.type) && hasCrit(e, "arm");
-  const base = handgun ? HANDGUN.rangeTiles : catalog(e.type).rangeTiles;
-  if (base <= 0) return 0;
-  return (base + Math.max(0, entityHeight(state, e)) * HEIGHT_RANGE_BONUS) * state.tileSize;
+  if (isInfantryType(e.type) && hasCrit(e, "arm")) return HANDGUN.rangeTiles * state.tileSize;
+  if (catalog(e.type).rangeTiles <= 0) return 0;
+  return weaponRangeTiles(sightTilesForEntity(state, e)) * state.tileSize;
 }
 
 /**
@@ -190,8 +210,24 @@ export interface CoverField {
   terrain: ArrayLike<number>;
   occupy: ArrayLike<number>;
   ignoreOccupyId?: number;
+  /** 1 when the tile is inside a smoke screen. Preferred over `smokeAt`. */
+  smoke?: ArrayLike<number>;
   /** True when this tile is inside a smoke screen. */
   smokeAt?: (x: number, y: number) => boolean;
+}
+
+export function coverSmokeAt(
+  cover: CoverField,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+): boolean {
+  if (cover.smoke) {
+    if (x < 0 || y < 0 || x >= width || y >= height) return false;
+    return (cover.smoke[y * width + x] ?? 0) !== 0;
+  }
+  return !!cover.smokeAt?.(x, y);
 }
 
 /**
@@ -209,9 +245,9 @@ export function hasFullLos(
   cover?: CoverField,
   observerEye = 0,
 ): boolean {
-  if (!hasTerrainLos(elev, width, height, x0, y0, x1, y1, observerEye)) return false;
-  if (!cover) return true;
   if (x0 === x1 && y0 === y1) return true;
+  const h0 = elevAt(elev, width, height, x0, y0) + Math.max(0, observerEye);
+  const h1 = elevAt(elev, width, height, x1, y1);
   let x = x0;
   let y = y0;
   const dx = Math.abs(x1 - x0);
@@ -221,22 +257,31 @@ export function hasFullLos(
   let err = dx - dy;
   const cap = dx + dy + 2;
   let trees = 0;
-  const ignore = cover.ignoreOccupyId ?? 0;
+  const ignore = cover?.ignoreOccupyId ?? 0;
   for (let n = 0; n < cap; n++) {
     if (x === x1 && y === y1) return true;
     const e2 = err * 2;
+    let steppedX = false;
+    let steppedY = false;
     if (e2 > -dy) {
       err -= dy;
       x += sx;
+      steppedX = true;
     }
     if (e2 < dx) {
       err += dx;
       y += sy;
+      steppedY = true;
     }
-    if (x === x0 && y === y0) continue;
+    if (steppedX && steppedY) {
+      if (blocksLos(elev, width, height, x - sx, y, x0, y0, x1, y1, h0, h1)) return false;
+      if (blocksLos(elev, width, height, x, y - sy, x0, y0, x1, y1, h0, h1)) return false;
+    }
+    if (blocksLos(elev, width, height, x, y, x0, y0, x1, y1, h0, h1)) return false;
+    if (!cover) continue;
     if (x === x1 && y === y1) return true;
     if (hardCoverAt(cover.terrain, cover.occupy, width, height, x, y, ignore)) return false;
-    if (cover.smokeAt?.(x, y)) return false;
+    if (coverSmokeAt(cover, width, height, x, y)) return false;
     if (x >= 0 && y >= 0 && x < width && y < height && cover.terrain[y * width + x] === TILE_TREE) {
       trees += 1;
       if (trees > TREE_LOS_THROUGH) return false;

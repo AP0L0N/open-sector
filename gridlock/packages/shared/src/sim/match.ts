@@ -63,6 +63,11 @@ export function createMatch(
     pendingComms: [],
     visionTick: -1,
     visionByPlayer: new Map(),
+    visionKeyByPlayer: new Map(),
+    smokeMask: new Uint8Array(map.width * map.height),
+    smokeMaskTick: -1,
+    seeTick: -1,
+    seeByPlayer: new Map(),
     clearedTrees: [],
   };
 

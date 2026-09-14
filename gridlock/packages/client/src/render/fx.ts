@@ -317,7 +317,7 @@ export function drawRicochetSparks(
   drawSparkBurst(ctx, x, y, dirX, dirY, t, seed, shell ? 16 : 5, shell ? 48 : 16, true);
   const d = dirOf(dirX, dirY);
   const travel = shell ? 56 : 42;
-  const head = Math.min(1, t / (0.22 / 1.5));
+  const head = Math.min(1, (t * 1.5) / 0.22);
   const fade = t < 0.5 ? 1 : Math.max(0, 1 - (t - 0.5) / 0.5);
   const hx = x + d.x * travel * head;
   const hy = y + d.y * travel * head;
@@ -437,4 +437,83 @@ export function drawCookoffBurst(
   if (t < 0.45) drawShockRing(ctx, x, y, Math.min(1, t / 0.4), 22, 0.7);
   drawContactFlash(ctx, x, y, t, 14);
   drawSparkBurst(ctx, x, y, 1, 0, t, seed, 18, 52);
+}
+
+/** How long a wreck's hull fires last at 1×, ms. Second fire dies sooner. */
+export const WRECK_FIRE_MS = 16_000;
+
+export function wreckFireCount(id: number): number {
+  return (id & 1) === 0 ? 2 : 1;
+}
+
+export function wreckFireAlpha(ageMs: number, index: number): number {
+  const life = WRECK_FIRE_MS * (index === 0 ? 1 : 0.7);
+  if (ageMs >= life) return 0;
+  const fadeAt = life * 0.58;
+  if (ageMs <= fadeAt) return 1;
+  return Math.max(0, 1 - (ageMs - fadeAt) / (life - fadeAt));
+}
+
+/** Match-head flame on a wreck deck. `alpha` is the remaining burn (0 = out). */
+export function drawWreckFire(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  nowMs: number,
+  seed: number,
+  alpha: number,
+): void {
+  if (alpha <= 0.01) return;
+  const t = nowMs * 0.001;
+  const wobble =
+    0.5 +
+    0.5 *
+      Math.sin(t * 19.7 + seed * 0.31) *
+      Math.sin(t * 27.4 + seed * 0.17);
+  const flick = 0.62 + 0.38 * wobble;
+  const a = alpha * flick;
+  const h = 5.2 + flick * 2.4;
+  const w = 1.7 + flick * 0.7;
+  const lean = Math.sin(t * 11.3 + seed) * 0.7;
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = a * 0.4;
+  ctx.fillStyle = "#ff5a14";
+  ctx.beginPath();
+  ctx.ellipse(x + lean * 0.3, y - h * 0.2, w * 1.7, h * 0.55, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.globalAlpha = a * 0.9;
+  ctx.fillStyle = "#ff8c22";
+  ctx.beginPath();
+  ctx.moveTo(x - w, y);
+  ctx.quadraticCurveTo(x - w * 0.35 + lean, y - h * 0.55, x + lean * 0.6, y - h);
+  ctx.quadraticCurveTo(x + w * 0.35 + lean, y - h * 0.55, x + w, y);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.globalAlpha = a;
+  ctx.fillStyle = "#ffe7a0";
+  ctx.beginPath();
+  ctx.ellipse(x + lean * 0.2, y - h * 0.28, w * 0.38, h * 0.34, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  const smokeRise = ((t * 0.42 + seed * 0.013) % 1);
+  ctx.save();
+  ctx.globalAlpha = a * 0.2 * (1 - smokeRise);
+  ctx.fillStyle = "#5c5850";
+  ctx.beginPath();
+  ctx.ellipse(
+    x + Math.sin(t * 2.8 + seed) * 1.4 + lean,
+    y - h - 1 - smokeRise * 9,
+    1.3 + smokeRise * 2.1,
+    1.1 + smokeRise * 1.7,
+    0,
+    0,
+    Math.PI * 2,
+  );
+  ctx.fill();
+  ctx.restore();
 }

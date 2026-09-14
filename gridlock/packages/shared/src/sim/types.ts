@@ -35,13 +35,15 @@ export interface Order {
     | "withdraw";
   x?: number;
   y?: number;
-  /** World radians. Guard / rotate destination facing. */
+  /** World radians. Guard / rotate destination facing, or hull heading while reversing. */
   facing?: number;
   targetId?: number;
   tileX?: number;
   tileY?: number;
-  /** Auto-acquired attack. Unseen fire may interrupt this; player orders are kept. */
+  /** Auto-acquired attack. Incoming fire may interrupt this; player orders are kept. */
   auto?: boolean;
+  /** Withdraw by backing up with the hull toward the fire. Tanks only. */
+  reverse?: boolean;
   /** Fire the main gun once, then idle. Smoke force-attack uses this; other one-shots can too. */
   once?: boolean;
 }
@@ -194,6 +196,14 @@ export interface MatchState {
   /** Tick whose per-player vision masks are in `visionByPlayer`. */
   visionTick: number;
   visionByPlayer: Map<string, Uint8Array>;
+  /** Fingerprint of inputs used to build each cached vision mask. */
+  visionKeyByPlayer: Map<string, number>;
+  /** Packed smoke occupancy for `smokeMaskTick`. */
+  smokeMask: Uint8Array;
+  smokeMaskTick: number;
+  /** Tick whose per-player entity-visibility cache is in `seeByPlayer`. */
+  seeTick: number;
+  seeByPlayer: Map<string, Map<number, boolean>>;
   /** Tree tiles crushed by vehicles this match. */
   clearedTrees: { x: number; y: number }[];
 }

@@ -6,9 +6,11 @@ import {
   GUARD_CONE_DEG,
   PROJECTILE_RADIUS,
   TANK_MG,
+  WEAPON_RANGE_SIGHT_MUL,
   WITHDRAW_TILES,
   fires,
   hasAmmo,
+  hasCrit,
   hasMg,
   hasTurret,
   isGarrisonable,
@@ -44,8 +46,8 @@ import {
 import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
 import { spawnSmokeCloud } from "./smoke.js";
-import { canSeeEntity, visionMask } from "./vision.js";
-import { turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
+import { canSeeEntity } from "./vision.js";
+import { reversing, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
 export function tickCombat(state: MatchState, dt: number): void {
@@ -94,6 +96,18 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
   } else if (e.order?.kind === "attackmove" && e.attackTarget != null) {
     target = state.entities.get(e.attackTarget);
     if (!target || target.hp <= 0 || skipsFriendly(state, e, target)) {
+      e.attackTarget = null;
+      target = undefined;
+    }
+  }
+
+  if (target && e.order?.kind !== "forceattack" && !canSeeEntity(state, e.ownerId, target)) {
+    if (e.order?.auto) {
+      e.order = null;
+      e.attackTarget = null;
+      if (e.state === "attack") e.state = "idle";
+      target = undefined;
+    } else if (e.order?.kind === "attackmove" || e.order?.kind === "guard") {
       e.attackTarget = null;
       target = undefined;
     }
@@ -171,13 +185,16 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     if (!holedUp) e.state = "attack";
     return;
   }
-  if (e.waypoints.length > 0 && e.order?.kind !== "attackmove" && !holedUp) return;
+  if (e.waypoints.length > 0 && e.order?.kind !== "attackmove" && !reversing(e) && !holedUp) return;
 
   if (!holedUp) e.state = "attack";
   if (!turreted && !holedUp) {
     remainingDeg = turnToward(e, aimX, aimY, def.turnDegPerSec * hullTurnMul(e), dt);
   }
   if (!holedUp && Math.abs(remainingDeg) > FACE_FIRE_DEG) return;
+  if (!ground && target && e.order?.kind !== "forceattack" && !canSeeEntity(state, e.ownerId, target)) {
+    return;
+  }
 
   const useMg = !ground && !e.order?.once && target ? wantsMg(e, target) : false;
   if (useMg && target) {
@@ -197,7 +214,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
       },
       range,
       dist,
-      { target },
+      { target, accurateRange: accurateWeaponRange(e, range) },
     );
     e.mgCooldown = TANK_MG.cooldown;
     e.mgAmmo = Math.max(0, e.mgAmmo - 1);
@@ -226,7 +243,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     },
     range,
     dist,
-    { target, shell, fuse: !!ground },
+    { target, shell, fuse: !!ground, accurateRange: accurateWeaponRange(e, range) },
   );
   e.cooldown = gun.cooldown;
   if (shell) e.ammo[shell] = Math.max(0, (e.ammo[shell] ?? 0) - 1);
@@ -252,6 +269,12 @@ function wantsMg(e: Entity, target: Entity): boolean {
   return e.mgAmmo > 0;
 }
 
+/** Sight reach in world units. Handgun has no extra long-shot band. */
+function accurateWeaponRange(e: Entity, range: number): number {
+  if (isInfantryType(e.type) && hasCrit(e, "arm")) return range;
+  return range / WEAPON_RANGE_SIGHT_MUL;
+}
+
 /** Smoke is a player-placed screen, never an auto-attack fallback. */
 function mayFireSmoke(e: Entity): boolean {
   const o = e.order;
@@ -270,7 +293,7 @@ function slewTurret(
   if (ground) return turnTurretToward(e, ground.x, ground.y, rate, dt);
   if (target && target.hp > 0) return turnTurretToward(e, target.x, target.y, rate, dt);
   const wp = e.waypoints[0];
-  if (wp) return turnTurretToward(e, wp.x, wp.y, rate, dt);
+  if (wp && !reversing(e)) return turnTurretToward(e, wp.x, wp.y, rate, dt);
   return turnTurretTo(e, e.facing, rate, dt);
 }
 
@@ -289,7 +312,7 @@ function fireRound(
   },
   range: number,
   dist: number,
-  opts?: { target?: Entity; shell?: ShellType | null; fuse?: boolean },
+  opts?: { target?: Entity; shell?: ShellType | null; fuse?: boolean; accurateRange?: number },
 ): void {
   const target = opts?.target;
   const moving = !!target && (target.waypoints.length > 0 || target.state === "move");
@@ -302,6 +325,7 @@ function fireRound(
     moving,
     stats.spreadPower ?? 1,
     target ? stanceTargetSpreadMul(target, unitInWater(state, target)) : 1,
+    opts?.accurateRange ?? range,
   );
   const speed = stats.projectileSpeed;
   const muzzleReach = e.radius + 2;
@@ -558,7 +582,6 @@ function segmentCircleT(
 
 function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undefined {
   const range = weaponRangeWorld(state, e);
-  const vis = visionMask(state, e.ownerId);
   let best: Entity | undefined;
   let bestD = range * range;
   for (const o of state.entities.values()) {
@@ -572,15 +595,14 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     ) {
       continue;
     }
-    if (!canSeeEntity(state, e.ownerId, o, vis)) continue;
-    if (coneOnly && !inGuardCone(e, o)) continue;
     const dx = o.x - e.x;
     const dy = o.y - e.y;
     const d = dx * dx + dy * dy;
-    if (d <= bestD) {
-      bestD = d;
-      best = o;
-    }
+    if (d > bestD) continue;
+    if (coneOnly && !inGuardCone(e, o)) continue;
+    if (!canSeeEntity(state, e.ownerId, o)) continue;
+    bestD = d;
+    best = o;
   }
   return best;
 }
@@ -601,16 +623,25 @@ function maybeWithdraw(state: MatchState, victim: Entity, p: Projectile): void {
   if (victim.waypoints.length > 0) return;
   if (keepsStation(victim)) return;
   const shooter = p.fromId > 0 ? state.entities.get(p.fromId) : undefined;
-  if (threatInSight(state, victim, shooter)) return;
+  const seen = threatInSight(state, victim, shooter);
+  const reverse = reversesFromFire(victim);
+  if (seen && !reverse) return;
   const fromX = shooter && shooter.hp > 0 ? shooter.x : p.x - p.vx;
   const fromY = shooter && shooter.hp > 0 ? shooter.y : p.y - p.vy;
   const dest = withdrawDest(state, victim, fromX, fromY);
   if (!dest) return;
-  victim.order = { kind: "withdraw", x: dest.x, y: dest.y };
-  victim.attackTarget = null;
+  const dx = fromX - victim.x;
+  const dy = fromY - victim.y;
+  const facing = dx * dx + dy * dy >= 1 ? Math.atan2(dy, dx) : victim.facing;
+  victim.order = { kind: "withdraw", x: dest.x, y: dest.y, reverse, facing: reverse ? facing : undefined };
+  victim.attackTarget = reverse && seen && shooter ? shooter.id : null;
   victim.harvestTile = null;
   victim.state = "move";
   setPath(state, victim, dest.x, dest.y);
+}
+
+function reversesFromFire(e: Entity): boolean {
+  return !!catalog(e.type).turnInPlace;
 }
 
 function keepsStation(e: Entity): boolean {

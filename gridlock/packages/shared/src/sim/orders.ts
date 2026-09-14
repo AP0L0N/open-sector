@@ -22,12 +22,20 @@ export function stepTurn(
   return { angle: next, remainingDeg: ((delta - Math.sign(delta) * max) * 180) / Math.PI };
 }
 
-export function turnToward(e: Entity, tx: number, ty: number, degPerSec: number, dt: number): number {
-  const want = Math.atan2(ty - e.y, tx - e.x);
+export function turnTo(e: Entity, want: number, degPerSec: number, dt: number): number {
   const r = stepTurn(e.facing, want, degPerSec, dt);
   e.facing = r.angle;
   if (!hasTurret(e.type)) e.turretFacing = e.facing;
   return r.remainingDeg;
+}
+
+export function turnToward(e: Entity, tx: number, ty: number, degPerSec: number, dt: number): number {
+  return turnTo(e, Math.atan2(ty - e.y, tx - e.x), degPerSec, dt);
+}
+
+/** Hull faces the fire and the tracks roll backward. */
+export function reversing(e: Entity): boolean {
+  return e.order?.kind === "withdraw" && !!e.order.reverse;
 }
 
 export function turnTurretTo(e: Entity, want: number, degPerSec: number, dt: number): number {
@@ -131,7 +139,11 @@ export function tickMovement(state: MatchState, dt: number): void {
       continue;
     }
     const wp = e.waypoints[0];
-    const remaining = wp ? turnToward(e, wp.x, wp.y, def.turnDegPerSec * hullTurnMul(e), dt) : 0;
+    const remaining = wp
+      ? reversing(e)
+        ? turnTo(e, reverseHeading(e, wp), def.turnDegPerSec * hullTurnMul(e), dt)
+        : turnToward(e, wp.x, wp.y, def.turnDegPerSec * hullTurnMul(e), dt)
+      : 0;
     if (def.turnInPlace && Math.abs(remaining) > FACE_MOVE_DEG) {
       e.state =
         e.order?.kind === "attack" || e.order?.kind === "attackmove" || e.order?.kind === "forceattack"
@@ -171,6 +183,11 @@ export function tickMovement(state: MatchState, dt: number): void {
       e.state = "idle";
     }
   }
+}
+
+function reverseHeading(e: Entity, wp: { x: number; y: number }): number {
+  if (e.order?.facing != null) return e.order.facing;
+  return Math.atan2(e.y - wp.y, e.x - wp.x);
 }
 
 function tickGuardFacing(e: Entity, dt: number): void {

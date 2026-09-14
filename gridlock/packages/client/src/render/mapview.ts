@@ -26,6 +26,7 @@ import {
   pickElevatedTile,
   pointInIsoBox,
   previewPlace,
+  rangeTilesOf,
   specialOf,
   specialReady,
   tileOnMask,
@@ -52,9 +53,12 @@ import {
   drawWindowMuzzle,
   drawRicochetSparks,
   drawShellTracer,
+  drawWreckFire,
   fxFrameAt,
   fxLifeMs,
   isShellCaliber,
+  wreckFireAlpha,
+  wreckFireCount,
 } from "./fx.js";
 import {
   UNIT_VISUAL_SCALE,
@@ -121,6 +125,35 @@ const EXTRUDE: Record<EntityType, number> = {
 
 const CIV_FILL = "#b08968";
 
+function mixHash(h: number, v: number): number {
+  return Math.imul(h ^ (v | 0), 16777619);
+}
+
+function snapshotVisKey(match: MatchSnapshot): number {
+  let h = 2166136261;
+  const you = match.youPlayerId;
+  const team = match.players.find((p) => p.playerId === you)?.team ?? 0;
+  h = mixHash(h, match.clearedTrees?.length ?? 0);
+  for (const e of match.entities) {
+    if (e.wreck) continue;
+    const allied =
+      e.ownerId === you || (team !== 0 && match.players.find((p) => p.playerId === e.ownerId)?.team === team);
+    if (!allied) continue;
+    h = mixHash(h, e.id);
+    h = mixHash(h, e.tileX);
+    h = mixHash(h, e.tileY);
+    h = mixHash(h, e.garrisonedIn ?? 0);
+    h = mixHash(h, e.garrison?.hide ? 1 : 0);
+  }
+  for (const c of match.smoke ?? []) {
+    h = mixHash(h, c.id);
+    h = mixHash(h, c.x | 0);
+    h = mixHash(h, c.y | 0);
+    h = mixHash(h, c.lifeMax > 0 ? ((c.life * 16) / c.lifeMax) | 0 : 0);
+  }
+  return h;
+}
+
 export class MapView {
   private readonly canvas: HTMLCanvasElement;
   private readonly mini: HTMLCanvasElement;
@@ -150,7 +183,9 @@ export class MapView {
   private lastHp = new Map<number, number>();
   private explored: Uint8Array | null = null;
   private vis: Uint8Array | null = null;
+  private visKey = 0;
   private exploredMapId = "";
+  private clearedApplied = 0;
   private maxElev = 0;
   private terrain: TerrainBake | null = null;
   private miniTerrain: MiniBake | null = null;
@@ -162,6 +197,8 @@ export class MapView {
   private miniFogCtx: CanvasRenderingContext2D | null = null;
   private miniFogData: ImageData | null = null;
   private ghosts = new Map<number, EntityView>();
+  /** Wall-clock ms when a wreck was first drawn; drives hull-fire burnout. */
+  private wreckBornAt = new Map<number, number>();
   private fx: {
     id: number;
     kind: string;
@@ -178,6 +215,7 @@ export class MapView {
     y1?: number;
     shell?: string;
   }[] = [];
+  private fxIds = new Set<number>();
   private seenShots = new Set<number>();
   selected = new Set<number>();
   placeMode = false;
@@ -277,17 +315,24 @@ export class MapView {
     this.curr = match;
     this.snapAt = performance.now();
     const now = this.snapAt;
+    const live = new Set<number>();
     for (const e of match.entities) {
+      live.add(e.id);
       const prev = this.lastHp.get(e.id);
       if (prev !== undefined && e.hp < prev) this.damagedUntil.set(e.id, now + 2000);
       this.lastHp.set(e.id, e.hp);
     }
+    for (const id of this.lastHp.keys()) {
+      if (!live.has(id)) this.lastHp.delete(id);
+    }
+    for (const [id, until] of this.damagedUntil) {
+      if (!live.has(id) || until < now) this.damagedUntil.delete(id);
+    }
     for (const i of match.impacts ?? []) {
       if (i.kind === "crush") continue;
-      if (this.fx.some((f) => f.id === i.id)) continue;
-      this.fx.push({ ...i, at: now });
+      this.addFx({ ...i, at: now });
       if (i.kind === "kill" && i.blast) {
-        this.fx.push({ id: i.id + 7_000_000, kind: "smoke", x: i.x, y: i.y, vx: 0, vy: 0, at: now });
+        this.addFx({ id: i.id + 7_000_000, kind: "smoke", x: i.x, y: i.y, vx: 0, vy: 0, at: now });
       }
     }
     if (this.seenShots.size > 400) this.seenShots.clear();
@@ -296,12 +341,11 @@ export class MapView {
     );
     for (const i of match.impacts ?? []) {
       if (!isShellCaliber(i.caliber) || i.fromId == null || flyingFrom.has(i.fromId)) continue;
-      if (this.fx.some((f) => f.id === i.id + 9_000_000)) continue;
       const shooter = match.entities.find((e) => e.id === i.fromId);
       const sp = Math.hypot(i.vx, i.vy) || 1;
       const x0 = shooter?.x ?? i.x - (i.vx / sp) * 48;
       const y0 = shooter?.y ?? i.y - (i.vy / sp) * 48;
-      this.fx.push({
+      this.addFx({
         id: i.id + 9_000_000,
         kind: "tracer",
         x: x0,
@@ -313,9 +357,9 @@ export class MapView {
         at: now,
         caliber: i.caliber,
       });
-      if (shooter && !this.fx.some((f) => f.id === i.id + 8_000_000)) {
+      if (shooter) {
         const reach = catalog(shooter.type).radius * UNIT_VISUAL_SCALE + 10;
-        this.fx.push({
+        this.addFx({
           id: i.id + 8_000_000,
           kind: "muzzle",
           x: shooter.x + (i.vx / sp) * reach,
@@ -340,7 +384,7 @@ export class MapView {
         ? match.entities.find((e) => e.id === shooter.garrisonedIn)
         : undefined) : undefined;
       if (fromGarrison) {
-        this.fx.push({
+        this.addFx({
           id: p.id + 8_000_000,
           kind: "muzzle",
           x: p.x,
@@ -355,7 +399,7 @@ export class MapView {
         continue;
       }
       const reach = shooter ? catalog(shooter.type).radius * UNIT_VISUAL_SCALE + 10 : 16;
-      this.fx.push({
+      this.addFx({
         id: p.id + 8_000_000,
         kind: "muzzle",
         x: (shooter?.x ?? p.x) + (p.vx / sp) * reach,
@@ -365,6 +409,13 @@ export class MapView {
         at: now,
         caliber: p.caliber,
       });
+    }
+    if (this.wreckBornAt.size > 0) {
+      const liveWrecks = new Set<number>();
+      for (const e of match.entities) if (e.wreck) liveWrecks.add(e.id);
+      for (const id of this.wreckBornAt.keys()) {
+        if (!liveWrecks.has(id)) this.wreckBornAt.delete(id);
+      }
     }
     for (const id of [...this.selected]) {
       if (!match.entities.some((e) => e.id === id)) this.selected.delete(id);
@@ -390,19 +441,27 @@ export class MapView {
     this.applyClearedTrees();
   }
 
+  private addFx(f: MapView["fx"][number]): void {
+    if (this.fxIds.has(f.id)) return;
+    this.fxIds.add(f.id);
+    this.fx.push(f);
+  }
+
   private applyClearedTrees(): void {
     const map = this.map();
     const list = this.curr.clearedTrees ?? [];
-    if (list.length === 0) return;
+    if (list.length <= this.clearedApplied) return;
     const dirty: number[] = [];
     const w = map.width;
-    for (const t of list) {
+    for (let n = this.clearedApplied; n < list.length; n++) {
+      const t = list[n]!;
       if (t.x < 0 || t.y < 0 || t.x >= w || t.y >= map.height) continue;
       const i = t.y * w + t.x;
       if (map.tiles[i] !== TILE_TREE) continue;
       map.tiles[i] = TILE_EMPTY;
       dirty.push(i);
     }
+    this.clearedApplied = list.length;
     if (dirty.length === 0) return;
     this.treeStems = null;
     if (this.terrain) restampTiles(this.terrain, map, dirty, this.curr.scrap);
@@ -438,17 +497,30 @@ export class MapView {
       this.explored = new Uint8Array(n);
       this.exploredMapId = match.mapId;
       this.vis = null;
+      this.visKey = 0;
+      this.clearedApplied = 0;
       this.ghosts.clear();
       this.resetFog(map);
+    }
+    const key = snapshotVisKey(match);
+    if (this.vis && this.visKey === key) {
+      this.syncGhosts(match, this.vis);
+      return;
     }
     const prevVis = this.vis;
     const vis = visionMaskFromSnapshot(match, map.width, map.height, map.tileSize);
     this.patchFog(map, prevVis, this.explored, vis);
     this.vis = vis;
+    this.visKey = key;
     for (let i = 0; i < n; i++) {
       if (vis[i]) this.explored[i] = 1;
     }
     this.rebuildMiniFog(map, n);
+    this.syncGhosts(match, vis);
+  }
+
+  private syncGhosts(match: MatchSnapshot, vis: Uint8Array): void {
+    const map = this.map();
     for (const e of match.entities) {
       if (e.kind === "building" && e.ownerId !== match.youPlayerId) this.ghosts.set(e.id, e);
     }
@@ -950,7 +1022,7 @@ export class MapView {
     for (const id of this.ownSelectedIds()) {
       const e = this.curr.entities.find((x) => x.id === id);
       if (!e) continue;
-      range = Math.max(range, catalog(e.type).rangeTiles * ts);
+      range = Math.max(range, rangeTilesOf(e.type, this.elevAt(e.x, e.y)) * ts);
     }
     return range;
   }
@@ -1389,7 +1461,7 @@ export class MapView {
       const lift = bounced ? 7 : 10;
       if (bounced) {
         const sp = Math.hypot(p.vx, p.vy) || 1;
-        const tail = this.toScreen(wx - (p.vx / sp) * 14, wy - (p.vy / sp) * 14);
+        const tail = this.toScreen(wx - (p.vx / sp) * 21, wy - (p.vy / sp) * 21);
         ctx.save();
         ctx.strokeStyle = "rgba(255, 236, 176, 0.92)";
         ctx.lineWidth = 1.15;
@@ -1909,14 +1981,14 @@ export class MapView {
     const hex = this.ownerColor(e);
     const dir = facingToIso(p.facing, this.ts());
     const turretDir = facingToIso(p.turretFacing ?? p.facing, this.ts());
-    ctx.fillStyle = hex;
-    ctx.globalAlpha = 0.5;
+    ctx.fillStyle = e.wreck ? "#2a2824" : hex;
+    ctx.globalAlpha = e.wreck ? 0.38 : 0.5;
     ctx.beginPath();
     ctx.ellipse(s.x, s.y, size * 0.32, size * 0.15, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
     ctx.save();
-    if (e.wreck) ctx.globalAlpha = 0.55;
+    if (e.wreck) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
     const drawn = drawUnitSprite(ctx, def, s.x, s.y, dir.x, dir.y, {
       moving: !e.wreck && !immobilized(e) && (e.state === "move" || !!e.swimming),
       id: e.id,
@@ -1924,14 +1996,8 @@ export class MapView {
       turretDx: turretDir.x,
       turretDy: turretDir.y,
     });
-    if (e.wreck && drawn) {
-      ctx.globalAlpha = 0.4;
-      ctx.fillStyle = "#1a120c";
-      ctx.beginPath();
-      ctx.ellipse(s.x, s.y - size * 0.35, size * 0.28, size * 0.38, 0, 0, Math.PI * 2);
-      ctx.fill();
-    }
     ctx.restore();
+    if (e.wreck && drawn) this.drawWreckFires(e, s.x, s.y, size);
     if (!drawn) {
       const r = Math.max(4, size * 0.22);
       this.drawIsoBox(p.x - r, p.y - r, r * 2, r * 2, size * 0.45, hex);
@@ -1946,6 +2012,25 @@ export class MapView {
     this.maybeHp(e, s.x - size * 0.45, s.y - size * def.contactY - 2, size * 0.9);
     this.drawCrits(e, s.x + size * 0.48, s.y - size * def.contactY - 20);
     this.drawDeployProgress(e, s.x - size * 0.45, s.y + 6, size * 0.9);
+
+  private drawWreckFires(e: EntityView, x: number, y: number, size: number): void {
+    let born = this.wreckBornAt.get(e.id);
+    if (born === undefined) {
+      born = performance.now();
+      this.wreckBornAt.set(e.id, born);
+    }
+    const age = (performance.now() - born) * (this.curr.gameSpeed || 1);
+    const now = performance.now();
+    const n = wreckFireCount(e.id);
+    const side = (e.id & 2) === 0 ? 1 : -1;
+    for (let i = 0; i < n; i++) {
+      const a = wreckFireAlpha(age, i);
+      if (a <= 0) continue;
+      const ox = (i === 0 ? -0.04 : 0.13) * size * side;
+      const oy = -(i === 0 ? 0.48 : 0.36) * size;
+      drawWreckFire(this.ctx, x + ox, y + oy, now, e.id * 13 + i * 29, a);
+    }
+  }
     if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
       const prog = e.deployProgress ?? 0;
       const footprint = this.ts() * (1 + 2 * prog);
@@ -1964,7 +2049,10 @@ export class MapView {
     for (const f of this.fx) {
       const life = fxLifeMs(f.kind, f.blast);
       const age = now - f.at;
-      if (age > life) continue;
+      if (age > life) {
+        this.fxIds.delete(f.id);
+        continue;
+      }
       keep.push(f);
       const t = age / life;
       const s = this.toScreen(f.x, f.y);

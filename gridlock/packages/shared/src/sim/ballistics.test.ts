@@ -6,6 +6,7 @@ import {
   armorOn,
   hitFace,
   KILL_OVERMATCH,
+  LONG_SHOT_SPREAD,
   resolveHit,
 } from "./ballistics.js";
 
@@ -224,5 +225,14 @@ describe("aimAngle", () => {
     assert.ok(Math.abs(far) > Math.abs(close) * 4, `close=${close} far=${far}`);
     const gunFar = aimAngle(0, catalog("warden").spreadDeg, 100, 100, () => 1);
     assert.ok(Math.abs(far) > Math.abs(gunFar) * 3, `mg=${far} gun=${gunFar}`);
+  });
+
+  it("opens further in the extra 20% past own sight", () => {
+    const sight = 100;
+    const max = 120;
+    const atSight = aimAngle(0, 10, sight, max, () => 1, false, 1, 1, sight);
+    const atMax = aimAngle(0, 10, max, max, () => 1, false, 1, 1, sight);
+    assert.ok(Math.abs(atMax) > Math.abs(atSight), `sight=${atSight} max=${atMax}`);
+    assert.ok(Math.abs(atMax) > Math.abs(atSight) * (LONG_SHOT_SPREAD * 0.9), `sight=${atSight} max=${atMax}`);
   });
 });

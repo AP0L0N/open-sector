@@ -44,6 +44,34 @@ export function cloudsCoverTile(
   return false;
 }
 
+/** Paint every smoked tile into `out` (0/1). Cheap when the screen is small. */
+export function fillSmokeMask(
+  clouds: readonly SmokeCloud[],
+  tileSize: number,
+  width: number,
+  height: number,
+  out: Uint8Array,
+): void {
+  out.fill(0);
+  for (const c of clouds) {
+    const cx = worldToTile(c.x, tileSize);
+    const cy = worldToTile(c.y, tileSize);
+    const scale = cloudScale(c);
+    const a = Math.max(0.75, c.halfAlong * scale);
+    const b = Math.max(0.75, c.halfAcross * scale);
+    const reach = Math.ceil(Math.max(a, b)) + 1;
+    const x0 = Math.max(0, cx - reach);
+    const x1 = Math.min(width - 1, cx + reach);
+    const y0 = Math.max(0, cy - reach);
+    const y1 = Math.min(height - 1, cy + reach);
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (inSmokeCloud(c, tileSize, x, y)) out[y * width + x] = 1;
+      }
+    }
+  }
+}
+
 export function spawnSmokeCloud(
   state: MatchState,
   x: number,

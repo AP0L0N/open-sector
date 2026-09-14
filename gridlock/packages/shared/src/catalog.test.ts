@@ -13,8 +13,10 @@ import {
   TANK_SHELL_SPEED,
   TICK_DT,
   TILE_SIZE,
+  WEAPON_RANGE_SIGHT_MUL,
   SHELLS,
   armorLabel,
+  BUILDING_TYPES,
   catalog,
   hasMg,
   pickLoadedShell,
@@ -141,6 +143,28 @@ describe("injuries", () => {
     assert.ok(SWIM_SPEED < STANCE_SPEED.stand);
     assert.ok(SWIM_SPEED < STANCE_SPEED.crouch);
     assert.ok(WATER_PATH_COST > 1);
+  });
+});
+
+describe("weapon reach", () => {
+  it("is sight plus 20% for troopers and tanks", () => {
+    const inf = catalog("trooper");
+    const tank = catalog("warden");
+    assert.equal(WEAPON_RANGE_SIGHT_MUL, 1.2);
+    assert.equal(inf.rangeTiles, inf.sightTiles * WEAPON_RANGE_SIGHT_MUL);
+    assert.equal(tank.rangeTiles, tank.sightTiles * WEAPON_RANGE_SIGHT_MUL);
+    assert.equal(inf.sightBonusTiles ?? 0, 0);
+    assert.equal(tank.sightBonusTiles ?? 0, 0);
+  });
+});
+
+describe("building sight", () => {
+  it("matches infantry fog radius on player structures", () => {
+    const inf = catalog("trooper").sightTiles;
+    assert.equal(catalog("core").sightTiles, inf);
+    for (const t of BUILDING_TYPES) {
+      assert.equal(catalog(t).sightTiles, inf, t);
+    }
   });
 });
 

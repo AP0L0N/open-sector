@@ -35,7 +35,7 @@ export const FACE_FIRE_DEG = 8;
 export const FACE_MOVE_DEG = 12;
 /** Full angle of a Guard overwatch cone. Units still fire 360°; this is the ready arc. */
 export const GUARD_CONE_DEG = 90;
-/** Auto-withdraw distance when a stationary unit is hit from out of sight. */
+/** Displace this far when a stationary unit auto-withdraws. */
 export const WITHDRAW_TILES = t(5);
 export const PROJECTILE_RADIUS = 3;
 export const HP_BAR_SECONDS = 2;
@@ -116,8 +116,18 @@ export const HEIGHT_SIGHT_BONUS = 2;
 export const INFANTRY_UPHILL_SIGHT = 2;
 /** Standing eye height. Troops peek over rises that hide a hull. */
 export const INFANTRY_EYE_HEIGHT = TILE_SUBDIV;
-/** Extra weapon-range tiles per elevation. */
-export const HEIGHT_RANGE_BONUS = 1;
+/** Chebyshev fog radius. Troopers and player-built structures share this. */
+export const INFANTRY_SIGHT_TILES = t(12);
+/**
+ * Armed units can fire this far past their current sight. The extra band is
+ * only useful when a teammate (later: binoculars / a spotter) lights the target;
+ * auto-attack still requires the enemy to be visible. Accuracy falls off there.
+ */
+export const WEAPON_RANGE_SIGHT_MUL = 1.2;
+/** Flat-ground weapon tiles from a Chebyshev sight radius. */
+export function weaponRangeTiles(sightTiles: number): number {
+  return sightTiles * WEAPON_RANGE_SIGHT_MUL;
+}
 /** Tree tiles a sight ray may pass before the grove closes. One authoring cell. */
 export const TREE_LOS_THROUGH = TILE_SUBDIV;
 /** Civilian / unowned map buildings. */
@@ -186,8 +196,11 @@ export interface CatalogEntry {
   radius: number;
   moveTilesPerSec: number;
   turnDegPerSec: number;
+  /** Flat-ground max. Armed units keep this equal to sight × WEAPON_RANGE_SIGHT_MUL. */
   rangeTiles: number;
   sightTiles: number;
+  /** Extra Chebyshev sight from optics (binoculars, rangefinders). Omit until those units exist. */
+  sightBonusTiles?: number;
   cooldown: number;
   damage: number;
   projectileSpeed: number;
@@ -241,7 +254,7 @@ export const HANDGUN = {
  * Rifle / coaxial MG. Fast enough to cross max range in under a tick so the
  * round itself is not a visible tracer — sparks only after an armor bounce.
  */
-export const SMALL_ARMS_SPEED = 4000;
+export const SMALL_ARMS_SPEED = 10000;
 /**
  * 75mm flight. Slow enough to live across several sim ticks so the round
  * reads as a tracer instead of vanishing in the fire tick.
@@ -331,7 +344,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     moveTilesPerSec: 0,
     turnDegPerSec: 0,
     rangeTiles: 0,
-    sightTiles: t(8),
+    sightTiles: INFANTRY_SIGHT_TILES,
     cooldown: 0,
     damage: 0,
     projectileSpeed: 0,
@@ -353,7 +366,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     moveTilesPerSec: 0,
     turnDegPerSec: 0,
     rangeTiles: 0,
-    sightTiles: t(4),
+    sightTiles: INFANTRY_SIGHT_TILES,
     cooldown: 0,
     damage: 0,
     projectileSpeed: 0,
@@ -374,7 +387,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     moveTilesPerSec: 0,
     turnDegPerSec: 0,
     rangeTiles: 0,
-    sightTiles: t(5),
+    sightTiles: INFANTRY_SIGHT_TILES,
     cooldown: 0,
     damage: 0,
     projectileSpeed: 0,
@@ -395,7 +408,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     moveTilesPerSec: 0,
     turnDegPerSec: 0,
     rangeTiles: 0,
-    sightTiles: t(5),
+    sightTiles: INFANTRY_SIGHT_TILES,
     cooldown: 0,
     damage: 0,
     projectileSpeed: 0,
@@ -416,7 +429,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     moveTilesPerSec: 0,
     turnDegPerSec: 0,
     rangeTiles: 0,
-    sightTiles: t(5),
+    sightTiles: INFANTRY_SIGHT_TILES,
     cooldown: 0,
     damage: 0,
     projectileSpeed: 0,
@@ -436,8 +449,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 7,
     moveTilesPerSec: t(2.2),
     turnDegPerSec: 1800,
-    rangeTiles: t(6),
-    sightTiles: t(12),
+    rangeTiles: weaponRangeTiles(INFANTRY_SIGHT_TILES),
+    sightTiles: INFANTRY_SIGHT_TILES,
     cooldown: 0.9,
     damage: 12,
     projectileSpeed: SMALL_ARMS_SPEED,
@@ -481,7 +494,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 12,
     moveTilesPerSec: t(1.45),
     turnDegPerSec: 85,
-    rangeTiles: t(9),
+    rangeTiles: weaponRangeTiles(t(8)),
     sightTiles: t(8),
     cooldown: 6.5,
     damage: 55,
@@ -582,6 +595,11 @@ export function isTrainType(type: string): type is TrainType {
 
 export function fires(type: EntityType): boolean {
   return catalog(type).damage > 0 || hasMg(type);
+}
+
+/** Extra fog tiles from catalog optics. 0 on every current type. */
+export function sightBonusTilesOf(type: EntityType): number {
+  return catalog(type).sightBonusTiles ?? 0;
 }
 
 export function isArmoredType(type: EntityType): boolean {
