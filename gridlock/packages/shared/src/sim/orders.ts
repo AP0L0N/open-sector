@@ -52,6 +52,14 @@ export function tickMovement(state: MatchState, dt: number): void {
       e.tileY = worldToTile(e.y, state.tileSize);
       continue;
     }
+    if (e.guardFacing != null && e.waypoints.length === 0 && !e.attackTarget) {
+      if (!e.order || e.order.kind === "guard") {
+        tickGuardFacing(e, dt);
+        e.tileX = worldToTile(e.x, state.tileSize);
+        e.tileY = worldToTile(e.y, state.tileSize);
+        continue;
+      }
+    }
     const chaseId =
       (e.order?.kind === "attack" || e.order?.kind === "forceattack") && e.order.targetId != null
         ? e.order.targetId
@@ -163,6 +171,22 @@ export function tickMovement(state: MatchState, dt: number): void {
       e.state = "idle";
     }
   }
+}
+
+function tickGuardFacing(e: Entity, dt: number): void {
+  const want = e.guardFacing;
+  if (want == null) return;
+  const def = catalog(e.type);
+  const hull = stepTurn(e.facing, want, def.turnDegPerSec * hullTurnMul(e), dt);
+  e.facing = hull.angle;
+  if (!hasTurret(e.type)) {
+    e.turretFacing = e.facing;
+  } else {
+    const rate = def.turretTurnDegPerSec ?? def.turnDegPerSec;
+    const gun = stepTurn(e.turretFacing, want, rate, dt);
+    e.turretFacing = gun.angle;
+  }
+  if (e.state === "move") e.state = "idle";
 }
 
 function tickRotate(e: Entity, dt: number): void {

@@ -23,6 +23,8 @@ import {
   isStance,
   STANCE_AIM_SPREAD,
   STANCE_SPEED,
+  SWIM_SPEED,
+  WATER_PATH_COST,
   nudgeGameSpeed,
   specialCooldownOf,
   specialLabel,
@@ -126,6 +128,9 @@ describe("injuries", () => {
     assert.equal(isStance("sit"), false);
     assert.ok(STANCE_SPEED.crawl < STANCE_SPEED.crouch);
     assert.ok(STANCE_AIM_SPREAD.crawl < STANCE_AIM_SPREAD.stand);
+    assert.ok(SWIM_SPEED < STANCE_SPEED.stand);
+    assert.ok(SWIM_SPEED < STANCE_SPEED.crouch);
+    assert.ok(WATER_PATH_COST > 1);
   });
 });
 

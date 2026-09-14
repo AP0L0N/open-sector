@@ -1,4 +1,4 @@
-import { isoDirIndex, type Crit, type EntityType, type Stance } from "@gridlock/shared";
+import { isoDirIndex, isInfantryType, type Crit, type EntityType, type Stance } from "@gridlock/shared";
 import coreUrl from "../assets/buildings/core.png";
 import dynamoUrl from "../assets/buildings/dynamo.png";
 import smelterUrl from "../assets/buildings/smelter.png";
@@ -17,6 +17,7 @@ import waterBUrl from "../assets/terrain/water-b.png";
 import trooperSheetUrl from "../assets/units/trooper-walk.png";
 import trooperCrouchUrl from "../assets/units/trooper-crouch.png";
 import trooperCrawlUrl from "../assets/units/trooper-crawl.png";
+import infantrySwimUrl from "../assets/units/infantry-swim.png";
 import haulerSheetUrl from "../assets/units/hauler-move.png";
 import wardenHullUrl from "../assets/units/warden-hull.png";
 import wardenTurretUrl from "../assets/units/warden-turret.png";
@@ -89,6 +90,17 @@ export const TROOPER_CRAWL_SPRITE: UnitSpriteDef = {
   contactY: 0.72,
 };
 
+/** Shared swim sheet for every infantry type. */
+export const INFANTRY_SWIM_SPRITE: UnitSpriteDef = {
+  image: loadSheet(infantrySwimUrl),
+  dirs: 8,
+  frames: 8,
+  frameSize: 96,
+  fps: 8,
+  drawSize: Math.round(28 * UNIT_VISUAL_SCALE),
+  contactY: 0.64,
+};
+
 export const WARDEN_SPRITE: UnitSpriteDef = {
   image: loadSheet(wardenHullUrl),
   dirs: 8,
@@ -132,7 +144,8 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   rig: RIG_SPRITE,
 };
 
-export function spriteFor(type: EntityType, stance?: Stance): UnitSpriteDef | undefined {
+export function spriteFor(type: EntityType, stance?: Stance, swimming = false): UnitSpriteDef | undefined {
+  if (isInfantryType(type) && swimming) return INFANTRY_SWIM_SPRITE;
   if (type === "trooper") {
     if (stance === "crouch") return TROOPER_CROUCH_SPRITE;
     if (stance === "crawl") return TROOPER_CRAWL_SPRITE;

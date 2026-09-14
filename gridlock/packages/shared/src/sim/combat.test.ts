@@ -332,6 +332,121 @@ describe("rotate", () => {
   });
 });
 
+describe("guard", () => {
+  it("groups at the point, holds, and faces the commanded heading", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const a = makeEntity(state, "trooper", "A", tileCenter(20, ts), tileCenter(24, ts));
+    const b = makeEntity(state, "trooper", "A", tileCenter(22, ts), tileCenter(24, ts));
+    a.facing = 0;
+    b.facing = 0;
+    const destX = tileCenter(40, ts);
+    const destY = tileCenter(24, ts);
+    const facing = Math.PI / 2;
+    const res = applyCommand(state, "A", {
+      type: "cmd.guard",
+      ids: [a.id, b.id],
+      x: destX,
+      y: destY,
+      facing,
+    });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    assert.equal(a.holdPosition, true);
+    assert.equal(b.holdPosition, true);
+    assert.equal(a.order?.kind, "guard");
+    assert.equal(b.order?.kind, "guard");
+    for (let i = 0; i < 80; i++) step(state, TICK_DT);
+    assert.ok(Math.hypot(a.x - destX, a.y - destY) < 48, `a at ${a.x},${a.y}`);
+    assert.ok(Math.hypot(b.x - destX, b.y - destY) < 48, `b at ${b.x},${b.y}`);
+    assert.ok(Math.abs(a.facing - facing) < 0.2, `a facing=${a.facing}`);
+    assert.ok(Math.abs(b.facing - facing) < 0.2, `b facing=${b.facing}`);
+    assert.equal(a.holdPosition, true);
+    assert.equal(b.waypoints.length, 0);
+  });
+
+  it("does not chase while guarding", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const dummy = makeEntity(state, "hauler", "B", tileCenter(70, ts), tileCenter(24, ts));
+    dummy.autoHarvest = false;
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    const x0 = tank.x;
+    applyCommand(state, "A", {
+      type: "cmd.guard",
+      ids: [tank.id],
+      x: tank.x,
+      y: tank.y,
+      facing: 0,
+    });
+    for (let i = 0; i < 30; i++) step(state, TICK_DT);
+    assert.equal(tank.holdPosition, true);
+    assert.ok(Math.abs(tank.x - x0) < 6, `guarding tank walked x=${tank.x} from ${x0}`);
+  });
+
+  it("engages a cone target before a closer flanker", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(40, ts), tileCenter(40, ts));
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    const flank = makeEntity(state, "hauler", "B", tileCenter(42, ts), tileCenter(48, ts));
+    flank.autoHarvest = false;
+    const front = makeEntity(state, "hauler", "B", tileCenter(52, ts), tileCenter(40, ts));
+    front.autoHarvest = false;
+    applyCommand(state, "A", {
+      type: "cmd.guard",
+      ids: [tank.id],
+      x: tank.x,
+      y: tank.y,
+      facing: 0,
+    });
+    for (let i = 0; i < 8; i++) step(state, TICK_DT);
+    assert.equal(tank.attackTarget, front.id, `attackTarget=${tank.attackTarget} front=${front.id} flank=${flank.id}`);
+  });
+
+  it("keeps the hull on the cone while the turret tracks a flanker, then returns", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(40, ts), tileCenter(40, ts));
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    const flank = makeEntity(state, "trooper", "B", tileCenter(40, ts), tileCenter(48, ts));
+    applyCommand(state, "A", {
+      type: "cmd.guard",
+      ids: [tank.id],
+      x: tank.x,
+      y: tank.y,
+      facing: 0,
+    });
+    let sawTurret = false;
+    for (let i = 0; i < 20; i++) {
+      step(state, TICK_DT);
+      if (Math.abs(tank.turretFacing - Math.PI / 2) < 0.4) sawTurret = true;
+    }
+    assert.ok(Math.abs(tank.facing) < 0.2, `hull drifted facing=${tank.facing}`);
+    assert.equal(sawTurret, true, `turretFacing=${tank.turretFacing}`);
+    for (let i = 0; i < 80; i++) step(state, TICK_DT);
+    assert.ok(flank.hp <= 0, `flank hp=${flank.hp}`);
+    for (let i = 0; i < 16; i++) step(state, TICK_DT);
+    assert.ok(Math.abs(tank.turretFacing) < 0.25, `turret did not return turretFacing=${tank.turretFacing}`);
+    assert.ok(Math.abs(tank.facing) < 0.2, `hull facing=${tank.facing}`);
+  });
+});
+
 describe("withdraw", () => {
   it("retreats when idle and hit from out of sight", () => {
     const { state } = twoPlayerMatch();

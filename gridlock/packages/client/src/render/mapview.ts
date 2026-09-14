@@ -3,6 +3,7 @@ import {
   clampIsoCamera,
   cloudScale,
   fires,
+  GUARD_CONE_DEG,
   isCivilianType,
   isInfantryType,
   isSmokeShell,
@@ -182,6 +183,10 @@ export class MapView {
   attackMoveMode = false;
   forceAttackMode = false;
   rotateMode = false;
+  guardMode = false;
+  private guardAnchor: { x: number; y: number } | null = null;
+  private guardFacing = 0;
+  private guardDragging = false;
   onSelect: (ids: number[]) => void = () => {};
   onCommand: (msg: ClientMessage) => void = () => {};
   onPlaceMode: () => void = () => {};
@@ -194,6 +199,7 @@ export class MapView {
       this.placeMode = false;
       this.forceAttackMode = false;
       this.rotateMode = false;
+      this.setGuardMode(false);
     }
     this.onAttackMoveMode();
     this.onPlaceMode();
@@ -206,6 +212,7 @@ export class MapView {
       this.placeMode = false;
       this.attackMoveMode = false;
       this.rotateMode = false;
+      this.setGuardMode(false);
     }
     this.onAttackMoveMode();
     this.onPlaceMode();
@@ -218,6 +225,24 @@ export class MapView {
       this.placeMode = false;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
+      this.setGuardMode(false);
+    }
+    this.onAttackMoveMode();
+    this.onPlaceMode();
+  }
+
+  setGuardMode(on: boolean): void {
+    if (this.guardMode === on) return;
+    this.guardMode = on;
+    if (on) {
+      this.placeMode = false;
+      this.attackMoveMode = false;
+      this.forceAttackMode = false;
+      this.rotateMode = false;
+      this.guardFacing = this.meanSelectedFacing();
+    } else {
+      this.guardAnchor = null;
+      this.guardDragging = false;
     }
     this.onAttackMoveMode();
     this.onPlaceMode();
@@ -346,6 +371,7 @@ export class MapView {
     if (this.attackMoveMode && this.ownSelectedIds().length === 0) this.setAttackMoveMode(false);
     if (this.forceAttackMode && this.ownSelectedIds().length === 0) this.setForceAttackMode(false);
     if (this.rotateMode && this.ownSelectedIds().length === 0) this.setRotateMode(false);
+    if (this.guardMode && this.ownSelectedIds().length === 0) this.setGuardMode(false);
     const placing = this.placeMode;
     if (!this.readyBuilding()) this.placeMode = false;
     if (this.placeMode !== placing) this.onPlaceMode();
@@ -552,16 +578,21 @@ export class MapView {
       }
       if (e.button === 2) {
         e.preventDefault();
-        if (this.attackMoveMode || this.forceAttackMode || this.rotateMode) {
+        if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode) {
           this.setAttackMoveMode(false);
           this.setForceAttackMode(false);
           this.setRotateMode(false);
+          this.setGuardMode(false);
           return;
         }
         this.onRight(mx, my);
         return;
       }
       if (e.button === 0) {
+        if (this.guardMode) {
+          this.beginGuard(mx, my);
+          return;
+        }
         if (this.forceAttackMode) {
           this.commitForceAttack(mx, my);
           return;
@@ -609,6 +640,10 @@ export class MapView {
 
   private onUp = (e: MouseEvent): void => {
     if (e.button === 1) this.panning = false;
+    if (e.button === 0 && this.guardDragging) {
+      this.commitGuard(this.mouseX, this.mouseY);
+      return;
+    }
     if (e.button === 0 && this.box) {
       const b = this.box;
       this.box = null;
@@ -639,6 +674,7 @@ export class MapView {
       this.box.x1 = this.mouseX;
       this.box.y1 = this.mouseY;
     }
+    if (this.guardDragging && this.guardAnchor) this.aimGuard(this.mouseX, this.mouseY);
     this.syncCursor();
   };
 
@@ -681,6 +717,7 @@ export class MapView {
       this.setAttackMoveMode(false);
       this.setForceAttackMode(false);
       this.setRotateMode(false);
+      this.setGuardMode(false);
       const ids = [...this.selected].filter((id) => {
         const ent = this.curr.entities.find((x) => x.id === id);
         return !!ent && ent.ownerId === this.curr.youPlayerId && !ent.wreck && ent.kind === "unit";
@@ -704,6 +741,12 @@ export class MapView {
       e.preventDefault();
       const ids = this.ownSelectedIds();
       if (ids.length) this.setRotateMode(!this.rotateMode);
+      return;
+    }
+    if (k === "v") {
+      e.preventDefault();
+      const ids = this.ownSelectedIds();
+      if (ids.length) this.setGuardMode(!this.guardMode);
       return;
     }
     if (k === "p") {
@@ -730,12 +773,18 @@ export class MapView {
       this.stanceHotkey("crawl");
       return;
     }
+    if (k === "i") {
+      e.preventDefault();
+      this.garrisonHideHotkey();
+      return;
+    }
     if (k === "escape") {
-      if (this.attackMoveMode || this.forceAttackMode || this.rotateMode) {
+      if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode) {
         e.preventDefault();
         this.setAttackMoveMode(false);
         this.setForceAttackMode(false);
         this.setRotateMode(false);
+        this.setGuardMode(false);
       }
     }
   };
@@ -781,6 +830,34 @@ export class MapView {
     const stance = inf.every((e) => (e.stanceOrder ?? e.stance) === want) ? "stand" : want;
     if (!isStance(stance)) return;
     this.onCommand({ type: "cmd.stance", ids: inf.map((e) => e.id), stance });
+  }
+
+  private garrisonHideHotkey(): void {
+    const you = this.curr.youPlayerId;
+    const ids: number[] = [];
+    const houses: EntityView[] = [];
+    const seen = new Set<number>();
+    for (const e of this.curr.entities) {
+      if (!this.selected.has(e.id) || e.wreck) continue;
+      if (isGarrisonable(e.type) && e.garrison?.ownerId === you && (e.garrison.count ?? 0) > 0) {
+        if (!seen.has(e.id)) {
+          seen.add(e.id);
+          houses.push(e);
+          ids.push(e.id);
+        }
+      }
+      if (e.ownerId === you && e.garrisonedIn) {
+        ids.push(e.id);
+        const house = this.curr.entities.find((x) => x.id === e.garrisonedIn);
+        if (house && !seen.has(house.id)) {
+          seen.add(house.id);
+          houses.push(house);
+        }
+      }
+    }
+    if (ids.length === 0 || houses.length === 0) return;
+    const hide = !houses.every((h) => h.garrison?.hide);
+    this.onCommand({ type: "cmd.garrisonhide", ids, hide });
   }
 
   private garrisonHotkey(): void {
@@ -845,6 +922,64 @@ export class MapView {
     const hit = this.hit(px, py);
     const w = hit ? { x: hit.x, y: hit.y } : this.screenToWorld(px, py);
     this.onCommand({ type: "cmd.rotate", ids, x: w.x, y: w.y });
+  }
+
+  private meanSelectedFacing(): number {
+    let sx = 0;
+    let sy = 0;
+    let n = 0;
+    for (const id of this.ownSelectedIds()) {
+      const e = this.curr.entities.find((x) => x.id === id);
+      if (!e) continue;
+      sx += Math.cos(e.facing);
+      sy += Math.sin(e.facing);
+      n++;
+    }
+    if (n === 0 || (sx === 0 && sy === 0)) return this.guardFacing;
+    return Math.atan2(sy, sx);
+  }
+
+  private maxSelectedRange(): number {
+    const ts = this.ts();
+    let range = 0;
+    for (const id of this.ownSelectedIds()) {
+      const e = this.curr.entities.find((x) => x.id === id);
+      if (!e) continue;
+      range = Math.max(range, catalog(e.type).rangeTiles * ts);
+    }
+    return range;
+  }
+
+  private beginGuard(px: number, py: number): void {
+    if (this.ownSelectedIds().length === 0) {
+      this.setGuardMode(false);
+      return;
+    }
+    this.mouseX = px;
+    this.mouseY = py;
+    this.guardAnchor = this.screenToWorld(px, py);
+    this.guardFacing = this.meanSelectedFacing();
+    this.guardDragging = true;
+  }
+
+  private aimGuard(px: number, py: number): void {
+    if (!this.guardAnchor) return;
+    const w = this.screenToWorld(px, py);
+    const dx = w.x - this.guardAnchor.x;
+    const dy = w.y - this.guardAnchor.y;
+    if (dx * dx + dy * dy < 64) return;
+    this.guardFacing = Math.atan2(dy, dx);
+  }
+
+  private commitGuard(px: number, py: number): void {
+    const ids = this.ownSelectedIds();
+    const anchor = this.guardAnchor;
+    this.guardDragging = false;
+    if (anchor && px >= 0 && py >= 0) this.aimGuard(px, py);
+    const facing = this.guardFacing;
+    this.setGuardMode(false);
+    if (ids.length === 0 || !anchor) return;
+    this.onCommand({ type: "cmd.guard", ids, x: anchor.x, y: anchor.y, facing });
   }
 
   private specialSelected(): void {
@@ -983,7 +1118,7 @@ export class MapView {
       if (e.kind === "unit") {
         if (e.garrisonedIn) continue;
         const p = this.lerpEnt(e);
-        const spr = spriteFor(e.type, e.stance);
+        const spr = spriteFor(e.type, e.stance, e.swimming);
         if (spr) {
           const s = this.toScreen(p.x, p.y);
           const size = spr.drawSize;
@@ -1286,6 +1421,7 @@ export class MapView {
     this.drawAttackCursor();
     this.drawForceCursor();
     this.drawRotateCursor();
+    this.drawGuardOverlay();
   }
 
   private drawForceCursor(): void {
@@ -1343,6 +1479,89 @@ export class MapView {
     ctx.strokeStyle = "#140e0a";
     ctx.strokeText("FACE", x + 14, y + 8);
     ctx.fillText("FACE", x + 14, y + 8);
+    ctx.restore();
+  }
+
+  private drawGuardOverlay(): void {
+    if (!this.guardMode || this.overControl || this.hoverSpecial) return;
+    if (this.mouseX < 0 || this.mouseY < 0) return;
+    const ids = this.ownSelectedIds();
+    if (ids.length === 0) return;
+    if (!this.guardDragging) this.guardFacing = this.meanSelectedFacing();
+    const origin = this.guardAnchor ?? this.screenToWorld(this.mouseX, this.mouseY);
+    const range = this.maxSelectedRange();
+    const facing = this.guardFacing;
+    const half = (GUARD_CONE_DEG * Math.PI) / 360;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    if (range > 0) {
+      const ring: IsoPt[] = [];
+      const steps = 48;
+      for (let i = 0; i <= steps; i++) {
+        const a = (Math.PI * 2 * i) / steps;
+        ring.push(this.toScreen(origin.x + Math.cos(a) * range, origin.y + Math.sin(a) * range));
+      }
+      ctx.beginPath();
+      ctx.moveTo(ring[0]!.x, ring[0]!.y);
+      for (const p of ring) ctx.lineTo(p.x, p.y);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(232, 184, 74, 0.06)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(232, 184, 74, 0.35)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([5, 4]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      const a0 = facing - half;
+      const a1 = facing + half;
+      const arc: IsoPt[] = [this.toScreen(origin.x, origin.y)];
+      const arcSteps = 20;
+      for (let i = 0; i <= arcSteps; i++) {
+        const a = a0 + ((a1 - a0) * i) / arcSteps;
+        arc.push(this.toScreen(origin.x + Math.cos(a) * range, origin.y + Math.sin(a) * range));
+      }
+      ctx.beginPath();
+      ctx.moveTo(arc[0]!.x, arc[0]!.y);
+      for (const p of arc) ctx.lineTo(p.x, p.y);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(232, 184, 74, 0.22)";
+      ctx.fill();
+      ctx.strokeStyle = "#e8b84a";
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+    }
+    const tipR = range > 0 ? range : this.ts() * 6;
+    const tip = this.toScreen(origin.x + Math.cos(facing) * tipR, origin.y + Math.sin(facing) * tipR);
+    const apex = this.toScreen(origin.x, origin.y);
+    ctx.strokeStyle = "#e8b84a";
+    ctx.fillStyle = "#e8b84a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(apex.x, apex.y);
+    ctx.lineTo(tip.x, tip.y);
+    ctx.stroke();
+    const iso = facingToIso(facing, this.ts());
+    const len = Math.hypot(iso.x, iso.y) || 1;
+    const ux = iso.x / len;
+    const uy = iso.y / len;
+    ctx.beginPath();
+    ctx.moveTo(tip.x, tip.y);
+    ctx.lineTo(tip.x - ux * 12 + uy * 6, tip.y - uy * 12 - ux * 6);
+    ctx.lineTo(tip.x - ux * 12 - uy * 6, tip.y - uy * 12 + ux * 6);
+    ctx.closePath();
+    ctx.fill();
+    const label = this.guardDragging ? "FACE" : "GUARD";
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#140e0a";
+    ctx.strokeText(label, this.mouseX + 14, this.mouseY + 8);
+    ctx.fillStyle = "#e8b84a";
+    ctx.fillText(label, this.mouseX + 14, this.mouseY + 8);
     ctx.restore();
   }
 
@@ -1622,7 +1841,7 @@ export class MapView {
   }
 
   private drawUnit(e: EntityView): void {
-    const spr = spriteFor(e.type, e.stance);
+    const spr = spriteFor(e.type, e.stance, e.swimming);
     if (spr) {
       this.drawSpritedUnit(e, spr);
       return;
@@ -1691,7 +1910,7 @@ export class MapView {
     ctx.save();
     if (e.wreck) ctx.globalAlpha = 0.55;
     const drawn = drawUnitSprite(ctx, def, s.x, s.y, dir.x, dir.y, {
-      moving: !e.wreck && e.state === "move" && !immobilized(e),
+      moving: !e.wreck && !immobilized(e) && (e.state === "move" || !!e.swimming),
       id: e.id,
       now: performance.now() * (this.curr.gameSpeed || 1),
       turretDx: turretDir.x,
@@ -1904,7 +2123,8 @@ export class MapView {
     }
     this.hoverSpecial = special;
     const attack =
-      (this.attackMoveMode || this.forceAttackMode || this.rotateMode) && !this.overControl;
+      (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode) &&
+      !this.overControl;
     this.canvas.classList.toggle("cursor-special", special);
     this.canvas.classList.toggle("cursor-attack", attack && !special);
     this.canvas.style.cursor = special || attack ? "none" : "";

@@ -31,9 +31,12 @@ export interface Order {
     | "unload"
     | "garrison"
     | "rotate"
+    | "guard"
     | "withdraw";
   x?: number;
   y?: number;
+  /** World radians. Guard / rotate destination facing. */
+  facing?: number;
   targetId?: number;
   tileX?: number;
   tileY?: number;
@@ -86,6 +89,8 @@ export interface Entity {
   garrisonedIn: number | null;
   /** Unit ids occupying a garrisonable building. */
   garrison: number[];
+  /** Occupants shuttered: tiny sight, no fire, occupancy hidden from enemies. */
+  garrisonHide: boolean;
   /** Player currently taking this building. Empty when idle. */
   captureOwnerId: string;
   /** 0–1. Decays when capturers leave. */
@@ -98,6 +103,8 @@ export interface Entity {
   stanceOrder: Stance;
   /** Stay put: fire in range, do not chase or withdraw. */
   holdPosition: boolean;
+  /** Commanded overwatch heading. Null when not guarding. */
+  guardFacing: number | null;
 }
 
 export interface Projectile {

@@ -1,10 +1,13 @@
 import {
+  GARRISON_HIDE_SIGHT,
   GARRISON_STRUCTURAL_CALIBER,
+  GARRISON_WATCH_SIGHT_BONUS,
   garrisonCapOf,
   isGarrisonable,
   isInfantryType,
   NEUTRAL_OWNER,
 } from "../catalog.js";
+import { entityHeight, sightTilesOf } from "./elevation.js";
 import { nextRand } from "./rng.js";
 import { adjacentToBuilding, allies, inBounds, nearestWalkable, tileCenter, worldToTile } from "./geo.js";
 import { setPath } from "./path.js";
@@ -29,6 +32,48 @@ export function garrisonIsHostile(state: MatchState, ownerId: string, house: Ent
   return !allies(state, ownerId, occ[0]!.ownerId);
 }
 
+/** True occupancy that enemies can read. Hidden garrisons look empty. */
+export function garrisonLooksOccupied(state: MatchState, viewerId: string, house: Entity): boolean {
+  const occ = livingGarrison(state, house);
+  if (occ.length === 0) return false;
+  if (house.garrisonHide && !allies(state, viewerId, occ[0]!.ownerId)) return false;
+  return true;
+}
+
+export function garrisonIsHiding(state: MatchState, unit: Entity): boolean {
+  if (unit.garrisonedIn == null) return false;
+  return !!state.entities.get(unit.garrisonedIn)?.garrisonHide;
+}
+
+/** Sight radius for a unit inside a house. Undefined if the unit is not garrisoned. */
+export function occupantSightTiles(state: MatchState, unit: Entity): number | undefined {
+  if (unit.garrisonedIn == null) return undefined;
+  const house = state.entities.get(unit.garrisonedIn);
+  if (!house) return undefined;
+  if (house.garrisonHide) return GARRISON_HIDE_SIGHT;
+  return sightTilesOf(unit.type, entityHeight(state, unit)) + GARRISON_WATCH_SIGHT_BONUS;
+}
+
+export function setGarrisonHide(state: MatchState, house: Entity, hide: boolean): void {
+  house.garrisonHide = hide;
+  state.visionTick = -1;
+  if (!hide) return;
+  for (const u of livingGarrison(state, house)) {
+    u.attackTarget = null;
+    if (u.order?.kind === "attack" || u.order?.kind === "attackmove" || u.order?.kind === "forceattack") {
+      u.order = null;
+    }
+    u.state = "garrison";
+  }
+}
+
+function syncEmptyHide(state: MatchState, house: Entity): void {
+  if (livingGarrison(state, house).length > 0) return;
+  if (!house.garrisonHide) return;
+  house.garrisonHide = false;
+  state.visionTick = -1;
+}
+
 /** Occupant HP for the building snapshot. Sorted by id so bars do not shuffle. */
 export function garrisonBars(state: MatchState, house: Entity): { hp: number; hpMax: number }[] {
   return livingGarrison(state, house)
@@ -41,7 +86,10 @@ export function garrisonBars(state: MatchState, house: Entity): { hp: number; hp
 export function detachGarrisoned(state: MatchState, unit: Entity): void {
   if (unit.garrisonedIn == null) return;
   const house = state.entities.get(unit.garrisonedIn);
-  if (house) house.garrison = house.garrison.filter((id) => id !== unit.id);
+  if (house) {
+    house.garrison = house.garrison.filter((id) => id !== unit.id);
+    syncEmptyHide(state, house);
+  }
   unit.garrisonedIn = null;
 }
 
@@ -133,7 +181,10 @@ export function exitGarrison(
   const house = unit.garrisonedIn != null ? state.entities.get(unit.garrisonedIn) : undefined;
   unit.garrisonedIn = null;
   unit.state = "idle";
-  if (house) house.garrison = house.garrison.filter((id) => id !== unit.id);
+  if (house) {
+    house.garrison = house.garrison.filter((id) => id !== unit.id);
+    syncEmptyHide(state, house);
+  }
   const near = house
     ? approachTile(state, house)
     : nearestWalkable(state, worldToTile(unit.x, state.tileSize), worldToTile(unit.y, state.tileSize), unit.type);
@@ -154,6 +205,7 @@ export function exitGarrison(
 export function spillGarrison(state: MatchState, house: Entity, opts?: { damage?: boolean }): void {
   const units = livingGarrison(state, house);
   house.garrison = [];
+  house.garrisonHide = false;
   const hurt = opts?.damage !== false;
   for (const u of units) {
     u.garrisonedIn = null;

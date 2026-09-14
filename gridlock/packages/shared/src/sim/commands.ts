@@ -14,7 +14,7 @@ import {
 import type { ClientMessage, ErrorCode } from "../protocol.js";
 import { pathToCapture, wantsCapture } from "./capture.js";
 import { clearOrder, hqOf } from "./geo.js";
-import { approachTile, canGarrison, exitGarrison, livingGarrison } from "./garrison.js";
+import { approachTile, canGarrison, exitGarrison, garrisonOwner, livingGarrison, setGarrisonHide } from "./garrison.js";
 import { cancelStructure, placeBuilding, sellBuilding, startBuild } from "./build.js";
 import { deployId } from "./deploy.js";
 import { cancelTrain, pauseTrain, startTrain } from "./train.js";
@@ -80,6 +80,8 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
       return cmdGarrison(state, playerId, msg.ids, msg.buildingId);
     case "cmd.ungarrison":
       return cmdUngarrison(state, playerId, msg.ids, msg.buildingId, msg.x, msg.y);
+    case "cmd.garrisonhide":
+      return cmdGarrisonHide(state, playerId, msg.ids, msg.hide);
     case "cmd.stance":
       if (!isStance(msg.stance)) return fail("bad_payload", "Unknown stance.");
       return cmdStance(state, playerId, msg.ids, msg.stance);
@@ -87,6 +89,8 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
       return cmdHold(state, playerId, msg.ids, msg.hold);
     case "cmd.rotate":
       return cmdRotate(state, playerId, msg.ids, msg.x, msg.y);
+    case "cmd.guard":
+      return cmdGuard(state, playerId, msg.ids, msg.x, msg.y, msg.facing);
     default:
       return fail("bad_payload", "Unknown command.");
   }
@@ -129,12 +133,14 @@ function cmdMove(state: MatchState, playerId: string, ids: number[], x: number, 
   for (const e of movers) {
     const d = dests.get(e.id) ?? { x, y };
     if (e.garrisonedIn) {
+      e.guardFacing = null;
       exitGarrison(state, e, d);
       continue;
     }
     e.order = { kind: "move", x: d.x, y: d.y };
     e.attackTarget = null;
     e.harvestTile = null;
+    e.guardFacing = null;
     e.state = "move";
     setPath(state, e, d.x, d.y);
   }
@@ -151,6 +157,7 @@ function cmdAttackMove(state: MatchState, playerId: string, ids: number[], x: nu
     e.order = { kind: "attackmove", x: d.x, y: d.y };
     e.attackTarget = null;
     e.harvestTile = null;
+    e.guardFacing = null;
     e.state = "move";
     setPath(state, e, d.x, d.y);
   }
@@ -178,6 +185,7 @@ function cmdForceAttack(
     if (e.state === "deploy" || e.state === "undeploy") continue;
     if (t && e.id === t.id) continue;
     e.harvestTile = null;
+    e.guardFacing = null;
     if (t) {
       e.order = { kind: "forceattack", targetId: t.id, x: t.x, y: t.y };
       e.attackTarget = t.id;
@@ -219,6 +227,7 @@ function cmdAttack(state: MatchState, playerId: string, ids: number[], targetId:
     if (e.id === t.id) continue;
     e.order = { kind: "attack", targetId: t.id };
     e.attackTarget = t.id;
+    e.guardFacing = null;
     e.state = e.garrisonedIn ? "garrison" : "attack";
     if (e.garrisonedIn) continue;
     if (e.holdPosition) {
@@ -237,7 +246,10 @@ function cmdHold(state: MatchState, playerId: string, ids: number[], hold: boole
   for (const e of units) {
     if (e.state === "deploy" || e.state === "undeploy") continue;
     e.holdPosition = hold;
-    if (!hold) continue;
+    if (!hold) {
+      dropGuard(e);
+      continue;
+    }
     if (e.order?.kind === "withdraw") {
       e.order = null;
       e.attackTarget = null;
@@ -261,8 +273,55 @@ function cmdRotate(state: MatchState, playerId: string, ids: number[], x: number
     e.harvestTile = null;
     e.waypoints = [];
     e.state = "idle";
+    if (e.guardFacing != null) e.guardFacing = Math.atan2(y - e.y, x - e.x);
   }
   return ok();
+}
+
+function cmdGuard(
+  state: MatchState,
+  playerId: string,
+  ids: number[],
+  x: number,
+  y: number,
+  facing: number,
+): CmdResult {
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(facing)) {
+    return fail("bad_payload", "Bad guard point.");
+  }
+  const units = owned(state, playerId, ids).filter((e) => e.state !== "deploy" && e.state !== "undeploy");
+  if (units.length === 0) return fail("not_yours", "No owned units.");
+  const movers = units.filter((e) => !e.garrisonedIn);
+  const dests = groupMoveTargets(state, movers, x, y);
+  for (const e of units) {
+    const d = dests.get(e.id) ?? { x, y };
+    e.holdPosition = true;
+    e.guardFacing = facing;
+    e.attackTarget = null;
+    e.harvestTile = null;
+    e.order = { kind: "guard", x: d.x, y: d.y, facing };
+    if (e.garrisonedIn) {
+      exitGarrison(state, e, d);
+      e.order = { kind: "guard", x: d.x, y: d.y, facing };
+      e.holdPosition = true;
+      e.guardFacing = facing;
+      continue;
+    }
+    e.state = "move";
+    setPath(state, e, d.x, d.y);
+  }
+  return ok();
+}
+
+function dropGuard(e: Entity): void {
+  e.guardFacing = null;
+  if (e.order?.kind !== "guard") return;
+  if (e.waypoints.length > 0 && e.order.x != null && e.order.y != null) {
+    e.order = { kind: "move", x: e.order.x, y: e.order.y };
+    return;
+  }
+  e.order = null;
+  if (e.state === "move" || e.state === "attack") e.state = e.garrisonedIn ? "garrison" : "idle";
 }
 
 function cmdGarrison(state: MatchState, playerId: string, ids: number[], buildingId: number): CmdResult {
@@ -279,6 +338,7 @@ function cmdGarrison(state: MatchState, playerId: string, ids: number[], buildin
     e.order = { kind: "garrison", targetId: house.id };
     e.attackTarget = null;
     e.harvestTile = null;
+    e.guardFacing = null;
     e.state = "move";
     const door = approachTile(state, house);
     if (door) setPath(state, e, door.x * state.tileSize + state.tileSize / 2, door.y * state.tileSize + state.tileSize / 2);
@@ -314,6 +374,25 @@ function cmdUngarrison(
   return ok();
 }
 
+function cmdGarrisonHide(state: MatchState, playerId: string, ids: number[], hide: boolean): CmdResult {
+  const houses: Entity[] = [];
+  const seen = new Set<number>();
+  for (const id of ids) {
+    const e = state.entities.get(id);
+    if (!e || e.hp <= 0) continue;
+    let house: Entity | undefined;
+    if (isGarrisonable(e.type)) house = e;
+    else if (e.ownerId === playerId && e.garrisonedIn != null) house = state.entities.get(e.garrisonedIn);
+    if (!house || seen.has(house.id)) continue;
+    if (garrisonOwner(state, house) !== playerId) continue;
+    seen.add(house.id);
+    houses.push(house);
+  }
+  if (houses.length === 0) return fail("not_yours", "No garrisoned building.");
+  for (const h of houses) setGarrisonHide(state, h, hide);
+  return ok();
+}
+
 function cmdStop(state: MatchState, playerId: string, ids: number[]): CmdResult {
   const hq = hqOf(state, playerId);
   for (const id of ids) {
@@ -339,6 +418,7 @@ function cmdHarvest(
   for (const e of units) {
     e.autoHarvest = true;
     e.state = "harvest";
+    e.guardFacing = null;
     if (tileX != null && tileY != null) {
       e.order = { kind: "harvest", tileX, tileY };
       e.harvestTile = { x: tileX, y: tileY };

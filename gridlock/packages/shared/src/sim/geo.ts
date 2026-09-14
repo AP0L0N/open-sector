@@ -337,12 +337,14 @@ export function makeEntity(
     mgCooldown: 0,
     garrisonedIn: null,
     garrison: [],
+    garrisonHide: false,
     captureOwnerId: "",
     captureProgress: 0,
     crits: [],
     stance: "stand",
     stanceOrder: "stand",
     holdPosition: false,
+    guardFacing: null,
   };
   state.entities.set(id, e);
   occupyEntity(state, e);
@@ -354,6 +356,7 @@ export function clearOrder(e: Entity): void {
   e.waypoints = [];
   e.attackTarget = null;
   e.harvestTile = null;
+  e.guardFacing = null;
   if (e.wreck) {
     e.state = "wreck";
     return;

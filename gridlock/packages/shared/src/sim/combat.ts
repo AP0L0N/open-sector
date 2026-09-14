@@ -3,6 +3,7 @@ import {
   catalog,
   FACE_FIRE_DEG,
   GARRISON_STRUCTURAL_CALIBER,
+  GUARD_CONE_DEG,
   PROJECTILE_RADIUS,
   TANK_MG,
   WITHDRAW_TILES,
@@ -23,7 +24,14 @@ import { fireStats, hullTurnMul, immobilized, rollCrits } from "./crits.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
 import { weaponRangeWorld } from "./elevation.js";
 import { allies, buildingBounds, nearestWalkable, playerTeam, tileCenter, unitInWater, worldToTile } from "./geo.js";
-import { garrisonIsHostile, livingGarrison, pickGarrisonMuzzle, woundGarrison } from "./garrison.js";
+import {
+  garrisonIsHiding,
+  garrisonIsHostile,
+  garrisonLooksOccupied,
+  livingGarrison,
+  pickGarrisonMuzzle,
+  woundGarrison,
+} from "./garrison.js";
 import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
 import { spawnSmokeCloud } from "./smoke.js";
@@ -35,12 +43,12 @@ export function tickCombat(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (!canFight(e)) continue;
     tickWeaponClocks(e, dt);
-    if (unitInWater(state, e)) continue;
+    if (unitInWater(state, e) || garrisonIsHiding(state, e)) continue;
     resolveTarget(state, e);
   }
   tickStance(state);
   for (const e of state.entities.values()) {
-    if (!canFight(e) || unitInWater(state, e)) continue;
+    if (!canFight(e) || unitInWater(state, e) || garrisonIsHiding(state, e)) continue;
     fireAtCurrent(state, e, dt);
   }
 }
@@ -82,15 +90,24 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
     }
   }
 
+  if (e.guardFacing != null && (!e.order || e.order.kind === "guard") && e.waypoints.length === 0) {
+    const cone = acquire(state, e, true);
+    const pick = cone ?? acquire(state, e, false);
+    e.attackTarget = pick?.id ?? null;
+    return pick;
+  }
+
   const canAcquire =
     !target &&
-    (!e.order || e.order.kind === "attack" || e.order.kind === "attackmove") &&
+    (!e.order || e.order.kind === "attack" || e.order.kind === "attackmove" || e.order.kind === "guard") &&
     (e.order?.kind === "attackmove" || e.waypoints.length === 0);
   if (canAcquire) {
     target = acquire(state, e);
     if (target) {
       e.attackTarget = target.id;
-      if (e.order?.kind !== "attackmove") e.order = { kind: "attack", targetId: target.id, auto: true };
+      if (e.order?.kind !== "attackmove" && e.order?.kind !== "guard") {
+        e.order = { kind: "attack", targetId: target.id, auto: true };
+      }
     }
   }
   return target;
@@ -521,7 +538,7 @@ function segmentCircleT(
   return null;
 }
 
-function acquire(state: MatchState, e: Entity): Entity | undefined {
+function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undefined {
   const range = weaponRangeWorld(state, e);
   const vis = visionMask(state, e.ownerId);
   let best: Entity | undefined;
@@ -530,11 +547,15 @@ function acquire(state: MatchState, e: Entity): Entity | undefined {
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (isInfantryType(e.type) && o.kind === "building") {
-      if (!garrisonIsHostile(state, e.ownerId, o)) continue;
-    } else if (isGarrisonable(o.type) && !garrisonIsHostile(state, e.ownerId, o)) {
+      if (!garrisonIsHostile(state, e.ownerId, o) || !garrisonLooksOccupied(state, e.ownerId, o)) continue;
+    } else if (
+      isGarrisonable(o.type) &&
+      (!garrisonLooksOccupied(state, e.ownerId, o) || !garrisonIsHostile(state, e.ownerId, o))
+    ) {
       continue;
     }
     if (!canSeeEntity(state, e.ownerId, o, vis)) continue;
+    if (coneOnly && !inGuardCone(e, o)) continue;
     const dx = o.x - e.x;
     const dy = o.y - e.y;
     const d = dx * dx + dy * dy;
@@ -544,6 +565,15 @@ function acquire(state: MatchState, e: Entity): Entity | undefined {
     }
   }
   return best;
+}
+
+export function inGuardCone(e: Entity, t: { x: number; y: number }): boolean {
+  if (e.guardFacing == null) return false;
+  const half = (GUARD_CONE_DEG * Math.PI) / 360;
+  let delta = Math.atan2(t.y - e.y, t.x - e.x) - e.guardFacing;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  while (delta < -Math.PI) delta += Math.PI * 2;
+  return Math.abs(delta) <= half;
 }
 
 function maybeWithdraw(state: MatchState, victim: Entity, p: Projectile): void {

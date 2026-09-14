@@ -441,8 +441,9 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
   const wreck = e.wreck ? "  ·  WRECK" : "";
   const injuries =
     e.crits && e.crits.length > 0 ? `  ·  ${e.crits.map((c) => CRIT_LABEL[c]).join(", ")}` : "";
-  const posture =
-    isInfantryType(e.type) && e.stance
+  const posture = e.swimming
+    ? "  ·  swimming"
+    : isInfantryType(e.type) && e.stance
       ? `  ·  ${STANCE_LABEL[e.stance]}${e.stanceOrder && e.stanceOrder !== e.stance ? " (under fire)" : ""}`
       : "";
   const rack =
@@ -453,13 +454,13 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
       : "";
   const garrison =
     e.garrison
-      ? `  ·  garrison ${e.garrison.count}/${e.garrison.cap}`
+      ? `  ·  garrison ${e.garrison.count}/${e.garrison.cap}${e.garrison.hide ? " hide" : e.garrison.count ? " watch" : ""}`
       : e.garrisonedIn
         ? "  ·  inside"
         : "";
   const capturing =
     e.capture && e.capture.progress > 0 ? `  ·  capturing ${Math.round(e.capture.progress * 100)}%` : "";
-  const holding = e.holdPosition ? "  ·  HOLD" : "";
+  const holding = e.guardFacing != null ? "  ·  GUARD" : e.holdPosition ? "  ·  HOLD" : "";
   const who = owner?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
   box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${rack}${mg}  ·  ${who}${q}${cargo}${dep}${special}${garrison}${capturing}${holding}`;
   const occ = e.garrison?.ownerId
@@ -491,6 +492,30 @@ function selectedViews(ctx: Ctx, view: MapView | null): EntityView[] {
 function selectedOfType(ctx: Ctx, view: MapView | null, type: EntityType | null): EntityView[] {
   if (!type) return [];
   return selectedViews(ctx, view).filter((e) => e.type === type);
+}
+
+function occupiedHouses(ctx: Ctx, selected: EntityView[]): EntityView[] {
+  const match = ctx.match;
+  if (!match) return [];
+  const you = match.youPlayerId;
+  const out: EntityView[] = [];
+  const seen = new Set<number>();
+  for (const e of selected) {
+    if (isGarrisonable(e.type) && e.garrison?.ownerId === you && (e.garrison.count ?? 0) > 0) {
+      if (!seen.has(e.id)) {
+        seen.add(e.id);
+        out.push(e);
+      }
+    }
+    if (e.garrisonedIn) {
+      const house = match.entities.find((x) => x.id === e.garrisonedIn);
+      if (house && house.garrison?.ownerId === you && !seen.has(house.id)) {
+        seen.add(house.id);
+        out.push(house);
+      }
+    }
+  }
+  return out;
 }
 
 function ownCommandable(ctx: Ctx, list: EntityView[]): EntityView[] {
@@ -576,10 +601,25 @@ function paintConfig(ctx: Ctx, view: MapView | null): void {
     body.append(el("p", { class: "tiny", text: "Small arms · unlimited" }));
   }
   if (isInfantryType(focus.type)) {
+    const swimming = live.every((e) => e.swimming);
+    const mixedSwim = live.some((e) => e.swimming) && !swimming;
     const same = live.every((e) => (e.stance ?? "stand") === (focus.stance ?? "stand"));
-    const label = same ? STANCE_LABEL[focus.stance ?? "stand"] : "mixed posture";
+    const label = mixedSwim
+      ? "mixed"
+      : swimming
+        ? "swimming"
+        : same
+          ? STANCE_LABEL[focus.stance ?? "stand"]
+          : "mixed posture";
     body.append(el("p", { class: "tiny", text: "Posture  " + label }));
-    body.append(el("p", { class: "tiny", text: "Capture buildings at point-blank. They do not fire on structures." }));
+    body.append(
+      el("p", {
+        class: "tiny",
+        text: swimming
+          ? "Swimming — rifles stay dry, they cannot fire until they reach shore."
+          : "Capture buildings at point-blank. They do not fire on structures.",
+      }),
+    );
   }
 
   if (hasMg(focus.type)) {
@@ -632,7 +672,7 @@ function paintQuickActions(ctx: Ctx, view: MapView | null): void {
     add("stop", "Stop", "Halt selected units (X)");
     const atk = el("button", {
       class: "qact" + (view?.attackMoveMode ? " is-on" : ""),
-      text: "Attack here",
+      text: "Move attack",
       attrs: { type: "button", "data-act": "attackmove", title: "Move, halt to fire (F)" },
     });
     root.append(atk);
@@ -646,6 +686,16 @@ function paintQuickActions(ctx: Ctx, view: MapView | null): void {
       },
     });
     root.append(force);
+    const guard = el("button", {
+      class: "qact" + (view?.guardMode ? " is-on" : ""),
+      text: "Guard",
+      attrs: {
+        type: "button",
+        "data-act": "guard",
+        title: "Move here, face a direction, hold. Enemies in the cone are engaged first (V). Click and drag to face.",
+      },
+    });
+    root.append(guard);
     const holding = units.every((e) => e.holdPosition);
     const hold = el("button", {
       class: "qact" + (holding ? " is-on" : ""),
@@ -702,6 +752,31 @@ function paintQuickActions(ctx: Ctx, view: MapView | null): void {
   ) {
     add("ungarrison", "Exit", "Leave the building (G)");
   }
+  const held = occupiedHouses(ctx, selected);
+  if (held.length) {
+    const hiding = held.every((h) => h.garrison?.hide);
+    const watching = held.every((h) => !h.garrison?.hide);
+    const watchBtn = el("button", {
+      class: "qact" + (watching ? " is-on" : ""),
+      text: "Watch",
+      attrs: {
+        type: "button",
+        "data-act": "garrison-watch",
+        title: "Windows open — fire, full sight, occupancy visible (I)",
+      },
+    });
+    root.append(watchBtn);
+    const hideBtn = el("button", {
+      class: "qact" + (hiding ? " is-on" : ""),
+      text: "Hide",
+      attrs: {
+        type: "button",
+        "data-act": "garrison-hide",
+        title: "Shuttered — no fire, tiny sight, looks empty to the enemy (I)",
+      },
+    });
+    root.append(hideBtn);
+  }
 }
 
 function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
@@ -714,6 +789,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     view.setAttackMoveMode(false);
     view.setForceAttackMode(false);
     view.setRotateMode(false);
+    view.setGuardMode(false);
     if (units.length) ctx.net.send({ type: "cmd.stop", ids: units.map((e) => e.id) });
     return;
   }
@@ -725,10 +801,15 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     if (units.length) view.setForceAttackMode(!view.forceAttackMode);
     return;
   }
+  if (act === "guard") {
+    if (units.length) view.setGuardMode(!view.guardMode);
+    return;
+  }
   if (act === "hold") {
     view.setAttackMoveMode(false);
     view.setForceAttackMode(false);
     view.setRotateMode(false);
+    view.setGuardMode(false);
     if (units.length) {
       const hold = !units.every((e) => e.holdPosition);
       ctx.net.send({ type: "cmd.hold", ids: units.map((e) => e.id), hold });
@@ -772,6 +853,15 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     }
     const house = selected.find((e) => isGarrisonable(e.type) && e.garrison?.ownerId === match.youPlayerId);
     if (house) ctx.net.send({ type: "cmd.ungarrison", buildingId: house.id });
+    return;
+  }
+  if (act === "garrison-watch" || act === "garrison-hide") {
+    const held = occupiedHouses(ctx, selected);
+    const ids = [
+      ...held.map((h) => h.id),
+      ...units.filter((u) => u.garrisonedIn).map((u) => u.id),
+    ];
+    if (ids.length) ctx.net.send({ type: "cmd.garrisonhide", ids, hide: act === "garrison-hide" });
     return;
   }
   if (act.startsWith("stance-")) {

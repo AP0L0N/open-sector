@@ -2,7 +2,7 @@
 
 import type { BuildingType, Crit, EntityKind, EntityType, ShellType, Stance, TrainType } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 15;
+export const PROTOCOL_VERSION = 16;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -106,8 +106,17 @@ export interface EntityView {
   mgOverheat?: number;
   /** Unit is inside this building. Friendly snapshots only. */
   garrisonedIn?: number;
-  /** Occupied civilian house. count and occupant HP bars are always visible. */
-  garrison?: { count: number; cap: number; ownerId?: string; bars?: { hp: number; hpMax: number }[] };
+  /**
+   * Occupied civilian house. count/bars/ownerId are hidden from enemies while
+   * hide is set. hide itself is friendly-only.
+   */
+  garrison?: {
+    count: number;
+    cap: number;
+    ownerId?: string;
+    bars?: { hp: number; hpMax: number }[];
+    hide?: boolean;
+  };
   /** Infantry taking this building. Omitted when idle. */
   capture?: { ownerId: string; progress: number };
   /** Lasting injuries. Omitted when none. */
@@ -120,6 +129,8 @@ export interface EntityView {
   swimming?: boolean;
   /** Stay put: no chase, no withdraw. Friendly snapshots. */
   holdPosition?: boolean;
+  /** Overwatch heading in world radians. Friendly snapshots while guarding. */
+  guardFacing?: number;
 }
 
 export interface PlayerPublic {
@@ -248,9 +259,11 @@ export type ClientMessage =
   | { type: "cmd.deploy"; id: number }
   | { type: "cmd.garrison"; ids: number[]; buildingId: number }
   | { type: "cmd.ungarrison"; ids?: number[]; buildingId?: number; x?: number; y?: number }
+  | { type: "cmd.garrisonhide"; ids: number[]; hide: boolean }
   | { type: "cmd.stance"; ids: number[]; stance: Stance }
   | { type: "cmd.hold"; ids: number[]; hold: boolean }
   | { type: "cmd.rotate"; ids: number[]; x: number; y: number }
+  | { type: "cmd.guard"; ids: number[]; x: number; y: number; facing: number }
   | { type: "cmd.speed"; delta: number };
 
 export type ServerMessage =

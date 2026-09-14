@@ -64,6 +64,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       stanceOrder: isInfantryType(e.type) && e.stanceOrder !== e.stance ? e.stanceOrder : undefined,
       swimming: isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
+      guardFacing: friendly && e.guardFacing != null ? e.guardFacing : undefined,
       ammo: friendly && Object.keys(e.ammo).length > 0 ? { ...e.ammo } : undefined,
       shell: friendly && e.shell ? e.shell : undefined,
       mgAmmo: friendly && hasMg(e.type) ? e.mgAmmo : undefined,
@@ -71,12 +72,18 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       mgOverheat: friendly && hasMg(e.type) && e.mgOverheat > 0 ? e.mgOverheat : undefined,
       garrisonedIn: friendly && e.garrisonedIn ? e.garrisonedIn : undefined,
       garrison: isGarrisonable(e.type)
-        ? {
-            count: occBars.length,
-            cap: garrisonCapOf(e.type),
-            ownerId: garrisonOwner(state, e) || undefined,
-            bars: occBars.length ? occBars : undefined,
-          }
+        ? (() => {
+            const occOwner = garrisonOwner(state, e);
+            const occFriendly = allies(state, youPlayerId, occOwner);
+            const conceal = e.garrisonHide && occBars.length > 0 && !occFriendly;
+            return {
+              count: conceal ? 0 : occBars.length,
+              cap: garrisonCapOf(e.type),
+              ownerId: conceal ? undefined : occOwner || undefined,
+              bars: conceal || occBars.length === 0 ? undefined : occBars,
+              hide: occFriendly && occBars.length > 0 && e.garrisonHide ? true : undefined,
+            };
+          })()
         : undefined,
       capture:
         e.kind === "building" && e.captureProgress > 0 && e.captureOwnerId

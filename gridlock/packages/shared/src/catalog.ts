@@ -33,6 +33,8 @@ export const LOW_POWER_MIN_SPEED = 0.25;
 export const FACE_FIRE_DEG = 8;
 /** How close a turn-in-place unit must be to its heading before it rolls. */
 export const FACE_MOVE_DEG = 12;
+/** Full angle of a Guard overwatch cone. Units still fire 360°; this is the ready arc. */
+export const GUARD_CONE_DEG = 90;
 /** Auto-withdraw distance when a stationary unit is hit from out of sight. */
 export const WITHDRAW_TILES = t(5);
 export const PROJECTILE_RADIUS = 3;
@@ -42,6 +44,10 @@ export const HP_BAR_SECONDS = 2;
  * Smaller rounds (rifles, coaxial MG) wound occupants instead.
  */
 export const GARRISON_STRUCTURAL_CALIBER = 40;
+/** Peek through shutters. Occupied hide mode only. */
+export const GARRISON_HIDE_SIGHT = t(1);
+/** Extra Chebyshev tiles for a watch garrison versus standing outside. */
+export const GARRISON_WATCH_SIGHT_BONUS = t(2);
 /** Damaging infantry hit → broken shooting arm. */
 export const CRIT_ARM_CHANCE = 0.25;
 /** Damaging infantry hit → broken leg. */

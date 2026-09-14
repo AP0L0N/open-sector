@@ -252,6 +252,7 @@ describe("combat", () => {
     const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
     const dummy = makeEntity(state, "hauler", "B", 24 * 32, 20 * 32);
     dummy.autoHarvest = false;
+    dummy.holdPosition = true;
     dummy.hp = 40;
     dummy.hpMax = 40;
     applyCommand(state, "A", { type: "cmd.attack", ids: [t1.id], targetId: dummy.id });

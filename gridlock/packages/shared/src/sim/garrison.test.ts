@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
+  GARRISON_HIDE_SIGHT,
   TILE_SUBDIV,
   TREE_LOS_THROUGH,
   catalog,
@@ -12,7 +13,15 @@ import { TILE_TREE, TILE_WATER } from "../maps.js";
 import { hasFullLos } from "./elevation.js";
 import { applyCommand } from "./commands.js";
 import { buildingBounds, makeEntity, tileCenter, walkable } from "./geo.js";
-import { enterGarrison, livingGarrison, spillGarrison } from "./garrison.js";
+import {
+  enterGarrison,
+  garrisonIsHostile,
+  garrisonLooksOccupied,
+  livingGarrison,
+  occupantSightTiles,
+  setGarrisonHide,
+  spillGarrison,
+} from "./garrison.js";
 import { createMatch, step } from "./match.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
 import { snapshotFor } from "./snapshot.js";
@@ -268,6 +277,92 @@ describe("garrison", () => {
     assert.ok(house.hp > 0, `house hp ${house.hp}`);
     assert.ok(livingGarrison(state, house).length < 2, "someone must die inside");
     assert.ok(livingGarrison(state, house).every((u) => u.garrisonedIn === house.id));
+  });
+
+  it("hides occupancy from the enemy and keeps it on the owner snapshot", () => {
+    const { state, a, b } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    const ts = state.tileSize;
+    const house = makeEntity(state, "cottage", "", tileCenter(40, ts), tileCenter(16, ts), {
+      tileX: 36,
+      tileY: 12,
+    });
+    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    assert.equal(enterGarrison(state, inf, house), true);
+    makeEntity(state, "trooper", b, tileCenter(32, ts), tileCenter(12, ts));
+    setGarrisonHide(state, house, true);
+    const you = snapshotFor(state, a).entities.find((e) => e.id === house.id);
+    const them = snapshotFor(state, b).entities.find((e) => e.id === house.id);
+    assert.equal(you?.garrison?.count, 1);
+    assert.equal(you?.garrison?.hide, true);
+    assert.ok(you?.garrison?.bars);
+    assert.equal(them?.garrison?.count, 0);
+    assert.equal(them?.garrison?.ownerId, undefined);
+    assert.equal(them?.garrison?.bars, undefined);
+    assert.equal(them?.garrison?.hide, undefined);
+    assert.equal(garrisonLooksOccupied(state, b, house), false);
+    assert.equal(garrisonIsHostile(state, b, house), true);
+    assert.equal(garrisonLooksOccupied(state, a, house), true);
+  });
+
+  it("does not fire while hidden and does fire when watching", () => {
+    const { state, a, b } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    const ts = state.tileSize;
+    const house = makeEntity(state, "cottage", "", tileCenter(40, ts), tileCenter(16, ts), {
+      tileX: 36,
+      tileY: 12,
+    });
+    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    assert.equal(enterGarrison(state, inf, house), true);
+    const dummy = makeEntity(state, "hauler", b, inf.x + catalog("trooper").rangeTiles * ts * 0.5, inf.y);
+    dummy.autoHarvest = false;
+    inf.facing = 0;
+    inf.order = { kind: "attack", targetId: dummy.id };
+    setGarrisonHide(state, house, true);
+    tickCombat(state, TICK_DT);
+    assert.equal(state.projectiles.length, 0);
+    setGarrisonHide(state, house, false);
+    inf.order = { kind: "attack", targetId: dummy.id };
+    inf.attackTarget = dummy.id;
+    tickCombat(state, TICK_DT);
+    assert.equal(state.projectiles.length, 1);
+  });
+
+  it("cuts occupant sight in hide and widens it on watch", () => {
+    const { state, a } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const house = makeEntity(state, "cottage", "", tileCenter(40, ts), tileCenter(16, ts), {
+      tileX: 36,
+      tileY: 12,
+    });
+    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    assert.equal(enterGarrison(state, inf, house), true);
+    const watch = occupantSightTiles(state, inf) ?? 0;
+    setGarrisonHide(state, house, true);
+    const hide = occupantSightTiles(state, inf) ?? 0;
+    assert.equal(hide, GARRISON_HIDE_SIGHT);
+    assert.ok(watch > hide * 2, `watch ${watch} vs hide ${hide}`);
+  });
+
+  it("toggles hide through a command on the house", () => {
+    const { state, a } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const house = makeEntity(state, "cottage", "", tileCenter(40, ts), tileCenter(16, ts), {
+      tileX: 36,
+      tileY: 12,
+    });
+    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    assert.equal(enterGarrison(state, inf, house), true);
+    const res = applyCommand(state, a, { type: "cmd.garrisonhide", ids: [house.id], hide: true });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    assert.equal(house.garrisonHide, true);
+    const back = applyCommand(state, a, { type: "cmd.garrisonhide", ids: [inf.id], hide: false });
+    assert.equal(back.ok, true);
+    assert.equal(house.garrisonHide, false);
   });
 });
 

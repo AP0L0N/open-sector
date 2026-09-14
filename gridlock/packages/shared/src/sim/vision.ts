@@ -1,4 +1,4 @@
-import { HEIGHT_MAX, SMOKE_PEEK_TILES } from "../catalog.js";
+import { GARRISON_HIDE_SIGHT, GARRISON_WATCH_SIGHT_BONUS, HEIGHT_MAX, SMOKE_PEEK_TILES } from "../catalog.js";
 import type { EntityView, MatchSnapshot } from "../protocol.js";
 import { getMap, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import {
@@ -9,6 +9,7 @@ import {
   type CoverField,
 } from "./elevation.js";
 import { allies, chebyshev, footprint, inBounds, worldToTile } from "./geo.js";
+import { occupantSightTiles } from "./garrison.js";
 import { cloudsCoverTile } from "./smoke.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -24,6 +25,8 @@ export type SightSource = {
   tileW: number;
   tileH: number;
   garrisonedIn?: number | null;
+  /** Override catalog sight. Used for garrison watch / hide. */
+  sightTiles?: number;
 };
 
 export function paintChebyshev(
@@ -68,7 +71,7 @@ export function paintEntitySight(
     }
     const cx = e.tileX + Math.floor(e.tileW / 2);
     const cy = e.tileY + Math.floor(e.tileH / 2);
-    paintSight(mask, width, height, cx, cy, sightTilesOf(e.type, maxH), elev, field);
+    paintSight(mask, width, height, cx, cy, e.sightTiles ?? sightTilesOf(e.type, maxH), elev, field);
     return;
   }
   const tx = worldToTile(e.x, tileSize);
@@ -80,7 +83,7 @@ export function paintEntitySight(
     height,
     tx,
     ty,
-    sightTilesOf(e.type, h),
+    e.sightTiles ?? sightTilesOf(e.type, h),
     elev,
     field,
     observerEyeOf(e.type),
@@ -170,7 +173,16 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
   for (const e of state.entities.values()) {
     if (e.hp <= 0 || e.wreck) continue;
     if (!allies(state, playerId, e.ownerId)) continue;
-    paintEntitySight(mask, state.width, state.height, state.tileSize, e, state.heights, cover);
+    const sightTiles = occupantSightTiles(state, e);
+    paintEntitySight(
+      mask,
+      state.width,
+      state.height,
+      state.tileSize,
+      sightTiles != null ? { ...e, sightTiles } : e,
+      state.heights,
+      cover,
+    );
   }
   state.visionByPlayer.set(playerId, mask);
   return mask;
@@ -207,15 +219,30 @@ export function visionMaskFromSnapshot(
     : undefined;
   for (const e of snap.entities) {
     if (e.wreck) continue;
-    if (e.ownerId === you) {
-      paintEntitySight(mask, width, height, tileSize, e, elev, cover);
-      continue;
-    }
-    if (team === 0) continue;
-    const other = snap.players.find((p) => p.playerId === e.ownerId);
-    if (other && other.team === team) paintEntitySight(mask, width, height, tileSize, e, elev, cover);
+    const allied = e.ownerId === you || (team !== 0 && snap.players.find((p) => p.playerId === e.ownerId)?.team === team);
+    if (!allied) continue;
+    const sightTiles = snapshotOccupantSight(snap, e, elev, width, height, tileSize);
+    paintEntitySight(mask, width, height, tileSize, sightTiles != null ? { ...e, sightTiles } : e, elev, cover);
   }
   return mask;
+}
+
+function snapshotOccupantSight(
+  snap: MatchSnapshot,
+  e: EntityView,
+  elev: ArrayLike<number> | undefined,
+  width: number,
+  height: number,
+  tileSize: number,
+): number | undefined {
+  if (!e.garrisonedIn) return undefined;
+  const house = snap.entities.find((x) => x.id === e.garrisonedIn);
+  if (!house) return undefined;
+  if (house.garrison?.hide) return GARRISON_HIDE_SIGHT;
+  const tx = worldToTile(e.x, tileSize);
+  const ty = worldToTile(e.y, tileSize);
+  const h = elev ? elevAtSafe(elev, width, height, tx, ty) : 0;
+  return sightTilesOf(e.type, h) + GARRISON_WATCH_SIGHT_BONUS;
 }
 
 export function tileOnMask(mask: Uint8Array, width: number, x: number, y: number): boolean {
