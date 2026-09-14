@@ -31,18 +31,20 @@ function ticks(state: MatchState, n: number): void {
 }
 
 function seedCore(state: MatchState): void {
-  makeEntity(state, "core", "A", tileCenter(4, 32), tileCenter(4, 32), { tileX: 3, tileY: 3 });
+  const ts = state.tileSize;
+  makeEntity(state, "core", "A", tileCenter(4, ts), tileCenter(4, ts), { tileX: 4, tileY: 4 });
 }
 
 function seedMuster(state: MatchState, tx: number, ty: number) {
-  return makeEntity(state, "muster", "A", tileCenter(tx, 32), tileCenter(ty, 32), { tileX: tx, tileY: ty });
+  const ts = state.tileSize;
+  return makeEntity(state, "muster", "A", tileCenter(tx, ts), tileCenter(ty, ts), { tileX: tx, tileY: ty });
 }
 
 describe("train queue", () => {
   it("queues several Troopers on one Muster and only advances the head", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
-    const muster = seedMuster(state, 12, 4);
+    const muster = seedMuster(state, 20, 4);
     const scrap0 = state.players.get("A")!.scrap;
     for (let i = 0; i < 3; i++) {
       const r = applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
@@ -63,8 +65,8 @@ describe("train queue", () => {
   it("lets two Musters each build one Trooper at a time", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
-    const a = seedMuster(state, 12, 4);
-    const b = seedMuster(state, 16, 4);
+    const a = seedMuster(state, 20, 4);
+    const b = seedMuster(state, 20 + catalog("muster").tileW, 4);
     applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
     applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
     applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
@@ -80,7 +82,7 @@ describe("train queue", () => {
   it("pauses and resumes a job", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
-    const muster = seedMuster(state, 12, 4);
+    const muster = seedMuster(state, 20, 4);
     applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
     ticks(state, 6);
     const mid = muster.queue[0]!.progressTicks;
@@ -101,7 +103,7 @@ describe("train queue", () => {
   it("cancels the last queued unit of a type and refunds scrap", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
-    const muster = seedMuster(state, 12, 4);
+    const muster = seedMuster(state, 20, 4);
     applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
     applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
     const after = state.players.get("A")!.scrap;
@@ -116,7 +118,7 @@ describe("train queue", () => {
   it("cancels a specific job from the middle of the queue", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
-    const muster = seedMuster(state, 12, 4);
+    const muster = seedMuster(state, 20, 4);
     applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
     applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
     applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
@@ -131,7 +133,7 @@ describe("train queue", () => {
   it("spawns the unit when the head job finishes", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
-    seedMuster(state, 12, 4);
+    seedMuster(state, 20, 4);
     applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
     ticks(state, secondsToTicks(catalog("trooper").buildSeconds) + 2);
     assert.ok([...state.entities.values()].some((e) => e.type === "trooper" && e.ownerId === "A"));
@@ -144,7 +146,7 @@ describe("train queue", () => {
   it("does not spawn while paused", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
-    const muster = seedMuster(state, 12, 4);
+    const muster = seedMuster(state, 20, 4);
     applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
     applyCommand(state, "A", { type: "cmd.pause", what: "train", unit: "trooper" });
     ticks(state, secondsToTicks(catalog("trooper").buildSeconds) + 20);
@@ -158,7 +160,7 @@ describe("train queue", () => {
   it("rejects a tenth job on the same building", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
-    seedMuster(state, 12, 4);
+    seedMuster(state, 20, 4);
     for (let i = 0; i < TRAIN_QUEUE_CAP; i++) {
       const r = applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
       assert.equal(r.ok, true, !r.ok ? r.message : "");
@@ -171,7 +173,7 @@ describe("train queue", () => {
   it("hides the train queue from enemies", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
-    const muster = seedMuster(state, 12, 4);
+    const muster = seedMuster(state, 20, 4);
     applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
     const you = snapshotFor(state, "A").entities.find((e) => e.id === muster.id);
     assert.equal(you?.trainQueue?.length, 1);

@@ -1,0 +1,12 @@
+- generic [ref=f3e3]:
+  - heading "GRIDLOCK" [level=1] [ref=f3e4]
+  - paragraph [ref=f3e5]: Command briefing · original prototype
+  - generic [ref=f3e6]:
+    - button "Campaign" [disabled] [ref=f3e7]
+    - button "Skirmish" [ref=f3e8] [cursor=pointer]
+    - button "Network" [ref=f3e9] [cursor=pointer]
+    - button "Options" [ref=f3e10] [cursor=pointer]
+    - button "Credits" [ref=f3e11] [cursor=pointer]
+    - button "Exit" [ref=f3e12] [cursor=pointer]
+  - generic [ref=f3e13]: M1 · prototype
+  - generic [ref=f3e14]: LINK UP

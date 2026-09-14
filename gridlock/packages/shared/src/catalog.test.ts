@@ -3,10 +3,13 @@ import { describe, it } from "node:test";
 import {
   GAME_SPEED_DEFAULT,
   GAME_SPEED_MAX,
+  HANDGUN,
   SPECIAL_COOLDOWN_MIN,
   armorLabel,
   catalog,
   clampGameSpeed,
+  isInfantryType,
+  isMotorVehicle,
   nudgeGameSpeed,
   specialCooldownOf,
   specialLabel,
@@ -35,13 +38,44 @@ describe("special actions", () => {
   });
 });
 
+describe("warden ammo", () => {
+  it("starts with a mixed rack of about twenty shells", () => {
+    const w = catalog("warden");
+    const ammo = w.ammo ?? {};
+    const total = (ammo.ap ?? 0) + (ammo.he ?? 0) + (ammo.heat ?? 0);
+    assert.ok(total >= 20 && total <= 24, `total=${total}`);
+    assert.equal(w.defaultShell, "ap");
+    assert.equal(w.leavesWreck, true);
+  });
+});
+
 describe("armor", () => {
+  it("gives the Warden an independent turret and leaves troopers hull-fixed", () => {
+    assert.equal(catalog("warden").turretTurnDegPerSec! > catalog("warden").turnDegPerSec, true);
+    assert.equal(catalog("trooper").turretTurnDegPerSec, undefined);
+    assert.equal(catalog("hauler").turretTurnDegPerSec, undefined);
+    assert.ok(catalog("trooper").turnDegPerSec >= 1080);
+  });
+
   it("labels the Warden plates and leaves infantry unarmored", () => {
     const w = catalog("warden");
     assert.ok(w.armorFront > w.armorSide && w.armorSide > w.armorRear);
     assert.equal(armorLabel("warden"), `F${w.armorFront} / S${w.armorSide} / R${w.armorRear}`);
     assert.equal(armorLabel("trooper"), null);
     assert.equal(catalog("trooper").armorFront, 0);
+  });
+});
+
+describe("injuries", () => {
+  it("marks rolling hulls as motor vehicles and troopers as infantry", () => {
+    assert.equal(isMotorVehicle("warden"), true);
+    assert.equal(isMotorVehicle("hauler"), true);
+    assert.equal(isMotorVehicle("rig"), true);
+    assert.equal(isMotorVehicle("trooper"), false);
+    assert.equal(isMotorVehicle("core"), false);
+    assert.equal(isInfantryType("trooper"), true);
+    assert.ok(HANDGUN.rangeTiles < catalog("trooper").rangeTiles);
+    assert.ok(HANDGUN.damage < catalog("trooper").damage);
   });
 });
 

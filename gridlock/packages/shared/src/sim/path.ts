@@ -18,6 +18,40 @@ function key(x: number, y: number): number {
   return (y << 16) | (x & 0xffff);
 }
 
+function heapPush(heap: Node[], n: Node): void {
+  heap.push(n);
+  let i = heap.length - 1;
+  while (i > 0) {
+    const p = (i - 1) >> 1;
+    if ((heap[p]?.f ?? 0) <= (heap[i]?.f ?? 0)) break;
+    const tmp = heap[p]!;
+    heap[p] = heap[i]!;
+    heap[i] = tmp;
+    i = p;
+  }
+}
+
+function heapPop(heap: Node[]): Node | undefined {
+  const top = heap[0];
+  const last = heap.pop();
+  if (heap.length === 0 || last === undefined) return top;
+  heap[0] = last;
+  let i = 0;
+  for (;;) {
+    const l = i * 2 + 1;
+    const r = l + 1;
+    let s = i;
+    if (l < heap.length && (heap[l]?.f ?? 0) < (heap[s]?.f ?? 0)) s = l;
+    if (r < heap.length && (heap[r]?.f ?? 0) < (heap[s]?.f ?? 0)) s = r;
+    if (s === i) break;
+    const tmp = heap[s]!;
+    heap[s] = heap[i]!;
+    heap[i] = tmp;
+    i = s;
+  }
+  return top;
+}
+
 export function pathToWorld(
   state: MatchState,
   fromX: number,
@@ -73,19 +107,17 @@ export function astar(
     px: sx,
     py: sy,
   };
-  open.push(start);
+  heapPush(open, start);
   best.set(key(sx, sy), 0);
   const came = new Map<number, { x: number; y: number }>();
   let found: Node | null = null;
   const cap = state.width * state.height * 4;
 
   for (let n = 0; n < cap && open.length; n++) {
-    let bi = 0;
-    for (let i = 1; i < open.length; i++) {
-      if ((open[i]?.f ?? Infinity) < (open[bi]?.f ?? Infinity)) bi = i;
-    }
-    const cur = open.splice(bi, 1)[0];
+    const cur = heapPop(open);
     if (!cur) break;
+    const curBest = best.get(key(cur.x, cur.y));
+    if (curBest !== undefined && cur.g > curBest) continue;
     if (cur.x === gx && cur.y === gy) {
       found = cur;
       break;
@@ -108,7 +140,7 @@ export function astar(
         if (prev !== undefined && g >= prev) continue;
         best.set(k, g);
         came.set(k, { x: cur.x, y: cur.y });
-        open.push({
+        heapPush(open, {
           x: nx,
           y: ny,
           g,

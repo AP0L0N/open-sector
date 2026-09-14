@@ -1,5 +1,5 @@
 import { catalog, SCRAP_TILE_YIELD, type EntityType } from "../catalog.js";
-import { TILE_BLOCKED, TILE_SCRAP, type MapDef } from "../maps.js";
+import { TILE_BLOCKED, TILE_SCRAP, TILE_TREE, TILE_WATER, type MapDef } from "../maps.js";
 import type { Entity, MatchState } from "./types.js";
 
 export function tileIndex(state: MatchState, x: number, y: number): number {
@@ -24,7 +24,33 @@ export function chebyshev(ax: number, ay: number, bx: number, by: number): numbe
 
 export function isWall(state: MatchState, x: number, y: number): boolean {
   if (!inBounds(state, x, y)) return true;
-  return state.blocked[tileIndex(state, x, y)] === 1;
+  return state.terrain[tileIndex(state, x, y)] === TILE_BLOCKED;
+}
+
+export function isWater(state: MatchState, x: number, y: number): boolean {
+  if (!inBounds(state, x, y)) return false;
+  return state.terrain[tileIndex(state, x, y)] === TILE_WATER;
+}
+
+export function isTree(state: MatchState, x: number, y: number): boolean {
+  if (!inBounds(state, x, y)) return false;
+  return state.terrain[tileIndex(state, x, y)] === TILE_TREE;
+}
+
+export function hardCoverAt(
+  terrain: ArrayLike<number>,
+  occupy: ArrayLike<number>,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  ignoreOccupyId = 0,
+): boolean {
+  if (x < 0 || y < 0 || x >= width || y >= height) return true;
+  const i = y * width + x;
+  if (terrain[i] === TILE_BLOCKED) return true;
+  const occ = occupy[i] ?? 0;
+  return occ !== 0 && occ !== ignoreOccupyId;
 }
 
 export function scrapAt(state: MatchState, x: number, y: number): number {
@@ -74,33 +100,40 @@ export function buildingCenter(
 
 export function initGrids(map: MapDef): {
   blocked: Uint8Array;
+  terrain: Uint8Array;
   scrapYield: Uint16Array;
   occupy: Int32Array;
   heights: Uint8Array;
 } {
   const n = map.width * map.height;
   const blocked = new Uint8Array(n);
+  const terrain = new Uint8Array(n);
   const scrapYield = new Uint16Array(n);
   const occupy = new Int32Array(n);
   const heights = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
     const t = map.tiles[i] ?? 0;
-    if (t === TILE_BLOCKED) blocked[i] = 1;
+    terrain[i] = t;
+    if (t === TILE_BLOCKED || t === TILE_WATER || t === TILE_TREE) blocked[i] = 1;
     if (t === TILE_SCRAP) scrapYield[i] = SCRAP_TILE_YIELD;
     heights[i] = map.heights[i] ?? 0;
   }
-  return { blocked, scrapYield, occupy, heights };
+  return { blocked, terrain, scrapYield, occupy, heights };
 }
 
 export function occupyEntity(state: MatchState, e: Entity): void {
-  if (e.kind !== "building") return;
+  if (e.kind !== "building" && !e.wreck) return;
   for (const t of footprint(e.tileX, e.tileY, e.tileW, e.tileH)) {
-    if (inBounds(state, t.x, t.y)) state.occupy[tileIndex(state, t.x, t.y)] = e.id;
+    if (!inBounds(state, t.x, t.y)) continue;
+    const i = tileIndex(state, t.x, t.y);
+    const cur = state.occupy[i] ?? 0;
+    if (cur !== 0 && cur !== e.id) continue;
+    state.occupy[i] = e.id;
   }
 }
 
 export function vacateEntity(state: MatchState, e: Entity): void {
-  if (e.kind !== "building") return;
+  if (e.kind !== "building" && !e.wreck) return;
   for (const t of footprint(e.tileX, e.tileY, e.tileW, e.tileH)) {
     if (!inBounds(state, t.x, t.y)) continue;
     const i = tileIndex(state, t.x, t.y);
@@ -116,7 +149,7 @@ export function destroyEntity(state: MatchState, e: Entity): void {
 export function tilesBlockedOrScrap(state: MatchState, tx: number, ty: number, w: number, h: number): boolean {
   for (const t of footprint(tx, ty, w, h)) {
     if (!inBounds(state, t.x, t.y)) return true;
-    if (isWall(state, t.x, t.y)) return true;
+    if (state.blocked[tileIndex(state, t.x, t.y)] === 1) return true;
     if (scrapAt(state, t.x, t.y) > 0) return true;
     if (occupant(state, t.x, t.y) !== 0) return true;
   }
@@ -216,6 +249,7 @@ export function makeEntity(
     x,
     y,
     facing: 0,
+    turretFacing: 0,
     hp: def.hp,
     hpMax: def.hp,
     state: "idle",
@@ -235,6 +269,12 @@ export function makeEntity(
     specialCooldown: 0,
     queue: [],
     attackTarget: null,
+    wreck: false,
+    ammo: def.ammo ? { ...def.ammo } : {},
+    shell: def.defaultShell ?? null,
+    garrisonedIn: null,
+    garrison: [],
+    crits: [],
   };
   state.entities.set(id, e);
   occupyEntity(state, e);
@@ -246,7 +286,20 @@ export function clearOrder(e: Entity): void {
   e.waypoints = [];
   e.attackTarget = null;
   e.harvestTile = null;
-  if (e.state === "move" || e.state === "attack" || e.state === "harvest" || e.state === "unload") {
+  if (e.wreck) {
+    e.state = "wreck";
+    return;
+  }
+  if (e.garrisonedIn) {
+    e.state = "garrison";
+    return;
+  }
+  if (
+    e.state === "move" ||
+    e.state === "attack" ||
+    e.state === "harvest" ||
+    e.state === "unload"
+  ) {
     e.state = "idle";
   }
 }
@@ -254,7 +307,7 @@ export function clearOrder(e: Entity): void {
 export function ownedUnits(state: MatchState, playerId: string): number {
   let n = 0;
   for (const e of state.entities.values()) {
-    if (e.kind === "unit" && e.ownerId === playerId && e.hp > 0) n++;
+    if (e.kind === "unit" && e.ownerId === playerId && e.hp > 0 && !e.wreck) n++;
   }
   return n;
 }

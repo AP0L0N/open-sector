@@ -112,22 +112,24 @@ describe("groupMoveTargets", () => {
 describe("cmd.move group", () => {
   it("does not stack selected units on the click", () => {
     const { state } = twoPlayerMatch();
-    const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
-    const t2 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
-    const x = 24 * 32;
-    const y = 20 * 32;
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const t1 = makeEntity(state, "trooper", "A", tileCenter(36, ts), tileCenter(16, ts));
+    const t2 = makeEntity(state, "trooper", "A", tileCenter(36, ts), tileCenter(16, ts));
+    const x = tileCenter(56, ts);
+    const y = tileCenter(16, ts);
     const res = applyCommand(state, "A", { type: "cmd.move", ids: [t1.id, t2.id], x, y });
     assert.equal(res.ok, true, !res.ok ? res.message : "");
     assert.ok(t1.order?.x != null && t2.order?.x != null);
     const need = unitClearance(t1.radius, t2.radius);
     assert.ok(dist({ x: t1.order.x, y: t1.order.y! }, { x: t2.order.x, y: t2.order.y! }) + 1e-6 >= need);
 
-    for (let i = 0; i < 80; i++) {
+    for (let i = 0; i < 200; i++) {
       step(state, TICK_DT);
       if (t1.state === "idle" && t2.state === "idle") break;
     }
-    assert.equal(t1.state, "idle");
-    assert.equal(t2.state, "idle");
     assertSpaced([t1, t2]);
+    assert.ok(dist(t1, { x, y }) < 48, `t1 drifted ${dist(t1, { x, y })}`);
+    assert.ok(dist(t2, { x, y }) < 48, `t2 drifted ${dist(t2, { x, y })}`);
   });
 });

@@ -10,6 +10,7 @@ import {
   secondsToTicks,
   START_SCRAP,
   TICK_DT,
+  TILE_SUBDIV,
 } from "../catalog.js";
 import { TILE_BLOCKED, TILE_SCRAP, getMap, tileAt } from "../maps.js";
 import { applyCommand } from "./commands.js";
@@ -113,7 +114,7 @@ describe("createMatch", () => {
 describe("pathfinding", () => {
   it("paths around the yard compound", () => {
     const { state } = twoPlayerMatch();
-    const path = astar(state, 3, 3, 60, 60);
+    const path = astar(state, 3 * TILE_SUBDIV, 3 * TILE_SUBDIV, 60 * TILE_SUBDIV, 60 * TILE_SUBDIV);
     assert.ok(path.length > 10);
     for (const p of path) {
       assert.equal(walkable(state, p.x, p.y), true, `blocked ${p.x},${p.y}`);
@@ -155,7 +156,7 @@ describe("construction", () => {
     assert.equal(p.placingType, "dynamo");
     assert.equal([...state.entities.values()].some((e) => e.type === "dynamo"), false);
     const core = [...state.entities.values()].find((e) => e.type === "core" && e.ownerId === "A")!;
-    const tx = core.tileX + 3;
+    const tx = core.tileX + core.tileW;
     const ty = core.tileY;
     const place = applyCommand(state, "A", { type: "cmd.place", building: "dynamo", tx, ty });
     assert.equal(place.ok, true, !place.ok ? place.message : "");
@@ -182,7 +183,7 @@ describe("construction", () => {
     applyCommand(state, "A", { type: "cmd.build", building: "dynamo" });
     ticks(state, catalog("dynamo").buildSeconds * 10 + 2);
     const core = [...state.entities.values()].find((e) => e.type === "core" && e.ownerId === "A")!;
-    applyCommand(state, "A", { type: "cmd.place", building: "dynamo", tx: core.tileX + 3, ty: core.tileY });
+    applyCommand(state, "A", { type: "cmd.place", building: "dynamo", tx: core.tileX + core.tileW, ty: core.tileY });
     const dyn = [...state.entities.values()].find((e) => e.type === "dynamo")!;
     const scrap = state.players.get("A")!.scrap;
     const sell = applyCommand(state, "A", { type: "cmd.sell", id: dyn.id });
@@ -202,7 +203,7 @@ describe("construction", () => {
     const place = applyCommand(state, "A", {
       type: "cmd.place",
       building: "armory",
-      tx: core.tileX + 3,
+      tx: core.tileX + core.tileW,
       ty: core.tileY,
     });
     assert.equal(place.ok, true, !place.ok ? place.message : "");
@@ -223,6 +224,26 @@ describe("combat", () => {
     const hpBefore = dummy.hp;
     ticks(state, 8);
     assert.equal(dummy.hp, hpBefore);
+  });
+
+  it("attack-move stops to shoot then continues to the click", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const t1 = makeEntity(state, "trooper", "A", 24 * 32, 20 * 32);
+    const dummy = makeEntity(state, "hauler", "B", 28 * 32, 20 * 32);
+    dummy.autoHarvest = false;
+    dummy.hp = 40;
+    dummy.hpMax = 40;
+    t1.facing = 0;
+    const destX = 36 * 32;
+    const destY = 20 * 32;
+    const res = applyCommand(state, "A", { type: "cmd.attackmove", ids: [t1.id], x: destX, y: destY });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    assert.equal(t1.order?.kind, "attackmove");
+    ticks(state, 80);
+    assert.ok(dummy.hp < 40, `should have fired on the way hp=${dummy.hp}`);
+    ticks(state, 80);
+    assert.ok(t1.x > dummy.x - 8, `should resume past the fight x=${t1.x}`);
   });
 
   it("kills a Trooper in four hits", () => {
@@ -264,7 +285,7 @@ describe("combat", () => {
       if (state.impacts.some((x) => x.kind === "kill")) sawKill = true;
     }
     assert.equal(sawKill, true);
-    assert.ok(b.hp <= 0 || !state.entities.has(b.id), `rear hp=${b.hp}`);
+    assert.ok(b.wreck || b.hp <= 0 || !state.entities.has(b.id), `rear hp=${b.hp} wreck=${b.wreck}`);
   });
 
   it("does not one-shot a Warden through the front", () => {
@@ -287,16 +308,46 @@ describe("combat", () => {
     b.facing = Math.PI;
     applyCommand(state, "A", { type: "cmd.attack", ids: [a.id], targetId: b.id });
     ticks(state, 55);
-    assert.ok(b.hp <= 0 || !state.entities.has(b.id), `front hp=${b.hp}`);
+    assert.ok(b.wreck || b.hp <= 0 || !state.entities.has(b.id), `front hp=${b.hp} wreck=${b.wreck}`);
+  });
+
+  it("Warden turret aims without yawing the hull", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const dummy = makeEntity(state, "hauler", "B", tileCenter(24, ts), tileCenter(28, ts));
+    dummy.autoHarvest = false;
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    const hull0 = tank.facing;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [tank.id], targetId: dummy.id });
+    ticks(state, 10);
+    assert.ok(Math.abs(tank.facing - hull0) < 0.12, `hull should stay put facing=${tank.facing}`);
+    assert.ok(tank.turretFacing > 0.6, `turret should yaw south turretFacing=${tank.turretFacing}`);
+  });
+
+  it("Trooper snaps facing when they start to move", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const t1 = makeEntity(state, "trooper", "A", tileCenter(48, ts), tileCenter(16, ts));
+    t1.facing = 0;
+    applyCommand(state, "A", { type: "cmd.move", ids: [t1.id], x: tileCenter(32, ts), y: tileCenter(16, ts) });
+    step(state);
+    const delta = Math.abs(Math.atan2(Math.sin(t1.facing - Math.PI), Math.cos(t1.facing - Math.PI)));
+    assert.ok(delta < 0.2, `should already face west facing=${t1.facing}`);
   });
 
   it("Warden hull turns in place before it rolls", () => {
     const { state } = twoPlayerMatch();
-    const tank = makeEntity(state, "warden", "A", tileCenter(24, 32), tileCenter(24, 32));
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
     tank.facing = 0;
     const x0 = tank.x;
     const y0 = tank.y;
-    applyCommand(state, "A", { type: "cmd.move", ids: [tank.id], x: tileCenter(24, 32), y: tileCenter(36, 32) });
+    applyCommand(state, "A", { type: "cmd.move", ids: [tank.id], x: tileCenter(24, ts), y: tileCenter(36, ts) });
     step(state);
     assert.ok(tank.facing > 0.05, `should yaw toward south, facing=${tank.facing}`);
     assert.equal(tank.x, x0);
@@ -323,15 +374,19 @@ describe("harvest", () => {
     const { state } = twoPlayerMatch();
     const player = state.players.get("A")!;
     const before = player.scrap;
-    const smelter = makeEntity(state, "smelter", "A", tileCenter(10, 32), tileCenter(10, 32), {
-      tileX: 9,
-      tileY: 9,
+    const ts = state.tileSize;
+    const sm = catalog("smelter");
+    const smelter = makeEntity(state, "smelter", "A", tileCenter(8, ts), tileCenter(8, ts), {
+      tileX: 8,
+      tileY: 8,
     });
-    const hauler = makeEntity(state, "hauler", "A", tileCenter(12, 32), tileCenter(10, 32));
+    const hx = 8 + sm.tileW + 2;
+    const hy = 10;
+    const hauler = makeEntity(state, "hauler", "A", tileCenter(hx, ts), tileCenter(hy, ts));
     hauler.autoHarvest = true;
-    const i = 12 + 10 * state.width;
+    const i = hx + hy * state.width;
     state.scrapYield[i] = 400;
-    applyCommand(state, "A", { type: "cmd.harvest", ids: [hauler.id], tileX: 12, tileY: 10 });
+    applyCommand(state, "A", { type: "cmd.harvest", ids: [hauler.id], tileX: hx, tileY: hy });
     ticks(state, 120);
     assert.ok(
       player.scrap >= before + HAULER_CARGO,
@@ -357,11 +412,12 @@ describe("low power", () => {
     applyCommand(state, "A", { type: "cmd.deploy", id: rig.id });
     ticks(state, 35);
     const core = [...state.entities.values()].find((e) => e.type === "core" && e.ownerId === "A")!;
+    const m = catalog("muster");
+    const ts = state.tileSize;
     for (let i = 0; i < 8; i++) {
-      makeEntity(state, "muster", "A", (core.tileX + 4 + (i % 4) * 2) * 32, (core.tileY + Math.floor(i / 4) * 2) * 32, {
-        tileX: core.tileX + 4 + (i % 4) * 2,
-        tileY: core.tileY + Math.floor(i / 4) * 2,
-      });
+      const tileX = core.tileX + core.tileW + (i % 4) * m.tileW;
+      const tileY = core.tileY + Math.floor(i / 4) * m.tileH;
+      makeEntity(state, "muster", "A", tileX * ts, tileY * ts, { tileX, tileY });
     }
     const pow = snapshotFor(state, "A").you;
     assert.equal(pow.lowPower, true);

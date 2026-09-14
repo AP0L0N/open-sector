@@ -1,4 +1,5 @@
 import {
+  HANDGUN,
   HEIGHT_DOWNHILL_COST,
   HEIGHT_DOWNHILL_SPEED,
   HEIGHT_RANGE_BONUS,
@@ -6,15 +7,41 @@ import {
   HEIGHT_STEP_MAX,
   HEIGHT_UPHILL_COST,
   HEIGHT_UPHILL_SPEED,
+  TREE_LOS_THROUGH,
   catalog,
+  hasCrit,
+  isInfantryType,
   type EntityType,
 } from "../catalog.js";
-import { inBounds, tileIndex, worldToTile } from "./geo.js";
+import { TILE_TREE } from "../maps.js";
+import { hardCoverAt, inBounds, tileIndex, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
 export function elevAt(elev: ArrayLike<number>, width: number, height: number, x: number, y: number): number {
   if (x < 0 || y < 0 || x >= width || y >= height) return 0;
   return elev[y * width + x] ?? 0;
+}
+
+/** Height at a tile vertex (vx, vy) in 0..width / 0..height, averaged from adjacent cells. */
+export function vertexElev(
+  elev: ArrayLike<number>,
+  width: number,
+  height: number,
+  vx: number,
+  vy: number,
+): number {
+  let sum = 0;
+  let n = 0;
+  for (let dy = -1; dy <= 0; dy++) {
+    for (let dx = -1; dx <= 0; dx++) {
+      const x = vx + dx;
+      const y = vy + dy;
+      if (x < 0 || y < 0 || x >= width || y >= height) continue;
+      sum += elev[y * width + x] ?? 0;
+      n++;
+    }
+  }
+  return n ? sum / n : 0;
 }
 
 export function tileHeight(state: MatchState, x: number, y: number): number {
@@ -71,7 +98,10 @@ export function rangeTilesOf(type: EntityType, elev: number): number {
 }
 
 export function weaponRangeWorld(state: MatchState, e: Entity): number {
-  return rangeTilesOf(e.type, entityHeight(state, e)) * state.tileSize;
+  const handgun = isInfantryType(e.type) && hasCrit(e, "arm");
+  const base = handgun ? HANDGUN.rangeTiles : catalog(e.type).rangeTiles;
+  if (base <= 0) return 0;
+  return (base + Math.max(0, entityHeight(state, e)) * HEIGHT_RANGE_BONUS) * state.tileSize;
 }
 
 /**
@@ -141,4 +171,59 @@ function blocksLos(
   if (x === x1 && y === y1) return false;
   const h = elevAt(elev, width, height, x, y);
   return h > h0 && h >= h1;
+}
+
+export interface CoverField {
+  terrain: ArrayLike<number>;
+  occupy: ArrayLike<number>;
+  ignoreOccupyId?: number;
+}
+
+/**
+ * Elevation ridges plus map cover. Trees eat a see-through budget;
+ * walls and buildings stop the ray outright. Water does not block.
+ */
+export function hasFullLos(
+  elev: ArrayLike<number>,
+  width: number,
+  height: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  cover?: CoverField,
+): boolean {
+  if (!hasTerrainLos(elev, width, height, x0, y0, x1, y1)) return false;
+  if (!cover) return true;
+  if (x0 === x1 && y0 === y1) return true;
+  let x = x0;
+  let y = y0;
+  const dx = Math.abs(x1 - x0);
+  const dy = Math.abs(y1 - y0);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+  const cap = dx + dy + 2;
+  let trees = 0;
+  const ignore = cover.ignoreOccupyId ?? 0;
+  for (let n = 0; n < cap; n++) {
+    if (x === x1 && y === y1) return true;
+    const e2 = err * 2;
+    if (e2 > -dy) {
+      err -= dy;
+      x += sx;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y += sy;
+    }
+    if (x === x0 && y === y0) continue;
+    if (x === x1 && y === y1) return true;
+    if (hardCoverAt(cover.terrain, cover.occupy, width, height, x, y, ignore)) return false;
+    if (x >= 0 && y >= 0 && x < width && y < height && cover.terrain[y * width + x] === TILE_TREE) {
+      trees += 1;
+      if (trees > TREE_LOS_THROUGH) return false;
+    }
+  }
+  return true;
 }

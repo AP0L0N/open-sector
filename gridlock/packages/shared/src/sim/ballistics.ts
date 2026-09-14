@@ -89,7 +89,7 @@ export function resolveHit(opts: {
     const damage = Math.max(1, Math.round(gun.damage * (0.9 + rand() * 0.2)));
     return {
       kind: damage >= opts.targetHp ? "kill" : "hit",
-      face: "none",
+      face: hitFace(opts.targetFacing, opts.vx, opts.vy),
       damage,
       bounceVx: 0,
       bounceVy: 0,

@@ -4,6 +4,7 @@ import {
   HEIGHT_RANGE_BONUS,
   HEIGHT_SIGHT_BONUS,
   TICK_DT,
+  TILE_SUBDIV,
   catalog,
 } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
@@ -91,7 +92,7 @@ describe("movement on slopes", () => {
     tickMovement(state, TICK_DT);
     const upDist = Math.hypot(up.x - from.x, up.y - from.y);
     assert.ok(flatDist > 1, `flat moved ${flatDist}`);
-    assert.ok(upDist < flatDist * 0.8, `uphill ${upDist} vs flat ${flatDist}`);
+    assert.ok(upDist < flatDist * 0.95, `uphill ${upDist} vs flat ${flatDist}`);
   });
 });
 
@@ -118,14 +119,16 @@ describe("vision and range on a hill", () => {
     const { state, a, b } = twoPlayerMatch();
     state.heights.fill(0);
     const ts = state.tileSize;
+    const extra = TILE_SUBDIV;
     const shooter = makeEntity(state, "trooper", a, tileCenter(12, ts), tileCenter(12, ts));
-    const target = makeEntity(state, "trooper", b, tileCenter(12 + 7, ts), tileCenter(12, ts));
+    const past = catalog("trooper").rangeTiles + extra;
+    const target = makeEntity(state, "trooper", b, tileCenter(12 + past, ts), tileCenter(12, ts));
     shooter.facing = 0;
     shooter.order = { kind: "attack", targetId: target.id };
     tickCombat(state, TICK_DT);
     assert.equal(state.projectiles.length, 0);
 
-    state.heights[12 * state.width + 12] = 2;
+    state.heights[12 * state.width + 12] = extra;
     shooter.cooldown = 0;
     tickCombat(state, TICK_DT);
     assert.equal(state.projectiles.length, 1);

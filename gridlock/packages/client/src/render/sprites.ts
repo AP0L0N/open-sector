@@ -1,4 +1,4 @@
-import { isoDirIndex, type EntityType } from "@gridlock/shared";
+import { isoDirIndex, type Crit, type EntityType } from "@gridlock/shared";
 import coreUrl from "../assets/buildings/core.png";
 import dynamoUrl from "../assets/buildings/dynamo.png";
 import smelterUrl from "../assets/buildings/smelter.png";
@@ -6,14 +6,27 @@ import musterUrl from "../assets/buildings/muster.png";
 import armoryUrl from "../assets/buildings/armory.png";
 import trooperSheetUrl from "../assets/units/trooper-walk.png";
 import haulerSheetUrl from "../assets/units/hauler-move.png";
-import wardenSheetUrl from "../assets/units/warden-move.png";
+import wardenHullUrl from "../assets/units/warden-hull.png";
+import wardenTurretUrl from "../assets/units/warden-turret.png";
 import rigSheetUrl from "../assets/units/rig-move.png";
+import armIconUrl from "../assets/status/arm.png";
+import legIconUrl from "../assets/status/leg.png";
+import tracksIconUrl from "../assets/status/tracks.png";
+import engineIconUrl from "../assets/status/engine.png";
 
 /** Extra on-map scale for every unit (sprites and iso-box fallbacks). */
 export const UNIT_VISUAL_SCALE = 1.25;
 
 /** On-map draw size for infantry sprites, iso pixels. */
 export const UNIT_SPRITE_DRAW_SIZE = Math.round(22 * UNIT_VISUAL_SCALE);
+
+/** Optional independently-aimed gun drawn on top of the hull sheet. */
+export interface TurretSpriteDef {
+  image: HTMLImageElement;
+  dirs: number;
+  frames: number;
+  frameSize: number;
+}
 
 /** Dirs × N frames. Row = isoDirIndex, column = walk/move frame. */
 export interface UnitSpriteDef {
@@ -25,6 +38,7 @@ export interface UnitSpriteDef {
   drawSize: number;
   /** Fraction from the top of the cell that sits on the ground point (feet/tracks/hull). */
   contactY: number;
+  turret?: TurretSpriteDef;
 }
 
 function loadSheet(src: string): HTMLImageElement {
@@ -44,13 +58,19 @@ export const TROOPER_SPRITE: UnitSpriteDef = {
 };
 
 export const WARDEN_SPRITE: UnitSpriteDef = {
-  image: loadSheet(wardenSheetUrl),
+  image: loadSheet(wardenHullUrl),
   dirs: 8,
   frames: 1,
   frameSize: 128,
   fps: 8,
   drawSize: Math.round(44 * UNIT_VISUAL_SCALE),
   contactY: 0.92,
+  turret: {
+    image: loadSheet(wardenTurretUrl),
+    dirs: 8,
+    frames: 1,
+    frameSize: 128,
+  },
 };
 
 export const HAULER_SPRITE: UnitSpriteDef = {
@@ -82,6 +102,17 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
 
 export function spriteFor(type: EntityType): UnitSpriteDef | undefined {
   return UNIT_SPRITES[type];
+}
+
+const CRIT_ICONS: Record<Crit, HTMLImageElement> = {
+  arm: loadSheet(armIconUrl),
+  leg: loadSheet(legIconUrl),
+  tracks: loadSheet(tracksIconUrl),
+  engine: loadSheet(engineIconUrl),
+};
+
+export function critIcon(c: Crit): HTMLImageElement {
+  return CRIT_ICONS[c];
 }
 
 /** Iso building art. Pad metrics map the concrete diamond onto the tile footprint. */
@@ -145,7 +176,13 @@ export function drawUnitSprite(
   y: number,
   isoDx: number,
   isoDy: number,
-  opts: { moving: boolean; id: number; now: number },
+  opts: {
+    moving: boolean;
+    id: number;
+    now: number;
+    turretDx?: number;
+    turretDy?: number;
+  },
 ): boolean {
   if (!spriteReady(def)) return false;
   const dir = isoDirIndex(isoDx, isoDy, def.dirs) % def.dirs;
@@ -154,20 +191,21 @@ export function drawUnitSprite(
     : 0;
   const s = def.drawSize;
   const cell = def.frameSize;
+  const dx = x - s / 2;
+  const dy = y - s * def.contactY;
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(
-    def.image,
-    frame * cell,
-    dir * cell,
-    cell,
-    cell,
-    x - s / 2,
-    y - s * def.contactY,
-    s,
-    s,
-  );
+  ctx.drawImage(def.image, frame * cell, dir * cell, cell, cell, dx, dy, s, s);
+  const turret = def.turret;
+  if (turret && spriteReady(turret)) {
+    const tdx = opts.turretDx ?? isoDx;
+    const tdy = opts.turretDy ?? isoDy;
+    const tdir = isoDirIndex(tdx, tdy, turret.dirs) % turret.dirs;
+    const tframe = turret.frames > 1 ? frame % turret.frames : 0;
+    const tcell = turret.frameSize;
+    ctx.drawImage(turret.image, tframe * tcell, tdir * tcell, tcell, tcell, dx, dy, s, s);
+  }
   ctx.restore();
   return true;
 }

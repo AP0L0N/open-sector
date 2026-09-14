@@ -1,12 +1,17 @@
 import {
   COLORS,
+  HEIGHT_MAX,
   TILE_BLOCKED,
   TILE_SCRAP,
+  TILE_SUBDIV,
+  TILE_TREE,
+  TILE_WATER,
   colorHex,
   getMap,
   heightAt,
   isoLift,
   isoMapBounds,
+  vertexElev,
   listMaps,
   maxHeightOf,
   tileDiamond,
@@ -69,26 +74,47 @@ function drawPreview(canvas: HTMLCanvasElement, mapId: string, slots: Slot[]): v
       const t = map.tiles[y * map.width + x];
       const blocked = t === TILE_BLOCKED;
       const scrap = t === TILE_SCRAP;
-      const chk = (x + y) % 2 === 0;
+      const chk = (Math.floor(x / TILE_SUBDIV) + Math.floor(y / TILE_SUBDIV)) % 2 === 0;
       const h = heightAt(map, x, y);
-      let fill = blocked ? "#3a2a22" : scrap ? "#5a4a18" : chk ? "#2a3a24" : "#243320";
-      if (h > 0 && !blocked) {
-        const liftAmt = 1 + h * 0.16;
+      let fill =
+        t === TILE_WATER
+          ? chk
+            ? "#1a3d55"
+            : "#16364c"
+          : t === TILE_TREE
+            ? chk
+              ? "#1c3320"
+              : "#182c1c"
+            : blocked
+              ? "#3a2a22"
+              : scrap
+                ? "#5a4a18"
+                : chk
+                  ? "#2a3a24"
+                  : "#243320";
+      if (h > 0 && !blocked && t !== TILE_WATER) {
+        const liftAmt = 1 + (h / HEIGHT_MAX) * 0.48;
         fill = chk ? shadePreview("#2a3a24", liftAmt) : shadePreview("#243320", liftAmt);
         if (scrap) fill = shadePreview("#5a4a18", liftAmt);
       }
       const d = tileDiamond(x, y, map.tileSize);
-      const ez = isoLift(h);
-      const hs = y + 1 < map.height ? heightAt(map, x, y + 1) : 0;
-      const he = x + 1 < map.width ? heightAt(map, x + 1, y) : 0;
-      if (h > hs) {
-        quad(lift(d.w, ez), lift(d.s, ez), lift(d.s, isoLift(hs)), lift(d.w, isoLift(hs)), shadePreview(fill, 0.42));
+      const nH = vertexElev(map.heights, map.width, map.height, x, y);
+      const eH = vertexElev(map.heights, map.width, map.height, x + 1, y);
+      const sH = vertexElev(map.heights, map.width, map.height, x + 1, y + 1);
+      const wH = vertexElev(map.heights, map.width, map.height, x, y + 1);
+      if (y + 1 >= map.height && (wH > 0 || sH > 0)) {
+        quad(lift(d.w, isoLift(wH)), lift(d.s, isoLift(sH)), lift(d.s, 0), lift(d.w, 0), shadePreview(fill, 0.42));
       }
-      if (h > he) {
-        quad(lift(d.e, ez), lift(d.s, ez), lift(d.s, isoLift(he)), lift(d.e, isoLift(he)), shadePreview(fill, 0.68));
+      if (x + 1 >= map.width && (eH > 0 || sH > 0)) {
+        quad(lift(d.e, isoLift(eH)), lift(d.s, isoLift(sH)), lift(d.s, 0), lift(d.e, 0), shadePreview(fill, 0.68));
       }
-      quad(lift(d.n, ez), lift(d.e, ez), lift(d.s, ez), lift(d.w, ez), fill);
+      quad(lift(d.n, isoLift(nH)), lift(d.e, isoLift(eH)), lift(d.s, isoLift(sH)), lift(d.w, isoLift(wH)), fill);
     }
+  }
+  for (const f of map.features ?? []) {
+    const d = tileDiamond(f.x, f.y, map.tileSize);
+    const ez = 6;
+    quad(lift(d.n, ez), lift(d.e, ez), lift(d.s, 0), lift(d.w, 0), "#b08968");
   }
   for (const spawn of map.spawns) {
     const occupant = slots.find((s) => s.status === "human" && s.spawnId === spawn.id);

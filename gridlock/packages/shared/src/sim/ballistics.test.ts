@@ -51,7 +51,7 @@ describe("resolveHit", () => {
       vy: 0,
       rand: seq([0.5]),
     });
-    assert.equal(res.face, "none");
+    assert.equal(res.face, "front");
     assert.ok(res.damage >= 11 && res.damage <= 13);
     assert.equal(res.kind, "hit");
   });

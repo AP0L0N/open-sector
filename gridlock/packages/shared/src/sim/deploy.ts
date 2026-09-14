@@ -29,9 +29,12 @@ export function beginDeploy(state: MatchState, e: Entity): string | null {
     if (e.specialCooldown > 0) return "Special recharging.";
     if (e.waypoints.length > 0 || e.order?.kind === "move") return "Stop the Rig first.";
     if (e.state === "deploy" || e.state === "undeploy") return "Already transforming.";
-    const tx = e.tileX - 1;
-    const ty = e.tileY - 1;
-    if (tilesBlockedOrScrap(state, tx, ty, 3, 3)) return "Need a clear 3×3 to deploy.";
+    const core = catalog("core");
+    const tx = e.tileX - Math.floor(core.tileW / 2);
+    const ty = e.tileY - Math.floor(core.tileH / 2);
+    if (tilesBlockedOrScrap(state, tx, ty, core.tileW, core.tileH)) {
+      return `Need a clear ${core.tileW}×${core.tileH} to deploy.`;
+    }
     e.state = "deploy";
     e.deployTime = 0;
     clearOrder(e);
@@ -57,7 +60,7 @@ export function tickAutoDeploy(state: MatchState): void {
   if (state.autoDeployTicks > 0) return;
   state.autoDeployTicks = -1;
   for (const e of [...state.entities.values()]) {
-    if (e.type !== "rig" || e.hp <= 0) continue;
+    if (e.type !== "rig" || e.hp <= 0 || e.wreck) continue;
     clearOrder(e);
     if (e.state !== "deploy") {
       const err = beginDeploy(state, e);
@@ -83,17 +86,17 @@ export function tickDeploy(state: MatchState, dt: number): void {
 
 function finishDeploy(state: MatchState, rig: Entity): void {
   const player = state.players.get(rig.ownerId);
-  const tx = rig.tileX - 1;
-  const ty = rig.tileY - 1;
-  if (tilesBlockedOrScrap(state, tx, ty, 3, 3)) {
+  const coreDef = catalog("core");
+  const tx = rig.tileX - Math.floor(coreDef.tileW / 2);
+  const ty = rig.tileY - Math.floor(coreDef.tileH / 2);
+  if (tilesBlockedOrScrap(state, tx, ty, coreDef.tileW, coreDef.tileH)) {
     rig.state = "idle";
     rig.deployTime = 0;
     return;
   }
   const frac = rig.hp / rig.hpMax;
   state.entities.delete(rig.id);
-  const coreDef = catalog("core");
-  const c = buildingCenter(tx, ty, 3, 3, state.tileSize);
+  const c = buildingCenter(tx, ty, coreDef.tileW, coreDef.tileH, state.tileSize);
   const core: Entity = {
     ...structuredCloneBase(rig),
     id: rig.id,
@@ -107,8 +110,8 @@ function finishDeploy(state: MatchState, rig: Entity): void {
     state: "idle",
     tileX: tx,
     tileY: ty,
-    tileW: 3,
-    tileH: 3,
+    tileW: coreDef.tileW,
+    tileH: coreDef.tileH,
     radius: 0,
     order: null,
     waypoints: [],
@@ -132,8 +135,8 @@ function finishUndeploy(state: MatchState, core: Entity): void {
   const frac = core.hp / core.hpMax;
   vacateEntity(state, core);
   const rigDef = catalog("rig");
-  const cx = core.tileX + 1;
-  const cy = core.tileY + 1;
+  const cx = core.tileX + Math.floor(core.tileW / 2);
+  const cy = core.tileY + Math.floor(core.tileH / 2);
   const ts = state.tileSize;
   const rig: Entity = {
     ...structuredCloneBase(core),
@@ -171,6 +174,7 @@ function structuredCloneBase(e: Entity): Entity {
     x: e.x,
     y: e.y,
     facing: e.facing,
+    turretFacing: e.turretFacing,
     hp: e.hp,
     hpMax: e.hpMax,
     state: e.state,
@@ -190,6 +194,12 @@ function structuredCloneBase(e: Entity): Entity {
     specialCooldown: e.specialCooldown,
     queue: [],
     attackTarget: null,
+    wreck: false,
+    ammo: {},
+    shell: null,
+    garrisonedIn: null,
+    garrison: [],
+    crits: [],
   };
 }
 
@@ -214,7 +224,7 @@ export function ejectUnits(state: MatchState, building: Entity): void {
 
 export function deployId(state: MatchState, playerId: string, id: number): string | null {
   const e = state.entities.get(id);
-  if (!e || e.ownerId !== playerId) return "Not yours.";
+  if (!e || e.ownerId !== playerId || e.wreck) return "Not yours.";
   const hq = hqOf(state, playerId);
   if (!hq || hq.id !== e.id) return "Select the Rig or Core.";
   return beginDeploy(state, e);

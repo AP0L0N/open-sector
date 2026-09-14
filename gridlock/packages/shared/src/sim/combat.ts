@@ -1,35 +1,57 @@
-import { catalog, FACE_FIRE_DEG, PROJECTILE_RADIUS, fires } from "../catalog.js";
+import {
+  aimFacing,
+  catalog,
+  FACE_FIRE_DEG,
+  PROJECTILE_RADIUS,
+  fires,
+  hasAmmo,
+  hasTurret,
+  isGarrisonable,
+  pickLoadedShell,
+} from "../catalog.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
 import { aimAngle, resolveHit } from "./ballistics.js";
+import { fireStats, hullTurnMul, rollCrits } from "./crits.js";
 import { weaponRangeWorld } from "./elevation.js";
 import { allies, buildingContains, playerTeam } from "./geo.js";
 import { nextRand } from "./rng.js";
 import { canSeeEntity, visionMask } from "./vision.js";
-import { turnToward } from "./orders.js";
+import { turnToward, turnTurretToward } from "./orders.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
 export function tickCombat(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
-    if (!fires(e.type) || e.hp <= 0) continue;
+    if (!fires(e.type) || e.hp <= 0 || e.wreck) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
+    const holedUp = e.garrisonedIn != null;
     if (e.cooldown > 0) e.cooldown = Math.max(0, e.cooldown - dt);
 
     let target: Entity | undefined;
     if (e.order?.kind === "attack" && e.order.targetId != null) {
       target = state.entities.get(e.order.targetId);
-      if (!target || target.hp <= 0 || allies(state, e.ownerId, target.ownerId)) {
+      if (!target || target.hp <= 0 || (allies(state, e.ownerId, target.ownerId) && !target.wreck)) {
         e.order = null;
         e.attackTarget = null;
         target = undefined;
         if (e.state === "attack") e.state = "idle";
       }
+    } else if (e.order?.kind === "attackmove" && e.attackTarget != null) {
+      target = state.entities.get(e.attackTarget);
+      if (!target || target.hp <= 0 || (allies(state, e.ownerId, target.ownerId) && !target.wreck)) {
+        e.attackTarget = null;
+        target = undefined;
+      }
     }
 
-    if (!target && (!e.order || e.order.kind === "attack") && e.waypoints.length === 0) {
+    const canAcquire =
+      !target &&
+      (!e.order || e.order.kind === "attack" || e.order.kind === "attackmove") &&
+      (e.order?.kind === "attackmove" || e.waypoints.length === 0);
+    if (canAcquire) {
       target = acquire(state, e);
       if (target) {
         e.attackTarget = target.id;
-        e.order = { kind: "attack", targetId: target.id };
+        if (e.order?.kind !== "attackmove") e.order = { kind: "attack", targetId: target.id };
       }
     }
 
@@ -37,19 +59,36 @@ export function tickCombat(state: MatchState, dt: number): void {
     const def = catalog(e.type);
     const range = weaponRangeWorld(state, e);
     const dist = Math.hypot(target.x - e.x, target.y - e.y);
+    const turreted = hasTurret(e.type);
+    let remainingDeg = 180;
+    if (turreted) {
+      remainingDeg = turnTurretToward(
+        e,
+        target.x,
+        target.y,
+        def.turretTurnDegPerSec ?? def.turnDegPerSec,
+        dt,
+      );
+    }
     if (dist > range) {
-      e.state = "attack";
+      if (!holedUp) e.state = "attack";
       continue;
     }
-    if (e.waypoints.length > 0) continue;
+    if (e.waypoints.length > 0 && e.order?.kind !== "attackmove" && !holedUp) continue;
 
-    e.state = "attack";
-    const remainingDeg = turnToward(e, target.x, target.y, def.turnDegPerSec, dt);
-    if (Math.abs(remainingDeg) > FACE_FIRE_DEG) continue;
+    if (!holedUp) e.state = "attack";
+    if (!turreted && !holedUp) {
+      remainingDeg = turnToward(e, target.x, target.y, def.turnDegPerSec * hullTurnMul(e), dt);
+    }
+    if (!holedUp && Math.abs(remainingDeg) > FACE_FIRE_DEG) continue;
     if (e.cooldown > 0) continue;
+    const shell = hasAmmo(e.type) ? pickLoadedShell(e.ammo, e.shell) : null;
+    if (hasAmmo(e.type) && !shell) continue;
+    if (shell) e.shell = shell;
+    const gun = fireStats(e);
 
     const moving = target.waypoints.length > 0 || target.state === "move";
-    const ang = aimAngle(e.facing, def.spreadDeg, dist, range, () => nextRand(state), moving);
+    const ang = aimAngle(aimFacing(e), gun.spreadDeg, dist, range, () => nextRand(state), moving);
     const speed = def.projectileSpeed;
     const life = range / speed + 0.05;
     const p: Projectile = {
@@ -60,16 +99,17 @@ export function tickCombat(state: MatchState, dt: number): void {
       y: e.y + Math.sin(ang) * (e.radius + 2),
       vx: Math.cos(ang) * speed,
       vy: Math.sin(ang) * speed,
-      damage: def.damage,
-      penetration: def.penetration,
-      caliber: def.caliber,
+      damage: gun.damage,
+      penetration: gun.penetration,
+      caliber: gun.caliber,
       life,
       ignoreId: e.id,
       fromId: e.id,
       bounced: false,
     };
     state.projectiles.push(p);
-    e.cooldown = def.cooldown;
+    e.cooldown = gun.cooldown;
+    if (shell) e.ammo[shell] = Math.max(0, (e.ammo[shell] ?? 0) - 1);
   }
 }
 
@@ -91,11 +131,14 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     for (const e of state.entities.values()) {
       if (e.hp <= 0) continue;
       if (e.id === p.ignoreId) continue;
-      if (allies(state, p.ownerId, e.ownerId)) continue;
+      if (!e.wreck && allies(state, p.ownerId, e.ownerId)) continue;
       if (!overlapsSweep(state, x0, y0, p, e)) continue;
+      const targetDef = e.wreck
+        ? { ...catalog(e.type), armorFront: 0, armorSide: 0, armorRear: 0 }
+        : catalog(e.type);
       const res = resolveHit({
         gun: { damage: p.damage, penetration: p.penetration, caliber: p.caliber },
-        target: catalog(e.type),
+        target: targetDef,
         targetFacing: e.facing,
         targetHp: e.hp,
         targetHpMax: e.hpMax,
@@ -105,6 +148,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       });
       e.hp -= res.damage;
       if (e.hp < 0) e.hp = 0;
+      if (e.hp > 0) rollCrits(e, res.face, res.kind, res.damage, rand);
       const ix = e.kind === "building" ? p.x : e.x;
       const iy = e.kind === "building" ? p.y : e.y;
       const kind: ImpactKind = e.hp <= 0 && res.kind !== "ricochet" ? "kill" : res.kind;
@@ -188,8 +232,13 @@ function acquire(state: MatchState, e: Entity): Entity | undefined {
   let best: Entity | undefined;
   let bestD = range * range;
   for (const o of state.entities.values()) {
-    if (o.hp <= 0 || o.id === e.id) continue;
+    if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
+    if (isGarrisonable(o.type) && o.garrison.length === 0) continue;
+    if (isGarrisonable(o.type)) {
+      const occ = o.garrison[0] != null ? state.entities.get(o.garrison[0]) : undefined;
+      if (occ && allies(state, e.ownerId, occ.ownerId)) continue;
+    }
     if (!canSeeEntity(state, e.ownerId, o, vis)) continue;
     const dx = o.x - e.x;
     const dy = o.y - e.y;

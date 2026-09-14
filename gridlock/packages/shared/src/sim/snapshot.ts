@@ -1,4 +1,5 @@
-import { clampGameSpeed, DEPLOY_SECONDS } from "../catalog.js";
+import { clampGameSpeed, DEPLOY_SECONDS, garrisonCapOf, hasTurret, isGarrisonable } from "../catalog.js";
+import { garrisonOwner, livingGarrison } from "./garrison.js";
 import { allies } from "./geo.js";
 import { powerOf } from "./power.js";
 import { canSeeWorld, entityOnMask, visionMask } from "./vision.js";
@@ -13,6 +14,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
   for (const e of state.entities.values()) {
     if (e.hp <= 0) continue;
     const friendly = allies(state, youPlayerId, e.ownerId);
+    if (e.garrisonedIn && !friendly) continue;
     if (!friendly && !entityOnMask(e, vis, state.width, state.height, state.tileSize)) continue;
     const job = e.queue[0];
     entities.push({
@@ -23,6 +25,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       x: e.x,
       y: e.y,
       facing: e.facing,
+      turretFacing: hasTurret(e.type) ? e.turretFacing : undefined,
       hp: e.hp,
       hpMax: e.hpMax,
       state: e.state,
@@ -46,6 +49,18 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
           ? Math.min(1, e.deployTime / DEPLOY_SECONDS)
           : undefined,
       specialCooldown: e.specialCooldown > 0 ? e.specialCooldown : undefined,
+      wreck: e.wreck || undefined,
+      crits: e.crits.length > 0 ? [...e.crits] : undefined,
+      ammo: friendly && Object.keys(e.ammo).length > 0 ? { ...e.ammo } : undefined,
+      shell: friendly && e.shell ? e.shell : undefined,
+      garrisonedIn: friendly && e.garrisonedIn ? e.garrisonedIn : undefined,
+      garrison: isGarrisonable(e.type)
+        ? {
+            count: livingGarrison(state, e).length,
+            cap: garrisonCapOf(e.type),
+            ownerId: garrisonOwner(state, e) || undefined,
+          }
+        : undefined,
     });
   }
   const scrap: ScrapCell[] = [];

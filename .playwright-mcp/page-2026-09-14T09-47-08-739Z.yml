@@ -1,0 +1,39 @@
+- generic [ref=f3e60]:
+  - generic [ref=f3e61]:
+    - generic [ref=f3e62]: SCRAP 2200
+    - generic: INSUFFICIENT SCRAP
+    - generic [ref=f3e63]: POWER 0 / 50
+    - generic [ref=f3e64]: SPEED ×5
+    - generic [ref=f3e65]: Scrap Yard
+  - complementary [ref=f3e68]:
+    - heading "Radar" [level=3] [ref=f3e69]
+    - generic [ref=f3e70] [cursor=pointer]
+    - heading "Structures" [level=3] [ref=f3e71]
+    - generic [ref=f3e72]:
+      - button "Dynamo 500 · +100" [ref=f3e73] [cursor=pointer]:
+        - generic [ref=f3e74]: Dynamo
+        - generic [ref=f3e75]: 500 · +100
+      - button "Smelter 1600 · -40" [ref=f3e76] [cursor=pointer]:
+        - generic [ref=f3e77]: Smelter
+        - generic [ref=f3e78]: 1600 · -40
+      - button "Muster 500 · -20" [ref=f3e79] [cursor=pointer]:
+        - generic [ref=f3e80]: Muster
+        - generic [ref=f3e81]: 500 · -20
+      - button "Armory 800 · -30" [ref=f3e82] [cursor=pointer]:
+        - generic [ref=f3e83]: Armory
+        - generic [ref=f3e84]: 800 · -30
+    - heading "Train" [level=3] [ref=f3e85]
+    - generic [ref=f3e86]:
+      - button "Trooper 100" [disabled] [ref=f3e87]:
+        - generic [ref=f3e88]: Trooper
+        - generic [ref=f3e89]: "100"
+      - button "Mauler 900" [disabled] [ref=f3e90]:
+        - generic [ref=f3e91]: Mauler
+        - generic [ref=f3e92]: "900"
+      - button "Warden 250" [disabled] [ref=f3e93]:
+        - generic [ref=f3e94]: Warden
+        - generic [ref=f3e95]: "250"
+    - heading "Config" [level=3] [ref=f3e96]
+    - generic [ref=f3e97]: No selection.
+    - heading "Inspect" [level=3] [ref=f3e99]
+    - generic [ref=f3e100]: No selection.

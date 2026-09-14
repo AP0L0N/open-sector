@@ -1,4 +1,11 @@
-import { HEIGHT_MAX, HEIGHT_STEP_MAX } from "./catalog.js";
+import {
+  HEIGHT_MAX,
+  HEIGHT_STEP_MAX,
+  TILE_SIZE,
+  TILE_SUBDIV,
+  catalog,
+  type CivilianType,
+} from "./catalog.js";
 
 export interface SpawnDef {
   id: number;
@@ -18,11 +25,21 @@ export interface MapDef {
   tiles: number[];
   /** Discrete elevation per tile. Same length as `tiles`. 0 = floor. */
   heights: number[];
+  /** Civilian houses. Tile origin is the fine-grid top-left. */
+  features: MapFeature[];
+}
+
+export interface MapFeature {
+  type: CivilianType;
+  x: number;
+  y: number;
 }
 
 export const TILE_EMPTY = 0;
 export const TILE_BLOCKED = 1;
 export const TILE_SCRAP = 2;
+export const TILE_WATER = 3;
+export const TILE_TREE = 4;
 
 function idx(width: number, x: number, y: number): number {
   return y * width + x;
@@ -165,6 +182,144 @@ function flattenPad(heights: number[], width: number, height: number, cx: number
   }
 }
 
+function upsampleTiles(src: number[], sw: number, sh: number, sub: number): number[] {
+  const width = sw * sub;
+  const height = sh * sub;
+  const out = new Array<number>(width * height);
+  for (let y = 0; y < sh; y++) {
+    for (let x = 0; x < sw; x++) {
+      const v = src[y * sw + x] ?? 0;
+      for (let dy = 0; dy < sub; dy++) {
+        for (let dx = 0; dx < sub; dx++) {
+          out[(y * sub + dy) * width + (x * sub + dx)] = v;
+        }
+      }
+    }
+  }
+  return out;
+}
+
+function scaleSpawn(s: SpawnDef, sub: number): SpawnDef {
+  const mid = Math.floor(sub / 2);
+  return { ...s, x: s.x * sub + mid, y: s.y * sub + mid };
+}
+
+function inPad(pads: readonly { x: number; y: number; r: number }[], x: number, y: number): boolean {
+  for (const p of pads) {
+    if (Math.hypot(x - p.x, y - p.y) <= p.r) return true;
+  }
+  return false;
+}
+
+function rectFree(
+  tiles: number[],
+  width: number,
+  height: number,
+  x0: number,
+  y0: number,
+  tw: number,
+  th: number,
+): boolean {
+  for (let y = y0; y < y0 + th; y++) {
+    for (let x = x0; x < x0 + tw; x++) {
+      if (x < 0 || y < 0 || x >= width || y >= height) return false;
+      if ((tiles[idx(width, x, y)] ?? 1) !== TILE_EMPTY) return false;
+    }
+  }
+  return true;
+}
+
+function splatTrees(
+  tiles: number[],
+  width: number,
+  height: number,
+  cx: number,
+  cy: number,
+  rad: number,
+): void {
+  const r = Math.max(1.2, rad);
+  const x0 = Math.max(0, Math.floor(cx - r - 1));
+  const x1 = Math.min(width - 1, Math.ceil(cx + r + 1));
+  const y0 = Math.max(0, Math.floor(cy - r - 1));
+  const y1 = Math.min(height - 1, Math.ceil(cy + r + 1));
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const d = Math.hypot((x - cx) / r, (y - cy) / r);
+      if (d >= 1) continue;
+      const i = idx(width, x, y);
+      if (tiles[i] === TILE_EMPTY) tiles[i] = TILE_TREE;
+    }
+  }
+}
+
+function flattenTerrain(heights: number[], tiles: number[], width: number, height: number, kind: number): void {
+  for (let i = 0; i < tiles.length; i++) {
+    if (tiles[i] === kind) heights[i] = 0;
+  }
+  relaxSlopes(heights, width, height);
+}
+
+/** Trees, ponds, and civilian houses. Authoring-grid coords; caller upsamples tiles. */
+function scatterCover(
+  tiles: number[],
+  width: number,
+  height: number,
+  seed: string,
+  pads: readonly { x: number; y: number; r: number }[],
+): MapFeature[] {
+  const rng = { n: hash32(seed) };
+  const groves = 10 + Math.floor(nextRand(rng) * 7);
+  for (let i = 0; i < groves; i++) {
+    const cx = 4 + nextRand(rng) * (width - 8);
+    const cy = 4 + nextRand(rng) * (height - 8);
+    if (inPad(pads, cx, cy)) continue;
+    splatTrees(tiles, width, height, cx, cy, 1.6 + nextRand(rng) * 2.4);
+  }
+  const kinds: CivilianType[] = [
+    "cottage",
+    "cottage",
+    "cottage",
+    "house",
+    "house",
+    "manor",
+    "cottage",
+    "house",
+    "cottage",
+    "manor",
+  ];
+  const features: MapFeature[] = [];
+  for (const type of kinds) {
+    const def = catalog(type);
+    const tw = Math.round(def.tileW / TILE_SUBDIV);
+    const th = Math.round(def.tileH / TILE_SUBDIV);
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const x = 2 + Math.floor(nextRand(rng) * (width - tw - 4));
+      const y = 2 + Math.floor(nextRand(rng) * (height - th - 4));
+      if (inPad(pads, x + tw / 2, y + th / 2)) continue;
+      if (!rectFree(tiles, width, height, x, y, tw, th)) continue;
+      features.push({ type, x, y });
+      fillRect(tiles, width, height, x, y, x + tw - 1, y + th - 1, TILE_EMPTY);
+      for (let yy = y; yy < y + th; yy++) {
+        for (let xx = x; xx < x + tw; xx++) {
+          tiles[idx(width, xx, yy)] = TILE_BLOCKED;
+        }
+      }
+      break;
+    }
+  }
+  for (const f of features) {
+    const def = catalog(f.type);
+    const tw = Math.round(def.tileW / TILE_SUBDIV);
+    const th = Math.round(def.tileH / TILE_SUBDIV);
+    fillRect(tiles, width, height, f.x, f.y, f.x + tw - 1, f.y + th - 1, TILE_EMPTY);
+  }
+  return features;
+}
+
+function scaleFeatures(features: MapFeature[], sub: number): MapFeature[] {
+  return features.map((f) => ({ type: f.type, x: f.x * sub, y: f.y * sub }));
+}
+
 /** Seeded rolling hills. Spawns stay on the floor; slopes never cliff. */
 export function scatterHeights(
   width: number,
@@ -181,20 +336,21 @@ export function scatterHeights(
     [width * 0.68, height * 0.72],
     [width * 0.5, height * 0.48],
   ];
+  const sub = TILE_SUBDIV;
   for (const [qx, qy] of quadrants) {
-    const cx = qx + (nextRand(rng) - 0.5) * 10;
-    const cy = qy + (nextRand(rng) - 0.5) * 10;
-    const peak = 2 + Math.floor(nextRand(rng) * (HEIGHT_MAX - 1));
-    const rad = 8 + nextRand(rng) * 7;
+    const cx = qx + (nextRand(rng) - 0.5) * 10 * sub;
+    const cy = qy + (nextRand(rng) - 0.5) * 10 * sub;
+    const peak = Math.max(4, Math.round(HEIGHT_MAX * (0.45 + nextRand(rng) * 0.55)));
+    const rad = (8 + nextRand(rng) * 7) * sub;
     const stretch = 0.7 + nextRand(rng) * 0.7;
     splatHill(heights, width, height, cx, cy, rad * stretch, rad / stretch, peak);
   }
   const extra = 6 + Math.floor(nextRand(rng) * 5);
   for (let i = 0; i < extra; i++) {
-    const cx = 6 + nextRand(rng) * (width - 12);
-    const cy = 6 + nextRand(rng) * (height - 12);
-    const peak = 1 + Math.floor(nextRand(rng) * HEIGHT_MAX);
-    const rad = 4.5 + nextRand(rng) * 9;
+    const cx = 6 * sub + nextRand(rng) * (width - 12 * sub);
+    const cy = 6 * sub + nextRand(rng) * (height - 12 * sub);
+    const peak = 2 + Math.floor(nextRand(rng) * (HEIGHT_MAX - 1));
+    const rad = (4.5 + nextRand(rng) * 9) * sub;
     const stretch = 0.65 + nextRand(rng) * 0.9;
     splatHill(heights, width, height, cx, cy, rad * stretch, rad / stretch, peak);
   }
@@ -218,6 +374,8 @@ export function makeYard64(): MapDef {
   fillRect(tiles, width, height, 43, 41, 45, 45, TILE_BLOCKED);
   fillRect(tiles, width, height, 8, 30, 14, 33, TILE_BLOCKED);
   fillRect(tiles, width, height, 49, 30, 55, 33, TILE_BLOCKED);
+  fillRect(tiles, width, height, 21, 7, 27, 12, TILE_WATER);
+  fillRect(tiles, width, height, 38, 40, 44, 45, TILE_WATER);
 
   paintScrapBlob(tiles, width, height, 13, 12);
   paintScrapBlob(tiles, width, height, 50, 12);
@@ -240,22 +398,31 @@ export function makeYard64(): MapDef {
     { id: 7, x: 3, y: 31 },
     { id: 8, x: 60, y: 31 },
   ];
+  const pads = spawns.map((s) => ({ x: s.x, y: s.y, r: 4 }));
+  const features = scatterCover(tiles, width, height, "yard-64-cover", pads);
+  const sub = TILE_SUBDIV;
+  const fineTiles = upsampleTiles(tiles, width, height, sub);
+  const fineW = width * sub;
+  const fineH = height * sub;
+  const fineSpawns = spawns.map((s) => scaleSpawn(s, sub));
   const heights = scatterHeights(
-    width,
-    height,
+    fineW,
+    fineH,
     "yard-64-elev",
-    spawns.map((s) => ({ x: s.x, y: s.y, r: 4 })),
+    fineSpawns.map((s) => ({ x: s.x, y: s.y, r: 4 * sub })),
   );
+  flattenTerrain(heights, fineTiles, fineW, fineH, TILE_WATER);
 
   return {
     id: "yard-64",
     name: "Scrap Yard",
-    width,
-    height,
-    tileSize: 32,
-    tiles,
+    width: fineW,
+    height: fineH,
+    tileSize: TILE_SIZE,
+    tiles: fineTiles,
     heights,
-    spawns,
+    spawns: fineSpawns,
+    features: scaleFeatures(features, sub),
   };
 }
 
@@ -265,7 +432,7 @@ export function makeCanal48(): MapDef {
   const height = 48;
   const tiles = new Array(width * height).fill(TILE_EMPTY);
 
-  fillRect(tiles, width, height, 0, 21, 47, 26, TILE_BLOCKED);
+  fillRect(tiles, width, height, 0, 21, 47, 26, TILE_WATER);
   punchRect(tiles, width, height, 10, 21, 13, 26);
   punchRect(tiles, width, height, 22, 21, 25, 26);
   punchRect(tiles, width, height, 34, 21, 37, 26);
@@ -285,24 +452,39 @@ export function makeCanal48(): MapDef {
   paintScrapBlob(tiles, width, height, 16, 16);
   paintScrapBlob(tiles, width, height, 31, 32);
 
+  const rawSpawns: SpawnDef[] = [
+    { id: 1, x: 3, y: 3, suggestedTeam: 1 },
+    { id: 2, x: 44, y: 3, suggestedTeam: 2 },
+    { id: 3, x: 3, y: 44, suggestedTeam: 3 },
+    { id: 4, x: 44, y: 44, suggestedTeam: 4 },
+    { id: 5, x: 23, y: 3 },
+    { id: 6, x: 23, y: 44 },
+    { id: 7, x: 3, y: 16 },
+    { id: 8, x: 44, y: 32 },
+  ];
+  const features = scatterCover(
+    tiles,
+    width,
+    height,
+    "canal-48-cover",
+    rawSpawns.map((s) => ({ x: s.x, y: s.y, r: 4 })),
+  );
+  const sub = TILE_SUBDIV;
+  const fineTiles = upsampleTiles(tiles, width, height, sub);
+  const fineW = width * sub;
+  const fineH = height * sub;
+  const spawns = rawSpawns.map((s) => scaleSpawn(s, sub));
+
   return {
     id: "canal-48",
     name: "Iron Canal",
-    width,
-    height,
-    tileSize: 32,
-    tiles,
-    heights: new Array(width * height).fill(0),
-    spawns: [
-      { id: 1, x: 3, y: 3, suggestedTeam: 1 },
-      { id: 2, x: 44, y: 3, suggestedTeam: 2 },
-      { id: 3, x: 3, y: 44, suggestedTeam: 3 },
-      { id: 4, x: 44, y: 44, suggestedTeam: 4 },
-      { id: 5, x: 23, y: 3 },
-      { id: 6, x: 23, y: 44 },
-      { id: 7, x: 3, y: 16 },
-      { id: 8, x: 44, y: 32 },
-    ],
+    width: fineW,
+    height: fineH,
+    tileSize: TILE_SIZE,
+    tiles: fineTiles,
+    heights: new Array(fineW * fineH).fill(0),
+    spawns,
+    features: scaleFeatures(features, sub),
   };
 }
 

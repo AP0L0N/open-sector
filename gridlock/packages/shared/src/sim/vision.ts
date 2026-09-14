@@ -1,10 +1,11 @@
 import type { EntityView, MatchSnapshot } from "../protocol.js";
 import { getMap } from "../maps.js";
-import { hasTerrainLos, sightTilesOf } from "./elevation.js";
+import { hasFullLos, sightTilesOf, type CoverField } from "./elevation.js";
 import { allies, chebyshev, footprint, inBounds, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
 export type SightSource = {
+  id?: number;
   kind: "unit" | "building";
   type: EntityView["type"];
   ownerId: string;
@@ -14,6 +15,7 @@ export type SightSource = {
   tileY: number;
   tileW: number;
   tileH: number;
+  garrisonedIn?: number | null;
 };
 
 export function paintChebyshev(
@@ -42,19 +44,22 @@ export function paintEntitySight(
   tileSize: number,
   e: SightSource,
   elev?: ArrayLike<number>,
+  cover?: CoverField,
 ): void {
+  const ignore = e.kind === "building" ? (e.id ?? 0) : (e.garrisonedIn ?? 0);
+  const field = cover ? { ...cover, ignoreOccupyId: ignore || cover.ignoreOccupyId } : undefined;
   if (e.kind === "building") {
     for (const t of footprint(e.tileX, e.tileY, e.tileW, e.tileH)) {
       if (t.x < 0 || t.y < 0 || t.x >= width || t.y >= height) continue;
       const h = elev ? (elev[t.y * width + t.x] ?? 0) : 0;
-      paintSight(mask, width, height, t.x, t.y, sightTilesOf(e.type, h), elev);
+      paintSight(mask, width, height, t.x, t.y, sightTilesOf(e.type, h), elev, field);
     }
     return;
   }
   const tx = worldToTile(e.x, tileSize);
   const ty = worldToTile(e.y, tileSize);
   const h = elev ? elevAtSafe(elev, width, height, tx, ty) : 0;
-  paintSight(mask, width, height, tx, ty, sightTilesOf(e.type, h), elev);
+  paintSight(mask, width, height, tx, ty, sightTilesOf(e.type, h), elev, field);
 }
 
 function elevAtSafe(elev: ArrayLike<number>, width: number, height: number, x: number, y: number): number {
@@ -70,6 +75,7 @@ function paintSight(
   oy: number,
   radius: number,
   elev?: ArrayLike<number>,
+  cover?: CoverField,
 ): void {
   if (radius <= 0) return;
   if (!elev) {
@@ -83,18 +89,23 @@ function paintSight(
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
       if (chebyshev(x, y, ox, oy) > radius) continue;
-      if (!hasTerrainLos(elev, width, height, ox, oy, x, y)) continue;
+      if (!hasFullLos(elev, width, height, ox, oy, x, y, cover)) continue;
       mask[y * width + x] = 1;
     }
   }
 }
 
+function coverOf(state: MatchState): CoverField {
+  return { terrain: state.terrain, occupy: state.occupy };
+}
+
 export function visionMask(state: MatchState, playerId: string): Uint8Array {
   const mask = new Uint8Array(state.width * state.height);
+  const cover = coverOf(state);
   for (const e of state.entities.values()) {
-    if (e.hp <= 0) continue;
+    if (e.hp <= 0 || e.wreck) continue;
     if (!allies(state, playerId, e.ownerId)) continue;
-    paintEntitySight(mask, state.width, state.height, state.tileSize, e, state.heights);
+    paintEntitySight(mask, state.width, state.height, state.tileSize, e, state.heights, cover);
   }
   return mask;
 }
@@ -108,15 +119,29 @@ export function visionMaskFromSnapshot(
   const mask = new Uint8Array(width * height);
   const you = snap.youPlayerId;
   const team = snap.players.find((p) => p.playerId === you)?.team ?? 0;
-  const elev = getMap(snap.mapId)?.heights;
+  const map = getMap(snap.mapId);
+  const elev = map?.heights;
+  const occupy = new Int32Array(width * height);
+  if (map) {
+    for (const e of snap.entities) {
+      if (e.kind !== "building" || e.hp <= 0) continue;
+      for (let y = e.tileY; y < e.tileY + e.tileH; y++) {
+        for (let x = e.tileX; x < e.tileX + e.tileW; x++) {
+          if (x >= 0 && y >= 0 && x < width && y < height) occupy[y * width + x] = e.id;
+        }
+      }
+    }
+  }
+  const cover: CoverField | undefined = map ? { terrain: map.tiles, occupy } : undefined;
   for (const e of snap.entities) {
+    if (e.wreck) continue;
     if (e.ownerId === you) {
-      paintEntitySight(mask, width, height, tileSize, e, elev);
+      paintEntitySight(mask, width, height, tileSize, e, elev, cover);
       continue;
     }
     if (team === 0) continue;
     const other = snap.players.find((p) => p.playerId === e.ownerId);
-    if (other && other.team === team) paintEntitySight(mask, width, height, tileSize, e, elev);
+    if (other && other.team === team) paintEntitySight(mask, width, height, tileSize, e, elev, cover);
   }
   return mask;
 }

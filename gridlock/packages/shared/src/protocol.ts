@@ -1,8 +1,8 @@
 /** Shared wire + domain types. If a field is not here, it does not exist. */
 
-import type { BuildingType, EntityKind, EntityType, TrainType } from "./catalog.js";
+import type { BuildingType, Crit, EntityKind, EntityType, ShellType, TrainType } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 6;
+export const PROTOCOL_VERSION = 10;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -23,6 +23,8 @@ export type EntityState =
   | "train"
   | "deploy"
   | "undeploy"
+  | "wreck"
+  | "garrison"
   | "dead";
 
 export interface Slot {
@@ -69,6 +71,8 @@ export interface EntityView {
   x: number;
   y: number;
   facing: number;
+  /** Gun angle. Omitted when the type has no independent turret. */
+  turretFacing?: number;
   hp: number;
   hpMax: number;
   state: EntityState;
@@ -84,6 +88,18 @@ export interface EntityView {
   deployProgress?: number;
   /** Seconds remaining before the special can fire again. Omitted when idle. */
   specialCooldown?: number;
+  /** Burning hulk. Impassable until destroyed. */
+  wreck?: boolean;
+  /** Allied ammo rack. Omitted for enemies and unarmed types. */
+  ammo?: Partial<Record<ShellType, number>>;
+  /** Loaded shell. Allied guns only. */
+  shell?: ShellType;
+  /** Unit is inside this building. Friendly snapshots only. */
+  garrisonedIn?: number;
+  /** Occupied civilian house. count is always visible; ids are friendly-only. */
+  garrison?: { count: number; cap: number; ownerId?: string };
+  /** Lasting injuries. Omitted when none. */
+  crits?: Crit[];
 }
 
 export interface PlayerPublic {
@@ -164,8 +180,10 @@ export type ClientMessage =
   | { type: "chat"; text: string }
   | { type: "cmd.move"; ids: number[]; x: number; y: number }
   | { type: "cmd.attack"; ids: number[]; targetId: number }
+  | { type: "cmd.attackmove"; ids: number[]; x: number; y: number }
   | { type: "cmd.stop"; ids: number[] }
-  | { type: "cmd.harvest"; ids: number[]; tileX: number; tileY: number }
+  | { type: "cmd.harvest"; ids: number[]; tileX?: number; tileY?: number }
+  | { type: "cmd.ammo"; ids: number[]; shell: ShellType }
   | { type: "cmd.build"; building: BuildingType }
   | { type: "cmd.place"; building: BuildingType; tx: number; ty: number }
   | { type: "cmd.train"; unit: TrainType }
@@ -173,6 +191,8 @@ export type ClientMessage =
   | { type: "cmd.cancel"; what: "structure" | "train"; buildingId?: number; jobId?: number; unit?: TrainType }
   | { type: "cmd.sell"; id: number }
   | { type: "cmd.deploy"; id: number }
+  | { type: "cmd.garrison"; ids: number[]; buildingId: number }
+  | { type: "cmd.ungarrison"; ids?: number[]; buildingId?: number; x?: number; y?: number }
   | { type: "cmd.speed"; delta: number };
 
 export type ServerMessage =
@@ -209,4 +229,4 @@ export type ErrorCode =
   | "unit_cap"
   | "ended";
 
-export type { BuildingType, EntityType, TrainType, EntityKind };
+export type { BuildingType, EntityType, TrainType, EntityKind, ShellType, Crit };

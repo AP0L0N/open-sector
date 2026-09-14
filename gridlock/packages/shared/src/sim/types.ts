@@ -1,4 +1,4 @@
-import type { BuildingType, EntityType, TrainType } from "../catalog.js";
+import type { BuildingType, Crit, EntityType, ShellType, TrainType } from "../catalog.js";
 import type { EntityState, ImpactView } from "../protocol.js";
 
 export interface Vec {
@@ -22,7 +22,7 @@ export interface StructureJob {
 }
 
 export interface Order {
-  kind: "move" | "attack" | "harvest" | "unload";
+  kind: "move" | "attack" | "attackmove" | "harvest" | "unload" | "garrison";
   x?: number;
   y?: number;
   targetId?: number;
@@ -38,6 +38,8 @@ export interface Entity {
   x: number;
   y: number;
   facing: number;
+  /** Independent gun angle. Matches hull facing when the type has no turret. */
+  turretFacing: number;
   hp: number;
   hpMax: number;
   state: EntityState;
@@ -58,6 +60,16 @@ export interface Entity {
   specialCooldown: number;
   queue: TrainJob[];
   attackTarget: number | null;
+  /** True after an armored hull dies; blocks until the wreck is destroyed. */
+  wreck: boolean;
+  ammo: Partial<Record<ShellType, number>>;
+  shell: ShellType | null;
+  /** Unit is inside this building id. */
+  garrisonedIn: number | null;
+  /** Unit ids occupying a garrisonable building. */
+  garrison: number[];
+  /** Lasting injuries. Empty until a crit lands. */
+  crits: Crit[];
 }
 
 export interface Projectile {
@@ -103,8 +115,10 @@ export interface MatchState {
   tileSize: number;
   width: number;
   height: number;
-  /** 1 = wall (permanent). */
+  /** 1 = not walkable (wall, water, trees). */
   blocked: Uint8Array;
+  /** Original tile kinds (empty / wall / scrap / water / tree). */
+  terrain: Uint8Array;
   /** Discrete elevation. 0 = floor. */
   heights: Uint8Array;
   /** Remaining scrap on each tile. */

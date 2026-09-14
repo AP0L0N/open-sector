@@ -1,9 +1,12 @@
+import { TILE_SUBDIV } from "./catalog.js";
+
 /** Classic C&C / RA2 2:1 dimetric. Simulation stays Cartesian; only the view projects. */
 
-export const ISO_TILE_W = 64;
-export const ISO_TILE_H = 32;
+/** Screen size of one gameplay tile. Authoring diamonds were 64×32; TILE_SUBDIV splits them. */
+export const ISO_TILE_W = 64 / TILE_SUBDIV;
+export const ISO_TILE_H = 32 / TILE_SUBDIV;
 /** Screen pixels the diamond lifts per elevation level. Half of ISO_TILE_H. */
-export const ISO_ELEVATION = 16;
+export const ISO_ELEVATION = 16 / TILE_SUBDIV;
 
 export function isoLift(height: number): number {
   return Math.max(0, height) * ISO_ELEVATION;

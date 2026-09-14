@@ -1,11 +1,19 @@
 import {
+  HEIGHT_MAX,
   TILE_BLOCKED,
+  TILE_SUBDIV,
+  TILE_TREE,
+  TILE_WATER,
   catalog,
   clampIsoCamera,
+  isCivilianType,
+  isGarrisonable,
+  isInfantryType,
   colorHex,
   entityOnMask,
   facingToIso,
   getMap,
+  immobilized,
   heightAt,
   isoDepth,
   isoLift,
@@ -21,6 +29,7 @@ import {
   visionMaskFromSnapshot,
   worldToIso,
   worldToIso3,
+  vertexElev,
   worldToTile,
   type BuildingType,
   type ClientMessage,
@@ -33,6 +42,7 @@ import { FX_BOOM, FX_SMOKE, drawFxFrame, fxFrameAt } from "./fx.js";
 import {
   UNIT_VISUAL_SCALE,
   buildingSpriteFor,
+  critIcon,
   drawBuildingSprite,
   drawUnitSprite,
   spriteFor,
@@ -56,7 +66,13 @@ const EXTRUDE: Record<EntityType, number> = {
   hauler: 16,
   warden: 28,
   trooper: 26,
+  cottage: 28,
+  house: 36,
+  manor: 48,
 };
+
+const TREE_H = 14;
+const CIV_FILL = "#b08968";
 
 export class MapView {
   private readonly canvas: HTMLCanvasElement;
@@ -93,9 +109,19 @@ export class MapView {
   private seenShots = new Set<number>();
   selected = new Set<number>();
   placeMode = false;
+  attackMoveMode = false;
   onSelect: (ids: number[]) => void = () => {};
   onCommand: (msg: ClientMessage) => void = () => {};
   onPlaceMode: () => void = () => {};
+  onAttackMoveMode: () => void = () => {};
+
+  setAttackMoveMode(on: boolean): void {
+    if (this.attackMoveMode === on) return;
+    this.attackMoveMode = on;
+    if (on) this.placeMode = false;
+    this.onAttackMoveMode();
+    this.onPlaceMode();
+  }
 
   constructor(canvas: HTMLCanvasElement, mini: HTMLCanvasElement, match: MatchSnapshot) {
     const ctx = canvas.getContext("2d");
@@ -148,6 +174,7 @@ export class MapView {
     for (const id of [...this.selected]) {
       if (!match.entities.some((e) => e.id === id)) this.selected.delete(id);
     }
+    if (this.attackMoveMode && this.ownSelectedIds().length === 0) this.setAttackMoveMode(false);
     const placing = this.placeMode;
     if (!this.readyBuilding()) this.placeMode = false;
     if (this.placeMode !== placing) this.onPlaceMode();
@@ -234,10 +261,18 @@ export class MapView {
       }
       if (e.button === 2) {
         e.preventDefault();
+        if (this.attackMoveMode) {
+          this.setAttackMoveMode(false);
+          return;
+        }
         this.onRight(mx, my);
         return;
       }
       if (e.button === 0) {
+        if (this.attackMoveMode) {
+          this.commitAttackMove(mx, my);
+          return;
+        }
         const toPlace = this.placeMode ? this.readyBuilding() : null;
         if (toPlace) {
           const tile = this.screenToTile(mx, my);
@@ -330,9 +365,37 @@ export class MapView {
       this.onCommand({ type: "cmd.speed", delta: -1 });
       return;
     }
+    if (k === "g") {
+      e.preventDefault();
+      this.garrisonHotkey();
+      return;
+    }
     if (k === SPECIAL_HOTKEY) {
       e.preventDefault();
       this.specialSelected();
+      return;
+    }
+    if (k === "x") {
+      e.preventDefault();
+      this.setAttackMoveMode(false);
+      const ids = [...this.selected].filter((id) => {
+        const ent = this.curr.entities.find((x) => x.id === id);
+        return !!ent && ent.ownerId === this.curr.youPlayerId && !ent.wreck && ent.kind === "unit";
+      });
+      if (ids.length) this.onCommand({ type: "cmd.stop", ids });
+      return;
+    }
+    if (k === "f") {
+      e.preventDefault();
+      const ids = this.ownSelectedIds();
+      if (ids.length) this.setAttackMoveMode(!this.attackMoveMode);
+      return;
+    }
+    if (k === "escape") {
+      if (this.attackMoveMode) {
+        e.preventDefault();
+        this.setAttackMoveMode(false);
+      }
     }
   };
 
@@ -361,6 +424,45 @@ export class MapView {
   private useSpecial(e: EntityView): void {
     if (!this.canSpecial(e)) return;
     if (specialOf(e.type) === "deploy") this.onCommand({ type: "cmd.deploy", id: e.id });
+  }
+
+  private garrisonHotkey(): void {
+    const you = this.curr.youPlayerId;
+    const own = this.curr.entities.filter((e) => this.selected.has(e.id) && e.ownerId === you && !e.wreck);
+    const inf = own.filter((e) => e.kind === "unit" && isInfantryType(e.type));
+    const house = this.curr.entities.find((e) => this.selected.has(e.id) && isGarrisonable(e.type) && e.hp > 0);
+    if (house && inf.length) {
+      this.onCommand({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: house.id });
+      return;
+    }
+    const holed = own.filter((e) => e.garrisonedIn);
+    if (holed.length) {
+      this.onCommand({ type: "cmd.ungarrison", ids: holed.map((e) => e.id) });
+      return;
+    }
+    if (house && house.garrison?.ownerId === you) {
+      this.onCommand({ type: "cmd.ungarrison", buildingId: house.id });
+    }
+  }
+
+  private ownSelectedIds(): number[] {
+    return [...this.selected].filter((id) => {
+      const ent = this.curr.entities.find((x) => x.id === id);
+      return !!ent && ent.ownerId === this.curr.youPlayerId && !ent.wreck && ent.kind === "unit";
+    });
+  }
+
+  private commitAttackMove(px: number, py: number): void {
+    const ids = this.ownSelectedIds();
+    this.setAttackMoveMode(false);
+    if (ids.length === 0) return;
+    const hit = this.hit(px, py);
+    if (hit && (hit.wreck || hit.ownerId !== this.curr.youPlayerId)) {
+      this.onCommand({ type: "cmd.attack", ids, targetId: hit.id });
+      return;
+    }
+    const w = this.screenToWorld(px, py);
+    this.onCommand({ type: "cmd.attackmove", ids, x: w.x, y: w.y });
   }
 
   private specialSelected(): void {
@@ -459,17 +561,24 @@ export class MapView {
     return { x: worldToTile(w.x, ts), y: worldToTile(w.y, ts) };
   }
 
-  private lerpEnt(e: EntityView): { x: number; y: number; facing: number } {
+  private lerpEnt(e: EntityView): { x: number; y: number; facing: number; turretFacing: number } {
+    const turretNow = e.turretFacing ?? e.facing;
     const t = Math.min(1, (performance.now() - this.snapAt) / 100);
     const prev = this.prev?.entities.find((p) => p.id === e.id);
-    if (!prev || t >= 1) return { x: e.x, y: e.y, facing: e.facing };
+    if (!prev || t >= 1) return { x: e.x, y: e.y, facing: e.facing, turretFacing: turretNow };
+    const snapFacing = isInfantryType(e.type);
     let df = e.facing - prev.facing;
     while (df > Math.PI) df -= Math.PI * 2;
     while (df < -Math.PI) df += Math.PI * 2;
+    const turretPrev = prev.turretFacing ?? prev.facing;
+    let dt = turretNow - turretPrev;
+    while (dt > Math.PI) dt -= Math.PI * 2;
+    while (dt < -Math.PI) dt += Math.PI * 2;
     return {
       x: prev.x + (e.x - prev.x) * t,
       y: prev.y + (e.y - prev.y) * t,
-      facing: prev.facing + df * t,
+      facing: snapFacing ? e.facing : prev.facing + df * t,
+      turretFacing: snapFacing ? turretNow : turretPrev + dt * t,
     };
   }
 
@@ -544,7 +653,7 @@ export class MapView {
       this.onSelect([...this.selected]);
       return;
     }
-    if (hit.ownerId !== this.curr.youPlayerId) {
+    if (hit.wreck || hit.ownerId !== this.curr.youPlayerId) {
       this.selected.clear();
       this.selected.add(hit.id);
       this.onSelect([...this.selected]);
@@ -571,7 +680,7 @@ export class MapView {
     const y1 = Math.max(b.y0, b.y1);
     if (!shift) this.selected.clear();
     for (const e of this.curr.entities) {
-      if (e.kind !== "unit" || e.ownerId !== this.curr.youPlayerId) continue;
+      if (e.kind !== "unit" || e.ownerId !== this.curr.youPlayerId || e.wreck || e.garrisonedIn) continue;
       const p = this.lerpEnt(e);
       const s = this.toScreen(p.x, p.y);
       if (s.x >= x0 && s.x <= x1 && s.y >= y0 && s.y <= y1) this.selected.add(e.id);
@@ -587,12 +696,22 @@ export class MapView {
     }
     const own = [...this.selected]
       .map((id) => this.curr.entities.find((e) => e.id === id))
-      .filter((e): e is EntityView => !!e && e.ownerId === this.curr.youPlayerId);
+      .filter((e): e is EntityView => !!e && e.ownerId === this.curr.youPlayerId && !e.wreck);
     if (own.length === 0) return;
     const hit = this.hit(px, py);
-    if (hit && hit.ownerId !== this.curr.youPlayerId) {
-      this.onCommand({ type: "cmd.attack", ids: own.map((e) => e.id), targetId: hit.id });
-      return;
+    const inf = own.filter((e) => e.kind === "unit" && isInfantryType(e.type));
+    if (hit && isGarrisonable(hit.type) && inf.length) {
+      const held = hit.garrison?.ownerId;
+      if (!held || held === this.curr.youPlayerId) {
+        this.onCommand({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: hit.id });
+        return;
+      }
+    }
+    if (hit && (hit.wreck || (hit.ownerId !== this.curr.youPlayerId && !isCivilianType(hit.type)) || isGarrisonable(hit.type))) {
+      if (hit.ownerId !== this.curr.youPlayerId || hit.wreck || (isGarrisonable(hit.type) && hit.garrison?.ownerId && hit.garrison.ownerId !== this.curr.youPlayerId)) {
+        this.onCommand({ type: "cmd.attack", ids: own.map((e) => e.id), targetId: hit.id });
+        return;
+      }
     }
     const tile = this.screenToTile(px, py);
     const scrap = this.curr.scrap.find((s) => s.x === tile.x && s.y === tile.y && s.yield > 0);
@@ -717,16 +836,22 @@ export class MapView {
         this.fillTile(t.x, t.y, "#050403");
         continue;
       }
-      const blocked = map.tiles[t.y * map.width + t.x] === TILE_BLOCKED;
+      const kind = map.tiles[t.y * map.width + t.x] ?? 0;
       const scrap = scrapSet.has(`${t.x},${t.y}`);
-      this.fillTile(t.x, t.y, this.groundFill(t.x, t.y, blocked, scrap));
+      this.fillTile(t.x, t.y, this.groundFill(t.x, t.y, kind, scrap));
     }
 
     const ts = map.tileSize;
     for (const t of tiles) {
       if (!this.seen(t.x, t.y)) continue;
-      if (map.tiles[t.y * map.width + t.x] === TILE_BLOCKED) {
+      const kind = map.tiles[t.y * map.width + t.x] ?? 0;
+      if (kind === TILE_BLOCKED) {
         this.drawIsoBox(t.x * ts, t.y * ts, ts, ts, WALL_H, "#3a2a22", { elev: heightAt(map, t.x, t.y) });
+      } else if (kind === TILE_TREE) {
+        const inset = ts * 0.22;
+        this.drawIsoBox(t.x * ts + inset, t.y * ts + inset, ts - inset * 2, ts - inset * 2, TREE_H, "#1f4a28", {
+          elev: heightAt(map, t.x, t.y),
+        });
       } else if (scrapSet.has(`${t.x},${t.y}`)) {
         const inset = ts * 0.18;
         this.drawIsoBox(t.x * ts + inset, t.y * ts + inset, ts - inset * 2, ts - inset * 2, SCRAP_H, "#c4a24a", {
@@ -749,7 +874,7 @@ export class MapView {
     for (const e of drawList) {
       const ghost = !liveIds.has(e.id);
       if (e.kind === "building") this.drawBuilding(e, ghost);
-      else if (!ghost) this.drawUnit(e);
+      else if (!ghost && !e.garrisonedIn) this.drawUnit(e);
     }
 
     for (const p of this.curr.projectiles) {
@@ -803,6 +928,36 @@ export class MapView {
       ctx.strokeRect(Math.min(b.x0, b.x1), Math.min(b.y0, b.y1), Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0));
     }
     this.drawSpecialCursor();
+    this.drawAttackCursor();
+  }
+
+  private drawAttackCursor(): void {
+    if (!this.attackMoveMode || this.overControl || this.hoverSpecial) return;
+    if (this.mouseX < 0 || this.mouseY < 0) return;
+    const ctx = this.ctx;
+    const x = this.mouseX;
+    const y = this.mouseY;
+    ctx.save();
+    ctx.strokeStyle = "#ff5a4a";
+    ctx.fillStyle = "#ff5a4a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 10);
+    ctx.lineTo(x, y + 10);
+    ctx.moveTo(x - 10, y);
+    ctx.lineTo(x + 10, y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#140e0a";
+    ctx.strokeText("ATK", x + 12, y + 8);
+    ctx.fillText("ATK", x + 12, y + 8);
+    ctx.restore();
   }
 
   private tileScreen(tx: number, ty: number): { n: IsoPt; e: IsoPt; s: IsoPt; w: IsoPt } {
@@ -815,32 +970,41 @@ export class MapView {
     };
   }
 
-  private groundFill(tx: number, ty: number, blocked: boolean, scrap: boolean): string {
-    const chk = (tx + ty) % 2 === 0;
-    const fill = blocked ? "#2a1e18" : scrap ? (chk ? "#5a4a18" : "#4a3c14") : chk ? "#2a3a24" : "#243320";
+  private groundFill(tx: number, ty: number, kind: number, scrap: boolean): string {
+    const chk = (Math.floor(tx / TILE_SUBDIV) + Math.floor(ty / TILE_SUBDIV)) % 2 === 0;
+    if (kind === TILE_WATER) return chk ? "#1a3d55" : "#16364c";
+    if (kind === TILE_TREE) return chk ? "#1c3320" : "#182c1c";
+    const fill = kind === TILE_BLOCKED ? "#2a1e18" : scrap ? (chk ? "#5a4a18" : "#4a3c14") : chk ? "#2a3a24" : "#243320";
     const h = heightAt(this.map(), tx, ty);
-    if (h <= 0 || blocked) return fill;
-    return this.shade(fill, 1 + h * 0.16);
+    if (h <= 0 || kind === TILE_BLOCKED) return fill;
+    return this.shade(fill, 1 + (h / HEIGHT_MAX) * 0.48);
   }
 
   private fillTile(tx: number, ty: number, fill: string): void {
     const map = this.map();
-    const h = heightAt(map, tx, ty);
-    const ez = isoLift(h);
+    const elev = map.heights;
     const d = this.tileScreen(tx, ty);
     const up = (p: IsoPt, z: number): IsoPt => ({ x: p.x, y: p.y - z });
-    const hs = ty + 1 < map.height ? heightAt(map, tx, ty + 1) : 0;
-    const he = tx + 1 < map.width ? heightAt(map, tx + 1, ty) : 0;
-    if (h > hs) {
+    const nH = vertexElev(elev, map.width, map.height, tx, ty);
+    const eH = vertexElev(elev, map.width, map.height, tx + 1, ty);
+    const sH = vertexElev(elev, map.width, map.height, tx + 1, ty + 1);
+    const wH = vertexElev(elev, map.width, map.height, tx, ty + 1);
+    const n = up(d.n, isoLift(nH));
+    const e = up(d.e, isoLift(eH));
+    const s = up(d.s, isoLift(sH));
+    const w = up(d.w, isoLift(wH));
+    const floorS = ty + 1 >= map.height;
+    const floorE = tx + 1 >= map.width;
+    if (floorS && (wH > 0 || sH > 0)) {
       this.ctx.fillStyle = this.shade(fill, 0.42);
-      this.fillQuad(up(d.w, ez), up(d.s, ez), up(d.s, isoLift(hs)), up(d.w, isoLift(hs)));
+      this.fillQuad(w, s, up(d.s, 0), up(d.w, 0));
     }
-    if (h > he) {
+    if (floorE && (eH > 0 || sH > 0)) {
       this.ctx.fillStyle = this.shade(fill, 0.68);
-      this.fillQuad(up(d.e, ez), up(d.s, ez), up(d.s, isoLift(he)), up(d.e, isoLift(he)));
+      this.fillQuad(e, s, up(d.s, 0), up(d.e, 0));
     }
     this.ctx.fillStyle = fill;
-    this.fillQuad(up(d.n, ez), up(d.e, ez), up(d.s, ez), up(d.w, ez));
+    this.fillQuad(n, e, s, w);
   }
 
   private fillQuad(a: IsoPt, b: IsoPt, c: IsoPt, d: IsoPt): void {
@@ -968,7 +1132,9 @@ export class MapView {
       ctx.fillText(name, top.cx, top.cy - ez * 0.15 - 14);
     }
     const bar = this.toScreen(x + bw / 2, y + bh / 2, elev);
-    this.maybeHp(e, bar.x - bw * 0.28, spr && spriteReady(spr) ? top.cy + 6 : bar.y - ez - 8, bw * 0.56);
+    if (!ghost) {
+      this.maybeHp(e, bar.x - bw * 0.28, spr && spriteReady(spr) ? top.cy + 6 : bar.y - ez - 8, bw * 0.56);
+    }
     this.drawDeployProgress(e, bar.x - bw * 0.28, bar.y + 4, bw * 0.56);
     if (!ghost && (e.state === "undeploy" || e.state === "deploy")) {
       const p = e.deployProgress ?? 0;
@@ -1026,7 +1192,7 @@ export class MapView {
       stroke: this.selected.has(e.id) ? "#e8b84a" : "#111",
       strokeW: this.selected.has(e.id) ? 2.8 : 1.4,
     });
-    const dir = facingToIso(p.facing, this.ts());
+    const dir = facingToIso(p.turretFacing ?? p.facing, this.ts());
     const len = Math.hypot(dir.x, dir.y) || 1;
     const ux = dir.x / len;
     const uy = dir.y / len;
@@ -1047,6 +1213,7 @@ export class MapView {
       ctx.fillText(name, s.x, s.y - ez - 12);
     }
     this.maybeHp(e, s.x - r, s.y - ez - 10, r * 2);
+    this.drawCrits(e, s.x + r, s.y - ez - 26);
     this.drawDeployProgress(e, s.x - r, s.y + 6, r * 2);
     if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
       const prog = e.deployProgress ?? 0;
@@ -1066,17 +1233,24 @@ export class MapView {
     const s = this.toScreen(p.x, p.y);
     const hex = this.ownerColor(e);
     const dir = facingToIso(p.facing, this.ts());
+    const turretDir = facingToIso(p.turretFacing ?? p.facing, this.ts());
     ctx.fillStyle = hex;
     ctx.globalAlpha = 0.5;
     ctx.beginPath();
     ctx.ellipse(s.x, s.y, size * 0.32, size * 0.15, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
+    if (e.wreck) {
+      ctx.filter = "grayscale(0.7) brightness(0.52) sepia(0.35)";
+    }
     const drawn = drawUnitSprite(ctx, def, s.x, s.y, dir.x, dir.y, {
-      moving: e.state === "move",
+      moving: !e.wreck && e.state === "move" && !immobilized(e),
       id: e.id,
       now: performance.now() * (this.curr.gameSpeed || 1),
+      turretDx: turretDir.x,
+      turretDy: turretDir.y,
     });
+    ctx.filter = "none";
     if (!drawn) {
       const r = Math.max(4, size * 0.22);
       this.drawIsoBox(p.x - r, p.y - r, r * 2, r * 2, size * 0.45, hex);
@@ -1089,8 +1263,9 @@ export class MapView {
       ctx.fillStyle = "#e8dcc4";
       ctx.fillText(name, s.x, s.y - size * def.contactY - 12);
     }
-    if (e.type === "warden" && e.hp > 0 && e.hp / e.hpMax < 0.62) {
-      const hurt = 1 - e.hp / e.hpMax;
+    const engineOut = e.crits?.includes("engine") === true;
+    if (e.wreck || engineOut || (e.type === "warden" && e.hp > 0 && e.hp / e.hpMax < 0.62)) {
+      const hurt = e.wreck ? 0.85 : engineOut ? 0.7 : 1 - e.hp / e.hpMax;
       const frame = fxFrameAt(performance.now() + e.id * 90, 900, FX_SMOKE.frames, true);
       drawFxFrame(
         ctx,
@@ -1103,6 +1278,7 @@ export class MapView {
       );
     }
     this.maybeHp(e, s.x - size * 0.45, s.y - size * def.contactY - 2, size * 0.9);
+    this.drawCrits(e, s.x + size * 0.48, s.y - size * def.contactY - 20);
     this.drawDeployProgress(e, s.x - size * 0.45, s.y + 6, size * 0.9);
     if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
       const prog = e.deployProgress ?? 0;
@@ -1217,8 +1393,10 @@ export class MapView {
       }
     }
     this.hoverSpecial = special;
+    const attack = this.attackMoveMode && !this.overControl;
     this.canvas.classList.toggle("cursor-special", special);
-    this.canvas.style.cursor = special ? "none" : "";
+    this.canvas.classList.toggle("cursor-attack", attack && !special);
+    this.canvas.style.cursor = special || attack ? "none" : "";
   }
 
   private drawSpecialCursor(): void {
@@ -1254,19 +1432,54 @@ export class MapView {
     ctx.restore();
   }
 
+  private drawCrits(e: EntityView, rightX: number, y: number): void {
+    if (e.wreck || !e.crits || e.crits.length === 0) return;
+    const size = 16;
+    const gap = 2;
+    const ctx = this.ctx;
+    let x = rightX - e.crits.length * (size + gap) + gap;
+    for (const c of e.crits) {
+      const img = critIcon(c);
+      if (spriteReady({ image: img })) {
+        ctx.drawImage(img, Math.round(x), Math.round(y), size, size);
+      }
+      x += size + gap;
+    }
+  }
+
   private maybeHp(e: EntityView, x: number, y: number, w: number): void {
     const now = performance.now();
-    const show = this.selected.has(e.id) || (this.damagedUntil.get(e.id) ?? 0) > now;
-    if (!show) return;
+    const selected = this.selected.has(e.id);
+    const damaged = (this.damagedUntil.get(e.id) ?? 0) > now;
+    const unit = e.kind === "unit" && !e.wreck;
+    if (!(unit || e.wreck || selected || damaged)) return;
+    const ratio = Math.max(0, Math.min(1, e.hp / e.hpMax));
+    const barW = Math.max(8, w * 0.4);
+    const barH = 2;
+    const bx = x + (w - barW) / 2;
+    const by = y - 3;
+    const alpha = selected ? 0.58 : damaged || e.wreck ? 0.42 : 0.28;
+    const fill = ratio > 0.45 ? "#6aaa58" : ratio > 0.2 ? "#b8923c" : "#b45448";
     const ctx = this.ctx;
-    const ratio = Math.max(0, e.hp / e.hpMax);
-    ctx.fillStyle = "#111";
-    ctx.fillRect(x, y - 6, w, 4);
-    ctx.fillStyle = ratio > 0.45 ? "#7dff6a" : ratio > 0.2 ? "#e8b84a" : "#ff5a4a";
-    ctx.fillRect(x, y - 6, w * ratio, 4);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = "rgba(8, 6, 4, 0.72)";
+    ctx.fillRect(bx, by, barW, barH);
+    ctx.globalAlpha = alpha * 1.15;
+    ctx.fillStyle = fill;
+    ctx.fillRect(bx, by, barW * ratio, barH);
+    ctx.restore();
   }
 
   private ownerColor(e: EntityView): string {
+    if (isCivilianType(e.type)) {
+      const occ = e.garrison?.ownerId;
+      if (occ) {
+        const holder = this.curr.players.find((pl) => pl.playerId === occ);
+        if (holder) return colorHex(holder.colorId);
+      }
+      return CIV_FILL;
+    }
     const p = this.curr.players.find((pl) => pl.playerId === e.ownerId);
     return colorHex(p?.colorId ?? 0);
   }
@@ -1325,20 +1538,26 @@ export class MapView {
           ctx.fillRect(x * scale, y * scale, Math.max(1, scale), Math.max(1, scale));
           continue;
         }
-        const blocked = map.tiles[y * map.width + x] === TILE_BLOCKED;
+        const kind = map.tiles[y * map.width + x] ?? 0;
         const scrap = scrapSet.has(`${x},${y}`);
         const h = heightAt(map, x, y);
-        ctx.fillStyle = blocked
-          ? "#3a2a22"
-          : scrap
-            ? "#5a4a18"
-            : h >= 3
-              ? "#5c6e40"
-              : h === 2
-                ? "#4a5a38"
-                : h === 1
-                  ? "#354a30"
-                  : "#2a3a24";
+        const band = HEIGHT_MAX > 0 ? h / HEIGHT_MAX : 0;
+        ctx.fillStyle =
+          kind === TILE_WATER
+            ? "#1a3d55"
+            : kind === TILE_TREE
+              ? "#1f4a28"
+              : kind === TILE_BLOCKED
+                ? "#3a2a22"
+                : scrap
+                  ? "#5a4a18"
+                  : band >= 0.75
+                    ? "#5c6e40"
+                    : band >= 0.4
+                      ? "#4a5a38"
+                      : band > 0
+                        ? "#354a30"
+                        : "#2a3a24";
         ctx.fillRect(x * scale, y * scale, Math.max(1, scale), Math.max(1, scale));
         if (!this.lit(x, y)) {
           ctx.fillStyle = "rgba(0,0,0,0.55)";
@@ -1366,6 +1585,7 @@ export class MapView {
     ctx.closePath();
     ctx.stroke();
     for (const e of this.curr.entities) {
+      if (e.garrisonedIn) continue;
       ctx.fillStyle = this.ownerColor(e);
       const tx = e.kind === "building" ? e.tileX + e.tileW / 2 : e.x / ts;
       const ty = e.kind === "building" ? e.tileY + e.tileH / 2 : e.y / ts;

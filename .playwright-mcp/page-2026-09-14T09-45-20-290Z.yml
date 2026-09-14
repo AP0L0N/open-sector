@@ -1,0 +1,7 @@
+- generic [ref=f2e3]:
+  - heading "GRIDLOCK" [level=1] [ref=f2e4]
+  - paragraph [ref=f2e5]: Identify yourself
+  - generic [ref=f2e6]:
+    - generic [ref=f2e7]: Callsign
+    - textbox "Commander" [ref=f2e8]
+    - button "Continue" [disabled] [ref=f2e9]

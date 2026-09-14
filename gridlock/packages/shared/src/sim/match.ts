@@ -1,7 +1,10 @@
 import {
   AUTO_DEPLOY_SECONDS,
+  catalog,
   clampGameSpeed,
   GAME_SPEED_DEFAULT,
+  leavesWreck,
+  NEUTRAL_OWNER,
   secondsToTicks,
   START_SCRAP,
   TICK_DT,
@@ -9,16 +12,18 @@ import {
 import { getMap } from "../maps.js";
 import { humans } from "../lobby.js";
 import type { RoomState } from "../protocol.js";
-import { initGrids, makeEntity, tileCenter } from "./geo.js";
+import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter } from "./geo.js";
+import { spillGarrison, tickGarrison } from "./garrison.js";
 import { seedRng } from "./rng.js";
 import { tickBuild } from "./build.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
+import { tickCollision } from "./collision.js";
 import { tickAutoDeploy, tickDeploy } from "./deploy.js";
 import { tickHarvest } from "./harvest.js";
-import { tickMovement } from "./orders.js";
+import { tickMovement, repathIfBlocked } from "./orders.js";
 import { tickTrain } from "./train.js";
 import type { MatchState, SimPlayer } from "./types.js";
-import { destroyEntity } from "./geo.js";
+import { toWreck } from "./wreck.js";
 
 export function createMatch(
   room: RoomState,
@@ -39,6 +44,7 @@ export function createMatch(
     width: map.width,
     height: map.height,
     blocked: grids.blocked,
+    terrain: grids.terrain,
     heights: grids.heights,
     scrapYield: grids.scrapYield,
     occupy: grids.occupy,
@@ -62,6 +68,7 @@ export function createMatch(
     const towardX = map.width / 2 - pos.x;
     const towardY = map.height / 2 - pos.y;
     rig.facing = Math.atan2(towardY, towardX);
+    rig.turretFacing = rig.facing;
     players.set(pid, {
       playerId: pid,
       name: slot.name ?? "Commander",
@@ -75,6 +82,12 @@ export function createMatch(
     });
   }
 
+  for (const f of map.features ?? []) {
+    const def = catalog(f.type);
+    const c = buildingCenter(f.x, f.y, def.tileW, def.tileH, map.tileSize);
+    makeEntity(state, f.type, NEUTRAL_OWNER, c.x, c.y, { tileX: f.x, tileY: f.y });
+  }
+
   return state;
 }
 
@@ -83,7 +96,9 @@ export function step(state: MatchState, dt = TICK_DT): void {
   state.tick += 1;
   state.impacts = [];
   tickDeploy(state, dt);
+  tickGarrison(state);
   tickMovement(state, dt);
+  tickCollision(state);
   tickHarvest(state, dt);
   tickBuild(state, dt);
   tickTrain(state, dt);
@@ -105,14 +120,27 @@ export function stepMatch(state: MatchState, dt = TICK_DT): void {
 
 function reapDead(state: MatchState): void {
   const dead: number[] = [];
+  let madeWreck = false;
   for (const e of state.entities.values()) {
-    if (e.hp <= 0) dead.push(e.id);
+    if (e.hp > 0) continue;
+    if (!e.wreck && leavesWreck(e.type) && e.type !== "core" && e.type !== "rig") {
+      toWreck(state, e);
+      madeWreck = true;
+      continue;
+    }
+    dead.push(e.id);
+  }
+  if (madeWreck) {
+    for (const o of state.entities.values()) {
+      if (o.kind === "unit" && !o.wreck && o.hp > 0) repathIfBlocked(state, o);
+    }
   }
   const hqOwners = new Set<string>();
   for (const id of dead) {
     const e = state.entities.get(id);
     if (!e) continue;
     if (e.type === "core" || e.type === "rig") hqOwners.add(e.ownerId);
+    if (e.garrison.length) spillGarrison(state, e);
     destroyEntity(state, e);
   }
   for (const pid of hqOwners) eliminate(state, pid);
