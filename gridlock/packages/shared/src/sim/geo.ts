@@ -76,17 +76,20 @@ export function initGrids(map: MapDef): {
   blocked: Uint8Array;
   scrapYield: Uint16Array;
   occupy: Int32Array;
+  heights: Uint8Array;
 } {
   const n = map.width * map.height;
   const blocked = new Uint8Array(n);
   const scrapYield = new Uint16Array(n);
   const occupy = new Int32Array(n);
+  const heights = new Uint8Array(n);
   for (let i = 0; i < n; i++) {
     const t = map.tiles[i] ?? 0;
     if (t === TILE_BLOCKED) blocked[i] = 1;
     if (t === TILE_SCRAP) scrapYield[i] = SCRAP_TILE_YIELD;
+    heights[i] = map.heights[i] ?? 0;
   }
-  return { blocked, scrapYield, occupy };
+  return { blocked, scrapYield, occupy, heights };
 }
 
 export function occupyEntity(state: MatchState, e: Entity): void {

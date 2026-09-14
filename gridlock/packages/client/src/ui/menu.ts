@@ -26,6 +26,7 @@ export function renderMenu(root: HTMLElement, ctx: Ctx): void {
     if (!ctx.net.connected) ctx.net.connect();
     ctx.pendingSkirmish = false;
     ctx.playMode = "network";
+    ctx.networkStep = "choose";
     ctx.goto("play");
   });
   options.addEventListener("click", () => ctx.goto("options"));

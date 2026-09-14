@@ -1,4 +1,5 @@
 import { nearestWalkable, tileCenter, walkable, worldToTile } from "./geo.js";
+import { climbableDelta, minSlopeCostMul, slopeCostMul, tileHeight } from "./elevation.js";
 import type { Entity, MatchState, Vec } from "./types.js";
 
 const ORTHO = 10;
@@ -98,7 +99,9 @@ export function astar(
         if (dx !== 0 && dy !== 0) {
           if (!walkable(state, cur.x + dx, cur.y) || !walkable(state, cur.x, cur.y + dy)) continue;
         }
-        const step = dx !== 0 && dy !== 0 ? DIAG : ORTHO;
+        const dh = tileHeight(state, nx, ny) - tileHeight(state, cur.x, cur.y);
+        if (!climbableDelta(dh)) continue;
+        const step = (dx !== 0 && dy !== 0 ? DIAG : ORTHO) * slopeCostMul(dh);
         const g = cur.g + step;
         const k = key(nx, ny);
         const prev = best.get(k);
@@ -138,7 +141,8 @@ export function astar(
 function heuristic(ax: number, ay: number, bx: number, by: number): number {
   const dx = Math.abs(ax - bx);
   const dy = Math.abs(ay - by);
-  return ORTHO * (dx + dy) + (DIAG - 2 * ORTHO) * Math.min(dx, dy);
+  const octile = ORTHO * (dx + dy) + (DIAG - 2 * ORTHO) * Math.min(dx, dy);
+  return octile * minSlopeCostMul();
 }
 
 export function followPath(e: Entity, speed: number, dt: number): boolean {

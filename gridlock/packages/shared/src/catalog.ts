@@ -5,10 +5,14 @@ export const TICK_DT = 1 / TICK_HZ;
 export const TICK_MS = 100;
 export const GAME_SPEED_MIN = 1;
 export const GAME_SPEED_MAX = 5;
-export const GAME_SPEED_DEFAULT = 1;
+export const GAME_SPEED_DEFAULT = GAME_SPEED_MAX;
+/** Wall-clock delay before each Rig auto-unpacks into a Core. */
+export const AUTO_DEPLOY_SECONDS = 0.5;
 export const START_SCRAP = 2200;
 export const BUILD_RADIUS = 8;
 export const UNIT_CAP = 60;
+/** Max train jobs waiting or in progress on one producer. */
+export const TRAIN_QUEUE_CAP = 9;
 export const DEPLOY_SECONDS = 3;
 export const SELL_REFUND = 0.5;
 export const SCRAP_TILE_YIELD = 800;
@@ -18,8 +22,28 @@ export const HAULER_HARVEST_SECONDS = 2;
 export const HAULER_UNLOAD_SECONDS = 1.2;
 export const LOW_POWER_MIN_SPEED = 0.25;
 export const FACE_FIRE_DEG = 8;
+/** How close a turn-in-place unit must be to its heading before it rolls. */
+export const FACE_MOVE_DEG = 12;
 export const PROJECTILE_RADIUS = 3;
 export const HP_BAR_SECONDS = 2;
+/** Extra world pixels between unit reserved radii on a group move. */
+export const UNIT_SPACE_PAD = 2;
+/** Peak discrete elevation. 0 is the floor. */
+export const HEIGHT_MAX = 3;
+/** Adjacent walkable tiles may differ by at most this many levels. */
+export const HEIGHT_STEP_MAX = 1;
+/** Move-speed multiplier per level climbed. */
+export const HEIGHT_UPHILL_SPEED = 0.55;
+/** Move-speed multiplier per level descended. */
+export const HEIGHT_DOWNHILL_SPEED = 1.12;
+/** A* step-cost multiplier per level climbed. */
+export const HEIGHT_UPHILL_COST = 1.7;
+/** A* step-cost multiplier per level descended. */
+export const HEIGHT_DOWNHILL_COST = 0.9;
+/** Extra Chebyshev sight tiles per elevation. */
+export const HEIGHT_SIGHT_BONUS = 2;
+/** Extra weapon-range tiles per elevation. */
+export const HEIGHT_RANGE_BONUS = 1;
 
 export type EntityType =
   | "rig"
@@ -74,6 +98,8 @@ export interface CatalogEntry {
   caliber: number;
   /** Aim cone in degrees at max range. 0 = laser. */
   spreadDeg: number;
+  /** Hull must face the waypoint before translating. */
+  turnInPlace?: boolean;
   special?: SpecialAction;
 }
 
@@ -242,7 +268,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   hauler: {
     type: "hauler",
     kind: "unit",
-    name: "Hauler",
+    name: "Mauler",
     letter: "H",
     cost: 900,
     buildSeconds: 18,
@@ -276,13 +302,14 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     turnDegPerSec: 85,
     rangeTiles: 9,
     sightTiles: 8,
-    cooldown: 2.4,
-    damage: 20,
-    projectileSpeed: 560,
+    cooldown: 1.6,
+    damage: 55,
+    projectileSpeed: 5200,
+    turnInPlace: true,
     armorFront: 80,
     armorSide: 32,
     armorRear: 16,
-    penetration: 70,
+    penetration: 100,
     caliber: 75,
     spreadDeg: 3,
   },
@@ -337,7 +364,7 @@ export function secondsToTicks(seconds: number): number {
 }
 
 export function clampGameSpeed(n: number): number {
-  if (!Number.isFinite(n)) return GAME_SPEED_DEFAULT;
+  if (!Number.isFinite(n)) return GAME_SPEED_MIN;
   return Math.max(GAME_SPEED_MIN, Math.min(GAME_SPEED_MAX, Math.round(n)));
 }
 

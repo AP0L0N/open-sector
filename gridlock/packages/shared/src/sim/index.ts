@@ -6,6 +6,7 @@ export { pathToWorld, astar } from "./path.js";
 export type { MatchState } from "./types.js";
 export { hasCore, hqOf, walkable, worldToTile, tileCenter, buildingContains, unitContains } from "./geo.js";
 export { powerOf, productionSpeed } from "./power.js";
+export { producerType } from "./train.js";
 export {
   visionMask,
   visionMaskFromSnapshot,
@@ -13,3 +14,11 @@ export {
   entityOnMask,
   canSeeEntity,
 } from "./vision.js";
+export {
+  tileHeight,
+  entityHeight,
+  sightTilesOf,
+  rangeTilesOf,
+  hasTerrainLos,
+  slopeSpeedMul,
+} from "./elevation.js";

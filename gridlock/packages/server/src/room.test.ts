@@ -129,17 +129,19 @@ describe("hub rooms", () => {
       hub.handle("A", { type: "room.start" });
       const roomId = hub.sessions.get("A")!.roomId!;
       const match = hub.matches.get(roomId)!;
-      assert.equal(match.gameSpeed, 1);
-      for (let n = 2; n <= 5; n++) {
-        hub.handle("A", { type: "cmd.speed", delta: 1 });
-        assert.equal(match.gameSpeed, n);
-      }
+      assert.equal(match.gameSpeed, 5);
       hub.handle("A", { type: "cmd.speed", delta: 1 });
       assert.equal(match.gameSpeed, 5);
+      for (let n = 4; n >= 1; n--) {
+        hub.handle("A", { type: "cmd.speed", delta: -1 });
+        assert.equal(match.gameSpeed, n);
+      }
       hub.handle("A", { type: "cmd.speed", delta: -1 });
-      assert.equal(match.gameSpeed, 4);
+      assert.equal(match.gameSpeed, 1);
+      hub.handle("A", { type: "cmd.speed", delta: 1 });
+      assert.equal(match.gameSpeed, 2);
       const snap = a.of("match.snapshot").at(-1);
-      assert.equal(snap?.match.gameSpeed, 4);
+      assert.equal(snap?.match.gameSpeed, 2);
     } finally {
       hub.shutdown();
     }
@@ -182,7 +184,7 @@ describe("hub rooms", () => {
       hub.handle("B", { type: "cmd.speed", delta: 1 });
       const err = b.of("room.error").at(-1);
       assert.equal(err?.code, "not_host");
-      assert.equal(hub.matches.get(hub.sessions.get("A")!.roomId!)!.gameSpeed, 1);
+      assert.equal(hub.matches.get(hub.sessions.get("A")!.roomId!)!.gameSpeed, 5);
     } finally {
       hub.shutdown();
     }

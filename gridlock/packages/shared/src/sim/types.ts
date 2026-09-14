@@ -7,9 +7,11 @@ export interface Vec {
 }
 
 export interface TrainJob {
+  id: number;
   type: TrainType;
   progressTicks: number;
   totalTicks: number;
+  paused: boolean;
 }
 
 export interface StructureJob {
@@ -72,6 +74,9 @@ export interface Projectile {
   life: number;
   /** Shooter, then last ricochet victim — skip re-collision. */
   ignoreId: number;
+  /** Original firing unit. */
+  fromId: number;
+  bounced: boolean;
 }
 
 export interface SimPlayer {
@@ -92,12 +97,16 @@ export interface MatchState {
   tick: number;
   /** Sim steps per wall-clock tick. 1–5. */
   gameSpeed: number;
+  /** Remaining wall-clock ticks until Rigs auto-unpack. -1 = already fired. */
+  autoDeployTicks: number;
   nextId: number;
   tileSize: number;
   width: number;
   height: number;
   /** 1 = wall (permanent). */
   blocked: Uint8Array;
+  /** Discrete elevation. 0 = floor. */
+  heights: Uint8Array;
   /** Remaining scrap on each tile. */
   scrapYield: Uint16Array;
   /** Building id occupying a tile, or 0. */

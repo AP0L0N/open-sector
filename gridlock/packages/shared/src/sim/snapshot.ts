@@ -31,6 +31,15 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       tileX: e.tileX,
       tileY: e.tileY,
       trainProgress: job ? job.progressTicks / job.totalTicks : undefined,
+      trainQueue:
+        friendly && e.queue.length > 0
+          ? e.queue.map((j) => ({
+              id: j.id,
+              type: j.type,
+              progress: j.progressTicks / j.totalTicks,
+              paused: j.paused,
+            }))
+          : undefined,
       cargo: e.type === "hauler" ? e.cargo : undefined,
       deployProgress:
         e.state === "deploy" || e.state === "undeploy"
@@ -86,6 +95,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
         vx: p.vx,
         vy: p.vy,
         caliber: p.caliber,
+        fromId: p.fromId,
+        bounced: p.bounced,
       })),
     impacts: state.impacts.filter(
       (i) => allies(state, youPlayerId, i.ownerId) || canSeeWorld(state, vis, i.x, i.y),

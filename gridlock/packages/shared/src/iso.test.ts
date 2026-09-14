@@ -3,12 +3,16 @@ import { describe, it } from "node:test";
 import {
   clampIsoCamera,
   facingToIso,
+  isoDir16,
   isoDir8,
+  isoLift,
   isoMapBounds,
   isoToWorld,
+  pickElevatedTile,
   pointInIsoBox,
   tileDiamond,
   worldToIso,
+  worldToIso3,
 } from "./iso.js";
 
 function near(a: { x: number; y: number }, b: { x: number; y: number }, eps = 1e-6): void {
@@ -77,6 +81,21 @@ describe("iso projection", () => {
     assert.equal(isoDir8(south.x, south.y), 3);
   });
 
+  it("maps 16-way screen vectors onto sprite rows", () => {
+    assert.equal(isoDir16(1, 0), 0);
+    assert.equal(isoDir16(1, 0.4), 1);
+    assert.equal(isoDir16(1, 1), 2);
+    assert.equal(isoDir16(0.4, 1), 3);
+    assert.equal(isoDir16(0, 1), 4);
+    assert.equal(isoDir16(-1, 0), 8);
+    assert.equal(isoDir16(0, -1), 12);
+  });
+
+  it("picks ESE for world-east on a 16-dir sheet", () => {
+    const east = facingToIso(0, 32);
+    assert.equal(isoDir16(east.x, east.y), 1);
+  });
+
   it("picks a flat tile at its iso center and not far above it", () => {
     const ts = 32;
     const c = worldToIso(16, 16, ts);
@@ -106,5 +125,24 @@ describe("iso projection", () => {
     near(p, { x: b.minX - 200, y: b.minY - 150 });
     const q = clampIsoCamera(b.maxX + 50, b.maxY + 50, 400, 300, 64, 64, 32);
     near(q, { x: b.maxX - 200, y: b.maxY - 150 });
+  });
+
+  it("lifts a point straight up in screen space", () => {
+    const ts = 32;
+    const a = worldToIso(16, 16, ts);
+    const b = worldToIso3(16, 16, 2, ts);
+    assert.equal(b.x, a.x);
+    assert.equal(b.y, a.y - isoLift(2));
+  });
+
+  it("picks the raised tile instead of the floor unprojection behind it", () => {
+    const ts = 32;
+    const heights = (x: number, y: number) => (x === 2 && y === 2 ? 2 : 0);
+    const top = worldToIso3(2 * ts + 16, 2 * ts + 16, 2, ts);
+    const hit = pickElevatedTile(top.x, top.y, 8, 8, ts, heights);
+    assert.deepEqual(hit, { x: 2, y: 2 });
+    const naive = isoToWorld(top.x, top.y, ts);
+    const naiveTile = { x: Math.floor(naive.x / ts), y: Math.floor(naive.y / ts) };
+    assert.equal(naiveTile.x === 2 && naiveTile.y === 2, false);
   });
 });

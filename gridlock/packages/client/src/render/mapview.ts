@@ -6,8 +6,12 @@ import {
   entityOnMask,
   facingToIso,
   getMap,
+  heightAt,
   isoDepth,
+  isoLift,
   isoToWorld,
+  maxHeightOf,
+  pickElevatedTile,
   pointInIsoBox,
   previewPlace,
   specialOf,
@@ -16,16 +20,25 @@ import {
   tileOnMask,
   visionMaskFromSnapshot,
   worldToIso,
+  worldToIso3,
   worldToTile,
   type BuildingType,
   type ClientMessage,
   type EntityType,
   type EntityView,
-  type ImpactView,
   type IsoPt,
   type MatchSnapshot,
 } from "@gridlock/shared";
-import { TROOPER_SPRITE, drawUnitSprite } from "./sprites.js";
+import { FX_BOOM, FX_SMOKE, drawFxFrame, fxFrameAt } from "./fx.js";
+import {
+  UNIT_VISUAL_SCALE,
+  buildingSpriteFor,
+  drawBuildingSprite,
+  drawUnitSprite,
+  spriteFor,
+  spriteReady,
+  type UnitSpriteDef,
+} from "./sprites.js";
 
 /** Special-action key. D is camera (WASD). */
 export const SPECIAL_HOTKEY = "e";
@@ -76,7 +89,8 @@ export class MapView {
   private vis: Uint8Array | null = null;
   private exploredMapId = "";
   private ghosts = new Map<number, EntityView>();
-  private fx: (ImpactView & { at: number })[] = [];
+  private fx: { id: number; kind: string; x: number; y: number; vx: number; vy: number; at: number }[] = [];
+  private seenShots = new Set<number>();
   selected = new Set<number>();
   placeMode = false;
   onSelect: (ids: number[]) => void = () => {};
@@ -109,7 +123,27 @@ export class MapView {
       this.lastHp.set(e.id, e.hp);
     }
     for (const i of match.impacts ?? []) {
-      if (!this.fx.some((f) => f.id === i.id)) this.fx.push({ ...i, at: now });
+      if (!this.fx.some((f) => f.id === i.id)) {
+        this.fx.push({ ...i, at: now });
+        if (i.kind === "kill") {
+          this.fx.push({ id: i.id + 7_000_000, kind: "smoke", x: i.x, y: i.y, vx: 0, vy: 0, at: now });
+        }
+      }
+    }
+    if (this.seenShots.size > 400) this.seenShots.clear();
+    for (const p of match.projectiles) {
+      if (p.bounced || (p.caliber ?? 0) < 40 || this.seenShots.has(p.id)) continue;
+      this.seenShots.add(p.id);
+      const shooter = match.entities.find((e) => e.id === p.fromId);
+      this.fx.push({
+        id: p.id + 8_000_000,
+        kind: "muzzle",
+        x: shooter?.x ?? p.x,
+        y: shooter?.y ?? p.y,
+        vx: p.vx,
+        vy: p.vy,
+        at: now,
+      });
     }
     for (const id of [...this.selected]) {
       if (!match.entities.some((e) => e.id === id)) this.selected.delete(id);
@@ -343,7 +377,16 @@ export class MapView {
   private clamp(): void {
     const map = this.map();
     const { w, h } = this.viewSize();
-    const p = clampIsoCamera(this.camX, this.camY, w, h, map.width, map.height, map.tileSize);
+    const p = clampIsoCamera(
+      this.camX,
+      this.camY,
+      w,
+      h,
+      map.width,
+      map.height,
+      map.tileSize,
+      maxHeightOf(map),
+    );
     this.camX = p.x;
     this.camY = p.y;
   }
@@ -355,7 +398,7 @@ export class MapView {
     const hq = this.hq();
     if (!hq) return;
     const ts = map.tileSize;
-    const p = worldToIso(hq.x, hq.y, ts);
+    const p = worldToIso3(hq.x, hq.y, this.elevAt(hq.x, hq.y), ts);
     const mid = worldToIso((map.width * ts) / 2, (map.height * ts) / 2, ts);
     const inwardX = mid.x - p.x;
     const inwardY = mid.y - p.y;
@@ -378,18 +421,41 @@ export class MapView {
     return this.map().tileSize;
   }
 
-  private toScreen(wx: number, wy: number): IsoPt {
-    const p = worldToIso(wx, wy, this.ts());
-    return { x: p.x - this.camX, y: p.y - this.camY };
+  private elevAt(wx: number, wy: number): number {
+    const map = this.map();
+    return heightAt(map, worldToTile(wx, map.tileSize), worldToTile(wy, map.tileSize));
   }
 
-  private screenToWorld(px: number, py: number): { x: number; y: number } {
+  private toScreen(wx: number, wy: number, elev?: number): IsoPt {
+    const p = worldToIso(wx, wy, this.ts());
+    const z = isoLift(elev ?? this.elevAt(wx, wy));
+    return { x: p.x - this.camX, y: p.y - this.camY - z };
+  }
+
+  private screenToWorldFlat(px: number, py: number): { x: number; y: number } {
     return isoToWorld(px + this.camX, py + this.camY, this.ts());
   }
 
+  private screenToWorld(px: number, py: number): { x: number; y: number } {
+    const map = this.map();
+    const tile = this.screenToTile(px, py);
+    const h = heightAt(map, tile.x, tile.y);
+    return isoToWorld(px + this.camX, py + this.camY + isoLift(h), map.tileSize);
+  }
+
   private screenToTile(px: number, py: number): { x: number; y: number } {
-    const ts = this.ts();
-    const w = this.screenToWorld(px, py);
+    const map = this.map();
+    const ts = map.tileSize;
+    const picked = pickElevatedTile(
+      px + this.camX,
+      py + this.camY,
+      map.width,
+      map.height,
+      ts,
+      (x, y) => heightAt(map, x, y),
+    );
+    if (picked) return picked;
+    const w = this.screenToWorldFlat(px, py);
     return { x: worldToTile(w.x, ts), y: worldToTile(w.y, ts) };
   }
 
@@ -426,18 +492,44 @@ export class MapView {
     for (const e of list) {
       if (e.kind === "unit") {
         const p = this.lerpEnt(e);
-        if (e.type === "trooper") {
+        const spr = spriteFor(e.type);
+        if (spr) {
           const s = this.toScreen(p.x, p.y);
-          const size = TROOPER_SPRITE.drawSize;
-          if (px >= s.x - size * 0.35 && px <= s.x + size * 0.35 && py >= s.y - size * 0.92 && py <= s.y + size * 0.1) {
+          const size = spr.drawSize;
+          const top = s.y - size * spr.contactY;
+          if (px >= s.x - size * 0.4 && px <= s.x + size * 0.4 && py >= top && py <= top + size) {
             return e;
           }
         } else {
-          const r = catalog(e.type).radius;
-          if (pointInIsoBox(ix, iy, p.x - r, p.y - r, r * 2, r * 2, this.extrude(e.type), ts)) return e;
+          const r = catalog(e.type).radius * UNIT_VISUAL_SCALE;
+          if (
+            pointInIsoBox(
+              ix,
+              iy,
+              p.x - r,
+              p.y - r,
+              r * 2,
+              r * 2,
+              this.extrude(e.type) * UNIT_VISUAL_SCALE,
+              ts,
+              isoLift(this.elevAt(p.x, p.y)),
+            )
+          ) {
+            return e;
+          }
         }
       } else if (
-        pointInIsoBox(ix, iy, e.tileX * ts, e.tileY * ts, e.tileW * ts, e.tileH * ts, this.extrude(e.type), ts)
+        pointInIsoBox(
+          ix,
+          iy,
+          e.tileX * ts,
+          e.tileY * ts,
+          e.tileW * ts,
+          e.tileH * ts,
+          this.extrude(e.type),
+          ts,
+          isoLift(heightAt(this.map(), e.tileX, e.tileY)),
+        )
       ) {
         return e;
       }
@@ -579,11 +671,12 @@ export class MapView {
     const { w, h } = this.viewSize();
     const ts = map.tileSize;
     const pad = 80;
+    const liftPad = isoLift(maxHeightOf(map)) + 48;
     const pts = [
-      this.screenToWorld(-pad, -pad),
-      this.screenToWorld(w + pad, -pad),
-      this.screenToWorld(-pad, h + pad),
-      this.screenToWorld(w + pad, h + pad),
+      this.screenToWorldFlat(-pad, -pad - liftPad),
+      this.screenToWorldFlat(w + pad, -pad - liftPad),
+      this.screenToWorldFlat(-pad, h + pad),
+      this.screenToWorldFlat(w + pad, h + pad),
     ];
     let minX = Infinity;
     let minY = Infinity;
@@ -595,11 +688,12 @@ export class MapView {
       minY = Math.min(minY, p.y);
       maxY = Math.max(maxY, p.y);
     }
+    const extra = maxHeightOf(map) + 2;
     return {
       x0: Math.max(0, worldToTile(minX, ts) - 1),
       y0: Math.max(0, worldToTile(minY, ts) - 1),
-      x1: Math.min(map.width - 1, worldToTile(maxX, ts) + 1),
-      y1: Math.min(map.height - 1, worldToTile(maxY, ts) + 1),
+      x1: Math.min(map.width - 1, worldToTile(maxX, ts) + extra),
+      y1: Math.min(map.height - 1, worldToTile(maxY, ts) + extra),
     };
   }
 
@@ -625,19 +719,19 @@ export class MapView {
       }
       const blocked = map.tiles[t.y * map.width + t.x] === TILE_BLOCKED;
       const scrap = scrapSet.has(`${t.x},${t.y}`);
-      const chk = (t.x + t.y) % 2 === 0;
-      const fill = blocked ? "#2a1e18" : scrap ? (chk ? "#5a4a18" : "#4a3c14") : chk ? "#2a3a24" : "#243320";
-      this.fillTile(t.x, t.y, fill);
+      this.fillTile(t.x, t.y, this.groundFill(t.x, t.y, blocked, scrap));
     }
 
     const ts = map.tileSize;
     for (const t of tiles) {
       if (!this.seen(t.x, t.y)) continue;
       if (map.tiles[t.y * map.width + t.x] === TILE_BLOCKED) {
-        this.drawIsoBox(t.x * ts, t.y * ts, ts, ts, WALL_H, "#3a2a22");
+        this.drawIsoBox(t.x * ts, t.y * ts, ts, ts, WALL_H, "#3a2a22", { elev: heightAt(map, t.x, t.y) });
       } else if (scrapSet.has(`${t.x},${t.y}`)) {
         const inset = ts * 0.18;
-        this.drawIsoBox(t.x * ts + inset, t.y * ts + inset, ts - inset * 2, ts - inset * 2, SCRAP_H, "#c4a24a");
+        this.drawIsoBox(t.x * ts + inset, t.y * ts + inset, ts - inset * 2, ts - inset * 2, SCRAP_H, "#c4a24a", {
+          elev: heightAt(map, t.x, t.y),
+        });
       }
     }
 
@@ -663,17 +757,37 @@ export class MapView {
       const look = t * 0.1 * (this.curr.gameSpeed || 1);
       const a = this.toScreen(p.x, p.y);
       const b = this.toScreen(p.x + p.vx * look, p.y + p.vy * look);
+      const bounced = p.bounced === true;
       const shell = (p.caliber ?? 0) >= 40;
-      const lift = shell ? 10 : 6;
-      ctx.strokeStyle = shell ? "#f0d070" : "#e8b84a";
-      ctx.lineWidth = shell ? 3 : 1.6;
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y - lift);
-      ctx.lineTo(b.x, b.y - lift);
-      ctx.stroke();
-      ctx.fillStyle = "#fff6c8";
-      const s = shell ? 5 : 3;
-      ctx.fillRect(b.x - s / 2, b.y - lift - s / 2, s, s);
+      const lift = bounced ? 12 : shell ? 10 : 6;
+      if (bounced) {
+        const sp = Math.hypot(p.vx, p.vy) || 1;
+        const tail = this.toScreen(p.x - (p.vx / sp) * 28, p.y - (p.vy / sp) * 28);
+        ctx.strokeStyle = "#ffe9a0";
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(tail.x, tail.y - lift);
+        ctx.lineTo(b.x, b.y - lift);
+        ctx.stroke();
+        ctx.fillStyle = "#fff6c8";
+        ctx.beginPath();
+        ctx.arc(b.x, b.y - lift, 3.4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#ffb040";
+        ctx.beginPath();
+        ctx.arc(b.x, b.y - lift, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.strokeStyle = shell ? "#f0d070" : "#e8b84a";
+        ctx.lineWidth = shell ? 3 : 1.6;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y - lift);
+        ctx.lineTo(b.x, b.y - lift);
+        ctx.stroke();
+        ctx.fillStyle = "#fff6c8";
+        const s = shell ? 5 : 3;
+        ctx.fillRect(b.x - s / 2, b.y - lift - s / 2, s, s);
+      }
     }
     this.drawImpacts();
 
@@ -701,10 +815,32 @@ export class MapView {
     };
   }
 
+  private groundFill(tx: number, ty: number, blocked: boolean, scrap: boolean): string {
+    const chk = (tx + ty) % 2 === 0;
+    const fill = blocked ? "#2a1e18" : scrap ? (chk ? "#5a4a18" : "#4a3c14") : chk ? "#2a3a24" : "#243320";
+    const h = heightAt(this.map(), tx, ty);
+    if (h <= 0 || blocked) return fill;
+    return this.shade(fill, 1 + h * 0.16);
+  }
+
   private fillTile(tx: number, ty: number, fill: string): void {
+    const map = this.map();
+    const h = heightAt(map, tx, ty);
+    const ez = isoLift(h);
     const d = this.tileScreen(tx, ty);
+    const up = (p: IsoPt, z: number): IsoPt => ({ x: p.x, y: p.y - z });
+    const hs = ty + 1 < map.height ? heightAt(map, tx, ty + 1) : 0;
+    const he = tx + 1 < map.width ? heightAt(map, tx + 1, ty) : 0;
+    if (h > hs) {
+      this.ctx.fillStyle = this.shade(fill, 0.42);
+      this.fillQuad(up(d.w, ez), up(d.s, ez), up(d.s, isoLift(hs)), up(d.w, isoLift(hs)));
+    }
+    if (h > he) {
+      this.ctx.fillStyle = this.shade(fill, 0.68);
+      this.fillQuad(up(d.e, ez), up(d.s, ez), up(d.s, isoLift(he)), up(d.e, isoLift(he)));
+    }
     this.ctx.fillStyle = fill;
-    this.fillQuad(d.n, d.e, d.s, d.w);
+    this.fillQuad(up(d.n, ez), up(d.e, ez), up(d.s, ez), up(d.w, ez));
   }
 
   private fillQuad(a: IsoPt, b: IsoPt, c: IsoPt, d: IsoPt): void {
@@ -723,9 +859,9 @@ export class MapView {
     if (raw.length !== 6) return hex;
     const n = parseInt(raw, 16);
     if (Number.isNaN(n)) return hex;
-    const r = Math.round(((n >> 16) & 255) * t);
-    const g = Math.round(((n >> 8) & 255) * t);
-    const b = Math.round((n & 255) * t);
+    const r = Math.min(255, Math.max(0, Math.round(((n >> 16) & 255) * t)));
+    const g = Math.min(255, Math.max(0, Math.round(((n >> 8) & 255) * t)));
+    const b = Math.min(255, Math.max(0, Math.round((n & 255) * t)));
     return `rgb(${r},${g},${b})`;
   }
 
@@ -736,12 +872,12 @@ export class MapView {
     h: number,
     ez: number,
     top: string,
-    opts?: { alpha?: number; stroke?: string; strokeW?: number },
+    opts?: { alpha?: number; stroke?: string; strokeW?: number; elev?: number },
   ): { cx: number; cy: number } {
-    const n = this.toScreen(x, y);
-    const e = this.toScreen(x + w, y);
-    const s = this.toScreen(x + w, y + h);
-    const west = this.toScreen(x, y + h);
+    const n = this.toScreen(x, y, opts?.elev);
+    const e = this.toScreen(x + w, y, opts?.elev);
+    const s = this.toScreen(x + w, y + h, opts?.elev);
+    const west = this.toScreen(x, y + h, opts?.elev);
     const up = (p: IsoPt): IsoPt => ({ x: p.x, y: p.y - ez });
     const n2 = up(n);
     const e2 = up(e);
@@ -790,27 +926,49 @@ export class MapView {
     const bw = e.tileW * ts;
     const bh = e.tileH * ts;
     const ez = this.extrude(e.type);
+    const elev = heightAt(this.map(), e.tileX, e.tileY);
     const hex = this.ownerColor(e);
     const dim = ghost || !this.buildingLit(e);
-    const top = this.drawIsoBox(x, y, bw, bh, ez, hex, {
-      alpha: dim ? 0.5 : 1,
-      stroke: ghost ? "#2a2018" : this.selected.has(e.id) ? "#e8b84a" : "#111",
-      strokeW: this.selected.has(e.id) && !ghost ? 2.5 : 1.5,
-    });
-    ctx.globalAlpha = dim ? 0.7 : 1;
-    ctx.fillStyle = "#e8dcc4";
-    ctx.font = "bold 16px Oswald, sans-serif";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(catalog(e.type).letter, top.cx, top.cy);
+    const selected = this.selected.has(e.id) && !ghost;
+    const spr = buildingSpriteFor(e.type);
+    let top: { cx: number; cy: number };
+    if (spr && spriteReady(spr)) {
+      const south = this.toScreen(x + bw, y + bh, elev);
+      const east = this.toScreen(x + bw, y, elev);
+      const west = this.toScreen(x, y + bh, elev);
+      const footprintW = east.x - west.x;
+      ctx.save();
+      ctx.globalAlpha = dim ? 0.5 : 1;
+      drawBuildingSprite(ctx, spr, south.x, south.y, footprintW);
+      ctx.restore();
+      ctx.strokeStyle = selected ? "#e8b84a" : hex;
+      ctx.lineWidth = selected ? 2.5 : 1.6;
+      ctx.globalAlpha = dim ? 0.7 : 1;
+      this.strokeGroundRect(x, y, bw, bh, elev);
+      top = { cx: south.x, cy: south.y - spr.padSouthY * (footprintW / spr.padWidth) };
+    } else {
+      top = this.drawIsoBox(x, y, bw, bh, ez, hex, {
+        alpha: dim ? 0.5 : 1,
+        stroke: ghost ? "#2a2018" : selected ? "#e8b84a" : "#111",
+        strokeW: selected ? 2.5 : 1.5,
+        elev,
+      });
+      ctx.globalAlpha = dim ? 0.7 : 1;
+      ctx.fillStyle = "#e8dcc4";
+      ctx.font = "bold 16px Oswald, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(catalog(e.type).letter, top.cx, top.cy);
+    }
     if (e.ownerId === this.curr.youPlayerId && (e.type === "core" || e.type === "rig")) {
       const name = this.curr.players.find((p) => p.playerId === e.ownerId)?.name ?? "";
       ctx.font = "12px 'Share Tech Mono', monospace";
+      ctx.textAlign = "center";
       ctx.fillStyle = "#e8dcc4";
       ctx.fillText(name, top.cx, top.cy - ez * 0.15 - 14);
     }
-    const bar = this.toScreen(x + bw / 2, y + bh / 2);
-    this.maybeHp(e, bar.x - bw * 0.28, bar.y - ez - 8, bw * 0.56);
+    const bar = this.toScreen(x + bw / 2, y + bh / 2, elev);
+    this.maybeHp(e, bar.x - bw * 0.28, spr && spriteReady(spr) ? top.cy + 6 : bar.y - ez - 8, bw * 0.56);
     this.drawDeployProgress(e, bar.x - bw * 0.28, bar.y + 4, bw * 0.56);
     if (!ghost && (e.state === "undeploy" || e.state === "deploy")) {
       const p = e.deployProgress ?? 0;
@@ -818,16 +976,16 @@ export class MapView {
       ctx.globalAlpha = 0.35 + 0.4 * p;
       ctx.lineWidth = 2;
       const inset = (1 - p) * ts * 0.4;
-      this.strokeGroundRect(x + inset, y + inset, bw - inset * 2, bh - inset * 2);
+      this.strokeGroundRect(x + inset, y + inset, bw - inset * 2, bh - inset * 2, elev);
     }
     ctx.globalAlpha = 1;
   }
 
-  private strokeGroundRect(x: number, y: number, w: number, h: number): void {
-    const n = this.toScreen(x, y);
-    const e = this.toScreen(x + w, y);
-    const s = this.toScreen(x + w, y + h);
-    const west = this.toScreen(x, y + h);
+  private strokeGroundRect(x: number, y: number, w: number, h: number, elev?: number): void {
+    const n = this.toScreen(x, y, elev);
+    const e = this.toScreen(x + w, y, elev);
+    const s = this.toScreen(x + w, y + h, elev);
+    const west = this.toScreen(x, y + h, elev);
     const ctx = this.ctx;
     ctx.beginPath();
     ctx.moveTo(n.x, n.y);
@@ -849,14 +1007,15 @@ export class MapView {
   }
 
   private drawUnit(e: EntityView): void {
-    if (e.type === "trooper") {
-      this.drawTrooper(e);
+    const spr = spriteFor(e.type);
+    if (spr) {
+      this.drawSpritedUnit(e, spr);
       return;
     }
     const ctx = this.ctx;
     const p = this.lerpEnt(e);
-    const r = catalog(e.type).radius;
-    const ez = this.extrude(e.type);
+    const r = catalog(e.type).radius * UNIT_VISUAL_SCALE;
+    const ez = this.extrude(e.type) * UNIT_VISUAL_SCALE;
     const hex = this.ownerColor(e);
     const s = this.toScreen(p.x, p.y);
     ctx.fillStyle = "rgba(0,0,0,0.35)";
@@ -900,10 +1059,10 @@ export class MapView {
     }
   }
 
-  private drawTrooper(e: EntityView): void {
+  private drawSpritedUnit(e: EntityView, def: UnitSpriteDef): void {
     const ctx = this.ctx;
     const p = this.lerpEnt(e);
-    const size = TROOPER_SPRITE.drawSize;
+    const size = def.drawSize;
     const s = this.toScreen(p.x, p.y);
     const hex = this.ownerColor(e);
     const dir = facingToIso(p.facing, this.ts());
@@ -913,66 +1072,117 @@ export class MapView {
     ctx.ellipse(s.x, s.y, size * 0.32, size * 0.15, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
-    const drawn = drawUnitSprite(ctx, TROOPER_SPRITE, s.x, s.y, dir.x, dir.y, {
+    const drawn = drawUnitSprite(ctx, def, s.x, s.y, dir.x, dir.y, {
       moving: e.state === "move",
       id: e.id,
       now: performance.now() * (this.curr.gameSpeed || 1),
     });
     if (!drawn) {
-      this.drawIsoBox(p.x - 4, p.y - 4, 8, 8, 10, hex);
+      const r = Math.max(4, size * 0.22);
+      this.drawIsoBox(p.x - r, p.y - r, r * 2, r * 2, size * 0.45, hex);
     }
     if (this.selected.has(e.id)) this.drawGroundMark(p.x, p.y, size * 0.45, "#e8b84a");
-    this.maybeHp(e, s.x - size * 0.45, s.y - size + 2, size * 0.9);
+    if (e.ownerId === this.curr.youPlayerId && e.type === "rig") {
+      const name = this.curr.players.find((pl) => pl.playerId === e.ownerId)?.name ?? "";
+      ctx.font = "12px 'Share Tech Mono', monospace";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#e8dcc4";
+      ctx.fillText(name, s.x, s.y - size * def.contactY - 12);
+    }
+    if (e.type === "warden" && e.hp > 0 && e.hp / e.hpMax < 0.62) {
+      const hurt = 1 - e.hp / e.hpMax;
+      const frame = fxFrameAt(performance.now() + e.id * 90, 900, FX_SMOKE.frames, true);
+      drawFxFrame(
+        ctx,
+        FX_SMOKE,
+        frame,
+        s.x + 2,
+        s.y - size * 0.52,
+        size * (0.42 + hurt * 0.28),
+        0.45 + hurt * 0.4,
+      );
+    }
+    this.maybeHp(e, s.x - size * 0.45, s.y - size * def.contactY - 2, size * 0.9);
+    this.drawDeployProgress(e, s.x - size * 0.45, s.y + 6, size * 0.9);
+    if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
+      const prog = e.deployProgress ?? 0;
+      const footprint = this.ts() * (1 + 2 * prog);
+      ctx.strokeStyle = "#fff6c8";
+      ctx.globalAlpha = 0.3 + 0.5 * prog;
+      ctx.lineWidth = 2;
+      this.strokeGroundRect(p.x - footprint / 2, p.y - footprint / 2, footprint, footprint);
+      ctx.globalAlpha = 1;
+    }
   }
 
   private drawImpacts(): void {
     const now = performance.now();
     const ctx = this.ctx;
-    const keep: (ImpactView & { at: number })[] = [];
+    const keep: typeof this.fx = [];
     for (const f of this.fx) {
       const life =
-        f.kind === "kill" ? 720 : f.kind === "pen" ? 540 : f.kind === "ricochet" ? 460 : f.kind === "miss" ? 300 : 360;
+        f.kind === "kill"
+          ? 780
+          : f.kind === "smoke"
+            ? 2200
+            : f.kind === "muzzle"
+              ? 280
+              : f.kind === "pen"
+                ? 560
+                : f.kind === "ricochet"
+                  ? 520
+                  : f.kind === "miss"
+                    ? 300
+                    : 400;
       const age = now - f.at;
       if (age > life) continue;
       keep.push(f);
       const t = age / life;
       const s = this.toScreen(f.x, f.y);
-      const lift = 8;
-      ctx.save();
-      ctx.globalAlpha = 1 - t;
-      if (f.kind === "kill" || f.kind === "pen") {
-        const r = (f.kind === "kill" ? 16 : 10) * (0.45 + t);
-        ctx.fillStyle = f.kind === "kill" ? "#ff6a32" : "#e8a040";
+      const lift = 14;
+      if (f.kind === "kill" || f.kind === "pen" || f.kind === "hit") {
+        const size = f.kind === "kill" ? 56 : f.kind === "pen" ? 42 : 30;
+        const frame = fxFrameAt(age, life, FX_BOOM.frames, false);
+        drawFxFrame(ctx, FX_BOOM, frame, s.x, s.y - lift, size, 1 - t * 0.35);
+      } else if (f.kind === "muzzle") {
+        const frame = fxFrameAt(age, life, FX_SMOKE.frames, false);
+        drawFxFrame(ctx, FX_SMOKE, frame, s.x, s.y - lift - 4, 26, 1 - t);
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, 1 - t * 2.2);
+        ctx.fillStyle = "#ffe08a";
         ctx.beginPath();
-        ctx.ellipse(s.x, s.y - lift, r * 1.15, r * 0.55, 0, 0, Math.PI * 2);
+        ctx.arc(s.x, s.y - lift, 5, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = "#fff3c0";
-        ctx.beginPath();
-        ctx.ellipse(s.x, s.y - lift - r * 0.2, r * 0.4, r * 0.22, 0, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.restore();
+      } else if (f.kind === "smoke") {
+        const frame = fxFrameAt(age, 700, FX_SMOKE.frames, true);
+        drawFxFrame(ctx, FX_SMOKE, frame, s.x, s.y - lift - 8 - t * 10, 34 + t * 10, 0.85 - t * 0.7);
       } else if (f.kind === "ricochet") {
-        const tip = this.toScreen(f.x + f.vx * 0.04, f.y + f.vy * 0.04);
+        ctx.save();
+        ctx.globalAlpha = 1 - t;
+        const tip = this.toScreen(f.x + f.vx * 0.12, f.y + f.vy * 0.12);
         ctx.strokeStyle = "#fff6c8";
-        ctx.lineWidth = 1.5;
-        for (let i = 0; i < 4; i++) {
-          const u = 0.25 + i * 0.2;
+        ctx.lineWidth = 2;
+        for (let i = 0; i < 5; i++) {
+          const u = 0.2 + i * 0.18;
           ctx.beginPath();
-          ctx.moveTo(s.x, s.y - lift);
-          ctx.lineTo(s.x + (tip.x - s.x) * u + (i - 1.5) * 3, s.y - lift + (tip.y - s.y) * u - 6 * t);
+          ctx.moveTo(s.x, s.y - 10);
+          ctx.lineTo(s.x + (tip.x - s.x) * u + (i - 2) * 4, s.y - 10 + (tip.y - s.y) * u - 8 * t);
           ctx.stroke();
         }
+        ctx.restore();
       } else if (f.kind === "miss") {
+        ctx.save();
+        ctx.globalAlpha = 1 - t;
         ctx.fillStyle = "#6a5a40";
         ctx.beginPath();
         ctx.ellipse(s.x, s.y, 7 + t * 6, 3.5 + t * 3, 0, 0, Math.PI * 2);
         ctx.fill();
+        ctx.restore();
       } else {
-        ctx.fillStyle = "#c8b070";
-        ctx.beginPath();
-        ctx.ellipse(s.x, s.y - lift, 5 + t * 4, 2.5 + t * 2, 0, 0, Math.PI * 2);
-        ctx.fill();
+        const frame = fxFrameAt(age, life, FX_SMOKE.frames, false);
+        drawFxFrame(ctx, FX_SMOKE, frame, s.x, s.y - 10, 22, 1 - t);
       }
-      ctx.restore();
     }
     this.fx = keep;
   }
@@ -1067,10 +1277,35 @@ export class MapView {
     const ok = previewPlace(this.curr, type, tile.x, tile.y);
     const ts = this.ts();
     const top = ok ? "#7dff6a" : "#ff5a4a";
-    this.drawIsoBox(tile.x * ts, tile.y * ts, def.tileW * ts, def.tileH * ts, this.extrude(type), top, {
+    const x = tile.x * ts;
+    const y = tile.y * ts;
+    const bw = def.tileW * ts;
+    const bh = def.tileH * ts;
+    const elev = heightAt(this.map(), tile.x, tile.y);
+    const spr = buildingSpriteFor(type);
+    if (spr && spriteReady(spr)) {
+      const south = this.toScreen(x + bw, y + bh, elev);
+      const east = this.toScreen(x + bw, y, elev);
+      const west = this.toScreen(x, y + bh, elev);
+      const n = this.toScreen(x, y, elev);
+      const ctx = this.ctx;
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = top;
+      this.fillQuad(n, east, south, west);
+      ctx.globalAlpha = 0.55;
+      drawBuildingSprite(ctx, spr, south.x, south.y, east.x - west.x);
+      ctx.restore();
+      ctx.strokeStyle = top;
+      ctx.lineWidth = 2;
+      this.strokeGroundRect(x, y, bw, bh, elev);
+      return;
+    }
+    this.drawIsoBox(x, y, bw, bh, this.extrude(type), top, {
       alpha: 0.4,
       stroke: top,
       strokeW: 2,
+      elev,
     });
   }
 
@@ -1092,7 +1327,18 @@ export class MapView {
         }
         const blocked = map.tiles[y * map.width + x] === TILE_BLOCKED;
         const scrap = scrapSet.has(`${x},${y}`);
-        ctx.fillStyle = blocked ? "#3a2a22" : scrap ? "#5a4a18" : "#2a3a24";
+        const h = heightAt(map, x, y);
+        ctx.fillStyle = blocked
+          ? "#3a2a22"
+          : scrap
+            ? "#5a4a18"
+            : h >= 3
+              ? "#5c6e40"
+              : h === 2
+                ? "#4a5a38"
+                : h === 1
+                  ? "#354a30"
+                  : "#2a3a24";
         ctx.fillRect(x * scale, y * scale, Math.max(1, scale), Math.max(1, scale));
         if (!this.lit(x, y)) {
           ctx.fillStyle = "rgba(0,0,0,0.55)";

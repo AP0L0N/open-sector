@@ -39,6 +39,7 @@ describe("lobby rules", () => {
 
   it("closes extra slots when maxSlots is 4", () => {
     const r = room(4);
+    assert.equal(r.mode, "network");
     assert.equal(r.slots.filter((s) => s.status === "closed").length, 4);
     assert.equal(r.slots[0]?.status, "human");
   });

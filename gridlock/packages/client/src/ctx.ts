@@ -2,6 +2,7 @@ import type { MatchSnapshot, RoomState } from "@gridlock/shared";
 import type { GameSocket } from "./net/client.js";
 
 export type Screen = "callsign" | "menu" | "play" | "lobby" | "deploy" | "battle" | "options" | "credits";
+export type NetworkStep = "choose" | "create" | "join";
 
 export interface ChatLine {
   name: string;
@@ -13,6 +14,7 @@ export interface Ctx {
   net: GameSocket;
   screen: Screen;
   playMode: "skirmish" | "network";
+  networkStep: NetworkStep;
   name: string;
   banner: string;
   room: RoomState | null;

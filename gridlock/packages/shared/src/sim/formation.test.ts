@@ -1,0 +1,133 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
+import { TICK_DT, catalog } from "../catalog.js";
+import { applyCommand } from "./commands.js";
+import { groupMoveTargets, unitClearance } from "./formation.js";
+import { makeEntity, tileCenter, walkable, worldToTile } from "./geo.js";
+import { createMatch, step } from "./match.js";
+import type { Entity, MatchState } from "./types.js";
+
+function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
+  const r = createRoom({
+    id: "T1",
+    hostId: "A",
+    hostName: "Alpha",
+    mapId: "yard-64",
+    maxSlots: 8,
+  });
+  if (!r.ok) throw new Error(r.message);
+  const room = r.value;
+  assert.equal(joinRoom(room, "B", "Bravo").ok, true);
+  updateSelf(room, "A", { ready: true, spawnId: 1 });
+  updateSelf(room, "B", { ready: true, spawnId: 4 });
+  const started = startMatch(room, "A");
+  if (!started.ok) throw new Error(started.message);
+  const state = createMatch(room, started.value);
+  return { state, a: "A", b: "B" };
+}
+
+function dist(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function assertSpaced(units: Entity[]): void {
+  for (let i = 0; i < units.length; i++) {
+    for (let j = i + 1; j < units.length; j++) {
+      const a = units[i]!;
+      const b = units[j]!;
+      const got = dist(a, b);
+      const need = unitClearance(a.radius, b.radius);
+      assert.ok(got + 1e-6 >= need, `units ${a.id},${b.id} dist=${got} need=${need}`);
+    }
+  }
+}
+
+describe("groupMoveTargets", () => {
+  it("sends a single unit to the click", () => {
+    const { state } = twoPlayerMatch();
+    const t = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
+    const dests = groupMoveTargets(state, [t], 400, 410);
+    assert.deepEqual(dests.get(t.id), { x: 400, y: 410 });
+  });
+
+  it("spreads stacked units by reserved radius around the click", () => {
+    const { state } = twoPlayerMatch();
+    const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
+    const t2 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
+    const t3 = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
+    const click = { x: tileCenter(24, 32), y: tileCenter(20, 32) };
+    const dests = groupMoveTargets(state, [t1, t2, t3], click.x, click.y);
+    const pts = [t1, t2, t3].map((u) => {
+      const p = dests.get(u.id);
+      assert.ok(p);
+      return { ...u, x: p.x, y: p.y };
+    });
+    assertSpaced(pts);
+    const reach = unitClearance(catalog("warden").radius, catalog("trooper").radius) + 8;
+    for (const p of pts) {
+      assert.ok(dist(p, click) < reach, `dest drifted ${dist(p, click)} from click`);
+    }
+  });
+
+  it("keeps a spaced line's relative layout", () => {
+    const { state } = twoPlayerMatch();
+    const a = makeEntity(state, "trooper", "A", 16 * 32, 16 * 32);
+    const b = makeEntity(state, "trooper", "A", 16 * 32, 16 * 32 + 40);
+    const click = { x: 28 * 32, y: 16 * 32 + 20 };
+    const dests = groupMoveTargets(state, [a, b], click.x, click.y);
+    const da = dests.get(a.id)!;
+    const db = dests.get(b.id)!;
+    assert.ok(Math.abs(dist(da, db) - 40) < 1e-6);
+    assert.ok(Math.abs(db.y - da.y - 40) < 1e-6);
+    assert.ok(Math.abs(da.x - db.x) < 1e-6);
+  });
+
+  it("does not collapse onto one tile when the click is blocked", () => {
+    const { state } = twoPlayerMatch();
+    const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
+    const t2 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
+    const click = { x: tileCenter(26, 32), y: tileCenter(26, 32) };
+    const dests = groupMoveTargets(state, [t1, t2], click.x, click.y);
+    const a = dests.get(t1.id)!;
+    const b = dests.get(t2.id)!;
+    assertSpaced([
+      { ...t1, x: a.x, y: a.y },
+      { ...t2, x: b.x, y: b.y },
+    ]);
+    assert.equal(walkable(state, worldToTile(a.x, 32), worldToTile(a.y, 32)), true);
+    assert.equal(walkable(state, worldToTile(b.x, 32), worldToTile(b.y, 32)), true);
+  });
+
+  it("uses a larger gap when a Warden is in the group", () => {
+    const { state } = twoPlayerMatch();
+    const inf = makeEntity(state, "trooper", "A", 18 * 32, 18 * 32);
+    const tank = makeEntity(state, "warden", "A", 18 * 32, 18 * 32);
+    const dests = groupMoveTargets(state, [inf, tank], 22 * 32, 18 * 32);
+    const gap = dist(dests.get(inf.id)!, dests.get(tank.id)!);
+    assert.ok(gap + 1e-6 >= unitClearance(catalog("trooper").radius, catalog("warden").radius));
+  });
+});
+
+describe("cmd.move group", () => {
+  it("does not stack selected units on the click", () => {
+    const { state } = twoPlayerMatch();
+    const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
+    const t2 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
+    const x = 24 * 32;
+    const y = 20 * 32;
+    const res = applyCommand(state, "A", { type: "cmd.move", ids: [t1.id, t2.id], x, y });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    assert.ok(t1.order?.x != null && t2.order?.x != null);
+    const need = unitClearance(t1.radius, t2.radius);
+    assert.ok(dist({ x: t1.order.x, y: t1.order.y! }, { x: t2.order.x, y: t2.order.y! }) + 1e-6 >= need);
+
+    for (let i = 0; i < 80; i++) {
+      step(state, TICK_DT);
+      if (t1.state === "idle" && t2.state === "idle") break;
+    }
+    assert.equal(t1.state, "idle");
+    assert.equal(t2.state, "idle");
+    assertSpaced([t1, t2]);
+  });
+});

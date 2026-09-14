@@ -1,6 +1,7 @@
 import { catalog, FACE_FIRE_DEG, PROJECTILE_RADIUS, fires } from "../catalog.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
 import { aimAngle, resolveHit } from "./ballistics.js";
+import { weaponRangeWorld } from "./elevation.js";
 import { allies, buildingContains, playerTeam } from "./geo.js";
 import { nextRand } from "./rng.js";
 import { canSeeEntity, visionMask } from "./vision.js";
@@ -34,7 +35,7 @@ export function tickCombat(state: MatchState, dt: number): void {
 
     if (!target || target.hp <= 0) continue;
     const def = catalog(e.type);
-    const range = def.rangeTiles * state.tileSize;
+    const range = weaponRangeWorld(state, e);
     const dist = Math.hypot(target.x - e.x, target.y - e.y);
     if (dist > range) {
       e.state = "attack";
@@ -64,6 +65,8 @@ export function tickCombat(state: MatchState, dt: number): void {
       caliber: def.caliber,
       life,
       ignoreId: e.id,
+      fromId: e.id,
+      bounced: false,
     };
     state.projectiles.push(p);
     e.cooldown = def.cooldown;
@@ -110,7 +113,8 @@ export function tickProjectiles(state: MatchState, dt: number): void {
         p.vx = res.bounceVx;
         p.vy = res.bounceVy;
         p.ignoreId = e.id;
-        p.life *= 0.65;
+        p.bounced = true;
+        p.life = Math.max(p.life, 1.35);
         const sp = Math.hypot(p.vx, p.vy) || 1;
         p.x += (p.vx / sp) * Math.max(8, e.radius * 0.5);
         p.y += (p.vy / sp) * Math.max(8, e.radius * 0.5);
@@ -179,8 +183,7 @@ function segmentHitsCircle(
 }
 
 function acquire(state: MatchState, e: Entity): Entity | undefined {
-  const def = catalog(e.type);
-  const range = def.rangeTiles * state.tileSize;
+  const range = weaponRangeWorld(state, e);
   const vis = visionMask(state, e.ownerId);
   let best: Entity | undefined;
   let bestD = range * range;

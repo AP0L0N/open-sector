@@ -50,6 +50,23 @@ export function beginDeploy(state: MatchState, e: Entity): string | null {
   return "That cannot deploy.";
 }
 
+/** Wall-clock: after `autoDeployTicks`, stop every Rig and finish unpacking. */
+export function tickAutoDeploy(state: MatchState): void {
+  if (state.autoDeployTicks < 0) return;
+  state.autoDeployTicks -= 1;
+  if (state.autoDeployTicks > 0) return;
+  state.autoDeployTicks = -1;
+  for (const e of [...state.entities.values()]) {
+    if (e.type !== "rig" || e.hp <= 0) continue;
+    clearOrder(e);
+    if (e.state !== "deploy") {
+      const err = beginDeploy(state, e);
+      if (err) continue;
+    }
+    e.deployTime = DEPLOY_SECONDS;
+  }
+}
+
 export function tickDeploy(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (e.specialCooldown > 0) e.specialCooldown = Math.max(0, e.specialCooldown - dt);

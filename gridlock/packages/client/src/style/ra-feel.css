@@ -458,6 +458,66 @@ input[type="range"] { padding: 0; }
   min-height: 0;
 }
 
+.prod-queue {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-width: min(320px, calc(100% - 24px));
+  z-index: 6;
+  pointer-events: none;
+}
+.prod-queue:empty { display: none; }
+.prod-job {
+  pointer-events: auto;
+  position: relative;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 2px solid var(--rust);
+  background-color: #140e0a;
+  background-size: cover;
+  background-position: center;
+  cursor: pointer;
+  box-shadow: 0 2px 0 #000, inset 0 0 0 1px #000;
+}
+.prod-job:hover { border-color: var(--amber); }
+.prod-job.is-waiting { opacity: 0.72; }
+.prod-job.is-paused { border-color: var(--amber-dim); }
+.prod-job .clock {
+  position: absolute;
+  inset: 0;
+  background: conic-gradient(from 0deg, transparent calc(var(--p, 0) * 1%), rgba(8, 6, 4, 0.62) 0);
+  pointer-events: none;
+}
+.prod-job.is-waiting .clock { display: none; }
+.prod-job .hold-mark {
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  transform: translate(-50%, -50%);
+  background:
+    linear-gradient(var(--amber), var(--amber)) 2px 2px / 3px 10px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) 9px 2px / 3px 10px no-repeat;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 0 #000);
+}
+.prod-job.is-paused .hold-mark { display: block; }
+.prod-job[data-type="trooper"] {
+  background-image: url("../assets/units/trooper-cameo.png");
+}
+.prod-job[data-type="hauler"] {
+  background-image: url("../assets/units/hauler-cameo.png");
+}
+.prod-job[data-type="warden"] {
+  background-image: url("../assets/units/warden-cameo.png");
+}
+
 #map-canvas {
   width: 100%;
   height: 100%;
@@ -597,13 +657,103 @@ input[type="range"] { padding: 0; }
   border-color: var(--danger);
 }
 .cameo.scrap-denied .cameo-deny { display: flex; }
+#train-trooper,
+#train-hauler,
+#train-warden,
+#build-dynamo,
+#build-smelter,
+#build-muster,
+#build-armory {
+  background-size: cover;
+  background-position: right 10% center;
+  min-height: 3.1rem;
+}
 #train-trooper {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/trooper-cameo.png");
-  background-size: cover;
-  background-position: right 10% center;
-  min-height: 3.1rem;
+}
+#train-hauler {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/hauler-cameo.png");
+}
+#train-warden {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/warden-cameo.png");
+}
+.cameo-count {
+  position: absolute;
+  right: 3px;
+  bottom: 6px;
+  min-width: 1.15em;
+  padding: 0 3px;
+  background: var(--amber);
+  color: #140e0a;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.2;
+  text-align: center;
+  pointer-events: none;
+  z-index: 2;
+  box-shadow: 0 1px 0 #000;
+}
+.cameo-hold {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  background: rgba(8, 6, 4, 0.72);
+  border: 1px solid var(--amber-dim);
+  cursor: pointer;
+  z-index: 1;
+}
+.cameo-hold::before {
+  content: "";
+  position: absolute;
+  inset: 3px 4px;
+  background:
+    linear-gradient(var(--amber), var(--amber)) left center / 3px 100% no-repeat,
+    linear-gradient(var(--amber), var(--amber)) right center / 3px 100% no-repeat;
+}
+.cameo-hold:hover { border-color: var(--amber); }
+.cameo .cameo-paused {
+  display: none;
+  position: absolute;
+  inset: 0;
+  align-items: center;
+  justify-content: center;
+  background: rgba(12, 8, 6, 0.72);
+  color: var(--amber);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  pointer-events: auto;
+  z-index: 1;
+}
+.cameo.is-paused .cameo-paused { display: flex; }
+.cameo.is-paused .pip { background: var(--muted); }
+#build-dynamo {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/dynamo-cameo.png");
+}
+#build-smelter {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/smelter-cameo.png");
+}
+#build-muster {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/muster-cameo.png");
+}
+#build-armory {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/armory-cameo.png");
 }
 
 .cameo:disabled, .cameo.is-disabled {

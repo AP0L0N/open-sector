@@ -9,6 +9,8 @@ export const RICOCHET_DEG = 68;
 export const KILL_OVERMATCH = 2.4;
 export const REAR_KILL_OVERMATCH = 1.25;
 export const WEAK_POINT = 0.05;
+/** Incoming speed kept after a bounce. Slow enough to see the spark fly. */
+export const RICOCHET_KEEP = 0.08;
 export const MIN_COS = 0.14;
 export const MOVING_SPREAD = 1.5;
 
@@ -155,11 +157,15 @@ export function resolveHit(opts: {
   if (roll > 0.96 && overmatch > 1.2) return kill(opts.targetHp, face, effective, overmatch);
 
   const frac = strength * size * (0.04 + roll * 0.96);
-  const damage = Math.min(opts.targetHp, Math.round(opts.targetHpMax * frac));
+  let damage = Math.min(opts.targetHp, Math.round(opts.targetHpMax * frac));
+  if (gun.caliber >= 40) {
+    const floor = Math.round(gun.damage * clamp(overmatch, 0.85, 2.4));
+    damage = Math.min(opts.targetHp, Math.max(damage, floor));
+  }
   if (damage >= opts.targetHp && damage > 0) return kill(opts.targetHp, face, effective, overmatch);
   let kind: HitResolution["kind"] = "hit";
-  if (frac < 0.08 || damage <= 2) kind = "glance";
-  else if (overmatch >= 1.35) kind = "pen";
+  if (damage <= 2) kind = "glance";
+  else if (overmatch >= 1.35 || damage >= opts.targetHpMax * 0.28) kind = "pen";
   return {
     kind,
     face,
@@ -205,7 +211,7 @@ function reflect(
   const scatter = (rand() - 0.5) * 0.5;
   const cs = Math.cos(scatter);
   const sn = Math.sin(scatter);
-  const keep = 0.48 + rand() * 0.28;
+  const keep = RICOCHET_KEEP + rand() * 0.05;
   return {
     kind: "ricochet",
     face,

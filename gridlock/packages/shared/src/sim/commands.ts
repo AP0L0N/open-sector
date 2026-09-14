@@ -3,7 +3,8 @@ import type { ClientMessage, ErrorCode } from "../protocol.js";
 import { clearOrder, hqOf } from "./geo.js";
 import { cancelStructure, placeBuilding, sellBuilding, startBuild } from "./build.js";
 import { deployId } from "./deploy.js";
-import { cancelTrain, startTrain } from "./train.js";
+import { cancelTrain, pauseTrain, startTrain } from "./train.js";
+import { groupMoveTargets } from "./formation.js";
 import { setPath } from "./path.js";
 import type { MatchState } from "./types.js";
 
@@ -36,9 +37,17 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
     case "cmd.train":
       if (!isTrainType(msg.unit)) return fail("bad_payload", "Unknown unit.");
       return wrap(startTrain(state, playerId, msg.unit), "busy");
+    case "cmd.pause":
+      if (msg.what !== "train") return fail("bad_payload", "Unknown pause.");
+      if (msg.unit != null && !isTrainType(msg.unit)) return fail("bad_payload", "Unknown unit.");
+      return wrap(pauseTrain(state, playerId, { jobId: msg.jobId, unit: msg.unit }), "busy");
     case "cmd.cancel":
       if (msg.what === "structure") return wrap(cancelStructure(state, playerId), "busy");
-      return wrap(cancelTrain(state, playerId, msg.buildingId), "busy");
+      if (msg.unit != null && !isTrainType(msg.unit)) return fail("bad_payload", "Unknown unit.");
+      return wrap(
+        cancelTrain(state, playerId, { buildingId: msg.buildingId, jobId: msg.jobId, unit: msg.unit }),
+        "busy",
+      );
     case "cmd.sell":
       return wrap(sellBuilding(state, playerId, msg.id), "not_yours");
     case "cmd.deploy": {
@@ -58,7 +67,13 @@ function wrap(err: string | null, fallback: ErrorCode): CmdResult {
     : err.includes("place") || err.includes("far") || err.includes("clear") ? "invalid_place"
     : err.includes("yours") || err.includes("Select") ? "not_yours"
     : err.includes("cap") ? "unit_cap"
-    : err.includes("already") || err.includes("Stop") || err.includes("transform") || err.includes("recharg") ? "busy"
+    : err.includes("already") ||
+        err.includes("Stop") ||
+        err.includes("transform") ||
+        err.includes("recharg") ||
+        err.includes("queue") ||
+        err.includes("Queue")
+      ? "busy"
     : err.includes("out of the fight") ? "dead"
     : fallback;
   return fail(code, err);
@@ -76,13 +91,15 @@ function owned(state: MatchState, playerId: string, ids: number[]) {
 function cmdMove(state: MatchState, playerId: string, ids: number[], x: number, y: number): CmdResult {
   const units = owned(state, playerId, ids);
   if (units.length === 0) return fail("not_yours", "No owned units.");
-  for (const e of units) {
-    if (e.state === "deploy" || e.state === "undeploy") continue;
-    e.order = { kind: "move", x, y };
+  const movers = units.filter((e) => e.state !== "deploy" && e.state !== "undeploy");
+  const dests = groupMoveTargets(state, movers, x, y);
+  for (const e of movers) {
+    const d = dests.get(e.id) ?? { x, y };
+    e.order = { kind: "move", x: d.x, y: d.y };
     e.attackTarget = null;
     e.harvestTile = null;
     e.state = "move";
-    setPath(state, e, x, y);
+    setPath(state, e, d.x, d.y);
   }
   return ok();
 }
@@ -118,7 +135,7 @@ function cmdStop(state: MatchState, playerId: string, ids: number[]): CmdResult 
 
 function cmdHarvest(state: MatchState, playerId: string, ids: number[], tileX: number, tileY: number): CmdResult {
   const units = owned(state, playerId, ids).filter((e) => e.type === "hauler");
-  if (units.length === 0) return fail("not_yours", "Select a Hauler.");
+  if (units.length === 0) return fail("not_yours", "Select a Mauler.");
   for (const e of units) {
     e.order = { kind: "harvest", tileX, tileY };
     e.harvestTile = { x: tileX, y: tileY };

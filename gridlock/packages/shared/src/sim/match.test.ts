@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { catalog, HAULER_CARGO, LOW_POWER_MIN_SPEED, START_SCRAP, TICK_DT } from "../catalog.js";
+import {
+  AUTO_DEPLOY_SECONDS,
+  catalog,
+  GAME_SPEED_MAX,
+  HAULER_CARGO,
+  LOW_POWER_MIN_SPEED,
+  secondsToTicks,
+  START_SCRAP,
+  TICK_DT,
+} from "../catalog.js";
 import { TILE_BLOCKED, TILE_SCRAP, getMap, tileAt } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { createMatch, step, stepMatch } from "./match.js";
@@ -44,18 +53,30 @@ describe("createMatch", () => {
     assert.equal(snap.you.provided, 0);
     assert.equal(snap.entities.filter((e) => e.type === "rig").length, 1);
     assert.equal(snap.entities[0]?.ownerId, "A");
-    assert.equal(state.gameSpeed, 1);
-    assert.equal(snap.gameSpeed, 1);
+    assert.equal(state.gameSpeed, GAME_SPEED_MAX);
+    assert.equal(snap.gameSpeed, GAME_SPEED_MAX);
+  });
+
+  it("auto-deploys each Rig into a Core after 0.5s wall-clock", () => {
+    const { state } = twoPlayerMatch();
+    const wait = secondsToTicks(AUTO_DEPLOY_SECONDS);
+    for (let i = 0; i < wait - 1; i++) stepMatch(state);
+    assert.equal([...state.entities.values()].filter((e) => e.type === "core").length, 0);
+    stepMatch(state);
+    const cores = [...state.entities.values()].filter((e) => e.type === "core");
+    assert.equal(cores.length, 2);
+    assert.equal([...state.entities.values()].some((e) => e.type === "rig"), false);
   });
 
   it("stepMatch runs gameSpeed sim ticks per wall-clock tick", () => {
     const { state } = twoPlayerMatch();
-    const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig")!;
-    assert.equal(applyCommand(state, "A", { type: "cmd.deploy", id: rig.id }).ok, true);
     state.gameSpeed = 3;
-    for (let i = 0; i < 12; i++) stepMatch(state);
-    const core = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "core");
-    assert.ok(core);
+    const t0 = state.tick;
+    stepMatch(state);
+    assert.equal(state.tick, t0 + 3);
+    state.gameSpeed = 5;
+    stepMatch(state);
+    assert.equal(state.tick, t0 + 8);
   });
 
   it("does not spawn a Core until deploy finishes", () => {
@@ -246,16 +267,44 @@ describe("combat", () => {
     assert.ok(b.hp <= 0 || !state.entities.has(b.id), `rear hp=${b.hp}`);
   });
 
-  it("does not kill a Warden through the front in a short duel", () => {
+  it("does not one-shot a Warden through the front", () => {
     const { state } = twoPlayerMatch();
     const a = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
     const b = makeEntity(state, "warden", "B", 23 * 32, 20 * 32);
     a.facing = 0;
     b.facing = Math.PI;
     applyCommand(state, "A", { type: "cmd.attack", ids: [a.id], targetId: b.id });
-    ticks(state, 30);
-    assert.ok(state.entities.has(b.id), "front armor should hold");
-    assert.ok(b.hp > b.hpMax * 0.7, `front hp=${b.hp}`);
+    ticks(state, 8);
+    assert.ok(state.entities.has(b.id), "front armor should hold the first volley");
+    assert.ok(b.hp > 0, `front hp=${b.hp}`);
+  });
+
+  it("kills a Warden from the front in a few shots", () => {
+    const { state } = twoPlayerMatch();
+    const a = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
+    const b = makeEntity(state, "warden", "B", 23 * 32, 20 * 32);
+    a.facing = 0;
+    b.facing = Math.PI;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [a.id], targetId: b.id });
+    ticks(state, 55);
+    assert.ok(b.hp <= 0 || !state.entities.has(b.id), `front hp=${b.hp}`);
+  });
+
+  it("Warden hull turns in place before it rolls", () => {
+    const { state } = twoPlayerMatch();
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, 32), tileCenter(24, 32));
+    tank.facing = 0;
+    const x0 = tank.x;
+    const y0 = tank.y;
+    applyCommand(state, "A", { type: "cmd.move", ids: [tank.id], x: tileCenter(24, 32), y: tileCenter(36, 32) });
+    step(state);
+    assert.ok(tank.facing > 0.05, `should yaw toward south, facing=${tank.facing}`);
+    assert.equal(tank.x, x0);
+    assert.equal(tank.y, y0);
+    ticks(state, 8);
+    assert.ok(Math.hypot(tank.x - x0, tank.y - y0) < 1, "must not translate while pivoting");
+    ticks(state, 40);
+    assert.ok(tank.y > y0 + 16, `should roll after the hull faces the waypoint y=${tank.y}`);
   });
 
   it("wipes a player when their Rig dies", () => {

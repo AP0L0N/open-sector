@@ -47,7 +47,7 @@ describe("armor", () => {
 
 describe("game speed", () => {
   it("clamps to 1–5×", () => {
-    assert.equal(clampGameSpeed(GAME_SPEED_DEFAULT), 1);
+    assert.equal(clampGameSpeed(GAME_SPEED_DEFAULT), GAME_SPEED_MAX);
     assert.equal(clampGameSpeed(2.4), 2);
     assert.equal(clampGameSpeed(9), GAME_SPEED_MAX);
     assert.equal(clampGameSpeed(0), 1);

@@ -4,17 +4,32 @@ import {
   TILE_SCRAP,
   colorHex,
   getMap,
+  heightAt,
+  isoLift,
   isoMapBounds,
   listMaps,
+  maxHeightOf,
   tileDiamond,
   usedColors,
   usedSpawns,
   waitingReason,
   worldToIso,
+  type IsoPt,
   type Slot,
 } from "@gridlock/shared";
 import type { Ctx } from "../ctx.js";
 import { copyText, el } from "./dom.js";
+
+function shadePreview(hex: string, t: number): string {
+  const raw = hex.startsWith("#") ? hex.slice(1) : hex;
+  if (raw.length !== 6) return hex;
+  const n = parseInt(raw, 16);
+  if (Number.isNaN(n)) return hex;
+  const r = Math.min(255, Math.max(0, Math.round(((n >> 16) & 255) * t)));
+  const g = Math.min(255, Math.max(0, Math.round(((n >> 8) & 255) * t)));
+  const b = Math.min(255, Math.max(0, Math.round((n & 255) * t)));
+  return `rgb(${r},${g},${b})`;
+}
 
 function drawPreview(canvas: HTMLCanvasElement, mapId: string, slots: Slot[]): void {
   const map = getMap(mapId);
@@ -28,7 +43,7 @@ function drawPreview(canvas: HTMLCanvasElement, mapId: string, slots: Slot[]): v
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = "#0a0806";
   ctx.fillRect(0, 0, w, h);
-  const b = isoMapBounds(map.width, map.height, map.tileSize);
+  const b = isoMapBounds(map.width, map.height, map.tileSize, maxHeightOf(map));
   const bw = b.maxX - b.minX;
   const bh = b.maxY - b.minY;
   const scale = Math.min(w / bw, h / bh) * 0.94;
@@ -38,30 +53,47 @@ function drawPreview(canvas: HTMLCanvasElement, mapId: string, slots: Slot[]): v
     x: p.x * scale + ox,
     y: p.y * scale + oy,
   });
+  const lift = (p: IsoPt, z: number): IsoPt => to({ x: p.x, y: p.y - z });
+  const quad = (a: IsoPt, b: IsoPt, c: IsoPt, d: IsoPt, fill: string): void => {
+    ctx.fillStyle = fill;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.lineTo(c.x, c.y);
+    ctx.lineTo(d.x, d.y);
+    ctx.closePath();
+    ctx.fill();
+  };
   for (let y = 0; y < map.height; y++) {
     for (let x = 0; x < map.width; x++) {
       const t = map.tiles[y * map.width + x];
       const blocked = t === TILE_BLOCKED;
       const scrap = t === TILE_SCRAP;
       const chk = (x + y) % 2 === 0;
-      ctx.fillStyle = blocked ? "#3a2a22" : scrap ? "#5a4a18" : chk ? "#2a3a24" : "#243320";
+      const h = heightAt(map, x, y);
+      let fill = blocked ? "#3a2a22" : scrap ? "#5a4a18" : chk ? "#2a3a24" : "#243320";
+      if (h > 0 && !blocked) {
+        const liftAmt = 1 + h * 0.16;
+        fill = chk ? shadePreview("#2a3a24", liftAmt) : shadePreview("#243320", liftAmt);
+        if (scrap) fill = shadePreview("#5a4a18", liftAmt);
+      }
       const d = tileDiamond(x, y, map.tileSize);
-      const n = to(d.n);
-      const e = to(d.e);
-      const s = to(d.s);
-      const west = to(d.w);
-      ctx.beginPath();
-      ctx.moveTo(n.x, n.y);
-      ctx.lineTo(e.x, e.y);
-      ctx.lineTo(s.x, s.y);
-      ctx.lineTo(west.x, west.y);
-      ctx.closePath();
-      ctx.fill();
+      const ez = isoLift(h);
+      const hs = y + 1 < map.height ? heightAt(map, x, y + 1) : 0;
+      const he = x + 1 < map.width ? heightAt(map, x + 1, y) : 0;
+      if (h > hs) {
+        quad(lift(d.w, ez), lift(d.s, ez), lift(d.s, isoLift(hs)), lift(d.w, isoLift(hs)), shadePreview(fill, 0.42));
+      }
+      if (h > he) {
+        quad(lift(d.e, ez), lift(d.s, ez), lift(d.s, isoLift(he)), lift(d.e, isoLift(he)), shadePreview(fill, 0.68));
+      }
+      quad(lift(d.n, ez), lift(d.e, ez), lift(d.s, ez), lift(d.w, ez), fill);
     }
   }
   for (const spawn of map.spawns) {
     const occupant = slots.find((s) => s.status === "human" && s.spawnId === spawn.id);
-    const p = to(worldToIso((spawn.x + 0.5) * map.tileSize, (spawn.y + 0.5) * map.tileSize, map.tileSize));
+    const iso = worldToIso((spawn.x + 0.5) * map.tileSize, (spawn.y + 0.5) * map.tileSize, map.tileSize);
+    const p = to({ x: iso.x, y: iso.y - isoLift(heightAt(map, spawn.x, spawn.y)) });
     ctx.fillStyle = occupant ? colorHex(occupant.colorId) : "#e8b84a";
     ctx.beginPath();
     ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);

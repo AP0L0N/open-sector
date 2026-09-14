@@ -40,6 +40,7 @@ export function renderCallsign(root: HTMLElement, ctx: Ctx): void {
     ctx.net.send({ type: "hello", name: ctx.name });
     if (ctx.pendingJoin) {
       ctx.playMode = "network";
+      ctx.networkStep = "join";
       ctx.net.send({ type: "room.join", code: ctx.pendingJoin });
       ctx.goto("play");
       return;

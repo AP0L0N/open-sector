@@ -56,7 +56,7 @@ describe("resolveHit", () => {
     assert.equal(res.kind, "hit");
   });
 
-  it("fails to bite a Warden's front at a perpendicular hit", () => {
+  it("wounds a Warden's front at a perpendicular hit without one-shotting", () => {
     const res = resolveHit({
       gun: warden,
       target: warden,
@@ -68,12 +68,13 @@ describe("resolveHit", () => {
       rand: seq([0.5, 0.5, 0.5, 0.5]),
     });
     assert.equal(res.face, "front");
-    assert.ok(res.kind === "ricochet" || res.kind === "glance", res.kind);
-    assert.ok(res.damage <= 2, `dmg=${res.damage}`);
+    assert.ok(res.kind === "hit" || res.kind === "pen", res.kind);
+    assert.ok(res.damage >= 40, `dmg=${res.damage}`);
+    assert.ok(res.damage < 120, `dmg=${res.damage}`);
   });
 
   it("ricochets off the bow at a glancing angle", () => {
-    const a = (42 * Math.PI) / 180;
+    const a = (48 * Math.PI) / 180;
     const res = resolveHit({
       gun: warden,
       target: warden,
@@ -88,6 +89,9 @@ describe("resolveHit", () => {
     assert.equal(res.kind, "ricochet");
     assert.equal(res.damage, 0);
     assert.ok(res.bounceVx > 0, `bounceVx=${res.bounceVx}`);
+    const inSp = Math.hypot(-Math.cos(a) * 400, -Math.sin(a) * 400);
+    const outSp = Math.hypot(res.bounceVx, res.bounceVy);
+    assert.ok(outSp < inSp * 0.2, `bounce ${outSp} vs in ${inSp}`);
   });
 
   it("one-shots a Warden through the rear", () => {
@@ -142,7 +146,7 @@ describe("resolveHit", () => {
     });
     assert.equal(res.face, "side");
     assert.ok(res.kind === "glance" || res.kind === "hit" || res.kind === "pen" || res.kind === "kill");
-    if (res.kind !== "kill") assert.ok(res.damage <= 20, `dmg=${res.damage} kind=${res.kind}`);
+    if (res.kind !== "kill") assert.ok(res.damage >= 20, `dmg=${res.damage} kind=${res.kind}`);
   });
 
   it("can clean-pen a side plate on a hot roll", () => {

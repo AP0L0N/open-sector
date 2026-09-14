@@ -1,9 +1,12 @@
 import {
   BUILDING_TYPES,
+  TRAIN_QUEUE_CAP,
+  TRAIN_TYPES,
   armorLabel,
   catalog,
   colorHex,
   getMap,
+  producerType,
   productionSpeed,
   specialLabel,
   specialReady,
@@ -36,7 +39,8 @@ export function mountBattlefield(
 
   const body = el("div", { class: "battle-canvas-wrap" });
   const canvas = el("canvas", { attrs: { id: "map-canvas" } });
-  body.append(canvas);
+  const queue = el("div", { class: "prod-queue", attrs: { id: "prod-queue" } });
+  body.append(canvas, queue);
 
   const side = el("aside", { class: "sidebar" });
   side.append(el("h3", { text: "Radar" }));
@@ -50,8 +54,8 @@ export function mountBattlefield(
   side.append(el("h3", { text: "Structures" }), structs);
 
   const trains = el("div", { class: "cameos", attrs: { id: "cameos-train" } });
-  for (const unit of ["trooper", "hauler", "warden"] as TrainType[]) {
-    trains.append(cameoButton("train-" + unit, catalog(unit).name, catalog(unit).cost, 0));
+  for (const unit of TRAIN_TYPES) {
+    trains.append(cameoButton("train-" + unit, catalog(unit).name, catalog(unit).cost, 0, false, true));
   }
   side.append(el("h3", { text: "Train" }), trains);
 
@@ -89,17 +93,46 @@ export function mountBattlefield(
       ctx.net.send({ type: "cmd.build", building: type });
     });
   }
-  for (const unit of ["trooper", "hauler", "warden"] as TrainType[]) {
-    document.getElementById("train-" + unit)?.addEventListener("click", () => {
+  for (const unit of TRAIN_TYPES) {
+    const btn = document.getElementById("train-" + unit);
+    btn?.addEventListener("click", (e) => {
       const m = ctx.match;
-      const btn = document.getElementById("train-" + unit);
+      if ((e.target as HTMLElement | null)?.closest(".cameo-hold, .cameo-paused")) {
+        if (jobsOfType(m, unit).length === 0) return;
+        ctx.net.send({ type: "cmd.pause", what: "train", unit });
+        return;
+      }
+      const queued = jobsOfType(m, unit);
+      if (queued.length > 0 && queued.every((j) => j.paused)) {
+        ctx.net.send({ type: "cmd.pause", what: "train", unit });
+        return;
+      }
       if (m && m.you.scrap < catalog(unit).cost) {
         flashNoScrap(btn);
         return;
       }
+      if (m && !canQueueMore(m, unit)) return;
       ctx.net.send({ type: "cmd.train", unit });
     });
+    btn?.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      if (jobsOfType(ctx.match, unit).length === 0) return;
+      ctx.net.send({ type: "cmd.cancel", what: "train", unit });
+    });
   }
+
+  queue.addEventListener("click", (e) => {
+    const job = (e.target as HTMLElement | null)?.closest<HTMLElement>(".prod-job");
+    if (!job) return;
+    e.preventDefault();
+    ctx.net.send({ type: "cmd.pause", what: "train", jobId: Number(job.dataset.job) });
+  });
+  queue.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    const job = (e.target as HTMLElement | null)?.closest<HTMLElement>(".prod-job");
+    if (!job) return;
+    ctx.net.send({ type: "cmd.cancel", what: "train", jobId: Number(job.dataset.job) });
+  });
 
   paintBattleHud(ctx);
   return view;
@@ -111,12 +144,99 @@ function structureReady(m: MatchSnapshot | null | undefined, type: BuildingType)
   return m.you.structureQueue?.ready === true && m.you.structureQueue.type === type;
 }
 
-function cameoButton(id: string, name: string, cost: number, power: number, showReady = false): HTMLButtonElement {
+function cameoButton(
+  id: string,
+  name: string,
+  cost: number,
+  power: number,
+  showReady = false,
+  train = false,
+): HTMLButtonElement {
   const b = el("button", { class: "cameo", attrs: { type: "button", id } });
   const powerTxt = power > 0 ? `+${power}` : power < 0 ? `${power}` : "";
   const ready = showReady ? `<span class="cameo-ready">READY</span>` : "";
-  b.innerHTML = `<span class="cameo-name">${name}</span><span class="cameo-meta">${cost}${powerTxt ? " · " + powerTxt : ""}</span><span class="pip"></span><span class="cameo-deny">NO SCRAP</span>${ready}`;
+  const hold = train
+    ? `<span class="cameo-hold hidden" title="Pause production"></span><span class="cameo-paused">PAUSED</span><span class="cameo-count hidden">0</span>`
+    : "";
+  if (train) b.title = "Left: train  ·  Pause icon: hold  ·  Right: cancel";
+  b.innerHTML = `<span class="cameo-name">${name}</span><span class="cameo-meta">${cost}${powerTxt ? " · " + powerTxt : ""}</span><span class="pip"></span><span class="cameo-deny">NO SCRAP</span>${ready}${hold}`;
   return b;
+}
+
+interface JobRef {
+  id: number;
+  type: TrainType;
+  progress: number;
+  paused: boolean;
+  active: boolean;
+}
+
+function ownTrainJobs(m: MatchSnapshot | null | undefined): JobRef[] {
+  if (!m) return [];
+  const out: JobRef[] = [];
+  for (const e of m.entities) {
+    if (e.ownerId !== m.youPlayerId || !e.trainQueue?.length) continue;
+    e.trainQueue.forEach((j, i) => {
+      out.push({
+        id: j.id,
+        type: j.type,
+        progress: j.progress,
+        paused: j.paused,
+        active: i === 0,
+      });
+    });
+  }
+  return out;
+}
+
+function jobsOfType(m: MatchSnapshot | null | undefined, unit: TrainType): JobRef[] {
+  return ownTrainJobs(m).filter((j) => j.type === unit);
+}
+
+function canQueueMore(m: MatchSnapshot, unit: TrainType): boolean {
+  const want = producerType(unit);
+  const producers = m.entities.filter((e) => e.ownerId === m.youPlayerId && e.type === want && e.hp > 0);
+  if (producers.length === 0) return false;
+  return producers.some((e) => (e.trainQueue?.length ?? 0) < TRAIN_QUEUE_CAP);
+}
+
+function paintProdQueue(jobs: JobRef[]): void {
+  const root = document.getElementById("prod-queue");
+  if (!root) return;
+  const ids = jobs.map((j) => String(j.id)).join(",");
+  const existing = [...root.children].map((c) => (c as HTMLElement).dataset.job ?? "").join(",");
+  if (ids !== existing) {
+    root.replaceChildren(...jobs.map(makeProdJob));
+  }
+  const nodes = root.children;
+  for (let i = 0; i < jobs.length; i++) {
+    const node = nodes[i] as HTMLElement | undefined;
+    const job = jobs[i];
+    if (node && job) updateProdJob(node, job);
+  }
+}
+
+function makeProdJob(job: JobRef): HTMLButtonElement {
+  const b = el("button", {
+    class: "prod-job",
+    attrs: {
+      type: "button",
+      "data-job": String(job.id),
+      "data-type": job.type,
+      title: "Left: pause  ·  Right: cancel",
+    },
+  });
+  b.append(el("span", { class: "clock" }), el("span", { class: "hold-mark" }));
+  updateProdJob(b, job);
+  return b;
+}
+
+function updateProdJob(node: HTMLElement, job: JobRef): void {
+  node.classList.toggle("is-paused", job.paused);
+  node.classList.toggle("is-active", job.active);
+  node.classList.toggle("is-waiting", !job.active);
+  const clock = node.querySelector(".clock") as HTMLElement | null;
+  if (clock) clock.style.setProperty("--p", String(Math.round(job.progress * 100)));
 }
 
 function retrigger(el: HTMLElement | null, cls: string): void {
@@ -184,28 +304,33 @@ export function paintBattleHud(ctx: Ctx): void {
     btn.classList.toggle("slow-power", m.you.lowPower && q?.type === type && !q.ready);
   }
 
-  const hasMuster = m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === "muster");
-  const hasSmelter = m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === "smelter");
-  const hasArmory = m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === "armory");
-  const training = m.entities.some((e) => e.ownerId === m.youPlayerId && e.trainProgress != null);
-  const tr = document.getElementById("train-trooper") as HTMLButtonElement | null;
-  const ha = document.getElementById("train-hauler") as HTMLButtonElement | null;
-  const wa = document.getElementById("train-warden") as HTMLButtonElement | null;
-  if (tr) {
-    tr.disabled = !hasMuster || !m.you.alive;
-    tr.classList.toggle("unaffordable", m.you.scrap < catalog("trooper").cost);
-    tr.classList.toggle("slow-power", m.you.lowPower && training && hasMuster);
+  const jobs = ownTrainJobs(m);
+  for (const unit of TRAIN_TYPES) {
+    const btn = document.getElementById("train-" + unit) as HTMLButtonElement | null;
+    if (!btn) continue;
+    const want = producerType(unit);
+    const hasProducer = m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === want && e.hp > 0);
+    const unitJobs = jobs.filter((j) => j.type === unit);
+    const heads = unitJobs.filter((j) => j.active);
+    const primary = heads.slice().sort((a, b) => b.progress - a.progress)[0];
+    const paused = heads.length > 0 && heads.every((j) => j.paused);
+    const training = heads.some((j) => !j.paused);
+    btn.disabled = !hasProducer || !m.you.alive;
+    btn.classList.toggle("unaffordable", m.you.scrap < catalog(unit).cost);
+    btn.classList.toggle("slow-power", m.you.lowPower && training);
+    btn.classList.toggle("is-training", unitJobs.length > 0);
+    btn.classList.toggle("is-paused", paused);
+    const pip = btn.querySelector(".pip") as HTMLElement | null;
+    if (pip) pip.style.width = primary ? `${Math.round(primary.progress * 100)}%` : "0";
+    const count = btn.querySelector(".cameo-count") as HTMLElement | null;
+    if (count) {
+      count.textContent = String(unitJobs.length);
+      count.classList.toggle("hidden", unitJobs.length <= 1);
+    }
+    const hold = btn.querySelector(".cameo-hold") as HTMLElement | null;
+    hold?.classList.toggle("hidden", unitJobs.length === 0 || paused);
   }
-  if (ha) {
-    ha.disabled = !hasSmelter || !m.you.alive;
-    ha.classList.toggle("unaffordable", m.you.scrap < catalog("hauler").cost);
-    ha.classList.toggle("slow-power", m.you.lowPower && training && hasSmelter);
-  }
-  if (wa) {
-    wa.disabled = !hasArmory || !m.you.alive;
-    wa.classList.toggle("unaffordable", m.you.scrap < catalog("warden").cost);
-    wa.classList.toggle("slow-power", m.you.lowPower && training && hasArmory);
-  }
+  paintProdQueue(jobs);
 
   const banner = document.getElementById("victory-banner");
   if (banner) {
@@ -239,7 +364,12 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
   }
   const owner = ctx.match.players.find((p) => p.playerId === e.ownerId);
   const def = catalog(e.type);
-  const q = e.trainProgress != null ? `  ·  train ${Math.round(e.trainProgress * 100)}%` : "";
+  const qn = e.trainQueue?.length ?? 0;
+  const qPaused = e.trainQueue?.[0]?.paused === true;
+  const q =
+    e.trainProgress != null
+      ? `  ·  train ${qPaused ? "paused " : ""}${Math.round(e.trainProgress * 100)}%${qn > 1 ? " ×" + qn : ""}`
+      : "";
   const cargo = e.cargo ? `  ·  cargo ${e.cargo}` : "";
   const dep =
     e.deployProgress != null

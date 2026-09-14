@@ -1,6 +1,6 @@
 import "./style/ra-feel.css";
 import type { ServerMessage } from "@gridlock/shared";
-import { DEFAULT_MAP_ID, getMap } from "@gridlock/shared";
+import { AUTO_DEPLOY_SECONDS, DEFAULT_MAP_ID, getMap } from "@gridlock/shared";
 import { GameSocket } from "./net/client.js";
 import type { Ctx, Screen } from "./ctx.js";
 import { bindClicks, getMusic, getSfx, setMusic, setSfx } from "./ui/audio.js";
@@ -34,12 +34,13 @@ const roomParam = params.get("room");
 
 const net = new GameSocket();
 
-const savedName = localStorage.getItem(NAME_KEY) ?? "";
+const savedName = (localStorage.getItem(NAME_KEY) ?? "").trim().slice(0, 24);
 
 const ctx: Ctx = {
   net,
   screen: savedName ? (roomParam ? "play" : "menu") : "callsign",
   playMode: roomParam ? "network" : "skirmish",
+  networkStep: roomParam ? "join" : "choose",
   name: savedName,
   banner: "",
   room: null,
@@ -61,7 +62,10 @@ const ctx: Ctx = {
       deployTimer = null;
     }
     ctx.screen = screen;
-    if (screen === "menu") ctx.leaveOpen = false;
+    if (screen === "menu") {
+      ctx.leaveOpen = false;
+      ctx.networkStep = "choose";
+    }
     ctx.render();
   },
   setName(name: string) {
@@ -138,7 +142,8 @@ function render(): void {
 function onMessage(msg: ServerMessage): void {
   switch (msg.type) {
     case "welcome":
-      net.send({ type: "hello", name: ctx.name });
+      if (ctx.name) net.send({ type: "hello", name: ctx.name });
+      if (ctx.screen === "callsign") break;
       if (ctx.pendingJoin) {
         net.send({ type: "room.join", code: ctx.pendingJoin });
       } else if (ctx.pendingSkirmish) {
@@ -184,7 +189,7 @@ function onMessage(msg: ServerMessage): void {
       if (deployTimer) clearTimeout(deployTimer);
       deployTimer = setTimeout(() => {
         ctx.goto("battle");
-      }, 1800);
+      }, AUTO_DEPLOY_SECONDS * 1000);
       break;
     case "match.snapshot":
       ctx.match = msg.match;
@@ -223,6 +228,7 @@ net.onStatus = (connected) => {
     ctx.match = null;
     ctx.winner = null;
     ctx.pendingSkirmish = false;
+    ctx.networkStep = "choose";
     mapView?.destroy();
     mapView = null;
     ctx.screen = ctx.name ? "menu" : "callsign";

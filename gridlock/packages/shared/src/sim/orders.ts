@@ -1,5 +1,6 @@
-import { catalog } from "../catalog.js";
+import { catalog, FACE_MOVE_DEG } from "../catalog.js";
 import { followPath, setPath } from "./path.js";
+import { slopeSpeedMul, tileHeight, weaponRangeWorld, worldTileHeight } from "./elevation.js";
 import { worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -26,7 +27,7 @@ export function tickMovement(state: MatchState, dt: number): void {
     if (e.order?.kind === "attack" && e.order.targetId != null) {
       const t = state.entities.get(e.order.targetId);
       if (t && t.hp > 0) {
-        const range = def.rangeTiles * state.tileSize;
+        const range = weaponRangeWorld(state, e);
         const dist = Math.hypot(t.x - e.x, t.y - e.y);
         if (dist <= range) {
           e.waypoints = [];
@@ -42,9 +43,20 @@ export function tickMovement(state: MatchState, dt: number): void {
       continue;
     }
     const wp = e.waypoints[0];
-    if (wp) turnToward(e, wp.x, wp.y, def.turnDegPerSec, dt);
+    const remaining = wp ? turnToward(e, wp.x, wp.y, def.turnDegPerSec, dt) : 0;
+    if (def.turnInPlace && Math.abs(remaining) > FACE_MOVE_DEG) {
+      e.state = e.order?.kind === "attack" ? "attack" : "idle";
+      e.tileX = worldToTile(e.x, state.tileSize);
+      e.tileY = worldToTile(e.y, state.tileSize);
+      continue;
+    }
     e.state = e.order?.kind === "attack" ? "attack" : e.order?.kind === "harvest" ? "harvest" : e.order?.kind === "unload" ? "unload" : "move";
-    followPath(e, speed, dt);
+    const dest = e.waypoints[0];
+    const dh = dest
+      ? tileHeight(state, worldToTile(dest.x, state.tileSize), worldToTile(dest.y, state.tileSize)) -
+        worldTileHeight(state, e.x, e.y)
+      : 0;
+    followPath(e, speed * slopeSpeedMul(dh), dt);
     e.tileX = worldToTile(e.x, state.tileSize);
     e.tileY = worldToTile(e.y, state.tileSize);
     if (e.waypoints.length === 0 && e.order?.kind === "move") {

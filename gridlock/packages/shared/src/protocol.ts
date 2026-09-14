@@ -2,7 +2,7 @@
 
 import type { BuildingType, EntityKind, EntityType, TrainType } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 5;
+export const PROTOCOL_VERSION = 6;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -54,6 +54,13 @@ export interface StructureQueueView {
   ready: boolean;
 }
 
+export interface TrainJobView {
+  id: number;
+  type: TrainType;
+  progress: number;
+  paused: boolean;
+}
+
 export interface EntityView {
   id: number;
   kind: EntityKind;
@@ -70,6 +77,8 @@ export interface EntityView {
   tileX: number;
   tileY: number;
   trainProgress?: number;
+  /** Allied production line. Omitted for enemies and empty queues. */
+  trainQueue?: TrainJobView[];
   cargo?: number;
   /** 0–1 while state is deploy or undeploy. */
   deployProgress?: number;
@@ -109,6 +118,8 @@ export interface ProjectileView {
   vx: number;
   vy: number;
   caliber: number;
+  fromId: number;
+  bounced: boolean;
 }
 
 export type ImpactKind = "miss" | "ricochet" | "glance" | "hit" | "pen" | "kill";
@@ -158,7 +169,8 @@ export type ClientMessage =
   | { type: "cmd.build"; building: BuildingType }
   | { type: "cmd.place"; building: BuildingType; tx: number; ty: number }
   | { type: "cmd.train"; unit: TrainType }
-  | { type: "cmd.cancel"; what: "structure" | "train"; buildingId?: number }
+  | { type: "cmd.pause"; what: "train"; jobId?: number; unit?: TrainType }
+  | { type: "cmd.cancel"; what: "structure" | "train"; buildingId?: number; jobId?: number; unit?: TrainType }
   | { type: "cmd.sell"; id: number }
   | { type: "cmd.deploy"; id: number }
   | { type: "cmd.speed"; delta: number };
