@@ -86,7 +86,7 @@ const ctx: Ctx = {
     ctx.net.send({
       type: "room.create",
       mapId: DEFAULT_MAP_ID,
-      maxSlots: 1,
+      maxSlots: 8,
       mode: "skirmish",
     });
   },
@@ -151,7 +151,7 @@ function onMessage(msg: ServerMessage): void {
         net.send({
           type: "room.create",
           mapId: DEFAULT_MAP_ID,
-          maxSlots: 1,
+          maxSlots: 8,
           mode: "skirmish",
         });
       }

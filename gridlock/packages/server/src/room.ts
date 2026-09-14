@@ -284,7 +284,14 @@ export class Hub {
 
   private onHostSlot(
     session: Session,
-    msg: { slotIndex: number; status?: "open" | "human" | "closed"; kick?: boolean },
+    msg: {
+      slotIndex: number;
+      status?: "open" | "human" | "closed" | "ai";
+      kick?: boolean;
+      colorId?: number;
+      team?: number;
+      spawnId?: number;
+    },
   ): void {
     const room = this.roomOf(session);
     if (!room) return this.err(session, "not_member", "You are not in a room.");
@@ -292,6 +299,9 @@ export class Hub {
     const res = hostSlot(room, session.playerId, msg.slotIndex, {
       status: msg.status,
       kick: msg.kick,
+      colorId: msg.colorId,
+      team: msg.team,
+      spawnId: msg.spawnId,
     });
     if (!res.ok) return this.err(session, res.code, res.message);
     if (victim && victim !== session.playerId && !findPlayerSlot(room, victim)) {

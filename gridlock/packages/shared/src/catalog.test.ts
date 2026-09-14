@@ -4,8 +4,11 @@ import {
   GAME_SPEED_DEFAULT,
   GAME_SPEED_MAX,
   HANDGUN,
+  SMALL_ARMS_SPEED,
   SPECIAL_COOLDOWN_MIN,
   TANK_MG,
+  TICK_DT,
+  TILE_SIZE,
   armorLabel,
   catalog,
   hasMg,
@@ -60,6 +63,18 @@ describe("warden ammo", () => {
     assert.ok(TANK_MG.spreadDeg > w.spreadDeg * 4);
     assert.equal(TANK_MG.cooldown < 0.2, true);
     assert.ok(TANK_MG.heatPerShot * 25 >= TANK_MG.heatMax);
+  });
+});
+
+describe("small-arms flight", () => {
+  it("crosses max range in under a sim tick so the round is not a tracer", () => {
+    const rifle = catalog("trooper");
+    assert.equal(rifle.projectileSpeed, SMALL_ARMS_SPEED);
+    assert.equal(TANK_MG.projectileSpeed, SMALL_ARMS_SPEED);
+    const rifleRange = rifle.rangeTiles * TILE_SIZE;
+    assert.ok(rifle.projectileSpeed * TICK_DT >= rifleRange, `rifle ${rifle.projectileSpeed}`);
+    const mgRange = catalog("warden").rangeTiles * TILE_SIZE;
+    assert.ok(TANK_MG.projectileSpeed * TICK_DT >= mgRange, `mg ${TANK_MG.projectileSpeed}`);
   });
 });
 

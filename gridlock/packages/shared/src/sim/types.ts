@@ -1,5 +1,5 @@
 import type { BuildingType, Crit, EntityType, ShellType, TrainType } from "../catalog.js";
-import type { EntityState, ImpactView } from "../protocol.js";
+import type { AiDifficulty, EntityState, ImpactView } from "../protocol.js";
 
 export interface Vec {
   x: number;
@@ -108,6 +108,10 @@ export interface SimPlayer {
   structure: StructureJob | null;
   placingType: BuildingType | null;
   hqId: number;
+  /** CPU seat. Omitted for humans. */
+  ai?: AiDifficulty;
+  /** Sim tick to try the next attack wave. */
+  aiNextAttackTick: number;
 }
 
 export interface MatchState {

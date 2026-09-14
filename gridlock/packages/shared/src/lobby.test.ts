@@ -184,8 +184,7 @@ describe("lobby rules", () => {
     if (!made.ok) return;
     const r = made.value;
     assert.equal(r.mode, "skirmish");
-    assert.equal(r.maxSlots, 1);
-    assert.equal(r.slots.filter((s) => s.status === "open").length, 0);
+    assert.ok(r.slots.filter((s) => s.status === "open").length > 0);
     const join = joinRoom(r, "p2", "Two");
     assert.equal(join.ok, false);
     if (!join.ok) assert.equal(join.code, "closed");
@@ -193,13 +192,13 @@ describe("lobby rules", () => {
     assert.equal(startMatch(r, "host").ok, true);
   });
 
-  it("skirmish host cannot open extra slots", () => {
+  it("skirmish host cannot open extra slots for human joiners", () => {
     const made = createRoom({
       id: "SKRM",
       hostId: "host",
       hostName: "Solo",
       mapId: "yard-64",
-      maxSlots: 1,
+      maxSlots: 8,
       mode: "skirmish",
     });
     assert.equal(made.ok, true);
@@ -207,5 +206,33 @@ describe("lobby rules", () => {
     const open = hostSlot(made.value, "host", 1, { status: "open" });
     assert.equal(open.ok, false);
     if (!open.ok) assert.equal(open.code, "closed");
+  });
+
+  it("lets the host drop an Easy CPU on an open slot", () => {
+    const r = room();
+    const add = hostSlot(r, "host", 1, { status: "ai" });
+    assert.equal(add.ok, true, !add.ok ? add.message : "");
+    const cpu = r.slots[1];
+    assert.equal(cpu?.status, "ai");
+    assert.equal(cpu?.ai, "easy");
+    assert.equal(cpu?.ready, true);
+    assert.equal(cpu?.playerId, "ai:1");
+    assert.equal(cpu?.name, "Easy CPU");
+    assert.notEqual(cpu?.colorId, r.slots[0]?.colorId);
+    updateSelf(r, "host", { ready: true });
+    const started = startMatch(r, "host");
+    assert.equal(started.ok, true);
+    if (!started.ok) return;
+    assert.ok(started.value.has("host"));
+    assert.ok(started.value.has("ai:1"));
+    assert.notEqual(started.value.get("host")?.spawnId, started.value.get("ai:1")?.spawnId);
+  });
+
+  it("lets the host remove an Easy CPU", () => {
+    const r = room();
+    assert.equal(hostSlot(r, "host", 1, { status: "ai" }).ok, true);
+    assert.equal(hostSlot(r, "host", 1, { kick: true }).ok, true);
+    assert.equal(r.slots[1]?.status, "open");
+    assert.equal(r.slots[1]?.playerId, undefined);
   });
 });

@@ -2,7 +2,7 @@
 
 import type { BuildingType, Crit, EntityKind, EntityType, ShellType, TrainType } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 11;
+export const PROTOCOL_VERSION = 12;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -12,7 +12,9 @@ export const ROOM_CODE_LENGTH = 4;
 export const MIN_HUMANS_TO_START = 1;
 
 export type Phase = "lobby" | "countdown" | "playing" | "ended";
-export type SlotStatus = "open" | "human" | "closed";
+export type SlotStatus = "open" | "human" | "closed" | "ai";
+/** CPU difficulty. Easy is the only mode for now. */
+export type AiDifficulty = "easy";
 export type RoomMode = "skirmish" | "network";
 export type EntityState =
   | "idle"
@@ -36,6 +38,8 @@ export interface Slot {
   team: number;
   spawnId: number;
   ready: boolean;
+  /** Set when status is ai. */
+  ai?: AiDifficulty;
 }
 
 export interface RoomState {
@@ -186,7 +190,15 @@ export type ClientMessage =
   | { type: "room.join"; code: string }
   | { type: "room.leave" }
   | { type: "slot.update"; colorId?: number; team?: number; spawnId?: number; ready?: boolean }
-  | { type: "slot.host"; slotIndex: number; status?: SlotStatus; kick?: boolean }
+  | {
+      type: "slot.host";
+      slotIndex: number;
+      status?: SlotStatus;
+      kick?: boolean;
+      colorId?: number;
+      team?: number;
+      spawnId?: number;
+    }
   | { type: "room.map"; mapId: string }
   | { type: "room.start" }
   | { type: "chat"; text: string }

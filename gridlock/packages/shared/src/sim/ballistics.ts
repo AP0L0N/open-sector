@@ -13,6 +13,11 @@ export const WEAK_POINT = 0.05;
 export const RICOCHET_KEEP = 0.88;
 /** World units a bounced round still flies before it hits dirt. */
 export const RICOCHET_TRAVEL = 80;
+/**
+ * Small-arms inbound is faster than a visible tracer. Cap the bounce so the
+ * spark still zips instead of vanishing in a single tick.
+ */
+export const RICOCHET_SPARK_SPEED = 480;
 export const MIN_COS = 0.14;
 export const MOVING_SPREAD = 1.5;
 

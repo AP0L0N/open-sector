@@ -1012,16 +1012,17 @@ export class MapView {
     }
 
     for (const p of this.curr.projectiles) {
+      const bounced = p.bounced === true;
+      const shell = isShellCaliber(p.caliber);
+      if (!bounced && !shell) continue;
       const t = Math.min(1, (performance.now() - this.snapAt) / 100);
       const look = t * 0.1 * (this.curr.gameSpeed || 1);
-      const bounced = p.bounced === true;
       const prevP = this.prev?.projectiles.find((q) => q.id === p.id);
       const wx = prevP ? prevP.x + (p.x - prevP.x) * t : p.x;
       const wy = prevP ? prevP.y + (p.y - prevP.y) * t : p.y;
       const a = this.toScreen(wx, wy);
       const b = this.toScreen(wx + p.vx * look, wy + p.vy * look);
-      const shell = isShellCaliber(p.caliber);
-      const lift = bounced ? 7 : shell ? 10 : 6;
+      const lift = bounced ? 7 : 10;
       if (bounced) {
         const sp = Math.hypot(p.vx, p.vy) || 1;
         const tail = this.toScreen(wx - (p.vx / sp) * 14, wy - (p.vy / sp) * 14);
@@ -1050,15 +1051,6 @@ export class MapView {
         ctx.ellipse(b.x, b.y - lift, 3.1, 2.1, Math.atan2(b.y - a.y, b.x - a.x), 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
-      } else {
-        ctx.strokeStyle = "#e8b84a";
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y - lift);
-        ctx.lineTo(b.x, b.y - lift);
-        ctx.stroke();
-        ctx.fillStyle = "#fff6c8";
-        ctx.fillRect(b.x - 1.5, b.y - lift - 1.5, 3, 3);
       }
     }
     this.drawImpacts();

@@ -282,6 +282,26 @@ export function drawRicochetSparks(
   drawContactFlash(ctx, x, y, t, shell ? 5 : 2.4);
   drawShockRing(ctx, x, y, Math.min(1, t / 0.5), shell ? 12 : 6, shell ? 0.4 : 0.2);
   drawSparkBurst(ctx, x, y, dirX, dirY, t, seed, shell ? 16 : 5, shell ? 48 : 16, true);
+  const d = dirOf(dirX, dirY);
+  const travel = shell ? 56 : 42;
+  const head = Math.min(1, t / 0.22);
+  const fade = t < 0.5 ? 1 : Math.max(0, 1 - (t - 0.5) / 0.5);
+  const hx = x + d.x * travel * head;
+  const hy = y + d.y * travel * head;
+  const tail = travel * (shell ? 0.5 : 0.42);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = 0.95 * fade;
+  ctx.strokeStyle = "#ffe8b0";
+  ctx.lineWidth = shell ? 2 : 1.2;
+  ctx.lineCap = "butt";
+  ctx.beginPath();
+  ctx.moveTo(hx - d.x * tail, hy - d.y * tail);
+  ctx.lineTo(hx, hy);
+  ctx.stroke();
+  ctx.fillStyle = "#fff8e4";
+  ctx.fillRect(hx - 0.55, hy - 0.55, 1.2, 1.2);
+  ctx.restore();
 }
 
 /** Muzzle: flash cone along the barrel and a short pressure disc. */

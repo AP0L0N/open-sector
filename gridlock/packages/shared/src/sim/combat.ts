@@ -14,7 +14,7 @@ import {
   pickLoadedShell,
 } from "../catalog.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
-import { aimAngle, resolveHit, RICOCHET_TRAVEL } from "./ballistics.js";
+import { aimAngle, resolveHit, RICOCHET_SPARK_SPEED, RICOCHET_TRAVEL } from "./ballistics.js";
 import { fireStats, hullTurnMul, rollCrits } from "./crits.js";
 import { weaponRangeWorld } from "./elevation.js";
 import { allies, buildingContains, playerTeam } from "./geo.js";
@@ -200,10 +200,6 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     p.x += p.vx * stepDt;
     p.y += p.vy * stepDt;
     p.life -= dt;
-    if (p.life <= 0) {
-      pushImpact(state, p, p.bounced ? "puff" : "miss", p.x, p.y);
-      continue;
-    }
     let hit = false;
     let bounced = false;
     for (const e of state.entities.values()) {
@@ -247,7 +243,12 @@ export function tickProjectiles(state: MatchState, dt: number): void {
         p.vy = res.bounceVy;
         p.ignoreId = e.id;
         p.bounced = true;
-        const sp = Math.hypot(p.vx, p.vy) || 1;
+        let sp = Math.hypot(p.vx, p.vy) || 1;
+        if (p.caliber < 40 && sp > RICOCHET_SPARK_SPEED) {
+          p.vx = (p.vx / sp) * RICOCHET_SPARK_SPEED;
+          p.vy = (p.vy / sp) * RICOCHET_SPARK_SPEED;
+          sp = RICOCHET_SPARK_SPEED;
+        }
         p.life = (RICOCHET_TRAVEL * (0.75 + rand() * 0.5)) / sp;
         p.x += (p.vx / sp) * Math.max(8, e.radius * 0.5);
         p.y += (p.vy / sp) * Math.max(8, e.radius * 0.5);
@@ -256,7 +257,12 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       hit = true;
       break;
     }
-    if (!hit || bounced) keep.push(p);
+    if (hit && !bounced) continue;
+    if (!hit && p.life <= 0) {
+      pushImpact(state, p, p.bounced ? "puff" : "miss", p.x, p.y);
+      continue;
+    }
+    keep.push(p);
   }
   state.projectiles = keep;
 }

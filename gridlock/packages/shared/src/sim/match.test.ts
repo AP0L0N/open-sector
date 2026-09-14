@@ -300,7 +300,8 @@ describe("combat", () => {
       }
       if (state.impacts.some((x) => x.kind === "puff")) sawPuff = true;
     }
-    assert.ok(bounceSp > muzzle * 0.8, `bounce speed ${bounceSp} vs muzzle ${muzzle}`);
+    assert.ok(bounceSp > 400, `bounce speed ${bounceSp} vs muzzle ${muzzle}`);
+    assert.ok(bounceSp < muzzle * 0.5, `spark must not keep full rifle speed ${muzzle}`);
     assert.equal(sawPuff, true);
   });
 

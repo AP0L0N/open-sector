@@ -158,12 +158,34 @@ describe("hub rooms", () => {
       const created = a.of("room.state")[0];
       assert.ok(created);
       assert.equal(created.room.mode, "skirmish");
-      assert.equal(created.room.maxSlots, 1);
       hub.handle("B", { type: "room.join", code: created.room.id });
       const err = b.of("room.error").at(-1);
       assert.equal(err?.code, "closed");
       hub.handle("A", { type: "room.start" });
       assert.ok(a.of("match.start")[0]);
+    } finally {
+      hub.shutdown();
+    }
+  });
+
+  it("host can add an Easy CPU and start vs it", () => {
+    const hub = new Hub();
+    try {
+      const a = client(hub, "A");
+      hub.handle("A", { type: "hello", name: "Alpha" });
+      hub.handle("A", { type: "room.create", mapId: "yard-64", maxSlots: 8, mode: "skirmish" });
+      hub.handle("A", { type: "slot.host", slotIndex: 1, status: "ai" });
+      const lobby = a.of("room.state").at(-1);
+      assert.equal(lobby?.room.slots[1]?.status, "ai");
+      assert.equal(lobby?.room.slots[1]?.ai, "easy");
+      hub.handle("A", { type: "room.start" });
+      const start = a.of("match.start")[0];
+      assert.ok(start);
+      const ids = start.match.players.map((p) => p.playerId);
+      assert.equal(ids.includes("A"), true);
+      assert.equal(ids.includes("ai:1"), true);
+      assert.equal(start.match.players.length, 2);
+      assert.ok(start.match.entities.some((e) => e.type === "rig" && e.ownerId === "A"));
     } finally {
       hub.shutdown();
     }

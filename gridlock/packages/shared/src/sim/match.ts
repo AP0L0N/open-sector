@@ -10,8 +10,9 @@ import {
   TICK_DT,
 } from "../catalog.js";
 import { getMap } from "../maps.js";
-import { humans } from "../lobby.js";
-import type { RoomState } from "../protocol.js";
+import { commanders } from "../lobby.js";
+import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
+import type { ImpactView, RoomState } from "../protocol.js";
 import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter } from "./geo.js";
 import { spillGarrison, tickGarrison } from "./garrison.js";
 import { seedRng } from "./rng.js";
@@ -54,14 +55,14 @@ export function createMatch(
     impacts: [],
     rngState: seedRng(room.id),
     ended: false,
-    initialHumans: humans(room).length,
+    initialHumans: commanders(room).length,
     pendingComms: [],
     visionTick: -1,
     visionByPlayer: new Map(),
     clearedTrees: [],
   };
 
-  for (const slot of humans(room)) {
+  for (const slot of commanders(room)) {
     const pid = slot.playerId!;
     const pos = spawns.get(pid);
     if (!pos) continue;
@@ -82,6 +83,8 @@ export function createMatch(
       structure: null,
       placingType: null,
       hqId: rig.id,
+      ai: slot.ai,
+      aiNextAttackTick: slot.ai ? EASY_ATTACK_FIRST_TICKS : 0,
     });
   }
 
@@ -115,10 +118,14 @@ export function step(state: MatchState, dt = TICK_DT): void {
 export function stepMatch(state: MatchState, dt = TICK_DT): void {
   tickAutoDeploy(state);
   const n = clampGameSpeed(state.gameSpeed);
+  const impacts: ImpactView[] = [];
   for (let i = 0; i < n; i++) {
     step(state, dt);
+    impacts.push(...state.impacts);
     if (state.ended) break;
   }
+  state.impacts = impacts;
+  tickAi(state);
 }
 
 function reapDead(state: MatchState): void {

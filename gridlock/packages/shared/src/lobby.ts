@@ -4,6 +4,7 @@ import {
   MIN_HUMANS_TO_START,
   MIN_SLOTS,
   SLOT_COUNT,
+  type AiDifficulty,
   type ErrorCode,
   type RoomMode,
   type RoomState,
@@ -55,6 +56,27 @@ export function emptySlot(index: number, status: SlotStatus = "open"): Slot {
   };
 }
 
+export function resetSlot(slot: Slot, status: SlotStatus): void {
+  const index = slot.index;
+  delete slot.playerId;
+  delete slot.name;
+  delete slot.ai;
+  Object.assign(slot, emptySlot(index, status));
+}
+
+export function aiPlayerId(slotIndex: number): string {
+  return `ai:${slotIndex}`;
+}
+
+export function isAiPlayerId(id: string): boolean {
+  return id.startsWith("ai:");
+}
+
+export function aiLabel(difficulty: AiDifficulty = "easy"): string {
+  if (difficulty === "easy") return "Easy CPU";
+  return "CPU";
+}
+
 export function createRoom(opts: {
   id: string;
   hostId: string;
@@ -65,7 +87,7 @@ export function createRoom(opts: {
   now?: number;
 }): LobbyResult<RoomState> {
   const mode: RoomMode = opts.mode === "skirmish" ? "skirmish" : "network";
-  const maxSlots = mode === "skirmish" ? 1 : clampMaxSlots(opts.maxSlots);
+  const maxSlots = clampMaxSlots(opts.maxSlots);
   if (!getMap(opts.mapId)) return fail("no_map", "Unknown map.");
   const slots = Array.from({ length: SLOT_COUNT }, (_, i) =>
     emptySlot(i, i === 0 ? "human" : i < maxSlots ? "open" : "closed"),
@@ -99,9 +121,14 @@ export function humans(room: RoomState): Slot[] {
   return room.slots.filter((s) => s.status === "human" && s.playerId);
 }
 
+/** Humans and CPU seats that take a spawn. */
+export function commanders(room: RoomState): Slot[] {
+  return room.slots.filter((s) => (s.status === "human" || s.status === "ai") && s.playerId);
+}
+
 export function usedColors(room: RoomState, exceptPlayerId?: string): Set<number> {
   const set = new Set<number>();
-  for (const s of humans(room)) {
+  for (const s of commanders(room)) {
     if (exceptPlayerId && s.playerId === exceptPlayerId) continue;
     set.add(s.colorId);
   }
@@ -110,7 +137,7 @@ export function usedColors(room: RoomState, exceptPlayerId?: string): Set<number
 
 export function usedSpawns(room: RoomState, exceptPlayerId?: string): Set<number> {
   const set = new Set<number>();
-  for (const s of humans(room)) {
+  for (const s of commanders(room)) {
     if (exceptPlayerId && s.playerId === exceptPlayerId) continue;
     if (s.spawnId > 0) set.add(s.spawnId);
   }
@@ -151,10 +178,7 @@ export function joinRoom(room: RoomState, playerId: string, name: string): Lobby
 
 export function leaveRoom(room: RoomState, playerId: string): { emptied: boolean; hostLeft: boolean } {
   const slot = findPlayerSlot(room, playerId);
-  if (slot) {
-    const index = slot.index;
-    Object.assign(slot, emptySlot(index, "open"));
-  }
+  if (slot) resetSlot(slot, "open");
   const hostLeft = room.hostId === playerId;
   const emptied = humans(room).length === 0 || hostLeft;
   return { emptied, hostLeft };
@@ -203,37 +227,96 @@ export function hostSlot(
   room: RoomState,
   hostId: string,
   slotIndex: number,
-  action: { status?: SlotStatus; kick?: boolean },
+  action: {
+    status?: SlotStatus;
+    kick?: boolean;
+    colorId?: number;
+    team?: number;
+    spawnId?: number;
+  },
 ): LobbyResult<void> {
   if (room.hostId !== hostId) return fail("not_host", "Only the host can do that.");
   if (room.phase !== "lobby") return fail("started", "Match already started.");
   const slot = room.slots[slotIndex];
   if (!slot) return fail("bad_slot", "No such slot.");
 
-  if (action.kick || action.status === "closed" || action.status === "open") {
+  if (action.kick || action.status === "closed" || action.status === "open" || action.status === "ai") {
     if (slot.playerId === hostId) return fail("bad_slot", "Host cannot kick or close their own slot.");
   }
-  if (room.mode === "skirmish" && (action.status === "open" || action.kick)) {
-    return fail("closed", "Skirmish is single-player.");
+  if (room.mode === "skirmish" && action.status === "open") {
+    return fail("closed", "Skirmish has no human joiners. Add a CPU instead.");
   }
 
   if (action.kick && slot.playerId) {
-    Object.assign(slot, emptySlot(slot.index, "open"));
+    const vacant: SlotStatus = room.mode === "skirmish" ? "closed" : "open";
+    resetSlot(slot, vacant);
   }
 
   if (action.status === "closed") {
-    Object.assign(slot, emptySlot(slot.index, "closed"));
-    room.maxSlots = Math.max(MIN_SLOTS, humans(room).length + room.slots.filter((s) => s.status === "open").length);
+    resetSlot(slot, "closed");
   } else if (action.status === "open") {
     if (slot.status === "human") return fail("bad_slot", "Kick the player first.");
-    slot.status = "open";
-    room.maxSlots = Math.min(
-      MAX_SLOTS,
-      humans(room).length + room.slots.filter((s) => s.status === "open").length,
-    );
+    resetSlot(slot, "open");
+  } else if (action.status === "ai") {
+    if (slot.status === "human") return fail("bad_slot", "Kick the player first.");
+    fillAiSlot(room, slot, "easy");
   }
 
+  if (slot.status === "ai") {
+    const patched = patchAiSeat(room, slot, action);
+    if (!patched.ok) return patched;
+  }
+
+  syncMaxSlots(room);
   return okVoid();
+}
+
+function fillAiSlot(room: RoomState, slot: Slot, difficulty: AiDifficulty): void {
+  slot.status = "ai";
+  slot.playerId = aiPlayerId(slot.index);
+  slot.name = aiLabel(difficulty);
+  slot.ai = difficulty;
+  slot.ready = true;
+  slot.team = 0;
+  slot.spawnId = 0;
+  slot.colorId = firstFreeColor(room, slot.playerId);
+}
+
+function patchAiSeat(
+  room: RoomState,
+  slot: Slot,
+  patch: { colorId?: number; team?: number; spawnId?: number },
+): LobbyResult<void> {
+  if (patch.colorId !== undefined) {
+    if (!COLORS.some((c) => c.id === patch.colorId)) return fail("bad_payload", "Invalid color.");
+    if (usedColors(room, slot.playerId).has(patch.colorId)) {
+      return fail("color_taken", "That color is taken.");
+    }
+    slot.colorId = patch.colorId;
+  }
+  if (patch.team !== undefined) {
+    if (patch.team < 0 || patch.team > 4) return fail("bad_payload", "Team must be 0 (FFA) or 1–4.");
+    slot.team = patch.team;
+  }
+  if (patch.spawnId !== undefined) {
+    if (patch.spawnId < 0 || patch.spawnId > SLOT_COUNT) {
+      return fail("bad_payload", "Invalid spawn.");
+    }
+    const map = getMap(room.mapId);
+    if (map && patch.spawnId > 0 && !map.spawns.some((s) => s.id === patch.spawnId)) {
+      return fail("bad_payload", "Spawn does not exist on this map.");
+    }
+    if (patch.spawnId > 0 && usedSpawns(room, slot.playerId).has(patch.spawnId)) {
+      return fail("spawn_taken", "That start position is taken.");
+    }
+    slot.spawnId = patch.spawnId;
+  }
+  return okVoid();
+}
+
+function syncMaxSlots(room: RoomState): void {
+  const filled = commanders(room).length + room.slots.filter((s) => s.status === "open").length;
+  room.maxSlots = Math.max(MIN_SLOTS, Math.min(MAX_SLOTS, filled));
 }
 
 export function setMap(room: RoomState, hostId: string, mapId: string): LobbyResult<void> {
@@ -274,7 +357,7 @@ export function startPreconditions(room: RoomState): LobbyResult<void> {
 export function resolveSpawns(room: RoomState): Map<string, { spawnId: number; x: number; y: number }> {
   const map = getMap(room.mapId);
   if (!map) throw new Error("map missing");
-  const filled = humans(room).slice().sort((a, b) => a.index - b.index);
+  const filled = commanders(room).slice().sort((a, b) => a.index - b.index);
   const remaining = map.spawns.map((s) => s.id).sort((a, b) => a - b);
   const assigned = new Map<number, Slot>();
 

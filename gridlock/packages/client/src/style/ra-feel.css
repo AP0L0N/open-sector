@@ -295,6 +295,7 @@ input[type="range"] { padding: 0; }
 
 .roster tr.is-you td { background: #24160f; }
 .roster tr.is-closed td { color: var(--muted); }
+.roster tr.is-ai td { background: #16120e; }
 
 .swatches {
   display: flex;

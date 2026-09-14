@@ -58,7 +58,9 @@ function drawPreview(canvas: HTMLCanvasElement, mapId: string, slots: Slot[]): v
     ctx.fill();
   }
   for (const spawn of map.spawns) {
-    const occupant = slots.find((s) => s.status === "human" && s.spawnId === spawn.id);
+    const occupant = slots.find(
+      (s) => (s.status === "human" || s.status === "ai") && s.spawnId === spawn.id,
+    );
     const iso = worldToIso((spawn.x + 0.5) * map.tileSize, (spawn.y + 0.5) * map.tileSize, map.tileSize);
     const p = to({ x: iso.x, y: iso.y - isoLift(heightAt(map, spawn.x, spawn.y)) });
     ctx.fillStyle = occupant ? colorHex(occupant.colorId) : "#e8b84a";
@@ -97,7 +99,7 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
   const thead = el("thead");
   const hr = el("tr");
   const headers = skirmish
-    ? ["#", "Name", "Color", "Team", "Start"]
+    ? ["#", "Name", "Color", "Team", "Start", ""]
     : ["#", "Name", "Color", "Team", "Start", "Ready", ""];
   for (const h of headers) {
     hr.append(el("th", { text: h }));
@@ -106,22 +108,36 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
   table.append(thead);
   const tbody = el("tbody");
 
+  const occupied = (s: Slot) => s.status === "human" || s.status === "ai";
+  const tinyBtn = (text: string, ghost: boolean, onClick: () => void): HTMLButtonElement => {
+    const b = el("button", {
+      class: ghost ? "btn btn-ghost" : "btn",
+      text,
+      attrs: { type: "button" },
+    });
+    b.style.padding = "4px 8px";
+    b.style.fontSize = "0.75rem";
+    b.addEventListener("click", onClick);
+    return b;
+  };
+
   for (const slot of room.slots) {
-    if (skirmish && slot.status !== "human") continue;
     const tr = el("tr");
     if (slot.playerId === you) tr.classList.add("is-you");
     if (slot.status === "closed") tr.classList.add("is-closed");
+    if (slot.status === "ai") tr.classList.add("is-ai");
     tr.append(el("td", { class: "mono", text: String(slot.index + 1) }));
 
     let nameText = "OPEN";
     if (slot.status === "closed") nameText = "CLOSED";
     if (slot.status === "human") nameText = slot.name ?? "Commander";
+    if (slot.status === "ai") nameText = slot.name ?? "Easy CPU";
     tr.append(el("td", { text: nameText }));
 
     const colorTd = el("td");
-    if (slot.status === "human") {
+    if (occupied(slot)) {
       const row = el("div", { class: "swatches" });
-      const mine = slot.playerId === you;
+      const canEdit = slot.playerId === you || (isHost && slot.status === "ai");
       for (const c of COLORS) {
         const b = el("button", {
           class: "swatch",
@@ -131,8 +147,14 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
         if (slot.colorId === c.id) b.classList.add("is-mine");
         const taken = takenColors.has(c.id) && slot.colorId !== c.id;
         if (taken) b.classList.add("is-taken");
-        if (mine && !taken) {
-          b.addEventListener("click", () => ctx.net.send({ type: "slot.update", colorId: c.id }));
+        if (canEdit && !taken) {
+          b.addEventListener("click", () => {
+            if (slot.status === "ai") {
+              ctx.net.send({ type: "slot.host", slotIndex: slot.index, colorId: c.id });
+            } else {
+              ctx.net.send({ type: "slot.update", colorId: c.id });
+            }
+          });
         } else {
           b.disabled = true;
         }
@@ -143,7 +165,7 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
     tr.append(colorTd);
 
     const teamTd = el("td");
-    if (slot.status === "human") {
+    if (occupied(slot)) {
       const sel = el("select");
       const labels = ["FFA", "Team 1", "Team 2", "Team 3", "Team 4"];
       labels.forEach((label, i) => {
@@ -151,16 +173,22 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
         if (slot.team === i) o.selected = true;
         sel.append(o);
       });
-      sel.disabled = slot.playerId !== you;
-      sel.addEventListener("change", () =>
-        ctx.net.send({ type: "slot.update", team: Number(sel.value) }),
-      );
+      const canEdit = slot.playerId === you || (isHost && slot.status === "ai");
+      sel.disabled = !canEdit;
+      sel.addEventListener("change", () => {
+        const team = Number(sel.value);
+        if (slot.status === "ai") {
+          ctx.net.send({ type: "slot.host", slotIndex: slot.index, team });
+        } else {
+          ctx.net.send({ type: "slot.update", team });
+        }
+      });
       teamTd.append(sel);
     }
     tr.append(teamTd);
 
     const spawnTd = el("td");
-    if (slot.status === "human") {
+    if (occupied(slot)) {
       const sel = el("select");
       const rnd = el("option", { text: "Random", attrs: { value: "0" } });
       if (slot.spawnId === 0) rnd.selected = true;
@@ -175,10 +203,16 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
         if (slot.spawnId === i) o.selected = true;
         sel.append(o);
       }
-      sel.disabled = slot.playerId !== you;
-      sel.addEventListener("change", () =>
-        ctx.net.send({ type: "slot.update", spawnId: Number(sel.value) }),
-      );
+      const canEdit = slot.playerId === you || (isHost && slot.status === "ai");
+      sel.disabled = !canEdit;
+      sel.addEventListener("change", () => {
+        const spawnId = Number(sel.value);
+        if (slot.status === "ai") {
+          ctx.net.send({ type: "slot.host", slotIndex: slot.index, spawnId });
+        } else {
+          ctx.net.send({ type: "slot.update", spawnId });
+        }
+      });
       spawnTd.append(sel);
     }
     tr.append(spawnTd);
@@ -195,37 +229,48 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
         } else {
           readyTd.append(lamp);
         }
+      } else if (slot.status === "ai") {
+        readyTd.append(el("span", { class: "lamp on" }));
       }
       tr.append(readyTd);
-
-      const act = el("td");
-      if (isHost && slot.playerId && slot.playerId !== you) {
-        const kick = el("button", { class: "btn", text: "Kick", attrs: { type: "button" } });
-        kick.style.padding = "4px 8px";
-        kick.style.fontSize = "0.75rem";
-        kick.addEventListener("click", () =>
-          ctx.net.send({ type: "slot.host", slotIndex: slot.index, kick: true }),
-        );
-        act.append(kick);
-      } else if (isHost && slot.status !== "human" && slot.playerId !== you) {
-        const toggle = el("button", {
-          class: "btn btn-ghost",
-          text: slot.status === "closed" ? "Open" : "Close",
-          attrs: { type: "button" },
-        });
-        toggle.style.padding = "4px 8px";
-        toggle.style.fontSize = "0.75rem";
-        toggle.addEventListener("click", () =>
-          ctx.net.send({
-            type: "slot.host",
-            slotIndex: slot.index,
-            status: slot.status === "closed" ? "open" : "closed",
-          }),
-        );
-        act.append(toggle);
-      }
-      tr.append(act);
     }
+
+    const act = el("td");
+    act.style.whiteSpace = "nowrap";
+    act.style.display = "flex";
+    act.style.gap = "4px";
+    act.style.alignItems = "center";
+    if (isHost && slot.status === "ai") {
+      act.append(
+        tinyBtn("Remove", false, () =>
+          ctx.net.send({ type: "slot.host", slotIndex: slot.index, kick: true }),
+        ),
+      );
+    } else if (isHost && slot.status === "human" && slot.playerId && slot.playerId !== you) {
+      act.append(
+        tinyBtn("Kick", false, () =>
+          ctx.net.send({ type: "slot.host", slotIndex: slot.index, kick: true }),
+        ),
+      );
+    } else if (isHost && slot.status !== "human") {
+      act.append(
+        tinyBtn("Easy", false, () =>
+          ctx.net.send({ type: "slot.host", slotIndex: slot.index, status: "ai" }),
+        ),
+      );
+      if (!skirmish) {
+        act.append(
+          tinyBtn(slot.status === "closed" ? "Open" : "Close", true, () =>
+            ctx.net.send({
+              type: "slot.host",
+              slotIndex: slot.index,
+              status: slot.status === "closed" ? "open" : "closed",
+            }),
+          ),
+        );
+      }
+    }
+    tr.append(act);
     tbody.append(tr);
   }
   table.append(tbody);
@@ -246,13 +291,14 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
   }
   const preview = el("canvas");
   brief.append(preview);
-  const humans = room.slots.filter((s) => s.status === "human").length;
+  const filled = room.slots.filter((s) => s.status === "human" || s.status === "ai").length;
+  const cpus = room.slots.filter((s) => s.status === "ai").length;
   brief.append(
     el("p", {
       class: "tiny",
-      text: skirmish ? "Single commander" : `${humans} / ${room.maxSlots} commanders`,
+      text: `${filled} / ${room.maxSlots} commanders${cpus ? ` · ${cpus} CPU` : ""}`,
     }),
-    el("p", { class: "tiny", text: "AI — next plan" }),
+    el("p", { class: "tiny", text: "Host: Easy on an open slot for a harvesting CPU that pushes now and then." }),
   );
   if (!skirmish) {
     const codeRow = el("div", { class: "code-row" });

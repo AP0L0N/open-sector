@@ -181,6 +181,12 @@ export const HANDGUN = {
 } as const;
 
 /**
+ * Rifle / coaxial MG. Fast enough to cross max range in under a tick so the
+ * round itself is not a visible tracer — sparks only after an armor bounce.
+ */
+export const SMALL_ARMS_SPEED = 4000;
+
+/**
  * Coaxial MG under the Warden turret. Same reach as the 75mm; the cone
  * opens hard with distance. Rapid fire, own belt, heat-stops a dump.
  */
@@ -192,7 +198,7 @@ export const TANK_MG = {
   /** Quadratic distance falloff for aimAngle. */
   spreadPower: 2,
   cooldown: 0.1,
-  projectileSpeed: 460,
+  projectileSpeed: SMALL_ARMS_SPEED,
   ammo: 250,
   heatPerShot: 0.05,
   heatMax: 1,
@@ -363,7 +369,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     sightTiles: t(12),
     cooldown: 0.9,
     damage: 12,
-    projectileSpeed: 420,
+    projectileSpeed: SMALL_ARMS_SPEED,
     ...UNARMED,
     penetration: 6,
     caliber: 8,
