@@ -190,6 +190,8 @@ export interface CoverField {
   terrain: ArrayLike<number>;
   occupy: ArrayLike<number>;
   ignoreOccupyId?: number;
+  /** True when this tile is inside a smoke screen. */
+  smokeAt?: (x: number, y: number) => boolean;
 }
 
 /**
@@ -234,6 +236,7 @@ export function hasFullLos(
     if (x === x0 && y === y0) continue;
     if (x === x1 && y === y1) return true;
     if (hardCoverAt(cover.terrain, cover.occupy, width, height, x, y, ignore)) return false;
+    if (cover.smokeAt?.(x, y)) return false;
     if (x >= 0 && y >= 0 && x < width && y < height && cover.terrain[y * width + x] === TILE_TREE) {
       trees += 1;
       if (trees > TREE_LOS_THROUGH) return false;

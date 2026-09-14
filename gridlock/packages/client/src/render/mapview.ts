@@ -1,15 +1,21 @@
 import {
   catalog,
   clampIsoCamera,
+  cloudScale,
+  fires,
   isCivilianType,
-  isGarrisonable,
   isInfantryType,
+  isSmokeShell,
+  isStance,
   colorHex,
   entityOnMask,
   facingToIso,
   getMap,
   TILE_EMPTY,
   TILE_TREE,
+  TILE_WATER,
+  garrisonWindowLift,
+  isGarrisonable,
   immobilized,
   heightAt,
   isoDepth,
@@ -42,16 +48,21 @@ import {
   drawGroundMiss,
   drawKineticImpact,
   drawMuzzleBlast,
+  drawWindowMuzzle,
   drawRicochetSparks,
+  drawShellTracer,
   fxFrameAt,
   fxLifeMs,
   isShellCaliber,
 } from "./fx.js";
 import {
   UNIT_VISUAL_SCALE,
+  TREE_OAK,
+  TREE_PINE,
   buildingSpriteFor,
   critIcon,
   drawBuildingSprite,
+  drawPropSprite,
   drawUnitSprite,
   spriteFor,
   spriteReady,
@@ -66,8 +77,11 @@ import {
   fillElevatedTile,
   restampMini,
   restampTiles,
+  resetTerrainCache,
+  treePropKind,
   updateMiniScrap,
   updateScrap,
+  whenTerrainArtReady,
   type MiniBake,
   type TerrainBake,
 } from "./terrain.js";
@@ -155,11 +169,17 @@ export class MapView {
     at: number;
     caliber?: number;
     blast?: boolean;
+    lift?: number;
+    window?: boolean;
+    x1?: number;
+    y1?: number;
+    shell?: string;
   }[] = [];
   private seenShots = new Set<number>();
   selected = new Set<number>();
   placeMode = false;
   attackMoveMode = false;
+  forceAttackMode = false;
   onSelect: (ids: number[]) => void = () => {};
   onCommand: (msg: ClientMessage) => void = () => {};
   onPlaceMode: () => void = () => {};
@@ -168,7 +188,21 @@ export class MapView {
   setAttackMoveMode(on: boolean): void {
     if (this.attackMoveMode === on) return;
     this.attackMoveMode = on;
-    if (on) this.placeMode = false;
+    if (on) {
+      this.placeMode = false;
+      this.forceAttackMode = false;
+    }
+    this.onAttackMoveMode();
+    this.onPlaceMode();
+  }
+
+  setForceAttackMode(on: boolean): void {
+    if (this.forceAttackMode === on) return;
+    this.forceAttackMode = on;
+    if (on) {
+      this.placeMode = false;
+      this.attackMoveMode = false;
+    }
     this.onAttackMoveMode();
     this.onPlaceMode();
   }
@@ -186,6 +220,13 @@ export class MapView {
     this.syncAtlases();
     this.revealFrom(match);
     this.bind();
+    whenTerrainArtReady(() => {
+      if (this.destroyed) return;
+      resetTerrainCache();
+      this.terrain = null;
+      this.miniTerrain = null;
+      this.syncAtlases();
+    });
     this.raf = requestAnimationFrame((t) => this.frame(t));
   }
 
@@ -200,22 +241,77 @@ export class MapView {
       this.lastHp.set(e.id, e.hp);
     }
     for (const i of match.impacts ?? []) {
-      if (!this.fx.some((f) => f.id === i.id)) {
-        this.fx.push({ ...i, at: now });
-        if (i.kind === "kill" && i.blast) {
-          this.fx.push({ id: i.id + 7_000_000, kind: "smoke", x: i.x, y: i.y, vx: 0, vy: 0, at: now });
-        }
-        if (i.kind === "crush") {
-          this.fx.push({ id: i.id + 7_000_000, kind: "smoke", x: i.x, y: i.y, vx: 0, vy: 0, at: now });
-        }
+      if (i.kind === "crush") continue;
+      if (this.fx.some((f) => f.id === i.id)) continue;
+      this.fx.push({ ...i, at: now });
+      if (i.kind === "kill" && i.blast) {
+        this.fx.push({ id: i.id + 7_000_000, kind: "smoke", x: i.x, y: i.y, vx: 0, vy: 0, at: now });
       }
     }
     if (this.seenShots.size > 400) this.seenShots.clear();
+    const flyingFrom = new Set(
+      match.projectiles.filter((p) => isShellCaliber(p.caliber)).map((p) => p.fromId),
+    );
+    for (const i of match.impacts ?? []) {
+      if (!isShellCaliber(i.caliber) || i.fromId == null || flyingFrom.has(i.fromId)) continue;
+      if (this.fx.some((f) => f.id === i.id + 9_000_000)) continue;
+      const shooter = match.entities.find((e) => e.id === i.fromId);
+      const sp = Math.hypot(i.vx, i.vy) || 1;
+      const x0 = shooter?.x ?? i.x - (i.vx / sp) * 48;
+      const y0 = shooter?.y ?? i.y - (i.vy / sp) * 48;
+      this.fx.push({
+        id: i.id + 9_000_000,
+        kind: "tracer",
+        x: x0,
+        y: y0,
+        vx: i.vx,
+        vy: i.vy,
+        x1: i.x,
+        y1: i.y,
+        at: now,
+        caliber: i.caliber,
+      });
+      if (shooter && !this.fx.some((f) => f.id === i.id + 8_000_000)) {
+        const reach = catalog(shooter.type).radius * UNIT_VISUAL_SCALE + 10;
+        this.fx.push({
+          id: i.id + 8_000_000,
+          kind: "muzzle",
+          x: shooter.x + (i.vx / sp) * reach,
+          y: shooter.y + (i.vy / sp) * reach,
+          vx: i.vx,
+          vy: i.vy,
+          at: now,
+          caliber: i.caliber,
+        });
+      }
+    }
     for (const p of match.projectiles) {
-      if (p.bounced || (p.caliber ?? 0) < 40 || this.seenShots.has(p.id)) continue;
-      this.seenShots.add(p.id);
+      if (p.bounced || this.seenShots.has(p.id)) continue;
       const shooter = match.entities.find((e) => e.id === p.fromId);
+      const shell = isShellCaliber(p.caliber);
+      const fromGarrison =
+        !!shooter?.garrisonedIn || (!shooter && !shell && !!this.houseAt(p.x, p.y));
+      if (!shell && !fromGarrison) continue;
+      this.seenShots.add(p.id);
       const sp = Math.hypot(p.vx, p.vy) || 1;
+      const house = fromGarrison ? this.houseAt(p.x, p.y) ?? (shooter?.garrisonedIn
+        ? match.entities.find((e) => e.id === shooter.garrisonedIn)
+        : undefined) : undefined;
+      if (fromGarrison) {
+        this.fx.push({
+          id: p.id + 8_000_000,
+          kind: "muzzle",
+          x: p.x,
+          y: p.y,
+          vx: p.vx,
+          vy: p.vy,
+          at: now,
+          caliber: p.caliber,
+          lift: house ? garrisonWindowLift(house.type, p.id) : 22,
+          window: true,
+        });
+        continue;
+      }
       const reach = shooter ? catalog(shooter.type).radius * UNIT_VISUAL_SCALE + 10 : 16;
       this.fx.push({
         id: p.id + 8_000_000,
@@ -232,6 +328,7 @@ export class MapView {
       if (!match.entities.some((e) => e.id === id)) this.selected.delete(id);
     }
     if (this.attackMoveMode && this.ownSelectedIds().length === 0) this.setAttackMoveMode(false);
+    if (this.forceAttackMode && this.ownSelectedIds().length === 0) this.setForceAttackMode(false);
     const placing = this.placeMode;
     if (!this.readyBuilding()) this.placeMode = false;
     if (this.placeMode !== placing) this.onPlaceMode();
@@ -290,8 +387,7 @@ export class MapView {
   }
 
   private revealFrom(match: MatchSnapshot): void {
-    const map = getMap(match.mapId);
-    if (!map) return;
+    const map = this.map();
     const n = map.width * map.height;
     if (!this.explored || this.explored.length !== n || this.exploredMapId !== match.mapId) {
       this.explored = new Uint8Array(n);
@@ -437,14 +533,19 @@ export class MapView {
       }
       if (e.button === 2) {
         e.preventDefault();
-        if (this.attackMoveMode) {
+        if (this.attackMoveMode || this.forceAttackMode) {
           this.setAttackMoveMode(false);
+          this.setForceAttackMode(false);
           return;
         }
         this.onRight(mx, my);
         return;
       }
       if (e.button === 0) {
+        if (this.forceAttackMode) {
+          this.commitForceAttack(mx, my);
+          return;
+        }
         if (this.attackMoveMode) {
           this.commitAttackMove(mx, my);
           return;
@@ -554,6 +655,7 @@ export class MapView {
     if (k === "x") {
       e.preventDefault();
       this.setAttackMoveMode(false);
+      this.setForceAttackMode(false);
       const ids = [...this.selected].filter((id) => {
         const ent = this.curr.entities.find((x) => x.id === id);
         return !!ent && ent.ownerId === this.curr.youPlayerId && !ent.wreck && ent.kind === "unit";
@@ -567,10 +669,27 @@ export class MapView {
       if (ids.length) this.setAttackMoveMode(!this.attackMoveMode);
       return;
     }
+    if (k === "t") {
+      e.preventDefault();
+      const ids = this.ownSelectedIds();
+      if (ids.length) this.setForceAttackMode(!this.forceAttackMode);
+      return;
+    }
+    if (k === "c") {
+      e.preventDefault();
+      this.stanceHotkey("crouch");
+      return;
+    }
+    if (k === "z") {
+      e.preventDefault();
+      this.stanceHotkey("crawl");
+      return;
+    }
     if (k === "escape") {
-      if (this.attackMoveMode) {
+      if (this.attackMoveMode || this.forceAttackMode) {
         e.preventDefault();
         this.setAttackMoveMode(false);
+        this.setForceAttackMode(false);
       }
     }
   };
@@ -600,6 +719,22 @@ export class MapView {
   private useSpecial(e: EntityView): void {
     if (!this.canSpecial(e)) return;
     if (specialOf(e.type) === "deploy") this.onCommand({ type: "cmd.deploy", id: e.id });
+  }
+
+  private stanceHotkey(want: "crouch" | "crawl"): void {
+    const you = this.curr.youPlayerId;
+    const inf = this.curr.entities.filter(
+      (e) =>
+        this.selected.has(e.id) &&
+        e.ownerId === you &&
+        !e.wreck &&
+        e.kind === "unit" &&
+        isInfantryType(e.type),
+    );
+    if (inf.length === 0) return;
+    const stance = inf.every((e) => (e.stanceOrder ?? e.stance) === want) ? "stand" : want;
+    if (!isStance(stance)) return;
+    this.onCommand({ type: "cmd.stance", ids: inf.map((e) => e.id), stance });
   }
 
   private garrisonHotkey(): void {
@@ -639,6 +774,17 @@ export class MapView {
     }
     const w = this.screenToWorld(px, py);
     this.onCommand({ type: "cmd.attackmove", ids, x: w.x, y: w.y });
+  }
+
+  private commitForceAttack(px: number, py: number): void {
+    const ids = this.ownSelectedIds().filter((id) => {
+      const ent = this.curr.entities.find((x) => x.id === id);
+      return !!ent && fires(ent.type);
+    });
+    this.setForceAttackMode(false);
+    if (ids.length === 0) return;
+    const w = this.screenToWorld(px, py);
+    this.onCommand({ type: "cmd.forceattack", ids, x: w.x, y: w.y });
   }
 
   private specialSelected(): void {
@@ -769,7 +915,7 @@ export class MapView {
     for (const e of list) {
       if (e.kind === "unit") {
         const p = this.lerpEnt(e);
-        const spr = spriteFor(e.type);
+        const spr = spriteFor(e.type, e.stance);
         if (spr) {
           const s = this.toScreen(p.x, p.y);
           const size = spr.drawSize;
@@ -869,7 +1015,7 @@ export class MapView {
     const hit = this.hit(px, py);
     const inf = own.filter((e) => e.kind === "unit" && isInfantryType(e.type));
     if (hit && isGarrisonable(hit.type) && inf.length) {
-      const held = hit.garrison?.ownerId;
+      const held = hit.garrison?.ownerId || hit.ownerId;
       if (!held || held === this.curr.youPlayerId) {
         this.onCommand({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: hit.id });
         return;
@@ -994,6 +1140,7 @@ export class MapView {
     ctx.imageSmoothingEnabled = false;
     if (bake) {
       blitTerrain(ctx, bake, this.camX, this.camY, w, h);
+      this.drawWaterShimmer();
       if (this.fog) blitAtlas(ctx, this.fog, bake.originX, bake.originY, this.camX, this.camY, w, h);
     }
     ctx.imageSmoothingEnabled = true;
@@ -1004,12 +1151,20 @@ export class MapView {
       ...this.curr.entities,
       ...[...this.ghosts.values()].filter((g) => !liveIds.has(g.id)),
     ];
-    drawList.sort((a, b) => this.depthOf(a) - this.depthOf(b));
+    const items: { z: number; run: () => void }[] = [];
     for (const e of drawList) {
       const ghost = !liveIds.has(e.id);
-      if (e.kind === "building") this.drawBuilding(e, ghost);
-      else if (!ghost && !e.garrisonedIn) this.drawUnit(e);
+      items.push({
+        z: this.depthOf(e),
+        run: () => {
+          if (e.kind === "building") this.drawBuilding(e, ghost);
+          else if (!ghost && !e.garrisonedIn) this.drawUnit(e);
+        },
+      });
     }
+    this.collectTrees(items);
+    items.sort((a, b) => a.z - b.z);
+    for (const it of items) it.run();
 
     for (const p of this.curr.projectiles) {
       const bounced = p.bounced === true;
@@ -1038,21 +1193,13 @@ export class MapView {
         ctx.fillRect(a.x - 0.5, a.y - lift - 0.5, 1.2, 1.2);
         ctx.restore();
       } else if (shell) {
-        ctx.save();
-        ctx.strokeStyle = "rgba(255, 236, 176, 0.55)";
-        ctx.lineWidth = 2;
-        ctx.lineCap = "round";
-        ctx.beginPath();
-        ctx.moveTo(a.x, a.y - lift);
-        ctx.lineTo(b.x, b.y - lift);
-        ctx.stroke();
-        ctx.fillStyle = "#fff8e4";
-        ctx.beginPath();
-        ctx.ellipse(b.x, b.y - lift, 3.1, 2.1, Math.atan2(b.y - a.y, b.x - a.x), 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        const sp = Math.hypot(p.vx, p.vy) || 1;
+        const tailLen = isSmokeShell(p.shell) ? 22 : 36;
+        const tail = this.toScreen(wx - (p.vx / sp) * tailLen, wy - (p.vy / sp) * tailLen);
+        drawShellTracer(ctx, tail.x, tail.y - lift, a.x, a.y - lift);
       }
     }
+    this.drawSmokeClouds();
     this.drawImpacts();
 
     const toPlace = this.placeMode ? this.readyBuilding() : null;
@@ -1068,6 +1215,36 @@ export class MapView {
     }
     this.drawSpecialCursor();
     this.drawAttackCursor();
+    this.drawForceCursor();
+  }
+
+  private drawForceCursor(): void {
+    if (!this.forceAttackMode || this.overControl || this.hoverSpecial) return;
+    if (this.mouseX < 0 || this.mouseY < 0) return;
+    const ctx = this.ctx;
+    const x = this.mouseX;
+    const y = this.mouseY;
+    ctx.save();
+    ctx.strokeStyle = "#e8b84a";
+    ctx.fillStyle = "#e8b84a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 10);
+    ctx.lineTo(x, y + 10);
+    ctx.moveTo(x - 10, y);
+    ctx.lineTo(x + 10, y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, y, 7, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#140e0a";
+    ctx.strokeText("FIRE", x + 12, y + 8);
+    ctx.fillText("FIRE", x + 12, y + 8);
+    ctx.restore();
   }
 
   private drawAttackCursor(): void {
@@ -1165,6 +1342,83 @@ export class MapView {
     return { cx: (n2.x + s2.x) / 2, cy: (n2.y + s2.y) / 2 };
   }
 
+  private houseAt(wx: number, wy: number): EntityView | undefined {
+    const ts = this.ts();
+    return this.curr.entities.find((e) => {
+      if (!isGarrisonable(e.type) || e.hp <= 0) return false;
+      const x0 = e.tileX * ts;
+      const y0 = e.tileY * ts;
+      const pad = ts * 2;
+      return wx >= x0 - pad && wx <= x0 + e.tileW * ts + pad && wy >= y0 - pad && wy <= y0 + e.tileH * ts + pad;
+    });
+  }
+
+  private collectTrees(items: { z: number; run: () => void }[]): void {
+    const map = this.map();
+    const vis = this.visibleTiles();
+    const ts = map.tileSize;
+    const explored = this.explored;
+    const w = map.width;
+    const cleared = new Set((this.curr.clearedTrees ?? []).map((t) => t.y * w + t.x));
+    for (let ty = vis.y0; ty <= vis.y1; ty++) {
+      for (let tx = vis.x0; tx <= vis.x1; tx++) {
+        if (cleared.has(ty * w + tx)) continue;
+        const kind = treePropKind(map, tx, ty);
+        if (!kind) continue;
+        if (explored && !explored[ty * w + tx]) continue;
+        const h = Math.imul(tx * 374761393 + ty * 668265263 + 9, 1103515245) >>> 0;
+        const pine = kind === "lone" ? h % 3 !== 1 : h % 5 === 0;
+        const drawH = kind === "lone" ? (pine ? 50 : 38) : pine ? 34 : 28;
+        const wx = (tx + 0.5) * ts;
+        const wy = (ty + 0.55) * ts;
+        const dim = !this.lit(tx, ty);
+        items.push({
+          z: isoDepth(wx, wy),
+          run: () => {
+            const p = this.toScreen(wx, wy);
+            const ctx = this.ctx;
+            ctx.save();
+            if (dim) ctx.globalAlpha = 0.48;
+            drawPropSprite(ctx, pine ? TREE_PINE : TREE_OAK, p.x, p.y, drawH, (h & 2) === 0 && !pine);
+            ctx.restore();
+          },
+        });
+      }
+    }
+  }
+
+  private drawWaterShimmer(): void {
+    const map = this.map();
+    const vis = this.visibleTiles();
+    const ctx = this.ctx;
+    const now = performance.now();
+    const pulse = 0.5 + 0.5 * Math.sin(now / 1100);
+    ctx.save();
+    ctx.globalAlpha = 0.08 + 0.07 * pulse;
+    ctx.fillStyle = "#9fd0c4";
+    const step = 4;
+    const x0 = vis.x0 - (vis.x0 % step);
+    const y0 = vis.y0 - (vis.y0 % step);
+    for (let ty = y0; ty <= vis.y1; ty += step) {
+      for (let tx = x0; tx <= vis.x1; tx += step) {
+        if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) continue;
+        if (map.tiles[ty * map.width + tx] !== TILE_WATER) continue;
+        const d = this.toScreen(tx * map.tileSize, ty * map.tileSize);
+        const e = this.toScreen((tx + step) * map.tileSize, ty * map.tileSize);
+        const s = this.toScreen((tx + step) * map.tileSize, (ty + step) * map.tileSize);
+        const west = this.toScreen(tx * map.tileSize, (ty + step) * map.tileSize);
+        ctx.beginPath();
+        ctx.moveTo(d.x, d.y);
+        ctx.lineTo(e.x, e.y);
+        ctx.lineTo(s.x, s.y);
+        ctx.lineTo(west.x, west.y);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
   private buildingLit(e: EntityView): boolean {
     for (let y = e.tileY; y < e.tileY + e.tileH; y++) {
       for (let x = e.tileX; x < e.tileX + e.tileW; x++) {
@@ -1185,7 +1439,6 @@ export class MapView {
     const elev = heightAt(this.map(), e.tileX, e.tileY);
     const hex = this.ownerColor(e);
     const dim = ghost || !this.buildingLit(e);
-    const selected = this.selected.has(e.id) && !ghost;
     const spr = buildingSpriteFor(e.type);
     let top: { cx: number; cy: number };
     if (spr && spriteReady(spr)) {
@@ -1197,16 +1450,12 @@ export class MapView {
       ctx.globalAlpha = dim ? 0.5 : 1;
       drawBuildingSprite(ctx, spr, south.x, south.y, footprintW);
       ctx.restore();
-      ctx.strokeStyle = selected ? "#e8b84a" : hex;
-      ctx.lineWidth = selected ? 2.5 : 1.6;
-      ctx.globalAlpha = dim ? 0.7 : 1;
-      this.strokeGroundRect(x, y, bw, bh, elev);
       top = { cx: south.x, cy: south.y - spr.padSouthY * (footprintW / spr.padWidth) };
     } else {
       top = this.drawIsoBox(x, y, bw, bh, ez, hex, {
         alpha: dim ? 0.5 : 1,
-        stroke: ghost ? "#2a2018" : selected ? "#e8b84a" : "#111",
-        strokeW: selected ? 2.5 : 1.5,
+        stroke: ghost ? "#2a2018" : "#111",
+        strokeW: 1.5,
         elev,
       });
       ctx.globalAlpha = dim ? 0.7 : 1;
@@ -1228,6 +1477,9 @@ export class MapView {
       this.maybeHp(e, bar.x - bw * 0.28, spr && spriteReady(spr) ? top.cy + 6 : bar.y - ez - 8, bw * 0.56);
     }
     this.drawDeployProgress(e, bar.x - bw * 0.28, bar.y + 4, bw * 0.56);
+    if (!ghost) {
+      this.drawCaptureProgress(e, bar.x - bw * 0.28, spr && spriteReady(spr) ? top.cy + 14 : bar.y - ez + 6, bw * 0.56);
+    }
     if (!ghost && (e.state === "undeploy" || e.state === "deploy")) {
       const p = e.deployProgress ?? 0;
       ctx.strokeStyle = "#fff6c8";
@@ -1265,7 +1517,7 @@ export class MapView {
   }
 
   private drawUnit(e: EntityView): void {
-    const spr = spriteFor(e.type);
+    const spr = spriteFor(e.type, e.stance);
     if (spr) {
       this.drawSpritedUnit(e, spr);
       return;
@@ -1361,19 +1613,9 @@ export class MapView {
       ctx.fillStyle = "#e8dcc4";
       ctx.fillText(name, s.x, s.y - size * def.contactY - 12);
     }
-    const engineOut = e.crits?.includes("engine") === true;
-    if (e.wreck || engineOut || (e.type === "warden" && e.hp > 0 && e.hp / e.hpMax < 0.62)) {
-      const hurt = e.wreck ? 0.85 : engineOut ? 0.7 : 1 - e.hp / e.hpMax;
+    if (e.wreck) {
       const frame = fxFrameAt(performance.now() + e.id * 90, 900, FX_SMOKE.frames, true);
-      drawFxFrame(
-        ctx,
-        FX_SMOKE,
-        frame,
-        s.x + 2,
-        s.y - size * 0.52,
-        size * (0.42 + hurt * 0.28),
-        0.45 + hurt * 0.4,
-      );
+      drawFxFrame(ctx, FX_SMOKE, frame, s.x + 2, s.y - size * 0.52, size * 0.66, 0.78);
     }
     this.maybeHp(e, s.x - size * 0.45, s.y - size * def.contactY - 2, size * 0.9);
     this.drawCrits(e, s.x + size * 0.48, s.y - size * def.contactY - 20);
@@ -1403,7 +1645,7 @@ export class MapView {
       const tip = this.toScreen(f.x + f.vx * 0.08, f.y + f.vy * 0.08);
       const dirX = tip.x - s.x;
       const dirY = tip.y - s.y;
-      const lift = f.kind === "miss" || f.kind === "puff" ? 0 : 14;
+      const lift = f.lift ?? (f.kind === "miss" || f.kind === "puff" ? 0 : 14);
       const x = s.x;
       const y = s.y - lift;
       if (f.kind === "kill" && f.blast) {
@@ -1424,24 +1666,85 @@ export class MapView {
           caliber: f.caliber,
         });
       } else if (f.kind === "muzzle") {
-        drawMuzzleBlast(ctx, x, y, dirX, dirY, t, f.caliber);
+        if (f.window) drawWindowMuzzle(ctx, x, y, dirX, dirY, t, f.caliber);
+        else drawMuzzleBlast(ctx, x, y, dirX, dirY, t, f.caliber);
       } else if (f.kind === "smoke") {
         const frame = fxFrameAt(age, 700, FX_SMOKE.frames, true);
         drawFxFrame(ctx, FX_SMOKE, frame, x, y - 8 - t * 10, 34 + t * 10, 0.85 - t * 0.7);
       } else if (f.kind === "puff") {
         const frame = fxFrameAt(age, life, FX_SMOKE.frames, false);
-        const tiny = isShellCaliber(f.caliber) ? 16 : 11;
-        drawFxFrame(ctx, FX_SMOKE, frame, s.x, s.y - 3 - t * 7, tiny + t * 5, 0.8 - t * 0.7);
+        const smokeBurst = f.shell === "smoke";
+        const tiny = smokeBurst ? 42 : isShellCaliber(f.caliber) ? 16 : 11;
+        drawFxFrame(
+          ctx,
+          FX_SMOKE,
+          frame,
+          s.x,
+          s.y - 3 - t * (smokeBurst ? 14 : 7),
+          tiny + t * (smokeBurst ? 28 : 5),
+          (smokeBurst ? 0.9 : 0.8) - t * 0.7,
+        );
+      } else if (f.kind === "tracer" && f.x1 != null && f.y1 != null) {
+        const a = this.toScreen(f.x, f.y);
+        const b = this.toScreen(f.x1, f.y1);
+        const headT = Math.min(1, t / 0.55);
+        const hx = a.x + (b.x - a.x) * headT;
+        const hy = a.y + (b.y - a.y) * headT - 10;
+        const tx = a.x - 10 * (1 - headT);
+        const ty = a.y - 10;
+        drawShellTracer(ctx, tx, ty, hx, hy, t);
       } else if (f.kind === "ricochet") {
         drawRicochetSparks(ctx, x, y, dirX, dirY, t, f.id, f.caliber);
-      } else if (f.kind === "crush" || f.kind === "puff") {
-        const frame = fxFrameAt(age, life, FX_SMOKE.frames, false);
-        drawFxFrame(ctx, FX_SMOKE, frame, x, y - 4 - t * 8, 26 + t * 18, 0.9 - t * 0.8);
       } else if (f.kind === "miss") {
         drawGroundMiss(ctx, s.x, s.y, t, f.id, f.caliber);
       }
     }
     this.fx = keep;
+  }
+
+  private drawSmokeClouds(): void {
+    const clouds = this.curr.smoke ?? [];
+    if (clouds.length === 0) return;
+    const map = this.map();
+    const ts = map.tileSize;
+    const ctx = this.ctx;
+    const now = performance.now();
+    for (const c of clouds) {
+      const fade = cloudScale(c);
+      const along = c.halfAlong * fade * ts;
+      const across = c.halfAcross * fade * ts;
+      const cx = worldToTile(c.x, ts);
+      const cy = worldToTile(c.y, ts);
+      if (!(this.explored?.[cy * map.width + cx] || this.lit(cx, cy))) continue;
+      const ground = this.toScreen(c.x, c.y);
+      ctx.save();
+      ctx.globalAlpha = 0.22 * fade;
+      ctx.fillStyle = "#6a6458";
+      ctx.beginPath();
+      ctx.ellipse(ground.x, ground.y, along * 1.15, Math.max(10, across * 0.55), 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      const puffs = 11;
+      for (let i = 0; i < puffs; i++) {
+        const u = (i / (puffs - 1)) * 2 - 1;
+        const wx = c.x + c.ux * u * along * 0.92;
+        const wy = c.y + c.uy * u * along * 0.92;
+        const perpX = -c.uy;
+        const perpY = c.ux;
+        const wobble = Math.sin(c.id * 0.7 + i * 1.7) * across * 0.55;
+        const px = wx + perpX * wobble;
+        const py = wy + perpY * wobble;
+        const tx = worldToTile(px, ts);
+        const ty = worldToTile(py, ts);
+        if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) continue;
+        if (!this.explored?.[ty * map.width + tx] && !this.lit(tx, ty)) continue;
+        const s = this.toScreen(px, py);
+        const frame = fxFrameAt(now + c.id * 40 + i * 110, 1400, FX_SMOKE.frames, true);
+        const size = 38 + fade * 22 + Math.abs(u) * 8;
+        const alpha = (0.42 + fade * 0.38) * (1 - Math.abs(u) * 0.18);
+        drawFxFrame(ctx, FX_SMOKE, frame, s.x, s.y - 10 - fade * 8, size, alpha);
+      }
+    }
   }
 
   private drawDeployProgress(e: EntityView, x: number, y: number, w: number): void {
@@ -1462,6 +1765,29 @@ export class MapView {
     ctx.fillText(`${label} ${Math.round(p * 100)}%`, x + w / 2, y + 16);
   }
 
+  private drawCaptureProgress(e: EntityView, x: number, y: number, w: number): void {
+    const cap = e.capture;
+    if (!cap || cap.progress <= 0) return;
+    const p = Math.max(0, Math.min(1, cap.progress));
+    const holder = this.curr.players.find((pl) => pl.playerId === cap.ownerId);
+    const fill = colorHex(holder?.colorId ?? 0);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = 0.95;
+    ctx.fillStyle = "rgba(8, 6, 4, 0.78)";
+    ctx.fillRect(x, y + 2, w, 5);
+    ctx.fillStyle = fill;
+    ctx.fillRect(x, y + 2, w * p, 5);
+    ctx.strokeStyle = "#000";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y + 2, w, 5);
+    ctx.font = "10px 'Share Tech Mono', monospace";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#e8dcc4";
+    ctx.fillText(`CAPTURE ${Math.round(p * 100)}%`, x + w / 2, y + 16);
+    ctx.restore();
+  }
+
   private hoverSpecial = false;
 
   private syncCursor(): void {
@@ -1474,7 +1800,7 @@ export class MapView {
       }
     }
     this.hoverSpecial = special;
-    const attack = this.attackMoveMode && !this.overControl;
+    const attack = (this.attackMoveMode || this.forceAttackMode) && !this.overControl;
     this.canvas.classList.toggle("cursor-special", special);
     this.canvas.classList.toggle("cursor-attack", attack && !special);
     this.canvas.style.cursor = special || attack ? "none" : "";
@@ -1533,16 +1859,27 @@ export class MapView {
     const selected = this.selected.has(e.id);
     const damaged = (this.damagedUntil.get(e.id) ?? 0) > now;
     const unit = e.kind === "unit" && !e.wreck;
-    if (!(unit || e.wreck || selected || damaged)) return;
+    const capturing = (e.capture?.progress ?? 0) > 0;
+    if (!(unit || e.wreck || selected || damaged || capturing)) return;
     const ratio = Math.max(0, Math.min(1, e.hp / e.hpMax));
     const barW = Math.max(8, w * 0.4);
     const barH = 2;
     const bx = x + (w - barW) / 2;
     const by = y - 3;
-    const alpha = selected ? 0.58 : damaged || e.wreck ? 0.42 : 0.28;
+    const alpha = selected ? (e.kind === "building" ? 0.82 : 0.58) : damaged || e.wreck ? 0.42 : 0.28;
     const fill = ratio > 0.45 ? "#6aaa58" : ratio > 0.2 ? "#b8923c" : "#b45448";
     const ctx = this.ctx;
     ctx.save();
+    if (selected && e.kind === "building") {
+      const cx = bx + barW / 2;
+      const cy = by + barH / 2;
+      ctx.strokeStyle = "#e8b84a";
+      ctx.lineWidth = 1.35;
+      ctx.globalAlpha = 0.92;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, barW * 0.62 + 5, 6.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.globalAlpha = alpha;
     ctx.fillStyle = "rgba(8, 6, 4, 0.72)";
     ctx.fillRect(bx, by, barW, barH);
@@ -1553,7 +1890,7 @@ export class MapView {
   }
 
   private ownerColor(e: EntityView): string {
-    if (isCivilianType(e.type)) {
+    if (isCivilianType(e.type) && !e.ownerId) {
       const occ = e.garrison?.ownerId;
       if (occ) {
         const holder = this.curr.players.find((pl) => pl.playerId === occ);

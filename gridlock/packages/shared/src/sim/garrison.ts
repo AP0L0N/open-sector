@@ -5,7 +5,7 @@ import {
   NEUTRAL_OWNER,
 } from "../catalog.js";
 import { nextRand } from "./rng.js";
-import { allies, chebyshev, footprint, inBounds, nearestWalkable, tileCenter, worldToTile } from "./geo.js";
+import { adjacentToBuilding, allies, inBounds, nearestWalkable, tileCenter, worldToTile } from "./geo.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -31,17 +31,11 @@ export function canGarrison(state: MatchState, unit: Entity, house: Entity): str
   if (!isGarrisonable(house.type) || house.kind !== "building" || house.hp <= 0) return "Cannot enter that.";
   const occ = garrisonOwner(state, house);
   if (occ && occ !== NEUTRAL_OWNER && !allies(state, unit.ownerId, occ)) return "Held by the enemy.";
+  if (house.ownerId && house.ownerId !== NEUTRAL_OWNER && !allies(state, unit.ownerId, house.ownerId)) {
+    return "Held by the enemy.";
+  }
   if (garrisonSpace(state, house) <= 0) return "Building is full.";
   return null;
-}
-
-function adjacentToHouse(state: MatchState, unit: Entity, house: Entity): boolean {
-  const tx = worldToTile(unit.x, state.tileSize);
-  const ty = worldToTile(unit.y, state.tileSize);
-  for (const t of footprint(house.tileX, house.tileY, house.tileW, house.tileH)) {
-    if (chebyshev(tx, ty, t.x, t.y) <= 1) return true;
-  }
-  return false;
 }
 
 export function approachTile(state: MatchState, house: Entity): { x: number; y: number } | null {
@@ -107,13 +101,16 @@ export function exitGarrison(
 }
 
 /** House destroyed: occupants take 0–100% of max HP, then spill onto the street. */
-export function spillGarrison(state: MatchState, house: Entity): void {
+export function spillGarrison(state: MatchState, house: Entity, opts?: { damage?: boolean }): void {
   const units = livingGarrison(state, house);
   house.garrison = [];
+  const hurt = opts?.damage !== false;
   for (const u of units) {
     u.garrisonedIn = null;
-    const frac = nextRand(state);
-    u.hp = Math.max(0, u.hp - Math.round(u.hpMax * frac));
+    if (hurt) {
+      const frac = nextRand(state);
+      u.hp = Math.max(0, u.hp - Math.round(u.hpMax * frac));
+    }
     u.order = null;
     u.waypoints = [];
     u.attackTarget = null;
@@ -126,6 +123,64 @@ export function spillGarrison(state: MatchState, house: Entity): void {
       u.tileY = snap.y;
     }
   }
+}
+
+export type GarrisonFace = "e" | "s";
+
+export interface GarrisonMuzzle {
+  x: number;
+  y: number;
+  face: GarrisonFace;
+}
+
+/** Visible-wall windows. Iso shows the south (left) and east (right) faces. */
+export function garrisonWindows(house: Entity, tileSize: number): GarrisonMuzzle[] {
+  const x0 = house.tileX * tileSize;
+  const y0 = house.tileY * tileSize;
+  const bw = house.tileW * tileSize;
+  const bh = house.tileH * tileSize;
+  const n = house.type === "manor" ? 4 : house.type === "house" ? 3 : 2;
+  const pts: GarrisonMuzzle[] = [];
+  for (let i = 0; i < n; i++) {
+    const t = (i + 1) / (n + 1);
+    pts.push({ x: x0 + t * bw, y: y0 + bh, face: "s" });
+    pts.push({ x: x0 + bw, y: y0 + t * bh, face: "e" });
+  }
+  return pts;
+}
+
+/** Pick a window on the wall facing the shot. */
+export function pickGarrisonMuzzle(house: Entity, tileSize: number, ang: number, salt = 0): GarrisonMuzzle {
+  const dx = Math.cos(ang);
+  const dy = Math.sin(ang);
+  const pts = garrisonWindows(house, tileSize);
+  const cx = house.x;
+  const cy = house.y;
+  let best = pts[0] ?? { x: house.x, y: house.y, face: "e" as const };
+  let bestScore = -Infinity;
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i]!;
+    const fx = p.x - cx;
+    const fy = p.y - cy;
+    const fl = Math.hypot(fx, fy) || 1;
+    const align = (fx / fl) * dx + (fy / fl) * dy;
+    const jitter = ((Math.imul(salt + i * 19, 1103515245) >>> 0) % 100) / 400;
+    const score = align + jitter;
+    if (score > bestScore) {
+      bestScore = score;
+      best = p;
+    }
+  }
+  return best;
+}
+
+/** Screen-pixel lift from the pad to a glowing window, by story. */
+export function garrisonWindowLift(type: Entity["type"], salt: number): number {
+  const floors = type === "manor" ? 3 : type === "house" ? 2 : 1;
+  const floor = ((salt % floors) + floors) % floors;
+  if (type === "manor") return 24 + floor * 26;
+  if (type === "house") return 22 + floor * 26;
+  return 20;
 }
 
 export function tickGarrison(state: MatchState): void {
@@ -144,7 +199,7 @@ export function tickGarrison(state: MatchState): void {
       e.state = "idle";
       continue;
     }
-    if (adjacentToHouse(state, e, house)) enterGarrison(state, e, house);
+    if (adjacentToBuilding(state, e, house)) enterGarrison(state, e, house);
   }
 }
 

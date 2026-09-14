@@ -1,14 +1,18 @@
 import {
   fires,
   hasAmmo,
+  hasCrit,
   isBuildingType,
   isGarrisonable,
   isInfantryType,
   isShellType,
+  isStance,
   isTrainType,
   type ShellType,
+  type Stance,
 } from "../catalog.js";
 import type { ClientMessage, ErrorCode } from "../protocol.js";
+import { pathToCapture, wantsCapture } from "./capture.js";
 import { clearOrder, hqOf } from "./geo.js";
 import { approachTile, canGarrison, exitGarrison, livingGarrison } from "./garrison.js";
 import { cancelStructure, placeBuilding, sellBuilding, startBuild } from "./build.js";
@@ -16,6 +20,7 @@ import { deployId } from "./deploy.js";
 import { cancelTrain, pauseTrain, startTrain } from "./train.js";
 import { groupMoveTargets } from "./formation.js";
 import { setPath } from "./path.js";
+import { tickStance } from "./stance.js";
 import type { Entity, MatchState } from "./types.js";
 
 export type CmdResult = { ok: true } | { ok: false; code: ErrorCode; message: string };
@@ -36,6 +41,8 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
       return cmdAttack(state, playerId, msg.ids, msg.targetId);
     case "cmd.attackmove":
       return cmdAttackMove(state, playerId, msg.ids, msg.x, msg.y);
+    case "cmd.forceattack":
+      return cmdForceAttack(state, playerId, msg.ids, msg.x, msg.y);
     case "cmd.stop":
       return cmdStop(state, playerId, msg.ids);
     case "cmd.harvest":
@@ -73,6 +80,9 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
       return cmdGarrison(state, playerId, msg.ids, msg.buildingId);
     case "cmd.ungarrison":
       return cmdUngarrison(state, playerId, msg.ids, msg.buildingId, msg.x, msg.y);
+    case "cmd.stance":
+      if (!isStance(msg.stance)) return fail("bad_payload", "Unknown stance.");
+      return cmdStance(state, playerId, msg.ids, msg.stance);
     default:
       return fail("bad_payload", "Unknown command.");
   }
@@ -143,6 +153,24 @@ function cmdAttackMove(state: MatchState, playerId: string, ids: number[], x: nu
   return ok();
 }
 
+function cmdForceAttack(state: MatchState, playerId: string, ids: number[], x: number, y: number): CmdResult {
+  const units = owned(state, playerId, ids);
+  if (units.length === 0) return fail("not_yours", "No owned units.");
+  let n = 0;
+  for (const e of units) {
+    if (!fires(e.type)) continue;
+    if (e.state === "deploy" || e.state === "undeploy") continue;
+    e.order = { kind: "forceattack", x, y };
+    e.attackTarget = null;
+    e.harvestTile = null;
+    e.state = e.garrisonedIn ? "garrison" : "attack";
+    if (!e.garrisonedIn) setPath(state, e, x, y);
+    n++;
+  }
+  if (n === 0) return fail("busy", "No guns in that selection.");
+  return ok();
+}
+
 function cmdAttack(state: MatchState, playerId: string, ids: number[], targetId: number): CmdResult {
   let t = state.entities.get(targetId);
   if (!t || t.hp <= 0) return fail("not_found", "No such target.");
@@ -155,7 +183,9 @@ function cmdAttack(state: MatchState, playerId: string, ids: number[], targetId:
     e.order = { kind: "attack", targetId: t.id };
     e.attackTarget = t.id;
     e.state = e.garrisonedIn ? "garrison" : "attack";
-    if (!e.garrisonedIn) setPath(state, e, t.x, t.y);
+    if (e.garrisonedIn) continue;
+    if (wantsCapture(e, t)) pathToCapture(state, e, t);
+    else setPath(state, e, t.x, t.y);
   }
   return ok();
 }
@@ -251,5 +281,19 @@ function cmdAmmo(state: MatchState, playerId: string, ids: number[], shell: Shel
   const units = owned(state, playerId, ids).filter((e) => hasAmmo(e.type));
   if (units.length === 0) return fail("not_yours", "No guns with a rack.");
   for (const e of units) e.shell = shell;
+  return ok();
+}
+
+function cmdStance(state: MatchState, playerId: string, ids: number[], stance: Stance): CmdResult {
+  const units = owned(state, playerId, ids).filter((e) => isInfantryType(e.type));
+  if (units.length === 0) return fail("not_yours", "Select infantry.");
+  let n = 0;
+  for (const e of units) {
+    if (hasCrit(e, "leg") && stance !== "crawl") continue;
+    e.stanceOrder = stance;
+    n++;
+  }
+  tickStance(state);
+  if (n === 0) return fail("busy", "Broken leg — can only crawl.");
   return ok();
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { catalog, TANK_MG } from "../catalog.js";
+import { catalog, SHELLS, TANK_MG } from "../catalog.js";
 import {
   aimAngle,
   armorOn,
@@ -17,6 +17,7 @@ function seq(values: number[]): () => number {
 const warden = catalog("warden");
 const trooper = catalog("trooper");
 const hauler = catalog("hauler");
+const cottage = catalog("cottage");
 
 describe("hitFace", () => {
   it("maps incoming travel onto front, side, and rear plates", () => {
@@ -54,6 +55,23 @@ describe("resolveHit", () => {
     assert.equal(res.face, "front");
     assert.ok(res.damage >= 11 && res.damage <= 13);
     assert.equal(res.kind, "hit");
+  });
+
+  it("does not ricochet AP or HE off a house", () => {
+    for (const gun of [SHELLS.ap, SHELLS.he]) {
+      const res = resolveHit({
+        gun,
+        target: cottage,
+        targetFacing: 0,
+        targetHp: cottage.hp,
+        targetHpMax: cottage.hp,
+        vx: -400,
+        vy: 120,
+        rand: seq([0.5]),
+      });
+      assert.notEqual(res.kind, "ricochet", `${gun.id} kind=${res.kind}`);
+      assert.ok(res.damage > 0, `${gun.id} dmg=${res.damage}`);
+    }
   });
 
   it("wounds a Warden's front at a perpendicular hit without one-shotting", () => {

@@ -1,4 +1,12 @@
-import { clampGameSpeed, DEPLOY_SECONDS, garrisonCapOf, hasMg, hasTurret, isGarrisonable } from "../catalog.js";
+import {
+  clampGameSpeed,
+  DEPLOY_SECONDS,
+  garrisonCapOf,
+  hasMg,
+  hasTurret,
+  isGarrisonable,
+  isInfantryType,
+} from "../catalog.js";
 import { garrisonOwner, livingGarrison } from "./garrison.js";
 import { allies } from "./geo.js";
 import { powerOf } from "./power.js";
@@ -51,6 +59,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       specialCooldown: e.specialCooldown > 0 ? e.specialCooldown : undefined,
       wreck: e.wreck || undefined,
       crits: e.crits.length > 0 ? [...e.crits] : undefined,
+      stance: isInfantryType(e.type) ? e.stance : undefined,
+      stanceOrder: isInfantryType(e.type) && e.stanceOrder !== e.stance ? e.stanceOrder : undefined,
       ammo: friendly && Object.keys(e.ammo).length > 0 ? { ...e.ammo } : undefined,
       shell: friendly && e.shell ? e.shell : undefined,
       mgAmmo: friendly && hasMg(e.type) ? e.mgAmmo : undefined,
@@ -64,6 +74,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
             ownerId: garrisonOwner(state, e) || undefined,
           }
         : undefined,
+      capture:
+        e.kind === "building" && e.captureProgress > 0 && e.captureOwnerId
+          ? { ownerId: e.captureOwnerId, progress: e.captureProgress }
+          : undefined,
     });
   }
   const scrap: ScrapCell[] = [];
@@ -115,10 +129,22 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
         caliber: p.caliber,
         fromId: p.fromId,
         bounced: p.bounced,
+        shell: p.shell ?? undefined,
       })),
     impacts: state.impacts.filter(
       (i) => allies(state, youPlayerId, i.ownerId) || canSeeWorld(state, vis, i.x, i.y),
     ),
+    smoke: state.smokeClouds.map((c) => ({
+      id: c.id,
+      x: c.x,
+      y: c.y,
+      ux: c.ux,
+      uy: c.uy,
+      halfAlong: c.halfAlong,
+      halfAcross: c.halfAcross,
+      life: c.life,
+      lifeMax: c.lifeMax,
+    })),
     scrap,
     clearedTrees: state.clearedTrees.map((t) => ({ x: t.x, y: t.y })),
     winner: state.winner,

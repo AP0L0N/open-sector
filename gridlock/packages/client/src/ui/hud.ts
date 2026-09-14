@@ -3,6 +3,7 @@ import {
   CRIT_LABEL,
   SHELLS,
   SHELL_TYPES,
+  STANCE_LABEL,
   TRAIN_QUEUE_CAP,
   TRAIN_TYPES,
   ammoOf,
@@ -15,6 +16,7 @@ import {
   isGarrisonable,
   isInfantryType,
   isShellType,
+  isStance,
   producerType,
   productionSpeed,
   specialLabel,
@@ -24,6 +26,7 @@ import {
   type EntityType,
   type EntityView,
   type MatchSnapshot,
+  type Stance,
   type TrainType,
 } from "@gridlock/shared";
 import type { Ctx } from "../ctx.js";
@@ -438,6 +441,10 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
   const wreck = e.wreck ? "  ·  WRECK" : "";
   const injuries =
     e.crits && e.crits.length > 0 ? `  ·  ${e.crits.map((c) => CRIT_LABEL[c]).join(", ")}` : "";
+  const posture =
+    isInfantryType(e.type) && e.stance
+      ? `  ·  ${STANCE_LABEL[e.stance]}${e.stanceOrder && e.stanceOrder !== e.stance ? " (under fire)" : ""}`
+      : "";
   const rack =
     e.ammo && e.shell && !e.wreck ? `  ·  ${e.shell.toUpperCase()} ${ammoOf(e.ammo, e.shell)}` : "";
   const mg =
@@ -450,8 +457,10 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
       : e.garrisonedIn
         ? "  ·  inside"
         : "";
+  const capturing =
+    e.capture && e.capture.progress > 0 ? `  ·  capturing ${Math.round(e.capture.progress * 100)}%` : "";
   const who = owner?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${rack}${mg}  ·  ${who}${q}${cargo}${dep}${special}${garrison}`;
+  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${rack}${mg}  ·  ${who}${q}${cargo}${dep}${special}${garrison}${capturing}`;
   const occ = e.garrison?.ownerId
     ? ctx.match.players.find((p) => p.playerId === e.garrison!.ownerId)
     : owner;
@@ -565,6 +574,12 @@ function paintConfig(ctx: Ctx, view: MapView | null): void {
   } else if (focus.kind === "unit" && def.damage > 0) {
     body.append(el("p", { class: "tiny", text: "Small arms · unlimited" }));
   }
+  if (isInfantryType(focus.type)) {
+    const same = live.every((e) => (e.stance ?? "stand") === (focus.stance ?? "stand"));
+    const label = same ? STANCE_LABEL[focus.stance ?? "stand"] : "mixed posture";
+    body.append(el("p", { class: "tiny", text: "Posture  " + label }));
+    body.append(el("p", { class: "tiny", text: "Capture buildings at point-blank. They do not fire on structures." }));
+  }
 
   if (hasMg(focus.type)) {
     const mine = live.filter((e) => e.ownerId === ctx.match!.youPlayerId);
@@ -620,12 +635,44 @@ function paintQuickActions(ctx: Ctx, view: MapView | null): void {
       attrs: { type: "button", "data-act": "attackmove", title: "Move, halt to fire (F)" },
     });
     root.append(atk);
+    const force = el("button", {
+      class: "qact" + (view?.forceAttackMode ? " is-on" : ""),
+      text: "Force attack here",
+      attrs: {
+        type: "button",
+        "data-act": "forceattack",
+        title: "Fire at a point even if it is empty (T)",
+      },
+    });
+    root.append(force);
+  }
+  const inf = units.filter((e) => isInfantryType(e.type));
+  if (inf.length) {
+    const ordered = new Set(inf.map((e) => e.stanceOrder ?? e.stance ?? "stand"));
+    const legsBroken = inf.every((e) => e.crits?.includes("leg"));
+    const addStance = (st: Stance, label: string, title: string) => {
+      const locked = legsBroken && st !== "crawl";
+      const b = el("button", {
+        class: "qact" + (ordered.size === 1 && ordered.has(st) ? " is-on" : ""),
+        text: label,
+        attrs: {
+          type: "button",
+          "data-act": "stance-" + st,
+          title: locked ? "Broken leg — can only crawl" : title,
+          ...(locked ? { disabled: "" } : {}),
+        },
+      });
+      root.append(b);
+    };
+    addStance("stand", "Stand", "Stand up");
+    addStance("crouch", "Crouch", "Crouch (C) — harder to hit, more accurate");
+    addStance("crawl", "Crawl", "Go prone (Z) — hardest to hit, most accurate");
   }
   if (units.some((e) => specialOf(e.type) && specialReady(e.type, e.state, e.specialCooldown ?? 0))) {
     add("deploy", "Deploy", `Special (${SPECIAL_HOTKEY.toUpperCase()})`);
   }
   if (units.some((e) => e.type === "hauler")) add("harvest", "Harvest", "Auto-harvest nearest scrap");
-  if (buildings.some((e) => e.type !== "core")) add("sell", "Sell", "Sell selected structures");
+  if (buildings.some((e) => e.type !== "core" && !isGarrisonable(e.type))) add("sell", "Sell", "Sell selected structures");
   if (houses.length && units.some((e) => isInfantryType(e.type))) add("garrison", "Enter", "Garrison infantry (G)");
   if (
     units.some((e) => e.garrisonedIn) ||
@@ -643,11 +690,16 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   const buildings = ownCommandable(ctx, selected.filter((e) => e.kind === "building"));
   if (act === "stop") {
     view.setAttackMoveMode(false);
+    view.setForceAttackMode(false);
     if (units.length) ctx.net.send({ type: "cmd.stop", ids: units.map((e) => e.id) });
     return;
   }
   if (act === "attackmove") {
     if (units.length) view.setAttackMoveMode(!view.attackMoveMode);
+    return;
+  }
+  if (act === "forceattack") {
+    if (units.length) view.setForceAttackMode(!view.forceAttackMode);
     return;
   }
   if (act === "deploy") {
@@ -665,7 +717,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   }
   if (act === "sell") {
     for (const e of buildings) {
-      if (e.type !== "core") ctx.net.send({ type: "cmd.sell", id: e.id });
+      if (e.type !== "core" && !isGarrisonable(e.type)) ctx.net.send({ type: "cmd.sell", id: e.id });
     }
     return;
   }
@@ -683,6 +735,13 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     }
     const house = selected.find((e) => isGarrisonable(e.type) && e.garrison?.ownerId === match.youPlayerId);
     if (house) ctx.net.send({ type: "cmd.ungarrison", buildingId: house.id });
+    return;
+  }
+  if (act.startsWith("stance-")) {
+    const st = act.slice("stance-".length);
+    if (!isStance(st)) return;
+    const inf = units.filter((e) => isInfantryType(e.type));
+    if (inf.length) ctx.net.send({ type: "cmd.stance", ids: inf.map((e) => e.id), stance: st });
   }
 }
 

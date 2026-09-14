@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { TICK_DT, catalog } from "../catalog.js";
+import { TICK_DT, TREE_LOS_THROUGH, catalog } from "../catalog.js";
 import { TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
-import { isSingleTree, makeEntity, tileCenter, walkable } from "./geo.js";
+import { crushTreeAt, isSingleTree, makeEntity, tileCenter, walkable } from "./geo.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { createMatch, step } from "./match.js";
 import { astar } from "./path.js";
+import { hasFullLos } from "./elevation.js";
 import { snapshotFor } from "./snapshot.js";
+import { coverTerrainFromSnapshot, tileOnMask, visionMask } from "./vision.js";
 import type { MatchState } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
@@ -139,5 +141,37 @@ describe("trees", () => {
     applyCommand(state, "A", { type: "cmd.move", ids: [inf.id], x: tileCenter(96, ts), y: tileCenter(y, ts) });
     ticks(state, 90);
     assert.ok(inf.x > tileCenter(90, ts), `infantry x=${inf.x}`);
+  });
+
+  it("opens line of sight after a Warden flattens a blocking lone tree", () => {
+    const { state, a } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const y = 80;
+    const x0 = 20;
+    const n = TREE_LOS_THROUGH + 1;
+    const behind = x0 + n * 2;
+    clearPad(state, x0 - 4, y - 2, behind + 2, y + 2);
+    for (let i = 0; i < n; i++) plant(state, x0 + i * 2, y);
+    makeEntity(state, "warden", a, tileCenter(x0 - 2, ts), tileCenter(y, ts));
+    const blocked = visionMask(state, a);
+    assert.equal(tileOnMask(blocked, state.width, behind, y), false);
+    assert.equal(crushTreeAt(state, x0, y), true);
+    const opened = visionMask(state, a);
+    assert.notEqual(opened, blocked);
+    assert.equal(tileOnMask(opened, state.width, behind, y), true);
+    assert.ok(snapshotFor(state, a).clearedTrees.some((t) => t.x === x0 && t.y === y));
+  });
+
+  it("blanks crushed trees in snapshot cover without mutating the map", () => {
+    const width = TREE_LOS_THROUGH + 4;
+    const tiles = new Uint8Array(width);
+    for (let i = 1; i <= TREE_LOS_THROUGH + 1; i++) tiles[i] = TILE_TREE;
+    const occupy = new Int32Array(width);
+    const elev = new Uint8Array(width);
+    assert.equal(hasFullLos(elev, width, 1, 0, 0, width - 1, 0, { terrain: tiles, occupy }), false);
+    const out = coverTerrainFromSnapshot(tiles, width, 1, [{ x: 1, y: 0 }]);
+    assert.equal(out[1], TILE_EMPTY);
+    assert.equal(tiles[1], TILE_TREE);
+    assert.equal(hasFullLos(elev, width, 1, 0, 0, width - 1, 0, { terrain: out, occupy }), true);
   });
 });

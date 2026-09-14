@@ -5,6 +5,7 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch } from "./match.js";
 import { sightTilesOf } from "./elevation.js";
+import { spawnSmokeCloud } from "./smoke.js";
 import { paintEntitySight, tileOnMask, visionMask, type SightSource } from "./vision.js";
 import type { MatchState } from "./types.js";
 
@@ -115,6 +116,28 @@ describe("infantry fog", () => {
     paintEntitySight(tankMask, state.width, state.height, ts, tank, state.heights);
     assert.equal(tileOnMask(infMask, state.width, ox + dist, oy), true);
     assert.equal(tileOnMask(tankMask, state.width, ox + dist, oy), false);
+  });
+});
+
+describe("smoke screens", () => {
+  it("blocks sight through the cloud for every player", () => {
+    const { state, a, b } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const ox = 30;
+    const oy = 30;
+    const observer = makeEntity(state, "warden", a, tileCenter(ox, ts), tileCenter(oy, ts));
+    const foe = makeEntity(state, "warden", b, tileCenter(ox + 20, ts), tileCenter(oy, ts));
+    const visOpen = visionMask(state, a);
+    assert.equal(tileOnMask(visOpen, state.width, ox + 20, oy), true, "should see the far tile before smoke");
+
+    spawnSmokeCloud(state, tileCenter(ox + 10, ts), tileCenter(oy, ts), 1, 0);
+    state.tick += 1;
+    const vis = visionMask(state, a);
+    assert.equal(tileOnMask(vis, state.width, ox, oy), true, "own tile");
+    assert.equal(tileOnMask(vis, state.width, ox + 20, oy), false, "must not see through smoke");
+    void observer;
+    void foe;
   });
 });
 

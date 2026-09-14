@@ -203,7 +203,11 @@ function structuredCloneBase(e: Entity): Entity {
     mgCooldown: 0,
     garrisonedIn: null,
     garrison: [],
+    captureOwnerId: "",
+    captureProgress: 0,
     crits: [],
+    stance: "stand",
+    stanceOrder: "stand",
   };
 }
 

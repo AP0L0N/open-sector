@@ -116,7 +116,7 @@ describe("warden ammo", () => {
     ticks(state, 5);
     assert.equal(tank.ammo.ap, ap0 - 1);
 
-    tank.ammo = { ap: 0, he: 0, heat: 0 };
+    tank.ammo = { ap: 0, he: 0, heat: 0, smoke: 0 };
     const hp = dummy.hp;
     dummy.cooldown = 99;
     ticks(state, 30);

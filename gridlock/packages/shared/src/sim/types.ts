@@ -1,4 +1,4 @@
-import type { BuildingType, Crit, EntityType, ShellType, TrainType } from "../catalog.js";
+import type { BuildingType, Crit, EntityType, ShellType, Stance, TrainType } from "../catalog.js";
 import type { AiDifficulty, EntityState, ImpactView } from "../protocol.js";
 
 export interface Vec {
@@ -22,7 +22,7 @@ export interface StructureJob {
 }
 
 export interface Order {
-  kind: "move" | "attack" | "attackmove" | "harvest" | "unload" | "garrison";
+  kind: "move" | "attack" | "attackmove" | "forceattack" | "harvest" | "unload" | "garrison";
   x?: number;
   y?: number;
   targetId?: number;
@@ -75,8 +75,16 @@ export interface Entity {
   garrisonedIn: number | null;
   /** Unit ids occupying a garrisonable building. */
   garrison: number[];
+  /** Player currently taking this building. Empty when idle. */
+  captureOwnerId: string;
+  /** 0–1. Decays when capturers leave. */
+  captureProgress: number;
   /** Lasting injuries. Empty until a crit lands. */
   crits: Crit[];
+  /** Live infantry posture. Vehicles stay "stand". */
+  stance: Stance;
+  /** Player-commanded posture. Targeted infantry may drop to crawl anyway. */
+  stanceOrder: Stance;
 }
 
 export interface Projectile {
@@ -96,6 +104,21 @@ export interface Projectile {
   /** Original firing unit. */
   fromId: number;
   bounced: boolean;
+  /** Loaded 75mm type. Null for rifles / MG. */
+  shell: ShellType | null;
+}
+
+/** Lasting smoke screen from a 75mm smoke shell. */
+export interface SmokeCloud {
+  id: number;
+  x: number;
+  y: number;
+  ux: number;
+  uy: number;
+  halfAlong: number;
+  halfAcross: number;
+  life: number;
+  lifeMax: number;
 }
 
 export interface SimPlayer {
@@ -139,6 +162,7 @@ export interface MatchState {
   players: Map<string, SimPlayer>;
   entities: Map<number, Entity>;
   projectiles: Projectile[];
+  smokeClouds: SmokeCloud[];
   impacts: ImpactView[];
   rngState: number;
   winner?: { playerId: string; team: number };

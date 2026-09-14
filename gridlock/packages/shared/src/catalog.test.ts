@@ -1,20 +1,28 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  CAPTURE_DECAY_PER_SEC,
+  CAPTURE_SECONDS,
+  CAPTURE_SECONDS_MIN,
   GAME_SPEED_DEFAULT,
   GAME_SPEED_MAX,
   HANDGUN,
   SMALL_ARMS_SPEED,
   SPECIAL_COOLDOWN_MIN,
   TANK_MG,
+  TANK_SHELL_SPEED,
   TICK_DT,
   TILE_SIZE,
+  SHELLS,
   armorLabel,
   catalog,
   hasMg,
   clampGameSpeed,
   isInfantryType,
   isMotorVehicle,
+  isStance,
+  STANCE_AIM_SPREAD,
+  STANCE_SPEED,
   nudgeGameSpeed,
   specialCooldownOf,
   specialLabel,
@@ -47,8 +55,9 @@ describe("warden ammo", () => {
   it("starts with a mixed rack of about twenty shells", () => {
     const w = catalog("warden");
     const ammo = w.ammo ?? {};
-    const total = (ammo.ap ?? 0) + (ammo.he ?? 0) + (ammo.heat ?? 0);
-    assert.ok(total >= 20 && total <= 24, `total=${total}`);
+    const total = (ammo.ap ?? 0) + (ammo.he ?? 0) + (ammo.heat ?? 0) + (ammo.smoke ?? 0);
+    assert.ok(total >= 20 && total <= 28, `total=${total}`);
+    assert.equal(ammo.smoke, 4);
     assert.equal(w.defaultShell, "ap");
     assert.equal(w.leavesWreck, true);
   });
@@ -75,6 +84,14 @@ describe("small-arms flight", () => {
     assert.ok(rifle.projectileSpeed * TICK_DT >= rifleRange, `rifle ${rifle.projectileSpeed}`);
     const mgRange = catalog("warden").rangeTiles * TILE_SIZE;
     assert.ok(TANK_MG.projectileSpeed * TICK_DT >= mgRange, `mg ${TANK_MG.projectileSpeed}`);
+  });
+
+  it("lets a 75mm take more than a tick to cross max range so the round is a tracer", () => {
+    const w = catalog("warden");
+    assert.equal(w.projectileSpeed, TANK_SHELL_SPEED);
+    const range = w.rangeTiles * TILE_SIZE;
+    assert.ok(w.projectileSpeed * TICK_DT < range, `shell ${w.projectileSpeed} range ${range}`);
+    assert.ok(SHELLS.smoke.damage === 0 && SHELLS.smoke.caliber === 75);
   });
 });
 
@@ -105,6 +122,18 @@ describe("injuries", () => {
     assert.equal(isInfantryType("trooper"), true);
     assert.ok(HANDGUN.rangeTiles < catalog("trooper").rangeTiles);
     assert.ok(HANDGUN.damage < catalog("trooper").damage);
+    assert.equal(isStance("crouch"), true);
+    assert.equal(isStance("sit"), false);
+    assert.ok(STANCE_SPEED.crawl < STANCE_SPEED.crouch);
+    assert.ok(STANCE_AIM_SPREAD.crawl < STANCE_AIM_SPREAD.stand);
+  });
+});
+
+describe("building capture", () => {
+  it("takes several seconds and decays if the troopers leave", () => {
+    assert.ok(CAPTURE_SECONDS >= 8);
+    assert.ok(CAPTURE_SECONDS_MIN >= 4);
+    assert.ok(CAPTURE_DECAY_PER_SEC > 0 && CAPTURE_DECAY_PER_SEC < 1);
   });
 });
 

@@ -1,8 +1,8 @@
 /** Shared wire + domain types. If a field is not here, it does not exist. */
 
-import type { BuildingType, Crit, EntityKind, EntityType, ShellType, TrainType } from "./catalog.js";
+import type { BuildingType, Crit, EntityKind, EntityType, ShellType, Stance, TrainType } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 12;
+export const PROTOCOL_VERSION = 14;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -108,8 +108,14 @@ export interface EntityView {
   garrisonedIn?: number;
   /** Occupied civilian house. count is always visible; ids are friendly-only. */
   garrison?: { count: number; cap: number; ownerId?: string };
+  /** Infantry taking this building. Omitted when idle. */
+  capture?: { ownerId: string; progress: number };
   /** Lasting injuries. Omitted when none. */
   crits?: Crit[];
+  /** Live infantry posture. Omitted for vehicles and buildings. */
+  stance?: Stance;
+  /** Commanded infantry posture. Omitted when it matches stance. */
+  stanceOrder?: Stance;
 }
 
 export interface PlayerPublic {
@@ -146,6 +152,8 @@ export interface ProjectileView {
   caliber: number;
   fromId: number;
   bounced: boolean;
+  /** Loaded 75mm type. Omitted for small-arms. */
+  shell?: ShellType;
 }
 
 export type ImpactKind = "miss" | "puff" | "crush" | "ricochet" | "glance" | "hit" | "pen" | "kill";
@@ -162,6 +170,23 @@ export interface ImpactView {
   caliber?: number;
   /** Ammo cook-off / structure collapse. Fireball, not a kinetic spark. */
   blast?: boolean;
+  /** Shooter. Used to draw a tracer when the round never made a snapshot. */
+  fromId?: number;
+  /** Loaded 75mm type. Omitted for small-arms and crush. */
+  shell?: ShellType;
+}
+
+/** Lasting artillery smoke screen. Blocks vision for every player. */
+export interface SmokeCloudView {
+  id: number;
+  x: number;
+  y: number;
+  ux: number;
+  uy: number;
+  halfAlong: number;
+  halfAcross: number;
+  life: number;
+  lifeMax: number;
 }
 
 export interface MatchSnapshot {
@@ -175,6 +200,7 @@ export interface MatchSnapshot {
   entities: EntityView[];
   projectiles: ProjectileView[];
   impacts: ImpactView[];
+  smoke: SmokeCloudView[];
   scrap: ScrapCell[];
   /** Tree tiles a vehicle has crushed. Empty until the first flatten. */
   clearedTrees: { x: number; y: number }[];
@@ -205,6 +231,7 @@ export type ClientMessage =
   | { type: "cmd.move"; ids: number[]; x: number; y: number }
   | { type: "cmd.attack"; ids: number[]; targetId: number }
   | { type: "cmd.attackmove"; ids: number[]; x: number; y: number }
+  | { type: "cmd.forceattack"; ids: number[]; x: number; y: number }
   | { type: "cmd.stop"; ids: number[] }
   | { type: "cmd.harvest"; ids: number[]; tileX?: number; tileY?: number }
   | { type: "cmd.ammo"; ids: number[]; shell: ShellType }
@@ -217,6 +244,7 @@ export type ClientMessage =
   | { type: "cmd.deploy"; id: number }
   | { type: "cmd.garrison"; ids: number[]; buildingId: number }
   | { type: "cmd.ungarrison"; ids?: number[]; buildingId?: number; x?: number; y?: number }
+  | { type: "cmd.stance"; ids: number[]; stance: Stance }
   | { type: "cmd.speed"; delta: number };
 
 export type ServerMessage =
@@ -253,4 +281,4 @@ export type ErrorCode =
   | "unit_cap"
   | "ended";
 
-export type { BuildingType, EntityType, TrainType, EntityKind, ShellType, Crit };
+export type { BuildingType, EntityType, TrainType, EntityKind, ShellType, Crit, Stance };

@@ -74,12 +74,14 @@ export function aimAngle(
   rand: () => number,
   moving = false,
   spreadPower = 1,
+  targetSpreadMul = 1,
 ): number {
   if (spreadDeg <= 0) return facing;
   const t = maxRange <= 1e-6 ? 1 : clamp(dist / maxRange, 0, 1);
   const falloff = spreadPower > 1 ? 0.15 + 0.85 * t ** spreadPower : 0.35 + 0.65 * t;
   let cone = spreadDeg * falloff;
   if (moving) cone *= MOVING_SPREAD;
+  if (targetSpreadMul > 0) cone *= targetSpreadMul;
   return facing + (rand() * 2 - 1) * ((cone * Math.PI) / 180);
 }
 
@@ -94,7 +96,7 @@ export function resolveHit(opts: {
   rand: () => number;
 }): HitResolution {
   const { gun, target, rand } = opts;
-  if (!isArmored(target)) {
+  if (!isArmored(target) || target.kind === "building") {
     const damage = Math.max(1, Math.round(gun.damage * (0.9 + rand() * 0.2)));
     return {
       kind: damage >= opts.targetHp ? "kill" : "hit",

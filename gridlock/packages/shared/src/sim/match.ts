@@ -14,10 +14,13 @@ import { commanders } from "../lobby.js";
 import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
 import type { ImpactView, RoomState } from "../protocol.js";
 import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter } from "./geo.js";
+import { tickCapture } from "./capture.js";
 import { spillGarrison, tickGarrison } from "./garrison.js";
 import { seedRng } from "./rng.js";
 import { tickBuild } from "./build.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
+import { tickSmoke } from "./smoke.js";
+import { tickStance } from "./stance.js";
 import { tickCollision } from "./collision.js";
 import { tickAutoDeploy, tickDeploy } from "./deploy.js";
 import { tickHarvest } from "./harvest.js";
@@ -52,6 +55,7 @@ export function createMatch(
     players,
     entities: new Map(),
     projectiles: [],
+    smokeClouds: [],
     impacts: [],
     rngState: seedRng(room.id),
     ended: false,
@@ -101,6 +105,8 @@ export function step(state: MatchState, dt = TICK_DT): void {
   if (state.ended) return;
   state.tick += 1;
   state.impacts = [];
+  tickSmoke(state, dt);
+  tickStance(state);
   tickDeploy(state, dt);
   tickGarrison(state);
   tickMovement(state, dt);
@@ -110,7 +116,9 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickTrain(state, dt);
   tickCombat(state, dt);
   tickProjectiles(state, dt);
+  tickCapture(state, dt);
   reapDead(state);
+  reapLostHqs(state);
   checkWin(state);
 }
 
@@ -154,6 +162,16 @@ function reapDead(state: MatchState): void {
     destroyEntity(state, e);
   }
   for (const pid of hqOwners) eliminate(state, pid);
+}
+
+function reapLostHqs(state: MatchState): void {
+  for (const p of [...state.players.values()]) {
+    if (!p.alive) continue;
+    const hq = state.entities.get(p.hqId);
+    if (hq && hq.hp > 0 && hq.ownerId !== p.playerId && (hq.type === "core" || hq.type === "rig")) {
+      eliminate(state, p.playerId);
+    }
+  }
 }
 
 function eliminate(state: MatchState, playerId: string): void {

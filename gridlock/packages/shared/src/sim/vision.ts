@@ -1,6 +1,6 @@
-import { HEIGHT_MAX } from "../catalog.js";
+import { HEIGHT_MAX, SMOKE_PEEK_TILES } from "../catalog.js";
 import type { EntityView, MatchSnapshot } from "../protocol.js";
-import { getMap } from "../maps.js";
+import { getMap, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import {
   hasFullLos,
   observerEyeOf,
@@ -9,6 +9,7 @@ import {
   type CoverField,
 } from "./elevation.js";
 import { allies, chebyshev, footprint, inBounds, worldToTile } from "./geo.js";
+import { cloudsCoverTile } from "./smoke.js";
 import type { Entity, MatchState } from "./types.js";
 
 export type SightSource = {
@@ -121,13 +122,39 @@ function paintSight(
         uphillBonus > 0 ? Math.max(0, elevAtSafe(elev, width, height, x, y) - h0) * uphillBonus : 0;
       if (chebyshev(x, y, ox, oy) > radius + extra) continue;
       if (!hasFullLos(elev, width, height, ox, oy, x, y, cover, observerEye)) continue;
+      if (cover?.smokeAt?.(x, y) && chebyshev(x, y, ox, oy) > SMOKE_PEEK_TILES) continue;
       mask[y * width + x] = 1;
     }
   }
 }
 
 function coverOf(state: MatchState): CoverField {
-  return { terrain: state.terrain, occupy: state.occupy };
+  return {
+    terrain: state.terrain,
+    occupy: state.occupy,
+    smokeAt: (x, y) => tileInSmokeQuick(state, x, y),
+  };
+}
+
+function tileInSmokeQuick(state: MatchState, x: number, y: number): boolean {
+  return cloudsCoverTile(state.smokeClouds, state.tileSize, x, y);
+}
+
+/** Snapshot fog uses the static map; drop trees a vehicle has already flattened. */
+export function coverTerrainFromSnapshot(
+  tiles: ArrayLike<number>,
+  width: number,
+  height: number,
+  clearedTrees: { x: number; y: number }[] | undefined,
+): ArrayLike<number> {
+  if (!clearedTrees || clearedTrees.length === 0) return tiles;
+  const terrain = new Uint8Array(tiles);
+  for (const t of clearedTrees) {
+    if (t.x < 0 || t.y < 0 || t.x >= width || t.y >= height) continue;
+    const i = t.y * width + t.x;
+    if (terrain[i] === TILE_TREE) terrain[i] = TILE_EMPTY;
+  }
+  return terrain;
 }
 
 export function visionMask(state: MatchState, playerId: string): Uint8Array {
@@ -171,7 +198,13 @@ export function visionMaskFromSnapshot(
       }
     }
   }
-  const cover: CoverField | undefined = map ? { terrain: map.tiles, occupy } : undefined;
+  const cover: CoverField | undefined = map
+    ? {
+        terrain: coverTerrainFromSnapshot(map.tiles, width, height, snap.clearedTrees),
+        occupy,
+        smokeAt: (x, y) => cloudsCoverTile(snap.smoke ?? [], tileSize, x, y),
+      }
+    : undefined;
   for (const e of snap.entities) {
     if (e.wreck) continue;
     if (e.ownerId === you) {

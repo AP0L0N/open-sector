@@ -1,9 +1,10 @@
 import { catalog, FACE_MOVE_DEG, hasTurret } from "../catalog.js";
+import { adjacentToBuilding, worldToTile } from "./geo.js";
+import { wantsCapture, pathToCapture } from "./capture.js";
 import { moveWithCollision } from "./collision.js";
 import { hullTurnMul, moveSpeedMul } from "./crits.js";
 import { setPath } from "./path.js";
 import { slopeSpeedMul, tileHeight, weaponRangeWorld, worldTileHeight } from "./elevation.js";
-import { worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
 export function stepTurn(
@@ -48,27 +49,58 @@ export function tickMovement(state: MatchState, dt: number): void {
     if (e.order?.kind === "attack" && e.order.targetId != null) {
       const t = state.entities.get(e.order.targetId);
       if (t && t.hp > 0) {
-        const range = weaponRangeWorld(state, e);
-        const dist = Math.hypot(t.x - e.x, t.y - e.y);
-        if (dist <= range) {
-          e.waypoints = [];
-          continue;
+        if (wantsCapture(e, t)) {
+          if (adjacentToBuilding(state, e, t)) {
+            e.waypoints = [];
+            continue;
+          }
+          if (e.waypoints.length === 0 || state.tick % 5 === 0) pathToCapture(state, e, t);
+        } else {
+          const range = weaponRangeWorld(state, e);
+          const dist = Math.hypot(t.x - e.x, t.y - e.y);
+          if (dist <= range) {
+            e.waypoints = [];
+            continue;
+          }
+          if (e.waypoints.length === 0 || state.tick % 5 === 0) {
+            setPath(state, e, t.x, t.y);
+          }
         }
-        if (e.waypoints.length === 0 || state.tick % 5 === 0) {
-          setPath(state, e, t.x, t.y);
-        }
+      }
+    }
+    if (e.order?.kind === "forceattack" && e.order.x != null && e.order.y != null) {
+      const range = weaponRangeWorld(state, e);
+      const dist = Math.hypot(e.order.x - e.x, e.order.y - e.y);
+      if (dist <= range) {
+        e.waypoints = [];
+        e.state = "attack";
+        e.tileX = worldToTile(e.x, state.tileSize);
+        e.tileY = worldToTile(e.y, state.tileSize);
+        continue;
+      }
+      if (e.waypoints.length === 0 || state.tick % 5 === 0) {
+        setPath(state, e, e.order.x, e.order.y);
       }
     }
     if (e.order?.kind === "attackmove" && e.attackTarget != null) {
       const t = state.entities.get(e.attackTarget);
       if (t && t.hp > 0) {
-        const range = weaponRangeWorld(state, e);
-        const dist = Math.hypot(t.x - e.x, t.y - e.y);
-        if (dist <= range) {
-          e.state = "attack";
-          e.tileX = worldToTile(e.x, state.tileSize);
-          e.tileY = worldToTile(e.y, state.tileSize);
-          continue;
+        if (wantsCapture(e, t)) {
+          if (adjacentToBuilding(state, e, t)) {
+            e.state = "attack";
+            e.tileX = worldToTile(e.x, state.tileSize);
+            e.tileY = worldToTile(e.y, state.tileSize);
+            continue;
+          }
+        } else {
+          const range = weaponRangeWorld(state, e);
+          const dist = Math.hypot(t.x - e.x, t.y - e.y);
+          if (dist <= range) {
+            e.state = "attack";
+            e.tileX = worldToTile(e.x, state.tileSize);
+            e.tileY = worldToTile(e.y, state.tileSize);
+            continue;
+          }
         }
       }
     }
@@ -83,13 +115,16 @@ export function tickMovement(state: MatchState, dt: number): void {
     const wp = e.waypoints[0];
     const remaining = wp ? turnToward(e, wp.x, wp.y, def.turnDegPerSec * hullTurnMul(e), dt) : 0;
     if (def.turnInPlace && Math.abs(remaining) > FACE_MOVE_DEG) {
-      e.state = e.order?.kind === "attack" || e.order?.kind === "attackmove" ? "attack" : "idle";
+      e.state =
+        e.order?.kind === "attack" || e.order?.kind === "attackmove" || e.order?.kind === "forceattack"
+          ? "attack"
+          : "idle";
       e.tileX = worldToTile(e.x, state.tileSize);
       e.tileY = worldToTile(e.y, state.tileSize);
       continue;
     }
     e.state =
-      e.order?.kind === "attack" || e.order?.kind === "attackmove"
+      e.order?.kind === "attack" || e.order?.kind === "attackmove" || e.order?.kind === "forceattack"
         ? "attack"
         : e.order?.kind === "harvest"
           ? "harvest"

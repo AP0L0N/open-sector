@@ -54,6 +54,7 @@ export function crushTreeAt(state: MatchState, x: number, y: number): boolean {
   const i = tileIndex(state, x, y);
   state.terrain[i] = TILE_EMPTY;
   state.clearedTrees.push({ x, y });
+  state.visionTick = -1;
   return true;
 }
 
@@ -196,12 +197,28 @@ export function inBuildRadius(state: MatchState, ownerId: string, tx: number, ty
   return false;
 }
 
-export function buildingContains(e: Entity, tileSize: number, wx: number, wy: number): boolean {
+export function buildingBounds(
+  e: Pick<Entity, "tileX" | "tileY" | "tileW" | "tileH">,
+  tileSize: number,
+): { x0: number; y0: number; x1: number; y1: number } {
   const x0 = e.tileX * tileSize;
   const y0 = e.tileY * tileSize;
-  const x1 = (e.tileX + e.tileW) * tileSize;
-  const y1 = (e.tileY + e.tileH) * tileSize;
-  return wx >= x0 && wx < x1 && wy >= y0 && wy < y1;
+  return { x0, y0, x1: x0 + e.tileW * tileSize, y1: y0 + e.tileH * tileSize };
+}
+
+export function buildingContains(e: Entity, tileSize: number, wx: number, wy: number): boolean {
+  const b = buildingBounds(e, tileSize);
+  return wx >= b.x0 && wx < b.x1 && wy >= b.y0 && wy < b.y1;
+}
+
+/** Chebyshev ≤ 1 to any footprint tile, including standing on the pad. */
+export function adjacentToBuilding(state: MatchState, unit: Entity, building: Entity): boolean {
+  const tx = worldToTile(unit.x, state.tileSize);
+  const ty = worldToTile(unit.y, state.tileSize);
+  for (const t of footprint(building.tileX, building.tileY, building.tileW, building.tileH)) {
+    if (chebyshev(tx, ty, t.x, t.y) <= 1) return true;
+  }
+  return false;
 }
 
 export function unitContains(e: Entity, wx: number, wy: number, pad = 4): boolean {
@@ -310,7 +327,11 @@ export function makeEntity(
     mgCooldown: 0,
     garrisonedIn: null,
     garrison: [],
+    captureOwnerId: "",
+    captureProgress: 0,
     crits: [],
+    stance: "stand",
+    stanceOrder: "stand",
   };
   state.entities.set(id, e);
   occupyEntity(state, e);

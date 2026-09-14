@@ -1,11 +1,14 @@
 import {
   HEIGHT_MAX,
+  ISO_TILE_H,
   TILE_BLOCKED,
+  TILE_EMPTY,
   TILE_SCRAP,
   TILE_SUBDIV,
   TILE_TREE,
   TILE_WATER,
   heightAt,
+  isoBoxSilhouette,
   isoLift,
   isoMapBounds,
   maxHeightOf,
@@ -15,12 +18,25 @@ import {
   type IsoPt,
   type MapDef,
 } from "@gridlock/shared";
+import {
+  BUSH_A,
+  BUSH_B,
+  GRASS_TILES,
+  SCRAP_A,
+  WATER_TEX,
+  WATER_TEX_B,
+  drawPropSprite,
+  whenImagesReady,
+  PROP_IMAGES,
+} from "./sprites.js";
 
 const WALL_H = 20;
 const TREE_H = 14;
 const SCRAP_H = 12;
+/** Isolated trees extrude past the tile diamond; restamp must repaint that far. */
+const RESTAMP_RADIUS = Math.ceil((TREE_H + 8) / ISO_TILE_H) + 3;
 /** Wall boxes extend above the northern ground bound. */
-const PROP_PAD = WALL_H;
+const PROP_PAD = WALL_H + 10;
 
 export type ScrapCell = { x: number; y: number };
 
@@ -92,12 +108,125 @@ function bakePt(p: IsoPt, originX: number, originY: number): IsoPt {
 
 function groundFill(map: MapDef, tx: number, ty: number, kind: number, scrap: boolean): string {
   const chk = (Math.floor(tx / TILE_SUBDIV) + Math.floor(ty / TILE_SUBDIV)) % 2 === 0;
-  if (kind === TILE_WATER) return chk ? "#1a3d55" : "#16364c";
+  if (kind === TILE_WATER) return chk ? "#1d4a5c" : "#183f52";
   if (kind === TILE_TREE) return chk ? "#1c3320" : "#182c1c";
-  const fill = kind === TILE_BLOCKED ? "#2a1e18" : scrap ? (chk ? "#5a4a18" : "#4a3c14") : chk ? "#2a3a24" : "#243320";
+  const fill = kind === TILE_BLOCKED ? "#2a1e18" : scrap ? (chk ? "#4a3c18" : "#3e3314") : chk ? "#2a3a24" : "#243320";
   const h = heightAt(map, tx, ty);
   if (h <= 0 || kind === TILE_BLOCKED) return fill;
   return shade(fill, 1 + (h / HEIGHT_MAX) * 0.48);
+}
+
+function hash2(tx: number, ty: number, salt: number): number {
+  return (Math.imul(tx * 374761393 + ty * 668265263 + salt, 1103515245) >>> 0);
+}
+
+function waterPattern(ctx: CanvasRenderingContext2D, frame = 0): CanvasPattern | null {
+  const img = frame === 1 ? WATER_TEX_B : WATER_TEX;
+  if (!img.complete || img.naturalWidth <= 0) return null;
+  return ctx.createPattern(img, "repeat");
+}
+
+function landNeighbor(map: MapDef, tx: number, ty: number, dx: number, dy: number): boolean {
+  const x = tx + dx;
+  const y = ty + dy;
+  if (x < 0 || y < 0 || x >= map.width || y >= map.height) return true;
+  return map.tiles[y * map.width + x] !== TILE_WATER;
+}
+
+function paintWaterOverlay(
+  ctx: CanvasRenderingContext2D,
+  map: MapDef,
+  tx: number,
+  ty: number,
+  originX: number,
+  originY: number,
+): void {
+  const d = tileDiamond(tx, ty, map.tileSize);
+  const n = bakePt(d.n, originX, originY);
+  const e = bakePt(d.e, originX, originY);
+  const s = bakePt(d.s, originX, originY);
+  const w = bakePt(d.w, originX, originY);
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(n.x, n.y);
+  ctx.lineTo(e.x, e.y);
+  ctx.lineTo(s.x, s.y);
+  ctx.lineTo(w.x, w.y);
+  ctx.closePath();
+  ctx.clip();
+  const pat = waterPattern(ctx, 0);
+  if (pat) {
+    ctx.globalAlpha = 0.82;
+    ctx.fillStyle = pat;
+    const minX = Math.floor(Math.min(n.x, e.x, s.x, w.x));
+    const minY = Math.floor(Math.min(n.y, e.y, s.y, w.y));
+    const maxX = Math.ceil(Math.max(n.x, e.x, s.x, w.x));
+    const maxY = Math.ceil(Math.max(n.y, e.y, s.y, w.y));
+    ctx.fillRect(minX, minY, Math.max(1, maxX - minX), Math.max(1, maxY - minY));
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+  const edges: [number, number, IsoPt, IsoPt][] = [
+    [0, -1, n, e],
+    [1, 0, e, s],
+    [0, 1, s, w],
+    [-1, 0, w, n],
+  ];
+  ctx.save();
+  ctx.lineCap = "round";
+  for (const [dx, dy, a, b] of edges) {
+    if (!landNeighbor(map, tx, ty, dx, dy)) continue;
+    ctx.strokeStyle = "rgba(186, 216, 206, 0.62)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(230, 244, 236, 0.28)";
+    ctx.lineWidth = 0.7;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function grassPattern(ctx: CanvasRenderingContext2D, variant: number): CanvasPattern | null {
+  const img = GRASS_TILES[variant % GRASS_TILES.length];
+  if (!img || !img.complete || img.naturalWidth <= 0) return null;
+  return ctx.createPattern(img, "repeat");
+}
+
+function paintGrassOverlay(
+  ctx: CanvasRenderingContext2D,
+  map: MapDef,
+  tx: number,
+  ty: number,
+  originX: number,
+  originY: number,
+): void {
+  const d = tileDiamond(tx, ty, map.tileSize);
+  const n = bakePt(d.n, originX, originY);
+  const e = bakePt(d.e, originX, originY);
+  const s = bakePt(d.s, originX, originY);
+  const w = bakePt(d.w, originX, originY);
+  const v = hash2(tx, ty, 4) % GRASS_TILES.length;
+  const pat = grassPattern(ctx, v);
+  if (!pat) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(n.x, n.y);
+  ctx.lineTo(e.x, e.y);
+  ctx.lineTo(s.x, s.y);
+  ctx.lineTo(w.x, w.y);
+  ctx.closePath();
+  ctx.clip();
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = pat;
+  const minX = Math.floor(Math.min(n.x, e.x, s.x, w.x));
+  const minY = Math.floor(Math.min(n.y, e.y, s.y, w.y));
+  const maxX = Math.ceil(Math.max(n.x, e.x, s.x, w.x));
+  const maxY = Math.ceil(Math.max(n.y, e.y, s.y, w.y));
+  ctx.fillRect(minX, minY, Math.max(1, maxX - minX), Math.max(1, maxY - minY));
+  ctx.restore();
 }
 
 export function atlasSize(map: MapDef): {
@@ -189,6 +318,14 @@ function isoBox(
   fillQuad(ctx, n2, e2, s2, w2);
 }
 
+/** Stem of a grove, or a lone tree. Null if this cell is only canopy cover. */
+export function treePropKind(map: MapDef, tx: number, ty: number): "lone" | "grove" | null {
+  if ((map.tiles[ty * map.width + tx] ?? 0) !== TILE_TREE) return null;
+  const batch = treeNeighbor(map, tx, ty);
+  if (batch && !treeStem(tx, ty)) return null;
+  return batch ? "grove" : "lone";
+}
+
 export function treeNeighbor(map: MapDef, tx: number, ty: number): boolean {
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
@@ -234,38 +371,84 @@ function paintTileProps(
   if (kind === TILE_BLOCKED) {
     isoBox(ctx, tx * ts, ty * ts, ts, ts, WALL_H, fillOverride ?? "#3a2a22", elev, ts, originX, originY);
   } else if (kind === TILE_TREE) {
-    const batch = treeNeighbor(map, tx, ty);
-    if (batch && !treeStem(tx, ty)) return;
-    const inset = batch ? ts * 0.18 : ts * -0.4;
+    if (!treePropKind(map, tx, ty)) return;
+    const inset = ts * 0.32;
     isoBox(
       ctx,
       tx * ts + inset,
       ty * ts + inset,
       ts - inset * 2,
       ts - inset * 2,
-      batch ? TREE_H : TREE_H + 8,
-      fillOverride ?? "#1f4a28",
+      5,
+      fillOverride ?? "#2a2218",
       elev,
       ts,
       originX,
       originY,
     );
   } else if (scrap) {
-    const inset = ts * 0.18;
-    isoBox(
-      ctx,
-      tx * ts + inset,
-      ty * ts + inset,
-      ts - inset * 2,
-      ts - inset * 2,
-      SCRAP_H,
-      fillOverride ?? "#c4a24a",
-      elev,
-      ts,
-      originX,
-      originY,
-    );
+    const lift = isoLift(elev);
+    const p = worldToIso((tx + 0.5) * ts, (ty + 0.55) * ts, ts);
+    const x = p.x - originX;
+    const y = p.y - originY - lift;
+    const h = hash2(tx, ty, 3);
+    const drawn = drawPropSprite(ctx, SCRAP_A, x, y, 11 + (h % 5), (h & 1) === 0);
+    if (!drawn) {
+      const inset = ts * 0.18;
+      isoBox(
+        ctx,
+        tx * ts + inset,
+        ty * ts + inset,
+        ts - inset * 2,
+        ts - inset * 2,
+        SCRAP_H,
+        fillOverride ?? "#c4a24a",
+        elev,
+        ts,
+        originX,
+        originY,
+      );
+    }
+  } else if (kind === TILE_EMPTY) {
+    paintDecor(ctx, map, tx, ty, originX, originY);
   }
+}
+
+function bushRoll(tx: number, ty: number): number {
+  return hash2(tx, ty, 29);
+}
+
+function wantBush(tx: number, ty: number): boolean {
+  const h = bushRoll(tx, ty);
+  if (h >= 0x00600000) return false;
+  for (let dy = -5; dy <= 5; dy++) {
+    for (let dx = -5; dx <= 5; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      const n = bushRoll(tx + dx, ty + dy);
+      if (n < 0x00600000 && n >= h) return false;
+    }
+  }
+  return true;
+}
+
+function paintDecor(
+  ctx: CanvasRenderingContext2D,
+  map: MapDef,
+  tx: number,
+  ty: number,
+  originX: number,
+  originY: number,
+): void {
+  if (!wantBush(tx, ty)) return;
+  const ts = map.tileSize;
+  const elev = heightAt(map, tx, ty);
+  const lift = isoLift(elev);
+  const h = bushRoll(tx, ty);
+  const jx = ((h >>> 8) % 9) * 0.06 - 0.24;
+  const jy = ((h >>> 4) % 9) * 0.06 - 0.18;
+  const p = worldToIso((tx + 0.5 + jx) * ts, (ty + 0.62 + jy) * ts, ts);
+  const bush = (h >>> 11) % 2 === 0 ? BUSH_A : BUSH_B;
+  drawPropSprite(ctx, bush, p.x - originX, p.y - originY - lift, 14 + (h % 11), (h & 4) === 0);
 }
 
 export function coverTile(
@@ -293,6 +476,8 @@ function paintGround(
 ): void {
   const kind = map.tiles[ty * map.width + tx] ?? 0;
   fillElevatedTile(ctx, map, tx, ty, groundFill(map, tx, ty, kind, scrap), originX, originY);
+  if (kind === TILE_WATER) paintWaterOverlay(ctx, map, tx, ty, originX, originY);
+  else if (kind !== TILE_BLOCKED) paintGrassOverlay(ctx, map, tx, ty, originX, originY);
 }
 
 function paintTileStamp(
@@ -358,14 +543,22 @@ function tileStampBounds(
   originY: number,
 ): { x: number; y: number; w: number; h: number } {
   const ts = map.tileSize;
-  const d = tileDiamond(tx, ty, ts);
-  const top = isoLift(heightAt(map, tx, ty)) + TREE_H + 16;
-  const pad = 10;
-  const xs = [d.n.x, d.e.x, d.s.x, d.w.x];
-  const ys = [d.n.y, d.e.y, d.s.y, d.w.y];
+  const inset = ts * -0.4;
+  const sil = isoBoxSilhouette(
+    tx * ts + inset,
+    ty * ts + inset,
+    ts - inset * 2,
+    ts - inset * 2,
+    TREE_H + 8,
+    ts,
+    isoLift(heightAt(map, tx, ty)),
+  );
+  const pad = 6;
+  const xs = sil.map((p) => p.x);
+  const ys = sil.map((p) => p.y);
   const minX = Math.min(...xs) - originX - pad;
   const maxX = Math.max(...xs) - originX + pad;
-  const minY = Math.min(...ys) - originY - top - pad;
+  const minY = Math.min(...ys) - originY - pad;
   const maxY = Math.max(...ys) - originY + pad;
   return {
     x: Math.floor(minX),
@@ -373,6 +566,25 @@ function tileStampBounds(
     w: Math.ceil(maxX - minX),
     h: Math.ceil(maxY - minY),
   };
+}
+
+function expandIndices(map: MapDef, indices: number[], radius: number): number[] {
+  const w = map.width;
+  const h = map.height;
+  const expanded = new Set<number>();
+  for (const i of indices) {
+    const x = i % w;
+    const y = (i / w) | 0;
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        expanded.add(ny * w + nx);
+      }
+    }
+  }
+  return [...expanded];
 }
 
 export function restampTiles(
@@ -386,23 +598,11 @@ export function restampTiles(
   if (!ctx) return;
   const packed = packScrap(scrapCells, map.width);
   const w = map.width;
-  const h = map.height;
-  const expanded = new Set<number>();
   for (const i of indices) {
-    const x = i % w;
-    const y = (i / w) | 0;
-    const b = tileStampBounds(map, x, y, bake.originX, bake.originY);
+    const b = tileStampBounds(map, i % w, (i / w) | 0, bake.originX, bake.originY);
     ctx.clearRect(b.x, b.y, b.w, b.h);
-    for (let dy = -2; dy <= 2; dy++) {
-      for (let dx = -2; dx <= 2; dx++) {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-        expanded.add(ny * w + nx);
-      }
-    }
   }
-  paintTileStamp(ctx, map, [...expanded], packed, bake.originX, bake.originY);
+  paintTileStamp(ctx, map, expandIndices(map, indices, RESTAMP_RADIUS), packed, bake.originX, bake.originY);
   bake.scrap = packed;
 }
 
@@ -514,15 +714,15 @@ function parseRgb(hex: string): [number, number, number] {
 
 function miniFill(map: MapDef, tx: number, ty: number, scrap: boolean): string {
   const kind = map.tiles[ty * map.width + tx] ?? 0;
-  if (kind === TILE_WATER) return "#1a3d55";
+  if (kind === TILE_WATER) return "#1d4a5c";
   if (kind === TILE_TREE) return "#1f4a28";
   if (kind === TILE_BLOCKED) return "#3a2a22";
   if (scrap) return "#5a4a18";
   const band = HEIGHT_MAX > 0 ? heightAt(map, tx, ty) / HEIGHT_MAX : 0;
-  if (band >= 0.75) return "#5c6e40";
-  if (band >= 0.4) return "#4a5a38";
-  if (band > 0) return "#354a30";
-  return "#2a3a24";
+  if (band >= 0.75) return "#5a6a3c";
+  if (band >= 0.4) return "#4a5a32";
+  if (band > 0) return "#3a4c2c";
+  return "#334628";
 }
 
 export function bakeMini(map: MapDef, scrap: Iterable<ScrapCell>): MiniBake {
@@ -575,4 +775,13 @@ export function miniFor(map: MapDef, scrap: Iterable<ScrapCell>): MiniBake {
     updateMiniScrap(bake, map, scrap);
   }
   return bake;
+}
+
+export function resetTerrainCache(): void {
+  terrainCache.clear();
+  miniCache.clear();
+}
+
+export function whenTerrainArtReady(cb: () => void): void {
+  whenImagesReady(PROP_IMAGES, cb);
 }

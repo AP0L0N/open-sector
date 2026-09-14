@@ -3,9 +3,10 @@ import {
   CRIT_ENGINE_CHANCE,
   CRIT_ENGINE_TURN,
   CRIT_LEG_CHANCE,
-  CRIT_LEG_SPEED,
   CRIT_TRACKS_CHANCE,
   HANDGUN,
+  STANCE_AIM_SPREAD,
+  STANCE_SPEED,
   addCrit,
   catalog,
   gunStatsFor,
@@ -14,6 +15,7 @@ import {
   isInfantryType,
   isMotorVehicle,
   pickLoadedShell,
+  stanceOf,
   type Crit,
 } from "../catalog.js";
 import type { ImpactKind } from "../protocol.js";
@@ -22,7 +24,7 @@ import type { Entity } from "./types.js";
 
 export function moveSpeedMul(e: Entity): number {
   if (hasCrit(e, "tracks") || hasCrit(e, "engine")) return 0;
-  if (hasCrit(e, "leg")) return CRIT_LEG_SPEED;
+  if (isInfantryType(e.type)) return STANCE_SPEED[stanceOf(e)];
   return 1;
 }
 
@@ -45,19 +47,20 @@ export function fireStats(e: Entity): {
   rangeTiles?: number;
 } {
   const def = catalog(e.type);
+  const aim = STANCE_AIM_SPREAD[stanceOf(e)];
   if (isInfantryType(e.type) && hasCrit(e, "arm")) {
     return {
       damage: HANDGUN.damage,
       penetration: HANDGUN.penetration,
       caliber: HANDGUN.caliber,
-      spreadDeg: HANDGUN.spreadDeg,
+      spreadDeg: HANDGUN.spreadDeg * aim,
       cooldown: HANDGUN.cooldown,
       rangeTiles: HANDGUN.rangeTiles,
     };
   }
   const shell = hasAmmo(e.type) ? pickLoadedShell(e.ammo, e.shell) : null;
   const gun = gunStatsFor(e.type, shell);
-  return { ...gun, cooldown: def.cooldown };
+  return { ...gun, spreadDeg: gun.spreadDeg * aim, cooldown: def.cooldown };
 }
 
 export function rollCrits(
@@ -72,7 +75,11 @@ export function rollCrits(
   if (isInfantryType(e.type)) {
     if (damage <= 0) return;
     if (rand() < CRIT_ARM_CHANCE) addCrit(e, "arm");
-    if (rand() < CRIT_LEG_CHANCE) addCrit(e, "leg");
+    if (rand() < CRIT_LEG_CHANCE) {
+      addCrit(e, "leg");
+      e.stanceOrder = "crawl";
+      e.stance = "crawl";
+    }
     return;
   }
   if (!isMotorVehicle(e.type)) return;

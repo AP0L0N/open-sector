@@ -43,8 +43,40 @@ export const CRIT_LEG_CHANCE = 0.25;
 export const CRIT_TRACKS_CHANCE = 0.2;
 /** Rear-plate hit on a motor vehicle → broken engine. */
 export const CRIT_ENGINE_CHANCE = 0.4;
-/** Move-speed multiplier with a broken leg. */
-export const CRIT_LEG_SPEED = 0.4;
+/** Infantry posture. Stand is the default; crawl is prone. */
+export type Stance = "stand" | "crouch" | "crawl";
+export const STANCES: readonly Stance[] = ["stand", "crouch", "crawl"];
+export const STANCE_LABEL: Record<Stance, string> = {
+  stand: "standing",
+  crouch: "crouching",
+  crawl: "crawling",
+};
+/** Move-speed multiplier by posture. Crawl also applies to a broken leg. */
+export const STANCE_SPEED: Record<Stance, number> = {
+  stand: 1,
+  crouch: 0.55,
+  crawl: 0.28,
+};
+/** Outgoing aim cone. Lower is more accurate. */
+export const STANCE_AIM_SPREAD: Record<Stance, number> = {
+  stand: 1,
+  crouch: 0.6,
+  crawl: 0.3,
+};
+/** Extra incoming aim cone when shooting this posture. Higher is harder to hit. */
+export const STANCE_TARGET_SPREAD: Record<Stance, number> = {
+  stand: 1,
+  crouch: 1.45,
+  crawl: 2.15,
+};
+/** Projectile hit-radius multiplier. */
+export const STANCE_HIT_RADIUS: Record<Stance, number> = {
+  stand: 1,
+  crouch: 0.7,
+  crawl: 0.4,
+};
+/** Move-speed multiplier with a broken leg (forced crawl). */
+export const CRIT_LEG_SPEED = STANCE_SPEED.crawl;
 /** Hull turn-rate multiplier with a dead engine. Turret is unaffected. */
 export const CRIT_ENGINE_TURN = 0.2;
 /** Extra world pixels between unit reserved radii on a group move. */
@@ -73,6 +105,14 @@ export const HEIGHT_RANGE_BONUS = 1;
 export const TREE_LOS_THROUGH = TILE_SUBDIV;
 /** Civilian / unowned map buildings. */
 export const NEUTRAL_OWNER = "";
+/** One trooper vs a Dynamo (750 HP). Larger buildings take longer. */
+export const CAPTURE_SECONDS = 10;
+/** HP used as the 1× capture-time reference. */
+export const CAPTURE_HP_REF = 750;
+/** Floor so a cottage is not instant. */
+export const CAPTURE_SECONDS_MIN = 6;
+/** Progress lost per second after capturers leave or die. */
+export const CAPTURE_DECAY_PER_SEC = 0.25;
 
 export type EntityType =
   | "rig"
@@ -95,8 +135,8 @@ export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
 /** Tank / gun shells. Infantry small-arms stay unlimited. */
-export type ShellType = "ap" | "he" | "heat";
-export const SHELL_TYPES: readonly ShellType[] = ["ap", "he", "heat"];
+export type ShellType = "ap" | "he" | "heat" | "smoke";
+export const SHELL_TYPES: readonly ShellType[] = ["ap", "he", "heat", "smoke"];
 /** Lasting injuries. Infantry: arm / leg. Motor vehicles: tracks / engine. */
 export type Crit = "arm" | "leg" | "tracks" | "engine";
 export const CRIT_TYPES: readonly Crit[] = ["arm", "leg", "tracks", "engine"];
@@ -185,6 +225,19 @@ export const HANDGUN = {
  * round itself is not a visible tracer — sparks only after an armor bounce.
  */
 export const SMALL_ARMS_SPEED = 4000;
+/**
+ * 75mm flight. Slow enough to live across several sim ticks so the round
+ * reads as a tracer instead of vanishing in the fire tick.
+ */
+export const TANK_SHELL_SPEED = 520;
+/** Seconds a 75mm smoke screen lasts. */
+export const SMOKE_SECONDS = 16;
+/** Ellipse half-length along the shot, in gameplay tiles. */
+export const SMOKE_HALF_ALONG = t(2);
+/** Ellipse half-width across the shot, in gameplay tiles. */
+export const SMOKE_HALF_ACROSS = t(1);
+/** Chebyshev tiles into a cloud an observer can still see. */
+export const SMOKE_PEEK_TILES = 1;
 
 /**
  * Coaxial MG under the Warden turret. Same reach as the 75mm; the cone
@@ -206,11 +259,12 @@ export const TANK_MG = {
   overheatSeconds: 2.4,
 } as const;
 
-/** 75mm Warden load. AP is the catalog gun; HE/HEAT swap on fire. */
+/** 75mm Warden load. AP is the catalog gun; HE/HEAT/smoke swap on fire. */
 export const SHELLS: Record<ShellType, ShellDef> = {
   ap: { id: "ap", name: "AP", damage: 55, penetration: 100, caliber: 75, spreadDeg: 3 },
   he: { id: "he", name: "HE", damage: 90, penetration: 16, caliber: 75, spreadDeg: 5 },
   heat: { id: "heat", name: "HEAT", damage: 64, penetration: 140, caliber: 75, spreadDeg: 3.5 },
+  smoke: { id: "smoke", name: "Smoke", damage: 0, penetration: 0, caliber: 75, spreadDeg: 6 },
 };
 
 const UNARMED = {
@@ -414,7 +468,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     sightTiles: t(8),
     cooldown: 6.5,
     damage: 55,
-    projectileSpeed: 5200,
+    projectileSpeed: TANK_SHELL_SPEED,
     turnInPlace: true,
     turretTurnDegPerSec: 220,
     armorFront: 80,
@@ -423,7 +477,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: 100,
     caliber: 75,
     spreadDeg: 3,
-    ammo: { ap: 12, he: 6, heat: 4 },
+    ammo: { ap: 12, he: 6, heat: 4, smoke: 4 },
     defaultShell: "ap",
     mgAmmo: TANK_MG.ammo,
     leavesWreck: true,
@@ -536,12 +590,27 @@ export function isCrit(v: string): v is Crit {
   return (CRIT_TYPES as readonly string[]).includes(v);
 }
 
+export function isStance(v: string): v is Stance {
+  return (STANCES as readonly string[]).includes(v);
+}
+
 export function hasCrit(e: { crits: readonly Crit[] }, c: Crit): boolean {
   return e.crits.includes(c);
 }
 
 export function addCrit(e: { crits: Crit[] }, c: Crit): void {
   if (!e.crits.includes(c)) e.crits.push(c);
+}
+
+/** Effective posture. A broken leg always crawls. */
+export function stanceOf(e: {
+  type: EntityType;
+  stance?: Stance;
+  crits: readonly Crit[];
+}): Stance {
+  if (!isInfantryType(e.type)) return "stand";
+  if (hasCrit(e, "leg")) return "crawl";
+  return e.stance ?? "stand";
 }
 
 export function isCivilianType(type: string): type is CivilianType {
@@ -566,6 +635,10 @@ export function aimFacing(e: { type: EntityType; facing: number; turretFacing: n
 
 export function isShellType(v: string): v is ShellType {
   return (SHELL_TYPES as readonly string[]).includes(v);
+}
+
+export function isSmokeShell(shell: ShellType | null | undefined): boolean {
+  return shell === "smoke";
 }
 
 export function hasAmmo(type: EntityType): boolean {

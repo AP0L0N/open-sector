@@ -81,6 +81,14 @@ describe("garrison", () => {
     inf.order = { kind: "attack", targetId: dummy.id };
     tickCombat(state, TICK_DT);
     assert.equal(state.projectiles.length, 1);
+    const shot = state.projectiles[0]!;
+    const eastWall = (house.tileX + house.tileW) * ts;
+    assert.ok(shot.x > house.x + 8, `muzzle x ${shot.x} vs house ${house.x}`);
+    assert.ok(Math.abs(shot.x - eastWall) < ts * 2, `window x ${shot.x} wall ${eastWall}`);
+    assert.equal(shot.ignoreId, house.id);
+    const hp0 = house.hp;
+    for (let i = 0; i < 8; i++) step(state, TICK_DT);
+    assert.equal(house.hp, hp0, "garrison fire must not hit its own house");
 
     for (let i = 1; i < cap; i++) {
       const extra = makeEntity(state, "trooper", a, tileCenter(32, ts), tileCenter(12, ts));
@@ -123,6 +131,18 @@ describe("garrison", () => {
     assert.equal(res.ok, true, !res.ok ? res.message : "");
     for (let i = 0; i < 80; i++) step(state, TICK_DT);
     assert.equal(inf.garrisonedIn, house.id);
+  });
+
+  it("does not let infantry garrison an enemy-owned house", () => {
+    const { state, a, b } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const house = makeEntity(state, "cottage", b, tileCenter(40, ts), tileCenter(16, ts), {
+      tileX: 36,
+      tileY: 12,
+    });
+    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    const res = applyCommand(state, a, { type: "cmd.garrison", ids: [inf.id], buildingId: house.id });
+    assert.equal(res.ok, false);
   });
 
   it("does not let tanks garrison", () => {

@@ -1,10 +1,25 @@
-import { isoDirIndex, type Crit, type EntityType } from "@gridlock/shared";
+import { isoDirIndex, type Crit, type EntityType, type Stance } from "@gridlock/shared";
 import coreUrl from "../assets/buildings/core.png";
 import dynamoUrl from "../assets/buildings/dynamo.png";
 import smelterUrl from "../assets/buildings/smelter.png";
 import musterUrl from "../assets/buildings/muster.png";
 import armoryUrl from "../assets/buildings/armory.png";
+import cottageUrl from "../assets/buildings/cottage.png";
+import houseUrl from "../assets/buildings/house.png";
+import manorUrl from "../assets/buildings/manor.png";
+import oakUrl from "../assets/terrain/tree-oak.png";
+import pineUrl from "../assets/terrain/tree-pine.png";
+import scrapAUrl from "../assets/terrain/scrap-a.png";
+import grassTileAUrl from "../assets/terrain/grass-tile-a.png";
+import grassTileBUrl from "../assets/terrain/grass-tile-b.png";
+import grassTileCUrl from "../assets/terrain/grass-tile-c.png";
+import bushAUrl from "../assets/terrain/bush-a.png";
+import bushBUrl from "../assets/terrain/bush-b.png";
+import waterUrl from "../assets/terrain/water.png";
+import waterBUrl from "../assets/terrain/water-b.png";
 import trooperSheetUrl from "../assets/units/trooper-walk.png";
+import trooperCrouchUrl from "../assets/units/trooper-crouch.png";
+import trooperCrawlUrl from "../assets/units/trooper-crawl.png";
 import haulerSheetUrl from "../assets/units/hauler-move.png";
 import wardenHullUrl from "../assets/units/warden-hull.png";
 import wardenTurretUrl from "../assets/units/warden-turret.png";
@@ -57,6 +72,26 @@ export const TROOPER_SPRITE: UnitSpriteDef = {
   contactY: 0.9,
 };
 
+export const TROOPER_CROUCH_SPRITE: UnitSpriteDef = {
+  image: loadSheet(trooperCrouchUrl),
+  dirs: 8,
+  frames: 8,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.88,
+};
+
+export const TROOPER_CRAWL_SPRITE: UnitSpriteDef = {
+  image: loadSheet(trooperCrawlUrl),
+  dirs: 8,
+  frames: 8,
+  frameSize: 96,
+  fps: 10,
+  drawSize: Math.round(28 * UNIT_VISUAL_SCALE),
+  contactY: 0.72,
+};
+
 export const WARDEN_SPRITE: UnitSpriteDef = {
   image: loadSheet(wardenHullUrl),
   dirs: 8,
@@ -100,7 +135,12 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   rig: RIG_SPRITE,
 };
 
-export function spriteFor(type: EntityType): UnitSpriteDef | undefined {
+export function spriteFor(type: EntityType, stance?: Stance): UnitSpriteDef | undefined {
+  if (type === "trooper") {
+    if (stance === "crouch") return TROOPER_CROUCH_SPRITE;
+    if (stance === "crawl") return TROOPER_CRAWL_SPRITE;
+    return TROOPER_SPRITE;
+  }
   return UNIT_SPRITES[type];
 }
 
@@ -140,7 +180,89 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   armory: building(armoryUrl, 384, 194.5, 310),
   muster: building(musterUrl, 385, 194.5, 333),
   smelter: building(smelterUrl, 384, 194, 393),
+  cottage: building(cottageUrl, 957, 479, 753),
+  house: building(houseUrl, 957, 479, 863),
+  manor: building(manorUrl, 957, 479.5, 878),
 };
+
+/** Grounded map prop. Contact is the source pixel that sits on the tile. */
+export interface PropSprite {
+  image: HTMLImageElement;
+  contactX: number;
+  contactY: number;
+}
+
+function prop(src: string, contactX: number, contactY: number): PropSprite {
+  return { image: loadSheet(src), contactX, contactY };
+}
+
+export const TREE_OAK = prop(oakUrl, 388, 768);
+export const TREE_PINE = prop(pineUrl, 382, 1130);
+export const SCRAP_A = prop(scrapAUrl, 406, 567);
+export const BUSH_A = prop(bushAUrl, 364, 573);
+export const BUSH_B = prop(bushBUrl, 346, 371);
+export const WATER_TEX = loadSheet(waterUrl);
+export const WATER_TEX_B = loadSheet(waterBUrl);
+export const GRASS_TILES: HTMLImageElement[] = [
+  loadSheet(grassTileAUrl),
+  loadSheet(grassTileBUrl),
+  loadSheet(grassTileCUrl),
+];
+
+export const PROP_IMAGES: HTMLImageElement[] = [
+  TREE_OAK.image,
+  TREE_PINE.image,
+  SCRAP_A.image,
+  ...GRASS_TILES,
+  BUSH_A.image,
+  BUSH_B.image,
+  WATER_TEX,
+  WATER_TEX_B,
+  BUILDING_SPRITES.cottage!.image,
+  BUILDING_SPRITES.house!.image,
+  BUILDING_SPRITES.manor!.image,
+];
+
+export function whenImagesReady(images: HTMLImageElement[], cb: () => void): void {
+  let left = 0;
+  const done = (): void => {
+    left -= 1;
+    if (left <= 0) cb();
+  };
+  for (const img of images) {
+    if (img.complete && img.naturalWidth > 0) continue;
+    left += 1;
+    img.addEventListener("load", done, { once: true });
+    img.addEventListener("error", done, { once: true });
+  }
+  if (left === 0) cb();
+}
+
+export function drawPropSprite(
+  ctx: CanvasRenderingContext2D,
+  def: PropSprite,
+  x: number,
+  y: number,
+  drawH: number,
+  flip = false,
+): boolean {
+  if (!spriteReady(def) || drawH <= 0) return false;
+  const scale = drawH / def.image.naturalHeight;
+  const dw = def.image.naturalWidth * scale;
+  const dh = def.image.naturalHeight * scale;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "low";
+  if (flip) {
+    ctx.translate(x, y);
+    ctx.scale(-1, 1);
+    ctx.drawImage(def.image, -def.contactX * scale, -def.contactY * scale, dw, dh);
+  } else {
+    ctx.drawImage(def.image, x - def.contactX * scale, y - def.contactY * scale, dw, dh);
+  }
+  ctx.restore();
+  return true;
+}
 
 export function buildingSpriteFor(type: EntityType): BuildingSpriteDef | undefined {
   return BUILDING_SPRITES[type];
