@@ -19,13 +19,22 @@ import {
   isSmokeShell,
   leavesWreck,
   pickLoadedShell,
+  type CatalogEntry,
   type ShellType,
 } from "../catalog.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
-import { aimAngle, resolveHit, RICOCHET_SPARK_SPEED, RICOCHET_TRAVEL } from "./ballistics.js";
+import {
+  aimAngle,
+  isArmored,
+  resolveHit,
+  scatterHullImpact,
+  RICOCHET_SPARK_SPEED,
+  RICOCHET_TRAVEL,
+  RICOCHET_TRAVEL_MIN,
+} from "./ballistics.js";
 import { fireStats, hullTurnMul, immobilized, rollCrits } from "./crits.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
-import { weaponRangeWorld } from "./elevation.js";
+import { canAimWeapon, weaponRangeWorld } from "./elevation.js";
 import {
   allies,
   buildingBounds,
@@ -204,6 +213,10 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   const range = weaponRangeWorld(state, e);
   const dist = Math.hypot(aimX - e.x, aimY - e.y);
   if (dist > range) {
+    if (!holedUp) e.state = "attack";
+    return;
+  }
+  if (!canAimWeapon(state, e, aimX, aimY, target)) {
     if (!holedUp) e.state = "attack";
     return;
   }
@@ -442,18 +455,17 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       hideScout(state, e);
     }
     if (occupied) woundGarrison(state, e, res.damage, p.caliber);
-    const ix = e.kind === "building" ? struck.x : e.x;
-    const iy = e.kind === "building" ? struck.y : e.y;
     const lethal = e.hp <= 0 && res.kind !== "ricochet";
     let kind: ImpactKind = lethal ? "kill" : res.kind;
     if (!chipWalls && kind === "kill") kind = "hit";
     const blast = lethal && !e.wreck && (e.kind === "building" || leavesWreck(e.type));
+    const hit = impactPoint(e, targetDef, struck.x, struck.y, blast, rand);
     pushImpact(
       state,
       p,
       kind,
-      ix,
-      iy,
+      hit.x,
+      hit.y,
       res.kind === "ricochet" ? res.bounceVx : p.vx,
       res.kind === "ricochet" ? res.bounceVy : p.vy,
       blast,
@@ -469,16 +481,27 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       p.vy = (p.vy / sp) * RICOCHET_SPARK_SPEED;
       sp = RICOCHET_SPARK_SPEED;
     }
-    p.life = (RICOCHET_TRAVEL * (0.75 + rand() * 0.5)) / sp;
-    if (e.kind === "building") {
-      p.x = struck.x;
-      p.y = struck.y;
-    }
-    p.x += (p.vx / sp) * Math.max(8, e.radius * 0.5);
-    p.y += (p.vy / sp) * Math.max(8, e.radius * 0.5);
+    const travel = RICOCHET_TRAVEL_MIN + rand() * (RICOCHET_TRAVEL - RICOCHET_TRAVEL_MIN);
+    p.life = travel / sp;
+    p.x = hit.x + (p.vx / sp) * 3;
+    p.y = hit.y + (p.vy / sp) * 3;
     keep.push(p);
   }
   state.projectiles = keep;
+}
+
+function impactPoint(
+  e: Entity,
+  def: CatalogEntry,
+  struckX: number,
+  struckY: number,
+  blast: boolean,
+  rand: () => number,
+): { x: number; y: number } {
+  if (e.kind === "building") return { x: struckX, y: struckY };
+  if (blast) return { x: e.x, y: e.y };
+  const r = isArmored(def) ? Math.max(e.radius * 1.9, 16) : e.radius;
+  return scatterHullImpact(e.x, e.y, r, struckX, struckY, rand);
 }
 
 function pushImpact(
@@ -629,6 +652,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (d > bestD) continue;
     if (coneOnly && !inGuardCone(e, o)) continue;
     if (!canSeeEntity(state, e.ownerId, o)) continue;
+    if (!canAimWeapon(state, e, o.x, o.y, o)) continue;
     bestD = d;
     best = o;
   }

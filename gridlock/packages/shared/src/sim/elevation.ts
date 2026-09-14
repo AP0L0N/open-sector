@@ -9,12 +9,16 @@ import {
   HEIGHT_STEP_MAX,
   HEIGHT_UPHILL_COST,
   HEIGHT_UPHILL_SPEED,
+  HEIGHT_WORLD,
   INFANTRY_EYE_HEIGHT,
   INFANTRY_UPHILL_SIGHT,
+  TANK_GUN_CLIMB,
+  TANK_GUN_ELEV_DEG,
   TREE_LOS_THROUGH,
   catalog,
   entityIsScouting,
   hasCrit,
+  hasTurret,
   isInfantryType,
   sightBonusTilesOf,
   weaponRangeTiles,
@@ -149,6 +153,33 @@ export function weaponRangeWorld(state: MatchState, e: Entity): number {
       ? sightTilesForEntity(state, e)
       : sightTilesOf(e.type, entityHeight(state, e));
   return weaponRangeTiles(sight) * state.tileSize;
+}
+
+const TANK_GUN_ELEV_TAN = Math.tan((TANK_GUN_ELEV_DEG * Math.PI) / 180);
+
+/**
+ * Tank guns cannot crank up a steep lip. Level and downhill are always
+ * allowed — a hilltop with a clear view still engages.
+ */
+export function gunCanElevate(fromH: number, toH: number, distWorld: number): boolean {
+  const dh = toH - fromH;
+  if (dh <= TANK_GUN_CLIMB) return true;
+  if (distWorld <= 1e-6) return false;
+  return dh * HEIGHT_WORLD <= distWorld * TANK_GUN_ELEV_TAN;
+}
+
+/** Infantry aim freely. Turreted hulls use gunCanElevate. */
+export function canAimWeapon(
+  state: MatchState,
+  shooter: Entity,
+  aimX: number,
+  aimY: number,
+  target?: Entity,
+): boolean {
+  if (!hasTurret(shooter.type)) return true;
+  const fromH = entityHeight(state, shooter);
+  const toH = target ? entityHeight(state, target) : worldTileHeight(state, aimX, aimY);
+  return gunCanElevate(fromH, toH, Math.hypot(aimX - shooter.x, aimY - shooter.y));
 }
 
 /**

@@ -60,6 +60,8 @@ export {
   uphillSightForEntity,
   rangeTilesOf,
   weaponRangeWorld,
+  gunCanElevate,
+  canAimWeapon,
   hasTerrainLos,
   slopeSpeedMul,
   vertexElev,

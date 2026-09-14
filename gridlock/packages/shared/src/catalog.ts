@@ -123,8 +123,25 @@ export const HEIGHT_SIGHT_BONUS = 2;
 export const INFANTRY_UPHILL_SIGHT = 2;
 /** Standing eye height. Troops peek over rises that hide a hull. */
 export const INFANTRY_EYE_HEIGHT = TILE_SUBDIV;
+/** World-Z per discrete elevation. Matches iso lift (half a tile height). */
+export const HEIGHT_WORLD = TILE_SIZE / 2;
+/**
+ * Tank gun max elevation. A hull in a hole cannot crank the barrel at a
+ * steep lip. No depression cap — a hilltop with LOS fires down.
+ */
+export const TANK_GUN_ELEV_DEG = 20;
+/**
+ * Uphill steps a tank always clears. One authoring terrace is not a hole;
+ * a valley floor versus the plateau still has to pass the elevation angle.
+ */
+export const TANK_GUN_CLIMB = TILE_SUBDIV;
 /** Chebyshev fog radius. Troopers and player-built structures share this. */
 export const INFANTRY_SIGHT_TILES = t(12);
+/**
+ * After painting FOV, fill unseen 8-connected islands and hide visible ones
+ * of this many tiles or fewer. Set to 0 to disable (reverts to raw LOS).
+ */
+export const FOV_ISLAND_LIMIT = 8;
 /**
  * Armed units can fire this far past their current sight. The extra band is
  * only useful when a teammate (later: binoculars / a spotter) lights the target;

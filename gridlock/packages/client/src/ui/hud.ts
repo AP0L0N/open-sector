@@ -31,7 +31,15 @@ import {
   type TrainType,
 } from "@gridlock/shared";
 import type { Ctx } from "../ctx.js";
-import { MapView, SPECIAL_HOTKEY } from "../render/mapview.js";
+import {
+  ATTACK_MOVE_HOTKEY,
+  GARRISON_HOTKEY,
+  GUARD_HOTKEY,
+  MapView,
+  ROTATE_HOTKEY,
+  SPECIAL_HOTKEY,
+  STOP_HOTKEY,
+} from "../render/mapview.js";
 import { buzzDeny } from "./audio.js";
 import { el } from "./dom.js";
 
@@ -726,11 +734,15 @@ function paintQuickActions(ctx: Ctx, view: MapView | null): void {
   };
 
   if (units.length) {
-    add("stop", "Stop", "Halt selected units (X)");
+    add("stop", "Stop", `Halt selected units (${STOP_HOTKEY.toUpperCase()})`);
     const atk = el("button", {
       class: "qact" + (view?.attackMoveMode ? " is-on" : ""),
       text: "Move attack",
-      attrs: { type: "button", "data-act": "attackmove", title: "Move, halt to fire (F)" },
+      attrs: {
+        type: "button",
+        "data-act": "attackmove",
+        title: `Move, halt to fire (${ATTACK_MOVE_HOTKEY.toUpperCase()})`,
+      },
     });
     root.append(atk);
     const force = el("button", {
@@ -739,7 +751,7 @@ function paintQuickActions(ctx: Ctx, view: MapView | null): void {
       attrs: {
         type: "button",
         "data-act": "forceattack",
-        title: "Fire at a point or any unit, including friendlies (T). Smoke fires once.",
+        title: "Fire at a point or any unit, including friendlies (hold Ctrl and click). Smoke fires once.",
       },
     });
     root.append(force);
@@ -750,7 +762,7 @@ function paintQuickActions(ctx: Ctx, view: MapView | null): void {
       attrs: {
         type: "button",
         "data-act": "guard",
-        title: "Move here, face a direction, hold. Enemies in the cone are engaged first (V). Click and drag to face.",
+        title: `Move here, face a direction, hold. Enemies in the cone are engaged first (${GUARD_HOTKEY.toUpperCase()}). Click and drag to face.`,
       },
     });
     root.append(guard);
@@ -771,7 +783,7 @@ function paintQuickActions(ctx: Ctx, view: MapView | null): void {
       attrs: {
         type: "button",
         "data-act": "rotate",
-        title: "Face a direction (R). Tanks turn hull and turret.",
+        title: `Face a direction (${ROTATE_HOTKEY.toUpperCase()}). Tanks turn hull and turret.`,
       },
     });
     root.append(rotate);
@@ -803,12 +815,14 @@ function paintQuickActions(ctx: Ctx, view: MapView | null): void {
   }
   if (units.some((e) => e.type === "hauler")) add("harvest", "Harvest", "Auto-harvest nearest scrap");
   if (buildings.some((e) => e.type !== "core" && !isGarrisonable(e.type))) add("sell", "Sell", "Sell selected structures");
-  if (houses.length && units.some((e) => isInfantryType(e.type))) add("garrison", "Enter", "Garrison infantry (G)");
+  if (houses.length && units.some((e) => isInfantryType(e.type))) {
+    add("garrison", "Enter", `Garrison infantry (${GARRISON_HOTKEY.toUpperCase()})`);
+  }
   if (
     units.some((e) => e.garrisonedIn) ||
     houses.some((e) => e.garrison?.ownerId === ctx.match!.youPlayerId && (e.garrison?.count ?? 0) > 0)
   ) {
-    add("ungarrison", "Exit", "Leave the building (G)");
+    add("ungarrison", "Exit", `Leave the building (${GARRISON_HOTKEY.toUpperCase()})`);
   }
   const tanks = units.filter((e) => hasScout(e.type) && (e.scout?.hpMax ?? 0) > 0);
   if (tanks.length) {

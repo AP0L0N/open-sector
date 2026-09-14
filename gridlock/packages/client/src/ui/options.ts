@@ -63,7 +63,10 @@ export function renderOptions(root: HTMLElement, ctx: Ctx): void {
     music,
     el("h2", { text: "Camera" }),
     edgeLabel,
-    el("p", { class: "tiny", text: "WASD and arrows always pan. Edge scroll is off unless you turn it on." }),
+    el("p", {
+      class: "tiny",
+      text: "Arrow keys, W/D, and middle-mouse drag pan. A/S/G/R are unit orders. Edge scroll is off unless you turn it on.",
+    }),
     el("p", { class: "tiny", text: "Saved locally. No accounts in M1." }),
     test,
   );

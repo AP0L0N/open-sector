@@ -948,3 +948,130 @@ describe("spotted fire", () => {
     assert.ok(state.projectiles.length >= 1, `shots=${state.projectiles.length}`);
   });
 });
+
+describe("armor impact scatter", () => {
+  function pingTank(
+    state: MatchState,
+    tank: { x: number; y: number; radius: number },
+    shot: {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      damage: number;
+      penetration: number;
+      caliber: number;
+    },
+    n: number,
+  ): { hitOff: number[]; puffDist: number[]; spawnDist: number[] } {
+    const hitOff: number[] = [];
+    const puffDist: number[] = [];
+    const spawnDist: number[] = [];
+    for (let i = 0; i < n; i++) {
+      state.projectiles = [];
+      state.impacts = [];
+      fireShell(state, shot);
+      tickProjectiles(state, TICK_DT);
+      for (const im of state.impacts) {
+        if (im.kind !== "ricochet" && im.kind !== "glance" && im.kind !== "hit" && im.kind !== "pen") {
+          continue;
+        }
+        hitOff.push(Math.hypot(im.x - tank.x, im.y - tank.y));
+      }
+      for (const p of state.projectiles) {
+        if (p.bounced) spawnDist.push(Math.hypot(p.x - tank.x, p.y - tank.y));
+      }
+      state.impacts = [];
+      for (let k = 0; k < 16; k++) {
+        tickProjectiles(state, TICK_DT);
+        for (const im of state.impacts) {
+          if (im.kind === "puff") puffDist.push(Math.hypot(im.x - tank.x, im.y - tank.y));
+        }
+        state.impacts = [];
+        if (state.projectiles.length === 0) break;
+      }
+    }
+    return { hitOff, puffDist, spawnDist };
+  }
+
+  it("rifle ricochets leave the hull and fly a random distance", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    stripOwner(state, "A");
+    stripOwner(state, "B");
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "B", tileCenter(40, ts), tileCenter(24, ts));
+    tank.facing = Math.PI;
+    const gun = catalog("trooper");
+    const samples = pingTank(
+      state,
+      tank,
+      {
+        x: tank.x - 40,
+        y: tank.y,
+        vx: gun.projectileSpeed,
+        vy: 0,
+        damage: gun.damage,
+        penetration: gun.penetration,
+        caliber: gun.caliber,
+      },
+      40,
+    );
+    assert.ok(samples.hitOff.length > 10, `hits=${samples.hitOff.length}`);
+    assert.ok(Math.min(...samples.hitOff) > 2, `impact glued to center min=${Math.min(...samples.hitOff)}`);
+    assert.ok(
+      Math.max(...samples.hitOff) - Math.min(...samples.hitOff) > 6,
+      `impact span ${Math.max(...samples.hitOff) - Math.min(...samples.hitOff)}`,
+    );
+    assert.ok(samples.spawnDist.length > 10, `bounces=${samples.spawnDist.length}`);
+    assert.ok(
+      Math.max(...samples.spawnDist) < tank.radius * 3,
+      `bounce spawned far from hull max=${Math.max(...samples.spawnDist)}`,
+    );
+    assert.ok(samples.puffDist.length > 10, `puffs=${samples.puffDist.length}`);
+    assert.ok(Math.min(...samples.puffDist) < 50, `no short ricochet min=${Math.min(...samples.puffDist)}`);
+    assert.ok(Math.max(...samples.puffDist) > 90, `no long ricochet max=${Math.max(...samples.puffDist)}`);
+    assert.ok(
+      Math.max(...samples.puffDist) - Math.min(...samples.puffDist) > 50,
+      `puff span ${Math.max(...samples.puffDist) - Math.min(...samples.puffDist)}`,
+    );
+  });
+
+  it("tank shells also strike a random hull point and bounce a random distance", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    stripOwner(state, "A");
+    stripOwner(state, "B");
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "B", tileCenter(40, ts), tileCenter(24, ts));
+    tank.facing = 0;
+    const gun = catalog("warden");
+    const a = (48 * Math.PI) / 180;
+    const ux = -Math.cos(a);
+    const uy = -Math.sin(a);
+    const samples = pingTank(
+      state,
+      tank,
+      {
+        x: tank.x - ux * 36,
+        y: tank.y - uy * 36,
+        vx: ux * gun.projectileSpeed,
+        vy: uy * gun.projectileSpeed,
+        damage: gun.damage,
+        penetration: gun.penetration,
+        caliber: gun.caliber,
+      },
+      36,
+    );
+    assert.ok(samples.hitOff.length > 8, `hits=${samples.hitOff.length}`);
+    assert.ok(Math.min(...samples.hitOff) > 2, `shell impact glued to center min=${Math.min(...samples.hitOff)}`);
+    assert.ok(
+      Math.max(...samples.hitOff) - Math.min(...samples.hitOff) > 5,
+      `shell impact span ${Math.max(...samples.hitOff) - Math.min(...samples.hitOff)}`,
+    );
+    if (samples.puffDist.length > 4) {
+      assert.ok(Math.min(...samples.puffDist) < 55, `shell short bounce min=${Math.min(...samples.puffDist)}`);
+      assert.ok(Math.max(...samples.puffDist) > 80, `shell long bounce max=${Math.max(...samples.puffDist)}`);
+    }
+  });
+});

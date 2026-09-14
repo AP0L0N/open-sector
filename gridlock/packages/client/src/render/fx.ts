@@ -300,6 +300,26 @@ export function drawKineticImpact(ctx: CanvasRenderingContext2D, opts: KineticOp
   }
 }
 
+/**
+ * Screen-pixel lift so armor strikes sit on the hull instead of the
+ * ground contact. Undefined = caller keeps the default lift.
+ */
+export function armorHitLift(
+  kind: string,
+  caliber: number | undefined,
+  seed: number,
+  blast?: boolean,
+): number | undefined {
+  if (blast || (kind === "kill" && (caliber ?? 0) < 40)) return undefined;
+  const shell = isShellCaliber(caliber);
+  const onHull =
+    kind === "ricochet" ||
+    kind === "glance" ||
+    (shell && (kind === "hit" || kind === "pen" || kind === "kill"));
+  if (!onHull) return undefined;
+  return 6 + rng(seed ^ 0x51d11)() * 30;
+}
+
 /** Bounce: sparks along the leaving shot, tiny slap of compressed air. */
 export function drawRicochetSparks(
   ctx: CanvasRenderingContext2D,
@@ -312,11 +332,23 @@ export function drawRicochetSparks(
   caliber?: number,
 ): void {
   const shell = isShellCaliber(caliber);
+  const rnd = rng(seed ^ 0xa5a5);
   drawContactFlash(ctx, x, y, t, shell ? 5 : 2.4);
   drawShockRing(ctx, x, y, Math.min(1, t / 0.5), shell ? 12 : 6, shell ? 0.4 : 0.2);
-  drawSparkBurst(ctx, x, y, dirX, dirY, t, seed, shell ? 16 : 5, shell ? 48 : 16, true);
+  drawSparkBurst(
+    ctx,
+    x,
+    y,
+    dirX,
+    dirY,
+    t,
+    seed,
+    shell ? 16 : 5,
+    (shell ? 18 : 8) + rnd() * (shell ? 36 : 22),
+    true,
+  );
   const d = dirOf(dirX, dirY);
-  const travel = shell ? 56 : 42;
+  const travel = (shell ? 10 : 6) + rnd() * (shell ? 50 : 38);
   const head = Math.min(1, (t * 1.5) / 0.22);
   const fade = t < 0.5 ? 1 : Math.max(0, 1 - (t - 0.5) / 0.5);
   const hx = x + d.x * travel * head;

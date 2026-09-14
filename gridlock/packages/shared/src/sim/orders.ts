@@ -53,7 +53,7 @@ export function tickMovement(state: MatchState, dt: number): void {
     if (e.kind !== "unit" || e.hp <= 0 || e.wreck || e.garrisonedIn) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
     const def = catalog(e.type);
-    const speed = def.moveTilesPerSec * state.tileSize;
+    const speed = marchTilesPerSec(e) * state.tileSize;
     if (e.order?.kind === "rotate" && e.order.x != null && e.order.y != null) {
       tickRotate(e, dt);
       e.tileX = worldToTile(e.x, state.tileSize);
@@ -183,6 +183,13 @@ export function tickMovement(state: MatchState, dt: number): void {
       e.state = "idle";
     }
   }
+}
+
+function marchTilesPerSec(e: Entity): number {
+  const tiles = catalog(e.type).moveTilesPerSec;
+  const cap = e.order?.pace;
+  if (cap == null || cap <= 0 || cap >= tiles) return tiles;
+  return cap;
 }
 
 function reverseHeading(e: Entity, wp: { x: number; y: number }): number {

@@ -75,6 +75,12 @@ export function isoDir8(dx: number, dy: number): number {
   return isoDirIndex(dx, dy, 8);
 }
 
+/** Cardinal building sprite index. 0 = east, then south, west, north. */
+export function buildingFaceIndex(facing: number): number {
+  if (!Number.isFinite(facing)) return 0;
+  return ((Math.round(facing / (Math.PI / 2)) % 4) + 4) % 4;
+}
+
 export function tileDiamond(
   tx: number,
   ty: number,

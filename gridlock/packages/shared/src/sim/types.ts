@@ -51,6 +51,8 @@ export interface Order {
   reverse?: boolean;
   /** Fire the main gun once, then idle. Smoke force-attack uses this; other one-shots can too. */
   once?: boolean;
+  /** Group-move cap in catalog tiles/sec. Slowest selected unit that can still walk. */
+  pace?: number;
 }
 
 export interface Entity {

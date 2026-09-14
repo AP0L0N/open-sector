@@ -54,6 +54,7 @@ import {
   drawMuzzleBlast,
   drawWindowMuzzle,
   drawRicochetSparks,
+  armorHitLift,
   drawShellTracer,
   drawMoveClick,
   drawWreckFire,
@@ -98,13 +99,19 @@ import {
   type TerrainBake,
 } from "./terrain.js";
 
-/** Special-action key. D is camera (WASD). */
+/** Special-action key. D pans with W and the arrow keys; A/S are orders. */
 export const SPECIAL_HOTKEY = "e";
+export const STOP_HOTKEY = "s";
+export const ATTACK_MOVE_HOTKEY = "a";
+export const ROTATE_HOTKEY = "r";
+export const GUARD_HOTKEY = "g";
+/** Enter / leave a garrisonable building. */
+export const GARRISON_HOTKEY = "u";
 
 const EDGE_SCROLL_KEY = "gridlock.edgeScroll";
 let edgeScroll = localStorage.getItem(EDGE_SCROLL_KEY) === "1";
 
-/** Screen-edge camera pan. Off by default; WASD / arrows always work. */
+/** Screen-edge camera pan. Off by default; arrows, W, and D always work. */
 export function getEdgeScroll(): boolean {
   return edgeScroll;
 }
@@ -214,6 +221,7 @@ export class MapView {
   private box: { x0: number; y0: number; x1: number; y1: number } | null = null;
   private damagedUntil = new Map<number, number>();
   private lastHp = new Map<number, number>();
+  private lastScoutHp = new Map<number, number>();
   private explored: Uint8Array | null = null;
   private vis: Uint8Array | null = null;
   private visKey = 0;
@@ -261,6 +269,7 @@ export class MapView {
   private guardAnchor: { x: number; y: number } | null = null;
   private guardFacing = 0;
   private guardDragging = false;
+  private ctrlHeld = false;
   onSelect: (ids: number[]) => void = () => {};
   onCommand: (msg: ClientMessage) => void = () => {};
   onPlaceMode: () => void = () => {};
@@ -356,9 +365,18 @@ export class MapView {
       const prev = this.lastHp.get(e.id);
       if (prev !== undefined && e.hp < prev) this.damagedUntil.set(e.id, now + 2000);
       this.lastHp.set(e.id, e.hp);
+      const scoutHp = e.scout?.hp;
+      if (scoutHp !== undefined) {
+        const prevScout = this.lastScoutHp.get(e.id);
+        if (prevScout !== undefined && scoutHp < prevScout) this.damagedUntil.set(e.id, now + 2000);
+        this.lastScoutHp.set(e.id, scoutHp);
+      }
     }
     for (const id of this.lastHp.keys()) {
       if (!live.has(id)) this.lastHp.delete(id);
+    }
+    for (const id of this.lastScoutHp.keys()) {
+      if (!live.has(id)) this.lastScoutHp.delete(id);
     }
     for (const [id, until] of this.damagedUntil) {
       if (!live.has(id) || until < now) this.damagedUntil.delete(id);
@@ -647,6 +665,7 @@ export class MapView {
     cancelAnimationFrame(this.raf);
     window.removeEventListener("keydown", this.onKey, true);
     window.removeEventListener("keyup", this.onKeyUp, true);
+    window.removeEventListener("blur", this.onBlur);
     window.removeEventListener("mouseup", this.onUp);
     window.removeEventListener("mousemove", this.onMove);
   }
@@ -675,6 +694,7 @@ export class MapView {
   private bind(): void {
     window.addEventListener("keydown", this.onKey, { capture: true });
     window.addEventListener("keyup", this.onKeyUp, { capture: true });
+    window.addEventListener("blur", this.onBlur);
     this.canvas.addEventListener("mousedown", (e) => {
       const mx = e.offsetX;
       const my = e.offsetY;
@@ -698,6 +718,7 @@ export class MapView {
         return;
       }
       if (e.button === 0) {
+        this.ctrlHeld = e.ctrlKey;
         if (this.guardMode) {
           this.beginGuard(mx, my);
           return;
@@ -712,6 +733,11 @@ export class MapView {
         }
         if (this.attackMoveMode) {
           this.commitAttackMove(mx, my);
+          return;
+        }
+        if (e.ctrlKey && this.ownSelectedIds().length) {
+          e.preventDefault();
+          this.commitForceAttack(mx, my);
           return;
         }
         const toPlace = this.placeMode ? this.readyBuilding() : null;
@@ -772,6 +798,10 @@ export class MapView {
     this.overControl =
       e.target instanceof Element &&
       !!e.target.closest("button, input, select, textarea, #minimap, .modal-back");
+    if (this.ctrlHeld !== e.ctrlKey) {
+      this.ctrlHeld = e.ctrlKey;
+      this.syncCursor();
+    }
     if (this.panning) {
       this.camX -= e.clientX - this.lastMX;
       this.camY -= e.clientY - this.lastMY;
@@ -791,6 +821,11 @@ export class MapView {
     const tag = (e.target as HTMLElement | null)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
     const k = e.key.toLowerCase();
+    if (k === "control") {
+      this.ctrlHeld = true;
+      this.syncCursor();
+      return;
+    }
     if (this.isCameraKey(k)) {
       e.preventDefault();
       this.keys.add(k);
@@ -811,7 +846,14 @@ export class MapView {
       this.onCommand({ type: "cmd.speed", delta: -1 });
       return;
     }
-    if (k === "g") {
+    if (e.repeat) return;
+    if (k === GUARD_HOTKEY) {
+      e.preventDefault();
+      const ids = this.ownSelectedIds();
+      if (ids.length) this.setGuardMode(!this.guardMode);
+      return;
+    }
+    if (k === GARRISON_HOTKEY) {
       e.preventDefault();
       this.garrisonHotkey();
       return;
@@ -821,41 +863,21 @@ export class MapView {
       this.specialSelected();
       return;
     }
-    if (k === "x") {
+    if (k === STOP_HOTKEY) {
       e.preventDefault();
-      this.setAttackMoveMode(false);
-      this.setForceAttackMode(false);
-      this.setRotateMode(false);
-      this.setGuardMode(false);
-      const ids = [...this.selected].filter((id) => {
-        const ent = this.curr.entities.find((x) => x.id === id);
-        return !!ent && ent.ownerId === this.curr.youPlayerId && !ent.wreck && ent.kind === "unit";
-      });
-      if (ids.length) this.onCommand({ type: "cmd.stop", ids });
+      this.stopSelected();
       return;
     }
-    if (k === "f") {
+    if (k === ATTACK_MOVE_HOTKEY) {
       e.preventDefault();
       const ids = this.ownSelectedIds();
       if (ids.length) this.setAttackMoveMode(!this.attackMoveMode);
       return;
     }
-    if (k === "t") {
-      e.preventDefault();
-      const ids = this.ownSelectedIds();
-      if (ids.length) this.setForceAttackMode(!this.forceAttackMode);
-      return;
-    }
-    if (k === "r") {
+    if (k === ROTATE_HOTKEY) {
       e.preventDefault();
       const ids = this.ownSelectedIds();
       if (ids.length) this.setRotateMode(!this.rotateMode);
-      return;
-    }
-    if (k === "v") {
-      e.preventDefault();
-      const ids = this.ownSelectedIds();
-      if (ids.length) this.setGuardMode(!this.guardMode);
       return;
     }
     if (k === "p") {
@@ -905,12 +927,37 @@ export class MapView {
 
   private onKeyUp = (e: KeyboardEvent): void => {
     const k = e.key.toLowerCase();
+    if (k === "control") {
+      this.ctrlHeld = false;
+      this.syncCursor();
+    }
     if (this.isCameraKey(k)) e.preventDefault();
     this.keys.delete(k);
   };
 
+  private onBlur = (): void => {
+    this.ctrlHeld = false;
+    this.keys.clear();
+  };
+
   private isCameraKey(k: string): boolean {
-    return k === "w" || k === "a" || k === "s" || k === "d" || k.startsWith("arrow");
+    return k === "w" || k === "d" || k.startsWith("arrow");
+  }
+
+  private stopSelected(): void {
+    this.setAttackMoveMode(false);
+    this.setForceAttackMode(false);
+    this.setRotateMode(false);
+    this.setGuardMode(false);
+    const ids = this.ownSelectedIds();
+    if (ids.length) this.onCommand({ type: "cmd.stop", ids });
+  }
+
+  private aimingForceAttack(): boolean {
+    if (this.overControl || this.hoverSpecial) return false;
+    if (this.guardMode || this.rotateMode || this.attackMoveMode) return false;
+    if (this.forceAttackMode) return true;
+    return this.ctrlHeld && this.ownSelectedIds().length > 0;
   }
 
   private isSpeedUpKey(e: KeyboardEvent): boolean {
@@ -1398,8 +1445,8 @@ export class MapView {
     let vx = 0;
     let vy = 0;
     if (this.keys.has("w") || this.keys.has("arrowup")) vy -= 1;
-    if (this.keys.has("s") || this.keys.has("arrowdown")) vy += 1;
-    if (this.keys.has("a") || this.keys.has("arrowleft")) vx -= 1;
+    if (this.keys.has("arrowdown")) vy += 1;
+    if (this.keys.has("arrowleft")) vx -= 1;
     if (this.keys.has("d") || this.keys.has("arrowright")) vx += 1;
     const edge = 24;
     if (edgeScroll && !this.panning && !this.box && this.winX >= 0 && !this.overControl) {
@@ -1578,7 +1625,7 @@ export class MapView {
   }
 
   private drawForceCursor(): void {
-    if (!this.forceAttackMode || this.overControl || this.hoverSpecial) return;
+    if (!this.aimingForceAttack()) return;
     if (this.mouseX < 0 || this.mouseY < 0) return;
     const ctx = this.ctx;
     const x = this.mouseX;
@@ -1927,7 +1974,7 @@ export class MapView {
     const elev = heightAt(this.map(), e.tileX, e.tileY);
     const hex = this.ownerColor(e);
     const dim = ghost || !this.buildingLit(e);
-    const spr = buildingSpriteFor(e.type);
+    const spr = buildingSpriteFor(e.type, e.facing);
     const south = this.toScreen(x + bw, y + bh, elev);
     const east = this.toScreen(x + bw, y, elev);
     const west = this.toScreen(x, y + bh, elev);
@@ -2013,7 +2060,7 @@ export class MapView {
         y,
         w,
         h,
-        ez: buildingOccludeEz(buildingSpriteFor(e.type), east.x - west.x, this.extrude(e.type)),
+        ez: buildingOccludeEz(buildingSpriteFor(e.type, e.facing), east.x - west.x, this.extrude(e.type)),
         lift: isoLift(elev),
       });
     }
@@ -2133,6 +2180,9 @@ export class MapView {
       turretDx: turretDir.x,
       turretDy: turretDir.y,
     });
+    if (drawn && e.scout?.out && !e.wreck) {
+      drawScoutHead(ctx, s.x, s.y, turretDir.x, turretDir.y, size);
+    }
     ctx.restore();
     ctx.restore();
     if (e.wreck && drawn) this.drawWreckFires(e, s.x, s.y, size, dir.x, dir.y);
@@ -2152,6 +2202,7 @@ export class MapView {
       ctx.fillText(name, s.x, s.y - size * def.contactY - 12);
     }
     this.maybeHp(e, s.x - size * 0.45, s.y - size * def.contactY - 2, size * 0.9);
+    this.drawScoutBar(e, s.x - size * 0.22, s.y - size * def.contactY - 8);
     this.drawCrits(e, s.x + size * 0.48, s.y - size * def.contactY - 20);
     this.drawDeployProgress(e, s.x - size * 0.45, s.y + 6, size * 0.9);
     if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
@@ -2212,7 +2263,11 @@ export class MapView {
       const tip = this.toScreen(f.x + f.vx * 0.08, f.y + f.vy * 0.08);
       const dirX = tip.x - s.x;
       const dirY = tip.y - s.y;
-      const lift = f.lift ?? (f.kind === "miss" || f.kind === "puff" ? 0 : 14);
+      const lift =
+        f.lift ??
+        (f.kind === "miss" || f.kind === "puff"
+          ? 0
+          : (armorHitLift(f.kind, f.caliber, f.id, f.blast) ?? 14));
       const x = s.x;
       const y = s.y - lift;
       if (f.kind === "kill" && f.blast) {
@@ -2368,7 +2423,11 @@ export class MapView {
     }
     this.hoverSpecial = special;
     const attack =
-      (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode) &&
+      (this.attackMoveMode ||
+        this.forceAttackMode ||
+        this.rotateMode ||
+        this.guardMode ||
+        (this.ctrlHeld && this.ownSelectedIds().length > 0)) &&
       !this.overControl;
     this.canvas.classList.toggle("cursor-special", special);
     this.canvas.classList.toggle("cursor-attack", attack && !special);
@@ -2478,6 +2537,19 @@ export class MapView {
       this.paintHpBar(Math.round(x), Math.round(y) + i * (barH + gap), barW, barH, ratio, 0.9, hostile);
     }
     ctx.restore();
+  }
+
+  private drawScoutBar(e: EntityView, x: number, y: number): void {
+    const scout = e.scout;
+    if (!scout || e.wreck || scout.hpMax <= 0) return;
+    const selected = this.selected.has(e.id);
+    if (!selected && !scout.out) return;
+    const ratio = Math.max(0, Math.min(1, scout.hp / scout.hpMax));
+    const barW = selected ? 18 : 14;
+    const barH = 2;
+    this.ctx.save();
+    this.paintHpBar(Math.round(x), Math.round(y), barW, barH, ratio, selected ? 0.95 : 0.7, this.hostileOwner(e.ownerId), selected);
+    this.ctx.restore();
   }
 
   private maybeHp(e: EntityView, x: number, y: number, w: number): void {

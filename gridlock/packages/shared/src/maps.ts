@@ -36,6 +36,8 @@ export interface MapFeature {
   type: CivilianType;
   x: number;
   y: number;
+  /** Cardinal face. 0 = east, then south, west, north. */
+  facing: number;
 }
 
 export const TILE_EMPTY = 0;
@@ -821,7 +823,7 @@ function scatterCover(
       const y = 2 + Math.floor(nextRand(rng) * (height - th - 4));
       if (inPad(pads, x + tw / 2, y + th / 2)) continue;
       if (!rectFree(tiles, width, height, x, y, tw, th)) continue;
-      features.push({ type, x, y });
+      features.push({ type, x, y, facing: hash32(`${type}:${x}:${y}:face`) % 4 });
       fillRect(tiles, width, height, x, y, x + tw - 1, y + th - 1, TILE_EMPTY);
       for (let yy = y; yy < y + th; yy++) {
         for (let xx = x; xx < x + tw; xx++) {
@@ -841,7 +843,7 @@ function scatterCover(
 }
 
 function scaleFeatures(features: MapFeature[], sub: number): MapFeature[] {
-  return features.map((f) => ({ type: f.type, x: f.x * sub, y: f.y * sub }));
+  return features.map((f) => ({ type: f.type, x: f.x * sub, y: f.y * sub, facing: f.facing }));
 }
 
 /** Seeded rolling hills and valleys. Spawns stay on the base; slopes never cliff. */

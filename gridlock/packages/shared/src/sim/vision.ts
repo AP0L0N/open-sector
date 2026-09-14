@@ -1,4 +1,5 @@
 import {
+  FOV_ISLAND_LIMIT,
   GARRISON_HIDE_SIGHT,
   GARRISON_WATCH_SIGHT_BONUS,
   HEIGHT_MAX,
@@ -41,6 +42,64 @@ export type SightSource = {
   scoutOut?: boolean;
   scoutHp?: number;
 };
+
+const FOV_N8: readonly [number, number][] = [
+  [-1, -1],
+  [0, -1],
+  [1, -1],
+  [-1, 0],
+  [1, 0],
+  [-1, 1],
+  [0, 1],
+  [1, 1],
+];
+
+/** Fill unseen islands, then hide visible ones, of `limit` tiles or fewer. */
+export function sealFovIslands(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  limit = FOV_ISLAND_LIMIT,
+): void {
+  if (limit <= 0) return;
+  recolorSmallIslands(mask, width, height, 0, 1, limit);
+  recolorSmallIslands(mask, width, height, 1, 0, limit);
+}
+
+function recolorSmallIslands(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  from: number,
+  to: number,
+  limit: number,
+): void {
+  const seen = new Uint8Array(width * height);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const start = y * width + x;
+      if (seen[start] || mask[start] !== from) continue;
+      const cells: number[] = [start];
+      seen[start] = 1;
+      for (let i = 0; i < cells.length; i++) {
+        const cur = cells[i]!;
+        const cx = cur % width;
+        const cy = (cur / width) | 0;
+        for (const [dx, dy] of FOV_N8) {
+          const nx = cx + dx;
+          const ny = cy + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          const ni = ny * width + nx;
+          if (seen[ni] || mask[ni] !== from) continue;
+          seen[ni] = 1;
+          cells.push(ni);
+        }
+      }
+      if (cells.length > limit) continue;
+      for (const i of cells) mask[i] = to;
+    }
+  }
+}
 
 export function paintChebyshev(
   mask: Uint8Array,
@@ -294,6 +353,7 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
       cover,
     );
   }
+  sealFovIslands(mask, state.width, state.height);
   state.visionByPlayer.set(playerId, mask);
   state.visionKeyByPlayer.set(playerId, key);
   state.visionTick = state.tick;
@@ -355,6 +415,7 @@ export function visionMaskFromSnapshot(
     const sightTiles = snapshotSightTiles(snap, e, elev, width, height, tileSize);
     paintEntitySight(mask, width, height, tileSize, sightTiles != null ? { ...e, sightTiles } : e, elev, cover);
   }
+  sealFovIslands(mask, width, height);
   return mask;
 }
 
@@ -439,6 +500,9 @@ export function canSeeEntity(state: MatchState, playerId: string, e: Entity, mas
 }
 
 function entityVisibleToPlayer(state: MatchState, playerId: string, e: Entity): boolean {
+  if (FOV_ISLAND_LIMIT > 0) {
+    return entityOnMask(e, visionMask(state, playerId), state.width, state.height, state.tileSize);
+  }
   if (state.seeTick !== state.tick) {
     state.seeByPlayer.clear();
     state.seeTick = state.tick;

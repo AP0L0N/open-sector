@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { HEIGHT_BASE, TILE_SUBDIV } from "./catalog.js";
 import { getMap } from "./maps.js";
 import {
+  buildingFaceIndex,
   clampIsoCamera,
   facingToIso,
   isoDir16,
@@ -97,6 +98,15 @@ describe("iso projection", () => {
   it("picks ESE for world-east on a 16-dir sheet", () => {
     const east = facingToIso(0, 32);
     assert.equal(isoDir16(east.x, east.y), 1);
+  });
+
+  it("maps world facing onto 4 building sprite faces", () => {
+    assert.equal(buildingFaceIndex(0), 0);
+    assert.equal(buildingFaceIndex(Math.PI / 2), 1);
+    assert.equal(buildingFaceIndex(Math.PI), 2);
+    assert.equal(buildingFaceIndex(-Math.PI / 2), 3);
+    assert.equal(buildingFaceIndex((3 * Math.PI) / 2), 3);
+    assert.equal(buildingFaceIndex(2 * Math.PI), 0);
   });
 
   it("picks a flat tile at its iso center and not far above it", () => {

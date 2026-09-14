@@ -102,7 +102,11 @@ export function createMatch(
   for (const f of map.features ?? []) {
     const def = catalog(f.type);
     const c = buildingCenter(f.x, f.y, def.tileW, def.tileH, map.tileSize);
-    makeEntity(state, f.type, NEUTRAL_OWNER, c.x, c.y, { tileX: f.x, tileY: f.y });
+    makeEntity(state, f.type, NEUTRAL_OWNER, c.x, c.y, {
+      tileX: f.x,
+      tileY: f.y,
+      facing: ((f.facing ?? 0) * Math.PI) / 2,
+    });
   }
 
   return state;

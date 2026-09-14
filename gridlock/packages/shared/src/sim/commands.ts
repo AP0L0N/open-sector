@@ -2,9 +2,9 @@ import {
   fires,
   hasAmmo,
   hasCrit,
+  hasScout,
   isBuildingType,
   isGarrisonable,
-  hasScout,
   isInfantryType,
   isShellType,
   isSmokeShell,
@@ -22,7 +22,7 @@ import { setScoutOut } from "./scout.js";
 import { cancelStructure, pauseStructure, placeBuilding, sellBuilding, startBuild } from "./build.js";
 import { deployId } from "./deploy.js";
 import { cancelTrain, pauseTrain, startTrain } from "./train.js";
-import { groupMoveTargets } from "./formation.js";
+import { groupMovePace, groupMoveTargets } from "./formation.js";
 import { setPath } from "./path.js";
 import { tickStance } from "./stance.js";
 import type { Entity, MatchState } from "./types.js";
@@ -140,14 +140,17 @@ function cmdMove(state: MatchState, playerId: string, ids: number[], x: number, 
   if (units.length === 0) return fail("not_yours", "No owned units.");
   const movers = units.filter((e) => e.state !== "deploy" && e.state !== "undeploy");
   const dests = groupMoveTargets(state, movers, x, y);
+  const pace = groupMovePace(movers);
   for (const e of movers) {
     const d = dests.get(e.id) ?? { x, y };
     if (e.garrisonedIn) {
       e.guardFacing = null;
       exitGarrison(state, e, d);
+      if (pace != null && e.order) e.order.pace = pace;
       continue;
     }
     e.order = { kind: "move", x: d.x, y: d.y };
+    if (pace != null) e.order.pace = pace;
     e.attackTarget = null;
     e.harvestTile = null;
     e.guardFacing = null;
@@ -162,9 +165,11 @@ function cmdAttackMove(state: MatchState, playerId: string, ids: number[], x: nu
   if (units.length === 0) return fail("not_yours", "No owned units.");
   const movers = units.filter((e) => e.state !== "deploy" && e.state !== "undeploy");
   const dests = groupMoveTargets(state, movers, x, y);
+  const pace = groupMovePace(movers);
   for (const e of movers) {
     const d = dests.get(e.id) ?? { x, y };
     e.order = { kind: "attackmove", x: d.x, y: d.y };
+    if (pace != null) e.order.pace = pace;
     e.attackTarget = null;
     e.harvestTile = null;
     e.guardFacing = null;
@@ -305,6 +310,7 @@ function cmdGuard(
   if (units.length === 0) return fail("not_yours", "No owned units.");
   const movers = units.filter((e) => !e.garrisonedIn);
   const dests = groupMoveTargets(state, movers, x, y);
+  const pace = groupMovePace(movers);
   for (const e of units) {
     const d = dests.get(e.id) ?? { x, y };
     e.holdPosition = true;
@@ -312,9 +318,11 @@ function cmdGuard(
     e.attackTarget = null;
     e.harvestTile = null;
     e.order = { kind: "guard", x: d.x, y: d.y, facing };
+    if (pace != null) e.order.pace = pace;
     if (e.garrisonedIn) {
       exitGarrison(state, e, d);
       e.order = { kind: "guard", x: d.x, y: d.y, facing };
+      if (pace != null) e.order.pace = pace;
       e.holdPosition = true;
       e.guardFacing = facing;
       continue;
@@ -329,7 +337,9 @@ function dropGuard(e: Entity): void {
   e.guardFacing = null;
   if (e.order?.kind !== "guard") return;
   if (e.waypoints.length > 0 && e.order.x != null && e.order.y != null) {
+    const pace = e.order.pace;
     e.order = { kind: "move", x: e.order.x, y: e.order.y };
+    if (pace != null) e.order.pace = pace;
     return;
   }
   e.order = null;

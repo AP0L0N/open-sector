@@ -18,7 +18,7 @@ import { applyCommand } from "./commands.js";
 import { tickProjectiles } from "./combat.js";
 import { observerEyeForEntity, sightTilesForEntity, sightTilesOf, weaponRangeWorld } from "./elevation.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
-import { createMatch, step } from "./match.js";
+import { createMatch } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { paintEntitySight, tileOnMask, visionMask } from "./vision.js";
 import type { MatchState, Projectile } from "./types.js";

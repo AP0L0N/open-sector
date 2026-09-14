@@ -1,16 +1,46 @@
-import { isoDirIndex, isInfantryType, type Crit, type EntityType, type Stance } from "@gridlock/shared";
+import {
+  buildingFaceIndex,
+  isoDirIndex,
+  isCivilianType,
+  isInfantryType,
+  type CivilianType,
+  type Crit,
+  type EntityType,
+  type Stance,
+} from "@gridlock/shared";
 import coreUrl from "../assets/buildings/core.png";
 import dynamoUrl from "../assets/buildings/dynamo.png";
 import smelterUrl from "../assets/buildings/smelter.png";
 import musterUrl from "../assets/buildings/muster.png";
 import armoryUrl from "../assets/buildings/armory.png";
 import cottageUrl from "../assets/buildings/cottage.png";
+import cottageSUrl from "../assets/buildings/cottage-s.png";
+import cottageWUrl from "../assets/buildings/cottage-w.png";
+import cottageNUrl from "../assets/buildings/cottage-n.png";
 import houseUrl from "../assets/buildings/house.png";
+import houseSUrl from "../assets/buildings/house-s.png";
+import houseWUrl from "../assets/buildings/house-w.png";
+import houseNUrl from "../assets/buildings/house-n.png";
 import manorUrl from "../assets/buildings/manor.png";
+import manorSUrl from "../assets/buildings/manor-s.png";
+import manorWUrl from "../assets/buildings/manor-w.png";
+import manorNUrl from "../assets/buildings/manor-n.png";
 import shackUrl from "../assets/buildings/shack.png";
+import shackSUrl from "../assets/buildings/shack-s.png";
+import shackWUrl from "../assets/buildings/shack-w.png";
+import shackNUrl from "../assets/buildings/shack-n.png";
 import barnUrl from "../assets/buildings/barn.png";
+import barnSUrl from "../assets/buildings/barn-s.png";
+import barnWUrl from "../assets/buildings/barn-w.png";
+import barnNUrl from "../assets/buildings/barn-n.png";
 import innUrl from "../assets/buildings/inn.png";
+import innSUrl from "../assets/buildings/inn-s.png";
+import innWUrl from "../assets/buildings/inn-w.png";
+import innNUrl from "../assets/buildings/inn-n.png";
 import chapelUrl from "../assets/buildings/chapel.png";
+import chapelSUrl from "../assets/buildings/chapel-s.png";
+import chapelWUrl from "../assets/buildings/chapel-w.png";
+import chapelNUrl from "../assets/buildings/chapel-n.png";
 import oakUrl from "../assets/terrain/tree-oak.png";
 import pineUrl from "../assets/terrain/tree-pine.png";
 import scrapAUrl from "../assets/terrain/scrap-a.png";
@@ -211,13 +241,52 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   armory: building(armoryUrl, 384, 194.5, 310, 120, 48),
   muster: building(musterUrl, 385, 194.5, 333, 278, 52),
   smelter: building(smelterUrl, 384, 194, 393, 138, 90),
-  cottage: building(cottageUrl, 957, 479, 753, 735, 36),
-  house: building(houseUrl, 957, 479, 863, 735, 32),
-  manor: building(manorUrl, 957, 479.5, 878, 742, 44),
-  shack: building(shackUrl, 1151, 575, 895, 883, 42),
-  barn: building(barnUrl, 1069, 535, 959, 821, 36),
-  inn: building(innUrl, 1071, 536, 959, 822, 36),
-  chapel: building(chapelUrl, 1055, 527, 974, 816, 50),
+};
+
+/** East, south, west, north. Yards differ per face so a random facing also varies the lot. */
+const CIV_FACES: Record<CivilianType, BuildingSpriteDef[]> = {
+  cottage: [
+    building(cottageUrl, 1145, 561, 895, 749, 10),
+    building(cottageSUrl, 1151, 568, 895, 420, 10),
+    building(cottageWUrl, 1151, 564, 895, 414, 10),
+    building(cottageNUrl, 1151, 562, 895, 736, 10),
+  ],
+  shack: [
+    building(shackUrl, 1148, 566, 895, 752, 19),
+    building(shackSUrl, 1132, 582, 890, 437, 36),
+    building(shackWUrl, 1110, 577, 885, 432, 36),
+    building(shackNUrl, 1110, 572, 885, 719, 36),
+  ],
+  house: [
+    building(houseUrl, 1071, 527, 959, 698, 10),
+    building(houseSUrl, 1071, 537, 959, 378, 12),
+    building(houseWUrl, 1071, 525, 959, 379, 10),
+    building(houseNUrl, 1071, 515, 959, 692, 10),
+  ],
+  barn: [
+    building(barnUrl, 1070, 522, 959, 696, 10),
+    building(barnSUrl, 1071, 538, 959, 387, 12),
+    building(barnWUrl, 1070, 526, 959, 697, 10),
+    building(barnNUrl, 1070, 524, 959, 373, 10),
+  ],
+  inn: [
+    building(innUrl, 1071, 534, 959, 697, 12),
+    building(innSUrl, 1071, 536, 959, 373, 12),
+    building(innWUrl, 1071, 536, 959, 377, 12),
+    building(innNUrl, 1071, 535, 959, 694, 12),
+  ],
+  chapel: [
+    building(chapelUrl, 1055, 526, 972, 689, 28),
+    building(chapelSUrl, 1055, 522, 972, 366, 28),
+    building(chapelWUrl, 1055, 527, 974, 447, 24),
+    building(chapelNUrl, 1055, 527, 974, 607, 24),
+  ],
+  manor: [
+    building(manorUrl, 1055, 524, 975, 542, 11),
+    building(manorSUrl, 1055, 522, 975, 513, 11),
+    building(manorWUrl, 1055, 525, 975, 520, 12),
+    building(manorNUrl, 1055, 527, 975, 535, 12),
+  ],
 };
 
 /** Grounded map prop. Contact is the source pixel that sits on the tile. */
@@ -247,13 +316,7 @@ export const PROP_IMAGES: HTMLImageElement[] = [
   BUSH_B.image,
   WATER_TEX,
   WATER_TEX_B,
-  BUILDING_SPRITES.cottage!.image,
-  BUILDING_SPRITES.house!.image,
-  BUILDING_SPRITES.manor!.image,
-  BUILDING_SPRITES.shack!.image,
-  BUILDING_SPRITES.barn!.image,
-  BUILDING_SPRITES.inn!.image,
-  BUILDING_SPRITES.chapel!.image,
+  ...Object.values(CIV_FACES).flatMap((faces) => faces.map((f) => f.image)),
 ];
 
 export function whenImagesReady(images: HTMLImageElement[], cb: () => void): void {
@@ -315,7 +378,11 @@ export function drawPropSprite(
   return true;
 }
 
-export function buildingSpriteFor(type: EntityType): BuildingSpriteDef | undefined {
+export function buildingSpriteFor(type: EntityType, facing = 0): BuildingSpriteDef | undefined {
+  if (isCivilianType(type)) {
+    const faces = CIV_FACES[type];
+    return faces[buildingFaceIndex(facing) % faces.length];
+  }
   return BUILDING_SPRITES[type];
 }
 
@@ -404,6 +471,33 @@ export function drawUnitSprite(
     const tcell = turret.frameSize;
     ctx.drawImage(turret.image, tframe * tcell, tdir * tcell, tcell, tcell, dx, dy, s, s);
   }
+  ctx.restore();
+  return true;
+}
+
+/** Draw only the hatch crew's head on the turret cupola. */
+export function drawScoutHead(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  turretDx: number,
+  turretDy: number,
+  hullSize: number,
+): boolean {
+  const def = SCOUT_HEAD_SPRITE;
+  if (!spriteReady(def)) return false;
+  const dir = isoDirIndex(turretDx, turretDy, def.dirs) % def.dirs;
+  const s = def.drawSize;
+  const cell = def.frameSize;
+  const len = Math.hypot(turretDx, turretDy) || 1;
+  const ux = turretDx / len;
+  const uy = turretDy / len;
+  const hx = x + ux * hullSize * -0.04;
+  const hy = y + uy * hullSize * -0.04 * 0.45 - hullSize * 0.48;
+  ctx.save();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "low";
+  ctx.drawImage(def.image, 0, dir * cell, cell, cell, hx - s / 2, hy - s * def.contactY, s, s);
   ctx.restore();
   return true;
 }

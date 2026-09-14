@@ -8,6 +8,7 @@ import {
   KILL_OVERMATCH,
   LONG_SHOT_SPREAD,
   resolveHit,
+  scatterHullImpact,
 } from "./ballistics.js";
 
 function seq(values: number[]): () => number {
@@ -173,6 +174,25 @@ describe("resolveHit", () => {
     }
     const spread = Math.max(...dirs) - Math.min(...dirs);
     assert.ok(spread > 1, `spread=${spread} dirs=${dirs.join(",")}`);
+  });
+
+  it("scatters hull impacts across the incoming face, not the dead center", () => {
+    const pts: { x: number; y: number }[] = [];
+    for (const a of [0.04, 0.18, 0.33, 0.5, 0.67, 0.82, 0.96]) {
+      for (const b of [0.1, 0.55, 0.9]) {
+        pts.push(scatterHullImpact(100, 200, 12, 88, 200, seq([a, b])));
+      }
+    }
+    const xs = pts.map((p) => p.x);
+    const ys = pts.map((p) => p.y);
+    assert.ok(Math.max(...xs) - Math.min(...xs) > 6, `x span ${Math.max(...xs) - Math.min(...xs)}`);
+    assert.ok(Math.max(...ys) - Math.min(...ys) > 10, `y span ${Math.max(...ys) - Math.min(...ys)}`);
+    for (const p of pts) {
+      const d = Math.hypot(p.x - 100, p.y - 200);
+      assert.ok(d > 1.5, `too centered ${d}`);
+      assert.ok(d < 12.6, `outside hull ${d}`);
+      assert.ok(p.x <= 100 + 1e-6, `far-side hit ${p.x}`);
+    }
   });
 
   it("can chip near zero on a side hit when the roll is poor", () => {

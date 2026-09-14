@@ -118,6 +118,12 @@ describe("maps", () => {
     assert.ok(trees > 40, `trees ${trees}`);
     assert.ok((yard.features?.length ?? 0) >= 4, "houses");
     assert.ok(!yard.features?.some((f) => tileAt(yard, f.x, f.y) === TILE_BLOCKED));
+    const facings = new Set(yard.features.map((f) => f.facing));
+    assert.ok(
+      yard.features.every((f) => f.facing >= 0 && f.facing <= 3),
+      "cardinal facing",
+    );
+    assert.ok(facings.size >= 2, `houses should not all face the same way (${[...facings]})`);
   });
 
   it("shapes scrap-yard ponds as irregular blobs, not filled rectangles", () => {

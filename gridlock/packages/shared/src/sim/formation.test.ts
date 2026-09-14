@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { TICK_DT, catalog } from "../catalog.js";
+import { TILE_EMPTY } from "../maps.js";
 import { applyCommand } from "./commands.js";
-import { groupMoveTargets, unitClearance } from "./formation.js";
+import { groupMovePace, groupMoveTargets, unitClearance } from "./formation.js";
 import { makeEntity, tileCenter, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import type { Entity, MatchState } from "./types.js";
@@ -29,6 +30,18 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
 
 function dist(a: { x: number; y: number }, b: { x: number; y: number }): number {
   return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function clearPad(state: MatchState, x0: number, y0: number, x1: number, y1: number): void {
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const i = y * state.width + x;
+      state.terrain[i] = TILE_EMPTY;
+      state.blocked[i] = 0;
+      state.occupy[i] = 0;
+      state.heights[i] = 0;
+    }
+  }
 }
 
 function assertSpaced(units: Entity[]): void {
@@ -131,5 +144,95 @@ describe("cmd.move group", () => {
     assertSpaced([t1, t2]);
     assert.ok(dist(t1, { x, y }) < 48, `t1 drifted ${dist(t1, { x, y })}`);
     assert.ok(dist(t2, { x, y }) < 48, `t2 drifted ${dist(t2, { x, y })}`);
+  });
+
+  it("marches mixed units at the slowest catalog speed", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    clearPad(state, 10, 16, 100, 100);
+    const facing = Math.PI / 4;
+    const inf = makeEntity(state, "trooper", "A", tileCenter(16, ts), tileCenter(20, ts));
+    const tank = makeEntity(state, "warden", "A", tileCenter(16, ts), tileCenter(28, ts));
+    const solo = makeEntity(state, "trooper", "A", tileCenter(16, ts), tileCenter(36, ts));
+    inf.facing = facing;
+    tank.facing = facing;
+    tank.turretFacing = facing;
+    solo.facing = facing;
+    const mixed = applyCommand(state, "A", {
+      type: "cmd.move",
+      ids: [inf.id, tank.id],
+      x: tileCenter(72, ts),
+      y: tileCenter(80, ts),
+    });
+    assert.equal(mixed.ok, true, !mixed.ok ? mixed.message : "");
+    const alone = applyCommand(state, "A", {
+      type: "cmd.move",
+      ids: [solo.id],
+      x: tileCenter(72, ts),
+      y: tileCenter(92, ts),
+    });
+    assert.equal(alone.ok, true, !alone.ok ? alone.message : "");
+    assert.equal(inf.order?.pace, catalog("warden").moveTilesPerSec);
+    assert.equal(tank.order?.pace, catalog("warden").moveTilesPerSec);
+    assert.equal(solo.order?.pace, undefined);
+
+    const inf0 = { x: inf.x, y: inf.y };
+    const tank0 = { x: tank.x, y: tank.y };
+    const solo0 = { x: solo.x, y: solo.y };
+    for (let i = 0; i < 24; i++) step(state, TICK_DT);
+    const infDist = dist(inf, inf0);
+    const tankDist = dist(tank, tank0);
+    const soloDist = dist(solo, solo0);
+    assert.ok(infDist > 40, `infantry should move ${infDist}`);
+    assert.ok(tankDist > 40, `tank should move ${tankDist}`);
+    assert.ok(
+      Math.abs(infDist - tankDist) < 24,
+      `mixed group split: inf ${infDist} tank ${tankDist}`,
+    );
+    assert.ok(soloDist > infDist + 24, `solo ${soloDist} should outrun grouped ${infDist}`);
+  });
+
+  it("stamps the same pace on attack-move", () => {
+    const { state } = twoPlayerMatch();
+    const inf = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
+    const tank = makeEntity(state, "warden", "A", 20 * 32, 20 * 32 + 40);
+    const res = applyCommand(state, "A", {
+      type: "cmd.attackmove",
+      ids: [inf.id, tank.id],
+      x: 28 * 32,
+      y: 20 * 32,
+    });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    assert.equal(inf.order?.pace, catalog("warden").moveTilesPerSec);
+    assert.equal(tank.order?.pace, catalog("warden").moveTilesPerSec);
+  });
+});
+
+describe("groupMovePace", () => {
+  it("caps a mixed selection to the slowest walker", () => {
+    const { state } = twoPlayerMatch();
+    const inf = makeEntity(state, "trooper", "A", 100, 100);
+    const tank = makeEntity(state, "warden", "A", 140, 100);
+    const truck = makeEntity(state, "hauler", "A", 180, 100);
+    assert.equal(groupMovePace([inf, tank]), catalog("warden").moveTilesPerSec);
+    assert.equal(groupMovePace([inf, tank, truck]), catalog("warden").moveTilesPerSec);
+    assert.equal(groupMovePace([inf, truck]), catalog("hauler").moveTilesPerSec);
+  });
+
+  it("leaves a solo unit and a same-type group uncapped", () => {
+    const { state } = twoPlayerMatch();
+    const a = makeEntity(state, "trooper", "A", 100, 100);
+    const b = makeEntity(state, "trooper", "A", 140, 100);
+    assert.equal(groupMovePace([a]), undefined);
+    assert.equal(groupMovePace([a, b]), undefined);
+    assert.equal(groupMovePace([]), undefined);
+  });
+
+  it("ignores a hull that cannot move", () => {
+    const { state } = twoPlayerMatch();
+    const inf = makeEntity(state, "trooper", "A", 100, 100);
+    const tank = makeEntity(state, "warden", "A", 140, 100);
+    tank.crits = ["tracks"];
+    assert.equal(groupMovePace([inf, tank]), undefined);
   });
 });

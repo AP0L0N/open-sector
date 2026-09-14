@@ -382,12 +382,13 @@ export function makeEntity(
   ownerId: string,
   x: number,
   y: number,
-  opts?: { tileX?: number; tileY?: number },
+  opts?: { tileX?: number; tileY?: number; facing?: number },
 ): Entity {
   const def = catalog(type);
   const tileX = opts?.tileX ?? worldToTile(x, state.tileSize);
   const tileY = opts?.tileY ?? worldToTile(y, state.tileSize);
   const id = state.nextId++;
+  const facing = opts?.facing ?? 0;
   const e: Entity = {
     id,
     kind: def.kind,
@@ -395,8 +396,8 @@ export function makeEntity(
     ownerId,
     x,
     y,
-    facing: 0,
-    turretFacing: 0,
+    facing,
+    turretFacing: facing,
     hp: def.hp,
     hpMax: def.hp,
     state: "idle",

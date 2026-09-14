@@ -1,4 +1,5 @@
-import { UNIT_SPACE_PAD, type EntityType } from "../catalog.js";
+import { catalog, UNIT_SPACE_PAD, type EntityType } from "../catalog.js";
+import { moveSpeedMul } from "./crits.js";
 import { walkable, worldToTile } from "./geo.js";
 import type { Entity, MatchState, Vec } from "./types.js";
 
@@ -64,6 +65,24 @@ function nearestClear(
     }
   }
   return { x, y };
+}
+
+/**
+ * Slowest catalog speed in a mixed selection. Undefined for a solo unit or
+ * when every walker already shares the same speed.
+ */
+export function groupMovePace(units: readonly Entity[]): number | undefined {
+  if (units.length < 2) return undefined;
+  let min = Infinity;
+  let max = 0;
+  for (const e of units) {
+    const tiles = catalog(e.type).moveTilesPerSec;
+    if (tiles <= 0 || moveSpeedMul(e) <= 0) continue;
+    if (tiles < min) min = tiles;
+    if (tiles > max) max = tiles;
+  }
+  if (!Number.isFinite(min) || min >= max) return undefined;
+  return min;
 }
 
 /**

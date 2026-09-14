@@ -11,8 +11,10 @@ export const REAR_KILL_OVERMATCH = 1.25;
 export const WEAK_POINT = 0.05;
 /** Incoming speed kept after a bounce. Near-muzzle, so the spark zips away. */
 export const RICOCHET_KEEP = 0.88;
-/** World units a bounced round still flies before it hits dirt. */
-export const RICOCHET_TRAVEL = 120;
+/** Shortest bounced spark — dies almost on the hull. */
+export const RICOCHET_TRAVEL_MIN = 8;
+/** Longest bounced spark before it hits dirt. */
+export const RICOCHET_TRAVEL = 150;
 /**
  * Small-arms inbound is faster than a visible tracer. Cap the bounce so the
  * spark still zips instead of vanishing in a single tick.
@@ -52,6 +54,33 @@ export function hitFace(facing: number, vx: number, vy: number): ArmorFace {
   if (a <= FRONT_ARC_DEG) return "front";
   if (a >= 180 - REAR_ARC_DEG) return "rear";
   return "side";
+}
+
+/**
+ * Random point on the incoming face of a circular hull. `hitX/Y` is the
+ * sweep contact; the result stays on that half of the disk so sparks read
+ * as a strike on the plate, not the far side or the dead center.
+ */
+export function scatterHullImpact(
+  cx: number,
+  cy: number,
+  radius: number,
+  hitX: number,
+  hitY: number,
+  rand: () => number,
+): { x: number; y: number } {
+  const r = Math.max(4, radius);
+  const ox = hitX - cx;
+  const oy = hitY - cy;
+  const len = Math.hypot(ox, oy) || 1;
+  const ux = ox / len;
+  const uy = oy / len;
+  const tx = -uy;
+  const ty = ux;
+  const along = (rand() * 2 - 1) * r * 0.92;
+  const span = Math.sqrt(Math.max(0.08, 1 - (along / r) ** 2)) * r;
+  const out = span * (0.22 + rand() * 0.78);
+  return { x: cx + ux * out + tx * along, y: cy + uy * out + ty * along };
 }
 
 export function faceNormal(

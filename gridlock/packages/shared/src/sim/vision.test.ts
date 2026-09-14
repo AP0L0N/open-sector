@@ -8,7 +8,15 @@ import { createMatch, step } from "./match.js";
 import { sightTilesOf } from "./elevation.js";
 import { spawnSmokeCloud } from "./smoke.js";
 import { snapshotFor } from "./snapshot.js";
-import { canSeeEntity, paintEntitySight, tileOnMask, visionMask, visionMaskFromSnapshot, type SightSource } from "./vision.js";
+import {
+  canSeeEntity,
+  paintEntitySight,
+  sealFovIslands,
+  tileOnMask,
+  visionMask,
+  visionMaskFromSnapshot,
+  type SightSource,
+} from "./vision.js";
 import type { MatchState } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
@@ -391,7 +399,7 @@ describe("armored hull cover", () => {
 });
 
 describe("combat visibility", () => {
-  it("matches the fog mask without painting one", () => {
+  it("matches the fog mask", () => {
     const { state, a, b } = twoPlayerMatch();
     const ts = state.tileSize;
     makeEntity(state, "trooper", a, tileCenter(40, ts), tileCenter(40, ts));
@@ -404,5 +412,102 @@ describe("combat visibility", () => {
       const fog = canSeeEntity(state, a, e, mask);
       assert.equal(cheap, fog, `id=${e.id} type=${e.type} at ${e.x},${e.y}`);
     }
+  });
+});
+
+describe("FOV islands", () => {
+  function litMask(width: number, height: number, cells: readonly [number, number][]): Uint8Array {
+    const mask = new Uint8Array(width * height);
+    for (const [x, y] of cells) mask[y * width + x] = 1;
+    return mask;
+  }
+
+  function fillRect(mask: Uint8Array, width: number, x0: number, y0: number, x1: number, y1: number, v: number): void {
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) mask[y * width + x] = v;
+    }
+  }
+
+  it("fills an unseen hole of 8 tiles and leaves a hole of 9", () => {
+    const w = 12;
+    const h = 12;
+    const mask = new Uint8Array(w * h);
+    fillRect(mask, w, 1, 1, 10, 10, 1);
+    fillRect(mask, w, 4, 4, 6, 6, 0);
+    sealFovIslands(mask, w, h, 8);
+    assert.equal(tileOnMask(mask, w, 5, 5), false, "3x3 hole stays unseen");
+
+    const hole8 = new Uint8Array(w * h);
+    fillRect(hole8, w, 1, 1, 10, 10, 1);
+    fillRect(hole8, w, 4, 4, 7, 5, 0);
+    sealFovIslands(hole8, w, h, 8);
+    assert.equal(tileOnMask(hole8, w, 4, 4), true);
+    assert.equal(tileOnMask(hole8, w, 7, 5), true);
+  });
+
+  it("hides a visible speck of 8 tiles and leaves a blob of 9", () => {
+    const w = 12;
+    const h = 12;
+    const speck = litMask(w, h, [
+      [2, 2],
+      [3, 2],
+      [4, 2],
+      [5, 2],
+      [2, 3],
+      [3, 3],
+      [4, 3],
+      [5, 3],
+    ]);
+    sealFovIslands(speck, w, h, 8);
+    assert.equal(tileOnMask(speck, w, 2, 2), false);
+    assert.equal(tileOnMask(speck, w, 5, 3), false);
+
+    const blob = litMask(w, h, [
+      [2, 2],
+      [3, 2],
+      [4, 2],
+      [2, 3],
+      [3, 3],
+      [4, 3],
+      [2, 4],
+      [3, 4],
+      [4, 4],
+    ]);
+    sealFovIslands(blob, w, h, 8);
+    assert.equal(tileOnMask(blob, w, 3, 3), true);
+  });
+
+  it("treats diagonal tiles as one island", () => {
+    const w = 8;
+    const h = 8;
+    const mask = new Uint8Array(w * h);
+    fillRect(mask, w, 1, 1, 6, 6, 1);
+    mask[3 * w + 3] = 0;
+    mask[4 * w + 4] = 0;
+    sealFovIslands(mask, w, h, 8);
+    assert.equal(tileOnMask(mask, w, 3, 3), true);
+    assert.equal(tileOnMask(mask, w, 4, 4), true);
+  });
+
+  it("fills a hole in the same pass as it hides a distant speck", () => {
+    const w = 14;
+    const h = 10;
+    const mask = new Uint8Array(w * h);
+    fillRect(mask, w, 1, 1, 8, 8, 1);
+    mask[4 * w + 4] = 0;
+    mask[2 * w + 12] = 1;
+    mask[2 * w + 13] = 1;
+    sealFovIslands(mask, w, h, 8);
+    assert.equal(tileOnMask(mask, w, 4, 4), true, "hole filled");
+    assert.equal(tileOnMask(mask, w, 12, 2), false, "speck hidden");
+    assert.equal(tileOnMask(mask, w, 5, 5), true, "main blob stays");
+  });
+
+  it("does nothing when the limit is 0", () => {
+    const w = 6;
+    const h = 6;
+    const mask = litMask(w, h, [[2, 2]]);
+    sealFovIslands(mask, w, h, 0);
+    assert.equal(tileOnMask(mask, w, 2, 2), true);
   });
 });

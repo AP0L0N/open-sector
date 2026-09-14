@@ -3,14 +3,20 @@ import { describe, it } from "node:test";
 import {
   HEIGHT_BASE,
   HEIGHT_SIGHT_BONUS,
+  HEIGHT_WORLD,
   INFANTRY_EYE_HEIGHT,
+  TANK_GUN_CLIMB,
+  TANK_GUN_ELEV_DEG,
   TICK_DT,
+  TILE_SIZE,
   TILE_SUBDIV,
   WEAPON_RANGE_SIGHT_MUL,
   catalog,
 } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
+  canAimWeapon,
+  gunCanElevate,
   hasTerrainLos,
   observerEyeOf,
   rangeTilesOf,
@@ -197,5 +203,100 @@ describe("vision and range on a hill", () => {
     shooter.cooldown = 0;
     tickCombat(state, TICK_DT);
     assert.equal(state.projectiles.length, 1);
+  });
+});
+
+describe("tank gun elevation", () => {
+  it("lets a modest terrace through and blocks a steep hole lip", () => {
+    const ts = TILE_SIZE;
+    assert.equal(gunCanElevate(0, TANK_GUN_CLIMB, ts), true);
+    assert.equal(gunCanElevate(0, TANK_GUN_CLIMB + 1, ts), false);
+    const valley = HEIGHT_BASE;
+    const rimDist = valley * ts;
+    assert.equal(gunCanElevate(0, valley, rimDist), false);
+    assert.equal(gunCanElevate(valley, 0, rimDist), true);
+    const shallow = Math.ceil((valley * HEIGHT_WORLD) / Math.tan((TANK_GUN_ELEV_DEG * Math.PI) / 180) + ts);
+    assert.equal(gunCanElevate(0, valley, shallow), true);
+  });
+
+  it("lets infantry fire up a lip that hides a hull gun", () => {
+    const { state, a, b } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const gap = HEIGHT_BASE;
+    const shooter = makeEntity(state, "trooper", a, tileCenter(12, ts), tileCenter(12, ts));
+    const target = makeEntity(state, "trooper", b, tileCenter(12 + gap, ts), tileCenter(12, ts));
+    state.heights[12 * state.width + 12 + gap] = HEIGHT_BASE;
+    shooter.facing = 0;
+    shooter.order = { kind: "attack", targetId: target.id };
+    assert.equal(canAimWeapon(state, shooter, target.x, target.y, target), true);
+    tickCombat(state, TICK_DT);
+    assert.equal(state.projectiles.some((p) => p.fromId === shooter.id), true);
+  });
+
+  it("stops a valley Warden from hitting a hull much above it", () => {
+    const { state, a, b } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const gap = HEIGHT_BASE;
+    const shooter = makeEntity(state, "warden", a, tileCenter(12, ts), tileCenter(12, ts));
+    const target = makeEntity(state, "hauler", b, tileCenter(12 + gap, ts), tileCenter(12, ts));
+    target.autoHarvest = false;
+    state.heights[12 * state.width + 12 + gap] = HEIGHT_BASE;
+    shooter.facing = 0;
+    shooter.turretFacing = 0;
+    shooter.order = { kind: "attack", targetId: target.id };
+    assert.equal(canAimWeapon(state, shooter, target.x, target.y, target), false);
+    tickCombat(state, TICK_DT);
+    assert.equal(state.projectiles.some((p) => p.fromId === shooter.id), false);
+  });
+
+  it("lets a hilltop Warden fire down into a valley", () => {
+    const { state, a, b } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const gap = HEIGHT_BASE;
+    const shooter = makeEntity(state, "warden", a, tileCenter(12, ts), tileCenter(12, ts));
+    const target = makeEntity(state, "hauler", b, tileCenter(12 + gap, ts), tileCenter(12, ts));
+    target.autoHarvest = false;
+    state.heights[12 * state.width + 12] = HEIGHT_BASE;
+    shooter.facing = 0;
+    shooter.turretFacing = 0;
+    shooter.order = { kind: "attack", targetId: target.id };
+    assert.equal(canAimWeapon(state, shooter, target.x, target.y, target), true);
+    tickCombat(state, TICK_DT);
+    assert.equal(state.projectiles.some((p) => p.fromId === shooter.id), true);
+  });
+
+  it("still engages across one authoring terrace", () => {
+    const { state, a, b } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const gap = TANK_GUN_CLIMB;
+    const shooter = makeEntity(state, "warden", a, tileCenter(12, ts), tileCenter(12, ts));
+    const target = makeEntity(state, "hauler", b, tileCenter(12 + gap, ts), tileCenter(12, ts));
+    target.autoHarvest = false;
+    state.heights[12 * state.width + 12 + gap] = TANK_GUN_CLIMB;
+    shooter.facing = 0;
+    shooter.turretFacing = 0;
+    shooter.order = { kind: "attack", targetId: target.id };
+    tickCombat(state, TICK_DT);
+    assert.equal(state.projectiles.some((p) => p.fromId === shooter.id), true);
+  });
+
+  it("does not auto-acquire a hull it cannot elevate to", () => {
+    const { state, a, b } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const gap = HEIGHT_BASE;
+    const shooter = makeEntity(state, "warden", a, tileCenter(12, ts), tileCenter(12, ts));
+    const target = makeEntity(state, "hauler", b, tileCenter(12 + gap, ts), tileCenter(12, ts));
+    target.autoHarvest = false;
+    state.heights[12 * state.width + 12 + gap] = HEIGHT_BASE;
+    shooter.facing = 0;
+    shooter.turretFacing = 0;
+    tickCombat(state, TICK_DT);
+    assert.equal(shooter.attackTarget, null);
+    assert.equal(state.projectiles.some((p) => p.fromId === shooter.id), false);
   });
 });
