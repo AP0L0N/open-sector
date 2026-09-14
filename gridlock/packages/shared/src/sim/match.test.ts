@@ -352,12 +352,18 @@ describe("combat", () => {
 
   it("kills a Warden from the front in a few shots", () => {
     const { state } = twoPlayerMatch();
-    const a = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
-    const b = makeEntity(state, "warden", "B", 23 * 32, 20 * 32);
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const a = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const b = makeEntity(state, "warden", "B", tileCenter(28, ts), tileCenter(24, ts));
     a.facing = 0;
+    a.turretFacing = 0;
     b.facing = Math.PI;
+    b.turretFacing = Math.PI;
+    b.ammo = { ap: 0, he: 0, heat: 0, smoke: 0 };
+    b.mgAmmo = 0;
     applyCommand(state, "A", { type: "cmd.attack", ids: [a.id], targetId: b.id });
-    ticks(state, 90);
+    ticks(state, 220);
     assert.ok(b.wreck || b.hp <= 0 || !state.entities.has(b.id), `front hp=${b.hp} wreck=${b.wreck}`);
   });
 

@@ -124,21 +124,35 @@ const EXTRUDE: Record<EntityType, number> = {
 };
 
 const CIV_FILL = "#b08968";
+const HP_FILL_OK = "#6aaa58";
+const HP_FILL_MID = "#b8923c";
+const HP_FILL_LOW = "#b45448";
+const HP_FILL_HOSTILE = "#d24c44";
 
 function mixHash(h: number, v: number): number {
   return Math.imul(h ^ (v | 0), 16777619);
 }
 
+function ownerAllied(match: MatchSnapshot, ownerId: string | undefined): boolean {
+  if (!ownerId) return false;
+  const you = match.youPlayerId;
+  if (ownerId === you) return true;
+  const team = match.players.find((p) => p.playerId === you)?.team ?? 0;
+  if (team === 0) return false;
+  return match.players.find((p) => p.playerId === ownerId)?.team === team;
+}
+
+function hpBarFill(ratio: number, hostile: boolean): string {
+  if (hostile) return HP_FILL_HOSTILE;
+  return ratio > 0.45 ? HP_FILL_OK : ratio > 0.2 ? HP_FILL_MID : HP_FILL_LOW;
+}
+
 function snapshotVisKey(match: MatchSnapshot): number {
   let h = 2166136261;
-  const you = match.youPlayerId;
-  const team = match.players.find((p) => p.playerId === you)?.team ?? 0;
   h = mixHash(h, match.clearedTrees?.length ?? 0);
   for (const e of match.entities) {
     if (e.wreck) continue;
-    const allied =
-      e.ownerId === you || (team !== 0 && match.players.find((p) => p.playerId === e.ownerId)?.team === team);
-    if (!allied) continue;
+    if (!ownerAllied(match, e.ownerId)) continue;
     h = mixHash(h, e.id);
     h = mixHash(h, e.tileX);
     h = mixHash(h, e.tileY);
@@ -1998,10 +2012,11 @@ export class MapView {
       turretDy: turretDir.y,
     });
     ctx.restore();
-    if (e.wreck && drawn) this.drawWreckFires(e, s.x, s.y, size);
+    if (e.wreck && drawn) this.drawWreckFires(e, s.x, s.y, size, dir.x, dir.y);
     if (!drawn) {
       const r = Math.max(4, size * 0.22);
-      this.drawIsoBox(p.x - r, p.y - r, r * 2, r * 2, size * 0.45, hex);
+      this.drawIsoBox(p.x - r, p.y - r, r * 2, r * 2, size * 0.45, e.wreck ? "#6e6c66" : hex);
+      if (e.wreck) this.drawWreckFires(e, s.x, s.y, size, dir.x, dir.y);
     }
     if (e.ownerId === this.curr.youPlayerId && e.type === "rig") {
       const name = this.curr.players.find((pl) => pl.playerId === e.ownerId)?.name ?? "";
@@ -2024,7 +2039,14 @@ export class MapView {
     }
   }
 
-  private drawWreckFires(e: EntityView, x: number, y: number, size: number): void {
+  private drawWreckFires(
+    e: EntityView,
+    x: number,
+    y: number,
+    size: number,
+    dirX: number,
+    dirY: number,
+  ): void {
     let born = this.wreckBornAt.get(e.id);
     if (born === undefined) {
       born = performance.now();
@@ -2033,12 +2055,16 @@ export class MapView {
     const age = (performance.now() - born) * (this.curr.gameSpeed || 1);
     const now = performance.now();
     const n = wreckFireCount(e.id);
-    const side = (e.id & 2) === 0 ? 1 : -1;
+    const len = Math.hypot(dirX, dirY) || 1;
+    const ux = dirX / len;
+    const uy = dirY / len;
     for (let i = 0; i < n; i++) {
       const a = wreckFireAlpha(age, i);
       if (a <= 0) continue;
-      const ox = (i === 0 ? -0.04 : 0.13) * size * side;
-      const oy = -(i === 0 ? 0.48 : 0.36) * size;
+      const along = i === 0 ? -0.02 : -0.1;
+      const across = i === 0 ? 0.03 : -0.05;
+      const ox = ux * size * along + -uy * size * across;
+      const oy = uy * size * along * 0.45 + ux * size * across * 0.45 - size * (i === 0 ? 0.47 : 0.4);
       drawWreckFire(this.ctx, x + ox, y + oy, now, e.id * 13 + i * 29, a);
     }
   }
@@ -2271,14 +2297,25 @@ export class MapView {
     }
   }
 
-  private paintHpBar(x: number, y: number, w: number, h: number, ratio: number, alpha: number): void {
-    const fill = ratio > 0.45 ? "#6aaa58" : ratio > 0.2 ? "#b8923c" : "#b45448";
+  private hostileOwner(ownerId: string | undefined): boolean {
+    return !!ownerId && !ownerAllied(this.curr, ownerId);
+  }
+
+  private paintHpBar(
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    ratio: number,
+    alpha: number,
+    hostile = false,
+  ): void {
     const ctx = this.ctx;
     ctx.globalAlpha = alpha;
     ctx.fillStyle = "rgba(8, 6, 4, 0.72)";
     ctx.fillRect(x, y, w, h);
     ctx.globalAlpha = alpha * 1.15;
-    ctx.fillStyle = fill;
+    ctx.fillStyle = hpBarFill(ratio, hostile);
     ctx.fillRect(x, y, w * Math.max(0, Math.min(1, ratio)), h);
   }
 
@@ -2290,6 +2327,7 @@ export class MapView {
     const gap = 2;
     const pad = 2;
     const totalH = bars.length * (barH + gap) - gap;
+    const hostile = this.hostileOwner(e.garrison?.ownerId);
     const ctx = this.ctx;
     ctx.save();
     ctx.globalAlpha = 0.55;
@@ -2298,7 +2336,7 @@ export class MapView {
     for (let i = 0; i < bars.length; i++) {
       const b = bars[i]!;
       const ratio = b.hpMax > 0 ? b.hp / b.hpMax : 0;
-      this.paintHpBar(Math.round(x), Math.round(y) + i * (barH + gap), barW, barH, ratio, 0.9);
+      this.paintHpBar(Math.round(x), Math.round(y) + i * (barH + gap), barW, barH, ratio, 0.9, hostile);
     }
     ctx.restore();
   }
@@ -2330,7 +2368,7 @@ export class MapView {
       ctx.ellipse(cx, cy, r, r, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
-    this.paintHpBar(bx, by, barW, barH, ratio, alpha);
+    this.paintHpBar(bx, by, barW, barH, ratio, alpha, this.hostileOwner(e.ownerId));
     ctx.restore();
   }
 

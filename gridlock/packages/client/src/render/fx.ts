@@ -472,9 +472,9 @@ export function drawWreckFire(
       Math.sin(t * 27.4 + seed * 0.17);
   const flick = 0.62 + 0.38 * wobble;
   const a = alpha * flick;
-  const h = 5.2 + flick * 2.4;
-  const w = 1.7 + flick * 0.7;
-  const lean = Math.sin(t * 11.3 + seed) * 0.7;
+  const h = 3.6 + flick * 1.5;
+  const w = 1.2 + flick * 0.45;
+  const lean = Math.sin(t * 11.3 + seed) * 0.45;
 
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
@@ -507,9 +507,9 @@ export function drawWreckFire(
   ctx.beginPath();
   ctx.ellipse(
     x + Math.sin(t * 2.8 + seed) * 1.4 + lean,
-    y - h - 1 - smokeRise * 9,
-    1.3 + smokeRise * 2.1,
-    1.1 + smokeRise * 1.7,
+    y - h - 1 - smokeRise * 6,
+    1.0 + smokeRise * 1.5,
+    0.85 + smokeRise * 1.2,
     0,
     0,
     Math.PI * 2,
