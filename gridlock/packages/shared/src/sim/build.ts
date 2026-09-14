@@ -17,6 +17,7 @@ import {
 import { ejectUnits } from "./deploy.js";
 import { repathIfBlocked } from "./orders.js";
 import { powerOf, productionSpeed } from "./power.js";
+import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
 import { spawnUnit } from "./train.js";
 import type { MatchState } from "./types.js";
 
@@ -26,22 +27,29 @@ export function startBuild(state: MatchState, playerId: string, type: BuildingTy
   if (!hasCore(state, playerId)) return "Deploy the Rig.";
   if (p.structure) return "Construction already underway.";
   const def = catalog(type);
-  if (p.scrap < def.cost) return "Not enough scrap.";
-  p.scrap -= def.cost;
   p.structure = {
     type,
     progressTicks: 0,
     totalTicks: secondsToTicks(def.buildSeconds),
     ready: false,
+    paused: false,
+    paid: 0,
   };
   p.placingType = null;
+  return null;
+}
+
+export function pauseStructure(state: MatchState, playerId: string, paused?: boolean): string | null {
+  const p = state.players.get(playerId);
+  if (!p?.structure) return "Nothing to pause.";
+  p.structure.paused = paused === undefined ? !p.structure.paused : paused;
   return null;
 }
 
 export function cancelStructure(state: MatchState, playerId: string): string | null {
   const p = state.players.get(playerId);
   if (!p?.structure) return "Nothing to cancel.";
-  p.scrap += catalog(p.structure.type).cost;
+  refundPaid(p, p.structure);
   p.structure = null;
   p.placingType = null;
   return null;
@@ -49,11 +57,12 @@ export function cancelStructure(state: MatchState, playerId: string): string | n
 
 export function tickBuild(state: MatchState, _dt: number): void {
   for (const p of state.players.values()) {
-    if (!p.alive || !p.structure || p.structure.ready) continue;
+    if (!p.alive || !p.structure || p.structure.ready || p.structure.paused) continue;
     if (!hasCore(state, p.playerId)) continue;
+    const def = catalog(p.structure.type);
     const pow = powerOf(state, p.playerId);
-    p.structure.progressTicks += productionSpeed(pow.provided, pow.used);
-    if (p.structure.progressTicks >= p.structure.totalTicks) {
+    advancePaidJob(p, p.structure, def.cost, productionSpeed(pow.provided, pow.used));
+    if (jobFullyPaid(p.structure, def.cost)) {
       p.structure.ready = true;
       p.structure.progressTicks = p.structure.totalTicks;
       p.placingType = p.structure.type;

@@ -16,6 +16,7 @@ import {
   TILE_TREE,
   TILE_WATER,
   garrisonWindowLift,
+  hasScout,
   isGarrisonable,
   immobilized,
   heightAt,
@@ -73,6 +74,7 @@ import {
   critIcon,
   drawBuildingSprite,
   drawPropSprite,
+  drawScoutHead,
   drawUnitSprite,
   spriteFor,
   spriteReady,
@@ -174,6 +176,7 @@ function snapshotVisKey(match: MatchSnapshot): number {
     h = mixHash(h, e.tileY);
     h = mixHash(h, e.garrisonedIn ?? 0);
     h = mixHash(h, e.garrison?.hide ? 1 : 0);
+    h = mixHash(h, e.scout?.out ? 1 : 0);
   }
   for (const c of match.smoke ?? []) {
     h = mixHash(h, c.id);
@@ -886,6 +889,7 @@ export class MapView {
     if (k === "i") {
       e.preventDefault();
       this.garrisonHideHotkey();
+      this.scoutHotkey();
       return;
     }
     if (k === "escape") {
@@ -940,6 +944,22 @@ export class MapView {
     const stance = inf.every((e) => (e.stanceOrder ?? e.stance) === want) ? "stand" : want;
     if (!isStance(stance)) return;
     this.onCommand({ type: "cmd.stance", ids: inf.map((e) => e.id), stance });
+  }
+
+  private scoutHotkey(): void {
+    const you = this.curr.youPlayerId;
+    const tanks = this.curr.entities.filter(
+      (e) =>
+        this.selected.has(e.id) &&
+        e.ownerId === you &&
+        !e.wreck &&
+        e.kind === "unit" &&
+        hasScout(e.type) &&
+        (e.scout?.hp ?? 0) > 0,
+    );
+    if (tanks.length === 0) return;
+    const out = !tanks.every((e) => e.scout?.out);
+    this.onCommand({ type: "cmd.scout", ids: tanks.map((e) => e.id), out });
   }
 
   private garrisonHideHotkey(): void {

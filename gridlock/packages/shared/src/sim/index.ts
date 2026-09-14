@@ -56,6 +56,8 @@ export {
   entityHeight,
   sightTilesOf,
   sightTilesForEntity,
+  observerEyeForEntity,
+  uphillSightForEntity,
   rangeTilesOf,
   weaponRangeWorld,
   hasTerrainLos,
@@ -64,3 +66,4 @@ export {
   hasFullLos,
   coverSmokeAt,
 } from "./elevation.js";
+export { canScout, setScoutOut, hideScout, woundScout } from "./scout.js";

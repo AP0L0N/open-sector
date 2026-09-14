@@ -144,15 +144,27 @@ describe("construction", () => {
     if (!res.ok) assert.equal(res.code, "no_core");
   });
 
-  it("rejects build when scrap is too low", () => {
+  it("starts a build with too little scrap and stalls until funded", () => {
     const { state } = twoPlayerMatch();
     const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig")!;
     applyCommand(state, "A", { type: "cmd.deploy", id: rig.id });
     ticks(state, 35);
     state.players.get("A")!.scrap = 10;
     const res = applyCommand(state, "A", { type: "cmd.build", building: "dynamo" });
-    assert.equal(res.ok, false);
-    if (!res.ok) assert.equal(res.code, "low_scrap");
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    ticks(state, 40);
+    const job = state.players.get("A")!.structure!;
+    assert.equal(job.ready, false);
+    assert.equal(state.players.get("A")!.scrap, 0);
+    assert.ok(job.progressTicks > 0);
+    assert.ok(job.progressTicks < 40);
+    const frozen = job.progressTicks;
+    ticks(state, 10);
+    assert.equal(job.progressTicks, frozen);
+    state.players.get("A")!.scrap = catalog("dynamo").cost;
+    ticks(state, catalog("dynamo").buildSeconds * 10 + 2);
+    assert.equal(state.players.get("A")!.structure?.ready, true);
+    assert.equal(state.players.get("A")!.scrap, 10);
   });
 
   it("builds then places a Dynamo and increases power", () => {
@@ -163,10 +175,12 @@ describe("construction", () => {
     const before = state.players.get("A")!.scrap;
     const b = applyCommand(state, "A", { type: "cmd.build", building: "dynamo" });
     assert.equal(b.ok, true, !b.ok ? b.message : "");
-    assert.equal(state.players.get("A")!.scrap, before - catalog("dynamo").cost);
+    assert.equal(state.players.get("A")!.scrap, before);
     ticks(state, catalog("dynamo").buildSeconds * 10 + 2);
     const p = state.players.get("A")!;
     assert.equal(p.structure?.ready, true);
+    assert.equal(p.structure?.paid, catalog("dynamo").cost);
+    assert.equal(p.scrap, before - catalog("dynamo").cost);
     assert.equal(p.placingType, "dynamo");
     assert.equal([...state.entities.values()].some((e) => e.type === "dynamo"), false);
     const core = [...state.entities.values()].find((e) => e.type === "core" && e.ownerId === "A")!;
@@ -177,6 +191,54 @@ describe("construction", () => {
     const dyn = [...state.entities.values()].find((e) => e.type === "dynamo");
     assert.ok(dyn);
     assert.equal(snapshotFor(state, "A").you.provided, 150);
+  });
+
+  it("pauses construction, then cancel refunds scrap already paid", () => {
+    const { state } = twoPlayerMatch();
+    const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig")!;
+    applyCommand(state, "A", { type: "cmd.deploy", id: rig.id });
+    ticks(state, 35);
+    const before = state.players.get("A")!.scrap;
+    applyCommand(state, "A", { type: "cmd.build", building: "dynamo" });
+    ticks(state, 20);
+    const job = state.players.get("A")!.structure!;
+    assert.ok(job.progressTicks > 0);
+    assert.ok(job.paid > 0);
+    const mid = job.progressTicks;
+    const paid = job.paid;
+    const pause = applyCommand(state, "A", { type: "cmd.pause", what: "structure", paused: true });
+    assert.equal(pause.ok, true);
+    assert.equal(job.paused, true);
+    assert.equal(snapshotFor(state, "A").you.structureQueue?.paused, true);
+    ticks(state, 20);
+    assert.equal(job.progressTicks, mid);
+    assert.equal(job.paid, paid);
+    const cancel = applyCommand(state, "A", { type: "cmd.cancel", what: "structure" });
+    assert.equal(cancel.ok, true);
+    assert.equal(state.players.get("A")!.structure, null);
+    assert.equal(state.players.get("A")!.scrap, before);
+  });
+
+  it("right-click pause on a finished structure does not unready it; cancel refunds the full cost", () => {
+    const { state } = twoPlayerMatch();
+    const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig")!;
+    applyCommand(state, "A", { type: "cmd.deploy", id: rig.id });
+    ticks(state, 35);
+    const before = state.players.get("A")!.scrap;
+    applyCommand(state, "A", { type: "cmd.build", building: "dynamo" });
+    ticks(state, catalog("dynamo").buildSeconds * 10 + 2);
+    const job = state.players.get("A")!.structure!;
+    assert.equal(job.ready, true);
+    const pause = applyCommand(state, "A", { type: "cmd.pause", what: "structure", paused: true });
+    assert.equal(pause.ok, true);
+    assert.equal(job.ready, true);
+    assert.equal(job.paused, true);
+    assert.equal(state.players.get("A")!.placingType, "dynamo");
+    const cancel = applyCommand(state, "A", { type: "cmd.cancel", what: "structure" });
+    assert.equal(cancel.ok, true);
+    assert.equal(state.players.get("A")!.structure, null);
+    assert.equal(state.players.get("A")!.placingType, null);
+    assert.equal(state.players.get("A")!.scrap, before);
   });
 
   it("cannot sell the Core", () => {

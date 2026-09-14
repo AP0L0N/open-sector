@@ -52,6 +52,7 @@ export function createMatch(
     heights: grids.heights,
     scrapYield: grids.scrapYield,
     occupy: grids.occupy,
+    wreckBlock: new Uint8Array(map.width * map.height),
     players,
     entities: new Map(),
     projectiles: [],

@@ -12,6 +12,8 @@ export interface TrainJob {
   progressTicks: number;
   totalTicks: number;
   paused: boolean;
+  /** Scrap already drained for this job. */
+  paid: number;
 }
 
 export interface StructureJob {
@@ -19,6 +21,9 @@ export interface StructureJob {
   progressTicks: number;
   totalTicks: number;
   ready: boolean;
+  paused: boolean;
+  /** Scrap already drained for this job. */
+  paid: number;
 }
 
 export interface Order {
@@ -95,6 +100,11 @@ export interface Entity {
   garrison: number[];
   /** Occupants shuttered: tiny sight, no fire, occupancy hidden from enemies. */
   garrisonHide: boolean;
+  /** Hatch-crew HP. 0 = dead or this type has no scout. */
+  scoutHp: number;
+  scoutHpMax: number;
+  /** Head out of the cupola: infantry sight, vulnerable to small arms. */
+  scoutOut: boolean;
   /** Player currently taking this building. Empty when idle. */
   captureOwnerId: string;
   /** 0–1. Decays when capturers leave. */
@@ -181,8 +191,10 @@ export interface MatchState {
   heights: Uint8Array;
   /** Remaining scrap on each tile. */
   scrapYield: Uint16Array;
-  /** Building id occupying a tile, or 0. */
+  /** Building or wreck id occupying a tile, or 0. */
   occupy: Int32Array;
+  /** 1 = too close to a wreck for a unit to path through. */
+  wreckBlock: Uint8Array;
   players: Map<string, SimPlayer>;
   entities: Map<number, Entity>;
   projectiles: Projectile[];

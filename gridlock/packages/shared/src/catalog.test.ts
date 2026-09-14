@@ -19,6 +19,9 @@ import {
   BUILDING_TYPES,
   catalog,
   hasMg,
+  hasScout,
+  scoutHpMaxOf,
+  SCOUT_HP_MUL,
   pickLoadedShell,
   clampGameSpeed,
   isInfantryType,
@@ -155,6 +158,15 @@ describe("weapon reach", () => {
     assert.equal(tank.rangeTiles, tank.sightTiles * WEAPON_RANGE_SIGHT_MUL);
     assert.equal(inf.sightBonusTiles ?? 0, 0);
     assert.equal(tank.sightBonusTiles ?? 0, 0);
+  });
+});
+
+describe("hatch scout", () => {
+  it("is a Warden crew with garrison-like 3× trooper HP", () => {
+    assert.equal(hasScout("warden"), true);
+    assert.equal(hasScout("hauler"), false);
+    assert.equal(scoutHpMaxOf("warden"), catalog("trooper").hp * SCOUT_HP_MUL);
+    assert.equal(SCOUT_HP_MUL, 3);
   });
 });
 

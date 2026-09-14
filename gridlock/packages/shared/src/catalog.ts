@@ -48,6 +48,11 @@ export const GARRISON_STRUCTURAL_CALIBER = 40;
 export const GARRISON_HIDE_SIGHT = t(1);
 /** Extra Chebyshev tiles for a watch garrison versus standing outside. */
 export const GARRISON_WATCH_SIGHT_BONUS = t(2);
+/**
+ * Hatch-crew HP vs a standing trooper. Same 3× as a garrisoned occupant —
+ * the cupola is cover, not a house.
+ */
+export const SCOUT_HP_MUL = 3;
 /** Damaging infantry hit → broken shooting arm. */
 export const CRIT_ARM_CHANCE = 0.25;
 /** Damaging infantry hit → broken leg. */
@@ -249,6 +254,8 @@ export interface CatalogEntry {
   garrisonWindows?: number;
   /** Stories used for window-flash lift. */
   garrisonFloors?: number;
+  /** Hatch scout: pop the cupola for infantry sight. Tanks only. */
+  hasScout?: boolean;
 }
 
 export interface ShellDef {
@@ -549,6 +556,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     mgAmmo: TANK_MG.ammo,
     leavesWreck: true,
     wreckHp: 70,
+    hasScout: true,
   },
   cottage: {
     type: "cottage",
@@ -640,6 +648,11 @@ export function catalog(type: EntityType): CatalogEntry {
   return ENTRIES[type];
 }
 
+/** Largest unit collision radius. Wreck pathing inflates by this so any hull can detour. */
+export const MAX_UNIT_RADIUS = Math.max(
+  ...Object.values(ENTRIES).filter((d) => d.kind === "unit").map((d) => d.radius),
+);
+
 export function isBuildingType(type: string): type is BuildingType {
   return (BUILDING_TYPES as readonly string[]).includes(type);
 }
@@ -726,6 +739,21 @@ export function garrisonWindowsOf(type: EntityType): number {
 
 export function garrisonFloorsOf(type: EntityType): number {
   return catalog(type).garrisonFloors ?? 1;
+}
+
+export function hasScout(type: EntityType): boolean {
+  return catalog(type).hasScout === true;
+}
+
+/** Max HP for a tank's hatch crew. 0 when the type has no scout. */
+export function scoutHpMaxOf(type: EntityType): number {
+  if (!hasScout(type)) return 0;
+  return Math.max(1, Math.round(catalog("trooper").hp * SCOUT_HP_MUL));
+}
+
+/** Head out of the hatch and still alive. */
+export function entityIsScouting(e: { scoutOut?: boolean; scoutHp?: number }): boolean {
+  return !!e.scoutOut && (e.scoutHp ?? 0) > 0;
 }
 
 /** Player-built structures can change owner. Civilian houses cannot. */

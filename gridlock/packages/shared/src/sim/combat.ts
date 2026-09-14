@@ -13,6 +13,7 @@ import {
   hasCrit,
   hasMg,
   hasTurret,
+  entityIsScouting,
   isGarrisonable,
   isInfantryType,
   isSmokeShell,
@@ -47,6 +48,7 @@ import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
 import { spawnSmokeCloud } from "./smoke.js";
 import { canSeeEntity } from "./vision.js";
+import { hideScout, woundScout } from "./scout.js";
 import { reversing, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
@@ -282,8 +284,9 @@ function tickWeaponClocks(e: Entity, dt: number): void {
 }
 
 function wantsMg(e: Entity, target: Entity): boolean {
-  if (!hasMg(e.type) || !isInfantryType(target.type)) return false;
-  return e.mgAmmo > 0;
+  if (!hasMg(e.type) || e.mgAmmo <= 0) return false;
+  if (isInfantryType(target.type)) return true;
+  return entityIsScouting(target);
 }
 
 /** Sight reach in world units. Handgun has no extra long-shot band. */
@@ -396,6 +399,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     if (isSmokeShell(p.shell) && (struck || p.life <= 0)) {
       const ix = struck ? (struck.e.kind === "building" ? struck.x : struck.e.x) : p.x;
       const iy = struck ? (struck.e.kind === "building" ? struck.y : struck.e.y) : p.y;
+      if (struck) hideScout(state, struck.e);
       spawnSmokeCloud(state, ix, iy, p.vx, p.vy);
       pushImpact(state, p, "puff", ix, iy);
       continue;
@@ -409,6 +413,12 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       continue;
     }
     const e = struck.e;
+    if (entityIsScouting(e) && p.caliber < GARRISON_STRUCTURAL_CALIBER) {
+      const dmg = Math.max(1, Math.round(p.damage * (0.9 + rand() * 0.2)));
+      woundScout(state, e, dmg);
+      pushImpact(state, p, "hit", e.x, e.y);
+      continue;
+    }
     const targetDef = e.wreck
       ? { ...catalog(e.type), armorFront: 0, armorSide: 0, armorRear: 0 }
       : catalog(e.type);
@@ -429,6 +439,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       if (e.hp < 0) e.hp = 0;
       if (e.hp > 0) rollCrits(e, res.face, res.kind, res.damage, rand);
       if (e.hp > 0 && res.kind !== "ricochet" && res.damage > 0) maybeWithdraw(state, e, p);
+      hideScout(state, e);
     }
     if (occupied) woundGarrison(state, e, res.damage, p.caliber);
     const ix = e.kind === "building" ? struck.x : e.x;

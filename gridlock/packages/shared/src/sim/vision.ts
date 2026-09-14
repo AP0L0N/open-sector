@@ -3,6 +3,7 @@ import {
   GARRISON_WATCH_SIGHT_BONUS,
   HEIGHT_MAX,
   SMOKE_PEEK_TILES,
+  entityIsScouting,
   isArmoredType,
 } from "../catalog.js";
 import type { EntityView, MatchSnapshot } from "../protocol.js";
@@ -10,9 +11,10 @@ import { getMap, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import {
   coverSmokeAt,
   hasFullLos,
-  observerEyeOf,
+  observerEyeForEntity,
+  sightTilesForEntity,
   sightTilesOf,
-  uphillSightOf,
+  uphillSightForEntity,
   type CoverField,
 } from "./elevation.js";
 import { allies, chebyshev, fillHullCover, footprint, inBounds, worldToTile } from "./geo.js";
@@ -32,8 +34,12 @@ export type SightSource = {
   tileW: number;
   tileH: number;
   garrisonedIn?: number | null;
-  /** Override catalog sight. Used for garrison watch / hide. */
+  /** Override catalog sight. Used for garrison watch / hide / hatch scout. */
   sightTiles?: number;
+  observerEye?: number;
+  uphillSight?: number;
+  scoutOut?: boolean;
+  scoutHp?: number;
 };
 
 export function paintChebyshev(
@@ -89,8 +95,8 @@ export function paintEntitySight(
       e.sightTiles ?? sightTilesOf(e.type, maxH),
       elev,
       cover,
-      observerEyeOf(e.type),
-      uphillSightOf(e.type),
+      e.observerEye ?? observerEyeForEntity(e),
+      e.uphillSight ?? uphillSightForEntity(e),
     );
     return;
   }
@@ -103,11 +109,11 @@ export function paintEntitySight(
     height,
     tx,
     ty,
-    e.sightTiles ?? sightTilesOf(e.type, h),
+    e.sightTiles ?? (entityIsScouting(e) ? sightTilesOf("trooper", h) : sightTilesOf(e.type, h)),
     elev,
     cover,
-    observerEyeOf(e.type),
-    uphillSightOf(e.type),
+    e.observerEye ?? observerEyeForEntity(e),
+    e.uphillSight ?? uphillSightForEntity(e),
   );
 }
 
@@ -230,6 +236,7 @@ function visionKey(state: MatchState, playerId: string): number {
     }
     h = mix(h, e.garrisonedIn ?? 0);
     h = mix(h, e.garrisonHide ? 1 : 0);
+    h = mix(h, e.scoutOut && e.scoutHp > 0 ? 1 : 0);
     h = mix(h, occupantSightTiles(state, e) ?? -1);
   }
   for (const c of state.smokeClouds) {
@@ -242,13 +249,7 @@ function visionKey(state: MatchState, playerId: string): number {
 }
 
 function observerRadius(state: MatchState, e: Entity): number {
-  const sight = occupantSightTiles(state, e);
-  if (sight != null) return sight;
-  const h =
-    e.kind === "building"
-      ? 0
-      : state.heights[e.tileY * state.width + e.tileX] ?? 0;
-  return sightTilesOf(e.type, h);
+  return sightTilesForEntity(state, e);
 }
 
 /** Snapshot fog uses the static map; drop trees a vehicle has already flattened. */
@@ -282,7 +283,7 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
   }
   observers.sort((a, b) => observerRadius(state, b) - observerRadius(state, a));
   for (const e of observers) {
-    const sightTiles = occupantSightTiles(state, e);
+    const sightTiles = occupantSightTiles(state, e) ?? (entityIsScouting(e) ? sightTilesForEntity(state, e) : undefined);
     paintEntitySight(
       mask,
       state.width,
@@ -351,7 +352,7 @@ export function visionMaskFromSnapshot(
       catalogSight(b, elev, width, height, tileSize) - catalogSight(a, elev, width, height, tileSize),
   );
   for (const e of allied) {
-    const sightTiles = snapshotOccupantSight(snap, e, elev, width, height, tileSize);
+    const sightTiles = snapshotSightTiles(snap, e, elev, width, height, tileSize);
     paintEntitySight(mask, width, height, tileSize, sightTiles != null ? { ...e, sightTiles } : e, elev, cover);
   }
   return mask;
@@ -367,7 +368,25 @@ function catalogSight(
   const tx = e.kind === "building" ? e.tileX + Math.floor(e.tileW / 2) : worldToTile(e.x, tileSize);
   const ty = e.kind === "building" ? e.tileY + Math.floor(e.tileH / 2) : worldToTile(e.y, tileSize);
   const h = elev ? elevAtSafe(elev, width, height, tx, ty) : 0;
+  if (e.scout?.out) return sightTilesOf("trooper", h);
   return sightTilesOf(e.type, h);
+}
+
+function snapshotSightTiles(
+  snap: MatchSnapshot,
+  e: EntityView,
+  elev: ArrayLike<number> | undefined,
+  width: number,
+  height: number,
+  tileSize: number,
+): number | undefined {
+  const occupant = snapshotOccupantSight(snap, e, elev, width, height, tileSize);
+  if (occupant != null) return occupant;
+  if (!e.scout?.out) return undefined;
+  const tx = worldToTile(e.x, tileSize);
+  const ty = worldToTile(e.y, tileSize);
+  const h = elev ? elevAtSafe(elev, width, height, tx, ty) : 0;
+  return sightTilesOf("trooper", h);
 }
 
 function snapshotOccupantSight(
@@ -513,14 +532,14 @@ function observerSeesTile(
       height,
       elev,
       cover,
-      observerEyeOf(obs.type),
-      uphillSightOf(obs.type),
+      observerEyeForEntity(obs),
+      uphillSightForEntity(obs),
     );
   }
   const ox = worldToTile(obs.x, state.tileSize);
   const oy = worldToTile(obs.y, state.tileSize);
   const h = elevAtSafe(elev, width, height, ox, oy);
-  const radius = occupantSightTiles(state, obs) ?? sightTilesOf(obs.type, h);
+  const radius = occupantSightTiles(state, obs) ?? (entityIsScouting(obs) ? sightTilesOf("trooper", h) : sightTilesOf(obs.type, h));
   return tileInSight(
     tx,
     ty,
@@ -531,8 +550,8 @@ function observerSeesTile(
     height,
     elev,
     cover,
-    observerEyeOf(obs.type),
-    uphillSightOf(obs.type),
+    observerEyeForEntity(obs),
+    uphillSightForEntity(obs),
   );
 }
 

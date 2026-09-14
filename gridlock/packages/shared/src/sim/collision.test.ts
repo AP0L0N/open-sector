@@ -5,6 +5,7 @@ import { TICK_DT, catalog } from "../catalog.js";
 import { applyCommand } from "./commands.js";
 import { makeEntity, tileCenter, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
+import { astar } from "./path.js";
 import type { MatchState } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
@@ -99,6 +100,103 @@ describe("warden wrecks", () => {
     t.hp = 0;
     step(state, TICK_DT);
     assert.equal(state.entities.has(t.id), false);
+  });
+
+  it("blocks the hull plus path clearance, not only the center tile", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(46, ts), tileCenter(16, ts));
+    tank.hp = 0;
+    step(state, TICK_DT);
+    assert.equal(tank.wreck, true);
+    const tx = worldToTile(tank.x, ts);
+    const ty = worldToTile(tank.y, ts);
+    assert.equal(walkable(state, tx, ty, "warden"), false);
+    assert.equal(walkable(state, tx + 1, ty, "warden"), false);
+    const need = tank.radius + catalog("warden").radius;
+    const far = Math.ceil(need / ts) + 1;
+    assert.equal(walkable(state, tx + far, ty, "warden"), true);
+  });
+
+  it("A* detours a wreck instead of clipping the hull", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const y = 16;
+    const wreck = makeEntity(state, "warden", "A", tileCenter(46, ts), tileCenter(y, ts));
+    wreck.hp = 0;
+    step(state, TICK_DT);
+    const path = astar(state, 36, y, 56, y, "warden");
+    assert.ok(path.length > 0, "expected a path around the wreck");
+    const need = wreck.radius + catalog("warden").radius;
+    for (const p of path) {
+      const d = Math.hypot(tileCenter(p.x, ts) - wreck.x, tileCenter(p.y, ts) - wreck.y);
+      assert.ok(d + 1e-6 >= need, `path tile ${p.x},${p.y} dist=${d} need=${need}`);
+    }
+  });
+
+  it("lets a Warden drive past a wreck instead of circling it", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const y = tileCenter(16, ts);
+    const wreck = makeEntity(state, "warden", "A", tileCenter(46, ts), y);
+    wreck.hp = 0;
+    step(state, TICK_DT);
+    const mover = makeEntity(state, "warden", "A", tileCenter(36, ts), y);
+    mover.facing = 0;
+    const destX = tileCenter(56, ts);
+    applyCommand(state, "A", { type: "cmd.move", ids: [mover.id], x: destX, y });
+    const need = mover.radius + wreck.radius;
+    let minDist = Infinity;
+    for (let i = 0; i < 250; i++) {
+      step(state, TICK_DT);
+      minDist = Math.min(minDist, Math.hypot(mover.x - wreck.x, mover.y - wreck.y));
+      if (mover.waypoints.length === 0 && mover.state === "idle") break;
+    }
+    assert.ok(Math.abs(mover.x - destX) < ts * 2, `ended at ${mover.x}, dest ${destX}`);
+    assert.ok(minDist + 0.5 >= need, `clipped wreck minDist=${minDist} need=${need}`);
+  });
+
+  it("lets a Trooper walk past a wreck", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const y = tileCenter(16, ts);
+    const wreck = makeEntity(state, "warden", "A", tileCenter(46, ts), y);
+    wreck.hp = 0;
+    step(state, TICK_DT);
+    const mover = makeEntity(state, "trooper", "A", tileCenter(36, ts), y);
+    const destX = tileCenter(56, ts);
+    applyCommand(state, "A", { type: "cmd.move", ids: [mover.id], x: destX, y });
+    const need = mover.radius + wreck.radius;
+    let minDist = Infinity;
+    for (let i = 0; i < 200; i++) {
+      step(state, TICK_DT);
+      minDist = Math.min(minDist, Math.hypot(mover.x - wreck.x, mover.y - wreck.y));
+      if (mover.waypoints.length === 0 && mover.state === "idle") break;
+    }
+    assert.ok(Math.abs(mover.x - destX) < ts * 2, `ended at ${mover.x}, dest ${destX}`);
+    assert.ok(minDist + 0.5 >= need, `clipped wreck minDist=${minDist} need=${need}`);
+  });
+
+  it("repaths around a wreck that appears on the way", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const y = tileCenter(16, ts);
+    const mover = makeEntity(state, "warden", "A", tileCenter(36, ts), y);
+    const blocker = makeEntity(state, "warden", "B", tileCenter(46, ts), y);
+    mover.facing = 0;
+    const destX = tileCenter(56, ts);
+    applyCommand(state, "A", { type: "cmd.move", ids: [mover.id], x: destX, y });
+    ticks(state, 8);
+    blocker.hp = 0;
+    ticks(state, 250);
+    assert.ok(Math.abs(mover.x - destX) < ts * 3, `stuck at ${mover.x}, dest ${destX}`);
+    assert.equal(blocker.wreck, true);
+    assert.ok(Math.hypot(mover.x - blocker.x, mover.y - blocker.y) + 0.5 >= mover.radius + blocker.radius);
   });
 });
 

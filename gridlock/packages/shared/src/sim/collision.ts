@@ -1,4 +1,4 @@
-import { isArmoredType, isInfantryType, isMotorVehicle } from "../catalog.js";
+import { isArmoredType, isInfantryType, isMotorVehicle, UNIT_SPACE_PAD } from "../catalog.js";
 import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, occupant, tileCenter, walkable, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -216,6 +216,42 @@ function separatePair(state: MatchState, a: Entity, b: Entity): void {
   const uy = dy / dist;
   tryShift(state, a, -ux * overlap * (mb / tot), -uy * overlap * (mb / tot));
   tryShift(state, b, ux * overlap * (ma / tot), uy * overlap * (ma / tot));
+}
+
+/** Push units out of a new wreck so they can path from a walkable tile. */
+export function shoveFromWreck(state: MatchState, wreck: Entity): void {
+  const ts = state.tileSize;
+  for (const u of state.entities.values()) {
+    if (u.id === wreck.id || !isActiveUnit(u)) continue;
+    const need = u.radius + wreck.radius + UNIT_SPACE_PAD;
+    let dx = u.x - wreck.x;
+    let dy = u.y - wreck.y;
+    let dist = Math.hypot(dx, dy);
+    if (dist >= need) continue;
+    if (dist < 1e-4) {
+      dx = Math.cos(u.facing) || 1;
+      dy = Math.sin(u.facing);
+      dist = 1;
+    }
+    const base = Math.atan2(dy, dx);
+    let placed = false;
+    for (let ring = 0; ring <= 4 && !placed; ring++) {
+      const r = need + ring * ts;
+      const n = 8 + ring * 4;
+      for (let i = 0; i < n; i++) {
+        const a = base + (i * Math.PI * 2) / n;
+        const nx = wreck.x + Math.cos(a) * r;
+        const ny = wreck.y + Math.sin(a) * r;
+        if (!canStand(state, u, nx, ny)) continue;
+        u.x = nx;
+        u.y = ny;
+        u.tileX = worldToTile(nx, ts);
+        u.tileY = worldToTile(ny, ts);
+        placed = true;
+        break;
+      }
+    }
+  }
 }
 
 function tryShift(state: MatchState, e: Entity, dx: number, dy: number): void {

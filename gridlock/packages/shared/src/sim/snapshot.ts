@@ -1,8 +1,10 @@
 import {
   clampGameSpeed,
   DEPLOY_SECONDS,
+  entityIsScouting,
   garrisonCapOf,
   hasMg,
+  hasScout,
   hasTurret,
   isGarrisonable,
   isInfantryType,
@@ -11,8 +13,19 @@ import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { allies, unitInWater } from "./geo.js";
 import { powerOf } from "./power.js";
 import { canSeeWorld, entityOnMask, visionMask } from "./vision.js";
-import type { MatchState } from "./types.js";
+import type { Entity, MatchState } from "./types.js";
 import type { EntityView, MatchSnapshot, ScrapCell } from "../protocol.js";
+
+function scoutView(e: Entity, friendly: boolean): EntityView["scout"] {
+  if (!hasScout(e.type) || e.scoutHpMax <= 0) return undefined;
+  const out = entityIsScouting(e);
+  if (!friendly && !out) return undefined;
+  return {
+    hp: e.scoutHp,
+    hpMax: e.scoutHpMax,
+    out: out ? true : undefined,
+  };
+}
 
 export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapshot {
   const you = state.players.get(youPlayerId);
@@ -65,6 +78,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       swimming: isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
       guardFacing: friendly && e.guardFacing != null ? e.guardFacing : undefined,
+      scout: scoutView(e, friendly),
       ammo: friendly && Object.keys(e.ammo).length > 0 ? { ...e.ammo } : undefined,
       shell: friendly && e.shell ? e.shell : undefined,
       mgAmmo: friendly && hasMg(e.type) ? e.mgAmmo : undefined,
@@ -115,6 +129,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
             progressTicks: you.structure.progressTicks,
             totalTicks: you.structure.totalTicks,
             ready: you.structure.ready,
+            paused: you.structure.paused,
           }
         : null,
       placingType: you?.placingType ?? null,

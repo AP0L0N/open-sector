@@ -4,6 +4,7 @@ import {
   hasCrit,
   isBuildingType,
   isGarrisonable,
+  hasScout,
   isInfantryType,
   isShellType,
   isSmokeShell,
@@ -17,7 +18,8 @@ import type { ClientMessage, ErrorCode } from "../protocol.js";
 import { pathToCapture, wantsCapture } from "./capture.js";
 import { clearOrder, hqOf } from "./geo.js";
 import { approachTile, canGarrison, exitGarrison, garrisonOwner, livingGarrison, setGarrisonHide } from "./garrison.js";
-import { cancelStructure, placeBuilding, sellBuilding, startBuild } from "./build.js";
+import { setScoutOut } from "./scout.js";
+import { cancelStructure, pauseStructure, placeBuilding, sellBuilding, startBuild } from "./build.js";
 import { deployId } from "./deploy.js";
 import { cancelTrain, pauseTrain, startTrain } from "./train.js";
 import { groupMoveTargets } from "./formation.js";
@@ -62,9 +64,13 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
       if (!isTrainType(msg.unit)) return fail("bad_payload", "Unknown unit.");
       return wrap(startTrain(state, playerId, msg.unit), "busy");
     case "cmd.pause":
+      if (msg.what === "structure") return wrap(pauseStructure(state, playerId, msg.paused), "busy");
       if (msg.what !== "train") return fail("bad_payload", "Unknown pause.");
       if (msg.unit != null && !isTrainType(msg.unit)) return fail("bad_payload", "Unknown unit.");
-      return wrap(pauseTrain(state, playerId, { jobId: msg.jobId, unit: msg.unit }), "busy");
+      return wrap(
+        pauseTrain(state, playerId, { jobId: msg.jobId, unit: msg.unit, paused: msg.paused }),
+        "busy",
+      );
     case "cmd.cancel":
       if (msg.what === "structure") return wrap(cancelStructure(state, playerId), "busy");
       if (msg.unit != null && !isTrainType(msg.unit)) return fail("bad_payload", "Unknown unit.");
@@ -84,6 +90,8 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
       return cmdUngarrison(state, playerId, msg.ids, msg.buildingId, msg.x, msg.y);
     case "cmd.garrisonhide":
       return cmdGarrisonHide(state, playerId, msg.ids, msg.hide);
+    case "cmd.scout":
+      return cmdScout(state, playerId, msg.ids, msg.out);
     case "cmd.stance":
       if (!isStance(msg.stance)) return fail("bad_payload", "Unknown stance.");
       return cmdStance(state, playerId, msg.ids, msg.stance);
@@ -375,6 +383,24 @@ function cmdUngarrison(
   }
   if (units.length === 0) return fail("not_yours", "No garrisoned infantry.");
   for (const e of units) exitGarrison(state, e, dest);
+  return ok();
+}
+
+function cmdScout(state: MatchState, playerId: string, ids: number[], out: boolean): CmdResult {
+  const units = owned(state, playerId, ids).filter((e) => hasScout(e.type));
+  if (units.length === 0) return fail("not_yours", "Select a tank.");
+  let n = 0;
+  let dead = 0;
+  for (const e of units) {
+    if (e.scoutHp <= 0) {
+      dead++;
+      continue;
+    }
+    const err = setScoutOut(state, e, out);
+    if (!err) n++;
+  }
+  if (n === 0 && dead > 0) return fail("busy", "Scout is dead.");
+  if (n === 0) return fail("busy", "Cannot open the hatch.");
   return ok();
 }
 

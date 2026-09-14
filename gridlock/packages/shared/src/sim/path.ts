@@ -132,9 +132,14 @@ export function astar(
         if (dx === 0 && dy === 0) continue;
         const nx = cur.x + dx;
         const ny = cur.y + dy;
-        if (!walkable(state, nx, ny, type)) continue;
+        if (!passable(state, nx, ny, type, sx, sy)) continue;
         if (dx !== 0 && dy !== 0) {
-          if (!walkable(state, cur.x + dx, cur.y, type) || !walkable(state, cur.x, cur.y + dy, type)) continue;
+          if (
+            !passable(state, cur.x + dx, cur.y, type, sx, sy) ||
+            !passable(state, cur.x, cur.y + dy, type, sx, sy)
+          ) {
+            continue;
+          }
         }
         const dh = tileHeight(state, nx, ny) - tileHeight(state, cur.x, cur.y);
         if (!climbableDelta(dh)) continue;
@@ -210,15 +215,28 @@ function straightPath(
     const nx = x + ndx;
     const ny = y + ndy;
     if (ndx !== 0 && ndy !== 0) {
-      if (!walkable(state, x + ndx, y, type) || !walkable(state, x, y + ndy, type)) return null;
+      if (!passable(state, x + ndx, y, type, sx, sy) || !passable(state, x, y + ndy, type, sx, sy)) return null;
     }
-    if (!walkable(state, nx, ny, type) || isWater(state, nx, ny)) return null;
+    if (!passable(state, nx, ny, type, sx, sy) || isWater(state, nx, ny)) return null;
     if (!climbableDelta(tileHeight(state, nx, ny) - tileHeight(state, x, y))) return null;
     path.push({ x: nx, y: ny });
     x = nx;
     y = ny;
   }
   return null;
+}
+
+/** Start tile may sit inside wreck clearance; every other step must be walkable. */
+function passable(
+  state: MatchState,
+  x: number,
+  y: number,
+  type: EntityType | undefined,
+  sx: number,
+  sy: number,
+): boolean {
+  if (x === sx && y === sy) return true;
+  return walkable(state, x, y, type);
 }
 
 function heuristic(ax: number, ay: number, bx: number, by: number): number {

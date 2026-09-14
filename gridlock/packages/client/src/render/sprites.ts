@@ -25,6 +25,7 @@ import infantrySwimUrl from "../assets/units/infantry-swim.png";
 import haulerSheetUrl from "../assets/units/hauler-move.png";
 import wardenHullUrl from "../assets/units/warden-hull.png";
 import wardenTurretUrl from "../assets/units/warden-turret.png";
+import scoutHeadUrl from "../assets/units/scout-head.png";
 import rigSheetUrl from "../assets/units/rig-move.png";
 import armIconUrl from "../assets/status/arm.png";
 import legIconUrl from "../assets/status/leg.png";
@@ -103,6 +104,17 @@ export const INFANTRY_SWIM_SPRITE: UnitSpriteDef = {
   fps: 8,
   drawSize: Math.round(28 * UNIT_VISUAL_SCALE),
   contactY: 0.68,
+};
+
+/** 8-dir hatch head (helmet + face). Row = isoDirIndex, one frame. */
+export const SCOUT_HEAD_SPRITE: UnitSpriteDef = {
+  image: loadSheet(scoutHeadUrl),
+  dirs: 8,
+  frames: 1,
+  frameSize: 48,
+  fps: 1,
+  drawSize: Math.round(16 * UNIT_VISUAL_SCALE),
+  contactY: 1,
 };
 
 export const WARDEN_SPRITE: UnitSpriteDef = {

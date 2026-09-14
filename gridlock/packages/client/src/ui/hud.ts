@@ -13,6 +13,7 @@ import {
   getMap,
   hasAmmo,
   hasMg,
+  hasScout,
   isGarrisonable,
   isInfantryType,
   isShellType,
@@ -36,6 +37,8 @@ import { el } from "./dom.js";
 
 let viewRef: MapView | null = null;
 let configFocus: EntityType | null = null;
+/** Ready structure: first right-click is a no-op; second cancels. */
+let readyCancelArmed: BuildingType | null = null;
 
 export function mountBattlefield(
   root: HTMLElement,
@@ -103,19 +106,43 @@ export function mountBattlefield(
   };
 
   for (const type of BUILDING_TYPES) {
-    document.getElementById("build-" + type)?.addEventListener("click", () => {
+    const btn = document.getElementById("build-" + type);
+    btn?.addEventListener("click", (e) => {
       const m = ctx.match;
-      const btn = document.getElementById("build-" + type);
+      const q = m?.you.structureQueue;
       if (structureReady(m, type)) {
         view.placeMode = true;
         paintBattleHud(ctx);
         return;
       }
-      if (m && m.you.scrap < catalog(type).cost) {
-        flashNoScrap(btn);
+      if (q?.type === type && !q.ready) {
+        if ((e.target as HTMLElement | null)?.closest(".cameo-hold, .cameo-paused") || q.paused) {
+          ctx.net.send({ type: "cmd.pause", what: "structure", paused: !q.paused });
+        }
         return;
       }
+      if (q) return;
       ctx.net.send({ type: "cmd.build", building: type });
+    });
+    btn?.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      const q = ctx.match?.you.structureQueue;
+      if (!q || q.type !== type) {
+        readyCancelArmed = null;
+        return;
+      }
+      if (q.ready) {
+        if (readyCancelArmed !== type) {
+          readyCancelArmed = type;
+          return;
+        }
+        readyCancelArmed = null;
+        ctx.net.send({ type: "cmd.cancel", what: "structure" });
+        return;
+      }
+      readyCancelArmed = null;
+      if (!q.paused) ctx.net.send({ type: "cmd.pause", what: "structure", paused: true });
+      else ctx.net.send({ type: "cmd.cancel", what: "structure" });
     });
   }
   for (const unit of TRAIN_TYPES) {
@@ -130,10 +157,6 @@ export function mountBattlefield(
       const queued = jobsOfType(m, unit);
       if (queued.length > 0 && queued.every((j) => j.paused)) {
         ctx.net.send({ type: "cmd.pause", what: "train", unit });
-        return;
-      }
-      if (m && m.you.scrap < catalog(unit).cost) {
-        flashNoScrap(btn);
         return;
       }
       if (m && !canQueueMore(m, unit)) return;
@@ -205,10 +228,11 @@ function cameoButton(
   const b = el("button", { class: "cameo", attrs: { type: "button", id } });
   const powerTxt = power > 0 ? `+${power}` : power < 0 ? `${power}` : "";
   const ready = showReady ? `<span class="cameo-ready">READY</span>` : "";
-  const hold = train
+  const hold = train || showReady
     ? `<span class="cameo-hold hidden" title="Pause production"></span><span class="cameo-paused">PAUSED</span><span class="cameo-count hidden">0</span>`
     : "";
   if (train) b.title = "Left: train  ·  Pause icon: hold  ·  Right: cancel";
+  if (showReady) b.title = "Left: build  ·  Right: pause, again to cancel";
   b.innerHTML = `<span class="cameo-name">${name}</span><span class="cameo-meta">${cost}${powerTxt ? " · " + powerTxt : ""}</span><span class="pip"></span><span class="cameo-deny">NO SCRAP</span>${ready}${hold}`;
   return b;
 }
@@ -339,19 +363,26 @@ export function paintBattleHud(ctx: Ctx): void {
 
   const coreUp = m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === "core");
   const q = m.you.structureQueue;
+  if (!q?.ready || q.type !== readyCancelArmed) readyCancelArmed = null;
   for (const type of BUILDING_TYPES) {
     const btn = document.getElementById("build-" + type) as HTMLButtonElement | null;
     if (!btn) continue;
-    btn.disabled = !coreUp || (!!q && !q.ready) || (!!q && q.ready && q.type !== type);
+    const job = q?.type === type ? q : null;
+    btn.disabled = !coreUp || (!!q && !job);
     const pip = btn.querySelector(".pip") as HTMLElement | null;
-    if (pip && q?.type === type) {
-      pip.style.width = `${Math.round((q.progressTicks / q.totalTicks) * 100)}%`;
+    if (pip && job) {
+      pip.style.width = `${Math.round((job.progressTicks / job.totalTicks) * 100)}%`;
     } else if (pip) pip.style.width = "0";
-    const ready = q?.ready === true && q.type === type;
+    const ready = job?.ready === true;
+    const paused = !!job && job.paused && !job.ready;
+    const stalled = !!job && !job.ready && !job.paused && m.you.scrap <= 0;
     btn.classList.toggle("is-ready", ready);
     btn.classList.toggle("is-placing", ready && !!viewRef?.placeMode);
-    btn.classList.toggle("unaffordable", !ready && m.you.scrap < catalog(type).cost);
-    btn.classList.toggle("slow-power", m.you.lowPower && q?.type === type && !q.ready);
+    btn.classList.toggle("is-paused", paused);
+    btn.classList.toggle("unaffordable", stalled);
+    btn.classList.toggle("slow-power", m.you.lowPower && !!job && !job.ready && !job.paused);
+    const hold = btn.querySelector(".cameo-hold") as HTMLElement | null;
+    hold?.classList.toggle("hidden", !job || job.ready || job.paused);
   }
 
   const jobs = ownTrainJobs(m);
@@ -366,7 +397,7 @@ export function paintBattleHud(ctx: Ctx): void {
     const paused = heads.length > 0 && heads.every((j) => j.paused);
     const training = heads.some((j) => !j.paused);
     btn.disabled = !hasProducer || !m.you.alive;
-    btn.classList.toggle("unaffordable", m.you.scrap < catalog(unit).cost);
+    btn.classList.toggle("unaffordable", training && m.you.scrap <= 0);
     btn.classList.toggle("slow-power", m.you.lowPower && training);
     btn.classList.toggle("is-training", unitJobs.length > 0);
     btn.classList.toggle("is-paused", paused);
@@ -461,11 +492,19 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
   const capturing =
     e.capture && e.capture.progress > 0 ? `  ·  capturing ${Math.round(e.capture.progress * 100)}%` : "";
   const holding = e.guardFacing != null ? "  ·  GUARD" : e.holdPosition ? "  ·  HOLD" : "";
+  const scout =
+    e.scout && e.ownerId === ctx.match.youPlayerId
+      ? e.scout.hp <= 0
+        ? "  ·  scout KIA"
+        : e.scout.out
+          ? `  ·  hatch ${e.scout.hp}/${e.scout.hpMax}`
+          : `  ·  scout ${e.scout.hp}/${e.scout.hpMax}`
+      : "";
   const occ = e.garrison?.ownerId
     ? ctx.match.players.find((p) => p.playerId === e.garrison!.ownerId)
     : owner;
   const who = occ?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${rack}${mg}  ·  ${who}${q}${cargo}${dep}${special}${garrison}${capturing}${holding}`;
+  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${rack}${mg}  ·  ${who}${q}${cargo}${dep}${special}${garrison}${scout}${capturing}${holding}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
 
@@ -639,6 +678,20 @@ function paintConfig(ctx: Ctx, view: MapView | null): void {
     body.append(bar);
   }
 
+  if (hasScout(focus.type)) {
+    const mine = live.filter((e) => e.ownerId === ctx.match!.youPlayerId);
+    const dead = mine.length > 0 && mine.every((e) => (e.scout?.hp ?? 0) <= 0);
+    const hatched = mine.length > 0 && mine.every((e) => e.scout?.out);
+    const hp = mine.reduce((n, e) => n + (e.scout?.hp ?? 0), 0);
+    const hpMax = mine.reduce((n, e) => n + (e.scout?.hpMax ?? 0), 0);
+    const label = dead ? "Scout  KIA" : hatched ? "Scout  hatch" : "Scout  buttoned";
+    body.append(
+      el("p", {
+        class: "tiny",
+        text: dead || hpMax <= 0 ? label : `${label}  ${hp}/${hpMax}  (I)`,
+      }),
+    );
+  }
   const armor = armorLabel(focus.type);
   if (armor) body.append(el("p", { class: "tiny", text: "Armor  " + armor }));
   if (focus.type === "hauler") {
@@ -757,6 +810,27 @@ function paintQuickActions(ctx: Ctx, view: MapView | null): void {
   ) {
     add("ungarrison", "Exit", "Leave the building (G)");
   }
+  const tanks = units.filter((e) => hasScout(e.type) && (e.scout?.hpMax ?? 0) > 0);
+  if (tanks.length) {
+    const live = tanks.filter((e) => (e.scout?.hp ?? 0) > 0);
+    const dead = live.length === 0;
+    const hatched = live.length > 0 && live.every((e) => e.scout?.out);
+    const hatchBtn = el("button", {
+      class: "qact" + (hatched ? " is-on" : ""),
+      text: dead ? "Scout KIA" : hatched ? "Hatch" : "Scout",
+      attrs: {
+        type: "button",
+        "data-act": hatched ? "scout-in" : "scout-out",
+        title: dead
+          ? "Hatch crew is dead — this tank can no longer scout"
+          : hatched
+            ? "Button up — hull sight only (I)"
+            : "Open hatch — infantry sight, head is exposed (I)",
+        ...(dead ? { disabled: "" } : {}),
+      },
+    });
+    root.append(hatchBtn);
+  }
   const held = occupiedHouses(ctx, selected);
   if (held.length) {
     const hiding = held.every((h) => h.garrison?.hide);
@@ -858,6 +932,11 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     }
     const house = selected.find((e) => isGarrisonable(e.type) && e.garrison?.ownerId === match.youPlayerId);
     if (house) ctx.net.send({ type: "cmd.ungarrison", buildingId: house.id });
+    return;
+  }
+  if (act === "scout-out" || act === "scout-in") {
+    const tanks = units.filter((e) => hasScout(e.type) && (e.scout?.hp ?? 0) > 0);
+    if (tanks.length) ctx.net.send({ type: "cmd.scout", ids: tanks.map((e) => e.id), out: act === "scout-out" });
     return;
   }
   if (act === "garrison-watch" || act === "garrison-hide") {

@@ -2,7 +2,7 @@
 
 import type { BuildingType, Crit, EntityKind, EntityType, ShellType, Stance, TrainType } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 16;
+export const PROTOCOL_VERSION = 17;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -58,6 +58,7 @@ export interface StructureQueueView {
   progressTicks: number;
   totalTicks: number;
   ready: boolean;
+  paused: boolean;
 }
 
 export interface TrainJobView {
@@ -131,6 +132,11 @@ export interface EntityView {
   holdPosition?: boolean;
   /** Overwatch heading in world radians. Friendly snapshots while guarding. */
   guardFacing?: number;
+  /**
+   * Hatch crew on a tank. Friendlies always see hp. `out` means the head is
+   * visible; enemies only receive this object while the hatch is open.
+   */
+  scout?: { hp: number; hpMax: number; out?: boolean };
 }
 
 export interface PlayerPublic {
@@ -253,13 +259,14 @@ export type ClientMessage =
   | { type: "cmd.build"; building: BuildingType }
   | { type: "cmd.place"; building: BuildingType; tx: number; ty: number }
   | { type: "cmd.train"; unit: TrainType }
-  | { type: "cmd.pause"; what: "train"; jobId?: number; unit?: TrainType }
+  | { type: "cmd.pause"; what: "train" | "structure"; jobId?: number; unit?: TrainType; paused?: boolean }
   | { type: "cmd.cancel"; what: "structure" | "train"; buildingId?: number; jobId?: number; unit?: TrainType }
   | { type: "cmd.sell"; id: number }
   | { type: "cmd.deploy"; id: number }
   | { type: "cmd.garrison"; ids: number[]; buildingId: number }
   | { type: "cmd.ungarrison"; ids?: number[]; buildingId?: number; x?: number; y?: number }
   | { type: "cmd.garrisonhide"; ids: number[]; hide: boolean }
+  | { type: "cmd.scout"; ids: number[]; out: boolean }
   | { type: "cmd.stance"; ids: number[]; stance: Stance }
   | { type: "cmd.hold"; ids: number[]; hold: boolean }
   | { type: "cmd.rotate"; ids: number[]; x: number; y: number }

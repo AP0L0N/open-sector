@@ -1,6 +1,7 @@
 import { catalog, secondsToTicks, TRAIN_QUEUE_CAP, UNIT_CAP, type TrainType } from "../catalog.js";
 import { makeEntity, ownedUnits, rallyPoint } from "./geo.js";
 import { powerOf, productionSpeed } from "./power.js";
+import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
 import type { Entity, MatchState, TrainJob } from "./types.js";
 
 export function producerType(unit: TrainType): "muster" | "smelter" | "armory" {
@@ -21,7 +22,6 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
   const def = catalog(unit);
-  if (p.scrap < def.cost) return "Not enough scrap.";
   if (ownedUnits(state, playerId) + queuedCount(state, playerId) >= UNIT_CAP) return "Unit cap reached.";
   const want = producerType(unit);
   let best: Entity | null = null;
@@ -44,13 +44,13 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
     if (unit === "hauler") return "Need a Smelter.";
     return "Need an Armory.";
   }
-  p.scrap -= def.cost;
   best.queue.push({
     id: state.nextId++,
     type: unit,
     progressTicks: 0,
     totalTicks: secondsToTicks(def.buildSeconds),
     paused: false,
+    paid: 0,
   });
   return null;
 }
@@ -58,14 +58,17 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
 export function pauseTrain(
   state: MatchState,
   playerId: string,
-  opts: { jobId?: number; unit?: TrainType } = {},
+  opts: { jobId?: number; unit?: TrainType; paused?: boolean } = {},
 ): string | null {
+  const setPaused = (job: TrainJob): void => {
+    job.paused = opts.paused === undefined ? !job.paused : opts.paused;
+  };
   if (opts.jobId != null) {
     for (const e of state.entities.values()) {
       if (e.ownerId !== playerId) continue;
       const job = e.queue.find((j) => j.id === opts.jobId);
       if (job) {
-        job.paused = !job.paused;
+        setPaused(job);
         return null;
       }
     }
@@ -79,7 +82,7 @@ export function pauseTrain(
       if (job && job.type === opts.unit) heads.push(job);
     }
     if (heads.length === 0) return "No queue.";
-    const pause = heads.some((j) => !j.paused);
+    const pause = opts.paused === undefined ? heads.some((j) => !j.paused) : opts.paused;
     for (const j of heads) j.paused = pause;
     return null;
   }
@@ -88,7 +91,7 @@ export function pauseTrain(
 
 function refund(state: MatchState, playerId: string, job: TrainJob): void {
   const p = state.players.get(playerId);
-  if (p) p.scrap += catalog(job.type).cost;
+  if (p) refundPaid(p, job);
 }
 
 export function cancelTrain(
@@ -147,9 +150,12 @@ export function tickTrain(state: MatchState, _dt: number): void {
     if (e.kind !== "building" || e.queue.length === 0 || e.hp <= 0) continue;
     const job = e.queue[0];
     if (!job || job.paused) continue;
+    const p = state.players.get(e.ownerId);
+    if (!p) continue;
+    const def = catalog(job.type);
     const pow = powerOf(state, e.ownerId);
-    job.progressTicks += productionSpeed(pow.provided, pow.used);
-    if (job.progressTicks >= job.totalTicks) {
+    advancePaidJob(p, job, def.cost, productionSpeed(pow.provided, pow.used));
+    if (jobFullyPaid(job, def.cost)) {
       const spawned = spawnUnit(state, e.ownerId, job.type, e, false);
       if (spawned) e.queue.shift();
     }

@@ -13,6 +13,7 @@ import {
   INFANTRY_UPHILL_SIGHT,
   TREE_LOS_THROUGH,
   catalog,
+  entityIsScouting,
   hasCrit,
   isInfantryType,
   sightBonusTilesOf,
@@ -116,25 +117,38 @@ export function uphillSightOf(type: EntityType): number {
   return usesInfantrySight(type) ? INFANTRY_UPHILL_SIGHT : 0;
 }
 
+export function observerEyeForEntity(e: { type: EntityType; scoutOut?: boolean; scoutHp?: number }): number {
+  return entityIsScouting(e) ? INFANTRY_EYE_HEIGHT : observerEyeOf(e.type);
+}
+
+export function uphillSightForEntity(e: { type: EntityType; scoutOut?: boolean; scoutHp?: number }): number {
+  return entityIsScouting(e) ? INFANTRY_UPHILL_SIGHT : uphillSightOf(e.type);
+}
+
 export function rangeTilesOf(type: EntityType, elev: number, extraSight = 0): number {
   if (catalog(type).rangeTiles <= 0) return 0;
   return weaponRangeTiles(sightTilesOf(type, elev, extraSight));
 }
 
-/** Live fog radius: height, garrison watch/hide, catalog optics. */
+/** Live fog radius: height, garrison watch/hide, hatch scout, catalog optics. */
 export function sightTilesForEntity(state: MatchState, e: Entity): number {
   if (e.garrisonedIn != null) {
     const house = state.entities.get(e.garrisonedIn);
     if (house?.garrisonHide) return GARRISON_HIDE_SIGHT;
     if (house) return sightTilesOf(e.type, entityHeight(state, e)) + GARRISON_WATCH_SIGHT_BONUS;
   }
+  if (entityIsScouting(e)) return sightTilesOf("trooper", entityHeight(state, e));
   return sightTilesOf(e.type, entityHeight(state, e));
 }
 
 export function weaponRangeWorld(state: MatchState, e: Entity): number {
   if (isInfantryType(e.type) && hasCrit(e, "arm")) return HANDGUN.rangeTiles * state.tileSize;
   if (catalog(e.type).rangeTiles <= 0) return 0;
-  return weaponRangeTiles(sightTilesForEntity(state, e)) * state.tileSize;
+  const sight =
+    e.garrisonedIn != null
+      ? sightTilesForEntity(state, e)
+      : sightTilesOf(e.type, entityHeight(state, e));
+  return weaponRangeTiles(sight) * state.tileSize;
 }
 
 /**

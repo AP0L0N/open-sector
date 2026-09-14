@@ -1,5 +1,7 @@
 import { wreckHpOf } from "../catalog.js";
+import { shoveFromWreck } from "./collision.js";
 import { occupyEntity, worldToTile } from "./geo.js";
+import { hideScout } from "./scout.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** Convert a destroyed armored hull into an impassable wreck. Repair is TODO. */
@@ -19,7 +21,9 @@ export function toWreck(state: MatchState, e: Entity): void {
   e.mgCooldown = 0;
   e.mgOverheat = 0;
   e.queue = [];
+  hideScout(state, e);
   e.tileX = worldToTile(e.x, state.tileSize);
   e.tileY = worldToTile(e.y, state.tileSize);
   occupyEntity(state, e);
+  shoveFromWreck(state, e);
 }

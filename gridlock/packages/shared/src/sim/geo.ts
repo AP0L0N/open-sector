@@ -1,4 +1,14 @@
-import { catalog, isArmoredType, isInfantryType, isMotorVehicle, SCRAP_TILE_YIELD, type EntityType } from "../catalog.js";
+import {
+  catalog,
+  isArmoredType,
+  isInfantryType,
+  isMotorVehicle,
+  MAX_UNIT_RADIUS,
+  scoutHpMaxOf,
+  SCRAP_TILE_YIELD,
+  UNIT_SPACE_PAD,
+  type EntityType,
+} from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_SCRAP, TILE_TREE, TILE_WATER, type MapDef } from "../maps.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -86,9 +96,11 @@ export function occupant(state: MatchState, x: number, y: number): number {
 
 export function walkable(state: MatchState, x: number, y: number, type?: EntityType): boolean {
   if (!inBounds(state, x, y)) return false;
-  if ((state.occupy[tileIndex(state, x, y)] ?? 0) !== 0) return false;
+  const i = tileIndex(state, x, y);
+  if ((state.occupy[i] ?? 0) !== 0) return false;
+  if ((state.wreckBlock[i] ?? 0) !== 0) return false;
   if (isWater(state, x, y)) return !!type && isInfantryType(type);
-  if (state.blocked[tileIndex(state, x, y)] === 1) return false;
+  if (state.blocked[i] === 1) return false;
   if (isTree(state, x, y)) {
     if (!type) return false;
     if (isInfantryType(type)) return true;
@@ -204,6 +216,34 @@ export function fillHullCover(
   for (const e of entities) stampArmoredHull(out, width, height, tileSize, e);
 }
 
+function wreckPathRadius(e: Pick<Entity, "radius">): number {
+  return e.radius + MAX_UNIT_RADIUS + UNIT_SPACE_PAD;
+}
+
+function restampWreckBlock(state: MatchState): void {
+  const n = state.width * state.height;
+  if (state.wreckBlock.length !== n) state.wreckBlock = new Uint8Array(n);
+  else state.wreckBlock.fill(0);
+  const ts = state.tileSize;
+  for (const e of state.entities.values()) {
+    if (!e.wreck || e.hp <= 0) continue;
+    const r = wreckPathRadius(e);
+    const r2 = r * r;
+    const x0 = Math.max(0, worldToTile(e.x - r, ts));
+    const x1 = Math.min(state.width - 1, worldToTile(e.x + r, ts));
+    const y0 = Math.max(0, worldToTile(e.y - r, ts));
+    const y1 = Math.min(state.height - 1, worldToTile(e.y + r, ts));
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const dx = e.x - tileCenter(x, ts);
+        const dy = e.y - tileCenter(y, ts);
+        if (dx * dx + dy * dy >= r2) continue;
+        state.wreckBlock[tileIndex(state, x, y)] = 1;
+      }
+    }
+  }
+}
+
 export function occupyEntity(state: MatchState, e: Entity): void {
   if (e.kind !== "building" && !e.wreck) return;
   for (const t of footprint(e.tileX, e.tileY, e.tileW, e.tileH)) {
@@ -213,6 +253,7 @@ export function occupyEntity(state: MatchState, e: Entity): void {
     if (cur !== 0 && cur !== e.id) continue;
     state.occupy[i] = e.id;
   }
+  if (e.wreck) restampWreckBlock(state);
 }
 
 export function vacateEntity(state: MatchState, e: Entity): void {
@@ -222,6 +263,7 @@ export function vacateEntity(state: MatchState, e: Entity): void {
     const i = tileIndex(state, t.x, t.y);
     if (state.occupy[i] === e.id) state.occupy[i] = 0;
   }
+  if (e.wreck) restampWreckBlock(state);
 }
 
 export function destroyEntity(state: MatchState, e: Entity): void {
@@ -384,6 +426,9 @@ export function makeEntity(
     garrisonedIn: null,
     garrison: [],
     garrisonHide: false,
+    scoutHp: scoutHpMaxOf(type),
+    scoutHpMax: scoutHpMaxOf(type),
+    scoutOut: false,
     captureOwnerId: "",
     captureProgress: 0,
     crits: [],

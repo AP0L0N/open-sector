@@ -4,6 +4,7 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { TRAIN_QUEUE_CAP, catalog, secondsToTicks, TICK_DT } from "../catalog.js";
 import { applyCommand } from "./commands.js";
 import { createMatch, step } from "./match.js";
+import { paidForProgress } from "./production.js";
 import { snapshotFor } from "./snapshot.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import type { MatchState } from "./types.js";
@@ -51,11 +52,16 @@ describe("train queue", () => {
       assert.equal(r.ok, true, !r.ok ? r.message : "");
     }
     assert.equal(muster.queue.length, 3);
-    assert.equal(state.players.get("A")!.scrap, scrap0 - 3 * catalog("trooper").cost);
+    assert.equal(state.players.get("A")!.scrap, scrap0);
     ticks(state, 10);
     assert.ok(muster.queue[0]!.progressTicks > 0);
     assert.equal(muster.queue[1]!.progressTicks, 0);
     assert.equal(muster.queue[2]!.progressTicks, 0);
+    const head = muster.queue[0]!;
+    assert.equal(head.paid, paidForProgress(head.progressTicks, head.totalTicks, catalog("trooper").cost));
+    assert.equal(state.players.get("A")!.scrap, scrap0 - head.paid);
+    assert.equal(muster.queue[1]!.paid, 0);
+    assert.equal(muster.queue[2]!.paid, 0);
     const snap = snapshotFor(state, "A");
     const view = snap.entities.find((e) => e.id === muster.id);
     assert.equal(view?.trainQueue?.length, 3);
@@ -100,7 +106,7 @@ describe("train queue", () => {
     assert.ok(muster.queue[0]!.progressTicks > mid);
   });
 
-  it("cancels the last queued unit of a type and refunds scrap", () => {
+  it("cancels the last queued unit of a type without charging waiting jobs", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
     const muster = seedMuster(state, 20, 4);
@@ -112,7 +118,23 @@ describe("train queue", () => {
     assert.equal(cancel.ok, true);
     assert.equal(muster.queue.length, 1);
     assert.equal(muster.queue[0]!.id, firstId);
-    assert.equal(state.players.get("A")!.scrap, after + catalog("trooper").cost);
+    assert.equal(state.players.get("A")!.scrap, after);
+  });
+
+  it("refunds scrap already drained when canceling an in-progress train job", () => {
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    const muster = seedMuster(state, 20, 4);
+    const scrap0 = state.players.get("A")!.scrap;
+    applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
+    ticks(state, 20);
+    const paid = muster.queue[0]!.paid;
+    assert.ok(paid > 0);
+    assert.equal(state.players.get("A")!.scrap, scrap0 - paid);
+    const cancel = applyCommand(state, "A", { type: "cmd.cancel", what: "train", unit: "trooper" });
+    assert.equal(cancel.ok, true);
+    assert.equal(muster.queue.length, 0);
+    assert.equal(state.players.get("A")!.scrap, scrap0);
   });
 
   it("cancels a specific job from the middle of the queue", () => {
@@ -134,6 +156,7 @@ describe("train queue", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
     seedMuster(state, 20, 4);
+    const scrap0 = state.players.get("A")!.scrap;
     applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
     ticks(state, secondsToTicks(catalog("trooper").buildSeconds) + 2);
     assert.ok([...state.entities.values()].some((e) => e.type === "trooper" && e.ownerId === "A"));
@@ -141,6 +164,29 @@ describe("train queue", () => {
       [...state.entities.values()].filter((e) => e.type === "muster" && e.ownerId === "A")[0]?.queue.length,
       0,
     );
+    assert.equal(state.players.get("A")!.scrap, scrap0 - catalog("trooper").cost);
+  });
+
+  it("starts training with too little scrap and stalls until funded", () => {
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    const muster = seedMuster(state, 20, 4);
+    state.players.get("A")!.scrap = 5;
+    const r = applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
+    assert.equal(r.ok, true, !r.ok ? r.message : "");
+    ticks(state, 30);
+    assert.equal(muster.queue.length, 1);
+    assert.equal(state.players.get("A")!.scrap, 0);
+    assert.ok(muster.queue[0]!.progressTicks > 0);
+    assert.ok(muster.queue[0]!.progressTicks < 30);
+    const frozen = muster.queue[0]!.progressTicks;
+    ticks(state, 10);
+    assert.equal(muster.queue[0]!.progressTicks, frozen);
+    state.players.get("A")!.scrap = catalog("trooper").cost;
+    ticks(state, secondsToTicks(catalog("trooper").buildSeconds) + 2);
+    assert.ok([...state.entities.values()].some((e) => e.type === "trooper" && e.ownerId === "A"));
+    assert.equal(muster.queue.length, 0);
+    assert.equal(state.players.get("A")!.scrap, 5);
   });
 
   it("does not spawn while paused", () => {
