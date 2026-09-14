@@ -6,8 +6,10 @@ import {
   isGarrisonable,
   isInfantryType,
   isShellType,
+  isSmokeShell,
   isStance,
   isTrainType,
+  pickLoadedShell,
   type ShellType,
   type Stance,
 } from "../catalog.js";
@@ -42,7 +44,7 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
     case "cmd.attackmove":
       return cmdAttackMove(state, playerId, msg.ids, msg.x, msg.y);
     case "cmd.forceattack":
-      return cmdForceAttack(state, playerId, msg.ids, msg.x, msg.y, msg.targetId);
+      return cmdForceAttack(state, playerId, msg.ids, msg.x, msg.y, msg.targetId, msg.once);
     case "cmd.stop":
       return cmdStop(state, playerId, msg.ids);
     case "cmd.harvest":
@@ -171,6 +173,7 @@ function cmdForceAttack(
   x: number,
   y: number,
   targetId?: number,
+  once?: boolean,
 ): CmdResult {
   let t = targetId != null ? state.entities.get(targetId) : undefined;
   if (targetId != null) {
@@ -186,11 +189,12 @@ function cmdForceAttack(
     if (t && e.id === t.id) continue;
     e.harvestTile = null;
     e.guardFacing = null;
+    const oneShot = !!once || isSmokeShell(pickLoadedShell(e.ammo, e.shell));
     if (t) {
-      e.order = { kind: "forceattack", targetId: t.id, x: t.x, y: t.y };
+      e.order = { kind: "forceattack", targetId: t.id, x: t.x, y: t.y, once: oneShot || undefined };
       e.attackTarget = t.id;
     } else {
-      e.order = { kind: "forceattack", x, y };
+      e.order = { kind: "forceattack", x, y, once: oneShot || undefined };
       e.attackTarget = null;
     }
     e.state = e.garrisonedIn ? "garrison" : "attack";

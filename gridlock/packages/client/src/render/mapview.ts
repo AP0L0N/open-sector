@@ -61,6 +61,7 @@ import {
   TREE_OAK,
   TREE_PINE,
   buildingSpriteFor,
+  buildingStackAt,
   critIcon,
   drawBuildingSprite,
   drawPropSprite,
@@ -751,6 +752,10 @@ export class MapView {
     }
     if (k === "p") {
       e.preventDefault();
+      this.setAttackMoveMode(false);
+      this.setForceAttackMode(false);
+      this.setRotateMode(false);
+      this.setGuardMode(false);
       const own = this.curr.entities.filter(
         (ent) =>
           this.selected.has(ent.id) &&
@@ -1489,10 +1494,12 @@ export class MapView {
     if (ids.length === 0) return;
     if (!this.guardDragging) this.guardFacing = this.meanSelectedFacing();
     const origin = this.guardAnchor ?? this.screenToWorld(this.mouseX, this.mouseY);
+    const elev = this.elevAt(origin.x, origin.y);
     const range = this.maxSelectedRange();
     const facing = this.guardFacing;
     const half = (GUARD_CONE_DEG * Math.PI) / 360;
     const ctx = this.ctx;
+    const at = (wx: number, wy: number) => this.toScreen(wx, wy, elev);
     ctx.save();
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
@@ -1501,7 +1508,7 @@ export class MapView {
       const steps = 48;
       for (let i = 0; i <= steps; i++) {
         const a = (Math.PI * 2 * i) / steps;
-        ring.push(this.toScreen(origin.x + Math.cos(a) * range, origin.y + Math.sin(a) * range));
+        ring.push(at(origin.x + Math.cos(a) * range, origin.y + Math.sin(a) * range));
       }
       ctx.beginPath();
       ctx.moveTo(ring[0]!.x, ring[0]!.y);
@@ -1517,11 +1524,11 @@ export class MapView {
 
       const a0 = facing - half;
       const a1 = facing + half;
-      const arc: IsoPt[] = [this.toScreen(origin.x, origin.y)];
+      const arc: IsoPt[] = [at(origin.x, origin.y)];
       const arcSteps = 20;
       for (let i = 0; i <= arcSteps; i++) {
         const a = a0 + ((a1 - a0) * i) / arcSteps;
-        arc.push(this.toScreen(origin.x + Math.cos(a) * range, origin.y + Math.sin(a) * range));
+        arc.push(at(origin.x + Math.cos(a) * range, origin.y + Math.sin(a) * range));
       }
       ctx.beginPath();
       ctx.moveTo(arc[0]!.x, arc[0]!.y);
@@ -1534,8 +1541,8 @@ export class MapView {
       ctx.stroke();
     }
     const tipR = range > 0 ? range : this.ts() * 6;
-    const tip = this.toScreen(origin.x + Math.cos(facing) * tipR, origin.y + Math.sin(facing) * tipR);
-    const apex = this.toScreen(origin.x, origin.y);
+    const tip = at(origin.x + Math.cos(facing) * tipR, origin.y + Math.sin(facing) * tipR);
+    const apex = at(origin.x, origin.y);
     ctx.strokeStyle = "#e8b84a";
     ctx.fillStyle = "#e8b84a";
     ctx.lineWidth = 2;
@@ -1776,16 +1783,17 @@ export class MapView {
     const south = this.toScreen(x + bw, y + bh, elev);
     const east = this.toScreen(x + bw, y, elev);
     const west = this.toScreen(x, y + bh, elev);
-    let top: { cx: number; cy: number };
+    const bar = this.toScreen(x + bw / 2, y + bh / 2, elev);
+    let stack = { x: bar.x, y: bar.y - ez - 8 };
     if (spr && spriteReady(spr)) {
       const footprintW = east.x - west.x;
       ctx.save();
       ctx.globalAlpha = dim ? 0.5 : 1;
       drawBuildingSprite(ctx, spr, south.x, south.y, footprintW);
       ctx.restore();
-      top = { cx: south.x, cy: south.y - spr.padSouthY * (footprintW / spr.padWidth) };
+      stack = buildingStackAt(spr, south.x, south.y, footprintW);
     } else {
-      top = this.drawIsoBox(x, y, bw, bh, ez, hex, {
+      const top = this.drawIsoBox(x, y, bw, bh, ez, hex, {
         alpha: dim ? 0.5 : 1,
         stroke: ghost ? "#2a2018" : "#111",
         strokeW: 1.5,
@@ -1798,21 +1806,21 @@ export class MapView {
       ctx.textBaseline = "middle";
       ctx.fillText(catalog(e.type).letter, top.cx, top.cy);
     }
+    const layoutW = bw * 0.56;
     if (e.ownerId === this.curr.youPlayerId && (e.type === "core" || e.type === "rig")) {
       const name = this.curr.players.find((p) => p.playerId === e.ownerId)?.name ?? "";
       ctx.font = "12px 'Share Tech Mono', monospace";
       ctx.textAlign = "center";
       ctx.fillStyle = "#e8dcc4";
-      ctx.fillText(name, top.cx, top.cy - ez * 0.15 - 14);
+      ctx.fillText(name, stack.x, stack.y - 12);
     }
-    const bar = this.toScreen(x + bw / 2, y + bh / 2, elev);
     if (!ghost) {
-      this.maybeHp(e, bar.x - bw * 0.28, spr && spriteReady(spr) ? top.cy + 6 : bar.y - ez - 8, bw * 0.56);
-      this.drawGarrisonBars(e, east.x + 5, spr && spriteReady(spr) ? top.cy + 8 : bar.y - ez - 8);
+      this.maybeHp(e, stack.x - layoutW / 2, stack.y + 3, layoutW);
+      this.drawGarrisonBars(e, stack.x + layoutW * 0.28, stack.y - 2);
     }
-    this.drawDeployProgress(e, bar.x - bw * 0.28, bar.y + 4, bw * 0.56);
+    this.drawDeployProgress(e, bar.x - layoutW / 2, bar.y + 4, layoutW);
     if (!ghost) {
-      this.drawCaptureProgress(e, bar.x - bw * 0.28, spr && spriteReady(spr) ? top.cy + 14 : bar.y - ez + 6, bw * 0.56);
+      this.drawCaptureProgress(e, stack.x - layoutW / 2, stack.y + 10, layoutW);
     }
     if (!ghost && (e.state === "undeploy" || e.state === "deploy")) {
       const p = e.deployProgress ?? 0;
@@ -1934,10 +1942,6 @@ export class MapView {
       ctx.textAlign = "center";
       ctx.fillStyle = "#e8dcc4";
       ctx.fillText(name, s.x, s.y - size * def.contactY - 12);
-    }
-    if (e.wreck) {
-      const frame = fxFrameAt(performance.now() + e.id * 90, 900, FX_SMOKE.frames, true);
-      drawFxFrame(ctx, FX_SMOKE, frame, s.x + 2, s.y - size * 0.52, size * 0.66, 0.78);
     }
     this.maybeHp(e, s.x - size * 0.45, s.y - size * def.contactY - 2, size * 0.9);
     this.drawCrits(e, s.x + size * 0.48, s.y - size * def.contactY - 20);
@@ -2211,28 +2215,30 @@ export class MapView {
   }
 
   private maybeHp(e: EntityView, x: number, y: number, w: number): void {
+    if (e.wreck) return;
     const now = performance.now();
     const selected = this.selected.has(e.id);
     const damaged = (this.damagedUntil.get(e.id) ?? 0) > now;
-    const unit = e.kind === "unit" && !e.wreck;
+    const unit = e.kind === "unit";
     const capturing = (e.capture?.progress ?? 0) > 0;
-    if (!(unit || e.wreck || selected || damaged || capturing)) return;
+    if (!(unit || selected || damaged || capturing)) return;
     const ratio = Math.max(0, Math.min(1, e.hp / e.hpMax));
     const barW = Math.max(8, w * 0.4);
     const barH = 2;
     const bx = x + (w - barW) / 2;
     const by = y - 3;
-    const alpha = selected ? 0.82 : damaged || e.wreck ? 0.42 : 0.28;
+    const alpha = selected ? 0.82 : damaged ? 0.42 : 0.28;
     const ctx = this.ctx;
     ctx.save();
     if (selected) {
       const cx = bx + barW / 2;
       const cy = by + barH / 2;
+      const r = barW / 2 + 4;
       ctx.strokeStyle = "#e8b84a";
       ctx.lineWidth = 1.35;
       ctx.globalAlpha = 0.92;
       ctx.beginPath();
-      ctx.ellipse(cx, cy, barW * 0.62 + 5, 6.5, 0, 0, Math.PI * 2);
+      ctx.ellipse(cx, cy, r, r, 0, 0, Math.PI * 2);
       ctx.stroke();
     }
     this.paintHpBar(bx, by, barW, barH, ratio, alpha);

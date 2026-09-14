@@ -682,12 +682,13 @@ function paintQuickActions(ctx: Ctx, view: MapView | null): void {
       attrs: {
         type: "button",
         "data-act": "forceattack",
-        title: "Fire at a point or any unit, including friendlies (T)",
+        title: "Fire at a point or any unit, including friendlies (T). Smoke fires once.",
       },
     });
     root.append(force);
+    const guarding = units.every((e) => e.guardFacing != null);
     const guard = el("button", {
-      class: "qact" + (view?.guardMode ? " is-on" : ""),
+      class: "qact" + (view?.guardMode || guarding ? " is-on" : ""),
       text: "Guard",
       attrs: {
         type: "button",

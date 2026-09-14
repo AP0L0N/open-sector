@@ -17,6 +17,7 @@ import {
   armorLabel,
   catalog,
   hasMg,
+  pickLoadedShell,
   clampGameSpeed,
   isInfantryType,
   isMotorVehicle,
@@ -74,6 +75,15 @@ describe("warden ammo", () => {
     assert.ok(TANK_MG.spreadDeg > w.spreadDeg * 4);
     assert.equal(TANK_MG.cooldown < 0.2, true);
     assert.ok(TANK_MG.heatPerShot * 25 >= TANK_MG.heatMax);
+  });
+
+  it("falls back to HE/HEAT but never auto-picks smoke", () => {
+    const rack = { ap: 0, he: 3, heat: 1, smoke: 4 };
+    assert.equal(pickLoadedShell(rack, "ap"), "he");
+    assert.equal(pickLoadedShell({ ap: 0, he: 0, heat: 2, smoke: 4 }, "ap"), "heat");
+    assert.equal(pickLoadedShell({ ap: 0, he: 0, heat: 0, smoke: 4 }, "ap"), null);
+    assert.equal(pickLoadedShell({ ap: 0, he: 0, heat: 0, smoke: 4 }, "smoke"), "smoke");
+    assert.equal(pickLoadedShell({ ap: 5, he: 0, heat: 0, smoke: 0 }, "smoke"), "ap");
   });
 });
 

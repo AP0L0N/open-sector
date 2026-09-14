@@ -98,7 +98,7 @@ export const INFANTRY_SWIM_SPRITE: UnitSpriteDef = {
   frameSize: 96,
   fps: 8,
   drawSize: Math.round(28 * UNIT_VISUAL_SCALE),
-  contactY: 0.64,
+  contactY: 0.68,
 };
 
 export const WARDEN_SPRITE: UnitSpriteDef = {
@@ -173,6 +173,9 @@ export interface BuildingSpriteDef {
   /** Source pixel of the pad's south (nearest) corner. */
   padSouthX: number;
   padSouthY: number;
+  /** Source pixel at the center of the HP / selection stack, next to the roof. */
+  stackX: number;
+  stackY: number;
 }
 
 function building(
@@ -180,19 +183,21 @@ function building(
   padWidth: number,
   padSouthX: number,
   padSouthY: number,
+  stackX: number,
+  stackY: number,
 ): BuildingSpriteDef {
-  return { image: loadSheet(src), padWidth, padSouthX, padSouthY };
+  return { image: loadSheet(src), padWidth, padSouthX, padSouthY, stackX, stackY };
 }
 
 const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
-  core: building(coreUrl, 383, 192.5, 390),
-  dynamo: building(dynamoUrl, 384, 194, 291),
-  armory: building(armoryUrl, 384, 194.5, 310),
-  muster: building(musterUrl, 385, 194.5, 333),
-  smelter: building(smelterUrl, 384, 194, 393),
-  cottage: building(cottageUrl, 957, 479, 753),
-  house: building(houseUrl, 957, 479, 863),
-  manor: building(manorUrl, 957, 479.5, 878),
+  core: building(coreUrl, 383, 192.5, 390, 140, 50),
+  dynamo: building(dynamoUrl, 384, 194, 291, 98, 30),
+  armory: building(armoryUrl, 384, 194.5, 310, 120, 48),
+  muster: building(musterUrl, 385, 194.5, 333, 278, 52),
+  smelter: building(smelterUrl, 384, 194, 393, 138, 90),
+  cottage: building(cottageUrl, 957, 479, 753, 735, 36),
+  house: building(houseUrl, 957, 479, 863, 735, 32),
+  manor: building(manorUrl, 957, 479.5, 878, 742, 44),
 };
 
 /** Grounded map prop. Contact is the source pixel that sits on the tile. */
@@ -311,6 +316,20 @@ export function drawBuildingSprite(
   ctx.drawImage(def.image, southX - def.padSouthX * scale, southY - def.padSouthY * scale, dw, dh);
   ctx.restore();
   return true;
+}
+
+/** Screen position of the HP / selection stack for a grounded building sprite. */
+export function buildingStackAt(
+  def: BuildingSpriteDef,
+  southX: number,
+  southY: number,
+  footprintW: number,
+): { x: number; y: number } {
+  const scale = footprintW / def.padWidth;
+  return {
+    x: southX + (def.stackX - def.padSouthX) * scale,
+    y: southY + (def.stackY - def.padSouthY) * scale,
+  };
 }
 
 export function drawUnitSprite(

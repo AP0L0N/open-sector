@@ -224,6 +224,114 @@ describe("force attack", () => {
     }
     assert.equal(tank.ammo.ap, ap0 - 1, `ammo ${tank.ammo.ap}`);
     assert.equal(fired, true, "must have fired at the point");
+    assert.equal(tank.order?.kind, "forceattack");
+    assert.equal(tank.order?.once, undefined);
+  });
+
+  it("fires smoke at a point once, then stops", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    const destX = tileCenter(30, ts);
+    const destY = tileCenter(24, ts);
+    const smoke0 = tank.ammo.smoke ?? 0;
+    assert.equal(applyCommand(state, "A", { type: "cmd.ammo", ids: [tank.id], shell: "smoke" }).ok, true);
+    const res = applyCommand(state, "A", { type: "cmd.forceattack", ids: [tank.id], x: destX, y: destY });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    assert.equal(tank.order?.kind, "forceattack");
+    assert.equal(tank.order?.once, true);
+    for (let i = 0; i < 8; i++) step(state, TICK_DT);
+    assert.equal(tank.ammo.smoke, smoke0 - 1, `smoke ${tank.ammo.smoke}`);
+    assert.equal(tank.order, null);
+    for (let i = 0; i < 80; i++) step(state, TICK_DT);
+    assert.equal(tank.ammo.smoke, smoke0 - 1, "must not dump a second smoke");
+    assert.equal(tank.order, null);
+  });
+
+  it("honors an explicit one-shot force attack", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    const destX = tileCenter(30, ts);
+    const destY = tileCenter(24, ts);
+    const ap0 = tank.ammo.ap ?? 0;
+    const res = applyCommand(state, "A", {
+      type: "cmd.forceattack",
+      ids: [tank.id],
+      x: destX,
+      y: destY,
+      once: true,
+    });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    assert.equal(tank.order?.once, true);
+    for (let i = 0; i < 8; i++) step(state, TICK_DT);
+    assert.equal(tank.ammo.ap, ap0 - 1, `ammo ${tank.ammo.ap}`);
+    assert.equal(tank.order, null);
+    for (let i = 0; i < 80; i++) step(state, TICK_DT);
+    assert.equal(tank.ammo.ap, ap0 - 1, "must not fire a second one-shot round");
+  });
+
+  it("does not auto-attack with leftover smoke when the rack is empty", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const dummy = makeEntity(state, "hauler", "B", tileCenter(30, ts), tileCenter(24, ts));
+    dummy.autoHarvest = false;
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    tank.ammo = { ap: 0, he: 0, heat: 0, smoke: 4 };
+    tank.shell = "ap";
+    const smoke0 = tank.ammo.smoke ?? 0;
+    for (let i = 0; i < 80; i++) step(state, TICK_DT);
+    assert.equal(tank.ammo.smoke, smoke0, "must not dump smoke at an auto-acquired target");
+    assert.equal(tank.shell, "ap");
+    assert.equal(
+      state.projectiles.some((p) => p.shell === "smoke") || state.smokeClouds.length > 0,
+      false,
+    );
+  });
+
+  it("does not auto-attack with smoke even if smoke is loaded", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const dummy = makeEntity(state, "hauler", "B", tileCenter(30, ts), tileCenter(24, ts));
+    dummy.autoHarvest = false;
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    assert.equal(applyCommand(state, "A", { type: "cmd.ammo", ids: [tank.id], shell: "smoke" }).ok, true);
+    const smoke0 = tank.ammo.smoke ?? 0;
+    for (let i = 0; i < 80; i++) step(state, TICK_DT);
+    assert.equal(tank.ammo.smoke, smoke0, "idle auto-acquire must not spend smoke");
+  });
+
+  it("still fires smoke when the player attacks with smoke loaded", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const dummy = makeEntity(state, "hauler", "B", tileCenter(30, ts), tileCenter(24, ts));
+    dummy.autoHarvest = false;
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    const smoke0 = tank.ammo.smoke ?? 0;
+    assert.equal(applyCommand(state, "A", { type: "cmd.ammo", ids: [tank.id], shell: "smoke" }).ok, true);
+    assert.equal(applyCommand(state, "A", { type: "cmd.attack", ids: [tank.id], targetId: dummy.id }).ok, true);
+    for (let i = 0; i < 8; i++) step(state, TICK_DT);
+    assert.equal(tank.ammo.smoke, smoke0 - 1, `smoke ${tank.ammo.smoke}`);
   });
 
   it("lets a unit force-attack a friendly", () => {

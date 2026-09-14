@@ -293,17 +293,22 @@ describe("combat", () => {
     const muzzle = catalog("trooper").projectileSpeed;
     let bounceSp = 0;
     let sawPuff = false;
+    const bounceAngs: number[] = [];
     for (let i = 0; i < 80; i++) {
       step(state);
       for (const p of state.projectiles) {
         if (!p.bounced) continue;
         bounceSp = Math.max(bounceSp, Math.hypot(p.vx, p.vy));
+        bounceAngs.push(Math.atan2(p.vy, p.vx));
       }
       if (state.impacts.some((x) => x.kind === "puff")) sawPuff = true;
     }
     assert.ok(bounceSp > 400, `bounce speed ${bounceSp} vs muzzle ${muzzle}`);
     assert.ok(bounceSp < muzzle * 0.5, `spark must not keep full rifle speed ${muzzle}`);
     assert.equal(sawPuff, true);
+    assert.ok(bounceAngs.length > 2, `bounces=${bounceAngs.length}`);
+    const spread = Math.max(...bounceAngs) - Math.min(...bounceAngs);
+    assert.ok(spread > 0.8, `ricochet dirs must fan out spread=${spread}`);
   });
 
   it("cannot kill a Warden with rifle fire", () => {

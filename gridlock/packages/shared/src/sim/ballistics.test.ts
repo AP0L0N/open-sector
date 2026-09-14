@@ -152,6 +152,28 @@ describe("resolveHit", () => {
     }
   });
 
+  it("pings rifle ricochets off armor in random directions", () => {
+    const n = { x: 1, y: 0 };
+    const dirs: number[] = [];
+    for (const r of [0.05, 0.25, 0.45, 0.65, 0.85]) {
+      const res = resolveHit({
+        gun: trooper,
+        target: warden,
+        targetFacing: 0,
+        targetHp: 120,
+        targetHpMax: 120,
+        vx: -1,
+        vy: 0,
+        rand: seq([r, r, r, r]),
+      });
+      assert.equal(res.kind, "ricochet");
+      assert.ok(res.bounceVx * n.x + res.bounceVy * n.y >= -1e-9, `inward bounce r=${r}`);
+      dirs.push(Math.atan2(res.bounceVy, res.bounceVx));
+    }
+    const spread = Math.max(...dirs) - Math.min(...dirs);
+    assert.ok(spread > 1, `spread=${spread} dirs=${dirs.join(",")}`);
+  });
+
   it("can chip near zero on a side hit when the roll is poor", () => {
     const res = resolveHit({
       gun: warden,

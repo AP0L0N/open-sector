@@ -17,7 +17,7 @@ export const RICOCHET_TRAVEL = 80;
  * Small-arms inbound is faster than a visible tracer. Cap the bounce so the
  * spark still zips instead of vanishing in a single tick.
  */
-export const RICOCHET_SPARK_SPEED = 480;
+export const RICOCHET_SPARK_SPEED = 720;
 export const MIN_COS = 0.14;
 export const MOVING_SPREAD = 1.5;
 
@@ -121,7 +121,8 @@ export function resolveHit(opts: {
   const overmatch = effective <= 1e-6 ? 99 : gun.penetration / effective;
   const caliberOver = gun.caliber > armor * 2.6;
 
-  const bounce = (): HitResolution => reflect(ix, iy, n.x, n.y, speed, face, effective, overmatch, rand);
+  const bounce = (): HitResolution =>
+    reflect(ix, iy, n.x, n.y, speed, face, effective, overmatch, rand, gun.caliber);
 
   if (!caliberOver && incDeg >= RICOCHET_DEG) return bounce();
 
@@ -215,20 +216,38 @@ function reflect(
   effectiveArmor: number,
   overmatch: number,
   rand: () => number,
+  caliber: number,
 ): HitResolution {
-  const dot = ix * nx + iy * ny;
-  const rx = ix - 2 * dot * nx;
-  const ry = iy - 2 * dot * ny;
-  const scatter = (rand() - 0.5) * 0.5;
-  const cs = Math.cos(scatter);
-  const sn = Math.sin(scatter);
   const keep = RICOCHET_KEEP + rand() * 0.06;
+  let rx: number;
+  let ry: number;
+  if (caliber < 40) {
+    // Rifle sparks ping off in a random direction away from the plate.
+    const ang = rand() * Math.PI * 2;
+    rx = Math.cos(ang);
+    ry = Math.sin(ang);
+    if (rx * nx + ry * ny < 0) {
+      rx = -rx;
+      ry = -ry;
+    }
+  } else {
+    const dot = ix * nx + iy * ny;
+    rx = ix - 2 * dot * nx;
+    ry = iy - 2 * dot * ny;
+    const scatter = (rand() - 0.5) * 0.5;
+    const cs = Math.cos(scatter);
+    const sn = Math.sin(scatter);
+    const bx = rx * cs - ry * sn;
+    const by = rx * sn + ry * cs;
+    rx = bx;
+    ry = by;
+  }
   return {
     kind: "ricochet",
     face,
     damage: 0,
-    bounceVx: (rx * cs - ry * sn) * speed * keep,
-    bounceVy: (rx * sn + ry * cs) * speed * keep,
+    bounceVx: rx * speed * keep,
+    bounceVy: ry * speed * keep,
     effectiveArmor,
     overmatch,
   };

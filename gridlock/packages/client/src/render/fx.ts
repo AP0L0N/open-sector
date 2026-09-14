@@ -317,7 +317,7 @@ export function drawRicochetSparks(
   drawSparkBurst(ctx, x, y, dirX, dirY, t, seed, shell ? 16 : 5, shell ? 48 : 16, true);
   const d = dirOf(dirX, dirY);
   const travel = shell ? 56 : 42;
-  const head = Math.min(1, t / 0.22);
+  const head = Math.min(1, t / (0.22 / 1.5));
   const fade = t < 0.5 ? 1 : Math.max(0, 1 - (t - 0.5) / 0.5);
   const hx = x + d.x * travel * head;
   const hy = y + d.y * travel * head;

@@ -685,6 +685,7 @@ export function pickLoadedShell(
 ): ShellType | null {
   if (preferred && ammoOf(ammo, preferred) > 0) return preferred;
   for (const t of SHELL_TYPES) {
+    if (t === "smoke") continue;
     if (ammoOf(ammo, t) > 0) return t;
   }
   return null;

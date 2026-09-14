@@ -42,6 +42,8 @@ export interface Order {
   tileY?: number;
   /** Auto-acquired attack. Unseen fire may interrupt this; player orders are kept. */
   auto?: boolean;
+  /** Fire the main gun once, then idle. Smoke force-attack uses this; other one-shots can too. */
+  once?: boolean;
 }
 
 export interface Entity {

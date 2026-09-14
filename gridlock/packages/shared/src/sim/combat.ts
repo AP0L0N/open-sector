@@ -23,7 +23,16 @@ import { aimAngle, resolveHit, RICOCHET_SPARK_SPEED, RICOCHET_TRAVEL } from "./b
 import { fireStats, hullTurnMul, immobilized, rollCrits } from "./crits.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
 import { weaponRangeWorld } from "./elevation.js";
-import { allies, buildingBounds, nearestWalkable, playerTeam, tileCenter, unitInWater, worldToTile } from "./geo.js";
+import {
+  allies,
+  buildingBounds,
+  clearOrder,
+  nearestWalkable,
+  playerTeam,
+  tileCenter,
+  unitInWater,
+  worldToTile,
+} from "./geo.js";
 import {
   garrisonIsHiding,
   garrisonIsHostile,
@@ -170,7 +179,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   }
   if (!holedUp && Math.abs(remainingDeg) > FACE_FIRE_DEG) return;
 
-  const useMg = !ground && target ? wantsMg(e, target) : false;
+  const useMg = !ground && !e.order?.once && target ? wantsMg(e, target) : false;
   if (useMg && target) {
     if (e.mgCooldown > 0 || e.mgOverheat > 0 || e.mgAmmo <= 0) return;
     fireRound(
@@ -200,6 +209,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (e.cooldown > 0) return;
   const shell = hasAmmo(e.type) ? pickLoadedShell(e.ammo, e.shell) : null;
   if (hasAmmo(e.type) && !shell) return;
+  if (isSmokeShell(shell) && !mayFireSmoke(e)) return;
   if (shell) e.shell = shell;
   const gun = fireStats(e);
   fireRound(
@@ -220,6 +230,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   );
   e.cooldown = gun.cooldown;
   if (shell) e.ammo[shell] = Math.max(0, (e.ammo[shell] ?? 0) - 1);
+  if (e.order?.once) clearOrder(e);
 }
 
 function tickWeaponClocks(e: Entity, dt: number): void {
@@ -239,6 +250,13 @@ function tickWeaponClocks(e: Entity, dt: number): void {
 function wantsMg(e: Entity, target: Entity): boolean {
   if (!hasMg(e.type) || !isInfantryType(target.type)) return false;
   return e.mgAmmo > 0;
+}
+
+/** Smoke is a player-placed screen, never an auto-attack fallback. */
+function mayFireSmoke(e: Entity): boolean {
+  const o = e.order;
+  if (!o || o.auto) return false;
+  return o.kind === "attack" || o.kind === "forceattack";
 }
 
 function slewTurret(

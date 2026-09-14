@@ -246,7 +246,7 @@ export type ClientMessage =
   | { type: "cmd.move"; ids: number[]; x: number; y: number }
   | { type: "cmd.attack"; ids: number[]; targetId: number }
   | { type: "cmd.attackmove"; ids: number[]; x: number; y: number }
-  | { type: "cmd.forceattack"; ids: number[]; x: number; y: number; targetId?: number }
+  | { type: "cmd.forceattack"; ids: number[]; x: number; y: number; targetId?: number; once?: boolean }
   | { type: "cmd.stop"; ids: number[] }
   | { type: "cmd.harvest"; ids: number[]; tileX?: number; tileY?: number }
   | { type: "cmd.ammo"; ids: number[]; shell: ShellType }
