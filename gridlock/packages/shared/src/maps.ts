@@ -1,4 +1,5 @@
 import {
+  HEIGHT_BASE,
   HEIGHT_MAX,
   HEIGHT_STEP_MAX,
   TILE_SIZE,
@@ -23,7 +24,7 @@ export interface MapDef {
   spawns: SpawnDef[];
   /** 0 = empty, 1 = blocked */
   tiles: number[];
-  /** Discrete elevation per tile. Same length as `tiles`. 0 = floor. */
+  /** Discrete elevation per tile. Same length as `tiles`. 0 = valley floor. */
   heights: number[];
   /** Max of `heights`. Cached so render/pick do not scan the map. */
   maxHeight: number;
@@ -115,7 +116,7 @@ function nextRand(state: { n: number }): number {
   return state.n / 4294967296;
 }
 
-function splatHill(
+function splatDelta(
   heights: number[],
   width: number,
   height: number,
@@ -123,8 +124,9 @@ function splatHill(
   cy: number,
   radX: number,
   radY: number,
-  peak: number,
+  delta: number,
 ): void {
+  if (delta === 0) return;
   const rx = Math.max(1.5, radX);
   const ry = Math.max(1.5, radY);
   const x0 = Math.max(0, Math.floor(cx - rx - 1));
@@ -137,17 +139,62 @@ function splatHill(
       const dy = (y - cy) / ry;
       const d = Math.sqrt(dx * dx + dy * dy);
       if (d >= 1) continue;
-      const fall = (1 - d) * (1 - d * 0.2);
-      const h = Math.round(peak * fall);
-      if (h <= 0) continue;
+      const mag = Math.round(delta * (1 - d));
+      if (mag === 0) continue;
       const i = idx(width, x, y);
-      const cur = heights[i] ?? 0;
-      if (h > cur) heights[i] = Math.min(HEIGHT_MAX, h);
+      const cur = heights[i] ?? HEIGHT_BASE;
+      heights[i] = Math.min(HEIGHT_MAX, Math.max(0, cur + mag));
     }
   }
 }
 
-function relaxSlopes(heights: number[], width: number, height: number): void {
+function hashNoise(x: number, y: number, seed: number): number {
+  let h = seed ^ Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return (h >>> 0) / 4294967296;
+}
+
+function smoothNoise(x: number, y: number, seed: number): number {
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const fx = x - x0;
+  const fy = y - y0;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sy = fy * fy * (3 - 2 * fy);
+  const n00 = hashNoise(x0, y0, seed);
+  const n10 = hashNoise(x0 + 1, y0, seed);
+  const n01 = hashNoise(x0, y0 + 1, seed);
+  const n11 = hashNoise(x0 + 1, y0 + 1, seed);
+  const nx0 = n00 + (n10 - n00) * sx;
+  const nx1 = n01 + (n11 - n01) * sx;
+  return nx0 + (nx1 - nx0) * sy;
+}
+
+function rollingDelta(x: number, y: number, seed: number): number {
+  const n0 = smoothNoise(x / 14, y / 14, seed);
+  const n1 = smoothNoise(x / 7, y / 7, seed ^ 0x9e3779b9);
+  const n2 = smoothNoise(x / 3.5, y / 3.5, seed ^ 0x85ebca6b);
+  const n = (n0 * 4 + n1 * 2 + n2) / 7;
+  return Math.round((n - 0.5) * 6);
+}
+
+function paintRolling(heights: number[], width: number, height: number, seed: string): void {
+  const s = hash32(seed);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = idx(width, x, y);
+      const cur = heights[i] ?? HEIGHT_BASE;
+      heights[i] = Math.min(HEIGHT_MAX, Math.max(0, cur + rollingDelta(x, y, s)));
+    }
+  }
+}
+
+function relaxSlopes(
+  heights: number[],
+  width: number,
+  height: number,
+  locked?: Uint8Array,
+): void {
   const step = HEIGHT_STEP_MAX;
   let changed = true;
   while (changed) {
@@ -155,6 +202,7 @@ function relaxSlopes(heights: number[], width: number, height: number): void {
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const i = idx(width, x, y);
+        if (locked?.[i]) continue;
         let h = heights[i] ?? 0;
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
@@ -173,13 +221,64 @@ function relaxSlopes(heights: number[], width: number, height: number): void {
       }
     }
   }
+  if (!locked) return;
+  const q: number[] = [];
+  for (let i = 0; i < locked.length; i++) {
+    if (locked[i]) q.push(i);
+  }
+  for (let qi = 0; qi < q.length; qi++) {
+    const i = q[qi]!;
+    const x = i % width;
+    const y = (i / width) | 0;
+    const h = heights[i] ?? 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const ni = idx(width, nx, ny);
+        if (locked[ni]) continue;
+        const need = h - step;
+        if (need <= 0) continue;
+        const n = heights[ni] ?? 0;
+        if (n >= need) continue;
+        heights[ni] = need;
+        q.push(ni);
+      }
+    }
+  }
 }
 
-function flattenPad(heights: number[], width: number, height: number, cx: number, cy: number, r: number): void {
+function flattenPad(
+  heights: number[],
+  width: number,
+  height: number,
+  cx: number,
+  cy: number,
+  r: number,
+  z = HEIGHT_BASE,
+): void {
   for (let y = cy - r; y <= cy + r; y++) {
     for (let x = cx - r; x <= cx + r; x++) {
       if (x < 0 || y < 0 || x >= width || y >= height) continue;
-      if (Math.hypot(x - cx, y - cy) <= r) heights[idx(width, x, y)] = 0;
+      if (Math.hypot(x - cx, y - cy) <= r) heights[idx(width, x, y)] = z;
+    }
+  }
+}
+
+function markPad(
+  locked: Uint8Array,
+  width: number,
+  height: number,
+  cx: number,
+  cy: number,
+  r: number,
+): void {
+  for (let y = cy - r; y <= cy + r; y++) {
+    for (let x = cx - r; x <= cx + r; x++) {
+      if (x < 0 || y < 0 || x >= width || y >= height) continue;
+      if (Math.hypot(x - cx, y - cy) <= r) locked[idx(width, x, y)] = 1;
     }
   }
 }
@@ -670,11 +769,18 @@ function thinIsolatedTrees(
   }
 }
 
-function flattenTerrain(heights: number[], tiles: number[], width: number, height: number, kind: number): void {
+function flattenTerrain(
+  heights: number[],
+  tiles: number[],
+  width: number,
+  height: number,
+  kind: number,
+  locked?: Uint8Array,
+): void {
   for (let i = 0; i < tiles.length; i++) {
     if (tiles[i] === kind) heights[i] = 0;
   }
-  relaxSlopes(heights, width, height);
+  relaxSlopes(heights, width, height, locked);
 }
 
 /** Trees, ponds, and civilian houses. Authoring-grid coords; caller upsamples tiles. */
@@ -738,42 +844,66 @@ function scaleFeatures(features: MapFeature[], sub: number): MapFeature[] {
   return features.map((f) => ({ type: f.type, x: f.x * sub, y: f.y * sub }));
 }
 
-/** Seeded rolling hills. Spawns stay on the floor; slopes never cliff. */
+/** Seeded rolling hills and valleys. Spawns stay on the base; slopes never cliff. */
 export function scatterHeights(
   width: number,
   height: number,
   seed: string,
   pads: readonly { x: number; y: number; r: number }[],
+  locked?: Uint8Array,
 ): number[] {
-  const heights = new Array(width * height).fill(0);
+  const heights = new Array(width * height).fill(HEIGHT_BASE);
   const rng = { n: hash32(seed) };
-  const quadrants: readonly [number, number][] = [
+  paintRolling(heights, width, height, `${seed}:roll`);
+  const riseMax = HEIGHT_MAX - HEIGHT_BASE;
+  const hillSpots: readonly [number, number][] = [
     [width * 0.3, height * 0.28],
     [width * 0.7, height * 0.3],
     [width * 0.32, height * 0.7],
     [width * 0.68, height * 0.72],
     [width * 0.5, height * 0.48],
   ];
-  const sub = TILE_SUBDIV;
-  for (const [qx, qy] of quadrants) {
-    const cx = qx + (nextRand(rng) - 0.5) * 10 * sub;
-    const cy = qy + (nextRand(rng) - 0.5) * 10 * sub;
-    const peak = Math.max(4, Math.round(HEIGHT_MAX * (0.45 + nextRand(rng) * 0.55)));
-    const rad = (8 + nextRand(rng) * 7) * sub;
-    const stretch = 0.7 + nextRand(rng) * 0.7;
-    splatHill(heights, width, height, cx, cy, rad * stretch, rad / stretch, peak);
+  const valleySpots: readonly [number, number][] = [
+    [width * 0.5, height * 0.2],
+    [width * 0.2, height * 0.5],
+    [width * 0.8, height * 0.52],
+    [width * 0.48, height * 0.8],
+    [width * 0.4, height * 0.42],
+  ];
+  for (const [qx, qy] of hillSpots) {
+    const cx = qx + (nextRand(rng) - 0.5) * 8 * TILE_SUBDIV;
+    const cy = qy + (nextRand(rng) - 0.5) * 8 * TILE_SUBDIV;
+    const rise = Math.max(4, Math.round(riseMax * (0.55 + nextRand(rng) * 0.45)));
+    const rad = rise * (1.25 + nextRand(rng) * 0.7);
+    const stretch = 0.75 + nextRand(rng) * 0.55;
+    splatDelta(heights, width, height, cx, cy, rad * stretch, rad / stretch, rise);
   }
-  const extra = 6 + Math.floor(nextRand(rng) * 5);
+  for (const [qx, qy] of valleySpots) {
+    const cx = qx + (nextRand(rng) - 0.5) * 8 * TILE_SUBDIV;
+    const cy = qy + (nextRand(rng) - 0.5) * 8 * TILE_SUBDIV;
+    const depth = Math.max(3, Math.round(HEIGHT_BASE * (0.55 + nextRand(rng) * 0.45)));
+    const rad = depth * (1.35 + nextRand(rng) * 0.8);
+    const stretch = 0.7 + nextRand(rng) * 0.6;
+    splatDelta(heights, width, height, cx, cy, rad * stretch, rad / stretch, -depth);
+  }
+  const extra = 8 + Math.floor(nextRand(rng) * 6);
   for (let i = 0; i < extra; i++) {
-    const cx = 6 * sub + nextRand(rng) * (width - 12 * sub);
-    const cy = 6 * sub + nextRand(rng) * (height - 12 * sub);
-    const peak = 2 + Math.floor(nextRand(rng) * (HEIGHT_MAX - 1));
-    const rad = (4.5 + nextRand(rng) * 9) * sub;
-    const stretch = 0.65 + nextRand(rng) * 0.9;
-    splatHill(heights, width, height, cx, cy, rad * stretch, rad / stretch, peak);
+    const cx = 6 * TILE_SUBDIV + nextRand(rng) * (width - 12 * TILE_SUBDIV);
+    const cy = 6 * TILE_SUBDIV + nextRand(rng) * (height - 12 * TILE_SUBDIV);
+    const valley = nextRand(rng) < 0.4;
+    const mag = valley
+      ? -(2 + Math.floor(nextRand(rng) * (HEIGHT_BASE - 1)))
+      : 2 + Math.floor(nextRand(rng) * riseMax);
+    const rad = Math.abs(mag) * (1.2 + nextRand(rng) * 0.9);
+    const stretch = 0.7 + nextRand(rng) * 0.7;
+    splatDelta(heights, width, height, cx, cy, rad * stretch, rad / stretch, mag);
   }
-  for (const p of pads) flattenPad(heights, width, height, p.x, p.y, p.r);
-  relaxSlopes(heights, width, height);
+  const lock = locked ?? new Uint8Array(width * height);
+  for (const p of pads) {
+    flattenPad(heights, width, height, p.x, p.y, p.r, HEIGHT_BASE);
+    markPad(lock, width, height, p.x, p.y, p.r);
+  }
+  relaxSlopes(heights, width, height, lock);
   return heights;
 }
 
@@ -826,8 +956,9 @@ export function makeYard64(): MapDef {
   const fineSpawns = spawns.map((s) => scaleSpawn(s, sub));
   const fineSpawnPads = fineSpawns.map((s) => ({ x: s.x, y: s.y, r: 4 * sub }));
   paintYardPonds(fineTiles, fineW, fineH, "yard-64-ponds", fineSpawnPads, features);
-  const heights = scatterHeights(fineW, fineH, "yard-64-elev", fineSpawnPads);
-  flattenTerrain(heights, fineTiles, fineW, fineH, TILE_WATER);
+  const locked = new Uint8Array(fineW * fineH);
+  const heights = scatterHeights(fineW, fineH, "yard-64-elev", fineSpawnPads, locked);
+  flattenTerrain(heights, fineTiles, fineW, fineH, TILE_WATER, locked);
 
   return {
     id: "yard-64",
@@ -895,7 +1026,7 @@ export function makeCanal48(): MapDef {
   const fineH = height * sub;
   thinIsolatedTrees(fineTiles, fineW, fineH, tiles, width, height, sub);
   const spawns = rawSpawns.map((s) => scaleSpawn(s, sub));
-  const heights = new Array(fineW * fineH).fill(0);
+  const heights = new Array(fineW * fineH).fill(HEIGHT_BASE);
 
   return {
     id: "canal-48",

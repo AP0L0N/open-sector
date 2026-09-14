@@ -1,4 +1,5 @@
 import {
+  HEIGHT_BASE,
   HEIGHT_MAX,
   ISO_TILE_H,
   TILE_BLOCKED,
@@ -105,14 +106,18 @@ function bakePt(p: IsoPt, originX: number, originY: number): IsoPt {
   return { x: p.x - originX, y: p.y - originY };
 }
 
+function elevShadeFactor(h: number): number {
+  const span = Math.max(1, HEIGHT_MAX - HEIGHT_BASE);
+  return 1 + ((h - HEIGHT_BASE) / span) * 0.48;
+}
+
 function groundFill(map: MapDef, tx: number, ty: number, kind: number, scrap: boolean): string {
   const chk = (Math.floor(tx / TILE_SUBDIV) + Math.floor(ty / TILE_SUBDIV)) % 2 === 0;
   if (kind === TILE_WATER) return chk ? "#1d4a5c" : "#183f52";
   if (kind === TILE_TREE) return chk ? "#1c3320" : "#182c1c";
   const fill = kind === TILE_BLOCKED ? "#2a1e18" : scrap ? (chk ? "#4a3c18" : "#3e3314") : chk ? "#2a3a24" : "#243320";
-  const h = heightAt(map, tx, ty);
-  if (h <= 0 || kind === TILE_BLOCKED) return fill;
-  return shade(fill, 1 + (h / HEIGHT_MAX) * 0.48);
+  if (kind === TILE_BLOCKED) return fill;
+  return shade(fill, elevShadeFactor(heightAt(map, tx, ty)));
 }
 
 function hash2(tx: number, ty: number, salt: number): number {
@@ -211,6 +216,7 @@ export function fillElevatedTile(
   fill: string,
   originX: number,
   originY: number,
+  slopeTint = false,
 ): void {
   const elev = map.heights;
   const d = tileDiamond(tx, ty, map.tileSize);
@@ -236,7 +242,24 @@ export function fillElevatedTile(
     ctx.fillStyle = shade(fill, 0.68);
     fillQuad(ctx, e, s, up(d.s, 0), up(d.e, 0));
   }
-  ctx.fillStyle = fill;
+  const lo = Math.min(nH, eH, sH, wH);
+  const hi = Math.max(nH, eH, sH, wH);
+  if (slopeTint && hi - lo > 0.2 && fill.startsWith("#") && fill.length === 7) {
+    const pts: [IsoPt, number][] = [
+      [n, nH],
+      [e, eH],
+      [s, sH],
+      [w, wH],
+    ];
+    const high = pts.reduce((a, b) => (b[1] > a[1] ? b : a));
+    const low = pts.reduce((a, b) => (b[1] < a[1] ? b : a));
+    const g = ctx.createLinearGradient(high[0].x, high[0].y, low[0].x, low[0].y);
+    g.addColorStop(0, shade(fill, 1.1));
+    g.addColorStop(1, shade(fill, 0.88));
+    ctx.fillStyle = g;
+  } else {
+    ctx.fillStyle = fill;
+  }
   fillQuad(ctx, n, e, s, w);
 }
 
@@ -434,7 +457,7 @@ function paintGround(
   originY: number,
 ): void {
   const kind = map.tiles[ty * map.width + tx] ?? 0;
-  fillElevatedTile(ctx, map, tx, ty, groundFill(map, tx, ty, kind, scrap), originX, originY);
+  fillElevatedTile(ctx, map, tx, ty, groundFill(map, tx, ty, kind, scrap), originX, originY, kind !== TILE_WATER);
   if (kind === TILE_WATER) paintWaterOverlay(ctx, map, tx, ty, originX, originY);
 }
 
@@ -676,10 +699,13 @@ function miniFill(map: MapDef, tx: number, ty: number, scrap: boolean): string {
   if (kind === TILE_TREE) return "#1f4a28";
   if (kind === TILE_BLOCKED) return "#3a2a22";
   if (scrap) return "#5a4a18";
-  const band = HEIGHT_MAX > 0 ? heightAt(map, tx, ty) / HEIGHT_MAX : 0;
-  if (band >= 0.75) return "#5a6a3c";
-  if (band >= 0.4) return "#4a5a32";
-  if (band > 0) return "#3a4c2c";
+  const span = Math.max(1, HEIGHT_MAX - HEIGHT_BASE);
+  const u = (heightAt(map, tx, ty) - HEIGHT_BASE) / span;
+  if (u >= 0.75) return "#5a6a3c";
+  if (u >= 0.35) return "#4a5a32";
+  if (u > 0.08) return "#3a4c2c";
+  if (u < -0.45) return "#243428";
+  if (u < -0.08) return "#2c3c28";
   return "#334628";
 }
 

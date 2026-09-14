@@ -162,6 +162,27 @@ describe("building sight", () => {
     assert.equal(tileOnMask(mask, state.width, peak, oy), false, "peak behind ridge");
   });
 
+  it("lets a hilltop see each lower terrace lip", () => {
+    const { state, a } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const ox = 20;
+    const oy = 20;
+    for (let dx = 0; dx <= 8; dx++) {
+      state.heights[oy * state.width + (ox + dx)] = Math.max(0, 6 - Math.max(0, dx - 1));
+    }
+    const inf = makeEntity(state, "trooper", a, tileCenter(ox, ts), tileCenter(oy, ts));
+    const tank = makeEntity(state, "warden", a, tileCenter(ox, ts), tileCenter(oy, ts));
+    const infMask = new Uint8Array(state.width * state.height);
+    const tankMask = new Uint8Array(state.width * state.height);
+    paintEntitySight(infMask, state.width, state.height, ts, inf, state.heights);
+    paintEntitySight(tankMask, state.width, state.height, ts, tank, state.heights);
+    for (let dx = 0; dx <= 8; dx++) {
+      assert.equal(tileOnMask(infMask, state.width, ox + dx, oy), true, `infantry lip ${dx}`);
+      assert.equal(tileOnMask(tankMask, state.width, ox + dx, oy), true, `tank lip ${dx}`);
+    }
+  });
+
   it("does not light floor tiles behind a ridge", () => {
     const { state, a } = twoPlayerMatch();
     state.heights.fill(0);

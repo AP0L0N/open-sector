@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { HEIGHT_BASE, TILE_SUBDIV } from "./catalog.js";
 import { getMap } from "./maps.js";
 import {
   clampIsoCamera,
@@ -162,7 +163,7 @@ describe("iso projection", () => {
           const y = spawn.y + dy;
           if (x < 0 || y < 0 || x >= map.width || y >= map.height) continue;
           const h = map.heights[y * map.width + x] ?? 0;
-          if (h >= 4) {
+          if (h >= HEIGHT_BASE + TILE_SUBDIV) {
             hill = { x, y, h };
             break outer;
           }

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  HEIGHT_BASE,
   HEIGHT_SIGHT_BONUS,
   INFANTRY_EYE_HEIGHT,
   TICK_DT,
@@ -57,11 +58,12 @@ describe("slope multipliers", () => {
 describe("high ground bonuses", () => {
   it("adds sight and weapon range per elevation", () => {
     const trooper = catalog("trooper");
+    assert.equal(sightTilesOf("trooper", HEIGHT_BASE), trooper.sightTiles);
     assert.equal(sightTilesOf("trooper", 0), trooper.sightTiles);
-    assert.equal(sightTilesOf("trooper", 2), trooper.sightTiles + 2 * HEIGHT_SIGHT_BONUS);
-    assert.equal(rangeTilesOf("trooper", 0), trooper.sightTiles * WEAPON_RANGE_SIGHT_MUL);
-    assert.equal(rangeTilesOf("trooper", 1), sightTilesOf("trooper", 1) * WEAPON_RANGE_SIGHT_MUL);
-    assert.equal(rangeTilesOf("hauler", 3), 0);
+    assert.equal(sightTilesOf("trooper", HEIGHT_BASE + 2), trooper.sightTiles + 2 * HEIGHT_SIGHT_BONUS);
+    assert.equal(rangeTilesOf("trooper", HEIGHT_BASE), trooper.sightTiles * WEAPON_RANGE_SIGHT_MUL);
+    assert.equal(rangeTilesOf("trooper", HEIGHT_BASE + 1), sightTilesOf("trooper", HEIGHT_BASE + 1) * WEAPON_RANGE_SIGHT_MUL);
+    assert.equal(rangeTilesOf("hauler", HEIGHT_BASE + 3), 0);
   });
 
   it("grows weapon range when extra optics extend sight", () => {
@@ -120,6 +122,19 @@ describe("terrain line of sight", () => {
     assert.equal(hasTerrainLos(elev, 4, 1, 0, 0, 3, 0), false);
     assert.equal(hasTerrainLos(elev, 4, 1, 0, 0, 1, 0), true);
   });
+
+  it("lets a hilltop see every lower terrace, including the lip", () => {
+    const elev = [4, 4, 3, 3, 2, 2, 1, 1, 0];
+    for (let x = 1; x < elev.length; x++) {
+      assert.equal(hasTerrainLos(elev, elev.length, 1, 0, 0, x, 0), true, `lip ${x}`);
+    }
+  });
+
+  it("still hides the floor behind a ridge when looking down", () => {
+    const elev = [4, 4, 5, 2, 0];
+    assert.equal(hasTerrainLos(elev, 5, 1, 0, 0, 2, 0), true);
+    assert.equal(hasTerrainLos(elev, 5, 1, 0, 0, 4, 0), false);
+  });
 });
 
 describe("movement on slopes", () => {
@@ -149,7 +164,7 @@ describe("movement on slopes", () => {
 describe("vision and range on a hill", () => {
   it("paints a wider sight disc from high ground", () => {
     const { state, a } = twoPlayerMatch();
-    state.heights.fill(0);
+    state.heights.fill(HEIGHT_BASE);
     const ts = state.tileSize;
     const e = makeEntity(state, "trooper", a, tileCenter(20, ts), tileCenter(20, ts));
     const flat = new Uint8Array(state.width * state.height);
@@ -157,7 +172,7 @@ describe("vision and range on a hill", () => {
     let flatN = 0;
     for (const v of flat) if (v) flatN++;
 
-    state.heights[20 * state.width + 20] = 2;
+    state.heights[20 * state.width + 20] = HEIGHT_BASE + 2;
     const high = new Uint8Array(state.width * state.height);
     paintEntitySight(high, state.width, state.height, ts, e, state.heights);
     let highN = 0;
@@ -167,7 +182,7 @@ describe("vision and range on a hill", () => {
 
   it("lets a hilltop trooper fire past flat max range", () => {
     const { state, a, b } = twoPlayerMatch();
-    state.heights.fill(0);
+    state.heights.fill(HEIGHT_BASE);
     const ts = state.tileSize;
     const extra = TILE_SUBDIV;
     const shooter = makeEntity(state, "trooper", a, tileCenter(12, ts), tileCenter(12, ts));
@@ -178,7 +193,7 @@ describe("vision and range on a hill", () => {
     tickCombat(state, TICK_DT);
     assert.equal(state.projectiles.length, 0);
 
-    state.heights[12 * state.width + 12] = extra;
+    state.heights[12 * state.width + 12] = HEIGHT_BASE + extra;
     shooter.cooldown = 0;
     tickCombat(state, TICK_DT);
     assert.equal(state.projectiles.length, 1);

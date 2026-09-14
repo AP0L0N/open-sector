@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { HEIGHT_MAX, HEIGHT_STEP_MAX, TILE_SUBDIV } from "./catalog.js";
+import { HEIGHT_BASE, HEIGHT_MAX, HEIGHT_STEP_MAX, TILE_SUBDIV } from "./catalog.js";
 import { MAPS, TILE_BLOCKED, TILE_TREE, TILE_WATER, heightAt, maxHeightOf, tileAt } from "./maps.js";
 
 describe("maps", () => {
@@ -24,22 +24,25 @@ describe("maps", () => {
     assert.equal(tileAt(canal, 11 * s, 23 * s), 0);
   });
 
-  it("keeps the canal flat", () => {
+  it("keeps the canal level on the raised base", () => {
     const canal = MAPS["canal-48"]!;
-    assert.equal(maxHeightOf(canal), 0);
+    assert.equal(maxHeightOf(canal), HEIGHT_BASE);
+    for (const h of canal.heights) assert.equal(h, HEIGHT_BASE);
   });
 
-  it("scatters walkable hills on the yard without cliffing spawns", () => {
+  it("scatters walkable hills and valleys on the yard without cliffing spawns", () => {
     const yard = MAPS["yard-64"]!;
-    assert.ok(maxHeightOf(yard) >= Math.ceil(HEIGHT_MAX / 2));
+    assert.ok(maxHeightOf(yard) >= HEIGHT_BASE + 3);
     assert.ok(maxHeightOf(yard) <= HEIGHT_MAX);
     let raised = 0;
+    let lowered = 0;
     const bands = new Set<number>();
     for (let y = 0; y < yard.height; y++) {
       for (let x = 0; x < yard.width; x++) {
         const h = heightAt(yard, x, y);
         bands.add(h);
-        if (h > 0) raised++;
+        if (h > HEIGHT_BASE) raised++;
+        if (h < HEIGHT_BASE) lowered++;
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
             if (dx === 0 && dy === 0) continue;
@@ -54,8 +57,9 @@ describe("maps", () => {
     }
     assert.ok(bands.size >= 6, `hills should use many height bands, got ${bands.size}`);
     assert.ok(raised > yard.width * yard.height * 0.08);
+    assert.ok(lowered > yard.width * yard.height * 0.04, `valleys ${lowered}`);
     for (const s of yard.spawns) {
-      assert.equal(heightAt(yard, s.x, s.y), 0, `spawn ${s.id} on a slope`);
+      assert.equal(heightAt(yard, s.x, s.y), HEIGHT_BASE, `spawn ${s.id} on a slope`);
     }
   });
 
@@ -81,7 +85,7 @@ describe("maps", () => {
     let dist = -1;
     for (let i = 0; i < q.length; i++) {
       const cur = q[i]!;
-      if (heightAt(yard, cur.x, cur.y) === 0) {
+      if (heightAt(yard, cur.x, cur.y) <= HEIGHT_BASE) {
         dist = cur.d;
         break;
       }
@@ -98,7 +102,8 @@ describe("maps", () => {
         }
       }
     }
-    assert.ok(dist >= peak, `floor is only ${dist} tiles from a height-${peak} peak`);
+    const rise = peak - HEIGHT_BASE;
+    assert.ok(dist >= rise, `base is only ${dist} tiles from a height-${peak} peak (rise ${rise})`);
   });
 
   it("paints water, trees, and civilian houses", () => {
