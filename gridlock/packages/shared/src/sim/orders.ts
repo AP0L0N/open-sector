@@ -68,7 +68,7 @@ export function tickMovement(state: MatchState, dt: number): void {
         } else {
           const range = weaponRangeWorld(state, e);
           const dist = Math.hypot(t.x - e.x, t.y - e.y);
-          if (dist <= range || e.holdPosition) {
+          if ((dist <= range && !unitInWater(state, e)) || e.holdPosition) {
             e.waypoints = [];
             continue;
           }
@@ -81,9 +81,9 @@ export function tickMovement(state: MatchState, dt: number): void {
     if (e.order?.kind === "forceattack" && e.order.targetId == null && e.order.x != null && e.order.y != null) {
       const range = weaponRangeWorld(state, e);
       const dist = Math.hypot(e.order.x - e.x, e.order.y - e.y);
-      if (dist <= range || e.holdPosition) {
+      if ((dist <= range && !unitInWater(state, e)) || e.holdPosition) {
         e.waypoints = [];
-        if (dist <= range) e.state = "attack";
+        if (dist <= range && !unitInWater(state, e)) e.state = "attack";
         e.tileX = worldToTile(e.x, state.tileSize);
         e.tileY = worldToTile(e.y, state.tileSize);
         continue;

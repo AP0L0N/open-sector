@@ -116,6 +116,8 @@ export interface EntityView {
   stance?: Stance;
   /** Commanded infantry posture. Omitted when it matches stance. */
   stanceOrder?: Stance;
+  /** Infantry in a water tile. Omitted when false. */
+  swimming?: boolean;
   /** Stay put: no chase, no withdraw. Friendly snapshots. */
   holdPosition?: boolean;
 }

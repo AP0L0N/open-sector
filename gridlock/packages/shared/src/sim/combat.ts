@@ -22,7 +22,7 @@ import { aimAngle, resolveHit, RICOCHET_SPARK_SPEED, RICOCHET_TRAVEL } from "./b
 import { fireStats, hullTurnMul, immobilized, rollCrits } from "./crits.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
 import { weaponRangeWorld } from "./elevation.js";
-import { allies, buildingBounds, nearestWalkable, playerTeam, tileCenter, worldToTile } from "./geo.js";
+import { allies, buildingBounds, nearestWalkable, playerTeam, tileCenter, unitInWater, worldToTile } from "./geo.js";
 import { garrisonIsHostile, livingGarrison, pickGarrisonMuzzle, woundGarrison } from "./garrison.js";
 import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";

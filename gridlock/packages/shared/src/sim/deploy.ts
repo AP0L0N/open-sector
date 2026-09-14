@@ -208,6 +208,7 @@ function structuredCloneBase(e: Entity): Entity {
     crits: [],
     stance: "stand",
     stanceOrder: "stand",
+    holdPosition: false,
   };
 }
 
