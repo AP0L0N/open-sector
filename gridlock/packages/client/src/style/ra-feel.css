@@ -208,6 +208,19 @@ label {
   margin: 10px 0 4px;
 }
 
+label.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+label.check input {
+  width: auto;
+  accent-color: var(--rust-hi);
+}
+
 input[type="text"],
 input[type="range"],
 select {
@@ -902,6 +915,25 @@ input[type="range"] { padding: 0; }
 .shell.is-empty { opacity: 0.45; }
 .shell-n { color: var(--muted); }
 .shell.is-on .shell-n { color: var(--amber); }
+
+.mg-heat {
+  height: 7px;
+  margin-top: 4px;
+  background: #140e0a;
+  border: 2px solid #3a2418;
+}
+.mg-heat > span {
+  display: block;
+  height: 100%;
+  background: var(--amber);
+}
+.mg-heat.is-hot {
+  border-color: #8a2a1a;
+}
+.mg-heat.is-hot > span {
+  background: #c44a32;
+  width: 100%;
+}
 
 .quick-actions {
   position: absolute;

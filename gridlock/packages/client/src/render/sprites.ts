@@ -163,7 +163,7 @@ export function drawBuildingSprite(
   const dh = def.image.naturalHeight * scale;
   ctx.save();
   ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
+  ctx.imageSmoothingQuality = "low";
   ctx.drawImage(def.image, southX - def.padSouthX * scale, southY - def.padSouthY * scale, dw, dh);
   ctx.restore();
   return true;
@@ -195,7 +195,7 @@ export function drawUnitSprite(
   const dy = y - s * def.contactY;
   ctx.save();
   ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
+  ctx.imageSmoothingQuality = "low";
   ctx.drawImage(def.image, frame * cell, dir * cell, cell, cell, dx, dy, s, s);
   const turret = def.turret;
   if (turret && spriteReady(turret)) {

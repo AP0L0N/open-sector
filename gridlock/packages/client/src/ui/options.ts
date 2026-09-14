@@ -1,4 +1,5 @@
 import type { Ctx } from "../ctx.js";
+import { getEdgeScroll, setEdgeScroll } from "../render/mapview.js";
 import { beep, getMusic, getSfx, setMusic, setSfx } from "./audio.js";
 import { el } from "./dom.js";
 
@@ -23,6 +24,12 @@ export function renderOptions(root: HTMLElement, ctx: Ctx): void {
 
   const test = el("button", { class: "btn", text: "Test beep", attrs: { type: "button" } });
   test.addEventListener("click", () => beep());
+
+  const edge = el("input", { attrs: { type: "checkbox" } });
+  edge.checked = getEdgeScroll();
+  edge.addEventListener("change", () => setEdgeScroll(edge.checked));
+  const edgeLabel = el("label", { class: "check", text: "Scroll at screen edge" });
+  edgeLabel.prepend(edge);
 
   const back = el("button", { class: "btn btn-ghost", text: "Back", attrs: { type: "button" } });
   back.addEventListener("click", () => ctx.goto("menu"));
@@ -54,6 +61,9 @@ export function renderOptions(root: HTMLElement, ctx: Ctx): void {
     sfx,
     el("label", { text: "Music (stub)" }),
     music,
+    el("h2", { text: "Camera" }),
+    edgeLabel,
+    el("p", { class: "tiny", text: "WASD and arrows always pan. Edge scroll is off unless you turn it on." }),
     el("p", { class: "tiny", text: "Saved locally. No accounts in M1." }),
     test,
   );

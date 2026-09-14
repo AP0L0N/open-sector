@@ -16,6 +16,8 @@ export function toWreck(state: MatchState, e: Entity): void {
   e.harvestTile = null;
   e.autoHarvest = false;
   e.cooldown = 0;
+  e.mgCooldown = 0;
+  e.mgOverheat = 0;
   e.queue = [];
   e.tileX = worldToTile(e.x, state.tileSize);
   e.tileY = worldToTile(e.y, state.tileSize);

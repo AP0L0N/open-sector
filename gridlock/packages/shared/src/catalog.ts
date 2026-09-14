@@ -63,6 +63,10 @@ export const HEIGHT_UPHILL_COST = 1.7 ** (1 / TILE_SUBDIV);
 export const HEIGHT_DOWNHILL_COST = 0.9 ** (1 / TILE_SUBDIV);
 /** Extra Chebyshev sight tiles per elevation. World reach matches the old 3-band hills. */
 export const HEIGHT_SIGHT_BONUS = 2;
+/** Extra Chebyshev tiles infantry gain per elevation step of a tile above them. */
+export const INFANTRY_UPHILL_SIGHT = 2;
+/** Standing eye height. Troops peek over rises that hide a hull. */
+export const INFANTRY_EYE_HEIGHT = TILE_SUBDIV;
 /** Extra weapon-range tiles per elevation. */
 export const HEIGHT_RANGE_BONUS = 1;
 /** Tree tiles a sight ray may pass before the grove closes. One authoring cell. */
@@ -148,6 +152,8 @@ export interface CatalogEntry {
   /** Starting rack. Omit for unlimited / unarmed. */
   ammo?: Partial<Record<ShellType, number>>;
   defaultShell?: ShellType;
+  /** Starting coaxial MG belt. Omit if the type has no MG. */
+  mgAmmo?: number;
   /** Armored hulls leave an impassable wreck instead of vanishing. */
   leavesWreck?: boolean;
   wreckHp?: number;
@@ -172,6 +178,26 @@ export const HANDGUN = {
   spreadDeg: 5,
   rangeTiles: t(3),
   cooldown: 0.55,
+} as const;
+
+/**
+ * Coaxial MG under the Warden turret. Same reach as the 75mm; the cone
+ * opens hard with distance. Rapid fire, own belt, heat-stops a dump.
+ */
+export const TANK_MG = {
+  damage: 9,
+  penetration: 8,
+  caliber: 8,
+  spreadDeg: 18,
+  /** Quadratic distance falloff for aimAngle. */
+  spreadPower: 2,
+  cooldown: 0.1,
+  projectileSpeed: 460,
+  ammo: 250,
+  heatPerShot: 0.05,
+  heatMax: 1,
+  heatCoolPerSec: 0.22,
+  overheatSeconds: 2.4,
 } as const;
 
 /** 75mm Warden load. AP is the catalog gun; HE/HEAT swap on fire. */
@@ -334,7 +360,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     moveTilesPerSec: t(2.2),
     turnDegPerSec: 1800,
     rangeTiles: t(6),
-    sightTiles: t(6),
+    sightTiles: t(12),
     cooldown: 0.9,
     damage: 12,
     projectileSpeed: 420,
@@ -380,7 +406,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     turnDegPerSec: 85,
     rangeTiles: t(9),
     sightTiles: t(8),
-    cooldown: 1.6,
+    cooldown: 6.5,
     damage: 55,
     projectileSpeed: 5200,
     turnInPlace: true,
@@ -393,6 +419,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 3,
     ammo: { ap: 12, he: 6, heat: 4 },
     defaultShell: "ap",
+    mgAmmo: TANK_MG.ammo,
     leavesWreck: true,
     wreckHp: 70,
   },
@@ -477,7 +504,7 @@ export function isTrainType(type: string): type is TrainType {
 }
 
 export function fires(type: EntityType): boolean {
-  return catalog(type).damage > 0;
+  return catalog(type).damage > 0 || hasMg(type);
 }
 
 export function isArmoredType(type: EntityType): boolean {
@@ -537,6 +564,10 @@ export function isShellType(v: string): v is ShellType {
 
 export function hasAmmo(type: EntityType): boolean {
   return !!catalog(type).ammo;
+}
+
+export function hasMg(type: EntityType): boolean {
+  return (catalog(type).mgAmmo ?? 0) > 0;
 }
 
 export function leavesWreck(type: EntityType): boolean {

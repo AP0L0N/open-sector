@@ -59,10 +59,10 @@ export function approachTile(state: MatchState, house: Entity): { x: number; y: 
     }
   }
   for (const t of ring) {
-    const snap = nearestWalkable(state, t.x, t.y);
+    const snap = nearestWalkable(state, t.x, t.y, "trooper");
     if (snap) return snap;
   }
-  return nearestWalkable(state, house.tileX, house.tileY);
+  return nearestWalkable(state, house.tileX, house.tileY, "trooper");
 }
 
 export function enterGarrison(state: MatchState, unit: Entity, house: Entity): boolean {
@@ -92,7 +92,7 @@ export function exitGarrison(
   if (house) house.garrison = house.garrison.filter((id) => id !== unit.id);
   const near = house
     ? approachTile(state, house)
-    : nearestWalkable(state, worldToTile(unit.x, state.tileSize), worldToTile(unit.y, state.tileSize));
+    : nearestWalkable(state, worldToTile(unit.x, state.tileSize), worldToTile(unit.y, state.tileSize), unit.type);
   if (near) {
     unit.x = tileCenter(near.x, state.tileSize);
     unit.y = tileCenter(near.y, state.tileSize);

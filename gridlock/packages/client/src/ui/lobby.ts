@@ -1,19 +1,10 @@
 import {
   COLORS,
-  HEIGHT_MAX,
-  TILE_BLOCKED,
-  TILE_SCRAP,
-  TILE_SUBDIV,
-  TILE_TREE,
-  TILE_WATER,
   colorHex,
   getMap,
   heightAt,
   isoLift,
-  isoMapBounds,
-  vertexElev,
   listMaps,
-  maxHeightOf,
   tileDiamond,
   usedColors,
   usedSpawns,
@@ -23,98 +14,48 @@ import {
   type Slot,
 } from "@gridlock/shared";
 import type { Ctx } from "../ctx.js";
+import { scrapFromMapTiles, terrainFor } from "../render/terrain.js";
 import { copyText, el } from "./dom.js";
-
-function shadePreview(hex: string, t: number): string {
-  const raw = hex.startsWith("#") ? hex.slice(1) : hex;
-  if (raw.length !== 6) return hex;
-  const n = parseInt(raw, 16);
-  if (Number.isNaN(n)) return hex;
-  const r = Math.min(255, Math.max(0, Math.round(((n >> 16) & 255) * t)));
-  const g = Math.min(255, Math.max(0, Math.round(((n >> 8) & 255) * t)));
-  const b = Math.min(255, Math.max(0, Math.round((n & 255) * t)));
-  return `rgb(${r},${g},${b})`;
-}
 
 function drawPreview(canvas: HTMLCanvasElement, mapId: string, slots: Slot[]): void {
   const map = getMap(mapId);
   const ctx = canvas.getContext("2d");
   if (!map || !ctx) return;
-  const dpr = devicePixelRatio || 1;
+  const dpr = Math.min(devicePixelRatio || 1, 1.5);
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
-  canvas.width = Math.floor(w * dpr);
-  canvas.height = Math.floor(h * dpr);
+  const bw = Math.floor(w * dpr);
+  const bh = Math.floor(h * dpr);
+  if (canvas.width !== bw || canvas.height !== bh) {
+    canvas.width = bw;
+    canvas.height = bh;
+  }
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = "#0a0806";
   ctx.fillRect(0, 0, w, h);
-  const b = isoMapBounds(map.width, map.height, map.tileSize, maxHeightOf(map));
-  const bw = b.maxX - b.minX;
-  const bh = b.maxY - b.minY;
-  const scale = Math.min(w / bw, h / bh) * 0.94;
-  const ox = (w - bw * scale) / 2 - b.minX * scale;
-  const oy = (h - bh * scale) / 2 - b.minY * scale;
+  const bake = terrainFor(map, scrapFromMapTiles(map));
+  const scale = Math.min(w / bake.width, h / bake.height) * 0.94;
+  const ox = (w - bake.width * scale) / 2;
+  const oy = (h - bake.height * scale) / 2;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "low";
+  ctx.drawImage(bake.canvas, ox, oy, bake.width * scale, bake.height * scale);
   const to = (p: { x: number; y: number }): { x: number; y: number } => ({
-    x: p.x * scale + ox,
-    y: p.y * scale + oy,
+    x: (p.x - bake.originX) * scale + ox,
+    y: (p.y - bake.originY) * scale + oy,
   });
   const lift = (p: IsoPt, z: number): IsoPt => to({ x: p.x, y: p.y - z });
-  const quad = (a: IsoPt, b: IsoPt, c: IsoPt, d: IsoPt, fill: string): void => {
-    ctx.fillStyle = fill;
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.lineTo(c.x, c.y);
-    ctx.lineTo(d.x, d.y);
-    ctx.closePath();
-    ctx.fill();
-  };
-  for (let y = 0; y < map.height; y++) {
-    for (let x = 0; x < map.width; x++) {
-      const t = map.tiles[y * map.width + x];
-      const blocked = t === TILE_BLOCKED;
-      const scrap = t === TILE_SCRAP;
-      const chk = (Math.floor(x / TILE_SUBDIV) + Math.floor(y / TILE_SUBDIV)) % 2 === 0;
-      const h = heightAt(map, x, y);
-      let fill =
-        t === TILE_WATER
-          ? chk
-            ? "#1a3d55"
-            : "#16364c"
-          : t === TILE_TREE
-            ? chk
-              ? "#1c3320"
-              : "#182c1c"
-            : blocked
-              ? "#3a2a22"
-              : scrap
-                ? "#5a4a18"
-                : chk
-                  ? "#2a3a24"
-                  : "#243320";
-      if (h > 0 && !blocked && t !== TILE_WATER) {
-        const liftAmt = 1 + (h / HEIGHT_MAX) * 0.48;
-        fill = chk ? shadePreview("#2a3a24", liftAmt) : shadePreview("#243320", liftAmt);
-        if (scrap) fill = shadePreview("#5a4a18", liftAmt);
-      }
-      const d = tileDiamond(x, y, map.tileSize);
-      const nH = vertexElev(map.heights, map.width, map.height, x, y);
-      const eH = vertexElev(map.heights, map.width, map.height, x + 1, y);
-      const sH = vertexElev(map.heights, map.width, map.height, x + 1, y + 1);
-      const wH = vertexElev(map.heights, map.width, map.height, x, y + 1);
-      if (y + 1 >= map.height && (wH > 0 || sH > 0)) {
-        quad(lift(d.w, isoLift(wH)), lift(d.s, isoLift(sH)), lift(d.s, 0), lift(d.w, 0), shadePreview(fill, 0.42));
-      }
-      if (x + 1 >= map.width && (eH > 0 || sH > 0)) {
-        quad(lift(d.e, isoLift(eH)), lift(d.s, isoLift(sH)), lift(d.s, 0), lift(d.e, 0), shadePreview(fill, 0.68));
-      }
-      quad(lift(d.n, isoLift(nH)), lift(d.e, isoLift(eH)), lift(d.s, isoLift(sH)), lift(d.w, isoLift(wH)), fill);
-    }
-  }
   for (const f of map.features ?? []) {
     const d = tileDiamond(f.x, f.y, map.tileSize);
     const ez = 6;
-    quad(lift(d.n, ez), lift(d.e, ez), lift(d.s, 0), lift(d.w, 0), "#b08968");
+    ctx.fillStyle = "#b08968";
+    ctx.beginPath();
+    ctx.moveTo(lift(d.n, ez).x, lift(d.n, ez).y);
+    ctx.lineTo(lift(d.e, ez).x, lift(d.e, ez).y);
+    ctx.lineTo(lift(d.s, 0).x, lift(d.s, 0).y);
+    ctx.lineTo(lift(d.w, 0).x, lift(d.w, 0).y);
+    ctx.closePath();
+    ctx.fill();
   }
   for (const spawn of map.spawns) {
     const occupant = slots.find((s) => s.status === "human" && s.spawnId === spawn.id);

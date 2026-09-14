@@ -68,7 +68,7 @@ export function rollCrits(
   rand: () => number,
 ): void {
   if (e.kind !== "unit" || e.wreck) return;
-  if (kind === "ricochet" || kind === "miss") return;
+  if (kind === "ricochet" || kind === "miss" || kind === "puff" || kind === "crush") return;
   if (isInfantryType(e.type)) {
     if (damage <= 0) return;
     if (rand() < CRIT_ARM_CHANCE) addCrit(e, "arm");

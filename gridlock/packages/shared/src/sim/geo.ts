@@ -1,5 +1,5 @@
-import { catalog, SCRAP_TILE_YIELD, type EntityType } from "../catalog.js";
-import { TILE_BLOCKED, TILE_SCRAP, TILE_TREE, TILE_WATER, type MapDef } from "../maps.js";
+import { catalog, isInfantryType, isMotorVehicle, SCRAP_TILE_YIELD, type EntityType } from "../catalog.js";
+import { TILE_BLOCKED, TILE_EMPTY, TILE_SCRAP, TILE_TREE, TILE_WATER, type MapDef } from "../maps.js";
 import type { Entity, MatchState } from "./types.js";
 
 export function tileIndex(state: MatchState, x: number, y: number): number {
@@ -37,6 +37,26 @@ export function isTree(state: MatchState, x: number, y: number): boolean {
   return state.terrain[tileIndex(state, x, y)] === TILE_TREE;
 }
 
+/** Isolated tree: no 8-neighbor trees. Vehicles may crush these. */
+export function isSingleTree(state: MatchState, x: number, y: number): boolean {
+  if (!isTree(state, x, y)) return false;
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      if (dx === 0 && dy === 0) continue;
+      if (isTree(state, x + dx, y + dy)) return false;
+    }
+  }
+  return true;
+}
+
+export function crushTreeAt(state: MatchState, x: number, y: number): boolean {
+  if (!isSingleTree(state, x, y)) return false;
+  const i = tileIndex(state, x, y);
+  state.terrain[i] = TILE_EMPTY;
+  state.clearedTrees.push({ x, y });
+  return true;
+}
+
 export function hardCoverAt(
   terrain: ArrayLike<number>,
   occupy: ArrayLike<number>,
@@ -63,10 +83,16 @@ export function occupant(state: MatchState, x: number, y: number): number {
   return state.occupy[tileIndex(state, x, y)] ?? 0;
 }
 
-export function walkable(state: MatchState, x: number, y: number): boolean {
+export function walkable(state: MatchState, x: number, y: number, type?: EntityType): boolean {
   if (!inBounds(state, x, y)) return false;
   if (state.blocked[tileIndex(state, x, y)] === 1) return false;
   if ((state.occupy[tileIndex(state, x, y)] ?? 0) !== 0) return false;
+  if (isTree(state, x, y)) {
+    if (!type) return false;
+    if (isInfantryType(type)) return true;
+    if (isMotorVehicle(type) && isSingleTree(state, x, y)) return true;
+    return false;
+  }
   return true;
 }
 
@@ -114,7 +140,7 @@ export function initGrids(map: MapDef): {
   for (let i = 0; i < n; i++) {
     const t = map.tiles[i] ?? 0;
     terrain[i] = t;
-    if (t === TILE_BLOCKED || t === TILE_WATER || t === TILE_TREE) blocked[i] = 1;
+    if (t === TILE_BLOCKED || t === TILE_WATER) blocked[i] = 1;
     if (t === TILE_SCRAP) scrapYield[i] = SCRAP_TILE_YIELD;
     heights[i] = map.heights[i] ?? 0;
   }
@@ -150,6 +176,7 @@ export function tilesBlockedOrScrap(state: MatchState, tx: number, ty: number, w
   for (const t of footprint(tx, ty, w, h)) {
     if (!inBounds(state, t.x, t.y)) return true;
     if (state.blocked[tileIndex(state, t.x, t.y)] === 1) return true;
+    if (isTree(state, t.x, t.y)) return true;
     if (scrapAt(state, t.x, t.y) > 0) return true;
     if (occupant(state, t.x, t.y) !== 0) return true;
   }
@@ -197,8 +224,13 @@ export function playerTeam(state: MatchState, playerId: string): number {
   return state.players.get(playerId)?.team ?? 0;
 }
 
-export function nearestWalkable(state: MatchState, gx: number, gy: number): { x: number; y: number } | null {
-  if (walkable(state, gx, gy)) return { x: gx, y: gy };
+export function nearestWalkable(
+  state: MatchState,
+  gx: number,
+  gy: number,
+  type?: EntityType,
+): { x: number; y: number } | null {
+  if (walkable(state, gx, gy, type)) return { x: gx, y: gy };
   const max = Math.max(state.width, state.height);
   for (let r = 1; r < max; r++) {
     for (let dy = -r; dy <= r; dy++) {
@@ -206,7 +238,7 @@ export function nearestWalkable(state: MatchState, gx: number, gy: number): { x:
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
         const x = gx + dx;
         const y = gy + dy;
-        if (walkable(state, x, y)) return { x, y };
+        if (walkable(state, x, y, type)) return { x, y };
       }
     }
   }
@@ -272,6 +304,10 @@ export function makeEntity(
     wreck: false,
     ammo: def.ammo ? { ...def.ammo } : {},
     shell: def.defaultShell ?? null,
+    mgAmmo: def.mgAmmo ?? 0,
+    mgHeat: 0,
+    mgOverheat: 0,
+    mgCooldown: 0,
     garrisonedIn: null,
     garrison: [],
     crits: [],

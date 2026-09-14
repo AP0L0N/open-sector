@@ -7,6 +7,8 @@ import {
   HEIGHT_STEP_MAX,
   HEIGHT_UPHILL_COST,
   HEIGHT_UPHILL_SPEED,
+  INFANTRY_EYE_HEIGHT,
+  INFANTRY_UPHILL_SIGHT,
   TREE_LOS_THROUGH,
   catalog,
   hasCrit,
@@ -91,6 +93,16 @@ export function sightTilesOf(type: EntityType, elev: number): number {
   return catalog(type).sightTiles + Math.max(0, elev) * HEIGHT_SIGHT_BONUS;
 }
 
+/** Extra observer height used only for terrain LOS. */
+export function observerEyeOf(type: EntityType): number {
+  return isInfantryType(type) ? INFANTRY_EYE_HEIGHT : 0;
+}
+
+/** Extra Chebyshev reach per elevation step of a looked-at tile above the observer. */
+export function uphillSightOf(type: EntityType): number {
+  return isInfantryType(type) ? INFANTRY_UPHILL_SIGHT : 0;
+}
+
 export function rangeTilesOf(type: EntityType, elev: number): number {
   const base = catalog(type).rangeTiles;
   if (base <= 0) return 0;
@@ -116,9 +128,10 @@ export function hasTerrainLos(
   y0: number,
   x1: number,
   y1: number,
+  observerEye = 0,
 ): boolean {
   if (x0 === x1 && y0 === y1) return true;
-  const h0 = elevAt(elev, width, height, x0, y0);
+  const h0 = elevAt(elev, width, height, x0, y0) + Math.max(0, observerEye);
   const h1 = elevAt(elev, width, height, x1, y1);
   let x = x0;
   let y = y0;
@@ -192,8 +205,9 @@ export function hasFullLos(
   x1: number,
   y1: number,
   cover?: CoverField,
+  observerEye = 0,
 ): boolean {
-  if (!hasTerrainLos(elev, width, height, x0, y0, x1, y1)) return false;
+  if (!hasTerrainLos(elev, width, height, x0, y0, x1, y1, observerEye)) return false;
   if (!cover) return true;
   if (x0 === x1 && y0 === y1) return true;
   let x = x0;

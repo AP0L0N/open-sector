@@ -3,20 +3,24 @@ import {
   catalog,
   FACE_FIRE_DEG,
   PROJECTILE_RADIUS,
+  TANK_MG,
   fires,
   hasAmmo,
+  hasMg,
   hasTurret,
   isGarrisonable,
+  isInfantryType,
+  leavesWreck,
   pickLoadedShell,
 } from "../catalog.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
-import { aimAngle, resolveHit } from "./ballistics.js";
+import { aimAngle, resolveHit, RICOCHET_TRAVEL } from "./ballistics.js";
 import { fireStats, hullTurnMul, rollCrits } from "./crits.js";
 import { weaponRangeWorld } from "./elevation.js";
 import { allies, buildingContains, playerTeam } from "./geo.js";
 import { nextRand } from "./rng.js";
 import { canSeeEntity, visionMask } from "./vision.js";
-import { turnToward, turnTurretToward } from "./orders.js";
+import { turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
 export function tickCombat(state: MatchState, dt: number): void {
@@ -24,7 +28,7 @@ export function tickCombat(state: MatchState, dt: number): void {
     if (!fires(e.type) || e.hp <= 0 || e.wreck) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
     const holedUp = e.garrisonedIn != null;
-    if (e.cooldown > 0) e.cooldown = Math.max(0, e.cooldown - dt);
+    tickWeaponClocks(e, dt);
 
     let target: Entity | undefined;
     if (e.order?.kind === "attack" && e.order.targetId != null) {
@@ -55,21 +59,16 @@ export function tickCombat(state: MatchState, dt: number): void {
       }
     }
 
-    if (!target || target.hp <= 0) continue;
     const def = catalog(e.type);
-    const range = weaponRangeWorld(state, e);
-    const dist = Math.hypot(target.x - e.x, target.y - e.y);
     const turreted = hasTurret(e.type);
     let remainingDeg = 180;
     if (turreted) {
-      remainingDeg = turnTurretToward(
-        e,
-        target.x,
-        target.y,
-        def.turretTurnDegPerSec ?? def.turnDegPerSec,
-        dt,
-      );
+      remainingDeg = slewTurret(e, target, dt);
     }
+
+    if (!target || target.hp <= 0) continue;
+    const range = weaponRangeWorld(state, e);
+    const dist = Math.hypot(target.x - e.x, target.y - e.y);
     if (dist > range) {
       if (!holedUp) e.state = "attack";
       continue;
@@ -81,36 +80,114 @@ export function tickCombat(state: MatchState, dt: number): void {
       remainingDeg = turnToward(e, target.x, target.y, def.turnDegPerSec * hullTurnMul(e), dt);
     }
     if (!holedUp && Math.abs(remainingDeg) > FACE_FIRE_DEG) continue;
+
+    const useMg = wantsMg(e, target);
+    if (useMg) {
+      if (e.mgCooldown > 0 || e.mgOverheat > 0 || e.mgAmmo <= 0) continue;
+      fireRound(state, e, target, {
+        damage: TANK_MG.damage,
+        penetration: TANK_MG.penetration,
+        caliber: TANK_MG.caliber,
+        spreadDeg: TANK_MG.spreadDeg,
+        projectileSpeed: TANK_MG.projectileSpeed,
+        spreadPower: TANK_MG.spreadPower,
+      }, range, dist);
+      e.mgCooldown = TANK_MG.cooldown;
+      e.mgAmmo = Math.max(0, e.mgAmmo - 1);
+      e.mgHeat = Math.min(TANK_MG.heatMax, e.mgHeat + TANK_MG.heatPerShot);
+      if (e.mgHeat >= TANK_MG.heatMax) e.mgOverheat = TANK_MG.overheatSeconds;
+      continue;
+    }
+
     if (e.cooldown > 0) continue;
     const shell = hasAmmo(e.type) ? pickLoadedShell(e.ammo, e.shell) : null;
     if (hasAmmo(e.type) && !shell) continue;
     if (shell) e.shell = shell;
     const gun = fireStats(e);
-
-    const moving = target.waypoints.length > 0 || target.state === "move";
-    const ang = aimAngle(aimFacing(e), gun.spreadDeg, dist, range, () => nextRand(state), moving);
-    const speed = def.projectileSpeed;
-    const life = range / speed + 0.05;
-    const p: Projectile = {
-      id: state.nextId++,
-      ownerId: e.ownerId,
-      team: playerTeam(state, e.ownerId),
-      x: e.x + Math.cos(ang) * (e.radius + 2),
-      y: e.y + Math.sin(ang) * (e.radius + 2),
-      vx: Math.cos(ang) * speed,
-      vy: Math.sin(ang) * speed,
+    fireRound(state, e, target, {
       damage: gun.damage,
       penetration: gun.penetration,
       caliber: gun.caliber,
-      life,
-      ignoreId: e.id,
-      fromId: e.id,
-      bounced: false,
-    };
-    state.projectiles.push(p);
+      spreadDeg: gun.spreadDeg,
+      projectileSpeed: def.projectileSpeed,
+    }, range, dist);
     e.cooldown = gun.cooldown;
     if (shell) e.ammo[shell] = Math.max(0, (e.ammo[shell] ?? 0) - 1);
   }
+}
+
+function tickWeaponClocks(e: Entity, dt: number): void {
+  if (e.cooldown > 0) e.cooldown = Math.max(0, e.cooldown - dt);
+  if (!hasMg(e.type)) return;
+  const bursting = e.mgCooldown > 0 || e.mgOverheat > 0;
+  if (e.mgCooldown > 0) e.mgCooldown = Math.max(0, e.mgCooldown - dt);
+  if (e.mgOverheat > 0) {
+    e.mgOverheat = Math.max(0, e.mgOverheat - dt);
+    if (e.mgOverheat <= 0) e.mgHeat = 0;
+    return;
+  }
+  if (bursting) return;
+  e.mgHeat = Math.max(0, e.mgHeat - TANK_MG.heatCoolPerSec * dt);
+}
+
+function wantsMg(e: Entity, target: Entity): boolean {
+  if (!hasMg(e.type) || !isInfantryType(target.type)) return false;
+  return e.mgAmmo > 0;
+}
+
+function slewTurret(e: Entity, target: Entity | undefined, dt: number): number {
+  const def = catalog(e.type);
+  const rate = def.turretTurnDegPerSec ?? def.turnDegPerSec;
+  if (target && target.hp > 0) return turnTurretToward(e, target.x, target.y, rate, dt);
+  const wp = e.waypoints[0];
+  if (wp) return turnTurretToward(e, wp.x, wp.y, rate, dt);
+  return turnTurretTo(e, e.facing, rate, dt);
+}
+
+function fireRound(
+  state: MatchState,
+  e: Entity,
+  target: Entity,
+  stats: {
+    damage: number;
+    penetration: number;
+    caliber: number;
+    spreadDeg: number;
+    projectileSpeed: number;
+    spreadPower?: number;
+  },
+  range: number,
+  dist: number,
+): void {
+  const moving = target.waypoints.length > 0 || target.state === "move";
+  const ang = aimAngle(
+    aimFacing(e),
+    stats.spreadDeg,
+    dist,
+    range,
+    () => nextRand(state),
+    moving,
+    stats.spreadPower ?? 1,
+  );
+  const speed = stats.projectileSpeed;
+  const life = range / speed + 0.05;
+  const p: Projectile = {
+    id: state.nextId++,
+    ownerId: e.ownerId,
+    team: playerTeam(state, e.ownerId),
+    x: e.x + Math.cos(ang) * (e.radius + 2),
+    y: e.y + Math.sin(ang) * (e.radius + 2),
+    vx: Math.cos(ang) * speed,
+    vy: Math.sin(ang) * speed,
+    damage: stats.damage,
+    penetration: stats.penetration,
+    caliber: stats.caliber,
+    life,
+    ignoreId: e.id,
+    fromId: e.id,
+    bounced: false,
+  };
+  state.projectiles.push(p);
 }
 
 export function tickProjectiles(state: MatchState, dt: number): void {
@@ -119,11 +196,12 @@ export function tickProjectiles(state: MatchState, dt: number): void {
   for (const p of state.projectiles) {
     const x0 = p.x;
     const y0 = p.y;
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
+    const stepDt = p.life > 0 ? Math.min(dt, p.life) : 0;
+    p.x += p.vx * stepDt;
+    p.y += p.vy * stepDt;
     p.life -= dt;
     if (p.life <= 0) {
-      pushImpact(state, p, "miss", p.x, p.y);
+      pushImpact(state, p, p.bounced ? "puff" : "miss", p.x, p.y);
       continue;
     }
     let hit = false;
@@ -151,15 +229,26 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       if (e.hp > 0) rollCrits(e, res.face, res.kind, res.damage, rand);
       const ix = e.kind === "building" ? p.x : e.x;
       const iy = e.kind === "building" ? p.y : e.y;
-      const kind: ImpactKind = e.hp <= 0 && res.kind !== "ricochet" ? "kill" : res.kind;
-      pushImpact(state, p, kind, ix, iy, res.kind === "ricochet" ? res.bounceVx : p.vx, res.kind === "ricochet" ? res.bounceVy : p.vy);
+      const lethal = e.hp <= 0 && res.kind !== "ricochet";
+      const kind: ImpactKind = lethal ? "kill" : res.kind;
+      const blast = lethal && !e.wreck && (e.kind === "building" || leavesWreck(e.type));
+      pushImpact(
+        state,
+        p,
+        kind,
+        ix,
+        iy,
+        res.kind === "ricochet" ? res.bounceVx : p.vx,
+        res.kind === "ricochet" ? res.bounceVy : p.vy,
+        blast,
+      );
       if (res.kind === "ricochet") {
         p.vx = res.bounceVx;
         p.vy = res.bounceVy;
         p.ignoreId = e.id;
         p.bounced = true;
-        p.life = Math.max(p.life, 1.35);
         const sp = Math.hypot(p.vx, p.vy) || 1;
+        p.life = (RICOCHET_TRAVEL * (0.75 + rand() * 0.5)) / sp;
         p.x += (p.vx / sp) * Math.max(8, e.radius * 0.5);
         p.y += (p.vy / sp) * Math.max(8, e.radius * 0.5);
         bounced = true;
@@ -180,6 +269,7 @@ function pushImpact(
   y: number,
   vx?: number,
   vy?: number,
+  blast?: boolean,
 ): void {
   const impact: ImpactView = {
     id: state.nextId++,
@@ -189,6 +279,8 @@ function pushImpact(
     y,
     vx: vx ?? p.vx,
     vy: vy ?? p.vy,
+    caliber: p.caliber,
+    blast: blast || undefined,
   };
   state.impacts.push(impact);
 }

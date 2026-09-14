@@ -1,4 +1,4 @@
-import { clampGameSpeed, DEPLOY_SECONDS, garrisonCapOf, hasTurret, isGarrisonable } from "../catalog.js";
+import { clampGameSpeed, DEPLOY_SECONDS, garrisonCapOf, hasMg, hasTurret, isGarrisonable } from "../catalog.js";
 import { garrisonOwner, livingGarrison } from "./garrison.js";
 import { allies } from "./geo.js";
 import { powerOf } from "./power.js";
@@ -53,6 +53,9 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       crits: e.crits.length > 0 ? [...e.crits] : undefined,
       ammo: friendly && Object.keys(e.ammo).length > 0 ? { ...e.ammo } : undefined,
       shell: friendly && e.shell ? e.shell : undefined,
+      mgAmmo: friendly && hasMg(e.type) ? e.mgAmmo : undefined,
+      mgHeat: friendly && hasMg(e.type) ? e.mgHeat : undefined,
+      mgOverheat: friendly && hasMg(e.type) && e.mgOverheat > 0 ? e.mgOverheat : undefined,
       garrisonedIn: friendly && e.garrisonedIn ? e.garrisonedIn : undefined,
       garrison: isGarrisonable(e.type)
         ? {
@@ -117,6 +120,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       (i) => allies(state, youPlayerId, i.ownerId) || canSeeWorld(state, vis, i.x, i.y),
     ),
     scrap,
+    clearedTrees: state.clearedTrees.map((t) => ({ x: t.x, y: t.y })),
     winner: state.winner,
   };
 }

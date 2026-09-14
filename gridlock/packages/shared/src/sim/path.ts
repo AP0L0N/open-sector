@@ -1,3 +1,4 @@
+import type { EntityType } from "../catalog.js";
 import { nearestWalkable, tileCenter, walkable, worldToTile } from "./geo.js";
 import { climbableDelta, minSlopeCostMul, slopeCostMul, tileHeight } from "./elevation.js";
 import type { Entity, MatchState, Vec } from "./types.js";
@@ -58,15 +59,16 @@ export function pathToWorld(
   fromY: number,
   toX: number,
   toY: number,
+  type?: EntityType,
 ): Vec[] {
   const ts = state.tileSize;
   const sx = worldToTile(fromX, ts);
   const sy = worldToTile(fromY, ts);
   const gx = worldToTile(toX, ts);
   const gy = worldToTile(toY, ts);
-  const goal = nearestWalkable(state, gx, gy);
+  const goal = nearestWalkable(state, gx, gy, type);
   if (!goal) return [];
-  const tiles = astar(state, sx, sy, goal.x, goal.y);
+  const tiles = astar(state, sx, sy, goal.x, goal.y, type);
   if (tiles.length === 0) {
     if (sx === goal.x && sy === goal.y) return [{ x: toX, y: toY }];
     return [];
@@ -76,7 +78,7 @@ export function pathToWorld(
     y: tileCenter(t.y, ts),
   }));
   const last = pts[pts.length - 1];
-  if (last && walkable(state, gx, gy)) {
+  if (last && walkable(state, gx, gy, type)) {
     last.x = toX;
     last.y = toY;
   }
@@ -84,7 +86,7 @@ export function pathToWorld(
 }
 
 export function setPath(state: MatchState, e: Entity, toX: number, toY: number): boolean {
-  const pts = pathToWorld(state, e.x, e.y, toX, toY);
+  const pts = pathToWorld(state, e.x, e.y, toX, toY, e.type);
   e.waypoints = pts;
   return pts.length > 0;
 }
@@ -95,6 +97,7 @@ export function astar(
   sy: number,
   gx: number,
   gy: number,
+  type?: EntityType,
 ): { x: number; y: number }[] {
   if (sx === gx && sy === gy) return [];
   const open: Node[] = [];
@@ -127,9 +130,9 @@ export function astar(
         if (dx === 0 && dy === 0) continue;
         const nx = cur.x + dx;
         const ny = cur.y + dy;
-        if (!walkable(state, nx, ny)) continue;
+        if (!walkable(state, nx, ny, type)) continue;
         if (dx !== 0 && dy !== 0) {
-          if (!walkable(state, cur.x + dx, cur.y) || !walkable(state, cur.x, cur.y + dy)) continue;
+          if (!walkable(state, cur.x + dx, cur.y, type) || !walkable(state, cur.x, cur.y + dy, type)) continue;
         }
         const dh = tileHeight(state, nx, ny) - tileHeight(state, cur.x, cur.y);
         if (!climbableDelta(dh)) continue;

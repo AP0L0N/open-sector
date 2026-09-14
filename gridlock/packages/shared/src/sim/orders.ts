@@ -29,11 +29,14 @@ export function turnToward(e: Entity, tx: number, ty: number, degPerSec: number,
   return r.remainingDeg;
 }
 
-export function turnTurretToward(e: Entity, tx: number, ty: number, degPerSec: number, dt: number): number {
-  const want = Math.atan2(ty - e.y, tx - e.x);
+export function turnTurretTo(e: Entity, want: number, degPerSec: number, dt: number): number {
   const r = stepTurn(e.turretFacing, want, degPerSec, dt);
   e.turretFacing = r.angle;
   return r.remainingDeg;
+}
+
+export function turnTurretToward(e: Entity, tx: number, ty: number, degPerSec: number, dt: number): number {
+  return turnTurretTo(e, Math.atan2(ty - e.y, tx - e.x), degPerSec, dt);
 }
 
 export function tickMovement(state: MatchState, dt: number): void {

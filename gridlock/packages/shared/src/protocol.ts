@@ -2,7 +2,7 @@
 
 import type { BuildingType, Crit, EntityKind, EntityType, ShellType, TrainType } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 10;
+export const PROTOCOL_VERSION = 11;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -94,6 +94,12 @@ export interface EntityView {
   ammo?: Partial<Record<ShellType, number>>;
   /** Loaded shell. Allied guns only. */
   shell?: ShellType;
+  /** Allied coaxial MG belt. Omitted when the type has no MG. */
+  mgAmmo?: number;
+  /** 0–1 heat. Allied MG only. */
+  mgHeat?: number;
+  /** Seconds the MG is jammed. Omitted when cool. */
+  mgOverheat?: number;
   /** Unit is inside this building. Friendly snapshots only. */
   garrisonedIn?: number;
   /** Occupied civilian house. count is always visible; ids are friendly-only. */
@@ -138,7 +144,7 @@ export interface ProjectileView {
   bounced: boolean;
 }
 
-export type ImpactKind = "miss" | "ricochet" | "glance" | "hit" | "pen" | "kill";
+export type ImpactKind = "miss" | "puff" | "crush" | "ricochet" | "glance" | "hit" | "pen" | "kill";
 
 export interface ImpactView {
   id: number;
@@ -148,6 +154,10 @@ export interface ImpactView {
   y: number;
   vx: number;
   vy: number;
+  /** mm. Omitted for crush kills. */
+  caliber?: number;
+  /** Ammo cook-off / structure collapse. Fireball, not a kinetic spark. */
+  blast?: boolean;
 }
 
 export interface MatchSnapshot {
@@ -162,6 +172,8 @@ export interface MatchSnapshot {
   projectiles: ProjectileView[];
   impacts: ImpactView[];
   scrap: ScrapCell[];
+  /** Tree tiles a vehicle has crushed. Empty until the first flatten. */
+  clearedTrees: { x: number; y: number }[];
   winner?: { playerId: string; team: number };
 }
 

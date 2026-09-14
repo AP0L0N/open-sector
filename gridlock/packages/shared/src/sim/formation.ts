@@ -1,4 +1,4 @@
-import { UNIT_SPACE_PAD } from "../catalog.js";
+import { UNIT_SPACE_PAD, type EntityType } from "../catalog.js";
 import { walkable, worldToTile } from "./geo.js";
 import type { Entity, MatchState, Vec } from "./types.js";
 
@@ -20,11 +20,11 @@ function inWorld(state: MatchState, x: number, y: number): boolean {
   return x >= 0 && y >= 0 && x < state.width * ts && y < state.height * ts;
 }
 
-function tileWalkable(state: MatchState, x: number, y: number): boolean {
+function tileWalkable(state: MatchState, x: number, y: number, type?: EntityType): boolean {
   const ts = state.tileSize;
   const tx = worldToTile(x, ts);
   const ty = worldToTile(y, ts);
-  return walkable(state, tx, ty);
+  return walkable(state, tx, ty, type);
 }
 
 function isClear(
@@ -33,9 +33,10 @@ function isClear(
   y: number,
   radius: number,
   placed: readonly { x: number; y: number; radius: number }[],
+  type?: EntityType,
 ): boolean {
   if (!inWorld(state, x, y)) return false;
-  if (!tileWalkable(state, x, y)) return false;
+  if (!tileWalkable(state, x, y, type)) return false;
   for (const p of placed) {
     if (occupied(x, y, radius, p.x, p.y, p.radius)) return false;
   }
@@ -48,8 +49,9 @@ function nearestClear(
   y: number,
   radius: number,
   placed: readonly { x: number; y: number; radius: number }[],
+  type?: EntityType,
 ): Vec {
-  if (isClear(state, x, y, radius, placed)) return { x, y };
+  if (isClear(state, x, y, radius, placed, type)) return { x, y };
 
   const maxR = Math.max(state.width, state.height) * state.tileSize;
   for (let rad = SEARCH_STEP; rad < maxR; rad += SEARCH_STEP) {
@@ -58,7 +60,7 @@ function nearestClear(
       const a = (Math.PI * 2 * i) / n;
       const px = x + Math.cos(a) * rad;
       const py = y + Math.sin(a) * rad;
-      if (isClear(state, px, py, radius, placed)) return { x: px, y: py };
+      if (isClear(state, px, py, radius, placed, type)) return { x: px, y: py };
     }
   }
   return { x, y };
@@ -98,7 +100,7 @@ export function groupMoveTargets(state: MatchState, units: Entity[], destX: numb
   for (const u of order) {
     const prefX = destX + (u.x - cx);
     const prefY = destY + (u.y - cy);
-    const spot = nearestClear(state, prefX, prefY, u.radius, placed);
+    const spot = nearestClear(state, prefX, prefY, u.radius, placed, u.type);
     placed.push({ x: spot.x, y: spot.y, radius: u.radius });
     out.set(u.id, spot);
   }

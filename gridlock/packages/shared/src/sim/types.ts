@@ -64,6 +64,13 @@ export interface Entity {
   wreck: boolean;
   ammo: Partial<Record<ShellType, number>>;
   shell: ShellType | null;
+  /** Coaxial MG rounds remaining. 0 if the type has no MG. */
+  mgAmmo: number;
+  /** 0–heatMax. Dumps climb this; it drains while the MG is silent. */
+  mgHeat: number;
+  /** Seconds the MG stays jammed after a heat dump. */
+  mgOverheat: number;
+  mgCooldown: number;
   /** Unit is inside this building id. */
   garrisonedIn: number | null;
   /** Unit ids occupying a garrisonable building. */
@@ -115,7 +122,7 @@ export interface MatchState {
   tileSize: number;
   width: number;
   height: number;
-  /** 1 = not walkable (wall, water, trees). */
+  /** 1 = not walkable (wall, water). Trees are handled per-unit. */
   blocked: Uint8Array;
   /** Original tile kinds (empty / wall / scrap / water / tree). */
   terrain: Uint8Array;
@@ -134,4 +141,9 @@ export interface MatchState {
   ended: boolean;
   initialHumans: number;
   pendingComms: string[];
+  /** Tick whose per-player vision masks are in `visionByPlayer`. */
+  visionTick: number;
+  visionByPlayer: Map<string, Uint8Array>;
+  /** Tree tiles crushed by vehicles this match. */
+  clearedTrees: { x: number; y: number }[];
 }

@@ -5,8 +5,10 @@ import {
   GAME_SPEED_MAX,
   HANDGUN,
   SPECIAL_COOLDOWN_MIN,
+  TANK_MG,
   armorLabel,
   catalog,
+  hasMg,
   clampGameSpeed,
   isInfantryType,
   isMotorVehicle,
@@ -46,6 +48,18 @@ describe("warden ammo", () => {
     assert.ok(total >= 20 && total <= 24, `total=${total}`);
     assert.equal(w.defaultShell, "ap");
     assert.equal(w.leavesWreck, true);
+  });
+
+  it("reloads the 75mm on a Sudden Strike clock and carries a coaxial MG", () => {
+    const w = catalog("warden");
+    assert.ok(w.cooldown >= 6, `cooldown=${w.cooldown}`);
+    assert.ok(w.cooldown > catalog("trooper").cooldown * 5);
+    assert.equal(hasMg("warden"), true);
+    assert.equal(hasMg("trooper"), false);
+    assert.equal(w.mgAmmo, TANK_MG.ammo);
+    assert.ok(TANK_MG.spreadDeg > w.spreadDeg * 4);
+    assert.equal(TANK_MG.cooldown < 0.2, true);
+    assert.ok(TANK_MG.heatPerShot * 25 >= TANK_MG.heatMax);
   });
 });
 

@@ -11,6 +11,7 @@ import {
   colorHex,
   getMap,
   hasAmmo,
+  hasMg,
   isGarrisonable,
   isInfantryType,
   isShellType,
@@ -439,6 +440,10 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     e.crits && e.crits.length > 0 ? `  ·  ${e.crits.map((c) => CRIT_LABEL[c]).join(", ")}` : "";
   const rack =
     e.ammo && e.shell && !e.wreck ? `  ·  ${e.shell.toUpperCase()} ${ammoOf(e.ammo, e.shell)}` : "";
+  const mg =
+    e.mgAmmo != null && !e.wreck
+      ? `  ·  MG ${e.mgAmmo}${e.mgOverheat && e.mgOverheat > 0 ? " HOT" : ""}`
+      : "";
   const garrison =
     e.garrison
       ? `  ·  garrison ${e.garrison.count}/${e.garrison.cap}`
@@ -446,7 +451,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
         ? "  ·  inside"
         : "";
   const who = owner?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${rack}  ·  ${who}${q}${cargo}${dep}${special}${garrison}`;
+  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${rack}${mg}  ·  ${who}${q}${cargo}${dep}${special}${garrison}`;
   const occ = e.garrison?.ownerId
     ? ctx.match.players.find((p) => p.playerId === e.garrison!.ownerId)
     : owner;
@@ -559,6 +564,19 @@ function paintConfig(ctx: Ctx, view: MapView | null): void {
     body.append(el("div", { class: "tiny", text: "Shell" }), rack);
   } else if (focus.kind === "unit" && def.damage > 0) {
     body.append(el("p", { class: "tiny", text: "Small arms · unlimited" }));
+  }
+
+  if (hasMg(focus.type)) {
+    const mine = live.filter((e) => e.ownerId === ctx.match!.youPlayerId);
+    const belt = mine.reduce((n, e) => n + (e.mgAmmo ?? 0), 0);
+    const heat = mine.length ? mine.reduce((n, e) => n + (e.mgHeat ?? 0), 0) / mine.length : 0;
+    const hot = mine.some((e) => (e.mgOverheat ?? 0) > 0);
+    body.append(el("div", { class: "tiny", text: hot ? `MG  ${belt}  overheated` : `MG  ${belt}` }));
+    const bar = el("div", { class: "mg-heat" + (hot ? " is-hot" : "") });
+    const fill = el("span");
+    fill.style.width = `${Math.round(Math.max(0, Math.min(1, heat)) * 100)}%`;
+    bar.append(fill);
+    body.append(bar);
   }
 
   const armor = armorLabel(focus.type);

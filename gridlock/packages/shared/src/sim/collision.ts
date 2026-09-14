@@ -1,5 +1,5 @@
-import { isArmoredType, isInfantryType } from "../catalog.js";
-import { allies, inBounds, isWall, occupant, worldToTile } from "./geo.js";
+import { isArmoredType, isInfantryType, isMotorVehicle } from "../catalog.js";
+import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, occupant, tileCenter, walkable, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
 export function isActiveUnit(e: Entity): boolean {
@@ -27,7 +27,8 @@ function tileFree(state: MatchState, e: Entity, x: number, y: number): boolean {
   const tx = worldToTile(x, ts);
   const ty = worldToTile(y, ts);
   if (!inBounds(state, tx, ty)) return false;
-  if (isWall(state, tx, ty)) return false;
+  if (isWall(state, tx, ty) || isWater(state, tx, ty)) return false;
+  if (isTree(state, tx, ty) && !walkable(state, tx, ty, e.type)) return false;
   const occ = occupant(state, tx, ty);
   if (occ !== 0 && occ !== e.id) {
     const cx = worldToTile(e.x, ts);
@@ -36,6 +37,39 @@ function tileFree(state: MatchState, e: Entity, x: number, y: number): boolean {
     return false;
   }
   return true;
+}
+
+export function crushTreesUnder(state: MatchState, e: Entity): void {
+  if (!isActiveUnit(e) || !isMotorVehicle(e.type)) return;
+  const rolling = e.waypoints.length > 0 || e.state === "move" || e.state === "attack";
+  if (!rolling) return;
+  const ts = state.tileSize;
+  const r = e.radius + ts * 0.45;
+  const x0 = worldToTile(e.x - r, ts);
+  const x1 = worldToTile(e.x + r, ts);
+  const y0 = worldToTile(e.y - r, ts);
+  const y1 = worldToTile(e.y + r, ts);
+  const reach = r * r;
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      if (!inBounds(state, x, y)) continue;
+      const cx = tileCenter(x, ts);
+      const cy = tileCenter(y, ts);
+      const dx = e.x - cx;
+      const dy = e.y - cy;
+      if (dx * dx + dy * dy > reach) continue;
+      if (!crushTreeAt(state, x, y)) continue;
+      state.impacts.push({
+        id: state.nextId++,
+        ownerId: e.ownerId,
+        kind: "crush",
+        x: cx,
+        y: cy,
+        vx: Math.cos(e.facing),
+        vy: Math.sin(e.facing),
+      });
+    }
+  }
 }
 
 function blockedByUnit(state: MatchState, e: Entity, x: number, y: number): boolean {
@@ -112,6 +146,7 @@ export function moveWithCollision(state: MatchState, e: Entity, speed: number, d
   const pos = resolveMove(state, e, wantX, wantY);
   e.x = pos.x;
   e.y = pos.y;
+  crushTreesUnder(state, e);
   const left = Math.hypot(e.x - wp.x, e.y - wp.y);
   if (arrive && left <= 8) {
     e.waypoints.shift();
@@ -123,6 +158,9 @@ export function moveWithCollision(state: MatchState, e: Entity, speed: number, d
 
 export function tickCollision(state: MatchState): void {
   const units = [...state.entities.values()].filter((e) => e.kind === "unit" && e.hp > 0);
+  for (const a of units) {
+    if (isActiveUnit(a)) crushTreesUnder(state, a);
+  }
   for (const a of units) {
     if (!isActiveUnit(a)) continue;
     for (const b of units) {

@@ -7,7 +7,19 @@ export { snapshotFor } from "./snapshot.js";
 export { previewPlace } from "./preview.js";
 export { pathToWorld, astar } from "./path.js";
 export type { MatchState } from "./types.js";
-export { hasCore, hqOf, walkable, worldToTile, tileCenter, buildingContains, unitContains, isWater, isTree } from "./geo.js";
+export {
+  hasCore,
+  hqOf,
+  walkable,
+  worldToTile,
+  tileCenter,
+  buildingContains,
+  unitContains,
+  isWater,
+  isTree,
+  isSingleTree,
+  crushTreeAt,
+} from "./geo.js";
 export { canGarrison, livingGarrison, garrisonOwner } from "./garrison.js";
 export { powerOf, productionSpeed } from "./power.js";
 export { producerType } from "./train.js";

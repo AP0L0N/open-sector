@@ -56,6 +56,9 @@ export function createMatch(
     ended: false,
     initialHumans: humans(room).length,
     pendingComms: [],
+    visionTick: -1,
+    visionByPlayer: new Map(),
+    clearedTrees: [],
   };
 
   for (const slot of humans(room)) {

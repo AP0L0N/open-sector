@@ -7,6 +7,7 @@ import {
   GAME_SPEED_MAX,
   HAULER_CARGO,
   LOW_POWER_MIN_SPEED,
+  TANK_MG,
   secondsToTicks,
   START_SCRAP,
   TICK_DT,
@@ -261,6 +262,48 @@ describe("combat", () => {
     );
   });
 
+  it("soft-target kills are kinetic, not cook-off blasts", () => {
+    const { state } = twoPlayerMatch();
+    const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
+    const dummy = makeEntity(state, "hauler", "B", 24 * 32, 20 * 32);
+    dummy.autoHarvest = false;
+    dummy.hp = 12;
+    dummy.hpMax = 40;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [t1.id], targetId: dummy.id });
+    let sawKill = false;
+    for (let i = 0; i < 40; i++) {
+      step(state);
+      for (const x of state.impacts) {
+        if (x.kind !== "kill") continue;
+        sawKill = true;
+        assert.equal(x.blast, undefined);
+        assert.ok((x.caliber ?? 0) < 40, `caliber=${x.caliber}`);
+      }
+    }
+    assert.equal(sawKill, true);
+  });
+
+  it("rifle ricochets zip off armor and puff on landing", () => {
+    const { state } = twoPlayerMatch();
+    const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
+    const tank = makeEntity(state, "warden", "B", 23 * 32, 20 * 32);
+    tank.facing = Math.PI;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [t1.id], targetId: tank.id });
+    const muzzle = catalog("trooper").projectileSpeed;
+    let bounceSp = 0;
+    let sawPuff = false;
+    for (let i = 0; i < 80; i++) {
+      step(state);
+      for (const p of state.projectiles) {
+        if (!p.bounced) continue;
+        bounceSp = Math.max(bounceSp, Math.hypot(p.vx, p.vy));
+      }
+      if (state.impacts.some((x) => x.kind === "puff")) sawPuff = true;
+    }
+    assert.ok(bounceSp > muzzle * 0.8, `bounce speed ${bounceSp} vs muzzle ${muzzle}`);
+    assert.equal(sawPuff, true);
+  });
+
   it("cannot kill a Warden with rifle fire", () => {
     const { state } = twoPlayerMatch();
     const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
@@ -282,7 +325,7 @@ describe("combat", () => {
     let sawKill = false;
     for (let i = 0; i < 12; i++) {
       step(state);
-      if (state.impacts.some((x) => x.kind === "kill")) sawKill = true;
+      if (state.impacts.some((x) => x.kind === "kill" && x.blast && (x.caliber ?? 0) >= 40)) sawKill = true;
     }
     assert.equal(sawKill, true);
     assert.ok(b.wreck || b.hp <= 0 || !state.entities.has(b.id), `rear hp=${b.hp} wreck=${b.wreck}`);
@@ -307,7 +350,7 @@ describe("combat", () => {
     a.facing = 0;
     b.facing = Math.PI;
     applyCommand(state, "A", { type: "cmd.attack", ids: [a.id], targetId: b.id });
-    ticks(state, 55);
+    ticks(state, 90);
     assert.ok(b.wreck || b.hp <= 0 || !state.entities.has(b.id), `front hp=${b.hp} wreck=${b.wreck}`);
   });
 
@@ -356,6 +399,114 @@ describe("combat", () => {
     assert.ok(Math.hypot(tank.x - x0, tank.y - y0) < 1, "must not translate while pivoting");
     ticks(state, 40);
     assert.ok(tank.y > y0 + 16, `should roll after the hull faces the waypoint y=${tank.y}`);
+  });
+
+  it("Warden turret follows the hull when the tank is not engaged", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    applyCommand(state, "A", { type: "cmd.move", ids: [tank.id], x: tileCenter(24, ts), y: tileCenter(36, ts) });
+    step(state);
+    assert.ok(tank.facing > 0.05, `hull=${tank.facing}`);
+    assert.ok(tank.turretFacing > 0.05, `turret should follow the move, turretFacing=${tank.turretFacing}`);
+    assert.ok(tank.turretFacing > tank.facing, "turret traverse is faster than the hull");
+  });
+
+  it("Warden turret stays on the target while the hull faces a move", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const dummy = makeEntity(state, "hauler", "B", tileCenter(24, ts), tileCenter(28, ts));
+    dummy.autoHarvest = false;
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    applyCommand(state, "A", {
+      type: "cmd.attackmove",
+      ids: [tank.id],
+      x: tileCenter(36, ts),
+      y: tileCenter(24, ts),
+    });
+    ticks(state, 12);
+    assert.ok(Math.abs(tank.facing) < 0.45, `hull should stay east facing=${tank.facing}`);
+    assert.ok(tank.turretFacing > 0.7, `turret should stay on the south target turretFacing=${tank.turretFacing}`);
+  });
+
+  it("Warden main gun only cycles once on a 75mm clock", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const a = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
+    const b = makeEntity(state, "warden", "B", 23 * 32, 20 * 32);
+    a.facing = 0;
+    a.turretFacing = 0;
+    b.facing = Math.PI;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [a.id], targetId: b.id });
+    ticks(state, 20);
+    assert.equal(a.ammo.ap, 11, "one shell in two seconds");
+    ticks(state, 40);
+    assert.equal(a.ammo.ap, 11, "still reloading at 6s");
+    ticks(state, 20);
+    assert.equal(a.ammo.ap, 10, "second shell after the 6.5s wait");
+  });
+
+  it("uses the coaxial MG on troops and the 75mm on armor", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const tank = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
+    const inf = makeEntity(state, "trooper", "B", 23 * 32, 20 * 32);
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    inf.facing = Math.PI;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [tank.id], targetId: inf.id });
+    ticks(state, 4);
+    assert.ok(tank.mgAmmo <= TANK_MG.ammo - 3, `mgAmmo=${tank.mgAmmo}`);
+    assert.equal(tank.ammo.ap, 12, "must not spend a 75mm on infantry");
+    assert.ok(inf.hp < inf.hpMax || !state.entities.has(inf.id) || inf.hp <= 0);
+
+    const { state: s2 } = twoPlayerMatch();
+    s2.heights.fill(0);
+    const gun = makeEntity(s2, "warden", "A", 20 * 32, 20 * 32);
+    const armor = makeEntity(s2, "warden", "B", 23 * 32, 20 * 32);
+    gun.facing = 0;
+    gun.turretFacing = 0;
+    armor.facing = Math.PI;
+    applyCommand(s2, "A", { type: "cmd.attack", ids: [gun.id], targetId: armor.id });
+    ticks(s2, 4);
+    assert.equal(gun.mgAmmo, TANK_MG.ammo);
+    assert.equal(gun.ammo.ap, 11);
+  });
+
+  it("overheats the MG after a dump and jams it until it cools", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const tank = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
+    const inf = makeEntity(state, "trooper", "B", 23 * 32, 20 * 32);
+    inf.hp = 4000;
+    inf.hpMax = 4000;
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [tank.id], targetId: inf.id });
+    const shots = Math.ceil(TANK_MG.heatMax / TANK_MG.heatPerShot);
+    ticks(state, shots);
+    assert.ok(tank.mgOverheat > 0, `overheat=${tank.mgOverheat} heat=${tank.mgHeat} ammo=${tank.mgAmmo}`);
+    const jammed = tank.mgAmmo;
+    ticks(state, 5);
+    assert.equal(tank.mgAmmo, jammed);
+    assert.equal(tank.ammo.ap, 12, "overheat must not dump the cannon into infantry");
+  });
+
+  it("puts MG belt and heat on a friendly snapshot", () => {
+    const { state } = twoPlayerMatch();
+    const tank = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
+    tank.mgHeat = 0.4;
+    const mine = snapshotFor(state, "A").entities.find((e) => e.id === tank.id);
+    const theirs = snapshotFor(state, "B").entities.find((e) => e.id === tank.id);
+    assert.equal(mine?.mgAmmo, TANK_MG.ammo);
+    assert.equal(mine?.mgHeat, 0.4);
+    assert.equal(theirs?.mgAmmo, undefined);
   });
 
   it("wipes a player when their Rig dies", () => {

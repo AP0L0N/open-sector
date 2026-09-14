@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { catalog } from "../catalog.js";
+import { catalog, TANK_MG } from "../catalog.js";
 import {
   aimAngle,
   armorOn,
@@ -91,7 +91,8 @@ describe("resolveHit", () => {
     assert.ok(res.bounceVx > 0, `bounceVx=${res.bounceVx}`);
     const inSp = Math.hypot(-Math.cos(a) * 400, -Math.sin(a) * 400);
     const outSp = Math.hypot(res.bounceVx, res.bounceVy);
-    assert.ok(outSp < inSp * 0.2, `bounce ${outSp} vs in ${inSp}`);
+    assert.ok(outSp > inSp * 0.8, `bounce ${outSp} vs in ${inSp}`);
+    assert.ok(outSp <= inSp, `bounce ${outSp} vs in ${inSp}`);
   });
 
   it("one-shots a Warden through the rear", () => {
@@ -175,5 +176,13 @@ describe("aimAngle", () => {
     assert.ok(Math.abs(lo + (10 * Math.PI) / 180) < 1e-9);
     const close = aimAngle(0, 10, 0, 100, () => 1);
     assert.ok(Math.abs(close) < Math.abs(hi));
+  });
+
+  it("opens the MG cone much wider at max range than point blank", () => {
+    const close = aimAngle(0, TANK_MG.spreadDeg, 0, 100, () => 1, false, TANK_MG.spreadPower);
+    const far = aimAngle(0, TANK_MG.spreadDeg, 100, 100, () => 1, false, TANK_MG.spreadPower);
+    assert.ok(Math.abs(far) > Math.abs(close) * 4, `close=${close} far=${far}`);
+    const gunFar = aimAngle(0, catalog("warden").spreadDeg, 100, 100, () => 1);
+    assert.ok(Math.abs(far) > Math.abs(gunFar) * 3, `mg=${far} gun=${gunFar}`);
   });
 });

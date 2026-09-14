@@ -1,6 +1,13 @@
+import { HEIGHT_MAX } from "../catalog.js";
 import type { EntityView, MatchSnapshot } from "../protocol.js";
 import { getMap } from "../maps.js";
-import { hasFullLos, sightTilesOf, type CoverField } from "./elevation.js";
+import {
+  hasFullLos,
+  observerEyeOf,
+  sightTilesOf,
+  uphillSightOf,
+  type CoverField,
+} from "./elevation.js";
 import { allies, chebyshev, footprint, inBounds, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -49,17 +56,35 @@ export function paintEntitySight(
   const ignore = e.kind === "building" ? (e.id ?? 0) : (e.garrisonedIn ?? 0);
   const field = cover ? { ...cover, ignoreOccupyId: ignore || cover.ignoreOccupyId } : undefined;
   if (e.kind === "building") {
+    let maxH = 0;
     for (const t of footprint(e.tileX, e.tileY, e.tileW, e.tileH)) {
       if (t.x < 0 || t.y < 0 || t.x >= width || t.y >= height) continue;
-      const h = elev ? (elev[t.y * width + t.x] ?? 0) : 0;
-      paintSight(mask, width, height, t.x, t.y, sightTilesOf(e.type, h), elev, field);
+      mask[t.y * width + t.x] = 1;
+      if (elev) {
+        const h = elev[t.y * width + t.x] ?? 0;
+        if (h > maxH) maxH = h;
+      }
     }
+    const cx = e.tileX + Math.floor(e.tileW / 2);
+    const cy = e.tileY + Math.floor(e.tileH / 2);
+    paintSight(mask, width, height, cx, cy, sightTilesOf(e.type, maxH), elev, field);
     return;
   }
   const tx = worldToTile(e.x, tileSize);
   const ty = worldToTile(e.y, tileSize);
   const h = elev ? elevAtSafe(elev, width, height, tx, ty) : 0;
-  paintSight(mask, width, height, tx, ty, sightTilesOf(e.type, h), elev, field);
+  paintSight(
+    mask,
+    width,
+    height,
+    tx,
+    ty,
+    sightTilesOf(e.type, h),
+    elev,
+    field,
+    observerEyeOf(e.type),
+    uphillSightOf(e.type),
+  );
 }
 
 function elevAtSafe(elev: ArrayLike<number>, width: number, height: number, x: number, y: number): number {
@@ -76,20 +101,26 @@ function paintSight(
   radius: number,
   elev?: ArrayLike<number>,
   cover?: CoverField,
+  observerEye = 0,
+  uphillBonus = 0,
 ): void {
   if (radius <= 0) return;
   if (!elev) {
     paintChebyshev(mask, width, height, ox, oy, radius);
     return;
   }
-  const x0 = Math.max(0, ox - radius);
-  const x1 = Math.min(width - 1, ox + radius);
-  const y0 = Math.max(0, oy - radius);
-  const y1 = Math.min(height - 1, oy + radius);
+  const maxR = radius + (uphillBonus > 0 ? HEIGHT_MAX * uphillBonus : 0);
+  const x0 = Math.max(0, ox - maxR);
+  const x1 = Math.min(width - 1, ox + maxR);
+  const y0 = Math.max(0, oy - maxR);
+  const y1 = Math.min(height - 1, oy + maxR);
+  const h0 = elevAtSafe(elev, width, height, ox, oy);
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
-      if (chebyshev(x, y, ox, oy) > radius) continue;
-      if (!hasFullLos(elev, width, height, ox, oy, x, y, cover)) continue;
+      const extra =
+        uphillBonus > 0 ? Math.max(0, elevAtSafe(elev, width, height, x, y) - h0) * uphillBonus : 0;
+      if (chebyshev(x, y, ox, oy) > radius + extra) continue;
+      if (!hasFullLos(elev, width, height, ox, oy, x, y, cover, observerEye)) continue;
       mask[y * width + x] = 1;
     }
   }
@@ -100,6 +131,13 @@ function coverOf(state: MatchState): CoverField {
 }
 
 export function visionMask(state: MatchState, playerId: string): Uint8Array {
+  if (state.visionTick === state.tick) {
+    const cached = state.visionByPlayer.get(playerId);
+    if (cached) return cached;
+  } else {
+    state.visionByPlayer.clear();
+    state.visionTick = state.tick;
+  }
   const mask = new Uint8Array(state.width * state.height);
   const cover = coverOf(state);
   for (const e of state.entities.values()) {
@@ -107,6 +145,7 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
     if (!allies(state, playerId, e.ownerId)) continue;
     paintEntitySight(mask, state.width, state.height, state.tileSize, e, state.heights, cover);
   }
+  state.visionByPlayer.set(playerId, mask);
   return mask;
 }
 

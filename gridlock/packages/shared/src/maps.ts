@@ -25,6 +25,8 @@ export interface MapDef {
   tiles: number[];
   /** Discrete elevation per tile. Same length as `tiles`. 0 = floor. */
   heights: number[];
+  /** Max of `heights`. Cached so render/pick do not scan the map. */
+  maxHeight: number;
   /** Civilian houses. Tile origin is the fine-grid top-left. */
   features: MapFeature[];
 }
@@ -229,25 +231,163 @@ function rectFree(
   return true;
 }
 
-function splatTrees(
+const TREE_DIRS: readonly [number, number][] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+  [1, 1],
+  [-1, 1],
+  [1, -1],
+  [-1, -1],
+];
+
+function canPlantTree(
+  tiles: number[],
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  pads: readonly { x: number; y: number; r: number }[],
+): boolean {
+  if (x < 1 || y < 1 || x >= width - 1 || y >= height - 1) return false;
+  if (inPad(pads, x, y)) return false;
+  return (tiles[idx(width, x, y)] ?? 1) === TILE_EMPTY;
+}
+
+function coarseTreeNeighbor(tiles: number[], width: number, height: number, x: number, y: number): boolean {
+  for (const [dx, dy] of TREE_DIRS) {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+    if (tiles[idx(width, nx, ny)] === TILE_TREE) return true;
+  }
+  return false;
+}
+
+/** Organic connected patch. Stays 8-connected so vehicles cannot slip through. */
+function paintGrove(
   tiles: number[],
   width: number,
   height: number,
   cx: number,
   cy: number,
-  rad: number,
+  cells: number,
+  rng: { n: number },
+  pads: readonly { x: number; y: number; r: number }[],
+): number {
+  let x = Math.round(cx);
+  let y = Math.round(cy);
+  let painted = 0;
+  const cap = Math.max(3, cells);
+  for (let step = 0; step < cap * 8 && painted < cap; step++) {
+    if (canPlantTree(tiles, width, height, x, y, pads)) {
+      tiles[idx(width, x, y)] = TILE_TREE;
+      painted += 1;
+    }
+    const d = TREE_DIRS[Math.floor(nextRand(rng) * TREE_DIRS.length)]!;
+    x += d[0];
+    y += d[1];
+    if (nextRand(rng) < 0.32) {
+      x = Math.round(cx + (x - cx) * 0.35);
+      y = Math.round(cy + (y - cy) * 0.35);
+    }
+  }
+  return painted;
+}
+
+function paintClump(
+  tiles: number[],
+  width: number,
+  height: number,
+  x0: number,
+  y0: number,
+  extra: number,
+  rng: { n: number },
+  pads: readonly { x: number; y: number; r: number }[],
+): number {
+  if (!canPlantTree(tiles, width, height, x0, y0, pads)) return 0;
+  tiles[idx(width, x0, y0)] = TILE_TREE;
+  const painted: { x: number; y: number }[] = [{ x: x0, y: y0 }];
+  for (let n = 0; n < extra; n++) {
+    const seed = painted[Math.floor(nextRand(rng) * painted.length)]!;
+    const d = TREE_DIRS[Math.floor(nextRand(rng) * 4)]!;
+    const x = seed.x + d[0];
+    const y = seed.y + d[1];
+    if (!canPlantTree(tiles, width, height, x, y, pads)) continue;
+    tiles[idx(width, x, y)] = TILE_TREE;
+    painted.push({ x, y });
+  }
+  return painted.length;
+}
+
+function scatterTrees(
+  tiles: number[],
+  width: number,
+  height: number,
+  rng: { n: number },
+  pads: readonly { x: number; y: number; r: number }[],
 ): void {
-  const r = Math.max(1.2, rad);
-  const x0 = Math.max(0, Math.floor(cx - r - 1));
-  const x1 = Math.min(width - 1, Math.ceil(cx + r + 1));
-  const y0 = Math.max(0, Math.floor(cy - r - 1));
-  const y1 = Math.min(height - 1, Math.ceil(cy + r + 1));
-  for (let y = y0; y <= y1; y++) {
-    for (let x = x0; x <= x1; x++) {
-      const d = Math.hypot((x - cx) / r, (y - cy) / r);
-      if (d >= 1) continue;
-      const i = idx(width, x, y);
-      if (tiles[i] === TILE_EMPTY) tiles[i] = TILE_TREE;
+  const groves = 16 + Math.floor(nextRand(rng) * 8);
+  for (let i = 0; i < groves; i++) {
+    for (let attempt = 0; attempt < 28; attempt++) {
+      const cx = 5 + nextRand(rng) * (width - 10);
+      const cy = 5 + nextRand(rng) * (height - 10);
+      if (inPad(pads, cx, cy)) continue;
+      const cells = 6 + Math.floor(nextRand(rng) * 16);
+      if (paintGrove(tiles, width, height, cx, cy, cells, rng, pads) > 0) break;
+    }
+  }
+  const clumps = 18 + Math.floor(nextRand(rng) * 10);
+  for (let i = 0; i < clumps; i++) {
+    for (let attempt = 0; attempt < 24; attempt++) {
+      const x = 2 + Math.floor(nextRand(rng) * (width - 4));
+      const y = 2 + Math.floor(nextRand(rng) * (height - 4));
+      const extra = 1 + Math.floor(nextRand(rng) * 4);
+      if (paintClump(tiles, width, height, x, y, extra, rng, pads) >= 2) break;
+    }
+  }
+  const singles = 110 + Math.floor(nextRand(rng) * 50);
+  for (let i = 0; i < singles; i++) {
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const x = 2 + Math.floor(nextRand(rng) * (width - 4));
+      const y = 2 + Math.floor(nextRand(rng) * (height - 4));
+      if (!canPlantTree(tiles, width, height, x, y, pads)) continue;
+      if (coarseTreeNeighbor(tiles, width, height, x, y)) continue;
+      tiles[idx(width, x, y)] = TILE_TREE;
+      break;
+    }
+  }
+}
+
+/**
+ * One isolated authoring cell upsamples into a 4×4 cube. Keep a single stem
+ * so lone trees read as trees, not hedges.
+ */
+function thinIsolatedTrees(
+  fine: number[],
+  fineW: number,
+  fineH: number,
+  coarse: number[],
+  cw: number,
+  ch: number,
+  sub: number,
+): void {
+  for (let cy = 0; cy < ch; cy++) {
+    for (let cx = 0; cx < cw; cx++) {
+      if (coarse[idx(cw, cx, cy)] !== TILE_TREE) continue;
+      if (coarseTreeNeighbor(coarse, cw, ch, cx, cy)) continue;
+      const h = hash32(`${cx}:${cy}:tree`);
+      const lx = h % sub;
+      const ly = (h >>> 8) % sub;
+      for (let dy = 0; dy < sub; dy++) {
+        for (let dx = 0; dx < sub; dx++) {
+          const x = cx * sub + dx;
+          const y = cy * sub + dy;
+          if (x < 0 || y < 0 || x >= fineW || y >= fineH) continue;
+          fine[y * fineW + x] = dx === lx && dy === ly ? TILE_TREE : TILE_EMPTY;
+        }
+      }
     }
   }
 }
@@ -268,13 +408,7 @@ function scatterCover(
   pads: readonly { x: number; y: number; r: number }[],
 ): MapFeature[] {
   const rng = { n: hash32(seed) };
-  const groves = 10 + Math.floor(nextRand(rng) * 7);
-  for (let i = 0; i < groves; i++) {
-    const cx = 4 + nextRand(rng) * (width - 8);
-    const cy = 4 + nextRand(rng) * (height - 8);
-    if (inPad(pads, cx, cy)) continue;
-    splatTrees(tiles, width, height, cx, cy, 1.6 + nextRand(rng) * 2.4);
-  }
+  scatterTrees(tiles, width, height, rng, pads);
   const kinds: CivilianType[] = [
     "cottage",
     "cottage",
@@ -292,7 +426,7 @@ function scatterCover(
     const def = catalog(type);
     const tw = Math.round(def.tileW / TILE_SUBDIV);
     const th = Math.round(def.tileH / TILE_SUBDIV);
-    for (let attempt = 0; attempt < 40; attempt++) {
+    for (let attempt = 0; attempt < 80; attempt++) {
       const x = 2 + Math.floor(nextRand(rng) * (width - tw - 4));
       const y = 2 + Math.floor(nextRand(rng) * (height - th - 4));
       if (inPad(pads, x + tw / 2, y + th / 2)) continue;
@@ -404,6 +538,7 @@ export function makeYard64(): MapDef {
   const fineTiles = upsampleTiles(tiles, width, height, sub);
   const fineW = width * sub;
   const fineH = height * sub;
+  thinIsolatedTrees(fineTiles, fineW, fineH, tiles, width, height, sub);
   const fineSpawns = spawns.map((s) => scaleSpawn(s, sub));
   const heights = scatterHeights(
     fineW,
@@ -421,6 +556,7 @@ export function makeYard64(): MapDef {
     tileSize: TILE_SIZE,
     tiles: fineTiles,
     heights,
+    maxHeight: peakHeight(heights),
     spawns: fineSpawns,
     features: scaleFeatures(features, sub),
   };
@@ -469,11 +605,16 @@ export function makeCanal48(): MapDef {
     "canal-48-cover",
     rawSpawns.map((s) => ({ x: s.x, y: s.y, r: 4 })),
   );
+  punchRect(tiles, width, height, 10, 21, 13, 26);
+  punchRect(tiles, width, height, 22, 21, 25, 26);
+  punchRect(tiles, width, height, 34, 21, 37, 26);
   const sub = TILE_SUBDIV;
   const fineTiles = upsampleTiles(tiles, width, height, sub);
   const fineW = width * sub;
   const fineH = height * sub;
+  thinIsolatedTrees(fineTiles, fineW, fineH, tiles, width, height, sub);
   const spawns = rawSpawns.map((s) => scaleSpawn(s, sub));
+  const heights = new Array(fineW * fineH).fill(0);
 
   return {
     id: "canal-48",
@@ -482,7 +623,8 @@ export function makeCanal48(): MapDef {
     height: fineH,
     tileSize: TILE_SIZE,
     tiles: fineTiles,
-    heights: new Array(fineW * fineH).fill(0),
+    heights,
+    maxHeight: peakHeight(heights),
     spawns,
     features: scaleFeatures(features, sub),
   };
@@ -513,10 +655,14 @@ export function heightAt(map: MapDef, x: number, y: number): number {
   return map.heights[y * map.width + x] ?? 0;
 }
 
-export function maxHeightOf(map: MapDef): number {
+function peakHeight(heights: readonly number[]): number {
   let m = 0;
-  for (const h of map.heights) {
+  for (const h of heights) {
     if (h > m) m = h;
   }
   return m;
+}
+
+export function maxHeightOf(map: MapDef): number {
+  return map.maxHeight;
 }

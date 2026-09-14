@@ -1,4 +1,4 @@
-import { TILE_SUBDIV } from "./catalog.js";
+import { HEIGHT_MAX, TILE_SUBDIV } from "./catalog.js";
 
 /** Classic C&C / RA2 2:1 dimetric. Simulation stays Cartesian; only the view projects. */
 
@@ -166,6 +166,7 @@ function liftPt(p: IsoPt, ez: number): IsoPt {
 /**
  * Front-most elevated tile under an iso-space click, including cliff faces.
  * `heightOf` is 0 outside the map.
+ * `clip` is an inclusive tile AABB intersected with the search band.
  */
 export function pickElevatedTile(
   ix: number,
@@ -174,10 +175,26 @@ export function pickElevatedTile(
   mapH: number,
   tileSize: number,
   heightOf: (tx: number, ty: number) => number,
+  clip?: { x0: number; y0: number; x1: number; y1: number },
 ): { x: number; y: number } | null {
-  for (let sum = mapW + mapH - 2; sum >= 0; sum--) {
-    const x0 = Math.max(0, sum - (mapH - 1));
-    const x1 = Math.min(mapW - 1, sum);
+  const flat = isoToWorld(ix, iy, tileSize);
+  const sx = Math.floor(flat.x / tileSize);
+  const sy = Math.floor(flat.y / tileSize);
+  const band = Math.ceil(isoLift(HEIGHT_MAX) / (ISO_TILE_H / 2)) + 4;
+  let minX = Math.max(0, sx - band);
+  let maxX = Math.min(mapW - 1, sx + band);
+  let minY = Math.max(0, sy - band);
+  let maxY = Math.min(mapH - 1, sy + band);
+  if (clip) {
+    minX = Math.max(minX, clip.x0);
+    maxX = Math.min(maxX, clip.x1);
+    minY = Math.max(minY, clip.y0);
+    maxY = Math.min(maxY, clip.y1);
+  }
+  if (minX > maxX || minY > maxY) return null;
+  for (let sum = maxX + maxY; sum >= minX + minY; sum--) {
+    const x0 = Math.max(minX, sum - maxY);
+    const x1 = Math.min(maxX, sum - minY);
     for (let x = x1; x >= x0; x--) {
       const y = sum - x;
       const h = heightOf(x, y);

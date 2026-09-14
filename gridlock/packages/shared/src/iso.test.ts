@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { getMap } from "./maps.js";
 import {
   clampIsoCamera,
   facingToIso,
@@ -144,5 +145,59 @@ describe("iso projection", () => {
     const naive = isoToWorld(top.x, top.y, ts);
     const naiveTile = { x: Math.floor(naive.x / ts), y: Math.floor(naive.y / ts) };
     assert.equal(naiveTile.x === 2 && naiveTile.y === 2, false);
+  });
+
+  it("picks a raised yard tile without scanning the whole map", () => {
+    const map = getMap("yard-64");
+    assert.ok(map);
+    const ts = map.tileSize;
+    const spawn = map.spawns[0];
+    assert.ok(spawn);
+    let hill: { x: number; y: number; h: number } | undefined;
+    outer: for (let r = 0; r < 48; r++) {
+      for (let dy = -r; dy <= r; dy++) {
+        for (let dx = -r; dx <= r; dx++) {
+          const x = spawn.x + dx;
+          const y = spawn.y + dy;
+          if (x < 0 || y < 0 || x >= map.width || y >= map.height) continue;
+          const h = map.heights[y * map.width + x] ?? 0;
+          if (h >= 4) {
+            hill = { x, y, h };
+            break outer;
+          }
+        }
+      }
+    }
+    assert.ok(hill, "expected a spawn-adjacent hill");
+    const top = worldToIso3((hill.x + 0.5) * ts, (hill.y + 0.5) * ts, hill.h, ts);
+    let calls = 0;
+    const heightOf = (x: number, y: number) => {
+      calls++;
+      if (x < 0 || y < 0 || x >= map.width || y >= map.height) return 0;
+      return map.heights[y * map.width + x] ?? 0;
+    };
+    const hit = pickElevatedTile(top.x, top.y, map.width, map.height, ts, heightOf);
+    assert.deepEqual(hit, { x: hill.x, y: hill.y });
+    assert.ok(calls < map.width * map.height / 8, `scanned ${calls} tiles`);
+  });
+
+  it("does not pick a tile excluded by clip", () => {
+    const ts = 32;
+    const heights = (x: number, y: number) => (x === 2 && y === 2 ? 2 : 0);
+    const top = worldToIso3(2 * ts + 16, 2 * ts + 16, 2, ts);
+    const inside = pickElevatedTile(top.x, top.y, 8, 8, ts, heights, {
+      x0: 2,
+      y0: 2,
+      x1: 2,
+      y1: 2,
+    });
+    assert.deepEqual(inside, { x: 2, y: 2 });
+    const excluded = pickElevatedTile(top.x, top.y, 8, 8, ts, heights, {
+      x0: 0,
+      y0: 0,
+      x1: 1,
+      y1: 1,
+    });
+    assert.equal(excluded?.x === 2 && excluded?.y === 2, false);
   });
 });

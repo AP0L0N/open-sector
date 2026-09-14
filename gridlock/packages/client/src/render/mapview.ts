@@ -1,9 +1,4 @@
 import {
-  HEIGHT_MAX,
-  TILE_BLOCKED,
-  TILE_SUBDIV,
-  TILE_TREE,
-  TILE_WATER,
   catalog,
   clampIsoCamera,
   isCivilianType,
@@ -13,6 +8,8 @@ import {
   entityOnMask,
   facingToIso,
   getMap,
+  TILE_EMPTY,
+  TILE_TREE,
   immobilized,
   heightAt,
   isoDepth,
@@ -24,21 +21,32 @@ import {
   previewPlace,
   specialOf,
   specialReady,
-  tileDiamond,
   tileOnMask,
   visionMaskFromSnapshot,
   worldToIso,
   worldToIso3,
-  vertexElev,
   worldToTile,
   type BuildingType,
   type ClientMessage,
   type EntityType,
   type EntityView,
   type IsoPt,
+  type MapDef,
   type MatchSnapshot,
 } from "@gridlock/shared";
-import { FX_BOOM, FX_SMOKE, drawFxFrame, fxFrameAt } from "./fx.js";
+import {
+  FX_BOOM,
+  FX_SMOKE,
+  drawCookoffBurst,
+  drawFxFrame,
+  drawGroundMiss,
+  drawKineticImpact,
+  drawMuzzleBlast,
+  drawRicochetSparks,
+  fxFrameAt,
+  fxLifeMs,
+  isShellCaliber,
+} from "./fx.js";
 import {
   UNIT_VISUAL_SCALE,
   buildingSpriteFor,
@@ -49,12 +57,36 @@ import {
   spriteReady,
   type UnitSpriteDef,
 } from "./sprites.js";
+import {
+  blitAtlas,
+  blitTerrain,
+  bakeMini,
+  bakeTerrain,
+  coverTile,
+  fillElevatedTile,
+  restampMini,
+  restampTiles,
+  updateMiniScrap,
+  updateScrap,
+  type MiniBake,
+  type TerrainBake,
+} from "./terrain.js";
 
 /** Special-action key. D is camera (WASD). */
 export const SPECIAL_HOTKEY = "e";
 
-const WALL_H = 20;
-const SCRAP_H = 12;
+const EDGE_SCROLL_KEY = "gridlock.edgeScroll";
+let edgeScroll = localStorage.getItem(EDGE_SCROLL_KEY) === "1";
+
+/** Screen-edge camera pan. Off by default; WASD / arrows always work. */
+export function getEdgeScroll(): boolean {
+  return edgeScroll;
+}
+
+export function setEdgeScroll(on: boolean): void {
+  edgeScroll = on;
+  localStorage.setItem(EDGE_SCROLL_KEY, on ? "1" : "0");
+}
 
 const EXTRUDE: Record<EntityType, number> = {
   core: 62,
@@ -71,7 +103,6 @@ const EXTRUDE: Record<EntityType, number> = {
   manor: 48,
 };
 
-const TREE_H = 14;
 const CIV_FILL = "#b08968";
 
 export class MapView {
@@ -104,8 +135,27 @@ export class MapView {
   private explored: Uint8Array | null = null;
   private vis: Uint8Array | null = null;
   private exploredMapId = "";
+  private maxElev = 0;
+  private terrain: TerrainBake | null = null;
+  private miniTerrain: MiniBake | null = null;
+  private liveMap: MapDef | null = null;
+  private fog: HTMLCanvasElement | null = null;
+  private fogCtx: CanvasRenderingContext2D | null = null;
+  private miniFog: HTMLCanvasElement | null = null;
+  private miniFogCtx: CanvasRenderingContext2D | null = null;
+  private miniFogData: ImageData | null = null;
   private ghosts = new Map<number, EntityView>();
-  private fx: { id: number; kind: string; x: number; y: number; vx: number; vy: number; at: number }[] = [];
+  private fx: {
+    id: number;
+    kind: string;
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    at: number;
+    caliber?: number;
+    blast?: boolean;
+  }[] = [];
   private seenShots = new Set<number>();
   selected = new Set<number>();
   placeMode = false;
@@ -133,6 +183,7 @@ export class MapView {
     this.mctx = mctx;
     this.curr = match;
     this.snapAt = performance.now();
+    this.syncAtlases();
     this.revealFrom(match);
     this.bind();
     this.raf = requestAnimationFrame((t) => this.frame(t));
@@ -151,7 +202,10 @@ export class MapView {
     for (const i of match.impacts ?? []) {
       if (!this.fx.some((f) => f.id === i.id)) {
         this.fx.push({ ...i, at: now });
-        if (i.kind === "kill") {
+        if (i.kind === "kill" && i.blast) {
+          this.fx.push({ id: i.id + 7_000_000, kind: "smoke", x: i.x, y: i.y, vx: 0, vy: 0, at: now });
+        }
+        if (i.kind === "crush") {
           this.fx.push({ id: i.id + 7_000_000, kind: "smoke", x: i.x, y: i.y, vx: 0, vy: 0, at: now });
         }
       }
@@ -161,14 +215,17 @@ export class MapView {
       if (p.bounced || (p.caliber ?? 0) < 40 || this.seenShots.has(p.id)) continue;
       this.seenShots.add(p.id);
       const shooter = match.entities.find((e) => e.id === p.fromId);
+      const sp = Math.hypot(p.vx, p.vy) || 1;
+      const reach = shooter ? catalog(shooter.type).radius * UNIT_VISUAL_SCALE + 10 : 16;
       this.fx.push({
         id: p.id + 8_000_000,
         kind: "muzzle",
-        x: shooter?.x ?? p.x,
-        y: shooter?.y ?? p.y,
+        x: (shooter?.x ?? p.x) + (p.vx / sp) * reach,
+        y: (shooter?.y ?? p.y) + (p.vy / sp) * reach,
         vx: p.vx,
         vy: p.vy,
         at: now,
+        caliber: p.caliber,
       });
     }
     for (const id of [...this.selected]) {
@@ -178,7 +235,58 @@ export class MapView {
     const placing = this.placeMode;
     if (!this.readyBuilding()) this.placeMode = false;
     if (this.placeMode !== placing) this.onPlaceMode();
+    this.syncAtlases();
     this.revealFrom(match);
+  }
+
+  private syncAtlases(): void {
+    const map = this.map();
+    this.maxElev = maxHeightOf(map);
+    if (!this.terrain) this.terrain = bakeTerrain(map, this.curr.scrap);
+    else updateScrap(this.terrain, map, this.curr.scrap);
+    if (!this.miniTerrain) this.miniTerrain = bakeMini(map, this.curr.scrap);
+    else updateMiniScrap(this.miniTerrain, map, this.curr.scrap);
+    this.applyClearedTrees();
+  }
+
+  private applyClearedTrees(): void {
+    const map = this.map();
+    const list = this.curr.clearedTrees ?? [];
+    if (list.length === 0) return;
+    const dirty: number[] = [];
+    const w = map.width;
+    for (const t of list) {
+      if (t.x < 0 || t.y < 0 || t.x >= w || t.y >= map.height) continue;
+      const i = t.y * w + t.x;
+      if (map.tiles[i] !== TILE_TREE) continue;
+      map.tiles[i] = TILE_EMPTY;
+      dirty.push(i);
+    }
+    if (dirty.length === 0) return;
+    if (this.terrain) restampTiles(this.terrain, map, dirty, this.curr.scrap);
+    if (this.miniTerrain) restampMini(this.miniTerrain, map, dirty, this.curr.scrap);
+  }
+
+  private resetFog(map: { id: string; width: number; height: number }): void {
+    const bake = this.terrain;
+    if (!bake) return;
+    const fog = document.createElement("canvas");
+    fog.width = bake.width;
+    fog.height = bake.height;
+    const ctx = fog.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#050403";
+    ctx.fillRect(0, 0, bake.width, bake.height);
+    this.fog = fog;
+    this.fogCtx = ctx;
+    const mini = document.createElement("canvas");
+    mini.width = Math.max(1, map.width);
+    mini.height = Math.max(1, map.height);
+    const mctx = mini.getContext("2d");
+    if (!mctx) return;
+    this.miniFog = mini;
+    this.miniFogCtx = mctx;
+    this.miniFogData = mctx.createImageData(map.width, map.height);
   }
 
   private revealFrom(match: MatchSnapshot): void {
@@ -188,13 +296,18 @@ export class MapView {
     if (!this.explored || this.explored.length !== n || this.exploredMapId !== match.mapId) {
       this.explored = new Uint8Array(n);
       this.exploredMapId = match.mapId;
+      this.vis = null;
       this.ghosts.clear();
+      this.resetFog(map);
     }
+    const prevVis = this.vis;
     const vis = visionMaskFromSnapshot(match, map.width, map.height, map.tileSize);
+    this.patchFog(map, prevVis, this.explored, vis);
     this.vis = vis;
     for (let i = 0; i < n; i++) {
       if (vis[i]) this.explored[i] = 1;
     }
+    this.rebuildMiniFog(map, n);
     for (const e of match.entities) {
       if (e.kind === "building" && e.ownerId !== match.youPlayerId) this.ghosts.set(e.id, e);
     }
@@ -204,16 +317,76 @@ export class MapView {
     }
   }
 
+  private patchFog(map: MapDef, prevVis: Uint8Array | null, explored: Uint8Array, vis: Uint8Array): void {
+    const ctx = this.fogCtx;
+    const bake = this.terrain;
+    if (!ctx || !bake) return;
+    const w = map.width;
+    const n = w * map.height;
+    const punch: number[] = [];
+    const dim: number[] = [];
+    const hide: number[] = [];
+    for (let i = 0; i < n; i++) {
+      const wasSeen = explored[i] ?? 0;
+      const wasLit = prevVis?.[i] ?? 0;
+      const lit = vis[i] ?? 0;
+      const seen = wasSeen || lit;
+      if (seen === wasSeen && lit === wasLit) continue;
+      if (!seen) hide.push(i);
+      else if (!lit) {
+        punch.push(i);
+        dim.push(i);
+      } else punch.push(i);
+    }
+    const ox = bake.originX;
+    const oy = bake.originY;
+    // destination-out punches lit diamonds so the overlay is transparent over terrain
+    ctx.globalCompositeOperation = "destination-out";
+    for (const i of punch) {
+      coverTile(ctx, map, i % w, (i / w) | 0, bake.scrap.has(i), ox, oy, "#ffffff");
+    }
+    ctx.globalCompositeOperation = "source-over";
+    for (const i of dim) {
+      fillElevatedTile(ctx, map, i % w, (i / w) | 0, "rgba(0,0,0,0.55)", ox, oy);
+    }
+    for (const i of hide) {
+      coverTile(ctx, map, i % w, (i / w) | 0, bake.scrap.has(i), ox, oy, "#050403");
+    }
+  }
+
+  private rebuildMiniFog(map: { width: number; height: number }, n: number): void {
+    const ctx = this.miniFogCtx;
+    const data = this.miniFogData;
+    if (!ctx || !data || data.width !== map.width || data.height !== map.height) return;
+    const pix = data.data;
+    const vis = this.vis;
+    const exp = this.explored;
+    for (let i = 0; i < n; i++) {
+      const o = i * 4;
+      if (!exp || !exp[i]) {
+        pix[o] = 5;
+        pix[o + 1] = 4;
+        pix[o + 2] = 3;
+        pix[o + 3] = 255;
+      } else if (!vis || !vis[i]) {
+        pix[o] = 0;
+        pix[o + 1] = 0;
+        pix[o + 2] = 0;
+        pix[o + 3] = 140;
+      } else {
+        pix[o] = 0;
+        pix[o + 1] = 0;
+        pix[o + 2] = 0;
+        pix[o + 3] = 0;
+      }
+    }
+    ctx.putImageData(data, 0, 0);
+  }
+
   private lit(tx: number, ty: number): boolean {
     const map = this.map();
     if (!this.vis) return true;
     return tileOnMask(this.vis, map.width, tx, ty);
-  }
-
-  private seen(tx: number, ty: number): boolean {
-    const map = this.map();
-    if (!this.explored) return true;
-    return tileOnMask(this.explored, map.width, tx, ty);
   }
 
   /** @deprecated */
@@ -243,7 +416,10 @@ export class MapView {
   private map() {
     const m = getMap(this.curr.mapId);
     if (!m) throw new Error("missing map");
-    return m;
+    if (!this.liveMap || this.liveMap.id !== m.id) {
+      this.liveMap = { ...m, tiles: m.tiles.slice() };
+    }
+    return this.liveMap;
   }
 
   private bind(): void {
@@ -479,16 +655,7 @@ export class MapView {
   private clamp(): void {
     const map = this.map();
     const { w, h } = this.viewSize();
-    const p = clampIsoCamera(
-      this.camX,
-      this.camY,
-      w,
-      h,
-      map.width,
-      map.height,
-      map.tileSize,
-      maxHeightOf(map),
-    );
+    const p = clampIsoCamera(this.camX, this.camY, w, h, map.width, map.height, map.tileSize, this.maxElev);
     this.camX = p.x;
     this.camY = p.y;
   }
@@ -555,6 +722,7 @@ export class MapView {
       map.height,
       ts,
       (x, y) => heightAt(map, x, y),
+      this.visibleTiles(),
     );
     if (picked) return picked;
     const w = this.screenToWorldFlat(px, py);
@@ -743,7 +911,7 @@ export class MapView {
     if (this.keys.has("a") || this.keys.has("arrowleft")) vx -= 1;
     if (this.keys.has("d") || this.keys.has("arrowright")) vx += 1;
     const edge = 24;
-    if (!this.panning && !this.box && this.winX >= 0 && !this.overControl) {
+    if (edgeScroll && !this.panning && !this.box && this.winX >= 0 && !this.overControl) {
       const sw = window.innerWidth;
       const sh = window.innerHeight;
       if (this.winX < edge) vx -= 1;
@@ -764,7 +932,7 @@ export class MapView {
   }
 
   private fit(): void {
-    const dpr = devicePixelRatio || 1;
+    const dpr = Math.min(devicePixelRatio || 1, 1.5);
     const w = Math.max(1, this.canvas.clientWidth);
     const h = Math.max(1, this.canvas.clientHeight);
     const bw = Math.floor(w * dpr);
@@ -790,7 +958,7 @@ export class MapView {
     const { w, h } = this.viewSize();
     const ts = map.tileSize;
     const pad = 80;
-    const liftPad = isoLift(maxHeightOf(map)) + 48;
+    const liftPad = isoLift(this.maxElev) + 48;
     const pts = [
       this.screenToWorldFlat(-pad, -pad - liftPad),
       this.screenToWorldFlat(w + pad, -pad - liftPad),
@@ -807,7 +975,7 @@ export class MapView {
       minY = Math.min(minY, p.y);
       maxY = Math.max(maxY, p.y);
     }
-    const extra = maxHeightOf(map) + 2;
+    const extra = this.maxElev + 2;
     return {
       x0: Math.max(0, worldToTile(minX, ts) - 1),
       y0: Math.max(0, worldToTile(minY, ts) - 1),
@@ -817,53 +985,19 @@ export class MapView {
   }
 
   private draw(): void {
-    const map = this.map();
     const ctx = this.ctx;
     const { w, h } = this.viewSize();
     ctx.fillStyle = "#0c1008";
     ctx.fillRect(0, 0, w, h);
 
-    const vis = this.visibleTiles();
-    const scrapSet = new Set(this.curr.scrap.map((s) => `${s.x},${s.y}`));
-    const tiles: { x: number; y: number }[] = [];
-    for (let y = vis.y0; y <= vis.y1; y++) {
-      for (let x = vis.x0; x <= vis.x1; x++) tiles.push({ x, y });
+    const bake = this.terrain;
+    ctx.imageSmoothingEnabled = false;
+    if (bake) {
+      blitTerrain(ctx, bake, this.camX, this.camY, w, h);
+      if (this.fog) blitAtlas(ctx, this.fog, bake.originX, bake.originY, this.camX, this.camY, w, h);
     }
-    tiles.sort((a, b) => a.x + a.y - (b.x + b.y));
-
-    for (const t of tiles) {
-      if (!this.seen(t.x, t.y)) {
-        this.fillTile(t.x, t.y, "#050403");
-        continue;
-      }
-      const kind = map.tiles[t.y * map.width + t.x] ?? 0;
-      const scrap = scrapSet.has(`${t.x},${t.y}`);
-      this.fillTile(t.x, t.y, this.groundFill(t.x, t.y, kind, scrap));
-    }
-
-    const ts = map.tileSize;
-    for (const t of tiles) {
-      if (!this.seen(t.x, t.y)) continue;
-      const kind = map.tiles[t.y * map.width + t.x] ?? 0;
-      if (kind === TILE_BLOCKED) {
-        this.drawIsoBox(t.x * ts, t.y * ts, ts, ts, WALL_H, "#3a2a22", { elev: heightAt(map, t.x, t.y) });
-      } else if (kind === TILE_TREE) {
-        const inset = ts * 0.22;
-        this.drawIsoBox(t.x * ts + inset, t.y * ts + inset, ts - inset * 2, ts - inset * 2, TREE_H, "#1f4a28", {
-          elev: heightAt(map, t.x, t.y),
-        });
-      } else if (scrapSet.has(`${t.x},${t.y}`)) {
-        const inset = ts * 0.18;
-        this.drawIsoBox(t.x * ts + inset, t.y * ts + inset, ts - inset * 2, ts - inset * 2, SCRAP_H, "#c4a24a", {
-          elev: heightAt(map, t.x, t.y),
-        });
-      }
-    }
-
-    for (const t of tiles) {
-      if (!this.seen(t.x, t.y) || this.lit(t.x, t.y)) continue;
-      this.fillTile(t.x, t.y, "rgba(0,0,0,0.55)");
-    }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "low";
 
     const liveIds = new Set(this.curr.entities.map((e) => e.id));
     const drawList: EntityView[] = [
@@ -880,38 +1014,51 @@ export class MapView {
     for (const p of this.curr.projectiles) {
       const t = Math.min(1, (performance.now() - this.snapAt) / 100);
       const look = t * 0.1 * (this.curr.gameSpeed || 1);
-      const a = this.toScreen(p.x, p.y);
-      const b = this.toScreen(p.x + p.vx * look, p.y + p.vy * look);
       const bounced = p.bounced === true;
-      const shell = (p.caliber ?? 0) >= 40;
-      const lift = bounced ? 12 : shell ? 10 : 6;
+      const prevP = this.prev?.projectiles.find((q) => q.id === p.id);
+      const wx = prevP ? prevP.x + (p.x - prevP.x) * t : p.x;
+      const wy = prevP ? prevP.y + (p.y - prevP.y) * t : p.y;
+      const a = this.toScreen(wx, wy);
+      const b = this.toScreen(wx + p.vx * look, wy + p.vy * look);
+      const shell = isShellCaliber(p.caliber);
+      const lift = bounced ? 7 : shell ? 10 : 6;
       if (bounced) {
         const sp = Math.hypot(p.vx, p.vy) || 1;
-        const tail = this.toScreen(p.x - (p.vx / sp) * 28, p.y - (p.vy / sp) * 28);
-        ctx.strokeStyle = "#ffe9a0";
-        ctx.lineWidth = 2.4;
+        const tail = this.toScreen(wx - (p.vx / sp) * 14, wy - (p.vy / sp) * 14);
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 236, 176, 0.92)";
+        ctx.lineWidth = 1.15;
+        ctx.lineCap = "butt";
         ctx.beginPath();
         ctx.moveTo(tail.x, tail.y - lift);
+        ctx.lineTo(a.x, a.y - lift);
+        ctx.stroke();
+        ctx.fillStyle = "#fff8e4";
+        ctx.fillRect(a.x - 0.5, a.y - lift - 0.5, 1.2, 1.2);
+        ctx.restore();
+      } else if (shell) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 236, 176, 0.55)";
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y - lift);
         ctx.lineTo(b.x, b.y - lift);
         ctx.stroke();
-        ctx.fillStyle = "#fff6c8";
+        ctx.fillStyle = "#fff8e4";
         ctx.beginPath();
-        ctx.arc(b.x, b.y - lift, 3.4, 0, Math.PI * 2);
+        ctx.ellipse(b.x, b.y - lift, 3.1, 2.1, Math.atan2(b.y - a.y, b.x - a.x), 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = "#ffb040";
-        ctx.beginPath();
-        ctx.arc(b.x, b.y - lift, 1.6, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.restore();
       } else {
-        ctx.strokeStyle = shell ? "#f0d070" : "#e8b84a";
-        ctx.lineWidth = shell ? 3 : 1.6;
+        ctx.strokeStyle = "#e8b84a";
+        ctx.lineWidth = 1.6;
         ctx.beginPath();
         ctx.moveTo(a.x, a.y - lift);
         ctx.lineTo(b.x, b.y - lift);
         ctx.stroke();
         ctx.fillStyle = "#fff6c8";
-        const s = shell ? 5 : 3;
-        ctx.fillRect(b.x - s / 2, b.y - lift - s / 2, s, s);
+        ctx.fillRect(b.x - 1.5, b.y - lift - 1.5, 3, 3);
       }
     }
     this.drawImpacts();
@@ -958,53 +1105,6 @@ export class MapView {
     ctx.strokeText("ATK", x + 12, y + 8);
     ctx.fillText("ATK", x + 12, y + 8);
     ctx.restore();
-  }
-
-  private tileScreen(tx: number, ty: number): { n: IsoPt; e: IsoPt; s: IsoPt; w: IsoPt } {
-    const d = tileDiamond(tx, ty, this.ts());
-    return {
-      n: { x: d.n.x - this.camX, y: d.n.y - this.camY },
-      e: { x: d.e.x - this.camX, y: d.e.y - this.camY },
-      s: { x: d.s.x - this.camX, y: d.s.y - this.camY },
-      w: { x: d.w.x - this.camX, y: d.w.y - this.camY },
-    };
-  }
-
-  private groundFill(tx: number, ty: number, kind: number, scrap: boolean): string {
-    const chk = (Math.floor(tx / TILE_SUBDIV) + Math.floor(ty / TILE_SUBDIV)) % 2 === 0;
-    if (kind === TILE_WATER) return chk ? "#1a3d55" : "#16364c";
-    if (kind === TILE_TREE) return chk ? "#1c3320" : "#182c1c";
-    const fill = kind === TILE_BLOCKED ? "#2a1e18" : scrap ? (chk ? "#5a4a18" : "#4a3c14") : chk ? "#2a3a24" : "#243320";
-    const h = heightAt(this.map(), tx, ty);
-    if (h <= 0 || kind === TILE_BLOCKED) return fill;
-    return this.shade(fill, 1 + (h / HEIGHT_MAX) * 0.48);
-  }
-
-  private fillTile(tx: number, ty: number, fill: string): void {
-    const map = this.map();
-    const elev = map.heights;
-    const d = this.tileScreen(tx, ty);
-    const up = (p: IsoPt, z: number): IsoPt => ({ x: p.x, y: p.y - z });
-    const nH = vertexElev(elev, map.width, map.height, tx, ty);
-    const eH = vertexElev(elev, map.width, map.height, tx + 1, ty);
-    const sH = vertexElev(elev, map.width, map.height, tx + 1, ty + 1);
-    const wH = vertexElev(elev, map.width, map.height, tx, ty + 1);
-    const n = up(d.n, isoLift(nH));
-    const e = up(d.e, isoLift(eH));
-    const s = up(d.s, isoLift(sH));
-    const w = up(d.w, isoLift(wH));
-    const floorS = ty + 1 >= map.height;
-    const floorE = tx + 1 >= map.width;
-    if (floorS && (wH > 0 || sH > 0)) {
-      this.ctx.fillStyle = this.shade(fill, 0.42);
-      this.fillQuad(w, s, up(d.s, 0), up(d.w, 0));
-    }
-    if (floorE && (eH > 0 || sH > 0)) {
-      this.ctx.fillStyle = this.shade(fill, 0.68);
-      this.fillQuad(e, s, up(d.s, 0), up(d.e, 0));
-    }
-    this.ctx.fillStyle = fill;
-    this.fillQuad(n, e, s, w);
   }
 
   private fillQuad(a: IsoPt, b: IsoPt, c: IsoPt, d: IsoPt): void {
@@ -1240,9 +1340,8 @@ export class MapView {
     ctx.ellipse(s.x, s.y, size * 0.32, size * 0.15, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
-    if (e.wreck) {
-      ctx.filter = "grayscale(0.7) brightness(0.52) sepia(0.35)";
-    }
+    ctx.save();
+    if (e.wreck) ctx.globalAlpha = 0.55;
     const drawn = drawUnitSprite(ctx, def, s.x, s.y, dir.x, dir.y, {
       moving: !e.wreck && e.state === "move" && !immobilized(e),
       id: e.id,
@@ -1250,7 +1349,14 @@ export class MapView {
       turretDx: turretDir.x,
       turretDy: turretDir.y,
     });
-    ctx.filter = "none";
+    if (e.wreck && drawn) {
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = "#1a120c";
+      ctx.beginPath();
+      ctx.ellipse(s.x, s.y - size * 0.35, size * 0.28, size * 0.38, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
     if (!drawn) {
       const r = Math.max(4, size * 0.22);
       this.drawIsoBox(p.x - r, p.y - r, r * 2, r * 2, size * 0.45, hex);
@@ -1296,68 +1402,51 @@ export class MapView {
     const ctx = this.ctx;
     const keep: typeof this.fx = [];
     for (const f of this.fx) {
-      const life =
-        f.kind === "kill"
-          ? 780
-          : f.kind === "smoke"
-            ? 2200
-            : f.kind === "muzzle"
-              ? 280
-              : f.kind === "pen"
-                ? 560
-                : f.kind === "ricochet"
-                  ? 520
-                  : f.kind === "miss"
-                    ? 300
-                    : 400;
+      const life = fxLifeMs(f.kind, f.blast);
       const age = now - f.at;
       if (age > life) continue;
       keep.push(f);
       const t = age / life;
       const s = this.toScreen(f.x, f.y);
-      const lift = 14;
-      if (f.kind === "kill" || f.kind === "pen" || f.kind === "hit") {
-        const size = f.kind === "kill" ? 56 : f.kind === "pen" ? 42 : 30;
+      const tip = this.toScreen(f.x + f.vx * 0.08, f.y + f.vy * 0.08);
+      const dirX = tip.x - s.x;
+      const dirY = tip.y - s.y;
+      const lift = f.kind === "miss" || f.kind === "puff" ? 0 : 14;
+      const x = s.x;
+      const y = s.y - lift;
+      if (f.kind === "kill" && f.blast) {
+        drawCookoffBurst(ctx, x, y, t, f.id);
         const frame = fxFrameAt(age, life, FX_BOOM.frames, false);
-        drawFxFrame(ctx, FX_BOOM, frame, s.x, s.y - lift, size, 1 - t * 0.35);
+        drawFxFrame(ctx, FX_BOOM, frame, x, y, 56, 1 - t * 0.35);
+      } else if (f.kind === "kill" || f.kind === "pen" || f.kind === "hit" || f.kind === "glance") {
+        const k: "hit" | "pen" | "glance" =
+          f.kind === "pen" ? "pen" : f.kind === "glance" ? "glance" : "hit";
+        drawKineticImpact(ctx, {
+          kind: k,
+          x,
+          y,
+          dirX,
+          dirY,
+          t,
+          seed: f.id,
+          caliber: f.caliber,
+        });
       } else if (f.kind === "muzzle") {
-        const frame = fxFrameAt(age, life, FX_SMOKE.frames, false);
-        drawFxFrame(ctx, FX_SMOKE, frame, s.x, s.y - lift - 4, 26, 1 - t);
-        ctx.save();
-        ctx.globalAlpha = Math.max(0, 1 - t * 2.2);
-        ctx.fillStyle = "#ffe08a";
-        ctx.beginPath();
-        ctx.arc(s.x, s.y - lift, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        drawMuzzleBlast(ctx, x, y, dirX, dirY, t, f.caliber);
       } else if (f.kind === "smoke") {
         const frame = fxFrameAt(age, 700, FX_SMOKE.frames, true);
-        drawFxFrame(ctx, FX_SMOKE, frame, s.x, s.y - lift - 8 - t * 10, 34 + t * 10, 0.85 - t * 0.7);
-      } else if (f.kind === "ricochet") {
-        ctx.save();
-        ctx.globalAlpha = 1 - t;
-        const tip = this.toScreen(f.x + f.vx * 0.12, f.y + f.vy * 0.12);
-        ctx.strokeStyle = "#fff6c8";
-        ctx.lineWidth = 2;
-        for (let i = 0; i < 5; i++) {
-          const u = 0.2 + i * 0.18;
-          ctx.beginPath();
-          ctx.moveTo(s.x, s.y - 10);
-          ctx.lineTo(s.x + (tip.x - s.x) * u + (i - 2) * 4, s.y - 10 + (tip.y - s.y) * u - 8 * t);
-          ctx.stroke();
-        }
-        ctx.restore();
-      } else if (f.kind === "miss") {
-        ctx.save();
-        ctx.globalAlpha = 1 - t;
-        ctx.fillStyle = "#6a5a40";
-        ctx.beginPath();
-        ctx.ellipse(s.x, s.y, 7 + t * 6, 3.5 + t * 3, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      } else {
+        drawFxFrame(ctx, FX_SMOKE, frame, x, y - 8 - t * 10, 34 + t * 10, 0.85 - t * 0.7);
+      } else if (f.kind === "puff") {
         const frame = fxFrameAt(age, life, FX_SMOKE.frames, false);
-        drawFxFrame(ctx, FX_SMOKE, frame, s.x, s.y - 10, 22, 1 - t);
+        const tiny = isShellCaliber(f.caliber) ? 16 : 11;
+        drawFxFrame(ctx, FX_SMOKE, frame, s.x, s.y - 3 - t * 7, tiny + t * 5, 0.8 - t * 0.7);
+      } else if (f.kind === "ricochet") {
+        drawRicochetSparks(ctx, x, y, dirX, dirY, t, f.id, f.caliber);
+      } else if (f.kind === "crush" || f.kind === "puff") {
+        const frame = fxFrameAt(age, life, FX_SMOKE.frames, false);
+        drawFxFrame(ctx, FX_SMOKE, frame, x, y - 4 - t * 8, 26 + t * 18, 0.9 - t * 0.8);
+      } else if (f.kind === "miss") {
+        drawGroundMiss(ctx, s.x, s.y, t, f.id, f.caliber);
       }
     }
     this.fx = keep;
@@ -1530,48 +1619,18 @@ export class MapView {
     ctx.fillStyle = "#0a0806";
     ctx.fillRect(0, 0, w, h);
     const scale = Math.min(w / map.width, h / map.height);
-    const scrapSet = new Set(this.curr.scrap.map((s) => `${s.x},${s.y}`));
-    for (let y = 0; y < map.height; y++) {
-      for (let x = 0; x < map.width; x++) {
-        if (!this.seen(x, y)) {
-          ctx.fillStyle = "#050403";
-          ctx.fillRect(x * scale, y * scale, Math.max(1, scale), Math.max(1, scale));
-          continue;
-        }
-        const kind = map.tiles[y * map.width + x] ?? 0;
-        const scrap = scrapSet.has(`${x},${y}`);
-        const h = heightAt(map, x, y);
-        const band = HEIGHT_MAX > 0 ? h / HEIGHT_MAX : 0;
-        ctx.fillStyle =
-          kind === TILE_WATER
-            ? "#1a3d55"
-            : kind === TILE_TREE
-              ? "#1f4a28"
-              : kind === TILE_BLOCKED
-                ? "#3a2a22"
-                : scrap
-                  ? "#5a4a18"
-                  : band >= 0.75
-                    ? "#5c6e40"
-                    : band >= 0.4
-                      ? "#4a5a38"
-                      : band > 0
-                        ? "#354a30"
-                        : "#2a3a24";
-        ctx.fillRect(x * scale, y * scale, Math.max(1, scale), Math.max(1, scale));
-        if (!this.lit(x, y)) {
-          ctx.fillStyle = "rgba(0,0,0,0.55)";
-          ctx.fillRect(x * scale, y * scale, Math.max(1, scale), Math.max(1, scale));
-        }
-      }
-    }
+    const dw = map.width * scale;
+    const dh = map.height * scale;
+    ctx.imageSmoothingEnabled = false;
+    if (this.miniTerrain) ctx.drawImage(this.miniTerrain.canvas, 0, 0, dw, dh);
+    if (this.miniFog) ctx.drawImage(this.miniFog, 0, 0, dw, dh);
     const ts = map.tileSize;
     const { w: vw, h: vh } = this.viewSize();
     const corners = [
-      this.screenToWorld(0, 0),
-      this.screenToWorld(vw, 0),
-      this.screenToWorld(vw, vh),
-      this.screenToWorld(0, vh),
+      this.screenToWorldFlat(0, 0),
+      this.screenToWorldFlat(vw, 0),
+      this.screenToWorldFlat(vw, vh),
+      this.screenToWorldFlat(0, vh),
     ];
     ctx.strokeStyle = "#e8b84a";
     ctx.lineWidth = 1;

@@ -3,12 +3,21 @@ import { describe, it } from "node:test";
 import {
   HEIGHT_RANGE_BONUS,
   HEIGHT_SIGHT_BONUS,
+  INFANTRY_EYE_HEIGHT,
   TICK_DT,
   TILE_SUBDIV,
   catalog,
 } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { hasTerrainLos, rangeTilesOf, sightTilesOf, slopeCostMul, slopeSpeedMul } from "./elevation.js";
+import {
+  hasTerrainLos,
+  observerEyeOf,
+  rangeTilesOf,
+  sightTilesOf,
+  slopeCostMul,
+  slopeSpeedMul,
+  uphillSightOf,
+} from "./elevation.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch } from "./match.js";
 import { tickMovement } from "./orders.js";
@@ -53,6 +62,13 @@ describe("high ground bonuses", () => {
     assert.equal(rangeTilesOf("trooper", 1), trooper.rangeTiles + HEIGHT_RANGE_BONUS);
     assert.equal(rangeTilesOf("hauler", 3), 0);
   });
+
+  it("gives infantry more fog reach than a tank", () => {
+    assert.ok(catalog("trooper").sightTiles > catalog("warden").sightTiles);
+    assert.equal(observerEyeOf("trooper"), INFANTRY_EYE_HEIGHT);
+    assert.equal(observerEyeOf("warden"), 0);
+    assert.ok(uphillSightOf("trooper") > uphillSightOf("warden"));
+  });
 });
 
 describe("terrain line of sight", () => {
@@ -69,6 +85,13 @@ describe("terrain line of sight", () => {
   it("still lets you see the hillside itself", () => {
     const elev = [0, 1, 2];
     assert.equal(hasTerrainLos(elev, 3, 1, 0, 0, 2, 0), true);
+  });
+
+  it("lets infantry peek over a rise that hides a hull", () => {
+    const ridge = INFANTRY_EYE_HEIGHT;
+    const elev = [0, 0, ridge, 0, 0];
+    assert.equal(hasTerrainLos(elev, 5, 1, 0, 0, 4, 0), false);
+    assert.equal(hasTerrainLos(elev, 5, 1, 0, 0, 4, 0, INFANTRY_EYE_HEIGHT), true);
   });
 });
 

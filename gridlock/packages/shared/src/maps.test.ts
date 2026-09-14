@@ -114,4 +114,31 @@ describe("maps", () => {
     assert.ok((yard.features?.length ?? 0) >= 4, "houses");
     assert.ok(!yard.features?.some((f) => tileAt(yard, f.x, f.y) === TILE_BLOCKED));
   });
+
+  it("mixes isolated trees with connected groves", () => {
+    for (const map of Object.values(MAPS)) {
+      let trees = 0;
+      let singles = 0;
+      let batched = 0;
+      for (let y = 0; y < map.height; y++) {
+        for (let x = 0; x < map.width; x++) {
+          if (tileAt(map, x, y) !== TILE_TREE) continue;
+          trees += 1;
+          let neighbor = false;
+          for (let dy = -1; dy <= 1; dy++) {
+            for (let dx = -1; dx <= 1; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              if (tileAt(map, x + dx, y + dy) === TILE_TREE) neighbor = true;
+            }
+          }
+          if (neighbor) batched += 1;
+          else singles += 1;
+        }
+      }
+      assert.ok(trees > 2500, `${map.id} trees ${trees}`);
+      assert.ok(singles > 40, `${map.id} singles ${singles}`);
+      assert.ok(batched > 400, `${map.id} groves ${batched}`);
+      assert.ok(singles < trees * 0.5, `${map.id} too many isolated trees`);
+    }
+  });
 });

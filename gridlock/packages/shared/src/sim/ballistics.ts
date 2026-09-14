@@ -9,15 +9,17 @@ export const RICOCHET_DEG = 68;
 export const KILL_OVERMATCH = 2.4;
 export const REAR_KILL_OVERMATCH = 1.25;
 export const WEAK_POINT = 0.05;
-/** Incoming speed kept after a bounce. Slow enough to see the spark fly. */
-export const RICOCHET_KEEP = 0.08;
+/** Incoming speed kept after a bounce. Near-muzzle, so the spark zips away. */
+export const RICOCHET_KEEP = 0.88;
+/** World units a bounced round still flies before it hits dirt. */
+export const RICOCHET_TRAVEL = 80;
 export const MIN_COS = 0.14;
 export const MOVING_SPREAD = 1.5;
 
 export type ArmorFace = "front" | "side" | "rear";
 
 export interface HitResolution {
-  kind: Exclude<ImpactKind, "miss">;
+  kind: Exclude<ImpactKind, "miss" | "puff" | "crush">;
   face: ArmorFace | "none";
   damage: number;
   bounceVx: number;
@@ -66,10 +68,12 @@ export function aimAngle(
   maxRange: number,
   rand: () => number,
   moving = false,
+  spreadPower = 1,
 ): number {
   if (spreadDeg <= 0) return facing;
   const t = maxRange <= 1e-6 ? 1 : clamp(dist / maxRange, 0, 1);
-  let cone = spreadDeg * (0.35 + 0.65 * t);
+  const falloff = spreadPower > 1 ? 0.15 + 0.85 * t ** spreadPower : 0.35 + 0.65 * t;
+  let cone = spreadDeg * falloff;
   if (moving) cone *= MOVING_SPREAD;
   return facing + (rand() * 2 - 1) * ((cone * Math.PI) / 180);
 }
@@ -211,7 +215,7 @@ function reflect(
   const scatter = (rand() - 0.5) * 0.5;
   const cs = Math.cos(scatter);
   const sn = Math.sin(scatter);
-  const keep = RICOCHET_KEEP + rand() * 0.05;
+  const keep = RICOCHET_KEEP + rand() * 0.06;
   return {
     kind: "ricochet",
     face,
