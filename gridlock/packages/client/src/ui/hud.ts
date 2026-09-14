@@ -726,6 +726,9 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     return;
   }
   if (act === "hold") {
+    view.setAttackMoveMode(false);
+    view.setForceAttackMode(false);
+    view.setRotateMode(false);
     if (units.length) {
       const hold = !units.every((e) => e.holdPosition);
       ctx.net.send({ type: "cmd.hold", ids: units.map((e) => e.id), hold });
