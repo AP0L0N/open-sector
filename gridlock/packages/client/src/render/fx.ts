@@ -347,25 +347,31 @@ export function drawRicochetSparks(
     (shell ? 18 : 8) + rnd() * (shell ? 36 : 22),
     true,
   );
-  const d = dirOf(dirX, dirY);
-  const travel = (shell ? 10 : 6) + rnd() * (shell ? 50 : 38);
-  const head = Math.min(1, (t * 1.5) / 0.22);
-  const fade = t < 0.5 ? 1 : Math.max(0, 1 - (t - 0.5) / 0.5);
-  const hx = x + d.x * travel * head;
-  const hy = y + d.y * travel * head;
-  const tail = travel * (shell ? 0.5 : 0.42);
+}
+
+/** Leaving spark: impact on the hull to the current ground point. */
+export function drawRicochetTrace(
+  ctx: CanvasRenderingContext2D,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  shell = false,
+): void {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  if (dx * dx + dy * dy < 1) return;
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  ctx.globalAlpha = 0.95 * fade;
-  ctx.strokeStyle = "#ffe8b0";
-  ctx.lineWidth = shell ? 2 : 1.2;
+  ctx.strokeStyle = shell ? "rgba(255, 210, 120, 0.95)" : "rgba(255, 236, 176, 0.92)";
+  ctx.lineWidth = shell ? 1.85 : 1.15;
   ctx.lineCap = "butt";
   ctx.beginPath();
-  ctx.moveTo(hx - d.x * tail, hy - d.y * tail);
-  ctx.lineTo(hx, hy);
+  ctx.moveTo(x0, y0);
+  ctx.lineTo(x1, y1);
   ctx.stroke();
   ctx.fillStyle = "#fff8e4";
-  ctx.fillRect(hx - 0.55, hy - 0.55, 1.2, 1.2);
+  ctx.fillRect(x1 - 0.55, y1 - 0.55, 1.2, 1.2);
   ctx.restore();
 }
 

@@ -59,8 +59,8 @@ describe("snapToUnitHitMask", () => {
 describe("unitDestMaskFromSheets", () => {
   it("marks dest pixels that sample a painted texel and skips padding", () => {
     const a = new Uint8Array(8 * 8);
-    for (let y = 2; y <= 5; y++) {
-      for (let x = 2; x <= 5; x++) a[y * 8 + x] = 255;
+    for (let y = 1; y <= 6; y++) {
+      for (let x = 1; x <= 6; x++) a[y * 8 + x] = 255;
     }
     const map: BuildingAlphaMap = { w: 8, h: 8, a, toMap: 1 };
     const mask = unitDestMaskFromSheets(8, { map, sx: 0, sy: 0, cell: 8 });
@@ -72,8 +72,12 @@ describe("unitDestMaskFromSheets", () => {
   it("ORs turret pixels onto the hull mask", () => {
     const hullA = new Uint8Array(8 * 8);
     const turretA = new Uint8Array(8 * 8);
-    hullA[4 * 8 + 3] = 255;
-    turretA[2 * 8 + 6] = 255;
+    for (let y = 3; y <= 5; y++) {
+      for (let x = 2; x <= 4; x++) hullA[y * 8 + x] = 255;
+    }
+    for (let y = 1; y <= 3; y++) {
+      for (let x = 4; x <= 6; x++) turretA[y * 8 + x] = 255;
+    }
     const hull: BuildingAlphaMap = { w: 8, h: 8, a: hullA, toMap: 1 };
     const turret: BuildingAlphaMap = { w: 8, h: 8, a: turretA, toMap: 1 };
     const mask = unitDestMaskFromSheets(
@@ -82,6 +86,6 @@ describe("unitDestMaskFromSheets", () => {
       { map: turret, sx: 0, sy: 0, cell: 8 },
     );
     assert.equal(mask.solid[4 * 8 + 3], 1);
-    assert.equal(mask.solid[2 * 8 + 6], 1);
+    assert.equal(mask.solid[2 * 8 + 5], 1);
   });
 });

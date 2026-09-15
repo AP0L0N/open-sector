@@ -1,8 +1,4 @@
-import {
-  BUILDING_ALPHA_MIN,
-  buildingAlphaOpaqueAt,
-  type BuildingAlphaMap,
-} from "./building-hit.js";
+import { BUILDING_ALPHA_MIN, type BuildingAlphaMap } from "./building-hit.js";
 
 /** Skip the antialiased fringe; sparks sit on painted hull/turret pixels. */
 export const UNIT_HIT_ALPHA_MIN = Math.max(BUILDING_ALPHA_MIN, 80);
@@ -137,6 +133,3 @@ function erodeMask(raw: Uint8Array, w: number, h: number, inset: number): Uint8A
   }
   return out;
 }
-
-/** Re-export so callers can build synthetic maps in tests. */
-export { buildingAlphaOpaqueAt };

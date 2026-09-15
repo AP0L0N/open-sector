@@ -54,6 +54,7 @@ import {
   drawMuzzleBlast,
   drawWindowMuzzle,
   drawRicochetSparks,
+  drawRicochetTrace,
   armorHitLift,
   drawShellTracer,
   drawMoveClick,
@@ -77,6 +78,7 @@ import {
   drawPropSprite,
   drawScoutHead,
   drawUnitSprite,
+  snapHitToUnitSprite,
   spriteFor,
   spriteReady,
   unitHitsBuildingSprite,
@@ -253,13 +255,19 @@ export class MapView {
     caliber?: number;
     blast?: boolean;
     lift?: number;
+    /** Screen-x offset from the world ground projection. */
+    sx?: number;
     window?: boolean;
     x1?: number;
     y1?: number;
     shell?: string;
+    endLift?: number;
+    endSx?: number;
   }[] = [];
   private fxIds = new Set<number>();
   private seenShots = new Set<number>();
+  /** Bounced spark origin, snapped to the same hull pixel as the ricochet FX. */
+  private bounceTrace = new Map<number, { x: number; y: number; sx: number; lift: number }>();
   private moveClicks: { x: number; y: number; at: number }[] = [];
   private occBuildings: {
     x: number;

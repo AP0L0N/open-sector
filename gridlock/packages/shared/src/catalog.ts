@@ -314,8 +314,8 @@ export function reloadSecondsOf(gun: Pick<InfantryGun, "reload">, mul: number): 
 }
 
 /** Trooper primary. Semi-auto 8-round clip. */
-export const RIFLE: InfantryGun = {
-  id: "rifle",
+export const RIFLE = {
+  id: "rifle" as const,
   damage: 12,
   penetration: 6,
   caliber: 8,
@@ -323,11 +323,11 @@ export const RIFLE: InfantryGun = {
   cooldown: 0.9,
   clip: 8,
   reload: 2.8,
-};
+} as const satisfies InfantryGun;
 
 /** Sidearm used when a trooper's shooting arm is broken. */
-export const HANDGUN: InfantryGun = {
-  id: "handgun",
+export const HANDGUN = {
+  id: "handgun" as const,
   damage: 8,
   penetration: 3,
   caliber: 9,
@@ -336,7 +336,7 @@ export const HANDGUN: InfantryGun = {
   cooldown: 0.55,
   clip: 7,
   reload: 1.6,
-};
+} as const satisfies InfantryGun;
 
 /**
  * Rifle / coaxial MG. Fast enough to cross max range in under a tick so the

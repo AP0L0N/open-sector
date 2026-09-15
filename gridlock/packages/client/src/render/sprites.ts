@@ -14,6 +14,7 @@ import {
   rectsOverlap,
   type BuildingAlphaMap,
 } from "./building-hit.js";
+import { snapToUnitHitMask, unitDestMaskFromSheets, unitSpriteDest } from "./unit-hit.js";
 import coreUrl from "../assets/buildings/core.png";
 import dynamoUrl from "../assets/buildings/dynamo.png";
 import smelterUrl from "../assets/buildings/smelter.png";
@@ -488,6 +489,46 @@ export function unitHitsBuildingSprite(
 
 export function spriteReady(def: { image: HTMLImageElement }): boolean {
   return def.image.complete && def.image.naturalWidth > 0;
+}
+
+function unitSheetAlpha(img: HTMLImageElement): BuildingAlphaMap | null {
+  return buildingAlphaMap(img);
+}
+
+/**
+ * Snap a screen-space armor spark onto painted hull/turret pixels.
+ * `ground` is the unit's contact point; `hit` is the candidate spark.
+ */
+export function snapHitToUnitSprite(
+  def: UnitSpriteDef,
+  groundX: number,
+  groundY: number,
+  hitX: number,
+  hitY: number,
+  isoDx: number,
+  isoDy: number,
+  turretDx?: number,
+  turretDy?: number,
+): { x: number; y: number } | null {
+  if (!spriteReady(def) || def.drawSize <= 0 || def.frameSize <= 0) return null;
+  const hullMap = unitSheetAlpha(def.image);
+  if (!hullMap) return null;
+  const dir = isoDirIndex(isoDx, isoDy, def.dirs) % def.dirs;
+  const hull = { map: hullMap, sx: 0, sy: dir * def.frameSize, cell: def.frameSize };
+  let turret: { map: BuildingAlphaMap; sx: number; sy: number; cell: number } | null = null;
+  const gun = def.turret;
+  if (gun && spriteReady(gun)) {
+    const tmap = unitSheetAlpha(gun.image);
+    if (tmap) {
+      const tdir = isoDirIndex(turretDx ?? isoDx, turretDy ?? isoDy, gun.dirs) % gun.dirs;
+      turret = { map: tmap, sx: 0, sy: tdir * gun.frameSize, cell: gun.frameSize };
+    }
+  }
+  const mask = unitDestMaskFromSheets(def.drawSize, hull, turret);
+  const dest = unitSpriteDest(groundX, groundY, def.drawSize, def.contactY);
+  const snap = snapToUnitHitMask(mask, hitX - dest.x, hitY - dest.y);
+  if (!snap) return null;
+  return { x: dest.x + snap.x, y: dest.y + snap.y };
 }
 
 export function drawBuildingSprite(

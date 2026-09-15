@@ -7,6 +7,9 @@ import {
   GAME_SPEED_DEFAULT,
   GAME_SPEED_MAX,
   HANDGUN,
+  RIFLE,
+  RELOAD_MUL_MAX,
+  RELOAD_MUL_MIN,
   SMALL_ARMS_SPEED,
   SPECIAL_COOLDOWN_MIN,
   TANK_MG,
@@ -19,6 +22,7 @@ import {
   BUILDING_TYPES,
   catalog,
   hasMg,
+  infantryGunFor,
   hasScout,
   scoutHpMaxOf,
   SCOUT_HP_MUL,
@@ -139,6 +143,8 @@ describe("injuries", () => {
     assert.equal(isInfantryType("trooper"), true);
     assert.ok(HANDGUN.rangeTiles < catalog("trooper").rangeTiles);
     assert.ok(HANDGUN.damage < catalog("trooper").damage);
+    assert.equal(catalog("trooper").damage, RIFLE.damage);
+    assert.equal(catalog("trooper").cooldown, RIFLE.cooldown);
     assert.equal(isStance("crouch"), true);
     assert.equal(isStance("sit"), false);
     assert.ok(STANCE_SPEED.crawl < STANCE_SPEED.crouch);
@@ -146,6 +152,20 @@ describe("injuries", () => {
     assert.ok(SWIM_SPEED < STANCE_SPEED.stand);
     assert.ok(SWIM_SPEED < STANCE_SPEED.crouch);
     assert.ok(WATER_PATH_COST > 1);
+  });
+});
+
+describe("infantry guns", () => {
+  it("gives the rifle and handgun their own clips and reload clocks", () => {
+    assert.equal(RIFLE.clip, 8);
+    assert.equal(HANDGUN.clip, 7);
+    assert.ok(RIFLE.reload > HANDGUN.reload);
+    assert.ok(RIFLE.reload > RIFLE.cooldown * 2);
+    assert.equal(infantryGunFor({ type: "trooper" })?.id, "rifle");
+    assert.equal(infantryGunFor({ type: "trooper", crits: ["arm"] })?.id, "handgun");
+    assert.equal(infantryGunFor({ type: "warden" }), null);
+    assert.ok(RELOAD_MUL_MIN < 1 && RELOAD_MUL_MAX > 1);
+    assert.ok(RELOAD_MUL_MAX - RELOAD_MUL_MIN <= 0.2);
   });
 });
 
