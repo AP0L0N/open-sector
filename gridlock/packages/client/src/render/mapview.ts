@@ -4,14 +4,18 @@ import {
   cloudScale,
   fires,
   GUARD_CONE_DEG,
+  hasNeighbor,
   isCivilianType,
   isInfantryType,
-  isSmokeShell,
   isStance,
   colorHex,
   entityOnMask,
   facingToIso,
   getMap,
+  neighborMap,
+  seamInset,
+  type HouseLot,
+  type NeighborSides,
   TILE_EMPTY,
   TILE_TREE,
   TILE_WATER,
@@ -56,7 +60,6 @@ import {
   drawRicochetSparks,
   drawRicochetTrace,
   armorHitLift,
-  drawShellTracer,
   drawMoveClick,
   drawWreckFire,
   fxFrameAt,
@@ -258,11 +261,7 @@ export class MapView {
     /** Screen-x offset from the world ground projection. */
     sx?: number;
     window?: boolean;
-    x1?: number;
-    y1?: number;
     shell?: string;
-    endLift?: number;
-    endSx?: number;
   }[] = [];
   private fxIds = new Set<number>();
   private seenShots = new Set<number>();
@@ -281,6 +280,8 @@ export class MapView {
     southY: number;
     footprintW: number;
   }[] = [];
+  /** Live civilian lots: which sides share a neighbor. Isolated houses are absent. */
+  private houseNeighbors = new Map<number, NeighborSides>();
   selected = new Set<number>();
   placeMode = false;
   attackMoveMode = false;
@@ -413,81 +414,47 @@ export class MapView {
     }
     this.bindBounceTraces(match);
     if (this.seenShots.size > 400) this.seenShots.clear();
-    const flyingFrom = new Set(
-      match.projectiles.filter((p) => isShellCaliber(p.caliber)).map((p) => p.fromId),
-    );
     for (const i of match.impacts ?? []) {
-      if (!isShellCaliber(i.caliber) || i.fromId == null || flyingFrom.has(i.fromId)) continue;
+      if (!isShellCaliber(i.caliber) || i.fromId == null) continue;
+      if (i.kind === "puff" && i.shell !== "smoke") continue;
       const shooter = match.entities.find((e) => e.id === i.fromId);
-      const sp = Math.hypot(i.vx, i.vy) || 1;
-      const x0 = shooter?.x ?? i.x - (i.vx / sp) * 48;
-      const y0 = shooter?.y ?? i.y - (i.vy / sp) * 48;
-      const hull = this.fx.find((f) => f.id === i.id);
+      if (!shooter) continue;
+      const dx = i.x - shooter.x;
+      const dy = i.y - shooter.y;
+      const sp = Math.hypot(dx, dy) || 1;
+      const reach = catalog(shooter.type).radius * UNIT_VISUAL_SCALE + 10;
       this.addFx({
-        id: i.id + 9_000_000,
-        kind: "tracer",
-        x: x0,
-        y: y0,
-        vx: i.vx,
-        vy: i.vy,
-        x1: i.x,
-        y1: i.y,
+        id: i.id + 8_000_000,
+        kind: "muzzle",
+        x: shooter.x + (dx / sp) * reach,
+        y: shooter.y + (dy / sp) * reach,
+        vx: dx,
+        vy: dy,
         at: now,
         caliber: i.caliber,
-        endSx: hull?.sx ?? 0,
-        endLift: hull?.lift ?? 10,
       });
-      if (shooter) {
-        const reach = catalog(shooter.type).radius * UNIT_VISUAL_SCALE + 10;
-        this.addFx({
-          id: i.id + 8_000_000,
-          kind: "muzzle",
-          x: shooter.x + (i.vx / sp) * reach,
-          y: shooter.y + (i.vy / sp) * reach,
-          vx: i.vx,
-          vy: i.vy,
-          at: now,
-          caliber: i.caliber,
-        });
-      }
     }
     for (const p of match.projectiles) {
       if (p.bounced || this.seenShots.has(p.id)) continue;
       const shooter = match.entities.find((e) => e.id === p.fromId);
-      const shell = isShellCaliber(p.caliber);
       const fromGarrison =
-        !!shooter?.garrisonedIn || (!shooter && !shell && !!this.houseAt(p.x, p.y));
-      if (!shell && !fromGarrison) continue;
+        !!shooter?.garrisonedIn || (!shooter && !isShellCaliber(p.caliber) && !!this.houseAt(p.x, p.y));
+      if (!fromGarrison) continue;
       this.seenShots.add(p.id);
-      const sp = Math.hypot(p.vx, p.vy) || 1;
-      const house = fromGarrison ? this.houseAt(p.x, p.y) ?? (shooter?.garrisonedIn
+      const house = this.houseAt(p.x, p.y) ?? (shooter?.garrisonedIn
         ? match.entities.find((e) => e.id === shooter.garrisonedIn)
-        : undefined) : undefined;
-      if (fromGarrison) {
-        this.addFx({
-          id: p.id + 8_000_000,
-          kind: "muzzle",
-          x: p.x,
-          y: p.y,
-          vx: p.vx,
-          vy: p.vy,
-          at: now,
-          caliber: p.caliber,
-          lift: house ? garrisonWindowLift(house.type, p.id) : 22,
-          window: true,
-        });
-        continue;
-      }
-      const reach = shooter ? catalog(shooter.type).radius * UNIT_VISUAL_SCALE + 10 : 16;
+        : undefined);
       this.addFx({
         id: p.id + 8_000_000,
         kind: "muzzle",
-        x: (shooter?.x ?? p.x) + (p.vx / sp) * reach,
-        y: (shooter?.y ?? p.y) + (p.vy / sp) * reach,
+        x: p.x,
+        y: p.y,
         vx: p.vx,
         vy: p.vy,
         at: now,
         caliber: p.caliber,
+        lift: house ? garrisonWindowLift(house.type, p.id) : 22,
+        window: true,
       });
     }
     if (this.wreckBornAt.size > 0) {
@@ -1637,6 +1604,7 @@ export class MapView {
     }
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "low";
+    this.cacheHouseGroups();
     this.cacheOccluders();
 
     const liveIds = new Set(this.curr.entities.map((e) => e.id));
@@ -1671,39 +1639,30 @@ export class MapView {
     for (const it of items) it.run();
 
     for (const p of this.curr.projectiles) {
-      const bounced = p.bounced === true;
+      if (p.bounced !== true) continue;
       const shell = isShellCaliber(p.caliber);
-      if (!bounced && !shell) continue;
       const t = Math.min(1, (performance.now() - this.snapAt) / 100);
       const prevP = this.prev?.projectiles.find((q) => q.id === p.id);
       const wx = prevP ? prevP.x + (p.x - prevP.x) * t : p.x;
       const wy = prevP ? prevP.y + (p.y - prevP.y) * t : p.y;
       const a = this.toScreen(wx, wy);
-      const lift = bounced ? 7 : 10;
-      if (bounced) {
-        const origin = this.bounceTrace.get(p.id);
-        if (origin) {
-          const o = this.toScreen(origin.x, origin.y);
-          const flown = Math.hypot(wx - origin.x, wy - origin.y);
-          const headLift = origin.lift * (1 - Math.min(1, flown / 56));
-          drawRicochetTrace(
-            ctx,
-            o.x + origin.sx,
-            o.y - origin.lift,
-            a.x,
-            a.y - headLift,
-            shell,
-          );
-        } else {
-          const sp = Math.hypot(p.vx, p.vy) || 1;
-          const tail = this.toScreen(wx - (p.vx / sp) * 8, wy - (p.vy / sp) * 8);
-          drawRicochetTrace(ctx, tail.x, tail.y - lift, a.x, a.y - lift, shell);
-        }
-      } else if (shell) {
+      const origin = this.bounceTrace.get(p.id);
+      if (origin) {
+        const o = this.toScreen(origin.x, origin.y);
+        const flown = Math.hypot(wx - origin.x, wy - origin.y);
+        const headLift = origin.lift * (1 - Math.min(1, flown / 56));
+        drawRicochetTrace(
+          ctx,
+          o.x + origin.sx,
+          o.y - origin.lift,
+          a.x,
+          a.y - headLift,
+          shell,
+        );
+      } else {
         const sp = Math.hypot(p.vx, p.vy) || 1;
-        const tailLen = isSmokeShell(p.shell) ? 22 : 36;
-        const tail = this.toScreen(wx - (p.vx / sp) * tailLen, wy - (p.vy / sp) * tailLen);
-        drawShellTracer(ctx, tail.x, tail.y - lift, a.x, a.y - lift);
+        const tail = this.toScreen(wx - (p.vx / sp) * 8, wy - (p.vy / sp) * 8);
+        drawRicochetTrace(ctx, tail.x, tail.y - 7, a.x, a.y - 7, shell);
       }
     }
     this.drawSmokeClouds();
@@ -2066,6 +2025,33 @@ export class MapView {
     return false;
   }
 
+  private cacheHouseGroups(): void {
+    const lots: HouseLot[] = [];
+    for (const e of this.curr.entities) {
+      if (e.kind !== "building" || e.hp <= 0 || !isCivilianType(e.type)) continue;
+      lots.push({ id: e.id, x: e.tileX, y: e.tileY, w: e.tileW, h: e.tileH });
+    }
+    this.houseNeighbors = neighborMap(lots);
+  }
+
+  /** Yard grass under a grouped house, shown in the seam where fences are clipped. */
+  private static readonly YARD_GRASS = "#6e8c42";
+
+  private clipIsoRect(x: number, y: number, w: number, h: number, elev: number): void {
+    const n = this.toScreen(x, y, elev);
+    const e = this.toScreen(x + w, y, elev);
+    const s = this.toScreen(x + w, y + h, elev);
+    const west = this.toScreen(x, y + h, elev);
+    const ctx = this.ctx;
+    ctx.beginPath();
+    ctx.moveTo(n.x, n.y);
+    ctx.lineTo(e.x, e.y);
+    ctx.lineTo(s.x, s.y);
+    ctx.lineTo(west.x, west.y);
+    ctx.closePath();
+    ctx.clip();
+  }
+
   private drawBuilding(e: EntityView, ghost = false): void {
     const ts = this.ts();
     const ctx = this.ctx;
@@ -2078,15 +2064,26 @@ export class MapView {
     const hex = this.ownerColor(e);
     const dim = ghost || !this.buildingLit(e);
     const spr = buildingSpriteFor(e.type, e.facing);
+    const north = this.toScreen(x, y, elev);
     const south = this.toScreen(x + bw, y + bh, elev);
     const east = this.toScreen(x + bw, y, elev);
     const west = this.toScreen(x, y + bh, elev);
     const bar = this.toScreen(x + bw / 2, y + bh / 2, elev);
     let stack = { x: bar.x, y: bar.y - ez - 8 };
+    const sides = !ghost ? this.houseNeighbors.get(e.id) : undefined;
     if (spr && spriteReady(spr)) {
       const footprintW = east.x - west.x;
       ctx.save();
       ctx.globalAlpha = dim ? 0.5 : 1;
+      if (sides && hasNeighbor(sides)) {
+        ctx.fillStyle = MapView.YARD_GRASS;
+        this.fillQuad(north, east, south, west);
+        const inset = seamInset(
+          { id: e.id, x: e.tileX, y: e.tileY, w: e.tileW, h: e.tileH },
+          sides,
+        );
+        this.clipIsoRect(inset.x * ts, inset.y * ts, inset.w * ts, inset.h * ts, elev);
+      }
       drawBuildingSprite(ctx, spr, south.x, south.y, footprintW);
       ctx.restore();
       stack = buildingStackAt(spr, south.x, south.y, footprintW);
@@ -2443,17 +2440,6 @@ export class MapView {
           tiny + t * (smokeBurst ? 28 : 5),
           (smokeBurst ? 0.9 : 0.8) - t * 0.7,
         );
-      } else if (f.kind === "tracer" && f.x1 != null && f.y1 != null) {
-        const a = this.toScreen(f.x, f.y);
-        const b = this.toScreen(f.x1, f.y1);
-        const headT = Math.min(1, t / 0.55);
-        const endSx = f.endSx ?? 0;
-        const endLift = f.endLift ?? 10;
-        const hx = a.x + (b.x + endSx - a.x) * headT;
-        const hy = a.y + (b.y - endLift - a.y) * headT;
-        const tx = a.x - 10 * (1 - headT);
-        const ty = a.y - 10;
-        drawShellTracer(ctx, tx, ty, hx, hy, t);
       } else if (f.kind === "ricochet") {
         drawRicochetSparks(ctx, x, y, dirX, dirY, t, f.id, f.caliber);
       } else if (f.kind === "miss") {

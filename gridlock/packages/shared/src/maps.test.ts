@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { HEIGHT_BASE, HEIGHT_MAX, HEIGHT_STEP_MAX, TILE_SUBDIV } from "./catalog.js";
-import { MAPS, TILE_BLOCKED, TILE_TREE, TILE_WATER, heightAt, maxHeightOf, tileAt } from "./maps.js";
+import { HEIGHT_BASE, HEIGHT_MAX, HEIGHT_STEP_MAX, TILE_SUBDIV, catalog } from "./catalog.js";
+import { houseGroups, lotsEdgeAdjacent, type HouseLot } from "./house-group.js";
+import { MAPS, TILE_BLOCKED, TILE_TREE, TILE_WATER, heightAt, maxHeightOf, tileAt, type MapDef } from "./maps.js";
+
+function mapLots(map: MapDef): HouseLot[] {
+  return map.features.map((f, i) => {
+    const d = catalog(f.type);
+    return { id: i, x: f.x, y: f.y, w: d.tileW, h: d.tileH };
+  });
+}
 
 describe("maps", () => {
   it("ships two maps with 8 spawns", () => {
@@ -124,6 +132,44 @@ describe("maps", () => {
       "cardinal facing",
     );
     assert.ok(facings.size >= 2, `houses should not all face the same way (${[...facings]})`);
+  });
+
+  it("places some houses in edge-adjacent groups that share a facing", () => {
+    for (const map of Object.values(MAPS)) {
+      const lots = mapLots(map);
+      assert.ok(lots.length >= 4, `${map.id} houses`);
+      const groups = houseGroups(lots);
+      const clustered = groups.filter((g) => g.length >= 2);
+      assert.ok(clustered.length >= 1, `${map.id} expected a house group`);
+      assert.ok(
+        groups.some((g) => g.length === 1),
+        `${map.id} still has isolated houses`,
+      );
+      let pairs = 0;
+      for (let i = 0; i < lots.length; i++) {
+        for (let j = i + 1; j < lots.length; j++) {
+          if (lotsEdgeAdjacent(lots[i]!, lots[j]!)) pairs++;
+        }
+      }
+      assert.ok(pairs >= 1, `${map.id} adjacent pairs ${pairs}`);
+      for (const g of clustered) {
+        const face = map.features[g[0]!.id]!.facing;
+        assert.ok(
+          g.every((h) => map.features[h.id]!.facing === face),
+          `${map.id} group facing`,
+        );
+        const x0 = Math.min(...g.map((h) => h.x));
+        const y0 = Math.min(...g.map((h) => h.y));
+        const x1 = Math.max(...g.map((h) => h.x + h.w));
+        const y1 = Math.max(...g.map((h) => h.y + h.h));
+        const area = g.reduce((n, h) => n + h.w * h.h, 0);
+        assert.equal(area, (x1 - x0) * (y1 - y0), `${map.id} group is a packed rectangle`);
+        const z = heightAt(map, g[0]!.x, g[0]!.y);
+        for (const h of g) {
+          assert.equal(heightAt(map, h.x, h.y), z, `${map.id} group lot height`);
+        }
+      }
+    }
   });
 
   it("shapes scrap-yard ponds as irregular blobs, not filled rectangles", () => {

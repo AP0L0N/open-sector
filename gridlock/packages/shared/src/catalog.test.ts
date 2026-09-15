@@ -96,8 +96,8 @@ describe("warden ammo", () => {
   });
 });
 
-describe("small-arms flight", () => {
-  it("crosses max range in under a sim tick so the round is not a tracer", () => {
+describe("instant rounds", () => {
+  it("rifle, coaxial MG, and 75mm all cross max range in under a sim tick", () => {
     const rifle = catalog("trooper");
     assert.equal(rifle.projectileSpeed, SMALL_ARMS_SPEED);
     assert.equal(TANK_MG.projectileSpeed, SMALL_ARMS_SPEED);
@@ -105,13 +105,11 @@ describe("small-arms flight", () => {
     assert.ok(rifle.projectileSpeed * TICK_DT >= rifleRange, `rifle ${rifle.projectileSpeed}`);
     const mgRange = catalog("warden").rangeTiles * TILE_SIZE;
     assert.ok(TANK_MG.projectileSpeed * TICK_DT >= mgRange, `mg ${TANK_MG.projectileSpeed}`);
-  });
-
-  it("lets a 75mm take more than a tick to cross max range so the round is a tracer", () => {
     const w = catalog("warden");
     assert.equal(w.projectileSpeed, TANK_SHELL_SPEED);
+    assert.equal(TANK_SHELL_SPEED, SMALL_ARMS_SPEED);
     const range = w.rangeTiles * TILE_SIZE;
-    assert.ok(w.projectileSpeed * TICK_DT < range, `shell ${w.projectileSpeed} range ${range}`);
+    assert.ok(w.projectileSpeed * TICK_DT >= range, `shell ${w.projectileSpeed} range ${range}`);
     assert.ok(SHELLS.smoke.damage === 0 && SHELLS.smoke.caliber === 75);
   });
 });

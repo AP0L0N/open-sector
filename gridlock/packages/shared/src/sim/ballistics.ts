@@ -16,7 +16,7 @@ export const RICOCHET_TRAVEL_MIN = 8;
 /** Longest bounced spark before it hits dirt. */
 export const RICOCHET_TRAVEL = 150;
 /**
- * Small-arms inbound is faster than a visible tracer. Cap the bounce so the
+ * Inbound rounds are faster than a visible tracer. Cap the bounce so the
  * spark still zips instead of vanishing in a single tick.
  */
 export const RICOCHET_SPARK_SPEED = 720;

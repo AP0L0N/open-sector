@@ -63,45 +63,11 @@ export function fxLifeMs(kind: string, blast?: boolean): number {
   if (kind === "glance") return 260;
   if (kind === "ricochet") return 480;
   if (kind === "miss") return 440;
-  if (kind === "tracer") return 180;
   return 400;
 }
 
 export function isShellCaliber(caliber: number | undefined): boolean {
   return (caliber ?? 0) >= 40;
-}
-
-/** In-flight 75mm streak: glow, core, hot tip. t=0 is full, t=1 is gone. */
-export function drawShellTracer(
-  ctx: CanvasRenderingContext2D,
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-  t = 0,
-): void {
-  const fade = Math.max(0, 1 - t);
-  if (fade <= 0) return;
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  ctx.lineCap = "round";
-  ctx.strokeStyle = `rgba(255, 150, 48, ${0.32 * fade})`;
-  ctx.lineWidth = 5.4;
-  ctx.beginPath();
-  ctx.moveTo(x0, y0);
-  ctx.lineTo(x1, y1);
-  ctx.stroke();
-  ctx.strokeStyle = `rgba(255, 224, 140, ${0.95 * fade})`;
-  ctx.lineWidth = 2.15;
-  ctx.beginPath();
-  ctx.moveTo(x0, y0);
-  ctx.lineTo(x1, y1);
-  ctx.stroke();
-  ctx.fillStyle = `rgba(255, 252, 236, ${fade})`;
-  ctx.beginPath();
-  ctx.arc(x1, y1, 2.5, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
 }
 
 function rng(seed: number): () => number {
@@ -333,8 +299,8 @@ export function drawRicochetSparks(
 ): void {
   const shell = isShellCaliber(caliber);
   const rnd = rng(seed ^ 0xa5a5);
-  drawContactFlash(ctx, x, y, t, shell ? 5 : 2.4);
-  drawShockRing(ctx, x, y, Math.min(1, t / 0.5), shell ? 12 : 6, shell ? 0.4 : 0.2);
+  drawContactFlash(ctx, x, y, t, shell ? 6.2 : 1.9);
+  drawShockRing(ctx, x, y, Math.min(1, t / 0.5), shell ? 14 : 5, shell ? 0.48 : 0.16);
   drawSparkBurst(
     ctx,
     x,
@@ -343,8 +309,8 @@ export function drawRicochetSparks(
     dirY,
     t,
     seed,
-    shell ? 16 : 5,
-    (shell ? 18 : 8) + rnd() * (shell ? 36 : 22),
+    shell ? 18 : 4,
+    (shell ? 24 : 6) + rnd() * (shell ? 40 : 16),
     true,
   );
 }
@@ -364,7 +330,7 @@ export function drawRicochetTrace(
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   ctx.strokeStyle = shell ? "rgba(255, 210, 120, 0.95)" : "rgba(255, 236, 176, 0.92)";
-  ctx.lineWidth = shell ? 1.85 : 1.15;
+  ctx.lineWidth = shell ? 2.2 : 0.95;
   ctx.lineCap = "butt";
   ctx.beginPath();
   ctx.moveTo(x0, y0);

@@ -556,6 +556,32 @@ describe("FOV islands", () => {
     assert.equal(tileOnMask(mask, w, 5, 5), true, "main blob stays");
   });
 
+  it("does not fill leftover tiles of a 14-tile hole", () => {
+    const w = 16;
+    const h = 16;
+    const mask = new Uint8Array(w * h);
+    fillRect(mask, w, 1, 1, 14, 14, 1);
+    fillRect(mask, w, 4, 4, 7, 6, 0);
+    mask[7 * w + 4] = 0;
+    mask[7 * w + 5] = 0;
+    sealFovIslands(mask, w, h);
+    assert.equal(tileOnMask(mask, w, 4, 4), false);
+    assert.equal(tileOnMask(mask, w, 7, 6), false);
+    assert.equal(tileOnMask(mask, w, 5, 7), false);
+  });
+
+  it("leaves a large fog ocean around a central blob", () => {
+    const w = 64;
+    const h = 64;
+    const mask = new Uint8Array(w * h);
+    fillRect(mask, w, 20, 20, 43, 43, 1);
+    sealFovIslands(mask, w, h);
+    assert.equal(tileOnMask(mask, w, 30, 30), true);
+    assert.equal(tileOnMask(mask, w, 19, 30), false);
+    assert.equal(tileOnMask(mask, w, 0, 0), false);
+    assert.equal(tileOnMask(mask, w, 63, 63), false);
+  });
+
   it("does nothing when the limit is 0", () => {
     const w = 6;
     const h = 6;

@@ -1,5 +1,5 @@
 import { HAULER_CARGO, HAULER_HARVEST_SECONDS, HAULER_UNLOAD_SECONDS } from "../catalog.js";
-import { scrapAt, tileCenter, tileIndex, worldToTile } from "./geo.js";
+import { scrapAt, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -79,11 +79,18 @@ function tickHaulerUnload(state: MatchState, e: Entity, dt: number): void {
     e.state = "idle";
     return;
   }
-  const dock = dockPoint(state, smelter);
+  const dock = smelterDock(state, smelter);
+  if (!dock) {
+    e.state = "idle";
+    return;
+  }
   if (Math.hypot(e.x - dock.x, e.y - dock.y) > state.tileSize * 0.75) {
     e.state = "unload";
     e.order = { kind: "unload", targetId: smelter.id };
-    if (e.waypoints.length === 0) setPath(state, e, dock.x, dock.y);
+    const last = e.waypoints[e.waypoints.length - 1];
+    if (!last || Math.hypot(last.x - dock.x, last.y - dock.y) > state.tileSize) {
+      setPath(state, e, dock.x, dock.y);
+    }
     return;
   }
   e.waypoints = [];
@@ -99,12 +106,23 @@ function tickHaulerUnload(state: MatchState, e: Entity, dt: number): void {
   }
 }
 
-function dockPoint(state: MatchState, smelter: Entity): { x: number; y: number } {
+/** First walkable pad around a Smelter. East, then west, south, north. */
+export function smelterDock(
+  state: MatchState,
+  smelter: Pick<Entity, "tileX" | "tileY" | "tileW" | "tileH">,
+): { x: number; y: number } | null {
   const ts = state.tileSize;
-  return {
-    x: (smelter.tileX + smelter.tileW) * ts + ts / 2,
-    y: (smelter.tileY + smelter.tileH / 2) * ts,
-  };
+  const { tileX: tx, tileY: ty, tileW: tw, tileH: th } = smelter;
+  const spots = [
+    { x: (tx + tw) * ts + ts / 2, y: (ty + th / 2) * ts },
+    { x: tx * ts - ts / 2, y: (ty + th / 2) * ts },
+    { x: (tx + tw / 2) * ts, y: (ty + th) * ts + ts / 2 },
+    { x: (tx + tw / 2) * ts, y: ty * ts - ts / 2 },
+  ];
+  for (const p of spots) {
+    if (walkable(state, worldToTile(p.x, ts), worldToTile(p.y, ts), "hauler")) return p;
+  }
+  return null;
 }
 
 function nearestOwned(state: MatchState, from: Entity, type: Entity["type"]): Entity | null {

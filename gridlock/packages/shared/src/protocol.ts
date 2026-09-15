@@ -195,7 +195,7 @@ export interface ImpactView {
   caliber?: number;
   /** Ammo cook-off / structure collapse. Fireball, not a kinetic spark. */
   blast?: boolean;
-  /** Shooter. Used to draw a tracer when the round never made a snapshot. */
+  /** Shooter. Used to place the muzzle flash when the round never made a snapshot. */
   fromId?: number;
   /** Loaded 75mm type. Omitted for small-arms and crush. */
   shell?: ShellType;

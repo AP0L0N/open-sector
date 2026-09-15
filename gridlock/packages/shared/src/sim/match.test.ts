@@ -642,6 +642,34 @@ describe("harvest", () => {
     );
     assert.ok(smelter.hp > 0);
   });
+
+  it("unloads on another side when the east dock is blocked", () => {
+    const { state } = twoPlayerMatch();
+    const player = state.players.get("A")!;
+    const before = player.scrap;
+    const ts = state.tileSize;
+    const sm = catalog("smelter");
+    const smelter = makeEntity(state, "smelter", "A", tileCenter(8, ts), tileCenter(8, ts), {
+      tileX: 8,
+      tileY: 8,
+    });
+    makeEntity(state, "dynamo", "A", tileCenter(8 + sm.tileW, ts), tileCenter(8, ts), {
+      tileX: 8 + sm.tileW,
+      tileY: 8,
+    });
+    const hx = 8 + Math.floor(sm.tileW / 2);
+    const hy = 8 + sm.tileH + 2;
+    const hauler = makeEntity(state, "hauler", "A", tileCenter(hx, ts), tileCenter(hy, ts));
+    hauler.cargo = HAULER_CARGO;
+    hauler.state = "unload";
+    hauler.autoHarvest = true;
+    ticks(state, 160);
+    assert.ok(
+      player.scrap >= before + HAULER_CARGO,
+      `scrap ${player.scrap} vs ${before} (need at least +${HAULER_CARGO})`,
+    );
+    assert.ok(smelter.hp > 0);
+  });
 });
 
 describe("production speed", () => {

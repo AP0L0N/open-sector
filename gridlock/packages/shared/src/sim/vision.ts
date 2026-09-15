@@ -55,6 +55,22 @@ const FOV_N8: readonly [number, number][] = [
   [1, 1],
 ];
 
+const FOV_SEEN_CLEAR = 0;
+const FOV_SEEN_SMALL = 1;
+const FOV_SEEN_LARGE = 2;
+
+let fovSeen = new Uint8Array(0);
+let fovStack = new Uint32Array(0);
+let fovSmall = new Uint32Array(0);
+
+function ensureFovScratch(tiles: number, limit: number): void {
+  if (fovSeen.length < tiles) {
+    fovSeen = new Uint8Array(tiles);
+    fovStack = new Uint32Array(tiles);
+  }
+  if (fovSmall.length < limit + 1) fovSmall = new Uint32Array(limit + 1);
+}
+
 /** Fill unseen islands, then hide visible ones, of `limit` tiles or fewer. */
 export function sealFovIslands(
   mask: Uint8Array,
@@ -63,27 +79,64 @@ export function sealFovIslands(
   limit = FOV_ISLAND_LIMIT,
 ): void {
   if (limit <= 0) return;
-  recolorSmallIslands(mask, width, height, 0, 1, limit);
-  recolorSmallIslands(mask, width, height, 1, 0, limit);
+  const tiles = width * height;
+  ensureFovScratch(tiles, limit);
+  recolorSmallIslands(mask, width, height, tiles, 0, 1, limit);
+  recolorSmallIslands(mask, width, height, tiles, 1, 0, limit);
+}
+
+function touchesOther(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  from: number,
+): boolean {
+  for (const [dx, dy] of FOV_N8) {
+    const nx = x + dx;
+    const ny = y + dy;
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+    if (mask[ny * width + nx] !== from) return true;
+  }
+  return false;
 }
 
 function recolorSmallIslands(
   mask: Uint8Array,
   width: number,
   height: number,
+  tiles: number,
   from: number,
   to: number,
   limit: number,
 ): void {
-  const seen = new Uint8Array(width * height);
+  const seen = fovSeen;
+  const stack = fovStack;
+  const small = fovSmall;
+  seen.fill(FOV_SEEN_CLEAR, 0, tiles);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const start = y * width + x;
-      if (seen[start] || mask[start] !== from) continue;
-      const cells: number[] = [start];
-      seen[start] = 1;
-      for (let i = 0; i < cells.length; i++) {
-        const cur = cells[i]!;
+      if (seen[start] !== FOV_SEEN_CLEAR || mask[start] !== from) continue;
+      if (!touchesOther(mask, width, height, x, y, from)) continue;
+      seen[start] = FOV_SEEN_SMALL;
+      stack[0] = start;
+      let nStack = 1;
+      let nSmall = 0;
+      let large = false;
+      while (nStack > 0) {
+        const cur = stack[--nStack]!;
+        if (large) {
+          seen[cur] = FOV_SEEN_LARGE;
+          continue;
+        }
+        small[nSmall++] = cur;
+        if (nSmall > limit) {
+          large = true;
+          seen[cur] = FOV_SEEN_LARGE;
+          continue;
+        }
         const cx = cur % width;
         const cy = (cur / width) | 0;
         for (const [dx, dy] of FOV_N8) {
@@ -91,13 +144,22 @@ function recolorSmallIslands(
           const ny = cy + dy;
           if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
           const ni = ny * width + nx;
-          if (seen[ni] || mask[ni] !== from) continue;
-          seen[ni] = 1;
-          cells.push(ni);
+          if (mask[ni] !== from) continue;
+          const mark = seen[ni];
+          if (mark === FOV_SEEN_LARGE) {
+            large = true;
+            break;
+          }
+          if (mark !== FOV_SEEN_CLEAR) continue;
+          seen[ni] = FOV_SEEN_SMALL;
+          stack[nStack++] = ni;
         }
       }
-      if (cells.length > limit) continue;
-      for (const i of cells) mask[i] = to;
+      if (large) {
+        for (let i = 0; i < nSmall && i <= limit; i++) seen[small[i]!] = FOV_SEEN_LARGE;
+        continue;
+      }
+      for (let i = 0; i < nSmall; i++) mask[small[i]!] = to;
     }
   }
 }

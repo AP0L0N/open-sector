@@ -502,7 +502,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     p.ignoreId = e.id;
     p.bounced = true;
     let sp = Math.hypot(p.vx, p.vy) || 1;
-    if (p.caliber < 40 && sp > RICOCHET_SPARK_SPEED) {
+    if (sp > RICOCHET_SPARK_SPEED) {
       p.vx = (p.vx / sp) * RICOCHET_SPARK_SPEED;
       p.vy = (p.vy / sp) * RICOCHET_SPARK_SPEED;
       sp = RICOCHET_SPARK_SPEED;

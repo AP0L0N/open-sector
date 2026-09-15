@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { TICK_DT, catalog } from "../catalog.js";
+import { TICK_DT, catalog, isCivilianType } from "../catalog.js";
 import { TILE_EMPTY } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { groupMovePace, groupMoveTargets, unitClearance } from "./formation.js";
-import { makeEntity, tileCenter, walkable, worldToTile } from "./geo.js";
+import { destroyEntity, makeEntity, tileCenter, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -25,6 +25,9 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
   const state = createMatch(room, started.value);
+  for (const e of [...state.entities.values()]) {
+    if (isCivilianType(e.type)) destroyEntity(state, e);
+  }
   return { state, a: "A", b: "B" };
 }
 

@@ -141,7 +141,7 @@ export const TANK_GUN_CLIMB = TILE_SUBDIV;
 export const INFANTRY_SIGHT_TILES = t(12);
 /**
  * After painting FOV, fill unseen 8-connected islands and hide visible ones
- * of this many tiles or fewer. Set to 0 to disable (reverts to raw LOS).
+ * of this many tiles or fewer. Walks FOV borders only. Set to 0 to disable.
  */
 export const FOV_ISLAND_LIMIT = 12;
 /**
@@ -341,15 +341,12 @@ export const HANDGUN = {
 } as const satisfies InfantryGun;
 
 /**
- * Rifle / coaxial MG. Fast enough to cross max range in under a tick so the
- * round itself is not a visible tracer — sparks only after an armor bounce.
+ * Rifle / coaxial MG / 75mm. Fast enough to cross max range in under a tick so
+ * the round itself is not a visible tracer — sparks only after an armor bounce.
  */
 export const SMALL_ARMS_SPEED = 10000;
-/**
- * 75mm flight. Slow enough to live across several sim ticks so the round
- * reads as a tracer instead of vanishing in the fire tick.
- */
-export const TANK_SHELL_SPEED = 520;
+/** Same as small-arms: 75mm lands in the fire tick. */
+export const TANK_SHELL_SPEED = SMALL_ARMS_SPEED;
 /** Seconds a 75mm smoke screen lasts. */
 export const SMOKE_SECONDS = 16;
 /** Ellipse half-length along the shot, in gameplay tiles. */

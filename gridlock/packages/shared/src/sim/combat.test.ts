@@ -4,6 +4,7 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { SHELLS, TICK_DT, catalog, isCivilianType } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
+import { RICOCHET_SPARK_SPEED } from "./ballistics.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
 import { enterGarrison } from "./garrison.js";
 import { weaponRangeWorld } from "./elevation.js";
@@ -1073,5 +1074,41 @@ describe("armor impact scatter", () => {
       assert.ok(Math.min(...samples.puffDist) < 55, `shell short bounce min=${Math.min(...samples.puffDist)}`);
       assert.ok(Math.max(...samples.puffDist) > 80, `shell long bounce max=${Math.max(...samples.puffDist)}`);
     }
+  });
+
+  it("caps bounced 75mm sparks to the same zip speed as rifles", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    stripOwner(state, "A");
+    stripOwner(state, "B");
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "B", tileCenter(40, ts), tileCenter(24, ts));
+    tank.facing = 0;
+    const gun = catalog("warden");
+    const a = (48 * Math.PI) / 180;
+    const ux = -Math.cos(a);
+    const uy = -Math.sin(a);
+    let bounced = 0;
+    for (let i = 0; i < 24; i++) {
+      state.projectiles = [];
+      state.impacts = [];
+      fireShell(state, {
+        x: tank.x - ux * 36,
+        y: tank.y - uy * 36,
+        vx: ux * gun.projectileSpeed,
+        vy: uy * gun.projectileSpeed,
+        damage: gun.damage,
+        penetration: gun.penetration,
+        caliber: gun.caliber,
+      });
+      tickProjectiles(state, TICK_DT);
+      for (const p of state.projectiles) {
+        if (!p.bounced) continue;
+        bounced++;
+        const sp = Math.hypot(p.vx, p.vy);
+        assert.ok(sp <= RICOCHET_SPARK_SPEED + 1e-6, `spark ${sp} inbound ${gun.projectileSpeed}`);
+      }
+    }
+    assert.ok(bounced > 0, "expected at least one 75mm bounce");
   });
 });

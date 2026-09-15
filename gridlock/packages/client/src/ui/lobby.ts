@@ -1,11 +1,13 @@
 import {
   COLORS,
+  catalog,
   colorHex,
   getMap,
+  hasNeighbor,
   heightAt,
   isoLift,
   listMaps,
-  tileDiamond,
+  neighborMap,
   usedColors,
   usedSpawns,
   waitingReason,
@@ -45,15 +47,27 @@ function drawPreview(canvas: HTMLCanvasElement, mapId: string, slots: Slot[]): v
     y: (p.y - bake.originY) * scale + oy,
   });
   const lift = (p: IsoPt, z: number): IsoPt => to({ x: p.x, y: p.y - z });
-  for (const f of map.features ?? []) {
-    const d = tileDiamond(f.x, f.y, map.tileSize);
+  const ts = map.tileSize;
+  const neighbors = neighborMap(
+    (map.features ?? []).map((f, i) => {
+      const d = catalog(f.type);
+      return { id: i, x: f.x, y: f.y, w: d.tileW, h: d.tileH };
+    }),
+  );
+  for (const [i, f] of (map.features ?? []).entries()) {
+    const d = catalog(f.type);
     const ez = 6;
-    ctx.fillStyle = "#b08968";
+    const n = worldToIso(f.x * ts, f.y * ts, ts);
+    const e = worldToIso((f.x + d.tileW) * ts, f.y * ts, ts);
+    const s = worldToIso((f.x + d.tileW) * ts, (f.y + d.tileH) * ts, ts);
+    const west = worldToIso(f.x * ts, (f.y + d.tileH) * ts, ts);
+    const sides = neighbors.get(i);
+    ctx.fillStyle = sides && hasNeighbor(sides) ? "#c4a574" : "#b08968";
     ctx.beginPath();
-    ctx.moveTo(lift(d.n, ez).x, lift(d.n, ez).y);
-    ctx.lineTo(lift(d.e, ez).x, lift(d.e, ez).y);
-    ctx.lineTo(lift(d.s, 0).x, lift(d.s, 0).y);
-    ctx.lineTo(lift(d.w, 0).x, lift(d.w, 0).y);
+    ctx.moveTo(lift(n, ez).x, lift(n, ez).y);
+    ctx.lineTo(lift(e, ez).x, lift(e, ez).y);
+    ctx.lineTo(lift(s, 0).x, lift(s, 0).y);
+    ctx.lineTo(lift(west, 0).x, lift(west, 0).y);
     ctx.closePath();
     ctx.fill();
   }
