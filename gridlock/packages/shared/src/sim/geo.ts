@@ -1,15 +1,18 @@
 import {
   catalog,
+  infantryGunFor,
   isArmoredType,
   isInfantryType,
   isMotorVehicle,
   MAX_UNIT_RADIUS,
+  rollReloadMul,
   scoutHpMaxOf,
   SCRAP_TILE_YIELD,
   UNIT_SPACE_PAD,
   type EntityType,
 } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_SCRAP, TILE_TREE, TILE_WATER, type MapDef } from "../maps.js";
+import { nextRand } from "./rng.js";
 import type { Entity, MatchState } from "./types.js";
 
 export function tileIndex(state: MatchState, x: number, y: number): number {
@@ -385,6 +388,7 @@ export function makeEntity(
   opts?: { tileX?: number; tileY?: number; facing?: number },
 ): Entity {
   const def = catalog(type);
+  const gun = infantryGunFor({ type, crits: [] });
   const tileX = opts?.tileX ?? worldToTile(x, state.tileSize);
   const tileY = opts?.tileY ?? worldToTile(y, state.tileSize);
   const id = state.nextId++;
@@ -409,6 +413,9 @@ export function makeEntity(
     order: null,
     waypoints: [],
     cooldown: 0,
+    clip: gun?.clip ?? 0,
+    reload: 0,
+    reloadMul: gun ? rollReloadMul(() => nextRand(state)) : 1,
     harvestTime: 0,
     cargo: 0,
     harvestTile: null,

@@ -428,52 +428,37 @@ describe("FOV islands", () => {
     }
   }
 
-  it("fills an unseen hole of 8 tiles and leaves a hole of 9", () => {
-    const w = 12;
-    const h = 12;
+  it("fills an unseen hole of 12 tiles and leaves a hole of 13", () => {
+    const w = 14;
+    const h = 14;
     const mask = new Uint8Array(w * h);
-    fillRect(mask, w, 1, 1, 10, 10, 1);
-    fillRect(mask, w, 4, 4, 6, 6, 0);
-    sealFovIslands(mask, w, h, 8);
-    assert.equal(tileOnMask(mask, w, 5, 5), false, "3x3 hole stays unseen");
+    fillRect(mask, w, 1, 1, 12, 12, 1);
+    fillRect(mask, w, 4, 4, 7, 6, 0);
+    mask[7 * w + 4] = 0;
+    sealFovIslands(mask, w, h);
+    assert.equal(tileOnMask(mask, w, 5, 5), false, "13-tile hole stays unseen");
 
-    const hole8 = new Uint8Array(w * h);
-    fillRect(hole8, w, 1, 1, 10, 10, 1);
-    fillRect(hole8, w, 4, 4, 7, 5, 0);
-    sealFovIslands(hole8, w, h, 8);
-    assert.equal(tileOnMask(hole8, w, 4, 4), true);
-    assert.equal(tileOnMask(hole8, w, 7, 5), true);
+    const hole12 = new Uint8Array(w * h);
+    fillRect(hole12, w, 1, 1, 12, 12, 1);
+    fillRect(hole12, w, 4, 4, 7, 6, 0);
+    sealFovIslands(hole12, w, h);
+    assert.equal(tileOnMask(hole12, w, 4, 4), true);
+    assert.equal(tileOnMask(hole12, w, 7, 6), true);
   });
 
-  it("hides a visible speck of 8 tiles and leaves a blob of 9", () => {
-    const w = 12;
-    const h = 12;
-    const speck = litMask(w, h, [
-      [2, 2],
-      [3, 2],
-      [4, 2],
-      [5, 2],
-      [2, 3],
-      [3, 3],
-      [4, 3],
-      [5, 3],
-    ]);
-    sealFovIslands(speck, w, h, 8);
+  it("hides a visible speck of 12 tiles and leaves a blob of 13", () => {
+    const w = 14;
+    const h = 14;
+    const speck = new Uint8Array(w * h);
+    fillRect(speck, w, 2, 2, 5, 4, 1);
+    sealFovIslands(speck, w, h);
     assert.equal(tileOnMask(speck, w, 2, 2), false);
-    assert.equal(tileOnMask(speck, w, 5, 3), false);
+    assert.equal(tileOnMask(speck, w, 5, 4), false);
 
-    const blob = litMask(w, h, [
-      [2, 2],
-      [3, 2],
-      [4, 2],
-      [2, 3],
-      [3, 3],
-      [4, 3],
-      [2, 4],
-      [3, 4],
-      [4, 4],
-    ]);
-    sealFovIslands(blob, w, h, 8);
+    const blob = new Uint8Array(w * h);
+    fillRect(blob, w, 2, 2, 5, 4, 1);
+    blob[5 * w + 2] = 1;
+    sealFovIslands(blob, w, h);
     assert.equal(tileOnMask(blob, w, 3, 3), true);
   });
 
@@ -484,7 +469,7 @@ describe("FOV islands", () => {
     fillRect(mask, w, 1, 1, 6, 6, 1);
     mask[3 * w + 3] = 0;
     mask[4 * w + 4] = 0;
-    sealFovIslands(mask, w, h, 8);
+    sealFovIslands(mask, w, h);
     assert.equal(tileOnMask(mask, w, 3, 3), true);
     assert.equal(tileOnMask(mask, w, 4, 4), true);
   });
@@ -497,7 +482,7 @@ describe("FOV islands", () => {
     mask[4 * w + 4] = 0;
     mask[2 * w + 12] = 1;
     mask[2 * w + 13] = 1;
-    sealFovIslands(mask, w, h, 8);
+    sealFovIslands(mask, w, h);
     assert.equal(tileOnMask(mask, w, 4, 4), true, "hole filled");
     assert.equal(tileOnMask(mask, w, 12, 2), false, "speck hidden");
     assert.equal(tileOnMask(mask, w, 5, 5), true, "main blob stays");

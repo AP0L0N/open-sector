@@ -76,6 +76,12 @@ export interface Entity {
   order: Order | null;
   waypoints: Vec[];
   cooldown: number;
+  /** Rounds left in the current infantry magazine. 0 on vehicles. */
+  clip: number;
+  /** Seconds remaining on an infantry magazine change. */
+  reload: number;
+  /** Personal reload-time scale. 1 = catalog. Baked at spawn. */
+  reloadMul: number;
   harvestTime: number;
   cargo: number;
   harvestTile: Vec | null;

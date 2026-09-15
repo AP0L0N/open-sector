@@ -84,6 +84,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       mgAmmo: friendly && hasMg(e.type) ? e.mgAmmo : undefined,
       mgHeat: friendly && hasMg(e.type) ? e.mgHeat : undefined,
       mgOverheat: friendly && hasMg(e.type) && e.mgOverheat > 0 ? e.mgOverheat : undefined,
+      clip: friendly && isInfantryType(e.type) ? e.clip : undefined,
+      reload: friendly && isInfantryType(e.type) && e.reload > 0 ? e.reload : undefined,
       garrisonedIn: friendly && e.garrisonedIn ? e.garrisonedIn : undefined,
       garrison: isGarrisonable(e.type)
         ? (() => {

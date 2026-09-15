@@ -13,7 +13,7 @@
     "dev": "concurrently -n shared,server,client -c yellow,red,cyan \"npm run build:watch -w @gridlock/shared\" \"npm run dev -w @gridlock/server\" \"npm run dev -w @gridlock/client\"",
     "build": "npm run build -w @gridlock/shared && npm run build -w @gridlock/server && npm run build -w @gridlock/client",
     "start": "npm run start -w @gridlock/server",
-    "test": "npm run build -w @gridlock/shared && npm run test -w @gridlock/shared && npm run test -w @gridlock/server",
+    "test": "npm run build -w @gridlock/shared && npm run test -w @gridlock/shared && npm run test -w @gridlock/server && npm run test -w @gridlock/client",
     "typecheck": "npm run typecheck -w @gridlock/shared && npm run typecheck -w @gridlock/server && npm run typecheck -w @gridlock/client"
   },
   "devDependencies": {

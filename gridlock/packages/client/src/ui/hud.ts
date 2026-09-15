@@ -14,6 +14,7 @@ import {
   hasAmmo,
   hasMg,
   hasScout,
+  infantryGunFor,
   isGarrisonable,
   isInfantryType,
   isShellType,
@@ -485,6 +486,13 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     : isInfantryType(e.type) && e.stance
       ? `  ·  ${STANCE_LABEL[e.stance]}${e.stanceOrder && e.stanceOrder !== e.stance ? " (under fire)" : ""}`
       : "";
+  const gun = isInfantryType(e.type) ? infantryGunFor(e) : null;
+  const mag =
+    gun && e.clip != null && !e.wreck
+      ? e.reload && e.reload > 0
+        ? `  ·  reloading ${e.reload.toFixed(1)}s`
+        : `  ·  clip ${e.clip}/${gun.clip}`
+      : "";
   const rack =
     e.ammo && e.shell && !e.wreck ? `  ·  ${e.shell.toUpperCase()} ${ammoOf(e.ammo, e.shell)}` : "";
   const mg =
@@ -512,8 +520,22 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     ? ctx.match.players.find((p) => p.playerId === e.garrison!.ownerId)
     : owner;
   const who = occ?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${rack}${mg}  ·  ${who}${q}${cargo}${dep}${special}${garrison}${scout}${capturing}${holding}`;
+  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${mg}  ·  ${who}${q}${cargo}${dep}${special}${garrison}${scout}${capturing}${holding}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
+}
+
+function infantryClipLine(live: EntityView[]): string {
+  const gun = live[0] ? infantryGunFor(live[0]) : null;
+  if (!gun) return "Small arms";
+  if (live.length === 1) {
+    const e = live[0]!;
+    if ((e.reload ?? 0) > 0) return `Reloading ${e.reload!.toFixed(1)}s`;
+    return `Clip ${e.clip ?? 0}/${gun.clip}`;
+  }
+  const reloading = live.filter((e) => (e.reload ?? 0) > 0).length;
+  const rounds = live.reduce((n, e) => n + ((e.reload ?? 0) > 0 ? 0 : (e.clip ?? 0)), 0);
+  const cap = gun.clip * live.length;
+  return reloading ? `Clip ${rounds}/${cap} · ${reloading} reloading` : `Clip ${rounds}/${cap}`;
 }
 
 const TYPE_ORDER: EntityType[] = [
@@ -648,6 +670,8 @@ function paintConfig(ctx: Ctx, view: MapView | null): void {
       rack.append(btn);
     }
     body.append(el("div", { class: "tiny", text: "Shell" }), rack);
+  } else if (isInfantryType(focus.type)) {
+    body.append(el("p", { class: "tiny", text: infantryClipLine(live) }));
   } else if (focus.kind === "unit" && def.damage > 0) {
     body.append(el("p", { class: "tiny", text: "Small arms · unlimited" }));
   }

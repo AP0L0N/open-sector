@@ -2,7 +2,7 @@
 
 import type { BuildingType, Crit, EntityKind, EntityType, ShellType, Stance, TrainType } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 17;
+export const PROTOCOL_VERSION = 18;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -105,6 +105,10 @@ export interface EntityView {
   mgHeat?: number;
   /** Seconds the MG is jammed. Omitted when cool. */
   mgOverheat?: number;
+  /** Allied infantry magazine. Omitted for enemies and non-infantry. */
+  clip?: number;
+  /** Seconds left on a magazine change. Allied infantry. Omitted when idle. */
+  reload?: number;
   /** Unit is inside this building. Friendly snapshots only. */
   garrisonedIn?: number;
   /**

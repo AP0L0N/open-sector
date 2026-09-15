@@ -79,6 +79,8 @@ import {
   drawUnitSprite,
   spriteFor,
   spriteReady,
+  unitHitsBuildingSprite,
+  type BuildingSpriteDef,
   type UnitSpriteDef,
 } from "./sprites.js";
 import {
@@ -259,7 +261,18 @@ export class MapView {
   private fxIds = new Set<number>();
   private seenShots = new Set<number>();
   private moveClicks: { x: number; y: number; at: number }[] = [];
-  private occBuildings: { x: number; y: number; w: number; h: number; ez: number; lift: number }[] = [];
+  private occBuildings: {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+    ez: number;
+    lift: number;
+    spr?: BuildingSpriteDef;
+    southX: number;
+    southY: number;
+    footprintW: number;
+  }[] = [];
   selected = new Set<number>();
   placeMode = false;
   attackMoveMode = false;
@@ -2055,13 +2068,20 @@ export class MapView {
       const elev = heightAt(this.map(), e.tileX, e.tileY);
       const east = this.toScreen(x + w, y, elev);
       const west = this.toScreen(x, y + h, elev);
+      const south = this.toScreen(x + w, y + h, elev);
+      const spr = buildingSpriteFor(e.type, e.facing);
+      const footprintW = east.x - west.x;
       out.push({
         x,
         y,
         w,
         h,
-        ez: buildingOccludeEz(buildingSpriteFor(e.type, e.facing), east.x - west.x, this.extrude(e.type)),
+        ez: buildingOccludeEz(spr, footprintW, this.extrude(e.type)),
         lift: isoLift(elev),
+        spr: spr && spriteReady(spr) ? spr : undefined,
+        southX: south.x,
+        southY: south.y,
+        footprintW,
       });
     }
     this.occBuildings = out;
@@ -2069,13 +2089,40 @@ export class MapView {
 
   private unitOccluded(e: EntityView): boolean {
     const p = this.lerpEnt(e);
-    const spr = spriteFor(e.type, e.stance, e.swimming);
-    const visualLift = spr
-      ? spr.drawSize * spr.contactY * 0.62
+    const unitSpr = spriteFor(e.type, e.stance, e.swimming);
+    const visualLift = unitSpr
+      ? unitSpr.drawSize * unitSpr.contactY * 0.62
       : this.extrude(e.type) * UNIT_VISUAL_SCALE * 0.7;
     const ts = this.ts();
     const unitLift = isoLift(this.elevAt(p.x, p.y));
+    const s = this.toScreen(p.x, p.y);
+    const samples: { x: number; y: number }[] = unitSpr
+      ? [
+          { x: s.x, y: s.y - unitSpr.drawSize * unitSpr.contactY * 0.88 },
+          { x: s.x, y: s.y - unitSpr.drawSize * unitSpr.contactY * 0.5 },
+          { x: s.x - unitSpr.drawSize * 0.2, y: s.y - unitSpr.drawSize * unitSpr.contactY * 0.62 },
+          { x: s.x + unitSpr.drawSize * 0.2, y: s.y - unitSpr.drawSize * unitSpr.contactY * 0.62 },
+        ]
+      : [
+          { x: s.x, y: s.y - this.extrude(e.type) * UNIT_VISUAL_SCALE },
+          { x: s.x, y: s.y - this.extrude(e.type) * UNIT_VISUAL_SCALE * 0.45 },
+        ];
+    const unitRect = unitSpr
+      ? {
+          x: s.x - unitSpr.drawSize / 2,
+          y: s.y - unitSpr.drawSize * unitSpr.contactY,
+          w: unitSpr.drawSize,
+          h: unitSpr.drawSize,
+        }
+      : undefined;
     for (const b of this.occBuildings) {
+      if (p.x >= b.x + b.w || p.y >= b.y + b.h) continue;
+      if (b.spr) {
+        if (unitHitsBuildingSprite(b.spr, b.southX, b.southY, b.footprintW, samples, unitRect)) {
+          return true;
+        }
+        continue;
+      }
       if (unitBehindIsoBox(p.x, p.y, visualLift, b.x, b.y, b.w, b.h, b.ez, ts, b.lift, unitLift)) {
         return true;
       }

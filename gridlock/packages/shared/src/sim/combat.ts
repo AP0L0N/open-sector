@@ -13,13 +13,16 @@ import {
   hasCrit,
   hasMg,
   hasTurret,
+  infantryGunFor,
   entityIsScouting,
   isGarrisonable,
   isInfantryType,
   isSmokeShell,
   leavesWreck,
   pickLoadedShell,
+  reloadSecondsOf,
   type CatalogEntry,
+  type InfantryGun,
   type ShellType,
 } from "../catalog.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
@@ -255,7 +258,13 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     return;
   }
 
+  if (e.reload > 0) return;
   if (e.cooldown > 0) return;
+  const infantryGun = infantryGunFor(e);
+  if (infantryGun && e.clip <= 0) {
+    beginReload(e, infantryGun);
+    return;
+  }
   const shell = hasAmmo(e.type) ? pickLoadedShell(e.ammo, e.shell) : null;
   if (hasAmmo(e.type) && !shell) return;
   if (isSmokeShell(shell) && !mayFireSmoke(e)) return;
@@ -279,11 +288,28 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   );
   e.cooldown = gun.cooldown;
   if (shell) e.ammo[shell] = Math.max(0, (e.ammo[shell] ?? 0) - 1);
+  if (infantryGun) {
+    e.clip = Math.max(0, e.clip - 1);
+    if (e.clip <= 0) beginReload(e, infantryGun);
+  }
   if (e.order?.once) clearOrder(e);
+}
+
+function beginReload(e: Entity, gun: InfantryGun): void {
+  if (e.reload > 0) return;
+  e.reload = reloadSecondsOf(gun, e.reloadMul);
+  e.cooldown = 0;
 }
 
 function tickWeaponClocks(e: Entity, dt: number): void {
   if (e.cooldown > 0) e.cooldown = Math.max(0, e.cooldown - dt);
+  if (e.reload > 0) {
+    e.reload = Math.max(0, e.reload - dt);
+    if (e.reload <= 0) {
+      const gun = infantryGunFor(e);
+      if (gun) e.clip = gun.clip;
+    }
+  }
   if (!hasMg(e.type)) return;
   const bursting = e.mgCooldown > 0 || e.mgOverheat > 0;
   if (e.mgCooldown > 0) e.mgCooldown = Math.max(0, e.mgCooldown - dt);

@@ -4,7 +4,6 @@ import {
   CRIT_ENGINE_TURN,
   CRIT_LEG_CHANCE,
   CRIT_TRACKS_CHANCE,
-  HANDGUN,
   STANCE_AIM_SPREAD,
   STANCE_SPEED,
   SWIM_SPEED,
@@ -13,6 +12,7 @@ import {
   gunStatsFor,
   hasAmmo,
   hasCrit,
+  infantryGunFor,
   isInfantryType,
   isMotorVehicle,
   pickLoadedShell,
@@ -50,14 +50,15 @@ export function fireStats(e: Entity): {
 } {
   const def = catalog(e.type);
   const aim = STANCE_AIM_SPREAD[stanceOf(e)];
-  if (isInfantryType(e.type) && hasCrit(e, "arm")) {
+  const inf = infantryGunFor(e);
+  if (inf) {
     return {
-      damage: HANDGUN.damage,
-      penetration: HANDGUN.penetration,
-      caliber: HANDGUN.caliber,
-      spreadDeg: HANDGUN.spreadDeg * aim,
-      cooldown: HANDGUN.cooldown,
-      rangeTiles: HANDGUN.rangeTiles,
+      damage: inf.damage,
+      penetration: inf.penetration,
+      caliber: inf.caliber,
+      spreadDeg: inf.spreadDeg * aim,
+      cooldown: inf.cooldown,
+      rangeTiles: inf.rangeTiles,
     };
   }
   const shell = hasAmmo(e.type) ? pickLoadedShell(e.ammo, e.shell) : null;

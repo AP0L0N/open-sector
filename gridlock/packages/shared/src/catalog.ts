@@ -141,7 +141,7 @@ export const INFANTRY_SIGHT_TILES = t(12);
  * After painting FOV, fill unseen 8-connected islands and hide visible ones
  * of this many tiles or fewer. Set to 0 to disable (reverts to raw LOS).
  */
-export const FOV_ISLAND_LIMIT = 8;
+export const FOV_ISLAND_LIMIT = 12;
 /**
  * Armed units can fire this far past their current sight. The extra band is
  * only useful when a teammate (later: binoculars / a spotter) lights the target;
@@ -197,7 +197,7 @@ export type TrainType = "trooper" | "hauler" | "warden";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
-/** Tank / gun shells. Infantry small-arms stay unlimited. */
+/** Tank / gun shells. Infantry small-arms use clips; magazines never run dry. */
 export type ShellType = "ap" | "he" | "heat" | "smoke";
 export const SHELL_TYPES: readonly ShellType[] = ["ap", "he", "heat", "smoke"];
 /** Lasting injuries. Infantry: arm / leg. Motor vehicles: tracks / engine. */
@@ -284,15 +284,59 @@ export interface ShellDef {
   spreadDeg: number;
 }
 
+/** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
+export type InfantryWeaponId = "rifle" | "handgun";
+export interface InfantryGun {
+  id: InfantryWeaponId;
+  damage: number;
+  penetration: number;
+  caliber: number;
+  spreadDeg: number;
+  cooldown: number;
+  /** Rounds in a magazine. Reload starts when this hits 0. */
+  clip: number;
+  /** Magazine change, seconds. Scaled by the trooper's baked reloadMul. */
+  reload: number;
+  /** Omit to use the unit catalog range. */
+  rangeTiles?: number;
+}
+
+/** Personal reload-time scale around 1. Baked onto each trooper at spawn. */
+export const RELOAD_MUL_MIN = 0.92;
+export const RELOAD_MUL_MAX = 1.08;
+
+export function rollReloadMul(rand: () => number): number {
+  return RELOAD_MUL_MIN + rand() * (RELOAD_MUL_MAX - RELOAD_MUL_MIN);
+}
+
+export function reloadSecondsOf(gun: Pick<InfantryGun, "reload">, mul: number): number {
+  return gun.reload * Math.max(0.01, mul);
+}
+
+/** Trooper primary. Semi-auto 8-round clip. */
+export const RIFLE: InfantryGun = {
+  id: "rifle",
+  damage: 12,
+  penetration: 6,
+  caliber: 8,
+  spreadDeg: 2,
+  cooldown: 0.9,
+  clip: 8,
+  reload: 2.8,
+};
+
 /** Sidearm used when a trooper's shooting arm is broken. */
-export const HANDGUN = {
+export const HANDGUN: InfantryGun = {
+  id: "handgun",
   damage: 8,
   penetration: 3,
   caliber: 9,
   spreadDeg: 5,
   rangeTiles: t(3),
   cooldown: 0.55,
-} as const;
+  clip: 7,
+  reload: 1.6,
+};
 
 /**
  * Rifle / coaxial MG. Fast enough to cross max range in under a tick so the
@@ -512,13 +556,13 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     turnDegPerSec: 1800,
     rangeTiles: weaponRangeTiles(INFANTRY_SIGHT_TILES),
     sightTiles: INFANTRY_SIGHT_TILES,
-    cooldown: 0.9,
-    damage: 12,
+    cooldown: RIFLE.cooldown,
+    damage: RIFLE.damage,
     projectileSpeed: SMALL_ARMS_SPEED,
     ...UNARMED,
-    penetration: 6,
-    caliber: 8,
-    spreadDeg: 2,
+    penetration: RIFLE.penetration,
+    caliber: RIFLE.caliber,
+    spreadDeg: RIFLE.spreadDeg,
   },
   hauler: {
     type: "hauler",
@@ -702,6 +746,18 @@ export function isInfantryType(type: EntityType): boolean {
   return type === "trooper";
 }
 
+/** Primary gun for an infantry type. Null on vehicles and buildings. */
+export function primaryInfantryGun(type: EntityType): InfantryGun | null {
+  return type === "trooper" ? RIFLE : null;
+}
+
+/** Gun the unit is holding now. A broken shooting arm swaps to the handgun. */
+export function infantryGunFor(e: { type: EntityType; crits?: readonly Crit[] }): InfantryGun | null {
+  if (!isInfantryType(e.type)) return null;
+  if (hasCrit({ crits: e.crits ?? [] }, "arm")) return HANDGUN;
+  return primaryInfantryGun(e.type);
+}
+
 export function isMotorVehicle(type: EntityType): boolean {
   return catalog(type).kind === "unit" && !isInfantryType(type);
 }
@@ -718,8 +774,16 @@ export function hasCrit(e: { crits: readonly Crit[] }, c: Crit): boolean {
   return e.crits.includes(c);
 }
 
-export function addCrit(e: { crits: Crit[] }, c: Crit): void {
-  if (!e.crits.includes(c)) e.crits.push(c);
+export function addCrit(
+  e: { crits: Crit[]; type?: EntityType; clip?: number; reload?: number },
+  c: Crit,
+): void {
+  if (e.crits.includes(c)) return;
+  e.crits.push(c);
+  if (c === "arm" && e.type && isInfantryType(e.type)) {
+    e.clip = HANDGUN.clip;
+    e.reload = 0;
+  }
 }
 
 /** Effective posture. A broken leg always crawls. */

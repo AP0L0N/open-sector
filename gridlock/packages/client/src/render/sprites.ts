@@ -8,6 +8,12 @@ import {
   type EntityType,
   type Stance,
 } from "@gridlock/shared";
+import {
+  buildingAlphaOpaqueAt,
+  buildingSpriteSrcAt,
+  rectsOverlap,
+  type BuildingAlphaMap,
+} from "./building-hit.js";
 import coreUrl from "../assets/buildings/core.png";
 import dynamoUrl from "../assets/buildings/dynamo.png";
 import smelterUrl from "../assets/buildings/smelter.png";
@@ -395,6 +401,89 @@ export function buildingOccludeEz(
   if (!def || !spriteReady(def) || def.padWidth <= 0 || footprintW <= 0) return fallbackEz;
   const roof = def.padSouthY * (footprintW / def.padWidth) * 0.62;
   return Math.max(fallbackEz, roof);
+}
+
+const BUILDING_ALPHA_MAX_DIM = 256;
+
+const buildingAlphaCache = new WeakMap<HTMLImageElement, BuildingAlphaMap>();
+
+function buildingAlphaMap(img: HTMLImageElement): BuildingAlphaMap | null {
+  const hit = buildingAlphaCache.get(img);
+  if (hit) return hit;
+  if (!img.complete || img.naturalWidth <= 0) return null;
+  const sw = img.naturalWidth;
+  const sh = img.naturalHeight;
+  const toMap = Math.min(1, BUILDING_ALPHA_MAX_DIM / Math.max(sw, sh));
+  const w = Math.max(1, Math.round(sw * toMap));
+  const h = Math.max(1, Math.round(sh * toMap));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const g = canvas.getContext("2d", { willReadFrequently: true });
+  if (!g) return null;
+  g.imageSmoothingEnabled = false;
+  g.drawImage(img, 0, 0, w, h);
+  const pix = g.getImageData(0, 0, w, h).data;
+  const a = new Uint8Array(w * h);
+  for (let i = 0, p = 3; i < a.length; i++, p += 4) a[i] = pix[p]!;
+  const rec = { w, h, a, toMap };
+  buildingAlphaCache.set(img, rec);
+  return rec;
+}
+
+export function buildingSpriteDestRect(
+  def: BuildingSpriteDef,
+  southX: number,
+  southY: number,
+  footprintW: number,
+): { x: number; y: number; w: number; h: number } | null {
+  if (!spriteReady(def) || def.padWidth <= 0 || footprintW <= 0) return null;
+  const scale = footprintW / def.padWidth;
+  return {
+    x: southX - def.padSouthX * scale,
+    y: southY - def.padSouthY * scale,
+    w: def.image.naturalWidth * scale,
+    h: def.image.naturalHeight * scale,
+  };
+}
+
+/**
+ * True when any screen sample sits on a painted (non-transparent) building pixel.
+ * Units overlapping only the empty canvas around a house stay fully opaque.
+ */
+export function unitHitsBuildingSprite(
+  def: BuildingSpriteDef,
+  southX: number,
+  southY: number,
+  footprintW: number,
+  samples: readonly { x: number; y: number }[],
+  unitRect?: { x: number; y: number; w: number; h: number },
+): boolean {
+  if (!spriteReady(def) || def.padWidth <= 0 || footprintW <= 0 || samples.length === 0) return false;
+  const dest = buildingSpriteDestRect(def, southX, southY, footprintW);
+  if (!dest) return false;
+  if (unitRect && !rectsOverlap(unitRect.x, unitRect.y, unitRect.w, unitRect.h, dest.x, dest.y, dest.w, dest.h)) {
+    return false;
+  }
+  const map = buildingAlphaMap(def.image);
+  if (!map) return false;
+  const scale = footprintW / def.padWidth;
+  const radius = Math.min(2, Math.max(1, Math.ceil(1.25 / (scale * map.toMap))));
+  for (const s of samples) {
+    if (s.x < dest.x || s.y < dest.y || s.x >= dest.x + dest.w || s.y >= dest.y + dest.h) continue;
+    const src = buildingSpriteSrcAt(
+      def.padWidth,
+      def.padSouthX,
+      def.padSouthY,
+      southX,
+      southY,
+      footprintW,
+      s.x,
+      s.y,
+    );
+    if (buildingAlphaOpaqueAt(map, src.x, src.y, radius)) return true;
+  }
+  return false;
 }
 
 export function spriteReady(def: { image: HTMLImageElement }): boolean {
