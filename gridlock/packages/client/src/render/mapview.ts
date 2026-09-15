@@ -4,7 +4,6 @@ import {
   cloudScale,
   fires,
   GUARD_CONE_DEG,
-  hasNeighbor,
   isCivilianType,
   isInfantryType,
   isStance,
@@ -12,10 +11,6 @@ import {
   entityOnMask,
   facingToIso,
   getMap,
-  neighborMap,
-  seamInset,
-  type HouseLot,
-  type NeighborSides,
   TILE_EMPTY,
   TILE_TREE,
   TILE_WATER,
@@ -280,8 +275,6 @@ export class MapView {
     southY: number;
     footprintW: number;
   }[] = [];
-  /** Live civilian lots: which sides share a neighbor. Isolated houses are absent. */
-  private houseNeighbors = new Map<number, NeighborSides>();
   selected = new Set<number>();
   placeMode = false;
   attackMoveMode = false;
@@ -1604,7 +1597,6 @@ export class MapView {
     }
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "low";
-    this.cacheHouseGroups();
     this.cacheOccluders();
 
     const liveIds = new Set(this.curr.entities.map((e) => e.id));
@@ -2025,33 +2017,6 @@ export class MapView {
     return false;
   }
 
-  private cacheHouseGroups(): void {
-    const lots: HouseLot[] = [];
-    for (const e of this.curr.entities) {
-      if (e.kind !== "building" || e.hp <= 0 || !isCivilianType(e.type)) continue;
-      lots.push({ id: e.id, x: e.tileX, y: e.tileY, w: e.tileW, h: e.tileH });
-    }
-    this.houseNeighbors = neighborMap(lots);
-  }
-
-  /** Yard grass under a grouped house, shown in the seam where fences are clipped. */
-  private static readonly YARD_GRASS = "#6e8c42";
-
-  private clipIsoRect(x: number, y: number, w: number, h: number, elev: number): void {
-    const n = this.toScreen(x, y, elev);
-    const e = this.toScreen(x + w, y, elev);
-    const s = this.toScreen(x + w, y + h, elev);
-    const west = this.toScreen(x, y + h, elev);
-    const ctx = this.ctx;
-    ctx.beginPath();
-    ctx.moveTo(n.x, n.y);
-    ctx.lineTo(e.x, e.y);
-    ctx.lineTo(s.x, s.y);
-    ctx.lineTo(west.x, west.y);
-    ctx.closePath();
-    ctx.clip();
-  }
-
   private drawBuilding(e: EntityView, ghost = false): void {
     const ts = this.ts();
     const ctx = this.ctx;
@@ -2064,26 +2029,15 @@ export class MapView {
     const hex = this.ownerColor(e);
     const dim = ghost || !this.buildingLit(e);
     const spr = buildingSpriteFor(e.type, e.facing);
-    const north = this.toScreen(x, y, elev);
     const south = this.toScreen(x + bw, y + bh, elev);
     const east = this.toScreen(x + bw, y, elev);
     const west = this.toScreen(x, y + bh, elev);
     const bar = this.toScreen(x + bw / 2, y + bh / 2, elev);
     let stack = { x: bar.x, y: bar.y - ez - 8 };
-    const sides = !ghost ? this.houseNeighbors.get(e.id) : undefined;
     if (spr && spriteReady(spr)) {
       const footprintW = east.x - west.x;
       ctx.save();
       ctx.globalAlpha = dim ? 0.5 : 1;
-      if (sides && hasNeighbor(sides)) {
-        ctx.fillStyle = MapView.YARD_GRASS;
-        this.fillQuad(north, east, south, west);
-        const inset = seamInset(
-          { id: e.id, x: e.tileX, y: e.tileY, w: e.tileW, h: e.tileH },
-          sides,
-        );
-        this.clipIsoRect(inset.x * ts, inset.y * ts, inset.w * ts, inset.h * ts, elev);
-      }
       drawBuildingSprite(ctx, spr, south.x, south.y, footprintW);
       ctx.restore();
       stack = buildingStackAt(spr, south.x, south.y, footprintW);

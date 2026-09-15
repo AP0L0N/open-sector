@@ -7,7 +7,6 @@ import {
   catalog,
   type CivilianType,
 } from "./catalog.js";
-import { houseGroups, lotsEdgeAdjacent, type HouseLot } from "./house-group.js";
 
 export interface SpawnDef {
   id: number;
@@ -786,175 +785,6 @@ function flattenTerrain(
   relaxSlopes(heights, width, height, locked);
 }
 
-function authoringSize(type: CivilianType): { tw: number; th: number } {
-  const def = catalog(type);
-  return {
-    tw: Math.round(def.tileW / TILE_SUBDIV),
-    th: Math.round(def.tileH / TILE_SUBDIV),
-  };
-}
-
-function stampFeature(
-  tiles: number[],
-  width: number,
-  height: number,
-  f: MapFeature,
-  value: number,
-): void {
-  const { tw, th } = authoringSize(f.type);
-  fillRect(tiles, width, height, f.x, f.y, f.x + tw - 1, f.y + th - 1, value);
-}
-
-function featureLot(f: MapFeature): HouseLot {
-  const { tw, th } = authoringSize(f.type);
-  return { id: 0, x: f.x, y: f.y, w: tw, h: th };
-}
-
-function abutsFeatures(
-  features: readonly MapFeature[],
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-): boolean {
-  const neu: HouseLot = { id: -1, x, y, w, h };
-  for (const f of features) {
-    if (lotsEdgeAdjacent(neu, featureLot(f))) return true;
-  }
-  return false;
-}
-
-function tryPlaceHouse(
-  tiles: number[],
-  width: number,
-  height: number,
-  pads: readonly { x: number; y: number; r: number }[],
-  features: readonly MapFeature[],
-  type: CivilianType,
-  facing: number,
-  rng: { n: number },
-  attempts = 80,
-): MapFeature | null {
-  const { tw, th } = authoringSize(type);
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    const x = 2 + Math.floor(nextRand(rng) * (width - tw - 4));
-    const y = 2 + Math.floor(nextRand(rng) * (height - th - 4));
-    if (inPad(pads, x + tw / 2, y + th / 2)) continue;
-    if (!rectFree(tiles, width, height, x, y, tw, th)) continue;
-    if (abutsFeatures(features, x, y, tw, th)) continue;
-    return { type, x, y, facing };
-  }
-  return null;
-}
-
-/** Compact rectangle of same-size houses, one facing, lots edge-adjacent. */
-function tryPlaceCluster(
-  tiles: number[],
-  width: number,
-  height: number,
-  pads: readonly { x: number; y: number; r: number }[],
-  features: readonly MapFeature[],
-  members: readonly CivilianType[],
-  cols: number,
-  rows: number,
-  facing: number,
-  rng: { n: number },
-  attempts = 120,
-): MapFeature[] | null {
-  if (members.length !== cols * rows || members.length === 0) return null;
-  const { tw, th } = authoringSize(members[0]!);
-  if (members.some((t) => {
-    const s = authoringSize(t);
-    return s.tw !== tw || s.th !== th;
-  })) return null;
-  const gw = cols * tw;
-  const gh = rows * th;
-  for (let attempt = 0; attempt < attempts; attempt++) {
-    const x = 2 + Math.floor(nextRand(rng) * (width - gw - 4));
-    const y = 2 + Math.floor(nextRand(rng) * (height - gh - 4));
-    if (inPad(pads, x + gw / 2, y + gh / 2)) continue;
-    if (!rectFree(tiles, width, height, x, y, gw, gh)) continue;
-    if (abutsFeatures(features, x, y, gw, gh)) continue;
-    const out: MapFeature[] = [];
-    let i = 0;
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        out.push({ type: members[i++]!, x: x + c * tw, y: y + r * th, facing });
-      }
-    }
-    return out;
-  }
-  return null;
-}
-
-function takeTypes(bucket: CivilianType[], n: number): CivilianType[] {
-  return bucket.splice(0, n);
-}
-
-function placeClusterOrRestore(
-  tiles: number[],
-  width: number,
-  height: number,
-  pads: readonly { x: number; y: number; r: number }[],
-  bucket: CivilianType[],
-  members: CivilianType[],
-  cols: number,
-  rows: number,
-  facing: number,
-  rng: { n: number },
-  features: MapFeature[],
-): boolean {
-  const placed = tryPlaceCluster(tiles, width, height, pads, features, members, cols, rows, facing, rng);
-  if (!placed) {
-    bucket.unshift(...members);
-    return false;
-  }
-  for (const f of placed) {
-    features.push(f);
-    stampFeature(tiles, width, height, f, TILE_BLOCKED);
-  }
-  return true;
-}
-
-/** Same height under a house or a whole adjacent group so merged yards stay coplanar. */
-function flattenHouseLots(
-  heights: number[],
-  width: number,
-  height: number,
-  features: readonly MapFeature[],
-  sub: number,
-): void {
-  if (features.length === 0) return;
-  const lots: HouseLot[] = features.map((f, i) => {
-    const { tw, th } = authoringSize(f.type);
-    return { id: i, x: f.x * sub, y: f.y * sub, w: tw * sub, h: th * sub };
-  });
-  const locked = new Uint8Array(width * height);
-  for (const g of houseGroups(lots)) {
-    let x0 = Infinity;
-    let y0 = Infinity;
-    let x1 = -Infinity;
-    let y1 = -Infinity;
-    for (const h of g) {
-      x0 = Math.min(x0, h.x);
-      y0 = Math.min(y0, h.y);
-      x1 = Math.max(x1, h.x + h.w - 1);
-      y1 = Math.max(y1, h.y + h.h - 1);
-    }
-    const origin = g[0]!;
-    const z = heights[idx(width, origin.x, origin.y)] ?? HEIGHT_BASE;
-    for (let y = y0; y <= y1; y++) {
-      for (let x = x0; x <= x1; x++) {
-        if (x < 0 || y < 0 || x >= width || y >= height) continue;
-        const i = idx(width, x, y);
-        heights[i] = z;
-        locked[i] = 1;
-      }
-    }
-  }
-  relaxSlopes(heights, width, height, locked);
-}
-
 /** Trees, ponds, and civilian houses. Authoring-grid coords; caller upsamples tiles. */
 function scatterCover(
   tiles: number[],
@@ -983,92 +813,32 @@ function scatterCover(
     "cottage",
     "chapel",
   ];
-  const small: CivilianType[] = [];
-  const medium: CivilianType[] = [];
-  const rest: CivilianType[] = [];
-  for (const type of kinds) {
-    const { tw } = authoringSize(type);
-    if (tw <= 2) small.push(type);
-    else if (tw === 3) medium.push(type);
-    else rest.push(type);
-  }
   const features: MapFeature[] = [];
-  if (small.length >= 4) {
-    const members = takeTypes(small, 4);
-    placeClusterOrRestore(
-      tiles,
-      width,
-      height,
-      pads,
-      small,
-      members,
-      2,
-      2,
-      Math.floor(nextRand(rng) * 4),
-      rng,
-      features,
-    );
+  for (const type of kinds) {
+    const def = catalog(type);
+    const tw = Math.round(def.tileW / TILE_SUBDIV);
+    const th = Math.round(def.tileH / TILE_SUBDIV);
+    for (let attempt = 0; attempt < 80; attempt++) {
+      const x = 2 + Math.floor(nextRand(rng) * (width - tw - 4));
+      const y = 2 + Math.floor(nextRand(rng) * (height - th - 4));
+      if (inPad(pads, x + tw / 2, y + th / 2)) continue;
+      if (!rectFree(tiles, width, height, x, y, tw, th)) continue;
+      features.push({ type, x, y, facing: hash32(`${type}:${x}:${y}:face`) % 4 });
+      fillRect(tiles, width, height, x, y, x + tw - 1, y + th - 1, TILE_EMPTY);
+      for (let yy = y; yy < y + th; yy++) {
+        for (let xx = x; xx < x + tw; xx++) {
+          tiles[idx(width, xx, yy)] = TILE_BLOCKED;
+        }
+      }
+      break;
+    }
   }
-  if (small.length >= 2) {
-    const n = small.length >= 3 && nextRand(rng) < 0.5 ? 3 : 2;
-    const members = takeTypes(small, n);
-    const row = nextRand(rng) < 0.5;
-    placeClusterOrRestore(
-      tiles,
-      width,
-      height,
-      pads,
-      small,
-      members,
-      row ? n : 1,
-      row ? 1 : n,
-      Math.floor(nextRand(rng) * 4),
-      rng,
-      features,
-    );
+  for (const f of features) {
+    const def = catalog(f.type);
+    const tw = Math.round(def.tileW / TILE_SUBDIV);
+    const th = Math.round(def.tileH / TILE_SUBDIV);
+    fillRect(tiles, width, height, f.x, f.y, f.x + tw - 1, f.y + th - 1, TILE_EMPTY);
   }
-  if (medium.length >= 2) {
-    const members = takeTypes(medium, 2);
-    const row = nextRand(rng) < 0.5;
-    placeClusterOrRestore(
-      tiles,
-      width,
-      height,
-      pads,
-      medium,
-      members,
-      row ? 2 : 1,
-      row ? 1 : 2,
-      Math.floor(nextRand(rng) * 4),
-      rng,
-      features,
-    );
-  }
-  if (medium.length >= 2) {
-    const members = takeTypes(medium, 2);
-    const row = nextRand(rng) < 0.5;
-    placeClusterOrRestore(
-      tiles,
-      width,
-      height,
-      pads,
-      medium,
-      members,
-      row ? 2 : 1,
-      row ? 1 : 2,
-      Math.floor(nextRand(rng) * 4),
-      rng,
-      features,
-    );
-  }
-  for (const type of [...small, ...medium, ...rest]) {
-    const facing = hash32(`${type}:${features.length}:face`) % 4;
-    const f = tryPlaceHouse(tiles, width, height, pads, features, type, facing, rng, 160);
-    if (!f) continue;
-    features.push(f);
-    stampFeature(tiles, width, height, f, TILE_BLOCKED);
-  }
-  for (const f of features) stampFeature(tiles, width, height, f, TILE_EMPTY);
   return features;
 }
 
@@ -1191,7 +961,6 @@ export function makeYard64(): MapDef {
   const locked = new Uint8Array(fineW * fineH);
   const heights = scatterHeights(fineW, fineH, "yard-64-elev", fineSpawnPads, locked);
   flattenTerrain(heights, fineTiles, fineW, fineH, TILE_WATER, locked);
-  flattenHouseLots(heights, fineW, fineH, features, sub);
 
   return {
     id: "yard-64",
