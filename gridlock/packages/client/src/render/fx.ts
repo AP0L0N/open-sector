@@ -320,7 +320,7 @@ export function armorHitLift(
   return 6 + rng(seed ^ 0x51d11)() * 30;
 }
 
-/** Bounce: sparks along the leaving shot, tiny slap of compressed air. */
+/** Bounce flash on the hull. The leaving streak is the live bounced projectile. */
 export function drawRicochetSparks(
   ctx: CanvasRenderingContext2D,
   x: number,

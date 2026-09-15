@@ -404,11 +404,14 @@ export class MapView {
     }
     for (const i of match.impacts ?? []) {
       if (i.kind === "crush") continue;
-      this.addFx({ ...i, at: now });
+      const fx: MapView["fx"][number] = { ...i, at: now };
+      this.snapHullFx(fx);
+      this.addFx(fx);
       if (i.kind === "kill" && i.blast) {
         this.addFx({ id: i.id + 7_000_000, kind: "smoke", x: i.x, y: i.y, vx: 0, vy: 0, at: now });
       }
     }
+    this.bindBounceTraces(match);
     if (this.seenShots.size > 400) this.seenShots.clear();
     const flyingFrom = new Set(
       match.projectiles.filter((p) => isShellCaliber(p.caliber)).map((p) => p.fromId),
@@ -419,6 +422,7 @@ export class MapView {
       const sp = Math.hypot(i.vx, i.vy) || 1;
       const x0 = shooter?.x ?? i.x - (i.vx / sp) * 48;
       const y0 = shooter?.y ?? i.y - (i.vy / sp) * 48;
+      const hull = this.fx.find((f) => f.id === i.id);
       this.addFx({
         id: i.id + 9_000_000,
         kind: "tracer",
@@ -430,6 +434,8 @@ export class MapView {
         y1: i.y,
         at: now,
         caliber: i.caliber,
+        endSx: hull?.sx ?? 0,
+        endLift: hull?.lift ?? 10,
       });
       if (shooter) {
         const reach = catalog(shooter.type).radius * UNIT_VISUAL_SCALE + 10;
@@ -519,6 +525,79 @@ export class MapView {
     if (this.fxIds.has(f.id)) return;
     this.fxIds.add(f.id);
     this.fx.push(f);
+  }
+
+  private nearestHullEntity(wx: number, wy: number): EntityView | undefined {
+    let best: EntityView | undefined;
+    let bestD = 40;
+    for (const e of this.curr.entities) {
+      if (e.kind === "building" || e.garrisonedIn) continue;
+      const d = Math.hypot(e.x - wx, e.y - wy);
+      const reach = Math.max(40, catalog(e.type).radius * 3);
+      if (d < bestD && d < reach) {
+        best = e;
+        bestD = d;
+      }
+    }
+    return best;
+  }
+
+  /** Pin armor sparks to painted sprite pixels so they don't float in empty canvas. */
+  private snapHullFx(f: MapView["fx"][number]): void {
+    const guess = armorHitLift(f.kind, f.caliber, f.id, f.blast);
+    if (guess == null) return;
+    const e = this.nearestHullEntity(f.x, f.y);
+    if (!e) {
+      f.lift = guess;
+      return;
+    }
+    const spr = spriteFor(e.type, e.stance, e.swimming);
+    const ground = this.toScreen(f.x, f.y);
+    if (!spr || !spriteReady(spr)) {
+      f.lift = guess;
+      return;
+    }
+    const ts = this.ts();
+    const ep = this.toScreen(e.x, e.y);
+    const dir = facingToIso(e.facing, ts);
+    const turretDir = facingToIso(e.turretFacing ?? e.facing, ts);
+    const snapped = snapHitToUnitSprite(
+      spr,
+      ep.x,
+      ep.y,
+      ground.x,
+      ground.y - guess,
+      dir.x,
+      dir.y,
+      turretDir.x,
+      turretDir.y,
+    );
+    if (!snapped) {
+      f.lift = guess;
+      return;
+    }
+    f.lift = ground.y - snapped.y;
+    f.sx = snapped.x - ground.x;
+  }
+
+  private bindBounceTraces(match: MatchSnapshot): void {
+    for (const p of match.projectiles) {
+      if (!p.bounced || this.bounceTrace.has(p.id)) continue;
+      let best: { x: number; y: number; sx: number; lift: number } | null = null;
+      let bestD = 80;
+      for (const f of this.fx) {
+        if (f.kind !== "ricochet") continue;
+        const d = Math.hypot(p.x - f.x, p.y - f.y);
+        if (d < bestD) {
+          bestD = d;
+          best = { x: f.x, y: f.y, sx: f.sx ?? 0, lift: f.lift ?? 0 };
+        }
+      }
+      if (best) this.bounceTrace.set(p.id, best);
+    }
+    for (const id of [...this.bounceTrace.keys()]) {
+      if (!match.projectiles.some((p) => p.id === id)) this.bounceTrace.delete(id);
+    }
   }
 
   private applyClearedTrees(): void {
@@ -1596,27 +1675,30 @@ export class MapView {
       const shell = isShellCaliber(p.caliber);
       if (!bounced && !shell) continue;
       const t = Math.min(1, (performance.now() - this.snapAt) / 100);
-      const look = t * 0.1 * (this.curr.gameSpeed || 1);
       const prevP = this.prev?.projectiles.find((q) => q.id === p.id);
       const wx = prevP ? prevP.x + (p.x - prevP.x) * t : p.x;
       const wy = prevP ? prevP.y + (p.y - prevP.y) * t : p.y;
       const a = this.toScreen(wx, wy);
-      const b = this.toScreen(wx + p.vx * look, wy + p.vy * look);
       const lift = bounced ? 7 : 10;
       if (bounced) {
-        const sp = Math.hypot(p.vx, p.vy) || 1;
-        const tail = this.toScreen(wx - (p.vx / sp) * 21, wy - (p.vy / sp) * 21);
-        ctx.save();
-        ctx.strokeStyle = "rgba(255, 236, 176, 0.92)";
-        ctx.lineWidth = 1.15;
-        ctx.lineCap = "butt";
-        ctx.beginPath();
-        ctx.moveTo(tail.x, tail.y - lift);
-        ctx.lineTo(a.x, a.y - lift);
-        ctx.stroke();
-        ctx.fillStyle = "#fff8e4";
-        ctx.fillRect(a.x - 0.5, a.y - lift - 0.5, 1.2, 1.2);
-        ctx.restore();
+        const origin = this.bounceTrace.get(p.id);
+        if (origin) {
+          const o = this.toScreen(origin.x, origin.y);
+          const flown = Math.hypot(wx - origin.x, wy - origin.y);
+          const headLift = origin.lift * (1 - Math.min(1, flown / 56));
+          drawRicochetTrace(
+            ctx,
+            o.x + origin.sx,
+            o.y - origin.lift,
+            a.x,
+            a.y - headLift,
+            shell,
+          );
+        } else {
+          const sp = Math.hypot(p.vx, p.vy) || 1;
+          const tail = this.toScreen(wx - (p.vx / sp) * 8, wy - (p.vy / sp) * 8);
+          drawRicochetTrace(ctx, tail.x, tail.y - lift, a.x, a.y - lift, shell);
+        }
       } else if (shell) {
         const sp = Math.hypot(p.vx, p.vy) || 1;
         const tailLen = isSmokeShell(p.shell) ? 22 : 36;
@@ -2323,7 +2405,7 @@ export class MapView {
         (f.kind === "miss" || f.kind === "puff"
           ? 0
           : (armorHitLift(f.kind, f.caliber, f.id, f.blast) ?? 14));
-      const x = s.x;
+      const x = s.x + (f.sx ?? 0);
       const y = s.y - lift;
       if (f.kind === "kill" && f.blast) {
         drawCookoffBurst(ctx, x, y, t, f.id);
@@ -2365,8 +2447,10 @@ export class MapView {
         const a = this.toScreen(f.x, f.y);
         const b = this.toScreen(f.x1, f.y1);
         const headT = Math.min(1, t / 0.55);
-        const hx = a.x + (b.x - a.x) * headT;
-        const hy = a.y + (b.y - a.y) * headT - 10;
+        const endSx = f.endSx ?? 0;
+        const endLift = f.endLift ?? 10;
+        const hx = a.x + (b.x + endSx - a.x) * headT;
+        const hy = a.y + (b.y - endLift - a.y) * headT;
         const tx = a.x - 10 * (1 - headT);
         const ty = a.y - 10;
         drawShellTracer(ctx, tx, ty, hx, hy, t);

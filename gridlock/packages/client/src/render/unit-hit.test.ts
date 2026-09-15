@@ -31,8 +31,9 @@ describe("snapToUnitHitMask", () => {
     const mask = blobMask(16, 16, 4, 4, 11, 11);
     const p = snapToUnitHitMask(mask, 7.4, 8.2);
     assert.ok(p);
-    assert.equal(p!.x, 7.4);
-    assert.equal(p!.y, 8.2);
+    assert.equal(p!.x, 7);
+    assert.equal(p!.y, 8);
+    assert.equal(mask.solid[p!.y * mask.w + p!.x], 1);
   });
 
   it("pulls a transparent miss onto the nearest painted pixel", () => {
@@ -72,10 +73,10 @@ describe("unitDestMaskFromSheets", () => {
   it("ORs turret pixels onto the hull mask", () => {
     const hullA = new Uint8Array(8 * 8);
     const turretA = new Uint8Array(8 * 8);
-    for (let y = 3; y <= 5; y++) {
-      for (let x = 2; x <= 4; x++) hullA[y * 8 + x] = 255;
+    for (let y = 2; y <= 6; y++) {
+      for (let x = 1; x <= 4; x++) hullA[y * 8 + x] = 255;
     }
-    for (let y = 1; y <= 3; y++) {
+    for (let y = 1; y <= 4; y++) {
       for (let x = 4; x <= 6; x++) turretA[y * 8 + x] = 255;
     }
     const hull: BuildingAlphaMap = { w: 8, h: 8, a: hullA, toMap: 1 };
@@ -85,7 +86,8 @@ describe("unitDestMaskFromSheets", () => {
       { map: hull, sx: 0, sy: 0, cell: 8 },
       { map: turret, sx: 0, sy: 0, cell: 8 },
     );
-    assert.equal(mask.solid[4 * 8 + 3], 1);
-    assert.equal(mask.solid[2 * 8 + 5], 1);
+    assert.equal(mask.solid[4 * 8 + 2], 1);
+    assert.equal(mask.solid[2 * 8 + 4], 1);
+    assert.equal(mask.solid[0], 0);
   });
 });

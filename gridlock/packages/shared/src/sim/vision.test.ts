@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { catalog, INFANTRY_UPHILL_SIGHT, TICK_DT, isCivilianType } from "../catalog.js";
+import { catalog, HULL_LEVEL_SIGHT, INFANTRY_UPHILL_SIGHT, TICK_DT, isCivilianType } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
@@ -154,6 +154,36 @@ describe("building sight", () => {
     assert.equal(tileOnMask(tankMask, state.width, ox + dist, oy), false);
   });
 
+  it("sees a valley floor past flat sight that a tank still misses", () => {
+    const { state, a } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const ox = 20;
+    const oy = 20;
+    const drop = 6;
+    const dist = catalog("trooper").sightTiles + drop * INFANTRY_UPHILL_SIGHT;
+    assert.ok(dist < state.width - ox);
+    state.heights.fill(drop);
+    state.heights[oy * state.width + (ox + dist)] = 0;
+    const bldg: SightSource = {
+      kind: "building",
+      type: "core",
+      ownerId: a,
+      x: tileCenter(ox, ts),
+      y: tileCenter(oy, ts),
+      tileX: ox,
+      tileY: oy,
+      tileW: 1,
+      tileH: 1,
+    };
+    const tank = makeEntity(state, "warden", a, tileCenter(ox, ts), tileCenter(oy, ts));
+    const bldgMask = new Uint8Array(state.width * state.height);
+    const tankMask = new Uint8Array(state.width * state.height);
+    paintEntitySight(bldgMask, state.width, state.height, ts, bldg, state.heights);
+    paintEntitySight(tankMask, state.width, state.height, ts, tank, state.heights);
+    assert.equal(tileOnMask(bldgMask, state.width, ox + dist, oy), true);
+    assert.equal(tileOnMask(tankMask, state.width, ox + dist, oy), false);
+  });
+
   it("does not light a farther peak over a closer lower ridge", () => {
     const { state, a } = twoPlayerMatch();
     state.heights.fill(0);
@@ -248,6 +278,44 @@ describe("infantry fog", () => {
     paintEntitySight(tankMask, state.width, state.height, ts, tank, state.heights);
     assert.equal(tileOnMask(infMask, state.width, ox + dist, oy), true);
     assert.equal(tileOnMask(tankMask, state.width, ox + dist, oy), false);
+  });
+
+  it("sees a valley floor past flat sight that a tank still misses", () => {
+    const { state, a } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const ox = 20;
+    const oy = 20;
+    const drop = 6;
+    const dist = catalog("trooper").sightTiles + drop * INFANTRY_UPHILL_SIGHT;
+    assert.ok(dist < state.width - ox);
+    state.heights.fill(drop);
+    state.heights[oy * state.width + (ox + dist)] = 0;
+    const inf = makeEntity(state, "trooper", a, tileCenter(ox, ts), tileCenter(oy, ts));
+    const tank = makeEntity(state, "warden", a, tileCenter(ox, ts), tileCenter(oy, ts));
+    const infMask = new Uint8Array(state.width * state.height);
+    const tankMask = new Uint8Array(state.width * state.height);
+    paintEntitySight(infMask, state.width, state.height, ts, inf, state.heights);
+    paintEntitySight(tankMask, state.width, state.height, ts, tank, state.heights);
+    assert.equal(tileOnMask(infMask, state.width, ox + dist, oy), true);
+    assert.equal(tileOnMask(tankMask, state.width, ox + dist, oy), false);
+  });
+
+  it("lets a hull see a nearby rise a step past flat sight", () => {
+    const { state, a } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const ox = 20;
+    const oy = 20;
+    const rise = 4;
+    const dist = catalog("warden").sightTiles + rise * HULL_LEVEL_SIGHT;
+    assert.ok(dist < state.width - ox);
+    state.heights[oy * state.width + (ox + dist)] = rise;
+    const tank = makeEntity(state, "warden", a, tileCenter(ox, ts), tileCenter(oy, ts));
+    const mask = new Uint8Array(state.width * state.height);
+    paintEntitySight(mask, state.width, state.height, ts, tank, state.heights);
+    assert.equal(tileOnMask(mask, state.width, ox + dist, oy), true);
+    assert.equal(tileOnMask(mask, state.width, ox + dist + 1, oy), false);
   });
 });
 

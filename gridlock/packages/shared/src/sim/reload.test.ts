@@ -47,6 +47,9 @@ function duel(state: MatchState): {
 } {
   state.heights.fill(0);
   clearCivilians(state);
+  for (const e of [...state.entities.values()]) {
+    if (e.ownerId === "B") destroyEntity(state, e);
+  }
   const ts = state.tileSize;
   const gun = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(24, ts));
   const dummy = makeEntity(state, "hauler", "B", tileCenter(28, ts), tileCenter(24, ts));
@@ -93,7 +96,8 @@ describe("infantry reload", () => {
     assert.equal(dummy.hp, hp, "must not fire mid-reload");
     assert.equal(gun.clip, 0);
     assert.ok(gun.reload > 0);
-    until(state, () => gun.reload <= 0 && gun.clip === RIFLE.clip, 40);
+    dummy.hp = 0;
+    until(state, () => gun.reload <= 0, 40);
     assert.equal(gun.clip, RIFLE.clip);
     assert.equal(gun.reload, 0);
   });
@@ -122,7 +126,8 @@ describe("infantry reload", () => {
     assert.equal(gun.clip, 0);
     const expected = reloadSecondsOf(HANDGUN, gun.reloadMul);
     assert.ok(Math.abs(gun.reload - expected) < TICK_DT + 1e-9, `reload=${gun.reload} expected=${expected}`);
-    until(state, () => gun.reload <= 0 && gun.clip === HANDGUN.clip, 40);
+    dummy.hp = 0;
+    until(state, () => gun.reload <= 0, 40);
     assert.equal(gun.clip, HANDGUN.clip);
   });
 

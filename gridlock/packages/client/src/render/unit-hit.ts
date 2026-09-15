@@ -72,10 +72,7 @@ export function snapToUnitHitMask(
   const ix = Math.round(localX);
   const iy = Math.round(localY);
   if (ix >= 0 && iy >= 0 && ix < w && iy < h && solid[iy * w + ix]) {
-    return {
-      x: Math.max(0, Math.min(w - 1e-6, localX)),
-      y: Math.max(0, Math.min(h - 1e-6, localY)),
-    };
+    return { x: ix, y: iy };
   }
   let best = -1;
   let bestD = Infinity;

@@ -13,6 +13,7 @@ import {
   coverSmokeAt,
   hasFullLos,
   observerEyeForEntity,
+  levelSightExtra,
   sightTilesForEntity,
   sightTilesOf,
   uphillSightForEntity,
@@ -231,7 +232,7 @@ function paintSightBox(
       if (mask[row + x]) continue;
       const d = chebyshev(x, y, ox, oy);
       if (d > boxR || d < minD) continue;
-      const extra = uphillBonus > 0 ? Math.max(0, elevAtSafe(elev, width, height, x, y) - h0) * uphillBonus : 0;
+      const extra = levelSightExtra(h0, elevAtSafe(elev, width, height, x, y), uphillBonus);
       if (d > catalogR + extra) continue;
       if (!hasFullLos(elev, width, height, ox, oy, x, y, cover, observerEye)) continue;
       if (cover && coverSmokeAt(cover, width, height, x, y) && d > SMOKE_PEEK_TILES) continue;
@@ -635,7 +636,7 @@ function tileInSight(
   if (radius <= 0) return ox === tx && oy === ty;
   const d = chebyshev(tx, ty, ox, oy);
   const h0 = elevAtSafe(elev, width, height, ox, oy);
-  const extra = uphillBonus > 0 ? Math.max(0, elevAtSafe(elev, width, height, tx, ty) - h0) * uphillBonus : 0;
+  const extra = levelSightExtra(h0, elevAtSafe(elev, width, height, tx, ty), uphillBonus);
   if (d > radius + extra) return false;
   if (!hasFullLos(elev, width, height, ox, oy, tx, ty, cover, observerEye)) return false;
   if (cover && coverSmokeAt(cover, width, height, tx, ty) && d > SMOKE_PEEK_TILES) return false;

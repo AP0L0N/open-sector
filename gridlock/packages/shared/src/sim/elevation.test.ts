@@ -4,7 +4,9 @@ import {
   HEIGHT_BASE,
   HEIGHT_SIGHT_BONUS,
   HEIGHT_WORLD,
+  HULL_LEVEL_SIGHT,
   INFANTRY_EYE_HEIGHT,
+  INFANTRY_UPHILL_SIGHT,
   TANK_GUN_CLIMB,
   TANK_GUN_ELEV_DEG,
   TICK_DT,
@@ -18,6 +20,7 @@ import {
   canAimWeapon,
   gunCanElevate,
   hasTerrainLos,
+  levelSightExtra,
   observerEyeOf,
   rangeTilesOf,
   sightTilesOf,
@@ -84,6 +87,10 @@ describe("high ground bonuses", () => {
     assert.equal(observerEyeOf("trooper"), INFANTRY_EYE_HEIGHT);
     assert.equal(observerEyeOf("warden"), 0);
     assert.ok(uphillSightOf("trooper") > uphillSightOf("warden"));
+    assert.equal(uphillSightOf("warden"), HULL_LEVEL_SIGHT);
+    assert.equal(levelSightExtra(0, 4, INFANTRY_UPHILL_SIGHT), 4 * INFANTRY_UPHILL_SIGHT);
+    assert.equal(levelSightExtra(4, 0, INFANTRY_UPHILL_SIGHT), 4 * INFANTRY_UPHILL_SIGHT);
+    assert.equal(levelSightExtra(2, 2, INFANTRY_UPHILL_SIGHT), 0);
   });
 
   it("gives structures the same peek and uphill sight as infantry", () => {
@@ -91,7 +98,7 @@ describe("high ground bonuses", () => {
     assert.equal(observerEyeOf("dynamo"), INFANTRY_EYE_HEIGHT);
     assert.equal(observerEyeOf("cottage"), INFANTRY_EYE_HEIGHT);
     assert.equal(uphillSightOf("core"), uphillSightOf("trooper"));
-    assert.equal(uphillSightOf("warden"), 0);
+    assert.equal(uphillSightOf("warden"), HULL_LEVEL_SIGHT);
   });
 });
 

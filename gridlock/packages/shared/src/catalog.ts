@@ -118,11 +118,13 @@ export const HEIGHT_UPHILL_COST = 1.7 ** (1 / TILE_SUBDIV);
 /** A* step-cost multiplier per adjacent-tile descent. */
 export const HEIGHT_DOWNHILL_COST = 0.9 ** (1 / TILE_SUBDIV);
 /** Extra Chebyshev sight tiles per elevation step above HEIGHT_BASE. */
-export const HEIGHT_SIGHT_BONUS = 2;
-/** Extra Chebyshev tiles infantry gain per elevation step of a tile above them. */
-export const INFANTRY_UPHILL_SIGHT = 2;
+export const HEIGHT_SIGHT_BONUS = 3;
+/** Extra Chebyshev tiles infantry gain per elevation step of a tile above or below them. */
+export const INFANTRY_UPHILL_SIGHT = 3;
+/** Extra Chebyshev tiles a hull gains per elevation step of a tile above or below it. */
+export const HULL_LEVEL_SIGHT = 1;
 /** Standing eye height. Troops peek over rises that hide a hull. */
-export const INFANTRY_EYE_HEIGHT = TILE_SUBDIV;
+export const INFANTRY_EYE_HEIGHT = TILE_SUBDIV + 1;
 /** World-Z per discrete elevation. Matches iso lift (half a tile height). */
 export const HEIGHT_WORLD = TILE_SIZE / 2;
 /**

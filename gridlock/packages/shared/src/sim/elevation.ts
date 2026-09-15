@@ -10,6 +10,7 @@ import {
   HEIGHT_UPHILL_COST,
   HEIGHT_UPHILL_SPEED,
   HEIGHT_WORLD,
+  HULL_LEVEL_SIGHT,
   INFANTRY_EYE_HEIGHT,
   INFANTRY_UPHILL_SIGHT,
   TANK_GUN_CLIMB,
@@ -116,9 +117,15 @@ export function observerEyeOf(type: EntityType): number {
   return usesInfantrySight(type) ? INFANTRY_EYE_HEIGHT : 0;
 }
 
-/** Extra Chebyshev reach per elevation step of a looked-at tile above the observer. */
+/** Extra Chebyshev reach per elevation step between observer and tile (up or down). */
 export function uphillSightOf(type: EntityType): number {
-  return usesInfantrySight(type) ? INFANTRY_UPHILL_SIGHT : 0;
+  return usesInfantrySight(type) ? INFANTRY_UPHILL_SIGHT : HULL_LEVEL_SIGHT;
+}
+
+/** Extra fog tiles from a per-step bonus across an elevation delta. */
+export function levelSightExtra(fromH: number, toH: number, perStep: number): number {
+  if (perStep <= 0) return 0;
+  return Math.abs(toH - fromH) * perStep;
 }
 
 export function observerEyeForEntity(e: { type: EntityType; scoutOut?: boolean; scoutHp?: number }): number {
