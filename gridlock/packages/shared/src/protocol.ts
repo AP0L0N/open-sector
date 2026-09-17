@@ -11,7 +11,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 20;
+export const PROTOCOL_VERSION = 21;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -98,6 +98,8 @@ export interface EntityView {
   /** Allied production line. Omitted for enemies and empty queues. */
   trainQueue?: TrainJobView[];
   cargo?: number;
+  /** Allied Mauler smoke grenades remaining. Omitted for enemies and other types. */
+  smokeCharges?: number;
   /** 0–1 while state is deploy or undeploy. */
   deployProgress?: number;
   /** Seconds remaining before the special can fire again. Omitted when idle. */

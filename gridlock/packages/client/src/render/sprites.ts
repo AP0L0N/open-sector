@@ -61,8 +61,7 @@ import trooperCrouchUrl from "../assets/units/trooper-crouch.png";
 import trooperCrawlUrl from "../assets/units/trooper-crawl.png";
 import infantrySwimUrl from "../assets/units/infantry-swim.png";
 import haulerSheetUrl from "../assets/units/hauler-move.png";
-import wardenHullUrl from "../assets/units/warden-hull.png";
-import wardenTurretUrl from "../assets/units/warden-turret.png";
+import { bindTurntableSheets } from "./turntable-sheet.js";
 import scoutHeadUrl from "../assets/units/scout-head.png";
 import rigSheetUrl from "../assets/units/rig-move.png";
 import armIconUrl from "../assets/status/arm.png";
@@ -157,21 +156,23 @@ export const SCOUT_HEAD_SPRITE: UnitSpriteDef = {
   contactY: 1,
 };
 
-export const WARDEN_SPRITE: UnitSpriteDef = {
-  image: loadSheet(wardenHullUrl),
+const tigerTurret: TurretSpriteDef = {
+  image: new Image(),
+  dirs: 16,
+  frames: 1,
+  frameSize: 128,
+};
+export const TIGER_SPRITE: UnitSpriteDef = {
+  image: new Image(),
   dirs: 16,
   frames: 1,
   frameSize: 128,
   fps: 8,
   drawSize: Math.round(44 * UNIT_VISUAL_SCALE),
   contactY: 0.92,
-  turret: {
-    image: loadSheet(wardenTurretUrl),
-    dirs: 16,
-    frames: 1,
-    frameSize: 128,
-  },
+  turret: tigerTurret,
 };
+bindTurntableSheets(TIGER_SPRITE.image, tigerTurret.image);
 
 export const HAULER_SPRITE: UnitSpriteDef = {
   image: loadSheet(haulerSheetUrl),
@@ -196,7 +197,7 @@ export const RIG_SPRITE: UnitSpriteDef = {
 const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   trooper: TROOPER_SPRITE,
   hauler: HAULER_SPRITE,
-  warden: WARDEN_SPRITE,
+  warden: TIGER_SPRITE,
   rig: RIG_SPRITE,
 };
 

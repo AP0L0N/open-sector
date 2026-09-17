@@ -1,7 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { TICK_DT, catalog, isCivilianType } from "../catalog.js";
+import {
+  TICK_DT,
+  catalog,
+  isCivilianType,
+  HAULER_SMOKE_CHARGES,
+  HAULER_SMOKE_COOLDOWN,
+  HAULER_SMOKE_RELOAD,
+  SMOKE_SECONDS,
+} from "../catalog.js";
+import { snapshotFor } from "./snapshot.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { tickAi } from "./ai.js";
@@ -90,6 +99,15 @@ function placeHauler(state: MatchState, ownerId: string): ReturnType<typeof make
   return hauler;
 }
 
+function waitSec(state: MatchState, sec: number): void {
+  const n = Math.ceil(sec / TICK_DT) + 2;
+  for (let i = 0; i < n; i++) step(state, TICK_DT);
+}
+
+function freshClouds(state: MatchState): number {
+  return state.smokeClouds.filter((c) => c.life > SMOKE_SECONDS - TICK_DT * 3).length;
+}
+
 function shellFromWest(state: MatchState, hauler: { x: number; y: number; id: number }): Projectile {
   const speed = catalog("warden").projectileSpeed;
   const p = fireShell(state, {
@@ -120,6 +138,7 @@ describe("hauler smoke screen", () => {
     step(state, TICK_DT);
     assert.ok(hauler.hp > 0, `hauler died hp=${hauler.hp}`);
     assert.ok(state.smokeClouds.length >= 1, "smoke missing");
+    assert.equal(hauler.smokeCharges, HAULER_SMOKE_CHARGES - 1);
     const cloud = state.smokeClouds[0]!;
     assert.ok(Math.hypot(cloud.x - x0, cloud.y - hauler.y) < ts * 2, "cloud should be on the Mauler");
     const tx = worldToTile(hauler.x, ts);
@@ -193,13 +212,70 @@ describe("hauler smoke screen", () => {
     const { state } = twoPlayerMatch();
     clearCover(state);
     const hauler = placeHauler(state, "A");
+    assert.equal(hauler.smokeCharges, HAULER_SMOKE_CHARGES);
     shellFromWest(state, hauler);
     step(state, TICK_DT);
     assert.equal(state.smokeClouds.length, 1);
+    assert.equal(hauler.smokeCharges, HAULER_SMOKE_CHARGES - 1);
     shellFromWest(state, hauler);
     step(state, TICK_DT);
     assert.equal(state.smokeClouds.length, 1);
+    assert.equal(hauler.smokeCharges, HAULER_SMOKE_CHARGES - 1);
     assert.ok(hauler.specialCooldown > 0);
+  });
+
+  it("burns three screens then restocks after a long reload", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const hauler = placeHauler(state, "A");
+    applyCommand(state, "A", { type: "cmd.hold", ids: [hauler.id], hold: true });
+    assert.equal(hauler.smokeCharges, HAULER_SMOKE_CHARGES);
+
+    const pop = (): number => {
+      const before = freshClouds(state);
+      shellFromWest(state, hauler);
+      step(state, TICK_DT);
+      return freshClouds(state) - before;
+    };
+
+    assert.equal(pop(), 1);
+    assert.equal(hauler.smokeCharges, 2);
+    waitSec(state, HAULER_SMOKE_COOLDOWN);
+
+    assert.equal(pop(), 1);
+    assert.equal(hauler.smokeCharges, 1);
+    waitSec(state, HAULER_SMOKE_COOLDOWN);
+
+    assert.equal(pop(), 1);
+    assert.equal(hauler.smokeCharges, 0);
+    assert.ok(hauler.specialCooldown > HAULER_SMOKE_COOLDOWN);
+    assert.ok(
+      Math.abs(hauler.specialCooldown - HAULER_SMOKE_RELOAD) < TICK_DT * 2,
+      `reload clock ${hauler.specialCooldown}`,
+    );
+
+    waitSec(state, HAULER_SMOKE_COOLDOWN);
+    assert.equal(pop(), 0);
+    assert.equal(hauler.smokeCharges, 0);
+
+    waitSec(state, hauler.specialCooldown);
+    assert.equal(hauler.smokeCharges, HAULER_SMOKE_CHARGES);
+    assert.equal(hauler.specialCooldown, 0);
+    assert.equal(pop(), 1);
+    assert.equal(hauler.smokeCharges, HAULER_SMOKE_CHARGES - 1);
+  });
+
+  it("puts allied smoke charges on the snapshot and hides them from the enemy", () => {
+    const { state, a, b } = twoPlayerMatch();
+    clearCover(state);
+    const hauler = placeHauler(state, a);
+    const ts = state.tileSize;
+    makeEntity(state, "trooper", b, hauler.x + ts, hauler.y);
+    const mine = snapshotFor(state, a).entities.find((e) => e.id === hauler.id);
+    const theirs = snapshotFor(state, b).entities.find((e) => e.id === hauler.id);
+    assert.equal(mine?.smokeCharges, HAULER_SMOKE_CHARGES);
+    assert.ok(theirs, "enemy should see the Mauler");
+    assert.equal(theirs?.smokeCharges, undefined);
   });
 
   it("pops smoke while holding but does not flee", () => {

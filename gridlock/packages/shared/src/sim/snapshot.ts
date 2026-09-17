@@ -66,6 +66,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
             }))
           : undefined,
       cargo: e.type === "hauler" ? e.cargo : undefined,
+      smokeCharges: friendly && e.type === "hauler" && !e.wreck ? e.smokeCharges : undefined,
       deployProgress:
         e.state === "deploy" || e.state === "undeploy"
           ? Math.min(1, e.deployTime / DEPLOY_SECONDS)

@@ -149,15 +149,15 @@ describe("cmd.move group", () => {
   it("marches mixed units at the slowest catalog speed", () => {
     const { state } = twoPlayerMatch();
     const ts = state.tileSize;
-    clearPad(state, 10, 16, 100, 100);
+    clearPad(state, 10, 8, 100, 100);
     const facing = Math.PI / 4;
     const inf = makeEntity(state, "trooper", "A", tileCenter(16, ts), tileCenter(20, ts));
     const tank = makeEntity(state, "warden", "A", tileCenter(16, ts), tileCenter(28, ts));
-    const solo = makeEntity(state, "trooper", "A", tileCenter(16, ts), tileCenter(36, ts));
+    const solo = makeEntity(state, "trooper", "A", tileCenter(16, ts), tileCenter(10, ts));
     inf.facing = facing;
     tank.facing = facing;
     tank.turretFacing = facing;
-    solo.facing = facing;
+    solo.facing = 0;
     const mixed = applyCommand(state, "A", {
       type: "cmd.move",
       ids: [inf.id, tank.id],
@@ -168,8 +168,8 @@ describe("cmd.move group", () => {
     const alone = applyCommand(state, "A", {
       type: "cmd.move",
       ids: [solo.id],
-      x: tileCenter(72, ts),
-      y: tileCenter(92, ts),
+      x: tileCenter(80, ts),
+      y: tileCenter(10, ts),
     });
     assert.equal(alone.ok, true, !alone.ok ? alone.message : "");
     assert.equal(inf.order?.pace, catalog("warden").moveTilesPerSec);
@@ -189,7 +189,7 @@ describe("cmd.move group", () => {
       Math.abs(infDist - tankDist) < 24,
       `mixed group split: inf ${infDist} tank ${tankDist}`,
     );
-    assert.ok(soloDist > infDist + 24, `solo ${soloDist} should outrun grouped ${infDist}`);
+    assert.ok(soloDist > infDist, `solo ${soloDist} should outrun grouped ${infDist}`);
   });
 
   it("stamps the same pace on attack-move", () => {

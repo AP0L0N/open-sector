@@ -94,6 +94,8 @@ export interface Entity {
   deployTime: number;
   /** Seconds remaining before this unit's special can fire again. */
   specialCooldown: number;
+  /** Mauler smoke grenades left. 0 on other types. */
+  smokeCharges: number;
   queue: TrainJob[];
   attackTarget: number | null;
   /** True after an armored hull dies; blocks until the wreck is destroyed. */

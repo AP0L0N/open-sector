@@ -103,6 +103,8 @@ function fillQuad(ctx: CanvasRenderingContext2D, a: IsoPt, b: IsoPt, c: IsoPt, d
   ctx.fill();
 }
 
+const TILE_OVERLAP_PX = 0.85;
+
 /** Grow a diamond so adjacent tiles overlap and hide hairline seams. */
 function expandQuad(n: IsoPt, e: IsoPt, s: IsoPt, w: IsoPt, px: number): [IsoPt, IsoPt, IsoPt, IsoPt] {
   const cx = (n.x + e.x + s.x + w.x) / 4;
@@ -196,13 +198,18 @@ function paintWaterOverlay(
   originX: number,
   originY: number,
 ): void {
+  const elev = map.heights;
   const d = tileDiamond(tx, ty, map.tileSize);
-  const n = bakePt(d.n, originX, originY);
-  const e = bakePt(d.e, originX, originY);
-  const s = bakePt(d.s, originX, originY);
-  const w = bakePt(d.w, originX, originY);
+  const up = (p: IsoPt, z: number): IsoPt => {
+    const q = bakePt(p, originX, originY);
+    return { x: q.x, y: q.y - z };
+  };
+  const n = up(d.n, isoLift(vertexElev(elev, map.width, map.height, tx, ty)));
+  const e = up(d.e, isoLift(vertexElev(elev, map.width, map.height, tx + 1, ty)));
+  const s = up(d.s, isoLift(vertexElev(elev, map.width, map.height, tx + 1, ty + 1)));
+  const w = up(d.w, isoLift(vertexElev(elev, map.width, map.height, tx, ty + 1)));
   const pat = waterPattern(ctx, 0);
-  if (pat) fillPatternInQuad(ctx, n, e, s, w, pat, 0.82);
+  if (pat) fillPatternInQuad(ctx, ...expandQuad(n, e, s, w, 1.25), pat, 1);
   const edges: [number, number, IsoPt, IsoPt][] = [
     [0, -1, n, e],
     [1, 0, e, s],
@@ -246,7 +253,7 @@ function paintGrassOverlay(
   const e = up(d.e, isoLift(vertexElev(elev, map.width, map.height, tx + 1, ty)));
   const s = up(d.s, isoLift(vertexElev(elev, map.width, map.height, tx + 1, ty + 1)));
   const w = up(d.w, isoLift(vertexElev(elev, map.width, map.height, tx, ty + 1)));
-  fillPatternInQuad(ctx, ...expandQuad(n, e, s, w, 0.85), pat, 0.58);
+  fillPatternInQuad(ctx, ...expandQuad(n, e, s, w, TILE_OVERLAP_PX), pat, 0.58);
 }
 
 export function atlasSize(map: MapDef): {
@@ -273,6 +280,7 @@ export function fillElevatedTile(
   originX: number,
   originY: number,
   slopeTint = false,
+  expandPx = TILE_OVERLAP_PX,
 ): void {
   const elev = map.heights;
   const d = tileDiamond(tx, ty, map.tileSize);
@@ -316,7 +324,7 @@ export function fillElevatedTile(
   } else {
     ctx.fillStyle = fill;
   }
-  fillQuad(ctx, ...expandQuad(n, e, s, w, 0.85));
+  fillQuad(ctx, ...expandQuad(n, e, s, w, expandPx));
 }
 
 function isoBox(
@@ -498,8 +506,9 @@ export function coverTile(
   originX: number,
   originY: number,
   fill: string,
+  expandPx = TILE_OVERLAP_PX,
 ): void {
-  fillElevatedTile(ctx, map, tx, ty, fill, originX, originY);
+  fillElevatedTile(ctx, map, tx, ty, fill, originX, originY, false, expandPx);
   paintTileProps(ctx, map, tx, ty, scrap, originX, originY, fill);
 }
 
@@ -515,7 +524,9 @@ function paintGround(
   const kind = map.tiles[ty * map.width + tx] ?? 0;
   fillElevatedTile(ctx, map, tx, ty, groundFill(map, tx, ty, kind, scrap), originX, originY, kind !== TILE_WATER);
   if (kind === TILE_WATER) paintWaterOverlay(ctx, map, tx, ty, originX, originY);
-  else if (kind === TILE_EMPTY && !scrap) paintGrassOverlay(ctx, map, tx, ty, originX, originY);
+  else if (!scrap && kind !== TILE_TREE && kind !== TILE_BLOCKED) {
+    paintGrassOverlay(ctx, map, tx, ty, originX, originY);
+  }
 }
 
 function paintTileStamp(
@@ -679,35 +690,16 @@ export function restampMini(
 export function updateScrap(bake: TerrainBake, map: MapDef, scrapCells: Iterable<ScrapCell>): void {
   const next = packScrap(scrapCells, map.width);
   const prev = bake.scrap;
-  const dirty = new Set<number>();
-  for (const i of prev) if (!next.has(i)) dirty.add(i);
-  for (const i of next) if (!prev.has(i)) dirty.add(i);
-  if (dirty.size === 0) {
+  const dirty: number[] = [];
+  for (const i of prev) if (!next.has(i)) dirty.push(i);
+  for (const i of next) if (!prev.has(i)) dirty.push(i);
+  if (dirty.length === 0) {
     bake.scrap = next;
     return;
   }
-  const ctx = bake.canvas.getContext("2d");
-  if (!ctx) {
-    bake.scrap = next;
-    return;
-  }
-  const w = map.width;
-  const h = map.height;
-  const expanded = new Set<number>();
-  for (const i of dirty) {
-    const x = i % w;
-    const y = (i / w) | 0;
-    for (let dy = -1; dy <= 1; dy++) {
-      for (let dx = -1; dx <= 1; dx++) {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-        expanded.add(ny * w + nx);
-      }
-    }
-  }
-  paintTileStamp(ctx, map, [...expanded], next, bake.originX, bake.originY);
-  bake.scrap = next;
+  // Same clear+repaint path as felled trees: scrap sprites sit above the
+  // diamond, so overpainting ground leaves outline pixels behind.
+  restampTiles(bake, map, dirty, scrapCells);
 }
 
 export function blitTerrain(

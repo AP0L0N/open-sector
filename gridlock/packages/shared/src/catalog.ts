@@ -103,6 +103,10 @@ export const WATER_PATH_COST = 2.5;
 export const CRIT_ENGINE_TURN = 0.2;
 /** Extra world pixels between unit reserved radii on a group move. */
 export const UNIT_SPACE_PAD = 2;
+/** Fine tiles ahead a moving vehicle looks for friendlies that should step aside. */
+export const GIVE_WAY_LOOKAHEAD_TILES = t(2);
+/** Half-angle of the keep-clear cone in front of a moving hull. */
+export const GIVE_WAY_CONE_DEG = 32;
 /** Default ground. Maps are lifted so valleys can sit below this. */
 export const HEIGHT_BASE = t(2);
 /** Peak discrete elevation. 0 is the valley floor. */
@@ -379,8 +383,15 @@ export const SMALL_ARMS_SPEED = 10000;
 export const TANK_SHELL_SPEED = SMALL_ARMS_SPEED;
 /** Seconds a 75mm smoke screen lasts. */
 export const SMOKE_SECONDS = 16;
+/** Mauler smoke grenades on the hull. Empty rack starts a long reload. */
+export const HAULER_SMOKE_CHARGES = 3;
 /** Mauler defensive smoke. Matches the screen so it does not restack. */
 export const HAULER_SMOKE_COOLDOWN = SMOKE_SECONDS;
+/** Seconds to restock a spent Mauler smoke rack. */
+export const HAULER_SMOKE_RELOAD = 60;
+export function haulerSmokeChargesOf(type: EntityType): number {
+  return type === "hauler" ? HAULER_SMOKE_CHARGES : 0;
+}
 /** Ellipse half-length along the shot, in gameplay tiles. */
 export const SMOKE_HALF_ALONG = t(2.5);
 /** Ellipse half-width across the shot, in gameplay tiles. */
@@ -389,7 +400,7 @@ export const SMOKE_HALF_ACROSS = t(1.5);
 export const SMOKE_PEEK_TILES = 1;
 
 /**
- * Coaxial MG under the Warden turret. Same reach as the 75mm; the cone
+ * Coaxial MG under the Tiger turret. Same reach as the 75mm; the cone
  * opens hard with distance. Rapid fire, own belt, heat-stops a dump.
  */
 export const TANK_MG = {
@@ -408,7 +419,7 @@ export const TANK_MG = {
   overheatSeconds: 2.4,
 } as const;
 
-/** 75mm Warden load. AP is the catalog gun; HE/HEAT/smoke swap on fire. */
+/** 75mm Tiger load. AP is the catalog gun; HE/HEAT/smoke swap on fire. */
 export const SHELLS: Record<ShellType, ShellDef> = {
   ap: {
     id: "ap",
@@ -656,7 +667,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   warden: {
     type: "warden",
     kind: "unit",
-    name: "Warden",
+    name: "Tiger",
     letter: "W",
     cost: 250,
     buildSeconds: 12,

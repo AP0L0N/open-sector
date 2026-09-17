@@ -5,8 +5,11 @@ import {
   CAPTURE_SECONDS,
   CAPTURE_SECONDS_MIN,
   GAME_SPEED_DEFAULT,
+  HAULER_SMOKE_CHARGES,
   HAULER_SMOKE_COOLDOWN,
+  HAULER_SMOKE_RELOAD,
   SMOKE_SECONDS,
+  haulerSmokeChargesOf,
   GAME_SPEED_MAX,
   HANDGUN,
   RIFLE,
@@ -58,9 +61,13 @@ describe("special actions", () => {
     assert.equal(specialLabel("hauler"), null);
   });
 
-  it("gives the Mauler a defensive smoke cooldown matching the screen", () => {
+  it("gives the Mauler three smoke screens and a long rack reload", () => {
+    assert.equal(HAULER_SMOKE_CHARGES, 3);
+    assert.equal(haulerSmokeChargesOf("hauler"), 3);
+    assert.equal(haulerSmokeChargesOf("warden"), 0);
     assert.equal(HAULER_SMOKE_COOLDOWN, SMOKE_SECONDS);
     assert.ok(HAULER_SMOKE_COOLDOWN >= 2);
+    assert.ok(HAULER_SMOKE_RELOAD >= HAULER_SMOKE_COOLDOWN * 3);
   });
 
   it("is not ready while transforming or on cooldown", () => {
@@ -75,6 +82,11 @@ describe("special actions", () => {
 });
 
 describe("warden ammo", () => {
+  it("is the Tiger tank in the catalog", () => {
+    assert.equal(catalog("warden").name, "Tiger");
+    assert.equal(catalog("warden").letter, "W");
+  });
+
   it("starts with a mixed rack of about twenty shells", () => {
     const w = catalog("warden");
     const ammo = w.ammo ?? {};
