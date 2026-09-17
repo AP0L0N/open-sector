@@ -82,7 +82,7 @@ export function pathToWorld(
     last.x = toX;
     last.y = toY;
   }
-  return pts;
+  return pullString(state, fromX, fromY, pts, type, sx, sy, tiles);
 }
 
 export function setPath(state: MatchState, e: Entity, toX: number, toY: number): boolean {
@@ -190,6 +190,77 @@ function straightPath(
   gy: number,
   type?: EntityType,
 ): { x: number; y: number }[] | null {
+  return walkTileLine(state, sx, sy, gx, gy, type, sx, sy, () => false);
+}
+
+/**
+ * Collapse A* tile centers to line-of-sight corners so a unit holds one heading
+ * across open ground instead of stop-turning on every 8-way staircase step.
+ * Water not on the A* path stays blocked so infantry do not cut a pond.
+ */
+function pullString(
+  state: MatchState,
+  fromX: number,
+  fromY: number,
+  pts: Vec[],
+  type: EntityType | undefined,
+  originX: number,
+  originY: number,
+  tiles: { x: number; y: number }[],
+): Vec[] {
+  if (pts.length <= 1) return pts;
+  const pathSet = new Set<number>();
+  pathSet.add(key(originX, originY));
+  for (const t of tiles) pathSet.add(key(t.x, t.y));
+  const waterOk = (x: number, y: number): boolean => pathSet.has(key(x, y));
+  const ts = state.tileSize;
+  const out: Vec[] = [];
+  let ax = fromX;
+  let ay = fromY;
+  let i = 0;
+  while (i < pts.length) {
+    let best = i;
+    for (let j = i + 1; j < pts.length; j++) {
+      const p = pts[j];
+      if (!p) break;
+      if (
+        walkTileLine(
+          state,
+          worldToTile(ax, ts),
+          worldToTile(ay, ts),
+          worldToTile(p.x, ts),
+          worldToTile(p.y, ts),
+          type,
+          originX,
+          originY,
+          waterOk,
+        ) === null
+      ) {
+        break;
+      }
+      best = j;
+    }
+    const keep = pts[best];
+    if (keep) out.push(keep);
+    ax = keep?.x ?? ax;
+    ay = keep?.y ?? ay;
+    i = best + 1;
+  }
+  return out;
+}
+
+function walkTileLine(
+  state: MatchState,
+  sx: number,
+  sy: number,
+  gx: number,
+  gy: number,
+  type: EntityType | undefined,
+  originX: number,
+  originY: number,
+  waterOk: (x: number, y: number) => boolean,
+): { x: number; y: number }[] | null {
+  if (sx === gx && sy === gy) return [];
   const path: { x: number; y: number }[] = [];
   let x = sx;
   let y = sy;
@@ -215,9 +286,15 @@ function straightPath(
     const nx = x + ndx;
     const ny = y + ndy;
     if (ndx !== 0 && ndy !== 0) {
-      if (!passable(state, x + ndx, y, type, sx, sy) || !passable(state, x, y + ndy, type, sx, sy)) return null;
+      if (
+        !passable(state, x + ndx, y, type, originX, originY) ||
+        !passable(state, x, y + ndy, type, originX, originY)
+      ) {
+        return null;
+      }
     }
-    if (!passable(state, nx, ny, type, sx, sy) || isWater(state, nx, ny)) return null;
+    if (!passable(state, nx, ny, type, originX, originY)) return null;
+    if (isWater(state, nx, ny) && !waterOk(nx, ny)) return null;
     if (!climbableDelta(tileHeight(state, nx, ny) - tileHeight(state, x, y))) return null;
     path.push({ x: nx, y: ny });
     x = nx;

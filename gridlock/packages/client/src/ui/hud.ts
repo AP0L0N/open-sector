@@ -6,6 +6,7 @@ import {
   STANCE_LABEL,
   TRAIN_QUEUE_CAP,
   TRAIN_TYPES,
+  HAULER_SMOKE_CHARGES,
   ammoOf,
   armorLabel,
   catalog,
@@ -473,13 +474,19 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
       ? `  ·  train ${qPaused ? "paused " : ""}${Math.round(e.trainProgress * 100)}%${qn > 1 ? " ×" + qn : ""}`
       : "";
   const cargo = e.cargo ? `  ·  cargo ${e.cargo}` : "";
+  const cd = e.specialCooldown ?? 0;
+  const smoke =
+    e.type === "hauler" && e.ownerId === ctx.match.youPlayerId && !e.wreck && e.smokeCharges != null
+      ? e.smokeCharges <= 0 && cd > 0
+        ? `  ·  smoke 0/${HAULER_SMOKE_CHARGES} reloading ${cd.toFixed(1)}s`
+        : `  ·  smoke ${e.smokeCharges}/${HAULER_SMOKE_CHARGES}`
+      : "";
   const dep =
     e.deployProgress != null
       ? `  ·  ${e.state === "undeploy" ? "packing" : "deploying"} ${Math.round(e.deployProgress * 100)}%`
       : "";
-  const cd = e.specialCooldown ?? 0;
   const special =
-    e.ownerId !== ctx.match.youPlayerId
+    e.ownerId !== ctx.match.youPlayerId || !specialOf(e.type)
       ? ""
       : cd > 0 && e.state !== "deploy" && e.state !== "undeploy"
         ? `  ·  ${specialLabel(e.type) ?? "Special"} ${cd.toFixed(1)}s`
@@ -531,7 +538,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     ? ctx.match.players.find((p) => p.playerId === e.garrison!.ownerId)
     : owner;
   const who = occ?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${mg}  ·  ${who}${q}${cargo}${dep}${special}${garrison}${scout}${capturing}${holding}`;
+  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${mg}  ·  ${who}${q}${cargo}${smoke}${dep}${special}${garrison}${scout}${capturing}${holding}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
 

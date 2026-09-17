@@ -1,6 +1,6 @@
 export { createMatch, step, stepMatch } from "./match.js";
 export { tickAi, findBuildTile } from "./ai.js";
-export { tickCollision, moveWithCollision } from "./collision.js";
+export { tickCollision, tickGiveWay, moveWithCollision } from "./collision.js";
 export { toWreck } from "./wreck.js";
 export { fireStats, hullTurnMul, immobilized, moveSpeedMul, rollCrits } from "./crits.js";
 export { commandedStance, effectiveStance, tickStance } from "./stance.js";

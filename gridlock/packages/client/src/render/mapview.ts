@@ -159,6 +159,8 @@ const HP_FILL_LOW_VIVID = "#f25a48";
 const HP_FILL_HOSTILE_VIVID = "#ff5a4a";
 /** Sprite alpha when a building volume sits in front of the unit. */
 const OCCLUDED_UNIT_ALPHA = 0.46;
+/** Extra diamond overlap so fog punches and dim veils do not leave tile seams. */
+const FOG_SEAM_PX = 1.5;
 
 function mixHash(h: number, v: number): number {
   return Math.imul(h ^ (v | 0), 16777619);
@@ -672,18 +674,40 @@ export class MapView {
     }
     const ox = bake.originX;
     const oy = bake.originY;
-    // destination-out punches lit diamonds so the overlay is transparent over terrain
+    const cover = (i: number, fill: string): void => {
+      coverTile(ctx, map, i % w, (i / w) | 0, bake.scrap.has(i), ox, oy, fill, FOG_SEAM_PX);
+    };
+    // destination-out punches explored diamonds so the overlay is transparent over terrain
     ctx.globalCompositeOperation = "destination-out";
-    for (const i of punch) {
-      coverTile(ctx, map, i % w, (i / w) | 0, bake.scrap.has(i), ox, oy, "#ffffff");
+    for (const i of punch) cover(i, "#ffffff");
+    // destination-over fills holes without stacking alpha on shared edges
+    ctx.globalCompositeOperation = "destination-over";
+    for (const i of dim) {
+      fillElevatedTile(ctx, map, i % w, (i / w) | 0, "rgba(0,0,0,0.55)", ox, oy, false, FOG_SEAM_PX);
+    }
+    ctx.globalCompositeOperation = "destination-out";
+    const cleared = new Set<number>();
+    const clearLit = (i: number): void => {
+      if (cleared.has(i) || !vis[i]) return;
+      cleared.add(i);
+      cover(i, "#ffffff");
+    };
+    for (const i of punch) clearLit(i);
+    for (const i of dim) {
+      const x = i % w;
+      const y = (i / w) | 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= map.height) continue;
+          clearLit(ny * w + nx);
+        }
+      }
     }
     ctx.globalCompositeOperation = "source-over";
-    for (const i of dim) {
-      fillElevatedTile(ctx, map, i % w, (i / w) | 0, "rgba(0,0,0,0.55)", ox, oy);
-    }
-    for (const i of hide) {
-      coverTile(ctx, map, i % w, (i / w) | 0, bake.scrap.has(i), ox, oy, "#050403");
-    }
+    for (const i of hide) cover(i, "#050403");
   }
 
   private rebuildMiniFog(map: { width: number; height: number }, n: number): void {

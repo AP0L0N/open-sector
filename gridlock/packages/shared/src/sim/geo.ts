@@ -1,5 +1,6 @@
 import {
   catalog,
+  haulerSmokeChargesOf,
   infantryGunFor,
   primaryInfantryGun,
   isArmoredType,
@@ -430,6 +431,7 @@ export function makeEntity(
     returnToBase: false,
     deployTime: 0,
     specialCooldown: 0,
+    smokeCharges: haulerSmokeChargesOf(type),
     queue: [],
     attackTarget: null,
     wreck: false,

@@ -1,4 +1,4 @@
-import { catalog, DEPLOY_SECONDS, specialOf, specialCooldownOf } from "../catalog.js";
+import { catalog, DEPLOY_SECONDS, HAULER_SMOKE_CHARGES, specialOf, specialCooldownOf } from "../catalog.js";
 import {
   buildingCenter,
   clearOrder,
@@ -72,6 +72,9 @@ export function tickAutoDeploy(state: MatchState): void {
 export function tickDeploy(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (e.specialCooldown > 0) e.specialCooldown = Math.max(0, e.specialCooldown - dt);
+    if (e.type === "hauler" && e.hp > 0 && !e.wreck && e.smokeCharges <= 0 && e.specialCooldown <= 0) {
+      e.smokeCharges = HAULER_SMOKE_CHARGES;
+    }
   }
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0) continue;
@@ -195,6 +198,7 @@ function structuredCloneBase(e: Entity): Entity {
     returnToBase: false,
     deployTime: 0,
     specialCooldown: e.specialCooldown,
+    smokeCharges: 0,
     queue: [],
     attackTarget: null,
     wreck: false,

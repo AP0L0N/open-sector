@@ -5,6 +5,7 @@ import {
   GARRISON_STRUCTURAL_CALIBER,
   GUARD_CONE_DEG,
   HAULER_SMOKE_COOLDOWN,
+  HAULER_SMOKE_RELOAD,
   PROJECTILE_RADIUS,
   TANK_MG,
   WEAPON_RANGE_SIGHT_MUL,
@@ -771,9 +772,10 @@ function maybeHaulerSmokeScreen(state: MatchState, victim: Entity, p: Projectile
   if (victim.type !== "hauler" || victim.kind !== "unit" || victim.wreck) return false;
   if (p.bounced || p.caliber < GARRISON_STRUCTURAL_CALIBER) return false;
 
-  if (victim.specialCooldown <= 0) {
+  if (victim.specialCooldown <= 0 && victim.smokeCharges > 0) {
     spawnSmokeCloud(state, victim.x, victim.y, p.vx, p.vy);
-    victim.specialCooldown = HAULER_SMOKE_COOLDOWN;
+    victim.smokeCharges -= 1;
+    victim.specialCooldown = victim.smokeCharges <= 0 ? HAULER_SMOKE_RELOAD : HAULER_SMOKE_COOLDOWN;
   }
 
   if (victim.hp <= 0 || victim.holdPosition || immobilized(victim)) return true;

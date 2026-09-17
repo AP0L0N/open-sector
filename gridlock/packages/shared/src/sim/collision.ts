@@ -1,5 +1,14 @@
-import { isArmoredType, isInfantryType, isMotorVehicle, UNIT_SPACE_PAD } from "../catalog.js";
-import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, occupant, tileCenter, walkable, worldToTile } from "./geo.js";
+import {
+  GIVE_WAY_CONE_DEG,
+  GIVE_WAY_LOOKAHEAD_TILES,
+  isArmoredType,
+  isInfantryType,
+  isMotorVehicle,
+  TICK_DT,
+  UNIT_SPACE_PAD,
+} from "../catalog.js";
+import { moveSpeedMul } from "./crits.js";
+import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, occupant, tileCenter, unitInWater, walkable, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
 export function isActiveUnit(e: Entity): boolean {
@@ -73,10 +82,10 @@ export function crushTreesUnder(state: MatchState, e: Entity): void {
   }
 }
 
-function blockedByUnit(state: MatchState, e: Entity, x: number, y: number): boolean {
+function blockedByUnit(state: MatchState, e: Entity, x: number, y: number, ignoreId?: number): boolean {
   const r = e.radius;
   for (const o of state.entities.values()) {
-    if (o.id === e.id || o.hp <= 0) continue;
+    if (o.id === e.id || o.id === ignoreId || o.hp <= 0) continue;
     if (o.kind === "building") continue;
     const need = r + o.radius;
     const dx = x - o.x;
@@ -93,8 +102,194 @@ function blockedByUnit(state: MatchState, e: Entity, x: number, y: number): bool
   return false;
 }
 
-function canStand(state: MatchState, e: Entity, x: number, y: number): boolean {
-  return tileFree(state, e, x, y) && !blockedByUnit(state, e, x, y);
+function canStand(state: MatchState, e: Entity, x: number, y: number, ignoreId?: number): boolean {
+  return tileFree(state, e, x, y) && !blockedByUnit(state, e, x, y, ignoreId);
+}
+
+/** Higher class keeps the lane: armored, then other vehicles, then infantry. */
+function pathClass(e: Entity): number {
+  if (isArmoredType(e.type)) return 2;
+  if (isMotorVehicle(e.type)) return 1;
+  return 0;
+}
+
+/** True when `other` should step aside for a moving `mover`. */
+function yieldsTo(mover: Entity, other: Entity): boolean {
+  const mc = pathClass(mover);
+  const oc = pathClass(other);
+  if (mc !== oc) return mc > oc;
+  return other.radius + UNIT_SPACE_PAD < mover.radius;
+}
+
+function travelDir(e: Entity): { x: number; y: number } {
+  return { x: Math.cos(e.facing), y: Math.sin(e.facing) };
+}
+
+const GIVE_WAY_CONE_TAN = Math.tan((GIVE_WAY_CONE_DEG * Math.PI) / 180);
+
+function coneHalfWidth(mover: Entity, other: Entity, along: number): number {
+  const hull = mover.radius + other.radius + UNIT_SPACE_PAD;
+  if (along <= 0) return hull;
+  return hull + along * GIVE_WAY_CONE_TAN;
+}
+
+function relativeToMover(
+  mover: Entity,
+  x: number,
+  y: number,
+): { along: number; across: number; dir: { x: number; y: number }; px: number; py: number } {
+  const dir = travelDir(mover);
+  const px = -dir.y;
+  const py = dir.x;
+  const dx = x - mover.x;
+  const dy = y - mover.y;
+  return { along: dx * dir.x + dy * dir.y, across: dx * px + dy * py, dir, px, py };
+}
+
+function yieldSide(across: number, id: number): 1 | -1 {
+  if (across > 0.5) return 1;
+  if (across < -0.5) return -1;
+  return id % 2 === 0 ? 1 : -1;
+}
+
+export function tickGiveWay(state: MatchState): void {
+  const units: Entity[] = [];
+  for (const e of state.entities.values()) {
+    if (isActiveUnit(e)) units.push(e);
+  }
+  for (const mover of units) {
+    if (mover.waypoints.length === 0) continue;
+    if (pathClass(mover) === 0) continue;
+    if (moveSpeedMul(mover, unitInWater(state, mover)) <= 0) continue;
+    for (const other of units) {
+      if (other.id === mover.id) continue;
+      if (!yieldsTo(mover, other)) continue;
+      if (!allies(state, mover.ownerId, other.ownerId)) continue;
+      if (other.state === "deploy" || other.state === "undeploy") continue;
+      if (!canYieldWalk(other)) continue;
+      stepAside(state, mover, other);
+    }
+  }
+}
+
+function canYieldWalk(e: Entity): boolean {
+  if (!isInfantryType(e.type)) return false;
+  const kind = e.order?.kind;
+  if (kind === "rotate" || kind === "harvest" || kind === "unload" || kind === "garrison") return false;
+  return moveSpeedMul(e) > 0;
+}
+
+function stepAside(state: MatchState, mover: Entity, other: Entity): void {
+  if (moveSpeedMul(other, unitInWater(state, other)) <= 0) return;
+  const rel = relativeToMover(mover, other.x, other.y);
+  const need = mover.radius + other.radius + UNIT_SPACE_PAD;
+  const look = need + GIVE_WAY_LOOKAHEAD_TILES * state.tileSize;
+  if (rel.along < -other.radius * 0.35) return;
+  if (rel.along > look) return;
+  const half = coneHalfWidth(mover, other, rel.along) + UNIT_SPACE_PAD;
+  if (Math.abs(rel.across) >= half) return;
+  const sign = yieldSide(rel.across, other.id);
+  const first = other.waypoints[0];
+  if (first) {
+    const fr = relativeToMover(mover, first.x, first.y);
+    if (Math.sign(fr.across || sign) === sign && Math.abs(fr.across) >= half - 1) return;
+  }
+  const ts = state.tileSize;
+  for (const extra of [0, ts, ts * 2]) {
+    const targetAcross = sign * (half + extra);
+    const shift = targetAcross - rel.across;
+    const nx = other.x + rel.px * shift;
+    const ny = other.y + rel.py * shift;
+    if (!canStand(state, other, nx, ny, mover.id)) continue;
+    const next = relativeToMover(mover, nx, ny);
+    if (next.along > rel.along + 1) continue;
+    if (Math.abs(next.across) + 1e-6 < half) continue;
+    if (Math.sign(next.across || sign) !== sign) continue;
+    assignYieldPath(other, nx, ny);
+    return;
+  }
+}
+
+function eachYieldMover(state: MatchState, e: Entity, fn: (mover: Entity) => void): void {
+  for (const mover of state.entities.values()) {
+    if (mover.id === e.id || !isActiveUnit(mover)) continue;
+    if (mover.waypoints.length === 0) continue;
+    if (!yieldsTo(mover, e)) continue;
+    if (!allies(state, mover.ownerId, e.ownerId)) continue;
+    fn(mover);
+  }
+}
+
+function inForwardCone(mover: Entity, other: Entity, along: number, across: number): boolean {
+  if (along < -other.radius * 0.35) return false;
+  return Math.abs(across) < coneHalfWidth(mover, other, along);
+}
+
+/** Strip any step that would walk into a moving hull's forward cone. */
+function clipYieldWant(state: MatchState, e: Entity, wantX: number, wantY: number): { x: number; y: number } {
+  if (!isInfantryType(e.type)) return { x: wantX, y: wantY };
+  let x = wantX;
+  let y = wantY;
+  const lookPad = GIVE_WAY_LOOKAHEAD_TILES * state.tileSize;
+  eachYieldMover(state, e, (mover) => {
+    const rel = relativeToMover(mover, e.x, e.y);
+    const need = mover.radius + e.radius + UNIT_SPACE_PAD;
+    const look = need + lookPad;
+    if (rel.along < -e.radius * 0.35 || rel.along > look) return;
+    const wx = x - e.x;
+    const wy = y - e.y;
+    let alongStep = wx * rel.dir.x + wy * rel.dir.y;
+    let acrossStep = wx * rel.px + wy * rel.py;
+    const nextAlong = rel.along + alongStep;
+    const nextAcross = rel.across + acrossStep;
+    const inside = inForwardCone(mover, e, rel.along, rel.across);
+    const enters = inForwardCone(mover, e, nextAlong, nextAcross);
+    if (!inside && !enters) return;
+    if (alongStep > 0) alongStep = 0;
+    const sign = yieldSide(rel.across, e.id);
+    if (acrossStep * sign < 0) acrossStep = 0;
+    x = e.x + rel.dir.x * alongStep + rel.px * acrossStep;
+    y = e.y + rel.dir.y * alongStep + rel.py * acrossStep;
+  });
+  return { x, y };
+}
+
+function worseForGiveWay(state: MatchState, e: Entity, x: number, y: number): boolean {
+  if (!isInfantryType(e.type)) return false;
+  let worse = false;
+  const lookPad = GIVE_WAY_LOOKAHEAD_TILES * state.tileSize;
+  eachYieldMover(state, e, (mover) => {
+    if (worse) return;
+    const cur = relativeToMover(mover, e.x, e.y);
+    const need = mover.radius + e.radius + UNIT_SPACE_PAD;
+    const look = need + lookPad;
+    if (cur.along < -e.radius * 0.35 || cur.along > look) return;
+    const next = relativeToMover(mover, x, y);
+    const inside = inForwardCone(mover, e, cur.along, cur.across);
+    const enters = inForwardCone(mover, e, next.along, next.across);
+    if (!inside && !enters) return;
+    if (next.along > cur.along + 0.35) {
+      worse = true;
+      return;
+    }
+    if (Math.abs(next.across) + 0.35 < Math.abs(cur.across)) {
+      worse = true;
+    }
+  });
+  return worse;
+}
+
+function assignYieldPath(e: Entity, x: number, y: number): void {
+  const first = e.waypoints[0];
+  if (first && Math.hypot(first.x - x, first.y - y) <= 8) {
+    first.x = x;
+    first.y = y;
+  } else if (e.waypoints.length === 0) {
+    e.waypoints = [{ x, y }];
+  } else {
+    e.waypoints.unshift({ x, y });
+  }
+  if (!e.order) e.order = { kind: "move", x, y, auto: true };
 }
 
 export function resolveMove(
@@ -103,7 +298,8 @@ export function resolveMove(
   wantX: number,
   wantY: number,
 ): { x: number; y: number; blocked: boolean } {
-  if (canStand(state, e, wantX, wantY)) return { x: wantX, y: wantY, blocked: false };
+  const tryPos = (x: number, y: number): boolean => canStand(state, e, x, y) && !worseForGiveWay(state, e, x, y);
+  if (tryPos(wantX, wantY)) return { x: wantX, y: wantY, blocked: false };
   const dx = wantX - e.x;
   const dy = wantY - e.y;
   const len = Math.hypot(dx, dy) || 1;
@@ -114,13 +310,13 @@ export function resolveMove(
     for (const sign of [1, -1] as const) {
       const sx = e.x + px * sign * step * mul;
       const sy = e.y + py * sign * step * mul;
-      if (canStand(state, e, sx, sy)) return { x: sx, y: sy, blocked: false };
+      if (tryPos(sx, sy)) return { x: sx, y: sy, blocked: false };
     }
   }
   for (let f = 0.7; f >= 0.15; f -= 0.2) {
     const sx = e.x + dx * f;
     const sy = e.y + dy * f;
-    if (canStand(state, e, sx, sy)) return { x: sx, y: sy, blocked: false };
+    if (tryPos(sx, sy)) return { x: sx, y: sy, blocked: false };
   }
   return { x: e.x, y: e.y, blocked: true };
 }
@@ -144,7 +340,8 @@ export function moveWithCollision(state: MatchState, e: Entity, speed: number, d
     wantX = e.x + (dx / dist) * step;
     wantY = e.y + (dy / dist) * step;
   }
-  const pos = resolveMove(state, e, wantX, wantY);
+  const clipped = clipYieldWant(state, e, wantX, wantY);
+  const pos = resolveMove(state, e, clipped.x, clipped.y);
   e.x = pos.x;
   e.y = pos.y;
   crushTreesUnder(state, e);
@@ -157,7 +354,7 @@ export function moveWithCollision(state: MatchState, e: Entity, speed: number, d
   return e.waypoints.length > 0;
 }
 
-export function tickCollision(state: MatchState): void {
+export function tickCollision(state: MatchState, dt = TICK_DT): void {
   const units = [...state.entities.values()].filter((e) => e.kind === "unit" && e.hp > 0);
   for (const a of units) {
     if (isActiveUnit(a)) crushTreesUnder(state, a);
@@ -209,6 +406,7 @@ function separatePair(state: MatchState, a: Entity, b: Entity): void {
     dist = 1;
   }
   const overlap = need - dist;
+  if (shoveYieldAside(state, a, b, overlap) || shoveYieldAside(state, b, a, overlap)) return;
   const ma = massOf(a);
   const mb = massOf(b);
   const tot = ma + mb;
@@ -216,6 +414,19 @@ function separatePair(state: MatchState, a: Entity, b: Entity): void {
   const uy = dy / dist;
   tryShift(state, a, -ux * overlap * (mb / tot), -uy * overlap * (mb / tot));
   tryShift(state, b, ux * overlap * (ma / tot), uy * overlap * (ma / tot));
+}
+
+function shoveYieldAside(state: MatchState, mover: Entity, other: Entity, overlap: number): boolean {
+  if (mover.waypoints.length === 0) return false;
+  if (!isInfantryType(other.type)) return false;
+  if (!yieldsTo(mover, other)) return false;
+  if (!allies(state, mover.ownerId, other.ownerId)) return false;
+  const rel = relativeToMover(mover, other.x, other.y);
+  const sign = yieldSide(rel.across, other.id);
+  const ox = other.x;
+  const oy = other.y;
+  tryShift(state, other, rel.px * sign * overlap, rel.py * sign * overlap);
+  return other.x !== ox || other.y !== oy;
 }
 
 /** Push units out of a new wreck so they can path from a walkable tile. */
