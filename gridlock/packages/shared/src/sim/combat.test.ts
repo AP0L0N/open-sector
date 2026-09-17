@@ -725,6 +725,86 @@ describe("guard", () => {
   });
 });
 
+describe("escort", () => {
+  it("walks beside a friendly unit and keeps the guard order", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(20, ts), tileCenter(24, ts));
+    const hauler = makeEntity(state, "hauler", "A", tileCenter(50, ts), tileCenter(24, ts));
+    hauler.autoHarvest = false;
+    const res = applyCommand(state, "A", { type: "cmd.guard", ids: [tank.id], targetId: hauler.id });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    assert.equal(tank.order?.kind, "guard");
+    assert.equal(tank.order?.targetId, hauler.id);
+    assert.equal(tank.holdPosition, false);
+    assert.equal(tank.guardFacing, null);
+    for (let i = 0; i < 80; i++) step(state, TICK_DT);
+    const dist = Math.hypot(tank.x - hauler.x, tank.y - hauler.y);
+    assert.ok(dist < 64, `tank at ${tank.x},${tank.y} hauler at ${hauler.x},${hauler.y} dist=${dist}`);
+    assert.equal(tank.order?.kind, "guard");
+    assert.equal(tank.order?.targetId, hauler.id);
+  });
+
+  it("stays with a moving unit and fires without chasing off", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const hauler = makeEntity(state, "hauler", "A", tileCenter(26, ts), tileCenter(24, ts));
+    hauler.autoHarvest = false;
+    const dummy = makeEntity(state, "trooper", "B", tileCenter(40, ts), tileCenter(24, ts));
+    dummy.holdPosition = true;
+    dummy.cooldown = 99;
+    applyCommand(state, "A", { type: "cmd.guard", ids: [tank.id], targetId: hauler.id });
+    for (let i = 0; i < 12; i++) step(state, TICK_DT);
+    assert.equal(tank.attackTarget, dummy.id, `attackTarget=${tank.attackTarget}`);
+    assert.equal(tank.order?.kind, "guard");
+    const destX = tileCenter(55, ts);
+    applyCommand(state, "A", { type: "cmd.move", ids: [hauler.id], x: destX, y: hauler.y });
+    for (let i = 0; i < 90; i++) step(state, TICK_DT);
+    assert.equal(tank.order?.kind, "guard");
+    assert.equal(tank.order?.targetId, hauler.id);
+    const dist = Math.hypot(tank.x - hauler.x, tank.y - hauler.y);
+    assert.ok(dist < 72, `tank left the hauler dist=${dist} tank=${tank.x} hauler=${hauler.x}`);
+    assert.ok(tank.x > tileCenter(40, ts), `tank did not follow x=${tank.x}`);
+  });
+
+  it("drops the escort when the target dies", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const hauler = makeEntity(state, "hauler", "A", tileCenter(26, ts), tileCenter(24, ts));
+    hauler.autoHarvest = false;
+    applyCommand(state, "A", { type: "cmd.guard", ids: [tank.id], targetId: hauler.id });
+    destroyEntity(state, hauler);
+    for (let i = 0; i < 4; i++) step(state, TICK_DT);
+    assert.equal(tank.order, null);
+  });
+
+  it("rejects enemies and the selected unit itself", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const foe = makeEntity(state, "hauler", "B", tileCenter(30, ts), tileCenter(24, ts));
+    foe.autoHarvest = false;
+    const enemy = applyCommand(state, "A", { type: "cmd.guard", ids: [tank.id], targetId: foe.id });
+    assert.equal(enemy.ok, false);
+    const self = applyCommand(state, "A", { type: "cmd.guard", ids: [tank.id], targetId: tank.id });
+    assert.equal(self.ok, false);
+  });
+});
+
 describe("withdraw", () => {
   it("retreats when idle and hit from out of sight", () => {
     const { state } = twoPlayerMatch();

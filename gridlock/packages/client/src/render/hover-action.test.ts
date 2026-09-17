@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { resolveHoverAction, type HoverEntity } from "./hover-action.js";
+import { canGuardUnit, resolveHoverAction, type HoverEntity } from "./hover-action.js";
 
 const YOU = "p1";
 const FOE = "p2";
@@ -166,5 +166,35 @@ describe("resolveHoverAction", () => {
     const dead = unit({ id: 9, type: "trooper", wreck: true });
     assert.equal(act({ selected: [dead], hit: emptyHouse }), null);
     assert.equal(act({ selected: [], hit: emptyHouse }), null);
+  });
+});
+
+describe("canGuardUnit", () => {
+  const warden = unit({ id: 3, type: "warden" });
+  const hauler = unit({ id: 2, type: "hauler" });
+  const allyHauler = unit({ id: 4, type: "hauler", ownerId: ALLY });
+  const foeTrooper = unit({ id: 30, type: "trooper", ownerId: FOE });
+  const house = building({ id: 10, type: "cottage" });
+
+  function ask(hit: HoverEntity | null, selectedIds: number[] = [warden.id]): boolean {
+    return canGuardUnit({
+      youPlayerId: YOU,
+      selectedIds,
+      hit,
+      allied,
+    });
+  }
+
+  it("escorts a friendly unit that is not the only selection", () => {
+    assert.equal(ask(hauler), true);
+    assert.equal(ask(allyHauler), true);
+  });
+
+  it("does not escort the selected unit itself, enemies, wrecks, or buildings", () => {
+    assert.equal(ask(warden, [warden.id]), false);
+    assert.equal(ask(foeTrooper), false);
+    assert.equal(ask(unit({ id: 9, type: "hauler", wreck: true })), false);
+    assert.equal(ask(house), false);
+    assert.equal(ask(null), false);
   });
 });

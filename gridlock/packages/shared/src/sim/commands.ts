@@ -20,13 +20,14 @@ import {
 } from "../catalog.js";
 import type { ClientMessage, ErrorCode } from "../protocol.js";
 import { pathToCapture, wantsCapture } from "./capture.js";
-import { clearOrder, hqOf } from "./geo.js";
+import { allies, clearOrder, hqOf } from "./geo.js";
 import { approachTile, canGarrison, exitGarrison, garrisonOwner, livingGarrison, setGarrisonHide } from "./garrison.js";
 import { setScoutOut } from "./scout.js";
 import { cancelStructure, pauseStructure, placeBuilding, sellBuilding, startBuild } from "./build.js";
 import { deployId } from "./deploy.js";
 import { cancelTrain, pauseTrain, startTrain } from "./train.js";
 import { groupMovePace, groupMoveTargets } from "./formation.js";
+import { escortAnchor } from "./orders.js";
 import { setPath } from "./path.js";
 import { tickStance } from "./stance.js";
 import type { Entity, MatchState } from "./types.js";
@@ -107,7 +108,7 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
     case "cmd.rotate":
       return cmdRotate(state, playerId, msg.ids, msg.x, msg.y);
     case "cmd.guard":
-      return cmdGuard(state, playerId, msg.ids, msg.x, msg.y, msg.facing);
+      return cmdGuard(state, playerId, msg.ids, msg.x, msg.y, msg.facing, msg.targetId);
     default:
       return fail("bad_payload", "Unknown command.");
   }
@@ -158,6 +159,7 @@ function cmdMove(state: MatchState, playerId: string, ids: number[], x: number, 
     }
     e.order = { kind: "move", x: d.x, y: d.y };
     if (pace != null) e.order.pace = pace;
+    e.returnToBase = false;
     e.attackTarget = null;
     e.harvestTile = null;
     e.guardFacing = null;
@@ -177,6 +179,7 @@ function cmdAttackMove(state: MatchState, playerId: string, ids: number[], x: nu
     const d = dests.get(e.id) ?? { x, y };
     e.order = { kind: "attackmove", x: d.x, y: d.y };
     if (pace != null) e.order.pace = pace;
+    e.returnToBase = false;
     e.attackTarget = null;
     e.harvestTile = null;
     e.guardFacing = null;
@@ -270,11 +273,17 @@ function cmdHold(state: MatchState, playerId: string, ids: number[], hold: boole
   for (const e of units) {
     if (e.state === "deploy" || e.state === "undeploy") continue;
     e.holdPosition = hold;
+    e.returnToBase = false;
     if (!hold) {
       dropGuard(e);
       continue;
     }
-    if (e.order?.kind === "withdraw" || e.order?.kind === "move" || e.order?.kind === "attackmove") {
+    if (
+      e.order?.kind === "withdraw" ||
+      e.order?.kind === "move" ||
+      e.order?.kind === "attackmove" ||
+      (e.order?.kind === "guard" && e.order.targetId != null)
+    ) {
       e.order = null;
       e.attackTarget = null;
       e.waypoints = [];
@@ -293,6 +302,7 @@ function cmdRotate(state: MatchState, playerId: string, ids: number[], x: number
   if (units.length === 0) return fail("not_yours", "No owned units.");
   for (const e of units) {
     e.order = { kind: "rotate", x, y };
+    e.returnToBase = false;
     e.attackTarget = null;
     e.harvestTile = null;
     e.waypoints = [];
@@ -306,32 +316,69 @@ function cmdGuard(
   state: MatchState,
   playerId: string,
   ids: number[],
-  x: number,
-  y: number,
-  facing: number,
+  x?: number,
+  y?: number,
+  facing?: number,
+  targetId?: number,
 ): CmdResult {
+  if (targetId != null) return cmdGuardUnit(state, playerId, ids, targetId);
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(facing)) {
     return fail("bad_payload", "Bad guard point.");
   }
+  const px = x!;
+  const py = y!;
+  const face = facing!;
   const units = owned(state, playerId, ids).filter((e) => e.state !== "deploy" && e.state !== "undeploy");
   if (units.length === 0) return fail("not_yours", "No owned units.");
   const movers = units.filter((e) => !e.garrisonedIn);
-  const dests = groupMoveTargets(state, movers, x, y);
+  const dests = groupMoveTargets(state, movers, px, py);
   const pace = groupMovePace(movers);
   for (const e of units) {
-    const d = dests.get(e.id) ?? { x, y };
+    const d = dests.get(e.id) ?? { x: px, y: py };
     e.holdPosition = true;
-    e.guardFacing = facing;
+    e.returnToBase = false;
+    e.guardFacing = face;
     e.attackTarget = null;
     e.harvestTile = null;
-    e.order = { kind: "guard", x: d.x, y: d.y, facing };
+    e.order = { kind: "guard", x: d.x, y: d.y, facing: face };
     if (pace != null) e.order.pace = pace;
     if (e.garrisonedIn) {
       exitGarrison(state, e, d);
-      e.order = { kind: "guard", x: d.x, y: d.y, facing };
+      e.order = { kind: "guard", x: d.x, y: d.y, facing: face };
       if (pace != null) e.order.pace = pace;
       e.holdPosition = true;
-      e.guardFacing = facing;
+      e.guardFacing = face;
+      continue;
+    }
+    e.state = "move";
+    setPath(state, e, d.x, d.y);
+  }
+  return ok();
+}
+
+function cmdGuardUnit(state: MatchState, playerId: string, ids: number[], targetId: number): CmdResult {
+  const t = state.entities.get(targetId);
+  if (!t || t.hp <= 0 || t.kind !== "unit" || t.wreck || t.garrisonedIn) {
+    return fail("not_found", "No such unit.");
+  }
+  if (!allies(state, playerId, t.ownerId)) return fail("not_found", "Guard a friendly unit.");
+  const units = owned(state, playerId, ids).filter(
+    (e) => e.id !== t.id && e.state !== "deploy" && e.state !== "undeploy",
+  );
+  if (units.length === 0) return fail("not_yours", "No owned units.");
+  for (const e of units) {
+    const d = escortAnchor(e, t);
+    e.holdPosition = false;
+    e.returnToBase = false;
+    e.guardFacing = null;
+    e.attackTarget = null;
+    e.harvestTile = null;
+    e.order = { kind: "guard", targetId: t.id };
+    if (e.garrisonedIn) {
+      exitGarrison(state, e, d);
+      e.order = { kind: "guard", targetId: t.id };
+      e.holdPosition = false;
+      e.guardFacing = null;
       continue;
     }
     e.state = "move";
@@ -343,6 +390,13 @@ function cmdGuard(
 function dropGuard(e: Entity): void {
   e.guardFacing = null;
   if (e.order?.kind !== "guard") return;
+  if (e.order.targetId != null) {
+    e.order = null;
+    e.waypoints = [];
+    e.attackTarget = null;
+    if (e.state === "move" || e.state === "attack") e.state = e.garrisonedIn ? "garrison" : "idle";
+    return;
+  }
   if (e.waypoints.length > 0 && e.order.x != null && e.order.y != null) {
     const pace = e.order.pace;
     e.order = { kind: "move", x: e.order.x, y: e.order.y };
@@ -464,6 +518,7 @@ function cmdHarvest(
   if (units.length === 0) return fail("not_yours", "Select a Mauler.");
   for (const e of units) {
     e.autoHarvest = true;
+    e.returnToBase = false;
     e.state = "harvest";
     e.guardFacing = null;
     if (tileX != null && tileY != null) {

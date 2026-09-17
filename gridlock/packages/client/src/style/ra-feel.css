@@ -577,6 +577,7 @@ input[type="range"] { padding: 0; }
   border: 2px solid #3a2418;
   padding: 8px;
   background: #0a0806;
+  flex-shrink: 0;
 }
 
 #minimap {
@@ -832,6 +833,8 @@ input[type="range"] { padding: 0; }
   background: #0a0806;
   padding: 6px;
   min-height: 4.4em;
+  overflow: auto;
+  flex: 1 1 auto;
 }
 .config-types {
   display: flex;
@@ -852,6 +855,8 @@ input[type="range"] { padding: 0; }
   cursor: pointer;
   color: var(--amber);
   box-shadow: inset 0 0 0 1px #000;
+  touch-action: manipulation;
+  user-select: none;
 }
 .config-type:hover { border-color: var(--amber-dim); }
 .config-type.is-on {
@@ -909,6 +914,8 @@ input[type="range"] { padding: 0; }
   padding: 5px 8px;
   cursor: pointer;
   text-align: left;
+  touch-action: manipulation;
+  user-select: none;
 }
 .shell-row {
   display: flex;
@@ -961,6 +968,7 @@ input[type="range"] { padding: 0; }
   flex-wrap: wrap;
   gap: 6px;
   z-index: 6;
+  pointer-events: auto;
   max-width: min(420px, calc(100% - 24px));
 }
 .quick-actions:empty { display: none; }
@@ -977,6 +985,8 @@ input[type="range"] { padding: 0; }
   border: 2px solid var(--rust);
   box-shadow: inset 0 1px 0 #6a4030, 0 2px 0 #000;
   cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
 }
 .qact:hover { border-color: var(--rust-hi); filter: brightness(1.1); }
 .qact:active { transform: translateY(1px); box-shadow: inset 0 1px 0 #6a4030, 0 1px 0 #000; }
@@ -985,7 +995,8 @@ input[type="range"] { padding: 0; }
   color: #ffb0a0;
   box-shadow: 0 0 0 1px var(--danger), inset 0 1px 0 #6a4030, 0 2px 0 #000;
 }
-.qact:disabled {
+.qact:disabled,
+.qact.is-disabled {
   opacity: 0.4;
   cursor: not-allowed;
   filter: none;

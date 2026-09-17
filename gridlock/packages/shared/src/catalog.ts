@@ -379,6 +379,8 @@ export const SMALL_ARMS_SPEED = 10000;
 export const TANK_SHELL_SPEED = SMALL_ARMS_SPEED;
 /** Seconds a 75mm smoke screen lasts. */
 export const SMOKE_SECONDS = 16;
+/** Mauler defensive smoke. Matches the screen so it does not restack. */
+export const HAULER_SMOKE_COOLDOWN = SMOKE_SECONDS;
 /** Ellipse half-length along the shot, in gameplay tiles. */
 export const SMOKE_HALF_ALONG = t(2.5);
 /** Ellipse half-width across the shot, in gameplay tiles. */
@@ -411,7 +413,7 @@ export const SHELLS: Record<ShellType, ShellDef> = {
   ap: {
     id: "ap",
     name: "AP",
-    blurb: "Armour-piercing solid shot. High penetration — use against tanks. Modest blast; glancing hits ricochet.",
+    blurb: "Armor-piercing solid shot. High penetration — use against tanks. Modest blast; glancing hits ricochet.",
     damage: 55,
     penetration: 100,
     caliber: 75,

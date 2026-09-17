@@ -42,6 +42,7 @@ export interface Order {
   y?: number;
   /** World radians. Guard / rotate destination facing, or hull heading while reversing. */
   facing?: number;
+  /** Attack, force-attack, garrison house, or the unit being escorted. */
   targetId?: number;
   tileX?: number;
   tileY?: number;
@@ -53,6 +54,8 @@ export interface Order {
   once?: boolean;
   /** Group-move cap in catalog tiles/sec. Slowest selected unit that can still walk. */
   pace?: number;
+  /** Panic retreat: after this order, the Mauler returns to HQ and holds. */
+  returnToBase?: boolean;
 }
 
 export interface Entity {
@@ -86,6 +89,8 @@ export interface Entity {
   cargo: number;
   harvestTile: Vec | null;
   autoHarvest: boolean;
+  /** Popped smoke and is fleeing / holding at HQ. Player orders clear this. */
+  returnToBase: boolean;
   deployTime: number;
   /** Seconds remaining before this unit's special can fire again. */
   specialCooldown: number;

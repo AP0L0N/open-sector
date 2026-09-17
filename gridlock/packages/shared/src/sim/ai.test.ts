@@ -68,6 +68,21 @@ describe("easy CPU", () => {
     assert.equal(hauler.autoHarvest, true);
   });
 
+  it("leaves a Mauler that is holding at base idle", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    const hq = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "core")!;
+    const hauler = makeEntity(state, "hauler", aiId, hq.x + 24, hq.y);
+    hauler.autoHarvest = false;
+    hauler.returnToBase = true;
+    hauler.holdPosition = true;
+    hauler.order = null;
+    hauler.state = "idle";
+    tickAi(state);
+    assert.equal(hauler.autoHarvest, false);
+    assert.equal(hauler.holdPosition, true);
+  });
+
   it("attack-moves troops at the enemy HQ now and then", () => {
     const { state, aiId } = humanVsEasy();
     waitCore(state, aiId);

@@ -52,9 +52,14 @@ let configFocus: EntityType | null = null;
 let readyCancelArmed: BuildingType | null = null;
 
 /** Fire on press so a snapshot rebuild cannot swallow the click between mousedown and mouseup. */
+function pressDisabled(btn: HTMLElement): boolean {
+  if (btn instanceof HTMLButtonElement && btn.disabled) return true;
+  return btn.getAttribute("aria-disabled") === "true" || btn.hasAttribute("disabled");
+}
+
 function bindPress(root: HTMLElement, selector: string, fn: (btn: HTMLElement) => void): void {
   const fire = (btn: HTMLElement) => {
-    if (btn instanceof HTMLButtonElement ? btn.disabled : btn.hasAttribute("disabled")) return;
+    if (pressDisabled(btn)) return;
     fn(btn);
   };
   root.addEventListener("pointerdown", (e) => {
@@ -512,7 +517,8 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
         : "";
   const capturing =
     e.capture && e.capture.progress > 0 ? `  ·  capturing ${Math.round(e.capture.progress * 100)}%` : "";
-  const holding = e.guardFacing != null ? "  ·  GUARD" : e.holdPosition ? "  ·  HOLD" : "";
+  const holding =
+    e.guardTargetId != null ? "  ·  GUARD UNIT" : e.guardFacing != null ? "  ·  GUARD" : e.holdPosition ? "  ·  HOLD" : "";
   const scout =
     e.scout && e.ownerId === ctx.match.youPlayerId
       ? e.scout.hp <= 0
@@ -667,114 +673,115 @@ function configBodyLayout(focus: EntityView, live: EntityView[], wrecks: EntityV
   return parts.join("|");
 }
 
-function paintConfig(ctx: Ctx, view: MapView | null): void {
-  const typesEl = document.getElementById("config-types");
-  const body = document.getElementById("config-body");
-  if (!typesEl || !body || !ctx.match) return;
-  const selected = selectedViews(ctx, view);
-  if (selected.length === 0) {
-    configFocus = null;
+function clearConfigPanel(typesEl: HTMLElement, body: HTMLElement): void {
+  configFocus = null;
+  if (typesEl.dataset.layout !== "empty") {
     typesEl.replaceChildren();
+    typesEl.dataset.layout = "empty";
+  }
+  if (body.dataset.layout !== "empty") {
+    body.replaceChildren();
+    body.dataset.layout = "empty";
     body.textContent = "No selection.";
-    return;
   }
-  const counts = new Map<EntityType, number>();
-  for (const e of selected) counts.set(e.type, (counts.get(e.type) ?? 0) + 1);
-  const types = TYPE_ORDER.filter((t) => counts.has(t));
-  for (const t of counts.keys()) {
-    if (!types.includes(t)) types.push(t);
-  }
-  if (!configFocus || !counts.has(configFocus)) configFocus = types[0] ?? null;
+}
 
-  typesEl.replaceChildren();
-  for (const t of types) {
-    const btn = el("button", {
-      class: "config-type" + (t === configFocus ? " is-on" : ""),
-      attrs: { type: "button", "data-config-type": t, "data-type": t, title: catalog(t).name },
-    });
-    const n = counts.get(t) ?? 0;
-    btn.append(el("span", { class: "config-type-n", text: n > 1 ? "×" + n : catalog(t).letter }));
-    typesEl.append(btn);
-  }
-
-  const ofType = selectedOfType(ctx, view, configFocus);
+function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[], wrecks: EntityView[], you: string): void {
   body.replaceChildren();
-  if (!configFocus || ofType.length === 0) {
-    body.textContent = "No selection.";
-    return;
-  }
-  const wrecks = ofType.filter((e) => e.wreck);
-  const live = ofType.filter((e) => !e.wreck);
   if (live.length === 0 && wrecks.length > 0) {
     body.append(
-      el("div", { class: "config-kicker", text: catalog(configFocus).name + " wreck" }),
+      el("div", { class: "config-kicker", attrs: { "data-field": "kicker" } }),
       el("p", {
         class: "tiny",
+        attrs: { "data-field": "wreck-help" },
         text: "Impassable hull. Shoot it to clear the road. Repair is not ready yet.",
       }),
     );
     return;
   }
-
-  const focus = live[0] ?? ofType[0]!;
   const def = catalog(focus.type);
-  body.append(
-    el("div", {
-      class: "config-kicker",
-      text: live.length > 1 ? `${def.name}  ×${live.length}` : def.name,
-    }),
-  );
-
+  const mine = live.filter((e) => e.ownerId === you);
+  body.append(el("div", { class: "config-kicker", attrs: { "data-field": "kicker" } }));
   if (hasAmmo(focus.type)) {
-    const shells = live.filter((e) => e.ownerId === ctx.match!.youPlayerId);
-    const same = shells.length > 0 && shells.every((e) => e.shell === shells[0]!.shell);
     const rack = el("div", { class: "shell-rack" });
     for (const id of SHELL_TYPES) {
       const s = SHELLS[id];
-      const left = shells.reduce((n, e) => n + ammoOf(e.ammo, id), 0);
-      const on = same && shells[0]?.shell === id;
-      rack.append(
-        loadoutButton({
-          attr: "data-shell",
-          id,
-          name: s.name,
-          blurb: s.blurb,
-          count: String(left),
-          on,
-          empty: left <= 0,
-        }),
-      );
+      rack.append(loadoutButton({ attr: "data-shell", id, name: s.name, blurb: s.blurb, count: "0", on: false }));
     }
     body.append(el("div", { class: "tiny", text: "Shell" }), rack);
   } else if (isInfantryType(focus.type)) {
-    const mine = live.filter((e) => e.ownerId === ctx.match!.youPlayerId);
     const loadout = infantryLoadout(focus.type);
     if (loadout.length > 0 && mine.length > 0) {
-      const same = mine.every((e) => infantryGunFor(e)?.id === infantryGunFor(mine[0]!)?.id);
-      const allArmed = mine.every((e) => (e.crits ?? []).includes("arm"));
       const rack = el("div", { class: "shell-rack" });
       for (const gun of loadout) {
-        const on = same && infantryGunFor(mine[0]!)?.id === gun.id;
-        const locked = allArmed && gun.id !== "handgun";
-        const left = mine.reduce((n, e) => n + infantryClipShown(e, gun.id), 0);
         rack.append(
-          loadoutButton({
-            attr: "data-weapon",
-            id: gun.id,
-            name: gun.name,
-            blurb: gun.blurb,
-            count: String(left),
-            on,
-            empty: locked,
-            title: locked ? `${gun.name} — broken arm. ${gun.blurb}` : undefined,
-          }),
+          loadoutButton({ attr: "data-weapon", id: gun.id, name: gun.name, blurb: gun.blurb, count: "0", on: false }),
         );
       }
       body.append(el("div", { class: "tiny", text: "Weapon" }), rack);
     }
-    body.append(el("p", { class: "tiny", text: infantryClipLine(live) }));
+    body.append(el("p", { class: "tiny", attrs: { "data-field": "clip" } }));
   } else if (focus.kind === "unit" && def.damage > 0) {
     body.append(el("p", { class: "tiny", text: "Small arms · unlimited" }));
+  }
+  if (isInfantryType(focus.type)) {
+    body.append(
+      el("p", { class: "tiny", attrs: { "data-field": "posture" } }),
+      el("p", { class: "tiny", attrs: { "data-field": "posture-help" } }),
+    );
+  }
+  if (hasMg(focus.type)) {
+    body.append(el("div", { class: "tiny", attrs: { "data-field": "mg-label" } }));
+    const bar = el("div", { class: "mg-heat", attrs: { "data-field": "mg-heat" } });
+    bar.append(el("span"));
+    body.append(bar);
+  }
+  if (hasScout(focus.type)) body.append(el("p", { class: "tiny", attrs: { "data-field": "scout" } }));
+  if (armorLabel(focus.type)) body.append(el("p", { class: "tiny", attrs: { "data-field": "armor" } }));
+  if (focus.type === "hauler") body.append(el("p", { class: "tiny", attrs: { "data-field": "cargo" } }));
+  if (specialLabel(focus.type)) body.append(el("p", { class: "tiny", attrs: { "data-field": "special" } }));
+}
+
+function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[], wrecks: EntityView[], you: string): void {
+  if (live.length === 0 && wrecks.length > 0) {
+    setField(body, "kicker", catalog(focus.type).name + " wreck");
+    return;
+  }
+  const def = catalog(focus.type);
+  setField(body, "kicker", live.length > 1 ? `${def.name}  ×${live.length}` : def.name);
+  if (hasAmmo(focus.type)) {
+    const shells = live.filter((e) => e.ownerId === you);
+    const same = shells.length > 0 && shells.every((e) => e.shell === shells[0]!.shell);
+    for (const id of SHELL_TYPES) {
+      const btn = body.querySelector(`[data-shell="${id}"]`);
+      if (!(btn instanceof HTMLElement)) continue;
+      const left = shells.reduce((n, e) => n + ammoOf(e.ammo, id), 0);
+      updateLoadoutButton(btn, {
+        count: String(left),
+        on: !!(same && shells[0]?.shell === id),
+        empty: left <= 0,
+      });
+    }
+  } else if (isInfantryType(focus.type)) {
+    const mine = live.filter((e) => e.ownerId === you);
+    const loadout = infantryLoadout(focus.type);
+    if (loadout.length > 0 && mine.length > 0) {
+      const same = mine.every((e) => infantryGunFor(e)?.id === infantryGunFor(mine[0]!)?.id);
+      const allArmed = mine.every((e) => (e.crits ?? []).includes("arm"));
+      for (const gun of loadout) {
+        const btn = body.querySelector(`[data-weapon="${gun.id}"]`);
+        if (!(btn instanceof HTMLElement)) continue;
+        const locked = allArmed && gun.id !== "handgun";
+        const left = mine.reduce((n, e) => n + infantryClipShown(e, gun.id), 0);
+        updateLoadoutButton(btn, {
+          count: String(left),
+          on: !!(same && infantryGunFor(mine[0]!)?.id === gun.id),
+          empty: locked,
+          title: locked ? `${gun.name} — broken arm. ${gun.blurb}` : `${gun.name} — ${gun.blurb}`,
+        });
+      }
+    }
+    setField(body, "clip", infantryClipLine(live));
   }
   if (isInfantryType(focus.type)) {
     const swimming = live.every((e) => e.swimming);
@@ -787,215 +794,306 @@ function paintConfig(ctx: Ctx, view: MapView | null): void {
         : same
           ? STANCE_LABEL[focus.stance ?? "stand"]
           : "mixed posture";
-    body.append(el("p", { class: "tiny", text: "Posture  " + label }));
-    body.append(
-      el("p", {
-        class: "tiny",
-        text: swimming
-          ? "Swimming — rifles stay dry, they cannot fire until they reach shore."
-          : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",
-      }),
+    setField(body, "posture", "Posture  " + label);
+    setField(
+      body,
+      "posture-help",
+      swimming
+        ? "Swimming — rifles stay dry, they cannot fire until they reach shore."
+        : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",
     );
   }
-
   if (hasMg(focus.type)) {
-    const mine = live.filter((e) => e.ownerId === ctx.match!.youPlayerId);
+    const mine = live.filter((e) => e.ownerId === you);
     const belt = mine.reduce((n, e) => n + (e.mgAmmo ?? 0), 0);
     const heat = mine.length ? mine.reduce((n, e) => n + (e.mgHeat ?? 0), 0) / mine.length : 0;
     const hot = mine.some((e) => (e.mgOverheat ?? 0) > 0);
-    body.append(el("div", { class: "tiny", text: hot ? `MG  ${belt}  overheated` : `MG  ${belt}` }));
-    const bar = el("div", { class: "mg-heat" + (hot ? " is-hot" : "") });
-    const fill = el("span");
-    fill.style.width = `${Math.round(Math.max(0, Math.min(1, heat)) * 100)}%`;
-    bar.append(fill);
-    body.append(bar);
+    setField(body, "mg-label", hot ? `MG  ${belt}  overheated` : `MG  ${belt}`);
+    const bar = body.querySelector('[data-field="mg-heat"]');
+    if (bar instanceof HTMLElement) {
+      bar.classList.toggle("is-hot", hot);
+      const fill = bar.querySelector("span");
+      if (fill instanceof HTMLElement) {
+        fill.style.width = `${Math.round(Math.max(0, Math.min(1, heat)) * 100)}%`;
+      }
+    }
   }
-
   if (hasScout(focus.type)) {
-    const mine = live.filter((e) => e.ownerId === ctx.match!.youPlayerId);
+    const mine = live.filter((e) => e.ownerId === you);
     const dead = mine.length > 0 && mine.every((e) => (e.scout?.hp ?? 0) <= 0);
     const hatched = mine.length > 0 && mine.every((e) => e.scout?.out);
     const hp = mine.reduce((n, e) => n + (e.scout?.hp ?? 0), 0);
     const hpMax = mine.reduce((n, e) => n + (e.scout?.hpMax ?? 0), 0);
     const label = dead ? "Scout  KIA" : hatched ? "Scout  hatch" : "Scout  buttoned";
-    body.append(
-      el("p", {
-        class: "tiny",
-        text: dead || hpMax <= 0 ? label : `${label}  ${hp}/${hpMax}  (I)`,
-      }),
-    );
+    setField(body, "scout", dead || hpMax <= 0 ? label : `${label}  ${hp}/${hpMax}  (I)`);
   }
   const armor = armorLabel(focus.type);
-  if (armor) body.append(el("p", { class: "tiny", text: "Armor  " + armor }));
+  if (armor) setField(body, "armor", "Armor  " + armor);
   if (focus.type === "hauler") {
     const cargo = live.reduce((n, e) => n + (e.cargo ?? 0), 0);
-    body.append(el("p", { class: "tiny", text: `Cargo  ${cargo}` }));
+    setField(body, "cargo", `Cargo  ${cargo}`);
   }
   const spec = specialLabel(focus.type);
   if (spec) {
     const ready = live.some((e) => specialReady(e.type, e.state, e.specialCooldown ?? 0));
-    body.append(
-      el("p", {
-        class: "tiny",
-        text: ready ? `${spec}  (${SPECIAL_HOTKEY.toUpperCase()} / click)` : spec,
-      }),
-    );
+    setField(body, "special", ready ? `${spec}  (${SPECIAL_HOTKEY.toUpperCase()} / click)` : spec);
   }
+}
+
+function paintConfig(ctx: Ctx, view: MapView | null): void {
+  const typesEl = document.getElementById("config-types");
+  const body = document.getElementById("config-body");
+  if (!typesEl || !body || !ctx.match) return;
+  const selected = selectedViews(ctx, view);
+  if (selected.length === 0) {
+    clearConfigPanel(typesEl, body);
+    return;
+  }
+  const counts = new Map<EntityType, number>();
+  for (const e of selected) counts.set(e.type, (counts.get(e.type) ?? 0) + 1);
+  const types = TYPE_ORDER.filter((t) => counts.has(t));
+  for (const t of counts.keys()) {
+    if (!types.includes(t)) types.push(t);
+  }
+  if (!configFocus || !counts.has(configFocus)) configFocus = types[0] ?? null;
+
+  const typeKey = types.join(",");
+  if (typesEl.dataset.layout !== typeKey) {
+    typesEl.replaceChildren();
+    for (const t of types) {
+      const btn = el("button", {
+        class: "config-type",
+        attrs: { type: "button", "data-config-type": t, "data-type": t, title: catalog(t).name },
+      });
+      btn.append(el("span", { class: "config-type-n" }));
+      typesEl.append(btn);
+    }
+    typesEl.dataset.layout = typeKey;
+  }
+  for (const node of typesEl.children) {
+    if (!(node instanceof HTMLElement)) continue;
+    const t = node.dataset.configType as EntityType | undefined;
+    if (!t) continue;
+    node.classList.toggle("is-on", t === configFocus);
+    const n = counts.get(t) ?? 0;
+    const label = node.querySelector(".config-type-n");
+    if (label) label.textContent = n > 1 ? "×" + n : catalog(t).letter;
+  }
+
+  const ofType = selectedOfType(ctx, view, configFocus);
+  if (!configFocus || ofType.length === 0) {
+    if (body.dataset.layout !== "empty") {
+      body.replaceChildren();
+      body.dataset.layout = "empty";
+      body.textContent = "No selection.";
+    }
+    return;
+  }
+  const wrecks = ofType.filter((e) => e.wreck);
+  const live = ofType.filter((e) => !e.wreck);
+  const focus = live[0] ?? ofType[0]!;
+  const you = ctx.match.youPlayerId;
+  const layout = configBodyLayout(focus, live, wrecks, you);
+  if (body.dataset.layout !== layout) {
+    buildConfigBody(body, focus, live, wrecks, you);
+    body.dataset.layout = layout;
+  }
+  patchConfigBody(body, focus, live, wrecks, you);
 }
 
 function paintQuickActions(ctx: Ctx, view: MapView | null): void {
   const root = document.getElementById("quick-actions");
   if (!root || !ctx.match) return;
+  const items = listQuickActions(ctx, view);
+  const sig = items.map((i) => i.slot).join(",");
+  const existing = [...root.children].map((c) => (c as HTMLElement).dataset.slot ?? "").join(",");
+  if (sig !== existing) {
+    root.replaceChildren(...items.map(makeQact));
+    return;
+  }
+  const nodes = root.children;
+  for (let i = 0; i < items.length; i++) {
+    const node = nodes[i] as HTMLElement | undefined;
+    const item = items[i];
+    if (node && item) updateQact(node, item);
+  }
+}
+
+interface QAct {
+  slot: string;
+  act: string;
+  label: string;
+  title: string;
+  on?: boolean;
+  disabled?: boolean;
+}
+
+function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
+  if (!ctx.match) return [];
   const selected = selectedViews(ctx, view);
   const units = ownCommandable(ctx, selected.filter((e) => e.kind === "unit"));
   const buildings = ownCommandable(ctx, selected.filter((e) => e.kind === "building"));
-  root.replaceChildren();
   const houses = selected.filter((e) => isGarrisonable(e.type) && e.hp > 0);
-  if (units.length === 0 && buildings.length === 0 && houses.length === 0) return;
-
-  const add = (act: string, label: string, title: string) => {
-    const b = el("button", { class: "qact", text: label, attrs: { type: "button", "data-act": act, title } });
-    root.append(b);
-  };
+  const out: QAct[] = [];
+  if (units.length === 0 && buildings.length === 0 && houses.length === 0) return out;
 
   if (units.length) {
-    add("stop", "Stop", `Halt selected units (${STOP_HOTKEY.toUpperCase()})`);
-    const atk = el("button", {
-      class: "qact" + (view?.attackMoveMode ? " is-on" : ""),
-      text: "Move attack",
-      attrs: {
-        type: "button",
-        "data-act": "attackmove",
-        title: `Move, halt to fire (${ATTACK_MOVE_HOTKEY.toUpperCase()})`,
-      },
+    out.push({
+      slot: "stop",
+      act: "stop",
+      label: "Stop",
+      title: `Halt selected units (${STOP_HOTKEY.toUpperCase()})`,
     });
-    root.append(atk);
-    const force = el("button", {
-      class: "qact" + (view?.forceAttackMode ? " is-on" : ""),
-      text: "Force attack here",
-      attrs: {
-        type: "button",
-        "data-act": "forceattack",
-        title: "Fire at a point or any unit, including friendlies (hold Ctrl and click). Smoke fires once.",
-      },
+    out.push({
+      slot: "attackmove",
+      act: "attackmove",
+      label: "Move attack",
+      title: `Move, halt to fire (${ATTACK_MOVE_HOTKEY.toUpperCase()})`,
+      on: !!view?.attackMoveMode,
     });
-    root.append(force);
-    const guarding = units.every((e) => e.guardFacing != null);
-    const guard = el("button", {
-      class: "qact" + (view?.guardMode || guarding ? " is-on" : ""),
-      text: "Guard",
-      attrs: {
-        type: "button",
-        "data-act": "guard",
-        title: `Move here, face a direction, hold. Enemies in the cone are engaged first (${GUARD_HOTKEY.toUpperCase()}). Click and drag to face.`,
-      },
+    out.push({
+      slot: "forceattack",
+      act: "forceattack",
+      label: "Force attack here",
+      title: "Fire at a point or any unit, including friendlies (hold Ctrl and click). Smoke fires once.",
+      on: !!view?.forceAttackMode,
     });
-    root.append(guard);
+    const guarding = units.every((e) => e.guardFacing != null || e.guardTargetId != null);
+    out.push({
+      slot: "guard",
+      act: "guard",
+      label: "Guard",
+      title: `Move here, face a direction, hold. Click a friendly unit to stay with it (${GUARD_HOTKEY.toUpperCase()}). Click and drag to face.`,
+      on: !!(view?.guardMode || guarding),
+    });
     const holding = units.every((e) => e.holdPosition);
-    const hold = el("button", {
-      class: "qact" + (holding ? " is-on" : ""),
-      text: "Hold",
-      attrs: {
-        type: "button",
-        "data-act": "hold",
-        title: "Hold position — fire in range, no chase, no withdraw (P)",
-      },
+    out.push({
+      slot: "hold",
+      act: "hold",
+      label: "Hold",
+      title: "Hold position — fire in range, no chase, no withdraw (P)",
+      on: holding,
     });
-    root.append(hold);
-    const rotate = el("button", {
-      class: "qact" + (view?.rotateMode ? " is-on" : ""),
-      text: "Rotate",
-      attrs: {
-        type: "button",
-        "data-act": "rotate",
-        title: `Face a direction (${ROTATE_HOTKEY.toUpperCase()}). Tanks turn hull and turret.`,
-      },
+    out.push({
+      slot: "rotate",
+      act: "rotate",
+      label: "Rotate",
+      title: `Face a direction (${ROTATE_HOTKEY.toUpperCase()}). Tanks turn hull and turret.`,
+      on: !!view?.rotateMode,
     });
-    root.append(rotate);
   }
   const inf = units.filter((e) => isInfantryType(e.type));
   if (inf.length) {
     const ordered = new Set(inf.map((e) => e.stanceOrder ?? e.stance ?? "stand"));
     const legsBroken = inf.every((e) => e.crits?.includes("leg"));
-    const addStance = (st: Stance, label: string, title: string) => {
+    const stance = (st: Stance, label: string, title: string) => {
       const locked = legsBroken && st !== "crawl";
-      const b = el("button", {
-        class: "qact" + (ordered.size === 1 && ordered.has(st) ? " is-on" : ""),
-        text: label,
-        attrs: {
-          type: "button",
-          "data-act": "stance-" + st,
-          title: locked ? "Broken leg — can only crawl" : title,
-          ...(locked ? { disabled: "" } : {}),
-        },
+      out.push({
+        slot: "stance-" + st,
+        act: "stance-" + st,
+        label,
+        title: locked ? "Broken leg — can only crawl" : title,
+        on: ordered.size === 1 && ordered.has(st),
+        disabled: locked,
       });
-      root.append(b);
     };
-    addStance("stand", "Stand", "Stand up");
-    addStance("crouch", "Crouch", "Crouch (C) — harder to hit, more accurate");
-    addStance("crawl", "Crawl", "Go prone (Z) — hardest to hit, most accurate");
+    stance("stand", "Stand", "Stand up");
+    stance("crouch", "Crouch", "Crouch (C) — harder to hit, more accurate");
+    stance("crawl", "Crawl", "Go prone (Z) — hardest to hit, most accurate");
   }
   if (units.some((e) => specialOf(e.type) && specialReady(e.type, e.state, e.specialCooldown ?? 0))) {
-    add("deploy", "Deploy", `Special (${SPECIAL_HOTKEY.toUpperCase()})`);
+    out.push({
+      slot: "deploy",
+      act: "deploy",
+      label: "Deploy",
+      title: `Special (${SPECIAL_HOTKEY.toUpperCase()})`,
+    });
   }
-  if (units.some((e) => e.type === "hauler")) add("harvest", "Harvest", "Auto-harvest nearest scrap");
-  if (buildings.some((e) => e.type !== "core" && !isGarrisonable(e.type))) add("sell", "Sell", "Sell selected structures");
+  if (units.some((e) => e.type === "hauler")) {
+    out.push({ slot: "harvest", act: "harvest", label: "Harvest", title: "Auto-harvest nearest scrap" });
+  }
+  if (buildings.some((e) => e.type !== "core" && !isGarrisonable(e.type))) {
+    out.push({ slot: "sell", act: "sell", label: "Sell", title: "Sell selected structures" });
+  }
   if (houses.length && units.some((e) => isInfantryType(e.type))) {
-    add("garrison", "Enter", `Garrison infantry (${GARRISON_HOTKEY.toUpperCase()})`);
+    out.push({
+      slot: "garrison",
+      act: "garrison",
+      label: "Enter",
+      title: `Garrison infantry (${GARRISON_HOTKEY.toUpperCase()})`,
+    });
   }
   if (
     units.some((e) => e.garrisonedIn) ||
     houses.some((e) => e.garrison?.ownerId === ctx.match!.youPlayerId && (e.garrison?.count ?? 0) > 0)
   ) {
-    add("ungarrison", "Exit", `Leave the building (${GARRISON_HOTKEY.toUpperCase()})`);
+    out.push({
+      slot: "ungarrison",
+      act: "ungarrison",
+      label: "Exit",
+      title: `Leave the building (${GARRISON_HOTKEY.toUpperCase()})`,
+    });
   }
   const tanks = units.filter((e) => hasScout(e.type) && (e.scout?.hpMax ?? 0) > 0);
   if (tanks.length) {
     const live = tanks.filter((e) => (e.scout?.hp ?? 0) > 0);
     const dead = live.length === 0;
     const hatched = live.length > 0 && live.every((e) => e.scout?.out);
-    const hatchBtn = el("button", {
-      class: "qact" + (hatched ? " is-on" : ""),
-      text: dead ? "Scout KIA" : hatched ? "Hatch" : "Scout",
-      attrs: {
-        type: "button",
-        "data-act": hatched ? "scout-in" : "scout-out",
-        title: dead
-          ? "Hatch crew is dead — this tank can no longer scout"
-          : hatched
-            ? "Button up — hull sight only (I)"
-            : "Open hatch — infantry sight, head is exposed (I)",
-        ...(dead ? { disabled: "" } : {}),
-      },
+    out.push({
+      slot: "scout",
+      act: hatched ? "scout-in" : "scout-out",
+      label: dead ? "Scout KIA" : hatched ? "Hatch" : "Scout",
+      title: dead
+        ? "Hatch crew is dead — this tank can no longer scout"
+        : hatched
+          ? "Button up — hull sight only (I)"
+          : "Open hatch — infantry sight, head is exposed (I)",
+      on: hatched,
+      disabled: dead,
     });
-    root.append(hatchBtn);
   }
   const held = occupiedHouses(ctx, selected);
   if (held.length) {
     const hiding = held.every((h) => h.garrison?.hide);
     const watching = held.every((h) => !h.garrison?.hide);
-    const watchBtn = el("button", {
-      class: "qact" + (watching ? " is-on" : ""),
-      text: "Watch",
-      attrs: {
-        type: "button",
-        "data-act": "garrison-watch",
-        title: "Windows open — fire, full sight, occupancy visible (I)",
-      },
+    out.push({
+      slot: "garrison-watch",
+      act: "garrison-watch",
+      label: "Watch",
+      title: "Windows open — fire, full sight, occupancy visible (I)",
+      on: watching,
     });
-    root.append(watchBtn);
-    const hideBtn = el("button", {
-      class: "qact" + (hiding ? " is-on" : ""),
-      text: "Hide",
-      attrs: {
-        type: "button",
-        "data-act": "garrison-hide",
-        title: "Shuttered — no fire, tiny sight, looks empty to the enemy (I)",
-      },
+    out.push({
+      slot: "garrison-hide",
+      act: "garrison-hide",
+      label: "Hide",
+      title: "Shuttered — no fire, tiny sight, looks empty to the enemy (I)",
+      on: hiding,
     });
-    root.append(hideBtn);
   }
+  return out;
 }
+
+function makeQact(item: QAct): HTMLButtonElement {
+  const b = el("button", {
+    class: "qact",
+    text: item.label,
+    attrs: { type: "button", "data-act": item.act, "data-slot": item.slot, title: item.title },
+  });
+  updateQact(b, item);
+  return b;
+}
+
+function updateQact(node: HTMLElement, item: QAct): void {
+  if (node.dataset.act !== item.act) node.dataset.act = item.act;
+  if (node.dataset.slot !== item.slot) node.dataset.slot = item.slot;
+  if (node.textContent !== item.label) node.textContent = item.label;
+  if (node.title !== item.title) node.title = item.title;
+  node.classList.toggle("is-on", !!item.on);
+  node.classList.toggle("is-disabled", !!item.disabled);
+  node.setAttribute("aria-disabled", item.disabled ? "true" : "false");
+}
+
 
 function runConfigAction(ctx: Ctx, t: HTMLElement): void {
   if (t.dataset.configType) {

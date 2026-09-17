@@ -1,11 +1,31 @@
 import { catalog, FACE_MOVE_DEG, hasTurret } from "../catalog.js";
-import { adjacentToBuilding, unitInWater, worldToTile } from "./geo.js";
+import { adjacentToBuilding, hqOf, rallyPoint, unitInWater, worldToTile } from "./geo.js";
 import { wantsCapture, pathToCapture } from "./capture.js";
 import { moveWithCollision } from "./collision.js";
 import { hullTurnMul, moveSpeedMul } from "./crits.js";
+import { unitClearance } from "./formation.js";
 import { setPath } from "./path.js";
 import { slopeSpeedMul, tileHeight, weaponRangeWorld, worldTileHeight } from "./elevation.js";
 import type { Entity, MatchState } from "./types.js";
+
+/** Guard order that follows a living unit instead of holding a point. */
+export function escorting(e: Entity): boolean {
+  return e.order?.kind === "guard" && e.order.targetId != null;
+}
+
+/** Stand just outside the escorted unit's collision radius. */
+export function escortAnchor(e: Entity, t: Entity): { x: number; y: number } {
+  const gap = unitClearance(e.radius, t.radius);
+  const dx = e.x - t.x;
+  const dy = e.y - t.y;
+  const d = Math.hypot(dx, dy);
+  if (d < 1) {
+    const a = t.facing + Math.PI;
+    return { x: t.x + Math.cos(a) * gap, y: t.y + Math.sin(a) * gap };
+  }
+  const s = gap / d;
+  return { x: t.x + dx * s, y: t.y + dy * s };
+}
 
 export function stepTurn(
   current: number,
@@ -59,6 +79,14 @@ export function tickMovement(state: MatchState, dt: number): void {
       e.tileX = worldToTile(e.x, state.tileSize);
       e.tileY = worldToTile(e.y, state.tileSize);
       continue;
+    }
+    if (escorting(e)) {
+      if (tickEscort(state, e)) {
+        e.tileX = worldToTile(e.x, state.tileSize);
+        e.tileY = worldToTile(e.y, state.tileSize);
+        if (e.state === "move") e.state = "idle";
+        continue;
+      }
     }
     if (e.guardFacing != null && e.waypoints.length === 0 && !e.attackTarget) {
       if (!e.order || e.order.kind === "guard") {
@@ -133,8 +161,7 @@ export function tickMovement(state: MatchState, dt: number): void {
     if (e.waypoints.length === 0) {
       if (e.state === "move") e.state = "idle";
       if (e.order?.kind === "move" || e.order?.kind === "attackmove" || e.order?.kind === "withdraw") {
-        e.order = null;
-        e.state = "idle";
+        finishTravel(state, e);
       }
       continue;
     }
@@ -179,10 +206,47 @@ export function tickMovement(state: MatchState, dt: number): void {
       e.waypoints.length === 0 &&
       (e.order?.kind === "move" || e.order?.kind === "attackmove" || e.order?.kind === "withdraw")
     ) {
-      e.order = null;
-      e.state = "idle";
+      finishTravel(state, e);
     }
   }
+}
+
+function finishTravel(state: MatchState, e: Entity): void {
+  if (e.returnToBase && e.order?.kind === "withdraw") {
+    beginReturnToBase(state, e);
+    return;
+  }
+  if (e.returnToBase && e.order?.kind === "move") {
+    e.order = null;
+    e.waypoints = [];
+    e.state = "idle";
+    e.holdPosition = true;
+    return;
+  }
+  e.order = null;
+  e.state = "idle";
+}
+
+function beginReturnToBase(state: MatchState, e: Entity): void {
+  const hq = hqOf(state, e.ownerId);
+  if (!hq || adjacentToBuilding(state, e, hq)) {
+    e.order = null;
+    e.waypoints = [];
+    e.state = "idle";
+    e.holdPosition = true;
+    return;
+  }
+  const rally = rallyPoint(state, hq);
+  if (Math.hypot(rally.x - e.x, rally.y - e.y) < state.tileSize) {
+    e.order = null;
+    e.waypoints = [];
+    e.state = "idle";
+    e.holdPosition = true;
+    return;
+  }
+  e.order = { kind: "move", x: rally.x, y: rally.y, returnToBase: true };
+  e.state = "move";
+  setPath(state, e, rally.x, rally.y);
 }
 
 function marchTilesPerSec(e: Entity): number {
@@ -195,6 +259,36 @@ function marchTilesPerSec(e: Entity): number {
 function reverseHeading(e: Entity, wp: { x: number; y: number }): number {
   if (e.order?.facing != null) return e.order.facing;
   return Math.atan2(e.y - wp.y, e.x - wp.x);
+}
+
+function liveEscortTarget(state: MatchState, e: Entity): Entity | undefined {
+  const id = e.order?.kind === "guard" ? e.order.targetId : undefined;
+  if (id == null) return undefined;
+  const t = state.entities.get(id);
+  if (!t || t.hp <= 0 || t.wreck || t.id === e.id) return undefined;
+  return t;
+}
+
+/** Stay beside the target. Returns true when the unit should hold this tick. */
+function tickEscort(state: MatchState, e: Entity): boolean {
+  const t = liveEscortTarget(state, e);
+  if (!t) {
+    e.order = null;
+    e.waypoints = [];
+    if (e.state === "move" || e.state === "attack") e.state = "idle";
+    return false;
+  }
+  const dist = Math.hypot(t.x - e.x, t.y - e.y);
+  const leash = unitClearance(e.radius, t.radius) + state.tileSize;
+  if (dist <= leash) {
+    e.waypoints = [];
+    return true;
+  }
+  if (e.waypoints.length === 0 || state.tick % 5 === 0) {
+    const dest = escortAnchor(e, t);
+    setPath(state, e, dest.x, dest.y);
+  }
+  return false;
 }
 
 function tickGuardFacing(e: Entity, dt: number): void {

@@ -4,6 +4,7 @@ import {
   FACE_FIRE_DEG,
   GARRISON_STRUCTURAL_CALIBER,
   GUARD_CONE_DEG,
+  HAULER_SMOKE_COOLDOWN,
   PROJECTILE_RADIUS,
   TANK_MG,
   WEAPON_RANGE_SIGHT_MUL,
@@ -63,7 +64,7 @@ import { nextRand } from "./rng.js";
 import { spawnSmokeCloud } from "./smoke.js";
 import { canSeeEntity } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
-import { reversing, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
+import { escorting, reversing, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
 export function tickCombat(state: MatchState, dt: number): void {
@@ -84,10 +85,10 @@ function canFight(e: Entity): boolean {
   return fires(e.type) && e.hp > 0 && !e.wreck && e.state !== "deploy" && e.state !== "undeploy";
 }
 
-/** Move and attack-move both engage in-range enemies. Attack-move halts; move keeps walking. */
+/** Move, attack-move, and unit-escort all engage in-range enemies. Attack-move halts; the others keep walking. */
 function travelFights(e: Entity): boolean {
   const k = e.order?.kind;
-  return k === "attackmove" || k === "move";
+  return k === "attackmove" || k === "move" || escorting(e);
 }
 
 function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
@@ -135,7 +136,12 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
     }
   }
 
-  if (e.guardFacing != null && (!e.order || e.order.kind === "guard") && e.waypoints.length === 0) {
+  if (
+    !escorting(e) &&
+    e.guardFacing != null &&
+    (!e.order || e.order.kind === "guard") &&
+    e.waypoints.length === 0
+  ) {
     const cone = acquire(state, e, true);
     const pick = cone ?? acquire(state, e, false);
     e.attackTarget = pick?.id ?? null;
@@ -499,7 +505,10 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       e.hp -= res.damage;
       if (e.hp < 0) e.hp = 0;
       if (e.hp > 0) rollCrits(e, res.face, res.kind, res.damage, rand);
-      if (e.hp > 0 && res.kind !== "ricochet" && res.damage > 0) maybeWithdraw(state, e, p);
+      const smoked = maybeHaulerSmokeScreen(state, e, p);
+      if (e.hp > 0 && !smoked && res.kind !== "ricochet" && res.damage > 0) {
+        maybeWithdraw(state, e, p);
+      }
       hideScout(state, e);
     }
     if (occupied) woundGarrison(state, e, res.damage, p.caliber);
@@ -755,6 +764,34 @@ export function inGuardCone(e: Entity, t: { x: number; y: number }): boolean {
   while (delta > Math.PI) delta -= Math.PI * 2;
   while (delta < -Math.PI) delta += Math.PI * 2;
   return Math.abs(delta) <= half;
+}
+
+/** Heavy shells (not rifles / MG) pop a screen and send the Mauler home. */
+function maybeHaulerSmokeScreen(state: MatchState, victim: Entity, p: Projectile): boolean {
+  if (victim.type !== "hauler" || victim.kind !== "unit" || victim.wreck) return false;
+  if (p.bounced || p.caliber < GARRISON_STRUCTURAL_CALIBER) return false;
+
+  if (victim.specialCooldown <= 0) {
+    spawnSmokeCloud(state, victim.x, victim.y, p.vx, p.vy);
+    victim.specialCooldown = HAULER_SMOKE_COOLDOWN;
+  }
+
+  if (victim.hp <= 0 || victim.holdPosition || immobilized(victim)) return true;
+  if (victim.state === "deploy" || victim.state === "undeploy") return true;
+  if (victim.returnToBase && (victim.order?.kind === "withdraw" || victim.order?.kind === "move")) {
+    return true;
+  }
+
+  const dest = withdrawDest(state, victim, victim.x - p.vx, victim.y - p.vy);
+  if (!dest) return true;
+  victim.returnToBase = true;
+  victim.autoHarvest = false;
+  victim.harvestTile = null;
+  victim.order = { kind: "withdraw", x: dest.x, y: dest.y, returnToBase: true };
+  victim.attackTarget = null;
+  victim.state = "move";
+  setPath(state, victim, dest.x, dest.y);
+  return true;
 }
 
 function maybeWithdraw(state: MatchState, victim: Entity, p: Projectile): void {

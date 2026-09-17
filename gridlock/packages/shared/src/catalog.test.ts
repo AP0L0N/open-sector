@@ -5,6 +5,8 @@ import {
   CAPTURE_SECONDS,
   CAPTURE_SECONDS_MIN,
   GAME_SPEED_DEFAULT,
+  HAULER_SMOKE_COOLDOWN,
+  SMOKE_SECONDS,
   GAME_SPEED_MAX,
   HANDGUN,
   RIFLE,
@@ -54,6 +56,11 @@ describe("special actions", () => {
     assert.equal(specialLabel("rig"), "Deploy");
     assert.equal(specialLabel("core"), "Pack");
     assert.equal(specialLabel("hauler"), null);
+  });
+
+  it("gives the Mauler a defensive smoke cooldown matching the screen", () => {
+    assert.equal(HAULER_SMOKE_COOLDOWN, SMOKE_SECONDS);
+    assert.ok(HAULER_SMOKE_COOLDOWN >= 2);
   });
 
   it("is not ready while transforming or on cooldown", () => {

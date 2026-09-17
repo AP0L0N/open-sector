@@ -88,7 +88,7 @@ import {
 } from "./sprites.js";
 import { drawBuildingAnim } from "./building-fx.js";
 import { drawActionCursor } from "./cursor.js";
-import { resolveHoverAction, type HoverAction } from "./hover-action.js";
+import { canGuardUnit, resolveHoverAction, type HoverAction } from "./hover-action.js";
 import {
   blitAtlas,
   blitTerrain,
@@ -786,6 +786,7 @@ export class MapView {
       if (e.button === 0) {
         this.ctrlHeld = e.ctrlKey;
         if (this.guardMode) {
+          if (this.commitGuardUnit(this.hit(mx, my))) return;
           this.beginGuard(mx, my);
           return;
         }
@@ -1229,6 +1230,43 @@ export class MapView {
     this.setGuardMode(false);
     if (ids.length === 0 || !anchor) return;
     this.onCommand({ type: "cmd.guard", ids, x: anchor.x, y: anchor.y, facing });
+  }
+
+  private commitGuardUnit(hit: EntityView | null): boolean {
+    if (!hit) return false;
+    const ids = this.ownSelectedIds();
+    if (
+      !canGuardUnit({
+        youPlayerId: this.curr.youPlayerId,
+        selectedIds: ids,
+        hit,
+        allied: (id) => ownerAllied(this.curr, id),
+      })
+    ) {
+      return false;
+    }
+    const guards = ids.filter((id) => id !== hit.id);
+    this.setGuardMode(false);
+    if (guards.length === 0) return true;
+    this.onCommand({ type: "cmd.guard", ids: guards, targetId: hit.id });
+    return true;
+  }
+
+  private guardHoverTarget(): EntityView | null {
+    if (this.guardDragging || this.mouseX < 0 || this.mouseY < 0) return null;
+    const hit = this.hit(this.mouseX, this.mouseY);
+    if (!hit) return null;
+    if (
+      !canGuardUnit({
+        youPlayerId: this.curr.youPlayerId,
+        selectedIds: this.ownSelectedIds(),
+        hit,
+        allied: (id) => ownerAllied(this.curr, id),
+      })
+    ) {
+      return null;
+    }
+    return hit;
   }
 
   private specialSelected(): void {
@@ -1761,6 +1799,11 @@ export class MapView {
     if (this.mouseX < 0 || this.mouseY < 0) return;
     const ids = this.ownSelectedIds();
     if (ids.length === 0) return;
+    const escort = this.guardHoverTarget();
+    if (escort) {
+      this.drawGuardUnitOverlay(escort);
+      return;
+    }
     if (!this.guardDragging) this.guardFacing = this.meanSelectedFacing();
     const origin = this.guardAnchor ?? this.screenToWorld(this.mouseX, this.mouseY);
     const elev = this.elevAt(origin.x, origin.y);
@@ -1838,6 +1881,43 @@ export class MapView {
     ctx.strokeText(label, this.mouseX + 14, this.mouseY + 8);
     ctx.fillStyle = "#e8b84a";
     ctx.fillText(label, this.mouseX + 14, this.mouseY + 8);
+    ctx.restore();
+  }
+
+  private drawGuardUnitOverlay(hit: EntityView): void {
+    const p = this.lerpEnt(hit);
+    const elev = this.elevAt(p.x, p.y);
+    const at = (wx: number, wy: number) => this.toScreen(wx, wy, elev);
+    const r = Math.max(catalog(hit.type).radius + this.ts(), this.ts() * 3);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    const ring: IsoPt[] = [];
+    const steps = 32;
+    for (let i = 0; i <= steps; i++) {
+      const a = (Math.PI * 2 * i) / steps;
+      ring.push(at(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r));
+    }
+    ctx.beginPath();
+    ctx.moveTo(ring[0]!.x, ring[0]!.y);
+    for (const q of ring) ctx.lineTo(q.x, q.y);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(232, 184, 74, 0.16)";
+    ctx.fill();
+    ctx.strokeStyle = "#e8b84a";
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([5, 4]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#140e0a";
+    ctx.strokeText("GUARD UNIT", this.mouseX + 14, this.mouseY + 8);
+    ctx.fillStyle = "#e8b84a";
+    ctx.fillText("GUARD UNIT", this.mouseX + 14, this.mouseY + 8);
     ctx.restore();
   }
 

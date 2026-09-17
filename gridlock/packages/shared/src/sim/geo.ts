@@ -427,6 +427,7 @@ export function makeEntity(
     cargo: 0,
     harvestTile: null,
     autoHarvest: type === "hauler",
+    returnToBase: false,
     deployTime: 0,
     specialCooldown: 0,
     queue: [],
@@ -464,6 +465,7 @@ export function clearOrder(e: Entity): void {
   e.attackTarget = null;
   e.harvestTile = null;
   e.guardFacing = null;
+  e.returnToBase = false;
   if (e.wreck) {
     e.state = "wreck";
     return;

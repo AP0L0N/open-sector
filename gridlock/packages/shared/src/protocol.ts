@@ -11,7 +11,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 19;
+export const PROTOCOL_VERSION = 20;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -147,6 +147,8 @@ export interface EntityView {
   holdPosition?: boolean;
   /** Overwatch heading in world radians. Friendly snapshots while guarding. */
   guardFacing?: number;
+  /** Friendly unit this entity is escorting. Omitted when not guarding a unit. */
+  guardTargetId?: number;
   /**
    * Hatch crew on a tank. Friendlies always see hp. `out` means the head is
    * visible; enemies only receive this object while the hatch is open.
@@ -286,7 +288,7 @@ export type ClientMessage =
   | { type: "cmd.stance"; ids: number[]; stance: Stance }
   | { type: "cmd.hold"; ids: number[]; hold: boolean }
   | { type: "cmd.rotate"; ids: number[]; x: number; y: number }
-  | { type: "cmd.guard"; ids: number[]; x: number; y: number; facing: number }
+  | { type: "cmd.guard"; ids: number[]; x?: number; y?: number; facing?: number; targetId?: number }
   | { type: "cmd.speed"; delta: number };
 
 export type ServerMessage =

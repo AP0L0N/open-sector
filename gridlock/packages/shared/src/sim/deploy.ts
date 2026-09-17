@@ -192,6 +192,7 @@ function structuredCloneBase(e: Entity): Entity {
     cargo: e.cargo,
     harvestTile: null,
     autoHarvest: false,
+    returnToBase: false,
     deployTime: 0,
     specialCooldown: e.specialCooldown,
     queue: [],

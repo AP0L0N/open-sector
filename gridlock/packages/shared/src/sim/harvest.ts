@@ -7,6 +7,7 @@ export function tickHarvest(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (e.type !== "hauler" || e.hp <= 0 || e.wreck) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
+    if (e.returnToBase || e.order?.kind === "withdraw") continue;
 
     if (e.order?.kind === "harvest" && e.order.tileX != null && e.order.tileY != null) {
       e.harvestTile = { x: e.order.tileX, y: e.order.tileY };

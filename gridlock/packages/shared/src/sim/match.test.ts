@@ -488,6 +488,7 @@ describe("combat", () => {
     const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
     const dummy = makeEntity(state, "hauler", "B", tileCenter(24, ts), tileCenter(28, ts));
     dummy.autoHarvest = false;
+    dummy.holdPosition = true;
     tank.facing = 0;
     tank.turretFacing = 0;
     const hull0 = tank.facing;
@@ -547,8 +548,10 @@ describe("combat", () => {
     state.heights.fill(0);
     const ts = state.tileSize;
     const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
-    const dummy = makeEntity(state, "hauler", "B", tileCenter(24, ts), tileCenter(28, ts));
-    dummy.autoHarvest = false;
+    const dummy = makeEntity(state, "warden", "B", tileCenter(24, ts), tileCenter(28, ts));
+    dummy.holdPosition = true;
+    dummy.ammo = { ap: 0, he: 0, heat: 0, smoke: 0 };
+    dummy.mgAmmo = 0;
     tank.facing = 0;
     tank.turretFacing = 0;
     applyCommand(state, "A", {

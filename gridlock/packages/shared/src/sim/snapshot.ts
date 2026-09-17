@@ -78,6 +78,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       swimming: isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
       guardFacing: friendly && e.guardFacing != null ? e.guardFacing : undefined,
+      guardTargetId:
+        friendly && e.order?.kind === "guard" && e.order.targetId != null ? e.order.targetId : undefined,
       scout: scoutView(e, friendly),
       ammo: friendly && Object.keys(e.ammo).length > 0 ? { ...e.ammo } : undefined,
       shell: friendly && e.shell ? e.shell : undefined,

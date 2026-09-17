@@ -13,6 +13,19 @@ export type HoverEntity = Pick<
   "id" | "kind" | "type" | "ownerId" | "hp" | "wreck" | "garrisonedIn" | "garrison"
 >;
 
+/** Guard mode: click this unit to escort it instead of planting an overwatch point. */
+export function canGuardUnit(args: {
+  youPlayerId: string;
+  selectedIds: readonly number[];
+  hit: HoverEntity | null;
+  allied: (ownerId: string | undefined) => boolean;
+}): boolean {
+  const hit = args.hit;
+  if (!hit || hit.kind !== "unit" || hit.wreck || hit.hp <= 0 || hit.garrisonedIn) return false;
+  if (hit.ownerId !== args.youPlayerId && !args.allied(hit.ownerId)) return false;
+  return args.selectedIds.some((id) => id !== hit.id);
+}
+
 export function resolveHoverAction(args: {
   youPlayerId: string;
   selected: readonly HoverEntity[];

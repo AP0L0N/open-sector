@@ -70,6 +70,8 @@ export function bindClicks(root: HTMLElement): void {
     if (e.button !== 0) return;
     const t = e.target;
     const btn = t instanceof HTMLElement ? t.closest("button") : null;
-    if (btn instanceof HTMLButtonElement && !btn.disabled) beep();
+    if (btn instanceof HTMLButtonElement && !btn.disabled && btn.getAttribute("aria-disabled") !== "true") {
+      beep();
+    }
   });
 }
