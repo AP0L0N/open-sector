@@ -34,7 +34,7 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  const state = createMatch(room, started.value);
+  const state = createMatch(room, started.value, { startingUnits: false });
   return { state, a: "A", b: "B" };
 }
 
@@ -77,7 +77,7 @@ describe("rollCrits", () => {
     assert.deepEqual(cold.crits, []);
   });
 
-  it("applies vehicle crits to unarmored motor vehicles, not buildings", () => {
+  it("applies vehicle crits to motor vehicles, not buildings", () => {
     const { state, a } = twoPlayerMatch();
     const hauler = makeEntity(state, "hauler", a, 100, 100);
     rollCrits(hauler, "side", "hit", 12, () => 0);

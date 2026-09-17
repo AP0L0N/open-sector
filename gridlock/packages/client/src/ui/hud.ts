@@ -15,8 +15,10 @@ import {
   hasMg,
   hasScout,
   infantryGunFor,
+  infantryLoadout,
   isGarrisonable,
   isInfantryType,
+  isInfantryWeaponId,
   isShellType,
   isStance,
   producerType,
@@ -48,6 +50,28 @@ let viewRef: MapView | null = null;
 let configFocus: EntityType | null = null;
 /** Ready structure: first right-click is a no-op; second cancels. */
 let readyCancelArmed: BuildingType | null = null;
+
+/** Fire on press so a snapshot rebuild cannot swallow the click between mousedown and mouseup. */
+function bindPress(root: HTMLElement, selector: string, fn: (btn: HTMLElement) => void): void {
+  const fire = (btn: HTMLElement) => {
+    if (btn instanceof HTMLButtonElement ? btn.disabled : btn.hasAttribute("disabled")) return;
+    fn(btn);
+  };
+  root.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    const btn = (e.target as HTMLElement | null)?.closest<HTMLElement>(selector);
+    if (!btn || !root.contains(btn)) return;
+    e.preventDefault();
+    fire(btn);
+  });
+  root.addEventListener("click", (e) => {
+    if (e.detail !== 0) return;
+    const btn = (e.target as HTMLElement | null)?.closest<HTMLElement>(selector);
+    if (!btn || !root.contains(btn)) return;
+    e.preventDefault();
+    fire(btn);
+  });
+}
 
 export function mountBattlefield(
   root: HTMLElement,
@@ -178,35 +202,16 @@ export function mountBattlefield(
     });
   }
 
-  config.addEventListener("click", (e) => {
-    const t = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-config-type], [data-shell]");
-    if (!t) return;
-    e.preventDefault();
-    if (t.dataset.configType) {
-      configFocus = t.dataset.configType as EntityType;
-      paintBattleHud(ctx);
-      return;
-    }
-    const shell = t.dataset.shell;
-    if (!shell || !isShellType(shell) || !viewRef || !ctx.match) return;
-    const ids = selectedOfType(ctx, viewRef, configFocus)
-      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck && hasAmmo(ent.type))
-      .map((ent) => ent.id);
-    if (ids.length === 0) return;
-    ctx.net.send({ type: "cmd.ammo", ids, shell });
+  bindPress(config, "[data-config-type], [data-shell], [data-weapon]", (t) => {
+    runConfigAction(ctx, t);
   });
 
-  actions.addEventListener("click", (e) => {
-    const btn = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-act]");
-    if (!btn?.dataset.act || !viewRef || !ctx.match) return;
-    e.preventDefault();
+  bindPress(actions, "[data-act]", (btn) => {
+    if (!btn.dataset.act || !viewRef || !ctx.match) return;
     runQuickAction(ctx, viewRef, btn.dataset.act);
   });
 
-  queue.addEventListener("click", (e) => {
-    const job = (e.target as HTMLElement | null)?.closest<HTMLElement>(".prod-job");
-    if (!job) return;
-    e.preventDefault();
+  bindPress(queue, ".prod-job", (job) => {
     ctx.net.send({ type: "cmd.pause", what: "train", jobId: Number(job.dataset.job) });
   });
   queue.addEventListener("contextmenu", (e) => {
@@ -490,8 +495,8 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
   const mag =
     gun && e.clip != null && !e.wreck
       ? e.reload && e.reload > 0
-        ? `  ·  reloading ${e.reload.toFixed(1)}s`
-        : `  ·  clip ${e.clip}/${gun.clip}`
+        ? `  ·  ${gun.name} reloading ${e.reload.toFixed(1)}s`
+        : `  ·  ${gun.name} ${e.clip}/${gun.clip}`
       : "";
   const rack =
     e.ammo && e.shell && !e.wreck ? `  ·  ${e.shell.toUpperCase()} ${ammoOf(e.ammo, e.shell)}` : "";
@@ -536,6 +541,48 @@ function infantryClipLine(live: EntityView[]): string {
   const rounds = live.reduce((n, e) => n + ((e.reload ?? 0) > 0 ? 0 : (e.clip ?? 0)), 0);
   const cap = gun.clip * live.length;
   return reloading ? `Clip ${rounds}/${cap} · ${reloading} reloading` : `Clip ${rounds}/${cap}`;
+}
+
+function loadoutButton(opts: {
+  attr: "data-shell" | "data-weapon";
+  id: string;
+  name: string;
+  blurb: string;
+  count: string;
+  on: boolean;
+  empty?: boolean;
+  title?: string;
+}): HTMLButtonElement {
+  const btn = el("button", {
+    class: "shell" + (opts.on ? " is-on" : "") + (opts.empty ? " is-empty" : ""),
+    attrs: {
+      type: "button",
+      [opts.attr]: opts.id,
+      title: opts.title ?? `${opts.name} — ${opts.blurb}`,
+    },
+  });
+  const row = el("span", { class: "shell-row" });
+  row.append(el("span", { text: opts.name }), el("span", { class: "shell-n", text: opts.count }));
+  btn.append(row, el("span", { class: "shell-blurb", text: opts.blurb }));
+  return btn;
+}
+
+function updateLoadoutButton(
+  btn: HTMLElement,
+  opts: { count: string; on: boolean; empty?: boolean; title?: string },
+): void {
+  btn.classList.toggle("is-on", opts.on);
+  btn.classList.toggle("is-empty", !!opts.empty);
+  if (opts.title != null) btn.title = opts.title;
+  const n = btn.querySelector(".shell-n");
+  if (n && n.textContent !== opts.count) n.textContent = opts.count;
+}
+
+function infantryClipShown(e: EntityView, gunId: string): number {
+  const live = infantryGunFor(e);
+  if (live?.id === gunId) return (e.reload ?? 0) > 0 ? 0 : (e.clip ?? 0);
+  const gun = infantryLoadout(e.type).find((g) => g.id === gunId);
+  return gun?.clip ?? 0;
 }
 
 const TYPE_ORDER: EntityType[] = [
@@ -594,6 +641,30 @@ function occupiedHouses(ctx: Ctx, selected: EntityView[]): EntityView[] {
 function ownCommandable(ctx: Ctx, list: EntityView[]): EntityView[] {
   const you = ctx.match?.youPlayerId;
   return list.filter((e) => e.ownerId === you && !e.wreck && e.hp > 0);
+}
+
+function setField(root: HTMLElement, field: string, text: string): void {
+  const n = root.querySelector(`[data-field="${field}"]`);
+  if (n && n.textContent !== text) n.textContent = text;
+}
+
+function configBodyLayout(focus: EntityView, live: EntityView[], wrecks: EntityView[], you: string): string {
+  if (live.length === 0 && wrecks.length > 0) return `${focus.type}|wreck`;
+  const def = catalog(focus.type);
+  const mine = live.filter((e) => e.ownerId === you);
+  const parts = [focus.type, "live"];
+  if (hasAmmo(focus.type)) parts.push("ammo");
+  else if (isInfantryType(focus.type)) {
+    parts.push("inf", infantryLoadout(focus.type).map((g) => g.id).join("+"));
+    if (mine.length > 0 && infantryLoadout(focus.type).length > 0) parts.push("guns");
+  } else if (focus.kind === "unit" && def.damage > 0) parts.push("smallarms");
+  if (isInfantryType(focus.type)) parts.push("posture");
+  if (hasMg(focus.type)) parts.push("mg");
+  if (hasScout(focus.type)) parts.push("scout");
+  if (armorLabel(focus.type)) parts.push("armor");
+  if (focus.type === "hauler") parts.push("cargo");
+  if (specialLabel(focus.type)) parts.push("spec");
+  return parts.join("|");
 }
 
 function paintConfig(ctx: Ctx, view: MapView | null): void {
@@ -662,15 +733,45 @@ function paintConfig(ctx: Ctx, view: MapView | null): void {
       const s = SHELLS[id];
       const left = shells.reduce((n, e) => n + ammoOf(e.ammo, id), 0);
       const on = same && shells[0]?.shell === id;
-      const btn = el("button", {
-        class: "shell" + (on ? " is-on" : "") + (left <= 0 ? " is-empty" : ""),
-        attrs: { type: "button", "data-shell": id, title: s.name },
-      });
-      btn.append(el("span", { text: s.name }), el("span", { class: "shell-n", text: String(left) }));
-      rack.append(btn);
+      rack.append(
+        loadoutButton({
+          attr: "data-shell",
+          id,
+          name: s.name,
+          blurb: s.blurb,
+          count: String(left),
+          on,
+          empty: left <= 0,
+        }),
+      );
     }
     body.append(el("div", { class: "tiny", text: "Shell" }), rack);
   } else if (isInfantryType(focus.type)) {
+    const mine = live.filter((e) => e.ownerId === ctx.match!.youPlayerId);
+    const loadout = infantryLoadout(focus.type);
+    if (loadout.length > 0 && mine.length > 0) {
+      const same = mine.every((e) => infantryGunFor(e)?.id === infantryGunFor(mine[0]!)?.id);
+      const allArmed = mine.every((e) => (e.crits ?? []).includes("arm"));
+      const rack = el("div", { class: "shell-rack" });
+      for (const gun of loadout) {
+        const on = same && infantryGunFor(mine[0]!)?.id === gun.id;
+        const locked = allArmed && gun.id !== "handgun";
+        const left = mine.reduce((n, e) => n + infantryClipShown(e, gun.id), 0);
+        rack.append(
+          loadoutButton({
+            attr: "data-weapon",
+            id: gun.id,
+            name: gun.name,
+            blurb: gun.blurb,
+            count: String(left),
+            on,
+            empty: locked,
+            title: locked ? `${gun.name} — broken arm. ${gun.blurb}` : undefined,
+          }),
+        );
+      }
+      body.append(el("div", { class: "tiny", text: "Weapon" }), rack);
+    }
     body.append(el("p", { class: "tiny", text: infantryClipLine(live) }));
   } else if (focus.kind === "unit" && def.damage > 0) {
     body.append(el("p", { class: "tiny", text: "Small arms · unlimited" }));
@@ -894,6 +995,32 @@ function paintQuickActions(ctx: Ctx, view: MapView | null): void {
     });
     root.append(hideBtn);
   }
+}
+
+function runConfigAction(ctx: Ctx, t: HTMLElement): void {
+  if (t.dataset.configType) {
+    configFocus = t.dataset.configType as EntityType;
+    paintBattleHud(ctx);
+    return;
+  }
+  if (!viewRef || !ctx.match) return;
+  const weapon = t.dataset.weapon;
+  if (weapon) {
+    if (!isInfantryWeaponId(weapon)) return;
+    const ids = selectedOfType(ctx, viewRef, configFocus)
+      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck && isInfantryType(ent.type))
+      .map((ent) => ent.id);
+    if (ids.length === 0) return;
+    ctx.net.send({ type: "cmd.weapon", ids, weapon });
+    return;
+  }
+  const shell = t.dataset.shell;
+  if (!shell || !isShellType(shell)) return;
+  const ids = selectedOfType(ctx, viewRef, configFocus)
+    .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck && hasAmmo(ent.type))
+    .map((ent) => ent.id);
+  if (ids.length === 0) return;
+  ctx.net.send({ type: "cmd.ammo", ids, shell });
 }
 
 function runQuickAction(ctx: Ctx, view: MapView, act: string): void {

@@ -1,7 +1,6 @@
 import {
   GARRISON_HIDE_SIGHT,
   GARRISON_WATCH_SIGHT_BONUS,
-  HANDGUN,
   HEIGHT_BASE,
   HEIGHT_DOWNHILL_COST,
   HEIGHT_DOWNHILL_SPEED,
@@ -10,16 +9,18 @@ import {
   HEIGHT_UPHILL_COST,
   HEIGHT_UPHILL_SPEED,
   HEIGHT_WORLD,
+  HULL_EYE_HEIGHT,
   HULL_LEVEL_SIGHT,
   INFANTRY_EYE_HEIGHT,
   INFANTRY_UPHILL_SIGHT,
+  LOS_TERRAIN_SLACK,
   TANK_GUN_CLIMB,
   TANK_GUN_ELEV_DEG,
   TREE_LOS_THROUGH,
   catalog,
   entityIsScouting,
-  hasCrit,
   hasTurret,
+  infantryGunFor,
   isInfantryType,
   sightBonusTilesOf,
   weaponRangeTiles,
@@ -114,7 +115,7 @@ function usesInfantrySight(type: EntityType): boolean {
 
 /** Extra observer height used only for terrain LOS. */
 export function observerEyeOf(type: EntityType): number {
-  return usesInfantrySight(type) ? INFANTRY_EYE_HEIGHT : 0;
+  return usesInfantrySight(type) ? INFANTRY_EYE_HEIGHT : HULL_EYE_HEIGHT;
 }
 
 /** Extra Chebyshev reach per elevation step between observer and tile (up or down). */
@@ -153,7 +154,8 @@ export function sightTilesForEntity(state: MatchState, e: Entity): number {
 }
 
 export function weaponRangeWorld(state: MatchState, e: Entity): number {
-  if (isInfantryType(e.type) && hasCrit(e, "arm")) return HANDGUN.rangeTiles * state.tileSize;
+  const gun = infantryGunFor(e);
+  if (gun?.rangeTiles != null) return gun.rangeTiles * state.tileSize;
   if (catalog(e.type).rangeTiles <= 0) return 0;
   const sight =
     e.garrisonedIn != null
@@ -191,9 +193,10 @@ export function canAimWeapon(
 
 /**
  * A tile blocks when it rises through the sight line from the observer's
- * eye to the destination ground. Descending or level ground never occludes —
- * a hilltop sees its own slope, including terrace lips. A closer ridge still
- * hides a farther peak even if that peak is taller.
+ * eye to the destination ground by more than LOS_TERRAIN_SLACK. Descending
+ * or level ground never occludes — a hilltop sees its own slope, including
+ * terrace lips. A closer ridge still hides a farther peak even if that peak
+ * is taller. Modest rolls stay open; a deep valley still hides.
  */
 export function hasTerrainLos(
   elev: ArrayLike<number>,
@@ -267,7 +270,7 @@ function blocksLos(
   const t = len2 <= 0 ? 1 : ((x - x0) * spanX + (y - y0) * spanY) / len2;
   const clamped = t < 0 ? 0 : t > 1 ? 1 : t;
   const rayH = h0 + (h1 - h0) * clamped;
-  return h > rayH;
+  return h > rayH + LOS_TERRAIN_SLACK;
 }
 
 export interface CoverField {
@@ -310,6 +313,7 @@ function hullIdAt(
 /**
  * Elevation ridges plus map cover. Trees eat a see-through budget;
  * walls, buildings, and armored hulls stop the ray outright. Water does not block.
+ * Diagonal steps also test the two corner tiles so a building cannot be skipped.
  */
 export function hasFullLos(
   elev: ArrayLike<number>,
@@ -333,7 +337,7 @@ export function hasFullLos(
   const sy = y0 < y1 ? 1 : -1;
   let err = dx - dy;
   const cap = dx + dy + 2;
-  let trees = 0;
+  const trees = { n: 0 };
   const ignore = cover?.ignoreOccupyId ?? 0;
   const destHull = hullIdAt(cover?.hull, width, height, x1, y1);
   for (let n = 0; n < cap; n++) {
@@ -360,15 +364,50 @@ export function hasFullLos(
     }
     if (blocksLos(elev, width, height, x, y, x0, y0, x1, y1, h0, h1, prevH)) return false;
     if (!cover) continue;
-    if (x === x1 && y === y1) return true;
-    if (hardCoverAt(cover.terrain, cover.occupy, width, height, x, y, ignore)) return false;
-    const hid = hullIdAt(cover.hull, width, height, x, y);
-    if (hid !== 0 && hid !== ignore && hid !== destHull) return false;
-    if (coverSmokeAt(cover, width, height, x, y)) return false;
-    if (x >= 0 && y >= 0 && x < width && y < height && cover.terrain[y * width + x] === TILE_TREE) {
-      trees += 1;
-      if (trees > TREE_LOS_THROUGH) return false;
+    if (steppedX && steppedY) {
+      if (coverHits(cover, width, height, x - sx, y, x0, y0, x1, y1, ignore, destHull, trees, false)) {
+        return false;
+      }
+      if (coverHits(cover, width, height, x, y - sy, x0, y0, x1, y1, ignore, destHull, trees, false)) {
+        return false;
+      }
     }
+    if (coverHits(cover, width, height, x, y, x0, y0, x1, y1, ignore, destHull, trees, true)) return false;
   }
   return true;
+}
+
+function coverHits(
+  cover: CoverField,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  ignore: number,
+  destHull: number,
+  trees: { n: number },
+  countTrees: boolean,
+): boolean {
+  if (x === x0 && y === y0) return false;
+  if (x === x1 && y === y1) return false;
+  if (hardCoverAt(cover.terrain, cover.occupy, width, height, x, y, ignore)) return true;
+  const hid = hullIdAt(cover.hull, width, height, x, y);
+  if (hid !== 0 && hid !== ignore && hid !== destHull) return true;
+  if (coverSmokeAt(cover, width, height, x, y)) return true;
+  if (
+    countTrees &&
+    x >= 0 &&
+    y >= 0 &&
+    x < width &&
+    y < height &&
+    cover.terrain[y * width + x] === TILE_TREE
+  ) {
+    trees.n += 1;
+    if (trees.n > TREE_LOS_THROUGH) return true;
+  }
+  return false;
 }

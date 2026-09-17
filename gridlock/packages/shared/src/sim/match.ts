@@ -7,13 +7,15 @@ import {
   NEUTRAL_OWNER,
   secondsToTicks,
   START_SCRAP,
+  START_UNITS,
   TICK_DT,
+  type EntityType,
 } from "../catalog.js";
 import { getMap } from "../maps.js";
 import { commanders } from "../lobby.js";
 import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
 import type { ImpactView, RoomState } from "../protocol.js";
-import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter } from "./geo.js";
+import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter, walkable } from "./geo.js";
 import { tickCapture } from "./capture.js";
 import { detachGarrisoned, spillGarrison, tickGarrison } from "./garrison.js";
 import { seedRng } from "./rng.js";
@@ -26,12 +28,66 @@ import { tickAutoDeploy, tickDeploy } from "./deploy.js";
 import { tickHarvest } from "./harvest.js";
 import { tickMovement, repathIfBlocked } from "./orders.js";
 import { tickTrain } from "./train.js";
-import type { MatchState, SimPlayer } from "./types.js";
+import type { Entity, MatchState, SimPlayer } from "./types.js";
 import { toWreck } from "./wreck.js";
+
+function spawnStartingUnits(state: MatchState, ownerId: string, rig: Entity): void {
+  const core = catalog("core");
+  const halfW = Math.floor(core.tileW / 2);
+  const halfH = Math.floor(core.tileH / 2);
+  const coreTx = rig.tileX - halfW;
+  const coreTy = rig.tileY - halfH;
+  const dx = Math.sign(state.width / 2 - rig.tileX) || 1;
+  const dy = Math.sign(state.height / 2 - rig.tileY) || 1;
+  const used = new Set<string>([`${rig.tileX},${rig.tileY}`]);
+  const inFutureCore = (x: number, y: number) =>
+    x >= coreTx && x < coreTx + core.tileW && y >= coreTy && y < coreTy + core.tileH;
+
+  const takeTile = (prefX: number, prefY: number, type: EntityType) => {
+    const max = Math.max(state.width, state.height);
+    for (let r = 0; r < max; r++) {
+      for (let oy = -r; oy <= r; oy++) {
+        for (let ox = -r; ox <= r; ox++) {
+          if (Math.max(Math.abs(ox), Math.abs(oy)) !== r) continue;
+          const x = prefX + ox;
+          const y = prefY + oy;
+          const key = `${x},${y}`;
+          if (used.has(key) || inFutureCore(x, y)) continue;
+          if (!walkable(state, x, y, type)) continue;
+          used.add(key);
+          return { x, y };
+        }
+      }
+    }
+    return { x: prefX, y: prefY };
+  };
+
+  const ring = halfW + 2;
+  const offsets: readonly [number, number][] = [
+    [dx * ring, 0],
+    [0, dy * ring],
+    [dx * ring, dy * ring],
+  ];
+  for (let i = 0; i < START_UNITS.length; i++) {
+    const type = START_UNITS[i]!;
+    const [ox, oy] = offsets[i] ?? [dx * (ring + i), dy * (ring + i)];
+    const tile = takeTile(rig.tileX + ox, rig.tileY + oy, type);
+    const u = makeEntity(
+      state,
+      type,
+      ownerId,
+      tileCenter(tile.x, state.tileSize),
+      tileCenter(tile.y, state.tileSize),
+      { facing: rig.facing },
+    );
+    u.turretFacing = rig.facing;
+  }
+}
 
 export function createMatch(
   room: RoomState,
   spawns: Map<string, { spawnId: number; x: number; y: number }>,
+  opts?: { startingUnits?: boolean },
 ): MatchState {
   const map = getMap(room.mapId);
   if (!map) throw new Error("map missing");
@@ -84,6 +140,7 @@ export function createMatch(
     const towardY = map.height / 2 - pos.y;
     rig.facing = Math.atan2(towardY, towardX);
     rig.turretFacing = rig.facing;
+    if (opts?.startingUnits !== false) spawnStartingUnits(state, pid, rig);
     players.set(pid, {
       playerId: pid,
       name: slot.name ?? "Commander",

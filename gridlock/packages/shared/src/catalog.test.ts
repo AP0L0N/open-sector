@@ -18,11 +18,15 @@ import {
   TILE_SIZE,
   WEAPON_RANGE_SIGHT_MUL,
   SHELLS,
+  SHELL_TYPES,
+  INFANTRY_GUNS,
+  INFANTRY_WEAPON_IDS,
   armorLabel,
   BUILDING_TYPES,
   catalog,
   hasMg,
   infantryGunFor,
+  infantryLoadout,
   hasScout,
   scoutHpMaxOf,
   SCOUT_HP_MUL,
@@ -124,8 +128,14 @@ describe("armor", () => {
 
   it("labels the Warden plates and leaves infantry unarmored", () => {
     const w = catalog("warden");
+    const h = catalog("hauler");
     assert.ok(w.armorFront > w.armorSide && w.armorSide > w.armorRear);
+    assert.equal(h.armorFront, w.armorFront);
+    assert.equal(h.armorSide, w.armorSide);
+    assert.equal(h.armorRear, w.armorRear);
+    assert.equal(h.leavesWreck, true);
     assert.equal(armorLabel("warden"), `F${w.armorFront} / S${w.armorSide} / R${w.armorRear}`);
+    assert.equal(armorLabel("hauler"), armorLabel("warden"));
     assert.equal(armorLabel("trooper"), null);
     assert.equal(catalog("trooper").armorFront, 0);
   });
@@ -160,10 +170,37 @@ describe("infantry guns", () => {
     assert.ok(RIFLE.reload > HANDGUN.reload);
     assert.ok(RIFLE.reload > RIFLE.cooldown * 2);
     assert.equal(infantryGunFor({ type: "trooper" })?.id, "rifle");
-    assert.equal(infantryGunFor({ type: "trooper", crits: ["arm"] })?.id, "handgun");
+    assert.equal(infantryGunFor({ type: "trooper", weapon: "handgun" })?.id, "handgun");
+    assert.equal(infantryGunFor({ type: "trooper", weapon: "handgun", crits: ["arm"] })?.id, "handgun");
+    assert.equal(infantryGunFor({ type: "trooper", weapon: "rifle", crits: ["arm"] })?.id, "handgun");
     assert.equal(infantryGunFor({ type: "warden" }), null);
+    assert.deepEqual(
+      infantryLoadout("trooper").map((g) => g.id),
+      ["rifle", "handgun"],
+    );
+    assert.deepEqual(infantryLoadout("warden"), []);
     assert.ok(RELOAD_MUL_MIN < 1 && RELOAD_MUL_MAX > 1);
     assert.ok(RELOAD_MUL_MAX - RELOAD_MUL_MIN <= 0.2);
+  });
+
+  it("explains every shell and infantry gun", () => {
+    for (const id of SHELL_TYPES) {
+      assert.ok(SHELLS[id].blurb.length > 24, id);
+    }
+    for (const id of INFANTRY_WEAPON_IDS) {
+      assert.ok(INFANTRY_GUNS[id].blurb.length > 24, id);
+    }
+  });
+
+  it("lets the handgun win a point-blank 1v1 on time-to-kill", () => {
+    const hp = catalog("trooper").hp;
+    const ttk = (damage: number, cooldown: number) => (Math.ceil(hp / damage) - 1) * cooldown;
+    assert.ok(HANDGUN.cooldown < RIFLE.cooldown);
+    assert.ok(HANDGUN.rangeTiles! < catalog("trooper").rangeTiles / 2);
+    assert.ok(
+      ttk(HANDGUN.damage, HANDGUN.cooldown) < ttk(RIFLE.damage, RIFLE.cooldown),
+      `handgun ${ttk(HANDGUN.damage, HANDGUN.cooldown)}s vs rifle ${ttk(RIFLE.damage, RIFLE.cooldown)}s`,
+    );
   });
 });
 

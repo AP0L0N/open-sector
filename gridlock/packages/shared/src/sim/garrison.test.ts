@@ -44,7 +44,7 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return { state: createMatch(room, started.value), a: "A", b: "B" };
+  return { state: createMatch(room, started.value, { startingUnits: false }), a: "A", b: "B" };
 }
 
 describe("cover LOS", () => {
@@ -65,6 +65,16 @@ describe("cover LOS", () => {
     occupy[2] = 7;
     assert.equal(hasFullLos(elev, 5, 1, 0, 0, 4, 0, { terrain, occupy }), false);
     assert.equal(hasFullLos(elev, 5, 1, 0, 0, 4, 0, { terrain, occupy, ignoreOccupyId: 7 }), true);
+  });
+
+  it("stops at a building on a diagonal that Bresenham would skip", () => {
+    const w = 5;
+    const elev = new Uint8Array(w * w);
+    const terrain = new Uint8Array(w * w);
+    const occupy = new Int32Array(w * w);
+    occupy[1 * w + 2] = 7;
+    assert.equal(hasFullLos(elev, w, w, 0, 0, 4, 4, { terrain, occupy }), false);
+    assert.equal(hasFullLos(elev, w, w, 0, 0, 4, 4, { terrain, occupy, ignoreOccupyId: 7 }), true);
   });
 
   it("stops at an armored hull unless the dest sits on that hull", () => {

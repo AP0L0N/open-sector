@@ -1,6 +1,7 @@
 import {
   catalog,
   infantryGunFor,
+  primaryInfantryGun,
   isArmoredType,
   isInfantryType,
   isMotorVehicle,
@@ -62,13 +63,19 @@ export function isSingleTree(state: MatchState, x: number, y: number): boolean {
   return true;
 }
 
-export function crushTreeAt(state: MatchState, x: number, y: number): boolean {
-  if (!isSingleTree(state, x, y)) return false;
+/** Remove any tree tile (lone or grove). Shells use this; vehicles still crush loners only. */
+export function fellTreeAt(state: MatchState, x: number, y: number): boolean {
+  if (!isTree(state, x, y)) return false;
   const i = tileIndex(state, x, y);
   state.terrain[i] = TILE_EMPTY;
   state.clearedTrees.push({ x, y });
   state.visionTick = -1;
   return true;
+}
+
+export function crushTreeAt(state: MatchState, x: number, y: number): boolean {
+  if (!isSingleTree(state, x, y)) return false;
+  return fellTreeAt(state, x, y);
 }
 
 export function hardCoverAt(
@@ -427,6 +434,7 @@ export function makeEntity(
     wreck: false,
     ammo: def.ammo ? { ...def.ammo } : {},
     shell: def.defaultShell ?? null,
+    weapon: primaryInfantryGun(type)?.id ?? null,
     mgAmmo: def.mgAmmo ?? 0,
     mgHeat: 0,
     mgOverheat: 0,

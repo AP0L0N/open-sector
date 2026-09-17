@@ -4,7 +4,43 @@ import {
   SMOKE_SECONDS,
 } from "../catalog.js";
 import { worldToTile } from "./geo.js";
+import { nextRand } from "./rng.js";
 import type { MatchState, SmokeCloud } from "./types.js";
+
+export type SmokePuff = {
+  /** Along-shot, -1..1 of the live ellipse. */
+  u: number;
+  /** Across-shot, -1..1 of the live ellipse. */
+  v: number;
+  size: number;
+};
+
+function puffRand(seed: number): () => number {
+  let s = (seed >>> 0) || 1;
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+/** Lasting-screen puff layout. Index 0 is always the impact. */
+export function smokeCloudPuffs(seed: number, count = 18): SmokePuff[] {
+  const n = Math.max(1, count | 0);
+  const rand = puffRand(Math.imul(seed, 0x9e3779b9) + 1);
+  const out: SmokePuff[] = [{ u: 0, v: 0, size: 1.22 }];
+  for (let i = 1; i < n; i++) {
+    const ang = rand() * Math.PI * 2;
+    let r = Math.sqrt(rand());
+    if (i < 5) r *= 0.42;
+    else r = 0.22 + r * 0.78;
+    out.push({
+      u: Math.cos(ang) * r,
+      v: Math.sin(ang) * r,
+      size: 0.72 + rand() * 0.7,
+    });
+  }
+  return out;
+}
 
 export function cloudScale(c: { life: number; lifeMax: number }): number {
   const t = c.lifeMax <= 0 ? 1 : Math.max(0, Math.min(1, c.life / c.lifeMax));
@@ -80,14 +116,19 @@ export function spawnSmokeCloud(
   vy: number,
 ): SmokeCloud {
   const sp = Math.hypot(vx, vy);
+  const baseUx = sp > 1e-6 ? vx / sp : 1;
+  const baseUy = sp > 1e-6 ? vy / sp : 0;
+  const spin = (nextRand(state) - 0.5) * 0.9;
+  const cs = Math.cos(spin);
+  const sn = Math.sin(spin);
   const cloud: SmokeCloud = {
     id: state.nextId++,
     x,
     y,
-    ux: sp > 1e-6 ? vx / sp : 1,
-    uy: sp > 1e-6 ? vy / sp : 0,
-    halfAlong: SMOKE_HALF_ALONG,
-    halfAcross: SMOKE_HALF_ACROSS,
+    ux: baseUx * cs - baseUy * sn,
+    uy: baseUx * sn + baseUy * cs,
+    halfAlong: SMOKE_HALF_ALONG * (0.88 + nextRand(state) * 0.28),
+    halfAcross: SMOKE_HALF_ACROSS * (0.9 + nextRand(state) * 0.35),
     life: SMOKE_SECONDS,
     lifeMax: SMOKE_SECONDS,
   };

@@ -22,7 +22,7 @@ function humanVsEasy(): { state: MatchState; aiId: string } {
   updateSelf(room, "A", { ready: true });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return { state: createMatch(room, started.value), aiId: "ai:1" };
+  return { state: createMatch(room, started.value, { startingUnits: false }), aiId: "ai:1" };
 }
 
 function waitCore(state: MatchState, playerId: string, n = 40): void {

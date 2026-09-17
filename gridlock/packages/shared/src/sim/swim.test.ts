@@ -26,7 +26,7 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return { state: createMatch(room, started.value), a: "A", b: "B" };
+  return { state: createMatch(room, started.value, { startingUnits: false }), a: "A", b: "B" };
 }
 
 function ticks(state: MatchState, n: number): void {
@@ -133,10 +133,9 @@ describe("water swimming", () => {
       for (let gx = 78; gx <= 88; gx++) flood(state, gx, gy);
     }
     const inf = makeEntity(state, "trooper", "A", tileCenter(83, ts), tileCenter(y, ts));
-    const dummy = makeEntity(state, "hauler", "B", tileCenter(94, ts), tileCenter(y, ts));
-    dummy.autoHarvest = false;
-    dummy.hp = 40;
-    dummy.hpMax = 40;
+    const dummy = makeEntity(state, "trooper", "B", tileCenter(94, ts), tileCenter(y, ts));
+    dummy.holdPosition = true;
+    dummy.cooldown = 99;
     dummy.facing = Math.PI;
     inf.facing = 0;
     inf.holdPosition = true;

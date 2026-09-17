@@ -62,7 +62,7 @@ export function fxLifeMs(kind: string, blast?: boolean): number {
   if (kind === "hit") return 380;
   if (kind === "glance") return 260;
   if (kind === "ricochet") return 480;
-  if (kind === "miss") return 440;
+  if (kind === "miss") return 560;
   return 400;
 }
 
@@ -406,7 +406,52 @@ export function drawMuzzleBlast(
   drawShockRing(ctx, x, y, Math.min(1, t / 0.72), shell ? 13 : 5.5, shell ? 0.5 : 0.22);
 }
 
-/** Dirt and a faint pressure slap. No fire. */
+function drawDirtCone(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  dirX: number,
+  dirY: number,
+  t: number,
+  seed: number,
+  count: number,
+  travel: number,
+  halfCone: number,
+): void {
+  if (count <= 0 || travel <= 0) return;
+  const along = dirOf(dirX, dirY);
+  const baseAng = Math.atan2(along.y, along.x);
+  const rnd = rng(seed ^ 0x51ed);
+  ctx.save();
+  for (let i = 0; i < count; i++) {
+    const ang = baseAng + (rnd() - 0.5) * 2 * halfCone;
+    const delay = rnd() * 0.06;
+    const span = 0.42 + rnd() * 0.5;
+    const local = (t - delay) / span;
+    if (local <= 0 || local >= 1) continue;
+    const speed = (0.38 + rnd() * 0.72) * travel;
+    const lift = -(0.22 + rnd() * 0.55);
+    const dx = Math.cos(ang);
+    const dy = Math.sin(ang) + lift;
+    const dl = Math.hypot(dx, dy) || 1;
+    const ux = dx / dl;
+    const uy = dy / dl;
+    const ease = 1 - (1 - local) * (1 - local);
+    const px = x + ux * speed * ease;
+    const py = y + uy * speed * ease;
+    const a = (1 - local) * (1 - local) * (0.55 + rnd() * 0.4);
+    const rw = (1.1 + rnd() * 2.4) * (1 - local * 0.25);
+    const rh = rw * (0.45 + rnd() * 0.25);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = rnd() > 0.4 ? "#6b5340" : rnd() > 0.5 ? "#5a4634" : "#8a6e50";
+    ctx.beginPath();
+    ctx.ellipse(px, py, rw, rh, ang * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** Dirt crater plus a cone of ejecta along the incoming shot. No fire. */
 export function drawGroundMiss(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -414,19 +459,58 @@ export function drawGroundMiss(
   t: number,
   seed: number,
   caliber?: number,
+  dirX = 0,
+  dirY = -1,
 ): void {
   const shell = isShellCaliber(caliber);
+  const incoming = dirOf(dirX, dirY);
   const fade = 1 - t;
+  const gouge = Math.atan2(incoming.y, incoming.x);
   ctx.save();
-  ctx.globalAlpha = fade * (shell ? 0.7 : 0.5);
-  ctx.fillStyle = "#5a4a32";
+  ctx.globalAlpha = fade * (shell ? 0.78 : 0.52);
+  ctx.fillStyle = "#4a3a28";
   ctx.beginPath();
-  ctx.ellipse(x, y, (shell ? 8 : 5) + t * (shell ? 8 : 5), (shell ? 4 : 2.4) + t * (shell ? 4 : 2.4), 0, 0, Math.PI * 2);
+  ctx.ellipse(
+    x + incoming.x * t * (shell ? 2.2 : 1.2),
+    y + incoming.y * t * (shell ? 1.1 : 0.6),
+    (shell ? 7 : 4.2) + t * (shell ? 6 : 3.2),
+    (shell ? 3.4 : 2) + t * (shell ? 2.4 : 1.4),
+    gouge,
+    0,
+    Math.PI * 2,
+  );
   ctx.fill();
   ctx.restore();
-  if (shell) drawShockRing(ctx, x, y, Math.min(1, t / 0.7), 22, 0.45);
-  drawDust(ctx, x, y, t, seed, shell ? 16 : 6, shell ? 22 : 10);
-  drawSparkBurst(ctx, x, y, 0, -1, t, seed, shell ? 4 : 1, shell ? 14 : 6);
+  if (shell) drawShockRing(ctx, x, y, Math.min(1, t / 0.7), 20, 0.4);
+  drawDust(ctx, x, y, t, seed, shell ? 8 : 3, shell ? 12 : 6);
+  drawDirtCone(
+    ctx,
+    x,
+    y,
+    incoming.x,
+    incoming.y,
+    t,
+    seed,
+    shell ? 22 : 8,
+    (shell ? 28 : 12) + t * (shell ? 10 : 4),
+    shell ? 0.62 : 0.5,
+  );
+  const burst = 1 - Math.min(1, t / 0.28);
+  if (burst > 0) {
+    const reach = (shell ? 18 : 8) * (0.55 + burst * 0.45);
+    const half = (shell ? 10 : 4.5) * burst;
+    ctx.save();
+    ctx.globalAlpha = burst * burst * (shell ? 0.42 : 0.22);
+    ctx.fillStyle = "#6b5340";
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + incoming.x * reach - incoming.y * half, y + incoming.y * reach + incoming.x * half);
+    ctx.lineTo(x + incoming.x * reach + incoming.y * half, y + incoming.y * reach - incoming.x * half);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+  drawSparkBurst(ctx, x, y, incoming.x, incoming.y, t, seed, shell ? 3 : 1, shell ? 10 : 5);
 }
 
 /** Extra shock and sparks around a cook-off fireball. */

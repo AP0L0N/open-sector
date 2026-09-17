@@ -46,7 +46,7 @@ describe("resolveHit", () => {
   it("lets rifles wound unarmored targets", () => {
     const res = resolveHit({
       gun: trooper,
-      target: hauler,
+      target: trooper,
       targetFacing: 0,
       targetHp: 40,
       targetHpMax: 40,
@@ -57,6 +57,33 @@ describe("resolveHit", () => {
     assert.equal(res.face, "front");
     assert.ok(res.damage >= 11 && res.damage <= 13);
     assert.equal(res.kind, "hit");
+  });
+
+  it("ricochets rifles off a hauler with no damage, matching the Warden", () => {
+    assert.equal(hauler.armorFront, warden.armorFront);
+    assert.equal(hauler.armorSide, warden.armorSide);
+    assert.equal(hauler.armorRear, warden.armorRear);
+    for (const target of [warden, hauler]) {
+      for (const [vx, vy, face] of [
+        [-1, 0, "front"],
+        [0, 1, "side"],
+        [1, 0, "rear"],
+      ] as const) {
+        const res = resolveHit({
+          gun: trooper,
+          target,
+          targetFacing: 0,
+          targetHp: target.hp,
+          targetHpMax: target.hp,
+          vx,
+          vy,
+          rand: seq([0.5, 0.5, 0.5, 0.5]),
+        });
+        assert.equal(res.face, face, `${target.type} ${face}`);
+        assert.equal(res.kind, "ricochet", `${target.type} ${face} ${res.kind}`);
+        assert.equal(res.damage, 0, `${target.type} ${face} dmg=${res.damage}`);
+      }
+    }
   });
 
   it("does not ricochet AP or HE off a house", () => {

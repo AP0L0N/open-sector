@@ -3,7 +3,9 @@ import { describe, it } from "node:test";
 import {
   HEIGHT_BASE,
   HEIGHT_SIGHT_BONUS,
+  HEIGHT_MAX,
   HEIGHT_WORLD,
+  HULL_EYE_HEIGHT,
   HULL_LEVEL_SIGHT,
   INFANTRY_EYE_HEIGHT,
   INFANTRY_UPHILL_SIGHT,
@@ -50,7 +52,7 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  const state = createMatch(room, started.value);
+  const state = createMatch(room, started.value, { startingUnits: false });
   return { state, a: "A", b: "B" };
 }
 
@@ -85,7 +87,8 @@ describe("high ground bonuses", () => {
   it("gives infantry more fog reach than a tank", () => {
     assert.ok(catalog("trooper").sightTiles > catalog("warden").sightTiles);
     assert.equal(observerEyeOf("trooper"), INFANTRY_EYE_HEIGHT);
-    assert.equal(observerEyeOf("warden"), 0);
+    assert.equal(observerEyeOf("warden"), HULL_EYE_HEIGHT);
+    assert.ok(observerEyeOf("trooper") > observerEyeOf("warden"));
     assert.ok(uphillSightOf("trooper") > uphillSightOf("warden"));
     assert.equal(uphillSightOf("warden"), HULL_LEVEL_SIGHT);
     assert.equal(levelSightExtra(0, 4, INFANTRY_UPHILL_SIGHT), 4 * INFANTRY_UPHILL_SIGHT);
@@ -109,8 +112,14 @@ describe("terrain line of sight", () => {
   });
 
   it("blocks looking past a taller ridge", () => {
-    const elev = [0, 0, 2, 0, 0];
+    const elev = [0, 0, HEIGHT_BASE, 0, 0];
     assert.equal(hasTerrainLos(elev, 5, 1, 0, 0, 4, 0), false);
+  });
+
+  it("lets a modest roll through that used to count as a ridge", () => {
+    const elev = [0, 0, 2, 0, 0];
+    assert.equal(hasTerrainLos(elev, 5, 1, 0, 0, 4, 0), true);
+    assert.equal(hasTerrainLos(elev, 5, 1, 0, 0, 4, 0, INFANTRY_EYE_HEIGHT), true);
   });
 
   it("still lets you see the hillside itself", () => {
@@ -119,19 +128,24 @@ describe("terrain line of sight", () => {
   });
 
   it("lets infantry peek over a rise that hides a hull", () => {
-    const elev = [0, 0, 1, 0, 0];
-    assert.equal(hasTerrainLos(elev, 5, 1, 0, 0, 4, 0), false);
-    assert.equal(hasTerrainLos(elev, 5, 1, 0, 0, 4, 0, INFANTRY_EYE_HEIGHT), true);
+    const elev = [0, 0, 6, 0, 0, 0, 0, 0, 0];
+    assert.equal(hasTerrainLos(elev, 9, 1, 0, 0, 8, 0, HULL_EYE_HEIGHT), false);
+    assert.equal(hasTerrainLos(elev, 9, 1, 0, 0, 8, 0, INFANTRY_EYE_HEIGHT), true);
   });
 
   it("hides a distant peak behind a closer lower ridge", () => {
-    const elev = [0, 0, 3, 0, 0, 0, 0, 0, 5];
+    const elev = [0, 0, HEIGHT_BASE, 0, 0, 0, 0, 0, 5];
     assert.equal(hasTerrainLos(elev, 9, 1, 0, 0, 8, 0), false);
     assert.equal(hasTerrainLos(elev, 9, 1, 0, 0, 2, 0), true);
   });
 
-  it("hides a peak behind a convex bulge on the way up", () => {
+  it("lets a gentle climb through", () => {
     const elev = [0, 2, 2, 3];
+    assert.equal(hasTerrainLos(elev, 4, 1, 0, 0, 3, 0), true);
+  });
+
+  it("hides a peak behind a steep bulge on the way up", () => {
+    const elev = [0, HEIGHT_BASE, HEIGHT_BASE, 3];
     assert.equal(hasTerrainLos(elev, 4, 1, 0, 0, 3, 0), false);
     assert.equal(hasTerrainLos(elev, 4, 1, 0, 0, 1, 0), true);
   });
@@ -144,7 +158,7 @@ describe("terrain line of sight", () => {
   });
 
   it("still hides the floor behind a ridge when looking down", () => {
-    const elev = [4, 4, 5, 2, 0];
+    const elev = [HEIGHT_BASE, HEIGHT_BASE, HEIGHT_MAX, 2, 0];
     assert.equal(hasTerrainLos(elev, 5, 1, 0, 0, 2, 0), true);
     assert.equal(hasTerrainLos(elev, 5, 1, 0, 0, 4, 0), false);
   });

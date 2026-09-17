@@ -4,6 +4,7 @@ import {
   GARRISON_WATCH_SIGHT_BONUS,
   HEIGHT_MAX,
   SMOKE_PEEK_TILES,
+  catalog,
   entityIsScouting,
   isArmoredType,
 } from "../catalog.js";
@@ -374,6 +375,23 @@ function observerRadius(state: MatchState, e: Entity): number {
   return sightTilesForEntity(state, e);
 }
 
+function stampOccupy(
+  occupy: Int32Array,
+  width: number,
+  height: number,
+  id: number,
+  tileX: number,
+  tileY: number,
+  tileW: number,
+  tileH: number,
+): void {
+  for (let y = tileY; y < tileY + tileH; y++) {
+    for (let x = tileX; x < tileX + tileW; x++) {
+      if (x >= 0 && y >= 0 && x < width && y < height) occupy[y * width + x] = id;
+    }
+  }
+}
+
 /** Snapshot fog uses the static map; drop trees a vehicle has already flattened. */
 export function coverTerrainFromSnapshot(
   tiles: ArrayLike<number>,
@@ -437,14 +455,15 @@ export function visionMaskFromSnapshot(
   const occupy = new Int32Array(width * height);
   const hull = new Int32Array(width * height);
   if (map) {
+    let featureId = -1;
+    for (const f of map.features ?? []) {
+      const def = catalog(f.type);
+      stampOccupy(occupy, width, height, featureId--, f.x, f.y, def.tileW, def.tileH);
+    }
     for (const e of snap.entities) {
       if (e.hp <= 0) continue;
       if (e.kind === "building" || e.wreck) {
-        for (let y = e.tileY; y < e.tileY + e.tileH; y++) {
-          for (let x = e.tileX; x < e.tileX + e.tileW; x++) {
-            if (x >= 0 && y >= 0 && x < width && y < height) occupy[y * width + x] = e.id;
-          }
-        }
+        stampOccupy(occupy, width, height, e.id, e.tileX, e.tileY, e.tileW, e.tileH);
       }
     }
     fillHullCover(snap.entities, tileSize, width, height, hull);

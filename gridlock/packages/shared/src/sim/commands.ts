@@ -3,14 +3,18 @@ import {
   hasAmmo,
   hasCrit,
   hasScout,
+  infantryGunFor,
+  infantryLoadout,
   isBuildingType,
   isGarrisonable,
   isInfantryType,
+  isInfantryWeaponId,
   isShellType,
   isSmokeShell,
   isStance,
   isTrainType,
   pickLoadedShell,
+  type InfantryWeaponId,
   type ShellType,
   type Stance,
 } from "../catalog.js";
@@ -54,6 +58,9 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
     case "cmd.ammo":
       if (!isShellType(msg.shell)) return fail("bad_payload", "Unknown shell.");
       return cmdAmmo(state, playerId, msg.ids, msg.shell);
+    case "cmd.weapon":
+      if (!isInfantryWeaponId(msg.weapon)) return fail("bad_payload", "Unknown weapon.");
+      return cmdWeapon(state, playerId, msg.ids, msg.weapon);
     case "cmd.build":
       if (!isBuildingType(msg.building)) return fail("bad_payload", "Unknown structure.");
       return wrap(startBuild(state, playerId, msg.building), "no_core");
@@ -476,6 +483,38 @@ function cmdAmmo(state: MatchState, playerId: string, ids: number[], shell: Shel
   const units = owned(state, playerId, ids).filter((e) => hasAmmo(e.type));
   if (units.length === 0) return fail("not_yours", "No guns with a rack.");
   for (const e of units) e.shell = shell;
+  return ok();
+}
+
+function cmdWeapon(
+  state: MatchState,
+  playerId: string,
+  ids: number[],
+  weapon: InfantryWeaponId,
+): CmdResult {
+  const units = owned(state, playerId, ids).filter((e) => isInfantryType(e.type));
+  if (units.length === 0) return fail("not_yours", "Select infantry.");
+  let n = 0;
+  let armed = 0;
+  for (const e of units) {
+    if (hasCrit(e, "arm") && weapon !== "handgun") {
+      armed++;
+      continue;
+    }
+    const gun = infantryLoadout(e.type).find((g) => g.id === weapon);
+    if (!gun) continue;
+    const live = infantryGunFor(e);
+    e.weapon = weapon;
+    if (live?.id !== weapon) {
+      e.clip = gun.clip;
+      e.reload = 0;
+    }
+    n++;
+  }
+  if (n === 0) {
+    if (armed > 0) return fail("busy", "Broken arm — can only use the handgun.");
+    return fail("busy", "That unit cannot carry that weapon.");
+  }
   return ok();
 }
 

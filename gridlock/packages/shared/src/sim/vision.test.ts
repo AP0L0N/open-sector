@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { catalog, HULL_LEVEL_SIGHT, INFANTRY_UPHILL_SIGHT, TICK_DT, isCivilianType } from "../catalog.js";
+import {
+  catalog,
+  HEIGHT_BASE,
+  HULL_LEVEL_SIGHT,
+  INFANTRY_UPHILL_SIGHT,
+  TICK_DT,
+  isCivilianType,
+} from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
@@ -34,7 +41,7 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return { state: createMatch(room, started.value), a: "A", b: "B" };
+  return { state: createMatch(room, started.value, { startingUnits: false }), a: "A", b: "B" };
 }
 
 describe("building sight", () => {
@@ -111,7 +118,7 @@ describe("building sight", () => {
     assert.equal(tileOnMask(infMask, state.width, ox + r, oy), true);
     assert.equal(tileOnMask(bldgMask, state.width, ox + r, oy), true);
 
-    state.heights[oy * state.width + (ox + 2)] = 1;
+    state.heights[oy * state.width + (ox + 2)] = 6;
     const tank = makeEntity(state, "warden", a, tileCenter(ox, ts), tileCenter(oy, ts));
     const peekInf = new Uint8Array(state.width * state.height);
     const peekBldg = new Uint8Array(state.width * state.height);
@@ -119,9 +126,9 @@ describe("building sight", () => {
     paintEntitySight(peekInf, state.width, state.height, ts, inf, state.heights);
     paintEntitySight(peekBldg, state.width, state.height, ts, bldg, state.heights);
     paintEntitySight(peekTank, state.width, state.height, ts, tank, state.heights);
-    assert.equal(tileOnMask(peekInf, state.width, ox + 4, oy), true);
-    assert.equal(tileOnMask(peekBldg, state.width, ox + 4, oy), true);
-    assert.equal(tileOnMask(peekTank, state.width, ox + 4, oy), false);
+    assert.equal(tileOnMask(peekInf, state.width, ox + 8, oy), true);
+    assert.equal(tileOnMask(peekBldg, state.width, ox + 8, oy), true);
+    assert.equal(tileOnMask(peekTank, state.width, ox + 8, oy), false);
   });
 
   it("sees a hilltop past flat sight that a tank still misses", () => {
@@ -191,8 +198,8 @@ describe("building sight", () => {
     const ox = 20;
     const oy = 20;
     const peak = ox + 16;
-    state.heights[oy * state.width + (ox + 4)] = 3;
-    state.heights[oy * state.width + peak] = 6;
+    state.heights[oy * state.width + (ox + 4)] = HEIGHT_BASE;
+    state.heights[oy * state.width + peak] = HEIGHT_BASE + 4;
     const tank = makeEntity(state, "warden", a, tileCenter(ox, ts), tileCenter(oy, ts));
     const mask = new Uint8Array(state.width * state.height);
     paintEntitySight(mask, state.width, state.height, ts, tank, state.heights);
@@ -228,7 +235,7 @@ describe("building sight", () => {
     const ox = 20;
     const oy = 20;
     const beyond = ox + 12;
-    state.heights[oy * state.width + (ox + 6)] = 3;
+    state.heights[oy * state.width + (ox + 6)] = HEIGHT_BASE;
     const inf = makeEntity(state, "trooper", a, tileCenter(ox, ts), tileCenter(oy, ts));
     const mask = new Uint8Array(state.width * state.height);
     paintEntitySight(mask, state.width, state.height, ts, inf, state.heights);
@@ -375,6 +382,52 @@ function clearCover(state: MatchState): void {
   }
 }
 
+describe("building cover", () => {
+  it("hides tiles behind a cottage", () => {
+    const { state, a } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const oy = 80;
+    const ox = 80;
+    makeEntity(state, "trooper", a, tileCenter(ox, ts), tileCenter(oy, ts));
+    const house = makeEntity(state, "cottage", "", tileCenter(ox + 8, ts), tileCenter(oy, ts), {
+      tileX: ox + 4,
+      tileY: oy - 3,
+    });
+    const behind = ox + 4 + house.tileW + 2;
+    const vis = visionMask(state, a);
+    assert.equal(tileOnMask(vis, state.width, house.tileX, oy), true, "near face of the house");
+    assert.equal(tileOnMask(vis, state.width, behind, oy), false, "must not see through the house");
+  });
+
+  it("stamps map houses into snapshot fog even when the entity is hidden", () => {
+    const { state, a } = twoPlayerMatch();
+    state.heights.fill(0);
+    for (let i = 0; i < state.terrain.length; i++) {
+      const t = state.terrain[i];
+      if (t === TILE_TREE || t === TILE_BLOCKED) state.terrain[i] = TILE_EMPTY;
+    }
+    const ts = state.tileSize;
+    const house = [...state.entities.values()].find((e) => isCivilianType(e.type));
+    assert.ok(house, "yard map has civilian houses");
+    const ox = Math.max(0, house.tileX - 6);
+    const oy = house.tileY + Math.floor(house.tileH / 2);
+    makeEntity(state, "trooper", a, tileCenter(ox, ts), tileCenter(oy, ts));
+    const behind = house.tileX + house.tileW + 2;
+    assert.ok(behind < state.width);
+    const live = visionMask(state, a);
+    assert.equal(tileOnMask(live, state.width, behind, oy), false, "live fog blocked by house");
+    const snap = snapshotFor(state, a);
+    const hidden = { ...snap, entities: snap.entities.filter((e) => e.id !== house.id) };
+    const fromSnap = visionMaskFromSnapshot(hidden, state.width, state.height, ts);
+    assert.equal(
+      tileOnMask(fromSnap, state.width, behind, oy),
+      false,
+      "snapshot fog still blocked by the map house",
+    );
+  });
+});
+
 describe("armored hull cover", () => {
   it("hides infantry behind a live tank and a wreck", () => {
     const { state, a, b } = twoPlayerMatch();
@@ -412,7 +465,7 @@ describe("armored hull cover", () => {
     void tank;
   });
 
-  it("does not let a hauler hide infantry", () => {
+  it("hides infantry behind a hauler", () => {
     const { state, a, b } = twoPlayerMatch();
     clearCover(state);
     const ts = state.tileSize;
@@ -422,7 +475,7 @@ describe("armored hull cover", () => {
     const truck = makeEntity(state, "hauler", b, tileCenter(ox + 8, ts), tileCenter(oy, ts));
     truck.autoHarvest = false;
     const hid = makeEntity(state, "trooper", b, tileCenter(ox + 12, ts), tileCenter(oy, ts));
-    assert.equal(canSeeEntity(state, a, hid), true);
+    assert.equal(canSeeEntity(state, a, hid), false, "infantry behind the hull is hidden");
   });
 
   it("rebuilds fog when an armored hull moves aside", () => {

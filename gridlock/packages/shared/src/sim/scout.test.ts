@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   GARRISON_STRUCTURAL_CALIBER,
+  HULL_EYE_HEIGHT,
   INFANTRY_EYE_HEIGHT,
   INFANTRY_UPHILL_SIGHT,
   SCOUT_HP_MUL,
@@ -38,7 +39,7 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return { state: createMatch(room, started.value), a: "A", b: "B" };
+  return { state: createMatch(room, started.value, { startingUnits: false }), a: "A", b: "B" };
 }
 
 function clearCover(state: MatchState): void {
@@ -105,7 +106,7 @@ describe("hatch scout", () => {
     assert.equal(tank.scoutHp, scoutHpMaxOf("warden"));
     assert.equal(entityIsScouting(tank), false);
     assert.equal(sightTilesForEntity(state, tank), sightTilesOf("warden", 0));
-    assert.equal(observerEyeForEntity(tank), 0);
+    assert.equal(observerEyeForEntity(tank), HULL_EYE_HEIGHT);
   });
 
   it("opens the hatch for infantry fog, peek, and uphill sight without stretching the gun", () => {
@@ -132,14 +133,14 @@ describe("hatch scout", () => {
     assert.equal(tileOnMask(tankMask, state.width, ox + infR, oy), true);
     assert.equal(tileOnMask(infMask, state.width, ox + infR, oy + 4), true);
 
-    state.heights[oy * state.width + (ox + 2)] = 1;
+    state.heights[oy * state.width + (ox + 2)] = 6;
     const peek = new Uint8Array(state.width * state.height);
     const hull = new Uint8Array(state.width * state.height);
     paintEntitySight(peek, state.width, state.height, ts, tank, state.heights);
     tank.scoutOut = false;
     paintEntitySight(hull, state.width, state.height, ts, tank, state.heights);
-    assert.equal(tileOnMask(peek, state.width, ox + 4, oy), true);
-    assert.equal(tileOnMask(hull, state.width, ox + 4, oy), false);
+    assert.equal(tileOnMask(peek, state.width, ox + 8, oy), true);
+    assert.equal(tileOnMask(hull, state.width, ox + 8, oy), false);
   });
 
   it("sees a hilltop past flat hull sight the way infantry does", () => {

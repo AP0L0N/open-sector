@@ -1,4 +1,4 @@
-import type { BuildingType, Crit, EntityType, ShellType, Stance, TrainType } from "../catalog.js";
+import type { BuildingType, Crit, EntityType, InfantryWeaponId, ShellType, Stance, TrainType } from "../catalog.js";
 import type { AiDifficulty, EntityState, ImpactView } from "../protocol.js";
 
 export interface Vec {
@@ -95,6 +95,8 @@ export interface Entity {
   wreck: boolean;
   ammo: Partial<Record<ShellType, number>>;
   shell: ShellType | null;
+  /** Selected infantry gun. Null on vehicles and buildings. */
+  weapon: InfantryWeaponId | null;
   /** Coaxial MG rounds remaining. 0 if the type has no MG. */
   mgAmmo: number;
   /** 0–heatMax. Dumps climb this; it drains while the MG is silent. */

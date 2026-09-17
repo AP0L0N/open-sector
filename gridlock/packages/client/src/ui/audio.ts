@@ -66,8 +66,10 @@ export function buzzDeny(): void {
 }
 
 export function bindClicks(root: HTMLElement): void {
-  root.addEventListener("click", (e) => {
+  root.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
     const t = e.target;
-    if (t instanceof HTMLButtonElement && !t.disabled) beep();
+    const btn = t instanceof HTMLElement ? t.closest("button") : null;
+    if (btn instanceof HTMLButtonElement && !btn.disabled) beep();
   });
 }

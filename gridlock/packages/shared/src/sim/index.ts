@@ -22,6 +22,7 @@ export {
   isWater,
   isTree,
   isSingleTree,
+  fellTreeAt,
   crushTreeAt,
   unitInWater,
 } from "./geo.js";
@@ -50,7 +51,16 @@ export {
   entityOnMask,
   canSeeEntity,
 } from "./vision.js";
-export { inSmokeCloud, tileInSmoke, cloudsCoverTile, fillSmokeMask, spawnSmokeCloud, cloudScale } from "./smoke.js";
+export {
+  inSmokeCloud,
+  tileInSmoke,
+  cloudsCoverTile,
+  fillSmokeMask,
+  spawnSmokeCloud,
+  cloudScale,
+  smokeCloudPuffs,
+} from "./smoke.js";
+export type { SmokePuff } from "./smoke.js";
 export {
   tileHeight,
   entityHeight,

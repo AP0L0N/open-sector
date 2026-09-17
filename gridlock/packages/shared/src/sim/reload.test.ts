@@ -32,7 +32,7 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return { state: createMatch(room, started.value), a: "A", b: "B" };
+  return { state: createMatch(room, started.value, { startingUnits: false }), a: "A", b: "B" };
 }
 
 function clearCivilians(state: MatchState): void {
@@ -52,9 +52,9 @@ function duel(state: MatchState): {
   }
   const ts = state.tileSize;
   const gun = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(24, ts));
-  const dummy = makeEntity(state, "hauler", "B", tileCenter(28, ts), tileCenter(24, ts));
-  dummy.autoHarvest = false;
+  const dummy = makeEntity(state, "trooper", "B", tileCenter(28, ts), tileCenter(24, ts));
   dummy.holdPosition = true;
+  dummy.cooldown = 99;
   gun.facing = 0;
   gun.reloadMul = 1;
   return { gun, dummy };
@@ -140,7 +140,9 @@ describe("infantry reload", () => {
     const theirs = snapshotFor(state, b).entities.find((e) => e.id === gun.id);
     assert.equal(mine?.clip, 3);
     assert.equal(mine?.reload, 1.2);
+    assert.equal(mine?.weapon, "rifle");
     assert.equal(theirs?.clip, undefined);
     assert.equal(theirs?.reload, undefined);
+    assert.equal(theirs?.weapon, undefined);
   });
 });

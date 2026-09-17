@@ -10,7 +10,6 @@ import {
   WITHDRAW_TILES,
   fires,
   hasAmmo,
-  hasCrit,
   hasMg,
   hasTurret,
   infantryGunFor,
@@ -42,6 +41,9 @@ import {
   allies,
   buildingBounds,
   clearOrder,
+  fellTreeAt,
+  inBounds,
+  isTree,
   nearestWalkable,
   playerTeam,
   tileCenter,
@@ -284,7 +286,12 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     },
     range,
     dist,
-    { target, shell, fuse: !!ground, accurateRange: accurateWeaponRange(e, range) },
+    {
+      target,
+      shell,
+      fuse: !!ground || isSmokeShell(shell),
+      accurateRange: accurateWeaponRange(e, range),
+    },
   );
   e.cooldown = gun.cooldown;
   if (shell) e.ammo[shell] = Math.max(0, (e.ammo[shell] ?? 0) - 1);
@@ -328,9 +335,10 @@ function wantsMg(e: Entity, target: Entity): boolean {
   return entityIsScouting(target);
 }
 
-/** Sight reach in world units. Handgun has no extra long-shot band. */
+/** Sight reach in world units. Guns with a fixed rangeTiles have no extra long-shot band. */
 function accurateWeaponRange(e: Entity, range: number): number {
-  if (isInfantryType(e.type) && hasCrit(e, "arm")) return range;
+  const gun = infantryGunFor(e);
+  if (gun?.rangeTiles != null) return range;
   return range / WEAPON_RANGE_SIGHT_MUL;
 }
 
@@ -375,8 +383,10 @@ function fireRound(
 ): void {
   const target = opts?.target;
   const moving = !!target && (target.waypoints.length > 0 || target.state === "move");
+  // Fused ground shots aim at the click (plus spread), not along current turret facing.
+  const bearing = opts?.fuse ? Math.atan2(aimY - e.y, aimX - e.x) : aimFacing(e);
   const ang = aimAngle(
-    aimFacing(e),
+    bearing,
     stats.spreadDeg,
     dist,
     range,
@@ -389,7 +399,8 @@ function fireRound(
   const speed = stats.projectileSpeed;
   const muzzleReach = e.radius + 2;
   const travel = opts?.fuse ? Math.max(8, dist - muzzleReach) : range;
-  const life = travel / Math.max(1, speed) + 0.05;
+  // Fused rounds skip the 0.05s miss pad — at tank-shell speed that is 500px past the click.
+  const life = travel / Math.max(1, speed) + (opts?.fuse ? 0 : 0.05);
   const dx = Math.cos(ang);
   const dy = Math.sin(ang);
   let x = e.x + dx * muzzleReach;
@@ -435,12 +446,23 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     p.y += p.vy * stepDt;
     p.life -= dt;
     const struck = nearestSweepHit(state, x0, y0, p);
-    if (isSmokeShell(p.shell) && (struck || p.life <= 0)) {
-      const ix = struck ? (struck.e.kind === "building" ? struck.x : struck.e.x) : p.x;
-      const iy = struck ? (struck.e.kind === "building" ? struck.y : struck.e.y) : p.y;
-      if (struck) hideScout(state, struck.e);
-      spawnSmokeCloud(state, ix, iy, p.vx, p.vy);
-      pushImpact(state, p, "puff", ix, iy);
+    const tree = canFellTrees(p) ? nearestTreeSweep(state, x0, y0, p) : null;
+    if (tree && (!struck || tree.t <= struck.t)) {
+      fellTreeAt(state, tree.tx, tree.ty);
+      pushImpact(state, p, "miss", tree.x, tree.y);
+      continue;
+    }
+    if (isSmokeShell(p.shell)) {
+      const wall = struck?.e.kind === "building" ? struck : null;
+      if (wall || p.life <= 0) {
+        const ix = wall ? wall.x : p.x;
+        const iy = wall ? wall.y : p.y;
+        if (wall) hideScout(state, wall.e);
+        spawnSmokeCloud(state, ix, iy, p.vx, p.vy);
+        pushImpact(state, p, "puff", ix, iy);
+        continue;
+      }
+      keep.push(p);
       continue;
     }
     if (!struck) {
@@ -554,6 +576,47 @@ function pushImpact(
     blast: blast || undefined,
   };
   state.impacts.push(impact);
+}
+
+function canFellTrees(p: Projectile): boolean {
+  if (p.bounced) return false;
+  return p.shell === "ap" || p.shell === "he" || p.shell === "heat";
+}
+
+function nearestTreeSweep(
+  state: MatchState,
+  x0: number,
+  y0: number,
+  p: Projectile,
+): { t: number; x: number; y: number; tx: number; ty: number } | null {
+  const ts = state.tileSize;
+  const x1 = p.x;
+  const y1 = p.y;
+  const minX = Math.min(x0, x1);
+  const maxX = Math.max(x0, x1);
+  const minY = Math.min(y0, y1);
+  const maxY = Math.max(y0, y1);
+  const tx0 = worldToTile(minX, ts);
+  const tx1 = worldToTile(maxX, ts);
+  const ty0 = worldToTile(minY, ts);
+  const ty1 = worldToTile(maxY, ts);
+  let best: { t: number; x: number; y: number; tx: number; ty: number } | null = null;
+  for (let ty = ty0; ty <= ty1; ty++) {
+    for (let tx = tx0; tx <= tx1; tx++) {
+      if (!inBounds(state, tx, ty) || !isTree(state, tx, ty)) continue;
+      const t = segmentAabbT(x0, y0, x1, y1, {
+        x0: tx * ts,
+        y0: ty * ts,
+        x1: (tx + 1) * ts,
+        y1: (ty + 1) * ts,
+      });
+      if (t == null) continue;
+      if (!best || t < best.t) {
+        best = { t, x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t, tx, ty };
+      }
+    }
+  }
+  return best;
 }
 
 function nearestSweepHit(

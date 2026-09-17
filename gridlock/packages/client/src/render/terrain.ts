@@ -25,6 +25,7 @@ import {
   SCRAP_A,
   WATER_TEX,
   WATER_TEX_B,
+  GRASS_TEX,
   drawPropSprite,
   whenImagesReady,
   PROP_IMAGES,
@@ -102,6 +103,19 @@ function fillQuad(ctx: CanvasRenderingContext2D, a: IsoPt, b: IsoPt, c: IsoPt, d
   ctx.fill();
 }
 
+/** Grow a diamond so adjacent tiles overlap and hide hairline seams. */
+function expandQuad(n: IsoPt, e: IsoPt, s: IsoPt, w: IsoPt, px: number): [IsoPt, IsoPt, IsoPt, IsoPt] {
+  const cx = (n.x + e.x + s.x + w.x) / 4;
+  const cy = (n.y + e.y + s.y + w.y) / 4;
+  const grow = (p: IsoPt): IsoPt => {
+    const dx = p.x - cx;
+    const dy = p.y - cy;
+    const len = Math.hypot(dx, dy) || 1;
+    return { x: p.x + (dx / len) * px, y: p.y + (dy / len) * px };
+  };
+  return [grow(n), grow(e), grow(s), grow(w)];
+}
+
 function bakePt(p: IsoPt, originX: number, originY: number): IsoPt {
   return { x: p.x - originX, y: p.y - originY };
 }
@@ -112,10 +126,9 @@ function elevShadeFactor(h: number): number {
 }
 
 function groundFill(map: MapDef, tx: number, ty: number, kind: number, scrap: boolean): string {
-  const chk = (Math.floor(tx / TILE_SUBDIV) + Math.floor(ty / TILE_SUBDIV)) % 2 === 0;
-  if (kind === TILE_WATER) return chk ? "#1d4a5c" : "#183f52";
-  if (kind === TILE_TREE) return chk ? "#1c3320" : "#182c1c";
-  const fill = kind === TILE_BLOCKED ? "#2a1e18" : scrap ? (chk ? "#4a3c18" : "#3e3314") : chk ? "#2a3a24" : "#243320";
+  if (kind === TILE_WATER) return "#1a4554";
+  if (kind === TILE_TREE) return "#1a2f1e";
+  const fill = kind === TILE_BLOCKED ? "#2a1e18" : scrap ? "#443816" : "#243320";
   if (kind === TILE_BLOCKED) return fill;
   return shade(fill, elevShadeFactor(heightAt(map, tx, ty)));
 }
@@ -128,6 +141,44 @@ function waterPattern(ctx: CanvasRenderingContext2D, frame = 0): CanvasPattern |
   const img = frame === 1 ? WATER_TEX_B : WATER_TEX;
   if (!img.complete || img.naturalWidth <= 0) return null;
   return ctx.createPattern(img, "repeat");
+}
+
+const grassPatFor = new WeakMap<CanvasRenderingContext2D, CanvasPattern>();
+
+function grassPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
+  const hit = grassPatFor.get(ctx);
+  if (hit) return hit;
+  if (!GRASS_TEX.complete || GRASS_TEX.naturalWidth <= 0) return null;
+  const pat = ctx.createPattern(GRASS_TEX, "repeat");
+  if (pat) grassPatFor.set(ctx, pat);
+  return pat;
+}
+
+function fillPatternInQuad(
+  ctx: CanvasRenderingContext2D,
+  n: IsoPt,
+  e: IsoPt,
+  s: IsoPt,
+  w: IsoPt,
+  pat: CanvasPattern,
+  alpha: number,
+): void {
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(n.x, n.y);
+  ctx.lineTo(e.x, e.y);
+  ctx.lineTo(s.x, s.y);
+  ctx.lineTo(w.x, w.y);
+  ctx.closePath();
+  ctx.clip();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = pat;
+  const minX = Math.floor(Math.min(n.x, e.x, s.x, w.x));
+  const minY = Math.floor(Math.min(n.y, e.y, s.y, w.y));
+  const maxX = Math.ceil(Math.max(n.x, e.x, s.x, w.x));
+  const maxY = Math.ceil(Math.max(n.y, e.y, s.y, w.y));
+  ctx.fillRect(minX, minY, Math.max(1, maxX - minX), Math.max(1, maxY - minY));
+  ctx.restore();
 }
 
 function landNeighbor(map: MapDef, tx: number, ty: number, dx: number, dy: number): boolean {
@@ -150,26 +201,8 @@ function paintWaterOverlay(
   const e = bakePt(d.e, originX, originY);
   const s = bakePt(d.s, originX, originY);
   const w = bakePt(d.w, originX, originY);
-  ctx.save();
-  ctx.beginPath();
-  ctx.moveTo(n.x, n.y);
-  ctx.lineTo(e.x, e.y);
-  ctx.lineTo(s.x, s.y);
-  ctx.lineTo(w.x, w.y);
-  ctx.closePath();
-  ctx.clip();
   const pat = waterPattern(ctx, 0);
-  if (pat) {
-    ctx.globalAlpha = 0.82;
-    ctx.fillStyle = pat;
-    const minX = Math.floor(Math.min(n.x, e.x, s.x, w.x));
-    const minY = Math.floor(Math.min(n.y, e.y, s.y, w.y));
-    const maxX = Math.ceil(Math.max(n.x, e.x, s.x, w.x));
-    const maxY = Math.ceil(Math.max(n.y, e.y, s.y, w.y));
-    ctx.fillRect(minX, minY, Math.max(1, maxX - minX), Math.max(1, maxY - minY));
-    ctx.globalAlpha = 1;
-  }
-  ctx.restore();
+  if (pat) fillPatternInQuad(ctx, n, e, s, w, pat, 0.82);
   const edges: [number, number, IsoPt, IsoPt][] = [
     [0, -1, n, e],
     [1, 0, e, s],
@@ -191,6 +224,29 @@ function paintWaterOverlay(
     ctx.stroke();
   }
   ctx.restore();
+}
+
+function paintGrassOverlay(
+  ctx: CanvasRenderingContext2D,
+  map: MapDef,
+  tx: number,
+  ty: number,
+  originX: number,
+  originY: number,
+): void {
+  const pat = grassPattern(ctx);
+  if (!pat) return;
+  const elev = map.heights;
+  const d = tileDiamond(tx, ty, map.tileSize);
+  const up = (p: IsoPt, z: number): IsoPt => {
+    const q = bakePt(p, originX, originY);
+    return { x: q.x, y: q.y - z };
+  };
+  const n = up(d.n, isoLift(vertexElev(elev, map.width, map.height, tx, ty)));
+  const e = up(d.e, isoLift(vertexElev(elev, map.width, map.height, tx + 1, ty)));
+  const s = up(d.s, isoLift(vertexElev(elev, map.width, map.height, tx + 1, ty + 1)));
+  const w = up(d.w, isoLift(vertexElev(elev, map.width, map.height, tx, ty + 1)));
+  fillPatternInQuad(ctx, ...expandQuad(n, e, s, w, 0.85), pat, 0.58);
 }
 
 export function atlasSize(map: MapDef): {
@@ -260,7 +316,7 @@ export function fillElevatedTile(
   } else {
     ctx.fillStyle = fill;
   }
-  fillQuad(ctx, n, e, s, w);
+  fillQuad(ctx, ...expandQuad(n, e, s, w, 0.85));
 }
 
 function isoBox(
@@ -459,6 +515,7 @@ function paintGround(
   const kind = map.tiles[ty * map.width + tx] ?? 0;
   fillElevatedTile(ctx, map, tx, ty, groundFill(map, tx, ty, kind, scrap), originX, originY, kind !== TILE_WATER);
   if (kind === TILE_WATER) paintWaterOverlay(ctx, map, tx, ty, originX, originY);
+  else if (kind === TILE_EMPTY && !scrap) paintGrassOverlay(ctx, map, tx, ty, originX, originY);
 }
 
 function paintTileStamp(

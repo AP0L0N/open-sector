@@ -199,6 +199,7 @@ function structuredCloneBase(e: Entity): Entity {
     wreck: false,
     ammo: {},
     shell: null,
+    weapon: null,
     mgAmmo: 0,
     mgHeat: 0,
     mgOverheat: 0,

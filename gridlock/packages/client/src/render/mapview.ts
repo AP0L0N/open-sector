@@ -2,6 +2,7 @@ import {
   catalog,
   clampIsoCamera,
   cloudScale,
+  smokeCloudPuffs,
   fires,
   GUARD_CONE_DEG,
   isCivilianType,
@@ -19,6 +20,7 @@ import {
   isGarrisonable,
   immobilized,
   heightAt,
+  infantryGunFor,
   isoDepth,
   isoLift,
   isoToWorld,
@@ -66,6 +68,7 @@ import {
 } from "./fx.js";
 import {
   UNIT_VISUAL_SCALE,
+  INFANTRY_VISUAL_SCALE,
   TREE_OAK,
   TREE_PINE,
   buildingOccludeEz,
@@ -83,6 +86,9 @@ import {
   type BuildingSpriteDef,
   type UnitSpriteDef,
 } from "./sprites.js";
+import { drawBuildingAnim } from "./building-fx.js";
+import { drawActionCursor } from "./cursor.js";
+import { resolveHoverAction, type HoverAction } from "./hover-action.js";
 import {
   blitAtlas,
   blitTerrain,
@@ -1183,6 +1189,11 @@ export class MapView {
     for (const id of this.ownSelectedIds()) {
       const e = this.curr.entities.find((x) => x.id === id);
       if (!e) continue;
+      const gun = infantryGunFor(e);
+      if (gun?.rangeTiles != null) {
+        range = Math.max(range, gun.rangeTiles * ts);
+        continue;
+      }
       range = Math.max(range, rangeTilesOf(e.type, this.elevAt(e.x, e.y)) * ts);
     }
     return range;
@@ -1449,29 +1460,37 @@ export class MapView {
       this.onPlaceMode();
       return;
     }
-    const own = [...this.selected]
+    const selected = [...this.selected]
       .map((id) => this.curr.entities.find((e) => e.id === id))
-      .filter((e): e is EntityView => !!e && e.ownerId === this.curr.youPlayerId && !e.wreck);
-    if (own.length === 0) return;
+      .filter((e): e is EntityView => !!e && !e.wreck && e.hp > 0);
+    const you = this.curr.youPlayerId;
+    const own = selected.filter((e) => e.ownerId === you);
+    if (own.length === 0 && !selected.some((e) => e.garrison?.ownerId === you)) return;
     const hit = this.hit(px, py);
-    const inf = own.filter((e) => e.kind === "unit" && isInfantryType(e.type));
-    if (hit && isGarrisonable(hit.type) && inf.length) {
-      const held = hit.garrison?.ownerId;
-      if (!held || held === this.curr.youPlayerId) {
-        this.onCommand({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: hit.id });
-        return;
-      }
-    }
-    if (hit && (hit.wreck || (hit.ownerId !== this.curr.youPlayerId && !isCivilianType(hit.type)) || isGarrisonable(hit.type))) {
-      if (hit.ownerId !== this.curr.youPlayerId || hit.wreck || (isGarrisonable(hit.type) && hit.garrison?.ownerId && hit.garrison.ownerId !== this.curr.youPlayerId)) {
-        this.onCommand({ type: "cmd.attack", ids: own.map((e) => e.id), targetId: hit.id });
-        return;
-      }
-    }
     const tile = this.screenToTile(px, py);
-    const scrap = this.curr.scrap.find((s) => s.x === tile.x && s.y === tile.y && s.yield > 0);
+    const scrap = this.curr.scrap.some((s) => s.x === tile.x && s.y === tile.y && s.yield > 0);
+    const action = resolveHoverAction({
+      youPlayerId: you,
+      selected,
+      hit,
+      scrap,
+      allied: (id) => ownerAllied(this.curr, id),
+    });
+    if (action === "garrison" && hit) {
+      const inf = own.filter((e) => e.kind === "unit" && isInfantryType(e.type) && e.garrisonedIn !== hit.id);
+      if (inf.length) this.onCommand({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: hit.id });
+      return;
+    }
+    if (action === "ungarrison" && hit) {
+      this.onCommand({ type: "cmd.ungarrison", buildingId: hit.id });
+      return;
+    }
+    if ((action === "attack" || action === "capture") && hit) {
+      this.onCommand({ type: "cmd.attack", ids: own.map((e) => e.id), targetId: hit.id });
+      return;
+    }
     const haulers = own.filter((e) => e.type === "hauler");
-    if (scrap && haulers.length) {
+    if (action === "gather" && haulers.length) {
       const dest = this.screenToWorld(px, py);
       this.pulseMoveClick(dest.x, dest.y);
       this.onCommand({ type: "cmd.harvest", ids: haulers.map((e) => e.id), tileX: tile.x, tileY: tile.y });
@@ -1672,6 +1691,7 @@ export class MapView {
       ctx.strokeRect(Math.min(b.x0, b.x1), Math.min(b.y0, b.y1), Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0));
     }
     this.drawSpecialCursor();
+    this.drawHoverCursor();
     this.drawAttackCursor();
     this.drawForceCursor();
     this.drawRotateCursor();
@@ -2040,6 +2060,17 @@ export class MapView {
       ctx.globalAlpha = dim ? 0.5 : 1;
       drawBuildingSprite(ctx, spr, south.x, south.y, footprintW);
       ctx.restore();
+      if (!ghost && !dim) {
+        drawBuildingAnim(
+          ctx,
+          spr,
+          e,
+          south.x,
+          south.y,
+          footprintW,
+          performance.now() * (this.curr.gameSpeed || 1),
+        );
+      }
       stack = buildingStackAt(spr, south.x, south.y, footprintW);
     } else {
       const top = this.drawIsoBox(x, y, bw, bh, ez, hex, {
@@ -2193,17 +2224,14 @@ export class MapView {
     }
     const ctx = this.ctx;
     const p = this.lerpEnt(e);
-    const r = catalog(e.type).radius * UNIT_VISUAL_SCALE;
-    const ez = this.extrude(e.type) * UNIT_VISUAL_SCALE;
+    const scale = isInfantryType(e.type) ? INFANTRY_VISUAL_SCALE : UNIT_VISUAL_SCALE;
+    const r = catalog(e.type).radius * scale;
+    const ez = this.extrude(e.type) * scale;
     const hex = e.wreck ? "#6e6c66" : this.ownerColor(e);
     const s = this.toScreen(p.x, p.y);
     const occluded = this.unitOccluded(e);
     ctx.save();
     if (occluded) ctx.globalAlpha = OCCLUDED_UNIT_ALPHA;
-    ctx.fillStyle = "rgba(0,0,0,0.35)";
-    ctx.beginPath();
-    ctx.ellipse(s.x, s.y, r * 1.2, r * 0.55, 0, 0, Math.PI * 2);
-    ctx.fill();
     const top = this.drawIsoBox(p.x - r, p.y - r, r * 2, r * 2, ez, hex, {
       stroke: "#111",
       strokeW: 1.4,
@@ -2253,11 +2281,6 @@ export class MapView {
     const occluded = this.unitOccluded(e);
     const fade = occluded ? OCCLUDED_UNIT_ALPHA : 1;
     ctx.save();
-    ctx.fillStyle = e.wreck ? "#2a2824" : hex;
-    ctx.globalAlpha = (e.wreck ? 0.38 : 0.5) * fade;
-    ctx.beginPath();
-    ctx.ellipse(s.x, s.y, size * 0.32, size * 0.15, 0, 0, Math.PI * 2);
-    ctx.fill();
     ctx.globalAlpha = fade;
     ctx.save();
     if (e.wreck) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
@@ -2384,20 +2407,20 @@ export class MapView {
       } else if (f.kind === "puff") {
         const frame = fxFrameAt(age, life, FX_SMOKE.frames, false);
         const smokeBurst = f.shell === "smoke";
-        const tiny = smokeBurst ? 42 : isShellCaliber(f.caliber) ? 16 : 11;
+        const tiny = smokeBurst ? 52 : isShellCaliber(f.caliber) ? 16 : 11;
         drawFxFrame(
           ctx,
           FX_SMOKE,
           frame,
           s.x,
-          s.y - 3 - t * (smokeBurst ? 14 : 7),
-          tiny + t * (smokeBurst ? 28 : 5),
-          (smokeBurst ? 0.9 : 0.8) - t * 0.7,
+          s.y - 3 - t * (smokeBurst ? 16 : 7),
+          tiny + t * (smokeBurst ? 36 : 5),
+          (smokeBurst ? 0.95 : 0.8) - t * 0.7,
         );
       } else if (f.kind === "ricochet") {
         drawRicochetSparks(ctx, x, y, dirX, dirY, t, f.id, f.caliber);
       } else if (f.kind === "miss") {
-        drawGroundMiss(ctx, s.x, s.y, t, f.id, f.caliber);
+        drawGroundMiss(ctx, s.x, s.y, t, f.id, f.caliber, dirX, dirY);
       }
     }
     this.fx = keep;
@@ -2419,31 +2442,29 @@ export class MapView {
       if (!(this.explored?.[cy * map.width + cx] || this.lit(cx, cy))) continue;
       const ground = this.toScreen(c.x, c.y);
       ctx.save();
-      ctx.globalAlpha = 0.22 * fade;
+      ctx.globalAlpha = 0.3 * fade;
       ctx.fillStyle = "#6a6458";
       ctx.beginPath();
-      ctx.ellipse(ground.x, ground.y, along * 1.15, Math.max(10, across * 0.55), 0, 0, Math.PI * 2);
+      ctx.ellipse(ground.x, ground.y, along * 1.28, Math.max(12, across * 0.72), 0, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
-      const puffs = 11;
-      for (let i = 0; i < puffs; i++) {
-        const u = (i / (puffs - 1)) * 2 - 1;
-        const wx = c.x + c.ux * u * along * 0.92;
-        const wy = c.y + c.uy * u * along * 0.92;
-        const perpX = -c.uy;
-        const perpY = c.ux;
-        const wobble = Math.sin(c.id * 0.7 + i * 1.7) * across * 0.55;
-        const px = wx + perpX * wobble;
-        const py = wy + perpY * wobble;
+      const puffs = smokeCloudPuffs(c.id);
+      const perpX = -c.uy;
+      const perpY = c.ux;
+      for (let i = 0; i < puffs.length; i++) {
+        const puff = puffs[i]!;
+        const px = c.x + c.ux * puff.u * along + perpX * puff.v * across;
+        const py = c.y + c.uy * puff.u * along + perpY * puff.v * across;
         const tx = worldToTile(px, ts);
         const ty = worldToTile(py, ts);
         if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) continue;
         if (!this.explored?.[ty * map.width + tx] && !this.lit(tx, ty)) continue;
         const s = this.toScreen(px, py);
-        const frame = fxFrameAt(now + c.id * 40 + i * 110, 1400, FX_SMOKE.frames, true);
-        const size = 38 + fade * 22 + Math.abs(u) * 8;
-        const alpha = (0.42 + fade * 0.38) * (1 - Math.abs(u) * 0.18);
-        drawFxFrame(ctx, FX_SMOKE, frame, s.x, s.y - 10 - fade * 8, size, alpha);
+        const frame = fxFrameAt(now + c.id * 40 + i * 110, 1600, FX_SMOKE.frames, true);
+        const size = (48 + fade * 28) * puff.size;
+        const radial = Math.hypot(puff.u, puff.v);
+        const alpha = (0.5 + fade * 0.36) * (1 - radial * 0.28);
+        drawFxFrame(ctx, FX_SMOKE, frame, s.x, s.y - 8 - fade * 6, size, alpha);
       }
     }
   }
@@ -2490,27 +2511,52 @@ export class MapView {
   }
 
   private hoverSpecial = false;
+  private hoverAction: HoverAction | null = null;
 
   private syncCursor(): void {
     let special = false;
-    if (!this.placeMode && !this.overControl && !this.box && this.mouseX >= 0) {
-      const { w, h } = this.viewSize();
-      if (this.mouseX <= w && this.mouseY <= h) {
-        const hit = this.hit(this.mouseX, this.mouseY);
-        special = !!hit && this.canSpecial(hit);
-      }
-    }
-    this.hoverSpecial = special;
-    const attack =
+    let action: HoverAction | null = null;
+    const aiming =
       (this.attackMoveMode ||
         this.forceAttackMode ||
         this.rotateMode ||
         this.guardMode ||
         (this.ctrlHeld && this.ownSelectedIds().length > 0)) &&
       !this.overControl;
+    if (!this.placeMode && !this.overControl && !this.box && this.mouseX >= 0) {
+      const { w, h } = this.viewSize();
+      if (this.mouseX <= w && this.mouseY <= h) {
+        const hit = this.hit(this.mouseX, this.mouseY);
+        special = !!hit && this.canSpecial(hit);
+        if (!special && !aiming) {
+          const you = this.curr.youPlayerId;
+          const selected = this.curr.entities.filter(
+            (e) => this.selected.has(e.id) && !e.wreck && e.hp > 0,
+          );
+          const tile = this.screenToTile(this.mouseX, this.mouseY);
+          const scrap = this.curr.scrap.some((s) => s.x === tile.x && s.y === tile.y && s.yield > 0);
+          action = resolveHoverAction({
+            youPlayerId: you,
+            selected,
+            hit,
+            scrap,
+            allied: (id) => ownerAllied(this.curr, id),
+          });
+        }
+      }
+    }
+    this.hoverSpecial = special;
+    this.hoverAction = action;
     this.canvas.classList.toggle("cursor-special", special);
-    this.canvas.classList.toggle("cursor-attack", attack && !special);
-    this.canvas.style.cursor = special || attack ? "none" : "";
+    this.canvas.classList.toggle("cursor-attack", aiming && !special);
+    this.canvas.classList.toggle("cursor-action", !!action && !special);
+    this.canvas.style.cursor = special || aiming || action ? "none" : "";
+  }
+
+  private drawHoverCursor(): void {
+    if (!this.hoverAction || this.overControl || this.hoverSpecial) return;
+    if (this.mouseX < 0 || this.mouseY < 0) return;
+    drawActionCursor(this.ctx, this.hoverAction, this.mouseX, this.mouseY, this.lastT / 1000);
   }
 
   private drawSpecialCursor(): void {

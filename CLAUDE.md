@@ -1,7 +1,7 @@
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **open-sector** (1540 symbols, 5821 relationships, 119 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **open-sector** (1770 symbols, 6657 relationships, 140 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > Index stale? Run `node .gitnexus/run.cjs analyze` from the project root — it auto-selects an available runner. No `.gitnexus/run.cjs` yet? `npx gitnexus analyze` (npm 11 crash → `npm i -g gitnexus`; #1939).
 
@@ -42,3 +42,13 @@ This project is indexed by GitNexus as **open-sector** (1540 symbols, 5821 relat
 | Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
 
 <!-- gitnexus:end -->
+
+# Unit sprites (Narrow Front)
+
+Before creating or replacing **unit** art (infantry, vehicles, turrets, hatch heads, stance sheets), read `narrow-front-sprite-agent-brief.md` and follow it.
+
+- **16 faces, 22.5°.** Row 0 = screen east (right); rows increase clockwise (canvas +y is down). `UnitSpriteDef.dirs` must be `16`. Never ship an 8-dir unit sheet.
+- **One look, one size.** Lock palette, outline, camera (2:1 isometric), cell size, and contact point from an existing unit in the same class. Every facing in a sheet must match that lock — no size pop, no style pop between rows.
+- Buildings stay cardinal (4 faces). Tiles stay 1. Shared FX are not unit sheets.
+
+How to build a sheet, cell sizes, row order, and the consistency check are in the brief.

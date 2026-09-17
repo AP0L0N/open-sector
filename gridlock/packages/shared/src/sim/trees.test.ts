@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { TICK_DT, TREE_LOS_THROUGH, catalog } from "../catalog.js";
+import { SHELLS, TANK_MG, TICK_DT, TREE_LOS_THROUGH, catalog } from "../catalog.js";
 import { TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
-import { crushTreeAt, isSingleTree, makeEntity, tileCenter, walkable } from "./geo.js";
+import { tickProjectiles } from "./combat.js";
+import { crushTreeAt, fellTreeAt, isSingleTree, isTree, makeEntity, tileCenter, walkable } from "./geo.js";
+import type { Projectile } from "./types.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { createMatch, step } from "./match.js";
 import { astar } from "./path.js";
@@ -27,7 +29,7 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return { state: createMatch(room, started.value), a: "A", b: "B" };
+  return { state: createMatch(room, started.value, { startingUnits: false }), a: "A", b: "B" };
 }
 
 function ticks(state: MatchState, n: number): void {
@@ -174,4 +176,132 @@ describe("trees", () => {
     assert.equal(tiles[1], TILE_TREE);
     assert.equal(hasFullLos(elev, width, 1, 0, 0, width - 1, 0, { terrain: out, occupy }), true);
   });
+
+  it("lets one AP, HE, or HEAT shell fell a lone tree or a grove tree", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const y = 46;
+    const speed = catalog("warden").projectileSpeed;
+    for (const shell of ["ap", "he", "heat"] as const) {
+      clearPad(state, 80, y - 3, 100, y + 3);
+      plant(state, 90, y);
+      assert.equal(isSingleTree(state, 90, y), true);
+      fireTreeShell(state, {
+        x: tileCenter(84, ts),
+        y: tileCenter(y, ts),
+        vx: speed,
+        vy: 0,
+        shell,
+      });
+      tickProjectiles(state, TICK_DT);
+      assert.equal(state.terrain[y * state.width + 90], TILE_EMPTY, `${shell} should fell a lone tree`);
+      assert.ok(state.clearedTrees.some((t) => t.x === 90 && t.y === y), `${shell} clearedTrees`);
+      assert.ok(state.impacts.some((i) => i.kind === "miss" && i.shell === shell), `${shell} miss impact`);
+
+      clearPad(state, 80, y - 3, 100, y + 3);
+      for (let gy = y - 1; gy <= y + 1; gy++) {
+        for (let gx = 88; gx <= 92; gx++) plant(state, gx, gy);
+      }
+      assert.equal(isSingleTree(state, 90, y), false);
+      fireTreeShell(state, {
+        x: tileCenter(84, ts),
+        y: tileCenter(y, ts),
+        vx: speed,
+        vy: 0,
+        shell,
+      });
+      tickProjectiles(state, TICK_DT);
+      assert.equal(isTree(state, 88, y), false, `${shell} should fell the first grove tile on the path`);
+      assert.equal(isTree(state, 90, y), true, `${shell} should not clear the whole grove`);
+    }
+  });
+
+  it("does not let smoke, MG, or rifles fell a tree", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const y = 50;
+    clearPad(state, 80, y - 2, 100, y + 2);
+    plant(state, 90, y);
+    const cy = tileCenter(y, ts);
+    const x0 = tileCenter(84, ts);
+    fireTreeShell(state, {
+      x: x0,
+      y: cy,
+      vx: catalog("warden").projectileSpeed,
+      vy: 0,
+      shell: "smoke",
+      caliber: SHELLS.smoke.caliber,
+    });
+    tickProjectiles(state, TICK_DT);
+    assert.equal(state.terrain[y * state.width + 90], TILE_TREE, "smoke must not fell trees");
+    state.projectiles = [];
+
+    fireTreeShell(state, {
+      x: x0,
+      y: cy,
+      vx: TANK_MG.projectileSpeed,
+      vy: 0,
+      shell: null,
+      caliber: TANK_MG.caliber,
+      damage: TANK_MG.damage,
+    });
+    tickProjectiles(state, TICK_DT);
+    assert.equal(state.terrain[y * state.width + 90], TILE_TREE, "MG must not fell trees");
+    state.projectiles = [];
+
+    fireTreeShell(state, {
+      x: x0,
+      y: cy,
+      vx: catalog("trooper").projectileSpeed,
+      vy: 0,
+      shell: null,
+      caliber: catalog("trooper").caliber,
+      damage: catalog("trooper").damage,
+    });
+    tickProjectiles(state, TICK_DT);
+    assert.equal(state.terrain[y * state.width + 90], TILE_TREE, "rifles must not fell trees");
+  });
+
+  it("is a one-hit fell even when crushTreeAt would refuse a grove", () => {
+    const { state } = twoPlayerMatch();
+    const y = 42;
+    clearPad(state, 80, y - 2, 90, y + 2);
+    for (let gx = 84; gx <= 86; gx++) plant(state, gx, y);
+    assert.equal(crushTreeAt(state, 85, y), false);
+    assert.equal(fellTreeAt(state, 85, y), true);
+    assert.equal(state.terrain[y * state.width + 85], TILE_EMPTY);
+  });
 });
+
+function fireTreeShell(
+  state: MatchState,
+  opts: {
+    x: number;
+    y: number;
+    vx: number;
+    vy: number;
+    shell: Projectile["shell"];
+    caliber?: number;
+    damage?: number;
+  },
+): void {
+  const gun = catalog("warden");
+  const p: Projectile = {
+    id: state.nextId++,
+    ownerId: "A",
+    team: 1,
+    x: opts.x,
+    y: opts.y,
+    vx: opts.vx,
+    vy: opts.vy,
+    damage: opts.damage ?? gun.damage,
+    penetration: gun.penetration,
+    caliber: opts.caliber ?? gun.caliber,
+    life: 1,
+    ignoreId: -1,
+    fromId: -1,
+    bounced: false,
+    shell: opts.shell,
+  };
+  state.projectiles.push(p);
+}

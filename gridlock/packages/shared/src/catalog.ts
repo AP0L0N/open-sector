@@ -123,8 +123,18 @@ export const HEIGHT_SIGHT_BONUS = 3;
 export const INFANTRY_UPHILL_SIGHT = 3;
 /** Extra Chebyshev tiles a hull gains per elevation step of a tile above or below it. */
 export const HULL_LEVEL_SIGHT = 1;
-/** Standing eye height. Troops peek over rises that hide a hull. */
-export const INFANTRY_EYE_HEIGHT = TILE_SUBDIV + 1;
+/**
+ * Rise that must poke through the sight ray before terrain occludes.
+ * One authoring terrace: rolling ground stays open; a deep valley still hides.
+ */
+export const LOS_TERRAIN_SLACK = TILE_SUBDIV;
+/**
+ * Standing eye height. Slight peek over a hull-level rise; LOS_TERRAIN_SLACK
+ * does most of the work so modest hills stay open.
+ */
+export const INFANTRY_EYE_HEIGHT = 3;
+/** Deck height used for terrain LOS. Same slack as infantry; a deep valley still hides. */
+export const HULL_EYE_HEIGHT = 1;
 /** World-Z per discrete elevation. Matches iso lift (half a tile height). */
 export const HEIGHT_WORLD = TILE_SIZE / 2;
 /**
@@ -219,6 +229,8 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory"];
 export const TRAIN_TYPES: readonly TrainType[] = ["trooper", "hauler", "warden"];
+/** Opening army besides the Rig. Hauler omitted so it does not auto-harvest. */
+export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter((t) => t !== "hauler");
 
 export interface CatalogEntry {
   type: EntityType;
@@ -280,6 +292,8 @@ export interface CatalogEntry {
 export interface ShellDef {
   id: ShellType;
   name: string;
+  /** Player-facing: what this load is for. */
+  blurb: string;
   damage: number;
   penetration: number;
   caliber: number;
@@ -288,8 +302,12 @@ export interface ShellDef {
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
 export type InfantryWeaponId = "rifle" | "handgun";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun"];
 export interface InfantryGun {
   id: InfantryWeaponId;
+  name: string;
+  /** Player-facing: what this gun is for. */
+  blurb: string;
   damage: number;
   penetration: number;
   caliber: number;
@@ -315,9 +333,11 @@ export function reloadSecondsOf(gun: Pick<InfantryGun, "reload">, mul: number): 
   return gun.reload * Math.max(0.01, mul);
 }
 
-/** Trooper primary. Semi-auto 8-round clip. */
+/** Trooper primary. Precise, slow, long-range semi-auto. */
 export const RIFLE = {
   id: "rifle" as const,
+  name: "Rifle",
+  blurb: "Long-range semi-auto. Slower shots, eight-round clip. Default — keep this unless the fight is point-blank.",
   damage: 12,
   penetration: 6,
   caliber: 8,
@@ -327,18 +347,28 @@ export const RIFLE = {
   reload: 2.8,
 } as const satisfies InfantryGun;
 
-/** Sidearm used when a trooper's shooting arm is broken. */
+/**
+ * Trooper sidearm. Short reach, faster follow-up — wins a point-blank 1v1.
+ * A broken shooting arm also forces this gun.
+ */
 export const HANDGUN = {
   id: "handgun" as const,
+  name: "Handgun",
+  blurb: "Short reach, faster follow-up. Wins a close 1v1. Forced if the shooting arm is broken.",
   damage: 8,
   penetration: 3,
   caliber: 9,
   spreadDeg: 5,
   rangeTiles: t(3),
-  cooldown: 0.55,
+  cooldown: 0.4,
   clip: 7,
   reload: 1.6,
 } as const satisfies InfantryGun;
+
+export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
+  rifle: RIFLE,
+  handgun: HANDGUN,
+};
 
 /**
  * Rifle / coaxial MG / 75mm. Fast enough to cross max range in under a tick so
@@ -350,9 +380,9 @@ export const TANK_SHELL_SPEED = SMALL_ARMS_SPEED;
 /** Seconds a 75mm smoke screen lasts. */
 export const SMOKE_SECONDS = 16;
 /** Ellipse half-length along the shot, in gameplay tiles. */
-export const SMOKE_HALF_ALONG = t(2);
+export const SMOKE_HALF_ALONG = t(2.5);
 /** Ellipse half-width across the shot, in gameplay tiles. */
-export const SMOKE_HALF_ACROSS = t(1);
+export const SMOKE_HALF_ACROSS = t(1.5);
 /** Chebyshev tiles into a cloud an observer can still see. */
 export const SMOKE_PEEK_TILES = 1;
 
@@ -378,10 +408,42 @@ export const TANK_MG = {
 
 /** 75mm Warden load. AP is the catalog gun; HE/HEAT/smoke swap on fire. */
 export const SHELLS: Record<ShellType, ShellDef> = {
-  ap: { id: "ap", name: "AP", damage: 55, penetration: 100, caliber: 75, spreadDeg: 3 },
-  he: { id: "he", name: "HE", damage: 90, penetration: 16, caliber: 75, spreadDeg: 5 },
-  heat: { id: "heat", name: "HEAT", damage: 64, penetration: 140, caliber: 75, spreadDeg: 3.5 },
-  smoke: { id: "smoke", name: "Smoke", damage: 0, penetration: 0, caliber: 75, spreadDeg: 6 },
+  ap: {
+    id: "ap",
+    name: "AP",
+    blurb: "Armour-piercing solid shot. High penetration — use against tanks. Modest blast; glancing hits ricochet.",
+    damage: 55,
+    penetration: 100,
+    caliber: 75,
+    spreadDeg: 3,
+  },
+  he: {
+    id: "he",
+    name: "HE",
+    blurb: "High explosive. Heavy damage to infantry and buildings. Poor penetration; ricochets off armor.",
+    damage: 90,
+    penetration: 16,
+    caliber: 75,
+    spreadDeg: 5,
+  },
+  heat: {
+    id: "heat",
+    name: "HEAT",
+    blurb: "Shaped charge. Highest penetration in the rack. Best round for punching a tank, including the front plate.",
+    damage: 64,
+    penetration: 140,
+    caliber: 75,
+    spreadDeg: 3.5,
+  },
+  smoke: {
+    id: "smoke",
+    name: "Smoke",
+    blurb: "Lays a vision-blocking screen. Never auto-fires — force-attack the ground to place one round, then the gun stops.",
+    damage: 0,
+    penetration: 0,
+    caliber: 75,
+    spreadDeg: 6,
+  },
 };
 
 const UNARMED = {
@@ -583,6 +645,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
+    armorFront: 80,
+    armorSide: 32,
+    armorRear: 16,
+    leavesWreck: true,
+    wreckHp: 70,
   },
   warden: {
     type: "warden",
@@ -750,10 +817,32 @@ export function primaryInfantryGun(type: EntityType): InfantryGun | null {
   return type === "trooper" ? RIFLE : null;
 }
 
+/** Carried guns, primary first. Empty on vehicles and buildings. */
+export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
+  return type === "trooper" ? [RIFLE, HANDGUN] : [];
+}
+
+export function isInfantryWeaponId(v: string): v is InfantryWeaponId {
+  return (INFANTRY_WEAPON_IDS as readonly string[]).includes(v);
+}
+
+export function infantryGunById(id: InfantryWeaponId): InfantryGun {
+  return INFANTRY_GUNS[id];
+}
+
 /** Gun the unit is holding now. A broken shooting arm swaps to the handgun. */
-export function infantryGunFor(e: { type: EntityType; crits?: readonly Crit[] }): InfantryGun | null {
+export function infantryGunFor(e: {
+  type: EntityType;
+  crits?: readonly Crit[];
+  weapon?: InfantryWeaponId | null;
+}): InfantryGun | null {
   if (!isInfantryType(e.type)) return null;
   if (hasCrit({ crits: e.crits ?? [] }, "arm")) return HANDGUN;
+  const loadout = infantryLoadout(e.type);
+  if (e.weapon) {
+    const picked = loadout.find((g) => g.id === e.weapon);
+    if (picked) return picked;
+  }
   return primaryInfantryGun(e.type);
 }
 
@@ -774,12 +863,19 @@ export function hasCrit(e: { crits: readonly Crit[] }, c: Crit): boolean {
 }
 
 export function addCrit(
-  e: { crits: Crit[]; type?: EntityType; clip?: number; reload?: number },
+  e: {
+    crits: Crit[];
+    type?: EntityType;
+    clip?: number;
+    reload?: number;
+    weapon?: InfantryWeaponId | null;
+  },
   c: Crit,
 ): void {
   if (e.crits.includes(c)) return;
   e.crits.push(c);
   if (c === "arm" && e.type && isInfantryType(e.type)) {
+    e.weapon = "handgun";
     e.clip = HANDGUN.clip;
     e.reload = 0;
   }

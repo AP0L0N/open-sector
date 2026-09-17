@@ -22,7 +22,7 @@ import { astar } from "./path.js";
 import { makeEntity, tileCenter, walkable } from "./geo.js";
 import type { MatchState } from "./types.js";
 
-function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
+function twoPlayerMatch(opts?: { startingUnits?: boolean }): { state: MatchState; a: string; b: string } {
   const r = createRoom({
     id: "T1",
     hostId: "A",
@@ -37,7 +37,7 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  const state = createMatch(room, started.value);
+  const state = createMatch(room, started.value, { startingUnits: opts?.startingUnits ?? false });
   return { state, a: "A", b: "B" };
 }
 
@@ -57,6 +57,26 @@ describe("createMatch", () => {
     assert.equal(snap.entities[0]?.ownerId, "A");
     assert.equal(state.gameSpeed, GAME_SPEED_MAX);
     assert.equal(snap.gameSpeed, GAME_SPEED_MAX);
+  });
+
+  it("spawns one of each unit except the Mauler next to the Rig", () => {
+    const { state } = twoPlayerMatch({ startingUnits: true });
+    for (const pid of ["A", "B"]) {
+      const rig = [...state.entities.values()].find((e) => e.ownerId === pid && e.type === "rig")!;
+      const own = [...state.entities.values()].filter((e) => e.ownerId === pid && e.kind === "unit");
+      assert.equal(own.filter((e) => e.type === "trooper").length, 1);
+      assert.equal(own.filter((e) => e.type === "warden").length, 1);
+      assert.equal(own.filter((e) => e.type === "hauler").length, 0);
+      const core = catalog("core");
+      const half = Math.floor(core.tileW / 2);
+      for (const u of own) {
+        if (u.type === "rig") continue;
+        const dx = Math.abs(u.tileX - rig.tileX);
+        const dy = Math.abs(u.tileY - rig.tileY);
+        assert.ok(dx > half || dy > half, `${u.type} spawned inside the Core footprint`);
+        assert.ok(Math.hypot(u.x - rig.x, u.y - rig.y) < state.tileSize * 24, `${u.type} too far from rig`);
+      }
+    }
   });
 
   it("auto-deploys each Rig into a Core after 0.5s wall-clock", () => {
@@ -296,10 +316,9 @@ describe("combat", () => {
     const { state } = twoPlayerMatch();
     state.heights.fill(0);
     const t1 = makeEntity(state, "trooper", "A", 24 * 32, 20 * 32);
-    const dummy = makeEntity(state, "hauler", "B", 28 * 32, 20 * 32);
-    dummy.autoHarvest = false;
-    dummy.hp = 40;
-    dummy.hpMax = 40;
+    const dummy = makeEntity(state, "trooper", "B", 28 * 32, 20 * 32);
+    dummy.holdPosition = true;
+    dummy.cooldown = 99;
     t1.facing = 0;
     const destX = 36 * 32;
     const destY = 20 * 32;
@@ -307,7 +326,7 @@ describe("combat", () => {
     assert.equal(res.ok, true, !res.ok ? res.message : "");
     assert.equal(t1.order?.kind, "move");
     ticks(state, 80);
-    assert.ok(dummy.hp < 40, `should have fired on the way hp=${dummy.hp}`);
+    assert.ok(dummy.hp < dummy.hpMax, `should have fired on the way hp=${dummy.hp}`);
     assert.ok(t1.x > dummy.x - 8, `should keep walking x=${t1.x}`);
   });
 
@@ -315,10 +334,9 @@ describe("combat", () => {
     const { state } = twoPlayerMatch();
     state.heights.fill(0);
     const t1 = makeEntity(state, "trooper", "A", 24 * 32, 20 * 32);
-    const dummy = makeEntity(state, "hauler", "B", 28 * 32, 20 * 32);
-    dummy.autoHarvest = false;
-    dummy.hp = 40;
-    dummy.hpMax = 40;
+    const dummy = makeEntity(state, "trooper", "B", 28 * 32, 20 * 32);
+    dummy.holdPosition = true;
+    dummy.cooldown = 99;
     t1.facing = 0;
     const destX = 36 * 32;
     const destY = 20 * 32;
@@ -326,7 +344,7 @@ describe("combat", () => {
     assert.equal(res.ok, true, !res.ok ? res.message : "");
     assert.equal(t1.order?.kind, "attackmove");
     ticks(state, 80);
-    assert.ok(dummy.hp < 40, `should have fired on the way hp=${dummy.hp}`);
+    assert.ok(dummy.hp < dummy.hpMax, `should have fired on the way hp=${dummy.hp}`);
     ticks(state, 80);
     assert.ok(t1.x > dummy.x - 8, `should resume past the fight x=${t1.x}`);
   });
@@ -334,26 +352,24 @@ describe("combat", () => {
   it("kills a Trooper in four hits", () => {
     const { state } = twoPlayerMatch();
     const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
-    const dummy = makeEntity(state, "hauler", "B", 24 * 32, 20 * 32);
-    dummy.autoHarvest = false;
+    const dummy = makeEntity(state, "trooper", "B", 24 * 32, 20 * 32);
     dummy.holdPosition = true;
-    dummy.hp = 40;
-    dummy.hpMax = 40;
+    dummy.cooldown = 99;
     applyCommand(state, "A", { type: "cmd.attack", ids: [t1.id], targetId: dummy.id });
     ticks(state, 80);
     assert.ok(
       dummy.hp <= 0 || !state.entities.has(dummy.id),
-      `hp=${dummy.hp} shots expected ~4 vs trooper; hauler hp ${dummy.hp}`,
+      `hp=${dummy.hp} shots expected ~4 vs trooper`,
     );
   });
 
   it("soft-target kills are kinetic, not cook-off blasts", () => {
     const { state } = twoPlayerMatch();
     const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
-    const dummy = makeEntity(state, "hauler", "B", 24 * 32, 20 * 32);
-    dummy.autoHarvest = false;
+    const dummy = makeEntity(state, "trooper", "B", 24 * 32, 20 * 32);
+    dummy.holdPosition = true;
+    dummy.cooldown = 99;
     dummy.hp = 12;
-    dummy.hpMax = 40;
     applyCommand(state, "A", { type: "cmd.attack", ids: [t1.id], targetId: dummy.id });
     let sawKill = false;
     for (let i = 0; i < 40; i++) {
@@ -404,6 +420,20 @@ describe("combat", () => {
     ticks(state, 120);
     assert.ok(state.entities.has(tank.id), "warden should still exist");
     assert.ok(tank.hp > tank.hpMax - 8, `rifle vs armor hp=${tank.hp}`);
+  });
+
+  it("cannot wound a hauler with rifle fire", () => {
+    const { state } = twoPlayerMatch();
+    const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
+    const truck = makeEntity(state, "hauler", "B", 23 * 32, 20 * 32);
+    truck.autoHarvest = false;
+    truck.facing = Math.PI;
+    const hp0 = truck.hp;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [t1.id], targetId: truck.id });
+    ticks(state, 120);
+    assert.ok(state.entities.has(truck.id), "hauler should still exist");
+    assert.equal(truck.hp, hp0, `rifle vs hauler armor hp=${truck.hp}`);
+    assert.ok(state.impacts.some((x) => x.kind === "ricochet"), "rifle must bounce");
   });
 
   it("kills a Warden with one rear shot", () => {

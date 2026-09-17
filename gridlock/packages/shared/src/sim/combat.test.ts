@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { SHELLS, TICK_DT, catalog, isCivilianType } from "../catalog.js";
+import { HANDGUN, SHELLS, TICK_DT, addCrit, catalog, isCivilianType } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { RICOCHET_SPARK_SPEED } from "./ballistics.js";
@@ -29,7 +29,7 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return { state: createMatch(room, started.value), a: "A", b: "B" };
+  return { state: createMatch(room, started.value, { startingUnits: false }), a: "A", b: "B" };
 }
 
 function clearCivilians(state: MatchState): void {
@@ -204,24 +204,28 @@ describe("smoke shells", () => {
     dummy.autoHarvest = false;
     dummy.facing = Math.PI;
     const hp0 = dummy.hp;
+    const speed = catalog("warden").projectileSpeed;
     const p = fireShell(state, {
       x: dummy.x - 20,
       y: dummy.y,
-      vx: catalog("warden").projectileSpeed,
+      vx: speed,
       vy: 0,
       damage: 0,
       penetration: 0,
     });
     p.shell = "smoke";
+    p.life = 20 / speed;
     tickProjectiles(state, TICK_DT);
     assert.equal(dummy.hp, hp0, "smoke must not damage");
     assert.ok(state.smokeClouds.length >= 1, "cloud missing");
     const cloud = state.smokeClouds[0]!;
+    const miss = Math.hypot(cloud.x - dummy.x, cloud.y - dummy.y);
+    assert.ok(miss < ts, `cloud ${miss} from dummy`);
     const cx = Math.floor(cloud.x / ts);
     const cy = Math.floor(cloud.y / ts);
     let covered = 0;
-    for (let y = cy - 8; y <= cy + 8; y++) {
-      for (let x = cx - 12; x <= cx + 12; x++) {
+    for (let y = cy - 14; y <= cy + 14; y++) {
+      for (let x = cx - 14; x <= cx + 14; x++) {
         if (state.smokeClouds.some((c) => inSmokeCloud(c, ts, x, y))) covered++;
       }
     }
@@ -255,6 +259,35 @@ describe("force attack", () => {
     assert.equal(tank.order?.once, undefined);
   });
 
+  it("lands a fused shell on the clicked point, not past it along the barrel", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    const destX = tileCenter(30, ts);
+    const destY = tileCenter(24, ts);
+    const dist = Math.hypot(destX - tank.x, destY - tank.y);
+    assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [tank.id], x: destX, y: destY }).ok, true);
+    let miss: { x: number; y: number } | undefined;
+    for (let i = 0; i < 12; i++) {
+      step(state, TICK_DT);
+      const hit = state.impacts.find((im) => im.kind === "miss");
+      if (hit) miss = { x: hit.x, y: hit.y };
+    }
+    assert.ok(miss, "force-attack must detonate on the ground");
+    const err = Math.hypot(miss.x - destX, miss.y - destY);
+    const cone = dist * Math.tan((SHELLS.ap.spreadDeg * Math.PI) / 180);
+    assert.ok(err <= cone + ts, `impact ${err.toFixed(1)} from click, cone ${cone.toFixed(1)}`);
+    const range = weaponRangeWorld(state, tank);
+    assert.ok(
+      Math.hypot(miss.x - tank.x, miss.y - tank.y) < dist + ts * 2,
+      "must not fly out to max range",
+    );
+    assert.ok(range > dist + ts * 4);
+  });
+
   it("fires smoke at a point once, then stops", () => {
     const { state } = twoPlayerMatch();
     state.heights.fill(0);
@@ -274,9 +307,37 @@ describe("force attack", () => {
     for (let i = 0; i < 8; i++) step(state, TICK_DT);
     assert.equal(tank.ammo.smoke, smoke0 - 1, `smoke ${tank.ammo.smoke}`);
     assert.equal(tank.order, null);
+    assert.ok(state.smokeClouds.length >= 1, "cloud missing");
+    const cloud = state.smokeClouds[0]!;
+    const miss = Math.hypot(cloud.x - destX, cloud.y - destY);
+    assert.ok(miss < ts * 4, `cloud at ${cloud.x},${cloud.y} dest ${destX},${destY} miss ${miss}`);
     for (let i = 0; i < 80; i++) step(state, TICK_DT);
     assert.equal(tank.ammo.smoke, smoke0 - 1, "must not dump a second smoke");
     assert.equal(tank.order, null);
+  });
+
+  it("still pops smoke at the click when a unit is in the way", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    const dummy = makeEntity(state, "hauler", "B", tileCenter(27, ts), tileCenter(24, ts));
+    dummy.autoHarvest = false;
+    dummy.facing = Math.PI;
+    const hp0 = dummy.hp;
+    const destX = tileCenter(30, ts);
+    const destY = tileCenter(24, ts);
+    assert.equal(applyCommand(state, "A", { type: "cmd.ammo", ids: [tank.id], shell: "smoke" }).ok, true);
+    assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [tank.id], x: destX, y: destY }).ok, true);
+    for (let i = 0; i < 8; i++) step(state, TICK_DT);
+    assert.equal(dummy.hp, hp0, "smoke must not damage");
+    assert.ok(state.smokeClouds.length >= 1, "cloud missing");
+    const cloud = state.smokeClouds[0]!;
+    const miss = Math.hypot(cloud.x - destX, cloud.y - destY);
+    assert.ok(miss < ts * 4, `cloud at ${cloud.x},${cloud.y} dest ${destX},${destY} miss ${miss}`);
   });
 
   it("honors an explicit one-shot force attack", () => {
@@ -409,10 +470,12 @@ describe("friendly fire", () => {
     clearCivilians(state);
     const ts = state.tileSize;
     const gun = makeEntity(state, "trooper", "A", tileCenter(20, ts), tileCenter(24, ts));
-    const pal = makeEntity(state, "hauler", "A", tileCenter(22, ts), tileCenter(24, ts));
-    pal.autoHarvest = false;
-    const dummy = makeEntity(state, "hauler", "B", tileCenter(30, ts), tileCenter(24, ts));
-    dummy.autoHarvest = false;
+    const pal = makeEntity(state, "trooper", "A", tileCenter(22, ts), tileCenter(24, ts));
+    pal.holdPosition = true;
+    pal.cooldown = 99;
+    const dummy = makeEntity(state, "trooper", "B", tileCenter(30, ts), tileCenter(24, ts));
+    dummy.holdPosition = true;
+    dummy.cooldown = 99;
     gun.facing = 0;
     const palHp = pal.hp;
     applyCommand(state, "A", { type: "cmd.attack", ids: [gun.id], targetId: dummy.id });
@@ -613,10 +676,12 @@ describe("guard", () => {
     const tank = makeEntity(state, "warden", "A", tileCenter(40, ts), tileCenter(40, ts));
     tank.facing = 0;
     tank.turretFacing = 0;
-    const flank = makeEntity(state, "hauler", "B", tileCenter(42, ts), tileCenter(48, ts));
-    flank.autoHarvest = false;
-    const front = makeEntity(state, "hauler", "B", tileCenter(52, ts), tileCenter(40, ts));
-    front.autoHarvest = false;
+    const flank = makeEntity(state, "trooper", "B", tileCenter(42, ts), tileCenter(48, ts));
+    flank.holdPosition = true;
+    flank.cooldown = 99;
+    const front = makeEntity(state, "trooper", "B", tileCenter(52, ts), tileCenter(40, ts));
+    front.holdPosition = true;
+    front.cooldown = 99;
     applyCommand(state, "A", {
       type: "cmd.guard",
       ids: [tank.id],
@@ -1110,5 +1175,105 @@ describe("armor impact scatter", () => {
       }
     }
     assert.ok(bounced > 0, "expected at least one 75mm bounce");
+  });
+});
+
+describe("infantry weapons", () => {
+  it("switches a trooper to the handgun via cmd.weapon", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const t = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(24, ts));
+    assert.equal(t.weapon, "rifle");
+    const rifleRange = weaponRangeWorld(state, t);
+    const res = applyCommand(state, "A", { type: "cmd.weapon", ids: [t.id], weapon: "handgun" });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    assert.equal(t.weapon, "handgun");
+    assert.equal(t.clip, HANDGUN.clip);
+    assert.equal(t.reload, 0);
+    assert.equal(weaponRangeWorld(state, t), HANDGUN.rangeTiles * ts);
+    assert.ok(weaponRangeWorld(state, t) < rifleRange);
+    assert.equal(applyCommand(state, "A", { type: "cmd.weapon", ids: [t.id], weapon: "rifle" }).ok, true);
+    assert.equal(t.weapon, "rifle");
+    assert.equal(weaponRangeWorld(state, t), rifleRange);
+  });
+
+  it("refuses the rifle when the shooting arm is broken", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const t = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(24, ts));
+    addCrit(t, "arm");
+    assert.equal(t.weapon, "handgun");
+    const res = applyCommand(state, "A", { type: "cmd.weapon", ids: [t.id], weapon: "rifle" });
+    assert.equal(res.ok, false);
+    if (!res.ok) assert.equal(res.code, "busy");
+    assert.equal(t.weapon, "handgun");
+  });
+
+  it("ignores cmd.weapon on a tank", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const res = applyCommand(state, "A", { type: "cmd.weapon", ids: [tank.id], weapon: "handgun" });
+    assert.equal(res.ok, false);
+    if (!res.ok) assert.equal(res.code, "not_yours");
+  });
+
+  it("lets a rifle engage past handgun reach and keeps the pistol quiet there", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    stripOwner(state, "A");
+    stripOwner(state, "B");
+    const ts = state.tileSize;
+    const rifle = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const pistol = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(28, ts));
+    const dummy = makeEntity(state, "trooper", "B", tileCenter(44, ts), tileCenter(24, ts));
+    dummy.holdPosition = true;
+    dummy.cooldown = 99;
+    rifle.facing = 0;
+    pistol.facing = 0;
+    pistol.holdPosition = true;
+    rifle.holdPosition = true;
+    assert.equal(applyCommand(state, "A", { type: "cmd.weapon", ids: [pistol.id], weapon: "handgun" }).ok, true);
+    const dist = Math.hypot(dummy.x - pistol.x, dummy.y - pistol.y);
+    assert.ok(dist > weaponRangeWorld(state, pistol));
+    assert.ok(dist < weaponRangeWorld(state, rifle));
+    const dummyHp = dummy.hp;
+    const pistolClip = pistol.clip;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [rifle.id, pistol.id], targetId: dummy.id });
+    for (let i = 0; i < 20; i++) step(state, TICK_DT);
+    assert.ok(dummy.hp < dummyHp, `rifle must land dummy hp ${dummy.hp} vs ${dummyHp}`);
+    assert.equal(pistol.clip, pistolClip, "handgun must not fire past its range");
+  });
+
+  it("lets the handgun dump more rounds than the rifle in a short-range duel", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    stripOwner(state, "A");
+    stripOwner(state, "B");
+    const ts = state.tileSize;
+    const rifle = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const pistol = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(26, ts));
+    const dummy = makeEntity(state, "trooper", "B", tileCenter(28, ts), tileCenter(25, ts));
+    dummy.holdPosition = true;
+    dummy.cooldown = 99;
+    dummy.hp = 4000;
+    dummy.hpMax = 4000;
+    rifle.facing = 0;
+    pistol.facing = 0;
+    rifle.holdPosition = true;
+    pistol.holdPosition = true;
+    rifle.reloadMul = 1;
+    pistol.reloadMul = 1;
+    assert.equal(applyCommand(state, "A", { type: "cmd.weapon", ids: [pistol.id], weapon: "handgun" }).ok, true);
+    const rifleClip0 = rifle.clip;
+    const pistolClip0 = pistol.clip;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [rifle.id, pistol.id], targetId: dummy.id });
+    for (let i = 0; i < 16; i++) step(state, TICK_DT);
+    const rifleShots = rifleClip0 - rifle.clip;
+    const pistolShots = pistolClip0 - pistol.clip;
+    assert.ok(rifleShots >= 1, `rifle shots ${rifleShots}`);
+    assert.ok(pistolShots > rifleShots, `pistol ${pistolShots} vs rifle ${rifleShots}`);
   });
 });

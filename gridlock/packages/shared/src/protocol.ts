@@ -1,8 +1,17 @@
 /** Shared wire + domain types. If a field is not here, it does not exist. */
 
-import type { BuildingType, Crit, EntityKind, EntityType, ShellType, Stance, TrainType } from "./catalog.js";
+import type {
+  BuildingType,
+  Crit,
+  EntityKind,
+  EntityType,
+  InfantryWeaponId,
+  ShellType,
+  Stance,
+  TrainType,
+} from "./catalog.js";
 
-export const PROTOCOL_VERSION = 18;
+export const PROTOCOL_VERSION = 19;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -105,6 +114,8 @@ export interface EntityView {
   mgHeat?: number;
   /** Seconds the MG is jammed. Omitted when cool. */
   mgOverheat?: number;
+  /** Selected infantry gun. Allied infantry only. */
+  weapon?: InfantryWeaponId;
   /** Allied infantry magazine. Omitted for enemies and non-infantry. */
   clip?: number;
   /** Seconds left on a magazine change. Allied infantry. Omitted when idle. */
@@ -260,6 +271,7 @@ export type ClientMessage =
   | { type: "cmd.stop"; ids: number[] }
   | { type: "cmd.harvest"; ids: number[]; tileX?: number; tileY?: number }
   | { type: "cmd.ammo"; ids: number[]; shell: ShellType }
+  | { type: "cmd.weapon"; ids: number[]; weapon: InfantryWeaponId }
   | { type: "cmd.build"; building: BuildingType }
   | { type: "cmd.place"; building: BuildingType; tx: number; ty: number }
   | { type: "cmd.train"; unit: TrainType }

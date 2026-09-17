@@ -55,6 +55,7 @@ import bushAUrl from "../assets/terrain/bush-a.png";
 import bushBUrl from "../assets/terrain/bush-b.png";
 import waterUrl from "../assets/terrain/water.png";
 import waterBUrl from "../assets/terrain/water-b.png";
+import grassUrl from "../assets/terrain/grass.png";
 import trooperSheetUrl from "../assets/units/trooper-walk.png";
 import trooperCrouchUrl from "../assets/units/trooper-crouch.png";
 import trooperCrawlUrl from "../assets/units/trooper-crawl.png";
@@ -71,9 +72,11 @@ import engineIconUrl from "../assets/status/engine.png";
 
 /** Extra on-map scale for every unit (sprites and iso-box fallbacks). */
 export const UNIT_VISUAL_SCALE = 1.25;
+/** Infantry draw smaller than vehicles so tanks read larger. */
+export const INFANTRY_VISUAL_SCALE = UNIT_VISUAL_SCALE * 0.85;
 
 /** On-map draw size for infantry sprites, iso pixels. */
-export const UNIT_SPRITE_DRAW_SIZE = Math.round(22 * UNIT_VISUAL_SCALE);
+export const UNIT_SPRITE_DRAW_SIZE = Math.round(22 * INFANTRY_VISUAL_SCALE);
 
 /** Optional independently-aimed gun drawn on top of the hull sheet. */
 export interface TurretSpriteDef {
@@ -104,7 +107,7 @@ function loadSheet(src: string): HTMLImageElement {
 
 export const TROOPER_SPRITE: UnitSpriteDef = {
   image: loadSheet(trooperSheetUrl),
-  dirs: 8,
+  dirs: 16,
   frames: 8,
   frameSize: 96,
   fps: 12,
@@ -114,7 +117,7 @@ export const TROOPER_SPRITE: UnitSpriteDef = {
 
 export const TROOPER_CROUCH_SPRITE: UnitSpriteDef = {
   image: loadSheet(trooperCrouchUrl),
-  dirs: 8,
+  dirs: 16,
   frames: 8,
   frameSize: 96,
   fps: 8,
@@ -124,39 +127,39 @@ export const TROOPER_CROUCH_SPRITE: UnitSpriteDef = {
 
 export const TROOPER_CRAWL_SPRITE: UnitSpriteDef = {
   image: loadSheet(trooperCrawlUrl),
-  dirs: 8,
+  dirs: 16,
   frames: 8,
   frameSize: 96,
   fps: 10,
-  drawSize: Math.round(28 * UNIT_VISUAL_SCALE),
+  drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
   contactY: 0.72,
 };
 
 /** Shared swim sheet for every infantry type. */
 export const INFANTRY_SWIM_SPRITE: UnitSpriteDef = {
   image: loadSheet(infantrySwimUrl),
-  dirs: 8,
+  dirs: 16,
   frames: 8,
   frameSize: 96,
   fps: 8,
-  drawSize: Math.round(28 * UNIT_VISUAL_SCALE),
+  drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
   contactY: 0.68,
 };
 
-/** 8-dir hatch head (helmet + face). Row = isoDirIndex, one frame. */
+/** 16-dir hatch head (helmet + face). Row = isoDirIndex, one frame. */
 export const SCOUT_HEAD_SPRITE: UnitSpriteDef = {
   image: loadSheet(scoutHeadUrl),
-  dirs: 8,
+  dirs: 16,
   frames: 1,
   frameSize: 48,
   fps: 1,
-  drawSize: Math.round(16 * UNIT_VISUAL_SCALE),
+  drawSize: Math.round(16 * INFANTRY_VISUAL_SCALE),
   contactY: 1,
 };
 
 export const WARDEN_SPRITE: UnitSpriteDef = {
   image: loadSheet(wardenHullUrl),
-  dirs: 8,
+  dirs: 16,
   frames: 1,
   frameSize: 128,
   fps: 8,
@@ -164,7 +167,7 @@ export const WARDEN_SPRITE: UnitSpriteDef = {
   contactY: 0.92,
   turret: {
     image: loadSheet(wardenTurretUrl),
-    dirs: 8,
+    dirs: 16,
     frames: 1,
     frameSize: 128,
   },
@@ -172,7 +175,7 @@ export const WARDEN_SPRITE: UnitSpriteDef = {
 
 export const HAULER_SPRITE: UnitSpriteDef = {
   image: loadSheet(haulerSheetUrl),
-  dirs: 8,
+  dirs: 16,
   frames: 1,
   frameSize: 128,
   fps: 8,
@@ -182,7 +185,7 @@ export const HAULER_SPRITE: UnitSpriteDef = {
 
 export const RIG_SPRITE: UnitSpriteDef = {
   image: loadSheet(rigSheetUrl),
-  dirs: 8,
+  dirs: 16,
   frames: 1,
   frameSize: 192,
   fps: 6,
@@ -314,6 +317,7 @@ export const BUSH_A = prop(bushAUrl, 364, 573);
 export const BUSH_B = prop(bushBUrl, 346, 371);
 export const WATER_TEX = loadSheet(waterUrl);
 export const WATER_TEX_B = loadSheet(waterBUrl);
+export const GRASS_TEX = loadSheet(grassUrl);
 
 export const PROP_IMAGES: HTMLImageElement[] = [
   TREE_OAK.image,
@@ -323,6 +327,7 @@ export const PROP_IMAGES: HTMLImageElement[] = [
   BUSH_B.image,
   WATER_TEX,
   WATER_TEX_B,
+  GRASS_TEX,
   ...Object.values(CIV_FACES).flatMap((faces) => faces.map((f) => f.image)),
 ];
 
