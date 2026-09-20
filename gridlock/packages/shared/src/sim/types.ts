@@ -40,7 +40,7 @@ export interface Order {
     | "withdraw";
   x?: number;
   y?: number;
-  /** World radians. Guard / rotate destination facing, or hull heading while reversing. */
+  /** World radians. Guard / rotate destination facing. */
   facing?: number;
   /** Attack, force-attack, garrison house, or the unit being escorted. */
   targetId?: number;
@@ -48,8 +48,6 @@ export interface Order {
   tileY?: number;
   /** Auto-acquired attack. Incoming fire may interrupt this; player orders are kept. */
   auto?: boolean;
-  /** Withdraw by backing up with the hull toward the fire. Tanks only. */
-  reverse?: boolean;
   /** Fire the main gun once, then idle. Smoke force-attack uses this; other one-shots can too. */
   once?: boolean;
   /** Group-move cap in catalog tiles/sec. Slowest selected unit that can still walk. */

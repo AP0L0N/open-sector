@@ -2,12 +2,12 @@
 
 Authoritative how-to: repo-root `narrow-front-sprite-agent-brief.md`.
 
-**Standard (3D / Blender):** 16 unique locked-camera frames, south-first, clockwise 22.5°. Hull and turret share one transform.
+**Standard (3D / Blender):** 16 unique locked-camera frames, south-first, clockwise 22.5°. `0001` = south, `0016` = last unique yaw (a 17th file would equal `0001`). Hull and turret share one transform. Top-down: N up, E right.
 
 ```
-blender 16-dir (frame 1 = camera south, then clockwise)
-  → compose_blender_turntable.py  (remap to engine east-first, shared scale)
-  → hull + turret engine PNGs + cameo
+blender 16-dir (0001 = south, clockwise 22.5°, 0016 unique; 0017 = 0001, omit)
+  → drop 0001.png–0016.png in the unit folder (engine uses names as-is)
+  → optional compose_blender_turntable.py for a preview sheet
 ```
 
 **2D fallback:** 9 unique yaws + mirror.
@@ -26,7 +26,7 @@ east lock (image_gen)
 # In-game drop folder (preferred): overwrite 0001.png–0016.png and reload.
 #   gridlock/packages/client/src/assets/units/tiger/hull/0001.png
 #   gridlock/packages/client/src/assets/units/tiger/turret/0001.png
-# 0001 = camera south, then clockwise 22.5°. Mapping: src/render/turntable.ts
+# 0001 = world south (screen down), clockwise 22.5°, 0016 unique (0017 = 0001, omit). Mapping: src/render/turntable.ts
 # Optional offline preview from the same files:
 python tools/sprites/compose_blender_turntable.py \
     --src gridlock/packages/client/src/assets/units/tiger \

@@ -21,6 +21,8 @@ import {
   TANK_SHELL_SPEED,
   TICK_DT,
   TILE_SIZE,
+  snapTankYaw,
+  TANK_FACE_DIRS,
   WEAPON_RANGE_SIGHT_MUL,
   SHELLS,
   SHELL_TYPES,
@@ -134,6 +136,19 @@ describe("instant rounds", () => {
     const range = w.rangeTiles * TILE_SIZE;
     assert.ok(w.projectileSpeed * TICK_DT >= range, `shell ${w.projectileSpeed} range ${range}`);
     assert.ok(SHELLS.smoke.damage === 0 && SHELLS.smoke.caliber === 75);
+  });
+});
+
+describe("tank faces", () => {
+  it("snaps hull yaw onto 22.5° steps with cardinals exact", () => {
+    assert.equal(TANK_FACE_DIRS, 16);
+    assert.equal(snapTankYaw(Math.PI / 2), Math.PI / 2);
+    assert.equal(snapTankYaw(-Math.PI / 2), -Math.PI / 2);
+    assert.ok(Math.abs(snapTankYaw(0)) < 1e-9);
+    assert.ok(Math.abs(snapTankYaw(Math.PI) - Math.PI) < 1e-9);
+    const step = (Math.PI * 2) / TANK_FACE_DIRS;
+    assert.ok(Math.abs(snapTankYaw(Math.PI / 2 + 0.4 * step) - Math.PI / 2) < 1e-9);
+    assert.ok(Math.abs(snapTankYaw(Math.PI / 2 + step) - (Math.PI / 2 + step)) < 1e-9);
   });
 });
 

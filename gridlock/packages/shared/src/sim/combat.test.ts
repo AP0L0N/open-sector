@@ -922,7 +922,7 @@ describe("withdraw", () => {
     assert.notEqual(inf.order?.kind, "withdraw");
   });
 
-  it("Warden reverses with the hull toward unseen fire", () => {
+  it("Warden stays put when hit from out of sight", () => {
     const { state } = twoPlayerMatch();
     state.heights.fill(0);
     state.blocked.fill(0);
@@ -934,6 +934,8 @@ describe("withdraw", () => {
     victim.facing = 0;
     victim.turretFacing = 0;
     const x0 = victim.x;
+    const y0 = victim.y;
+    const facing0 = victim.facing;
     const p = fireShell(state, {
       x: victim.x + 20,
       y: victim.y,
@@ -945,18 +947,15 @@ describe("withdraw", () => {
     p.team = 2;
     step(state, TICK_DT);
     assert.ok(victim.hp > 0 && victim.hp < victim.hpMax, `hp=${victim.hp}`);
-    assert.equal(victim.order?.kind, "withdraw");
-    assert.equal(victim.order?.reverse, true);
-    assert.equal(victim.attackTarget, null);
-    const y0 = victim.y;
+    assert.notEqual(victim.order?.kind, "withdraw");
     for (let i = 0; i < 40; i++) step(state, TICK_DT);
-    assert.ok(victim.x < x0 - 12, `should reverse west x=${victim.x} from ${x0}`);
-    assert.ok(Math.abs(victim.y - y0) < ts * 2, `should not slide off the reverse line y=${victim.y}`);
-    assert.ok(angAbs(victim.facing, 0) < 0.35, `hull should keep the bow on the fire facing=${victim.facing}`);
-    assert.ok(angAbs(victim.facing, Math.PI) > 1.2, "must not spin the rear toward the shot");
+    assert.notEqual(victim.order?.kind, "withdraw");
+    assert.ok(Math.abs(victim.x - x0) < 8, `tank backed up x=${victim.x} from ${x0}`);
+    assert.ok(Math.abs(victim.y - y0) < 8, `tank slid y=${victim.y}`);
+    assert.ok(angAbs(victim.facing, facing0) < 0.35, `hull yawed facing=${victim.facing}`);
   });
 
-  it("Warden reverses when engaged and stationary", () => {
+  it("Warden stays put when engaged and stationary", () => {
     const { state } = twoPlayerMatch();
     state.heights.fill(0);
     state.blocked.fill(0);
@@ -978,50 +977,14 @@ describe("withdraw", () => {
     p.ownerId = "B";
     p.team = 2;
     step(state, TICK_DT);
-    assert.equal(victim.order?.kind, "withdraw");
-    assert.equal(victim.order?.reverse, true);
-    assert.equal(victim.attackTarget, shooter.id);
+    assert.notEqual(victim.order?.kind, "withdraw");
     for (let i = 0; i < 36; i++) step(state, TICK_DT);
-    assert.ok(victim.x < x0 - 12, `should reverse west x=${victim.x} from ${x0}`);
-    assert.ok(angAbs(victim.facing, 0) < 0.35, `hull should stay on the shooter facing=${victim.facing}`);
+    assert.notEqual(victim.order?.kind, "withdraw");
+    assert.ok(Math.abs(victim.x - x0) < 8, `tank backed up x=${victim.x} from ${x0}`);
+    assert.ok(angAbs(victim.facing, 0) < 0.35, `hull yawed facing=${victim.facing}`);
   });
 
-  it("Warden yaws the hull to the fire before it reverses", () => {
-    const { state } = twoPlayerMatch();
-    state.heights.fill(0);
-    state.blocked.fill(0);
-    clearCivilians(state);
-    const ts = state.tileSize;
-    const victim = makeEntity(state, "warden", "A", tileCenter(40, ts), tileCenter(40, ts));
-    const shooter = makeEntity(state, "hauler", "B", tileCenter(110, ts), tileCenter(40, ts));
-    shooter.autoHarvest = false;
-    victim.facing = 0.5;
-    victim.turretFacing = 0.5;
-    const x0 = victim.x;
-    const y0 = victim.y;
-    const p = fireShell(state, {
-      x: victim.x + 20,
-      y: victim.y,
-      vx: -catalog("warden").projectileSpeed,
-      vy: 0,
-    });
-    p.fromId = shooter.id;
-    p.ownerId = "B";
-    p.team = 2;
-    step(state, TICK_DT);
-    assert.equal(victim.order?.kind, "withdraw");
-    assert.ok(victim.hp > 0 && victim.hp < victim.hpMax, `hp=${victim.hp}`);
-    step(state, TICK_DT);
-    assert.ok(victim.facing < 0.5, `should yaw toward the shot facing=${victim.facing}`);
-    assert.ok(victim.facing > 0.15, `must not snap onto the fire in one tick facing=${victim.facing}`);
-    assert.equal(victim.x, x0, "must not reverse until the bow faces the fire");
-    assert.equal(victim.y, y0);
-    for (let i = 0; i < 40; i++) step(state, TICK_DT);
-    assert.ok(victim.x < x0 - 8, `should reverse west after the yaw x=${victim.x}`);
-    assert.ok(angAbs(victim.facing, 0) < 0.35, `hull should finish on the fire facing=${victim.facing}`);
-  });
-
-  it("Warden keeps a player attack instead of reversing", () => {
+  it("Warden keeps a player attack when hit", () => {
     const { state } = twoPlayerMatch();
     state.heights.fill(0);
     state.blocked.fill(0);
@@ -1044,7 +1007,6 @@ describe("withdraw", () => {
     p.team = 2;
     for (let i = 0; i < 8; i++) step(state, TICK_DT);
     assert.equal(victim.order?.kind, "attack");
-    assert.notEqual(victim.order?.reverse, true);
     assert.ok(Math.abs(victim.x - x0) < 8, `player attack fled x=${victim.x}`);
   });
 });

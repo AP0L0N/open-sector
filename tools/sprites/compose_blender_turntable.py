@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Compose 16 unique Blender turntable frames into Gridlock hull + turret sheets.
 
-Source frames are a locked-camera yaw: frame 1 faces the camera (screen south),
-then clockwise 22.5° for 16 frames / 360°. Hull and turret are separate passes
-of the same camera, so they share one scale and one offset. Do not bbox-fit
-each facing (the gun would leave the ring when the turret aims independently).
-Do not mirror (3D yaws are unique).
+Source frames are a locked-camera yaw: frame 1 faces south (screen down),
+then clockwise 22.5° world yaw for 16 frames.
+Hull and turret are separate passes of the same camera, so they share one
+scale and one offset. Do not bbox-fit each facing (the gun would leave the
+ring when the turret aims independently). Do not mirror (3D yaws are unique).
 
-Engine row 0 is still screen-east; this script remaps south-first sources.
+Engine row 0 is world south (0001.png). Frame 1 is south; 0016 is the last unique yaw.
 
 Example:
 
@@ -31,10 +31,6 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 ENGINE_ORDER = [
-    "E",
-    "ESE",
-    "SE",
-    "SSE",
     "S",
     "SSW",
     "SW",
@@ -47,6 +43,10 @@ ENGINE_ORDER = [
     "NNE",
     "NE",
     "ENE",
+    "E",
+    "ESE",
+    "SE",
+    "SSE",
 ]
 
 
@@ -158,7 +158,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--src", type=Path, required=True, help="Folder with hull and turret subdirs of 16 PNGs")
     p.add_argument("--hull-subdir", default="husk")
     p.add_argument("--turret-subdir", default="turret")
-    p.add_argument("--start-facing", default="S", help="Engine dir of frame 1 (camera-facing). Default S.")
+    p.add_argument("--start-facing", default="S", help="Engine dir of frame 1 (0001 = world south).")
     p.add_argument("--cell", type=int, default=128)
     p.add_argument("--contact-y", type=float, default=0.92)
     p.add_argument("--padding", type=int, default=4)
@@ -166,7 +166,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--out-hull", type=Path, required=True)
     p.add_argument("--out-turret", type=Path, required=True)
     p.add_argument("--out-cameo", type=Path, default=None)
-    p.add_argument("--cameo-dir", default="SE", help="Engine dir used for the cameo")
+    p.add_argument("--cameo-dir", default="E", help="Engine dir used for the cameo")
     p.add_argument("--cameo-size", type=int, default=128)
     p.add_argument("--preview-dir", type=Path, default=Path("tools/sprites/preview"))
     p.add_argument("--src-out", type=Path, default=None, help="Write remapped E.png…ENE.png here (hull/ and turret/)")

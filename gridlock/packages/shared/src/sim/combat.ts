@@ -798,30 +798,22 @@ function maybeHaulerSmokeScreen(state: MatchState, victim: Entity, p: Projectile
 
 function maybeWithdraw(state: MatchState, victim: Entity, p: Projectile): void {
   if (victim.kind !== "unit" || victim.wreck || victim.garrisonedIn) return;
+  if (catalog(victim.type).turnInPlace) return;
   if (victim.holdPosition || immobilized(victim)) return;
   if (victim.state === "deploy" || victim.state === "undeploy") return;
   if (victim.waypoints.length > 0) return;
   if (keepsStation(victim)) return;
   const shooter = p.fromId > 0 ? state.entities.get(p.fromId) : undefined;
-  const seen = threatInSight(state, victim, shooter);
-  const reverse = reversesFromFire(victim);
-  if (seen && !reverse) return;
+  if (threatInSight(state, victim, shooter)) return;
   const fromX = shooter && shooter.hp > 0 ? shooter.x : p.x - p.vx;
   const fromY = shooter && shooter.hp > 0 ? shooter.y : p.y - p.vy;
   const dest = withdrawDest(state, victim, fromX, fromY);
   if (!dest) return;
-  const dx = fromX - victim.x;
-  const dy = fromY - victim.y;
-  const facing = dx * dx + dy * dy >= 1 ? Math.atan2(dy, dx) : victim.facing;
-  victim.order = { kind: "withdraw", x: dest.x, y: dest.y, reverse, facing: reverse ? facing : undefined };
-  victim.attackTarget = reverse && seen && shooter ? shooter.id : null;
+  victim.order = { kind: "withdraw", x: dest.x, y: dest.y };
+  victim.attackTarget = null;
   victim.harvestTile = null;
   victim.state = "move";
   setPath(state, victim, dest.x, dest.y);
-}
-
-function reversesFromFire(e: Entity): boolean {
-  return !!catalog(e.type).turnInPlace;
 }
 
 function keepsStation(e: Entity): boolean {

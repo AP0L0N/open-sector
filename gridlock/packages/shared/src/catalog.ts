@@ -31,8 +31,42 @@ export const HAULER_HARVEST_SECONDS = 2;
 export const HAULER_UNLOAD_SECONDS = 1.2;
 export const LOW_POWER_MIN_SPEED = 0.25;
 export const FACE_FIRE_DEG = 8;
-/** How close a turn-in-place unit must be to its heading before it rolls. */
-export const FACE_MOVE_DEG = 12;
+/** Hull must finish its yaw before tracks roll. 1° ≈ aligned this tick. */
+export const FACE_MOVE_DEG = 1;
+/**
+ * A waypoint this close to the hull axis counts as reached when the hull
+ * rolls past its foot. Tracks only roll along the snapped face, so a small
+ * lateral miss is normal; re-aiming for it would only make the hull fidget.
+ */
+export const TRACK_ARRIVE_SLOP = 8;
+/**
+ * Unit hull faces. Every sprite uses 16 unique files at 22.5°:
+ * 0001.png = world south (screen down), then clockwise through 0016.png
+ * (south + 337.5°). A 17th file would equal 0001. 8 steps is a true reverse.
+ * Cardinals land on faces.
+ */
+export const TANK_FACE_DIRS = 16;
+/** World yaw of 0001.png: world south, screen down. */
+export const TANK_FACE_START_YAW = Math.PI / 2;
+
+function angAbsRad(a: number, b: number): number {
+  let d = a - b;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return Math.abs(d);
+}
+
+export function snapTankYaw(yaw: number): number {
+  const step = (Math.PI * 2) / TANK_FACE_DIRS;
+  const i = Math.round((yaw - TANK_FACE_START_YAW) / step);
+  const face = TANK_FACE_START_YAW + i * step;
+  const cardinal = Math.round(yaw / (Math.PI / 2)) * (Math.PI / 2);
+  return angAbsRad(yaw, cardinal) < angAbsRad(yaw, face) ? cardinal : face;
+}
+/** Max fine tiles a tank will reverse instead of spinning the hull. */
+export const REVERSE_TILES = t(2);
+/** Full rear cone that counts as “behind” for a reverse hop. */
+export const REVERSE_CONE_DEG = 90;
 /** Full angle of a Guard overwatch cone. Units still fire 360°; this is the ready arc. */
 export const GUARD_CONE_DEG = 90;
 /** Displace this far when a stationary unit auto-withdraws. */
@@ -103,10 +137,6 @@ export const WATER_PATH_COST = 2.5;
 export const CRIT_ENGINE_TURN = 0.2;
 /** Extra world pixels between unit reserved radii on a group move. */
 export const UNIT_SPACE_PAD = 2;
-/** Fine tiles ahead a moving vehicle looks for friendlies that should step aside. */
-export const GIVE_WAY_LOOKAHEAD_TILES = t(2);
-/** Half-angle of the keep-clear cone in front of a moving hull. */
-export const GIVE_WAY_CONE_DEG = 32;
 /** Default ground. Maps are lifted so valleys can sit below this. */
 export const HEIGHT_BASE = t(2);
 /** Peak discrete elevation. 0 is the valley floor. */

@@ -23,7 +23,7 @@ import { tickBuild } from "./build.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
 import { tickSmoke } from "./smoke.js";
 import { tickStance } from "./stance.js";
-import { tickCollision, tickGiveWay } from "./collision.js";
+import { tickCollision } from "./collision.js";
 import { tickAutoDeploy, tickDeploy } from "./deploy.js";
 import { tickHarvest } from "./harvest.js";
 import { tickMovement, repathIfBlocked } from "./orders.js";
@@ -177,7 +177,6 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickStance(state);
   tickDeploy(state, dt);
   tickGarrison(state);
-  tickGiveWay(state);
   tickMovement(state, dt);
   tickCollision(state, dt);
   tickHarvest(state, dt);

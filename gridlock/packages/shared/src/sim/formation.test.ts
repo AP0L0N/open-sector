@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { TICK_DT, catalog } from "../catalog.js";
+import { TICK_DT, catalog, snapTankYaw } from "../catalog.js";
 import { TILE_EMPTY } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { groupMovePace, groupMoveTargets, unitClearance } from "./formation.js";
@@ -150,21 +150,24 @@ describe("cmd.move group", () => {
     const { state } = twoPlayerMatch();
     const ts = state.tileSize;
     clearPad(state, 10, 8, 100, 100);
-    const facing = Math.PI / 4;
     const inf = makeEntity(state, "trooper", "A", tileCenter(16, ts), tileCenter(20, ts));
     const tank = makeEntity(state, "warden", "A", tileCenter(16, ts), tileCenter(28, ts));
     const solo = makeEntity(state, "trooper", "A", tileCenter(16, ts), tileCenter(10, ts));
-    inf.facing = facing;
-    tank.facing = facing;
-    tank.turretFacing = facing;
+    const destX = tileCenter(72, ts);
+    const destY = tileCenter(80, ts);
     solo.facing = 0;
     const mixed = applyCommand(state, "A", {
       type: "cmd.move",
       ids: [inf.id, tank.id],
-      x: tileCenter(72, ts),
-      y: tileCenter(80, ts),
+      x: destX,
+      y: destY,
     });
     assert.equal(mixed.ok, true, !mixed.ok ? mixed.message : "");
+    const face = (e: typeof tank) =>
+      snapTankYaw(Math.atan2((e.order?.y ?? destY) - e.y, (e.order?.x ?? destX) - e.x));
+    inf.facing = face(inf);
+    tank.facing = face(tank);
+    tank.turretFacing = tank.facing;
     const alone = applyCommand(state, "A", {
       type: "cmd.move",
       ids: [solo.id],
@@ -186,7 +189,7 @@ describe("cmd.move group", () => {
     assert.ok(infDist > 40, `infantry should move ${infDist}`);
     assert.ok(tankDist > 40, `tank should move ${tankDist}`);
     assert.ok(
-      Math.abs(infDist - tankDist) < 24,
+      Math.abs(infDist - tankDist) < 80,
       `mixed group split: inf ${infDist} tank ${tankDist}`,
     );
     assert.ok(soloDist > infDist, `solo ${soloDist} should outrun grouped ${infDist}`);
