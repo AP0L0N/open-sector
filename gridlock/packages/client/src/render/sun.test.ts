@@ -8,6 +8,8 @@ import {
   shadowWorldDir,
   sunSkyWorld,
   sunWorldDir,
+  treeShadowFootprint,
+  buildingShadowFootprint,
   unitCastsShadow,
   unitShadowFootprint,
   unitShadowHeight,
@@ -125,5 +127,37 @@ describe("sunSkyWorld", () => {
     const p = sunSkyWorld(8);
     assert.ok(p.x < 0 && p.y < 0);
     assert.ok(p.z > 0);
+  });
+});
+
+describe("treeShadowFootprint", () => {
+  it("keeps a round canopy puddle at the stem", () => {
+    const foot = treeShadowFootprint(10, 20, 38);
+    const sh = shadowWorldDir();
+    assert.ok(foot.cx > 10 && foot.cy > 20);
+    const mag = Math.hypot(foot.cx - 10, foot.cy - 20);
+    assert.ok(mag > 0.2);
+    assert.ok(near((foot.cx - 10) / mag, sh.x, 1e-6));
+  });
+});
+
+describe("buildingShadowFootprint", () => {
+  it("covers an axis-aligned pad and slides with the sun", () => {
+    const foot = buildingShadowFootprint({ x: 80, y: 40, halfW: 24, halfH: 16 });
+    const sh = shadowWorldDir();
+    const mag = Math.hypot(foot.cx - 80, foot.cy - 40);
+    assert.ok(mag > 0.5);
+    assert.ok(near((foot.cx - 80) / mag, sh.x, 1e-6));
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minY = Infinity;
+    let maxY = -Infinity;
+    for (const p of foot.points) {
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x);
+      minY = Math.min(minY, p.y);
+      maxY = Math.max(maxY, p.y);
+    }
+    assert.ok(maxX - minX > maxY - minY);
   });
 });

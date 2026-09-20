@@ -99,10 +99,25 @@ import {
   type TrackKickPuff,
 } from "./track-kick.js";
 import {
+  recoilAmounts,
+  recoilLayerShift,
+  recoilPixels,
+  tankGunRecoils,
+  type GunRecoil,
+} from "./gun-recoil.js";
+import {
+  drawMuzzleSmoke,
+  muzzleSmokePose,
+  spawnMuzzleSmoke,
+  type MuzzleSmokePuff,
+} from "./muzzle-smoke.js";
+import {
+  buildingShadowFootprint,
   drawGroundShadow,
   drawSunDisc,
   drawSunWash,
   sunSkyWorld,
+  treeShadowFootprint,
   unitCastsShadow,
   unitShadowFootprint,
 } from "./sun.js";
@@ -300,6 +315,8 @@ export class MapView {
   private moveClicks: { x: number; y: number; at: number }[] = [];
   private trackKicks: TrackKickPuff[] = [];
   private trackKickLast = new Map<number, { x: number; y: number }>();
+  private gunRecoil = new Map<number, GunRecoil>();
+  private muzzleSmokes: MuzzleSmokePuff[] = [];
   private occBuildings: {
     x: number;
     y: number;
@@ -444,48 +461,56 @@ export class MapView {
     }
     this.bindBounceTraces(match);
     if (this.seenShots.size > 400) this.seenShots.clear();
-    for (const i of match.impacts ?? []) {
-      if (!isShellCaliber(i.caliber) || i.fromId == null) continue;
-      if (i.kind === "puff" && i.shell !== "smoke") continue;
-      const shooter = match.entities.find((e) => e.id === i.fromId);
-      if (!shooter) continue;
-      const dx = i.x - shooter.x;
-      const dy = i.y - shooter.y;
-      const sp = Math.hypot(dx, dy) || 1;
-      const reach = catalog(shooter.type).radius * UNIT_VISUAL_SCALE + 10;
-      this.addFx({
-        id: i.id + 8_000_000,
-        kind: "muzzle",
-        x: shooter.x + (dx / sp) * reach,
-        y: shooter.y + (dy / sp) * reach,
-        vx: dx,
-        vy: dy,
-        at: now,
-        caliber: i.caliber,
-      });
-    }
     for (const p of match.projectiles) {
       if (p.bounced || this.seenShots.has(p.id)) continue;
+      this.seenShots.add(p.id);
       const shooter = match.entities.find((e) => e.id === p.fromId);
       const fromGarrison =
         !!shooter?.garrisonedIn || (!shooter && !isShellCaliber(p.caliber) && !!this.houseAt(p.x, p.y));
-      if (!fromGarrison) continue;
-      this.seenShots.add(p.id);
-      const house = this.houseAt(p.x, p.y) ?? (shooter?.garrisonedIn
-        ? match.entities.find((e) => e.id === shooter.garrisonedIn)
-        : undefined);
-      this.addFx({
-        id: p.id + 8_000_000,
-        kind: "muzzle",
-        x: p.x,
-        y: p.y,
-        vx: p.vx,
-        vy: p.vy,
-        at: now,
-        caliber: p.caliber,
-        lift: house ? garrisonWindowLift(house.type, p.id) : 22,
-        window: true,
-      });
+      if (fromGarrison) {
+        const house = this.houseAt(p.x, p.y) ?? (shooter?.garrisonedIn
+          ? match.entities.find((e) => e.id === shooter.garrisonedIn)
+          : undefined);
+        this.addFx({
+          id: p.id + 8_000_000,
+          kind: "muzzle",
+          x: p.x,
+          y: p.y,
+          vx: p.vx,
+          vy: p.vy,
+          at: now,
+          caliber: p.caliber,
+          lift: house ? garrisonWindowLift(house.type, p.id) : 22,
+          window: true,
+        });
+        continue;
+      }
+      this.noteTankShot(shooter, p, now);
+    }
+    for (const i of match.impacts ?? []) {
+      if (!isShellCaliber(i.caliber) || i.fromId == null) continue;
+      if (i.kind === "puff" && i.shell !== "smoke") continue;
+      const rec = this.gunRecoil.get(i.fromId);
+      if (rec && now - rec.at < 2000) continue;
+      const shooter = match.entities.find((e) => e.id === i.fromId);
+      if (!shooter || shooter.garrisonedIn) continue;
+      const dx = i.x - shooter.x;
+      const dy = i.y - shooter.y;
+      const sp = Math.hypot(dx, dy) || 1;
+      const reach = catalog(shooter.type).radius + 2;
+      this.noteTankShot(
+        shooter,
+        {
+          id: i.id,
+          x: shooter.x + (dx / sp) * reach,
+          y: shooter.y + (dy / sp) * reach,
+          vx: dx,
+          vy: dy,
+          caliber: i.caliber ?? 0,
+          fromId: i.fromId,
+        },
+        now,
+      );
     }
     if (this.wreckBornAt.size > 0) {
       const liveWrecks = new Set<number>();
@@ -522,6 +547,47 @@ export class MapView {
     if (this.fxIds.has(f.id)) return;
     this.fxIds.add(f.id);
     this.fx.push(f);
+  }
+
+  private noteTankShot(
+    shooter: EntityView | undefined,
+    shot: { id: number; x: number; y: number; vx: number; vy: number; caliber: number; fromId: number },
+    now: number,
+  ): void {
+    if (!shooter || !isShellCaliber(shot.caliber)) return;
+    const spr = spriteFor(shooter.type, shooter.stance, shooter.swimming);
+    if (
+      !tankGunRecoils({
+        hasGun: !!spr?.gun,
+        wreck: shooter.wreck,
+        garrisonedIn: shooter.garrisonedIn,
+      })
+    ) {
+      return;
+    }
+    this.gunRecoil.set(shooter.id, { at: now });
+    this.muzzleSmokes.push(
+      ...spawnMuzzleSmoke({
+        x: shot.x,
+        y: shot.y,
+        dirX: shot.vx,
+        dirY: shot.vy,
+        now,
+        seed: (shot.id * 2654435761 + Math.floor(now)) >>> 0,
+        scale: (spr?.drawSize ?? 48) / 48,
+      }),
+    );
+    this.addFx({
+      id: shot.id + 8_000_000,
+      kind: "muzzle",
+      x: shot.x,
+      y: shot.y,
+      vx: shot.vx,
+      vy: shot.vy,
+      at: now,
+      caliber: shot.caliber,
+      lift: Math.round((spr?.drawSize ?? 48) * 0.38),
+    });
   }
 
   private nearestHullEntity(wx: number, wy: number): EntityView | undefined {
@@ -1772,7 +1838,9 @@ export class MapView {
     }
     this.collectTrees(items);
     this.collectUnitShadows(items);
+    this.collectBuildingShadows(items);
     this.collectTrackKicks(items);
+    this.collectMuzzleSmoke(items);
     for (const m of this.takeMoveClicks()) {
       items.push({
         layer: 0,
@@ -2138,8 +2206,33 @@ export class MapView {
     return out;
   }
 
-  private collectUnitShadows(items: { layer: number; z: number; run: () => void }[]): void {
+  private pushGroundShadow(
+    items: { layer: number; z: number; run: () => void }[],
+    foot: { cx: number; cy: number; points: { x: number; y: number }[] },
+  ): void {
     const { w, h } = this.viewSize();
+    const screen: { x: number; y: number }[] = [];
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const q of foot.points) {
+      const s = this.toScreen(q.x, q.y);
+      screen.push(s);
+      minX = Math.min(minX, s.x);
+      minY = Math.min(minY, s.y);
+      maxX = Math.max(maxX, s.x);
+      maxY = Math.max(maxY, s.y);
+    }
+    if (maxX < -12 || maxY < -12 || minX > w + 12 || minY > h + 12) return;
+    items.push({
+      layer: -1,
+      z: isoDepth(foot.cx, foot.cy),
+      run: () => drawGroundShadow(this.ctx, screen),
+    });
+  }
+
+  private collectUnitShadows(items: { layer: number; z: number; run: () => void }[]): void {
     for (const e of this.curr.entities) {
       if (
         !unitCastsShadow({
@@ -2152,36 +2245,36 @@ export class MapView {
       }
       const def = catalog(e.type);
       const scale = isInfantryType(e.type) ? INFANTRY_VISUAL_SCALE : UNIT_VISUAL_SCALE;
-      const spr = spriteFor(e.type, e.stance, e.swimming);
-      const radius = Math.max(def.radius * scale, (spr?.drawSize ?? 0) * 0.3);
       const p = this.lerpEnt(e);
-      const foot = unitShadowFootprint({
-        x: p.x,
-        y: p.y,
-        facing: p.facing,
-        radius,
-        elongated: !isInfantryType(e.type),
-        stance: e.stance,
-      });
-      const screen: { x: number; y: number }[] = [];
-      let minX = Infinity;
-      let minY = Infinity;
-      let maxX = -Infinity;
-      let maxY = -Infinity;
-      for (const q of foot.points) {
-        const s = this.toScreen(q.x, q.y);
-        screen.push(s);
-        minX = Math.min(minX, s.x);
-        minY = Math.min(minY, s.y);
-        maxX = Math.max(maxX, s.x);
-        maxY = Math.max(maxY, s.y);
-      }
-      if (maxX < -12 || maxY < -12 || minX > w + 12 || minY > h + 12) continue;
-      items.push({
-        layer: -1,
-        z: isoDepth(foot.cx, foot.cy),
-        run: () => drawGroundShadow(this.ctx, screen),
-      });
+      this.pushGroundShadow(
+        items,
+        unitShadowFootprint({
+          x: p.x,
+          y: p.y,
+          facing: p.facing,
+          radius: def.radius * scale,
+          elongated: !isInfantryType(e.type),
+          stance: e.stance,
+        }),
+      );
+    }
+  }
+
+  private collectBuildingShadows(items: { layer: number; z: number; run: () => void }[]): void {
+    const ts = this.ts();
+    for (const e of this.curr.entities) {
+      if (e.kind !== "building") continue;
+      const hw = (e.tileW * ts) / 2;
+      const hh = (e.tileH * ts) / 2;
+      this.pushGroundShadow(
+        items,
+        buildingShadowFootprint({
+          x: e.tileX * ts + hw,
+          y: e.tileY * ts + hh,
+          halfW: hw,
+          halfH: hh,
+        }),
+      );
     }
   }
 
@@ -2269,6 +2362,42 @@ export class MapView {
     this.trackKicks = keep;
   }
 
+  private collectMuzzleSmoke(items: { layer: number; z: number; run: () => void }[]): void {
+    const now = performance.now();
+    const live = new Set(this.curr.entities.map((e) => e.id));
+    for (const id of [...this.gunRecoil.keys()]) {
+      if (!live.has(id)) this.gunRecoil.delete(id);
+    }
+    if (this.muzzleSmokes.length > 360) {
+      this.muzzleSmokes.splice(0, this.muzzleSmokes.length - 360);
+    }
+    const keep: MuzzleSmokePuff[] = [];
+    for (const puff of this.muzzleSmokes) {
+      const pose = muzzleSmokePose(puff, now);
+      if (!pose) continue;
+      keep.push(puff);
+      const screen = this.toScreen(pose.x, pose.y);
+      const tip = this.toScreen(pose.x + puff.vx * 0.08, pose.y + puff.vy * 0.08);
+      items.push({
+        layer: 1,
+        z: isoDepth(pose.x, pose.y) + 0.2,
+        run: () =>
+          drawMuzzleSmoke(
+            this.ctx,
+            screen.x,
+            screen.y - pose.lift,
+            pose.t,
+            puff.kind,
+            puff.seed,
+            puff.scale,
+            tip.x - screen.x,
+            tip.y - screen.y,
+          ),
+      });
+    }
+    this.muzzleSmokes = keep;
+  }
+
   private collectTrees(items: { layer: number; z: number; run: () => void }[]): void {
     const map = this.map();
     const ts = map.tileSize;
@@ -2292,6 +2421,7 @@ export class MapView {
       const dim = !this.lit(tx, ty);
       const flip = (h & 2) === 0 && !pine;
       const spr = pine ? TREE_PINE : TREE_OAK;
+      this.pushGroundShadow(items, treeShadowFootprint(wx, wy, drawH));
       items.push({
         layer: 0,
         z: isoDepth(wx, wy),
@@ -2590,6 +2720,30 @@ export class MapView {
     const turretDir = facingToIso(p.turretFacing ?? p.facing, this.ts());
     const occluded = this.unitOccluded(e);
     const fade = occluded ? OCCLUDED_UNIT_ALPHA : 1;
+    let hullShiftX = 0;
+    let hullShiftY = 0;
+    let gunShiftX = 0;
+    let gunShiftY = 0;
+    const rec = this.gunRecoil.get(e.id);
+    if (
+      rec &&
+      tankGunRecoils({
+        hasGun: !!def.gun,
+        wreck: e.wreck,
+        garrisonedIn: e.garrisonedIn,
+      })
+    ) {
+      const amount = recoilAmounts(rec.at, performance.now());
+      if (!amount) this.gunRecoil.delete(e.id);
+      else {
+        const px = recoilPixels(size, amount);
+        const shift = recoilLayerShift(turretDir.x, turretDir.y, px.hullPx, px.gunPx);
+        hullShiftX = shift.hullX;
+        hullShiftY = shift.hullY;
+        gunShiftX = shift.gunX;
+        gunShiftY = shift.gunY;
+      }
+    }
     ctx.save();
     ctx.globalAlpha = fade;
     ctx.save();
@@ -2602,9 +2756,13 @@ export class MapView {
       turretDy: turretDir.y,
       facing: p.facing,
       turretFacing: p.turretFacing,
+      hullShiftX,
+      hullShiftY,
+      gunShiftX,
+      gunShiftY,
     });
     if (drawn && e.scout?.out && !e.wreck) {
-      drawScoutHead(ctx, s.x, s.y, turretDir.x, turretDir.y, size, p.turretFacing);
+      drawScoutHead(ctx, s.x + hullShiftX, s.y + hullShiftY, turretDir.x, turretDir.y, size, p.turretFacing);
     }
     ctx.restore();
     ctx.restore();

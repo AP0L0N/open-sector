@@ -10,7 +10,7 @@ export const SUN_AZIMUTH = (9 * Math.PI) / 8;
 /** Height of the sun above the horizon. */
 export const SUN_ELEVATION = (48 * Math.PI) / 180;
 /** How far the blob center slides from the feet toward the cast, 0..1. */
-export const SHADOW_CAST = 0.78;
+export const SHADOW_CAST = 0.2;
 const SHADOW_SEGS = 16;
 /** World-space height used to hang the disc in the NW sky void. */
 export const SUN_SKY_ELEV = 48;
@@ -36,7 +36,7 @@ export function shadowStanceScale(stance?: string): number {
 }
 
 export function unitShadowHeight(radius: number, stance?: string): number {
-  return Math.max(3.5, radius * 1.45 * shadowStanceScale(stance));
+  return Math.max(2, radius * 0.7 * shadowStanceScale(stance));
 }
 
 export function unitCastsShadow(opts: {
@@ -53,20 +53,18 @@ export function sunSkyWorld(tileSize: number): { x: number; y: number; z: number
   return { x: -d, y: -d, z: SUN_SKY_ELEV };
 }
 
-export function unitShadowFootprint(opts: {
+export function groundShadowEllipse(opts: {
   x: number;
   y: number;
   facing: number;
-  radius: number;
-  elongated: boolean;
-  stance?: string;
+  along: number;
+  across: number;
+  height: number;
 }): { cx: number; cy: number; points: { x: number; y: number }[] } {
   const dir = shadowWorldDir();
-  const len = shadowLength(unitShadowHeight(opts.radius, opts.stance)) * SHADOW_CAST;
+  const len = shadowLength(Math.max(0, opts.height)) * SHADOW_CAST;
   const cx = opts.x + dir.x * len;
   const cy = opts.y + dir.y * len;
-  const along = opts.radius * (opts.elongated ? 1.85 : 1.35);
-  const across = opts.radius * (opts.elongated ? 1.05 : 1.35);
   const fx = Math.cos(opts.facing);
   const fy = Math.sin(opts.facing);
   const rx = -fy;
@@ -77,11 +75,65 @@ export function unitShadowFootprint(opts: {
     const ca = Math.cos(t);
     const sa = Math.sin(t);
     points.push({
-      x: cx + fx * along * ca + rx * across * sa,
-      y: cy + fy * along * ca + ry * across * sa,
+      x: cx + fx * opts.along * ca + rx * opts.across * sa,
+      y: cy + fy * opts.along * ca + ry * opts.across * sa,
     });
   }
   return { cx, cy, points };
+}
+
+export function unitShadowFootprint(opts: {
+  x: number;
+  y: number;
+  facing: number;
+  radius: number;
+  elongated: boolean;
+  stance?: string;
+}): { cx: number; cy: number; points: { x: number; y: number }[] } {
+  return groundShadowEllipse({
+    x: opts.x,
+    y: opts.y,
+    facing: opts.facing,
+    along: opts.radius * (opts.elongated ? 0.95 : 0.72),
+    across: opts.radius * (opts.elongated ? 0.52 : 0.72),
+    height: unitShadowHeight(opts.radius, opts.stance),
+  });
+}
+
+/** Canopy puddle at the stem. `drawH` is the on-map sprite height in screen pixels. */
+export function treeShadowFootprint(
+  x: number,
+  y: number,
+  drawH: number,
+): { cx: number; cy: number; points: { x: number; y: number }[] } {
+  const r = Math.max(4, drawH * 0.2);
+  return groundShadowEllipse({
+    x,
+    y,
+    facing: 0,
+    along: r,
+    across: r * 0.92,
+    height: r * 1.15,
+  });
+}
+
+/** Axis-aligned pad blob. Half-extents are world pixels. */
+export function buildingShadowFootprint(opts: {
+  x: number;
+  y: number;
+  halfW: number;
+  halfH: number;
+}): { cx: number; cy: number; points: { x: number; y: number }[] } {
+  const along = Math.max(4, opts.halfW * 0.82);
+  const across = Math.max(4, opts.halfH * 0.82);
+  return groundShadowEllipse({
+    x: opts.x,
+    y: opts.y,
+    facing: 0,
+    along,
+    across,
+    height: Math.max(along, across) * 0.7,
+  });
 }
 
 export function drawGroundShadow(
@@ -100,18 +152,18 @@ export function drawGroundShadow(
   cy /= points.length;
   ctx.save();
   ctx.globalAlpha *= alpha;
-  ctx.fillStyle = "rgba(8, 6, 3, 0.22)";
+  ctx.fillStyle = "rgba(10, 8, 5, 0.08)";
   ctx.beginPath();
   for (let i = 0; i < points.length; i++) {
     const p = points[i]!;
-    const x = cx + (p.x - cx) * 1.4;
-    const y = cy + (p.y - cy) * 1.4;
+    const x = cx + (p.x - cx) * 1.12;
+    const y = cy + (p.y - cy) * 1.12;
     if (i === 0) ctx.moveTo(x, y);
     else ctx.lineTo(x, y);
   }
   ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = "rgba(8, 6, 3, 0.4)";
+  ctx.fillStyle = "rgba(10, 8, 5, 0.16)";
   ctx.beginPath();
   ctx.moveTo(points[0]!.x, points[0]!.y);
   for (let i = 1; i < points.length; i++) {

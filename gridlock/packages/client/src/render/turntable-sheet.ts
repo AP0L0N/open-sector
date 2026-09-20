@@ -28,7 +28,17 @@ const turretGlob = import.meta.glob("../assets/units/tiger/turret/*.png", {
   import: "default",
 }) as Record<string, string>;
 
-const ss3Glob = import.meta.glob("../assets/units/ss3/*.png", {
+const tigerGunGlob = import.meta.glob("../assets/units/tiger/gun/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const ss3HullGlob = import.meta.glob("../assets/units/ss3/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const ss3GunGlob = import.meta.glob("../assets/units/ss3/gun/*.png", {
   eager: true,
   import: "default",
 }) as Record<string, string>;
@@ -106,8 +116,7 @@ function place(
 }
 
 export interface ComposedTurntable {
-  hullUrl: string;
-  turretUrl: string;
+  sheetUrls: string[];
   cameoUrl: string;
 }
 
@@ -115,8 +124,7 @@ let previous: ComposedTurntable | null = null;
 
 function revoke(rec: ComposedTurntable | null): void {
   if (!rec) return;
-  URL.revokeObjectURL(rec.hullUrl);
-  URL.revokeObjectURL(rec.turretUrl);
+  for (const url of rec.sheetUrls) URL.revokeObjectURL(url);
   URL.revokeObjectURL(rec.cameoUrl);
 }
 
@@ -156,20 +164,27 @@ function opaqueBBoxCanvas(c: HTMLCanvasElement, alphaMin = 8): BBox | null {
   return found ? { x0, y0, x1, y1 } : null;
 }
 
-async function composePair(
-  hullImgs: HTMLImageElement[],
-  turretImgs: HTMLImageElement[],
+/**
+ * Same camera, same transform for every layer so a recoiling gun stays
+ * registered with the hull/turret hole it was authored against.
+ */
+async function composeAligned(
+  layers: HTMLImageElement[][],
   opts: TurntableSheetOpts,
 ): Promise<ComposedTurntable> {
+  if (layers.length === 0) throw new Error("no turntable layers");
+  const hullImgs = layers[0]!;
   const boxes: BBox[] = [];
   const hullBottoms: number[] = [];
   for (let i = 0; i < TURNTABLE_DIRS; i++) {
-    const h = opaqueBBox(hullImgs[i]!);
-    const t = opaqueBBox(turretImgs[i]!);
-    if (!h) throw new Error(`empty hull frame ${i + 1}`);
-    if (!t) throw new Error(`empty turret frame ${i + 1}`);
-    boxes.push(h, t);
-    hullBottoms.push(h.y1);
+    for (let L = 0; L < layers.length; L++) {
+      const img = layers[L]![i];
+      if (!img) throw new Error(`empty layer ${L} frame ${i + 1}`);
+      const b = opaqueBBox(img);
+      if (!b) throw new Error(`empty layer ${L} frame ${i + 1}`);
+      boxes.push(b);
+      if (L === 0) hullBottoms.push(b.y1);
+    }
   }
   const union = {
     x0: Math.min(...boxes.map((b) => b.x0)),
@@ -186,18 +201,25 @@ async function composePair(
   const sorted = [...hullBottoms].sort((a, b) => a - b);
   const medBottom = sorted[Math.floor(sorted.length / 2)] ?? union.y1;
   const ox = opts.cell / 2 - cx * scale;
-  const oy = opts.cell * opts.contactY - medBottom * scale;
+  let oy = opts.cell * opts.contactY - medBottom * scale;
+  const minOy = opts.padding - union.y0 * scale;
+  const maxOy = opts.cell - opts.padding - union.y1 * scale;
+  if (maxOy < minOy) oy = (minOy + maxOy) / 2;
+  else oy = Math.min(maxOy, Math.max(minOy, oy));
 
-  const hullSheet = makeSheetCanvas(opts.cell);
-  const turretSheet = makeSheetCanvas(opts.cell);
-  const hg = hullSheet.getContext("2d");
-  const tg = turretSheet.getContext("2d");
-  if (!hg || !tg) throw new Error("2d context");
+  const sheets = layers.map(() => makeSheetCanvas(opts.cell));
+  const gs: CanvasRenderingContext2D[] = [];
+  for (const sheet of sheets) {
+    const g = sheet.getContext("2d");
+    if (!g) throw new Error("2d context");
+    gs.push(g);
+  }
 
   for (let frame = 1; frame <= TURNTABLE_DIRS; frame++) {
     const row = engineRowFromFrame(frame);
-    place(hg, hullImgs[frame - 1]!, opts.cell, row, scale, ox, oy);
-    place(tg, turretImgs[frame - 1]!, opts.cell, row, scale, ox, oy);
+    for (let L = 0; L < layers.length; L++) {
+      place(gs[L]!, layers[L]![frame - 1]!, opts.cell, row, scale, ox, oy);
+    }
   }
 
   const cameoRow = engineRowFromFacing(opts.cameoFacing);
@@ -206,8 +228,9 @@ async function composePair(
   combo.height = opts.cell;
   const cg = combo.getContext("2d");
   if (!cg) throw new Error("2d context");
-  cg.drawImage(hullSheet, 0, cameoRow * opts.cell, opts.cell, opts.cell, 0, 0, opts.cell, opts.cell);
-  cg.drawImage(turretSheet, 0, cameoRow * opts.cell, opts.cell, opts.cell, 0, 0, opts.cell, opts.cell);
+  for (const sheet of sheets) {
+    cg.drawImage(sheet, 0, cameoRow * opts.cell, opts.cell, opts.cell, 0, 0, opts.cell, opts.cell);
+  }
   const box = opaqueBBoxCanvas(combo);
   const cameo = document.createElement("canvas");
   cameo.width = opts.cameoSize;
@@ -235,120 +258,36 @@ async function composePair(
     );
   }
 
-  const [hullUrl, turretUrl, cameoUrl] = await Promise.all([
-    canvasPngUrl(hullSheet),
-    canvasPngUrl(turretSheet),
+  const [cameoUrl, ...sheetUrls] = await Promise.all([
     canvasPngUrl(cameo),
+    ...sheets.map((sheet) => canvasPngUrl(sheet)),
   ]);
-  return { hullUrl, turretUrl, cameoUrl };
+  return { sheetUrls, cameoUrl };
 }
 
 function applyCameo(url: string, cssVar = "--tiger-cameo"): void {
   document.documentElement.style.setProperty(cssVar, `url("${url}")`);
 }
 
-interface ComposedCasemate {
-  hullUrl: string;
-  cameoUrl: string;
-}
+let ss3Previous: ComposedTurntable | null = null;
 
-let ss3Previous: ComposedCasemate | null = null;
-
-function revokeCasemate(rec: ComposedCasemate | null): void {
-  if (!rec) return;
-  URL.revokeObjectURL(rec.hullUrl);
-  URL.revokeObjectURL(rec.cameoUrl);
-}
-
-async function composeCasemate(
-  hullImgs: HTMLImageElement[],
-  opts: TurntableSheetOpts,
-): Promise<ComposedCasemate> {
-  const boxes: BBox[] = [];
-  const hullBottoms: number[] = [];
-  for (let i = 0; i < TURNTABLE_DIRS; i++) {
-    const h = opaqueBBox(hullImgs[i]!);
-    if (!h) throw new Error(`empty casemate frame ${i + 1}`);
-    boxes.push(h);
-    hullBottoms.push(h.y1);
-  }
-  const union = {
-    x0: Math.min(...boxes.map((b) => b.x0)),
-    y0: Math.min(...boxes.map((b) => b.y0)),
-    x1: Math.max(...boxes.map((b) => b.x1)),
-    y1: Math.max(...boxes.map((b) => b.y1)),
-  };
-  const uw = union.x1 - union.x0;
-  const uh = union.y1 - union.y0;
-  const maxW = Math.max(1, opts.cell - 2 * opts.padding);
-  const maxH = Math.max(1, opts.cell - 2 * opts.padding);
-  const scale = Math.min(maxW / uw, maxH / uh, 1);
-  const cx = hullImgs[0]!.naturalWidth / 2;
-  const sorted = [...hullBottoms].sort((a, b) => a - b);
-  const medBottom = sorted[Math.floor(sorted.length / 2)] ?? union.y1;
-  const ox = opts.cell / 2 - cx * scale;
-  const oy = opts.cell * opts.contactY - medBottom * scale;
-
-  const hullSheet = makeSheetCanvas(opts.cell);
-  const hg = hullSheet.getContext("2d");
-  if (!hg) throw new Error("2d context");
-  for (let frame = 1; frame <= TURNTABLE_DIRS; frame++) {
-    const row = engineRowFromFrame(frame);
-    place(hg, hullImgs[frame - 1]!, opts.cell, row, scale, ox, oy);
-  }
-
-  const cameoRow = engineRowFromFacing(opts.cameoFacing);
-  const combo = document.createElement("canvas");
-  combo.width = opts.cell;
-  combo.height = opts.cell;
-  const cg = combo.getContext("2d");
-  if (!cg) throw new Error("2d context");
-  cg.drawImage(hullSheet, 0, cameoRow * opts.cell, opts.cell, opts.cell, 0, 0, opts.cell, opts.cell);
-  const box = opaqueBBoxCanvas(combo);
-  const cameo = document.createElement("canvas");
-  cameo.width = opts.cameoSize;
-  cameo.height = opts.cameoSize;
-  const cag = cameo.getContext("2d");
-  if (cag && box) {
-    const pad = 8;
-    const bw = box.x1 - box.x0;
-    const bh = box.y1 - box.y0;
-    const fit = Math.min((opts.cameoSize - 2 * pad) / bw, (opts.cameoSize - 2 * pad) / bh, 1);
-    const nw = Math.max(1, Math.round(bw * fit));
-    const nh = Math.max(1, Math.round(bh * fit));
-    cag.imageSmoothingEnabled = true;
-    cag.imageSmoothingQuality = "high";
-    cag.drawImage(
-      combo,
-      box.x0,
-      box.y0,
-      bw,
-      bh,
-      Math.floor((opts.cameoSize - nw) / 2),
-      Math.floor((opts.cameoSize - nh) / 2),
-      nw,
-      nh,
-    );
-  }
-
-  const [hullUrl, cameoUrl] = await Promise.all([canvasPngUrl(hullSheet), canvasPngUrl(cameo)]);
-  return { hullUrl, cameoUrl };
-}
-
-export function bindCasemateSheets(hullImage: HTMLImageElement): void {
+export function bindCasemateSheets(hullImage: HTMLImageElement, gunImage: HTMLImageElement): void {
   let hullUrls: string[];
+  let gunUrls: string[];
   try {
-    hullUrls = pickTurntableUrls(ss3Glob);
+    hullUrls = pickTurntableUrls(ss3HullGlob);
+    gunUrls = pickTurntableUrls(ss3GunGlob);
   } catch (err) {
     console.error("ss3 turntable", err);
     return;
   }
-  void Promise.all(hullUrls.map(loadImage))
-    .then((hullImgs) => composeCasemate(hullImgs, SS3_OPTS))
+  void Promise.all([Promise.all(hullUrls.map(loadImage)), Promise.all(gunUrls.map(loadImage))])
+    .then(([hullImgs, gunImgs]) => composeAligned([hullImgs, gunImgs], SS3_OPTS))
     .then((next) => {
-      revokeCasemate(ss3Previous);
+      revoke(ss3Previous);
       ss3Previous = next;
-      hullImage.src = next.hullUrl;
+      hullImage.src = next.sheetUrls[0] ?? "";
+      gunImage.src = next.sheetUrls[1] ?? "";
       applyCameo(next.cameoUrl, "--ss3-cameo");
     })
     .catch((err) => {
@@ -359,23 +298,33 @@ export function bindCasemateSheets(hullImage: HTMLImageElement): void {
 export function bindTurntableSheets(
   hullImage: HTMLImageElement,
   turretImage: HTMLImageElement,
+  gunImage: HTMLImageElement,
 ): void {
   let hullUrls: string[];
   let turretUrls: string[];
+  let gunUrls: string[];
   try {
     hullUrls = pickTurntableUrls(hullGlob);
     turretUrls = pickTurntableUrls(turretGlob);
+    gunUrls = pickTurntableUrls(tigerGunGlob);
   } catch (err) {
     console.error("tiger turntable", err);
     return;
   }
-  void Promise.all([Promise.all(hullUrls.map(loadImage)), Promise.all(turretUrls.map(loadImage))])
-    .then(([hullImgs, turretImgs]) => composePair(hullImgs, turretImgs, TIGER_OPTS))
+  void Promise.all([
+    Promise.all(hullUrls.map(loadImage)),
+    Promise.all(turretUrls.map(loadImage)),
+    Promise.all(gunUrls.map(loadImage)),
+  ])
+    .then(([hullImgs, turretImgs, gunImgs]) =>
+      composeAligned([hullImgs, turretImgs, gunImgs], TIGER_OPTS),
+    )
     .then((next) => {
       revoke(previous);
       previous = next;
-      hullImage.src = next.hullUrl;
-      turretImage.src = next.turretUrl;
+      hullImage.src = next.sheetUrls[0] ?? "";
+      turretImage.src = next.sheetUrls[1] ?? "";
+      gunImage.src = next.sheetUrls[2] ?? "";
       applyCameo(next.cameoUrl);
     })
     .catch((err) => {

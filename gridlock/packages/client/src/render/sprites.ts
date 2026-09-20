@@ -14,7 +14,12 @@ import {
   rectsOverlap,
   type BuildingAlphaMap,
 } from "./building-hit.js";
-import { snapToUnitHitMask, unitDestMaskFromSheets, unitSpriteDest } from "./unit-hit.js";
+import {
+  snapToUnitHitMask,
+  unitDestMaskFromSheets,
+  unitGroundSink,
+  unitSpriteDest,
+} from "./unit-hit.js";
 import coreUrl from "../assets/buildings/core.png";
 import dynamoUrl from "../assets/buildings/dynamo.png";
 import smelterUrl from "../assets/buildings/smelter.png";
@@ -78,7 +83,7 @@ export const INFANTRY_VISUAL_SCALE = UNIT_VISUAL_SCALE * 0.85;
 /** On-map draw size for infantry sprites, screen pixels. */
 export const UNIT_SPRITE_DRAW_SIZE = Math.round(22 * INFANTRY_VISUAL_SCALE);
 
-/** Optional independently-aimed gun drawn on top of the hull sheet. */
+/** Optional overlay sheet (turret or recoiling gun) drawn with the hull. */
 export interface TurretSpriteDef {
   image: HTMLImageElement;
   dirs: number;
@@ -97,6 +102,8 @@ export interface UnitSpriteDef {
   /** Fraction from the top of the cell that sits on the ground point (feet/tracks/hull). */
   contactY: number;
   turret?: TurretSpriteDef;
+  /** Barrel drawn apart from hull/turret so it can recoil. */
+  gun?: TurretSpriteDef;
   /**
    * `world` (default): project facing onto the iso view, then 0001 = screen south.
    * `screen`: engineRowFromScreen of the given vector.
@@ -173,6 +180,12 @@ const tigerTurret: TurretSpriteDef = {
   frames: 1,
   frameSize: 128,
 };
+const tigerGun: TurretSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+};
 export const TIGER_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
@@ -182,11 +195,18 @@ export const TIGER_SPRITE: UnitSpriteDef = {
   drawSize: Math.round(44 * UNIT_VISUAL_SCALE),
   contactY: 0.92,
   turret: tigerTurret,
+  gun: tigerGun,
   facingSpace: "world",
 };
-bindTurntableSheets(TIGER_SPRITE.image, tigerTurret.image);
+bindTurntableSheets(TIGER_SPRITE.image, tigerTurret.image, tigerGun.image);
 
-/** Casemate hull: 16 faces in the unit folder, no turret sheet. */
+const ss3Gun: TurretSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+};
+/** Casemate hull + recoiling gun; the gun does not traverse on its own. */
 export const SS3_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
@@ -195,9 +215,10 @@ export const SS3_SPRITE: UnitSpriteDef = {
   fps: 8,
   drawSize: Math.round(40 * UNIT_VISUAL_SCALE),
   contactY: 0.92,
+  gun: ss3Gun,
   facingSpace: "world",
 };
-bindCasemateSheets(SS3_SPRITE.image);
+bindCasemateSheets(SS3_SPRITE.image, ss3Gun.image);
 
 export const HAULER_SPRITE: UnitSpriteDef = {
   image: loadSheet(haulerSheetUrl),
@@ -542,7 +563,7 @@ function sheetDir(
 }
 
 /**
- * Snap a screen-space armor spark onto painted hull/turret pixels.
+ * Snap a screen-space armor spark onto painted hull/turret/gun pixels.
  * `ground` is the unit's contact point; `hit` is the candidate spark.
  */
 export function snapHitToUnitSprite(
@@ -564,15 +585,34 @@ export function snapHitToUnitSprite(
   const dir = sheetDir(def, isoDx, isoDy, facing);
   const hull = { map: hullMap, sx: 0, sy: dir * def.frameSize, cell: def.frameSize };
   let turret: { map: BuildingAlphaMap; sx: number; sy: number; cell: number } | null = null;
-  const gun = def.turret;
-  if (gun && spriteReady(gun)) {
-    const tmap = unitSheetAlpha(gun.image);
+  const overlay = def.turret;
+  if (overlay && spriteReady(overlay)) {
+    const tmap = unitSheetAlpha(overlay.image);
     if (tmap) {
-      const tdir = sheetDir({ dirs: gun.dirs, facingSpace: def.facingSpace }, turretDx ?? isoDx, turretDy ?? isoDy, turretFacing ?? facing);
-      turret = { map: tmap, sx: 0, sy: tdir * gun.frameSize, cell: gun.frameSize };
+      const tdir = sheetDir(
+        { dirs: overlay.dirs, facingSpace: def.facingSpace },
+        turretDx ?? isoDx,
+        turretDy ?? isoDy,
+        turretFacing ?? facing,
+      );
+      turret = { map: tmap, sx: 0, sy: tdir * overlay.frameSize, cell: overlay.frameSize };
     }
   }
-  const mask = unitDestMaskFromSheets(def.drawSize, hull, turret);
+  let gun: { map: BuildingAlphaMap; sx: number; sy: number; cell: number } | null = null;
+  const barrel = def.gun;
+  if (barrel && spriteReady(barrel)) {
+    const gmap = unitSheetAlpha(barrel.image);
+    if (gmap) {
+      const gdir = sheetDir(
+        { dirs: barrel.dirs, facingSpace: def.facingSpace },
+        turretDx ?? isoDx,
+        turretDy ?? isoDy,
+        turretFacing ?? facing,
+      );
+      gun = { map: gmap, sx: 0, sy: gdir * barrel.frameSize, cell: barrel.frameSize };
+    }
+  }
+  const mask = unitDestMaskFromSheets(def.drawSize, hull, turret, gun);
   const dest = unitSpriteDest(groundX, groundY, def.drawSize, def.contactY);
   const snap = snapToUnitHitMask(mask, hitX - dest.x, hitY - dest.y);
   if (!snap) return null;
@@ -612,6 +652,24 @@ export function buildingStackAt(
   };
 }
 
+function blitOverlay(
+  ctx: CanvasRenderingContext2D,
+  overlay: TurretSpriteDef,
+  facingSpace: UnitSpriteDef["facingSpace"],
+  isoDx: number,
+  isoDy: number,
+  facing: number | undefined,
+  frame: number,
+  dx: number,
+  dy: number,
+  s: number,
+): void {
+  const dir = sheetDir({ dirs: overlay.dirs, facingSpace }, isoDx, isoDy, facing);
+  const f = overlay.frames > 1 ? frame % overlay.frames : 0;
+  const cell = overlay.frameSize;
+  ctx.drawImage(overlay.image, f * cell, dir * cell, cell, cell, dx, dy, s, s);
+}
+
 export function drawUnitSprite(
   ctx: CanvasRenderingContext2D,
   def: UnitSpriteDef,
@@ -627,6 +685,10 @@ export function drawUnitSprite(
     turretDy?: number;
     facing?: number;
     turretFacing?: number;
+    hullShiftX?: number;
+    hullShiftY?: number;
+    gunShiftX?: number;
+    gunShiftY?: number;
   },
 ): boolean {
   if (!spriteReady(def)) return false;
@@ -636,25 +698,29 @@ export function drawUnitSprite(
     : 0;
   const s = def.drawSize;
   const cell = def.frameSize;
-  const dx = x - s / 2;
-  const dy = y - s * def.contactY;
+  const sink = unitGroundSink(s);
+  const hx = (opts.hullShiftX ?? 0) + x - s / 2;
+  const hy = (opts.hullShiftY ?? 0) + y - s * def.contactY + sink;
+  const gx = (opts.gunShiftX ?? opts.hullShiftX ?? 0) + x - s / 2;
+  const gy = (opts.gunShiftY ?? opts.hullShiftY ?? 0) + y - s * def.contactY + sink;
+  const tdx = opts.turretDx ?? isoDx;
+  const tdy = opts.turretDy ?? isoDy;
+  const gunFacing = opts.turretFacing ?? opts.facing;
+  const gunBehind = tdy < 0;
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "low";
-  ctx.drawImage(def.image, frame * cell, dir * cell, cell, cell, dx, dy, s, s);
+  const gun = def.gun;
   const turret = def.turret;
+  if (gunBehind && gun && spriteReady(gun)) {
+    blitOverlay(ctx, gun, def.facingSpace, tdx, tdy, gunFacing, frame, gx, gy, s);
+  }
+  ctx.drawImage(def.image, frame * cell, dir * cell, cell, cell, hx, hy, s, s);
   if (turret && spriteReady(turret)) {
-    const tdx = opts.turretDx ?? isoDx;
-    const tdy = opts.turretDy ?? isoDy;
-    const tdir = sheetDir(
-      { dirs: turret.dirs, facingSpace: def.facingSpace },
-      tdx,
-      tdy,
-      opts.turretFacing ?? opts.facing,
-    );
-    const tframe = turret.frames > 1 ? frame % turret.frames : 0;
-    const tcell = turret.frameSize;
-    ctx.drawImage(turret.image, tframe * tcell, tdir * tcell, tcell, tcell, dx, dy, s, s);
+    blitOverlay(ctx, turret, def.facingSpace, tdx, tdy, gunFacing, frame, hx, hy, s);
+  }
+  if (!gunBehind && gun && spriteReady(gun)) {
+    blitOverlay(ctx, gun, def.facingSpace, tdx, tdy, gunFacing, frame, gx, gy, s);
   }
   ctx.restore();
   return true;
@@ -679,7 +745,7 @@ export function drawScoutHead(
   const ux = turretDx / len;
   const uy = turretDy / len;
   const hx = x + ux * hullSize * -0.04;
-  const hy = y + uy * hullSize * -0.04 * 0.45 - hullSize * 0.48;
+  const hy = y + uy * hullSize * -0.04 * 0.45 - hullSize * 0.48 + unitGroundSink(hullSize);
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "low";

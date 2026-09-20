@@ -13,7 +13,7 @@ const near = (a: number, b: number, eps = 1e-9): void => {
 };
 
 describe("clampMapZoom", () => {
-  it("keeps the default and clips the modest range", () => {
+  it("keeps the default and clips the range", () => {
     assert.equal(clampMapZoom(1), 1);
     assert.equal(clampMapZoom(MAP_ZOOM_MIN), MAP_ZOOM_MIN);
     assert.equal(clampMapZoom(MAP_ZOOM_MAX), MAP_ZOOM_MAX);
