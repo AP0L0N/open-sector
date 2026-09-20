@@ -14,8 +14,10 @@ import {
   TICK_DT,
   TILE_SIZE,
   TILE_SUBDIV,
+  TREE_COVER_HEIGHT,
   WEAPON_RANGE_SIGHT_MUL,
   catalog,
+  coverHeightOf,
 } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
@@ -23,6 +25,7 @@ import {
   gunCanElevate,
   hasTerrainLos,
   levelSightExtra,
+  shotClearsCover,
   observerEyeOf,
   rangeTilesOf,
   sightTilesOf,
@@ -227,6 +230,18 @@ describe("vision and range on a hill", () => {
   });
 });
 
+describe("shot cover height", () => {
+  it("lets a hilltop hull clear a valley tree but not a manor", () => {
+    const z = HEIGHT_BASE + HULL_EYE_HEIGHT;
+    assert.ok(TREE_COVER_HEIGHT < coverHeightOf("house"));
+    assert.ok(TREE_COVER_HEIGHT < coverHeightOf("manor"));
+    assert.equal(shotClearsCover(z, 0, TREE_COVER_HEIGHT), true);
+    assert.equal(shotClearsCover(z, 0, coverHeightOf("cottage")), true);
+    assert.equal(shotClearsCover(z, 0, coverHeightOf("manor")), false);
+    assert.equal(shotClearsCover(0, 0, TREE_COVER_HEIGHT), false);
+  });
+});
+
 describe("tank gun elevation", () => {
   it("lets a modest terrace through and blocks a steep hole lip", () => {
     const ts = TILE_SIZE;
@@ -318,6 +333,23 @@ describe("tank gun elevation", () => {
     shooter.turretFacing = 0;
     tickCombat(state, TICK_DT);
     assert.equal(shooter.attackTarget, null);
+    assert.equal(state.projectiles.some((p) => p.fromId === shooter.id), false);
+  });
+
+  it("stops a valley StuG from hitting a hull much above it", () => {
+    const { state, a, b } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const gap = HEIGHT_BASE;
+    const shooter = makeEntity(state, "ss3", a, tileCenter(12, ts), tileCenter(12, ts));
+    const target = makeEntity(state, "hauler", b, tileCenter(12 + gap, ts), tileCenter(12, ts));
+    target.autoHarvest = false;
+    state.heights[12 * state.width + 12 + gap] = HEIGHT_BASE;
+    shooter.facing = 0;
+    shooter.turretFacing = 0;
+    shooter.order = { kind: "attack", targetId: target.id };
+    assert.equal(canAimWeapon(state, shooter, target.x, target.y, target), false);
+    tickCombat(state, TICK_DT);
     assert.equal(state.projectiles.some((p) => p.fromId === shooter.id), false);
   });
 });

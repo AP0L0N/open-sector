@@ -31,7 +31,12 @@ import {
   armorLabel,
   BUILDING_TYPES,
   catalog,
+  gunArcDegOf,
+  FACE_FIRE_DEG,
   hasMg,
+  hasTurret,
+  shellsFor,
+  STUG_SHELLS,
   infantryGunFor,
   infantryLoadout,
   hasScout,
@@ -178,6 +183,7 @@ describe("armor", () => {
 describe("injuries", () => {
   it("marks rolling hulls as motor vehicles and troopers as infantry", () => {
     assert.equal(isMotorVehicle("warden"), true);
+    assert.equal(isMotorVehicle("ss3"), true);
     assert.equal(isMotorVehicle("hauler"), true);
     assert.equal(isMotorVehicle("rig"), true);
     assert.equal(isMotorVehicle("trooper"), false);
@@ -242,17 +248,68 @@ describe("weapon reach", () => {
   it("is sight plus 20% for troopers and tanks", () => {
     const inf = catalog("trooper");
     const tank = catalog("warden");
+    const stug = catalog("ss3");
     assert.equal(WEAPON_RANGE_SIGHT_MUL, 1.2);
     assert.equal(inf.rangeTiles, inf.sightTiles * WEAPON_RANGE_SIGHT_MUL);
     assert.equal(tank.rangeTiles, tank.sightTiles * WEAPON_RANGE_SIGHT_MUL);
+    assert.equal(stug.rangeTiles, stug.sightTiles * WEAPON_RANGE_SIGHT_MUL);
     assert.equal(inf.sightBonusTiles ?? 0, 0);
     assert.equal(tank.sightBonusTiles ?? 0, 0);
+    assert.equal(stug.sightBonusTiles ?? 0, 0);
+  });
+});
+
+describe("ss3 casemate", () => {
+  it("is the StuG III: cheaper than the Tiger, no turret, ±10° gun arc", () => {
+    const g = catalog("ss3");
+    const w = catalog("warden");
+    assert.equal(g.name, "StuG III");
+    assert.equal(g.letter, "G");
+    assert.equal(hasTurret("ss3"), false);
+    assert.equal(hasTurret("warden"), true);
+    assert.equal(g.turnInPlace, true);
+    assert.equal(g.turretTurnDegPerSec, undefined);
+    assert.equal(gunArcDegOf("ss3"), 10);
+    assert.equal(gunArcDegOf("warden"), FACE_FIRE_DEG);
+    assert.ok(g.cost < w.cost);
+    assert.ok(g.buildSeconds < w.buildSeconds);
+    assert.ok(g.hp < w.hp);
+    assert.ok(g.armorFront < w.armorFront);
+    assert.ok(g.armorSide < w.armorSide);
+    assert.ok(g.armorRear > g.armorSide);
+    assert.ok(g.moveTilesPerSec > w.moveTilesPerSec);
+    assert.ok(g.turnDegPerSec < w.turnDegPerSec);
+    assert.ok(g.sightTiles < w.sightTiles);
+    assert.equal(g.rangeTiles, g.sightTiles * WEAPON_RANGE_SIGHT_MUL);
+    assert.equal(hasMg("ss3"), true);
+    assert.equal(hasScout("ss3"), true);
+    assert.equal(g.leavesWreck, true);
+    assert.ok((g.blurb ?? "").length > 24);
+  });
+
+  it("carries a mixed L/48 rack that cannot frontally pen a Tiger with AP", () => {
+    const g = catalog("ss3");
+    const ammo = g.ammo ?? {};
+    const total = (ammo.ap ?? 0) + (ammo.he ?? 0) + (ammo.heat ?? 0) + (ammo.smoke ?? 0);
+    assert.ok(total >= 20 && total <= 28, `total=${total}`);
+    assert.ok((ammo.he ?? 0) >= 8, "assault gun keeps a real HE load");
+    assert.equal(g.defaultShell, "ap");
+    assert.equal(shellsFor("ss3"), STUG_SHELLS);
+    assert.equal(shellsFor("warden"), SHELLS);
+    assert.ok(STUG_SHELLS.ap.penetration < catalog("warden").armorFront);
+    assert.ok(STUG_SHELLS.ap.penetration < SHELLS.ap.penetration);
+    assert.ok(STUG_SHELLS.heat.penetration > catalog("warden").armorFront);
+    assert.ok(STUG_SHELLS.he.damage > STUG_SHELLS.ap.damage);
+    for (const id of SHELL_TYPES) {
+      assert.ok(STUG_SHELLS[id].blurb.length > 24, id);
+    }
   });
 });
 
 describe("hatch scout", () => {
   it("is a Warden crew with garrison-like 3× trooper HP", () => {
     assert.equal(hasScout("warden"), true);
+    assert.equal(hasScout("ss3"), true);
     assert.equal(hasScout("hauler"), false);
     assert.equal(scoutHpMaxOf("warden"), catalog("trooper").hp * SCOUT_HP_MUL);
     assert.equal(SCOUT_HP_MUL, 3);

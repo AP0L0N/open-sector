@@ -155,6 +155,10 @@ export interface Projectile {
   bounced: boolean;
   /** Loaded 75mm type. Null for rifles / MG. */
   shell: ShellType | null;
+  /** Elevation units at the current point. Omit in tests for ground-level. */
+  z?: number;
+  /** Elevation units per second along the shot. */
+  vz?: number;
 }
 
 /** Lasting smoke screen from a 75mm smoke shell. */

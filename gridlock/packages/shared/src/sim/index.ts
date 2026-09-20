@@ -64,6 +64,9 @@ export type { SmokePuff } from "./smoke.js";
 export {
   tileHeight,
   entityHeight,
+  muzzleHeight,
+  aimHeight,
+  shotClearsCover,
   sightTilesOf,
   sightTilesForEntity,
   observerEyeForEntity,

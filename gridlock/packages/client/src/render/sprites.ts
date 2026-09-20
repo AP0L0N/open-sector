@@ -61,7 +61,7 @@ import trooperCrouchUrl from "../assets/units/trooper-crouch.png";
 import trooperCrawlUrl from "../assets/units/trooper-crawl.png";
 import infantrySwimUrl from "../assets/units/infantry-swim.png";
 import haulerSheetUrl from "../assets/units/hauler-move.png";
-import { bindTurntableSheets } from "./turntable-sheet.js";
+import { bindCasemateSheets, bindTurntableSheets } from "./turntable-sheet.js";
 import { engineRowFromFacing, engineRowFromScreen } from "./turntable.js";
 import scoutHeadUrl from "../assets/units/scout-head.png";
 import rigSheetUrl from "../assets/units/rig-move.png";
@@ -186,6 +186,19 @@ export const TIGER_SPRITE: UnitSpriteDef = {
 };
 bindTurntableSheets(TIGER_SPRITE.image, tigerTurret.image);
 
+/** Casemate hull: 16 faces in the unit folder, no turret sheet. */
+export const SS3_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(40 * UNIT_VISUAL_SCALE),
+  contactY: 0.92,
+  facingSpace: "world",
+};
+bindCasemateSheets(SS3_SPRITE.image);
+
 export const HAULER_SPRITE: UnitSpriteDef = {
   image: loadSheet(haulerSheetUrl),
   dirs: 16,
@@ -212,6 +225,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   trooper: TROOPER_SPRITE,
   hauler: HAULER_SPRITE,
   warden: TIGER_SPRITE,
+  ss3: SS3_SPRITE,
   rig: RIG_SPRITE,
 };
 

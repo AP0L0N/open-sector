@@ -88,6 +88,24 @@ import {
   type UnitSpriteDef,
 } from "./sprites.js";
 import { drawBuildingAnim } from "./building-fx.js";
+import {
+  drawTrackKick,
+  spawnTrackKickPuffs,
+  tankTracksKick,
+  trackKickOrigins,
+  trackKickPose,
+  trackKickTravel,
+  TRACK_KICK_SPACING,
+  type TrackKickPuff,
+} from "./track-kick.js";
+import {
+  drawGroundShadow,
+  drawSunDisc,
+  drawSunWash,
+  sunSkyWorld,
+  unitCastsShadow,
+  unitShadowFootprint,
+} from "./sun.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
 import { lerpHullPose } from "./hull-lerp.js";
@@ -144,6 +162,7 @@ const EXTRUDE: Record<EntityType, number> = {
   rig: 22,
   hauler: 16,
   warden: 28,
+  ss3: 20,
   trooper: 26,
   cottage: 28,
   shack: 24,
@@ -279,6 +298,8 @@ export class MapView {
   /** Bounced spark origin, snapped to the same hull pixel as the ricochet FX. */
   private bounceTrace = new Map<number, { x: number; y: number; sx: number; lift: number }>();
   private moveClicks: { x: number; y: number; at: number }[] = [];
+  private trackKicks: TrackKickPuff[] = [];
+  private trackKickLast = new Map<number, { x: number; y: number }>();
   private occBuildings: {
     x: number;
     y: number;
@@ -1714,6 +1735,11 @@ export class MapView {
     const { w, h } = this.viewSize();
     ctx.fillStyle = "#0c1008";
     ctx.fillRect(0, 0, w, h);
+    const sun = sunSkyWorld(this.ts());
+    const sunPt = this.toScreen(sun.x, sun.y, sun.z);
+    if (sunPt.x > -120 && sunPt.y > -120 && sunPt.x < w + 120 && sunPt.y < h + 120) {
+      drawSunDisc(ctx, sunPt.x, sunPt.y);
+    }
 
     const bake = this.terrain;
     ctx.imageSmoothingEnabled = false;
@@ -1722,6 +1748,7 @@ export class MapView {
       this.drawWaterShimmer();
       if (this.fog) blitAtlas(ctx, this.fog, bake.originX, bake.originY, this.camX, this.camY, w, h);
     }
+    drawSunWash(ctx, w, h);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "low";
     this.cacheOccluders();
@@ -1744,6 +1771,8 @@ export class MapView {
       });
     }
     this.collectTrees(items);
+    this.collectUnitShadows(items);
+    this.collectTrackKicks(items);
     for (const m of this.takeMoveClicks()) {
       items.push({
         layer: 0,
@@ -2107,6 +2136,137 @@ export class MapView {
     }
     this.treeStems = out;
     return out;
+  }
+
+  private collectUnitShadows(items: { layer: number; z: number; run: () => void }[]): void {
+    const { w, h } = this.viewSize();
+    for (const e of this.curr.entities) {
+      if (
+        !unitCastsShadow({
+          kind: e.kind,
+          garrisonedIn: e.garrisonedIn,
+          swimming: e.swimming,
+        })
+      ) {
+        continue;
+      }
+      const def = catalog(e.type);
+      const scale = isInfantryType(e.type) ? INFANTRY_VISUAL_SCALE : UNIT_VISUAL_SCALE;
+      const spr = spriteFor(e.type, e.stance, e.swimming);
+      const radius = Math.max(def.radius * scale, (spr?.drawSize ?? 0) * 0.3);
+      const p = this.lerpEnt(e);
+      const foot = unitShadowFootprint({
+        x: p.x,
+        y: p.y,
+        facing: p.facing,
+        radius,
+        elongated: !isInfantryType(e.type),
+        stance: e.stance,
+      });
+      const screen: { x: number; y: number }[] = [];
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (const q of foot.points) {
+        const s = this.toScreen(q.x, q.y);
+        screen.push(s);
+        minX = Math.min(minX, s.x);
+        minY = Math.min(minY, s.y);
+        maxX = Math.max(maxX, s.x);
+        maxY = Math.max(maxY, s.y);
+      }
+      if (maxX < -12 || maxY < -12 || minX > w + 12 || minY > h + 12) continue;
+      items.push({
+        layer: -1,
+        z: isoDepth(foot.cx, foot.cy),
+        run: () => drawGroundShadow(this.ctx, screen),
+      });
+    }
+  }
+
+  private collectTrackKicks(items: { layer: number; z: number; run: () => void }[]): void {
+    const now = performance.now();
+    const map = this.map();
+    const ts = map.tileSize;
+    const live = new Set<number>();
+    for (const e of this.curr.entities) {
+      if (e.kind !== "unit") continue;
+      live.add(e.id);
+      const def = catalog(e.type);
+      if (
+        !tankTracksKick({
+          kind: e.kind,
+          turnInPlace: def.turnInPlace,
+          wreck: e.wreck,
+          swimming: e.swimming,
+          immobilized: immobilized(e),
+          garrisonedIn: e.garrisonedIn,
+        })
+      ) {
+        this.trackKickLast.delete(e.id);
+        continue;
+      }
+      const p = this.lerpEnt(e);
+      const last = this.trackKickLast.get(e.id);
+      if (!last) {
+        this.trackKickLast.set(e.id, { x: p.x, y: p.y });
+        continue;
+      }
+      const dx = p.x - last.x;
+      const dy = p.y - last.y;
+      const travel = trackKickTravel(dx, dy, p.facing);
+      if (!travel || travel.dist < TRACK_KICK_SPACING) continue;
+      const steps = Math.min(4, Math.floor(travel.dist / TRACK_KICK_SPACING));
+      const origins = trackKickOrigins(p.x, p.y, p.facing, travel.reverse, def.radius);
+      const spr = spriteFor(e.type, e.stance, e.swimming);
+      const scale = (spr?.drawSize ?? 48) / 48;
+      for (let s = 1; s <= steps; s++) {
+        const k = s / steps;
+        const ox = last.x + dx * k;
+        const oy = last.y + dy * k;
+        const tx = worldToTile(ox, ts);
+        const ty = worldToTile(oy, ts);
+        if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) continue;
+        if (map.tiles[ty * map.width + tx] === TILE_WATER) continue;
+        for (let i = 0; i < origins.length; i++) {
+          const o = origins[i]!;
+          const sx = o.x + dx * (k - 1);
+          const sy = o.y + dy * (k - 1);
+          this.trackKicks.push(
+            ...spawnTrackKickPuffs(
+              { x: sx, y: sy },
+              travel.tossX,
+              travel.tossY,
+              now,
+              (e.id * 2654435761 + Math.floor(now) + s * 13 + i * 29) >>> 0,
+              travel.reverse,
+              scale,
+            ),
+          );
+        }
+      }
+      this.trackKickLast.set(e.id, { x: p.x, y: p.y });
+    }
+    for (const id of this.trackKickLast.keys()) {
+      if (!live.has(id)) this.trackKickLast.delete(id);
+    }
+    if (this.trackKicks.length > 480) this.trackKicks.splice(0, this.trackKicks.length - 480);
+
+    const keep: TrackKickPuff[] = [];
+    for (const puff of this.trackKicks) {
+      const pose = trackKickPose(puff, now);
+      if (!pose) continue;
+      keep.push(puff);
+      const screen = this.toScreen(pose.x, pose.y);
+      items.push({
+        layer: 1,
+        z: isoDepth(pose.x, pose.y) + (puff.reverse ? 0.4 : -0.4),
+        run: () =>
+          drawTrackKick(this.ctx, screen.x, screen.y - pose.lift, pose.t, puff.seed, puff.scale),
+      });
+    }
+    this.trackKicks = keep;
   }
 
   private collectTrees(items: { layer: number; z: number; run: () => void }[]): void {

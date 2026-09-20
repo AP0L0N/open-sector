@@ -1,17 +1,21 @@
 import {
   aimFacing,
   catalog,
-  FACE_FIRE_DEG,
+  gunArcDegOf,
   GARRISON_STRUCTURAL_CALIBER,
   GUARD_CONE_DEG,
   HAULER_SMOKE_COOLDOWN,
   HAULER_SMOKE_RELOAD,
   PROJECTILE_RADIUS,
   TANK_MG,
+  TREE_COVER_HEIGHT,
+  TREE_HIT_CHANCE,
   WEAPON_RANGE_SIGHT_MUL,
   WITHDRAW_TILES,
+  coverHeightOf,
   fires,
   hasAmmo,
+  hasCrit,
   hasMg,
   hasTurret,
   infantryGunFor,
@@ -38,7 +42,16 @@ import {
 } from "./ballistics.js";
 import { fireStats, hullTurnMul, immobilized, rollCrits } from "./crits.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
-import { canAimWeapon, weaponRangeWorld } from "./elevation.js";
+import {
+  aimHeight,
+  canAimWeapon,
+  entityHeight,
+  muzzleHeight,
+  shotClearsCover,
+  tileHeight,
+  weaponRangeWorld,
+  worldTileHeight,
+} from "./elevation.js";
 import {
   allies,
   buildingBounds,
@@ -65,7 +78,7 @@ import { nextRand } from "./rng.js";
 import { spawnSmokeCloud } from "./smoke.js";
 import { canSeeEntity } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
-import { escorting, reversing, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
+import { escorting, reversing, stepTurn, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
 export function tickCombat(state: MatchState, dt: number): void {
@@ -238,10 +251,16 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (!turreted && !holedUp) {
     remainingDeg = turnToward(e, aimX, aimY, def.turnDegPerSec * hullTurnMul(e), dt);
   }
-  if (!holedUp && Math.abs(remainingDeg) > FACE_FIRE_DEG) return;
+  const gunArc = gunArcDegOf(e.type);
+  const gunArcOk = Math.abs(remainingDeg) <= gunArc;
+  const tracksBroken = hasCrit(e, "tracks");
+  const hullArcOk = Math.abs(hullAimRemainingDeg(e, aimX, aimY)) <= gunArc;
 
   const useMg = !ground && !e.order?.once && target ? wantsMg(e, target) : false;
-  if (useMg && target) {
+  // Broken tracks: hull is frozen, so the MG only bears along current hull facing.
+  // Healthy coaxial MG still follows the turret / casemate gun arc.
+  const mgArcOk = tracksBroken ? hullArcOk : gunArcOk;
+  if (useMg && target && mgArcOk) {
     if (e.mgCooldown > 0 || e.mgOverheat > 0 || e.mgAmmo <= 0) return;
     fireRound(
       state,
@@ -258,7 +277,11 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
       },
       range,
       dist,
-      { target, accurateRange: accurateWeaponRange(e, range) },
+      {
+        target,
+        accurateRange: accurateWeaponRange(e, range),
+        bearing: tracksBroken ? e.facing : undefined,
+      },
     );
     e.mgCooldown = TANK_MG.cooldown;
     e.mgAmmo = Math.max(0, e.mgAmmo - 1);
@@ -266,6 +289,8 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     if (e.mgHeat >= TANK_MG.heatMax) e.mgOverheat = TANK_MG.overheatSeconds;
     return;
   }
+
+  if (!holedUp && !gunArcOk) return;
 
   if (e.reload > 0) return;
   if (e.cooldown > 0) return;
@@ -342,6 +367,10 @@ function wantsMg(e: Entity, target: Entity): boolean {
   return entityIsScouting(target);
 }
 
+function hullAimRemainingDeg(e: Entity, aimX: number, aimY: number): number {
+  return stepTurn(e.facing, Math.atan2(aimY - e.y, aimX - e.x), 0, 1).remainingDeg;
+}
+
 /** Sight reach in world units. Guns with a fixed rangeTiles have no extra long-shot band. */
 function accurateWeaponRange(e: Entity, range: number): number {
   const gun = infantryGunFor(e);
@@ -366,8 +395,13 @@ function slewTurret(
   const rate = def.turretTurnDegPerSec ?? def.turnDegPerSec;
   if (ground) return turnTurretToward(e, ground.x, ground.y, rate, dt);
   if (target && target.hp > 0) return turnTurretToward(e, target.x, target.y, rate, dt);
+  if (e.order?.kind === "rotate" && e.order.x != null && e.order.y != null) {
+    return turnTurretToward(e, e.order.x, e.order.y, rate, dt);
+  }
   const wp = e.waypoints[0];
   if (wp && !reversing(e)) return turnTurretToward(e, wp.x, wp.y, rate, dt);
+  // Frozen hull cannot follow the turret, so leave the last aim instead of snapping back.
+  if (hasCrit(e, "tracks")) return 0;
   return turnTurretTo(e, e.facing, rate, dt);
 }
 
@@ -386,12 +420,18 @@ function fireRound(
   },
   range: number,
   dist: number,
-  opts?: { target?: Entity; shell?: ShellType | null; fuse?: boolean; accurateRange?: number },
+  opts?: {
+    target?: Entity;
+    shell?: ShellType | null;
+    fuse?: boolean;
+    accurateRange?: number;
+    bearing?: number;
+  },
 ): void {
   const target = opts?.target;
   const moving = !!target && (target.waypoints.length > 0 || target.state === "move");
   // Fused ground shots aim at the click (plus spread), not along current turret facing.
-  const bearing = opts?.fuse ? Math.atan2(aimY - e.y, aimX - e.x) : aimFacing(e);
+  const bearing = opts?.bearing ?? (opts?.fuse ? Math.atan2(aimY - e.y, aimX - e.x) : aimFacing(e));
   const ang = aimAngle(
     bearing,
     stats.spreadDeg,
@@ -422,6 +462,9 @@ function fireRound(
       ignoreId = house.id;
     }
   }
+  const z0 = muzzleHeight(state, e);
+  const zAim = target ? aimHeight(state, target) : worldTileHeight(state, aimX, aimY);
+  const aimDist = Math.hypot(aimX - x, aimY - y);
   const p: Projectile = {
     id: state.nextId++,
     ownerId: e.ownerId,
@@ -438,6 +481,8 @@ function fireRound(
     fromId: e.id,
     bounced: false,
     shell: opts?.shell ?? null,
+    z: z0,
+    vz: ((zAim - z0) / Math.max(1e-6, aimDist)) * speed,
   };
   state.projectiles.push(p);
 }
@@ -448,14 +493,17 @@ export function tickProjectiles(state: MatchState, dt: number): void {
   for (const p of state.projectiles) {
     const x0 = p.x;
     const y0 = p.y;
+    const z0 = p.z ?? 0;
     const stepDt = p.life > 0 ? Math.min(dt, p.life) : 0;
     p.x += p.vx * stepDt;
     p.y += p.vy * stepDt;
+    p.z = z0 + (p.vz ?? 0) * stepDt;
     p.life -= dt;
-    const struck = nearestSweepHit(state, x0, y0, p);
-    const tree = canFellTrees(p) ? nearestTreeSweep(state, x0, y0, p) : null;
+    const z1 = p.z;
+    const struck = nearestSweepHit(state, x0, y0, p, z0, z1);
+    const tree = nearestTreeSweep(state, x0, y0, p, z0, z1, rand);
     if (tree && (!struck || tree.t <= struck.t)) {
-      fellTreeAt(state, tree.tx, tree.ty);
+      if (canFellTrees(p)) fellTreeAt(state, tree.tx, tree.ty);
       pushImpact(state, p, "miss", tree.x, tree.y);
       continue;
     }
@@ -531,6 +579,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     if (res.kind !== "ricochet") continue;
     p.vx = res.bounceVx;
     p.vy = res.bounceVy;
+    p.vz = 0;
     p.ignoreId = e.id;
     p.bounced = true;
     let sp = Math.hypot(p.vx, p.vy) || 1;
@@ -598,7 +647,11 @@ function nearestTreeSweep(
   x0: number,
   y0: number,
   p: Projectile,
+  z0: number,
+  z1: number,
+  rand: () => number,
 ): { t: number; x: number; y: number; tx: number; ty: number } | null {
+  if (p.bounced || isSmokeShell(p.shell)) return null;
   const ts = state.tileSize;
   const x1 = p.x;
   const y1 = p.y;
@@ -610,7 +663,7 @@ function nearestTreeSweep(
   const tx1 = worldToTile(maxX, ts);
   const ty0 = worldToTile(minY, ts);
   const ty1 = worldToTile(maxY, ts);
-  let best: { t: number; x: number; y: number; tx: number; ty: number } | null = null;
+  const hits: { t: number; x: number; y: number; tx: number; ty: number }[] = [];
   for (let ty = ty0; ty <= ty1; ty++) {
     for (let tx = tx0; tx <= tx1; tx++) {
       if (!inBounds(state, tx, ty) || !isTree(state, tx, ty)) continue;
@@ -621,12 +674,17 @@ function nearestTreeSweep(
         y1: (ty + 1) * ts,
       });
       if (t == null) continue;
-      if (!best || t < best.t) {
-        best = { t, x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t, tx, ty };
-      }
+      hits.push({ t, x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t, tx, ty });
     }
   }
-  return best;
+  hits.sort((a, b) => a.t - b.t);
+  for (const tree of hits) {
+    const shotZ = z0 + (z1 - z0) * tree.t;
+    if (shotClearsCover(shotZ, tileHeight(state, tree.tx, tree.ty), TREE_COVER_HEIGHT)) continue;
+    if (rand() >= TREE_HIT_CHANCE) continue;
+    return tree;
+  }
+  return null;
 }
 
 function nearestSweepHit(
@@ -634,6 +692,8 @@ function nearestSweepHit(
   x0: number,
   y0: number,
   p: Projectile,
+  z0: number,
+  z1: number,
 ): { e: Entity; t: number; x: number; y: number } | null {
   let best: { e: Entity; t: number; x: number; y: number } | null = null;
   for (const e of state.entities.values()) {
@@ -642,6 +702,8 @@ function nearestSweepHit(
     if (e.garrisonedIn != null) continue;
     const hit = sweepAgainst(state, x0, y0, p, e);
     if (!hit) continue;
+    const shotZ = z0 + (z1 - z0) * hit.t;
+    if (shotClearsCover(shotZ, entityHeight(state, e), coverHeightOf(e.type))) continue;
     if (!best || hit.t < best.t) best = { e, t: hit.t, x: hit.x, y: hit.y };
   }
   return best;

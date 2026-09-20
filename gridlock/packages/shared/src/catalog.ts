@@ -200,6 +200,18 @@ export function weaponRangeTiles(sightTiles: number): number {
 }
 /** Tree tiles a sight ray may pass before the grove closes. One authoring cell. */
 export const TREE_LOS_THROUGH = TILE_SUBDIV;
+/**
+ * Chance a round that actually meets a tree (height included) stops on that
+ * tile. Rolled once per tree along the path; later trees still get a roll.
+ */
+export const TREE_HIT_CHANCE = 0.15;
+/**
+ * How far a tree rises above its tile, in elevation units. ~2 authoring
+ * terraces — a valley oak sits under a hilltop shot; a tall house does not.
+ */
+export const TREE_COVER_HEIGHT = t(2);
+/** Elevation units per building story. Manor (3) still pokes a HEIGHT_BASE shot. */
+export const STORY_COVER_HEIGHT = t(1.5);
 /** Civilian / unowned map buildings. */
 export const NEUTRAL_OWNER = "";
 /** One trooper vs a Dynamo (750 HP). Larger buildings take longer. */
@@ -216,6 +228,7 @@ export type EntityType =
   | "trooper"
   | "hauler"
   | "warden"
+  | "ss3"
   | "core"
   | "dynamo"
   | "smelter"
@@ -239,7 +252,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "trooper" | "hauler" | "warden";
+export type TrainType = "trooper" | "hauler" | "warden" | "ss3";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -262,7 +275,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory"];
-export const TRAIN_TYPES: readonly TrainType[] = ["trooper", "hauler", "warden"];
+export const TRAIN_TYPES: readonly TrainType[] = ["trooper", "hauler", "warden", "ss3"];
 /** Opening army besides the Rig. Hauler omitted so it does not auto-harvest. */
 export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter((t) => t !== "hauler");
 
@@ -302,6 +315,15 @@ export interface CatalogEntry {
   turnInPlace?: boolean;
   /** Independent turret traverse. Omit for casemate guns / tank destroyers / infantry. */
   turretTurnDegPerSec?: number;
+  /**
+   * Half-angle off the aim facing the gun may fire, degrees.
+   * Casemate traverse (StuG ±10°). Default FACE_FIRE_DEG.
+   */
+  gunArcDeg?: number;
+  /** Per-type shell table. Defaults to SHELLS (Tiger 75mm rack). */
+  shells?: Record<ShellType, ShellDef>;
+  /** Player-facing one-liner for inspect / config. */
+  blurb?: string;
   special?: SpecialAction;
   /** Starting rack. Omit for unlimited / unarmed. */
   ammo?: Partial<Record<ShellType, number>>;
@@ -475,6 +497,49 @@ export const SHELLS: Record<ShellType, ShellDef> = {
     blurb: "Shaped charge. Highest penetration in the rack. Best round for punching a tank, including the front plate.",
     damage: 64,
     penetration: 140,
+    caliber: 75,
+    spreadDeg: 3.5,
+  },
+  smoke: {
+    id: "smoke",
+    name: "Smoke",
+    blurb: "Lays a vision-blocking screen. Never auto-fires — force-attack the ground to place one round, then the gun stops.",
+    damage: 0,
+    penetration: 0,
+    caliber: 75,
+    spreadDeg: 6,
+  },
+};
+
+/**
+ * StuK 40 L/48 rack. Weaker AP than the Tiger 75mm table; HEAT is how it
+ * fights a heavy from the front. Spec: assets/units/ss3/stug-iii-ausf-g-late-saukopf.md
+ */
+export const STUG_SHELLS: Record<ShellType, ShellDef> = {
+  ap: {
+    id: "ap",
+    name: "AP",
+    blurb: "Pzgr. 39 APCBC. Kills mediums from the front; glances off a Tiger glacis. Use a flank or HEAT on heavies.",
+    damage: 48,
+    penetration: 72,
+    caliber: 75,
+    spreadDeg: 3,
+  },
+  he: {
+    id: "he",
+    name: "HE",
+    blurb: "Sprgr. 34. Infantry, guns, trucks, buildings. This is still an assault gun — keep HE on the rack.",
+    damage: 72,
+    penetration: 14,
+    caliber: 75,
+    spreadDeg: 5,
+  },
+  heat: {
+    id: "heat",
+    name: "HEAT",
+    blurb: "Gr. 38 HL/C. About 100 mm any range. The round for a Tiger front when you cannot get a side shot.",
+    damage: 56,
+    penetration: 100,
     caliber: 75,
     spreadDeg: 3.5,
   },
@@ -727,6 +792,44 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     leavesWreck: true,
     wreckHp: 70,
     hasScout: true,
+    blurb: "Heavy tank. Independent turret, thick front plate. Slow hull, long-range rack.",
+  },
+  /** Spec: gridlock/packages/client/src/assets/units/ss3/stug-iii-ausf-g-late-saukopf.md */
+  ss3: {
+    type: "ss3",
+    kind: "unit",
+    name: "StuG III",
+    letter: "G",
+    cost: 180,
+    buildSeconds: 10,
+    hp: 100,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 10,
+    moveTilesPerSec: t(1.55),
+    turnDegPerSec: 60,
+    rangeTiles: weaponRangeTiles(t(7)),
+    sightTiles: t(7),
+    cooldown: 6.5,
+    damage: 48,
+    projectileSpeed: TANK_SHELL_SPEED,
+    turnInPlace: true,
+    gunArcDeg: 10,
+    armorFront: 64,
+    armorSide: 18,
+    armorRear: 28,
+    penetration: 72,
+    caliber: 75,
+    spreadDeg: 3,
+    ammo: { ap: 10, he: 9, heat: 3, smoke: 2 },
+    defaultShell: "ap",
+    shells: STUG_SHELLS,
+    mgAmmo: TANK_MG.ammo,
+    leavesWreck: true,
+    wreckHp: 50,
+    hasScout: true,
+    blurb: "Casemate assault gun. No turret — hull-steer to aim. Strong front, thin sides.",
   },
   cottage: {
     type: "cottage",
@@ -960,6 +1063,21 @@ export function garrisonFloorsOf(type: EntityType): number {
   return catalog(type).garrisonFloors ?? 1;
 }
 
+/**
+ * Solid height above the pad, in elevation units. Shots whose Z clears this
+ * fly over. Civilian floors win; military pads scale with footprint.
+ */
+export function coverHeightOf(type: EntityType): number {
+  const d = catalog(type);
+  if (d.kind === "building") {
+    if (d.garrisonFloors != null) return d.garrisonFloors * STORY_COVER_HEIGHT;
+    const stories = Math.max(d.tileW, d.tileH) / TILE_SUBDIV;
+    return Math.max(STORY_COVER_HEIGHT * 2, stories * STORY_COVER_HEIGHT);
+  }
+  if (isInfantryType(type)) return INFANTRY_EYE_HEIGHT;
+  return HULL_EYE_HEIGHT + 2;
+}
+
 export function hasScout(type: EntityType): boolean {
   return catalog(type).hasScout === true;
 }
@@ -984,8 +1102,18 @@ export function hasTurret(type: EntityType): boolean {
   return (catalog(type).turretTurnDegPerSec ?? 0) > 0;
 }
 
+/** Half-angle the gun may fire off aim facing. Casemates use gunArcDeg. */
+export function gunArcDegOf(type: EntityType): number {
+  return catalog(type).gunArcDeg ?? FACE_FIRE_DEG;
+}
+
 export function aimFacing(e: { type: EntityType; facing: number; turretFacing: number }): number {
   return hasTurret(e.type) ? e.turretFacing : e.facing;
+}
+
+/** Shell table for this type. Ammo tanks without a table share SHELLS. */
+export function shellsFor(type: EntityType): Record<ShellType, ShellDef> {
+  return catalog(type).shells ?? SHELLS;
 }
 
 export function isShellType(v: string): v is ShellType {
@@ -1035,7 +1163,7 @@ export function gunStatsFor(
 ): Pick<CatalogEntry, "damage" | "penetration" | "caliber" | "spreadDeg"> {
   const def = catalog(type);
   if (def.ammo && shell) {
-    const s = SHELLS[shell];
+    const s = shellsFor(type)[shell];
     if (s) {
       return { damage: s.damage, penetration: s.penetration, caliber: s.caliber, spreadDeg: s.spreadDeg };
     }

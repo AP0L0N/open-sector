@@ -28,6 +28,13 @@ const turretGlob = import.meta.glob("../assets/units/tiger/turret/*.png", {
   import: "default",
 }) as Record<string, string>;
 
+const ss3Glob = import.meta.glob("../assets/units/ss3/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+export const SS3_OPTS: TurntableSheetOpts = { ...TIGER_OPTS };
+
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
@@ -236,8 +243,117 @@ async function composePair(
   return { hullUrl, turretUrl, cameoUrl };
 }
 
-function applyCameo(url: string): void {
-  document.documentElement.style.setProperty("--tiger-cameo", `url("${url}")`);
+function applyCameo(url: string, cssVar = "--tiger-cameo"): void {
+  document.documentElement.style.setProperty(cssVar, `url("${url}")`);
+}
+
+interface ComposedCasemate {
+  hullUrl: string;
+  cameoUrl: string;
+}
+
+let ss3Previous: ComposedCasemate | null = null;
+
+function revokeCasemate(rec: ComposedCasemate | null): void {
+  if (!rec) return;
+  URL.revokeObjectURL(rec.hullUrl);
+  URL.revokeObjectURL(rec.cameoUrl);
+}
+
+async function composeCasemate(
+  hullImgs: HTMLImageElement[],
+  opts: TurntableSheetOpts,
+): Promise<ComposedCasemate> {
+  const boxes: BBox[] = [];
+  const hullBottoms: number[] = [];
+  for (let i = 0; i < TURNTABLE_DIRS; i++) {
+    const h = opaqueBBox(hullImgs[i]!);
+    if (!h) throw new Error(`empty casemate frame ${i + 1}`);
+    boxes.push(h);
+    hullBottoms.push(h.y1);
+  }
+  const union = {
+    x0: Math.min(...boxes.map((b) => b.x0)),
+    y0: Math.min(...boxes.map((b) => b.y0)),
+    x1: Math.max(...boxes.map((b) => b.x1)),
+    y1: Math.max(...boxes.map((b) => b.y1)),
+  };
+  const uw = union.x1 - union.x0;
+  const uh = union.y1 - union.y0;
+  const maxW = Math.max(1, opts.cell - 2 * opts.padding);
+  const maxH = Math.max(1, opts.cell - 2 * opts.padding);
+  const scale = Math.min(maxW / uw, maxH / uh, 1);
+  const cx = hullImgs[0]!.naturalWidth / 2;
+  const sorted = [...hullBottoms].sort((a, b) => a - b);
+  const medBottom = sorted[Math.floor(sorted.length / 2)] ?? union.y1;
+  const ox = opts.cell / 2 - cx * scale;
+  const oy = opts.cell * opts.contactY - medBottom * scale;
+
+  const hullSheet = makeSheetCanvas(opts.cell);
+  const hg = hullSheet.getContext("2d");
+  if (!hg) throw new Error("2d context");
+  for (let frame = 1; frame <= TURNTABLE_DIRS; frame++) {
+    const row = engineRowFromFrame(frame);
+    place(hg, hullImgs[frame - 1]!, opts.cell, row, scale, ox, oy);
+  }
+
+  const cameoRow = engineRowFromFacing(opts.cameoFacing);
+  const combo = document.createElement("canvas");
+  combo.width = opts.cell;
+  combo.height = opts.cell;
+  const cg = combo.getContext("2d");
+  if (!cg) throw new Error("2d context");
+  cg.drawImage(hullSheet, 0, cameoRow * opts.cell, opts.cell, opts.cell, 0, 0, opts.cell, opts.cell);
+  const box = opaqueBBoxCanvas(combo);
+  const cameo = document.createElement("canvas");
+  cameo.width = opts.cameoSize;
+  cameo.height = opts.cameoSize;
+  const cag = cameo.getContext("2d");
+  if (cag && box) {
+    const pad = 8;
+    const bw = box.x1 - box.x0;
+    const bh = box.y1 - box.y0;
+    const fit = Math.min((opts.cameoSize - 2 * pad) / bw, (opts.cameoSize - 2 * pad) / bh, 1);
+    const nw = Math.max(1, Math.round(bw * fit));
+    const nh = Math.max(1, Math.round(bh * fit));
+    cag.imageSmoothingEnabled = true;
+    cag.imageSmoothingQuality = "high";
+    cag.drawImage(
+      combo,
+      box.x0,
+      box.y0,
+      bw,
+      bh,
+      Math.floor((opts.cameoSize - nw) / 2),
+      Math.floor((opts.cameoSize - nh) / 2),
+      nw,
+      nh,
+    );
+  }
+
+  const [hullUrl, cameoUrl] = await Promise.all([canvasPngUrl(hullSheet), canvasPngUrl(cameo)]);
+  return { hullUrl, cameoUrl };
+}
+
+export function bindCasemateSheets(hullImage: HTMLImageElement): void {
+  let hullUrls: string[];
+  try {
+    hullUrls = pickTurntableUrls(ss3Glob);
+  } catch (err) {
+    console.error("ss3 turntable", err);
+    return;
+  }
+  void Promise.all(hullUrls.map(loadImage))
+    .then((hullImgs) => composeCasemate(hullImgs, SS3_OPTS))
+    .then((next) => {
+      revokeCasemate(ss3Previous);
+      ss3Previous = next;
+      hullImage.src = next.hullUrl;
+      applyCameo(next.cameoUrl, "--ss3-cameo");
+    })
+    .catch((err) => {
+      console.error("ss3 turntable", err);
+    });
 }
 
 export function bindTurntableSheets(

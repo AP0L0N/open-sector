@@ -137,6 +137,20 @@ describe("crit effects", () => {
     assert.equal(tank.x, x0);
     assert.equal(immobilized(tank), true);
     assert.equal(moveSpeedMul(tank), 0);
+    assert.equal(hullTurnMul(tank), 0);
+  });
+
+  it("does not yaw a hull with broken tracks", () => {
+    const { state, a } = twoPlayerMatch();
+    const tank = makeEntity(state, "warden", a, 100, 100);
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    addCrit(tank, "tracks");
+    tank.waypoints = [{ x: 100, y: 200 }];
+    tickMovement(state, TICK_DT);
+    assert.equal(tank.facing, 0);
+    assert.equal(tank.x, 100);
+    assert.equal(tank.y, 100);
   });
 
   it("leaves turret traverse alone when the engine dies", () => {

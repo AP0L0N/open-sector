@@ -1,10 +1,29 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { SHELLS, TANK_MG, TICK_DT, TREE_LOS_THROUGH, catalog } from "../catalog.js";
+import {
+  HEIGHT_BASE,
+  HULL_EYE_HEIGHT,
+  SHELLS,
+  TANK_MG,
+  TICK_DT,
+  TREE_COVER_HEIGHT,
+  TREE_HIT_CHANCE,
+  TREE_LOS_THROUGH,
+  catalog,
+} from "../catalog.js";
 import { TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { tickProjectiles } from "./combat.js";
-import { crushTreeAt, fellTreeAt, isSingleTree, isTree, makeEntity, tileCenter, walkable } from "./geo.js";
+import {
+  crushTreeAt,
+  destroyEntity,
+  fellTreeAt,
+  isSingleTree,
+  isTree,
+  makeEntity,
+  tileCenter,
+  walkable,
+} from "./geo.js";
 import type { Projectile } from "./types.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { createMatch, step } from "./match.js";
@@ -177,7 +196,7 @@ describe("trees", () => {
     assert.equal(hasFullLos(elev, width, 1, 0, 0, width - 1, 0, { terrain: out, occupy }), true);
   });
 
-  it("lets one AP, HE, or HEAT shell fell a lone tree or a grove tree", () => {
+  it("lets one AP, HE, or HEAT shell that strikes a tree fell it instantly", () => {
     const { state } = twoPlayerMatch();
     const ts = state.tileSize;
     const y = 46;
@@ -186,6 +205,7 @@ describe("trees", () => {
       clearPad(state, 80, y - 3, 100, y + 3);
       plant(state, 90, y);
       assert.equal(isSingleTree(state, 90, y), true);
+      nudgeRngBelow(state, TREE_HIT_CHANCE);
       fireTreeShell(state, {
         x: tileCenter(84, ts),
         y: tileCenter(y, ts),
@@ -197,12 +217,14 @@ describe("trees", () => {
       assert.equal(state.terrain[y * state.width + 90], TILE_EMPTY, `${shell} should fell a lone tree`);
       assert.ok(state.clearedTrees.some((t) => t.x === 90 && t.y === y), `${shell} clearedTrees`);
       assert.ok(state.impacts.some((i) => i.kind === "miss" && i.shell === shell), `${shell} miss impact`);
+      state.projectiles = [];
 
       clearPad(state, 80, y - 3, 100, y + 3);
       for (let gy = y - 1; gy <= y + 1; gy++) {
         for (let gx = 88; gx <= 92; gx++) plant(state, gx, gy);
       }
       assert.equal(isSingleTree(state, 90, y), false);
+      nudgeRngBelow(state, TREE_HIT_CHANCE);
       fireTreeShell(state, {
         x: tileCenter(84, ts),
         y: tileCenter(y, ts),
@@ -213,7 +235,51 @@ describe("trees", () => {
       tickProjectiles(state, TICK_DT);
       assert.equal(isTree(state, 88, y), false, `${shell} should fell the first grove tile on the path`);
       assert.equal(isTree(state, 90, y), true, `${shell} should not clear the whole grove`);
+      state.projectiles = [];
     }
+  });
+
+  it("lets most flat-ground shells pass a tree and only some strike", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const y = 46;
+    const speed = catalog("warden").projectileSpeed;
+    let hits = 0;
+    const n = 80;
+    for (let i = 0; i < n; i++) {
+      clearPad(state, 80, y - 3, 100, y + 3);
+      plant(state, 90, y);
+      state.projectiles = [];
+      fireTreeShell(state, {
+        x: tileCenter(84, ts),
+        y: tileCenter(y, ts),
+        vx: speed,
+        vy: 0,
+        shell: "ap",
+      });
+      tickProjectiles(state, TICK_DT);
+      if (!isTree(state, 90, y)) hits++;
+    }
+    assert.ok(hits >= 2, `expected some tree hits, got ${hits}/${n}`);
+    assert.ok(hits <= n / 2, `15% hits should stay well under half, got ${hits}/${n}`);
+  });
+
+  it("does not let a passing shell fell a tree", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const y = 46;
+    clearPad(state, 80, y - 3, 100, y + 3);
+    plant(state, 90, y);
+    nudgeRngAtLeast(state, TREE_HIT_CHANCE);
+    fireTreeShell(state, {
+      x: tileCenter(84, ts),
+      y: tileCenter(y, ts),
+      vx: catalog("warden").projectileSpeed,
+      vy: 0,
+      shell: "ap",
+    });
+    tickProjectiles(state, TICK_DT);
+    assert.equal(state.terrain[y * state.width + 90], TILE_TREE);
   });
 
   it("does not let smoke, MG, or rifles fell a tree", () => {
@@ -236,6 +302,7 @@ describe("trees", () => {
     assert.equal(state.terrain[y * state.width + 90], TILE_TREE, "smoke must not fell trees");
     state.projectiles = [];
 
+    nudgeRngBelow(state, TREE_HIT_CHANCE);
     fireTreeShell(state, {
       x: x0,
       y: cy,
@@ -247,8 +314,11 @@ describe("trees", () => {
     });
     tickProjectiles(state, TICK_DT);
     assert.equal(state.terrain[y * state.width + 90], TILE_TREE, "MG must not fell trees");
+    assert.equal(state.projectiles.length, 0, "MG that strikes a tree still stops");
     state.projectiles = [];
+    state.impacts = [];
 
+    nudgeRngBelow(state, TREE_HIT_CHANCE);
     fireTreeShell(state, {
       x: x0,
       y: cy,
@@ -260,6 +330,59 @@ describe("trees", () => {
     });
     tickProjectiles(state, TICK_DT);
     assert.equal(state.terrain[y * state.width + 90], TILE_TREE, "rifles must not fell trees");
+    assert.equal(state.projectiles.length, 0, "rifle that strikes a tree still stops");
+  });
+
+  it("flies over a valley tree when the shot stays above the canopy", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const y = 54;
+    clearPad(state, 80, y - 3, 100, y + 3);
+    plant(state, 90, y);
+    const z = HEIGHT_BASE + HULL_EYE_HEIGHT;
+    assert.ok(z > TREE_COVER_HEIGHT, "hilltop hull must clear a valley oak");
+    nudgeRngBelow(state, TREE_HIT_CHANCE);
+    fireTreeShell(state, {
+      x: tileCenter(84, ts),
+      y: tileCenter(y, ts),
+      vx: catalog("warden").projectileSpeed,
+      vy: 0,
+      shell: "ap",
+      z,
+      vz: 0,
+    });
+    tickProjectiles(state, TICK_DT);
+    assert.equal(state.terrain[y * state.width + 90], TILE_TREE, "level hill shot must miss the valley tree");
+  });
+
+  it("can still strike a valley tree on a descending shot", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const y = 56;
+    clearPad(state, 80, y - 3, 100, y + 3);
+    plant(state, 90, y);
+    const speed = catalog("warden").projectileSpeed;
+    const x0 = tileCenter(84, ts);
+    const treeX = tileCenter(90, ts);
+    const aimX = tileCenter(96, ts);
+    const z0 = HEIGHT_BASE + HULL_EYE_HEIGHT;
+    const zAim = 1;
+    const vz = ((zAim - z0) / (aimX - x0)) * speed;
+    nudgeRngBelow(state, TREE_HIT_CHANCE);
+    fireTreeShell(state, {
+      x: x0,
+      y: tileCenter(y, ts),
+      vx: speed,
+      vy: 0,
+      shell: "ap",
+      z: z0,
+      vz,
+    });
+    tickProjectiles(state, TICK_DT);
+    const t = (treeX - x0) / (speed * TICK_DT);
+    const shotZ = z0 + (z0 + vz * TICK_DT - z0) * t;
+    assert.ok(shotZ <= TREE_COVER_HEIGHT, `descending z ${shotZ} should meet the canopy`);
+    assert.equal(state.terrain[y * state.width + 90], TILE_EMPTY, "descending shell can still fell the tree");
   });
 
   it("is a one-hit fell even when crushTreeAt would refuse a grove", () => {
@@ -271,7 +394,59 @@ describe("trees", () => {
     assert.equal(fellTreeAt(state, 85, y), true);
     assert.equal(state.terrain[y * state.width + 85], TILE_EMPTY);
   });
+
+  it("lets a hilltop Warden shoot over a valley tree", () => {
+    const { state, a, b } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const y = 60;
+    const x0 = 24;
+    clearPad(state, x0, y - 6, x0 + 40, y + 6);
+    for (const e of [...state.entities.values()]) {
+      if (e.kind !== "building") continue;
+      if (e.tileX + e.tileW < x0 || e.tileX > x0 + 40) continue;
+      if (e.tileY + e.tileH < y - 6 || e.tileY > y + 6) continue;
+      destroyEntity(state, e);
+    }
+    for (let x = x0; x <= x0 + 40; x++) {
+      state.heights[y * state.width + x] = HEIGHT_BASE;
+    }
+    const valley = x0 + 10;
+    state.heights[y * state.width + valley] = 0;
+    plant(state, valley, y);
+    const tank = makeEntity(state, "warden", a, tileCenter(x0 + 4, ts), tileCenter(y, ts));
+    const dummy = makeEntity(state, "hauler", b, tileCenter(x0 + 18, ts), tileCenter(y, ts));
+    dummy.autoHarvest = false;
+    dummy.holdPosition = true;
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    const hp0 = dummy.hp;
+    applyCommand(state, a, { type: "cmd.attack", ids: [tank.id], targetId: dummy.id });
+    ticks(state, 16);
+    assert.equal(isTree(state, valley, y), true, "valley tree must survive hill-to-hill fire");
+    assert.ok(dummy.hp < hp0, `dummy hp ${dummy.hp} vs ${hp0}`);
+  });
 });
+
+function upcomingRand(state: MatchState): number {
+  const next = (Math.imul(state.rngState, 1664525) + 1013904223) >>> 0;
+  return next / 4294967296;
+}
+
+function nudgeRngBelow(state: MatchState, cap: number): void {
+  for (let i = 0; i < 20000; i++) {
+    if (upcomingRand(state) < cap) return;
+    state.rngState = (Math.imul(state.rngState, 1664525) + 1013904223) >>> 0;
+  }
+  throw new Error(`could not nudge rng below ${cap}`);
+}
+
+function nudgeRngAtLeast(state: MatchState, cap: number): void {
+  for (let i = 0; i < 20000; i++) {
+    if (upcomingRand(state) >= cap) return;
+    state.rngState = (Math.imul(state.rngState, 1664525) + 1013904223) >>> 0;
+  }
+  throw new Error(`could not nudge rng at least ${cap}`);
+}
 
 function fireTreeShell(
   state: MatchState,
@@ -283,6 +458,8 @@ function fireTreeShell(
     shell: Projectile["shell"];
     caliber?: number;
     damage?: number;
+    z?: number;
+    vz?: number;
   },
 ): void {
   const gun = catalog("warden");
@@ -302,6 +479,8 @@ function fireTreeShell(
     fromId: -1,
     bounced: false,
     shell: opts.shell,
+    z: opts.z,
+    vz: opts.vz,
   };
   state.projectiles.push(p);
 }
