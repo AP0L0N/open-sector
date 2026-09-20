@@ -1112,6 +1112,70 @@ describe("spotted fire", () => {
   });
 });
 
+describe("wrecks", () => {
+  it("drops auto-attack after a tank wrecks and leaves the hull", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const gun = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const foe = makeEntity(state, "warden", "B", tileCenter(30, ts), tileCenter(24, ts));
+    foe.holdPosition = true;
+    foe.cooldown = 99;
+    foe.mgCooldown = 99;
+    gun.facing = 0;
+    gun.turretFacing = 0;
+    gun.holdPosition = true;
+    let acquired = false;
+    for (let i = 0; i < 40; i++) {
+      step(state, TICK_DT);
+      if (gun.attackTarget === foe.id || gun.order?.targetId === foe.id) acquired = true;
+      if (foe.wreck) break;
+    }
+    assert.equal(acquired, true, `expected auto-attack on tank, order=${gun.order?.kind} target=${gun.attackTarget}`);
+    if (!foe.wreck) {
+      foe.hp = 0;
+      step(state, TICK_DT);
+    }
+    assert.equal(foe.wreck, true);
+    assert.ok(foe.hp > 0, "wreck should keep hull hp");
+    state.projectiles = [];
+    gun.cooldown = 0;
+    gun.mgCooldown = 0;
+    const wreckHp = foe.hp;
+    for (let i = 0; i < 40; i++) step(state, TICK_DT);
+    assert.equal(state.entities.has(foe.id), true, "wreck should remain");
+    assert.equal(foe.wreck, true);
+    assert.equal(foe.hp, wreckHp, "auto-fire must not chew the wreck");
+    assert.notEqual(gun.attackTarget, foe.id);
+    assert.ok(!gun.order || gun.order.targetId !== foe.id || gun.order.kind !== "attack");
+  });
+
+  it("still demolishes a wreck on a player attack order", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const gun = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const foe = makeEntity(state, "warden", "B", tileCenter(30, ts), tileCenter(24, ts));
+    foe.holdPosition = true;
+    foe.cooldown = 99;
+    foe.mgCooldown = 99;
+    gun.facing = 0;
+    gun.turretFacing = 0;
+    gun.holdPosition = true;
+    foe.hp = 0;
+    step(state, TICK_DT);
+    assert.equal(foe.wreck, true);
+    const wreckHp = foe.hp;
+    const res = applyCommand(state, "A", { type: "cmd.attack", ids: [gun.id], targetId: foe.id });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    for (let i = 0; i < 40; i++) step(state, TICK_DT);
+    assert.ok(
+      foe.hp < wreckHp || !state.entities.has(foe.id),
+      `player attack should damage wreck hp=${foe.hp} start=${wreckHp}`,
+    );
+  });
+});
+
 describe("armor impact scatter", () => {
   function pingTank(
     state: MatchState,

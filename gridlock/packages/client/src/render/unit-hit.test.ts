@@ -4,6 +4,7 @@ import type { BuildingAlphaMap } from "./building-hit.js";
 import {
   snapToUnitHitMask,
   unitDestMaskFromSheets,
+  unitGroundSink,
   unitSpriteDest,
   type UnitHitMask,
 } from "./unit-hit.js";
@@ -20,7 +21,7 @@ describe("unitSpriteDest", () => {
   it("pins the contact fraction to the ground point", () => {
     const d = unitSpriteDest(100, 200, 50, 0.8);
     assert.equal(d.x, 75);
-    assert.equal(d.y, 160);
+    assert.equal(d.y, 160 + unitGroundSink(50));
     assert.equal(d.w, 50);
     assert.equal(d.h, 50);
   });
@@ -85,6 +86,28 @@ describe("unitDestMaskFromSheets", () => {
       8,
       { map: hull, sx: 0, sy: 0, cell: 8 },
       { map: turret, sx: 0, sy: 0, cell: 8 },
+    );
+    assert.equal(mask.solid[4 * 8 + 2], 1);
+    assert.equal(mask.solid[2 * 8 + 4], 1);
+    assert.equal(mask.solid[0], 0);
+  });
+
+  it("ORs gun pixels onto the hull mask", () => {
+    const hullA = new Uint8Array(8 * 8);
+    const gunA = new Uint8Array(8 * 8);
+    for (let y = 2; y <= 6; y++) {
+      for (let x = 1; x <= 4; x++) hullA[y * 8 + x] = 255;
+    }
+    for (let y = 1; y <= 4; y++) {
+      for (let x = 4; x <= 6; x++) gunA[y * 8 + x] = 255;
+    }
+    const hull: BuildingAlphaMap = { w: 8, h: 8, a: hullA, toMap: 1 };
+    const gun: BuildingAlphaMap = { w: 8, h: 8, a: gunA, toMap: 1 };
+    const mask = unitDestMaskFromSheets(
+      8,
+      { map: hull, sx: 0, sy: 0, cell: 8 },
+      null,
+      { map: gun, sx: 0, sy: 0, cell: 8 },
     );
     assert.equal(mask.solid[4 * 8 + 2], 1);
     assert.equal(mask.solid[2 * 8 + 4], 1);

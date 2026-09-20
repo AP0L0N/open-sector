@@ -1,6 +1,6 @@
-/** Modest battlefield zoom. 1 is the default iso pixel = CSS pixel scale. */
-export const MAP_ZOOM_MIN = 0.8;
-export const MAP_ZOOM_MAX = 1.35;
+/** Battlefield zoom. 1 is the default iso pixel = CSS pixel scale. */
+export const MAP_ZOOM_MIN = 0.9;
+export const MAP_ZOOM_MAX = 1.8;
 /** Maps a pixel wheel delta onto a multiplicative zoom step. */
 export const MAP_ZOOM_WHEEL = 0.00125;
 

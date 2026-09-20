@@ -124,7 +124,13 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
   let target: Entity | undefined;
   if (e.order?.kind === "attack" && e.order.targetId != null) {
     target = state.entities.get(e.order.targetId);
-    if (!target || target.hp <= 0 || skipsFriendly(state, e, target) || dropsEmptyGarrison(state, e, target)) {
+    if (
+      !target ||
+      target.hp <= 0 ||
+      skipsFriendly(state, e, target) ||
+      dropsEmptyGarrison(state, e, target) ||
+      dropsWreck(e, target)
+    ) {
       e.order = null;
       e.attackTarget = null;
       target = undefined;
@@ -132,7 +138,13 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
     }
   } else if (travelFights(e) && e.attackTarget != null) {
     target = state.entities.get(e.attackTarget);
-    if (!target || target.hp <= 0 || skipsFriendly(state, e, target) || dropsEmptyGarrison(state, e, target)) {
+    if (
+      !target ||
+      target.hp <= 0 ||
+      skipsFriendly(state, e, target) ||
+      dropsEmptyGarrison(state, e, target) ||
+      dropsWreck(e, target)
+    ) {
       e.attackTarget = null;
       target = undefined;
     }
@@ -191,11 +203,20 @@ function currentTarget(state: MatchState, e: Entity): Entity | undefined {
   if (!t || t.hp <= 0 || t.id === e.id) return undefined;
   if (e.order?.kind !== "forceattack" && skipsFriendly(state, e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && dropsEmptyGarrison(state, e, t)) return undefined;
+  if (e.order?.kind !== "forceattack" && dropsWreck(e, t)) return undefined;
   return t;
 }
 
 function skipsFriendly(state: MatchState, e: Entity, target: Entity): boolean {
   return !target.wreck && allies(state, e.ownerId, target.ownerId);
+}
+
+/** Auto-fire stops once a hull is wrecked so the wreck stays. Player attack / force-attack can still demolish it. */
+function dropsWreck(e: Entity, target: Entity): boolean {
+  if (!target.wreck) return false;
+  if (e.order?.kind === "forceattack") return false;
+  if (e.order?.kind === "attack" && !e.order.auto) return false;
+  return true;
 }
 
 /** Auto-fire and infantry stop once a civilian house is empty. Tanks may still demolish on a player order. */

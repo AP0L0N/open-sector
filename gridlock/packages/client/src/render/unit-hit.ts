@@ -20,6 +20,11 @@ export interface UnitSheetCell {
   cell: number;
 }
 
+/** Extra dest pixels down so tracks/feet overlap the ground blob. */
+export function unitGroundSink(drawSize: number): number {
+  return Math.max(3, Math.round(drawSize * 0.1));
+}
+
 export function unitSpriteDest(
   groundX: number,
   groundY: number,
@@ -28,17 +33,18 @@ export function unitSpriteDest(
 ): { x: number; y: number; w: number; h: number } {
   return {
     x: groundX - drawSize / 2,
-    y: groundY - drawSize * contactY,
+    y: groundY - drawSize * contactY + unitGroundSink(drawSize),
     w: drawSize,
     h: drawSize,
   };
 }
 
-/** Dest-pixel mask of hull + turret for one facing. */
+/** Dest-pixel mask of hull + turret + gun for one facing. */
 export function unitDestMaskFromSheets(
   destSize: number,
   hull: UnitSheetCell,
   turret?: UnitSheetCell | null,
+  gun?: UnitSheetCell | null,
   alphaMin = UNIT_HIT_ALPHA_MIN,
 ): UnitHitMask {
   const w = Math.max(1, Math.round(destSize));
@@ -46,11 +52,17 @@ export function unitDestMaskFromSheets(
   const raw = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      if (cellOpaque(hull, (x + 0.5) / w, (y + 0.5) / h, alphaMin)) {
+      const u = (x + 0.5) / w;
+      const v = (y + 0.5) / h;
+      if (cellOpaque(hull, u, v, alphaMin)) {
         raw[y * w + x] = 1;
         continue;
       }
-      if (turret && cellOpaque(turret, (x + 0.5) / w, (y + 0.5) / h, alphaMin)) {
+      if (turret && cellOpaque(turret, u, v, alphaMin)) {
+        raw[y * w + x] = 1;
+        continue;
+      }
+      if (gun && cellOpaque(gun, u, v, alphaMin)) {
         raw[y * w + x] = 1;
       }
     }
