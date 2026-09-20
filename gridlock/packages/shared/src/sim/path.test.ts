@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { FACE_MOVE_DEG, TICK_DT } from "../catalog.js";
+import { FACE_MOVE_DEG, snapTankYaw, TICK_DT } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_WATER } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { makeEntity, tileCenter, walkable, worldToTile } from "./geo.js";
@@ -165,10 +165,12 @@ describe("pathToWorld smoothing", () => {
     const tank = makeEntity(state, "warden", "A", fromX, fromY);
     tank.facing = 0;
     tank.turretFacing = 0;
-    applyCommand(state, "A", { type: "cmd.move", ids: [tank.id], x: toX, y: toY });
+    const destX = tileCenter(x0 + 42, ts);
+    const destY = fromY;
+    applyCommand(state, "A", { type: "cmd.move", ids: [tank.id], x: destX, y: destY });
     const firstPath = tank.waypoints.length;
     assert.equal(firstPath, 1);
-    const want = Math.atan2(toY - fromY, toX - fromX);
+    const want = snapTankYaw(Math.atan2(destY - fromY, destX - fromX));
     let rolling = false;
     let kinks = 0;
     for (let i = 0; i < 160; i++) {
@@ -185,6 +187,6 @@ describe("pathToWorld smoothing", () => {
     }
     assert.ok(rolling, "Tiger should start rolling toward dest");
     assert.equal(kinks, 0, `heading kinks after roll started: ${kinks}`);
-    assert.ok(tank.x > toX - ts * 3, `Tiger x=${tank.x} dest=${toX}`);
+    assert.ok(tank.x > destX - ts * 3, `Tiger x=${tank.x} dest=${destX}`);
   });
 });

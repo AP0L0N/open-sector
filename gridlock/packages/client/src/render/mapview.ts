@@ -15,6 +15,7 @@ import {
   TILE_EMPTY,
   TILE_TREE,
   TILE_WATER,
+  TICK_DT,
   garrisonWindowLift,
   hasScout,
   isGarrisonable,
@@ -87,7 +88,9 @@ import {
   type UnitSpriteDef,
 } from "./sprites.js";
 import { drawBuildingAnim } from "./building-fx.js";
+import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
+import { lerpHullPose } from "./hull-lerp.js";
 import { canGuardUnit, resolveHoverAction, type HoverAction } from "./hover-action.js";
 import {
   blitAtlas,
@@ -118,6 +121,9 @@ export const GARRISON_HOTKEY = "u";
 
 const EDGE_SCROLL_KEY = "gridlock.edgeScroll";
 let edgeScroll = localStorage.getItem(EDGE_SCROLL_KEY) === "1";
+
+/** Iso-space px/s for arrow keys, W/D, and optional edge scroll. */
+const CAM_PAN_SPEED = 546;
 
 /** Screen-edge camera pan. Off by default; arrows, W, and D always work. */
 export function getEdgeScroll(): boolean {
@@ -215,6 +221,8 @@ export class MapView {
   /** Top-left of the viewport in isometric space. */
   private camX = 0;
   private camY = 0;
+  /** CSS pixels per iso pixel. 1 is the default; wheel zooms a little around this. */
+  private zoom = 1;
   private keys = new Set<string>();
   private panning = false;
   private lastMX = 0;
@@ -539,6 +547,8 @@ export class MapView {
       dir.y,
       turretDir.x,
       turretDir.y,
+      e.facing,
+      e.turretFacing ?? e.facing,
     );
     if (!snapped) {
       f.lift = guess;
@@ -758,6 +768,7 @@ export class MapView {
     window.removeEventListener("blur", this.onBlur);
     window.removeEventListener("mouseup", this.onUp);
     window.removeEventListener("mousemove", this.onMove);
+    this.canvas.removeEventListener("wheel", this.onWheel);
   }
 
   home(): void {
@@ -785,9 +796,9 @@ export class MapView {
     window.addEventListener("keydown", this.onKey, { capture: true });
     window.addEventListener("keyup", this.onKeyUp, { capture: true });
     window.addEventListener("blur", this.onBlur);
+    this.canvas.addEventListener("wheel", this.onWheel, { passive: false });
     this.canvas.addEventListener("mousedown", (e) => {
-      const mx = e.offsetX;
-      const my = e.offsetY;
+      const { x: mx, y: my } = this.pointerView(e);
       if (e.button === 1) {
         this.panning = true;
         this.lastMX = e.clientX;
@@ -880,10 +891,35 @@ export class MapView {
     }
   };
 
-  private onMove = (e: MouseEvent): void => {
+  private pointerView(e: { clientX: number; clientY: number }): { x: number; y: number } {
     const rect = this.canvas.getBoundingClientRect();
-    this.mouseX = e.clientX - rect.left;
-    this.mouseY = e.clientY - rect.top;
+    const z = this.zoom;
+    return { x: (e.clientX - rect.left) / z, y: (e.clientY - rect.top) / z };
+  }
+
+  private onWheel = (e: WheelEvent): void => {
+    e.preventDefault();
+    if (this.box) return;
+    const rect = this.canvas.getBoundingClientRect();
+    const cssX = e.clientX - rect.left;
+    const cssY = e.clientY - rect.top;
+    if (cssX < 0 || cssY < 0 || cssX > rect.width || cssY > rect.height) return;
+    const next = mapZoomAfterWheel(this.zoom, e.deltaY, e.deltaMode);
+    if (next === this.zoom) return;
+    const moved = zoomCamAt(this.camX, this.camY, this.zoom, next, cssX, cssY);
+    this.zoom = moved.zoom;
+    this.camX = moved.camX;
+    this.camY = moved.camY;
+    this.mouseX = cssX / this.zoom;
+    this.mouseY = cssY / this.zoom;
+    this.clamp();
+    this.syncCursor();
+  };
+
+  private onMove = (e: MouseEvent): void => {
+    const p = this.pointerView(e);
+    this.mouseX = p.x;
+    this.mouseY = p.y;
     this.winX = e.clientX;
     this.winY = e.clientY;
     this.overControl =
@@ -894,8 +930,8 @@ export class MapView {
       this.syncCursor();
     }
     if (this.panning) {
-      this.camX -= e.clientX - this.lastMX;
-      this.camY -= e.clientY - this.lastMY;
+      this.camX -= (e.clientX - this.lastMX) / this.zoom;
+      this.camY -= (e.clientY - this.lastMY) / this.zoom;
       this.lastMX = e.clientX;
       this.lastMY = e.clientY;
       this.clamp();
@@ -1301,7 +1337,8 @@ export class MapView {
   }
 
   private viewSize(): { w: number; h: number } {
-    return { w: this.canvas.clientWidth, h: this.canvas.clientHeight };
+    const z = this.zoom;
+    return { w: this.canvas.clientWidth / z, h: this.canvas.clientHeight / z };
   }
 
   private clamp(): void {
@@ -1394,10 +1431,18 @@ export class MapView {
     let dt = turretNow - turretPrev;
     while (dt > Math.PI) dt -= Math.PI * 2;
     while (dt < -Math.PI) dt += Math.PI * 2;
+    const def = catalog(e.type);
+    const hull = def.turnInPlace
+      ? lerpHullPose(prev, e, t, def.turnDegPerSec, this.curr.gameSpeed || 1, TICK_DT)
+      : {
+          x: prev.x + (e.x - prev.x) * t,
+          y: prev.y + (e.y - prev.y) * t,
+          facing: snapFacing ? e.facing : prev.facing + df * t,
+        };
     return {
-      x: prev.x + (e.x - prev.x) * t,
-      y: prev.y + (e.y - prev.y) * t,
-      facing: snapFacing ? e.facing : prev.facing + df * t,
+      x: hull.x,
+      y: hull.y,
+      facing: hull.facing,
       turretFacing: snapFacing ? turretNow : turretPrev + dt * t,
     };
   }
@@ -1582,7 +1627,7 @@ export class MapView {
     this.lastT = t;
     this.fit();
     if (!this.centered) this.centerOnHq();
-    const speed = 420;
+    const speed = CAM_PAN_SPEED;
     let vx = 0;
     let vy = 0;
     if (this.keys.has("w") || this.keys.has("arrowup")) vy -= 1;
@@ -1600,8 +1645,9 @@ export class MapView {
     }
     if (vx || vy) {
       const len = Math.hypot(vx, vy) || 1;
-      this.camX += (vx / len) * speed * dt;
-      this.camY += (vy / len) * speed * dt;
+      const step = (speed * dt) / this.zoom;
+      this.camX += (vx / len) * step;
+      this.camY += (vy / len) * step;
       this.clamp();
     }
     this.syncCursor();
@@ -1620,7 +1666,7 @@ export class MapView {
       this.canvas.width = bw;
       this.canvas.height = bh;
     }
-    this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    this.ctx.setTransform(dpr * this.zoom, 0, 0, dpr * this.zoom, 0, 0);
     const mw = Math.max(1, this.mini.clientWidth);
     const mh = Math.max(1, this.mini.clientHeight);
     const mbw = Math.floor(mw * dpr);
@@ -2394,9 +2440,11 @@ export class MapView {
       now: performance.now() * (this.curr.gameSpeed || 1),
       turretDx: turretDir.x,
       turretDy: turretDir.y,
+      facing: p.facing,
+      turretFacing: p.turretFacing,
     });
     if (drawn && e.scout?.out && !e.wreck) {
-      drawScoutHead(ctx, s.x, s.y, turretDir.x, turretDir.y, size);
+      drawScoutHead(ctx, s.x, s.y, turretDir.x, turretDir.y, size, p.turretFacing);
     }
     ctx.restore();
     ctx.restore();

@@ -54,9 +54,9 @@ export function facingToIso(facing: number, tileSize: number): IsoPt {
 export const UNIT_SPRITE_DIRS = 16;
 
 /**
- * Screen facing index for unit sprites. Row 0 is east (right);
- * indices increase clockwise (canvas +y is down).
- * Default 16 dirs at 22.5°. Pass 8 for the old 45° sheet.
+ * Screen facing index. Row 0 is east (right); indices increase clockwise
+ * (canvas +y is down). Default 16 dirs at 22.5°.
+ * Numbered drop-ins are south-first (0001 = down); use engineRowFromScreen.
  */
 export function isoDirIndex(dx: number, dy: number, dirs = UNIT_SPRITE_DIRS): number {
   const n = dirs > 0 ? dirs : UNIT_SPRITE_DIRS;

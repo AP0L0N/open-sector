@@ -12,7 +12,7 @@ Unique 3×3 order (row-major):
     SSE   S      N
     NNE   NE     ENE
 
-Mirrors (horizontal flip, isometric camera stays put):
+Mirrors (horizontal flip, camera stays put):
 
     W    = flip(E)
     WSW  = flip(ESE)
@@ -22,9 +22,9 @@ Mirrors (horizontal flip, isometric camera stays put):
     NW   = flip(NE)
     NNW  = flip(NNE)
 
-Engine row order (isoDirIndex, clockwise from screen-east):
+Engine row order (0001 = south, clockwise 22.5°, 0016 last unique yaw):
 
-    E ESE SE SSE S SSW SW WSW W WNW NW NNW N NNE NE ENE
+    S SSW SW WSW W WNW NW NNW N NNE NE ENE E ESE SE SSE
 
 Examples:
 
@@ -55,10 +55,6 @@ from PIL import Image, ImageDraw
 
 UNIQUE_ORDER = ["E", "ESE", "SE", "SSE", "S", "N", "NNE", "NE", "ENE"]
 ENGINE_ORDER = [
-    "E",
-    "ESE",
-    "SE",
-    "SSE",
     "S",
     "SSW",
     "SW",
@@ -71,6 +67,10 @@ ENGINE_ORDER = [
     "NNE",
     "NE",
     "ENE",
+    "E",
+    "ESE",
+    "SE",
+    "SSE",
 ]
 MIRROR_OF = {
     "W": "E",

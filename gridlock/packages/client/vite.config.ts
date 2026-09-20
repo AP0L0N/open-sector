@@ -11,7 +11,7 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    port: 5177,
     host: true,
     proxy: {
       "/ws": {
@@ -22,7 +22,7 @@ export default defineConfig({
     },
   },
   preview: {
-    port: 5173,
+    port: 5177,
   },
   build: {
     outDir: "dist",

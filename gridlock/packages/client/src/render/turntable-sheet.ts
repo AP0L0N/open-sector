@@ -1,18 +1,12 @@
 /// <reference types="vite/client" />
 
-import {
-  ENGINE_SPRITE_DIRS,
-  engineRowFromFrame,
-  pickTurntableUrls,
-  TURNTABLE_DIRS,
-  type SpriteDir,
-} from "./turntable.js";
+import { engineRowFromFacing, engineRowFromFrame, pickTurntableUrls, TURNTABLE_DIRS } from "./turntable.js";
 
 export interface TurntableSheetOpts {
   cell: number;
   contactY: number;
   padding: number;
-  cameoDir: SpriteDir;
+  cameoFacing: number;
   cameoSize: number;
 }
 
@@ -20,7 +14,7 @@ const TIGER_OPTS: TurntableSheetOpts = {
   cell: 128,
   contactY: 0.92,
   padding: 4,
-  cameoDir: "SE",
+  cameoFacing: 0,
   cameoSize: 128,
 };
 
@@ -199,7 +193,7 @@ async function composePair(
     place(tg, turretImgs[frame - 1]!, opts.cell, row, scale, ox, oy);
   }
 
-  const cameoRow = ENGINE_SPRITE_DIRS.indexOf(opts.cameoDir);
+  const cameoRow = engineRowFromFacing(opts.cameoFacing);
   const combo = document.createElement("canvas");
   combo.width = opts.cell;
   combo.height = opts.cell;
@@ -250,8 +244,15 @@ export function bindTurntableSheets(
   hullImage: HTMLImageElement,
   turretImage: HTMLImageElement,
 ): void {
-  const hullUrls = pickTurntableUrls(hullGlob);
-  const turretUrls = pickTurntableUrls(turretGlob);
+  let hullUrls: string[];
+  let turretUrls: string[];
+  try {
+    hullUrls = pickTurntableUrls(hullGlob);
+    turretUrls = pickTurntableUrls(turretGlob);
+  } catch (err) {
+    console.error("tiger turntable", err);
+    return;
+  }
   void Promise.all([Promise.all(hullUrls.map(loadImage)), Promise.all(turretUrls.map(loadImage))])
     .then(([hullImgs, turretImgs]) => composePair(hullImgs, turretImgs, TIGER_OPTS))
     .then((next) => {

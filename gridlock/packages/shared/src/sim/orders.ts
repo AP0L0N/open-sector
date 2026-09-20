@@ -1,4 +1,13 @@
-import { catalog, FACE_MOVE_DEG, hasTurret } from "../catalog.js";
+import {
+  catalog,
+  FACE_MOVE_DEG,
+  hasTurret,
+  REVERSE_CONE_DEG,
+  REVERSE_TILES,
+  snapTankYaw,
+  TILE_SIZE,
+  TRACK_ARRIVE_SLOP,
+} from "../catalog.js";
 import { adjacentToBuilding, hqOf, rallyPoint, unitInWater, worldToTile } from "./geo.js";
 import { wantsCapture, pathToCapture } from "./capture.js";
 import { moveWithCollision } from "./collision.js";
@@ -53,9 +62,24 @@ export function turnToward(e: Entity, tx: number, ty: number, degPerSec: number,
   return turnTo(e, Math.atan2(ty - e.y, tx - e.x), degPerSec, dt);
 }
 
-/** Hull faces the fire and the tracks roll backward. */
+/** Hull stays on the bow heading and the tracks roll backward. */
 export function reversing(e: Entity): boolean {
-  return e.order?.kind === "withdraw" && !!e.order.reverse;
+  if (!catalog(e.type).turnInPlace) return false;
+  const kind = e.order?.kind;
+  if (kind !== "move" && kind !== "attackmove") return false;
+  const wp = e.waypoints[0];
+  return !!wp && closeRearWaypoint(e, wp);
+}
+
+/** Short hop already in the rear cone — spin would flash the rear plate. */
+function closeRearWaypoint(e: Entity, wp: { x: number; y: number }): boolean {
+  const dx = wp.x - e.x;
+  const dy = wp.y - e.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 1e-6 || dist > REVERSE_TILES * TILE_SIZE) return false;
+  const along = dx * Math.cos(e.facing) + dy * Math.sin(e.facing);
+  const half = (REVERSE_CONE_DEG * Math.PI) / 360;
+  return along / dist <= -Math.cos(half);
 }
 
 export function turnTurretTo(e: Entity, want: number, degPerSec: number, dt: number): number {
@@ -165,13 +189,13 @@ export function tickMovement(state: MatchState, dt: number): void {
       }
       continue;
     }
+    if (def.turnInPlace) skipTinyWaypoints(e);
     const wp = e.waypoints[0];
-    const remaining = wp
-      ? reversing(e)
-        ? turnTo(e, reverseHeading(e, wp), def.turnDegPerSec * hullTurnMul(e), dt)
-        : turnToward(e, wp.x, wp.y, def.turnDegPerSec * hullTurnMul(e), dt)
-      : 0;
-    if (def.turnInPlace && Math.abs(remaining) > FACE_MOVE_DEG) {
+    const want = wp ? hullSteerWant(e, wp) : e.facing;
+    const rate = def.turnDegPerSec * hullTurnMul(e);
+    // Must already be on the travel face at tick start — not after this tick's yaw.
+    if (def.turnInPlace && Math.abs(angRemainingDeg(e.facing, want)) > FACE_MOVE_DEG) {
+      turnTo(e, want, rate, dt);
       e.state =
         e.order?.kind === "attack" || e.order?.kind === "attackmove" || e.order?.kind === "forceattack"
           ? "attack"
@@ -180,6 +204,7 @@ export function tickMovement(state: MatchState, dt: number): void {
       e.tileY = worldToTile(e.y, state.tileSize);
       continue;
     }
+    if (wp) turnTo(e, want, rate, dt);
     e.state =
       e.order?.kind === "attack" || e.order?.kind === "attackmove" || e.order?.kind === "forceattack"
         ? "attack"
@@ -195,7 +220,14 @@ export function tickMovement(state: MatchState, dt: number): void {
       : 0;
     const ox = e.x;
     const oy = e.y;
-    moveWithCollision(state, e, speed * slopeSpeedMul(dh) * moveSpeedMul(e, unitInWater(state, e)), dt);
+    moveWithCollision(
+      state,
+      e,
+      speed * slopeSpeedMul(dh) * moveSpeedMul(e, unitInWater(state, e)),
+      dt,
+      reversing(e),
+      dest ? hullAcrossSlop(e, dest) : TRACK_ARRIVE_SLOP,
+    );
     e.tileX = worldToTile(e.x, state.tileSize);
     e.tileY = worldToTile(e.y, state.tileSize);
     if (e.waypoints.length > 0 && Math.hypot(e.x - ox, e.y - oy) < 0.25 && state.tick % 10 === 0) {
@@ -254,6 +286,61 @@ function marchTilesPerSec(e: Entity): number {
   const cap = e.order?.pace;
   if (cap == null || cap <= 0 || cap >= tiles) return tiles;
   return cap;
+}
+
+function angRemainingDeg(current: number, want: number): number {
+  let delta = want - current;
+  while (delta > Math.PI) delta -= Math.PI * 2;
+  while (delta < -Math.PI) delta += Math.PI * 2;
+  return (delta * 180) / Math.PI;
+}
+
+/** Drop sub-pixel lead points so hull want is the real travel heading. */
+function skipTinyWaypoints(e: Entity): void {
+  while (e.waypoints.length > 1) {
+    const wp = e.waypoints[0];
+    if (!wp || Math.hypot(wp.x - e.x, wp.y - e.y) > 2) break;
+    e.waypoints.shift();
+  }
+}
+
+function hullWant(e: Entity, want: number): number {
+  return catalog(e.type).turnInPlace ? snapTankYaw(want) : want;
+}
+
+/** Locked travel face for the current waypoint so dest-heading snap does not flicker. */
+const committedFace = new WeakMap<Entity, { face: number; wx: number; wy: number; acrossMax: number }>();
+
+function hullAcrossSlop(e: Entity, wp: { x: number; y: number }): number {
+  const prev = committedFace.get(e);
+  if (prev && prev.wx === wp.x && prev.wy === wp.y) return prev.acrossMax;
+  return TRACK_ARRIVE_SLOP;
+}
+
+function hullSteerWant(e: Entity, wp: { x: number; y: number }): number {
+  if (reversing(e)) return hullWant(e, reverseHeading(e, wp));
+  const dest = Math.atan2(wp.y - e.y, wp.x - e.x);
+  if (!catalog(e.type).turnInPlace) return dest;
+  const dx = wp.x - e.x;
+  const dy = wp.y - e.y;
+  const fx = Math.cos(e.facing);
+  const fy = Math.sin(e.facing);
+  const along = dx * fx + dy * fy;
+  const across = dx * -fy + dy * fx;
+  // Already on a face with the waypoint's foot within arrival slop of the
+  // axis: finish the roll on this face. Re-aiming would spin the hull for a
+  // few pixels. Mid-yaw the dest face below still wins, so no oscillation.
+  const face = snapTankYaw(e.facing);
+  const onFace = Math.abs(angRemainingDeg(e.facing, face)) <= FACE_MOVE_DEG;
+  if (onFace && Math.abs(across) <= TRACK_ARRIVE_SLOP && along > -TRACK_ARRIVE_SLOP) return face;
+  const destSnap = snapTankYaw(dest);
+  const prev = committedFace.get(e);
+  if (prev && prev.wx === wp.x && prev.wy === wp.y && along > 2) return prev.face;
+  const dist = Math.hypot(dx, dy);
+  const err = (Math.abs(angRemainingDeg(dest, destSnap)) * Math.PI) / 180;
+  const acrossMax = dist * Math.sin(err) + TRACK_ARRIVE_SLOP;
+  committedFace.set(e, { face: destSnap, wx: wp.x, wy: wp.y, acrossMax });
+  return destSnap;
 }
 
 function reverseHeading(e: Entity, wp: { x: number; y: number }): number {

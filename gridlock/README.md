@@ -24,7 +24,7 @@ Units collide and do not pass through each other. Armored vehicles crush opposin
 cd gridlock && npm install && npm run dev
 ```
 
-Open two Chrome tabs to http://localhost:5173
+Open two Chrome tabs to http://localhost:5177
 
 ## Playtest
 

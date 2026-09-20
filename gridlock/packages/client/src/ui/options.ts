@@ -65,7 +65,7 @@ export function renderOptions(root: HTMLElement, ctx: Ctx): void {
     edgeLabel,
     el("p", {
       class: "tiny",
-      text: "Arrow keys, W/D, and middle-mouse drag pan. A/S/G/R are unit orders. Edge scroll is off unless you turn it on.",
+      text: "Arrow keys, W/D, and middle-mouse drag pan. Scroll the wheel to zoom a little. A/S/G/R are unit orders. Edge scroll is off unless you turn it on.",
     }),
     el("p", { class: "tiny", text: "Saved locally. No accounts in M1." }),
     test,

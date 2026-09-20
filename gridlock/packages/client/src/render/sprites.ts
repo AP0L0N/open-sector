@@ -1,7 +1,7 @@
 import {
   buildingFaceIndex,
-  isoDirIndex,
   isCivilianType,
+  TANK_FACE_DIRS,
   isInfantryType,
   type CivilianType,
   type Crit,
@@ -62,6 +62,7 @@ import trooperCrawlUrl from "../assets/units/trooper-crawl.png";
 import infantrySwimUrl from "../assets/units/infantry-swim.png";
 import haulerSheetUrl from "../assets/units/hauler-move.png";
 import { bindTurntableSheets } from "./turntable-sheet.js";
+import { engineRowFromFacing, engineRowFromScreen } from "./turntable.js";
 import scoutHeadUrl from "../assets/units/scout-head.png";
 import rigSheetUrl from "../assets/units/rig-move.png";
 import armIconUrl from "../assets/status/arm.png";
@@ -69,12 +70,12 @@ import legIconUrl from "../assets/status/leg.png";
 import tracksIconUrl from "../assets/status/tracks.png";
 import engineIconUrl from "../assets/status/engine.png";
 
-/** Extra on-map scale for every unit (sprites and iso-box fallbacks). */
+/** Extra on-map scale for every unit (sprites and box fallbacks). */
 export const UNIT_VISUAL_SCALE = 1.25;
 /** Infantry draw smaller than vehicles so tanks read larger. */
 export const INFANTRY_VISUAL_SCALE = UNIT_VISUAL_SCALE * 0.85;
 
-/** On-map draw size for infantry sprites, iso pixels. */
+/** On-map draw size for infantry sprites, screen pixels. */
 export const UNIT_SPRITE_DRAW_SIZE = Math.round(22 * INFANTRY_VISUAL_SCALE);
 
 /** Optional independently-aimed gun drawn on top of the hull sheet. */
@@ -85,7 +86,7 @@ export interface TurretSpriteDef {
   frameSize: number;
 }
 
-/** Dirs × N frames. Row = isoDirIndex, column = walk/move frame. */
+/** Dirs × N frames. Row = facing (0001 = south, clockwise 22.5°), column = walk/move frame. */
 export interface UnitSpriteDef {
   image: HTMLImageElement;
   dirs: number;
@@ -96,6 +97,11 @@ export interface UnitSpriteDef {
   /** Fraction from the top of the cell that sits on the ground point (feet/tracks/hull). */
   contactY: number;
   turret?: TurretSpriteDef;
+  /**
+   * `world` (default): project facing onto the iso view, then 0001 = screen south.
+   * `screen`: engineRowFromScreen of the given vector.
+   */
+  facingSpace?: "screen" | "world";
 }
 
 function loadSheet(src: string): HTMLImageElement {
@@ -112,6 +118,7 @@ export const TROOPER_SPRITE: UnitSpriteDef = {
   fps: 12,
   drawSize: UNIT_SPRITE_DRAW_SIZE,
   contactY: 0.9,
+  facingSpace: "world",
 };
 
 export const TROOPER_CROUCH_SPRITE: UnitSpriteDef = {
@@ -122,6 +129,7 @@ export const TROOPER_CROUCH_SPRITE: UnitSpriteDef = {
   fps: 8,
   drawSize: UNIT_SPRITE_DRAW_SIZE,
   contactY: 0.88,
+  facingSpace: "world",
 };
 
 export const TROOPER_CRAWL_SPRITE: UnitSpriteDef = {
@@ -132,6 +140,7 @@ export const TROOPER_CRAWL_SPRITE: UnitSpriteDef = {
   fps: 10,
   drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
   contactY: 0.72,
+  facingSpace: "world",
 };
 
 /** Shared swim sheet for every infantry type. */
@@ -143,9 +152,10 @@ export const INFANTRY_SWIM_SPRITE: UnitSpriteDef = {
   fps: 8,
   drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
   contactY: 0.68,
+  facingSpace: "world",
 };
 
-/** 16-dir hatch head (helmet + face). Row = isoDirIndex, one frame. */
+/** 16-dir hatch head (helmet + face). Row 0 = 0001 = south, one frame. */
 export const SCOUT_HEAD_SPRITE: UnitSpriteDef = {
   image: loadSheet(scoutHeadUrl),
   dirs: 16,
@@ -154,23 +164,25 @@ export const SCOUT_HEAD_SPRITE: UnitSpriteDef = {
   fps: 1,
   drawSize: Math.round(16 * INFANTRY_VISUAL_SCALE),
   contactY: 1,
+  facingSpace: "world",
 };
 
 const tigerTurret: TurretSpriteDef = {
   image: new Image(),
-  dirs: 16,
+  dirs: TANK_FACE_DIRS,
   frames: 1,
   frameSize: 128,
 };
 export const TIGER_SPRITE: UnitSpriteDef = {
   image: new Image(),
-  dirs: 16,
+  dirs: TANK_FACE_DIRS,
   frames: 1,
   frameSize: 128,
   fps: 8,
   drawSize: Math.round(44 * UNIT_VISUAL_SCALE),
   contactY: 0.92,
   turret: tigerTurret,
+  facingSpace: "world",
 };
 bindTurntableSheets(TIGER_SPRITE.image, tigerTurret.image);
 
@@ -182,6 +194,7 @@ export const HAULER_SPRITE: UnitSpriteDef = {
   fps: 8,
   drawSize: Math.round(38 * UNIT_VISUAL_SCALE),
   contactY: 0.92,
+  facingSpace: "world",
 };
 
 export const RIG_SPRITE: UnitSpriteDef = {
@@ -192,6 +205,7 @@ export const RIG_SPRITE: UnitSpriteDef = {
   fps: 6,
   drawSize: Math.round(64 * UNIT_VISUAL_SCALE),
   contactY: 0.9,
+  facingSpace: "world",
 };
 
 const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
@@ -222,12 +236,12 @@ export function critIcon(c: Crit): HTMLImageElement {
   return CRIT_ICONS[c];
 }
 
-/** Iso building art. Pad metrics map the concrete diamond onto the tile footprint. */
+/** Building art. Pad metrics map the ground rectangle onto the tile footprint. */
 export interface BuildingSpriteDef {
   image: HTMLImageElement;
-  /** Source pixel width of the isometric pad (west corner to east corner). */
+  /** Source pixel width of the ground pad (west edge to east edge). */
   padWidth: number;
-  /** Source pixel of the pad's south (nearest) corner. */
+  /** Source pixel of the pad's south (bottom) contact. */
   padSouthX: number;
   padSouthY: number;
   /** Source pixel at the center of the HP / selection stack, next to the roof. */
@@ -501,6 +515,18 @@ function unitSheetAlpha(img: HTMLImageElement): BuildingAlphaMap | null {
   return buildingAlphaMap(img);
 }
 
+function sheetDir(
+  def: { dirs: number; facingSpace?: "screen" | "world" },
+  isoDx: number,
+  isoDy: number,
+  facing?: number,
+): number {
+  const n = def.dirs;
+  if (isoDx !== 0 || isoDy !== 0) return engineRowFromScreen(isoDx, isoDy) % n;
+  if (facing != null && Number.isFinite(facing)) return engineRowFromFacing(facing) % n;
+  return 0;
+}
+
 /**
  * Snap a screen-space armor spark onto painted hull/turret pixels.
  * `ground` is the unit's contact point; `hit` is the candidate spark.
@@ -515,18 +541,20 @@ export function snapHitToUnitSprite(
   isoDy: number,
   turretDx?: number,
   turretDy?: number,
+  facing?: number,
+  turretFacing?: number,
 ): { x: number; y: number } | null {
   if (!spriteReady(def) || def.drawSize <= 0 || def.frameSize <= 0) return null;
   const hullMap = unitSheetAlpha(def.image);
   if (!hullMap) return null;
-  const dir = isoDirIndex(isoDx, isoDy, def.dirs) % def.dirs;
+  const dir = sheetDir(def, isoDx, isoDy, facing);
   const hull = { map: hullMap, sx: 0, sy: dir * def.frameSize, cell: def.frameSize };
   let turret: { map: BuildingAlphaMap; sx: number; sy: number; cell: number } | null = null;
   const gun = def.turret;
   if (gun && spriteReady(gun)) {
     const tmap = unitSheetAlpha(gun.image);
     if (tmap) {
-      const tdir = isoDirIndex(turretDx ?? isoDx, turretDy ?? isoDy, gun.dirs) % gun.dirs;
+      const tdir = sheetDir({ dirs: gun.dirs, facingSpace: def.facingSpace }, turretDx ?? isoDx, turretDy ?? isoDy, turretFacing ?? facing);
       turret = { map: tmap, sx: 0, sy: tdir * gun.frameSize, cell: gun.frameSize };
     }
   }
@@ -583,10 +611,12 @@ export function drawUnitSprite(
     now: number;
     turretDx?: number;
     turretDy?: number;
+    facing?: number;
+    turretFacing?: number;
   },
 ): boolean {
   if (!spriteReady(def)) return false;
-  const dir = isoDirIndex(isoDx, isoDy, def.dirs) % def.dirs;
+  const dir = sheetDir(def, isoDx, isoDy, opts.facing);
   const frame = opts.moving
     ? Math.floor((opts.now / 1000) * def.fps + opts.id * 0.37) % def.frames
     : 0;
@@ -602,7 +632,12 @@ export function drawUnitSprite(
   if (turret && spriteReady(turret)) {
     const tdx = opts.turretDx ?? isoDx;
     const tdy = opts.turretDy ?? isoDy;
-    const tdir = isoDirIndex(tdx, tdy, turret.dirs) % turret.dirs;
+    const tdir = sheetDir(
+      { dirs: turret.dirs, facingSpace: def.facingSpace },
+      tdx,
+      tdy,
+      opts.turretFacing ?? opts.facing,
+    );
     const tframe = turret.frames > 1 ? frame % turret.frames : 0;
     const tcell = turret.frameSize;
     ctx.drawImage(turret.image, tframe * tcell, tdir * tcell, tcell, tcell, dx, dy, s, s);
@@ -619,10 +654,11 @@ export function drawScoutHead(
   turretDx: number,
   turretDy: number,
   hullSize: number,
+  turretFacing?: number,
 ): boolean {
   const def = SCOUT_HEAD_SPRITE;
   if (!spriteReady(def)) return false;
-  const dir = isoDirIndex(turretDx, turretDy, def.dirs) % def.dirs;
+  const dir = sheetDir(def, turretDx, turretDy, turretFacing);
   const s = def.drawSize;
   const cell = def.frameSize;
   const len = Math.hypot(turretDx, turretDy) || 1;

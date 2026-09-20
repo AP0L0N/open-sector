@@ -22,35 +22,35 @@ You are not a general illustrator. If a prompt would produce a cinematic tank in
 
 ## The pipeline (do this, not one-facing-at-a-time)
 
-**New standard (3D / Blender):** render **all 16 unique yaws**. Same locked 2:1 camera, subject yaws in place. Frame 1 faces the camera (screen south), then clockwise **22.5°** (360° / 16 — not 25.5°). Hull and turret are separate passes of that camera. Do not mirror; west is not a flip of east.
+**New standard (3D / Blender):** render **16 unique faces**. Same locked top-down camera (N up, E right), subject yaws in place. `0001.png` faces south (screen down), then clockwise **22.5°** through `0016.png`. A 17th file would equal `0001` — do not ship it. Hull and turret are separate passes of that camera. Do not mirror; west is not a flip of east.
 
 ```
-1. Turntable     16 PNGs, south-first, clockwise 22.5°, transparent studio
+1. Turntable     16 PNGs, 0001 = south, clockwise 22.5°, 0016 unique (0017 = 0001, omit), transparent studio
 2. Pair          hull-only + turret-only at the same camera / origin
 3. Compose       python tools/sprites/compose_blender_turntable.py --src …
 4. Verify        16-wide strip + 4×4 turntable + mixed hull/turret aim + in-engine circle
 ```
 
-The compositor remaps south-first sources onto engine rows (row 0 = screen east) and applies **one** scale and offset to hull and turret so independent aim stays on the ring.
+Drop-ins keep south-first filenames (`0001` = south). Optional compose applies **one** scale and offset to hull and turret so independent aim stays on the ring.
 
 **2D fallback (image_gen units):** do not edit-chain 16 stills and do not use a 3×3 still contact sheet (south goes orthographic, yaws duplicate). Consistency comes from a locked-camera turntable VIDEO of the east lock, then code harvests 22.5° stills, mirrors the 7 opposites, and builds the engine sheet.
 
 ```
-1. Style lock     one east-facing hero (chunky 2:1 iso, magenta, no ground)
-2. Turntable      image_to_video: "rotates slowly clockwise in place, camera locked 2:1 iso, magenta stays"
+1. Style lock     one east-facing hero (chunky top-down, magenta, no ground)
+2. Turntable      image_to_video: "rotates slowly clockwise in place, camera locked top-down, magenta stays"
 3. Harvest        ffmpeg fps=8 → 48 frames / 6s. Pick 9 unique yaws. Code mirrors the rest.
 4. Animate        infantry walk gait (optional): walk-in-place video per unique facing, 8 frames
 5. Compose        python tools/sprites/compose_unit_sheet.py --unique-dir …
 6. Verify         16-wide gameplay strip + 4×4 turntable + in-engine circle
 ```
 
-Do not 2D-rotate an isometric drawing to fake a yaw.
+Do not 2D-rotate a drawing to fake a yaw.
 
 The video must actually **yaw the miniature** (you see front, then side, then rear). If it cardboard-spins the 2D drawing, discard and retry the prompt. If it only covers ~180°, harvest that arc and generate the missing unique yaws (N / NE / ENE) as single `image_edit`s from the east lock, then normalize them to the video frame size before compose.
 
 ### Why 9, not 16
 
-The camera is locked 2:1 isometric (bottom of the screen is nearer). A **horizontal flip** swaps east/west and leaves near/far alone:
+The camera is locked top-down (north is up, east is right). A **horizontal flip** swaps east/west:
 
 | Unique (draw these) | Mirror (code) |
 |---|---|
@@ -58,13 +58,13 @@ The camera is locked 2:1 isometric (bottom of the screen is nearer). A **horizon
 | ESE | WSW |
 | SE | SW |
 | SSE | SSW |
-| S | — (unique; front of the unit, still isometric) |
-| N | — (unique; rear of the unit, still isometric) |
+| S | — (unique; nose pointing down) |
+| N | — (unique; nose pointing up) |
 | NNE | NNW |
 | NE | NW |
 | ENE | WNW |
 
-S and N are **not** mirrors of each other. South shows front armor + top deck. North shows rear armor + top deck. Both stay 2:1 isometric — never true top-down, never a flat elevation.
+S and N are **not** mirrors of each other. South shows the front of the unit pointing down. North shows the rear pointing up. Both stay top-down.
 
 Rifle-in-right-hand will appear left-handed on mirrored facings. That is the accepted RTS cheat. Do not fight it.
 
@@ -72,7 +72,7 @@ Rifle-in-right-hand will appear left-handed on mirrored facings. That is the acc
 
 ## Visual lock (do not drift)
 
-**Camera:** 2:1 isometric (classic C&C / RA2 dimetric — the game view). The camera **never yaws or pitches**. The miniature yaws on a turntable. Never mix with true top-down in one batch. Never 2D-spin a sprite.
+**Camera:** top-down (north up, east right — the game view). The camera **never yaws or pitches**. The miniature yaws on a turntable. Never mix with isometric in one batch. Never 2D-spin a sprite.
 
 **Style:**
 - Chunky shapes, 1–2 px hard outline (dark brown-black `#1a1410`, not pure comic black if it fights the palette).
@@ -204,7 +204,7 @@ Lock these from facing E of the new unit and hold them on every facing and every
 
 ### 1. Pick the lock
 
-Open an existing unit of the same class. Restate camera (2:1 iso), cell size, frame count, contactY, and 16 facings before generating. Keep the style words in every prompt.
+Open an existing unit of the same class. Restate camera (top-down, N up / E right), cell size, frame count, contactY, and 16 facings before generating. Keep the style words in every prompt.
 
 ### 2. Canonical east (style lock)
 
@@ -216,7 +216,7 @@ For a tank: also save an assembled east (hull + turret) for the cameo, then deri
 
 `image_to_video` the east lock, 6s:
 
-> The miniature rotates slowly clockwise in place on a turntable. Camera stays locked at the same 2:1 isometric angle. Hot magenta background stays flat. The subject keeps the same size.
+> The miniature rotates slowly clockwise in place on a turntable. Camera stays locked top-down (north up, east right). Hot magenta background stays flat. The subject keeps the same size.
 
 Extract:
 
@@ -337,7 +337,7 @@ Copy this and tick it.
 
 - [ ] Class cell size, frames, contactY chosen from the table (or a new class documented here **and** in `sprites.ts`)
 - [ ] East style lock saved under `tools/sprites/src/`
-- [ ] 9-facing turntable in one file; south/north still isometric
+- [ ] 9-facing turntable in one file; south/north still top-down
 - [ ] If turret: separate hull + turret turntables, cyan pivots, runtime composite
 - [ ] If infantry: video-harvested 8-frame strips per unique facing
 - [ ] `compose_unit_sheet.py` wrote the engine PNG; strip + manifest passed
@@ -374,7 +374,7 @@ Buildings read as **blocks with a function**: door, pad, flag stub. Not cities. 
 - Watermarks, signatures
 - “Sprite sheet” that is actually one illustration with arrows
 - Transparent background that is dirty gray checker leftover — use magenta, then the pipeline keys it
-- 2D-rotating an isometric sprite to fake a yaw
+- 2D-rotating a sprite to fake a yaw
 - Generating 16 facings as 16 separate `image_gen` calls
 - Independently scaling each facing to fill the cell (guaranteed size pop)
 - A 3×3 (or 4×4) still contact sheet as the source of yaws — the model duplicates east and flattens south/north. Use a turntable **video**.
@@ -383,13 +383,13 @@ Buildings read as **blocks with a function**: door, pad, flag stub. Not cities. 
 
 ## How you answer
 
-1. Restate camera (2:1 iso), cell size, **16 facings**, frame count, and that you will use the 9-in-one-file + compose pipeline.
+1. Restate camera (top-down, N up / E right), cell size, **16 facings**, frame count, and that you will use the 9-in-one-file + compose pipeline.
 2. Generate east lock, then the 9-facing turntable, then compose.
 3. Give the manifest block (`facing: 16`, `rows: 16`) and point at the preview strip.
 4. Note problems (clipping, size pop, tint area too small, south went top-down) and fix them before shipping.
 5. Do not change `drawUnitSprite` / `spriteFor` for a drop-in redraw. GitNexus impact those symbols if you *must* touch them (map draw path, currently LOW).
 
-When generating images, put the constraints in the image prompt too: 2:1 isometric sprite, magenta background, chunky outline, flat colors, no scene, this exact yaw / this exact 3×3 map.
+When generating images, put the constraints in the image prompt too: top-down sprite (N up, E right), magenta background, chunky outline, flat colors, no scene, this exact yaw / this exact 3×3 map.
 
 ---
 
