@@ -402,14 +402,16 @@ function tickRotate(e: Entity, dt: number): void {
     e.order = null;
     return;
   }
-  const hull = turnToward(e, tx, ty, def.turnDegPerSec * hullTurnMul(e), dt);
+  const hullRate = def.turnDegPerSec * hullTurnMul(e);
+  const hull = turnToward(e, tx, ty, hullRate, dt);
   let gun = 0;
   if (hasTurret(e.type)) {
     const rate = def.turretTurnDegPerSec ?? def.turnDegPerSec;
     gun = turnTurretToward(e, tx, ty, rate, dt);
   }
   e.state = "idle";
-  if (Math.abs(hull) <= 0.5 && Math.abs(gun) <= 0.5) e.order = null;
+  const hullDone = hullRate <= 0 || Math.abs(hull) <= 0.5;
+  if (hullDone && Math.abs(gun) <= 0.5) e.order = null;
 }
 
 export function repathIfBlocked(state: MatchState, e: Entity): void {

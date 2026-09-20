@@ -20,7 +20,8 @@ export const EASY_ATTACK_RETRY_TICKS = 8 * TICK_HZ;
 export const EASY_MIN_FIGHTERS = 4;
 export const EASY_WANT_HAULERS = 2;
 export const EASY_WANT_TROOPERS = 10;
-export const EASY_WANT_WARDENS = 4;
+export const EASY_WANT_WARDENS = 2;
+export const EASY_WANT_SS3 = 4;
 const TRAIN_QUEUE_SOFT = 2;
 const FIRST_WAVE_TROOPERS = 4;
 
@@ -95,6 +96,7 @@ function trainEasy(state: MatchState, p: SimPlayer): void {
   };
   if (tryTrain("hauler", EASY_WANT_HAULERS)) return;
   if (tryTrain("trooper", FIRST_WAVE_TROOPERS)) return;
+  if (tryTrain("ss3", EASY_WANT_SS3)) return;
   if (tryTrain("warden", EASY_WANT_WARDENS)) return;
   tryTrain("trooper", EASY_WANT_TROOPERS);
 }

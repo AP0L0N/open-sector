@@ -91,9 +91,11 @@ function fireAt(
 describe("hatch scout", () => {
   it("gives Wardens a 3× trooper-HP crew and leaves other types unscouted", () => {
     assert.equal(hasScout("warden"), true);
+    assert.equal(hasScout("ss3"), true);
     assert.equal(hasScout("hauler"), false);
     assert.equal(hasScout("trooper"), false);
     assert.equal(scoutHpMaxOf("warden"), catalog("trooper").hp * SCOUT_HP_MUL);
+    assert.equal(scoutHpMaxOf("ss3"), catalog("trooper").hp * SCOUT_HP_MUL);
     assert.equal(scoutHpMaxOf("hauler"), 0);
   });
 

@@ -13,7 +13,7 @@ import {
   TICK_DT,
   TILE_SUBDIV,
 } from "../catalog.js";
-import { TILE_BLOCKED, TILE_SCRAP, getMap, tileAt } from "../maps.js";
+import { TILE_BLOCKED, TILE_EMPTY, TILE_SCRAP, TILE_TREE, getMap, tileAt } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { createMatch, step, stepMatch } from "./match.js";
 import { productionSpeed } from "./power.js";
@@ -66,6 +66,7 @@ describe("createMatch", () => {
       const own = [...state.entities.values()].filter((e) => e.ownerId === pid && e.kind === "unit");
       assert.equal(own.filter((e) => e.type === "trooper").length, 1);
       assert.equal(own.filter((e) => e.type === "warden").length, 1);
+      assert.equal(own.filter((e) => e.type === "ss3").length, 1);
       assert.equal(own.filter((e) => e.type === "hauler").length, 0);
       const core = catalog("core");
       const half = Math.floor(core.tileW / 2);
@@ -308,6 +309,10 @@ describe("construction", () => {
     assert.equal(train.ok, true, !train.ok ? train.message : "");
     ticks(state, catalog("warden").buildSeconds * 10 + 2);
     assert.ok([...state.entities.values()].some((e) => e.type === "warden" && e.ownerId === "A"));
+    const trainG = applyCommand(state, "A", { type: "cmd.train", unit: "ss3" });
+    assert.equal(trainG.ok, true, !trainG.ok ? trainG.message : "");
+    ticks(state, catalog("ss3").buildSeconds * 10 + 2);
+    assert.ok([...state.entities.values()].some((e) => e.type === "ss3" && e.ownerId === "A"));
   });
 });
 
@@ -585,6 +590,9 @@ describe("combat", () => {
   it("uses the coaxial MG on troops and the 75mm on armor", () => {
     const { state } = twoPlayerMatch();
     state.heights.fill(0);
+    for (let i = 0; i < state.terrain.length; i++) {
+      if (state.terrain[i] === TILE_TREE) state.terrain[i] = TILE_EMPTY;
+    }
     const tank = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
     const inf = makeEntity(state, "trooper", "B", 23 * 32, 20 * 32);
     tank.facing = 0;

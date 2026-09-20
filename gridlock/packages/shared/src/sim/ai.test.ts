@@ -121,7 +121,7 @@ describe("easy CPU", () => {
     assert.ok(kinds.some((e) => e?.type === "warden"), "wave needs tanks");
   });
 
-  it("trains Wardens when an Armory is standing", () => {
+  it("trains StuGs when an Armory is standing", () => {
     const { state, aiId } = humanVsEasy();
     waitCore(state, aiId);
     const hq = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "core")!;
@@ -135,9 +135,9 @@ describe("easy CPU", () => {
     cpu.scrap = 1000;
     tickAi(state);
     const queued = [...state.entities.values()].some(
-      (e) => e.ownerId === aiId && e.type === "armory" && e.queue.some((j) => j.type === "warden"),
+      (e) => e.ownerId === aiId && e.type === "armory" && e.queue.some((j) => j.type === "ss3"),
     );
-    assert.equal(queued, true, "CPU did not queue a Warden");
+    assert.equal(queued, true, "CPU did not queue a StuG");
   });
 
   it("trains Troopers from the opening scrap pile", () => {

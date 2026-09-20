@@ -18,8 +18,8 @@ import {
   TANK_GUN_ELEV_DEG,
   TREE_LOS_THROUGH,
   catalog,
+  coverHeightOf,
   entityIsScouting,
-  hasTurret,
   infantryGunFor,
   isInfantryType,
   sightBonusTilesOf,
@@ -78,6 +78,25 @@ export function entityHeight(state: MatchState, e: Entity): number {
     return h;
   }
   return worldTileHeight(state, e.x, e.y);
+}
+
+/** Muzzle / eye height in elevation units. */
+export function muzzleHeight(state: MatchState, e: Entity): number {
+  if (e.garrisonedIn != null) {
+    const house = state.entities.get(e.garrisonedIn);
+    if (house) return entityHeight(state, house) + coverHeightOf(house.type) * 0.6;
+  }
+  return entityHeight(state, e) + observerEyeForEntity(e);
+}
+
+/** Aim height: mid-mass of the target so a descending shot still meets it. */
+export function aimHeight(state: MatchState, e: Entity): number {
+  return entityHeight(state, e) + coverHeightOf(e.type) * 0.45;
+}
+
+/** True when the round is above the solid top of this cover. */
+export function shotClearsCover(shotZ: number, groundH: number, coverH: number): boolean {
+  return shotZ > groundH + coverH;
 }
 
 export function climbableDelta(dh: number): boolean {
@@ -177,7 +196,7 @@ export function gunCanElevate(fromH: number, toH: number, distWorld: number): bo
   return dh * HEIGHT_WORLD <= distWorld * TANK_GUN_ELEV_TAN;
 }
 
-/** Infantry aim freely. Turreted hulls use gunCanElevate. */
+/** Infantry aim freely. Armed hulls (turret or casemate) use gunCanElevate. */
 export function canAimWeapon(
   state: MatchState,
   shooter: Entity,
@@ -185,7 +204,7 @@ export function canAimWeapon(
   aimY: number,
   target?: Entity,
 ): boolean {
-  if (!hasTurret(shooter.type)) return true;
+  if (isInfantryType(shooter.type) || catalog(shooter.type).rangeTiles <= 0) return true;
   const fromH = entityHeight(state, shooter);
   const toH = target ? entityHeight(state, target) : worldTileHeight(state, aimX, aimY);
   return gunCanElevate(fromH, toH, Math.hypot(aimX - shooter.x, aimY - shooter.y));

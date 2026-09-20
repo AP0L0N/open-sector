@@ -1,7 +1,6 @@
 import {
   BUILDING_TYPES,
   CRIT_LABEL,
-  SHELLS,
   SHELL_TYPES,
   STANCE_LABEL,
   TRAIN_QUEUE_CAP,
@@ -24,6 +23,7 @@ import {
   isStance,
   producerType,
   productionSpeed,
+  shellsFor,
   specialLabel,
   specialOf,
   specialReady,
@@ -600,6 +600,7 @@ function infantryClipShown(e: EntityView, gunId: string): number {
 
 const TYPE_ORDER: EntityType[] = [
   "warden",
+  "ss3",
   "hauler",
   "trooper",
   "rig",
@@ -711,8 +712,9 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
   body.append(el("div", { class: "config-kicker", attrs: { "data-field": "kicker" } }));
   if (hasAmmo(focus.type)) {
     const rack = el("div", { class: "shell-rack" });
+    const table = shellsFor(focus.type);
     for (const id of SHELL_TYPES) {
-      const s = SHELLS[id];
+      const s = table[id];
       rack.append(loadoutButton({ attr: "data-shell", id, name: s.name, blurb: s.blurb, count: "0", on: false }));
     }
     body.append(el("div", { class: "tiny", text: "Shell" }), rack);
@@ -756,6 +758,8 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
   }
   const def = catalog(focus.type);
   setField(body, "kicker", live.length > 1 ? `${def.name}  ×${live.length}` : def.name);
+  const kicker = body.querySelector('[data-field="kicker"]');
+  if (kicker instanceof HTMLElement && def.blurb) kicker.title = def.blurb;
   if (hasAmmo(focus.type)) {
     const shells = live.filter((e) => e.ownerId === you);
     const same = shells.length > 0 && shells.every((e) => e.shell === shells[0]!.shell);

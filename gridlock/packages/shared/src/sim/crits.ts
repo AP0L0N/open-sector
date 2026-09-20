@@ -30,7 +30,9 @@ export function moveSpeedMul(e: Entity, swimming = false): number {
   return 1;
 }
 
+/** Broken tracks freeze the hull. Engine damage only slows it. Turret traverse is separate. */
 export function hullTurnMul(e: Entity): number {
+  if (hasCrit(e, "tracks")) return 0;
   if (hasCrit(e, "engine")) return CRIT_ENGINE_TURN;
   return 1;
 }

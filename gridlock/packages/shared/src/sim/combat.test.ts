@@ -1,7 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { HANDGUN, SHELLS, TICK_DT, addCrit, catalog, isCivilianType } from "../catalog.js";
+import {
+  HANDGUN,
+  HEIGHT_BASE,
+  HULL_EYE_HEIGHT,
+  SHELLS,
+  TANK_MG,
+  TICK_DT,
+  addCrit,
+  catalog,
+  coverHeightOf,
+  isCivilianType,
+} from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { RICOCHET_SPARK_SPEED } from "./ballistics.js";
@@ -191,6 +202,50 @@ describe("tank shells vs buildings", () => {
     tickProjectiles(state, TICK_DT);
     assert.ok(house.hp <= hp0 - 70, `HE dmg hp ${house.hp} vs ${hp0}`);
     assert.equal(state.impacts.some((i) => i.kind === "ricochet"), false);
+  });
+
+  it("flies over a short valley house and still hits a tall one", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const y = 22;
+    const z = HEIGHT_BASE + HULL_EYE_HEIGHT;
+    assert.ok(z > coverHeightOf("cottage"), "hilltop hull must clear a 1-story cottage");
+    assert.ok(z <= coverHeightOf("manor"), "manor should still poke the same shot");
+
+    const cotX = 40;
+    const cot = buildingCenter(cotX, y, catalog("cottage").tileW, catalog("cottage").tileH, ts);
+    const cottage = makeEntity(state, "cottage", "B", cot.x, cot.y, { tileX: cotX, tileY: y });
+    const cotBox = buildingBounds(cottage, ts);
+    const cotHp = cottage.hp;
+    const over = fireShell(state, {
+      x: cotBox.x0 - 12,
+      y: cottage.y,
+      vx: catalog("warden").projectileSpeed,
+      vy: 0,
+    });
+    over.z = z;
+    over.vz = 0;
+    tickProjectiles(state, TICK_DT);
+    assert.equal(cottage.hp, cotHp, "valley cottage must not eat a high shot");
+    state.projectiles = [];
+
+    const manX = 56;
+    const man = buildingCenter(manX, y, catalog("manor").tileW, catalog("manor").tileH, ts);
+    const manor = makeEntity(state, "manor", "B", man.x, man.y, { tileX: manX, tileY: y });
+    const manBox = buildingBounds(manor, ts);
+    const manHp = manor.hp;
+    const into = fireShell(state, {
+      x: manBox.x0 - 12,
+      y: manor.y,
+      vx: catalog("warden").projectileSpeed,
+      vy: 0,
+    });
+    into.z = z;
+    into.vz = 0;
+    tickProjectiles(state, TICK_DT);
+    assert.ok(manor.hp < manHp, `manor hp ${manor.hp} vs ${manHp}`);
   });
 });
 
@@ -1317,5 +1372,139 @@ describe("infantry weapons", () => {
     const pistolShots = pistolClip0 - pistol.clip;
     assert.ok(rifleShots >= 1, `rifle shots ${rifleShots}`);
     assert.ok(pistolShots > rifleShots, `pistol ${pistolShots} vs rifle ${rifleShots}`);
+  });
+});
+
+describe("broken tracks", () => {
+  it("freezes the hull but still traverses a turret onto a flank target", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(40, ts), tileCenter(40, ts));
+    const armor = makeEntity(state, "warden", "B", tileCenter(40, ts), tileCenter(48, ts));
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    addCrit(tank, "tracks");
+    tank.holdPosition = true;
+    armor.holdPosition = true;
+    armor.facing = -Math.PI / 2;
+    armor.turretFacing = armor.facing;
+    armor.mgAmmo = 0;
+    armor.cooldown = 99;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [tank.id], targetId: armor.id });
+    for (let i = 0; i < 24; i++) step(state, TICK_DT);
+    assert.ok(Math.abs(tank.facing) < 0.01, `hull yawed facing=${tank.facing}`);
+    assert.ok(Math.abs(tank.turretFacing - Math.PI / 2) < 0.2, `turretFacing=${tank.turretFacing}`);
+    assert.ok((tank.ammo.ap ?? 12) < 12, `ap=${tank.ammo.ap}`);
+  });
+
+  it("fires the MG only along hull facing, and uses the 75mm on a flank trooper", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(40, ts), tileCenter(40, ts));
+    const front = makeEntity(state, "trooper", "B", tileCenter(48, ts), tileCenter(40, ts));
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    addCrit(tank, "tracks");
+    tank.holdPosition = true;
+    front.holdPosition = true;
+    front.cooldown = 99;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [tank.id], targetId: front.id });
+    for (let i = 0; i < 6; i++) step(state, TICK_DT);
+    assert.ok(tank.mgAmmo < TANK_MG.ammo, `front mgAmmo=${tank.mgAmmo}`);
+    assert.equal(tank.ammo.ap, 12);
+
+    const { state: s2 } = twoPlayerMatch();
+    clearCover(s2);
+    const gun = makeEntity(s2, "warden", "A", tileCenter(40, ts), tileCenter(40, ts));
+    const flank = makeEntity(s2, "trooper", "B", tileCenter(40, ts), tileCenter(48, ts));
+    gun.facing = 0;
+    gun.turretFacing = 0;
+    addCrit(gun, "tracks");
+    gun.holdPosition = true;
+    flank.holdPosition = true;
+    flank.cooldown = 99;
+    applyCommand(s2, "A", { type: "cmd.attack", ids: [gun.id], targetId: flank.id });
+    for (let i = 0; i < 24; i++) step(s2, TICK_DT);
+    assert.equal(gun.mgAmmo, TANK_MG.ammo, `flank mgAmmo=${gun.mgAmmo}`);
+    assert.ok(Math.abs(gun.facing) < 0.01, `hull yawed facing=${gun.facing}`);
+    assert.ok(
+      (gun.ammo.ap ?? 12) < 12 || flank.hp < flank.hpMax || flank.hp <= 0,
+      `ap=${gun.ammo.ap} flank hp=${flank.hp}`,
+    );
+  });
+
+  it("lets a turreted hull still rotate the turret on a rotate order", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    addCrit(tank, "tracks");
+    const res = applyCommand(state, "A", {
+      type: "cmd.rotate",
+      ids: [tank.id],
+      x: tank.x,
+      y: tank.y + 200,
+    });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    for (let i = 0; i < 24; i++) step(state, TICK_DT);
+    assert.ok(Math.abs(tank.facing) < 0.01, `hull facing=${tank.facing}`);
+    assert.ok(Math.abs(tank.turretFacing - Math.PI / 2) < 0.12, `turretFacing=${tank.turretFacing}`);
+    assert.equal(tank.order, null);
+  });
+
+  it("cannot hull-steer a casemate StuG onto a target outside the gun arc", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const gun = makeEntity(state, "ss3", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const tgt = makeEntity(state, "trooper", "B", tileCenter(28, ts), tileCenter(24, ts));
+    tgt.holdPosition = true;
+    tgt.cooldown = 99;
+    gun.facing = Math.PI / 2;
+    gun.turretFacing = Math.PI / 2;
+    gun.holdPosition = true;
+    addCrit(gun, "tracks");
+    applyCommand(state, "A", { type: "cmd.attack", ids: [gun.id], targetId: tgt.id });
+    const face0 = gun.facing;
+    const mg0 = gun.mgAmmo;
+    const ap0 = gun.ammo.ap;
+    for (let i = 0; i < 20; i++) step(state, TICK_DT);
+    assert.equal(gun.facing, face0);
+    assert.equal(gun.turretFacing, face0);
+    assert.equal(gun.mgAmmo, mg0);
+    assert.equal(gun.ammo.ap, ap0);
+    assert.equal(state.projectiles.filter((p) => p.fromId === gun.id).length, 0);
+  });
+});
+
+describe("ss3 casemate", () => {
+  it("must hull-steer onto a target outside the gun arc before firing", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const gun = makeEntity(state, "ss3", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const tgt = makeEntity(state, "trooper", "B", tileCenter(28, ts), tileCenter(24, ts));
+    tgt.holdPosition = true;
+    tgt.cooldown = 99;
+    gun.facing = Math.PI / 2;
+    gun.turretFacing = Math.PI / 2;
+    gun.holdPosition = true;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [gun.id], targetId: tgt.id });
+    step(state, TICK_DT);
+    assert.equal(state.projectiles.filter((p) => p.fromId === gun.id).length, 0);
+    assert.ok(Math.abs(gun.facing - Math.PI / 2) > 0.01, "hull should start turning");
+    assert.equal(gun.turretFacing, gun.facing);
+    let fired = false;
+    for (let i = 0; i < 20; i++) {
+      step(state, TICK_DT);
+      if (state.projectiles.some((p) => p.fromId === gun.id) || state.impacts.length > 0) fired = true;
+      assert.equal(gun.turretFacing, gun.facing);
+    }
+    assert.equal(fired, true, "should fire once the hull faces the target");
+    assert.ok(Math.abs(gun.facing) < 0.2, `facing=${gun.facing}`);
   });
 });
