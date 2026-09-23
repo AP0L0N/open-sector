@@ -48,7 +48,7 @@ describe("buildingAnimActive", () => {
         view({
           type: "muster",
           trainProgress: 0.4,
-          trainQueue: [{ id: 8, type: "trooper", progress: 0.4, paused: true }],
+          trainQueue: [{ id: 8, type: "rifleman", progress: 0.4, paused: true }],
         }),
       ),
       false,

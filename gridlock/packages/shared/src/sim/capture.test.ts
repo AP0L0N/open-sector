@@ -40,7 +40,7 @@ function ticks(state: MatchState, n: number): void {
 
 function placeAdjacent(
   state: MatchState,
-  type: "trooper" | "warden",
+  type: "rifleman" | "warden",
   ownerId: string,
   building: { tileX: number; tileY: number },
 ): ReturnType<typeof makeEntity> {
@@ -70,7 +70,7 @@ describe("infantry capture", () => {
     const c = buildingCenter(tileX, tileY, catalog("dynamo").tileW, catalog("dynamo").tileH, ts);
     const dyn = makeEntity(state, "dynamo", b, c.x, c.y, { tileX, tileY });
     dyn.hpMax = 75;
-    const inf = placeAdjacent(state, "trooper", a, dyn);
+    const inf = placeAdjacent(state, "rifleman", a, dyn);
     const hp0 = dyn.hp;
     const res = applyCommand(state, a, { type: "cmd.attack", ids: [inf.id], targetId: dyn.id });
     assert.equal(res.ok, true, !res.ok ? res.message : "");
@@ -101,7 +101,7 @@ describe("infantry capture", () => {
     const tileY = 24;
     const c = buildingCenter(tileX, tileY, catalog("dynamo").tileW, catalog("dynamo").tileH, ts);
     const dyn = makeEntity(state, "dynamo", b, c.x, c.y, { tileX, tileY });
-    const inf = makeEntity(state, "trooper", a, tileCenter(tileX - 20, ts), tileCenter(tileY, ts));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(tileX - 20, ts), tileCenter(tileY, ts));
     inf.facing = 0;
     applyCommand(state, a, { type: "cmd.attack", ids: [inf.id], targetId: dyn.id });
     ticks(state, 3);
@@ -119,7 +119,7 @@ describe("infantry capture", () => {
     const ts = state.tileSize;
     const dyn = makeEntity(state, "dynamo", b, tileCenter(40, ts), tileCenter(24, ts), { tileX: 40, tileY: 24 });
     dyn.hpMax = 75;
-    const inf = placeAdjacent(state, "trooper", a, dyn);
+    const inf = placeAdjacent(state, "rifleman", a, dyn);
     applyCommand(state, a, { type: "cmd.attack", ids: [inf.id], targetId: dyn.id });
     ticks(state, 20);
     const mid = dyn.captureProgress;
@@ -138,14 +138,14 @@ describe("infantry capture", () => {
     const ts = state.tileSize;
     const dyn = makeEntity(state, "dynamo", b, tileCenter(40, ts), tileCenter(24, ts), { tileX: 40, tileY: 24 });
     dyn.hpMax = 75;
-    const one = placeAdjacent(state, "trooper", a, dyn);
+    const one = placeAdjacent(state, "rifleman", a, dyn);
     applyCommand(state, a, { type: "cmd.attack", ids: [one.id], targetId: dyn.id });
     ticks(state, 15);
     const solo = dyn.captureProgress;
     dyn.captureProgress = 0;
     dyn.captureOwnerId = "";
     applyCommand(state, a, { type: "cmd.stop", ids: [one.id] });
-    const two = makeEntity(state, "trooper", a, tileCenter(dyn.tileX - 1, ts), tileCenter(dyn.tileY + 1, ts));
+    const two = makeEntity(state, "rifleman", a, tileCenter(dyn.tileX - 1, ts), tileCenter(dyn.tileY + 1, ts));
     applyCommand(state, a, { type: "cmd.attack", ids: [one.id, two.id], targetId: dyn.id });
     ticks(state, 15);
     assert.ok(dyn.captureProgress > solo * 1.4, `pair ${dyn.captureProgress} vs solo ${solo}`);
@@ -181,7 +181,7 @@ describe("infantry capture", () => {
       tileX: 36,
       tileY: 12,
     });
-    const inf = placeAdjacent(state, "trooper", a, house);
+    const inf = placeAdjacent(state, "rifleman", a, house);
     applyCommand(state, a, { type: "cmd.attack", ids: [inf.id], targetId: house.id });
     const wait = Math.ceil(captureDurationSec(house) / TICK_DT) + 8;
     ticks(state, wait);
@@ -200,11 +200,11 @@ describe("infantry capture", () => {
       tileX: 36,
       tileY: 12,
     });
-    const occ = makeEntity(state, "trooper", b, tileCenter(34, ts), tileCenter(12, ts));
+    const occ = makeEntity(state, "rifleman", b, tileCenter(34, ts), tileCenter(12, ts));
     const houseHp = house.hp;
     assert.equal(enterGarrison(state, occ, house), true);
     const occHp = occ.hp;
-    const inf = placeAdjacent(state, "trooper", a, house);
+    const inf = placeAdjacent(state, "rifleman", a, house);
     applyCommand(state, a, { type: "cmd.attack", ids: [inf.id], targetId: house.id });
     ticks(state, 12);
     assert.equal(house.ownerId, "");
@@ -229,7 +229,7 @@ describe("infantry capture", () => {
     core.hpMax = 75;
     const p = state.players.get(b)!;
     p.hqId = core.id;
-    const inf = placeAdjacent(state, "trooper", a, core);
+    const inf = placeAdjacent(state, "rifleman", a, core);
     applyCommand(state, a, { type: "cmd.attack", ids: [inf.id], targetId: core.id });
     const wait = Math.ceil(captureDurationSec(core) / TICK_DT) + 8;
     ticks(state, wait);

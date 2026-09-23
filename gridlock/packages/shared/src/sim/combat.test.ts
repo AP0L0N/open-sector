@@ -482,8 +482,8 @@ describe("force attack", () => {
     state.heights.fill(0);
     clearCivilians(state);
     const ts = state.tileSize;
-    const gun = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(24, ts));
-    const pal = makeEntity(state, "trooper", "A", tileCenter(28, ts), tileCenter(24, ts));
+    const gun = makeEntity(state, "rifleman", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const pal = makeEntity(state, "rifleman", "A", tileCenter(28, ts), tileCenter(24, ts));
     gun.facing = 0;
     const hp0 = pal.hp;
     const res = applyCommand(state, "A", {
@@ -507,8 +507,8 @@ describe("friendly fire", () => {
     state.heights.fill(0);
     clearCivilians(state);
     const ts = state.tileSize;
-    const a = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(24, ts));
-    const b = makeEntity(state, "trooper", "A", tileCenter(26, ts), tileCenter(24, ts));
+    const a = makeEntity(state, "rifleman", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const b = makeEntity(state, "rifleman", "A", tileCenter(26, ts), tileCenter(24, ts));
     a.facing = 0;
     const hpA = a.hp;
     const hpB = b.hp;
@@ -524,11 +524,11 @@ describe("friendly fire", () => {
     state.heights.fill(0);
     clearCivilians(state);
     const ts = state.tileSize;
-    const gun = makeEntity(state, "trooper", "A", tileCenter(20, ts), tileCenter(24, ts));
-    const pal = makeEntity(state, "trooper", "A", tileCenter(22, ts), tileCenter(24, ts));
+    const gun = makeEntity(state, "rifleman", "A", tileCenter(20, ts), tileCenter(24, ts));
+    const pal = makeEntity(state, "rifleman", "A", tileCenter(22, ts), tileCenter(24, ts));
     pal.holdPosition = true;
     pal.cooldown = 99;
-    const dummy = makeEntity(state, "trooper", "B", tileCenter(30, ts), tileCenter(24, ts));
+    const dummy = makeEntity(state, "rifleman", "B", tileCenter(30, ts), tileCenter(24, ts));
     dummy.holdPosition = true;
     dummy.cooldown = 99;
     gun.facing = 0;
@@ -565,7 +565,7 @@ describe("hold position", () => {
     state.blocked.fill(0);
     clearCivilians(state);
     const ts = state.tileSize;
-    const u = makeEntity(state, "trooper", "A", tileCenter(20, ts), tileCenter(24, ts));
+    const u = makeEntity(state, "rifleman", "A", tileCenter(20, ts), tileCenter(24, ts));
     applyCommand(state, "A", { type: "cmd.move", ids: [u.id], x: tileCenter(50, ts), y: tileCenter(24, ts) });
     for (let i = 0; i < 4; i++) step(state, TICK_DT);
     assert.equal(u.order?.kind, "move");
@@ -586,8 +586,8 @@ describe("hold position", () => {
     state.blocked.fill(0);
     clearCivilians(state);
     const ts = state.tileSize;
-    const u = makeEntity(state, "trooper", "A", tileCenter(20, ts), tileCenter(24, ts));
-    const t = makeEntity(state, "trooper", "B", tileCenter(24, ts), tileCenter(30, ts));
+    const u = makeEntity(state, "rifleman", "A", tileCenter(20, ts), tileCenter(24, ts));
+    const t = makeEntity(state, "rifleman", "B", tileCenter(24, ts), tileCenter(30, ts));
     applyCommand(state, "A", { type: "cmd.move", ids: [u.id], x: tileCenter(50, ts), y: tileCenter(24, ts) });
     for (let i = 0; i < 3; i++) step(state, TICK_DT);
     assert.equal(u.order?.kind, "move");
@@ -608,8 +608,8 @@ describe("moving units in combat", () => {
     state.blocked.fill(0);
     clearCivilians(state);
     const ts = state.tileSize;
-    const gun = makeEntity(state, "trooper", "B", tileCenter(24, ts), tileCenter(24, ts));
-    const mover = makeEntity(state, "trooper", "A", tileCenter(28, ts), tileCenter(24, ts));
+    const gun = makeEntity(state, "rifleman", "B", tileCenter(24, ts), tileCenter(24, ts));
+    const mover = makeEntity(state, "rifleman", "A", tileCenter(28, ts), tileCenter(24, ts));
     gun.facing = 0;
     mover.facing = 0;
     const hp0 = mover.hp;
@@ -625,8 +625,8 @@ describe("moving units in combat", () => {
     state.blocked.fill(0);
     clearCivilians(state);
     const ts = state.tileSize;
-    const a = makeEntity(state, "trooper", "A", tileCenter(20, ts), tileCenter(24, ts));
-    const b = makeEntity(state, "trooper", "B", tileCenter(36, ts), tileCenter(24, ts));
+    const a = makeEntity(state, "rifleman", "A", tileCenter(20, ts), tileCenter(24, ts));
+    const b = makeEntity(state, "rifleman", "B", tileCenter(36, ts), tileCenter(24, ts));
     a.facing = 0;
     b.facing = Math.PI;
     const hpA0 = a.hp;
@@ -670,8 +670,8 @@ describe("guard", () => {
     state.blocked.fill(0);
     clearCivilians(state);
     const ts = state.tileSize;
-    const a = makeEntity(state, "trooper", "A", tileCenter(20, ts), tileCenter(24, ts));
-    const b = makeEntity(state, "trooper", "A", tileCenter(22, ts), tileCenter(24, ts));
+    const a = makeEntity(state, "rifleman", "A", tileCenter(20, ts), tileCenter(24, ts));
+    const b = makeEntity(state, "rifleman", "A", tileCenter(22, ts), tileCenter(24, ts));
     a.facing = 0;
     b.facing = 0;
     const destX = tileCenter(40, ts);
@@ -731,10 +731,10 @@ describe("guard", () => {
     const tank = makeEntity(state, "warden", "A", tileCenter(40, ts), tileCenter(40, ts));
     tank.facing = 0;
     tank.turretFacing = 0;
-    const flank = makeEntity(state, "trooper", "B", tileCenter(42, ts), tileCenter(48, ts));
+    const flank = makeEntity(state, "rifleman", "B", tileCenter(42, ts), tileCenter(48, ts));
     flank.holdPosition = true;
     flank.cooldown = 99;
-    const front = makeEntity(state, "trooper", "B", tileCenter(52, ts), tileCenter(40, ts));
+    const front = makeEntity(state, "rifleman", "B", tileCenter(52, ts), tileCenter(40, ts));
     front.holdPosition = true;
     front.cooldown = 99;
     applyCommand(state, "A", {
@@ -757,7 +757,7 @@ describe("guard", () => {
     const tank = makeEntity(state, "warden", "A", tileCenter(40, ts), tileCenter(40, ts));
     tank.facing = 0;
     tank.turretFacing = 0;
-    const flank = makeEntity(state, "trooper", "B", tileCenter(40, ts), tileCenter(48, ts));
+    const flank = makeEntity(state, "rifleman", "B", tileCenter(40, ts), tileCenter(48, ts));
     applyCommand(state, "A", {
       type: "cmd.guard",
       ids: [tank.id],
@@ -812,7 +812,7 @@ describe("escort", () => {
     const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
     const hauler = makeEntity(state, "hauler", "A", tileCenter(26, ts), tileCenter(24, ts));
     hauler.autoHarvest = false;
-    const dummy = makeEntity(state, "trooper", "B", tileCenter(40, ts), tileCenter(24, ts));
+    const dummy = makeEntity(state, "rifleman", "B", tileCenter(40, ts), tileCenter(24, ts));
     dummy.holdPosition = true;
     dummy.cooldown = 99;
     applyCommand(state, "A", { type: "cmd.guard", ids: [tank.id], targetId: hauler.id });
@@ -867,14 +867,14 @@ describe("withdraw", () => {
     state.blocked.fill(0);
     clearCivilians(state);
     const ts = state.tileSize;
-    const victim = makeEntity(state, "trooper", "A", tileCenter(40, ts), tileCenter(40, ts));
-    const shooter = makeEntity(state, "trooper", "B", tileCenter(110, ts), tileCenter(40, ts));
+    const victim = makeEntity(state, "rifleman", "A", tileCenter(40, ts), tileCenter(40, ts));
+    const shooter = makeEntity(state, "rifleman", "B", tileCenter(110, ts), tileCenter(40, ts));
     victim.facing = 0;
     const x0 = victim.x;
     const p = fireShell(state, {
       x: victim.x - 16,
       y: victim.y,
-      vx: catalog("trooper").projectileSpeed,
+      vx: catalog("rifleman").projectileSpeed,
       vy: 0,
       damage: 12,
       penetration: 6,
@@ -899,12 +899,12 @@ describe("withdraw", () => {
     const ts = state.tileSize;
     const victim = makeEntity(state, "hauler", "A", tileCenter(40, ts), tileCenter(40, ts));
     victim.autoHarvest = false;
-    const shooter = makeEntity(state, "trooper", "B", tileCenter(44, ts), tileCenter(40, ts));
+    const shooter = makeEntity(state, "rifleman", "B", tileCenter(44, ts), tileCenter(40, ts));
     const x0 = victim.x;
     const p = fireShell(state, {
       x: victim.x - 16,
       y: victim.y,
-      vx: catalog("trooper").projectileSpeed,
+      vx: catalog("rifleman").projectileSpeed,
       vy: 0,
       damage: 12,
       penetration: 6,
@@ -924,14 +924,14 @@ describe("withdraw", () => {
     state.blocked.fill(0);
     clearCivilians(state);
     const ts = state.tileSize;
-    const victim = makeEntity(state, "trooper", "A", tileCenter(40, ts), tileCenter(40, ts));
-    const shooter = makeEntity(state, "trooper", "B", tileCenter(110, ts), tileCenter(40, ts));
+    const victim = makeEntity(state, "rifleman", "A", tileCenter(40, ts), tileCenter(40, ts));
+    const shooter = makeEntity(state, "rifleman", "B", tileCenter(110, ts), tileCenter(40, ts));
     applyCommand(state, "A", { type: "cmd.hold", ids: [victim.id], hold: true });
     const x0 = victim.x;
     const p = fireShell(state, {
       x: victim.x - 16,
       y: victim.y,
-      vx: catalog("trooper").projectileSpeed,
+      vx: catalog("rifleman").projectileSpeed,
       vy: 0,
       damage: 12,
       penetration: 6,
@@ -956,9 +956,9 @@ describe("withdraw", () => {
       tileX: 46,
       tileY: 38,
     });
-    const inf = makeEntity(state, "trooper", a, tileCenter(44, ts), tileCenter(38, ts));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(44, ts), tileCenter(38, ts));
     assert.equal(enterGarrison(state, inf, house), true);
-    const shooter = makeEntity(state, "trooper", "B", tileCenter(110, ts), tileCenter(40, ts));
+    const shooter = makeEntity(state, "rifleman", "B", tileCenter(110, ts), tileCenter(40, ts));
     const box = buildingBounds(house, ts);
     const p = fireShell(state, {
       x: box.x0 - 12,
@@ -1102,7 +1102,7 @@ describe("spotted fire", () => {
     const gap = sight + Math.floor((range / ts - sight) / 2);
     const dummy = makeEntity(state, "hauler", "B", tileCenter(ox + gap, ts), tileCenter(oy, ts));
     dummy.autoHarvest = false;
-    makeEntity(state, "trooper", "A", tileCenter(ox + sight - 2, ts), tileCenter(oy, ts));
+    makeEntity(state, "rifleman", "A", tileCenter(ox + sight - 2, ts), tileCenter(oy, ts));
     tank.facing = 0;
     tank.turretFacing = 0;
     assert.equal(canSeeEntity(state, "A", dummy), true, "spotter must light the target");
@@ -1229,7 +1229,7 @@ describe("armor impact scatter", () => {
     const ts = state.tileSize;
     const tank = makeEntity(state, "warden", "B", tileCenter(40, ts), tileCenter(24, ts));
     tank.facing = Math.PI;
-    const gun = catalog("trooper");
+    const gun = catalog("rifleman");
     const samples = pingTank(
       state,
       tank,
@@ -1344,7 +1344,7 @@ describe("infantry weapons", () => {
     const { state } = twoPlayerMatch();
     clearCover(state);
     const ts = state.tileSize;
-    const t = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const t = makeEntity(state, "rifleman", "A", tileCenter(24, ts), tileCenter(24, ts));
     assert.equal(t.weapon, "rifle");
     const rifleRange = weaponRangeWorld(state, t);
     const res = applyCommand(state, "A", { type: "cmd.weapon", ids: [t.id], weapon: "handgun" });
@@ -1363,7 +1363,7 @@ describe("infantry weapons", () => {
     const { state } = twoPlayerMatch();
     clearCover(state);
     const ts = state.tileSize;
-    const t = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const t = makeEntity(state, "rifleman", "A", tileCenter(24, ts), tileCenter(24, ts));
     addCrit(t, "arm");
     assert.equal(t.weapon, "handgun");
     const res = applyCommand(state, "A", { type: "cmd.weapon", ids: [t.id], weapon: "rifle" });
@@ -1387,9 +1387,9 @@ describe("infantry weapons", () => {
     stripOwner(state, "A");
     stripOwner(state, "B");
     const ts = state.tileSize;
-    const rifle = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(24, ts));
-    const pistol = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(28, ts));
-    const dummy = makeEntity(state, "trooper", "B", tileCenter(44, ts), tileCenter(24, ts));
+    const rifle = makeEntity(state, "rifleman", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const pistol = makeEntity(state, "rifleman", "A", tileCenter(24, ts), tileCenter(28, ts));
+    const dummy = makeEntity(state, "rifleman", "B", tileCenter(44, ts), tileCenter(24, ts));
     dummy.holdPosition = true;
     dummy.cooldown = 99;
     rifle.facing = 0;
@@ -1414,9 +1414,9 @@ describe("infantry weapons", () => {
     stripOwner(state, "A");
     stripOwner(state, "B");
     const ts = state.tileSize;
-    const rifle = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(24, ts));
-    const pistol = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(26, ts));
-    const dummy = makeEntity(state, "trooper", "B", tileCenter(28, ts), tileCenter(25, ts));
+    const rifle = makeEntity(state, "rifleman", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const pistol = makeEntity(state, "rifleman", "A", tileCenter(24, ts), tileCenter(26, ts));
+    const dummy = makeEntity(state, "rifleman", "B", tileCenter(28, ts), tileCenter(25, ts));
     dummy.holdPosition = true;
     dummy.cooldown = 99;
     dummy.hp = 4000;
@@ -1467,7 +1467,7 @@ describe("broken tracks", () => {
     clearCover(state);
     const ts = state.tileSize;
     const tank = makeEntity(state, "warden", "A", tileCenter(40, ts), tileCenter(40, ts));
-    const front = makeEntity(state, "trooper", "B", tileCenter(48, ts), tileCenter(40, ts));
+    const front = makeEntity(state, "rifleman", "B", tileCenter(48, ts), tileCenter(40, ts));
     tank.facing = 0;
     tank.turretFacing = 0;
     addCrit(tank, "tracks");
@@ -1482,7 +1482,7 @@ describe("broken tracks", () => {
     const { state: s2 } = twoPlayerMatch();
     clearCover(s2);
     const gun = makeEntity(s2, "warden", "A", tileCenter(40, ts), tileCenter(40, ts));
-    const flank = makeEntity(s2, "trooper", "B", tileCenter(40, ts), tileCenter(48, ts));
+    const flank = makeEntity(s2, "rifleman", "B", tileCenter(40, ts), tileCenter(48, ts));
     gun.facing = 0;
     gun.turretFacing = 0;
     addCrit(gun, "tracks");
@@ -1525,7 +1525,7 @@ describe("broken tracks", () => {
     clearCover(state);
     const ts = state.tileSize;
     const gun = makeEntity(state, "ss3", "A", tileCenter(24, ts), tileCenter(24, ts));
-    const tgt = makeEntity(state, "trooper", "B", tileCenter(28, ts), tileCenter(24, ts));
+    const tgt = makeEntity(state, "rifleman", "B", tileCenter(28, ts), tileCenter(24, ts));
     tgt.holdPosition = true;
     tgt.cooldown = 99;
     gun.facing = Math.PI / 2;
@@ -1551,7 +1551,7 @@ describe("ss3 casemate", () => {
     clearCover(state);
     const ts = state.tileSize;
     const gun = makeEntity(state, "ss3", "A", tileCenter(24, ts), tileCenter(24, ts));
-    const tgt = makeEntity(state, "trooper", "B", tileCenter(28, ts), tileCenter(24, ts));
+    const tgt = makeEntity(state, "rifleman", "B", tileCenter(28, ts), tileCenter(24, ts));
     tgt.holdPosition = true;
     tgt.cooldown = 99;
     gun.facing = Math.PI / 2;

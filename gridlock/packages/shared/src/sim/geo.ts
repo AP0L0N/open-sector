@@ -438,6 +438,7 @@ export function makeEntity(
     ammo: def.ammo ? { ...def.ammo } : {},
     shell: def.defaultShell ?? null,
     weapon: primaryInfantryGun(type)?.id ?? null,
+    bipod: 0,
     mgAmmo: def.mgAmmo ?? 0,
     mgHeat: 0,
     mgOverheat: 0,

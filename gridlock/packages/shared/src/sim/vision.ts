@@ -232,7 +232,7 @@ export function paintEntitySight(
     height,
     tx,
     ty,
-    e.sightTiles ?? (entityIsScouting(e) ? sightTilesOf("trooper", h) : sightTilesOf(e.type, h)),
+    e.sightTiles ?? (entityIsScouting(e) ? sightTilesOf("rifleman", h) : sightTilesOf(e.type, h)),
     elev,
     cover,
     e.observerEye ?? observerEyeForEntity(e),
@@ -511,7 +511,7 @@ function catalogSight(
   const tx = e.kind === "building" ? e.tileX + Math.floor(e.tileW / 2) : worldToTile(e.x, tileSize);
   const ty = e.kind === "building" ? e.tileY + Math.floor(e.tileH / 2) : worldToTile(e.y, tileSize);
   const h = elev ? elevAtSafe(elev, width, height, tx, ty) : 0;
-  if (e.scout?.out) return sightTilesOf("trooper", h);
+  if (e.scout?.out) return sightTilesOf("rifleman", h);
   return sightTilesOf(e.type, h);
 }
 
@@ -529,7 +529,7 @@ function snapshotSightTiles(
   const tx = worldToTile(e.x, tileSize);
   const ty = worldToTile(e.y, tileSize);
   const h = elev ? elevAtSafe(elev, width, height, tx, ty) : 0;
-  return sightTilesOf("trooper", h);
+  return sightTilesOf("rifleman", h);
 }
 
 function snapshotOccupantSight(
@@ -685,7 +685,7 @@ function observerSeesTile(
   const ox = worldToTile(obs.x, state.tileSize);
   const oy = worldToTile(obs.y, state.tileSize);
   const h = elevAtSafe(elev, width, height, ox, oy);
-  const radius = occupantSightTiles(state, obs) ?? (entityIsScouting(obs) ? sightTilesOf("trooper", h) : sightTilesOf(obs.type, h));
+  const radius = occupantSightTiles(state, obs) ?? (entityIsScouting(obs) ? sightTilesOf("rifleman", h) : sightTilesOf(obs.type, h));
   return tileInSight(
     tx,
     ty,

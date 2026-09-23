@@ -3,6 +3,7 @@ import {
   catalog,
   clampGameSpeed,
   GAME_SPEED_DEFAULT,
+  isInfantryType,
   leavesWreck,
   NEUTRAL_OWNER,
   secondsToTicks,
@@ -22,13 +23,14 @@ import { seedRng } from "./rng.js";
 import { tickBuild } from "./build.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
 import { tickSmoke } from "./smoke.js";
-import { tickStance } from "./stance.js";
+import { tickBipod, tickStance } from "./stance.js";
 import { tickCollision } from "./collision.js";
 import { tickAutoDeploy, tickDeploy } from "./deploy.js";
 import { tickHarvest } from "./harvest.js";
 import { tickMovement, repathIfBlocked } from "./orders.js";
 import { tickTrain } from "./train.js";
 import type { Entity, MatchState, SimPlayer } from "./types.js";
+import { leaveCorpse } from "./remains.js";
 import { toWreck } from "./wreck.js";
 
 function spawnStartingUnits(state: MatchState, ownerId: string, rig: Entity): void {
@@ -127,6 +129,8 @@ export function createMatch(
     seeTick: -1,
     seeByPlayer: new Map(),
     clearedTrees: [],
+    bodies: [],
+    holes: [],
   };
 
   for (const slot of commanders(room)) {
@@ -175,6 +179,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   state.impacts = [];
   tickSmoke(state, dt);
   tickStance(state);
+  tickBipod(state);
   tickDeploy(state, dt);
   tickGarrison(state);
   tickMovement(state, dt);
@@ -214,6 +219,7 @@ function reapDead(state: MatchState): void {
       madeWreck = true;
       continue;
     }
+    if (isInfantryType(e.type)) leaveCorpse(state, e);
     dead.push(e.id);
   }
   if (madeWreck) {

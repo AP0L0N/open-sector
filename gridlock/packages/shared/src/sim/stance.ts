@@ -1,6 +1,8 @@
 import {
+  MG42_BIPOD_SECONDS,
   STANCE_HIT_RADIUS,
   STANCE_TARGET_SPREAD,
+  TICK_DT,
   hasCrit,
   isInfantryType,
   stanceOf,
@@ -37,6 +39,16 @@ export function targetedIds(state: MatchState): Set<number> {
   return ids;
 }
 
+/** One bipod second per sim step. tickStance only clears it, because combat calls that twice. */
+export function tickBipod(state: MatchState): void {
+  for (const e of state.entities.values()) {
+    if (e.type !== "gunner" || e.hp <= 0 || e.bipod >= MG42_BIPOD_SECONDS) continue;
+    const planting =
+      e.stance === "crawl" && !unitInWater(state, e) && e.garrisonedIn == null && !hasCrit(e, "arm");
+    if (planting) e.bipod = Math.min(MG42_BIPOD_SECONDS, e.bipod + TICK_DT);
+  }
+}
+
 export function tickStance(state: MatchState): void {
   const hot = targetedIds(state);
   for (const e of state.entities.values()) {
@@ -47,6 +59,11 @@ export function tickStance(state: MatchState): void {
       continue;
     }
     e.stance = effectiveStance(e, hot.has(e.id));
+    if (e.type === "gunner") {
+      const planting =
+        e.stance === "crawl" && !unitInWater(state, e) && e.garrisonedIn == null && !hasCrit(e, "arm");
+      if (!planting) e.bipod = 0;
+    }
   }
 }
 

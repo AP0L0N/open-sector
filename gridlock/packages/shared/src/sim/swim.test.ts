@@ -63,11 +63,11 @@ describe("water swimming", () => {
     const gx = x0 + 10;
     const gy = y0 + 4;
     assert.equal(walkable(state, gx, gy), false);
-    assert.equal(walkable(state, gx, gy, "trooper"), true);
+    assert.equal(walkable(state, gx, gy, "rifleman"), true);
     assert.equal(walkable(state, gx, gy, "warden"), false);
     assert.equal(walkable(state, gx, gy, "hauler"), false);
 
-    const infPath = astar(state, x0 + 2, gy, x0 + 18, gy, "trooper");
+    const infPath = astar(state, x0 + 2, gy, x0 + 18, gy, "rifleman");
     assert.ok(infPath.length > 0);
     const tankPath = astar(state, x0 + 2, gy, x0 + 18, gy, "warden");
     assert.ok(tankPath.length > 0);
@@ -84,7 +84,7 @@ describe("water swimming", () => {
     for (let gy = y - 2; gy <= y + 2; gy++) {
       for (let gx = 82; gx <= 90; gx++) flood(state, gx, gy);
     }
-    const inf = makeEntity(state, "trooper", "A", tileCenter(76, ts), tileCenter(y, ts));
+    const inf = makeEntity(state, "rifleman", "A", tileCenter(76, ts), tileCenter(y, ts));
     applyCommand(state, "A", { type: "cmd.move", ids: [inf.id], x: tileCenter(96, ts), y: tileCenter(y, ts) });
     ticks(state, 160);
     assert.ok(inf.x > tileCenter(90, ts), `infantry x=${inf.x}`);
@@ -112,8 +112,8 @@ describe("water swimming", () => {
 
   it("swims slower than a standing walk and ignores posture", () => {
     const { state, a } = twoPlayerMatch();
-    const stand = makeEntity(state, "trooper", a, 100, 100);
-    const crawl = makeEntity(state, "trooper", a, 140, 100);
+    const stand = makeEntity(state, "rifleman", a, 100, 100);
+    const crawl = makeEntity(state, "rifleman", a, 140, 100);
     crawl.stance = "crawl";
     crawl.stanceOrder = "crawl";
     assert.equal(moveSpeedMul(stand), STANCE_SPEED.stand);
@@ -132,8 +132,8 @@ describe("water swimming", () => {
     for (let gy = y - 2; gy <= y + 2; gy++) {
       for (let gx = 78; gx <= 88; gx++) flood(state, gx, gy);
     }
-    const inf = makeEntity(state, "trooper", "A", tileCenter(83, ts), tileCenter(y, ts));
-    const dummy = makeEntity(state, "trooper", "B", tileCenter(94, ts), tileCenter(y, ts));
+    const inf = makeEntity(state, "rifleman", "A", tileCenter(83, ts), tileCenter(y, ts));
+    const dummy = makeEntity(state, "rifleman", "B", tileCenter(94, ts), tileCenter(y, ts));
     dummy.holdPosition = true;
     dummy.cooldown = 99;
     dummy.facing = Math.PI;
@@ -164,7 +164,7 @@ describe("water swimming", () => {
     const y = 44;
     clearPad(state, 80, y - 2, 90, y + 2);
     flood(state, 85, y);
-    const t = makeEntity(state, "trooper", a, tileCenter(85, ts), tileCenter(y, ts));
+    const t = makeEntity(state, "rifleman", a, tileCenter(85, ts), tileCenter(y, ts));
     const view = snapshotFor(state, a).entities.find((e) => e.id === t.id);
     assert.equal(view?.swimming, true);
     t.x = tileCenter(81, ts);

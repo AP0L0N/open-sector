@@ -49,7 +49,7 @@ function act(opts: {
 }
 
 describe("resolveHoverAction", () => {
-  const trooper = unit({ id: 1, type: "trooper" });
+  const trooper = unit({ id: 1, type: "rifleman" });
   const hauler = unit({ id: 2, type: "hauler" });
   const warden = unit({ id: 3, type: "warden" });
   const emptyHouse = building({
@@ -79,7 +79,7 @@ describe("resolveHoverAction", () => {
   const foeCore = building({ id: 20, type: "core", ownerId: FOE });
   const yourCore = building({ id: 21, type: "core", ownerId: YOU });
   const allyCore = building({ id: 22, type: "core", ownerId: ALLY });
-  const foeTrooper = unit({ id: 30, type: "trooper", ownerId: FOE });
+  const foeTrooper = unit({ id: 30, type: "rifleman", ownerId: FOE });
 
   it("garrisons an empty house with infantry", () => {
     assert.equal(act({ selected: [trooper], hit: emptyHouse }), "garrison");
@@ -106,12 +106,12 @@ describe("resolveHoverAction", () => {
   });
 
   it("ungarrisons when infantry already inside are selected", () => {
-    const inside = unit({ id: 4, type: "trooper", garrisonedIn: yourHouse.id });
+    const inside = unit({ id: 4, type: "rifleman", garrisonedIn: yourHouse.id });
     assert.equal(act({ selected: [inside], hit: yourHouse }), "ungarrison");
   });
 
   it("prefers garrison over ungarrison when free infantry can still enter", () => {
-    const inside = unit({ id: 4, type: "trooper", garrisonedIn: yourHouse.id });
+    const inside = unit({ id: 4, type: "rifleman", garrisonedIn: yourHouse.id });
     assert.equal(act({ selected: [inside, trooper], hit: yourHouse }), "garrison");
   });
 
@@ -163,7 +163,7 @@ describe("resolveHoverAction", () => {
   });
 
   it("ignores selection of wrecks and empty selection", () => {
-    const dead = unit({ id: 9, type: "trooper", wreck: true });
+    const dead = unit({ id: 9, type: "rifleman", wreck: true });
     assert.equal(act({ selected: [dead], hit: emptyHouse }), null);
     assert.equal(act({ selected: [], hit: emptyHouse }), null);
   });
@@ -173,7 +173,7 @@ describe("canGuardUnit", () => {
   const warden = unit({ id: 3, type: "warden" });
   const hauler = unit({ id: 2, type: "hauler" });
   const allyHauler = unit({ id: 4, type: "hauler", ownerId: ALLY });
-  const foeTrooper = unit({ id: 30, type: "trooper", ownerId: FOE });
+  const foeTrooper = unit({ id: 30, type: "rifleman", ownerId: FOE });
   const house = building({ id: 10, type: "cottage" });
 
   function ask(hit: HoverEntity | null, selectedIds: number[] = [warden.id]): boolean {

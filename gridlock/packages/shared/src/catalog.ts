@@ -225,7 +225,8 @@ export const CAPTURE_DECAY_PER_SEC = 0.25;
 
 export type EntityType =
   | "rig"
-  | "trooper"
+  | "rifleman"
+  | "gunner"
   | "hauler"
   | "warden"
   | "ss3"
@@ -252,7 +253,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "trooper" | "hauler" | "warden" | "ss3";
+export type TrainType = "rifleman" | "gunner" | "hauler" | "warden" | "ss3";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -275,7 +276,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory"];
-export const TRAIN_TYPES: readonly TrainType[] = ["trooper", "hauler", "warden", "ss3"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "hauler", "warden", "ss3"];
 /** Opening army besides the Rig. Hauler omitted so it does not auto-harvest. */
 export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter((t) => t !== "hauler");
 
@@ -357,8 +358,8 @@ export interface ShellDef {
 }
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
-export type InfantryWeaponId = "rifle" | "handgun";
-export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun"];
+export type InfantryWeaponId = "rifle" | "handgun" | "mg42";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42"];
 export interface InfantryGun {
   id: InfantryWeaponId;
   name: string;
@@ -371,10 +372,12 @@ export interface InfantryGun {
   cooldown: number;
   /** Rounds in a magazine. Reload starts when this hits 0. */
   clip: number;
-  /** Magazine change, seconds. Scaled by the trooper's baked reloadMul. */
+  /** Magazine change, seconds. Scaled by the infantry reloadMul. */
   reload: number;
   /** Omit to use the unit catalog range. */
   rangeTiles?: number;
+  /** Rounds released together each time the cooldown elapses. Default 1. */
+  shotsPerTick?: number;
 }
 
 /** Personal reload-time scale around 1. Baked onto each trooper at spawn. */
@@ -421,9 +424,35 @@ export const HANDGUN = {
   reload: 1.6,
 } as const satisfies InfantryGun;
 
+/**
+ * MG42, standard bolt. Cyclic rate is 1,200 rounds/minute (20 per second).
+ * The sim ticks at 10 Hz, so each ready tick releases two rounds.
+ * The belt is the 50-round Gurttrommel a gunner carries on the gun.
+ * A lone gunner seats the next belt in about six seconds.
+ * The bipod has to be down before the gun will fire.
+ */
+export const MG42_RPM = 1200;
+export const MG42_BELT = 50;
+export const MG42_BELT_RELOAD = 6;
+export const MG42_BIPOD_SECONDS = 1.5;
+export const MG42 = {
+  id: "mg42" as const,
+  name: "MG42",
+  blurb: "1,200 rounds a minute from a 50-round belt. Crawl and set the bipod, then it fires.",
+  damage: 8,
+  penetration: 8,
+  caliber: 8,
+  spreadDeg: 4,
+  cooldown: TICK_DT,
+  shotsPerTick: MG42_RPM / 60 / (1 / TICK_DT),
+  clip: MG42_BELT,
+  reload: MG42_BELT_RELOAD,
+} as const satisfies InfantryGun;
+
 export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   rifle: RIFLE,
   handgun: HANDGUN,
+  mg42: MG42,
 };
 
 /**
@@ -709,11 +738,12 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
   },
-  trooper: {
-    type: "trooper",
+  rifleman: {
+    type: "rifleman",
     kind: "unit",
-    name: "Trooper",
-    letter: "T",
+    name: "Rifleman",
+    letter: "F",
+    blurb: "Rifle and handgun. Stands, crouches, or crawls.",
     cost: 100,
     buildSeconds: 8,
     hp: 40,
@@ -732,6 +762,31 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: RIFLE.penetration,
     caliber: RIFLE.caliber,
     spreadDeg: RIFLE.spreadDeg,
+  },
+  gunner: {
+    type: "gunner",
+    kind: "unit",
+    name: "Gunner",
+    letter: "U",
+    cost: 175,
+    buildSeconds: 11,
+    hp: 45,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: t(1.65),
+    turnDegPerSec: 1400,
+    rangeTiles: weaponRangeTiles(INFANTRY_SIGHT_TILES),
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: MG42.cooldown,
+    damage: MG42.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: MG42.penetration,
+    caliber: MG42.caliber,
+    spreadDeg: MG42.spreadDeg,
+    blurb: "MG42. Crawl, set the bipod, then 1,200 rounds a minute from a 50-round belt.",
   },
   hauler: {
     type: "hauler",
@@ -954,18 +1009,24 @@ export function armorLabel(type: EntityType): string | null {
   return `F${d.armorFront} / S${d.armorSide} / R${d.armorRear}`;
 }
 
+const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner"];
+
 export function isInfantryType(type: EntityType): boolean {
-  return type === "trooper";
+  return (INFANTRY_TYPES as readonly string[]).includes(type);
 }
 
 /** Primary gun for an infantry type. Null on vehicles and buildings. */
 export function primaryInfantryGun(type: EntityType): InfantryGun | null {
-  return type === "trooper" ? RIFLE : null;
+  if (type === "rifleman") return RIFLE;
+  if (type === "gunner") return MG42;
+  return null;
 }
 
 /** Carried guns, primary first. Empty on vehicles and buildings. */
 export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
-  return type === "trooper" ? [RIFLE, HANDGUN] : [];
+  if (type === "rifleman") return [RIFLE, HANDGUN];
+  if (type === "gunner") return [MG42];
+  return [];
 }
 
 export function isInfantryWeaponId(v: string): v is InfantryWeaponId {
@@ -983,7 +1044,9 @@ export function infantryGunFor(e: {
   weapon?: InfantryWeaponId | null;
 }): InfantryGun | null {
   if (!isInfantryType(e.type)) return null;
-  if (hasCrit({ crits: e.crits ?? [] }, "arm")) return HANDGUN;
+  if (hasCrit({ crits: e.crits ?? [] }, "arm")) {
+    return infantryLoadout(e.type).find((g) => g.id === "handgun") ?? null;
+  }
   const loadout = infantryLoadout(e.type);
   if (e.weapon) {
     const picked = loadout.find((g) => g.id === e.weapon);
@@ -1020,7 +1083,7 @@ export function addCrit(
 ): void {
   if (e.crits.includes(c)) return;
   e.crits.push(c);
-  if (c === "arm" && e.type && isInfantryType(e.type)) {
+  if (c === "arm" && e.type && infantryLoadout(e.type).some((g) => g.id === "handgun")) {
     e.weapon = "handgun";
     e.clip = HANDGUN.clip;
     e.reload = 0;
@@ -1085,7 +1148,7 @@ export function hasScout(type: EntityType): boolean {
 /** Max HP for a tank's hatch crew. 0 when the type has no scout. */
 export function scoutHpMaxOf(type: EntityType): number {
   if (!hasScout(type)) return 0;
-  return Math.max(1, Math.round(catalog("trooper").hp * SCOUT_HP_MUL));
+  return Math.max(1, Math.round(catalog("rifleman").hp * SCOUT_HP_MUL));
 }
 
 /** Head out of the hatch and still alive. */

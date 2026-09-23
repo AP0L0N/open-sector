@@ -3,6 +3,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer } from "ws";
+import {
+  HEIGHT_WORLD,
+  TILE_BLOCKED,
+  TILE_EMPTY,
+  TILE_SCRAP,
+  TILE_TREE,
+  TILE_WATER,
+  getMap,
+  listMaps,
+} from "@gridlock/shared";
 import { Hub } from "./room.js";
 import { attachSocket } from "./ws.js";
 
@@ -35,6 +45,66 @@ function safeJoin(root: string, urlPath: string): string | null {
   const rootResolved = path.resolve(root);
   if (resolved !== rootResolved && !resolved.startsWith(rootResolved + path.sep)) return null;
   return resolved;
+}
+
+const JSON_HEADERS = {
+  "Content-Type": "application/json; charset=utf-8",
+  "Access-Control-Allow-Origin": "*",
+} as const;
+
+function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
+  res.writeHead(status, JSON_HEADERS);
+  res.end(JSON.stringify(body));
+}
+
+/** Layout payload for the Godot client (and any other 3D view). */
+export function mapLayout(id: string): Record<string, unknown> | null {
+  const map = getMap(id);
+  if (!map) return null;
+  return {
+    id: map.id,
+    name: map.name,
+    width: map.width,
+    height: map.height,
+    tileSize: map.tileSize,
+    heightWorld: HEIGHT_WORLD,
+    maxHeight: map.maxHeight,
+    tiles: map.tiles,
+    heights: map.heights,
+    spawns: map.spawns,
+    features: map.features,
+    tileEmpty: TILE_EMPTY,
+    tileBlocked: TILE_BLOCKED,
+    tileScrap: TILE_SCRAP,
+    tileWater: TILE_WATER,
+    tileTree: TILE_TREE,
+  };
+}
+
+function serveApi(pathname: string, res: http.ServerResponse): boolean {
+  if (pathname === "/health") {
+    sendJson(res, 200, { ok: true });
+    return true;
+  }
+  if (pathname === "/maps") {
+    sendJson(
+      res,
+      200,
+      listMaps().map((m) => ({ id: m.id, name: m.name, width: m.width, height: m.height })),
+    );
+    return true;
+  }
+  const mapMatch = pathname.match(/^\/map\/([^/]+)$/);
+  if (mapMatch) {
+    const layout = mapLayout(decodeURIComponent(mapMatch[1] ?? ""));
+    if (!layout) {
+      sendJson(res, 404, { error: "unknown map" });
+      return true;
+    }
+    sendJson(res, 200, layout);
+    return true;
+  }
+  return false;
 }
 
 function serveStatic(root: string, req: http.IncomingMessage, res: http.ServerResponse): void {
@@ -77,12 +147,8 @@ export function startServer(opts: ListenOpts = {}): Promise<{
 
   const hub = new Hub();
   const server = http.createServer((req, res) => {
-    const url = req.url ?? "/";
-    if (url === "/health" || url.startsWith("/health?")) {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true }));
-      return;
-    }
+    const pathname = (req.url ?? "/").split("?")[0] ?? "/";
+    if (serveApi(pathname, res)) return;
     if (staticDir && fs.existsSync(staticDir)) {
       serveStatic(staticDir, req, res);
       return;

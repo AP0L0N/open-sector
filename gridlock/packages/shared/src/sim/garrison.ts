@@ -186,10 +186,10 @@ export function approachTile(state: MatchState, house: Entity): { x: number; y: 
     }
   }
   for (const t of ring) {
-    const snap = nearestWalkable(state, t.x, t.y, "trooper");
+    const snap = nearestWalkable(state, t.x, t.y, "rifleman");
     if (snap) return snap;
   }
-  return nearestWalkable(state, house.tileX, house.tileY, "trooper");
+  return nearestWalkable(state, house.tileX, house.tileY, "rifleman");
 }
 
 export function enterGarrison(state: MatchState, unit: Entity, house: Entity): boolean {

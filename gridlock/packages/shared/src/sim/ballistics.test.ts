@@ -17,7 +17,7 @@ function seq(values: number[]): () => number {
 }
 
 const warden = catalog("warden");
-const trooper = catalog("trooper");
+const trooper = catalog("rifleman");
 const hauler = catalog("hauler");
 const cottage = catalog("cottage");
 

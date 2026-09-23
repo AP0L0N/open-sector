@@ -101,13 +101,13 @@ describe("garrison", () => {
     });
     assert.equal(isGarrisonable(house.type), true);
     const cap = garrisonCapOf("cottage");
-    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(34, ts), tileCenter(12, ts));
     assert.equal(enterGarrison(state, inf, house), true);
     assert.equal(inf.garrisonedIn, house.id);
     assert.equal(livingGarrison(state, house).length, 1);
     assert.equal(walkable(state, 34, 12) || true, true);
 
-    const dummy = makeEntity(state, "hauler", b, inf.x + catalog("trooper").rangeTiles * ts * 0.5, inf.y);
+    const dummy = makeEntity(state, "hauler", b, inf.x + catalog("rifleman").rangeTiles * ts * 0.5, inf.y);
     dummy.autoHarvest = false;
     inf.facing = 0;
     inf.order = { kind: "attack", targetId: dummy.id };
@@ -123,10 +123,10 @@ describe("garrison", () => {
     assert.equal(house.hp, hp0, "garrison fire must not hit its own house");
 
     for (let i = 1; i < cap; i++) {
-      const extra = makeEntity(state, "trooper", a, tileCenter(32, ts), tileCenter(12, ts));
+      const extra = makeEntity(state, "rifleman", a, tileCenter(32, ts), tileCenter(12, ts));
       assert.equal(enterGarrison(state, extra, house), true);
     }
-    const overflow = makeEntity(state, "trooper", a, tileCenter(32, ts), tileCenter(12, ts));
+    const overflow = makeEntity(state, "rifleman", a, tileCenter(32, ts), tileCenter(12, ts));
     assert.equal(enterGarrison(state, overflow, house), false);
   });
 
@@ -139,7 +139,7 @@ describe("garrison", () => {
       tileX: 36,
       tileY: 12,
     });
-    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(34, ts), tileCenter(12, ts));
     const hp0 = inf.hp;
     assert.equal(enterGarrison(state, inf, house), true);
     house.hp = 0;
@@ -158,7 +158,7 @@ describe("garrison", () => {
       tileX: 44,
       tileY: 12,
     });
-    const inf = makeEntity(state, "trooper", a, tileCenter(36, ts), tileCenter(16, ts));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(36, ts), tileCenter(16, ts));
     const res = applyCommand(state, a, { type: "cmd.garrison", ids: [inf.id], buildingId: house.id });
     assert.equal(res.ok, true, !res.ok ? res.message : "");
     for (let i = 0; i < 80; i++) step(state, TICK_DT);
@@ -172,9 +172,9 @@ describe("garrison", () => {
       tileX: 36,
       tileY: 12,
     });
-    const occ = makeEntity(state, "trooper", b, tileCenter(33, ts), tileCenter(12, ts));
+    const occ = makeEntity(state, "rifleman", b, tileCenter(33, ts), tileCenter(12, ts));
     assert.equal(enterGarrison(state, occ, house), true);
-    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(34, ts), tileCenter(12, ts));
     const res = applyCommand(state, a, { type: "cmd.garrison", ids: [inf.id], buildingId: house.id });
     assert.equal(res.ok, false);
     assert.equal(inf.garrisonedIn, null);
@@ -187,7 +187,7 @@ describe("garrison", () => {
       tileX: 36,
       tileY: 12,
     });
-    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(34, ts), tileCenter(12, ts));
     const res = applyCommand(state, a, { type: "cmd.garrison", ids: [inf.id], buildingId: house.id });
     assert.equal(res.ok, true, !res.ok ? res.message : "");
     for (let i = 0; i < 80; i++) step(state, TICK_DT);
@@ -202,7 +202,7 @@ describe("garrison", () => {
       tileX: 36,
       tileY: 12,
     });
-    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(34, ts), tileCenter(12, ts));
     const streetMax = inf.hpMax;
     inf.hp = 20;
     assert.equal(enterGarrison(state, inf, house), true);
@@ -223,9 +223,9 @@ describe("garrison", () => {
       tileX: 36,
       tileY: 12,
     });
-    const occ = makeEntity(state, "trooper", b, tileCenter(34, ts), tileCenter(12, ts));
+    const occ = makeEntity(state, "rifleman", b, tileCenter(34, ts), tileCenter(12, ts));
     assert.equal(enterGarrison(state, occ, house), true);
-    const inf = makeEntity(state, "trooper", a, tileCenter(32, ts), tileCenter(12, ts));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(32, ts), tileCenter(12, ts));
     inf.facing = 0;
     for (let i = 0; i < 12; i++) step(state, TICK_DT);
     assert.ok(
@@ -239,9 +239,9 @@ describe("garrison", () => {
     assert.notEqual(inf.attackTarget, house.id);
     assert.ok(!inf.order || inf.order.targetId !== house.id || inf.order.kind !== "attack");
     assert.equal(house.captureProgress, 0);
-    const extra = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    const extra = makeEntity(state, "rifleman", a, tileCenter(34, ts), tileCenter(12, ts));
     assert.equal(enterGarrison(state, extra, house), true);
-    const rival = makeEntity(state, "trooper", b, tileCenter(33, ts), tileCenter(12, ts));
+    const rival = makeEntity(state, "rifleman", b, tileCenter(33, ts), tileCenter(12, ts));
     assert.equal(enterGarrison(state, rival, house), false);
   });
 
@@ -266,10 +266,10 @@ describe("garrison", () => {
       tileX: 36,
       tileY: 12,
     });
-    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(34, ts), tileCenter(12, ts));
     inf.hp = 22;
     assert.equal(enterGarrison(state, inf, house), true);
-    makeEntity(state, "trooper", b, tileCenter(32, ts), tileCenter(12, ts));
+    makeEntity(state, "rifleman", b, tileCenter(32, ts), tileCenter(12, ts));
     const you = snapshotFor(state, a).entities.find((e) => e.id === house.id);
     const them = snapshotFor(state, b).entities.find((e) => e.id === house.id);
     assert.ok(you?.garrison?.bars);
@@ -288,7 +288,7 @@ describe("garrison", () => {
       tileX: 36,
       tileY: 12,
     });
-    const occ = makeEntity(state, "trooper", b, tileCenter(34, ts), tileCenter(12, ts));
+    const occ = makeEntity(state, "rifleman", b, tileCenter(34, ts), tileCenter(12, ts));
     assert.equal(enterGarrison(state, occ, house), true);
     const houseHp = house.hp;
     const occHp = occ.hp;
@@ -296,11 +296,11 @@ describe("garrison", () => {
     fireAt(state, {
       x: box.x0 - 12,
       y: house.y,
-      vx: catalog("trooper").projectileSpeed,
+      vx: catalog("rifleman").projectileSpeed,
       vy: 0,
-      damage: catalog("trooper").damage,
-      penetration: catalog("trooper").penetration,
-      caliber: catalog("trooper").caliber,
+      damage: catalog("rifleman").damage,
+      penetration: catalog("rifleman").penetration,
+      caliber: catalog("rifleman").caliber,
     });
     tickProjectiles(state, TICK_DT);
     assert.equal(house.hp, houseHp);
@@ -317,7 +317,7 @@ describe("garrison", () => {
       tileX: 36,
       tileY: 12,
     });
-    const occ = makeEntity(state, "trooper", b, tileCenter(34, ts), tileCenter(12, ts));
+    const occ = makeEntity(state, "rifleman", b, tileCenter(34, ts), tileCenter(12, ts));
     assert.equal(enterGarrison(state, occ, house), true);
     const houseHp = house.hp;
     const occHp = occ.hp;
@@ -346,8 +346,8 @@ describe("garrison", () => {
       tileX: 36,
       tileY: 12,
     });
-    const occ = makeEntity(state, "trooper", b, tileCenter(34, ts), tileCenter(12, ts));
-    const other = makeEntity(state, "trooper", b, tileCenter(33, ts), tileCenter(12, ts));
+    const occ = makeEntity(state, "rifleman", b, tileCenter(34, ts), tileCenter(12, ts));
+    const other = makeEntity(state, "rifleman", b, tileCenter(33, ts), tileCenter(12, ts));
     assert.equal(enterGarrison(state, occ, house), true);
     assert.equal(enterGarrison(state, other, house), true);
     const box = buildingBounds(house, ts);
@@ -378,9 +378,9 @@ describe("garrison", () => {
       tileX: 36,
       tileY: 12,
     });
-    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(34, ts), tileCenter(12, ts));
     assert.equal(enterGarrison(state, inf, house), true);
-    makeEntity(state, "trooper", b, tileCenter(32, ts), tileCenter(12, ts));
+    makeEntity(state, "rifleman", b, tileCenter(32, ts), tileCenter(12, ts));
     setGarrisonHide(state, house, true);
     const you = snapshotFor(state, a).entities.find((e) => e.id === house.id);
     const them = snapshotFor(state, b).entities.find((e) => e.id === house.id);
@@ -405,9 +405,9 @@ describe("garrison", () => {
       tileX: 36,
       tileY: 12,
     });
-    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(34, ts), tileCenter(12, ts));
     assert.equal(enterGarrison(state, inf, house), true);
-    const dummy = makeEntity(state, "hauler", b, inf.x + catalog("trooper").rangeTiles * ts * 0.5, inf.y);
+    const dummy = makeEntity(state, "hauler", b, inf.x + catalog("rifleman").rangeTiles * ts * 0.5, inf.y);
     dummy.autoHarvest = false;
     inf.facing = 0;
     inf.order = { kind: "attack", targetId: dummy.id };
@@ -429,7 +429,7 @@ describe("garrison", () => {
       tileX: 36,
       tileY: 12,
     });
-    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(34, ts), tileCenter(12, ts));
     assert.equal(enterGarrison(state, inf, house), true);
     const watch = occupantSightTiles(state, inf) ?? 0;
     setGarrisonHide(state, house, true);
@@ -445,7 +445,7 @@ describe("garrison", () => {
       tileX: 36,
       tileY: 12,
     });
-    const inf = makeEntity(state, "trooper", a, tileCenter(34, ts), tileCenter(12, ts));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(34, ts), tileCenter(12, ts));
     assert.equal(enterGarrison(state, inf, house), true);
     const res = applyCommand(state, a, { type: "cmd.garrisonhide", ids: [house.id], hide: true });
     assert.equal(res.ok, true, !res.ok ? res.message : "");

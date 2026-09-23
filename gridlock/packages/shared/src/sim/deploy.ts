@@ -205,6 +205,7 @@ function structuredCloneBase(e: Entity): Entity {
     ammo: {},
     shell: null,
     weapon: null,
+    bipod: 0,
     mgAmmo: 0,
     mgHeat: 0,
     mgOverheat: 0,

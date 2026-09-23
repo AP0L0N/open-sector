@@ -168,7 +168,7 @@ export function sightTilesForEntity(state: MatchState, e: Entity): number {
     if (house?.garrisonHide) return GARRISON_HIDE_SIGHT;
     if (house) return sightTilesOf(e.type, entityHeight(state, e)) + GARRISON_WATCH_SIGHT_BONUS;
   }
-  if (entityIsScouting(e)) return sightTilesOf("trooper", entityHeight(state, e));
+  if (entityIsScouting(e)) return sightTilesOf("rifleman", entityHeight(state, e));
   return sightTilesOf(e.type, entityHeight(state, e));
 }
 

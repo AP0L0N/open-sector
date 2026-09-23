@@ -1,5 +1,5 @@
 import type { BuildingType, Crit, EntityType, InfantryWeaponId, ShellType, Stance, TrainType } from "../catalog.js";
-import type { AiDifficulty, EntityState, ImpactView } from "../protocol.js";
+import type { AiDifficulty, CorpseView, EntityState, ImpactView, ShellHoleView } from "../protocol.js";
 
 export interface Vec {
   x: number;
@@ -102,6 +102,8 @@ export interface Entity {
   shell: ShellType | null;
   /** Selected infantry gun. Null on vehicles and buildings. */
   weapon: InfantryWeaponId | null;
+  /** Seconds the MG42 bipod has been set while prone. 0 until the gunner crawls. */
+  bipod: number;
   /** Coaxial MG rounds remaining. 0 if the type has no MG. */
   mgAmmo: number;
   /** 0–heatMax. Dumps climb this; it drains while the MG is silent. */
@@ -239,4 +241,8 @@ export interface MatchState {
   seeByPlayer: Map<string, Map<number, boolean>>;
   /** Tree tiles crushed by vehicles this match. */
   clearedTrees: { x: number; y: number }[];
+  /** Infantry who died in the open. Not entities: passable and indestructible. */
+  bodies: CorpseView[];
+  /** Heavy-shell craters. Not entities. */
+  holes: ShellHoleView[];
 }

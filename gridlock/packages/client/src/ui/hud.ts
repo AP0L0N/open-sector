@@ -548,6 +548,11 @@ function infantryClipLine(live: EntityView[]): string {
   if (live.length === 1) {
     const e = live[0]!;
     if ((e.reload ?? 0) > 0) return `Reloading ${e.reload!.toFixed(1)}s`;
+    if (gun.id === "mg42") {
+      if ((e.stance ?? "stand") !== "crawl" || e.swimming) return `Belt ${e.clip ?? 0}/${gun.clip} · crawl to fire`;
+      if ((e.bipod ?? 0) > 0) return `Setting bipod ${(e.bipod ?? 0).toFixed(1)}s`;
+      return `Belt ${e.clip ?? 0}/${gun.clip}`;
+    }
     return `Clip ${e.clip ?? 0}/${gun.clip}`;
   }
   const reloading = live.filter((e) => (e.reload ?? 0) > 0).length;
@@ -602,7 +607,8 @@ const TYPE_ORDER: EntityType[] = [
   "warden",
   "ss3",
   "hauler",
-  "trooper",
+  "rifleman",
+  "gunner",
   "rig",
   "core",
   "dynamo",
@@ -810,8 +816,10 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
       body,
       "posture-help",
       swimming
-        ? "Swimming — rifles stay dry, they cannot fire until they reach shore."
-        : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",
+        ? "Swimming — small arms stay dry until they reach shore."
+        : focus.type === "gunner"
+          ? "Crawl and set the bipod. The MG42 fires only from the prone."
+          : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",
     );
   }
   if (hasMg(focus.type)) {

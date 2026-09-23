@@ -62,7 +62,7 @@ describe("special actions", () => {
   it("marks Rig and Core as deploy specials", () => {
     assert.equal(specialOf("rig"), "deploy");
     assert.equal(specialOf("core"), "deploy");
-    assert.equal(specialOf("trooper"), undefined);
+    assert.equal(specialOf("rifleman"), undefined);
     assert.equal(specialLabel("rig"), "Deploy");
     assert.equal(specialLabel("core"), "Pack");
     assert.equal(specialLabel("hauler"), null);
@@ -82,7 +82,7 @@ describe("special actions", () => {
     assert.equal(specialReady("rig", "move"), true);
     assert.equal(specialReady("rig", "deploy"), false);
     assert.equal(specialReady("core", "undeploy"), false);
-    assert.equal(specialReady("trooper", "idle"), false);
+    assert.equal(specialReady("rifleman", "idle"), false);
     assert.equal(specialReady("rig", "idle", 0.4), false);
     assert.equal(specialCooldownOf("deploy") >= SPECIAL_COOLDOWN_MIN, true);
   });
@@ -107,9 +107,9 @@ describe("warden ammo", () => {
   it("reloads the 75mm on a Sudden Strike clock and carries a coaxial MG", () => {
     const w = catalog("warden");
     assert.ok(w.cooldown >= 6, `cooldown=${w.cooldown}`);
-    assert.ok(w.cooldown > catalog("trooper").cooldown * 5);
+    assert.ok(w.cooldown > catalog("rifleman").cooldown * 5);
     assert.equal(hasMg("warden"), true);
-    assert.equal(hasMg("trooper"), false);
+    assert.equal(hasMg("rifleman"), false);
     assert.equal(w.mgAmmo, TANK_MG.ammo);
     assert.ok(TANK_MG.spreadDeg > w.spreadDeg * 4);
     assert.equal(TANK_MG.cooldown < 0.2, true);
@@ -128,7 +128,7 @@ describe("warden ammo", () => {
 
 describe("instant rounds", () => {
   it("rifle, coaxial MG, and 75mm all cross max range in under a sim tick", () => {
-    const rifle = catalog("trooper");
+    const rifle = catalog("rifleman");
     assert.equal(rifle.projectileSpeed, SMALL_ARMS_SPEED);
     assert.equal(TANK_MG.projectileSpeed, SMALL_ARMS_SPEED);
     const rifleRange = rifle.rangeTiles * TILE_SIZE;
@@ -160,9 +160,9 @@ describe("tank faces", () => {
 describe("armor", () => {
   it("gives the Warden an independent turret and leaves troopers hull-fixed", () => {
     assert.equal(catalog("warden").turretTurnDegPerSec! > catalog("warden").turnDegPerSec, true);
-    assert.equal(catalog("trooper").turretTurnDegPerSec, undefined);
+    assert.equal(catalog("rifleman").turretTurnDegPerSec, undefined);
     assert.equal(catalog("hauler").turretTurnDegPerSec, undefined);
-    assert.ok(catalog("trooper").turnDegPerSec >= 1080);
+    assert.ok(catalog("rifleman").turnDegPerSec >= 1080);
   });
 
   it("labels the Warden plates and leaves infantry unarmored", () => {
@@ -175,8 +175,8 @@ describe("armor", () => {
     assert.equal(h.leavesWreck, true);
     assert.equal(armorLabel("warden"), `F${w.armorFront} / S${w.armorSide} / R${w.armorRear}`);
     assert.equal(armorLabel("hauler"), armorLabel("warden"));
-    assert.equal(armorLabel("trooper"), null);
-    assert.equal(catalog("trooper").armorFront, 0);
+    assert.equal(armorLabel("rifleman"), null);
+    assert.equal(catalog("rifleman").armorFront, 0);
   });
 });
 
@@ -186,13 +186,13 @@ describe("injuries", () => {
     assert.equal(isMotorVehicle("ss3"), true);
     assert.equal(isMotorVehicle("hauler"), true);
     assert.equal(isMotorVehicle("rig"), true);
-    assert.equal(isMotorVehicle("trooper"), false);
+    assert.equal(isMotorVehicle("rifleman"), false);
     assert.equal(isMotorVehicle("core"), false);
-    assert.equal(isInfantryType("trooper"), true);
-    assert.ok(HANDGUN.rangeTiles < catalog("trooper").rangeTiles);
-    assert.ok(HANDGUN.damage < catalog("trooper").damage);
-    assert.equal(catalog("trooper").damage, RIFLE.damage);
-    assert.equal(catalog("trooper").cooldown, RIFLE.cooldown);
+    assert.equal(isInfantryType("rifleman"), true);
+    assert.ok(HANDGUN.rangeTiles < catalog("rifleman").rangeTiles);
+    assert.ok(HANDGUN.damage < catalog("rifleman").damage);
+    assert.equal(catalog("rifleman").damage, RIFLE.damage);
+    assert.equal(catalog("rifleman").cooldown, RIFLE.cooldown);
     assert.equal(isStance("crouch"), true);
     assert.equal(isStance("sit"), false);
     assert.ok(STANCE_SPEED.crawl < STANCE_SPEED.crouch);
@@ -209,13 +209,13 @@ describe("infantry guns", () => {
     assert.equal(HANDGUN.clip, 7);
     assert.ok(RIFLE.reload > HANDGUN.reload);
     assert.ok(RIFLE.reload > RIFLE.cooldown * 2);
-    assert.equal(infantryGunFor({ type: "trooper" })?.id, "rifle");
-    assert.equal(infantryGunFor({ type: "trooper", weapon: "handgun" })?.id, "handgun");
-    assert.equal(infantryGunFor({ type: "trooper", weapon: "handgun", crits: ["arm"] })?.id, "handgun");
-    assert.equal(infantryGunFor({ type: "trooper", weapon: "rifle", crits: ["arm"] })?.id, "handgun");
+    assert.equal(infantryGunFor({ type: "rifleman" })?.id, "rifle");
+    assert.equal(infantryGunFor({ type: "rifleman", weapon: "handgun" })?.id, "handgun");
+    assert.equal(infantryGunFor({ type: "rifleman", weapon: "handgun", crits: ["arm"] })?.id, "handgun");
+    assert.equal(infantryGunFor({ type: "rifleman", weapon: "rifle", crits: ["arm"] })?.id, "handgun");
     assert.equal(infantryGunFor({ type: "warden" }), null);
     assert.deepEqual(
-      infantryLoadout("trooper").map((g) => g.id),
+      infantryLoadout("rifleman").map((g) => g.id),
       ["rifle", "handgun"],
     );
     assert.deepEqual(infantryLoadout("warden"), []);
@@ -233,10 +233,10 @@ describe("infantry guns", () => {
   });
 
   it("lets the handgun win a point-blank 1v1 on time-to-kill", () => {
-    const hp = catalog("trooper").hp;
+    const hp = catalog("rifleman").hp;
     const ttk = (damage: number, cooldown: number) => (Math.ceil(hp / damage) - 1) * cooldown;
     assert.ok(HANDGUN.cooldown < RIFLE.cooldown);
-    assert.ok(HANDGUN.rangeTiles! < catalog("trooper").rangeTiles / 2);
+    assert.ok(HANDGUN.rangeTiles! < catalog("rifleman").rangeTiles / 2);
     assert.ok(
       ttk(HANDGUN.damage, HANDGUN.cooldown) < ttk(RIFLE.damage, RIFLE.cooldown),
       `handgun ${ttk(HANDGUN.damage, HANDGUN.cooldown)}s vs rifle ${ttk(RIFLE.damage, RIFLE.cooldown)}s`,
@@ -246,7 +246,7 @@ describe("infantry guns", () => {
 
 describe("weapon reach", () => {
   it("is sight plus 20% for troopers and tanks", () => {
-    const inf = catalog("trooper");
+    const inf = catalog("rifleman");
     const tank = catalog("warden");
     const stug = catalog("ss3");
     assert.equal(WEAPON_RANGE_SIGHT_MUL, 1.2);
@@ -311,14 +311,14 @@ describe("hatch scout", () => {
     assert.equal(hasScout("warden"), true);
     assert.equal(hasScout("ss3"), true);
     assert.equal(hasScout("hauler"), false);
-    assert.equal(scoutHpMaxOf("warden"), catalog("trooper").hp * SCOUT_HP_MUL);
+    assert.equal(scoutHpMaxOf("warden"), catalog("rifleman").hp * SCOUT_HP_MUL);
     assert.equal(SCOUT_HP_MUL, 3);
   });
 });
 
 describe("building sight", () => {
   it("matches infantry fog radius on player structures", () => {
-    const inf = catalog("trooper").sightTiles;
+    const inf = catalog("rifleman").sightTiles;
     assert.equal(catalog("core").sightTiles, inf);
     for (const t of BUILDING_TYPES) {
       assert.equal(catalog(t).sightTiles, inf, t);

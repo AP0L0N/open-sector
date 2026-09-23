@@ -66,7 +66,7 @@ function fireAt(
     caliber?: number;
   },
 ): Projectile {
-  const gun = catalog("trooper");
+  const gun = catalog("rifleman");
   const p: Projectile = {
     id: state.nextId++,
     ownerId: "A",
@@ -93,9 +93,9 @@ describe("hatch scout", () => {
     assert.equal(hasScout("warden"), true);
     assert.equal(hasScout("ss3"), true);
     assert.equal(hasScout("hauler"), false);
-    assert.equal(hasScout("trooper"), false);
-    assert.equal(scoutHpMaxOf("warden"), catalog("trooper").hp * SCOUT_HP_MUL);
-    assert.equal(scoutHpMaxOf("ss3"), catalog("trooper").hp * SCOUT_HP_MUL);
+    assert.equal(hasScout("rifleman"), false);
+    assert.equal(scoutHpMaxOf("warden"), catalog("rifleman").hp * SCOUT_HP_MUL);
+    assert.equal(scoutHpMaxOf("ss3"), catalog("rifleman").hp * SCOUT_HP_MUL);
     assert.equal(scoutHpMaxOf("hauler"), 0);
   });
 
@@ -122,16 +122,16 @@ describe("hatch scout", () => {
     const res = applyCommand(state, a, { type: "cmd.scout", ids: [tank.id], out: true });
     assert.equal(res.ok, true, !res.ok ? res.message : "");
     assert.equal(tank.scoutOut, true);
-    assert.equal(sightTilesForEntity(state, tank), sightTilesOf("trooper", 0));
+    assert.equal(sightTilesForEntity(state, tank), sightTilesOf("rifleman", 0));
     assert.equal(observerEyeForEntity(tank), INFANTRY_EYE_HEIGHT);
     assert.equal(weaponRangeWorld(state, tank), range0);
 
-    const inf = makeEntity(state, "trooper", a, tileCenter(ox, ts), tileCenter(oy + 4, ts));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(ox, ts), tileCenter(oy + 4, ts));
     const tankMask = new Uint8Array(state.width * state.height);
     const infMask = new Uint8Array(state.width * state.height);
     paintEntitySight(tankMask, state.width, state.height, ts, tank, state.heights);
     paintEntitySight(infMask, state.width, state.height, ts, inf, state.heights);
-    const infR = sightTilesOf("trooper", 0);
+    const infR = sightTilesOf("rifleman", 0);
     assert.equal(tileOnMask(tankMask, state.width, ox + infR, oy), true);
     assert.equal(tileOnMask(infMask, state.width, ox + infR, oy + 4), true);
 
@@ -152,7 +152,7 @@ describe("hatch scout", () => {
     const ox = 20;
     const oy = 20;
     const rise = 6;
-    const dist = catalog("trooper").sightTiles + rise * INFANTRY_UPHILL_SIGHT;
+    const dist = catalog("rifleman").sightTiles + rise * INFANTRY_UPHILL_SIGHT;
     state.heights[oy * state.width + (ox + dist)] = rise;
     const tank = makeEntity(state, "warden", a, tileCenter(ox, ts), tileCenter(oy, ts));
     applyCommand(state, a, { type: "cmd.scout", ids: [tank.id], out: true });
@@ -173,14 +173,14 @@ describe("hatch scout", () => {
     fireAt(state, {
       x: tank.x - tank.radius - 6,
       y: tank.y,
-      vx: catalog("trooper").projectileSpeed,
+      vx: catalog("rifleman").projectileSpeed,
       vy: 0,
     });
     tickProjectiles(state, TICK_DT);
     assert.equal(tank.hp, hull);
     assert.ok(tank.scoutHp < scout, `scout hp ${tank.scoutHp} vs ${scout}`);
     assert.equal(tank.scoutOut, true);
-    assert.ok(catalog("trooper").caliber < GARRISON_STRUCTURAL_CALIBER);
+    assert.ok(catalog("rifleman").caliber < GARRISON_STRUCTURAL_CALIBER);
   });
 
   it("buttons up on a hull hit and keeps the wounded HP", () => {
@@ -223,7 +223,7 @@ describe("hatch scout", () => {
     fireAt(state, {
       x: tank.x - tank.radius - 6,
       y: tank.y,
-      vx: catalog("trooper").projectileSpeed,
+      vx: catalog("rifleman").projectileSpeed,
       vy: 0,
     });
     tickProjectiles(state, TICK_DT);
@@ -242,7 +242,7 @@ describe("hatch scout", () => {
     fireAt(state, {
       x: tank.x - tank.radius - 6,
       y: tank.y,
-      vx: catalog("trooper").projectileSpeed,
+      vx: catalog("rifleman").projectileSpeed,
       vy: 0,
       damage: 20,
     });
@@ -260,7 +260,7 @@ describe("hatch scout", () => {
     clearCover(state);
     const ts = state.tileSize;
     const tank = makeEntity(state, "warden", a, tileCenter(40, ts), tileCenter(40, ts));
-    makeEntity(state, "trooper", b, tileCenter(42, ts), tileCenter(40, ts));
+    makeEntity(state, "rifleman", b, tileCenter(42, ts), tileCenter(40, ts));
     const first = visionMask(state, a);
     applyCommand(state, a, { type: "cmd.scout", ids: [tank.id], out: true });
     const open = visionMask(state, a);

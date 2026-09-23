@@ -40,19 +40,24 @@ import {
   worldToTile,
   type BuildingType,
   type ClientMessage,
+  type CorpseView,
   type EntityType,
   type EntityView,
   type IsoPt,
   type MapDef,
   type MatchSnapshot,
+  type ShellHoleView,
 } from "@gridlock/shared";
 import {
   FX_BOOM,
   FX_SMOKE,
   drawCookoffBurst,
   drawFxFrame,
+  drawBloodStain,
   drawGroundMiss,
   drawKineticImpact,
+  drawShellHole,
+  drawWaterDetonation,
   drawMuzzleBlast,
   drawWindowMuzzle,
   drawRicochetSparks,
@@ -83,6 +88,11 @@ import {
   snapHitToUnitSprite,
   spriteFor,
   spriteReady,
+  GUNNER_DIE_SPRITE,
+  GUNNER_FIRE_SPRITE,
+  TROOPER_DIE_SPRITE,
+  TROOPER_HANDGUN_SPRITE,
+  TROOPER_RIFLE_FIRE_SPRITE,
   unitHitsBuildingSprite,
   type BuildingSpriteDef,
   type UnitSpriteDef,
@@ -123,6 +133,7 @@ import {
 } from "./sun.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
+import { gunnerSheet, heldFrame, trooperSheet } from "./infantry-visual.js";
 import { lerpHullPose } from "./hull-lerp.js";
 import { canGuardUnit, resolveHoverAction, type HoverAction } from "./hover-action.js";
 import {
@@ -178,7 +189,8 @@ const EXTRUDE: Record<EntityType, number> = {
   hauler: 16,
   warden: 28,
   ss3: 20,
-  trooper: 26,
+  rifleman: 26,
+  gunner: 26,
   cottage: 28,
   shack: 24,
   house: 36,
@@ -292,6 +304,8 @@ export class MapView {
   private ghosts = new Map<number, EntityView>();
   /** Wall-clock ms when a wreck was first drawn; drives hull-fire burnout. */
   private wreckBornAt = new Map<number, number>();
+  /** Wall-clock ms of the last small-arms shot from an infantry unit. */
+  private infantryShotAt = new Map<number, number>();
   private fx: {
     id: number;
     kind: string;
@@ -302,6 +316,7 @@ export class MapView {
     at: number;
     caliber?: number;
     blast?: boolean;
+    splash?: boolean;
     lift?: number;
     /** Screen-x offset from the world ground projection. */
     sx?: number;
@@ -451,6 +466,10 @@ export class MapView {
       if (!live.has(id) || until < now) this.damagedUntil.delete(id);
     }
     for (const i of match.impacts ?? []) {
+      if (i.fromId != null && (i.caliber ?? 0) > 0 && (i.caliber ?? 0) < 40 && i.kind !== "crush") {
+        const shooter = match.entities.find((e) => e.id === i.fromId);
+        if (shooter && isInfantryType(shooter.type) && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
+      }
       if (i.kind === "crush") continue;
       const fx: MapView["fx"][number] = { ...i, at: now };
       this.snapHullFx(fx);
@@ -518,6 +537,9 @@ export class MapView {
       for (const id of this.wreckBornAt.keys()) {
         if (!liveWrecks.has(id)) this.wreckBornAt.delete(id);
       }
+    }
+    for (const id of this.infantryShotAt.keys()) {
+      if (!live.has(id)) this.infantryShotAt.delete(id);
     }
     for (const id of [...this.selected]) {
       if (!match.entities.some((e) => e.id === id)) this.selected.delete(id);
@@ -1561,7 +1583,7 @@ export class MapView {
       if (e.kind === "unit") {
         if (e.garrisonedIn) continue;
         const p = this.lerpEnt(e);
-        const spr = spriteFor(e.type, e.stance, e.swimming);
+        const spr = this.spriteOf(e);
         if (spr) {
           const s = this.toScreen(p.x, p.y);
           const size = spr.drawSize;
@@ -1837,6 +1859,7 @@ export class MapView {
       });
     }
     this.collectTrees(items);
+    this.collectRemains(items);
     this.collectUnitShadows(items);
     this.collectBuildingShadows(items);
     this.collectTrackKicks(items);
@@ -2601,7 +2624,7 @@ export class MapView {
 
   private unitOccluded(e: EntityView): boolean {
     const p = this.lerpEnt(e);
-    const unitSpr = spriteFor(e.type, e.stance, e.swimming);
+    const unitSpr = this.spriteOf(e);
     const visualLift = unitSpr
       ? unitSpr.drawSize * unitSpr.contactY * 0.62
       : this.extrude(e.type) * UNIT_VISUAL_SCALE * 0.7;
@@ -2656,8 +2679,55 @@ export class MapView {
     return live;
   }
 
+  /** Stance sheet, or the pistol / rifle-recoil / corpse sheet when that pose is showing. */
+  private spriteOf(e: EntityView): UnitSpriteDef | undefined {
+    if (e.type === "rifleman") {
+      const sheet = trooperSheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        weapon: e.weapon,
+        shotAgeMs: this.infantryShotAge(e.id),
+      });
+      if (sheet === "handgun") return TROOPER_HANDGUN_SPRITE;
+      if (sheet === "rifle-fire") return TROOPER_RIFLE_FIRE_SPRITE;
+      if (sheet === "die") return TROOPER_DIE_SPRITE;
+    }
+    if (e.type === "gunner") {
+      const sheet = gunnerSheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        shotAgeMs: this.infantryShotAge(e.id),
+      });
+      if (sheet === "mg-fire") return GUNNER_FIRE_SPRITE;
+      if (sheet === "die") return GUNNER_DIE_SPRITE;
+    }
+    return spriteFor(e.type, e.stance, e.swimming);
+  }
+
+  private infantryShotAge(id: number): number | null {
+    const at = this.infantryShotAt.get(id);
+    if (at == null) return null;
+    const age = (performance.now() - at) * (this.curr.gameSpeed || 1);
+    if (age > 1200) {
+      this.infantryShotAt.delete(id);
+      return null;
+    }
+    return age;
+  }
+
+  private corpseAge(id: number): number {
+    let born = this.wreckBornAt.get(id);
+    if (born == null) {
+      born = performance.now();
+      this.wreckBornAt.set(id, born);
+    }
+    return (performance.now() - born) * (this.curr.gameSpeed || 1);
+  }
+
   private drawUnit(e: EntityView): void {
-    const spr = spriteFor(e.type, e.stance, e.swimming);
+    const spr = this.spriteOf(e);
     if (spr) {
       this.drawSpritedUnit(e, spr);
       return;
@@ -2744,14 +2814,21 @@ export class MapView {
         gunShiftY = shift.gunY;
       }
     }
+    const corpse = isInfantryType(e.type) && !!e.wreck;
+    let frameIndex: number | undefined;
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE) {
+      frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
+    }
     ctx.save();
     ctx.globalAlpha = fade;
     ctx.save();
-    if (e.wreck) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
+    if (e.wreck && !corpse) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
     const drawn = drawUnitSprite(ctx, def, s.x, s.y, dir.x, dir.y, {
       moving: !e.wreck && !immobilized(e) && (e.state === "move" || !!e.swimming),
       id: e.id,
       now: performance.now() * (this.curr.gameSpeed || 1),
+      frameIndex,
       turretDx: turretDir.x,
       turretDy: turretDir.y,
       facing: p.facing,
@@ -2766,7 +2843,7 @@ export class MapView {
     }
     ctx.restore();
     ctx.restore();
-    if (e.wreck && drawn) this.drawWreckFires(e, s.x, s.y, size, dir.x, dir.y);
+    if (e.wreck && drawn && !corpse) this.drawWreckFires(e, s.x, s.y, size, dir.x, dir.y);
     if (!drawn) {
       const r = Math.max(4, size * 0.22);
       ctx.save();
@@ -2827,6 +2904,121 @@ export class MapView {
     }
   }
 
+  /** Craters under units, then blood and the fallen pose with the soldiers. */
+  private collectRemains(items: { layer: number; z: number; run: () => void }[]): void {
+    const map = this.map();
+    const ts = map.tileSize;
+    const w = map.width;
+    for (const hole of this.curr.holes ?? []) {
+      const tx = worldToTile(hole.x, ts);
+      const ty = worldToTile(hole.y, ts);
+      if (tx < 0 || ty < 0 || tx >= w || ty >= map.height) continue;
+      const seen = this.explored?.[ty * w + tx] === 1;
+      const lit = this.lit(tx, ty);
+      if (!seen && !lit) continue;
+      const alpha = lit ? 1 : 0.5;
+      items.push({
+        layer: 0,
+        z: isoDepth(hole.x, hole.y) - 0.6,
+        run: () => this.drawHole(hole, alpha),
+      });
+    }
+    for (const body of this.curr.bodies ?? []) {
+      const z = isoDepth(body.x, body.y);
+      items.push({
+        layer: 1,
+        z: z - 0.35,
+        run: () => this.drawBodyBlood(body),
+      });
+      items.push({
+        layer: 1,
+        z,
+        run: () => this.drawBody(body),
+      });
+    }
+  }
+
+  private groundSpan(x: number, y: number, world: number): number {
+    const c = this.toScreen(x, y);
+    const e = this.toScreen(x + world, y);
+    return Math.hypot(e.x - c.x, e.y - c.y);
+  }
+
+  private drawHole(hole: ShellHoleView, alpha: number): void {
+    const c = this.toScreen(hole.x, hole.y);
+    const rx = this.groundSpan(hole.x, hole.y, hole.radius);
+    const tip = this.toScreen(hole.x + Math.cos(hole.ang), hole.y + Math.sin(hole.ang));
+    drawShellHole(
+      this.ctx,
+      c.x,
+      c.y,
+      rx,
+      rx * 0.5,
+      Math.atan2(tip.y - c.y, tip.x - c.x),
+      hole.seed,
+      alpha,
+    );
+  }
+
+  private drawBodyBlood(body: CorpseView): void {
+    const ctx = this.ctx;
+    for (const stain of body.blood) {
+      const s = this.toScreen(stain.x, stain.y);
+      const rx = this.groundSpan(stain.x, stain.y, stain.rx);
+      const ry = rx * (stain.ry / Math.max(0.2, stain.rx)) * 0.55;
+      drawBloodStain(ctx, s.x, s.y, rx, ry, stain.rot);
+    }
+  }
+
+  private drawBody(body: CorpseView): void {
+    const def = body.type === "gunner" ? GUNNER_DIE_SPRITE : body.type === "rifleman" ? TROOPER_DIE_SPRITE : null;
+    if (!def) return;
+    const s = this.toScreen(body.x, body.y);
+    const dir = facingToIso(body.facing, this.ts());
+    const ageMs = Math.max(0, (this.curr.tick - body.bornTick) * TICK_DT * 1000);
+    const fade = this.corpseFade(body.x, body.y, def);
+    this.ctx.save();
+    this.ctx.globalAlpha = fade;
+    drawUnitSprite(this.ctx, def, s.x, s.y, dir.x, dir.y, {
+      moving: false,
+      id: body.id,
+      now: 0,
+      frameIndex: heldFrame(ageMs, def.fps, def.frames),
+      facing: body.facing,
+    });
+    this.ctx.restore();
+  }
+
+  private corpseFade(x: number, y: number, def: UnitSpriteDef): number {
+    const s = this.toScreen(x, y);
+    const samples = [
+      { x: s.x, y: s.y - def.drawSize * def.contactY * 0.45 },
+      { x: s.x, y: s.y - def.drawSize * def.contactY * 0.2 },
+    ];
+    const unitRect = {
+      x: s.x - def.drawSize / 2,
+      y: s.y - def.drawSize * def.contactY,
+      w: def.drawSize,
+      h: def.drawSize * 0.4,
+    };
+    const ts = this.ts();
+    const visualLift = def.drawSize * def.contactY * 0.35;
+    const unitLift = isoLift(this.elevAt(x, y));
+    for (const b of this.occBuildings) {
+      if (x >= b.x + b.w || y >= b.y + b.h) continue;
+      if (b.spr) {
+        if (unitHitsBuildingSprite(b.spr, b.southX, b.southY, b.footprintW, samples, unitRect)) {
+          return OCCLUDED_UNIT_ALPHA;
+        }
+        continue;
+      }
+      if (unitBehindIsoBox(x, y, visualLift, b.x, b.y, b.w, b.h, b.ez, ts, b.lift, unitLift)) {
+        return OCCLUDED_UNIT_ALPHA;
+      }
+    }
+    return 1;
+  }
+
   private drawImpacts(): void {
     const now = performance.now();
     const ctx = this.ctx;
@@ -2844,6 +3036,7 @@ export class MapView {
       const tip = this.toScreen(f.x + f.vx * 0.08, f.y + f.vy * 0.08);
       const dirX = tip.x - s.x;
       const dirY = tip.y - s.y;
+      if (f.splash) drawWaterDetonation(ctx, s.x, s.y, t, f.id, f.caliber);
       const lift =
         f.lift ??
         (f.kind === "miss" || f.kind === "puff"
@@ -2874,7 +3067,7 @@ export class MapView {
       } else if (f.kind === "smoke") {
         const frame = fxFrameAt(age, 700, FX_SMOKE.frames, true);
         drawFxFrame(ctx, FX_SMOKE, frame, x, y - 8 - t * 10, 34 + t * 10, 0.85 - t * 0.7);
-      } else if (f.kind === "puff") {
+      } else if (f.kind === "puff" && !f.splash) {
         const frame = fxFrameAt(age, life, FX_SMOKE.frames, false);
         const smokeBurst = f.shell === "smoke";
         const tiny = smokeBurst ? 52 : isShellCaliber(f.caliber) ? 16 : 11;
@@ -2889,7 +3082,7 @@ export class MapView {
         );
       } else if (f.kind === "ricochet") {
         drawRicochetSparks(ctx, x, y, dirX, dirY, t, f.id, f.caliber);
-      } else if (f.kind === "miss") {
+      } else if (f.kind === "miss" && !f.splash) {
         drawGroundMiss(ctx, s.x, s.y, t, f.id, f.caliber, dirX, dirY);
       }
     }

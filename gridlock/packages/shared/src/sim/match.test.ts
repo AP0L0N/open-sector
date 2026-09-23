@@ -64,7 +64,8 @@ describe("createMatch", () => {
     for (const pid of ["A", "B"]) {
       const rig = [...state.entities.values()].find((e) => e.ownerId === pid && e.type === "rig")!;
       const own = [...state.entities.values()].filter((e) => e.ownerId === pid && e.kind === "unit");
-      assert.equal(own.filter((e) => e.type === "trooper").length, 1);
+      assert.equal(own.filter((e) => e.type === "rifleman").length, 1);
+      assert.equal(own.filter((e) => e.type === "gunner").length, 1);
       assert.equal(own.filter((e) => e.type === "warden").length, 1);
       assert.equal(own.filter((e) => e.type === "ss3").length, 1);
       assert.equal(own.filter((e) => e.type === "hauler").length, 0);
@@ -320,8 +321,8 @@ describe("combat", () => {
   it("fires on an enemy in range during a move, without dropping the walk", () => {
     const { state } = twoPlayerMatch();
     state.heights.fill(0);
-    const t1 = makeEntity(state, "trooper", "A", 24 * 32, 20 * 32);
-    const dummy = makeEntity(state, "trooper", "B", 28 * 32, 20 * 32);
+    const t1 = makeEntity(state, "rifleman", "A", 24 * 32, 20 * 32);
+    const dummy = makeEntity(state, "rifleman", "B", 28 * 32, 20 * 32);
     dummy.holdPosition = true;
     dummy.cooldown = 99;
     t1.facing = 0;
@@ -338,8 +339,8 @@ describe("combat", () => {
   it("attack-move stops to shoot then continues to the click", () => {
     const { state } = twoPlayerMatch();
     state.heights.fill(0);
-    const t1 = makeEntity(state, "trooper", "A", 24 * 32, 20 * 32);
-    const dummy = makeEntity(state, "trooper", "B", 28 * 32, 20 * 32);
+    const t1 = makeEntity(state, "rifleman", "A", 24 * 32, 20 * 32);
+    const dummy = makeEntity(state, "rifleman", "B", 28 * 32, 20 * 32);
     dummy.holdPosition = true;
     dummy.cooldown = 99;
     t1.facing = 0;
@@ -356,8 +357,8 @@ describe("combat", () => {
 
   it("kills a Trooper in four hits", () => {
     const { state } = twoPlayerMatch();
-    const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
-    const dummy = makeEntity(state, "trooper", "B", 24 * 32, 20 * 32);
+    const t1 = makeEntity(state, "rifleman", "A", 20 * 32, 20 * 32);
+    const dummy = makeEntity(state, "rifleman", "B", 24 * 32, 20 * 32);
     dummy.holdPosition = true;
     dummy.cooldown = 99;
     applyCommand(state, "A", { type: "cmd.attack", ids: [t1.id], targetId: dummy.id });
@@ -370,8 +371,8 @@ describe("combat", () => {
 
   it("soft-target kills are kinetic, not cook-off blasts", () => {
     const { state } = twoPlayerMatch();
-    const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
-    const dummy = makeEntity(state, "trooper", "B", 24 * 32, 20 * 32);
+    const t1 = makeEntity(state, "rifleman", "A", 20 * 32, 20 * 32);
+    const dummy = makeEntity(state, "rifleman", "B", 24 * 32, 20 * 32);
     dummy.holdPosition = true;
     dummy.cooldown = 99;
     dummy.hp = 12;
@@ -391,11 +392,11 @@ describe("combat", () => {
 
   it("rifle ricochets zip off armor and puff on landing", () => {
     const { state } = twoPlayerMatch();
-    const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
+    const t1 = makeEntity(state, "rifleman", "A", 20 * 32, 20 * 32);
     const tank = makeEntity(state, "warden", "B", 23 * 32, 20 * 32);
     tank.facing = Math.PI;
     applyCommand(state, "A", { type: "cmd.attack", ids: [t1.id], targetId: tank.id });
-    const muzzle = catalog("trooper").projectileSpeed;
+    const muzzle = catalog("rifleman").projectileSpeed;
     let bounceSp = 0;
     let sawPuff = false;
     const bounceAngs: number[] = [];
@@ -418,7 +419,7 @@ describe("combat", () => {
 
   it("cannot kill a Warden with rifle fire", () => {
     const { state } = twoPlayerMatch();
-    const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
+    const t1 = makeEntity(state, "rifleman", "A", 20 * 32, 20 * 32);
     const tank = makeEntity(state, "warden", "B", 23 * 32, 20 * 32);
     tank.facing = Math.PI;
     applyCommand(state, "A", { type: "cmd.attack", ids: [t1.id], targetId: tank.id });
@@ -429,7 +430,7 @@ describe("combat", () => {
 
   it("cannot wound a hauler with rifle fire", () => {
     const { state } = twoPlayerMatch();
-    const t1 = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
+    const t1 = makeEntity(state, "rifleman", "A", 20 * 32, 20 * 32);
     const truck = makeEntity(state, "hauler", "B", 23 * 32, 20 * 32);
     truck.autoHarvest = false;
     truck.facing = Math.PI;
@@ -507,7 +508,7 @@ describe("combat", () => {
     const { state } = twoPlayerMatch();
     state.heights.fill(0);
     const ts = state.tileSize;
-    const t1 = makeEntity(state, "trooper", "A", tileCenter(48, ts), tileCenter(16, ts));
+    const t1 = makeEntity(state, "rifleman", "A", tileCenter(48, ts), tileCenter(16, ts));
     t1.facing = 0;
     applyCommand(state, "A", { type: "cmd.move", ids: [t1.id], x: tileCenter(32, ts), y: tileCenter(16, ts) });
     step(state);
@@ -594,7 +595,7 @@ describe("combat", () => {
       if (state.terrain[i] === TILE_TREE) state.terrain[i] = TILE_EMPTY;
     }
     const tank = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
-    const inf = makeEntity(state, "trooper", "B", 23 * 32, 20 * 32);
+    const inf = makeEntity(state, "rifleman", "B", 23 * 32, 20 * 32);
     tank.facing = 0;
     tank.turretFacing = 0;
     inf.facing = Math.PI;
@@ -621,7 +622,7 @@ describe("combat", () => {
     const { state } = twoPlayerMatch();
     state.heights.fill(0);
     const tank = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
-    const inf = makeEntity(state, "trooper", "B", 23 * 32, 20 * 32);
+    const inf = makeEntity(state, "rifleman", "B", 23 * 32, 20 * 32);
     inf.hp = 4000;
     inf.hpMax = 4000;
     tank.facing = 0;

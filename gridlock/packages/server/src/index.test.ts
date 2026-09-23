@@ -16,6 +16,36 @@ describe("http + ws", () => {
     }
   });
 
+  it("GET /maps and /map/:id serve layout for the Godot client", async () => {
+    const started = await startServer({ port: 0, host: "127.0.0.1", staticDir: null });
+    try {
+      const listRes = await fetch(`http://127.0.0.1:${started.port}/maps`);
+      assert.equal(listRes.status, 200);
+      const list = (await listRes.json()) as { id: string }[];
+      assert.ok(list.some((m) => m.id === "yard-64"));
+
+      const mapRes = await fetch(`http://127.0.0.1:${started.port}/map/yard-64`);
+      assert.equal(mapRes.status, 200);
+      const map = (await mapRes.json()) as {
+        id: string;
+        width: number;
+        height: number;
+        tileSize: number;
+        tiles: number[];
+        heights: number[];
+      };
+      assert.equal(map.id, "yard-64");
+      assert.equal(map.tiles.length, map.width * map.height);
+      assert.equal(map.heights.length, map.width * map.height);
+      assert.ok(map.tileSize > 0);
+
+      const missing = await fetch(`http://127.0.0.1:${started.port}/map/nope`);
+      assert.equal(missing.status, 404);
+    } finally {
+      await started.close();
+    }
+  });
+
   it("websocket welcome then create room", async () => {
     const started = await startServer({ port: 0, host: "127.0.0.1", staticDir: null });
     try {

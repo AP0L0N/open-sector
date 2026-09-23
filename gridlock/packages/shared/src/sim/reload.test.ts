@@ -51,8 +51,8 @@ function duel(state: MatchState): {
     if (e.ownerId === "B") destroyEntity(state, e);
   }
   const ts = state.tileSize;
-  const gun = makeEntity(state, "trooper", "A", tileCenter(24, ts), tileCenter(24, ts));
-  const dummy = makeEntity(state, "trooper", "B", tileCenter(28, ts), tileCenter(24, ts));
+  const gun = makeEntity(state, "rifleman", "A", tileCenter(24, ts), tileCenter(24, ts));
+  const dummy = makeEntity(state, "rifleman", "B", tileCenter(28, ts), tileCenter(24, ts));
   dummy.holdPosition = true;
   dummy.cooldown = 99;
   gun.facing = 0;
@@ -69,7 +69,7 @@ describe("infantry reload", () => {
     const { state, a } = twoPlayerMatch();
     const muls = new Set<string>();
     for (let i = 0; i < 24; i++) {
-      const t = makeEntity(state, "trooper", a, 80 + i * 8, 80);
+      const t = makeEntity(state, "rifleman", a, 80 + i * 8, 80);
       assert.ok(t.reloadMul >= RELOAD_MUL_MIN && t.reloadMul <= RELOAD_MUL_MAX, `mul=${t.reloadMul}`);
       assert.equal(t.clip, RIFLE.clip);
       assert.equal(t.reload, 0);

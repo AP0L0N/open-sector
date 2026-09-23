@@ -81,8 +81,8 @@ function canStartBuilding(state: MatchState, p: SimPlayer, next: BuildingType): 
   const cost = catalog(next).cost;
   if (p.scrap < cost) return false;
   if (next === "dynamo" || next === "smelter" || next === "muster") return true;
-  const troopers = countType(state, p.playerId, "trooper");
-  const hold = Math.max(0, FIRST_WAVE_TROOPERS - troopers) * catalog("trooper").cost;
+  const troopers = countType(state, p.playerId, "rifleman");
+  const hold = Math.max(0, FIRST_WAVE_TROOPERS - troopers) * catalog("rifleman").cost;
   return p.scrap >= cost + hold;
 }
 
@@ -95,10 +95,10 @@ function trainEasy(state: MatchState, p: SimPlayer): void {
     return applyCommand(state, p.playerId, { type: "cmd.train", unit }).ok;
   };
   if (tryTrain("hauler", EASY_WANT_HAULERS)) return;
-  if (tryTrain("trooper", FIRST_WAVE_TROOPERS)) return;
+  if (tryTrain("rifleman", FIRST_WAVE_TROOPERS)) return;
   if (tryTrain("ss3", EASY_WANT_SS3)) return;
   if (tryTrain("warden", EASY_WANT_WARDENS)) return;
-  tryTrain("trooper", EASY_WANT_TROOPERS);
+  tryTrain("rifleman", EASY_WANT_TROOPERS);
 }
 
 /** Hold scrap for the next factory. Do not starve the first troop wave to save for Armory. */
@@ -108,7 +108,7 @@ function trainReserve(state: MatchState, p: SimPlayer): number {
   }
   if (countType(state, p.playerId, "dynamo") === 0) return catalog("dynamo").cost;
   if (countType(state, p.playerId, "muster") === 0) return catalog("muster").cost;
-  if (countType(state, p.playerId, "trooper") < FIRST_WAVE_TROOPERS) return 0;
+  if (countType(state, p.playerId, "rifleman") < FIRST_WAVE_TROOPERS) return 0;
   if (countType(state, p.playerId, "armory") === 0) return catalog("armory").cost;
   return 0;
 }

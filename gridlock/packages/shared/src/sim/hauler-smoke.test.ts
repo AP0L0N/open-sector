@@ -156,15 +156,15 @@ describe("hauler smoke screen", () => {
     clearCover(state);
     const hauler = placeHauler(state, "A");
     const ts = state.tileSize;
-    const shooter = makeEntity(state, "trooper", "B", hauler.x - ts * 8, hauler.y);
+    const shooter = makeEntity(state, "rifleman", "B", hauler.x - ts * 8, hauler.y);
     const p = fireShell(state, {
       x: hauler.x - 16,
       y: hauler.y,
-      vx: catalog("trooper").projectileSpeed,
+      vx: catalog("rifleman").projectileSpeed,
       vy: 0,
-      damage: catalog("trooper").damage,
-      penetration: catalog("trooper").penetration,
-      caliber: catalog("trooper").caliber,
+      damage: catalog("rifleman").damage,
+      penetration: catalog("rifleman").penetration,
+      caliber: catalog("rifleman").caliber,
     });
     p.fromId = shooter.id;
     p.shell = null;
@@ -270,7 +270,7 @@ describe("hauler smoke screen", () => {
     clearCover(state);
     const hauler = placeHauler(state, a);
     const ts = state.tileSize;
-    makeEntity(state, "trooper", b, hauler.x + ts, hauler.y);
+    makeEntity(state, "rifleman", b, hauler.x + ts, hauler.y);
     const mine = snapshotFor(state, a).entities.find((e) => e.id === hauler.id);
     const theirs = snapshotFor(state, b).entities.find((e) => e.id === hauler.id);
     assert.equal(mine?.smokeCharges, HAULER_SMOKE_CHARGES);

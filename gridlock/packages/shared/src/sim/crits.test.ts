@@ -41,14 +41,14 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
 describe("rollCrits", () => {
   it("breaks a trooper's arm and leg on hot rolls", () => {
     const { state, a } = twoPlayerMatch();
-    const t = makeEntity(state, "trooper", a, 100, 100);
+    const t = makeEntity(state, "rifleman", a, 100, 100);
     rollCrits(t, "front", "hit", 12, () => 0);
     assert.deepEqual(t.crits, ["arm", "leg"]);
   });
 
   it("does not injure infantry on a cold roll or a zero-damage glance", () => {
     const { state, a } = twoPlayerMatch();
-    const t = makeEntity(state, "trooper", a, 100, 100);
+    const t = makeEntity(state, "rifleman", a, 100, 100);
     rollCrits(t, "front", "hit", 12, () => 0.9);
     assert.deepEqual(t.crits, []);
     rollCrits(t, "front", "glance", 0, () => 0);
@@ -89,7 +89,7 @@ describe("rollCrits", () => {
 
   it("does not stack the same injury twice", () => {
     const { state, a } = twoPlayerMatch();
-    const t = makeEntity(state, "trooper", a, 100, 100);
+    const t = makeEntity(state, "rifleman", a, 100, 100);
     addCrit(t, "arm");
     rollCrits(t, "front", "hit", 12, () => 0);
     assert.deepEqual(t.crits, ["arm", "leg"]);
@@ -99,13 +99,13 @@ describe("rollCrits", () => {
 describe("crit effects", () => {
   it("drops a wounded trooper to the handgun", () => {
     const { state, a } = twoPlayerMatch();
-    const t = makeEntity(state, "trooper", a, 100, 100);
+    const t = makeEntity(state, "rifleman", a, 100, 100);
     const rifle = fireStats(t);
-    assert.equal(rifle.damage, catalog("trooper").damage);
+    assert.equal(rifle.damage, catalog("rifleman").damage);
     addCrit(t, "arm");
     const pistol = fireStats(t);
     assert.equal(pistol.damage, HANDGUN.damage);
-    assert.ok(weaponRangeWorld(state, t) < catalog("trooper").rangeTiles * state.tileSize);
+    assert.ok(weaponRangeWorld(state, t) < catalog("rifleman").rangeTiles * state.tileSize);
     assert.equal(weaponRangeWorld(state, t), HANDGUN.rangeTiles * state.tileSize);
   });
 
@@ -114,8 +114,8 @@ describe("crit effects", () => {
     const ts = state.tileSize;
     const from = { x: tileCenter(12, ts), y: tileCenter(12, ts) };
     const dest = { x: tileCenter(20, ts), y: tileCenter(12, ts) };
-    const healthy = makeEntity(state, "trooper", a, from.x, from.y);
-    const wounded = makeEntity(state, "trooper", a, from.x, from.y + ts * 6);
+    const healthy = makeEntity(state, "rifleman", a, from.x, from.y);
+    const wounded = makeEntity(state, "rifleman", a, from.x, from.y + ts * 6);
     addCrit(wounded, "leg");
     healthy.facing = 0;
     wounded.facing = 0;
@@ -164,7 +164,7 @@ describe("crit effects", () => {
 
   it("puts injuries on the snapshot", () => {
     const { state, a } = twoPlayerMatch();
-    const t = makeEntity(state, "trooper", a, 100, 100);
+    const t = makeEntity(state, "rifleman", a, 100, 100);
     addCrit(t, "arm");
     addCrit(t, "leg");
     const snap = snapshotFor(state, a);
