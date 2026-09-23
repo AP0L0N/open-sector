@@ -8,13 +8,14 @@ import {
   hasTurret,
   isGarrisonable,
   isInfantryType,
+  MG42_BIPOD_SECONDS,
 } from "../catalog.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { allies, unitInWater } from "./geo.js";
 import { powerOf } from "./power.js";
 import { canSeeWorld, entityOnMask, visionMask } from "./vision.js";
 import type { Entity, MatchState } from "./types.js";
-import type { EntityView, MatchSnapshot, ScrapCell } from "../protocol.js";
+import type { CorpseView, EntityView, MatchSnapshot, ScrapCell } from "../protocol.js";
 
 function scoutView(e: Entity, friendly: boolean): EntityView["scout"] {
   if (!hasScout(e.type) || e.scoutHpMax <= 0) return undefined;
@@ -90,6 +91,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       weapon: friendly && isInfantryType(e.type) ? (e.weapon ?? undefined) : undefined,
       clip: friendly && isInfantryType(e.type) ? e.clip : undefined,
       reload: friendly && isInfantryType(e.type) && e.reload > 0 ? e.reload : undefined,
+      bipod:
+        friendly && e.type === "gunner" && e.bipod < MG42_BIPOD_SECONDS
+          ? Math.max(0, MG42_BIPOD_SECONDS - e.bipod)
+          : undefined,
       garrisonedIn: friendly && e.garrisonedIn ? e.garrisonedIn : undefined,
       garrison: isGarrisonable(e.type)
         ? (() => {
@@ -179,6 +184,27 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     })),
     scrap,
     clearedTrees: state.clearedTrees.map((t) => ({ x: t.x, y: t.y })),
+    bodies: visibleBodies(state, youPlayerId, vis),
+    holes: state.holes.map((h) => ({ ...h })),
     winner: state.winner,
   };
+}
+
+function visibleBodies(state: MatchState, youPlayerId: string, vis: Uint8Array): CorpseView[] {
+  const bodies: CorpseView[] = [];
+  for (const b of state.bodies) {
+    const friendly = allies(state, youPlayerId, b.ownerId);
+    if (!friendly && !canSeeWorld(state, vis, b.x, b.y)) continue;
+    bodies.push({
+      id: b.id,
+      type: b.type,
+      ownerId: b.ownerId,
+      x: b.x,
+      y: b.y,
+      facing: b.facing,
+      bornTick: b.bornTick,
+      blood: b.blood.map((s) => ({ ...s })),
+    });
+  }
+  return bodies;
 }

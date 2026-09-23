@@ -11,7 +11,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 22;
+export const PROTOCOL_VERSION = 24;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -122,6 +122,8 @@ export interface EntityView {
   clip?: number;
   /** Seconds left on a magazine change. Allied infantry. Omitted when idle. */
   reload?: number;
+  /** Seconds until a prone gunner's bipod is set. Omitted once the MG42 can fire. */
+  bipod?: number;
   /** Unit is inside this building. Friendly snapshots only. */
   garrisonedIn?: number;
   /**
@@ -210,10 +212,49 @@ export interface ImpactView {
   caliber?: number;
   /** Ammo cook-off / structure collapse. Fireball, not a kinetic spark. */
   blast?: boolean;
+  /** Round struck water. Client plays a splash; no dirt scar. */
+  splash?: boolean;
   /** Shooter. Used to place the muzzle flash when the round never made a snapshot. */
   fromId?: number;
   /** Loaded 75mm type. Omitted for small-arms and crush. */
   shell?: ShellType;
+}
+
+/** Blood droplet around a corpse. World pixels. */
+export interface BloodStainView {
+  x: number;
+  y: number;
+  rx: number;
+  ry: number;
+  rot: number;
+}
+
+/**
+ * Fallen infantry. Passable, blocks no sight, and cannot be destroyed.
+ * Friendly corpses are always sent; enemy corpses only while the tile is seen.
+ */
+export interface CorpseView {
+  id: number;
+  type: EntityType;
+  ownerId: string;
+  x: number;
+  y: number;
+  facing: number;
+  /** Sim tick the soldier fell. Drives the death pose. */
+  bornTick: number;
+  blood: BloodStainView[];
+}
+
+/** Persistent crater from a heavy shell on dirt. */
+export interface ShellHoleView {
+  id: number;
+  x: number;
+  y: number;
+  /** World-pixel radius. Scales with caliber. */
+  radius: number;
+  /** Incoming bearing, world radians. */
+  ang: number;
+  seed: number;
 }
 
 /** Lasting artillery smoke screen. Blocks vision for every player. */
@@ -244,6 +285,10 @@ export interface MatchSnapshot {
   scrap: ScrapCell[];
   /** Tree tiles a vehicle has crushed. Empty until the first flatten. */
   clearedTrees: { x: number; y: number }[];
+  /** Fallen infantry. Empty until the first death in the open. */
+  bodies: CorpseView[];
+  /** Heavy-shell craters on dirt. Empty until the first ground strike. */
+  holes: ShellHoleView[];
   winner?: { playerId: string; team: number };
 }
 

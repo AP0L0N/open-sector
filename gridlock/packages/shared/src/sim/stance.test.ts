@@ -54,7 +54,7 @@ describe("stance knobs", () => {
 describe("stance commands", () => {
   it("crouches and crawls on order", () => {
     const { state, a } = twoPlayerMatch();
-    const t = makeEntity(state, "trooper", a, 100, 100);
+    const t = makeEntity(state, "rifleman", a, 100, 100);
     const crouch = applyCommand(state, a, { type: "cmd.stance", ids: [t.id], stance: "crouch" });
     assert.equal(crouch.ok, true, !crouch.ok ? crouch.message : "");
     assert.equal(t.stanceOrder, "crouch");
@@ -69,7 +69,7 @@ describe("stance commands", () => {
 
   it("rejects stand and crouch when a leg is broken", () => {
     const { state, a } = twoPlayerMatch();
-    const t = makeEntity(state, "trooper", a, 100, 100);
+    const t = makeEntity(state, "rifleman", a, 100, 100);
     addCrit(t, "leg");
     const stand = applyCommand(state, a, { type: "cmd.stance", ids: [t.id], stance: "stand" });
     assert.equal(stand.ok, false);
@@ -94,7 +94,7 @@ describe("auto-prone", () => {
   it("drops a targeted trooper to crawl and stands them back up after", () => {
     const { state, a, b } = twoPlayerMatch();
     state.heights.fill(0);
-    const inf = makeEntity(state, "trooper", a, tileCenter(20, state.tileSize), tileCenter(20, state.tileSize));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(20, state.tileSize), tileCenter(20, state.tileSize));
     const tank = makeEntity(state, "warden", b, tileCenter(24, state.tileSize), tileCenter(20, state.tileSize));
     applyCommand(state, a, { type: "cmd.stance", ids: [inf.id], stance: "crouch" });
     assert.equal(inf.stance, "crouch");
@@ -109,7 +109,7 @@ describe("auto-prone", () => {
 
   it("keeps a broken-leg trooper crawling even when nobody is aiming", () => {
     const { state, a } = twoPlayerMatch();
-    const t = makeEntity(state, "trooper", a, 100, 100);
+    const t = makeEntity(state, "rifleman", a, 100, 100);
     t.stanceOrder = "stand";
     addCrit(t, "leg");
     tickStance(state);
@@ -121,7 +121,7 @@ describe("auto-prone", () => {
 describe("stance combat effects", () => {
   it("tightens aim and shrinks the hitbox as the posture drops", () => {
     const { state, a } = twoPlayerMatch();
-    const t = makeEntity(state, "trooper", a, 100, 100);
+    const t = makeEntity(state, "rifleman", a, 100, 100);
     const standAim = fireStats(t).spreadDeg;
     const standHit = stanceHitRadiusMul(t);
     t.stance = "crouch";
@@ -134,12 +134,12 @@ describe("stance combat effects", () => {
     assert.ok(crawlAim < crouchAim);
     assert.ok(stanceHitRadiusMul(t) < standHit);
     assert.ok(stanceTargetSpreadMul(t) > 1);
-    assert.equal(standAim, catalog("trooper").spreadDeg);
+    assert.equal(standAim, catalog("rifleman").spreadDeg);
   });
 
   it("keeps the handgun bonus when a crouched shooter has a broken arm", () => {
     const { state, a } = twoPlayerMatch();
-    const t = makeEntity(state, "trooper", a, 100, 100);
+    const t = makeEntity(state, "rifleman", a, 100, 100);
     addCrit(t, "arm");
     t.stance = "crouch";
     t.stanceOrder = "crouch";
@@ -150,9 +150,9 @@ describe("stance combat effects", () => {
 
   it("slows crouch more than stand and crawl more than crouch", () => {
     const { state, a } = twoPlayerMatch();
-    const stand = makeEntity(state, "trooper", a, 100, 100);
-    const crouch = makeEntity(state, "trooper", a, 140, 100);
-    const crawl = makeEntity(state, "trooper", a, 180, 100);
+    const stand = makeEntity(state, "rifleman", a, 100, 100);
+    const crouch = makeEntity(state, "rifleman", a, 140, 100);
+    const crawl = makeEntity(state, "rifleman", a, 180, 100);
     crouch.stance = "crouch";
     crouch.stanceOrder = "crouch";
     crawl.stance = "crawl";
@@ -166,7 +166,7 @@ describe("stance combat effects", () => {
 
   it("puts posture on a friendly snapshot", () => {
     const { state, a } = twoPlayerMatch();
-    const t = makeEntity(state, "trooper", a, 100, 100);
+    const t = makeEntity(state, "rifleman", a, 100, 100);
     t.stance = "crawl";
     t.stanceOrder = "crouch";
     const view = snapshotFor(state, a).entities.find((e) => e.id === t.id);
@@ -179,7 +179,7 @@ describe("combat drop", () => {
   it("hits the dirt on the same tick someone acquires them", () => {
     const { state, a, b } = twoPlayerMatch();
     state.heights.fill(0);
-    const inf = makeEntity(state, "trooper", a, tileCenter(20, state.tileSize), tileCenter(20, state.tileSize));
+    const inf = makeEntity(state, "rifleman", a, tileCenter(20, state.tileSize), tileCenter(20, state.tileSize));
     const tank = makeEntity(state, "warden", b, tileCenter(24, state.tileSize), tileCenter(20, state.tileSize));
     tank.facing = Math.PI;
     tank.turretFacing = Math.PI;

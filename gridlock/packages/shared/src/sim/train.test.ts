@@ -48,7 +48,7 @@ describe("train queue", () => {
     const muster = seedMuster(state, 20, 4);
     const scrap0 = state.players.get("A")!.scrap;
     for (let i = 0; i < 3; i++) {
-      const r = applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
+      const r = applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
       assert.equal(r.ok, true, !r.ok ? r.message : "");
     }
     assert.equal(muster.queue.length, 3);
@@ -58,7 +58,7 @@ describe("train queue", () => {
     assert.equal(muster.queue[1]!.progressTicks, 0);
     assert.equal(muster.queue[2]!.progressTicks, 0);
     const head = muster.queue[0]!;
-    assert.equal(head.paid, paidForProgress(head.progressTicks, head.totalTicks, catalog("trooper").cost));
+    assert.equal(head.paid, paidForProgress(head.progressTicks, head.totalTicks, catalog("rifleman").cost));
     assert.equal(state.players.get("A")!.scrap, scrap0 - head.paid);
     assert.equal(muster.queue[1]!.paid, 0);
     assert.equal(muster.queue[2]!.paid, 0);
@@ -73,9 +73,9 @@ describe("train queue", () => {
     seedCore(state);
     const a = seedMuster(state, 20, 4);
     const b = seedMuster(state, 20 + catalog("muster").tileW, 4);
-    applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
-    applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
-    applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
+    applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
+    applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
+    applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
     assert.equal(a.queue.length + b.queue.length, 3);
     assert.ok(a.queue.length >= 1 && b.queue.length >= 1);
     ticks(state, 8);
@@ -89,7 +89,7 @@ describe("train queue", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
     const muster = seedMuster(state, 20, 4);
-    applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
+    applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
     ticks(state, 6);
     const mid = muster.queue[0]!.progressTicks;
     assert.ok(mid > 0);
@@ -99,7 +99,7 @@ describe("train queue", () => {
     assert.equal(muster.queue[0]!.paused, true);
     ticks(state, 12);
     assert.equal(muster.queue[0]!.progressTicks, mid);
-    const resume = applyCommand(state, "A", { type: "cmd.pause", what: "train", unit: "trooper" });
+    const resume = applyCommand(state, "A", { type: "cmd.pause", what: "train", unit: "rifleman" });
     assert.equal(resume.ok, true);
     assert.equal(muster.queue[0]!.paused, false);
     ticks(state, 6);
@@ -110,11 +110,11 @@ describe("train queue", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
     const muster = seedMuster(state, 20, 4);
-    applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
-    applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
+    applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
+    applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
     const after = state.players.get("A")!.scrap;
     const firstId = muster.queue[0]!.id;
-    const cancel = applyCommand(state, "A", { type: "cmd.cancel", what: "train", unit: "trooper" });
+    const cancel = applyCommand(state, "A", { type: "cmd.cancel", what: "train", unit: "rifleman" });
     assert.equal(cancel.ok, true);
     assert.equal(muster.queue.length, 1);
     assert.equal(muster.queue[0]!.id, firstId);
@@ -126,12 +126,12 @@ describe("train queue", () => {
     seedCore(state);
     const muster = seedMuster(state, 20, 4);
     const scrap0 = state.players.get("A")!.scrap;
-    applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
+    applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
     ticks(state, 20);
     const paid = muster.queue[0]!.paid;
     assert.ok(paid > 0);
     assert.equal(state.players.get("A")!.scrap, scrap0 - paid);
-    const cancel = applyCommand(state, "A", { type: "cmd.cancel", what: "train", unit: "trooper" });
+    const cancel = applyCommand(state, "A", { type: "cmd.cancel", what: "train", unit: "rifleman" });
     assert.equal(cancel.ok, true);
     assert.equal(muster.queue.length, 0);
     assert.equal(state.players.get("A")!.scrap, scrap0);
@@ -141,9 +141,9 @@ describe("train queue", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
     const muster = seedMuster(state, 20, 4);
-    applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
-    applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
-    applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
+    applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
+    applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
+    applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
     const midId = muster.queue[1]!.id;
     const tailId = muster.queue[2]!.id;
     const cancel = applyCommand(state, "A", { type: "cmd.cancel", what: "train", jobId: midId });
@@ -157,14 +157,14 @@ describe("train queue", () => {
     seedCore(state);
     seedMuster(state, 20, 4);
     const scrap0 = state.players.get("A")!.scrap;
-    applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
-    ticks(state, secondsToTicks(catalog("trooper").buildSeconds) + 2);
-    assert.ok([...state.entities.values()].some((e) => e.type === "trooper" && e.ownerId === "A"));
+    applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
+    ticks(state, secondsToTicks(catalog("rifleman").buildSeconds) + 2);
+    assert.ok([...state.entities.values()].some((e) => e.type === "rifleman" && e.ownerId === "A"));
     assert.equal(
       [...state.entities.values()].filter((e) => e.type === "muster" && e.ownerId === "A")[0]?.queue.length,
       0,
     );
-    assert.equal(state.players.get("A")!.scrap, scrap0 - catalog("trooper").cost);
+    assert.equal(state.players.get("A")!.scrap, scrap0 - catalog("rifleman").cost);
   });
 
   it("starts training with too little scrap and stalls until funded", () => {
@@ -172,7 +172,7 @@ describe("train queue", () => {
     seedCore(state);
     const muster = seedMuster(state, 20, 4);
     state.players.get("A")!.scrap = 5;
-    const r = applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
+    const r = applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
     assert.equal(r.ok, true, !r.ok ? r.message : "");
     ticks(state, 30);
     assert.equal(muster.queue.length, 1);
@@ -182,9 +182,9 @@ describe("train queue", () => {
     const frozen = muster.queue[0]!.progressTicks;
     ticks(state, 10);
     assert.equal(muster.queue[0]!.progressTicks, frozen);
-    state.players.get("A")!.scrap = catalog("trooper").cost;
-    ticks(state, secondsToTicks(catalog("trooper").buildSeconds) + 2);
-    assert.ok([...state.entities.values()].some((e) => e.type === "trooper" && e.ownerId === "A"));
+    state.players.get("A")!.scrap = catalog("rifleman").cost;
+    ticks(state, secondsToTicks(catalog("rifleman").buildSeconds) + 2);
+    assert.ok([...state.entities.values()].some((e) => e.type === "rifleman" && e.ownerId === "A"));
     assert.equal(muster.queue.length, 0);
     assert.equal(state.players.get("A")!.scrap, 5);
   });
@@ -193,12 +193,12 @@ describe("train queue", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
     const muster = seedMuster(state, 20, 4);
-    applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
-    applyCommand(state, "A", { type: "cmd.pause", what: "train", unit: "trooper" });
-    ticks(state, secondsToTicks(catalog("trooper").buildSeconds) + 20);
+    applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
+    applyCommand(state, "A", { type: "cmd.pause", what: "train", unit: "rifleman" });
+    ticks(state, secondsToTicks(catalog("rifleman").buildSeconds) + 20);
     assert.equal(muster.queue.length, 1);
     assert.equal(
-      [...state.entities.values()].some((e) => e.type === "trooper" && e.ownerId === "A"),
+      [...state.entities.values()].some((e) => e.type === "rifleman" && e.ownerId === "A"),
       false,
     );
   });
@@ -208,10 +208,10 @@ describe("train queue", () => {
     seedCore(state);
     seedMuster(state, 20, 4);
     for (let i = 0; i < TRAIN_QUEUE_CAP; i++) {
-      const r = applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
+      const r = applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
       assert.equal(r.ok, true, !r.ok ? r.message : "");
     }
-    const extra = applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
+    const extra = applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
     assert.equal(extra.ok, false);
     if (!extra.ok) assert.equal(extra.code, "busy");
   });
@@ -220,7 +220,7 @@ describe("train queue", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);
     const muster = seedMuster(state, 20, 4);
-    applyCommand(state, "A", { type: "cmd.train", unit: "trooper" });
+    applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
     const you = snapshotFor(state, "A").entities.find((e) => e.id === muster.id);
     assert.equal(you?.trainQueue?.length, 1);
     const them = snapshotFor(state, "B").entities.find((e) => e.id === muster.id);

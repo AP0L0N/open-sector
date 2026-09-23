@@ -1,5 +1,6 @@
 import {
   aimFacing,
+  MG42_BIPOD_SECONDS,
   catalog,
   gunArcDegOf,
   GARRISON_STRUCTURAL_CALIBER,
@@ -23,6 +24,7 @@ import {
   isGarrisonable,
   isInfantryType,
   isSmokeShell,
+  stanceOf,
   leavesWreck,
   pickLoadedShell,
   reloadSecondsOf,
@@ -41,6 +43,7 @@ import {
   RICOCHET_TRAVEL_MIN,
 } from "./ballistics.js";
 import { fireStats, hullTurnMul, immobilized, rollCrits } from "./crits.js";
+import { noteImpactSurface } from "./remains.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
 import {
   aimHeight,
@@ -313,6 +316,11 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
 
   if (!holedUp && !gunArcOk) return;
 
+  if (e.type === "gunner" && !gunnerReady(state, e)) {
+    if (e.order?.kind !== "move" && !unitInWater(state, e) && e.garrisonedIn == null) e.stanceOrder = "crawl";
+    return;
+  }
+
   if (e.reload > 0) return;
   if (e.cooldown > 0) return;
   const infantryGun = infantryGunFor(e);
@@ -325,34 +333,51 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (isSmokeShell(shell) && !mayFireSmoke(e)) return;
   if (shell) e.shell = shell;
   const gun = fireStats(e);
-  fireRound(
-    state,
-    e,
-    aimX,
-    aimY,
-    {
-      damage: gun.damage,
-      penetration: gun.penetration,
-      caliber: gun.caliber,
-      spreadDeg: gun.spreadDeg,
-      projectileSpeed: def.projectileSpeed,
-    },
-    range,
-    dist,
-    {
-      target,
-      shell,
-      fuse: !!ground || isSmokeShell(shell),
-      accurateRange: accurateWeaponRange(e, range),
-    },
-  );
-  e.cooldown = gun.cooldown;
-  if (shell) e.ammo[shell] = Math.max(0, (e.ammo[shell] ?? 0) - 1);
-  if (infantryGun) {
-    e.clip = Math.max(0, e.clip - 1);
-    if (e.clip <= 0) beginReload(e, infantryGun);
+  const burst = Math.max(1, infantryGun?.shotsPerTick ?? 1);
+  let fired = 0;
+  for (let i = 0; i < burst; i++) {
+    if (infantryGun && e.clip <= 0) break;
+    fireRound(
+      state,
+      e,
+      aimX,
+      aimY,
+      {
+        damage: gun.damage,
+        penetration: gun.penetration,
+        caliber: gun.caliber,
+        spreadDeg: gun.spreadDeg,
+        projectileSpeed: def.projectileSpeed,
+      },
+      range,
+      dist,
+      {
+        target,
+        shell,
+        fuse: !!ground || isSmokeShell(shell),
+        accurateRange: accurateWeaponRange(e, range),
+      },
+    );
+    fired++;
+    if (shell) e.ammo[shell] = Math.max(0, (e.ammo[shell] ?? 0) - 1);
+    if (infantryGun) {
+      e.clip = Math.max(0, e.clip - 1);
+      if (e.clip <= 0) {
+        beginReload(e, infantryGun);
+        break;
+      }
+    }
   }
-  if (e.order?.once) clearOrder(e);
+  if (fired > 0) e.cooldown = gun.cooldown;
+  if (fired > 0 && e.order?.once) clearOrder(e);
+}
+
+function gunnerReady(state: MatchState, e: Entity): boolean {
+  if (e.type !== "gunner") return true;
+  if (unitInWater(state, e) || e.garrisonedIn != null) return false;
+  if (stanceOf(e) !== "crawl") return false;
+  if (hasCrit(e, "arm")) return false;
+  return e.bipod >= MG42_BIPOD_SECONDS;
 }
 
 function beginReload(e: Entity, gun: InfantryGun): void {
@@ -655,6 +680,7 @@ function pushImpact(
     caliber: p.caliber,
     blast: blast || undefined,
   };
+  noteImpactSurface(state, impact, p, kind);
   state.impacts.push(impact);
 }
 

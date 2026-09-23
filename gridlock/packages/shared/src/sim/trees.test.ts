@@ -84,11 +84,11 @@ describe("trees", () => {
     const gx = x0 + 10;
     const gy = y0 + 4;
     assert.equal(walkable(state, gx, gy), false);
-    assert.equal(walkable(state, gx, gy, "trooper"), true);
+    assert.equal(walkable(state, gx, gy, "rifleman"), true);
     assert.equal(walkable(state, gx, gy, "warden"), false);
     assert.equal(isSingleTree(state, gx, gy), false);
 
-    const infPath = astar(state, x0 + 2, gy, x0 + 18, gy, "trooper");
+    const infPath = astar(state, x0 + 2, gy, x0 + 18, gy, "rifleman");
     assert.ok(infPath.some((p) => state.terrain[p.y * state.width + p.x] === TILE_TREE));
     const tankPath = astar(state, x0 + 2, gy, x0 + 18, gy, "warden");
     assert.ok(tankPath.length > 0);
@@ -158,7 +158,7 @@ describe("trees", () => {
     for (let gy = y - 2; gy <= y + 2; gy++) {
       for (let gx = 82; gx <= 90; gx++) plant(state, gx, gy);
     }
-    const inf = makeEntity(state, "trooper", "A", tileCenter(76, ts), tileCenter(y, ts));
+    const inf = makeEntity(state, "rifleman", "A", tileCenter(76, ts), tileCenter(y, ts));
     applyCommand(state, "A", { type: "cmd.move", ids: [inf.id], x: tileCenter(96, ts), y: tileCenter(y, ts) });
     ticks(state, 90);
     assert.ok(inf.x > tileCenter(90, ts), `infantry x=${inf.x}`);
@@ -322,11 +322,11 @@ describe("trees", () => {
     fireTreeShell(state, {
       x: x0,
       y: cy,
-      vx: catalog("trooper").projectileSpeed,
+      vx: catalog("rifleman").projectileSpeed,
       vy: 0,
       shell: null,
-      caliber: catalog("trooper").caliber,
-      damage: catalog("trooper").damage,
+      caliber: catalog("rifleman").caliber,
+      damage: catalog("rifleman").damage,
     });
     tickProjectiles(state, TICK_DT);
     assert.equal(state.terrain[y * state.width + 90], TILE_TREE, "rifles must not fell trees");

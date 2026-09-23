@@ -71,12 +71,12 @@ describe("slope multipliers", () => {
 
 describe("high ground bonuses", () => {
   it("adds sight and weapon range per elevation", () => {
-    const trooper = catalog("trooper");
-    assert.equal(sightTilesOf("trooper", HEIGHT_BASE), trooper.sightTiles);
-    assert.equal(sightTilesOf("trooper", 0), trooper.sightTiles);
-    assert.equal(sightTilesOf("trooper", HEIGHT_BASE + 2), trooper.sightTiles + 2 * HEIGHT_SIGHT_BONUS);
-    assert.equal(rangeTilesOf("trooper", HEIGHT_BASE), trooper.sightTiles * WEAPON_RANGE_SIGHT_MUL);
-    assert.equal(rangeTilesOf("trooper", HEIGHT_BASE + 1), sightTilesOf("trooper", HEIGHT_BASE + 1) * WEAPON_RANGE_SIGHT_MUL);
+    const trooper = catalog("rifleman");
+    assert.equal(sightTilesOf("rifleman", HEIGHT_BASE), trooper.sightTiles);
+    assert.equal(sightTilesOf("rifleman", 0), trooper.sightTiles);
+    assert.equal(sightTilesOf("rifleman", HEIGHT_BASE + 2), trooper.sightTiles + 2 * HEIGHT_SIGHT_BONUS);
+    assert.equal(rangeTilesOf("rifleman", HEIGHT_BASE), trooper.sightTiles * WEAPON_RANGE_SIGHT_MUL);
+    assert.equal(rangeTilesOf("rifleman", HEIGHT_BASE + 1), sightTilesOf("rifleman", HEIGHT_BASE + 1) * WEAPON_RANGE_SIGHT_MUL);
     assert.equal(rangeTilesOf("hauler", HEIGHT_BASE + 3), 0);
   });
 
@@ -88,11 +88,11 @@ describe("high ground bonuses", () => {
   });
 
   it("gives infantry more fog reach than a tank", () => {
-    assert.ok(catalog("trooper").sightTiles > catalog("warden").sightTiles);
-    assert.equal(observerEyeOf("trooper"), INFANTRY_EYE_HEIGHT);
+    assert.ok(catalog("rifleman").sightTiles > catalog("warden").sightTiles);
+    assert.equal(observerEyeOf("rifleman"), INFANTRY_EYE_HEIGHT);
     assert.equal(observerEyeOf("warden"), HULL_EYE_HEIGHT);
-    assert.ok(observerEyeOf("trooper") > observerEyeOf("warden"));
-    assert.ok(uphillSightOf("trooper") > uphillSightOf("warden"));
+    assert.ok(observerEyeOf("rifleman") > observerEyeOf("warden"));
+    assert.ok(uphillSightOf("rifleman") > uphillSightOf("warden"));
     assert.equal(uphillSightOf("warden"), HULL_LEVEL_SIGHT);
     assert.equal(levelSightExtra(0, 4, INFANTRY_UPHILL_SIGHT), 4 * INFANTRY_UPHILL_SIGHT);
     assert.equal(levelSightExtra(4, 0, INFANTRY_UPHILL_SIGHT), 4 * INFANTRY_UPHILL_SIGHT);
@@ -103,7 +103,7 @@ describe("high ground bonuses", () => {
     assert.equal(observerEyeOf("core"), INFANTRY_EYE_HEIGHT);
     assert.equal(observerEyeOf("dynamo"), INFANTRY_EYE_HEIGHT);
     assert.equal(observerEyeOf("cottage"), INFANTRY_EYE_HEIGHT);
-    assert.equal(uphillSightOf("core"), uphillSightOf("trooper"));
+    assert.equal(uphillSightOf("core"), uphillSightOf("rifleman"));
     assert.equal(uphillSightOf("warden"), HULL_LEVEL_SIGHT);
   });
 });
@@ -174,14 +174,14 @@ describe("movement on slopes", () => {
     const ts = state.tileSize;
     const from = { x: tileCenter(10, ts), y: tileCenter(10, ts) };
     const dest = { x: tileCenter(11, ts), y: tileCenter(10, ts) };
-    const flat = makeEntity(state, "trooper", a, from.x, from.y);
+    const flat = makeEntity(state, "rifleman", a, from.x, from.y);
     flat.facing = Math.atan2(dest.y - from.y, dest.x - from.x);
     flat.waypoints = [{ x: dest.x, y: dest.y }];
     tickMovement(state, TICK_DT);
     const flatDist = Math.hypot(flat.x - from.x, flat.y - from.y);
 
     state.heights[10 * state.width + 11] = 1;
-    const up = makeEntity(state, "trooper", a, from.x, from.y);
+    const up = makeEntity(state, "rifleman", a, from.x, from.y);
     up.facing = flat.facing;
     up.waypoints = [{ x: dest.x, y: dest.y }];
     tickMovement(state, TICK_DT);
@@ -196,7 +196,7 @@ describe("vision and range on a hill", () => {
     const { state, a } = twoPlayerMatch();
     state.heights.fill(HEIGHT_BASE);
     const ts = state.tileSize;
-    const e = makeEntity(state, "trooper", a, tileCenter(20, ts), tileCenter(20, ts));
+    const e = makeEntity(state, "rifleman", a, tileCenter(20, ts), tileCenter(20, ts));
     const flat = new Uint8Array(state.width * state.height);
     paintEntitySight(flat, state.width, state.height, ts, e, state.heights);
     let flatN = 0;
@@ -215,9 +215,9 @@ describe("vision and range on a hill", () => {
     state.heights.fill(HEIGHT_BASE);
     const ts = state.tileSize;
     const extra = TILE_SUBDIV;
-    const shooter = makeEntity(state, "trooper", a, tileCenter(12, ts), tileCenter(12, ts));
-    const past = catalog("trooper").rangeTiles + extra;
-    const target = makeEntity(state, "trooper", b, tileCenter(12 + past, ts), tileCenter(12, ts));
+    const shooter = makeEntity(state, "rifleman", a, tileCenter(12, ts), tileCenter(12, ts));
+    const past = catalog("rifleman").rangeTiles + extra;
+    const target = makeEntity(state, "rifleman", b, tileCenter(12 + past, ts), tileCenter(12, ts));
     shooter.facing = 0;
     shooter.order = { kind: "attack", targetId: target.id };
     tickCombat(state, TICK_DT);
@@ -260,8 +260,8 @@ describe("tank gun elevation", () => {
     state.heights.fill(0);
     const ts = state.tileSize;
     const gap = HEIGHT_BASE;
-    const shooter = makeEntity(state, "trooper", a, tileCenter(12, ts), tileCenter(12, ts));
-    const target = makeEntity(state, "trooper", b, tileCenter(12 + gap, ts), tileCenter(12, ts));
+    const shooter = makeEntity(state, "rifleman", a, tileCenter(12, ts), tileCenter(12, ts));
+    const target = makeEntity(state, "rifleman", b, tileCenter(12 + gap, ts), tileCenter(12, ts));
     state.heights[12 * state.width + 12 + gap] = HEIGHT_BASE;
     shooter.facing = 0;
     shooter.order = { kind: "attack", targetId: target.id };

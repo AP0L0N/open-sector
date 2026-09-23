@@ -26,6 +26,14 @@ cd gridlock && npm install && npm run dev
 
 Open two Chrome tabs to http://localhost:5177
 
+**Godot 4 client** (3D placeholders, same hub):
+
+```bash
+godot --path godot
+```
+
+See [`godot/README.md`](godot/README.md). The Canvas client and the Godot client can both talk to `ws://127.0.0.1:3010/ws`.
+
 ## Playtest
 
 Enter a callsign on first launch (saved locally and skipped next time; also in Options).

@@ -64,6 +64,14 @@ import grassUrl from "../assets/terrain/grass.png";
 import trooperSheetUrl from "../assets/units/trooper-walk.png";
 import trooperCrouchUrl from "../assets/units/trooper-crouch.png";
 import trooperCrawlUrl from "../assets/units/trooper-crawl.png";
+import trooperHandgunUrl from "../assets/units/trooper-handgun.png";
+import trooperRifleFireUrl from "../assets/units/trooper-rifle-fire.png";
+import trooperDieUrl from "../assets/units/trooper-die.png";
+import gunnerWalkUrl from "../assets/units/gunner-walk.png";
+import gunnerCrouchUrl from "../assets/units/gunner-crouch.png";
+import gunnerCrawlUrl from "../assets/units/gunner-crawl.png";
+import gunnerFireUrl from "../assets/units/gunner-fire.png";
+import gunnerDieUrl from "../assets/units/gunner-die.png";
 import infantrySwimUrl from "../assets/units/infantry-swim.png";
 import haulerSheetUrl from "../assets/units/hauler-move.png";
 import { bindCasemateSheets, bindTurntableSheets } from "./turntable-sheet.js";
@@ -77,8 +85,8 @@ import engineIconUrl from "../assets/status/engine.png";
 
 /** Extra on-map scale for every unit (sprites and box fallbacks). */
 export const UNIT_VISUAL_SCALE = 1.25;
-/** Infantry draw smaller than vehicles so tanks read larger. */
-export const INFANTRY_VISUAL_SCALE = UNIT_VISUAL_SCALE * 0.85;
+/** Infantry draw smaller than vehicles so tanks read larger, then another 15%. */
+export const INFANTRY_VISUAL_SCALE = UNIT_VISUAL_SCALE * 0.85 * 0.85;
 
 /** On-map draw size for infantry sprites, screen pixels. */
 export const UNIT_SPRITE_DRAW_SIZE = Math.round(22 * INFANTRY_VISUAL_SCALE);
@@ -147,6 +155,98 @@ export const TROOPER_CRAWL_SPRITE: UnitSpriteDef = {
   fps: 10,
   drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
   contactY: 0.72,
+  facingSpace: "world",
+};
+
+/** Standing trooper with the pistol out. Frame 0 is the idle; later frames bob. */
+export const TROOPER_HANDGUN_SPRITE: UnitSpriteDef = {
+  image: loadSheet(trooperHandgunUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+/** Rifle recoil pose. Played once, then the walk sheet returns. */
+export const TROOPER_RIFLE_FIRE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(trooperRifleFireUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+/** Fallen rifleman. One-shot, then the last frame stays. */
+export const TROOPER_DIE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(trooperDieUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.82,
+  facingSpace: "world",
+};
+
+export const GUNNER_SPRITE: UnitSpriteDef = {
+  image: loadSheet(gunnerWalkUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+export const GUNNER_CROUCH_SPRITE: UnitSpriteDef = {
+  image: loadSheet(gunnerCrouchUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.88,
+  facingSpace: "world",
+};
+
+export const GUNNER_CRAWL_SPRITE: UnitSpriteDef = {
+  image: loadSheet(gunnerCrawlUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 10,
+  drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
+  contactY: 0.72,
+  facingSpace: "world",
+};
+
+/** Prone MG42 burst. Shown while rounds are leaving the barrel. */
+export const GUNNER_FIRE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(gunnerFireUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 12,
+  drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
+  contactY: 0.72,
+  facingSpace: "world",
+};
+
+export const GUNNER_DIE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(gunnerDieUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.82,
   facingSpace: "world",
 };
 
@@ -243,7 +343,7 @@ export const RIG_SPRITE: UnitSpriteDef = {
 };
 
 const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
-  trooper: TROOPER_SPRITE,
+  rifleman: TROOPER_SPRITE,
   hauler: HAULER_SPRITE,
   warden: TIGER_SPRITE,
   ss3: SS3_SPRITE,
@@ -252,10 +352,15 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
 
 export function spriteFor(type: EntityType, stance?: Stance, swimming = false): UnitSpriteDef | undefined {
   if (isInfantryType(type) && swimming) return INFANTRY_SWIM_SPRITE;
-  if (type === "trooper") {
+  if (type === "rifleman") {
     if (stance === "crouch") return TROOPER_CROUCH_SPRITE;
     if (stance === "crawl") return TROOPER_CRAWL_SPRITE;
     return TROOPER_SPRITE;
+  }
+  if (type === "gunner") {
+    if (stance === "crouch") return GUNNER_CROUCH_SPRITE;
+    if (stance === "crawl") return GUNNER_CRAWL_SPRITE;
+    return GUNNER_SPRITE;
   }
   return UNIT_SPRITES[type];
 }
@@ -689,13 +794,18 @@ export function drawUnitSprite(
     hullShiftY?: number;
     gunShiftX?: number;
     gunShiftY?: number;
+    /** Holds this cell instead of the move loop. Clamped to the sheet. */
+    frameIndex?: number;
   },
 ): boolean {
   if (!spriteReady(def)) return false;
   const dir = sheetDir(def, isoDx, isoDy, opts.facing);
-  const frame = opts.moving
-    ? Math.floor((opts.now / 1000) * def.fps + opts.id * 0.37) % def.frames
-    : 0;
+  const frame =
+    opts.frameIndex != null
+      ? Math.min(def.frames - 1, Math.max(0, opts.frameIndex))
+      : opts.moving
+        ? Math.floor((opts.now / 1000) * def.fps + opts.id * 0.37) % def.frames
+        : 0;
   const s = def.drawSize;
   const cell = def.frameSize;
   const sink = unitGroundSink(s);

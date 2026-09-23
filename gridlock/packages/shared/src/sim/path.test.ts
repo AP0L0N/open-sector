@@ -123,14 +123,14 @@ describe("pathToWorld smoothing", () => {
     const fromY = tileCenter(y0 + 12, ts);
     const toX = tileCenter(x0 + 42, ts);
     const toY = tileCenter(y0 + 12, ts);
-    const tiles = astar(state, x0 + 2, y0 + 12, x0 + 42, y0 + 12, "trooper");
+    const tiles = astar(state, x0 + 2, y0 + 12, x0 + 42, y0 + 12, "rifleman");
     assert.ok(tiles.length > 0);
     assert.equal(
       tiles.some((p) => state.terrain[p.y * state.width + p.x] === TILE_WATER),
       false,
       "fixture should make the land detour cheaper than swimming",
     );
-    const pts = pathToWorld(state, fromX, fromY, toX, toY, "trooper");
+    const pts = pathToWorld(state, fromX, fromY, toX, toY, "rifleman");
     assert.ok(pts.length > 0);
     const samples: { x: number; y: number }[] = [{ x: fromX, y: fromY }, ...pts];
     for (let i = 0; i < samples.length - 1; i++) {

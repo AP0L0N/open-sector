@@ -38,7 +38,7 @@ describe("unit collision", () => {
     const ts = state.tileSize;
     const y = tileCenter(16, ts);
     const hauler = makeEntity(state, "hauler", "A", tileCenter(36, ts), y);
-    const trooper = makeEntity(state, "trooper", "A", hauler.x + hauler.radius + 6, y);
+    const trooper = makeEntity(state, "rifleman", "A", hauler.x + hauler.radius + 6, y);
     hauler.autoHarvest = false;
     hauler.facing = 0;
     const destX = tileCenter(56, ts);
@@ -53,7 +53,7 @@ describe("unit collision", () => {
     state.heights.fill(0);
     const ts = state.tileSize;
     const tank = makeEntity(state, "warden", "A", tileCenter(36, ts), tileCenter(16, ts));
-    const trooper = makeEntity(state, "trooper", "B", tank.x + tank.radius + 6, tank.y);
+    const trooper = makeEntity(state, "rifleman", "B", tank.x + tank.radius + 6, tank.y);
     tank.facing = 0;
     tank.turretFacing = 0;
     applyCommand(state, "A", { type: "cmd.move", ids: [tank.id], x: tileCenter(56, ts), y: tileCenter(16, ts) });
@@ -66,7 +66,7 @@ describe("unit collision", () => {
     state.heights.fill(0);
     const ts = state.tileSize;
     const tank = makeEntity(state, "warden", "A", tileCenter(36, ts), tileCenter(16, ts));
-    const trooper = makeEntity(state, "trooper", "A", tank.x + tank.radius + 6, tank.y);
+    const trooper = makeEntity(state, "rifleman", "A", tank.x + tank.radius + 6, tank.y);
     tank.facing = 0;
     applyCommand(state, "A", { type: "cmd.move", ids: [tank.id], x: tileCenter(56, ts), y: tileCenter(16, ts) });
     ticks(state, 40);
@@ -96,7 +96,7 @@ describe("warden wrecks", () => {
 
   it("does not leave a wreck for infantry", () => {
     const { state } = twoPlayerMatch();
-    const t = makeEntity(state, "trooper", "A", 20 * 32, 20 * 32);
+    const t = makeEntity(state, "rifleman", "A", 20 * 32, 20 * 32);
     t.hp = 0;
     step(state, TICK_DT);
     assert.equal(state.entities.has(t.id), false);
@@ -167,7 +167,7 @@ describe("warden wrecks", () => {
     const wreck = makeEntity(state, "warden", "A", tileCenter(46, ts), y);
     wreck.hp = 0;
     step(state, TICK_DT);
-    const mover = makeEntity(state, "trooper", "A", tileCenter(36, ts), y);
+    const mover = makeEntity(state, "rifleman", "A", tileCenter(36, ts), y);
     const destX = tileCenter(56, ts);
     applyCommand(state, "A", { type: "cmd.move", ids: [mover.id], x: destX, y });
     const need = mover.radius + wreck.radius;

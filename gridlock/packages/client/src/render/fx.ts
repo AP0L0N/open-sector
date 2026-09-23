@@ -1,5 +1,8 @@
 import boomUrl from "../assets/fx/explosion.png";
 import smokeUrl from "../assets/fx/smoke.png";
+import { isShellCaliber, waterSplashScale } from "./water-splash.js";
+
+export { isShellCaliber, waterSplashScale };
 
 export interface FxSheet {
   image: HTMLImageElement;
@@ -64,10 +67,6 @@ export function fxLifeMs(kind: string, blast?: boolean): number {
   if (kind === "ricochet") return 480;
   if (kind === "miss") return 560;
   return 400;
-}
-
-export function isShellCaliber(caliber: number | undefined): boolean {
-  return (caliber ?? 0) >= 40;
 }
 
 function rng(seed: number): () => number {
@@ -448,6 +447,130 @@ function drawDirtCone(
     ctx.ellipse(px, py, rw, rh, ang * 0.35, 0, Math.PI * 2);
     ctx.fill();
   }
+  ctx.restore();
+}
+
+/** Column and foam where a round hits water. `t` runs 0–1. */
+export function drawWaterDetonation(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  t: number,
+  seed: number,
+  caliber?: number,
+): void {
+  const scale = waterSplashScale(caliber);
+  const fade = 1 - t;
+  const rnd = rng(seed ^ 0x5a11);
+  const column = 1 - (1 - Math.min(1, t / 0.45)) ** 2;
+  ctx.save();
+  ctx.globalAlpha = fade * 0.5;
+  ctx.fillStyle = "#d7efea";
+  ctx.beginPath();
+  ctx.ellipse(x, y, (9 + t * 18) * scale, (4 + t * 6) * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = fade * 0.4;
+  ctx.strokeStyle = "#8ec4cc";
+  ctx.lineWidth = Math.max(1, 1.6 * scale);
+  ctx.beginPath();
+  ctx.ellipse(x, y, (14 + t * 24) * scale, (6 + t * 8) * scale, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.globalAlpha = fade * 0.75;
+  ctx.fillStyle = "#f5fffc";
+  ctx.beginPath();
+  ctx.ellipse(x, y - column * 16 * scale, 2.8 * scale, (5 + column * 12) * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = fade * 0.4;
+  ctx.fillStyle = "#9fd4e0";
+  ctx.beginPath();
+  ctx.ellipse(x, y - column * 8 * scale, 4.5 * scale, 3.2 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+  const drops = Math.round((isShellCaliber(caliber) ? 14 : 5) * Math.min(1.5, scale + 0.2));
+  for (let i = 0; i < drops; i++) {
+    const ang = rnd() * Math.PI * 2;
+    const delay = rnd() * 0.08;
+    const local = (t - delay) / (0.5 + rnd() * 0.4);
+    if (local <= 0 || local >= 1) continue;
+    const dist = (7 + rnd() * 24) * scale * local;
+    const lift = Math.sin(local * Math.PI) * (8 + rnd() * 14) * scale;
+    ctx.globalAlpha = (1 - local) * 0.8;
+    ctx.fillStyle = rnd() > 0.5 ? "#f7fffc" : "#b7e0ea";
+    ctx.beginPath();
+    ctx.arc(
+      x + Math.cos(ang) * dist,
+      y + Math.sin(ang) * dist * 0.45 - lift,
+      (1 + rnd() * 1.5) * scale,
+      0,
+      Math.PI * 2,
+    );
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** Lasting dirt crater. Drawn in screen space; `rx` is the long radius. */
+export function drawShellHole(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  rx: number,
+  ry: number,
+  ang: number,
+  seed: number,
+  alpha = 1,
+): void {
+  if (rx < 0.5 || alpha <= 0) return;
+  const rnd = rng(seed ^ 0x401e);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(ang);
+  ctx.globalAlpha = 0.88 * alpha;
+  ctx.fillStyle = "#5a4330";
+  ctx.beginPath();
+  ctx.ellipse(0, 0, rx * 1.12, ry * 1.18, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#2a1e16";
+  ctx.beginPath();
+  ctx.ellipse(-rx * 0.06, ry * 0.04, rx * 0.7, ry * 0.58, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#140e0b";
+  ctx.beginPath();
+  ctx.ellipse(-rx * 0.1, 0, rx * 0.34, ry * 0.28, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  ctx.save();
+  for (let i = 0; i < 4; i++) {
+    const a = ang + rnd() * Math.PI * 2;
+    const d = rx * (0.72 + rnd() * 0.4);
+    ctx.globalAlpha = 0.7 * alpha;
+    ctx.fillStyle = rnd() > 0.5 ? "#6c5340" : "#3c2c22";
+    ctx.beginPath();
+    ctx.ellipse(x + Math.cos(a) * d, y + Math.sin(a) * d * 0.45, rx * 0.16, ry * 0.18, a, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** Small pooled stain under a corpse. */
+export function drawBloodStain(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  rx: number,
+  ry: number,
+  rot: number,
+): void {
+  ctx.save();
+  ctx.globalAlpha = 0.78;
+  ctx.fillStyle = "#6e1c18";
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = "#3a0e0c";
+  ctx.beginPath();
+  ctx.ellipse(x, y, rx * 0.55, ry * 0.5, rot, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 }
 

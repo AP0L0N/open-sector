@@ -552,7 +552,8 @@ function cmdWeapon(
   let n = 0;
   let armed = 0;
   for (const e of units) {
-    if (hasCrit(e, "arm") && weapon !== "handgun") {
+    const carriesPistol = infantryLoadout(e.type).some((g) => g.id === "handgun");
+    if (hasCrit(e, "arm") && !(carriesPistol && weapon === "handgun")) {
       armed++;
       continue;
     }
@@ -567,7 +568,10 @@ function cmdWeapon(
     n++;
   }
   if (n === 0) {
-    if (armed > 0) return fail("busy", "Broken arm — can only use the handgun.");
+    if (armed > 0) {
+      const pistol = units.some((e) => infantryLoadout(e.type).some((g) => g.id === "handgun"));
+      return fail("busy", pistol ? "Broken arm — can only use the handgun." : "Broken arm — cannot fire.");
+    }
     return fail("busy", "That unit cannot carry that weapon.");
   }
   return ok();
