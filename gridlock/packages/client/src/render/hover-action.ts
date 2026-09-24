@@ -1,18 +1,44 @@
 import {
+  SUPPLY_CARGO,
+  TRUCK_SEATS,
   isArmoredType,
   isCapturable,
   isCivilianType,
   isFieldStructure,
   isGarrisonable,
   isInfantryType,
+  supplyShortOf,
   type EntityView,
 } from "@gridlock/shared";
 
-export type HoverAction = "garrison" | "ungarrison" | "attack" | "capture" | "gather" | "repair" | "scrap";
+export type HoverAction =
+  | "garrison"
+  | "ungarrison"
+  | "attack"
+  | "capture"
+  | "gather"
+  | "repair"
+  | "scrap"
+  | "board"
+  | "supply";
 
 export type HoverEntity = Pick<
   EntityView,
-  "id" | "kind" | "type" | "ownerId" | "hp" | "hpMax" | "wreck" | "garrisonedIn" | "garrison" | "ruined"
+  | "id"
+  | "kind"
+  | "type"
+  | "ownerId"
+  | "hp"
+  | "hpMax"
+  | "wreck"
+  | "garrisonedIn"
+  | "garrison"
+  | "ruined"
+  | "bed"
+  | "supply"
+  | "ammo"
+  | "mgAmmo"
+  | "clip"
 >;
 
 /** Guard mode: click this unit to escort it instead of planting an overwatch point. */
@@ -46,6 +72,10 @@ export function resolveHoverAction(args: {
   if (hit && engineers.length > 0 && isArmoredWreck(hit)) return "scrap";
   if (hit && engineers.length > 0 && canRepairHit(hit, you, args.allied)) return "repair";
 
+  const trucks = ownUnits.filter((e) => e.type === "supply" && !e.bed?.open);
+  if (hit && trucks.length > 0 && canSupplyHit(hit, you, args.allied, trucks)) return "supply";
+  if (hit && hit.type === "supply" && canBoardHit(hit, you, args.allied, inf)) return "board";
+
   if (hit && isGarrisonable(hit.type) && hit.hp > 0 && !hit.wreck) {
     const occ = hit.garrison?.ownerId;
     const yours = !occ || occ === you;
@@ -58,9 +88,49 @@ export function resolveHoverAction(args: {
   }
 
   if (hit && inf.length > 0 && canCaptureTarget(hit, you, args.allied)) return "capture";
-  if (hit && ownUnits.length > 0 && isAttackTarget(hit, you, args.allied)) return "attack";
+  if (hit && ownUnits.length > 0 && isAttackTarget(hit, you, args.allied)) {
+    // A walker-only selection cannot demolish walls. A hostile garrison is still a target.
+    if (hit.kind === "building" && ownUnits.every((e) => e.type === "walker")) {
+      const occ = hit.garrison?.ownerId;
+      const hostileGarrison = !!occ && occ !== you && !args.allied(occ);
+      if (!hostileGarrison) return null;
+    }
+    return "attack";
+  }
   if (args.scrap && ownUnits.some((e) => e.type === "hauler")) return "gather";
   return null;
+}
+
+function truckFreeSeats(hit: HoverEntity): number {
+  const crew = hit.bed?.crew ? 1 : 0;
+  return TRUCK_SEATS - crew - (hit.bed?.seats ?? 0);
+}
+
+function canBoardHit(
+  hit: HoverEntity,
+  you: string,
+  allied: (ownerId: string | undefined) => boolean,
+  inf: readonly HoverEntity[],
+): boolean {
+  if (hit.hp <= 0 || hit.wreck) return false;
+  const outside = inf.filter((e) => e.garrisonedIn !== hit.id);
+  if (outside.length === 0 || truckFreeSeats(hit) <= 0) return false;
+  if (hit.bed?.open) return true;
+  return hit.ownerId === you || allied(hit.ownerId);
+}
+
+function canSupplyHit(
+  hit: HoverEntity,
+  you: string,
+  allied: (ownerId: string | undefined) => boolean,
+  trucks: readonly HoverEntity[],
+): boolean {
+  if (hit.hp <= 0 || hit.wreck) return false;
+  const friendly = hit.ownerId === you || allied(hit.ownerId);
+  if (!friendly) return false;
+  if (hit.type === "armory") return trucks.some((t) => (t.supply ?? 0) < SUPPLY_CARGO);
+  if (hit.kind !== "unit" || hit.type === "supply") return false;
+  return supplyShortOf(hit.type, hit.ammo, hit.mgAmmo, hit.clip);
 }
 
 function isArmoredWreck(hit: HoverEntity): boolean {

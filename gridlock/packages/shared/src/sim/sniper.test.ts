@@ -7,7 +7,6 @@ import {
   SCOPED,
   SCOPED_HP_FAR,
   SCOPED_HP_NEAR,
-  WEAPON_RANGE_SIGHT_MUL,
   scopedHpFraction,
   addCrit,
   catalog,
@@ -61,7 +60,8 @@ describe("sniper", () => {
     assert.equal(s.sightTiles, INFANTRY_SIGHT_TILES);
     assert.equal(s.sightBonusTiles, INFANTRY_SIGHT_TILES / 3);
     assert.equal(sightTilesOf("sniper", HEIGHT_BASE), s.sightTiles + (s.sightBonusTiles ?? 0));
-    assert.equal(s.rangeTiles, sightTilesOf("sniper", HEIGHT_BASE) * WEAPON_RANGE_SIGHT_MUL);
+    assert.equal(s.rangeTiles, SCOPED.rangeTiles);
+    assert.ok(s.rangeTiles < sightTilesOf("sniper", HEIGHT_BASE));
     assert.ok(rangeTilesOf("sniper", HEIGHT_BASE) > rangeTilesOf("rifleman", HEIGHT_BASE));
     assert.equal(SCOPED_HP_NEAR, 1);
     assert.equal(SCOPED_HP_FAR, 0.9);
@@ -95,7 +95,7 @@ describe("sniper", () => {
   it("engages past a rifleman's reach and hits up close", () => {
     const { state, a, b } = match();
     const ts = state.tileSize;
-    const gap = 60;
+    const gap = Math.round((rangeTilesOf("rifleman", HEIGHT_BASE) + rangeTilesOf("sniper", HEIGHT_BASE)) / 2);
     const sn = makeEntity(state, "sniper", a, tileCenter(40, ts), tileCenter(80, ts));
     const foe = makeEntity(state, "rifleman", b, tileCenter(40 + gap, ts), tileCenter(80, ts));
     foe.cooldown = 99;

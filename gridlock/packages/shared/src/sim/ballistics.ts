@@ -30,7 +30,7 @@ export const RICOCHET_TRAVEL = 150;
 export const RICOCHET_SPARK_SPEED = 720;
 export const MIN_COS = 0.14;
 export const MOVING_SPREAD = 1.5;
-/** Extra aim-cone scale once a shot is past own sight (the +20% weapon band). */
+/** Extra aim-cone scale once a shot is past the shooter's own sight. */
 export const LONG_SHOT_SPREAD = 1.7;
 
 export type ArmorFace = "front" | "side" | "rear";

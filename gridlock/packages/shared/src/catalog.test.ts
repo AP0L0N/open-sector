@@ -23,7 +23,15 @@ import {
   TILE_SIZE,
   snapTankYaw,
   TANK_FACE_DIRS,
-  WEAPON_RANGE_SIGHT_MUL,
+  HANDGUN_RANGE_TILES,
+  RIFLE_RANGE_TILES,
+  MG42_RANGE_TILES,
+  SCOPED_RANGE_TILES,
+  PTRD_RANGE_TILES,
+  WALKER_RANGE_TILES,
+  STUG_RANGE_TILES,
+  TIGER_RANGE_TILES,
+  MORTAR_RANGE_TILES,
   SHELLS,
   SHELL_TYPES,
   INFANTRY_GUNS,
@@ -247,14 +255,44 @@ describe("infantry guns", () => {
 });
 
 describe("weapon reach", () => {
-  it("is sight plus 20% for troopers and tanks", () => {
+  it("keeps each gun on its own reach, inside the shooter's eyes except tanks and the mortar", () => {
     const inf = catalog("rifleman");
-    const tank = catalog("warden");
+    const mg = catalog("gunner");
+    const sniper = catalog("sniper");
+    const at = catalog("atinfantry");
+    const walker = catalog("walker");
     const stug = catalog("ss3");
-    assert.equal(WEAPON_RANGE_SIGHT_MUL, 1.2);
-    assert.equal(inf.rangeTiles, inf.sightTiles * WEAPON_RANGE_SIGHT_MUL);
-    assert.equal(tank.rangeTiles, tank.sightTiles * WEAPON_RANGE_SIGHT_MUL);
-    assert.equal(stug.rangeTiles, stug.sightTiles * WEAPON_RANGE_SIGHT_MUL);
+    const tank = catalog("warden");
+    const mortar = catalog("mortarman");
+    assert.equal(inf.rangeTiles, RIFLE_RANGE_TILES);
+    assert.equal(RIFLE.rangeTiles, RIFLE_RANGE_TILES);
+    assert.equal(HANDGUN.rangeTiles, HANDGUN_RANGE_TILES);
+    assert.equal(mg.rangeTiles, MG42_RANGE_TILES);
+    assert.equal(INFANTRY_GUNS.mg42.rangeTiles, MG42_RANGE_TILES);
+    assert.equal(sniper.rangeTiles, SCOPED_RANGE_TILES);
+    assert.equal(INFANTRY_GUNS.scoped.rangeTiles, SCOPED_RANGE_TILES);
+    assert.equal(at.rangeTiles, PTRD_RANGE_TILES);
+    assert.equal(INFANTRY_GUNS.ptrd.rangeTiles, PTRD_RANGE_TILES);
+    assert.equal(walker.rangeTiles, WALKER_RANGE_TILES);
+    assert.equal(stug.rangeTiles, STUG_RANGE_TILES);
+    assert.equal(tank.rangeTiles, TIGER_RANGE_TILES);
+    assert.equal(mortar.rangeTiles, MORTAR_RANGE_TILES);
+    assert.ok(HANDGUN_RANGE_TILES < RIFLE_RANGE_TILES);
+    assert.ok(RIFLE_RANGE_TILES < MG42_RANGE_TILES);
+    assert.equal(WALKER_RANGE_TILES, RIFLE_RANGE_TILES);
+    assert.ok(MG42_RANGE_TILES < STUG_RANGE_TILES);
+    assert.ok(STUG_RANGE_TILES < SCOPED_RANGE_TILES);
+    assert.equal(PTRD_RANGE_TILES, SCOPED_RANGE_TILES);
+    assert.ok(SCOPED_RANGE_TILES < TIGER_RANGE_TILES);
+    assert.ok(TIGER_RANGE_TILES < MORTAR_RANGE_TILES);
+    assert.ok(inf.rangeTiles < inf.sightTiles);
+    assert.ok(mg.rangeTiles < mg.sightTiles);
+    assert.ok(sniper.rangeTiles < sniper.sightTiles + (sniper.sightBonusTiles ?? 0));
+    assert.ok(at.rangeTiles < at.sightTiles + (at.sightBonusTiles ?? 0));
+    assert.ok(walker.rangeTiles < walker.sightTiles);
+    assert.ok(stug.rangeTiles > stug.sightTiles);
+    assert.ok(tank.rangeTiles > tank.sightTiles);
+    assert.ok(mortar.rangeTiles > mortar.sightTiles);
     assert.equal(inf.sightBonusTiles ?? 0, 0);
     assert.equal(tank.sightBonusTiles ?? 0, 0);
     assert.equal(stug.sightBonusTiles ?? 0, 0);
@@ -282,7 +320,9 @@ describe("ss3 casemate", () => {
     assert.ok(g.moveTilesPerSec > w.moveTilesPerSec);
     assert.ok(g.turnDegPerSec < w.turnDegPerSec);
     assert.ok(g.sightTiles < w.sightTiles);
-    assert.equal(g.rangeTiles, g.sightTiles * WEAPON_RANGE_SIGHT_MUL);
+    assert.equal(g.rangeTiles, STUG_RANGE_TILES);
+    assert.ok(g.rangeTiles > g.sightTiles);
+    assert.ok(g.rangeTiles < w.rangeTiles);
     assert.equal(hasMg("ss3"), true);
     assert.equal(hasScout("ss3"), true);
     assert.equal(g.leavesWreck, true);

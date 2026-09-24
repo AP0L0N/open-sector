@@ -103,7 +103,8 @@ describe("mortar", () => {
     assert.equal(m.letter, "O");
     assert.equal(isInfantryType("mortarman"), true);
     assert.equal(m.sightTiles, INFANTRY_SIGHT_TILES);
-    assert.ok(m.rangeTiles > m.sightTiles * 2, `range ${m.rangeTiles} sight ${m.sightTiles}`);
+    assert.ok(m.rangeTiles > m.sightTiles, `range ${m.rangeTiles} sight ${m.sightTiles}`);
+    assert.ok(m.rangeTiles > catalog("warden").rangeTiles);
     assert.equal(m.rangeTiles, MORTAR_RANGE_TILES);
     assert.equal(MORTAR.minRangeTiles, MORTAR_MIN_RANGE_TILES);
     assert.ok(MORTAR_MIN_RANGE_TILES < m.sightTiles);

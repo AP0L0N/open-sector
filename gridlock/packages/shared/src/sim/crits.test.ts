@@ -11,7 +11,7 @@ import {
 } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { fireStats, hullTurnMul, immobilized, moveSpeedMul, rollCrits } from "./crits.js";
-import { weaponRangeWorld } from "./elevation.js";
+import { entityHeight, rangeTilesOf, weaponRangeWorld } from "./elevation.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch } from "./match.js";
 import { tickMovement } from "./orders.js";
@@ -105,7 +105,10 @@ describe("crit effects", () => {
     const pistol = fireStats(t);
     assert.equal(pistol.damage, HANDGUN.damage);
     assert.ok(weaponRangeWorld(state, t) < catalog("rifleman").rangeTiles * state.tileSize);
-    assert.equal(weaponRangeWorld(state, t), HANDGUN.rangeTiles * state.tileSize);
+    assert.equal(
+      weaponRangeWorld(state, t),
+      rangeTilesOf("rifleman", entityHeight(state, t), HANDGUN.rangeTiles) * state.tileSize,
+    );
   });
 
   it("slows a trooper with a broken leg and pins tracked vehicles", () => {

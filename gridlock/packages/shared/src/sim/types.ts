@@ -39,7 +39,9 @@ export interface Order {
     | "guard"
     | "withdraw"
     | "build"
-    | "repair";
+    | "repair"
+    | "board"
+    | "supply";
   x?: number;
   y?: number;
   /** World radians. Guard / rotate destination facing. */
@@ -154,6 +156,13 @@ export interface Entity {
   tendId?: number;
   /** Seconds of contact toward clearing one crit. */
   mendTime?: number;
+  /**
+   * Factory driver still at the wheel. Supply trucks spawn true.
+   * False on every other type, and after that driver is killed.
+   */
+  crew: boolean;
+  /** Supply points left. 0 on every type except the supply truck. */
+  supply: number;
 }
 
 export interface Projectile {

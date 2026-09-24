@@ -32,6 +32,7 @@ import { groupMovePace, groupMoveTargets } from "./formation.js";
 import { escortAnchor } from "./orders.js";
 import { setPath } from "./path.js";
 import { tickStance } from "./stance.js";
+import { dismountSupply, orderBoard, orderSupply, supplyCanDrive } from "./supply.js";
 import type { Entity, MatchState } from "./types.js";
 
 export type CmdResult = { ok: true } | { ok: false; code: ErrorCode; message: string };
@@ -122,6 +123,12 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
       );
     case "cmd.repair":
       return wrap(orderRepair(state, playerId, owned(state, playerId, msg.ids), msg.targetId), "not_found");
+    case "cmd.board":
+      return wrap(orderBoard(state, playerId, owned(state, playerId, msg.ids), msg.truckId), "busy");
+    case "cmd.unboard":
+      return cmdUnboard(state, playerId, msg.ids, msg.truckId);
+    case "cmd.supply":
+      return wrap(orderSupply(state, playerId, owned(state, playerId, msg.ids), msg.targetId), "not_found");
     default:
       return fail("bad_payload", "Unknown command.");
   }
@@ -159,7 +166,10 @@ function owned(state: MatchState, playerId: string, ids: number[]) {
 function cmdMove(state: MatchState, playerId: string, ids: number[], x: number, y: number): CmdResult {
   const units = owned(state, playerId, ids);
   if (units.length === 0) return fail("not_yours", "No owned units.");
-  const movers = units.filter((e) => e.state !== "deploy" && e.state !== "undeploy");
+  const movers = units.filter(
+    (e) => e.state !== "deploy" && e.state !== "undeploy" && supplyCanDrive(state, e),
+  );
+  if (movers.length === 0) return fail("busy", "No driver.");
   const dests = groupMoveTargets(state, movers, x, y);
   const pace = groupMovePace(movers);
   for (const e of movers) {
@@ -469,6 +479,26 @@ function cmdGarrison(state: MatchState, playerId: string, ids: number[], buildin
   }
   if (n === 0) return fail("busy", canGarrison(state, units[0]!, house) ?? "Cannot garrison.");
   return ok();
+}
+
+function cmdUnboard(state: MatchState, playerId: string, ids?: number[], truckId?: number): CmdResult {
+  const truck =
+    truckId != null
+      ? state.entities.get(truckId)
+      : ids
+          ?.map((id) => state.entities.get(id))
+          .find((e) => e && e.type === "supply" && e.ownerId === playerId);
+  const fromRider =
+    !truck && ids
+      ? ids
+          .map((id) => state.entities.get(id))
+          .map((e) => (e?.garrisonedIn != null ? state.entities.get(e.garrisonedIn) : undefined))
+          .find((e) => e?.type === "supply")
+      : undefined;
+  const host = truck ?? fromRider;
+  if (!host || host.type !== "supply") return fail("not_found", "No such truck.");
+  if (host.ownerId !== playerId) return fail("not_yours", "Not your truck.");
+  return wrap(dismountSupply(state, host), "busy");
 }
 
 function cmdUngarrison(
