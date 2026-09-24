@@ -1,5 +1,6 @@
 /**
- * Fixed directional sun and unit ground shadows. Client-only; no sim traffic.
+ * Fixed directional sun and ground shadows for units, trees, and buildings.
+ * Client-only; no sim traffic.
  *
  * World facing: 0 = east, π/2 = south. The sun sits WNW so shadows fall ESE
  * (down and a little right on the 2:1 diamond).
@@ -117,23 +118,52 @@ export function treeShadowFootprint(
   });
 }
 
-/** Axis-aligned pad blob. Half-extents are world pixels. */
+/** How tightly the lot blob hugs the diamond. 2 is a round ellipse. */
+const BUILDING_SHADOW_ROUND = 1.25;
+/** Just past the lot, so the pad does not cover the whole blob. */
+const BUILDING_SHADOW_SCALE = 1.02;
+/** Center slide, as a fraction of the longer half-extent. Same idea as SHADOW_CAST. */
+const BUILDING_SHADOW_SLIDE = 0.06;
+const BUILDING_SHADOW_SEGS = 24;
+
+function signedPow(v: number, exp: number): number {
+  if (v === 0) return 0;
+  return Math.sign(v) * Math.abs(v) ** exp;
+}
+
+/**
+ * Contact blob on the building lot. Half-extents are world pixels.
+ * The sprite's ground pad covers an inscribed ellipse, so the blob
+ * follows the lot corners and slides a little with the sun.
+ */
 export function buildingShadowFootprint(opts: {
   x: number;
   y: number;
   halfW: number;
   halfH: number;
 }): { cx: number; cy: number; points: { x: number; y: number }[] } {
-  const along = Math.max(4, opts.halfW * 0.82);
-  const across = Math.max(4, opts.halfH * 0.82);
-  return groundShadowEllipse({
-    x: opts.x,
-    y: opts.y,
-    facing: 0,
-    along,
-    across,
-    height: Math.max(along, across) * 0.7,
-  });
+  const dir = shadowWorldDir();
+  const reach = Math.max(4, opts.halfW, opts.halfH);
+  const slide = reach * BUILDING_SHADOW_SLIDE;
+  const cx = opts.x + dir.x * slide;
+  const cy = opts.y + dir.y * slide;
+  const hw = Math.max(4, opts.halfW) * BUILDING_SHADOW_SCALE;
+  const hh = Math.max(4, opts.halfH) * BUILDING_SHADOW_SCALE;
+  // East and south corners of the axis-aligned lot.
+  const ve = { x: hw, y: -hh };
+  const vs = { x: hw, y: hh };
+  const exp = 2 / BUILDING_SHADOW_ROUND;
+  const points: { x: number; y: number }[] = [];
+  for (let i = 0; i < BUILDING_SHADOW_SEGS; i++) {
+    const t = (i / BUILDING_SHADOW_SEGS) * Math.PI * 2;
+    const a = signedPow(Math.cos(t), exp);
+    const b = signedPow(Math.sin(t), exp);
+    points.push({
+      x: cx + ve.x * a + vs.x * b,
+      y: cy + ve.y * a + vs.y * b,
+    });
+  }
+  return { cx, cy, points };
 }
 
 export function drawGroundShadow(

@@ -7,6 +7,8 @@ import {
   HEIGHT_WORLD,
   TILE_BLOCKED,
   TILE_EMPTY,
+  TILE_FENCE,
+  TILE_ROAD,
   TILE_SCRAP,
   TILE_TREE,
   TILE_WATER,
@@ -78,6 +80,8 @@ export function mapLayout(id: string): Record<string, unknown> | null {
     tileScrap: TILE_SCRAP,
     tileWater: TILE_WATER,
     tileTree: TILE_TREE,
+    tileRoad: TILE_ROAD,
+    tileFence: TILE_FENCE,
   };
 }
 

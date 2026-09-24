@@ -364,12 +364,20 @@ Shoot a turntable per pose. Same camera, same scale, same costume. Do not combin
 | Gunner | crawl | 8 | prone with the MG deployed |
 | Gunner | fire | 4 | the **crawl** stills, plus a muzzle flash drawn on the barrel |
 | Gunner | die | 4 | corpse turntable |
-| Both | cameo | 1 | crop of the east stand, 72×72, feet near the bottom |
-| Both | swim | — | shared `infantry-swim.png` |
+| Sniper | walk, crouch | 8 | standing / kneeling turntable; 8 copies (held pose) |
+| Sniper | crawl | 8 | prone with the scoped rifle |
+| Sniper | fire | 4 | the stand stills, plus a muzzle flash on the barrel |
+| Sniper | die | 4 | corpse turntable; body stays flat |
+| Mortarman | walk, crouch | 8 | standing / kneeling turntable; 8 copies (held pose). Crouch is the planted tube |
+| Mortarman | crawl | 8 | prone with the mortar |
+| Mortarman | fire | 4 | the crouch stills, plus a flash at the muzzle |
+| Mortarman | die | 4 | corpse turntable; body stays flat, tube beside him |
+| All four | cameo | 1 | crop of the east stand, 72×72, feet near the bottom |
+| All four | swim | — | shared `infantry-swim.png` |
 
 Stand is column 0 of the walk sheet. The client plays later columns only while the unit is moving.
 
-File names stay `trooper-*.png` for the Rifleman. Gunner files are `gunner-*.png`. Shipped PNGs go in `gridlock/packages/client/src/assets/units/`. Unique stills go in `tools/sprites/src/<id>-<pose>/` as `E.png` … `ENE.png`.
+File names stay `trooper-*.png` for the Rifleman. Gunner files are `gunner-*.png`. Sniper files are `sniper-*.png`. Mortarman files are `mortarman-*.png`. Shipped PNGs go in `gridlock/packages/client/src/assets/units/`. Unique stills go in `tools/sprites/src/<id>-<pose>/` as `E.png` … `ENE.png`.
 
 ### Turntable shot
 

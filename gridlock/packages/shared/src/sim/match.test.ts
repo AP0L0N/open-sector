@@ -66,8 +66,11 @@ describe("createMatch", () => {
       const own = [...state.entities.values()].filter((e) => e.ownerId === pid && e.kind === "unit");
       assert.equal(own.filter((e) => e.type === "rifleman").length, 1);
       assert.equal(own.filter((e) => e.type === "gunner").length, 1);
+      assert.equal(own.filter((e) => e.type === "sniper").length, 1);
+      assert.equal(own.filter((e) => e.type === "mortarman").length, 1);
       assert.equal(own.filter((e) => e.type === "warden").length, 1);
       assert.equal(own.filter((e) => e.type === "ss3").length, 1);
+      assert.equal(own.filter((e) => e.type === "walker").length, 1);
       assert.equal(own.filter((e) => e.type === "hauler").length, 0);
       const core = catalog("core");
       const half = Math.floor(core.tileW / 2);
@@ -392,9 +395,14 @@ describe("combat", () => {
 
   it("rifle ricochets zip off armor and puff on landing", () => {
     const { state } = twoPlayerMatch();
+    for (let i = 0; i < state.terrain.length; i++) {
+      if (state.terrain[i] === TILE_TREE) state.terrain[i] = TILE_EMPTY;
+    }
     const t1 = makeEntity(state, "rifleman", "A", 20 * 32, 20 * 32);
     const tank = makeEntity(state, "warden", "B", 23 * 32, 20 * 32);
     tank.facing = Math.PI;
+    tank.ammo = { ap: 0, he: 0, heat: 0, smoke: 0 };
+    tank.mgAmmo = 0;
     applyCommand(state, "A", { type: "cmd.attack", ids: [t1.id], targetId: tank.id });
     const muzzle = catalog("rifleman").projectileSpeed;
     let bounceSp = 0;
@@ -560,6 +568,9 @@ describe("combat", () => {
     dummy.mgAmmo = 0;
     tank.facing = 0;
     tank.turretFacing = 0;
+    // The lane here is open, so a live shell wrecks the target and the turret slews home.
+    tank.ammo = { ap: 0, he: 0, heat: 0, smoke: 0 };
+    tank.mgAmmo = 0;
     applyCommand(state, "A", {
       type: "cmd.attackmove",
       ids: [tank.id],
@@ -588,7 +599,7 @@ describe("combat", () => {
     assert.equal(a.ammo.ap, 10, "second shell after the 6.5s wait");
   });
 
-  it("uses the coaxial MG on troops and the 75mm on armor", () => {
+  it("uses the coaxial MG and the 75mm on troops, and only the 75mm on armor", () => {
     const { state } = twoPlayerMatch();
     state.heights.fill(0);
     for (let i = 0; i < state.terrain.length; i++) {
@@ -596,14 +607,16 @@ describe("combat", () => {
     }
     const tank = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
     const inf = makeEntity(state, "rifleman", "B", 23 * 32, 20 * 32);
+    inf.hp = 4000;
+    inf.hpMax = 4000;
     tank.facing = 0;
     tank.turretFacing = 0;
     inf.facing = Math.PI;
     applyCommand(state, "A", { type: "cmd.attack", ids: [tank.id], targetId: inf.id });
     ticks(state, 4);
     assert.ok(tank.mgAmmo <= TANK_MG.ammo - 3, `mgAmmo=${tank.mgAmmo}`);
-    assert.equal(tank.ammo.ap, 12, "must not spend a 75mm on infantry");
-    assert.ok(inf.hp < inf.hpMax || !state.entities.has(inf.id) || inf.hp <= 0);
+    assert.equal(tank.ammo.ap, 11, "one 75mm at infantry, then the cannon reloads");
+    assert.ok(inf.hp < inf.hpMax);
 
     const { state: s2 } = twoPlayerMatch();
     s2.heights.fill(0);
@@ -616,6 +629,38 @@ describe("combat", () => {
     ticks(s2, 4);
     assert.equal(gun.mgAmmo, TANK_MG.ammo);
     assert.equal(gun.ammo.ap, 11);
+
+    const { state: s3 } = twoPlayerMatch();
+    s3.heights.fill(0);
+    const hunter = makeEntity(s3, "warden", "A", 20 * 32, 20 * 32);
+    const hauler = makeEntity(s3, "hauler", "B", 23 * 32, 20 * 32);
+    hauler.autoHarvest = false;
+    hauler.holdPosition = true;
+    hunter.facing = 0;
+    hunter.turretFacing = 0;
+    applyCommand(s3, "A", { type: "cmd.attack", ids: [hunter.id], targetId: hauler.id });
+    ticks(s3, 4);
+    assert.equal(hunter.mgAmmo, TANK_MG.ammo, "armored hauler stays on the cannon");
+    assert.equal(hunter.ammo.ap, 11);
+  });
+
+  it("uses the coaxial MG alone on an exposed hatch", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const gun = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
+    const armor = makeEntity(state, "warden", "B", 23 * 32, 20 * 32);
+    armor.scoutOut = true;
+    armor.holdPosition = true;
+    armor.ammo = { ap: 0, he: 0, heat: 0, smoke: 0 };
+    armor.mgAmmo = 0;
+    gun.facing = 0;
+    gun.turretFacing = 0;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [gun.id], targetId: armor.id });
+    ticks(state, 4);
+    assert.ok(gun.mgAmmo <= TANK_MG.ammo - 3, `mgAmmo=${gun.mgAmmo}`);
+    assert.equal(gun.ammo.ap, 12, "an open hatch does not draw a 75mm");
+    assert.ok(armor.hp === armor.hpMax, `hull hp=${armor.hp}`);
+    assert.ok(armor.scoutHp < armor.scoutHpMax, `scout hp=${armor.scoutHp}`);
   });
 
   it("overheats the MG after a dump and jams it until it cools", () => {
@@ -634,7 +679,11 @@ describe("combat", () => {
     const jammed = tank.mgAmmo;
     ticks(state, 5);
     assert.equal(tank.mgAmmo, jammed);
-    assert.equal(tank.ammo.ap, 12, "overheat must not dump the cannon into infantry");
+    assert.equal(tank.ammo.ap, 11, "the cannon fires once with the MG, then reloads");
+    tank.cooldown = 0;
+    ticks(state, 1);
+    assert.equal(tank.ammo.ap, 10, "a jammed MG does not block the next shell");
+    assert.equal(tank.mgAmmo, jammed);
   });
 
   it("puts MG belt and heat on a friendly snapshot", () => {
@@ -769,7 +818,7 @@ describe("fog of war", () => {
 
 describe("maps scrap", () => {
   it("keeps spawns empty and paints scrap fields", () => {
-    for (const id of ["yard-64", "canal-48"] as const) {
+    for (const id of ["yard-64"] as const) {
       const map = getMap(id)!;
       let scrap = 0;
       for (let i = 0; i < map.tiles.length; i++) {

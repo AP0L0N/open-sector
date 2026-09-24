@@ -102,6 +102,8 @@ export interface Entity {
   shell: ShellType | null;
   /** Selected infantry gun. Null on vehicles and buildings. */
   weapon: InfantryWeaponId | null;
+  /** Walker arms in use. 1 conserves the rack. 2 is both guns. Other types omit it. */
+  gatlingGuns?: 1 | 2;
   /** Seconds the MG42 bipod has been set while prone. 0 until the gunner crawls. */
   bipod: number;
   /** Coaxial MG rounds remaining. 0 if the type has no MG. */
@@ -157,10 +159,26 @@ export interface Projectile {
   bounced: boolean;
   /** Loaded 75mm type. Null for rifles / MG. */
   shell: ShellType | null;
+  /**
+   * Infantry hit deals this share of the victim's max HP.
+   * Set by the scoped rifle. Omitted for every other gun.
+   */
+  hpFraction?: number;
   /** Elevation units at the current point. Omit in tests for ground-level. */
   z?: number;
-  /** Elevation units per second along the shot. */
+  /** Elevation units per second along the shot. Direct fire only. */
   vz?: number;
+  /** Arcing bomb. Omitted for rifles, machine guns, and tank shells. */
+  flight?: "mortar";
+  /** Fused landing point for a mortar bomb. */
+  landX?: number;
+  landY?: number;
+  /** Peak air height in elevation units. */
+  apex?: number;
+  /** Seconds from the tube to the ground. */
+  flightTime?: number;
+  /** Force-attack: the blast also catches allies. */
+  harmAllies?: boolean;
 }
 
 /** Lasting smoke screen from a 75mm smoke shell. */

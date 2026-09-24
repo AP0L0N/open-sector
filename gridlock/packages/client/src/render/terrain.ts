@@ -4,6 +4,8 @@ import {
   ISO_TILE_H,
   TILE_BLOCKED,
   TILE_EMPTY,
+  TILE_FENCE,
+  TILE_ROAD,
   TILE_SCRAP,
   TILE_SUBDIV,
   TILE_TREE,
@@ -20,15 +22,17 @@ import {
   type MapDef,
 } from "@gridlock/shared";
 import {
-  BUSH_A,
-  BUSH_B,
-  SCRAP_A,
+  BUSH_FACES,
+  DIRT_TEX,
+  GRASS_TEXS,
+  SCRAP_FACES,
+  TUFT_FACES,
   WATER_TEX,
   WATER_TEX_B,
-  GRASS_TEX,
   drawPropSprite,
   whenImagesReady,
   PROP_IMAGES,
+  type PropSprite,
 } from "./sprites.js";
 
 const WALL_H = 20;
@@ -129,9 +133,9 @@ function elevShadeFactor(h: number): number {
 
 function groundFill(map: MapDef, tx: number, ty: number, kind: number, scrap: boolean): string {
   if (kind === TILE_WATER) return "#1a4554";
-  if (kind === TILE_TREE) return "#1a2f1e";
-  const fill = kind === TILE_BLOCKED ? "#2a1e18" : scrap ? "#443816" : "#243320";
-  if (kind === TILE_BLOCKED) return fill;
+  if (kind === TILE_BLOCKED) return "#3a3228";
+  const bare = kind === TILE_ROAD || scrap;
+  const fill = bare ? "#6b5840" : kind === TILE_TREE ? "#314628" : "#3e5232";
   return shade(fill, elevShadeFactor(heightAt(map, tx, ty)));
 }
 
@@ -145,15 +149,32 @@ function waterPattern(ctx: CanvasRenderingContext2D, frame = 0): CanvasPattern |
   return ctx.createPattern(img, "repeat");
 }
 
-const grassPatFor = new WeakMap<CanvasRenderingContext2D, CanvasPattern>();
+const texPatFor = new WeakMap<CanvasRenderingContext2D, Map<HTMLImageElement, CanvasPattern>>();
 
-function grassPattern(ctx: CanvasRenderingContext2D): CanvasPattern | null {
-  const hit = grassPatFor.get(ctx);
+function texPattern(ctx: CanvasRenderingContext2D, img: HTMLImageElement): CanvasPattern | null {
+  if (!img.complete || img.naturalWidth <= 0) return null;
+  let bag = texPatFor.get(ctx);
+  if (!bag) {
+    bag = new Map();
+    texPatFor.set(ctx, bag);
+  }
+  const hit = bag.get(img);
   if (hit) return hit;
-  if (!GRASS_TEX.complete || GRASS_TEX.naturalWidth <= 0) return null;
-  const pat = ctx.createPattern(GRASS_TEX, "repeat");
-  if (pat) grassPatFor.set(ctx, pat);
+  const pat = ctx.createPattern(img, "repeat");
+  if (pat) bag.set(img, pat);
   return pat;
+}
+
+/** One meadow, with a few broad drier or darker fields. Fine tiles stay the same photo. */
+function surfaceImage(kind: number, tx: number, ty: number, scrap: boolean): HTMLImageElement | null {
+  if (kind === TILE_BLOCKED || kind === TILE_WATER) return null;
+  if (kind === TILE_ROAD || scrap) return DIRT_TEX;
+  const meadow = GRASS_TEXS[0];
+  if (!meadow) return null;
+  const field = hash2(tx >> 6, ty >> 6, 5);
+  if (field % 5 === 0) return GRASS_TEXS[1] ?? meadow;
+  if (field % 8 === 0) return GRASS_TEXS[2] ?? meadow;
+  return meadow;
 }
 
 function fillPatternInQuad(
@@ -233,15 +254,19 @@ function paintWaterOverlay(
   ctx.restore();
 }
 
-function paintGrassOverlay(
+function paintSurface(
   ctx: CanvasRenderingContext2D,
   map: MapDef,
   tx: number,
   ty: number,
+  kind: number,
+  scrap: boolean,
   originX: number,
   originY: number,
 ): void {
-  const pat = grassPattern(ctx);
+  const img = surfaceImage(kind, tx, ty, scrap);
+  if (!img) return;
+  const pat = texPattern(ctx, img);
   if (!pat) return;
   const elev = map.heights;
   const d = tileDiamond(tx, ty, map.tileSize);
@@ -253,7 +278,8 @@ function paintGrassOverlay(
   const e = up(d.e, isoLift(vertexElev(elev, map.width, map.height, tx + 1, ty)));
   const s = up(d.s, isoLift(vertexElev(elev, map.width, map.height, tx + 1, ty + 1)));
   const w = up(d.w, isoLift(vertexElev(elev, map.width, map.height, tx, ty + 1)));
-  fillPatternInQuad(ctx, ...expandQuad(n, e, s, w, TILE_OVERLAP_PX), pat, 0.58);
+  const alpha = kind === TILE_ROAD || scrap ? 0.92 : 0.84;
+  fillPatternInQuad(ctx, ...expandQuad(n, e, s, w, TILE_OVERLAP_PX), pat, alpha);
 }
 
 export function atlasSize(map: MapDef): {
@@ -417,28 +443,15 @@ function paintTileProps(
   if (kind === TILE_BLOCKED) {
     isoBox(ctx, tx * ts, ty * ts, ts, ts, WALL_H, fillOverride ?? "#3a2a22", elev, ts, originX, originY);
   } else if (kind === TILE_TREE) {
-    if (!treePropKind(map, tx, ty)) return;
-    const inset = ts * 0.32;
-    isoBox(
-      ctx,
-      tx * ts + inset,
-      ty * ts + inset,
-      ts - inset * 2,
-      ts - inset * 2,
-      5,
-      fillOverride ?? "#2a2218",
-      elev,
-      ts,
-      originX,
-      originY,
-    );
+    return;
   } else if (scrap) {
     const lift = isoLift(elev);
     const p = worldToIso((tx + 0.5) * ts, (ty + 0.55) * ts, ts);
     const x = p.x - originX;
     const y = p.y - originY - lift;
     const h = hash2(tx, ty, 3);
-    const drawn = drawPropSprite(ctx, SCRAP_A, x, y, 11 + (h % 5), (h & 1) === 0);
+    const pile = SCRAP_FACES[h % SCRAP_FACES.length] ?? SCRAP_FACES[0];
+    const drawn = pile ? drawPropSprite(ctx, pile, x, y, 12 + (h % 5), false) : false;
     if (!drawn) {
       const inset = ts * 0.18;
       isoBox(
@@ -460,18 +473,15 @@ function paintTileProps(
   }
 }
 
-function bushRoll(tx: number, ty: number): number {
-  return hash2(tx, ty, 29);
-}
-
-function wantBush(tx: number, ty: number): boolean {
-  const h = bushRoll(tx, ty);
-  if (h >= 0x00600000) return false;
-  for (let dy = -5; dy <= 5; dy++) {
-    for (let dx = -5; dx <= 5; dx++) {
+/** One decor sprite per neighborhood, chosen by the lowest hash so clumps do not stack. */
+function spacedDecor(tx: number, ty: number, mod: number, salt: number, spacing: number): boolean {
+  const h = hash2(tx, ty, salt);
+  if (h % mod !== 0) return false;
+  for (let dy = -spacing; dy <= spacing; dy++) {
+    for (let dx = -spacing; dx <= spacing; dx++) {
       if (dx === 0 && dy === 0) continue;
-      const n = bushRoll(tx + dx, ty + dy);
-      if (n < 0x00600000 && n >= h) return false;
+      const n = hash2(tx + dx, ty + dy, salt);
+      if (n % mod === 0 && n > h) return false;
     }
   }
   return true;
@@ -485,16 +495,21 @@ function paintDecor(
   originX: number,
   originY: number,
 ): void {
-  if (!wantBush(tx, ty)) return;
+  const bushHere = spacedDecor(tx, ty, 64, 29, 5);
+  const tuftHere = !bushHere && spacedDecor(tx, ty, 17, 11, 2);
+  if (!bushHere && !tuftHere) return;
+  const faces: PropSprite[] = bushHere ? BUSH_FACES : TUFT_FACES;
   const ts = map.tileSize;
   const elev = heightAt(map, tx, ty);
   const lift = isoLift(elev);
-  const h = bushRoll(tx, ty);
+  const h = hash2(tx, ty, bushHere ? 29 : 11);
   const jx = ((h >>> 8) % 9) * 0.06 - 0.24;
   const jy = ((h >>> 4) % 9) * 0.06 - 0.18;
   const p = worldToIso((tx + 0.5 + jx) * ts, (ty + 0.62 + jy) * ts, ts);
-  const bush = (h >>> 11) % 2 === 0 ? BUSH_A : BUSH_B;
-  drawPropSprite(ctx, bush, p.x - originX, p.y - originY - lift, 14 + (h % 11), (h & 4) === 0);
+  const spr = faces[h % faces.length];
+  if (!spr) return;
+  const drawH = bushHere ? 18 + (h % 9) : 8 + (h % 6);
+  drawPropSprite(ctx, spr, p.x - originX, p.y - originY - lift, drawH, false);
 }
 
 export function coverTile(
@@ -524,9 +539,7 @@ function paintGround(
   const kind = map.tiles[ty * map.width + tx] ?? 0;
   fillElevatedTile(ctx, map, tx, ty, groundFill(map, tx, ty, kind, scrap), originX, originY, kind !== TILE_WATER);
   if (kind === TILE_WATER) paintWaterOverlay(ctx, map, tx, ty, originX, originY);
-  else if (!scrap && kind !== TILE_TREE && kind !== TILE_BLOCKED) {
-    paintGrassOverlay(ctx, map, tx, ty, originX, originY);
-  }
+  else paintSurface(ctx, map, tx, ty, kind, scrap, originX, originY);
 }
 
 function paintTileStamp(
@@ -745,9 +758,11 @@ function parseRgb(hex: string): [number, number, number] {
 function miniFill(map: MapDef, tx: number, ty: number, scrap: boolean): string {
   const kind = map.tiles[ty * map.width + tx] ?? 0;
   if (kind === TILE_WATER) return "#1d4a5c";
-  if (kind === TILE_TREE) return "#1f4a28";
+  if (kind === TILE_TREE) return "#2a4a30";
+  if (kind === TILE_ROAD) return "#8a7348";
+  if (kind === TILE_FENCE) return "#6e5c3c";
   if (kind === TILE_BLOCKED) return "#3a2a22";
-  if (scrap) return "#5a4a18";
+  if (scrap) return "#6a5428";
   const span = Math.max(1, HEIGHT_MAX - HEIGHT_BASE);
   const u = (heightAt(map, tx, ty) - HEIGHT_BASE) / span;
   if (u >= 0.75) return "#5a6a3c";

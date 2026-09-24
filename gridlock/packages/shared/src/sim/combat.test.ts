@@ -5,6 +5,7 @@ import {
   HANDGUN,
   HEIGHT_BASE,
   HULL_EYE_HEIGHT,
+  MG42,
   SHELLS,
   TANK_MG,
   TICK_DT,
@@ -734,9 +735,13 @@ describe("guard", () => {
     const flank = makeEntity(state, "rifleman", "B", tileCenter(42, ts), tileCenter(48, ts));
     flank.holdPosition = true;
     flank.cooldown = 99;
+    flank.hp = 4000;
+    flank.hpMax = 4000;
     const front = makeEntity(state, "rifleman", "B", tileCenter(52, ts), tileCenter(40, ts));
     front.holdPosition = true;
     front.cooldown = 99;
+    front.hp = 4000;
+    front.hpMax = 4000;
     applyCommand(state, "A", {
       type: "cmd.guard",
       ids: [tank.id],
@@ -808,13 +813,18 @@ describe("escort", () => {
     state.heights.fill(0);
     state.blocked.fill(0);
     clearCivilians(state);
+    for (let i = 0; i < state.terrain.length; i++) {
+      if (state.terrain[i] === TILE_TREE) state.terrain[i] = TILE_EMPTY;
+    }
     const ts = state.tileSize;
     const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
     const hauler = makeEntity(state, "hauler", "A", tileCenter(26, ts), tileCenter(24, ts));
     hauler.autoHarvest = false;
-    const dummy = makeEntity(state, "rifleman", "B", tileCenter(40, ts), tileCenter(24, ts));
+    const dummy = makeEntity(state, "rifleman", "B", tileCenter(24, ts), tileCenter(36, ts));
     dummy.holdPosition = true;
     dummy.cooldown = 99;
+    dummy.hp = 4000;
+    dummy.hpMax = 4000;
     applyCommand(state, "A", { type: "cmd.guard", ids: [tank.id], targetId: hauler.id });
     for (let i = 0; i < 12; i++) step(state, TICK_DT);
     assert.equal(tank.attackTarget, dummy.id, `attackTarget=${tank.attackTarget}`);
@@ -1174,6 +1184,94 @@ describe("wrecks", () => {
       `player attack should damage wreck hp=${foe.hp} start=${wreckHp}`,
     );
   });
+
+  it("ricochets small arms off an armored wreck", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const hull = makeEntity(state, "walker", "B", tileCenter(30, ts), tileCenter(24, ts));
+    hull.facing = 0;
+    hull.hp = 0;
+    step(state, TICK_DT);
+    assert.equal(hull.wreck, true);
+    const wreckHp = hull.hp;
+    const guns = [catalog("rifleman"), MG42];
+    let ricochets = 0;
+    for (const gun of guns) {
+      for (let i = 0; i < 24; i++) {
+        state.projectiles = [];
+        state.impacts = [];
+        fireShell(state, {
+          x: hull.x - 36,
+          y: hull.y,
+          vx: catalog("rifleman").projectileSpeed,
+          vy: 0,
+          damage: gun.damage,
+          penetration: gun.penetration,
+          caliber: gun.caliber,
+        });
+        tickProjectiles(state, TICK_DT);
+        for (const im of state.impacts) {
+          assert.equal(im.kind, "ricochet", `expected a spark, got ${im.kind}`);
+          ricochets++;
+        }
+      }
+    }
+    assert.ok(ricochets > 10, `ricochets=${ricochets}`);
+    assert.equal(state.entities.has(hull.id), true);
+    assert.equal(hull.wreck, true);
+    assert.equal(hull.hp, wreckHp);
+  });
+
+  it("a rifleman ordered onto an armored wreck only sparks", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const rifle = makeEntity(state, "rifleman", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const hull = makeEntity(state, "warden", "B", tileCenter(28, ts), tileCenter(24, ts));
+    rifle.holdPosition = true;
+    rifle.facing = 0;
+    hull.facing = Math.PI;
+    hull.hp = 0;
+    step(state, TICK_DT);
+    assert.equal(hull.wreck, true);
+    const wreckHp = hull.hp;
+    const res = applyCommand(state, "A", { type: "cmd.attack", ids: [rifle.id], targetId: hull.id });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    let ricochets = 0;
+    for (let i = 0; i < 40; i++) {
+      step(state, TICK_DT);
+      for (const im of state.impacts) if (im.kind === "ricochet") ricochets++;
+    }
+    assert.ok(ricochets > 0, "expected ricochet sparks");
+    assert.equal(state.entities.has(hull.id), true);
+    assert.equal(hull.hp, wreckHp);
+  });
+
+  it("a shell still breaks an armored wreck", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const hull = makeEntity(state, "walker", "B", tileCenter(30, ts), tileCenter(24, ts));
+    hull.hp = 0;
+    step(state, TICK_DT);
+    assert.equal(hull.wreck, true);
+    const wreckHp = hull.hp;
+    state.projectiles = [];
+    state.impacts = [];
+    const gun = catalog("warden");
+    fireShell(state, {
+      x: hull.x - 36,
+      y: hull.y,
+      vx: gun.projectileSpeed,
+      vy: 0,
+    });
+    tickProjectiles(state, TICK_DT);
+    assert.ok(
+      hull.hp < wreckHp || !state.entities.has(hull.id),
+      `shell should damage wreck hp=${hull.hp} start=${wreckHp}`,
+    );
+  });
 });
 
 describe("armor impact scatter", () => {
@@ -1462,7 +1560,7 @@ describe("broken tracks", () => {
     assert.ok((tank.ammo.ap ?? 12) < 12, `ap=${tank.ammo.ap}`);
   });
 
-  it("fires the MG only along hull facing, and uses the 75mm on a flank trooper", () => {
+  it("fires the MG only along hull facing, and still uses the 75mm on a trooper", () => {
     const { state } = twoPlayerMatch();
     clearCover(state);
     const ts = state.tileSize;
@@ -1477,7 +1575,7 @@ describe("broken tracks", () => {
     applyCommand(state, "A", { type: "cmd.attack", ids: [tank.id], targetId: front.id });
     for (let i = 0; i < 6; i++) step(state, TICK_DT);
     assert.ok(tank.mgAmmo < TANK_MG.ammo, `front mgAmmo=${tank.mgAmmo}`);
-    assert.equal(tank.ammo.ap, 12);
+    assert.equal(tank.ammo.ap, 11, "the cannon still fires down the frozen hull");
 
     const { state: s2 } = twoPlayerMatch();
     clearCover(s2);
@@ -1570,5 +1668,61 @@ describe("ss3 casemate", () => {
     }
     assert.equal(fired, true, "should fire once the hull faces the target");
     assert.ok(Math.abs(gun.facing) < 0.2, `facing=${gun.facing}`);
+  });
+});
+
+describe("walker gatlings", () => {
+  it("fires both guns for four rounds and stops when the rack is empty", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const shooter = makeEntity(state, "walker", "A", tileCenter(12, ts), tileCenter(12, ts));
+    const target = makeEntity(state, "rifleman", "B", tileCenter(16, ts), tileCenter(12, ts));
+    target.holdPosition = true;
+    target.cooldown = 99;
+    shooter.facing = 0;
+    shooter.order = { kind: "attack", targetId: target.id };
+    tickCombat(state, TICK_DT);
+    const shots = state.projectiles.filter((p) => p.fromId === shooter.id);
+    assert.equal(shots.length, 4);
+    assert.equal(shooter.clip, catalog("walker").belt! - 4);
+    assert.equal(shooter.reload, 0);
+
+    shooter.clip = 0;
+    shooter.cooldown = 0;
+    state.projectiles.length = 0;
+    tickCombat(state, TICK_DT);
+    assert.equal(state.projectiles.filter((p) => p.fromId === shooter.id).length, 0);
+    assert.equal(shooter.reload, 0);
+  });
+
+  it("fires one gatling when set to conserve, and splits both guns across two targets", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const shooter = makeEntity(state, "walker", "A", tileCenter(20, ts), tileCenter(20, ts));
+    const front = makeEntity(state, "rifleman", "B", tileCenter(24, ts), tileCenter(20, ts));
+    const flank = makeEntity(state, "rifleman", "B", tileCenter(23, ts), tileCenter(23, ts));
+    for (const t of [front, flank]) {
+      t.holdPosition = true;
+      t.cooldown = 99;
+    }
+    shooter.facing = 0;
+    shooter.gatlingGuns = 1;
+    shooter.order = { kind: "attack", targetId: front.id };
+    tickCombat(state, TICK_DT);
+    const one = state.projectiles.filter((p) => p.fromId === shooter.id);
+    assert.equal(one.length, 2);
+    assert.ok(one.every((p) => Math.abs(p.vy) < Math.abs(p.vx) * 0.25), "one gun stays on the ordered target");
+
+    shooter.gatlingGuns = 2;
+    shooter.cooldown = 0;
+    state.projectiles.length = 0;
+    tickCombat(state, TICK_DT);
+    const both = state.projectiles.filter((p) => p.fromId === shooter.id);
+    const onFront = both.filter((p) => Math.abs(p.vy) < Math.abs(p.vx) * 0.25);
+    const onFlank = both.filter((p) => p.vy > Math.abs(p.vx) * 0.35);
+    assert.equal(onFront.length, 2);
+    assert.equal(onFlank.length, 2);
   });
 });

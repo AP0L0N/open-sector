@@ -64,7 +64,7 @@ export function turnToward(e: Entity, tx: number, ty: number, degPerSec: number,
 
 /** Hull stays on the bow heading and the tracks roll backward. */
 export function reversing(e: Entity): boolean {
-  if (!catalog(e.type).turnInPlace) return false;
+  if (!catalog(e.type).turnInPlace || catalog(e.type).noReverse) return false;
   const kind = e.order?.kind;
   if (kind !== "move" && kind !== "attackmove") return false;
   const wp = e.waypoints[0];

@@ -8,6 +8,7 @@ import {
   HAULER_SMOKE_CHARGES,
   ammoOf,
   armorLabel,
+  beltOf,
   catalog,
   colorHex,
   getMap,
@@ -27,6 +28,7 @@ import {
   specialLabel,
   specialOf,
   specialReady,
+  WALKER_GUN_MODES,
   type BuildingType,
   type EntityType,
   type EntityView,
@@ -503,7 +505,13 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     : isInfantryType(e.type) && e.stance
       ? `  ·  ${STANCE_LABEL[e.stance]}${e.stanceOrder && e.stanceOrder !== e.stance ? " (under fire)" : ""}`
       : "";
-  const gun = isInfantryType(e.type) ? infantryGunFor(e) : null;
+  const belt = beltOf(e.type);
+  const walkerMode = e.type === "walker" ? WALKER_GUN_MODES.find((m) => m.guns === (e.guns === 1 ? 1 : 2)) : undefined;
+  const gun = isInfantryType(e.type)
+    ? infantryGunFor(e)
+    : belt
+      ? { name: walkerMode?.name ?? "Gatlings", clip: belt.clip }
+      : null;
   const mag =
     gun && e.clip != null && !e.wreck
       ? e.reload && e.reload > 0
@@ -542,6 +550,20 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
 
+function beltLine(live: EntityView[]): string {
+  const belt = live[0] ? beltOf(live[0].type) : null;
+  if (!belt) return "Gatlings";
+  if (live.length === 1) {
+    const e = live[0]!;
+    if ((e.reload ?? 0) > 0) return `Reloading ${e.reload!.toFixed(1)}s`;
+    return `Belt ${e.clip ?? 0}/${belt.clip}`;
+  }
+  const reloading = live.filter((e) => (e.reload ?? 0) > 0).length;
+  const rounds = live.reduce((n, e) => n + ((e.reload ?? 0) > 0 ? 0 : (e.clip ?? 0)), 0);
+  const cap = belt.clip * live.length;
+  return reloading ? `Belt ${rounds}/${cap} · ${reloading} reloading` : `Belt ${rounds}/${cap}`;
+}
+
 function infantryClipLine(live: EntityView[]): string {
   const gun = live[0] ? infantryGunFor(live[0]) : null;
   if (!gun) return "Small arms";
@@ -553,6 +575,12 @@ function infantryClipLine(live: EntityView[]): string {
       if ((e.bipod ?? 0) > 0) return `Setting bipod ${(e.bipod ?? 0).toFixed(1)}s`;
       return `Belt ${e.clip ?? 0}/${gun.clip}`;
     }
+    if (gun.id === "mortar") {
+      if (e.swimming) return `Bombs ${e.clip ?? 0}/${gun.clip} · the tube stays dry`;
+      if ((e.stance ?? "stand") !== "crouch") return `Bombs ${e.clip ?? 0}/${gun.clip} · kneel to plant`;
+      if ((e.bipod ?? 0) > 0) return `Planting ${(e.bipod ?? 0).toFixed(1)}s`;
+      return `Bombs ${e.clip ?? 0}/${gun.clip}`;
+    }
     return `Clip ${e.clip ?? 0}/${gun.clip}`;
   }
   const reloading = live.filter((e) => (e.reload ?? 0) > 0).length;
@@ -562,7 +590,7 @@ function infantryClipLine(live: EntityView[]): string {
 }
 
 function loadoutButton(opts: {
-  attr: "data-shell" | "data-weapon";
+  attr: "data-shell" | "data-weapon" | "data-guns";
   id: string;
   name: string;
   blurb: string;
@@ -606,9 +634,12 @@ function infantryClipShown(e: EntityView, gunId: string): number {
 const TYPE_ORDER: EntityType[] = [
   "warden",
   "ss3",
+  "walker",
   "hauler",
   "rifleman",
   "gunner",
+  "sniper",
+  "mortarman",
   "rig",
   "core",
   "dynamo",
@@ -673,11 +704,13 @@ function configBodyLayout(focus: EntityView, live: EntityView[], wrecks: EntityV
   const def = catalog(focus.type);
   const mine = live.filter((e) => e.ownerId === you);
   const parts = [focus.type, "live"];
-  if (hasAmmo(focus.type)) parts.push("ammo");
+  if (focus.type === "walker") parts.push("gatling");
+  else if (hasAmmo(focus.type)) parts.push("ammo");
   else if (isInfantryType(focus.type)) {
     parts.push("inf", infantryLoadout(focus.type).map((g) => g.id).join("+"));
     if (mine.length > 0 && infantryLoadout(focus.type).length > 0) parts.push("guns");
-  } else if (focus.kind === "unit" && def.damage > 0) parts.push("smallarms");
+  } else if (beltOf(focus.type)) parts.push("belt");
+  else if (focus.kind === "unit" && def.damage > 0) parts.push("smallarms");
   if (isInfantryType(focus.type)) parts.push("posture");
   if (hasMg(focus.type)) parts.push("mg");
   if (hasScout(focus.type)) parts.push("scout");
@@ -716,7 +749,23 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
   const def = catalog(focus.type);
   const mine = live.filter((e) => e.ownerId === you);
   body.append(el("div", { class: "config-kicker", attrs: { "data-field": "kicker" } }));
-  if (hasAmmo(focus.type)) {
+  if (focus.type === "walker") {
+    const rack = el("div", { class: "shell-rack" });
+    for (const mode of WALKER_GUN_MODES) {
+      rack.append(
+        loadoutButton({
+          attr: "data-guns",
+          id: String(mode.guns),
+          name: mode.name,
+          blurb: mode.blurb,
+          count: "0",
+          on: false,
+        }),
+      );
+    }
+    body.append(el("div", { class: "tiny", text: "Gatling" }), rack);
+    body.append(el("p", { class: "tiny", attrs: { "data-field": "clip" } }));
+  } else if (hasAmmo(focus.type)) {
     const rack = el("div", { class: "shell-rack" });
     const table = shellsFor(focus.type);
     for (const id of SHELL_TYPES) {
@@ -735,6 +784,8 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
       }
       body.append(el("div", { class: "tiny", text: "Weapon" }), rack);
     }
+    body.append(el("p", { class: "tiny", attrs: { "data-field": "clip" } }));
+  } else if (beltOf(focus.type)) {
     body.append(el("p", { class: "tiny", attrs: { "data-field": "clip" } }));
   } else if (focus.kind === "unit" && def.damage > 0) {
     body.append(el("p", { class: "tiny", text: "Small arms · unlimited" }));
@@ -766,7 +817,22 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
   setField(body, "kicker", live.length > 1 ? `${def.name}  ×${live.length}` : def.name);
   const kicker = body.querySelector('[data-field="kicker"]');
   if (kicker instanceof HTMLElement && def.blurb) kicker.title = def.blurb;
-  if (hasAmmo(focus.type)) {
+  if (focus.type === "walker") {
+    const mine = live.filter((e) => e.ownerId === you);
+    const guns = mine.length > 0 ? (mine[0]!.guns === 1 ? 1 : 2) : 2;
+    const same = mine.every((e) => (e.guns === 1 ? 1 : 2) === guns);
+    for (const mode of WALKER_GUN_MODES) {
+      const btn = body.querySelector(`[data-guns="${mode.guns}"]`);
+      if (!(btn instanceof HTMLElement)) continue;
+      const left = mine.reduce((n, ent) => n + (ent.clip ?? 0), 0);
+      updateLoadoutButton(btn, {
+        count: String(left),
+        on: same && guns === mode.guns,
+        empty: left <= 0,
+      });
+    }
+    setField(body, "clip", beltLine(live));
+  } else if (hasAmmo(focus.type)) {
     const shells = live.filter((e) => e.ownerId === you);
     const same = shells.length > 0 && shells.every((e) => e.shell === shells[0]!.shell);
     for (const id of SHELL_TYPES) {
@@ -799,6 +865,8 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
       }
     }
     setField(body, "clip", infantryClipLine(live));
+  } else if (beltOf(focus.type)) {
+    setField(body, "clip", beltLine(live));
   }
   if (isInfantryType(focus.type)) {
     const swimming = live.every((e) => e.swimming);
@@ -819,7 +887,11 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
         ? "Swimming — small arms stay dry until they reach shore."
         : focus.type === "gunner"
           ? "Crawl and set the bipod. The MG42 fires only from the prone."
-          : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",
+          : focus.type === "sniper"
+            ? "Scoped rifle. He sees farther. Crouch or crawl to tighten the shot. A broken arm puts the rifle down."
+            : focus.type === "mortarman"
+              ? "Kneel and plant the tube. The bomb lobs past what he can see. Too close and it will not drop."
+              : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",
     );
   }
   if (hasMg(focus.type)) {
@@ -1121,6 +1193,15 @@ function runConfigAction(ctx: Ctx, t: HTMLElement): void {
     return;
   }
   if (!viewRef || !ctx.match) return;
+  const guns = t.dataset.guns;
+  if (guns === "1" || guns === "2") {
+    const ids = selectedOfType(ctx, viewRef, configFocus)
+      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck && ent.type === "walker")
+      .map((ent) => ent.id);
+    if (ids.length === 0) return;
+    ctx.net.send({ type: "cmd.guns", ids, guns: guns === "1" ? 1 : 2 });
+    return;
+  }
   const weapon = t.dataset.weapon;
   if (weapon) {
     if (!isInfantryWeaponId(weapon)) return;

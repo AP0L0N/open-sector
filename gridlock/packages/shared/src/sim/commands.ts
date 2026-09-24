@@ -62,6 +62,9 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
     case "cmd.weapon":
       if (!isInfantryWeaponId(msg.weapon)) return fail("bad_payload", "Unknown weapon.");
       return cmdWeapon(state, playerId, msg.ids, msg.weapon);
+    case "cmd.guns":
+      if (msg.guns !== 1 && msg.guns !== 2) return fail("bad_payload", "Unknown gatling setting.");
+      return cmdGuns(state, playerId, msg.ids, msg.guns);
     case "cmd.build":
       if (!isBuildingType(msg.building)) return fail("bad_payload", "Unknown structure.");
       return wrap(startBuild(state, playerId, msg.building), "no_core");
@@ -538,6 +541,13 @@ function cmdAmmo(state: MatchState, playerId: string, ids: number[], shell: Shel
   const units = owned(state, playerId, ids).filter((e) => hasAmmo(e.type));
   if (units.length === 0) return fail("not_yours", "No guns with a rack.");
   for (const e of units) e.shell = shell;
+  return ok();
+}
+
+function cmdGuns(state: MatchState, playerId: string, ids: number[], guns: 1 | 2): CmdResult {
+  const units = owned(state, playerId, ids).filter((e) => e.type === "walker");
+  if (units.length === 0) return fail("not_yours", "Select a Walker.");
+  for (const e of units) e.gatlingGuns = guns;
   return ok();
 }
 

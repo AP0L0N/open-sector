@@ -11,7 +11,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 24;
+export const PROTOCOL_VERSION = 29;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -118,11 +118,13 @@ export interface EntityView {
   mgOverheat?: number;
   /** Selected infantry gun. Allied infantry only. */
   weapon?: InfantryWeaponId;
-  /** Allied infantry magazine. Omitted for enemies and non-infantry. */
+  /** Allied infantry magazine, or the Walker's backpack rack. */
   clip?: number;
+  /** Walker arms selected. 1 or 2. Omitted for everyone else. */
+  guns?: 1 | 2;
   /** Seconds left on a magazine change. Allied infantry. Omitted when idle. */
   reload?: number;
-  /** Seconds until a prone gunner's bipod is set. Omitted once the MG42 can fire. */
+  /** Seconds until a planted support weapon can fire. Gunner bipod, or the mortar tube. Omitted once it is set. */
   bipod?: number;
   /** Unit is inside this building. Friendly snapshots only. */
   garrisonedIn?: number;
@@ -196,6 +198,16 @@ export interface ProjectileView {
   bounced: boolean;
   /** Loaded 75mm type. Omitted for small-arms. */
   shell?: ShellType;
+  /** Air height in elevation units. Mortar bombs only. */
+  z?: number;
+  /** Arcing mortar bomb. Omitted for direct fire. */
+  mortar?: boolean;
+  /** Peak air height in elevation units. Mortar bombs only. */
+  apex?: number;
+  /** 0 at the tube, 1 at the ground. Mortar bombs only. */
+  arc?: number;
+  /** Seconds from the tube to the ground. Mortar bombs only. */
+  hang?: number;
 }
 
 export type ImpactKind = "miss" | "puff" | "crush" | "ricochet" | "glance" | "hit" | "pen" | "kill";
@@ -218,6 +230,8 @@ export interface ImpactView {
   fromId?: number;
   /** Loaded 75mm type. Omitted for small-arms and crush. */
   shell?: ShellType;
+  /** Mortar bomb. The burst is a vertical dirt or water column, not a tank cone. */
+  mortar?: boolean;
 }
 
 /** Blood droplet around a corpse. World pixels. */
@@ -252,9 +266,11 @@ export interface ShellHoleView {
   y: number;
   /** World-pixel radius. Scales with caliber. */
   radius: number;
-  /** Incoming bearing, world radians. */
+  /** Incoming bearing, world radians. Unused when `round` is set. */
   ang: number;
   seed: number;
+  /** Vertical hit. The scar is a circle on the ground, not a gouge. */
+  round?: boolean;
 }
 
 /** Lasting artillery smoke screen. Blocks vision for every player. */
@@ -321,6 +337,7 @@ export type ClientMessage =
   | { type: "cmd.harvest"; ids: number[]; tileX?: number; tileY?: number }
   | { type: "cmd.ammo"; ids: number[]; shell: ShellType }
   | { type: "cmd.weapon"; ids: number[]; weapon: InfantryWeaponId }
+  | { type: "cmd.guns"; ids: number[]; guns: 1 | 2 }
   | { type: "cmd.build"; building: BuildingType }
   | { type: "cmd.place"; building: BuildingType; tx: number; ty: number }
   | { type: "cmd.train"; unit: TrainType }

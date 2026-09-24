@@ -330,6 +330,12 @@ describe("smoke screens", () => {
   it("blocks sight through the cloud for every player", () => {
     const { state, a, b } = twoPlayerMatch();
     state.heights.fill(0);
+    for (let i = 0; i < state.terrain.length; i++) {
+      if (state.terrain[i] === TILE_TREE) state.terrain[i] = TILE_EMPTY;
+    }
+    for (const e of [...state.entities.values()]) {
+      if (isCivilianType(e.type)) destroyEntity(state, e);
+    }
     const ts = state.tileSize;
     const ox = 30;
     const oy = 30;

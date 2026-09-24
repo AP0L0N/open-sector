@@ -1,6 +1,11 @@
 import {
   aimFacing,
+  beltOf,
   MG42_BIPOD_SECONDS,
+  MORTAR,
+  MORTAR_MIN_RANGE_TILES,
+  MORTAR_PLANT_SECONDS,
+  MORTAR_SPLASH_TILES,
   catalog,
   gunArcDegOf,
   GARRISON_STRUCTURAL_CALIBER,
@@ -9,6 +14,8 @@ import {
   HAULER_SMOKE_RELOAD,
   PROJECTILE_RADIUS,
   TANK_MG,
+  WALKER_ONE_BURST,
+  walkerGunsOf,
   TREE_COVER_HEIGHT,
   TREE_HIT_CHANCE,
   WEAPON_RANGE_SIGHT_MUL,
@@ -20,6 +27,7 @@ import {
   hasMg,
   hasTurret,
   infantryGunFor,
+  scopedHpFraction,
   entityIsScouting,
   isGarrisonable,
   isInfantryType,
@@ -29,7 +37,6 @@ import {
   pickLoadedShell,
   reloadSecondsOf,
   type CatalogEntry,
-  type InfantryGun,
   type ShellType,
 } from "../catalog.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
@@ -76,6 +83,14 @@ import {
   pickGarrisonMuzzle,
   woundGarrison,
 } from "./garrison.js";
+import {
+  mortarAirZ,
+  mortarApex,
+  mortarFalloff,
+  mortarFlightSeconds,
+  mortarLanding,
+  mortarScatterRadius,
+} from "./mortar.js";
 import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
 import { spawnSmokeCloud } from "./smoke.js";
@@ -153,7 +168,13 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
     }
   }
 
-  if (target && e.order?.kind !== "forceattack" && !canSeeEntity(state, e.ownerId, target)) {
+  // A mortar lobs past the soldier's own eyes. Direct fire still drops an unseen target.
+  if (
+    target &&
+    e.type !== "mortarman" &&
+    e.order?.kind !== "forceattack" &&
+    !canSeeEntity(state, e.ownerId, target)
+  ) {
     if (e.order?.auto) {
       e.order = null;
       e.attackTarget = null;
@@ -214,7 +235,7 @@ function skipsFriendly(state: MatchState, e: Entity, target: Entity): boolean {
   return !target.wreck && allies(state, e.ownerId, target.ownerId);
 }
 
-/** Auto-fire stops once a hull is wrecked so the wreck stays. Player attack / force-attack can still demolish it. */
+/** Auto-fire stops once a hull is wrecked so the wreck stays. A player order can still shoot it. */
 function dropsWreck(e: Entity, target: Entity): boolean {
   if (!target.wreck) return false;
   if (e.order?.kind === "forceattack") return false;
@@ -265,6 +286,10 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     if (!holedUp) e.state = "attack";
     return;
   }
+  if (e.type === "mortarman" && dist < MORTAR_MIN_RANGE_TILES * state.tileSize) {
+    if (!holedUp) e.state = "attack";
+    return;
+  }
   if (!canAimWeapon(state, e, aimX, aimY, target)) {
     if (!holedUp) e.state = "attack";
     return;
@@ -284,8 +309,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   // Broken tracks: hull is frozen, so the MG only bears along current hull facing.
   // Healthy coaxial MG still follows the turret / casemate gun arc.
   const mgArcOk = tracksBroken ? hullArcOk : gunArcOk;
-  if (useMg && target && mgArcOk) {
-    if (e.mgCooldown > 0 || e.mgOverheat > 0 || e.mgAmmo <= 0) return;
+  if (useMg && target && mgArcOk && e.mgCooldown <= 0 && e.mgOverheat <= 0 && e.mgAmmo > 0) {
     fireRound(
       state,
       e,
@@ -311,21 +335,43 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     e.mgAmmo = Math.max(0, e.mgAmmo - 1);
     e.mgHeat = Math.min(TANK_MG.heatMax, e.mgHeat + TANK_MG.heatPerShot);
     if (e.mgHeat >= TANK_MG.heatMax) e.mgOverheat = TANK_MG.overheatSeconds;
-    return;
   }
+  // Infantry take the coaxial and the main gun together. An exposed hatch on an
+  // armored hull still takes the MG alone, and only while that gun can bear.
+  if (useMg && target && mgArcOk && !isInfantryType(target.type)) return;
 
   if (!holedUp && !gunArcOk) return;
+
+  if (e.type === "walker") {
+    fireWalker(state, e, aimX, aimY, range, dist, target);
+    return;
+  }
 
   if (e.type === "gunner" && !gunnerReady(state, e)) {
     if (e.order?.kind !== "move" && !unitInWater(state, e) && e.garrisonedIn == null) e.stanceOrder = "crawl";
     return;
   }
+  if (e.type === "mortarman" && !mortarReady(state, e)) {
+    if (
+      e.order?.kind !== "move" &&
+      !unitInWater(state, e) &&
+      e.garrisonedIn == null &&
+      !hasCrit(e, "leg")
+    ) {
+      e.stanceOrder = "crouch";
+    }
+    return;
+  }
+  // A broken arm drops the scoped rifle. There is no sidearm to fall back on.
+  if (e.type === "sniper" && !infantryGunFor(e)) return;
 
   if (e.reload > 0) return;
   if (e.cooldown > 0) return;
   const infantryGun = infantryGunFor(e);
-  if (infantryGun && e.clip <= 0) {
-    beginReload(e, infantryGun);
+  const belt = beltOf(e.type);
+  if ((infantryGun || belt) && e.clip <= 0) {
+    const reloadSec = infantryGun?.reload ?? belt?.reload ?? 0;
+    if (reloadSec > 0) beginReload(e, infantryGun ?? { reload: reloadSec });
     return;
   }
   const shell = hasAmmo(e.type) ? pickLoadedShell(e.ammo, e.shell) : null;
@@ -333,10 +379,17 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (isSmokeShell(shell) && !mayFireSmoke(e)) return;
   if (shell) e.shell = shell;
   const gun = fireStats(e);
-  const burst = Math.max(1, infantryGun?.shotsPerTick ?? 1);
+  const burst = Math.max(1, infantryGun?.shotsPerTick ?? def.shotsPerTick ?? 1);
   let fired = 0;
   for (let i = 0; i < burst; i++) {
-    if (infantryGun && e.clip <= 0) break;
+    if ((infantryGun || belt) && e.clip <= 0) break;
+    if (infantryGun?.id === "mortar") {
+      launchMortar(state, e, aimX, aimY, range, dist, target);
+      fired++;
+      e.clip = Math.max(0, e.clip - 1);
+      if (e.clip <= 0) beginReload(e, infantryGun);
+      break;
+    }
     fireRound(
       state,
       e,
@@ -360,16 +413,181 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     );
     fired++;
     if (shell) e.ammo[shell] = Math.max(0, (e.ammo[shell] ?? 0) - 1);
-    if (infantryGun) {
+    if (infantryGun || belt) {
       e.clip = Math.max(0, e.clip - 1);
       if (e.clip <= 0) {
-        beginReload(e, infantryGun);
+        const reloadSec = infantryGun?.reload ?? belt?.reload ?? 0;
+        if (reloadSec > 0) beginReload(e, infantryGun ?? { reload: reloadSec });
         break;
       }
     }
   }
   if (fired > 0) e.cooldown = gun.cooldown;
   if (fired > 0 && e.order?.once) clearOrder(e);
+}
+
+function mortarReady(state: MatchState, e: Entity): boolean {
+  if (e.type !== "mortarman") return true;
+  if (unitInWater(state, e) || e.garrisonedIn != null) return false;
+  if (stanceOf(e) !== "crouch") return false;
+  if (hasCrit(e, "arm") || hasCrit(e, "leg")) return false;
+  if (e.state === "move") return false;
+  return e.bipod >= MORTAR_PLANT_SECONDS;
+}
+
+function launchMortar(
+  state: MatchState,
+  e: Entity,
+  aimX: number,
+  aimY: number,
+  range: number,
+  dist: number,
+  target: Entity | undefined,
+): void {
+  const moving = !!target && (target.waypoints.length > 0 || target.state === "move");
+  const posture = target ? stanceTargetSpreadMul(target, unitInWater(state, target)) : 1;
+  let mul = 1 + (posture - 1) * 0.25;
+  if (moving) mul *= 1.12;
+  const radius = mortarScatterRadius(dist, range, mul);
+  const land = mortarLanding(aimX, aimY, radius, () => nextRand(state));
+  const maxX = Math.max(1, state.width * state.tileSize - 1);
+  const maxY = Math.max(1, state.height * state.tileSize - 1);
+  land.x = Math.min(maxX, Math.max(0, land.x));
+  land.y = Math.min(maxY, Math.max(0, land.y));
+  const flight = mortarFlightSeconds(dist, range);
+  const p: Projectile = {
+    id: state.nextId++,
+    ownerId: e.ownerId,
+    team: playerTeam(state, e.ownerId),
+    x: e.x,
+    y: e.y,
+    vx: (land.x - e.x) / flight,
+    vy: (land.y - e.y) / flight,
+    damage: MORTAR.damage,
+    penetration: MORTAR.penetration,
+    caliber: MORTAR.caliber,
+    life: flight,
+    ignoreId: e.id,
+    fromId: e.id,
+    bounced: false,
+    shell: null,
+    flight: "mortar",
+    landX: land.x,
+    landY: land.y,
+    apex: mortarApex(dist, range),
+    flightTime: flight,
+    harmAllies: e.order?.kind === "forceattack",
+    z: 0,
+  };
+  state.projectiles.push(p);
+}
+
+function detonateMortar(state: MatchState, p: Projectile, rand: () => number): void {
+  const tx = worldToTile(p.x, state.tileSize);
+  const ty = worldToTile(p.y, state.tileSize);
+  if (isTree(state, tx, ty)) fellTreeAt(state, tx, ty);
+  const radius = MORTAR_SPLASH_TILES * state.tileSize;
+  for (const e of [...state.entities.values()]) {
+    if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null) continue;
+    const d = Math.hypot(e.x - p.x, e.y - p.y);
+    const reach =
+      e.kind === "building"
+        ? radius + Math.min(e.tileW, e.tileH) * state.tileSize * 0.25
+        : radius;
+    if (d > reach) continue;
+    const friendly = e.ownerId !== "" && allies(state, p.ownerId, e.ownerId);
+    if (friendly && !p.harmAllies) continue;
+    const scaled = Math.max(1, Math.round(p.damage * mortarFalloff(d, reach)));
+    const res = resolveHit({
+      gun: { damage: scaled, penetration: p.penetration, caliber: p.caliber },
+      target: catalog(e.type),
+      targetFacing: e.facing,
+      targetHp: e.hp,
+      targetHpMax: e.hpMax,
+      vx: p.vx || 0.01,
+      vy: p.vy,
+      rand,
+    });
+    const occupied = isGarrisonable(e.type) && livingGarrison(state, e).length > 0;
+    const chipWalls = !occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER;
+    if (chipWalls) {
+      e.hp = Math.max(0, e.hp - res.damage);
+      if (e.hp > 0) rollCrits(e, res.face, res.kind, res.damage, rand);
+      const smoked = maybeHaulerSmokeScreen(state, e, p);
+      if (e.hp > 0 && !smoked && res.kind !== "ricochet" && res.damage > 0) maybeWithdraw(state, e, p);
+      hideScout(state, e);
+    }
+    if (occupied) woundGarrison(state, e, res.damage, p.caliber);
+  }
+  pushImpact(state, p, "miss", p.x, p.y);
+}
+
+function fireWalker(
+  state: MatchState,
+  e: Entity,
+  aimX: number,
+  aimY: number,
+  range: number,
+  dist: number,
+  target: Entity | undefined,
+): void {
+  if (e.cooldown > 0 || e.clip <= 0) return;
+  const guns = walkerGunsOf(e);
+  const per = WALKER_ONE_BURST;
+  const second = guns === 2 && target ? walkerSecondTarget(state, e, target) : undefined;
+  const gun = fireStats(e);
+  const stats = {
+    damage: gun.damage,
+    penetration: gun.penetration,
+    caliber: gun.caliber,
+    spreadDeg: gun.spreadDeg,
+    projectileSpeed: catalog(e.type).projectileSpeed,
+  };
+  const shoot = (x: number, y: number, n: number, tgt: Entity | undefined, d: number) => {
+    for (let i = 0; i < n && e.clip > 0; i++) {
+      fireRound(state, e, x, y, stats, range, d, {
+        target: tgt,
+        accurateRange: accurateWeaponRange(e, range),
+        bearing: Math.atan2(y - e.y, x - e.x),
+      });
+      e.clip -= 1;
+    }
+  };
+  if (second) {
+    shoot(aimX, aimY, per, target, dist);
+    shoot(second.x, second.y, per, second, Math.hypot(second.x - e.x, second.y - e.y));
+  } else {
+    shoot(aimX, aimY, per * guns, target, dist);
+  }
+  e.cooldown = gun.cooldown;
+}
+
+/** Nearest other enemy the off-arm can already bear on. */
+function walkerSecondTarget(state: MatchState, e: Entity, primary: Entity): Entity | undefined {
+  const range = weaponRangeWorld(state, e);
+  const arc = gunArcDegOf(e.type);
+  let best: Entity | undefined;
+  let bestD = range * range;
+  for (const o of state.entities.values()) {
+    if (o.id === primary.id || o.id === e.id || o.hp <= 0 || o.wreck || o.garrisonedIn) continue;
+    if (allies(state, e.ownerId, o.ownerId)) continue;
+    if (
+      isGarrisonable(o.type) &&
+      (!garrisonLooksOccupied(state, e.ownerId, o) || !garrisonIsHostile(state, e.ownerId, o))
+    ) {
+      continue;
+    }
+    const dx = o.x - e.x;
+    const dy = o.y - e.y;
+    const d = dx * dx + dy * dy;
+    if (d > bestD) continue;
+    if (!canSeeEntity(state, e.ownerId, o)) continue;
+    if (!canAimWeapon(state, e, o.x, o.y, o)) continue;
+    if (Math.abs(hullAimRemainingDeg(e, o.x, o.y)) > arc) continue;
+    bestD = d;
+    best = o;
+  }
+  return best;
 }
 
 function gunnerReady(state: MatchState, e: Entity): boolean {
@@ -380,7 +598,7 @@ function gunnerReady(state: MatchState, e: Entity): boolean {
   return e.bipod >= MG42_BIPOD_SECONDS;
 }
 
-function beginReload(e: Entity, gun: InfantryGun): void {
+function beginReload(e: Entity, gun: { reload: number }): void {
   if (e.reload > 0) return;
   e.reload = reloadSecondsOf(gun, e.reloadMul);
   e.cooldown = 0;
@@ -392,7 +610,9 @@ function tickWeaponClocks(e: Entity, dt: number): void {
     e.reload = Math.max(0, e.reload - dt);
     if (e.reload <= 0) {
       const gun = infantryGunFor(e);
+      const belt = beltOf(e.type);
       if (gun) e.clip = gun.clip;
+      else if (belt) e.clip = belt.clip;
     }
   }
   if (!hasMg(e.type)) return;
@@ -527,16 +747,56 @@ function fireRound(
     fromId: e.id,
     bounced: false,
     shell: opts?.shell ?? null,
+    hpFraction: infantryGunFor(e)?.id === "scoped" ? scopedHpFraction(dist, range) : undefined,
     z: z0,
     vz: ((zAim - z0) / Math.max(1e-6, aimDist)) * speed,
   };
   state.projectiles.push(p);
 }
 
+/**
+ * A wreck stays soft to shells, so a gun can still clear the hulk.
+ * Rifles and machine guns meet the plate and only spark. The floor is the
+ * lightest tank rear: a Walker's own rear is thin enough for a belt to chip.
+ */
+function wreckHitDef(e: Entity, caliber: number): CatalogEntry {
+  const live = catalog(e.type);
+  if (caliber >= GARRISON_STRUCTURAL_CALIBER || !isArmored(live)) {
+    return { ...live, armorFront: 0, armorSide: 0, armorRear: 0 };
+  }
+  const plate = (n: number) => Math.max(n, 16);
+  return {
+    ...live,
+    armorFront: plate(live.armorFront),
+    armorSide: plate(live.armorSide),
+    armorRear: plate(live.armorRear),
+  };
+}
+
 export function tickProjectiles(state: MatchState, dt: number): void {
   const keep: Projectile[] = [];
   const rand = () => nextRand(state);
   for (const p of state.projectiles) {
+    if (p.flight === "mortar") {
+      const total = p.flightTime ?? Math.max(0.05, p.life);
+      const stepDt = p.life > 0 ? Math.min(dt, p.life) : 0;
+      p.x += p.vx * stepDt;
+      p.y += p.vy * stepDt;
+      p.life -= dt;
+      const u = Math.min(1, Math.max(0, (total - Math.max(0, p.life)) / total));
+      p.z = mortarAirZ(u, p.apex ?? 0);
+      if (p.life > 0) {
+        keep.push(p);
+        continue;
+      }
+      if (p.landX != null && p.landY != null) {
+        p.x = p.landX;
+        p.y = p.landY;
+      }
+      p.z = 0;
+      detonateMortar(state, p, rand);
+      continue;
+    }
     const x0 = p.x;
     const y0 = p.y;
     const z0 = p.z ?? 0;
@@ -581,11 +841,15 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       pushImpact(state, p, "hit", e.x, e.y);
       continue;
     }
-    const targetDef = e.wreck
-      ? { ...catalog(e.type), armorFront: 0, armorSide: 0, armorRear: 0 }
-      : catalog(e.type);
+    const targetDef = e.wreck ? wreckHitDef(e, p.caliber) : catalog(e.type);
+    const frac = p.hpFraction;
+    const scopedInfantry = frac != null && isInfantryType(e.type) && !e.wreck;
     const res = resolveHit({
-      gun: { damage: p.damage, penetration: p.penetration, caliber: p.caliber },
+      gun: {
+        damage: scopedInfantry ? Math.max(1, Math.round(e.hpMax * frac)) : p.damage,
+        penetration: p.penetration,
+        caliber: p.caliber,
+      },
       target: targetDef,
       targetFacing: e.facing,
       targetHp: e.hp,
@@ -593,6 +857,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       vx: p.vx,
       vy: p.vy,
       rand,
+      exact: scopedInfantry,
     });
     const occupied = isGarrisonable(e.type) && livingGarrison(state, e).length > 0;
     const chipWalls = !occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER;
@@ -679,6 +944,7 @@ function pushImpact(
     vy: vy ?? p.vy,
     caliber: p.caliber,
     blast: blast || undefined,
+    mortar: p.flight === "mortar" ? true : undefined,
   };
   noteImpactSurface(state, impact, p, kind);
   state.impacts.push(impact);
@@ -859,7 +1125,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     const d = dx * dx + dy * dy;
     if (d > bestD) continue;
     if (coneOnly && !inGuardCone(e, o)) continue;
-    if (!canSeeEntity(state, e.ownerId, o)) continue;
+    if (e.type !== "mortarman" && !canSeeEntity(state, e.ownerId, o)) continue;
     if (!canAimWeapon(state, e, o.x, o.y, o)) continue;
     bestD = d;
     best = o;

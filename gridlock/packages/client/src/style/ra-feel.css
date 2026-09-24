@@ -528,6 +528,12 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="gunner"] {
   background-image: url("../assets/units/gunner-cameo.png");
 }
+.prod-job[data-type="sniper"] {
+  background-image: url("../assets/units/sniper-cameo.png");
+}
+.prod-job[data-type="mortarman"] {
+  background-image: url("../assets/units/mortarman-cameo.png");
+}
 .prod-job[data-type="hauler"] {
   background-image: url("../assets/units/hauler-cameo.png");
 }
@@ -536,6 +542,9 @@ input[type="range"] { padding: 0; }
 }
 .prod-job[data-type="ss3"] {
   background-image: var(--ss3-cameo, url("../assets/units/ss3-cameo.png"));
+}
+.prod-job[data-type="walker"] {
+  background-image: url("../assets/units/walker-cameo.png");
 }
 
 #map-canvas {
@@ -682,9 +691,12 @@ input[type="range"] { padding: 0; }
 .cameo.scrap-denied .cameo-deny { display: flex; }
 #train-rifleman,
 #train-gunner,
+#train-sniper,
+#train-mortarman,
 #train-hauler,
 #train-warden,
 #train-ss3,
+#train-walker,
 #build-dynamo,
 #build-smelter,
 #build-muster,
@@ -703,6 +715,16 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/gunner-cameo.png");
 }
+#train-sniper {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/sniper-cameo.png");
+}
+#train-mortarman {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/mortarman-cameo.png");
+}
 #train-hauler {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
@@ -717,6 +739,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     var(--ss3-cameo, url("../assets/units/ss3-cameo.png"));
+}
+#train-walker {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/walker-cameo.png");
 }
 .cameo-count {
   position: absolute;
@@ -904,9 +931,15 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="rifleman"] { background-image: url("../assets/units/trooper-cameo.png"); }
 .config-type[data-type="gunner"],
 .prod-job[data-type="gunner"] { background-image: url("../assets/units/gunner-cameo.png"); }
+.config-type[data-type="sniper"],
+.prod-job[data-type="sniper"] { background-image: url("../assets/units/sniper-cameo.png"); }
+.config-type[data-type="mortarman"],
+.prod-job[data-type="mortarman"] { background-image: url("../assets/units/mortarman-cameo.png"); }
 .config-type[data-type="hauler"] { background-image: url("../assets/units/hauler-cameo.png"); }
 .config-type[data-type="warden"] { background-image: var(--tiger-cameo, url("../assets/units/tiger-cameo.png")); }
 .config-type[data-type="ss3"] { background-image: var(--ss3-cameo, url("../assets/units/ss3-cameo.png")); }
+.config-type[data-type="walker"],
+.prod-job[data-type="walker"] { background-image: url("../assets/units/walker-cameo.png"); }
 .config-type[data-type="rig"] { background-image: url("../assets/units/rig-cameo.png"); }
 .config-type[data-type="dynamo"] { background-image: url("../assets/buildings/dynamo-cameo.png"); }
 .config-type[data-type="smelter"] { background-image: url("../assets/buildings/smelter-cameo.png"); }

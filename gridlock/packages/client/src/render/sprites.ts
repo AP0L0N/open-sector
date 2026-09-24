@@ -53,14 +53,28 @@ import chapelUrl from "../assets/buildings/chapel.png";
 import chapelSUrl from "../assets/buildings/chapel-s.png";
 import chapelWUrl from "../assets/buildings/chapel-w.png";
 import chapelNUrl from "../assets/buildings/chapel-n.png";
-import oakUrl from "../assets/terrain/tree-oak.png";
-import pineUrl from "../assets/terrain/tree-pine.png";
-import scrapAUrl from "../assets/terrain/scrap-a.png";
-import bushAUrl from "../assets/terrain/bush-a.png";
-import bushBUrl from "../assets/terrain/bush-b.png";
+import oak1Url from "../assets/terrain/tree-oak-1.png";
+import oak2Url from "../assets/terrain/tree-oak-2.png";
+import oak3Url from "../assets/terrain/tree-oak-3.png";
+import pine1Url from "../assets/terrain/tree-pine-1.png";
+import pine2Url from "../assets/terrain/tree-pine-2.png";
+import pine3Url from "../assets/terrain/tree-pine-3.png";
+import scrap1Url from "../assets/terrain/scrap-1.png";
+import scrap3Url from "../assets/terrain/scrap-3.png";
+import bush1Url from "../assets/terrain/bush-1.png";
+import bush2Url from "../assets/terrain/bush-2.png";
+import bush3Url from "../assets/terrain/bush-3.png";
+import tuft1Url from "../assets/terrain/tuft-1.png";
+import tuft2Url from "../assets/terrain/tuft-2.png";
+import tuft3Url from "../assets/terrain/tuft-3.png";
+import fenceXUrl from "../assets/terrain/fence-x.png";
+import fenceYUrl from "../assets/terrain/fence-y.png";
 import waterUrl from "../assets/terrain/water.png";
 import waterBUrl from "../assets/terrain/water-b.png";
-import grassUrl from "../assets/terrain/grass.png";
+import grassMeadowUrl from "../assets/terrain/grass-meadow.png";
+import grassDryUrl from "../assets/terrain/grass-dry.png";
+import grassDampUrl from "../assets/terrain/grass-damp.png";
+import dirtUrl from "../assets/terrain/ground-dirt.png";
 import trooperSheetUrl from "../assets/units/trooper-walk.png";
 import trooperCrouchUrl from "../assets/units/trooper-crouch.png";
 import trooperCrawlUrl from "../assets/units/trooper-crawl.png";
@@ -72,8 +86,19 @@ import gunnerCrouchUrl from "../assets/units/gunner-crouch.png";
 import gunnerCrawlUrl from "../assets/units/gunner-crawl.png";
 import gunnerFireUrl from "../assets/units/gunner-fire.png";
 import gunnerDieUrl from "../assets/units/gunner-die.png";
+import sniperWalkUrl from "../assets/units/sniper-walk.png";
+import sniperCrouchUrl from "../assets/units/sniper-crouch.png";
+import sniperCrawlUrl from "../assets/units/sniper-crawl.png";
+import sniperFireUrl from "../assets/units/sniper-fire.png";
+import sniperDieUrl from "../assets/units/sniper-die.png";
+import mortarmanWalkUrl from "../assets/units/mortarman-walk.png";
+import mortarmanCrouchUrl from "../assets/units/mortarman-crouch.png";
+import mortarmanCrawlUrl from "../assets/units/mortarman-crawl.png";
+import mortarmanFireUrl from "../assets/units/mortarman-fire.png";
+import mortarmanDieUrl from "../assets/units/mortarman-die.png";
 import infantrySwimUrl from "../assets/units/infantry-swim.png";
 import haulerSheetUrl from "../assets/units/hauler-move.png";
+import walkerSheetUrl from "../assets/units/walker-move.png";
 import { bindCasemateSheets, bindTurntableSheets } from "./turntable-sheet.js";
 import { engineRowFromFacing, engineRowFromScreen } from "./turntable.js";
 import scoutHeadUrl from "../assets/units/scout-head.png";
@@ -250,6 +275,118 @@ export const GUNNER_DIE_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
+export const SNIPER_SPRITE: UnitSpriteDef = {
+  image: loadSheet(sniperWalkUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+export const SNIPER_CROUCH_SPRITE: UnitSpriteDef = {
+  image: loadSheet(sniperCrouchUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.88,
+  facingSpace: "world",
+};
+
+export const SNIPER_CRAWL_SPRITE: UnitSpriteDef = {
+  image: loadSheet(sniperCrawlUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 10,
+  drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
+  contactY: 0.72,
+  facingSpace: "world",
+};
+
+/** Standing scoped shot. Played once, then the walk sheet returns. */
+export const SNIPER_FIRE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(sniperFireUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+export const SNIPER_DIE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(sniperDieUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.82,
+  facingSpace: "world",
+};
+
+export const MORTARMAN_SPRITE: UnitSpriteDef = {
+  image: loadSheet(mortarmanWalkUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+export const MORTARMAN_CROUCH_SPRITE: UnitSpriteDef = {
+  image: loadSheet(mortarmanCrouchUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.88,
+  facingSpace: "world",
+};
+
+export const MORTARMAN_CRAWL_SPRITE: UnitSpriteDef = {
+  image: loadSheet(mortarmanCrawlUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 10,
+  drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
+  contactY: 0.72,
+  facingSpace: "world",
+};
+
+/** Kneeling mortar shot. Played once, then the crouch sheet returns. */
+export const MORTARMAN_FIRE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(mortarmanFireUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.88,
+  facingSpace: "world",
+};
+
+export const MORTARMAN_DIE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(mortarmanDieUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.82,
+  facingSpace: "world",
+};
+
 /** Shared swim sheet for every infantry type. */
 export const INFANTRY_SWIM_SPRITE: UnitSpriteDef = {
   image: loadSheet(infantrySwimUrl),
@@ -320,6 +457,17 @@ export const SS3_SPRITE: UnitSpriteDef = {
 };
 bindCasemateSheets(SS3_SPRITE.image, ss3Gun.image);
 
+export const WALKER_SPRITE: UnitSpriteDef = {
+  image: loadSheet(walkerSheetUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 128,
+  fps: 10,
+  drawSize: 24,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
 export const HAULER_SPRITE: UnitSpriteDef = {
   image: loadSheet(haulerSheetUrl),
   dirs: 16,
@@ -345,6 +493,7 @@ export const RIG_SPRITE: UnitSpriteDef = {
 const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   rifleman: TROOPER_SPRITE,
   hauler: HAULER_SPRITE,
+  walker: WALKER_SPRITE,
   warden: TIGER_SPRITE,
   ss3: SS3_SPRITE,
   rig: RIG_SPRITE,
@@ -361,6 +510,16 @@ export function spriteFor(type: EntityType, stance?: Stance, swimming = false): 
     if (stance === "crouch") return GUNNER_CROUCH_SPRITE;
     if (stance === "crawl") return GUNNER_CRAWL_SPRITE;
     return GUNNER_SPRITE;
+  }
+  if (type === "sniper") {
+    if (stance === "crouch") return SNIPER_CROUCH_SPRITE;
+    if (stance === "crawl") return SNIPER_CRAWL_SPRITE;
+    return SNIPER_SPRITE;
+  }
+  if (type === "mortarman") {
+    if (stance === "crouch") return MORTARMAN_CROUCH_SPRITE;
+    if (stance === "crawl") return MORTARMAN_CRAWL_SPRITE;
+    return MORTARMAN_SPRITE;
   }
   return UNIT_SPRITES[type];
 }
@@ -465,24 +624,53 @@ function prop(src: string, contactX: number, contactY: number): PropSprite {
   return { image: loadSheet(src), contactX, contactY };
 }
 
-export const TREE_OAK = prop(oakUrl, 388, 768);
-export const TREE_PINE = prop(pineUrl, 382, 1130);
-export const SCRAP_A = prop(scrapAUrl, 406, 567);
-export const BUSH_A = prop(bushAUrl, 364, 573);
-export const BUSH_B = prop(bushBUrl, 346, 371);
+/** Trunk contact, measured on the keyed sheet. Each entry is a different yaw. */
+export const OAK_FACES: PropSprite[] = [
+  prop(oak1Url, 296, 718),
+  prop(oak2Url, 362, 718),
+  prop(oak3Url, 311, 712),
+];
+export const PINE_FACES: PropSprite[] = [
+  prop(pine1Url, 184, 758),
+  prop(pine2Url, 278, 756),
+  prop(pine3Url, 186, 756),
+];
+export const BUSH_FACES: PropSprite[] = [
+  prop(bush1Url, 221, 278),
+  prop(bush2Url, 235, 314),
+  prop(bush3Url, 218, 280),
+];
+export const TUFT_FACES: PropSprite[] = [
+  prop(tuft1Url, 143, 315),
+  prop(tuft2Url, 140, 329),
+  prop(tuft3Url, 233, 334),
+];
+export const SCRAP_FACES: PropSprite[] = [prop(scrap1Url, 213, 278), prop(scrap3Url, 185, 417)];
+/** Rail runs down-right (world +x). Contact is midway between the post bases. */
+export const FENCE_X = prop(fenceXUrl, 300, 525);
+/** Rail runs down-left (world +y). */
+export const FENCE_Y = prop(fenceYUrl, 307, 480);
 export const WATER_TEX = loadSheet(waterUrl);
 export const WATER_TEX_B = loadSheet(waterBUrl);
-export const GRASS_TEX = loadSheet(grassUrl);
+export const GRASS_TEXS: HTMLImageElement[] = [
+  loadSheet(grassMeadowUrl),
+  loadSheet(grassDryUrl),
+  loadSheet(grassDampUrl),
+];
+export const DIRT_TEX = loadSheet(dirtUrl);
 
 export const PROP_IMAGES: HTMLImageElement[] = [
-  TREE_OAK.image,
-  TREE_PINE.image,
-  SCRAP_A.image,
-  BUSH_A.image,
-  BUSH_B.image,
+  ...OAK_FACES.map((f) => f.image),
+  ...PINE_FACES.map((f) => f.image),
+  ...BUSH_FACES.map((f) => f.image),
+  ...TUFT_FACES.map((f) => f.image),
+  ...SCRAP_FACES.map((f) => f.image),
+  FENCE_X.image,
+  FENCE_Y.image,
   WATER_TEX,
   WATER_TEX_B,
-  GRASS_TEX,
+  ...GRASS_TEXS,
+  DIRT_TEX,
   ...Object.values(CIV_FACES).flatMap((faces) => faces.map((f) => f.image)),
 ];
 

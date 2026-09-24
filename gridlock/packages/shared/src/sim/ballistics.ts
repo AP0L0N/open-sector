@@ -131,10 +131,14 @@ export function resolveHit(opts: {
   vx: number;
   vy: number;
   rand: () => number;
+  /** Use gun.damage as the final number. Scoped infantry hits set this. */
+  exact?: boolean;
 }): HitResolution {
   const { gun, target, rand } = opts;
   if (!isArmored(target) || target.kind === "building") {
-    const damage = Math.max(1, Math.round(gun.damage * (0.9 + rand() * 0.2)));
+    const damage = opts.exact
+      ? Math.min(opts.targetHp, Math.max(0, gun.damage))
+      : Math.max(1, Math.round(gun.damage * (0.9 + rand() * 0.2)));
     return {
       kind: damage >= opts.targetHp ? "kill" : "hit",
       face: hitFace(opts.targetFacing, opts.vx, opts.vy),

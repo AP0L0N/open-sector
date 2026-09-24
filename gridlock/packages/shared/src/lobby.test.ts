@@ -165,8 +165,8 @@ describe("lobby rules", () => {
   it("changing map resets spawns and ready", () => {
     const r = room();
     updateSelf(r, "host", { spawnId: 4, ready: true });
-    assert.equal(setMap(r, "host", "canal-48").ok, true);
-    assert.equal(r.mapId, "canal-48");
+    assert.equal(setMap(r, "host", "yard-64").ok, true);
+    assert.equal(r.mapId, "yard-64");
     assert.equal(r.slots[0]?.spawnId, 0);
     assert.equal(r.slots[0]?.ready, false);
   });
