@@ -314,8 +314,11 @@ export function drawRicochetSparks(
   );
 }
 
-/** How long a mortar burst stays up, ms. Dirt rises and falls in this window. */
-export const MORTAR_BURST_MS = 1100;
+/** How long a mortar burst stays up, ms. The column rises, then thins out. */
+export const MORTAR_BURST_MS = 1450;
+
+/** How long a tank shell's ground burst stays up, ms. */
+export const SHELL_BURST_MS = 1250;
 
 export interface MortarSmokePuff {
   x: number;
@@ -371,9 +374,158 @@ export function drawMortarSmoke(
   ctx.restore();
 }
 
+interface BurstShape {
+  /** 0 = dirt and sparks, 1 = a low fireball. */
+  fire: number;
+  /** How high the soil and smoke climb. */
+  rise: number;
+  /** 0 = straight up, 1 = thrown along the incoming shot. */
+  down: number;
+  smoke: number;
+  chunks: number;
+  scale: number;
+  /** Smoke width. A mortar column is narrow; a tank burst is wide. */
+  girth: number;
+}
+
+/** Soft disc. `rx`/`ry` are pixels. Alpha lives in the gradient so piles can overlap. */
+function softDisc(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  rx: number,
+  ry: number,
+  r: number,
+  g: number,
+  b: number,
+  alpha: number,
+): void {
+  if (alpha <= 0.02 || rx < 0.4 || ry < 0.4) return;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(rx, ry);
+  const grad = ctx.createRadialGradient(0, 0, 0.12, 0, 0, 1);
+  grad.addColorStop(0, `rgba(${r | 0},${g | 0},${b | 0},${alpha})`);
+  grad.addColorStop(1, `rgba(${r | 0},${g | 0},${b | 0},0)`);
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(0, 0, 1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
 /**
- * Mortar impact. Dirt or water leaves the ground upward and falls back,
- * the same rise a tank shell makes in water. No sideways gouge.
+ * Ground detonation. Flash, a short fireball, clods on arcs, then a dust column.
+ * `t` runs 0–1. Random draws are fixed per seed so the clods do not jump.
+ */
+function drawGroundBurst(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  t: number,
+  seed: number,
+  dirX: number,
+  dirY: number,
+  shape: BurstShape,
+): void {
+  const rnd = rng(seed ^ 0x51ed);
+  const along = dirOf(dirX, dirY);
+  const s = shape.scale;
+  const { fire, rise, down, smoke, chunks, girth } = shape;
+  const clods = [];
+  for (let i = 0; i < chunks; i++) {
+    clods.push({
+      ga: rnd() * Math.PI * 2,
+      delay: rnd() * 0.045,
+      flight: 0.36 + rnd() * 0.3,
+      speed: (14 + rnd() * 28) * s * (0.62 + down * 0.75),
+      kick: (26 + rnd() * (28 + 30 * rise)) * s * (0.48 + rise * 0.6),
+      rw: (1.7 + rnd() * 2.6) * s * (rnd() > 0.76 ? 1.55 : 1),
+      shade: rnd(),
+    });
+  }
+
+  const ring = 1 - (1 - Math.min(1, t / 0.42)) ** 2;
+  const skirt = t < 0.5 ? 1 : Math.max(0, 1 - (t - 0.5) / 0.5);
+  const skirtR = (7 + ring * (22 + 14 * fire)) * s;
+  softDisc(ctx, x, y + 1, skirtR, skirtR * 0.46, 78, 62, 46, 0.5 * skirt);
+  softDisc(ctx, x, y + 1, skirtR * 0.6, skirtR * 0.24, 54, 42, 32, 0.38 * skirt);
+
+  const puffs = 6;
+  for (let i = 0; i < puffs; i++) {
+    const born = 0.02 + (i % 3) * 0.03;
+    if (t < born) continue;
+    const u = (t - born) / (0.96 - born);
+    if (u <= 0 || u > 1) continue;
+    const riseE = 1 - (1 - Math.min(1, u / 0.5)) ** 2;
+    const wob = Math.sin(seed * 0.17 + i * 2.2 + u * 5.5) * (3.5 + u * 5) * s;
+    const drift = along.x * down * u * (16 + i * 3) * s;
+    const spread = (i - (puffs - 1) / 2) * (3 + u * 5) * s * girth;
+    const px = x + wob * 0.45 + drift + spread * 0.4;
+    const height = (32 + i * 8) * s * (0.35 + rise * 0.9);
+    const py = y - riseE * height + along.y * down * u * 10 * s;
+    const rad = (9 + i * 2.2) * s * (0.42 + u * 1.15);
+    const cr = 28 + u * 78;
+    const cg = 24 + u * 70;
+    const cb = 20 + u * 58;
+    const a = Math.sin(u * Math.PI) ** 0.8 * (0.4 + smoke * 0.3);
+    const tall = rise > 0.95 ? 1.15 : 0.92;
+    softDisc(ctx, px, py, rad * girth, rad * tall, cr, cg, cb, a);
+  }
+
+  ctx.save();
+  for (const c of clods) {
+    const local = (t - c.delay) / c.flight;
+    if (local <= 0 || local >= 1) continue;
+    const gx = Math.cos(c.ga) * (1 - down) + along.x * down;
+    const gy = Math.sin(c.ga) * 0.46 * (1 - down) + along.y * down * 0.4;
+    const px = x + gx * c.speed * local;
+    const py = y + gy * c.speed * local - Math.sin(local * Math.PI) * c.kick;
+    ctx.globalAlpha = (1 - local) * 0.94;
+    ctx.fillStyle = c.shade > 0.66 ? "#3a2e24" : c.shade > 0.33 ? "#705843" : "#96785c";
+    ctx.beginPath();
+    ctx.ellipse(px, py, c.rw, c.rw * 0.58, c.ga * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  if (fire > 0.2 && t < 0.32) {
+    const u = t / 0.32;
+    const a = (1 - u) ** 1.35 * (0.3 + fire * 0.7);
+    const lift = u * (10 + 16 * rise) * s;
+    softDisc(
+      ctx,
+      x + along.x * 2 * s,
+      y - lift,
+      (9 + fire * 16) * s * (1 - u * 0.2),
+      (7 + fire * 11) * s,
+      255,
+      104,
+      24,
+      a,
+    );
+    softDisc(ctx, x, y - lift - 2 * s, (3.2 + fire * 5) * s, (3 + fire * 4.5) * s, 255, 236, 186, Math.min(1, a * 1.1));
+    for (let k = 0; k < 3; k++) {
+      const ang = seed * 0.01 + k * 2.1;
+      const ox = Math.cos(ang) * (4 + u * 7) * s;
+      const oy = Math.sin(ang) * (2.4 + u * 3) * s - lift * 0.35;
+      softDisc(ctx, x + ox, y + oy, (4.5 + fire * 3) * s, (3.4 + fire * 2.2) * s, 220, 70, 16, a * 0.5);
+    }
+  }
+  if (t < 0.1) {
+    const u = t / 0.1;
+    const a = (1 - u) * (1 - u);
+    softDisc(ctx, x, y, (8 + fire * 18) * s, (4 + fire * 7) * s, 255, 232, 186, a * 0.95);
+    softDisc(ctx, x, y - 2 * s, (2.6 + fire * 4) * s, (2.6 + fire * 4) * s, 255, 255, 255, a);
+  }
+  ctx.restore();
+}
+
+/**
+ * Mortar impact. On dirt the bomb flashes, throws soil straight up, and leaves
+ * a narrow dust column. On water it is a splash column.
  */
 export function drawMortarBurst(
   ctx: CanvasRenderingContext2D,
@@ -383,50 +535,50 @@ export function drawMortarBurst(
   seed: number,
   water = false,
 ): void {
+  if (!water) {
+    drawGroundBurst(ctx, x, y, t, seed, 0, -1, {
+      fire: 0.94,
+      rise: 1.28,
+      down: 0.05,
+      smoke: 1,
+      chunks: 20,
+      scale: 1.08,
+      girth: 0.7,
+    });
+    return;
+  }
   const rnd = rng(seed ^ 0x60a7);
   const fade = 1 - t;
   const column = 1 - (1 - Math.min(1, t / 0.42)) ** 2;
-  const colH = water ? 34 : 48;
   ctx.save();
-  ctx.globalAlpha = fade * (water ? 0.55 : 0.5);
-  ctx.fillStyle = water ? "#d7efea" : "#5c4634";
+  ctx.globalAlpha = fade * 0.55;
+  ctx.fillStyle = "#d7efea";
   ctx.beginPath();
-  ctx.ellipse(x, y, 7 + t * (water ? 20 : 16), 3.2 + t * 6, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, y, 7 + t * 20, 3.2 + t * 6, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.globalAlpha = fade * (water ? 0.72 : 0.62);
-  ctx.fillStyle = water ? "#f5fffc" : "#c4a882";
+  ctx.globalAlpha = fade * 0.72;
+  ctx.fillStyle = "#f5fffc";
   ctx.beginPath();
-  ctx.ellipse(x, y - column * colH, water ? 3.4 : 6.5, (water ? 8 : 11) + column * (water ? 16 : 22), 0, 0, Math.PI * 2);
+  ctx.ellipse(x, y - column * 34, 3.4, 8 + column * 16, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalAlpha = fade * 0.4;
-  ctx.fillStyle = water ? "#9fd4e0" : "#8a6e52";
+  ctx.fillStyle = "#9fd4e0";
   ctx.beginPath();
-  ctx.ellipse(x, y - column * colH * 0.55, water ? 5 : 9, 4 + column * 6, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, y - column * 18, 5, 4 + column * 6, 0, 0, Math.PI * 2);
   ctx.fill();
-  const count = water ? 16 : 22;
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < 16; i++) {
     const delay = rnd() * 0.06;
-    const local = (t - delay) / (0.62 + rnd() * 0.34);
+    const flight = 0.62 + rnd() * 0.34;
+    const reach = (rnd() - 0.5) * 22;
+    const kick = 16 + rnd() * 26;
+    const drop = rnd() > 0.5;
+    const local = (t - delay) / flight;
     if (local <= 0 || local >= 1) continue;
-    const lift = Math.sin(local * Math.PI) * (water ? 16 + rnd() * 26 : 28 + rnd() * 46);
-    const drift = (rnd() - 0.5) * (water ? 22 : 16) * local;
-    const px = x + drift;
-    const py = y - lift;
-    ctx.globalAlpha = (1 - local) * (water ? 0.9 : 0.92);
-    if (water) {
-      ctx.fillStyle = rnd() > 0.5 ? "#f7fffc" : "#b7e0ea";
-      ctx.beginPath();
-      ctx.arc(px, py, 1.3 + rnd() * 1.6, 0, Math.PI * 2);
-      ctx.fill();
-    } else {
-      const chunk = rnd() > 0.72;
-      ctx.fillStyle = chunk ? "#4a3828" : rnd() > 0.4 ? "#6b5340" : "#a08058";
-      const rw = chunk ? 2.4 + rnd() * 2.2 : 1.6 + rnd() * 1.5;
-      const rh = chunk ? rw * 0.55 : rw * 0.7;
-      ctx.beginPath();
-      ctx.ellipse(px, py, rw, rh, rnd() * Math.PI, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    ctx.globalAlpha = (1 - local) * 0.9;
+    ctx.fillStyle = drop ? "#f7fffc" : "#b7e0ea";
+    ctx.beginPath();
+    ctx.arc(x + reach * local, y - Math.sin(local * Math.PI) * kick, 1.3 + (i % 3) * 0.5, 0, Math.PI * 2);
+    ctx.fill();
   }
   ctx.restore();
 }
@@ -625,7 +777,7 @@ export function drawWaterDetonation(
   ctx.restore();
 }
 
-/** Lasting dirt crater. Drawn in screen space; `rx` is the long radius. */
+/** Lasting dirt crater used until the crater decal is loaded. `rx` is the long radius. */
 export function drawShellHole(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -638,31 +790,48 @@ export function drawShellHole(
 ): void {
   if (rx < 0.5 || alpha <= 0) return;
   const rnd = rng(seed ^ 0x401e);
+  const steps = 16;
+  const lip: number[] = [];
+  const bowl: number[] = [];
+  for (let i = 0; i < steps; i++) {
+    lip.push(0.9 + rnd() * 0.28);
+    bowl.push(0.42 + rnd() * 0.14);
+  }
+  const ring = (radii: number[], scale: number): void => {
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const a = ((i % steps) / steps) * Math.PI * 2;
+      const m = radii[i % steps] ?? 1;
+      const px = Math.cos(a) * rx * m * scale;
+      const py = Math.sin(a) * ry * m * scale;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+  };
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(ang);
-  ctx.globalAlpha = 0.88 * alpha;
-  ctx.fillStyle = "#5a4330";
-  ctx.beginPath();
-  ctx.ellipse(0, 0, rx * 1.12, ry * 1.18, 0, 0, Math.PI * 2);
+  ctx.globalAlpha = 0.92 * alpha;
+  ring(lip, 1);
+  ctx.fillStyle = "#7c654c";
   ctx.fill();
-  ctx.fillStyle = "#2a1e16";
-  ctx.beginPath();
-  ctx.ellipse(-rx * 0.06, ry * 0.04, rx * 0.7, ry * 0.58, 0, 0, Math.PI * 2);
+  ring(bowl, 1);
+  ctx.fillStyle = "#3a2c22";
   ctx.fill();
-  ctx.fillStyle = "#140e0b";
+  ctx.fillStyle = "#14110e";
   ctx.beginPath();
-  ctx.ellipse(-rx * 0.1, 0, rx * 0.34, ry * 0.28, 0, 0, Math.PI * 2);
+  ctx.ellipse(-rx * 0.04, ry * 0.02, rx * 0.26, ry * 0.22, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
   ctx.save();
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 5; i++) {
     const a = ang + rnd() * Math.PI * 2;
-    const d = rx * (0.72 + rnd() * 0.4);
-    ctx.globalAlpha = 0.7 * alpha;
-    ctx.fillStyle = rnd() > 0.5 ? "#6c5340" : "#3c2c22";
+    const d = rx * (0.78 + rnd() * 0.38);
+    ctx.globalAlpha = 0.75 * alpha;
+    ctx.fillStyle = rnd() > 0.5 ? "#6a5340" : "#8a7058";
     ctx.beginPath();
-    ctx.ellipse(x + Math.cos(a) * d, y + Math.sin(a) * d * 0.45, rx * 0.16, ry * 0.18, a, 0, Math.PI * 2);
+    ctx.ellipse(x + Math.cos(a) * d, y + Math.sin(a) * d * 0.45, rx * 0.12, ry * 0.16, a, 0, Math.PI * 2);
     ctx.fill();
   }
   ctx.restore();
@@ -691,7 +860,21 @@ export function drawBloodStain(
   ctx.restore();
 }
 
-/** Dirt crater plus a cone of ejecta along the incoming shot. No fire. */
+function burstForShell(shell: string | undefined, caliber: number | undefined): BurstShape {
+  const scale = Math.max(0.8, (caliber ?? 75) / 75);
+  if (shell === "ap") {
+    return { fire: 0.26, rise: 0.4, down: 0.84, smoke: 0.5, chunks: 16, scale, girth: 1.15 };
+  }
+  if (shell === "heat") {
+    return { fire: 0.78, rise: 0.58, down: 0.34, smoke: 0.7, chunks: 14, scale: scale * 0.92, girth: 0.9 };
+  }
+  return { fire: 1, rise: 0.86, down: 0.24, smoke: 1, chunks: 22, scale, girth: 1.2 };
+}
+
+/**
+ * Ground impact. A heavy shell detonates: flash, fire, clods, and dust.
+ * Small arms keep a short puff of dirt along the shot.
+ */
 export function drawGroundMiss(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -701,56 +884,48 @@ export function drawGroundMiss(
   caliber?: number,
   dirX = 0,
   dirY = -1,
+  shell?: string,
 ): void {
-  const shell = isShellCaliber(caliber);
   const incoming = dirOf(dirX, dirY);
+  if (isShellCaliber(caliber)) {
+    const shape = burstForShell(shell, caliber);
+    drawGroundBurst(ctx, x, y, t, seed, incoming.x, incoming.y, shape);
+    if (shell === "ap" || shell === "heat") {
+      drawSparkBurst(
+        ctx,
+        x,
+        y,
+        incoming.x,
+        incoming.y,
+        t,
+        seed ^ 0x21,
+        shell === "ap" ? 9 : 5,
+        18 * shape.scale,
+        true,
+      );
+    }
+    return;
+  }
   const fade = 1 - t;
   const gouge = Math.atan2(incoming.y, incoming.x);
   ctx.save();
-  ctx.globalAlpha = fade * (shell ? 0.78 : 0.52);
+  ctx.globalAlpha = fade * 0.52;
   ctx.fillStyle = "#4a3a28";
   ctx.beginPath();
   ctx.ellipse(
-    x + incoming.x * t * (shell ? 2.2 : 1.2),
-    y + incoming.y * t * (shell ? 1.1 : 0.6),
-    (shell ? 7 : 4.2) + t * (shell ? 6 : 3.2),
-    (shell ? 3.4 : 2) + t * (shell ? 2.4 : 1.4),
+    x + incoming.x * t * 1.2,
+    y + incoming.y * t * 0.6,
+    4.2 + t * 3.2,
+    2 + t * 1.4,
     gouge,
     0,
     Math.PI * 2,
   );
   ctx.fill();
   ctx.restore();
-  if (shell) drawShockRing(ctx, x, y, Math.min(1, t / 0.7), 20, 0.4);
-  drawDust(ctx, x, y, t, seed, shell ? 8 : 3, shell ? 12 : 6);
-  drawDirtCone(
-    ctx,
-    x,
-    y,
-    incoming.x,
-    incoming.y,
-    t,
-    seed,
-    shell ? 22 : 8,
-    (shell ? 28 : 12) + t * (shell ? 10 : 4),
-    shell ? 0.62 : 0.5,
-  );
-  const burst = 1 - Math.min(1, t / 0.28);
-  if (burst > 0) {
-    const reach = (shell ? 18 : 8) * (0.55 + burst * 0.45);
-    const half = (shell ? 10 : 4.5) * burst;
-    ctx.save();
-    ctx.globalAlpha = burst * burst * (shell ? 0.42 : 0.22);
-    ctx.fillStyle = "#6b5340";
-    ctx.beginPath();
-    ctx.moveTo(x, y);
-    ctx.lineTo(x + incoming.x * reach - incoming.y * half, y + incoming.y * reach + incoming.x * half);
-    ctx.lineTo(x + incoming.x * reach + incoming.y * half, y + incoming.y * reach - incoming.x * half);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  }
-  drawSparkBurst(ctx, x, y, incoming.x, incoming.y, t, seed, shell ? 3 : 1, shell ? 10 : 5);
+  drawDust(ctx, x, y, t, seed, 3, 6);
+  drawDirtCone(ctx, x, y, incoming.x, incoming.y, t, seed, 8, 12 + t * 4, 0.5);
+  drawSparkBurst(ctx, x, y, incoming.x, incoming.y, t, seed, 1, 5);
 }
 
 /** Extra shock and sparks around a cook-off fireball. */

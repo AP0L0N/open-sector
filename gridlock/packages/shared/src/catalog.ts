@@ -592,8 +592,10 @@ export const PTRD = {
 } as const satisfies InfantryGun;
 
 /**
- * 60mm infantry mortar. The bomb goes up and comes down, so sight, smoke,
- * and hills do not block it. Reach is much longer than the soldier's eyes.
+ * 60mm infantry mortar. The bomb goes up and comes down, so smoke and hills
+ * do not stop the arc. Reach is much longer than the soldier's eyes.
+ * Auto-fire still needs the target on the side's fog. A teammate who can see
+ * it lets the tube lob past his own sight.
  * The bomb still drifts, but it stays near the aim point.
  * The blast kills infantry in the open. An armored hull only loses a nick,
  * and a tracked tank can lose a track.
@@ -967,7 +969,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "A low wall. Infantry crouch behind it. One tank shell wrecks it and still hits the men.",
+    blurb: "Two bags high. Crouched or crawling infantry behind it gain extra health. A crawling soldier cannot fire a gun over it. One tank shell wrecks it and still hits the men.",
   },
   teeth: {
     type: "teeth",
@@ -994,7 +996,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: 0,
     caliber: 0,
     spreadDeg: 0,
-    blurb: "Concrete pyramids. Tanks cannot cross. Infantry walk through.",
+    blurb: "Four concrete pyramids, scattered along the line when placed. Tanks cannot cross. Infantry walk through.",
   },
   rifleman: {
     type: "rifleman",
@@ -1121,7 +1123,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: MORTAR.penetration,
     caliber: MORTAR.caliber,
     spreadDeg: MORTAR.spreadDeg,
-    blurb: "60mm mortar. Kneel, plant the tube, and lob past what he can see. Scattered bombs that wreck infantry. A hit nicks armor and can throw a track.",
+    blurb: "60mm mortar. Kneel, plant the tube, and lob past his own eyes at a target your side can see. Scattered bombs that wreck infantry. A hit nicks armor and can throw a track.",
   },
   engineer: {
     type: "engineer",

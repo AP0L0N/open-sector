@@ -499,7 +499,7 @@ export function makeEntity(
     holdPosition: false,
     guardFacing: null,
     ruined: false,
-    coverId: null,
+    coverBonus: 0,
     work: 0,
   };
   state.entities.set(id, e);
@@ -514,7 +514,6 @@ export function clearOrder(e: Entity): void {
   e.harvestTile = null;
   e.guardFacing = null;
   e.returnToBase = false;
-  e.coverId = null;
   e.work = 0;
   if (e.wreck) {
     e.state = "wreck";

@@ -61,6 +61,9 @@ import pine2Url from "../assets/terrain/tree-pine-2.png";
 import pine3Url from "../assets/terrain/tree-pine-3.png";
 import scrap1Url from "../assets/terrain/scrap-1.png";
 import scrap3Url from "../assets/terrain/scrap-3.png";
+import crater1Url from "../assets/terrain/crater-1.png";
+import crater2Url from "../assets/terrain/crater-2.png";
+import crater3Url from "../assets/terrain/crater-3.png";
 import bush1Url from "../assets/terrain/bush-1.png";
 import bush2Url from "../assets/terrain/bush-2.png";
 import bush3Url from "../assets/terrain/bush-3.png";
@@ -862,6 +865,21 @@ export const TUFT_FACES: PropSprite[] = [
   prop(tuft3Url, 233, 334),
 ];
 export const SCRAP_FACES: PropSprite[] = [prop(scrap1Url, 213, 278), prop(scrap3Url, 185, 417)];
+
+/** Flat shell crater. Contact is the pit; `bowl` is that pit's width in source pixels. */
+export interface CraterSprite extends PropSprite {
+  bowl: number;
+}
+
+function crater(src: string, contactX: number, contactY: number, bowl: number): CraterSprite {
+  return { image: loadSheet(src), contactX, contactY, bowl };
+}
+
+export const CRATER_FACES: CraterSprite[] = [
+  crater(crater1Url, 171, 105, 288),
+  crater(crater2Url, 189, 117, 312),
+  crater(crater3Url, 173, 112, 300),
+];
 /** Rail runs down-right (world +x). Contact is midway between the post bases. */
 export const FENCE_X = prop(fenceXUrl, 300, 525);
 /** Rail runs down-left (world +y). */
@@ -881,6 +899,7 @@ export const PROP_IMAGES: HTMLImageElement[] = [
   ...BUSH_FACES.map((f) => f.image),
   ...TUFT_FACES.map((f) => f.image),
   ...SCRAP_FACES.map((f) => f.image),
+  ...CRATER_FACES.map((f) => f.image),
   FENCE_X.image,
   FENCE_Y.image,
   WATER_TEX,

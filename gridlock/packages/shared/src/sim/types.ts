@@ -39,8 +39,7 @@ export interface Order {
     | "guard"
     | "withdraw"
     | "build"
-    | "repair"
-    | "cover";
+    | "repair";
   x?: number;
   y?: number;
   /** World radians. Guard / rotate destination facing. */
@@ -147,8 +146,8 @@ export interface Entity {
   guardFacing: number | null;
   /** Sandbags broken by a tank shell. The entity stays as rubble. */
   ruined: boolean;
-  /** Sandbag wall this infantry is manning. */
-  coverId: number | null;
+  /** Extra hit points currently granted by sandbags. Removed when the soldier leaves. */
+  coverBonus: number;
   /** Seconds spent on the current build or repair. */
   work: number;
   /** Wounded infantry this medic is walking to or bandaging. */

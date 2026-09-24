@@ -47,12 +47,10 @@ import {
 } from "../catalog.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
 import {
-  SANDBAG_DAMAGE_MUL,
-  SANDBAG_HIT_MUL,
   isTankShell,
   ruinSandbags,
-  sandbagProtects,
   sandbagSweep,
+  sandbagsBlockGun,
   woundBehindSandbags,
 } from "./field.js";
 import {
@@ -190,10 +188,10 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
     }
   }
 
-  // A mortar lobs past the soldier's own eyes. Direct fire still drops an unseen target.
+  // Auto-fire, attack-move, and guard drop a target the side cannot see.
+  // A planted mortar still lobs past its own eyes when a teammate has the target.
   if (
     target &&
-    e.type !== "mortarman" &&
     e.order?.kind !== "forceattack" &&
     !canSeeEntity(state, e.ownerId, target)
   ) {
@@ -358,6 +356,11 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     return;
   }
   if (!canAimWeapon(state, e, aimX, aimY, target)) {
+    if (!holedUp) e.state = "attack";
+    return;
+  }
+  const crawlingGun = stanceOf(e) === "crawl" && infantryGunFor(e)?.id !== "mortar";
+  if (crawlingGun && sandbagsBlockGun(state, e.x, e.y, aimX, aimY)) {
     if (!holedUp) e.state = "attack";
     return;
   }
@@ -959,7 +962,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
         })
       : resolveHit({
           gun: {
-            damage: scopedInfantry ? Math.max(1, Math.round(e.hpMax * frac)) : p.damage,
+            damage: scopedInfantry ? Math.max(1, Math.round(catalog(e.type).hp * frac)) : p.damage,
             penetration: p.penetration,
             caliber: p.caliber,
           },
@@ -974,14 +977,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
         });
     const occupied = isGarrisonable(e.type) && livingGarrison(state, e).length > 0;
     const chipWalls = !occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER;
-    let dealt = res.damage;
-    if (dealt > 0 && sandbagProtects(state, e, x0, y0) && !isTankShell(p)) {
-      dealt = Math.max(1, Math.round(dealt * SANDBAG_DAMAGE_MUL));
-    }
-    if (isTankShell(p) && e.coverId != null) {
-      const bag = state.entities.get(e.coverId);
-      if (bag && bag.type === "sandbags" && !bag.ruined) ruinSandbags(state, bag);
-    }
+    const dealt = res.damage;
     if (chipWalls) {
       e.hp -= dealt;
       if (e.hp < 0) e.hp = 0;
@@ -1166,8 +1162,7 @@ function sweepAgainst(
   e: Entity,
 ): { t: number; x: number; y: number } | null {
   if (e.type === "sandbags" || e.type === "teeth") return null;
-  let reach = e.radius * stanceHitRadiusMul(e, unitInWater(state, e));
-  if (sandbagProtects(state, e, x0, y0)) reach *= SANDBAG_HIT_MUL;
+  const reach = e.radius * stanceHitRadiusMul(e, unitInWater(state, e));
   const t =
     e.kind === "building"
       ? segmentAabbT(x0, y0, p.x, p.y, buildingBounds(e, state.tileSize))
@@ -1264,7 +1259,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     const d = dx * dx + dy * dy;
     if (d > bestD) continue;
     if (coneOnly && !inGuardCone(e, o)) continue;
-    if (e.type !== "mortarman" && !canSeeEntity(state, e.ownerId, o)) continue;
+    if (!canSeeEntity(state, e.ownerId, o)) continue;
     if (!canAimWeapon(state, e, o.x, o.y, o)) continue;
     if (isInfantryType(e.type) && !infantryRoundCanHarm(state, e, o)) continue;
     bestD = d;

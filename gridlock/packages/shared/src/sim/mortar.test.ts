@@ -154,7 +154,7 @@ describe("mortar", () => {
     assert.ok(mortarFalloff(40, 80) > mortarFalloff(80, 80));
   });
 
-  it("acquires and lobs at a soldier he cannot see, and the bomb flies over a man in between", () => {
+  it("does not auto-attack a soldier the side cannot see", () => {
     const { state, a, b } = match();
     const ts = state.tileSize;
     const tube = makeEntity(state, "mortarman", a, tileCenter(30, ts), tileCenter(40, ts));
@@ -169,11 +169,47 @@ describe("mortar", () => {
     for (let x = 30 + 28; x <= 30 + 36; x++) {
       for (let y = 38; y <= 42; y++) state.terrain[tileIndex(state, x, y)] = TILE_TREE;
     }
+    isolate(state, [tube.id, mid.id, foe.id]);
     const dist = Math.hypot(foe.x - tube.x, foe.y - tube.y);
     assert.ok(dist > catalog("mortarman").sightTiles * ts);
     assert.ok(dist < MORTAR_RANGE_TILES * ts);
     assert.ok(dist > MORTAR_MIN_RANGE_TILES * ts);
     assert.equal(canSeeEntity(state, a, foe), false);
+    tube.stance = "crouch";
+    tube.stanceOrder = "crouch";
+    tube.bipod = MORTAR_PLANT_SECONDS;
+    tube.facing = Math.atan2(foe.y - tube.y, foe.x - tube.x);
+    ticks(state, 2);
+    assert.equal(tube.attackTarget, null);
+    assert.equal(state.projectiles.some((p) => p.fromId === tube.id), false);
+
+    tube.order = { kind: "attackmove", x: foe.x, y: foe.y };
+    ticks(state, 2);
+    assert.equal(tube.attackTarget, null);
+    assert.equal(state.projectiles.some((p) => p.fromId === tube.id), false);
+  });
+
+  it("lobs past his own eyes once a teammate can see the target, and the bomb flies over a man in between", () => {
+    const { state, a, b } = match();
+    const ts = state.tileSize;
+    const tube = makeEntity(state, "mortarman", a, tileCenter(30, ts), tileCenter(40, ts));
+    const gap = INFANTRY_SIGHT_TILES + 16;
+    const foe = makeEntity(state, "rifleman", b, tileCenter(30 + gap, ts), tileCenter(40, ts));
+    const mid = makeEntity(state, "rifleman", a, tileCenter(30 + 20, ts), tileCenter(40, ts));
+    const spotter = makeEntity(state, "rifleman", a, tileCenter(30 + gap - 4, ts), tileCenter(40, ts));
+    foe.holdPosition = true;
+    foe.cooldown = 99;
+    mid.holdPosition = true;
+    spotter.holdPosition = true;
+    spotter.cooldown = 99;
+    for (let x = 30 + 28; x <= 30 + 36; x++) {
+      for (let y = 38; y <= 42; y++) state.terrain[tileIndex(state, x, y)] = TILE_TREE;
+    }
+    isolate(state, [tube.id, mid.id, foe.id, spotter.id]);
+    const dist = Math.hypot(foe.x - tube.x, foe.y - tube.y);
+    assert.ok(dist > catalog("mortarman").sightTiles * ts);
+    assert.ok(dist < MORTAR_RANGE_TILES * ts);
+    assert.equal(canSeeEntity(state, a, foe), true, "spotter must light the target");
     tube.stance = "crouch";
     tube.stanceOrder = "crouch";
     tube.bipod = MORTAR_PLANT_SECONDS;
@@ -193,6 +229,12 @@ describe("mortar", () => {
     assert.ok((view?.apex ?? 0) > 20);
     assert.ok((view?.arc ?? -1) > 0 && (view?.arc ?? 2) < 1);
     assert.ok((view?.hang ?? 0) > 1);
+
+    destroyEntity(state, spotter);
+    ticks(state, 1);
+    assert.equal(canSeeEntity(state, a, foe), false);
+    assert.equal(tube.attackTarget, null);
+    assert.equal(tube.order, null);
   });
 
   it("will not fire until the tube is planted, inside the minimum, or with a broken arm", () => {
