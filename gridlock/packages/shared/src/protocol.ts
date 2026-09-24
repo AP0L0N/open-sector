@@ -12,7 +12,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 32;
+export const PROTOCOL_VERSION = 33;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -364,7 +364,6 @@ export type ClientMessage =
   | { type: "cmd.guard"; ids: number[]; x?: number; y?: number; facing?: number; targetId?: number }
   | { type: "cmd.field"; ids: number[]; structure: FieldStructureType; x: number; y: number; facing: number }
   | { type: "cmd.repair"; ids: number[]; targetId: number }
-  | { type: "cmd.cover"; ids: number[]; targetId: number }
   | { type: "cmd.speed"; delta: number };
 
 export type ServerMessage =

@@ -52,13 +52,19 @@ export function tickHarvest(state: MatchState, dt: number): void {
     if (e.cartHp <= 0) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
     if (e.returnToBase || e.order?.kind === "withdraw") continue;
+    // A move, guard, or attack order is where the player sent it. Leave that alone.
+    if (playerSteering(e)) continue;
 
     if (e.order?.kind === "harvest" && e.order.tileX != null && e.order.tileY != null) {
       e.harvestTile = { x: e.order.tileX, y: e.order.tileY };
       e.autoHarvest = true;
     }
 
-    if (e.cargo > 0 && (e.cargo >= HAULER_CARGO || e.state === "unload" || e.order?.kind === "unload" || !e.harvestTile)) {
+    const hauling =
+      e.order?.kind === "unload" ||
+      e.state === "unload" ||
+      (e.autoHarvest && (e.cargo >= HAULER_CARGO || !e.harvestTile));
+    if (e.cargo > 0 && hauling) {
       tickHaulerUnload(state, e, dt);
       continue;
     }
@@ -116,6 +122,19 @@ export function tickHarvest(state: MatchState, dt: number): void {
       }
     }
   }
+}
+
+/** Orders that mean "go there" rather than "keep harvesting". */
+function playerSteering(e: Entity): boolean {
+  const k = e.order?.kind;
+  return (
+    k === "move" ||
+    k === "attackmove" ||
+    k === "attack" ||
+    k === "forceattack" ||
+    k === "guard" ||
+    k === "rotate"
+  );
 }
 
 function tickHaulerUnload(state: MatchState, e: Entity, dt: number): void {

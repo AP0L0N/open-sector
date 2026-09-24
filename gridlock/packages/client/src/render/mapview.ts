@@ -24,7 +24,8 @@ import {
   immobilized,
   heightAt,
   infantryGunFor,
-  primaryInfantryGun,
+  toothSeedAt,
+  toothWorld,
   isoDepth,
   isoLift,
   isoToWorld,
@@ -36,6 +37,7 @@ import {
   rangeTilesOf,
   specialOf,
   specialReady,
+  tileDiamond,
   tileOnMask,
   visionMaskFromSnapshot,
   mortarArcPoints,
@@ -71,6 +73,7 @@ import {
   drawMortarBurst,
   drawMortarSmoke,
   MORTAR_BURST_MS,
+  SHELL_BURST_MS,
   drawMoveClick,
   drawWreckFire,
   fxFrameAt,
@@ -85,7 +88,7 @@ import {
   INFANTRY_VISUAL_SCALE,
   OAK_FACES,
   PINE_FACES,
-  SCRAP_FACES,
+  CRATER_FACES,
   buildingOccludeEz,
   buildingSpriteFor,
   buildingStackAt,
@@ -247,8 +250,72 @@ const HP_FILL_LOW_VIVID = "#f25a48";
 const HP_FILL_HOSTILE_VIVID = "#ff5a4a";
 /** Sprite alpha when a building volume sits in front of the unit. */
 const OCCLUDED_UNIT_ALPHA = 0.46;
-/** Extra diamond overlap so fog punches and dim veils do not leave tile seams. */
-const FOG_SEAM_PX = 4;
+/** Closes the 1px raster crack between diamonds. The veil itself is one fill, so this overlap does not stack. */
+const FOG_SEAM_PX = 2;
+
+/** One 55% black fill for a shroud patch. Overlapping diamonds stay the same darkness. */
+function veilShroud(
+  ctx: CanvasRenderingContext2D,
+  map: MapDef,
+  indices: number[],
+  originX: number,
+  originY: number,
+  seam: number,
+): void {
+  const w = map.width;
+  const h = map.height;
+  const ts = map.tileSize;
+  const pad = seam + 2;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const i of indices) {
+    const tx = i % w;
+    const ty = (i / w) | 0;
+    const d = tileDiamond(tx, ty, ts);
+    const z = isoLift(
+      Math.max(
+        heightAt(map, tx, ty),
+        heightAt(map, tx + 1, ty),
+        heightAt(map, tx, ty + 1),
+        heightAt(map, tx + 1, ty + 1),
+      ),
+    );
+    for (const p of [d.n, d.e, d.s, d.w]) {
+      const x = p.x - originX;
+      const y = p.y - originY;
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y - z);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  const x0 = Math.max(0, Math.floor(minX - pad));
+  const y0 = Math.max(0, Math.floor(minY - pad));
+  const x1 = Math.min(ctx.canvas.width, Math.ceil(maxX + pad));
+  const y1 = Math.min(ctx.canvas.height, Math.ceil(maxY + pad));
+  const bw = x1 - x0;
+  const bh = y1 - y0;
+  if (bw < 2 || bh < 2) return;
+  const mask = document.createElement("canvas");
+  mask.width = bw;
+  mask.height = bh;
+  const mctx = mask.getContext("2d");
+  if (!mctx) return;
+  const ox = originX + x0;
+  const oy = originY + y0;
+  for (const i of indices) {
+    fillElevatedTile(mctx, map, i % w, (i / w) | 0, "#ffffff", ox, oy, false, seam);
+  }
+  mctx.globalCompositeOperation = "source-in";
+  mctx.fillStyle = "rgba(0,0,0,0.55)";
+  mctx.fillRect(0, 0, bw, bh);
+  const prev = ctx.globalCompositeOperation;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.drawImage(mask, x0, y0);
+  ctx.globalCompositeOperation = prev;
+}
 
 function mixHash(h: number, v: number): number {
   return Math.imul(h ^ (v | 0), 16777619);
@@ -890,11 +957,9 @@ export class MapView {
     // destination-out punches explored diamonds so the overlay is transparent over terrain
     ctx.globalCompositeOperation = "destination-out";
     for (const i of punch) cover(i, "#ffffff");
-    // destination-over fills holes without stacking alpha on shared edges
-    ctx.globalCompositeOperation = "destination-over";
-    for (const i of dim) {
-      fillElevatedTile(ctx, map, i % w, (i / w) | 0, "rgba(0,0,0,0.55)", ox, oy, false, FOG_SEAM_PX);
-    }
+    // One veil for the whole shroud patch. Per-diamond destination-over stacks
+    // on the overlap and turns those edges into black grid lines.
+    if (dim.length) veilShroud(ctx, map, dim, ox, oy, FOG_SEAM_PX);
     ctx.globalCompositeOperation = "destination-out";
     const cleared = new Set<number>();
     const clearLit = (i: number): void => {
@@ -1688,8 +1753,12 @@ export class MapView {
     return EXTRUDE[type];
   }
 
-  /** Structures always paint under units so tanks never slip beneath a corner. */
+  /**
+   * Buildings paint under units so a tank never slips beneath a corner.
+   * Intact sandbags paint above units so the wall covers the soldiers behind it.
+   */
   private drawLayer(e: EntityView): number {
+    if (e.type === "sandbags" && !e.ruined) return 2;
     return e.kind === "building" ? 0 : 1;
   }
 
@@ -1837,11 +1906,6 @@ export class MapView {
       if (engineers.length) this.onCommand({ type: "cmd.repair", ids: engineers.map((e) => e.id), targetId: hit.id });
       return;
     }
-    if (action === "cover" && hit) {
-      const guns = own.filter((e) => e.kind === "unit" && primaryInfantryGun(e.type) != null);
-      if (guns.length) this.onCommand({ type: "cmd.cover", ids: guns.map((e) => e.id), targetId: hit.id });
-      return;
-    }
     if (action === "garrison" && hit) {
       const inf = own.filter((e) => e.kind === "unit" && isInfantryType(e.type) && e.garrisonedIn !== hit.id);
       if (inf.length) this.onCommand({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: hit.id });
@@ -1863,9 +1927,8 @@ export class MapView {
       return;
     }
     if (hit?.type === "smelter" && hit.ownerId === this.curr.youPlayerId && haulers.length) {
-      const w = this.screenToWorld(px, py);
-      this.pulseMoveClick(w.x, w.y);
-      this.onCommand({ type: "cmd.move", ids: haulers.map((e) => e.id), x: w.x, y: w.y });
+      this.pulseMoveClick(hit.x, hit.y);
+      this.onCommand({ type: "cmd.move", ids: haulers.map((e) => e.id), x: hit.x, y: hit.y });
       return;
     }
     const movers = own.filter((e) => e.kind === "unit");
@@ -1983,7 +2046,6 @@ export class MapView {
     ctx.imageSmoothingEnabled = false;
     if (bake) {
       blitTerrain(ctx, bake, this.camX, this.camY, w, h);
-      this.drawWaterShimmer();
       if (this.fog) blitAtlas(ctx, this.fog, bake.originX, bake.originY, this.camX, this.camY, w, h);
     }
     drawSunWash(ctx, w, h);
@@ -2613,31 +2675,6 @@ export class MapView {
     }
   }
 
-  private drawWaterShimmer(): void {
-    const map = this.map();
-    const vis = this.visibleTiles();
-    const ctx = this.ctx;
-    const now = performance.now();
-    const pulse = 0.5 + 0.5 * Math.sin(now / 1100);
-    ctx.save();
-    ctx.globalAlpha = 0.08 + 0.07 * pulse;
-    ctx.fillStyle = "#9fd0c4";
-    const step = 4;
-    const x0 = vis.x0 - (vis.x0 % step);
-    const y0 = vis.y0 - (vis.y0 % step);
-    for (let ty = y0; ty <= vis.y1; ty += step) {
-      for (let tx = x0; tx <= vis.x1; tx += step) {
-        if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) continue;
-        if (!this.deepWater(map, tx, ty)) continue;
-        const c = this.toScreen((tx + 0.5) * map.tileSize, (ty + 0.5) * map.tileSize);
-        ctx.beginPath();
-        ctx.ellipse(c.x, c.y, 7, 3.5, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-    ctx.restore();
-  }
-
   private buildingLit(e: EntityView): boolean {
     for (let y = e.tileY; y < e.tileY + e.tileH; y++) {
       for (let x = e.tileX; x < e.tileX + e.tileW; x++) {
@@ -3169,30 +3206,18 @@ export class MapView {
     return Math.hypot(e.x - c.x, e.y - c.y);
   }
 
-  /** Interior water only, so the shimmer does not redraw the stair along the bank. */
-  private deepWater(map: MapDef, tx: number, ty: number): boolean {
-    const w = map.width;
-    const tiles = map.tiles;
-    for (let dy = -2; dy <= 2; dy++) {
-      for (let dx = -2; dx <= 2; dx++) {
-        const nx = tx + dx;
-        const ny = ty + dy;
-        if (nx < 0 || ny < 0 || nx >= w || ny >= map.height) return false;
-        if (tiles[ny * w + nx] !== TILE_WATER) return false;
-      }
-    }
-    return true;
-  }
-
   private drawHole(hole: ShellHoleView, alpha: number): void {
     const c = this.toScreen(hole.x, hole.y);
     const rx = this.groundSpan(hole.x, hole.y, hole.radius);
-    const face = SCRAP_FACES[(hole.seed >>> 0) % SCRAP_FACES.length];
-    this.ctx.save();
-    this.ctx.globalAlpha = alpha;
-    const drew = face ? drawPropSprite(this.ctx, face, c.x, c.y, Math.max(22, rx * 1.85), false) : false;
-    this.ctx.restore();
-    if (drew) return;
+    const face = CRATER_FACES[(hole.seed >>> 0) % CRATER_FACES.length];
+    if (face && face.image.naturalWidth > 0 && face.bowl > 0) {
+      const drawH = (face.image.naturalHeight * rx * 2.05) / face.bowl;
+      this.ctx.save();
+      this.ctx.globalAlpha = alpha;
+      const drew = drawPropSprite(this.ctx, face, c.x, c.y, drawH, false);
+      this.ctx.restore();
+      if (drew) return;
+    }
     const tip = this.toScreen(hole.x + Math.cos(hole.ang), hole.y + Math.sin(hole.ang));
     const ang = hole.round ? 0 : Math.atan2(tip.y - c.y, tip.x - c.x);
     drawShellHole(this.ctx, c.x, c.y, rx, rx * 0.5, ang, hole.seed, alpha);
@@ -3339,7 +3364,11 @@ export class MapView {
     const ctx = this.ctx;
     const keep: typeof this.fx = [];
     for (const f of this.fx) {
-      const life = f.mortar ? MORTAR_BURST_MS : fxLifeMs(f.kind, f.blast);
+      const life = f.mortar
+        ? MORTAR_BURST_MS
+        : f.kind === "miss" && isShellCaliber(f.caliber)
+          ? SHELL_BURST_MS
+          : fxLifeMs(f.kind, f.blast);
       const age = now - f.at;
       if (age > life) {
         this.fxIds.delete(f.id);
@@ -3402,7 +3431,7 @@ export class MapView {
       } else if (f.kind === "ricochet") {
         drawRicochetSparks(ctx, x, y, dirX, dirY, t, f.id, f.caliber);
       } else if (f.kind === "miss" && !f.splash && !f.mortar) {
-        drawGroundMiss(ctx, s.x, s.y, t, f.id, f.caliber, dirX, dirY);
+        drawGroundMiss(ctx, s.x, s.y, t, f.id, f.caliber, dirX, dirY, f.shell);
       }
     }
     this.fx = keep;
@@ -3736,8 +3765,12 @@ export class MapView {
   }
 
   private drawField(e: EntityView, ghost: boolean): void {
+    if (e.type === "teeth") {
+      this.drawTeeth(e.x, e.y, e.facing, toothSeedAt(e.x, e.y), ghost ? 0.45 : 1, e.id);
+      return;
+    }
     const span = fieldSpan(e.type);
-    const def = this.fieldSprite(e.type === "teeth" ? "teeth" : "sandbags", !!e.ruined);
+    const def = this.fieldSprite("sandbags", !!e.ruined);
     const size = span ? Math.max(28, this.groundSpan(e.x, e.y, span.length)) : def.drawSize;
     const s = this.toScreen(e.x, e.y);
     const dir = facingToIso(e.facing, this.ts());
@@ -3752,23 +3785,49 @@ export class MapView {
     this.ctx.restore();
   }
 
+  /** One pyramid, drawn four times at the placement scatter. */
+  private drawTeeth(x: number, y: number, facing: number, seed: number, alpha: number, id: number): void {
+    const span = fieldSpan("teeth");
+    const size = span ? Math.max(28, this.groundSpan(x, y, span.length)) : TEETH_SPRITE.drawSize;
+    const dir = facingToIso(facing, this.ts());
+    this.ctx.save();
+    this.ctx.globalAlpha = alpha;
+    for (const p of toothWorld(x, y, facing, seed)) {
+      const s = this.toScreen(p.x, p.y);
+      drawUnitSprite(this.ctx, { ...TEETH_SPRITE, drawSize: size }, s.x, s.y, dir.x, dir.y, {
+        moving: false,
+        id,
+        now: 0,
+        facing,
+      });
+    }
+    this.ctx.restore();
+  }
+
   private drawFieldGhost(type: FieldStructureType): void {
     const w = this.screenToWorld(this.mouseX, this.mouseY);
     const anchor = this.fieldDrag ?? w;
     const span = fieldSpan(type);
-    const def = this.fieldSprite(type);
-    const size = span ? Math.max(28, this.groundSpan(anchor.x, anchor.y, span.length)) : def.drawSize;
-    const s = this.toScreen(anchor.x, anchor.y);
-    const dir = facingToIso(this.fieldFacing, this.ts());
     const ctx = this.ctx;
+    if (type === "teeth") {
+      this.drawTeeth(anchor.x, anchor.y, this.fieldFacing, toothSeedAt(anchor.x, anchor.y), 0.72, 0);
+    } else {
+      const def = this.fieldSprite(type);
+      const size = span ? Math.max(28, this.groundSpan(anchor.x, anchor.y, span.length)) : def.drawSize;
+      const s0 = this.toScreen(anchor.x, anchor.y);
+      const dir = facingToIso(this.fieldFacing, this.ts());
+      ctx.save();
+      ctx.globalAlpha = 0.72;
+      drawUnitSprite(ctx, { ...def, drawSize: size }, s0.x, s0.y, dir.x, dir.y, {
+        moving: false,
+        id: 0,
+        now: 0,
+        facing: this.fieldFacing,
+      });
+      ctx.restore();
+    }
+    const s = this.toScreen(anchor.x, anchor.y);
     ctx.save();
-    ctx.globalAlpha = 0.72;
-    drawUnitSprite(ctx, { ...def, drawSize: size }, s.x, s.y, dir.x, dir.y, {
-      moving: false,
-      id: 0,
-      now: 0,
-      facing: this.fieldFacing,
-    });
     const tip = this.toScreen(
       anchor.x + Math.cos(this.fieldFacing) * (span?.length ?? 24) * 0.55,
       anchor.y + Math.sin(this.fieldFacing) * (span?.length ?? 24) * 0.55,

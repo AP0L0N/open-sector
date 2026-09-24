@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { TILE_EMPTY } from "../maps.js";
-import { TICK_DT, wreckScrapOf } from "../catalog.js";
+import { catalog, fieldSpan, TICK_DT, wreckScrapOf } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { applyCommand } from "./commands.js";
-import { tickProjectiles } from "./combat.js";
-import { restampForts } from "./field.js";
+import { tickCombat, tickProjectiles } from "./combat.js";
+import { fieldSiteClear, restampForts, sandbagCoverBonus, toothOffsets, toothSeedAt } from "./field.js";
 import { toWreck } from "./wreck.js";
 import { makeEntity, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
@@ -95,31 +95,7 @@ describe("engineer field works", () => {
     assert.equal(eng.state, "idle");
   });
 
-  it("plants gun infantry on the side they approached and faces them across the bags", () => {
-    const { state } = twoPlayerMatch();
-    clearPatch(state, 30, 28, 16, 12);
-    const ts = state.tileSize;
-    const x = tileCenter(36, ts);
-    const y = tileCenter(32, ts);
-    const bag = makeEntity(state, "sandbags", "A", x, y, { facing: 0 });
-    bag.facing = 0;
-    restampForts(state);
-    const fromWest = makeEntity(state, "rifleman", "A", x - 48, y);
-    const fromEast = makeEntity(state, "rifleman", "A", x + 48, y);
-    assert.equal(applyCommand(state, "A", { type: "cmd.cover", ids: [fromWest.id], targetId: bag.id }).ok, true);
-    assert.equal(applyCommand(state, "A", { type: "cmd.cover", ids: [fromEast.id], targetId: bag.id }).ok, true);
-    ticks(state, 40);
-    assert.ok(fromWest.x < bag.x, `west soldier stood at ${fromWest.x}`);
-    assert.ok(fromEast.x > bag.x, `east soldier stood at ${fromEast.x}`);
-    assert.equal(fromWest.stance, "crouch");
-    assert.equal(fromEast.stance, "crouch");
-    assert.ok(Math.abs((fromWest.guardFacing ?? 9) - 0) < 0.01);
-    const eastFace = fromEast.guardFacing ?? 0;
-    const wrapped = Math.atan2(Math.sin(eastFace), Math.cos(eastFace));
-    assert.ok(Math.abs(Math.abs(wrapped) - Math.PI) < 0.05, `east guard ${eastFace}`);
-  });
-
-  it("halves small-arms damage from the far side and lets one tank shell wreck the bags", () => {
+  it("gives crouched and crawling infantry extra health behind sandbags", () => {
     const { state } = twoPlayerMatch();
     clearPatch(state, 30, 28, 16, 12);
     const ts = state.tileSize;
@@ -128,21 +104,123 @@ describe("engineer field works", () => {
     const bag = makeEntity(state, "sandbags", "A", x, y, { facing: 0 });
     bag.facing = 0;
     const man = makeEntity(state, "rifleman", "A", x - 21, y);
-    man.coverId = bag.id;
-    man.stance = "crouch";
-    const hp = man.hp;
-    shot(state, x + 40, y, -900, 12, null);
-    tickProjectiles(state, TICK_DT);
-    const afterSmall = man.hp;
-    assert.ok(afterSmall < hp && hp - afterSmall < 12, `small-arms dealt ${hp - afterSmall}`);
-    assert.equal(bag.ruined, false);
+    const eng = makeEntity(state, "engineer", "A", x + 21, y);
+    const base = catalog("rifleman").hp;
+    const engBase = catalog("engineer").hp;
+    man.stance = "stand";
+    man.stanceOrder = "stand";
+    step(state, TICK_DT);
+    assert.equal(man.hpMax, base);
+    assert.equal(sandbagCoverBonus(state, man), 0);
 
-    shot(state, x + 30, y, -800, 10, "ap");
+    man.stance = "crouch";
+    man.stanceOrder = "crouch";
+    eng.stance = "crawl";
+    eng.stanceOrder = "crawl";
+    step(state, TICK_DT);
+    const bonus = Math.round(base * 0.5);
+    assert.equal(man.hpMax, base + bonus);
+    assert.equal(man.hp, base + bonus);
+    assert.equal(eng.hpMax, engBase + Math.round(engBase * 0.5));
+
+    man.stance = "crawl";
+    man.stanceOrder = "crawl";
+    step(state, TICK_DT);
+    assert.equal(man.hpMax, base + bonus);
+
+    man.x = x - 80;
+    step(state, TICK_DT);
+    assert.equal(man.hpMax, base);
+    assert.equal(man.hp, base);
+  });
+
+  it("lets one tank shell wreck the bags and still wound the men behind them", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 30, 28, 16, 12);
+    const ts = state.tileSize;
+    const x = tileCenter(36, ts);
+    const y = tileCenter(32, ts);
+    const bag = makeEntity(state, "sandbags", "A", x, y, { facing: 0 });
+    bag.facing = 0;
+    const man = makeEntity(state, "rifleman", "A", x - 21, y);
+    man.stance = "crouch";
+    step(state, TICK_DT);
+    const before = man.hp;
+    shot(state, x + 30, y, -800, 40, "ap");
     tickProjectiles(state, TICK_DT);
     assert.equal(bag.ruined, true);
-    assert.ok(man.hp < afterSmall, `shell left ${man.hp}`);
-    assert.equal(man.coverId, null);
+    assert.ok(man.hp < catalog("rifleman").hp, `shell left ${man.hp}`);
+    step(state, TICK_DT);
+    assert.equal(man.hpMax, catalog("rifleman").hp);
     assert.equal(walkable(state, worldToTile(x, ts), worldToTile(y, ts), "warden"), true);
+  });
+
+  it("stops a crawling gun at the sandbags and lets a crouching gun fire over them", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 28, 28, 20, 12);
+    const ts = state.tileSize;
+    const x = tileCenter(36, ts);
+    const y = tileCenter(32, ts);
+    const bag = makeEntity(state, "sandbags", "A", x, y, { facing: Math.PI / 2 });
+    bag.facing = Math.PI / 2;
+    const shooter = makeEntity(state, "rifleman", "A", x - 36, y);
+    const foe = makeEntity(state, "rifleman", "B", x + 48, y);
+    foe.holdPosition = true;
+    foe.cooldown = 99;
+    foe.order = { kind: "rotate", x: foe.x, y: foe.y };
+    shooter.facing = 0;
+    shooter.turretFacing = 0;
+    shooter.cooldown = 0;
+    shooter.clip = 8;
+    shooter.stance = "crawl";
+    shooter.stanceOrder = "crawl";
+    shooter.order = { kind: "attack", targetId: foe.id };
+    tickCombat(state, TICK_DT);
+    assert.equal(state.projectiles.filter((p) => p.fromId === shooter.id).length, 0);
+
+    shooter.stance = "crouch";
+    shooter.stanceOrder = "crouch";
+    shooter.cooldown = 0;
+    state.projectiles = [];
+    tickCombat(state, TICK_DT);
+    assert.ok(state.projectiles.some((p) => p.fromId === shooter.id), "crouched rifle fires over the bags");
+  });
+
+  it("lets sandbags and dragon's teeth sit against each other", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 24, 24, 28, 20);
+    const ts = state.tileSize;
+    const x = tileCenter(36, ts);
+    const y = tileCenter(32, ts);
+    const facing = Math.PI / 2;
+    const bag = makeEntity(state, "sandbags", "A", x, y, { facing });
+    bag.facing = facing;
+    restampForts(state);
+    const bags = fieldSpan("sandbags")!;
+    const teeth = fieldSpan("teeth")!;
+    assert.equal(fieldSiteClear(state, "sandbags", x + bags.length, y, facing), true);
+    assert.equal(fieldSiteClear(state, "sandbags", x + bags.length * 0.45, y, facing), false);
+    assert.equal(fieldSiteClear(state, "teeth", x, y + bags.thick / 2 + teeth.thick / 2, facing), true);
+    const next = makeEntity(state, "teeth", "A", x, y + bags.thick / 2 + teeth.thick / 2, { facing });
+    next.facing = facing;
+    restampForts(state);
+    assert.equal(fieldSiteClear(state, "teeth", x + teeth.length, y + bags.thick / 2 + teeth.thick / 2, facing), true);
+  });
+
+  it("scatters the four pyramids off a straight line", () => {
+    const a = toothOffsets(toothSeedAt(400, 240));
+    const b = toothOffsets(toothSeedAt(520, 240));
+    assert.equal(a.length, 4);
+    assert.equal(b.length, 4);
+    const span = fieldSpan("teeth")!;
+    const spread = (pts: { along: number; across: number }[]) => {
+      const across = pts.map((p) => p.across);
+      const along = pts.map((p) => p.along);
+      return Math.max(...across) - Math.min(...across) > 2 && Math.max(...along) - Math.min(...along) > span.length * 0.4;
+    };
+    assert.equal(spread(a), true);
+    assert.equal(spread(b), true);
+    assert.notDeepEqual(a, b);
   });
 
   it("stops vehicles on dragon's teeth and lets infantry through", () => {

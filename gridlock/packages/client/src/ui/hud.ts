@@ -1105,7 +1105,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       slot: "field-teeth",
       act: "field-teeth",
       label: "Obstacle",
-      title: "Build concrete pyramids tanks cannot cross. Drag to face them, click to place.",
+      title: "Build four concrete pyramids. They scatter along the line. Drag to face them, click to place.",
       on: view?.fieldPlace === "teeth",
     });
   }

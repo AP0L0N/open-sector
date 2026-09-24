@@ -21,11 +21,11 @@ import {
 } from "../catalog.js";
 import type { ClientMessage, ErrorCode } from "../protocol.js";
 import { pathToCapture, wantsCapture } from "./capture.js";
-import { allies, clearOrder, hqOf } from "./geo.js";
+import { allies, clearOrder, hqOf, worldToTile } from "./geo.js";
 import { approachTile, canGarrison, exitGarrison, garrisonOwner, livingGarrison, setGarrisonHide } from "./garrison.js";
 import { setScoutOut } from "./scout.js";
 import { cancelStructure, pauseStructure, placeBuilding, sellBuilding, startBuild } from "./build.js";
-import { orderCover, orderFieldBuild, orderRepair } from "./field.js";
+import { orderFieldBuild, orderRepair } from "./field.js";
 import { deployId } from "./deploy.js";
 import { cancelTrain, pauseTrain, startTrain } from "./train.js";
 import { groupMovePace, groupMoveTargets } from "./formation.js";
@@ -122,8 +122,6 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
       );
     case "cmd.repair":
       return wrap(orderRepair(state, playerId, owned(state, playerId, msg.ids), msg.targetId), "not_found");
-    case "cmd.cover":
-      return wrap(orderCover(state, owned(state, playerId, msg.ids), msg.targetId), "not_found");
     default:
       return fail("bad_payload", "Unknown command.");
   }
@@ -172,16 +170,39 @@ function cmdMove(state: MatchState, playerId: string, ids: number[], x: number, 
       if (pace != null && e.order) e.order.pace = pace;
       continue;
     }
-    e.order = { kind: "move", x: d.x, y: d.y };
-    if (pace != null) e.order.pace = pace;
     e.returnToBase = false;
     e.attackTarget = null;
     e.harvestTile = null;
     e.guardFacing = null;
+    stopHaulerLoop(e);
+    const dropoff = e.type === "hauler" && e.cargo > 0 ? smelterAt(state, playerId, x, y) : null;
+    if (dropoff) {
+      e.order = { kind: "unload", targetId: dropoff.id };
+      e.state = "unload";
+      e.waypoints = [];
+      continue;
+    }
+    e.order = { kind: "move", x: d.x, y: d.y };
+    if (pace != null) e.order.pace = pace;
     e.state = "move";
     setPath(state, e, d.x, d.y);
   }
   return ok();
+}
+
+/** Owned Smelter whose footprint contains this point. A move there dumps the cart. */
+function smelterAt(state: MatchState, playerId: string, x: number, y: number): Entity | null {
+  const tx = worldToTile(x, state.tileSize);
+  const ty = worldToTile(y, state.tileSize);
+  for (const b of state.entities.values()) {
+    if (b.ownerId !== playerId || b.type !== "smelter" || b.hp <= 0) continue;
+    if (tx >= b.tileX && tx < b.tileX + b.tileW && ty >= b.tileY && ty < b.tileY + b.tileH) return b;
+  }
+  return null;
+}
+
+function stopHaulerLoop(e: Entity): void {
+  if (e.type === "hauler") e.autoHarvest = false;
 }
 
 function cmdAttackMove(state: MatchState, playerId: string, ids: number[], x: number, y: number): CmdResult {
@@ -198,6 +219,7 @@ function cmdAttackMove(state: MatchState, playerId: string, ids: number[], x: nu
     e.attackTarget = null;
     e.harvestTile = null;
     e.guardFacing = null;
+    stopHaulerLoop(e);
     e.state = "move";
     setPath(state, e, d.x, d.y);
   }
@@ -320,6 +342,7 @@ function cmdRotate(state: MatchState, playerId: string, ids: number[], x: number
     e.returnToBase = false;
     e.attackTarget = null;
     e.harvestTile = null;
+    stopHaulerLoop(e);
     e.waypoints = [];
     e.state = "idle";
     if (e.guardFacing != null) e.guardFacing = Math.atan2(y - e.y, x - e.x);
@@ -355,6 +378,7 @@ function cmdGuard(
     e.guardFacing = face;
     e.attackTarget = null;
     e.harvestTile = null;
+    stopHaulerLoop(e);
     e.order = { kind: "guard", x: d.x, y: d.y, facing: face };
     if (pace != null) e.order.pace = pace;
     if (e.garrisonedIn) {
@@ -388,6 +412,7 @@ function cmdGuardUnit(state: MatchState, playerId: string, ids: number[], target
     e.guardFacing = null;
     e.attackTarget = null;
     e.harvestTile = null;
+    stopHaulerLoop(e);
     e.order = { kind: "guard", targetId: t.id };
     if (e.garrisonedIn) {
       exitGarrison(state, e, d);

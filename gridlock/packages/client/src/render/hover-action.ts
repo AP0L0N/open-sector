@@ -5,11 +5,10 @@ import {
   isFieldStructure,
   isGarrisonable,
   isInfantryType,
-  primaryInfantryGun,
   type EntityView,
 } from "@gridlock/shared";
 
-export type HoverAction = "garrison" | "ungarrison" | "attack" | "capture" | "gather" | "repair" | "scrap" | "cover";
+export type HoverAction = "garrison" | "ungarrison" | "attack" | "capture" | "gather" | "repair" | "scrap";
 
 export type HoverEntity = Pick<
   EntityView,
@@ -46,8 +45,6 @@ export function resolveHoverAction(args: {
   const engineers = ownUnits.filter((e) => e.type === "engineer");
   if (hit && engineers.length > 0 && isArmoredWreck(hit)) return "scrap";
   if (hit && engineers.length > 0 && canRepairHit(hit, you, args.allied)) return "repair";
-  const guns = ownUnits.filter((e) => primaryInfantryGun(e.type) != null);
-  if (hit && hit.type === "sandbags" && !hit.ruined && hit.hp > 0 && guns.length > 0) return "cover";
 
   if (hit && isGarrisonable(hit.type) && hit.hp > 0 && !hit.wreck) {
     const occ = hit.garrison?.ownerId;
