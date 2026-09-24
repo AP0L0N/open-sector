@@ -123,6 +123,15 @@ describe("resolveHoverAction", () => {
     assert.equal(act({ selected: [warden], hit: foeCore }), "attack");
   });
 
+  it("does not offer a walker an attack on walls, and still offers a garrison", () => {
+    const walker = unit({ id: 5, type: "walker" });
+    assert.equal(act({ selected: [walker], hit: foeCore }), null);
+    assert.equal(act({ selected: [walker], hit: emptyHouse }), null);
+    assert.equal(act({ selected: [walker], hit: foeHouse }), "attack");
+    assert.equal(act({ selected: [walker, warden], hit: foeCore }), "attack");
+    assert.equal(act({ selected: [walker], hit: foeTrooper }), "attack");
+  });
+
   it("does not capture your own or allied buildings", () => {
     assert.equal(act({ selected: [trooper], hit: yourCore }), null);
     assert.equal(act({ selected: [trooper], hit: allyCore }), null);
@@ -173,6 +182,23 @@ describe("resolveHoverAction", () => {
     const dead = unit({ id: 9, type: "rifleman", wreck: true });
     assert.equal(act({ selected: [dead], hit: emptyHouse }), null);
     assert.equal(act({ selected: [], hit: emptyHouse }), null);
+  });
+
+  it("boards a supply truck and offers ammo to a dry tank", () => {
+    const open = unit({ id: 40, type: "supply", ownerId: FOE, bed: { seats: 0, open: true } });
+    const crewed = unit({ id: 41, type: "supply", bed: { crew: true, seats: 0 }, supply: 120 });
+    const full = unit({ id: 43, type: "supply", ownerId: FOE, bed: { crew: true, seats: 1 } });
+    const dry = unit({
+      id: 42,
+      type: "warden",
+      ammo: { ap: 0, he: 0, heat: 0, smoke: 0 },
+      mgAmmo: 0,
+    });
+    assert.equal(act({ selected: [trooper], hit: open }), "board");
+    assert.equal(act({ selected: [trooper], hit: crewed }), "board");
+    assert.equal(act({ selected: [trooper], hit: full }), "attack");
+    assert.equal(act({ selected: [crewed], hit: dry }), "supply");
+    assert.equal(act({ selected: [warden], hit: open }), "attack");
   });
 });
 

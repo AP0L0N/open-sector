@@ -119,7 +119,7 @@ import infantrySwimUrl from "../assets/units/infantry-swim.png";
 import haulerSheetUrl from "../assets/units/hauler-move.png";
 import haulerBareUrl from "../assets/units/hauler-bare.png";
 import walkerSheetUrl from "../assets/units/walker-move.png";
-import { bindCasemateSheets, bindTurntableSheets } from "./turntable-sheet.js";
+import { bindCasemateSheets, bindSupplySheets, bindTurntableSheets } from "./turntable-sheet.js";
 import { engineRowFromFacing, engineRowFromScreen } from "./turntable.js";
 import scoutHeadUrl from "../assets/units/scout-head.png";
 import rigSheetUrl from "../assets/units/rig-move.png";
@@ -658,6 +658,18 @@ export const SS3_SPRITE: UnitSpriteDef = {
 };
 bindCasemateSheets(SS3_SPRITE.image, ss3Gun.image);
 
+export const SUPPLY_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(42 * UNIT_VISUAL_SCALE),
+  contactY: 0.92,
+  facingSpace: "world",
+};
+bindSupplySheets(SUPPLY_SPRITE.image);
+
 export const WALKER_SPRITE: UnitSpriteDef = {
   image: loadSheet(walkerSheetUrl),
   dirs: 16,
@@ -704,6 +716,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   walker: WALKER_SPRITE,
   warden: TIGER_SPRITE,
   ss3: SS3_SPRITE,
+  supply: SUPPLY_SPRITE,
   rig: RIG_SPRITE,
 };
 

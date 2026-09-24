@@ -12,7 +12,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 33;
+export const PROTOCOL_VERSION = 34;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -169,6 +169,14 @@ export interface EntityView {
    * visible; enemies only receive this object while the hatch is open.
    */
   scout?: { hp: number; hpMax: number; out?: boolean };
+  /**
+   * Supply truck cab. `crew` is the factory driver. `open` means no one is
+   * driving and any infantry can take it. `seats` counts player infantry
+   * aboard, not the factory driver. Rider ids are friendly-only.
+   */
+  bed?: { crew?: boolean; seats: number; open?: boolean; riders?: number[] };
+  /** Supply points left. Friendly supply trucks only. */
+  supply?: number;
 }
 
 export interface PlayerPublic {
@@ -364,6 +372,9 @@ export type ClientMessage =
   | { type: "cmd.guard"; ids: number[]; x?: number; y?: number; facing?: number; targetId?: number }
   | { type: "cmd.field"; ids: number[]; structure: FieldStructureType; x: number; y: number; facing: number }
   | { type: "cmd.repair"; ids: number[]; targetId: number }
+  | { type: "cmd.board"; ids: number[]; truckId: number }
+  | { type: "cmd.unboard"; ids?: number[]; truckId?: number }
+  | { type: "cmd.supply"; ids: number[]; targetId: number }
   | { type: "cmd.speed"; delta: number };
 
 export type ServerMessage =

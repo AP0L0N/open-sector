@@ -19,7 +19,6 @@ import {
   walkerGunsOf,
   TREE_COVER_HEIGHT,
   TREE_HIT_CHANCE,
-  WEAPON_RANGE_SIGHT_MUL,
   WITHDRAW_TILES,
   coverHeightOf,
   fires,
@@ -75,6 +74,7 @@ import {
   entityHeight,
   muzzleHeight,
   shotClearsCover,
+  sightTilesForEntity,
   tileHeight,
   weaponRangeWorld,
   worldTileHeight,
@@ -111,6 +111,7 @@ import {
 } from "./mortar.js";
 import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
+import { isSupplyBullet, noteSupplyHit, supplyRiderFights, syncSupplyRiders } from "./supply.js";
 import { spawnSmokeCloud } from "./smoke.js";
 import { canSeeEntity } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
@@ -118,15 +119,16 @@ import { escorting, reversing, stepTurn, turnToward, turnTurretTo, turnTurretTow
 import type { Entity, MatchState, Projectile } from "./types.js";
 
 export function tickCombat(state: MatchState, dt: number): void {
+  syncSupplyRiders(state);
   for (const e of state.entities.values()) {
-    if (!canFight(e)) continue;
+    if (!canFight(e) || !supplyRiderFights(state, e)) continue;
     tickWeaponClocks(e, dt);
     if (unitInWater(state, e) || garrisonIsHiding(state, e)) continue;
     resolveTarget(state, e);
   }
   tickStance(state);
   for (const e of state.entities.values()) {
-    if (!canFight(e) || unitInWater(state, e) || garrisonIsHiding(state, e)) continue;
+    if (!canFight(e) || !supplyRiderFights(state, e) || unitInWater(state, e) || garrisonIsHiding(state, e)) continue;
     fireAtCurrent(state, e, dt);
   }
 }
@@ -148,7 +150,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       return undefined;
     }
     const t = state.entities.get(e.order.targetId);
-    if (!t || t.hp <= 0 || t.id === e.id) {
+    if (!t || t.hp <= 0 || t.id === e.id || walkerSparesBuilding(state, e, t)) {
       e.order = null;
       e.attackTarget = null;
       if (e.state === "attack") e.state = "idle";
@@ -165,6 +167,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       target.hp <= 0 ||
       skipsFriendly(state, e, target) ||
       dropsEmptyGarrison(state, e, target) ||
+      walkerSparesBuilding(state, e, target) ||
       dropsWreck(e, target) ||
       dropsUnharmedArmor(state, e, target)
     ) {
@@ -180,6 +183,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       target.hp <= 0 ||
       skipsFriendly(state, e, target) ||
       dropsEmptyGarrison(state, e, target) ||
+      walkerSparesBuilding(state, e, target) ||
       dropsWreck(e, target) ||
       dropsUnharmedArmor(state, e, target)
     ) {
@@ -247,6 +251,7 @@ function currentTarget(state: MatchState, e: Entity): Entity | undefined {
   if (!t || t.hp <= 0 || t.id === e.id) return undefined;
   if (e.order?.kind !== "forceattack" && skipsFriendly(state, e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && dropsEmptyGarrison(state, e, t)) return undefined;
+  if (walkerSparesBuilding(state, e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && dropsWreck(e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && dropsUnharmedArmor(state, e, t)) return undefined;
   return t;
@@ -306,6 +311,17 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
     vx,
     vy,
   });
+}
+
+/**
+ * Walker gatlings never bring a building down. They still fire while a hostile
+ * garrison is the thing inside. Tanks keep an order on the walls.
+ */
+function walkerSparesBuilding(state: MatchState, e: Entity, target: Entity): boolean {
+  if (e.type !== "walker" || target.kind !== "building") return false;
+  return !(
+    garrisonIsHostile(state, e.ownerId, target) && garrisonLooksOccupied(state, e.ownerId, target)
+  );
 }
 
 /** Auto-fire and infantry stop once a civilian house is empty. Tanks may still demolish on a player order. */
@@ -394,7 +410,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
       dist,
       {
         target,
-        accurateRange: accurateWeaponRange(e, range),
+        accurateRange: accurateWeaponRange(state, e, range),
       },
     );
     e.mgCooldown = TANK_MG.cooldown;
@@ -409,6 +425,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (!holedUp && !gunArcOk) return;
 
   if (e.type === "walker") {
+    if (target && walkerSparesBuilding(state, e, target)) return;
     fireWalker(state, e, aimX, aimY, range, dist, target);
     return;
   }
@@ -474,7 +491,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
         target,
         shell,
         fuse: !!ground || isSmokeShell(shell),
-        accurateRange: accurateWeaponRange(e, range),
+        accurateRange: accurateWeaponRange(state, e, range),
       },
     );
     fired++;
@@ -603,6 +620,9 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number): v
       hideScout(state, e);
     }
     if (occupied) woundGarrison(state, e, res.damage, p.caliber);
+    if (e.type === "supply" && !e.wreck && e.hp > 0) {
+      noteSupplyHit(state, e, res.face, false, chipWalls ? res.damage : 0);
+    }
   }
   pushImpact(state, p, "miss", p.x, p.y);
 }
@@ -632,7 +652,7 @@ function fireWalker(
     for (let i = 0; i < n && e.clip > 0; i++) {
       fireRound(state, e, x, y, stats, range, d, {
         target: tgt,
-        accurateRange: accurateWeaponRange(e, range),
+        accurateRange: accurateWeaponRange(state, e, range),
         bearing: Math.atan2(y - e.y, x - e.x),
       });
       e.clip -= 1;
@@ -656,6 +676,7 @@ function walkerSecondTarget(state: MatchState, e: Entity, primary: Entity): Enti
   for (const o of state.entities.values()) {
     if (o.id === primary.id || o.id === e.id || o.hp <= 0 || o.wreck || o.garrisonedIn) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
+    if (walkerSparesBuilding(state, e, o)) continue;
     if (
       isGarrisonable(o.type) &&
       (!garrisonLooksOccupied(state, e.ownerId, o) || !garrisonIsHostile(state, e.ownerId, o))
@@ -722,11 +743,13 @@ function hullAimRemainingDeg(e: Entity, aimX: number, aimY: number): number {
   return stepTurn(e.facing, Math.atan2(aimY - e.y, aimX - e.x), 0, 1).remainingDeg;
 }
 
-/** Sight reach in world units. Guns with a fixed rangeTiles have no extra long-shot band. */
-function accurateWeaponRange(e: Entity, range: number): number {
-  const gun = infantryGunFor(e);
-  if (gun?.rangeTiles != null) return range;
-  return range / WEAPON_RANGE_SIGHT_MUL;
+/**
+ * Shots inside the shooter's own eyes use the normal cone. Anything past
+ * that sight — a Tiger or StuG firing on a spotter — opens LONG_SHOT_SPREAD.
+ */
+function accurateWeaponRange(state: MatchState, e: Entity, range: number): number {
+  const sight = sightTilesForEntity(state, e) * state.tileSize;
+  return Math.min(range, sight);
 }
 
 /** Smoke is a player-placed screen, never an auto-attack fallback. */
@@ -944,10 +967,11 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       !scopedInfantry &&
       isArmored(liveDef) &&
       liveDef.kind !== "building";
-    const shooter = atArmor ? state.entities.get(p.fromId) : undefined;
-    const distTiles = shooter
-      ? Math.hypot(e.x - shooter.x, e.y - shooter.y) / state.tileSize
-      : PTRD_CLOSE_TILES + 1;
+    const shooter = state.entities.get(p.fromId);
+    const distTiles =
+      atArmor && shooter
+        ? Math.hypot(e.x - shooter.x, e.y - shooter.y) / state.tileSize
+        : PTRD_CLOSE_TILES + 1;
     const res = atArmor
       ? resolveAtRifleHit({
           penetration: p.penetration,
@@ -976,7 +1000,10 @@ export function tickProjectiles(state: MatchState, dt: number): void {
           exact: scopedInfantry,
         });
     const occupied = isGarrisonable(e.type) && livingGarrison(state, e).length > 0;
-    const chipWalls = !occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER;
+    // A walker round stops on the wall. It does not chew the structure, even
+    // when the house is empty or the target is a Core.
+    const walkerWall = e.kind === "building" && shooter?.type === "walker";
+    const chipWalls = (!occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER) && !walkerWall;
     const dealt = res.damage;
     if (chipWalls) {
       e.hp -= dealt;
@@ -1003,6 +1030,9 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       hideScout(state, e);
     }
     if (occupied) woundGarrison(state, e, res.damage, p.caliber);
+    if (e.type === "supply" && !e.wreck && e.hp > 0) {
+      noteSupplyHit(state, e, res.face, isSupplyBullet(p.caliber, p.shell, p.flight), chipWalls ? dealt : 0);
+    }
     const lethal = e.hp <= 0 && res.kind !== "ricochet";
     let kind: ImpactKind = lethal ? "kill" : res.kind;
     if (!chipWalls && kind === "kill") kind = "hit";
@@ -1246,6 +1276,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   for (const o of state.entities.values()) {
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
+    if (walkerSparesBuilding(state, e, o)) continue;
     if (isInfantryType(e.type) && o.kind === "building") {
       if (!garrisonIsHostile(state, e.ownerId, o) || !garrisonLooksOccupied(state, e.ownerId, o)) continue;
     } else if (

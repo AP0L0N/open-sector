@@ -12,6 +12,7 @@ import {
   MAX_UNIT_RADIUS,
   rollReloadMul,
   scoutHpMaxOf,
+  SUPPLY_CARGO,
   SCRAP_TILE_YIELD,
   UNIT_SPACE_PAD,
   type EntityType,
@@ -501,6 +502,8 @@ export function makeEntity(
     ruined: false,
     coverBonus: 0,
     work: 0,
+    crew: type === "supply",
+    supply: type === "supply" ? SUPPLY_CARGO : 0,
   };
   state.entities.set(id, e);
   occupyEntity(state, e);

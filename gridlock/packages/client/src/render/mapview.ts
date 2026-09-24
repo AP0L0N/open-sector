@@ -230,6 +230,7 @@ const EXTRUDE: Record<EntityType, number> = {
   sandbags: 12,
   teeth: 16,
   walker: 30,
+  supply: 18,
   cottage: 28,
   shack: 24,
   house: 36,
@@ -1543,11 +1544,7 @@ export class MapView {
       const e = this.curr.entities.find((x) => x.id === id);
       if (!e) continue;
       const gun = infantryGunFor(e);
-      if (gun?.rangeTiles != null) {
-        range = Math.max(range, gun.rangeTiles * ts);
-        continue;
-      }
-      range = Math.max(range, rangeTilesOf(e.type, this.elevAt(e.x, e.y)) * ts);
+      range = Math.max(range, rangeTilesOf(e.type, this.elevAt(e.x, e.y), gun?.rangeTiles) * ts);
     }
     return range;
   }
@@ -1904,6 +1901,16 @@ export class MapView {
     if ((action === "repair" || action === "scrap") && hit) {
       const engineers = own.filter((e) => e.type === "engineer");
       if (engineers.length) this.onCommand({ type: "cmd.repair", ids: engineers.map((e) => e.id), targetId: hit.id });
+      return;
+    }
+    if (action === "supply" && hit) {
+      const trucks = own.filter((e) => e.type === "supply");
+      if (trucks.length) this.onCommand({ type: "cmd.supply", ids: trucks.map((e) => e.id), targetId: hit.id });
+      return;
+    }
+    if (action === "board" && hit) {
+      const riders = own.filter((e) => e.kind === "unit" && isInfantryType(e.type) && e.garrisonedIn !== hit.id);
+      if (riders.length) this.onCommand({ type: "cmd.board", ids: riders.map((e) => e.id), truckId: hit.id });
       return;
     }
     if (action === "garrison" && hit) {

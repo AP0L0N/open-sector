@@ -227,6 +227,8 @@ function structuredCloneBase(e: Entity): Entity {
     ruined: false,
     coverBonus: 0,
     work: 0,
+    crew: false,
+    supply: 0,
   };
 }
 

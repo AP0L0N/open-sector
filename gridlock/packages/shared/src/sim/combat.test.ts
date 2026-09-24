@@ -20,7 +20,7 @@ import { applyCommand } from "./commands.js";
 import { RICOCHET_SPARK_SPEED } from "./ballistics.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
 import { enterGarrison } from "./garrison.js";
-import { weaponRangeWorld } from "./elevation.js";
+import { entityHeight, rangeTilesOf, weaponRangeWorld } from "./elevation.js";
 import { buildingBounds, buildingCenter, destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { inSmokeCloud } from "./smoke.js";
 import { createMatch, step } from "./match.js";
@@ -1451,7 +1451,10 @@ describe("infantry weapons", () => {
     assert.equal(t.weapon, "handgun");
     assert.equal(t.clip, HANDGUN.clip);
     assert.equal(t.reload, 0);
-    assert.equal(weaponRangeWorld(state, t), HANDGUN.rangeTiles * ts);
+    assert.equal(
+      weaponRangeWorld(state, t),
+      rangeTilesOf("rifleman", entityHeight(state, t), HANDGUN.rangeTiles) * ts,
+    );
     assert.ok(weaponRangeWorld(state, t) < rifleRange);
     assert.equal(applyCommand(state, "A", { type: "cmd.weapon", ids: [t.id], weapon: "rifle" }).ok, true);
     assert.equal(t.weapon, "rifle");
@@ -1763,6 +1766,144 @@ describe("walker gatlings", () => {
     const onFlank = both.filter((p) => p.vy > Math.abs(p.vx) * 0.35);
     assert.equal(onFront.length, 2);
     assert.equal(onFlank.length, 2);
+  });
+
+  it("does not bring a building down", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    stripOwner(state, "B");
+    const ts = state.tileSize;
+    const tileX = 40;
+    const tileY = 24;
+    const def = catalog("dynamo");
+    const c = buildingCenter(tileX, tileY, def.tileW, def.tileH, ts);
+    const dyn = makeEntity(state, "dynamo", "B", c.x, c.y, { tileX, tileY });
+    dyn.hp = 30;
+    const walker = makeEntity(state, "walker", "A", tileCenter(tileX - 6, ts), c.y);
+    walker.facing = 0;
+    walker.holdPosition = true;
+    assert.equal(applyCommand(state, "A", { type: "cmd.attack", ids: [walker.id], targetId: dyn.id }).ok, true);
+    for (let i = 0; i < 40; i++) step(state, TICK_DT);
+    assert.equal(dyn.hp, 30);
+    assert.equal(state.entities.has(dyn.id), true);
+    assert.notEqual(walker.order?.targetId, dyn.id);
+    assert.notEqual(walker.attackTarget, dyn.id);
+
+    const box = buildingBounds(dyn, ts);
+    const shot = {
+      x: box.x0 - 12,
+      y: dyn.y,
+      vx: catalog("walker").projectileSpeed,
+      vy: 0,
+      damage: 400,
+      penetration: 8,
+      caliber: 8,
+    };
+    const walkerRound = fireShell(state, shot);
+    walkerRound.fromId = walker.id;
+    tickProjectiles(state, TICK_DT);
+    assert.equal(dyn.hp, 30, "a walker round stops on the wall");
+
+    const rifle = makeEntity(state, "rifleman", "A", tileCenter(tileX - 12, ts), c.y);
+    rifle.holdPosition = true;
+    rifle.cooldown = 99;
+    state.impacts.length = 0;
+    const rifleRound = fireShell(state, shot);
+    rifleRound.fromId = rifle.id;
+    tickProjectiles(state, TICK_DT);
+    assert.ok(dyn.hp < 30, `rifle still chips the wall hp=${dyn.hp}`);
+  });
+
+  it("drops a force-attack on a bare building", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    stripOwner(state, "B");
+    const ts = state.tileSize;
+    const tileX = 40;
+    const tileY = 28;
+    const def = catalog("core");
+    const c = buildingCenter(tileX, tileY, def.tileW, def.tileH, ts);
+    const core = makeEntity(state, "core", "B", c.x, c.y, { tileX, tileY });
+    core.hp = 40;
+    const walker = makeEntity(state, "walker", "A", tileCenter(tileX - 8, ts), c.y);
+    walker.facing = 0;
+    walker.holdPosition = true;
+    assert.equal(
+      applyCommand(state, "A", {
+        type: "cmd.forceattack",
+        ids: [walker.id],
+        x: core.x,
+        y: core.y,
+        targetId: core.id,
+      }).ok,
+      true,
+    );
+    step(state, TICK_DT);
+    assert.equal(core.hp, 40);
+    assert.equal(walker.order, null);
+    assert.notEqual(walker.attackTarget, core.id);
+  });
+
+  it("does not acquire an enemy structure or split a gun onto one", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    stripOwner(state, "B");
+    const ts = state.tileSize;
+    const walker = makeEntity(state, "walker", "A", tileCenter(20, ts), tileCenter(20, ts));
+    walker.facing = 0;
+    walker.holdPosition = true;
+    const tileX = 26;
+    const tileY = 18;
+    const def = catalog("dynamo");
+    const c = buildingCenter(tileX, tileY, def.tileW, def.tileH, ts);
+    const dyn = makeEntity(state, "dynamo", "B", c.x, c.y, { tileX, tileY });
+    tickCombat(state, TICK_DT);
+    assert.notEqual(walker.attackTarget, dyn.id);
+    assert.notEqual(walker.order?.targetId, dyn.id);
+
+    const front = makeEntity(state, "rifleman", "B", tileCenter(24, ts), tileCenter(20, ts));
+    front.holdPosition = true;
+    front.cooldown = 99;
+    walker.order = { kind: "attack", targetId: front.id };
+    walker.attackTarget = front.id;
+    walker.cooldown = 0;
+    tickCombat(state, TICK_DT);
+    const shots = state.projectiles.filter((p) => p.fromId === walker.id);
+    assert.equal(shots.length, 4);
+    assert.ok(shots.every((p) => Math.abs(p.vy) < Math.abs(p.vx) * 0.35), "both guns stay on the soldier");
+    assert.equal(dyn.hp, dyn.hpMax);
+  });
+
+  it("wounds a hostile garrison and leaves the house standing", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    stripOwner(state, "B");
+    const ts = state.tileSize;
+    const tileX = 40;
+    const tileY = 24;
+    const def = catalog("cottage");
+    const c = buildingCenter(tileX, tileY, def.tileW, def.tileH, ts);
+    const house = makeEntity(state, "cottage", "", c.x, c.y, { tileX, tileY });
+    house.hp = 40;
+    const foe = makeEntity(state, "rifleman", "B", c.x, c.y);
+    foe.holdPosition = true;
+    foe.cooldown = 99;
+    assert.equal(enterGarrison(state, foe, house), true);
+    const insideHp = foe.hp;
+    const walker = makeEntity(state, "walker", "A", tileCenter(tileX - 6, ts), c.y);
+    walker.facing = 0;
+    walker.holdPosition = true;
+    assert.equal(applyCommand(state, "A", { type: "cmd.attack", ids: [walker.id], targetId: house.id }).ok, true);
+    let wounded = false;
+    for (let i = 0; i < 80 && foe.hp === insideHp && foe.hp > 0; i++) step(state, TICK_DT);
+    wounded = foe.hp < insideHp;
+    assert.equal(wounded, true, `garrison hp=${foe.hp}`);
+    assert.equal(house.hp, 40);
+    foe.hp = 0;
+    for (let i = 0; i < 20; i++) step(state, TICK_DT);
+    assert.equal(house.hp, 40);
+    assert.equal(state.entities.has(house.id), true);
+    assert.notEqual(walker.order?.targetId, house.id);
   });
 });
 

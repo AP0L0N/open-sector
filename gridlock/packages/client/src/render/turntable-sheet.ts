@@ -43,6 +43,11 @@ const ss3GunGlob = import.meta.glob("../assets/units/ss3/gun/*.png", {
   import: "default",
 }) as Record<string, string>;
 
+const supplyHullGlob = import.meta.glob("../assets/units/supply-truck/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 export const SS3_OPTS: TurntableSheetOpts = { ...TIGER_OPTS };
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -292,6 +297,30 @@ export function bindCasemateSheets(hullImage: HTMLImageElement, gunImage: HTMLIm
     })
     .catch((err) => {
       console.error("ss3 turntable", err);
+    });
+}
+
+let supplyPrevious: ComposedTurntable | null = null;
+
+/** Hull-only drop-ins. Same fit as the other vehicles, one sheet, one cameo. */
+export function bindSupplySheets(hullImage: HTMLImageElement): void {
+  let hullUrls: string[];
+  try {
+    hullUrls = pickTurntableUrls(supplyHullGlob);
+  } catch (err) {
+    console.error("supply truck turntable", err);
+    return;
+  }
+  void Promise.all(hullUrls.map(loadImage))
+    .then((hullImgs) => composeAligned([hullImgs], TIGER_OPTS))
+    .then((next) => {
+      revoke(supplyPrevious);
+      supplyPrevious = next;
+      hullImage.src = next.sheetUrls[0] ?? "";
+      applyCameo(next.cameoUrl, "--supply-cameo");
+    })
+    .catch((err) => {
+      console.error("supply truck turntable", err);
     });
 }
 

@@ -552,11 +552,16 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
           ? `  ·  hatch ${e.scout.hp}/${e.scout.hpMax}`
           : `  ·  scout ${e.scout.hp}/${e.scout.hpMax}`
       : "";
+  const bed = e.bed
+    ? `  ·  ${e.bed.open ? "no driver" : e.bed.crew ? "crew" : "driven"} ${(e.bed.crew ? 1 : 0) + e.bed.seats}/2${
+        e.supply != null ? `  ·  supply ${Math.round(e.supply)}` : ""
+      }`
+    : "";
   const occ = e.garrison?.ownerId
     ? ctx.match.players.find((p) => p.playerId === e.garrison!.ownerId)
     : owner;
   const who = occ?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${mg}  ·  ${who}${q}${cargo}${cart}${smoke}${dep}${special}${garrison}${scout}${capturing}${holding}${tending}`;
+  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${mg}  ·  ${who}${q}${cargo}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${capturing}${holding}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
 
@@ -645,6 +650,7 @@ const TYPE_ORDER: EntityType[] = [
   "warden",
   "ss3",
   "walker",
+  "supply",
   "hauler",
   "rifleman",
   "gunner",
@@ -1139,6 +1145,22 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   if (units.some((e) => e.type === "hauler")) {
     out.push({ slot: "harvest", act: "harvest", label: "Harvest", title: "Auto-harvest nearest scrap" });
   }
+  const trucks = units.filter((e) => e.type === "supply" && e.bed);
+  if (trucks.some((e) => e.bed?.crew && (e.bed.seats ?? 0) > 0)) {
+    out.push({
+      slot: "unboard",
+      act: "unboard",
+      label: "Unload",
+      title: "The passenger climbs out. The factory driver stays.",
+    });
+  } else if (trucks.some((e) => !e.bed?.crew && !e.bed?.open && (e.bed?.seats ?? 0) > 0)) {
+    out.push({
+      slot: "unboard",
+      act: "unboard",
+      label: "Get out",
+      title: "The driver climbs out and leaves the truck for anyone to take.",
+    });
+  }
   if (buildings.some((e) => e.type !== "core" && !isGarrisonable(e.type))) {
     out.push({ slot: "sell", act: "sell", label: "Sell", title: "Sell selected structures" });
   }
@@ -1313,6 +1335,11 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   if (act === "harvest") {
     const haulers = units.filter((e) => e.type === "hauler");
     if (haulers.length) ctx.net.send({ type: "cmd.harvest", ids: haulers.map((e) => e.id) });
+    return;
+  }
+  if (act === "unboard") {
+    const trucks = units.filter((e) => e.type === "supply");
+    for (const truck of trucks) ctx.net.send({ type: "cmd.unboard", truckId: truck.id });
     return;
   }
   if (act === "sell") {

@@ -817,11 +817,11 @@ export function drawShellHole(
   ctx.fillStyle = "#7c654c";
   ctx.fill();
   ring(bowl, 1);
-  ctx.fillStyle = "#3a2c22";
+  ctx.fillStyle = "#6a5644";
   ctx.fill();
-  ctx.fillStyle = "#14110e";
+  ctx.fillStyle = "#5a4838";
   ctx.beginPath();
-  ctx.ellipse(-rx * 0.04, ry * 0.02, rx * 0.26, ry * 0.22, 0, 0, Math.PI * 2);
+  ctx.ellipse(-rx * 0.04, ry * 0.02, rx * 0.18, ry * 0.14, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
   ctx.save();

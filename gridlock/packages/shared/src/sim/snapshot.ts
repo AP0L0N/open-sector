@@ -15,6 +15,7 @@ import {
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { allies, unitInWater } from "./geo.js";
 import { medicTendView } from "./heal.js";
+import { supplyHasDriver, supplyRiders } from "./supply.js";
 import { powerOf } from "./power.js";
 import { canSeeWorld, entityOnMask, visionMask } from "./vision.js";
 import type { Entity, MatchState } from "./types.js";
@@ -96,6 +97,16 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       tend: medicTendView(state, e),
       ruined: e.ruined || undefined,
       scout: scoutView(e, friendly),
+      supply: friendly && e.type === "supply" && !e.wreck ? e.supply : undefined,
+      bed:
+        e.type === "supply" && !e.wreck
+          ? {
+              crew: e.crew ? true : undefined,
+              seats: supplyRiders(state, e).length,
+              open: supplyHasDriver(state, e) ? undefined : true,
+              riders: friendly ? supplyRiders(state, e).map((r) => r.id) : undefined,
+            }
+          : undefined,
       ammo: friendly && Object.keys(e.ammo).length > 0 ? { ...e.ammo } : undefined,
       shell: friendly && e.shell ? e.shell : undefined,
       mgAmmo: friendly && hasMg(e.type) ? e.mgAmmo : undefined,

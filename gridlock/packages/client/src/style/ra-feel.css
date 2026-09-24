@@ -555,6 +555,9 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="walker"] {
   background-image: url("../assets/units/walker-cameo.png");
 }
+.prod-job[data-type="supply"] {
+  background-image: var(--supply-cameo, url("../assets/units/supply-truck/hull/0001.png"));
+}
 
 #map-canvas {
   width: 100%;
@@ -709,6 +712,7 @@ input[type="range"] { padding: 0; }
 #train-warden,
 #train-ss3,
 #train-walker,
+#train-supply,
 #build-dynamo,
 #build-smelter,
 #build-muster,
@@ -771,6 +775,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/walker-cameo.png");
+}
+#train-supply {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    var(--supply-cameo, url("../assets/units/supply-truck/hull/0001.png"));
 }
 .cameo-count {
   position: absolute;
@@ -973,6 +982,10 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="ss3"] { background-image: var(--ss3-cameo, url("../assets/units/ss3-cameo.png")); }
 .config-type[data-type="walker"],
 .prod-job[data-type="walker"] { background-image: url("../assets/units/walker-cameo.png"); }
+.config-type[data-type="supply"],
+.prod-job[data-type="supply"] {
+  background-image: var(--supply-cameo, url("../assets/units/supply-truck/hull/0001.png"));
+}
 .config-type[data-type="rig"] { background-image: url("../assets/units/rig-cameo.png"); }
 .config-type[data-type="dynamo"] { background-image: url("../assets/buildings/dynamo-cameo.png"); }
 .config-type[data-type="smelter"] { background-image: url("../assets/buildings/smelter-cameo.png"); }

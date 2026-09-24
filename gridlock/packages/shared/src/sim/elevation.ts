@@ -4,6 +4,7 @@ import {
   HEIGHT_BASE,
   HEIGHT_DOWNHILL_COST,
   HEIGHT_DOWNHILL_SPEED,
+  HEIGHT_RANGE_BONUS,
   HEIGHT_SIGHT_BONUS,
   HEIGHT_STEP_MAX,
   HEIGHT_UPHILL_COST,
@@ -23,7 +24,6 @@ import {
   infantryGunFor,
   isInfantryType,
   sightBonusTilesOf,
-  weaponRangeTiles,
   type EntityType,
 } from "../catalog.js";
 import { TILE_TREE } from "../maps.js";
@@ -156,31 +156,40 @@ export function uphillSightForEntity(e: { type: EntityType; scoutOut?: boolean; 
   return entityIsScouting(e) ? INFANTRY_UPHILL_SIGHT : uphillSightOf(e.type);
 }
 
-export function rangeTilesOf(type: EntityType, elev: number, extraSight = 0): number {
-  if (catalog(type).rangeTiles <= 0) return 0;
-  return weaponRangeTiles(sightTilesOf(type, elev, extraSight));
+/**
+ * Flat catalog reach, or `baseTiles` when the live gun is shorter (handgun),
+ * plus a step of HEIGHT_RANGE_BONUS above the plain. Optics do not extend it.
+ */
+export function rangeTilesOf(type: EntityType, elev: number, baseTiles?: number): number {
+  const base = baseTiles ?? catalog(type).rangeTiles;
+  if (base <= 0) return 0;
+  return base + Math.max(0, elev - HEIGHT_BASE) * HEIGHT_RANGE_BONUS;
 }
 
 /** Live fog radius: height, garrison watch/hide, hatch scout, catalog optics. */
 export function sightTilesForEntity(state: MatchState, e: Entity): number {
   if (e.garrisonedIn != null) {
     const house = state.entities.get(e.garrisonedIn);
-    if (house?.garrisonHide) return GARRISON_HIDE_SIGHT;
-    if (house) return sightTilesOf(e.type, entityHeight(state, e)) + GARRISON_WATCH_SIGHT_BONUS;
+    // A truck bed is not a window. Riders keep the sight they walked in with.
+    if (house && house.type !== "supply") {
+      if (house.garrisonHide) return GARRISON_HIDE_SIGHT;
+      return sightTilesOf(e.type, entityHeight(state, e)) + GARRISON_WATCH_SIGHT_BONUS;
+    }
   }
   if (entityIsScouting(e)) return sightTilesOf("rifleman", entityHeight(state, e));
   return sightTilesOf(e.type, entityHeight(state, e));
 }
 
 export function weaponRangeWorld(state: MatchState, e: Entity): number {
+  const host = e.garrisonedIn != null ? state.entities.get(e.garrisonedIn) : undefined;
+  const inHouse = !!host && host.type !== "supply";
+  if (inHouse && host.garrisonHide) return GARRISON_HIDE_SIGHT * state.tileSize;
   const gun = infantryGunFor(e);
-  if (gun?.rangeTiles != null) return gun.rangeTiles * state.tileSize;
-  if (catalog(e.type).rangeTiles <= 0) return 0;
-  const sight =
-    e.garrisonedIn != null
-      ? sightTilesForEntity(state, e)
-      : sightTilesOf(e.type, entityHeight(state, e));
-  return weaponRangeTiles(sight) * state.tileSize;
+  const base = gun?.rangeTiles ?? catalog(e.type).rangeTiles;
+  if (base <= 0) return 0;
+  let tiles = rangeTilesOf(e.type, entityHeight(state, e), base);
+  if (inHouse && !host.garrisonHide) tiles += GARRISON_WATCH_SIGHT_BONUS;
+  return tiles * state.tileSize;
 }
 
 const TANK_GUN_ELEV_TAN = Math.tan((TANK_GUN_ELEV_DEG * Math.PI) / 180);

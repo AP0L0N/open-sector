@@ -18,12 +18,13 @@ export function drawActionCursor(
   ctx.translate(x, y);
   ctx.lineJoin = "round";
   ctx.lineCap = "round";
-  if (action === "garrison") drawGarrison(ctx, t, false);
+  if (action === "garrison" || action === "board") drawGarrison(ctx, t, false);
   else if (action === "ungarrison") drawGarrison(ctx, t, true);
   else if (action === "attack") drawAttack(ctx, t);
   else if (action === "capture") drawCapture(ctx, t);
   else if (action === "repair") drawRepair(ctx, "FIX");
   else if (action === "scrap") drawRepair(ctx, "SCRAP");
+  else if (action === "supply") drawRepair(ctx, "AMMO");
   else drawGather(ctx, t);
   ctx.restore();
 }

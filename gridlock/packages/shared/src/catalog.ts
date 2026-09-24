@@ -186,20 +186,33 @@ export const TANK_GUN_CLIMB = TILE_SUBDIV;
 /** Chebyshev fog radius. Troopers and player-built structures share this. */
 export const INFANTRY_SIGHT_TILES = t(12);
 /**
+ * Extra gameplay tiles of weapon reach per elevation step above HEIGHT_BASE.
+ * Sight still grows by HEIGHT_SIGHT_BONUS. A hill helps the gun a little;
+ * it does not turn the fog disk into a firing range.
+ */
+export const HEIGHT_RANGE_BONUS = 1;
+/**
+ * Flat-ground reach, in gameplay tiles. `t(n)` is n cells on the 64-cell map.
+ * Direct fire stops inside the shooter's own eyes, except the tank guns,
+ * which reach a short way past the optics so a spotter still matters.
+ * The mortar is the long arm: past every direct-fire gun, not across the map.
+ *
+ * Cells: handgun 2, rifle 6, walker 6, MG42 8, StuG 9, scoped rifle and
+ * PTRD 10, Tiger 11, mortar 18 (it will not drop inside 3).
+ */
+export const HANDGUN_RANGE_TILES = t(2);
+export const RIFLE_RANGE_TILES = t(6);
+export const MG42_RANGE_TILES = t(8);
+export const WALKER_RANGE_TILES = t(6);
+export const SCOPED_RANGE_TILES = t(10);
+export const PTRD_RANGE_TILES = SCOPED_RANGE_TILES;
+export const STUG_RANGE_TILES = t(9);
+export const TIGER_RANGE_TILES = t(11);
+/**
  * After painting FOV, fill unseen 8-connected islands and hide visible ones
  * of this many tiles or fewer. Walks FOV borders only. Set to 0 to disable.
  */
 export const FOV_ISLAND_LIMIT = 12;
-/**
- * Armed units can fire this far past their current sight. The extra band is
- * only useful when a teammate (later: binoculars / a spotter) lights the target;
- * auto-attack still requires the enemy to be visible. Accuracy falls off there.
- */
-export const WEAPON_RANGE_SIGHT_MUL = 1.2;
-/** Flat-ground weapon tiles from a Chebyshev sight radius. */
-export function weaponRangeTiles(sightTiles: number): number {
-  return sightTiles * WEAPON_RANGE_SIGHT_MUL;
-}
 /** Tree tiles a sight ray may pass before the grove closes. One authoring cell. */
 export const TREE_LOS_THROUGH = TILE_SUBDIV;
 /**
@@ -238,6 +251,7 @@ export type EntityType =
   | "warden"
   | "ss3"
   | "walker"
+  | "supply"
   | "core"
   | "dynamo"
   | "smelter"
@@ -266,7 +280,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "supply";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -289,9 +303,12 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker"];
-/** Opening army besides the Rig. Hauler omitted so it does not auto-harvest. */
-export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter((t) => t !== "hauler");
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "supply"];
+/**
+ * Opening army besides the Rig. Hauler omitted so it does not auto-harvest.
+ * Supply truck omitted so the opening fight stays the same — train it at the Armory.
+ */
+export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter((t) => t !== "hauler" && t !== "supply");
 
 export interface CatalogEntry {
   type: EntityType;
@@ -307,7 +324,7 @@ export interface CatalogEntry {
   radius: number;
   moveTilesPerSec: number;
   turnDegPerSec: number;
-  /** Flat-ground max. Armed units keep this equal to sight × WEAPON_RANGE_SIGHT_MUL. */
+  /** Flat-ground max. Live reach adds HEIGHT_RANGE_BONUS per step above the plain. */
   rangeTiles: number;
   sightTiles: number;
   /** Extra Chebyshev sight from optics. The sniper's scope. Added on top of sightTiles. */
@@ -399,6 +416,8 @@ export interface InfantryGun {
   reload: number;
   /** Omit to use the unit catalog range. */
   rangeTiles?: number;
+  /** Too big to fire from a supply-truck bed. Rifle and handgun stay portable. */
+  bulky?: boolean;
   /** Inside this the tube will not drop. Mortar only. */
   minRangeTiles?: number;
   /** Rounds released together each time the cooldown elapses. Default 1. */
@@ -417,11 +436,11 @@ export function reloadSecondsOf(gun: Pick<InfantryGun, "reload">, mul: number): 
   return gun.reload * Math.max(0.01, mul);
 }
 
-/** Trooper primary. Precise, slow, long-range semi-auto. */
+/** Trooper primary. Precise, slow. Stops well inside what he can see. */
 export const RIFLE = {
   id: "rifle" as const,
   name: "Rifle",
-  blurb: "Long-range semi-auto. Slower shots, eight-round clip. Default — keep this unless the fight is point-blank.",
+  blurb: "Aimed rifle. Shorter than the machine gun. Slower shots, eight-round clip. Default — keep this unless the fight is point-blank.",
   damage: 12,
   penetration: 6,
   caliber: 8,
@@ -429,6 +448,7 @@ export const RIFLE = {
   cooldown: 0.9,
   clip: 8,
   reload: 2.8,
+  rangeTiles: RIFLE_RANGE_TILES,
 } as const satisfies InfantryGun;
 
 /**
@@ -443,7 +463,7 @@ export const HANDGUN = {
   penetration: 3,
   caliber: 9,
   spreadDeg: 5,
-  rangeTiles: t(3),
+  rangeTiles: HANDGUN_RANGE_TILES,
   cooldown: 0.4,
   clip: 7,
   reload: 1.6,
@@ -463,7 +483,7 @@ export const MG42_BIPOD_SECONDS = 1.5;
 export const MG42 = {
   id: "mg42" as const,
   name: "MG42",
-  blurb: "1,200 rounds a minute from a 50-round belt. Crawl and set the bipod, then it fires.",
+  blurb: "1,200 rounds a minute from a 50-round belt. Reaches past a rifle. Crawl and set the bipod, then it fires.",
   damage: 8,
   penetration: 8,
   caliber: 8,
@@ -472,6 +492,8 @@ export const MG42 = {
   shotsPerTick: MG42_RPM / 60 / (1 / TICK_DT),
   clip: MG42_BELT,
   reload: MG42_BELT_RELOAD,
+  rangeTiles: MG42_RANGE_TILES,
+  bulky: true,
 } as const satisfies InfantryGun;
 
 /**
@@ -534,6 +556,8 @@ export const SCOPED = {
   cooldown: 4.8,
   clip: 5,
   reload: 3.4,
+  rangeTiles: SCOPED_RANGE_TILES,
+  bulky: true,
 } as const satisfies InfantryGun;
 
 /**
@@ -542,11 +566,11 @@ export const SCOPED = {
  *
  * Soviet figures, 0°: about 40 mm at 100 m, 35 mm at 300 m, 25 mm at 500 m.
  * Mapped onto the plates in this catalog (Tiger side is 32, rear 16, front 80;
- * Walker is 18 / 10 / 8). Close range is inside a tank's own sight.
+ * Walker is 18 / 10 / 8). Close range sits inside a tank's own sight.
  */
 export const PTRD_CALIBER = 14.5;
-/** Gameplay tiles. Inside this, tank side and rear are in reach. */
-export const PTRD_CLOSE_TILES = t(8);
+/** Gameplay tiles. Inside this, tank side and rear are in reach. Four map cells. */
+export const PTRD_CLOSE_TILES = t(4);
 /** 0° penetration at the muzzle. The 100 m figure. */
 export const PTRD_PEN_MUZZLE = 40;
 /** 0° penetration at the far edge of close range. A square 32 mm side still opens. */
@@ -589,11 +613,13 @@ export const PTRD = {
   cooldown: SCOPED.cooldown,
   clip: SCOPED.clip,
   reload: SCOPED.reload,
+  rangeTiles: PTRD_RANGE_TILES,
+  bulky: true,
 } as const satisfies InfantryGun;
 
 /**
  * 60mm infantry mortar. The bomb goes up and comes down, so smoke and hills
- * do not stop the arc. Reach is much longer than the soldier's eyes.
+ * do not stop the arc. Reach is past his eyes and past the tank guns.
  * Auto-fire still needs the target on the side's fog. A teammate who can see
  * it lets the tube lob past his own sight.
  * The bomb still drifts, but it stays near the aim point.
@@ -601,8 +627,8 @@ export const PTRD = {
  * and a tracked tank can lose a track.
  * The tube has to be kneeling and planted, and it will not drop inside the minimum.
  */
-export const MORTAR_RANGE_TILES = t(26);
-export const MORTAR_MIN_RANGE_TILES = t(6);
+export const MORTAR_RANGE_TILES = t(18);
+export const MORTAR_MIN_RANGE_TILES = t(3);
 /** Blast radius. Several soldiers standing together share one bomb. */
 export const MORTAR_SPLASH_TILES = t(2.5);
 export const MORTAR_SCATTER_NEAR_TILES = t(0.32);
@@ -633,6 +659,7 @@ export const MORTAR = {
   reload: 7,
   rangeTiles: MORTAR_RANGE_TILES,
   minRangeTiles: MORTAR_MIN_RANGE_TILES,
+  bulky: true,
 } as const satisfies InfantryGun;
 
 /**
@@ -646,6 +673,30 @@ export const MEDIC_TOUCH_SLACK = 8;
 export const MEDIC_HEAL_PER_SEC = 3;
 /** Seconds of uninterrupted contact to clear one broken arm or leg. */
 export const MEDIC_MEND_SECONDS = 8;
+
+/** Supply points a truck leaves the Armory with. Shells cost more than bullets. */
+export const SUPPLY_CARGO = 120;
+/** Cargo spent to restore one tank shell. */
+export const SUPPLY_SHELL_COST = 2;
+/** Coaxial or Walker rounds restored per cargo point. */
+export const SUPPLY_ROUNDS_PER_POINT = 10;
+/** Cargo spent per second while handing ammo across. */
+export const SUPPLY_PER_SEC = 8;
+/** Cargo restored per second while parked on an owned Armory. */
+export const SUPPLY_REARM_PER_SEC = 30;
+/** Bodies in the cab and bed, factory driver included. */
+export const TRUCK_SEATS = 2;
+/**
+ * Occupant HP while inside the truck, versus standing in the open.
+ * Side and rear hits then deal a smaller share, so those angles last longer.
+ */
+export const TRUCK_RIDER_HP_MUL = 1.35;
+/** Share of a hull hit that reaches each soldier. The cab is the weak face. */
+export const TRUCK_RIDER_SHARE_FRONT = 0.62;
+export const TRUCK_RIDER_SHARE_SIDE = 0.28;
+export const TRUCK_RIDER_SHARE_REAR = 0.22;
+/** Chance a bullet on the front plate kills whoever is driving. */
+export const DRIVER_KILL_CHANCE = 0.18;
 
 export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   rifle: RIFLE,
@@ -1013,7 +1064,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 7,
     moveTilesPerSec: t(2.2),
     turnDegPerSec: 1800,
-    rangeTiles: weaponRangeTiles(INFANTRY_SIGHT_TILES),
+    rangeTiles: RIFLE_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
     cooldown: RIFLE.cooldown,
     damage: RIFLE.damage,
@@ -1037,7 +1088,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 7,
     moveTilesPerSec: t(1.65),
     turnDegPerSec: 1400,
-    rangeTiles: weaponRangeTiles(INFANTRY_SIGHT_TILES),
+    rangeTiles: MG42_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
     cooldown: MG42.cooldown,
     damage: MG42.damage,
@@ -1046,7 +1097,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: MG42.penetration,
     caliber: MG42.caliber,
     spreadDeg: MG42.spreadDeg,
-    blurb: "MG42. Crawl, set the bipod, then 1,200 rounds a minute from a 50-round belt.",
+    blurb: "MG42. Reaches past a rifle. Crawl, set the bipod, then 1,200 rounds a minute from a 50-round belt.",
   },
   sniper: {
     type: "sniper",
@@ -1062,7 +1113,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 7,
     moveTilesPerSec: t(1.8),
     turnDegPerSec: 1600,
-    rangeTiles: weaponRangeTiles(INFANTRY_SIGHT_TILES + t(4)),
+    rangeTiles: SCOPED_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
     sightBonusTiles: t(4),
     cooldown: SCOPED.cooldown,
@@ -1088,7 +1139,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 7,
     moveTilesPerSec: t(1.65),
     turnDegPerSec: 1400,
-    rangeTiles: weaponRangeTiles(INFANTRY_SIGHT_TILES + t(4)),
+    rangeTiles: PTRD_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
     sightBonusTiles: t(4),
     cooldown: PTRD.cooldown,
@@ -1210,7 +1261,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 12,
     moveTilesPerSec: t(1.45),
     turnDegPerSec: 85,
-    rangeTiles: weaponRangeTiles(t(8)),
+    rangeTiles: TIGER_RANGE_TILES,
     sightTiles: t(8),
     cooldown: 6.5,
     damage: 55,
@@ -1247,7 +1298,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 10,
     moveTilesPerSec: t(1.55),
     turnDegPerSec: 60,
-    rangeTiles: weaponRangeTiles(t(7)),
+    rangeTiles: STUG_RANGE_TILES,
     sightTiles: t(7),
     cooldown: 6.5,
     damage: 48,
@@ -1284,7 +1335,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 8,
     moveTilesPerSec: t(1.75),
     turnDegPerSec: 160,
-    rangeTiles: weaponRangeTiles(t(8)),
+    rangeTiles: WALKER_RANGE_TILES,
     sightTiles: t(8),
     cooldown: TICK_DT,
     damage: MG42.damage,
@@ -1302,7 +1353,37 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     belt: WALKER_BELT,
     leavesWreck: true,
     wreckHp: 36,
-    blurb: "Each arm is a gatling at the MG42's 1,200 rounds a minute, the same bullet. The backpack is a 1,200-round rack and does not refill. One arm spends it slowly. Both arms spend it twice as fast and can split across two targets.",
+    blurb: "Each arm is a gatling at the MG42's 1,200 rounds a minute, the same bullet. The backpack is a 1,200-round rack and does not reload by itself. One arm spends it slowly. Both arms spend it twice as fast and can split across two targets. The guns do not bring a building down.",
+  },
+  supply: {
+    type: "supply",
+    kind: "unit",
+    name: "Supply Truck",
+    letter: "V",
+    cost: 150,
+    buildSeconds: 9,
+    hp: 58,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 11,
+    moveTilesPerSec: t(2.15),
+    turnDegPerSec: 150,
+    rangeTiles: 0,
+    sightTiles: t(6),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    turnInPlace: true,
+    armorFront: 14,
+    armorSide: 8,
+    armorRear: 6,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
+    leavesWreck: true,
+    wreckHp: 28,
+    blurb: "Light truck. Tops up tank racks, coaxial belts, and the Walker's backpack, then refills itself at an Armory. Two seats. The factory driver stays at the wheel. A bullet in the front plate can kill the driver and leave the truck for anyone. A replacement driver can get out. The second soldier can fire a rifle or handgun from the bed — a machine gun, scoped rifle, or other large gun stays slung. Soldiers inside are a little harder to wound, and more so from the side or rear.",
   },
   cottage: {
     type: "cottage",
@@ -1636,10 +1717,41 @@ export function hasMg(type: EntityType): boolean {
 }
 
 /** Backpack or belt that runs dry and reloads. Null on shells and dry guns. */
+/** Rifle and handgun fit the truck bed. Machine guns, scoped rifles, mortars, and the PTRD do not. */
+export function weaponFitsTruck(gun: Pick<InfantryGun, "bulky"> | null | undefined): boolean {
+  return !!gun && gun.bulky !== true;
+}
+
+export function isSupplyTruck(type: EntityType): boolean {
+  return type === "supply";
+}
+
 export function beltOf(type: EntityType): { clip: number; reload: number } | null {
   const d = catalog(type);
   if (d.belt == null || d.belt <= 0) return null;
   return { clip: d.belt, reload: d.beltReload ?? 0 };
+}
+
+/**
+ * Finite ammo still below the catalog rack. Reloading magazines are not short —
+ * the truck only fills shells, coaxial belts, and a Walker backpack.
+ */
+export function supplyShortOf(
+  type: EntityType,
+  ammo: Partial<Record<ShellType, number>> | undefined,
+  mgAmmo: number | undefined,
+  clip: number | undefined,
+): boolean {
+  const def = catalog(type);
+  if (def.ammo) {
+    for (const shell of SHELL_TYPES) {
+      if ((ammo?.[shell] ?? 0) < (def.ammo[shell] ?? 0)) return true;
+    }
+  }
+  if ((def.mgAmmo ?? 0) > 0 && (mgAmmo ?? 0) < (def.mgAmmo ?? 0)) return true;
+  const belt = beltOf(type);
+  if (belt && belt.reload <= 0 && (clip ?? 0) < belt.clip) return true;
+  return false;
 }
 
 /** Walker arms in use. Missing means both guns. */

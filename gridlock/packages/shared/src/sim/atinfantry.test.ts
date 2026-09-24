@@ -14,7 +14,6 @@ import {
   PTRD_PEN_MUZZLE,
   PTRD_TRACK_CHANCE,
   SCOPED,
-  WEAPON_RANGE_SIGHT_MUL,
   addCrit,
   catalog,
   infantryGunFor,
@@ -100,7 +99,9 @@ describe("AT infantry", () => {
     assert.equal(s.sightTiles, INFANTRY_SIGHT_TILES);
     assert.equal(s.sightBonusTiles, sniper.sightBonusTiles);
     assert.equal(sightTilesOf("atinfantry", HEIGHT_BASE), sightTilesOf("sniper", HEIGHT_BASE));
-    assert.equal(s.rangeTiles, sightTilesOf("atinfantry", HEIGHT_BASE) * WEAPON_RANGE_SIGHT_MUL);
+    assert.equal(s.rangeTiles, PTRD.rangeTiles);
+    assert.equal(s.rangeTiles, sniper.rangeTiles);
+    assert.ok(s.rangeTiles < sightTilesOf("atinfantry", HEIGHT_BASE));
     assert.equal(rangeTilesOf("atinfantry", HEIGHT_BASE), rangeTilesOf("sniper", HEIGHT_BASE));
     assert.equal(PTRD.cooldown, SCOPED.cooldown);
     assert.equal(PTRD.clip, SCOPED.clip);

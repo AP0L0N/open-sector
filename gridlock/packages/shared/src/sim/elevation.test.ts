@@ -15,7 +15,7 @@ import {
   TILE_SIZE,
   TILE_SUBDIV,
   TREE_COVER_HEIGHT,
-  WEAPON_RANGE_SIGHT_MUL,
+  HEIGHT_RANGE_BONUS,
   catalog,
   coverHeightOf,
 } from "../catalog.js";
@@ -75,16 +75,18 @@ describe("high ground bonuses", () => {
     assert.equal(sightTilesOf("rifleman", HEIGHT_BASE), trooper.sightTiles);
     assert.equal(sightTilesOf("rifleman", 0), trooper.sightTiles);
     assert.equal(sightTilesOf("rifleman", HEIGHT_BASE + 2), trooper.sightTiles + 2 * HEIGHT_SIGHT_BONUS);
-    assert.equal(rangeTilesOf("rifleman", HEIGHT_BASE), trooper.sightTiles * WEAPON_RANGE_SIGHT_MUL);
-    assert.equal(rangeTilesOf("rifleman", HEIGHT_BASE + 1), sightTilesOf("rifleman", HEIGHT_BASE + 1) * WEAPON_RANGE_SIGHT_MUL);
+    assert.equal(rangeTilesOf("rifleman", HEIGHT_BASE), trooper.rangeTiles);
+    assert.equal(rangeTilesOf("rifleman", HEIGHT_BASE + 1), trooper.rangeTiles + HEIGHT_RANGE_BONUS);
+    assert.ok(rangeTilesOf("rifleman", HEIGHT_BASE + 1) < sightTilesOf("rifleman", HEIGHT_BASE + 1));
     assert.equal(rangeTilesOf("hauler", HEIGHT_BASE + 3), 0);
   });
 
-  it("grows weapon range when extra optics extend sight", () => {
+  it("does not grow the gun when extra optics extend sight", () => {
     const optics = 8;
     assert.equal(sightTilesOf("warden", 0, optics), catalog("warden").sightTiles + optics);
-    assert.equal(rangeTilesOf("warden", 0, optics), sightTilesOf("warden", 0, optics) * WEAPON_RANGE_SIGHT_MUL);
-    assert.ok(rangeTilesOf("warden", 0, optics) > rangeTilesOf("warden", 0));
+    assert.ok(sightTilesOf("warden", 0, optics) > sightTilesOf("warden", 0));
+    assert.equal(rangeTilesOf("warden", 0), catalog("warden").rangeTiles);
+    assert.equal(rangeTilesOf("warden", HEIGHT_BASE), catalog("warden").rangeTiles);
   });
 
   it("gives infantry more fog reach than a tank", () => {
