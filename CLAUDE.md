@@ -52,3 +52,7 @@ Before creating or replacing **unit** art (infantry, vehicles, turrets, hatch he
 - Buildings stay cardinal (4 faces). Tiles stay 1. Shared FX are not unit sheets.
 
 How to build a sheet, cell sizes, row order, and the consistency check are in the brief.
+
+# Developing the game
+
+Follow `.grok/rules/open-sector.md`. The shared sim decides the match; the canvas client draws it. Select the `open-sector` agent (`.grok/agents/open-sector.md`) when this session is for the game.

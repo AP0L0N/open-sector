@@ -13,6 +13,7 @@ import {
   facingToIso,
   getMap,
   TILE_EMPTY,
+  TILE_FENCE,
   TILE_TREE,
   TILE_WATER,
   TICK_DT,
@@ -35,6 +36,7 @@ import {
   specialReady,
   tileOnMask,
   visionMaskFromSnapshot,
+  mortarArcPoints,
   worldToIso,
   worldToIso3,
   worldToTile,
@@ -63,6 +65,9 @@ import {
   drawRicochetSparks,
   drawRicochetTrace,
   armorHitLift,
+  drawMortarBurst,
+  drawMortarSmoke,
+  MORTAR_BURST_MS,
   drawMoveClick,
   drawWreckFire,
   fxFrameAt,
@@ -75,8 +80,10 @@ import {
 import {
   UNIT_VISUAL_SCALE,
   INFANTRY_VISUAL_SCALE,
-  TREE_OAK,
-  TREE_PINE,
+  FENCE_X,
+  FENCE_Y,
+  OAK_FACES,
+  PINE_FACES,
   buildingOccludeEz,
   buildingSpriteFor,
   buildingStackAt,
@@ -90,6 +97,10 @@ import {
   spriteReady,
   GUNNER_DIE_SPRITE,
   GUNNER_FIRE_SPRITE,
+  MORTARMAN_DIE_SPRITE,
+  MORTARMAN_FIRE_SPRITE,
+  SNIPER_DIE_SPRITE,
+  SNIPER_FIRE_SPRITE,
   TROOPER_DIE_SPRITE,
   TROOPER_HANDGUN_SPRITE,
   TROOPER_RIFLE_FIRE_SPRITE,
@@ -133,7 +144,9 @@ import {
 } from "./sun.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
-import { gunnerSheet, heldFrame, trooperSheet } from "./infantry-visual.js";
+import { gunnerSheet, heldFrame, mortarmanSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
+import { compareDrawOrder, CORPSE_DRAW_LAYER, HOLE_DRAW_LAYER } from "./corpse-depth.js";
+import { drawTreeFall, TREE_FALL_MS } from "./tree-fall.js";
 import { lerpHullPose } from "./hull-lerp.js";
 import { canGuardUnit, resolveHoverAction, type HoverAction } from "./hover-action.js";
 import {
@@ -191,6 +204,9 @@ const EXTRUDE: Record<EntityType, number> = {
   ss3: 20,
   rifleman: 26,
   gunner: 26,
+  sniper: 26,
+  mortarman: 26,
+  walker: 30,
   cottage: 28,
   shack: 24,
   house: 36,
@@ -317,6 +333,7 @@ export class MapView {
     caliber?: number;
     blast?: boolean;
     splash?: boolean;
+    mortar?: boolean;
     lift?: number;
     /** Screen-x offset from the world ground projection. */
     sx?: number;
@@ -327,6 +344,12 @@ export class MapView {
   private seenShots = new Set<number>();
   /** Bounced spark origin, snapped to the same hull pixel as the ricochet FX. */
   private bounceTrace = new Map<number, { x: number; y: number; sx: number; lift: number }>();
+  /** Last smoke arc of a mortar bomb, kept briefly after it lands. World space. */
+  private mortarSmoke = new Map<number, { pts: { x: number; y: number; z: number; u: number }[]; at: number }>();
+  /** Leaves and husk from a tree a shell just opened. */
+  private treeFalls: { x: number; y: number; at: number; seed: number }[] = [];
+  /** First cleared-tree list is history. Later ones play the fall. */
+  private clearedBoot = false;
   private moveClicks: { x: number; y: number; at: number }[] = [];
   private trackKicks: TrackKickPuff[] = [];
   private trackKickLast = new Map<number, { x: number; y: number }>();
@@ -484,6 +507,10 @@ export class MapView {
       if (p.bounced || this.seenShots.has(p.id)) continue;
       this.seenShots.add(p.id);
       const shooter = match.entities.find((e) => e.id === p.fromId);
+      if (p.mortar) {
+        if (shooter?.type === "mortarman" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
+        continue;
+      }
       const fromGarrison =
         !!shooter?.garrisonedIn || (!shooter && !isShellCaliber(p.caliber) && !!this.houseAt(p.x, p.y));
       if (fromGarrison) {
@@ -690,9 +717,12 @@ export class MapView {
   private applyClearedTrees(): void {
     const map = this.map();
     const list = this.curr.clearedTrees ?? [];
+    const live = this.clearedBoot;
+    this.clearedBoot = true;
     if (list.length <= this.clearedApplied) return;
     const dirty: number[] = [];
     const w = map.width;
+    const now = performance.now();
     for (let n = this.clearedApplied; n < list.length; n++) {
       const t = list[n]!;
       if (t.x < 0 || t.y < 0 || t.x >= w || t.y >= map.height) continue;
@@ -700,6 +730,15 @@ export class MapView {
       if (map.tiles[i] !== TILE_TREE) continue;
       map.tiles[i] = TILE_EMPTY;
       dirty.push(i);
+      if (live) {
+        const ts = map.tileSize;
+        this.treeFalls.push({
+          x: (t.x + 0.5) * ts,
+          y: (t.y + 0.55) * ts,
+          at: now,
+          seed: (t.x * 131 + t.y * 977 + n * 17) >>> 0,
+        });
+      }
     }
     this.clearedApplied = list.length;
     if (dirty.length === 0) return;
@@ -1874,7 +1913,7 @@ export class MapView {
         },
       });
     }
-    items.sort((a, b) => a.layer - b.layer || a.z - b.z);
+    items.sort(compareDrawOrder);
     for (const it of items) it.run();
 
     for (const p of this.curr.projectiles) {
@@ -1904,6 +1943,8 @@ export class MapView {
         drawRicochetTrace(ctx, tail.x, tail.y - 7, a.x, a.y - 7, shell);
       }
     }
+    this.drawMortarArcs();
+    this.drawTreeFalls();
     this.drawSmokeClouds();
     this.drawImpacts();
 
@@ -2440,10 +2481,10 @@ export class MapView {
       if (p.x < -64 || p.y < -80 || p.x > vw + 64 || p.y > vh + 40) continue;
       const h = Math.imul(tx * 374761393 + ty * 668265263 + 9, 1103515245) >>> 0;
       const pine = kind === "lone" ? h % 3 !== 1 : h % 5 === 0;
-      const drawH = kind === "lone" ? (pine ? 50 : 38) : pine ? 34 : 28;
+      const faces = pine ? PINE_FACES : OAK_FACES;
+      const spr = faces[h % faces.length];
+      const drawH = kind === "lone" ? (pine ? 54 : 46) + (h % 5) * 2 : (pine ? 40 : 34) + (h % 4);
       const dim = !this.lit(tx, ty);
-      const flip = (h & 2) === 0 && !pine;
-      const spr = pine ? TREE_PINE : TREE_OAK;
       this.pushGroundShadow(items, treeShadowFootprint(wx, wy, drawH));
       items.push({
         layer: 0,
@@ -2452,10 +2493,54 @@ export class MapView {
           const ctx = this.ctx;
           ctx.save();
           if (dim) ctx.globalAlpha = 0.48;
-          drawPropSprite(ctx, spr, p.x, p.y, drawH, flip);
+          if (spr) drawPropSprite(ctx, spr, p.x, p.y, drawH, false);
           ctx.restore();
         },
       });
+    }
+    this.collectFences(items);
+  }
+
+  /** One fence sprite every other tile so the rail spans the run without stacking posts. */
+  private collectFences(items: { layer: number; z: number; run: () => void }[]): void {
+    const map = this.map();
+    const ts = map.tileSize;
+    const explored = this.explored;
+    const w = map.width;
+    const tiles = map.tiles;
+    const { w: vw, h: vh } = this.viewSize();
+    const fenceAt = (x: number, y: number): boolean => {
+      if (x < 0 || y < 0 || x >= w || y >= map.height) return false;
+      return tiles[y * w + x] === TILE_FENCE;
+    };
+    for (let ty = 0; ty < map.height; ty++) {
+      for (let tx = 0; tx < w; tx++) {
+        if (!fenceAt(tx, ty)) continue;
+        if (explored && !explored[ty * w + tx]) continue;
+        const alongX = fenceAt(tx - 1, ty) || fenceAt(tx + 1, ty);
+        const alongY = fenceAt(tx, ty - 1) || fenceAt(tx, ty + 1);
+        const axis: 0 | 1 = alongY && !alongX ? 1 : 0;
+        const anchor = axis === 0 ? tx % 2 === 0 : ty % 2 === 0;
+        if ((alongX || alongY) && !anchor) continue;
+        const wx = (tx + 0.5) * ts;
+        const wy = (ty + 0.55) * ts;
+        const p = this.toScreen(wx, wy);
+        if (p.x < -48 || p.y < -40 || p.x > vw + 48 || p.y > vh + 24) continue;
+        const spr = axis === 0 ? FENCE_X : FENCE_Y;
+        const dim = !this.lit(tx, ty);
+        this.pushGroundShadow(items, treeShadowFootprint(wx, wy, 8));
+        items.push({
+          layer: 0,
+          z: isoDepth(wx, wy),
+          run: () => {
+            const ctx = this.ctx;
+            ctx.save();
+            if (dim) ctx.globalAlpha = 0.48;
+            drawPropSprite(ctx, spr, p.x, p.y, 28, false);
+            ctx.restore();
+          },
+        });
+      }
     }
   }
 
@@ -2703,6 +2788,26 @@ export class MapView {
       if (sheet === "mg-fire") return GUNNER_FIRE_SPRITE;
       if (sheet === "die") return GUNNER_DIE_SPRITE;
     }
+    if (e.type === "sniper") {
+      const sheet = sniperSheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        shotAgeMs: this.infantryShotAge(e.id),
+      });
+      if (sheet === "fire") return SNIPER_FIRE_SPRITE;
+      if (sheet === "die") return SNIPER_DIE_SPRITE;
+    }
+    if (e.type === "mortarman") {
+      const sheet = mortarmanSheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        shotAgeMs: this.infantryShotAge(e.id),
+      });
+      if (sheet === "fire") return MORTARMAN_FIRE_SPRITE;
+      if (sheet === "die") return MORTARMAN_DIE_SPRITE;
+    }
     return spriteFor(e.type, e.stance, e.swimming);
   }
 
@@ -2816,16 +2921,21 @@ export class MapView {
     }
     const corpse = isInfantryType(e.type) && !!e.wreck;
     let frameIndex: number | undefined;
-    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
-    else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE) {
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE) {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
     }
     ctx.save();
     ctx.globalAlpha = fade;
     ctx.save();
     if (e.wreck && !corpse) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
+    let stepping = e.state === "move" || !!e.swimming;
+    if (e.type === "walker" && stepping) {
+      const prev = this.prev?.entities.find((p) => p.id === e.id);
+      stepping = !!prev && Math.hypot(prev.x - e.x, prev.y - e.y) > 0.5;
+    }
     const drawn = drawUnitSprite(ctx, def, s.x, s.y, dir.x, dir.y, {
-      moving: !e.wreck && !immobilized(e) && (e.state === "move" || !!e.swimming),
+      moving: !e.wreck && !immobilized(e) && stepping,
       id: e.id,
       now: performance.now() * (this.curr.gameSpeed || 1),
       frameIndex,
@@ -2904,7 +3014,7 @@ export class MapView {
     }
   }
 
-  /** Craters under units, then blood and the fallen pose with the soldiers. */
+  /** Craters on the ground. Blood and the fallen pose sit under every unit. */
   private collectRemains(items: { layer: number; z: number; run: () => void }[]): void {
     const map = this.map();
     const ts = map.tileSize;
@@ -2918,7 +3028,7 @@ export class MapView {
       if (!seen && !lit) continue;
       const alpha = lit ? 1 : 0.5;
       items.push({
-        layer: 0,
+        layer: HOLE_DRAW_LAYER,
         z: isoDepth(hole.x, hole.y) - 0.6,
         run: () => this.drawHole(hole, alpha),
       });
@@ -2926,12 +3036,12 @@ export class MapView {
     for (const body of this.curr.bodies ?? []) {
       const z = isoDepth(body.x, body.y);
       items.push({
-        layer: 1,
+        layer: CORPSE_DRAW_LAYER,
         z: z - 0.35,
         run: () => this.drawBodyBlood(body),
       });
       items.push({
-        layer: 1,
+        layer: CORPSE_DRAW_LAYER,
         z,
         run: () => this.drawBody(body),
       });
@@ -2948,16 +3058,8 @@ export class MapView {
     const c = this.toScreen(hole.x, hole.y);
     const rx = this.groundSpan(hole.x, hole.y, hole.radius);
     const tip = this.toScreen(hole.x + Math.cos(hole.ang), hole.y + Math.sin(hole.ang));
-    drawShellHole(
-      this.ctx,
-      c.x,
-      c.y,
-      rx,
-      rx * 0.5,
-      Math.atan2(tip.y - c.y, tip.x - c.x),
-      hole.seed,
-      alpha,
-    );
+    const ang = hole.round ? 0 : Math.atan2(tip.y - c.y, tip.x - c.x);
+    drawShellHole(this.ctx, c.x, c.y, rx, rx * 0.5, ang, hole.seed, alpha);
   }
 
   private drawBodyBlood(body: CorpseView): void {
@@ -2971,7 +3073,16 @@ export class MapView {
   }
 
   private drawBody(body: CorpseView): void {
-    const def = body.type === "gunner" ? GUNNER_DIE_SPRITE : body.type === "rifleman" ? TROOPER_DIE_SPRITE : null;
+    const def =
+      body.type === "gunner"
+        ? GUNNER_DIE_SPRITE
+        : body.type === "sniper"
+          ? SNIPER_DIE_SPRITE
+          : body.type === "mortarman"
+            ? MORTARMAN_DIE_SPRITE
+            : body.type === "rifleman"
+              ? TROOPER_DIE_SPRITE
+              : null;
     if (!def) return;
     const s = this.toScreen(body.x, body.y);
     const dir = facingToIso(body.facing, this.ts());
@@ -3019,12 +3130,74 @@ export class MapView {
     return 1;
   }
 
+  /** Leaves and a broken trunk where a shell just took a tree down. */
+  private drawTreeFalls(): void {
+    const now = performance.now();
+    const keep: MapView["treeFalls"] = [];
+    for (const f of this.treeFalls) {
+      const t = (now - f.at) / TREE_FALL_MS;
+      if (t >= 1) continue;
+      keep.push(f);
+      const s = this.toScreen(f.x, f.y);
+      drawTreeFall(this.ctx, s.x, s.y, t, f.seed);
+    }
+    this.treeFalls = keep;
+  }
+
+  /** Smoke along the lob, from the tube to the bomb, then a short hang after it lands. */
+  private drawMortarArcs(): void {
+    const now = performance.now();
+    const blend = Math.min(1, (now - this.snapAt) / 100);
+    const live = new Set<number>();
+    const ctx = this.ctx;
+    for (const p of this.curr.projectiles) {
+      if (!p.mortar || p.apex == null || p.hang == null || p.arc == null) continue;
+      live.add(p.id);
+      const prev = this.prev?.projectiles.find((q) => q.id === p.id);
+      const wx = prev ? prev.x + (p.x - prev.x) * blend : p.x;
+      const wy = prev ? prev.y + (p.y - prev.y) * blend : p.y;
+      const arc = prev?.arc != null ? prev.arc + (p.arc - prev.arc) * blend : p.arc;
+      const apex = prev?.apex != null ? prev.apex + (p.apex - prev.apex) * blend : p.apex;
+      const world = mortarArcPoints({
+        x: wx,
+        y: wy,
+        vx: p.vx,
+        vy: p.vy,
+        apex,
+        arc,
+        hang: p.hang,
+        steps: 18,
+      });
+      const pts = world.map((pt) => ({ x: pt.x, y: pt.y, z: pt.z, u: pt.u }));
+      drawMortarSmoke(ctx, this.mortarSmokeScreen(pts), p.id);
+      this.mortarSmoke.set(p.id, { pts, at: now });
+    }
+    for (const [id, trail] of this.mortarSmoke) {
+      if (live.has(id)) continue;
+      const age = now - trail.at;
+      if (age > 900) {
+        this.mortarSmoke.delete(id);
+        continue;
+      }
+      drawMortarSmoke(ctx, this.mortarSmokeScreen(trail.pts), id, 1 - age / 900);
+    }
+  }
+
+  private mortarSmokeScreen(
+    pts: readonly { x: number; y: number; z: number; u: number }[],
+  ): { x: number; y: number; u: number }[] {
+    return pts.map((pt) => {
+      const s = this.toScreen(pt.x, pt.y, this.elevAt(pt.x, pt.y) + pt.z);
+      return { x: s.x, y: s.y, u: pt.u };
+    });
+  }
+
   private drawImpacts(): void {
     const now = performance.now();
     const ctx = this.ctx;
     const keep: typeof this.fx = [];
     for (const f of this.fx) {
-      const life = fxLifeMs(f.kind, f.blast);
+      const life = f.mortar ? MORTAR_BURST_MS : fxLifeMs(f.kind, f.blast);
       const age = now - f.at;
       if (age > life) {
         this.fxIds.delete(f.id);
@@ -3036,7 +3209,11 @@ export class MapView {
       const tip = this.toScreen(f.x + f.vx * 0.08, f.y + f.vy * 0.08);
       const dirX = tip.x - s.x;
       const dirY = tip.y - s.y;
-      if (f.splash) drawWaterDetonation(ctx, s.x, s.y, t, f.id, f.caliber);
+      if (f.mortar) {
+        drawMortarBurst(ctx, s.x, s.y, t, f.id, !!f.splash);
+      } else if (f.splash) {
+        drawWaterDetonation(ctx, s.x, s.y, t, f.id, f.caliber);
+      }
       const lift =
         f.lift ??
         (f.kind === "miss" || f.kind === "puff"
@@ -3082,7 +3259,7 @@ export class MapView {
         );
       } else if (f.kind === "ricochet") {
         drawRicochetSparks(ctx, x, y, dirX, dirY, t, f.id, f.caliber);
-      } else if (f.kind === "miss" && !f.splash) {
+      } else if (f.kind === "miss" && !f.splash && !f.mortar) {
         drawGroundMiss(ctx, s.x, s.y, t, f.id, f.caliber, dirX, dirY);
       }
     }

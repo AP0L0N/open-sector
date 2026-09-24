@@ -227,9 +227,12 @@ export type EntityType =
   | "rig"
   | "rifleman"
   | "gunner"
+  | "sniper"
+  | "mortarman"
   | "hauler"
   | "warden"
   | "ss3"
+  | "walker"
   | "core"
   | "dynamo"
   | "smelter"
@@ -253,7 +256,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "hauler" | "warden" | "ss3";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "mortarman" | "hauler" | "warden" | "ss3" | "walker";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -276,7 +279,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "hauler", "warden", "ss3"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "mortarman", "hauler", "warden", "ss3", "walker"];
 /** Opening army besides the Rig. Hauler omitted so it does not auto-harvest. */
 export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter((t) => t !== "hauler");
 
@@ -297,7 +300,7 @@ export interface CatalogEntry {
   /** Flat-ground max. Armed units keep this equal to sight × WEAPON_RANGE_SIGHT_MUL. */
   rangeTiles: number;
   sightTiles: number;
-  /** Extra Chebyshev sight from optics (binoculars, rangefinders). Omit until those units exist. */
+  /** Extra Chebyshev sight from optics. The sniper's scope. Added on top of sightTiles. */
   sightBonusTiles?: number;
   cooldown: number;
   damage: number;
@@ -312,8 +315,16 @@ export interface CatalogEntry {
   caliber: number;
   /** Aim cone in degrees at max range. 0 = laser. */
   spreadDeg: number;
+  /** Rounds released together each cooldown. Infantry guns override this. */
+  shotsPerTick?: number;
+  /** Small-arms belt. Reloads like an infantry clip. Omit for shells or a dry gun. */
+  belt?: number;
+  /** Belt change, seconds. Scaled by the unit's reloadMul. */
+  beltReload?: number;
   /** Hull must face the waypoint before translating. */
   turnInPlace?: boolean;
+  /** Turn to face every move. No reverse hop, even when the dest is close behind. */
+  noReverse?: boolean;
   /** Independent turret traverse. Omit for casemate guns / tank destroyers / infantry. */
   turretTurnDegPerSec?: number;
   /**
@@ -358,8 +369,8 @@ export interface ShellDef {
 }
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
-export type InfantryWeaponId = "rifle" | "handgun" | "mg42";
-export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42"];
+export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar"];
 export interface InfantryGun {
   id: InfantryWeaponId;
   name: string;
@@ -376,6 +387,8 @@ export interface InfantryGun {
   reload: number;
   /** Omit to use the unit catalog range. */
   rangeTiles?: number;
+  /** Inside this the tube will not drop. Mortar only. */
+  minRangeTiles?: number;
   /** Rounds released together each time the cooldown elapses. Default 1. */
   shotsPerTick?: number;
 }
@@ -449,10 +462,108 @@ export const MG42 = {
   reload: MG42_BELT_RELOAD,
 } as const satisfies InfantryGun;
 
+/**
+ * Walker gatlings. Same 1,200 rpm cadence as the MG42, one gun on each arm,
+ * so each tick releases four rounds. The backpack holds twice a gunner's belt,
+ * which keeps the same time-on-trigger.
+ */
+/** Rounds one gatling releases each tick. Same cadence as the MG42. */
+export const WALKER_ONE_BURST = MG42_RPM / 60 / (1 / TICK_DT);
+/** Both arms. */
+export const WALKER_SHOTS_PER_TICK = WALKER_ONE_BURST * 2;
+/**
+ * Backpack rack. It does not refill. One gatling lasts a minute;
+ * both arms empty it in half that time.
+ */
+export const WALKER_BELT = MG42_RPM;
+/** Half-angle the arms can cover while the body faces the main target. */
+export const WALKER_GUN_ARC = 70;
+
+export const WALKER_GUN_MODES = [
+  {
+    guns: 1 as const,
+    name: "One gatling",
+    blurb: "One arm. Half the rounds, so the backpack lasts. Stays on a single target.",
+  },
+  {
+    guns: 2 as const,
+    name: "Both gatlings",
+    blurb: "Both arms, four rounds a tick. If another enemy is in the forward arc, the second gun takes them.",
+  },
+] as const;
+
+/**
+ * Share of an infantry target's max HP.
+ * 100% at the muzzle, 90% at the far end of the scope.
+ */
+export const SCOPED_HP_NEAR = 1;
+export const SCOPED_HP_FAR = 0.9;
+
+/** Range falloff for a scoped hit. 0 distance is a full health bar. */
+export function scopedHpFraction(dist: number, maxRange: number): number {
+  const t = Math.min(1, Math.max(0, dist / Math.max(1e-6, maxRange)));
+  return SCOPED_HP_NEAR + (SCOPED_HP_FAR - SCOPED_HP_NEAR) * t;
+}
+
+/**
+ * Scoped bolt rifle. Infantry hits use scopedHpFraction of max HP.
+ * damage is only the chip against buildings and armor.
+ * The scope is sightBonusTiles on the sniper, not a second firing mode.
+ * A broken arm leaves this rifle on the ground — there is no handgun.
+ */
+export const SCOPED = {
+  id: "scoped" as const,
+  name: "Scoped rifle",
+  blurb: "Takes 90–100% of a soldier's health by range. A close shot kills. At the far end of the scope they are left barely standing.",
+  damage: 28,
+  penetration: 8,
+  caliber: 8,
+  spreadDeg: 0.45,
+  cooldown: 4.8,
+  clip: 5,
+  reload: 3.4,
+} as const satisfies InfantryGun;
+
+/**
+ * 60mm infantry mortar. The bomb goes up and comes down, so sight, smoke,
+ * and hills do not block it. Reach is much longer than the soldier's eyes.
+ * The bomb still drifts, but it stays near the aim point.
+ * The blast kills infantry in the open and glances off armor.
+ * The tube has to be kneeling and planted, and it will not drop inside the minimum.
+ */
+export const MORTAR_RANGE_TILES = t(26);
+export const MORTAR_MIN_RANGE_TILES = t(6);
+/** Blast radius. Several soldiers standing together share one bomb. */
+export const MORTAR_SPLASH_TILES = t(2.5);
+export const MORTAR_SCATTER_NEAR_TILES = t(0.32);
+export const MORTAR_SCATTER_FAR_TILES = t(0.9);
+export const MORTAR_PLANT_SECONDS = 1.6;
+export const MORTAR_FLIGHT_NEAR = 1.55;
+export const MORTAR_FLIGHT_FAR = 2.85;
+/** Elevation units at the top of the arc. High enough to read as a lob. */
+export const MORTAR_APEX_NEAR = 36;
+export const MORTAR_APEX_FAR = 64;
+export const MORTAR = {
+  id: "mortar" as const,
+  name: "Mortar",
+  blurb: "Lobs a bomb over hills and out of sight. Slow, and it still drifts a little off the aim point. Devastating to infantry in the open, a glance off armor. Kneel and plant the tube. Too close and it will not drop.",
+  damage: 56,
+  penetration: 14,
+  caliber: 60,
+  spreadDeg: 22,
+  cooldown: 4.6,
+  clip: 4,
+  reload: 7,
+  rangeTiles: MORTAR_RANGE_TILES,
+  minRangeTiles: MORTAR_MIN_RANGE_TILES,
+} as const satisfies InfantryGun;
+
 export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   rifle: RIFLE,
   handgun: HANDGUN,
   mg42: MG42,
+  scoped: SCOPED,
+  mortar: MORTAR,
 };
 
 /**
@@ -788,6 +899,57 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: MG42.spreadDeg,
     blurb: "MG42. Crawl, set the bipod, then 1,200 rounds a minute from a 50-round belt.",
   },
+  sniper: {
+    type: "sniper",
+    kind: "unit",
+    name: "Sniper",
+    letter: "T",
+    cost: 160,
+    buildSeconds: 10,
+    hp: 35,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: t(1.8),
+    turnDegPerSec: 1600,
+    rangeTiles: weaponRangeTiles(INFANTRY_SIGHT_TILES + t(4)),
+    sightTiles: INFANTRY_SIGHT_TILES,
+    sightBonusTiles: t(4),
+    cooldown: SCOPED.cooldown,
+    damage: SCOPED.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: SCOPED.penetration,
+    caliber: SCOPED.caliber,
+    spreadDeg: SCOPED.spreadDeg,
+    blurb: "Scoped rifle. A hit takes 90–100% of a soldier's health, closest shots killing outright. Crouch to tighten the aim.",
+  },
+  mortarman: {
+    type: "mortarman",
+    kind: "unit",
+    name: "Mortarman",
+    letter: "O",
+    cost: 190,
+    buildSeconds: 12,
+    hp: 38,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: t(1.5),
+    turnDegPerSec: 1200,
+    rangeTiles: MORTAR_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: MORTAR.cooldown,
+    damage: MORTAR.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: MORTAR.penetration,
+    caliber: MORTAR.caliber,
+    spreadDeg: MORTAR.spreadDeg,
+    blurb: "60mm mortar. Kneel, plant the tube, and lob past what he can see. Scattered bombs that wreck infantry and glance off armor.",
+  },
   hauler: {
     type: "hauler",
     kind: "unit",
@@ -885,6 +1047,40 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 50,
     hasScout: true,
     blurb: "Casemate assault gun. No turret — hull-steer to aim. Strong front, thin sides.",
+  },
+  walker: {
+    type: "walker",
+    kind: "unit",
+    name: "Walker",
+    letter: "K",
+    cost: 220,
+    buildSeconds: 12,
+    hp: 80,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 8,
+    moveTilesPerSec: t(1.75),
+    turnDegPerSec: 160,
+    rangeTiles: weaponRangeTiles(t(8)),
+    sightTiles: t(8),
+    cooldown: TICK_DT,
+    damage: MG42.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    turnInPlace: true,
+    noReverse: true,
+    armorFront: 18,
+    armorSide: 10,
+    armorRear: 8,
+    penetration: MG42.penetration,
+    caliber: MG42.caliber,
+    spreadDeg: 5,
+    shotsPerTick: WALKER_SHOTS_PER_TICK,
+    gunArcDeg: WALKER_GUN_ARC,
+    belt: WALKER_BELT,
+    leavesWreck: true,
+    wreckHp: 36,
+    blurb: "Each arm is a gatling at the MG42's 1,200 rounds a minute, the same bullet. The backpack is a 1,200-round rack and does not refill. One arm spends it slowly. Both arms spend it twice as fast and can split across two targets.",
   },
   cottage: {
     type: "cottage",
@@ -993,7 +1189,7 @@ export function fires(type: EntityType): boolean {
   return catalog(type).damage > 0 || hasMg(type);
 }
 
-/** Extra fog tiles from catalog optics. 0 on every current type. */
+/** Extra fog tiles from catalog optics. The sniper's scope; 0 on every other type. */
 export function sightBonusTilesOf(type: EntityType): number {
   return catalog(type).sightBonusTiles ?? 0;
 }
@@ -1009,7 +1205,7 @@ export function armorLabel(type: EntityType): string | null {
   return `F${d.armorFront} / S${d.armorSide} / R${d.armorRear}`;
 }
 
-const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner"];
+const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "mortarman"];
 
 export function isInfantryType(type: EntityType): boolean {
   return (INFANTRY_TYPES as readonly string[]).includes(type);
@@ -1019,6 +1215,8 @@ export function isInfantryType(type: EntityType): boolean {
 export function primaryInfantryGun(type: EntityType): InfantryGun | null {
   if (type === "rifleman") return RIFLE;
   if (type === "gunner") return MG42;
+  if (type === "sniper") return SCOPED;
+  if (type === "mortarman") return MORTAR;
   return null;
 }
 
@@ -1026,6 +1224,8 @@ export function primaryInfantryGun(type: EntityType): InfantryGun | null {
 export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
   if (type === "rifleman") return [RIFLE, HANDGUN];
   if (type === "gunner") return [MG42];
+  if (type === "sniper") return [SCOPED];
+  if (type === "mortarman") return [MORTAR];
   return [];
 }
 
@@ -1193,6 +1393,19 @@ export function hasAmmo(type: EntityType): boolean {
 
 export function hasMg(type: EntityType): boolean {
   return (catalog(type).mgAmmo ?? 0) > 0;
+}
+
+/** Backpack or belt that runs dry and reloads. Null on shells and dry guns. */
+export function beltOf(type: EntityType): { clip: number; reload: number } | null {
+  const d = catalog(type);
+  if (d.belt == null || d.belt <= 0) return null;
+  return { clip: d.belt, reload: d.beltReload ?? 0 };
+}
+
+/** Walker arms in use. Missing means both guns. */
+export function walkerGunsOf(e: { type: EntityType; gatlingGuns?: 1 | 2 }): 1 | 2 {
+  if (e.type !== "walker") return 1;
+  return e.gatlingGuns === 1 ? 1 : 2;
 }
 
 export function leavesWreck(type: EntityType): boolean {

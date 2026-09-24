@@ -1,33 +1,33 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { HEIGHT_BASE, HEIGHT_MAX, HEIGHT_STEP_MAX, TILE_SUBDIV } from "./catalog.js";
-import { MAPS, TILE_BLOCKED, TILE_TREE, TILE_WATER, heightAt, maxHeightOf, tileAt } from "./maps.js";
+import {
+  MAPS,
+  TILE_BLOCKED,
+  TILE_FENCE,
+  TILE_ROAD,
+  TILE_TREE,
+  TILE_WATER,
+  heightAt,
+  maxHeightOf,
+  tileAt,
+} from "./maps.js";
 
 describe("maps", () => {
-  it("ships two maps with 8 spawns", () => {
-    assert.ok(MAPS["yard-64"]);
-    assert.ok(MAPS["canal-48"]);
+  it("ships Scrap Yard with 8 spawns", () => {
+    assert.deepEqual(Object.keys(MAPS), ["yard-64"]);
     for (const map of Object.values(MAPS)) {
       assert.equal(map.spawns.length, 8);
       assert.equal(map.tiles.length, map.width * map.height);
       assert.equal(map.heights.length, map.width * map.height);
       for (const s of map.spawns) {
-        assert.equal(tileAt(map, s.x, s.y), 0, `${map.id} spawn ${s.id} blocked`);
+        const ground = tileAt(map, s.x, s.y);
+        assert.ok(
+          ground === 0 || ground === TILE_ROAD,
+          `${map.id} spawn ${s.id} on tile ${ground}`,
+        );
       }
     }
-  });
-
-  it("canal has a water strip with bridge gaps", () => {
-    const canal = MAPS["canal-48"]!;
-    const s = TILE_SUBDIV;
-    assert.equal(tileAt(canal, 0, 23 * s), TILE_WATER);
-    assert.equal(tileAt(canal, 11 * s, 23 * s), 0);
-  });
-
-  it("keeps the canal level on the raised base", () => {
-    const canal = MAPS["canal-48"]!;
-    assert.equal(maxHeightOf(canal), HEIGHT_BASE);
-    for (const h of canal.heights) assert.equal(h, HEIGHT_BASE);
   });
 
   it("scatters walkable hills and valleys on the yard without cliffing spawns", () => {
@@ -202,6 +202,52 @@ describe("maps", () => {
     }
     for (const s of yard.spawns) {
       assert.notEqual(tileAt(yard, s.x, s.y), TILE_WATER, `spawn ${s.id} in water`);
+    }
+  });
+
+  it("runs dirt lanes between the starts and fences the fields", () => {
+    const yard = MAPS["yard-64"]!;
+    let roads = 0;
+    let fences = 0;
+    for (const t of yard.tiles) {
+      if (t === TILE_ROAD) roads++;
+      if (t === TILE_FENCE) fences++;
+    }
+    assert.ok(roads > 600, `roads ${roads}`);
+    assert.ok(fences > 200, `fences ${fences}`);
+    assert.equal(
+      yard.tiles.filter((t) => t === TILE_BLOCKED).length,
+      0,
+      "scrap yard has no solid blocks",
+    );
+    const w = yard.width;
+    const h = yard.height;
+    const open = (t: number): boolean => t !== TILE_FENCE && t !== TILE_BLOCKED && t !== TILE_WATER;
+    const start = yard.spawns[0]!;
+    const seen = new Uint8Array(w * h);
+    const q: { x: number; y: number }[] = [{ x: start.x, y: start.y }];
+    seen[start.y * w + start.x] = 1;
+    const step: readonly [number, number][] = [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+    ];
+    for (let i = 0; i < q.length; i++) {
+      const c = q[i]!;
+      for (const [dx, dy] of step) {
+        const x = c.x + dx;
+        const y = c.y + dy;
+        if (x < 0 || y < 0 || x >= w || y >= h) continue;
+        const k = y * w + x;
+        if (seen[k] || !open(yard.tiles[k] ?? TILE_BLOCKED)) continue;
+        seen[k] = 1;
+        q.push({ x, y });
+      }
+    }
+    for (const s of yard.spawns) {
+      assert.equal(seen[s.y * w + s.x], 1, `spawn ${s.id} is fenced off`);
+      assert.notEqual(tileAt(yard, s.x, s.y), TILE_FENCE, `spawn ${s.id} on a fence`);
     }
   });
 

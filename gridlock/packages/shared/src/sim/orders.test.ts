@@ -200,6 +200,25 @@ describe("tank tracks", () => {
     assert.ok(rolled >= 18, `should keep rolling after the first yaw rolled=${rolled}`);
   });
 
+  it("turns a walker around instead of reversing a short hop behind it", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    clearPad(state, 70, 46, 100, 60);
+    const walker = makeEntity(state, "walker", "A", tileCenter(88, ts), tileCenter(52, ts));
+    walker.facing = 0;
+    walker.turretFacing = 0;
+    const destX = walker.x - REVERSE_TILES * TILE_SIZE * 0.6;
+    const destY = walker.y;
+    applyCommand(state, "A", { type: "cmd.move", ids: [walker.id], x: destX, y: destY });
+    assert.equal(reversing(walker), false);
+    const x0 = walker.x;
+    step(state, TICK_DT);
+    assert.equal(walker.x, x0, "should yaw in place before stepping");
+    for (let i = 0; i < 80; i++) step(state, TICK_DT);
+    assert.ok(walker.x < x0 - 8, `should walk west x=${walker.x} from ${x0}`);
+    assert.ok(angAbs(walker.facing, Math.PI) < 0.35, `should face the dest facing=${walker.facing}`);
+  });
+
   it("yaws toward a close side dest instead of reversing", () => {
     const { state } = twoPlayerMatch();
     const ts = state.tileSize;

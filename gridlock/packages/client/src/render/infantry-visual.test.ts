@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { gunnerSheet, heldFrame, MG_FIRE_MS, RIFLE_FIRE_MS, trooperSheet } from "./infantry-visual.js";
+import {
+  gunnerSheet,
+  heldFrame,
+  MG_FIRE_MS,
+  MORTAR_FIRE_MS,
+  mortarmanSheet,
+  RIFLE_FIRE_MS,
+  SNIPER_FIRE_MS,
+  sniperSheet,
+  trooperSheet,
+} from "./infantry-visual.js";
 
 describe("trooperSheet", () => {
   it("uses the walk sheet for a standing rifleman", () => {
@@ -34,6 +44,25 @@ describe("trooperSheet", () => {
     assert.equal(gunnerSheet({ stance: "crawl", shotAgeMs: 40 }), "mg-fire");
     assert.equal(gunnerSheet({ stance: "crawl", shotAgeMs: MG_FIRE_MS }), "crawl");
     assert.equal(gunnerSheet({ wreck: true, stance: "crawl" }), "die");
+  });
+
+  it("shows the scoped shot only while a standing sniper is in the fire window", () => {
+    assert.equal(sniperSheet({}), "walk");
+    assert.equal(sniperSheet({ stance: "crouch", shotAgeMs: 40 }), "crouch");
+    assert.equal(sniperSheet({ stance: "crawl", shotAgeMs: 40 }), "crawl");
+    assert.equal(sniperSheet({ shotAgeMs: 40 }), "fire");
+    assert.equal(sniperSheet({ shotAgeMs: SNIPER_FIRE_MS }), "walk");
+    assert.equal(sniperSheet({ wreck: true, swimming: true }), "die");
+  });
+
+  it("shows the mortar flash only while a kneeling mortarman is in the fire window", () => {
+    assert.equal(mortarmanSheet({}), "walk");
+    assert.equal(mortarmanSheet({ stance: "crouch" }), "crouch");
+    assert.equal(mortarmanSheet({ stance: "crouch", shotAgeMs: 40 }), "fire");
+    assert.equal(mortarmanSheet({ stance: "crouch", shotAgeMs: MORTAR_FIRE_MS }), "crouch");
+    assert.equal(mortarmanSheet({ stance: "crawl", shotAgeMs: 40 }), "crawl");
+    assert.equal(mortarmanSheet({ swimming: true, shotAgeMs: 40 }), "swim");
+    assert.equal(mortarmanSheet({ wreck: true, stance: "crouch" }), "die");
   });
 
   it("holds the last frame of a one-shot", () => {

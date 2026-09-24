@@ -52,7 +52,7 @@ describe("hub rooms", () => {
     client(hub, "A");
     const late = client(hub, "C");
     hub.handle("A", { type: "hello", name: "Alpha" });
-    hub.handle("A", { type: "room.create", mapId: "canal-48", maxSlots: 4 });
+    hub.handle("A", { type: "room.create", mapId: "yard-64", maxSlots: 4 });
     const code = hub.sessions.get("A")!.roomId!;
     hub.handle("A", { type: "slot.update", ready: true });
     hub.handle("A", { type: "room.start" });

@@ -1,4 +1,5 @@
 import {
+  beltOf,
   catalog,
   haulerSmokeChargesOf,
   infantryGunFor,
@@ -13,7 +14,15 @@ import {
   UNIT_SPACE_PAD,
   type EntityType,
 } from "../catalog.js";
-import { TILE_BLOCKED, TILE_EMPTY, TILE_SCRAP, TILE_TREE, TILE_WATER, type MapDef } from "../maps.js";
+import {
+  TILE_BLOCKED,
+  TILE_EMPTY,
+  TILE_FENCE,
+  TILE_SCRAP,
+  TILE_TREE,
+  TILE_WATER,
+  type MapDef,
+} from "../maps.js";
 import { nextRand } from "./rng.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -62,6 +71,29 @@ export function isSingleTree(state: MatchState, x: number, y: number): boolean {
     }
   }
   return true;
+}
+
+/**
+ * Fell every tree whose tile center lies in the disk. Used when a crater
+ * opens: a trunk standing in the scar comes down, grove or not.
+ */
+export function fellTreesInDisk(state: MatchState, x: number, y: number, radius: number): number {
+  const ts = state.tileSize;
+  const reach = Math.max(0, radius);
+  const x0 = worldToTile(x - reach, ts);
+  const y0 = worldToTile(y - reach, ts);
+  const x1 = worldToTile(x + reach, ts);
+  const y1 = worldToTile(y + reach, ts);
+  let n = 0;
+  for (let ty = y0; ty <= y1; ty++) {
+    for (let tx = x0; tx <= x1; tx++) {
+      const cx = tileCenter(tx, ts);
+      const cy = tileCenter(ty, ts);
+      if (Math.hypot(cx - x, cy - y) > reach) continue;
+      if (fellTreeAt(state, tx, ty)) n++;
+    }
+  }
+  return n;
 }
 
 /** Remove any tree tile (lone or grove). Shells use this; vehicles still crush loners only. */
@@ -174,7 +206,7 @@ export function initGrids(map: MapDef): {
   for (let i = 0; i < n; i++) {
     const t = map.tiles[i] ?? 0;
     terrain[i] = t;
-    if (t === TILE_BLOCKED || t === TILE_WATER) blocked[i] = 1;
+    if (t === TILE_BLOCKED || t === TILE_WATER || t === TILE_FENCE) blocked[i] = 1;
     if (t === TILE_SCRAP) scrapYield[i] = SCRAP_TILE_YIELD;
     heights[i] = map.heights[i] ?? 0;
   }
@@ -397,6 +429,7 @@ export function makeEntity(
 ): Entity {
   const def = catalog(type);
   const gun = infantryGunFor({ type, crits: [] });
+  const belt = beltOf(type);
   const tileX = opts?.tileX ?? worldToTile(x, state.tileSize);
   const tileY = opts?.tileY ?? worldToTile(y, state.tileSize);
   const id = state.nextId++;
@@ -421,9 +454,9 @@ export function makeEntity(
     order: null,
     waypoints: [],
     cooldown: 0,
-    clip: gun?.clip ?? 0,
+    clip: gun?.clip ?? belt?.clip ?? 0,
     reload: 0,
-    reloadMul: gun ? rollReloadMul(() => nextRand(state)) : 1,
+    reloadMul: gun || belt ? rollReloadMul(() => nextRand(state)) : 1,
     harvestTime: 0,
     cargo: 0,
     harvestTile: null,
@@ -438,6 +471,7 @@ export function makeEntity(
     ammo: def.ammo ? { ...def.ammo } : {},
     shell: def.defaultShell ?? null,
     weapon: primaryInfantryGun(type)?.id ?? null,
+    gatlingGuns: type === "walker" ? 2 : undefined,
     bipod: 0,
     mgAmmo: def.mgAmmo ?? 0,
     mgHeat: 0,

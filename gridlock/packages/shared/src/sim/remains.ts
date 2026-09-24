@@ -5,7 +5,7 @@ import {
   type ShellType,
 } from "../catalog.js";
 import type { BloodStainView, ImpactKind, ImpactView } from "../protocol.js";
-import { inBounds, isWall, isWater, occupant, worldToTile } from "./geo.js";
+import { fellTreesInDisk, inBounds, isWall, isWater, occupant, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** Drop the oldest crater after this many so a long barrage stays bounded. */
@@ -93,13 +93,16 @@ export function noteImpactSurface(
     const blocker = state.entities.get(occ);
     if (blocker?.kind === "building") return;
   }
+  const radius = shellHoleRadius(p.caliber);
   state.holes.push({
     id: state.nextId++,
     x: impact.x,
     y: impact.y,
-    radius: shellHoleRadius(p.caliber),
-    ang: Math.atan2(p.vy, p.vx),
+    radius,
+    ang: impact.mortar ? 0 : Math.atan2(p.vy, p.vx),
     seed: impact.id,
+    round: impact.mortar ? true : undefined,
   });
+  fellTreesInDisk(state, impact.x, impact.y, radius);
   if (state.holes.length > MAX_SHELL_HOLES) state.holes.shift();
 }

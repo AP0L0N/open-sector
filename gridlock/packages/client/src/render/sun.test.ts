@@ -142,8 +142,10 @@ describe("treeShadowFootprint", () => {
 });
 
 describe("buildingShadowFootprint", () => {
-  it("covers an axis-aligned pad and slides with the sun", () => {
-    const foot = buildingShadowFootprint({ x: 80, y: 40, halfW: 24, halfH: 16 });
+  it("slides with the sun and reaches past the lot corners", () => {
+    const halfW = 24;
+    const halfH = 16;
+    const foot = buildingShadowFootprint({ x: 80, y: 40, halfW, halfH });
     const sh = shadowWorldDir();
     const mag = Math.hypot(foot.cx - 80, foot.cy - 40);
     assert.ok(mag > 0.5);
@@ -159,5 +161,14 @@ describe("buildingShadowFootprint", () => {
       maxY = Math.max(maxY, p.y);
     }
     assert.ok(maxX - minX > maxY - minY);
+    // South corner of the lot. The blob has to clear it or the ground pad hides it.
+    const corner = Math.hypot(halfW, halfH);
+    let reach = 0;
+    for (const p of foot.points) {
+      const dx = p.x - 80;
+      const dy = p.y - 40;
+      reach = Math.max(reach, (dx * halfW + dy * halfH) / corner);
+    }
+    assert.ok(reach > corner);
   });
 });

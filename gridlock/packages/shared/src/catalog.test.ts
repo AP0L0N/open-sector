@@ -186,6 +186,8 @@ describe("injuries", () => {
     assert.equal(isMotorVehicle("ss3"), true);
     assert.equal(isMotorVehicle("hauler"), true);
     assert.equal(isMotorVehicle("rig"), true);
+    assert.equal(isMotorVehicle("walker"), true);
+    assert.equal(isInfantryType("walker"), false);
     assert.equal(isMotorVehicle("rifleman"), false);
     assert.equal(isMotorVehicle("core"), false);
     assert.equal(isInfantryType("rifleman"), true);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { CAPTURE_SECONDS_MIN, TICK_DT, catalog, isCivilianType } from "../catalog.js";
+import { TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { captureDurationSec } from "./capture.js";
 import { buildingCenter, destroyEntity, makeEntity, tileCenter } from "./geo.js";
@@ -156,6 +157,9 @@ describe("infantry capture", () => {
     state.heights.fill(0);
     state.blocked.fill(0);
     clearCivilians(state);
+    for (let i = 0; i < state.terrain.length; i++) {
+      if (state.terrain[i] === TILE_TREE) state.terrain[i] = 0;
+    }
     const ts = state.tileSize;
     const tileX = 40;
     const tileY = 24;

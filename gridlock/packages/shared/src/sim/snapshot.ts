@@ -1,4 +1,5 @@
 import {
+  beltOf,
   clampGameSpeed,
   DEPLOY_SECONDS,
   entityIsScouting,
@@ -9,6 +10,7 @@ import {
   isGarrisonable,
   isInfantryType,
   MG42_BIPOD_SECONDS,
+  MORTAR_PLANT_SECONDS,
 } from "../catalog.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { allies, unitInWater } from "./geo.js";
@@ -16,6 +18,13 @@ import { powerOf } from "./power.js";
 import { canSeeWorld, entityOnMask, visionMask } from "./vision.js";
 import type { Entity, MatchState } from "./types.js";
 import type { CorpseView, EntityView, MatchSnapshot, ScrapCell } from "../protocol.js";
+
+function plantRemaining(e: Entity, friendly: boolean): number | undefined {
+  if (!friendly) return undefined;
+  const limit = e.type === "gunner" ? MG42_BIPOD_SECONDS : e.type === "mortarman" ? MORTAR_PLANT_SECONDS : 0;
+  if (limit <= 0 || e.bipod >= limit) return undefined;
+  return Math.max(0, limit - e.bipod);
+}
 
 function scoutView(e: Entity, friendly: boolean): EntityView["scout"] {
   if (!hasScout(e.type) || e.scoutHpMax <= 0) return undefined;
@@ -89,12 +98,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       mgHeat: friendly && hasMg(e.type) ? e.mgHeat : undefined,
       mgOverheat: friendly && hasMg(e.type) && e.mgOverheat > 0 ? e.mgOverheat : undefined,
       weapon: friendly && isInfantryType(e.type) ? (e.weapon ?? undefined) : undefined,
-      clip: friendly && isInfantryType(e.type) ? e.clip : undefined,
-      reload: friendly && isInfantryType(e.type) && e.reload > 0 ? e.reload : undefined,
-      bipod:
-        friendly && e.type === "gunner" && e.bipod < MG42_BIPOD_SECONDS
-          ? Math.max(0, MG42_BIPOD_SECONDS - e.bipod)
-          : undefined,
+      clip: friendly && (isInfantryType(e.type) || beltOf(e.type)) ? e.clip : undefined,
+      guns: friendly && e.type === "walker" ? (e.gatlingGuns === 1 ? 1 : 2) : undefined,
+      reload: friendly && (isInfantryType(e.type) || beltOf(e.type)) && e.reload > 0 ? e.reload : undefined,
+      bipod: plantRemaining(e, friendly),
       garrisonedIn: friendly && e.garrisonedIn ? e.garrisonedIn : undefined,
       garrison: isGarrisonable(e.type)
         ? (() => {
@@ -167,6 +174,14 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
         fromId: p.fromId,
         bounced: p.bounced,
         shell: p.shell ?? undefined,
+        z: p.flight === "mortar" ? (p.z ?? 0) : undefined,
+        mortar: p.flight === "mortar" ? true : undefined,
+        apex: p.flight === "mortar" ? p.apex : undefined,
+        arc:
+          p.flight === "mortar" && (p.flightTime ?? 0) > 0
+            ? Math.min(1, Math.max(0, ((p.flightTime ?? 0) - Math.max(0, p.life)) / (p.flightTime ?? 1)))
+            : undefined,
+        hang: p.flight === "mortar" ? p.flightTime : undefined,
       })),
     impacts: state.impacts.filter(
       (i) => allies(state, youPlayerId, i.ownerId) || canSeeWorld(state, vis, i.x, i.y),

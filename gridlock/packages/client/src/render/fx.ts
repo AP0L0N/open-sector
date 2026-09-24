@@ -314,6 +314,123 @@ export function drawRicochetSparks(
   );
 }
 
+/** How long a mortar burst stays up, ms. Dirt rises and falls in this window. */
+export const MORTAR_BURST_MS = 1100;
+
+export interface MortarSmokePuff {
+  x: number;
+  y: number;
+  /** 0 at the tube, 1 at the bomb. */
+  u: number;
+}
+
+/**
+ * Smoke left along the lob. Older puffs are wider, paler, and sit higher.
+ * The head is the bomb itself.
+ */
+export function drawMortarSmoke(
+  ctx: CanvasRenderingContext2D,
+  pts: readonly MortarSmokePuff[],
+  seed: number,
+  fade = 1,
+): void {
+  if (pts.length === 0 || fade <= 0) return;
+  const headU = pts[pts.length - 1]?.u ?? 1;
+  ctx.save();
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p = pts[i]!;
+    const age = Math.max(0, headU - p.u);
+    const alpha = fade * (0.1 + p.u * 0.38) * (1 - age * 0.25);
+    if (alpha <= 0.02) continue;
+    const r = 1.8 + age * 6.2;
+    const wob = Math.sin(p.u * 11 + seed * 0.017) * (1.2 + age * 3.5);
+    const hang = age * 11;
+    ctx.globalAlpha = alpha * 0.55;
+    ctx.fillStyle = "#b7aea0";
+    ctx.beginPath();
+    ctx.ellipse(p.x + wob * 0.6, p.y - hang - r * 0.35, r * 1.25, r * 0.85, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.u > 0.82 ? "#6a6458" : "#8d8578";
+    ctx.beginPath();
+    ctx.ellipse(p.x + wob, p.y - hang, r * 0.72, r * 0.95, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const head = pts[pts.length - 1];
+  if (head && fade > 0.2) {
+    ctx.globalAlpha = Math.min(1, fade);
+    ctx.fillStyle = "#2a3122";
+    ctx.beginPath();
+    ctx.ellipse(head.x, head.y, 2.5, 2.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#6d654c";
+    ctx.beginPath();
+    ctx.arc(head.x + 0.45, head.y - 0.55, 1.05, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/**
+ * Mortar impact. Dirt or water leaves the ground upward and falls back,
+ * the same rise a tank shell makes in water. No sideways gouge.
+ */
+export function drawMortarBurst(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  t: number,
+  seed: number,
+  water = false,
+): void {
+  const rnd = rng(seed ^ 0x60a7);
+  const fade = 1 - t;
+  const column = 1 - (1 - Math.min(1, t / 0.42)) ** 2;
+  const colH = water ? 34 : 48;
+  ctx.save();
+  ctx.globalAlpha = fade * (water ? 0.55 : 0.5);
+  ctx.fillStyle = water ? "#d7efea" : "#5c4634";
+  ctx.beginPath();
+  ctx.ellipse(x, y, 7 + t * (water ? 20 : 16), 3.2 + t * 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = fade * (water ? 0.72 : 0.62);
+  ctx.fillStyle = water ? "#f5fffc" : "#c4a882";
+  ctx.beginPath();
+  ctx.ellipse(x, y - column * colH, water ? 3.4 : 6.5, (water ? 8 : 11) + column * (water ? 16 : 22), 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = fade * 0.4;
+  ctx.fillStyle = water ? "#9fd4e0" : "#8a6e52";
+  ctx.beginPath();
+  ctx.ellipse(x, y - column * colH * 0.55, water ? 5 : 9, 4 + column * 6, 0, 0, Math.PI * 2);
+  ctx.fill();
+  const count = water ? 16 : 22;
+  for (let i = 0; i < count; i++) {
+    const delay = rnd() * 0.06;
+    const local = (t - delay) / (0.62 + rnd() * 0.34);
+    if (local <= 0 || local >= 1) continue;
+    const lift = Math.sin(local * Math.PI) * (water ? 16 + rnd() * 26 : 28 + rnd() * 46);
+    const drift = (rnd() - 0.5) * (water ? 22 : 16) * local;
+    const px = x + drift;
+    const py = y - lift;
+    ctx.globalAlpha = (1 - local) * (water ? 0.9 : 0.92);
+    if (water) {
+      ctx.fillStyle = rnd() > 0.5 ? "#f7fffc" : "#b7e0ea";
+      ctx.beginPath();
+      ctx.arc(px, py, 1.3 + rnd() * 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      const chunk = rnd() > 0.72;
+      ctx.fillStyle = chunk ? "#4a3828" : rnd() > 0.4 ? "#6b5340" : "#a08058";
+      const rw = chunk ? 2.4 + rnd() * 2.2 : 1.6 + rnd() * 1.5;
+      const rh = chunk ? rw * 0.55 : rw * 0.7;
+      ctx.beginPath();
+      ctx.ellipse(px, py, rw, rh, rnd() * Math.PI, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
 /** Leaving spark: impact on the hull to the current ground point. */
 export function drawRicochetTrace(
   ctx: CanvasRenderingContext2D,

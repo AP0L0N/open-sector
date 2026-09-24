@@ -45,6 +45,10 @@ export const TILE_BLOCKED = 1;
 export const TILE_SCRAP = 2;
 export const TILE_WATER = 3;
 export const TILE_TREE = 4;
+/** Walkable dirt lane. Same movement as open ground. */
+export const TILE_ROAD = 5;
+/** Wooden fence. Blocks walking. A shot still passes over it. */
+export const TILE_FENCE = 6;
 
 function idx(width: number, x: number, y: number): number {
   return y * width + x;
@@ -90,18 +94,6 @@ function paintScrapBlob(tiles: number[], width: number, height: number, cx: numb
     const i = idx(width, x, y);
     if (tiles[i] === TILE_EMPTY) tiles[i] = TILE_SCRAP;
   }
-}
-
-function punchRect(
-  tiles: number[],
-  width: number,
-  height: number,
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-): void {
-  fillRect(tiles, width, height, x0, y0, x1, y1, TILE_EMPTY);
 }
 
 function hash32(s: string): number {
@@ -909,21 +901,115 @@ export function scatterHeights(
   return heights;
 }
 
+function paintLane(
+  tiles: number[],
+  width: number,
+  height: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  radius: number,
+  houses: readonly { x0: number; y0: number; x1: number; y1: number }[],
+): void {
+  const steps = Math.max(1, Math.abs(x1 - x0), Math.abs(y1 - y0));
+  const r2 = radius * radius + 0.25;
+  for (let i = 0; i <= steps; i++) {
+    const x = Math.round(x0 + ((x1 - x0) * i) / steps);
+    const y = Math.round(y0 + ((y1 - y0) * i) / steps);
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        if (dx * dx + dy * dy > r2) continue;
+        const xx = x + dx;
+        const yy = y + dy;
+        if (xx < 1 || yy < 1 || xx >= width - 1 || yy >= height - 1) continue;
+        if (inHouseBox(houses, xx, yy)) continue;
+        const k = idx(width, xx, yy);
+        const t = tiles[k];
+        if (t === TILE_WATER || t === TILE_SCRAP || t === TILE_BLOCKED || t === TILE_FENCE) continue;
+        tiles[k] = TILE_ROAD;
+      }
+    }
+  }
+}
+
+function paintFenceLine(
+  tiles: number[],
+  width: number,
+  height: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  spawns: readonly { x: number; y: number }[],
+  houses: readonly { x0: number; y0: number; x1: number; y1: number }[],
+): void {
+  const steps = Math.max(1, Math.abs(x1 - x0), Math.abs(y1 - y0));
+  const clear = 22 * 22;
+  for (let i = 0; i <= steps; i++) {
+    const x = Math.round(x0 + ((x1 - x0) * i) / steps);
+    const y = Math.round(y0 + ((y1 - y0) * i) / steps);
+    if (x < 1 || y < 1 || x >= width - 1 || y >= height - 1) continue;
+    if (inHouseBox(houses, x, y)) continue;
+    let close = false;
+    for (const s of spawns) {
+      if ((x - s.x) * (x - s.x) + (y - s.y) * (y - s.y) <= clear) {
+        close = true;
+        break;
+      }
+    }
+    if (close) continue;
+    const k = idx(width, x, y);
+    if (tiles[k] !== TILE_EMPTY) continue;
+    tiles[k] = TILE_FENCE;
+  }
+}
+
+/** Dirt lanes from each start into a cross, then field hedges with road gates. */
+function paintYardDress(
+  tiles: number[],
+  width: number,
+  height: number,
+  spawns: readonly { x: number; y: number }[],
+  features: readonly MapFeature[],
+): void {
+  const houses = houseBoxes(features, TILE_SUBDIV);
+  const midX = Math.floor(width / 2);
+  const midY = Math.floor(height / 2);
+  const margin = 18;
+  paintLane(tiles, width, height, margin, midY, width - 1 - margin, midY, 2, houses);
+  paintLane(tiles, width, height, midX, margin, midX, height - 1 - margin, 2, houses);
+  for (const s of spawns) {
+    paintLane(tiles, width, height, s.x, s.y, midX, midY, 2, houses);
+  }
+  const line = (x0: number, y0: number, x1: number, y1: number) =>
+    paintFenceLine(tiles, width, height, x0, y0, x1, y1, spawns, houses);
+  const x0 = Math.floor(width * 0.4);
+  const x1 = Math.floor(width * 0.6);
+  const y0 = Math.floor(height * 0.4);
+  const y1 = Math.floor(height * 0.6);
+  line(x0, y0, x1, y0);
+  line(x0, y1, x1, y1);
+  line(x0, y0, x0, y1);
+  line(x1, y0, x1, y1);
+  const left = Math.floor(width * 0.18);
+  const right = Math.floor(width * 0.82);
+  const top = Math.floor(height * 0.18);
+  const bot = Math.floor(height * 0.82);
+  line(left, top, right, top);
+  line(left, bot, right, bot);
+  line(left, top, left, bot);
+  line(right, top, right, bot);
+  line(left, Math.floor(height * 0.32), Math.floor(width * 0.36), Math.floor(height * 0.32));
+  line(Math.floor(width * 0.64), Math.floor(height * 0.68), right, Math.floor(height * 0.68));
+}
+
 /** 64×64 yard with a central compound and 8 edge/corner spawns. */
 export function makeYard64(): MapDef {
   const width = 64;
   const height = 64;
   const tiles = new Array(width * height).fill(TILE_EMPTY);
 
-  fillRect(tiles, width, height, 26, 26, 37, 37, TILE_BLOCKED);
-  fillRect(tiles, width, height, 28, 28, 35, 35, TILE_EMPTY);
-  fillRect(tiles, width, height, 31, 26, 32, 28, TILE_EMPTY);
-  fillRect(tiles, width, height, 18, 18, 20, 22, TILE_BLOCKED);
-  fillRect(tiles, width, height, 43, 18, 45, 22, TILE_BLOCKED);
-  fillRect(tiles, width, height, 18, 41, 20, 45, TILE_BLOCKED);
-  fillRect(tiles, width, height, 43, 41, 45, 45, TILE_BLOCKED);
-  fillRect(tiles, width, height, 8, 30, 14, 33, TILE_BLOCKED);
-  fillRect(tiles, width, height, 49, 30, 55, 33, TILE_BLOCKED);
   fillRect(tiles, width, height, 21, 7, 27, 12, TILE_WATER);
   fillRect(tiles, width, height, 38, 40, 44, 45, TILE_WATER);
 
@@ -958,6 +1044,7 @@ export function makeYard64(): MapDef {
   const fineSpawns = spawns.map((s) => scaleSpawn(s, sub));
   const fineSpawnPads = fineSpawns.map((s) => ({ x: s.x, y: s.y, r: 4 * sub }));
   paintYardPonds(fineTiles, fineW, fineH, "yard-64-ponds", fineSpawnPads, features);
+  paintYardDress(fineTiles, fineW, fineH, fineSpawns, features);
   const locked = new Uint8Array(fineW * fineH);
   const heights = scatterHeights(fineW, fineH, "yard-64-elev", fineSpawnPads, locked);
   flattenTerrain(heights, fineTiles, fineW, fineH, TILE_WATER, locked);
@@ -976,77 +1063,8 @@ export function makeYard64(): MapDef {
   };
 }
 
-/** 48×48 canal with a blocked water strip and bridges; 4 corners + 4 mid-edges. */
-export function makeCanal48(): MapDef {
-  const width = 48;
-  const height = 48;
-  const tiles = new Array(width * height).fill(TILE_EMPTY);
-
-  fillRect(tiles, width, height, 0, 21, 47, 26, TILE_WATER);
-  punchRect(tiles, width, height, 10, 21, 13, 26);
-  punchRect(tiles, width, height, 22, 21, 25, 26);
-  punchRect(tiles, width, height, 34, 21, 37, 26);
-  fillRect(tiles, width, height, 6, 6, 9, 9, TILE_BLOCKED);
-  fillRect(tiles, width, height, 38, 6, 41, 9, TILE_BLOCKED);
-  fillRect(tiles, width, height, 6, 38, 9, 41, TILE_BLOCKED);
-  fillRect(tiles, width, height, 38, 38, 41, 41, TILE_BLOCKED);
-
-  paintScrapBlob(tiles, width, height, 14, 12);
-  paintScrapBlob(tiles, width, height, 34, 12);
-  paintScrapBlob(tiles, width, height, 14, 35);
-  paintScrapBlob(tiles, width, height, 34, 35);
-  paintScrapBlob(tiles, width, height, 23, 12);
-  paintScrapBlob(tiles, width, height, 23, 35);
-  paintScrapBlob(tiles, width, height, 14, 16);
-  paintScrapBlob(tiles, width, height, 34, 32);
-  paintScrapBlob(tiles, width, height, 16, 16);
-  paintScrapBlob(tiles, width, height, 31, 32);
-
-  const rawSpawns: SpawnDef[] = [
-    { id: 1, x: 3, y: 3, suggestedTeam: 1 },
-    { id: 2, x: 44, y: 3, suggestedTeam: 2 },
-    { id: 3, x: 3, y: 44, suggestedTeam: 3 },
-    { id: 4, x: 44, y: 44, suggestedTeam: 4 },
-    { id: 5, x: 23, y: 3 },
-    { id: 6, x: 23, y: 44 },
-    { id: 7, x: 3, y: 16 },
-    { id: 8, x: 44, y: 32 },
-  ];
-  const features = scatterCover(
-    tiles,
-    width,
-    height,
-    "canal-48-cover",
-    rawSpawns.map((s) => ({ x: s.x, y: s.y, r: 4 })),
-  );
-  punchRect(tiles, width, height, 10, 21, 13, 26);
-  punchRect(tiles, width, height, 22, 21, 25, 26);
-  punchRect(tiles, width, height, 34, 21, 37, 26);
-  const sub = TILE_SUBDIV;
-  const fineTiles = upsampleTiles(tiles, width, height, sub);
-  const fineW = width * sub;
-  const fineH = height * sub;
-  thinIsolatedTrees(fineTiles, fineW, fineH, tiles, width, height, sub);
-  const spawns = rawSpawns.map((s) => scaleSpawn(s, sub));
-  const heights = new Array(fineW * fineH).fill(HEIGHT_BASE);
-
-  return {
-    id: "canal-48",
-    name: "Iron Canal",
-    width: fineW,
-    height: fineH,
-    tileSize: TILE_SIZE,
-    tiles: fineTiles,
-    heights,
-    maxHeight: peakHeight(heights),
-    spawns,
-    features: scaleFeatures(features, sub),
-  };
-}
-
 export const MAPS: Record<string, MapDef> = {
   "yard-64": makeYard64(),
-  "canal-48": makeCanal48(),
 };
 
 export const DEFAULT_MAP_ID = "yard-64";
