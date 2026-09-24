@@ -4,7 +4,7 @@ import { occupyEntity, worldToTile } from "./geo.js";
 import { hideScout } from "./scout.js";
 import type { Entity, MatchState } from "./types.js";
 
-/** Convert a destroyed armored hull into an impassable wreck. Repair is TODO. */
+/** Convert a destroyed armored hull into an impassable wreck. An engineer can scrap it. */
 export function toWreck(state: MatchState, e: Entity): void {
   if (e.wreck) return;
   e.wreck = true;

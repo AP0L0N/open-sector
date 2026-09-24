@@ -193,6 +193,7 @@ function structuredCloneBase(e: Entity): Entity {
     reloadMul: 1,
     harvestTime: 0,
     cargo: e.cargo,
+    cartHp: e.cartHp,
     harvestTile: null,
     autoHarvest: false,
     returnToBase: false,
@@ -223,6 +224,9 @@ function structuredCloneBase(e: Entity): Entity {
     stanceOrder: "stand",
     holdPosition: false,
     guardFacing: null,
+    ruined: false,
+    coverId: null,
+    work: 0,
   };
 }
 

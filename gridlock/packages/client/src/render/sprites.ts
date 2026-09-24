@@ -91,13 +91,30 @@ import sniperCrouchUrl from "../assets/units/sniper-crouch.png";
 import sniperCrawlUrl from "../assets/units/sniper-crawl.png";
 import sniperFireUrl from "../assets/units/sniper-fire.png";
 import sniperDieUrl from "../assets/units/sniper-die.png";
+import atInfantryWalkUrl from "../assets/units/atinfantry-walk.png";
+import atInfantryCrouchUrl from "../assets/units/atinfantry-crouch.png";
+import atInfantryCrawlUrl from "../assets/units/atinfantry-crawl.png";
+import atInfantryFireUrl from "../assets/units/atinfantry-fire.png";
+import atInfantryDieUrl from "../assets/units/atinfantry-die.png";
 import mortarmanWalkUrl from "../assets/units/mortarman-walk.png";
 import mortarmanCrouchUrl from "../assets/units/mortarman-crouch.png";
 import mortarmanCrawlUrl from "../assets/units/mortarman-crawl.png";
 import mortarmanFireUrl from "../assets/units/mortarman-fire.png";
 import mortarmanDieUrl from "../assets/units/mortarman-die.png";
+import medicWalkUrl from "../assets/units/medic-walk.png";
+import medicCrouchUrl from "../assets/units/medic-crouch.png";
+import medicCrawlUrl from "../assets/units/medic-crawl.png";
+import medicDieUrl from "../assets/units/medic-die.png";
+import engineerWalkUrl from "../assets/units/engineer-walk.png";
+import engineerBuildUrl from "../assets/units/engineer-build.png";
+import engineerFixUrl from "../assets/units/engineer-fix.png";
+import engineerDieUrl from "../assets/units/engineer-die.png";
+import sandbagsUrl from "../assets/units/sandbags.png";
+import sandbagsDeadUrl from "../assets/units/sandbags-dead.png";
+import teethUrl from "../assets/units/teeth.png";
 import infantrySwimUrl from "../assets/units/infantry-swim.png";
 import haulerSheetUrl from "../assets/units/hauler-move.png";
+import haulerBareUrl from "../assets/units/hauler-bare.png";
 import walkerSheetUrl from "../assets/units/walker-move.png";
 import { bindCasemateSheets, bindTurntableSheets } from "./turntable-sheet.js";
 import { engineRowFromFacing, engineRowFromScreen } from "./turntable.js";
@@ -137,6 +154,8 @@ export interface UnitSpriteDef {
   turret?: TurretSpriteDef;
   /** Barrel drawn apart from hull/turret so it can recoil. */
   gun?: TurretSpriteDef;
+  /** Same unit with the hitch cart removed. Drawn instead of image when the cart is off. */
+  bare?: TurretSpriteDef;
   /**
    * `world` (default): project facing onto the iso view, then 0001 = screen south.
    * `screen`: engineRowFromScreen of the given vector.
@@ -331,6 +350,62 @@ export const SNIPER_DIE_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
+export const ATINFANTRY_SPRITE: UnitSpriteDef = {
+  image: loadSheet(atInfantryWalkUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+export const ATINFANTRY_CROUCH_SPRITE: UnitSpriteDef = {
+  image: loadSheet(atInfantryCrouchUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.88,
+  facingSpace: "world",
+};
+
+export const ATINFANTRY_CRAWL_SPRITE: UnitSpriteDef = {
+  image: loadSheet(atInfantryCrawlUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 10,
+  drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
+  contactY: 0.72,
+  facingSpace: "world",
+};
+
+/** Standing PTRD shot. Played once, then the walk sheet returns. */
+export const ATINFANTRY_FIRE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(atInfantryFireUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+export const ATINFANTRY_DIE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(atInfantryDieUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.82,
+  facingSpace: "world",
+};
+
 export const MORTARMAN_SPRITE: UnitSpriteDef = {
   image: loadSheet(mortarmanWalkUrl),
   dirs: 16,
@@ -384,6 +459,129 @@ export const MORTARMAN_DIE_SPRITE: UnitSpriteDef = {
   fps: 8,
   drawSize: UNIT_SPRITE_DRAW_SIZE,
   contactY: 0.82,
+  facingSpace: "world",
+};
+
+export const MEDIC_SPRITE: UnitSpriteDef = {
+  image: loadSheet(medicWalkUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+export const MEDIC_CROUCH_SPRITE: UnitSpriteDef = {
+  image: loadSheet(medicCrouchUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.88,
+  facingSpace: "world",
+};
+
+export const MEDIC_CRAWL_SPRITE: UnitSpriteDef = {
+  image: loadSheet(medicCrawlUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 10,
+  drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
+  contactY: 0.72,
+  facingSpace: "world",
+};
+
+export const MEDIC_DIE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(medicDieUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.82,
+  facingSpace: "world",
+};
+
+export const ENGINEER_SPRITE: UnitSpriteDef = {
+  image: loadSheet(engineerWalkUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+export const ENGINEER_BUILD_SPRITE: UnitSpriteDef = {
+  image: loadSheet(engineerBuildUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.88,
+  facingSpace: "world",
+};
+
+export const ENGINEER_FIX_SPRITE: UnitSpriteDef = {
+  image: loadSheet(engineerFixUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.88,
+  facingSpace: "world",
+};
+
+export const ENGINEER_DIE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(engineerDieUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.82,
+  facingSpace: "world",
+};
+
+/** Low wall. Row 0 faces south. One frame, sixteen facings. */
+export const SANDBAG_SPRITE: UnitSpriteDef = {
+  image: loadSheet(sandbagsUrl),
+  dirs: 16,
+  frames: 1,
+  frameSize: 128,
+  fps: 1,
+  drawSize: 56,
+  contactY: 0.72,
+  facingSpace: "world",
+};
+
+export const SANDBAG_RUIN_SPRITE: UnitSpriteDef = {
+  image: loadSheet(sandbagsDeadUrl),
+  dirs: 16,
+  frames: 1,
+  frameSize: 128,
+  fps: 1,
+  drawSize: 56,
+  contactY: 0.72,
+  facingSpace: "world",
+};
+
+/** Concrete pyramids. Same facing ring as the sandbag wall. */
+export const TEETH_SPRITE: UnitSpriteDef = {
+  image: loadSheet(teethUrl),
+  dirs: 16,
+  frames: 1,
+  frameSize: 128,
+  fps: 1,
+  drawSize: 64,
+  contactY: 0.74,
   facingSpace: "world",
 };
 
@@ -468,6 +666,12 @@ export const WALKER_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
+const haulerBare: TurretSpriteDef = {
+  image: loadSheet(haulerBareUrl),
+  dirs: 16,
+  frames: 1,
+  frameSize: 128,
+};
 export const HAULER_SPRITE: UnitSpriteDef = {
   image: loadSheet(haulerSheetUrl),
   dirs: 16,
@@ -476,6 +680,7 @@ export const HAULER_SPRITE: UnitSpriteDef = {
   fps: 8,
   drawSize: Math.round(38 * UNIT_VISUAL_SCALE),
   contactY: 0.92,
+  bare: haulerBare,
   facingSpace: "world",
 };
 
@@ -516,11 +721,22 @@ export function spriteFor(type: EntityType, stance?: Stance, swimming = false): 
     if (stance === "crawl") return SNIPER_CRAWL_SPRITE;
     return SNIPER_SPRITE;
   }
+  if (type === "atinfantry") {
+    if (stance === "crouch") return ATINFANTRY_CROUCH_SPRITE;
+    if (stance === "crawl") return ATINFANTRY_CRAWL_SPRITE;
+    return ATINFANTRY_SPRITE;
+  }
   if (type === "mortarman") {
     if (stance === "crouch") return MORTARMAN_CROUCH_SPRITE;
     if (stance === "crawl") return MORTARMAN_CRAWL_SPRITE;
     return MORTARMAN_SPRITE;
   }
+  if (type === "medic") {
+    if (stance === "crouch") return MEDIC_CROUCH_SPRITE;
+    if (stance === "crawl") return MEDIC_CRAWL_SPRITE;
+    return MEDIC_SPRITE;
+  }
+  if (type === "engineer") return ENGINEER_SPRITE;
   return UNIT_SPRITES[type];
 }
 
@@ -626,9 +842,9 @@ function prop(src: string, contactX: number, contactY: number): PropSprite {
 
 /** Trunk contact, measured on the keyed sheet. Each entry is a different yaw. */
 export const OAK_FACES: PropSprite[] = [
-  prop(oak1Url, 296, 718),
-  prop(oak2Url, 362, 718),
-  prop(oak3Url, 311, 712),
+  prop(oak1Url, 433, 785),
+  prop(oak2Url, 381, 728),
+  prop(oak3Url, 465, 783),
 ];
 export const PINE_FACES: PropSprite[] = [
   prop(pine1Url, 184, 758),
@@ -871,12 +1087,21 @@ export function snapHitToUnitSprite(
   turretDy?: number,
   facing?: number,
   turretFacing?: number,
+  showCart = true,
 ): { x: number; y: number } | null {
   if (!spriteReady(def) || def.drawSize <= 0 || def.frameSize <= 0) return null;
-  const hullMap = unitSheetAlpha(def.image);
+  const bare = showCart === false && def.bare && spriteReady(def.bare) ? def.bare : null;
+  const bodyImg = bare ? bare.image : def.image;
+  const bodySize = bare ? bare.frameSize : def.frameSize;
+  const hullMap = unitSheetAlpha(bodyImg);
   if (!hullMap) return null;
-  const dir = sheetDir(def, isoDx, isoDy, facing);
-  const hull = { map: hullMap, sx: 0, sy: dir * def.frameSize, cell: def.frameSize };
+  const dir = sheetDir(
+    { dirs: bare ? bare.dirs : def.dirs, facingSpace: def.facingSpace },
+    isoDx,
+    isoDy,
+    facing,
+  );
+  const hull = { map: hullMap, sx: 0, sy: dir * bodySize, cell: bodySize };
   let turret: { map: BuildingAlphaMap; sx: number; sy: number; cell: number } | null = null;
   const overlay = def.turret;
   if (overlay && spriteReady(overlay)) {
@@ -984,6 +1209,8 @@ export function drawUnitSprite(
     gunShiftY?: number;
     /** Holds this cell instead of the move loop. Clamped to the sheet. */
     frameIndex?: number;
+    /** Hitch cart. Defaults to drawing it when the sheet exists. */
+    showCart?: boolean;
   },
 ): boolean {
   if (!spriteReady(def)) return false;
@@ -1010,10 +1237,16 @@ export function drawUnitSprite(
   ctx.imageSmoothingQuality = "low";
   const gun = def.gun;
   const turret = def.turret;
+  const bare = opts.showCart === false && def.bare && spriteReady(def.bare) ? def.bare : null;
+  const body = bare ?? def;
+  const bodyDir = bare
+    ? sheetDir({ dirs: bare.dirs, facingSpace: def.facingSpace }, isoDx, isoDy, opts.facing)
+    : dir;
+  const bodyCell = bare ? bare.frameSize : cell;
   if (gunBehind && gun && spriteReady(gun)) {
     blitOverlay(ctx, gun, def.facingSpace, tdx, tdy, gunFacing, frame, gx, gy, s);
   }
-  ctx.drawImage(def.image, frame * cell, dir * cell, cell, cell, hx, hy, s, s);
+  ctx.drawImage(body.image, frame * bodyCell, bodyDir * bodyCell, bodyCell, bodyCell, hx, hy, s, s);
   if (turret && spriteReady(turret)) {
     blitOverlay(ctx, turret, def.facingSpace, tdx, tdy, gunFacing, frame, hx, hy, s);
   }

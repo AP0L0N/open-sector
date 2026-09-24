@@ -1,10 +1,12 @@
 import {
   MORTAR_APEX_FAR,
   MORTAR_APEX_NEAR,
+  MORTAR_ARMOR_CHIP,
   MORTAR_FLIGHT_FAR,
   MORTAR_FLIGHT_NEAR,
   MORTAR_SCATTER_FAR_TILES,
   MORTAR_SCATTER_NEAR_TILES,
+  MORTAR_TRACK_CHANCE,
   TILE_SIZE,
 } from "../catalog.js";
 
@@ -98,4 +100,20 @@ export function mortarFalloff(dist: number, radius: number): number {
   if (radius <= 1e-6) return 1;
   const u = clamp01(dist / radius);
   return 0.35 + 0.65 * (1 - u);
+}
+
+/**
+ * Nick an armored hull. `falloff` is mortarFalloff at the hull center.
+ * A tracked tank rolls MORTAR_TRACK_CHANCE on top of the nick.
+ */
+export function mortarArmorNick(
+  hpMax: number,
+  falloff: number,
+  tracked: boolean,
+  rand: () => number,
+): { damage: number; throwTrack: boolean } {
+  const span = 0.75 + rand() * 0.5;
+  const damage = Math.max(1, Math.round(hpMax * MORTAR_ARMOR_CHIP * Math.max(0, falloff) * span));
+  const throwTrack = tracked && rand() < MORTAR_TRACK_CHANCE;
+  return { damage, throwTrack };
 }

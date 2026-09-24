@@ -96,6 +96,39 @@ function paintScrapBlob(tiles: number[], width: number, height: number, cx: numb
   }
 }
 
+/** Scattered scrap fields. The seed keeps every client on the same yard. */
+function paintYardScrap(
+  tiles: number[],
+  width: number,
+  height: number,
+  seed: string,
+  spawns: readonly { x: number; y: number }[],
+): void {
+  const rng = { n: hash32(seed) };
+  const pads = spawns.map((s) => ({ x: s.x, y: s.y, r: 7 }));
+  const centers: { x: number; y: number }[] = [];
+  let guard = 0;
+  while (centers.length < 14 && guard < 600) {
+    guard += 1;
+    const cx = 4 + Math.floor(nextRand(rng) * (width - 8));
+    const cy = 4 + Math.floor(nextRand(rng) * (height - 8));
+    if (inPad(pads, cx, cy)) continue;
+    if ((tiles[idx(width, cx, cy)] ?? 1) !== TILE_EMPTY) continue;
+    let crowded = false;
+    for (const c of centers) {
+      const dx = c.x - cx;
+      const dy = c.y - cy;
+      if (dx * dx + dy * dy < 10 * 10) {
+        crowded = true;
+        break;
+      }
+    }
+    if (crowded) continue;
+    centers.push({ x: cx, y: cy });
+    paintScrapBlob(tiles, width, height, cx, cy);
+  }
+}
+
 function hash32(s: string): number {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) {
@@ -933,39 +966,7 @@ function paintLane(
   }
 }
 
-function paintFenceLine(
-  tiles: number[],
-  width: number,
-  height: number,
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-  spawns: readonly { x: number; y: number }[],
-  houses: readonly { x0: number; y0: number; x1: number; y1: number }[],
-): void {
-  const steps = Math.max(1, Math.abs(x1 - x0), Math.abs(y1 - y0));
-  const clear = 22 * 22;
-  for (let i = 0; i <= steps; i++) {
-    const x = Math.round(x0 + ((x1 - x0) * i) / steps);
-    const y = Math.round(y0 + ((y1 - y0) * i) / steps);
-    if (x < 1 || y < 1 || x >= width - 1 || y >= height - 1) continue;
-    if (inHouseBox(houses, x, y)) continue;
-    let close = false;
-    for (const s of spawns) {
-      if ((x - s.x) * (x - s.x) + (y - s.y) * (y - s.y) <= clear) {
-        close = true;
-        break;
-      }
-    }
-    if (close) continue;
-    const k = idx(width, x, y);
-    if (tiles[k] !== TILE_EMPTY) continue;
-    tiles[k] = TILE_FENCE;
-  }
-}
-
-/** Dirt lanes from each start into a cross, then field hedges with road gates. */
+/** Dirt lanes from each start into a cross. */
 function paintYardDress(
   tiles: number[],
   width: number,
@@ -982,26 +983,6 @@ function paintYardDress(
   for (const s of spawns) {
     paintLane(tiles, width, height, s.x, s.y, midX, midY, 2, houses);
   }
-  const line = (x0: number, y0: number, x1: number, y1: number) =>
-    paintFenceLine(tiles, width, height, x0, y0, x1, y1, spawns, houses);
-  const x0 = Math.floor(width * 0.4);
-  const x1 = Math.floor(width * 0.6);
-  const y0 = Math.floor(height * 0.4);
-  const y1 = Math.floor(height * 0.6);
-  line(x0, y0, x1, y0);
-  line(x0, y1, x1, y1);
-  line(x0, y0, x0, y1);
-  line(x1, y0, x1, y1);
-  const left = Math.floor(width * 0.18);
-  const right = Math.floor(width * 0.82);
-  const top = Math.floor(height * 0.18);
-  const bot = Math.floor(height * 0.82);
-  line(left, top, right, top);
-  line(left, bot, right, bot);
-  line(left, top, left, bot);
-  line(right, top, right, bot);
-  line(left, Math.floor(height * 0.32), Math.floor(width * 0.36), Math.floor(height * 0.32));
-  line(Math.floor(width * 0.64), Math.floor(height * 0.68), right, Math.floor(height * 0.68));
 }
 
 /** 64×64 yard with a central compound and 8 edge/corner spawns. */
@@ -1013,17 +994,6 @@ export function makeYard64(): MapDef {
   fillRect(tiles, width, height, 21, 7, 27, 12, TILE_WATER);
   fillRect(tiles, width, height, 38, 40, 44, 45, TILE_WATER);
 
-  paintScrapBlob(tiles, width, height, 13, 12);
-  paintScrapBlob(tiles, width, height, 50, 12);
-  paintScrapBlob(tiles, width, height, 13, 51);
-  paintScrapBlob(tiles, width, height, 50, 51);
-  paintScrapBlob(tiles, width, height, 31, 12);
-  paintScrapBlob(tiles, width, height, 31, 51);
-  paintScrapBlob(tiles, width, height, 13, 31);
-  paintScrapBlob(tiles, width, height, 50, 31);
-  paintScrapBlob(tiles, width, height, 22, 31);
-  paintScrapBlob(tiles, width, height, 41, 31);
-
   const spawns: SpawnDef[] = [
     { id: 1, x: 3, y: 3, suggestedTeam: 1 },
     { id: 2, x: 60, y: 3, suggestedTeam: 2 },
@@ -1034,6 +1004,7 @@ export function makeYard64(): MapDef {
     { id: 7, x: 3, y: 31 },
     { id: 8, x: 60, y: 31 },
   ];
+  paintYardScrap(tiles, width, height, "yard-64-scrap", spawns);
   const pads = spawns.map((s) => ({ x: s.x, y: s.y, r: 4 }));
   const features = scatterCover(tiles, width, height, "yard-64-cover", pads);
   const sub = TILE_SUBDIV;

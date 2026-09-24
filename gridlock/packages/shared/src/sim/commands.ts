@@ -6,6 +6,7 @@ import {
   infantryGunFor,
   infantryLoadout,
   isBuildingType,
+  isFieldStructure,
   isGarrisonable,
   isInfantryType,
   isInfantryWeaponId,
@@ -24,6 +25,7 @@ import { allies, clearOrder, hqOf } from "./geo.js";
 import { approachTile, canGarrison, exitGarrison, garrisonOwner, livingGarrison, setGarrisonHide } from "./garrison.js";
 import { setScoutOut } from "./scout.js";
 import { cancelStructure, pauseStructure, placeBuilding, sellBuilding, startBuild } from "./build.js";
+import { orderCover, orderFieldBuild, orderRepair } from "./field.js";
 import { deployId } from "./deploy.js";
 import { cancelTrain, pauseTrain, startTrain } from "./train.js";
 import { groupMovePace, groupMoveTargets } from "./formation.js";
@@ -112,6 +114,16 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
       return cmdRotate(state, playerId, msg.ids, msg.x, msg.y);
     case "cmd.guard":
       return cmdGuard(state, playerId, msg.ids, msg.x, msg.y, msg.facing, msg.targetId);
+    case "cmd.field":
+      if (!isFieldStructure(msg.structure)) return fail("bad_payload", "Unknown structure.");
+      return wrap(
+        orderFieldBuild(state, playerId, owned(state, playerId, msg.ids), msg.structure, msg.x, msg.y, msg.facing),
+        "invalid_place",
+      );
+    case "cmd.repair":
+      return wrap(orderRepair(state, playerId, owned(state, playerId, msg.ids), msg.targetId), "not_found");
+    case "cmd.cover":
+      return wrap(orderCover(state, owned(state, playerId, msg.ids), msg.targetId), "not_found");
     default:
       return fail("bad_payload", "Unknown command.");
   }
@@ -517,8 +529,11 @@ function cmdHarvest(
   tileX?: number,
   tileY?: number,
 ): CmdResult {
-  const units = owned(state, playerId, ids).filter((e) => e.type === "hauler");
-  if (units.length === 0) return fail("not_yours", "Select a Mauler.");
+  const units = owned(state, playerId, ids).filter((e) => e.type === "hauler" && e.cartHp > 0);
+  if (units.length === 0) {
+    const any = owned(state, playerId, ids).some((e) => e.type === "hauler");
+    return fail(any ? "cart" : "not_yours", any ? "Cart is off. It has to refit at the Smelter." : "Select a Mauler.");
+  }
   for (const e of units) {
     e.autoHarvest = true;
     e.returnToBase = false;
@@ -588,7 +603,7 @@ function cmdWeapon(
 }
 
 function cmdStance(state: MatchState, playerId: string, ids: number[], stance: Stance): CmdResult {
-  const units = owned(state, playerId, ids).filter((e) => isInfantryType(e.type));
+  const units = owned(state, playerId, ids).filter((e) => isInfantryType(e.type) && e.type !== "engineer");
   if (units.length === 0) return fail("not_yours", "Select infantry.");
   let n = 0;
   for (const e of units) {

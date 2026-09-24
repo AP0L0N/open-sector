@@ -21,12 +21,14 @@ import { tickCapture } from "./capture.js";
 import { detachGarrisoned, spillGarrison, tickGarrison } from "./garrison.js";
 import { seedRng } from "./rng.js";
 import { tickBuild } from "./build.js";
+import { restampForts, tickField } from "./field.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
 import { tickSmoke } from "./smoke.js";
 import { tickBipod, tickStance } from "./stance.js";
 import { tickCollision } from "./collision.js";
 import { tickAutoDeploy, tickDeploy } from "./deploy.js";
-import { tickHarvest } from "./harvest.js";
+import { tickHarvest, tickMaulerCart } from "./harvest.js";
+import { tickHeal } from "./heal.js";
 import { tickMovement, repathIfBlocked } from "./orders.js";
 import { tickTrain } from "./train.js";
 import type { Entity, MatchState, SimPlayer } from "./types.js";
@@ -55,6 +57,7 @@ function spawnStartingUnits(state: MatchState, ownerId: string, rig: Entity): vo
           const y = prefY + oy;
           const key = `${x},${y}`;
           if (used.has(key) || inFutureCore(x, y)) continue;
+          if (Math.abs(x - rig.tileX) <= halfW && Math.abs(y - rig.tileY) <= halfH) continue;
           if (!walkable(state, x, y, type)) continue;
           used.add(key);
           return { x, y };
@@ -65,15 +68,10 @@ function spawnStartingUnits(state: MatchState, ownerId: string, rig: Entity): vo
   };
 
   const ring = halfW + 2;
-  const offsets: readonly [number, number][] = [
-    [dx * ring, 0],
-    [0, dy * ring],
-    [dx * ring, dy * ring],
-  ];
-  for (let i = 0; i < START_UNITS.length; i++) {
-    const type = START_UNITS[i]!;
-    const [ox, oy] = offsets[i] ?? [dx * (ring + i), dy * (ring + i)];
-    const tile = takeTile(rig.tileX + ox, rig.tileY + oy, type);
+  const anchorX = rig.tileX + dx * ring;
+  const anchorY = rig.tileY + dy * ring;
+  for (const type of START_UNITS) {
+    const tile = takeTile(anchorX, anchorY, type);
     const u = makeEntity(
       state,
       type,
@@ -111,6 +109,7 @@ export function createMatch(
     scrapYield: grids.scrapYield,
     occupy: grids.occupy,
     wreckBlock: new Uint8Array(map.width * map.height),
+    fortBlock: new Uint8Array(map.width * map.height),
     players,
     entities: new Map(),
     projectiles: [],
@@ -177,13 +176,17 @@ export function step(state: MatchState, dt = TICK_DT): void {
   if (state.ended) return;
   state.tick += 1;
   state.impacts = [];
+  restampForts(state);
   tickSmoke(state, dt);
   tickStance(state);
   tickBipod(state);
   tickDeploy(state, dt);
   tickGarrison(state);
+  tickHeal(state, dt);
+  tickMaulerCart(state, dt);
   tickMovement(state, dt);
   tickCollision(state, dt);
+  tickField(state, dt);
   tickHarvest(state, dt);
   tickBuild(state, dt);
   tickTrain(state, dt);

@@ -116,7 +116,7 @@ function trainReserve(state: MatchState, p: SimPlayer): number {
 function harvestIdle(state: MatchState, p: SimPlayer): void {
   const ids: number[] = [];
   for (const e of state.entities.values()) {
-    if (e.ownerId !== p.playerId || e.type !== "hauler" || e.hp <= 0 || e.wreck) continue;
+    if (e.ownerId !== p.playerId || e.type !== "hauler" || e.hp <= 0 || e.wreck || e.cartHp <= 0) continue;
     if (e.returnToBase || e.holdPosition || e.order?.kind === "withdraw") continue;
     if (e.autoHarvest || e.order?.kind === "harvest" || e.state === "harvest" || e.state === "unload") {
       continue;

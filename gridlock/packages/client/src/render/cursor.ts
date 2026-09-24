@@ -22,6 +22,9 @@ export function drawActionCursor(
   else if (action === "ungarrison") drawGarrison(ctx, t, true);
   else if (action === "attack") drawAttack(ctx, t);
   else if (action === "capture") drawCapture(ctx, t);
+  else if (action === "repair") drawRepair(ctx, "FIX");
+  else if (action === "scrap") drawRepair(ctx, "SCRAP");
+  else if (action === "cover") drawCover(ctx);
   else drawGather(ctx, t);
   ctx.restore();
 }
@@ -153,6 +156,37 @@ function drawGather(ctx: CanvasRenderingContext2D, t: number): void {
   ctx.lineTo(0, -6.5 + bob);
   ctx.stroke();
   label(ctx, "GET", RUST);
+}
+
+function drawRepair(ctx: CanvasRenderingContext2D, word: string): void {
+  paint(ctx, AMBER, 2);
+  ctx.beginPath();
+  ctx.moveTo(-7, 2);
+  ctx.lineTo(-2, 7);
+  ctx.lineTo(8, -4);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(7, -5, 2.2, 0, Math.PI * 2);
+  ctx.stroke();
+  label(ctx, word, AMBER);
+}
+
+function drawCover(ctx: CanvasRenderingContext2D): void {
+  paint(ctx, FLAG, 2);
+  ctx.beginPath();
+  ctx.moveTo(-8, 4);
+  ctx.lineTo(-8, -2);
+  ctx.lineTo(8, -2);
+  ctx.lineTo(8, 4);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(-5, -2);
+  ctx.lineTo(-5, -6);
+  ctx.lineTo(0, -3);
+  ctx.lineTo(5, -6);
+  ctx.lineTo(5, -2);
+  ctx.stroke();
+  label(ctx, "COVER", FLAG);
 }
 
 function label(ctx: CanvasRenderingContext2D, text: string, fill: string): void {

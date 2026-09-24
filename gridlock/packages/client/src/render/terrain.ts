@@ -204,13 +204,6 @@ function fillPatternInQuad(
   ctx.restore();
 }
 
-function landNeighbor(map: MapDef, tx: number, ty: number, dx: number, dy: number): boolean {
-  const x = tx + dx;
-  const y = ty + dy;
-  if (x < 0 || y < 0 || x >= map.width || y >= map.height) return true;
-  return map.tiles[y * map.width + x] !== TILE_WATER;
-}
-
 function paintWaterOverlay(
   ctx: CanvasRenderingContext2D,
   map: MapDef,
@@ -231,27 +224,6 @@ function paintWaterOverlay(
   const w = up(d.w, isoLift(vertexElev(elev, map.width, map.height, tx, ty + 1)));
   const pat = waterPattern(ctx, 0);
   if (pat) fillPatternInQuad(ctx, ...expandQuad(n, e, s, w, 1.25), pat, 1);
-  const edges: [number, number, IsoPt, IsoPt][] = [
-    [0, -1, n, e],
-    [1, 0, e, s],
-    [0, 1, s, w],
-    [-1, 0, w, n],
-  ];
-  ctx.save();
-  ctx.lineCap = "round";
-  for (const [dx, dy, a, b] of edges) {
-    if (!landNeighbor(map, tx, ty, dx, dy)) continue;
-    ctx.strokeStyle = "rgba(186, 216, 206, 0.62)";
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.stroke();
-    ctx.strokeStyle = "rgba(230, 244, 236, 0.28)";
-    ctx.lineWidth = 0.7;
-    ctx.stroke();
-  }
-  ctx.restore();
 }
 
 function paintSurface(
@@ -542,6 +514,219 @@ function paintGround(
   else paintSurface(ctx, map, tx, ty, kind, scrap, originX, originY);
 }
 
+/** Blur radius that rounds a one-tile stair into a bank. */
+const SHORE_BLUR = 10;
+
+function shoreTouches(map: MapDef, indices: number[]): boolean {
+  const w = map.width;
+  const h = map.height;
+  const tiles = map.tiles;
+  for (const i of indices) {
+    const x = i % w;
+    const y = (i / w) | 0;
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        if (tiles[ny * w + nx] === TILE_WATER) return true;
+      }
+    }
+  }
+  return false;
+}
+
+function waterBodies(map: MapDef): number[][] {
+  const w = map.width;
+  const h = map.height;
+  const tiles = map.tiles;
+  const seen = new Uint8Array(tiles.length);
+  const bodies: number[][] = [];
+  const step: readonly [number, number][] = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ];
+  for (let i = 0; i < tiles.length; i++) {
+    if (tiles[i] !== TILE_WATER || seen[i]) continue;
+    const body: number[] = [];
+    const q = [i];
+    seen[i] = 1;
+    for (let qi = 0; qi < q.length; qi++) {
+      const c = q[qi]!;
+      body.push(c);
+      const x = c % w;
+      const y = (c / w) | 0;
+      for (const [dx, dy] of step) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const ni = ny * w + nx;
+        if (seen[ni] || tiles[ni] !== TILE_WATER) continue;
+        seen[ni] = 1;
+        q.push(ni);
+      }
+    }
+    bodies.push(body);
+  }
+  return bodies;
+}
+
+function rectsOverlap(
+  a: { x: number; y: number; w: number; h: number },
+  b: { x: number; y: number; w: number; h: number },
+): boolean {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+/** Soft bank painted over the diamond water so the shore reads as a curve. */
+function paintSmoothShores(
+  ctx: CanvasRenderingContext2D,
+  map: MapDef,
+  originX: number,
+  originY: number,
+  clip?: { x: number; y: number; w: number; h: number },
+): void {
+  const atlasW = ctx.canvas.width;
+  const atlasH = ctx.canvas.height;
+  if (atlasW < 2 || atlasH < 2) return;
+  const pad = (SHORE_BLUR + 4) * 3;
+  const elev = map.heights;
+  const mw = map.width;
+  const mh = map.height;
+  for (const body of waterBodies(map)) {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const i of body) {
+      const tx = i % mw;
+      const ty = (i / mw) | 0;
+      const d = tileDiamond(tx, ty, map.tileSize);
+      const lift = isoLift(
+        Math.max(
+          vertexElev(elev, mw, mh, tx, ty),
+          vertexElev(elev, mw, mh, tx + 1, ty),
+          vertexElev(elev, mw, mh, tx + 1, ty + 1),
+          vertexElev(elev, mw, mh, tx, ty + 1),
+        ),
+      );
+      for (const p of [d.n, d.e, d.s, d.w]) {
+        const q = bakePt(p, originX, originY);
+        minX = Math.min(minX, q.x);
+        maxX = Math.max(maxX, q.x);
+        minY = Math.min(minY, q.y - lift);
+        maxY = Math.max(maxY, q.y);
+      }
+    }
+    const x0 = Math.max(0, Math.floor(minX - pad));
+    const y0 = Math.max(0, Math.floor(minY - pad));
+    const x1 = Math.min(atlasW, Math.ceil(maxX + pad));
+    const y1 = Math.min(atlasH, Math.ceil(maxY + pad));
+    const bw = x1 - x0;
+    const bh = y1 - y0;
+    if (bw < 2 || bh < 2) continue;
+    const bounds = { x: x0, y: y0, w: bw, h: bh };
+    if (clip && !rectsOverlap(bounds, clip)) continue;
+
+    const mask = document.createElement("canvas");
+    mask.width = bw;
+    mask.height = bh;
+    const mctx = mask.getContext("2d");
+    if (!mctx) continue;
+    const ox = originX + x0;
+    const oy = originY + y0;
+    for (const i of body) {
+      fillElevatedTile(mctx, map, i % mw, (i / mw) | 0, "#ffffff", ox, oy, false, 1.2);
+    }
+
+    const soft = document.createElement("canvas");
+    soft.width = bw;
+    soft.height = bh;
+    const sctx = soft.getContext("2d");
+    if (!sctx) continue;
+    sctx.filter = `blur(${SHORE_BLUR}px)`;
+    sctx.drawImage(mask, 0, 0);
+    sctx.filter = "none";
+    const pix = sctx.getImageData(0, 0, bw, bh);
+    const data = pix.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const on = (data[i + 3] ?? 0) > 128;
+      data[i] = on ? 255 : 0;
+      data[i + 1] = on ? 255 : 0;
+      data[i + 2] = on ? 255 : 0;
+      data[i + 3] = on ? 255 : 0;
+    }
+    sctx.putImageData(pix, 0, 0);
+
+    // Points of the diamond stair that fall outside the rounded bank.
+    const tips = document.createElement("canvas");
+    tips.width = bw;
+    tips.height = bh;
+    const tctx = tips.getContext("2d");
+    if (!tctx) continue;
+    tctx.drawImage(mask, 0, 0);
+    tctx.globalCompositeOperation = "destination-out";
+    tctx.drawImage(soft, 0, 0);
+    tctx.globalCompositeOperation = "source-in";
+    const grass = GRASS_TEXS[0];
+    const gpat = grass ? texPattern(tctx, grass) : null;
+    tctx.fillStyle = gpat ?? "#3e5232";
+    tctx.fillRect(0, 0, bw, bh);
+
+    const rim = document.createElement("canvas");
+    rim.width = bw;
+    rim.height = bh;
+    const rctx = rim.getContext("2d");
+    if (!rctx) continue;
+    for (const [dx, dy] of [
+      [3, 0],
+      [-3, 0],
+      [0, 3],
+      [0, -3],
+      [2, 2],
+      [-2, 2],
+      [2, -2],
+      [-2, -2],
+    ] as const) {
+      rctx.drawImage(soft, dx, dy);
+    }
+    rctx.globalCompositeOperation = "source-in";
+    rctx.fillStyle = "#6b5a42";
+    rctx.fillRect(0, 0, bw, bh);
+    rctx.globalCompositeOperation = "destination-out";
+    rctx.drawImage(soft, 0, 0);
+
+    const pond = document.createElement("canvas");
+    pond.width = bw;
+    pond.height = bh;
+    const pctx = pond.getContext("2d");
+    if (!pctx) continue;
+    pctx.drawImage(soft, 0, 0);
+    pctx.globalCompositeOperation = "source-in";
+    pctx.fillStyle = "#1a4554";
+    pctx.fillRect(0, 0, bw, bh);
+    const pat = waterPattern(pctx, 0);
+    if (pat) {
+      pctx.globalAlpha = 0.92;
+      pctx.fillStyle = pat;
+      pctx.fillRect(0, 0, bw, bh);
+    }
+
+    ctx.save();
+    if (clip) {
+      ctx.beginPath();
+      ctx.rect(clip.x, clip.y, clip.w, clip.h);
+      ctx.clip();
+    }
+    ctx.drawImage(tips, x0, y0);
+    ctx.drawImage(rim, x0, y0);
+    ctx.drawImage(pond, x0, y0);
+    ctx.restore();
+  }
+}
+
 function paintTileStamp(
   ctx: CanvasRenderingContext2D,
   map: MapDef,
@@ -549,12 +734,14 @@ function paintTileStamp(
   scrap: Set<number>,
   originX: number,
   originY: number,
+  shoreClip?: { x: number; y: number; w: number; h: number },
 ): void {
   const w = map.width;
   indices.sort((a, b) => (a % w) + ((a / w) | 0) - ((b % w) + ((b / w) | 0)));
   for (const i of indices) {
     paintGround(ctx, map, i % w, (i / w) | 0, scrap.has(i), originX, originY);
   }
+  if (shoreClip) paintSmoothShores(ctx, map, originX, originY, shoreClip);
   for (const i of indices) {
     paintTileProps(ctx, map, i % w, (i / w) | 0, scrap.has(i), originX, originY);
   }
@@ -593,6 +780,7 @@ export function bakeTerrain(map: MapDef, scrap: Iterable<ScrapCell>): TerrainBak
   const { canvas, ctx, originX, originY, width, height } = makeAtlasCanvas(map);
   const packed = packScrap(scrap, map.width);
   forEachTile(map, (x, y) => paintGround(ctx, map, x, y, packed.has(y * map.width + x), originX, originY));
+  paintSmoothShores(ctx, map, originX, originY);
   forEachTile(map, (x, y) => paintTileProps(ctx, map, x, y, packed.has(y * map.width + x), originX, originY));
   return { canvas, originX, originY, width, height, scrap: packed };
 }
@@ -660,11 +848,30 @@ export function restampTiles(
   if (!ctx) return;
   const packed = packScrap(scrapCells, map.width);
   const w = map.width;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
   for (const i of indices) {
     const b = tileStampBounds(map, i % w, (i / w) | 0, bake.originX, bake.originY);
     ctx.clearRect(b.x, b.y, b.w, b.h);
+    minX = Math.min(minX, b.x);
+    minY = Math.min(minY, b.y);
+    maxX = Math.max(maxX, b.x + b.w);
+    maxY = Math.max(maxY, b.y + b.h);
   }
-  paintTileStamp(ctx, map, expandIndices(map, indices, RESTAMP_RADIUS), packed, bake.originX, bake.originY);
+  const shoreClip = shoreTouches(map, indices)
+    ? { x: minX, y: minY, w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY) }
+    : undefined;
+  paintTileStamp(
+    ctx,
+    map,
+    expandIndices(map, indices, RESTAMP_RADIUS),
+    packed,
+    bake.originX,
+    bake.originY,
+    shoreClip,
+  );
   bake.scrap = packed;
 }
 

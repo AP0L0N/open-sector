@@ -15,6 +15,7 @@ import type { Entity, MatchState } from "./types.js";
 
 export function wantsCapture(unit: Entity, target: Entity): boolean {
   return (
+    unit.type !== "engineer" &&
     isInfantryType(unit.type) &&
     unit.kind === "unit" &&
     !unit.wreck &&

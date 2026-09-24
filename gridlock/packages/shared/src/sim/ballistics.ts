@@ -1,6 +1,14 @@
 /** Sudden Strike-style AP: directional armor, aim cone, ricochet, variable pen. */
 
-import type { CatalogEntry } from "../catalog.js";
+import {
+  PTRD_CALIBER,
+  PTRD_CLOSE_TILES,
+  PTRD_DMG_LIGHT,
+  PTRD_DMG_REAR,
+  PTRD_DMG_SIDE,
+  PTRD_LIGHT_FRONT,
+  type CatalogEntry,
+} from "../catalog.js";
 import type { ImpactKind } from "../protocol.js";
 
 export const FRONT_ARC_DEG = 50;
@@ -228,6 +236,139 @@ export function resolveHit(opts: {
     effectiveArmor: effective,
     overmatch,
   };
+}
+
+/**
+ * Whether resolveHit can deal damage on this exact shot, ignoring the roll.
+ * Auto-fire uses it so a rifle does not open up when every impact would spark.
+ * Keep the branches in step with resolveHit.
+ */
+export function armorHarmPossible(opts: {
+  gun: Pick<CatalogEntry, "damage" | "penetration" | "caliber">;
+  target: CatalogEntry;
+  targetFacing: number;
+  targetHpMax: number;
+  vx: number;
+  vy: number;
+}): boolean {
+  const { gun, target } = opts;
+  if (!isArmored(target) || target.kind === "building") return true;
+  const speed = Math.hypot(opts.vx, opts.vy) || 1;
+  const face = hitFace(opts.targetFacing, opts.vx, opts.vy);
+  const armor = armorOn(target, face);
+  const n = faceNormal(opts.targetFacing, face, opts.vx, opts.vy);
+  const ix = opts.vx / speed;
+  const iy = opts.vy / speed;
+  const cosInc = clamp(-(ix * n.x + iy * n.y), 0, 1);
+  const incDeg = (Math.acos(cosInc) * 180) / Math.PI;
+  const effective = armor / Math.max(cosInc, MIN_COS);
+  const overmatch = effective <= 1e-6 ? 99 : gun.penetration / effective;
+  const caliberOver = gun.caliber > armor * 2.6;
+  if (!caliberOver && incDeg >= RICOCHET_DEG) return false;
+  const bites = gun.penetration >= effective * 0.92;
+  if (!bites) {
+    if (face === "front" && gun.penetration >= armor * 0.7) return true;
+    if (incDeg > 40 || gun.penetration < armor * 0.85) return false;
+    return true;
+  }
+  if (
+    overmatch >= KILL_OVERMATCH ||
+    (face === "rear" && overmatch >= REAR_KILL_OVERMATCH) ||
+    gun.caliber >= armor * 2.4
+  ) {
+    return true;
+  }
+  // resolveHit can still kill on roll > 0.96 when overmatch is past 1.2.
+  if (overmatch > 1.2) return true;
+  const size = gun.caliber / (armor + gun.caliber * 0.5 + 8);
+  const strength = clamp((overmatch - 0.9) / (KILL_OVERMATCH - 0.9), 0, 1);
+  const fracMax = strength * size;
+  let damage = Math.round(opts.targetHpMax * fracMax);
+  if (gun.caliber >= 40) {
+    const floor = Math.round(gun.damage * clamp(overmatch, 0.85, 2.4));
+    damage = Math.max(damage, floor);
+  }
+  return damage > 0;
+}
+
+/**
+ * 14.5 mm against a hull. Shell overmatch would delete a thin rear; this round
+ * does not. Light hulls (front plate at or under PTRD_LIGHT_FRONT) fail on
+ * every face out to the end of the sights. Heavier fronts are tanks: the front
+ * plate holds, and side or rear only inside close range, and only when the
+ * angle-thickened plate is still within the round's penetration.
+ * `penetration` is already the range-fallen value from ptrdPenetration.
+ */
+export function resolveAtRifleHit(opts: {
+  penetration: number;
+  distTiles: number;
+  target: CatalogEntry;
+  targetFacing: number;
+  targetHp: number;
+  targetHpMax: number;
+  vx: number;
+  vy: number;
+  rand: () => number;
+}): HitResolution {
+  const { target, rand } = opts;
+  const speed = Math.hypot(opts.vx, opts.vy) || 1;
+  const face = hitFace(opts.targetFacing, opts.vx, opts.vy);
+  const armor = armorOn(target, face);
+  const n = faceNormal(opts.targetFacing, face, opts.vx, opts.vy);
+  const ix = opts.vx / speed;
+  const iy = opts.vy / speed;
+  const cosInc = clamp(-(ix * n.x + iy * n.y), 0, 1);
+  const incDeg = (Math.acos(cosInc) * 180) / Math.PI;
+  const effective = armor / Math.max(cosInc, MIN_COS);
+  const overmatch = effective <= 1e-6 ? 99 : opts.penetration / effective;
+  const bounce = (): HitResolution =>
+    reflect(ix, iy, n.x, n.y, speed, face, effective, overmatch, rand, PTRD_CALIBER);
+
+  if (incDeg >= RICOCHET_DEG) return bounce();
+
+  const light = target.armorFront <= PTRD_LIGHT_FRONT;
+  const inReach = light || (face !== "front" && opts.distTiles <= PTRD_CLOSE_TILES);
+  const bites = inReach && opts.penetration >= effective * 0.92;
+  if (!bites) return bounce();
+
+  const base = light ? PTRD_DMG_LIGHT : face === "rear" ? PTRD_DMG_REAR : PTRD_DMG_SIDE;
+  const frac = base * (0.85 + rand() * 0.3);
+  const damage = Math.min(opts.targetHp, Math.max(1, Math.round(opts.targetHpMax * frac)));
+  if (damage >= opts.targetHp) return kill(opts.targetHp, face, effective, overmatch);
+  return {
+    kind: "pen",
+    face,
+    damage,
+    bounceVx: 0,
+    bounceVy: 0,
+    effectiveArmor: effective,
+    overmatch,
+  };
+}
+
+/** Same bite test as resolveAtRifleHit, without the damage roll. */
+export function ptrdHarmPossible(opts: {
+  penetration: number;
+  distTiles: number;
+  target: CatalogEntry;
+  targetFacing: number;
+  vx: number;
+  vy: number;
+}): boolean {
+  const { target } = opts;
+  const speed = Math.hypot(opts.vx, opts.vy) || 1;
+  const face = hitFace(opts.targetFacing, opts.vx, opts.vy);
+  const armor = armorOn(target, face);
+  const n = faceNormal(opts.targetFacing, face, opts.vx, opts.vy);
+  const ix = opts.vx / speed;
+  const iy = opts.vy / speed;
+  const cosInc = clamp(-(ix * n.x + iy * n.y), 0, 1);
+  const incDeg = (Math.acos(cosInc) * 180) / Math.PI;
+  if (incDeg >= RICOCHET_DEG) return false;
+  const effective = armor / Math.max(cosInc, MIN_COS);
+  const light = target.armorFront <= PTRD_LIGHT_FRONT;
+  const inReach = light || (face !== "front" && opts.distTiles <= PTRD_CLOSE_TILES);
+  return inReach && opts.penetration >= effective * 0.92;
 }
 
 function kill(

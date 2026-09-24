@@ -14,6 +14,7 @@ import {
 } from "../catalog.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { allies, unitInWater } from "./geo.js";
+import { medicTendView } from "./heal.js";
 import { powerOf } from "./power.js";
 import { canSeeWorld, entityOnMask, visionMask } from "./vision.js";
 import type { Entity, MatchState } from "./types.js";
@@ -76,6 +77,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
             }))
           : undefined,
       cargo: e.type === "hauler" ? e.cargo : undefined,
+      cart: e.type === "hauler" ? e.cartHp : undefined,
       smokeCharges: friendly && e.type === "hauler" && !e.wreck ? e.smokeCharges : undefined,
       deployProgress:
         e.state === "deploy" || e.state === "undeploy"
@@ -91,6 +93,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       guardFacing: friendly && e.guardFacing != null ? e.guardFacing : undefined,
       guardTargetId:
         friendly && e.order?.kind === "guard" && e.order.targetId != null ? e.order.targetId : undefined,
+      tend: medicTendView(state, e),
+      ruined: e.ruined || undefined,
       scout: scoutView(e, friendly),
       ammo: friendly && Object.keys(e.ammo).length > 0 ? { ...e.ammo } : undefined,
       shell: friendly && e.shell ? e.shell : undefined,

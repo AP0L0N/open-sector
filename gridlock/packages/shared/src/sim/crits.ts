@@ -1,7 +1,6 @@
 import {
   CRIT_ARM_CHANCE,
   CRIT_ENGINE_CHANCE,
-  CRIT_ENGINE_TURN,
   CRIT_LEG_CHANCE,
   CRIT_TRACKS_CHANCE,
   STANCE_AIM_SPREAD,
@@ -30,10 +29,12 @@ export function moveSpeedMul(e: Entity, swimming = false): number {
   return 1;
 }
 
-/** Broken tracks freeze the hull. Engine damage only slows it. Turret traverse is separate. */
-export function hullTurnMul(e: Entity): number {
-  if (hasCrit(e, "tracks")) return 0;
-  if (hasCrit(e, "engine")) return CRIT_ENGINE_TURN;
+/**
+ * Hull yaw. Broken tracks and a dead engine stop the vehicle from rolling
+ * (`moveSpeedMul`). They still turn the hull at full rate so a casemate can aim.
+ * Turret traverse is separate and is not slowed by either crit.
+ */
+export function hullTurnMul(_e: Entity): number {
   return 1;
 }
 
@@ -74,6 +75,7 @@ export function rollCrits(
   kind: ImpactKind,
   damage: number,
   rand: () => number,
+  trackChance = CRIT_TRACKS_CHANCE,
 ): void {
   if (e.kind !== "unit" || e.wreck) return;
   if (kind === "ricochet" || kind === "miss" || kind === "puff" || kind === "crush") return;
@@ -88,6 +90,6 @@ export function rollCrits(
     return;
   }
   if (!isMotorVehicle(e.type)) return;
-  if (face === "side" && rand() < CRIT_TRACKS_CHANCE) addCrit(e, "tracks");
+  if (face === "side" && rand() < trackChance) addCrit(e, "tracks");
   if (face === "rear" && rand() < CRIT_ENGINE_CHANCE) addCrit(e, "engine");
 }

@@ -2,9 +2,11 @@ import {
   beltOf,
   catalog,
   haulerSmokeChargesOf,
+  maulerCartHpOf,
   infantryGunFor,
   primaryInfantryGun,
   isArmoredType,
+  isFieldStructure,
   isInfantryType,
   isMotorVehicle,
   MAX_UNIT_RADIUS,
@@ -142,6 +144,9 @@ export function walkable(state: MatchState, x: number, y: number, type?: EntityT
   const i = tileIndex(state, x, y);
   if ((state.occupy[i] ?? 0) !== 0) return false;
   if ((state.wreckBlock[i] ?? 0) !== 0) return false;
+  const fort = state.fortBlock[i] ?? 0;
+  if (fort === 1) return false;
+  if (fort === 2 && !(type && isInfantryType(type))) return false;
   if (isWater(state, x, y)) return !!type && isInfantryType(type);
   if (state.blocked[i] === 1) return false;
   if (isTree(state, x, y)) {
@@ -288,6 +293,7 @@ function restampWreckBlock(state: MatchState): void {
 }
 
 export function occupyEntity(state: MatchState, e: Entity): void {
+  if (isFieldStructure(e.type)) return;
   if (e.kind !== "building" && !e.wreck) return;
   for (const t of footprint(e.tileX, e.tileY, e.tileW, e.tileH)) {
     if (!inBounds(state, t.x, t.y)) continue;
@@ -300,6 +306,7 @@ export function occupyEntity(state: MatchState, e: Entity): void {
 }
 
 export function vacateEntity(state: MatchState, e: Entity): void {
+  if (isFieldStructure(e.type)) return;
   if (e.kind !== "building" && !e.wreck) return;
   for (const t of footprint(e.tileX, e.tileY, e.tileW, e.tileH)) {
     if (!inBounds(state, t.x, t.y)) continue;
@@ -459,6 +466,7 @@ export function makeEntity(
     reloadMul: gun || belt ? rollReloadMul(() => nextRand(state)) : 1,
     harvestTime: 0,
     cargo: 0,
+    cartHp: maulerCartHpOf(type),
     harvestTile: null,
     autoHarvest: type === "hauler",
     returnToBase: false,
@@ -490,6 +498,9 @@ export function makeEntity(
     stanceOrder: "stand",
     holdPosition: false,
     guardFacing: null,
+    ruined: false,
+    coverId: null,
+    work: 0,
   };
   state.entities.set(id, e);
   occupyEntity(state, e);
@@ -503,6 +514,8 @@ export function clearOrder(e: Entity): void {
   e.harvestTile = null;
   e.guardFacing = null;
   e.returnToBase = false;
+  e.coverId = null;
+  e.work = 0;
   if (e.wreck) {
     e.state = "wreck";
     return;
@@ -515,7 +528,9 @@ export function clearOrder(e: Entity): void {
     e.state === "move" ||
     e.state === "attack" ||
     e.state === "harvest" ||
-    e.state === "unload"
+    e.state === "unload" ||
+    e.state === "build" ||
+    e.state === "repair"
   ) {
     e.state = "idle";
   }

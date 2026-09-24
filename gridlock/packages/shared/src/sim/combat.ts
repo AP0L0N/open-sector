@@ -6,6 +6,7 @@ import {
   MORTAR_MIN_RANGE_TILES,
   MORTAR_PLANT_SECONDS,
   MORTAR_SPLASH_TILES,
+  addCrit,
   catalog,
   gunArcDegOf,
   GARRISON_STRUCTURAL_CALIBER,
@@ -25,8 +26,13 @@ import {
   hasAmmo,
   hasCrit,
   hasMg,
+  hasTracks,
   hasTurret,
   infantryGunFor,
+  PTRD_CALIBER,
+  PTRD_CLOSE_TILES,
+  PTRD_TRACK_CHANCE,
+  ptrdPenetration,
   scopedHpFraction,
   entityIsScouting,
   isGarrisonable,
@@ -41,8 +47,20 @@ import {
 } from "../catalog.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
 import {
+  SANDBAG_DAMAGE_MUL,
+  SANDBAG_HIT_MUL,
+  isTankShell,
+  ruinSandbags,
+  sandbagProtects,
+  sandbagSweep,
+  woundBehindSandbags,
+} from "./field.js";
+import {
   aimAngle,
+  armorHarmPossible,
   isArmored,
+  ptrdHarmPossible,
+  resolveAtRifleHit,
   resolveHit,
   scatterHullImpact,
   RICOCHET_SPARK_SPEED,
@@ -50,6 +68,7 @@ import {
   RICOCHET_TRAVEL_MIN,
 } from "./ballistics.js";
 import { fireStats, hullTurnMul, immobilized, rollCrits } from "./crits.js";
+import { damageMaulerCart } from "./mauler-cart.js";
 import { noteImpactSurface } from "./remains.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
 import {
@@ -86,6 +105,7 @@ import {
 import {
   mortarAirZ,
   mortarApex,
+  mortarArmorNick,
   mortarFalloff,
   mortarFlightSeconds,
   mortarLanding,
@@ -147,7 +167,8 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       target.hp <= 0 ||
       skipsFriendly(state, e, target) ||
       dropsEmptyGarrison(state, e, target) ||
-      dropsWreck(e, target)
+      dropsWreck(e, target) ||
+      dropsUnharmedArmor(state, e, target)
     ) {
       e.order = null;
       e.attackTarget = null;
@@ -161,7 +182,8 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       target.hp <= 0 ||
       skipsFriendly(state, e, target) ||
       dropsEmptyGarrison(state, e, target) ||
-      dropsWreck(e, target)
+      dropsWreck(e, target) ||
+      dropsUnharmedArmor(state, e, target)
     ) {
       e.attackTarget = null;
       target = undefined;
@@ -228,6 +250,7 @@ function currentTarget(state: MatchState, e: Entity): Entity | undefined {
   if (e.order?.kind !== "forceattack" && skipsFriendly(state, e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && dropsEmptyGarrison(state, e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && dropsWreck(e, t)) return undefined;
+  if (e.order?.kind !== "forceattack" && dropsUnharmedArmor(state, e, t)) return undefined;
   return t;
 }
 
@@ -241,6 +264,50 @@ function dropsWreck(e: Entity, target: Entity): boolean {
   if (e.order?.kind === "forceattack") return false;
   if (e.order?.kind === "attack" && !e.order.auto) return false;
   return true;
+}
+
+/**
+ * Auto-fire stays quiet when this soldier's round cannot mark the hull.
+ * A player attack or force-attack still fires.
+ */
+function dropsUnharmedArmor(state: MatchState, e: Entity, target: Entity): boolean {
+  if (!isInfantryType(e.type)) return false;
+  if (e.order?.kind === "forceattack") return false;
+  if (e.order?.kind === "attack" && !e.order.auto) return false;
+  return !infantryRoundCanHarm(state, e, target);
+}
+
+/** The shot from here can put damage on that hull. Unarmored targets always can. */
+function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boolean {
+  if (target.kind !== "unit") return true;
+  const def = catalog(target.type);
+  if (!isArmored(def)) return true;
+  const gun = infantryGunFor(e);
+  if (!gun) return false;
+  if (gun.id === "mortar") return true;
+  if (entityIsScouting(target) && gun.caliber < GARRISON_STRUCTURAL_CALIBER) return true;
+  const vx = target.x - e.x;
+  const vy = target.y - e.y;
+  if (gun.id === "ptrd") {
+    const distTiles = Math.hypot(vx, vy) / state.tileSize;
+    const rangeTiles = weaponRangeWorld(state, e) / Math.max(1e-6, state.tileSize);
+    return ptrdHarmPossible({
+      penetration: ptrdPenetration(distTiles, rangeTiles),
+      distTiles,
+      target: def,
+      targetFacing: target.facing,
+      vx,
+      vy,
+    });
+  }
+  return armorHarmPossible({
+    gun,
+    target: def,
+    targetFacing: target.facing,
+    targetHpMax: target.hpMax,
+    vx,
+    vy,
+  });
 }
 
 /** Auto-fire and infantry stop once a civilian house is empty. Tanks may still demolish on a player order. */
@@ -300,16 +367,13 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (!turreted && !holedUp) {
     remainingDeg = turnToward(e, aimX, aimY, def.turnDegPerSec * hullTurnMul(e), dt);
   }
+  // No turret: remainingDeg is the hull, and the shot leaves along that facing.
+  // A traversing turret fires along the turret once it is on the target.
   const gunArc = gunArcDegOf(e.type);
   const gunArcOk = Math.abs(remainingDeg) <= gunArc;
-  const tracksBroken = hasCrit(e, "tracks");
-  const hullArcOk = Math.abs(hullAimRemainingDeg(e, aimX, aimY)) <= gunArc;
 
   const useMg = !ground && !e.order?.once && target ? wantsMg(e, target) : false;
-  // Broken tracks: hull is frozen, so the MG only bears along current hull facing.
-  // Healthy coaxial MG still follows the turret / casemate gun arc.
-  const mgArcOk = tracksBroken ? hullArcOk : gunArcOk;
-  if (useMg && target && mgArcOk && e.mgCooldown <= 0 && e.mgOverheat <= 0 && e.mgAmmo > 0) {
+  if (useMg && target && gunArcOk && e.mgCooldown <= 0 && e.mgOverheat <= 0 && e.mgAmmo > 0) {
     fireRound(
       state,
       e,
@@ -328,7 +392,6 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
       {
         target,
         accurateRange: accurateWeaponRange(e, range),
-        bearing: tracksBroken ? e.facing : undefined,
       },
     );
     e.mgCooldown = TANK_MG.cooldown;
@@ -338,7 +401,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   }
   // Infantry take the coaxial and the main gun together. An exposed hatch on an
   // armored hull still takes the MG alone, and only while that gun can bear.
-  if (useMg && target && mgArcOk && !isInfantryType(target.type)) return;
+  if (useMg && target && gunArcOk && !isInfantryType(target.type)) return;
 
   if (!holedUp && !gunArcOk) return;
 
@@ -362,8 +425,8 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     }
     return;
   }
-  // A broken arm drops the scoped rifle. There is no sidearm to fall back on.
-  if (e.type === "sniper" && !infantryGunFor(e)) return;
+  // A broken arm drops the scoped rifle and the PTRD. There is no sidearm.
+  if ((e.type === "sniper" || e.type === "atinfantry") && !infantryGunFor(e)) return;
 
   if (e.reload > 0) return;
   if (e.cooldown > 0) return;
@@ -497,7 +560,26 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number): v
     if (d > reach) continue;
     const friendly = e.ownerId !== "" && allies(state, p.ownerId, e.ownerId);
     if (friendly && !p.harmAllies) continue;
-    const scaled = Math.max(1, Math.round(p.damage * mortarFalloff(d, reach)));
+    const falloff = mortarFalloff(d, reach);
+    const def = catalog(e.type);
+    if (e.kind === "unit" && isArmored(def)) {
+      const nick = mortarArmorNick(def.hp, falloff, hasTracks(e.type), rand);
+      e.hp = Math.max(0, e.hp - nick.damage);
+      if (e.hp > 0 && nick.throwTrack) addCrit(e, "tracks");
+      damageMaulerCart(e, {
+        caliber: p.caliber,
+        damage: Math.max(1, Math.round(p.damage * falloff)),
+        shell: p.shell,
+        flight: "mortar",
+        face: "none",
+        kind: "hit",
+      });
+      const smoked = maybeHaulerSmokeScreen(state, e, p);
+      if (e.hp > 0 && !smoked) maybeWithdraw(state, e, p);
+      hideScout(state, e);
+      continue;
+    }
+    const scaled = Math.max(1, Math.round(p.damage * falloff));
     const res = resolveHit({
       gun: { damage: scaled, penetration: p.penetration, caliber: p.caliber },
       target: catalog(e.type),
@@ -666,8 +748,6 @@ function slewTurret(
   }
   const wp = e.waypoints[0];
   if (wp && !reversing(e)) return turnTurretToward(e, wp.x, wp.y, rate, dt);
-  // Frozen hull cannot follow the turret, so leave the last aim instead of snapping back.
-  if (hasCrit(e, "tracks")) return 0;
   return turnTurretTo(e, e.facing, rate, dt);
 }
 
@@ -731,6 +811,9 @@ function fireRound(
   const z0 = muzzleHeight(state, e);
   const zAim = target ? aimHeight(state, target) : worldTileHeight(state, aimX, aimY);
   const aimDist = Math.hypot(aimX - x, aimY - y);
+  const gunId = infantryGunFor(e)?.id;
+  const distTiles = dist / state.tileSize;
+  const rangeTiles = range / Math.max(1e-6, state.tileSize);
   const p: Projectile = {
     id: state.nextId++,
     ownerId: e.ownerId,
@@ -740,14 +823,14 @@ function fireRound(
     vx: dx * speed,
     vy: dy * speed,
     damage: stats.damage,
-    penetration: stats.penetration,
+    penetration: gunId === "ptrd" ? ptrdPenetration(distTiles, rangeTiles) : stats.penetration,
     caliber: stats.caliber,
     life,
     ignoreId,
     fromId: e.id,
     bounced: false,
     shell: opts?.shell ?? null,
-    hpFraction: infantryGunFor(e)?.id === "scoped" ? scopedHpFraction(dist, range) : undefined,
+    hpFraction: gunId === "scoped" || gunId === "ptrd" ? scopedHpFraction(dist, range) : undefined,
     z: z0,
     vz: ((zAim - z0) / Math.max(1e-6, aimDist)) * speed,
   };
@@ -806,7 +889,14 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     p.z = z0 + (p.vz ?? 0) * stepDt;
     p.life -= dt;
     const z1 = p.z;
+    const bagHit = sandbagSweep(state, x0, y0, p.x, p.y, isTankShell(p));
     const struck = nearestSweepHit(state, x0, y0, p, z0, z1);
+    if (bagHit && (!struck || bagHit.t <= struck.t)) {
+      woundBehindSandbags(state, bagHit.e, x0, y0, p.damage);
+      ruinSandbags(state, bagHit.e);
+      pushImpact(state, p, "hit", bagHit.x, bagHit.y);
+      continue;
+    }
     const tree = nearestTreeSweep(state, x0, y0, p, z0, z1, rand);
     if (tree && (!struck || tree.t <= struck.t)) {
       if (canFellTrees(p)) fellTreeAt(state, tree.tx, tree.ty);
@@ -841,32 +931,77 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       pushImpact(state, p, "hit", e.x, e.y);
       continue;
     }
-    const targetDef = e.wreck ? wreckHitDef(e, p.caliber) : catalog(e.type);
+    const liveDef = catalog(e.type);
+    const targetDef = e.wreck ? wreckHitDef(e, p.caliber) : liveDef;
     const frac = p.hpFraction;
     const scopedInfantry = frac != null && isInfantryType(e.type) && !e.wreck;
-    const res = resolveHit({
-      gun: {
-        damage: scopedInfantry ? Math.max(1, Math.round(e.hpMax * frac)) : p.damage,
-        penetration: p.penetration,
-        caliber: p.caliber,
-      },
-      target: targetDef,
-      targetFacing: e.facing,
-      targetHp: e.hp,
-      targetHpMax: e.hpMax,
-      vx: p.vx,
-      vy: p.vy,
-      rand,
-      exact: scopedInfantry,
-    });
+    const atArmor =
+      !p.bounced &&
+      p.caliber === PTRD_CALIBER &&
+      !scopedInfantry &&
+      isArmored(liveDef) &&
+      liveDef.kind !== "building";
+    const shooter = atArmor ? state.entities.get(p.fromId) : undefined;
+    const distTiles = shooter
+      ? Math.hypot(e.x - shooter.x, e.y - shooter.y) / state.tileSize
+      : PTRD_CLOSE_TILES + 1;
+    const res = atArmor
+      ? resolveAtRifleHit({
+          penetration: p.penetration,
+          distTiles,
+          target: liveDef,
+          targetFacing: e.facing,
+          targetHp: e.hp,
+          targetHpMax: e.hpMax,
+          vx: p.vx,
+          vy: p.vy,
+          rand,
+        })
+      : resolveHit({
+          gun: {
+            damage: scopedInfantry ? Math.max(1, Math.round(e.hpMax * frac)) : p.damage,
+            penetration: p.penetration,
+            caliber: p.caliber,
+          },
+          target: targetDef,
+          targetFacing: e.facing,
+          targetHp: e.hp,
+          targetHpMax: e.hpMax,
+          vx: p.vx,
+          vy: p.vy,
+          rand,
+          exact: scopedInfantry,
+        });
     const occupied = isGarrisonable(e.type) && livingGarrison(state, e).length > 0;
     const chipWalls = !occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER;
+    let dealt = res.damage;
+    if (dealt > 0 && sandbagProtects(state, e, x0, y0) && !isTankShell(p)) {
+      dealt = Math.max(1, Math.round(dealt * SANDBAG_DAMAGE_MUL));
+    }
+    if (isTankShell(p) && e.coverId != null) {
+      const bag = state.entities.get(e.coverId);
+      if (bag && bag.type === "sandbags" && !bag.ruined) ruinSandbags(state, bag);
+    }
     if (chipWalls) {
-      e.hp -= res.damage;
+      e.hp -= dealt;
       if (e.hp < 0) e.hp = 0;
-      if (e.hp > 0) rollCrits(e, res.face, res.kind, res.damage, rand);
+      if (e.hp > 0) {
+        const tracks =
+          p.caliber === PTRD_CALIBER && res.kind === "pen" && res.face === "side" ? PTRD_TRACK_CHANCE : undefined;
+        rollCrits(e, res.face, res.kind, dealt, rand, tracks);
+      }
+      if (!p.bounced) {
+        damageMaulerCart(e, {
+          caliber: p.caliber,
+          damage: p.damage,
+          shell: p.shell,
+          flight: p.flight,
+          face: res.face,
+          kind: res.kind,
+        });
+      }
       const smoked = maybeHaulerSmokeScreen(state, e, p);
-      if (e.hp > 0 && !smoked && res.kind !== "ricochet" && res.damage > 0) {
+      if (e.hp > 0 && !smoked && res.kind !== "ricochet" && dealt > 0) {
         maybeWithdraw(state, e, p);
       }
       hideScout(state, e);
@@ -888,6 +1023,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       blast,
     );
     if (res.kind !== "ricochet") continue;
+    if (p.caliber === PTRD_CALIBER) p.penetration = 0;
     p.vx = res.bounceVx;
     p.vy = res.bounceVy;
     p.vz = 0;
@@ -1029,6 +1165,9 @@ function sweepAgainst(
   p: Projectile,
   e: Entity,
 ): { t: number; x: number; y: number } | null {
+  if (e.type === "sandbags" || e.type === "teeth") return null;
+  let reach = e.radius * stanceHitRadiusMul(e, unitInWater(state, e));
+  if (sandbagProtects(state, e, x0, y0)) reach *= SANDBAG_HIT_MUL;
   const t =
     e.kind === "building"
       ? segmentAabbT(x0, y0, p.x, p.y, buildingBounds(e, state.tileSize))
@@ -1039,7 +1178,7 @@ function sweepAgainst(
           p.y,
           e.x,
           e.y,
-          e.radius * stanceHitRadiusMul(e, unitInWater(state, e)) + PROJECTILE_RADIUS,
+          reach + PROJECTILE_RADIUS,
         );
   if (t == null) return null;
   return { t, x: x0 + (p.x - x0) * t, y: y0 + (p.y - y0) * t };
@@ -1127,6 +1266,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (coneOnly && !inGuardCone(e, o)) continue;
     if (e.type !== "mortarman" && !canSeeEntity(state, e.ownerId, o)) continue;
     if (!canAimWeapon(state, e, o.x, o.y, o)) continue;
+    if (isInfantryType(e.type) && !infantryRoundCanHarm(state, e, o)) continue;
     bestD = d;
     best = o;
   }
@@ -1153,6 +1293,7 @@ function maybeHaulerSmokeScreen(state: MatchState, victim: Entity, p: Projectile
     victim.specialCooldown = victim.smokeCharges <= 0 ? HAULER_SMOKE_RELOAD : HAULER_SMOKE_COOLDOWN;
   }
 
+  if (victim.cartHp <= 0) return true;
   if (victim.hp <= 0 || victim.holdPosition || immobilized(victim)) return true;
   if (victim.state === "deploy" || victim.state === "undeploy") return true;
   if (victim.returnToBase && (victim.order?.kind === "withdraw" || victim.order?.kind === "move")) {

@@ -7,7 +7,7 @@ import {
   TRACK_ARRIVE_SLOP,
   UNIT_SPACE_PAD,
 } from "../catalog.js";
-import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, occupant, tileCenter, walkable, worldToTile } from "./geo.js";
+import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, occupant, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
 export function isActiveUnit(e: Entity): boolean {
@@ -38,6 +38,12 @@ function tileFree(state: MatchState, e: Entity, x: number, y: number): boolean {
   if (isWall(state, tx, ty)) return false;
   if (isWater(state, tx, ty) && !isInfantryType(e.type)) return false;
   if (isTree(state, tx, ty) && !walkable(state, tx, ty, e.type)) return false;
+  const fort = state.fortBlock[tileIndex(state, tx, ty)] ?? 0;
+  if (fort === 1 || (fort === 2 && !isInfantryType(e.type))) {
+    const cx = worldToTile(e.x, ts);
+    const cy = worldToTile(e.y, ts);
+    if (tx !== cx || ty !== cy) return false;
+  }
   const occ = occupant(state, tx, ty);
   if (occ !== 0 && occ !== e.id) {
     const cx = worldToTile(e.x, ts);

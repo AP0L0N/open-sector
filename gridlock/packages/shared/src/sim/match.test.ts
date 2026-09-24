@@ -67,7 +67,9 @@ describe("createMatch", () => {
       assert.equal(own.filter((e) => e.type === "rifleman").length, 1);
       assert.equal(own.filter((e) => e.type === "gunner").length, 1);
       assert.equal(own.filter((e) => e.type === "sniper").length, 1);
+      assert.equal(own.filter((e) => e.type === "atinfantry").length, 1);
       assert.equal(own.filter((e) => e.type === "mortarman").length, 1);
+      assert.equal(own.filter((e) => e.type === "medic").length, 1);
       assert.equal(own.filter((e) => e.type === "warden").length, 1);
       assert.equal(own.filter((e) => e.type === "ss3").length, 1);
       assert.equal(own.filter((e) => e.type === "walker").length, 1);
@@ -443,10 +445,12 @@ describe("combat", () => {
     truck.autoHarvest = false;
     truck.facing = Math.PI;
     const hp0 = truck.hp;
+    const cart0 = truck.cartHp;
     applyCommand(state, "A", { type: "cmd.attack", ids: [t1.id], targetId: truck.id });
     ticks(state, 120);
     assert.ok(state.entities.has(truck.id), "hauler should still exist");
     assert.equal(truck.hp, hp0, `rifle vs hauler armor hp=${truck.hp}`);
+    assert.equal(truck.cartHp, cart0, "rifles do not knock the cart off");
     assert.ok(state.impacts.some((x) => x.kind === "ricochet"), "rifle must bounce");
   });
 

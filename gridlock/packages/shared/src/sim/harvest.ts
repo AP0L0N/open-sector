@@ -1,11 +1,55 @@
-import { HAULER_CARGO, HAULER_HARVEST_SECONDS, HAULER_UNLOAD_SECONDS } from "../catalog.js";
+import {
+  HAULER_CARGO,
+  HAULER_HARVEST_SECONDS,
+  HAULER_UNLOAD_SECONDS,
+  MAULER_CART_HP,
+  MAULER_CART_RESTORE_SECONDS,
+} from "../catalog.js";
 import { scrapAt, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
 
+/** A Mauler with the cart shot off drives to the Smelter and waits for a new one. */
+export function tickMaulerCart(state: MatchState, dt: number): void {
+  for (const e of state.entities.values()) {
+    if (e.type !== "hauler" || e.hp <= 0 || e.wreck || e.cartHp > 0) continue;
+    if (e.state === "deploy" || e.state === "undeploy") continue;
+    e.cargo = 0;
+    e.harvestTile = null;
+    e.returnToBase = false;
+    e.attackTarget = null;
+    e.order = null;
+    const smelter = nearestOwned(state, e, "smelter");
+    const dock = smelter ? smelterDock(state, smelter) : null;
+    if (!dock) {
+      e.waypoints = [];
+      e.harvestTime = 0;
+      e.state = "idle";
+      continue;
+    }
+    if (Math.hypot(e.x - dock.x, e.y - dock.y) > state.tileSize * 0.75) {
+      e.state = "move";
+      e.harvestTime = 0;
+      const last = e.waypoints[e.waypoints.length - 1];
+      if (!last || Math.hypot(last.x - dock.x, last.y - dock.y) > state.tileSize) {
+        setPath(state, e, dock.x, dock.y);
+      }
+      continue;
+    }
+    e.waypoints = [];
+    e.state = "idle";
+    e.harvestTime += dt;
+    if (e.harvestTime >= MAULER_CART_RESTORE_SECONDS) {
+      e.cartHp = MAULER_CART_HP;
+      e.harvestTime = 0;
+    }
+  }
+}
+
 export function tickHarvest(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (e.type !== "hauler" || e.hp <= 0 || e.wreck) continue;
+    if (e.cartHp <= 0) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
     if (e.returnToBase || e.order?.kind === "withdraw") continue;
 
