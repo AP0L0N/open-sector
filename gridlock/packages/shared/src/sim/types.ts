@@ -1,4 +1,4 @@
-import type { BuildingType, Crit, EntityType, InfantryWeaponId, ShellType, Stance, TrainType } from "../catalog.js";
+import type { BuildingType, Crit, EntityType, FieldStructureType, InfantryWeaponId, ShellType, Stance, TrainType } from "../catalog.js";
 import type { AiDifficulty, CorpseView, EntityState, ImpactView, ShellHoleView } from "../protocol.js";
 
 export interface Vec {
@@ -37,7 +37,10 @@ export interface Order {
     | "garrison"
     | "rotate"
     | "guard"
-    | "withdraw";
+    | "withdraw"
+    | "build"
+    | "repair"
+    | "cover";
   x?: number;
   y?: number;
   /** World radians. Guard / rotate destination facing. */
@@ -52,6 +55,8 @@ export interface Order {
   once?: boolean;
   /** Group-move cap in catalog tiles/sec. Slowest selected unit that can still walk. */
   pace?: number;
+  /** Engineer field structure being built. */
+  structure?: FieldStructureType;
   /** Panic retreat: after this order, the Mauler returns to HQ and holds. */
   returnToBase?: boolean;
 }
@@ -85,6 +90,8 @@ export interface Entity {
   reloadMul: number;
   harvestTime: number;
   cargo: number;
+  /** Scrap cart on a Mauler. 0 on every other type, and 0 when the cart is off. */
+  cartHp: number;
   harvestTile: Vec | null;
   autoHarvest: boolean;
   /** Popped smoke and is fleeing / holding at HQ. Player orders clear this. */
@@ -138,6 +145,16 @@ export interface Entity {
   holdPosition: boolean;
   /** Commanded overwatch heading. Null when not guarding. */
   guardFacing: number | null;
+  /** Sandbags broken by a tank shell. The entity stays as rubble. */
+  ruined: boolean;
+  /** Sandbag wall this infantry is manning. */
+  coverId: number | null;
+  /** Seconds spent on the current build or repair. */
+  work: number;
+  /** Wounded infantry this medic is walking to or bandaging. */
+  tendId?: number;
+  /** Seconds of contact toward clearing one crit. */
+  mendTime?: number;
 }
 
 export interface Projectile {
@@ -161,7 +178,7 @@ export interface Projectile {
   shell: ShellType | null;
   /**
    * Infantry hit deals this share of the victim's max HP.
-   * Set by the scoped rifle. Omitted for every other gun.
+   * Set by the scoped rifle and the PTRD. Omitted for every other gun.
    */
   hpFraction?: number;
   /** Elevation units at the current point. Omit in tests for ground-level. */
@@ -234,6 +251,8 @@ export interface MatchState {
   occupy: Int32Array;
   /** 1 = too close to a wreck for a unit to path through. */
   wreckBlock: Uint8Array;
+  /** 1 = sandbags block every unit. 2 = dragon's teeth block vehicles only. */
+  fortBlock: Uint8Array;
   players: Map<string, SimPlayer>;
   entities: Map<number, Entity>;
   projectiles: Projectile[];

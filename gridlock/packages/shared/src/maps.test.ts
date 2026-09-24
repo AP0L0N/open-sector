@@ -205,7 +205,7 @@ describe("maps", () => {
     }
   });
 
-  it("runs dirt lanes between the starts and fences the fields", () => {
+  it("runs dirt lanes between the starts", () => {
     const yard = MAPS["yard-64"]!;
     let roads = 0;
     let fences = 0;
@@ -214,7 +214,7 @@ describe("maps", () => {
       if (t === TILE_FENCE) fences++;
     }
     assert.ok(roads > 600, `roads ${roads}`);
-    assert.ok(fences > 200, `fences ${fences}`);
+    assert.equal(fences, 0, `fences ${fences}`);
     assert.equal(
       yard.tiles.filter((t) => t === TILE_BLOCKED).length,
       0,

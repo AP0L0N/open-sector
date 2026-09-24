@@ -65,6 +65,27 @@ export function sniperSheet(opts: {
   return "walk";
 }
 
+export type AtInfantrySheet = "walk" | "crouch" | "crawl" | "swim" | "fire" | "die";
+
+/** PTRD recoil. Shorter than the bolt, same window as the scoped rifle. */
+export const AT_FIRE_MS = SNIPER_FIRE_MS;
+
+export function atInfantrySheet(opts: {
+  swimming?: boolean;
+  wreck?: boolean;
+  stance?: "stand" | "crouch" | "crawl";
+  shotAgeMs?: number | null;
+}): AtInfantrySheet {
+  if (opts.wreck) return "die";
+  if (opts.swimming) return "swim";
+  const stance = opts.stance ?? "stand";
+  if (stance === "crouch") return "crouch";
+  if (stance === "crawl") return "crawl";
+  const firing = opts.shotAgeMs != null && opts.shotAgeMs >= 0 && opts.shotAgeMs < AT_FIRE_MS;
+  if (firing) return "fire";
+  return "walk";
+}
+
 export type MortarmanSheet = "walk" | "crouch" | "crawl" | "swim" | "fire" | "die";
 
 /** Kneeling shot. The bomb is still in the air after this pose drops. */
@@ -82,6 +103,22 @@ export function mortarmanSheet(opts: {
   if (stance === "crawl") return "crawl";
   const firing = opts.shotAgeMs != null && opts.shotAgeMs >= 0 && opts.shotAgeMs < MORTAR_FIRE_MS;
   if (stance === "crouch") return firing ? "fire" : "crouch";
+  return "walk";
+}
+
+export type MedicSheet = "walk" | "crouch" | "crawl" | "swim" | "die";
+
+export function medicSheet(opts: {
+  swimming?: boolean;
+  wreck?: boolean;
+  stance?: "stand" | "crouch" | "crawl";
+  tending?: boolean;
+}): MedicSheet {
+  if (opts.wreck) return "die";
+  if (opts.swimming) return "swim";
+  const stance = opts.stance ?? "stand";
+  if (stance === "crawl") return "crawl";
+  if (stance === "crouch" || opts.tending) return "crouch";
   return "walk";
 }
 

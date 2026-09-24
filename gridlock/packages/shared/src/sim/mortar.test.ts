@@ -3,13 +3,16 @@ import { describe, it } from "node:test";
 import {
   INFANTRY_SIGHT_TILES,
   MORTAR,
+  MORTAR_ARMOR_CHIP,
   MORTAR_MIN_RANGE_TILES,
   MORTAR_PLANT_SECONDS,
   MORTAR_RANGE_TILES,
   MORTAR_SPLASH_TILES,
+  MORTAR_TRACK_CHANCE,
   TILE_SIZE,
   addCrit,
   catalog,
+  hasTracks,
   infantryGunFor,
   infantryLoadout,
   isInfantryType,
@@ -17,10 +20,11 @@ import {
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { TILE_EMPTY, TILE_TREE, TILE_WATER } from "../maps.js";
 import { applyCommand } from "./commands.js";
-import { makeEntity, tileCenter, tileIndex } from "./geo.js";
+import { destroyEntity, makeEntity, tileCenter, tileIndex } from "./geo.js";
 import { createMatch, step } from "./match.js";
-import { mortarAirZ, mortarArcPoints, mortarFalloff, mortarScatterRadius } from "./mortar.js";
-import { tickProjectiles } from "./combat.js";
+import { mortarAirZ, mortarArcPoints, mortarArmorNick, mortarFalloff, mortarScatterRadius } from "./mortar.js";
+import { nextRand } from "./rng.js";
+import { tickCombat, tickProjectiles } from "./combat.js";
 import { snapshotFor } from "./snapshot.js";
 import { canSeeEntity } from "./vision.js";
 import type { MatchState, Projectile } from "./types.js";
@@ -45,6 +49,22 @@ function match(): { state: MatchState; a: string; b: string } {
 
 function ticks(state: MatchState, n: number): void {
   for (let i = 0; i < n; i++) step(state, 0.1);
+}
+
+function isolate(state: MatchState, keep: readonly number[]): void {
+  for (const e of [...state.entities.values()]) {
+    if (!keep.includes(e.id)) destroyEntity(state, e);
+  }
+}
+
+/** First nextRand is the nick's damage roll. The second is the track roll. */
+function seedAfterOneRand(want: (roll: number) => boolean): number {
+  for (let s = 1; s < 50000; s++) {
+    const st = { rngState: s };
+    nextRand(st);
+    if (want(nextRand(st))) return s;
+  }
+  throw new Error("no rng seed");
 }
 
 function bomb(state: MatchState, owner: string, fromId: number, x: number, y: number, harmAllies = false): Projectile {
@@ -90,6 +110,12 @@ describe("mortar", () => {
     assert.equal(MORTAR.caliber, 60);
     assert.ok(MORTAR.damage >= catalog("rifleman").hp);
     assert.ok(MORTAR.penetration < catalog("warden").armorFront * 0.5);
+    assert.ok(MORTAR_ARMOR_CHIP < 0.1);
+    assert.ok(MORTAR_TRACK_CHANCE <= 0.15);
+    assert.equal(hasTracks("warden"), true);
+    assert.equal(hasTracks("ss3"), true);
+    assert.equal(hasTracks("walker"), false);
+    assert.equal(hasTracks("hauler"), false);
     assert.deepEqual(infantryLoadout("mortarman").map((g) => g.id), ["mortar"]);
     assert.equal(infantryGunFor({ type: "mortarman" })?.id, "mortar");
     assert.equal(infantryGunFor({ type: "mortarman", crits: ["arm"] }), null);
@@ -138,6 +164,11 @@ describe("mortar", () => {
     foe.holdPosition = true;
     foe.cooldown = 99;
     mid.holdPosition = true;
+    // The lane between the screen and the target has to stay blocked no matter
+    // where the yard's trees landed. A short grove is enough to spend the LOS budget.
+    for (let x = 30 + 28; x <= 30 + 36; x++) {
+      for (let y = 38; y <= 42; y++) state.terrain[tileIndex(state, x, y)] = TILE_TREE;
+    }
     const dist = Math.hypot(foe.x - tube.x, foe.y - tube.y);
     assert.ok(dist > catalog("mortarman").sightTiles * ts);
     assert.ok(dist < MORTAR_RANGE_TILES * ts);
@@ -221,7 +252,95 @@ describe("mortar", () => {
     shot.vx = 80;
     shot.vy = 0;
     tickProjectiles(state, 0.1);
-    assert.equal(tank.hp, before, "front plate shrugs a mortar bomb");
+    assert.ok(tank.hp < before, "a mortar nicks the hull");
+    assert.ok(tank.hp > before - before * 0.12, `nick should stay small hp=${tank.hp}`);
+    assert.equal(tank.wreck, false);
+  });
+
+  it("nicks every face, throws a track on a tracked hull, and leaves a Walker on its legs", () => {
+    const kept = mortarArmorNick(120, 1, true, () => 0.99);
+    assert.ok(kept.damage >= 1 && kept.damage < 15);
+    assert.equal(kept.throwTrack, false);
+    const thrown = mortarArmorNick(120, 1, true, () => 0);
+    assert.equal(thrown.throwTrack, true);
+    const legs = mortarArmorNick(80, 1, false, () => 0);
+    assert.equal(legs.throwTrack, false);
+
+    const throwSeed = seedAfterOneRand((roll) => roll < MORTAR_TRACK_CHANCE);
+    const keepSeed = seedAfterOneRand((roll) => roll >= MORTAR_TRACK_CHANCE);
+    const { state, a } = match();
+    const ts = state.tileSize;
+    const tube = makeEntity(state, "mortarman", a, tileCenter(4, ts), tileCenter(4, ts));
+    for (const facing of [0, Math.PI / 2, Math.PI]) {
+      const tank = makeEntity(state, "warden", "B", tileCenter(40, ts), tileCenter(40, ts));
+      tank.facing = facing;
+      tank.holdPosition = true;
+      state.terrain[tileIndex(state, 40, 40)] = TILE_EMPTY;
+      isolate(state, [tube.id, tank.id]);
+      const before = tank.hp;
+      bomb(state, a, tube.id, tank.x, tank.y);
+      state.rngState = keepSeed;
+      tickProjectiles(state, 0.1);
+      assert.ok(tank.hp < before && tank.hp > before * 0.88, `facing ${facing} hp=${tank.hp}`);
+      assert.deepEqual(tank.crits, []);
+      assert.equal(tank.wreck, false);
+      destroyEntity(state, tank);
+    }
+
+    const tiger = makeEntity(state, "warden", "B", tileCenter(40, ts), tileCenter(40, ts));
+    tiger.holdPosition = true;
+    const stug = makeEntity(state, "ss3", "B", tileCenter(80, ts), tileCenter(40, ts));
+    stug.holdPosition = true;
+    state.terrain[tileIndex(state, 40, 40)] = TILE_EMPTY;
+    state.terrain[tileIndex(state, 80, 40)] = TILE_EMPTY;
+    isolate(state, [tube.id, tiger.id, stug.id]);
+    bomb(state, a, tube.id, tiger.x, tiger.y);
+    state.rngState = throwSeed;
+    tickProjectiles(state, 0.1);
+    assert.ok(tiger.hp < tiger.hpMax && tiger.hp > 0);
+    assert.ok(tiger.crits.includes("tracks"), `tiger crits=${tiger.crits.join(",")}`);
+
+    bomb(state, a, tube.id, stug.x, stug.y);
+    state.rngState = throwSeed;
+    tickProjectiles(state, 0.1);
+    assert.ok(stug.crits.includes("tracks"), `stug crits=${stug.crits.join(",")}`);
+
+    const walker = makeEntity(state, "walker", "B", tileCenter(40, ts), tileCenter(40, ts));
+    walker.holdPosition = true;
+    walker.cooldown = 99;
+    const walkerHp = walker.hp;
+    isolate(state, [tube.id, walker.id]);
+    bomb(state, a, tube.id, walker.x, walker.y);
+    state.rngState = throwSeed;
+    tickProjectiles(state, 0.1);
+    assert.ok(walker.hp < walkerHp && walker.hp > walkerHp * 0.8, `walker hp=${walker.hp}`);
+    assert.deepEqual(walker.crits, []);
+    assert.equal(walker.wreck, false);
+  });
+
+  it("auto-attacks an armored hull a rifle would ignore", () => {
+    const { state, a, b } = match();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    for (const e of [...state.entities.values()]) {
+      if (e.ownerId === b) destroyEntity(state, e);
+    }
+    const tube = makeEntity(state, "mortarman", a, tileCenter(30, ts), tileCenter(30, ts));
+    const rifle = makeEntity(state, "rifleman", a, tileCenter(30, ts), tileCenter(34, ts));
+    const tank = makeEntity(state, "warden", b, tileCenter(30, ts), tileCenter(70, ts));
+    tube.holdPosition = true;
+    rifle.holdPosition = true;
+    tank.holdPosition = true;
+    tank.cooldown = 99;
+    tank.mgCooldown = 99;
+    tank.mgAmmo = 0;
+    const gap = Math.hypot(tank.x - tube.x, tank.y - tube.y) / ts;
+    assert.ok(gap > MORTAR_MIN_RANGE_TILES && gap < MORTAR_RANGE_TILES, `gap ${gap}`);
+    tickCombat(state, 0.1);
+    assert.equal(tube.attackTarget, tank.id);
+    assert.equal(tube.order?.kind, "attack");
+    assert.equal(tube.order?.auto, true);
+    assert.notEqual(rifle.attackTarget, tank.id);
   });
 
   it("craters open dirt, splashes water, and fells a tree it lands on", () => {

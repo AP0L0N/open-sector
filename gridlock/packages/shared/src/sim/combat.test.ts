@@ -6,6 +6,7 @@ import {
   HEIGHT_BASE,
   HULL_EYE_HEIGHT,
   MG42,
+  PTRD_CLOSE_TILES,
   SHELLS,
   TANK_MG,
   TICK_DT,
@@ -1538,7 +1539,7 @@ describe("infantry weapons", () => {
 });
 
 describe("broken tracks", () => {
-  it("freezes the hull but still traverses a turret onto a flank target", () => {
+  it("attack-hold leaves the hull and still traverses a turret onto a flank target", () => {
     const { state } = twoPlayerMatch();
     clearCover(state);
     const ts = state.tileSize;
@@ -1560,7 +1561,7 @@ describe("broken tracks", () => {
     assert.ok((tank.ammo.ap ?? 12) < 12, `ap=${tank.ammo.ap}`);
   });
 
-  it("fires the MG only along hull facing, and still uses the 75mm on a trooper", () => {
+  it("fires the coaxial along the turret, including at a flank the hull is not facing", () => {
     const { state } = twoPlayerMatch();
     clearCover(state);
     const ts = state.tileSize;
@@ -1575,7 +1576,7 @@ describe("broken tracks", () => {
     applyCommand(state, "A", { type: "cmd.attack", ids: [tank.id], targetId: front.id });
     for (let i = 0; i < 6; i++) step(state, TICK_DT);
     assert.ok(tank.mgAmmo < TANK_MG.ammo, `front mgAmmo=${tank.mgAmmo}`);
-    assert.equal(tank.ammo.ap, 11, "the cannon still fires down the frozen hull");
+    assert.equal(tank.ammo.ap, 11, "the cannon still fires down the hull");
 
     const { state: s2 } = twoPlayerMatch();
     clearCover(s2);
@@ -1588,23 +1589,38 @@ describe("broken tracks", () => {
     flank.holdPosition = true;
     flank.cooldown = 99;
     applyCommand(s2, "A", { type: "cmd.attack", ids: [gun.id], targetId: flank.id });
-    for (let i = 0; i < 24; i++) step(s2, TICK_DT);
-    assert.equal(gun.mgAmmo, TANK_MG.ammo, `flank mgAmmo=${gun.mgAmmo}`);
+    step(s2, TICK_DT);
+    assert.equal(gun.mgAmmo, TANK_MG.ammo, "does not shoot before the turret is on the target");
+    assert.equal(gun.ammo.ap, 12);
+    let sawShell = false;
+    for (let i = 0; i < 24; i++) {
+      step(s2, TICK_DT);
+      const shell =
+        s2.projectiles.find((p) => p.fromId === gun.id && p.caliber >= 40) ??
+        s2.impacts.find((p) => p.fromId === gun.id && (p.caliber ?? 0) >= 40);
+      if (!shell) continue;
+      sawShell = true;
+      const shot = Math.atan2(shell.vy, shell.vx);
+      const off = Math.abs(Math.atan2(Math.sin(shot - gun.turretFacing), Math.cos(shot - gun.turretFacing)));
+      assert.ok(off < 0.2, `shell left the turret by ${off} rad`);
+      break;
+    }
+    assert.ok(gun.mgAmmo < TANK_MG.ammo, `flank mgAmmo=${gun.mgAmmo}`);
     assert.ok(Math.abs(gun.facing) < 0.01, `hull yawed facing=${gun.facing}`);
-    assert.ok(
-      (gun.ammo.ap ?? 12) < 12 || flank.hp < flank.hpMax || flank.hp <= 0,
-      `ap=${gun.ammo.ap} flank hp=${flank.hp}`,
-    );
+    assert.ok(Math.abs(gun.turretFacing - Math.PI / 2) < 0.2, `turretFacing=${gun.turretFacing}`);
+    assert.equal(sawShell, true, `ap=${gun.ammo.ap} hp=${flank.hp}`);
   });
 
-  it("lets a turreted hull still rotate the turret on a rotate order", () => {
+  it("turns the hull and the turret on a rotate order without rolling", () => {
     const { state } = twoPlayerMatch();
     clearCover(state);
     const ts = state.tileSize;
     const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
     tank.facing = 0;
     tank.turretFacing = 0;
-    addCrit(tank, "tracks");
+    addCrit(tank, "engine");
+    const x0 = tank.x;
+    const y0 = tank.y;
     const res = applyCommand(state, "A", {
       type: "cmd.rotate",
       ids: [tank.id],
@@ -1613,33 +1629,56 @@ describe("broken tracks", () => {
     });
     assert.equal(res.ok, true, !res.ok ? res.message : "");
     for (let i = 0; i < 24; i++) step(state, TICK_DT);
-    assert.ok(Math.abs(tank.facing) < 0.01, `hull facing=${tank.facing}`);
+    assert.ok(Math.abs(tank.facing - Math.PI / 2) < 0.12, `hull facing=${tank.facing}`);
     assert.ok(Math.abs(tank.turretFacing - Math.PI / 2) < 0.12, `turretFacing=${tank.turretFacing}`);
+    assert.equal(tank.x, x0);
+    assert.equal(tank.y, y0);
     assert.equal(tank.order, null);
   });
 
-  it("cannot hull-steer a casemate StuG onto a target outside the gun arc", () => {
-    const { state } = twoPlayerMatch();
-    clearCover(state);
-    const ts = state.tileSize;
-    const gun = makeEntity(state, "ss3", "A", tileCenter(24, ts), tileCenter(24, ts));
-    const tgt = makeEntity(state, "rifleman", "B", tileCenter(28, ts), tileCenter(24, ts));
-    tgt.holdPosition = true;
-    tgt.cooldown = 99;
-    gun.facing = Math.PI / 2;
-    gun.turretFacing = Math.PI / 2;
-    gun.holdPosition = true;
-    addCrit(gun, "tracks");
-    applyCommand(state, "A", { type: "cmd.attack", ids: [gun.id], targetId: tgt.id });
-    const face0 = gun.facing;
-    const mg0 = gun.mgAmmo;
-    const ap0 = gun.ammo.ap;
-    for (let i = 0; i < 20; i++) step(state, TICK_DT);
-    assert.equal(gun.facing, face0);
-    assert.equal(gun.turretFacing, face0);
-    assert.equal(gun.mgAmmo, mg0);
-    assert.equal(gun.ammo.ap, ap0);
-    assert.equal(state.projectiles.filter((p) => p.fromId === gun.id).length, 0);
+  it("hull-steers a casemate with broken tracks or a dead engine and fires only along that facing", () => {
+    for (const crit of ["tracks", "engine"] as const) {
+      const { state } = twoPlayerMatch();
+      clearCover(state);
+      const ts = state.tileSize;
+      const gun = makeEntity(state, "ss3", "A", tileCenter(24, ts), tileCenter(24, ts));
+      const tgt = makeEntity(state, "rifleman", "B", tileCenter(28, ts), tileCenter(24, ts));
+      tgt.holdPosition = true;
+      tgt.cooldown = 99;
+      gun.facing = Math.PI / 2;
+      gun.turretFacing = Math.PI / 2;
+      gun.holdPosition = true;
+      addCrit(gun, crit);
+      const x0 = gun.x;
+      const y0 = gun.y;
+      applyCommand(state, "A", { type: "cmd.attack", ids: [gun.id], targetId: tgt.id });
+      step(state, TICK_DT);
+      assert.ok(Math.abs(gun.facing - Math.PI / 2) > 0.01, `${crit} hull should start turning`);
+      assert.equal(gun.turretFacing, gun.facing);
+      assert.equal(state.projectiles.filter((p) => p.fromId === gun.id).length, 0, `${crit} fired while facing away`);
+      assert.equal(gun.x, x0);
+      assert.equal(gun.y, y0);
+      let fired = false;
+      for (let i = 0; i < 24; i++) {
+        step(state, TICK_DT);
+        assert.equal(gun.turretFacing, gun.facing, `${crit} gun left the hull`);
+        assert.equal(gun.x, x0);
+        assert.equal(gun.y, y0);
+        const rounds = [
+          ...state.projectiles.filter((p) => p.fromId === gun.id),
+          ...state.impacts.filter((p) => p.fromId === gun.id),
+        ];
+        if (rounds.length === 0) continue;
+        fired = true;
+        for (const p of rounds) {
+          const shot = Math.atan2(p.vy, p.vx);
+          const offHull = Math.abs(Math.atan2(Math.sin(shot - gun.facing), Math.cos(shot - gun.facing)));
+          assert.ok(offHull < 0.25, `${crit} shot ${offHull} rad off the hull`);
+        }
+      }
+      assert.equal(fired, true, `${crit} should fire once the hull faces the target`);
+      assert.ok(Math.abs(gun.facing) < 0.25, `${crit} facing=${gun.facing}`);
+    }
   });
 });
 
@@ -1724,5 +1763,108 @@ describe("walker gatlings", () => {
     const onFlank = both.filter((p) => p.vy > Math.abs(p.vx) * 0.35);
     assert.equal(onFront.length, 2);
     assert.equal(onFlank.length, 2);
+  });
+});
+
+describe("infantry auto-attack on armor", () => {
+  function silence(e: { holdPosition: boolean; cooldown: number; mgCooldown: number; mgAmmo: number }): void {
+    e.holdPosition = true;
+    e.cooldown = 99;
+    e.mgCooldown = 99;
+    e.mgAmmo = 0;
+  }
+
+  it("does not start shooting an armored hull a rifle cannot hurt", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const rifle = makeEntity(state, "rifleman", "A", tileCenter(40, ts), tileCenter(40, ts));
+    const gun = makeEntity(state, "gunner", "A", tileCenter(40, ts), tileCenter(44, ts));
+    const tiger = makeEntity(state, "warden", "B", tileCenter(48, ts), tileCenter(40, ts));
+    silence(rifle);
+    silence(gun);
+    silence(tiger);
+    tiger.facing = Math.PI;
+    tickCombat(state, TICK_DT);
+    assert.notEqual(rifle.attackTarget, tiger.id);
+    assert.notEqual(gun.attackTarget, tiger.id);
+    assert.notEqual(rifle.order?.targetId, tiger.id);
+    assert.notEqual(gun.order?.targetId, tiger.id);
+  });
+
+  it("opens up on a Walker rear with a machine gun, and on an open hatch with a rifle", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const gun = makeEntity(state, "gunner", "A", tileCenter(40, ts), tileCenter(40, ts));
+    const walker = makeEntity(state, "walker", "B", tileCenter(46, ts), tileCenter(40, ts));
+    silence(gun);
+    silence(walker);
+    walker.facing = 0;
+    tickCombat(state, TICK_DT);
+    assert.equal(gun.attackTarget, walker.id, "rear plate can be chipped");
+
+    walker.facing = Math.PI;
+    tickCombat(state, TICK_DT);
+    assert.notEqual(gun.attackTarget, walker.id, "front plate holds against the belt");
+
+    const rifle = makeEntity(state, "rifleman", "A", tileCenter(60, ts), tileCenter(40, ts));
+    const hatch = makeEntity(state, "warden", "B", tileCenter(66, ts), tileCenter(40, ts));
+    silence(rifle);
+    silence(hatch);
+    hatch.facing = Math.PI;
+    hatch.scoutOut = true;
+    tickCombat(state, TICK_DT);
+    assert.equal(rifle.attackTarget, hatch.id, "an open hatch can be shot");
+    hatch.scoutOut = false;
+    tickCombat(state, TICK_DT);
+    assert.notEqual(rifle.attackTarget, hatch.id);
+  });
+
+  it("still fires a rifle when the player orders the armored target", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const rifle = makeEntity(state, "rifleman", "A", tileCenter(40, ts), tileCenter(40, ts));
+    const tiger = makeEntity(state, "warden", "B", tileCenter(46, ts), tileCenter(40, ts));
+    silence(rifle);
+    silence(tiger);
+    rifle.cooldown = 0;
+    tiger.facing = Math.PI;
+    const hp = tiger.hp;
+    assert.equal(applyCommand(state, "A", { type: "cmd.attack", ids: [rifle.id], targetId: tiger.id }).ok, true);
+    tickCombat(state, TICK_DT);
+    assert.equal(rifle.order?.kind, "attack");
+    assert.equal(rifle.order?.auto, undefined);
+    assert.ok(state.projectiles.some((p) => p.fromId === rifle.id) || state.impacts.length > 0);
+    tickProjectiles(state, TICK_DT);
+    assert.equal(tiger.hp, hp);
+  });
+
+  it("lets AT infantry engage a side they can punch and ignore a front plate", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const close = Math.floor(PTRD_CLOSE_TILES * 0.4);
+    const far = PTRD_CLOSE_TILES + 6;
+    const at = makeEntity(state, "atinfantry", "A", tileCenter(30, ts), tileCenter(40, ts));
+    const side = makeEntity(state, "warden", "B", tileCenter(30, ts), tileCenter(40 - close, ts));
+    const front = makeEntity(state, "warden", "B", tileCenter(30 + close, ts), tileCenter(40, ts));
+    const distant = makeEntity(state, "warden", "B", tileCenter(30, ts), tileCenter(40 + far, ts));
+    for (const e of [at, side, front, distant]) silence(e);
+    side.facing = 0;
+    front.facing = Math.PI;
+    distant.facing = 0;
+    tickCombat(state, TICK_DT);
+    assert.equal(at.attackTarget, side.id, `expected the close side, got ${at.attackTarget}`);
+    side.hp = 0;
+    front.hp = 0;
+    tickCombat(state, TICK_DT);
+    assert.notEqual(at.attackTarget, distant.id, "a far side plate is out of reach");
+    const walker = makeEntity(state, "walker", "B", tileCenter(30 - 8, ts), tileCenter(40, ts));
+    silence(walker);
+    walker.facing = 0;
+    tickCombat(state, TICK_DT);
+    assert.equal(at.attackTarget, walker.id, "light armor stays in reach past close range");
   });
 });

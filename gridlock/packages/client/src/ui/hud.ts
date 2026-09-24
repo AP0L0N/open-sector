@@ -6,6 +6,7 @@ import {
   TRAIN_QUEUE_CAP,
   TRAIN_TYPES,
   HAULER_SMOKE_CHARGES,
+  MAULER_CART_HP,
   ammoOf,
   armorLabel,
   beltOf,
@@ -28,6 +29,7 @@ import {
   specialLabel,
   specialOf,
   specialReady,
+  wreckScrapOf,
   WALKER_GUN_MODES,
   type BuildingType,
   type EntityType,
@@ -476,6 +478,12 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
       ? `  ·  train ${qPaused ? "paused " : ""}${Math.round(e.trainProgress * 100)}%${qn > 1 ? " ×" + qn : ""}`
       : "";
   const cargo = e.cargo ? `  ·  cargo ${e.cargo}` : "";
+  const cart =
+    e.type === "hauler" && !e.wreck && e.cart != null
+      ? e.cart <= 0
+        ? "  ·  cart off — Smelter"
+        : `  ·  cart ${e.cart}/${MAULER_CART_HP}`
+      : "";
   const cd = e.specialCooldown ?? 0;
   const smoke =
     e.type === "hauler" && e.ownerId === ctx.match.youPlayerId && !e.wreck && e.smokeCharges != null
@@ -534,6 +542,8 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     e.capture && e.capture.progress > 0 ? `  ·  capturing ${Math.round(e.capture.progress * 100)}%` : "";
   const holding =
     e.guardTargetId != null ? "  ·  GUARD UNIT" : e.guardFacing != null ? "  ·  GUARD" : e.holdPosition ? "  ·  HOLD" : "";
+  const tending =
+    e.tend != null ? "  ·  tending" : ctx.match.entities.some((o) => o.tend === e.id) ? "  ·  being tended" : "";
   const scout =
     e.scout && e.ownerId === ctx.match.youPlayerId
       ? e.scout.hp <= 0
@@ -546,7 +556,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     ? ctx.match.players.find((p) => p.playerId === e.garrison!.ownerId)
     : owner;
   const who = occ?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${mg}  ·  ${who}${q}${cargo}${smoke}${dep}${special}${garrison}${scout}${capturing}${holding}`;
+  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${mg}  ·  ${who}${q}${cargo}${cart}${smoke}${dep}${special}${garrison}${scout}${capturing}${holding}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
 
@@ -639,7 +649,12 @@ const TYPE_ORDER: EntityType[] = [
   "rifleman",
   "gunner",
   "sniper",
+  "atinfantry",
   "mortarman",
+  "engineer",
+  "medic",
+  "sandbags",
+  "teeth",
   "rig",
   "core",
   "dynamo",
@@ -741,7 +756,7 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
       el("p", {
         class: "tiny",
         attrs: { "data-field": "wreck-help" },
-        text: "Impassable hull. Shoot it to clear the road. Repair is not ready yet.",
+        text: `Impassable hull. An engineer cuts it up for ${wreckScrapOf(focus.type)} scrap.`,
       }),
     );
     return;
@@ -784,7 +799,7 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
       }
       body.append(el("div", { class: "tiny", text: "Weapon" }), rack);
     }
-    body.append(el("p", { class: "tiny", attrs: { "data-field": "clip" } }));
+    if (loadout.length > 0) body.append(el("p", { class: "tiny", attrs: { "data-field": "clip" } }));
   } else if (beltOf(focus.type)) {
     body.append(el("p", { class: "tiny", attrs: { "data-field": "clip" } }));
   } else if (focus.kind === "unit" && def.damage > 0) {
@@ -864,7 +879,7 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
         });
       }
     }
-    setField(body, "clip", infantryClipLine(live));
+    if (loadout.length > 0) setField(body, "clip", infantryClipLine(live));
   } else if (beltOf(focus.type)) {
     setField(body, "clip", beltLine(live));
   }
@@ -889,8 +904,12 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
           ? "Crawl and set the bipod. The MG42 fires only from the prone."
           : focus.type === "sniper"
             ? "Scoped rifle. He sees farther. Crouch or crawl to tighten the shot. A broken arm puts the rifle down."
-            : focus.type === "mortarman"
+            : focus.type === "atinfantry"
+              ? "PTRD-41. Same reach as the sniper. Tank side and rear up close, light armor farther out. A broken arm puts the rifle down."
+              : focus.type === "mortarman"
               ? "Kneel and plant the tube. The bomb lobs past what he can see. Too close and it will not drop."
+              : focus.type === "medic"
+                ? "No weapon. He walks to a wounded soldier nearby and closes the wound. A long kneel sets a broken arm or leg. The bag does not run out."
               : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",
     );
   }
@@ -922,7 +941,8 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
   if (armor) setField(body, "armor", "Armor  " + armor);
   if (focus.type === "hauler") {
     const cargo = live.reduce((n, e) => n + (e.cargo ?? 0), 0);
-    setField(body, "cargo", `Cargo  ${cargo}`);
+    const off = live.some((e) => (e.cart ?? MAULER_CART_HP) <= 0);
+    setField(body, "cargo", off ? `Cargo  ${cargo}  ·  cart off, refitting` : `Cargo  ${cargo}`);
   }
   const spec = specialLabel(focus.type);
   if (spec) {
@@ -1073,7 +1093,23 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       on: !!view?.rotateMode,
     });
   }
-  const inf = units.filter((e) => isInfantryType(e.type));
+  if (units.some((e) => e.type === "engineer")) {
+    out.push({
+      slot: "field-sandbags",
+      act: "field-sandbags",
+      label: "Sandbags",
+      title: "Build sandbags. Drag to face them, click to place. R steps the facing.",
+      on: view?.fieldPlace === "sandbags",
+    });
+    out.push({
+      slot: "field-teeth",
+      act: "field-teeth",
+      label: "Obstacle",
+      title: "Build concrete pyramids tanks cannot cross. Drag to face them, click to place.",
+      on: view?.fieldPlace === "teeth",
+    });
+  }
+  const inf = units.filter((e) => isInfantryType(e.type) && e.type !== "engineer");
   if (inf.length) {
     const ordered = new Set(inf.map((e) => e.stanceOrder ?? e.stance ?? "stand"));
     const legsBroken = inf.every((e) => e.crits?.includes("leg"));
@@ -1245,6 +1281,10 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   }
   if (act === "guard") {
     if (units.length) view.setGuardMode(!view.guardMode);
+    return;
+  }
+  if (act === "field-sandbags" || act === "field-teeth") {
+    view.setFieldPlace(act === "field-sandbags" ? "sandbags" : "teeth");
     return;
   }
   if (act === "hold") {

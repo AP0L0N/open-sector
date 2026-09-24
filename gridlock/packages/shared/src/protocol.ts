@@ -7,11 +7,12 @@ import type {
   EntityType,
   InfantryWeaponId,
   ShellType,
+  FieldStructureType,
   Stance,
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 29;
+export const PROTOCOL_VERSION = 32;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -36,6 +37,8 @@ export type EntityState =
   | "undeploy"
   | "wreck"
   | "garrison"
+  | "build"
+  | "repair"
   | "dead";
 
 export interface Slot {
@@ -98,6 +101,8 @@ export interface EntityView {
   /** Allied production line. Omitted for enemies and empty queues. */
   trainQueue?: TrainJobView[];
   cargo?: number;
+  /** Mauler scrap-cart hit points. 0 means the cart is off. Omitted for other types. */
+  cart?: number;
   /** Allied Mauler smoke grenades remaining. Omitted for enemies and other types. */
   smokeCharges?: number;
   /** 0–1 while state is deploy or undeploy. */
@@ -155,6 +160,10 @@ export interface EntityView {
   guardFacing?: number;
   /** Friendly unit this entity is escorting. Omitted when not guarding a unit. */
   guardTargetId?: number;
+  /** Infantry this medic is bandaging. Omitted while he is only walking over. */
+  tend?: number;
+  /** Sandbags wrecked by a tank shell. The rubble stays. */
+  ruined?: boolean;
   /**
    * Hatch crew on a tank. Friendlies always see hp. `out` means the head is
    * visible; enemies only receive this object while the hatch is open.
@@ -353,6 +362,9 @@ export type ClientMessage =
   | { type: "cmd.hold"; ids: number[]; hold: boolean }
   | { type: "cmd.rotate"; ids: number[]; x: number; y: number }
   | { type: "cmd.guard"; ids: number[]; x?: number; y?: number; facing?: number; targetId?: number }
+  | { type: "cmd.field"; ids: number[]; structure: FieldStructureType; x: number; y: number; facing: number }
+  | { type: "cmd.repair"; ids: number[]; targetId: number }
+  | { type: "cmd.cover"; ids: number[]; targetId: number }
   | { type: "cmd.speed"; delta: number };
 
 export type ServerMessage =
@@ -387,6 +399,7 @@ export type ErrorCode =
   | "no_core"
   | "not_yours"
   | "unit_cap"
-  | "ended";
+  | "ended"
+  | "cart";
 
-export type { BuildingType, EntityType, TrainType, EntityKind, ShellType, Crit, Stance };
+export type { BuildingType, EntityType, FieldStructureType, TrainType, EntityKind, ShellType, Crit, Stance };

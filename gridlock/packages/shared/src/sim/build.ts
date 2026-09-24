@@ -2,6 +2,7 @@ import {
   BUILD_RADIUS,
   catalog,
   isCivilianType,
+  isFieldStructure,
   secondsToTicks,
   SELL_REFUND,
   type BuildingType,
@@ -102,6 +103,7 @@ export function sellBuilding(state: MatchState, playerId: string, id: number): s
   const e = state.entities.get(id);
   if (!e || e.ownerId !== playerId) return "Not yours.";
   if (e.kind !== "building") return "Cannot sell that.";
+  if (isFieldStructure(e.type)) return "Cannot sell that.";
   if (e.type === "core") return "Cannot sell the Core.";
   if (isCivilianType(e.type)) return "Cannot sell that.";
   const refund = Math.floor(catalog(e.type).cost * SELL_REFUND);

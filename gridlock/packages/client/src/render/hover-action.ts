@@ -1,16 +1,19 @@
 import {
+  isArmoredType,
   isCapturable,
   isCivilianType,
+  isFieldStructure,
   isGarrisonable,
   isInfantryType,
+  primaryInfantryGun,
   type EntityView,
 } from "@gridlock/shared";
 
-export type HoverAction = "garrison" | "ungarrison" | "attack" | "capture" | "gather";
+export type HoverAction = "garrison" | "ungarrison" | "attack" | "capture" | "gather" | "repair" | "scrap" | "cover";
 
 export type HoverEntity = Pick<
   EntityView,
-  "id" | "kind" | "type" | "ownerId" | "hp" | "wreck" | "garrisonedIn" | "garrison"
+  "id" | "kind" | "type" | "ownerId" | "hp" | "hpMax" | "wreck" | "garrisonedIn" | "garrison" | "ruined"
 >;
 
 /** Guard mode: click this unit to escort it instead of planting an overwatch point. */
@@ -40,6 +43,11 @@ export function resolveHoverAction(args: {
 
   const inf = ownUnits.filter((e) => isInfantryType(e.type));
   const hit = args.hit;
+  const engineers = ownUnits.filter((e) => e.type === "engineer");
+  if (hit && engineers.length > 0 && isArmoredWreck(hit)) return "scrap";
+  if (hit && engineers.length > 0 && canRepairHit(hit, you, args.allied)) return "repair";
+  const guns = ownUnits.filter((e) => primaryInfantryGun(e.type) != null);
+  if (hit && hit.type === "sandbags" && !hit.ruined && hit.hp > 0 && guns.length > 0) return "cover";
 
   if (hit && isGarrisonable(hit.type) && hit.hp > 0 && !hit.wreck) {
     const occ = hit.garrison?.ownerId;
@@ -56,6 +64,24 @@ export function resolveHoverAction(args: {
   if (hit && ownUnits.length > 0 && isAttackTarget(hit, you, args.allied)) return "attack";
   if (args.scrap && ownUnits.some((e) => e.type === "hauler")) return "gather";
   return null;
+}
+
+function isArmoredWreck(hit: HoverEntity): boolean {
+  return hit.kind === "unit" && !!hit.wreck && hit.hp > 0 && isArmoredType(hit.type);
+}
+
+function canRepairHit(
+  hit: HoverEntity,
+  you: string,
+  allied: (ownerId: string | undefined) => boolean,
+): boolean {
+  if (hit.wreck || hit.ruined || hit.hp <= 0) return false;
+  if (hit.hpMax != null && hit.hp >= hit.hpMax) return false;
+  const friendly = !hit.ownerId || hit.ownerId === you || allied(hit.ownerId);
+  if (!friendly) return false;
+  if (hit.kind === "unit") return isArmoredType(hit.type);
+  if (hit.type === "sandbags" || isFieldStructure(hit.type) && hit.type !== "teeth") return false;
+  return hit.kind === "building";
 }
 
 function canCaptureTarget(

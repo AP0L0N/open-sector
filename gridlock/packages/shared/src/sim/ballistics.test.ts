@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { catalog, SHELLS, TANK_MG } from "../catalog.js";
+import { catalog, HANDGUN, MG42, RIFLE, SCOPED, SHELLS, TANK_MG } from "../catalog.js";
 import {
   aimAngle,
+  armorHarmPossible,
   armorOn,
   hitFace,
   KILL_OVERMATCH,
@@ -59,10 +60,9 @@ describe("resolveHit", () => {
     assert.equal(res.kind, "hit");
   });
 
-  it("ricochets rifles off a hauler with no damage, matching the Warden", () => {
-    assert.equal(hauler.armorFront, warden.armorFront);
-    assert.equal(hauler.armorSide, warden.armorSide);
-    assert.equal(hauler.armorRear, warden.armorRear);
+  it("ricochets rifles off a hauler with no damage, on every face", () => {
+    assert.ok(hauler.armorFront >= hauler.armorSide && hauler.armorSide === hauler.armorRear);
+    assert.ok(hauler.armorSide > warden.armorSide && hauler.armorRear > warden.armorRear);
     for (const target of [warden, hauler]) {
       for (const [vx, vy, face] of [
         [-1, 0, "front"],
@@ -252,6 +252,92 @@ describe("resolveHit", () => {
     assert.equal(res.face, "side");
     assert.ok(res.kind === "kill" || res.kind === "pen" || res.kind === "hit");
     assert.ok(res.damage >= 40, `dmg=${res.damage} kind=${res.kind}`);
+  });
+});
+
+describe("armorHarmPossible", () => {
+  it("matches whether resolveHit can deal damage", () => {
+    const guns = [RIFLE, HANDGUN, MG42, SCOPED, SHELLS.ap, SHELLS.he];
+    const plates = [catalog("warden"), catalog("ss3"), catalog("walker"), catalog("hauler")];
+    const shots = [
+      [-1, 0],
+      [1, 0],
+      [0, 1],
+      [0, -1],
+      [-0.3, 0.95],
+      [0.2, -1],
+    ] as const;
+    for (const gun of guns) {
+      for (const target of plates) {
+        for (const [vx, vy] of shots) {
+          const possible = armorHarmPossible({
+            gun,
+            target,
+            targetFacing: 0,
+            targetHpMax: target.hp,
+            vx,
+            vy,
+          });
+          let any = false;
+          for (let i = 0; i < 40; i++) {
+            const u = i / 39;
+            const res = resolveHit({
+              gun,
+              target,
+              targetFacing: 0,
+              targetHp: target.hp,
+              targetHpMax: target.hp,
+              vx,
+              vy,
+              rand: () => u,
+            });
+            if (res.damage > 0) any = true;
+          }
+          assert.equal(
+            possible,
+            any,
+            `${gun.id} vs ${target.type} v=${vx},${vy} possible=${possible} sampled=${any}`,
+          );
+        }
+      }
+    }
+  });
+
+  it("lets a machine gun nick a Walker's rear and nothing else on a square plate", () => {
+    const walker = catalog("walker");
+    const rear = armorHarmPossible({
+      gun: MG42,
+      target: walker,
+      targetFacing: 0,
+      targetHpMax: walker.hp,
+      vx: 1,
+      vy: 0,
+    });
+    const front = armorHarmPossible({
+      gun: MG42,
+      target: walker,
+      targetFacing: 0,
+      targetHpMax: walker.hp,
+      vx: -1,
+      vy: 0,
+    });
+    assert.equal(hitFace(0, 1, 0), "rear");
+    assert.equal(rear, true);
+    assert.equal(front, false);
+    for (const target of [catalog("warden"), catalog("ss3"), catalog("hauler"), walker]) {
+      for (const [vx, vy] of [
+        [-1, 0],
+        [1, 0],
+        [0, 1],
+      ] as const) {
+        if (target.type === "walker" && vx > 0) continue;
+        assert.equal(
+          armorHarmPossible({ gun: RIFLE, target, targetFacing: 0, targetHpMax: target.hp, vx, vy }),
+          false,
+          `${target.type} ${vx},${vy}`,
+        );
+      }
+    }
   });
 });
 

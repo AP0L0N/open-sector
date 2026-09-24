@@ -5,7 +5,7 @@ import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
 import type { Entity, MatchState, TrainJob } from "./types.js";
 
 export function producerType(unit: TrainType): "muster" | "smelter" | "armory" {
-  if (unit === "rifleman" || unit === "gunner" || unit === "sniper" || unit === "mortarman") return "muster";
+  if (unit === "rifleman" || unit === "gunner" || unit === "sniper" || unit === "atinfantry" || unit === "mortarman" || unit === "engineer" || unit === "medic") return "muster";
   if (unit === "hauler") return "smelter";
   return "armory";
 }
@@ -40,7 +40,7 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
       (e) => e.ownerId === playerId && e.type === want && e.hp > 0,
     );
     if (busy) return "Queue is full.";
-    if (unit === "rifleman" || unit === "gunner" || unit === "sniper" || unit === "mortarman") return "Need a Muster.";
+    if (unit === "rifleman" || unit === "gunner" || unit === "sniper" || unit === "atinfantry" || unit === "mortarman" || unit === "medic") return "Need a Muster.";
     if (unit === "hauler") return "Need a Smelter.";
     return "Need an Armory.";
   }

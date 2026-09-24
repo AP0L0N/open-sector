@@ -4,8 +4,10 @@ import {
   cloudScale,
   smokeCloudPuffs,
   fires,
+  fieldSpan,
   GUARD_CONE_DEG,
   isCivilianType,
+  isFieldStructure,
   isInfantryType,
   isStance,
   colorHex,
@@ -13,7 +15,6 @@ import {
   facingToIso,
   getMap,
   TILE_EMPTY,
-  TILE_FENCE,
   TILE_TREE,
   TILE_WATER,
   TICK_DT,
@@ -23,6 +24,7 @@ import {
   immobilized,
   heightAt,
   infantryGunFor,
+  primaryInfantryGun,
   isoDepth,
   isoLift,
   isoToWorld,
@@ -44,6 +46,7 @@ import {
   type ClientMessage,
   type CorpseView,
   type EntityType,
+  type FieldStructureType,
   type EntityView,
   type IsoPt,
   type MapDef,
@@ -80,10 +83,9 @@ import {
 import {
   UNIT_VISUAL_SCALE,
   INFANTRY_VISUAL_SCALE,
-  FENCE_X,
-  FENCE_Y,
   OAK_FACES,
   PINE_FACES,
+  SCRAP_FACES,
   buildingOccludeEz,
   buildingSpriteFor,
   buildingStackAt,
@@ -97,8 +99,21 @@ import {
   spriteReady,
   GUNNER_DIE_SPRITE,
   GUNNER_FIRE_SPRITE,
+  MEDIC_CROUCH_SPRITE,
+  MEDIC_CRAWL_SPRITE,
+  MEDIC_DIE_SPRITE,
+  MEDIC_SPRITE,
   MORTARMAN_DIE_SPRITE,
   MORTARMAN_FIRE_SPRITE,
+  ENGINEER_BUILD_SPRITE,
+  ENGINEER_DIE_SPRITE,
+  ENGINEER_FIX_SPRITE,
+  ENGINEER_SPRITE,
+  SANDBAG_RUIN_SPRITE,
+  SANDBAG_SPRITE,
+  TEETH_SPRITE,
+  ATINFANTRY_DIE_SPRITE,
+  ATINFANTRY_FIRE_SPRITE,
   SNIPER_DIE_SPRITE,
   SNIPER_FIRE_SPRITE,
   TROOPER_DIE_SPRITE,
@@ -144,7 +159,7 @@ import {
 } from "./sun.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
-import { gunnerSheet, heldFrame, mortarmanSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
+import { atInfantrySheet, gunnerSheet, heldFrame, medicSheet, mortarmanSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
 import { compareDrawOrder, CORPSE_DRAW_LAYER, HOLE_DRAW_LAYER } from "./corpse-depth.js";
 import { drawTreeFall, TREE_FALL_MS } from "./tree-fall.js";
 import { lerpHullPose } from "./hull-lerp.js";
@@ -205,7 +220,12 @@ const EXTRUDE: Record<EntityType, number> = {
   rifleman: 26,
   gunner: 26,
   sniper: 26,
+  atinfantry: 26,
   mortarman: 26,
+  engineer: 26,
+  medic: 26,
+  sandbags: 12,
+  teeth: 16,
   walker: 30,
   cottage: 28,
   shack: 24,
@@ -228,7 +248,7 @@ const HP_FILL_HOSTILE_VIVID = "#ff5a4a";
 /** Sprite alpha when a building volume sits in front of the unit. */
 const OCCLUDED_UNIT_ALPHA = 0.46;
 /** Extra diamond overlap so fog punches and dim veils do not leave tile seams. */
-const FOG_SEAM_PX = 1.5;
+const FOG_SEAM_PX = 4;
 
 function mixHash(h: number, v: number): number {
   return Math.imul(h ^ (v | 0), 16777619);
@@ -373,6 +393,10 @@ export class MapView {
   forceAttackMode = false;
   rotateMode = false;
   guardMode = false;
+  /** Structure ghost. Drag sets facing the way a guard order does; a click places it. */
+  fieldPlace: FieldStructureType | null = null;
+  private fieldFacing = Math.PI / 2;
+  private fieldDrag: { x: number; y: number; moved: boolean } | null = null;
   private guardAnchor: { x: number; y: number } | null = null;
   private guardFacing = 0;
   private guardDragging = false;
@@ -389,6 +413,7 @@ export class MapView {
       this.placeMode = false;
       this.forceAttackMode = false;
       this.rotateMode = false;
+      this.fieldPlace = null;
       this.setGuardMode(false);
     }
     this.onAttackMoveMode();
@@ -402,6 +427,7 @@ export class MapView {
       this.placeMode = false;
       this.attackMoveMode = false;
       this.rotateMode = false;
+      this.fieldPlace = null;
       this.setGuardMode(false);
     }
     this.onAttackMoveMode();
@@ -415,6 +441,7 @@ export class MapView {
       this.placeMode = false;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
+      this.fieldPlace = null;
       this.setGuardMode(false);
     }
     this.onAttackMoveMode();
@@ -429,10 +456,28 @@ export class MapView {
       this.attackMoveMode = false;
       this.forceAttackMode = false;
       this.rotateMode = false;
+      this.fieldPlace = null;
       this.guardFacing = this.meanSelectedFacing();
     } else {
       this.guardAnchor = null;
       this.guardDragging = false;
+    }
+    this.onAttackMoveMode();
+    this.onPlaceMode();
+  }
+
+  setFieldPlace(structure: FieldStructureType | null): void {
+    const next = this.fieldPlace === structure ? null : structure;
+    this.fieldPlace = next;
+    this.fieldDrag = null;
+    if (next) {
+      this.placeMode = false;
+      this.attackMoveMode = false;
+      this.forceAttackMode = false;
+      this.rotateMode = false;
+      this.guardMode = false;
+      this.guardDragging = false;
+      this.fieldFacing = this.meanSelectedFacing();
     }
     this.onAttackMoveMode();
     this.onPlaceMode();
@@ -575,6 +620,10 @@ export class MapView {
     if (this.forceAttackMode && this.ownSelectedIds().length === 0) this.setForceAttackMode(false);
     if (this.rotateMode && this.ownSelectedIds().length === 0) this.setRotateMode(false);
     if (this.guardMode && this.ownSelectedIds().length === 0) this.setGuardMode(false);
+    if (this.fieldPlace && !this.curr.entities.some((e) => this.selected.has(e.id) && e.type === "engineer" && e.ownerId === this.curr.youPlayerId)) {
+      this.fieldPlace = null;
+      this.onPlaceMode();
+    }
     const placing = this.placeMode;
     if (!this.readyBuilding()) this.placeMode = false;
     if (this.placeMode !== placing) this.onPlaceMode();
@@ -685,6 +734,7 @@ export class MapView {
       turretDir.y,
       e.facing,
       e.turretFacing ?? e.facing,
+      e.type !== "hauler" || (e.cart ?? 0) > 0,
     );
     if (!snapped) {
       f.lift = guess;
@@ -755,6 +805,7 @@ export class MapView {
     fog.height = bake.height;
     const ctx = fog.getContext("2d");
     if (!ctx) return;
+    ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = "#050403";
     ctx.fillRect(0, 0, bake.width, bake.height);
     this.fog = fog;
@@ -813,6 +864,7 @@ export class MapView {
     const ctx = this.fogCtx;
     const bake = this.terrain;
     if (!ctx || !bake) return;
+    ctx.imageSmoothingEnabled = false;
     const w = map.width;
     const n = w * map.height;
     const punch: number[] = [];
@@ -956,11 +1008,14 @@ export class MapView {
       }
       if (e.button === 2) {
         e.preventDefault();
-        if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode) {
+        if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode || this.fieldPlace) {
           this.setAttackMoveMode(false);
           this.setForceAttackMode(false);
           this.setRotateMode(false);
           this.setGuardMode(false);
+          this.fieldPlace = null;
+          this.fieldDrag = null;
+          this.onPlaceMode();
           return;
         }
         this.onRight(mx, my);
@@ -971,6 +1026,11 @@ export class MapView {
         if (this.guardMode) {
           if (this.commitGuardUnit(this.hit(mx, my))) return;
           this.beginGuard(mx, my);
+          return;
+        }
+        if (this.fieldPlace) {
+          const w = this.screenToWorld(mx, my);
+          this.fieldDrag = { x: w.x, y: w.y, moved: false };
           return;
         }
         if (this.forceAttackMode) {
@@ -1027,6 +1087,12 @@ export class MapView {
     if (e.button === 1) this.panning = false;
     if (e.button === 0 && this.guardDragging) {
       this.commitGuard(this.mouseX, this.mouseY);
+      return;
+    }
+    if (e.button === 0 && this.fieldDrag && this.fieldPlace) {
+      const drag = this.fieldDrag;
+      this.fieldDrag = null;
+      if (!drag.moved) this.commitField(drag.x, drag.y);
       return;
     }
     if (e.button === 0 && this.box) {
@@ -1089,6 +1155,15 @@ export class MapView {
       this.box.y1 = this.mouseY;
     }
     if (this.guardDragging && this.guardAnchor) this.aimGuard(this.mouseX, this.mouseY);
+    if (this.fieldDrag && this.fieldPlace) {
+      const w = this.screenToWorld(this.mouseX, this.mouseY);
+      const dx = w.x - this.fieldDrag.x;
+      const dy = w.y - this.fieldDrag.y;
+      if (dx * dx + dy * dy > 36) {
+        this.fieldDrag.moved = true;
+        this.fieldFacing = Math.atan2(dy, dx);
+      }
+    }
     this.syncCursor();
   };
 
@@ -1151,6 +1226,10 @@ export class MapView {
     }
     if (k === ROTATE_HOTKEY) {
       e.preventDefault();
+      if (this.fieldPlace) {
+        this.fieldFacing += Math.PI / 8;
+        return;
+      }
       const ids = this.ownSelectedIds();
       if (ids.length) this.setRotateMode(!this.rotateMode);
       return;
@@ -1440,6 +1519,16 @@ export class MapView {
     this.onCommand({ type: "cmd.guard", ids, x: anchor.x, y: anchor.y, facing });
   }
 
+  private commitField(x: number, y: number): void {
+    const structure = this.fieldPlace;
+    if (!structure) return;
+    const ids = this.curr.entities
+      .filter((e) => this.selected.has(e.id) && e.ownerId === this.curr.youPlayerId && e.type === "engineer" && !e.wreck)
+      .map((e) => e.id);
+    if (ids.length === 0) return;
+    this.onCommand({ type: "cmd.field", ids, structure, x, y, facing: this.fieldFacing });
+  }
+
   private commitGuardUnit(hit: EntityView | null): boolean {
     if (!hit) return false;
     const ids = this.ownSelectedIds();
@@ -1606,6 +1695,7 @@ export class MapView {
 
   private depthOf(e: EntityView): number {
     const ts = this.ts();
+    if (isFieldStructure(e.type)) return isoDepth(e.x, e.y);
     if (e.kind === "building") return isoDepth((e.tileX + e.tileW) * ts, (e.tileY + e.tileH) * ts);
     const p = this.lerpEnt(e);
     return isoDepth(p.x, p.y);
@@ -1619,6 +1709,15 @@ export class MapView {
       (a, b) => this.drawLayer(b) - this.drawLayer(a) || this.depthOf(b) - this.depthOf(a),
     );
     for (const e of list) {
+      if (isFieldStructure(e.type)) {
+        const p = this.toScreen(e.x, e.y);
+        const span = fieldSpan(e.type);
+        const size = span ? Math.max(28, this.groundSpan(e.x, e.y, span.length)) : 48;
+        if (px >= p.x - size * 0.55 && px <= p.x + size * 0.55 && py >= p.y - size * 0.7 && py <= p.y + size * 0.25) {
+          return e;
+        }
+        continue;
+      }
       if (e.kind === "unit") {
         if (e.garrisonedIn) continue;
         const p = this.lerpEnt(e);
@@ -1710,8 +1809,10 @@ export class MapView {
   }
 
   private onRight(px: number, py: number): void {
-    if (this.placeMode) {
+    if (this.placeMode || this.fieldPlace) {
       this.placeMode = false;
+      this.fieldPlace = null;
+      this.fieldDrag = null;
       this.onPlaceMode();
       return;
     }
@@ -1731,6 +1832,16 @@ export class MapView {
       scrap,
       allied: (id) => ownerAllied(this.curr, id),
     });
+    if ((action === "repair" || action === "scrap") && hit) {
+      const engineers = own.filter((e) => e.type === "engineer");
+      if (engineers.length) this.onCommand({ type: "cmd.repair", ids: engineers.map((e) => e.id), targetId: hit.id });
+      return;
+    }
+    if (action === "cover" && hit) {
+      const guns = own.filter((e) => e.kind === "unit" && primaryInfantryGun(e.type) != null);
+      if (guns.length) this.onCommand({ type: "cmd.cover", ids: guns.map((e) => e.id), targetId: hit.id });
+      return;
+    }
     if (action === "garrison" && hit) {
       const inf = own.filter((e) => e.kind === "unit" && isInfantryType(e.type) && e.garrisonedIn !== hit.id);
       if (inf.length) this.onCommand({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: hit.id });
@@ -1892,7 +2003,8 @@ export class MapView {
         layer: this.drawLayer(e),
         z: this.depthOf(e),
         run: () => {
-          if (e.kind === "building") this.drawBuilding(e, ghost);
+          if (isFieldStructure(e.type)) this.drawField(e, ghost);
+          else if (e.kind === "building") this.drawBuilding(e, ghost);
           else if (!ghost && !e.garrisonedIn) this.drawUnit(e);
         },
       });
@@ -1952,6 +2064,7 @@ export class MapView {
     if (toPlace && this.mouseX >= 0) {
       this.drawGhost(toPlace);
     }
+    if (this.fieldPlace && this.mouseX >= 0) this.drawFieldGhost(this.fieldPlace);
 
     if (this.box) {
       const b = this.box;
@@ -2478,7 +2591,7 @@ export class MapView {
       const p = this.toScreen(wx, wy);
       // Iso AABB of the viewport covers most of the map; skip sprites that
       // actually sit off-screen. Source art is ~800–1200px tall.
-      if (p.x < -64 || p.y < -80 || p.x > vw + 64 || p.y > vh + 40) continue;
+      if (p.x < -96 || p.y < -96 || p.x > vw + 96 || p.y > vh + 48) continue;
       const h = Math.imul(tx * 374761393 + ty * 668265263 + 9, 1103515245) >>> 0;
       const pine = kind === "lone" ? h % 3 !== 1 : h % 5 === 0;
       const faces = pine ? PINE_FACES : OAK_FACES;
@@ -2498,50 +2611,6 @@ export class MapView {
         },
       });
     }
-    this.collectFences(items);
-  }
-
-  /** One fence sprite every other tile so the rail spans the run without stacking posts. */
-  private collectFences(items: { layer: number; z: number; run: () => void }[]): void {
-    const map = this.map();
-    const ts = map.tileSize;
-    const explored = this.explored;
-    const w = map.width;
-    const tiles = map.tiles;
-    const { w: vw, h: vh } = this.viewSize();
-    const fenceAt = (x: number, y: number): boolean => {
-      if (x < 0 || y < 0 || x >= w || y >= map.height) return false;
-      return tiles[y * w + x] === TILE_FENCE;
-    };
-    for (let ty = 0; ty < map.height; ty++) {
-      for (let tx = 0; tx < w; tx++) {
-        if (!fenceAt(tx, ty)) continue;
-        if (explored && !explored[ty * w + tx]) continue;
-        const alongX = fenceAt(tx - 1, ty) || fenceAt(tx + 1, ty);
-        const alongY = fenceAt(tx, ty - 1) || fenceAt(tx, ty + 1);
-        const axis: 0 | 1 = alongY && !alongX ? 1 : 0;
-        const anchor = axis === 0 ? tx % 2 === 0 : ty % 2 === 0;
-        if ((alongX || alongY) && !anchor) continue;
-        const wx = (tx + 0.5) * ts;
-        const wy = (ty + 0.55) * ts;
-        const p = this.toScreen(wx, wy);
-        if (p.x < -48 || p.y < -40 || p.x > vw + 48 || p.y > vh + 24) continue;
-        const spr = axis === 0 ? FENCE_X : FENCE_Y;
-        const dim = !this.lit(tx, ty);
-        this.pushGroundShadow(items, treeShadowFootprint(wx, wy, 8));
-        items.push({
-          layer: 0,
-          z: isoDepth(wx, wy),
-          run: () => {
-            const ctx = this.ctx;
-            ctx.save();
-            if (dim) ctx.globalAlpha = 0.48;
-            drawPropSprite(ctx, spr, p.x, p.y, 28, false);
-            ctx.restore();
-          },
-        });
-      }
-    }
   }
 
   private drawWaterShimmer(): void {
@@ -2559,17 +2628,10 @@ export class MapView {
     for (let ty = y0; ty <= vis.y1; ty += step) {
       for (let tx = x0; tx <= vis.x1; tx += step) {
         if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) continue;
-        if (map.tiles[ty * map.width + tx] !== TILE_WATER) continue;
-        const d = this.toScreen(tx * map.tileSize, ty * map.tileSize);
-        const e = this.toScreen((tx + step) * map.tileSize, ty * map.tileSize);
-        const s = this.toScreen((tx + step) * map.tileSize, (ty + step) * map.tileSize);
-        const west = this.toScreen(tx * map.tileSize, (ty + step) * map.tileSize);
+        if (!this.deepWater(map, tx, ty)) continue;
+        const c = this.toScreen((tx + 0.5) * map.tileSize, (ty + 0.5) * map.tileSize);
         ctx.beginPath();
-        ctx.moveTo(d.x, d.y);
-        ctx.lineTo(e.x, e.y);
-        ctx.lineTo(s.x, s.y);
-        ctx.lineTo(west.x, west.y);
-        ctx.closePath();
+        ctx.ellipse(c.x, c.y, 7, 3.5, 0, 0, Math.PI * 2);
         ctx.fill();
       }
     }
@@ -2798,6 +2860,16 @@ export class MapView {
       if (sheet === "fire") return SNIPER_FIRE_SPRITE;
       if (sheet === "die") return SNIPER_DIE_SPRITE;
     }
+    if (e.type === "atinfantry") {
+      const sheet = atInfantrySheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        shotAgeMs: this.infantryShotAge(e.id),
+      });
+      if (sheet === "fire") return ATINFANTRY_FIRE_SPRITE;
+      if (sheet === "die") return ATINFANTRY_DIE_SPRITE;
+    }
     if (e.type === "mortarman") {
       const sheet = mortarmanSheet({
         swimming: e.swimming,
@@ -2807,6 +2879,25 @@ export class MapView {
       });
       if (sheet === "fire") return MORTARMAN_FIRE_SPRITE;
       if (sheet === "die") return MORTARMAN_DIE_SPRITE;
+    }
+    if (e.type === "medic") {
+      const sheet = medicSheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        tending: e.tend != null,
+      });
+      if (sheet === "die") return MEDIC_DIE_SPRITE;
+      if (sheet === "crouch") return MEDIC_CROUCH_SPRITE;
+      if (sheet === "crawl") return MEDIC_CRAWL_SPRITE;
+      if (sheet === "swim") return spriteFor("medic", "stand", true);
+      return MEDIC_SPRITE;
+    }
+    if (e.type === "engineer") {
+      if (e.swimming) return spriteFor(e.type, e.stance, true);
+      if (e.state === "build") return ENGINEER_BUILD_SPRITE;
+      if (e.state === "repair") return ENGINEER_FIX_SPRITE;
+      return ENGINEER_SPRITE;
     }
     return spriteFor(e.type, e.stance, e.swimming);
   }
@@ -2921,15 +3012,15 @@ export class MapView {
     }
     const corpse = isInfantryType(e.type) && !!e.wreck;
     let frameIndex: number | undefined;
-    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
-    else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE) {
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE) {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
     }
     ctx.save();
     ctx.globalAlpha = fade;
     ctx.save();
     if (e.wreck && !corpse) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
-    let stepping = e.state === "move" || !!e.swimming;
+    let stepping = e.state === "move" || !!e.swimming || e.state === "build" || e.state === "repair";
     if (e.type === "walker" && stepping) {
       const prev = this.prev?.entities.find((p) => p.id === e.id);
       stepping = !!prev && Math.hypot(prev.x - e.x, prev.y - e.y) > 0.5;
@@ -2947,6 +3038,7 @@ export class MapView {
       hullShiftY,
       gunShiftX,
       gunShiftY,
+      showCart: e.type !== "hauler" || (e.cart ?? 0) > 0,
     });
     if (drawn && e.scout?.out && !e.wreck) {
       drawScoutHead(ctx, s.x + hullShiftX, s.y + hullShiftY, turretDir.x, turretDir.y, size, p.turretFacing);
@@ -2970,6 +3062,7 @@ export class MapView {
       ctx.fillText(name, s.x, s.y - size * def.contactY - 12);
     }
     this.maybeHp(e, s.x - size * 0.45, s.y - size * def.contactY - 2, size * 0.9);
+    if (e.tend != null && !e.wreck) this.drawHealMark(e);
     this.drawScoutBar(e, s.x - size * 0.22, s.y - size * def.contactY - 8);
     this.drawCrits(e, s.x + size * 0.48, s.y - size * def.contactY - 20);
     this.drawDeployProgress(e, s.x - size * 0.45, s.y + 6, size * 0.9);
@@ -2982,6 +3075,28 @@ export class MapView {
       this.strokeGroundRect(p.x - footprint / 2, p.y - footprint / 2, footprint, footprint);
       ctx.globalAlpha = 1;
     }
+  }
+
+  /** Small plus over the soldier being bandaged. */
+  private drawHealMark(medic: EntityView): void {
+    const patient = this.curr.entities.find((p) => p.id === medic.tend);
+    const who = patient ?? medic;
+    const p = this.lerpEnt(who);
+    const s = this.toScreen(p.x, p.y);
+    const y = s.y - 16;
+    const pulse = 0.55 + 0.45 * Math.sin(performance.now() / 160);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = pulse;
+    ctx.strokeStyle = "#f4f1e4";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(s.x - 4, y);
+    ctx.lineTo(s.x + 4, y);
+    ctx.moveTo(s.x, y - 4);
+    ctx.lineTo(s.x, y + 4);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private drawWreckFires(
@@ -3054,9 +3169,30 @@ export class MapView {
     return Math.hypot(e.x - c.x, e.y - c.y);
   }
 
+  /** Interior water only, so the shimmer does not redraw the stair along the bank. */
+  private deepWater(map: MapDef, tx: number, ty: number): boolean {
+    const w = map.width;
+    const tiles = map.tiles;
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        const nx = tx + dx;
+        const ny = ty + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= map.height) return false;
+        if (tiles[ny * w + nx] !== TILE_WATER) return false;
+      }
+    }
+    return true;
+  }
+
   private drawHole(hole: ShellHoleView, alpha: number): void {
     const c = this.toScreen(hole.x, hole.y);
     const rx = this.groundSpan(hole.x, hole.y, hole.radius);
+    const face = SCRAP_FACES[(hole.seed >>> 0) % SCRAP_FACES.length];
+    this.ctx.save();
+    this.ctx.globalAlpha = alpha;
+    const drew = face ? drawPropSprite(this.ctx, face, c.x, c.y, Math.max(22, rx * 1.85), false) : false;
+    this.ctx.restore();
+    if (drew) return;
     const tip = this.toScreen(hole.x + Math.cos(hole.ang), hole.y + Math.sin(hole.ang));
     const ang = hole.round ? 0 : Math.atan2(tip.y - c.y, tip.x - c.x);
     drawShellHole(this.ctx, c.x, c.y, rx, rx * 0.5, ang, hole.seed, alpha);
@@ -3078,9 +3214,15 @@ export class MapView {
         ? GUNNER_DIE_SPRITE
         : body.type === "sniper"
           ? SNIPER_DIE_SPRITE
-          : body.type === "mortarman"
+          : body.type === "atinfantry"
+            ? ATINFANTRY_DIE_SPRITE
+            : body.type === "mortarman"
             ? MORTARMAN_DIE_SPRITE
-            : body.type === "rifleman"
+            : body.type === "engineer"
+              ? ENGINEER_DIE_SPRITE
+              : body.type === "medic"
+                ? MEDIC_DIE_SPRITE
+              : body.type === "rifleman"
               ? TROOPER_DIE_SPRITE
               : null;
     if (!def) return;
@@ -3586,6 +3728,67 @@ export class MapView {
       strokeW: 2,
       elev,
     });
+  }
+
+  private fieldSprite(type: FieldStructureType, ruined = false): UnitSpriteDef {
+    if (type === "teeth") return TEETH_SPRITE;
+    return ruined ? SANDBAG_RUIN_SPRITE : SANDBAG_SPRITE;
+  }
+
+  private drawField(e: EntityView, ghost: boolean): void {
+    const span = fieldSpan(e.type);
+    const def = this.fieldSprite(e.type === "teeth" ? "teeth" : "sandbags", !!e.ruined);
+    const size = span ? Math.max(28, this.groundSpan(e.x, e.y, span.length)) : def.drawSize;
+    const s = this.toScreen(e.x, e.y);
+    const dir = facingToIso(e.facing, this.ts());
+    this.ctx.save();
+    this.ctx.globalAlpha = ghost ? 0.45 : 1;
+    drawUnitSprite(this.ctx, { ...def, drawSize: size }, s.x, s.y, dir.x, dir.y, {
+      moving: false,
+      id: e.id,
+      now: 0,
+      facing: e.facing,
+    });
+    this.ctx.restore();
+  }
+
+  private drawFieldGhost(type: FieldStructureType): void {
+    const w = this.screenToWorld(this.mouseX, this.mouseY);
+    const anchor = this.fieldDrag ?? w;
+    const span = fieldSpan(type);
+    const def = this.fieldSprite(type);
+    const size = span ? Math.max(28, this.groundSpan(anchor.x, anchor.y, span.length)) : def.drawSize;
+    const s = this.toScreen(anchor.x, anchor.y);
+    const dir = facingToIso(this.fieldFacing, this.ts());
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.globalAlpha = 0.72;
+    drawUnitSprite(ctx, { ...def, drawSize: size }, s.x, s.y, dir.x, dir.y, {
+      moving: false,
+      id: 0,
+      now: 0,
+      facing: this.fieldFacing,
+    });
+    const tip = this.toScreen(
+      anchor.x + Math.cos(this.fieldFacing) * (span?.length ?? 24) * 0.55,
+      anchor.y + Math.sin(this.fieldFacing) * (span?.length ?? 24) * 0.55,
+    );
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = "#e8b84a";
+    ctx.fillStyle = "#e8b84a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(s.x, s.y);
+    ctx.lineTo(tip.x, tip.y);
+    ctx.stroke();
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#140e0a";
+    ctx.strokeText(this.fieldDrag?.moved ? "FACE" : "PLACE", tip.x + 8, tip.y + 4);
+    ctx.fillText(this.fieldDrag?.moved ? "FACE" : "PLACE", tip.x + 8, tip.y + 4);
+    ctx.restore();
   }
 
   private drawMini(): void {

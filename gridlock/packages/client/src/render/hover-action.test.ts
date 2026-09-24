@@ -142,6 +142,13 @@ describe("resolveHoverAction", () => {
     assert.equal(act({ selected: [trooper], hit: wreck }), "attack");
   });
 
+  it("sends an engineer to scrap an armored wreck", () => {
+    const eng = unit({ id: 7, type: "engineer", hp: 40 });
+    const wreck = unit({ id: 40, type: "warden", ownerId: FOE, wreck: true, hp: 30 });
+    assert.equal(act({ selected: [eng], hit: wreck }), "scrap");
+    assert.equal(act({ selected: [eng], hit: unit({ id: 41, type: "warden", ownerId: YOU, wreck: true, hp: 10 }) }), "scrap");
+  });
+
   it("gathers scrap when a hauler is selected", () => {
     assert.equal(act({ selected: [hauler], scrap: true }), "gather");
   });

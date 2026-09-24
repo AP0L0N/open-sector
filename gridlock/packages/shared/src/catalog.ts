@@ -24,6 +24,10 @@ export const UNIT_CAP = 60;
 export const TRAIN_QUEUE_CAP = 9;
 export const DEPLOY_SECONDS = 3;
 export const SELL_REFUND = 0.5;
+/** Share of the hull's cost an engineer recovers by breaking up the wreck. */
+export const WRECK_SCRAP_MUL = 0.2;
+/** Seconds of the fixing pose to cut a wreck into scrap. */
+export const WRECK_SCRAP_SECONDS = 5;
 export const SCRAP_TILE_YIELD = 800;
 export const SCRAP_MID_YIELD = 1000;
 export const HAULER_CARGO = 400;
@@ -133,8 +137,6 @@ export const CRIT_LEG_SPEED = STANCE_SPEED.crawl;
 export const SWIM_SPEED = 0.4;
 /** A* step-cost multiplier on water so troops prefer a short land detour. */
 export const WATER_PATH_COST = 2.5;
-/** Hull turn-rate multiplier with a dead engine. Turret is unaffected. */
-export const CRIT_ENGINE_TURN = 0.2;
 /** Extra world pixels between unit reserved radii on a group move. */
 export const UNIT_SPACE_PAD = 2;
 /** Default ground. Maps are lifted so valleys can sit below this. */
@@ -228,7 +230,10 @@ export type EntityType =
   | "rifleman"
   | "gunner"
   | "sniper"
+  | "atinfantry"
   | "mortarman"
+  | "engineer"
+  | "medic"
   | "hauler"
   | "warden"
   | "ss3"
@@ -244,8 +249,13 @@ export type EntityType =
   | "shack"
   | "barn"
   | "inn"
-  | "chapel";
+  | "chapel"
+  | "sandbags"
+  | "teeth";
 export type BuildingType = "dynamo" | "smelter" | "muster" | "armory";
+/** Placed by an engineer, not the construction yard. */
+export type FieldStructureType = "sandbags" | "teeth";
+export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "teeth"];
 export type CivilianType = "cottage" | "house" | "manor" | "shack" | "barn" | "inn" | "chapel";
 export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "cottage",
@@ -256,7 +266,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "mortarman" | "hauler" | "warden" | "ss3" | "walker";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -279,7 +289,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "mortarman", "hauler", "warden", "ss3", "walker"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker"];
 /** Opening army besides the Rig. Hauler omitted so it does not auto-harvest. */
 export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter((t) => t !== "hauler");
 
@@ -323,6 +333,8 @@ export interface CatalogEntry {
   beltReload?: number;
   /** Hull must face the waypoint before translating. */
   turnInPlace?: boolean;
+  /** Continuous tracks a mortar bomb can throw. Walkers and the Mauler are not tracked. */
+  tracked?: boolean;
   /** Turn to face every move. No reverse hop, even when the dest is close behind. */
   noReverse?: boolean;
   /** Independent turret traverse. Omit for casemate guns / tank destroyers / infantry. */
@@ -369,8 +381,8 @@ export interface ShellDef {
 }
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
-export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar";
-export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar"];
+export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd"];
 export interface InfantryGun {
   id: InfantryWeaponId;
   name: string;
@@ -525,10 +537,66 @@ export const SCOPED = {
 } as const satisfies InfantryGun;
 
 /**
+ * 14.5×114mm PTRD-41. Single shot, no magazine. The bolt, the pouch, and the
+ * sight match the scoped rifle. The round is the difference.
+ *
+ * Soviet figures, 0°: about 40 mm at 100 m, 35 mm at 300 m, 25 mm at 500 m.
+ * Mapped onto the plates in this catalog (Tiger side is 32, rear 16, front 80;
+ * Walker is 18 / 10 / 8). Close range is inside a tank's own sight.
+ */
+export const PTRD_CALIBER = 14.5;
+/** Gameplay tiles. Inside this, tank side and rear are in reach. */
+export const PTRD_CLOSE_TILES = t(8);
+/** 0° penetration at the muzzle. The 100 m figure. */
+export const PTRD_PEN_MUZZLE = 40;
+/** 0° penetration at the far edge of close range. A square 32 mm side still opens. */
+export const PTRD_PEN_CLOSE = 35;
+/** 0° penetration at the end of the sights. Light plate fails; a tank side holds. */
+export const PTRD_PEN_FAR = 22;
+/** Front plate at or under this is a light hull. The Walker is 18. */
+export const PTRD_LIGHT_FRONT = 20;
+/**
+ * Share of max HP on a penetrating hit. A 14.5 mm hole, not a shell burst.
+ * Light hulls lose about a third. A tank side is a wound and a component.
+ * The rear bay (engine, radiators) takes a little more.
+ */
+export const PTRD_DMG_LIGHT = 0.32;
+export const PTRD_DMG_SIDE = 0.09;
+export const PTRD_DMG_REAR = 0.15;
+/** Side penetration chance to throw a track. A shell's side hit is 0.2. */
+export const PTRD_TRACK_CHANCE = 0.5;
+
+/** 40 mm at the muzzle, 35 mm at the close-range edge, 22 mm at max range. */
+export function ptrdPenetration(distTiles: number, maxRangeTiles: number): number {
+  const d = Math.max(0, distTiles);
+  if (d <= PTRD_CLOSE_TILES) {
+    const u = PTRD_CLOSE_TILES <= 1e-6 ? 1 : d / PTRD_CLOSE_TILES;
+    return PTRD_PEN_MUZZLE + (PTRD_PEN_CLOSE - PTRD_PEN_MUZZLE) * u;
+  }
+  const far = Math.max(PTRD_CLOSE_TILES + 1e-6, maxRangeTiles);
+  const u = Math.min(1, (d - PTRD_CLOSE_TILES) / (far - PTRD_CLOSE_TILES));
+  return PTRD_PEN_CLOSE + (PTRD_PEN_FAR - PTRD_PEN_CLOSE) * u;
+}
+
+export const PTRD = {
+  id: "ptrd" as const,
+  name: "PTRD-41",
+  blurb: "Anti-tank rifle. A soldier takes the same hit as from the scoped rifle. Up close it punches tank side and rear, often a track, and it goes through light armor. The front plate holds.",
+  damage: SCOPED.damage,
+  penetration: PTRD_PEN_MUZZLE,
+  caliber: PTRD_CALIBER,
+  spreadDeg: 0.7,
+  cooldown: SCOPED.cooldown,
+  clip: SCOPED.clip,
+  reload: SCOPED.reload,
+} as const satisfies InfantryGun;
+
+/**
  * 60mm infantry mortar. The bomb goes up and comes down, so sight, smoke,
  * and hills do not block it. Reach is much longer than the soldier's eyes.
  * The bomb still drifts, but it stays near the aim point.
- * The blast kills infantry in the open and glances off armor.
+ * The blast kills infantry in the open. An armored hull only loses a nick,
+ * and a tracked tank can lose a track.
  * The tube has to be kneeling and planted, and it will not drop inside the minimum.
  */
 export const MORTAR_RANGE_TILES = t(26);
@@ -543,10 +611,17 @@ export const MORTAR_FLIGHT_FAR = 2.85;
 /** Elevation units at the top of the arc. High enough to read as a lob. */
 export const MORTAR_APEX_NEAR = 36;
 export const MORTAR_APEX_FAR = 64;
+/**
+ * Share of max HP a mortar bomb takes off an armored hull at the blast center.
+ * The rim uses mortarFalloff, so the edge of the burst is a smaller nick.
+ */
+export const MORTAR_ARMOR_CHIP = 0.05;
+/** Chance a mortar hit throws a track. Only hulls with `tracked` roll it. */
+export const MORTAR_TRACK_CHANCE = 0.1;
 export const MORTAR = {
   id: "mortar" as const,
   name: "Mortar",
-  blurb: "Lobs a bomb over hills and out of sight. Slow, and it still drifts a little off the aim point. Devastating to infantry in the open, a glance off armor. Kneel and plant the tube. Too close and it will not drop.",
+  blurb: "Lobs a bomb over hills and out of sight. Slow, and it still drifts a little off the aim point. Devastating to infantry in the open. A hit nicks a tank and can throw a track. Kneel and plant the tube. Too close and it will not drop.",
   damage: 56,
   penetration: 14,
   caliber: 60,
@@ -558,12 +633,25 @@ export const MORTAR = {
   minRangeTiles: MORTAR_MIN_RANGE_TILES,
 } as const satisfies InfantryGun;
 
+/**
+ * Medic. He walks to wounded infantry inside this disk, then has to stand
+ * against them. Farther than this, he leaves them and goes back to his order.
+ */
+export const MEDIC_SEEK_TILES = t(6);
+/** Extra world pixels past body clearance that still count as hands-on. */
+export const MEDIC_TOUCH_SLACK = 8;
+/** HP per second while in contact. No charges and no cooldown. */
+export const MEDIC_HEAL_PER_SEC = 3;
+/** Seconds of uninterrupted contact to clear one broken arm or leg. */
+export const MEDIC_MEND_SECONDS = 8;
+
 export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   rifle: RIFLE,
   handgun: HANDGUN,
   mg42: MG42,
   scoped: SCOPED,
   mortar: MORTAR,
+  ptrd: PTRD,
 };
 
 /**
@@ -583,6 +671,16 @@ export const HAULER_SMOKE_COOLDOWN = SMOKE_SECONDS;
 export const HAULER_SMOKE_RELOAD = 60;
 export function haulerSmokeChargesOf(type: EntityType): number {
   return type === "hauler" ? HAULER_SMOKE_CHARGES : 0;
+}
+/**
+ * Scrap cart on the Mauler hitch. One HE shell pops it. Solid shot takes two.
+ * Rifles, machine guns, and the anti-tank rifle do not touch it.
+ */
+export const MAULER_CART_HP = 80;
+/** Seconds parked on a Smelter dock before a lost cart is fitted again. */
+export const MAULER_CART_RESTORE_SECONDS = 8;
+export function maulerCartHpOf(type: EntityType): number {
+  return type === "hauler" ? MAULER_CART_HP : 0;
 }
 /** Ellipse half-length along the shot, in gameplay tiles. */
 export const SMOKE_HALF_ALONG = t(2.5);
@@ -849,6 +947,55 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
   },
+  sandbags: {
+    type: "sandbags",
+    kind: "building",
+    name: "Sandbags",
+    letter: "Q",
+    cost: 20,
+    buildSeconds: 4,
+    hp: 30,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: 0,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "A low wall. Infantry crouch behind it. One tank shell wrecks it and still hits the men.",
+  },
+  teeth: {
+    type: "teeth",
+    kind: "building",
+    name: "Dragon's teeth",
+    letter: "Y",
+    cost: 35,
+    buildSeconds: 6,
+    hp: 240,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: 0,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    armorFront: 80,
+    armorSide: 80,
+    armorRear: 80,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
+    blurb: "Concrete pyramids. Tanks cannot cross. Infantry walk through.",
+  },
   rifleman: {
     type: "rifleman",
     kind: "unit",
@@ -925,6 +1072,32 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: SCOPED.spreadDeg,
     blurb: "Scoped rifle. A hit takes 90–100% of a soldier's health, closest shots killing outright. Crouch to tighten the aim.",
   },
+  atinfantry: {
+    type: "atinfantry",
+    kind: "unit",
+    name: "AT Infantry",
+    letter: "P",
+    cost: 210,
+    buildSeconds: 12,
+    hp: 36,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: t(1.65),
+    turnDegPerSec: 1400,
+    rangeTiles: weaponRangeTiles(INFANTRY_SIGHT_TILES + t(4)),
+    sightTiles: INFANTRY_SIGHT_TILES,
+    sightBonusTiles: t(4),
+    cooldown: PTRD.cooldown,
+    damage: PTRD.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: PTRD.penetration,
+    caliber: PTRD.caliber,
+    spreadDeg: PTRD.spreadDeg,
+    blurb: "PTRD-41. Same reach as the scoped rifle. Up close it punches tank side and rear, often a track, and it goes through light armor. The front plate holds.",
+  },
   mortarman: {
     type: "mortarman",
     kind: "unit",
@@ -948,7 +1121,51 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: MORTAR.penetration,
     caliber: MORTAR.caliber,
     spreadDeg: MORTAR.spreadDeg,
-    blurb: "60mm mortar. Kneel, plant the tube, and lob past what he can see. Scattered bombs that wreck infantry and glance off armor.",
+    blurb: "60mm mortar. Kneel, plant the tube, and lob past what he can see. Scattered bombs that wreck infantry. A hit nicks armor and can throw a track.",
+  },
+  engineer: {
+    type: "engineer",
+    kind: "unit",
+    name: "Engineer",
+    letter: "E",
+    cost: 130,
+    buildSeconds: 10,
+    hp: 40,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: t(2),
+    turnDegPerSec: 1600,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "No gun. Builds sandbags and concrete tank obstacles, repairs armor and buildings, and cuts wrecks into scrap.",
+  },
+  medic: {
+    type: "medic",
+    kind: "unit",
+    name: "Medic",
+    letter: "M",
+    cost: 120,
+    buildSeconds: 9,
+    hp: 34,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: t(2),
+    turnDegPerSec: 1600,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "No weapon. Walks to a wounded soldier nearby and closes the wound. A long kneel sets a broken arm or leg. The bag does not run out.",
   },
   hauler: {
     type: "hauler",
@@ -970,11 +1187,12 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    armorFront: 80,
-    armorSide: 32,
-    armorRear: 16,
+    armorFront: 100,
+    armorSide: 80,
+    armorRear: 80,
     leavesWreck: true,
     wreckHp: 70,
+    blurb: "Heavily armored bulldozer. Thick plate on every face. Shells knock the scrap cart off the hitch. Without it, the Mauler drops its load and waits at the Smelter for a new cart.",
   },
   warden: {
     type: "warden",
@@ -996,6 +1214,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 55,
     projectileSpeed: TANK_SHELL_SPEED,
     turnInPlace: true,
+    tracked: true,
     turretTurnDegPerSec: 220,
     armorFront: 80,
     armorSide: 32,
@@ -1032,6 +1251,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 48,
     projectileSpeed: TANK_SHELL_SPEED,
     turnInPlace: true,
+    tracked: true,
     gunArcDeg: 10,
     armorFront: 64,
     armorSide: 18,
@@ -1181,6 +1401,17 @@ export function isBuildingType(type: string): type is BuildingType {
   return (BUILDING_TYPES as readonly string[]).includes(type);
 }
 
+export function isFieldStructure(type: EntityType): type is FieldStructureType {
+  return (FIELD_STRUCTURES as readonly string[]).includes(type);
+}
+
+/** World-pixel length along the wall and thickness across it. Null for other types. */
+export function fieldSpan(type: EntityType): { length: number; thick: number } | null {
+  if (type === "sandbags") return { length: 48, thick: 14 };
+  if (type === "teeth") return { length: 56, thick: 20 };
+  return null;
+}
+
 export function isTrainType(type: string): type is TrainType {
   return (TRAIN_TYPES as readonly string[]).includes(type);
 }
@@ -1199,13 +1430,18 @@ export function isArmoredType(type: EntityType): boolean {
   return d.armorFront > 0 || d.armorSide > 0 || d.armorRear > 0;
 }
 
+/** Tiger and StuG. The Walker has legs, and the Mauler is not a tracked hull. */
+export function hasTracks(type: EntityType): boolean {
+  return catalog(type).tracked === true;
+}
+
 export function armorLabel(type: EntityType): string | null {
   if (!isArmoredType(type)) return null;
   const d = catalog(type);
   return `F${d.armorFront} / S${d.armorSide} / R${d.armorRear}`;
 }
 
-const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "mortarman"];
+const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic"];
 
 export function isInfantryType(type: EntityType): boolean {
   return (INFANTRY_TYPES as readonly string[]).includes(type);
@@ -1216,6 +1452,7 @@ export function primaryInfantryGun(type: EntityType): InfantryGun | null {
   if (type === "rifleman") return RIFLE;
   if (type === "gunner") return MG42;
   if (type === "sniper") return SCOPED;
+  if (type === "atinfantry") return PTRD;
   if (type === "mortarman") return MORTAR;
   return null;
 }
@@ -1225,6 +1462,7 @@ export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
   if (type === "rifleman") return [RIFLE, HANDGUN];
   if (type === "gunner") return [MG42];
   if (type === "sniper") return [SCOPED];
+  if (type === "atinfantry") return [PTRD];
   if (type === "mortarman") return [MORTAR];
   return [];
 }
@@ -1358,7 +1596,7 @@ export function entityIsScouting(e: { scoutOut?: boolean; scoutHp?: number }): b
 
 /** Player-built structures can change owner. Civilian houses cannot. */
 export function isCapturable(type: EntityType): boolean {
-  return catalog(type).kind === "building" && !isCivilianType(type);
+  return catalog(type).kind === "building" && !isCivilianType(type) && !isFieldStructure(type);
 }
 
 export function hasTurret(type: EntityType): boolean {
@@ -1410,6 +1648,11 @@ export function walkerGunsOf(e: { type: EntityType; gatlingGuns?: 1 | 2 }): 1 | 
 
 export function leavesWreck(type: EntityType): boolean {
   return catalog(type).leavesWreck === true;
+}
+
+/** Scrap paid to the engineer’s commander when a wreck is cut apart. */
+export function wreckScrapOf(type: EntityType): number {
+  return Math.max(10, Math.round(catalog(type).cost * WRECK_SCRAP_MUL));
 }
 
 export function wreckHpOf(type: EntityType): number {

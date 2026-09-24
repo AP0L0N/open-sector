@@ -169,12 +169,12 @@ describe("armor", () => {
     const w = catalog("warden");
     const h = catalog("hauler");
     assert.ok(w.armorFront > w.armorSide && w.armorSide > w.armorRear);
-    assert.equal(h.armorFront, w.armorFront);
-    assert.equal(h.armorSide, w.armorSide);
-    assert.equal(h.armorRear, w.armorRear);
+    assert.ok(h.armorFront >= 100 && h.armorFront >= h.armorSide);
+    assert.equal(h.armorSide, h.armorRear);
+    assert.ok(h.armorSide >= 80 && h.armorSide > w.armorSide && h.armorRear > w.armorRear);
     assert.equal(h.leavesWreck, true);
     assert.equal(armorLabel("warden"), `F${w.armorFront} / S${w.armorSide} / R${w.armorRear}`);
-    assert.equal(armorLabel("hauler"), armorLabel("warden"));
+    assert.equal(armorLabel("hauler"), `F${h.armorFront} / S${h.armorSide} / R${h.armorRear}`);
     assert.equal(armorLabel("rifleman"), null);
     assert.equal(catalog("rifleman").armorFront, 0);
   });
