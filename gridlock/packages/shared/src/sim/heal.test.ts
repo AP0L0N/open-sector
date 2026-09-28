@@ -12,6 +12,9 @@ import {
   MEDIC_HEAL_PER_SEC,
   MEDIC_MEND_SECONDS,
   MEDIC_SEEK_TILES,
+  MEDIC_SELF_HEAL_DELAY,
+  MEDIC_SELF_MEND_DELAY,
+  MEDIC_SELF_MEND_HP,
   TICK_DT,
   TILE_SIZE,
 } from "../catalog.js";
@@ -288,6 +291,47 @@ describe("medic", () => {
     ticks(state, 15);
     assert.ok(inside.hp > 10);
     assert.equal(shut.hp, 10);
+  });
+
+  it("patches himself up after a quiet spell, and a new hit restarts the wait", () => {
+    const { state, a } = match();
+    const ts = state.tileSize;
+    clearPad(state, 70, 46, 100, 70);
+    const medic = makeEntity(state, "medic", a, tileCenter(80, ts), tileCenter(52, ts));
+    medic.hp = 10;
+    ticks(state, Math.floor((MEDIC_SELF_HEAL_DELAY - 1) / TICK_DT));
+    assert.equal(medic.hp, 10);
+    medic.hp = 8;
+    ticks(state, Math.floor((MEDIC_SELF_HEAL_DELAY - 1) / TICK_DT));
+    assert.equal(medic.hp, 8);
+    ticks(state, Math.ceil(3 / TICK_DT));
+    assert.ok(medic.hp > 8, `hp ${medic.hp}`);
+    ticks(state, Math.ceil(200 / TICK_DT));
+    assert.equal(medic.hp, medic.hpMax);
+  });
+
+  it("sets his own limbs only after the longer wait and once half whole", () => {
+    const { state, a } = match();
+    const ts = state.tileSize;
+    clearPad(state, 70, 46, 100, 70);
+    const medic = makeEntity(state, "medic", a, tileCenter(80, ts), tileCenter(52, ts));
+    addCrit(medic, "leg");
+    medic.hp = 1;
+    ticks(state, Math.ceil((MEDIC_SELF_MEND_DELAY + 1) / TICK_DT));
+    assert.ok(medic.hp < medic.hpMax * MEDIC_SELF_MEND_HP, `hp ${medic.hp}`);
+    assert.deepEqual(medic.crits, ["leg"]);
+    ticks(state, Math.ceil(30 / TICK_DT));
+    assert.ok(medic.hp >= medic.hpMax * MEDIC_SELF_MEND_HP);
+    assert.deepEqual(medic.crits, []);
+
+    const other = match();
+    clearPad(other.state, 70, 46, 100, 70);
+    const whole = makeEntity(other.state, "medic", other.a, tileCenter(80, ts), tileCenter(52, ts));
+    addCrit(whole, "arm");
+    ticks(other.state, Math.floor((MEDIC_SELF_MEND_DELAY - 1) / TICK_DT));
+    assert.deepEqual(whole.crits, ["arm"]);
+    ticks(other.state, Math.ceil(2 / TICK_DT));
+    assert.deepEqual(whole.crits, []);
   });
 
   it("stacks when two medics treat the same soldier", () => {

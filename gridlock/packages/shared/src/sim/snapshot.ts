@@ -11,6 +11,7 @@ import {
   isInfantryType,
   MG42_BIPOD_SECONDS,
   MORTAR_PLANT_SECONDS,
+  walkerGunsOf,
 } from "../catalog.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { allies, unitInWater } from "./geo.js";
@@ -26,6 +27,13 @@ function plantRemaining(e: Entity, friendly: boolean): number | undefined {
   const limit = e.type === "gunner" ? MG42_BIPOD_SECONDS : e.type === "mortarman" ? MORTAR_PLANT_SECONDS : 0;
   if (limit <= 0 || e.bipod >= limit) return undefined;
   return Math.max(0, limit - e.bipod);
+}
+
+/** Snapshots follow a batch of `gameSpeed` ticks, so any volley inside that batch counts. */
+function gatlingView(state: MatchState, e: Entity): EntityView["gatling"] {
+  const f = e.gatlingFire;
+  if (!f || e.wreck || state.tick - f.tick >= Math.max(1, clampGameSpeed(state.gameSpeed))) return undefined;
+  return f.offAim != null ? { arms: f.arms, off: f.offAim } : { arms: f.arms };
 }
 
 function scoutView(e: Entity, friendly: boolean): EntityView["scout"] {
@@ -115,7 +123,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       mgOverheat: friendly && hasMg(e.type) && e.mgOverheat > 0 ? e.mgOverheat : undefined,
       weapon: friendly && isInfantryType(e.type) ? (e.weapon ?? undefined) : undefined,
       clip: friendly && (isInfantryType(e.type) || beltOf(e.type)) ? e.clip : undefined,
-      guns: friendly && e.type === "walker" ? (e.gatlingGuns === 1 ? 1 : 2) : undefined,
+      guns: friendly && e.type === "walker" ? walkerGunsOf(e) : undefined,
+      gatling: gatlingView(state, e),
       reload: friendly && (isInfantryType(e.type) || beltOf(e.type)) && e.reload > 0 ? e.reload : undefined,
       bipod: plantRemaining(e, friendly),
       garrisonedIn: friendly && e.garrisonedIn ? e.garrisonedIn : undefined,

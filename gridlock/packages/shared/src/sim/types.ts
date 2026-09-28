@@ -114,6 +114,8 @@ export interface Entity {
   weapon: InfantryWeaponId | null;
   /** Walker arms in use. 1 conserves the rack. 2 is both guns. Other types omit it. */
   gatlingGuns?: 1 | 2;
+  /** Last Walker volley: sim tick, arms that fired, and the off-arm bearing when it took a second target. */
+  gatlingFire?: { tick: number; arms: 1 | 2; offAim?: number };
   /** Seconds the MG42 bipod has been set while prone. 0 until the gunner crawls. */
   bipod: number;
   /** Coaxial MG rounds remaining. 0 if the type has no MG. */
@@ -160,6 +162,10 @@ export interface Entity {
   tendId?: number;
   /** Seconds of contact toward clearing one crit. */
   mendTime?: number;
+  /** Medic only: seconds since he last lost HP. */
+  selfQuiet?: number;
+  /** Medic only: HP at the end of the last tick, to notice new hits. */
+  selfHpSeen?: number;
   /**
    * Factory driver still at the wheel. Supply trucks spawn true.
    * False on every other type, and after that driver is killed.

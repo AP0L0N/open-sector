@@ -658,11 +658,16 @@ function fireWalker(
       e.clip -= 1;
     }
   };
+  const before = e.clip;
   if (second) {
     shoot(aimX, aimY, per, target, dist);
     shoot(second.x, second.y, per, second, Math.hypot(second.x - e.x, second.y - e.y));
   } else {
     shoot(aimX, aimY, per * guns, target, dist);
+  }
+  if (e.clip < before) {
+    e.gatlingFire = { tick: state.tick, arms: guns };
+    if (second) e.gatlingFire.offAim = Math.atan2(second.y - e.y, second.x - e.x);
   }
   e.cooldown = gun.cooldown;
 }

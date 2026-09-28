@@ -12,7 +12,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 37;
+export const PROTOCOL_VERSION = 38;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -129,6 +129,8 @@ export interface EntityView {
   clip?: number;
   /** Walker arms selected. 1 or 2. Omitted for everyone else. */
   guns?: 1 | 2;
+  /** Walker arms that fired during the last step. `off` is the second arm's bearing when it took another target. */
+  gatling?: { arms: 1 | 2; off?: number };
   /** Seconds left on a magazine change. Allied infantry. Omitted when idle. */
   reload?: number;
   /** Seconds until a planted support weapon can fire. Gunner bipod, or the mortar tube. Omitted once it is set. */

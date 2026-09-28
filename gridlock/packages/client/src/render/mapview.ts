@@ -151,6 +151,7 @@ import {
   spawnMuzzleSmoke,
   type MuzzleSmokePuff,
 } from "./muzzle-smoke.js";
+import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
 import {
   buildingShadowFootprint,
   drawGroundShadow,
@@ -489,8 +490,6 @@ export class MapView {
   /** Structure ghost. A click places one piece facing the cursor; a drag lays a wall from press to release. */
   fieldPlace: FieldStructureType | null = null;
   private fieldFacing = Math.PI / 2;
-  /** R offset on top of the cursor facing. */
-  private fieldTurn = 0;
   /** Eased ghost facing so the piece swings instead of snapping. */
   private fieldShown = Math.PI / 2;
   private fieldShownAt = 0;
@@ -576,8 +575,6 @@ export class MapView {
       this.guardMode = false;
       this.guardDragging = false;
       this.fieldFacing = this.meanSelectedFacing();
-      this.fieldTurn = 0;
-      if (this.mouseX >= 0) this.aimField();
       this.fieldShown = this.fieldFacing;
       this.fieldShownAt = performance.now();
     }
@@ -1229,6 +1226,10 @@ export class MapView {
   private onWheel = (e: WheelEvent): void => {
     e.preventDefault();
     if (this.box) return;
+    if (this.fieldPlace) {
+      this.rotateField(e.deltaY, e.deltaMode);
+      return;
+    }
     const rect = this.canvas.getBoundingClientRect();
     const cssX = e.clientX - rect.left;
     const cssY = e.clientY - rect.top;
@@ -1270,7 +1271,6 @@ export class MapView {
       this.box.y1 = this.mouseY;
     }
     if (this.guardDragging && this.guardAnchor) this.aimGuard(this.mouseX, this.mouseY);
-    if (this.fieldPlace) this.aimField();
     this.syncCursor();
   };
 
@@ -1333,10 +1333,7 @@ export class MapView {
     }
     if (k === ROTATE_HOTKEY) {
       e.preventDefault();
-      if (this.fieldPlace) {
-        this.fieldTurn += this.fieldDrag ? Math.PI : Math.PI / 8;
-        return;
-      }
+      if (this.fieldPlace) return;
       const ids = this.ownSelectedIds();
       if (ids.length) this.setRotateMode(!this.rotateMode);
       return;
@@ -1632,7 +1629,7 @@ export class MapView {
     if (ids.length === 0) return;
     const w = this.screenToWorld(this.mouseX, this.mouseY);
     const pieces = this.fieldPieces(structure, false);
-    const facing = this.fieldFacing + this.fieldTurn;
+    const facing = this.fieldFacing;
     if (pieces.length > 1) {
       this.onCommand({ type: "cmd.field", ids, structure, x: drag.x, y: drag.y, facing, x2: w.x, y2: w.y });
       return;
@@ -3175,6 +3172,11 @@ export class MapView {
     }
     ctx.restore();
     ctx.restore();
+    if (drawn && e.gatling && !e.wreck) {
+      const now = performance.now();
+      const muzzles = gatlingMuzzles(s.x, s.y, size, p.facing, e.gatling.arms, e.gatling.off);
+      muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2));
+    }
     if (e.wreck && drawn && !corpse) this.drawWreckFires(e, s.x, s.y, size, dir.x, dir.y);
     if (!drawn) {
       const r = Math.max(4, size * 0.22);
@@ -3907,37 +3909,16 @@ export class MapView {
     this.ctx.restore();
   }
 
-  /** Selected engineers' centre. The wall faces away from the men who will build it. */
-  private engineerCentre(): { x: number; y: number } | null {
-    let sx = 0;
-    let sy = 0;
-    let n = 0;
-    for (const e of this.curr.entities) {
-      if (!this.selected.has(e.id) || e.ownerId !== this.curr.youPlayerId || e.type !== "engineer" || e.wreck) continue;
-      sx += e.x;
-      sy += e.y;
-      n++;
-    }
-    return n > 0 ? { x: sx / n, y: sy / n } : null;
-  }
-
-  /** Point the piece at the cursor, or the middle of a drag, as seen from the engineers. */
-  private aimField(): void {
-    const w = this.screenToWorld(this.mouseX, this.mouseY);
-    const drag = this.fieldDrag;
-    const target = drag ? { x: (drag.x + w.x) / 2, y: (drag.y + w.y) / 2 } : w;
-    const from = this.engineerCentre();
-    if (!from) return;
-    const dx = target.x - from.x;
-    const dy = target.y - from.y;
-    if (dx * dx + dy * dy < this.ts() * this.ts()) return;
-    this.fieldFacing = Math.atan2(dy, dx);
+  /** One wheel notch turns the ghost 15°. Trackpads scroll in pixels, so they turn by fractions. */
+  private rotateField(deltaY: number, deltaMode: number): void {
+    const notches = deltaMode === 1 ? deltaY / 3 : deltaMode === 2 ? deltaY : deltaY / 100;
+    this.fieldFacing += notches * (Math.PI / 12);
   }
 
   private fieldPieces(type: FieldStructureType, shown: boolean): { x: number; y: number; facing: number }[] {
     const w = this.screenToWorld(this.mouseX, this.mouseY);
-    const face = this.fieldFacing + this.fieldTurn;
-    const drag = this.fieldDrag;
+    const face = this.fieldFacing;
+    const drag = type === "sandbags" ? this.fieldDrag : null;
     if (!drag) return [{ x: w.x, y: w.y, facing: shown ? this.fieldShown : face }];
     const pieces = fieldLine(type, drag.x, drag.y, w.x, w.y, face);
     if (shown && pieces.length === 1 && pieces[0]) pieces[0].facing = this.fieldShown;
@@ -3948,7 +3929,7 @@ export class MapView {
     const now = performance.now();
     const dt = Math.min(0.1, Math.max(0, (now - this.fieldShownAt) / 1000));
     this.fieldShownAt = now;
-    let d = this.fieldFacing + this.fieldTurn - this.fieldShown;
+    let d = this.fieldFacing - this.fieldShown;
     d = Math.atan2(Math.sin(d), Math.cos(d));
     this.fieldShown += d * Math.min(1, dt * 16);
     const pieces = this.fieldPieces(type, true);
