@@ -180,7 +180,7 @@ Match `UnitSpriteDef.frameSize` in `gridlock/packages/client/src/render/sprites.
 | Infantry death | 96 | 4 | 0.82 | `trooper-die.png`, `gunner-die.png` |
 | Infantry swim | 96 | 8 | 0.68 | shared `infantry-swim.png` — do not regenerate per unit |
 | Hatch head | 48 | 1 | 1.0 | `scout-head.png` |
-| Medium vehicle / tank | 128 | 1 | ~0.92 | `tiger/hull/0001.png` … `0016.png`, `hauler-move.png` |
+| Medium vehicle / tank | 128 | 1 | ~0.92 | `tiger/hull/0001.png` … `0016.png`, `hauler-hull.png` + `hauler-cart.png` |
 | Heavy vehicle | 192 | 1 | ~0.90 | `rig-move.png` |
 | Cameo | 72 (tank 128) | 1 | — | `trooper-cameo.png`, `gunner-cameo.png` |
 

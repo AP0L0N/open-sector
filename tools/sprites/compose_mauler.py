@@ -122,10 +122,13 @@ def main() -> int:
         hull_placed[dest] = hflip(hull_placed[src])
 
     out_dir = ROOT / "gridlock/packages/client/src/assets/units"
+    src_dir = ROOT / "tools/sprites/src/mauler"
+    src_dir.mkdir(parents=True, exist_ok=True)
     full_sheet = sheet_from(full_placed)
     hull_sheet = sheet_from(hull_placed)
-    full_sheet.save(out_dir / "hauler-move.png")
-    hull_sheet.save(out_dir / "hauler-bare.png")
+    # split_mauler_cart.py turns these into the hull and cart sheets the client loads.
+    full_sheet.save(src_dir / "hauler-move.png")
+    hull_sheet.save(src_dir / "hauler-bare.png")
 
     cameo = full_placed["E"].resize((72, 72), Image.Resampling.LANCZOS)
     cameo.save(out_dir / "hauler-cameo.png")

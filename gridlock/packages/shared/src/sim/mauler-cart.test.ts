@@ -98,6 +98,7 @@ describe("Mauler cart", () => {
     assert.equal(maulerCartHpOf("warden"), 0);
     assert.ok(def.armorFront >= def.armorSide && def.armorSide === def.armorRear);
     assert.ok(def.armorSide >= 80);
+    assert.equal(def.turnInPlace, true, "the dozer yaws on its tracks before it rolls");
     const view = snapshotFor(state, "A").entities.find((e) => e.id === hauler.id);
     assert.equal(view?.cart, MAULER_CART_HP);
   });

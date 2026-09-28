@@ -16,6 +16,7 @@ import {
   tilesBlockedOrScrap,
 } from "./geo.js";
 import { ejectUnits } from "./deploy.js";
+import { restampForts } from "./field.js";
 import { repathIfBlocked } from "./orders.js";
 import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
@@ -103,12 +104,12 @@ export function sellBuilding(state: MatchState, playerId: string, id: number): s
   const e = state.entities.get(id);
   if (!e || e.ownerId !== playerId) return "Not yours.";
   if (e.kind !== "building") return "Cannot sell that.";
-  if (isFieldStructure(e.type)) return "Cannot sell that.";
   if (e.type === "core") return "Cannot sell the Core.";
   if (isCivilianType(e.type)) return "Cannot sell that.";
-  const refund = Math.floor(catalog(e.type).cost * SELL_REFUND);
+  const refund = e.ruined ? 0 : Math.floor(catalog(e.type).cost * SELL_REFUND);
   const p = state.players.get(playerId);
   if (p) p.scrap += refund;
   destroyEntity(state, e);
+  if (isFieldStructure(e.type)) restampForts(state);
   return null;
 }

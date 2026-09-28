@@ -30,8 +30,6 @@ export const HULL_FIX_SECONDS = 3;
 export const SANDBAG_COVER_DEPTH = 22;
 /** Extra hit points while crouched or crawling against intact sandbags, as a share of catalog HP. */
 export const SANDBAG_COVER_BONUS = 0.5;
-/** Pyramids in one dragon's-teeth placement. */
-export const TOOTH_COUNT = 4;
 /** Overlap below this still counts as adjacent, so two structures can touch. */
 const PLACE_SLACK = 3;
 
@@ -39,43 +37,6 @@ export function wallAxes(facing: number): { fx: number; fy: number; tx: number; 
   const fx = Math.cos(facing);
   const fy = Math.sin(facing);
   return { fx, fy, tx: -fy, ty: fx };
-}
-
-/** Same scatter for a given spot, so the ghost and the built pyramids match. */
-export function toothSeedAt(x: number, y: number): number {
-  const qx = Math.round(x);
-  const qy = Math.round(y);
-  const s = (Math.imul(qx, 73856093) ^ Math.imul(qy, 19349663)) >>> 0;
-  return s === 0 ? 1 : s;
-}
-
-/** Offsets along the wall and across it. Four pyramids, jittered off a straight line. */
-export function toothOffsets(seed: number): { along: number; across: number }[] {
-  let s = seed >>> 0;
-  if (s === 0) s = 1;
-  const next = () => {
-    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
-    return s / 4294967296;
-  };
-  const span = fieldSpan("teeth")!;
-  const halfL = span.length / 2 - 8;
-  const halfA = span.thick / 2 - 2;
-  const out: { along: number; across: number }[] = [];
-  for (let i = 0; i < TOOTH_COUNT; i++) {
-    const slot = (i + 0.5) / TOOTH_COUNT - 0.5;
-    const along = Math.max(-halfL, Math.min(halfL, (slot + (next() - 0.5) * 0.1) * span.length));
-    const across = (next() * 2 - 1) * halfA;
-    out.push({ along, across });
-  }
-  return out;
-}
-
-export function toothWorld(x: number, y: number, facing: number, seed: number): { x: number; y: number }[] {
-  const { fx, fy, tx, ty } = wallAxes(facing);
-  return toothOffsets(seed).map((o) => ({
-    x: x + tx * o.along + fx * o.across,
-    y: y + ty * o.along + fy * o.across,
-  }));
 }
 
 export function isTankShell(p: { shell?: ShellType | null; flight?: string }): boolean {
@@ -199,8 +160,14 @@ function overlapsField(state: MatchState, type: FieldStructureType, x: number, y
   return overlapsFieldIn(state.entities.values(), type, x, y, facing);
 }
 
-/** Most pieces one drag can lay. */
-export const FIELD_LINE_MAX = 12;
+/** Longest line one drag can lay, in world units. */
+export const FIELD_LINE_REACH = 288;
+
+/** Most pieces one drag can lay for this structure. */
+export function fieldLineMax(type: FieldStructureType): number {
+  const span = fieldSpan(type);
+  return span ? Math.max(1, Math.floor(FIELD_LINE_REACH / span.length)) : 1;
+}
 
 export interface FieldPiece {
   x: number;
@@ -231,7 +198,7 @@ export function fieldLine(
   const uy = dy / dist;
   let face = Math.atan2(-ux, uy);
   if (Math.cos(face - facing) < 0) face += Math.PI;
-  const n = Math.min(FIELD_LINE_MAX, Math.max(1, Math.round(dist / span.length)));
+  const n = Math.min(fieldLineMax(type), Math.max(1, Math.round(dist / span.length)));
   const out: FieldPiece[] = [];
   for (let i = 0; i < n; i++) {
     const along = span.length * (i + 0.5);
@@ -282,7 +249,7 @@ function startPiece(state: MatchState, eng: Entity, structure: FieldStructureTyp
 }
 
 /**
- * One piece at (x, y), or a sandbag line toward (x2, y2). Dragon's teeth go down one set at a time.
+ * One piece at (x, y), or a sandbag line toward (x2, y2).
  * Several engineers split a line into runs and each starts at his own end of it.
  */
 export function orderFieldBuild(
@@ -299,7 +266,7 @@ export function orderFieldBuild(
   const crew = engineers.filter((e) => e.type === "engineer" && e.hp > 0 && !e.wreck);
   if (crew.length === 0) return "Select an engineer.";
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(facing)) return "Cannot place there.";
-  const line = structure === "sandbags" && x2 != null && y2 != null && Number.isFinite(x2) && Number.isFinite(y2);
+  const line = x2 != null && y2 != null && Number.isFinite(x2) && Number.isFinite(y2);
   const pieces = (line ? fieldLine(structure, x, y, x2, y2, facing) : [{ x, y, facing }]).filter((p) =>
     pieceBuildable(state, structure, p),
   );
@@ -335,8 +302,29 @@ function hullDamaged(target: Entity): boolean {
   return target.crits.includes("tracks") || target.crits.includes("engine");
 }
 
+/** A tank-shelled sandbag wall an engineer can stack back up, unless something new was built on its spot. */
+function canRestackSandbags(state: MatchState, target: Entity): boolean {
+  if (target.type !== "sandbags" || !target.ruined || target.hp <= 0) return false;
+  return !overlapsField(state, "sandbags", target.x, target.y, target.facing);
+}
+
+/** Someone standing on the footprint would be walled in, so the engineer waits for them to step off. */
+function fieldFootprintBusy(state: MatchState, target: Entity): boolean {
+  const span = fieldSpan(target.type);
+  if (!span) return false;
+  for (const u of state.entities.values()) {
+    if (u.kind !== "unit" || u.hp <= 0 || u.wreck || u.garrisonedIn != null) continue;
+    const pad = u.radius * 2;
+    if (inFieldRect(u.x, u.y, target.x, target.y, target.facing, span.length + pad, span.thick + pad)) return true;
+  }
+  return false;
+}
+
 export function canRepairTarget(state: MatchState, playerId: string, target: Entity): boolean {
   if (canScrapWreck(target)) return true;
+  if (target.type === "sandbags" && target.ruined) {
+    return repairOwner(state, playerId, target.ownerId) && canRestackSandbags(state, target);
+  }
   if (target.hp <= 0 || target.wreck || target.ruined) return false;
   if (target.hp >= target.hpMax && !(target.kind === "unit" && hullDamaged(target))) return false;
   if (!repairOwner(state, playerId, target.ownerId)) return false;
@@ -358,6 +346,13 @@ function repairSpot(eng: Entity, target: Entity, tileSize: number): { x: number;
     const reach = target.wreck ? scrapReach(target) : target.radius + 12;
     return { x: target.x + (dx / d) * reach, y: target.y + (dy / d) * reach };
   }
+  if (isFieldStructure(target.type)) {
+    const span = fieldSpan(target.type)!;
+    const { fx, fy } = wallAxes(target.facing);
+    const side = Math.sign((eng.x - target.x) * fx + (eng.y - target.y) * fy) || -1;
+    const off = span.thick / 2 + STAND_PAD;
+    return { x: target.x + fx * off * side, y: target.y + fy * off * side };
+  }
   const x0 = target.tileX * tileSize;
   const y0 = target.tileY * tileSize;
   const x1 = x0 + target.tileW * tileSize;
@@ -377,6 +372,18 @@ function nearRepair(eng: Entity, target: Entity, tileSize: number): boolean {
   if (target.kind === "unit") {
     const reach = target.wreck ? scrapReach(target) + 6 : target.radius + REPAIR_REACH;
     return Math.hypot(eng.x - target.x, eng.y - target.y) <= reach;
+  }
+  if (isFieldStructure(target.type)) {
+    const span = fieldSpan(target.type)!;
+    return inFieldRect(
+      eng.x,
+      eng.y,
+      target.x,
+      target.y,
+      target.facing,
+      span.length + REPAIR_REACH * 2,
+      span.thick + (STAND_PAD + WORK_REACH) * 2,
+    );
   }
   const x0 = target.tileX * tileSize - REPAIR_REACH;
   const y0 = target.tileY * tileSize - REPAIR_REACH;
@@ -492,6 +499,15 @@ function tickRepair(state: MatchState, e: Entity, dt: number): void {
       if (player) player.scrap += wreckScrapOf(target.type);
       target.hp = 0;
     }
+    finishWork(e);
+    return;
+  }
+  if (target.ruined) {
+    e.work += dt;
+    if (e.work < catalog(target.type).buildSeconds || fieldFootprintBusy(state, target)) return;
+    target.ruined = false;
+    target.hp = target.hpMax;
+    restampForts(state);
     finishWork(e);
     return;
   }

@@ -10,9 +10,9 @@ import {
 } from "../catalog.js";
 import { adjacentToBuilding, hqOf, rallyPoint, unitInWater, worldToTile } from "./geo.js";
 import { wantsCapture, pathToCapture } from "./capture.js";
-import { moveWithCollision } from "./collision.js";
+import { moveWithCollision, stepGiveWay, tickMakeWay } from "./collision.js";
 import { hullTurnMul, moveSpeedMul } from "./crits.js";
-import { unitClearance } from "./formation.js";
+import { openSpotNear, spotTaken, unitClearance } from "./formation.js";
 import { setPath } from "./path.js";
 import { slopeSpeedMul, tileHeight, weaponRangeWorld, worldTileHeight } from "./elevation.js";
 import type { Entity, MatchState } from "./types.js";
@@ -93,11 +93,17 @@ export function turnTurretToward(e: Entity, tx: number, ty: number, degPerSec: n
 }
 
 export function tickMovement(state: MatchState, dt: number): void {
+  tickMakeWay(state);
   for (const e of state.entities.values()) {
     if (e.kind !== "unit" || e.hp <= 0 || e.wreck || e.garrisonedIn) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
     const def = catalog(e.type);
     const speed = marchTilesPerSec(e) * state.tileSize;
+    if (stepGiveWay(state, e, def.moveTilesPerSec * state.tileSize * moveSpeedMul(e, unitInWater(state, e)), dt)) {
+      e.tileX = worldToTile(e.x, state.tileSize);
+      e.tileY = worldToTile(e.y, state.tileSize);
+      continue;
+    }
     if (e.order?.kind === "rotate" && e.order.x != null && e.order.y != null) {
       tickRotate(e, dt);
       e.tileX = worldToTile(e.x, state.tileSize);
@@ -189,6 +195,13 @@ export function tickMovement(state: MatchState, dt: number): void {
       }
       continue;
     }
+    if (settleNearGoal(state, e)) {
+      if (e.state === "move") e.state = "idle";
+      if (e.order?.kind === "move" || e.order?.kind === "attackmove" || e.order?.kind === "withdraw") {
+        finishTravel(state, e);
+      }
+      continue;
+    }
     if (def.turnInPlace) skipTinyWaypoints(e);
     const wp = e.waypoints[0];
     const want = wp ? hullSteerWant(e, wp) : e.facing;
@@ -241,6 +254,58 @@ export function tickMovement(state: MatchState, dt: number): void {
       finishTravel(state, e);
     }
   }
+}
+
+/** Distances below are in the unit's own radius; units are wider than a tile. */
+const SETTLE_RADII = 4;
+const SETTLE_SHIFT_RADII = 10;
+const STALL_RADII = 8;
+const STALL_TICKS = 20;
+
+/** Closest the unit has come to its current goal, and when. */
+const approach = new WeakMap<Entity, { gx: number; gy: number; best: number; tick: number }>();
+
+/**
+ * Final approach onto ground another unit holds: take the nearest open spot
+ * instead of circling it. A unit that stops gaining on a nearby goal stands
+ * where it is. Returns true when the unit is done travelling.
+ */
+function settleNearGoal(state: MatchState, e: Entity): boolean {
+  const kind = e.order?.kind;
+  if (kind !== "move" && kind !== "attackmove" && kind !== "guard" && kind !== "withdraw") return false;
+  if (escorting(e) || (kind === "attackmove" && e.attackTarget != null)) return false;
+  const goal = e.waypoints[e.waypoints.length - 1];
+  if (!goal) return false;
+  const r = Math.max(e.radius, state.tileSize);
+  const dist = Math.hypot(goal.x - e.x, goal.y - e.y);
+
+  if (dist <= r * SETTLE_RADII && spotTaken(state, e, goal.x, goal.y)) {
+    const spot = openSpotNear(state, e, goal.x, goal.y);
+    if (Math.hypot(spot.x - goal.x, spot.y - goal.y) > r * SETTLE_SHIFT_RADII || !setPath(state, e, spot.x, spot.y)) {
+      e.waypoints = [];
+      return true;
+    }
+    if (e.order && e.order.x != null) {
+      e.order.x = spot.x;
+      e.order.y = spot.y;
+    }
+    approach.delete(e);
+    return false;
+  }
+
+  // Hulls yaw in place and never side-step, so a slow turn is not a stall.
+  if (catalog(e.type).turnInPlace) return false;
+  const prev = approach.get(e);
+  if (!prev || prev.gx !== goal.x || prev.gy !== goal.y || dist < prev.best - 1) {
+    approach.set(e, { gx: goal.x, gy: goal.y, best: dist, tick: state.tick });
+    return false;
+  }
+  if (dist <= r * STALL_RADII && state.tick - prev.tick >= STALL_TICKS) {
+    approach.delete(e);
+    e.waypoints = [];
+    return true;
+  }
+  return false;
 }
 
 function finishTravel(state: MatchState, e: Entity): void {

@@ -1,5 +1,6 @@
 import { catalog, secondsToTicks, TRAIN_QUEUE_CAP, UNIT_CAP, type TrainType } from "../catalog.js";
 import { makeEntity, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
+import { openSpotNear } from "./formation.js";
 import { setPath } from "./path.js";
 import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
@@ -174,9 +175,10 @@ export function spawnUnit(
   const door = rallyPoint(state, from);
   const u = makeEntity(state, type, playerId, door.x, door.y);
   if (from.rally) {
-    u.order = { kind: "move", x: from.rally.x, y: from.rally.y };
+    const spot = openSpotNear(state, u, from.rally.x, from.rally.y);
+    u.order = { kind: "move", x: spot.x, y: spot.y };
     u.state = "move";
-    setPath(state, u, from.rally.x, from.rally.y);
+    setPath(state, u, spot.x, spot.y);
   } else if (type === "hauler") {
     u.autoHarvest = true;
   }

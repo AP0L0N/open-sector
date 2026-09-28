@@ -1,6 +1,6 @@
-import { catalog, UNIT_SPACE_PAD, type EntityType } from "../catalog.js";
+import { catalog, isArmoredType, isInfantryType, UNIT_SPACE_PAD, type EntityType } from "../catalog.js";
 import { moveSpeedMul } from "./crits.js";
-import { walkable, worldToTile } from "./geo.js";
+import { allies, walkable, worldToTile } from "./geo.js";
 import type { Entity, MatchState, Vec } from "./types.js";
 
 const SEARCH_STEP = 4;
@@ -85,16 +85,64 @@ export function groupMovePace(units: readonly Entity[]): number | undefined {
   return min;
 }
 
+type Spot = { x: number; y: number; radius: number; givesWay: boolean };
+
+const CLAIM_REACH_TILES = 32;
+
 /**
- * Destinations for a group move: keep relative layout around the click,
- * then honor each unit's reserved radius so they do not stack.
+ * Ground other units stand on or are heading to near (x, y). A unit with a
+ * path claims its last waypoint, not the spot it is leaving.
+ */
+function claimedSpots(state: MatchState, x: number, y: number, skip: ReadonlySet<number>, owner: string): Spot[] {
+  const reach = CLAIM_REACH_TILES * state.tileSize;
+  const out: Spot[] = [];
+  for (const o of state.entities.values()) {
+    if (o.kind !== "unit" || o.hp <= 0 || o.garrisonedIn || skip.has(o.id)) continue;
+    const last = o.wreck ? undefined : o.waypoints[o.waypoints.length - 1];
+    const p = last ?? o;
+    if (Math.abs(p.x - x) > reach || Math.abs(p.y - y) > reach) continue;
+    const givesWay = !o.wreck && isInfantryType(o.type) && allies(state, o.ownerId, owner);
+    out.push({ x: p.x, y: p.y, radius: o.radius, givesWay });
+  }
+  return out;
+}
+
+function obstaclesFor(u: Entity, claimed: readonly Spot[]): Spot[] {
+  return isArmoredType(u.type) ? claimed.filter((s) => !s.givesWay) : claimed.slice();
+}
+
+/** Nearest spot to (x, y) where `u` can stand without landing on another unit's ground. */
+export function openSpotNear(state: MatchState, u: Entity, x: number, y: number): Vec {
+  const claimed = claimedSpots(state, x, y, new Set([u.id]), u.ownerId);
+  return nearestClear(state, x, y, u.radius, obstaclesFor(u, claimed), u.type);
+}
+
+/** Spot `u` is heading for is already held by a unit that will not give way. */
+export function spotTaken(state: MatchState, u: Entity, x: number, y: number): boolean {
+  for (const o of state.entities.values()) {
+    if (o.id === u.id || o.kind !== "unit" || o.hp <= 0 || o.garrisonedIn) continue;
+    if (!o.wreck && isArmoredType(u.type) && isInfantryType(o.type) && allies(state, o.ownerId, u.ownerId)) continue;
+    const last = o.wreck ? undefined : o.waypoints[o.waypoints.length - 1];
+    if (last) {
+      if (o.id < u.id && occupied(x, y, u.radius, last.x, last.y, o.radius)) return true;
+      continue;
+    }
+    if (occupied(x, y, u.radius, o.x, o.y, o.radius)) return true;
+  }
+  return false;
+}
+
+/**
+ * Destinations for a group move: keep the group's shape but pull it in tight
+ * around the click, then honor each unit's reserved radius so they do not
+ * stack on each other or on units already there.
  */
 export function groupMoveTargets(state: MatchState, units: Entity[], destX: number, destY: number): Map<number, Vec> {
   const out = new Map<number, Vec>();
   if (units.length === 0) return out;
   if (units.length === 1) {
     const u = units[0]!;
-    out.set(u.id, { x: destX, y: destY });
+    out.set(u.id, openSpotNear(state, u, destX, destY));
     return out;
   }
 
@@ -115,12 +163,23 @@ export function groupMoveTargets(state: MatchState, units: Entity[], destX: numb
     return a.id - b.id;
   });
 
-  const placed: { x: number; y: number; radius: number }[] = [];
+  let spread = 0;
+  let packed = 0;
+  for (const u of units) {
+    spread = Math.max(spread, Math.hypot(u.x - cx, u.y - cy));
+    const w = u.radius * 2 + UNIT_SPACE_PAD;
+    packed += w * w;
+  }
+  const packR = Math.sqrt(packed) * 0.8 + state.tileSize * 2;
+  const squeeze = spread > packR ? packR / spread : 1;
+
+  const claimed = claimedSpots(state, destX, destY, new Set(units.map((u) => u.id)), units[0]!.ownerId);
+  const placed: Spot[] = [];
   for (const u of order) {
-    const prefX = destX + (u.x - cx);
-    const prefY = destY + (u.y - cy);
-    const spot = nearestClear(state, prefX, prefY, u.radius, placed, u.type);
-    placed.push({ x: spot.x, y: spot.y, radius: u.radius });
+    const prefX = destX + (u.x - cx) * squeeze;
+    const prefY = destY + (u.y - cy) * squeeze;
+    const spot = nearestClear(state, prefX, prefY, u.radius, [...obstaclesFor(u, claimed), ...placed], u.type);
+    placed.push({ x: spot.x, y: spot.y, radius: u.radius, givesWay: isInfantryType(u.type) });
     out.set(u.id, spot);
   }
   return out;

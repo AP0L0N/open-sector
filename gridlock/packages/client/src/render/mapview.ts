@@ -24,8 +24,6 @@ import {
   immobilized,
   heightAt,
   infantryGunFor,
-  toothSeedAt,
-  toothWorld,
   isoDepth,
   isoLift,
   isoToWorld,
@@ -105,6 +103,7 @@ import {
   spriteReady,
   GUNNER_DIE_SPRITE,
   GUNNER_FIRE_SPRITE,
+  HAULER_CART_SPRITE,
   MEDIC_CROUCH_SPRITE,
   MEDIC_CRAWL_SPRITE,
   MEDIC_DIE_SPRITE,
@@ -138,6 +137,7 @@ import {
   TRACK_KICK_SPACING,
   type TrackKickPuff,
 } from "./track-kick.js";
+import { followCart, type CartPose } from "./mauler-cart.js";
 import {
   recoilAmounts,
   recoilLayerShift,
@@ -152,19 +152,9 @@ import {
   type MuzzleSmokePuff,
 } from "./muzzle-smoke.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
-import {
-  buildingShadowFootprint,
-  drawGroundShadow,
-  drawSunDisc,
-  drawSunWash,
-  shadowWorldDir,
-  sunSkyWorld,
-  sunWorldDir,
-  treeShadowFootprint,
-  unitCastsShadow,
-  unitShadowFootprint,
-} from "./sun.js";
+import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
 import { drawSandbags } from "./sandbags.js";
+import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
 import { atInfantrySheet, gunnerSheet, heldFrame, medicSheet, mortarmanSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
@@ -207,6 +197,9 @@ export const GUARD_HOTKEY = "g";
 export const GARRISON_HOTKEY = "u";
 
 const EDGE_SCROLL_KEY = "gridlock.edgeScroll";
+const TREE_SCALE = 1.3;
+/** World span the pyramid sprite is scaled against. Its cell holds far more than the pyramid itself. */
+const TEETH_DRAW_WORLD = 56;
 let edgeScroll = localStorage.getItem(EDGE_SCROLL_KEY) === "1";
 
 /** Iso-space px/s for arrow keys, W/D, and optional edge scroll. */
@@ -468,6 +461,7 @@ export class MapView {
   private moveClicks: { x: number; y: number; at: number }[] = [];
   private trackKicks: TrackKickPuff[] = [];
   private trackKickLast = new Map<number, { x: number; y: number }>();
+  private maulerCarts = new Map<number, CartPose>();
   private gunRecoil = new Map<number, GunRecoil>();
   private muzzleSmokes: MuzzleSmokePuff[] = [];
   private occBuildings: {
@@ -835,7 +829,6 @@ export class MapView {
       turretDir.y,
       e.facing,
       e.turretFacing ?? e.facing,
-      e.type !== "hauler" || (e.cart ?? 0) > 0,
     );
     if (!snapped) {
       f.lift = guess;
@@ -2105,11 +2098,6 @@ export class MapView {
     const { w, h } = this.viewSize();
     ctx.fillStyle = "#0c1008";
     ctx.fillRect(0, 0, w, h);
-    const sun = sunSkyWorld(this.ts());
-    const sunPt = this.toScreen(sun.x, sun.y, sun.z);
-    if (sunPt.x > -120 && sunPt.y > -120 && sunPt.x < w + 120 && sunPt.y < h + 120) {
-      drawSunDisc(ctx, sunPt.x, sunPt.y);
-    }
 
     const bake = this.terrain;
     ctx.imageSmoothingEnabled = false;
@@ -2117,7 +2105,6 @@ export class MapView {
       blitTerrain(ctx, bake, this.camX, this.camY, w, h);
       if (this.fog) blitAtlas(ctx, this.fog, bake.originX, bake.originY, this.camX, this.camY, w, h);
     }
-    drawSunWash(ctx, w, h);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "low";
     this.cacheOccluders();
@@ -2143,7 +2130,7 @@ export class MapView {
     this.collectTrees(items);
     this.collectRemains(items);
     this.collectUnitShadows(items);
-    this.collectBuildingShadows(items);
+    this.collectMaulerCarts(items, w, h);
     this.collectTrackKicks(items);
     this.collectMuzzleSmoke(items);
     for (const m of this.takeMoveClicks()) {
@@ -2596,7 +2583,7 @@ export class MapView {
     }
     if (maxX < -12 || maxY < -12 || minX > w + 12 || minY > h + 12) return;
     items.push({
-      layer: -1,
+      layer: HOLE_DRAW_LAYER,
       z: isoDepth(foot.cx, foot.cy),
       run: () => drawGroundShadow(this.ctx, screen),
     });
@@ -2604,15 +2591,7 @@ export class MapView {
 
   private collectUnitShadows(items: DrawItem[]): void {
     for (const e of this.curr.entities) {
-      if (
-        !unitCastsShadow({
-          kind: e.kind,
-          garrisonedIn: e.garrisonedIn,
-          swimming: e.swimming,
-        })
-      ) {
-        continue;
-      }
+      if (!unitCastsShadow({ kind: e.kind, garrisonedIn: e.garrisonedIn, swimming: e.swimming })) continue;
       const def = catalog(e.type);
       const scale = isInfantryType(e.type) ? INFANTRY_VISUAL_SCALE : UNIT_VISUAL_SCALE;
       const p = this.lerpEnt(e);
@@ -2630,22 +2609,53 @@ export class MapView {
     }
   }
 
-  private collectBuildingShadows(items: DrawItem[]): void {
-    const ts = this.ts();
+  /** Mauler carts draw as their own depth-sorted object behind the hitch. */
+  private collectMaulerCarts(items: DrawItem[], w: number, h: number): void {
+    const live = new Set<number>();
     for (const e of this.curr.entities) {
-      if (e.kind !== "building") continue;
-      const hw = (e.tileW * ts) / 2;
-      const hh = (e.tileH * ts) / 2;
+      if (e.type !== "hauler" || e.garrisonedIn) continue;
+      if ((e.cart ?? 0) <= 0) continue;
+      live.add(e.id);
+      const prev = this.maulerCarts.get(e.id) ?? null;
+      const p = this.lerpEnt(e);
+      const pose = e.wreck && prev ? prev : followCart(prev, p.x, p.y, p.facing);
+      this.maulerCarts.set(e.id, pose);
+      if (!this.unitNearView(e, w, h)) continue;
       this.pushGroundShadow(
         items,
-        buildingShadowFootprint({
-          x: e.tileX * ts + hw,
-          y: e.tileY * ts + hh,
-          halfW: hw,
-          halfH: hh,
+        unitShadowFootprint({
+          x: pose.x,
+          y: pose.y,
+          facing: pose.facing,
+          radius: catalog(e.type).radius * UNIT_VISUAL_SCALE * 0.6,
+          elongated: true,
         }),
       );
+      items.push({
+        layer: STANDING_DRAW_LAYER,
+        z: isoDepth(pose.x, pose.y),
+        at: { x: pose.x, y: pose.y },
+        run: () => this.drawMaulerCart(e, pose),
+      });
     }
+    for (const id of this.maulerCarts.keys()) {
+      if (!live.has(id)) this.maulerCarts.delete(id);
+    }
+  }
+
+  private drawMaulerCart(e: EntityView, pose: CartPose): void {
+    const ctx = this.ctx;
+    const s = this.toScreen(pose.x, pose.y);
+    const dir = facingToIso(pose.facing, this.ts());
+    ctx.save();
+    if (e.wreck) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
+    drawUnitSprite(ctx, HAULER_CART_SPRITE, s.x, s.y, dir.x, dir.y, {
+      moving: false,
+      id: e.id,
+      now: 0,
+      facing: pose.facing,
+    });
+    ctx.restore();
   }
 
   private collectTrackKicks(items: DrawItem[]): void {
@@ -2789,9 +2799,9 @@ export class MapView {
       const pine = kind === "lone" ? h % 3 !== 1 : h % 5 === 0;
       const faces = pine ? PINE_FACES : OAK_FACES;
       const spr = faces[h % faces.length];
-      const drawH = kind === "lone" ? (pine ? 54 : 46) + (h % 5) * 2 : (pine ? 40 : 34) + (h % 4);
+      const drawH =
+        TREE_SCALE * (kind === "lone" ? (pine ? 54 : 46) + (h % 5) * 2 : (pine ? 40 : 34) + (h % 4));
       const dim = !this.lit(tx, ty);
-      this.pushGroundShadow(items, treeShadowFootprint(wx, wy, drawH));
       items.push({
         layer: STANDING_DRAW_LAYER,
         z: isoDepth(wx, wy),
@@ -2833,6 +2843,16 @@ export class MapView {
     const west = this.toScreen(x, y + bh, elev);
     const bar = this.toScreen(x + bw / 2, y + bh / 2, elev);
     let stack = { x: bar.x, y: bar.y - ez - 8 };
+    if (!ghost && this.selected.has(e.id)) {
+      const pad = 3;
+      const pts = [
+        this.toScreen(x - pad, y - pad, elev),
+        this.toScreen(x + bw + pad, y - pad, elev),
+        this.toScreen(x + bw + pad, y + bh + pad, elev),
+        this.toScreen(x - pad, y + bh + pad, elev),
+      ];
+      drawSelectFrame(ctx, pts, { hostile: this.hostileOwner(e.ownerId), now: performance.now() });
+    }
     if (spr && spriteReady(spr)) {
       const footprintW = east.x - west.x;
       ctx.save();
@@ -3167,7 +3187,6 @@ export class MapView {
       hullShiftY,
       gunShiftX,
       gunShiftY,
-      showCart: e.type !== "hauler" || (e.cart ?? 0) > 0,
     });
     if (drawn && e.scout?.out && !e.wreck) {
       drawScoutHead(ctx, s.x + hullShiftX, s.y + hullShiftY, turretDir.x, turretDir.y, size, p.turretFacing);
@@ -3856,8 +3875,14 @@ export class MapView {
   }
 
   private drawField(e: EntityView, ghost: boolean): void {
+    const span = fieldSpan(e.type);
+    if (!ghost && span && this.selected.has(e.id)) {
+      const elev = this.elevAt(e.x, e.y);
+      const pts = fieldFrameCorners(e.x, e.y, e.facing, span.length, span.thick, 5).map((p) => this.toScreen(p.x, p.y, elev));
+      drawSelectFrame(this.ctx, pts, { hostile: this.hostileOwner(e.ownerId), now: performance.now() });
+    }
     if (e.type === "teeth") {
-      this.drawTeeth(e.x, e.y, e.facing, toothSeedAt(e.x, e.y), ghost ? 0.45 : 1, e.id);
+      this.drawTeeth(e.x, e.y, e.facing, ghost ? 0.45 : 1, e.id);
       return;
     }
     this.drawSandbagWall(e.x, e.y, e.facing, { ruined: !!e.ruined, alpha: ghost ? 0.45 : 1, seed: e.id * 2654435761 });
@@ -3883,7 +3908,7 @@ export class MapView {
           },
           run: () => {
             if (site.structure === "teeth") {
-              this.drawTeeth(site.x, site.y, site.facing, toothSeedAt(site.x, site.y), FIELD_SITE_ALPHA, 0);
+              this.drawTeeth(site.x, site.y, site.facing, FIELD_SITE_ALPHA, 0);
             } else {
               this.drawSandbagWall(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
             }
@@ -3917,27 +3942,22 @@ export class MapView {
         const p = this.toScreen(wx, wy, elev);
         return { x: p.x, y: p.y - up * lift };
       },
-      sun: sunWorldDir(),
-      shadow: shadowWorldDir(),
     });
   }
 
-  /** One pyramid, drawn four times at the placement scatter. */
-  private drawTeeth(x: number, y: number, facing: number, seed: number, alpha: number, id: number): void {
-    const span = fieldSpan("teeth");
-    const size = span ? Math.max(28, this.groundSpan(x, y, span.length)) : TEETH_SPRITE.drawSize;
+  /** One pyramid on the spot, at the size four of them used to share. */
+  private drawTeeth(x: number, y: number, facing: number, alpha: number, id: number): void {
+    const size = Math.max(28, this.groundSpan(x, y, TEETH_DRAW_WORLD));
     const dir = facingToIso(facing, this.ts());
+    const s = this.toScreen(x, y);
     this.ctx.save();
     this.ctx.globalAlpha = alpha;
-    for (const p of toothWorld(x, y, facing, seed)) {
-      const s = this.toScreen(p.x, p.y);
-      drawUnitSprite(this.ctx, { ...TEETH_SPRITE, drawSize: size }, s.x, s.y, dir.x, dir.y, {
-        moving: false,
-        id,
-        now: 0,
-        facing,
-      });
-    }
+    drawUnitSprite(this.ctx, { ...TEETH_SPRITE, drawSize: size }, s.x, s.y, dir.x, dir.y, {
+      moving: false,
+      id,
+      now: 0,
+      facing,
+    });
     this.ctx.restore();
   }
 
@@ -3950,7 +3970,7 @@ export class MapView {
   private fieldPieces(type: FieldStructureType, shown: boolean): { x: number; y: number; facing: number }[] {
     const w = this.screenToWorld(this.mouseX, this.mouseY);
     const face = this.fieldFacing;
-    const drag = type === "sandbags" ? this.fieldDrag : null;
+    const drag = this.fieldDrag;
     if (!drag) return [{ x: w.x, y: w.y, facing: shown ? this.fieldShown : face }];
     const pieces = fieldLine(type, drag.x, drag.y, w.x, w.y, face);
     if (shown && pieces.length === 1 && pieces[0]) pieces[0].facing = this.fieldShown;
@@ -3970,7 +3990,7 @@ export class MapView {
     for (const p of pieces) {
       const ok = afford && previewField(this.curr, type, p.x, p.y, p.facing);
       if (type === "teeth") {
-        this.drawTeeth(p.x, p.y, p.facing, toothSeedAt(p.x, p.y), ok ? 0.72 : 0.4, 0);
+        this.drawTeeth(p.x, p.y, p.facing, ok ? 0.72 : 0.4, 0);
         if (!ok) this.strokeFieldFoot(type, p, "#ff5a4a");
       } else {
         this.drawSandbagWall(p.x, p.y, p.facing, { alpha: 0.78, seed: 7, bad: !ok });

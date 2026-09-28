@@ -4,10 +4,23 @@ import {
   HAULER_UNLOAD_SECONDS,
   MAULER_CART_HP,
   MAULER_CART_RESTORE_SECONDS,
+  TRACK_ARRIVE_SLOP,
+  catalog,
 } from "../catalog.js";
 import { scrapAt, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
+
+/**
+ * At the spot. Tracks only roll on a snapped heading and call a waypoint
+ * reached within TRACK_ARRIVE_SLOP of the axis, so a tracked hull that has
+ * finished its path counts as there within that slop.
+ */
+function reached(e: Entity, x: number, y: number, near: number): boolean {
+  const d = Math.hypot(e.x - x, e.y - y);
+  if (d <= near) return true;
+  return !!catalog(e.type).turnInPlace && e.waypoints.length === 0 && d <= TRACK_ARRIVE_SLOP * 1.5;
+}
 
 /** A Mauler with the cart shot off drives to the Smelter and waits for a new one. */
 export function tickMaulerCart(state: MatchState, dt: number): void {
@@ -27,7 +40,7 @@ export function tickMaulerCart(state: MatchState, dt: number): void {
       e.state = "idle";
       continue;
     }
-    if (Math.hypot(e.x - dock.x, e.y - dock.y) > state.tileSize * 0.75) {
+    if (!reached(e, dock.x, dock.y, state.tileSize * 0.75)) {
       e.state = "move";
       e.harvestTime = 0;
       const last = e.waypoints[e.waypoints.length - 1];
@@ -88,7 +101,10 @@ export function tickHarvest(state: MatchState, dt: number): void {
       continue;
     }
 
-    const onTile = worldToTile(e.x, state.tileSize) === tx && worldToTile(e.y, state.tileSize) === ty;
+    const ts = state.tileSize;
+    const onTile =
+      (worldToTile(e.x, ts) === tx && worldToTile(e.y, ts) === ty) ||
+      reached(e, tileCenter(tx, ts), tileCenter(ty, ts), 0);
     if (!onTile) {
       e.state = "harvest";
       if (e.waypoints.length === 0) {
@@ -148,7 +164,7 @@ function tickHaulerUnload(state: MatchState, e: Entity, dt: number): void {
     e.state = "idle";
     return;
   }
-  if (Math.hypot(e.x - dock.x, e.y - dock.y) > state.tileSize * 0.75) {
+  if (!reached(e, dock.x, dock.y, state.tileSize * 0.75)) {
     e.state = "unload";
     e.order = { kind: "unload", targetId: smelter.id };
     const last = e.waypoints[e.waypoints.length - 1];

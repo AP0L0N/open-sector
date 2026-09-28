@@ -12,6 +12,7 @@ import {
   ammoOf,
   armorLabel,
   beltOf,
+  carriesShell,
   catalog,
   colorHex,
   getMap,
@@ -792,6 +793,7 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
     const rack = el("div", { class: "shell-rack" });
     const table = shellsFor(focus.type);
     for (const id of SHELL_TYPES) {
+      if (!carriesShell(focus.type, id)) continue;
       const s = table[id];
       rack.append(loadoutButton({ attr: "data-shell", id, name: s.name, blurb: s.blurb, count: "0", on: false }));
     }
@@ -1114,7 +1116,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       slot: "field-teeth",
       act: "field-teeth",
       label: "Obstacle",
-      title: "Build four concrete pyramids. Scroll to turn, click to place one set.",
+      title: "Build concrete pyramids that stop vehicles. Scroll to turn, click to place one, or drag from start to end to lay a line.",
       on: view?.fieldPlace === "teeth",
     });
   }

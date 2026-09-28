@@ -1035,8 +1035,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Dragon's teeth",
     letter: "Y",
-    cost: 35,
-    buildSeconds: 6,
+    cost: 10,
+    buildSeconds: 2,
     hp: 240,
     power: 0,
     tileW: 1,
@@ -1247,6 +1247,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     cooldown: 0,
     damage: 0,
     projectileSpeed: 0,
+    turnInPlace: true,
     ...UNARMED,
     armorFront: 100,
     armorSide: 80,
@@ -1283,7 +1284,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: 100,
     caliber: 75,
     spreadDeg: 3,
-    ammo: { ap: 12, he: 6, heat: 4, smoke: 4 },
+    ammo: { ap: 12, he: 6, smoke: 4 },
     defaultShell: "ap",
     mgAmmo: TANK_MG.ammo,
     leavesWreck: true,
@@ -1320,7 +1321,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: 72,
     caliber: 75,
     spreadDeg: 3,
-    ammo: { ap: 10, he: 9, heat: 3, smoke: 2 },
+    ammo: { ap: 10, smoke: 2 },
     defaultShell: "ap",
     shells: STUG_SHELLS,
     mgAmmo: TANK_MG.ammo,
@@ -1499,7 +1500,7 @@ export function isFieldStructure(type: EntityType): type is FieldStructureType {
 /** World-pixel length along the wall and thickness across it. Null for other types. */
 export function fieldSpan(type: EntityType): { length: number; thick: number } | null {
   if (type === "sandbags") return { length: 24, thick: 7 };
-  if (type === "teeth") return { length: 56, thick: 20 };
+  if (type === "teeth") return { length: 14, thick: 14 };
   return null;
 }
 
@@ -1718,6 +1719,11 @@ export function isSmokeShell(shell: ShellType | null | undefined): boolean {
 
 export function hasAmmo(type: EntityType): boolean {
   return !!catalog(type).ammo;
+}
+
+/** The shell is in this type's rack at all. A gun can still be empty of it. */
+export function carriesShell(type: EntityType, shell: ShellType): boolean {
+  return (catalog(type).ammo?.[shell] ?? 0) > 0;
 }
 
 export function hasMg(type: EntityType): boolean {

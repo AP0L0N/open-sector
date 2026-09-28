@@ -45,6 +45,7 @@ import {
   hasTurret,
   shellsFor,
   STUG_SHELLS,
+  carriesShell,
   infantryGunFor,
   infantryLoadout,
   hasScout,
@@ -108,6 +109,7 @@ describe("warden ammo", () => {
     const total = (ammo.ap ?? 0) + (ammo.he ?? 0) + (ammo.heat ?? 0) + (ammo.smoke ?? 0);
     assert.ok(total >= 20 && total <= 28, `total=${total}`);
     assert.equal(ammo.smoke, 4);
+    assert.equal(carriesShell("warden", "heat"), false, "the Tiger carries no HEAT");
     assert.equal(w.defaultShell, "ap");
     assert.equal(w.leavesWreck, true);
   });
@@ -329,12 +331,12 @@ describe("ss3 casemate", () => {
     assert.ok((g.blurb ?? "").length > 24);
   });
 
-  it("carries a mixed L/48 rack that cannot frontally pen a Tiger with AP", () => {
+  it("carries only AP and smoke, and its AP cannot frontally pen a Tiger", () => {
     const g = catalog("ss3");
-    const ammo = g.ammo ?? {};
-    const total = (ammo.ap ?? 0) + (ammo.he ?? 0) + (ammo.heat ?? 0) + (ammo.smoke ?? 0);
-    assert.ok(total >= 20 && total <= 28, `total=${total}`);
-    assert.ok((ammo.he ?? 0) >= 8, "assault gun keeps a real HE load");
+    assert.equal(carriesShell("ss3", "ap"), true);
+    assert.equal(carriesShell("ss3", "smoke"), true);
+    assert.equal(carriesShell("ss3", "he"), false);
+    assert.equal(carriesShell("ss3", "heat"), false);
     assert.equal(g.defaultShell, "ap");
     assert.equal(shellsFor("ss3"), STUG_SHELLS);
     assert.equal(shellsFor("warden"), SHELLS);

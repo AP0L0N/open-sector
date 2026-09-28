@@ -112,6 +112,35 @@ describe("groupMoveTargets", () => {
     assert.equal(walkable(state, worldToTile(b.x, 32), worldToTile(b.y, 32)), true);
   });
 
+  it("pulls a scattered group in tight around the click", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    clearPad(state, 10, 10, 120, 120);
+    const units = [
+      makeEntity(state, "rifleman", "A", tileCenter(20, ts), tileCenter(20, ts)),
+      makeEntity(state, "rifleman", "A", tileCenter(60, ts), tileCenter(20, ts)),
+      makeEntity(state, "rifleman", "A", tileCenter(20, ts), tileCenter(60, ts)),
+      makeEntity(state, "rifleman", "A", tileCenter(60, ts), tileCenter(60, ts)),
+    ];
+    const click = { x: tileCenter(90, ts), y: tileCenter(90, ts) };
+    const dests = groupMoveTargets(state, units, click.x, click.y);
+    const pts = units.map((u) => ({ ...u, ...dests.get(u.id)! }));
+    assertSpaced(pts);
+    for (const p of pts) assert.ok(dist(p, click) < 48, `dest ${dist(p, click)} from click`);
+  });
+
+  it("does not send a group onto a unit already standing at the click", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    clearPad(state, 10, 10, 60, 60);
+    const click = { x: tileCenter(40, ts), y: tileCenter(40, ts) };
+    const parked = makeEntity(state, "rifleman", "A", click.x, click.y);
+    const a = makeEntity(state, "rifleman", "A", tileCenter(20, ts), tileCenter(20, ts));
+    const b = makeEntity(state, "rifleman", "A", tileCenter(20, ts), tileCenter(22, ts));
+    const dests = groupMoveTargets(state, [a, b], click.x, click.y);
+    assertSpaced([parked, { ...a, ...dests.get(a.id)! }, { ...b, ...dests.get(b.id)! }]);
+  });
+
   it("uses a larger gap when a Warden is in the group", () => {
     const { state } = twoPlayerMatch();
     const inf = makeEntity(state, "rifleman", "A", 18 * 32, 18 * 32);
