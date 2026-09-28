@@ -12,7 +12,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 34;
+export const PROTOCOL_VERSION = 35;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -322,6 +322,11 @@ export interface MatchSnapshot {
   bodies: CorpseView[];
   /** Heavy-shell craters on dirt. Empty until the first ground strike. */
   holes: ShellHoleView[];
+  /**
+   * The server's fog mask for `youPlayerId`, row-major, as run lengths that
+   * alternate hidden / lit starting with hidden. See `decodeVisionRuns`.
+   */
+  vision?: number[];
   winner?: { playerId: string; team: number };
 }
 

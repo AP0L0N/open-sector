@@ -1,5 +1,5 @@
 import { WATER_PATH_COST, type EntityType } from "../catalog.js";
-import { isWater, nearestWalkable, tileCenter, walkable, worldToTile } from "./geo.js";
+import { inBounds, isWater, nearestWalkable, tileCenter, walkable, worldToTile } from "./geo.js";
 import { climbableDelta, minSlopeCostMul, slopeCostMul, tileHeight } from "./elevation.js";
 import type { Entity, MatchState, Vec } from "./types.js";
 
@@ -102,6 +102,208 @@ export function astar(
   if (sx === gx && sy === gy) return [];
   const straight = straightPath(state, sx, sy, gx, gy, type);
   if (straight) return straight;
+  if (!inBounds(state, sx, sy) || !inBounds(state, gx, gy)) return astarLegacy(state, sx, sy, gx, gy, type);
+  return astarGrid(state, sx, sy, gx, gy, type);
+}
+
+/** Per-search scratch, valid where `stamp` equals the current generation. */
+const grid = {
+  gen: 0,
+  stamp: new Int32Array(0),
+  best: new Float64Array(0),
+  came: new Int32Array(0),
+  passStamp: new Int32Array(0),
+  pass: new Uint8Array(0),
+};
+
+/** Binary min-heap on `f`, same push / pop order as `heapPush` / `heapPop`. */
+const open = {
+  size: 0,
+  f: new Float64Array(1024),
+  g: new Float64Array(1024),
+  at: new Int32Array(1024),
+};
+
+function openPush(f: number, g: number, at: number): void {
+  if (open.size === open.f.length) {
+    const cap = open.f.length * 2;
+    const nf = new Float64Array(cap);
+    const ng = new Float64Array(cap);
+    const na = new Int32Array(cap);
+    nf.set(open.f);
+    ng.set(open.g);
+    na.set(open.at);
+    open.f = nf;
+    open.g = ng;
+    open.at = na;
+  }
+  const hf = open.f;
+  const hg = open.g;
+  const ha = open.at;
+  let i = open.size++;
+  hf[i] = f;
+  hg[i] = g;
+  ha[i] = at;
+  while (i > 0) {
+    const p = (i - 1) >> 1;
+    if (hf[p]! <= hf[i]!) break;
+    const tf = hf[p]!;
+    const tg = hg[p]!;
+    const ta = ha[p]!;
+    hf[p] = hf[i]!;
+    hg[p] = hg[i]!;
+    ha[p] = ha[i]!;
+    hf[i] = tf;
+    hg[i] = tg;
+    ha[i] = ta;
+    i = p;
+  }
+}
+
+/** Pops into `popped`. */
+const popped = { g: 0, at: 0 };
+
+function openPop(): void {
+  const hf = open.f;
+  const hg = open.g;
+  const ha = open.at;
+  popped.g = hg[0]!;
+  popped.at = ha[0]!;
+  const last = --open.size;
+  if (last === 0) return;
+  hf[0] = hf[last]!;
+  hg[0] = hg[last]!;
+  ha[0] = ha[last]!;
+  const size = open.size;
+  let i = 0;
+  for (;;) {
+    const l = i * 2 + 1;
+    const r = l + 1;
+    let s = i;
+    if (l < size && hf[l]! < hf[s]!) s = l;
+    if (r < size && hf[r]! < hf[s]!) s = r;
+    if (s === i) break;
+    const tf = hf[s]!;
+    const tg = hg[s]!;
+    const ta = ha[s]!;
+    hf[s] = hf[i]!;
+    hg[s] = hg[i]!;
+    ha[s] = ha[i]!;
+    hf[i] = tf;
+    hg[i] = tg;
+    ha[i] = ta;
+    i = s;
+  }
+}
+
+/** `astarLegacy` on flat arrays. Both ends must be on the map. */
+function astarGrid(
+  state: MatchState,
+  sx: number,
+  sy: number,
+  gx: number,
+  gy: number,
+  type?: EntityType,
+): { x: number; y: number }[] {
+  const width = state.width;
+  const height = state.height;
+  const n = width * height;
+  if (grid.stamp.length !== n) {
+    grid.gen = 0;
+    grid.stamp = new Int32Array(n);
+    grid.best = new Float64Array(n);
+    grid.came = new Int32Array(n);
+    grid.passStamp = new Int32Array(n);
+    grid.pass = new Uint8Array(n);
+  }
+  if (grid.gen >= 0x7ffffff0) {
+    grid.gen = 0;
+    grid.stamp.fill(0);
+    grid.passStamp.fill(0);
+  }
+  const gen = ++grid.gen;
+  const { stamp, best, came, passStamp, pass } = grid;
+  const heights = state.heights;
+  const slopeFloor = minSlopeCostMul();
+  const start = sy * width + sx;
+  const goal = gy * width + gx;
+  const passAt = (x: number, y: number): boolean => {
+    if (x === sx && y === sy) return true;
+    if (x < 0 || y < 0 || x >= width || y >= height) return false;
+    const i = y * width + x;
+    if (passStamp[i] !== gen) {
+      passStamp[i] = gen;
+      pass[i] = walkable(state, x, y, type) ? 1 : 0;
+    }
+    return pass[i] === 1;
+  };
+  const guess = (x: number, y: number): number => {
+    const dx = Math.abs(x - gx);
+    const dy = Math.abs(y - gy);
+    return (ORTHO * (dx + dy) + (DIAG - 2 * ORTHO) * Math.min(dx, dy)) * slopeFloor;
+  };
+  open.size = 0;
+  openPush(guess(sx, sy), 0, start);
+  stamp[start] = gen;
+  best[start] = 0;
+  let found = -1;
+  const cap = n * 4;
+  for (let it = 0; it < cap && open.size > 0; it++) {
+    openPop();
+    const cur = popped.at;
+    const curG = popped.g;
+    if (curG > best[cur]!) continue;
+    if (cur === goal) {
+      found = cur;
+      break;
+    }
+    const cx = cur % width;
+    const cy = (cur - cx) / width;
+    const ch = heights[cur] ?? 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (!passAt(nx, ny)) continue;
+        if (dx !== 0 && dy !== 0) {
+          if (!passAt(cx + dx, cy) || !passAt(cx, cy + dy)) continue;
+        }
+        const k = ny * width + nx;
+        const dh = (heights[k] ?? 0) - ch;
+        if (!climbableDelta(dh)) continue;
+        const wet = isWater(state, nx, ny) ? WATER_PATH_COST : 1;
+        const step = (dx !== 0 && dy !== 0 ? DIAG : ORTHO) * slopeCostMul(dh) * wet;
+        const g = curG + step;
+        if (stamp[k] === gen && g >= best[k]!) continue;
+        stamp[k] = gen;
+        best[k] = g;
+        came[k] = cur;
+        openPush(g + guess(nx, ny), g, k);
+      }
+    }
+  }
+  if (found < 0) return [];
+  const path: { x: number; y: number }[] = [{ x: gx, y: gy }];
+  let at = found;
+  for (let i = 0; i < cap; i++) {
+    if (at === start || stamp[at] !== gen) break;
+    at = came[at]!;
+    path.push({ x: at % width, y: (at / width) | 0 });
+  }
+  path.reverse();
+  if (path[0] && path[0].x === sx && path[0].y === sy) path.shift();
+  return path;
+}
+
+function astarLegacy(
+  state: MatchState,
+  sx: number,
+  sy: number,
+  gx: number,
+  gy: number,
+  type?: EntityType,
+): { x: number; y: number }[] {
   const open: Node[] = [];
   const best = new Map<number, number>();
   const start: Node = {

@@ -26,8 +26,8 @@ import {
   sightBonusTilesOf,
   type EntityType,
 } from "../catalog.js";
-import { TILE_TREE } from "../maps.js";
-import { hardCoverAt, inBounds, tileIndex, worldToTile } from "./geo.js";
+import { TILE_BLOCKED, TILE_TREE } from "../maps.js";
+import { inBounds, tileIndex, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
 export function elevAt(elev: ArrayLike<number>, width: number, height: number, x: number, y: number): number {
@@ -311,6 +311,8 @@ export interface CoverField {
   smoke?: ArrayLike<number>;
   /** True when this tile is inside a smoke screen. */
   smokeAt?: (x: number, y: number) => boolean;
+  /** `fillLosFlags` of this cover, when the caller built one. */
+  losFlags?: Uint8Array;
 }
 
 export function coverSmokeAt(
@@ -357,21 +359,29 @@ export function hasFullLos(
   if (x0 === x1 && y0 === y1) return true;
   const h0 = elevAt(elev, width, height, x0, y0) + Math.max(0, observerEye);
   const h1 = elevAt(elev, width, height, x1, y1);
-  let x = x0;
-  let y = y0;
-  const dx = Math.abs(x1 - x0);
-  const dy = Math.abs(y1 - y0);
+  const spanX = x1 - x0;
+  const spanY = y1 - y0;
+  const len2 = spanX * spanX + spanY * spanY;
+  const dh = h1 - h0;
+  const terrain = cover ? cover.terrain : null;
+  const occupy = cover ? cover.occupy : null;
+  const hull = cover?.hull;
+  const smoke = cover?.smoke;
+  const smokeAt = smoke ? undefined : cover?.smokeAt;
+  const ignore = cover?.ignoreOccupyId ?? 0;
+  const destHull = hullIdAt(hull, width, height, x1, y1);
+  const dx = Math.abs(spanX);
+  const dy = Math.abs(spanY);
   const sx = x0 < x1 ? 1 : -1;
   const sy = y0 < y1 ? 1 : -1;
   let err = dx - dy;
+  let x = x0;
+  let y = y0;
+  let trees = 0;
   const cap = dx + dy + 2;
-  const trees = { n: 0 };
-  const ignore = cover?.ignoreOccupyId ?? 0;
-  const destHull = hullIdAt(cover?.hull, width, height, x1, y1);
   for (let n = 0; n < cap; n++) {
     if (x === x1 && y === y1) return true;
-    const px = x;
-    const py = y;
+    const prevH = x >= 0 && y >= 0 && x < width && y < height ? (elev[y * width + x] ?? 0) : 0;
     const e2 = err * 2;
     let steppedX = false;
     let steppedY = false;
@@ -385,57 +395,207 @@ export function hasFullLos(
       y += sy;
       steppedY = true;
     }
-    const prevH = elevAt(elev, width, height, px, py);
     if (steppedX && steppedY) {
-      if (blocksLos(elev, width, height, x - sx, y, x0, y0, x1, y1, h0, h1, prevH)) return false;
-      if (blocksLos(elev, width, height, x, y - sy, x0, y0, x1, y1, h0, h1, prevH)) return false;
+      if (losTileBlocks(elev, terrain, occupy, hull, smoke, smokeAt, width, height, x - sx, y, x0, y0, x1, y1, spanX, spanY, len2, h0, dh, prevH, ignore, destHull)) return false;
+      if (losTileBlocks(elev, terrain, occupy, hull, smoke, smokeAt, width, height, x, y - sy, x0, y0, x1, y1, spanX, spanY, len2, h0, dh, prevH, ignore, destHull)) return false;
     }
-    if (blocksLos(elev, width, height, x, y, x0, y0, x1, y1, h0, h1, prevH)) return false;
-    if (!cover) continue;
-    if (steppedX && steppedY) {
-      if (coverHits(cover, width, height, x - sx, y, x0, y0, x1, y1, ignore, destHull, trees, false)) {
-        return false;
-      }
-      if (coverHits(cover, width, height, x, y - sy, x0, y0, x1, y1, ignore, destHull, trees, false)) {
-        return false;
-      }
+    if (losTileBlocks(elev, terrain, occupy, hull, smoke, smokeAt, width, height, x, y, x0, y0, x1, y1, spanX, spanY, len2, h0, dh, prevH, ignore, destHull)) return false;
+    if (!terrain || (x === x1 && y === y1)) continue;
+    if (terrain[y * width + x] === TILE_TREE) {
+      trees += 1;
+      if (trees > TREE_LOS_THROUGH) return false;
     }
-    if (coverHits(cover, width, height, x, y, x0, y0, x1, y1, ignore, destHull, trees, true)) return false;
   }
   return true;
 }
 
-function coverHits(
+/** `fillLosFlags` bit: something on the tile may stop a ray. */
+const LOS_FLAG_COVER = 1;
+/** `fillLosFlags` bit: a tree that spends the see-through budget. */
+const LOS_FLAG_TREE = 2;
+
+/** Per-tile blockers for `hasFullLosFlagged`. Rebuild whenever cover changes. */
+export function fillLosFlags(cover: CoverField, out: Uint8Array): void {
+  const { terrain, occupy, hull, smoke } = cover;
+  for (let i = 0; i < out.length; i++) {
+    const tile = terrain[i];
+    let f = tile === TILE_TREE ? LOS_FLAG_TREE : 0;
+    if (
+      tile === TILE_BLOCKED ||
+      (occupy[i] ?? 0) !== 0 ||
+      (hull ? (hull[i] ?? 0) !== 0 : false) ||
+      (smoke ? (smoke[i] ?? 0) !== 0 : false)
+    ) {
+      f |= LOS_FLAG_COVER;
+    }
+    out[i] = f;
+  }
+}
+
+/**
+ * `hasFullLos` with smoke as a mask and both ends on the map, so every
+ * tile the ray visits is on the map too. `flags` comes from `fillLosFlags`.
+ */
+export function hasFullLosFlagged(
+  elev: Uint8Array,
+  flags: Uint8Array,
   cover: CoverField,
   width: number,
-  height: number,
-  x: number,
-  y: number,
   x0: number,
   y0: number,
   x1: number,
   y1: number,
+  observerEye: number,
+): boolean {
+  if (x0 === x1 && y0 === y1) return true;
+  const terrain = cover.terrain;
+  const occupy = cover.occupy;
+  const hull = cover.hull;
+  const smoke = cover.smoke;
+  const ignore = cover.ignoreOccupyId ?? 0;
+  const iStart = y0 * width + x0;
+  const iEnd = y1 * width + x1;
+  let prevH = elev[iStart]!;
+  const h0 = prevH + Math.max(0, observerEye);
+  const dh = elev[iEnd]! - h0;
+  const destHull = hull ? (hull[iEnd] ?? 0) : 0;
+  const spanX = x1 - x0;
+  const spanY = y1 - y0;
+  const len2 = spanX * spanX + spanY * spanY;
+  const dx = Math.abs(spanX);
+  const dy = Math.abs(spanY);
+  const sx = x0 < x1 ? 1 : -1;
+  const sy = y0 < y1 ? 1 : -1;
+  let err = dx - dy;
+  let x = x0;
+  let y = y0;
+  let trees = 0;
+  const cap = dx + dy + 2;
+  for (let n = 0; n < cap; n++) {
+    if (x === x1 && y === y1) return true;
+    const e2 = err * 2;
+    let steppedX = false;
+    let steppedY = false;
+    if (e2 > -dy) {
+      err -= dy;
+      x += sx;
+      steppedX = true;
+    }
+    if (e2 < dx) {
+      err += dx;
+      y += sy;
+      steppedY = true;
+    }
+    if (steppedX && steppedY) {
+      const cx = x - sx;
+      const ia = y * width + cx;
+      if (ia !== iStart && ia !== iEnd) {
+        const h = elev[ia]!;
+        if (h > prevH && losRises(cx, y, h, x0, y0, spanX, spanY, len2, h0, dh)) return false;
+        if (flags[ia]! & LOS_FLAG_COVER && losCoverStops(terrain, occupy, hull, smoke, ia, ignore, destHull)) return false;
+      }
+      const cy = y - sy;
+      const ib = cy * width + x;
+      if (ib !== iStart && ib !== iEnd) {
+        const h = elev[ib]!;
+        if (h > prevH && losRises(x, cy, h, x0, y0, spanX, spanY, len2, h0, dh)) return false;
+        if (flags[ib]! & LOS_FLAG_COVER && losCoverStops(terrain, occupy, hull, smoke, ib, ignore, destHull)) return false;
+      }
+    }
+    const i = y * width + x;
+    if (i === iEnd) return true;
+    const h = elev[i]!;
+    if (h > prevH && losRises(x, y, h, x0, y0, spanX, spanY, len2, h0, dh)) return false;
+    const f = flags[i]!;
+    if (f & LOS_FLAG_COVER && losCoverStops(terrain, occupy, hull, smoke, i, ignore, destHull)) return false;
+    if (f & LOS_FLAG_TREE && ++trees > TREE_LOS_THROUGH) return false;
+    prevH = h;
+  }
+  return true;
+}
+
+function losCoverStops(
+  terrain: ArrayLike<number>,
+  occupy: ArrayLike<number>,
+  hull: ArrayLike<number> | undefined,
+  smoke: ArrayLike<number> | undefined,
+  i: number,
   ignore: number,
   destHull: number,
-  trees: { n: number },
-  countTrees: boolean,
 ): boolean {
-  if (x === x0 && y === y0) return false;
-  if (x === x1 && y === y1) return false;
-  if (hardCoverAt(cover.terrain, cover.occupy, width, height, x, y, ignore)) return true;
-  const hid = hullIdAt(cover.hull, width, height, x, y);
-  if (hid !== 0 && hid !== ignore && hid !== destHull) return true;
-  if (coverSmokeAt(cover, width, height, x, y)) return true;
-  if (
-    countTrees &&
-    x >= 0 &&
-    y >= 0 &&
-    x < width &&
-    y < height &&
-    cover.terrain[y * width + x] === TILE_TREE
-  ) {
-    trees.n += 1;
-    if (trees.n > TREE_LOS_THROUGH) return true;
+  if (terrain[i] === TILE_BLOCKED) return true;
+  const occ = occupy[i] ?? 0;
+  if (occ !== 0 && occ !== ignore) return true;
+  if (hull) {
+    const hid = hull[i] ?? 0;
+    if (hid !== 0 && hid !== ignore && hid !== destHull) return true;
   }
-  return false;
+  return !!smoke && (smoke[i] ?? 0) !== 0;
+}
+
+function losRises(
+  tx: number,
+  ty: number,
+  h: number,
+  x0: number,
+  y0: number,
+  spanX: number,
+  spanY: number,
+  len2: number,
+  h0: number,
+  dh: number,
+): boolean {
+  const t = ((tx - x0) * spanX + (ty - y0) * spanY) / len2;
+  const clamped = t < 0 ? 0 : t > 1 ? 1 : t;
+  return h > h0 + dh * clamped + LOS_TERRAIN_SLACK;
+}
+
+/**
+ * One tile on a sight ray, endpoints excluded: ground rising through the line,
+ * then map cover. Off the map counts as hard cover when cover is given.
+ */
+function losTileBlocks(
+  elev: ArrayLike<number>,
+  terrain: ArrayLike<number> | null,
+  occupy: ArrayLike<number> | null,
+  hull: ArrayLike<number> | undefined,
+  smoke: ArrayLike<number> | undefined,
+  smokeAt: ((x: number, y: number) => boolean) | undefined,
+  width: number,
+  height: number,
+  tx: number,
+  ty: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  spanX: number,
+  spanY: number,
+  len2: number,
+  h0: number,
+  dh: number,
+  prevH: number,
+  ignore: number,
+  destHull: number,
+): boolean {
+  if ((tx === x0 && ty === y0) || (tx === x1 && ty === y1)) return false;
+  const inside = tx >= 0 && ty >= 0 && tx < width && ty < height;
+  const i = ty * width + tx;
+  const h = inside ? (elev[i] ?? 0) : 0;
+  if (h > prevH) {
+    const t = len2 <= 0 ? 1 : ((tx - x0) * spanX + (ty - y0) * spanY) / len2;
+    const clamped = t < 0 ? 0 : t > 1 ? 1 : t;
+    if (h > h0 + dh * clamped + LOS_TERRAIN_SLACK) return true;
+  }
+  if (!terrain || !occupy) return false;
+  if (!inside) return true;
+  if (terrain[i] === TILE_BLOCKED) return true;
+  const occ = occupy[i] ?? 0;
+  if (occ !== 0 && occ !== ignore) return true;
+  if (hull) {
+    const hid = hull[i] ?? 0;
+    if (hid !== 0 && hid !== ignore && hid !== destHull) return true;
+  }
+  if (smoke) return (smoke[i] ?? 0) !== 0;
+  return !!smokeAt?.(tx, ty);
 }

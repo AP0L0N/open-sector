@@ -17,7 +17,7 @@ import { allies, unitInWater } from "./geo.js";
 import { medicTendView } from "./heal.js";
 import { supplyHasDriver, supplyRiders } from "./supply.js";
 import { powerOf } from "./power.js";
-import { canSeeWorld, entityOnMask, visionMask } from "./vision.js";
+import { canSeeWorld, encodeVisionRuns, entityOnMask, visionMask } from "./vision.js";
 import type { Entity, MatchState } from "./types.js";
 import type { CorpseView, EntityView, MatchSnapshot, ScrapCell } from "../protocol.js";
 
@@ -216,8 +216,21 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     clearedTrees: state.clearedTrees.map((t) => ({ x: t.x, y: t.y })),
     bodies: visibleBodies(state, youPlayerId, vis),
     holes: state.holes.map((h) => ({ ...h })),
+    vision: you ? visionRuns(vis) : undefined,
     winner: state.winner,
   };
+}
+
+const runsByMask = new WeakMap<Uint8Array, number[]>();
+
+/** Masks are reused until the fog changes, so each one is encoded once. */
+function visionRuns(vis: Uint8Array): number[] {
+  let runs = runsByMask.get(vis);
+  if (!runs) {
+    runs = encodeVisionRuns(vis);
+    runsByMask.set(vis, runs);
+  }
+  return runs;
 }
 
 function visibleBodies(state: MatchState, youPlayerId: string, vis: Uint8Array): CorpseView[] {

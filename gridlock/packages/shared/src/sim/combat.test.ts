@@ -24,6 +24,7 @@ import { entityHeight, rangeTilesOf, weaponRangeWorld } from "./elevation.js";
 import { buildingBounds, buildingCenter, destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { inSmokeCloud } from "./smoke.js";
 import { createMatch, step } from "./match.js";
+import { snapshotFor } from "./snapshot.js";
 import { canSeeEntity } from "./vision.js";
 import type { MatchState, Projectile } from "./types.js";
 
@@ -1736,6 +1737,35 @@ describe("walker gatlings", () => {
     tickCombat(state, TICK_DT);
     assert.equal(state.projectiles.filter((p) => p.fromId === shooter.id).length, 0);
     assert.equal(shooter.reload, 0);
+  });
+
+  it("cmd.guns switches one gatling and both, and the owner sees the setting", () => {
+    const { state, a, b } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const walker = makeEntity(state, "walker", a, tileCenter(12, ts), tileCenter(12, ts));
+    const target = makeEntity(state, "rifleman", b, tileCenter(16, ts), tileCenter(12, ts));
+    target.holdPosition = true;
+    target.cooldown = 99;
+    assert.equal(walker.gatlingGuns, 2);
+    assert.equal(applyCommand(state, b, { type: "cmd.guns", ids: [walker.id], guns: 1 }).ok, false);
+    assert.equal(walker.gatlingGuns, 2);
+
+    assert.equal(applyCommand(state, a, { type: "cmd.guns", ids: [walker.id], guns: 1 }).ok, true);
+    assert.equal(walker.gatlingGuns, 1);
+    walker.facing = 0;
+    walker.order = { kind: "attack", targetId: target.id };
+    tickCombat(state, TICK_DT);
+    assert.equal(state.projectiles.filter((p) => p.fromId === walker.id).length, 2);
+    assert.equal(snapshotFor(state, a).entities.find((e) => e.id === walker.id)?.guns, 1);
+
+    assert.equal(applyCommand(state, a, { type: "cmd.guns", ids: [walker.id], guns: 2 }).ok, true);
+    walker.cooldown = 0;
+    state.projectiles.length = 0;
+    tickCombat(state, TICK_DT);
+    assert.equal(state.projectiles.filter((p) => p.fromId === walker.id).length, 4);
+    assert.equal(snapshotFor(state, a).entities.find((e) => e.id === walker.id)?.guns, 2);
+    assert.equal(snapshotFor(state, b).entities.find((e) => e.id === walker.id)?.guns, undefined);
   });
 
   it("fires one gatling when set to conserve, and splits both guns across two targets", () => {

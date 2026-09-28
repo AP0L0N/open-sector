@@ -39,6 +39,7 @@ import {
   specialReady,
   tileDiamond,
   tileOnMask,
+  decodeVisionRuns,
   visionMaskFromSnapshot,
   mortarArcPoints,
   worldToIso,
@@ -338,6 +339,12 @@ function hpBarFill(ratio: number, hostile: boolean, vivid = false): string {
   return vivid ? HP_FILL_LOW_VIVID : HP_FILL_LOW;
 }
 
+function sameMask(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 function snapshotVisKey(match: MatchSnapshot): number {
   let h = 2166136261;
   h = mixHash(h, match.clearedTrees?.length ?? 0);
@@ -367,6 +374,7 @@ export class MapView {
   private readonly mctx: CanvasRenderingContext2D;
   private curr: MatchSnapshot;
   private prev: MatchSnapshot | null = null;
+  private prevById = new Map<number, EntityView>();
   private snapAt = 0;
   /** Top-left of the viewport in isometric space. */
   private camX = 0;
@@ -393,6 +401,7 @@ export class MapView {
   private explored: Uint8Array | null = null;
   private vis: Uint8Array | null = null;
   private visKey = 0;
+  private visRuns: number[] | null = null;
   private exploredMapId = "";
   private clearedApplied = 0;
   private maxElev = 0;
@@ -576,6 +585,7 @@ export class MapView {
 
   setSnapshot(match: MatchSnapshot): void {
     this.prev = this.curr;
+    this.prevById = new Map(this.prev.entities.map((e) => [e.id, e]));
     this.curr = match;
     this.snapAt = performance.now();
     const now = this.snapAt;
@@ -896,20 +906,35 @@ export class MapView {
       this.exploredMapId = match.mapId;
       this.vis = null;
       this.visKey = 0;
+      this.visRuns = null;
       this.clearedApplied = 0;
       this.ghosts.clear();
       this.resetFog(map);
     }
-    const key = snapshotVisKey(match);
-    if (this.vis && this.visKey === key) {
-      this.syncGhosts(match, this.vis);
-      return;
+    let vis: Uint8Array;
+    if (match.vision) {
+      if (this.visRuns === match.vision && this.vis) {
+        this.syncGhosts(match, this.vis);
+        return;
+      }
+      this.visRuns = match.vision;
+      vis = decodeVisionRuns(match.vision, n);
+      if (this.vis && sameMask(this.vis, vis)) {
+        this.syncGhosts(match, this.vis);
+        return;
+      }
+    } else {
+      const key = snapshotVisKey(match);
+      if (this.vis && this.visKey === key) {
+        this.syncGhosts(match, this.vis);
+        return;
+      }
+      this.visKey = key;
+      vis = visionMaskFromSnapshot(match, map.width, map.height, map.tileSize);
     }
     const prevVis = this.vis;
-    const vis = visionMaskFromSnapshot(match, map.width, map.height, map.tileSize);
     this.patchFog(map, prevVis, this.explored, vis);
     this.vis = vis;
-    this.visKey = key;
     for (let i = 0; i < n; i++) {
       if (vis[i]) this.explored[i] = 1;
     }
@@ -1720,7 +1745,7 @@ export class MapView {
   private lerpEnt(e: EntityView): { x: number; y: number; facing: number; turretFacing: number } {
     const turretNow = e.turretFacing ?? e.facing;
     const t = Math.min(1, (performance.now() - this.snapAt) / 100);
-    const prev = this.prev?.entities.find((p) => p.id === e.id);
+    const prev = this.prevById.get(e.id);
     if (!prev || t >= 1) return { x: e.x, y: e.y, facing: e.facing, turretFacing: turretNow };
     const snapFacing = isInfantryType(e.type);
     let df = e.facing - prev.facing;
@@ -2074,7 +2099,7 @@ export class MapView {
         run: () => {
           if (isFieldStructure(e.type)) this.drawField(e, ghost);
           else if (e.kind === "building") this.drawBuilding(e, ghost);
-          else if (!ghost && !e.garrisonedIn) this.drawUnit(e);
+          else if (!ghost && !e.garrisonedIn && this.unitNearView(e, w, h)) this.drawUnit(e);
         },
       });
     }
@@ -2966,6 +2991,14 @@ export class MapView {
     return (performance.now() - born) * (this.curr.gameSpeed || 1);
   }
 
+  /** Loose cull: sprite, bars, and labels all sit within a couple of sprite sizes. */
+  private unitNearView(e: EntityView, w: number, h: number): boolean {
+    const p = this.lerpEnt(e);
+    const s = this.toScreen(p.x, p.y);
+    const m = (this.spriteOf(e)?.drawSize ?? 64) * 2 + 64;
+    return s.x >= -m && s.y >= -m && s.x <= w + m && s.y <= h + m;
+  }
+
   private drawUnit(e: EntityView): void {
     const spr = this.spriteOf(e);
     if (spr) {
@@ -3066,7 +3099,7 @@ export class MapView {
     if (e.wreck && !corpse) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
     let stepping = e.state === "move" || !!e.swimming || e.state === "build" || e.state === "repair";
     if (e.type === "walker" && stepping) {
-      const prev = this.prev?.entities.find((p) => p.id === e.id);
+      const prev = this.prevById.get(e.id);
       stepping = !!prev && Math.hypot(prev.x - e.x, prev.y - e.y) > 0.5;
     }
     const drawn = drawUnitSprite(ctx, def, s.x, s.y, dir.x, dir.y, {

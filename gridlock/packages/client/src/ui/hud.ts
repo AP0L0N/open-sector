@@ -212,7 +212,7 @@ export function mountBattlefield(
     });
   }
 
-  bindPress(config, "[data-config-type], [data-shell], [data-weapon]", (t) => {
+  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns]", (t) => {
     runConfigAction(ctx, t);
   });
 

@@ -90,22 +90,34 @@ export function fillSmokeMask(
 ): void {
   out.fill(0);
   for (const c of clouds) {
-    const cx = worldToTile(c.x, tileSize);
-    const cy = worldToTile(c.y, tileSize);
-    const scale = cloudScale(c);
-    const a = Math.max(0.75, c.halfAlong * scale);
-    const b = Math.max(0.75, c.halfAcross * scale);
-    const reach = Math.ceil(Math.max(a, b)) + 1;
-    const x0 = Math.max(0, cx - reach);
-    const x1 = Math.min(width - 1, cx + reach);
-    const y0 = Math.max(0, cy - reach);
-    const y1 = Math.min(height - 1, cy + reach);
+    const { x0, y0, x1, y1 } = smokeCloudTileBounds(c, tileSize, width, height);
     for (let y = y0; y <= y1; y++) {
       for (let x = x0; x <= x1; x++) {
         if (inSmokeCloud(c, tileSize, x, y)) out[y * width + x] = 1;
       }
     }
   }
+}
+
+/** Tile box, clipped to the map, that holds every tile this cloud can smoke. */
+export function smokeCloudTileBounds(
+  c: SmokeCloud,
+  tileSize: number,
+  width: number,
+  height: number,
+): { x0: number; y0: number; x1: number; y1: number } {
+  const cx = worldToTile(c.x, tileSize);
+  const cy = worldToTile(c.y, tileSize);
+  const scale = cloudScale(c);
+  const a = Math.max(0.75, c.halfAlong * scale);
+  const b = Math.max(0.75, c.halfAcross * scale);
+  const reach = Math.ceil(Math.max(a, b)) + 1;
+  return {
+    x0: Math.max(0, cx - reach),
+    x1: Math.min(width - 1, cx + reach),
+    y0: Math.max(0, cy - reach),
+    y1: Math.min(height - 1, cy + reach),
+  };
 }
 
 export function spawnSmokeCloud(

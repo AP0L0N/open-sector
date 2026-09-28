@@ -10,13 +10,15 @@ import {
 } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
+import { destroyEntity, fillHullCover, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { sightTilesOf } from "./elevation.js";
-import { spawnSmokeCloud } from "./smoke.js";
+import { fillSmokeMask, spawnSmokeCloud } from "./smoke.js";
 import { snapshotFor } from "./snapshot.js";
 import {
   canSeeEntity,
+  decodeVisionRuns,
+  encodeVisionRuns,
   paintEntitySight,
   sealFovIslands,
   tileOnMask,
@@ -24,7 +26,7 @@ import {
   visionMaskFromSnapshot,
   type SightSource,
 } from "./vision.js";
-import type { MatchState } from "./types.js";
+import type { Entity, MatchState } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   const r = createRoom({
@@ -539,6 +541,82 @@ describe("combat visibility", () => {
       const fog = canSeeEntity(state, a, e, mask);
       assert.equal(cheap, fog, `id=${e.id} type=${e.type} at ${e.x},${e.y}`);
     }
+  });
+
+  it("matches the fog mask when combat asks before the mask is built", () => {
+    const { state, a, b } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const mine: Entity[] = [];
+    for (let i = 0; i < 8; i++) {
+      mine.push(makeEntity(state, i % 3 === 0 ? "warden" : "rifleman", a, tileCenter(30 + i * 6, ts), tileCenter(40 + (i % 3) * 5, ts)));
+    }
+    for (let i = 0; i < 40; i++) {
+      makeEntity(state, i % 5 === 0 ? "ss3" : "rifleman", b, tileCenter(20 + ((i * 37) % 90), ts), tileCenter(20 + ((i * 53) % 90), ts));
+    }
+    spawnSmokeCloud(state, tileCenter(60, ts), tileCenter(45, ts), 1, 0);
+    for (let t = 0; t < 6; t++) {
+      for (const [n, u] of mine.entries()) {
+        u.x += ((n % 2 === 0 ? 1 : -1) * ts * (t + 1)) / 2;
+        u.y += ts / 3;
+      }
+      const cheap = new Map<number, boolean>();
+      for (const e of state.entities.values()) cheap.set(e.id, canSeeEntity(state, a, e));
+      const mask = visionMask(state, a);
+      for (const e of state.entities.values()) {
+        assert.equal(cheap.get(e.id), canSeeEntity(state, a, e, mask), `tick ${t} id=${e.id} ${e.type}`);
+      }
+    }
+  });
+});
+
+describe("visionMask sight cache", () => {
+  function freshMask(state: MatchState, playerId: string): Uint8Array {
+    const { width, height, tileSize } = state;
+    const hull = new Int32Array(width * height);
+    fillHullCover(state.entities.values(), tileSize, width, height, hull);
+    const smoke = new Uint8Array(width * height);
+    fillSmokeMask(state.smokeClouds, tileSize, width, height, smoke);
+    const cover = { terrain: state.terrain, occupy: state.occupy, hull, smoke };
+    const mask = new Uint8Array(width * height);
+    for (const e of state.entities.values()) {
+      if (e.hp <= 0 || e.wreck || e.ownerId !== playerId) continue;
+      paintEntitySight(mask, width, height, tileSize, e, state.heights, cover);
+    }
+    sealFovIslands(mask, width, height);
+    return mask;
+  }
+
+  it("equals a from-scratch paint while some units hold and others walk", () => {
+    const { state, a, b } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const walkers: Entity[] = [];
+    for (let i = 0; i < 10; i++) {
+      const u = makeEntity(state, i % 4 === 0 ? "warden" : "rifleman", a, tileCenter(30 + i * 7, ts), tileCenter(50, ts));
+      if (i % 2 === 0) walkers.push(u);
+    }
+    makeEntity(state, "ss3", b, tileCenter(70, ts), tileCenter(60, ts));
+    for (let t = 0; t < 8; t++) {
+      for (const u of walkers) u.x += ts;
+      if (t === 3) spawnSmokeCloud(state, tileCenter(55, ts), tileCenter(58, ts), 0, 1);
+      state.tick += 1;
+      const got = visionMask(state, a);
+      const want = freshMask(state, a);
+      assert.deepEqual(got, want, `step ${t}`);
+    }
+  });
+
+  it("round-trips through the snapshot run lengths", () => {
+    const { state, a } = twoPlayerMatch();
+    const ts = state.tileSize;
+    makeEntity(state, "rifleman", a, tileCenter(40, ts), tileCenter(40, ts));
+    const snap = snapshotFor(state, a);
+    assert.ok(snap.vision);
+    assert.deepEqual(decodeVisionRuns(snap.vision, state.width * state.height), visionMask(state, a));
+    const empty = new Uint8Array(9);
+    assert.deepEqual(decodeVisionRuns(encodeVisionRuns(empty), 9), empty);
+    const full = new Uint8Array(9).fill(1);
+    assert.deepEqual(encodeVisionRuns(full), [0, 9]);
+    assert.deepEqual(decodeVisionRuns(encodeVisionRuns(full), 9), full);
   });
 });
 
