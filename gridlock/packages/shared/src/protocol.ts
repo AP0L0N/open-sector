@@ -12,7 +12,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 35;
+export const PROTOCOL_VERSION = 36;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -375,7 +375,17 @@ export type ClientMessage =
   | { type: "cmd.hold"; ids: number[]; hold: boolean }
   | { type: "cmd.rotate"; ids: number[]; x: number; y: number }
   | { type: "cmd.guard"; ids: number[]; x?: number; y?: number; facing?: number; targetId?: number }
-  | { type: "cmd.field"; ids: number[]; structure: FieldStructureType; x: number; y: number; facing: number }
+  | {
+      type: "cmd.field";
+      ids: number[];
+      structure: FieldStructureType;
+      x: number;
+      y: number;
+      facing: number;
+      /** Drag end. When set, pieces are laid end to end from (x, y) toward it. */
+      x2?: number;
+      y2?: number;
+    }
   | { type: "cmd.repair"; ids: number[]; targetId: number }
   | { type: "cmd.board"; ids: number[]; truckId: number }
   | { type: "cmd.unboard"; ids?: number[]; truckId?: number }

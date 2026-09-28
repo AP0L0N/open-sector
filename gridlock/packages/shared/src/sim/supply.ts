@@ -13,6 +13,7 @@ import {
   TRUCK_RIDER_SHARE_SIDE,
   TRUCK_SEATS,
   catalog,
+  hasCrit,
   infantryGunFor,
   isInfantryType,
   supplyShortOf,
@@ -323,8 +324,10 @@ function tickResupply(state: MatchState, truck: Entity, dt: number): void {
   }
   truck.waypoints = [];
   truck.state = "idle";
-  truck.facing = Math.atan2(target.y - truck.y, target.x - truck.x);
-  truck.turretFacing = truck.facing;
+  if (!hasCrit(truck, "engine")) {
+    truck.facing = Math.atan2(target.y - truck.y, target.x - truck.x);
+    truck.turretFacing = truck.facing;
+  }
   if (rearm) {
     truck.supply = Math.min(SUPPLY_CARGO, truck.supply + SUPPLY_REARM_PER_SEC * dt);
     if (truck.supply >= SUPPLY_CARGO) stall(truck);

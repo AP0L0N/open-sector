@@ -1622,7 +1622,7 @@ describe("broken tracks", () => {
     const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
     tank.facing = 0;
     tank.turretFacing = 0;
-    addCrit(tank, "engine");
+    addCrit(tank, "tracks");
     const x0 = tank.x;
     const y0 = tank.y;
     const res = applyCommand(state, "A", {
@@ -1640,8 +1640,8 @@ describe("broken tracks", () => {
     assert.equal(tank.order, null);
   });
 
-  it("hull-steers a casemate with broken tracks or a dead engine and fires only along that facing", () => {
-    for (const crit of ["tracks", "engine"] as const) {
+  it("hull-steers a casemate with broken tracks and fires only along that facing", () => {
+    for (const crit of ["tracks"] as const) {
       const { state } = twoPlayerMatch();
       clearCover(state);
       const ts = state.tileSize;
@@ -1683,6 +1683,24 @@ describe("broken tracks", () => {
       assert.equal(fired, true, `${crit} should fire once the hull faces the target`);
       assert.ok(Math.abs(gun.facing) < 0.25, `${crit} facing=${gun.facing}`);
     }
+  });
+
+  it("cannot swing a casemate with a dead engine onto a target off its arc", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const gun = makeEntity(state, "ss3", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const tgt = makeEntity(state, "rifleman", "B", tileCenter(28, ts), tileCenter(24, ts));
+    tgt.holdPosition = true;
+    tgt.cooldown = 99;
+    gun.facing = Math.PI / 2;
+    gun.turretFacing = Math.PI / 2;
+    gun.holdPosition = true;
+    addCrit(gun, "engine");
+    applyCommand(state, "A", { type: "cmd.attack", ids: [gun.id], targetId: tgt.id });
+    for (let i = 0; i < 24; i++) step(state, TICK_DT);
+    assert.equal(gun.facing, Math.PI / 2);
+    assert.equal(state.projectiles.filter((p) => p.fromId === gun.id).length, 0);
   });
 });
 

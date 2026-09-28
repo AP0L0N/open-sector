@@ -24,6 +24,8 @@ const WORK_REACH = 12;
 const REPAIR_REACH = 16;
 /** Hit points restored each second while an engineer is on the job. */
 export const REPAIR_PER_SEC = 14;
+/** Seconds to fix tracks or an engine on a hull that has no hit points to restore. */
+export const HULL_FIX_SECONDS = 3;
 /** How far past the sandbag face a crouched or crawling soldier still counts as behind them. */
 export const SANDBAG_COVER_DEPTH = 22;
 /** Extra hit points while crouched or crawling against intact sandbags, as a share of catalog HP. */
@@ -107,14 +109,26 @@ export function fieldTiles(
   facing: number,
   pad = 0,
 ): { x: number; y: number }[] {
+  return fieldTilesOn(state, type, x, y, facing, pad);
+}
+
+/** Tiles under a field structure on any grid, so a snapshot preview matches the sim. */
+export function fieldTilesOn(
+  grid: { width: number; height: number; tileSize: number },
+  type: EntityType,
+  x: number,
+  y: number,
+  facing: number,
+  pad = 0,
+): { x: number; y: number }[] {
   const span = fieldSpan(type);
   if (!span) return [];
-  const ts = state.tileSize;
+  const ts = grid.tileSize;
   const reach = Math.hypot(span.length, span.thick) / 2 + pad + ts;
   const x0 = Math.max(0, worldToTile(x - reach, ts));
-  const x1 = Math.min(state.width - 1, worldToTile(x + reach, ts));
+  const x1 = Math.min(grid.width - 1, worldToTile(x + reach, ts));
   const y0 = Math.max(0, worldToTile(y - reach, ts));
-  const y1 = Math.min(state.height - 1, worldToTile(y + reach, ts));
+  const y1 = Math.min(grid.height - 1, worldToTile(y + reach, ts));
   const out: { x: number; y: number }[] = [];
   for (let ty = y0; ty <= y1; ty++) {
     for (let tx = x0; tx <= x1; tx++) {
@@ -162,15 +176,66 @@ function boxesConflict(a: FieldBox, b: FieldBox): boolean {
   return true;
 }
 
-function overlapsField(state: MatchState, type: FieldStructureType, x: number, y: number, facing: number): boolean {
+export function overlapsFieldIn(
+  entities: Iterable<{ type: EntityType; x: number; y: number; facing: number; hp: number; ruined?: boolean }>,
+  type: FieldStructureType,
+  x: number,
+  y: number,
+  facing: number,
+): boolean {
   const mine = fieldBox(type, x, y, facing);
   if (!mine) return true;
-  for (const e of state.entities.values()) {
+  for (const e of entities) {
     if (!isFieldStructure(e.type) || e.hp <= 0 || e.ruined) continue;
     const other = fieldBox(e.type, e.x, e.y, e.facing);
     if (other && boxesConflict(mine, other)) return true;
   }
   return false;
+}
+
+function overlapsField(state: MatchState, type: FieldStructureType, x: number, y: number, facing: number): boolean {
+  return overlapsFieldIn(state.entities.values(), type, x, y, facing);
+}
+
+/** Most pieces one drag can lay. */
+export const FIELD_LINE_MAX = 12;
+
+export interface FieldPiece {
+  x: number;
+  y: number;
+  facing: number;
+}
+
+/**
+ * Pieces laid end to end from the press point toward the release point, like a wall drag.
+ * A short drag is one piece at the press point on `facing`. A longer drag turns every piece
+ * along the line and keeps whichever side of it is closer to `facing`.
+ */
+export function fieldLine(
+  type: FieldStructureType,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  facing: number,
+): FieldPiece[] {
+  const span = fieldSpan(type);
+  if (!span) return [];
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const dist = Math.hypot(dx, dy);
+  if (dist < span.length * 0.5) return [{ x: x0, y: y0, facing }];
+  const ux = dx / dist;
+  const uy = dy / dist;
+  let face = Math.atan2(-ux, uy);
+  if (Math.cos(face - facing) < 0) face += Math.PI;
+  const n = Math.min(FIELD_LINE_MAX, Math.max(1, Math.round(dist / span.length)));
+  const out: FieldPiece[] = [];
+  for (let i = 0; i < n; i++) {
+    const along = span.length * (i + 0.5);
+    out.push({ x: x0 + ux * along, y: y0 + uy * along, facing: face });
+  }
+  return out;
 }
 
 export function fieldSiteClear(
@@ -200,6 +265,24 @@ function standPoint(type: FieldStructureType, x: number, y: number, facing: numb
   return { x: x - fx * off, y: y - fy * off };
 }
 
+function pieceBuildable(state: MatchState, structure: FieldStructureType, p: FieldPiece): boolean {
+  if (!fieldSiteClear(state, structure, p.x, p.y, p.facing)) return false;
+  const spot = standPoint(structure, p.x, p.y, p.facing);
+  return walkable(state, worldToTile(spot.x, state.tileSize), worldToTile(spot.y, state.tileSize), "engineer");
+}
+
+function startPiece(state: MatchState, eng: Entity, structure: FieldStructureType, p: FieldPiece): void {
+  eng.order = { kind: "build", x: p.x, y: p.y, facing: p.facing, structure };
+  eng.work = 0;
+  eng.state = "move";
+  const spot = standPoint(structure, p.x, p.y, p.facing);
+  setPath(state, eng, spot.x, spot.y);
+}
+
+/**
+ * One piece at (x, y), or a line of pieces toward (x2, y2).
+ * Several engineers split a line into runs and each starts at his own end of it.
+ */
 export function orderFieldBuild(
   state: MatchState,
   playerId: string,
@@ -208,20 +291,32 @@ export function orderFieldBuild(
   x: number,
   y: number,
   facing: number,
+  x2?: number,
+  y2?: number,
 ): string | null {
-  const eng = engineers.find((e) => e.type === "engineer" && e.hp > 0 && !e.wreck);
-  if (!eng) return "Select an engineer.";
+  const crew = engineers.filter((e) => e.type === "engineer" && e.hp > 0 && !e.wreck);
+  if (crew.length === 0) return "Select an engineer.";
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(facing)) return "Cannot place there.";
-  if (!fieldSiteClear(state, structure, x, y, facing)) return "Cannot place there.";
-  const spot = standPoint(structure, x, y, facing);
-  if (!walkable(state, worldToTile(spot.x, state.tileSize), worldToTile(spot.y, state.tileSize), "engineer")) {
-    return "Cannot place there.";
-  }
-  clearOrder(eng);
-  eng.order = { kind: "build", x, y, facing, structure };
-  eng.work = 0;
-  eng.state = "move";
-  setPath(state, eng, spot.x, spot.y);
+  const line = x2 != null && y2 != null && Number.isFinite(x2) && Number.isFinite(y2);
+  const pieces = (line ? fieldLine(structure, x, y, x2, y2, facing) : [{ x, y, facing }]).filter((p) =>
+    pieceBuildable(state, structure, p),
+  );
+  if (pieces.length === 0) return "Cannot place there.";
+  const workers = crew.slice(0, pieces.length);
+  const ux = pieces.length > 1 ? pieces[pieces.length - 1]!.x - pieces[0]!.x : 0;
+  const uy = pieces.length > 1 ? pieces[pieces.length - 1]!.y - pieces[0]!.y : 0;
+  workers.sort((a, b) => a.x * ux + a.y * uy - (b.x * ux + b.y * uy) || a.id - b.id);
+  const per = Math.ceil(pieces.length / workers.length);
+  workers.forEach((eng, i) => {
+    const run = pieces.slice(i * per, (i + 1) * per);
+    if (run.length === 0) return;
+    const first = run[0]!;
+    const last = run[run.length - 1]!;
+    if (Math.hypot(eng.x - last.x, eng.y - last.y) < Math.hypot(eng.x - first.x, eng.y - first.y)) run.reverse();
+    clearOrder(eng);
+    eng.fieldQueue = run.slice(1);
+    startPiece(state, eng, structure, run[0]!);
+  });
   return null;
 }
 
@@ -234,9 +329,14 @@ export function canScrapWreck(target: Entity): boolean {
   return target.wreck && target.hp > 0 && target.kind === "unit" && isArmoredType(target.type);
 }
 
+function hullDamaged(target: Entity): boolean {
+  return target.crits.includes("tracks") || target.crits.includes("engine");
+}
+
 export function canRepairTarget(state: MatchState, playerId: string, target: Entity): boolean {
   if (canScrapWreck(target)) return true;
-  if (target.hp <= 0 || target.wreck || target.ruined || target.hp >= target.hpMax) return false;
+  if (target.hp <= 0 || target.wreck || target.ruined) return false;
+  if (target.hp >= target.hpMax && !(target.kind === "unit" && hullDamaged(target))) return false;
   if (!repairOwner(state, playerId, target.ownerId)) return false;
   if (target.kind === "unit") return isArmoredType(target.type);
   if (target.type === "sandbags") return false;
@@ -305,6 +405,19 @@ function finishWork(e: Entity): void {
   e.state = "idle";
 }
 
+/** Next queued piece that is still buildable, or idle when the line is done. */
+function nextPiece(state: MatchState, e: Entity, structure: FieldStructureType): void {
+  const queue = e.fieldQueue ?? [];
+  finishWork(e);
+  while (queue.length > 0) {
+    const p = queue.shift()!;
+    if (!pieceBuildable(state, structure, p)) continue;
+    e.fieldQueue = queue;
+    startPiece(state, e, structure, p);
+    return;
+  }
+}
+
 function tickBuild(state: MatchState, e: Entity, dt: number): void {
   const order = e.order;
   if (!order || order.kind !== "build" || order.structure == null || order.x == null || order.y == null) return;
@@ -326,7 +439,7 @@ function tickBuild(state: MatchState, e: Entity, dt: number): void {
       return;
     }
     if (!fieldSiteClear(state, structure, order.x, order.y, facing)) {
-      finishWork(e);
+      nextPiece(state, e, structure);
       return;
     }
     player.scrap -= def.cost;
@@ -340,14 +453,14 @@ function tickBuild(state: MatchState, e: Entity, dt: number): void {
   if (!fieldSiteClear(state, structure, order.x, order.y, facing)) {
     const player = state.players.get(e.ownerId);
     if (player) player.scrap += catalog(structure).cost;
-    finishWork(e);
+    nextPiece(state, e, structure);
     return;
   }
   const built = makeEntity(state, structure, e.ownerId, order.x, order.y, { facing });
   built.facing = facing;
   built.turretFacing = facing;
   restampForts(state);
-  finishWork(e);
+  nextPiece(state, e, structure);
 }
 
 function tickRepair(state: MatchState, e: Entity, dt: number): void {
@@ -380,8 +493,13 @@ function tickRepair(state: MatchState, e: Entity, dt: number): void {
     finishWork(e);
     return;
   }
-  target.hp = Math.min(target.hpMax, target.hp + REPAIR_PER_SEC * dt);
-  if (target.hp < target.hpMax) return;
+  if (target.hp < target.hpMax) {
+    target.hp = Math.min(target.hpMax, target.hp + REPAIR_PER_SEC * dt);
+    if (target.hp < target.hpMax) return;
+  } else if (target.kind === "unit" && hullDamaged(target)) {
+    e.work += dt;
+    if (e.work < HULL_FIX_SECONDS) return;
+  }
   if (target.kind === "unit") {
     target.crits = target.crits.filter((c) => c !== "tracks" && c !== "engine");
   }

@@ -39,6 +39,7 @@ export type HoverEntity = Pick<
   | "ammo"
   | "mgAmmo"
   | "clip"
+  | "crits"
 >;
 
 /** Guard mode: click this unit to escort it instead of planting an overwatch point. */
@@ -143,7 +144,8 @@ function canRepairHit(
   allied: (ownerId: string | undefined) => boolean,
 ): boolean {
   if (hit.wreck || hit.ruined || hit.hp <= 0) return false;
-  if (hit.hpMax != null && hit.hp >= hit.hpMax) return false;
+  const hullHurt = hit.kind === "unit" && !!hit.crits?.some((c) => c === "tracks" || c === "engine");
+  if (hit.hpMax != null && hit.hp >= hit.hpMax && !hullHurt) return false;
   const friendly = !hit.ownerId || hit.ownerId === you || allied(hit.ownerId);
   if (!friendly) return false;
   if (hit.kind === "unit") return isArmoredType(hit.type);

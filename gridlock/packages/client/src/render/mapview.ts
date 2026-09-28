@@ -33,7 +33,9 @@ import {
   unitBehindIsoBox,
   pickElevatedTile,
   pointInIsoBox,
+  previewField,
   previewPlace,
+  fieldLine,
   rangeTilesOf,
   specialOf,
   specialReady,
@@ -113,8 +115,6 @@ import {
   ENGINEER_DIE_SPRITE,
   ENGINEER_FIX_SPRITE,
   ENGINEER_SPRITE,
-  SANDBAG_RUIN_SPRITE,
-  SANDBAG_SPRITE,
   TEETH_SPRITE,
   ATINFANTRY_DIE_SPRITE,
   ATINFANTRY_FIRE_SPRITE,
@@ -156,11 +156,14 @@ import {
   drawGroundShadow,
   drawSunDisc,
   drawSunWash,
+  shadowWorldDir,
   sunSkyWorld,
+  sunWorldDir,
   treeShadowFootprint,
   unitCastsShadow,
   unitShadowFootprint,
 } from "./sun.js";
+import { drawSandbags } from "./sandbags.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
 import { atInfantrySheet, gunnerSheet, heldFrame, medicSheet, mortarmanSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
@@ -470,10 +473,15 @@ export class MapView {
   forceAttackMode = false;
   rotateMode = false;
   guardMode = false;
-  /** Structure ghost. Drag sets facing the way a guard order does; a click places it. */
+  /** Structure ghost. A click places one piece facing the cursor; a drag lays a wall from press to release. */
   fieldPlace: FieldStructureType | null = null;
   private fieldFacing = Math.PI / 2;
-  private fieldDrag: { x: number; y: number; moved: boolean } | null = null;
+  /** R offset on top of the cursor facing. */
+  private fieldTurn = 0;
+  /** Eased ghost facing so the piece swings instead of snapping. */
+  private fieldShown = Math.PI / 2;
+  private fieldShownAt = 0;
+  private fieldDrag: { x: number; y: number } | null = null;
   private guardAnchor: { x: number; y: number } | null = null;
   private guardFacing = 0;
   private guardDragging = false;
@@ -555,6 +563,10 @@ export class MapView {
       this.guardMode = false;
       this.guardDragging = false;
       this.fieldFacing = this.meanSelectedFacing();
+      this.fieldTurn = 0;
+      if (this.mouseX >= 0) this.aimField();
+      this.fieldShown = this.fieldFacing;
+      this.fieldShownAt = performance.now();
     }
     this.onAttackMoveMode();
     this.onPlaceMode();
@@ -1121,7 +1133,7 @@ export class MapView {
         }
         if (this.fieldPlace) {
           const w = this.screenToWorld(mx, my);
-          this.fieldDrag = { x: w.x, y: w.y, moved: false };
+          this.fieldDrag = { x: w.x, y: w.y };
           return;
         }
         if (this.forceAttackMode) {
@@ -1181,9 +1193,8 @@ export class MapView {
       return;
     }
     if (e.button === 0 && this.fieldDrag && this.fieldPlace) {
-      const drag = this.fieldDrag;
+      this.commitField();
       this.fieldDrag = null;
-      if (!drag.moved) this.commitField(drag.x, drag.y);
       return;
     }
     if (e.button === 0 && this.box) {
@@ -1246,15 +1257,7 @@ export class MapView {
       this.box.y1 = this.mouseY;
     }
     if (this.guardDragging && this.guardAnchor) this.aimGuard(this.mouseX, this.mouseY);
-    if (this.fieldDrag && this.fieldPlace) {
-      const w = this.screenToWorld(this.mouseX, this.mouseY);
-      const dx = w.x - this.fieldDrag.x;
-      const dy = w.y - this.fieldDrag.y;
-      if (dx * dx + dy * dy > 36) {
-        this.fieldDrag.moved = true;
-        this.fieldFacing = Math.atan2(dy, dx);
-      }
-    }
+    if (this.fieldPlace) this.aimField();
     this.syncCursor();
   };
 
@@ -1318,7 +1321,7 @@ export class MapView {
     if (k === ROTATE_HOTKEY) {
       e.preventDefault();
       if (this.fieldPlace) {
-        this.fieldFacing += Math.PI / 8;
+        this.fieldTurn += this.fieldDrag ? Math.PI : Math.PI / 8;
         return;
       }
       const ids = this.ownSelectedIds();
@@ -1606,14 +1609,24 @@ export class MapView {
     this.onCommand({ type: "cmd.guard", ids, x: anchor.x, y: anchor.y, facing });
   }
 
-  private commitField(x: number, y: number): void {
+  private commitField(): void {
     const structure = this.fieldPlace;
-    if (!structure) return;
+    const drag = this.fieldDrag;
+    if (!structure || !drag) return;
     const ids = this.curr.entities
       .filter((e) => this.selected.has(e.id) && e.ownerId === this.curr.youPlayerId && e.type === "engineer" && !e.wreck)
       .map((e) => e.id);
     if (ids.length === 0) return;
-    this.onCommand({ type: "cmd.field", ids, structure, x, y, facing: this.fieldFacing });
+    const w = this.screenToWorld(this.mouseX, this.mouseY);
+    const pieces = this.fieldPieces(structure, false);
+    const facing = this.fieldFacing + this.fieldTurn;
+    if (pieces.length > 1) {
+      this.onCommand({ type: "cmd.field", ids, structure, x: drag.x, y: drag.y, facing, x2: w.x, y2: w.y });
+      return;
+    }
+    const one = pieces[0];
+    if (!one) return;
+    this.onCommand({ type: "cmd.field", ids, structure, x: one.x, y: one.y, facing: one.facing });
   }
 
   private commitGuardUnit(hit: EntityView | null): boolean {
@@ -3799,30 +3812,41 @@ export class MapView {
     });
   }
 
-  private fieldSprite(type: FieldStructureType, ruined = false): UnitSpriteDef {
-    if (type === "teeth") return TEETH_SPRITE;
-    return ruined ? SANDBAG_RUIN_SPRITE : SANDBAG_SPRITE;
-  }
-
   private drawField(e: EntityView, ghost: boolean): void {
     if (e.type === "teeth") {
       this.drawTeeth(e.x, e.y, e.facing, toothSeedAt(e.x, e.y), ghost ? 0.45 : 1, e.id);
       return;
     }
-    const span = fieldSpan(e.type);
-    const def = this.fieldSprite("sandbags", !!e.ruined);
-    const size = span ? Math.max(28, this.groundSpan(e.x, e.y, span.length)) : def.drawSize;
-    const s = this.toScreen(e.x, e.y);
-    const dir = facingToIso(e.facing, this.ts());
-    this.ctx.save();
-    this.ctx.globalAlpha = ghost ? 0.45 : 1;
-    drawUnitSprite(this.ctx, { ...def, drawSize: size }, s.x, s.y, dir.x, dir.y, {
-      moving: false,
-      id: e.id,
-      now: 0,
-      facing: e.facing,
+    this.drawSandbagWall(e.x, e.y, e.facing, { ruined: !!e.ruined, alpha: ghost ? 0.45 : 1, seed: e.id * 2654435761 });
+  }
+
+  private drawSandbagWall(
+    x: number,
+    y: number,
+    facing: number,
+    opts: { ruined?: boolean; alpha: number; seed: number; bad?: boolean },
+  ): void {
+    const span = fieldSpan("sandbags");
+    if (!span) return;
+    const elev = this.elevAt(x, y);
+    const lift = this.groundSpan(x, y, 10) / 10;
+    drawSandbags(this.ctx, {
+      x,
+      y,
+      facing,
+      length: span.length,
+      thick: span.thick,
+      ruined: !!opts.ruined,
+      seed: opts.seed >>> 0,
+      alpha: opts.alpha,
+      bad: opts.bad,
+      project: (wx, wy, up) => {
+        const p = this.toScreen(wx, wy, elev);
+        return { x: p.x, y: p.y - up * lift };
+      },
+      sun: sunWorldDir(),
+      shadow: shadowWorldDir(),
     });
-    this.ctx.restore();
   }
 
   /** One pyramid, drawn four times at the placement scatter. */
@@ -3844,49 +3868,101 @@ export class MapView {
     this.ctx.restore();
   }
 
-  private drawFieldGhost(type: FieldStructureType): void {
-    const w = this.screenToWorld(this.mouseX, this.mouseY);
-    const anchor = this.fieldDrag ?? w;
-    const span = fieldSpan(type);
-    const ctx = this.ctx;
-    if (type === "teeth") {
-      this.drawTeeth(anchor.x, anchor.y, this.fieldFacing, toothSeedAt(anchor.x, anchor.y), 0.72, 0);
-    } else {
-      const def = this.fieldSprite(type);
-      const size = span ? Math.max(28, this.groundSpan(anchor.x, anchor.y, span.length)) : def.drawSize;
-      const s0 = this.toScreen(anchor.x, anchor.y);
-      const dir = facingToIso(this.fieldFacing, this.ts());
-      ctx.save();
-      ctx.globalAlpha = 0.72;
-      drawUnitSprite(ctx, { ...def, drawSize: size }, s0.x, s0.y, dir.x, dir.y, {
-        moving: false,
-        id: 0,
-        now: 0,
-        facing: this.fieldFacing,
-      });
-      ctx.restore();
+  /** Selected engineers' centre. The wall faces away from the men who will build it. */
+  private engineerCentre(): { x: number; y: number } | null {
+    let sx = 0;
+    let sy = 0;
+    let n = 0;
+    for (const e of this.curr.entities) {
+      if (!this.selected.has(e.id) || e.ownerId !== this.curr.youPlayerId || e.type !== "engineer" || e.wreck) continue;
+      sx += e.x;
+      sy += e.y;
+      n++;
     }
-    const s = this.toScreen(anchor.x, anchor.y);
+    return n > 0 ? { x: sx / n, y: sy / n } : null;
+  }
+
+  /** Point the piece at the cursor, or the middle of a drag, as seen from the engineers. */
+  private aimField(): void {
+    const w = this.screenToWorld(this.mouseX, this.mouseY);
+    const drag = this.fieldDrag;
+    const target = drag ? { x: (drag.x + w.x) / 2, y: (drag.y + w.y) / 2 } : w;
+    const from = this.engineerCentre();
+    if (!from) return;
+    const dx = target.x - from.x;
+    const dy = target.y - from.y;
+    if (dx * dx + dy * dy < this.ts() * this.ts()) return;
+    this.fieldFacing = Math.atan2(dy, dx);
+  }
+
+  private fieldPieces(type: FieldStructureType, shown: boolean): { x: number; y: number; facing: number }[] {
+    const w = this.screenToWorld(this.mouseX, this.mouseY);
+    const face = this.fieldFacing + this.fieldTurn;
+    const drag = this.fieldDrag;
+    if (!drag) return [{ x: w.x, y: w.y, facing: shown ? this.fieldShown : face }];
+    const pieces = fieldLine(type, drag.x, drag.y, w.x, w.y, face);
+    if (shown && pieces.length === 1 && pieces[0]) pieces[0].facing = this.fieldShown;
+    return pieces;
+  }
+
+  private drawFieldGhost(type: FieldStructureType): void {
+    const now = performance.now();
+    const dt = Math.min(0.1, Math.max(0, (now - this.fieldShownAt) / 1000));
+    this.fieldShownAt = now;
+    let d = this.fieldFacing + this.fieldTurn - this.fieldShown;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    this.fieldShown += d * Math.min(1, dt * 16);
+    const pieces = this.fieldPieces(type, true);
+    const cost = catalog(type).cost * pieces.length;
+    const afford = this.curr.you.scrap >= cost;
+    for (const p of pieces) {
+      const ok = afford && previewField(this.curr, type, p.x, p.y, p.facing);
+      if (type === "teeth") {
+        this.drawTeeth(p.x, p.y, p.facing, toothSeedAt(p.x, p.y), ok ? 0.72 : 0.4, 0);
+        if (!ok) this.strokeFieldFoot(type, p, "#ff5a4a");
+      } else {
+        this.drawSandbagWall(p.x, p.y, p.facing, { alpha: 0.78, seed: 7, bad: !ok });
+      }
+    }
+    if (pieces.length < 2) return;
+    const last = pieces[pieces.length - 1]!;
+    const s = this.toScreen(last.x, last.y);
+    const ctx = this.ctx;
     ctx.save();
-    const tip = this.toScreen(
-      anchor.x + Math.cos(this.fieldFacing) * (span?.length ?? 24) * 0.55,
-      anchor.y + Math.sin(this.fieldFacing) * (span?.length ?? 24) * 0.55,
-    );
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = "#e8b84a";
-    ctx.fillStyle = "#e8b84a";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(s.x, s.y);
-    ctx.lineTo(tip.x, tip.y);
-    ctx.stroke();
     ctx.font = "11px 'Share Tech Mono', monospace";
     ctx.textAlign = "left";
-    ctx.textBaseline = "top";
+    ctx.textBaseline = "middle";
     ctx.lineWidth = 3;
     ctx.strokeStyle = "#140e0a";
-    ctx.strokeText(this.fieldDrag?.moved ? "FACE" : "PLACE", tip.x + 8, tip.y + 4);
-    ctx.fillText(this.fieldDrag?.moved ? "FACE" : "PLACE", tip.x + 8, tip.y + 4);
+    ctx.fillStyle = afford ? "#e8b84a" : "#ff5a4a";
+    const label = `${pieces.length} × ${catalog(type).cost} = ${cost}`;
+    ctx.strokeText(label, s.x + 14, s.y - 14);
+    ctx.fillText(label, s.x + 14, s.y - 14);
+    ctx.restore();
+  }
+
+  private strokeFieldFoot(type: FieldStructureType, p: { x: number; y: number; facing: number }, color: string): void {
+    const span = fieldSpan(type);
+    if (!span) return;
+    const fx = Math.cos(p.facing);
+    const fy = Math.sin(p.facing);
+    const hl = span.length / 2;
+    const ht = span.thick / 2;
+    const elev = this.elevAt(p.x, p.y);
+    const pts = [
+      [-hl, -ht],
+      [hl, -ht],
+      [hl, ht],
+      [-hl, ht],
+    ].map(([a, c]) => this.toScreen(p.x - fy * a! + fx * c!, p.y + fx * a! + fy * c!, elev));
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    pts.forEach((q, i) => (i === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y)));
+    ctx.closePath();
+    ctx.stroke();
     ctx.restore();
   }
 

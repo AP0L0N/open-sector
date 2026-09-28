@@ -1,7 +1,35 @@
-import { BUILD_RADIUS, catalog, type BuildingType } from "../catalog.js";
-import { TILE_BLOCKED, TILE_TREE, getMap } from "../maps.js";
+import { BUILD_RADIUS, catalog, type BuildingType, type FieldStructureType } from "../catalog.js";
+import { TILE_BLOCKED, TILE_FENCE, TILE_TREE, TILE_WATER, getMap } from "../maps.js";
 import type { MatchSnapshot } from "../protocol.js";
+import { fieldTilesOn, overlapsFieldIn } from "./field.js";
 import { chebyshev, footprint } from "./geo.js";
+
+/** Snapshot-side twin of `fieldSiteClear`: ground, scrap, buildings, and other field structures. */
+export function previewField(
+  snap: MatchSnapshot,
+  type: FieldStructureType,
+  x: number,
+  y: number,
+  facing: number,
+): boolean {
+  const map = getMap(snap.mapId);
+  if (!map) return false;
+  const tiles = fieldTilesOn(map, type, x, y, facing, 0);
+  if (tiles.length === 0) return false;
+  const cleared = new Set((snap.clearedTrees ?? []).map((c) => c.y * map.width + c.x));
+  for (const t of tiles) {
+    const i = t.y * map.width + t.x;
+    const kind = map.tiles[i] ?? TILE_BLOCKED;
+    if (kind === TILE_BLOCKED || kind === TILE_WATER || kind === TILE_FENCE) return false;
+    if (kind === TILE_TREE && !cleared.has(i)) return false;
+    if (snap.scrap.some((s) => s.x === t.x && s.y === t.y && s.yield > 0)) return false;
+    for (const e of snap.entities) {
+      if (e.kind !== "building" || e.hp <= 0) continue;
+      if (t.x >= e.tileX && t.x < e.tileX + e.tileW && t.y >= e.tileY && t.y < e.tileY + e.tileH) return false;
+    }
+  }
+  return !overlapsFieldIn(snap.entities, type, x, y, facing);
+}
 
 export function previewPlace(snap: MatchSnapshot, type: BuildingType, tx: number, ty: number): boolean {
   const map = getMap(snap.mapId);

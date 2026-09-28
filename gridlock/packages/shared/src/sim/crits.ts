@@ -30,12 +30,11 @@ export function moveSpeedMul(e: Entity, swimming = false): number {
 }
 
 /**
- * Hull yaw. Broken tracks and a dead engine stop the vehicle from rolling
- * (`moveSpeedMul`). They still turn the hull at full rate so a casemate can aim.
- * Turret traverse is separate and is not slowed by either crit.
+ * Hull yaw. A dead engine locks the hull; only a turret can still traverse.
+ * Broken tracks stop the roll (`moveSpeedMul`) but still pivot the hull so a casemate can aim.
  */
-export function hullTurnMul(_e: Entity): number {
-  return 1;
+export function hullTurnMul(e: Entity): number {
+  return hasCrit(e, "engine") ? 0 : 1;
 }
 
 export function immobilized(e: { crits?: readonly Crit[] }): boolean {

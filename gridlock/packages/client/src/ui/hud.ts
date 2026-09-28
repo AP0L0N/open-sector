@@ -1104,14 +1104,14 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       slot: "field-sandbags",
       act: "field-sandbags",
       label: "Sandbags",
-      title: "Build sandbags. Drag to face them, click to place. R steps the facing.",
+      title: "Build sandbags. Click to place one facing the cursor, or drag from start to end to lay a wall. R turns it, or flips a wall.",
       on: view?.fieldPlace === "sandbags",
     });
     out.push({
       slot: "field-teeth",
       act: "field-teeth",
       label: "Obstacle",
-      title: "Build four concrete pyramids. They scatter along the line. Drag to face them, click to place.",
+      title: "Build four concrete pyramids. Click to place one set facing the cursor, or drag from start to end to lay a line.",
       on: view?.fieldPlace === "teeth",
     });
   }

@@ -5,7 +5,16 @@ import { catalog, fieldSpan, TICK_DT, wreckScrapOf } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { applyCommand } from "./commands.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
-import { fieldSiteClear, restampForts, sandbagCoverBonus, toothOffsets, toothSeedAt } from "./field.js";
+import {
+  FIELD_LINE_MAX,
+  HULL_FIX_SECONDS,
+  fieldLine,
+  fieldSiteClear,
+  restampForts,
+  sandbagCoverBonus,
+  toothOffsets,
+  toothSeedAt,
+} from "./field.js";
 import { toWreck } from "./wreck.js";
 import { makeEntity, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
@@ -93,6 +102,78 @@ describe("engineer field works", () => {
     assert.equal(bag!.facing, facing);
     assert.equal(bag!.ruined, false);
     assert.equal(eng.state, "idle");
+  });
+
+  it("lays pieces end to end along a drag, on the side nearest the hint", () => {
+    const span = fieldSpan("sandbags")!;
+    const one = fieldLine("sandbags", 100, 100, 110, 100, 1);
+    assert.deepEqual(one, [{ x: 100, y: 100, facing: 1 }]);
+    const line = fieldLine("sandbags", 100, 100, 100 + span.length * 3, 100, Math.PI / 2 + 0.3);
+    assert.equal(line.length, 3);
+    for (let i = 0; i < line.length; i++) {
+      assert.ok(Math.abs(line[i]!.x - (100 + span.length * (i + 0.5))) < 1e-6);
+      assert.ok(Math.abs(line[i]!.y - 100) < 1e-6);
+      assert.ok(Math.abs(Math.sin(line[i]!.facing) - 1) < 1e-6, `facing=${line[i]!.facing}`);
+    }
+    const flipped = fieldLine("sandbags", 100, 100, 100 + span.length * 3, 100, -Math.PI / 2);
+    assert.ok(Math.abs(Math.sin(flipped[0]!.facing) + 1) < 1e-6);
+    const long = fieldLine("sandbags", 0, 0, span.length * 100, 0, 0);
+    assert.equal(long.length, FIELD_LINE_MAX);
+  });
+
+  it("builds a dragged wall piece by piece and splits it between engineers", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 26, 26, 30, 16);
+    const ts = state.tileSize;
+    const span = fieldSpan("sandbags")!;
+    const x = tileCenter(30, ts);
+    const y = tileCenter(34, ts);
+    const x2 = x + span.length * 4;
+    const a = makeEntity(state, "engineer", "A", x, y - 30);
+    const b = makeEntity(state, "engineer", "A", x2, y - 30);
+    const scrap0 = state.players.get("A")!.scrap;
+    const res = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [a.id, b.id],
+      structure: "sandbags",
+      x,
+      y,
+      facing: Math.PI / 2,
+      x2,
+      y2: y,
+    });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    assert.equal(a.fieldQueue?.length, 1);
+    assert.equal(b.fieldQueue?.length, 1);
+    ticks(state, 400);
+    const bags = [...state.entities.values()].filter((e) => e.type === "sandbags");
+    assert.equal(bags.length, 4);
+    assert.equal(state.players.get("A")!.scrap, scrap0 - catalog("sandbags").cost * 4);
+    assert.equal(a.state, "idle");
+    assert.equal(b.state, "idle");
+  });
+
+  it("drops the rest of a wall when the engineer gets a new order", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 26, 26, 30, 16);
+    const ts = state.tileSize;
+    const span = fieldSpan("sandbags")!;
+    const x = tileCenter(30, ts);
+    const y = tileCenter(34, ts);
+    const eng = makeEntity(state, "engineer", "A", x, y - 30);
+    applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [eng.id],
+      structure: "sandbags",
+      x,
+      y,
+      facing: Math.PI / 2,
+      x2: x + span.length * 3,
+      y2: y,
+    });
+    assert.equal(eng.fieldQueue?.length, 2);
+    applyCommand(state, "A", { type: "cmd.move", ids: [eng.id], x: x - 40, y: y - 40 });
+    assert.equal(eng.fieldQueue, undefined);
   });
 
   it("gives crouched and crawling infantry extra health behind sandbags", () => {
@@ -264,6 +345,40 @@ describe("engineer field works", () => {
     assert.equal(fix.ok, true, fix.ok ? "" : fix.message);
     ticks(state, 40);
     assert.ok(house.hp > house.hpMax - 20, `building hp ${house.hp}`);
+  });
+
+  it("clears broken tracks and a dead engine when the repair finishes", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 30, 28, 16, 12);
+    const ts = state.tileSize;
+    const x = tileCenter(36, ts);
+    const y = tileCenter(32, ts);
+    const eng = makeEntity(state, "engineer", "A", x, y);
+    const tank = makeEntity(state, "warden", "A", x + 28, y);
+    tank.hp = tank.hpMax - 10;
+    tank.crits = ["tracks", "engine"];
+    applyCommand(state, "A", { type: "cmd.repair", ids: [eng.id], targetId: tank.id });
+    ticks(state, 60);
+    assert.equal(tank.hp, tank.hpMax);
+    assert.deepEqual(tank.crits, []);
+  });
+
+  it("fixes the engine on a tank that has no hit points to restore", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 30, 28, 16, 12);
+    const ts = state.tileSize;
+    const x = tileCenter(36, ts);
+    const y = tileCenter(32, ts);
+    const eng = makeEntity(state, "engineer", "A", x, y);
+    const tank = makeEntity(state, "warden", "A", x + 28, y);
+    tank.crits = ["engine"];
+    const res = applyCommand(state, "A", { type: "cmd.repair", ids: [eng.id], targetId: tank.id });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    ticks(state, 5);
+    assert.deepEqual(tank.crits, ["engine"]);
+    ticks(state, Math.ceil(HULL_FIX_SECONDS / TICK_DT) + 20);
+    assert.deepEqual(tank.crits, []);
+    assert.equal(eng.state, "idle");
   });
 
   it("scraps an armored wreck for scrap and removes the hull", () => {

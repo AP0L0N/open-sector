@@ -142,28 +142,44 @@ describe("crit effects", () => {
     assert.equal(hullTurnMul(tank), 1);
   });
 
-  it("yaws a hull with broken tracks or a dead engine and does not roll", () => {
-    for (const crit of ["tracks", "engine"] as const) {
-      const { state, a } = twoPlayerMatch();
-      const tank = makeEntity(state, "warden", a, 100, 100);
-      tank.facing = 0;
-      tank.turretFacing = 0;
-      addCrit(tank, crit);
-      tank.waypoints = [{ x: 100, y: 400 }];
-      for (let i = 0; i < 8; i++) tickMovement(state, TICK_DT);
-      assert.ok(tank.facing > 0.4, `${crit} facing=${tank.facing}`);
-      assert.equal(tank.x, 100);
-      assert.equal(tank.y, 100);
-      assert.equal(hullTurnMul(tank), 1);
-      assert.equal(moveSpeedMul(tank), 0);
-    }
+  it("yaws a hull with broken tracks and does not roll", () => {
+    const { state, a } = twoPlayerMatch();
+    const tank = makeEntity(state, "warden", a, 100, 100);
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    addCrit(tank, "tracks");
+    tank.waypoints = [{ x: 100, y: 400 }];
+    for (let i = 0; i < 8; i++) tickMovement(state, TICK_DT);
+    assert.ok(tank.facing > 0.4, `facing=${tank.facing}`);
+    assert.equal(tank.x, 100);
+    assert.equal(tank.y, 100);
+    assert.equal(hullTurnMul(tank), 1);
+    assert.equal(moveSpeedMul(tank), 0);
+  });
+
+  it("locks the hull when the engine dies and still traverses the turret", () => {
+    const { state, a } = twoPlayerMatch();
+    const tank = makeEntity(state, "warden", a, 100, 100);
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    addCrit(tank, "engine");
+    tank.waypoints = [{ x: 100, y: 400 }];
+    for (let i = 0; i < 8; i++) tickMovement(state, TICK_DT);
+    assert.equal(tank.facing, 0);
+    assert.equal(tank.x, 100);
+    assert.equal(hullTurnMul(tank), 0);
+    tank.waypoints = [];
+    tank.order = { kind: "rotate", x: 100, y: 400 };
+    for (let i = 0; i < 20; i++) tickMovement(state, TICK_DT);
+    assert.equal(tank.facing, 0);
+    assert.ok(tank.turretFacing > 0.4, `turret=${tank.turretFacing}`);
   });
 
   it("leaves the gun alone when the engine dies", () => {
     const { state, a } = twoPlayerMatch();
     const tank = makeEntity(state, "warden", a, 100, 100);
     addCrit(tank, "engine");
-    assert.equal(hullTurnMul(tank), 1);
+    assert.equal(hullTurnMul(tank), 0);
     assert.equal(moveSpeedMul(tank), 0);
     assert.equal(fireStats(tank).damage, catalog("warden").damage);
   });
