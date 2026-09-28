@@ -18,6 +18,7 @@ import {
 import { toWreck } from "./wreck.js";
 import { makeEntity, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
+import { snapshotFor } from "./snapshot.js";
 import { astar } from "./path.js";
 import type { MatchState, Projectile } from "./types.js";
 
@@ -102,6 +103,29 @@ describe("engineer field works", () => {
     assert.equal(bag!.facing, facing);
     assert.equal(bag!.ruined, false);
     assert.equal(eng.state, "idle");
+  });
+
+  it("shows the site in the snapshot until the sandbags stand, and hides the walk from the enemy", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 30, 28, 16, 12);
+    const ts = state.tileSize;
+    const x = tileCenter(36, ts);
+    const y = tileCenter(32, ts);
+    const eng = makeEntity(state, "engineer", "A", x - 30, y);
+    const res = applyCommand(state, "A", { type: "cmd.field", ids: [eng.id], structure: "sandbags", x, y, facing: 0 });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    const view = (who: string) => snapshotFor(state, who).entities.find((e) => e.id === eng.id);
+    assert.deepEqual(view("A")?.fieldSites, [{ structure: "sandbags", x, y, facing: 0, progress: undefined }]);
+    assert.equal(view("B")?.fieldSites, undefined);
+    let dug = false;
+    for (let i = 0; i < 80 && ![...state.entities.values()].some((e) => e.type === "sandbags"); i++) {
+      step(state, TICK_DT);
+      const p = view("A")?.fieldSites?.[0]?.progress;
+      if (p != null && p > 0) dug = true;
+    }
+    assert.ok(dug, "progress reported while digging");
+    assert.ok([...state.entities.values()].some((e) => e.type === "sandbags"));
+    assert.equal(view("A")?.fieldSites, undefined);
   });
 
   it("lays pieces end to end along a drag, on the side nearest the hint", () => {
