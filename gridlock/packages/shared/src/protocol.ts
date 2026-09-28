@@ -12,7 +12,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 36;
+export const PROTOCOL_VERSION = 37;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -100,6 +100,8 @@ export interface EntityView {
   trainProgress?: number;
   /** Allied production line. Omitted for enemies and empty queues. */
   trainQueue?: TrainJobView[];
+  /** Own producer rally point, world pixels. Omitted when unset or not yours. */
+  rally?: { x: number; y: number };
   cargo?: number;
   /** Mauler scrap-cart hit points. 0 means the cart is off. Omitted for other types. */
   cart?: number;
@@ -365,6 +367,8 @@ export type ClientMessage =
   | { type: "cmd.train"; unit: TrainType }
   | { type: "cmd.pause"; what: "train" | "structure"; jobId?: number; unit?: TrainType; paused?: boolean }
   | { type: "cmd.cancel"; what: "structure" | "train"; buildingId?: number; jobId?: number; unit?: TrainType }
+  /** Rally point for owned producers in `ids`. A point on a building's own footprint clears its rally. */
+  | { type: "cmd.rally"; ids: number[]; x: number; y: number }
   | { type: "cmd.sell"; id: number }
   | { type: "cmd.deploy"; id: number }
   | { type: "cmd.garrison"; ids: number[]; buildingId: number }

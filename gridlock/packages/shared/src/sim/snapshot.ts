@@ -77,6 +77,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
               paused: j.paused,
             }))
           : undefined,
+      rally: e.rally && e.ownerId === youPlayerId ? { x: e.rally.x, y: e.rally.y } : undefined,
       cargo: e.type === "hauler" ? e.cargo : undefined,
       cart: e.type === "hauler" ? e.cartHp : undefined,
       smokeCharges: friendly && e.type === "hauler" && !e.wreck ? e.smokeCharges : undefined,

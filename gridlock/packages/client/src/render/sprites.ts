@@ -651,7 +651,7 @@ export const WALKER_SPRITE: UnitSpriteDef = {
   frames: 8,
   frameSize: 128,
   fps: 10,
-  drawSize: 24,
+  drawSize: Math.round(24 * 1.2),
   contactY: 0.9,
   facingSpace: "world",
 };

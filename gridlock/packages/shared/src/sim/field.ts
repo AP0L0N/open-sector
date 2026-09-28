@@ -544,6 +544,7 @@ function applyCoverHp(state: MatchState): void {
 export function tickField(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (e.hp <= 0 || e.kind !== "unit") continue;
+    if (e.fieldQueue && e.order?.kind !== "build") e.fieldQueue = undefined;
     if (e.order?.kind === "build") tickBuild(state, e, dt);
     else if (e.order?.kind === "repair") tickRepair(state, e, dt);
   }

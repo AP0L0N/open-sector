@@ -103,6 +103,8 @@ export interface Entity {
   /** Mauler smoke grenades left. 0 on other types. */
   smokeCharges: number;
   queue: TrainJob[];
+  /** Producer rally point. New units walk here on spawn. Unset means stay at the door. */
+  rally?: Vec;
   attackTarget: number | null;
   /** True after an armored hull dies; blocks until the wreck is destroyed. */
   wreck: boolean;

@@ -121,6 +121,7 @@ function completeCapture(state: MatchState, building: Entity, ownerId: string, c
   building.captureOwnerId = "";
   building.captureProgress = 0;
   building.queue = [];
+  delete building.rally;
   if (building.garrison.length) spillGarrison(state, building, { damage: false });
   state.visionTick = -1;
   const p = state.players.get(ownerId);

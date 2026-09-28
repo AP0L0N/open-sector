@@ -48,6 +48,19 @@ function act(opts: {
   });
 }
 
+describe("engineer repair cursor", () => {
+  const eng = unit({ id: 50, type: "engineer" });
+
+  it("offers repair on a full-health tank with a dead engine or broken tracks", () => {
+    const whole = unit({ id: 51, type: "warden", hp: 100, hpMax: 100 });
+    assert.equal(act({ selected: [eng], hit: whole }), null);
+    for (const crit of ["engine", "tracks"] as const) {
+      const hurt = unit({ id: 52, type: "warden", hp: 100, hpMax: 100, crits: [crit] });
+      assert.equal(act({ selected: [eng], hit: hurt }), "repair");
+    }
+  });
+});
+
 describe("resolveHoverAction", () => {
   const trooper = unit({ id: 1, type: "rifleman" });
   const hauler = unit({ id: 2, type: "hauler" });

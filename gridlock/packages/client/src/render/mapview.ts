@@ -167,7 +167,14 @@ import { drawSandbags } from "./sandbags.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
 import { atInfantrySheet, gunnerSheet, heldFrame, medicSheet, mortarmanSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
-import { compareDrawOrder, CORPSE_DRAW_LAYER, HOLE_DRAW_LAYER } from "./corpse-depth.js";
+import {
+  axisFootprint,
+  compareDrawOrder,
+  CORPSE_DRAW_LAYER,
+  type DrawKey,
+  HOLE_DRAW_LAYER,
+  STANDING_DRAW_LAYER,
+} from "./corpse-depth.js";
 import { drawTreeFall, TREE_FALL_MS } from "./tree-fall.js";
 import { lerpHullPose } from "./hull-lerp.js";
 import { canGuardUnit, resolveHoverAction, type HoverAction } from "./hover-action.js";
@@ -253,8 +260,10 @@ const HP_FILL_OK_VIVID = "#8fe86a";
 const HP_FILL_MID_VIVID = "#f0c44a";
 const HP_FILL_LOW_VIVID = "#f25a48";
 const HP_FILL_HOSTILE_VIVID = "#ff5a4a";
-/** Sprite alpha when a building volume sits in front of the unit. */
+/** Sprite alpha when a building volume sits in front of a body. */
 const OCCLUDED_UNIT_ALPHA = 0.46;
+
+type DrawItem = DrawKey & { run: () => void };
 /** Closes the 1px raster crack between diamonds. The veil itself is one fill, so this overlap does not stack. */
 const FOG_SEAM_PX = 2;
 
@@ -333,6 +342,10 @@ function ownerAllied(match: MatchSnapshot, ownerId: string | undefined): boolean
   const team = match.players.find((p) => p.playerId === you)?.team ?? 0;
   if (team === 0) return false;
   return match.players.find((p) => p.playerId === ownerId)?.team === team;
+}
+
+function isProducerView(e: EntityView): boolean {
+  return e.kind === "building" && (e.type === "muster" || e.type === "smelter" || e.type === "armory");
 }
 
 function hpBarFill(ratio: number, hostile: boolean, vivid = false): string {
@@ -1789,29 +1802,35 @@ export class MapView {
   }
 
   /**
-   * Buildings paint under units so a tank never slips beneath a corner.
-   * Intact sandbags paint above units so the wall covers the soldiers behind it.
+   * Buildings and field walls sort by their ground footprint, so a unit on
+   * the far side of a wall paints under it and a unit on the near side over it.
    */
-  private drawLayer(e: EntityView): number {
-    if (e.type === "sandbags" && !e.ruined) return 2;
-    return e.kind === "building" ? 0 : 1;
-  }
-
-  private depthOf(e: EntityView): number {
+  private drawKey(e: EntityView): DrawKey {
     const ts = this.ts();
-    if (isFieldStructure(e.type)) return isoDepth(e.x, e.y);
-    if (e.kind === "building") return isoDepth((e.tileX + e.tileW) * ts, (e.tileY + e.tileH) * ts);
+    const span = fieldSpan(e.type);
+    if (span) {
+      const tx = -Math.sin(e.facing);
+      const ty = Math.cos(e.facing);
+      return {
+        layer: STANDING_DRAW_LAYER,
+        z: isoDepth(e.x, e.y),
+        foot: { cx: e.x, cy: e.y, ax: tx, ay: ty, halfAlong: span.length / 2, halfAcross: span.thick / 2 },
+      };
+    }
+    if (e.kind === "building") {
+      const foot = axisFootprint(e.tileX * ts, e.tileY * ts, e.tileW * ts, e.tileH * ts);
+      return { layer: STANDING_DRAW_LAYER, z: isoDepth(foot.cx, foot.cy), foot };
+    }
     const p = this.lerpEnt(e);
-    return isoDepth(p.x, p.y);
+    return { layer: STANDING_DRAW_LAYER, z: isoDepth(p.x, p.y), at: { x: p.x, y: p.y } };
   }
 
   private hit(px: number, py: number): EntityView | null {
     const ts = this.ts();
     const ix = px + this.camX;
     const iy = py + this.camY;
-    const list = [...this.curr.entities].sort(
-      (a, b) => this.drawLayer(b) - this.drawLayer(a) || this.depthOf(b) - this.depthOf(a),
-    );
+    const keys = new Map(this.curr.entities.map((e) => [e, this.drawKey(e)]));
+    const list = [...this.curr.entities].sort((a, b) => compareDrawOrder(keys.get(b)!, keys.get(a)!));
     for (const e of list) {
       if (isFieldStructure(e.type)) {
         const p = this.toScreen(e.x, e.y);
@@ -1926,6 +1945,13 @@ export class MapView {
     const you = this.curr.youPlayerId;
     const own = selected.filter((e) => e.ownerId === you);
     if (own.length === 0 && !selected.some((e) => e.garrison?.ownerId === you)) return;
+    const producers = own.filter(isProducerView);
+    if (producers.length > 0 && !own.some((e) => e.kind === "unit")) {
+      const w = this.screenToWorld(px, py);
+      this.pulseMoveClick(w.x, w.y);
+      this.onCommand({ type: "cmd.rally", ids: producers.map((e) => e.id), x: w.x, y: w.y });
+      return;
+    }
     const hit = this.hit(px, py);
     const tile = this.screenToTile(px, py);
     const scrap = this.curr.scrap.some((s) => s.x === tile.x && s.y === tile.y && s.yield > 0);
@@ -2103,12 +2129,11 @@ export class MapView {
       ...this.curr.entities,
       ...[...this.ghosts.values()].filter((g) => !liveIds.has(g.id)),
     ];
-    const items: { layer: number; z: number; run: () => void }[] = [];
+    const items: DrawItem[] = [];
     for (const e of drawList) {
       const ghost = !liveIds.has(e.id);
       items.push({
-        layer: this.drawLayer(e),
-        z: this.depthOf(e),
+        ...this.drawKey(e),
         run: () => {
           if (isFieldStructure(e.type)) this.drawField(e, ghost);
           else if (e.kind === "building") this.drawBuilding(e, ghost);
@@ -2185,6 +2210,68 @@ export class MapView {
     this.drawForceCursor();
     this.drawRotateCursor();
     this.drawGuardOverlay();
+    this.drawRallyOverlay();
+  }
+
+  private selectedProducers(): EntityView[] {
+    const you = this.curr.youPlayerId;
+    return this.curr.entities.filter((e) => this.selected.has(e.id) && e.ownerId === you && e.hp > 0 && isProducerView(e));
+  }
+
+  /** Line and flag from each selected producer to its rally point, plus a cursor label while only producers are selected. */
+  private drawRallyOverlay(): void {
+    const producers = this.selectedProducers();
+    if (producers.length === 0) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.lineCap = "round";
+    for (const b of producers) {
+      if (!b.rally) continue;
+      const from = this.toScreen(b.x, b.y);
+      const to = this.toScreen(b.rally.x, b.rally.y);
+      ctx.strokeStyle = "rgba(232, 184, 74, 0.7)";
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([5, 4]);
+      ctx.beginPath();
+      ctx.moveTo(from.x, from.y);
+      ctx.lineTo(to.x, to.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.strokeStyle = "#140e0a";
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(to.x, to.y);
+      ctx.lineTo(to.x, to.y - 18);
+      ctx.stroke();
+      ctx.strokeStyle = "#e8b84a";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      ctx.fillStyle = "#e8b84a";
+      ctx.beginPath();
+      ctx.moveTo(to.x, to.y - 18);
+      ctx.lineTo(to.x + 11, to.y - 14);
+      ctx.lineTo(to.x, to.y - 10);
+      ctx.closePath();
+      ctx.fill();
+      ctx.beginPath();
+      ctx.ellipse(to.x, to.y, 5, 2.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    const onlyBuildings = ![...this.selected].some((id) => {
+      const e = this.curr.entities.find((x) => x.id === id);
+      return !!e && e.kind === "unit" && e.ownerId === this.curr.youPlayerId;
+    });
+    if (onlyBuildings && !this.overControl && !this.hoverSpecial && this.mouseX >= 0 && this.mouseY >= 0) {
+      ctx.font = "11px 'Share Tech Mono', monospace";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#140e0a";
+      ctx.strokeText("RALLY", this.mouseX + 14, this.mouseY + 8);
+      ctx.fillStyle = "#e8b84a";
+      ctx.fillText("RALLY", this.mouseX + 14, this.mouseY + 8);
+    }
+    ctx.restore();
   }
 
   private drawForceCursor(): void {
@@ -2491,7 +2578,7 @@ export class MapView {
   }
 
   private pushGroundShadow(
-    items: { layer: number; z: number; run: () => void }[],
+    items: DrawItem[],
     foot: { cx: number; cy: number; points: { x: number; y: number }[] },
   ): void {
     const { w, h } = this.viewSize();
@@ -2516,7 +2603,7 @@ export class MapView {
     });
   }
 
-  private collectUnitShadows(items: { layer: number; z: number; run: () => void }[]): void {
+  private collectUnitShadows(items: DrawItem[]): void {
     for (const e of this.curr.entities) {
       if (
         !unitCastsShadow({
@@ -2544,7 +2631,7 @@ export class MapView {
     }
   }
 
-  private collectBuildingShadows(items: { layer: number; z: number; run: () => void }[]): void {
+  private collectBuildingShadows(items: DrawItem[]): void {
     const ts = this.ts();
     for (const e of this.curr.entities) {
       if (e.kind !== "building") continue;
@@ -2562,7 +2649,7 @@ export class MapView {
     }
   }
 
-  private collectTrackKicks(items: { layer: number; z: number; run: () => void }[]): void {
+  private collectTrackKicks(items: DrawItem[]): void {
     const now = performance.now();
     const map = this.map();
     const ts = map.tileSize;
@@ -2646,7 +2733,7 @@ export class MapView {
     this.trackKicks = keep;
   }
 
-  private collectMuzzleSmoke(items: { layer: number; z: number; run: () => void }[]): void {
+  private collectMuzzleSmoke(items: DrawItem[]): void {
     const now = performance.now();
     const live = new Set(this.curr.entities.map((e) => e.id));
     for (const id of [...this.gunRecoil.keys()]) {
@@ -2682,7 +2769,7 @@ export class MapView {
     this.muzzleSmokes = keep;
   }
 
-  private collectTrees(items: { layer: number; z: number; run: () => void }[]): void {
+  private collectTrees(items: DrawItem[]): void {
     const map = this.map();
     const ts = map.tileSize;
     const explored = this.explored;
@@ -2707,8 +2794,9 @@ export class MapView {
       const dim = !this.lit(tx, ty);
       this.pushGroundShadow(items, treeShadowFootprint(wx, wy, drawH));
       items.push({
-        layer: 0,
+        layer: STANDING_DRAW_LAYER,
         z: isoDepth(wx, wy),
+        at: { x: wx, y: wy },
         run: () => {
           const ctx = this.ctx;
           ctx.save();
@@ -2851,49 +2939,6 @@ export class MapView {
     this.occBuildings = out;
   }
 
-  private unitOccluded(e: EntityView): boolean {
-    const p = this.lerpEnt(e);
-    const unitSpr = this.spriteOf(e);
-    const visualLift = unitSpr
-      ? unitSpr.drawSize * unitSpr.contactY * 0.62
-      : this.extrude(e.type) * UNIT_VISUAL_SCALE * 0.7;
-    const ts = this.ts();
-    const unitLift = isoLift(this.elevAt(p.x, p.y));
-    const s = this.toScreen(p.x, p.y);
-    const samples: { x: number; y: number }[] = unitSpr
-      ? [
-          { x: s.x, y: s.y - unitSpr.drawSize * unitSpr.contactY * 0.88 },
-          { x: s.x, y: s.y - unitSpr.drawSize * unitSpr.contactY * 0.5 },
-          { x: s.x - unitSpr.drawSize * 0.2, y: s.y - unitSpr.drawSize * unitSpr.contactY * 0.62 },
-          { x: s.x + unitSpr.drawSize * 0.2, y: s.y - unitSpr.drawSize * unitSpr.contactY * 0.62 },
-        ]
-      : [
-          { x: s.x, y: s.y - this.extrude(e.type) * UNIT_VISUAL_SCALE },
-          { x: s.x, y: s.y - this.extrude(e.type) * UNIT_VISUAL_SCALE * 0.45 },
-        ];
-    const unitRect = unitSpr
-      ? {
-          x: s.x - unitSpr.drawSize / 2,
-          y: s.y - unitSpr.drawSize * unitSpr.contactY,
-          w: unitSpr.drawSize,
-          h: unitSpr.drawSize,
-        }
-      : undefined;
-    for (const b of this.occBuildings) {
-      if (p.x >= b.x + b.w || p.y >= b.y + b.h) continue;
-      if (b.spr) {
-        if (unitHitsBuildingSprite(b.spr, b.southX, b.southY, b.footprintW, samples, unitRect)) {
-          return true;
-        }
-        continue;
-      }
-      if (unitBehindIsoBox(p.x, p.y, visualLift, b.x, b.y, b.w, b.h, b.ez, ts, b.lift, unitLift)) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   private takeMoveClicks(): { x: number; y: number; t: number }[] {
     const now = performance.now();
     const keep: MapView["moveClicks"] = [];
@@ -3025,9 +3070,7 @@ export class MapView {
     const ez = this.extrude(e.type) * scale;
     const hex = e.wreck ? "#6e6c66" : this.ownerColor(e);
     const s = this.toScreen(p.x, p.y);
-    const occluded = this.unitOccluded(e);
     ctx.save();
-    if (occluded) ctx.globalAlpha = OCCLUDED_UNIT_ALPHA;
     const top = this.drawIsoBox(p.x - r, p.y - r, r * 2, r * 2, ez, hex, {
       stroke: "#111",
       strokeW: 1.4,
@@ -3074,8 +3117,6 @@ export class MapView {
     const hex = this.ownerColor(e);
     const dir = facingToIso(p.facing, this.ts());
     const turretDir = facingToIso(p.turretFacing ?? p.facing, this.ts());
-    const occluded = this.unitOccluded(e);
-    const fade = occluded ? OCCLUDED_UNIT_ALPHA : 1;
     let hullShiftX = 0;
     let hullShiftY = 0;
     let gunShiftX = 0;
@@ -3107,7 +3148,6 @@ export class MapView {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
     }
     ctx.save();
-    ctx.globalAlpha = fade;
     ctx.save();
     if (e.wreck && !corpse) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
     let stepping = e.state === "move" || !!e.swimming || e.state === "build" || e.state === "repair";
@@ -3139,7 +3179,6 @@ export class MapView {
     if (!drawn) {
       const r = Math.max(4, size * 0.22);
       ctx.save();
-      if (occluded) ctx.globalAlpha = OCCLUDED_UNIT_ALPHA;
       this.drawIsoBox(p.x - r, p.y - r, r * 2, r * 2, size * 0.45, e.wreck ? "#6e6c66" : hex);
       ctx.restore();
       if (e.wreck) this.drawWreckFires(e, s.x, s.y, size, dir.x, dir.y);
@@ -3220,7 +3259,7 @@ export class MapView {
   }
 
   /** Craters on the ground. Blood and the fallen pose sit under every unit. */
-  private collectRemains(items: { layer: number; z: number; run: () => void }[]): void {
+  private collectRemains(items: DrawItem[]): void {
     const map = this.map();
     const ts = map.tileSize;
     const w = map.width;

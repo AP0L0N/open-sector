@@ -110,6 +110,23 @@ describe("supply truck", () => {
     if (!stayed.ok) assert.match(stayed.message, /cannot dismount/i);
   });
 
+  it("stays parked after a soldier boards", () => {
+    const { state, a } = match();
+    clearPad(state, 30, 30, 50, 50);
+    const ts = state.tileSize;
+    const truck = makeEntity(state, "supply", a, tileCenter(40, ts), tileCenter(40, ts));
+    const rifle = makeEntity(state, "rifleman", a, tileCenter(43, ts), tileCenter(40, ts));
+    assert.equal(applyCommand(state, a, { type: "cmd.board", ids: [rifle.id], truckId: truck.id }).ok, true);
+    ticks(state, 20);
+    assert.equal(rifle.garrisonedIn, truck.id);
+    const x = truck.x;
+    const y = truck.y;
+    ticks(state, 60);
+    assert.equal(truck.x, x);
+    assert.equal(truck.y, y);
+    assert.equal(truck.state, "idle");
+  });
+
   it("lets the passenger out while the factory driver stays, and the passenger can shoot a rifle", () => {
     const { state, a, b } = match();
     clearPad(state, 20, 20, 60, 60);
