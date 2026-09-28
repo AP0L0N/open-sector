@@ -129,12 +129,14 @@ export function fieldTilesOn(
   const x1 = Math.min(grid.width - 1, worldToTile(x + reach, ts));
   const y0 = Math.max(0, worldToTile(y - reach, ts));
   const y1 = Math.min(grid.height - 1, worldToTile(y + reach, ts));
+  // A strip at least one tile wide always holds a tile centre, so a thin wall leaves no gap at any angle.
+  const thick = Math.max(span.thick, ts);
   const out: { x: number; y: number }[] = [];
   for (let ty = y0; ty <= y1; ty++) {
     for (let tx = x0; tx <= x1; tx++) {
       const cx = tileCenter(tx, ts);
       const cy = tileCenter(ty, ts);
-      if (!inFieldRect(cx, cy, x, y, facing, span.length + pad * 2, span.thick + pad * 2)) continue;
+      if (!inFieldRect(cx, cy, x, y, facing, span.length + pad * 2, thick + pad * 2)) continue;
       out.push({ x: tx, y: ty });
     }
   }
@@ -280,7 +282,7 @@ function startPiece(state: MatchState, eng: Entity, structure: FieldStructureTyp
 }
 
 /**
- * One piece at (x, y), or a line of pieces toward (x2, y2).
+ * One piece at (x, y), or a sandbag line toward (x2, y2). Dragon's teeth go down one set at a time.
  * Several engineers split a line into runs and each starts at his own end of it.
  */
 export function orderFieldBuild(
@@ -297,7 +299,7 @@ export function orderFieldBuild(
   const crew = engineers.filter((e) => e.type === "engineer" && e.hp > 0 && !e.wreck);
   if (crew.length === 0) return "Select an engineer.";
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(facing)) return "Cannot place there.";
-  const line = x2 != null && y2 != null && Number.isFinite(x2) && Number.isFinite(y2);
+  const line = structure === "sandbags" && x2 != null && y2 != null && Number.isFinite(x2) && Number.isFinite(y2);
   const pieces = (line ? fieldLine(structure, x, y, x2, y2, facing) : [{ x, y, facing }]).filter((p) =>
     pieceBuildable(state, structure, p),
   );

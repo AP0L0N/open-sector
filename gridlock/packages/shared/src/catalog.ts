@@ -673,6 +673,14 @@ export const MEDIC_TOUCH_SLACK = 8;
 export const MEDIC_HEAL_PER_SEC = 3;
 /** Seconds of uninterrupted contact to clear every broken arm and leg. Topping up HP clears them sooner. */
 export const MEDIC_MEND_SECONDS = 8;
+/** Seconds without losing HP before a medic starts patching himself up. */
+export const MEDIC_SELF_HEAL_DELAY = 6;
+/** HP per second a medic restores on himself once the delay has passed. */
+export const MEDIC_SELF_HEAL_PER_SEC = 1;
+/** Seconds without losing HP before a medic sets his own broken arm or leg. */
+export const MEDIC_SELF_MEND_DELAY = 20;
+/** Share of max HP a medic needs before he can set his own limbs. */
+export const MEDIC_SELF_MEND_HP = 0.5;
 
 /** Supply points a truck leaves the Armory with. Shells cost more than bullets. */
 export const SUPPLY_CARGO = 120;
@@ -1218,7 +1226,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "No weapon. Walks to a wounded soldier nearby and closes the wound. A long kneel sets a broken arm or leg. The bag does not run out.",
+    blurb: "No weapon. Walks to a wounded soldier nearby and closes the wound. A long kneel sets a broken arm or leg. The bag does not run out. Left alone a while, he patches himself up, and sets his own limbs once he is half whole.",
   },
   hauler: {
     type: "hauler",
@@ -1490,7 +1498,7 @@ export function isFieldStructure(type: EntityType): type is FieldStructureType {
 
 /** World-pixel length along the wall and thickness across it. Null for other types. */
 export function fieldSpan(type: EntityType): { length: number; thick: number } | null {
-  if (type === "sandbags") return { length: 48, thick: 14 };
+  if (type === "sandbags") return { length: 24, thick: 7 };
   if (type === "teeth") return { length: 56, thick: 20 };
   return null;
 }
@@ -1754,10 +1762,10 @@ export function supplyShortOf(
   return false;
 }
 
-/** Walker arms in use. Missing means both guns. */
+/** Walker arms in use. Missing means one gun. */
 export function walkerGunsOf(e: { type: EntityType; gatlingGuns?: 1 | 2 }): 1 | 2 {
   if (e.type !== "walker") return 1;
-  return e.gatlingGuns === 1 ? 1 : 2;
+  return e.gatlingGuns === 2 ? 2 : 1;
 }
 
 export function leavesWreck(type: EntityType): boolean {

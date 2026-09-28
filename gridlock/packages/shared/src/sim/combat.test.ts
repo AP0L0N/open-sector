@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
+  GAME_SPEED_MAX,
   HANDGUN,
   HEIGHT_BASE,
   HULL_EYE_HEIGHT,
@@ -1742,6 +1743,7 @@ describe("walker gatlings", () => {
     target.holdPosition = true;
     target.cooldown = 99;
     shooter.facing = 0;
+    shooter.gatlingGuns = 2;
     shooter.order = { kind: "attack", targetId: target.id };
     tickCombat(state, TICK_DT);
     const shots = state.projectiles.filter((p) => p.fromId === shooter.id);
@@ -1765,25 +1767,33 @@ describe("walker gatlings", () => {
     const target = makeEntity(state, "rifleman", b, tileCenter(16, ts), tileCenter(12, ts));
     target.holdPosition = true;
     target.cooldown = 99;
-    assert.equal(walker.gatlingGuns, 2);
-    assert.equal(applyCommand(state, b, { type: "cmd.guns", ids: [walker.id], guns: 1 }).ok, false);
-    assert.equal(walker.gatlingGuns, 2);
-
-    assert.equal(applyCommand(state, a, { type: "cmd.guns", ids: [walker.id], guns: 1 }).ok, true);
     assert.equal(walker.gatlingGuns, 1);
+    assert.equal(snapshotFor(state, a).entities.find((e) => e.id === walker.id)?.gatling, undefined);
+    assert.equal(applyCommand(state, b, { type: "cmd.guns", ids: [walker.id], guns: 2 }).ok, false);
+    assert.equal(walker.gatlingGuns, 1);
+
     walker.facing = 0;
     walker.order = { kind: "attack", targetId: target.id };
+    const clip0 = walker.clip;
     tickCombat(state, TICK_DT);
     assert.equal(state.projectiles.filter((p) => p.fromId === walker.id).length, 2);
+    assert.equal(clip0 - walker.clip, 2);
     assert.equal(snapshotFor(state, a).entities.find((e) => e.id === walker.id)?.guns, 1);
+    assert.deepEqual(snapshotFor(state, a).entities.find((e) => e.id === walker.id)?.gatling, { arms: 1 });
 
     assert.equal(applyCommand(state, a, { type: "cmd.guns", ids: [walker.id], guns: 2 }).ok, true);
     walker.cooldown = 0;
     state.projectiles.length = 0;
+    const clip1 = walker.clip;
     tickCombat(state, TICK_DT);
     assert.equal(state.projectiles.filter((p) => p.fromId === walker.id).length, 4);
+    assert.equal(clip1 - walker.clip, 4);
     assert.equal(snapshotFor(state, a).entities.find((e) => e.id === walker.id)?.guns, 2);
+    assert.equal(snapshotFor(state, a).entities.find((e) => e.id === walker.id)?.gatling?.arms, 2);
     assert.equal(snapshotFor(state, b).entities.find((e) => e.id === walker.id)?.guns, undefined);
+
+    state.tick += GAME_SPEED_MAX;
+    assert.equal(snapshotFor(state, a).entities.find((e) => e.id === walker.id)?.gatling, undefined);
   });
 
   it("fires one gatling when set to conserve, and splits both guns across two targets", () => {
@@ -1915,6 +1925,7 @@ describe("walker gatlings", () => {
     walker.order = { kind: "attack", targetId: front.id };
     walker.attackTarget = front.id;
     walker.cooldown = 0;
+    walker.gatlingGuns = 2;
     tickCombat(state, TICK_DT);
     const shots = state.projectiles.filter((p) => p.fromId === walker.id);
     assert.equal(shots.length, 4);

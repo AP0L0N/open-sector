@@ -5,6 +5,8 @@ import {
   STANCE_LABEL,
   TRAIN_QUEUE_CAP,
   TRAIN_TYPES,
+  TICK_DT,
+  WALKER_ONE_BURST,
   HAULER_SMOKE_CHARGES,
   MAULER_CART_HP,
   ammoOf,
@@ -514,7 +516,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
       ? `  ·  ${STANCE_LABEL[e.stance]}${e.stanceOrder && e.stanceOrder !== e.stance ? " (under fire)" : ""}`
       : "";
   const belt = beltOf(e.type);
-  const walkerMode = e.type === "walker" ? WALKER_GUN_MODES.find((m) => m.guns === (e.guns === 1 ? 1 : 2)) : undefined;
+  const walkerMode = e.type === "walker" ? WALKER_GUN_MODES.find((m) => m.guns === (e.guns === 2 ? 2 : 1)) : undefined;
   const gun = isInfantryType(e.type)
     ? infantryGunFor(e)
     : belt
@@ -840,14 +842,15 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
   if (kicker instanceof HTMLElement && def.blurb) kicker.title = def.blurb;
   if (focus.type === "walker") {
     const mine = live.filter((e) => e.ownerId === you);
-    const guns = mine.length > 0 ? (mine[0]!.guns === 1 ? 1 : 2) : 2;
-    const same = mine.every((e) => (e.guns === 1 ? 1 : 2) === guns);
+    const guns = mine.length > 0 ? (mine[0]!.guns === 2 ? 2 : 1) : 1;
+    const same = mine.every((e) => (e.guns === 2 ? 2 : 1) === guns);
     for (const mode of WALKER_GUN_MODES) {
       const btn = body.querySelector(`[data-guns="${mode.guns}"]`);
       if (!(btn instanceof HTMLElement)) continue;
       const left = mine.reduce((n, ent) => n + (ent.clip ?? 0), 0);
+      const perWalker = mine.length > 0 ? left / mine.length : 0;
       updateLoadoutButton(btn, {
-        count: String(left),
+        count: `${Math.floor(perWalker / ((WALKER_ONE_BURST * mode.guns) / TICK_DT))}s`,
         on: same && guns === mode.guns,
         empty: left <= 0,
       });
@@ -1104,14 +1107,14 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       slot: "field-sandbags",
       act: "field-sandbags",
       label: "Sandbags",
-      title: "Build sandbags. Click to place one facing the cursor, or drag from start to end to lay a wall. R turns it, or flips a wall.",
+      title: "Build sandbags. Scroll to turn, click to place one, or drag from start to end to lay a wall.",
       on: view?.fieldPlace === "sandbags",
     });
     out.push({
       slot: "field-teeth",
       act: "field-teeth",
       label: "Obstacle",
-      title: "Build four concrete pyramids. Click to place one set facing the cursor, or drag from start to end to lay a line.",
+      title: "Build four concrete pyramids. Scroll to turn, click to place one set.",
       on: view?.fieldPlace === "teeth",
     });
   }

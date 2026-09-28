@@ -4,6 +4,10 @@ import {
   MEDIC_HEAL_PER_SEC,
   MEDIC_MEND_SECONDS,
   MEDIC_SEEK_TILES,
+  MEDIC_SELF_HEAL_DELAY,
+  MEDIC_SELF_HEAL_PER_SEC,
+  MEDIC_SELF_MEND_DELAY,
+  MEDIC_SELF_MEND_HP,
   MEDIC_TOUCH_SLACK,
   primaryInfantryGun,
 } from "../catalog.js";
@@ -127,6 +131,24 @@ function applyHeal(medic: Entity, patient: Entity, dt: number): void {
   medic.mendTime = 0;
 }
 
+/** Any HP loss restarts the clock. Limbs wait longer and need him at least half whole. */
+function selfCare(medic: Entity, dt: number): void {
+  if (medic.selfHpSeen != null && medic.hp < medic.selfHpSeen) medic.selfQuiet = 0;
+  else medic.selfQuiet = (medic.selfQuiet ?? 0) + dt;
+  const quiet = medic.selfQuiet;
+  if (quiet >= MEDIC_SELF_HEAL_DELAY && medic.hp < medic.hpMax) {
+    medic.hp = Math.min(medic.hpMax, medic.hp + MEDIC_SELF_HEAL_PER_SEC * dt);
+  }
+  if (
+    medic.crits.length > 0 &&
+    quiet >= MEDIC_SELF_MEND_DELAY &&
+    medic.hp >= medic.hpMax * MEDIC_SELF_MEND_HP
+  ) {
+    mendAll(medic);
+  }
+  medic.selfHpSeen = medic.hp;
+}
+
 function approach(state: MatchState, medic: Entity, patient: Entity): void {
   const anchor = escortAnchor(medic, patient);
   const ox = medic.order?.x;
@@ -157,6 +179,7 @@ export function medicTendView(state: MatchState, medic: Entity): number | undefi
 export function tickHeal(state: MatchState, dt: number): void {
   for (const medic of state.entities.values()) {
     if (!medicActive(medic)) continue;
+    selfCare(medic, dt);
     const patient = choosePatient(state, medic);
     if (!patient) {
       medic.tendId = undefined;

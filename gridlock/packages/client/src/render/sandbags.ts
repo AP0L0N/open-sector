@@ -36,7 +36,8 @@ export interface SandbagDraw {
   shadow: { x: number; y: number };
 }
 
-const GAP = 0.45;
+/** Gap between bags as a share of wall thickness. */
+const GAP = 0.032;
 
 function rng(seed: number): () => number {
   let s = seed >>> 0 || 1;
@@ -58,14 +59,15 @@ export function courseHeight(thick: number): number {
 export function sandbagLayout(length: number, thick: number, ruined: boolean, seed: number): Bag[] {
   const rand = rng(seed);
   const h = courseHeight(thick);
+  const gap = thick * GAP;
   const bagLen = length / 4;
   const out: Bag[] = [];
   const push = (along: number, across: number, halfAcross: number, course: number, yaw = 0, squash = 1) => {
     out.push({
       along,
       across,
-      halfAlong: bagLen / 2 - GAP,
-      halfAcross: halfAcross - GAP,
+      halfAlong: bagLen / 2 - gap,
+      halfAcross: halfAcross - gap,
       z0: course * h * squash,
       z1: (course + 1) * h * squash + h * 0.12,
       yaw,
@@ -158,6 +160,10 @@ export function drawSandbags(ctx: CanvasRenderingContext2D, d: SandbagDraw): voi
   const base = d.bad ? [196, 74, 58] : [178, 150, 100];
   const [br, bg, bb] = base as [number, number, number];
   const bags = sandbagLayout(d.length, d.thick, d.ruined, d.seed);
+  const o0 = d.project(d.x, d.y, 0);
+  const o1 = d.project(d.x + 1, d.y, 0);
+  const px = Math.hypot(o1.x - o0.x, o1.y - o0.y);
+  const line = Math.max(0.35, Math.min(0.9, px * 0.3));
   const h = courseHeight(d.thick);
   ctx.save();
   ctx.globalAlpha = d.alpha;
@@ -184,7 +190,7 @@ export function drawSandbags(ctx: CanvasRenderingContext2D, d: SandbagDraw): voi
     ctx.fillStyle = d.bad ? "rgba(170, 70, 50, 0.5)" : "rgba(150, 124, 80, 0.55)";
     for (let i = 0; i < 4; i++) {
       const c = world((rand() - 0.5) * d.length * 0.9, (rand() - 0.5) * d.thick * 1.6);
-      const r = 2 + rand() * 3;
+      const r = d.thick * (0.14 + rand() * 0.22);
       const pts = [0, 1, 2, 3, 4, 5].map((k) => {
         const a = (k / 6) * Math.PI * 2;
         return d.project(c.x + Math.cos(a) * r * 1.4, c.y + Math.sin(a) * r, 0);
@@ -257,7 +263,7 @@ export function drawSandbags(ctx: CanvasRenderingContext2D, d: SandbagDraw): voi
     const seamA = corner(0.62, -0.8, b.z1);
     const seamB = corner(0.62, 0.8, b.z1);
     ctx.strokeStyle = rgb(br, bg, bb, k * 0.7);
-    ctx.lineWidth = 0.8;
+    ctx.lineWidth = line * 0.85;
     ctx.beginPath();
     ctx.moveTo(seamA.x, seamA.y);
     ctx.lineTo(seamB.x, seamB.y);
@@ -272,7 +278,7 @@ export function drawSandbags(ctx: CanvasRenderingContext2D, d: SandbagDraw): voi
     ctx.stroke();
 
     ctx.strokeStyle = "rgba(40, 28, 14, 0.85)";
-    ctx.lineWidth = 0.9;
+    ctx.lineWidth = line;
     softPath(ctx, sil);
     ctx.stroke();
   }
