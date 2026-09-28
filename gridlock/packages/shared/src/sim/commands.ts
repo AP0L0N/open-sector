@@ -27,7 +27,7 @@ import { setScoutOut } from "./scout.js";
 import { cancelStructure, pauseStructure, placeBuilding, sellBuilding, startBuild } from "./build.js";
 import { orderFieldBuild, orderRepair } from "./field.js";
 import { deployId } from "./deploy.js";
-import { cancelTrain, pauseTrain, startTrain } from "./train.js";
+import { cancelTrain, pauseTrain, setRally, startTrain } from "./train.js";
 import { groupMovePace, groupMoveTargets } from "./formation.js";
 import { escortAnchor } from "./orders.js";
 import { setPath } from "./path.js";
@@ -92,6 +92,9 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
         cancelTrain(state, playerId, { buildingId: msg.buildingId, jobId: msg.jobId, unit: msg.unit }),
         "busy",
       );
+    case "cmd.rally":
+      if (!Array.isArray(msg.ids)) return fail("bad_payload", "Bad rally point.");
+      return wrap(setRally(state, playerId, msg.ids, msg.x, msg.y), "bad_payload");
     case "cmd.sell":
       return wrap(sellBuilding(state, playerId, msg.id), "not_yours");
     case "cmd.deploy": {

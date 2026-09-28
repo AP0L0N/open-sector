@@ -90,7 +90,7 @@ export function crushTreesUnder(state: MatchState, e: Entity): void {
 function blockedByUnit(state: MatchState, e: Entity, x: number, y: number, ignoreId?: number): boolean {
   const r = e.radius;
   for (const o of state.entities.values()) {
-    if (o.id === e.id || o.id === ignoreId || o.hp <= 0) continue;
+    if (o.id === e.id || o.id === ignoreId || o.hp <= 0 || o.garrisonedIn) continue;
     if (o.kind === "building") continue;
     const need = r + o.radius;
     const dx = x - o.x;
@@ -269,7 +269,7 @@ function planTrackDetour(state: MatchState, e: Entity): boolean {
 }
 
 export function tickCollision(state: MatchState, dt = TICK_DT): void {
-  const units = [...state.entities.values()].filter((e) => e.kind === "unit" && e.hp > 0);
+  const units = [...state.entities.values()].filter((e) => e.kind === "unit" && e.hp > 0 && !e.garrisonedIn);
   for (const a of units) {
     if (isActiveUnit(a)) crushTreesUnder(state, a);
   }

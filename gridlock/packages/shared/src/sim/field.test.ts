@@ -173,7 +173,9 @@ describe("engineer field works", () => {
     });
     assert.equal(eng.fieldQueue?.length, 2);
     applyCommand(state, "A", { type: "cmd.move", ids: [eng.id], x: x - 40, y: y - 40 });
+    ticks(state, 200);
     assert.equal(eng.fieldQueue, undefined);
+    assert.equal([...state.entities.values()].filter((e) => e.type === "sandbags").length, 0);
   });
 
   it("gives crouched and crawling infantry extra health behind sandbags", () => {

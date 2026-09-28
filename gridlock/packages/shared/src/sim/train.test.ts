@@ -227,3 +227,65 @@ describe("train queue", () => {
     if (them) assert.equal(them.trainQueue, undefined);
   });
 });
+
+describe("rally point", () => {
+  it("sends a new unit toward the producer's rally point", () => {
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    const muster = seedMuster(state, 20, 4);
+    const ts = state.tileSize;
+    const rx = tileCenter(34, ts);
+    const ry = tileCenter(24, ts);
+    const r = applyCommand(state, "A", { type: "cmd.rally", ids: [muster.id], x: rx, y: ry });
+    assert.equal(r.ok, true, !r.ok ? r.message : "");
+    assert.deepEqual(muster.rally, { x: rx, y: ry });
+    applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
+    ticks(state, secondsToTicks(catalog("rifleman").buildSeconds) + 2);
+    const u = [...state.entities.values()].find((e) => e.type === "rifleman" && e.ownerId === "A");
+    assert.ok(u);
+    assert.equal(u.order?.kind, "move");
+    if (u.order?.kind === "move") {
+      assert.equal(u.order.x, rx);
+      assert.equal(u.order.y, ry);
+    }
+    ticks(state, 400);
+    assert.ok(Math.hypot(u.x - rx, u.y - ry) < ts * 2);
+  });
+
+  it("sets rally points on several producers at once and only for the owner", () => {
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    const a = seedMuster(state, 20, 4);
+    const b = seedMuster(state, 20 + catalog("muster").tileW, 4);
+    const ts = state.tileSize;
+    const r = applyCommand(state, "A", { type: "cmd.rally", ids: [a.id, b.id], x: tileCenter(10, ts), y: tileCenter(20, ts) });
+    assert.equal(r.ok, true);
+    assert.ok(a.rally && b.rally);
+    const theirs = applyCommand(state, "B", { type: "cmd.rally", ids: [a.id], x: 0, y: 0 });
+    assert.equal(theirs.ok, false);
+    assert.equal(a.rally.x, tileCenter(10, ts));
+    assert.deepEqual(snapshotFor(state, "A").entities.find((e) => e.id === a.id)?.rally, a.rally);
+    const them = snapshotFor(state, "B").entities.find((e) => e.id === a.id);
+    if (them) assert.equal(them.rally, undefined);
+  });
+
+  it("clears the rally point when the building itself is clicked", () => {
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    const muster = seedMuster(state, 20, 4);
+    const ts = state.tileSize;
+    applyCommand(state, "A", { type: "cmd.rally", ids: [muster.id], x: tileCenter(30, ts), y: tileCenter(14, ts) });
+    assert.ok(muster.rally);
+    applyCommand(state, "A", { type: "cmd.rally", ids: [muster.id], x: muster.x, y: muster.y });
+    assert.equal(muster.rally, undefined);
+  });
+
+  it("ignores buildings that do not train units", () => {
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    const core = [...state.entities.values()].find((e) => e.type === "core")!;
+    const r = applyCommand(state, "A", { type: "cmd.rally", ids: [core.id], x: 0, y: 0 });
+    assert.equal(r.ok, false);
+    assert.equal(core.rally, undefined);
+  });
+});

@@ -1,5 +1,6 @@
 import { catalog, secondsToTicks, TRAIN_QUEUE_CAP, UNIT_CAP, type TrainType } from "../catalog.js";
-import { makeEntity, ownedUnits, rallyPoint } from "./geo.js";
+import { makeEntity, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
+import { setPath } from "./path.js";
 import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
 import type { Entity, MatchState, TrainJob } from "./types.js";
@@ -170,8 +171,38 @@ export function spawnUnit(
   ignoreCap: boolean,
 ): Entity | null {
   if (!ignoreCap && ownedUnits(state, playerId) >= UNIT_CAP) return null;
-  const rally = rallyPoint(state, from);
-  const u = makeEntity(state, type, playerId, rally.x, rally.y);
-  if (type === "hauler") u.autoHarvest = true;
+  const door = rallyPoint(state, from);
+  const u = makeEntity(state, type, playerId, door.x, door.y);
+  if (from.rally) {
+    u.order = { kind: "move", x: from.rally.x, y: from.rally.y };
+    u.state = "move";
+    setPath(state, u, from.rally.x, from.rally.y);
+  } else if (type === "hauler") {
+    u.autoHarvest = true;
+  }
   return u;
+}
+
+export function isProducer(e: Entity): boolean {
+  return e.kind === "building" && (e.type === "muster" || e.type === "smelter" || e.type === "armory");
+}
+
+/** Sets the rally point on every owned producer in `ids`. A point on the building's own footprint clears it. */
+export function setRally(state: MatchState, playerId: string, ids: number[], x: number, y: number): string | null {
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return "Bad rally point.";
+  const ts = state.tileSize;
+  const px = Math.max(0, Math.min(state.width * ts - 1, x));
+  const py = Math.max(0, Math.min(state.height * ts - 1, y));
+  const tx = worldToTile(px, ts);
+  const ty = worldToTile(py, ts);
+  let n = 0;
+  for (const id of ids) {
+    const b = state.entities.get(id);
+    if (!b || b.ownerId !== playerId || b.hp <= 0 || !isProducer(b)) continue;
+    const onSelf = tx >= b.tileX && tx < b.tileX + b.tileW && ty >= b.tileY && ty < b.tileY + b.tileH;
+    if (onSelf) delete b.rally;
+    else b.rally = { x: px, y: py };
+    n++;
+  }
+  return n === 0 ? "Select a Muster, Smelter, or Armory." : null;
 }
