@@ -263,6 +263,7 @@ const HP_FILL_LOW_VIVID = "#f25a48";
 const HP_FILL_HOSTILE_VIVID = "#ff5a4a";
 /** Sprite alpha when a building volume sits in front of a body. */
 const OCCLUDED_UNIT_ALPHA = 0.46;
+const FIELD_SITE_ALPHA = 0.8;
 
 type DrawItem = DrawKey & { run: () => void };
 /** Closes the 1px raster crack between diamonds. The veil itself is one fill, so this overlap does not stack. */
@@ -2138,6 +2139,7 @@ export class MapView {
         },
       });
     }
+    this.collectFieldSites(items);
     this.collectTrees(items);
     this.collectRemains(items);
     this.collectUnitShadows(items);
@@ -3859,6 +3861,36 @@ export class MapView {
       return;
     }
     this.drawSandbagWall(e.x, e.y, e.facing, { ruined: !!e.ruined, alpha: ghost ? 0.45 : 1, seed: e.id * 2654435761 });
+  }
+
+  /** Structures an engineer has been ordered to lay, drawn as a ghost until the real one replaces them. */
+  private collectFieldSites(items: DrawItem[]): void {
+    for (const e of this.curr.entities) {
+      if (!e.fieldSites || e.garrisonedIn) continue;
+      for (const site of e.fieldSites) {
+        const span = fieldSpan(site.structure);
+        if (!span) continue;
+        items.push({
+          layer: STANDING_DRAW_LAYER,
+          z: isoDepth(site.x, site.y),
+          foot: {
+            cx: site.x,
+            cy: site.y,
+            ax: -Math.sin(site.facing),
+            ay: Math.cos(site.facing),
+            halfAlong: span.length / 2,
+            halfAcross: span.thick / 2,
+          },
+          run: () => {
+            if (site.structure === "teeth") {
+              this.drawTeeth(site.x, site.y, site.facing, toothSeedAt(site.x, site.y), FIELD_SITE_ALPHA, 0);
+            } else {
+              this.drawSandbagWall(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
+            }
+          },
+        });
+      }
+    }
   }
 
   private drawSandbagWall(

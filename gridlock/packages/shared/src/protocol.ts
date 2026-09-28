@@ -12,7 +12,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 38;
+export const PROTOCOL_VERSION = 39;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -168,6 +168,11 @@ export interface EntityView {
   tend?: number;
   /** Sandbags wrecked by a tank shell. The rubble stays. */
   ruined?: boolean;
+  /**
+   * Engineer field structures not built yet. The first is the piece on the job; `progress` is 0–1
+   * once digging starts. Friendlies also get the queued pieces; enemies only see a piece being dug.
+   */
+  fieldSites?: { structure: FieldStructureType; x: number; y: number; facing: number; progress?: number }[];
   /**
    * Hatch crew on a tank. Friendlies always see hp. `out` means the head is
    * visible; enemies only receive this object while the hatch is open.

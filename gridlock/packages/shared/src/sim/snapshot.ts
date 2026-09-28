@@ -1,5 +1,6 @@
 import {
   beltOf,
+  catalog,
   clampGameSpeed,
   DEPLOY_SECONDS,
   entityIsScouting,
@@ -45,6 +46,25 @@ function scoutView(e: Entity, friendly: boolean): EntityView["scout"] {
     hpMax: e.scoutHpMax,
     out: out ? true : undefined,
   };
+}
+
+function fieldSitesView(e: Entity, friendly: boolean): EntityView["fieldSites"] {
+  const o = e.order;
+  if (o?.kind !== "build" || o.structure == null || o.x == null || o.y == null) return undefined;
+  const digging = e.state === "build" && e.work > 0;
+  if (!friendly && !digging) return undefined;
+  const structure = o.structure;
+  const sites: NonNullable<EntityView["fieldSites"]> = [
+    {
+      structure,
+      x: o.x,
+      y: o.y,
+      facing: o.facing ?? 0,
+      progress: digging ? Math.min(1, e.work / catalog(structure).buildSeconds) : undefined,
+    },
+  ];
+  if (friendly) for (const p of e.fieldQueue ?? []) sites.push({ structure, x: p.x, y: p.y, facing: p.facing });
+  return sites;
 }
 
 export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapshot {
@@ -105,6 +125,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
         friendly && e.order?.kind === "guard" && e.order.targetId != null ? e.order.targetId : undefined,
       tend: medicTendView(state, e),
       ruined: e.ruined || undefined,
+      fieldSites: e.type === "engineer" ? fieldSitesView(e, friendly) : undefined,
       scout: scoutView(e, friendly),
       supply: friendly && e.type === "supply" && !e.wreck ? e.supply : undefined,
       bed:
