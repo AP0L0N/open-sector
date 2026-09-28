@@ -518,6 +518,7 @@ export function clearOrder(e: Entity): void {
   e.guardFacing = null;
   e.returnToBase = false;
   e.work = 0;
+  e.fieldQueue = undefined;
   if (e.wreck) {
     e.state = "wreck";
     return;

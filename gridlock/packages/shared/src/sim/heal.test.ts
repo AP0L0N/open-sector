@@ -246,6 +246,26 @@ describe("medic", () => {
     assert.equal(friend.clip, infantryGunById("rifle").clip);
   });
 
+  it("clears broken limbs and gets the soldier up once the bandaging tops him up", () => {
+    const { state, a } = match();
+    const ts = state.tileSize;
+    clearPad(state, 70, 46, 100, 70);
+    const x = tileCenter(80, ts);
+    const y = tileCenter(52, ts);
+    makeEntity(state, "medic", a, x, y);
+    const friend = makeEntity(state, "rifleman", a, x, y);
+    friend.hp = friend.hpMax - 2;
+    addCrit(friend, "arm");
+    addCrit(friend, "leg");
+    ticks(state, 5);
+    assert.equal(friend.stanceOrder, "crawl");
+    ticks(state, Math.ceil(2 / MEDIC_HEAL_PER_SEC / TICK_DT) + 5);
+    assert.equal(friend.hp, friend.hpMax);
+    assert.deepEqual(friend.crits, []);
+    assert.equal(friend.weapon, "rifle");
+    assert.equal(friend.stanceOrder, "stand");
+  });
+
   it("bandages a housemate and not a soldier shut in another building", () => {
     const { state, a } = match();
     const ts = state.tileSize;

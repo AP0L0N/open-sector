@@ -6,7 +6,7 @@ export { fireStats, hullTurnMul, immobilized, moveSpeedMul, rollCrits } from "./
 export { commandedStance, effectiveStance, tickStance } from "./stance.js";
 export { applyCommand } from "./commands.js";
 export { snapshotFor } from "./snapshot.js";
-export { previewPlace } from "./preview.js";
+export { previewField, previewPlace } from "./preview.js";
 export { pathToWorld, astar } from "./path.js";
 export type { MatchState } from "./types.js";
 export {
@@ -86,4 +86,4 @@ export {
   coverSmokeAt,
 } from "./elevation.js";
 export { canScout, setScoutOut, hideScout, woundScout } from "./scout.js";
-export { toothSeedAt, toothWorld, fieldSiteClear, sandbagCoverBonus } from "./field.js";
+export { toothSeedAt, toothWorld, fieldLine, fieldSiteClear, sandbagCoverBonus, wallAxes, FIELD_LINE_MAX } from "./field.js";

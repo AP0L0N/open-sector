@@ -152,6 +152,8 @@ export interface Entity {
   coverBonus: number;
   /** Seconds spent on the current build or repair. */
   work: number;
+  /** Engineer wall pieces still to lay after the current build order. Cleared by any new order. */
+  fieldQueue?: { x: number; y: number; facing: number }[];
   /** Wounded infantry this medic is walking to or bandaging. */
   tendId?: number;
   /** Seconds of contact toward clearing one crit. */

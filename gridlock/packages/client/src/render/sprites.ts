@@ -112,8 +112,6 @@ import engineerWalkUrl from "../assets/units/engineer-walk.png";
 import engineerBuildUrl from "../assets/units/engineer-build.png";
 import engineerFixUrl from "../assets/units/engineer-fix.png";
 import engineerDieUrl from "../assets/units/engineer-die.png";
-import sandbagsUrl from "../assets/units/sandbags.png";
-import sandbagsDeadUrl from "../assets/units/sandbags-dead.png";
 import teethUrl from "../assets/units/teeth.png";
 import infantrySwimUrl from "../assets/units/infantry-swim.png";
 import haulerSheetUrl from "../assets/units/hauler-move.png";
@@ -553,30 +551,7 @@ export const ENGINEER_DIE_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
-/** Low wall. Row 0 faces south. One frame, sixteen facings. */
-export const SANDBAG_SPRITE: UnitSpriteDef = {
-  image: loadSheet(sandbagsUrl),
-  dirs: 16,
-  frames: 1,
-  frameSize: 128,
-  fps: 1,
-  drawSize: 56,
-  contactY: 0.72,
-  facingSpace: "world",
-};
-
-export const SANDBAG_RUIN_SPRITE: UnitSpriteDef = {
-  image: loadSheet(sandbagsDeadUrl),
-  dirs: 16,
-  frames: 1,
-  frameSize: 128,
-  fps: 1,
-  drawSize: 56,
-  contactY: 0.72,
-  facingSpace: "world",
-};
-
-/** Concrete pyramids. Same facing ring as the sandbag wall. */
+/** Concrete pyramids. Sixteen facings. Sandbags are drawn in `sandbags.ts`. */
 export const TEETH_SPRITE: UnitSpriteDef = {
   image: loadSheet(teethUrl),
   dirs: 16,

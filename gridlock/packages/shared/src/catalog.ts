@@ -671,7 +671,7 @@ export const MEDIC_SEEK_TILES = t(6);
 export const MEDIC_TOUCH_SLACK = 8;
 /** HP per second while in contact. No charges and no cooldown. */
 export const MEDIC_HEAL_PER_SEC = 3;
-/** Seconds of uninterrupted contact to clear one broken arm or leg. */
+/** Seconds of uninterrupted contact to clear every broken arm and leg. Topping up HP clears them sooner. */
 export const MEDIC_MEND_SECONDS = 8;
 
 /** Supply points a truck leaves the Armory with. Shells cost more than bullets. */

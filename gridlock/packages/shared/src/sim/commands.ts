@@ -118,7 +118,17 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
     case "cmd.field":
       if (!isFieldStructure(msg.structure)) return fail("bad_payload", "Unknown structure.");
       return wrap(
-        orderFieldBuild(state, playerId, owned(state, playerId, msg.ids), msg.structure, msg.x, msg.y, msg.facing),
+        orderFieldBuild(
+          state,
+          playerId,
+          owned(state, playerId, msg.ids),
+          msg.structure,
+          msg.x,
+          msg.y,
+          msg.facing,
+          msg.x2,
+          msg.y2,
+        ),
         "invalid_place",
       );
     case "cmd.repair":

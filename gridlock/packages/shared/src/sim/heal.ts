@@ -103,19 +103,28 @@ function restoreArm(patient: Entity): void {
   patient.reload = 0;
 }
 
+function mendAll(patient: Entity): void {
+  const had = patient.crits;
+  patient.crits = [];
+  if (had.includes("arm")) restoreArm(patient);
+  if (had.includes("leg") && patient.stanceOrder === "crawl") patient.stanceOrder = "stand";
+}
+
+/** Wounds and broken limbs clear together: when the bandaging tops the soldier up, or after one long kneel. */
 function applyHeal(medic: Entity, patient: Entity, dt: number): void {
+  let toppedUp = false;
   if (patient.hp < patient.hpMax) {
     patient.hp = Math.min(patient.hpMax, patient.hp + MEDIC_HEAL_PER_SEC * dt);
+    toppedUp = patient.hp >= patient.hpMax;
   }
   if (patient.crits.length === 0) {
     medic.mendTime = 0;
     return;
   }
   medic.mendTime = (medic.mendTime ?? 0) + dt;
-  if (medic.mendTime < MEDIC_MEND_SECONDS) return;
-  const removed = patient.crits.shift();
+  if (!toppedUp && medic.mendTime < MEDIC_MEND_SECONDS) return;
+  mendAll(patient);
   medic.mendTime = 0;
-  if (removed === "arm") restoreArm(patient);
 }
 
 function approach(state: MatchState, medic: Entity, patient: Entity): void {
