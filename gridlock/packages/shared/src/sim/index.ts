@@ -48,6 +48,8 @@ export type { MortarArcPoint } from "./mortar.js";
 export {
   visionMask,
   visionMaskFromSnapshot,
+  encodeVisionRuns,
+  decodeVisionRuns,
   coverTerrainFromSnapshot,
   tileOnMask,
   entityOnMask,
