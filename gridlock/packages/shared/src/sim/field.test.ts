@@ -153,6 +153,29 @@ describe("engineer field works", () => {
     assert.equal(b.state, "idle");
   });
 
+  it("puts down one set of dragon's teeth even when the order carries a drag", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 26, 26, 30, 16);
+    const ts = state.tileSize;
+    const x = tileCenter(30, ts);
+    const y = tileCenter(34, ts);
+    const eng = makeEntity(state, "engineer", "A", x, y - 30);
+    const res = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [eng.id],
+      structure: "teeth",
+      x,
+      y,
+      facing: Math.PI / 2,
+      x2: x + fieldSpan("teeth")!.length * 4,
+      y2: y,
+    });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    assert.equal(eng.fieldQueue?.length ?? 0, 0);
+    assert.equal(eng.order?.x, x);
+    assert.equal(eng.order?.y, y);
+  });
+
   it("drops the rest of a wall when the engineer gets a new order", () => {
     const { state } = twoPlayerMatch();
     clearPatch(state, 26, 26, 30, 16);
