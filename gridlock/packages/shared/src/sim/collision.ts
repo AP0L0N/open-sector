@@ -1,5 +1,6 @@
 import {
   catalog,
+  hasTurret,
   isArmoredType,
   isInfantryType,
   isMotorVehicle,
@@ -23,11 +24,22 @@ export function massOf(e: Entity): number {
   return moving ? base * 2.2 : base;
 }
 
+export function rolling(e: Entity): boolean {
+  return e.waypoints.length > 0 || e.state === "move" || e.state === "attack";
+}
+
 export function canCrush(state: MatchState, mover: Entity, victim: Entity): boolean {
   if (!isActiveUnit(mover) || !isActiveUnit(victim)) return false;
   if (!isArmoredType(mover.type) || !isInfantryType(victim.type)) return false;
   if (allies(state, mover.ownerId, victim.ownerId)) return false;
-  return mover.waypoints.length > 0 || mover.state === "move" || mover.state === "attack";
+  return rolling(mover);
+}
+
+/** Friendly infantry step out of an armored hull's way. A hull never gives way to them. */
+export function makesWayFor(state: MatchState, walker: Entity, hull: Entity): boolean {
+  if (!isActiveUnit(walker) || !isActiveUnit(hull)) return false;
+  if (!isInfantryType(walker.type) || !isArmoredType(hull.type)) return false;
+  return allies(state, walker.ownerId, hull.ownerId);
 }
 
 function tileFree(state: MatchState, e: Entity, x: number, y: number): boolean {
@@ -56,8 +68,7 @@ function tileFree(state: MatchState, e: Entity, x: number, y: number): boolean {
 
 export function crushTreesUnder(state: MatchState, e: Entity): void {
   if (!isActiveUnit(e) || !isMotorVehicle(e.type)) return;
-  const rolling = e.waypoints.length > 0 || e.state === "move" || e.state === "attack";
-  if (!rolling) return;
+  if (!rolling(e)) return;
   const ts = state.tileSize;
   const r = e.radius + ts * 0.45;
   const x0 = worldToTile(e.x - r, ts);
@@ -98,6 +109,7 @@ function blockedByUnit(state: MatchState, e: Entity, x: number, y: number, ignor
     const newD = dx * dx + dy * dy;
     if (newD >= need * need) continue;
     if (canCrush(state, e, o)) continue;
+    if (rolling(e) && makesWayFor(state, o, e)) continue;
     const odx = e.x - o.x;
     const ody = e.y - o.y;
     const oldD = odx * odx + ody * ody;
@@ -268,6 +280,79 @@ function planTrackDetour(state: MatchState, e: Entity): boolean {
   return false;
 }
 
+/** Side-step a soldier is taking to clear a hull's lane. */
+const givingWay = new WeakMap<Entity, { x: number; y: number; hullId: number; until: number }>();
+const GIVE_WAY_TICKS = 30;
+
+/** Friendly infantry in the lane ahead of a rolling hull pick a spot beside it. */
+export function tickMakeWay(state: MatchState): void {
+  const units = [...state.entities.values()].filter(isActiveUnit);
+  const walkers = units.filter((u) => isInfantryType(u.type));
+  if (walkers.length === 0) return;
+  for (const hull of units) {
+    if (!isArmoredType(hull.type) || !rolling(hull)) continue;
+    const wp = hull.waypoints[0];
+    if (!wp) continue;
+    const dx = wp.x - hull.x;
+    const dy = wp.y - hull.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 1e-3) continue;
+    const ux = dx / d;
+    const uy = dy / d;
+    const px = -uy;
+    const py = ux;
+    const lane = hull.radius * 3;
+    const reach = hull.waypoints.length > 1 ? lane : Math.min(lane, d + hull.radius);
+    for (const inf of walkers) {
+      if (!makesWayFor(state, inf, hull)) continue;
+      const clear = hull.radius + inf.radius + UNIT_SPACE_PAD;
+      const rx = inf.x - hull.x;
+      const ry = inf.y - hull.y;
+      const along = rx * ux + ry * uy;
+      const across = rx * px + ry * py;
+      if (along < -clear * 0.5 || along > reach + inf.radius) continue;
+      if (Math.abs(across) >= clear) continue;
+      const cur = givingWay.get(inf);
+      if (cur && cur.hullId === hull.id && state.tick <= cur.until) {
+        cur.until = state.tick + GIVE_WAY_TICKS;
+        continue;
+      }
+      const first = yieldSide(across, inf.id);
+      placing: for (const extra of [0, inf.radius, inf.radius * 2 + UNIT_SPACE_PAD]) {
+        for (const side of [first, -first] as const) {
+          const off = side * (clear + 1 + extra) - across;
+          const sx = inf.x + px * off;
+          const sy = inf.y + py * off;
+          if (!canStand(state, inf, sx, sy, hull.id)) continue;
+          givingWay.set(inf, { x: sx, y: sy, hullId: hull.id, until: state.tick + GIVE_WAY_TICKS });
+          break placing;
+        }
+      }
+    }
+  }
+}
+
+/** Walk toward a pending side-step. Returns true while the soldier is still stepping aside. */
+export function stepGiveWay(state: MatchState, e: Entity, speed: number, dt: number): boolean {
+  const g = givingWay.get(e);
+  if (!g) return false;
+  const dx = g.x - e.x;
+  const dy = g.y - e.y;
+  const d = Math.hypot(dx, dy);
+  if (state.tick > g.until || d <= 1 || speed <= 0) {
+    givingWay.delete(e);
+    return false;
+  }
+  const s = Math.min(d, speed * dt);
+  const pos = resolveMove(state, e, e.x + (dx / d) * s, e.y + (dy / d) * s);
+  e.x = pos.x;
+  e.y = pos.y;
+  e.facing = Math.atan2(dy, dx);
+  if (!hasTurret(e.type)) e.turretFacing = e.facing;
+  if (e.state === "idle") e.state = "move";
+  return true;
+}
+
 export function tickCollision(state: MatchState, dt = TICK_DT): void {
   const units = [...state.entities.values()].filter((e) => e.kind === "unit" && e.hp > 0 && !e.garrisonedIn);
   for (const a of units) {
@@ -320,11 +405,19 @@ function separatePair(state: MatchState, a: Entity, b: Entity): void {
     dist = 1;
   }
   const overlap = need - dist;
+  const ux = dx / dist;
+  const uy = dy / dist;
+  if (makesWayFor(state, a, b)) {
+    tryShift(state, a, -ux * overlap, -uy * overlap);
+    return;
+  }
+  if (makesWayFor(state, b, a)) {
+    tryShift(state, b, ux * overlap, uy * overlap);
+    return;
+  }
   const ma = massOf(a);
   const mb = massOf(b);
   const tot = ma + mb;
-  const ux = dx / dist;
-  const uy = dy / dist;
   tryShift(state, a, -ux * overlap * (mb / tot), -uy * overlap * (mb / tot));
   tryShift(state, b, ux * overlap * (ma / tot), uy * overlap * (ma / tot));
 }

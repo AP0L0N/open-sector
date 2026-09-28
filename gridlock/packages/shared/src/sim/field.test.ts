@@ -6,14 +6,12 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { applyCommand } from "./commands.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
 import {
-  FIELD_LINE_MAX,
   HULL_FIX_SECONDS,
   fieldLine,
+  fieldLineMax,
   fieldSiteClear,
   restampForts,
   sandbagCoverBonus,
-  toothOffsets,
-  toothSeedAt,
 } from "./field.js";
 import { toWreck } from "./wreck.js";
 import { makeEntity, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
@@ -142,7 +140,7 @@ describe("engineer field works", () => {
     const flipped = fieldLine("sandbags", 100, 100, 100 + span.length * 3, 100, -Math.PI / 2);
     assert.ok(Math.abs(Math.sin(flipped[0]!.facing) + 1) < 1e-6);
     const long = fieldLine("sandbags", 0, 0, span.length * 100, 0, 0);
-    assert.equal(long.length, FIELD_LINE_MAX);
+    assert.equal(long.length, fieldLineMax("sandbags"));
   });
 
   it("builds a dragged wall piece by piece and splits it between engineers", () => {
@@ -177,10 +175,11 @@ describe("engineer field works", () => {
     assert.equal(b.state, "idle");
   });
 
-  it("puts down one set of dragon's teeth even when the order carries a drag", () => {
+  it("lays a dragged line of dragon's teeth one pyramid per piece", () => {
     const { state } = twoPlayerMatch();
     clearPatch(state, 26, 26, 30, 16);
     const ts = state.tileSize;
+    const span = fieldSpan("teeth")!;
     const x = tileCenter(30, ts);
     const y = tileCenter(34, ts);
     const eng = makeEntity(state, "engineer", "A", x, y - 30);
@@ -191,13 +190,17 @@ describe("engineer field works", () => {
       x,
       y,
       facing: Math.PI / 2,
-      x2: x + fieldSpan("teeth")!.length * 4,
+      x2: x + span.length * 5,
       y2: y,
     });
     assert.equal(res.ok, true, res.ok ? "" : res.message);
-    assert.equal(eng.fieldQueue?.length ?? 0, 0);
-    assert.equal(eng.order?.x, x);
-    assert.equal(eng.order?.y, y);
+    assert.equal(eng.fieldQueue?.length, 4);
+    ticks(state, 600);
+    const teeth = [...state.entities.values()].filter((e) => e.type === "teeth");
+    assert.equal(teeth.length, 5);
+    const xs = teeth.map((t) => t.x).sort((p, q) => p - q);
+    for (let i = 0; i < xs.length; i++) assert.ok(Math.abs(xs[i]! - (x + span.length * (i + 0.5))) < 1e-6);
+    assert.ok(teeth.every((t) => t.y === y));
   });
 
   it("drops the rest of a wall when the engineer gets a new order", () => {
@@ -285,6 +288,45 @@ describe("engineer field works", () => {
     assert.equal(walkable(state, worldToTile(x, ts), worldToTile(y, ts), "warden"), true);
   });
 
+  it("lets an engineer stack shelled sandbags back up", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 30, 28, 16, 12);
+    const ts = state.tileSize;
+    const x = tileCenter(36, ts);
+    const y = tileCenter(32, ts);
+    const bag = makeEntity(state, "sandbags", "A", x, y, { facing: 0 });
+    bag.facing = 0;
+    restampForts(state);
+    shot(state, x + 30, y, -800, 40, "ap");
+    tickProjectiles(state, TICK_DT);
+    assert.equal(bag.ruined, true);
+    const eng = makeEntity(state, "engineer", "A", x - 40, y);
+    const res = applyCommand(state, "A", { type: "cmd.repair", ids: [eng.id], targetId: bag.id });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    ticks(state, Math.ceil((catalog("sandbags").buildSeconds + 4) / TICK_DT));
+    assert.equal(bag.ruined, false);
+    assert.equal(bag.hp, bag.hpMax);
+    assert.equal(eng.state, "idle");
+    assert.equal(walkable(state, worldToTile(x, ts), worldToTile(y, ts), "rifleman"), false);
+  });
+
+  it("sells sandbags for half their cost and clears the tiles", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 30, 28, 16, 12);
+    const ts = state.tileSize;
+    const x = tileCenter(36, ts);
+    const y = tileCenter(32, ts);
+    const bag = makeEntity(state, "sandbags", "A", x, y, { facing: 0 });
+    bag.facing = 0;
+    restampForts(state);
+    const before = state.players.get("A")!.scrap;
+    const res = applyCommand(state, "A", { type: "cmd.sell", id: bag.id });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    assert.equal(state.entities.has(bag.id), false);
+    assert.equal(state.players.get("A")!.scrap, before + Math.floor(catalog("sandbags").cost / 2));
+    assert.equal(walkable(state, worldToTile(x, ts), worldToTile(y, ts), "rifleman"), true);
+  });
+
   it("stops a crawling gun at the sandbags and lets a crouching gun fire over them", () => {
     const { state } = twoPlayerMatch();
     clearPatch(state, 28, 28, 20, 12);
@@ -335,22 +377,6 @@ describe("engineer field works", () => {
     next.facing = facing;
     restampForts(state);
     assert.equal(fieldSiteClear(state, "teeth", x + teeth.length, y + bags.thick / 2 + teeth.thick / 2, facing), true);
-  });
-
-  it("scatters the four pyramids off a straight line", () => {
-    const a = toothOffsets(toothSeedAt(400, 240));
-    const b = toothOffsets(toothSeedAt(520, 240));
-    assert.equal(a.length, 4);
-    assert.equal(b.length, 4);
-    const span = fieldSpan("teeth")!;
-    const spread = (pts: { along: number; across: number }[]) => {
-      const across = pts.map((p) => p.across);
-      const along = pts.map((p) => p.along);
-      return Math.max(...across) - Math.min(...across) > 2 && Math.max(...along) - Math.min(...along) > span.length * 0.4;
-    };
-    assert.equal(spread(a), true);
-    assert.equal(spread(b), true);
-    assert.notDeepEqual(a, b);
   });
 
   it("stops vehicles on dragon's teeth and lets infantry through", () => {

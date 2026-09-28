@@ -59,6 +59,15 @@ describe("engineer repair cursor", () => {
       assert.equal(act({ selected: [eng], hit: hurt }), "repair");
     }
   });
+
+  it("offers repair on shelled sandbags only", () => {
+    const standing = building({ id: 53, type: "sandbags", hp: 30, hpMax: 30 });
+    const shelled = building({ id: 54, type: "sandbags", hp: 30, hpMax: 30, ruined: true });
+    const foeShelled = building({ id: 55, type: "sandbags", hp: 30, hpMax: 30, ruined: true, ownerId: FOE });
+    assert.equal(act({ selected: [eng], hit: standing }), null);
+    assert.equal(act({ selected: [eng], hit: shelled }), "repair");
+    assert.notEqual(act({ selected: [eng], hit: foeShelled }), "repair");
+  });
 });
 
 describe("resolveHoverAction", () => {

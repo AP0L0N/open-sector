@@ -86,4 +86,4 @@ export {
   coverSmokeAt,
 } from "./elevation.js";
 export { canScout, setScoutOut, hideScout, woundScout } from "./scout.js";
-export { toothSeedAt, toothWorld, fieldLine, fieldSiteClear, sandbagCoverBonus, wallAxes, FIELD_LINE_MAX } from "./field.js";
+export { fieldLine, fieldLineMax, fieldSiteClear, sandbagCoverBonus, wallAxes } from "./field.js";

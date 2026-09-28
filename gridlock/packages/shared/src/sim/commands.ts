@@ -1,4 +1,5 @@
 import {
+  carriesShell,
   fires,
   hasAmmo,
   hasCrit,
@@ -621,8 +622,10 @@ function cmdHarvest(
 }
 
 function cmdAmmo(state: MatchState, playerId: string, ids: number[], shell: ShellType): CmdResult {
-  const units = owned(state, playerId, ids).filter((e) => hasAmmo(e.type));
-  if (units.length === 0) return fail("not_yours", "No guns with a rack.");
+  const guns = owned(state, playerId, ids).filter((e) => hasAmmo(e.type));
+  if (guns.length === 0) return fail("not_yours", "No guns with a rack.");
+  const units = guns.filter((e) => carriesShell(e.type, shell));
+  if (units.length === 0) return fail("bad_payload", "No selected gun carries that shell.");
   for (const e of units) e.shell = shell;
   return ok();
 }

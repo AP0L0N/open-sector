@@ -114,8 +114,8 @@ import engineerFixUrl from "../assets/units/engineer-fix.png";
 import engineerDieUrl from "../assets/units/engineer-die.png";
 import teethUrl from "../assets/units/teeth.png";
 import infantrySwimUrl from "../assets/units/infantry-swim.png";
-import haulerSheetUrl from "../assets/units/hauler-move.png";
-import haulerBareUrl from "../assets/units/hauler-bare.png";
+import haulerHullUrl from "../assets/units/hauler-hull.png";
+import haulerCartUrl from "../assets/units/hauler-cart.png";
 import walkerSheetUrl from "../assets/units/walker-move.png";
 import { bindCasemateSheets, bindSupplySheets, bindTurntableSheets } from "./turntable-sheet.js";
 import { engineRowFromFacing, engineRowFromScreen } from "./turntable.js";
@@ -155,8 +155,6 @@ export interface UnitSpriteDef {
   turret?: TurretSpriteDef;
   /** Barrel drawn apart from hull/turret so it can recoil. */
   gun?: TurretSpriteDef;
-  /** Same unit with the hitch cart removed. Drawn instead of image when the cart is off. */
-  bare?: TurretSpriteDef;
   /**
    * `world` (default): project facing onto the iso view, then 0001 = screen south.
    * `screen`: engineRowFromScreen of the given vector.
@@ -656,21 +654,27 @@ export const WALKER_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
-const haulerBare: TurretSpriteDef = {
-  image: loadSheet(haulerBareUrl),
-  dirs: 16,
-  frames: 1,
-  frameSize: 128,
-};
+/** Dozer only. The scrap cart is its own sheet so it can swing on the hitch. */
 export const HAULER_SPRITE: UnitSpriteDef = {
-  image: loadSheet(haulerSheetUrl),
+  image: loadSheet(haulerHullUrl),
   dirs: 16,
   frames: 1,
   frameSize: 128,
   fps: 8,
   drawSize: Math.round(38 * UNIT_VISUAL_SCALE),
   contactY: 0.92,
-  bare: haulerBare,
+  facingSpace: "world",
+};
+
+/** Towed scrap cart. Same cell and scale as the dozer; row = the cart's own heading. */
+export const HAULER_CART_SPRITE: UnitSpriteDef = {
+  image: loadSheet(haulerCartUrl),
+  dirs: 16,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: HAULER_SPRITE.drawSize,
+  contactY: 0.92,
   facingSpace: "world",
 };
 
@@ -1094,21 +1098,12 @@ export function snapHitToUnitSprite(
   turretDy?: number,
   facing?: number,
   turretFacing?: number,
-  showCart = true,
 ): { x: number; y: number } | null {
   if (!spriteReady(def) || def.drawSize <= 0 || def.frameSize <= 0) return null;
-  const bare = showCart === false && def.bare && spriteReady(def.bare) ? def.bare : null;
-  const bodyImg = bare ? bare.image : def.image;
-  const bodySize = bare ? bare.frameSize : def.frameSize;
-  const hullMap = unitSheetAlpha(bodyImg);
+  const hullMap = unitSheetAlpha(def.image);
   if (!hullMap) return null;
-  const dir = sheetDir(
-    { dirs: bare ? bare.dirs : def.dirs, facingSpace: def.facingSpace },
-    isoDx,
-    isoDy,
-    facing,
-  );
-  const hull = { map: hullMap, sx: 0, sy: dir * bodySize, cell: bodySize };
+  const dir = sheetDir(def, isoDx, isoDy, facing);
+  const hull = { map: hullMap, sx: 0, sy: dir * def.frameSize, cell: def.frameSize };
   let turret: { map: BuildingAlphaMap; sx: number; sy: number; cell: number } | null = null;
   const overlay = def.turret;
   if (overlay && spriteReady(overlay)) {
@@ -1216,8 +1211,6 @@ export function drawUnitSprite(
     gunShiftY?: number;
     /** Holds this cell instead of the move loop. Clamped to the sheet. */
     frameIndex?: number;
-    /** Hitch cart. Defaults to drawing it when the sheet exists. */
-    showCart?: boolean;
   },
 ): boolean {
   if (!spriteReady(def)) return false;
@@ -1244,16 +1237,10 @@ export function drawUnitSprite(
   ctx.imageSmoothingQuality = "low";
   const gun = def.gun;
   const turret = def.turret;
-  const bare = opts.showCart === false && def.bare && spriteReady(def.bare) ? def.bare : null;
-  const body = bare ?? def;
-  const bodyDir = bare
-    ? sheetDir({ dirs: bare.dirs, facingSpace: def.facingSpace }, isoDx, isoDy, opts.facing)
-    : dir;
-  const bodyCell = bare ? bare.frameSize : cell;
   if (gunBehind && gun && spriteReady(gun)) {
     blitOverlay(ctx, gun, def.facingSpace, tdx, tdy, gunFacing, frame, gx, gy, s);
   }
-  ctx.drawImage(body.image, frame * bodyCell, bodyDir * bodyCell, bodyCell, bodyCell, hx, hy, s, s);
+  ctx.drawImage(def.image, frame * cell, dir * cell, cell, cell, hx, hy, s, s);
   if (turret && spriteReady(turret)) {
     blitOverlay(ctx, turret, def.facingSpace, tdx, tdy, gunFacing, frame, hx, hy, s);
   }

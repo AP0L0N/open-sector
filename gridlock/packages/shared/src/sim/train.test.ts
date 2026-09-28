@@ -252,6 +252,35 @@ describe("rally point", () => {
     assert.ok(Math.hypot(u.x - rx, u.y - ry) < ts * 2);
   });
 
+  it("parks several trained units around one rally point instead of circling it", () => {
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    state.players.get("A")!.scrap = 99999;
+    const muster = seedMuster(state, 20, 4);
+    const ts = state.tileSize;
+    const rx = tileCenter(34, ts);
+    const ry = tileCenter(24, ts);
+    applyCommand(state, "A", { type: "cmd.rally", ids: [muster.id], x: rx, y: ry });
+    const n = 5;
+    for (let i = 0; i < n; i++) applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
+    ticks(state, secondsToTicks(catalog("rifleman").buildSeconds) * n + 400);
+    const units = [...state.entities.values()].filter((e) => e.type === "rifleman" && e.ownerId === "A");
+    const count = units.length;
+    assert.equal(count, n);
+    for (const u of units) {
+      assert.equal(u.state, "idle", `unit ${u.id} still ${u.state}`);
+      assert.equal(u.waypoints.length, 0);
+      assert.ok(Math.hypot(u.x - rx, u.y - ry) < 48, `unit ${u.id} parked ${Math.hypot(u.x - rx, u.y - ry)} away`);
+    }
+    for (let i = 0; i < units.length; i++) {
+      for (let j = i + 1; j < units.length; j++) {
+        const a = units[i]!;
+        const b = units[j]!;
+        assert.ok(Math.hypot(a.x - b.x, a.y - b.y) + 1e-6 >= a.radius + b.radius, `units ${a.id},${b.id} overlap`);
+      }
+    }
+  });
+
   it("sets rally points on several producers at once and only for the owner", () => {
     const { state } = twoPlayerMatch();
     seedCore(state);

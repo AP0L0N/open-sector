@@ -143,6 +143,9 @@ function canRepairHit(
   you: string,
   allied: (ownerId: string | undefined) => boolean,
 ): boolean {
+  if (hit.type === "sandbags" && hit.ruined && hit.hp > 0) {
+    return !hit.ownerId || hit.ownerId === you || allied(hit.ownerId);
+  }
   if (hit.wreck || hit.ruined || hit.hp <= 0) return false;
   const hullHurt = hit.kind === "unit" && !!hit.crits?.some((c) => c === "tracks" || c === "engine");
   if (hit.hpMax != null && hit.hp >= hit.hpMax && !hullHurt) return false;

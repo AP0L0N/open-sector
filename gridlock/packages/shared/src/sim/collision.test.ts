@@ -72,6 +72,41 @@ describe("unit collision", () => {
     ticks(state, 40);
     assert.ok(state.entities.has(trooper.id) && trooper.hp > 0, `friendly hp=${trooper.hp}`);
   });
+
+  it("friendly Troopers step out of a Warden's lane and the hull keeps rolling", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const y = tileCenter(16, ts);
+    const tank = makeEntity(state, "warden", "A", tileCenter(30, ts), y);
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    const lane = [0, 1, 2].map((i) => makeEntity(state, "rifleman", "A", tank.x + 40 + i * 20, y));
+    const destX = tank.x + 140;
+    applyCommand(state, "A", { type: "cmd.move", ids: [tank.id], x: destX, y });
+    ticks(state, 80);
+    assert.ok(Math.abs(tank.x - destX) < 12, `tank stalled at ${tank.x}, wanted ${destX}`);
+    assert.ok(Math.abs(tank.y - y) < 2, `tank was pushed off its lane to ${tank.y}`);
+    for (const t of lane) {
+      assert.ok(t.hp > 0 && state.entities.has(t.id), "friendly Trooper must survive");
+      const need = tank.radius + t.radius;
+      assert.ok(Math.hypot(t.x - tank.x, t.y - tank.y) + 1e-6 >= need, `trooper ${t.id} under the hull`);
+    }
+  });
+
+  it("a Warden does not give way to a Trooper walking into it", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const y = tileCenter(16, ts);
+    const tank = makeEntity(state, "warden", "A", tileCenter(40, ts), y);
+    const t = makeEntity(state, "rifleman", "A", tank.x - 60, y);
+    const x0 = tank.x;
+    applyCommand(state, "A", { type: "cmd.move", ids: [t.id], x: tank.x, y });
+    ticks(state, 60);
+    assert.equal(tank.x, x0);
+    assert.equal(tank.y, y);
+  });
 });
 
 describe("warden wrecks", () => {
@@ -229,6 +264,20 @@ describe("warden ammo", () => {
     assert.equal(res.ok, true, !res.ok ? res.message : "");
     assert.equal(tank.shell, "he");
     assert.equal(catalog("warden").ammo?.he, 6);
+  });
+
+  it("refuses a shell the rack does not carry", () => {
+    const { state } = twoPlayerMatch();
+    const tiger = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
+    const stug = makeEntity(state, "ss3", "A", 22 * 32, 20 * 32);
+    assert.equal(applyCommand(state, "A", { type: "cmd.ammo", ids: [tiger.id], shell: "heat" }).ok, false);
+    assert.equal(applyCommand(state, "A", { type: "cmd.ammo", ids: [stug.id], shell: "he" }).ok, false);
+    assert.equal(tiger.shell, "ap");
+    assert.equal(stug.shell, "ap");
+    const mixed = applyCommand(state, "A", { type: "cmd.ammo", ids: [tiger.id, stug.id], shell: "he" });
+    assert.equal(mixed.ok, true);
+    assert.equal(tiger.shell, "he");
+    assert.equal(stug.shell, "ap", "the StuG keeps AP when the Tiger switches to HE");
   });
 });
 

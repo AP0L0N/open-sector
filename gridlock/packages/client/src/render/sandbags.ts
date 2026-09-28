@@ -30,14 +30,12 @@ export interface SandbagDraw {
   bad?: boolean;
   /** World point plus height to screen. */
   project: (wx: number, wy: number, up: number) => { x: number; y: number };
-  /** Unit vector toward the sun on the ground plane. */
-  sun: { x: number; y: number };
-  /** Unit vector the shadow falls along on the ground plane. */
-  shadow: { x: number; y: number };
 }
 
 /** Gap between bags as a share of wall thickness. */
 const GAP = 0.032;
+/** Ground-plane direction the lit bag faces point toward (WNW). */
+const LIT = { x: Math.cos((9 * Math.PI) / 8), y: Math.sin((9 * Math.PI) / 8) };
 
 function rng(seed: number): () => number {
   let s = seed >>> 0 || 1;
@@ -169,22 +167,6 @@ export function drawSandbags(ctx: CanvasRenderingContext2D, d: SandbagDraw): voi
   ctx.globalAlpha = d.alpha;
   ctx.lineJoin = "round";
 
-  const top = d.ruined ? h : h * 3;
-  const hl = d.length / 2;
-  const ht = d.thick / 2;
-  const reach = top * 0.9;
-  const foot = [
-    world(-hl, -ht),
-    world(hl, -ht),
-    world(hl, ht),
-    world(-hl, ht),
-  ];
-  const cast = foot.map((p) => ({ x: p.x + d.shadow.x * reach, y: p.y + d.shadow.y * reach }));
-  const shade = hull([...foot, ...cast].map((p) => d.project(p.x, p.y, 0)));
-  ctx.fillStyle = "rgba(24, 16, 8, 0.3)";
-  softPath(ctx, shade);
-  ctx.fill();
-
   if (d.ruined) {
     const rand = rng(d.seed ^ 0x9e3779b9);
     ctx.fillStyle = d.bad ? "rgba(170, 70, 50, 0.5)" : "rgba(150, 124, 80, 0.55)";
@@ -207,7 +189,7 @@ export function drawSandbags(ctx: CanvasRenderingContext2D, d: SandbagDraw): voi
     })
     .sort((p, q) => p.course - q.course || p.depth - q.depth);
 
-  const light = (nx: number, ny: number) => 0.62 + 0.38 * Math.max(0, nx * d.sun.x + ny * d.sun.y);
+  const light = (nx: number, ny: number) => 0.62 + 0.38 * Math.max(0, nx * LIT.x + ny * LIT.y);
   for (const { b } of order) {
     const cy = Math.cos(b.yaw);
     const sy = Math.sin(b.yaw);

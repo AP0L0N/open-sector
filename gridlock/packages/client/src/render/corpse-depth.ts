@@ -1,7 +1,7 @@
 import { isoDepth } from "@gridlock/shared";
 
 /**
- * Painter layers. Craters and ground shadows use HOLE_DRAW_LAYER, move clicks
+ * Painter layers. Craters and unit ground shadows use HOLE_DRAW_LAYER, move clicks
  * use 0, and fallen soldiers with their blood use CORPSE_DRAW_LAYER, so every
  * ground mark paints under anything that stands. Trees, buildings, field
  * walls, units, track dirt, and muzzle smoke all share STANDING_DRAW_LAYER
