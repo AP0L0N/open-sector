@@ -20,7 +20,7 @@ import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter, walka
 import { aircraftDown, tickAir } from "./air.js";
 import { tickDrones } from "./drone.js";
 import { tickCapture } from "./capture.js";
-import { detachGarrisoned, spillGarrison, tickGarrison } from "./garrison.js";
+import { detachGarrisoned, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
 import { seedRng } from "./rng.js";
 import { tickBuild } from "./build.js";
 import { restampForts, tickField } from "./field.js";
@@ -186,6 +186,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickDeploy(state, dt);
   tickGarrison(state);
   tickHeal(state, dt);
+  tickGarrisonCare(state, dt);
   tickSupply(state, dt);
   tickMaulerCart(state, dt);
   tickMovement(state, dt);

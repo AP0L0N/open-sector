@@ -40,6 +40,8 @@ import {
   ptrdPenetration,
   scopedHpFraction,
   entityIsScouting,
+  garrisonFullArmsOf,
+  isCivilianType,
   isGarrisonable,
   isInfantryType,
   isSmokeShell,
@@ -434,9 +436,12 @@ function walkerSparesBuilding(state: MatchState, e: Entity, target: Entity): boo
   );
 }
 
-/** Auto-fire and infantry stop once a civilian house is empty. Tanks may still demolish on a player order. */
+/**
+ * Auto-fire and infantry stop once a civilian house is empty. Tanks may still demolish on a player order.
+ * A player-built garrison (the Bunker) is an enemy structure whether or not anyone is inside.
+ */
 function dropsEmptyGarrison(state: MatchState, e: Entity, target: Entity): boolean {
-  if (!isGarrisonable(target.type) || target.kind !== "building") return false;
+  if (!isGarrisonable(target.type) || !isCivilianType(target.type) || target.kind !== "building") return false;
   if (garrisonIsHostile(state, e.ownerId, target)) return false;
   if (e.order?.kind === "forceattack") return false;
   if (e.order?.kind === "attack" && !e.order.auto && !isInfantryType(e.type)) return false;
@@ -1163,7 +1168,12 @@ function walkerSecondTarget(state: MatchState, e: Entity, primary: Entity): Enti
 
 function gunnerReady(state: MatchState, e: Entity): boolean {
   if (e.type !== "gunner") return true;
-  if (unitInWater(state, e) || e.garrisonedIn != null) return false;
+  if (e.garrisonedIn != null) {
+    // A bunker slit is a ready ledge for the bipod. A house window is not.
+    const house = state.entities.get(e.garrisonedIn);
+    return !!house && garrisonFullArmsOf(house.type) && !hasCrit(e, "arm");
+  }
+  if (unitInWater(state, e)) return false;
   if (stanceOf(e) !== "crawl") return false;
   if (hasCrit(e, "arm")) return false;
   return e.bipod >= MG42_BIPOD_SECONDS;
@@ -1788,6 +1798,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
       if (!garrisonIsHostile(state, e.ownerId, o) || !garrisonLooksOccupied(state, e.ownerId, o)) continue;
     } else if (
       isGarrisonable(o.type) &&
+      isCivilianType(o.type) &&
       (!garrisonLooksOccupied(state, e.ownerId, o) || !garrisonIsHostile(state, e.ownerId, o))
     ) {
       continue;

@@ -22,6 +22,7 @@ import {
   hasScout,
   infantryGunFor,
   infantryLoadout,
+  isCivilianType,
   isGarrisonable,
   isInfantryType,
   isInfantryWeaponId,
@@ -843,6 +844,7 @@ const TYPE_ORDER: EntityType[] = [
   "armory",
   "airfield",
   "ciws",
+  "bunker",
   "cottage",
   "shack",
   "house",
@@ -1428,7 +1430,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: "The driver climbs out and leaves the truck for anyone to take.",
     });
   }
-  if (buildings.some((e) => e.type !== "core" && !isGarrisonable(e.type))) {
+  if (buildings.some((e) => e.type !== "core" && !isCivilianType(e.type))) {
     out.push({ slot: "sell", act: "sell", label: "Sell", title: "Sell selected structures" });
   }
   if (houses.length && units.some((e) => isInfantryType(e.type))) {
@@ -1634,7 +1636,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   }
   if (act === "sell") {
     for (const e of buildings) {
-      if (e.type !== "core" && !isGarrisonable(e.type)) ctx.net.send({ type: "cmd.sell", id: e.id });
+      if (e.type !== "core" && !isCivilianType(e.type)) ctx.net.send({ type: "cmd.sell", id: e.id });
     }
     return;
   }

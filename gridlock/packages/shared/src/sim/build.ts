@@ -16,6 +16,7 @@ import {
   tilesBlockedOrScrap,
 } from "./geo.js";
 import { ejectUnits } from "./deploy.js";
+import { spillGarrison } from "./garrison.js";
 import { restampForts } from "./field.js";
 import { repathIfBlocked } from "./orders.js";
 import { powerOf, productionSpeed } from "./power.js";
@@ -106,6 +107,8 @@ export function sellBuilding(state: MatchState, playerId: string, id: number): s
   if (e.kind !== "building") return "Cannot sell that.";
   if (e.type === "core") return "Cannot sell the Core.";
   if (isCivilianType(e.type)) return "Cannot sell that.";
+  // Sold with men inside: they walk out unhurt.
+  if (e.garrison.length) spillGarrison(state, e, { damage: false });
   const refund = e.ruined ? 0 : Math.floor(catalog(e.type).cost * SELL_REFUND);
   const p = state.players.get(playerId);
   if (p) p.scrap += refund;
