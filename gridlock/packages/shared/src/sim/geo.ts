@@ -49,6 +49,8 @@ export function newAirState(homeId: number | null, pad: number): AirState {
     rearm: 0,
     roll: 0,
     extend: false,
+    taxi: false,
+    touched: false,
   };
 }
 

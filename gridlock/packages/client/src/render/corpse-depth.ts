@@ -8,6 +8,8 @@ import { isoDepth } from "@gridlock/shared";
  * and interleave by ground depth: whatever stands further south-east paints
  * on top, so a tank behind a house is covered and a tank in front covers it.
  */
+/** Flat building ground (the Airfield strip). Craters, shadows, and planes paint over it. */
+export const GROUND_DECAL_DRAW_LAYER = -2;
 export const HOLE_DRAW_LAYER = -1;
 export const CORPSE_DRAW_LAYER = 0.5;
 export const STANDING_DRAW_LAYER = 1;

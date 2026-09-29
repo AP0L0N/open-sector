@@ -1,4 +1,5 @@
 import {
+  AIRFIELD_BACK_DEPTH,
   catalog,
   clampIsoCamera,
   cloudScale,
@@ -93,6 +94,7 @@ import {
   OAK_FACES,
   PINE_FACES,
   CRATER_FACES,
+  buildingGroundFor,
   buildingOccludeEz,
   buildingSpriteFor,
   buildingStackAt,
@@ -163,6 +165,7 @@ import {
   type MuzzleSmokePuff,
 } from "./muzzle-smoke.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
+import { drawCyborgDeathSparks, drawCyborgShield } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
 import {
   airBurstPuffs,
@@ -184,6 +187,7 @@ import {
   compareDrawOrder,
   CORPSE_DRAW_LAYER,
   type DrawKey,
+  GROUND_DECAL_DRAW_LAYER,
   HOLE_DRAW_LAYER,
   STANDING_DRAW_LAYER,
 } from "./corpse-depth.js";
@@ -1895,7 +1899,9 @@ export class MapView {
       };
     }
     if (e.kind === "building") {
-      const foot = axisFootprint(e.tileX * ts, e.tileY * ts, e.tileW * ts, e.tileH * ts);
+      // The Airfield's strip is a ground decal; only its back band of hangar and tower stands.
+      const depth = buildingGroundFor(e.type) ? e.tileH * AIRFIELD_BACK_DEPTH : e.tileH;
+      const foot = axisFootprint(e.tileX * ts, e.tileY * ts, e.tileW * ts, depth * ts);
       return { layer: STANDING_DRAW_LAYER, z: isoDepth(foot.cx, foot.cy), foot };
     }
     const p = this.lerpEnt(e);
@@ -2220,6 +2226,14 @@ export class MapView {
           else if (!ghost && !e.garrisonedIn && this.unitNearView(e, w, h)) this.drawUnit(e);
         },
       });
+      if (e.kind === "building" && buildingGroundFor(e.type)) {
+        const ts = this.ts();
+        items.push({
+          layer: GROUND_DECAL_DRAW_LAYER,
+          z: isoDepth((e.tileX + e.tileW / 2) * ts, (e.tileY + e.tileH / 2) * ts),
+          run: () => this.drawBuildingGround(e, ghost),
+        });
+      }
     }
     this.collectFieldSites(items);
     this.collectTrees(items);
@@ -2943,6 +2957,36 @@ export class MapView {
     return false;
   }
 
+  /** The flat part of a building (Airfield strip and hardstands), with its selection frame. */
+  private drawBuildingGround(e: EntityView, ghost: boolean): void {
+    const spr = buildingGroundFor(e.type);
+    if (!spr || !spriteReady(spr)) return;
+    const ts = this.ts();
+    const ctx = this.ctx;
+    const x = e.tileX * ts;
+    const y = e.tileY * ts;
+    const bw = e.tileW * ts;
+    const bh = e.tileH * ts;
+    const elev = heightAt(this.map(), e.tileX, e.tileY);
+    const south = this.toScreen(x + bw, y + bh, elev);
+    const east = this.toScreen(x + bw, y, elev);
+    const west = this.toScreen(x, y + bh, elev);
+    ctx.save();
+    ctx.globalAlpha = ghost || !this.buildingLit(e) ? 0.5 : 1;
+    drawBuildingSprite(ctx, spr, south.x, south.y, east.x - west.x);
+    ctx.restore();
+    if (!ghost && this.selected.has(e.id)) {
+      const pad = 3;
+      const pts = [
+        this.toScreen(x - pad, y - pad, elev),
+        this.toScreen(x + bw + pad, y - pad, elev),
+        this.toScreen(x + bw + pad, y + bh + pad, elev),
+        this.toScreen(x - pad, y + bh + pad, elev),
+      ];
+      drawSelectFrame(ctx, pts, { hostile: this.hostileOwner(e.ownerId), now: performance.now() });
+    }
+  }
+
   private drawBuilding(e: EntityView, ghost = false): void {
     const ts = this.ts();
     const ctx = this.ctx;
@@ -2960,7 +3004,9 @@ export class MapView {
     const west = this.toScreen(x, y + bh, elev);
     const bar = this.toScreen(x + bw / 2, y + bh / 2, elev);
     let stack = { x: bar.x, y: bar.y - ez - 8 };
-    if (!ghost && this.selected.has(e.id)) {
+    const ground = buildingGroundFor(e.type);
+    // A building with a ground decal draws its selection frame there, under everything standing.
+    if (!ghost && this.selected.has(e.id) && !(ground && spriteReady(ground))) {
       const pad = 3;
       const pts = [
         this.toScreen(x - pad, y - pad, elev),
@@ -3302,7 +3348,7 @@ export class MapView {
     }
     const corpse = isInfantryType(e.type) && !!e.wreck;
     let frameIndex: number | undefined;
-    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === CYBORG_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
     else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE) {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
     }
@@ -3337,6 +3383,10 @@ export class MapView {
       const now = performance.now();
       const muzzles = gatlingMuzzles(s.x, s.y, size, p.facing, e.gatling.arms, e.gatling.off);
       muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2));
+    }
+    if (drawn && e.type === "cyborg") {
+      if (e.shielded && !e.wreck) drawCyborgShield(ctx, s.x, s.y, size, performance.now(), e.id);
+      if (corpse) drawCyborgDeathSparks(ctx, s.x, s.y, size, dir.x, dir.y, this.corpseAge(e.id), e.id);
     }
     if (e.wreck && drawn && !corpse) this.drawWreckFires(e, s.x, s.y, size, dir.x, dir.y);
     if (!drawn) {
@@ -3521,6 +3571,10 @@ export class MapView {
       frameIndex: heldFrame(ageMs, def.fps, def.frames),
       facing: body.facing,
     });
+    // A dead cyborg bleeds (the stains under him) and keeps shorting out at the hips.
+    if (body.type === "cyborg") {
+      drawCyborgDeathSparks(this.ctx, s.x, s.y, def.drawSize, dir.x, dir.y, ageMs, body.id);
+    }
     this.ctx.restore();
   }
 
@@ -4077,6 +4131,8 @@ export class MapView {
       ctx.fillStyle = top;
       this.fillQuad(n, east, south, west);
       ctx.globalAlpha = 0.55;
+      const ground = buildingGroundFor(type);
+      if (ground && spriteReady(ground)) drawBuildingSprite(ctx, ground, south.x, south.y, east.x - west.x);
       drawBuildingSprite(ctx, spr, south.x, south.y, east.x - west.x);
       ctx.restore();
       ctx.strokeStyle = top;
