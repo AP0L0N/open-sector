@@ -1179,25 +1179,39 @@ export const STUKA_MG_PER_TICK = (MG42_RPM / 60 / (1 / TICK_DT)) * 2;
 export const STUKA_MG_ROUNDS = 1000;
 /**
  * Fw 190 fighter. No bomb: two 30 mm cannon, one in a gondola under each
- * wing. It hunts planes in the air and strafes the ground. Fired down from a
- * dive, a round meets a hull's roof — about ROOF_ARMOR_SHARE of its side
- * plate — so even the heaviest tank is hurt. Each round that bites takes
- * FW190_ROOF_HP_SHARE of the hull's max HP, whatever its size.
+ * wing. It hunts planes in the air and strafes the ground in barrages: each
+ * pass empties one burst from both wings at once, two straight parallel lines
+ * of rounds laid along the bearing to the target and walking through it.
+ * Fired down from the dive, a round meets a hull's roof — about
+ * ROOF_ARMOR_SHARE of its side plate — so even the heaviest tank is hurt. Each
+ * round that bites takes FW190_ROOF_HP_SHARE of the hull's max HP, whatever
+ * its size. Plunging fire comes down through tree cover; a house in the line
+ * still takes the rounds.
  */
-export const FW190_ROUNDS = 60;
-/**
- * On a ground target the cannon hold fire until this close, so the rounds come
- * down steeply on the roof instead of skimming into the houses and trees short
- * of it. Against a plane they open at FW190_CANNON.rangeTiles.
- */
-export const FW190_STRAFE_TILES = t(3.5);
-/** Both wings fire together this often: about 400 rounds a minute a gun. */
-export const FW190_PAIR_SECONDS = 0.15;
+export const FW190_BARRAGES = 3;
+/** Rounds in one wing's line. A barrage fires two lines. */
+export const FW190_BARRAGE_ROUNDS = 6;
+/** Release distance: the barrage goes when the target is this close and on the nose. */
+export const FW190_BARRAGE_TILES = t(4.5);
+/** Half-angle off the nose the target must be inside for a release. */
+export const FW190_BARRAGE_ARC_DEG = 12;
+/** Length of each line on the ground, centered on the target. */
+export const FW190_BARRAGE_LINE_TILES = t(1.25);
+/** Wing guns sit this share of the plane's radius either side of the centerline: the gap between the lines. */
+export const FW190_WING_GUN_OFFSET = 0.6;
+/** Seconds between barrages. A strafing run is longer than this; a dogfight is not. */
+export const FW190_BARRAGE_COOLDOWN = 2.5;
 /** Roof plate, as a share of the side plate. */
 export const ROOF_ARMOR_SHARE = 0.3;
-export const FW190_ROOF_HP_SHARE = 0.045;
+export const FW190_ROOF_HP_SHARE = 0.03;
 /** Chance a round through the roof wrecks the engine under the deck. */
 export const FW190_ROOF_ENGINE_CHANCE = 0.12;
+/**
+ * A 30 mm round that lands in the dirt bursts: soldiers inside this radius
+ * take up to FW190_SPLASH_DAMAGE, less toward the edge. Plate shrugs it off.
+ */
+export const FW190_SPLASH_TILES = t(0.25);
+export const FW190_SPLASH_DAMAGE = 34;
 
 /**
  * Bunker. Poured concrete, low to the ground, firing slits on every face.
@@ -1378,7 +1392,7 @@ export const STUKA_MG = {
   /** Half-angle off the nose the wing guns bear. */
   arcDeg: 10,
 } as const;
-/** Fw 190 wing cannon, 30 mm. See FW190_ROUNDS. */
+/** Fw 190 wing cannon, 30 mm. See FW190_BARRAGES. */
 export const FW190_CANNON = {
   damage: 30,
   penetration: 40,
@@ -2395,9 +2409,9 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 11,
     moveTilesPerSec: t(6.5),
     turnDegPerSec: 150,
-    rangeTiles: FW190_CANNON.rangeTiles,
+    rangeTiles: FW190_BARRAGE_TILES,
     sightTiles: t(10),
-    cooldown: FW190_PAIR_SECONDS,
+    cooldown: FW190_BARRAGE_COOLDOWN,
     damage: FW190_CANNON.damage,
     projectileSpeed: SMALL_ARMS_SPEED,
     ...UNARMED,
@@ -2405,7 +2419,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: FW190_CANNON.caliber,
     spreadDeg: FW190_CANNON.spreadDeg,
     aircraft: true,
-    blurb: `Fighter. Two 30 mm cannon, one under each wing, and no bomb. Chases enemy planes out of the sky, and strafes the ground in a shallow dive — fired from above, a round comes down through a tank's thin roof, so even the heaviest hull bleeds. ${FW190_ROUNDS} rounds a sortie. Flies faster and turns tighter than the Stuka. Lands at its Airfield to refuel and rearm.`,
+    blurb: `Fighter. Two 30 mm cannon, one under each wing, and no bomb. ${FW190_BARRAGES} barrages a sortie: on each pass it lines up on the target and lays two straight lines of rounds through it, one from each wing, then comes round for the next. Fired from above, the rounds come down through a tank's thin roof, so even the heaviest hull bleeds. It chases enemy planes out of the sky the same way. Flies faster and turns tighter than the Stuka. Lands at its Airfield to refuel and rearm.`,
   },
   droneop: {
     type: "droneop",
@@ -2600,7 +2614,7 @@ export function isAircraftType(type: EntityType): boolean {
 
 /** Bombs and gun rounds a plane carries on a full sortie. */
 export function airLoadoutOf(type: EntityType): { bombs: number; rounds: number } {
-  if (type === "fw190") return { bombs: 0, rounds: FW190_ROUNDS };
+  if (type === "fw190") return { bombs: 0, rounds: FW190_BARRAGES };
   return { bombs: STUKA_BOMBS, rounds: STUKA_MG_ROUNDS };
 }
 
