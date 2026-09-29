@@ -29,6 +29,8 @@ import {
   infantryGunFor,
   isoDepth,
   isoLift,
+  ISO_TILE_H,
+  ISO_TILE_W,
   isoToWorld,
   maxHeightOf,
   unitBehindIsoBox,
@@ -175,6 +177,7 @@ import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
+import { buildingShadowFootprint, drawCastShadows, treeShadowFootprint } from "./cast-shadow.js";
 import {
   airBurstPuffs,
   backblastPuffs,
@@ -2251,8 +2254,13 @@ export class MapView {
       ...[...this.ghosts.values()].filter((g) => !liveIds.has(g.id)),
     ];
     const items: DrawItem[] = [];
+    const castShadows: IsoPt[][] = [];
     for (const e of drawList) {
       const ghost = !liveIds.has(e.id);
+      // The Airfield is flat ground; its decal would sit in its own shadow.
+      if (e.kind === "building" && !isFieldStructure(e.type) && !buildingGroundFor(e.type)) {
+        this.pushCastShadow(castShadows, this.buildingShadow(e), w, h);
+      }
       items.push({
         ...this.drawKey(e),
         run: () => {
@@ -2271,7 +2279,9 @@ export class MapView {
       }
     }
     this.collectFieldSites(items);
-    this.collectTrees(items);
+    this.collectTrees(items, castShadows);
+    // One path under craters and unit blobs, so overlapping shadows don't stack.
+    items.push({ layer: HOLE_DRAW_LAYER, z: -Infinity, run: () => drawCastShadows(this.ctx, castShadows) });
     this.collectRemains(items);
     this.collectUnitShadows(items);
     this.collectMaulerCarts(items, w, h);
@@ -2977,7 +2987,37 @@ export class MapView {
     this.muzzleSmokes = keep;
   }
 
-  private collectTrees(items: DrawItem[]): void {
+  /** World footprint of a building's cast shadow; EXTRUDE is its screen height. */
+  private buildingShadow(e: EntityView): { x: number; y: number }[] {
+    const ts = this.ts();
+    return buildingShadowFootprint({
+      x: e.tileX * ts,
+      y: e.tileY * ts,
+      w: e.tileW * ts,
+      h: e.tileH * ts,
+      height: (this.extrude(e.type) * ts) / ISO_TILE_H,
+    });
+  }
+
+  /** Projects a world shadow to screen and keeps it when it touches the view. */
+  private pushCastShadow(out: IsoPt[][], world: { x: number; y: number }[], w: number, h: number): void {
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    const screen = world.map((q) => {
+      const s = this.toScreen(q.x, q.y);
+      minX = Math.min(minX, s.x);
+      minY = Math.min(minY, s.y);
+      maxX = Math.max(maxX, s.x);
+      maxY = Math.max(maxY, s.y);
+      return s;
+    });
+    if (maxX < -12 || maxY < -12 || minX > w + 12 || minY > h + 12) return;
+    out.push(screen);
+  }
+
+  private collectTrees(items: DrawItem[], shadows: IsoPt[][]): void {
     const map = this.map();
     const ts = map.tileSize;
     const explored = this.explored;
@@ -3001,6 +3041,17 @@ export class MapView {
       const drawH =
         TREE_SCALE * (kind === "lone" ? (pine ? 54 : 46) + (h % 5) * 2 : (pine ? 40 : 34) + (h % 4));
       const dim = !this.lit(tx, ty);
+      this.pushCastShadow(
+        shadows,
+        treeShadowFootprint({
+          x: wx,
+          y: wy,
+          height: (drawH * 0.55 * ts) / ISO_TILE_H,
+          crown: (drawH * 0.2 * 2 * ts) / (ISO_TILE_W * Math.SQRT2),
+        }),
+        vw,
+        vh,
+      );
       items.push({
         layer: STANDING_DRAW_LAYER,
         z: isoDepth(wx, wy),
