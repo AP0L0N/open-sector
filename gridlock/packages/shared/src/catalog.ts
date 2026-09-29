@@ -414,6 +414,7 @@ export type EntityType =
   | "armory"
   | "airfield"
   | "ciws"
+  | "ram"
   | "stuka"
   | "droneop"
   | "drone"
@@ -426,7 +427,7 @@ export type EntityType =
   | "chapel"
   | "sandbags"
   | "teeth";
-export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws";
+export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "ram";
 /** Placed by an engineer, not the construction yard. */
 export type FieldStructureType = "sandbags" | "teeth";
 export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "teeth"];
@@ -462,7 +463,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
   deploy: 2,
 };
 
-export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws"];
+export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram"];
 export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "droneop"];
 /**
  * Opening army besides the Rig. Hauler omitted so it does not auto-harvest.
@@ -561,7 +562,7 @@ export interface CatalogEntry {
   /** Flies. Parks on an Airfield pad, ignores ground collision and paths. */
   aircraft?: boolean;
   /**
-   * Radar-laid mount (the CIWS). Fires on its own at units only, planes first,
+   * Radar-laid mount (the CIWS, the RAM). Fires on its own at units only, planes first,
    * lays on a plane with CIWS_AIR_SPREAD instead of AIR_TARGET_SPREAD, cranks
    * the gun to any height, and shoots rockets out of the air.
    */
@@ -1096,6 +1097,44 @@ export const CIWS_INTERCEPT_ROUNDS = 12;
 export const CIWS_INTERCEPTS_PER_TICK = 2;
 
 /**
+ * RAM. A radar-laid launcher of short rockets on the same pad as the CIWS. Like
+ * the CIWS it needs no orders: it swings onto the nearest enemy unit it can
+ * hurt, planes first, and leaves tanks and buildings alone. It fires a barrage
+ * like the Nebelwerfer's — one or two rockets at a time, a salvo of eight —
+ * but short and tight: the rockets fly straight and fast and scatter a
+ * fraction as wide. Aimed at a plane they burst at its height. An incoming
+ * rocket in reach draws one interceptor, which may burst it in the air. The
+ * rack does not refill by itself — a supply truck tops it up.
+ */
+export const RAM_RANGE_TILES = t(11);
+export const RAM_SALVO = 8;
+/** Four salvos. */
+export const RAM_ROCKET_AMMO = RAM_SALVO * 4;
+export const RAM_ROCKET: RocketRackDef = {
+  salvo: RAM_SALVO,
+  interval: 0.12,
+  intervalJitter: 0.1,
+  volleyMax: 2,
+  reload: 7,
+  scatterNearTiles: t(0.2),
+  scatterFarTiles: t(0.6),
+  splashTiles: t(1.1),
+  speed: t(22) * TILE_SIZE,
+  podLift: 3,
+  damage: 30,
+  armorDamage: 5,
+  airMul: 1.5,
+  penetration: 18,
+  caliber: 127,
+  antiAir: true,
+  laid: true,
+};
+/** Chance one interceptor bursts one rocket in the air. Each RAM tries each rocket once. */
+export const RAM_INTERCEPT_CHANCE = 0.35;
+/** Seconds from one interceptor to the next. Between them the rack is not free to fire. */
+export const RAM_INTERCEPT_INTERVAL = 0.3;
+
+/**
  * Drone Op and his one quadcopter. The drone launches from his hands and
  * becomes its own unit. It flies only inside DRONE_LEASH_TILES of him, and
  * only while the battery lasts; low on charge it flies back and he stows it
@@ -1527,6 +1566,38 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     belt: CIWS_BELT,
     radarLaid: true,
     blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, and tries to burst incoming rockets in the air. Leaves tanks and buildings alone. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
+  },
+  ram: {
+    type: "ram",
+    kind: "building",
+    name: "RAM",
+    letter: "B",
+    cost: 900,
+    buildSeconds: 22,
+    hp: 500,
+    power: -30,
+    tileW: t(1),
+    tileH: t(1),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    turretTurnDegPerSec: 240,
+    rangeTiles: RAM_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: TICK_DT,
+    damage: RAM_ROCKET.damage,
+    projectileSpeed: RAM_ROCKET.speed,
+    armorFront: 0,
+    armorSide: 0,
+    armorRear: 0,
+    penetration: RAM_ROCKET.penetration,
+    caliber: RAM_ROCKET.caliber,
+    spreadDeg: 0,
+    radarLaid: true,
+    rockets: true,
+    rocketAmmo: RAM_ROCKET_AMMO,
+    rocketRack: RAM_ROCKET,
+    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, in barrages of ${RAM_SALVO} short, accurate rockets, and sends an interceptor at incoming rockets that may burst them in the air. Shorter reach than a Nebelwerfer, longer than a CIWS. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
   },
   sandbags: {
     type: "sandbags",
@@ -2613,12 +2684,12 @@ export function wadesOf(type: EntityType): boolean {
   return catalog(type).wades === true;
 }
 
-/** Carries the shoulder rocket pods. */
-/** The CIWS mount. See CatalogEntry.radarLaid. */
+/** A radar-laid mount: the CIWS or the RAM. See CatalogEntry.radarLaid. */
 export function radarLaidOf(type: EntityType): boolean {
   return catalog(type).radarLaid === true;
 }
 
+/** Carries a rocket rack: Titan pods, Nebelwerfer tubes, the RAM launcher. */
 export function rocketsOf(type: EntityType): boolean {
   return catalog(type).rockets === true;
 }

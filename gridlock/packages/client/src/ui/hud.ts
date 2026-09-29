@@ -843,6 +843,7 @@ const TYPE_ORDER: EntityType[] = [
   "armory",
   "airfield",
   "ciws",
+  "ram",
   "cottage",
   "shack",
   "house",
