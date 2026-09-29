@@ -26,6 +26,7 @@ import { tickBuild } from "./build.js";
 import { restampForts, tickField } from "./field.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
 import { tickSmoke } from "./smoke.js";
+import { maybeCookOff, tickFires } from "./flame.js";
 import { tickBipod, tickStance } from "./stance.js";
 import { tickCollision } from "./collision.js";
 import { tickAutoDeploy, tickDeploy } from "./deploy.js";
@@ -118,6 +119,7 @@ export function createMatch(
     entities: new Map(),
     projectiles: [],
     smokeClouds: [],
+    fires: [],
     impacts: [],
     rngState: seedRng(room.id),
     ended: false,
@@ -201,6 +203,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickTrain(state, dt);
   tickCombat(state, dt);
   tickProjectiles(state, dt);
+  tickFires(state, dt);
   tickCapture(state, dt);
   reapDead(state);
   reapLostHqs(state);
@@ -231,6 +234,7 @@ function reapDead(state: MatchState): void {
       madeWreck = true;
       continue;
     }
+    if (e.type === "pyro") maybeCookOff(state, e);
     if (isInfantryType(e.type)) leaveCorpse(state, e);
     if (e.air) aircraftDown(state, e);
     dead.push(e.id);

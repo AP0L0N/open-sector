@@ -13,7 +13,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 50;
+export const PROTOCOL_VERSION = 51;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -282,14 +282,19 @@ export interface ProjectileView {
   mortar?: boolean;
   /** Peak air height in elevation units. Mortar bombs only. */
   apex?: number;
-  /** 0 at the tube, 1 at the ground. Mortar bombs only. */
+  /** 0 at the tube, 1 at the ground. Mortar bombs and flamethrower globs. */
   arc?: number;
-  /** Seconds from the tube to the ground. Mortar bombs only. */
+  /** Seconds from the tube to the ground. Mortar bombs and flamethrower globs. */
   hang?: number;
   /** Falling aircraft bomb. `z` is its height; it drops, it does not arc. */
   bomb?: boolean;
   /** Titan or Nebelwerfer rocket. `z` is its height; a Nebelwerfer rocket lobs, so it climbs and falls. */
   rocket?: boolean;
+  /**
+   * Flamethrower glob. `z` is its height above the ground and `arc` is 0 at the
+   * lance, 1 where it lands. `fromId` is the Pyro, so the jet can be drawn from his nozzle.
+   */
+  flame?: boolean;
 }
 
 export type ImpactKind = "miss" | "puff" | "crush" | "ricochet" | "glance" | "hit" | "pen" | "kill";
@@ -322,6 +327,8 @@ export interface ImpactView {
   z?: number;
   /** A CIWS or RAM met a rocket in the air. "kill": it burst, nothing hurt under it. "miss" (RAM): the interceptor went off beside it. */
   intercept?: boolean;
+  /** A killed Pyro's fuel tanks went up. A big rolling fireball, then burning ground around him. */
+  cookoff?: boolean;
 }
 
 /** Blood droplet around a corpse. World pixels. */
@@ -376,6 +383,17 @@ export interface SmokeCloudView {
   lifeMax: number;
 }
 
+/** Burning ground from a flamethrower or a Pyro's tanks. Burns every soldier standing in it. */
+export interface GroundFireView {
+  id: number;
+  x: number;
+  y: number;
+  /** World pixels. */
+  radius: number;
+  life: number;
+  lifeMax: number;
+}
+
 export interface MatchSnapshot {
   tick: number;
   /** Sim multiplier. 1–5. */
@@ -388,6 +406,8 @@ export interface MatchSnapshot {
   projectiles: ProjectileView[];
   impacts: ImpactView[];
   smoke: SmokeCloudView[];
+  /** Burning ground on tiles you can see, and fires your side lit. Empty until the first flamethrower burst. */
+  fires: GroundFireView[];
   scrap: ScrapCell[];
   /** Tree tiles a vehicle has crushed. Empty until the first flatten. */
   clearedTrees: { x: number; y: number }[];

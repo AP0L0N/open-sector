@@ -142,6 +142,8 @@ import {
   ATINFANTRY_FIRE_SPRITE,
   ROCKETER_DIE_SPRITE,
   ROCKETER_FIRE_SPRITE,
+  PYRO_DIE_SPRITE,
+  PYRO_FIRE_SPRITE,
   SNIPER_DIE_SPRITE,
   SNIPER_FIRE_SPRITE,
   TROOPER_DIE_SPRITE,
@@ -193,12 +195,39 @@ import {
   trailPuffs,
   type RocketPuff,
 } from "./rocket-smoke.js";
+import {
+  cookoffParticles,
+  drawBodyFlames,
+  drawEmbers,
+  drawFuelBed,
+  drawFireGlow,
+  drawFlameParticle,
+  drawPilotLight,
+  drawScorch,
+  drawSoot,
+  FIRE_SMOKE_CAP,
+  drawTongue,
+  FLAME_PARTICLE_CAP,
+  fireTongues,
+  flameParticleLook,
+  jetLanding,
+  jetParticles,
+  patchHeat,
+  rng as flameRng,
+  SCORCH_MS,
+  stepFlameParticle,
+  tonguePose,
+  type FlameParticle,
+} from "./flame-fx.js";
 import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir, lerpAirAlt } from "./aircraft.js";
 import { drawSandbags } from "./sandbags.js";
+import { pyroNozzleScreen } from "./pyro-nozzle.js";
+import { unitGroundSink } from "./unit-hit.js";
+import { engineRowFromScreen } from "./turntable.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
-import { atInfantrySheet, cyborgSheet, gunnerSheet, heldFrame, medicSheet, mortarmanSheet, rocketerSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
+import { atInfantrySheet, cyborgSheet, gunnerSheet, heldFrame, medicSheet, mortarmanSheet, pyroSheet, rocketerSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
 import {
   axisFootprint,
   compareDrawOrder,
@@ -282,6 +311,7 @@ const EXTRUDE: Record<EntityType, number> = {
   sniper: 26,
   atinfantry: 26,
   rocketer: 26,
+  pyro: 26,
   mortarman: 26,
   engineer: 26,
   medic: 26,
@@ -527,6 +557,18 @@ export class MapView {
   private rocketLast = new Map<number, { x: number; y: number; z: number }>();
   /** Rocket trail, backblast, and air-burst smoke. World space, absolute elevation. */
   private rocketPuffs: RocketPuff[] = [];
+  /** Burning fuel from Pyro jets and cook-offs. World ground point, screen height. */
+  private flameParticles: FlameParticle[] = [];
+  private flameFrameAt = 0;
+  private cookOffsSeen = new Set<number>();
+  /** Black smoke off burning fuel. Same drift as rocket smoke, sooty colour. `shade` 1 is black. */
+  private fireSmoke: RocketPuff[] = [];
+  /** Per Pyro: when his newest glob was first seen, and where the burst is laid. */
+  private jets = new Map<number, { at: number; land: { x: number; y: number } }>();
+  /** Charred ground under each fire, kept after it goes out. `seen` is the last time it burned. */
+  private scorches = new Map<number, { x: number; y: number; r: number; born: number; seen: number }>();
+  /** When each fire last sent up a smoke puff. */
+  private fireSmokeAt = new Map<number, number>();
   /** Leaves and husk from a tree a shell just opened. */
   private treeFalls: { x: number; y: number; at: number; seed: number }[] = [];
   /** First cleared-tree list is history. Later ones play the fall. */
@@ -722,6 +764,15 @@ export class MapView {
         if (shooter && isInfantryType(shooter.type) && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
       }
       if (i.kind === "crush") continue;
+      if (i.cookoff) {
+        // A fuel fireball, not a shell burst: it has its own particles and smoke.
+        if (!this.cookOffsSeen.has(i.id)) {
+          if (this.cookOffsSeen.size > 200) this.cookOffsSeen.clear();
+          this.cookOffsSeen.add(i.id);
+          this.cookOffFx(i.x, i.y, i.id, now);
+        }
+        continue;
+      }
       if (i.rocket && i.z != null && !this.fxIds.has(i.id)) {
         this.rocketPuffs.push(...airBurstPuffs(i.x, i.y, i.z, now, i.id));
       }
@@ -749,6 +800,12 @@ export class MapView {
       if (p.bounced || this.seenShots.has(p.id)) continue;
       this.seenShots.add(p.id);
       const shooter = match.entities.find((e) => e.id === p.fromId);
+      if (p.flame) {
+        // A new glob: the trigger is still held. The jet itself is drawn per frame from his nozzle.
+        if (shooter?.type === "pyro" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
+        this.jets.set(p.fromId, { at: now, land: jetLanding(p) });
+        continue;
+      }
       if (p.mortar) {
         if (shooter?.type === "mortarman" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
         continue;
@@ -2353,6 +2410,7 @@ export class MapView {
     this.collectMaulerCarts(items, w, h);
     this.collectTrackKicks(items);
     this.collectMuzzleSmoke(items);
+    this.collectFires(items, w, h);
     for (const m of this.takeMoveClicks()) {
       items.push({
         layer: 0,
@@ -2395,6 +2453,7 @@ export class MapView {
     }
     this.drawMortarArcs();
     this.drawRockets();
+    this.drawFlames();
     this.drawFallingBombs();
     this.drawTreeFalls();
     this.drawSmokeClouds();
@@ -3477,6 +3536,16 @@ export class MapView {
       if (sheet === "fire") return ROCKETER_FIRE_SPRITE;
       if (sheet === "die") return ROCKETER_DIE_SPRITE;
     }
+    if (e.type === "pyro") {
+      const sheet = pyroSheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        shotAgeMs: this.infantryShotAge(e.id),
+      });
+      if (sheet === "fire") return PYRO_FIRE_SPRITE;
+      if (sheet === "die") return PYRO_DIE_SPRITE;
+    }
     if (e.type === "mortarman") {
       const sheet = mortarmanSheet({
         swimming: e.swimming,
@@ -3647,8 +3716,8 @@ export class MapView {
     }
     const corpse = isInfantryType(e.type) && !!e.wreck;
     let frameIndex: number | undefined;
-    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
-    else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE || def === ROCKETER_FIRE_SPRITE) {
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE || def === ROCKETER_FIRE_SPRITE || def === PYRO_FIRE_SPRITE) {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
     }
     ctx.save();
@@ -3682,6 +3751,16 @@ export class MapView {
       const now = performance.now();
       const muzzles = gatlingMuzzles(s.x, s.y, size, p.turretFacing ?? p.facing, e.gatling.arms, e.gatling.off);
       muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2));
+    }
+    if (drawn && e.type === "pyro" && !e.wreck && !e.swimming && e.clip !== 0) {
+      // The igniter at the lance tip stays lit while there is fuel to light.
+      const tip = this.pyroNozzle(e);
+      const t = this.toScreen(tip.x, tip.y);
+      drawPilotLight(ctx, t.x, t.y - tip.h, performance.now(), e.id);
+    }
+    if (drawn && !e.wreck && isInfantryType(e.type) && !e.swimming) {
+      const heat = this.fireHeatAt(p.x, p.y);
+      if (heat > 0) drawBodyFlames(ctx, s.x, s.y, size, heat, performance.now(), e.id);
     }
     if (drawn && corpse && e.type === "cyborg") {
       drawCyborgDeathSparks(ctx, s.x, s.y, size, dir.x, dir.y, this.corpseAge(e.id), e.id);
@@ -3846,6 +3925,8 @@ export class MapView {
             ? ATINFANTRY_DIE_SPRITE
             : body.type === "rocketer"
             ? ROCKETER_DIE_SPRITE
+            : body.type === "pyro"
+            ? PYRO_DIE_SPRITE
             : body.type === "mortarman"
             ? MORTARMAN_DIE_SPRITE
             : body.type === "engineer"
@@ -3995,6 +4076,272 @@ export class MapView {
     ctx.restore();
     this.rocketPuffs = keep;
     for (const h of heads) drawRocketHead(ctx, h.x, h.y, h.dx, h.dy, h.id);
+  }
+
+  /**
+   * Lance tip of a Pyro: world ground point under it and screen height above
+   * that ground. Follows the 16-face sheet he is drawn with, so the jet leaves
+   * the nozzle on screen, not the sim's exact bearing.
+   */
+  private pyroNozzle(e: EntityView): { x: number; y: number; h: number } {
+    const p = this.lerpEnt(e);
+    const ts = this.ts();
+    const dir = facingToIso(p.facing, ts);
+    const stance = e.stance ?? "stand";
+    const size = spriteFor("pyro", stance)?.drawSize ?? 20;
+    const tip = pyroNozzleScreen(engineRowFromScreen(dir.x, dir.y), stance, size, unitGroundSink(size));
+    const o = isoToWorld(0, 0, ts);
+    const g = isoToWorld(tip.gx, tip.gy, ts);
+    return { x: p.x + g.x - o.x, y: p.y + g.y - o.y, h: tip.h };
+  }
+
+  /** Hottest burning patch under a ground point, 0–1. */
+  private fireHeatAt(x: number, y: number): number {
+    let heat = 0;
+    for (const f of this.curr.fires ?? []) {
+      if (Math.hypot(f.x - x, f.y - y) > f.radius) continue;
+      heat = Math.max(heat, patchHeat(f.life, f.lifeMax));
+    }
+    return heat;
+  }
+
+  /** The Pyro's tanks going up: a boiling fireball, fuel thrown clear, and a tall column of black smoke. */
+  private cookOffFx(x: number, y: number, id: number, now: number): void {
+    this.flameParticles.push(...cookoffParticles(x, y, now, id));
+    const rnd = flameRng(id * 2654435761);
+    const ground = this.elevAt(x, y);
+    for (let i = 0; i < 26; i++) {
+      const a = rnd() * Math.PI * 2;
+      const reach = 6 + rnd() * 18;
+      this.fireSmoke.push({
+        x: x + Math.cos(a) * 3,
+        y: y + Math.sin(a) * 3,
+        z: ground + 2 + rnd() * 3,
+        dx: Math.cos(a) * reach + 8,
+        dy: Math.sin(a) * reach - 6,
+        rise: 9 + rnd() * 9,
+        at: now + 180 + i * 35,
+        life: 4200 + rnd() * 2400,
+        r0: 5 + rnd() * 3,
+        r1: 18 + rnd() * 12,
+        alpha: 0.6 + rnd() * 0.2,
+        shade: 0.88 + rnd() * 0.1,
+        seed: (id + i * 97) >>> 0,
+      });
+    }
+  }
+
+  /**
+   * Burning ground: the charred scorch and the pool of firelight lie on the
+   * ground; each flame tongue stands at its own ground point, so a soldier in
+   * the fire has flames behind him and in front of him. Smoke rolls off into
+   * the rocket-smoke pool, which drifts and spreads it.
+   */
+  private collectFires(items: DrawItem[], w: number, h: number): void {
+    const now = performance.now();
+    const fires = this.curr.fires ?? [];
+    const speed = this.curr.gameSpeed || 1;
+    const since = Math.max(0, (now - this.snapAt) / 1000) * speed;
+    const ts = this.ts();
+    const o = isoToWorld(0, 0, ts);
+    const live = new Set<number>();
+    for (const f of fires) {
+      live.add(f.id);
+      const sc = this.scorches.get(f.id);
+      if (sc) {
+        sc.x = f.x;
+        sc.y = f.y;
+        sc.r = f.radius;
+        sc.seen = now;
+      } else this.scorches.set(f.id, { x: f.x, y: f.y, r: f.radius, born: now, seen: now });
+    }
+    for (const [id, sc] of this.scorches) {
+      const gone = live.has(id) ? 0 : now - sc.seen;
+      if (gone > SCORCH_MS) {
+        this.scorches.delete(id);
+        this.fireSmokeAt.delete(id);
+        continue;
+      }
+      const s = this.toScreen(sc.x, sc.y);
+      if (s.x < -60 || s.y < -60 || s.x > w + 60 || s.y > h + 60) continue;
+      const rx = this.groundSpan(sc.x, sc.y, sc.r);
+      const alpha = Math.min(1, (now - sc.born) / 1800) * (1 - gone / SCORCH_MS);
+      items.push({
+        layer: HOLE_DRAW_LAYER,
+        z: isoDepth(sc.x, sc.y) - 0.5,
+        run: () => drawScorch(this.ctx, s.x, s.y, rx, id, alpha * 0.9),
+      });
+    }
+    if (this.scorches.size > 400) {
+      const old = [...this.scorches.entries()].filter(([id]) => !live.has(id)).sort((a, b) => a[1].seen - b[1].seen);
+      for (const [id] of old.slice(0, this.scorches.size - 400)) this.scorches.delete(id);
+    }
+    // A light draft: flames lean and smoke drifts the same way.
+    const wind = 0.28 + 0.12 * Math.sin(now * 0.00037);
+    for (const f of fires) {
+      const s = this.toScreen(f.x, f.y);
+      if (s.x < -60 || s.y < -80 || s.x > w + 60 || s.y > h + 60) continue;
+      const heat = patchHeat(f.life - since, f.lifeMax);
+      if (heat <= 0) continue;
+      const rx = this.groundSpan(f.x, f.y, f.radius);
+      items.push({
+        layer: HOLE_DRAW_LAYER,
+        z: isoDepth(f.x, f.y) + 0.4,
+        run: () => drawFireGlow(this.ctx, s.x, s.y, rx, heat, now, f.id),
+      });
+      items.push({
+        layer: HOLE_DRAW_LAYER,
+        z: isoDepth(f.x, f.y) + 0.45,
+        run: () => drawFuelBed(this.ctx, s.x, s.y, rx, heat, now, f.id),
+      });
+      for (const t of fireTongues(f.id, rx)) {
+        const dx = t.u * rx * 0.9;
+        const dy = t.v * rx * 0.45;
+        const g = isoToWorld(dx, dy, ts);
+        const at = { x: f.x + g.x - o.x, y: f.y + g.y - o.y };
+        items.push({
+          layer: STANDING_DRAW_LAYER,
+          z: isoDepth(at.x, at.y),
+          at,
+          run: () => drawTongue(this.ctx, s.x + dx, s.y + dy, tonguePose(t, now, heat, wind), 0.95),
+        });
+      }
+      const front = { x: f.x + f.radius * 0.5, y: f.y + f.radius * 0.5 };
+      items.push({
+        layer: STANDING_DRAW_LAYER,
+        z: isoDepth(front.x, front.y),
+        at: front,
+        run: () => drawEmbers(this.ctx, s.x, s.y - 3, rx, heat, now, f.id),
+      });
+      const last = this.fireSmokeAt.get(f.id) ?? 0;
+      // Burning fuel smokes black and heavy; it thins to grey as the patch dies down.
+      const every = 110 / Math.max(0.2, heat);
+      if (now - last >= every) {
+        this.fireSmokeAt.set(f.id, now);
+        const rnd = flameRng((f.id * 2246822519 + Math.floor(now)) >>> 0);
+        const size = Math.max(0.7, f.radius / 11);
+        this.fireSmoke.push({
+          x: f.x + (rnd() - 0.5) * f.radius,
+          y: f.y + (rnd() - 0.5) * f.radius,
+          z: this.elevAt(f.x, f.y) + 2.5 + rnd() * 1.5,
+          dx: 12 + rnd() * 12,
+          dy: -8 - rnd() * 8,
+          rise: 8 + rnd() * 7,
+          at: now,
+          life: 3200 + rnd() * 1800,
+          r0: 3 * size,
+          r1: (13 + rnd() * 9) * size,
+          alpha: (0.3 + rnd() * 0.15) * (0.35 + 0.65 * heat),
+          shade: 0.6 + 0.35 * heat + rnd() * 0.05,
+          seed: (f.id * 7 + Math.floor(now)) >>> 0,
+        });
+      }
+    }
+    for (const id of [...this.fireSmokeAt.keys()]) if (!live.has(id)) this.fireSmokeAt.delete(id);
+  }
+
+  /**
+   * Pyro jets and cook-off fire. While a Pyro's trigger is held (a new glob
+   * in the last snapshot or so), his nozzle sprays burning fuel at the point
+   * the burst is laid on. Every particle keeps flying, landing, and billowing
+   * on its own after the trigger lets go.
+   */
+  private drawFlames(): void {
+    const now = performance.now();
+    // Emission covers the whole gap since the last frame (a slow frame must not leave holes in the jet).
+    const dtMs = Math.min(250, Math.max(0, now - (this.flameFrameAt || now)));
+    this.flameFrameAt = now;
+    const held = 150 / Math.max(1, this.curr.gameSpeed || 1);
+    for (const [id, jet] of this.jets) {
+      if (now - jet.at > 600) {
+        this.jets.delete(id);
+        continue;
+      }
+      if (now - jet.at > held) continue;
+      const e = this.curr.entities.find((q) => q.id === id);
+      if (!e || e.wreck || e.garrisonedIn || e.swimming) continue;
+      this.flameParticles.push(
+        ...jetParticles({ nozzle: this.pyroNozzle(e), land: jet.land, now, dtMs, seed: (id * 2654435761 + Math.floor(now * 7)) >>> 0 }),
+      );
+    }
+    if (this.flameParticles.length > FLAME_PARTICLE_CAP) {
+      this.flameParticles.splice(0, this.flameParticles.length - FLAME_PARTICLE_CAP);
+    }
+    const ctx = this.ctx;
+    // Soot first: the flames burn bright through the bottom of their own smoke.
+    if (this.fireSmoke.length > FIRE_SMOKE_CAP) this.fireSmoke.splice(0, this.fireSmoke.length - FIRE_SMOKE_CAP);
+    const soot: RocketPuff[] = [];
+    ctx.save();
+    for (const puff of this.fireSmoke) {
+      const pose = rocketPuffPose(puff, now);
+      if (!pose) {
+        if (now < puff.at) soot.push(puff);
+        continue;
+      }
+      soot.push(puff);
+      const s = this.toScreen(pose.x, pose.y, pose.z);
+      drawSoot(ctx, s.x, s.y, pose.r, pose.alpha, 1 - puff.shade);
+    }
+    ctx.restore();
+    this.fireSmoke = soot;
+    if (this.flameParticles.length === 0) return;
+    const steps = Math.max(1, Math.ceil(dtMs / 20));
+    const dt = dtMs / 1000 / steps;
+    const keep: FlameParticle[] = [];
+    // Deeper fuel first, so the fire nearer the camera paints over the far side.
+    this.flameParticles.sort((a, b) => a.x + a.y - (b.x + b.y));
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (const p of this.flameParticles) {
+      const wasDown = p.landed;
+      let alive = true;
+      for (let k = steps - 1; k >= 0 && alive; k--) alive = stepFlameParticle(p, now - k * dt * 1000, dt);
+      if (alive && !wasDown && p.landed && flameRng(p.seed ^ 0x51)() < 0.12) {
+        // Where the fuel splashes down it throws off a curl of black smoke.
+        this.fireSmoke.push({
+          x: p.x,
+          y: p.y,
+          z: this.elevAt(p.x, p.y) + 1.5,
+          dx: 8 + (p.seed % 9),
+          dy: -6,
+          rise: 7 + (p.seed % 6),
+          at: now,
+          life: 2200 + (p.seed % 1200),
+          r0: 2.5,
+          r1: 10 + (p.seed % 7),
+          alpha: 0.3,
+          shade: 0.9,
+          seed: p.seed,
+        });
+      }
+      if (!alive) {
+        if (p.landed && flameRng(p.seed)() < 0.18) {
+          this.fireSmoke.push({
+            x: p.x,
+            y: p.y,
+            z: this.elevAt(p.x, p.y) + p.h / 4,
+            dx: 6 + (p.seed % 7),
+            dy: -4,
+            rise: 4 + (p.seed % 5),
+            at: now,
+            life: 1500 + (p.seed % 900),
+            r0: 2,
+            r1: 7 + (p.seed % 5),
+            alpha: 0.22,
+            shade: 0.85,
+            seed: p.seed,
+          });
+        }
+        continue;
+      }
+      keep.push(p);
+      const look = flameParticleLook(p, now);
+      if (!look) continue;
+      const s = this.toScreen(p.x, p.y);
+      drawFlameParticle(ctx, s.x, s.y - p.h, look.r, look.heat, look.alpha);
+    }
+    ctx.restore();
+    this.flameParticles = keep;
   }
 
   private drawMortarArcs(): void {

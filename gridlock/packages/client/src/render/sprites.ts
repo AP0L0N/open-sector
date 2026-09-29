@@ -112,6 +112,11 @@ import rocketerCrouchUrl from "../assets/units/rocketer-crouch.png";
 import rocketerCrawlUrl from "../assets/units/rocketer-crawl.png";
 import rocketerFireUrl from "../assets/units/rocketer-fire.png";
 import rocketerDieUrl from "../assets/units/rocketer-die.png";
+import pyroWalkUrl from "../assets/units/pyro-walk.png";
+import pyroCrouchUrl from "../assets/units/pyro-crouch.png";
+import pyroCrawlUrl from "../assets/units/pyro-crawl.png";
+import pyroFireUrl from "../assets/units/pyro-fire.png";
+import pyroDieUrl from "../assets/units/pyro-die.png";
 import mortarmanWalkUrl from "../assets/units/mortarman-walk.png";
 import mortarmanCrouchUrl from "../assets/units/mortarman-crouch.png";
 import mortarmanCrawlUrl from "../assets/units/mortarman-crawl.png";
@@ -492,6 +497,63 @@ export const ROCKETER_FIRE_SPRITE: UnitSpriteDef = {
 
 export const ROCKETER_DIE_SPRITE: UnitSpriteDef = {
   image: loadSheet(rocketerDieUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.82,
+  facingSpace: "world",
+};
+
+/** Pyro: the AT Infantry soldier with twin fuel tanks and a flame lance (tools/sprites/derive_pyro.py). */
+export const PYRO_SPRITE: UnitSpriteDef = {
+  image: loadSheet(pyroWalkUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+export const PYRO_CROUCH_SPRITE: UnitSpriteDef = {
+  image: loadSheet(pyroCrouchUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.88,
+  facingSpace: "world",
+};
+
+export const PYRO_CRAWL_SPRITE: UnitSpriteDef = {
+  image: loadSheet(pyroCrawlUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 10,
+  drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
+  contactY: 0.72,
+  facingSpace: "world",
+};
+
+/** Standing burst: nozzle flare and a short tongue out of the shroud. The long jet is engine particles. */
+export const PYRO_FIRE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(pyroFireUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 14,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+export const PYRO_DIE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(pyroDieUrl),
   dirs: 16,
   frames: 4,
   frameSize: 96,
@@ -1046,6 +1108,11 @@ export function spriteFor(type: EntityType, stance?: Stance, swimming = false): 
     if (stance === "crouch") return ROCKETER_CROUCH_SPRITE;
     if (stance === "crawl") return ROCKETER_CRAWL_SPRITE;
     return ROCKETER_SPRITE;
+  }
+  if (type === "pyro") {
+    if (stance === "crouch") return PYRO_CROUCH_SPRITE;
+    if (stance === "crawl") return PYRO_CRAWL_SPRITE;
+    return PYRO_SPRITE;
   }
   if (type === "mortarman") {
     if (stance === "crouch") return MORTARMAN_CROUCH_SPRITE;

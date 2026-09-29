@@ -74,7 +74,7 @@ describe("bunker", () => {
     }
     assert.deepEqual(
       [...BUNKER_TYPES].sort(),
-      ["atinfantry", "engineer", "gunner", "medic", "rifleman", "rocketer", "sniper"],
+      ["atinfantry", "engineer", "gunner", "medic", "pyro", "rifleman", "rocketer", "sniper"],
     );
     for (const type of BUNKER_TYPES) {
       const u = trooper(state, type, a);

@@ -126,6 +126,26 @@ export function rocketerSheet(opts: {
   return "walk";
 }
 
+export type PyroSheet = "walk" | "crouch" | "crawl" | "swim" | "fire" | "die";
+
+/** A glob leaves the lance every tick of a burst, so this outlasts one tick and holds the pose through the burst. */
+export const PYRO_FIRE_MS = 260;
+
+export function pyroSheet(opts: {
+  swimming?: boolean;
+  wreck?: boolean;
+  stance?: "stand" | "crouch" | "crawl";
+  shotAgeMs?: number | null;
+}): PyroSheet {
+  if (opts.wreck) return "die";
+  if (opts.swimming) return "swim";
+  const stance = opts.stance ?? "stand";
+  if (stance === "crouch") return "crouch";
+  if (stance === "crawl") return "crawl";
+  const firing = opts.shotAgeMs != null && opts.shotAgeMs >= 0 && opts.shotAgeMs < PYRO_FIRE_MS;
+  return firing ? "fire" : "walk";
+}
+
 export type MortarmanSheet = "walk" | "crouch" | "crawl" | "swim" | "fire" | "die";
 
 /** Kneeling shot. The bomb is still in the air after this pose drops. */

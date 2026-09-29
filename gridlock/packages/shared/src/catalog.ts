@@ -203,7 +203,7 @@ export const HEIGHT_RANGE_BONUS = 2;
  * A rifle carries well past a pistol, and the scope is the longest direct-fire
  * reach on the field: it sits just inside the sniper's scoped sight.
  *
- * Cells: handgun 3, walker 8, cyborg 8, rifle 9, MG42 11, StuG 12, PTRD 13,
+ * Cells: handgun 3, flamethrower 3.5, walker 8, cyborg 8, rifle 9, MG42 11, StuG 12, PTRD 13,
  * Rocketer 12, Tiger and Titan 14, scoped rifle 15, mortar 23 (it will not drop inside 3),
  * Nebelwerfer 24 (it will not fire inside 4).
  */
@@ -216,6 +216,8 @@ export const SCOPED_RANGE_TILES = t(15);
 export const PTRD_RANGE_TILES = t(13);
 /** Rocketer's tube. Short of the Titan's pods: one man laying it off his shoulder. */
 export const LAUNCHER_RANGE_TILES = t(12);
+/** Pyro's flamethrower. A jet of burning fuel carries only a few strides past a pistol. */
+export const FLAMER_RANGE_TILES = t(3.5);
 export const STUG_RANGE_TILES = t(12);
 export const TIGER_RANGE_TILES = t(14);
 /** Titan carries the Tiger's gun, so it keeps the Tiger's reach. Its rockets share that reach. */
@@ -396,6 +398,7 @@ export type EntityType =
   | "sniper"
   | "atinfantry"
   | "rocketer"
+  | "pyro"
   | "mortarman"
   | "engineer"
   | "medic"
@@ -443,7 +446,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "cyborg" | "titan" | "nebelwerfer" | "supply" | "stuka" | "droneop";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "cyborg" | "titan" | "nebelwerfer" | "supply" | "stuka" | "droneop";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -466,15 +469,15 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "research"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "droneop"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "droneop"];
 /**
  * Opening army besides the Rig. Hauler omitted so it does not auto-harvest.
  * Supply truck, Titan, and Nebelwerfer omitted so the opening fight stays the same — train them at the Armory.
- * Aircraft need an Airfield pad, so the Stuka is omitted too. The Drone Op and
- * the Rocketer are trained at the Muster so the opening fight stays the same.
+ * Aircraft need an Airfield pad, so the Stuka is omitted too. The Drone Op,
+ * the Rocketer, and the Pyro are trained at the Muster so the opening fight stays the same.
  */
 export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter(
-  (t) => t !== "hauler" && t !== "supply" && t !== "titan" && t !== "nebelwerfer" && t !== "stuka" && t !== "droneop" && t !== "rocketer",
+  (t) => t !== "hauler" && t !== "supply" && t !== "titan" && t !== "nebelwerfer" && t !== "stuka" && t !== "droneop" && t !== "rocketer" && t !== "pyro",
 );
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
@@ -611,8 +614,8 @@ export interface ShellDef {
 }
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
-export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher";
-export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher"];
+export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer"];
 export interface InfantryGun {
   id: InfantryWeaponId;
   name: string;
@@ -954,6 +957,84 @@ export const LAUNCHER = {
 export const LAUNCHER_ROCKET_RACK: RocketRackDef = { ...TITAN_ROCKET_RACK, salvo: 1, podLift: LAUNCHER_LIFT };
 
 /**
+ * Pyro's flamethrower. Two fuel tanks on his back and a lance with a pilot
+ * flame. A trigger pull throws a short burst: FLAMER_BURST globs of burning
+ * fuel, one a tick, that arc onto the ground around the aim point and splash
+ * the soldiers they land among. Every glob that lands on dry ground leaves it
+ * burning (GroundFire), and the fire keeps burning whoever stands in it. The
+ * tanks hold only FLAMER_BURSTS bursts and never refill by themselves: bring a
+ * supply truck. The jet goes over sandbags and in through a house's windows.
+ * Burning fuel only scorches armor plate, so he leaves tanks alone.
+ */
+export const FLAMER_BURST = 8;
+export const FLAMER_BURSTS = 3;
+/** Seconds between the globs of one burst. */
+export const FLAMER_GLOB_INTERVAL = TICK_DT;
+/** Seconds from the end of one burst to the next trigger pull. */
+export const FLAMER_BURST_PAUSE = 1.6;
+/** Seconds a glob takes to reach the end of the jet. It arcs a little. */
+export const FLAMER_GLOB_SECONDS = 0.35;
+/** Air height the jet reaches mid-way, elevation units. */
+export const FLAMER_APEX = 1.2;
+/** Glob scatter around the aim point: along the jet, then across it. World pixels. */
+export const FLAMER_SCATTER_ALONG = t(0.45) * TILE_SIZE;
+export const FLAMER_SCATTER_ACROSS = t(0.22) * TILE_SIZE;
+/** A glob splashes burning fuel on everyone inside this disk. World pixels. */
+export const FLAMER_SPLASH = t(0.3) * TILE_SIZE;
+export const FLAMER = {
+  id: "flamer" as const,
+  name: "Flamethrower",
+  blurb: "A short jet of burning fuel. It splashes the soldiers it lands among and sets the ground alight. Three bursts in the tanks; only a supply truck refills them.",
+  damage: 6,
+  penetration: 0,
+  caliber: 1,
+  spreadDeg: 0,
+  cooldown: FLAMER_GLOB_INTERVAL,
+  clip: FLAMER_BURST * FLAMER_BURSTS,
+  reload: 0,
+  rangeTiles: FLAMER_RANGE_TILES,
+  bulky: true,
+} as const satisfies InfantryGun;
+
+/**
+ * Burning ground. Each glob that lands on dry ground leaves a patch of fire,
+ * or feeds a patch already burning next to it. A patch burns for FIRE_SECONDS,
+ * dying down over its last FIRE_DIE_SHARE, and burns every soldier standing in
+ * it, friend or foe. The Cyborg's plating and the Pyro's own suit keep most of
+ * it off; soft vehicles scorch; armor plate does not care. Water puts it out.
+ */
+export const FIRE_SECONDS = 11;
+/** Share of the life at the end where the flames sink and burn less. */
+export const FIRE_DIE_SHARE = 0.3;
+/** World-pixel radius of a fresh patch. Feeding it grows it to FIRE_RADIUS_MAX. */
+export const FIRE_RADIUS = t(0.35) * TILE_SIZE;
+export const FIRE_RADIUS_MAX = t(0.6) * TILE_SIZE;
+/** A glob this close to a burning patch feeds it instead of starting a new one. Share of its radius. */
+export const FIRE_MERGE_SHARE = 0.7;
+/** HP per second to an unarmored soldier standing in the flames. */
+export const FIRE_BURN_DPS = 22;
+/** Burn share for the Cyborg's plating and the Pyro's fireproof suit. */
+export const FIRE_CYBORG_MUL = 0.15;
+export const FIRE_PYRO_MUL = 0.2;
+/** Burn share for a vehicle with no armor plate (Mauler, supply truck). */
+export const FIRE_SOFT_VEHICLE_MUL = 0.3;
+/** Most patches burning at once. The oldest go out first. */
+export const FIRE_CAP = 160;
+/**
+ * The Pyro's tanks. When he is killed there is a small chance they go up: a
+ * fireball that throws burning fuel around him. The fuller the tanks, the
+ * bigger the chance.
+ */
+export const PYRO_COOKOFF_CHANCE_FULL = 0.22;
+export const PYRO_COOKOFF_CHANCE_DRY = 0.06;
+/** World pixels. */
+export const PYRO_COOKOFF_RADIUS = t(1.1) * TILE_SIZE;
+/** Blast damage at the heart of the fireball. Falls off to a quarter at the edge. */
+export const PYRO_COOKOFF_DAMAGE = 70;
+/** Fire patches the cook-off leaves in a ring around the body. */
+export const PYRO_COOKOFF_FIRES = 7;
+
+/**
  * Medic. He walks to wounded infantry inside this disk, then has to stand
  * against them. Farther than this, he leaves them and goes back to his order.
  */
@@ -1108,7 +1189,7 @@ export const BUNKER_WOUND_MUL = 0.35;
 /** Solid height of the roof slab, elevation units. A one-story house is STORY_COVER_HEIGHT. */
 export const BUNKER_COVER_HEIGHT = 4;
 /** Infantry that fit through the door and the firing slits. */
-export const BUNKER_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "medic", "engineer"];
+export const BUNKER_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "medic", "engineer"];
 /** A medic inside: every occupant regains this share of max HP each second. Does not stack. */
 export const BUNKER_MEDIC_REGEN_FRAC = 0.004;
 /** An engineer inside: the bunker regains this much HP each second. Does not stack. */
@@ -1256,6 +1337,7 @@ export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   ptrd: PTRD,
   gatling: GATLING,
   launcher: LAUNCHER,
+  flamer: FLAMER,
 };
 
 /**
@@ -1877,6 +1959,31 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: LAUNCHER.spreadDeg,
     blurb: "One rocket launcher on the shoulder, loaded with the Titan's rockets. One shot, then a slow reload off his back. The burst scatters and tears through soldiers bunched together, dents a tank, and can go up beside a plane or a low drone. A broken arm puts the tube down.",
   },
+  pyro: {
+    type: "pyro",
+    kind: "unit",
+    name: "Pyro",
+    letter: "p",
+    cost: 180,
+    buildSeconds: 11,
+    hp: 38,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: t(1.7),
+    turnDegPerSec: 1500,
+    rangeTiles: FLAMER_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: FLAMER.cooldown,
+    damage: FLAMER.damage,
+    projectileSpeed: 1,
+    ...UNARMED,
+    penetration: FLAMER.penetration,
+    caliber: FLAMER.caliber,
+    spreadDeg: FLAMER.spreadDeg,
+    blurb: "Flamethrower with two fuel tanks on his back. Very short reach and only three bursts until a supply truck refills him, but the jet goes over sandbags and in through windows, and the ground it hits keeps burning, deadly to any soldier in it. When he is killed there is a small chance the tanks go up.",
+  },
   mortarman: {
     type: "mortarman",
     kind: "unit",
@@ -2423,7 +2530,7 @@ export function armorLabel(type: EntityType): string | null {
   return `F${d.armorFront} / S${d.armorSide} / R${d.armorRear}`;
 }
 
-const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "mortarman", "engineer", "medic", "cyborg", "droneop"];
+const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "droneop"];
 
 /** Flies. Stuka only. */
 export function isAircraftType(type: EntityType): boolean {
@@ -2468,6 +2575,7 @@ export function primaryInfantryGun(type: EntityType): InfantryGun | null {
   if (type === "sniper") return SCOPED;
   if (type === "atinfantry") return PTRD;
   if (type === "rocketer") return LAUNCHER;
+  if (type === "pyro") return FLAMER;
   if (type === "mortarman") return MORTAR;
   if (type === "cyborg") return GATLING;
   return null;
@@ -2480,6 +2588,7 @@ export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
   if (type === "sniper") return [SCOPED];
   if (type === "atinfantry") return [PTRD];
   if (type === "rocketer") return [LAUNCHER];
+  if (type === "pyro") return [FLAMER];
   if (type === "mortarman") return [MORTAR];
   if (type === "cyborg") return [GATLING];
   return [];
