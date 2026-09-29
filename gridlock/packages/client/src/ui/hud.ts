@@ -298,7 +298,13 @@ function canQueueMore(m: MatchSnapshot, unit: TrainType): boolean {
   const want = producerType(unit);
   const producers = m.entities.filter((e) => e.ownerId === m.youPlayerId && e.type === want && e.hp > 0);
   if (producers.length === 0) return false;
-  return producers.some((e) => (e.trainQueue?.length ?? 0) < TRAIN_QUEUE_CAP);
+  return producers.some((e) => (e.trainQueue?.length ?? 0) < TRAIN_QUEUE_CAP && padFree(e));
+}
+
+/** An Airfield with a hardstand left for one more plane (parked, flying, or queued). Other producers always pass. */
+function padFree(e: EntityView): boolean {
+  if (!e.pads) return true;
+  return e.pads.used + (e.trainQueue?.length ?? 0) < e.pads.cap;
 }
 
 function paintProdQueue(jobs: JobRef[]): void {
@@ -423,7 +429,12 @@ export function paintBattleHud(ctx: Ctx): void {
     const primary = heads.slice().sort((a, b) => b.progress - a.progress)[0];
     const paused = heads.length > 0 && heads.every((j) => j.paused);
     const training = heads.some((j) => !j.paused);
-    btn.disabled = !hasProducer || !m.you.alive;
+    const padsFull = want === "airfield" && hasProducer && !canQueueMore(m, unit);
+    btn.disabled = !hasProducer || !m.you.alive || padsFull;
+    btn.dataset.baseTitle ??= btn.title;
+    btn.title = padsFull
+      ? `${catalog(unit).name} — every hardstand is taken. Build another Airfield.`
+      : btn.dataset.baseTitle;
     btn.classList.toggle("unaffordable", training && m.you.scrap <= 0);
     btn.classList.toggle("slow-power", m.you.lowPower && training);
     btn.classList.toggle("is-training", unitJobs.length > 0);
@@ -570,8 +581,27 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     ? ctx.match.players.find((p) => p.playerId === e.garrison!.ownerId)
     : owner;
   const who = occ?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${mg}  ·  ${who}${q}${cargo}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${capturing}${holding}${tending}`;
+  const flight = e.air ? airLine(e.air) : "";
+  const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
+  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${mg}${flight}  ·  ${who}${q}${cargo}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
+}
+
+const AIR_PHASE_LABEL: Record<NonNullable<EntityView["air"]>["phase"], string> = {
+  parked: "on the pad",
+  takeoff: "taking off",
+  fly: "airborne",
+  landing: "landing",
+};
+
+/** Phase, and for your own planes fuel, bomb, and belts. */
+function airLine(air: NonNullable<EntityView["air"]>): string {
+  let s = `  ·  ${AIR_PHASE_LABEL[air.phase]}`;
+  if (air.fuel != null && air.fuelMax) s += `  ·  fuel ${Math.round((air.fuel / air.fuelMax) * 100)}%`;
+  if (air.bombs != null) s += `  ·  bomb ${air.bombs > 0 ? "armed" : "spent"}`;
+  if (air.rounds != null) s += `  ·  MG ${Math.round(air.rounds)}`;
+  if (air.phase !== "parked" && air.homeId == null && air.fuel != null) s += "  ·  NO AIRFIELD";
+  return s;
 }
 
 function beltLine(live: EntityView[]): string {
@@ -656,6 +686,7 @@ function infantryClipShown(e: EntityView, gunId: string): number {
 }
 
 const TYPE_ORDER: EntityType[] = [
+  "stuka",
   "warden",
   "ss3",
   "walker",
@@ -678,6 +709,7 @@ const TYPE_ORDER: EntityType[] = [
   "smelter",
   "muster",
   "armory",
+  "airfield",
   "cottage",
   "shack",
   "house",
@@ -1090,6 +1122,9 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: "Fire at a point or any unit, including friendlies (hold Ctrl and click). Smoke fires once.",
       on: !!view?.forceAttackMode,
     });
+  }
+  // Guard, hold, and rotate mean nothing to a plane.
+  if (units.some((e) => !e.air)) {
     const guarding = units.every((e) => e.guardFacing != null || e.guardTargetId != null);
     out.push({
       slot: "guard",
@@ -1161,6 +1196,14 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   }
   if (units.some((e) => e.type === "hauler")) {
     out.push({ slot: "harvest", act: "harvest", label: "Harvest", title: "Auto-harvest nearest scrap" });
+  }
+  if (units.some((e) => e.air && e.air.phase !== "parked")) {
+    out.push({
+      slot: "land",
+      act: "land",
+      label: "Return",
+      title: "Fly home and land on the Airfield to refuel, rearm, and patch up. Right-click your Airfield does the same.",
+    });
   }
   const trucks = units.filter((e) => e.type === "supply" && e.bed);
   if (trucks.some((e) => e.bed?.crew && (e.bed.seats ?? 0) > 0)) {
@@ -1312,6 +1355,11 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   }
   if (act === "attackmove") {
     if (units.length) view.setAttackMoveMode(!view.attackMoveMode);
+    return;
+  }
+  if (act === "land") {
+    const planes = units.filter((e) => !!e.air);
+    if (planes.length) ctx.net.send({ type: "cmd.land", ids: planes.map((e) => e.id) });
     return;
   }
   if (act === "forceattack") {

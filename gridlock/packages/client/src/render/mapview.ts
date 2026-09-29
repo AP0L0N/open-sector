@@ -70,6 +70,7 @@ import {
   drawRicochetSparks,
   drawRicochetTrace,
   armorHitLift,
+  AIR_BOMB_BURST_SCALE,
   drawMortarBurst,
   drawMortarSmoke,
   MORTAR_BURST_MS,
@@ -159,6 +160,7 @@ import {
 } from "./muzzle-smoke.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
+import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir, lerpAirAlt } from "./aircraft.js";
 import { drawSandbags } from "./sandbags.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
@@ -228,6 +230,8 @@ const EXTRUDE: Record<EntityType, number> = {
   armory: 44,
   muster: 38,
   dynamo: 30,
+  airfield: 14,
+  stuka: 14,
   rig: 22,
   hauler: 16,
   warden: 28,
@@ -349,6 +353,7 @@ function ownerAllied(match: MatchSnapshot, ownerId: string | undefined): boolean
 }
 
 function isProducerView(e: EntityView): boolean {
+  // The Airfield trains too, but its planes park on the strip; it has no rally point.
   return e.kind === "building" && (e.type === "muster" || e.type === "smelter" || e.type === "armory");
 }
 
@@ -451,6 +456,8 @@ export class MapView {
     blast?: boolean;
     splash?: boolean;
     mortar?: boolean;
+    /** Aircraft bomb: the mortar column, larger. */
+    bomb?: boolean;
     lift?: number;
     /** Screen-x offset from the world ground projection. */
     sx?: number;
@@ -1775,6 +1782,13 @@ export class MapView {
     return { x: worldToTile(w.x, ts), y: worldToTile(w.y, ts) };
   }
 
+  /** Screen pixels a plane sits above its ground point. 0 for everything on the ground. */
+  private airLift(e: EntityView): number {
+    if (!e.air) return 0;
+    const t = Math.min(1, (performance.now() - this.snapAt) / 100);
+    return airLiftPx(lerpAirAlt(this.prevById.get(e.id), e, t));
+  }
+
   private lerpEnt(e: EntityView): { x: number; y: number; facing: number; turretFacing: number } {
     const turretNow = e.turretFacing ?? e.facing;
     const t = Math.min(1, (performance.now() - this.snapAt) / 100);
@@ -1829,6 +1843,7 @@ export class MapView {
       return { layer: STANDING_DRAW_LAYER, z: isoDepth(foot.cx, foot.cy), foot };
     }
     const p = this.lerpEnt(e);
+    if (inAir(e)) return { layer: AIR_DRAW_LAYER, z: isoDepth(p.x, p.y) };
     return { layer: STANDING_DRAW_LAYER, z: isoDepth(p.x, p.y), at: { x: p.x, y: p.y } };
   }
 
@@ -1854,6 +1869,7 @@ export class MapView {
         const spr = this.spriteOf(e);
         if (spr) {
           const s = this.toScreen(p.x, p.y);
+          s.y -= this.airLift(e);
           const size = spr.drawSize;
           const top = s.y - size * spr.contactY;
           if (px >= s.x - size * 0.4 && px <= s.x + size * 0.4 && py >= top && py <= top + size) {
@@ -2007,6 +2023,13 @@ export class MapView {
     if (hit?.type === "smelter" && hit.ownerId === this.curr.youPlayerId && haulers.length) {
       this.pulseMoveClick(hit.x, hit.y);
       this.onCommand({ type: "cmd.move", ids: haulers.map((e) => e.id), x: hit.x, y: hit.y });
+      return;
+    }
+    const planes = own.filter((e) => !!e.air);
+    if (hit?.type === "airfield" && hit.ownerId === you && planes.length) {
+      // Right-click your own strip: planes go home to land and rearm.
+      this.pulseMoveClick(hit.x, hit.y);
+      this.onCommand({ type: "cmd.land", ids: planes.map((e) => e.id) });
       return;
     }
     const movers = own.filter((e) => e.kind === "unit");
@@ -2190,6 +2213,7 @@ export class MapView {
       }
     }
     this.drawMortarArcs();
+    this.drawFallingBombs();
     this.drawTreeFalls();
     this.drawSmokeClouds();
     this.drawImpacts();
@@ -2626,7 +2650,9 @@ export class MapView {
     for (const e of this.curr.entities) {
       if (!unitCastsShadow({ kind: e.kind, garrisonedIn: e.garrisonedIn, swimming: e.swimming })) continue;
       const def = catalog(e.type);
-      const scale = isInfantryType(e.type) ? INFANTRY_VISUAL_SCALE : UNIT_VISUAL_SCALE;
+      let scale = isInfantryType(e.type) ? INFANTRY_VISUAL_SCALE : UNIT_VISUAL_SCALE;
+      // A plane's shadow is its wingspan, and it spreads as the plane climbs.
+      if (e.air) scale *= aircraftShadowScale(e.air.alt).scale;
       const p = this.lerpEnt(e);
       this.pushGroundShadow(
         items,
@@ -3186,6 +3212,7 @@ export class MapView {
     const p = this.lerpEnt(e);
     const size = def.drawSize;
     const s = this.toScreen(p.x, p.y);
+    s.y -= this.airLift(e);
     const hex = this.ownerColor(e);
     const dir = facingToIso(p.facing, this.ts());
     const turretDir = facingToIso(p.turretFacing ?? p.facing, this.ts());
@@ -3482,6 +3509,21 @@ export class MapView {
   }
 
   /** Smoke along the lob, from the tube to the bomb, then a short hang after it lands. */
+  /** Bombs released by planes, at their height over the ground. */
+  private drawFallingBombs(): void {
+    const t = Math.min(1, (performance.now() - this.snapAt) / 100);
+    for (const p of this.curr.projectiles) {
+      if (!p.bomb) continue;
+      const prevP = this.prev?.projectiles.find((q) => q.id === p.id);
+      const wx = prevP ? prevP.x + (p.x - prevP.x) * t : p.x;
+      const wy = prevP ? prevP.y + (p.y - prevP.y) * t : p.y;
+      const wz = prevP?.z != null && p.z != null ? prevP.z + (p.z - prevP.z) * t : (p.z ?? 0);
+      const s = this.toScreen(wx, wy);
+      const dir = facingToIso(Math.atan2(p.vy, p.vx), this.ts());
+      drawFallingBomb(this.ctx, s.x, s.y - airLiftPx(wz), dir.x, dir.y + 0.6);
+    }
+  }
+
   private drawMortarArcs(): void {
     const now = performance.now();
     const blend = Math.min(1, (now - this.snapAt) / 100);
@@ -3551,7 +3593,7 @@ export class MapView {
       const dirX = tip.x - s.x;
       const dirY = tip.y - s.y;
       if (f.mortar) {
-        drawMortarBurst(ctx, s.x, s.y, t, f.id, !!f.splash);
+        drawMortarBurst(ctx, s.x, s.y, t, f.id, !!f.splash, f.bomb ? AIR_BOMB_BURST_SCALE : 1);
       } else if (f.splash) {
         drawWaterDetonation(ctx, s.x, s.y, t, f.id, f.caliber);
       }

@@ -12,7 +12,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 41;
+export const PROTOCOL_VERSION = 42;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -190,6 +190,21 @@ export interface EntityView {
   bed?: { crew?: boolean; seats: number; open?: boolean; riders?: number[] };
   /** Supply points left. Friendly supply trucks only. */
   supply?: number;
+  /**
+   * Aircraft flight. `alt` is elevation units above the ground (0 on the pad).
+   * Everyone sees phase and height; fuel, bombs, rounds, and home are friendly-only.
+   */
+  air?: {
+    phase: "parked" | "takeoff" | "fly" | "landing";
+    alt: number;
+    fuel?: number;
+    fuelMax?: number;
+    bombs?: number;
+    rounds?: number;
+    homeId?: number;
+  };
+  /** Planes homed on this Airfield, and its pad count. Allied Airfields only. */
+  pads?: { used: number; cap: number };
 }
 
 export interface PlayerPublic {
@@ -238,6 +253,8 @@ export interface ProjectileView {
   arc?: number;
   /** Seconds from the tube to the ground. Mortar bombs only. */
   hang?: number;
+  /** Falling aircraft bomb. `z` is its height; it drops, it does not arc. */
+  bomb?: boolean;
 }
 
 export type ImpactKind = "miss" | "puff" | "crush" | "ricochet" | "glance" | "hit" | "pen" | "kill";
@@ -262,6 +279,8 @@ export interface ImpactView {
   shell?: ShellType;
   /** Mortar bomb. The burst is a vertical dirt or water column, not a tank cone. */
   mortar?: boolean;
+  /** Aircraft bomb. A much bigger column than a mortar. */
+  bomb?: boolean;
 }
 
 /** Blood droplet around a corpse. World pixels. */
@@ -405,6 +424,8 @@ export type ClientMessage =
   | { type: "cmd.board"; ids: number[]; truckId: number }
   | { type: "cmd.unboard"; ids?: number[]; truckId?: number }
   | { type: "cmd.supply"; ids: number[]; targetId: number }
+  /** Aircraft fly home, land on their pad, and refuel and rearm there. */
+  | { type: "cmd.land"; ids: number[] }
   | { type: "cmd.speed"; delta: number };
 
 export type ServerMessage =
