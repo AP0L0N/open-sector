@@ -163,6 +163,7 @@ import {
 } from "./track-kick.js";
 import { followCart, type CartPose } from "./mauler-cart.js";
 import { AMMO_PRIMARY_FILL, AMMO_SECONDARY_FILL, ammoBarRatios } from "./ammo-bars.js";
+import { isDoubleClick, sameTypeOnScreen, type ClickMark } from "./same-type-select.js";
 import {
   recoilAmounts,
   recoilLayerShift,
@@ -456,6 +457,8 @@ export class MapView {
   private destroyed = false;
   private centered = false;
   private box: { x0: number; y0: number; x1: number; y1: number } | null = null;
+  /** Last plain click on one of your units, for double-click select-by-type. */
+  private lastClick: ClickMark | null = null;
   private damagedUntil = new Map<number, number>();
   private lastHp = new Map<number, number>();
   private lastScoutHp = new Map<number, number>();
@@ -2012,6 +2015,8 @@ export class MapView {
 
   private clickSelect(px: number, py: number, shift: boolean): void {
     const hit = this.hit(px, py);
+    const prev = this.lastClick;
+    this.lastClick = null;
     if (!hit) {
       if (!shift) this.selected.clear();
       this.onSelect([...this.selected]);
@@ -2020,6 +2025,19 @@ export class MapView {
     if (hit.wreck || hit.ownerId !== this.curr.youPlayerId) {
       this.selected.clear();
       this.selected.add(hit.id);
+      this.onSelect([...this.selected]);
+      return;
+    }
+    const mark = { id: hit.id, x: px, y: py, t: performance.now() };
+    if (hit.kind === "unit") this.lastClick = mark;
+    if (hit.kind === "unit" && !this.canSpecial(hit) && isDoubleClick(prev, mark)) {
+      this.lastClick = null;
+      const ids = sameTypeOnScreen(this.curr.entities, hit, this.curr.youPlayerId, this.viewSize(), (e) => {
+        const p = this.lerpEnt(e);
+        return this.toScreen(p.x, p.y);
+      });
+      if (!shift) this.selected.clear();
+      for (const id of ids) this.selected.add(id);
       this.onSelect([...this.selected]);
       return;
     }
