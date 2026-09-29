@@ -13,7 +13,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 46;
+export const PROTOCOL_VERSION = 47;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -81,6 +81,15 @@ export interface TrainJobView {
   paused: boolean;
 }
 
+/** Kind of a Shift-queued order, for drawing its route. */
+export type PlanKind = "move" | "attack" | "other";
+
+export interface PlanPointView {
+  kind: PlanKind;
+  x: number;
+  y: number;
+}
+
 export interface EntityView {
   id: number;
   kind: EntityKind;
@@ -140,6 +149,11 @@ export interface EntityView {
   bipod?: number;
   /** Unit is inside this building. Friendly snapshots only. */
   garrisonedIn?: number;
+  /**
+   * Own unit's Shift-queued route: the current order's point, then each queued
+   * order's point, in run order. Omitted when nothing is queued.
+   */
+  plan?: PlanPointView[];
   /**
    * Occupied civilian house. count/bars/ownerId are hidden from enemies while
    * hide is set. hide itself is friendly-only.
@@ -410,12 +424,21 @@ export type ClientMessage =
   | { type: "room.map"; mapId: string }
   | { type: "room.start" }
   | { type: "chat"; text: string }
-  | { type: "cmd.move"; ids: number[]; x: number; y: number }
-  | { type: "cmd.attack"; ids: number[]; targetId: number }
-  | { type: "cmd.attackmove"; ids: number[]; x: number; y: number }
-  | { type: "cmd.forceattack"; ids: number[]; x: number; y: number; targetId?: number; once?: boolean }
+  /** `queue`: Shift-queued. The unit runs it after its current and earlier queued orders finish. */
+  | { type: "cmd.move"; ids: number[]; x: number; y: number; queue?: boolean }
+  | { type: "cmd.attack"; ids: number[]; targetId: number; queue?: boolean }
+  | { type: "cmd.attackmove"; ids: number[]; x: number; y: number; queue?: boolean }
+  | {
+      type: "cmd.forceattack";
+      ids: number[];
+      x: number;
+      y: number;
+      targetId?: number;
+      once?: boolean;
+      queue?: boolean;
+    }
   | { type: "cmd.stop"; ids: number[] }
-  | { type: "cmd.harvest"; ids: number[]; tileX?: number; tileY?: number }
+  | { type: "cmd.harvest"; ids: number[]; tileX?: number; tileY?: number; queue?: boolean }
   | { type: "cmd.ammo"; ids: number[]; shell: ShellType }
   | { type: "cmd.weapon"; ids: number[]; weapon: InfantryWeaponId }
   | { type: "cmd.guns"; ids: number[]; guns: 1 | 2 }
@@ -429,14 +452,22 @@ export type ClientMessage =
   | { type: "cmd.rally"; ids: number[]; x: number; y: number }
   | { type: "cmd.sell"; id: number }
   | { type: "cmd.deploy"; id: number }
-  | { type: "cmd.garrison"; ids: number[]; buildingId: number }
+  | { type: "cmd.garrison"; ids: number[]; buildingId: number; queue?: boolean }
   | { type: "cmd.ungarrison"; ids?: number[]; buildingId?: number; x?: number; y?: number }
   | { type: "cmd.garrisonhide"; ids: number[]; hide: boolean }
   | { type: "cmd.scout"; ids: number[]; out: boolean }
   | { type: "cmd.stance"; ids: number[]; stance: Stance }
   | { type: "cmd.hold"; ids: number[]; hold: boolean }
-  | { type: "cmd.rotate"; ids: number[]; x: number; y: number }
-  | { type: "cmd.guard"; ids: number[]; x?: number; y?: number; facing?: number; targetId?: number }
+  | { type: "cmd.rotate"; ids: number[]; x: number; y: number; queue?: boolean }
+  | {
+      type: "cmd.guard";
+      ids: number[];
+      x?: number;
+      y?: number;
+      facing?: number;
+      targetId?: number;
+      queue?: boolean;
+    }
   | {
       type: "cmd.field";
       ids: number[];
@@ -448,10 +479,10 @@ export type ClientMessage =
       x2?: number;
       y2?: number;
     }
-  | { type: "cmd.repair"; ids: number[]; targetId: number }
-  | { type: "cmd.board"; ids: number[]; truckId: number }
+  | { type: "cmd.repair"; ids: number[]; targetId: number; queue?: boolean }
+  | { type: "cmd.board"; ids: number[]; truckId: number; queue?: boolean }
   | { type: "cmd.unboard"; ids?: number[]; truckId?: number }
-  | { type: "cmd.supply"; ids: number[]; targetId: number }
+  | { type: "cmd.supply"; ids: number[]; targetId: number; queue?: boolean }
   /** Aircraft fly home, land on their pad, and refuel and rearm there. */
   | { type: "cmd.land"; ids: number[] }
   /**

@@ -26,8 +26,8 @@ import { medicTendView } from "./heal.js";
 import { supplyHasDriver, supplyRiders } from "./supply.js";
 import { powerOf } from "./power.js";
 import { canSeeWorld, encodeVisionRuns, entityOnMask, visionMask } from "./vision.js";
-import type { Entity, MatchState } from "./types.js";
-import type { CorpseView, EntityView, MatchSnapshot, ScrapCell } from "../protocol.js";
+import type { Entity, MatchState, Order, QueueableCommand } from "./types.js";
+import type { CorpseView, EntityView, MatchSnapshot, PlanKind, PlanPointView, ScrapCell } from "../protocol.js";
 
 function plantRemaining(e: Entity, friendly: boolean): number | undefined {
   if (!friendly) return undefined;
@@ -71,6 +71,67 @@ function fieldSitesView(e: Entity, friendly: boolean): EntityView["fieldSites"] 
   ];
   if (friendly) for (const p of e.fieldQueue ?? []) sites.push({ structure, x: p.x, y: p.y, facing: p.facing });
   return sites;
+}
+
+function entityAt(state: MatchState, id: number | undefined): PlanPointView | null {
+  const t = id != null ? state.entities.get(id) : undefined;
+  return t && t.hp > 0 ? { kind: "other", x: t.x, y: t.y } : null;
+}
+
+function planKind(k: Order["kind"] | QueueableCommand["type"]): PlanKind {
+  const s = k.startsWith("cmd.") ? k.slice(4) : k;
+  if (s === "move") return "move";
+  if (s === "attack" || s === "attackmove" || s === "forceattack") return "attack";
+  return "other";
+}
+
+function queuedPoint(state: MatchState, m: QueueableCommand): PlanPointView | null {
+  const kind = planKind(m.type);
+  let at: PlanPointView | null;
+  switch (m.type) {
+    case "cmd.attack":
+    case "cmd.repair":
+    case "cmd.supply":
+      at = entityAt(state, m.targetId);
+      break;
+    case "cmd.forceattack":
+      at = entityAt(state, m.targetId) ?? { kind, x: m.x, y: m.y };
+      break;
+    case "cmd.guard":
+      at = m.targetId != null ? entityAt(state, m.targetId) : m.x != null && m.y != null ? { kind, x: m.x, y: m.y } : null;
+      break;
+    case "cmd.garrison":
+      at = entityAt(state, m.buildingId);
+      break;
+    case "cmd.board":
+      at = entityAt(state, m.truckId);
+      break;
+    case "cmd.harvest":
+      at =
+        m.tileX != null && m.tileY != null
+          ? { kind, x: (m.tileX + 0.5) * state.tileSize, y: (m.tileY + 0.5) * state.tileSize }
+          : null;
+      break;
+    default:
+      at = { kind, x: m.x, y: m.y };
+  }
+  return at ? { ...at, kind } : null;
+}
+
+/** Current order's point, then each queued order's point. Own units with a queue only. */
+function planView(state: MatchState, e: Entity, own: boolean): PlanPointView[] | undefined {
+  if (!own || !e.orderQueue?.length) return undefined;
+  const out: PlanPointView[] = [];
+  const o = e.order;
+  if (o && !o.auto) {
+    const at = entityAt(state, o.targetId) ?? (o.x != null && o.y != null ? { kind: "other" as const, x: o.x, y: o.y } : null);
+    if (at) out.push({ ...at, kind: planKind(o.kind) });
+  }
+  for (const q of e.orderQueue) {
+    const at = queuedPoint(state, q.msg);
+    if (at) out.push(at);
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapshot {
@@ -161,6 +222,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       reload: friendly && (isInfantryType(e.type) || beltOf(e.type)) && e.reload > 0 ? e.reload : undefined,
       bipod: plantRemaining(e, friendly),
       garrisonedIn: friendly && e.garrisonedIn ? e.garrisonedIn : undefined,
+      plan: planView(state, e, e.ownerId === youPlayerId),
       garrison: isGarrisonable(e.type)
         ? (() => {
             const occOwner = garrisonOwner(state, e);
