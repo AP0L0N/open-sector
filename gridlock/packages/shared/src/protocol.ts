@@ -3,6 +3,7 @@
 import type {
   BuildingType,
   Crit,
+  DroneMode,
   EntityKind,
   EntityType,
   InfantryWeaponId,
@@ -12,7 +13,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 44;
+export const PROTOCOL_VERSION = 45;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -209,6 +210,16 @@ export interface EntityView {
   };
   /** Planes homed on this Airfield, and its pad count. Allied Airfields only. */
   pads?: { used: number; cap: number };
+  /**
+   * Drone. Everyone sees the mode (it shows in the height). Battery, its
+   * operator, and a recall are friendly-only. Height is on `air.alt`.
+   */
+  drone?: { mode: DroneMode; opId?: number; battery?: number; batteryMax?: number; recall?: boolean };
+  /**
+   * Drone Op's link. Friendly-only. `droneId` while it flies; otherwise
+   * `charge` of the stowed drone, or `rebuild` seconds left on a new one.
+   */
+  droneLink?: { mode: DroneMode; droneId?: number; charge: number; chargeMax: number; rebuild?: number; launchMin: number };
 }
 
 export interface PlayerPublic {
@@ -434,6 +445,12 @@ export type ClientMessage =
   | { type: "cmd.supply"; ids: number[]; targetId: number }
   /** Aircraft fly home, land on their pad, and refuel and rearm there. */
   | { type: "cmd.land"; ids: number[] }
+  /**
+   * Drone Op and drone controls. `ids` may name operators or their drones.
+   * launch: put the stowed drone up. recall: fly it back to be stowed.
+   * mode: Surveillance (high, wide sight) or Search & Destroy (low, strikes).
+   */
+  | { type: "cmd.drone"; ids: number[]; action: "launch" | "recall" | "mode"; mode?: DroneMode }
   | { type: "cmd.speed"; delta: number };
 
 export type ServerMessage =

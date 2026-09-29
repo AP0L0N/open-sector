@@ -1,6 +1,7 @@
 import {
   BUILDING_TYPES,
   CRIT_LABEL,
+  DRONE_MODE_LABEL,
   SHELL_TYPES,
   STANCE_LABEL,
   TRAIN_QUEUE_CAP,
@@ -590,7 +591,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     ? ctx.match.players.find((p) => p.playerId === e.garrison!.ownerId)
     : owner;
   const who = occ?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
-  const flight = e.air ? airLine(e.air) : "";
+  const flight = e.drone ? droneLine(e.drone) : e.droneLink ? droneLinkLine(e.droneLink) : e.air ? airLine(e.air) : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
   box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}  ·  ${who}${q}${cargo}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
@@ -611,6 +612,22 @@ function airLine(air: NonNullable<EntityView["air"]>): string {
   if (air.rounds != null) s += `  ·  MG ${Math.round(air.rounds)}`;
   if (air.phase !== "parked" && air.homeId == null && air.fuel != null) s += "  ·  NO AIRFIELD";
   return s;
+}
+
+/** Mode, and for your own drone the battery and a recall. */
+function droneLine(d: NonNullable<EntityView["drone"]>): string {
+  let s = `  ·  ${DRONE_MODE_LABEL[d.mode]}`;
+  if (d.battery != null && d.batteryMax) s += `  ·  battery ${Math.round((d.battery / d.batteryMax) * 100)}%`;
+  if (d.recall) s += "  ·  returning";
+  return s;
+}
+
+/** The operator's drone: up, being built, or stowed with its charge. */
+function droneLinkLine(l: NonNullable<EntityView["droneLink"]>): string {
+  if (l.droneId != null) return `  ·  drone up (${DRONE_MODE_LABEL[l.mode]})`;
+  if (l.rebuild != null) return `  ·  new drone in ${Math.ceil(l.rebuild)}s`;
+  const pct = Math.round((l.charge / l.chargeMax) * 100);
+  return `  ·  drone stowed ${pct}%${l.charge < l.launchMin ? " charging" : ""}`;
 }
 
 function beltLine(live: EntityView[]): string {
@@ -696,6 +713,7 @@ function infantryClipShown(e: EntityView, gunId: string): number {
 
 const TYPE_ORDER: EntityType[] = [
   "stuka",
+  "drone",
   "warden",
   "ss3",
   "walker",
@@ -710,6 +728,7 @@ const TYPE_ORDER: EntityType[] = [
   "mortarman",
   "engineer",
   "medic",
+  "droneop",
   "sandbags",
   "teeth",
   "rig",
@@ -1206,7 +1225,50 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   if (units.some((e) => e.type === "hauler")) {
     out.push({ slot: "harvest", act: "harvest", label: "Harvest", title: "Auto-harvest nearest scrap" });
   }
-  if (units.some((e) => e.air && e.air.phase !== "parked")) {
+  const ops = units.filter((e) => e.droneLink);
+  const drones = units.filter((e) => e.drone);
+  if (ops.length || drones.length) {
+    const stowed = ops.filter((e) => e.droneLink!.droneId == null);
+    const ready = stowed.filter((e) => e.droneLink!.rebuild == null && e.droneLink!.charge >= e.droneLink!.launchMin);
+    if (stowed.length) {
+      const building = stowed.find((e) => e.droneLink!.rebuild != null);
+      out.push({
+        slot: "drone-launch",
+        act: "drone-launch",
+        label: "Launch",
+        title: ready.length
+          ? "Put the drone up. It flies as its own unit inside the operator's reach, until the battery runs low."
+          : building
+            ? `Building a new drone — ${Math.ceil(building.droneLink!.rebuild!)}s`
+            : "Battery recharging",
+        disabled: ready.length === 0,
+      });
+    }
+    if (drones.length || ops.some((e) => e.droneLink!.droneId != null)) {
+      out.push({
+        slot: "drone-recall",
+        act: "drone-recall",
+        label: "Recall",
+        title: "Fly the drone back to its operator to be stowed and recharged. Right-click the operator does the same.",
+      });
+    }
+    const modes = new Set([...ops.map((e) => e.droneLink!.mode), ...drones.map((e) => e.drone!.mode)]);
+    out.push({
+      slot: "drone-surveil",
+      act: "drone-surveil",
+      label: "Surveillance",
+      title: "Fly high: wide sight. Only machine guns and gatlings reach it up there. It does not attack.",
+      on: modes.size === 1 && modes.has("surveil"),
+    });
+    out.push({
+      slot: "drone-strike",
+      act: "drone-strike",
+      label: "Search & Destroy",
+      title: "Fly low and hunt: it dives on the nearest enemy inside the operator's reach and bursts. Rifles, machine guns, and rockets reach it down there.",
+      on: modes.size === 1 && modes.has("strike"),
+    });
+  }
+  if (units.some((e) => e.air && !e.drone && e.air.phase !== "parked")) {
     out.push({
       slot: "land",
       act: "land",
@@ -1367,8 +1429,16 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     return;
   }
   if (act === "land") {
-    const planes = units.filter((e) => !!e.air);
+    const planes = units.filter((e) => !!e.air && !e.drone);
     if (planes.length) ctx.net.send({ type: "cmd.land", ids: planes.map((e) => e.id) });
+    return;
+  }
+  if (act.startsWith("drone-")) {
+    const ids = units.filter((e) => e.drone || e.droneLink).map((e) => e.id);
+    if (ids.length === 0) return;
+    if (act === "drone-launch") ctx.net.send({ type: "cmd.drone", ids, action: "launch" });
+    else if (act === "drone-recall") ctx.net.send({ type: "cmd.drone", ids, action: "recall" });
+    else ctx.net.send({ type: "cmd.drone", ids, action: "mode", mode: act === "drone-strike" ? "strike" : "surveil" });
     return;
   }
   if (act === "forceattack") {

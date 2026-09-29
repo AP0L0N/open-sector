@@ -540,6 +540,9 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="medic"] {
   background-image: url("../assets/units/medic-cameo.png");
 }
+.prod-job[data-type="droneop"] {
+  background-image: url("../assets/units/droneop-cameo.png");
+}
 .prod-job[data-type="engineer"] {
   background-image: url("../assets/units/engineer-cameo.png");
 }
@@ -714,6 +717,7 @@ input[type="range"] { padding: 0; }
 #train-mortarman,
 #train-engineer,
 #train-medic,
+#train-droneop,
 #train-hauler,
 #train-warden,
 #train-ss3,
@@ -760,6 +764,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/medic-cameo.png");
+}
+#train-droneop {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/droneop-cameo.png");
 }
 #train-engineer {
   background-image:
@@ -1005,6 +1014,8 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="mortarman"] { background-image: url("../assets/units/mortarman-cameo.png"); }
 .config-type[data-type="medic"],
 .prod-job[data-type="medic"] { background-image: url("../assets/units/medic-cameo.png"); }
+.config-type[data-type="droneop"],
+.prod-job[data-type="droneop"] { background-image: url("../assets/units/droneop-cameo.png"); }
 .config-type[data-type="engineer"],
 .prod-job[data-type="engineer"] { background-image: url("../assets/units/engineer-cameo.png"); }
 .config-type[data-type="hauler"] { background-image: url("../assets/units/hauler-cameo.png"); }
@@ -1029,6 +1040,10 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="stuka"],
 .prod-job[data-type="stuka"] {
   background-image: var(--stuka-cameo, url("../assets/units/stuka/hull/0013.png"));
+}
+.config-type[data-type="drone"],
+.prod-job[data-type="drone"] {
+  background-image: var(--drone-cameo, url("../assets/units/drone-cameo.png"));
 }
 .config-type[data-type="core"] { background-image: url("../assets/buildings/core.png"); background-position: center 30%; }
 

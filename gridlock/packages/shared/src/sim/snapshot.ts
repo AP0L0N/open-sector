@@ -1,5 +1,7 @@
 import {
   AIR_FUEL_SECONDS,
+  DRONE_BATTERY_SECONDS,
+  DRONE_LAUNCH_MIN_SECONDS,
   AIRFIELD_PADS,
   beltOf,
   catalog,
@@ -188,6 +190,26 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
         : undefined,
       pads:
         friendly && e.type === "airfield" ? { used: padsTaken(state, e).size, cap: AIRFIELD_PADS } : undefined,
+      drone: e.drone
+        ? {
+            mode: e.drone.mode,
+            opId: friendly ? e.drone.opId : undefined,
+            battery: friendly ? e.drone.battery : undefined,
+            batteryMax: friendly ? DRONE_BATTERY_SECONDS : undefined,
+            recall: friendly && e.drone.recall ? true : undefined,
+          }
+        : undefined,
+      droneLink:
+        friendly && e.droneLink
+          ? {
+              mode: e.droneLink.mode,
+              droneId: e.droneLink.droneId ?? undefined,
+              charge: e.droneLink.charge,
+              chargeMax: DRONE_BATTERY_SECONDS,
+              rebuild: e.droneLink.rebuild > 0 ? e.droneLink.rebuild : undefined,
+              launchMin: DRONE_LAUNCH_MIN_SECONDS,
+            }
+          : undefined,
     });
   }
   const scrap: ScrapCell[] = [];

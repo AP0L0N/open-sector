@@ -379,7 +379,8 @@ export function stopAircraft(e: Entity): void {
 export function tickAir(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     const a = e.air;
-    if (!a || e.hp <= 0) continue;
+    // Drones fly in tickDrones.
+    if (!a || e.hp <= 0 || e.drone) continue;
     if (a.phase === "parked") {
       servicePad(state, e, dt);
       continue;
@@ -773,6 +774,8 @@ function detonateBomb(state: MatchState, p: Projectile): void {
 /** A plane that dies in the air hits the ground in a fireball. */
 export function aircraftDown(state: MatchState, e: Entity): void {
   if (!e.air || !isAirborne(e)) return;
+  // A drone is a handful of plastic and a battery. It pops; it does not crater.
+  const caliber = e.drone ? 12 : 60;
   const impact: ImpactView = {
     id: state.nextId++,
     ownerId: e.ownerId,
@@ -782,10 +785,10 @@ export function aircraftDown(state: MatchState, e: Entity): void {
     y: e.y + Math.sin(e.facing) * 12,
     vx: Math.cos(e.facing) * 100,
     vy: Math.sin(e.facing) * 100,
-    caliber: 60,
+    caliber,
     blast: true,
   };
-  noteImpactSurface(state, impact, { caliber: 60, shell: null, vx: impact.vx, vy: impact.vy }, "miss");
+  noteImpactSurface(state, impact, { caliber, shell: null, vx: impact.vx, vy: impact.vy }, "miss");
   state.impacts.push(impact);
 }
 

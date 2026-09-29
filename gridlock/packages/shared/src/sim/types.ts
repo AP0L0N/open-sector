@@ -1,4 +1,4 @@
-import type { BuildingType, Crit, EntityType, FieldStructureType, InfantryWeaponId, ShellType, Stance, TrainType } from "../catalog.js";
+import type { BuildingType, Crit, DroneMode, EntityType, FieldStructureType, InfantryWeaponId, ShellType, Stance, TrainType } from "../catalog.js";
 import type { AiDifficulty, CorpseView, EntityState, ImpactView, ShellHoleView } from "../protocol.js";
 
 export interface Vec {
@@ -92,6 +92,29 @@ export interface AirState {
   taxi: boolean;
   /** Landing: wheels are down on the strip. */
   touched: boolean;
+}
+
+/** Drone Op only: the one quadcopter he flies. */
+export interface DroneLink {
+  /** Drone in the air. Null while it is stowed or being rebuilt. */
+  droneId: number | null;
+  /** Mode the next launch takes, and the flying drone's mode. */
+  mode: DroneMode;
+  /** Battery seconds in the stowed drone. */
+  charge: number;
+  /** Seconds left putting a new drone together. 0 when one is in hand or aloft. */
+  rebuild: number;
+}
+
+/** Drone only. Height lives on `air.alt`. */
+export interface DroneState {
+  /** Drone Op flying it. */
+  opId: number;
+  mode: DroneMode;
+  /** Seconds of flight left. */
+  battery: number;
+  /** Flying back to be stowed. */
+  recall: boolean;
 }
 
 export interface Entity {
@@ -211,8 +234,12 @@ export interface Entity {
   crew: boolean;
   /** Supply points left. 0 on every type except the supply truck. */
   supply: number;
-  /** Aircraft only. */
+  /** Aircraft only. Drones carry it too, for their height. */
   air?: AirState;
+  /** Drone Op only. */
+  droneLink?: DroneLink;
+  /** Drone only. */
+  drone?: DroneState;
 }
 
 export interface Projectile {
@@ -258,6 +285,10 @@ export interface Projectile {
   flightTime?: number;
   /** Force-attack: the blast also catches allies. */
   harmAllies?: boolean;
+  /** Fired by an anti-air gun (MG42, gatlings). Only these meet a high drone. */
+  antiAir?: boolean;
+  /** Rocket fused at a drone's height: it bursts in the air, not on the ground. */
+  airburst?: boolean;
 }
 
 /** Lasting smoke screen from a 75mm smoke shell. */
