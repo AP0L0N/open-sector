@@ -238,8 +238,8 @@ export const TITAN_ROCKET_SCATTER_NEAR_TILES = t(0.55);
 export const TITAN_ROCKET_SCATTER_FAR_TILES = t(1.6);
 /** Blast radius of one rocket. Smaller than a mortar bomb. */
 export const TITAN_ROCKET_SPLASH_TILES = t(1.3);
-/** World pixels per second. A mortar bomb takes ~2 s to cross this range; a rocket about half a second. */
-export const TITAN_ROCKET_SPEED = t(20.8) * TILE_SIZE;
+/** World pixels per second. A mortar bomb takes ~2 s to cross this range; a rocket about two-thirds of a second. */
+export const TITAN_ROCKET_SPEED = t(16.64) * TILE_SIZE;
 /** Elevation units above the Titan's eye where the pods sit. */
 export const TITAN_ROCKET_POD_LIFT = 6;
 export const TITAN_ROCKET = {
@@ -1657,7 +1657,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: TITAN_ROCKET_AMMO,
     bracedHpMul: TITAN_BRACED_HP_MUL,
-    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide, shred infantry, dent tanks, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up.",
+    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide, shred infantry, dent tanks, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up.",
   },
   supply: {
     type: "supply",

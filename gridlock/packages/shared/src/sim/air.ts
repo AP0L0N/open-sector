@@ -49,7 +49,6 @@ import {
   isArmoredType,
   isGarrisonable,
   isInfantryType,
-  rocketsOf,
 } from "../catalog.js";
 import type { ImpactView } from "../protocol.js";
 import { aimAngle } from "./ballistics.js";
@@ -78,12 +77,12 @@ export function isAirborne(e: { air?: AirState | { alt: number; phase?: string }
 
 /**
  * Small arms reach a plane in the air: rifles, the handgun, the MG42, the
- * scoped rifle, the PTRD, and the Walker's gatlings. So do the Titan's rockets
- * while the pods are on and loaded. Tank guns and the mortar cannot lay on it.
+ * scoped rifle, the PTRD, and the Walker's gatlings. Tank guns and the mortar
+ * cannot lay on it. The Titan's main gun is a tank gun; its pods pick planes
+ * on their own (tickRocketPods), so the unit's own target stays on the ground.
  */
 export function reachesAircraft(e: Entity): boolean {
   if (e.type === "walker") return true;
-  if (rocketsOf(e.type)) return !e.rocketsOff && (e.rockets ?? 0) > 0;
   const gun = infantryGunFor(e);
   return !!gun && gun.id !== "mortar";
 }

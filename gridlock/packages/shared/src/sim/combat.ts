@@ -144,6 +144,11 @@ export function tickCombat(state: MatchState, dt: number): void {
     if (!canFight(e) || !supplyRiderFights(state, e) || waterSilences(state, e) || garrisonIsHiding(state, e)) continue;
     fireAtCurrent(state, e, dt);
   }
+  // Titan pods: their own target, their own clock, whatever the main gun is doing.
+  for (const e of state.entities.values()) {
+    if (!rocketsOf(e.type) || !canFight(e)) continue;
+    tickRocketPods(state, e);
+  }
 }
 
 /** Standing in water stops every gun except the Titan's shoulder rockets, which ride above it. */
@@ -451,11 +456,8 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
 
   if (!holedUp && !gunArcOk) return;
 
-  if (rocketsOf(e.type)) {
-    fireRockets(state, e, aimX, aimY, range, dist, target);
-    // The pods clear the water. The main gun does not, and it cannot lay on a plane.
-    if (unitInWater(state, e) || (target && isAirborne(target))) return;
-  }
+  // The Titan's main gun stays silent in water. Its pods fire on their own in tickRocketPods.
+  if (rocketsOf(e.type) && unitInWater(state, e)) return;
 
   if (e.type === "walker") {
     if (target && walkerSparesBuilding(state, e, target)) return;
@@ -599,12 +601,116 @@ function launchMortar(
 }
 
 /**
- * Titan salvo: the pods ripple their rockets one after another, alternating
- * sides, TITAN_ROCKET_INTERVAL apart, then reload. Each rocket is fused on its
- * own scattered point along the aim. The aim is the torso's, so a wading Titan
- * still lays its salvo where the gun would point. Pods switched off or an empty
- * rack fire nothing.
+ * Titan pods. They pick and hold their own target, apart from the main gun's,
+ * and fire on their own clock. A salvo ripples one rocket after another,
+ * alternating sides, TITAN_ROCKET_INTERVAL apart, then the pods reload. They
+ * fire from water, reach planes in the air, and follow a player's force-attack.
+ * Pods switched off or an empty rack fire nothing.
  */
+function tickRocketPods(state: MatchState, e: Entity): void {
+  if (e.rocketsOff || (e.rockets ?? 0) <= 0 || garrisonIsHiding(state, e)) {
+    e.rocketSalvo = 0;
+    e.rocketTarget = null;
+    return;
+  }
+  if ((e.rocketCooldown ?? 0) > 0) return;
+  const aim = podAim(state, e);
+  if (!aim) {
+    e.rocketTarget = null;
+    return;
+  }
+  e.rocketTarget = aim.target?.id ?? null;
+  const range = weaponRangeWorld(state, e);
+  const dist = Math.hypot(aim.x - e.x, aim.y - e.y);
+  fireRockets(state, e, aim.x, aim.y, range, dist, aim.target);
+}
+
+/** The main gun's target, if it has one. */
+function mainTargetId(e: Entity): number | null {
+  if (e.attackTarget != null) return e.attackTarget;
+  if ((e.order?.kind === "attack" || e.order?.kind === "forceattack") && e.order.targetId != null) {
+    return e.order.targetId;
+  }
+  return null;
+}
+
+/**
+ * How much the pods want this target. 0 means leave it. Tanks, walkers, and
+ * planes in the air come first, then soldiers and hostile garrisons.
+ */
+function podValue(state: MatchState, e: Entity, o: Entity): number {
+  if (o.hp <= 0 || o.wreck || o.garrisonedIn != null || o.id === e.id) return 0;
+  if (allies(state, e.ownerId, o.ownerId)) return 0;
+  if (o.kind === "building") {
+    return isGarrisonable(o.type) && garrisonIsHostile(state, e.ownerId, o) && garrisonLooksOccupied(state, e.ownerId, o)
+      ? 2
+      : 0;
+  }
+  if (isAirborne(o)) return 3;
+  if (isInfantryType(o.type)) return 2;
+  return isArmored(catalog(o.type)) ? 3 : 2;
+}
+
+/** A target the pods can lay on from here: in reach, seen by the side, and not masked by the ground. */
+function podCanReach(state: MatchState, e: Entity, o: Entity, range: number): boolean {
+  if (Math.hypot(o.x - e.x, o.y - e.y) > range) return false;
+  if (!canSeeEntity(state, e.ownerId, o)) return false;
+  return isAirborne(o) || canAimWeapon(state, e, o.x, o.y, o);
+}
+
+/**
+ * Where the pods fire next. A player's force-attack wins. A salvo under way
+ * stays on its target while it lives. Otherwise the pods take the best target
+ * in reach, and among targets as good as the main gun's they take a different
+ * one, so a Titan facing two tanks works both. With nothing else in reach they
+ * back up the main gun, even on a structure it was ordered to shell.
+ */
+function podAim(state: MatchState, e: Entity): { x: number; y: number; target?: Entity } | null {
+  const range = weaponRangeWorld(state, e);
+  const o = e.order;
+  if (o?.kind === "forceattack") {
+    const t = o.targetId != null ? state.entities.get(o.targetId) : undefined;
+    if (t && t.hp > 0 && t.id !== e.id) return Math.hypot(t.x - e.x, t.y - e.y) <= range ? { x: t.x, y: t.y, target: t } : null;
+    if (o.x != null && o.y != null) return Math.hypot(o.x - e.x, o.y - e.y) <= range ? { x: o.x, y: o.y } : null;
+  }
+  if ((e.rocketSalvo ?? 0) > 0 && e.rocketTarget != null) {
+    const held = state.entities.get(e.rocketTarget);
+    const ordered = held != null && held.id === mainTargetId(e) && held.id === currentTarget(state, e)?.id;
+    if (held && podValue(state, e, held) > 0 && (podCanReach(state, e, held, range) || (ordered && !isAirborne(held) && Math.hypot(held.x - e.x, held.y - e.y) <= range))) {
+      return { x: held.x, y: held.y, target: held };
+    }
+  }
+  const main = mainTargetId(e);
+  let best: Entity | undefined;
+  let bestScore = -Infinity;
+  for (const c of state.entities.values()) {
+    const value = podValue(state, e, c);
+    if (value <= 0 || !podCanReach(state, e, c, range)) continue;
+    // Tier first, then nearest. The main gun's target drops half a tier, so an
+    // equal target elsewhere wins but a tank still beats a soldier.
+    const score = value * 1000 - (c.id === main ? 500 : 0) - Math.hypot(c.x - e.x, c.y - e.y) / state.tileSize;
+    if (score > bestScore) {
+      bestScore = score;
+      best = c;
+    }
+  }
+  if (best) return { x: best.x, y: best.y, target: best };
+  // The main gun's own target, on the main gun's rules: a player's attack order
+  // holds even past the Titan's sight, so the pods back it up there too.
+  const fallback = main != null ? currentTarget(state, e) : undefined;
+  if (
+    fallback &&
+    !fallback.wreck &&
+    !isAirborne(fallback) &&
+    Math.hypot(fallback.x - e.x, fallback.y - e.y) <= range &&
+    canAimWeapon(state, e, fallback.x, fallback.y, fallback)
+  ) {
+    return { x: fallback.x, y: fallback.y, target: fallback };
+  }
+  return null;
+}
+
+/** One rocket of the salvo at the pods' aim point, then the pods' clock. */
 function fireRockets(
   state: MatchState,
   e: Entity,
@@ -614,11 +720,6 @@ function fireRockets(
   dist: number,
   target: Entity | undefined,
 ): void {
-  if (e.rocketsOff || (e.rockets ?? 0) <= 0) {
-    e.rocketSalvo = 0;
-    return;
-  }
-  if ((e.rocketCooldown ?? 0) > 0) return;
   if (!e.rocketSalvo) e.rocketSalvo = Math.min(TITAN_ROCKET_SALVO, e.rockets ?? 0);
   launchRocket(state, e, aimX, aimY, range, dist, target, e.rocketSalvo);
   e.rockets = Math.max(0, (e.rockets ?? 0) - 1);
@@ -642,7 +743,8 @@ function launchRocket(
 ): void {
   const aloft = !!target && isAirborne(target);
   const moving = !!target && (aloft || target.waypoints.length > 0 || target.state === "move");
-  const aim = e.turretFacing;
+  // The pods lay on their own bearing, not the torso's.
+  const aim = Math.atan2(aimY - e.y, aimX - e.x);
   const sideX = -Math.sin(aim);
   const sideY = Math.cos(aim);
   // Pods sit either side of the torso; the ripple alternates left and right.

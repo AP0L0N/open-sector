@@ -156,6 +156,8 @@ export interface Entity {
   rocketSalvo?: number;
   /** Player switched the pods off. Missing means on. */
   rocketsOff?: boolean;
+  /** Entity the Titan's pods are laying on, apart from the main gun's target. */
+  rocketTarget?: number | null;
   /** Last Walker volley: sim tick, arms that fired, and the off-arm bearing when it took a second target. */
   gatlingFire?: { tick: number; arms: 1 | 2; offAim?: number };
   /** Seconds the MG42 bipod has been set while prone. 0 until the gunner crawls. */
