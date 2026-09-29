@@ -30,6 +30,8 @@ import airfieldGroundUrl from "../assets/buildings/airfield-ground.png";
 import ciwsUrl from "../assets/buildings/ciws.png";
 import bunkerUrl from "../assets/buildings/bunker.png";
 import ciwsTurretUrl from "../assets/buildings/ciws-turret.png";
+import ramUrl from "../assets/buildings/ram.png";
+import ramTurretUrl from "../assets/buildings/ram-turret.png";
 import cottageUrl from "../assets/buildings/cottage.png";
 import cottageSUrl from "../assets/buildings/cottage-s.png";
 import cottageWUrl from "../assets/buildings/cottage-w.png";
@@ -135,7 +137,8 @@ import teethUrl from "../assets/units/teeth.png";
 import infantrySwimUrl from "../assets/units/infantry-swim.png";
 import haulerHullUrl from "../assets/units/hauler-hull.png";
 import haulerCartUrl from "../assets/units/hauler-cart.png";
-import walkerSheetUrl from "../assets/units/walker-move.png";
+import walkerLegsUrl from "../assets/units/walker-legs.png";
+import walkerTorsoUrl from "../assets/units/walker-torso.png";
 import titanLegsUrl from "../assets/units/titan-legs.png";
 import titanTorsoUrl from "../assets/units/titan-torso.png";
 import titanGunUrl from "../assets/units/titan-gun.png";
@@ -893,14 +896,20 @@ export const DRONE_SPRITE: UnitSpriteDef = {
 };
 bindDroneSheets(DRONE_SPRITE.image);
 
+/**
+ * Walker: legs are the hull, the torso and both gatlings traverse on the hips.
+ * Both sheets are cut from one walk cycle (tools/sprites/split_walker_torso.py),
+ * same cell and origin; the torso keeps its stride frames so the bob stays in step.
+ */
 export const WALKER_SPRITE: UnitSpriteDef = {
-  image: loadSheet(walkerSheetUrl),
+  image: loadSheet(walkerLegsUrl),
   dirs: 16,
   frames: 8,
   frameSize: 128,
   fps: 10,
   drawSize: Math.round(24 * 1.2),
   contactY: 0.9,
+  turret: { image: loadSheet(walkerTorsoUrl), dirs: 16, frames: 8, frameSize: 128 },
   facingSpace: "world",
 };
 
@@ -1104,10 +1113,14 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   ciws: building(ciwsUrl, 192, 126, 186, 126, 82.8),
   // Concrete pillbox. Metrics from tools/sprites/render_bunker.py (bunker.json).
   bunker: building(bunkerUrl, 384, 222, 264, 222, 99),
+  // The CIWS pad under a rocket launcher. Metrics from tools/sprites/render_ram.py (ram.json).
+  ram: building(ramUrl, 192, 126, 186, 126, 82.8),
 };
 
 /** CIWS gun: 16 rows, each the base image's canvas and anchor (render/ciws.ts). */
 export const CIWS_TURRET_SHEET: HTMLImageElement = loadSheet(ciwsTurretUrl);
+/** RAM launcher: 16 rows on the CIWS canvas and anchor (render/ram.ts). */
+export const RAM_TURRET_SHEET: HTMLImageElement = loadSheet(ramTurretUrl);
 
 /**
  * Flat part of a building that everything standing draws over: the Airfield's
