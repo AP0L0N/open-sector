@@ -365,16 +365,21 @@ export function tilesBlockedOrScrap(state: MatchState, tx: number, ty: number, w
 }
 
 export function inBuildRadius(state: MatchState, ownerId: string, tx: number, ty: number, w: number, h: number, radius: number): boolean {
-  const neu = footprint(tx, ty, w, h);
   for (const e of state.entities.values()) {
     if (e.kind !== "building" || e.ownerId !== ownerId || e.hp <= 0) continue;
-    for (const b of footprint(e.tileX, e.tileY, e.tileW, e.tileH)) {
-      for (const n of neu) {
-        if (chebyshev(n.x, n.y, b.x, b.y) <= radius) return true;
-      }
-    }
+    if (footprintGap(tx, ty, w, h, e.tileX, e.tileY, e.tileW, e.tileH) <= radius) return true;
   }
   return false;
+}
+
+/** Least Chebyshev distance between any tile of footprint A and any tile of footprint B. */
+export function footprintGap(
+  ax: number, ay: number, aw: number, ah: number,
+  bx: number, by: number, bw: number, bh: number,
+): number {
+  const dx = Math.max(0, bx - (ax + aw - 1), ax - (bx + bw - 1));
+  const dy = Math.max(0, by - (ay + ah - 1), ay - (by + bh - 1));
+  return Math.max(dx, dy);
 }
 
 export function buildingBounds(
