@@ -6,6 +6,8 @@ import {
   MORTAR_FLIGHT_NEAR,
   TITAN_ROCKET,
   AIR_CRUISE_ALT,
+  SUPPLY_CARGO,
+  SUPPLY_SHELL_COST,
   TITAN_ROCKET_AMMO,
   TITAN_ROCKET_INTERVAL,
   TITAN_ROCKET_RELOAD,
@@ -293,6 +295,19 @@ describe("titan", () => {
     assert.equal(applyCommand(state, "A", { type: "cmd.supply", ids: [truck.id], targetId: titan.id }).ok, true);
     ticks(state, 60);
     assert.ok((titan.rockets ?? 0) > 0, `rockets ${titan.rockets}`);
+
+    // Nothing left to shoot at: the rest of the rack stays in the rack.
+    state.entities.delete(foe.id);
+    titan.attackTarget = null;
+    titan.rocketTarget = undefined;
+    titan.ammo = { ...catalog("titan").ammo };
+    titan.rockets = 0;
+    truck.supply = SUPPLY_CARGO;
+    assert.equal(applyCommand(state, "A", { type: "cmd.supply", ids: [truck.id], targetId: titan.id }).ok, true);
+    ticks(state, 400);
+    assert.equal(titan.rockets, TITAN_ROCKET_AMMO, "the whole rack, not one rocket");
+    assert.equal(truck.supply, SUPPLY_CARGO - TITAN_ROCKET_AMMO * SUPPLY_SHELL_COST, "a rocket costs what a shell costs");
+    assert.equal(truck.order, null, "the truck stops once the rack is full");
   });
 
   it("holds its rockets while the pods are switched off", () => {
