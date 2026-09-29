@@ -45,6 +45,7 @@ import {
   rocketsOf,
   TITAN_ROCKET,
   TITAN_ROCKET_POD_LIFT,
+  TITAN_ROCKET_INTERVAL,
   TITAN_ROCKET_RELOAD,
   TITAN_ROCKET_SALVO,
   TITAN_ROCKET_SPEED,
@@ -452,8 +453,8 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
 
   if (rocketsOf(e.type)) {
     fireRockets(state, e, aimX, aimY, range, dist, target);
-    // The pods clear the water. The main gun does not.
-    if (unitInWater(state, e)) return;
+    // The pods clear the water. The main gun does not, and it cannot lay on a plane.
+    if (unitInWater(state, e) || (target && isAirborne(target))) return;
   }
 
   if (e.type === "walker") {
@@ -598,9 +599,11 @@ function launchMortar(
 }
 
 /**
- * Titan salvo: every rocket leaves in the same tick from the two shoulder pods,
- * each fused on its own scattered point along the aim. The aim is the torso's,
- * so a wading Titan still lays its salvo where the gun would point.
+ * Titan salvo: the pods ripple their rockets one after another, alternating
+ * sides, TITAN_ROCKET_INTERVAL apart, then reload. Each rocket is fused on its
+ * own scattered point along the aim. The aim is the torso's, so a wading Titan
+ * still lays its salvo where the gun would point. Pods switched off or an empty
+ * rack fire nothing.
  */
 function fireRockets(
   state: MatchState,
@@ -611,54 +614,87 @@ function fireRockets(
   dist: number,
   target: Entity | undefined,
 ): void {
+  if (e.rocketsOff || (e.rockets ?? 0) <= 0) {
+    e.rocketSalvo = 0;
+    return;
+  }
   if ((e.rocketCooldown ?? 0) > 0) return;
-  const moving = !!target && (target.waypoints.length > 0 || target.state === "move");
-  const radius = rocketScatterRadius(dist, range, moving ? 1.15 : 1);
-  const maxX = Math.max(1, state.width * state.tileSize - 1);
-  const maxY = Math.max(1, state.height * state.tileSize - 1);
+  if (!e.rocketSalvo) e.rocketSalvo = Math.min(TITAN_ROCKET_SALVO, e.rockets ?? 0);
+  launchRocket(state, e, aimX, aimY, range, dist, target, e.rocketSalvo);
+  e.rockets = Math.max(0, (e.rockets ?? 0) - 1);
+  e.rocketSalvo = e.rockets > 0 ? e.rocketSalvo - 1 : 0;
+  e.rocketCooldown = e.rocketSalvo > 0 ? TITAN_ROCKET_INTERVAL : TITAN_ROCKET_RELOAD;
+}
+
+/**
+ * One rocket. On a plane it leads the plane's flight and is fused at its height,
+ * so it bursts in the air beside it. On anything else it is fused on the ground.
+ */
+function launchRocket(
+  state: MatchState,
+  e: Entity,
+  aimX: number,
+  aimY: number,
+  range: number,
+  dist: number,
+  target: Entity | undefined,
+  slot: number,
+): void {
+  const aloft = !!target && isAirborne(target);
+  const moving = !!target && (aloft || target.waypoints.length > 0 || target.state === "move");
   const aim = e.turretFacing;
   const sideX = -Math.sin(aim);
   const sideY = Math.cos(aim);
+  // Pods sit either side of the torso; the ripple alternates left and right.
+  const side = (slot % 2 === 0 ? 1 : -1) * e.radius * 0.8;
+  const x = e.x + sideX * side;
+  const y = e.y + sideY * side;
   const z0 = muzzleHeight(state, e) + TITAN_ROCKET_POD_LIFT;
-  for (let i = 0; i < TITAN_ROCKET_SALVO; i++) {
-    const land = mortarLanding(aimX, aimY, radius, () => nextRand(state));
-    land.x = Math.min(maxX, Math.max(0, land.x));
-    land.y = Math.min(maxY, Math.max(0, land.y));
-    // Pods sit either side of the torso: two tubes left, two right.
-    const side = (i % 2 === 0 ? 1 : -1) * e.radius * 0.8;
-    const x = e.x + sideX * side;
-    const y = e.y + sideY * side;
-    const dx = land.x - x;
-    const dy = land.y - y;
-    const len = Math.max(1, Math.hypot(dx, dy));
-    const flight = len / TITAN_ROCKET_SPEED;
-    const zLand = worldTileHeight(state, land.x, land.y);
-    state.projectiles.push({
-      id: state.nextId++,
-      ownerId: e.ownerId,
-      team: playerTeam(state, e.ownerId),
-      x,
-      y,
-      vx: dx / flight,
-      vy: dy / flight,
-      damage: TITAN_ROCKET.damage,
-      penetration: TITAN_ROCKET.penetration,
-      caliber: TITAN_ROCKET.caliber,
-      life: flight,
-      ignoreId: e.id,
-      fromId: e.id,
-      bounced: false,
-      shell: null,
-      flight: "rocket",
-      landX: land.x,
-      landY: land.y,
-      flightTime: flight,
-      harmAllies: e.order?.kind === "forceattack",
-      z: z0,
-      vz: (zLand - z0) / flight,
-    });
+  let goalX = aimX;
+  let goalY = aimY;
+  if (aloft && target) {
+    const lead = Math.hypot(target.x - x, target.y - y) / TITAN_ROCKET_SPEED;
+    const speed = catalog(target.type).moveTilesPerSec * state.tileSize;
+    goalX += Math.cos(target.facing) * speed * lead;
+    goalY += Math.sin(target.facing) * speed * lead;
   }
-  e.rocketCooldown = TITAN_ROCKET_RELOAD;
+  const radius = rocketScatterRadius(dist, range, moving ? 1.15 : 1);
+  const land = mortarLanding(goalX, goalY, radius, () => nextRand(state));
+  const maxX = Math.max(1, state.width * state.tileSize - 1);
+  const maxY = Math.max(1, state.height * state.tileSize - 1);
+  land.x = Math.min(maxX, Math.max(0, land.x));
+  land.y = Math.min(maxY, Math.max(0, land.y));
+  const dx = land.x - x;
+  const dy = land.y - y;
+  const len = Math.max(1, Math.hypot(dx, dy));
+  const flight = len / TITAN_ROCKET_SPEED;
+  const zLand =
+    aloft && target ? entityHeight(state, target) + airAlt(target) : worldTileHeight(state, land.x, land.y);
+  state.projectiles.push({
+    id: state.nextId++,
+    ownerId: e.ownerId,
+    team: playerTeam(state, e.ownerId),
+    x,
+    y,
+    vx: dx / flight,
+    vy: dy / flight,
+    damage: TITAN_ROCKET.damage,
+    penetration: TITAN_ROCKET.penetration,
+    caliber: TITAN_ROCKET.caliber,
+    life: flight,
+    ignoreId: e.id,
+    fromId: e.id,
+    bounced: false,
+    shell: null,
+    flight: "rocket",
+    landX: land.x,
+    landY: land.y,
+    flightTime: flight,
+    harmAllies: e.order?.kind === "forceattack",
+    airBurst: aloft || undefined,
+    z: z0,
+    vz: (zLand - z0) / flight,
+  });
 }
 
 /** Advance a rocket along its straight line. True while it is still flying. */
@@ -678,7 +714,10 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
   if (first) {
     p.x = first.x;
     p.y = first.y;
-    detonateMortar(state, p, rand, struck && first === struck ? struck.e : undefined);
+    const hit = struck && first === struck ? struck.e : undefined;
+    // Met something on the ground before the plane: a ground burst after all.
+    p.airBurst = hit && isAirborne(hit) ? true : undefined;
+    detonateMortar(state, p, rand, hit);
     return false;
   }
   if (p.life > 0) return true;
@@ -686,7 +725,7 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
     p.x = p.landX;
     p.y = p.landY;
   }
-  p.z = 0;
+  if (!p.airBurst) p.z = 0;
   detonateMortar(state, p, rand);
   return false;
 }
@@ -698,13 +737,15 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
  */
 function detonateMortar(state: MatchState, p: Projectile, rand: () => number, direct?: Entity): void {
   const rocket = p.flight === "rocket";
+  const inAir = rocket && !!p.airBurst;
   const tx = worldToTile(p.x, state.tileSize);
   const ty = worldToTile(p.y, state.tileSize);
-  if (isTree(state, tx, ty)) fellTreeAt(state, tx, ty);
+  if (!inAir && isTree(state, tx, ty)) fellTreeAt(state, tx, ty);
   const radius = (rocket ? TITAN_ROCKET_SPLASH_TILES : MORTAR_SPLASH_TILES) * state.tileSize;
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null) continue;
-    if (isAirborne(e)) continue;
+    // A ground burst never reaches a plane; an air burst only catches planes.
+    if (isAirborne(e) !== inAir) continue;
     const d = e === direct ? 0 : Math.hypot(e.x - p.x, e.y - p.y);
     const reach =
       e.kind === "building"
@@ -715,6 +756,10 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     if (friendly && !p.harmAllies) continue;
     const falloff = mortarFalloff(d, reach);
     const def = catalog(e.type);
+    if (inAir) {
+      e.hp = Math.max(0, e.hp - Math.max(1, Math.round(p.damage * TITAN_ROCKET.airMul * falloff)));
+      continue;
+    }
     if (e.kind === "unit" && isArmored(def)) {
       const nick = rocket
         ? rocketArmorDamage(TITAN_ROCKET.armorDamage, falloff, rand)
@@ -1256,8 +1301,10 @@ function pushImpact(
     blast: blast || undefined,
     mortar: p.flight === "mortar" ? true : undefined,
     rocket: p.flight === "rocket" ? true : undefined,
+    z: p.airBurst ? (p.z ?? 0) : undefined,
   };
-  noteImpactSurface(state, impact, p, kind);
+  // An air burst leaves no crater and no splash under the plane.
+  if (!p.airBurst) noteImpactSurface(state, impact, p, kind);
   state.impacts.push(impact);
 }
 

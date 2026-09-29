@@ -2,6 +2,7 @@ import {
   carriesShell,
   fires,
   hasAmmo,
+  rocketsOf,
   hasCrit,
   hasScout,
   infantryGunFor,
@@ -70,6 +71,9 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
     case "cmd.weapon":
       if (!isInfantryWeaponId(msg.weapon)) return fail("bad_payload", "Unknown weapon.");
       return cmdWeapon(state, playerId, msg.ids, msg.weapon);
+    case "cmd.rockets":
+      if (typeof msg.on !== "boolean") return fail("bad_payload", "Unknown rocket setting.");
+      return cmdRockets(state, playerId, msg.ids, msg.on);
     case "cmd.guns":
       if (msg.guns !== 1 && msg.guns !== 2) return fail("bad_payload", "Unknown gatling setting.");
       return cmdGuns(state, playerId, msg.ids, msg.guns);
@@ -696,6 +700,17 @@ function cmdAmmo(state: MatchState, playerId: string, ids: number[], shell: Shel
   const units = guns.filter((e) => carriesShell(e.type, shell));
   if (units.length === 0) return fail("bad_payload", "No selected gun carries that shell.");
   for (const e of units) e.shell = shell;
+  return ok();
+}
+
+function cmdRockets(state: MatchState, playerId: string, ids: number[], on: boolean): CmdResult {
+  const units = owned(state, playerId, ids).filter((e) => rocketsOf(e.type));
+  if (units.length === 0) return fail("not_yours", "Select a Titan.");
+  for (const e of units) {
+    e.rocketsOff = on ? undefined : true;
+    // Switching off mid-salvo holds the rest in the rack.
+    if (!on) e.rocketSalvo = 0;
+  }
   return ok();
 }
 

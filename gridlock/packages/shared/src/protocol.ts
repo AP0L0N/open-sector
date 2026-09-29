@@ -12,7 +12,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 44;
+export const PROTOCOL_VERSION = 45;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -164,8 +164,12 @@ export interface EntityView {
   wading?: boolean;
   /** Titan outriggers down: stationary, braced max HP. Omitted when false. */
   braced?: boolean;
-  /** Seconds until the Titan's rocket pods reload. Friendly snapshots; omitted when ready. */
+  /** Seconds until the Titan's pods can fire the next rocket. Friendly snapshots; omitted when ready. */
   rocketReload?: number;
+  /** Rockets left in the Titan's rack. Friendly snapshots. */
+  rockets?: number;
+  /** Titan pods switched off. Friendly snapshots; omitted while on. */
+  rocketsOff?: boolean;
   /** Stay put: no chase, no withdraw. Friendly snapshots. */
   holdPosition?: boolean;
   /** Overwatch heading in world radians. Friendly snapshots while guarding. */
@@ -289,6 +293,8 @@ export interface ImpactView {
   bomb?: boolean;
   /** Titan rocket. A mortar-style burst, smaller. */
   rocket?: boolean;
+  /** Rocket air burst beside a plane: elevation units above the ground. No dirt, no crater. */
+  z?: number;
 }
 
 /** Blood droplet around a corpse. World pixels. */
@@ -400,6 +406,7 @@ export type ClientMessage =
   | { type: "cmd.ammo"; ids: number[]; shell: ShellType }
   | { type: "cmd.weapon"; ids: number[]; weapon: InfantryWeaponId }
   | { type: "cmd.guns"; ids: number[]; guns: 1 | 2 }
+  | { type: "cmd.rockets"; ids: number[]; on: boolean }
   | { type: "cmd.build"; building: BuildingType }
   | { type: "cmd.place"; building: BuildingType; tx: number; ty: number }
   | { type: "cmd.train"; unit: TrainType }
