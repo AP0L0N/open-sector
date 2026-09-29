@@ -996,6 +996,13 @@ export const DRONE_STRIKE_TILES = t(0.35);
 /** Stowed once it is this close above the operator. */
 export const DRONE_RECOVER_TILES = t(0.5);
 /**
+ * Guard: the drone circles its post. Surveillance flies a wide, slow ring;
+ * Search & Destroy a tighter one, and dives on the first enemy it sees.
+ */
+export const DRONE_GUARD_ORBIT_TILES: Record<DroneMode, number> = { surveil: t(3), strike: t(1.75) };
+/** Share of the drone's top speed it keeps while circling. */
+export const DRONE_GUARD_ORBIT_PACE: Record<DroneMode, number> = { surveil: 0.25, strike: 0.4 };
+/**
  * Shaped charge under the frame. Kills a soldier it lands on and wounds
  * those beside him. On a hull it comes down through the roof: a share of max
  * HP, and a chance at the engine.
@@ -1865,7 +1872,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(2),
+    moveTilesPerSec: t(1.6),
     turnDegPerSec: 1600,
     rangeTiles: 0,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -1896,7 +1903,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     drone: true,
-    blurb: "Quadcopter on its operator's link. Surveillance: high, wide sight, only anti-air guns reach it. Search & Destroy: low, dives on a target and bursts; rifles, machine guns, and rockets reach it. Tank shells and mortars never do.",
+    blurb: "Quadcopter on its operator's link. Surveillance: high, wide sight, only anti-air guns reach it. Search & Destroy: low, dives on a target and bursts; rifles, machine guns, and rockets reach it. Tank shells and mortars never do. Guard sets it circling a spot or a friendly unit; in Search & Destroy it dives on the first enemy it sees.",
   },
   cottage: {
     type: "cottage",
