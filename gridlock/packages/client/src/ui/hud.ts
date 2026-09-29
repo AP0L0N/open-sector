@@ -58,11 +58,20 @@ import {
 } from "../render/mapview.js";
 import { buzzDeny } from "./audio.js";
 import { el } from "./dom.js";
+import {
+  SIDEBAR_GROUPS,
+  groupEntries,
+  groupState,
+  loadSidebarGroup,
+  saveSidebarGroup,
+  type SidebarGroup,
+} from "./sidebar-groups.js";
 
 let viewRef: MapView | null = null;
 let configFocus: EntityType | null = null;
 /** Ready structure: first right-click is a no-op; second cancels. */
 let readyCancelArmed: BuildingType | null = null;
+let sidebarGroup: SidebarGroup = loadSidebarGroup();
 
 /** Fire on press so a snapshot rebuild cannot swallow the click between mousedown and mouseup. */
 function pressDisabled(btn: HTMLElement): boolean {
@@ -118,17 +127,34 @@ export function mountBattlefield(
   const mini = el("canvas", { attrs: { id: "minimap" } });
   side.append(mini);
 
-  const structs = el("div", { class: "cameos", attrs: { id: "cameos-struct" } });
-  for (const type of BUILDING_TYPES) {
-    structs.append(cameoButton("build-" + type, catalog(type).name, catalog(type).cost, catalog(type).power, true));
+  const tabs = el("div", { class: "group-tabs", attrs: { id: "group-tabs", role: "tablist" } });
+  const heading = el("h3", { class: "group-heading", attrs: { id: "group-heading" } });
+  const panels = el("div", { class: "group-panels" });
+  const entries = groupEntries();
+  for (const g of SIDEBAR_GROUPS) {
+    const tab = el("button", {
+      class: "group-tab",
+      attrs: { type: "button", id: "group-tab-" + g.id, role: "tab", title: g.label, "data-group": g.id },
+      html:
+        `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${g.icon}"/></svg>` +
+        `<span class="group-tab-label">${g.short}</span><span class="group-light"></span>`,
+    });
+    tabs.append(tab);
+    const grid = el("div", { class: "cameos", attrs: { id: "cameos-" + g.id, role: "tabpanel" } });
+    for (const { id, type } of entries[g.id]) {
+      const c = catalog(type);
+      grid.append(
+        c.kind === "building" ? cameoButton(id, c.name, c.cost, c.power, true) : cameoButton(id, c.name, c.cost, 0, false, true),
+      );
+    }
+    panels.append(grid);
   }
-  side.append(el("h3", { text: "Structures" }), structs);
-
-  const trains = el("div", { class: "cameos", attrs: { id: "cameos-train" } });
-  for (const unit of TRAIN_TYPES) {
-    trains.append(cameoButton("train-" + unit, catalog(unit).name, catalog(unit).cost, 0, false, true));
-  }
-  side.append(el("h3", { text: "Train" }), trains);
+  side.append(el("h3", { text: "Production" }), tabs, heading, panels);
+  bindPress(tabs, "[data-group]", (tab) => {
+    sidebarGroup = tab.dataset.group as SidebarGroup;
+    saveSidebarGroup(sidebarGroup);
+    paintGroupTabs();
+  });
 
   const config = el("div", { class: "config-panel", attrs: { id: "config" } });
   config.append(
@@ -267,6 +293,33 @@ function cameoButton(
   if (showReady) b.title = "Left: build  ·  Right: pause, again to cancel";
   b.innerHTML = `<span class="cameo-name">${name}</span><span class="cameo-meta">${cost}${powerTxt ? " · " + powerTxt : ""}</span><span class="pip"></span><span class="cameo-deny">NO SCRAP</span>${ready}${hold}`;
   return b;
+}
+
+/** Show the chosen group's cameos; light every tab by what its cameos are doing. */
+function paintGroupTabs(): void {
+  const entries = groupEntries();
+  for (const g of SIDEBAR_GROUPS) {
+    const active = g.id === sidebarGroup;
+    document.getElementById("cameos-" + g.id)?.classList.toggle("hidden", !active);
+    const tab = document.getElementById("group-tab-" + g.id);
+    if (!tab) continue;
+    tab.classList.toggle("is-active", active);
+    tab.setAttribute("aria-selected", String(active));
+    const flags = entries[g.id].flatMap(({ id }) => {
+      const btn = document.getElementById(id) as HTMLButtonElement | null;
+      if (!btn) return [];
+      return [{
+        disabled: btn.disabled,
+        ready: btn.classList.contains("is-ready"),
+        working: btn.classList.contains("is-training") || btn.classList.contains("is-building"),
+        paused: btn.classList.contains("is-paused"),
+      }];
+    });
+    tab.dataset.state = groupState(flags);
+  }
+  const heading = document.getElementById("group-heading");
+  const label = SIDEBAR_GROUPS.find((g) => g.id === sidebarGroup)?.label ?? "";
+  if (heading && heading.textContent !== label) heading.textContent = label;
 }
 
 interface JobRef {
@@ -415,6 +468,7 @@ export function paintBattleHud(ctx: Ctx): void {
     const paused = !!job && job.paused && !job.ready;
     const stalled = !!job && !job.ready && !job.paused && m.you.scrap <= 0;
     btn.classList.toggle("is-ready", ready);
+    btn.classList.toggle("is-building", !!job && !ready);
     btn.classList.toggle("is-placing", ready && !!viewRef?.placeMode);
     btn.classList.toggle("is-paused", paused);
     btn.classList.toggle("unaffordable", stalled);
@@ -454,6 +508,7 @@ export function paintBattleHud(ctx: Ctx): void {
     const hold = btn.querySelector(".cameo-hold") as HTMLElement | null;
     hold?.classList.toggle("hidden", unitJobs.length === 0 || paused);
   }
+  paintGroupTabs();
   paintProdQueue(jobs);
 
   const banner = document.getElementById("victory-banner");
