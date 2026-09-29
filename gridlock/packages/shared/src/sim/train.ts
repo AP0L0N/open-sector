@@ -8,7 +8,7 @@ import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
 import type { Entity, MatchState, TrainJob } from "./types.js";
 
 export function producerType(unit: TrainType): "muster" | "smelter" | "armory" | "airfield" {
-  if (unit === "rifleman" || unit === "gunner" || unit === "sniper" || unit === "atinfantry" || unit === "mortarman" || unit === "engineer" || unit === "medic" || unit === "droneop") return "muster";
+  if (unit === "rifleman" || unit === "gunner" || unit === "sniper" || unit === "atinfantry" || unit === "rocketer" || unit === "mortarman" || unit === "engineer" || unit === "medic" || unit === "droneop") return "muster";
   if (unit === "hauler") return "smelter";
   if (isAircraftType(unit)) return "airfield";
   return "armory";
@@ -47,7 +47,7 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
     if (busy && want === "airfield") return `Airfield pads full (${AIRFIELD_PADS} planes). Build another Airfield.`;
     if (busy) return "Queue is full.";
     if (want === "airfield") return "Need an Airfield.";
-    if (unit === "rifleman" || unit === "gunner" || unit === "sniper" || unit === "atinfantry" || unit === "mortarman" || unit === "medic") return "Need a Muster.";
+    if (want === "muster") return "Need a Muster.";
     if (unit === "hauler") return "Need a Smelter.";
     return "Need an Armory.";
   }

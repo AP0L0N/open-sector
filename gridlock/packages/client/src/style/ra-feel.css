@@ -534,6 +534,9 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="atinfantry"] {
   background-image: url("../assets/units/atinfantry-cameo.png");
 }
+.prod-job[data-type="rocketer"] {
+  background-image: url("../assets/units/rocketer-cameo.png");
+}
 .prod-job[data-type="mortarman"] {
   background-image: url("../assets/units/mortarman-cameo.png");
 }
@@ -717,6 +720,7 @@ input[type="range"] { padding: 0; }
 #train-gunner,
 #train-sniper,
 #train-atinfantry,
+#train-rocketer,
 #train-mortarman,
 #train-engineer,
 #train-medic,
@@ -758,6 +762,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/atinfantry-cameo.png");
+}
+#train-rocketer {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/rocketer-cameo.png");
 }
 #train-mortarman {
   background-image:
@@ -1024,6 +1033,8 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="sniper"] { background-image: url("../assets/units/sniper-cameo.png"); }
 .config-type[data-type="atinfantry"],
 .prod-job[data-type="atinfantry"] { background-image: url("../assets/units/atinfantry-cameo.png"); }
+.config-type[data-type="rocketer"],
+.prod-job[data-type="rocketer"] { background-image: url("../assets/units/rocketer-cameo.png"); }
 .config-type[data-type="mortarman"],
 .prod-job[data-type="mortarman"] { background-image: url("../assets/units/mortarman-cameo.png"); }
 .config-type[data-type="medic"],

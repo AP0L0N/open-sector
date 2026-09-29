@@ -105,6 +105,27 @@ export function atInfantrySheet(opts: {
   return "walk";
 }
 
+export type RocketerSheet = "walk" | "crouch" | "crawl" | "swim" | "fire" | "die";
+
+/** Standing launch: the tube kicks and the backblast clears. Longer than the PTRD's recoil. */
+export const ROCKETER_FIRE_MS = 500;
+
+export function rocketerSheet(opts: {
+  swimming?: boolean;
+  wreck?: boolean;
+  stance?: "stand" | "crouch" | "crawl";
+  shotAgeMs?: number | null;
+}): RocketerSheet {
+  if (opts.wreck) return "die";
+  if (opts.swimming) return "swim";
+  const stance = opts.stance ?? "stand";
+  if (stance === "crouch") return "crouch";
+  if (stance === "crawl") return "crawl";
+  const firing = opts.shotAgeMs != null && opts.shotAgeMs >= 0 && opts.shotAgeMs < ROCKETER_FIRE_MS;
+  if (firing) return "fire";
+  return "walk";
+}
+
 export type MortarmanSheet = "walk" | "crouch" | "crawl" | "swim" | "fire" | "die";
 
 /** Kneeling shot. The bomb is still in the air after this pose drops. */
