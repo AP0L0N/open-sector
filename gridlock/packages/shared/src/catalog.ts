@@ -199,7 +199,7 @@ export const HEIGHT_RANGE_BONUS = 2;
  * The mortar is the long arm: past every direct-fire gun, not across the map.
  *
  * Cells: handgun 2, rifle 6, walker 6, cyborg 6, MG42 8, StuG 9, scoped rifle and
- * PTRD 10, Tiger 11, mortar 18 (it will not drop inside 3).
+ * PTRD 10, Tiger and Titan 11, mortar 18 (it will not drop inside 3).
  */
 export const HANDGUN_RANGE_TILES = t(2);
 export const RIFLE_RANGE_TILES = t(6);
@@ -210,6 +210,14 @@ export const SCOPED_RANGE_TILES = t(10);
 export const PTRD_RANGE_TILES = SCOPED_RANGE_TILES;
 export const STUG_RANGE_TILES = t(9);
 export const TIGER_RANGE_TILES = t(11);
+/** Titan carries the Tiger's gun and rack, so it keeps the Tiger's reach. */
+export const TITAN_RANGE_TILES = TIGER_RANGE_TILES;
+/** Titan wading pace, as a share of its dry-ground walk. */
+export const TITAN_WADE_SPEED = 0.6;
+/** Seconds to plant the outriggers, and again to pull them up. */
+export const TITAN_BRACE_SECONDS = 2.5;
+/** Hit-point multiplier while braced. HP keeps its share of max across the change. */
+export const TITAN_BRACED_HP_MUL = 1.75;
 /**
  * After painting FOV, fill unseen 8-connected islands and hide visible ones
  * of this many tiles or fewer. Walks FOV borders only. Set to 0 to disable.
@@ -254,6 +262,7 @@ export type EntityType =
   | "ss3"
   | "walker"
   | "cyborg"
+  | "titan"
   | "supply"
   | "core"
   | "dynamo"
@@ -283,7 +292,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "cyborg" | "supply";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "cyborg" | "titan" | "supply";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -306,12 +315,12 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "supply"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "supply"];
 /**
  * Opening army besides the Rig. Hauler omitted so it does not auto-harvest.
- * Supply truck omitted so the opening fight stays the same — train it at the Armory.
+ * Supply truck and Titan omitted so the opening fight stays the same — train them at the Armory.
  */
-export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter((t) => t !== "hauler" && t !== "supply");
+export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter((t) => t !== "hauler" && t !== "supply" && t !== "titan");
 
 export interface CatalogEntry {
   type: EntityType;
@@ -387,6 +396,10 @@ export interface CatalogEntry {
   garrisonFloors?: number;
   /** Hatch scout: pop the cupola for infantry sight. Tanks only. */
   hasScout?: boolean;
+  /** Walks through water tiles like a swimmer, and like a swimmer cannot fire from one. */
+  wades?: boolean;
+  /** Deploy braces the unit in place: stationary, hull locked, max HP × this. */
+  bracedHpMul?: number;
 }
 
 export interface ShellDef {
@@ -1429,6 +1442,43 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: GATLING.spreadDeg,
     blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back.",
   },
+  titan: {
+    type: "titan",
+    kind: "unit",
+    name: "Titan",
+    letter: "X",
+    cost: 400,
+    buildSeconds: 18,
+    hp: 200,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 13,
+    moveTilesPerSec: t(1.15),
+    turnDegPerSec: 70,
+    rangeTiles: TITAN_RANGE_TILES,
+    sightTiles: t(8),
+    cooldown: 6.5,
+    damage: 55,
+    projectileSpeed: TANK_SHELL_SPEED,
+    turnInPlace: true,
+    noReverse: true,
+    turretTurnDegPerSec: 120,
+    armorFront: 90,
+    armorSide: 48,
+    armorRear: 30,
+    penetration: 100,
+    caliber: 75,
+    spreadDeg: 3,
+    ammo: { ap: 12, he: 6, smoke: 4 },
+    defaultShell: "ap",
+    leavesWreck: true,
+    wreckHp: 90,
+    special: "deploy",
+    wades: true,
+    bracedHpMul: TITAN_BRACED_HP_MUL,
+    blurb: "Heavy assault walker with the Tiger's gun on a traversing torso. Wades through water, but cannot fire while standing in it. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up.",
+  },
   supply: {
     type: "supply",
     kind: "unit",
@@ -1933,9 +1983,30 @@ export function specialReady(type: EntityType, state: string, cooldownSec = 0): 
   return !!specialOf(type) && state !== "deploy" && state !== "undeploy" && cooldownSec <= 0;
 }
 
-export function specialLabel(type: EntityType): string | null {
+export function specialLabel(type: EntityType, braced = false): string | null {
   if (!specialOf(type)) return null;
-  return type === "core" ? "Pack" : "Deploy";
+  return type === "core" || braced ? "Pack" : "Deploy";
+}
+
+/** Walks through water. Infantry swim; this is the vehicle flag. */
+export function wadesOf(type: EntityType): boolean {
+  return catalog(type).wades === true;
+}
+
+/** Braces on deploy instead of turning into another type. */
+export function bracesOf(type: EntityType): boolean {
+  return (catalog(type).bracedHpMul ?? 0) > 0;
+}
+
+/** Seconds a deploy or undeploy takes for this type. */
+export function deploySecondsOf(type: EntityType): number {
+  return bracesOf(type) ? TITAN_BRACE_SECONDS : DEPLOY_SECONDS;
+}
+
+/** Max HP for a unit type in its current posture. */
+export function hpMaxOf(type: EntityType, braced: boolean): number {
+  const def = catalog(type);
+  return braced && def.bracedHpMul ? Math.round(def.hp * def.bracedHpMul) : def.hp;
 }
 
 export function secondsToTicks(seconds: number): number {

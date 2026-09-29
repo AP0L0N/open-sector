@@ -7,6 +7,7 @@ import {
   STANCE_AIM_SPREAD,
   STANCE_SPEED,
   SWIM_SPEED,
+  TITAN_WADE_SPEED,
   addCrit,
   catalog,
   cyborgLegsLost,
@@ -19,6 +20,7 @@ import {
   isMotorVehicle,
   pickLoadedShell,
   stanceOf,
+  wadesOf,
   type Crit,
 } from "../catalog.js";
 import type { ImpactKind } from "../protocol.js";
@@ -26,9 +28,10 @@ import type { ArmorFace } from "./ballistics.js";
 import type { Entity } from "./types.js";
 
 export function moveSpeedMul(e: Entity, swimming = false): number {
-  if (hasCrit(e, "tracks") || hasCrit(e, "engine")) return 0;
+  if (e.braced || hasCrit(e, "tracks") || hasCrit(e, "engine")) return 0;
   if (isInfantryType(e.type) && swimming) return SWIM_SPEED;
   if (isCyborg(e.type) && hasCrit(e, "leg")) return CYBORG_DRAG_SPEED;
+  if (swimming && wadesOf(e.type)) return TITAN_WADE_SPEED;
   if (isInfantryType(e.type)) return STANCE_SPEED[stanceOf(e)];
   return 1;
 }
@@ -38,7 +41,7 @@ export function moveSpeedMul(e: Entity, swimming = false): number {
  * Broken tracks stop the roll (`moveSpeedMul`) but still pivot the hull so a casemate can aim.
  */
 export function hullTurnMul(e: Entity): number {
-  return hasCrit(e, "engine") ? 0 : 1;
+  return e.braced || hasCrit(e, "engine") ? 0 : 1;
 }
 
 /**

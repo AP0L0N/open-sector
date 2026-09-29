@@ -12,7 +12,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 40;
+export const PROTOCOL_VERSION = 41;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -158,6 +158,10 @@ export interface EntityView {
   stanceOrder?: Stance;
   /** Infantry in a water tile. Omitted when false. */
   swimming?: boolean;
+  /** Wading walker (Titan) in a water tile: it cannot fire. Omitted when false. */
+  wading?: boolean;
+  /** Titan outriggers down: stationary, braced max HP. Omitted when false. */
+  braced?: boolean;
   /** Stay put: no chase, no withdraw. Friendly snapshots. */
   holdPosition?: boolean;
   /** Overwatch heading in world radians. Friendly snapshots while guarding. */
