@@ -18,7 +18,8 @@ export const TILE_SUBDIV = 4;
 /** World pixels along one gameplay tile. A 64-cell map stays 2048 world-wide. */
 export const TILE_SIZE = 32 / TILE_SUBDIV;
 const t = (n: number): number => n * TILE_SUBDIV;
-export const BUILD_RADIUS = t(8);
+/** Chebyshev gap from any owned building's footprint; wide enough to fit an Airfield past the base clutter. */
+export const BUILD_RADIUS = t(14);
 export const UNIT_CAP = 60;
 /** Max train jobs waiting or in progress on one producer. */
 export const TRAIN_QUEUE_CAP = 9;
