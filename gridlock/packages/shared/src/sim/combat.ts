@@ -16,7 +16,10 @@ import {
   MORTAR_PLANT_SECONDS,
   MORTAR_SPLASH_TILES,
   addCrit,
+  FW190_BARRAGE_LINE_TILES,
   FW190_ROOF_ENGINE_CHANCE,
+  FW190_SPLASH_DAMAGE,
+  FW190_SPLASH_TILES,
   isMotorVehicle,
   catalog,
   gunArcDegOf,
@@ -1477,7 +1480,8 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       pushImpact(state, p, "hit", bagHit.x, bagHit.y);
       continue;
     }
-    const tree = nearestTreeSweep(state, x0, y0, p, z0, z1, rand);
+    // A barrage from a plane comes down through the canopy; only what it lands on counts.
+    const tree = p.fromAbove ? null : nearestTreeSweep(state, x0, y0, p, z0, z1, rand);
     if (tree && (!struck || tree.t <= struck.t)) {
       if (canFellTrees(p)) fellTreeAt(state, tree.tx, tree.ty);
       pushImpact(state, p, "miss", tree.x, tree.y);
@@ -1498,6 +1502,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     }
     if (!struck) {
       if (p.life <= 0) {
+        if (p.fromAbove && !p.bounced) cannonSplash(state, p);
         pushImpact(state, p, p.bounced ? "puff" : "miss", p.x, p.y);
         continue;
       }
@@ -1730,6 +1735,21 @@ function nearestTreeSweep(
   return null;
 }
 
+/** A plane's 30 mm round bursting in the dirt: soldiers and soft units close by take the splash. */
+function cannonSplash(state: MatchState, p: Projectile): void {
+  const radius = FW190_SPLASH_TILES * state.tileSize;
+  for (const e of state.entities.values()) {
+    if (e.hp <= 0 || e.wreck || e.kind !== "unit" || e.garrisonedIn != null || isAirborne(e)) continue;
+    if (e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
+    if (isArmored(catalog(e.type))) continue;
+    const d = Math.hypot(e.x - p.x, e.y - p.y);
+    if (d > radius + e.radius) continue;
+    const dmg = Math.max(1, Math.round(FW190_SPLASH_DAMAGE * mortarFalloff(Math.max(0, d - e.radius), radius)));
+    const dealt = takeDamage(e, dmg, state.tick);
+    if (e.hp > 0) rollCrits(e, "none", "hit", dealt, () => nextRand(state));
+  }
+}
+
 function nearestSweepHit(
   state: MatchState,
   x0: number,
@@ -1743,9 +1763,15 @@ function nearestSweepHit(
   for (const e of state.entities.values()) {
     if (e.hp <= 0) continue;
     if (e.id === p.ignoreId) continue;
+    // A pilot strafes the enemy's line, not his own side's.
+    if (p.fromAbove && e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
     if (e.garrisonedIn != null) continue;
     const hit = sweepAgainst(state, x0, y0, p, e);
     if (!hit) continue;
+    // Plunging fire is still high over everything short of its line; it only strikes near where it lands.
+    if (p.fromAbove && p.landX != null && p.landY != null) {
+      if (Math.hypot(hit.x - p.landX, hit.y - (p.landY ?? 0)) > FW190_BARRAGE_LINE_TILES * state.tileSize) continue;
+    }
     const shotZ = z0 + (z1 - z0) * hit.t;
     // Shells, mortar bombs, and bombs pass a drone by; a high one takes only anti-air fire.
     if (e.drone && !projectileMeetsDrone(p, e)) continue;
