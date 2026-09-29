@@ -45,6 +45,18 @@
     "titan-braced-gun.png": {
       "cols": 1,
       "rows": 16
+    },
+    "titan-wade-legs.png": {
+      "cols": 8,
+      "rows": 16
+    },
+    "titan-wade-torso.png": {
+      "cols": 1,
+      "rows": 16
+    },
+    "titan-wade-gun.png": {
+      "cols": 1,
+      "rows": 16
     }
   },
   "empty_dirs": [],

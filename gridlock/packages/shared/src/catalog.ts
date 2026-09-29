@@ -210,7 +210,7 @@ export const SCOPED_RANGE_TILES = t(10);
 export const PTRD_RANGE_TILES = SCOPED_RANGE_TILES;
 export const STUG_RANGE_TILES = t(9);
 export const TIGER_RANGE_TILES = t(11);
-/** Titan carries the Tiger's gun and rack, so it keeps the Tiger's reach. */
+/** Titan carries the Tiger's gun, so it keeps the Tiger's reach. Its rockets share that reach. */
 export const TITAN_RANGE_TILES = TIGER_RANGE_TILES;
 /** Titan wading pace, as a share of its dry-ground walk. */
 export const TITAN_WADE_SPEED = 0.6;
@@ -218,6 +218,32 @@ export const TITAN_WADE_SPEED = 0.6;
 export const TITAN_BRACE_SECONDS = 2.5;
 /** Hit-point multiplier while braced. HP keeps its share of max across the change. */
 export const TITAN_BRACED_HP_MUL = 1.75;
+/**
+ * Titan shoulder rockets. Both pods loose the whole salvo in one tick, then
+ * reload together. Each rocket flies straight and fast to a scattered point and
+ * bursts like a small mortar bomb: it tears infantry apart and dents a hull.
+ * The pods ride above the waterline, so they fire while the Titan wades.
+ */
+export const TITAN_ROCKET_SALVO = 4;
+/** Seconds from one salvo to the next. */
+export const TITAN_ROCKET_RELOAD = 11;
+/** Ground miss radius at point blank and at full reach. Low accuracy by design. */
+export const TITAN_ROCKET_SCATTER_NEAR_TILES = t(0.55);
+export const TITAN_ROCKET_SCATTER_FAR_TILES = t(1.6);
+/** Blast radius of one rocket. Smaller than a mortar bomb. */
+export const TITAN_ROCKET_SPLASH_TILES = t(1.3);
+/** World pixels per second. A mortar bomb takes ~2 s to cross this range; a rocket under half a second. */
+export const TITAN_ROCKET_SPEED = t(26) * TILE_SIZE;
+/** Elevation units above the Titan's eye where the pods sit. */
+export const TITAN_ROCKET_POD_LIFT = 6;
+export const TITAN_ROCKET = {
+  /** Infantry and soft targets at the blast center. */
+  damage: 42,
+  /** Hit points off an armored hull at the blast center, before falloff. */
+  armorDamage: 11,
+  penetration: 30,
+  caliber: 80,
+} as const;
 /**
  * After painting FOV, fill unseen 8-connected islands and hide visible ones
  * of this many tiles or fewer. Walks FOV borders only. Set to 0 to disable.
@@ -403,6 +429,8 @@ export interface CatalogEntry {
   wades?: boolean;
   /** Deploy braces the unit in place: stationary, hull locked, max HP × this. */
   bracedHpMul?: number;
+  /** Shoulder rocket pods (TITAN_ROCKET). They fire from water, where the main gun cannot. */
+  rockets?: boolean;
   /** Flies. Parks on an Airfield pad, ignores ground collision and paths. */
   aircraft?: boolean;
 }
@@ -1592,14 +1620,15 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: 100,
     caliber: 75,
     spreadDeg: 3,
-    ammo: { ap: 12, he: 6, smoke: 4 },
+    ammo: { ap: 16 },
     defaultShell: "ap",
     leavesWreck: true,
     wreckHp: 90,
     special: "deploy",
     wades: true,
+    rockets: true,
     bracedHpMul: TITAN_BRACED_HP_MUL,
-    blurb: "Heavy assault walker with the Tiger's gun on a traversing torso. Wades through water, but cannot fire while standing in it. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up.",
+    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that looses the whole salvo at once. Rockets scatter wide, shred infantry, and dent tanks. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up.",
   },
   supply: {
     type: "supply",
@@ -2145,6 +2174,11 @@ export function specialLabel(type: EntityType, braced = false): string | null {
 /** Walks through water. Infantry swim; this is the vehicle flag. */
 export function wadesOf(type: EntityType): boolean {
   return catalog(type).wades === true;
+}
+
+/** Carries the shoulder rocket pods. */
+export function rocketsOf(type: EntityType): boolean {
+  return catalog(type).rockets === true;
 }
 
 /** Braces on deploy instead of turning into another type. */

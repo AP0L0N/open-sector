@@ -18,10 +18,13 @@ Outputs (gridlock/packages/client/src/assets/units/):
   titan-braced-legs.png   1 × 16 (deployed: stance wide, outriggers down)
   titan-braced-torso.png  1 × 16 (torso lowered onto the braced hips)
   titan-braced-gun.png    1 × 16
+  titan-wade-legs.png     8 wade frames × 16 dirs (sunk to the waterline, pool baked in)
+  titan-wade-torso.png    1 × 16 (torso lowered with the legs)
+  titan-wade-gun.png      1 × 16
   titan-cameo.png         128 × 128
 Previews (tools/sprites/preview/): titan-strip.png (labeled 16 rows, legs +
 torso + gun), titan-walk.png (E walk frames), titan-braced-strip.png,
-titan.json manifest.
+titan-wade-strip.png, titan.json manifest.
 
   python tools/sprites/render_titan.py
 """
@@ -64,6 +67,10 @@ RAMPS: dict[str, list[tuple[int, int, int]]] = {
     "team": [hexc(c) for c in ("#4a4a46", "#6e6e68", "#8a8a83")],
     "visor": [hexc(c) for c in ("#8b3a2a", "#c45a12", "#e07a2a")],
     "hazard": [hexc(c) for c in ("#6b5212", "#a37c14", "#d4a017")],
+    "tube": [hexc(c) for c in ("#0e0c0a", "#1a1410")],
+    # Flat water, locked to the infantry swim pool (infantry-swim.png).
+    "water": [hexc("#284c50")],
+    "foam": [hexc("#4c7c7c")],
 }
 
 LIGHT = np.array([-0.45, -0.55, 0.70])
@@ -224,6 +231,39 @@ def braced_legs_mesh() -> Mesh:
     return m
 
 
+# Wading: the whole mech sinks until the water reaches just under the pelvis.
+WADE_SINK = 22.0
+POOL_R = 21.0
+
+
+def sunk(m: Mesh, dz: float) -> Mesh:
+    out = Mesh()
+    off = np.array([0.0, 0.0, dz])
+    out.tris = [(tri + off, mat) for tri, mat in m.tris]
+    return out
+
+
+def ring(m: Mesh, r0: float, r1: float, z: float, mat: str, sides: int = 28, sx: float = 1.0) -> None:
+    """Flat annulus facing up. `sx` stretches it along the nose (a wake)."""
+    for i in range(sides):
+        a0 = 2 * math.pi * i / sides
+        a1 = 2 * math.pi * (i + 1) / sides
+        p = lambda r, a: (r * math.cos(a) * sx, r * math.sin(a), z)  # noqa: E731
+        m.quad(p(r1, a0), p(r1, a1), p(r0, a1), p(r0, a0), mat)
+
+
+def wade_legs_mesh(phase: float, frame: int) -> Mesh:
+    m = sunk(legs_mesh(phase), -WADE_SINK)
+    ring(m, 0.0, POOL_R, 0.0, "water", sx=1.1)
+    # two ripples walk outward over the loop; a bow wave sits on the nose
+    u = frame / WALK_FRAMES
+    for k in (0.0, 0.5):
+        r = 9.0 + ((u + k) % 1.0) * 10.0
+        ring(m, r, r + 0.9, 0.05, "foam", sx=1.1)
+    ring(m, 10.0, 11.0, 0.08, "foam", sides=10, sx=1.3) if frame % 2 == 0 else None
+    return m
+
+
 def torso_mesh(dz: float = 0.0) -> Mesh:
     m = Mesh()
     z = lambda v: v + dz  # noqa: E731
@@ -242,6 +282,14 @@ def torso_mesh(dz: float = 0.0) -> Mesh:
         m.taper((-8, 8, y0, y1), (-6, 5, y0 + (0.8 if sign < 0 else 0), y1 - (0.8 if sign > 0 else 0)), z(40), z(51), "armor")
         py0, py1 = (sign * 17.5, sign * 18.2) if sign > 0 else (sign * 18.2, sign * 17.5)
         m.box(-5, 4, py0, py1, z(42.5), z(48.5), "team")
+    # rocket pods on the shoulders: two tubes a side, mouths facing the nose
+    for sign in (1, -1):
+        y0, y1 = sorted((sign * 10.5, sign * 17.5))
+        m.taper((-6, 6, y0, y1), (-5, 5.5, y0 + 0.4, y1 - 0.4), z(51), z(57.5), "armor")
+        m.box(5.5, 6.6, y0 + 0.3, y1 - 0.3, z(51.3), z(57.2), "steel")  # front plate
+        for yy in (sign * 12.4, sign * 15.6):
+            m.prism_x(6.2, 7.4, yy, z(54.3), 1.35, "tube", sides=6)
+        m.box(-4.0, 3.0, y0 + 0.2, y1 - 0.2, z(57.5), z(57.9), "hazard")  # top stripe
     # backpack power unit + exhaust stacks
     m.box(-19.5, -10.5, -9, 9, z(35), z(50.5), "armor")
     m.box(-20.2, -19.5, -6, 6, z(38), z(47), "steel")
@@ -292,7 +340,8 @@ VIEW = np.array([0.0, -math.cos(ELEV), math.sin(ELEV)])
 
 
 def render(mesh: Mesh, yaw: float, size: int = CELL, scale: float = SCALE, contact_y: float = CONTACT_Y,
-           origin: tuple[float, float] | None = None) -> np.ndarray:
+           origin: tuple[float, float] | None = None, clip_z: float | None = None) -> np.ndarray:
+    """`clip_z` drops every surface pixel below that model height (the waterline)."""
     ox, oy = origin if origin else (size / 2.0, size * contact_y)
     zbuf = np.full((size, size), -1e9)
     col = np.zeros((size, size, 3), np.uint8)
@@ -327,6 +376,9 @@ def render(mesh: Mesh, yaw: float, size: int = CELL, scale: float = SCALE, conta
         if not inside.any():
             continue
         d = w0 * dp[0] + w1 * dp[1] + w2 * dp[2]
+        if clip_z is not None:
+            mz = w0 * tri[0, 2] + w1 * tri[1, 2] + w2 * tri[2, 2]
+            inside &= mz >= clip_z - 1e-6
         zb = zbuf[y0:y1 + 1, x0:x1 + 1]
         win = inside & (d > zb)
         if not win.any():
@@ -373,14 +425,14 @@ def outline(col: np.ndarray, alpha: np.ndarray, zbuf: np.ndarray, crease: float 
 
 # ---------------------------------------------------------------- sheets
 
-def sheet(meshes_by_frame: list[Mesh]) -> tuple[Image.Image, list[dict]]:
+def sheet(meshes_by_frame: list[Mesh], clip_z: float | None = None) -> tuple[Image.Image, list[dict]]:
     frames = len(meshes_by_frame)
     img = np.zeros((DIRS * CELL, frames * CELL, 4), np.uint8)
     stats = []
     for row in range(DIRS):
         yaw = yaw_for_row(row)
         for f, mesh in enumerate(meshes_by_frame):
-            cell = render(mesh, yaw)
+            cell = render(mesh, yaw, clip_z=clip_z)
             img[row * CELL:(row + 1) * CELL, f * CELL:(f + 1) * CELL] = cell
             if f == 0:
                 a = cell[..., 3] > 0
@@ -454,6 +506,10 @@ def main() -> None:
     blegs, blegs_stats = sheet([braced_legs_mesh()])
     btorso, _ = sheet([torso_mesh(-BRACE_DROP)])
     bgun, _ = sheet([gun_mesh(-BRACE_DROP)])
+    wlegs, wlegs_stats = sheet([wade_legs_mesh(math.pi / 2 + 2 * math.pi * f / WALK_FRAMES, f) for f in range(WALK_FRAMES)],
+                               clip_z=-1e-3)
+    wtorso, _ = sheet([torso_mesh(-WADE_SINK)])
+    wgun, _ = sheet([gun_mesh(-WADE_SINK)])
 
     legs.save(OUT / "titan-legs.png")
     torso.save(OUT / "titan-torso.png")
@@ -461,10 +517,14 @@ def main() -> None:
     blegs.save(OUT / "titan-braced-legs.png")
     btorso.save(OUT / "titan-braced-torso.png")
     bgun.save(OUT / "titan-braced-gun.png")
+    wlegs.save(OUT / "titan-wade-legs.png")
+    wtorso.save(OUT / "titan-wade-torso.png")
+    wgun.save(OUT / "titan-wade-gun.png")
     cameo((walk[0], torso_mesh(), gun_mesh())).save(OUT / "titan-cameo.png")
 
     labeled_strip(composite_rows([legs, torso, gun]), ENGINE_ORDER).save(PREVIEW / "titan-strip.png")
     labeled_strip(composite_rows([blegs, btorso, bgun]), ENGINE_ORDER).save(PREVIEW / "titan-braced-strip.png")
+    labeled_strip(composite_rows([wlegs, wtorso, wgun]), ENGINE_ORDER, bg=(44, 74, 98, 255)).save(PREVIEW / "titan-wade-strip.png")
     e_row = ENGINE_ORDER.index("E")
     walk_cells = [legs.crop((f * CELL, e_row * CELL, (f + 1) * CELL, (e_row + 1) * CELL)) for f in range(WALK_FRAMES)]
     labeled_strip(walk_cells, [f"E f{f}" for f in range(WALK_FRAMES)]).save(PREVIEW / "titan-walk.png")
@@ -484,10 +544,13 @@ def main() -> None:
             "titan-braced-legs.png": {"cols": 1, "rows": DIRS},
             "titan-braced-torso.png": {"cols": 1, "rows": DIRS},
             "titan-braced-gun.png": {"cols": 1, "rows": DIRS},
+            "titan-wade-legs.png": {"cols": WALK_FRAMES, "rows": DIRS},
+            "titan-wade-torso.png": {"cols": 1, "rows": DIRS},
+            "titan-wade-gun.png": {"cols": 1, "rows": DIRS},
         },
-        "empty_dirs": [s["dir"] for s in legs_stats + torso_stats + gun_stats + blegs_stats if s["bbox"] is None],
+        "empty_dirs": [s["dir"] for s in legs_stats + torso_stats + gun_stats + blegs_stats + wlegs_stats if s["bbox"] is None],
         "size_pop_dirs": [s["dir"] for s in legs_stats if s["bbox"] and abs((s["bbox"][3] - s["bbox"][1]) - med) / med > 0.12],
-        "edge_clip_dirs": [s["dir"] for s in legs_stats + torso_stats + gun_stats + blegs_stats if s["edge_clip"]],
+        "edge_clip_dirs": [s["dir"] for s in legs_stats + torso_stats + gun_stats + blegs_stats + wlegs_stats if s["edge_clip"]],
     }
     (PREVIEW / "titan.json").write_text(json.dumps(manifest, indent=2))
     print(json.dumps({k: manifest[k] for k in ("empty_dirs", "size_pop_dirs", "edge_clip_dirs")}))

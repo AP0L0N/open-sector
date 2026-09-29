@@ -25,6 +25,7 @@ import {
   isInfantryType,
   isInfantryWeaponId,
   isShellType,
+  rocketsOf,
   isStance,
   producerType,
   productionSpeed,
@@ -527,7 +528,9 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
   const posture = e.swimming
     ? "  ·  swimming"
     : e.wading
-      ? "  ·  wading, cannot fire"
+      ? rocketsOf(e.type)
+        ? "  ·  wading, rockets only"
+        : "  ·  wading, cannot fire"
       : e.braced
         ? "  ·  braced"
         : isInfantryType(e.type) && e.stance
@@ -548,6 +551,12 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
       : "";
   const rack =
     e.ammo && e.shell && !e.wreck ? `  ·  ${e.shell.toUpperCase()} ${ammoOf(e.ammo, e.shell)}` : "";
+  const rockets =
+    rocketsOf(e.type) && !e.wreck && e.ownerId === ctx.match.youPlayerId
+      ? (e.rocketReload ?? 0) > 0
+        ? `  ·  rockets ${e.rocketReload!.toFixed(1)}s`
+        : "  ·  rockets ready"
+      : "";
   const mg =
     e.mgAmmo != null && !e.wreck
       ? `  ·  MG ${e.mgAmmo}${e.mgOverheat && e.mgOverheat > 0 ? " HOT" : ""}`
@@ -583,7 +592,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
   const who = occ?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
   const flight = e.air ? airLine(e.air) : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${mg}${flight}  ·  ${who}${q}${cargo}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${tending}`;
+  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}  ·  ${who}${q}${cargo}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
 

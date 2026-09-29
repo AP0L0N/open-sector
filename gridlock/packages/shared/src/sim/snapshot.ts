@@ -126,6 +126,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       swimming: isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
       wading: !isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
       braced: e.braced || undefined,
+      rocketReload: friendly && (e.rocketCooldown ?? 0) > 0 ? e.rocketCooldown : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
       guardFacing: friendly && e.guardFacing != null ? e.guardFacing : undefined,
       guardTargetId:
@@ -249,7 +250,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
             : undefined,
         hang: p.flight === "mortar" ? p.flightTime : undefined,
         bomb: p.flight === "bomb" ? true : undefined,
-        ...(p.flight === "bomb" ? { z: p.z ?? 0 } : {}),
+        rocket: p.flight === "rocket" ? true : undefined,
+        ...(p.flight === "bomb" || p.flight === "rocket" ? { z: p.z ?? 0 } : {}),
       })),
     impacts: state.impacts.filter(
       (i) => allies(state, youPlayerId, i.ownerId) || canSeeWorld(state, vis, i.x, i.y),
