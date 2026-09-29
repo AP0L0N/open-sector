@@ -4,8 +4,10 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   AIR_CRUISE_ALT,
   FW190_CANNON,
+  FW190_BARRAGE_ROUNDS,
+  FW190_BARRAGES,
   FW190_ROOF_HP_SHARE,
-  FW190_ROUNDS,
+  FW190_WING_GUN_OFFSET,
   TICK_DT,
   TRAIN_TYPES,
   catalog,
@@ -16,6 +18,7 @@ import { applyCommand } from "./commands.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { spawnUnit } from "./train.js";
+import type { ImpactView } from "../protocol.js";
 import type { Entity, MatchState } from "./types.js";
 
 function twoPlayerMatch(): MatchState {
@@ -88,7 +91,7 @@ describe("Fw 190", () => {
     assert.equal(plane.air?.phase, "parked");
     assert.equal(plane.air?.homeId, field.id);
     assert.equal(plane.air?.bombs, 0);
-    assert.equal(plane.air?.rounds, FW190_ROUNDS);
+    assert.equal(plane.air?.rounds, FW190_BARRAGES);
   });
 
   it("rearms its cannon on the pad and never hangs a bomb", () => {
@@ -99,7 +102,7 @@ describe("Fw 190", () => {
     const plane = spawnUnit(state, "A", "fw190", field, false)!;
     plane.air!.rounds = 0;
     ticks(state, Math.ceil(12 / TICK_DT));
-    assert.equal(plane.air!.rounds, FW190_ROUNDS);
+    assert.equal(plane.air!.rounds, FW190_BARRAGES);
     assert.equal(plane.air!.bombs, 0);
   });
 
@@ -111,7 +114,7 @@ describe("Fw 190", () => {
     assert.equal(applyCommand(state, "A", { type: "cmd.attack", ids: [fighter.id], targetId: foe.id }).ok, true);
     const t = until(state, 1200, () => !state.entities.has(foe.id));
     assert.ok(t >= 0, `the Stuka should go down (hp ${foe.hp}/${foe.hpMax}, rounds ${fighter.air!.rounds})`);
-    assert.ok(fighter.air!.rounds < FW190_ROUNDS);
+    assert.ok(fighter.air!.rounds < FW190_BARRAGES);
   });
 
   it("attack-move takes a plane in the air before a tank on the ground", () => {
@@ -128,23 +131,101 @@ describe("Fw 190", () => {
     assert.equal(fighter.attackTarget, foe.id);
   });
 
-  for (const type of ["warden", "hauler"] as const) {
-    it(`strafes a ${catalog(type).name} and the cannon come through the roof`, () => {
-      const state = twoPlayerMatch();
-      seedCore(state);
-      seedCore(state, "B", 200, 200);
-      const field = seedAirfield(state);
-      const plane = spawnUnit(state, "A", "fw190", field, false)!;
-      const ts = state.tileSize;
-      const tank = makeEntity(state, type, "B", 120 * ts, 60 * ts);
-      tank.holdPosition = true;
-      makeEntity(state, "dynamo", "A", 0, 0, { tileX: 118, tileY: 64 });
-      const hp0 = tank.hp;
-      assert.equal(applyCommand(state, "A", { type: "cmd.attack", ids: [plane.id], targetId: tank.id }).ok, true);
-      const t = until(state, 2400, () => tank.hp <= hp0 * 0.8 || !state.entities.has(tank.id));
-      assert.ok(t >= 0, `${type} hp ${tank.hp}/${hp0}, rounds left ${plane.air!.rounds}`);
+  /** A field with the fighter on its pad, a target on open ground, and a spotter so side A sees it. */
+  function strafeRange(type: "warden" | "hauler" | "ss3" | "rifleman"): { state: MatchState; plane: Entity; target: Entity } {
+    const state = twoPlayerMatch();
+    seedCore(state);
+    seedCore(state, "B", 200, 200);
+    const field = seedAirfield(state);
+    const plane = spawnUnit(state, "A", "fw190", field, false)!;
+    const ts = state.tileSize;
+    const target = makeEntity(state, type, "B", 120 * ts, 60 * ts);
+    target.holdPosition = true;
+    makeEntity(state, "dynamo", "A", 0, 0, { tileX: 118, tileY: 64 });
+    assert.equal(applyCommand(state, "A", { type: "cmd.attack", ids: [plane.id], targetId: target.id }).ok, true);
+    return { state, plane, target };
+  }
+
+  /** Steps until the plane looses a barrage; returns its impacts and where the plane was when it fired. */
+  function nextBarrage(state: MatchState, plane: Entity, max: number): { impacts: ImpactView[]; from: { x: number; y: number } } | null {
+    for (let i = 0; i < max; i++) {
+      const before = plane.air!.rounds;
+      const from = { x: plane.x, y: plane.y };
+      step(state, TICK_DT);
+      if (plane.air!.rounds < before) return { impacts: state.impacts.filter((im) => im.fromId === plane.id), from };
+    }
+    return null;
+  }
+
+  it(`a sortie is ${FW190_BARRAGES} barrages, one a pass, then it goes home`, () => {
+    const { state, plane, target } = strafeRange("hauler");
+    const at: number[] = [];
+    for (let k = 0; k < FW190_BARRAGES; k++) {
+      const shot = nextBarrage(state, plane, 900);
+      assert.ok(shot, `barrage ${k + 1} should fire`);
+      at.push(state.tick);
+    }
+    assert.equal(plane.air!.rounds, 0);
+    for (let k = 1; k < at.length; k++) assert.ok(at[k]! - at[k - 1]! > 10, "each barrage is its own pass");
+    ticks(state, 5);
+    assert.equal(plane.order?.kind, "land");
+    assert.ok(target.hp > 0 || !state.entities.has(target.id));
+  });
+
+  it("a barrage is two straight lines of rounds, one per wing, laid along the bearing to the target", () => {
+    const { state, plane, target } = strafeRange("rifleman");
+    const tx = target.x;
+    const ty = target.y;
+    const shot = nextBarrage(state, plane, 900);
+    assert.ok(shot);
+    assert.equal(shot.impacts.length, FW190_BARRAGE_ROUNDS * 2);
+    const d = Math.hypot(tx - shot.from.x, ty - shot.from.y);
+    const ux = (tx - shot.from.x) / d;
+    const uy = (ty - shot.from.y) / d;
+    const gap = plane.radius * FW190_WING_GUN_OFFSET;
+    const left = shot.impacts.filter((im) => (im.x - tx) * -uy + (im.y - ty) * ux > 0);
+    const right = shot.impacts.filter((im) => (im.x - tx) * -uy + (im.y - ty) * ux < 0);
+    assert.equal(left.length, FW190_BARRAGE_ROUNDS);
+    assert.equal(right.length, FW190_BARRAGE_ROUNDS);
+    for (const im of shot.impacts) {
+      const across = Math.abs((im.x - tx) * -uy + (im.y - ty) * ux);
+      assert.ok(Math.abs(across - gap) < 0.5, `round ${across.toFixed(2)} off the line, gap ${gap}`);
+    }
+    // The lines run from short of the target to past it.
+    const along = shot.impacts.map((im) => (im.x - tx) * ux + (im.y - ty) * uy);
+    assert.ok(Math.min(...along) < 0 && Math.max(...along) > 0);
+    // The 30 mm bursts in the dirt kill the soldier between the lines.
+    assert.equal(state.entities.has(target.id), false);
+  });
+
+  for (const type of ["warden", "hauler", "ss3"] as const) {
+    it(`every barrage comes through the roof of a ${catalog(type).name}`, () => {
+      const { state, plane, target } = strafeRange(type);
+      const hp0 = target.hp;
+      let last = target.hp;
+      for (let k = 0; k < FW190_BARRAGES; k++) {
+        const shot = nextBarrage(state, plane, 900);
+        assert.ok(shot, `barrage ${k + 1}`);
+        assert.ok(shot.impacts.some((im) => im.kind === "pen" || im.kind === "kill"), `barrage ${k + 1} should bite`);
+        assert.ok(target.hp < last, `barrage ${k + 1} hp ${target.hp}`);
+        last = target.hp;
+      }
+      assert.ok(target.hp <= hp0 * 0.5, `${type} hp ${target.hp}/${hp0} after a sortie`);
     });
   }
+
+  it("spares its own side in the line of fire", () => {
+    // An unarmed engineer beside an enemy soldier with an empty rifle: only the barrage could hurt either.
+    const { state, plane, target } = strafeRange("rifleman");
+    target.clip = 0;
+    target.reload = 9999;
+    const friend = makeEntity(state, "engineer", "A", target.x + 3, target.y);
+    friend.holdPosition = true;
+    const shot = nextBarrage(state, plane, 900);
+    assert.ok(shot);
+    assert.equal(state.entities.has(target.id), false, "the enemy soldier dies");
+    assert.equal(friend.hp, friend.hpMax, "the friend beside him does not");
+  });
 
   it("a Stuka still does not take a plane in the air", () => {
     const state = twoPlayerMatch();

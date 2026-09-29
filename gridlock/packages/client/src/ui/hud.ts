@@ -674,13 +674,13 @@ const AIR_PHASE_LABEL: Record<NonNullable<EntityView["air"]>["phase"], string> =
   landing: "landing",
 };
 
-/** Phase, and for your own planes fuel, bomb, and belts. A fighter carries no bomb; its guns are cannon. */
+/** Phase, and for your own planes fuel, bomb, and belts. A fighter carries no bomb; it counts barrages. */
 function airLine(air: NonNullable<EntityView["air"]>, type: EntityType): string {
   let s = `  ·  ${AIR_PHASE_LABEL[air.phase]}`;
   if (air.fuel != null && air.fuelMax) s += `  ·  fuel ${Math.round((air.fuel / air.fuelMax) * 100)}%`;
   const load = airLoadoutOf(type);
   if (air.bombs != null && load.bombs > 0) s += `  ·  bomb ${air.bombs > 0 ? "armed" : "spent"}`;
-  if (air.rounds != null) s += `  ·  ${load.bombs > 0 ? "MG" : "cannon"} ${Math.round(air.rounds)}`;
+  if (air.rounds != null) s += load.bombs > 0 ? `  ·  MG ${Math.round(air.rounds)}` : `  ·  barrages ${Math.floor(air.rounds)}`;
   if (air.phase !== "parked" && air.homeId == null && air.fuel != null) s += "  ·  NO AIRFIELD";
   return s;
 }
