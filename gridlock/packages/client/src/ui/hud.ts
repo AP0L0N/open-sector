@@ -1197,16 +1197,21 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       on: !!view?.forceAttackMode,
     });
   }
-  // Guard, hold, and rotate mean nothing to a plane.
-  if (units.some((e) => !e.air)) {
+  // Guard, hold, and rotate mean nothing to a plane. A drone guards by circling.
+  const grounded = units.some((e) => !e.air);
+  if (grounded || units.some((e) => e.drone)) {
     const guarding = units.every((e) => e.guardFacing != null || e.guardTargetId != null);
     out.push({
       slot: "guard",
       act: "guard",
       label: "Guard",
-      title: `Move here, face a direction, hold. Click a friendly unit to stay with it (${GUARD_HOTKEY.toUpperCase()}). Click and drag to face.`,
+      title: grounded
+        ? `Move here, face a direction, hold. Click a friendly unit to stay with it (${GUARD_HOTKEY.toUpperCase()}). Click and drag to face.`
+        : `Circle this spot, or over a friendly unit (${GUARD_HOTKEY.toUpperCase()}). Surveillance circles wide and slow; Search & Destroy dives on the first enemy it sees.`,
       on: !!(view?.guardMode || guarding),
     });
+  }
+  if (grounded) {
     const holding = units.every((e) => e.holdPosition);
     out.push({
       slot: "hold",
