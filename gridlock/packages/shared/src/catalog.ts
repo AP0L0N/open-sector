@@ -698,8 +698,13 @@ export const WALKER_SHOTS_PER_TICK = WALKER_ONE_BURST * 2;
  * both arms empty it in half that time.
  */
 export const WALKER_BELT = MG42_RPM;
-/** Half-angle the arms can cover while the body faces the main target. */
+/** Half-angle the arms can cover off the torso's facing. */
 export const WALKER_GUN_ARC = 70;
+/**
+ * The torso traverses on the hips like a turret, so the legs keep walking
+ * while the gatlings stay on a target.
+ */
+export const WALKER_TORSO_TURN = 200;
 
 export const WALKER_GUN_MODES = [
   {
@@ -1880,7 +1885,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 8,
-    moveTilesPerSec: t(1.75),
+    moveTilesPerSec: t(1.3),
     turnDegPerSec: 160,
     rangeTiles: WALKER_RANGE_TILES,
     sightTiles: t(9),
@@ -1889,6 +1894,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: SMALL_ARMS_SPEED,
     turnInPlace: true,
     noReverse: true,
+    turretTurnDegPerSec: WALKER_TORSO_TURN,
     armorFront: 18,
     armorSide: 10,
     armorRear: 8,
@@ -1900,7 +1906,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     belt: WALKER_BELT,
     leavesWreck: true,
     wreckHp: 36,
-    blurb: "Each arm is a gatling at the MG42's 1,200 rounds a minute, the same bullet. The backpack is a 1,200-round rack and does not reload by itself. One arm spends it slowly. Both arms spend it twice as fast and can split across two targets. The guns do not bring a building down.",
+    blurb: "Each arm is a gatling at the MG42's 1,200 rounds a minute, the same bullet. The torso turns on the hips, so he fires while he walks. The backpack is a 1,200-round rack and does not reload by itself. One arm spends it slowly. Both arms spend it twice as fast and can split across two targets. The guns do not bring a building down.",
   },
   cyborg: {
     type: "cyborg",
