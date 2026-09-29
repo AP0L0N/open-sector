@@ -61,23 +61,3 @@ export function groupState(cameos: readonly CameoFlags[]): GroupState {
   if (cameos.length === 0 || cameos.every((c) => c.disabled)) return "locked";
   return "idle";
 }
-
-const TAB_KEY = "gridlock.sidebarGroup";
-
-export function loadSidebarGroup(): SidebarGroup {
-  try {
-    const v = localStorage.getItem(TAB_KEY);
-    if (SIDEBAR_GROUPS.some((g) => g.id === v)) return v as SidebarGroup;
-  } catch {
-    /* storage blocked */
-  }
-  return "structures";
-}
-
-export function saveSidebarGroup(group: SidebarGroup): void {
-  try {
-    localStorage.setItem(TAB_KEY, group);
-  } catch {
-    /* storage blocked */
-  }
-}
