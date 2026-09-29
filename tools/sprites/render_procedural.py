@@ -7,8 +7,8 @@ Blender path does, so the engine and compose tools treat them alike.
 
   stuka     16 unique faces, 0001 = nose screen-south, clockwise 22.5°.
             gridlock/packages/client/src/assets/units/stuka/hull/0001.png … 0016.png
-  airfield  one building image in the game's 2:1 iso projection, with the
-            footprint diamond measured for BuildingSpriteDef.
+
+The Airfield building lives in render_airfield.py.
 
 Camera: orthographic, 30° down, so the ground foreshortens 2:1 like the map.
 Each face yaws the model so its nose lands on the exact on-screen bearing of
@@ -19,8 +19,6 @@ so the game can tint them.
 
   python tools/sprites/render_procedural.py stuka \\
       --out gridlock/packages/client/src/assets/units/stuka/hull
-  python tools/sprites/render_procedural.py airfield \\
-      --out gridlock/packages/client/src/assets/buildings/airfield.png
 """
 
 from __future__ import annotations
@@ -440,123 +438,12 @@ def render_stuka(out: Path, cell: int = 256, ss: int = 4) -> None:
     (out.parent / "stuka-hull.json").write_text(json.dumps(manifest, indent=2) + "\n")
 
 
-def build_airfield(W: float, H: float) -> Mesh:
-    """World pixels, footprint [0,W]x[0,H], +z up (world px). Runway along +x."""
-    m = Mesh()
-
-    def flat(x0, y0, x1, y1, z, mat):
-        a = m.v((x0, y0, z))
-        b = m.v((x1, y0, z))
-        c = m.v((x1, y1, z))
-        d = m.v((x0, y1, z))
-        m.quad(a, b, c, d, mat)
-
-    flat(0, 0, W, H, 0.0, "grass")
-    flat(W * 0.02, H * 0.30, W * 0.98, H * 0.74, 0.15, "strip")
-    # Hardstands under each pad (same fractions as airfieldPadWorld)
-    for i in range(4):
-        cx = W * (0.14 + 0.22 * i)
-        cy = H * (0.42 if i % 2 == 0 else 0.62)
-        flat(cx - W * 0.075, cy - H * 0.085, cx + W * 0.075, cy + H * 0.085, 0.3, "concrete")
-    # Threshold marks at both ends of the strip
-    for x in (W * 0.04, W * 0.93):
-        for j in range(4):
-            y0 = H * (0.36 + 0.09 * j)
-            flat(x, y0, x + W * 0.03, y0 + H * 0.04, 0.35, "white")
-    # Taxi dirt to the hangar
-    flat(W * 0.02, H * 0.10, W * 0.30, H * 0.30, 0.1, "dirt")
-    # Hangar: box with a low gabled roof, doors facing the strip (+y)
-    hx0, hx1, hy0, hy1, hh = W * 0.03, W * 0.30, H * 0.02, H * 0.26, 14.0
-    m.box((hx0, hy0, 0), (hx1, hy1, hh), "wall")
-    ridge = hh + 7
-    a = m.v((hx0, hy0, hh))
-    b = m.v((hx1, hy0, hh))
-    c = m.v((hx1, hy1, hh))
-    d = m.v((hx0, hy1, hh))
-    r0 = m.v((hx0, (hy0 + hy1) / 2, ridge))
-    r1 = m.v((hx1, (hy0 + hy1) / 2, ridge))
-    m.quad(a, b, r1, r0, "roof")
-    m.quad(d, r0, r1, c, "roof")
-    m.tri(a, r0, d, "wall")
-    m.tri(b, c, r1, "wall")
-    m.box((hx0 + 6, hy1 - 0.2, 0), (hx1 - 6, hy1 + 0.4, hh - 3), "door")
-    # Control hut and a neutral flag panel for team tint
-    m.box((W * 0.40, H * 0.04, 0), (W * 0.50, H * 0.18, 9), "wall", "rust")
-    m.box((W * 0.52, H * 0.06, 0), (W * 0.525, H * 0.07, 22), "metal")
-    m.box((W * 0.525, H * 0.06, 16), (W * 0.60, H * 0.07, 22), "team")
-    # Fuel drums
-    for j in range(5):
-        m.box((W * (0.64 + 0.03 * j), H * 0.08, 0), (W * (0.66 + 0.03 * j), H * 0.12, 5), "rust")
-    # Windsock at the far end
-    m.box((W * 0.90, H * 0.12, 0), (W * 0.905, H * 0.125, 20), "metal")
-    m.box((W * 0.905, H * 0.115, 15), (W * 0.97, H * 0.13, 19), "sock")
-    return m
-
-
-def render_airfield(out: Path, tile_w: int, tile_h: int, tile_px: int = 8, ss: int = 3) -> None:
-    """Game iso: world +x -> screen (+hw, +hh), +y -> (-hw, +hh). hw = 8 px per tile at zoom 1."""
-    W, H = tile_w * tile_px, tile_h * tile_px
-    mesh = build_airfield(W, H)
-    zoom = 3.0  # source pixels per screen pixel
-    hw = 16 / 2 / tile_px * zoom * ss  # ISO_TILE_W / (2*tileSize)
-    hh = 8 / 2 / tile_px * zoom * ss  # ISO_TILE_H / (2*tileSize)
-    lift = 0.5 * hh * 2 / 1.0  # iso lift per world px of height (HEIGHT_WORLD=4 px ~ ISO_ELEVATION=4 px)
-    pad_w = (tile_w + tile_h) * 8 * zoom  # footprint diamond width in source px
-    margin_top = 60 * zoom
-    width_px = int(pad_w * ss + 16 * ss)
-    height_px = int(((tile_w + tile_h) * 4 * zoom + margin_top + 8 * zoom) * ss)
-    ox = tile_h * 8 * zoom * ss + 8 * ss  # screen x of world origin
-    oy = margin_top * ss
-
-    def to_screen(verts: np.ndarray):
-        X, Y, Z = verts[:, 0], verts[:, 1], verts[:, 2]
-        sx = ox + (X - Y) * hw
-        sy = oy + (X + Y) * hh - Z * lift
-        depth = (X + Y) + Z * 0.01
-        return sx, sy, depth
-
-    fr = add_outline(rasterize(mesh, to_screen, (width_px, height_px)), ss)
-    img = downsample(fr, ss)
-    bb = img.getbbox()
-    top = max(0, (bb[1] if bb else 0) - 8)
-    img = img.crop((0, top, img.width, img.height))
-    out.parent.mkdir(parents=True, exist_ok=True)
-    img.save(out)
-    south = (ox / ss + (W - H) * hw / ss, oy / ss + (W + H) * hh / ss - top)
-    # HP / selection stack over the hangar ridge.
-    sx, sy, _ = to_screen(np.array([[W * 0.165, H * 0.14, 21.0]]))
-    meta = {
-        "padWidth": round(pad_w, 1),
-        "padSouthX": round(south[0], 1),
-        "padSouthY": round(south[1], 1),
-        "stackX": round(float(sx[0]) / ss, 1),
-        "stackY": round(float(sy[0]) / ss - top - 12, 1),
-        "size": img.size,
-    }
-    print("wrote", out, meta)
-    (out.with_suffix(".json")).write_text(json.dumps(meta, indent=2) + "\n")
-    # Cameo: fit the whole image into 96x96.
-    cam = Image.new("RGBA", (96, 96), (0, 0, 0, 0))
-    bb = img.getbbox()
-    if bb:
-        crop = img.crop(bb)
-        f = min(88 / crop.width, 88 / crop.height)
-        crop = crop.resize((max(1, round(crop.width * f)), max(1, round(crop.height * f))), Image.Resampling.LANCZOS)
-        cam.alpha_composite(crop, ((96 - crop.width) // 2, (96 - crop.height) // 2))
-    cam.save(out.with_name(out.stem + "-cameo.png"))
-
-
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["stuka", "airfield"])
+    ap.add_argument("what", choices=["stuka"])
     ap.add_argument("--out", required=True)
-    ap.add_argument("--tiles", default="20x16", help="airfield footprint in gameplay tiles, WxH")
     args = ap.parse_args()
-    if args.what == "stuka":
-        render_stuka(Path(args.out))
-    else:
-        tw, th = (int(v) for v in args.tiles.split("x"))
-        render_airfield(Path(args.out), tw, th)
+    render_stuka(Path(args.out))
 
 
 if __name__ == "__main__":
