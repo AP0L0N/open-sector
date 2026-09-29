@@ -313,7 +313,7 @@ export interface Projectile {
    * and fast, bursts at its fused point or on whatever it meets first).
    * Omitted for rifles, machine guns, and tank shells.
    */
-  flight?: "mortar" | "bomb" | "rocket";
+  flight?: "mortar" | "bomb" | "rocket" | "flame";
   /** Fused landing point for a mortar bomb or a rocket. */
   landX?: number;
   landY?: number;
@@ -344,6 +344,22 @@ export interface SmokeCloud {
   uy: number;
   halfAlong: number;
   halfAcross: number;
+  life: number;
+  lifeMax: number;
+}
+
+/**
+ * Burning ground left by a flamethrower glob or a Pyro's tanks going up.
+ * It burns every soldier standing in it until it goes out.
+ */
+export interface GroundFire {
+  id: number;
+  /** Who lit it. Burns friend and foe alike. */
+  ownerId: string;
+  x: number;
+  y: number;
+  /** World pixels. Grows as more fuel lands on it. */
+  radius: number;
   life: number;
   lifeMax: number;
 }
@@ -394,6 +410,8 @@ export interface MatchState {
   entities: Map<number, Entity>;
   projectiles: Projectile[];
   smokeClouds: SmokeCloud[];
+  /** Burning ground. Empty until the first flamethrower burst. */
+  fires: GroundFire[];
   impacts: ImpactView[];
   rngState: number;
   winner?: { playerId: string; team: number };

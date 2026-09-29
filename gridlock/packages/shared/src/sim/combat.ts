@@ -57,6 +57,7 @@ import {
   rocketRackOf,
   type RocketRackDef,
   LAUNCHER_ROCKET_RACK,
+  FLAMER_BURST,
   type CatalogEntry,
   type ShellType,
 } from "../catalog.js";
@@ -132,6 +133,7 @@ import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
 import { isSupplyBullet, noteSupplyHit, supplyRiderFights, syncSupplyRiders } from "./supply.js";
 import { spawnSmokeCloud } from "./smoke.js";
+import { stepFlame, throwFlame } from "./flame.js";
 import { canSeeEntity } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
 import { escorting, reversing, stepTurn, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
@@ -627,7 +629,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     return;
   }
   // A broken arm drops the scoped rifle, the PTRD, and the launcher. There is no sidearm.
-  if ((e.type === "sniper" || e.type === "atinfantry" || e.type === "rocketer") && !infantryGunFor(e)) return;
+  if ((e.type === "sniper" || e.type === "atinfantry" || e.type === "rocketer" || e.type === "pyro") && !infantryGunFor(e)) return;
 
   if (e.reload > 0) return;
   if (e.cooldown > 0) return;
@@ -645,6 +647,12 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   const gun = fireStats(e);
   const burst = Math.max(1, infantryGun?.shotsPerTick ?? def.shotsPerTick ?? 1);
   let fired = 0;
+  if (infantryGun?.id === "flamer") {
+    // throwFlame paces the burst itself: a glob a tick, then a pause.
+    throwFlame(state, e, aimX, aimY, range, e.order?.kind === "forceattack");
+    if (e.order?.once && e.clip % FLAMER_BURST === 0) clearOrder(e);
+    return;
+  }
   for (let i = 0; i < burst; i++) {
     if ((infantryGun || belt) && e.clip <= 0) break;
     if (infantryGun?.id === "mortar") {
@@ -1425,6 +1433,10 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       if (stepRocket(state, p, dt, rand)) keep.push(p);
       continue;
     }
+    if (p.flight === "flame") {
+      if (stepFlame(state, p, dt)) keep.push(p);
+      continue;
+    }
     if (p.flight === "mortar") {
       const total = p.flightTime ?? Math.max(0.05, p.life);
       const stepDt = p.life > 0 ? Math.min(dt, p.life) : 0;
@@ -1820,6 +1832,8 @@ function segmentCircleT(
 }
 
 function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undefined {
+  // Dry tanks: the Pyro has nothing to go at them with until a truck refills him.
+  if (e.type === "pyro" && e.clip <= 0) return undefined;
   const range = weaponRangeWorld(state, e);
   // The CIWS takes units only, and a plane in the air before anything on the ground.
   const radar = radarLaidOf(e.type);

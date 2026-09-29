@@ -334,10 +334,17 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
           p.flight === "mortar" && (p.flightTime ?? 0) > 0
             ? Math.min(1, Math.max(0, ((p.flightTime ?? 0) - Math.max(0, p.life)) / (p.flightTime ?? 1)))
             : undefined,
-        hang: p.flight === "mortar" ? p.flightTime : undefined,
+        hang: p.flight === "mortar" || p.flight === "flame" ? p.flightTime : undefined,
         bomb: p.flight === "bomb" ? true : undefined,
         rocket: p.flight === "rocket" ? true : undefined,
         ...(p.flight === "bomb" || p.flight === "rocket" ? { z: p.z ?? 0 } : {}),
+        ...(p.flight === "flame"
+          ? {
+              flame: true,
+              z: p.z ?? 0,
+              arc: Math.min(1, Math.max(0, ((p.flightTime ?? 0) - Math.max(0, p.life)) / Math.max(1e-6, p.flightTime ?? 1))),
+            }
+          : {}),
       })),
     impacts: state.impacts.filter(
       (i) => allies(state, youPlayerId, i.ownerId) || canSeeWorld(state, vis, i.x, i.y),
@@ -353,6 +360,9 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       life: c.life,
       lifeMax: c.lifeMax,
     })),
+    fires: state.fires
+      .filter((f) => allies(state, youPlayerId, f.ownerId) || canSeeWorld(state, vis, f.x, f.y))
+      .map((f) => ({ id: f.id, x: f.x, y: f.y, radius: f.radius, life: f.life, lifeMax: f.lifeMax })),
     scrap,
     clearedTrees: state.clearedTrees.map((t) => ({ x: t.x, y: t.y })),
     bodies: visibleBodies(state, youPlayerId, vis),
