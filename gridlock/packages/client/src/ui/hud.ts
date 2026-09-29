@@ -1144,11 +1144,13 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
     stance("crouch", "Crouch", "Crouch (C) — harder to hit, more accurate");
     stance("crawl", "Crawl", "Go prone (Z) — hardest to hit, most accurate");
   }
-  if (units.some((e) => specialOf(e.type) && specialReady(e.type, e.state, e.specialCooldown ?? 0))) {
+  const specialUnits = units.filter((e) => specialOf(e.type) && specialReady(e.type, e.state, e.specialCooldown ?? 0));
+  if (specialUnits.length > 0) {
     out.push({
       slot: "deploy",
       act: "deploy",
-      label: "Deploy",
+      // A braced Titan's special pulls the outriggers up.
+      label: specialUnits.every((e) => e.braced) ? "Pack" : "Deploy",
       title: `Special (${SPECIAL_HOTKEY.toUpperCase()})`,
     });
   }
