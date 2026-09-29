@@ -38,7 +38,7 @@ import { setPath } from "./path.js";
 import { tickStance } from "./stance.js";
 import { dismountSupply, orderBoard, orderSupply, supplyCanDrive } from "./supply.js";
 import { orderAircraft, stopAircraft } from "./air.js";
-import { droneOf, launchDrone, orderDrone, recallDrone, setDroneMode, stopDrone } from "./drone.js";
+import { droneOf, guardDrone, launchDrone, orderDrone, recallDrone, setDroneMode, stopDrone } from "./drone.js";
 import type { Entity, MatchState } from "./types.js";
 
 export type CmdResult = { ok: true } | { ok: false; code: ErrorCode; message: string };
@@ -215,6 +215,16 @@ function routeDrones(state: MatchState, playerId: string, msg: ClientMessage): C
       case "cmd.land":
         recallDrone(d);
         break;
+      case "cmd.guard": {
+        const t = msg.targetId != null ? state.entities.get(msg.targetId) : undefined;
+        const face = Number.isFinite(msg.facing) ? msg.facing! : d.facing;
+        if (t && t.hp > 0 && t.id !== d.id && t.kind === "unit" && allies(state, playerId, t.ownerId)) {
+          guardDrone(d, t.x, t.y, face, t.id);
+        } else if (x != null && y != null && Number.isFinite(x) && Number.isFinite(y)) {
+          guardDrone(d, x, y, face);
+        }
+        break;
+      }
       default:
         break;
     }

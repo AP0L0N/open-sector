@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   DRONE_BATTERY_SECONDS,
+  DRONE_GUARD_ORBIT_PACE,
+  DRONE_GUARD_ORBIT_TILES,
   DRONE_HIGH_ALT,
   DRONE_LEASH_TILES,
   DRONE_REBUILD_SECONDS,
@@ -13,6 +15,7 @@ import {
   RIFLE,
   START_UNITS,
   TICK_DT,
+  TILE_SUBDIV,
   TRAIN_TYPES,
   catalog,
   type InfantryGun,
@@ -344,5 +347,119 @@ describe("search and destroy", () => {
     ticks(state, 50);
     assert.equal(d.order, null, "an attack beyond reach is dropped");
     assert.equal(far.hp, catalog("medic").hp);
+  });
+});
+
+describe("drone guard", () => {
+  /** Guard a tile, fly out, and settle on the ring. Returns the ring centre. */
+  function guardAt(state: MatchState, d: Entity, tx: number, ty: number): { x: number; y: number } {
+    const ts = state.tileSize;
+    const c = { x: tileCenter(tx, ts), y: tileCenter(ty, ts) };
+    const res = applyCommand(state, "A", { type: "cmd.guard", ids: [d.id], x: c.x, y: c.y, facing: 0 });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    ticks(state, 300);
+    return c;
+  }
+
+  /** Path length and radius spread over `n` ticks on the ring. */
+  function lap(state: MatchState, d: Entity, c: { x: number; y: number }, n: number) {
+    let path = 0;
+    let rMin = Infinity;
+    let rMax = 0;
+    for (let i = 0; i < n; i++) {
+      const x = d.x;
+      const y = d.y;
+      step(state, TICK_DT);
+      path += Math.hypot(d.x - x, d.y - y);
+      const r = Math.hypot(d.x - c.x, d.y - c.y);
+      rMin = Math.min(rMin, r);
+      rMax = Math.max(rMax, r);
+    }
+    return { path, rMin, rMax };
+  }
+
+  it("circles its post in Surveillance: wide, slow, and shown as guarding", () => {
+    const state = twoPlayerMatch();
+    const op = put(state, "droneop", "A", 20, 30);
+    const d = launch(state, op);
+    const c = guardAt(state, d, 26, 30);
+    const r = DRONE_GUARD_ORBIT_TILES.surveil * state.tileSize;
+    const n = 60;
+    const run = lap(state, d, c, n);
+    assert.ok(run.rMin > r * 0.8 && run.rMax < r * 1.2, `holds the ring (${run.rMin.toFixed(1)}..${run.rMax.toFixed(1)} vs ${r})`);
+    const top = catalog("drone").moveTilesPerSec * state.tileSize * TICK_DT * n;
+    assert.ok(run.path > 0, "keeps moving");
+    assert.ok(run.path <= top * DRONE_GUARD_ORBIT_PACE.surveil + 0.5, "circles at the slow guard pace");
+    assert.equal(d.air!.alt, DRONE_SURVEIL_ALT);
+    const snap = snapshotFor(state, "A");
+    assert.equal(snap.entities.find((e) => e.id === d.id)?.guardFacing, 0);
+  });
+
+  it("circles tighter and faster in Search & Destroy than in Surveillance", () => {
+    assert.ok(DRONE_GUARD_ORBIT_TILES.strike < DRONE_GUARD_ORBIT_TILES.surveil);
+    assert.ok(DRONE_GUARD_ORBIT_PACE.strike > DRONE_GUARD_ORBIT_PACE.surveil);
+    const state = twoPlayerMatch();
+    const op = put(state, "droneop", "A", 20, 30);
+    const d = launch(state, op);
+    applyCommand(state, "A", { type: "cmd.drone", ids: [op.id], action: "mode", mode: "strike" });
+    const c = guardAt(state, d, 26, 30);
+    const r = DRONE_GUARD_ORBIT_TILES.strike * state.tileSize;
+    const run = lap(state, d, c, 60);
+    assert.ok(run.rMin > r * 0.8 && run.rMax < r * 1.2, `holds the tight ring (${run.rMin.toFixed(1)}..${run.rMax.toFixed(1)} vs ${r})`);
+  });
+
+  it("in Search & Destroy dives on the first enemy it sees from its post", () => {
+    const state = twoPlayerMatch();
+    const op = put(state, "droneop", "A", 20, 30);
+    const d = launch(state, op);
+    applyCommand(state, "A", { type: "cmd.drone", ids: [op.id], action: "mode", mode: "strike" });
+    guardAt(state, d, 26, 30);
+    assert.equal(d.order, null, "nothing to strike yet: it circles");
+    const foe = put(state, "medic", "B", 29, 30);
+    const n = until(state, 600, () => !state.entities.has(d.id));
+    assert.ok(n >= 0, "drone should strike");
+    ticks(state, 1);
+    assert.ok(!state.entities.has(foe.id) || state.entities.get(foe.id)!.hp <= 0, "the soldier it saw is dead");
+  });
+
+  it("in Surveillance only watches the enemy it sees", () => {
+    const state = twoPlayerMatch();
+    const op = put(state, "droneop", "A", 20, 30);
+    const d = launch(state, op);
+    guardAt(state, d, 26, 30);
+    const foe = put(state, "medic", "B", 29, 30);
+    ticks(state, 120);
+    assert.ok(state.entities.has(d.id));
+    assert.equal(foe.hp, catalog("medic").hp);
+    assert.ok(d.drone!.guard, "still on guard");
+  });
+
+  it("circles over a friendly unit it was told to guard", () => {
+    const state = twoPlayerMatch();
+    const op = put(state, "droneop", "A", 20, 30);
+    const d = launch(state, op);
+    const buddy = put(state, "rifleman", "A", 24, 30);
+    applyCommand(state, "A", { type: "cmd.guard", ids: [d.id], targetId: buddy.id });
+    ticks(state, 300);
+    const r = Math.hypot(d.x - buddy.x, d.y - buddy.y);
+    assert.ok(r < DRONE_GUARD_ORBIT_TILES.surveil * state.tileSize * 1.2, "stays over the unit");
+  });
+
+  it("a move order or stop ends the guard", () => {
+    const state = twoPlayerMatch();
+    const op = put(state, "droneop", "A", 20, 30);
+    const d = launch(state, op);
+    guardAt(state, d, 26, 30);
+    const ts = state.tileSize;
+    applyCommand(state, "A", { type: "cmd.move", ids: [d.id], x: tileCenter(22, ts), y: tileCenter(32, ts) });
+    assert.equal(d.drone!.guard, null);
+    assert.equal(d.guardFacing, null);
+    guardAt(state, d, 26, 30);
+    applyCommand(state, "A", { type: "cmd.stop", ids: [d.id] });
+    assert.equal(d.drone!.guard, null);
+  });
+
+  it("the Drone Op walks at 80% of his old t(2) pace", () => {
+    assert.equal(catalog("droneop").moveTilesPerSec, 2 * TILE_SUBDIV * 0.8);
   });
 });

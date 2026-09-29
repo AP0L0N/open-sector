@@ -115,6 +115,8 @@ export interface DroneState {
   battery: number;
   /** Flying back to be stowed. */
   recall: boolean;
+  /** Guard post it circles: a point, or a friendly unit it stays over. */
+  guard?: { x: number; y: number; targetId?: number } | null;
 }
 
 export interface Entity {
