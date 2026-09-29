@@ -1,5 +1,5 @@
 import type { BuildingType, Crit, DroneMode, EntityType, FieldStructureType, InfantryWeaponId, ShellType, Stance, TrainType } from "../catalog.js";
-import type { AiDifficulty, CorpseView, EntityState, ImpactView, ShellHoleView } from "../protocol.js";
+import type { AiDifficulty, ClientMessage, CorpseView, EntityState, ImpactView, ShellHoleView } from "../protocol.js";
 
 export interface Vec {
   x: number;
@@ -61,6 +61,32 @@ export interface Order {
   structure?: FieldStructureType;
   /** Panic retreat: after this order, the Mauler returns to HQ and holds. */
   returnToBase?: boolean;
+}
+
+/** Player commands that Shift can queue. */
+export type QueueableCommand = Extract<
+  ClientMessage,
+  {
+    type:
+      | "cmd.move"
+      | "cmd.attack"
+      | "cmd.attackmove"
+      | "cmd.forceattack"
+      | "cmd.guard"
+      | "cmd.rotate"
+      | "cmd.garrison"
+      | "cmd.harvest"
+      | "cmd.repair"
+      | "cmd.supply"
+      | "cmd.board";
+  }
+>;
+
+/** One unit's share of a queued command. The point is already spread into its formation slot. */
+export interface QueuedOrder {
+  msg: QueueableCommand;
+  /** Group-move cap captured when the order was queued. */
+  pace?: number;
 }
 
 /** Where a plane is in its sortie. */
@@ -225,6 +251,8 @@ export interface Entity {
   coverBonus: number;
   /** Seconds spent on the current build or repair. */
   work: number;
+  /** Shift-queued orders, run one after another once the current order ends. Cleared by any unqueued order. */
+  orderQueue?: QueuedOrder[];
   /** Engineer wall pieces still to lay after the current build order. Cleared by any new order. */
   fieldQueue?: { x: number; y: number; facing: number }[];
   /** Wounded infantry this medic is walking to or bandaging. */
