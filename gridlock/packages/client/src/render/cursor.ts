@@ -25,6 +25,7 @@ export function drawActionCursor(
   else if (action === "repair") drawRepair(ctx, "FIX");
   else if (action === "scrap") drawRepair(ctx, "SCRAP");
   else if (action === "supply") drawRepair(ctx, "AMMO");
+  else if (action === "land") drawLand(ctx, t);
   else drawGather(ctx, t);
   ctx.restore();
 }
@@ -156,6 +157,56 @@ function drawGather(ctx: CanvasRenderingContext2D, t: number): void {
   ctx.lineTo(0, -6.5 + bob);
   ctx.stroke();
   label(ctx, "GET", RUST);
+}
+
+function drawLand(ctx: CanvasRenderingContext2D, t: number): void {
+  // A 2:1 strip with its centre dashes, and a plane gliding down onto it.
+  paint(ctx, "#5a4a3a", 2);
+  ctx.beginPath();
+  ctx.moveTo(-11, 6);
+  ctx.lineTo(3, -1);
+  ctx.lineTo(11, 3);
+  ctx.lineTo(-3, 10);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.strokeStyle = FLAG;
+  ctx.lineWidth = 1.3;
+  ctx.beginPath();
+  for (const k of [-0.3, 0.05, 0.4]) {
+    ctx.moveTo(-7 + 14 * k, 8 - 7 * k);
+    ctx.lineTo(-5 + 14 * k, 7 - 7 * k);
+  }
+  ctx.stroke();
+
+  const glide = (t * 0.9) % 1;
+  const px = 7 - glide * 7;
+  const py = -12 + glide * 10;
+  ctx.save();
+  ctx.globalAlpha = glide > 0.85 ? (1 - glide) / 0.15 : 1;
+  ctx.translate(px, py);
+  ctx.rotate(-0.46);
+  paint(ctx, AMBER, 1.8);
+  ctx.beginPath();
+  ctx.moveTo(-7, 0);
+  ctx.lineTo(-5, -1.4);
+  ctx.lineTo(-1, -1.2);
+  ctx.lineTo(1, -5.5);
+  ctx.lineTo(3, -5.5);
+  ctx.lineTo(2.5, -1);
+  ctx.lineTo(6.5, -0.6);
+  ctx.lineTo(7.5, 0);
+  ctx.lineTo(6.5, 0.6);
+  ctx.lineTo(2.5, 1);
+  ctx.lineTo(3, 5.5);
+  ctx.lineTo(1, 5.5);
+  ctx.lineTo(-1, 1.2);
+  ctx.lineTo(-5, 1.4);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+  label(ctx, "LAND", AMBER);
 }
 
 function drawRepair(ctx: CanvasRenderingContext2D, word: string): void {
