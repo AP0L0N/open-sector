@@ -1,4 +1,6 @@
 import {
+  AIR_FUEL_SECONDS,
+  AIRFIELD_PADS,
   beltOf,
   catalog,
   clampGameSpeed,
@@ -14,6 +16,7 @@ import {
   MORTAR_PLANT_SECONDS,
   walkerGunsOf,
 } from "../catalog.js";
+import { padsTaken } from "./air.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { allies, unitInWater } from "./geo.js";
 import { medicTendView } from "./heal.js";
@@ -169,6 +172,19 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
         e.kind === "building" && e.captureProgress > 0 && e.captureOwnerId
           ? { ownerId: e.captureOwnerId, progress: e.captureProgress }
           : undefined,
+      air: e.air
+        ? {
+            phase: e.air.phase,
+            alt: e.air.alt,
+            fuel: friendly ? e.air.fuel : undefined,
+            fuelMax: friendly ? AIR_FUEL_SECONDS : undefined,
+            bombs: friendly ? e.air.bombs : undefined,
+            rounds: friendly ? e.air.rounds : undefined,
+            homeId: friendly && e.air.homeId != null ? e.air.homeId : undefined,
+          }
+        : undefined,
+      pads:
+        friendly && e.type === "airfield" ? { used: padsTaken(state, e).size, cap: AIRFIELD_PADS } : undefined,
     });
   }
   const scrap: ScrapCell[] = [];
@@ -230,6 +246,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
             ? Math.min(1, Math.max(0, ((p.flightTime ?? 0) - Math.max(0, p.life)) / (p.flightTime ?? 1)))
             : undefined,
         hang: p.flight === "mortar" ? p.flightTime : undefined,
+        bomb: p.flight === "bomb" ? true : undefined,
+        ...(p.flight === "bomb" ? { z: p.z ?? 0 } : {}),
       })),
     impacts: state.impacts.filter(
       (i) => allies(state, youPlayerId, i.ownerId) || canSeeWorld(state, vis, i.x, i.y),

@@ -523,9 +523,13 @@ function drawGroundBurst(
   ctx.restore();
 }
 
+/** An aircraft bomb's burst is the mortar column drawn this much larger. */
+export const AIR_BOMB_BURST_SCALE = 1.9;
+
 /**
  * Mortar impact. On dirt the bomb flashes, throws soil straight up, and leaves
- * a narrow dust column. On water it is a splash column.
+ * a narrow dust column. On water it is a splash column. `scale` grows it about
+ * the ground point (an aircraft bomb).
  */
 export function drawMortarBurst(
   ctx: CanvasRenderingContext2D,
@@ -534,7 +538,17 @@ export function drawMortarBurst(
   t: number,
   seed: number,
   water = false,
+  scale = 1,
 ): void {
+  if (scale !== 1) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.translate(-x, -y);
+    drawMortarBurst(ctx, x, y, t, seed, water);
+    ctx.restore();
+    return;
+  }
   if (!water) {
     drawGroundBurst(ctx, x, y, t, seed, 0, -1, {
       fire: 0.94,

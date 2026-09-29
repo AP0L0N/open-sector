@@ -1,4 +1,7 @@
 import {
+  AIR_FUEL_SECONDS,
+  STUKA_BOMBS,
+  STUKA_MG_ROUNDS,
   beltOf,
   catalog,
   haulerSmokeChargesOf,
@@ -28,7 +31,24 @@ import {
   type MapDef,
 } from "../maps.js";
 import { nextRand } from "./rng.js";
-import type { Entity, MatchState } from "./types.js";
+import type { AirState, Entity, MatchState } from "./types.js";
+
+/** Fresh flight state: fuelled, armed, parked on `pad` of Airfield `homeId`. */
+export function newAirState(homeId: number | null, pad: number): AirState {
+  return {
+    phase: "parked",
+    alt: 0,
+    speed: 0,
+    fuel: AIR_FUEL_SECONDS,
+    bombs: STUKA_BOMBS,
+    rounds: STUKA_MG_ROUNDS,
+    homeId,
+    pad,
+    rearm: 0,
+    roll: 0,
+    extend: false,
+  };
+}
 
 export function tileIndex(state: MatchState, x: number, y: number): number {
   return y * state.width + x;
@@ -506,6 +526,7 @@ export function makeEntity(
     crew: type === "supply",
     supply: type === "supply" ? SUPPLY_CARGO : 0,
   };
+  if (def.aircraft) e.air = newAirState(null, 0);
   state.entities.set(id, e);
   occupyEntity(state, e);
   return e;

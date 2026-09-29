@@ -97,7 +97,7 @@ function claimedSpots(state: MatchState, x: number, y: number, skip: ReadonlySet
   const reach = CLAIM_REACH_TILES * state.tileSize;
   const out: Spot[] = [];
   for (const o of state.entities.values()) {
-    if (o.kind !== "unit" || o.hp <= 0 || o.garrisonedIn || skip.has(o.id)) continue;
+    if (o.kind !== "unit" || o.hp <= 0 || o.garrisonedIn || o.air || skip.has(o.id)) continue;
     const last = o.wreck ? undefined : o.waypoints[o.waypoints.length - 1];
     const p = last ?? o;
     if (Math.abs(p.x - x) > reach || Math.abs(p.y - y) > reach) continue;
@@ -120,7 +120,7 @@ export function openSpotNear(state: MatchState, u: Entity, x: number, y: number)
 /** Spot `u` is heading for is already held by a unit that will not give way. */
 export function spotTaken(state: MatchState, u: Entity, x: number, y: number): boolean {
   for (const o of state.entities.values()) {
-    if (o.id === u.id || o.kind !== "unit" || o.hp <= 0 || o.garrisonedIn) continue;
+    if (o.id === u.id || o.kind !== "unit" || o.hp <= 0 || o.garrisonedIn || o.air) continue;
     if (!o.wreck && isArmoredType(u.type) && isInfantryType(o.type) && allies(state, o.ownerId, u.ownerId)) continue;
     const last = o.wreck ? undefined : o.waypoints[o.waypoints.length - 1];
     if (last) {
