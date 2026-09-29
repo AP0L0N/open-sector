@@ -13,7 +13,6 @@ import {
   MG42,
   GATLING,
   RIFLE,
-  START_UNITS,
   TICK_DT,
   TILE_SUBDIV,
   TRAIN_TYPES,
@@ -38,7 +37,7 @@ function twoPlayerMatch(): MatchState {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return createMatch(room, started.value, { startingUnits: false });
+  return createMatch(room, started.value);
 }
 
 function ticks(state: MatchState, n: number): void {
@@ -95,7 +94,6 @@ function round(over: Partial<Projectile>): Projectile {
 describe("drone op catalog", () => {
   it("is trained at the Muster, is not in the opening army, and the drone itself is not trainable", () => {
     assert.ok(TRAIN_TYPES.includes("droneop"));
-    assert.ok(!START_UNITS.includes("droneop"));
     assert.ok(!(TRAIN_TYPES as readonly string[]).includes("drone"));
     assert.equal(producerType("droneop"), "muster");
     assert.equal(catalog("droneop").name, "Drone Op");
