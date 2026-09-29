@@ -15,6 +15,14 @@ export function lerpAirAlt(prev: EntityView | undefined, curr: EntityView, t: nu
   return b + (a - b) * u;
 }
 
+/**
+ * Depth nudge for a plane parked on its Airfield: always just in front of the
+ * strip, and planes nearer the camera (larger x + y) draw over the ones behind.
+ */
+export function parkedOnStripBias(x: number, y: number): number {
+  return 1e-3 + (x + y) * 1e-7;
+}
+
 /** Screen pixels a plane lifts off its ground point. */
 export function airLiftPx(alt: number): number {
   return isoLift(alt);
