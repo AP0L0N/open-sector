@@ -7,6 +7,8 @@ Blender path does, so the engine and compose tools treat them alike.
 
   stuka     16 unique faces, 0001 = nose screen-south, clockwise 22.5°.
             gridlock/packages/client/src/assets/units/stuka/hull/0001.png … 0016.png
+  fw190     the Fw 190 fighter, same camera, face order, and meters-to-px as the Stuka.
+            gridlock/packages/client/src/assets/units/fw190/hull/0001.png … 0016.png
   drone     the Drone Op's quadcopter, same camera and face order.
             gridlock/packages/client/src/assets/units/drone/hull/0001.png … 0016.png
 
@@ -21,6 +23,8 @@ so the game can tint them.
 
   python tools/sprites/render_procedural.py stuka \\
       --out gridlock/packages/client/src/assets/units/stuka/hull
+  python tools/sprites/render_procedural.py fw190 \\
+      --out gridlock/packages/client/src/assets/units/fw190/hull
   python tools/sprites/render_procedural.py drone \\
       --out gridlock/packages/client/src/assets/units/drone/hull
 """
@@ -272,6 +276,97 @@ def build_stuka() -> Mesh:
     return m
 
 
+def build_fw190() -> Mesh:
+    """Fw 190 in meters. +x nose, +y left wing, +z up. Wheels at z=0.
+
+    Blunt radial cowl, bubble canopy, a straight low wing, wide-track gear, and
+    one long 30 mm cannon slung in a gondola under each wing so the pair reads
+    at gameplay size. No bomb. Neutral band ahead of the tail, neutral wingtip
+    panels, and a neutral spinner for the team tint.
+    """
+    m = Mesh()
+    zc = 1.9  # fuselage centerline height over the wheels
+    stations = [
+        (4.30, 0.50, 0.50, 0.00),
+        (4.05, 0.66, 0.66, 0.00),
+        (3.00, 0.66, 0.68, 0.02),
+        (2.00, 0.56, 0.66, 0.05),
+        (0.80, 0.50, 0.62, 0.08),
+        (-1.00, 0.42, 0.52, 0.12),
+        (-2.60, 0.30, 0.40, 0.18),
+        (-4.00, 0.14, 0.26, 0.26),
+        (-4.60, 0.05, 0.14, 0.30),
+    ]
+    rings = [ellipse_ring(x, 0.0, zc + oz, hw, hh) for x, hw, hh, oz in stations]
+    n_ring = len(rings[0])
+
+    def fus_mat(r: int, s: int) -> str:
+        if r == 0:
+            return "metal"  # cowl ring round the engine face
+        if r == 6:
+            return "team"
+        if math.sin(2 * math.pi * (s + 0.5) / n_ring) < -0.45:
+            return "under"
+        return "camo"
+
+    m.loft(rings, fus_mat)
+    # Bubble canopy
+    can = [
+        (1.30, 0.18, 0.10),
+        (0.90, 0.34, 0.36),
+        (0.10, 0.36, 0.44),
+        (-0.60, 0.30, 0.34),
+        (-1.05, 0.12, 0.10),
+    ]
+    can_rings = [ellipse_ring(x, 0.0, zc + 0.52, hw, hh, 14) for x, hw, hh in can]
+
+    def can_mat(r: int, s: int) -> str:
+        return "frame" if r == 0 or s % 7 == 0 else "glass"
+
+    m.loft(can_rings, can_mat)
+    # Straight low wing, a little dihedral, rounded-off tips.
+    wz = zc - 0.45
+    tip_y, tip_z = 5.25, wz + 0.35
+    gun_y = 2.35
+    for side in (1, -1):
+        wing_panel(m, (1.55, -0.95, 0.45 * side, wz), (0.60, -0.40, tip_y * side, tip_z), "camo", "under", 0.40, 0.14)
+        wing_panel(
+            m,
+            (0.68, -0.45, (tip_y - 0.9) * side, tip_z - 0.06 + 0.02),
+            (0.60, -0.40, (tip_y - 0.2) * side, tip_z + 0.02),
+            "team",
+            "under",
+            0.2,
+            0.14,
+        )
+        # Cannon gondola under the wing and its long barrel out past the leading edge.
+        gy = gun_y * side
+        gz = wz + (tip_z - wz) * (gun_y / tip_y) - 0.30
+        pod = [ellipse_ring(x, gy, gz, r, r, 10) for x, r in ((1.55, 0.08), (1.30, 0.17), (-0.30, 0.17), (-0.70, 0.06))]
+        m.loft(pod, "metal")
+        m.box((1.50, gy - 0.07, gz - 0.07), (3.05, gy + 0.07, gz + 0.07), "metal")
+        m.box((3.05, gy - 0.10, gz - 0.10), (3.30, gy + 0.10, gz + 0.10), "metal")  # muzzle brake
+        # Wide-track main gear: leg, cover plate, and wheel.
+        ly = 1.75 * side
+        m.box((0.30, ly - 0.06, 0.30), (0.44, ly + 0.06, wz - 0.12), "metal")
+        m.box((0.46, ly - 0.03, 0.40), (0.95, ly + 0.03, wz - 0.18), "camo")
+        m.box((0.05, ly - 0.10, 0.0), (0.69, ly + 0.10, 0.64), "tire")
+    # Tailplane and fin. The sheet flies level, so no tailwheel strut hangs under it.
+    for side in (1, -1):
+        wing_panel(m, (-3.70, -4.50, 0.15 * side, zc + 0.18), (-4.05, -4.50, 1.85 * side, zc + 0.20), "camo", "under", 0.14, 0.06)
+    m.box((-4.60, -0.05, zc + 0.20), (-3.75, 0.05, zc + 1.05), "camo")
+    m.box((-4.65, -0.04, zc + 0.60), (-4.20, 0.04, zc + 1.25), "camo")
+    # Spinner (neutral) and a translucent prop disc
+    spin = [ellipse_ring(x, 0.0, zc, r, r, 12) for x, r in ((4.28, 0.34), (4.60, 0.24), (4.88, 0.03))]
+    m.loft(spin, "team")
+    ctr = m.v((4.45, 0.0, zc))
+    n = 28
+    rim = [m.v((4.45, 1.65 * math.cos(2 * math.pi * k / n), zc + 1.65 * math.sin(2 * math.pi * k / n))) for k in range(n)]
+    for k in range(n):
+        m.tri(ctr, rim[k], rim[(k + 1) % n], "prop")
+    return m
+
+
 def build_drone() -> Mesh:
     """Small X-frame quadcopter in decimeters. +x nose, +y left, +z up. Skids at z=0.
 
@@ -465,6 +560,11 @@ def render_stuka(out: Path, cell: int = 256, ss: int = 4) -> None:
     render_turntable(build_stuka(), out, "stuka_hull", "stuka-hull.json", 0.062, 1.2, cell=cell, ss=ss)
 
 
+def render_fw190(out: Path, cell: int = 256, ss: int = 4) -> None:
+    # Same meters -> px as the Stuka, so the smaller fighter reads smaller in the source cell.
+    render_turntable(build_fw190(), out, "fw190_hull", "fw190-hull.json", 0.062, 1.0, cell=cell, ss=ss)
+
+
 def render_drone(out: Path, cell: int = 256, ss: int = 4) -> None:
     # Decimeters -> px. Rotor tip to rotor tip is ~6 dm across the diagonal; the widest yaw fits the cell.
     render_turntable(build_drone(), out, "drone_hull", "drone-hull.json", 0.115, 0.9, cy_frac=0.56, cell=cell, ss=ss, outline_px=2)
@@ -534,11 +634,13 @@ def render_turntable(
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["stuka", "drone"])
+    ap.add_argument("what", choices=["stuka", "fw190", "drone"])
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     if args.what == "drone":
         render_drone(Path(args.out))
+    elif args.what == "fw190":
+        render_fw190(Path(args.out))
     else:
         render_stuka(Path(args.out))
 

@@ -15,6 +15,7 @@ import {
   armorLabel,
   beltOf,
   carriesShell,
+  airLoadoutOf,
   catalog,
   colorHex,
   getMap,
@@ -661,7 +662,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     ? ctx.match.players.find((p) => p.playerId === e.garrison!.ownerId)
     : owner;
   const who = occ?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
-  const flight = e.drone ? droneLine(e.drone) : e.droneLink ? droneLinkLine(e.droneLink) : e.air ? airLine(e.air) : "";
+  const flight = e.drone ? droneLine(e.drone) : e.droneLink ? droneLinkLine(e.droneLink) : e.air ? airLine(e.air, e.type) : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
   box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}  ·  ${who}${q}${cargo}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
@@ -674,12 +675,13 @@ const AIR_PHASE_LABEL: Record<NonNullable<EntityView["air"]>["phase"], string> =
   landing: "landing",
 };
 
-/** Phase, and for your own planes fuel, bomb, and belts. */
-function airLine(air: NonNullable<EntityView["air"]>): string {
+/** Phase, and for your own planes fuel, bomb, and belts. A fighter carries no bomb; its guns are cannon. */
+function airLine(air: NonNullable<EntityView["air"]>, type: EntityType): string {
   let s = `  ·  ${AIR_PHASE_LABEL[air.phase]}`;
   if (air.fuel != null && air.fuelMax) s += `  ·  fuel ${Math.round((air.fuel / air.fuelMax) * 100)}%`;
-  if (air.bombs != null) s += `  ·  bomb ${air.bombs > 0 ? "armed" : "spent"}`;
-  if (air.rounds != null) s += `  ·  MG ${Math.round(air.rounds)}`;
+  const load = airLoadoutOf(type);
+  if (air.bombs != null && load.bombs > 0) s += `  ·  bomb ${air.bombs > 0 ? "armed" : "spent"}`;
+  if (air.rounds != null) s += `  ·  ${load.bombs > 0 ? "MG" : "cannon"} ${Math.round(air.rounds)}`;
   if (air.phase !== "parked" && air.homeId == null && air.fuel != null) s += "  ·  NO AIRFIELD";
   return s;
 }
@@ -822,6 +824,7 @@ function infantryClipShown(e: EntityView, gunId: string): number {
 }
 
 const TYPE_ORDER: EntityType[] = [
+  "fw190",
   "stuka",
   "drone",
   "warden",
