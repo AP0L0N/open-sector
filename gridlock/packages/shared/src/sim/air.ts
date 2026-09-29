@@ -9,6 +9,7 @@ import {
   AIR_FINAL_TILES,
   AIR_FUEL_RESERVE,
   AIR_FUEL_SECONDS,
+  AIR_GROUND_TURN_MUL,
   AIR_ORBIT_TILES,
   AIR_REFUEL_PER_SEC,
   AIR_RELEASE_ALT,
@@ -17,7 +18,13 @@ import {
   AIR_STRAFE_ALT,
   AIR_TAKEOFF_SECONDS,
   AIR_TARGET_SPREAD,
+  AIR_TAXI_SPEED,
+  AIRFIELD_PAD_X,
+  AIRFIELD_PAD_Y,
   AIRFIELD_PADS,
+  AIRFIELD_RUNWAY_HALF,
+  AIRFIELD_RUNWAY_Y,
+  AIRFIELD_THRESHOLD,
   BOMB_ARMOR_DIRECT,
   BOMB_ARMOR_NEAR,
   BOMB_BUILDING_DAMAGE,
@@ -57,8 +64,10 @@ import { hideScout } from "./scout.js";
 import { canSeeEntity } from "./vision.js";
 import type { AirState, Entity, MatchState, Order, Projectile } from "./types.js";
 
-/** Runway heading, world radians. Planes park nose east and take off east. */
+/** Runway heading, world radians. The strip runs east–west. */
 export const RUNWAY_HEADING = 0;
+/** Parked planes sit nose south in their revetment, tail to the strip. */
+export const PARK_HEADING = Math.PI / 2;
 
 /** In the air (or rolling off the pad). A parked plane is a ground target. */
 export function isAirborne(e: { air?: AirState | { alt: number; phase?: string } }): boolean {
@@ -81,21 +90,42 @@ export function airTargetSpreadMul(target: Entity): number {
   return isAirborne(target) ? AIR_TARGET_SPREAD : 1;
 }
 
-/**
- * World pixel of a hardstand. Two lanes on the strip, staggered so a plane
- * rolling out does not sit on the next one's nose.
- */
-export function airfieldPadWorld(
-  field: Pick<Entity, "tileX" | "tileY" | "tileW" | "tileH">,
-  pad: number,
-  tileSize: number,
-): { x: number; y: number } {
+type FieldRect = Pick<Entity, "tileX" | "tileY" | "tileW" | "tileH">;
+
+/** World pixel of a hardstand: a row beside the strip, on its near (south) side. */
+export function airfieldPadWorld(field: FieldRect, pad: number, tileSize: number): { x: number; y: number } {
   const i = Math.max(0, Math.min(AIRFIELD_PADS - 1, pad));
   const w = field.tileW * tileSize;
   const h = field.tileH * tileSize;
-  const x = field.tileX * tileSize + w * (0.14 + 0.22 * i);
-  const y = field.tileY * tileSize + h * (i % 2 === 0 ? 0.42 : 0.62);
-  return { x, y };
+  return { x: field.tileX * tileSize + w * AIRFIELD_PAD_X[i]!, y: field.tileY * tileSize + h * AIRFIELD_PAD_Y };
+}
+
+/** Strip centreline `y`, its half-width, the touchdown marks `x0` (west) and `x1` (east), and the middle `cx`. */
+export function airfieldRunway(
+  field: FieldRect,
+  tileSize: number,
+): { y: number; half: number; x0: number; x1: number; cx: number } {
+  const w = field.tileW * tileSize;
+  const h = field.tileH * tileSize;
+  const left = field.tileX * tileSize;
+  return {
+    y: field.tileY * tileSize + h * AIRFIELD_RUNWAY_Y,
+    half: h * AIRFIELD_RUNWAY_HALF,
+    x0: left + w * AIRFIELD_THRESHOLD,
+    x1: left + w * (1 - AIRFIELD_THRESHOLD),
+    cx: left + w / 2,
+  };
+}
+
+/** Where a plane from this hardstand joins the strip. */
+function runwayEntry(field: FieldRect, pad: number, tileSize: number): { x: number; y: number } {
+  return { x: airfieldPadWorld(field, pad, tileSize).x, y: airfieldRunway(field, tileSize).y };
+}
+
+/** Take off toward the longer run of strip: west pads roll east, east pads roll west. */
+function takeoffHeading(field: FieldRect, pad: number, tileSize: number): number {
+  const west = airfieldPadWorld(field, pad, tileSize).x <= airfieldRunway(field, tileSize).cx;
+  return west ? RUNWAY_HEADING : RUNWAY_HEADING + Math.PI;
 }
 
 export { newAirState };
@@ -245,20 +275,19 @@ function edgeTurn(state: MatchState, e: Entity, dt: number): boolean {
 }
 
 /**
- * Start of the straight final: out along the runway on the side the plane
- * is coming from, kept inside the map so the approach never runs off it.
+ * Start of the straight final: out along the strip centreline past the end
+ * away from the plane's hardstand, so it lands long and rolls out toward it.
+ * Kept inside the map so the approach never runs off it.
  */
 function finalFix(state: MatchState, e: Entity, home: Entity): { x: number; y: number } {
-  const pad = airfieldPadWorld(home, e.air!.pad, state.tileSize);
-  const side = Math.cos(RUNWAY_HEADING) * (e.x - pad.x) + Math.sin(RUNWAY_HEADING) * (e.y - pad.y) >= 0 ? 1 : -1;
-  const len = AIR_FINAL_TILES * state.tileSize;
+  const ts = state.tileSize;
+  const rw = airfieldRunway(home, ts);
+  const len = AIR_FINAL_TILES * ts;
+  const x = airfieldPadWorld(home, e.air!.pad, ts).x <= rw.cx ? rw.x1 + len : rw.x0 - len;
   const m = turnRadius(state, e);
   const w = state.width * state.tileSize;
   const h = state.height * state.tileSize;
-  return {
-    x: Math.max(m, Math.min(w - m, pad.x + Math.cos(RUNWAY_HEADING) * len * side)),
-    y: Math.max(m, Math.min(h - m, pad.y + Math.sin(RUNWAY_HEADING) * len * side)),
-  };
+  return { x: Math.max(m, Math.min(w - m, x)), y: Math.max(m, Math.min(h - m, rw.y)) };
 }
 
 /** Seconds to fly home and land from here. */
@@ -292,22 +321,39 @@ export function orderAircraft(state: MatchState, e: Entity, order: Order): void 
     e.order = null;
     return;
   }
+  if (order.kind === "land" && a.phase === "takeoff" && a.taxi) {
+    // Still on the taxiway: turn back to the hardstand.
+    taxiHome(e);
+    return;
+  }
   e.order = order;
   e.attackTarget = null;
   e.waypoints = [];
   e.guardFacing = null;
   e.holdPosition = false;
   a.extend = false;
-  if (a.phase === "parked") {
+  if (a.phase === "parked" || (a.phase === "landing" && a.touched && order.kind !== "land")) {
+    // Taxi out onto the strip, line up, and roll.
     a.phase = "takeoff";
+    a.taxi = true;
+    a.touched = false;
     a.roll = 0;
     a.speed = 0;
-    e.facing = RUNWAY_HEADING;
-    e.turretFacing = e.facing;
   } else if (a.phase === "landing" && order.kind !== "land") {
     a.phase = "fly";
   }
   e.state = "move";
+}
+
+/** On the ground, heading back to its hardstand. */
+function taxiHome(e: Entity): void {
+  const a = e.air!;
+  a.phase = "landing";
+  a.touched = true;
+  a.taxi = true;
+  a.roll = 0;
+  e.order = { kind: "land" };
+  e.attackTarget = null;
 }
 
 /** Stop in the air: circle where the plane is. On the pad: stay parked. */
@@ -316,6 +362,12 @@ export function stopAircraft(e: Entity): void {
   if (!a) return;
   if (a.phase === "parked") {
     e.order = null;
+    return;
+  }
+  // On the ground a stop goes back to the hardstand; it does not lift off.
+  if (a.phase === "landing" && a.touched) return;
+  if (a.phase === "takeoff" && a.taxi) {
+    taxiHome(e);
     return;
   }
   if (a.phase === "landing") a.phase = "fly";
@@ -335,7 +387,8 @@ export function tickAir(state: MatchState, dt: number): void {
     if (a.phase === "takeoff") tickTakeoff(state, e, dt);
     else if (a.phase === "landing") tickLanding(state, e, dt);
     else tickFly(state, e, dt);
-    if (a.fuel <= 0 && a.phase !== "takeoff" && e.air?.phase !== "parked") {
+    const onGround = a.phase === "takeoff" || (a.phase === "landing" && a.touched) || e.air?.phase === "parked";
+    if (a.fuel <= 0 && !onGround) {
       // Dry tank. The plane goes down where it is.
       e.hp = 0;
     }
@@ -368,8 +421,59 @@ function servicePad(state: MatchState, e: Entity, dt: number): void {
   }
 }
 
+/**
+ * Roll along the ground toward a point at taxi speed, pivoting first when it
+ * is well off the nose. True once the plane is on it.
+ */
+function taxiTo(state: MatchState, e: Entity, x: number, y: number, dt: number): boolean {
+  const a = e.air!;
+  a.alt = 0;
+  e.state = "move";
+  const d = Math.hypot(x - e.x, y - e.y);
+  const step = cruiseSpeed(state, e) * AIR_TAXI_SPEED * dt;
+  if (d <= Math.max(0.5, step)) {
+    e.x = x;
+    e.y = y;
+    e.tileX = worldToTile(x, state.tileSize);
+    e.tileY = worldToTile(y, state.tileSize);
+    a.speed = 0;
+    return true;
+  }
+  const want = Math.atan2(y - e.y, x - e.x);
+  headTo(e, want, dt, AIR_GROUND_TURN_MUL);
+  if (Math.abs(angOff(want, e.facing)) > Math.PI / 4) {
+    a.speed = 0;
+    return false;
+  }
+  a.speed = AIR_TAXI_SPEED;
+  advance(state, e, dt);
+  return false;
+}
+
 function tickTakeoff(state: MatchState, e: Entity, dt: number): void {
   const a = e.air!;
+  const ts = state.tileSize;
+  const home = liveHome(state, e);
+  if (!home) a.homeId = null;
+  e.state = "move";
+  if (a.taxi) {
+    // Out of the revetment and onto the strip.
+    if (home) {
+      const entry = runwayEntry(home, a.pad, ts);
+      if (!taxiTo(state, e, entry.x, entry.y, dt)) return;
+    }
+    a.taxi = false;
+    a.roll = 0;
+  }
+  if (a.roll === 0 && home) {
+    // Line up on the strip before opening the throttle.
+    const heading = takeoffHeading(home, a.pad, ts);
+    if (Math.abs(angOff(heading, e.facing)) > 1e-3) {
+      headTo(e, heading, dt, AIR_GROUND_TURN_MUL);
+      a.speed = 0;
+      return;
+    }
+  }
   a.roll += dt;
   const u = Math.min(1, a.roll / AIR_TAKEOFF_SECONDS);
   a.speed = Math.max(a.speed, AIR_ROLL_SPEED * 0.3 + (1 - AIR_ROLL_SPEED * 0.3) * u);
@@ -684,47 +788,82 @@ export function aircraftDown(state: MatchState, e: Entity): void {
   state.impacts.push(impact);
 }
 
+/**
+ * Line up on the strip centreline from the end the plane came in over, glide
+ * down to the touchdown mark, roll out to its hardstand's taxiway, and taxi
+ * in. A plane that cannot make the strip goes round.
+ */
 function tickLanding(state: MatchState, e: Entity, dt: number): void {
   const a = e.air!;
   const home = ensureHome(state, e);
   if (!home) {
-    a.phase = "fly";
-    loiterHere(e);
+    if (a.touched) {
+      // The field is gone from under it: stop where it is.
+      stopOnGround(e, e.facing);
+    } else {
+      a.phase = "fly";
+      loiterHere(e);
+    }
     return;
   }
   const ts = state.tileSize;
   const pad = airfieldPadWorld(home, a.pad, ts);
-  const d = Math.hypot(pad.x - e.x, pad.y - e.y);
+  if (a.taxi) {
+    if (taxiTo(state, e, pad.x, pad.y, dt)) stopOnGround(e, PARK_HEADING);
+    return;
+  }
+  const rw = airfieldRunway(home, ts);
   const final = AIR_FINAL_TILES * ts;
-  const bearing = Math.atan2(pad.y - e.y, pad.x - e.x);
-  const off = Math.abs(angOff(bearing, e.facing));
-  if (d > final * 1.8) {
-    // Overshot or came in crossways. Go round.
+  e.state = "move";
+  if (a.touched) {
+    // Roll out along the strip, braking to taxi speed at the turn-off.
+    const dir = Math.cos(e.facing) >= 0 ? 1 : -1;
+    const left = dir * (pad.x - e.x);
+    const step = cruiseSpeed(state, e) * Math.max(a.speed, AIR_TAXI_SPEED) * dt;
+    if (left <= step) {
+      a.taxi = true;
+      return;
+    }
+    a.alt = 0;
+    a.speed = AIR_TAXI_SPEED + (AIR_ROLL_SPEED - AIR_TAXI_SPEED) * Math.min(1, left / (6 * ts));
+    headTo(e, Math.atan2(rw.y - e.y, dir * 3 * ts), dt);
+    advance(state, e, dt);
+    return;
+  }
+  const dir = e.x < rw.cx ? 1 : -1;
+  const thr = dir > 0 ? rw.x0 : rw.x1;
+  const along = dir * (thr - e.x);
+  const lateral = e.y - rw.y;
+  if (along > final * 1.8 || Math.abs(lateral) > final) {
+    // Came in crossways. Go round.
     a.phase = "fly";
     return;
   }
-  headTo(e, bearing, dt);
-  const u = Math.max(0, Math.min(1, d / final));
-  const glide = off < Math.PI / 6 ? AIR_CRUISE_ALT * u : Math.max(4, a.alt);
-  approachAlt(a, glide, dt);
+  // Chase a point on the centreline ahead so the nose settles onto the strip.
+  headTo(e, Math.atan2(rw.y - e.y, dir * 6 * ts), dt);
+  const u = Math.max(0, Math.min(1, along / final));
+  const lined = Math.abs(lateral) < final * 0.25 && Math.abs(angOff(dir > 0 ? 0 : Math.PI, e.facing)) < Math.PI / 6;
+  approachAlt(a, lined ? AIR_CRUISE_ALT * u : Math.max(4, a.alt), dt);
   a.speed = AIR_ROLL_SPEED + (1 - AIR_ROLL_SPEED) * u;
-  e.state = "move";
-  const step = cruiseSpeed(state, e) * a.speed * dt;
-  if (d <= Math.max(4, step * 1.2)) {
-    e.x = pad.x;
-    e.y = pad.y;
-    e.tileX = worldToTile(e.x, ts);
-    e.tileY = worldToTile(e.y, ts);
-    e.facing = RUNWAY_HEADING;
-    e.turretFacing = e.facing;
-    a.phase = "parked";
+  if (a.alt <= 0.5 && along <= 2 * ts && Math.abs(lateral) <= rw.half) {
     a.alt = 0;
-    a.speed = 0;
-    a.extend = false;
-    e.order = null;
-    e.attackTarget = null;
-    e.state = "idle";
-    return;
+    a.touched = true;
   }
   advance(state, e, dt);
+}
+
+/** Wheels chocked: parked, facing `heading`. */
+function stopOnGround(e: Entity, heading: number): void {
+  const a = e.air!;
+  e.facing = heading;
+  e.turretFacing = heading;
+  a.phase = "parked";
+  a.alt = 0;
+  a.speed = 0;
+  a.extend = false;
+  a.taxi = false;
+  a.touched = false;
+  e.order = null;
+  e.attackTarget = null;
+  e.state = "idle";
 }

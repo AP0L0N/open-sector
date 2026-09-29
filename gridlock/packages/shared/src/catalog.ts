@@ -775,6 +775,24 @@ export const DRIVER_KILL_CHANCE = 0.18;
  */
 /** Planes one Airfield parks, trains, and rearms. */
 export const AIRFIELD_PADS = 4;
+/**
+ * Airfield layout, as shares of its footprint (x east along the strip, y
+ * south). Hangar, tower, and fuel stand in the back band; the strip runs the
+ * whole length; the hardstands sit in a row on the near side of it, each in
+ * its own sandbag revetment. tools/sprites/render_procedural.py paints the
+ * same fractions.
+ */
+export const AIRFIELD_BACK_DEPTH = 0.27;
+export const AIRFIELD_RUNWAY_Y = 0.44;
+export const AIRFIELD_RUNWAY_HALF = 0.1;
+/** Each end of the strip, from the footprint edge. Touchdown aims here. */
+export const AIRFIELD_THRESHOLD = 0.06;
+export const AIRFIELD_PAD_Y = 0.8;
+export const AIRFIELD_PAD_X: readonly number[] = [0.16, 0.39, 0.61, 0.84];
+/** Speed share taxiing between a hardstand and the strip. */
+export const AIR_TAXI_SPEED = 0.25;
+/** Turn-rate multiple for a plane pivoting on the ground. */
+export const AIR_GROUND_TURN_MUL = 1.5;
 /** Cruise height. Above every tree, house, and hill lip. */
 export const AIR_CRUISE_ALT = 16;
 /** Height the dive pulls out at and lets the bomb go. */
@@ -1165,8 +1183,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     buildSeconds: 26,
     hp: 1100,
     power: -40,
-    tileW: t(5),
-    tileH: t(4),
+    tileW: t(10),
+    tileH: t(5),
     radius: 0,
     moveTilesPerSec: 0,
     turnDegPerSec: 0,
@@ -1176,7 +1194,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Grass strip and four hardstands. Trains dive bombers and keeps up to ${AIRFIELD_PADS}. Planes land here to refuel, rearm, and patch up.`,
+    blurb: `Concrete strip with four revetted hardstands beside it. Trains dive bombers and keeps up to ${AIRFIELD_PADS}. Planes land here to refuel, rearm, and patch up.`,
   },
   sandbags: {
     type: "sandbags",
