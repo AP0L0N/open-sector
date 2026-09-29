@@ -221,6 +221,7 @@ import {
 } from "./flame-fx.js";
 import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir, lerpAirAlt } from "./aircraft.js";
 import { drawSandbags } from "./sandbags.js";
+import { drawTrench } from "./trench.js";
 import { pyroNozzleScreen } from "./pyro-nozzle.js";
 import { unitGroundSink } from "./unit-hit.js";
 import { engineRowFromScreen } from "./turntable.js";
@@ -320,6 +321,7 @@ const EXTRUDE: Record<EntityType, number> = {
   cyborg: 26,
   sandbags: 12,
   teeth: 16,
+  trench: 6,
   walker: 30,
   titan: 40,
   nebelwerfer: 22,
@@ -4831,6 +4833,23 @@ export class MapView {
       this.drawTeeth(e.x, e.y, e.facing, ghost ? 0.45 : 1, e.id);
       return;
     }
+    if (e.type === "trench") {
+      const manned = !ghost && (e.garrison?.count ?? 0) > 0;
+      const holder = manned ? this.curr.players.find((pl) => pl.playerId === e.garrison?.ownerId) : undefined;
+      this.drawTrenchPit(e.x, e.y, e.facing, {
+        alpha: ghost ? 0.45 : 1,
+        seed: e.id * 2654435761,
+        manned,
+        bandColor: holder ? colorHex(holder.colorId) : undefined,
+      });
+      if (!ghost) {
+        const s = this.toScreen(e.x, e.y, this.elevAt(e.x, e.y));
+        const w = Math.max(20, this.groundSpan(e.x, e.y, span?.length ?? 16));
+        this.maybeHp(e, s.x - w / 2, s.y - 10, w);
+        this.drawGarrisonBars(e, s.x - 9, s.y - 18);
+      }
+      return;
+    }
     this.drawSandbagWall(e.x, e.y, e.facing, { ruined: !!e.ruined, alpha: ghost ? 0.45 : 1, seed: e.id * 2654435761 });
   }
 
@@ -4855,6 +4874,8 @@ export class MapView {
           run: () => {
             if (site.structure === "teeth") {
               this.drawTeeth(site.x, site.y, site.facing, FIELD_SITE_ALPHA, 0);
+            } else if (site.structure === "trench") {
+              this.drawTrenchPit(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
             } else {
               this.drawSandbagWall(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
             }
@@ -4884,6 +4905,34 @@ export class MapView {
       seed: opts.seed >>> 0,
       alpha: opts.alpha,
       bad: opts.bad,
+      project: (wx, wy, up) => {
+        const p = this.toScreen(wx, wy, elev);
+        return { x: p.x, y: p.y - up * lift };
+      },
+    });
+  }
+
+  private drawTrenchPit(
+    x: number,
+    y: number,
+    facing: number,
+    opts: { alpha: number; seed: number; bad?: boolean; manned?: boolean; bandColor?: string },
+  ): void {
+    const span = fieldSpan("trench");
+    if (!span) return;
+    const elev = this.elevAt(x, y);
+    const lift = this.groundSpan(x, y, 10) / 10;
+    drawTrench(this.ctx, {
+      x,
+      y,
+      facing,
+      length: span.length,
+      thick: span.thick,
+      seed: opts.seed >>> 0,
+      alpha: opts.alpha,
+      bad: opts.bad,
+      manned: opts.manned,
+      bandColor: opts.bandColor,
       project: (wx, wy, up) => {
         const p = this.toScreen(wx, wy, elev);
         return { x: p.x, y: p.y - up * lift };
@@ -4938,6 +4987,8 @@ export class MapView {
       if (type === "teeth") {
         this.drawTeeth(p.x, p.y, p.facing, ok ? 0.72 : 0.4, 0);
         if (!ok) this.strokeFieldFoot(type, p, "#ff5a4a");
+      } else if (type === "trench") {
+        this.drawTrenchPit(p.x, p.y, p.facing, { alpha: 0.78, seed: 7, bad: !ok });
       } else {
         this.drawSandbagWall(p.x, p.y, p.facing, { alpha: 0.78, seed: 7, bad: !ok });
       }
