@@ -207,6 +207,7 @@ import {
 import { drawTreeFall, TREE_FALL_MS } from "./tree-fall.js";
 import { lerpHullPose } from "./hull-lerp.js";
 import { canGuardUnit, resolveHoverAction, type HoverAction } from "./hover-action.js";
+import { planColor, withQueue } from "./order-queue.js";
 import { guardHeightTag, guardReach, type GuardUnit } from "./guard-reach.js";
 import {
   blitAtlas,
@@ -556,8 +557,23 @@ export class MapView {
   private guardFacing = 0;
   private guardDragging = false;
   private ctrlHeld = false;
+  /** Shift held: unit orders are queued behind the current ones. */
+  private shiftHeld = false;
+  /** A queued order went out from an armed click mode during this Shift hold. */
+  private queuedFromMode = false;
   onSelect: (ids: number[]) => void = () => {};
   onCommand: (msg: ClientMessage) => void = () => {};
+
+  private command(msg: ClientMessage): void {
+    this.onCommand(withQueue(msg, this.shiftHeld));
+  }
+
+  /** Shift keeps attack-move, force-attack, and rotate armed so several points can be queued. */
+  private keepModeForQueue(): boolean {
+    if (!this.shiftHeld) return false;
+    this.queuedFromMode = true;
+    return true;
+  }
   onPlaceMode: () => void = () => {};
   onAttackMoveMode: () => void = () => {};
 
@@ -1215,6 +1231,7 @@ export class MapView {
         e.preventDefault();
         return;
       }
+      this.shiftHeld = e.shiftKey;
       if (e.button === 2) {
         e.preventDefault();
         if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode || this.fieldPlace) {
@@ -1262,7 +1279,7 @@ export class MapView {
         const toPlace = this.placeMode ? this.readyBuilding() : null;
         if (toPlace) {
           const tile = this.screenToTile(mx, my);
-          this.onCommand({
+          this.command({
             type: "cmd.place",
             building: toPlace,
             tx: tile.x,
@@ -1379,6 +1396,10 @@ export class MapView {
       this.syncCursor();
       return;
     }
+    if (k === "shift") {
+      this.shiftHeld = true;
+      return;
+    }
     if (this.isCameraKey(k)) {
       e.preventDefault();
       this.keys.add(k);
@@ -1391,12 +1412,12 @@ export class MapView {
     }
     if (this.isSpeedUpKey(e)) {
       e.preventDefault();
-      this.onCommand({ type: "cmd.speed", delta: 1 });
+      this.command({ type: "cmd.speed", delta: 1 });
       return;
     }
     if (this.isSpeedDownKey(e)) {
       e.preventDefault();
-      this.onCommand({ type: "cmd.speed", delta: -1 });
+      this.command({ type: "cmd.speed", delta: -1 });
       return;
     }
     if (e.repeat) return;
@@ -1449,7 +1470,7 @@ export class MapView {
       );
       if (own.length === 0) return;
       const hold = !own.every((ent) => ent.holdPosition);
-      this.onCommand({ type: "cmd.hold", ids: own.map((ent) => ent.id), hold });
+      this.command({ type: "cmd.hold", ids: own.map((ent) => ent.id), hold });
       return;
     }
     if (k === "c") {
@@ -1485,12 +1506,23 @@ export class MapView {
       this.ctrlHeld = false;
       this.syncCursor();
     }
+    if (k === "shift") {
+      this.shiftHeld = false;
+      if (this.queuedFromMode) {
+        this.queuedFromMode = false;
+        this.setAttackMoveMode(false);
+        this.setForceAttackMode(false);
+        this.setRotateMode(false);
+      }
+    }
     if (this.isCameraKey(k)) e.preventDefault();
     this.keys.delete(k);
   };
 
   private onBlur = (): void => {
     this.ctrlHeld = false;
+    this.shiftHeld = false;
+    this.queuedFromMode = false;
     this.keys.clear();
   };
 
@@ -1504,7 +1536,7 @@ export class MapView {
     this.setRotateMode(false);
     this.setGuardMode(false);
     const ids = this.ownAimIds();
-    if (ids.length) this.onCommand({ type: "cmd.stop", ids });
+    if (ids.length) this.command({ type: "cmd.stop", ids });
   }
 
   private aimingForceAttack(): boolean {
@@ -1528,7 +1560,7 @@ export class MapView {
 
   private useSpecial(e: EntityView): void {
     if (!this.canSpecial(e)) return;
-    if (specialOf(e.type) === "deploy") this.onCommand({ type: "cmd.deploy", id: e.id });
+    if (specialOf(e.type) === "deploy") this.command({ type: "cmd.deploy", id: e.id });
   }
 
   private stanceHotkey(want: "crouch" | "crawl"): void {
@@ -1544,7 +1576,7 @@ export class MapView {
     if (inf.length === 0) return;
     const stance = inf.every((e) => (e.stanceOrder ?? e.stance) === want) ? "stand" : want;
     if (!isStance(stance)) return;
-    this.onCommand({ type: "cmd.stance", ids: inf.map((e) => e.id), stance });
+    this.command({ type: "cmd.stance", ids: inf.map((e) => e.id), stance });
   }
 
   private scoutHotkey(): void {
@@ -1560,7 +1592,7 @@ export class MapView {
     );
     if (tanks.length === 0) return;
     const out = !tanks.every((e) => e.scout?.out);
-    this.onCommand({ type: "cmd.scout", ids: tanks.map((e) => e.id), out });
+    this.command({ type: "cmd.scout", ids: tanks.map((e) => e.id), out });
   }
 
   private garrisonHideHotkey(): void {
@@ -1588,7 +1620,7 @@ export class MapView {
     }
     if (ids.length === 0 || houses.length === 0) return;
     const hide = !houses.every((h) => h.garrison?.hide);
-    this.onCommand({ type: "cmd.garrisonhide", ids, hide });
+    this.command({ type: "cmd.garrisonhide", ids, hide });
   }
 
   private garrisonHotkey(): void {
@@ -1597,16 +1629,16 @@ export class MapView {
     const inf = own.filter((e) => e.kind === "unit" && isInfantryType(e.type));
     const house = this.curr.entities.find((e) => this.selected.has(e.id) && isGarrisonable(e.type) && e.hp > 0);
     if (house && inf.length) {
-      this.onCommand({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: house.id });
+      this.command({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: house.id });
       return;
     }
     const holed = own.filter((e) => e.garrisonedIn);
     if (holed.length) {
-      this.onCommand({ type: "cmd.ungarrison", ids: holed.map((e) => e.id) });
+      this.command({ type: "cmd.ungarrison", ids: holed.map((e) => e.id) });
       return;
     }
     if (house && house.garrison?.ownerId === you) {
-      this.onCommand({ type: "cmd.ungarrison", buildingId: house.id });
+      this.command({ type: "cmd.ungarrison", buildingId: house.id });
     }
   }
 
@@ -1628,16 +1660,16 @@ export class MapView {
 
   private commitAttackMove(px: number, py: number): void {
     const ids = this.ownSelectedIds();
-    this.setAttackMoveMode(false);
+    if (!this.keepModeForQueue()) this.setAttackMoveMode(false);
     if (ids.length === 0) return;
     const hit = this.hit(px, py);
     if (hit && (hit.wreck || hit.ownerId !== this.curr.youPlayerId)) {
-      this.onCommand({ type: "cmd.attack", ids, targetId: hit.id });
+      this.command({ type: "cmd.attack", ids, targetId: hit.id });
       return;
     }
     const w = this.screenToWorld(px, py);
     this.pulseMoveClick(w.x, w.y);
-    this.onCommand({ type: "cmd.attackmove", ids, x: w.x, y: w.y });
+    this.command({ type: "cmd.attackmove", ids, x: w.x, y: w.y });
   }
 
   private commitForceAttack(px: number, py: number): void {
@@ -1645,24 +1677,24 @@ export class MapView {
       const ent = this.curr.entities.find((x) => x.id === id);
       return !!ent && fires(ent.type);
     });
-    this.setForceAttackMode(false);
+    if (!this.keepModeForQueue()) this.setForceAttackMode(false);
     if (ids.length === 0) return;
     const hit = this.hit(px, py);
     if (hit && hit.hp > 0 && ids.some((id) => id !== hit.id)) {
-      this.onCommand({ type: "cmd.forceattack", ids, x: hit.x, y: hit.y, targetId: hit.id });
+      this.command({ type: "cmd.forceattack", ids, x: hit.x, y: hit.y, targetId: hit.id });
       return;
     }
     const w = this.screenToWorld(px, py);
-    this.onCommand({ type: "cmd.forceattack", ids, x: w.x, y: w.y });
+    this.command({ type: "cmd.forceattack", ids, x: w.x, y: w.y });
   }
 
   private commitRotate(px: number, py: number): void {
     const ids = this.ownAimIds();
-    this.setRotateMode(false);
+    if (!this.keepModeForQueue()) this.setRotateMode(false);
     if (ids.length === 0) return;
     const hit = this.hit(px, py);
     const w = hit ? { x: hit.x, y: hit.y } : this.screenToWorld(px, py);
-    this.onCommand({ type: "cmd.rotate", ids, x: w.x, y: w.y });
+    this.command({ type: "cmd.rotate", ids, x: w.x, y: w.y });
   }
 
   private meanSelectedFacing(): number {
@@ -1728,7 +1760,7 @@ export class MapView {
     const facing = this.guardFacing;
     this.setGuardMode(false);
     if (ids.length === 0 || !anchor) return;
-    this.onCommand({ type: "cmd.guard", ids, x: anchor.x, y: anchor.y, facing });
+    this.command({ type: "cmd.guard", ids, x: anchor.x, y: anchor.y, facing });
   }
 
   private commitField(): void {
@@ -1743,12 +1775,12 @@ export class MapView {
     const pieces = this.fieldPieces(structure, false);
     const facing = this.fieldFacing;
     if (pieces.length > 1) {
-      this.onCommand({ type: "cmd.field", ids, structure, x: drag.x, y: drag.y, facing, x2: w.x, y2: w.y });
+      this.command({ type: "cmd.field", ids, structure, x: drag.x, y: drag.y, facing, x2: w.x, y2: w.y });
       return;
     }
     const one = pieces[0];
     if (!one) return;
-    this.onCommand({ type: "cmd.field", ids, structure, x: one.x, y: one.y, facing: one.facing });
+    this.command({ type: "cmd.field", ids, structure, x: one.x, y: one.y, facing: one.facing });
   }
 
   private commitGuardUnit(hit: EntityView | null): boolean {
@@ -1767,7 +1799,7 @@ export class MapView {
     const guards = ids.filter((id) => id !== hit.id);
     this.setGuardMode(false);
     if (guards.length === 0) return true;
-    this.onCommand({ type: "cmd.guard", ids: guards, targetId: hit.id });
+    this.command({ type: "cmd.guard", ids: guards, targetId: hit.id });
     return true;
   }
 
@@ -2069,7 +2101,7 @@ export class MapView {
     if (producers.length > 0 && !own.some((e) => e.kind === "unit")) {
       const w = this.screenToWorld(px, py);
       this.pulseMoveClick(w.x, w.y);
-      this.onCommand({ type: "cmd.rally", ids: producers.map((e) => e.id), x: w.x, y: w.y });
+      this.command({ type: "cmd.rally", ids: producers.map((e) => e.id), x: w.x, y: w.y });
       return;
     }
     const hit = this.hit(px, py);
@@ -2084,63 +2116,63 @@ export class MapView {
     });
     if ((action === "repair" || action === "scrap") && hit) {
       const engineers = own.filter((e) => e.type === "engineer");
-      if (engineers.length) this.onCommand({ type: "cmd.repair", ids: engineers.map((e) => e.id), targetId: hit.id });
+      if (engineers.length) this.command({ type: "cmd.repair", ids: engineers.map((e) => e.id), targetId: hit.id });
       return;
     }
     if (action === "supply" && hit) {
       const trucks = own.filter((e) => e.type === "supply");
-      if (trucks.length) this.onCommand({ type: "cmd.supply", ids: trucks.map((e) => e.id), targetId: hit.id });
+      if (trucks.length) this.command({ type: "cmd.supply", ids: trucks.map((e) => e.id), targetId: hit.id });
       return;
     }
     if (action === "board" && hit) {
       const riders = own.filter((e) => e.kind === "unit" && isInfantryType(e.type) && e.garrisonedIn !== hit.id);
-      if (riders.length) this.onCommand({ type: "cmd.board", ids: riders.map((e) => e.id), truckId: hit.id });
+      if (riders.length) this.command({ type: "cmd.board", ids: riders.map((e) => e.id), truckId: hit.id });
       return;
     }
     if (action === "garrison" && hit) {
       const inf = own.filter((e) => e.kind === "unit" && isInfantryType(e.type) && e.garrisonedIn !== hit.id);
-      if (inf.length) this.onCommand({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: hit.id });
+      if (inf.length) this.command({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: hit.id });
       return;
     }
     if (action === "ungarrison" && hit) {
-      this.onCommand({ type: "cmd.ungarrison", buildingId: hit.id });
+      this.command({ type: "cmd.ungarrison", buildingId: hit.id });
       return;
     }
     if ((action === "attack" || action === "capture") && hit) {
-      this.onCommand({ type: "cmd.attack", ids: own.map((e) => e.id), targetId: hit.id });
+      this.command({ type: "cmd.attack", ids: own.map((e) => e.id), targetId: hit.id });
       return;
     }
     const haulers = own.filter((e) => e.type === "hauler");
     if (action === "gather" && haulers.length) {
       const dest = this.screenToWorld(px, py);
       this.pulseMoveClick(dest.x, dest.y);
-      this.onCommand({ type: "cmd.harvest", ids: haulers.map((e) => e.id), tileX: tile.x, tileY: tile.y });
+      this.command({ type: "cmd.harvest", ids: haulers.map((e) => e.id), tileX: tile.x, tileY: tile.y });
       return;
     }
     if (hit?.type === "smelter" && hit.ownerId === this.curr.youPlayerId && haulers.length) {
       this.pulseMoveClick(hit.x, hit.y);
-      this.onCommand({ type: "cmd.move", ids: haulers.map((e) => e.id), x: hit.x, y: hit.y });
+      this.command({ type: "cmd.move", ids: haulers.map((e) => e.id), x: hit.x, y: hit.y });
       return;
     }
     const drones = own.filter((e) => e.drone && e.drone.opId === hit?.id);
     if (hit?.droneLink && hit.ownerId === you && drones.length) {
       // Right-click the operator: his drone comes home to be stowed.
       this.pulseMoveClick(hit.x, hit.y);
-      this.onCommand({ type: "cmd.drone", ids: drones.map((e) => e.id), action: "recall" });
+      this.command({ type: "cmd.drone", ids: drones.map((e) => e.id), action: "recall" });
       return;
     }
     const planes = own.filter((e) => !!e.air && !e.drone);
     if (hit?.type === "airfield" && hit.ownerId === you && planes.length) {
       // Right-click your own strip: planes go home to land and rearm.
       this.pulseMoveClick(hit.x, hit.y);
-      this.onCommand({ type: "cmd.land", ids: planes.map((e) => e.id) });
+      this.command({ type: "cmd.land", ids: planes.map((e) => e.id) });
       return;
     }
     const movers = own.filter((e) => e.kind === "unit");
     if (movers.length === 0) return;
     const w = this.screenToWorld(px, py);
     this.pulseMoveClick(w.x, w.y);
-    this.onCommand({ type: "cmd.move", ids: movers.map((e) => e.id), x: w.x, y: w.y });
+    this.command({ type: "cmd.move", ids: movers.map((e) => e.id), x: w.x, y: w.y });
   }
 
   private pulseMoveClick(x: number, y: number): void {
@@ -2357,6 +2389,7 @@ export class MapView {
     this.drawRotateCursor();
     this.drawGuardOverlay();
     this.drawRallyOverlay();
+    this.drawPlanOverlay();
     this.drawDroneLeash();
   }
 
@@ -2395,6 +2428,43 @@ export class MapView {
   private selectedProducers(): EntityView[] {
     const you = this.curr.youPlayerId;
     return this.curr.entities.filter((e) => this.selected.has(e.id) && e.ownerId === you && e.hp > 0 && isProducerView(e));
+  }
+
+  /** Dashed route through each selected unit's Shift-queued orders, one colour per leg. */
+  private drawPlanOverlay(): void {
+    const you = this.curr.youPlayerId;
+    const units = this.curr.entities.filter(
+      (e) => this.selected.has(e.id) && e.ownerId === you && e.hp > 0 && !!e.plan?.length,
+    );
+    if (units.length === 0) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.lineCap = "round";
+    for (const u of units) {
+      let from = this.toScreen(u.x, u.y);
+      for (const p of u.plan!) {
+        const to = this.toScreen(p.x, p.y);
+        const color = planColor(p.kind);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(to.x, to.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#140e0a";
+        ctx.beginPath();
+        ctx.ellipse(to.x, to.y, 4.5, 2.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.ellipse(to.x, to.y, 3, 1.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        from = to;
+      }
+    }
+    ctx.restore();
   }
 
   /** Line and flag from each selected producer to its rally point, plus a cursor label while only producers are selected. */
