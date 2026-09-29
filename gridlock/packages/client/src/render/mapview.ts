@@ -162,6 +162,7 @@ import {
   type TrackKickPuff,
 } from "./track-kick.js";
 import { followCart, type CartPose } from "./mauler-cart.js";
+import { AMMO_PRIMARY_FILL, AMMO_SECONDARY_FILL, ammoBarRatios } from "./ammo-bars.js";
 import {
   recoilAmounts,
   recoilLayerShift,
@@ -4295,7 +4296,23 @@ export class MapView {
     const ctx = this.ctx;
     ctx.save();
     this.paintHpBar(bx, by, barW, barH, ratio, alpha, this.hostileOwner(e.ownerId), selected);
+    this.paintAmmoBars(e, bx, by + barH + 1, barW, Math.min(1, alpha + 0.12));
     ctx.restore();
+  }
+
+  /** Thin yellow (main gun) and gray (secondary) strips under the health bar. */
+  private paintAmmoBars(e: EntityView, x: number, y: number, w: number, alpha: number): void {
+    const ratios = ammoBarRatios(e);
+    const ctx = this.ctx;
+    for (let i = 0; i < ratios.length; i++) {
+      const by = y + i * 2;
+      ctx.globalAlpha = alpha * 0.85;
+      ctx.fillStyle = "rgba(8, 6, 4, 0.72)";
+      ctx.fillRect(x, by, w, 1);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = i === 0 ? AMMO_PRIMARY_FILL : AMMO_SECONDARY_FILL;
+      ctx.fillRect(x, by, w * ratios[i]!, 1);
+    }
   }
 
   private ownerColor(e: EntityView): string {
