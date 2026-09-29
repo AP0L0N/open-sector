@@ -1796,6 +1796,33 @@ describe("walker gatlings", () => {
     assert.equal(snapshotFor(state, a).entities.find((e) => e.id === walker.id)?.gatling, undefined);
   });
 
+  it("keeps walking on a move order while the torso turns and fires at a foe off the path", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    clearCivilians(state);
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    const ts = state.tileSize;
+    const walker = makeEntity(state, "walker", "A", tileCenter(20, ts), tileCenter(20, ts));
+    const foe = makeEntity(state, "rifleman", "B", tileCenter(24, ts), tileCenter(25, ts));
+    foe.holdPosition = true;
+    walker.facing = 0;
+    walker.turretFacing = 0;
+    applyCommand(state, "A", { type: "cmd.move", ids: [walker.id], x: tileCenter(40, ts), y: tileCenter(20, ts) });
+    const x0 = walker.x;
+    const clip0 = walker.clip;
+    for (let i = 0; i < 40; i++) {
+      foe.cooldown = 99;
+      foe.hp = catalog("rifleman").hp;
+      step(state, TICK_DT);
+    }
+    assert.ok(walker.x - x0 > ts * 1.5, `walker should keep walking, moved ${walker.x - x0}`);
+    assert.ok(walker.clip < clip0, "the gatlings fired on the move");
+    assert.ok(Math.abs(walker.facing) < 0.2, `legs stay on the path, facing ${walker.facing}`);
+    const toFoe = Math.atan2(foe.y - walker.y, foe.x - walker.x);
+    assert.ok(Math.abs(walker.turretFacing - toFoe) < 0.3, `torso on the foe: ${walker.turretFacing} vs ${toFoe}`);
+  });
+
   it("fires one gatling when set to conserve, and splits both guns across two targets", () => {
     const { state } = twoPlayerMatch();
     clearCover(state);

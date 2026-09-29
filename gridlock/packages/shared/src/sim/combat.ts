@@ -5,6 +5,9 @@ import {
   CIWS_INTERCEPT_CHANCE,
   CIWS_INTERCEPT_ROUNDS,
   CIWS_INTERCEPTS_PER_TICK,
+  RAM_INTERCEPT_CHANCE,
+  RAM_INTERCEPT_INTERVAL,
+  RAM_ROCKET,
   radarLaidOf,
   TICK_DT,
   MG42_BIPOD_SECONDS,
@@ -166,7 +169,9 @@ export function tickCombat(state: MatchState, dt: number): void {
  * spent this tick on rockets, so it does not also fire on its ground target.
  */
 function interceptRockets(state: MatchState, e: Entity, downed: Set<number>): boolean {
-  if (!radarLaidOf(e.type) || e.clip <= 0) return false;
+  if (!radarLaidOf(e.type)) return false;
+  if (rocketsOf(e.type)) return launchInterceptor(state, e, downed);
+  if (e.clip <= 0) return false;
   const range = weaponRangeWorld(state, e);
   const inbound: { p: Projectile; d: number }[] = [];
   for (const p of state.projectiles) {
@@ -203,6 +208,52 @@ function interceptRockets(state: MatchState, e: Entity, downed: Set<number>): bo
   e.turretFacing = Math.atan2(first.y - e.y, first.x - e.x);
   e.gatlingFire = { tick: state.tick, arms: 1 };
   e.cooldown = TICK_DT;
+  return true;
+}
+
+/**
+ * RAM against rockets. The nearest hostile rocket in reach that this mount has
+ * not tried draws one interceptor off the rack, RAM_INTERCEPT_INTERVAL apart,
+ * with RAM_INTERCEPT_CHANCE to burst it in the air. The rack's clock covers
+ * both, so an interceptor holds the next barrage rocket back. Tubes off or an
+ * empty rack, it lets rockets by.
+ */
+function launchInterceptor(state: MatchState, e: Entity, downed: Set<number>): boolean {
+  if (e.rocketsOff || (e.rockets ?? 0) <= 0 || (e.rocketCooldown ?? 0) > 0) return false;
+  const range = weaponRangeWorld(state, e);
+  let best: Projectile | undefined;
+  let bestD = Infinity;
+  for (const p of state.projectiles) {
+    if (p.flight !== "rocket" || downed.has(p.id) || p.ciwsTried?.includes(e.id)) continue;
+    if (allies(state, e.ownerId, p.ownerId)) continue;
+    const d = Math.hypot(p.x - e.x, p.y - e.y);
+    if (d <= range && (d < bestD || (d === bestD && best && p.id < best.id))) {
+      best = p;
+      bestD = d;
+    }
+  }
+  if (!best) return false;
+  e.rockets = Math.max(0, (e.rockets ?? 0) - 1);
+  if (e.rockets <= 0) e.rocketSalvo = 0;
+  e.rocketCooldown = e.rockets > 0 ? RAM_INTERCEPT_INTERVAL : rocketRackOf(e.type).reload;
+  (best.ciwsTried ??= []).push(e.id);
+  e.turretFacing = Math.atan2(best.y - e.y, best.x - e.x);
+  const hit = nextRand(state) < RAM_INTERCEPT_CHANCE;
+  if (hit) downed.add(best.id);
+  // A burst in the air either way: the interceptor's own, on the rocket or just off it.
+  state.impacts.push({
+    id: state.nextId++,
+    ownerId: e.ownerId,
+    kind: hit ? "kill" : "miss",
+    fromId: e.id,
+    x: best.x,
+    y: best.y,
+    vx: best.vx,
+    vy: best.vy,
+    caliber: RAM_ROCKET.caliber,
+    blast: true,
+    intercept: true,
+  });
   return true;
 }
 
@@ -871,9 +922,11 @@ function fireRockets(
     const slot = e.rocketSalvo;
     // Pods sit either side of the torso; the ripple alternates left and right.
     // A launcher frame walks across its six columns of tubes instead.
+    // A pad mount (the RAM) has no hull radius; its cells span part of the footprint.
+    const span = e.radius > 0 ? e.radius : Math.min(e.tileW, e.tileH) * state.tileSize * 0.5;
     const side = rack.laid
-      ? ((((slot - 1) % 6) - 2.5) / 2.5) * e.radius * 0.35
-      : (slot % 2 === 0 ? 1 : -1) * e.radius * 0.8;
+      ? ((((slot - 1) % 6) - 2.5) / 2.5) * span * 0.35
+      : (slot % 2 === 0 ? 1 : -1) * span * 0.8;
     launchRocket(state, e, rack, aimX, aimY, range, dist, target, side);
     e.rockets = Math.max(0, (e.rockets ?? 0) - 1);
     e.rocketSalvo = e.rockets > 0 ? e.rocketSalvo - 1 : 0;
@@ -1159,7 +1212,7 @@ function walkerSecondTarget(state: MatchState, e: Entity, primary: Entity): Enti
     if (d > bestD) continue;
     if (!canSeeEntity(state, e.ownerId, o)) continue;
     if (!canAimWeapon(state, e, o.x, o.y, o)) continue;
-    if (Math.abs(hullAimRemainingDeg(e, o.x, o.y)) > arc) continue;
+    if (Math.abs(aimRemainingDeg(e, o.x, o.y)) > arc) continue;
     bestD = d;
     best = o;
   }
@@ -1215,8 +1268,9 @@ function wantsMg(e: Entity, target: Entity): boolean {
   return entityIsScouting(target);
 }
 
-function hullAimRemainingDeg(e: Entity, aimX: number, aimY: number): number {
-  return stepTurn(e.facing, Math.atan2(aimY - e.y, aimX - e.x), 0, 1).remainingDeg;
+/** Degrees from the gun's facing (turret or torso, else hull) to the aim point. */
+function aimRemainingDeg(e: Entity, aimX: number, aimY: number): number {
+  return stepTurn(aimFacing(e), Math.atan2(aimY - e.y, aimX - e.x), 0, 1).remainingDeg;
 }
 
 /**

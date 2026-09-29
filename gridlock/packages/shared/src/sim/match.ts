@@ -33,6 +33,7 @@ import { tickHarvest, tickMaulerCart } from "./harvest.js";
 import { tickHeal } from "./heal.js";
 import { tickSupply } from "./supply.js";
 import { tickMovement, repathIfBlocked } from "./orders.js";
+import { tickOrderQueue } from "./commands.js";
 import { tickTrain } from "./train.js";
 import type { Entity, MatchState, SimPlayer } from "./types.js";
 import { leaveCorpse } from "./remains.js";
@@ -189,6 +190,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickGarrisonCare(state, dt);
   tickSupply(state, dt);
   tickMaulerCart(state, dt);
+  tickOrderQueue(state);
   tickMovement(state, dt);
   tickAir(state, dt);
   tickDrones(state, dt);

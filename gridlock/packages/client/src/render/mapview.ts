@@ -99,6 +99,7 @@ import {
   PINE_FACES,
   CRATER_FACES,
   CIWS_TURRET_SHEET,
+  RAM_TURRET_SHEET,
   buildingGroundFor,
   buildingOccludeEz,
   buildingSpriteFor,
@@ -162,6 +163,8 @@ import {
   type TrackKickPuff,
 } from "./track-kick.js";
 import { followCart, type CartPose } from "./mauler-cart.js";
+import { AMMO_PRIMARY_FILL, AMMO_SECONDARY_FILL, ammoBarRatios } from "./ammo-bars.js";
+import { isDoubleClick, sameTypeOnScreen, type ClickMark } from "./same-type-select.js";
 import {
   recoilAmounts,
   recoilLayerShift,
@@ -177,6 +180,7 @@ import {
 } from "./muzzle-smoke.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
+import { INTERCEPT_BURST_SIZE, RAM_MISS_BURST_SIZE, interceptorTrail } from "./ram.js";
 import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
 import { buildingShadowFootprint, drawCastShadows, treeShadowFootprint } from "./cast-shadow.js";
@@ -207,6 +211,7 @@ import {
 import { drawTreeFall, TREE_FALL_MS } from "./tree-fall.js";
 import { lerpHullPose } from "./hull-lerp.js";
 import { canGuardUnit, resolveHoverAction, type HoverAction } from "./hover-action.js";
+import { planColor, withQueue } from "./order-queue.js";
 import { guardHeightTag, guardReach, type GuardUnit } from "./guard-reach.js";
 import {
   blitAtlas,
@@ -263,6 +268,7 @@ const EXTRUDE: Record<EntityType, number> = {
   airfield: 14,
   ciws: 26,
   bunker: 18,
+  ram: 26,
   stuka: 14,
   drone: 8,
   droneop: 26,
@@ -456,6 +462,8 @@ export class MapView {
   private destroyed = false;
   private centered = false;
   private box: { x0: number; y0: number; x1: number; y1: number } | null = null;
+  /** Last plain click on one of your units, for double-click select-by-type. */
+  private lastClick: ClickMark | null = null;
   private damagedUntil = new Map<number, number>();
   private lastHp = new Map<number, number>();
   private lastScoutHp = new Map<number, number>();
@@ -498,7 +506,7 @@ export class MapView {
     rocket?: boolean;
     /** Rocket air burst: elevation of the burst. */
     z?: number;
-    /** Rocket burst in the air by a CIWS: a small fireball, no column. */
+    /** Rocket met in the air by a CIWS or a RAM interceptor: a small fireball, no column. */
     intercept?: boolean;
     lift?: number;
     /** Screen-x offset from the world ground projection. */
@@ -557,8 +565,23 @@ export class MapView {
   private guardFacing = 0;
   private guardDragging = false;
   private ctrlHeld = false;
+  /** Shift held: unit orders are queued behind the current ones. */
+  private shiftHeld = false;
+  /** A queued order went out from an armed click mode during this Shift hold. */
+  private queuedFromMode = false;
   onSelect: (ids: number[]) => void = () => {};
   onCommand: (msg: ClientMessage) => void = () => {};
+
+  private command(msg: ClientMessage): void {
+    this.onCommand(withQueue(msg, this.shiftHeld));
+  }
+
+  /** Shift keeps attack-move, force-attack, and rotate armed so several points can be queued. */
+  private keepModeForQueue(): boolean {
+    if (!this.shiftHeld) return false;
+    this.queuedFromMode = true;
+    return true;
+  }
   onPlaceMode: () => void = () => {};
   onAttackMoveMode: () => void = () => {};
 
@@ -704,6 +727,12 @@ export class MapView {
       const fx: MapView["fx"][number] = { ...i, at: now };
       // A rocket burst in the air by a CIWS stays where it was: no hull to snap to, no ground smoke.
       if (i.intercept) {
+        // A RAM's interceptor leaves a smoke line from the cells to the burst.
+        const mount = i.fromId != null && !this.fxIds.has(i.id) ? match.entities.find((e) => e.id === i.fromId) : undefined;
+        if (mount?.type === "ram") {
+          const line = interceptorTrail(mount, i, this.elevAt(mount.x, mount.y), this.elevAt(i.x, i.y));
+          this.rocketPuffs.push(...trailPuffs(line.from, line.to, now, (i.id * 2654435761) >>> 0));
+        }
         this.addFx(fx);
         continue;
       }
@@ -1216,6 +1245,7 @@ export class MapView {
         e.preventDefault();
         return;
       }
+      this.shiftHeld = e.shiftKey;
       if (e.button === 2) {
         e.preventDefault();
         if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode || this.fieldPlace) {
@@ -1263,7 +1293,7 @@ export class MapView {
         const toPlace = this.placeMode ? this.readyBuilding() : null;
         if (toPlace) {
           const tile = this.screenToTile(mx, my);
-          this.onCommand({
+          this.command({
             type: "cmd.place",
             building: toPlace,
             tx: tile.x,
@@ -1380,6 +1410,10 @@ export class MapView {
       this.syncCursor();
       return;
     }
+    if (k === "shift") {
+      this.shiftHeld = true;
+      return;
+    }
     if (this.isCameraKey(k)) {
       e.preventDefault();
       this.keys.add(k);
@@ -1392,12 +1426,12 @@ export class MapView {
     }
     if (this.isSpeedUpKey(e)) {
       e.preventDefault();
-      this.onCommand({ type: "cmd.speed", delta: 1 });
+      this.command({ type: "cmd.speed", delta: 1 });
       return;
     }
     if (this.isSpeedDownKey(e)) {
       e.preventDefault();
-      this.onCommand({ type: "cmd.speed", delta: -1 });
+      this.command({ type: "cmd.speed", delta: -1 });
       return;
     }
     if (e.repeat) return;
@@ -1450,7 +1484,7 @@ export class MapView {
       );
       if (own.length === 0) return;
       const hold = !own.every((ent) => ent.holdPosition);
-      this.onCommand({ type: "cmd.hold", ids: own.map((ent) => ent.id), hold });
+      this.command({ type: "cmd.hold", ids: own.map((ent) => ent.id), hold });
       return;
     }
     if (k === "c") {
@@ -1486,12 +1520,23 @@ export class MapView {
       this.ctrlHeld = false;
       this.syncCursor();
     }
+    if (k === "shift") {
+      this.shiftHeld = false;
+      if (this.queuedFromMode) {
+        this.queuedFromMode = false;
+        this.setAttackMoveMode(false);
+        this.setForceAttackMode(false);
+        this.setRotateMode(false);
+      }
+    }
     if (this.isCameraKey(k)) e.preventDefault();
     this.keys.delete(k);
   };
 
   private onBlur = (): void => {
     this.ctrlHeld = false;
+    this.shiftHeld = false;
+    this.queuedFromMode = false;
     this.keys.clear();
   };
 
@@ -1505,7 +1550,7 @@ export class MapView {
     this.setRotateMode(false);
     this.setGuardMode(false);
     const ids = this.ownAimIds();
-    if (ids.length) this.onCommand({ type: "cmd.stop", ids });
+    if (ids.length) this.command({ type: "cmd.stop", ids });
   }
 
   private aimingForceAttack(): boolean {
@@ -1529,7 +1574,7 @@ export class MapView {
 
   private useSpecial(e: EntityView): void {
     if (!this.canSpecial(e)) return;
-    if (specialOf(e.type) === "deploy") this.onCommand({ type: "cmd.deploy", id: e.id });
+    if (specialOf(e.type) === "deploy") this.command({ type: "cmd.deploy", id: e.id });
   }
 
   private stanceHotkey(want: "crouch" | "crawl"): void {
@@ -1545,7 +1590,7 @@ export class MapView {
     if (inf.length === 0) return;
     const stance = inf.every((e) => (e.stanceOrder ?? e.stance) === want) ? "stand" : want;
     if (!isStance(stance)) return;
-    this.onCommand({ type: "cmd.stance", ids: inf.map((e) => e.id), stance });
+    this.command({ type: "cmd.stance", ids: inf.map((e) => e.id), stance });
   }
 
   private scoutHotkey(): void {
@@ -1561,7 +1606,7 @@ export class MapView {
     );
     if (tanks.length === 0) return;
     const out = !tanks.every((e) => e.scout?.out);
-    this.onCommand({ type: "cmd.scout", ids: tanks.map((e) => e.id), out });
+    this.command({ type: "cmd.scout", ids: tanks.map((e) => e.id), out });
   }
 
   private garrisonHideHotkey(): void {
@@ -1589,7 +1634,7 @@ export class MapView {
     }
     if (ids.length === 0 || houses.length === 0) return;
     const hide = !houses.every((h) => h.garrison?.hide);
-    this.onCommand({ type: "cmd.garrisonhide", ids, hide });
+    this.command({ type: "cmd.garrisonhide", ids, hide });
   }
 
   private garrisonHotkey(): void {
@@ -1598,16 +1643,16 @@ export class MapView {
     const inf = own.filter((e) => e.kind === "unit" && isInfantryType(e.type));
     const house = this.curr.entities.find((e) => this.selected.has(e.id) && isGarrisonable(e.type) && e.hp > 0);
     if (house && inf.length) {
-      this.onCommand({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: house.id });
+      this.command({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: house.id });
       return;
     }
     const holed = own.filter((e) => e.garrisonedIn);
     if (holed.length) {
-      this.onCommand({ type: "cmd.ungarrison", ids: holed.map((e) => e.id) });
+      this.command({ type: "cmd.ungarrison", ids: holed.map((e) => e.id) });
       return;
     }
     if (house && house.garrison?.ownerId === you) {
-      this.onCommand({ type: "cmd.ungarrison", buildingId: house.id });
+      this.command({ type: "cmd.ungarrison", buildingId: house.id });
     }
   }
 
@@ -1629,16 +1674,16 @@ export class MapView {
 
   private commitAttackMove(px: number, py: number): void {
     const ids = this.ownSelectedIds();
-    this.setAttackMoveMode(false);
+    if (!this.keepModeForQueue()) this.setAttackMoveMode(false);
     if (ids.length === 0) return;
     const hit = this.hit(px, py);
     if (hit && (hit.wreck || hit.ownerId !== this.curr.youPlayerId)) {
-      this.onCommand({ type: "cmd.attack", ids, targetId: hit.id });
+      this.command({ type: "cmd.attack", ids, targetId: hit.id });
       return;
     }
     const w = this.screenToWorld(px, py);
     this.pulseMoveClick(w.x, w.y);
-    this.onCommand({ type: "cmd.attackmove", ids, x: w.x, y: w.y });
+    this.command({ type: "cmd.attackmove", ids, x: w.x, y: w.y });
   }
 
   private commitForceAttack(px: number, py: number): void {
@@ -1646,24 +1691,24 @@ export class MapView {
       const ent = this.curr.entities.find((x) => x.id === id);
       return !!ent && fires(ent.type);
     });
-    this.setForceAttackMode(false);
+    if (!this.keepModeForQueue()) this.setForceAttackMode(false);
     if (ids.length === 0) return;
     const hit = this.hit(px, py);
     if (hit && hit.hp > 0 && ids.some((id) => id !== hit.id)) {
-      this.onCommand({ type: "cmd.forceattack", ids, x: hit.x, y: hit.y, targetId: hit.id });
+      this.command({ type: "cmd.forceattack", ids, x: hit.x, y: hit.y, targetId: hit.id });
       return;
     }
     const w = this.screenToWorld(px, py);
-    this.onCommand({ type: "cmd.forceattack", ids, x: w.x, y: w.y });
+    this.command({ type: "cmd.forceattack", ids, x: w.x, y: w.y });
   }
 
   private commitRotate(px: number, py: number): void {
     const ids = this.ownAimIds();
-    this.setRotateMode(false);
+    if (!this.keepModeForQueue()) this.setRotateMode(false);
     if (ids.length === 0) return;
     const hit = this.hit(px, py);
     const w = hit ? { x: hit.x, y: hit.y } : this.screenToWorld(px, py);
-    this.onCommand({ type: "cmd.rotate", ids, x: w.x, y: w.y });
+    this.command({ type: "cmd.rotate", ids, x: w.x, y: w.y });
   }
 
   private meanSelectedFacing(): number {
@@ -1729,7 +1774,7 @@ export class MapView {
     const facing = this.guardFacing;
     this.setGuardMode(false);
     if (ids.length === 0 || !anchor) return;
-    this.onCommand({ type: "cmd.guard", ids, x: anchor.x, y: anchor.y, facing });
+    this.command({ type: "cmd.guard", ids, x: anchor.x, y: anchor.y, facing });
   }
 
   private commitField(): void {
@@ -1744,12 +1789,12 @@ export class MapView {
     const pieces = this.fieldPieces(structure, false);
     const facing = this.fieldFacing;
     if (pieces.length > 1) {
-      this.onCommand({ type: "cmd.field", ids, structure, x: drag.x, y: drag.y, facing, x2: w.x, y2: w.y });
+      this.command({ type: "cmd.field", ids, structure, x: drag.x, y: drag.y, facing, x2: w.x, y2: w.y });
       return;
     }
     const one = pieces[0];
     if (!one) return;
-    this.onCommand({ type: "cmd.field", ids, structure, x: one.x, y: one.y, facing: one.facing });
+    this.command({ type: "cmd.field", ids, structure, x: one.x, y: one.y, facing: one.facing });
   }
 
   private commitGuardUnit(hit: EntityView | null): boolean {
@@ -1768,7 +1813,7 @@ export class MapView {
     const guards = ids.filter((id) => id !== hit.id);
     this.setGuardMode(false);
     if (guards.length === 0) return true;
-    this.onCommand({ type: "cmd.guard", ids: guards, targetId: hit.id });
+    this.command({ type: "cmd.guard", ids: guards, targetId: hit.id });
     return true;
   }
 
@@ -2012,6 +2057,8 @@ export class MapView {
 
   private clickSelect(px: number, py: number, shift: boolean): void {
     const hit = this.hit(px, py);
+    const prev = this.lastClick;
+    this.lastClick = null;
     if (!hit) {
       if (!shift) this.selected.clear();
       this.onSelect([...this.selected]);
@@ -2020,6 +2067,19 @@ export class MapView {
     if (hit.wreck || hit.ownerId !== this.curr.youPlayerId) {
       this.selected.clear();
       this.selected.add(hit.id);
+      this.onSelect([...this.selected]);
+      return;
+    }
+    const mark = { id: hit.id, x: px, y: py, t: performance.now() };
+    if (hit.kind === "unit") this.lastClick = mark;
+    if (hit.kind === "unit" && !this.canSpecial(hit) && isDoubleClick(prev, mark)) {
+      this.lastClick = null;
+      const ids = sameTypeOnScreen(this.curr.entities, hit, this.curr.youPlayerId, this.viewSize(), (e) => {
+        const p = this.lerpEnt(e);
+        return this.toScreen(p.x, p.y);
+      });
+      if (!shift) this.selected.clear();
+      for (const id of ids) this.selected.add(id);
       this.onSelect([...this.selected]);
       return;
     }
@@ -2070,7 +2130,7 @@ export class MapView {
     if (producers.length > 0 && !own.some((e) => e.kind === "unit")) {
       const w = this.screenToWorld(px, py);
       this.pulseMoveClick(w.x, w.y);
-      this.onCommand({ type: "cmd.rally", ids: producers.map((e) => e.id), x: w.x, y: w.y });
+      this.command({ type: "cmd.rally", ids: producers.map((e) => e.id), x: w.x, y: w.y });
       return;
     }
     const hit = this.hit(px, py);
@@ -2085,63 +2145,63 @@ export class MapView {
     });
     if ((action === "repair" || action === "scrap") && hit) {
       const engineers = own.filter((e) => e.type === "engineer");
-      if (engineers.length) this.onCommand({ type: "cmd.repair", ids: engineers.map((e) => e.id), targetId: hit.id });
+      if (engineers.length) this.command({ type: "cmd.repair", ids: engineers.map((e) => e.id), targetId: hit.id });
       return;
     }
     if (action === "supply" && hit) {
       const trucks = own.filter((e) => e.type === "supply");
-      if (trucks.length) this.onCommand({ type: "cmd.supply", ids: trucks.map((e) => e.id), targetId: hit.id });
+      if (trucks.length) this.command({ type: "cmd.supply", ids: trucks.map((e) => e.id), targetId: hit.id });
       return;
     }
     if (action === "board" && hit) {
       const riders = own.filter((e) => e.kind === "unit" && isInfantryType(e.type) && e.garrisonedIn !== hit.id);
-      if (riders.length) this.onCommand({ type: "cmd.board", ids: riders.map((e) => e.id), truckId: hit.id });
+      if (riders.length) this.command({ type: "cmd.board", ids: riders.map((e) => e.id), truckId: hit.id });
       return;
     }
     if (action === "garrison" && hit) {
       const inf = own.filter((e) => e.kind === "unit" && isInfantryType(e.type) && e.garrisonedIn !== hit.id);
-      if (inf.length) this.onCommand({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: hit.id });
+      if (inf.length) this.command({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: hit.id });
       return;
     }
     if (action === "ungarrison" && hit) {
-      this.onCommand({ type: "cmd.ungarrison", buildingId: hit.id });
+      this.command({ type: "cmd.ungarrison", buildingId: hit.id });
       return;
     }
     if ((action === "attack" || action === "capture") && hit) {
-      this.onCommand({ type: "cmd.attack", ids: own.map((e) => e.id), targetId: hit.id });
+      this.command({ type: "cmd.attack", ids: own.map((e) => e.id), targetId: hit.id });
       return;
     }
     const haulers = own.filter((e) => e.type === "hauler");
     if (action === "gather" && haulers.length) {
       const dest = this.screenToWorld(px, py);
       this.pulseMoveClick(dest.x, dest.y);
-      this.onCommand({ type: "cmd.harvest", ids: haulers.map((e) => e.id), tileX: tile.x, tileY: tile.y });
+      this.command({ type: "cmd.harvest", ids: haulers.map((e) => e.id), tileX: tile.x, tileY: tile.y });
       return;
     }
     if (hit?.type === "smelter" && hit.ownerId === this.curr.youPlayerId && haulers.length) {
       this.pulseMoveClick(hit.x, hit.y);
-      this.onCommand({ type: "cmd.move", ids: haulers.map((e) => e.id), x: hit.x, y: hit.y });
+      this.command({ type: "cmd.move", ids: haulers.map((e) => e.id), x: hit.x, y: hit.y });
       return;
     }
     const drones = own.filter((e) => e.drone && e.drone.opId === hit?.id);
     if (hit?.droneLink && hit.ownerId === you && drones.length) {
       // Right-click the operator: his drone comes home to be stowed.
       this.pulseMoveClick(hit.x, hit.y);
-      this.onCommand({ type: "cmd.drone", ids: drones.map((e) => e.id), action: "recall" });
+      this.command({ type: "cmd.drone", ids: drones.map((e) => e.id), action: "recall" });
       return;
     }
     const planes = own.filter((e) => !!e.air && !e.drone);
     if (hit?.type === "airfield" && hit.ownerId === you && planes.length) {
       // Right-click your own strip: planes go home to land and rearm.
       this.pulseMoveClick(hit.x, hit.y);
-      this.onCommand({ type: "cmd.land", ids: planes.map((e) => e.id) });
+      this.command({ type: "cmd.land", ids: planes.map((e) => e.id) });
       return;
     }
     const movers = own.filter((e) => e.kind === "unit");
     if (movers.length === 0) return;
     const w = this.screenToWorld(px, py);
     this.pulseMoveClick(w.x, w.y);
-    this.onCommand({ type: "cmd.move", ids: movers.map((e) => e.id), x: w.x, y: w.y });
+    this.command({ type: "cmd.move", ids: movers.map((e) => e.id), x: w.x, y: w.y });
   }
 
   private pulseMoveClick(x: number, y: number): void {
@@ -2358,6 +2418,7 @@ export class MapView {
     this.drawRotateCursor();
     this.drawGuardOverlay();
     this.drawRallyOverlay();
+    this.drawPlanOverlay();
     this.drawDroneLeash();
   }
 
@@ -2396,6 +2457,43 @@ export class MapView {
   private selectedProducers(): EntityView[] {
     const you = this.curr.youPlayerId;
     return this.curr.entities.filter((e) => this.selected.has(e.id) && e.ownerId === you && e.hp > 0 && isProducerView(e));
+  }
+
+  /** Dashed route through each selected unit's Shift-queued orders, one colour per leg. */
+  private drawPlanOverlay(): void {
+    const you = this.curr.youPlayerId;
+    const units = this.curr.entities.filter(
+      (e) => this.selected.has(e.id) && e.ownerId === you && e.hp > 0 && !!e.plan?.length,
+    );
+    if (units.length === 0) return;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.lineCap = "round";
+    for (const u of units) {
+      let from = this.toScreen(u.x, u.y);
+      for (const p of u.plan!) {
+        const to = this.toScreen(p.x, p.y);
+        const color = planColor(p.kind);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(to.x, to.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = "#140e0a";
+        ctx.beginPath();
+        ctx.ellipse(to.x, to.y, 4.5, 2.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.ellipse(to.x, to.y, 3, 1.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        from = to;
+      }
+    }
+    ctx.restore();
   }
 
   /** Line and flag from each selected producer to its rally point, plus a cursor label while only producers are selected. */
@@ -3148,6 +3246,8 @@ export class MapView {
       ctx.restore();
       if (e.type === "ciws") {
         this.drawCiwsGun(spr, south.x, south.y, footprintW, dim ? 0.5 : 1, e.turretFacing ?? e.facing, ghost ? undefined : e);
+      } else if (e.type === "ram") {
+        this.drawCiwsGun(spr, south.x, south.y, footprintW, dim ? 0.5 : 1, e.turretFacing ?? e.facing, undefined, RAM_TURRET_SHEET);
       }
       if (!ghost && !dim) {
         drawBuildingAnim(
@@ -3202,7 +3302,7 @@ export class MapView {
     ctx.globalAlpha = 1;
   }
 
-  /** CIWS gun row over its pad, laid on `turretFacing`, and the barrel flash while it fires. */
+  /** CIWS gun (or RAM launcher) row over its pad, laid on `turretFacing`, and the CIWS barrel flash while it fires. */
   private drawCiwsGun(
     spr: BuildingSpriteDef,
     southX: number,
@@ -3212,8 +3312,9 @@ export class MapView {
     facing: number,
     /** The live mount, for its barrel flash. Omitted for the placement ghost. */
     e?: EntityView,
+    /** The RAM passes its launcher sheet; its rockets carry their own flash. */
+    sheet: HTMLImageElement = CIWS_TURRET_SHEET,
   ): void {
-    const sheet = CIWS_TURRET_SHEET;
     if (!sheet.complete || sheet.naturalWidth <= 0) return;
     const ctx = this.ctx;
     const ts = this.ts();
@@ -3578,7 +3679,7 @@ export class MapView {
     ctx.restore();
     if (drawn && e.gatling && !e.wreck) {
       const now = performance.now();
-      const muzzles = gatlingMuzzles(s.x, s.y, size, p.facing, e.gatling.arms, e.gatling.off);
+      const muzzles = gatlingMuzzles(s.x, s.y, size, p.turretFacing ?? p.facing, e.gatling.arms, e.gatling.off);
       muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2));
     }
     if (drawn && corpse && e.type === "cyborg") {
@@ -3982,7 +4083,9 @@ export class MapView {
       if (f.intercept) {
         // Rocket burst in the air: a small puff of fire at flight height.
         const frame = fxFrameAt(age, life, FX_BOOM.frames, false);
-        drawFxFrame(ctx, FX_BOOM, frame, s.x, s.y - CIWS_INTERCEPT_LIFT, 26, 1 - t * 0.5);
+        // A RAM interceptor that went off beside the rocket without bursting it: a smaller puff.
+        const size = f.kind === "miss" ? RAM_MISS_BURST_SIZE : INTERCEPT_BURST_SIZE;
+        drawFxFrame(ctx, FX_BOOM, frame, s.x, s.y - CIWS_INTERCEPT_LIFT, size, 1 - t * 0.5);
       } else if (f.kind === "kill" && f.blast) {
         drawCookoffBurst(ctx, x, y, t, f.id);
         const frame = fxFrameAt(age, life, FX_BOOM.frames, false);
@@ -4296,7 +4399,23 @@ export class MapView {
     const ctx = this.ctx;
     ctx.save();
     this.paintHpBar(bx, by, barW, barH, ratio, alpha, this.hostileOwner(e.ownerId), selected);
+    this.paintAmmoBars(e, bx, by + barH + 1, barW, Math.min(1, alpha + 0.12));
     ctx.restore();
+  }
+
+  /** Thin yellow (main gun) and gray (secondary) strips under the health bar. */
+  private paintAmmoBars(e: EntityView, x: number, y: number, w: number, alpha: number): void {
+    const ratios = ammoBarRatios(e);
+    const ctx = this.ctx;
+    for (let i = 0; i < ratios.length; i++) {
+      const by = y + i * 2;
+      ctx.globalAlpha = alpha * 0.85;
+      ctx.fillStyle = "rgba(8, 6, 4, 0.72)";
+      ctx.fillRect(x, by, w, 1);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = i === 0 ? AMMO_PRIMARY_FILL : AMMO_SECONDARY_FILL;
+      ctx.fillRect(x, by, w * ratios[i]!, 1);
+    }
   }
 
   private ownerColor(e: EntityView): string {
@@ -4341,6 +4460,7 @@ export class MapView {
       ctx.restore();
       // The ghost lays its gun toward the viewer.
       if (type === "ciws") this.drawCiwsGun(spr, south.x, south.y, east.x - west.x, 0.55, Math.PI / 4);
+      if (type === "ram") this.drawCiwsGun(spr, south.x, south.y, east.x - west.x, 0.55, Math.PI / 4, undefined, RAM_TURRET_SHEET);
       ctx.strokeStyle = top;
       ctx.lineWidth = 2;
       this.strokeGroundRect(x, y, bw, bh, elev);
