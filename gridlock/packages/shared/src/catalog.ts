@@ -70,6 +70,8 @@ export function snapTankYaw(yaw: number): number {
 }
 /** Max fine tiles a tank will reverse instead of spinning the hull. */
 export const REVERSE_TILES = t(2);
+/** Shift-queued orders one unit may hold. Later ones are dropped. */
+export const ORDER_QUEUE_MAX = 16;
 /** Full rear cone that counts as “behind” for a reverse hop. */
 export const REVERSE_CONE_DEG = 90;
 /** Full angle of a Guard overwatch cone. Units still fire 360°; this is the ready arc. */

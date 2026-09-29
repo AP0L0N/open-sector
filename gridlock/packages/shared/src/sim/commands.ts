@@ -18,6 +18,7 @@ import {
   isStance,
   isTrainType,
   isDroneMode,
+  ORDER_QUEUE_MAX,
   pickLoadedShell,
   type DroneMode,
   type InfantryWeaponId,
@@ -40,7 +41,7 @@ import { tickStance } from "./stance.js";
 import { dismountSupply, orderBoard, orderSupply, supplyCanDrive } from "./supply.js";
 import { orderAircraft, stopAircraft } from "./air.js";
 import { droneOf, guardDrone, launchDrone, orderDrone, recallDrone, setDroneMode, stopDrone } from "./drone.js";
-import type { Entity, MatchState } from "./types.js";
+import type { Entity, MatchState, QueueableCommand, Vec } from "./types.js";
 
 export type CmdResult = { ok: true } | { ok: false; code: ErrorCode; message: string };
 
@@ -53,6 +54,12 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
   if (!p) return fail("not_member", "You are not in this match.");
   if (!p.alive && msg.type.startsWith("cmd.")) return fail("dead", "Your Core is down.");
 
+  if (isQueueable(msg) && msg.queue) return queueCommand(state, playerId, msg);
+  dropQueues(state, playerId, msg);
+  return runCommand(state, playerId, msg);
+}
+
+function runCommand(state: MatchState, playerId: string, msg: ClientMessage): CmdResult {
   const drones = routeDrones(state, playerId, msg);
   if (drones) return drones;
   const air = routeAircraft(state, playerId, msg);
@@ -166,6 +173,132 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
       return cmdDrone(state, playerId, msg.ids, msg.action, msg.mode);
     default:
       return fail("bad_payload", "Unknown command.");
+  }
+}
+
+const QUEUEABLE = new Set<string>([
+  "cmd.move",
+  "cmd.attack",
+  "cmd.attackmove",
+  "cmd.forceattack",
+  "cmd.guard",
+  "cmd.rotate",
+  "cmd.garrison",
+  "cmd.harvest",
+  "cmd.repair",
+  "cmd.supply",
+  "cmd.board",
+]);
+
+/** Unqueued orders that replace what a unit was doing, and so drop its queue. */
+const DROPS_QUEUE = new Set<string>([
+  ...QUEUEABLE,
+  "cmd.stop",
+  "cmd.hold",
+  "cmd.field",
+  "cmd.ungarrison",
+  "cmd.unboard",
+  "cmd.land",
+  "cmd.deploy",
+]);
+
+function isQueueable(msg: ClientMessage): msg is QueueableCommand {
+  return QUEUEABLE.has(msg.type);
+}
+
+function dropQueues(state: MatchState, playerId: string, msg: ClientMessage): void {
+  if (!DROPS_QUEUE.has(msg.type)) return;
+  if (msg.type === "cmd.hold" && !msg.hold) return;
+  const ids = msg.type === "cmd.deploy" ? [msg.id] : "ids" in msg && Array.isArray(msg.ids) ? msg.ids : [];
+  for (const id of ids) {
+    const e = state.entities.get(id);
+    if (e && e.ownerId === playerId) e.orderQueue = undefined;
+  }
+}
+
+/** Point a queued ground order walks to, when it has one to spread into a formation. */
+function travelPoint(msg: QueueableCommand): Vec | null {
+  if (msg.type === "cmd.move" || msg.type === "cmd.attackmove") return { x: msg.x, y: msg.y };
+  if (msg.type === "cmd.guard" && msg.targetId == null && Number.isFinite(msg.x) && Number.isFinite(msg.y)) {
+    return { x: msg.x!, y: msg.y! };
+  }
+  return null;
+}
+
+/** Where the unit will stand once its current and queued orders are done walking. */
+function queueTail(e: Entity): Vec {
+  for (let i = (e.orderQueue?.length ?? 0) - 1; i >= 0; i--) {
+    const at = travelPoint(e.orderQueue![i]!.msg);
+    if (at) return at;
+  }
+  const o = e.order;
+  if (o && !o.auto && (o.kind === "move" || o.kind === "attackmove" || o.kind === "guard") && o.x != null && o.y != null) {
+    return { x: o.x, y: o.y };
+  }
+  return { x: e.x, y: e.y };
+}
+
+/**
+ * Shift-queue: each ground unit keeps its own copy of the order, its point
+ * spread into the formation slot it will hold from where its earlier orders
+ * leave it. An idle unit starts at once. Aircraft, drones, and CIWS mounts
+ * take the order now.
+ */
+function queueCommand(state: MatchState, playerId: string, msg: QueueableCommand): CmdResult {
+  const units = owned(state, playerId, msg.ids).filter((e) => !e.air && !e.drone);
+  const unitIds = new Set(units.map((e) => e.id));
+  const ground = units.filter((e) => (e.orderQueue?.length ?? 0) < ORDER_QUEUE_MAX);
+  const rest = msg.ids.filter((id) => !unitIds.has(id));
+  const now = rest.length > 0 ? runCommand(state, playerId, { ...msg, ids: rest, queue: undefined }) : null;
+  if (ground.length === 0) return now ?? fail("not_yours", "No owned units.");
+
+  const at = travelPoint(msg);
+  let spots: Map<number, Vec> | null = null;
+  let pace: number | undefined;
+  if (at) {
+    // Lay out the formation from the ground each unit will be standing on.
+    const from = ground.map((e) => ({ ...e, ...queueTail(e) }));
+    spots = groupMoveTargets(state, from, at.x, at.y);
+    pace = groupMovePace(ground);
+  }
+  for (const e of ground) {
+    const spot = spots?.get(e.id);
+    const one = { ...msg, ids: [e.id], queue: undefined, ...(spot ? { x: spot.x, y: spot.y } : {}) } as QueueableCommand;
+    (e.orderQueue ??= []).push(pace != null ? { msg: one, pace } : { msg: one });
+  }
+  for (const e of ground) advanceQueue(state, e);
+  return ok();
+}
+
+/** Idle for the queue: no order, or only one the unit picked for itself. */
+function readyForNext(e: Entity): boolean {
+  return !e.order || !!e.order.auto;
+}
+
+/** Start queued orders until one takes hold or the queue runs dry. */
+function advanceQueue(state: MatchState, e: Entity): void {
+  const q = e.orderQueue;
+  if (!q) return;
+  if (e.hp <= 0 || e.wreck) {
+    e.orderQueue = undefined;
+    return;
+  }
+  if (e.state === "deploy" || e.state === "undeploy") return;
+  while (q.length > 0 && readyForNext(e)) {
+    const next = q.shift()!;
+    const r = runCommand(state, e.ownerId, next.msg);
+    const o = e.order;
+    if (r.ok && next.pace != null && o && (o.kind === "move" || o.kind === "attackmove" || o.kind === "guard")) {
+      o.pace = next.pace;
+    }
+  }
+  if (q.length === 0) e.orderQueue = undefined;
+}
+
+/** Sim phase: units whose order just ended take their next queued one. */
+export function tickOrderQueue(state: MatchState): void {
+  for (const e of state.entities.values()) {
+    if (e.orderQueue) advanceQueue(state, e);
   }
 }
 
