@@ -3,6 +3,10 @@ import { describe, it } from "node:test";
 import {
   catalog,
   hpMaxOf,
+  MORTAR_FLIGHT_NEAR,
+  TITAN_ROCKET,
+  TITAN_ROCKET_RELOAD,
+  TITAN_ROCKET_SALVO,
   specialLabel,
   START_UNITS,
   TICK_DT,
@@ -14,7 +18,7 @@ import {
 import { TILE_EMPTY, TILE_WATER } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { moveSpeedMul } from "./crits.js";
-import { makeEntity, tileCenter, unitInWater, walkable } from "./geo.js";
+import { makeEntity, playerTeam, tileCenter, unitInWater, walkable } from "./geo.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { createMatch, step } from "./match.js";
 import { astar } from "./path.js";
@@ -63,10 +67,51 @@ function flood(state: MatchState, x: number, y: number): void {
 }
 
 /** A shell resolves inside the tick it leaves the gun, so watch the rack instead of the projectile list. */
-function firedBy(state: MatchState, e: Entity): boolean {
+function mainGunFired(state: MatchState, e: Entity): boolean {
   const full = Object.values(catalog(e.type).ammo ?? {}).reduce((n, v) => n + (v ?? 0), 0);
   const left = Object.values(e.ammo).reduce((n, v) => n + (v ?? 0), 0);
-  return left < full || state.projectiles.some((p) => p.fromId === e.id);
+  return left < full || state.projectiles.some((p) => p.fromId === e.id && p.flight !== "rocket");
+}
+
+function rocketsFrom(state: MatchState, e: Entity) {
+  return state.projectiles.filter((p) => p.fromId === e.id && p.flight === "rocket");
+}
+
+/** A rocket fused to burst at (x, y) on the next tick. */
+function rocketAt(state: MatchState, ownerId: string, x: number, y: number): void {
+  state.projectiles.push({
+    id: state.nextId++,
+    ownerId,
+    team: playerTeam(state, ownerId),
+    x: x - 1,
+    y,
+    vx: 1 / TICK_DT,
+    vy: 0,
+    damage: TITAN_ROCKET.damage,
+    penetration: TITAN_ROCKET.penetration,
+    caliber: TITAN_ROCKET.caliber,
+    life: TICK_DT / 2,
+    ignoreId: -1,
+    fromId: -1,
+    bounced: false,
+    shell: null,
+    flight: "rocket",
+    landX: x,
+    landY: y,
+    flightTime: TICK_DT / 2,
+    z: 40,
+    vz: 0,
+  });
+}
+
+/** Flat, dry pad with a Titan at x0 and nothing else on it. */
+function range(): { state: MatchState; y: number; ts: number } {
+  const { state } = twoPlayerMatch();
+  state.heights.fill(0);
+  const ts = state.tileSize;
+  const y = 40;
+  clearPad(state, 60, y - 8, 130, y + 8);
+  return { state, y, ts };
 }
 
 const BRACE_TICKS = Math.ceil(TITAN_BRACE_SECONDS / TICK_DT) + 2;
@@ -82,7 +127,9 @@ describe("titan", () => {
     assert.equal(titan.caliber, tiger.caliber);
     assert.equal(titan.damage, tiger.damage);
     assert.equal(titan.rangeTiles, tiger.rangeTiles);
-    assert.deepEqual(titan.ammo, tiger.ammo);
+    assert.deepEqual(Object.keys(titan.ammo ?? {}), ["ap"], "armor-piercing shot only");
+    assert.equal(titan.defaultShell, "ap");
+    assert.equal(titan.rockets, true, "shoulder rocket pods");
     assert.ok(titan.hp > tiger.hp);
     assert.ok(titan.armorFront > tiger.armorFront);
     assert.ok(titan.armorSide > tiger.armorSide);
@@ -126,7 +173,7 @@ describe("titan", () => {
     assert.ok(TITAN_WADE_SPEED < 1);
   });
 
-  it("cannot fire from the water and resumes on land", () => {
+  it("keeps the main gun silent in water but still looses rockets", () => {
     const { state } = twoPlayerMatch();
     state.heights.fill(0);
     const ts = state.tileSize;
@@ -144,10 +191,13 @@ describe("titan", () => {
     titan.holdPosition = true;
     assert.equal(unitInWater(state, titan), true);
     applyCommand(state, "A", { type: "cmd.attack", ids: [titan.id], targetId: tank.id });
+    let salvo = 0;
     for (let i = 0; i < 60; i++) {
       step(state, TICK_DT);
-      assert.equal(firedBy(state, titan), false, "must not fire while wading");
+      assert.equal(mainGunFired(state, titan), false, "main gun must not fire while wading");
+      salvo = Math.max(salvo, rocketsFrom(state, titan).length);
     }
+    assert.equal(salvo, TITAN_ROCKET_SALVO, "the pods fire from the water");
     assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === titan.id)?.wading, true);
 
     titan.x = tileCenter(92, ts);
@@ -158,9 +208,88 @@ describe("titan", () => {
     let fired = false;
     for (let i = 0; i < 60 && !fired; i++) {
       step(state, TICK_DT);
-      fired = firedBy(state, titan);
+      fired = mainGunFired(state, titan);
     }
-    assert.ok(fired, "fires once back on land");
+    assert.ok(fired, "main gun fires once back on land");
+  });
+
+  it("looses a four-rocket salvo in one tick, then reloads", () => {
+    const { state, y, ts } = range();
+    const titan = makeEntity(state, "titan", "A", tileCenter(70, ts), tileCenter(y, ts));
+    titan.facing = 0;
+    titan.turretFacing = 0;
+    titan.holdPosition = true;
+    const foe = makeEntity(state, "rifleman", "B", tileCenter(90, ts), tileCenter(y, ts));
+    foe.holdPosition = true;
+    foe.cooldown = 99;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [titan.id], targetId: foe.id });
+    let first: ReturnType<typeof rocketsFrom> = [];
+    for (let i = 0; i < 40 && first.length === 0; i++) {
+      step(state, TICK_DT);
+      first = rocketsFrom(state, titan);
+    }
+    assert.equal(first.length, TITAN_ROCKET_SALVO, "all four leave together");
+    assert.ok(Math.abs((titan.rocketCooldown ?? 0) - TITAN_ROCKET_RELOAD) < 0.1, "pods start their reload");
+    const lands = new Set(first.map((p) => `${Math.round(p.landX ?? 0)},${Math.round(p.landY ?? 0)}`));
+    assert.ok(lands.size > 1, "each rocket scatters to its own point");
+    const view = snapshotFor(state, "A").projectiles.find((p) => p.id === first[0]!.id);
+    assert.equal(view?.rocket, true);
+    assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === titan.id)?.rocketReload != null, true);
+
+    const ids = new Set(first.map((p) => p.id));
+    for (let i = 0; i < Math.floor((TITAN_ROCKET_RELOAD - 1) / TICK_DT); i++) {
+      step(state, TICK_DT);
+      assert.ok(rocketsFrom(state, titan).every((p) => ids.has(p.id)), "no second salvo during the reload");
+    }
+  });
+
+  it("flies straight and far faster than a mortar bomb", () => {
+    const { state, y, ts } = range();
+    const titan = makeEntity(state, "titan", "A", tileCenter(70, ts), tileCenter(y, ts));
+    titan.facing = 0;
+    titan.turretFacing = 0;
+    titan.holdPosition = true;
+    const foe = makeEntity(state, "warden", "B", tileCenter(96, ts), tileCenter(y, ts));
+    foe.holdPosition = true;
+    foe.cooldown = 99;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [titan.id], targetId: foe.id });
+    let salvo: ReturnType<typeof rocketsFrom> = [];
+    for (let i = 0; i < 40 && salvo.length === 0; i++) {
+      step(state, TICK_DT);
+      salvo = rocketsFrom(state, titan);
+    }
+    assert.ok(salvo.length > 0);
+    for (const p of salvo) {
+      assert.equal(p.apex, undefined, "no lob");
+      assert.ok((p.flightTime ?? 99) < MORTAR_FLIGHT_NEAR / 2, `flight ${p.flightTime}s`);
+    }
+    const r = salvo[0]!;
+    const z0 = r.z ?? 0;
+    step(state, TICK_DT);
+    if (state.projectiles.includes(r)) {
+      const dz = (r.z ?? 0) - z0;
+      assert.ok(Math.abs(dz - (r.vz ?? 0) * TICK_DT) < 1e-6, "height changes along a straight line");
+    }
+    for (let i = 0; i < 60 && rocketsFrom(state, titan).length > 0; i++) step(state, TICK_DT);
+    assert.equal(rocketsFrom(state, titan).length, 0, "the whole salvo has burst inside a second or two");
+  });
+
+  it("shreds infantry and dents a tank", () => {
+    const { state, y, ts } = range();
+    const x = tileCenter(100, ts);
+    const soldier = makeEntity(state, "rifleman", "B", x, tileCenter(y, ts));
+    rocketAt(state, "A", x, tileCenter(y, ts));
+    step(state, TICK_DT);
+    assert.ok(soldier.hp < soldier.hpMax * 0.3, `rifleman hp ${soldier.hp}/${soldier.hpMax}`);
+    assert.ok(state.impacts.some((i) => i.rocket), "burst is flagged for the client");
+
+    const tank = makeEntity(state, "warden", "B", tileCenter(80, ts), tileCenter(y, ts));
+    const hp0 = tank.hp;
+    rocketAt(state, "A", tank.x, tank.y);
+    step(state, TICK_DT);
+    const lost = hp0 - tank.hp;
+    assert.ok(lost >= hp0 * 0.05 && lost <= hp0 * 0.15, `tank lost ${lost} of ${hp0}`);
+    assert.ok(tank.hp > 0);
   });
 
   it("braces in place for extra hit points, then packs back up", () => {
@@ -222,7 +351,7 @@ describe("titan", () => {
     let fired = false;
     for (let i = 0; i < 80 && !fired; i++) {
       step(state, TICK_DT);
-      fired = firedBy(state, titan);
+      fired = mainGunFired(state, titan);
     }
     assert.ok(fired, "torso swings onto the target and fires");
     assert.equal(titan.facing, hull, "legs stay planted");

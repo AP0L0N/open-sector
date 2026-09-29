@@ -42,6 +42,13 @@ import {
   leavesWreck,
   pickLoadedShell,
   reloadSecondsOf,
+  rocketsOf,
+  TITAN_ROCKET,
+  TITAN_ROCKET_POD_LIFT,
+  TITAN_ROCKET_RELOAD,
+  TITAN_ROCKET_SALVO,
+  TITAN_ROCKET_SPEED,
+  TITAN_ROCKET_SPLASH_TILES,
   type CatalogEntry,
   type ShellType,
 } from "../catalog.js";
@@ -110,6 +117,8 @@ import {
   mortarFlightSeconds,
   mortarLanding,
   mortarScatterRadius,
+  rocketArmorDamage,
+  rocketScatterRadius,
 } from "./mortar.js";
 import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
@@ -126,14 +135,19 @@ export function tickCombat(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (!canFight(e) || !supplyRiderFights(state, e)) continue;
     tickWeaponClocks(e, dt);
-    if (unitInWater(state, e) || garrisonIsHiding(state, e)) continue;
+    if (waterSilences(state, e) || garrisonIsHiding(state, e)) continue;
     resolveTarget(state, e);
   }
   tickStance(state);
   for (const e of state.entities.values()) {
-    if (!canFight(e) || !supplyRiderFights(state, e) || unitInWater(state, e) || garrisonIsHiding(state, e)) continue;
+    if (!canFight(e) || !supplyRiderFights(state, e) || waterSilences(state, e) || garrisonIsHiding(state, e)) continue;
     fireAtCurrent(state, e, dt);
   }
+}
+
+/** Standing in water stops every gun except the Titan's shoulder rockets, which ride above it. */
+function waterSilences(state: MatchState, e: Entity): boolean {
+  return unitInWater(state, e) && !rocketsOf(e.type);
 }
 
 function canFight(e: Entity): boolean {
@@ -436,6 +450,12 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
 
   if (!holedUp && !gunArcOk) return;
 
+  if (rocketsOf(e.type)) {
+    fireRockets(state, e, aimX, aimY, range, dist, target);
+    // The pods clear the water. The main gun does not.
+    if (unitInWater(state, e)) return;
+  }
+
   if (e.type === "walker") {
     if (target && walkerSparesBuilding(state, e, target)) return;
     fireWalker(state, e, aimX, aimY, range, dist, target);
@@ -577,15 +597,115 @@ function launchMortar(
   state.projectiles.push(p);
 }
 
-function detonateMortar(state: MatchState, p: Projectile, rand: () => number): void {
+/**
+ * Titan salvo: every rocket leaves in the same tick from the two shoulder pods,
+ * each fused on its own scattered point along the aim. The aim is the torso's,
+ * so a wading Titan still lays its salvo where the gun would point.
+ */
+function fireRockets(
+  state: MatchState,
+  e: Entity,
+  aimX: number,
+  aimY: number,
+  range: number,
+  dist: number,
+  target: Entity | undefined,
+): void {
+  if ((e.rocketCooldown ?? 0) > 0) return;
+  const moving = !!target && (target.waypoints.length > 0 || target.state === "move");
+  const radius = rocketScatterRadius(dist, range, moving ? 1.15 : 1);
+  const maxX = Math.max(1, state.width * state.tileSize - 1);
+  const maxY = Math.max(1, state.height * state.tileSize - 1);
+  const aim = e.turretFacing;
+  const sideX = -Math.sin(aim);
+  const sideY = Math.cos(aim);
+  const z0 = muzzleHeight(state, e) + TITAN_ROCKET_POD_LIFT;
+  for (let i = 0; i < TITAN_ROCKET_SALVO; i++) {
+    const land = mortarLanding(aimX, aimY, radius, () => nextRand(state));
+    land.x = Math.min(maxX, Math.max(0, land.x));
+    land.y = Math.min(maxY, Math.max(0, land.y));
+    // Pods sit either side of the torso: two tubes left, two right.
+    const side = (i % 2 === 0 ? 1 : -1) * e.radius * 0.8;
+    const x = e.x + sideX * side;
+    const y = e.y + sideY * side;
+    const dx = land.x - x;
+    const dy = land.y - y;
+    const len = Math.max(1, Math.hypot(dx, dy));
+    const flight = len / TITAN_ROCKET_SPEED;
+    const zLand = worldTileHeight(state, land.x, land.y);
+    state.projectiles.push({
+      id: state.nextId++,
+      ownerId: e.ownerId,
+      team: playerTeam(state, e.ownerId),
+      x,
+      y,
+      vx: dx / flight,
+      vy: dy / flight,
+      damage: TITAN_ROCKET.damage,
+      penetration: TITAN_ROCKET.penetration,
+      caliber: TITAN_ROCKET.caliber,
+      life: flight,
+      ignoreId: e.id,
+      fromId: e.id,
+      bounced: false,
+      shell: null,
+      flight: "rocket",
+      landX: land.x,
+      landY: land.y,
+      flightTime: flight,
+      harmAllies: e.order?.kind === "forceattack",
+      z: z0,
+      vz: (zLand - z0) / flight,
+    });
+  }
+  e.rocketCooldown = TITAN_ROCKET_RELOAD;
+}
+
+/** Advance a rocket along its straight line. True while it is still flying. */
+function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => number): boolean {
+  const x0 = p.x;
+  const y0 = p.y;
+  const z0 = p.z ?? 0;
+  const stepDt = p.life > 0 ? Math.min(dt, p.life) : 0;
+  p.x += p.vx * stepDt;
+  p.y += p.vy * stepDt;
+  p.z = z0 + (p.vz ?? 0) * stepDt;
+  p.life -= dt;
+  // It flies low and straight, so a hull, a wall, or a tree in the way takes the burst.
+  const struck = nearestSweepHit(state, x0, y0, p, z0, p.z);
+  const tree = nearestTreeSweep(state, x0, y0, p, z0, p.z, rand);
+  const first = struck && (!tree || struck.t <= tree.t) ? struck : tree;
+  if (first) {
+    p.x = first.x;
+    p.y = first.y;
+    detonateMortar(state, p, rand, struck && first === struck ? struck.e : undefined);
+    return false;
+  }
+  if (p.life > 0) return true;
+  if (p.landX != null && p.landY != null) {
+    p.x = p.landX;
+    p.y = p.landY;
+  }
+  p.z = 0;
+  detonateMortar(state, p, rand);
+  return false;
+}
+
+/**
+ * Mortar bomb or Titan rocket burst. Both throw splash over a disk; the rocket's
+ * disk is smaller and it dents armor harder. `direct` is the hull a rocket met
+ * in flight: it takes the center of the burst whatever its size.
+ */
+function detonateMortar(state: MatchState, p: Projectile, rand: () => number, direct?: Entity): void {
+  const rocket = p.flight === "rocket";
   const tx = worldToTile(p.x, state.tileSize);
   const ty = worldToTile(p.y, state.tileSize);
   if (isTree(state, tx, ty)) fellTreeAt(state, tx, ty);
-  const radius = MORTAR_SPLASH_TILES * state.tileSize;
+  const radius = (rocket ? TITAN_ROCKET_SPLASH_TILES : MORTAR_SPLASH_TILES) * state.tileSize;
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null) continue;
     if (isAirborne(e)) continue;
-    const d = Math.hypot(e.x - p.x, e.y - p.y);
+    const d = e === direct ? 0 : Math.hypot(e.x - p.x, e.y - p.y);
     const reach =
       e.kind === "building"
         ? radius + Math.min(e.tileW, e.tileH) * state.tileSize * 0.25
@@ -596,7 +716,9 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number): v
     const falloff = mortarFalloff(d, reach);
     const def = catalog(e.type);
     if (e.kind === "unit" && isArmored(def)) {
-      const nick = mortarArmorNick(def.hp, falloff, hasTracks(e.type), rand);
+      const nick = rocket
+        ? rocketArmorDamage(TITAN_ROCKET.armorDamage, falloff, rand)
+        : mortarArmorNick(def.hp, falloff, hasTracks(e.type), rand);
       e.hp = Math.max(0, e.hp - nick.damage);
       if (e.hp > 0 && nick.throwTrack) addCrit(e, "tracks");
       damageMaulerCart(e, {
@@ -730,6 +852,7 @@ function beginReload(e: Entity, gun: { reload: number }): void {
 
 function tickWeaponClocks(e: Entity, dt: number): void {
   if (e.cooldown > 0) e.cooldown = Math.max(0, e.cooldown - dt);
+  if ((e.rocketCooldown ?? 0) > 0) e.rocketCooldown = Math.max(0, (e.rocketCooldown ?? 0) - dt);
   if (e.reload > 0) {
     e.reload = Math.max(0, e.reload - dt);
     if (e.reload <= 0) {
@@ -906,6 +1029,10 @@ export function tickProjectiles(state: MatchState, dt: number): void {
   for (const p of state.projectiles) {
     if (p.flight === "bomb") {
       if (stepBomb(state, p, dt)) keep.push(p);
+      continue;
+    }
+    if (p.flight === "rocket") {
+      if (stepRocket(state, p, dt, rand)) keep.push(p);
       continue;
     }
     if (p.flight === "mortar") {
@@ -1129,6 +1256,7 @@ function pushImpact(
     caliber: p.caliber,
     blast: blast || undefined,
     mortar: p.flight === "mortar" ? true : undefined,
+    rocket: p.flight === "rocket" ? true : undefined,
   };
   noteImpactSurface(state, impact, p, kind);
   state.impacts.push(impact);

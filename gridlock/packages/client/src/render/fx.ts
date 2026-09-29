@@ -526,6 +526,67 @@ function drawGroundBurst(
 /** An aircraft bomb's burst is the mortar column drawn this much larger. */
 export const AIR_BOMB_BURST_SCALE = 1.9;
 
+/** A Titan rocket's burst is the mortar column drawn this much smaller. */
+export const ROCKET_BURST_SCALE = 0.72;
+
+/**
+ * Samples on the straight line from the pod to the rocket head. `z` is absolute
+ * elevation. `u` runs 0 at the pod to 1 at the head, the way drawMortarSmoke reads it.
+ */
+export function rocketTrailPoints(
+  from: { x: number; y: number; z: number },
+  head: { x: number; y: number; z: number },
+  steps: number,
+): { x: number; y: number; z: number; u: number }[] {
+  const n = Math.max(2, Math.floor(steps));
+  const pts: { x: number; y: number; z: number; u: number }[] = [];
+  for (let i = 0; i <= n; i++) {
+    const u = i / n;
+    pts.push({
+      x: from.x + (head.x - from.x) * u,
+      y: from.y + (head.y - from.y) * u,
+      z: from.z + (head.z - from.z) * u,
+      u,
+    });
+  }
+  return pts;
+}
+
+/** Rocket in flight: a short dark body along `dx, dy` and a flickering motor flame behind it. */
+export function drawRocketHead(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  dx: number,
+  dy: number,
+  seed: number,
+): void {
+  const len = Math.hypot(dx, dy);
+  const ux = len > 1e-3 ? dx / len : 1;
+  const uy = len > 1e-3 ? dy / len : 0;
+  const flick = 0.75 + 0.25 * Math.sin(performance.now() / 23 + seed);
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(Math.atan2(uy, ux));
+  ctx.globalCompositeOperation = "lighter";
+  softDisc(ctx, -5, 0, 7 * flick, 3.2 * flick, 255, 170, 70, 0.75);
+  softDisc(ctx, -3.5, 0, 3.2, 1.8, 255, 244, 200, 0.95);
+  ctx.globalCompositeOperation = "source-over";
+  ctx.fillStyle = "#3a3a2c";
+  ctx.strokeStyle = "#1a1410";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(4.5, 0);
+  ctx.lineTo(1.5, -1.5);
+  ctx.lineTo(-3, -1.5);
+  ctx.lineTo(-3, 1.5);
+  ctx.lineTo(1.5, 1.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
 /**
  * Mortar impact. On dirt the bomb flashes, throws soil straight up, and leaves
  * a narrow dust column. On water it is a splash column. `scale` grows it about
