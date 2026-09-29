@@ -3,7 +3,7 @@ import {
   DRONE_SURVEIL_ALT,
   DRONE_SURVEIL_SIGHT_BONUS,
   GARRISON_HIDE_SIGHT,
-  GARRISON_WATCH_SIGHT_BONUS,
+  garrisonSightBonusOf,
   HEIGHT_BASE,
   HEIGHT_DOWNHILL_COST,
   HEIGHT_DOWNHILL_SPEED,
@@ -201,7 +201,7 @@ export function sightTilesForEntity(state: MatchState, e: Entity): number {
     // A truck bed is not a window. Riders keep the sight they walked in with.
     if (house && house.type !== "supply") {
       if (house.garrisonHide) return GARRISON_HIDE_SIGHT;
-      return sightTilesOf(e.type, entityHeight(state, e)) + GARRISON_WATCH_SIGHT_BONUS;
+      return sightTilesOf(e.type, entityHeight(state, e)) + garrisonSightBonusOf(house.type);
     }
   }
   if (entityIsScouting(e)) return sightTilesOf("rifleman", entityHeight(state, e));
@@ -216,7 +216,7 @@ export function weaponRangeWorld(state: MatchState, e: Entity): number {
   const base = gun?.rangeTiles ?? catalog(e.type).rangeTiles;
   if (base <= 0) return 0;
   let tiles = rangeTilesOf(e.type, entityHeight(state, e), base);
-  if (inHouse && !host.garrisonHide) tiles += GARRISON_WATCH_SIGHT_BONUS;
+  if (inHouse && !host.garrisonHide) tiles += garrisonSightBonusOf(host.type);
   return tiles * state.tileSize;
 }
 
