@@ -34,7 +34,6 @@ import {
   previewField,
   previewPlace,
   fieldLine,
-  rangeTilesOf,
   specialOf,
   specialReady,
   tileDiamond,
@@ -169,6 +168,7 @@ import {
 import { drawTreeFall, TREE_FALL_MS } from "./tree-fall.js";
 import { lerpHullPose } from "./hull-lerp.js";
 import { canGuardUnit, resolveHoverAction, type HoverAction } from "./hover-action.js";
+import { guardHeightTag, guardReach, type GuardUnit } from "./guard-reach.js";
 import {
   blitAtlas,
   blitTerrain,
@@ -1569,16 +1569,23 @@ export class MapView {
     return Math.atan2(sy, sx);
   }
 
-  private maxSelectedRange(): number {
-    const ts = this.ts();
-    let range = 0;
+  private selectedGuardUnits(): GuardUnit[] {
+    const out: GuardUnit[] = [];
     for (const id of this.ownSelectedIds()) {
       const e = this.curr.entities.find((x) => x.id === id);
-      if (!e) continue;
-      const gun = infantryGunFor(e);
-      range = Math.max(range, rangeTilesOf(e.type, this.elevAt(e.x, e.y), gun?.rangeTiles) * ts);
+      if (e) out.push({ type: e.type, gunRangeTiles: infantryGunFor(e)?.rangeTiles });
     }
-    return range;
+    return out;
+  }
+
+  /** Ground height where the player has looked; `fallback` under never-seen fog. */
+  private knownElevAt(wx: number, wy: number, fallback: number): number {
+    const map = this.map();
+    const tx = worldToTile(wx, map.tileSize);
+    const ty = worldToTile(wy, map.tileSize);
+    if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) return fallback;
+    if (!this.explored?.[ty * map.width + tx]) return fallback;
+    return heightAt(map, tx, ty);
   }
 
   private beginGuard(px: number, py: number): void {
@@ -2330,12 +2337,15 @@ export class MapView {
     }
     if (!this.guardDragging) this.guardFacing = this.meanSelectedFacing();
     const origin = this.guardAnchor ?? this.screenToWorld(this.mouseX, this.mouseY);
-    const elev = this.elevAt(origin.x, origin.y);
-    const range = this.maxSelectedRange();
     const facing = this.guardFacing;
     const half = (GUARD_CONE_DEG * Math.PI) / 360;
+    const arcSteps = 24;
+    const reach = guardReach(this.map(), this.explored, this.selectedGuardUnits(), origin.x, origin.y, facing, half, arcSteps);
+    const range = reach.rangeWorld;
+    const elev = reach.elev;
     const ctx = this.ctx;
-    const at = (wx: number, wy: number) => this.toScreen(wx, wy, elev);
+    // Drape over ground the player has seen; fog stays level with the stand.
+    const at = (wx: number, wy: number) => this.toScreen(wx, wy, this.knownElevAt(wx, wy, elev));
     ctx.save();
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
@@ -2359,18 +2369,32 @@ export class MapView {
       ctx.setLineDash([]);
 
       const a0 = facing - half;
-      const a1 = facing + half;
-      const arc: IsoPt[] = [at(origin.x, origin.y)];
-      const arcSteps = 20;
+      const rayAng = (i: number) => a0 + (2 * half * i) / arcSteps;
+      // Full cone outline, then the part the ground leaves open.
+      const full: IsoPt[] = [at(origin.x, origin.y)];
+      const open: IsoPt[] = [at(origin.x, origin.y)];
       for (let i = 0; i <= arcSteps; i++) {
-        const a = a0 + ((a1 - a0) * i) / arcSteps;
-        arc.push(at(origin.x + Math.cos(a) * range, origin.y + Math.sin(a) * range));
+        const a = rayAng(i);
+        const r = reach.rays[i] ?? range;
+        full.push(at(origin.x + Math.cos(a) * range, origin.y + Math.sin(a) * range));
+        open.push(at(origin.x + Math.cos(a) * r, origin.y + Math.sin(a) * r));
       }
       ctx.beginPath();
-      ctx.moveTo(arc[0]!.x, arc[0]!.y);
-      for (const p of arc) ctx.lineTo(p.x, p.y);
+      ctx.moveTo(full[0]!.x, full[0]!.y);
+      for (const p of full) ctx.lineTo(p.x, p.y);
       ctx.closePath();
-      ctx.fillStyle = "rgba(232, 184, 74, 0.22)";
+      ctx.fillStyle = "rgba(20, 14, 10, 0.18)";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(232, 184, 74, 0.45)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.moveTo(open[0]!.x, open[0]!.y);
+      for (const p of open) ctx.lineTo(p.x, p.y);
+      ctx.closePath();
+      ctx.fillStyle = reach.bonusCells > 0 ? "rgba(240, 200, 90, 0.3)" : "rgba(232, 184, 74, 0.22)";
       ctx.fill();
       ctx.strokeStyle = "#e8b84a";
       ctx.lineWidth = 1.6;
@@ -2396,7 +2420,7 @@ export class MapView {
     ctx.lineTo(tip.x - ux * 12 - uy * 6, tip.y - uy * 12 + ux * 6);
     ctx.closePath();
     ctx.fill();
-    const label = this.guardDragging ? "FACE" : "GUARD";
+    const label = `${this.guardDragging ? "FACE" : "GUARD"}${guardHeightTag(reach)}`;
     ctx.font = "11px 'Share Tech Mono', monospace";
     ctx.textAlign = "left";
     ctx.textBaseline = "top";

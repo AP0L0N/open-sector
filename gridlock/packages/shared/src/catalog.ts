@@ -153,8 +153,8 @@ export const HEIGHT_DOWNHILL_SPEED = 1.12 ** (1 / TILE_SUBDIV);
 export const HEIGHT_UPHILL_COST = 1.7 ** (1 / TILE_SUBDIV);
 /** A* step-cost multiplier per adjacent-tile descent. */
 export const HEIGHT_DOWNHILL_COST = 0.9 ** (1 / TILE_SUBDIV);
-/** Extra Chebyshev sight tiles per elevation step above HEIGHT_BASE. */
-export const HEIGHT_SIGHT_BONUS = 3;
+/** Extra Chebyshev sight tiles per elevation step above HEIGHT_BASE. One terrace ≈ +4 cells of fog reach. */
+export const HEIGHT_SIGHT_BONUS = 4;
 /** Extra Chebyshev tiles infantry gain per elevation step of a tile above or below them. */
 export const INFANTRY_UPHILL_SIGHT = 3;
 /** Extra Chebyshev tiles a hull gains per elevation step of a tile above or below it. */
@@ -187,10 +187,11 @@ export const TANK_GUN_CLIMB = TILE_SUBDIV;
 export const INFANTRY_SIGHT_TILES = t(12);
 /**
  * Extra gameplay tiles of weapon reach per elevation step above HEIGHT_BASE.
- * Sight still grows by HEIGHT_SIGHT_BONUS. A hill helps the gun a little;
- * it does not turn the fog disk into a firing range.
+ * Sight still grows faster (HEIGHT_SIGHT_BONUS). One terrace ≈ +2 cells of
+ * reach: a hill is worth climbing, but it does not turn the fog disk into a
+ * firing range.
  */
-export const HEIGHT_RANGE_BONUS = 1;
+export const HEIGHT_RANGE_BONUS = 2;
 /**
  * Flat-ground reach, in gameplay tiles. `t(n)` is n cells on the 64-cell map.
  * Direct fire stops inside the shooter's own eyes, except the tank guns,
