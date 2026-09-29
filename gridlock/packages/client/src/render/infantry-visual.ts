@@ -44,6 +44,25 @@ export function gunnerSheet(opts: {
   return "walk";
 }
 
+export type CyborgSheet = "walk" | "fire" | "crawl" | "crawl-fire" | "swim" | "die";
+
+/**
+ * Cyborg. Stands, or drags himself once the legs are gone. The gatling fires
+ * from either pose, and the burst holds the flash like the MG42.
+ */
+export function cyborgSheet(opts: {
+  swimming?: boolean;
+  wreck?: boolean;
+  stance?: "stand" | "crouch" | "crawl";
+  shotAgeMs?: number | null;
+}): CyborgSheet {
+  if (opts.wreck) return "die";
+  if (opts.swimming) return "swim";
+  const firing = opts.shotAgeMs != null && opts.shotAgeMs >= 0 && opts.shotAgeMs < MG_FIRE_MS;
+  if (opts.stance === "crawl") return firing ? "crawl-fire" : "crawl";
+  return firing ? "fire" : "walk";
+}
+
 export type SniperSheet = "walk" | "crouch" | "crawl" | "swim" | "fire" | "die";
 
 /** Scoped-rifle recoil. Shorter than the bolt cooldown. */

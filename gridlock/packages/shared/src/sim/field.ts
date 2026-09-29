@@ -1,12 +1,15 @@
 import {
   NEUTRAL_OWNER,
   catalog,
+  CYBORG_REPAIR_PER_SEC,
   fieldSpan,
   MAX_UNIT_RADIUS,
   UNIT_SPACE_PAD,
   isArmoredType,
+  isCyborg,
   isFieldStructure,
   isInfantryType,
+  isRepairableUnit,
   stanceOf,
   WRECK_SCRAP_SECONDS,
   wreckScrapOf,
@@ -328,7 +331,7 @@ export function canRepairTarget(state: MatchState, playerId: string, target: Ent
   if (target.hp <= 0 || target.wreck || target.ruined) return false;
   if (target.hp >= target.hpMax && !(target.kind === "unit" && hullDamaged(target))) return false;
   if (!repairOwner(state, playerId, target.ownerId)) return false;
-  if (target.kind === "unit") return isArmoredType(target.type);
+  if (target.kind === "unit") return isRepairableUnit(target.type);
   if (target.type === "sandbags") return false;
   return target.kind === "building";
 }
@@ -512,7 +515,8 @@ function tickRepair(state: MatchState, e: Entity, dt: number): void {
     return;
   }
   if (target.hp < target.hpMax) {
-    target.hp = Math.min(target.hpMax, target.hp + REPAIR_PER_SEC * dt);
+    const rate = isCyborg(target.type) ? CYBORG_REPAIR_PER_SEC : REPAIR_PER_SEC;
+    target.hp = Math.min(target.hpMax, target.hp + rate * dt);
     if (target.hp < target.hpMax) return;
   } else if (target.kind === "unit" && hullDamaged(target)) {
     e.work += dt;

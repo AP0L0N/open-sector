@@ -510,7 +510,9 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
   const plates = armor ? `  ·  armor ${armor}` : "";
   const wreck = e.wreck ? "  ·  WRECK" : "";
   const injuries =
-    e.crits && e.crits.length > 0 ? `  ·  ${e.crits.map((c) => CRIT_LABEL[c]).join(", ")}` : "";
+    e.crits && e.crits.length > 0
+      ? `  ·  ${e.crits.map((c) => (e.type === "cyborg" && c === "leg" ? "legs torn off" : CRIT_LABEL[c])).join(", ")}`
+      : "";
   const posture = e.swimming
     ? "  ·  swimming"
     : isInfantryType(e.type) && e.stance
@@ -653,6 +655,7 @@ const TYPE_ORDER: EntityType[] = [
   "warden",
   "ss3",
   "walker",
+  "cyborg",
   "supply",
   "hauler",
   "rifleman",
@@ -921,6 +924,8 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
               ? "Kneel and plant the tube. The bomb lobs past what he can see. Too close and it will not drop."
               : focus.type === "medic"
                 ? "No weapon. He walks to a wounded soldier nearby and closes the wound. A long kneel sets a broken arm or leg. The bag does not run out."
+              : focus.type === "cyborg"
+                ? "Stands under fire — no crouch, no prone. Near death the legs tear off and he drags himself on, still firing. A medic or an engineer brings the legs back. Only a supply truck refills the drum."
               : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",
     );
   }
@@ -1120,7 +1125,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       on: view?.fieldPlace === "teeth",
     });
   }
-  const inf = units.filter((e) => isInfantryType(e.type) && e.type !== "engineer");
+  const inf = units.filter((e) => isInfantryType(e.type) && e.type !== "engineer" && e.type !== "cyborg");
   if (inf.length) {
     const ordered = new Set(inf.map((e) => e.stanceOrder ?? e.stance ?? "stand"));
     const legsBroken = inf.every((e) => e.crits?.includes("leg"));

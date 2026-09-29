@@ -7,6 +7,7 @@ import {
   isFieldStructure,
   isGarrisonable,
   isInfantryType,
+  isRepairableUnit,
   supplyShortOf,
   type EntityView,
 } from "@gridlock/shared";
@@ -151,7 +152,7 @@ function canRepairHit(
   if (hit.hpMax != null && hit.hp >= hit.hpMax && !hullHurt) return false;
   const friendly = !hit.ownerId || hit.ownerId === you || allied(hit.ownerId);
   if (!friendly) return false;
-  if (hit.kind === "unit") return isArmoredType(hit.type);
+  if (hit.kind === "unit") return isRepairableUnit(hit.type);
   if (hit.type === "sandbags" || isFieldStructure(hit.type) && hit.type !== "teeth") return false;
   return hit.kind === "building";
 }
