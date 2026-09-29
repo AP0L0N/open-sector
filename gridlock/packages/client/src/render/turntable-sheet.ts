@@ -53,9 +53,16 @@ const stukaHullGlob = import.meta.glob("../assets/units/stuka/hull/*.png", {
   import: "default",
 }) as Record<string, string>;
 
+const droneHullGlob = import.meta.glob("../assets/units/drone/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 export const SS3_OPTS: TurntableSheetOpts = { ...TIGER_OPTS };
 /** Plane cell. Wingspan fills it, so it keeps a little more room; wheels sit on the contact line. */
 export const STUKA_OPTS: TurntableSheetOpts = { ...TIGER_OPTS, contactY: 0.8, padding: 2 };
+/** Quadcopter: same aircraft fit as the Stuka; the rotor span fills the cell, the pod's belly sits on the contact line. */
+export const DRONE_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -352,6 +359,30 @@ export function bindAircraftSheets(hullImage: HTMLImageElement): void {
     })
     .catch((err) => {
       console.error("stuka turntable", err);
+    });
+}
+
+let dronePrevious: ComposedTurntable | null = null;
+
+/** Drone Op's quadcopter drop-ins: one hull sheet and a cameo, same fit rules as the Stuka. */
+export function bindDroneSheets(hullImage: HTMLImageElement): void {
+  let hullUrls: string[];
+  try {
+    hullUrls = pickTurntableUrls(droneHullGlob);
+  } catch (err) {
+    console.error("drone turntable", err);
+    return;
+  }
+  void Promise.all(hullUrls.map(loadImage))
+    .then((hullImgs) => composeAligned([hullImgs], DRONE_OPTS))
+    .then((next) => {
+      revoke(dronePrevious);
+      dronePrevious = next;
+      hullImage.src = next.sheetUrls[0] ?? "";
+      applyCameo(next.cameoUrl, "--drone-cameo");
+    })
+    .catch((err) => {
+      console.error("drone turntable", err);
     });
 }
 
