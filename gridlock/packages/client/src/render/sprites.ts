@@ -25,6 +25,7 @@ import dynamoUrl from "../assets/buildings/dynamo.png";
 import smelterUrl from "../assets/buildings/smelter.png";
 import musterUrl from "../assets/buildings/muster.png";
 import armoryUrl from "../assets/buildings/armory.png";
+import airfieldUrl from "../assets/buildings/airfield.png";
 import cottageUrl from "../assets/buildings/cottage.png";
 import cottageSUrl from "../assets/buildings/cottage-s.png";
 import cottageWUrl from "../assets/buildings/cottage-w.png";
@@ -117,7 +118,7 @@ import infantrySwimUrl from "../assets/units/infantry-swim.png";
 import haulerHullUrl from "../assets/units/hauler-hull.png";
 import haulerCartUrl from "../assets/units/hauler-cart.png";
 import walkerSheetUrl from "../assets/units/walker-move.png";
-import { bindCasemateSheets, bindSupplySheets, bindTurntableSheets } from "./turntable-sheet.js";
+import { bindAircraftSheets, bindCasemateSheets, bindSupplySheets, bindTurntableSheets } from "./turntable-sheet.js";
 import { engineRowFromFacing, engineRowFromScreen } from "./turntable.js";
 import scoutHeadUrl from "../assets/units/scout-head.png";
 import rigSheetUrl from "../assets/units/rig-move.png";
@@ -643,6 +644,19 @@ export const SUPPLY_SPRITE: UnitSpriteDef = {
 };
 bindSupplySheets(SUPPLY_SPRITE.image);
 
+/** Ju 87 dive bomber. Same sheet on the strip and in the air; the map lifts it by altitude. */
+export const STUKA_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(70 * UNIT_VISUAL_SCALE),
+  contactY: 0.8,
+  facingSpace: "world",
+};
+bindAircraftSheets(STUKA_SPRITE.image);
+
 export const WALKER_SPRITE: UnitSpriteDef = {
   image: loadSheet(walkerSheetUrl),
   dirs: 16,
@@ -696,6 +710,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   warden: TIGER_SPRITE,
   ss3: SS3_SPRITE,
   supply: SUPPLY_SPRITE,
+  stuka: STUKA_SPRITE,
   rig: RIG_SPRITE,
 };
 
@@ -776,6 +791,8 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   armory: building(armoryUrl, 384, 194.5, 310, 120, 48),
   muster: building(musterUrl, 385, 194.5, 333, 278, 52),
   smelter: building(smelterUrl, 384, 194, 393, 138, 90),
+  // Metrics from tools/sprites/render_procedural.py (airfield.json).
+  airfield: building(airfieldUrl, 864, 488, 451, 417.4, 42),
 };
 
 /** East, south, west, north. Yards differ per face so a random facing also varies the lot. */

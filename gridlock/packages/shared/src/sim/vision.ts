@@ -45,6 +45,8 @@ export type SightSource = {
   uphillSight?: number;
   scoutOut?: boolean;
   scoutHp?: number;
+  /** Aircraft height. A plane in the air looks down over hills. */
+  air?: { alt: number };
 };
 
 const FOV_N8: readonly [number, number][] = [
@@ -437,6 +439,7 @@ function visionKey(state: MatchState, playerId: string): number {
     h = mix(h, e.garrisonedIn ?? 0);
     h = mix(h, e.garrisonHide ? 1 : 0);
     h = mix(h, e.scoutOut && e.scoutHp > 0 ? 1 : 0);
+    h = mix(h, e.air ? Math.round(e.air.alt) : 0);
     h = mix(h, occupantSightTiles(state, e) ?? -1);
   }
   for (const c of state.smokeClouds) {

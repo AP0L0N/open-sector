@@ -1,14 +1,16 @@
-import { catalog, secondsToTicks, TRAIN_QUEUE_CAP, UNIT_CAP, type TrainType } from "../catalog.js";
-import { makeEntity, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
+import { AIRFIELD_PADS, catalog, isAircraftType, secondsToTicks, TRAIN_QUEUE_CAP, UNIT_CAP, type TrainType } from "../catalog.js";
+import { airfieldPadWorld, freePad, padsSpoken, RUNWAY_HEADING } from "./air.js";
+import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear } from "./formation.js";
 import { setPath } from "./path.js";
 import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
 import type { Entity, MatchState, TrainJob } from "./types.js";
 
-export function producerType(unit: TrainType): "muster" | "smelter" | "armory" {
+export function producerType(unit: TrainType): "muster" | "smelter" | "armory" | "airfield" {
   if (unit === "rifleman" || unit === "gunner" || unit === "sniper" || unit === "atinfantry" || unit === "mortarman" || unit === "engineer" || unit === "medic") return "muster";
   if (unit === "hauler") return "smelter";
+  if (isAircraftType(unit)) return "airfield";
   return "armory";
 }
 
@@ -31,6 +33,7 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
   for (const e of state.entities.values()) {
     if (e.ownerId !== playerId || e.type !== want || e.hp <= 0) continue;
     if (e.queue.length >= TRAIN_QUEUE_CAP) continue;
+    if (want === "airfield" && padsSpoken(state, e) >= AIRFIELD_PADS) continue;
     const load = e.queue.reduce((s, j) => s + (j.totalTicks - j.progressTicks), 0);
     if (load < bestLoad) {
       bestLoad = load;
@@ -41,7 +44,9 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
     const busy = [...state.entities.values()].some(
       (e) => e.ownerId === playerId && e.type === want && e.hp > 0,
     );
+    if (busy && want === "airfield") return `Airfield pads full (${AIRFIELD_PADS} planes). Build another Airfield.`;
     if (busy) return "Queue is full.";
+    if (want === "airfield") return "Need an Airfield.";
     if (unit === "rifleman" || unit === "gunner" || unit === "sniper" || unit === "atinfantry" || unit === "mortarman" || unit === "medic") return "Need a Muster.";
     if (unit === "hauler") return "Need a Smelter.";
     return "Need an Armory.";
@@ -172,6 +177,15 @@ export function spawnUnit(
   ignoreCap: boolean,
 ): Entity | null {
   if (!ignoreCap && ownedUnits(state, playerId) >= UNIT_CAP) return null;
+  if (isAircraftType(type)) {
+    // A plane rolls out onto a free hardstand and waits there for orders.
+    const pad = from.type === "airfield" ? freePad(state, from) : null;
+    if (pad == null) return null;
+    const at = airfieldPadWorld(from, pad, state.tileSize);
+    const plane = makeEntity(state, type, playerId, at.x, at.y, { facing: RUNWAY_HEADING });
+    plane.air = newAirState(from.id, pad);
+    return plane;
+  }
   const door = rallyPoint(state, from);
   const u = makeEntity(state, type, playerId, door.x, door.y);
   if (from.rally) {

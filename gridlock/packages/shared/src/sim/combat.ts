@@ -1,4 +1,5 @@
 import {
+  AIR_HIT_BAND,
   aimFacing,
   beltOf,
   MG42_BIPOD_SECONDS,
@@ -70,6 +71,7 @@ import { noteImpactSurface } from "./remains.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
 import {
   aimHeight,
+  airAlt,
   canAimWeapon,
   entityHeight,
   muzzleHeight,
@@ -116,6 +118,7 @@ import { spawnSmokeCloud } from "./smoke.js";
 import { canSeeEntity } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
 import { escorting, reversing, stepTurn, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
+import { airTargetSpreadMul, isAirborne, reachesAircraft, stepBomb } from "./air.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
 export function tickCombat(state: MatchState, dt: number): void {
@@ -134,7 +137,13 @@ export function tickCombat(state: MatchState, dt: number): void {
 }
 
 function canFight(e: Entity): boolean {
-  return fires(e.type) && e.hp > 0 && !e.wreck && e.state !== "deploy" && e.state !== "undeploy";
+  // Aircraft fire their own guns and bombs in tickAir.
+  return fires(e.type) && e.hp > 0 && !e.wreck && !e.air && e.state !== "deploy" && e.state !== "undeploy";
+}
+
+/** A plane in the air is out of reach for tank guns and the mortar. */
+function outOfReachAloft(e: Entity, target: Entity): boolean {
+  return isAirborne(target) && !reachesAircraft(e);
 }
 
 /** Move, attack-move, and unit-escort all engage in-range enemies. Attack-move halts; the others keep walking. */
@@ -150,7 +159,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       return undefined;
     }
     const t = state.entities.get(e.order.targetId);
-    if (!t || t.hp <= 0 || t.id === e.id || walkerSparesBuilding(state, e, t)) {
+    if (!t || t.hp <= 0 || t.id === e.id || walkerSparesBuilding(state, e, t) || outOfReachAloft(e, t)) {
       e.order = null;
       e.attackTarget = null;
       if (e.state === "attack") e.state = "idle";
@@ -165,6 +174,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
     if (
       !target ||
       target.hp <= 0 ||
+      outOfReachAloft(e, target) ||
       skipsFriendly(state, e, target) ||
       dropsEmptyGarrison(state, e, target) ||
       walkerSparesBuilding(state, e, target) ||
@@ -181,6 +191,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
     if (
       !target ||
       target.hp <= 0 ||
+      outOfReachAloft(e, target) ||
       skipsFriendly(state, e, target) ||
       dropsEmptyGarrison(state, e, target) ||
       walkerSparesBuilding(state, e, target) ||
@@ -249,6 +260,7 @@ function currentTarget(state: MatchState, e: Entity): Entity | undefined {
   if (id == null) return undefined;
   const t = state.entities.get(id);
   if (!t || t.hp <= 0 || t.id === e.id) return undefined;
+  if (outOfReachAloft(e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && skipsFriendly(state, e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && dropsEmptyGarrison(state, e, t)) return undefined;
   if (walkerSparesBuilding(state, e, t)) return undefined;
@@ -572,6 +584,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number): v
   const radius = MORTAR_SPLASH_TILES * state.tileSize;
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null) continue;
+    if (isAirborne(e)) continue;
     const d = Math.hypot(e.x - p.x, e.y - p.y);
     const reach =
       e.kind === "building"
@@ -817,7 +830,7 @@ function fireRound(
     () => nextRand(state),
     moving,
     stats.spreadPower ?? 1,
-    target ? stanceTargetSpreadMul(target, unitInWater(state, target)) : 1,
+    target ? stanceTargetSpreadMul(target, unitInWater(state, target)) * airTargetSpreadMul(target) : 1,
     opts?.accurateRange ?? range,
   );
   const speed = stats.projectileSpeed;
@@ -891,6 +904,10 @@ export function tickProjectiles(state: MatchState, dt: number): void {
   const keep: Projectile[] = [];
   const rand = () => nextRand(state);
   for (const p of state.projectiles) {
+    if (p.flight === "bomb") {
+      if (stepBomb(state, p, dt)) keep.push(p);
+      continue;
+    }
     if (p.flight === "mortar") {
       const total = p.flightTime ?? Math.max(0.05, p.life);
       const stepDt = p.life > 0 ? Math.min(dt, p.life) : 0;
@@ -1176,6 +1193,7 @@ function nearestSweepHit(
   z1: number,
 ): { e: Entity; t: number; x: number; y: number } | null {
   let best: { e: Entity; t: number; x: number; y: number } | null = null;
+  let parked: { e: Entity; t: number; x: number; y: number } | null = null;
   for (const e of state.entities.values()) {
     if (e.hp <= 0) continue;
     if (e.id === p.ignoreId) continue;
@@ -1183,9 +1201,15 @@ function nearestSweepHit(
     const hit = sweepAgainst(state, x0, y0, p, e);
     if (!hit) continue;
     const shotZ = z0 + (z1 - z0) * hit.t;
-    if (shotClearsCover(shotZ, entityHeight(state, e), coverHeightOf(e.type))) continue;
+    if (isAirborne(e)) {
+      // Only a round near the plane's height meets it. Everything else passes under or over.
+      if (Math.abs(shotZ - (entityHeight(state, e) + airAlt(e))) > AIR_HIT_BAND) continue;
+    } else if (shotClearsCover(shotZ, entityHeight(state, e), coverHeightOf(e.type))) continue;
+    if (e.air && (!parked || hit.t < parked.t)) parked = { e, t: hit.t, x: hit.x, y: hit.y };
     if (!best || hit.t < best.t) best = { e, t: hit.t, x: hit.x, y: hit.y };
   }
+  // A plane on its hardstand sits on top of the strip. The round finds the plane, not the grass.
+  if (best?.e.type === "airfield" && parked && !isAirborne(parked.e)) return parked;
   return best;
 }
 
@@ -1282,6 +1306,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
+    if (outOfReachAloft(e, o)) continue;
     if (isInfantryType(e.type) && o.kind === "building") {
       if (!garrisonIsHostile(state, e.ownerId, o) || !garrisonLooksOccupied(state, e.ownerId, o)) continue;
     } else if (
@@ -1344,7 +1369,7 @@ function maybeHaulerSmokeScreen(state: MatchState, victim: Entity, p: Projectile
 }
 
 function maybeWithdraw(state: MatchState, victim: Entity, p: Projectile): void {
-  if (victim.kind !== "unit" || victim.wreck || victim.garrisonedIn) return;
+  if (victim.kind !== "unit" || victim.wreck || victim.garrisonedIn || victim.air) return;
   if (catalog(victim.type).turnInPlace) return;
   if (victim.holdPosition || immobilized(victim)) return;
   if (victim.state === "deploy" || victim.state === "undeploy") return;

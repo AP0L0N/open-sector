@@ -258,6 +258,8 @@ export type EntityType =
   | "smelter"
   | "muster"
   | "armory"
+  | "airfield"
+  | "stuka"
   | "cottage"
   | "house"
   | "manor"
@@ -267,7 +269,7 @@ export type EntityType =
   | "chapel"
   | "sandbags"
   | "teeth";
-export type BuildingType = "dynamo" | "smelter" | "muster" | "armory";
+export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield";
 /** Placed by an engineer, not the construction yard. */
 export type FieldStructureType = "sandbags" | "teeth";
 export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "teeth"];
@@ -281,7 +283,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "supply";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "supply" | "stuka";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -303,13 +305,14 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
   deploy: 2,
 };
 
-export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "supply"];
+export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "supply", "stuka"];
 /**
  * Opening army besides the Rig. Hauler omitted so it does not auto-harvest.
  * Supply truck omitted so the opening fight stays the same — train it at the Armory.
+ * Aircraft need an Airfield pad, so the Stuka is omitted too.
  */
-export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter((t) => t !== "hauler" && t !== "supply");
+export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter((t) => t !== "hauler" && t !== "supply" && t !== "stuka");
 
 export interface CatalogEntry {
   type: EntityType;
@@ -385,6 +388,8 @@ export interface CatalogEntry {
   garrisonFloors?: number;
   /** Hatch scout: pop the cupola for infantry sight. Tanks only. */
   hasScout?: boolean;
+  /** Flies. Parks on an Airfield pad, ignores ground collision and paths. */
+  aircraft?: boolean;
 }
 
 export interface ShellDef {
@@ -707,6 +712,86 @@ export const TRUCK_RIDER_SHARE_REAR = 0.22;
 /** Chance a bullet on the front plate kills whoever is driving. */
 export const DRIVER_KILL_CHANCE = 0.18;
 
+/**
+ * Ju 87 Stuka and the Airfield that keeps it. A plane lives on one pad of
+ * one Airfield. It takes off on an order, flies straight over hills and
+ * houses, and comes home to land when the bomb and belts are spent or the
+ * tank runs low. On the pad it refuels, rearms, and patches up. With no
+ * pad to come home to it glides until the fuel runs out, then goes down.
+ *
+ * Heights are elevation units above the ground under the plane
+ * (HEIGHT_WORLD world pixels each), the same scale as a mortar arc.
+ */
+/** Planes one Airfield parks, trains, and rearms. */
+export const AIRFIELD_PADS = 4;
+/** Cruise height. Above every tree, house, and hill lip. */
+export const AIR_CRUISE_ALT = 16;
+/** Height the dive pulls out at and lets the bomb go. */
+export const AIR_RELEASE_ALT = 5;
+/** Height a strafing pass (belts only, no bomb) settles at. */
+export const AIR_STRAFE_ALT = 7;
+/** Elevation units per second the plane climbs or dives. */
+export const AIR_CLIMB_PER_SEC = 6;
+export const AIR_DIVE_PER_SEC = 14;
+/** Distance from the target the dive starts, gameplay tiles. */
+export const AIR_DIVE_START_TILES = t(8);
+/** Past the target, fly straight this far before turning in again. */
+export const AIR_EXTEND_TILES = t(7);
+/** Half-angle off the nose the target must be inside to start a dive. */
+export const AIR_DIVE_CONE_DEG = 30;
+/** Radius a plane circles a point it was sent to. */
+export const AIR_ORBIT_TILES = t(3);
+/** Seconds of the takeoff roll before the wheels leave the strip. */
+export const AIR_TAKEOFF_SECONDS = 2.5;
+/** Speed share on the ground roll and on the landing flare. */
+export const AIR_ROLL_SPEED = 0.45;
+/** Straight final before the pad, gameplay tiles. */
+export const AIR_FINAL_TILES = t(8);
+/** Seconds of flight in a full tank. */
+export const AIR_FUEL_SECONDS = 100;
+/** Head home once the tank holds this many seconds past the flight back. */
+export const AIR_FUEL_RESERVE = 10;
+/** Pad service. Fuel and HP per second; the bomb is hung after BOMB_REARM_SECONDS. */
+export const AIR_REFUEL_PER_SEC = 12;
+export const AIR_REPAIR_PER_SEC = 4;
+export const AIR_BELT_REARM_PER_SEC = 150;
+export const BOMB_REARM_SECONDS = 8;
+/**
+ * Shots at a plane in the air open this much wider. It is fast and it is
+ * above the shooter. Small arms still bring one down if it lingers.
+ */
+export const AIR_TARGET_SPREAD = 2.2;
+/** A round within this many elevation units of the plane's height can hit it. */
+export const AIR_HIT_BAND = 4;
+/**
+ * SC 250 under the belly. One per sortie.
+ * A soldier inside the burst dies. A direct hit (inside BOMB_DIRECT_TILES)
+ * goes through a tank's roof; a near miss throws a track and dents it.
+ */
+export const BOMB_SPLASH_TILES = t(2);
+export const BOMB_DIRECT_TILES = t(0.5);
+export const BOMB_DAMAGE = 240;
+/** Share of a hull's max HP on a direct hit, and at the center of a near miss. */
+export const BOMB_ARMOR_DIRECT = 0.85;
+export const BOMB_ARMOR_NEAR = 0.2;
+export const BOMB_TRACK_CHANCE = 0.5;
+/** Buildings take this at the center, with the same falloff. */
+export const BOMB_BUILDING_DAMAGE = 420;
+export const BOMB_CALIBER = 250;
+/** Seconds from release to the ground. */
+export const BOMB_FALL_SECONDS = 0.7;
+/** Release this far short of the target so the bomb carries onto it. */
+export const BOMB_RELEASE_TILES = t(3.5);
+export const BOMB_SCATTER_TILES = t(0.35);
+export const STUKA_BOMBS = 1;
+/**
+ * Two MG 17 in the wings. 1,200 rounds a minute each, so four rounds a
+ * tick. The belts together hold 1,000 rounds — about twelve seconds on the
+ * trigger. They fire only at soft targets; plate shrugs them off.
+ */
+export const STUKA_MG_PER_TICK = (MG42_RPM / 60 / (1 / TICK_DT)) * 2;
+export const STUKA_MG_ROUNDS = 1000;
+
 export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   rifle: RIFLE,
   handgun: HANDGUN,
@@ -721,6 +806,16 @@ export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
  * the round itself is not a visible tracer — sparks only after an armor bounce.
  */
 export const SMALL_ARMS_SPEED = 10000;
+export const STUKA_MG = {
+  damage: 8,
+  penetration: 8,
+  caliber: 7.92,
+  spreadDeg: 3,
+  projectileSpeed: SMALL_ARMS_SPEED,
+  rangeTiles: t(8),
+  /** Half-angle off the nose the wing guns bear. */
+  arcDeg: 10,
+} as const;
 /** Same as small-arms: 75mm lands in the fire tick. */
 export const TANK_SHELL_SPEED = SMALL_ARMS_SPEED;
 /** Seconds a 75mm smoke screen lasts. */
@@ -1008,6 +1103,28 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
+  },
+  airfield: {
+    type: "airfield",
+    kind: "building",
+    name: "Airfield",
+    letter: "L",
+    cost: 1000,
+    buildSeconds: 26,
+    hp: 1100,
+    power: -40,
+    tileW: t(5),
+    tileH: t(4),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: `Grass strip and four hardstands. Trains dive bombers and keeps up to ${AIRFIELD_PADS}. Planes land here to refuel, rearm, and patch up.`,
   },
   sandbags: {
     type: "sandbags",
@@ -1395,6 +1512,33 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 28,
     blurb: "Light truck. Tops up tank racks, coaxial belts, and the Walker's backpack, then refills itself at an Armory. Two seats. The factory driver stays at the wheel. A bullet in the front plate can kill the driver and leave the truck for anyone. A replacement driver can get out. The second soldier can fire a rifle or handgun from the bed — a machine gun, scoped rifle, or other large gun stays slung. Soldiers inside are a little harder to wound, and more so from the side or rear.",
   },
+  /** Ju 87 B dive bomber. Lives on an Airfield pad. */
+  stuka: {
+    type: "stuka",
+    kind: "unit",
+    name: "Stuka",
+    letter: "J",
+    cost: 450,
+    buildSeconds: 20,
+    hp: 110,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 12,
+    moveTilesPerSec: t(5),
+    turnDegPerSec: 120,
+    rangeTiles: STUKA_MG.rangeTiles,
+    sightTiles: t(10),
+    cooldown: TICK_DT,
+    damage: STUKA_MG.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: STUKA_MG.penetration,
+    caliber: STUKA_MG.caliber,
+    spreadDeg: STUKA_MG.spreadDeg,
+    aircraft: true,
+    blurb: "Dive bomber. One SC 250 per sortie, two wing MGs for soft targets. Flies over everything; only rifles, machine guns, and the Walker can reach it in the air. Lands at its Airfield to refuel and rearm.",
+  },
   cottage: {
     type: "cottage",
     name: "Cottage",
@@ -1535,6 +1679,11 @@ export function armorLabel(type: EntityType): string | null {
 }
 
 const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic"];
+
+/** Flies. Stuka only. */
+export function isAircraftType(type: EntityType): boolean {
+  return catalog(type).aircraft === true;
+}
 
 export function isInfantryType(type: EntityType): boolean {
   return (INFANTRY_TYPES as readonly string[]).includes(type);

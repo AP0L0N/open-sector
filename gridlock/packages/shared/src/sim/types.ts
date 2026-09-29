@@ -41,7 +41,8 @@ export interface Order {
     | "build"
     | "repair"
     | "board"
-    | "supply";
+    | "supply"
+    | "land";
   x?: number;
   y?: number;
   /** World radians. Guard / rotate destination facing. */
@@ -60,6 +61,33 @@ export interface Order {
   structure?: FieldStructureType;
   /** Panic retreat: after this order, the Mauler returns to HQ and holds. */
   returnToBase?: boolean;
+}
+
+/** Where a plane is in its sortie. */
+export type AirPhase = "parked" | "takeoff" | "fly" | "landing";
+
+/** Flight state. Aircraft only. */
+export interface AirState {
+  phase: AirPhase;
+  /** Elevation units above the ground under the plane. 0 on the pad and the takeoff roll. */
+  alt: number;
+  /** 0–1 share of cruise speed. */
+  speed: number;
+  /** Seconds of flight left in the tank. */
+  fuel: number;
+  bombs: number;
+  /** Wing-MG rounds left in both belts. */
+  rounds: number;
+  /** Airfield this plane parks on. Null once it is gone and no other pad is free. */
+  homeId: number | null;
+  /** Pad index on the home Airfield. */
+  pad: number;
+  /** Seconds on the pad toward hanging the next bomb. */
+  rearm: number;
+  /** Seconds into the takeoff roll. */
+  roll: number;
+  /** Flying straight out past the target before turning in again. */
+  extend: boolean;
 }
 
 export interface Entity {
@@ -173,6 +201,8 @@ export interface Entity {
   crew: boolean;
   /** Supply points left. 0 on every type except the supply truck. */
   supply: number;
+  /** Aircraft only. */
+  air?: AirState;
 }
 
 export interface Projectile {
@@ -203,8 +233,8 @@ export interface Projectile {
   z?: number;
   /** Elevation units per second along the shot. Direct fire only. */
   vz?: number;
-  /** Arcing bomb. Omitted for rifles, machine guns, and tank shells. */
-  flight?: "mortar";
+  /** Arcing mortar bomb, or a bomb falling from a plane. Omitted for rifles, machine guns, and tank shells. */
+  flight?: "mortar" | "bomb";
   /** Fused landing point for a mortar bomb. */
   landX?: number;
   landY?: number;

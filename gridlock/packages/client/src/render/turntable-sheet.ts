@@ -48,7 +48,14 @@ const supplyHullGlob = import.meta.glob("../assets/units/supply-truck/hull/*.png
   import: "default",
 }) as Record<string, string>;
 
+const stukaHullGlob = import.meta.glob("../assets/units/stuka/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 export const SS3_OPTS: TurntableSheetOpts = { ...TIGER_OPTS };
+/** Plane cell. Wingspan fills it, so it keeps a little more room; wheels sit on the contact line. */
+export const STUKA_OPTS: TurntableSheetOpts = { ...TIGER_OPTS, contactY: 0.8, padding: 2 };
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -321,6 +328,30 @@ export function bindSupplySheets(hullImage: HTMLImageElement): void {
     })
     .catch((err) => {
       console.error("supply truck turntable", err);
+    });
+}
+
+let stukaPrevious: ComposedTurntable | null = null;
+
+/** Stuka drop-ins: one hull sheet and a cameo, same fit rules as the trucks. */
+export function bindAircraftSheets(hullImage: HTMLImageElement): void {
+  let hullUrls: string[];
+  try {
+    hullUrls = pickTurntableUrls(stukaHullGlob);
+  } catch (err) {
+    console.error("stuka turntable", err);
+    return;
+  }
+  void Promise.all(hullUrls.map(loadImage))
+    .then((hullImgs) => composeAligned([hullImgs], STUKA_OPTS))
+    .then((next) => {
+      revoke(stukaPrevious);
+      stukaPrevious = next;
+      hullImage.src = next.sheetUrls[0] ?? "";
+      applyCameo(next.cameoUrl, "--stuka-cameo");
+    })
+    .catch((err) => {
+      console.error("stuka turntable", err);
     });
 }
 
