@@ -8,6 +8,7 @@ import {
   GATLING,
   STANCE_SPEED,
   TICK_DT,
+  TRAIN_TYPES,
   WALKER_ONE_BURST,
   catalog,
   hasCrit,
@@ -27,6 +28,7 @@ import { moveSpeedMul, rollCrits } from "./crits.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { tickStance } from "./stance.js";
+import { producerType } from "./train.js";
 import type { Entity, MatchState } from "./types.js";
 
 function match(): { state: MatchState; a: string; b: string } {
@@ -72,6 +74,8 @@ describe("cyborg", () => {
   it("is an Armory-trained infantry type with one gatling and a drum that never reloads", () => {
     const def = catalog("cyborg");
     assert.equal(def.name, "Cyborg");
+    assert.ok(TRAIN_TYPES.includes("cyborg"));
+    assert.equal(producerType("cyborg"), "armory");
     assert.equal(isInfantryType("cyborg"), true);
     assert.equal(isRepairableUnit("cyborg"), true);
     assert.equal(isRepairableUnit("rifleman"), false);

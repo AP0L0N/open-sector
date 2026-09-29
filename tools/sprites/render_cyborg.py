@@ -81,6 +81,8 @@ MATERIALS: dict[str, tuple] = {
 }
 EMISSIVE = {"eye", "spark", "flash_core", "flash", "pupil"}
 MAT_IDS = {name: i for i, name in enumerate(MATERIALS)}
+# Rows whose model spilled past the cell edge during the current sheet.
+CLIPPED: list[int] = []
 
 
 # ---------------------------------------------------------------- primitives
@@ -260,7 +262,8 @@ def gatling(c: Cloud, base, spin: float, length: float = 15.0, flash: int = 0, t
     cylinder(c, b1 - fwd * 1.0, b1 - fwd * 0.2, 2.2, "dark")
     muzzle = b1 + fwd * 0.3
     if flash:
-        s = {1: 1.6, 2: 0.9, 3: 1.4, 4: 0.5}[flash]
+        # Big / small / big / tiny. The big star stays inside the 96 cell on E and W.
+        s = {1: 1.15, 2: 0.8, 3: 1.05, 4: 0.45}[flash]
         # Star: a long spike down the bore, four short spikes across it, a hot core.
         ellipsoid(c, muzzle + fwd * 4.6 * s, (5.6 * s, 1.1 * s, 1.1 * s), "flash", rot=R)
         for k in range(4):
@@ -435,13 +438,17 @@ def pose_dead() -> tuple[Cloud, float]:
     # Left arm limp forward.
     capsule(c, (6.0, 9.0, 5.0), (12.0, 12.0, 2.0), 2.4, mat="olive")
     capsule(c, (12.0, 12.0, 2.0), (18.0, 11.0, 1.6), 2.0, mat="skin")
-    # A torn leg behind him, on its side.
-    lr = rot_z(math.radians(70)) @ rot_x(math.radians(90))
-    base = np.array([-20.0, -8.0, 3.2])
+    # A torn leg beside him, on its side, foot toward his hips.
+    lr = rot_z(math.radians(95)) @ rot_x(math.radians(90))
+    base = np.array([0.0, 16.0, 3.2])
     capsule(c, base, base + lr @ np.array([0, 0, -12.0]), 3.0, 2.6, "metal")
     ellipsoid(c, base + lr @ np.array([0.8, 0, -12.0]), (2.9, 3.0, 2.9), "metal")
     capsule(c, base + lr @ np.array([0, 0, -12.0]), base + lr @ np.array([-2.0, 0, -23.0]), 2.3, 2.0, "dark")
     box(c, base + lr @ np.array([0.0, 0, -25.0]), (4.0, 2.4, 1.3), "dark", rot=lr)
+    # The corpse's contact is the centre of its footprint, so every yaw fits the cell.
+    allp = np.concatenate(c.pts)
+    ctr = np.array([(allp[:, 0].min() + allp[:, 0].max()) / 2, (allp[:, 1].min() + allp[:, 1].max()) / 2, 0.0])
+    c.pts = [p - ctr for p in c.pts]
     return c, 0.0
 
 
@@ -470,6 +477,8 @@ def render(cloud: Cloud, row: int, scale: float, contact_y: float, cell: int = C
     px = np.floor(cx + sx).astype(int)
     py = np.floor(cy + sy).astype(int)
     ok = (px >= 1) & (px < cell - 1) & (py >= 1) & (py < cell - 1)
+    if not ok.all():
+        CLIPPED.append(row)
     px, py, depth, ncam, mat, part = px[ok], py[ok], depth[ok], ncam[ok], mat[ok], part[ok]
     lin = py * cell + px
     order = np.lexsort((depth, lin))
@@ -562,11 +571,13 @@ def spin_of(frame: int) -> float:
 
 
 SHEETS = [
-    SheetSpec("walk", 8, 0.90, STAND_SCALE, lambda i: pose_stand(None if i == 0 else i / 8)[0]),
-    SheetSpec("fire", 4, 0.90, STAND_SCALE, lambda i: pose_stand(None, spin_of(i), flash=i + 1)[0]),
+    # Stand pivot (between the feet) at 0.88: the striding front toe stays inside the cell.
+    SheetSpec("walk", 8, 0.88, STAND_SCALE, lambda i: pose_stand(None if i == 0 else i / 8)[0]),
+    SheetSpec("fire", 4, 0.88, STAND_SCALE, lambda i: pose_stand(None, spin_of(i), flash=i + 1)[0]),
     SheetSpec("crawl", 8, 0.72, PRONE_SCALE, lambda i: pose_crawl(i / 8)[0]),
     SheetSpec("crawl-fire", 4, 0.72, PRONE_SCALE, lambda i: pose_crawl(0.0, spin_of(i), flash=i + 1)[0]),
-    SheetSpec("die", 4, 0.82, STAND_SCALE, lambda i: pose_dead()[0]),
+    # Footprint centre at 0.72, the same pivot as the legless crawl, so he dies where he lay.
+    SheetSpec("die", 4, 0.72, STAND_SCALE, lambda i: pose_dead()[0]),
 ]
 
 
@@ -601,7 +612,9 @@ def main() -> int:
     SRC.mkdir(parents=True, exist_ok=True)
     status = 0
     for spec in SHEETS:
+        CLIPPED.clear()
         sheet, placed = render_sheet(spec)
+        clipped = sorted({ENGINE_ORDER[r] for r in CLIPPED}, key=ENGINE_ORDER.index)
         out = UNITS / f"cyborg-{spec.name}.png"
         sheet.save(out)
         diag = diagnostics(placed, CELL)
@@ -623,12 +636,13 @@ def main() -> int:
             "out": str(out.relative_to(ROOT)),
             "size_pop_dirs": pops,
             "empty_dirs": empties,
+            "clipped_dirs": clipped,
             "diag": diag,
             "source": "render_cyborg.py (16 unique yaws, no mirror)",
         }
         (PREVIEW / f"{stem}-manifest.json").write_text(json.dumps(manifest, indent=2))
-        print(f"{stem}: {sheet.size} frames={spec.frames} pops={pops} empty={empties}")
-        if empties:
+        print(f"{stem}: {sheet.size} frames={spec.frames} pops={pops} empty={empties} clipped={clipped}")
+        if empties or clipped:
             status = 2
         if spec.name == "walk":
             east = placed["E"]

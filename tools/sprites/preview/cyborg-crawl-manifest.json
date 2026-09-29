@@ -33,6 +33,7 @@
     "SSE"
   ],
   "empty_dirs": [],
+  "clipped_dirs": [],
   "diag": [
     {
       "i": 0,
