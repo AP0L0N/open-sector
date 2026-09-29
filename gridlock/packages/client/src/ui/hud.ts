@@ -736,6 +736,7 @@ const TYPE_ORDER: EntityType[] = [
   "gunner",
   "sniper",
   "atinfantry",
+  "rocketer",
   "mortarman",
   "engineer",
   "medic",
@@ -1022,6 +1023,8 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
             ? "Scoped rifle. He sees farther. Crouch or crawl to tighten the shot. A broken arm puts the rifle down."
             : focus.type === "atinfantry"
               ? "PTRD-41. Same reach as the sniper. Tank side and rear up close, light armor farther out. A broken arm puts the rifle down."
+              : focus.type === "rocketer"
+              ? "One Titan rocket in the tube, then a slow reload. Bursts among soldiers, dents a tank, goes up beside a plane or a low drone. A broken arm puts the tube down."
               : focus.type === "mortarman"
               ? "Kneel and plant the tube. The bomb lobs past what he can see. Too close and it will not drop."
               : focus.type === "medic"

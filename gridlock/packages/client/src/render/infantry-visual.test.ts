@@ -12,6 +12,8 @@ import {
   AT_FIRE_MS,
   SNIPER_FIRE_MS,
   atInfantrySheet,
+  rocketerSheet,
+  ROCKETER_FIRE_MS,
   sniperSheet,
   trooperSheet,
 } from "./infantry-visual.js";
@@ -67,6 +69,16 @@ describe("trooperSheet", () => {
     assert.equal(atInfantrySheet({ shotAgeMs: AT_FIRE_MS }), "walk");
     assert.equal(atInfantrySheet({ wreck: true, swimming: true }), "die");
     assert.equal(atInfantrySheet({ swimming: true, shotAgeMs: 40 }), "swim");
+  });
+
+  it("shows the rocketer's launch only standing, for the fire window", () => {
+    assert.equal(rocketerSheet({}), "walk");
+    assert.equal(rocketerSheet({ shotAgeMs: 40 }), "fire");
+    assert.equal(rocketerSheet({ shotAgeMs: ROCKETER_FIRE_MS }), "walk");
+    assert.equal(rocketerSheet({ stance: "crouch", shotAgeMs: 40 }), "crouch");
+    assert.equal(rocketerSheet({ stance: "crawl", shotAgeMs: 40 }), "crawl");
+    assert.equal(rocketerSheet({ swimming: true, shotAgeMs: 40 }), "swim");
+    assert.equal(rocketerSheet({ wreck: true, swimming: true }), "die");
   });
 
   it("shows the mortar flash only while a kneeling mortarman is in the fire window", () => {
