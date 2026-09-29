@@ -1,7 +1,6 @@
 import {
   bracesOf,
   catalog,
-  DEPLOY_SECONDS,
   deploySecondsOf,
   HAULER_SMOKE_CHARGES,
   hpMaxOf,
@@ -85,23 +84,6 @@ function setBraced(e: Entity, braced: boolean): void {
   e.state = "idle";
   e.deployTime = 0;
   e.waypoints = [];
-}
-
-/** Wall-clock: after `autoDeployTicks`, stop every Rig and finish unpacking. */
-export function tickAutoDeploy(state: MatchState): void {
-  if (state.autoDeployTicks < 0) return;
-  state.autoDeployTicks -= 1;
-  if (state.autoDeployTicks > 0) return;
-  state.autoDeployTicks = -1;
-  for (const e of [...state.entities.values()]) {
-    if (e.type !== "rig" || e.hp <= 0 || e.wreck) continue;
-    clearOrder(e);
-    if (e.state !== "deploy") {
-      const err = beginDeploy(state, e);
-      if (err) continue;
-    }
-    e.deployTime = DEPLOY_SECONDS;
-  }
 }
 
 export function tickDeploy(state: MatchState, dt: number): void {

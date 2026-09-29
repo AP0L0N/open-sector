@@ -13,7 +13,6 @@ import {
   TITAN_ROCKET_RELOAD,
   TITAN_ROCKET_SALVO,
   specialLabel,
-  START_UNITS,
   TICK_DT,
   TITAN_BRACE_SECONDS,
   TITAN_BRACED_HP_MUL,
@@ -46,7 +45,7 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return { state: createMatch(room, started.value, { startingUnits: false }), a: "A", b: "B" };
+  return { state: createMatch(room, started.value), a: "A", b: "B" };
 }
 
 function ticks(state: MatchState, n: number): void {
@@ -154,7 +153,6 @@ describe("titan", () => {
     const titan = catalog("titan");
     const tiger = catalog("warden");
     assert.ok(TRAIN_TYPES.includes("titan"));
-    assert.equal(START_UNITS.includes("titan"), false, "opening army stays the same");
     assert.equal(producerType("titan"), "armory");
     assert.equal(titan.penetration, tiger.penetration);
     assert.equal(titan.caliber, tiger.caliber);
