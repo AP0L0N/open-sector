@@ -1,4 +1,4 @@
-import { AIRFIELD_PADS, catalog, isAircraftType, secondsToTicks, TRAIN_QUEUE_CAP, UNIT_CAP, type TrainType } from "../catalog.js";
+import { AIRFIELD_PADS, catalog, isAircraftType, secondsToTicks, TECH_REQUIRES, TRAIN_QUEUE_CAP, UNIT_CAP, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, PARK_HEADING } from "./air.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear } from "./formation.js";
@@ -12,6 +12,16 @@ export function producerType(unit: TrainType): "muster" | "smelter" | "armory" |
   if (unit === "hauler") return "smelter";
   if (isAircraftType(unit)) return "airfield";
   return "armory";
+}
+
+/** Tech building this unit still needs, or null once the player has one standing. */
+export function techMissing(state: MatchState, playerId: string, unit: TrainType): BuildingType | null {
+  const need = TECH_REQUIRES[unit];
+  if (!need) return null;
+  for (const e of state.entities.values()) {
+    if (e.ownerId === playerId && e.type === need && e.hp > 0 && !e.wreck) return null;
+  }
+  return need;
 }
 
 function queuedCount(state: MatchState, playerId: string): number {
@@ -51,6 +61,8 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
     if (unit === "hauler") return "Need a Smelter.";
     return "Need an Armory.";
   }
+  const tech = techMissing(state, playerId, unit);
+  if (tech) return `Need a ${catalog(tech).name}.`;
   best.queue.push({
     id: state.nextId++,
     type: unit,

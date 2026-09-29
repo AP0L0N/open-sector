@@ -1,10 +1,12 @@
 import type { EntityType, EntityView } from "@gridlock/shared";
 import type { BuildingSpriteDef } from "./sprites.js";
 
-/** Buildings that train units. Overlay only while a job is running. */
+/** Buildings that train units. Full-strength overlay only while a job is running. */
 const PRODUCERS = new Set<EntityType>(["muster", "smelter", "armory"]);
-/** No train line: keep a quiet always-on blink. */
-const IDLE_ALWAYS = new Set<EntityType>(["core", "dynamo"]);
+/** Keep a quiet always-on overlay: blinks, the Smelter's chimneys, the lab's coil. */
+const IDLE_ALWAYS = new Set<EntityType>(["core", "dynamo", "smelter", "research"]);
+/** Chimney smoke never fades below this, so an idle Smelter still reads as lit. */
+const IDLE_SMOKE_GAIN = 0.75;
 
 export type BuildingAnimView = Pick<
   EntityView,
@@ -15,15 +17,17 @@ export function buildingProducesUnits(type: EntityType): boolean {
   return PRODUCERS.has(type);
 }
 
+/** True while a trainer has an unpaused job running. */
+export function buildingWorking(e: BuildingAnimView): boolean {
+  if (e.wreck || e.hp <= 0 || !PRODUCERS.has(e.type)) return false;
+  if (e.trainProgress == null) return false;
+  return !e.trainQueue?.[0]?.paused;
+}
+
 /** True when this building should play its overlay this frame. */
 export function buildingAnimActive(e: BuildingAnimView): boolean {
   if (e.wreck || e.hp <= 0) return false;
-  if (PRODUCERS.has(e.type)) {
-    if (e.trainProgress == null) return false;
-    if (e.trainQueue?.[0]?.paused) return false;
-    return true;
-  }
-  return IDLE_ALWAYS.has(e.type);
+  return buildingWorking(e) || IDLE_ALWAYS.has(e.type);
 }
 
 type LightMode = "pulse" | "blink";
@@ -41,9 +45,18 @@ interface LightSpot {
 interface SmokeSpot {
   x: number;
   y: number;
+  /** Rise height, source px at pad scale. Default 26 × the def scale. */
+  rise?: number;
+  /** Lighter, thinner puffs: the far end of a plume already painted into the sprite. */
+  thin?: boolean;
 }
 
 interface SparkSpot {
+  x: number;
+  y: number;
+}
+
+interface ArcSpot {
   x: number;
   y: number;
 }
@@ -52,6 +65,7 @@ interface BuildingAnimDef {
   lights: LightSpot[];
   smoke?: SmokeSpot[];
   sparks?: SparkSpot[];
+  arcs?: ArcSpot[];
 }
 
 const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
@@ -84,9 +98,13 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
       { x: 161, y: 274, r: 8, color: "#ff7a18", period: 580, phase: 0.22, mode: "pulse" },
       { x: 265, y: 290, r: 16, color: "#ff6a14", period: 520, phase: 0.0, mode: "pulse" },
     ],
+    // Mouths, then the tops of the plumes painted into smelter.png, so the motion
+    // reads above the static smoke too.
     smoke: [
       { x: 216, y: 38 },
       { x: 270, y: 70 },
+      { x: 236, y: 10, rise: 44, thin: true },
+      { x: 318, y: 22, rise: 44, thin: true },
     ],
   },
   muster: {
@@ -94,6 +112,18 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
       { x: 122, y: 192, r: 12, color: "#ffc44a", period: 900, phase: 0.1, mode: "pulse" },
       { x: 196, y: 10, r: 5, color: "#ffe08a", period: 1400, phase: 0.0, mode: "blink" },
     ],
+  },
+  // Spots from tools/sprites/render_research.py (research.json).
+  research: {
+    lights: [
+      { x: 237, y: 213, r: 8, color: "#7fe8dc", period: 3000, phase: 0.0, mode: "pulse" },
+      { x: 216, y: 223, r: 8, color: "#7fe8dc", period: 3000, phase: 0.15, mode: "pulse" },
+      { x: 113, y: 190, r: 8, color: "#7fe8dc", period: 3400, phase: 0.4, mode: "pulse" },
+      { x: 146, y: 206, r: 8, color: "#7fe8dc", period: 3400, phase: 0.55, mode: "pulse" },
+      { x: 325, y: 167, r: 9, color: "#8fd0ff", period: 1600, phase: 0.2, mode: "pulse" },
+      { x: 210, y: 42, r: 5, color: "#ff5a4a", period: 2000, phase: 0.0, mode: "blink" },
+    ],
+    arcs: [{ x: 325, y: 167 }],
   },
   armory: {
     lights: [
@@ -169,19 +199,22 @@ function drawChimneySmoke(
   seed: number,
   scale: number,
   intensity: number,
+  rise = 26,
+  thin = false,
 ): void {
   const puffs = 5;
   for (let i = 0; i < puffs; i++) {
     const t = ((nowMs * 0.00018 + seed * 0.13 + i / puffs) % 1 + 1) % 1;
     const drift = Math.sin(nowMs * 0.0014 + seed + i * 1.7) * 4.5 * scale;
-    const px = x + drift;
-    const py = y - t * 26 * scale;
+    // Thin plume ends lean downwind (screen right), like the painted smoke.
+    const px = x + drift + (thin ? t * 14 * scale : 0);
+    const py = y - t * rise * scale;
     const grow = 0.45 + t * 1.35;
     const a = intensity * (1 - t) * Math.min(1, t * 3.2) * 0.38;
     if (a <= 0.02) continue;
     ctx.save();
     ctx.globalAlpha = a;
-    ctx.fillStyle = i % 2 === 0 ? "#6a645c" : "#7a746c";
+    ctx.fillStyle = thin ? (i % 2 === 0 ? "#8e8a82" : "#9c978e") : i % 2 === 0 ? "#6a645c" : "#7a746c";
     ctx.beginPath();
     ctx.ellipse(px, py, (3.2 + grow * 3.4) * scale, (2.4 + grow * 2.6) * scale, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -223,6 +256,45 @@ function drawWorkSparks(
   ctx.restore();
 }
 
+/** Brief blue crackle off the coil cap: a jagged 3-segment bolt every so often. */
+function drawCoilArc(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  nowMs: number,
+  seed: number,
+  scale: number,
+  intensity: number,
+): void {
+  const cycle = 1700;
+  const n = Math.floor((nowMs + seed * 131) / cycle);
+  const local = (((nowMs + seed * 131) % cycle) + cycle) % cycle;
+  if (local > 140) return;
+  const rnd = (k: number): number => {
+    const v = Math.sin((n * 12.9898 + k * 78.233 + seed) * 43758.5453);
+    return v - Math.floor(v);
+  };
+  const ang = Math.PI * (0.15 + rnd(1) * 0.7) * (rnd(2) < 0.5 ? 1 : -1) - Math.PI / 2;
+  const len = (12 + rnd(3) * 8) * scale;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = Math.min(1, intensity * (1 - local / 140) * 2.6);
+  ctx.strokeStyle = "#bfe9ff";
+  ctx.lineWidth = Math.max(0.6, 0.9 * scale);
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  for (let i = 1; i <= 3; i++) {
+    const t = i / 3;
+    const jit = (rnd(4 + i) - 0.5) * 5 * scale;
+    ctx.lineTo(
+      x + Math.cos(ang) * len * t - Math.sin(ang) * jit,
+      y + Math.sin(ang) * len * t * 0.8 + Math.cos(ang) * jit,
+    );
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
 export function drawBuildingAnim(
   ctx: CanvasRenderingContext2D,
   def: BuildingSpriteDef,
@@ -235,8 +307,7 @@ export function drawBuildingAnim(
   if (!buildingAnimActive(e) || footprintW <= 0 || def.padWidth <= 0) return;
   const spots = DEFS[e.type];
   if (!spots) return;
-  const subtle = !PRODUCERS.has(e.type);
-  const gain = subtle ? 0.32 : 0.88;
+  const gain = buildingWorking(e) ? 0.88 : 0.32;
   const drift = ((e.id * 0.6180339887) % 1 + 1) % 1;
 
   for (const light of spots.lights) {
@@ -253,7 +324,7 @@ export function drawBuildingAnim(
     for (let i = 0; i < spots.smoke.length; i++) {
       const s = spots.smoke[i]!;
       const p = srcToScreen(def, southX, southY, footprintW, s.x, s.y);
-      drawChimneySmoke(ctx, p.x, p.y, nowMs, e.id * 17 + i * 9, p.scale, gain);
+      drawChimneySmoke(ctx, p.x, p.y, nowMs, e.id * 17 + i * 9, p.scale, Math.max(gain, IDLE_SMOKE_GAIN), s.rise, s.thin);
     }
   }
 
@@ -262,6 +333,14 @@ export function drawBuildingAnim(
       const s = spots.sparks[i]!;
       const p = srcToScreen(def, southX, southY, footprintW, s.x, s.y);
       drawWorkSparks(ctx, p.x, p.y, nowMs, e.id * 23 + i * 11, p.scale, gain);
+    }
+  }
+
+  if (spots.arcs) {
+    for (let i = 0; i < spots.arcs.length; i++) {
+      const s = spots.arcs[i]!;
+      const p = srcToScreen(def, southX, southY, footprintW, s.x, s.y);
+      drawCoilArc(ctx, p.x, p.y, nowMs, e.id * 29 + i * 13, p.scale, gain);
     }
   }
 }

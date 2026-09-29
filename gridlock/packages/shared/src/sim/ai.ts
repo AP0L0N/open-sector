@@ -25,8 +25,8 @@ export const EASY_WANT_SS3 = 4;
 const TRAIN_QUEUE_SOFT = 2;
 const FIRST_WAVE_TROOPERS = 4;
 
-/** Smelter second so the free Mauler funds Muster, Armory, troops, and tanks. */
-const BUILD_ORDER: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory"];
+/** Smelter second so the free Mauler funds Muster, Armory, troops, and tanks. Research unlocks Tigers. */
+const BUILD_ORDER: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "research"];
 
 export function tickAi(state: MatchState): void {
   if (state.ended) return;

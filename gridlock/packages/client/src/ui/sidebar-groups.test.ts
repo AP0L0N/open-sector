@@ -15,7 +15,7 @@ describe("sidebarGroupOf", () => {
 
   it("puts the gun building under defences and the rest under structures", () => {
     assert.equal(sidebarGroupOf("ciws"), "defences");
-    for (const t of ["dynamo", "smelter", "muster", "armory", "airfield"] as const) assert.equal(sidebarGroupOf(t), "structures");
+    for (const t of ["dynamo", "smelter", "muster", "armory", "airfield", "research"] as const) assert.equal(sidebarGroupOf(t), "structures");
   });
 
   it("splits trainables into infantry, tanks, and aircraft", () => {
