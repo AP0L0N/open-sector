@@ -28,6 +28,7 @@ import {
   isDroneType,
   isInfantryType,
   radarLaidOf,
+  launcherOnlyOf,
   sightBonusTilesOf,
   type EntityType,
 } from "../catalog.js";
@@ -241,6 +242,8 @@ export function canAimWeapon(
   target?: Entity,
 ): boolean {
   if (isInfantryType(shooter.type) || radarLaidOf(shooter.type) || catalog(shooter.type).rangeTiles <= 0) return true;
+  // A laid launcher lobs its rockets; the gun-elevation limit is a direct-fire rule.
+  if (launcherOnlyOf(shooter.type)) return true;
   const fromH = entityHeight(state, shooter);
   const toH = target ? entityHeight(state, target) : worldTileHeight(state, aimX, aimY);
   return gunCanElevate(fromH, toH, Math.hypot(aimX - shooter.x, aimY - shooter.y));

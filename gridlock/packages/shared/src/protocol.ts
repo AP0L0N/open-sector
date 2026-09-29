@@ -13,7 +13,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 45;
+export const PROTOCOL_VERSION = 46;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -274,7 +274,7 @@ export interface ProjectileView {
   hang?: number;
   /** Falling aircraft bomb. `z` is its height; it drops, it does not arc. */
   bomb?: boolean;
-  /** Titan rocket. Straight and fast; `z` is its height over the ground. */
+  /** Titan or Nebelwerfer rocket. `z` is its height; a Nebelwerfer rocket lobs, so it climbs and falls. */
   rocket?: boolean;
 }
 

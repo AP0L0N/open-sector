@@ -8,8 +8,8 @@ import {
   MORTAR_SCATTER_NEAR_TILES,
   MORTAR_TRACK_CHANCE,
   TILE_SIZE,
-  TITAN_ROCKET_SCATTER_FAR_TILES,
-  TITAN_ROCKET_SCATTER_NEAR_TILES,
+  TITAN_ROCKET_RACK,
+  type RocketRackDef,
 } from "../catalog.js";
 
 function clamp01(u: number): number {
@@ -121,9 +121,14 @@ export function mortarArmorNick(
 }
 
 /** Titan rocket miss radius. Wider than a mortar at every range: the pods are unguided. */
-export function rocketScatterRadius(dist: number, maxRange: number, mul = 1): number {
-  const near = TITAN_ROCKET_SCATTER_NEAR_TILES * TILE_SIZE;
-  const far = TITAN_ROCKET_SCATTER_FAR_TILES * TILE_SIZE;
+export function rocketScatterRadius(
+  dist: number,
+  maxRange: number,
+  mul = 1,
+  rack: Pick<RocketRackDef, "scatterNearTiles" | "scatterFarTiles"> = TITAN_ROCKET_RACK,
+): number {
+  const near = rack.scatterNearTiles * TILE_SIZE;
+  const far = rack.scatterFarTiles * TILE_SIZE;
   const u = clamp01(dist / Math.max(1, maxRange));
   return (near + (far - near) * u) * Math.max(0.2, mul);
 }

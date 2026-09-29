@@ -144,6 +144,7 @@ import {
   bindCasemateSheets,
   bindDroneSheets,
   bindSupplySheets,
+  bindNebelwerferSheets,
   bindTurntableSheets,
 } from "./turntable-sheet.js";
 import { engineRowFromFacing, engineRowFromScreen } from "./turntable.js";
@@ -780,6 +781,26 @@ export const SUPPLY_SPRITE: UnitSpriteDef = {
 };
 bindSupplySheets(SUPPLY_SPRITE.image);
 
+const nebelwerferLauncher: TurretSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+};
+/** Rocket truck. The twelve-tube frame is the turret layer and traverses on `turretFacing`. */
+export const NEBELWERFER_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(44 * UNIT_VISUAL_SCALE),
+  contactY: 0.92,
+  turret: nebelwerferLauncher,
+  facingSpace: "world",
+};
+bindNebelwerferSheets(NEBELWERFER_SPRITE.image, nebelwerferLauncher.image);
+
 /** Ju 87 dive bomber. Same sheet on the strip and in the air; the map lifts it by altitude. */
 export const STUKA_SPRITE: UnitSpriteDef = {
   image: new Image(),
@@ -920,6 +941,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   warden: TIGER_SPRITE,
   ss3: SS3_SPRITE,
   supply: SUPPLY_SPRITE,
+  nebelwerfer: NEBELWERFER_SPRITE,
   stuka: STUKA_SPRITE,
   drone: DRONE_SPRITE,
   rig: RIG_SPRITE,

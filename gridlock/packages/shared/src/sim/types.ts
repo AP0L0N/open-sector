@@ -295,6 +295,10 @@ export interface Projectile {
   harmAllies?: boolean;
   /** Rocket fused on a plane: it bursts in the air and only catches aircraft. */
   airBurst?: boolean;
+  /** Rocket only: the carrier type whose rack (rocketRackOf) sets its splash and armor dent. */
+  launcher?: EntityType;
+  /** Lobbed rocket only: height it left the tubes at. `apex` rides on top of the line from here to the ground. */
+  launchZ?: number;
   /** Rocket only: CIWS mounts that already fired a burst at it. Each gets one try. */
   ciwsTried?: number[];
   /** Fired by an anti-air gun (MG42, gatlings). Only these meet a high drone. */

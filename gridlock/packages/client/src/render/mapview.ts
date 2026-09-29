@@ -275,6 +275,7 @@ const EXTRUDE: Record<EntityType, number> = {
   teeth: 16,
   walker: 30,
   titan: 40,
+  nebelwerfer: 22,
   supply: 18,
   cottage: 28,
   shack: 24,

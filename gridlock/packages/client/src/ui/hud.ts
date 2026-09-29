@@ -28,6 +28,7 @@ import {
   isShellType,
   rocketsOf,
   rocketAmmoOf,
+  launcherOnlyOf,
   isStance,
   producerType,
   productionSpeed,
@@ -680,6 +681,40 @@ const ROCKET_MODES = [
   { id: "off", name: "Pods off", blurb: "Hold the rack. Only the main gun fires." },
 ] as const;
 
+/** Nebelwerfer tube switch. The tubes are its only weapon, so off is hold fire. */
+const LAUNCHER_MODES = [
+  { id: "on", name: "Tubes on", blurb: "Stop, swing the frame on, and ripple twelve rockets at the target, then reload." },
+  { id: "off", name: "Tubes off", blurb: "Hold fire and save the rack." },
+] as const;
+
+function rocketModesFor(type: EntityType): readonly { id: string; name: string; blurb: string }[] {
+  return launcherOnlyOf(type) ? LAUNCHER_MODES : ROCKET_MODES;
+}
+
+function appendRocketRack(body: HTMLElement, type: EntityType): void {
+  const pods = el("div", { class: "shell-rack" });
+  for (const mode of rocketModesFor(type)) {
+    pods.append(loadoutButton({ attr: "data-rockets", id: mode.id, name: mode.name, blurb: mode.blurb, count: "", on: false }));
+  }
+  body.append(el("div", { class: "tiny", text: "Rockets" }), pods);
+}
+
+function updateRocketRack(body: HTMLElement, type: EntityType, mine: EntityView[]): void {
+  const left = mine.reduce((n, e) => n + (e.rockets ?? 0), 0);
+  const cap = rocketAmmoOf(type) * mine.length;
+  const on = mine.every((e) => !e.rocketsOff);
+  const off = mine.every((e) => e.rocketsOff);
+  for (const mode of rocketModesFor(type)) {
+    const btn = body.querySelector(`[data-rockets="${mode.id}"]`);
+    if (!(btn instanceof HTMLElement)) continue;
+    updateLoadoutButton(btn, {
+      count: mode.id === "on" ? `${left}/${cap}` : "",
+      on: mode.id === "on" ? on : off,
+      empty: mode.id === "on" && left <= 0,
+    });
+  }
+}
+
 function loadoutButton(opts: {
   attr: "data-shell" | "data-weapon" | "data-guns" | "data-rockets";
   id: string;
@@ -730,6 +765,7 @@ const TYPE_ORDER: EntityType[] = [
   "walker",
   "cyborg",
   "titan",
+  "nebelwerfer",
   "supply",
   "hauler",
   "rifleman",
@@ -879,15 +915,9 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
       rack.append(loadoutButton({ attr: "data-shell", id, name: s.name, blurb: s.blurb, count: "0", on: false }));
     }
     body.append(el("div", { class: "tiny", text: "Shell" }), rack);
-    if (rocketsOf(focus.type) && mine.length > 0) {
-      const pods = el("div", { class: "shell-rack" });
-      for (const mode of ROCKET_MODES) {
-        pods.append(
-          loadoutButton({ attr: "data-rockets", id: mode.id, name: mode.name, blurb: mode.blurb, count: "", on: false }),
-        );
-      }
-      body.append(el("div", { class: "tiny", text: "Rockets" }), pods);
-    }
+    if (rocketsOf(focus.type) && mine.length > 0) appendRocketRack(body, focus.type);
+  } else if (launcherOnlyOf(focus.type)) {
+    if (mine.length > 0) appendRocketRack(body, focus.type);
   } else if (isInfantryType(focus.type)) {
     const loadout = infantryLoadout(focus.type);
     if (loadout.length > 0 && mine.length > 0) {
@@ -961,21 +991,10 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
         empty: left <= 0,
       });
     }
-    if (rocketsOf(focus.type) && shells.length > 0) {
-      const left = shells.reduce((n, e) => n + (e.rockets ?? 0), 0);
-      const cap = rocketAmmoOf(focus.type) * shells.length;
-      const on = shells.every((e) => !e.rocketsOff);
-      const off = shells.every((e) => e.rocketsOff);
-      for (const mode of ROCKET_MODES) {
-        const btn = body.querySelector(`[data-rockets="${mode.id}"]`);
-        if (!(btn instanceof HTMLElement)) continue;
-        updateLoadoutButton(btn, {
-          count: mode.id === "on" ? `${left}/${cap}` : "",
-          on: mode.id === "on" ? on : off,
-          empty: mode.id === "on" && left <= 0,
-        });
-      }
-    }
+    if (rocketsOf(focus.type) && shells.length > 0) updateRocketRack(body, focus.type, shells);
+  } else if (launcherOnlyOf(focus.type)) {
+    const mine = live.filter((e) => e.ownerId === you);
+    if (mine.length > 0) updateRocketRack(body, focus.type, mine);
   } else if (isInfantryType(focus.type)) {
     const mine = live.filter((e) => e.ownerId === you);
     const loadout = infantryLoadout(focus.type);

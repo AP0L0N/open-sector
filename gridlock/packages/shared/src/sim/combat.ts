@@ -48,13 +48,9 @@ import {
   pickLoadedShell,
   reloadSecondsOf,
   rocketsOf,
-  TITAN_ROCKET,
-  TITAN_ROCKET_POD_LIFT,
-  TITAN_ROCKET_INTERVAL,
-  TITAN_ROCKET_RELOAD,
-  TITAN_ROCKET_SALVO,
-  TITAN_ROCKET_SPEED,
-  TITAN_ROCKET_SPLASH_TILES,
+  launcherOnlyOf,
+  rocketRackOf,
+  type RocketRackDef,
   type CatalogEntry,
   type ShellType,
 } from "../catalog.js";
@@ -152,7 +148,7 @@ export function tickCombat(state: MatchState, dt: number): void {
     if (interceptRockets(state, e, downed)) continue;
     fireAtCurrent(state, e, dt);
   }
-  // Titan pods: their own target, their own clock, whatever the main gun is doing.
+  // Rocket racks: their own clock, whatever the main gun is doing. Titan pods also pick their own target.
   for (const e of state.entities.values()) {
     if (!rocketsOf(e.type) || !canFight(e)) continue;
     tickRocketPods(state, e);
@@ -478,6 +474,11 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     if (!holedUp) e.state = "attack";
     return;
   }
+  // A laid launcher's only weapon is its rockets (tickRocketPods). Here the frame just swings on.
+  if (launcherOnlyOf(e.type)) {
+    if (!holedUp) e.state = "attack";
+    return;
+  }
   if (e.type === "mortarman" && dist < MORTAR_MIN_RANGE_TILES * state.tileSize) {
     if (!holedUp) e.state = "attack";
     return;
@@ -687,11 +688,14 @@ function launchMortar(
 }
 
 /**
- * Titan pods. They pick and hold their own target, apart from the main gun's,
- * and fire on their own clock. A salvo ripples one rocket after another,
- * alternating sides, TITAN_ROCKET_INTERVAL apart, then the pods reload. They
- * fire from water, reach planes in the air, and follow a player's force-attack.
- * Pods switched off or an empty rack fire nothing.
+ * Rocket racks. A salvo ripples one rocket after another, rack.interval apart,
+ * then the rack reloads. Switched off or empty, it fires nothing.
+ *
+ * Titan pods pick and hold their own target, apart from the main gun's, fire
+ * from water, reach planes in the air, and follow a player's force-attack.
+ *
+ * A laid launcher (the Nebelwerfer) has no other gun: it fires on the unit's
+ * own target, only while halted, and only once the frame bears on it.
  */
 function tickRocketPods(state: MatchState, e: Entity): void {
   if (e.rocketsOff || (e.rockets ?? 0) <= 0 || garrisonIsHiding(state, e)) {
@@ -700,15 +704,47 @@ function tickRocketPods(state: MatchState, e: Entity): void {
     return;
   }
   if ((e.rocketCooldown ?? 0) > 0) return;
-  const aim = podAim(state, e);
+  const rack = rocketRackOf(e.type);
+  const aim = rack.laid ? launcherAim(state, e) : podAim(state, e);
   if (!aim) {
     e.rocketTarget = null;
     return;
   }
   e.rocketTarget = aim.target?.id ?? null;
+  if (rack.laid && (e.waypoints.length > 0 || !launcherBears(e, aim.x, aim.y))) return;
   const range = weaponRangeWorld(state, e);
   const dist = Math.hypot(aim.x - e.x, aim.y - e.y);
-  fireRockets(state, e, aim.x, aim.y, range, dist, aim.target);
+  fireRockets(state, e, rack, aim.x, aim.y, range, dist, aim.target);
+}
+
+/** Inside a laid launcher's band: short of its reach and past its minimum. */
+function inLauncherBand(state: MatchState, e: Entity, x: number, y: number): boolean {
+  const d = Math.hypot(x - e.x, y - e.y);
+  const min = (rocketRackOf(e.type).minRangeTiles ?? 0) * state.tileSize;
+  return d <= weaponRangeWorld(state, e) && d >= min;
+}
+
+/**
+ * Where a laid launcher fires: a player's force-attack on the ground, else the
+ * unit's own target, picked by resolveTarget like any gun's. The rockets lob,
+ * so no sight line is needed from the truck. Outside its band it holds.
+ */
+function launcherAim(state: MatchState, e: Entity): { x: number; y: number; target?: Entity } | null {
+  const o = e.order;
+  if (o?.kind === "forceattack" && o.targetId == null && o.x != null && o.y != null) {
+    return inLauncherBand(state, e, o.x, o.y) ? { x: o.x, y: o.y } : null;
+  }
+  const t = currentTarget(state, e);
+  if (!t || !inLauncherBand(state, e, t.x, t.y)) return null;
+  return { x: t.x, y: t.y, target: t };
+}
+
+/** The launcher frame is on the bearing to (x, y), inside the type's gun arc. */
+function launcherBears(e: Entity, x: number, y: number): boolean {
+  let d = Math.atan2(y - e.y, x - e.x) - (e.turretFacing ?? e.facing);
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return Math.abs(d) <= (gunArcDegOf(e.type) * Math.PI) / 180;
 }
 
 /** The main gun's target, if it has one. */
@@ -733,7 +769,7 @@ function podValue(state: MatchState, e: Entity, o: Entity): number {
       : 0;
   }
   if (o.drone && !reachesDrone(e, o)) return 0;
-  if (isAirborne(o)) return 3;
+  if (isAirborne(o)) return rocketRackOf(e.type).antiAir ? 3 : 0;
   if (isInfantryType(o.type)) return 2;
   return isArmored(catalog(o.type)) ? 3 : 2;
 }
@@ -797,30 +833,33 @@ function podAim(state: MatchState, e: Entity): { x: number; y: number; target?: 
   return null;
 }
 
-/** One rocket of the salvo at the pods' aim point, then the pods' clock. */
+/** One rocket of the salvo at the rack's aim point, then the rack's clock. */
 function fireRockets(
   state: MatchState,
   e: Entity,
+  rack: RocketRackDef,
   aimX: number,
   aimY: number,
   range: number,
   dist: number,
   target: Entity | undefined,
 ): void {
-  if (!e.rocketSalvo) e.rocketSalvo = Math.min(TITAN_ROCKET_SALVO, e.rockets ?? 0);
-  launchRocket(state, e, aimX, aimY, range, dist, target, e.rocketSalvo);
+  if (!e.rocketSalvo) e.rocketSalvo = Math.min(rack.salvo, e.rockets ?? 0);
+  launchRocket(state, e, rack, aimX, aimY, range, dist, target, e.rocketSalvo);
   e.rockets = Math.max(0, (e.rockets ?? 0) - 1);
   e.rocketSalvo = e.rockets > 0 ? e.rocketSalvo - 1 : 0;
-  e.rocketCooldown = e.rocketSalvo > 0 ? TITAN_ROCKET_INTERVAL : TITAN_ROCKET_RELOAD;
+  e.rocketCooldown = e.rocketSalvo > 0 ? rack.interval : rack.reload;
 }
 
 /**
  * One rocket. On a plane it leads the plane's flight and is fused at its height,
  * so it bursts in the air beside it. On anything else it is fused on the ground.
+ * A rack with an apex lobs it over whatever stands between.
  */
 function launchRocket(
   state: MatchState,
   e: Entity,
+  rack: RocketRackDef,
   aimX: number,
   aimY: number,
   range: number,
@@ -835,19 +874,22 @@ function launchRocket(
   const sideX = -Math.sin(aim);
   const sideY = Math.cos(aim);
   // Pods sit either side of the torso; the ripple alternates left and right.
-  const side = (slot % 2 === 0 ? 1 : -1) * e.radius * 0.8;
+  // A launcher frame walks across its six columns of tubes instead.
+  const side = rack.laid
+    ? ((((slot - 1) % 6) - 2.5) / 2.5) * e.radius * 0.35
+    : (slot % 2 === 0 ? 1 : -1) * e.radius * 0.8;
   const x = e.x + sideX * side;
   const y = e.y + sideY * side;
-  const z0 = muzzleHeight(state, e) + TITAN_ROCKET_POD_LIFT;
+  const z0 = muzzleHeight(state, e) + rack.podLift;
   let goalX = aimX;
   let goalY = aimY;
   if (aloft && target) {
-    const lead = Math.hypot(target.x - x, target.y - y) / TITAN_ROCKET_SPEED;
+    const lead = Math.hypot(target.x - x, target.y - y) / rack.speed;
     const speed = catalog(target.type).moveTilesPerSec * state.tileSize;
     goalX += Math.cos(target.facing) * speed * lead;
     goalY += Math.sin(target.facing) * speed * lead;
   }
-  const radius = rocketScatterRadius(dist, range, moving ? 1.15 : 1);
+  const radius = rocketScatterRadius(dist, range, moving ? 1.15 : 1, rack);
   const land = mortarLanding(goalX, goalY, radius, () => nextRand(state));
   const maxX = Math.max(1, state.width * state.tileSize - 1);
   const maxY = Math.max(1, state.height * state.tileSize - 1);
@@ -856,7 +898,7 @@ function launchRocket(
   const dx = land.x - x;
   const dy = land.y - y;
   const len = Math.max(1, Math.hypot(dx, dy));
-  const flight = len / TITAN_ROCKET_SPEED;
+  const flight = len / rack.speed;
   const zLand =
     aloft && target ? entityHeight(state, target) + airAlt(target) : worldTileHeight(state, land.x, land.y);
   state.projectiles.push({
@@ -867,9 +909,9 @@ function launchRocket(
     y,
     vx: dx / flight,
     vy: dy / flight,
-    damage: TITAN_ROCKET.damage,
-    penetration: TITAN_ROCKET.penetration,
-    caliber: TITAN_ROCKET.caliber,
+    damage: rack.damage,
+    penetration: rack.penetration,
+    caliber: rack.caliber,
     life: flight,
     ignoreId: e.id,
     fromId: e.id,
@@ -883,11 +925,22 @@ function launchRocket(
     airBurst: aloft || undefined,
     z: z0,
     vz: (zLand - z0) / flight,
+    launcher: e.type,
+    ...lob(rack, dist, range, z0),
   });
 }
 
-/** Advance a rocket along its straight line. True while it is still flying. */
+/** Arc fields for a rack that lobs: peak grows with the shot, like a mortar bomb's. */
+function lob(rack: RocketRackDef, dist: number, range: number, z0: number): Pick<Projectile, "apex" | "launchZ"> {
+  if (rack.apexFar == null) return {};
+  const near = rack.apexNear ?? rack.apexFar;
+  const u = Math.min(1, Math.max(0, dist / Math.max(1, range)));
+  return { apex: near + (rack.apexFar - near) * u, launchZ: z0 };
+}
+
+/** Advance a rocket along its straight line, or its lob. True while it is still flying. */
 function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => number): boolean {
+  if (p.apex != null) return stepLobbedRocket(state, p, dt, rand);
   const x0 = p.x;
   const y0 = p.y;
   const z0 = p.z ?? 0;
@@ -919,6 +972,25 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
   return false;
 }
 
+/** A lobbed rocket climbs over everything and bursts at its fused point on the ground. */
+function stepLobbedRocket(state: MatchState, p: Projectile, dt: number, rand: () => number): boolean {
+  const total = p.flightTime ?? Math.max(0.05, p.life);
+  const stepDt = p.life > 0 ? Math.min(dt, p.life) : 0;
+  p.x += p.vx * stepDt;
+  p.y += p.vy * stepDt;
+  p.life -= dt;
+  const u = Math.min(1, Math.max(0, (total - Math.max(0, p.life)) / total));
+  p.z = (p.launchZ ?? 0) + (p.vz ?? 0) * total * u + mortarAirZ(u, p.apex ?? 0);
+  if (p.life > 0) return true;
+  if (p.landX != null && p.landY != null) {
+    p.x = p.landX;
+    p.y = p.landY;
+  }
+  p.z = 0;
+  detonateMortar(state, p, rand);
+  return false;
+}
+
 /** A rocket bursting near a low drone's height catches it in the splash. */
 function rocketCatchesDrone(state: MatchState, p: Projectile, e: Entity): boolean {
   if (p.flight !== "rocket" || !e.drone || !projectileMeetsDrone(p, e)) return false;
@@ -936,7 +1008,8 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
   const tx = worldToTile(p.x, state.tileSize);
   const ty = worldToTile(p.y, state.tileSize);
   if (!inAir && isTree(state, tx, ty)) fellTreeAt(state, tx, ty);
-  const radius = (rocket ? TITAN_ROCKET_SPLASH_TILES : MORTAR_SPLASH_TILES) * state.tileSize;
+  const rack = rocketRackOf(p.launcher ?? "titan");
+  const radius = (rocket ? rack.splashTiles : MORTAR_SPLASH_TILES) * state.tileSize;
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null) continue;
     // A ground burst never reaches a plane; an air burst only catches planes.
@@ -953,12 +1026,12 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     const falloff = mortarFalloff(d, reach);
     const def = catalog(e.type);
     if (inAir) {
-      e.hp = Math.max(0, e.hp - Math.max(1, Math.round(p.damage * TITAN_ROCKET.airMul * falloff)));
+      e.hp = Math.max(0, e.hp - Math.max(1, Math.round(p.damage * rack.airMul * falloff)));
       continue;
     }
     if (e.kind === "unit" && isArmored(def)) {
       const nick = rocket
-        ? rocketArmorDamage(TITAN_ROCKET.armorDamage, falloff, rand)
+        ? rocketArmorDamage(rack.armorDamage, falloff, rand)
         : mortarArmorNick(def.hp, falloff, hasTracks(e.type), rand);
       e.hp = Math.max(0, e.hp - nick.damage);
       if (e.hp > 0 && nick.throwTrack) addCrit(e, "tracks");
@@ -1713,6 +1786,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     const dy = o.y - e.y;
     const d = dx * dx + dy * dy;
     if (d > bestD) continue;
+    if (launcherOnlyOf(e.type) && !inLauncherBand(state, e, o.x, o.y)) continue;
     if (coneOnly && !inGuardCone(e, o)) continue;
     if (!canSeeEntity(state, e.ownerId, o)) continue;
     if (!canAimWeapon(state, e, o.x, o.y, o)) continue;
