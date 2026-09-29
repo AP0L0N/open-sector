@@ -12,7 +12,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 44;
+export const PROTOCOL_VERSION = 45;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -289,6 +289,8 @@ export interface ImpactView {
   bomb?: boolean;
   /** Titan rocket. A mortar-style burst, smaller. */
   rocket?: boolean;
+  /** A CIWS burst a rocket in the air. No crater, nothing hurt under it. */
+  intercept?: boolean;
 }
 
 /** Blood droplet around a corpse. World pixels. */

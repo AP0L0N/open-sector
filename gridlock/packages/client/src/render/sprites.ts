@@ -27,6 +27,8 @@ import musterUrl from "../assets/buildings/muster.png";
 import armoryUrl from "../assets/buildings/armory.png";
 import airfieldUrl from "../assets/buildings/airfield.png";
 import airfieldGroundUrl from "../assets/buildings/airfield-ground.png";
+import ciwsUrl from "../assets/buildings/ciws.png";
+import ciwsTurretUrl from "../assets/buildings/ciws-turret.png";
 import cottageUrl from "../assets/buildings/cottage.png";
 import cottageSUrl from "../assets/buildings/cottage-s.png";
 import cottageWUrl from "../assets/buildings/cottage-w.png";
@@ -928,7 +930,12 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   smelter: building(smelterUrl, 384, 194, 393, 138, 90),
   // Hangar, tower, dump, tents. Metrics from tools/sprites/render_airfield.py (airfield.json).
   airfield: building(airfieldUrl, 960, 652, 552, 604, 112),
+  // Pad and plinth. Metrics from tools/sprites/render_ciws.py (ciws.json).
+  ciws: building(ciwsUrl, 192, 126, 186, 126, 82.8),
 };
+
+/** CIWS gun: 16 rows, each the base image's canvas and anchor (render/ciws.ts). */
+export const CIWS_TURRET_SHEET: HTMLImageElement = loadSheet(ciwsTurretUrl);
 
 /**
  * Flat part of a building that everything standing draws over: the Airfield's

@@ -258,6 +258,8 @@ export interface Projectile {
   flightTime?: number;
   /** Force-attack: the blast also catches allies. */
   harmAllies?: boolean;
+  /** Rocket only: CIWS mounts that already fired a burst at it. Each gets one try. */
+  ciwsTried?: number[];
 }
 
 /** Lasting smoke screen from a 75mm smoke shell. */

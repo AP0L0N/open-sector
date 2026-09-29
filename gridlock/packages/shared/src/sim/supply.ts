@@ -24,7 +24,7 @@ import {
 import type { ArmorFace } from "./ballistics.js";
 import { takeDamage } from "./crits.js";
 import { detachGarrisoned, livingGarrison } from "./garrison.js";
-import { allies, clearOrder, nearestWalkable, tileCenter, worldToTile } from "./geo.js";
+import { allies, buildingBounds, clearOrder, nearestWalkable, tileCenter, worldToTile } from "./geo.js";
 import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
 import type { Entity, MatchState } from "./types.js";
@@ -93,11 +93,31 @@ export function needsSupply(e: Entity): boolean {
   return supplyShortOf(e.type, e.ammo, e.mgAmmo, e.clip);
 }
 
-function nearTruck(a: Entity, b: Entity, slack: number): boolean {
-  return Math.hypot(a.x - b.x, a.y - b.y) <= a.radius + b.radius + slack;
+/** Point of a building's footprint nearest to (x, y). */
+function footprintNearest(state: MatchState, b: Entity, x: number, y: number): { x: number; y: number } {
+  const box = buildingBounds(b, state.tileSize);
+  return { x: Math.min(box.x1, Math.max(box.x0, x)), y: Math.min(box.y1, Math.max(box.y0, y)) };
 }
 
-function approachPoint(truck: Entity, from: Entity): { x: number; y: number } {
+/** Side by side. A building (Armory, CIWS) is reached at its footprint edge, not its center. */
+function nearTruck(state: MatchState, a: Entity, b: Entity, slack: number): boolean {
+  if (Math.hypot(a.x - b.x, a.y - b.y) <= a.radius + b.radius + slack) return true;
+  if (b.kind !== "building") return false;
+  const edge = footprintNearest(state, b, a.x, a.y);
+  return Math.hypot(a.x - edge.x, a.y - edge.y) <= a.radius + slack;
+}
+
+function approachPoint(state: MatchState, truck: Entity, from: Entity): { x: number; y: number } {
+  if (truck.kind === "building") {
+    const edge = footprintNearest(state, truck, from.x, from.y);
+    const ex = from.x - edge.x;
+    const ey = from.y - edge.y;
+    const ed = Math.hypot(ex, ey);
+    if (ed > 1e-6) {
+      const out = from.radius + 6;
+      return { x: edge.x + (ex / ed) * out, y: edge.y + (ey / ed) * out };
+    }
+  }
   const dx = from.x - truck.x;
   const dy = from.y - truck.y;
   const d = Math.hypot(dx, dy) || 1;
@@ -321,10 +341,10 @@ function tickResupply(state: MatchState, truck: Entity, dt: number): void {
     stall(truck);
     return;
   }
-  if (!nearTruck(truck, target, SUPPLY_REACH)) {
+  if (!nearTruck(state, truck, target, SUPPLY_REACH)) {
     truck.state = "move";
     if (truck.waypoints.length === 0 || state.tick % 8 === 0) {
-      const spot = approachPoint(target, truck);
+      const spot = approachPoint(state, target, truck);
       setPath(state, truck, spot.x, spot.y);
     }
     return;
@@ -364,13 +384,13 @@ function tickBoard(state: MatchState, unit: Entity): void {
     clearOrder(unit);
     return;
   }
-  if (nearTruck(unit, truck, BOARD_SLACK)) {
+  if (nearTruck(state, unit, truck, BOARD_SLACK)) {
     enterTruck(state, unit, truck);
     return;
   }
   unit.state = "move";
   if (unit.waypoints.length === 0 || state.tick % 8 === 0) {
-    const spot = approachPoint(truck, unit);
+    const spot = approachPoint(state, truck, unit);
     setPath(state, unit, spot.x, spot.y);
   }
 }
@@ -405,7 +425,7 @@ export function orderSupply(state: MatchState, playerId: string, trucks: Entity[
     truck.order = { kind: "supply", targetId };
     truck.work = 0;
     truck.state = "move";
-    const spot = approachPoint(target, truck);
+    const spot = approachPoint(state, target, truck);
     setPath(state, truck, spot.x, spot.y);
     sent++;
   }
@@ -430,7 +450,7 @@ export function orderBoard(state: MatchState, playerId: string, units: Entity[],
     clearOrder(e);
     e.order = { kind: "board", targetId: truck.id };
     e.state = "move";
-    const spot = approachPoint(truck, e);
+    const spot = approachPoint(state, truck, e);
     setPath(state, e, spot.x, spot.y);
     n++;
   }

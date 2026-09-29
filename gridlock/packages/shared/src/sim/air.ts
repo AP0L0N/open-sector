@@ -37,6 +37,8 @@ import {
   BOMB_SCATTER_TILES,
   BOMB_SPLASH_TILES,
   BOMB_TRACK_CHANCE,
+  CIWS_AIR_SPREAD,
+  radarLaidOf,
   STUKA_BOMBS,
   STUKA_MG,
   STUKA_MG_PER_TICK,
@@ -77,18 +79,19 @@ export function isAirborne(e: { air?: AirState | { alt: number; phase?: string }
 
 /**
  * Small arms reach a plane in the air: rifles, the handgun, the MG42, the
- * scoped rifle, the PTRD, and the Walker's gatlings. Tank guns and the
- * mortar cannot lay on it.
+ * scoped rifle, the PTRD, the Walker's gatlings, and the CIWS. Tank guns
+ * and the mortar cannot lay on it.
  */
 export function reachesAircraft(e: Entity): boolean {
-  if (e.type === "walker") return true;
+  if (e.type === "walker" || radarLaidOf(e.type)) return true;
   const gun = infantryGunFor(e);
   return !!gun && gun.id !== "mortar";
 }
 
-/** Extra spread on a shot at this target. 1 for anything on the ground. */
-export function airTargetSpreadMul(target: Entity): number {
-  return isAirborne(target) ? AIR_TARGET_SPREAD : 1;
+/** Extra spread on a shot at this target. 1 for anything on the ground. A radar-laid gun opens less. */
+export function airTargetSpreadMul(target: Entity, shooter?: Entity): number {
+  if (!isAirborne(target)) return 1;
+  return shooter && radarLaidOf(shooter.type) ? CIWS_AIR_SPREAD : AIR_TARGET_SPREAD;
 }
 
 type FieldRect = Pick<Entity, "tileX" | "tileY" | "tileW" | "tileH">;
