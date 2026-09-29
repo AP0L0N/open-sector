@@ -8,6 +8,8 @@ import {
   MORTAR_SCATTER_NEAR_TILES,
   MORTAR_TRACK_CHANCE,
   TILE_SIZE,
+  TITAN_ROCKET_SCATTER_FAR_TILES,
+  TITAN_ROCKET_SCATTER_NEAR_TILES,
 } from "../catalog.js";
 
 function clamp01(u: number): number {
@@ -116,4 +118,25 @@ export function mortarArmorNick(
   const damage = Math.max(1, Math.round(hpMax * MORTAR_ARMOR_CHIP * Math.max(0, falloff) * span));
   const throwTrack = tracked && rand() < MORTAR_TRACK_CHANCE;
   return { damage, throwTrack };
+}
+
+/** Titan rocket miss radius. Wider than a mortar at every range: the pods are unguided. */
+export function rocketScatterRadius(dist: number, maxRange: number, mul = 1): number {
+  const near = TITAN_ROCKET_SCATTER_NEAR_TILES * TILE_SIZE;
+  const far = TITAN_ROCKET_SCATTER_FAR_TILES * TILE_SIZE;
+  const u = clamp01(dist / Math.max(1, maxRange));
+  return (near + (far - near) * u) * Math.max(0.2, mul);
+}
+
+/**
+ * A rocket against an armored hull. A flat dent, not a share of max HP, so it
+ * hurts a light hull more than a heavy one. It never throws a track.
+ */
+export function rocketArmorDamage(
+  center: number,
+  falloff: number,
+  rand: () => number,
+): { damage: number; throwTrack: boolean } {
+  const span = 0.8 + rand() * 0.4;
+  return { damage: Math.max(1, Math.round(center * Math.max(0, falloff) * span)), throwTrack: false };
 }

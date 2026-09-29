@@ -12,7 +12,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 43;
+export const PROTOCOL_VERSION = 44;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -164,6 +164,8 @@ export interface EntityView {
   wading?: boolean;
   /** Titan outriggers down: stationary, braced max HP. Omitted when false. */
   braced?: boolean;
+  /** Seconds until the Titan's rocket pods reload. Friendly snapshots; omitted when ready. */
+  rocketReload?: number;
   /** Stay put: no chase, no withdraw. Friendly snapshots. */
   holdPosition?: boolean;
   /** Overwatch heading in world radians. Friendly snapshots while guarding. */
@@ -257,6 +259,8 @@ export interface ProjectileView {
   hang?: number;
   /** Falling aircraft bomb. `z` is its height; it drops, it does not arc. */
   bomb?: boolean;
+  /** Titan rocket. Straight and fast; `z` is its height over the ground. */
+  rocket?: boolean;
 }
 
 export type ImpactKind = "miss" | "puff" | "crush" | "ricochet" | "glance" | "hit" | "pen" | "kill";
@@ -283,6 +287,8 @@ export interface ImpactView {
   mortar?: boolean;
   /** Aircraft bomb. A much bigger column than a mortar. */
   bomb?: boolean;
+  /** Titan rocket. A mortar-style burst, smaller. */
+  rocket?: boolean;
 }
 
 /** Blood droplet around a corpse. World pixels. */

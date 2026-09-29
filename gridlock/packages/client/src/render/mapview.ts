@@ -71,6 +71,9 @@ import {
   drawRicochetTrace,
   armorHitLift,
   AIR_BOMB_BURST_SCALE,
+  ROCKET_BURST_SCALE,
+  drawRocketHead,
+  rocketTrailPoints,
   drawMortarBurst,
   drawMortarSmoke,
   MORTAR_BURST_MS,
@@ -115,6 +118,7 @@ import {
   CYBORG_SPRITE,
   TITAN_BRACED_SPRITE,
   TITAN_SPRITE,
+  TITAN_WADE_SPRITE,
   MORTARMAN_DIE_SPRITE,
   MORTARMAN_FIRE_SPRITE,
   ENGINEER_BUILD_SPRITE,
@@ -459,6 +463,8 @@ export class MapView {
     mortar?: boolean;
     /** Aircraft bomb: the mortar column, larger. */
     bomb?: boolean;
+    /** Titan rocket: the mortar column, smaller. */
+    rocket?: boolean;
     lift?: number;
     /** Screen-x offset from the world ground projection. */
     sx?: number;
@@ -471,6 +477,10 @@ export class MapView {
   private bounceTrace = new Map<number, { x: number; y: number; sx: number; lift: number }>();
   /** Last smoke arc of a mortar bomb, kept briefly after it lands. World space. */
   private mortarSmoke = new Map<number, { pts: { x: number; y: number; z: number; u: number }[]; at: number }>();
+  /** Where each Titan rocket was first seen, so its straight smoke trail starts at the pod. World space. */
+  private rocketFrom = new Map<number, { x: number; y: number; z: number }>();
+  /** Last smoke line of a rocket, kept briefly after it bursts. */
+  private rocketSmoke = new Map<number, { pts: { x: number; y: number; z: number; u: number }[]; at: number }>();
   /** Leaves and husk from a tree a shell just opened. */
   private treeFalls: { x: number; y: number; at: number; seed: number }[] = [];
   /** First cleared-tree list is history. Later ones play the fall. */
@@ -668,6 +678,22 @@ export class MapView {
         if (shooter?.type === "mortarman" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
         continue;
       }
+      if (p.rocket) {
+        // Pod flash. Not a tank shot: the main gun does not recoil.
+        this.rocketFrom.set(p.id, { x: p.x, y: p.y, z: p.z ?? 0 });
+        this.addFx({
+          id: p.id + 8_000_000,
+          kind: "muzzle",
+          x: p.x,
+          y: p.y,
+          vx: p.vx,
+          vy: p.vy,
+          at: now,
+          caliber: 20,
+          lift: isoLift(p.z ?? 0) - isoLift(this.elevAt(p.x, p.y)),
+        });
+        continue;
+      }
       const fromGarrison =
         !!shooter?.garrisonedIn || (!shooter && !isShellCaliber(p.caliber) && !!this.houseAt(p.x, p.y));
       if (fromGarrison) {
@@ -691,7 +717,7 @@ export class MapView {
       this.noteTankShot(shooter, p, now);
     }
     for (const i of match.impacts ?? []) {
-      if (!isShellCaliber(i.caliber) || i.fromId == null) continue;
+      if (!isShellCaliber(i.caliber) || i.fromId == null || i.rocket) continue;
       if (i.kind === "puff" && i.shell !== "smoke") continue;
       const rec = this.gunRecoil.get(i.fromId);
       if (rec && now - rec.at < 2000) continue;
@@ -2214,6 +2240,7 @@ export class MapView {
       }
     }
     this.drawMortarArcs();
+    this.drawRockets();
     this.drawFallingBombs();
     this.drawTreeFalls();
     this.drawSmokeClouds();
@@ -2649,7 +2676,8 @@ export class MapView {
 
   private collectUnitShadows(items: DrawItem[]): void {
     for (const e of this.curr.entities) {
-      if (!unitCastsShadow({ kind: e.kind, garrisonedIn: e.garrisonedIn, swimming: e.swimming })) continue;
+      const inWater = e.swimming || e.wading;
+      if (!unitCastsShadow({ kind: e.kind, garrisonedIn: e.garrisonedIn, swimming: inWater })) continue;
       const def = catalog(e.type);
       let scale = isInfantryType(e.type) ? INFANTRY_VISUAL_SCALE : UNIT_VISUAL_SCALE;
       // A plane's shadow is its wingspan, and it spreads as the plane climbs.
@@ -3038,7 +3066,9 @@ export class MapView {
       // The outriggers read as down from the midpoint of the brace until the midpoint of the pack.
       const p = e.deployProgress ?? 0;
       const down = e.state === "deploy" ? p >= 0.5 : e.state === "undeploy" ? p < 0.5 : !!e.braced;
-      return down && !e.wreck ? TITAN_BRACED_SPRITE : TITAN_SPRITE;
+      if (down && !e.wreck) return TITAN_BRACED_SPRITE;
+      // In water only the torso and pods show above the pool.
+      return e.wading ? TITAN_WADE_SPRITE : TITAN_SPRITE;
     }
     if (e.type === "rifleman") {
       const sheet = trooperSheet({
@@ -3533,6 +3563,50 @@ export class MapView {
     }
   }
 
+  /** Titan rockets: a straight smoke line from the pod to a burning head. */
+  private drawRockets(): void {
+    const now = performance.now();
+    const blend = Math.min(1, (now - this.snapAt) / 100);
+    const live = new Set<number>();
+    const ctx = this.ctx;
+    for (const p of this.curr.projectiles) {
+      if (!p.rocket) continue;
+      live.add(p.id);
+      const prev = this.prev?.projectiles.find((q) => q.id === p.id);
+      const wx = prev ? prev.x + (p.x - prev.x) * blend : p.x;
+      const wy = prev ? prev.y + (p.y - prev.y) * blend : p.y;
+      const wz = prev?.z != null && p.z != null ? prev.z + (p.z - prev.z) * blend : (p.z ?? 0);
+      const from = this.rocketFrom.get(p.id) ?? { x: wx, y: wy, z: wz };
+      const pts = rocketTrailPoints(from, { x: wx, y: wy, z: wz }, 10);
+      const screen = this.rocketScreen(pts);
+      drawMortarSmoke(ctx, screen, p.id);
+      const head = screen[screen.length - 1]!;
+      const tail = screen[Math.max(0, screen.length - 2)]!;
+      drawRocketHead(ctx, head.x, head.y, head.x - tail.x, head.y - tail.y, p.id);
+      this.rocketSmoke.set(p.id, { pts, at: now });
+    }
+    for (const [id, trail] of this.rocketSmoke) {
+      if (live.has(id)) continue;
+      const age = now - trail.at;
+      if (age > 700) {
+        this.rocketSmoke.delete(id);
+        this.rocketFrom.delete(id);
+        continue;
+      }
+      drawMortarSmoke(ctx, this.rocketScreen(trail.pts), id, 1 - age / 700);
+    }
+  }
+
+  /** Rocket heights are absolute elevation (the sim's z), not a lift over the local ground. */
+  private rocketScreen(
+    pts: readonly { x: number; y: number; z: number; u: number }[],
+  ): { x: number; y: number; u: number }[] {
+    return pts.map((pt) => {
+      const s = this.toScreen(pt.x, pt.y, pt.z);
+      return { x: s.x, y: s.y, u: pt.u };
+    });
+  }
+
   private drawMortarArcs(): void {
     const now = performance.now();
     const blend = Math.min(1, (now - this.snapAt) / 100);
@@ -3585,7 +3659,7 @@ export class MapView {
     const ctx = this.ctx;
     const keep: typeof this.fx = [];
     for (const f of this.fx) {
-      const life = f.mortar
+      const life = f.mortar || f.rocket
         ? MORTAR_BURST_MS
         : f.kind === "miss" && isShellCaliber(f.caliber)
           ? SHELL_BURST_MS
@@ -3601,8 +3675,9 @@ export class MapView {
       const tip = this.toScreen(f.x + f.vx * 0.08, f.y + f.vy * 0.08);
       const dirX = tip.x - s.x;
       const dirY = tip.y - s.y;
-      if (f.mortar) {
-        drawMortarBurst(ctx, s.x, s.y, t, f.id, !!f.splash, f.bomb ? AIR_BOMB_BURST_SCALE : 1);
+      if (f.mortar || f.rocket) {
+        const scale = f.bomb ? AIR_BOMB_BURST_SCALE : f.rocket ? ROCKET_BURST_SCALE : 1;
+        drawMortarBurst(ctx, s.x, s.y, t, f.id, !!f.splash, scale);
       } else if (f.splash) {
         drawWaterDetonation(ctx, s.x, s.y, t, f.id, f.caliber);
       }
@@ -3651,7 +3726,7 @@ export class MapView {
         );
       } else if (f.kind === "ricochet") {
         drawRicochetSparks(ctx, x, y, dirX, dirY, t, f.id, f.caliber);
-      } else if (f.kind === "miss" && !f.splash && !f.mortar) {
+      } else if (f.kind === "miss" && !f.splash && !f.mortar && !f.rocket) {
         drawGroundMiss(ctx, s.x, s.y, t, f.id, f.caliber, dirX, dirY, f.shell);
       }
     }

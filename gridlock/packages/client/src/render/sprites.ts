@@ -129,6 +129,9 @@ import titanGunUrl from "../assets/units/titan-gun.png";
 import titanBracedLegsUrl from "../assets/units/titan-braced-legs.png";
 import titanBracedTorsoUrl from "../assets/units/titan-braced-torso.png";
 import titanBracedGunUrl from "../assets/units/titan-braced-gun.png";
+import titanWadeLegsUrl from "../assets/units/titan-wade-legs.png";
+import titanWadeTorsoUrl from "../assets/units/titan-wade-torso.png";
+import titanWadeGunUrl from "../assets/units/titan-wade-gun.png";
 import { bindAircraftSheets, bindCasemateSheets, bindSupplySheets, bindTurntableSheets } from "./turntable-sheet.js";
 import { engineRowFromFacing, engineRowFromScreen } from "./turntable.js";
 import scoutHeadUrl from "../assets/units/scout-head.png";
@@ -777,6 +780,23 @@ export const TITAN_BRACED_SPRITE: UnitSpriteDef = {
   contactY: TITAN_CONTACT_Y,
   turret: titanOverlay(titanBracedTorsoUrl),
   gun: titanOverlay(titanBracedGunUrl),
+  facingSpace: "world",
+};
+
+/**
+ * Wading: the mech sunk to just under the pelvis, pool and ripples baked into the
+ * leg sheet like the infantry swim sheet. Same cell, scale, and contact as dry land.
+ */
+export const TITAN_WADE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(titanWadeLegsUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: TITAN_CELL,
+  fps: 8,
+  drawSize: TITAN_DRAW,
+  contactY: TITAN_CONTACT_Y,
+  turret: titanOverlay(titanWadeTorsoUrl),
+  gun: titanOverlay(titanWadeGunUrl),
   facingSpace: "world",
 };
 
