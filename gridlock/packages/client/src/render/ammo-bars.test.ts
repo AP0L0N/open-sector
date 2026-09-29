@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { catalog, rocketAmmoOf } from "@gridlock/shared";
+import { SUPPLY_CARGO, catalog, rocketAmmoOf } from "@gridlock/shared";
 import { ammoBarRatios } from "./ammo-bars.js";
 
 describe("ammoBarRatios", () => {
@@ -28,6 +28,11 @@ describe("ammoBarRatios", () => {
     assert.equal(ammoBarRatios({ type: "ciws", clip: 0 }).length, 1);
     assert.equal(ammoBarRatios({ type: "cyborg", clip: 0 }).length, 1);
     assert.deepEqual(ammoBarRatios({ type: "rifleman", clip: 3 }), []);
+  });
+
+  it("shows a supply truck's cargo, hidden when the view carries none", () => {
+    assert.deepEqual(ammoBarRatios({ type: "supply", supply: SUPPLY_CARGO / 4 }), [0.25]);
+    assert.deepEqual(ammoBarRatios({ type: "supply" }), []);
   });
 
   it("hides on enemies (no rack in view) and wrecks", () => {

@@ -4,6 +4,7 @@ import {
   DRIVER_KILL_CHANCE,
   SUPPLY_CARGO,
   SUPPLY_SEEK_TILES,
+  SUPPLY_REGEN_PER_SEC,
   TRUCK_RIDER_HP_MUL,
   TRUCK_SEATS,
   WALKER_BELT,
@@ -109,6 +110,20 @@ describe("supply truck", () => {
     const stayed = applyCommand(state, a, { type: "cmd.unboard", truckId: truck.id });
     assert.equal(stayed.ok, false);
     if (!stayed.ok) assert.match(stayed.message, /cannot dismount/i);
+  });
+
+  it("slowly scrounges its cargo back on its own, up to a full load", () => {
+    const { state, a } = match();
+    clearPad(state, 30, 30, 50, 50);
+    const ts = state.tileSize;
+    const truck = makeEntity(state, "supply", a, tileCenter(40, ts), tileCenter(40, ts));
+    truck.supply = 0;
+    const secs = 10;
+    ticks(state, Math.round(secs / TICK_DT));
+    assert.ok(Math.abs(truck.supply - SUPPLY_REGEN_PER_SEC * secs) < 0.01);
+    truck.supply = SUPPLY_CARGO - 0.1;
+    ticks(state, Math.round(secs / TICK_DT));
+    assert.equal(truck.supply, SUPPLY_CARGO);
   });
 
   it("stays parked after a soldier boards", () => {

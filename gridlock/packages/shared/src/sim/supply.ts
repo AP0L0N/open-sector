@@ -6,6 +6,7 @@ import {
   SUPPLY_PER_SEC,
   SUPPLY_REARM_PER_SEC,
   SUPPLY_SEEK_TILES,
+  SUPPLY_REGEN_PER_SEC,
   SUPPLY_ROUNDS_PER_POINT,
   SUPPLY_SHELL_COST,
   TRUCK_RIDER_HP_MUL,
@@ -460,7 +461,9 @@ function tickBoard(state: MatchState, unit: Entity): void {
 
 export function tickSupply(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
-    if (e.type === "supply" && e.hp > 0 && !e.wreck && !supplyHasDriver(state, e)) stall(e);
+    if (e.type !== "supply" || e.hp <= 0 || e.wreck) continue;
+    if (e.supply < SUPPLY_CARGO) e.supply = Math.min(SUPPLY_CARGO, e.supply + SUPPLY_REGEN_PER_SEC * dt);
+    if (!supplyHasDriver(state, e)) stall(e);
   }
   for (const e of state.entities.values()) {
     if (e.kind !== "unit" || e.hp <= 0 || e.garrisonedIn) continue;
