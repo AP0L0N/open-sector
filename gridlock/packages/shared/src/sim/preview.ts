@@ -2,7 +2,7 @@ import { BUILD_RADIUS, catalog, type BuildingType, type FieldStructureType } fro
 import { TILE_BLOCKED, TILE_FENCE, TILE_TREE, TILE_WATER, getMap } from "../maps.js";
 import type { MatchSnapshot } from "../protocol.js";
 import { fieldTilesOn, overlapsFieldIn } from "./field.js";
-import { chebyshev, footprint } from "./geo.js";
+import { footprint, footprintGap } from "./geo.js";
 
 /** Snapshot-side twin of `fieldSiteClear`: ground, scrap, buildings, and other field structures. */
 export function previewField(
@@ -58,11 +58,7 @@ export function previewPlace(snap: MatchSnapshot, type: BuildingType, tx: number
   const you = snap.youPlayerId;
   for (const e of snap.entities) {
     if (e.kind !== "building" || e.ownerId !== you) continue;
-    for (const b of footprint(e.tileX, e.tileY, e.tileW, e.tileH)) {
-      for (const n of tiles) {
-        if (chebyshev(n.x, n.y, b.x, b.y) <= BUILD_RADIUS) return true;
-      }
-    }
+    if (footprintGap(tx, ty, def.tileW, def.tileH, e.tileX, e.tileY, e.tileW, e.tileH) <= BUILD_RADIUS) return true;
   }
   return false;
 }
