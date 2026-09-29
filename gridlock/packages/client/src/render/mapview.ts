@@ -160,7 +160,15 @@ import {
 } from "./muzzle-smoke.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
-import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir, lerpAirAlt } from "./aircraft.js";
+import {
+  AIR_DRAW_LAYER,
+  aircraftShadowScale,
+  airLiftPx,
+  drawFallingBomb,
+  inAir,
+  lerpAirAlt,
+  parkedOnStripBias,
+} from "./aircraft.js";
 import { drawSandbags } from "./sandbags.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
@@ -1844,6 +1852,21 @@ export class MapView {
     }
     const p = this.lerpEnt(e);
     if (inAir(e)) return { layer: AIR_DRAW_LAYER, z: isoDepth(p.x, p.y) };
+    if (e.air) {
+      // On the strip: sort as the Airfield itself, just in front, so the plane sits on its hardstand.
+      const field = this.curr.entities.find(
+        (b) =>
+          b.type === "airfield" &&
+          p.x >= b.tileX * ts &&
+          p.x < (b.tileX + b.tileW) * ts &&
+          p.y >= b.tileY * ts &&
+          p.y < (b.tileY + b.tileH) * ts,
+      );
+      if (field) {
+        const key = this.drawKey(field);
+        return { ...key, z: key.z + parkedOnStripBias(p.x, p.y) };
+      }
+    }
     return { layer: STANDING_DRAW_LAYER, z: isoDepth(p.x, p.y), at: { x: p.x, y: p.y } };
   }
 

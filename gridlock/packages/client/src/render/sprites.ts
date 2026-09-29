@@ -905,8 +905,8 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   armory: building(armoryUrl, 384, 194.5, 310, 120, 48),
   muster: building(musterUrl, 385, 194.5, 333, 278, 52),
   smelter: building(smelterUrl, 384, 194, 393, 138, 90),
-  // Metrics from tools/sprites/render_procedural.py (airfield.json).
-  airfield: building(airfieldUrl, 864, 488, 451, 417.4, 42),
+  // Metrics from tools/sprites/render_airfield.py (airfield.json).
+  airfield: building(airfieldUrl, 864, 488, 445, 424.6, 33.6),
 };
 
 /** East, south, west, north. Yards differ per face so a random facing also varies the lot. */
