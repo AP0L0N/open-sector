@@ -8,6 +8,7 @@ import {
   TRACK_ARRIVE_SLOP,
   UNIT_SPACE_PAD,
 } from "../catalog.js";
+import { takeDamage } from "./crits.js";
 import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, occupant, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -367,7 +368,9 @@ export function tickCollision(state: MatchState, dt = TICK_DT): void {
       const dy = a.y - b.y;
       if (dx * dx + dy * dy >= need * need) continue;
       if (!canCrush(state, a, b)) continue;
-      b.hp = 0;
+      // The whole bar: a soldier dies, a cyborg on his legs is torn down to crawling.
+      takeDamage(b, b.hp, state.tick);
+      if (b.hp > 0) continue;
       state.impacts.push({
         id: state.nextId++,
         ownerId: a.ownerId,

@@ -22,6 +22,7 @@ import {
   type ShellType,
 } from "../catalog.js";
 import type { ArmorFace } from "./ballistics.js";
+import { takeDamage } from "./crits.js";
 import { detachGarrisoned, livingGarrison } from "./garrison.js";
 import { allies, clearOrder, nearestWalkable, tileCenter, worldToTile } from "./geo.js";
 import { setPath } from "./path.js";
@@ -239,7 +240,7 @@ export function noteSupplyHit(
   const driverId = truck.crew ? null : riders[0]?.id;
   for (const rider of riders) {
     const dmg = Math.max(1, Math.round(dealt * share));
-    rider.hp = Math.max(0, rider.hp - dmg);
+    takeDamage(rider, dmg, state.tick);
     if (rider.hp > 0) continue;
     if (rider.id === driverId) {
       const rest = riders.filter((r) => r.id !== rider.id);
