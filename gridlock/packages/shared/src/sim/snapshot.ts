@@ -125,6 +125,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       wading: !isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
       braced: e.braced || undefined,
       rocketReload: friendly && (e.rocketCooldown ?? 0) > 0 ? e.rocketCooldown : undefined,
+      rockets: friendly && e.rockets != null ? e.rockets : undefined,
+      rocketsOff: friendly && e.rocketsOff ? true : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
       guardFacing: friendly && e.guardFacing != null ? e.guardFacing : undefined,
       guardTargetId:

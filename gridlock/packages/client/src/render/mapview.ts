@@ -72,8 +72,8 @@ import {
   armorHitLift,
   AIR_BOMB_BURST_SCALE,
   ROCKET_BURST_SCALE,
+  drawAirBurst,
   drawRocketHead,
-  rocketTrailPoints,
   drawMortarBurst,
   drawMortarSmoke,
   MORTAR_BURST_MS,
@@ -164,6 +164,15 @@ import {
 } from "./muzzle-smoke.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
+import {
+  airBurstPuffs,
+  backblastPuffs,
+  drawRocketPuff,
+  ROCKET_PUFF_CAP,
+  rocketPuffPose,
+  trailPuffs,
+  type RocketPuff,
+} from "./rocket-smoke.js";
 import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir, lerpAirAlt } from "./aircraft.js";
 import { drawSandbags } from "./sandbags.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
@@ -464,6 +473,8 @@ export class MapView {
     bomb?: boolean;
     /** Titan rocket: the mortar column, smaller. */
     rocket?: boolean;
+    /** Rocket air burst: elevation of the burst. */
+    z?: number;
     lift?: number;
     /** Screen-x offset from the world ground projection. */
     sx?: number;
@@ -476,10 +487,12 @@ export class MapView {
   private bounceTrace = new Map<number, { x: number; y: number; sx: number; lift: number }>();
   /** Last smoke arc of a mortar bomb, kept briefly after it lands. World space. */
   private mortarSmoke = new Map<number, { pts: { x: number; y: number; z: number; u: number }[]; at: number }>();
-  /** Where each Titan rocket was first seen, so its straight smoke trail starts at the pod. World space. */
+  /** Where each Titan rocket was first seen, so its smoke trail starts at the pod. World space. */
   private rocketFrom = new Map<number, { x: number; y: number; z: number }>();
-  /** Last smoke line of a rocket, kept briefly after it bursts. */
-  private rocketSmoke = new Map<number, { pts: { x: number; y: number; z: number; u: number }[]; at: number }>();
+  /** Head of each rocket as of the last frame; the next frame lays trail puffs from here. */
+  private rocketLast = new Map<number, { x: number; y: number; z: number }>();
+  /** Rocket trail, backblast, and air-burst smoke. World space, absolute elevation. */
+  private rocketPuffs: RocketPuff[] = [];
   /** Leaves and husk from a tree a shell just opened. */
   private treeFalls: { x: number; y: number; at: number; seed: number }[] = [];
   /** First cleared-tree list is history. Later ones play the fall. */
@@ -660,6 +673,9 @@ export class MapView {
         if (shooter && isInfantryType(shooter.type) && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
       }
       if (i.kind === "crush") continue;
+      if (i.rocket && i.z != null && !this.fxIds.has(i.id)) {
+        this.rocketPuffs.push(...airBurstPuffs(i.x, i.y, i.z, now, i.id));
+      }
       const fx: MapView["fx"][number] = { ...i, at: now };
       this.snapHullFx(fx);
       this.addFx(fx);
@@ -678,8 +694,22 @@ export class MapView {
         continue;
       }
       if (p.rocket) {
-        // Pod flash. Not a tank shot: the main gun does not recoil.
+        // Pod flash and backblast. Not a tank shot: the main gun does not recoil.
         this.rocketFrom.set(p.id, { x: p.x, y: p.y, z: p.z ?? 0 });
+        if (shooter && !shooter.wreck) {
+          this.rocketPuffs.push(
+            ...backblastPuffs({
+              x: shooter.x,
+              y: shooter.y,
+              z: p.z ?? 0,
+              ground: this.elevAt(shooter.x, shooter.y),
+              dirX: p.vx,
+              dirY: p.vy,
+              now,
+              seed: (p.id * 2246822519) >>> 0,
+            }),
+          );
+        }
         this.addFx({
           id: p.id + 8_000_000,
           kind: "muzzle",
@@ -3554,12 +3584,16 @@ export class MapView {
     }
   }
 
-  /** Titan rockets: a straight smoke line from the pod to a burning head. */
+  /**
+   * Titan rockets: every frame lays puffs along the stretch each rocket flew,
+   * so the trail is a thick ribbon that hangs and spreads after the rocket is
+   * gone. Backblast and air-burst puffs share the same pool.
+   */
   private drawRockets(): void {
     const now = performance.now();
     const blend = Math.min(1, (now - this.snapAt) / 100);
     const live = new Set<number>();
-    const ctx = this.ctx;
+    const heads: { x: number; y: number; dx: number; dy: number; id: number }[] = [];
     for (const p of this.curr.projectiles) {
       if (!p.rocket) continue;
       live.add(p.id);
@@ -3567,35 +3601,44 @@ export class MapView {
       const wx = prev ? prev.x + (p.x - prev.x) * blend : p.x;
       const wy = prev ? prev.y + (p.y - prev.y) * blend : p.y;
       const wz = prev?.z != null && p.z != null ? prev.z + (p.z - prev.z) * blend : (p.z ?? 0);
-      const from = this.rocketFrom.get(p.id) ?? { x: wx, y: wy, z: wz };
-      const pts = rocketTrailPoints(from, { x: wx, y: wy, z: wz }, 10);
-      const screen = this.rocketScreen(pts);
-      drawMortarSmoke(ctx, screen, p.id);
-      const head = screen[screen.length - 1]!;
-      const tail = screen[Math.max(0, screen.length - 2)]!;
-      drawRocketHead(ctx, head.x, head.y, head.x - tail.x, head.y - tail.y, p.id);
-      this.rocketSmoke.set(p.id, { pts, at: now });
+      const head = { x: wx, y: wy, z: wz };
+      const last = this.rocketLast.get(p.id) ?? this.rocketFrom.get(p.id) ?? head;
+      this.rocketPuffs.push(...trailPuffs(last, head, now, (p.id * 2654435761 + Math.floor(now)) >>> 0));
+      this.rocketLast.set(p.id, head);
+      const s = this.toScreen(wx, wy, wz);
+      const tail = this.toScreen(last.x, last.y, last.z);
+      const dx = s.x - tail.x;
+      const dy = s.y - tail.y;
+      const fallback = this.toScreen(wx - p.vx * 0.01, wy - p.vy * 0.01, wz);
+      const moved = dx * dx + dy * dy > 0.25;
+      heads.push({ x: s.x, y: s.y, dx: moved ? dx : s.x - fallback.x, dy: moved ? dy : s.y - fallback.y, id: p.id });
     }
-    for (const [id, trail] of this.rocketSmoke) {
-      if (live.has(id)) continue;
-      const age = now - trail.at;
-      if (age > 700) {
-        this.rocketSmoke.delete(id);
+    for (const id of [...this.rocketLast.keys()]) {
+      if (!live.has(id)) {
+        this.rocketLast.delete(id);
         this.rocketFrom.delete(id);
+      }
+    }
+    if (this.rocketPuffs.length > ROCKET_PUFF_CAP) {
+      this.rocketPuffs.splice(0, this.rocketPuffs.length - ROCKET_PUFF_CAP);
+    }
+    const ctx = this.ctx;
+    const keep: RocketPuff[] = [];
+    ctx.save();
+    for (const puff of this.rocketPuffs) {
+      const pose = rocketPuffPose(puff, now);
+      if (!pose) {
+        // Not born yet (staggered backblast) stays; faded ones drop.
+        if (now < puff.at) keep.push(puff);
         continue;
       }
-      drawMortarSmoke(ctx, this.rocketScreen(trail.pts), id, 1 - age / 700);
+      keep.push(puff);
+      const s = this.toScreen(pose.x, pose.y, pose.z);
+      drawRocketPuff(ctx, s.x, s.y, pose.r, pose.alpha, puff.shade);
     }
-  }
-
-  /** Rocket heights are absolute elevation (the sim's z), not a lift over the local ground. */
-  private rocketScreen(
-    pts: readonly { x: number; y: number; z: number; u: number }[],
-  ): { x: number; y: number; u: number }[] {
-    return pts.map((pt) => {
-      const s = this.toScreen(pt.x, pt.y, pt.z);
-      return { x: s.x, y: s.y, u: pt.u };
-    });
+    ctx.restore();
+    this.rocketPuffs = keep;
+    for (const h of heads) drawRocketHead(ctx, h.x, h.y, h.dx, h.dy, h.id);
   }
 
   private drawMortarArcs(): void {
@@ -3666,7 +3709,10 @@ export class MapView {
       const tip = this.toScreen(f.x + f.vx * 0.08, f.y + f.vy * 0.08);
       const dirX = tip.x - s.x;
       const dirY = tip.y - s.y;
-      if (f.mortar || f.rocket) {
+      if (f.rocket && f.z != null) {
+        const air = this.toScreen(f.x, f.y, f.z);
+        drawAirBurst(ctx, air.x, air.y, t, f.id);
+      } else if (f.mortar || f.rocket) {
         const scale = f.bomb ? AIR_BOMB_BURST_SCALE : f.rocket ? ROCKET_BURST_SCALE : 1;
         drawMortarBurst(ctx, s.x, s.y, t, f.id, !!f.splash, scale);
       } else if (f.splash) {
