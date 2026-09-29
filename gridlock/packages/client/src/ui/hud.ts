@@ -26,6 +26,7 @@ import {
   isInfantryWeaponId,
   isShellType,
   rocketsOf,
+  rocketAmmoOf,
   isStance,
   producerType,
   productionSpeed,
@@ -216,7 +217,7 @@ export function mountBattlefield(
     });
   }
 
-  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns]", (t) => {
+  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-rockets]", (t) => {
     runConfigAction(ctx, t);
   });
 
@@ -553,9 +554,13 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     e.ammo && e.shell && !e.wreck ? `  ·  ${e.shell.toUpperCase()} ${ammoOf(e.ammo, e.shell)}` : "";
   const rockets =
     rocketsOf(e.type) && !e.wreck && e.ownerId === ctx.match.youPlayerId
-      ? (e.rocketReload ?? 0) > 0
-        ? `  ·  rockets ${e.rocketReload!.toFixed(1)}s`
-        : "  ·  rockets ready"
+      ? e.rocketsOff
+        ? `  ·  rockets off ${e.rockets ?? 0}`
+        : (e.rockets ?? 0) <= 0
+          ? "  ·  rockets EMPTY"
+          : (e.rocketReload ?? 0) > 0
+            ? `  ·  rockets ${e.rockets} · ${e.rocketReload!.toFixed(1)}s`
+            : `  ·  rockets ${e.rockets} ready`
       : "";
   const mg =
     e.mgAmmo != null && !e.wreck
@@ -652,8 +657,14 @@ function infantryClipLine(live: EntityView[]): string {
   return reloading ? `Clip ${rounds}/${cap} · ${reloading} reloading` : `Clip ${rounds}/${cap}`;
 }
 
+/** Titan pod switch. Off saves the rack; the main gun still fires. */
+const ROCKET_MODES = [
+  { id: "on", name: "Pods on", blurb: "Ripple four rockets at the target, then reload. Reaches planes in the air." },
+  { id: "off", name: "Pods off", blurb: "Hold the rack. Only the main gun fires." },
+] as const;
+
 function loadoutButton(opts: {
-  attr: "data-shell" | "data-weapon" | "data-guns";
+  attr: "data-shell" | "data-weapon" | "data-guns" | "data-rockets";
   id: string;
   name: string;
   blurb: string;
@@ -779,6 +790,7 @@ function configBodyLayout(focus: EntityView, live: EntityView[], wrecks: EntityV
   const parts = [focus.type, "live"];
   if (focus.type === "walker") parts.push("gatling");
   else if (hasAmmo(focus.type)) parts.push("ammo");
+  if (rocketsOf(focus.type) && mine.length > 0) parts.push("rockets");
   else if (isInfantryType(focus.type)) {
     parts.push("inf", infantryLoadout(focus.type).map((g) => g.id).join("+"));
     if (mine.length > 0 && infantryLoadout(focus.type).length > 0) parts.push("guns");
@@ -847,6 +859,15 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
       rack.append(loadoutButton({ attr: "data-shell", id, name: s.name, blurb: s.blurb, count: "0", on: false }));
     }
     body.append(el("div", { class: "tiny", text: "Shell" }), rack);
+    if (rocketsOf(focus.type) && mine.length > 0) {
+      const pods = el("div", { class: "shell-rack" });
+      for (const mode of ROCKET_MODES) {
+        pods.append(
+          loadoutButton({ attr: "data-rockets", id: mode.id, name: mode.name, blurb: mode.blurb, count: "", on: false }),
+        );
+      }
+      body.append(el("div", { class: "tiny", text: "Rockets" }), pods);
+    }
   } else if (isInfantryType(focus.type)) {
     const loadout = infantryLoadout(focus.type);
     if (loadout.length > 0 && mine.length > 0) {
@@ -919,6 +940,21 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
         on: !!(same && shells[0]?.shell === id),
         empty: left <= 0,
       });
+    }
+    if (rocketsOf(focus.type) && shells.length > 0) {
+      const left = shells.reduce((n, e) => n + (e.rockets ?? 0), 0);
+      const cap = rocketAmmoOf(focus.type) * shells.length;
+      const on = shells.every((e) => !e.rocketsOff);
+      const off = shells.every((e) => e.rocketsOff);
+      for (const mode of ROCKET_MODES) {
+        const btn = body.querySelector(`[data-rockets="${mode.id}"]`);
+        if (!(btn instanceof HTMLElement)) continue;
+        updateLoadoutButton(btn, {
+          count: mode.id === "on" ? `${left}/${cap}` : "",
+          on: mode.id === "on" ? on : off,
+          empty: mode.id === "on" && left <= 0,
+        });
+      }
     }
   } else if (isInfantryType(focus.type)) {
     const mine = live.filter((e) => e.ownerId === you);
@@ -1320,6 +1356,15 @@ function runConfigAction(ctx: Ctx, t: HTMLElement): void {
     return;
   }
   if (!viewRef || !ctx.match) return;
+  const pods = t.dataset.rockets;
+  if (pods === "on" || pods === "off") {
+    const ids = selectedOfType(ctx, viewRef, configFocus)
+      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck && rocketsOf(ent.type))
+      .map((ent) => ent.id);
+    if (ids.length === 0) return;
+    ctx.net.send({ type: "cmd.rockets", ids, on: pods === "on" });
+    return;
+  }
   const guns = t.dataset.guns;
   if (guns === "1" || guns === "2") {
     const ids = selectedOfType(ctx, viewRef, configFocus)

@@ -144,8 +144,14 @@ export interface Entity {
   gatlingGuns?: 1 | 2;
   /** Titan outriggers are down: stationary, hull locked, braced max HP. Missing means false. */
   braced?: boolean;
-  /** Seconds until the Titan's shoulder pods can loose the next salvo. Missing means ready. */
+  /** Seconds until the Titan's pods can fire the next rocket. Missing means ready. */
   rocketCooldown?: number;
+  /** Rockets left in the Titan's rack. Missing on types without pods. */
+  rockets?: number;
+  /** Rockets still to leave in the salvo under way. 0 or missing between salvos. */
+  rocketSalvo?: number;
+  /** Player switched the pods off. Missing means on. */
+  rocketsOff?: boolean;
   /** Last Walker volley: sim tick, arms that fired, and the off-arm bearing when it took a second target. */
   gatlingFire?: { tick: number; arms: 1 | 2; offAim?: number };
   /** Seconds the MG42 bipod has been set while prone. 0 until the gunner crawls. */
@@ -252,6 +258,8 @@ export interface Projectile {
   flightTime?: number;
   /** Force-attack: the blast also catches allies. */
   harmAllies?: boolean;
+  /** Rocket fused on a plane: it bursts in the air and only catches aircraft. */
+  airBurst?: boolean;
 }
 
 /** Lasting smoke screen from a 75mm smoke shell. */

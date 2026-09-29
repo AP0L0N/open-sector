@@ -219,21 +219,27 @@ export const TITAN_BRACE_SECONDS = 2.5;
 /** Hit-point multiplier while braced. HP keeps its share of max across the change. */
 export const TITAN_BRACED_HP_MUL = 1.75;
 /**
- * Titan shoulder rockets. Both pods loose the whole salvo in one tick, then
- * reload together. Each rocket flies straight and fast to a scattered point and
- * bursts like a small mortar bomb: it tears infantry apart and dents a hull.
+ * Titan shoulder rockets. The pods ripple a salvo, one rocket after another
+ * from alternating sides, then reload. Each rocket flies straight and fast to a
+ * scattered point and bursts like a small mortar bomb: it tears infantry apart
+ * and dents a hull. Aimed at a plane, it flies at the plane's height and bursts
+ * beside it. The rack is finite; a supply truck refills it like shells.
  * The pods ride above the waterline, so they fire while the Titan wades.
  */
 export const TITAN_ROCKET_SALVO = 4;
-/** Seconds from one salvo to the next. */
+/** Seconds between rockets inside one salvo. */
+export const TITAN_ROCKET_INTERVAL = 0.3;
+/** Seconds from the last rocket of a salvo to the first of the next. */
 export const TITAN_ROCKET_RELOAD = 11;
+/** Rockets in a full rack: four salvos. */
+export const TITAN_ROCKET_AMMO = 16;
 /** Ground miss radius at point blank and at full reach. Low accuracy by design. */
 export const TITAN_ROCKET_SCATTER_NEAR_TILES = t(0.55);
 export const TITAN_ROCKET_SCATTER_FAR_TILES = t(1.6);
 /** Blast radius of one rocket. Smaller than a mortar bomb. */
 export const TITAN_ROCKET_SPLASH_TILES = t(1.3);
-/** World pixels per second. A mortar bomb takes ~2 s to cross this range; a rocket under half a second. */
-export const TITAN_ROCKET_SPEED = t(26) * TILE_SIZE;
+/** World pixels per second. A mortar bomb takes ~2 s to cross this range; a rocket about half a second. */
+export const TITAN_ROCKET_SPEED = t(20.8) * TILE_SIZE;
 /** Elevation units above the Titan's eye where the pods sit. */
 export const TITAN_ROCKET_POD_LIFT = 6;
 export const TITAN_ROCKET = {
@@ -241,6 +247,8 @@ export const TITAN_ROCKET = {
   damage: 42,
   /** Hit points off an armored hull at the blast center, before falloff. */
   armorDamage: 11,
+  /** A plane caught in an air burst takes the soft-target damage × this. */
+  airMul: 0.9,
   penetration: 30,
   caliber: 80,
 } as const;
@@ -431,6 +439,8 @@ export interface CatalogEntry {
   bracedHpMul?: number;
   /** Shoulder rocket pods (TITAN_ROCKET). They fire from water, where the main gun cannot. */
   rockets?: boolean;
+  /** Rockets in a full rack. Only a supply truck refills it. */
+  rocketAmmo?: number;
   /** Flies. Parks on an Airfield pad, ignores ground collision and paths. */
   aircraft?: boolean;
 }
@@ -1622,8 +1632,9 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     special: "deploy",
     wades: true,
     rockets: true,
+    rocketAmmo: TITAN_ROCKET_AMMO,
     bracedHpMul: TITAN_BRACED_HP_MUL,
-    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that looses the whole salvo at once. Rockets scatter wide, shred infantry, and dent tanks. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up.",
+    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide, shred infantry, dent tanks, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up.",
   },
   supply: {
     type: "supply",
@@ -1680,7 +1691,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: STUKA_MG.caliber,
     spreadDeg: STUKA_MG.spreadDeg,
     aircraft: true,
-    blurb: "Dive bomber. One SC 250 per sortie, two wing MGs for soft targets. Flies over everything; only rifles, machine guns, and the Walker can reach it in the air. Lands at its Airfield to refuel and rearm.",
+    blurb: "Dive bomber. One SC 250 per sortie, two wing MGs for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands at its Airfield to refuel and rearm.",
   },
   cottage: {
     type: "cottage",
@@ -2073,8 +2084,10 @@ export function supplyShortOf(
   ammo: Partial<Record<ShellType, number>> | undefined,
   mgAmmo: number | undefined,
   clip: number | undefined,
+  rockets?: number,
 ): boolean {
   const def = catalog(type);
+  if ((rockets ?? 0) < rocketAmmoOf(type)) return true;
   if (def.ammo) {
     for (const shell of SHELL_TYPES) {
       if ((ammo?.[shell] ?? 0) < (def.ammo[shell] ?? 0)) return true;
@@ -2174,6 +2187,11 @@ export function wadesOf(type: EntityType): boolean {
 /** Carries the shoulder rocket pods. */
 export function rocketsOf(type: EntityType): boolean {
   return catalog(type).rockets === true;
+}
+
+/** Rockets in a full rack. 0 on every type without pods. */
+export function rocketAmmoOf(type: EntityType): number {
+  return rocketsOf(type) ? (catalog(type).rocketAmmo ?? 0) : 0;
 }
 
 /** Braces on deploy instead of turning into another type. */

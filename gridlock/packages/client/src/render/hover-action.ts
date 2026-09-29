@@ -38,6 +38,7 @@ export type HoverEntity = Pick<
   | "bed"
   | "supply"
   | "ammo"
+  | "rockets"
   | "mgAmmo"
   | "clip"
   | "crits"
@@ -132,7 +133,7 @@ function canSupplyHit(
   if (!friendly) return false;
   if (hit.type === "armory") return trucks.some((t) => (t.supply ?? 0) < SUPPLY_CARGO);
   if (hit.kind !== "unit" || hit.type === "supply") return false;
-  return supplyShortOf(hit.type, hit.ammo, hit.mgAmmo, hit.clip);
+  return supplyShortOf(hit.type, hit.ammo, hit.mgAmmo, hit.clip, hit.rockets);
 }
 
 function isArmoredWreck(hit: HoverEntity): boolean {

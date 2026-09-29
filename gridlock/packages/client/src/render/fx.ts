@@ -529,27 +529,22 @@ export const AIR_BOMB_BURST_SCALE = 1.9;
 /** A Titan rocket's burst is the mortar column drawn this much smaller. */
 export const ROCKET_BURST_SCALE = 0.72;
 
-/**
- * Samples on the straight line from the pod to the rocket head. `z` is absolute
- * elevation. `u` runs 0 at the pod to 1 at the head, the way drawMortarSmoke reads it.
- */
-export function rocketTrailPoints(
-  from: { x: number; y: number; z: number },
-  head: { x: number; y: number; z: number },
-  steps: number,
-): { x: number; y: number; z: number; u: number }[] {
-  const n = Math.max(2, Math.floor(steps));
-  const pts: { x: number; y: number; z: number; u: number }[] = [];
-  for (let i = 0; i <= n; i++) {
-    const u = i / n;
-    pts.push({
-      x: from.x + (head.x - from.x) * u,
-      y: from.y + (head.y - from.y) * u,
-      z: from.z + (head.z - from.z) * u,
-      u,
-    });
+/** Rocket air burst beside a plane: a flash and a short fireball, no dirt. Smoke comes from the puff pool. */
+export function drawAirBurst(ctx: CanvasRenderingContext2D, x: number, y: number, t: number, seed: number): void {
+  if (t > 0.35) return;
+  const u = t / 0.35;
+  const a = 1 - u;
+  const rnd = rng(seed ^ 0x3c1);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  softDisc(ctx, x, y, 6 + u * 14, 5 + u * 11, 255, 196, 110, a * 0.9);
+  softDisc(ctx, x, y, 2.5 + u * 4, 2.5 + u * 4, 255, 252, 230, a);
+  for (let i = 0; i < 6; i++) {
+    const ang = rnd() * Math.PI * 2;
+    const r = (6 + rnd() * 10) * u;
+    softDisc(ctx, x + Math.cos(ang) * r, y + Math.sin(ang) * r * 0.8, 1.6, 1.6, 255, 214, 140, a);
   }
-  return pts;
+  ctx.restore();
 }
 
 /** Rocket in flight: a short dark body along `dx, dy` and a flickering motor flame behind it. */
