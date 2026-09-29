@@ -1029,6 +1029,16 @@ export const PYRO_COOKOFF_FIRES = 7;
  * against them. Farther than this, he leaves them and goes back to his order.
  */
 export const MEDIC_SEEK_TILES = t(6);
+/**
+ * An idle supply truck drives to allies short of ammo inside this disk and tops them up.
+ * Farther than this, it lets them go. A player order wins.
+ */
+export const SUPPLY_SEEK_TILES = t(6);
+/**
+ * An idle engineer walks to damaged allied armor inside this disk and patches it.
+ * Farther than this, he lets it go. A player order wins.
+ */
+export const ENGINEER_SEEK_TILES = t(6);
 /** Extra world pixels past body clearance that still count as hands-on. */
 export const MEDIC_TOUCH_SLACK = 8;
 /** HP per second while in contact. No charges and no cooldown. */

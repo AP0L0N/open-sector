@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { TILE_EMPTY } from "../maps.js";
-import { catalog, fieldSpan, TICK_DT, wreckScrapOf } from "../catalog.js";
+import { catalog, ENGINEER_SEEK_TILES, fieldSpan, TICK_DT, wreckScrapOf } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { applyCommand } from "./commands.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
@@ -477,5 +477,64 @@ describe("engineer field works", () => {
     assert.equal(state.players.get("A")!.scrap, before + pay);
     assert.equal(eng.state, "idle");
     assert.equal(walkable(state, worldToTile(x, ts), worldToTile(y, ts), "warden"), true);
+  });
+
+  it("walks to damaged allied armor nearby on his own, like a medic", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 26, 26, 30, 16);
+    const ts = state.tileSize;
+    const x = tileCenter(30, ts);
+    const y = tileCenter(32, ts);
+    const eng = makeEntity(state, "engineer", "A", x, y);
+    const tank = makeEntity(state, "warden", "A", x + 3 * 4 * ts, y);
+    tank.hp = tank.hpMax - 30;
+    tank.crits = ["tracks"];
+    ticks(state, 2);
+    assert.equal(eng.order?.kind, "repair");
+    assert.equal(eng.order?.auto, true);
+    assert.equal(eng.order?.targetId, tank.id);
+    ticks(state, 200);
+    assert.equal(tank.hp, tank.hpMax);
+    assert.deepEqual(tank.crits, []);
+    ticks(state, 2);
+    assert.equal(eng.order, null);
+    assert.equal(eng.state, "idle");
+  });
+
+  it("leaves armor past his seek range, wrecks, and houses to player orders", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 20, 26, 44, 16);
+    const ts = state.tileSize;
+    const x = tileCenter(24, ts);
+    const y = tileCenter(32, ts);
+    const eng = makeEntity(state, "engineer", "A", x, y);
+    const far = makeEntity(state, "warden", "A", x + (ENGINEER_SEEK_TILES + 4) * ts, y);
+    far.hp = far.hpMax - 30;
+    const wreck = makeEntity(state, "warden", "B", x, y + 3 * 4 * ts);
+    wreck.hp = 0;
+    toWreck(state, wreck);
+    const house = makeEntity(state, "dynamo", "A", x, y - 40, { tileX: 22, tileY: 26 });
+    house.hp = house.hpMax - 20;
+    ticks(state, 20);
+    assert.equal(eng.order, null);
+    assert.equal(far.hp, far.hpMax - 30);
+    assert.equal(house.hp, house.hpMax - 20);
+    assert.ok(state.entities.has(wreck.id));
+  });
+
+  it("keeps a player move order over a damaged tank nearby", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 26, 26, 30, 16);
+    const ts = state.tileSize;
+    const x = tileCenter(30, ts);
+    const y = tileCenter(32, ts);
+    const eng = makeEntity(state, "engineer", "A", x, y);
+    const tank = makeEntity(state, "warden", "A", x + 2 * 4 * ts, y);
+    tank.hp = tank.hpMax - 30;
+    const res = applyCommand(state, "A", { type: "cmd.move", ids: [eng.id], x, y: y + 6 * ts });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    ticks(state, 3);
+    assert.equal(eng.order?.kind, "move");
+    assert.notEqual(eng.order?.auto, true);
   });
 });
