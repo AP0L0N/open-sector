@@ -158,6 +158,7 @@ import {
   bindAircraftSheets,
   bindCasemateSheets,
   bindDroneSheets,
+  bindFighterSheets,
   bindSupplySheets,
   bindNebelwerferSheets,
   bindTurntableSheets,
@@ -937,11 +938,24 @@ export const STUKA_SPRITE: UnitSpriteDef = {
   frames: 1,
   frameSize: 128,
   fps: 8,
-  drawSize: Math.round(70 * UNIT_VISUAL_SCALE),
+  drawSize: Math.round(63 * UNIT_VISUAL_SCALE),
   contactY: 0.8,
   facingSpace: "world",
 };
 bindAircraftSheets(STUKA_SPRITE.image);
+
+/** Fw 190 fighter. Same camera and cell as the Stuka; drawn smaller, as its span is. */
+export const FW190_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(56 * UNIT_VISUAL_SCALE),
+  contactY: 0.8,
+  facingSpace: "world",
+};
+bindFighterSheets(FW190_SPRITE.image);
 
 /**
  * Drone Op's quadcopter. Same camera and 128 cell as the Stuka; its rotor span reads about
@@ -1078,6 +1092,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   supply: SUPPLY_SPRITE,
   nebelwerfer: NEBELWERFER_SPRITE,
   stuka: STUKA_SPRITE,
+  fw190: FW190_SPRITE,
   drone: DRONE_SPRITE,
   rig: RIG_SPRITE,
 };

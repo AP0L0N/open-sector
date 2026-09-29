@@ -297,3 +297,21 @@ describe("resolveHoverAction bunker", () => {
     assert.equal(act({ selected: [unit({ id: 3, type: "warden" })], hit: foeBunker }), "attack");
   });
 });
+
+describe("plane return-to-airfield cursor", () => {
+  const plane = unit({ id: 70, type: "stuka", air: { phase: "fly", alt: 6 } });
+  const strip = building({ id: 71, type: "airfield" });
+
+  it("offers land on your own airfield when a plane is selected", () => {
+    assert.equal(act({ selected: [plane], hit: strip }), "land");
+    assert.equal(act({ selected: [plane, unit({ id: 72, type: "rifleman" })], hit: strip }), "land");
+  });
+
+  it("does not offer land without a plane, for a drone, on a foe's strip, or on a dead one", () => {
+    assert.equal(act({ selected: [unit({ id: 73, type: "rifleman" })], hit: strip }), null);
+    const drone = unit({ id: 74, type: "stuka", air: { phase: "fly", alt: 4 }, drone: { mode: "surveil" } });
+    assert.equal(act({ selected: [drone], hit: strip }), null);
+    assert.equal(act({ selected: [plane], hit: building({ id: 75, type: "airfield", ownerId: FOE }) }), "attack");
+    assert.equal(act({ selected: [plane], hit: building({ id: 76, type: "airfield", hp: 0 }) }), null);
+  });
+});

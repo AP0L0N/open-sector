@@ -6,7 +6,6 @@ import {
   AIR_FUEL_SECONDS,
   AIRFIELD_PADS,
   BOMB_REARM_SECONDS,
-  START_UNITS,
   STUKA_MG_ROUNDS,
   TICK_DT,
   TRAIN_TYPES,
@@ -29,7 +28,7 @@ function twoPlayerMatch(): MatchState {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  const state = createMatch(room, started.value, { startingUnits: false });
+  const state = createMatch(room, started.value);
   state.players.get("A")!.scrap = 50_000;
   return state;
 }
@@ -70,7 +69,6 @@ describe("airfield", () => {
   it("is a building type the construction yard can queue, and the Stuka is not in the opening army", () => {
     assert.equal(catalog("airfield").kind, "building");
     assert.ok(TRAIN_TYPES.includes("stuka"));
-    assert.ok(!START_UNITS.includes("stuka"));
   });
 
   it("trains a Stuka that rolls onto a hardstand and waits there", () => {

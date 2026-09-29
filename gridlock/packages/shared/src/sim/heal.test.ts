@@ -42,7 +42,7 @@ function match(opts?: { team?: number }): { state: MatchState; a: string; b: str
   updateSelf(room, "B", { ready: true, spawnId: 4, team });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return { state: createMatch(room, started.value, { startingUnits: false }), a: "A", b: "B" };
+  return { state: createMatch(room, started.value), a: "A", b: "B" };
 }
 
 function clearPad(state: MatchState, x0: number, y0: number, x1: number, y1: number): void {
