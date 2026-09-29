@@ -414,6 +414,7 @@ export type EntityType =
   | "armory"
   | "airfield"
   | "ciws"
+  | "research"
   | "stuka"
   | "droneop"
   | "drone"
@@ -426,7 +427,7 @@ export type EntityType =
   | "chapel"
   | "sandbags"
   | "teeth";
-export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws";
+export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "research";
 /** Placed by an engineer, not the construction yard. */
 export type FieldStructureType = "sandbags" | "teeth";
 export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "teeth"];
@@ -462,7 +463,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
   deploy: 2,
 };
 
-export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws"];
+export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "research"];
 export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "droneop"];
 /**
  * Opening army besides the Rig. Hauler omitted so it does not auto-harvest.
@@ -473,6 +474,15 @@ export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper"
 export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter(
   (t) => t !== "hauler" && t !== "supply" && t !== "titan" && t !== "nebelwerfer" && t !== "stuka" && t !== "droneop" && t !== "rocketer",
 );
+
+/** Advanced units: their producer also needs this building standing before a job can be queued. */
+export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
+  warden: "research",
+  cyborg: "research",
+  titan: "research",
+  nebelwerfer: "research",
+  droneop: "research",
+};
 
 export interface CatalogEntry {
   type: EntityType;
@@ -1496,6 +1506,28 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     blurb: `Concrete strip with four revetted hardstands beside it. Trains dive bombers and keeps up to ${AIRFIELD_PADS}. Planes land here to refuel, rearm, and patch up.`,
+  },
+  research: {
+    type: "research",
+    kind: "building",
+    name: "Research Facility",
+    letter: "F",
+    cost: 1200,
+    buildSeconds: 22,
+    hp: 900,
+    power: -50,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Cyborg, Titan, Nebelwerfer, and Drone Op.",
   },
   ciws: {
     type: "ciws",
