@@ -155,17 +155,33 @@ def build_launcher() -> Mesh:
     return m
 
 
-def cameo(out: Path) -> None:
-    """Static fallback cameo (east, hull + launcher). The client also composes --nebelwerfer-cameo."""
-    hull = Image.open(out / "hull" / "0013.png").convert("RGBA")
-    hull.alpha_composite(Image.open(out / "launcher" / "0013.png").convert("RGBA"))
+# Cameo: a 3/4 front face (nose right, a little down) shows the cab and the whole
+# tube bundle; the flat side view read as a dark sliver on the dark sidebar.
+CAMEO_FACE = "0014"  # ESE: cab, bed, and the whole bundle survive the wide train button crop
+# The map's lighting is tuned for dirt; on the sidebar's near-black the olive
+# drowns. Lift it so it reads like the Titan's cameo. The outline stays dark.
+CAMEO_GAIN = 1.55
+CAMEO_LIFT = 0.04
+
+
+def cameo(out: Path, face: str = CAMEO_FACE, path: Path | None = None) -> None:
+    """Static cameo, hull + launcher, brightened and filling the 128 frame. The CSS uses it everywhere."""
+    hull = Image.open(out / "hull" / f"{face}.png").convert("RGBA")
+    hull.alpha_composite(Image.open(out / "launcher" / f"{face}.png").convert("RGBA"))
     crop = hull.crop(hull.getbbox())
-    size, pad = 128, 8
-    fit = min((size - 2 * pad) / crop.width, (size - 2 * pad) / crop.height)
+    px = np.asarray(crop).astype(np.float64) / 255
+    rgb = px[..., :3]
+    dark = rgb.max(axis=-1, keepdims=True) < 0.12  # outline and bores keep their ink
+    lifted = np.clip(rgb * CAMEO_GAIN + CAMEO_LIFT, 0, 1)
+    px[..., :3] = np.where(dark, rgb, lifted)
+    crop = Image.fromarray((px * 255 + 0.5).astype(np.uint8), "RGBA")
+    size, pad = 128, 3
+    fit = (size - 2 * pad) / max(crop.width, crop.height)
     small = crop.resize((max(1, round(crop.width * fit)), max(1, round(crop.height * fit))), Image.Resampling.LANCZOS)
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
-    img.alpha_composite(small, ((size - small.width) // 2, (size - small.height) // 2))
-    path = out.parent / "nebelwerfer-cameo.png"
+    # Wheels on the bottom edge, like the other vehicle cameos.
+    img.alpha_composite(small, ((size - small.width) // 2, size - pad - small.height))
+    path = path or out.parent / "nebelwerfer-cameo.png"
     img.save(path)
     print("wrote", path)
 
@@ -174,8 +190,12 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="unit folder; writes hull/ and launcher/ inside it")
     ap.add_argument("--ss", type=int, default=4)
+    ap.add_argument("--cameo-only", action="store_true", help="rebuild the cameo from the sheets already in --out")
     args = ap.parse_args()
     out = Path(args.out)
+    if args.cameo_only:
+        cameo(out)
+        return
     common = dict(scale_frac=SCALE_FRAC, z_mid=Z_MID, cy_frac=CY_FRAC, ss=args.ss)
     render_turntable(build_hull(), out / "hull", "nebelwerfer_hull", "nebelwerfer-hull.json", **common)
     render_turntable(build_launcher(), out / "launcher", "nebelwerfer_launcher", "nebelwerfer-launcher.json", **common)

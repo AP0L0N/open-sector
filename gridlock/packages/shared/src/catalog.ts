@@ -266,8 +266,12 @@ export const TITAN_ROCKET = {
 export interface RocketRackDef {
   /** Rockets in one salvo. */
   salvo: number;
-  /** Seconds between rockets inside one salvo. */
+  /** Seconds between launches inside one salvo. */
   interval: number;
+  /** Extra seconds added to `interval` at random after each launch. Default 0. */
+  intervalJitter?: number;
+  /** Most rockets leaving together in one launch; each launch rolls 1..volleyMax. Default 1. */
+  volleyMax?: number;
   /** Seconds from the last rocket of a salvo to the first of the next. */
   reload: number;
   /** Ground miss radius at point blank and at full reach, gameplay tiles. */
@@ -290,9 +294,9 @@ export interface RocketRackDef {
   /** Lays on planes in the air and on low drones. */
   antiAir: boolean;
   /**
-   * Peak of a lobbed rocket, elevation units, at point blank and at full reach.
-   * Omit for a rocket that flies straight and bursts on whatever it meets.
-   * A lobbed rocket climbs over hills, trees, and hulls to its fused point.
+   * Peak of an arcing rocket over its straight line, elevation units, at point
+   * blank and at full reach. Omit for a rocket that flies straight. Either way
+   * it bursts on a hull, wall, or tree it meets on the way.
    */
   apexNear?: number;
   apexFar?: number;
@@ -320,8 +324,9 @@ export const TITAN_ROCKET_RACK: RocketRackDef = {
 
 /**
  * Nebelwerfer: twelve tubes on an armored truck. It rolls into place, stops,
- * swings the frame onto the target, and ripples all twelve one after another.
- * Rockets lob high over the ground, so the crew fires on anything its side
+ * swings the frame onto the target, and empties the frame in about a second:
+ * one to three rockets at a time, never all twelve at once. The rockets fly
+ * fast on a flat arc like a Titan's, so the crew fires on anything its side
  * can see, far past its own eyes: the longest reach in the game. They scatter
  * wide and each burst is lighter than a Titan rocket — a salvo blankets an
  * area rather than finding one soldier. Five full salvos in the rack.
@@ -332,12 +337,14 @@ export const NEBELWERFER_SALVO = 12;
 export const NEBELWERFER_ROCKET_AMMO = NEBELWERFER_SALVO * 5;
 export const NEBELWERFER_ROCKET: RocketRackDef = {
   salvo: NEBELWERFER_SALVO,
-  interval: 0.25,
+  interval: 0.1,
+  intervalJitter: 0.2,
+  volleyMax: 3,
   reload: 16,
   scatterNearTiles: t(1.2),
   scatterFarTiles: t(3.4),
   splashTiles: t(1.5),
-  speed: t(10) * TILE_SIZE,
+  speed: t(15) * TILE_SIZE,
   podLift: 5,
   damage: 30,
   armorDamage: 6,
@@ -345,8 +352,8 @@ export const NEBELWERFER_ROCKET: RocketRackDef = {
   penetration: 22,
   caliber: 150,
   antiAir: false,
-  apexNear: 30,
-  apexFar: 90,
+  apexNear: 6,
+  apexFar: 16,
   minRangeTiles: NEBELWERFER_MIN_RANGE_TILES,
   laid: true,
 };
@@ -1992,7 +1999,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: NEBELWERFER_ROCKET_AMMO,
     rocketRack: NEBELWERFER_ROCKET,
-    blurb: "Rocket artillery on an armored truck. Twelve tubes on a traversing frame, fired one after another in a three-second ripple. The rockets lob high over hills and trees, so it hits anything your side can see — the longest reach on the field, but it will not fire inside four tiles and its own eyes are short. It must stop and swing the frame onto the target before it fires. Rockets scatter wide: a salvo blankets an area, shreds infantry in the open, and only dents armor. Five salvos in the rack; a supply truck refills it. Switch the tubes off to hold fire. Thin plate — keep it behind the line.",
+    blurb: "Rocket artillery on an armored truck. Twelve tubes on a traversing frame, emptied in about a second, one to three rockets at a time. The rockets fly fast on a flat arc, so it hits anything your side can see — the longest reach on the field, but it will not fire inside four tiles, its own eyes are short, and a tank or tree in the path takes the rocket. It must stop and swing the frame onto the target before it fires. Rockets scatter wide: a salvo blankets an area, shreds infantry in the open, and only dents armor. Five salvos in the rack; a supply truck refills it. Switch the tubes off to hold fire. Thin plate — keep it behind the line.",
   },
   supply: {
     type: "supply",

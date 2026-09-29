@@ -368,7 +368,9 @@ export function bindNebelwerferSheets(hullImage: HTMLImageElement, launcherImage
       nebelwerferPrevious = next;
       hullImage.src = next.sheetUrls[0] ?? "";
       launcherImage.src = next.sheetUrls[1] ?? "";
-      applyCameo(next.cameoUrl, "--nebelwerfer-cameo");
+      // No runtime cameo: the static nebelwerfer-cameo.png is a brightened 3/4 view
+      // that reads on the dark sidebar; the composed side view did not.
+      URL.revokeObjectURL(next.cameoUrl);
     })
     .catch((err) => {
       console.error("nebelwerfer turntable", err);

@@ -571,7 +571,7 @@ input[type="range"] { padding: 0; }
   background-image: var(--supply-cameo, url("../assets/units/supply-truck/hull/0001.png"));
 }
 .prod-job[data-type="nebelwerfer"] {
-  background-image: var(--nebelwerfer-cameo, url("../assets/units/nebelwerfer-cameo.png"));
+  background-image: url("../assets/units/nebelwerfer-cameo.png");
 }
 
 #map-canvas {
@@ -731,6 +731,7 @@ input[type="range"] { padding: 0; }
 #train-walker,
 #train-cyborg,
 #train-titan,
+#train-nebelwerfer,
 #train-supply,
 #train-stuka,
 #build-dynamo,
@@ -826,7 +827,7 @@ input[type="range"] { padding: 0; }
 #train-nebelwerfer {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
-    var(--nebelwerfer-cameo, url("../assets/units/nebelwerfer-cameo.png"));
+    url("../assets/units/nebelwerfer-cameo.png");
 }
 .cameo-count {
   position: absolute;
@@ -1058,7 +1059,7 @@ input[type="range"] { padding: 0; }
 }
 .config-type[data-type="nebelwerfer"],
 .prod-job[data-type="nebelwerfer"] {
-  background-image: var(--nebelwerfer-cameo, url("../assets/units/nebelwerfer-cameo.png"));
+  background-image: url("../assets/units/nebelwerfer-cameo.png");
 }
 .config-type[data-type="rig"] { background-image: url("../assets/units/rig-cameo.png"); }
 .config-type[data-type="dynamo"] { background-image: url("../assets/buildings/dynamo-cameo.png"); }

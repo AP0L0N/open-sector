@@ -843,7 +843,11 @@ function podAim(state: MatchState, e: Entity): { x: number; y: number; target?: 
   return null;
 }
 
-/** One rocket of the salvo at the rack's aim point, then the rack's clock. */
+/**
+ * One launch of the salvo at the rack's aim point, then the rack's clock. A rack
+ * with volleyMax sends a random 1..volleyMax rockets together, never more than
+ * the salvo or the rack has left.
+ */
 function fireRockets(
   state: MatchState,
   e: Entity,
@@ -855,16 +859,23 @@ function fireRockets(
   target: Entity | undefined,
 ): void {
   if (!e.rocketSalvo) e.rocketSalvo = Math.min(rack.salvo, e.rockets ?? 0);
-  const slot = e.rocketSalvo;
-  // Pods sit either side of the torso; the ripple alternates left and right.
-  // A launcher frame walks across its six columns of tubes instead.
-  const side = rack.laid
-    ? ((((slot - 1) % 6) - 2.5) / 2.5) * e.radius * 0.35
-    : (slot % 2 === 0 ? 1 : -1) * e.radius * 0.8;
-  launchRocket(state, e, rack, aimX, aimY, range, dist, target, side);
-  e.rockets = Math.max(0, (e.rockets ?? 0) - 1);
-  e.rocketSalvo = e.rockets > 0 ? e.rocketSalvo - 1 : 0;
-  e.rocketCooldown = e.rocketSalvo > 0 ? rack.interval : rack.reload;
+  const most = rack.volleyMax ?? 1;
+  const roll = most > 1 ? 1 + Math.floor(nextRand(state) * most) : 1;
+  const volley = Math.max(1, Math.min(roll, e.rocketSalvo, e.rockets ?? 0));
+  for (let i = 0; i < volley; i++) {
+    const slot = e.rocketSalvo;
+    // Pods sit either side of the torso; the ripple alternates left and right.
+    // A launcher frame walks across its six columns of tubes instead.
+    const side = rack.laid
+      ? ((((slot - 1) % 6) - 2.5) / 2.5) * e.radius * 0.35
+      : (slot % 2 === 0 ? 1 : -1) * e.radius * 0.8;
+    launchRocket(state, e, rack, aimX, aimY, range, dist, target, side);
+    e.rockets = Math.max(0, (e.rockets ?? 0) - 1);
+    e.rocketSalvo = e.rockets > 0 ? e.rocketSalvo - 1 : 0;
+    if (e.rocketSalvo <= 0) break;
+  }
+  const jitter = (rack.intervalJitter ?? 0) > 0 ? nextRand(state) * (rack.intervalJitter ?? 0) : 0;
+  e.rocketCooldown = e.rocketSalvo > 0 ? rack.interval + jitter : rack.reload;
 }
 
 /**
@@ -943,7 +954,7 @@ function launchRocket(
   });
 }
 
-/** Arc fields for a rack that lobs: peak grows with the shot, like a mortar bomb's. */
+/** Arc fields for a rack whose rockets arc: the peak over the straight line grows with the shot. */
 function lob(rack: RocketRackDef, dist: number, range: number, z0: number): Pick<Projectile, "apex" | "launchZ"> {
   if (rack.apexFar == null) return {};
   const near = rack.apexNear ?? rack.apexFar;
@@ -951,18 +962,23 @@ function lob(rack: RocketRackDef, dist: number, range: number, z0: number): Pick
   return { apex: near + (rack.apexFar - near) * u, launchZ: z0 };
 }
 
-/** Advance a rocket along its straight line, or its lob. True while it is still flying. */
+/** Advance a rocket along its straight line, or its shallow arc. True while it is still flying. */
 function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => number): boolean {
-  if (p.apex != null) return stepLobbedRocket(state, p, dt, rand);
   const x0 = p.x;
   const y0 = p.y;
   const z0 = p.z ?? 0;
   const stepDt = p.life > 0 ? Math.min(dt, p.life) : 0;
   p.x += p.vx * stepDt;
   p.y += p.vy * stepDt;
-  p.z = z0 + (p.vz ?? 0) * stepDt;
   p.life -= dt;
-  // It flies low and straight, so a hull, a wall, or a tree in the way takes the burst.
+  if (p.apex != null) {
+    const total = p.flightTime ?? Math.max(0.05, p.life + stepDt);
+    const u = Math.min(1, Math.max(0, (total - Math.max(0, p.life)) / total));
+    p.z = (p.launchZ ?? 0) + (p.vz ?? 0) * total * u + mortarAirZ(u, p.apex);
+  } else {
+    p.z = z0 + (p.vz ?? 0) * stepDt;
+  }
+  // It flies low and fast, so a hull, a wall, or a tree in the way takes the burst.
   const struck = nearestSweepHit(state, x0, y0, p, z0, p.z);
   const tree = nearestTreeSweep(state, x0, y0, p, z0, p.z, rand);
   const first = struck && (!tree || struck.t <= tree.t) ? struck : tree;
@@ -981,25 +997,6 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
     p.y = p.landY;
   }
   if (!p.airBurst) p.z = 0;
-  detonateMortar(state, p, rand);
-  return false;
-}
-
-/** A lobbed rocket climbs over everything and bursts at its fused point on the ground. */
-function stepLobbedRocket(state: MatchState, p: Projectile, dt: number, rand: () => number): boolean {
-  const total = p.flightTime ?? Math.max(0.05, p.life);
-  const stepDt = p.life > 0 ? Math.min(dt, p.life) : 0;
-  p.x += p.vx * stepDt;
-  p.y += p.vy * stepDt;
-  p.life -= dt;
-  const u = Math.min(1, Math.max(0, (total - Math.max(0, p.life)) / total));
-  p.z = (p.launchZ ?? 0) + (p.vz ?? 0) * total * u + mortarAirZ(u, p.apex ?? 0);
-  if (p.life > 0) return true;
-  if (p.landX != null && p.landY != null) {
-    p.x = p.landX;
-    p.y = p.landY;
-  }
-  p.z = 0;
   detonateMortar(state, p, rand);
   return false;
 }
