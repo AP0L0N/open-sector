@@ -13,7 +13,6 @@ import {
   NEBELWERFER_ROCKET_AMMO,
   NEBELWERFER_SALVO,
   rocketAmmoOf,
-  START_UNITS,
   TICK_DT,
   TITAN_ROCKET,
   TITAN_ROCKET_RACK,
@@ -38,7 +37,7 @@ function twoPlayerMatch(): MatchState {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return createMatch(room, started.value, { startingUnits: false });
+  return createMatch(room, started.value);
 }
 
 /** Flat, dry strip along row `y`, wide enough for the launcher's full reach. */
@@ -126,7 +125,6 @@ describe("nebelwerfer", () => {
   it("is an Armory rocket truck with twelve tubes and five salvos", () => {
     const def = catalog("nebelwerfer");
     assert.ok(TRAIN_TYPES.includes("nebelwerfer"));
-    assert.equal(START_UNITS.includes("nebelwerfer"), false, "opening army stays the same");
     assert.equal(producerType("nebelwerfer"), "armory");
     assert.equal(def.name, "Nebelwerfer");
     assert.equal(def.damage, 0, "no gun besides the tubes");

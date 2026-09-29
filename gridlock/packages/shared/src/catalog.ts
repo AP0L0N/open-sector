@@ -6,8 +6,6 @@ export const TICK_MS = 100;
 export const GAME_SPEED_MIN = 1;
 export const GAME_SPEED_MAX = 5;
 export const GAME_SPEED_DEFAULT = GAME_SPEED_MIN;
-/** Wall-clock delay before each Rig auto-unpacks into a Core. */
-export const AUTO_DEPLOY_SECONDS = 0.5;
 export const START_SCRAP = 2200;
 /**
  * Gameplay tiles per original 32px cell. RA2 / Sudden Strike 2 maps feel
@@ -467,15 +465,6 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "research"];
 export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "droneop"];
-/**
- * Opening army besides the Rig. Hauler omitted so it does not auto-harvest.
- * Supply truck, Titan, and Nebelwerfer omitted so the opening fight stays the same — train them at the Armory.
- * Aircraft need an Airfield pad, so the Stuka is omitted too. The Drone Op and
- * the Rocketer are trained at the Muster so the opening fight stays the same.
- */
-export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter(
-  (t) => t !== "hauler" && t !== "supply" && t !== "titan" && t !== "nebelwerfer" && t !== "stuka" && t !== "droneop" && t !== "rocketer",
-);
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
