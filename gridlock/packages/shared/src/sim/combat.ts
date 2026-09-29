@@ -134,6 +134,7 @@ import { canSeeEntity } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
 import { escorting, reversing, stepTurn, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
 import { airTargetSpreadMul, isAirborne, reachesAircraft, stepBomb } from "./air.js";
+import { projectileMeetsDrone, reachesDrone } from "./drone.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
 export function tickCombat(state: MatchState, dt: number): void {
@@ -216,8 +217,12 @@ function canFight(e: Entity): boolean {
   return fires(e.type) && e.hp > 0 && !e.wreck && !e.air && e.state !== "deploy" && e.state !== "undeploy";
 }
 
-/** A plane in the air is out of reach for tank guns and the mortar. */
+/**
+ * A plane in the air is out of reach for tank guns and the mortar. A drone
+ * has its own rule: high, only anti-air guns; low, bullets and rockets.
+ */
 function outOfReachAloft(e: Entity, target: Entity): boolean {
+  if (target.drone) return !reachesDrone(e, target);
   return isAirborne(target) && !reachesAircraft(e);
 }
 
@@ -527,11 +532,14 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   // Infantry take the coaxial and the main gun together. An exposed hatch on an
   // armored hull still takes the MG alone, and only while that gun can bear.
   if (useMg && target && gunArcOk && !isInfantryType(target.type)) return;
+  // Only the coaxial meets a drone. The main gun holds; rockets and small arms go on.
+  const atDrone = !!target?.drone;
+  if (atDrone && hasMg(e.type) && !rocketsOf(e.type) && e.type !== "walker") return;
 
   if (!holedUp && !gunArcOk) return;
 
-  // The Titan's main gun stays silent in water. Its pods fire on their own in tickRocketPods.
-  if (rocketsOf(e.type) && unitInWater(state, e)) return;
+  // The Titan's main gun stays silent in water, and never lays on a drone. Its pods fire on their own in tickRocketPods.
+  if (rocketsOf(e.type) && (unitInWater(state, e) || atDrone)) return;
 
   if (e.type === "walker") {
     if (target && walkerSparesBuilding(state, e, target)) return;
@@ -724,6 +732,7 @@ function podValue(state: MatchState, e: Entity, o: Entity): number {
       ? 2
       : 0;
   }
+  if (o.drone && !reachesDrone(e, o)) return 0;
   if (isAirborne(o)) return 3;
   if (isInfantryType(o.type)) return 2;
   return isArmored(catalog(o.type)) ? 3 : 2;
@@ -910,6 +919,12 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
   return false;
 }
 
+/** A rocket bursting near a low drone's height catches it in the splash. */
+function rocketCatchesDrone(state: MatchState, p: Projectile, e: Entity): boolean {
+  if (p.flight !== "rocket" || !e.drone || !projectileMeetsDrone(p, e)) return false;
+  return Math.abs((p.z ?? 0) - (entityHeight(state, e) + airAlt(e))) <= AIR_HIT_BAND * 2;
+}
+
 /**
  * Mortar bomb or Titan rocket burst. Both throw splash over a disk; the rocket's
  * disk is smaller and it dents armor harder. `direct` is the hull a rocket met
@@ -925,7 +940,8 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null) continue;
     // A ground burst never reaches a plane; an air burst only catches planes.
-    if (isAirborne(e) !== inAir) continue;
+    // A drone is caught by a burst near its height, air or ground, or when the rocket meets it.
+    if (e.drone ? e !== direct && !rocketCatchesDrone(state, p, e) : isAirborne(e) !== inAir) continue;
     const d = e === direct ? 0 : Math.hypot(e.x - p.x, e.y - p.y);
     const reach =
       e.kind === "building"
@@ -1102,7 +1118,7 @@ function tickWeaponClocks(e: Entity, dt: number): void {
 
 function wantsMg(e: Entity, target: Entity): boolean {
   if (!hasMg(e.type) || e.mgAmmo <= 0) return false;
-  if (isInfantryType(target.type)) return true;
+  if (isInfantryType(target.type) || target.drone) return true;
   return entityIsScouting(target);
 }
 
@@ -1224,6 +1240,7 @@ function fireRound(
     bounced: false,
     shell: opts?.shell ?? null,
     hpFraction: gunId === "scoped" || gunId === "ptrd" ? scopedHpFraction(dist, range) : undefined,
+    antiAir: !opts?.shell && (e.type === "walker" || radarLaidOf(e.type) || !!infantryGunFor(e)?.antiAir) ? true : undefined,
     z: z0,
     vz: ((zAim - z0) / Math.max(1e-6, aimDist)) * speed,
   };
@@ -1556,6 +1573,8 @@ function nearestSweepHit(
     const hit = sweepAgainst(state, x0, y0, p, e);
     if (!hit) continue;
     const shotZ = z0 + (z1 - z0) * hit.t;
+    // Shells, mortar bombs, and bombs pass a drone by; a high one takes only anti-air fire.
+    if (e.drone && !projectileMeetsDrone(p, e)) continue;
     if (isAirborne(e)) {
       // Only a round near the plane's height meets it. Everything else passes under or over.
       if (Math.abs(shotZ - (entityHeight(state, e) + airAlt(e))) > AIR_HIT_BAND) continue;

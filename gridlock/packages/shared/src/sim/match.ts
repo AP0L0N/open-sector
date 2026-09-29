@@ -18,6 +18,7 @@ import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
 import type { ImpactView, RoomState } from "../protocol.js";
 import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter, walkable } from "./geo.js";
 import { aircraftDown, tickAir } from "./air.js";
+import { tickDrones } from "./drone.js";
 import { tickCapture } from "./capture.js";
 import { detachGarrisoned, spillGarrison, tickGarrison } from "./garrison.js";
 import { seedRng } from "./rng.js";
@@ -189,6 +190,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickMaulerCart(state, dt);
   tickMovement(state, dt);
   tickAir(state, dt);
+  tickDrones(state, dt);
   tickCollision(state, dt);
   tickField(state, dt);
   tickHarvest(state, dt);

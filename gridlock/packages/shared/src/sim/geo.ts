@@ -1,5 +1,6 @@
 import {
   AIR_FUEL_SECONDS,
+  DRONE_BATTERY_SECONDS,
   STUKA_BOMBS,
   STUKA_MG_ROUNDS,
   beltOf,
@@ -33,7 +34,7 @@ import {
   type MapDef,
 } from "../maps.js";
 import { nextRand } from "./rng.js";
-import type { AirState, Entity, MatchState } from "./types.js";
+import type { AirState, DroneLink, Entity, MatchState } from "./types.js";
 
 /** Fresh flight state: fuelled, armed, parked on `pad` of Airfield `homeId`. */
 export function newAirState(homeId: number | null, pad: number): AirState {
@@ -52,6 +53,11 @@ export function newAirState(homeId: number | null, pad: number): AirState {
     taxi: false,
     touched: false,
   };
+}
+
+/** Drone Op's link: one charged drone in hand, Surveillance by default. */
+export function newDroneLink(): DroneLink {
+  return { droneId: null, mode: "surveil", charge: DRONE_BATTERY_SECONDS, rebuild: 0 };
 }
 
 export function tileIndex(state: MatchState, x: number, y: number): number {
@@ -532,6 +538,7 @@ export function makeEntity(
     supply: type === "supply" ? SUPPLY_CARGO : 0,
   };
   if (def.aircraft) e.air = newAirState(null, 0);
+  if (type === "droneop") e.droneLink = newDroneLink();
   state.entities.set(id, e);
   occupyEntity(state, e);
   return e;
