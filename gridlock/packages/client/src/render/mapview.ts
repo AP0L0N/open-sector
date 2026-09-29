@@ -2192,7 +2192,7 @@ export class MapView {
       return;
     }
     const planes = own.filter((e) => !!e.air && !e.drone);
-    if (hit?.type === "airfield" && hit.ownerId === you && planes.length) {
+    if (action === "land" && hit && planes.length) {
       // Right-click your own strip: planes go home to land and rearm.
       this.pulseMoveClick(hit.x, hit.y);
       this.command({ type: "cmd.land", ids: planes.map((e) => e.id) });
