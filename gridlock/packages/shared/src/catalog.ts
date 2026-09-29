@@ -196,22 +196,24 @@ export const HEIGHT_RANGE_BONUS = 2;
 /**
  * Flat-ground reach, in gameplay tiles. `t(n)` is n cells on the 64-cell map.
  * Direct fire stops inside the shooter's own eyes, except the tank guns,
- * which reach a short way past the optics so a spotter still matters.
+ * which reach past the optics so a spotter still matters.
  * The mortar is the long arm: past every direct-fire gun, not across the map.
+ * A rifle carries well past a pistol, and the scope is the longest direct-fire
+ * reach on the field: it sits just inside the sniper's scoped sight.
  *
- * Cells: handgun 2, rifle 6, walker 6, cyborg 6, MG42 8, StuG 9, scoped rifle and
- * PTRD 10, Tiger and Titan 11, mortar 18 (it will not drop inside 3), Nebelwerfer 24
- * (it will not fire inside 4).
+ * Cells: handgun 3, walker 8, cyborg 8, rifle 9, MG42 11, StuG 12, PTRD 13,
+ * Tiger and Titan 14, scoped rifle 15, mortar 23 (it will not drop inside 3),
+ * Nebelwerfer 24 (it will not fire inside 4).
  */
-export const HANDGUN_RANGE_TILES = t(2);
-export const RIFLE_RANGE_TILES = t(6);
-export const MG42_RANGE_TILES = t(8);
-export const WALKER_RANGE_TILES = t(6);
+export const HANDGUN_RANGE_TILES = t(3);
+export const RIFLE_RANGE_TILES = t(9);
+export const MG42_RANGE_TILES = t(11);
+export const WALKER_RANGE_TILES = t(8);
 export const CYBORG_RANGE_TILES = WALKER_RANGE_TILES;
-export const SCOPED_RANGE_TILES = t(10);
-export const PTRD_RANGE_TILES = SCOPED_RANGE_TILES;
-export const STUG_RANGE_TILES = t(9);
-export const TIGER_RANGE_TILES = t(11);
+export const SCOPED_RANGE_TILES = t(15);
+export const PTRD_RANGE_TILES = t(13);
+export const STUG_RANGE_TILES = t(12);
+export const TIGER_RANGE_TILES = t(14);
 /** Titan carries the Tiger's gun, so it keeps the Tiger's reach. Its rockets share that reach. */
 export const TITAN_RANGE_TILES = TIGER_RANGE_TILES;
 /** Titan wading pace, as a share of its dry-ground walk. */
@@ -842,7 +844,7 @@ export const PTRD = {
  * and a tracked tank can lose a track.
  * The tube has to be kneeling and planted, and it will not drop inside the minimum.
  */
-export const MORTAR_RANGE_TILES = t(18);
+export const MORTAR_RANGE_TILES = t(23);
 export const MORTAR_MIN_RANGE_TILES = t(3);
 /** Blast radius. Several soldiers standing together share one bomb. */
 export const MORTAR_SPLASH_TILES = t(2.5);
@@ -1135,7 +1137,7 @@ export const STUKA_MG = {
   caliber: 7.92,
   spreadDeg: 3,
   projectileSpeed: SMALL_ARMS_SPEED,
-  rangeTiles: t(8),
+  rangeTiles: t(10),
   /** Half-angle off the nose the wing guns bear. */
   arcDeg: 10,
 } as const;
@@ -1629,7 +1631,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: PTRD.penetration,
     caliber: PTRD.caliber,
     spreadDeg: PTRD.spreadDeg,
-    blurb: "PTRD-41. Same reach as the scoped rifle. Up close it punches tank side and rear, often a track, and it goes through light armor. The front plate holds.",
+    blurb: "PTRD-41. Reaches nearly as far as the scoped rifle. Up close it punches tank side and rear, often a track, and it goes through light armor. The front plate holds.",
   },
   mortarman: {
     type: "mortarman",
@@ -1817,7 +1819,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     moveTilesPerSec: t(1.75),
     turnDegPerSec: 160,
     rangeTiles: WALKER_RANGE_TILES,
-    sightTiles: t(8),
+    sightTiles: t(9),
     cooldown: TICK_DT,
     damage: MG42.damage,
     projectileSpeed: SMALL_ARMS_SPEED,
