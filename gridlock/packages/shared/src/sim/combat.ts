@@ -1154,7 +1154,7 @@ function walkerSecondTarget(state: MatchState, e: Entity, primary: Entity): Enti
     if (d > bestD) continue;
     if (!canSeeEntity(state, e.ownerId, o)) continue;
     if (!canAimWeapon(state, e, o.x, o.y, o)) continue;
-    if (Math.abs(hullAimRemainingDeg(e, o.x, o.y)) > arc) continue;
+    if (Math.abs(aimRemainingDeg(e, o.x, o.y)) > arc) continue;
     bestD = d;
     best = o;
   }
@@ -1205,8 +1205,9 @@ function wantsMg(e: Entity, target: Entity): boolean {
   return entityIsScouting(target);
 }
 
-function hullAimRemainingDeg(e: Entity, aimX: number, aimY: number): number {
-  return stepTurn(e.facing, Math.atan2(aimY - e.y, aimX - e.x), 0, 1).remainingDeg;
+/** Degrees from the gun's facing (turret or torso, else hull) to the aim point. */
+function aimRemainingDeg(e: Entity, aimX: number, aimY: number): number {
+  return stepTurn(aimFacing(e), Math.atan2(aimY - e.y, aimX - e.x), 0, 1).remainingDeg;
 }
 
 /**

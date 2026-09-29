@@ -134,7 +134,8 @@ import teethUrl from "../assets/units/teeth.png";
 import infantrySwimUrl from "../assets/units/infantry-swim.png";
 import haulerHullUrl from "../assets/units/hauler-hull.png";
 import haulerCartUrl from "../assets/units/hauler-cart.png";
-import walkerSheetUrl from "../assets/units/walker-move.png";
+import walkerLegsUrl from "../assets/units/walker-legs.png";
+import walkerTorsoUrl from "../assets/units/walker-torso.png";
 import titanLegsUrl from "../assets/units/titan-legs.png";
 import titanTorsoUrl from "../assets/units/titan-torso.png";
 import titanGunUrl from "../assets/units/titan-gun.png";
@@ -892,14 +893,20 @@ export const DRONE_SPRITE: UnitSpriteDef = {
 };
 bindDroneSheets(DRONE_SPRITE.image);
 
+/**
+ * Walker: legs are the hull, the torso and both gatlings traverse on the hips.
+ * Both sheets are cut from one walk cycle (tools/sprites/split_walker_torso.py),
+ * same cell and origin; the torso keeps its stride frames so the bob stays in step.
+ */
 export const WALKER_SPRITE: UnitSpriteDef = {
-  image: loadSheet(walkerSheetUrl),
+  image: loadSheet(walkerLegsUrl),
   dirs: 16,
   frames: 8,
   frameSize: 128,
   fps: 10,
   drawSize: Math.round(24 * 1.2),
   contactY: 0.9,
+  turret: { image: loadSheet(walkerTorsoUrl), dirs: 16, frames: 8, frameSize: 128 },
   facingSpace: "world",
 };
 
