@@ -13,7 +13,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 47;
+export const PROTOCOL_VERSION = 50;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -320,7 +320,7 @@ export interface ImpactView {
   rocket?: boolean;
   /** Rocket air burst beside a plane: elevation units above the ground. No dirt, no crater. */
   z?: number;
-  /** A CIWS burst a rocket in the air. No crater, nothing hurt under it. */
+  /** A CIWS or RAM met a rocket in the air. "kill": it burst, nothing hurt under it. "miss" (RAM): the interceptor went off beside it. */
   intercept?: boolean;
 }
 

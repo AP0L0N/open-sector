@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { TRAIN_QUEUE_CAP, catalog, secondsToTicks, TICK_DT } from "../catalog.js";
+import { TECH_REQUIRES, TRAIN_QUEUE_CAP, catalog, secondsToTicks, TICK_DT, type TrainType } from "../catalog.js";
 import { applyCommand } from "./commands.js";
 import { createMatch, step } from "./match.js";
 import { paidForProgress } from "./production.js";
 import { snapshotFor } from "./snapshot.js";
 import { makeEntity, tileCenter } from "./geo.js";
+import { techMissing } from "./train.js";
 import type { MatchState } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
@@ -24,7 +25,7 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return { state: createMatch(room, started.value, { startingUnits: false }), a: "A", b: "B" };
+  return { state: createMatch(room, started.value), a: "A", b: "B" };
 }
 
 function ticks(state: MatchState, n: number): void {
@@ -316,5 +317,41 @@ describe("rally point", () => {
     const r = applyCommand(state, "A", { type: "cmd.rally", ids: [core.id], x: 0, y: 0 });
     assert.equal(r.ok, false);
     assert.equal(core.rally, undefined);
+  });
+});
+
+describe("research gate", () => {
+  it("locks the advanced units until a Research Facility stands", () => {
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    const ts = state.tileSize;
+    makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 });
+    seedMuster(state, 20, 10);
+    const gated = Object.keys(TECH_REQUIRES) as TrainType[];
+    assert.deepEqual([...gated].sort(), ["cyborg", "droneop", "nebelwerfer", "titan", "warden"]);
+    for (const unit of gated) {
+      const r = applyCommand(state, "A", { type: "cmd.train", unit });
+      assert.equal(r.ok, false, unit);
+      if (!r.ok) assert.equal(r.message, "Need a Research Facility.");
+    }
+    assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "ss3" }).ok, true);
+    assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" }).ok, true);
+
+    const lab = makeEntity(state, "research", "A", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
+    assert.equal(techMissing(state, "A", "warden"), null);
+    assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "warden" }).ok, true);
+    assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "droneop" }).ok, true);
+
+    lab.hp = 0;
+    assert.equal(techMissing(state, "A", "titan"), "research");
+    assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "titan" }).ok, false);
+  });
+
+  it("does not count another player's Research Facility", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    makeEntity(state, "research", "B", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
+    assert.equal(techMissing(state, "A", "cyborg"), "research");
+    assert.equal(techMissing(state, "B", "cyborg"), null);
   });
 });

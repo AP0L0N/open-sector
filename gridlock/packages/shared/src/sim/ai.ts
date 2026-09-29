@@ -9,6 +9,7 @@ import {
   GARRISON_STRUCTURAL_CALIBER,
   STUKA_BOMBS,
   SUPPLY_CARGO,
+  TECH_REQUIRES,
   TICK_HZ,
   catalog,
   fires,
@@ -82,15 +83,34 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield", readon
   airfield: [{ unit: "stuka", want: 2 }],
 };
 
-/** Smelter second so the free Mauler funds Muster, Armory, troops, and tanks. */
-const BUILD_ORDER: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws"];
-/** Started as soon as scrap covers them. Armory, Airfield, and CIWS wait for the first rifle wave. */
+/**
+ * Smelter second so the free Mauler funds Muster, Armory, troops, and tanks. Research next:
+ * it unlocks the Tiger, Cyborg, Titan, Nebelwerfer, and Drone Op. Then air, then defenses.
+ */
+const BUILD_ORDER: readonly BuildingType[] = [
+  "dynamo",
+  "smelter",
+  "muster",
+  "armory",
+  "research",
+  "airfield",
+  "ciws",
+  "bunker",
+  "ram",
+];
+/** Started as soon as scrap covers them. The rest wait for the first rifle wave and the second Mauler. */
 const CORE_BUILDINGS: readonly BuildingType[] = ["dynamo", "smelter", "muster"];
+/** Troops train only once these stand, so scrap is held for them while they go up. */
+const FACTORIES: readonly BuildingType[] = [...CORE_BUILDINGS, "armory"];
+/** Fixed guns wait for a field army: static defense does not win a match. */
+const DEFENSES: readonly BuildingType[] = ["ciws", "bunker", "ram"];
 
 /** Unarmed units that walk out with a wave beside a fighter. */
 const ESCORTS: ReadonlySet<string> = new Set(["medic", "supply", "droneop"]);
 /** Unarmed units that idle at home. Parked against a building they shut a Mauler lane. */
 const YARD_IDLERS: ReadonlySet<string> = new Set([...ESCORTS, "engineer"]);
+/** Soldiers the CPU leaves at home in its Bunker, in order of preference. */
+const BUNKER_CREW: readonly string[] = ["gunner", "rifleman", "atinfantry", "rocketer"];
 
 export function tickAi(state: MatchState): void {
   if (state.ended) return;
@@ -139,6 +159,7 @@ function thinkEasy(state: MatchState, p: SimPlayer): void {
     defendBase(state, p, hq);
     microUnits(state, p, hq);
     unjamHaulers(state, p);
+    crewBunkers(state, p);
   }
 }
 
@@ -163,9 +184,26 @@ function canStartBuilding(state: MatchState, p: SimPlayer, next: BuildingType): 
   const cost = catalog(next).cost;
   if (p.scrap < cost) return false;
   if (CORE_BUILDINGS.includes(next)) return true;
+  if (DEFENSES.includes(next) && fighterCount(state, p.playerId) < EASY_MIN_FIGHTERS * 2) return false;
   const troopers = countType(state, p.playerId, "rifleman");
-  const hold = Math.max(0, FIRST_WAVE_TROOPERS - troopers) * catalog("rifleman").cost;
+  let hold = Math.max(0, FIRST_WAVE_TROOPERS - troopers) * catalog("rifleman").cost;
+  if (savingForMauler(state, p)) hold += catalog("hauler").cost;
   return p.scrap >= cost + hold;
+}
+
+/** The first rifle wave stands and a Smelter waits on its second Mauler: income comes first. */
+function savingForMauler(state: MatchState, p: SimPlayer): boolean {
+  return (
+    countType(state, p.playerId, "hauler") < EASY_WANT_HAULERS &&
+    countType(state, p.playerId, "rifleman") >= FIRST_WAVE_TROOPERS &&
+    ownsLive(state, p.playerId, "smelter")
+  );
+}
+
+function fighterCount(state: MatchState, playerId: string): number {
+  let n = 0;
+  for (const e of state.entities.values()) if (freeFighter(e, playerId)) n++;
+  return n;
 }
 
 function trainEasy(state: MatchState, p: SimPlayer): void {
@@ -178,13 +216,7 @@ function trainEasy(state: MatchState, p: SimPlayer): void {
   };
   if (tryTrain("hauler", EASY_WANT_HAULERS)) return;
   if (tryTrain("rifleman", FIRST_WAVE_TROOPERS)) return;
-  if (
-    countType(state, p.playerId, "hauler") < EASY_WANT_HAULERS &&
-    countType(state, p.playerId, "rifleman") >= FIRST_WAVE_TROOPERS &&
-    ownsLive(state, p.playerId, "smelter")
-  ) {
-    return; // Save for the Mauler: income first, then the army.
-  }
+  if (savingForMauler(state, p)) return;
   // One job per factory, neediest rank first. Stop at the first pick scrap cannot cover and save
   // for it, so a trickle of income does not all go to cheap riflemen ahead of a Titan or a Stuka.
   const picks: { unit: TrainType; want: number; share: number }[] = [];
@@ -209,6 +241,9 @@ function neediest(
 ): { unit: TrainType; want: number; share: number } | null {
   let best: { unit: TrainType; want: number; share: number } | null = null;
   for (const row of army) {
+    // A locked rank is not needy yet: saving for it would stall the whole factory.
+    const tech = TECH_REQUIRES[row.unit];
+    if (tech && !ownsLive(state, playerId, tech)) continue;
     const share = countType(state, playerId, row.unit) / row.want;
     if (share >= 1 || share >= (best?.share ?? Infinity)) continue;
     best = { ...row, share };
@@ -218,16 +253,15 @@ function neediest(
 
 /** Hold scrap for the next factory. Do not starve the first troop wave to save for Armory. */
 function trainReserve(state: MatchState, p: SimPlayer): number {
-  if (p.structure && !p.structure.ready) {
+  // A factory under way is paid for first. Extras (Research, air, defenses) share scrap with the army.
+  if (p.structure && !p.structure.ready && FACTORIES.includes(p.structure.type)) {
     return Math.max(0, catalog(p.structure.type).cost - p.structure.paid);
   }
   if (countType(state, p.playerId, "dynamo") === 0) return catalog("dynamo").cost;
   if (countType(state, p.playerId, "muster") === 0) return catalog("muster").cost;
   if (countType(state, p.playerId, "rifleman") < FIRST_WAVE_TROOPERS) return 0;
   if (countType(state, p.playerId, "armory") === 0) return catalog("armory").cost;
-  let fighters = 0;
-  for (const e of state.entities.values()) if (freeFighter(e, p.playerId)) fighters++;
-  if (fighters < EASY_MIN_FIGHTERS * 2) return 0;
+  if (fighterCount(state, p.playerId) < EASY_MIN_FIGHTERS * 2) return 0;
   const next = p.structure ? null : nextBuilding(state, p);
   return next ? catalog(next).cost : 0;
 }
@@ -243,6 +277,31 @@ function harvestIdle(state: MatchState, p: SimPlayer): void {
   }
   if (ids.length === 0) return;
   applyCommand(state, p.playerId, { type: "cmd.harvest", ids });
+}
+
+/**
+ * Fill each Bunker with soldiers who are idle at home, machine guns first. They stay
+ * behind the slits as the base guard. Waves never take a garrisoned soldier.
+ */
+function crewBunkers(state: MatchState, p: SimPlayer): void {
+  for (const b of state.entities.values()) {
+    if (b.ownerId !== p.playerId || b.type !== "bunker" || b.hp <= 0) continue;
+    const room = (catalog("bunker").garrisonCap ?? 0) - b.garrison.length;
+    if (room <= 0) continue;
+    const idle: Entity[] = [];
+    for (const e of state.entities.values()) {
+      if (e.ownerId !== p.playerId || e.hp <= 0 || e.garrisonedIn || !BUNKER_CREW.includes(e.type)) continue;
+      if (e.order && !e.order.auto) continue;
+      idle.push(e);
+    }
+    idle.sort(
+      (a, c) =>
+        BUNKER_CREW.indexOf(a.type) - BUNKER_CREW.indexOf(c.type) ||
+        Math.hypot(a.x - b.x, a.y - b.y) - Math.hypot(c.x - b.x, c.y - b.y),
+    );
+    const ids = idle.slice(0, room).map((e) => e.id);
+    if (ids.length > 0) applyCommand(state, p.playerId, { type: "cmd.garrison", ids, buildingId: b.id });
+  }
 }
 
 /**
