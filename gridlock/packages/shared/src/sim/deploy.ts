@@ -1,10 +1,20 @@
-import { catalog, DEPLOY_SECONDS, HAULER_SMOKE_CHARGES, specialOf, specialCooldownOf } from "../catalog.js";
+import {
+  bracesOf,
+  catalog,
+  DEPLOY_SECONDS,
+  deploySecondsOf,
+  HAULER_SMOKE_CHARGES,
+  hpMaxOf,
+  specialOf,
+  specialCooldownOf,
+} from "../catalog.js";
 import {
   buildingCenter,
   clearOrder,
   hqOf,
   occupyEntity,
   tilesBlockedOrScrap,
+  unitInWater,
   vacateEntity,
 } from "./geo.js";
 import { repathIfBlocked } from "./orders.js";
@@ -49,7 +59,32 @@ export function beginDeploy(state: MatchState, e: Entity): string | null {
     armSpecialCooldown(e);
     return null;
   }
+  if (bracesOf(e.type)) return beginBrace(state, e);
   return "That cannot deploy.";
+}
+
+/** Titan: plant the outriggers, or pull them up. The unit keeps its id and type. */
+function beginBrace(state: MatchState, e: Entity): string | null {
+  if (e.kind !== "unit" || e.hp <= 0 || e.wreck) return "That cannot deploy.";
+  if (e.specialCooldown > 0) return "Special recharging.";
+  if (e.state === "deploy" || e.state === "undeploy") return "Already transforming.";
+  if (!e.braced && unitInWater(state, e)) return "Cannot brace in water.";
+  clearOrder(e);
+  e.state = e.braced ? "undeploy" : "deploy";
+  e.deployTime = 0;
+  armSpecialCooldown(e);
+  return null;
+}
+
+/** Swap max HP for the new posture. Current HP keeps its share of max, so a pack/brace loop never heals. */
+function setBraced(e: Entity, braced: boolean): void {
+  const frac = e.hpMax > 0 ? e.hp / e.hpMax : 1;
+  e.braced = braced;
+  e.hpMax = hpMaxOf(e.type, braced);
+  e.hp = Math.max(1, Math.min(e.hpMax, Math.round(e.hpMax * frac)));
+  e.state = "idle";
+  e.deployTime = 0;
+  e.waypoints = [];
 }
 
 /** Wall-clock: after `autoDeployTicks`, stop every Rig and finish unpacking. */
@@ -80,9 +115,10 @@ export function tickDeploy(state: MatchState, dt: number): void {
     if (e.hp <= 0) continue;
     if (e.state !== "deploy" && e.state !== "undeploy") continue;
     e.deployTime += dt;
-    if (e.deployTime < DEPLOY_SECONDS) continue;
+    if (e.deployTime < deploySecondsOf(e.type)) continue;
     if (e.state === "deploy" && e.type === "rig") finishDeploy(state, e);
     else if (e.state === "undeploy" && e.type === "core") finishUndeploy(state, e);
+    else if (bracesOf(e.type)) setBraced(e, e.state === "deploy");
   }
 }
 
@@ -254,6 +290,7 @@ export function ejectUnits(state: MatchState, building: Entity): void {
 export function deployId(state: MatchState, playerId: string, id: number): string | null {
   const e = state.entities.get(id);
   if (!e || e.ownerId !== playerId || e.wreck) return "Not yours.";
+  if (bracesOf(e.type)) return beginDeploy(state, e);
   const hq = hqOf(state, playerId);
   if (!hq || hq.id !== e.id) return "Select the Rig or Core.";
   return beginDeploy(state, e);

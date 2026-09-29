@@ -97,6 +97,12 @@ export function tickMovement(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (e.kind !== "unit" || e.hp <= 0 || e.wreck || e.garrisonedIn) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
+    if (e.braced) {
+      // Outriggers down: the torso still aims and fires, the legs do not step.
+      e.waypoints = [];
+      if (e.state === "move") e.state = "idle";
+      continue;
+    }
     const def = catalog(e.type);
     const speed = marchTilesPerSec(e) * state.tileSize;
     if (stepGiveWay(state, e, def.moveTilesPerSec * state.tileSize * moveSpeedMul(e, unitInWater(state, e)), dt)) {

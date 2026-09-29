@@ -107,6 +107,8 @@ import {
   MEDIC_CRAWL_SPRITE,
   MEDIC_DIE_SPRITE,
   MEDIC_SPRITE,
+  TITAN_BRACED_SPRITE,
+  TITAN_SPRITE,
   MORTARMAN_DIE_SPRITE,
   MORTARMAN_FIRE_SPRITE,
   ENGINEER_BUILD_SPRITE,
@@ -235,6 +237,7 @@ const EXTRUDE: Record<EntityType, number> = {
   sandbags: 12,
   teeth: 16,
   walker: 30,
+  titan: 40,
   supply: 18,
   cottage: 28,
   shack: 24,
@@ -2998,6 +3001,12 @@ export class MapView {
 
   /** Stance sheet, or the pistol / rifle-recoil / corpse sheet when that pose is showing. */
   private spriteOf(e: EntityView): UnitSpriteDef | undefined {
+    if (e.type === "titan") {
+      // The outriggers read as down from the midpoint of the brace until the midpoint of the pack.
+      const p = e.deployProgress ?? 0;
+      const down = e.state === "deploy" ? p >= 0.5 : e.state === "undeploy" ? p < 0.5 : !!e.braced;
+      return down && !e.wreck ? TITAN_BRACED_SPRITE : TITAN_SPRITE;
+    }
     if (e.type === "rifleman") {
       const sheet = trooperSheet({
         swimming: e.swimming,
@@ -3194,7 +3203,7 @@ export class MapView {
     ctx.save();
     if (e.wreck && !corpse) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
     let stepping = e.state === "move" || !!e.swimming || e.state === "build" || e.state === "repair";
-    if (e.type === "walker" && stepping) {
+    if ((e.type === "walker" || e.type === "titan") && stepping) {
       const prev = this.prevById.get(e.id);
       stepping = !!prev && Math.hypot(prev.x - e.x, prev.y - e.y) > 0.5;
     }
