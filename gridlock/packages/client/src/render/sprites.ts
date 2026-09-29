@@ -510,7 +510,8 @@ export const MEDIC_DIE_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
-/** Cyborg standing / walking. Column 0 is the stand; the legs stride while moving. */
+/** Cyborg standing / walking. Column 0 is the stand; the legs stride while moving.
+ *  contactY is the point between the feet (render_cyborg.py pins it), not the lowest toe. */
 export const CYBORG_SPRITE: UnitSpriteDef = {
   image: loadSheet(cyborgWalkUrl),
   dirs: 16,
@@ -518,7 +519,7 @@ export const CYBORG_SPRITE: UnitSpriteDef = {
   frameSize: 96,
   fps: 10,
   drawSize: UNIT_SPRITE_DRAW_SIZE,
-  contactY: 0.9,
+  contactY: 0.88,
   facingSpace: "world",
 };
 
@@ -530,7 +531,7 @@ export const CYBORG_FIRE_SPRITE: UnitSpriteDef = {
   frameSize: 96,
   fps: 12,
   drawSize: UNIT_SPRITE_DRAW_SIZE,
-  contactY: 0.9,
+  contactY: 0.88,
   facingSpace: "world",
 };
 
@@ -558,6 +559,7 @@ export const CYBORG_CRAWL_FIRE_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
+/** Corpse, face down. contactY is the footprint centre (same pivot as the crawl). */
 export const CYBORG_DIE_SPRITE: UnitSpriteDef = {
   image: loadSheet(cyborgDieUrl),
   dirs: 16,
@@ -565,7 +567,7 @@ export const CYBORG_DIE_SPRITE: UnitSpriteDef = {
   frameSize: 96,
   fps: 8,
   drawSize: UNIT_SPRITE_DRAW_SIZE,
-  contactY: 0.82,
+  contactY: 0.72,
   facingSpace: "world",
 };
 
