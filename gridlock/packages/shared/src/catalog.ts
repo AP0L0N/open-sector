@@ -973,6 +973,8 @@ export const SUPPLY_ROUNDS_PER_POINT = 10;
 export const SUPPLY_PER_SEC = 8;
 /** Cargo restored per second while parked on an owned Armory. */
 export const SUPPLY_REARM_PER_SEC = 30;
+/** Cargo a truck scrounges back per second on its own, anywhere. Empty to full in four minutes. */
+export const SUPPLY_REGEN_PER_SEC = 0.5;
 /** Bodies in the cab and bed, factory driver included. */
 export const TRUCK_SEATS = 2;
 /**
@@ -2232,7 +2234,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     leavesWreck: true,
     wreckHp: 28,
-    blurb: "Light truck. Tops up tank racks, coaxial belts, and the Walker's backpack, then refills itself at an Armory. Two seats. The factory driver stays at the wheel. A bullet in the front plate can kill the driver and leave the truck for anyone. A replacement driver can get out. The second soldier can fire a rifle or handgun from the bed — a machine gun, scoped rifle, or other large gun stays slung. Soldiers inside are a little harder to wound, and more so from the side or rear.",
+    blurb: "Light truck. Tops up tank racks, coaxial belts, and the Walker's backpack, and slowly scrounges its cargo back on its own — an Armory refills it fast. Two seats. The factory driver stays at the wheel. A bullet in the front plate can kill the driver and leave the truck for anyone. A replacement driver can get out. The second soldier can fire a rifle or handgun from the bed — a machine gun, scoped rifle, or other large gun stays slung. Soldiers inside are a little harder to wound, and more so from the side or rear.",
   },
   /** Ju 87 B dive bomber. Lives on an Airfield pad. */
   stuka: {
