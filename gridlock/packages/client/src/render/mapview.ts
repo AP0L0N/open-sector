@@ -94,6 +94,7 @@ import {
   OAK_FACES,
   PINE_FACES,
   CRATER_FACES,
+  CIWS_TURRET_SHEET,
   buildingGroundFor,
   buildingOccludeEz,
   buildingSpriteFor,
@@ -165,6 +166,7 @@ import {
   type MuzzleSmokePuff,
 } from "./muzzle-smoke.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
+import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { drawCyborgDeathSparks, drawCyborgShield } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
 import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir, lerpAirAlt } from "./aircraft.js";
@@ -239,6 +241,7 @@ const EXTRUDE: Record<EntityType, number> = {
   muster: 38,
   dynamo: 30,
   airfield: 14,
+  ciws: 26,
   stuka: 14,
   rig: 22,
   hauler: 16,
@@ -468,6 +471,8 @@ export class MapView {
     bomb?: boolean;
     /** Titan rocket: the mortar column, smaller. */
     rocket?: boolean;
+    /** Rocket burst in the air by a CIWS: a small fireball, no column. */
+    intercept?: boolean;
     lift?: number;
     /** Screen-x offset from the world ground projection. */
     sx?: number;
@@ -665,6 +670,11 @@ export class MapView {
       }
       if (i.kind === "crush") continue;
       const fx: MapView["fx"][number] = { ...i, at: now };
+      // A rocket burst in the air by a CIWS stays where it was: no hull to snap to, no ground smoke.
+      if (i.intercept) {
+        this.addFx(fx);
+        continue;
+      }
       this.snapHullFx(fx);
       this.addFx(fx);
       if (i.kind === "kill" && i.blast) {
@@ -2992,6 +3002,9 @@ export class MapView {
       ctx.globalAlpha = dim ? 0.5 : 1;
       drawBuildingSprite(ctx, spr, south.x, south.y, footprintW);
       ctx.restore();
+      if (e.type === "ciws") {
+        this.drawCiwsGun(spr, south.x, south.y, footprintW, dim ? 0.5 : 1, e.turretFacing ?? e.facing, ghost ? undefined : e);
+      }
       if (!ghost && !dim) {
         drawBuildingAnim(
           ctx,
@@ -3043,6 +3056,57 @@ export class MapView {
       this.strokeGroundRect(x + inset, y + inset, bw - inset * 2, bh - inset * 2, elev);
     }
     ctx.globalAlpha = 1;
+  }
+
+  /** CIWS gun row over its pad, laid on `turretFacing`, and the barrel flash while it fires. */
+  private drawCiwsGun(
+    spr: BuildingSpriteDef,
+    southX: number,
+    southY: number,
+    footprintW: number,
+    alpha: number,
+    facing: number,
+    /** The live mount, for its barrel flash. Omitted for the placement ghost. */
+    e?: EntityView,
+  ): void {
+    const sheet = CIWS_TURRET_SHEET;
+    if (!sheet.complete || sheet.naturalWidth <= 0) return;
+    const ctx = this.ctx;
+    const ts = this.ts();
+    const cell = ciwsTurretCell(sheet.naturalWidth, sheet.naturalHeight, ciwsTurretRow(facing, ts));
+    const scale = footprintW / spr.padWidth;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "low";
+    ctx.drawImage(
+      sheet,
+      cell.sx,
+      cell.sy,
+      cell.sw,
+      cell.sh,
+      southX - spr.padSouthX * scale,
+      southY - spr.padSouthY * scale,
+      cell.sw * scale,
+      cell.sh * scale,
+    );
+    ctx.restore();
+    if (!e?.gatling || e.wreck) return;
+    const elev = heightAt(this.map(), e.tileX, e.tileY);
+    const tip = this.toScreen(
+      e.x + Math.cos(facing) * CIWS_MUZZLE_REACH,
+      e.y + Math.sin(facing) * CIWS_MUZZLE_REACH,
+      elev,
+    );
+    const dir = facingToIso(facing, ts);
+    const len = Math.hypot(dir.x, dir.y) || 1;
+    drawGatlingFlash(
+      ctx,
+      { x: tip.x, y: tip.y - ciwsMuzzleLift(scale), dirX: dir.x / len, dirY: dir.y / len },
+      footprintW * 0.9,
+      performance.now(),
+      e.id,
+    );
   }
 
   private strokeGroundRect(x: number, y: number, w: number, h: number, elev?: number): void {
@@ -3733,7 +3797,11 @@ export class MapView {
           : (armorHitLift(f.kind, f.caliber, f.id, f.blast) ?? 14));
       const x = s.x + (f.sx ?? 0);
       const y = s.y - lift;
-      if (f.kind === "kill" && f.blast) {
+      if (f.intercept) {
+        // Rocket burst in the air: a small puff of fire at flight height.
+        const frame = fxFrameAt(age, life, FX_BOOM.frames, false);
+        drawFxFrame(ctx, FX_BOOM, frame, s.x, s.y - CIWS_INTERCEPT_LIFT, 26, 1 - t * 0.5);
+      } else if (f.kind === "kill" && f.blast) {
         drawCookoffBurst(ctx, x, y, t, f.id);
         const frame = fxFrameAt(age, life, FX_BOOM.frames, false);
         drawFxFrame(ctx, FX_BOOM, frame, x, y, 56, 1 - t * 0.35);
@@ -4089,6 +4157,8 @@ export class MapView {
       if (ground && spriteReady(ground)) drawBuildingSprite(ctx, ground, south.x, south.y, east.x - west.x);
       drawBuildingSprite(ctx, spr, south.x, south.y, east.x - west.x);
       ctx.restore();
+      // The ghost lays its gun toward the viewer.
+      if (type === "ciws") this.drawCiwsGun(spr, south.x, south.y, east.x - west.x, 0.55, Math.PI / 4);
       ctx.strokeStyle = top;
       ctx.lineWidth = 2;
       this.strokeGroundRect(x, y, bw, bh, elev);

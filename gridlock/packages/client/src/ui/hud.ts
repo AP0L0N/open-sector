@@ -541,7 +541,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
   const gun = isInfantryType(e.type)
     ? infantryGunFor(e)
     : belt
-      ? { name: walkerMode?.name ?? "Gatlings", clip: belt.clip }
+      ? { name: walkerMode?.name ?? (e.type === "ciws" ? "20mm belt" : "Gatlings"), clip: belt.clip }
       : null;
   const mag =
     gun && e.clip != null && !e.wreck
@@ -719,6 +719,7 @@ const TYPE_ORDER: EntityType[] = [
   "muster",
   "armory",
   "airfield",
+  "ciws",
   "cottage",
   "shack",
   "house",

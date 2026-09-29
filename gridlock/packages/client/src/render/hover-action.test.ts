@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { catalog } from "@gridlock/shared";
 import { canGuardUnit, resolveHoverAction, type HoverEntity } from "./hover-action.js";
 
 const YOU = "p1";
@@ -221,6 +222,16 @@ describe("resolveHoverAction", () => {
     assert.equal(act({ selected: [trooper], hit: full }), "attack");
     assert.equal(act({ selected: [crewed], hit: dry }), "supply");
     assert.equal(act({ selected: [warden], hit: open }), "attack");
+  });
+
+  it("offers ammo to a CIWS that has fired, and not to a full one or a plain structure", () => {
+    const crewed = unit({ id: 41, type: "supply", bed: { crew: true, seats: 0 }, supply: 120 });
+    const spent = building({ id: 50, type: "ciws", clip: 400 });
+    const full = building({ id: 51, type: "ciws", clip: catalog("ciws").belt });
+    const dynamo = building({ id: 52, type: "dynamo" });
+    assert.equal(act({ selected: [crewed], hit: spent }), "supply");
+    assert.notEqual(act({ selected: [crewed], hit: full }), "supply");
+    assert.notEqual(act({ selected: [crewed], hit: dynamo }), "supply");
   });
 });
 

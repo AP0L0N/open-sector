@@ -296,6 +296,7 @@ export type EntityType =
   | "muster"
   | "armory"
   | "airfield"
+  | "ciws"
   | "stuka"
   | "cottage"
   | "house"
@@ -306,7 +307,7 @@ export type EntityType =
   | "chapel"
   | "sandbags"
   | "teeth";
-export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield";
+export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws";
 /** Placed by an engineer, not the construction yard. */
 export type FieldStructureType = "sandbags" | "teeth";
 export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "teeth"];
@@ -342,7 +343,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
   deploy: 2,
 };
 
-export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield"];
+export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws"];
 export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "supply", "stuka"];
 /**
  * Opening army besides the Rig. Hauler omitted so it does not auto-harvest.
@@ -433,6 +434,12 @@ export interface CatalogEntry {
   rockets?: boolean;
   /** Flies. Parks on an Airfield pad, ignores ground collision and paths. */
   aircraft?: boolean;
+  /**
+   * Radar-laid mount (the CIWS). Fires on its own at units only, planes first,
+   * lays on a plane with CIWS_AIR_SPREAD instead of AIR_TARGET_SPREAD, cranks
+   * the gun to any height, and shoots rockets out of the air.
+   */
+  radarLaid?: boolean;
 }
 
 export interface ShellDef {
@@ -894,6 +901,35 @@ export const STUKA_BOMBS = 1;
 export const STUKA_MG_PER_TICK = (MG42_RPM / 60 / (1 / TICK_DT)) * 2;
 export const STUKA_MG_ROUNDS = 1000;
 
+/**
+ * CIWS. A stationary radar-laid 20mm gatling on a small concrete pad. It needs
+ * no crew and no orders: it swings onto the nearest enemy unit it can hurt,
+ * planes first, and fires 1,800 rounds a minute. Tank plate shrugs the rounds
+ * off, so it leaves tanks alone. A Titan rocket that flies into its reach draws
+ * a short burst and may burst in the air. The belt does not refill by itself —
+ * a supply truck tops it up, one full truck for one empty belt.
+ */
+export const CIWS_RANGE_TILES = t(8);
+/** Rounds each tick. Three a tick is 1,800 a minute. */
+export const CIWS_SHOTS_PER_TICK = 3;
+/** Belt. About forty seconds on the trigger. */
+export const CIWS_BELT = 1200;
+export const CIWS_GUN = {
+  damage: 9,
+  /** Through a Walker, a truck, and a light tank's thin side. Not a tank's front. */
+  penetration: 22,
+  caliber: 20,
+  spreadDeg: 3.5,
+} as const;
+/** Spread multiple on a plane in the air. The radar lays the gun; small arms open AIR_TARGET_SPREAD. */
+export const CIWS_AIR_SPREAD = 1.3;
+/** Chance one burst bursts one rocket in the air. Each CIWS tries each rocket once. */
+export const CIWS_INTERCEPT_CHANCE = 0.45;
+/** Rounds one intercept burst spends. A short belt still tries, at a share of the chance. */
+export const CIWS_INTERCEPT_ROUNDS = 12;
+/** Rockets one CIWS can engage in one tick. A full Titan salvo takes two ticks. */
+export const CIWS_INTERCEPTS_PER_TICK = 2;
+
 export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   rifle: RIFLE,
   handgun: HANDGUN,
@@ -1228,6 +1264,37 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     blurb: `Concrete strip with four revetted hardstands beside it. Trains dive bombers and keeps up to ${AIRFIELD_PADS}. Planes land here to refuel, rearm, and patch up.`,
+  },
+  ciws: {
+    type: "ciws",
+    kind: "building",
+    name: "CIWS",
+    letter: "W",
+    cost: 700,
+    buildSeconds: 18,
+    hp: 500,
+    power: -25,
+    tileW: t(1),
+    tileH: t(1),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    turretTurnDegPerSec: 300,
+    rangeTiles: CIWS_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: TICK_DT,
+    damage: CIWS_GUN.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    armorFront: 0,
+    armorSide: 0,
+    armorRear: 0,
+    penetration: CIWS_GUN.penetration,
+    caliber: CIWS_GUN.caliber,
+    spreadDeg: CIWS_GUN.spreadDeg,
+    shotsPerTick: CIWS_SHOTS_PER_TICK,
+    belt: CIWS_BELT,
+    radarLaid: true,
+    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, and tries to burst incoming rockets in the air. Leaves tanks and buildings alone. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
   },
   sandbags: {
     type: "sandbags",
@@ -2195,6 +2262,11 @@ export function wadesOf(type: EntityType): boolean {
 }
 
 /** Carries the shoulder rocket pods. */
+/** The CIWS mount. See CatalogEntry.radarLaid. */
+export function radarLaidOf(type: EntityType): boolean {
+  return catalog(type).radarLaid === true;
+}
+
 export function rocketsOf(type: EntityType): boolean {
   return catalog(type).rockets === true;
 }

@@ -1,0 +1,30 @@
+{
+  "padWidth": 192.0,
+  "padSouthX": 126.0,
+  "padSouthY": 186.0,
+  "stackX": 126.0,
+  "stackY": 82.8,
+  "cell": [
+    252,
+    216
+  ],
+  "rows": 16,
+  "order": [
+    "S",
+    "SSW",
+    "SW",
+    "WSW",
+    "W",
+    "WNW",
+    "NW",
+    "NNW",
+    "N",
+    "NNE",
+    "NE",
+    "ENE",
+    "E",
+    "ESE",
+    "SE",
+    "SSE"
+  ]
+}
