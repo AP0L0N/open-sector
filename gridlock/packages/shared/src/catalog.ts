@@ -306,6 +306,8 @@ export type EntityType =
   | "airfield"
   | "ciws"
   | "stuka"
+  | "droneop"
+  | "drone"
   | "cottage"
   | "house"
   | "manor"
@@ -329,7 +331,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "cyborg" | "titan" | "supply" | "stuka";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "cyborg" | "titan" | "supply" | "stuka" | "droneop";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -352,13 +354,16 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "supply", "stuka"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "supply", "stuka", "droneop"];
 /**
  * Opening army besides the Rig. Hauler omitted so it does not auto-harvest.
  * Supply truck and Titan omitted so the opening fight stays the same — train them at the Armory.
- * Aircraft need an Airfield pad, so the Stuka is omitted too.
+ * Aircraft need an Airfield pad, so the Stuka is omitted too. The Drone Op is
+ * trained at the Muster so the opening fight stays the same.
  */
-export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter((t) => t !== "hauler" && t !== "supply" && t !== "titan" && t !== "stuka");
+export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter(
+  (t) => t !== "hauler" && t !== "supply" && t !== "titan" && t !== "stuka" && t !== "droneop",
+);
 
 export interface CatalogEntry {
   type: EntityType;
@@ -450,6 +455,8 @@ export interface CatalogEntry {
    * the gun to any height, and shoots rockets out of the air.
    */
   radarLaid?: boolean;
+  /** Quadcopter flown by a Drone Op. Hovers, ignores ground collision and paths. */
+  drone?: boolean;
 }
 
 export interface ShellDef {
@@ -491,6 +498,8 @@ export interface InfantryGun {
   minRangeTiles?: number;
   /** Rounds released together each time the cooldown elapses. Default 1. */
   shotsPerTick?: number;
+  /** Rate of fire enough to track a high drone. Only these guns reach a Surveillance drone. */
+  antiAir?: boolean;
 }
 
 /** Personal reload-time scale around 1. Baked onto each trooper at spawn. */
@@ -563,6 +572,7 @@ export const MG42 = {
   reload: MG42_BELT_RELOAD,
   rangeTiles: MG42_RANGE_TILES,
   bulky: true,
+  antiAir: true,
 } as const satisfies InfantryGun;
 
 /**
@@ -631,6 +641,7 @@ export const GATLING = {
   reload: 0,
   rangeTiles: CYBORG_RANGE_TILES,
   bulky: true,
+  antiAir: true,
 } as const satisfies InfantryGun;
 
 /**
@@ -939,6 +950,65 @@ export const CIWS_INTERCEPT_CHANCE = 0.45;
 export const CIWS_INTERCEPT_ROUNDS = 12;
 /** Rockets one CIWS can engage in one tick. A full Titan salvo takes two ticks. */
 export const CIWS_INTERCEPTS_PER_TICK = 2;
+
+/**
+ * Drone Op and his one quadcopter. The drone launches from his hands and
+ * becomes its own unit. It flies only inside DRONE_LEASH_TILES of him, and
+ * only while the battery lasts; low on charge it flies back and he stows it
+ * to recharge. Lost in the air, it is gone: he builds another over
+ * DRONE_REBUILD_SECONDS.
+ *
+ * Surveillance holds it high: wide sight, and only anti-air guns (the MG42
+ * and the gatlings) can reach it. Search & Destroy brings it low to hunt: it
+ * dives on a target and bursts. Down there rifles, machine guns, and rockets
+ * reach it. Tank shells, mortars, and bombs never do.
+ */
+export type DroneMode = "surveil" | "strike";
+export const DRONE_MODES: readonly DroneMode[] = ["surveil", "strike"];
+export const DRONE_MODE_LABEL: Record<DroneMode, string> = {
+  surveil: "Surveillance",
+  strike: "Search & Destroy",
+};
+/** Radius around the Drone Op the drone may fly, gameplay tiles. */
+export const DRONE_LEASH_TILES = t(14);
+/** Seconds aloft on a full battery. */
+export const DRONE_BATTERY_SECONDS = 70;
+/** Turn back once the charge holds only this many seconds past the flight home. */
+export const DRONE_BATTERY_RESERVE = 5;
+/** Battery seconds regained per second stowed. A flat pack fills in 20 s. */
+export const DRONE_RECHARGE_PER_SEC = DRONE_BATTERY_SECONDS / 20;
+/** Charge needed to launch. */
+export const DRONE_LAUNCH_MIN_SECONDS = 15;
+/** Seconds to put a new drone together after one is lost. */
+export const DRONE_REBUILD_SECONDS = 75;
+/** Surveillance height. Above the Stuka's cruise, out of rifle reach. */
+export const DRONE_SURVEIL_ALT = 22;
+/** Search & Destroy height. Low enough for rifles and rocket bursts. */
+export const DRONE_STRIKE_ALT = 5;
+/** At or above this height only anti-air guns reach the drone. */
+export const DRONE_HIGH_ALT = 13;
+/** Elevation units per second the drone climbs or drops. */
+export const DRONE_CLIMB_PER_SEC = 5;
+/** Extra sight at Surveillance height over the catalog (Search & Destroy) sight. */
+export const DRONE_SURVEIL_SIGHT_BONUS = t(8);
+/** Burst when it closes on its target. */
+export const DRONE_STRIKE_TILES = t(0.35);
+/** Stowed once it is this close above the operator. */
+export const DRONE_RECOVER_TILES = t(0.5);
+/**
+ * Shaped charge under the frame. Kills a soldier it lands on and wounds
+ * those beside him. On a hull it comes down through the roof: a share of max
+ * HP, and a chance at the engine.
+ */
+export const DRONE_WARHEAD = {
+  damage: 70,
+  splashTiles: t(0.9),
+  /** Share of a hull's max HP at the center. */
+  armorShare: 0.3,
+  engineChance: 0.35,
+  buildingDamage: 90,
+  caliber: 30,
+} as const;
 
 export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   rifle: RIFLE,
@@ -1783,6 +1853,51 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     blurb: "Dive bomber. One SC 250 per sortie, two wing MGs for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands at its Airfield to refuel and rearm.",
   },
+  droneop: {
+    type: "droneop",
+    kind: "unit",
+    name: "Drone Op",
+    letter: "o",
+    cost: 220,
+    buildSeconds: 12,
+    hp: 34,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: t(2),
+    turnDegPerSec: 1600,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "No gun of his own. Launches one quadcopter that flies as its own unit, only within his reach and only while its battery lasts. Surveillance holds it high with wide sight, where only machine guns and gatlings reach it. Search & Destroy brings it low to dive on a target and burst; down there rifles and rockets reach it too. Recall stows it to recharge. A lost drone takes him a long time to replace.",
+  },
+  drone: {
+    type: "drone",
+    kind: "unit",
+    name: "Drone",
+    letter: "q",
+    cost: 0,
+    buildSeconds: 0,
+    hp: 24,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 6,
+    moveTilesPerSec: t(3.5),
+    turnDegPerSec: 360,
+    rangeTiles: 0,
+    sightTiles: t(9),
+    cooldown: 0,
+    damage: DRONE_WARHEAD.damage,
+    projectileSpeed: 0,
+    ...UNARMED,
+    drone: true,
+    blurb: "Quadcopter on its operator's link. Surveillance: high, wide sight, only anti-air guns reach it. Search & Destroy: low, dives on a target and bursts; rifles, machine guns, and rockets reach it. Tank shells and mortars never do.",
+  },
   cottage: {
     type: "cottage",
     name: "Cottage",
@@ -1922,11 +2037,16 @@ export function armorLabel(type: EntityType): string | null {
   return `F${d.armorFront} / S${d.armorSide} / R${d.armorRear}`;
 }
 
-const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "cyborg"];
+const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "cyborg", "droneop"];
 
 /** Flies. Stuka only. */
 export function isAircraftType(type: EntityType): boolean {
   return catalog(type).aircraft === true;
+}
+
+/** Operator's quadcopter. */
+export function isDroneType(type: EntityType): boolean {
+  return catalog(type).drone === true;
 }
 
 export function isInfantryType(type: EntityType): boolean {
@@ -2009,6 +2129,10 @@ export function isMotorVehicle(type: EntityType): boolean {
 
 export function isCrit(v: string): v is Crit {
   return (CRIT_TYPES as readonly string[]).includes(v);
+}
+
+export function isDroneMode(v: unknown): v is DroneMode {
+  return typeof v === "string" && (DRONE_MODES as readonly string[]).includes(v);
 }
 
 export function isStance(v: string): v is Stance {

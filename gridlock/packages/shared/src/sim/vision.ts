@@ -17,6 +17,7 @@ import {
   hasFullLosFlagged,
   observerEyeForEntity,
   levelSightExtra,
+  droneSightExtra,
   sightTilesForEntity,
   sightTilesOf,
   uphillSightForEntity,
@@ -243,7 +244,7 @@ function sightParams(
   return {
     ox: tx,
     oy: ty,
-    radius: e.sightTiles ?? (entityIsScouting(e) ? sightTilesOf("rifleman", h) : sightTilesOf(e.type, h)),
+    radius: e.sightTiles ?? (entityIsScouting(e) ? sightTilesOf("rifleman", h) : sightTilesOf(e.type, h, droneSightExtra(e))),
     eye,
     uphill,
     ignore,
@@ -940,7 +941,7 @@ function catalogSight(
   const ty = e.kind === "building" ? e.tileY + Math.floor(e.tileH / 2) : worldToTile(e.y, tileSize);
   const h = elev ? elevAtSafe(elev, width, height, tx, ty) : 0;
   if (e.scout?.out) return sightTilesOf("rifleman", h);
-  return sightTilesOf(e.type, h);
+  return sightTilesOf(e.type, h, droneSightExtra(e));
 }
 
 function snapshotSightTiles(
@@ -1149,7 +1150,7 @@ function observerSeesTile(
   const ox = worldToTile(obs.x, state.tileSize);
   const oy = worldToTile(obs.y, state.tileSize);
   const h = elevAtSafe(elev, width, height, ox, oy);
-  const radius = occupantSightTiles(state, obs) ?? (entityIsScouting(obs) ? sightTilesOf("rifleman", h) : sightTilesOf(obs.type, h));
+  const radius = occupantSightTiles(state, obs) ?? (entityIsScouting(obs) ? sightTilesOf("rifleman", h) : sightTilesOf(obs.type, h, droneSightExtra(obs)));
   return tileInSight(
     tx,
     ty,

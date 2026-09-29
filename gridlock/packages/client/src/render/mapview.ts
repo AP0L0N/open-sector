@@ -19,6 +19,7 @@ import {
   TILE_TREE,
   TILE_WATER,
   TICK_DT,
+  DRONE_LEASH_TILES,
   garrisonWindowLift,
   hasScout,
   isGarrisonable,
@@ -113,6 +114,10 @@ import {
   MEDIC_CROUCH_SPRITE,
   MEDIC_CRAWL_SPRITE,
   MEDIC_DIE_SPRITE,
+  DRONEOP_CRAWL_SPRITE,
+  DRONEOP_CROUCH_SPRITE,
+  DRONEOP_DIE_SPRITE,
+  DRONEOP_SPRITE,
   MEDIC_SPRITE,
   CYBORG_CRAWL_FIRE_SPRITE,
   CYBORG_CRAWL_SPRITE,
@@ -252,6 +257,8 @@ const EXTRUDE: Record<EntityType, number> = {
   airfield: 14,
   ciws: 26,
   stuka: 14,
+  drone: 8,
+  droneop: 26,
   rig: 22,
   hauler: 16,
   warden: 28,
@@ -2097,7 +2104,14 @@ export class MapView {
       this.onCommand({ type: "cmd.move", ids: haulers.map((e) => e.id), x: hit.x, y: hit.y });
       return;
     }
-    const planes = own.filter((e) => !!e.air);
+    const drones = own.filter((e) => e.drone && e.drone.opId === hit?.id);
+    if (hit?.droneLink && hit.ownerId === you && drones.length) {
+      // Right-click the operator: his drone comes home to be stowed.
+      this.pulseMoveClick(hit.x, hit.y);
+      this.onCommand({ type: "cmd.drone", ids: drones.map((e) => e.id), action: "recall" });
+      return;
+    }
+    const planes = own.filter((e) => !!e.air && !e.drone);
     if (hit?.type === "airfield" && hit.ownerId === you && planes.length) {
       // Right-click your own strip: planes go home to land and rearm.
       this.pulseMoveClick(hit.x, hit.y);
@@ -2318,6 +2332,39 @@ export class MapView {
     this.drawRotateCursor();
     this.drawGuardOverlay();
     this.drawRallyOverlay();
+    this.drawDroneLeash();
+  }
+
+  /** Dashed ring of the operator's reach while he or his drone is selected. */
+  private drawDroneLeash(): void {
+    const you = this.curr.youPlayerId;
+    const ops = new Set<number>();
+    for (const e of this.curr.entities) {
+      if (!this.selected.has(e.id) || e.ownerId !== you) continue;
+      if (e.droneLink) ops.add(e.id);
+      if (e.drone?.opId != null) ops.add(e.drone.opId);
+    }
+    if (ops.size === 0) return;
+    const r = DRONE_LEASH_TILES * this.ts();
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setLineDash([6, 5]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(120, 200, 230, 0.55)";
+    for (const id of ops) {
+      const op = this.curr.entities.find((e) => e.id === id);
+      if (!op) continue;
+      const c = this.lerpEnt(op);
+      ctx.beginPath();
+      for (let i = 0; i <= 64; i++) {
+        const a = (i / 64) * Math.PI * 2;
+        const s = this.toScreen(c.x + Math.cos(a) * r, c.y + Math.sin(a) * r);
+        if (i === 0) ctx.moveTo(s.x, s.y);
+        else ctx.lineTo(s.x, s.y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   private selectedProducers(): EntityView[] {
@@ -3274,6 +3321,15 @@ export class MapView {
       if (sheet === "swim") return spriteFor("medic", "stand", true);
       return MEDIC_SPRITE;
     }
+    if (e.type === "droneop") {
+      // Same sheet set as the Medic: walk, crouch, crawl, die.
+      const sheet = medicSheet({ swimming: e.swimming, wreck: e.wreck, stance: e.stance });
+      if (sheet === "die") return DRONEOP_DIE_SPRITE;
+      if (sheet === "crouch") return DRONEOP_CROUCH_SPRITE;
+      if (sheet === "crawl") return DRONEOP_CRAWL_SPRITE;
+      if (sheet === "swim") return spriteFor("droneop", "stand", true);
+      return DRONEOP_SPRITE;
+    }
     if (e.type === "cyborg") {
       const sheet = cyborgSheet({
         swimming: e.swimming,
@@ -3412,7 +3468,7 @@ export class MapView {
     }
     const corpse = isInfantryType(e.type) && !!e.wreck;
     let frameIndex: number | undefined;
-    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === CYBORG_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
     else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE) {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
     }
@@ -3615,6 +3671,8 @@ export class MapView {
               ? ENGINEER_DIE_SPRITE
               : body.type === "medic"
                 ? MEDIC_DIE_SPRITE
+              : body.type === "droneop"
+                ? DRONEOP_DIE_SPRITE
               : body.type === "cyborg"
                 ? CYBORG_DIE_SPRITE
               : body.type === "rifleman"

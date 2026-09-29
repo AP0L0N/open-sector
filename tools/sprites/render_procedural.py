@@ -7,6 +7,8 @@ Blender path does, so the engine and compose tools treat them alike.
 
   stuka     16 unique faces, 0001 = nose screen-south, clockwise 22.5°.
             gridlock/packages/client/src/assets/units/stuka/hull/0001.png … 0016.png
+  drone     the Drone Op's quadcopter, same camera and face order.
+            gridlock/packages/client/src/assets/units/drone/hull/0001.png … 0016.png
 
 The Airfield building lives in render_airfield.py.
 
@@ -19,6 +21,8 @@ so the game can tint them.
 
   python tools/sprites/render_procedural.py stuka \\
       --out gridlock/packages/client/src/assets/units/stuka/hull
+  python tools/sprites/render_procedural.py drone \\
+      --out gridlock/packages/client/src/assets/units/drone/hull
 """
 
 from __future__ import annotations
@@ -54,6 +58,8 @@ MAT = {
     "team": (hex_rgb("#7a7a74"), 0.10, 1.0),
     "bomb": (hex_rgb("#4b4f3e"), 0.18, 1.0),
     "prop": (hex_rgb("#b8b4a8"), 0.00, 0.22),
+    "rotor": (hex_rgb("#c8c4b8"), 0.00, 0.42),
+    "hazard": (hex_rgb("#d4a017"), 0.05, 1.0),
     "grass": (hex_rgb("#4a6b32"), 0.0, 1.0),
     "strip": (hex_rgb("#6f8a45"), 0.0, 1.0),
     "dirt": (hex_rgb("#8a6e52"), 0.0, 1.0),
@@ -266,6 +272,65 @@ def build_stuka() -> Mesh:
     return m
 
 
+def build_drone() -> Mesh:
+    """Small X-frame quadcopter in decimeters. +x nose, +y left, +z up. Skids at z=0.
+
+    Four arms on the diagonals, a motor and a blurred rotor disc (with a thin
+    guard ring so the disc reads at gameplay size) at each tip, a neutral team
+    panel on the deck, and a charge / camera pod slung under the body. The two
+    front motor caps are hazard orange so the nose reads at any yaw.
+    """
+    m = Mesh()
+    zb = 1.08  # body centerline; the pod's belly is the lowest point (contact)
+    # Body: a flattened octagonal hull, longer than wide.
+    body = [ellipse_ring(x, 0.0, zb, hw, hh, 8) for x, hw, hh in ((1.5, 0.42, 0.20), (1.1, 0.80, 0.34), (-0.8, 0.80, 0.34), (-1.4, 0.50, 0.22))]
+    m.loft(body, "frame")
+    m.box((-0.6, -0.45, zb + 0.26), (0.7, 0.45, zb + 0.40), "team")  # battery lid / team panel
+    arm_len = 2.45
+    rotor_r = 1.1
+    for sx, sy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+        ax, ay = sx * arm_len * math.cos(math.pi / 4), sy * arm_len * math.sin(math.pi / 4)
+        # Arm: a thin box along the diagonal (built from a loft of square rings).
+        rings = []
+        for t in (0.25, 1.0):
+            cx, cy = ax * t, ay * t
+            px, py = -sy * 0.12, sx * 0.12  # perpendicular half-width
+            rings.append([
+                np.array([cx + px, cy + py, zb + 0.10]),
+                np.array([cx - px, cy - py, zb + 0.10]),
+                np.array([cx - px, cy - py, zb - 0.06]),
+                np.array([cx + px, cy + py, zb - 0.06]),
+            ])
+        m.loft(rings, "frame")
+        # Motor can
+        motor = [
+            [np.array([ax + 0.26 * math.cos(2 * math.pi * k / 10), ay + 0.26 * math.sin(2 * math.pi * k / 10), z]) for k in range(10)]
+            for z in (zb - 0.12, zb + 0.36)
+        ]
+        m.loft(motor, "sock" if sx > 0 else "metal")
+        # Blurred rotor disc and a thin guard ring just above the motor
+        zr = zb + 0.42
+        n = 28
+        ctr = m.v((ax, ay, zr))
+        rim = [m.v((ax + rotor_r * math.cos(2 * math.pi * k / n), ay + rotor_r * math.sin(2 * math.pi * k / n), zr)) for k in range(n)]
+        for k in range(n):
+            m.tri(ctr, rim[k], rim[(k + 1) % n], "rotor")
+        inner = [m.v((ax + (rotor_r - 0.07) * math.cos(2 * math.pi * k / n), ay + (rotor_r - 0.07) * math.sin(2 * math.pi * k / n), zr + 0.01)) for k in range(n)]
+        outer = [m.v((ax + (rotor_r + 0.03) * math.cos(2 * math.pi * k / n), ay + (rotor_r + 0.03) * math.sin(2 * math.pi * k / n), zr + 0.01)) for k in range(n)]
+        for k in range(n):
+            m.quad(inner[k], outer[k], outer[(k + 1) % n], inner[(k + 1) % n], "metal")
+    # Charge / camera pod slung under the body, lens forward, hazard band on the charge.
+    zp = zb - 0.62
+    pod = [ellipse_ring(x, 0.0, zp, r, r, 12) for x, r in ((1.05, 0.12), (0.85, 0.42), (-0.45, 0.44), (-0.95, 0.18))]
+    m.loft(pod, "bomb")
+    band = [ellipse_ring(x, 0.0, zp, 0.46, 0.46, 12) for x in (-0.05, -0.30)]
+    m.loft(band, "hazard")
+    m.box((-0.2, -0.1, zb - 0.3), (0.3, 0.1, zb - 0.1), "metal")  # pylon
+    lens = [ellipse_ring(x, 0.0, zp, r, r, 10) for x, r in ((1.08, 0.22), (1.2, 0.14))]
+    m.loft(lens, "glass")
+    return m
+
+
 def camo_color(p: np.ndarray) -> np.ndarray:
     """Straight-edged splinter pattern in model space."""
     a = math.floor(p[0] * 0.55 + p[1] * 0.95 + 0.3)
@@ -396,13 +461,42 @@ def screen_to_ground_yaw(phi: float) -> float:
 
 
 def render_stuka(out: Path, cell: int = 256, ss: int = 4) -> None:
-    mesh = build_stuka()
+    # Meters -> px. Wingspan 13.8 m fits the cell with room for the outline.
+    render_turntable(build_stuka(), out, "stuka_hull", "stuka-hull.json", 0.062, 1.2, cell=cell, ss=ss)
+
+
+def render_drone(out: Path, cell: int = 256, ss: int = 4) -> None:
+    # Decimeters -> px. Rotor tip to rotor tip is ~6 dm across the diagonal; the widest yaw fits the cell.
+    render_turntable(build_drone(), out, "drone_hull", "drone-hull.json", 0.115, 0.9, cy_frac=0.56, cell=cell, ss=ss, outline_px=2)
+    # Static 72x72 cameo from the east face (CSS fallback; the client also composes --drone-cameo at runtime).
+    east = Image.open(out / "0013.png").convert("RGBA")
+    crop = east.crop(east.getbbox())
+    fit = min(64 / crop.width, 64 / crop.height)
+    small = crop.resize((max(1, round(crop.width * fit)), max(1, round(crop.height * fit))), Image.Resampling.LANCZOS)
+    cameo = Image.new("RGBA", (72, 72), (0, 0, 0, 0))
+    cameo.alpha_composite(small, ((72 - small.width) // 2, (72 - small.height) // 2))
+    cameo.save(out.parent.parent / "drone-cameo.png")
+    print("wrote", out.parent.parent / "drone-cameo.png")
+
+
+def render_turntable(
+    mesh: Mesh,
+    out: Path,
+    asset_id: str,
+    manifest_name: str,
+    scale_frac: float,
+    z_mid: float,
+    cy_frac: float = 0.58,
+    cell: int = 256,
+    ss: int = 4,
+    outline_px: int = 1,
+) -> None:
+    """16 unique faces of one mesh, 0001 = nose screen-south, clockwise. `scale_frac` is px per model unit / cell px."""
     out.mkdir(parents=True, exist_ok=True)
     size = cell * ss
-    # Meters -> supersampled px. Wingspan 13.8 m fits the cell with room for the outline.
-    scale = size * 0.062
+    scale = size * scale_frac
     ce, se = math.cos(CAM_ELEV), math.sin(CAM_ELEV)
-    manifest = {"id": "stuka_hull", "cell": cell, "rows": 16, "facing": 16, "order": [], "files": []}
+    manifest = {"id": asset_id, "cell": cell, "rows": 16, "facing": 16, "order": [], "files": []}
     names = ["S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW", "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE"]
     for k in range(16):
         phi = math.pi / 2 + k * math.pi / 8  # screen angle: row 0 down, then clockwise on screen
@@ -420,7 +514,7 @@ def render_stuka(out: Path, cell: int = 256, ss: int = 4) -> None:
             wv = to_world(verts)
             X, Y, Z = wv[:, 0], wv[:, 1], wv[:, 2]
             sx = size / 2 + X * scale
-            syy = size * 0.58 - (Y * se + (Z - 1.2) * ce) * scale
+            syy = size * cy_frac - (Y * se + (Z - z_mid) * ce) * scale
             depth = -Y * ce + Z * se
             return sx, syy, depth
 
@@ -428,22 +522,25 @@ def render_stuka(out: Path, cell: int = 256, ss: int = 4) -> None:
             return to_world(a), to_world(b), to_world(c)
 
         fr = rasterize(mesh, to_screen, (size, size), normal_fn)
-        fr = add_outline(fr, max(1, ss * 1))
+        fr = add_outline(fr, max(1, ss * outline_px))
         img = downsample(fr, ss)
         name = f"{k + 1:04d}.png"
         img.save(out / name)
         manifest["order"].append(names[k])
         manifest["files"].append(name)
         print("wrote", out / name, img.getbbox())
-    (out.parent / "stuka-hull.json").write_text(json.dumps(manifest, indent=2) + "\n")
+    (out.parent / manifest_name).write_text(json.dumps(manifest, indent=2) + "\n")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["stuka"])
+    ap.add_argument("what", choices=["stuka", "drone"])
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
-    render_stuka(Path(args.out))
+    if args.what == "drone":
+        render_drone(Path(args.out))
+    else:
+        render_stuka(Path(args.out))
 
 
 if __name__ == "__main__":

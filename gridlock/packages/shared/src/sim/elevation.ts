@@ -1,4 +1,7 @@
 import {
+  DRONE_STRIKE_ALT,
+  DRONE_SURVEIL_ALT,
+  DRONE_SURVEIL_SIGHT_BONUS,
   GARRISON_HIDE_SIGHT,
   GARRISON_WATCH_SIGHT_BONUS,
   HEIGHT_BASE,
@@ -22,6 +25,7 @@ import {
   coverHeightOf,
   entityIsScouting,
   infantryGunFor,
+  isDroneType,
   isInfantryType,
   radarLaidOf,
   sightBonusTilesOf,
@@ -93,6 +97,16 @@ export function muzzleHeight(state: MatchState, e: Entity): number {
 /** Elevation units a plane flies above the ground. 0 on the pad and for every ground type. */
 export function airAlt(e: { air?: { alt: number } }): number {
   return e.air && e.air.alt > 0 ? e.air.alt : 0;
+}
+
+/**
+ * Extra sight a drone gains with height: none at Search & Destroy height,
+ * DRONE_SURVEIL_SIGHT_BONUS at Surveillance height. Zero for every other type.
+ */
+export function droneSightExtra(e: { type: EntityType; air?: { alt: number } }): number {
+  if (!isDroneType(e.type)) return 0;
+  const u = (airAlt(e) - DRONE_STRIKE_ALT) / (DRONE_SURVEIL_ALT - DRONE_STRIKE_ALT);
+  return Math.round(Math.max(0, Math.min(1, u)) * DRONE_SURVEIL_SIGHT_BONUS);
 }
 
 /** Aim height: mid-mass of the target so a descending shot still meets it. A plane is aimed at where it flies. */
@@ -190,7 +204,7 @@ export function sightTilesForEntity(state: MatchState, e: Entity): number {
     }
   }
   if (entityIsScouting(e)) return sightTilesOf("rifleman", entityHeight(state, e));
-  return sightTilesOf(e.type, entityHeight(state, e));
+  return sightTilesOf(e.type, entityHeight(state, e), droneSightExtra(e));
 }
 
 export function weaponRangeWorld(state: MatchState, e: Entity): number {

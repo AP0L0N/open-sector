@@ -112,6 +112,10 @@ import medicWalkUrl from "../assets/units/medic-walk.png";
 import medicCrouchUrl from "../assets/units/medic-crouch.png";
 import medicCrawlUrl from "../assets/units/medic-crawl.png";
 import medicDieUrl from "../assets/units/medic-die.png";
+import droneopWalkUrl from "../assets/units/droneop-walk.png";
+import droneopCrouchUrl from "../assets/units/droneop-crouch.png";
+import droneopCrawlUrl from "../assets/units/droneop-crawl.png";
+import droneopDieUrl from "../assets/units/droneop-die.png";
 import cyborgWalkUrl from "../assets/units/cyborg-walk.png";
 import cyborgFireUrl from "../assets/units/cyborg-fire.png";
 import cyborgCrawlUrl from "../assets/units/cyborg-crawl.png";
@@ -135,7 +139,13 @@ import titanBracedGunUrl from "../assets/units/titan-braced-gun.png";
 import titanWadeLegsUrl from "../assets/units/titan-wade-legs.png";
 import titanWadeTorsoUrl from "../assets/units/titan-wade-torso.png";
 import titanWadeGunUrl from "../assets/units/titan-wade-gun.png";
-import { bindAircraftSheets, bindCasemateSheets, bindSupplySheets, bindTurntableSheets } from "./turntable-sheet.js";
+import {
+  bindAircraftSheets,
+  bindCasemateSheets,
+  bindDroneSheets,
+  bindSupplySheets,
+  bindTurntableSheets,
+} from "./turntable-sheet.js";
 import { engineRowFromFacing, engineRowFromScreen } from "./turntable.js";
 import scoutHeadUrl from "../assets/units/scout-head.png";
 import rigSheetUrl from "../assets/units/rig-move.png";
@@ -523,6 +533,54 @@ export const MEDIC_DIE_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
+/**
+ * Drone Op: the Medic's soldier re-kitted (tools/sprites/derive_droneop.py) with a
+ * chest controller and a pack antenna. Same cell, scale, and contact as the Medic.
+ */
+export const DRONEOP_SPRITE: UnitSpriteDef = {
+  image: loadSheet(droneopWalkUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+export const DRONEOP_CROUCH_SPRITE: UnitSpriteDef = {
+  image: loadSheet(droneopCrouchUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.88,
+  facingSpace: "world",
+};
+
+export const DRONEOP_CRAWL_SPRITE: UnitSpriteDef = {
+  image: loadSheet(droneopCrawlUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 10,
+  drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
+  contactY: 0.72,
+  facingSpace: "world",
+};
+
+export const DRONEOP_DIE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(droneopDieUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.82,
+  facingSpace: "world",
+};
+
 /** Cyborg standing / walking. Column 0 is the stand; the legs stride while moving.
  *  contactY is the point between the feet (render_cyborg.py pins it), not the lowest toe. */
 export const CYBORG_SPRITE: UnitSpriteDef = {
@@ -735,6 +793,22 @@ export const STUKA_SPRITE: UnitSpriteDef = {
 };
 bindAircraftSheets(STUKA_SPRITE.image);
 
+/**
+ * Drone Op's quadcopter. Same camera and 128 cell as the Stuka; its rotor span reads about
+ * twice a rifleman's width. The map lifts it by altitude over its own ground shadow.
+ */
+export const DRONE_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(34 * INFANTRY_VISUAL_SCALE),
+  contactY: 0.8,
+  facingSpace: "world",
+};
+bindDroneSheets(DRONE_SPRITE.image);
+
 export const WALKER_SPRITE: UnitSpriteDef = {
   image: loadSheet(walkerSheetUrl),
   dirs: 16,
@@ -847,6 +921,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   ss3: SS3_SPRITE,
   supply: SUPPLY_SPRITE,
   stuka: STUKA_SPRITE,
+  drone: DRONE_SPRITE,
   rig: RIG_SPRITE,
 };
 
@@ -881,6 +956,11 @@ export function spriteFor(type: EntityType, stance?: Stance, swimming = false): 
     if (stance === "crouch") return MEDIC_CROUCH_SPRITE;
     if (stance === "crawl") return MEDIC_CRAWL_SPRITE;
     return MEDIC_SPRITE;
+  }
+  if (type === "droneop") {
+    if (stance === "crouch") return DRONEOP_CROUCH_SPRITE;
+    if (stance === "crawl") return DRONEOP_CRAWL_SPRITE;
+    return DRONEOP_SPRITE;
   }
   if (type === "engineer") return ENGINEER_SPRITE;
   if (type === "cyborg") return stance === "crawl" ? CYBORG_CRAWL_SPRITE : CYBORG_SPRITE;

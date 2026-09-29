@@ -16,7 +16,9 @@ import {
   isSmokeShell,
   isStance,
   isTrainType,
+  isDroneMode,
   pickLoadedShell,
+  type DroneMode,
   type InfantryWeaponId,
   type ShellType,
   type Stance,
@@ -36,6 +38,7 @@ import { setPath } from "./path.js";
 import { tickStance } from "./stance.js";
 import { dismountSupply, orderBoard, orderSupply, supplyCanDrive } from "./supply.js";
 import { orderAircraft, stopAircraft } from "./air.js";
+import { droneOf, launchDrone, orderDrone, recallDrone, setDroneMode, stopDrone } from "./drone.js";
 import type { Entity, MatchState } from "./types.js";
 
 export type CmdResult = { ok: true } | { ok: false; code: ErrorCode; message: string };
@@ -49,6 +52,8 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
   if (!p) return fail("not_member", "You are not in this match.");
   if (!p.alive && msg.type.startsWith("cmd.")) return fail("dead", "Your Core is down.");
 
+  const drones = routeDrones(state, playerId, msg);
+  if (drones) return drones;
   const air = routeAircraft(state, playerId, msg);
   if (air) return air;
 
@@ -151,6 +156,13 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
       return cmdUnboard(state, playerId, msg.ids, msg.truckId);
     case "cmd.supply":
       return wrap(orderSupply(state, playerId, owned(state, playerId, msg.ids), msg.targetId), "not_found");
+    case "cmd.drone":
+      if (!Array.isArray(msg.ids)) return fail("bad_payload", "Bad drone order.");
+      if (msg.action !== "launch" && msg.action !== "recall" && msg.action !== "mode") {
+        return fail("bad_payload", "Unknown drone order.");
+      }
+      if (msg.action === "mode" && !isDroneMode(msg.mode)) return fail("bad_payload", "Unknown drone mode.");
+      return cmdDrone(state, playerId, msg.ids, msg.action, msg.mode);
     default:
       return fail("bad_payload", "Unknown command.");
   }
@@ -167,6 +179,85 @@ const AIR_ROUTED = new Set([
   "cmd.rotate",
   "cmd.land",
 ]);
+
+/**
+ * Drones in a selection take flight orders (Return means recall); everyone
+ * else gets the rest of the command. Null when no drone is involved.
+ */
+function routeDrones(state: MatchState, playerId: string, msg: ClientMessage): CmdResult | null {
+  if (!AIR_ROUTED.has(msg.type) || !("ids" in msg) || !Array.isArray(msg.ids)) return null;
+  const drones = owned(state, playerId, msg.ids).filter((e) => e.drone);
+  if (drones.length === 0) return null;
+  const ids = new Set(drones.map((e) => e.id));
+  drones.forEach((d, i) => {
+    const ang = (i / Math.max(1, drones.length)) * Math.PI * 2;
+    const spread = drones.length > 1 ? state.tileSize * 2 : 0;
+    const x = "x" in msg && typeof msg.x === "number" ? msg.x + Math.cos(ang) * spread : undefined;
+    const y = "y" in msg && typeof msg.y === "number" ? msg.y + Math.sin(ang) * spread : undefined;
+    switch (msg.type) {
+      case "cmd.move":
+      case "cmd.attackmove":
+        if (x != null && y != null) orderDrone(state, d, { kind: "move", x, y });
+        break;
+      case "cmd.attack":
+      case "cmd.forceattack": {
+        const t = msg.targetId != null ? state.entities.get(msg.targetId) : undefined;
+        if (t && t.hp > 0 && t.id !== d.id && !allies(state, playerId, t.ownerId)) {
+          orderDrone(state, d, { kind: "attack", targetId: t.id });
+        } else if (x != null && y != null) {
+          orderDrone(state, d, { kind: "move", x, y });
+        }
+        break;
+      }
+      case "cmd.stop":
+        stopDrone(d);
+        break;
+      case "cmd.land":
+        recallDrone(d);
+        break;
+      default:
+        break;
+    }
+  });
+  const rest = msg.ids.filter((id) => !ids.has(id));
+  if (rest.length === 0) return ok();
+  const others = { ...msg, ids: rest } as ClientMessage;
+  // Return with only ground units left means nothing to them.
+  if (msg.type === "cmd.land" && !owned(state, playerId, rest).some((e) => e.air)) return ok();
+  return applyCommand(state, playerId, others);
+}
+
+function cmdDrone(
+  state: MatchState,
+  playerId: string,
+  ids: number[],
+  action: "launch" | "recall" | "mode",
+  mode?: DroneMode,
+): CmdResult {
+  const units = owned(state, playerId, ids).filter((e) => e.drone || e.droneLink);
+  if (units.length === 0) return fail("not_yours", "Select a Drone Op or his drone.");
+  let err: string | null = null;
+  let done = 0;
+  for (const e of units) {
+    if (action === "mode") {
+      if (!mode) return fail("bad_payload", "Unknown drone mode.");
+      setDroneMode(state, e, mode);
+      done++;
+    } else if (action === "recall") {
+      const d = e.drone ? e : droneOf(state, e);
+      if (d) {
+        recallDrone(d);
+        done++;
+      }
+    } else if (e.droneLink) {
+      const why = launchDrone(state, e);
+      if (why) err = why;
+      else done++;
+    }
+  }
+  if (done > 0) return ok();
+  return wrap(err ?? "No drone up.", "busy");
+}
 
 /**
  * Aircraft in a selection take flight orders; everyone else in the same
