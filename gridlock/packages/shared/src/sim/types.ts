@@ -144,6 +144,8 @@ export interface Entity {
   gatlingGuns?: 1 | 2;
   /** Titan outriggers are down: stationary, hull locked, braced max HP. Missing means false. */
   braced?: boolean;
+  /** Seconds until the Titan's shoulder pods can loose the next salvo. Missing means ready. */
+  rocketCooldown?: number;
   /** Last Walker volley: sim tick, arms that fired, and the off-arm bearing when it took a second target. */
   gatlingFire?: { tick: number; arms: 1 | 2; offAim?: number };
   /** Seconds the MG42 bipod has been set while prone. 0 until the gunner crawls. */
@@ -235,9 +237,13 @@ export interface Projectile {
   z?: number;
   /** Elevation units per second along the shot. Direct fire only. */
   vz?: number;
-  /** Arcing mortar bomb, or a bomb falling from a plane. Omitted for rifles, machine guns, and tank shells. */
-  flight?: "mortar" | "bomb";
-  /** Fused landing point for a mortar bomb. */
+  /**
+   * Arcing mortar bomb, a bomb falling from a plane, or a Titan rocket (straight
+   * and fast, bursts at its fused point or on whatever it meets first).
+   * Omitted for rifles, machine guns, and tank shells.
+   */
+  flight?: "mortar" | "bomb" | "rocket";
+  /** Fused landing point for a mortar bomb or a rocket. */
   landX?: number;
   landY?: number;
   /** Peak air height in elevation units. */
