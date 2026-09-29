@@ -1,8 +1,7 @@
 import {
   AIR_FUEL_SECONDS,
   DRONE_BATTERY_SECONDS,
-  STUKA_BOMBS,
-  STUKA_MG_ROUNDS,
+  airLoadoutOf,
   beltOf,
   catalog,
   haulerSmokeChargesOf,
@@ -37,14 +36,15 @@ import { nextRand } from "./rng.js";
 import type { AirState, DroneLink, Entity, MatchState } from "./types.js";
 
 /** Fresh flight state: fuelled, armed, parked on `pad` of Airfield `homeId`. */
-export function newAirState(homeId: number | null, pad: number): AirState {
+export function newAirState(homeId: number | null, pad: number, type: EntityType = "stuka"): AirState {
+  const load = airLoadoutOf(type);
   return {
     phase: "parked",
     alt: 0,
     speed: 0,
     fuel: AIR_FUEL_SECONDS,
-    bombs: STUKA_BOMBS,
-    rounds: STUKA_MG_ROUNDS,
+    bombs: load.bombs,
+    rounds: load.rounds,
     homeId,
     pad,
     rearm: 0,
@@ -542,7 +542,7 @@ export function makeEntity(
     crew: type === "supply",
     supply: type === "supply" ? SUPPLY_CARGO : 0,
   };
-  if (def.aircraft) e.air = newAirState(null, 0);
+  if (def.aircraft) e.air = newAirState(null, 0, type);
   if (type === "droneop") e.droneLink = newDroneLink();
   state.entities.set(id, e);
   occupyEntity(state, e);

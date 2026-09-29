@@ -1,12 +1,14 @@
 /** Sudden Strike-style AP: directional armor, aim cone, ricochet, variable pen. */
 
 import {
+  FW190_ROOF_HP_SHARE,
   PTRD_CALIBER,
   PTRD_CLOSE_TILES,
   PTRD_DMG_LIGHT,
   PTRD_DMG_REAR,
   PTRD_DMG_SIDE,
   PTRD_LIGHT_FRONT,
+  ROOF_ARMOR_SHARE,
   type CatalogEntry,
 } from "../catalog.js";
 import type { ImpactKind } from "../protocol.js";
@@ -344,6 +346,35 @@ export function resolveAtRifleHit(opts: {
     effectiveArmor: effective,
     overmatch,
   };
+}
+
+/** Top plate of a hull: a share of its side plate. */
+export function roofArmorOf(def: CatalogEntry): number {
+  return def.armorSide * ROOF_ARMOR_SHARE;
+}
+
+/**
+ * A plane's cannon round coming down on a hull. It meets the roof square-on,
+ * so there is no face and no ricochet angle. When the round beats the roof it
+ * takes FW190_ROOF_HP_SHARE of max HP, the same on a light hull and a heavy
+ * one; otherwise it glances off. The face reported is "rear" — the engine deck.
+ */
+export function resolveRoofHit(opts: {
+  penetration: number;
+  target: CatalogEntry;
+  targetHp: number;
+  targetHpMax: number;
+  rand: () => number;
+}): HitResolution {
+  const roof = roofArmorOf(opts.target);
+  const overmatch = roof <= 1e-6 ? 99 : opts.penetration / roof;
+  if (opts.penetration < roof * 0.92) {
+    return { kind: "glance", face: "rear", damage: 0, bounceVx: 0, bounceVy: 0, effectiveArmor: roof, overmatch };
+  }
+  const frac = FW190_ROOF_HP_SHARE * (0.8 + opts.rand() * 0.4);
+  const damage = Math.min(opts.targetHp, Math.max(1, Math.round(opts.targetHpMax * frac)));
+  if (damage >= opts.targetHp) return kill(opts.targetHp, "rear", roof, overmatch);
+  return { kind: "pen", face: "rear", damage, bounceVx: 0, bounceVy: 0, effectiveArmor: roof, overmatch };
 }
 
 /** Same bite test as resolveAtRifleHit, without the damage roll. */
