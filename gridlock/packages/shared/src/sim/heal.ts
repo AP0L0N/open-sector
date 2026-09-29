@@ -39,19 +39,22 @@ function canTend(state: MatchState, medic: Entity, other: Entity): boolean {
   return allies(state, medic.ownerId, other.ownerId);
 }
 
-function sameHouse(medic: Entity, other: Entity): boolean {
-  return medic.garrisonedIn != null && medic.garrisonedIn === other.garrisonedIn;
+/** Same house, and not one whose care is the slow ward (tickGarrisonCare). */
+function sameHouse(state: MatchState, medic: Entity, other: Entity): boolean {
+  if (medic.garrisonedIn == null || medic.garrisonedIn !== other.garrisonedIn) return false;
+  const house = state.entities.get(medic.garrisonedIn);
+  return !house || !catalog(house.type).garrisonMedicRegen;
 }
 
 function withinSeek(state: MatchState, medic: Entity, other: Entity): boolean {
-  if (sameHouse(medic, other)) return true;
+  if (sameHouse(state, medic, other)) return true;
   if (medic.garrisonedIn != null || other.garrisonedIn != null) return false;
   const seek = MEDIC_SEEK_TILES * state.tileSize;
   return dist2(medic, other) <= seek * seek;
 }
 
 function inReach(state: MatchState, medic: Entity, other: Entity): boolean {
-  if (sameHouse(medic, other)) return true;
+  if (sameHouse(state, medic, other)) return true;
   if (medic.garrisonedIn != null || other.garrisonedIn != null) return false;
   const reach = unitClearance(medic.radius, other.radius) + MEDIC_TOUCH_SLACK;
   return dist2(medic, other) <= reach * reach;

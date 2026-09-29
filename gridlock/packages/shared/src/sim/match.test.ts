@@ -311,13 +311,29 @@ describe("construction", () => {
     });
     assert.equal(place.ok, true, !place.ok ? place.message : "");
     assert.ok([...state.entities.values()].some((e) => e.type === "armory"));
+    const locked = applyCommand(state, "A", { type: "cmd.train", unit: "warden" });
+    assert.equal(locked.ok, false);
+    if (!locked.ok) assert.equal(locked.message, "Need a Research Facility.");
+    const r = applyCommand(state, "A", { type: "cmd.build", building: "research" });
+    assert.equal(r.ok, true, !r.ok ? r.message : "");
+    ticks(state, catalog("research").buildSeconds * 10 + 2);
+    const placeR = applyCommand(state, "A", {
+      type: "cmd.place",
+      building: "research",
+      tx: core.tileX + core.tileW,
+      ty: core.tileY + catalog("armory").tileH,
+    });
+    assert.equal(placeR.ok, true, !placeR.ok ? placeR.message : "");
+    // Armory + lab spend most of the opening scrap.
+    state.players.get("A")!.scrap += 1000;
     const train = applyCommand(state, "A", { type: "cmd.train", unit: "warden" });
     assert.equal(train.ok, true, !train.ok ? train.message : "");
-    ticks(state, catalog("warden").buildSeconds * 10 + 2);
+    // The lab puts this base in a power deficit, so production runs slow.
+    ticks(state, catalog("warden").buildSeconds * 30 + 2);
     assert.ok([...state.entities.values()].some((e) => e.type === "warden" && e.ownerId === "A"));
     const trainG = applyCommand(state, "A", { type: "cmd.train", unit: "ss3" });
     assert.equal(trainG.ok, true, !trainG.ok ? trainG.message : "");
-    ticks(state, catalog("ss3").buildSeconds * 10 + 2);
+    ticks(state, catalog("ss3").buildSeconds * 30 + 2);
     assert.ok([...state.entities.values()].some((e) => e.type === "ss3" && e.ownerId === "A"));
   });
 });
