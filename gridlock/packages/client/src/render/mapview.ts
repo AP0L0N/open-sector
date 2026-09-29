@@ -3577,7 +3577,7 @@ export class MapView {
     ctx.restore();
     if (drawn && e.gatling && !e.wreck) {
       const now = performance.now();
-      const muzzles = gatlingMuzzles(s.x, s.y, size, p.facing, e.gatling.arms, e.gatling.off);
+      const muzzles = gatlingMuzzles(s.x, s.y, size, p.turretFacing ?? p.facing, e.gatling.arms, e.gatling.off);
       muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2));
     }
     if (drawn && corpse && e.type === "cyborg") {
