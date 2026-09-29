@@ -65,8 +65,6 @@ import {
   SIDEBAR_GROUPS,
   groupEntries,
   groupState,
-  loadSidebarGroup,
-  saveSidebarGroup,
   type SidebarGroup,
 } from "./sidebar-groups.js";
 
@@ -74,7 +72,7 @@ let viewRef: MapView | null = null;
 let configFocus: EntityType | null = null;
 /** Ready structure: first right-click is a no-op; second cancels. */
 let readyCancelArmed: BuildingType | null = null;
-let sidebarGroup: SidebarGroup = loadSidebarGroup();
+let sidebarGroup: SidebarGroup = "structures";
 
 /** Fire on press so a snapshot rebuild cannot swallow the click between mousedown and mouseup. */
 function pressDisabled(btn: HTMLElement): boolean {
@@ -109,6 +107,8 @@ export function mountBattlefield(
   existing: MapView | null,
 ): MapView | null {
   if (!ctx.match) return existing;
+  // A fresh match opens on Structures; re-mounts mid-match keep the player's tab.
+  if (!existing) sidebarGroup = "structures";
   const wrap = el("div", { class: "battlefield", attrs: { id: "battlefield" } });
   const top = el("div", { class: "topbar", attrs: { id: "topbar" } });
   top.append(
@@ -155,7 +155,6 @@ export function mountBattlefield(
   side.append(el("h3", { text: "Production" }), tabs, heading, panels);
   bindPress(tabs, "[data-group]", (tab) => {
     sidebarGroup = tab.dataset.group as SidebarGroup;
-    saveSidebarGroup(sidebarGroup);
     paintGroupTabs();
   });
 
