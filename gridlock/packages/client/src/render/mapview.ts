@@ -5,6 +5,7 @@ import {
   cloudScale,
   smokeCloudPuffs,
   fires,
+  radarLaidOf,
   fieldSpan,
   GUARD_CONE_DEG,
   isCivilianType,
@@ -806,8 +807,8 @@ export class MapView {
       if (!match.entities.some((e) => e.id === id)) this.selected.delete(id);
     }
     if (this.attackMoveMode && this.ownSelectedIds().length === 0) this.setAttackMoveMode(false);
-    if (this.forceAttackMode && this.ownSelectedIds().length === 0) this.setForceAttackMode(false);
-    if (this.rotateMode && this.ownSelectedIds().length === 0) this.setRotateMode(false);
+    if (this.forceAttackMode && this.ownAimIds().length === 0) this.setForceAttackMode(false);
+    if (this.rotateMode && this.ownAimIds().length === 0) this.setRotateMode(false);
     if (this.guardMode && this.ownSelectedIds().length === 0) this.setGuardMode(false);
     if (this.fieldPlace && !this.curr.entities.some((e) => this.selected.has(e.id) && e.type === "engineer" && e.ownerId === this.curr.youPlayerId)) {
       this.fieldPlace = null;
@@ -1246,7 +1247,7 @@ export class MapView {
           this.commitAttackMove(mx, my);
           return;
         }
-        if (e.ctrlKey && this.ownSelectedIds().length) {
+        if (e.ctrlKey && this.ownAimIds().length) {
           e.preventDefault();
           this.commitForceAttack(mx, my);
           return;
@@ -1422,7 +1423,7 @@ export class MapView {
     if (k === ROTATE_HOTKEY) {
       e.preventDefault();
       if (this.fieldPlace) return;
-      const ids = this.ownSelectedIds();
+      const ids = this.ownAimIds();
       if (ids.length) this.setRotateMode(!this.rotateMode);
       return;
     }
@@ -1495,7 +1496,7 @@ export class MapView {
     this.setForceAttackMode(false);
     this.setRotateMode(false);
     this.setGuardMode(false);
-    const ids = this.ownSelectedIds();
+    const ids = this.ownAimIds();
     if (ids.length) this.onCommand({ type: "cmd.stop", ids });
   }
 
@@ -1609,6 +1610,15 @@ export class MapView {
     });
   }
 
+  /** Own units plus own CIWS mounts: everything that takes Stop, Rotate, and Force attack. */
+  private ownAimIds(): number[] {
+    return [...this.selected].filter((id) => {
+      const ent = this.curr.entities.find((x) => x.id === id);
+      if (!ent || ent.ownerId !== this.curr.youPlayerId || ent.wreck) return false;
+      return ent.kind === "unit" || radarLaidOf(ent.type);
+    });
+  }
+
   private commitAttackMove(px: number, py: number): void {
     const ids = this.ownSelectedIds();
     this.setAttackMoveMode(false);
@@ -1624,7 +1634,7 @@ export class MapView {
   }
 
   private commitForceAttack(px: number, py: number): void {
-    const ids = this.ownSelectedIds().filter((id) => {
+    const ids = this.ownAimIds().filter((id) => {
       const ent = this.curr.entities.find((x) => x.id === id);
       return !!ent && fires(ent.type);
     });
@@ -1640,7 +1650,7 @@ export class MapView {
   }
 
   private commitRotate(px: number, py: number): void {
-    const ids = this.ownSelectedIds();
+    const ids = this.ownAimIds();
     this.setRotateMode(false);
     if (ids.length === 0) return;
     const hit = this.hit(px, py);

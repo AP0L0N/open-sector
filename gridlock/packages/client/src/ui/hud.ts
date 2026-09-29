@@ -26,6 +26,7 @@ import {
   isInfantryType,
   isInfantryWeaponId,
   isShellType,
+  radarLaidOf,
   rocketsOf,
   rocketAmmoOf,
   launcherOnlyOf,
@@ -1182,16 +1183,22 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   const units = ownCommandable(ctx, selected.filter((e) => e.kind === "unit"));
   const buildings = ownCommandable(ctx, selected.filter((e) => e.kind === "building"));
   const houses = selected.filter((e) => isGarrisonable(e.type) && e.hp > 0);
+  // A CIWS aims its own gun: it takes Stop, Force attack, and Rotate like a unit.
+  const mounts = buildings.filter((e) => radarLaidOf(e.type));
   const out: QAct[] = [];
   if (units.length === 0 && buildings.length === 0 && houses.length === 0) return out;
 
-  if (units.length) {
+  if (units.length || mounts.length) {
     out.push({
       slot: "stop",
       act: "stop",
       label: "Stop",
-      title: `Halt selected units (${STOP_HOTKEY.toUpperCase()})`,
+      title: units.length
+        ? `Halt selected units (${STOP_HOTKEY.toUpperCase()})`
+        : `Drop the forced aim and pick targets again (${STOP_HOTKEY.toUpperCase()})`,
     });
+  }
+  if (units.length) {
     out.push({
       slot: "attackmove",
       act: "attackmove",
@@ -1199,6 +1206,8 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: `Move, halt to fire (${ATTACK_MOVE_HOTKEY.toUpperCase()})`,
       on: !!view?.attackMoveMode,
     });
+  }
+  if (units.length || mounts.length) {
     out.push({
       slot: "forceattack",
       act: "forceattack",
@@ -1207,16 +1216,21 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       on: !!view?.forceAttackMode,
     });
   }
-  // Guard, hold, and rotate mean nothing to a plane.
-  if (units.some((e) => !e.air)) {
+  // Guard, hold, and rotate mean nothing to a plane. A drone guards by circling.
+  const grounded = units.some((e) => !e.air);
+  if (grounded || units.some((e) => e.drone)) {
     const guarding = units.every((e) => e.guardFacing != null || e.guardTargetId != null);
     out.push({
       slot: "guard",
       act: "guard",
       label: "Guard",
-      title: `Move here, face a direction, hold. Click a friendly unit to stay with it (${GUARD_HOTKEY.toUpperCase()}). Click and drag to face.`,
+      title: grounded
+        ? `Move here, face a direction, hold. Click a friendly unit to stay with it (${GUARD_HOTKEY.toUpperCase()}). Click and drag to face.`
+        : `Circle this spot, or over a friendly unit (${GUARD_HOTKEY.toUpperCase()}). Surveillance circles wide and slow; Search & Destroy dives on the first enemy it sees.`,
       on: !!(view?.guardMode || guarding),
     });
+  }
+  if (grounded) {
     const holding = units.every((e) => e.holdPosition);
     out.push({
       slot: "hold",
@@ -1230,6 +1244,14 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       act: "rotate",
       label: "Rotate",
       title: `Face a direction (${ROTATE_HOTKEY.toUpperCase()}). Tanks turn hull and turret.`,
+      on: !!view?.rotateMode,
+    });
+  } else if (mounts.length) {
+    out.push({
+      slot: "rotate",
+      act: "rotate",
+      label: "Rotate",
+      title: `Rest the gun on a heading between targets (${ROTATE_HOTKEY.toUpperCase()}).`,
       on: !!view?.rotateMode,
     });
   }
@@ -1481,12 +1503,13 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   const selected = selectedViews(ctx, view);
   const units = ownCommandable(ctx, selected.filter((e) => e.kind === "unit"));
   const buildings = ownCommandable(ctx, selected.filter((e) => e.kind === "building"));
+  const aimers = [...units, ...buildings.filter((e) => radarLaidOf(e.type))];
   if (act === "stop") {
     view.setAttackMoveMode(false);
     view.setForceAttackMode(false);
     view.setRotateMode(false);
     view.setGuardMode(false);
-    if (units.length) ctx.net.send({ type: "cmd.stop", ids: units.map((e) => e.id) });
+    if (aimers.length) ctx.net.send({ type: "cmd.stop", ids: aimers.map((e) => e.id) });
     return;
   }
   if (act === "attackmove") {
@@ -1507,7 +1530,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     return;
   }
   if (act === "forceattack") {
-    if (units.length) view.setForceAttackMode(!view.forceAttackMode);
+    if (aimers.length) view.setForceAttackMode(!view.forceAttackMode);
     return;
   }
   if (act === "guard") {
@@ -1530,7 +1553,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     return;
   }
   if (act === "rotate") {
-    if (units.length) view.setRotateMode(!view.rotateMode);
+    if (aimers.length) view.setRotateMode(!view.rotateMode);
     return;
   }
   if (act === "deploy") {

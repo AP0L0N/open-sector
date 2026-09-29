@@ -229,8 +229,9 @@ function travelFights(e: Entity): boolean {
 }
 
 function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
-  // The CIWS takes no orders. It lays on the best target in reach every tick, so a plane cuts in at once.
-  if (radarLaidOf(e.type)) {
+  // The CIWS lays on the best target in reach every tick, so a plane cuts in at once.
+  // A player force-attack holds it on that point or target instead, until Stop or the target is gone.
+  if (radarLaidOf(e.type) && e.order?.kind !== "forceattack") {
     const pick = acquire(state, e);
     e.attackTarget = pick?.id ?? null;
     e.order = pick ? { kind: "attack", targetId: pick.id, auto: true } : null;

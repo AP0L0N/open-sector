@@ -2,6 +2,8 @@ import {
   DRONE_BATTERY_RESERVE,
   DRONE_BATTERY_SECONDS,
   DRONE_CLIMB_PER_SEC,
+  DRONE_GUARD_ORBIT_PACE,
+  DRONE_GUARD_ORBIT_TILES,
   DRONE_HIGH_ALT,
   DRONE_LAUNCH_MIN_SECONDS,
   DRONE_LEASH_TILES,
@@ -128,6 +130,12 @@ export function recallDrone(d: Entity): void {
   d.drone.recall = true;
   d.order = null;
   d.attackTarget = null;
+  dropDroneGuard(d);
+}
+
+function dropDroneGuard(d: Entity): void {
+  if (d.drone) d.drone.guard = null;
+  d.guardFacing = null;
 }
 
 export function setDroneMode(state: MatchState, e: Entity, mode: DroneMode): void {
@@ -149,8 +157,22 @@ export function orderDrone(state: MatchState, d: Entity, order: Entity["order"])
   if (!d.drone || d.hp <= 0 || !order) return;
   d.drone.recall = false;
   d.attackTarget = null;
+  dropDroneGuard(d);
   if (order.kind === "attack") setDroneMode(state, d, "strike");
   d.order = order;
+}
+
+/**
+ * Guard a point, or a friendly unit it stays over. The drone circles there in
+ * either mode; in Search & Destroy it dives on the first enemy it sees.
+ */
+export function guardDrone(d: Entity, x: number, y: number, facing: number, targetId?: number): void {
+  if (!d.drone || d.hp <= 0) return;
+  d.drone.recall = false;
+  d.order = null;
+  d.attackTarget = null;
+  d.drone.guard = targetId != null ? { x, y, targetId } : { x, y };
+  d.guardFacing = facing;
 }
 
 export function stopDrone(d: Entity): void {
@@ -158,6 +180,7 @@ export function stopDrone(d: Entity): void {
   d.drone.recall = false;
   d.order = null;
   d.attackTarget = null;
+  dropDroneGuard(d);
 }
 
 /** Point clamped inside the operator's reach. */
@@ -205,11 +228,11 @@ function place(state: MatchState, e: Entity, x: number, y: number): void {
 }
 
 /** Fly straight at a point. True once it is there. Hovers where it stops. */
-function flyTo(state: MatchState, d: Entity, x: number, y: number, dt: number): boolean {
+function flyTo(state: MatchState, d: Entity, x: number, y: number, dt: number, speed = speedOf(state, d)): boolean {
   const dx = x - d.x;
   const dy = y - d.y;
   const dist = Math.hypot(dx, dy);
-  const step = speedOf(state, d) * dt;
+  const step = speed * dt;
   if (dist <= Math.max(0.5, step)) {
     place(state, d, x, y);
     return true;
@@ -322,10 +345,45 @@ function tickDrone(state: MatchState, d: Entity, dt: number): boolean {
       const t = acquireStrike(state, d, op);
       if (t) d.order = { kind: "attack", targetId: t.id, auto: true };
     }
+    if (!d.order && s.guard) circleGuard(state, d, op, dt);
   }
   approachAlt(d, altGoal, dt);
   clampToLeash(state, d, op);
   return false;
+}
+
+/** Where the guard ring is centred now. Null once a guarded unit is gone. */
+function guardCenter(state: MatchState, d: Entity, op: Entity): { x: number; y: number } | null {
+  const g = d.drone!.guard!;
+  if (g.targetId != null) {
+    const t = state.entities.get(g.targetId);
+    if (!t || t.hp <= 0 || t.wreck || !allies(state, d.ownerId, t.ownerId)) return null;
+    g.x = t.x;
+    g.y = t.y;
+  }
+  return inLeash(state, op, g.x, g.y);
+}
+
+/** Fly out to the post, then circle it slowly, clockwise on screen. */
+function circleGuard(state: MatchState, d: Entity, op: Entity, dt: number): void {
+  const s = d.drone!;
+  const c = guardCenter(state, d, op);
+  if (!c) {
+    dropDroneGuard(d);
+    return;
+  }
+  d.state = "move";
+  const r = DRONE_GUARD_ORBIT_TILES[s.mode] * state.tileSize;
+  const dx = d.x - c.x;
+  const dy = d.y - c.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist > r * 1.5) {
+    flyTo(state, d, c.x + (dx / dist) * r, c.y + (dy / dist) * r, dt);
+    return;
+  }
+  // Chase a point a little ahead on the ring; the radius settles on its own.
+  const ang = (dist > 0.5 ? Math.atan2(dy, dx) : d.facing) + 0.5;
+  flyTo(state, d, c.x + Math.cos(ang) * r, c.y + Math.sin(ang) * r, dt, speedOf(state, d) * DRONE_GUARD_ORBIT_PACE[s.mode]);
 }
 
 /** Walking away drags the drone along: it never leaves the operator's reach. */
