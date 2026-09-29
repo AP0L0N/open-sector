@@ -103,6 +103,11 @@ import atInfantryCrouchUrl from "../assets/units/atinfantry-crouch.png";
 import atInfantryCrawlUrl from "../assets/units/atinfantry-crawl.png";
 import atInfantryFireUrl from "../assets/units/atinfantry-fire.png";
 import atInfantryDieUrl from "../assets/units/atinfantry-die.png";
+import rocketerWalkUrl from "../assets/units/rocketer-walk.png";
+import rocketerCrouchUrl from "../assets/units/rocketer-crouch.png";
+import rocketerCrawlUrl from "../assets/units/rocketer-crawl.png";
+import rocketerFireUrl from "../assets/units/rocketer-fire.png";
+import rocketerDieUrl from "../assets/units/rocketer-die.png";
 import mortarmanWalkUrl from "../assets/units/mortarman-walk.png";
 import mortarmanCrouchUrl from "../assets/units/mortarman-crouch.png";
 import mortarmanCrawlUrl from "../assets/units/mortarman-crawl.png";
@@ -424,6 +429,63 @@ export const ATINFANTRY_FIRE_SPRITE: UnitSpriteDef = {
 
 export const ATINFANTRY_DIE_SPRITE: UnitSpriteDef = {
   image: loadSheet(atInfantryDieUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.82,
+  facingSpace: "world",
+};
+
+/** Rocketer: the AT Infantry soldier with a launcher tube (tools/sprites/derive_rocketer.py). */
+export const ROCKETER_SPRITE: UnitSpriteDef = {
+  image: loadSheet(rocketerWalkUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+export const ROCKETER_CROUCH_SPRITE: UnitSpriteDef = {
+  image: loadSheet(rocketerCrouchUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.88,
+  facingSpace: "world",
+};
+
+export const ROCKETER_CRAWL_SPRITE: UnitSpriteDef = {
+  image: loadSheet(rocketerCrawlUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 10,
+  drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
+  contactY: 0.72,
+  facingSpace: "world",
+};
+
+/** Standing launch. Played once, then the walk sheet returns. */
+export const ROCKETER_FIRE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(rocketerFireUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+export const ROCKETER_DIE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(rocketerDieUrl),
   dirs: 16,
   frames: 4,
   frameSize: 96,
@@ -946,6 +1008,11 @@ export function spriteFor(type: EntityType, stance?: Stance, swimming = false): 
     if (stance === "crouch") return ATINFANTRY_CROUCH_SPRITE;
     if (stance === "crawl") return ATINFANTRY_CRAWL_SPRITE;
     return ATINFANTRY_SPRITE;
+  }
+  if (type === "rocketer") {
+    if (stance === "crouch") return ROCKETER_CROUCH_SPRITE;
+    if (stance === "crawl") return ROCKETER_CRAWL_SPRITE;
+    return ROCKETER_SPRITE;
   }
   if (type === "mortarman") {
     if (stance === "crouch") return MORTARMAN_CROUCH_SPRITE;

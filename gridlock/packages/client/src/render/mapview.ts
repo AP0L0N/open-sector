@@ -136,6 +136,8 @@ import {
   TEETH_SPRITE,
   ATINFANTRY_DIE_SPRITE,
   ATINFANTRY_FIRE_SPRITE,
+  ROCKETER_DIE_SPRITE,
+  ROCKETER_FIRE_SPRITE,
   SNIPER_DIE_SPRITE,
   SNIPER_FIRE_SPRITE,
   TROOPER_DIE_SPRITE,
@@ -188,7 +190,7 @@ import { drawSandbags } from "./sandbags.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
-import { atInfantrySheet, cyborgSheet, gunnerSheet, heldFrame, medicSheet, mortarmanSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
+import { atInfantrySheet, cyborgSheet, gunnerSheet, heldFrame, medicSheet, mortarmanSheet, rocketerSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
 import {
   axisFootprint,
   compareDrawOrder,
@@ -267,6 +269,7 @@ const EXTRUDE: Record<EntityType, number> = {
   gunner: 26,
   sniper: 26,
   atinfantry: 26,
+  rocketer: 26,
   mortarman: 26,
   engineer: 26,
   medic: 26,
@@ -715,8 +718,9 @@ export class MapView {
         continue;
       }
       if (p.rocket) {
-        // Pod flash and backblast. Not a tank shot: the main gun does not recoil.
+        // Pod or tube flash and backblast. Not a tank shot: the main gun does not recoil.
         this.rocketFrom.set(p.id, { x: p.x, y: p.y, z: p.z ?? 0 });
+        if (shooter?.type === "rocketer" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
         if (shooter && !shooter.wreck) {
           this.rocketPuffs.push(
             ...backblastPuffs({
@@ -3298,6 +3302,16 @@ export class MapView {
       if (sheet === "fire") return ATINFANTRY_FIRE_SPRITE;
       if (sheet === "die") return ATINFANTRY_DIE_SPRITE;
     }
+    if (e.type === "rocketer") {
+      const sheet = rocketerSheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        shotAgeMs: this.infantryShotAge(e.id),
+      });
+      if (sheet === "fire") return ROCKETER_FIRE_SPRITE;
+      if (sheet === "die") return ROCKETER_DIE_SPRITE;
+    }
     if (e.type === "mortarman") {
       const sheet = mortarmanSheet({
         swimming: e.swimming,
@@ -3468,8 +3482,8 @@ export class MapView {
     }
     const corpse = isInfantryType(e.type) && !!e.wreck;
     let frameIndex: number | undefined;
-    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
-    else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE) {
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE || def === ROCKETER_FIRE_SPRITE) {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
     }
     ctx.save();
@@ -3665,6 +3679,8 @@ export class MapView {
           ? SNIPER_DIE_SPRITE
           : body.type === "atinfantry"
             ? ATINFANTRY_DIE_SPRITE
+            : body.type === "rocketer"
+            ? ROCKETER_DIE_SPRITE
             : body.type === "mortarman"
             ? MORTARMAN_DIE_SPRITE
             : body.type === "engineer"

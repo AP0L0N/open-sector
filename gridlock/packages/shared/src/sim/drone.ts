@@ -51,7 +51,7 @@ export function droneIsHigh(e: { air?: { alt: number } }): boolean {
 
 /**
  * Who can lay a gun on this drone. High: only the MG42 and the gatlings.
- * Low: small arms, a tank's coaxial MG, and the Titan's rockets.
+ * Low: small arms, a tank's coaxial MG, and rockets (Titan pods, Rocketer tube).
  * Tank guns and the mortar never can.
  */
 export function reachesDrone(shooter: Entity, drone: Entity): boolean {

@@ -79,7 +79,8 @@ export function isAirborne(e: { air?: AirState | { alt: number; phase?: string }
 
 /**
  * Small arms reach a plane in the air: rifles, the handgun, the MG42, the
- * scoped rifle, the PTRD, the Walker's gatlings, and the CIWS. Tank guns and
+ * scoped rifle, the PTRD, the Rocketer's tube (an air-burst rocket), the
+ * Walker's gatlings, and the CIWS. Tank guns and
  * the mortar cannot lay on it. The Titan's main gun is a tank gun; its pods pick
  * planes on their own (tickRocketPods), so the unit's own target stays on the ground.
  */

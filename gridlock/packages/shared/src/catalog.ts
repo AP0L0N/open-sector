@@ -199,7 +199,7 @@ export const HEIGHT_RANGE_BONUS = 2;
  * The mortar is the long arm: past every direct-fire gun, not across the map.
  *
  * Cells: handgun 2, rifle 6, walker 6, cyborg 6, MG42 8, StuG 9, scoped rifle and
- * PTRD 10, Tiger and Titan 11, mortar 18 (it will not drop inside 3).
+ * PTRD 10, Rocketer 9, Tiger and Titan 11, mortar 18 (it will not drop inside 3).
  */
 export const HANDGUN_RANGE_TILES = t(2);
 export const RIFLE_RANGE_TILES = t(6);
@@ -208,6 +208,8 @@ export const WALKER_RANGE_TILES = t(6);
 export const CYBORG_RANGE_TILES = WALKER_RANGE_TILES;
 export const SCOPED_RANGE_TILES = t(10);
 export const PTRD_RANGE_TILES = SCOPED_RANGE_TILES;
+/** Rocketer's tube. Short of the Titan's pods: one man laying it off his shoulder. */
+export const LAUNCHER_RANGE_TILES = t(9);
 export const STUG_RANGE_TILES = t(9);
 export const TIGER_RANGE_TILES = t(11);
 /** Titan carries the Tiger's gun, so it keeps the Tiger's reach. Its rockets share that reach. */
@@ -288,6 +290,7 @@ export type EntityType =
   | "gunner"
   | "sniper"
   | "atinfantry"
+  | "rocketer"
   | "mortarman"
   | "engineer"
   | "medic"
@@ -331,7 +334,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "cyborg" | "titan" | "supply" | "stuka" | "droneop";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "cyborg" | "titan" | "supply" | "stuka" | "droneop";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -354,15 +357,15 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "supply", "stuka", "droneop"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "supply", "stuka", "droneop"];
 /**
  * Opening army besides the Rig. Hauler omitted so it does not auto-harvest.
  * Supply truck and Titan omitted so the opening fight stays the same — train them at the Armory.
- * Aircraft need an Airfield pad, so the Stuka is omitted too. The Drone Op is
- * trained at the Muster so the opening fight stays the same.
+ * Aircraft need an Airfield pad, so the Stuka is omitted too. The Drone Op and
+ * the Rocketer are trained at the Muster so the opening fight stays the same.
  */
 export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter(
-  (t) => t !== "hauler" && t !== "supply" && t !== "titan" && t !== "stuka" && t !== "droneop",
+  (t) => t !== "hauler" && t !== "supply" && t !== "titan" && t !== "stuka" && t !== "droneop" && t !== "rocketer",
 );
 
 export interface CatalogEntry {
@@ -471,8 +474,8 @@ export interface ShellDef {
 }
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
-export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling";
-export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling"];
+export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher"];
 export interface InfantryGun {
   id: InfantryWeaponId;
   name: string;
@@ -781,6 +784,32 @@ export const MORTAR = {
 } as const satisfies InfantryGun;
 
 /**
+ * Rocketer's launcher: one tube on the shoulder, one Titan rocket in it. The
+ * rocket is the pods' own (TITAN_ROCKET): straight and fast, a scattered burst
+ * that shreds infantry and dents a hull, fused beside a plane when he aims at
+ * one. He lays it by eye, so it scatters like the pods. Each shot he pulls the
+ * next rocket off his back and loads the tube, a slow reload; like every
+ * infantry clip, the pack never runs dry.
+ */
+export const LAUNCHER_RELOAD = 7.5;
+/** Elevation units above his eye where the tube rides on the shoulder. */
+export const LAUNCHER_LIFT = 1;
+export const LAUNCHER = {
+  id: "launcher" as const,
+  name: "Rocket Launcher",
+  blurb: "One rocket at a time, straight and fast. Bursts among infantry, dents a tank, bursts beside a plane or a low drone. Slow to reload.",
+  damage: TITAN_ROCKET.damage,
+  penetration: TITAN_ROCKET.penetration,
+  caliber: TITAN_ROCKET.caliber,
+  spreadDeg: 0,
+  cooldown: 1,
+  clip: 1,
+  reload: LAUNCHER_RELOAD,
+  rangeTiles: LAUNCHER_RANGE_TILES,
+  bulky: true,
+} as const satisfies InfantryGun;
+
+/**
  * Medic. He walks to wounded infantry inside this disk, then has to stand
  * against them. Farther than this, he leaves them and goes back to his order.
  */
@@ -1018,6 +1047,7 @@ export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   mortar: MORTAR,
   ptrd: PTRD,
   gatling: GATLING,
+  launcher: LAUNCHER,
 };
 
 /**
@@ -1526,6 +1556,31 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: PTRD.caliber,
     spreadDeg: PTRD.spreadDeg,
     blurb: "PTRD-41. Same reach as the scoped rifle. Up close it punches tank side and rear, often a track, and it goes through light armor. The front plate holds.",
+  },
+  rocketer: {
+    type: "rocketer",
+    kind: "unit",
+    name: "Rocketer",
+    letter: "r",
+    cost: 200,
+    buildSeconds: 12,
+    hp: 36,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: t(1.6),
+    turnDegPerSec: 1400,
+    rangeTiles: LAUNCHER_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: LAUNCHER.cooldown,
+    damage: LAUNCHER.damage,
+    projectileSpeed: TITAN_ROCKET_SPEED,
+    ...UNARMED,
+    penetration: LAUNCHER.penetration,
+    caliber: LAUNCHER.caliber,
+    spreadDeg: LAUNCHER.spreadDeg,
+    blurb: "One rocket launcher on the shoulder, loaded with the Titan's rockets. One shot, then a slow reload off his back. The burst scatters and tears through soldiers bunched together, dents a tank, and can go up beside a plane or a low drone. A broken arm puts the tube down.",
   },
   mortarman: {
     type: "mortarman",
@@ -2037,7 +2092,7 @@ export function armorLabel(type: EntityType): string | null {
   return `F${d.armorFront} / S${d.armorSide} / R${d.armorRear}`;
 }
 
-const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "cyborg", "droneop"];
+const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "mortarman", "engineer", "medic", "cyborg", "droneop"];
 
 /** Flies. Stuka only. */
 export function isAircraftType(type: EntityType): boolean {
@@ -2081,6 +2136,7 @@ export function primaryInfantryGun(type: EntityType): InfantryGun | null {
   if (type === "gunner") return MG42;
   if (type === "sniper") return SCOPED;
   if (type === "atinfantry") return PTRD;
+  if (type === "rocketer") return LAUNCHER;
   if (type === "mortarman") return MORTAR;
   if (type === "cyborg") return GATLING;
   return null;
@@ -2092,6 +2148,7 @@ export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
   if (type === "gunner") return [MG42];
   if (type === "sniper") return [SCOPED];
   if (type === "atinfantry") return [PTRD];
+  if (type === "rocketer") return [LAUNCHER];
   if (type === "mortarman") return [MORTAR];
   if (type === "cyborg") return [GATLING];
   return [];
