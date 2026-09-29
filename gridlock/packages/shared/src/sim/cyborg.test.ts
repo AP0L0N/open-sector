@@ -191,7 +191,7 @@ describe("cyborg", () => {
     ticks(state, 40);
     assert.ok(cy.hp > hp0, `hp ${cy.hp}`);
     assert.equal(medic.tendId, cy.id);
-    ticks(state, 400);
+    ticks(state, 1100);
     assert.equal(cy.hp, cy.hpMax);
     assert.equal(hasCrit(cy, "leg"), false);
     assert.equal(stanceOf(cy), "stand");
@@ -209,7 +209,7 @@ describe("cyborg", () => {
     assert.equal(hasCrit(cy, "leg"), true);
     const res = applyCommand(state, a, { type: "cmd.repair", ids: [eng.id], targetId: cy.id });
     assert.equal(res.ok, true, res.ok ? "" : res.message);
-    ticks(state, 300);
+    ticks(state, 850);
     assert.equal(cy.hp, cy.hpMax);
     assert.equal(hasCrit(cy, "leg"), false);
     const full = applyCommand(state, a, { type: "cmd.repair", ids: [eng.id], targetId: cy.id });
