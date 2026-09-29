@@ -159,6 +159,7 @@ import {
   type MuzzleSmokePuff,
 } from "./muzzle-smoke.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
+import { drawCyborgDeathSparks, drawCyborgShield } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
 import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir, lerpAirAlt } from "./aircraft.js";
 import { drawSandbags } from "./sandbags.js";
@@ -3242,7 +3243,7 @@ export class MapView {
     }
     const corpse = isInfantryType(e.type) && !!e.wreck;
     let frameIndex: number | undefined;
-    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === CYBORG_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
     else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE) {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
     }
@@ -3277,6 +3278,10 @@ export class MapView {
       const now = performance.now();
       const muzzles = gatlingMuzzles(s.x, s.y, size, p.facing, e.gatling.arms, e.gatling.off);
       muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2));
+    }
+    if (drawn && e.type === "cyborg") {
+      if (e.shielded && !e.wreck) drawCyborgShield(ctx, s.x, s.y, size, performance.now(), e.id);
+      if (corpse) drawCyborgDeathSparks(ctx, s.x, s.y, size, dir.x, dir.y, this.corpseAge(e.id), e.id);
     }
     if (e.wreck && drawn && !corpse) this.drawWreckFires(e, s.x, s.y, size, dir.x, dir.y);
     if (!drawn) {
@@ -3461,6 +3466,10 @@ export class MapView {
       frameIndex: heldFrame(ageMs, def.fps, def.frames),
       facing: body.facing,
     });
+    // A dead cyborg bleeds (the stains under him) and keeps shorting out at the hips.
+    if (body.type === "cyborg") {
+      drawCyborgDeathSparks(this.ctx, s.x, s.y, def.drawSize, dir.x, dir.y, ageMs, body.id);
+    }
     this.ctx.restore();
   }
 
