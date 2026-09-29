@@ -199,7 +199,8 @@ export const HEIGHT_RANGE_BONUS = 2;
  * The mortar is the long arm: past every direct-fire gun, not across the map.
  *
  * Cells: handgun 2, rifle 6, walker 6, cyborg 6, MG42 8, StuG 9, scoped rifle and
- * PTRD 10, Tiger and Titan 11, mortar 18 (it will not drop inside 3).
+ * PTRD 10, Tiger and Titan 11, mortar 18 (it will not drop inside 3), Nebelwerfer 24
+ * (it will not fire inside 4).
  */
 export const HANDGUN_RANGE_TILES = t(2);
 export const RIFLE_RANGE_TILES = t(6);
@@ -252,6 +253,98 @@ export const TITAN_ROCKET = {
   penetration: 30,
   caliber: 80,
 } as const;
+
+/**
+ * One rocket launcher: how it ripples, how far the rockets scatter, and what
+ * one burst does. The Titan's pods and the Nebelwerfer's tubes both use it.
+ */
+export interface RocketRackDef {
+  /** Rockets in one salvo. */
+  salvo: number;
+  /** Seconds between rockets inside one salvo. */
+  interval: number;
+  /** Seconds from the last rocket of a salvo to the first of the next. */
+  reload: number;
+  /** Ground miss radius at point blank and at full reach, gameplay tiles. */
+  scatterNearTiles: number;
+  scatterFarTiles: number;
+  /** Blast radius of one rocket, gameplay tiles. */
+  splashTiles: number;
+  /** World pixels per second along the ground. */
+  speed: number;
+  /** Elevation units above the carrier's eye where the rockets leave. */
+  podLift: number;
+  /** Infantry and soft targets at the blast center. */
+  damage: number;
+  /** Hit points off an armored hull at the blast center, before falloff. */
+  armorDamage: number;
+  /** A plane caught in an air burst takes the soft-target damage × this. */
+  airMul: number;
+  penetration: number;
+  caliber: number;
+  /** Lays on planes in the air and on low drones. */
+  antiAir: boolean;
+  /**
+   * Peak of a lobbed rocket, elevation units, at point blank and at full reach.
+   * Omit for a rocket that flies straight and bursts on whatever it meets.
+   * A lobbed rocket climbs over hills, trees, and hulls to its fused point.
+   */
+  apexNear?: number;
+  apexFar?: number;
+  /** Inside this the tubes will not fire. Gameplay tiles. */
+  minRangeTiles?: number;
+  /**
+   * The rockets are the carrier's only weapon, on a traversing frame. The frame
+   * must bear on the target and the carrier must be halted before a rocket leaves.
+   */
+  laid?: boolean;
+}
+
+export const TITAN_ROCKET_RACK: RocketRackDef = {
+  salvo: TITAN_ROCKET_SALVO,
+  interval: TITAN_ROCKET_INTERVAL,
+  reload: TITAN_ROCKET_RELOAD,
+  scatterNearTiles: TITAN_ROCKET_SCATTER_NEAR_TILES,
+  scatterFarTiles: TITAN_ROCKET_SCATTER_FAR_TILES,
+  splashTiles: TITAN_ROCKET_SPLASH_TILES,
+  speed: TITAN_ROCKET_SPEED,
+  podLift: TITAN_ROCKET_POD_LIFT,
+  ...TITAN_ROCKET,
+  antiAir: true,
+};
+
+/**
+ * Nebelwerfer: twelve tubes on an armored truck. It rolls into place, stops,
+ * swings the frame onto the target, and ripples all twelve one after another.
+ * Rockets lob high over the ground, so the crew fires on anything its side
+ * can see, far past its own eyes: the longest reach in the game. They scatter
+ * wide and each burst is lighter than a Titan rocket — a salvo blankets an
+ * area rather than finding one soldier. Five full salvos in the rack.
+ */
+export const NEBELWERFER_RANGE_TILES = t(24);
+export const NEBELWERFER_MIN_RANGE_TILES = t(4);
+export const NEBELWERFER_SALVO = 12;
+export const NEBELWERFER_ROCKET_AMMO = NEBELWERFER_SALVO * 5;
+export const NEBELWERFER_ROCKET: RocketRackDef = {
+  salvo: NEBELWERFER_SALVO,
+  interval: 0.25,
+  reload: 16,
+  scatterNearTiles: t(1.2),
+  scatterFarTiles: t(3.4),
+  splashTiles: t(1.5),
+  speed: t(10) * TILE_SIZE,
+  podLift: 5,
+  damage: 30,
+  armorDamage: 6,
+  airMul: 0,
+  penetration: 22,
+  caliber: 150,
+  antiAir: false,
+  apexNear: 30,
+  apexFar: 90,
+  minRangeTiles: NEBELWERFER_MIN_RANGE_TILES,
+  laid: true,
+};
 /**
  * After painting FOV, fill unseen 8-connected islands and hide visible ones
  * of this many tiles or fewer. Walks FOV borders only. Set to 0 to disable.
@@ -297,6 +390,7 @@ export type EntityType =
   | "walker"
   | "cyborg"
   | "titan"
+  | "nebelwerfer"
   | "supply"
   | "core"
   | "dynamo"
@@ -331,7 +425,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "cyborg" | "titan" | "supply" | "stuka" | "droneop";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "cyborg" | "titan" | "nebelwerfer" | "supply" | "stuka" | "droneop";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -354,15 +448,15 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "supply", "stuka", "droneop"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "droneop"];
 /**
  * Opening army besides the Rig. Hauler omitted so it does not auto-harvest.
- * Supply truck and Titan omitted so the opening fight stays the same — train them at the Armory.
+ * Supply truck, Titan, and Nebelwerfer omitted so the opening fight stays the same — train them at the Armory.
  * Aircraft need an Airfield pad, so the Stuka is omitted too. The Drone Op is
  * trained at the Muster so the opening fight stays the same.
  */
 export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter(
-  (t) => t !== "hauler" && t !== "supply" && t !== "titan" && t !== "stuka" && t !== "droneop",
+  (t) => t !== "hauler" && t !== "supply" && t !== "titan" && t !== "nebelwerfer" && t !== "stuka" && t !== "droneop",
 );
 
 export interface CatalogEntry {
@@ -447,6 +541,8 @@ export interface CatalogEntry {
   rockets?: boolean;
   /** Rockets in a full rack. Only a supply truck refills it. */
   rocketAmmo?: number;
+  /** How the rockets fly and burst. Default TITAN_ROCKET_RACK. */
+  rocketRack?: RocketRackDef;
   /** Flies. Parks on an Airfield pad, ignores ground collision and paths. */
   aircraft?: boolean;
   /**
@@ -1796,6 +1892,41 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     bracedHpMul: TITAN_BRACED_HP_MUL,
     blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide, shred infantry, dent tanks, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up.",
   },
+  nebelwerfer: {
+    type: "nebelwerfer",
+    kind: "unit",
+    name: "Nebelwerfer",
+    letter: "n",
+    cost: 500,
+    buildSeconds: 20,
+    hp: 95,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 12,
+    moveTilesPerSec: t(1.9),
+    turnDegPerSec: 120,
+    rangeTiles: NEBELWERFER_RANGE_TILES,
+    sightTiles: t(6),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    turnInPlace: true,
+    turretTurnDegPerSec: 50,
+    gunArcDeg: 4,
+    armorFront: 22,
+    armorSide: 12,
+    armorRear: 8,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
+    leavesWreck: true,
+    wreckHp: 36,
+    rockets: true,
+    rocketAmmo: NEBELWERFER_ROCKET_AMMO,
+    rocketRack: NEBELWERFER_ROCKET,
+    blurb: "Rocket artillery on an armored truck. Twelve tubes on a traversing frame, fired one after another in a three-second ripple. The rockets lob high over hills and trees, so it hits anything your side can see — the longest reach on the field, but it will not fire inside four tiles and its own eyes are short. It must stop and swing the frame onto the target before it fires. Rockets scatter wide: a salvo blankets an area, shreds infantry in the open, and only dents armor. Five salvos in the rack; a supply truck refills it. Switch the tubes off to hold fire. Thin plate — keep it behind the line.",
+  },
   supply: {
     type: "supply",
     kind: "unit",
@@ -2013,7 +2144,7 @@ export function isTrainType(type: string): type is TrainType {
 }
 
 export function fires(type: EntityType): boolean {
-  return catalog(type).damage > 0 || hasMg(type);
+  return catalog(type).damage > 0 || hasMg(type) || rocketsOf(type);
 }
 
 /** Extra fog tiles from catalog optics. The sniper's scope; 0 on every other type. */
@@ -2406,6 +2537,16 @@ export function radarLaidOf(type: EntityType): boolean {
 
 export function rocketsOf(type: EntityType): boolean {
   return catalog(type).rockets === true;
+}
+
+/** How this type's rockets fly and burst. The Titan's pods unless the catalog says otherwise. */
+export function rocketRackOf(type: EntityType): RocketRackDef {
+  return catalog(type).rocketRack ?? TITAN_ROCKET_RACK;
+}
+
+/** Rockets are this type's only weapon, on a frame that must bear (the Nebelwerfer). */
+export function launcherOnlyOf(type: EntityType): boolean {
+  return rocketsOf(type) && rocketRackOf(type).laid === true;
 }
 
 /** Rockets in a full rack. 0 on every type without pods. */

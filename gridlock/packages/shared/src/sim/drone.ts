@@ -22,6 +22,7 @@ import {
   isInfantryType,
   radarLaidOf,
   rocketsOf,
+  rocketRackOf,
   type DroneMode,
 } from "../catalog.js";
 import type { ImpactView } from "../protocol.js";
@@ -57,7 +58,9 @@ export function droneIsHigh(e: { air?: { alt: number } }): boolean {
 export function reachesDrone(shooter: Entity, drone: Entity): boolean {
   const gun = infantryGunFor(shooter);
   if (droneIsHigh(drone)) return shooter.type === "walker" || radarLaidOf(shooter.type) || !!gun?.antiAir;
-  if (shooter.type === "walker" || radarLaidOf(shooter.type) || rocketsOf(shooter.type) || hasMg(shooter.type)) return true;
+  if (shooter.type === "walker" || radarLaidOf(shooter.type) || hasMg(shooter.type)) return true;
+  // Titan pods reach a low drone. An artillery rack's lobbed rockets never do.
+  if (rocketsOf(shooter.type)) return rocketRackOf(shooter.type).antiAir;
   return !!gun && gun.id !== "mortar";
 }
 

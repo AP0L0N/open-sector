@@ -567,6 +567,9 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="supply"] {
   background-image: var(--supply-cameo, url("../assets/units/supply-truck/hull/0001.png"));
 }
+.prod-job[data-type="nebelwerfer"] {
+  background-image: var(--nebelwerfer-cameo, url("../assets/units/nebelwerfer-cameo.png"));
+}
 
 #map-canvas {
   width: 100%;
@@ -811,6 +814,11 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     var(--supply-cameo, url("../assets/units/supply-truck/hull/0001.png"));
 }
+#train-nebelwerfer {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    var(--nebelwerfer-cameo, url("../assets/units/nebelwerfer-cameo.png"));
+}
 .cameo-count {
   position: absolute;
   right: 3px;
@@ -1036,6 +1044,10 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="supply"],
 .prod-job[data-type="supply"] {
   background-image: var(--supply-cameo, url("../assets/units/supply-truck/hull/0001.png"));
+}
+.config-type[data-type="nebelwerfer"],
+.prod-job[data-type="nebelwerfer"] {
+  background-image: var(--nebelwerfer-cameo, url("../assets/units/nebelwerfer-cameo.png"));
 }
 .config-type[data-type="rig"] { background-image: url("../assets/units/rig-cameo.png"); }
 .config-type[data-type="dynamo"] { background-image: url("../assets/buildings/dynamo-cameo.png"); }

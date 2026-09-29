@@ -796,7 +796,7 @@ function cmdAmmo(state: MatchState, playerId: string, ids: number[], shell: Shel
 
 function cmdRockets(state: MatchState, playerId: string, ids: number[], on: boolean): CmdResult {
   const units = owned(state, playerId, ids).filter((e) => rocketsOf(e.type));
-  if (units.length === 0) return fail("not_yours", "Select a Titan.");
+  if (units.length === 0) return fail("not_yours", "Select a Titan or a Nebelwerfer.");
   for (const e of units) {
     e.rocketsOff = on ? undefined : true;
     // Switching off mid-salvo holds the rest in the rack.

@@ -48,6 +48,16 @@ const supplyHullGlob = import.meta.glob("../assets/units/supply-truck/hull/*.png
   import: "default",
 }) as Record<string, string>;
 
+const nebelwerferHullGlob = import.meta.glob("../assets/units/nebelwerfer/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const nebelwerferLauncherGlob = import.meta.glob("../assets/units/nebelwerfer/launcher/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 const stukaHullGlob = import.meta.glob("../assets/units/stuka/hull/*.png", {
   eager: true,
   import: "default",
@@ -335,6 +345,33 @@ export function bindSupplySheets(hullImage: HTMLImageElement): void {
     })
     .catch((err) => {
       console.error("supply truck turntable", err);
+    });
+}
+
+let nebelwerferPrevious: ComposedTurntable | null = null;
+
+/** Nebelwerfer: hull plus the traversing launcher frame, one transform like the Tiger's turret. */
+export function bindNebelwerferSheets(hullImage: HTMLImageElement, launcherImage: HTMLImageElement): void {
+  let hullUrls: string[];
+  let launcherUrls: string[];
+  try {
+    hullUrls = pickTurntableUrls(nebelwerferHullGlob);
+    launcherUrls = pickTurntableUrls(nebelwerferLauncherGlob);
+  } catch (err) {
+    console.error("nebelwerfer turntable", err);
+    return;
+  }
+  void Promise.all([Promise.all(hullUrls.map(loadImage)), Promise.all(launcherUrls.map(loadImage))])
+    .then(([hullImgs, launcherImgs]) => composeAligned([hullImgs, launcherImgs], TIGER_OPTS))
+    .then((next) => {
+      revoke(nebelwerferPrevious);
+      nebelwerferPrevious = next;
+      hullImage.src = next.sheetUrls[0] ?? "";
+      launcherImage.src = next.sheetUrls[1] ?? "";
+      applyCameo(next.cameoUrl, "--nebelwerfer-cameo");
+    })
+    .catch((err) => {
+      console.error("nebelwerfer turntable", err);
     });
 }
 
