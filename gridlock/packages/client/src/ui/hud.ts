@@ -5,6 +5,7 @@ import {
   SHELL_TYPES,
   STANCE_LABEL,
   TRAIN_QUEUE_CAP,
+  TECH_REQUIRES,
   TRAIN_TYPES,
   TICK_DT,
   WALKER_ONE_BURST,
@@ -22,6 +23,7 @@ import {
   hasScout,
   infantryGunFor,
   infantryLoadout,
+  isCivilianType,
   isGarrisonable,
   isInfantryType,
   isInfantryWeaponId,
@@ -489,11 +491,17 @@ export function paintBattleHud(ctx: Ctx): void {
     const paused = heads.length > 0 && heads.every((j) => j.paused);
     const training = heads.some((j) => !j.paused);
     const padsFull = want === "airfield" && hasProducer && !canQueueMore(m, unit);
-    btn.disabled = !hasProducer || !m.you.alive || padsFull;
+    const tech = TECH_REQUIRES[unit];
+    const techMissing =
+      !!tech && !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === tech && e.hp > 0 && !e.wreck);
+    btn.disabled = !hasProducer || !m.you.alive || padsFull || techMissing;
+    btn.classList.toggle("needs-tech", techMissing);
     btn.dataset.baseTitle ??= btn.title;
     btn.title = padsFull
       ? `${catalog(unit).name} — every hardstand is taken. Build another Airfield.`
-      : btn.dataset.baseTitle;
+      : techMissing
+        ? `${catalog(unit).name} — needs a ${catalog(tech!).name}.`
+        : btn.dataset.baseTitle;
     btn.classList.toggle("unaffordable", training && m.you.scrap <= 0);
     btn.classList.toggle("slow-power", m.you.lowPower && training);
     btn.classList.toggle("is-training", unitJobs.length > 0);
@@ -843,6 +851,9 @@ const TYPE_ORDER: EntityType[] = [
   "armory",
   "airfield",
   "ciws",
+  "research",
+  "bunker",
+  "ram",
   "cottage",
   "shack",
   "house",
@@ -1428,7 +1439,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: "The driver climbs out and leaves the truck for anyone to take.",
     });
   }
-  if (buildings.some((e) => e.type !== "core" && !isGarrisonable(e.type))) {
+  if (buildings.some((e) => e.type !== "core" && !isCivilianType(e.type))) {
     out.push({ slot: "sell", act: "sell", label: "Sell", title: "Sell selected structures" });
   }
   if (houses.length && units.some((e) => isInfantryType(e.type))) {
@@ -1634,7 +1645,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   }
   if (act === "sell") {
     for (const e of buildings) {
-      if (e.type !== "core" && !isGarrisonable(e.type)) ctx.net.send({ type: "cmd.sell", id: e.id });
+      if (e.type !== "core" && !isCivilianType(e.type)) ctx.net.send({ type: "cmd.sell", id: e.id });
     }
     return;
   }

@@ -99,6 +99,7 @@ import {
   PINE_FACES,
   CRATER_FACES,
   CIWS_TURRET_SHEET,
+  RAM_TURRET_SHEET,
   buildingGroundFor,
   buildingOccludeEz,
   buildingSpriteFor,
@@ -179,6 +180,7 @@ import {
 } from "./muzzle-smoke.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
+import { INTERCEPT_BURST_SIZE, RAM_MISS_BURST_SIZE, interceptorTrail } from "./ram.js";
 import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
 import { buildingShadowFootprint, drawCastShadows, treeShadowFootprint } from "./cast-shadow.js";
@@ -196,6 +198,7 @@ import { drawSandbags } from "./sandbags.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
+import { unitStepping } from "./stepping.js";
 import { atInfantrySheet, cyborgSheet, gunnerSheet, heldFrame, medicSheet, mortarmanSheet, rocketerSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
 import {
   axisFootprint,
@@ -265,6 +268,9 @@ const EXTRUDE: Record<EntityType, number> = {
   dynamo: 30,
   airfield: 14,
   ciws: 26,
+  research: 40,
+  bunker: 18,
+  ram: 26,
   stuka: 14,
   drone: 8,
   droneop: 26,
@@ -502,7 +508,7 @@ export class MapView {
     rocket?: boolean;
     /** Rocket air burst: elevation of the burst. */
     z?: number;
-    /** Rocket burst in the air by a CIWS: a small fireball, no column. */
+    /** Rocket met in the air by a CIWS or a RAM interceptor: a small fireball, no column. */
     intercept?: boolean;
     lift?: number;
     /** Screen-x offset from the world ground projection. */
@@ -723,6 +729,12 @@ export class MapView {
       const fx: MapView["fx"][number] = { ...i, at: now };
       // A rocket burst in the air by a CIWS stays where it was: no hull to snap to, no ground smoke.
       if (i.intercept) {
+        // A RAM's interceptor leaves a smoke line from the cells to the burst.
+        const mount = i.fromId != null && !this.fxIds.has(i.id) ? match.entities.find((e) => e.id === i.fromId) : undefined;
+        if (mount?.type === "ram") {
+          const line = interceptorTrail(mount, i, this.elevAt(mount.x, mount.y), this.elevAt(i.x, i.y));
+          this.rocketPuffs.push(...trailPuffs(line.from, line.to, now, (i.id * 2654435761) >>> 0));
+        }
         this.addFx(fx);
         continue;
       }
@@ -3236,6 +3248,8 @@ export class MapView {
       ctx.restore();
       if (e.type === "ciws") {
         this.drawCiwsGun(spr, south.x, south.y, footprintW, dim ? 0.5 : 1, e.turretFacing ?? e.facing, ghost ? undefined : e);
+      } else if (e.type === "ram") {
+        this.drawCiwsGun(spr, south.x, south.y, footprintW, dim ? 0.5 : 1, e.turretFacing ?? e.facing, undefined, RAM_TURRET_SHEET);
       }
       if (!ghost && !dim) {
         drawBuildingAnim(
@@ -3290,7 +3304,7 @@ export class MapView {
     ctx.globalAlpha = 1;
   }
 
-  /** CIWS gun row over its pad, laid on `turretFacing`, and the barrel flash while it fires. */
+  /** CIWS gun (or RAM launcher) row over its pad, laid on `turretFacing`, and the CIWS barrel flash while it fires. */
   private drawCiwsGun(
     spr: BuildingSpriteDef,
     southX: number,
@@ -3300,8 +3314,9 @@ export class MapView {
     facing: number,
     /** The live mount, for its barrel flash. Omitted for the placement ghost. */
     e?: EntityView,
+    /** The RAM passes its launcher sheet; its rockets carry their own flash. */
+    sheet: HTMLImageElement = CIWS_TURRET_SHEET,
   ): void {
-    const sheet = CIWS_TURRET_SHEET;
     if (!sheet.complete || sheet.naturalWidth <= 0) return;
     const ctx = this.ctx;
     const ts = this.ts();
@@ -3640,11 +3655,7 @@ export class MapView {
     ctx.save();
     ctx.save();
     if (e.wreck && !corpse) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
-    let stepping = e.state === "move" || !!e.swimming || e.state === "build" || e.state === "repair";
-    if ((e.type === "walker" || e.type === "titan") && stepping) {
-      const prev = this.prevById.get(e.id);
-      stepping = !!prev && Math.hypot(prev.x - e.x, prev.y - e.y) > 0.5;
-    }
+    const stepping = unitStepping({ type: e.type, state: e.state, swimming: e.swimming, prev: this.prevById.get(e.id), curr: e });
     const drawn = drawUnitSprite(ctx, def, s.x, s.y, dir.x, dir.y, {
       moving: !e.wreck && !immobilized(e) && stepping,
       id: e.id,
@@ -4070,7 +4081,9 @@ export class MapView {
       if (f.intercept) {
         // Rocket burst in the air: a small puff of fire at flight height.
         const frame = fxFrameAt(age, life, FX_BOOM.frames, false);
-        drawFxFrame(ctx, FX_BOOM, frame, s.x, s.y - CIWS_INTERCEPT_LIFT, 26, 1 - t * 0.5);
+        // A RAM interceptor that went off beside the rocket without bursting it: a smaller puff.
+        const size = f.kind === "miss" ? RAM_MISS_BURST_SIZE : INTERCEPT_BURST_SIZE;
+        drawFxFrame(ctx, FX_BOOM, frame, s.x, s.y - CIWS_INTERCEPT_LIFT, size, 1 - t * 0.5);
       } else if (f.kind === "kill" && f.blast) {
         drawCookoffBurst(ctx, x, y, t, f.id);
         const frame = fxFrameAt(age, life, FX_BOOM.frames, false);
@@ -4445,6 +4458,7 @@ export class MapView {
       ctx.restore();
       // The ghost lays its gun toward the viewer.
       if (type === "ciws") this.drawCiwsGun(spr, south.x, south.y, east.x - west.x, 0.55, Math.PI / 4);
+      if (type === "ram") this.drawCiwsGun(spr, south.x, south.y, east.x - west.x, 0.55, Math.PI / 4, undefined, RAM_TURRET_SHEET);
       ctx.strokeStyle = top;
       ctx.lineWidth = 2;
       this.strokeGroundRect(x, y, bw, bh, elev);

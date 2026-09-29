@@ -23,7 +23,7 @@ function humanVsEasy(): { state: MatchState; aiId: string } {
   updateSelf(room, "A", { ready: true });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return { state: createMatch(room, started.value, { startingUnits: false }), aiId: "ai:1" };
+  return { state: createMatch(room, started.value), aiId: "ai:1" };
 }
 
 function waitCore(state: MatchState, playerId: string, n = 40): void {
@@ -175,6 +175,26 @@ describe("easy CPU", () => {
     assert.equal(queued, true, "CPU did not queue a StuG");
   });
 
+  it("starts a Research Facility after the Armory so it can train Tigers", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    const hq = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "core")!;
+    const cpu = state.players.get(aiId)!;
+    cpu.structure = null;
+    makeEntity(state, "dynamo", aiId, hq.x - 64, hq.y, { tileX: hq.tileX - 12, tileY: hq.tileY });
+    makeEntity(state, "dynamo", aiId, hq.x - 64, hq.y + 64, { tileX: hq.tileX - 12, tileY: hq.tileY + 8 });
+    makeEntity(state, "smelter", aiId, hq.x, hq.y - 64, { tileX: hq.tileX, tileY: hq.tileY - 16 });
+    makeEntity(state, "muster", aiId, hq.x + 64, hq.y, { tileX: hq.tileX + 16, tileY: hq.tileY });
+    makeEntity(state, "armory", aiId, hq.x, hq.y + 64, { tileX: hq.tileX, tileY: hq.tileY + 16 });
+    for (let i = 0; i < 4; i++) {
+      makeEntity(state, "rifleman", aiId, hq.x + 16 + i * 8, hq.y);
+    }
+    cpu.scrap = 5000;
+    tickAi(state);
+    const job = state.players.get(aiId)!.structure;
+    assert.equal(job?.type, "research");
+  });
+
   it("trains Troopers from the opening scrap pile", () => {
     const { state, aiId } = humanVsEasy();
     let trained = false;
@@ -200,13 +220,13 @@ describe("easy CPU", () => {
     }
   });
 
-  it("builds the Airfield once the four factories stand", () => {
+  it("builds the Airfield once the factories and Research stand", () => {
     // The west seat's yard has room for the strip; the NE corner of yard-64 does not.
     const { state } = humanVsEasy();
     const aiId = "A";
     state.players.get(aiId)!.ai = "easy";
     waitCore(state, aiId);
-    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory"]);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "dynamo"]);
     troopers(state, aiId, 4);
     const cpu = state.players.get(aiId)!;
     cpu.structure = null;
@@ -218,7 +238,7 @@ describe("easy CPU", () => {
   it("builds a Dynamo before a CIWS that would overdraw power", () => {
     const { state, aiId } = humanVsEasy();
     waitCore(state, aiId);
-    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "airfield"]);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "airfield"]);
     troopers(state, aiId, 4);
     const cpu = state.players.get(aiId)!;
     cpu.structure = null;
@@ -230,8 +250,8 @@ describe("easy CPU", () => {
   it("refunds a finished building that has no room, then builds past it", () => {
     const { state, aiId } = humanVsEasy();
     waitCore(state, aiId);
-    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory"]);
-    troopers(state, aiId, 4);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "dynamo"]);
+    troopers(state, aiId, 8);
     const cpu = state.players.get(aiId)!;
     const cost = catalog("airfield").cost;
     cpu.structure = { type: "airfield", progressTicks: 1, totalTicks: 1, ready: true, paused: false, paid: cost };
@@ -246,6 +266,37 @@ describe("easy CPU", () => {
     cpu.scrap = 5000;
     tickAi(state);
     assert.equal(state.players.get(aiId)!.structure?.type, "ciws");
+  });
+
+  it("keeps the Armory busy with unlocked hulls before Research stands", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    withBase(state, aiId, ["dynamo", "muster", "armory"]);
+    troopers(state, aiId, 8);
+    const hq = coreOf(state, aiId);
+    for (let i = 0; i < 3; i++) makeEntity(state, "ss3", aiId, hq.x + 40 + i * 24, hq.y + 40);
+    state.players.get(aiId)!.scrap = 5000;
+    tickAi(state);
+    const armory = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "armory")!;
+    const types = armory.queue.map((j) => j.type);
+    assert.ok(types.length > 0, "armory stalled on a locked rank");
+    assert.ok(types.every((t) => t === "walker" || t === "supply"), `armory queue ${types.join(",")}`);
+  });
+
+  it("crews its Bunker with idle soldiers, gunners first", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    withBase(state, aiId, ["bunker"]);
+    const bunker = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "bunker")!;
+    const hq = coreOf(state, aiId);
+    const gunner = makeEntity(state, "gunner", aiId, hq.x + 40, hq.y + 40);
+    troopers(state, aiId, 6);
+    micro(state, aiId);
+    const inbound = [...state.entities.values()].filter(
+      (e) => e.ownerId === aiId && (e.order?.kind === "garrison" || e.garrisonedIn === bunker.id),
+    );
+    assert.equal(inbound.length, catalog("bunker").garrisonCap);
+    assert.ok(inbound.includes(gunner), "the MG goes in first");
   });
 
   it("fills the Armory with a mix of hulls", () => {

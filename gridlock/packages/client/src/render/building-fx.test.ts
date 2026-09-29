@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildingAnimActive, buildingProducesUnits, type BuildingAnimView } from "./building-fx.js";
+import { buildingAnimActive, buildingProducesUnits, buildingWorking, type BuildingAnimView } from "./building-fx.js";
 
 function view(partial: Partial<BuildingAnimView> & Pick<BuildingAnimView, "type">): BuildingAnimView {
   return {
@@ -25,14 +25,21 @@ describe("buildingProducesUnits", () => {
 });
 
 describe("buildingAnimActive", () => {
-  it("runs idle overlays on core and dynamo", () => {
+  it("runs idle overlays on core, dynamo, smelter, and research facility", () => {
     assert.equal(buildingAnimActive(view({ type: "core" })), true);
     assert.equal(buildingAnimActive(view({ type: "dynamo" })), true);
+    assert.equal(buildingAnimActive(view({ type: "smelter" })), true);
+    assert.equal(buildingAnimActive(view({ type: "research" })), true);
   });
 
-  it("skips trainers that are not producing", () => {
+  it("keeps the smelter chimneys going while idle, at the subtle tier", () => {
+    assert.equal(buildingAnimActive(view({ type: "smelter" })), true);
+    assert.equal(buildingWorking(view({ type: "smelter" })), false);
+    assert.equal(buildingWorking(view({ type: "smelter", trainProgress: 0.3 })), true);
+  });
+
+  it("skips muster and armory that are not producing", () => {
     assert.equal(buildingAnimActive(view({ type: "muster" })), false);
-    assert.equal(buildingAnimActive(view({ type: "smelter" })), false);
     assert.equal(buildingAnimActive(view({ type: "armory" })), false);
   });
 
@@ -74,6 +81,8 @@ describe("buildingAnimActive", () => {
 
   it("never animates wrecks, dead buildings, or civilians", () => {
     assert.equal(buildingAnimActive(view({ type: "dynamo", wreck: true })), false);
+    assert.equal(buildingAnimActive(view({ type: "smelter", hp: 0 })), false);
+    assert.equal(buildingAnimActive(view({ type: "research", wreck: true })), false);
     assert.equal(buildingAnimActive(view({ type: "core", hp: 0 })), false);
     assert.equal(buildingAnimActive(view({ type: "cottage" })), false);
     assert.equal(buildingAnimActive(view({ type: "muster", hp: 0, trainProgress: 0.5 })), false);

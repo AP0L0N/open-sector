@@ -376,8 +376,6 @@ export interface MatchState {
   tick: number;
   /** Sim steps per wall-clock tick. 1–5. */
   gameSpeed: number;
-  /** Remaining wall-clock ticks until Rigs auto-unpack. -1 = already fired. */
-  autoDeployTicks: number;
   nextId: number;
   tileSize: number;
   width: number;

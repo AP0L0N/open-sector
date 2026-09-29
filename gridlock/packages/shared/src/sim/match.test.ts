@@ -2,13 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
-  AUTO_DEPLOY_SECONDS,
   catalog,
-  GAME_SPEED_MAX,
+  GAME_SPEED_MIN,
   HAULER_CARGO,
   LOW_POWER_MIN_SPEED,
   TANK_MG,
-  secondsToTicks,
   START_SCRAP,
   TICK_DT,
   TILE_SUBDIV,
@@ -22,7 +20,7 @@ import { astar } from "./path.js";
 import { makeEntity, tileCenter, walkable } from "./geo.js";
 import type { MatchState } from "./types.js";
 
-function twoPlayerMatch(opts?: { startingUnits?: boolean }): { state: MatchState; a: string; b: string } {
+function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   const r = createRoom({
     id: "T1",
     hostId: "A",
@@ -37,7 +35,7 @@ function twoPlayerMatch(opts?: { startingUnits?: boolean }): { state: MatchState
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  const state = createMatch(room, started.value, { startingUnits: opts?.startingUnits ?? false });
+  const state = createMatch(room, started.value);
   return { state, a: "A", b: "B" };
 }
 
@@ -55,46 +53,23 @@ describe("createMatch", () => {
     assert.equal(snap.you.provided, 0);
     assert.equal(snap.entities.filter((e) => e.type === "rig").length, 1);
     assert.equal(snap.entities[0]?.ownerId, "A");
-    assert.equal(state.gameSpeed, GAME_SPEED_MAX);
-    assert.equal(snap.gameSpeed, GAME_SPEED_MAX);
+    assert.equal(state.gameSpeed, GAME_SPEED_MIN);
+    assert.equal(snap.gameSpeed, GAME_SPEED_MIN);
   });
 
-  it("spawns one of each unit except the Mauler next to the Rig", () => {
-    const { state } = twoPlayerMatch({ startingUnits: true });
+  it("starts each commander with only a packed Rig", () => {
+    const { state } = twoPlayerMatch();
     for (const pid of ["A", "B"]) {
-      const rig = [...state.entities.values()].find((e) => e.ownerId === pid && e.type === "rig")!;
-      const own = [...state.entities.values()].filter((e) => e.ownerId === pid && e.kind === "unit");
-      assert.equal(own.filter((e) => e.type === "rifleman").length, 1);
-      assert.equal(own.filter((e) => e.type === "gunner").length, 1);
-      assert.equal(own.filter((e) => e.type === "sniper").length, 1);
-      assert.equal(own.filter((e) => e.type === "atinfantry").length, 1);
-      assert.equal(own.filter((e) => e.type === "mortarman").length, 1);
-      assert.equal(own.filter((e) => e.type === "medic").length, 1);
-      assert.equal(own.filter((e) => e.type === "warden").length, 1);
-      assert.equal(own.filter((e) => e.type === "ss3").length, 1);
-      assert.equal(own.filter((e) => e.type === "walker").length, 1);
-      assert.equal(own.filter((e) => e.type === "hauler").length, 0);
-      const core = catalog("core");
-      const half = Math.floor(core.tileW / 2);
-      for (const u of own) {
-        if (u.type === "rig") continue;
-        const dx = Math.abs(u.tileX - rig.tileX);
-        const dy = Math.abs(u.tileY - rig.tileY);
-        assert.ok(dx > half || dy > half, `${u.type} spawned inside the Core footprint`);
-        assert.ok(Math.hypot(u.x - rig.x, u.y - rig.y) < state.tileSize * 24, `${u.type} too far from rig`);
-      }
+      const own = [...state.entities.values()].filter((e) => e.ownerId === pid);
+      assert.deepEqual(own.map((e) => e.type), ["rig"]);
     }
   });
 
-  it("auto-deploys each Rig into a Core after 0.5s wall-clock", () => {
+  it("leaves each Rig packed until its commander deploys it", () => {
     const { state } = twoPlayerMatch();
-    const wait = secondsToTicks(AUTO_DEPLOY_SECONDS);
-    for (let i = 0; i < wait - 1; i++) stepMatch(state);
+    for (let i = 0; i < 50; i++) stepMatch(state);
     assert.equal([...state.entities.values()].filter((e) => e.type === "core").length, 0);
-    stepMatch(state);
-    const cores = [...state.entities.values()].filter((e) => e.type === "core");
-    assert.equal(cores.length, 2);
-    assert.equal([...state.entities.values()].some((e) => e.type === "rig"), false);
+    assert.equal([...state.entities.values()].filter((e) => e.type === "rig").length, 2);
   });
 
   it("stepMatch runs gameSpeed sim ticks per wall-clock tick", () => {
@@ -311,13 +286,29 @@ describe("construction", () => {
     });
     assert.equal(place.ok, true, !place.ok ? place.message : "");
     assert.ok([...state.entities.values()].some((e) => e.type === "armory"));
+    const locked = applyCommand(state, "A", { type: "cmd.train", unit: "warden" });
+    assert.equal(locked.ok, false);
+    if (!locked.ok) assert.equal(locked.message, "Need a Research Facility.");
+    const r = applyCommand(state, "A", { type: "cmd.build", building: "research" });
+    assert.equal(r.ok, true, !r.ok ? r.message : "");
+    ticks(state, catalog("research").buildSeconds * 10 + 2);
+    const placeR = applyCommand(state, "A", {
+      type: "cmd.place",
+      building: "research",
+      tx: core.tileX + core.tileW,
+      ty: core.tileY + catalog("armory").tileH,
+    });
+    assert.equal(placeR.ok, true, !placeR.ok ? placeR.message : "");
+    // Armory + lab spend most of the opening scrap.
+    state.players.get("A")!.scrap += 1000;
     const train = applyCommand(state, "A", { type: "cmd.train", unit: "warden" });
     assert.equal(train.ok, true, !train.ok ? train.message : "");
-    ticks(state, catalog("warden").buildSeconds * 10 + 2);
+    // The lab puts this base in a power deficit, so production runs slow.
+    ticks(state, catalog("warden").buildSeconds * 30 + 2);
     assert.ok([...state.entities.values()].some((e) => e.type === "warden" && e.ownerId === "A"));
     const trainG = applyCommand(state, "A", { type: "cmd.train", unit: "ss3" });
     assert.equal(trainG.ok, true, !trainG.ok ? trainG.message : "");
-    ticks(state, catalog("ss3").buildSeconds * 10 + 2);
+    ticks(state, catalog("ss3").buildSeconds * 30 + 2);
     assert.ok([...state.entities.values()].some((e) => e.type === "ss3" && e.ownerId === "A"));
   });
 });

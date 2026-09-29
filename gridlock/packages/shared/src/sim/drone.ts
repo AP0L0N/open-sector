@@ -59,7 +59,8 @@ export function droneIsHigh(e: { air?: { alt: number } }): boolean {
  */
 export function reachesDrone(shooter: Entity, drone: Entity): boolean {
   const gun = infantryGunFor(shooter);
-  if (droneIsHigh(drone)) return shooter.type === "walker" || radarLaidOf(shooter.type) || !!gun?.antiAir;
+  // A high drone takes bullets only: the RAM's rockets are radar-laid but never reach it.
+  if (droneIsHigh(drone)) return shooter.type === "walker" || (radarLaidOf(shooter.type) && !rocketsOf(shooter.type)) || !!gun?.antiAir;
   if (shooter.type === "walker" || radarLaidOf(shooter.type) || hasMg(shooter.type)) return true;
   // Titan pods reach a low drone. An artillery rack's lobbed rockets never do.
   if (rocketsOf(shooter.type)) return rocketRackOf(shooter.type).antiAir;
