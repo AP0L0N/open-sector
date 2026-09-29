@@ -195,7 +195,7 @@ export function spawnUnit(
     if (pad == null) return null;
     const at = airfieldPadWorld(from, pad, state.tileSize);
     const plane = makeEntity(state, type, playerId, at.x, at.y, { facing: PARK_HEADING });
-    plane.air = newAirState(from.id, pad);
+    plane.air = newAirState(from.id, pad, type);
     return plane;
   }
   const door = rallyPoint(state, from);

@@ -14,7 +14,6 @@ import {
   PYRO_COOKOFF_CHANCE_DRY,
   PYRO_COOKOFF_CHANCE_FULL,
   RIFLE_RANGE_TILES,
-  START_UNITS,
   supplyShortOf,
   TICK_DT,
   TRAIN_TYPES,
@@ -39,7 +38,7 @@ function twoPlayerMatch(): MatchState {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return createMatch(room, started.value, { startingUnits: false });
+  return createMatch(room, started.value);
 }
 
 /** Flat, dry pad and nothing else on it. */
@@ -91,9 +90,8 @@ function watch(state: MatchState, e: Entity, n: number, seen = new Map<number, n
 const secs = (s: number) => Math.ceil(s / TICK_DT);
 
 describe("pyro", () => {
-  it("is Muster infantry with a flamethrower, not in the opening army", () => {
+  it("is Muster infantry with a flamethrower", () => {
     assert.ok(TRAIN_TYPES.includes("pyro"));
-    assert.ok(!START_UNITS.includes("pyro"));
     assert.equal(producerType("pyro"), "muster");
     assert.ok(isInfantryType("pyro"));
     assert.deepEqual(infantryLoadout("pyro"), [FLAMER]);

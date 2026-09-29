@@ -227,6 +227,7 @@ import { engineRowFromScreen } from "./turntable.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
+import { unitStepping } from "./stepping.js";
 import { atInfantrySheet, cyborgSheet, gunnerSheet, heldFrame, medicSheet, mortarmanSheet, pyroSheet, rocketerSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
 import {
   axisFootprint,
@@ -300,6 +301,7 @@ const EXTRUDE: Record<EntityType, number> = {
   bunker: 18,
   ram: 26,
   stuka: 14,
+  fw190: 12,
   drone: 8,
   droneop: 26,
   rig: 22,
@@ -2249,7 +2251,7 @@ export class MapView {
       return;
     }
     const planes = own.filter((e) => !!e.air && !e.drone);
-    if (hit?.type === "airfield" && hit.ownerId === you && planes.length) {
+    if (action === "land" && hit && planes.length) {
       // Right-click your own strip: planes go home to land and rearm.
       this.pulseMoveClick(hit.x, hit.y);
       this.command({ type: "cmd.land", ids: planes.map((e) => e.id) });
@@ -3723,11 +3725,7 @@ export class MapView {
     ctx.save();
     ctx.save();
     if (e.wreck && !corpse) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
-    let stepping = e.state === "move" || !!e.swimming || e.state === "build" || e.state === "repair";
-    if ((e.type === "walker" || e.type === "titan") && stepping) {
-      const prev = this.prevById.get(e.id);
-      stepping = !!prev && Math.hypot(prev.x - e.x, prev.y - e.y) > 0.5;
-    }
+    const stepping = unitStepping({ type: e.type, state: e.state, swimming: e.swimming, prev: this.prevById.get(e.id), curr: e });
     const drawn = drawUnitSprite(ctx, def, s.x, s.y, dir.x, dir.y, {
       moving: !e.wreck && !immobilized(e) && stepping,
       id: e.id,

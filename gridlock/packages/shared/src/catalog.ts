@@ -6,8 +6,6 @@ export const TICK_MS = 100;
 export const GAME_SPEED_MIN = 1;
 export const GAME_SPEED_MAX = 5;
 export const GAME_SPEED_DEFAULT = GAME_SPEED_MIN;
-/** Wall-clock delay before each Rig auto-unpacks into a Core. */
-export const AUTO_DEPLOY_SECONDS = 0.5;
 export const START_SCRAP = 2200;
 /**
  * Gameplay tiles per original 32px cell. RA2 / Sudden Strike 2 maps feel
@@ -421,6 +419,7 @@ export type EntityType =
   | "ram"
   | "research"
   | "stuka"
+  | "fw190"
   | "droneop"
   | "drone"
   | "cottage"
@@ -446,7 +445,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "cyborg" | "titan" | "nebelwerfer" | "supply" | "stuka" | "droneop";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "cyborg" | "titan" | "nebelwerfer" | "supply" | "stuka" | "fw190" | "droneop";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -469,16 +468,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "research"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "droneop"];
-/**
- * Opening army besides the Rig. Hauler omitted so it does not auto-harvest.
- * Supply truck, Titan, and Nebelwerfer omitted so the opening fight stays the same — train them at the Armory.
- * Aircraft need an Airfield pad, so the Stuka is omitted too. The Drone Op,
- * the Rocketer, and the Pyro are trained at the Muster so the opening fight stays the same.
- */
-export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter(
-  (t) => t !== "hauler" && t !== "supply" && t !== "titan" && t !== "nebelwerfer" && t !== "stuka" && t !== "droneop" && t !== "rocketer" && t !== "pyro",
-);
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "fw190", "droneop"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
@@ -1175,6 +1165,27 @@ export const STUKA_BOMBS = 1;
  */
 export const STUKA_MG_PER_TICK = (MG42_RPM / 60 / (1 / TICK_DT)) * 2;
 export const STUKA_MG_ROUNDS = 1000;
+/**
+ * Fw 190 fighter. No bomb: two 30 mm cannon, one in a gondola under each
+ * wing. It hunts planes in the air and strafes the ground. Fired down from a
+ * dive, a round meets a hull's roof — about ROOF_ARMOR_SHARE of its side
+ * plate — so even the heaviest tank is hurt. Each round that bites takes
+ * FW190_ROOF_HP_SHARE of the hull's max HP, whatever its size.
+ */
+export const FW190_ROUNDS = 60;
+/**
+ * On a ground target the cannon hold fire until this close, so the rounds come
+ * down steeply on the roof instead of skimming into the houses and trees short
+ * of it. Against a plane they open at FW190_CANNON.rangeTiles.
+ */
+export const FW190_STRAFE_TILES = t(3.5);
+/** Both wings fire together this often: about 400 rounds a minute a gun. */
+export const FW190_PAIR_SECONDS = 0.15;
+/** Roof plate, as a share of the side plate. */
+export const ROOF_ARMOR_SHARE = 0.3;
+export const FW190_ROOF_HP_SHARE = 0.045;
+/** Chance a round through the roof wrecks the engine under the deck. */
+export const FW190_ROOF_ENGINE_CHANCE = 0.12;
 
 /**
  * Bunker. Poured concrete, low to the ground, firing slits on every face.
@@ -1354,6 +1365,17 @@ export const STUKA_MG = {
   rangeTiles: t(10),
   /** Half-angle off the nose the wing guns bear. */
   arcDeg: 10,
+} as const;
+/** Fw 190 wing cannon, 30 mm. See FW190_ROUNDS. */
+export const FW190_CANNON = {
+  damage: 30,
+  penetration: 40,
+  caliber: 30,
+  spreadDeg: 1.2,
+  projectileSpeed: SMALL_ARMS_SPEED,
+  rangeTiles: t(7),
+  /** Half-angle off the nose the wing cannon bear. */
+  arcDeg: 8,
 } as const;
 /** Same as small-arms: 75mm lands in the fire tick. */
 export const TANK_SHELL_SPEED = SMALL_ARMS_SPEED;
@@ -1652,8 +1674,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     buildSeconds: 26,
     hp: 1100,
     power: -40,
-    tileW: t(10),
-    tileH: t(5),
+    tileW: t(7.5),
+    tileH: t(3.75),
     radius: 0,
     moveTilesPerSec: 0,
     turnDegPerSec: 0,
@@ -1663,7 +1685,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Concrete strip with four revetted hardstands beside it. Trains dive bombers and keeps up to ${AIRFIELD_PADS}. Planes land here to refuel, rearm, and patch up.`,
+    blurb: `Concrete strip with four revetted hardstands beside it. Trains dive bombers and fighters and keeps up to ${AIRFIELD_PADS}. Planes land here to refuel, rearm, and patch up.`,
   },
   research: {
     type: "research",
@@ -2346,6 +2368,33 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     blurb: "Dive bomber. One SC 250 per sortie, two wing MGs for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands at its Airfield to refuel and rearm.",
   },
+  /** Fw 190 fighter. Lives on an Airfield pad. */
+  fw190: {
+    type: "fw190",
+    kind: "unit",
+    name: "Fw 190",
+    letter: "f",
+    cost: 500,
+    buildSeconds: 22,
+    hp: 95,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 11,
+    moveTilesPerSec: t(6.5),
+    turnDegPerSec: 150,
+    rangeTiles: FW190_CANNON.rangeTiles,
+    sightTiles: t(10),
+    cooldown: FW190_PAIR_SECONDS,
+    damage: FW190_CANNON.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: FW190_CANNON.penetration,
+    caliber: FW190_CANNON.caliber,
+    spreadDeg: FW190_CANNON.spreadDeg,
+    aircraft: true,
+    blurb: `Fighter. Two 30 mm cannon, one under each wing, and no bomb. Chases enemy planes out of the sky, and strafes the ground in a shallow dive — fired from above, a round comes down through a tank's thin roof, so even the heaviest hull bleeds. ${FW190_ROUNDS} rounds a sortie. Flies faster and turns tighter than the Stuka. Lands at its Airfield to refuel and rearm.`,
+  },
   droneop: {
     type: "droneop",
     kind: "unit",
@@ -2532,9 +2581,20 @@ export function armorLabel(type: EntityType): string | null {
 
 const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "droneop"];
 
-/** Flies. Stuka only. */
+/** Flies: the Stuka and the Fw 190. */
 export function isAircraftType(type: EntityType): boolean {
   return catalog(type).aircraft === true;
+}
+
+/** Bombs and gun rounds a plane carries on a full sortie. */
+export function airLoadoutOf(type: EntityType): { bombs: number; rounds: number } {
+  if (type === "fw190") return { bombs: 0, rounds: FW190_ROUNDS };
+  return { bombs: STUKA_BOMBS, rounds: STUKA_MG_ROUNDS };
+}
+
+/** Fighter: hunts planes in the air as well as targets on the ground. */
+export function isFighterType(type: EntityType): boolean {
+  return type === "fw190";
 }
 
 /** Operator's quadcopter. */

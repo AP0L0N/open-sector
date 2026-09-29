@@ -333,6 +333,8 @@ export interface Projectile {
   ciwsTried?: number[];
   /** Fired by an anti-air gun (MG42, gatlings). Only these meet a high drone. */
   antiAir?: boolean;
+  /** Fired down from a plane's wing cannon: on a hull it meets the roof (resolveRoofHit), not a face. */
+  fromAbove?: boolean;
 }
 
 /** Lasting smoke screen from a 75mm smoke shell. */
@@ -378,6 +380,12 @@ export interface SimPlayer {
   ai?: AiDifficulty;
   /** Sim tick to try the next attack wave. */
   aiNextAttackTick: number;
+  /** Sim tick for the CPU's next support, shell, and defense pass. */
+  aiNextMicroTick?: number;
+  /** Sim tick before which the CPU skips a building that found no room in its base. */
+  aiNoRoomUntil?: Partial<Record<BuildingType, number>>;
+  /** Where each CPU Mauler last stood still, and since which tick. Finds jams at a dock or a lane. */
+  aiHaulerStill?: Record<number, { x: number; y: number; since: number }>;
 }
 
 export interface MatchState {
@@ -386,8 +394,6 @@ export interface MatchState {
   tick: number;
   /** Sim steps per wall-clock tick. 1–5. */
   gameSpeed: number;
-  /** Remaining wall-clock ticks until Rigs auto-unpack. -1 = already fired. */
-  autoDeployTicks: number;
   nextId: number;
   tileSize: number;
   width: number;

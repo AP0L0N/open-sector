@@ -22,7 +22,8 @@ export type HoverAction =
   | "repair"
   | "scrap"
   | "board"
-  | "supply";
+  | "supply"
+  | "land";
 
 export type HoverEntity = Pick<
   EntityView,
@@ -43,6 +44,8 @@ export type HoverEntity = Pick<
   | "mgAmmo"
   | "clip"
   | "crits"
+  | "air"
+  | "drone"
 >;
 
 /** Guard mode: click this unit to escort it instead of planting an overwatch point. */
@@ -104,6 +107,9 @@ export function resolveHoverAction(args: {
     return "attack";
   }
   if (args.scrap && ownUnits.some((e) => e.type === "hauler")) return "gather";
+  // Your own strip: planes go home to land and rearm.
+  const planes = ownUnits.some((e) => !!e.air && !e.drone);
+  if (hit && planes && hit.type === "airfield" && hit.ownerId === you && hit.hp > 0 && !hit.wreck) return "land";
   return null;
 }
 

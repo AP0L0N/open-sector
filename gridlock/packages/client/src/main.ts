@@ -1,6 +1,6 @@
 import "./style/ra-feel.css";
 import type { ServerMessage } from "@gridlock/shared";
-import { AUTO_DEPLOY_SECONDS, DEFAULT_MAP_ID, getMap } from "@gridlock/shared";
+import { DEFAULT_MAP_ID, getMap } from "@gridlock/shared";
 import { GameSocket } from "./net/client.js";
 import type { Ctx, Screen } from "./ctx.js";
 import { bindClicks, getMusic, getSfx, setMusic, setSfx } from "./ui/audio.js";
@@ -27,6 +27,8 @@ scan.className = "scanlines";
 document.body.append(scan);
 
 let mapView: MapView | null = null;
+/** How long the deploy splash shows before the battle screen. */
+const DEPLOY_SCREEN_MS = 500;
 let deployTimer: ReturnType<typeof setTimeout> | null = null;
 
 const params = new URLSearchParams(location.search);
@@ -189,7 +191,7 @@ function onMessage(msg: ServerMessage): void {
       if (deployTimer) clearTimeout(deployTimer);
       deployTimer = setTimeout(() => {
         ctx.goto("battle");
-      }, AUTO_DEPLOY_SECONDS * 1000);
+      }, DEPLOY_SCREEN_MS);
       break;
     case "match.snapshot":
       ctx.match = msg.match;
