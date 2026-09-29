@@ -1,11 +1,12 @@
 {
-  "padWidth": 864.0,
-  "padSouthX": 488.0,
-  "padSouthY": 451.0,
-  "stackX": 417.4,
-  "stackY": 42.0,
+  "padWidth": 960.0,
+  "padSouthX": 652.0,
+  "padSouthY": 552.0,
+  "stackX": 604.0,
+  "stackY": 112.0,
+  "backDepth": 0.27,
   "size": [
-    880,
-    475
+    984,
+    564
   ]
 }

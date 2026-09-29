@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isoDepth } from "@gridlock/shared";
+import { AIRFIELD_BACK_DEPTH, AIRFIELD_PADS, airfieldPadWorld, airfieldRunway, catalog, isoDepth } from "@gridlock/shared";
 import {
   axisFootprint,
   compareDrawOrder,
   CORPSE_DRAW_LAYER,
   type DrawKey,
+  GROUND_DECAL_DRAW_LAYER,
   HOLE_DRAW_LAYER,
   STANDING_DRAW_LAYER,
 } from "./corpse-depth.js";
@@ -99,5 +100,36 @@ describe("standing draw order", () => {
     const wall = wallAt(100, 100, Math.PI / 4);
     assert.ok(compareDrawOrder(unitAt(90, 90), wall) < 0);
     assert.ok(compareDrawOrder(unitAt(110, 110), wall) > 0);
+  });
+});
+
+describe("airfield draw order", () => {
+  const ts = 8;
+  const field = { tileX: 20, tileY: 20, tileW: catalog("airfield").tileW, tileH: catalog("airfield").tileH };
+  const x = field.tileX * ts;
+  const y = field.tileY * ts;
+  // The keys MapView.drawKey and its ground pass build for an Airfield.
+  const foot = axisFootprint(x, y, field.tileW * ts, field.tileH * AIRFIELD_BACK_DEPTH * ts);
+  const props: DrawKey = { layer: STANDING_DRAW_LAYER, z: isoDepth(foot.cx, foot.cy), foot };
+  const strip: DrawKey = { layer: GROUND_DECAL_DRAW_LAYER, z: 0 };
+
+  it("planes on every hardstand paint over the hangar band and the strip", () => {
+    for (let i = 0; i < AIRFIELD_PADS; i++) {
+      const p = airfieldPadWorld(field, i, ts);
+      assert.ok(compareDrawOrder(unitAt(p.x, p.y), props) > 0, `pad ${i}`);
+      assert.ok(compareDrawOrder(unitAt(p.x, p.y), strip) > 0, `pad ${i}`);
+    }
+  });
+
+  it("a plane rolling along the strip, even off either end, paints over the field", () => {
+    const rw = airfieldRunway(field, ts);
+    for (const px of [x - 12, rw.x0, rw.cx, rw.x1, x + field.tileW * ts + 12]) {
+      assert.ok(compareDrawOrder(unitAt(px, rw.y), props) > 0, `x ${px}`);
+      assert.ok(compareDrawOrder(unitAt(px, rw.y), strip) > 0, `x ${px}`);
+    }
+  });
+
+  it("craters and shadows land on the strip, not under it", () => {
+    assert.ok(compareDrawOrder({ layer: HOLE_DRAW_LAYER, z: -1e9 }, strip) > 0);
   });
 });
