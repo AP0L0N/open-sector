@@ -33,7 +33,7 @@ function match(): MatchState {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  const state = createMatch(room, started.value, { startingUnits: false });
+  const state = createMatch(room, started.value);
   // Flat, open ground in the middle of the map: nothing blocks sight or shots.
   for (let y = 90; y <= 170; y++) {
     for (let x = 90; x <= 170; x++) {

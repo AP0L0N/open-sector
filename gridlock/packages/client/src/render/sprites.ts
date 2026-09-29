@@ -876,7 +876,7 @@ export const STUKA_SPRITE: UnitSpriteDef = {
   frames: 1,
   frameSize: 128,
   fps: 8,
-  drawSize: Math.round(70 * UNIT_VISUAL_SCALE),
+  drawSize: Math.round(63 * UNIT_VISUAL_SCALE),
   contactY: 0.8,
   facingSpace: "world",
 };

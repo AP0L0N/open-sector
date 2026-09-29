@@ -40,6 +40,7 @@ import {
   CIWS_AIR_SPREAD,
   FW190_CANNON,
   FW190_PAIR_SECONDS,
+  FW190_STRAFE_TILES,
   radarLaidOf,
   STUKA_MG,
   STUKA_MG_PER_TICK,
@@ -322,9 +323,9 @@ function gunsHurt(e: Entity, target: Entity): boolean {
   return !isArmoredType(target.type);
 }
 
-/** The wing guns this plane fires. */
-function wingGunOf(e: Entity): { rangeTiles: number; arcDeg: number } {
-  return isFighterType(e.type) ? FW190_CANNON : STUKA_MG;
+/** How close, and how far off the nose, this plane opens up on a ground target. */
+function strafeGunOf(e: Entity): { rangeTiles: number; arcDeg: number } {
+  return isFighterType(e.type) ? { rangeTiles: FW190_STRAFE_TILES, arcDeg: FW190_CANNON.arcDeg } : STUKA_MG;
 }
 
 function loiterHere(e: Entity): void {
@@ -662,7 +663,7 @@ function attackRun(
   const cone = (AIR_DIVE_CONE_DEG * Math.PI) / 180;
   const diving = d < AIR_DIVE_START_TILES * ts && off < cone;
   const goal = diving ? (bomb ? AIR_RELEASE_ALT : AIR_STRAFE_ALT) : AIR_CRUISE_ALT;
-  const gun = wingGunOf(e);
+  const gun = strafeGunOf(e);
   if (diving && guns && d <= gun.rangeTiles * ts && off <= (gun.arcDeg * Math.PI) / 180) {
     if (isFighterType(e.type)) fireCannon(state, e, target!, d);
     else fireWingGuns(state, e, target!, d);

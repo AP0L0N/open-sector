@@ -18,7 +18,7 @@ function twoPlayerMatch(): MatchState {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return createMatch(room, started.value, { startingUnits: false });
+  return createMatch(room, started.value);
 }
 
 function clearPad(state: MatchState, x0: number, y0: number, x1: number, y1: number): void {

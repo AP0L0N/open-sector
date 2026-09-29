@@ -6,8 +6,6 @@ export const TICK_MS = 100;
 export const GAME_SPEED_MIN = 1;
 export const GAME_SPEED_MAX = 5;
 export const GAME_SPEED_DEFAULT = GAME_SPEED_MIN;
-/** Wall-clock delay before each Rig auto-unpacks into a Core. */
-export const AUTO_DEPLOY_SECONDS = 0.5;
 export const START_SCRAP = 2200;
 /**
  * Gameplay tiles per original 32px cell. RA2 / Sudden Strike 2 maps feel
@@ -468,15 +466,6 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "research"];
 export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "fw190", "droneop"];
-/**
- * Opening army besides the Rig. Hauler omitted so it does not auto-harvest.
- * Supply truck, Titan, and Nebelwerfer omitted so the opening fight stays the same — train them at the Armory.
- * Aircraft need an Airfield pad, so the Stuka and the Fw 190 are omitted too. The Drone Op and
- * the Rocketer are trained at the Muster so the opening fight stays the same.
- */
-export const START_UNITS: readonly TrainType[] = TRAIN_TYPES.filter(
-  (t) => t !== "hauler" && t !== "supply" && t !== "titan" && t !== "nebelwerfer" && t !== "stuka" && t !== "fw190" && t !== "droneop" && t !== "rocketer",
-);
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
@@ -1103,6 +1092,12 @@ export const STUKA_MG_ROUNDS = 1000;
  * FW190_ROOF_HP_SHARE of the hull's max HP, whatever its size.
  */
 export const FW190_ROUNDS = 60;
+/**
+ * On a ground target the cannon hold fire until this close, so the rounds come
+ * down steeply on the roof instead of skimming into the houses and trees short
+ * of it. Against a plane they open at FW190_CANNON.rangeTiles.
+ */
+export const FW190_STRAFE_TILES = t(3.5);
 /** Both wings fire together this often: about 400 rounds a minute a gun. */
 export const FW190_PAIR_SECONDS = 0.15;
 /** Roof plate, as a share of the side plate. */
@@ -1294,9 +1289,9 @@ export const FW190_CANNON = {
   damage: 30,
   penetration: 40,
   caliber: 30,
-  spreadDeg: 2.2,
+  spreadDeg: 1.2,
   projectileSpeed: SMALL_ARMS_SPEED,
-  rangeTiles: t(9),
+  rangeTiles: t(7),
   /** Half-angle off the nose the wing cannon bear. */
   arcDeg: 8,
 } as const;
@@ -1597,8 +1592,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     buildSeconds: 26,
     hp: 1100,
     power: -40,
-    tileW: t(10),
-    tileH: t(5),
+    tileW: t(7.5),
+    tileH: t(3.75),
     radius: 0,
     moveTilesPerSec: 0,
     turnDegPerSec: 0,
