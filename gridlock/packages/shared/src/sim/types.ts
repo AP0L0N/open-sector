@@ -196,6 +196,8 @@ export interface Entity {
   selfQuiet?: number;
   /** Medic only: HP at the end of the last tick, to notice new hits. */
   selfHpSeen?: number;
+  /** Cyborg only: sim tick until which nothing takes his HP. Set when the legs are torn off. */
+  shieldUntilTick?: number;
   /**
    * Factory driver still at the wheel. Supply trucks spawn true.
    * False on every other type, and after that driver is killed.
