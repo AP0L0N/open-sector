@@ -198,13 +198,14 @@ export const HEIGHT_RANGE_BONUS = 2;
  * which reach a short way past the optics so a spotter still matters.
  * The mortar is the long arm: past every direct-fire gun, not across the map.
  *
- * Cells: handgun 2, rifle 6, walker 6, MG42 8, StuG 9, scoped rifle and
+ * Cells: handgun 2, rifle 6, walker 6, cyborg 6, MG42 8, StuG 9, scoped rifle and
  * PTRD 10, Tiger 11, mortar 18 (it will not drop inside 3).
  */
 export const HANDGUN_RANGE_TILES = t(2);
 export const RIFLE_RANGE_TILES = t(6);
 export const MG42_RANGE_TILES = t(8);
 export const WALKER_RANGE_TILES = t(6);
+export const CYBORG_RANGE_TILES = WALKER_RANGE_TILES;
 export const SCOPED_RANGE_TILES = t(10);
 export const PTRD_RANGE_TILES = SCOPED_RANGE_TILES;
 export const STUG_RANGE_TILES = t(9);
@@ -252,6 +253,7 @@ export type EntityType =
   | "warden"
   | "ss3"
   | "walker"
+  | "cyborg"
   | "supply"
   | "core"
   | "dynamo"
@@ -281,7 +283,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "supply";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "cyborg" | "supply";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -304,7 +306,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "supply"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "supply"];
 /**
  * Opening army besides the Rig. Hauler omitted so it does not auto-harvest.
  * Supply truck omitted so the opening fight stays the same — train it at the Armory.
@@ -399,8 +401,8 @@ export interface ShellDef {
 }
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
-export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd";
-export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd"];
+export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling"];
 export interface InfantryGun {
   id: InfantryWeaponId;
   name: string;
@@ -413,7 +415,10 @@ export interface InfantryGun {
   cooldown: number;
   /** Rounds in a magazine. Reload starts when this hits 0. */
   clip: number;
-  /** Magazine change, seconds. Scaled by the infantry reloadMul. */
+  /**
+   * Magazine change, seconds. Scaled by the infantry reloadMul.
+   * 0 = the clip never reloads by itself; a supply truck tops it up.
+   */
   reload: number;
   /** Omit to use the unit catalog range. */
   rangeTiles?: number;
@@ -526,6 +531,39 @@ export const WALKER_GUN_MODES = [
     blurb: "Both arms, four rounds a tick. If another enemy is in the forward arc, the second gun takes them.",
   },
 ] as const;
+
+/**
+ * Cyborg. Half soldier, half machine: one gatling in place of the right arm,
+ * the same bullet and cadence as one Walker gun, fed from a drum on his back.
+ * The drum does not reload by itself — a supply truck tops it up.
+ * He does not crouch or go prone. Shot down near the end, the legs are torn
+ * away and he drags himself on one arm, still firing. A medic closes the
+ * flesh and an engineer patches the plating; either brings the legs back.
+ */
+export const CYBORG_DRUM = 600;
+/** Legs are torn off at or under this share of max HP. */
+export const CYBORG_LEGS_LOST_HP = 0.3;
+/** Healed or repaired back to this share of max HP, the legs work again. */
+export const CYBORG_LEGS_BACK_HP = 0.6;
+/** Move-speed multiplier on the arm alone. Slower than a soldier crawling. */
+export const CYBORG_DRAG_SPEED = 0.18;
+/** HP per second an engineer welds back onto the plating. Slower than a hull. */
+export const CYBORG_REPAIR_PER_SEC = 5;
+export const GATLING = {
+  id: "gatling" as const,
+  name: "Gatling arm",
+  blurb: "One Walker gatling on the arm: 1,200 rounds a minute from a 600-round drum. The drum does not reload by itself — bring a supply truck.",
+  damage: MG42.damage,
+  penetration: MG42.penetration,
+  caliber: MG42.caliber,
+  spreadDeg: 5,
+  cooldown: TICK_DT,
+  shotsPerTick: WALKER_ONE_BURST,
+  clip: CYBORG_DRUM,
+  reload: 0,
+  rangeTiles: CYBORG_RANGE_TILES,
+  bulky: true,
+} as const satisfies InfantryGun;
 
 /**
  * Share of an infantry target's max HP.
@@ -714,6 +752,7 @@ export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   scoped: SCOPED,
   mortar: MORTAR,
   ptrd: PTRD,
+  gatling: GATLING,
 };
 
 /**
@@ -1365,6 +1404,31 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 36,
     blurb: "Each arm is a gatling at the MG42's 1,200 rounds a minute, the same bullet. The backpack is a 1,200-round rack and does not reload by itself. One arm spends it slowly. Both arms spend it twice as fast and can split across two targets. The guns do not bring a building down.",
   },
+  cyborg: {
+    type: "cyborg",
+    kind: "unit",
+    name: "Cyborg",
+    letter: "Z",
+    cost: 260,
+    buildSeconds: 13,
+    hp: 110,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: t(1.6),
+    turnDegPerSec: 900,
+    rangeTiles: CYBORG_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: GATLING.cooldown,
+    damage: GATLING.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: GATLING.penetration,
+    caliber: GATLING.caliber,
+    spreadDeg: GATLING.spreadDeg,
+    blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back.",
+  },
   supply: {
     type: "supply",
     kind: "unit",
@@ -1534,10 +1598,32 @@ export function armorLabel(type: EntityType): string | null {
   return `F${d.armorFront} / S${d.armorSide} / R${d.armorRear}`;
 }
 
-const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic"];
+const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "mortarman", "engineer", "medic", "cyborg"];
 
 export function isInfantryType(type: EntityType): boolean {
   return (INFANTRY_TYPES as readonly string[]).includes(type);
+}
+
+/** Infantry with a machine half. No stance orders, no random limb hits, legs tied to HP. */
+export function isCyborg(type: EntityType): boolean {
+  return type === "cyborg";
+}
+
+/** An engineer can patch this unit: armored hulls and the cyborg's plating. */
+export function isRepairableUnit(type: EntityType): boolean {
+  return isArmoredType(type) || isCyborg(type);
+}
+
+/**
+ * Legs lost at or under CYBORG_LEGS_LOST_HP, back at or above CYBORG_LEGS_BACK_HP.
+ * In between, they stay as they were. Null for every other type.
+ */
+export function cyborgLegsLost(e: { type: EntityType; hp: number; hpMax: number; crits: readonly Crit[] }): boolean | null {
+  if (!isCyborg(e.type)) return null;
+  const share = e.hp / Math.max(1, e.hpMax);
+  if (share <= CYBORG_LEGS_LOST_HP) return true;
+  if (share >= CYBORG_LEGS_BACK_HP) return false;
+  return e.crits.includes("leg");
 }
 
 /** Primary gun for an infantry type. Null on vehicles and buildings. */
@@ -1547,6 +1633,7 @@ export function primaryInfantryGun(type: EntityType): InfantryGun | null {
   if (type === "sniper") return SCOPED;
   if (type === "atinfantry") return PTRD;
   if (type === "mortarman") return MORTAR;
+  if (type === "cyborg") return GATLING;
   return null;
 }
 
@@ -1557,6 +1644,7 @@ export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
   if (type === "sniper") return [SCOPED];
   if (type === "atinfantry") return [PTRD];
   if (type === "mortarman") return [MORTAR];
+  if (type === "cyborg") return [GATLING];
   return [];
 }
 
@@ -1621,7 +1709,7 @@ export function addCrit(
   }
 }
 
-/** Effective posture. A broken leg always crawls. */
+/** Effective posture. A broken leg always crawls. A cyborg only stands or drags himself. */
 export function stanceOf(e: {
   type: EntityType;
   stance?: Stance;
@@ -1629,6 +1717,7 @@ export function stanceOf(e: {
 }): Stance {
   if (!isInfantryType(e.type)) return "stand";
   if (hasCrit(e, "leg")) return "crawl";
+  if (isCyborg(e.type)) return "stand";
   return e.stance ?? "stand";
 }
 
@@ -1749,7 +1838,7 @@ export function beltOf(type: EntityType): { clip: number; reload: number } | nul
 
 /**
  * Finite ammo still below the catalog rack. Reloading magazines are not short —
- * the truck only fills shells, coaxial belts, and a Walker backpack.
+ * the truck only fills shells, coaxial belts, a Walker backpack, and a cyborg drum.
  */
 export function supplyShortOf(
   type: EntityType,
@@ -1766,7 +1855,15 @@ export function supplyShortOf(
   if ((def.mgAmmo ?? 0) > 0 && (mgAmmo ?? 0) < (def.mgAmmo ?? 0)) return true;
   const belt = beltOf(type);
   if (belt && belt.reload <= 0 && (clip ?? 0) < belt.clip) return true;
+  const drum = supplyDrumOf(type);
+  if (drum > 0 && (clip ?? 0) < drum) return true;
   return false;
+}
+
+/** Infantry magazine that never reloads by itself, so only a truck fills it. The cyborg's drum. */
+export function supplyDrumOf(type: EntityType): number {
+  const gun = primaryInfantryGun(type);
+  return gun && gun.reload <= 0 ? gun.clip : 0;
 }
 
 /** Walker arms in use. Missing means one gun. */

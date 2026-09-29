@@ -1,5 +1,6 @@
 import {
   catalog,
+  isCyborg,
   isInfantryType,
   MEDIC_HEAL_PER_SEC,
   MEDIC_MEND_SECONDS,
@@ -23,7 +24,9 @@ function dist2(a: Entity, b: Entity): number {
   return dx * dx + dy * dy;
 }
 
+/** A cyborg's legs follow his HP (syncCyborgLegs), so only the wound counts. */
 function needsCare(e: Entity): boolean {
+  if (isCyborg(e.type)) return e.hp < e.hpMax;
   return e.hp < e.hpMax || e.crits.length > 0;
 }
 
@@ -121,7 +124,7 @@ function applyHeal(medic: Entity, patient: Entity, dt: number): void {
     patient.hp = Math.min(patient.hpMax, patient.hp + MEDIC_HEAL_PER_SEC * dt);
     toppedUp = patient.hp >= patient.hpMax;
   }
-  if (patient.crits.length === 0) {
+  if (patient.crits.length === 0 || isCyborg(patient.type)) {
     medic.mendTime = 0;
     return;
   }

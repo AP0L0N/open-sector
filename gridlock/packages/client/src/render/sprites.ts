@@ -108,6 +108,11 @@ import medicWalkUrl from "../assets/units/medic-walk.png";
 import medicCrouchUrl from "../assets/units/medic-crouch.png";
 import medicCrawlUrl from "../assets/units/medic-crawl.png";
 import medicDieUrl from "../assets/units/medic-die.png";
+import cyborgWalkUrl from "../assets/units/cyborg-walk.png";
+import cyborgFireUrl from "../assets/units/cyborg-fire.png";
+import cyborgCrawlUrl from "../assets/units/cyborg-crawl.png";
+import cyborgCrawlFireUrl from "../assets/units/cyborg-crawl-fire.png";
+import cyborgDieUrl from "../assets/units/cyborg-die.png";
 import engineerWalkUrl from "../assets/units/engineer-walk.png";
 import engineerBuildUrl from "../assets/units/engineer-build.png";
 import engineerFixUrl from "../assets/units/engineer-fix.png";
@@ -505,6 +510,65 @@ export const MEDIC_DIE_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
+/** Cyborg standing / walking. Column 0 is the stand; the legs stride while moving. */
+export const CYBORG_SPRITE: UnitSpriteDef = {
+  image: loadSheet(cyborgWalkUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 10,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+/** Standing gatling burst. The barrels spin and the flash flickers. */
+export const CYBORG_FIRE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(cyborgFireUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+/** Legs torn off: dragging on one arm. Prone scale, same as every crawl sheet. */
+export const CYBORG_CRAWL_SPRITE: UnitSpriteDef = {
+  image: loadSheet(cyborgCrawlUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 8,
+  drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
+  contactY: 0.72,
+  facingSpace: "world",
+};
+
+/** Legless burst from the dirt. Same pose and scale as the crawl sheet. */
+export const CYBORG_CRAWL_FIRE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(cyborgCrawlFireUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 12,
+  drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
+  contactY: 0.72,
+  facingSpace: "world",
+};
+
+export const CYBORG_DIE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(cyborgDieUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.82,
+  facingSpace: "world",
+};
+
 export const ENGINEER_SPRITE: UnitSpriteDef = {
   image: loadSheet(engineerWalkUrl),
   dirs: 16,
@@ -732,6 +796,7 @@ export function spriteFor(type: EntityType, stance?: Stance, swimming = false): 
     return MEDIC_SPRITE;
   }
   if (type === "engineer") return ENGINEER_SPRITE;
+  if (type === "cyborg") return stance === "crawl" ? CYBORG_CRAWL_SPRITE : CYBORG_SPRITE;
   return UNIT_SPRITES[type];
 }
 

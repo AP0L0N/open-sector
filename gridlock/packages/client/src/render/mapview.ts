@@ -107,6 +107,11 @@ import {
   MEDIC_CRAWL_SPRITE,
   MEDIC_DIE_SPRITE,
   MEDIC_SPRITE,
+  CYBORG_CRAWL_FIRE_SPRITE,
+  CYBORG_CRAWL_SPRITE,
+  CYBORG_DIE_SPRITE,
+  CYBORG_FIRE_SPRITE,
+  CYBORG_SPRITE,
   MORTARMAN_DIE_SPRITE,
   MORTARMAN_FIRE_SPRITE,
   ENGINEER_BUILD_SPRITE,
@@ -156,7 +161,7 @@ import { drawSandbags } from "./sandbags.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
-import { atInfantrySheet, gunnerSheet, heldFrame, medicSheet, mortarmanSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
+import { atInfantrySheet, cyborgSheet, gunnerSheet, heldFrame, medicSheet, mortarmanSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
 import {
   axisFootprint,
   compareDrawOrder,
@@ -232,6 +237,7 @@ const EXTRUDE: Record<EntityType, number> = {
   mortarman: 26,
   engineer: 26,
   medic: 26,
+  cyborg: 26,
   sandbags: 12,
   teeth: 16,
   walker: 30,
@@ -3063,6 +3069,20 @@ export class MapView {
       if (sheet === "swim") return spriteFor("medic", "stand", true);
       return MEDIC_SPRITE;
     }
+    if (e.type === "cyborg") {
+      const sheet = cyborgSheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        shotAgeMs: this.infantryShotAge(e.id),
+      });
+      if (sheet === "die") return CYBORG_DIE_SPRITE;
+      if (sheet === "fire") return CYBORG_FIRE_SPRITE;
+      if (sheet === "crawl-fire") return CYBORG_CRAWL_FIRE_SPRITE;
+      if (sheet === "crawl") return CYBORG_CRAWL_SPRITE;
+      if (sheet === "swim") return spriteFor("cyborg", "stand", true);
+      return CYBORG_SPRITE;
+    }
     if (e.type === "engineer") {
       if (e.swimming) return spriteFor(e.type, e.stance, true);
       if (e.state === "build") return ENGINEER_BUILD_SPRITE;
@@ -3386,6 +3406,8 @@ export class MapView {
               ? ENGINEER_DIE_SPRITE
               : body.type === "medic"
                 ? MEDIC_DIE_SPRITE
+              : body.type === "cyborg"
+                ? CYBORG_DIE_SPRITE
               : body.type === "rifleman"
               ? TROOPER_DIE_SPRITE
               : null;

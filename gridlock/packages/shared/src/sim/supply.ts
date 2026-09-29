@@ -16,6 +16,7 @@ import {
   hasCrit,
   infantryGunFor,
   isInfantryType,
+  supplyDrumOf,
   supplyShortOf,
   weaponFitsTruck,
   type ShellType,
@@ -278,6 +279,11 @@ function giveRounds(e: Entity, n: number): boolean {
   if (beltClip > 0 && !beltReloads && e.clip < beltClip) {
     e.clip = Math.min(beltClip, e.clip + n);
     e.reload = 0;
+    return true;
+  }
+  const drum = supplyDrumOf(e.type);
+  if (drum > 0 && e.clip < drum) {
+    e.clip = Math.min(drum, e.clip + n);
     return true;
   }
   const cap = def.mgAmmo ?? 0;
