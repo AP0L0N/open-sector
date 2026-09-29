@@ -731,11 +731,12 @@ function segmentObbT(
   return t0 < 0 ? 0 : t0;
 }
 
-/** 1 = sandbags (blocks everyone). 2 = dragon's teeth (vehicles only). */
+/** 1 = sandbags (blocks everyone). 2 = dragon's teeth (vehicles only). A trench blocks no one. */
 export function restampForts(state: MatchState): void {
   state.fortBlock.fill(0);
   for (const e of state.entities.values()) {
     if (!isFieldStructure(e.type) || e.hp <= 0 || e.ruined) continue;
+    if (e.type === "trench") continue;
     const code = e.type === "teeth" ? 2 : 1;
     for (const t of fieldTiles(state, e.type, e.x, e.y, e.facing, 0)) {
       state.fortBlock[tileIndex(state, t.x, t.y)] = code;

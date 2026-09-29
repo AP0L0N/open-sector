@@ -430,11 +430,12 @@ export type EntityType =
   | "inn"
   | "chapel"
   | "sandbags"
-  | "teeth";
+  | "teeth"
+  | "trench";
 export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "ram" | "bunker" | "research";
 /** Placed by an engineer, not the construction yard. */
-export type FieldStructureType = "sandbags" | "teeth";
-export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "teeth"];
+export type FieldStructureType = "sandbags" | "teeth" | "trench";
+export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "teeth", "trench"];
 export type CivilianType = "cottage" | "house" | "manor" | "shack" | "barn" | "inn" | "chapel";
 export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "cottage",
@@ -559,6 +560,8 @@ export interface CatalogEntry {
   garrisonSightBonus?: number;
   /** Every weapon works from inside: the Gunner lays his MG on the embrasure ledge. */
   garrisonFullArms?: boolean;
+  /** Open to the sky: a mortarman inside can still set his tube and fire. */
+  garrisonOpenTop?: boolean;
   /**
    * A medic inside: every occupant regains this share of max HP a second, and
    * the medic tends by this alone, not hands-on. Does not stack.
@@ -1213,6 +1216,20 @@ export const BUNKER_WOUND_MUL = 0.35;
 export const BUNKER_COVER_HEIGHT = 4;
 /** Infantry that fit through the door and the firing slits. */
 export const BUNKER_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "medic", "engineer"];
+/**
+ * Trench. A one-man fighting slit an engineer digs in the field, with the
+ * spoil thrown up as a parapet. Moderate cover: better than the open, less
+ * than a house, far less than a bunker. Open-topped, so a mortar works from it.
+ */
+export const TRENCH_GARRISON_CAP = 1;
+/** Occupant HP multiplier inside. A house is 3×, a bunker 4×. */
+export const TRENCH_GARRISON_HP_MUL = 2;
+/** Share of each hit on the trench that reaches the man in it. A bunker passes 35%. */
+export const TRENCH_WOUND_MUL = 0.6;
+/** Parapet height above the ground, elevation units. Below a crouched man's eye. */
+export const TRENCH_COVER_HEIGHT = 2;
+/** The bunker's roster plus the mortarman, who needs the open sky. */
+export const TRENCH_TYPES: readonly EntityType[] = [...BUNKER_TYPES, "mortarman"];
 /** A medic inside: every occupant regains this share of max HP each second. Does not stack. */
 export const BUNKER_MEDIC_REGEN_FRAC = 0.004;
 /** An engineer inside: the bunker regains this much HP each second. Does not stack. */
@@ -1866,6 +1883,38 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     blurb: "Four concrete pyramids, scattered along the line when placed. Tanks cannot cross. Infantry walk through.",
   },
+  trench: {
+    type: "trench",
+    kind: "building",
+    name: "Trench",
+    letter: "H",
+    cost: 30,
+    buildSeconds: 8,
+    hp: 400,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: 0,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    garrisonCap: TRENCH_GARRISON_CAP,
+    garrisonHpMul: TRENCH_GARRISON_HP_MUL,
+    garrisonWoundMul: TRENCH_WOUND_MUL,
+    garrisonWindows: 1,
+    garrisonFloors: 1,
+    garrisonSightBonus: 0,
+    garrisonFullArms: true,
+    garrisonOpenTop: true,
+    garrisonTypes: TRENCH_TYPES,
+    coverHeight: TRENCH_COVER_HEIGHT,
+    blurb: "A one-man fighting trench with an earth parapet. Holds one rifleman, gunner, sniper, AT soldier, rocketman, pyro, mortarman, medic, or engineer. Moderate cover: he has double health and the earth soaks up part of every hit. Every weapon works from it, the Gunner's MG and the mortar included. Infantry and vehicles cross it freely.",
+  },
   rifleman: {
     type: "rifleman",
     kind: "unit",
@@ -2063,7 +2112,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "No gun. Builds sandbags and concrete tank obstacles, repairs armor and buildings, and cuts wrecks into scrap.",
+    blurb: "No gun. Builds sandbags, concrete tank obstacles, and one-man trenches, repairs armor and buildings, and cuts wrecks into scrap.",
   },
   medic: {
     type: "medic",
@@ -2559,6 +2608,7 @@ export function isFieldStructure(type: EntityType): type is FieldStructureType {
 export function fieldSpan(type: EntityType): { length: number; thick: number } | null {
   if (type === "sandbags") return { length: 24, thick: 7 };
   if (type === "teeth") return { length: 14, thick: 14 };
+  if (type === "trench") return { length: 16, thick: 10 };
   return null;
 }
 
@@ -2785,6 +2835,10 @@ export function garrisonSightBonusOf(type: EntityType): number {
 
 export function garrisonFullArmsOf(type: EntityType): boolean {
   return catalog(type).garrisonFullArms === true;
+}
+
+export function garrisonOpenTopOf(type: EntityType): boolean {
+  return catalog(type).garrisonOpenTop === true;
 }
 
 /**

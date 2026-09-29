@@ -298,6 +298,28 @@ describe("resolveHoverAction bunker", () => {
   });
 });
 
+describe("resolveHoverAction trench", () => {
+  const rifle = unit({ id: 1, type: "rifleman" });
+  const mortar = unit({ id: 2, type: "mortarman" });
+  const eng = unit({ id: 3, type: "engineer" });
+  const empty = building({ id: 80, type: "trench", hp: 400, hpMax: 400, garrison: { count: 0, cap: 1 } });
+  const full = building({ id: 81, type: "trench", hp: 400, hpMax: 400, garrison: { count: 1, cap: 1, ownerId: YOU } });
+
+  it("offers Enter to a mortarman, unlike the bunker", () => {
+    assert.equal(act({ selected: [mortar], hit: empty }), "garrison");
+    assert.equal(act({ selected: [rifle], hit: empty }), "garrison");
+  });
+
+  it("offers nothing to enter once the one place is taken", () => {
+    assert.notEqual(act({ selected: [rifle], hit: full }), "garrison");
+  });
+
+  it("lets an engineer repair a damaged trench", () => {
+    const hurt = building({ id: 82, type: "trench", hp: 200, hpMax: 400, garrison: { count: 0, cap: 1 } });
+    assert.equal(act({ selected: [eng], hit: hurt }), "repair");
+  });
+});
+
 describe("plane return-to-airfield cursor", () => {
   const plane = unit({ id: 70, type: "stuka", air: { phase: "fly", alt: 6 } });
   const strip = building({ id: 71, type: "airfield" });
