@@ -276,7 +276,7 @@ export function spillGarrison(state: MatchState, house: Entity, opts?: { damage?
   vacateIfEmpty(state, house);
 }
 
-export type GarrisonFace = "e" | "s";
+export type GarrisonFace = "n" | "e" | "s" | "w";
 
 export interface GarrisonMuzzle {
   x: number;
@@ -284,7 +284,7 @@ export interface GarrisonMuzzle {
   face: GarrisonFace;
 }
 
-/** Visible-wall windows. Iso shows the south (left) and east (right) faces. */
+/** Firing openings on every wall. Iso only shows the south (left) and east (right) faces. */
 export function garrisonWindows(house: Entity, tileSize: number): GarrisonMuzzle[] {
   const x0 = house.tileX * tileSize;
   const y0 = house.tileY * tileSize;
@@ -296,6 +296,8 @@ export function garrisonWindows(house: Entity, tileSize: number): GarrisonMuzzle
     const t = (i + 1) / (n + 1);
     pts.push({ x: x0 + t * bw, y: y0 + bh, face: "s" });
     pts.push({ x: x0 + bw, y: y0 + t * bh, face: "e" });
+    pts.push({ x: x0 + t * bw, y: y0, face: "n" });
+    pts.push({ x: x0, y: y0 + t * bh, face: "w" });
   }
   return pts;
 }
@@ -323,6 +325,33 @@ export function pickGarrisonMuzzle(house: Entity, tileSize: number, ang: number,
     }
   }
   return best;
+}
+
+const FACE_OUT: Record<GarrisonFace, { x: number; y: number }> = {
+  n: { x: 0, y: -1 },
+  e: { x: 1, y: 0 },
+  s: { x: 0, y: 1 },
+  w: { x: -1, y: 0 },
+};
+
+/**
+ * Where a holed-up soldier's round leaves: the opening on the wall that faces
+ * the aim point, a hair outside the wall, so the shot never starts inside its
+ * own building. Null when the unit is not garrisoned.
+ */
+export function garrisonMuzzleToward(
+  state: MatchState,
+  unit: Entity,
+  aimX: number,
+  aimY: number,
+): { x: number; y: number; house: Entity } | null {
+  if (unit.garrisonedIn == null) return null;
+  const house = state.entities.get(unit.garrisonedIn);
+  if (!house) return null;
+  const ang = Math.atan2(aimY - house.y, aimX - house.x);
+  const w = pickGarrisonMuzzle(house, state.tileSize, ang, unit.id);
+  const out = FACE_OUT[w.face];
+  return { x: w.x + out.x * 4, y: w.y + out.y * 4, house };
 }
 
 /** Screen-pixel lift from the pad to a glowing window, by story. */
