@@ -627,6 +627,78 @@ input[type="range"] { padding: 0; }
   flex-shrink: 0;
 }
 
+.group-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 3px;
+  flex-shrink: 0;
+}
+
+.group-tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 0 4px;
+  font-family: "Oswald", sans-serif;
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: linear-gradient(#24180f, #110b08);
+  border: 2px solid #3a2418;
+  border-bottom-width: 3px;
+  cursor: pointer;
+}
+.group-tab svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+  filter: drop-shadow(0 1px 0 #000);
+}
+.group-tab:hover { color: var(--text); border-color: var(--rust); }
+.group-tab.is-active {
+  color: var(--amber);
+  background: linear-gradient(#4a2c1c, #1f140d);
+  border-color: var(--rust-hi);
+  border-bottom-color: var(--amber);
+}
+.group-tab[data-state="locked"]:not(.is-active) { opacity: 0.5; }
+
+.group-light {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: transparent;
+}
+.group-tab[data-state="working"] .group-light { background: var(--amber); box-shadow: 0 0 4px var(--amber); }
+.group-tab[data-state="paused"] .group-light { background: var(--amber-dim); }
+.group-tab[data-state="ready"] .group-light {
+  background: var(--ready);
+  box-shadow: 0 0 6px var(--ready);
+  animation: ready-pulse 1s ease-in-out infinite;
+}
+.group-tab[data-state="ready"]:not(.is-active) { color: var(--ready); border-color: var(--ready-dim); }
+
+.sidebar h3.group-heading {
+  margin: 2px 0 0;
+  font-size: 0.7rem;
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  border-bottom: 1px solid #3a2418;
+  padding-bottom: 3px;
+}
+
+/* Tallest group (Infantry) sets the floor so Config and Inspect don't jump on tab change. */
+.group-panels {
+  min-height: calc(5 * 3.1rem + 4 * 6px);
+  flex-shrink: 0;
+}
+
 .cameos {
   display: grid;
   grid-template-columns: 1fr 1fr;
