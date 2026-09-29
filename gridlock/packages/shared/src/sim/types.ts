@@ -362,6 +362,12 @@ export interface SimPlayer {
   ai?: AiDifficulty;
   /** Sim tick to try the next attack wave. */
   aiNextAttackTick: number;
+  /** Sim tick for the CPU's next support, shell, and defense pass. */
+  aiNextMicroTick?: number;
+  /** Sim tick before which the CPU skips a building that found no room in its base. */
+  aiNoRoomUntil?: Partial<Record<BuildingType, number>>;
+  /** Where each CPU Mauler last stood still, and since which tick. Finds jams at a dock or a lane. */
+  aiHaulerStill?: Record<number, { x: number; y: number; since: number }>;
 }
 
 export interface MatchState {
