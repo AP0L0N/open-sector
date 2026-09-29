@@ -84,7 +84,7 @@ function expectChip(target: CatalogEntry, face: "front" | "side" | "rear", distT
 }
 
 describe("AT infantry", () => {
-  it("is a muster soldier with the sniper's reach and a PTRD", () => {
+  it("is a muster soldier with the sniper's scope, a shorter reach, and a PTRD", () => {
     const s = catalog("atinfantry");
     const sniper = catalog("sniper");
     assert.equal(s.name, "AT Infantry");
@@ -100,9 +100,9 @@ describe("AT infantry", () => {
     assert.equal(s.sightBonusTiles, sniper.sightBonusTiles);
     assert.equal(sightTilesOf("atinfantry", HEIGHT_BASE), sightTilesOf("sniper", HEIGHT_BASE));
     assert.equal(s.rangeTiles, PTRD.rangeTiles);
-    assert.equal(s.rangeTiles, sniper.rangeTiles);
+    assert.ok(s.rangeTiles < sniper.rangeTiles);
     assert.ok(s.rangeTiles < sightTilesOf("atinfantry", HEIGHT_BASE));
-    assert.equal(rangeTilesOf("atinfantry", HEIGHT_BASE), rangeTilesOf("sniper", HEIGHT_BASE));
+    assert.ok(rangeTilesOf("atinfantry", HEIGHT_BASE) < rangeTilesOf("sniper", HEIGHT_BASE));
     assert.equal(PTRD.cooldown, SCOPED.cooldown);
     assert.equal(PTRD.clip, SCOPED.clip);
     assert.equal(PTRD.reload, SCOPED.reload);
