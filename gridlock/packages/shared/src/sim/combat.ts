@@ -118,7 +118,7 @@ import {
   garrisonIsHostile,
   garrisonLooksOccupied,
   livingGarrison,
-  pickGarrisonMuzzle,
+  garrisonMuzzleToward,
   woundGarrison,
 } from "./garrison.js";
 import {
@@ -968,11 +968,15 @@ function launchRocket(
   const aloft = !!target && isAirborne(target);
   const moving = !!target && (aloft || target.waypoints.length > 0 || target.state === "move");
   // The pods lay on their own bearing, not the torso's. A tube lies along the soldier's.
-  const aim = Math.atan2(aimY - e.y, aimX - e.x);
+  // From inside, the tube pokes out of the opening facing the target.
+  const slit = garrisonMuzzleToward(state, e, aimX, aimY);
+  const fromX = slit?.x ?? e.x;
+  const fromY = slit?.y ?? e.y;
+  const aim = Math.atan2(aimY - fromY, aimX - fromX);
   const sideX = -Math.sin(aim);
   const sideY = Math.cos(aim);
-  const x = e.x + sideX * side;
-  const y = e.y + sideY * side;
+  const x = fromX + sideX * side;
+  const y = fromY + sideY * side;
   const z0 = muzzleHeight(state, e) + rack.podLift;
   let goalX = aimX;
   let goalY = aimY;
@@ -1006,7 +1010,7 @@ function launchRocket(
     penetration: rack.penetration,
     caliber: rack.caliber,
     life: flight,
-    ignoreId: e.id,
+    ignoreId: slit?.house.id ?? e.id,
     fromId: e.id,
     bounced: false,
     shell: null,
@@ -1343,8 +1347,16 @@ function fireRound(
 ): void {
   const target = opts?.target;
   const moving = !!target && (target.waypoints.length > 0 || target.state === "move");
+  // A soldier inside does not turn: his round leaves the opening facing the target, aimed from there.
+  const slit = garrisonMuzzleToward(state, e, aimX, aimY);
   // Fused ground shots aim at the click (plus spread), not along current turret facing.
-  const bearing = opts?.bearing ?? (opts?.fuse ? Math.atan2(aimY - e.y, aimX - e.x) : aimFacing(e));
+  const bearing =
+    opts?.bearing ??
+    (slit
+      ? Math.atan2(aimY - slit.y, aimX - slit.x)
+      : opts?.fuse
+      ? Math.atan2(aimY - e.y, aimX - e.x)
+      : aimFacing(e));
   const ang = aimAngle(
     bearing,
     stats.spreadDeg,
@@ -1366,14 +1378,10 @@ function fireRound(
   let x = e.x + dx * muzzleReach;
   let y = e.y + dy * muzzleReach;
   let ignoreId = e.id;
-  if (e.garrisonedIn != null) {
-    const house = state.entities.get(e.garrisonedIn);
-    if (house) {
-      const muzzle = pickGarrisonMuzzle(house, state.tileSize, ang, e.id);
-      x = muzzle.x + dx * 4;
-      y = muzzle.y + dy * 4;
-      ignoreId = house.id;
-    }
+  if (slit) {
+    x = slit.x;
+    y = slit.y;
+    ignoreId = slit.house.id;
   }
   const z0 = muzzleHeight(state, e);
   const zAim = target ? aimHeight(state, target) : worldTileHeight(state, aimX, aimY);

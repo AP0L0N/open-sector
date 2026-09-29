@@ -543,6 +543,8 @@ export interface CatalogEntry {
   /** Armored hulls leave an impassable wreck instead of vanishing. */
   leavesWreck?: boolean;
   wreckHp?: number;
+  /** False: infantry cannot take this structure by standing the capture. Default true for player buildings. */
+  capturable?: boolean;
   /** Infantry slots. 0 = cannot garrison. */
   garrisonCap?: number;
   /** Occupant HP multiplier while inside. 1 = no bonus. */
@@ -1768,10 +1770,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonSightBonus: 0,
     garrisonFullArms: true,
     garrisonTypes: BUNKER_TYPES,
+    capturable: false,
     garrisonMedicRegen: BUNKER_MEDIC_REGEN_FRAC,
     garrisonEngineerRepair: BUNKER_ENGINEER_REPAIR_PER_SEC,
     coverHeight: BUNKER_COVER_HEIGHT,
-    blurb: `Reinforced concrete pillbox for ${BUNKER_GARRISON_CAP} infantry: riflemen, gunners, snipers, AT troops, rocketmen, medics, and engineers. The best cover on the field — the walls take most of every hit, and every weapon fires from the slits, the Gunner's MG included. Low, so it adds no sight or reach. A medic inside slowly patches everyone; an engineer inside slowly patches the concrete.`,
+    blurb: `Reinforced concrete pillbox for ${BUNKER_GARRISON_CAP} infantry: riflemen, gunners, snipers, AT troops, rocketmen, medics, and engineers. The best cover on the field — the walls take most of every hit, and every weapon fires from the slits, the Gunner's MG included. Low, so it adds no sight or reach. A medic inside slowly patches everyone; an engineer inside slowly patches the concrete. Enemy infantry cannot capture it — it has to be shot apart.`,
   },
   ram: {
     type: "ram",
@@ -2806,9 +2809,10 @@ export function entityIsScouting(e: { scoutOut?: boolean; scoutHp?: number }): b
   return !!e.scoutOut && (e.scoutHp ?? 0) > 0;
 }
 
-/** Player-built structures can change owner. Civilian houses cannot. */
+/** Player-built structures can change owner. Civilian houses and the Bunker cannot. */
 export function isCapturable(type: EntityType): boolean {
-  return catalog(type).kind === "building" && !isCivilianType(type) && !isFieldStructure(type);
+  const def = catalog(type);
+  return def.kind === "building" && def.capturable !== false && !isCivilianType(type) && !isFieldStructure(type);
 }
 
 export function hasTurret(type: EntityType): boolean {
