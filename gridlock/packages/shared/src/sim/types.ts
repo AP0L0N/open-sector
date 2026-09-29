@@ -268,6 +268,8 @@ export interface Projectile {
   harmAllies?: boolean;
   /** Rocket fused on a plane: it bursts in the air and only catches aircraft. */
   airBurst?: boolean;
+  /** Rocket only: CIWS mounts that already fired a burst at it. Each gets one try. */
+  ciwsTried?: number[];
 }
 
 /** Lasting smoke screen from a 75mm smoke shell. */

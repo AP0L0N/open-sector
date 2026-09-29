@@ -2,6 +2,11 @@ import {
   AIR_HIT_BAND,
   aimFacing,
   beltOf,
+  CIWS_INTERCEPT_CHANCE,
+  CIWS_INTERCEPT_ROUNDS,
+  CIWS_INTERCEPTS_PER_TICK,
+  radarLaidOf,
+  TICK_DT,
   MG42_BIPOD_SECONDS,
   MORTAR,
   MORTAR_MIN_RANGE_TILES,
@@ -140,8 +145,10 @@ export function tickCombat(state: MatchState, dt: number): void {
     resolveTarget(state, e);
   }
   tickStance(state);
+  const downed = new Set<number>();
   for (const e of state.entities.values()) {
     if (!canFight(e) || !supplyRiderFights(state, e) || waterSilences(state, e) || garrisonIsHiding(state, e)) continue;
+    if (interceptRockets(state, e, downed)) continue;
     fireAtCurrent(state, e, dt);
   }
   // Titan pods: their own target, their own clock, whatever the main gun is doing.
@@ -149,6 +156,54 @@ export function tickCombat(state: MatchState, dt: number): void {
     if (!rocketsOf(e.type) || !canFight(e)) continue;
     tickRocketPods(state, e);
   }
+  if (downed.size > 0) state.projectiles = state.projectiles.filter((p) => !downed.has(p.id));
+}
+
+/**
+ * CIWS against rockets. Each hostile rocket inside the gun's reach draws one
+ * burst from each mount, nearest first, CIWS_INTERCEPTS_PER_TICK a tick. A
+ * hit bursts it in the air and nothing under it is hurt. True when the mount
+ * spent this tick on rockets, so it does not also fire on its ground target.
+ */
+function interceptRockets(state: MatchState, e: Entity, downed: Set<number>): boolean {
+  if (!radarLaidOf(e.type) || e.clip <= 0) return false;
+  const range = weaponRangeWorld(state, e);
+  const inbound: { p: Projectile; d: number }[] = [];
+  for (const p of state.projectiles) {
+    if (p.flight !== "rocket" || downed.has(p.id) || p.ciwsTried?.includes(e.id)) continue;
+    if (allies(state, e.ownerId, p.ownerId)) continue;
+    const d = Math.hypot(p.x - e.x, p.y - e.y);
+    if (d <= range) inbound.push({ p, d });
+  }
+  if (inbound.length === 0) return false;
+  inbound.sort((a, b) => a.d - b.d || a.p.id - b.p.id);
+  const first = inbound[0]!.p;
+  for (const { p } of inbound.slice(0, CIWS_INTERCEPTS_PER_TICK)) {
+    if (e.clip <= 0) break;
+    const spent = Math.min(e.clip, CIWS_INTERCEPT_ROUNDS);
+    e.clip -= spent;
+    (p.ciwsTried ??= []).push(e.id);
+    if (nextRand(state) >= CIWS_INTERCEPT_CHANCE * (spent / CIWS_INTERCEPT_ROUNDS)) continue;
+    downed.add(p.id);
+    state.impacts.push({
+      id: state.nextId++,
+      ownerId: e.ownerId,
+      kind: "kill",
+      fromId: e.id,
+      x: p.x,
+      y: p.y,
+      vx: p.vx,
+      vy: p.vy,
+      caliber: p.caliber,
+      blast: true,
+      intercept: true,
+    });
+  }
+  // The radar lays the barrels straight onto the nearest rocket.
+  e.turretFacing = Math.atan2(first.y - e.y, first.x - e.x);
+  e.gatlingFire = { tick: state.tick, arms: 1 };
+  e.cooldown = TICK_DT;
+  return true;
 }
 
 /** Standing in water stops every gun except the Titan's shoulder rockets, which ride above it. */
@@ -173,6 +228,14 @@ function travelFights(e: Entity): boolean {
 }
 
 function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
+  // The CIWS takes no orders. It lays on the best target in reach every tick, so a plane cuts in at once.
+  if (radarLaidOf(e.type)) {
+    const pick = acquire(state, e);
+    e.attackTarget = pick?.id ?? null;
+    e.order = pick ? { kind: "attack", targetId: pick.id, auto: true } : null;
+    if (!pick && e.state === "attack") e.state = "idle";
+    return pick;
+  }
   if (e.order?.kind === "forceattack") {
     if (e.order.targetId == null) {
       e.attackTarget = null;
@@ -306,17 +369,28 @@ function dropsWreck(e: Entity, target: Entity): boolean {
  * A player attack or force-attack still fires.
  */
 function dropsUnharmedArmor(state: MatchState, e: Entity, target: Entity): boolean {
-  if (!isInfantryType(e.type)) return false;
+  if (!isInfantryType(e.type) && !radarLaidOf(e.type)) return false;
   if (e.order?.kind === "forceattack") return false;
   if (e.order?.kind === "attack" && !e.order.auto) return false;
   return !infantryRoundCanHarm(state, e, target);
 }
 
-/** The shot from here can put damage on that hull. Unarmored targets always can. */
+/** The shot from here can put damage on that hull. Unarmored targets always can. Covers the CIWS gun too. */
 function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boolean {
   if (target.kind !== "unit") return true;
   const def = catalog(target.type);
   if (!isArmored(def)) return true;
+  if (radarLaidOf(e.type)) {
+    if (entityIsScouting(target)) return true;
+    return armorHarmPossible({
+      gun: catalog(e.type),
+      target: def,
+      targetFacing: target.facing,
+      targetHpMax: target.hpMax,
+      vx: target.x - e.x,
+      vy: target.y - e.y,
+    });
+  }
   const gun = infantryGunFor(e);
   if (!gun) return false;
   if (gun.id === "mortar") return true;
@@ -461,6 +535,10 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
 
   if (e.type === "walker") {
     if (target && walkerSparesBuilding(state, e, target)) return;
+    fireWalker(state, e, aimX, aimY, range, dist, target);
+    return;
+  }
+  if (radarLaidOf(e.type)) {
     fireWalker(state, e, aimX, aimY, range, dist, target);
     return;
   }
@@ -920,7 +998,8 @@ function fireWalker(
 ): void {
   if (e.cooldown > 0 || e.clip <= 0) return;
   const guns = walkerGunsOf(e);
-  const per = WALKER_ONE_BURST;
+  // Walker: one arm's burst. The CIWS barrel cluster: its catalog rate.
+  const per = e.type === "walker" ? WALKER_ONE_BURST : (catalog(e.type).shotsPerTick ?? 1);
   const second = guns === 2 && target ? walkerSecondTarget(state, e, target) : undefined;
   const gun = fireStats(e);
   const stats = {
@@ -1100,7 +1179,7 @@ function fireRound(
     () => nextRand(state),
     moving,
     stats.spreadPower ?? 1,
-    target ? stanceTargetSpreadMul(target, unitInWater(state, target)) * airTargetSpreadMul(target) : 1,
+    target ? stanceTargetSpreadMul(target, unitInWater(state, target)) * airTargetSpreadMul(target, e) : 1,
     opts?.accurateRange ?? range,
   );
   const speed = stats.projectileSpeed;
@@ -1576,13 +1655,33 @@ function segmentCircleT(
 
 function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undefined {
   const range = weaponRangeWorld(state, e);
+  // The CIWS takes units only, and a plane in the air before anything on the ground.
+  const radar = radarLaidOf(e.type);
   let best: Entity | undefined;
   let bestD = range * range;
+  let bestAir: Entity | undefined;
+  let bestAirD = range * range;
   for (const o of state.entities.values()) {
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
     if (outOfReachAloft(e, o)) continue;
+    if (radar) {
+      if (o.kind !== "unit") continue;
+      const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
+      const air = isAirborne(o);
+      if (d > (air ? bestAirD : bestD)) continue;
+      if (!canSeeEntity(state, e.ownerId, o)) continue;
+      if (!infantryRoundCanHarm(state, e, o)) continue;
+      if (air) {
+        bestAirD = d;
+        bestAir = o;
+      } else {
+        bestD = d;
+        best = o;
+      }
+      continue;
+    }
     if (isInfantryType(e.type) && o.kind === "building") {
       if (!garrisonIsHostile(state, e.ownerId, o) || !garrisonLooksOccupied(state, e.ownerId, o)) continue;
     } else if (
@@ -1602,7 +1701,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     bestD = d;
     best = o;
   }
-  return best;
+  return bestAir ?? best;
 }
 
 export function inGuardCone(e: Entity, t: { x: number; y: number }): boolean {

@@ -295,6 +295,8 @@ export interface ImpactView {
   rocket?: boolean;
   /** Rocket air burst beside a plane: elevation units above the ground. No dirt, no crater. */
   z?: number;
+  /** A CIWS burst a rocket in the air. No crater, nothing hurt under it. */
+  intercept?: boolean;
 }
 
 /** Blood droplet around a corpse. World pixels. */
