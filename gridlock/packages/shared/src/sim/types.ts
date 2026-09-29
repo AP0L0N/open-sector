@@ -114,6 +114,8 @@ export interface Entity {
   weapon: InfantryWeaponId | null;
   /** Walker arms in use. 1 conserves the rack. 2 is both guns. Other types omit it. */
   gatlingGuns?: 1 | 2;
+  /** Titan outriggers are down: stationary, hull locked, braced max HP. Missing means false. */
+  braced?: boolean;
   /** Last Walker volley: sim tick, arms that fired, and the off-arm bearing when it took a second target. */
   gatlingFire?: { tick: number; arms: 1 | 2; offAim?: number };
   /** Seconds the MG42 bipod has been set while prone. 0 until the gunner crawls. */
