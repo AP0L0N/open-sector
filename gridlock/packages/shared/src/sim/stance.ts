@@ -5,22 +5,27 @@ import {
   STANCE_TARGET_SPREAD,
   TICK_DT,
   hasCrit,
+  isCyborg,
   isInfantryType,
   stanceOf,
   type Stance,
 } from "../catalog.js";
+import { syncCyborgLegs } from "./crits.js";
 import { unitInWater } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
 export function commandedStance(e: Entity): Stance {
   if (!isInfantryType(e.type)) return "stand";
   if (hasCrit(e, "leg")) return "crawl";
+  if (isCyborg(e.type)) return "stand";
   return e.stanceOrder;
 }
 
 export function effectiveStance(e: Entity, targeted: boolean): Stance {
   if (!isInfantryType(e.type)) return "stand";
   if (hasCrit(e, "leg")) return "crawl";
+  // Plating does not duck. The cyborg stands under fire until the legs go.
+  if (isCyborg(e.type)) return "stand";
   if (targeted && !e.garrisonedIn) return "crawl";
   return e.stanceOrder;
 }
@@ -62,7 +67,9 @@ export function tickStance(state: MatchState): void {
   const hot = targetedIds(state);
   for (const e of state.entities.values()) {
     if (!isInfantryType(e.type) || e.hp <= 0) continue;
+    syncCyborgLegs(e);
     if (hasCrit(e, "leg")) e.stanceOrder = "crawl";
+    else if (isCyborg(e.type)) e.stanceOrder = "stand";
     if (unitInWater(state, e)) {
       e.stance = e.stanceOrder;
       continue;

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  cyborgSheet,
   gunnerSheet,
   heldFrame,
   MG_FIRE_MS,
@@ -85,6 +86,17 @@ describe("trooperSheet", () => {
     assert.equal(medicSheet({ stance: "crawl", tending: true }), "crawl");
     assert.equal(medicSheet({ swimming: true, tending: true }), "swim");
     assert.equal(medicSheet({ wreck: true, tending: true }), "die");
+  });
+
+  it("fires the cyborg gatling standing or dragging, and never crouches", () => {
+    assert.equal(cyborgSheet({}), "walk");
+    assert.equal(cyborgSheet({ stance: "crouch" }), "walk");
+    assert.equal(cyborgSheet({ shotAgeMs: 40 }), "fire");
+    assert.equal(cyborgSheet({ shotAgeMs: MG_FIRE_MS }), "walk");
+    assert.equal(cyborgSheet({ stance: "crawl" }), "crawl");
+    assert.equal(cyborgSheet({ stance: "crawl", shotAgeMs: 40 }), "crawl-fire");
+    assert.equal(cyborgSheet({ swimming: true, shotAgeMs: 40 }), "swim");
+    assert.equal(cyborgSheet({ wreck: true, stance: "crawl" }), "die");
   });
 
   it("holds the last frame of a one-shot", () => {

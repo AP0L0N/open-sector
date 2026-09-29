@@ -379,12 +379,16 @@ Shoot a turntable per pose. Same camera, same scale, same costume. Do not combin
 | Medic | walk, crouch | 8 | standing / kneeling turntable; 8 copies (held pose). No weapon. Satchel and white armband |
 | Medic | crawl | 8 | prone with the satchel |
 | Medic | die | 4 | corpse turntable; body stays flat, satchel beside him |
+| Cyborg | walk | 8 | 3D primitive render, real stride (`tools/sprites/render_cyborg.py`). No crouch sheet — he never crouches |
+| Cyborg | fire | 4 | the stand pose, barrels spinning, flash big / small / big / tiny |
+| Cyborg | crawl, crawl-fire | 8, 4 | legs torn off: torso on the dirt, dragging on the left arm; fire adds the flash. Prone scale |
+| Cyborg | die | 4 | torso face down, gatling flung aside, one leg beside him |
 | All infantry | cameo | 1 | crop of the east stand, 72×72, feet near the bottom |
 | All infantry | swim | — | shared `infantry-swim.png` |
 
 Stand is column 0 of the walk sheet. The client plays later columns only while the unit is moving.
 
-File names stay `trooper-*.png` for the Rifleman. Gunner files are `gunner-*.png`. Sniper files are `sniper-*.png`. Mortarman files are `mortarman-*.png`. AT Infantry files are `atinfantry-*.png`. Medic files are `medic-*.png`. Shipped PNGs go in `gridlock/packages/client/src/assets/units/`. Unique stills go in `tools/sprites/src/<id>-<pose>/` as `E.png` … `ENE.png`.
+File names stay `trooper-*.png` for the Rifleman. Gunner files are `gunner-*.png`. Sniper files are `sniper-*.png`. Mortarman files are `mortarman-*.png`. AT Infantry files are `atinfantry-*.png`. Medic files are `medic-*.png`. Cyborg files are `cyborg-*.png`; they come from `python tools/sprites/render_cyborg.py`, which renders 16 unique yaws of one locked-camera model (no mirroring) and pins the ground contact to `contactY` on every frame — re-run it after editing the model instead of hand-editing the PNGs. Shipped PNGs go in `gridlock/packages/client/src/assets/units/`. Unique stills go in `tools/sprites/src/<id>-<pose>/` as `E.png` … `ENE.png`.
 
 ### Turntable shot
 

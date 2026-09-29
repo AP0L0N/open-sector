@@ -3,15 +3,18 @@ import {
   CRIT_ENGINE_CHANCE,
   CRIT_LEG_CHANCE,
   CRIT_TRACKS_CHANCE,
+  CYBORG_DRAG_SPEED,
   STANCE_AIM_SPREAD,
   STANCE_SPEED,
   SWIM_SPEED,
   addCrit,
   catalog,
+  cyborgLegsLost,
   gunStatsFor,
   hasAmmo,
   hasCrit,
   infantryGunFor,
+  isCyborg,
   isInfantryType,
   isMotorVehicle,
   pickLoadedShell,
@@ -25,6 +28,7 @@ import type { Entity } from "./types.js";
 export function moveSpeedMul(e: Entity, swimming = false): number {
   if (hasCrit(e, "tracks") || hasCrit(e, "engine")) return 0;
   if (isInfantryType(e.type) && swimming) return SWIM_SPEED;
+  if (isCyborg(e.type) && hasCrit(e, "leg")) return CYBORG_DRAG_SPEED;
   if (isInfantryType(e.type)) return STANCE_SPEED[stanceOf(e)];
   return 1;
 }
@@ -35,6 +39,25 @@ export function moveSpeedMul(e: Entity, swimming = false): number {
  */
 export function hullTurnMul(e: Entity): number {
   return hasCrit(e, "engine") ? 0 : 1;
+}
+
+/**
+ * Cyborg legs follow his HP. Shot down to the last stretch, they are torn off
+ * and he drags himself; healed or repaired well past it, they work again.
+ */
+export function syncCyborgLegs(e: Entity): void {
+  const lost = cyborgLegsLost(e);
+  if (lost == null || e.hp <= 0) return;
+  const had = hasCrit(e, "leg");
+  if (lost && !had) {
+    addCrit(e, "leg");
+    e.stanceOrder = "crawl";
+    e.stance = "crawl";
+  } else if (!lost && had) {
+    e.crits = e.crits.filter((c) => c !== "leg");
+    e.stanceOrder = "stand";
+    e.stance = "stand";
+  }
 }
 
 export function immobilized(e: { crits?: readonly Crit[] }): boolean {
@@ -78,6 +101,8 @@ export function rollCrits(
 ): void {
   if (e.kind !== "unit" || e.wreck) return;
   if (kind === "ricochet" || kind === "miss" || kind === "puff" || kind === "crush") return;
+  // The cyborg's limbs are not dice rolls: the legs follow his HP (syncCyborgLegs).
+  if (isCyborg(e.type)) return;
   if (isInfantryType(e.type)) {
     if (damage <= 0) return;
     if (rand() < CRIT_ARM_CHANCE) addCrit(e, "arm");
