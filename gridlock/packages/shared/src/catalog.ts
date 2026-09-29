@@ -1602,7 +1602,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     letter: "Z",
     cost: 260,
     buildSeconds: 13,
-    hp: 110,
+    hp: 300,
     power: 0,
     tileW: 1,
     tileH: 1,
