@@ -557,6 +557,7 @@ input[type="range"] { padding: 0; }
 }
 .prod-job[data-type="cyborg"] {
   background-image: url("../assets/units/cyborg-cameo.png");
+}
 .prod-job[data-type="titan"] {
   background-image: url("../assets/units/titan-cameo.png");
 }
@@ -789,6 +790,7 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/cyborg-cameo.png");
+}
 #train-titan {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
