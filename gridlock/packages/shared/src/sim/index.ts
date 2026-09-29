@@ -75,6 +75,7 @@ export {
   sightTilesForEntity,
   observerEyeForEntity,
   uphillSightForEntity,
+  observerEyeOf,
   rangeTilesOf,
   weaponRangeWorld,
   gunCanElevate,

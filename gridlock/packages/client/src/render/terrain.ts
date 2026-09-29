@@ -34,6 +34,7 @@ import {
   PROP_IMAGES,
   type PropSprite,
 } from "./sprites.js";
+import { contourSegments, hillshadeFactor } from "./relief.js";
 
 const WALL_H = 20;
 const TREE_H = 14;
@@ -128,7 +129,65 @@ function bakePt(p: IsoPt, originX: number, originY: number): IsoPt {
 
 function elevShadeFactor(h: number): number {
   const span = Math.max(1, HEIGHT_MAX - HEIGHT_BASE);
-  return 1 + ((h - HEIGHT_BASE) / span) * 0.48;
+  const u = (h - HEIGHT_BASE) / span;
+  // Valleys sink harder than peaks lift so a hollow reads at a glance.
+  return 1 + u * (u < 0 ? 0.6 : 0.62);
+}
+
+/**
+ * Height cues over the ground texture, which would otherwise hide the base
+ * fill: altitude tone, sun-side hillshade, and a contour per terrace.
+ */
+function paintRelief(
+  ctx: CanvasRenderingContext2D,
+  map: MapDef,
+  tx: number,
+  ty: number,
+  originX: number,
+  originY: number,
+): void {
+  const elev = map.heights;
+  const hs: [number, number, number, number] = [
+    vertexElev(elev, map.width, map.height, tx, ty),
+    vertexElev(elev, map.width, map.height, tx + 1, ty),
+    vertexElev(elev, map.width, map.height, tx + 1, ty + 1),
+    vertexElev(elev, map.width, map.height, tx, ty + 1),
+  ];
+  const d = tileDiamond(tx, ty, map.tileSize);
+  const up = (p: IsoPt, z: number): IsoPt => {
+    const q = bakePt(p, originX, originY);
+    return { x: q.x, y: q.y - isoLift(z) };
+  };
+  const quad: [IsoPt, IsoPt, IsoPt, IsoPt] = [up(d.n, hs[0]), up(d.e, hs[1]), up(d.s, hs[2]), up(d.w, hs[3])];
+  const tone = elevShadeFactor(heightAt(map, tx, ty)) * hillshadeFactor(...hs);
+  if (Math.abs(tone - 1) > 0.01) {
+    ctx.fillStyle =
+      tone < 1
+        ? `rgba(10, 12, 8, ${Math.min(0.55, (1 - tone) * 0.9).toFixed(3)})`
+        : `rgba(250, 232, 170, ${Math.min(0.28, (tone - 1) * 0.45).toFixed(3)})`;
+    fillQuad(ctx, ...expandQuad(...quad, TILE_OVERLAP_PX));
+  }
+  const seg = contourSegments(quad, hs);
+  if (seg.length === 0) return;
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  for (let k = 0; k < seg.length; k += 2) {
+    ctx.moveTo(seg[k]!.x, seg[k]!.y + 1);
+    ctx.lineTo(seg[k + 1]!.x, seg[k + 1]!.y + 1);
+  }
+  ctx.strokeStyle = "rgba(12, 10, 6, 0.42)";
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.beginPath();
+  for (let k = 0; k < seg.length; k += 2) {
+    ctx.moveTo(seg[k]!.x, seg[k]!.y);
+    ctx.lineTo(seg[k + 1]!.x, seg[k + 1]!.y);
+  }
+  ctx.strokeStyle = "rgba(236, 222, 170, 0.16)";
+  ctx.lineWidth = 0.8;
+  ctx.stroke();
+  ctx.restore();
 }
 
 function groundFill(map: MapDef, tx: number, ty: number, kind: number, scrap: boolean): string {
@@ -511,7 +570,10 @@ function paintGround(
   const kind = map.tiles[ty * map.width + tx] ?? 0;
   fillElevatedTile(ctx, map, tx, ty, groundFill(map, tx, ty, kind, scrap), originX, originY, kind !== TILE_WATER);
   if (kind === TILE_WATER) paintWaterOverlay(ctx, map, tx, ty, originX, originY);
-  else paintSurface(ctx, map, tx, ty, kind, scrap, originX, originY);
+  else {
+    paintSurface(ctx, map, tx, ty, kind, scrap, originX, originY);
+    paintRelief(ctx, map, tx, ty, originX, originY);
+  }
 }
 
 /** Blur radius that rounds a one-tile stair into a bank. */

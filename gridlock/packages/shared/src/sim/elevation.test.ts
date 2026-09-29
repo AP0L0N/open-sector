@@ -81,6 +81,12 @@ describe("high ground bonuses", () => {
     assert.equal(rangeTilesOf("hauler", HEIGHT_BASE + 3), 0);
   });
 
+  it("makes one terrace worth two cells of reach and four of sight", () => {
+    const up = HEIGHT_BASE + TILE_SUBDIV;
+    assert.equal(rangeTilesOf("rifleman", up) - catalog("rifleman").rangeTiles, 2 * TILE_SUBDIV);
+    assert.equal(sightTilesOf("rifleman", up) - catalog("rifleman").sightTiles, 4 * TILE_SUBDIV);
+  });
+
   it("does not grow the gun when extra optics extend sight", () => {
     const optics = 8;
     assert.equal(sightTilesOf("warden", 0, optics), catalog("warden").sightTiles + optics);
