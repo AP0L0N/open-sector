@@ -1,0 +1,55 @@
+{
+  "id": "titan",
+  "cell": 192,
+  "contact_y": 0.84,
+  "facing": 16,
+  "order": [
+    "S",
+    "SSW",
+    "SW",
+    "WSW",
+    "W",
+    "WNW",
+    "NW",
+    "NNW",
+    "N",
+    "NNE",
+    "NE",
+    "ENE",
+    "E",
+    "ESE",
+    "SE",
+    "SSE"
+  ],
+  "sheets": {
+    "titan-legs.png": {
+      "cols": 8,
+      "rows": 16
+    },
+    "titan-torso.png": {
+      "cols": 1,
+      "rows": 16
+    },
+    "titan-gun.png": {
+      "cols": 1,
+      "rows": 16
+    },
+    "titan-braced-legs.png": {
+      "cols": 1,
+      "rows": 16
+    },
+    "titan-braced-torso.png": {
+      "cols": 1,
+      "rows": 16
+    },
+    "titan-braced-gun.png": {
+      "cols": 1,
+      "rows": 16
+    }
+  },
+  "empty_dirs": [],
+  "size_pop_dirs": [
+    "WSW"
+  ],
+  "edge_clip_dirs": []
+}

@@ -8,6 +8,7 @@ import {
   isArmoredType,
   isFieldStructure,
   isInfantryType,
+  wadesOf,
   isMotorVehicle,
   MAX_UNIT_RADIUS,
   rollReloadMul,
@@ -148,7 +149,7 @@ export function walkable(state: MatchState, x: number, y: number, type?: EntityT
   const fort = state.fortBlock[i] ?? 0;
   if (fort === 1) return false;
   if (fort === 2 && !(type && isInfantryType(type))) return false;
-  if (isWater(state, x, y)) return !!type && isInfantryType(type);
+  if (isWater(state, x, y)) return !!type && (isInfantryType(type) || wadesOf(type));
   if (state.blocked[i] === 1) return false;
   if (isTree(state, x, y)) {
     if (!type) return false;
@@ -159,12 +160,12 @@ export function walkable(state: MatchState, x: number, y: number, type?: EntityT
   return true;
 }
 
-/** Infantry currently standing in a water tile. Vehicles never count. */
+/** Infantry or a wading walker standing in a water tile. Other vehicles never count. */
 export function unitInWater(
   state: MatchState,
   e: { type: EntityType; x: number; y: number; garrisonedIn?: number | null },
 ): boolean {
-  if (!isInfantryType(e.type) || e.garrisonedIn) return false;
+  if ((!isInfantryType(e.type) && !wadesOf(e.type)) || e.garrisonedIn) return false;
   return isWater(state, worldToTile(e.x, state.tileSize), worldToTile(e.y, state.tileSize));
 }
 

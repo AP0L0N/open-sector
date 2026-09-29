@@ -117,6 +117,12 @@ import infantrySwimUrl from "../assets/units/infantry-swim.png";
 import haulerHullUrl from "../assets/units/hauler-hull.png";
 import haulerCartUrl from "../assets/units/hauler-cart.png";
 import walkerSheetUrl from "../assets/units/walker-move.png";
+import titanLegsUrl from "../assets/units/titan-legs.png";
+import titanTorsoUrl from "../assets/units/titan-torso.png";
+import titanGunUrl from "../assets/units/titan-gun.png";
+import titanBracedLegsUrl from "../assets/units/titan-braced-legs.png";
+import titanBracedTorsoUrl from "../assets/units/titan-braced-torso.png";
+import titanBracedGunUrl from "../assets/units/titan-braced-gun.png";
 import { bindCasemateSheets, bindSupplySheets, bindTurntableSheets } from "./turntable-sheet.js";
 import { engineRowFromFacing, engineRowFromScreen } from "./turntable.js";
 import scoutHeadUrl from "../assets/units/scout-head.png";
@@ -654,6 +660,46 @@ export const WALKER_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
+/**
+ * Titan: legs are the hull (8-frame stride), the torso is the turret, the
+ * barrel recoils on its own sheet. All three share one camera and origin
+ * (tools/sprites/render_titan.py), so the torso sits on the hips at any aim.
+ */
+const TITAN_CELL = 192;
+const TITAN_DRAW = Math.round(60 * UNIT_VISUAL_SCALE);
+const TITAN_CONTACT_Y = 0.84;
+
+function titanOverlay(src: string): TurretSpriteDef {
+  return { image: loadSheet(src), dirs: 16, frames: 1, frameSize: TITAN_CELL };
+}
+
+export const TITAN_SPRITE: UnitSpriteDef = {
+  image: loadSheet(titanLegsUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: TITAN_CELL,
+  fps: 8,
+  drawSize: TITAN_DRAW,
+  contactY: TITAN_CONTACT_Y,
+  turret: titanOverlay(titanTorsoUrl),
+  gun: titanOverlay(titanGunUrl),
+  facingSpace: "world",
+};
+
+/** Outriggers down, torso lowered onto the planted hips. Same cell, scale, and contact. */
+export const TITAN_BRACED_SPRITE: UnitSpriteDef = {
+  image: loadSheet(titanBracedLegsUrl),
+  dirs: 16,
+  frames: 1,
+  frameSize: TITAN_CELL,
+  fps: 1,
+  drawSize: TITAN_DRAW,
+  contactY: TITAN_CONTACT_Y,
+  turret: titanOverlay(titanBracedTorsoUrl),
+  gun: titanOverlay(titanBracedGunUrl),
+  facingSpace: "world",
+};
+
 /** Dozer only. The scrap cart is its own sheet so it can swing on the hitch. */
 export const HAULER_SPRITE: UnitSpriteDef = {
   image: loadSheet(haulerHullUrl),
@@ -693,6 +739,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   rifleman: TROOPER_SPRITE,
   hauler: HAULER_SPRITE,
   walker: WALKER_SPRITE,
+  titan: TITAN_SPRITE,
   warden: TIGER_SPRITE,
   ss3: SS3_SPRITE,
   supply: SUPPLY_SPRITE,

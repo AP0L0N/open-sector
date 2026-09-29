@@ -496,15 +496,15 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
       : "";
   const dep =
     e.deployProgress != null
-      ? `  ·  ${e.state === "undeploy" ? "packing" : "deploying"} ${Math.round(e.deployProgress * 100)}%`
+      ? `  ·  ${e.state === "undeploy" ? "packing" : e.type === "titan" ? "bracing" : "deploying"} ${Math.round(e.deployProgress * 100)}%`
       : "";
   const special =
     e.ownerId !== ctx.match.youPlayerId || !specialOf(e.type)
       ? ""
       : cd > 0 && e.state !== "deploy" && e.state !== "undeploy"
-        ? `  ·  ${specialLabel(e.type) ?? "Special"} ${cd.toFixed(1)}s`
+        ? `  ·  ${specialLabel(e.type, e.braced) ?? "Special"} ${cd.toFixed(1)}s`
         : specialReady(e.type, e.state, cd)
-          ? `  ·  ${specialLabel(e.type) ?? "Special"} (${SPECIAL_HOTKEY.toUpperCase()} / click)`
+          ? `  ·  ${specialLabel(e.type, e.braced) ?? "Special"} (${SPECIAL_HOTKEY.toUpperCase()} / click)`
           : "";
   const armor = armorLabel(e.type);
   const plates = armor ? `  ·  armor ${armor}` : "";
@@ -513,9 +513,13 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     e.crits && e.crits.length > 0 ? `  ·  ${e.crits.map((c) => CRIT_LABEL[c]).join(", ")}` : "";
   const posture = e.swimming
     ? "  ·  swimming"
-    : isInfantryType(e.type) && e.stance
-      ? `  ·  ${STANCE_LABEL[e.stance]}${e.stanceOrder && e.stanceOrder !== e.stance ? " (under fire)" : ""}`
-      : "";
+    : e.wading
+      ? "  ·  wading, cannot fire"
+      : e.braced
+        ? "  ·  braced"
+        : isInfantryType(e.type) && e.stance
+          ? `  ·  ${STANCE_LABEL[e.stance]}${e.stanceOrder && e.stanceOrder !== e.stance ? " (under fire)" : ""}`
+          : "";
   const belt = beltOf(e.type);
   const walkerMode = e.type === "walker" ? WALKER_GUN_MODES.find((m) => m.guns === (e.guns === 2 ? 2 : 1)) : undefined;
   const gun = isInfantryType(e.type)
@@ -653,6 +657,7 @@ const TYPE_ORDER: EntityType[] = [
   "warden",
   "ss3",
   "walker",
+  "titan",
   "supply",
   "hauler",
   "rifleman",
@@ -955,7 +960,7 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
     const off = live.some((e) => (e.cart ?? MAULER_CART_HP) <= 0);
     setField(body, "cargo", off ? `Cargo  ${cargo}  ·  cart off, refitting` : `Cargo  ${cargo}`);
   }
-  const spec = specialLabel(focus.type);
+  const spec = specialLabel(focus.type, live.length > 0 && live.every((e) => e.braced));
   if (spec) {
     const ready = live.some((e) => specialReady(e.type, e.state, e.specialCooldown ?? 0));
     setField(body, "special", ready ? `${spec}  (${SPECIAL_HOTKEY.toUpperCase()} / click)` : spec);

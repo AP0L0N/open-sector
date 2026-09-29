@@ -181,9 +181,11 @@ function cmdMove(state: MatchState, playerId: string, ids: number[], x: number, 
   const units = owned(state, playerId, ids);
   if (units.length === 0) return fail("not_yours", "No owned units.");
   const movers = units.filter(
-    (e) => e.state !== "deploy" && e.state !== "undeploy" && supplyCanDrive(state, e),
+    (e) => e.state !== "deploy" && e.state !== "undeploy" && !e.braced && supplyCanDrive(state, e),
   );
-  if (movers.length === 0) return fail("busy", "No driver.");
+  if (movers.length === 0) {
+    return fail("busy", units.every((e) => e.braced) ? "Deployed. Pack up to move." : "No driver.");
+  }
   const dests = groupMoveTargets(state, movers, x, y);
   const pace = groupMovePace(movers);
   for (const e of movers) {
@@ -232,7 +234,7 @@ function stopHaulerLoop(e: Entity): void {
 function cmdAttackMove(state: MatchState, playerId: string, ids: number[], x: number, y: number): CmdResult {
   const units = owned(state, playerId, ids);
   if (units.length === 0) return fail("not_yours", "No owned units.");
-  const movers = units.filter((e) => e.state !== "deploy" && e.state !== "undeploy");
+  const movers = units.filter((e) => e.state !== "deploy" && e.state !== "undeploy" && !e.braced);
   const dests = groupMoveTargets(state, movers, x, y);
   const pace = groupMovePace(movers);
   for (const e of movers) {

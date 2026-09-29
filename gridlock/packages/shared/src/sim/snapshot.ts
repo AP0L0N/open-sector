@@ -2,7 +2,7 @@ import {
   beltOf,
   catalog,
   clampGameSpeed,
-  DEPLOY_SECONDS,
+  deploySecondsOf,
   entityIsScouting,
   garrisonCapOf,
   hasMg,
@@ -111,7 +111,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       smokeCharges: friendly && e.type === "hauler" && !e.wreck ? e.smokeCharges : undefined,
       deployProgress:
         e.state === "deploy" || e.state === "undeploy"
-          ? Math.min(1, e.deployTime / DEPLOY_SECONDS)
+          ? Math.min(1, e.deployTime / deploySecondsOf(e.type))
           : undefined,
       specialCooldown: e.specialCooldown > 0 ? e.specialCooldown : undefined,
       wreck: e.wreck || undefined,
@@ -119,6 +119,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       stance: isInfantryType(e.type) ? e.stance : undefined,
       stanceOrder: isInfantryType(e.type) && e.stanceOrder !== e.stance ? e.stanceOrder : undefined,
       swimming: isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
+      wading: !isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
+      braced: e.braced || undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
       guardFacing: friendly && e.guardFacing != null ? e.guardFacing : undefined,
       guardTargetId:
