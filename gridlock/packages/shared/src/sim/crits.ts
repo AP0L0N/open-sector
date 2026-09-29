@@ -3,7 +3,9 @@ import {
   CRIT_ENGINE_CHANCE,
   CRIT_LEG_CHANCE,
   CRIT_TRACKS_CHANCE,
+  CYBORG_CRAWL_SHIELD_SECONDS,
   CYBORG_DRAG_SPEED,
+  CYBORG_LEGS_LOST_HP,
   STANCE_AIM_SPREAD,
   STANCE_SPEED,
   SWIM_SPEED,
@@ -19,6 +21,7 @@ import {
   isInfantryType,
   isMotorVehicle,
   pickLoadedShell,
+  secondsToTicks,
   stanceOf,
   wadesOf,
   type Crit,
@@ -48,19 +51,52 @@ export function hullTurnMul(e: Entity): number {
  * Cyborg legs follow his HP. Shot down to the last stretch, they are torn off
  * and he drags himself; healed or repaired well past it, they work again.
  */
-export function syncCyborgLegs(e: Entity): void {
+export function syncCyborgLegs(e: Entity, tick: number): void {
   const lost = cyborgLegsLost(e);
   if (lost == null || e.hp <= 0) return;
   const had = hasCrit(e, "leg");
   if (lost && !had) {
-    addCrit(e, "leg");
-    e.stanceOrder = "crawl";
-    e.stance = "crawl";
+    tearCyborgLegs(e, tick);
   } else if (!lost && had) {
     e.crits = e.crits.filter((c) => c !== "leg");
     e.stanceOrder = "stand";
     e.stance = "stand";
   }
+}
+
+/** Legs off, down on the arm, and CYBORG_CRAWL_SHIELD_SECONDS of plating nothing gets through. */
+function tearCyborgLegs(e: Entity, tick: number): void {
+  addCrit(e, "leg");
+  e.stanceOrder = "crawl";
+  e.stance = "crawl";
+  e.shieldUntilTick = tick + secondsToTicks(CYBORG_CRAWL_SHIELD_SECONDS);
+}
+
+/** The legs have just gone and he cannot be hurt yet. */
+export function cyborgShielded(e: { type: Entity["type"]; shieldUntilTick?: number }, tick: number): boolean {
+  return isCyborg(e.type) && e.shieldUntilTick != null && tick < e.shieldUntilTick;
+}
+
+/**
+ * Take `damage` off a unit's HP and return what actually came off. Every hit
+ * goes through here so the cyborg's crawl rule holds whatever did the damage:
+ * while shielded nothing lands, and the hit that tears his legs off (even one
+ * that would have killed him) leaves at least 1 HP and starts the shield.
+ */
+export function takeDamage(e: Entity, damage: number, tick: number): number {
+  if (damage <= 0 || e.hp <= 0) return 0;
+  const before = e.hp;
+  if (isCyborg(e.type)) {
+    if (cyborgShielded(e, tick)) return 0;
+    const after = before - damage;
+    if (!hasCrit(e, "leg") && after <= e.hpMax * CYBORG_LEGS_LOST_HP) {
+      e.hp = Math.max(1, after);
+      tearCyborgLegs(e, tick);
+      return before - e.hp;
+    }
+  }
+  e.hp = Math.max(0, before - damage);
+  return before - e.hp;
 }
 
 export function immobilized(e: { crits?: readonly Crit[] }): boolean {

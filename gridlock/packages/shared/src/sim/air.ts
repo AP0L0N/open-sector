@@ -45,6 +45,7 @@ import {
 } from "../catalog.js";
 import type { ImpactView } from "../protocol.js";
 import { aimAngle } from "./ballistics.js";
+import { takeDamage } from "./crits.js";
 import { aimHeight, airAlt, worldTileHeight } from "./elevation.js";
 import { allies, fellTreeAt, isTree, newAirState, playerTeam, worldToTile } from "./geo.js";
 import { livingGarrison, woundGarrison } from "./garrison.js";
@@ -644,7 +645,7 @@ function detonateBomb(state: MatchState, p: Projectile): void {
     } else {
       dmg = Math.round(BOMB_DAMAGE * fall);
     }
-    e.hp = Math.max(0, e.hp - dmg);
+    takeDamage(e, dmg, state.tick);
     if (e.hp <= 0) killed = true;
   }
   const impact: ImpactView = {

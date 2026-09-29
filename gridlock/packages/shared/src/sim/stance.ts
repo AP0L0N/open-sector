@@ -67,7 +67,7 @@ export function tickStance(state: MatchState): void {
   const hot = targetedIds(state);
   for (const e of state.entities.values()) {
     if (!isInfantryType(e.type) || e.hp <= 0) continue;
-    syncCyborgLegs(e);
+    syncCyborgLegs(e, state.tick);
     if (hasCrit(e, "leg")) e.stanceOrder = "crawl";
     else if (isCyborg(e.type)) e.stanceOrder = "stand";
     if (unitInWater(state, e)) {

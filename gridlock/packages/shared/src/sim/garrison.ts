@@ -11,6 +11,7 @@ import {
   NEUTRAL_OWNER,
 } from "../catalog.js";
 import { sightTilesForEntity } from "./elevation.js";
+import { takeDamage } from "./crits.js";
 import { nextRand } from "./rng.js";
 import { adjacentToBuilding, allies, inBounds, nearestWalkable, tileCenter, worldToTile } from "./geo.js";
 import { setPath } from "./path.js";
@@ -132,17 +133,17 @@ export function woundGarrison(state: MatchState, house: Entity, incoming: number
   if (units.length === 0 || incoming <= 0) return;
   const heavy = caliber >= GARRISON_STRUCTURAL_CALIBER;
   const primary = units[Math.floor(nextRand(state) * units.length)]!;
-  woundOccupant(primary, incoming * (heavy ? 0.5 + nextRand(state) * 0.7 : 0.4 + nextRand(state) * 0.7));
+  woundOccupant(primary, incoming * (heavy ? 0.5 + nextRand(state) * 0.7 : 0.4 + nextRand(state) * 0.7), state.tick);
   for (const u of units) {
     if (u.id === primary.id || u.hp <= 0) continue;
     if (nextRand(state) > (heavy ? 0.5 : 0.18)) continue;
-    woundOccupant(u, incoming * (0.12 + nextRand(state) * (heavy ? 0.45 : 0.25)));
+    woundOccupant(u, incoming * (0.12 + nextRand(state) * (heavy ? 0.45 : 0.25)), state.tick);
   }
 }
 
-function woundOccupant(unit: Entity, raw: number): void {
+function woundOccupant(unit: Entity, raw: number, tick: number): void {
   const dmg = Math.max(1, Math.round(raw));
-  unit.hp = Math.max(0, unit.hp - dmg);
+  takeDamage(unit, dmg, tick);
   if (unit.hp > 0) return;
   unit.state = "dead";
   unit.order = null;
@@ -254,7 +255,7 @@ export function spillGarrison(state: MatchState, house: Entity, opts?: { damage?
     u.garrisonedIn = null;
     if (hurt) {
       const frac = nextRand(state);
-      u.hp = Math.max(0, u.hp - Math.round(u.hpMax * frac));
+      takeDamage(u, Math.round(u.hpMax * frac), state.tick);
     }
     u.order = null;
     u.waypoints = [];
