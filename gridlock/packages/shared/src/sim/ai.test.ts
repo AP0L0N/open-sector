@@ -140,6 +140,26 @@ describe("easy CPU", () => {
     assert.equal(queued, true, "CPU did not queue a StuG");
   });
 
+  it("starts a Research Facility after the Armory so it can train Tigers", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    const hq = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "core")!;
+    const cpu = state.players.get(aiId)!;
+    cpu.structure = null;
+    makeEntity(state, "dynamo", aiId, hq.x - 64, hq.y, { tileX: hq.tileX - 12, tileY: hq.tileY });
+    makeEntity(state, "dynamo", aiId, hq.x - 64, hq.y + 64, { tileX: hq.tileX - 12, tileY: hq.tileY + 8 });
+    makeEntity(state, "smelter", aiId, hq.x, hq.y - 64, { tileX: hq.tileX, tileY: hq.tileY - 16 });
+    makeEntity(state, "muster", aiId, hq.x + 64, hq.y, { tileX: hq.tileX + 16, tileY: hq.tileY });
+    makeEntity(state, "armory", aiId, hq.x, hq.y + 64, { tileX: hq.tileX, tileY: hq.tileY + 16 });
+    for (let i = 0; i < 4; i++) {
+      makeEntity(state, "rifleman", aiId, hq.x + 16 + i * 8, hq.y);
+    }
+    cpu.scrap = 5000;
+    tickAi(state);
+    const job = state.players.get(aiId)!.structure;
+    assert.equal(job?.type, "research");
+  });
+
   it("trains Troopers from the opening scrap pile", () => {
     const { state, aiId } = humanVsEasy();
     let trained = false;
