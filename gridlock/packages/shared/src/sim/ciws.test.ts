@@ -157,7 +157,8 @@ describe("CIWS fire", () => {
     const ts = state.tileSize;
     const ciws = seedCiws(state);
     makeEntity(state, "rifleman", "A", ciws.x + 10 * ts, ciws.y);
-    makeEntity(state, "dynamo", "B", 0, 0, { tileX: 136, tileY: 116 });
+    const d = catalog("dynamo");
+    makeEntity(state, "dynamo", "B", (136 + d.tileW / 2) * ts, (116 + d.tileH / 2) * ts, { tileX: 136, tileY: 116 });
     const titan = makeEntity(state, "titan", "B", ciws.x, ciws.y + 24 * ts);
     titan.holdPosition = true;
     titan.order = null;
@@ -267,5 +268,93 @@ describe("CIWS against rockets", () => {
     const p = rocket(state, "B", dry.x + 4 * ts, dry.y + 6 * ts);
     step(state, TICK_DT);
     assert.ok(!p.ciwsTried?.includes(dry.id), "a dry mount does not engage");
+  });
+});
+
+describe("CIWS orders", () => {
+  function heading(a: number, b: number): number {
+    let d = a - b;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return Math.abs(d);
+  }
+
+  it("Rotate lays the idle gun on a heading and it still fires on its own", () => {
+    const state = match();
+    const ts = state.tileSize;
+    const ciws = seedCiws(state);
+    // South-west of the mount.
+    const res = applyCommand(state, "A", { type: "cmd.rotate", ids: [ciws.id], x: ciws.x - 40, y: ciws.y + 40 });
+    assert.equal(res.ok, true);
+    ticks(state, 10);
+    assert.ok(heading(ciws.turretFacing, (3 * Math.PI) / 4) < 0.05, `turret ${ciws.turretFacing}`);
+    assert.equal(ciws.clip, CIWS_BELT, "rotating spends nothing");
+    const soldier = makeEntity(state, "rifleman", "B", ciws.x + 20 * ts, ciws.y);
+    soldier.holdPosition = true;
+    const t = until(state, 60, () => soldier.hp <= 0 || !state.entities.has(soldier.id));
+    assert.ok(t >= 0, "it swings off the rest heading onto the soldier");
+    ticks(state, 10);
+    assert.ok(heading(ciws.turretFacing, (3 * Math.PI) / 4) < 0.05, "and goes back to rest");
+  });
+
+  it("Force attack here sprays a ground point until Stop", () => {
+    const state = match();
+    const ts = state.tileSize;
+    const ciws = seedCiws(state);
+    const x = ciws.x;
+    const y = ciws.y - 20 * ts;
+    assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [ciws.id], x, y }).ok, true);
+    ticks(state, 10);
+    assert.equal(ciws.order?.kind, "forceattack", "the forced aim holds");
+    assert.ok(heading(ciws.turretFacing, -Math.PI / 2) < 0.05, "the gun points north at the spot");
+    assert.ok(ciws.clip < CIWS_BELT, "rounds go at nothing");
+    assert.equal(applyCommand(state, "A", { type: "cmd.stop", ids: [ciws.id] }).ok, true);
+    const left = ciws.clip;
+    ticks(state, 10);
+    assert.equal(ciws.clip, left, "Stop hands it back to its own targeting");
+    assert.equal(ciws.order, null);
+  });
+
+  it("Force attack takes a target it would leave alone, then goes back to picking its own", () => {
+    const state = match();
+    const ciws = seedCiws(state);
+    const ts = state.tileSize;
+    const d = catalog("dynamo");
+    const dynamo = makeEntity(state, "dynamo", "B", (136 + d.tileW / 2) * ts, (118 + d.tileH / 2) * ts, {
+      tileX: 136,
+      tileY: 118,
+    });
+    const res = applyCommand(state, "A", {
+      type: "cmd.forceattack",
+      ids: [ciws.id],
+      x: dynamo.x,
+      y: dynamo.y,
+      targetId: dynamo.id,
+    });
+    assert.equal(res.ok, true);
+    const t = until(state, 80, () => dynamo.hp < dynamo.hpMax);
+    assert.ok(t >= 0, "the building takes rounds");
+    assert.equal(ciws.attackTarget, dynamo.id);
+    state.entities.delete(dynamo.id);
+    ticks(state, 2);
+    assert.notEqual(ciws.order?.kind, "forceattack", "a gone target frees it");
+  });
+
+  it("a rocket still cuts in on a forced aim", () => {
+    const state = match();
+    const ts = state.tileSize;
+    const ciws = seedCiws(state);
+    applyCommand(state, "A", { type: "cmd.forceattack", ids: [ciws.id], x: ciws.x, y: ciws.y - 20 * ts });
+    const p = rocket(state, "B", ciws.x - 20 * ts, ciws.y + 6 * ts);
+    step(state, TICK_DT);
+    assert.deepEqual(p.ciwsTried, [ciws.id]);
+    assert.equal(ciws.order?.kind, "forceattack", "and the forced aim comes back after");
+  });
+
+  it("only the owner can order it", () => {
+    const state = match();
+    const ciws = seedCiws(state);
+    assert.equal(applyCommand(state, "B", { type: "cmd.rotate", ids: [ciws.id], x: 0, y: 0 }).ok, false);
+    assert.equal(applyCommand(state, "B", { type: "cmd.forceattack", ids: [ciws.id], x: 0, y: 0 }).ok, false);
   });
 });
