@@ -115,6 +115,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
           : undefined,
       specialCooldown: e.specialCooldown > 0 ? e.specialCooldown : undefined,
       wreck: e.wreck || undefined,
+      shielded: e.hp > 0 && cyborgShielded(e, state.tick) ? true : undefined,
       crits: e.crits.length > 0 ? [...e.crits] : undefined,
       stance: isInfantryType(e.type) ? e.stance : undefined,
       stanceOrder: isInfantryType(e.type) && e.stanceOrder !== e.stance ? e.stanceOrder : undefined,

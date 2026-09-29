@@ -545,6 +545,11 @@ export const CYBORG_DRUM = 600;
 export const CYBORG_LEGS_LOST_HP = 0.3;
 /** Healed or repaired back to this share of max HP, the legs work again. */
 export const CYBORG_LEGS_BACK_HP = 0.6;
+/**
+ * Seconds the cyborg cannot be hurt once the legs are torn off. A hit that
+ * would have killed him with his legs on leaves him at 1 HP, crawling, instead.
+ */
+export const CYBORG_CRAWL_SHIELD_SECONDS = 5;
 /** Move-speed multiplier on the arm alone. Slower than a soldier crawling. */
 export const CYBORG_DRAG_SPEED = 0.18;
 /** HP per second an engineer welds back onto the plating. Slower than a hull. */
