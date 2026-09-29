@@ -165,7 +165,7 @@ import {
   type MuzzleSmokePuff,
 } from "./muzzle-smoke.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
-import { drawCyborgDeathSparks, drawCyborgShield } from "./cyborg-sparks.js";
+import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
 import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir, lerpAirAlt } from "./aircraft.js";
 import { drawSandbags } from "./sandbags.js";
@@ -3354,9 +3354,8 @@ export class MapView {
       const muzzles = gatlingMuzzles(s.x, s.y, size, p.facing, e.gatling.arms, e.gatling.off);
       muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2));
     }
-    if (drawn && e.type === "cyborg") {
-      if (e.shielded && !e.wreck) drawCyborgShield(ctx, s.x, s.y, size, performance.now(), e.id);
-      if (corpse) drawCyborgDeathSparks(ctx, s.x, s.y, size, dir.x, dir.y, this.corpseAge(e.id), e.id);
+    if (drawn && corpse && e.type === "cyborg") {
+      drawCyborgDeathSparks(ctx, s.x, s.y, size, dir.x, dir.y, this.corpseAge(e.id), e.id);
     }
     if (e.wreck && drawn && !corpse) this.drawWreckFires(e, s.x, s.y, size, dir.x, dir.y);
     if (!drawn) {
@@ -3541,7 +3540,7 @@ export class MapView {
       frameIndex: heldFrame(ageMs, def.fps, def.frames),
       facing: body.facing,
     });
-    // A dead cyborg bleeds (the stains under him) and keeps shorting out at the hips.
+    // A dead cyborg bleeds (the stains under him) and his hips spit a few sparks.
     if (body.type === "cyborg") {
       drawCyborgDeathSparks(this.ctx, s.x, s.y, def.drawSize, dir.x, dir.y, ageMs, body.id);
     }
