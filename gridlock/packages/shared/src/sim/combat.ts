@@ -51,6 +51,7 @@ import {
   launcherOnlyOf,
   rocketRackOf,
   type RocketRackDef,
+  LAUNCHER_ROCKET_RACK,
   type CatalogEntry,
   type ShellType,
 } from "../catalog.js";
@@ -395,7 +396,8 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
   }
   const gun = infantryGunFor(e);
   if (!gun) return false;
-  if (gun.id === "mortar") return true;
+  // A bomb or a rocket burst always nicks the hull.
+  if (gun.id === "mortar" || gun.id === "launcher") return true;
   if (entityIsScouting(target) && gun.caliber < GARRISON_STRUCTURAL_CALIBER) return true;
   const vx = target.x - e.x;
   const vy = target.y - e.y;
@@ -568,8 +570,8 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     }
     return;
   }
-  // A broken arm drops the scoped rifle and the PTRD. There is no sidearm.
-  if ((e.type === "sniper" || e.type === "atinfantry") && !infantryGunFor(e)) return;
+  // A broken arm drops the scoped rifle, the PTRD, and the launcher. There is no sidearm.
+  if ((e.type === "sniper" || e.type === "atinfantry" || e.type === "rocketer") && !infantryGunFor(e)) return;
 
   if (e.reload > 0) return;
   if (e.cooldown > 0) return;
@@ -591,6 +593,13 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     if ((infantryGun || belt) && e.clip <= 0) break;
     if (infantryGun?.id === "mortar") {
       launchMortar(state, e, aimX, aimY, range, dist, target);
+      fired++;
+      e.clip = Math.max(0, e.clip - 1);
+      if (e.clip <= 0) beginReload(e, infantryGun);
+      break;
+    }
+    if (infantryGun?.id === "launcher") {
+      launchRocket(state, e, LAUNCHER_ROCKET_RACK, aimX, aimY, range, dist, target, 0);
       fired++;
       e.clip = Math.max(0, e.clip - 1);
       if (e.clip <= 0) beginReload(e, infantryGun);
@@ -846,16 +855,24 @@ function fireRockets(
   target: Entity | undefined,
 ): void {
   if (!e.rocketSalvo) e.rocketSalvo = Math.min(rack.salvo, e.rockets ?? 0);
-  launchRocket(state, e, rack, aimX, aimY, range, dist, target, e.rocketSalvo);
+  const slot = e.rocketSalvo;
+  // Pods sit either side of the torso; the ripple alternates left and right.
+  // A launcher frame walks across its six columns of tubes instead.
+  const side = rack.laid
+    ? ((((slot - 1) % 6) - 2.5) / 2.5) * e.radius * 0.35
+    : (slot % 2 === 0 ? 1 : -1) * e.radius * 0.8;
+  launchRocket(state, e, rack, aimX, aimY, range, dist, target, side);
   e.rockets = Math.max(0, (e.rockets ?? 0) - 1);
   e.rocketSalvo = e.rockets > 0 ? e.rocketSalvo - 1 : 0;
   e.rocketCooldown = e.rocketSalvo > 0 ? rack.interval : rack.reload;
 }
 
 /**
- * One rocket. On a plane it leads the plane's flight and is fused at its height,
- * so it bursts in the air beside it. On anything else it is fused on the ground.
- * A rack with an apex lobs it over whatever stands between.
+ * One rocket, from a Titan pod, a Nebelwerfer tube, or a Rocketer's launcher.
+ * On a plane it leads the plane's flight and is fused at its height, so it
+ * bursts in the air beside it. On anything else it is fused on the ground.
+ * A rack with an apex lobs it over whatever stands between. `side` is the
+ * launch offset off the aim line, world pixels.
  */
 function launchRocket(
   state: MatchState,
@@ -866,19 +883,14 @@ function launchRocket(
   range: number,
   dist: number,
   target: Entity | undefined,
-  slot: number,
+  side: number,
 ): void {
   const aloft = !!target && isAirborne(target);
   const moving = !!target && (aloft || target.waypoints.length > 0 || target.state === "move");
-  // The pods lay on their own bearing, not the torso's.
+  // The pods lay on their own bearing, not the torso's. A tube lies along the soldier's.
   const aim = Math.atan2(aimY - e.y, aimX - e.x);
   const sideX = -Math.sin(aim);
   const sideY = Math.cos(aim);
-  // Pods sit either side of the torso; the ripple alternates left and right.
-  // A launcher frame walks across its six columns of tubes instead.
-  const side = rack.laid
-    ? ((((slot - 1) % 6) - 2.5) / 2.5) * e.radius * 0.35
-    : (slot % 2 === 0 ? 1 : -1) * e.radius * 0.8;
   const x = e.x + sideX * side;
   const y = e.y + sideY * side;
   const z0 = muzzleHeight(state, e) + rack.podLift;
