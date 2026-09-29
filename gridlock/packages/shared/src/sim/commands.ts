@@ -2,6 +2,7 @@ import {
   carriesShell,
   fires,
   hasAmmo,
+  radarLaidOf,
   rocketsOf,
   hasCrit,
   hasScout,
@@ -339,6 +340,16 @@ function owned(state: MatchState, playerId: string, ids: number[]) {
   return out;
 }
 
+/** Own CIWS mounts in the selection. A structure with its own gun: it takes Rotate, Force attack, and Stop. */
+function ownedMounts(state: MatchState, playerId: string, ids: number[]) {
+  const out = [];
+  for (const id of ids) {
+    const e = state.entities.get(id);
+    if (e && e.ownerId === playerId && e.hp > 0 && e.kind === "building" && radarLaidOf(e.type)) out.push(e);
+  }
+  return out;
+}
+
 function cmdMove(state: MatchState, playerId: string, ids: number[], x: number, y: number): CmdResult {
   const units = owned(state, playerId, ids);
   if (units.length === 0) return fail("not_yours", "No owned units.");
@@ -429,8 +440,19 @@ function cmdForceAttack(
     if (t.garrisonedIn) t = state.entities.get(t.garrisonedIn) ?? t;
   }
   const units = owned(state, playerId, ids);
-  if (units.length === 0) return fail("not_yours", "No owned units.");
+  const mounts = ownedMounts(state, playerId, ids);
+  if (units.length === 0 && mounts.length === 0) return fail("not_yours", "No owned units.");
   let n = 0;
+  // A CIWS holds the forced aim until Stop, a new order, or the target is gone. Rockets still cut in.
+  for (const e of mounts) {
+    if (t && e.id === t.id) continue;
+    e.order = t
+      ? { kind: "forceattack", targetId: t.id, x: t.x, y: t.y }
+      : { kind: "forceattack", x, y };
+    e.attackTarget = t ? t.id : null;
+    e.state = "attack";
+    n++;
+  }
   for (const e of units) {
     if (!fires(e.type)) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
@@ -524,7 +546,15 @@ function cmdRotate(state: MatchState, playerId: string, ids: number[], x: number
   const units = owned(state, playerId, ids).filter(
     (e) => e.state !== "deploy" && e.state !== "undeploy" && !e.garrisonedIn,
   );
-  if (units.length === 0) return fail("not_yours", "No owned units.");
+  const mounts = ownedMounts(state, playerId, ids);
+  if (units.length === 0 && mounts.length === 0) return fail("not_yours", "No owned units.");
+  // A CIWS rests its gun on this heading between targets, and drops a forced aim.
+  for (const e of mounts) {
+    e.facing = Math.atan2(y - e.y, x - e.x);
+    e.order = null;
+    e.attackTarget = null;
+    e.state = "idle";
+  }
   for (const e of units) {
     e.order = { kind: "rotate", x, y };
     e.returnToBase = false;
