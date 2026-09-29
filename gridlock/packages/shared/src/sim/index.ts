@@ -43,7 +43,7 @@ export {
 export { wantsCapture, captureDurationSec } from "./capture.js";
 export { powerOf, productionSpeed } from "./power.js";
 export { producerType } from "./train.js";
-export { airfieldPadWorld, isAirborne, reachesAircraft, RUNWAY_HEADING } from "./air.js";
+export { airfieldPadWorld, airfieldRunway, isAirborne, PARK_HEADING, reachesAircraft, RUNWAY_HEADING } from "./air.js";
 export { mortarAirZ, mortarArcPoints } from "./mortar.js";
 export type { MortarArcPoint } from "./mortar.js";
 export {

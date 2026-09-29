@@ -73,7 +73,7 @@ import {
   RICOCHET_TRAVEL,
   RICOCHET_TRAVEL_MIN,
 } from "./ballistics.js";
-import { fireStats, hullTurnMul, immobilized, rollCrits } from "./crits.js";
+import { fireStats, hullTurnMul, immobilized, rollCrits, takeDamage } from "./crits.js";
 import { damageMaulerCart } from "./mauler-cart.js";
 import { noteImpactSurface } from "./remains.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
@@ -793,7 +793,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     const occupied = isGarrisonable(e.type) && livingGarrison(state, e).length > 0;
     const chipWalls = !occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER;
     if (chipWalls) {
-      e.hp = Math.max(0, e.hp - res.damage);
+      takeDamage(e, res.damage, state.tick);
       if (e.hp > 0) rollCrits(e, res.face, res.kind, res.damage, rand);
       const smoked = maybeHaulerSmokeScreen(state, e, p);
       if (e.hp > 0 && !smoked && res.kind !== "ricochet" && res.damage > 0) maybeWithdraw(state, e, p);
@@ -1198,10 +1198,9 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     // when the house is empty or the target is a Core.
     const walkerWall = e.kind === "building" && shooter?.type === "walker";
     const chipWalls = (!occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER) && !walkerWall;
-    const dealt = res.damage;
+    let dealt = res.damage;
     if (chipWalls) {
-      e.hp -= dealt;
-      if (e.hp < 0) e.hp = 0;
+      dealt = takeDamage(e, dealt, state.tick);
       if (e.hp > 0) {
         const tracks =
           p.caliber === PTRD_CALIBER && res.kind === "pen" && res.face === "side" ? PTRD_TRACK_CHANCE : undefined;

@@ -524,7 +524,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
   const wreck = e.wreck ? "  ·  WRECK" : "";
   const injuries =
     e.crits && e.crits.length > 0
-      ? `  ·  ${e.crits.map((c) => (e.type === "cyborg" && c === "leg" ? "legs torn off" : CRIT_LABEL[c])).join(", ")}`
+      ? `  ·  ${e.crits.map((c) => (e.type === "cyborg" && c === "leg" ? "legs torn off" : CRIT_LABEL[c])).join(", ")}${e.shielded ? " (plating holds — cannot be hurt yet)" : ""}`
       : "";
   const posture = e.swimming
     ? "  ·  swimming"

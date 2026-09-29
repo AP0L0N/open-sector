@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  CYBORG_CRAWL_SHIELD_SECONDS,
   CYBORG_DRAG_SPEED,
   CYBORG_DRUM,
   CYBORG_LEGS_BACK_HP,
@@ -17,6 +18,7 @@ import {
   isCivilianType,
   isInfantryType,
   isRepairableUnit,
+  secondsToTicks,
   stanceOf,
   supplyShortOf,
 } from "../catalog.js";
@@ -24,9 +26,10 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { tickCombat } from "./combat.js";
-import { moveSpeedMul, rollCrits } from "./crits.js";
+import { cyborgShielded, moveSpeedMul, rollCrits, takeDamage } from "./crits.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
+import { snapshotFor } from "./snapshot.js";
 import { tickStance } from "./stance.js";
 import { producerType } from "./train.js";
 import type { Entity, MatchState } from "./types.js";
@@ -228,5 +231,94 @@ describe("cyborg", () => {
     assert.ok(cy.clip > 0 && cy.clip <= CYBORG_DRUM, `clip ${cy.clip}`);
     assert.ok(truck.supply < cargo);
     assert.equal(cy.reload, 0);
+  });
+});
+
+describe("cyborg crawl shield", () => {
+  it("survives the hit that tears his legs off and cannot be hurt for the next five seconds", () => {
+    const { state, a, b } = match();
+    const ts = state.tileSize;
+    const cy = makeEntity(state, "cyborg", a, tileCenter(12, ts), tileCenter(12, ts));
+    const tick0 = state.tick;
+    const dealt = takeDamage(cy, cy.hpMax * 10, tick0);
+    assert.equal(cy.hp, 1, "a killing blow on his legs leaves him crawling");
+    assert.equal(dealt, cy.hpMax - 1);
+    assert.equal(hasCrit(cy, "leg"), true);
+    assert.equal(cy.stance, "crawl");
+    const shield = secondsToTicks(CYBORG_CRAWL_SHIELD_SECONDS);
+    assert.equal(cyborgShielded(cy, tick0), true);
+    // Everyone who can see him is told, so the client can draw the plating crackle.
+    const foe = makeEntity(state, "walker", b, tileCenter(16, ts), tileCenter(12, ts));
+    assert.ok(foe);
+    assert.equal(snapshotFor(state, a).entities.find((e) => e.id === cy.id)?.shielded, true);
+    assert.equal(snapshotFor(state, b).entities.find((e) => e.id === cy.id)?.shielded, true);
+    assert.equal(takeDamage(cy, 500, tick0 + shield - 1), 0);
+    assert.equal(cy.hp, 1);
+    assert.equal(cyborgShielded(cy, tick0 + shield), false);
+    assert.equal(takeDamage(cy, 500, tick0 + shield), 1);
+    assert.equal(cy.hp, 0, "once the shield is down the next hit kills");
+  });
+
+  it("starts the shield when a hit drops him under the line, and only once per pair of legs", () => {
+    const { state, a } = match();
+    const ts = state.tileSize;
+    const cy = makeEntity(state, "cyborg", a, tileCenter(12, ts), tileCenter(12, ts));
+    takeDamage(cy, Math.ceil(cy.hpMax * (1 - CYBORG_LEGS_LOST_HP)), 0);
+    assert.equal(hasCrit(cy, "leg"), true);
+    assert.equal(cyborgShielded(cy, 0), true);
+    const until = cy.shieldUntilTick;
+    // Already legless: a later hit past the shield just hurts, no new window.
+    const later = until! + 1;
+    takeDamage(cy, 2, later);
+    assert.equal(cy.shieldUntilTick, until);
+    assert.equal(cyborgShielded(cy, later), false);
+  });
+
+  it("holds under live fire for five seconds, then falls", () => {
+    const { state, a, b } = match();
+    clearCover(state);
+    const ts = state.tileSize;
+    // Open ground in the middle: stray rounds must not chew through a Rig behind him.
+    const cy = makeEntity(state, "cyborg", a, tileCenter(128, ts), tileCenter(40, ts));
+    cy.holdPosition = true;
+    cy.cooldown = 99;
+    const foe = makeEntity(state, "walker", b, tileCenter(132, ts), tileCenter(40, ts));
+    foe.holdPosition = true;
+    foe.gatlingGuns = 2;
+    foe.facing = Math.PI;
+    foe.order = { kind: "attack", targetId: cy.id };
+    setHpShare(cy, CYBORG_LEGS_LOST_HP + 0.02);
+    let tornAt = -1;
+    for (let i = 0; i < 40 && tornAt < 0; i++) {
+      step(state, TICK_DT);
+      if (hasCrit(cy, "leg")) tornAt = state.tick;
+    }
+    assert.ok(tornAt >= 0, "the walker brings him down to crawling");
+    assert.ok(cy.hp > 0);
+    assert.equal(cyborgShielded(cy, state.tick), true);
+    const held = cy.hp;
+    const shield = secondsToTicks(CYBORG_CRAWL_SHIELD_SECONDS);
+    for (let i = 0; i < shield * 2 && state.tick < tornAt + shield - 1; i++) {
+      cy.cooldown = 99;
+      step(state, TICK_DT);
+    }
+    assert.equal(state.ended, false);
+    assert.equal(state.tick, tornAt + shield - 1);
+    assert.equal(cy.hp, held, "nothing got through the shield");
+    assert.ok(state.entities.has(cy.id));
+    for (let i = 0; i < 80 && cy.hp > 0; i++) {
+      cy.cooldown = 99;
+      step(state, TICK_DT);
+    }
+    assert.ok(cy.hp <= 0 || !state.entities.has(cy.id), `hp ${cy.hp}`);
+  });
+
+  it("leaves other infantry to die to a lethal hit as before", () => {
+    const { state, a } = match();
+    const ts = state.tileSize;
+    const r = makeEntity(state, "rifleman", a, tileCenter(12, ts), tileCenter(12, ts));
+    assert.equal(takeDamage(r, 999, state.tick), catalog("rifleman").hp);
+    assert.equal(r.hp, 0);
+    assert.equal(cyborgShielded(r, state.tick), false);
   });
 });

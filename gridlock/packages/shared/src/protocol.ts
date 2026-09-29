@@ -12,7 +12,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 44;
+export const PROTOCOL_VERSION = 45;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -113,6 +113,8 @@ export interface EntityView {
   specialCooldown?: number;
   /** Burning hulk. Impassable until destroyed. */
   wreck?: boolean;
+  /** Cyborg whose legs were just torn off. Nothing hurts him until it clears. Everyone who sees him sees it. */
+  shielded?: boolean;
   /** Allied ammo rack. Omitted for enemies and unarmed types. */
   ammo?: Partial<Record<ShellType, number>>;
   /** Loaded shell. Allied guns only. */
