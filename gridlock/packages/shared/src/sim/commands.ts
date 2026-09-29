@@ -34,6 +34,7 @@ import { escortAnchor } from "./orders.js";
 import { setPath } from "./path.js";
 import { tickStance } from "./stance.js";
 import { dismountSupply, orderBoard, orderSupply, supplyCanDrive } from "./supply.js";
+import { orderAircraft, stopAircraft } from "./air.js";
 import type { Entity, MatchState } from "./types.js";
 
 export type CmdResult = { ok: true } | { ok: false; code: ErrorCode; message: string };
@@ -46,6 +47,9 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
   const p = state.players.get(playerId);
   if (!p) return fail("not_member", "You are not in this match.");
   if (!p.alive && msg.type.startsWith("cmd.")) return fail("dead", "Your Core is down.");
+
+  const air = routeAircraft(state, playerId, msg);
+  if (air) return air;
 
   switch (msg.type) {
     case "cmd.move":
@@ -146,6 +150,69 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
     default:
       return fail("bad_payload", "Unknown command.");
   }
+}
+
+const AIR_ROUTED = new Set([
+  "cmd.move",
+  "cmd.attack",
+  "cmd.attackmove",
+  "cmd.forceattack",
+  "cmd.stop",
+  "cmd.hold",
+  "cmd.guard",
+  "cmd.rotate",
+  "cmd.land",
+]);
+
+/**
+ * Aircraft in a selection take flight orders; everyone else in the same
+ * selection gets the ground command. Null when no plane is involved.
+ */
+function routeAircraft(state: MatchState, playerId: string, msg: ClientMessage): CmdResult | null {
+  if (!AIR_ROUTED.has(msg.type) || !("ids" in msg) || !Array.isArray(msg.ids)) return null;
+  const planes = owned(state, playerId, msg.ids).filter((e) => e.air);
+  if (msg.type === "cmd.land" && planes.length === 0) return fail("not_yours", "Select an aircraft.");
+  if (planes.length === 0) return null;
+  const planeIds = new Set(planes.map((e) => e.id));
+  planes.forEach((e, i) => {
+    // Spread a flight over a small ring so the planes do not stack.
+    const ang = (i / Math.max(1, planes.length)) * Math.PI * 2;
+    const spread = planes.length > 1 ? state.tileSize * 3 : 0;
+    const ox = Math.cos(ang) * spread;
+    const oy = Math.sin(ang) * spread;
+    switch (msg.type) {
+      case "cmd.move":
+        orderAircraft(state, e, { kind: "move", x: msg.x + ox, y: msg.y + oy });
+        break;
+      case "cmd.attackmove":
+        orderAircraft(state, e, { kind: "attackmove", x: msg.x + ox, y: msg.y + oy });
+        break;
+      case "cmd.attack": {
+        const t = state.entities.get(msg.targetId);
+        if (!t || t.hp <= 0 || t.id === e.id) break;
+        if (t.type === "airfield" && t.ownerId === playerId) orderAircraft(state, e, { kind: "land" });
+        else if (!allies(state, playerId, t.ownerId)) {
+          orderAircraft(state, e, { kind: "attack", targetId: t.id, x: t.x, y: t.y });
+        }
+        break;
+      }
+      case "cmd.forceattack":
+        orderAircraft(state, e, { kind: "forceattack", x: msg.x, y: msg.y, targetId: msg.targetId });
+        break;
+      case "cmd.stop":
+        stopAircraft(e);
+        break;
+      case "cmd.land":
+        orderAircraft(state, e, { kind: "land" });
+        break;
+      default:
+        // Hold, guard, and rotate mean nothing to a plane.
+        break;
+    }
+  });
+  const rest = msg.ids.filter((id) => !planeIds.has(id));
+  if (rest.length === 0 || msg.type === "cmd.land") return ok();
+  return applyCommand(state, playerId, { ...msg, ids: rest } as ClientMessage);
 }
 
 function wrap(err: string | null, fallback: ErrorCode): CmdResult {

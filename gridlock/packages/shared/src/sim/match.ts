@@ -17,6 +17,7 @@ import { commanders } from "../lobby.js";
 import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
 import type { ImpactView, RoomState } from "../protocol.js";
 import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter, walkable } from "./geo.js";
+import { aircraftDown, tickAir } from "./air.js";
 import { tickCapture } from "./capture.js";
 import { detachGarrisoned, spillGarrison, tickGarrison } from "./garrison.js";
 import { seedRng } from "./rng.js";
@@ -187,6 +188,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickSupply(state, dt);
   tickMaulerCart(state, dt);
   tickMovement(state, dt);
+  tickAir(state, dt);
   tickCollision(state, dt);
   tickField(state, dt);
   tickHarvest(state, dt);
@@ -225,6 +227,7 @@ function reapDead(state: MatchState): void {
       continue;
     }
     if (isInfantryType(e.type)) leaveCorpse(state, e);
+    if (e.air) aircraftDown(state, e);
     dead.push(e.id);
   }
   if (madeWreck) {

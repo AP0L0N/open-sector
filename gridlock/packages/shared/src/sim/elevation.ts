@@ -89,9 +89,14 @@ export function muzzleHeight(state: MatchState, e: Entity): number {
   return entityHeight(state, e) + observerEyeForEntity(e);
 }
 
-/** Aim height: mid-mass of the target so a descending shot still meets it. */
+/** Elevation units a plane flies above the ground. 0 on the pad and for every ground type. */
+export function airAlt(e: { air?: { alt: number } }): number {
+  return e.air && e.air.alt > 0 ? e.air.alt : 0;
+}
+
+/** Aim height: mid-mass of the target so a descending shot still meets it. A plane is aimed at where it flies. */
 export function aimHeight(state: MatchState, e: Entity): number {
-  return entityHeight(state, e) + coverHeightOf(e.type) * 0.45;
+  return entityHeight(state, e) + airAlt(e) + coverHeightOf(e.type) * 0.45;
 }
 
 /** True when the round is above the solid top of this cover. */
@@ -148,7 +153,14 @@ export function levelSightExtra(fromH: number, toH: number, perStep: number): nu
   return Math.abs(toH - fromH) * perStep;
 }
 
-export function observerEyeForEntity(e: { type: EntityType; scoutOut?: boolean; scoutHp?: number }): number {
+export function observerEyeForEntity(e: {
+  type: EntityType;
+  scoutOut?: boolean;
+  scoutHp?: number;
+  air?: { alt: number };
+}): number {
+  const alt = airAlt(e);
+  if (alt > 0) return HULL_EYE_HEIGHT + alt;
   return entityIsScouting(e) ? INFANTRY_EYE_HEIGHT : observerEyeOf(e.type);
 }
 
