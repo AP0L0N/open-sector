@@ -18,6 +18,7 @@ import {
   type ShellType,
 } from "../catalog.js";
 import { allies, clearOrder, inBounds, isTree, isWater, makeEntity, scrapAt, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
+import { takeDamage } from "./crits.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -597,7 +598,7 @@ export function woundBehindSandbags(state: MatchState, bag: Entity, fromX: numbe
     if (depth < -6 || depth > SANDBAG_COVER_DEPTH) continue;
     const side = Math.sign(across) || -originSide;
     if (side === originSide) continue;
-    u.hp = Math.max(0, u.hp - hit);
+    takeDamage(u, hit, state.tick);
   }
 }
 
