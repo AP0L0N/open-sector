@@ -233,6 +233,16 @@ describe("resolveHoverAction", () => {
     assert.notEqual(act({ selected: [crewed], hit: full }), "supply");
     assert.notEqual(act({ selected: [crewed], hit: dynamo }), "supply");
   });
+
+  it("offers rockets to a Titan with a spent rack even when its gun is full", () => {
+    const crewed = unit({ id: 41, type: "supply", bed: { crew: true, seats: 0 }, supply: 120 });
+    const def = catalog("titan");
+    const loaded = { ammo: { ...def.ammo }, mgAmmo: def.mgAmmo };
+    const spent = unit({ id: 60, type: "titan", ...loaded, rockets: 0 });
+    const full = unit({ id: 61, type: "titan", ...loaded, rockets: def.rocketAmmo });
+    assert.equal(act({ selected: [crewed], hit: spent }), "supply");
+    assert.notEqual(act({ selected: [crewed], hit: full }), "supply");
+  });
 });
 
 describe("canGuardUnit", () => {
