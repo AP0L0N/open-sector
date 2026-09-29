@@ -281,12 +281,12 @@ describe("weapon reach", () => {
     assert.equal(mortar.rangeTiles, MORTAR_RANGE_TILES);
     assert.ok(HANDGUN_RANGE_TILES < RIFLE_RANGE_TILES);
     assert.ok(RIFLE_RANGE_TILES < MG42_RANGE_TILES);
-    assert.equal(WALKER_RANGE_TILES, RIFLE_RANGE_TILES);
+    assert.ok(WALKER_RANGE_TILES < RIFLE_RANGE_TILES);
     assert.ok(MG42_RANGE_TILES < STUG_RANGE_TILES);
-    assert.ok(STUG_RANGE_TILES < SCOPED_RANGE_TILES);
-    assert.equal(PTRD_RANGE_TILES, SCOPED_RANGE_TILES);
-    assert.ok(SCOPED_RANGE_TILES < TIGER_RANGE_TILES);
-    assert.ok(TIGER_RANGE_TILES < MORTAR_RANGE_TILES);
+    assert.ok(STUG_RANGE_TILES < PTRD_RANGE_TILES);
+    assert.ok(PTRD_RANGE_TILES < TIGER_RANGE_TILES);
+    assert.ok(TIGER_RANGE_TILES < SCOPED_RANGE_TILES);
+    assert.ok(SCOPED_RANGE_TILES < MORTAR_RANGE_TILES);
     assert.ok(inf.rangeTiles < inf.sightTiles);
     assert.ok(mg.rangeTiles < mg.sightTiles);
     assert.ok(sniper.rangeTiles < sniper.sightTiles + (sniper.sightBonusTiles ?? 0));
