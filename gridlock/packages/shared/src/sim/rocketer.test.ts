@@ -9,7 +9,6 @@ import {
   LAUNCHER,
   LAUNCHER_RELOAD,
   RELOAD_MUL_MAX,
-  START_UNITS,
   TICK_DT,
   TITAN_ROCKET,
   TRAIN_TYPES,
@@ -31,7 +30,7 @@ function twoPlayerMatch(): MatchState {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return createMatch(room, started.value, { startingUnits: false });
+  return createMatch(room, started.value);
 }
 
 /** Flat, dry pad and nothing else on it. */
@@ -84,7 +83,6 @@ const secs = (s: number) => Math.ceil(s / TICK_DT);
 describe("rocketer", () => {
   it("is Muster infantry with one launcher, not in the opening army", () => {
     assert.ok(TRAIN_TYPES.includes("rocketer"));
-    assert.ok(!START_UNITS.includes("rocketer"));
     assert.equal(producerType("rocketer"), "muster");
     assert.ok(isInfantryType("rocketer"));
     assert.deepEqual(infantryLoadout("rocketer"), [LAUNCHER]);

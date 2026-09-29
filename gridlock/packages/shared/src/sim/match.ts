@@ -1,22 +1,18 @@
 import {
-  AUTO_DEPLOY_SECONDS,
   catalog,
   clampGameSpeed,
   GAME_SPEED_DEFAULT,
   isInfantryType,
   leavesWreck,
   NEUTRAL_OWNER,
-  secondsToTicks,
   START_SCRAP,
-  START_UNITS,
   TICK_DT,
-  type EntityType,
 } from "../catalog.js";
 import { getMap } from "../maps.js";
 import { commanders } from "../lobby.js";
 import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
 import type { ImpactView, RoomState } from "../protocol.js";
-import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter, walkable } from "./geo.js";
+import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter } from "./geo.js";
 import { aircraftDown, tickAir } from "./air.js";
 import { tickDrones } from "./drone.js";
 import { tickCapture } from "./capture.js";
@@ -28,70 +24,20 @@ import { tickCombat, tickProjectiles } from "./combat.js";
 import { tickSmoke } from "./smoke.js";
 import { tickBipod, tickStance } from "./stance.js";
 import { tickCollision } from "./collision.js";
-import { tickAutoDeploy, tickDeploy } from "./deploy.js";
+import { tickDeploy } from "./deploy.js";
 import { tickHarvest, tickMaulerCart } from "./harvest.js";
 import { tickHeal } from "./heal.js";
 import { tickSupply } from "./supply.js";
 import { tickMovement, repathIfBlocked } from "./orders.js";
 import { tickOrderQueue } from "./commands.js";
 import { tickTrain } from "./train.js";
-import type { Entity, MatchState, SimPlayer } from "./types.js";
+import type { MatchState, SimPlayer } from "./types.js";
 import { leaveCorpse } from "./remains.js";
 import { toWreck } from "./wreck.js";
-
-function spawnStartingUnits(state: MatchState, ownerId: string, rig: Entity): void {
-  const core = catalog("core");
-  const halfW = Math.floor(core.tileW / 2);
-  const halfH = Math.floor(core.tileH / 2);
-  const coreTx = rig.tileX - halfW;
-  const coreTy = rig.tileY - halfH;
-  const dx = Math.sign(state.width / 2 - rig.tileX) || 1;
-  const dy = Math.sign(state.height / 2 - rig.tileY) || 1;
-  const used = new Set<string>([`${rig.tileX},${rig.tileY}`]);
-  const inFutureCore = (x: number, y: number) =>
-    x >= coreTx && x < coreTx + core.tileW && y >= coreTy && y < coreTy + core.tileH;
-
-  const takeTile = (prefX: number, prefY: number, type: EntityType) => {
-    const max = Math.max(state.width, state.height);
-    for (let r = 0; r < max; r++) {
-      for (let oy = -r; oy <= r; oy++) {
-        for (let ox = -r; ox <= r; ox++) {
-          if (Math.max(Math.abs(ox), Math.abs(oy)) !== r) continue;
-          const x = prefX + ox;
-          const y = prefY + oy;
-          const key = `${x},${y}`;
-          if (used.has(key) || inFutureCore(x, y)) continue;
-          if (Math.abs(x - rig.tileX) <= halfW && Math.abs(y - rig.tileY) <= halfH) continue;
-          if (!walkable(state, x, y, type)) continue;
-          used.add(key);
-          return { x, y };
-        }
-      }
-    }
-    return { x: prefX, y: prefY };
-  };
-
-  const ring = halfW + 2;
-  const anchorX = rig.tileX + dx * ring;
-  const anchorY = rig.tileY + dy * ring;
-  for (const type of START_UNITS) {
-    const tile = takeTile(anchorX, anchorY, type);
-    const u = makeEntity(
-      state,
-      type,
-      ownerId,
-      tileCenter(tile.x, state.tileSize),
-      tileCenter(tile.y, state.tileSize),
-      { facing: rig.facing },
-    );
-    u.turretFacing = rig.facing;
-  }
-}
 
 export function createMatch(
   room: RoomState,
   spawns: Map<string, { spawnId: number; x: number; y: number }>,
-  opts?: { startingUnits?: boolean },
 ): MatchState {
   const map = getMap(room.mapId);
   if (!map) throw new Error("map missing");
@@ -102,7 +48,6 @@ export function createMatch(
     mapId: room.mapId,
     tick: 0,
     gameSpeed: GAME_SPEED_DEFAULT,
-    autoDeployTicks: secondsToTicks(AUTO_DEPLOY_SECONDS),
     nextId: 1,
     tileSize: map.tileSize,
     width: map.width,
@@ -147,7 +92,6 @@ export function createMatch(
     const towardY = map.height / 2 - pos.y;
     rig.facing = Math.atan2(towardY, towardX);
     rig.turretFacing = rig.facing;
-    if (opts?.startingUnits !== false) spawnStartingUnits(state, pid, rig);
     players.set(pid, {
       playerId: pid,
       name: slot.name ?? "Commander",
@@ -209,7 +153,6 @@ export function step(state: MatchState, dt = TICK_DT): void {
 
 /** One wall-clock tick: `gameSpeed` sim steps (max 5×). */
 export function stepMatch(state: MatchState, dt = TICK_DT): void {
-  tickAutoDeploy(state);
   const n = clampGameSpeed(state.gameSpeed);
   const impacts: ImpactView[] = [];
   for (let i = 0; i < n; i++) {

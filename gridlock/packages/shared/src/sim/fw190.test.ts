@@ -6,7 +6,6 @@ import {
   FW190_CANNON,
   FW190_ROOF_HP_SHARE,
   FW190_ROUNDS,
-  START_UNITS,
   TICK_DT,
   TRAIN_TYPES,
   catalog,
@@ -28,7 +27,7 @@ function twoPlayerMatch(): MatchState {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  const state = createMatch(room, started.value, { startingUnits: false });
+  const state = createMatch(room, started.value);
   state.players.get("A")!.scrap = 50_000;
   return state;
 }
@@ -69,9 +68,8 @@ function planeOver(state: MatchState, type: "stuka" | "fw190", owner: string, x:
 }
 
 describe("Fw 190", () => {
-  it("is an aircraft trained at the Airfield, not in the opening army", () => {
+  it("is an aircraft trained at the Airfield", () => {
     assert.ok(TRAIN_TYPES.includes("fw190"));
-    assert.ok(!START_UNITS.includes("fw190"));
     assert.ok(isAircraftType("fw190"));
     assert.equal(catalog("fw190").name, "Fw 190");
     assert.ok(catalog("fw190").moveTilesPerSec > catalog("stuka").moveTilesPerSec, "faster than the Stuka");

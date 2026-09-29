@@ -198,6 +198,7 @@ import { drawSandbags } from "./sandbags.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
+import { unitStepping } from "./stepping.js";
 import { atInfantrySheet, cyborgSheet, gunnerSheet, heldFrame, medicSheet, mortarmanSheet, rocketerSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
 import {
   axisFootprint,
@@ -3655,11 +3656,7 @@ export class MapView {
     ctx.save();
     ctx.save();
     if (e.wreck && !corpse) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
-    let stepping = e.state === "move" || !!e.swimming || e.state === "build" || e.state === "repair";
-    if ((e.type === "walker" || e.type === "titan") && stepping) {
-      const prev = this.prevById.get(e.id);
-      stepping = !!prev && Math.hypot(prev.x - e.x, prev.y - e.y) > 0.5;
-    }
+    const stepping = unitStepping({ type: e.type, state: e.state, swimming: e.swimming, prev: this.prevById.get(e.id), curr: e });
     const drawn = drawUnitSprite(ctx, def, s.x, s.y, dir.x, dir.y, {
       moving: !e.wreck && !immobilized(e) && stepping,
       id: e.id,
