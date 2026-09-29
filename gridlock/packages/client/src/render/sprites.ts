@@ -29,6 +29,8 @@ import airfieldUrl from "../assets/buildings/airfield.png";
 import airfieldGroundUrl from "../assets/buildings/airfield-ground.png";
 import ciwsUrl from "../assets/buildings/ciws.png";
 import ciwsTurretUrl from "../assets/buildings/ciws-turret.png";
+import ramUrl from "../assets/buildings/ram.png";
+import ramTurretUrl from "../assets/buildings/ram-turret.png";
 import cottageUrl from "../assets/buildings/cottage.png";
 import cottageSUrl from "../assets/buildings/cottage-s.png";
 import cottageWUrl from "../assets/buildings/cottage-w.png";
@@ -1101,10 +1103,14 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   airfield: building(airfieldUrl, 960, 652, 552, 604, 112),
   // Pad and plinth. Metrics from tools/sprites/render_ciws.py (ciws.json).
   ciws: building(ciwsUrl, 192, 126, 186, 126, 82.8),
+  // The CIWS pad under a rocket launcher. Metrics from tools/sprites/render_ram.py (ram.json).
+  ram: building(ramUrl, 192, 126, 186, 126, 82.8),
 };
 
 /** CIWS gun: 16 rows, each the base image's canvas and anchor (render/ciws.ts). */
 export const CIWS_TURRET_SHEET: HTMLImageElement = loadSheet(ciwsTurretUrl);
+/** RAM launcher: 16 rows on the CIWS canvas and anchor (render/ram.ts). */
+export const RAM_TURRET_SHEET: HTMLImageElement = loadSheet(ramTurretUrl);
 
 /**
  * Flat part of a building that everything standing draws over: the Airfield's
