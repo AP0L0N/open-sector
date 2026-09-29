@@ -38,24 +38,27 @@ import {
   BOMB_SPLASH_TILES,
   BOMB_TRACK_CHANCE,
   CIWS_AIR_SPREAD,
+  FW190_CANNON,
+  FW190_PAIR_SECONDS,
   radarLaidOf,
-  STUKA_BOMBS,
   STUKA_MG,
   STUKA_MG_PER_TICK,
   STUKA_MG_ROUNDS,
   addCrit,
+  airLoadoutOf,
   catalog,
   hasTracks,
   infantryGunFor,
   isAircraftType,
   isArmoredType,
+  isFighterType,
   isGarrisonable,
   isInfantryType,
 } from "../catalog.js";
 import type { ImpactView } from "../protocol.js";
 import { aimAngle } from "./ballistics.js";
 import { takeDamage } from "./crits.js";
-import { aimHeight, airAlt, worldTileHeight } from "./elevation.js";
+import { aimHeight, airAlt, entityHeight, worldTileHeight } from "./elevation.js";
 import { allies, fellTreeAt, isTree, newAirState, playerTeam, worldToTile } from "./geo.js";
 import { livingGarrison, woundGarrison } from "./garrison.js";
 import { mortarFalloff } from "./mortar.js";
@@ -146,7 +149,7 @@ export function padsTaken(state: MatchState, field: Entity, exceptId?: number): 
   return out;
 }
 
-/** Planes homed here plus Stukas still in its queue. Training stops at AIRFIELD_PADS. */
+/** Planes homed here plus planes still in its queue. Training stops at AIRFIELD_PADS. */
 export function padsSpoken(state: MatchState, field: Entity): number {
   return padsTaken(state, field).size + field.queue.filter((j) => isAircraftType(j.type)).length;
 }
@@ -307,11 +310,21 @@ function spent(a: AirState): boolean {
   return a.bombs <= 0 && a.rounds <= 0;
 }
 
-/** Plate stops a wing MG round. Infantry, soft trucks, and parked planes do not. */
-function wingGunsHurt(target: Entity): boolean {
+/**
+ * Whether this plane's guns do anything to the target. Plate stops the Stuka's
+ * wing MGs; infantry, soft trucks, and parked planes do not. The Fw 190's cannon
+ * come down through any hull's roof, and reach planes in the air.
+ */
+function gunsHurt(e: Entity, target: Entity): boolean {
   if (target.kind !== "unit" || target.wreck) return false;
+  if (isFighterType(e.type)) return isAirborne(target) ? !!target.air && !target.drone : true;
   if (isAirborne(target)) return false;
   return !isArmoredType(target.type);
+}
+
+/** The wing guns this plane fires. */
+function wingGunOf(e: Entity): { rangeTiles: number; arcDeg: number } {
+  return isFighterType(e.type) ? FW190_CANNON : STUKA_MG;
 }
 
 function loiterHere(e: Entity): void {
@@ -386,6 +399,7 @@ export function tickAir(state: MatchState, dt: number): void {
     const a = e.air;
     // Drones fly in tickDrones.
     if (!a || e.hp <= 0 || e.drone) continue;
+    if (e.cooldown > 0) e.cooldown = Math.max(0, e.cooldown - dt);
     if (a.phase === "parked") {
       servicePad(state, e, dt);
       continue;
@@ -416,8 +430,10 @@ function servicePad(state: MatchState, e: Entity, dt: number): void {
   const s = dt * productionSpeed(pow.provided, pow.used);
   a.fuel = Math.min(AIR_FUEL_SECONDS, a.fuel + AIR_REFUEL_PER_SEC * s);
   e.hp = Math.min(e.hpMax, e.hp + AIR_REPAIR_PER_SEC * s);
-  a.rounds = Math.min(STUKA_MG_ROUNDS, a.rounds + AIR_BELT_REARM_PER_SEC * s);
-  if (a.bombs < STUKA_BOMBS) {
+  const load = airLoadoutOf(e.type);
+  // Belts fill in the same time whatever they hold.
+  a.rounds = Math.min(load.rounds, a.rounds + ((AIR_BELT_REARM_PER_SEC * load.rounds) / STUKA_MG_ROUNDS) * s);
+  if (a.bombs < load.bombs) {
     a.rearm += s;
     if (a.rearm >= BOMB_REARM_SECONDS) {
       a.bombs += 1;
@@ -520,12 +536,12 @@ function tickFly(state: MatchState, e: Entity, dt: number): void {
     }
   } else if (o.kind === "attack" && o.targetId != null) {
     const t = state.entities.get(o.targetId);
-    if (!t || t.hp <= 0 || isAirborne(t) || allies(state, e.ownerId, t.ownerId)) {
+    if (!t || t.hp <= 0 || (isAirborne(t) && !gunsHurt(e, t)) || allies(state, e.ownerId, t.ownerId)) {
       loiterHere(e);
     } else if (canSeeEntity(state, e.ownerId, t)) {
       o.x = t.x;
       o.y = t.y;
-      altGoal = attackRun(state, e, t.x, t.y, t, dt, turned, false);
+      altGoal = isAirborne(t) ? dogfight(state, e, t, dt, turned) : attackRun(state, e, t.x, t.y, t, dt, turned, false);
     } else if (o.x != null && o.y != null && Math.hypot(o.x - e.x, o.y - e.y) > orbitRadius(state, e)) {
       // Lost from sight. Fly to where it was last seen and look again.
       if (!turned) steerTo(state, e, o.x, o.y, dt);
@@ -534,19 +550,24 @@ function tickFly(state: MatchState, e: Entity, dt: number): void {
     }
   } else if (o.kind === "forceattack" && o.x != null && o.y != null) {
     const t = o.targetId != null ? state.entities.get(o.targetId) : undefined;
-    if (o.targetId != null && (!t || t.hp <= 0 || isAirborne(t))) {
+    if (o.targetId != null && (!t || t.hp <= 0 || (isAirborne(t) && !gunsHurt(e, t)))) {
       loiterHere(e);
-    } else if (a.bombs <= 0 && !(t && wingGunsHurt(t) && a.rounds > 0)) {
+    } else if (t && isAirborne(t)) {
+      altGoal = dogfight(state, e, t, dt, turned);
+    } else if (a.bombs <= 0 && !(t && gunsHurt(e, t) && a.rounds > 0)) {
       e.order = { kind: "move", x: o.x, y: o.y };
     } else {
       altGoal = attackRun(state, e, t?.x ?? o.x, t?.y ?? o.y, t, dt, turned, true);
     }
   } else if (o.kind === "attackmove" && o.x != null && o.y != null) {
     let t = e.attackTarget != null ? state.entities.get(e.attackTarget) : undefined;
-    if (t && (t.hp <= 0 || isAirborne(t) || !canSeeEntity(state, e.ownerId, t) || !canHurt(a, t))) t = undefined;
+    if (t && (t.hp <= 0 || !canSeeEntity(state, e.ownerId, t) || !canHurt(e, t))) t = undefined;
+    // A fighter clears the sky before it strafes.
+    if (!t || (!isAirborne(t) && isFighterType(e.type))) t = acquireAir(state, e) ?? t;
     if (!t) t = acquireGround(state, e);
     e.attackTarget = t?.id ?? null;
-    if (t) altGoal = attackRun(state, e, t.x, t.y, t, dt, turned, false);
+    if (t && isAirborne(t)) altGoal = dogfight(state, e, t, dt, turned);
+    else if (t) altGoal = attackRun(state, e, t.x, t.y, t, dt, turned, false);
     else if (!turned) flyToOrOrbit(state, e, o.x, o.y, dt);
   } else if (o.x != null && o.y != null) {
     if (!turned) flyToOrOrbit(state, e, o.x, o.y, dt);
@@ -563,8 +584,27 @@ function flyToOrOrbit(state: MatchState, e: Entity, x: number, y: number, dt: nu
   else orbit(state, e, x, y, dt);
 }
 
-function canHurt(a: AirState, t: Entity): boolean {
-  return a.bombs > 0 || (a.rounds > 0 && wingGunsHurt(t));
+function canHurt(e: Entity, t: Entity): boolean {
+  const a = e.air!;
+  return (a.bombs > 0 && !isAirborne(t)) || (a.rounds > 0 && gunsHurt(e, t));
+}
+
+/** Fighter only: nearest enemy plane in the air it can see. */
+function acquireAir(state: MatchState, e: Entity): Entity | undefined {
+  if (!isFighterType(e.type) || e.air!.rounds <= 0) return undefined;
+  const reach = catalog(e.type).sightTiles * state.tileSize;
+  let best: Entity | undefined;
+  let bestD = reach * reach;
+  for (const o of state.entities.values()) {
+    if (o.hp <= 0 || o.id === e.id || !o.air || o.drone || !isAirborne(o)) continue;
+    if (!o.ownerId || allies(state, e.ownerId, o.ownerId)) continue;
+    const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
+    if (d > bestD) continue;
+    if (!canSeeEntity(state, e.ownerId, o)) continue;
+    bestD = d;
+    best = o;
+  }
+  return best;
 }
 
 /** Nearest enemy on the ground this plane can see and has something for. */
@@ -578,7 +618,7 @@ function acquireGround(state: MatchState, e: Entity): Entity | undefined {
     if (!o.ownerId || allies(state, e.ownerId, o.ownerId)) continue;
     if (isAirborne(o) || o.type === "sandbags" || o.type === "teeth") continue;
     if (o.kind === "building" && a.bombs <= 0) continue;
-    if (!canHurt(a, o)) continue;
+    if (!canHurt(e, o)) continue;
     const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
     if (d > bestD) continue;
     if (!canSeeEntity(state, e.ownerId, o)) continue;
@@ -608,7 +648,7 @@ function attackRun(
   const d = Math.hypot(tx - e.x, ty - e.y);
   const off = Math.abs(angOff(Math.atan2(ty - e.y, tx - e.x), e.facing));
   const bomb = a.bombs > 0;
-  const guns = a.rounds > 0 && !!target && wingGunsHurt(target);
+  const guns = a.rounds > 0 && !!target && gunsHurt(e, target);
   if (!bomb && !guns) {
     if (liveHome(state, e)) e.order = { kind: "land" };
     else loiterHere(e);
@@ -622,8 +662,10 @@ function attackRun(
   const cone = (AIR_DIVE_CONE_DEG * Math.PI) / 180;
   const diving = d < AIR_DIVE_START_TILES * ts && off < cone;
   const goal = diving ? (bomb ? AIR_RELEASE_ALT : AIR_STRAFE_ALT) : AIR_CRUISE_ALT;
-  if (diving && guns && d <= STUKA_MG.rangeTiles * ts && off <= (STUKA_MG.arcDeg * Math.PI) / 180) {
-    fireWingGuns(state, e, target!, d);
+  const gun = wingGunOf(e);
+  if (diving && guns && d <= gun.rangeTiles * ts && off <= (gun.arcDeg * Math.PI) / 180) {
+    if (isFighterType(e.type)) fireCannon(state, e, target!, d);
+    else fireWingGuns(state, e, target!, d);
   }
   if (bomb && diving && d <= BOMB_RELEASE_TILES * ts * 1.15 && off < (15 * Math.PI) / 180 && a.alt <= AIR_RELEASE_ALT + 3) {
     dropBomb(state, e, tx, ty, forced);
@@ -669,6 +711,84 @@ function fireWingGuns(state: MatchState, e: Entity, target: Entity, dist: number
     state.projectiles.push(p);
   }
   a.rounds = Math.max(0, a.rounds - n);
+}
+
+/**
+ * Fighter on a plane in the air: chase it, match its height, and fire the
+ * cannon while it sits in front of the nose. A faster, tighter-turning plane
+ * gets onto its tail; a target inside the turn is overshot and come round on.
+ * Returns the height the plane is trying to hold.
+ */
+function dogfight(state: MatchState, e: Entity, t: Entity, dt: number, turned: boolean): number {
+  const a = e.air!;
+  a.extend = false;
+  if (a.rounds <= 0) {
+    if (liveHome(state, e)) e.order = { kind: "land" };
+    else loiterHere(e);
+    return AIR_CRUISE_ALT;
+  }
+  if (!turned) steerTo(state, e, t.x, t.y, dt);
+  const d = Math.hypot(t.x - e.x, t.y - e.y);
+  const off = Math.abs(angOff(Math.atan2(t.y - e.y, t.x - e.x), e.facing));
+  if (d <= FW190_CANNON.rangeTiles * state.tileSize && off <= (FW190_CANNON.arcDeg * Math.PI) / 180) {
+    fireCannon(state, e, t, d);
+  }
+  const zT = entityHeight(state, t) + airAlt(t);
+  return Math.max(AIR_STRAFE_ALT, zT - worldTileHeight(state, e.x, e.y));
+}
+
+/**
+ * One round from each wing, both laid on the target. Fired down at something
+ * on the ground a round meets a hull's roof (fromAbove); at a plane it is a
+ * plain hit.
+ */
+function fireCannon(state: MatchState, e: Entity, target: Entity, dist: number): void {
+  const a = e.air!;
+  if (e.cooldown > 0 || a.rounds <= 0) return;
+  const gun = FW190_CANNON;
+  const range = gun.rangeTiles * state.tileSize;
+  const aloft = isAirborne(target);
+  const moving = target.waypoints.length > 0 || target.state === "move";
+  const z0 = worldTileHeight(state, e.x, e.y) + a.alt;
+  const zAim = aloft ? entityHeight(state, target) + airAlt(target) : aimHeight(state, target);
+  const ground = worldTileHeight(state, target.x, target.y);
+  const drop = Math.max(0.1, z0 - zAim);
+  const travel = aloft
+    ? Math.min(range * 1.2, dist * 1.1 + 8)
+    : Math.min(range * 1.2, dist * Math.max(1, (z0 - ground) / drop) + 4);
+  const px = -Math.sin(e.facing);
+  const py = Math.cos(e.facing);
+  const n = Math.min(2, a.rounds);
+  for (let i = 0; i < n; i++) {
+    // Muzzles out under each wing, converging on the target.
+    const wing = (i === 0 ? 1 : -1) * e.radius * 0.7;
+    const mx = e.x + Math.cos(e.facing) * (e.radius + 2) + px * wing;
+    const my = e.y + Math.sin(e.facing) * (e.radius + 2) + py * wing;
+    const bearing = Math.atan2(target.y - my, target.x - mx);
+    const ang = aimAngle(bearing, gun.spreadDeg, dist, range, () => nextRand(state), moving);
+    state.projectiles.push({
+      id: state.nextId++,
+      ownerId: e.ownerId,
+      team: playerTeam(state, e.ownerId),
+      x: mx,
+      y: my,
+      vx: Math.cos(ang) * gun.projectileSpeed,
+      vy: Math.sin(ang) * gun.projectileSpeed,
+      damage: gun.damage,
+      penetration: gun.penetration,
+      caliber: gun.caliber,
+      life: travel / gun.projectileSpeed,
+      ignoreId: e.id,
+      fromId: e.id,
+      bounced: false,
+      shell: null,
+      z: z0,
+      vz: -((z0 - zAim) / Math.max(1e-6, dist)) * gun.projectileSpeed,
+      fromAbove: aloft ? undefined : true,
+    });
+  }
+  a.rounds = Math.max(0, a.rounds - n);
+  e.cooldown = FW190_PAIR_SECONDS;
 }
 
 function dropBomb(state: MatchState, e: Entity, tx: number, ty: number, forced: boolean): void {

@@ -333,6 +333,8 @@ export interface Projectile {
   ciwsTried?: number[];
   /** Fired by an anti-air gun (MG42, gatlings). Only these meet a high drone. */
   antiAir?: boolean;
+  /** Fired down from a plane's wing cannon: on a hull it meets the roof (resolveRoofHit), not a face. */
+  fromAbove?: boolean;
 }
 
 /** Lasting smoke screen from a 75mm smoke shell. */

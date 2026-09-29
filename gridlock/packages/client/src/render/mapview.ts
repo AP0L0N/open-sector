@@ -271,6 +271,7 @@ const EXTRUDE: Record<EntityType, number> = {
   bunker: 18,
   ram: 26,
   stuka: 14,
+  fw190: 12,
   drone: 8,
   droneop: 26,
   rig: 22,
