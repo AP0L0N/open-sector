@@ -70,6 +70,7 @@ import {
   drawRicochetSparks,
   drawRicochetTrace,
   armorHitLift,
+  AIR_BOMB_BURST_SCALE,
   drawMortarBurst,
   drawMortarSmoke,
   MORTAR_BURST_MS,
@@ -446,6 +447,8 @@ export class MapView {
     blast?: boolean;
     splash?: boolean;
     mortar?: boolean;
+    /** Aircraft bomb: the mortar column, larger. */
+    bomb?: boolean;
     lift?: number;
     /** Screen-x offset from the world ground projection. */
     sx?: number;
@@ -3559,7 +3562,7 @@ export class MapView {
       const dirX = tip.x - s.x;
       const dirY = tip.y - s.y;
       if (f.mortar) {
-        drawMortarBurst(ctx, s.x, s.y, t, f.id, !!f.splash);
+        drawMortarBurst(ctx, s.x, s.y, t, f.id, !!f.splash, f.bomb ? AIR_BOMB_BURST_SCALE : 1);
       } else if (f.splash) {
         drawWaterDetonation(ctx, s.x, s.y, t, f.id, f.caliber);
       }

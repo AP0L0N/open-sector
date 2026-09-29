@@ -117,6 +117,29 @@ describe("airfield", () => {
     assert.match(!r.ok ? r.message : "", /Airfield/);
   });
 
+  it("a plane that lost its Airfield does not take a pad a queued Stuka holds", () => {
+    const state = twoPlayerMatch();
+    seedCore(state);
+    const lost = seedAirfield(state, 30, 30);
+    const other = seedAirfield(state, 30, 50);
+    const plane = parkedPlane(state, lost);
+    for (let i = 0; i < AIRFIELD_PADS - 1; i++) parkedPlane(state, other);
+    applyCommand(state, "A", { type: "cmd.move", ids: [plane.id], x: 80 * state.tileSize, y: 80 * state.tileSize });
+    ticks(state, 20);
+    lost.hp = 0;
+    ticks(state, 1);
+    assert.equal(state.entities.has(lost.id), false);
+    const r = applyCommand(state, "A", { type: "cmd.train", unit: "stuka" });
+    assert.equal(r.ok, true, !r.ok ? r.message : "");
+    assert.equal(other.queue.length, 1);
+    ticks(state, 20);
+    assert.equal(plane.air!.homeId, null);
+    ticks(state, Math.ceil(catalog("stuka").buildSeconds / TICK_DT) + 20);
+    assert.equal(other.queue.length, 0, "the queued Stuka rolled out onto its pad");
+    const homed = [...state.entities.values()].filter((e) => e.air?.homeId === other.id);
+    assert.equal(homed.length, AIRFIELD_PADS);
+  });
+
   it("shows pad use to its owner", () => {
     const state = twoPlayerMatch();
     seedCore(state);

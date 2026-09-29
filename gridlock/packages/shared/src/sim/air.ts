@@ -141,6 +141,8 @@ function ensureHome(state: MatchState, e: Entity): Entity | null {
   let bestD = Infinity;
   for (const f of state.entities.values()) {
     if (f.type !== "airfield" || f.hp <= 0 || f.ownerId !== e.ownerId) continue;
+    // A Stuka in that field's queue already holds a pad. Taking it would stall the queue.
+    if (padsSpoken(state, f) >= AIRFIELD_PADS) continue;
     const pad = freePad(state, f, e.id);
     if (pad == null) continue;
     const d = Math.hypot(f.x - e.x, f.y - e.y);
