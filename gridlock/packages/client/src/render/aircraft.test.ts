@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { isoLift, type EntityView } from "@gridlock/shared";
-import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, inAir, lerpAirAlt } from "./aircraft.js";
+import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, inAir, lerpAirAlt, parkedOnStripBias } from "./aircraft.js";
 import { STANDING_DRAW_LAYER } from "./corpse-depth.js";
 
 function plane(alt: number): EntityView {
@@ -44,6 +44,15 @@ describe("aircraft draw", () => {
     assert.equal(inAir(plane(0)), false);
     assert.equal(inAir(plane(8)), true);
     assert.equal(inAir({ air: undefined }), false);
+  });
+
+  it("a parked plane sorts just in front of its strip, nearer planes over farther ones", () => {
+    const near = parkedOnStripBias(140, 90);
+    const far = parkedOnStripBias(20, 50);
+    assert.ok(far > 0);
+    assert.ok(near > far);
+    // Far smaller than the gap between two neighbouring map objects' depths.
+    assert.ok(near < 0.01);
   });
 
   it("the shadow softens with height", () => {
