@@ -812,7 +812,9 @@ input[type="range"] { padding: 0; }
 #build-armory,
 #build-airfield,
 #build-ciws,
-#build-research {
+#build-research,
+#build-bunker,
+#build-ram {
   background-size: cover;
   background-position: right 10% center;
   min-height: 3.1rem;
@@ -989,6 +991,16 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/research-cameo.png");
 }
+#build-bunker {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/bunker-cameo.png");
+}
+#build-ram {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/ram-cameo.png");
+}
 #train-stuka {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
@@ -1147,6 +1159,8 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="airfield"] { background-image: url("../assets/buildings/airfield-cameo.png"); }
 .config-type[data-type="ciws"] { background-image: url("../assets/buildings/ciws-cameo.png"); }
 .config-type[data-type="research"] { background-image: url("../assets/buildings/research-cameo.png"); }
+.config-type[data-type="bunker"] { background-image: url("../assets/buildings/bunker-cameo.png"); }
+.config-type[data-type="ram"] { background-image: url("../assets/buildings/ram-cameo.png"); }
 .config-type[data-type="stuka"],
 .prod-job[data-type="stuka"] {
   background-image: var(--stuka-cameo, url("../assets/units/stuka/hull/0013.png"));

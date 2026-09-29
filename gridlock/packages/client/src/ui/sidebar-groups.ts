@@ -3,6 +3,7 @@ import {
   TRAIN_TYPES,
   catalog,
   isAircraftType,
+  isGarrisonable,
   isInfantryType,
   type BuildingType,
   type TrainType,
@@ -19,9 +20,11 @@ export const SIDEBAR_GROUPS: readonly { id: SidebarGroup; label: string; short: 
   { id: "aircraft", label: "Aircraft", short: "Air", icon: "M8 1c.7 0 1 1 1 2v3l6 3.2V11L9 9.4V12l2 1.6V15l-3-.9-3 .9v-1.4L7 12V9.4L1 11V9.2L7 6V3c0-1 .3-2 1-2z" },
 ];
 
-/** Buildings with a gun are defences. Trainables split by body: foot, air, or hull. */
+/** Buildings with a gun or a garrison are defences. Trainables split by body: foot, air, or hull. */
 export function sidebarGroupOf(type: BuildingType | TrainType): SidebarGroup {
-  if (catalog(type).kind === "building") return catalog(type).rangeTiles > 0 ? "defences" : "structures";
+  if (catalog(type).kind === "building") {
+    return catalog(type).rangeTiles > 0 || isGarrisonable(type) ? "defences" : "structures";
+  }
   if (isInfantryType(type)) return "infantry";
   if (isAircraftType(type)) return "aircraft";
   return "tanks";

@@ -1,10 +1,12 @@
 import {
   catalog,
   GARRISON_STRUCTURAL_CALIBER,
+  garrisonAdmits,
   garrisonCapOf,
   garrisonFloorsOf,
   garrisonHpMulOf,
   garrisonWindowsOf,
+  garrisonWoundMulOf,
   isCivilianType,
   isGarrisonable,
   isInfantryType,
@@ -131,6 +133,7 @@ export function detachGarrisoned(state: MatchState, unit: Entity): void {
 export function woundGarrison(state: MatchState, house: Entity, incoming: number, caliber = 0): void {
   const units = livingGarrison(state, house);
   if (units.length === 0 || incoming <= 0) return;
+  incoming *= garrisonWoundMulOf(house.type);
   const heavy = caliber >= GARRISON_STRUCTURAL_CALIBER;
   const primary = units[Math.floor(nextRand(state) * units.length)]!;
   woundOccupant(primary, incoming * (heavy ? 0.5 + nextRand(state) * 0.7 : 0.4 + nextRand(state) * 0.7), state.tick);
@@ -158,6 +161,7 @@ export function garrisonSpace(state: MatchState, house: Entity): number {
 export function canGarrison(state: MatchState, unit: Entity, house: Entity): string | null {
   if (!isInfantryType(unit.type) || unit.kind !== "unit" || unit.wreck) return "Only infantry can garrison.";
   if (!isGarrisonable(house.type) || house.kind !== "building" || house.hp <= 0) return "Cannot enter that.";
+  if (!garrisonAdmits(house.type, unit.type)) return `${catalog(unit.type).name} cannot enter the ${catalog(house.type).name}.`;
   const occ = garrisonOwner(state, house);
   if (occ && occ !== NEUTRAL_OWNER && !allies(state, unit.ownerId, occ)) return "Held by the enemy.";
   if (
@@ -350,3 +354,27 @@ export function tickGarrison(state: MatchState): void {
 }
 
 
+
+/**
+ * Care inside a building that offers it (the Bunker). A living medic inside
+ * slowly heals every occupant; a living engineer inside slowly patches the
+ * walls. One of each is enough — more do not stack.
+ */
+export function tickGarrisonCare(state: MatchState, dt: number): void {
+  for (const house of state.entities.values()) {
+    if (house.kind !== "building" || house.hp <= 0 || house.garrison.length === 0) continue;
+    const def = catalog(house.type);
+    const regen = def.garrisonMedicRegen ?? 0;
+    const repair = def.garrisonEngineerRepair ?? 0;
+    if (regen <= 0 && repair <= 0) continue;
+    const units = livingGarrison(state, house);
+    if (regen > 0 && units.some((u) => u.type === "medic")) {
+      for (const u of units) {
+        if (u.hp < u.hpMax) u.hp = Math.min(u.hpMax, u.hp + u.hpMax * regen * dt);
+      }
+    }
+    if (repair > 0 && house.hp < house.hpMax && units.some((u) => u.type === "engineer")) {
+      house.hp = Math.min(house.hpMax, house.hp + repair * dt);
+    }
+  }
+}
