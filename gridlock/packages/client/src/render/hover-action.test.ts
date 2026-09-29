@@ -292,8 +292,8 @@ describe("resolveHoverAction bunker", () => {
     assert.equal(act({ selected: [mortar, rifle], hit: yourBunker }), "garrison");
   });
 
-  it("treats an empty enemy bunker as a structure to take or shell, not to enter", () => {
-    assert.equal(act({ selected: [rifle], hit: foeBunker }), "capture");
+  it("treats an empty enemy bunker as a structure to shell, not to enter or capture", () => {
+    assert.equal(act({ selected: [rifle], hit: foeBunker }), "attack");
     assert.equal(act({ selected: [unit({ id: 3, type: "warden" })], hit: foeBunker }), "attack");
   });
 });
