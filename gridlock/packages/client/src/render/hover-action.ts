@@ -132,7 +132,8 @@ function canSupplyHit(
   const friendly = hit.ownerId === you || allied(hit.ownerId);
   if (!friendly) return false;
   if (hit.type === "armory") return trucks.some((t) => (t.supply ?? 0) < SUPPLY_CARGO);
-  if (hit.kind !== "unit" || hit.type === "supply") return false;
+  // Units, and a structure with its own belt (the CIWS). Every other structure is never short.
+  if (hit.type === "supply") return false;
   return supplyShortOf(hit.type, hit.ammo, hit.mgAmmo, hit.clip, hit.rockets);
 }
 
