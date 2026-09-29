@@ -16,6 +16,8 @@ import {
   MORTAR_PLANT_SECONDS,
   MORTAR_SPLASH_TILES,
   addCrit,
+  FW190_ROOF_ENGINE_CHANCE,
+  isMotorVehicle,
   catalog,
   gunArcDegOf,
   GARRISON_STRUCTURAL_CALIBER,
@@ -74,6 +76,7 @@ import {
   isArmored,
   ptrdHarmPossible,
   resolveAtRifleHit,
+  resolveRoofHit,
   resolveHit,
   scatterHullImpact,
   RICOCHET_SPARK_SPEED,
@@ -1506,12 +1509,22 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       !scopedInfantry &&
       isArmored(liveDef) &&
       liveDef.kind !== "building";
+    // A plane's cannon comes down on the roof of a hull on the ground.
+    const roofHit =
+      !p.bounced &&
+      !!p.fromAbove &&
+      !e.wreck &&
+      !isAirborne(e) &&
+      isArmored(liveDef) &&
+      liveDef.kind !== "building";
     const shooter = state.entities.get(p.fromId);
     const distTiles =
       atArmor && shooter
         ? Math.hypot(e.x - shooter.x, e.y - shooter.y) / state.tileSize
         : PTRD_CLOSE_TILES + 1;
-    const res = atArmor
+    const res = roofHit
+      ? resolveRoofHit({ penetration: p.penetration, target: liveDef, targetHp: e.hp, targetHpMax: e.hpMax, rand })
+      : atArmor
       ? resolveAtRifleHit({
           penetration: p.penetration,
           distTiles,
@@ -1546,7 +1559,9 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     let dealt = res.damage;
     if (chipWalls) {
       dealt = takeDamage(e, dealt, state.tick);
-      if (e.hp > 0) {
+      if (e.hp > 0 && roofHit) {
+        if (res.kind === "pen" && isMotorVehicle(e.type) && rand() < FW190_ROOF_ENGINE_CHANCE) addCrit(e, "engine");
+      } else if (e.hp > 0) {
         const tracks =
           p.caliber === PTRD_CALIBER && res.kind === "pen" && res.face === "side" ? PTRD_TRACK_CHANCE : undefined;
         rollCrits(e, res.face, res.kind, dealt, rand, tracks);
