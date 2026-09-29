@@ -26,6 +26,7 @@ import smelterUrl from "../assets/buildings/smelter.png";
 import musterUrl from "../assets/buildings/muster.png";
 import armoryUrl from "../assets/buildings/armory.png";
 import airfieldUrl from "../assets/buildings/airfield.png";
+import airfieldGroundUrl from "../assets/buildings/airfield-ground.png";
 import cottageUrl from "../assets/buildings/cottage.png";
 import cottageSUrl from "../assets/buildings/cottage-s.png";
 import cottageWUrl from "../assets/buildings/cottage-w.png";
@@ -905,9 +906,21 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   armory: building(armoryUrl, 384, 194.5, 310, 120, 48),
   muster: building(musterUrl, 385, 194.5, 333, 278, 52),
   smelter: building(smelterUrl, 384, 194, 393, 138, 90),
-  // Metrics from tools/sprites/render_procedural.py (airfield.json).
-  airfield: building(airfieldUrl, 864, 488, 451, 417.4, 42),
+  // Hangar, tower, dump, tents. Metrics from tools/sprites/render_airfield.py (airfield.json).
+  airfield: building(airfieldUrl, 960, 652, 552, 604, 112),
 };
+
+/**
+ * Flat part of a building that everything standing draws over: the Airfield's
+ * strip, hardstands, and revetments. Same canvas and anchor as its props image.
+ */
+const BUILDING_GROUNDS: Partial<Record<EntityType, BuildingSpriteDef>> = {
+  airfield: building(airfieldGroundUrl, 960, 652, 552, 604, 112),
+};
+
+export function buildingGroundFor(type: EntityType): BuildingSpriteDef | undefined {
+  return BUILDING_GROUNDS[type];
+}
 
 /** East, south, west, north. Yards differ per face so a random facing also varies the lot. */
 const CIV_FACES: Record<CivilianType, BuildingSpriteDef[]> = {

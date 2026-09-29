@@ -787,7 +787,7 @@ export const AIRFIELD_RUNWAY_Y = 0.44;
 export const AIRFIELD_RUNWAY_HALF = 0.1;
 /** Each end of the strip, from the footprint edge. Touchdown aims here. */
 export const AIRFIELD_THRESHOLD = 0.06;
-export const AIRFIELD_PAD_Y = 0.8;
+export const AIRFIELD_PAD_Y = 0.78;
 export const AIRFIELD_PAD_X: readonly number[] = [0.16, 0.39, 0.61, 0.84];
 /** Speed share taxiing between a hardstand and the strip. */
 export const AIR_TAXI_SPEED = 0.25;
