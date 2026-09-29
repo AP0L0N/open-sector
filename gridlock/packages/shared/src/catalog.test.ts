@@ -11,6 +11,7 @@ import {
   SMOKE_SECONDS,
   haulerSmokeChargesOf,
   GAME_SPEED_MAX,
+  GAME_SPEED_MIN,
   HANDGUN,
   RIFLE,
   RELOAD_MUL_MAX,
@@ -380,7 +381,7 @@ describe("building capture", () => {
 
 describe("game speed", () => {
   it("clamps to 1–5×", () => {
-    assert.equal(clampGameSpeed(GAME_SPEED_DEFAULT), GAME_SPEED_MAX);
+    assert.equal(clampGameSpeed(GAME_SPEED_DEFAULT), GAME_SPEED_MIN);
     assert.equal(clampGameSpeed(2.4), 2);
     assert.equal(clampGameSpeed(9), GAME_SPEED_MAX);
     assert.equal(clampGameSpeed(0), 1);

@@ -5,7 +5,7 @@ export const TICK_DT = 1 / TICK_HZ;
 export const TICK_MS = 100;
 export const GAME_SPEED_MIN = 1;
 export const GAME_SPEED_MAX = 5;
-export const GAME_SPEED_DEFAULT = GAME_SPEED_MAX;
+export const GAME_SPEED_DEFAULT = GAME_SPEED_MIN;
 /** Wall-clock delay before each Rig auto-unpacks into a Core. */
 export const AUTO_DEPLOY_SECONDS = 0.5;
 export const START_SCRAP = 2200;

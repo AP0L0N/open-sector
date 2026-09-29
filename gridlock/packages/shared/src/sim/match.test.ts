@@ -4,7 +4,7 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   AUTO_DEPLOY_SECONDS,
   catalog,
-  GAME_SPEED_MAX,
+  GAME_SPEED_MIN,
   HAULER_CARGO,
   LOW_POWER_MIN_SPEED,
   TANK_MG,
@@ -55,8 +55,8 @@ describe("createMatch", () => {
     assert.equal(snap.you.provided, 0);
     assert.equal(snap.entities.filter((e) => e.type === "rig").length, 1);
     assert.equal(snap.entities[0]?.ownerId, "A");
-    assert.equal(state.gameSpeed, GAME_SPEED_MAX);
-    assert.equal(snap.gameSpeed, GAME_SPEED_MAX);
+    assert.equal(state.gameSpeed, GAME_SPEED_MIN);
+    assert.equal(snap.gameSpeed, GAME_SPEED_MIN);
   });
 
   it("spawns one of each unit except the Mauler next to the Rig", () => {
