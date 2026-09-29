@@ -274,3 +274,26 @@ describe("canGuardUnit", () => {
     assert.equal(ask(null), false);
   });
 });
+
+describe("resolveHoverAction bunker", () => {
+  const rifle = unit({ id: 1, type: "rifleman" });
+  const mortar = unit({ id: 2, type: "mortarman" });
+  const yourBunker = building({ id: 40, type: "bunker", ownerId: YOU, garrison: { count: 0, cap: 5 } });
+  const allyBunker = building({ id: 41, type: "bunker", ownerId: ALLY, garrison: { count: 0, cap: 5 } });
+  const foeBunker = building({ id: 42, type: "bunker", ownerId: FOE, garrison: { count: 0, cap: 5 } });
+
+  it("offers Enter on your own or an ally's empty bunker", () => {
+    assert.equal(act({ selected: [rifle], hit: yourBunker }), "garrison");
+    assert.equal(act({ selected: [rifle], hit: allyBunker }), "garrison");
+  });
+
+  it("does not offer Enter to a mortarman, who does not fit", () => {
+    assert.notEqual(act({ selected: [mortar], hit: yourBunker }), "garrison");
+    assert.equal(act({ selected: [mortar, rifle], hit: yourBunker }), "garrison");
+  });
+
+  it("treats an empty enemy bunker as a structure to take or shell, not to enter", () => {
+    assert.equal(act({ selected: [rifle], hit: foeBunker }), "capture");
+    assert.equal(act({ selected: [unit({ id: 3, type: "warden" })], hit: foeBunker }), "attack");
+  });
+});

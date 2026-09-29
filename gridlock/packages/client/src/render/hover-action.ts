@@ -4,6 +4,7 @@ import {
   isArmoredType,
   isCapturable,
   isCivilianType,
+  garrisonAdmits,
   isFieldStructure,
   isGarrisonable,
   isInfantryType,
@@ -81,9 +82,11 @@ export function resolveHoverAction(args: {
 
   if (hit && isGarrisonable(hit.type) && hit.hp > 0 && !hit.wreck) {
     const occ = hit.garrison?.ownerId;
-    const yours = !occ || occ === you;
+    // A player-built garrison (the Bunker) stays its builder's side's, empty or not.
+    const builder = !isCivilianType(hit.type) && hit.ownerId ? hit.ownerId : undefined;
+    const yours = (!occ || occ === you) && (!builder || builder === you || args.allied(builder));
     const full = (hit.garrison?.count ?? 0) >= (hit.garrison?.cap ?? 1);
-    const freeInf = inf.filter((e) => e.garrisonedIn !== hit.id);
+    const freeInf = inf.filter((e) => e.garrisonedIn !== hit.id && garrisonAdmits(hit.type, e.type));
     if (yours && !full && freeInf.length > 0) return "garrison";
     const occupying = occ === you && (hit.garrison?.count ?? 0) > 0;
     const selectedHere = live.some((e) => e.id === hit.id || e.garrisonedIn === hit.id);
@@ -178,9 +181,11 @@ function isAttackTarget(
 ): boolean {
   if (hit.wreck) return true;
   const occ = hit.garrison?.ownerId;
-  if (isGarrisonable(hit.type)) {
+  if (isGarrisonable(hit.type) && isCivilianType(hit.type)) {
     return !!occ && occ !== you && !allied(occ);
   }
+  // A player-built garrison is a target whenever the enemy holds it, even empty.
+  if (occ && occ !== you && !allied(occ)) return true;
   if (hit.ownerId === you || allied(hit.ownerId)) return false;
   if (isCivilianType(hit.type)) return false;
   return true;

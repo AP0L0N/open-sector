@@ -412,6 +412,7 @@ export type EntityType =
   | "armory"
   | "airfield"
   | "ciws"
+  | "bunker"
   | "stuka"
   | "droneop"
   | "drone"
@@ -424,7 +425,7 @@ export type EntityType =
   | "chapel"
   | "sandbags"
   | "teeth";
-export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws";
+export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "bunker";
 /** Placed by an engineer, not the construction yard. */
 export type FieldStructureType = "sandbags" | "teeth";
 export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "teeth"];
@@ -460,7 +461,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
   deploy: 2,
 };
 
-export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws"];
+export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "bunker"];
 export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "droneop"];
 /**
  * Opening army besides the Rig. Hauler omitted so it does not auto-harvest.
@@ -544,6 +545,23 @@ export interface CatalogEntry {
   garrisonWindows?: number;
   /** Stories used for window-flash lift. */
   garrisonFloors?: number;
+  /** Only these infantry may enter. Omit for any infantry. */
+  garrisonTypes?: readonly EntityType[];
+  /** Share of incoming fire that reaches the occupants. Default 1. */
+  garrisonWoundMul?: number;
+  /** Sight and weapon reach added while inside, watch mode. Default GARRISON_WATCH_SIGHT_BONUS. */
+  garrisonSightBonus?: number;
+  /** Every weapon works from inside: the Gunner lays his MG on the embrasure ledge. */
+  garrisonFullArms?: boolean;
+  /**
+   * A medic inside: every occupant regains this share of max HP a second, and
+   * the medic tends by this alone, not hands-on. Does not stack.
+   */
+  garrisonMedicRegen?: number;
+  /** An engineer inside: the building regains this much HP a second. Does not stack. */
+  garrisonEngineerRepair?: number;
+  /** Solid height above the pad in elevation units, when not set by garrisonFloors. */
+  coverHeight?: number;
   /** Hatch scout: pop the cupola for infantry sight. Tanks only. */
   hasScout?: boolean;
   /** Walks through water tiles like a swimmer, and like a swimmer cannot fire from one. */
@@ -1060,6 +1078,25 @@ export const STUKA_MG_PER_TICK = (MG42_RPM / 60 / (1 / TICK_DT)) * 2;
 export const STUKA_MG_ROUNDS = 1000;
 
 /**
+ * Bunker. Poured concrete, low to the ground, firing slits on every face.
+ * The walls take most of what hits them, so the men inside are the safest
+ * infantry on the map. It sits low, so it adds no sight or reach.
+ */
+export const BUNKER_GARRISON_CAP = 5;
+/** Occupant HP multiplier inside. A civilian house is 3×. */
+export const BUNKER_GARRISON_HP_MUL = 4;
+/** Share of each hit on the bunker that reaches the men inside. */
+export const BUNKER_WOUND_MUL = 0.35;
+/** Solid height of the roof slab, elevation units. A one-story house is STORY_COVER_HEIGHT. */
+export const BUNKER_COVER_HEIGHT = 4;
+/** Infantry that fit through the door and the firing slits. */
+export const BUNKER_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "medic", "engineer"];
+/** A medic inside: every occupant regains this share of max HP each second. Does not stack. */
+export const BUNKER_MEDIC_REGEN_FRAC = 0.004;
+/** An engineer inside: the bunker regains this much HP each second. Does not stack. */
+export const BUNKER_ENGINEER_REPAIR_PER_SEC = 1.5;
+
+/**
  * CIWS. A stationary radar-laid 20mm gatling on a small concrete pad. It needs
  * no crew and no orders: it swings onto the nearest enemy unit it can hurt,
  * planes first, and fires 1,800 rounds a minute. Tank plate shrugs the rounds
@@ -1520,6 +1557,39 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     belt: CIWS_BELT,
     radarLaid: true,
     blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, and tries to burst incoming rockets in the air. Leaves tanks and buildings alone. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
+  },
+  bunker: {
+    type: "bunker",
+    kind: "building",
+    name: "Bunker",
+    letter: "U",
+    cost: 600,
+    buildSeconds: 16,
+    hp: 3000,
+    power: 0,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    garrisonCap: BUNKER_GARRISON_CAP,
+    garrisonHpMul: BUNKER_GARRISON_HP_MUL,
+    garrisonWoundMul: BUNKER_WOUND_MUL,
+    garrisonWindows: 2,
+    garrisonFloors: 1,
+    garrisonSightBonus: 0,
+    garrisonFullArms: true,
+    garrisonTypes: BUNKER_TYPES,
+    garrisonMedicRegen: BUNKER_MEDIC_REGEN_FRAC,
+    garrisonEngineerRepair: BUNKER_ENGINEER_REPAIR_PER_SEC,
+    coverHeight: BUNKER_COVER_HEIGHT,
+    blurb: `Reinforced concrete pillbox for ${BUNKER_GARRISON_CAP} infantry: riflemen, gunners, snipers, AT troops, rocketmen, medics, and engineers. The best cover on the field — the walls take most of every hit, and every weapon fires from the slits, the Gunner's MG included. Low, so it adds no sight or reach. A medic inside slowly patches everyone; an engineer inside slowly patches the concrete.`,
   },
   sandbags: {
     type: "sandbags",
@@ -2406,6 +2476,25 @@ export function garrisonFloorsOf(type: EntityType): number {
   return catalog(type).garrisonFloors ?? 1;
 }
 
+/** This infantry type may enter this building. Only the whitelist, when there is one. */
+export function garrisonAdmits(house: EntityType, unit: EntityType): boolean {
+  const only = catalog(house).garrisonTypes;
+  return !only || only.includes(unit);
+}
+
+export function garrisonWoundMulOf(type: EntityType): number {
+  return catalog(type).garrisonWoundMul ?? 1;
+}
+
+/** Sight and reach a watch garrison gains inside. Tall houses see farther; a bunker does not. */
+export function garrisonSightBonusOf(type: EntityType): number {
+  return catalog(type).garrisonSightBonus ?? GARRISON_WATCH_SIGHT_BONUS;
+}
+
+export function garrisonFullArmsOf(type: EntityType): boolean {
+  return catalog(type).garrisonFullArms === true;
+}
+
 /**
  * Solid height above the pad, in elevation units. Shots whose Z clears this
  * fly over. Civilian floors win; military pads scale with footprint.
@@ -2413,6 +2502,7 @@ export function garrisonFloorsOf(type: EntityType): number {
 export function coverHeightOf(type: EntityType): number {
   const d = catalog(type);
   if (d.kind === "building") {
+    if (d.coverHeight != null) return d.coverHeight;
     if (d.garrisonFloors != null) return d.garrisonFloors * STORY_COVER_HEIGHT;
     const stories = Math.max(d.tileW, d.tileH) / TILE_SUBDIV;
     return Math.max(STORY_COVER_HEIGHT * 2, stories * STORY_COVER_HEIGHT);

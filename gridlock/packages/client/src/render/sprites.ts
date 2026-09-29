@@ -28,6 +28,7 @@ import armoryUrl from "../assets/buildings/armory.png";
 import airfieldUrl from "../assets/buildings/airfield.png";
 import airfieldGroundUrl from "../assets/buildings/airfield-ground.png";
 import ciwsUrl from "../assets/buildings/ciws.png";
+import bunkerUrl from "../assets/buildings/bunker.png";
 import ciwsTurretUrl from "../assets/buildings/ciws-turret.png";
 import cottageUrl from "../assets/buildings/cottage.png";
 import cottageSUrl from "../assets/buildings/cottage-s.png";
@@ -1101,6 +1102,8 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   airfield: building(airfieldUrl, 960, 652, 552, 604, 112),
   // Pad and plinth. Metrics from tools/sprites/render_ciws.py (ciws.json).
   ciws: building(ciwsUrl, 192, 126, 186, 126, 82.8),
+  // Concrete pillbox. Metrics from tools/sprites/render_bunker.py (bunker.json).
+  bunker: building(bunkerUrl, 384, 222, 264, 222, 99),
 };
 
 /** CIWS gun: 16 rows, each the base image's canvas and anchor (render/ciws.ts). */
