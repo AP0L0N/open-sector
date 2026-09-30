@@ -406,6 +406,7 @@ export type EntityType =
   | "walker"
   | "cyborg"
   | "titan"
+  | "mammoth"
   | "nebelwerfer"
   | "supply"
   | "core"
@@ -447,7 +448,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "cyborg" | "titan" | "nebelwerfer" | "supply" | "stuka" | "fw190" | "droneop";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "supply" | "stuka" | "fw190" | "droneop";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -470,13 +471,14 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "tower", "research"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "fw190", "droneop"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "supply", "stuka", "fw190", "droneop"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
   warden: "research",
   cyborg: "research",
   titan: "research",
+  mammoth: "research",
   nebelwerfer: "research",
   droneop: "research",
 };
@@ -576,6 +578,11 @@ export interface CatalogEntry {
   garrisonMedicRegen?: number;
   /** An engineer inside: the building regains this much HP a second. Does not stack. */
   garrisonEngineerRepair?: number;
+  /**
+   * A hull, not a building: armor takes every hit and nothing reaches the
+   * soldiers inside, but when it is destroyed they die with it.
+   */
+  garrisonDiesWithHost?: boolean;
   /** Solid height above the pad in elevation units, when not set by garrisonFloors. */
   coverHeight?: number;
   /** Hatch scout: pop the cupola for infantry sight. Tanks only. */
@@ -1251,6 +1258,18 @@ export const TRENCH_WOUND_MUL = 0.6;
 export const TRENCH_COVER_HEIGHT = 2;
 /** The bunker's roster plus the mortarman, who needs the open sky. */
 export const TRENCH_TYPES: readonly EntityType[] = [...BUNKER_TYPES, "mortarman"];
+/**
+ * Mammoth. A slow armored battle platform: a fighting deck with firing slits
+ * on every side over two sets of tracks. It carries a Bunker's worth of
+ * infantry and they fire out of it. The hull takes every hit and nothing
+ * reaches them, but they go down with it.
+ */
+export const MAMMOTH_GARRISON_CAP = BUNKER_GARRISON_CAP;
+/** Bow machine gun: a short belt that reloads itself, a small traverse. */
+export const MAMMOTH_MG_BELT = 60;
+export const MAMMOTH_MG_BELT_RELOAD = 4;
+export const MAMMOTH_MG_ARC = 25;
+export const MAMMOTH_MG_RANGE_TILES = t(8);
 /** A medic inside: every occupant regains this share of max HP each second. Does not stack. */
 export const BUNKER_MEDIC_REGEN_FRAC = 0.004;
 /** An engineer inside: the bunker regains this much HP each second. Does not stack. */
@@ -2411,6 +2430,49 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     bracedHpMul: TITAN_BRACED_HP_MUL,
     blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide, shred infantry, dent tanks, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up.",
   },
+  mammoth: {
+    type: "mammoth",
+    kind: "unit",
+    name: "Mammoth",
+    letter: "m",
+    cost: 700,
+    buildSeconds: 24,
+    hp: 480,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 17,
+    moveTilesPerSec: t(0.75),
+    turnDegPerSec: 45,
+    rangeTiles: MAMMOTH_MG_RANGE_TILES,
+    sightTiles: t(7),
+    cooldown: 0.12,
+    damage: TANK_MG.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    turnInPlace: true,
+    tracked: true,
+    gunArcDeg: MAMMOTH_MG_ARC,
+    belt: MAMMOTH_MG_BELT,
+    beltReload: MAMMOTH_MG_BELT_RELOAD,
+    armorFront: 110,
+    armorSide: 80,
+    armorRear: 60,
+    penetration: TANK_MG.penetration,
+    caliber: TANK_MG.caliber,
+    spreadDeg: 6,
+    leavesWreck: true,
+    wreckHp: 120,
+    wades: true,
+    garrisonCap: MAMMOTH_GARRISON_CAP,
+    garrisonHpMul: 1,
+    garrisonWindows: 3,
+    garrisonFloors: 1,
+    garrisonSightBonus: 0,
+    garrisonFullArms: true,
+    garrisonTypes: BUNKER_TYPES,
+    garrisonDiesWithHost: true,
+    blurb: `Armored battle platform on two sets of tracks. Very slow, very thick plate on every face, and it wades through water. Its own weapon is a small bow machine gun that swings only a little either side of the nose, and falls silent in water. It carries ${MAMMOTH_GARRISON_CAP} of the infantry a Bunker takes, and every one of them fires out of the deck slits, even while it wades. Nothing reaches them while the hull holds — but if it is destroyed, everyone inside dies with it.`,
+  },
   nebelwerfer: {
     type: "nebelwerfer",
     kind: "unit",
@@ -2914,6 +2976,11 @@ export function garrisonReachBonusOf(type: EntityType): number {
 
 export function garrisonFullArmsOf(type: EntityType): boolean {
   return catalog(type).garrisonFullArms === true;
+}
+
+/** A hull that carries soldiers: safe inside while it holds, dead with it when it goes. */
+export function garrisonDiesWithHostOf(type: EntityType): boolean {
+  return catalog(type).garrisonDiesWithHost === true;
 }
 
 export function garrisonOpenTopOf(type: EntityType): boolean {

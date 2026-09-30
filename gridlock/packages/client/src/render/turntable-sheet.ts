@@ -58,6 +58,11 @@ const nebelwerferLauncherGlob = import.meta.glob("../assets/units/nebelwerfer/la
   import: "default",
 }) as Record<string, string>;
 
+const mammothHullGlob = import.meta.glob("../assets/units/mammoth/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 const stukaHullGlob = import.meta.glob("../assets/units/stuka/hull/*.png", {
   eager: true,
   import: "default",
@@ -352,6 +357,30 @@ export function bindSupplySheets(hullImage: HTMLImageElement): void {
     })
     .catch((err) => {
       console.error("supply truck turntable", err);
+    });
+}
+
+let mammothPrevious: ComposedTurntable | null = null;
+
+/** Mammoth: one hull sheet, no turret. The static mammoth-cameo.png is brightened for the sidebar. */
+export function bindMammothSheets(hullImage: HTMLImageElement): void {
+  let hullUrls: string[];
+  try {
+    hullUrls = pickTurntableUrls(mammothHullGlob);
+  } catch (err) {
+    console.error("mammoth turntable", err);
+    return;
+  }
+  void Promise.all(hullUrls.map(loadImage))
+    .then((hullImgs) => composeAligned([hullImgs], TIGER_OPTS))
+    .then((next) => {
+      revoke(mammothPrevious);
+      mammothPrevious = next;
+      hullImage.src = next.sheetUrls[0] ?? "";
+      URL.revokeObjectURL(next.cameoUrl);
+    })
+    .catch((err) => {
+      console.error("mammoth turntable", err);
     });
 }
 

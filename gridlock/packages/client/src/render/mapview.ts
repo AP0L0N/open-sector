@@ -327,6 +327,7 @@ const EXTRUDE: Record<EntityType, number> = {
   trench: 6,
   walker: 30,
   titan: 40,
+  mammoth: 30,
   nebelwerfer: 22,
   supply: 18,
   cottage: 28,
@@ -3872,6 +3873,8 @@ export class MapView {
       ctx.fillText(name, s.x, s.y - size * def.contactY - 12);
     }
     this.maybeHp(e, s.x - size * 0.45, s.y - size * def.contactY - 2, size * 0.9);
+    // A hull that carries soldiers (the Mammoth) shows who is aboard, like a Bunker.
+    if (!e.wreck) this.drawGarrisonBars(e, s.x + size * 0.45 + 4, s.y - size * def.contactY - 2);
     if (e.tend != null && !e.wreck) this.drawHealMark(e);
     this.drawScoutBar(e, s.x - size * 0.22, s.y - size * def.contactY - 8);
     this.drawCrits(e, s.x + size * 0.48, s.y - size * def.contactY - 20);
