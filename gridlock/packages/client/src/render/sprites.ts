@@ -142,6 +142,16 @@ import engineerFixUrl from "../assets/units/engineer-fix.png";
 import engineerDieUrl from "../assets/units/engineer-die.png";
 import teethUrl from "../assets/units/teeth.png";
 import infantrySwimUrl from "../assets/units/infantry-swim.png";
+import gunnerSwimUrl from "../assets/units/gunner-swim.png";
+import sniperSwimUrl from "../assets/units/sniper-swim.png";
+import atinfantrySwimUrl from "../assets/units/atinfantry-swim.png";
+import rocketerSwimUrl from "../assets/units/rocketer-swim.png";
+import pyroSwimUrl from "../assets/units/pyro-swim.png";
+import mortarmanSwimUrl from "../assets/units/mortarman-swim.png";
+import medicSwimUrl from "../assets/units/medic-swim.png";
+import droneopSwimUrl from "../assets/units/droneop-swim.png";
+import engineerSwimUrl from "../assets/units/engineer-swim.png";
+import cyborgSwimUrl from "../assets/units/cyborg-swim.png";
 import haulerHullUrl from "../assets/units/hauler-hull.png";
 import haulerCartUrl from "../assets/units/hauler-cart.png";
 import walkerLegsUrl from "../assets/units/walker-legs.png";
@@ -834,16 +844,35 @@ export const TEETH_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
-/** Shared swim sheet for every infantry type. */
-export const INFANTRY_SWIM_SPRITE: UnitSpriteDef = {
-  image: loadSheet(infantrySwimUrl),
-  dirs: 16,
-  frames: 8,
-  frameSize: 96,
-  fps: 8,
-  drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
-  contactY: 0.68,
-  facingSpace: "world",
+/** Swim sheet: chest-deep in a pool. One cell, scale, and contact for every infantry type. */
+function swimSprite(url: string): UnitSpriteDef {
+  return {
+    image: loadSheet(url),
+    dirs: 16,
+    frames: 8,
+    frameSize: 96,
+    fps: 8,
+    drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
+    contactY: 0.68,
+    facingSpace: "world",
+  };
+}
+
+/** The Rifleman's swim sheet; the fallback for any infantry type without its own. */
+export const INFANTRY_SWIM_SPRITE: UnitSpriteDef = swimSprite(infantrySwimUrl);
+
+/** Each type's own swimmer (tools/sprites/derive_swim.py, render_cyborg.py). */
+const SWIM_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
+  gunner: swimSprite(gunnerSwimUrl),
+  sniper: swimSprite(sniperSwimUrl),
+  atinfantry: swimSprite(atinfantrySwimUrl),
+  rocketer: swimSprite(rocketerSwimUrl),
+  pyro: swimSprite(pyroSwimUrl),
+  mortarman: swimSprite(mortarmanSwimUrl),
+  medic: swimSprite(medicSwimUrl),
+  droneop: swimSprite(droneopSwimUrl),
+  engineer: swimSprite(engineerSwimUrl),
+  cyborg: swimSprite(cyborgSwimUrl),
 };
 
 /** 16-dir hatch head (helmet + face). Row 0 = 0001 = south, one frame. */
@@ -1149,7 +1178,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
 };
 
 export function spriteFor(type: EntityType, stance?: Stance, swimming = false): UnitSpriteDef | undefined {
-  if (isInfantryType(type) && swimming) return INFANTRY_SWIM_SPRITE;
+  if (isInfantryType(type) && swimming) return SWIM_SPRITES[type] ?? INFANTRY_SWIM_SPRITE;
   if (type === "rifleman") {
     if (stance === "crouch") return TROOPER_CROUCH_SPRITE;
     if (stance === "crawl") return TROOPER_CRAWL_SPRITE;

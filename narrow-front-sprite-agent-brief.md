@@ -178,7 +178,7 @@ Match `UnitSpriteDef.frameSize` in `gridlock/packages/client/src/render/sprites.
 | Infantry rifle fire | 96 | 4 | 0.90 | `trooper-rifle-fire.png` |
 | Infantry prone fire | 96 | 4 | 0.72 | `gunner-fire.png` (same scale as that unit's crawl) |
 | Infantry death | 96 | 4 | 0.82 | `trooper-die.png`, `gunner-die.png` |
-| Infantry swim | 96 | 8 | 0.68 | shared `infantry-swim.png` — do not regenerate per unit |
+| Infantry swim | 96 | 8 | 0.68 | `<id>-swim.png` from `derive_swim.py`; Rifleman `infantry-swim.png` |
 | Hatch head | 48 | 1 | 1.0 | `scout-head.png` |
 | Medium vehicle / tank | 128 | 1 | ~0.92 | `tiger/hull/0001.png` … `0016.png`, `hauler-hull.png` + `hauler-cart.png` |
 | Heavy vehicle | 192 | 1 | ~0.90 | `rig-move.png` |
@@ -269,7 +269,7 @@ Vehicles are 1 frame. Do not invent track-cycle frames unless the engine `frames
 
 Hatch heads: generate a dedicated east helmet+face lock and video-yaw it. Do not crop a walking soldier — the pack pollutes the cell.
 
-Swim stays the shared `infantry-swim.png`. Do not make a per-unit swim sheet.
+Swim is per unit, but do not video it. `python tools/sprites/derive_swim.py` sinks each unit's own stand yaws (`src/<id>-stand/`) chest-deep in one shared pool at that unit's walk scale, and writes `<id>-swim.png`. `render_cyborg.py` renders the cyborg's swimmer in 3D over the same pool. `infantry-swim.png` is the Rifleman's, and it is the fallback for a type with no sheet of its own. Add a new infantry type to `HUMANS` in `derive_swim.py` and to `SWIM_SPRITES` in `sprites.ts`.
 
 ### 6. Compose
 
@@ -385,7 +385,9 @@ Shoot a turntable per pose. Same camera, same scale, same costume. Do not combin
 | Cyborg | crawl, crawl-fire | 8, 4 | legs torn off: torso on the dirt, dragging on the left arm; fire adds the flash. Prone scale |
 | Cyborg | die | 4 | torso face down, gatling flung aside, one leg beside him |
 | All infantry | cameo | 1 | crop of the east stand, 72×72, feet near the bottom |
-| All infantry | swim | — | shared `infantry-swim.png` |
+| Cyborg | swim | 8 | the stand pose clipped at the water plane (legs and hips under), on the shared pool |
+| Rifleman | swim | 8 | `infantry-swim.png` (also the fallback) |
+| Other infantry | swim | 8 | `derive_swim.py`: the unit's stand yaws, chest-deep in the shared pool, ripples and a 1 px bob |
 
 Stand is column 0 of the walk sheet. The client plays later columns only while the unit is moving.
 
