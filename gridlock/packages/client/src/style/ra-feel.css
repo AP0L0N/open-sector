@@ -549,6 +549,9 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="droneop"] {
   background-image: url("../assets/units/droneop-cameo.png");
 }
+.prod-job[data-type="jumpjet"] {
+  background-image: url("../assets/units/jumpjet-cameo.png");
+}
 .prod-job[data-type="engineer"] {
   background-image: url("../assets/units/engineer-cameo.png");
 }
@@ -801,6 +804,7 @@ input[type="range"] { padding: 0; }
 #train-engineer,
 #train-medic,
 #train-droneop,
+#train-jumpjet,
 #train-hauler,
 #train-warden,
 #train-ss3,
@@ -869,6 +873,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/droneop-cameo.png");
+}
+#train-jumpjet {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/jumpjet-cameo.png");
 }
 #train-engineer {
   background-image:
@@ -1155,6 +1164,8 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="medic"] { background-image: url("../assets/units/medic-cameo.png"); }
 .config-type[data-type="droneop"],
 .prod-job[data-type="droneop"] { background-image: url("../assets/units/droneop-cameo.png"); }
+.config-type[data-type="jumpjet"],
+.prod-job[data-type="jumpjet"] { background-image: url("../assets/units/jumpjet-cameo.png"); }
 .config-type[data-type="engineer"],
 .prod-job[data-type="engineer"] { background-image: url("../assets/units/engineer-cameo.png"); }
 .config-type[data-type="hauler"] { background-image: url("../assets/units/hauler-cameo.png"); }

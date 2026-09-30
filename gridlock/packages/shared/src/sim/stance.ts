@@ -11,7 +11,7 @@ import {
   type Stance,
 } from "../catalog.js";
 import { syncCyborgLegs } from "./crits.js";
-import { unitInWater } from "./geo.js";
+import { jetAloft, unitInWater } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
 export function commandedStance(e: Entity): Stance {
@@ -72,6 +72,11 @@ export function tickStance(state: MatchState): void {
     else if (isCyborg(e.type)) e.stanceOrder = "stand";
     if (unitInWater(state, e)) {
       e.stance = e.stanceOrder;
+      continue;
+    }
+    // Hanging under a jet pack there is no ground to drop to.
+    if (jetAloft(e)) {
+      e.stance = "stand";
       continue;
     }
     e.stance = effectiveStance(e, hot.has(e.id));

@@ -197,7 +197,7 @@ function inLeash(state: MatchState, op: Entity, x: number, y: number): { x: numb
 function validStrikeTarget(state: MatchState, d: Entity, op: Entity, t: Entity | undefined): t is Entity {
   if (!t || t.hp <= 0 || t.wreck || t.garrisonedIn != null || t.id === d.id) return false;
   if (!t.ownerId || allies(state, d.ownerId, t.ownerId)) return false;
-  if (t.air || t.type === "sandbags" || t.type === "teeth") return false;
+  if (t.air || airAlt(t) > 0 || t.type === "sandbags" || t.type === "teeth") return false;
   if (Math.hypot(t.x - op.x, t.y - op.y) > leash(state) + t.radius) return false;
   return true;
 }
@@ -400,7 +400,7 @@ function burst(state: MatchState, d: Entity, target: Entity): void {
   let killed = false;
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.garrisonedIn != null || e.id === d.id) continue;
-    if (e.air && e.air.alt > 0.5) continue;
+    if (airAlt(e) > 0.5) continue;
     if (e.type === "sandbags" || e.type === "teeth") continue;
     if (e.ownerId !== "" && allies(state, d.ownerId, e.ownerId)) continue;
     const dist = e === target ? 0 : Math.hypot(e.x - d.x, e.y - d.y);

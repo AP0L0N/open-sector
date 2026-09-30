@@ -1,0 +1,62 @@
+{
+  "walk": {
+    "cols": 8,
+    "contactY": 0.9,
+    "fps": 12,
+    "drawSize": "UNIT_SPRITE_DRAW_SIZE",
+    "size_pop_dirs": [],
+    "empty_dirs": []
+  },
+  "crouch": {
+    "cols": 8,
+    "contactY": 0.88,
+    "fps": 8,
+    "drawSize": "UNIT_SPRITE_DRAW_SIZE",
+    "size_pop_dirs": [],
+    "empty_dirs": []
+  },
+  "crawl": {
+    "cols": 8,
+    "contactY": 0.72,
+    "fps": 10,
+    "drawSize": "Math.round(28 * INFANTRY_VISUAL_SCALE)",
+    "size_pop_dirs": [
+      "SW",
+      "WSW",
+      "W",
+      "E",
+      "ESE",
+      "SE"
+    ],
+    "empty_dirs": []
+  },
+  "die": {
+    "cols": 4,
+    "contactY": 0.82,
+    "fps": 8,
+    "drawSize": "UNIT_SPRITE_DRAW_SIZE",
+    "size_pop_dirs": [
+      "S",
+      "WSW",
+      "N",
+      "ESE"
+    ],
+    "empty_dirs": []
+  },
+  "fire": {
+    "cols": 4,
+    "contactY": 0.9,
+    "fps": 12,
+    "drawSize": "UNIT_SPRITE_DRAW_SIZE",
+    "size_pop_dirs": [],
+    "empty_dirs": []
+  },
+  "fly": {
+    "cols": 4,
+    "contactY": 0.9,
+    "fps": 12,
+    "drawSize": "UNIT_SPRITE_DRAW_SIZE",
+    "size_pop_dirs": [],
+    "empty_dirs": []
+  }
+}

@@ -15,6 +15,7 @@ import type { ImpactView, RoomState } from "../protocol.js";
 import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter } from "./geo.js";
 import { aircraftDown, tickAir } from "./air.js";
 import { tickDrones } from "./drone.js";
+import { tickJets } from "./jet.js";
 import { tickCapture } from "./capture.js";
 import { detachGarrisoned, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
 import { seedRng } from "./rng.js";
@@ -140,6 +141,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickMovement(state, dt);
   tickAir(state, dt);
   tickDrones(state, dt);
+  tickJets(state, dt);
   tickCollision(state, dt);
   tickField(state, dt);
   tickHarvest(state, dt);

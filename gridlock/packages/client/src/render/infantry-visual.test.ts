@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  ASSAULT_FIRE_MS,
   cyborgSheet,
+  jumpJetSheet,
   gunnerSheet,
   heldFrame,
   MG_FIRE_MS,
@@ -17,6 +19,19 @@ import {
   sniperSheet,
   trooperSheet,
 } from "./infantry-visual.js";
+
+describe("jumpJetSheet", () => {
+  it("hangs on the fly sheet in the air, firing or not, and walks on the ground", () => {
+    assert.equal(jumpJetSheet({}), "walk");
+    assert.equal(jumpJetSheet({ aloft: true }), "fly");
+    assert.equal(jumpJetSheet({ aloft: true, shotAgeMs: 40 }), "fly");
+    assert.equal(jumpJetSheet({ shotAgeMs: 40 }), "fire");
+    assert.equal(jumpJetSheet({ shotAgeMs: ASSAULT_FIRE_MS }), "walk");
+    assert.equal(jumpJetSheet({ stance: "crawl", shotAgeMs: 40 }), "crawl");
+    assert.equal(jumpJetSheet({ swimming: true }), "swim");
+    assert.equal(jumpJetSheet({ wreck: true, aloft: true }), "die");
+  });
+});
 
 describe("trooperSheet", () => {
   it("uses the walk sheet for a standing rifleman", () => {

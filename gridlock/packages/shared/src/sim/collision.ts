@@ -10,12 +10,12 @@ import {
   UNIT_SPACE_PAD,
 } from "../catalog.js";
 import { takeDamage } from "./crits.js";
-import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, occupant, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
+import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, jetAloft, occupant, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
-/** Ground unit that takes part in collision. Aircraft never do, parked or flying. */
+/** Ground unit that takes part in collision. Aircraft never do, parked or flying, nor a Jump Jet in the air. */
 export function isActiveUnit(e: Entity): boolean {
-  return e.kind === "unit" && e.hp > 0 && !e.wreck && !e.garrisonedIn && !e.air;
+  return e.kind === "unit" && e.hp > 0 && !e.wreck && !e.garrisonedIn && !e.air && !jetAloft(e);
 }
 
 export function massOf(e: Entity): number {
@@ -105,7 +105,7 @@ function blockedByUnit(state: MatchState, e: Entity, x: number, y: number, ignor
   const r = e.radius;
   for (const o of state.entities.values()) {
     if (o.id === e.id || o.id === ignoreId || o.hp <= 0 || o.garrisonedIn) continue;
-    if (o.kind === "building" || o.air) continue;
+    if (o.kind === "building" || o.air || jetAloft(o)) continue;
     const need = r + o.radius;
     const dx = x - o.x;
     const dy = y - o.y;
@@ -357,7 +357,7 @@ export function stepGiveWay(state: MatchState, e: Entity, speed: number, dt: num
 }
 
 export function tickCollision(state: MatchState, dt = TICK_DT): void {
-  const units = [...state.entities.values()].filter((e) => e.kind === "unit" && e.hp > 0 && !e.garrisonedIn && !e.air);
+  const units = [...state.entities.values()].filter((e) => e.kind === "unit" && e.hp > 0 && !e.garrisonedIn && !e.air && !jetAloft(e));
   for (const a of units) {
     if (isActiveUnit(a)) crushTreesUnder(state, a);
   }

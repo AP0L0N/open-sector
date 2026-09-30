@@ -41,6 +41,7 @@ import { tickStance } from "./stance.js";
 import { dismountSupply, orderBoard, orderSupply, supplyCanDrive } from "./supply.js";
 import { orderAircraft, stopAircraft } from "./air.js";
 import { droneOf, guardDrone, launchDrone, orderDrone, recallDrone, setDroneMode, stopDrone } from "./drone.js";
+import { landJet, takeOff } from "./jet.js";
 import type { Entity, MatchState, QueueableCommand, Vec } from "./types.js";
 
 export type CmdResult = { ok: true } | { ok: false; code: ErrorCode; message: string };
@@ -171,6 +172,10 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       }
       if (msg.action === "mode" && !isDroneMode(msg.mode)) return fail("bad_payload", "Unknown drone mode.");
       return cmdDrone(state, playerId, msg.ids, msg.action, msg.mode);
+    case "cmd.jet":
+      if (!Array.isArray(msg.ids)) return fail("bad_payload", "Bad jet order.");
+      if (msg.action !== "up" && msg.action !== "land") return fail("bad_payload", "Unknown jet order.");
+      return cmdJet(state, playerId, msg.ids, msg.action);
     default:
       return fail("bad_payload", "Unknown command.");
   }
@@ -369,6 +374,25 @@ function routeDrones(state: MatchState, playerId: string, msg: ClientMessage): C
   // Return with only ground units left means nothing to them.
   if (msg.type === "cmd.land" && !owned(state, playerId, rest).some((e) => e.air)) return ok();
   return applyCommand(state, playerId, others);
+}
+
+/** Take off or land every Jump Jet in the selection. Others ignore it. */
+function cmdJet(state: MatchState, playerId: string, ids: number[], action: "up" | "land"): CmdResult {
+  const jets = owned(state, playerId, ids).filter((e) => e.jet && e.hp > 0);
+  if (jets.length === 0) return fail("not_yours", "Select a Jump Jet.");
+  if (action === "land") {
+    for (const e of jets) landJet(e);
+    return ok();
+  }
+  let err: string | null = null;
+  let done = 0;
+  for (const e of jets) {
+    const why = takeOff(state, e);
+    if (why) err = why;
+    else done++;
+  }
+  if (done > 0) return ok();
+  return wrap(err ?? "Cannot take off.", "busy");
 }
 
 function cmdDrone(

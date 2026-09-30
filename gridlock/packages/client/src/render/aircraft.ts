@@ -8,8 +8,8 @@ export const AIR_DRAW_LAYER = 3;
 
 /** Elevation units above the ground, eased between the last two snapshots. */
 export function lerpAirAlt(prev: EntityView | undefined, curr: EntityView, t: number): number {
-  const a = curr.air?.alt ?? 0;
-  const b = prev?.air?.alt;
+  const a = curr.air?.alt ?? curr.jet?.alt ?? 0;
+  const b = prev?.air?.alt ?? prev?.jet?.alt;
   if (b == null) return a;
   const u = Math.max(0, Math.min(1, t));
   return b + (a - b) * u;
@@ -20,8 +20,8 @@ export function airLiftPx(alt: number): number {
   return isoLift(alt);
 }
 
-export function inAir(e: Pick<EntityView, "air">): boolean {
-  return (e.air?.alt ?? 0) > 0.5;
+export function inAir(e: Pick<EntityView, "air" | "jet">): boolean {
+  return (e.air?.alt ?? e.jet?.alt ?? 0) > 0.5;
 }
 
 /**

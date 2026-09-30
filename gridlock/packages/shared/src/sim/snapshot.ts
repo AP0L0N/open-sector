@@ -2,6 +2,8 @@ import {
   AIR_FUEL_SECONDS,
   DRONE_BATTERY_SECONDS,
   DRONE_LAUNCH_MIN_SECONDS,
+  JET_FUEL_SECONDS,
+  JET_TAKEOFF_MIN_SECONDS,
   AIRFIELD_PADS,
   beltOf,
   catalog,
@@ -274,6 +276,16 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
               launchMin: DRONE_LAUNCH_MIN_SECONDS,
             }
           : undefined,
+      jet: e.jet
+        ? {
+            alt: e.jet.alt,
+            up: friendly && e.jet.up ? true : undefined,
+            fuel: friendly ? e.jet.fuel : undefined,
+            fuelMax: friendly ? JET_FUEL_SECONDS : undefined,
+            takeoffMin: friendly ? JET_TAKEOFF_MIN_SECONDS : undefined,
+            refuel: friendly && e.jet.refuel > 0 && e.jet.alt <= 0 ? e.jet.refuel : undefined,
+          }
+        : undefined,
     });
   }
   const scrap: ScrapCell[] = [];

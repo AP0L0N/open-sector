@@ -166,6 +166,32 @@ export function mortarmanSheet(opts: {
   return "walk";
 }
 
+export type JumpJetSheet = "walk" | "crouch" | "crawl" | "swim" | "fire" | "fly" | "die";
+
+/** Assault-rifle burst pose. Holds across the half-second between bursts. */
+export const ASSAULT_FIRE_MS = 300;
+
+/**
+ * Jump Jet. In the air he hangs under the pack on the fly sheet, firing or
+ * not: the flame is what reads. On the ground he is a trooper with a burst pose.
+ */
+export function jumpJetSheet(opts: {
+  swimming?: boolean;
+  wreck?: boolean;
+  stance?: "stand" | "crouch" | "crawl";
+  aloft?: boolean;
+  shotAgeMs?: number | null;
+}): JumpJetSheet {
+  if (opts.wreck) return "die";
+  if (opts.aloft) return "fly";
+  if (opts.swimming) return "swim";
+  const stance = opts.stance ?? "stand";
+  if (stance === "crouch") return "crouch";
+  if (stance === "crawl") return "crawl";
+  const firing = opts.shotAgeMs != null && opts.shotAgeMs >= 0 && opts.shotAgeMs < ASSAULT_FIRE_MS;
+  return firing ? "fire" : "walk";
+}
+
 export type MedicSheet = "walk" | "crouch" | "crawl" | "swim" | "die";
 
 export function medicSheet(opts: {
