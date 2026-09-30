@@ -5,6 +5,8 @@ import {
   SUPPLY_CARGO,
   SUPPLY_PER_SEC,
   SUPPLY_REARM_PER_SEC,
+  SUPPLY_SEEK_TILES,
+  SUPPLY_REGEN_PER_SEC,
   SUPPLY_ROUNDS_PER_POINT,
   SUPPLY_SHELL_COST,
   TRUCK_RIDER_HP_MUL,
@@ -15,6 +17,7 @@ import {
   catalog,
   hasCrit,
   infantryGunFor,
+  isAircraftType,
   isInfantryType,
   supplyDrumOf,
   supplyShortOf,
@@ -382,6 +385,58 @@ function tickResupply(state: MatchState, truck: Entity, dt: number): void {
   if (stuck || truck.supply <= 0 || !needsSupply(target)) stall(truck);
 }
 
+/** Idle, or on a top-up it picked for itself. A player order wins. */
+function mayAutoSupply(truck: Entity): boolean {
+  if (truck.garrisonedIn != null) return false;
+  const o = truck.order;
+  return !o || (o.auto === true && o.kind === "supply");
+}
+
+/** Allied ground unit short of ammo, close enough to drive over. Held trucks only serve what is alongside. */
+function canTopUp(state: MatchState, truck: Entity, other: Entity): boolean {
+  if (other.id === truck.id || other.kind !== "unit" || isAircraftType(other.type)) return false;
+  if (!needsSupply(other) || !allies(state, truck.ownerId, other.ownerId)) return false;
+  if (truck.holdPosition) return nearTruck(state, truck, other, SUPPLY_REACH);
+  const seek = SUPPLY_SEEK_TILES * state.tileSize;
+  return Math.hypot(other.x - truck.x, other.y - truck.y) <= seek;
+}
+
+function chooseTopUp(state: MatchState, truck: Entity): Entity | null {
+  const currentId = truck.order?.kind === "supply" ? truck.order.targetId : undefined;
+  const current = currentId != null ? state.entities.get(currentId) : undefined;
+  if (current && canTopUp(state, truck, current)) return current;
+  let best: Entity | null = null;
+  let bestD = Infinity;
+  for (const other of state.entities.values()) {
+    if (!canTopUp(state, truck, other)) continue;
+    const d = Math.hypot(other.x - truck.x, other.y - truck.y);
+    if (!best || d < bestD - 0.5 || (Math.abs(d - bestD) <= 0.5 && other.id < best.id)) {
+      best = other;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+/** Like the medic: an idle crewed truck with cargo drives to the nearest ally short of ammo. */
+function autoSupply(state: MatchState): void {
+  for (const truck of state.entities.values()) {
+    if (truck.type !== "supply" || truck.hp <= 0 || truck.wreck) continue;
+    if (!mayAutoSupply(truck)) continue;
+    const target = truck.supply > 0 && supplyHasDriver(state, truck) ? chooseTopUp(state, truck) : null;
+    if (!target) {
+      if (truck.order) stall(truck);
+      continue;
+    }
+    if (truck.order?.targetId === target.id) continue;
+    clearOrder(truck);
+    truck.order = { kind: "supply", targetId: target.id, auto: true };
+    truck.state = "move";
+    const spot = approachPoint(state, target, truck);
+    setPath(state, truck, spot.x, spot.y);
+  }
+}
+
 function tickBoard(state: MatchState, unit: Entity): void {
   if (unit.order?.kind !== "board" || unit.order.targetId == null) return;
   const truck = state.entities.get(unit.order.targetId);
@@ -406,12 +461,15 @@ function tickBoard(state: MatchState, unit: Entity): void {
 
 export function tickSupply(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
-    if (e.type === "supply" && e.hp > 0 && !e.wreck && !supplyHasDriver(state, e)) stall(e);
+    if (e.type !== "supply" || e.hp <= 0 || e.wreck) continue;
+    if (e.supply < SUPPLY_CARGO) e.supply = Math.min(SUPPLY_CARGO, e.supply + SUPPLY_REGEN_PER_SEC * dt);
+    if (!supplyHasDriver(state, e)) stall(e);
   }
   for (const e of state.entities.values()) {
     if (e.kind !== "unit" || e.hp <= 0 || e.garrisonedIn) continue;
     if (e.order?.kind === "board") tickBoard(state, e);
   }
+  autoSupply(state);
   for (const e of state.entities.values()) {
     if (e.type !== "supply" || e.hp <= 0 || e.wreck) continue;
     if (e.order?.kind === "supply") tickResupply(state, e, dt);

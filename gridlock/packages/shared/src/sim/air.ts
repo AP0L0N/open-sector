@@ -38,9 +38,13 @@ import {
   BOMB_SPLASH_TILES,
   BOMB_TRACK_CHANCE,
   CIWS_AIR_SPREAD,
+  FW190_BARRAGE_ARC_DEG,
+  FW190_BARRAGE_COOLDOWN,
+  FW190_BARRAGE_LINE_TILES,
+  FW190_BARRAGE_ROUNDS,
+  FW190_BARRAGE_TILES,
   FW190_CANNON,
-  FW190_PAIR_SECONDS,
-  FW190_STRAFE_TILES,
+  FW190_WING_GUN_OFFSET,
   radarLaidOf,
   STUKA_MG,
   STUKA_MG_PER_TICK,
@@ -307,8 +311,14 @@ function secondsHome(state: MatchState, e: Entity, home: Entity): number {
   return d / Math.max(1, cruiseSpeed(state, e));
 }
 
-function spent(a: AirState): boolean {
-  return a.bombs <= 0 && a.rounds <= 0;
+function spent(e: Entity): boolean {
+  return e.air!.bombs <= 0 && !hasRounds(e);
+}
+
+/** Guns loaded. A fighter fires whole barrages; the rearm tops the last one up in steps. */
+function hasRounds(e: Entity): boolean {
+  const r = e.air!.rounds;
+  return isFighterType(e.type) ? r >= 1 : r > 0;
 }
 
 /**
@@ -323,10 +333,7 @@ function gunsHurt(e: Entity, target: Entity): boolean {
   return !isArmoredType(target.type);
 }
 
-/** How close, and how far off the nose, this plane opens up on a ground target. */
-function strafeGunOf(e: Entity): { rangeTiles: number; arcDeg: number } {
-  return isFighterType(e.type) ? { rangeTiles: FW190_STRAFE_TILES, arcDeg: FW190_CANNON.arcDeg } : STUKA_MG;
-}
+
 
 function loiterHere(e: Entity): void {
   e.order = { kind: "move", x: e.x + Math.cos(e.facing) * 40, y: e.y + Math.sin(e.facing) * 40 };
@@ -516,7 +523,7 @@ function tickFly(state: MatchState, e: Entity, dt: number): void {
   a.speed = Math.min(1, a.speed + 0.5 * dt);
   const home = ensureHome(state, e);
   if (e.order?.kind !== "land" && home) {
-    if (a.fuel <= secondsHome(state, e, home) + AIR_FUEL_RESERVE || spent(a)) {
+    if (a.fuel <= secondsHome(state, e, home) + AIR_FUEL_RESERVE || spent(e)) {
       e.order = { kind: "land" };
       e.attackTarget = null;
       a.extend = false;
@@ -555,7 +562,8 @@ function tickFly(state: MatchState, e: Entity, dt: number): void {
       loiterHere(e);
     } else if (t && isAirborne(t)) {
       altGoal = dogfight(state, e, t, dt, turned);
-    } else if (a.bombs <= 0 && !(t && gunsHurt(e, t) && a.rounds > 0)) {
+    } else if (a.bombs <= 0 && !(hasRounds(e) && (t ? gunsHurt(e, t) : isFighterType(e.type)))) {
+      // Nothing left for it: a Stuka without its bomb flies to the point. A fighter's barrage takes a bare point too.
       e.order = { kind: "move", x: o.x, y: o.y };
     } else {
       altGoal = attackRun(state, e, t?.x ?? o.x, t?.y ?? o.y, t, dt, turned, true);
@@ -587,12 +595,12 @@ function flyToOrOrbit(state: MatchState, e: Entity, x: number, y: number, dt: nu
 
 function canHurt(e: Entity, t: Entity): boolean {
   const a = e.air!;
-  return (a.bombs > 0 && !isAirborne(t)) || (a.rounds > 0 && gunsHurt(e, t));
+  return (a.bombs > 0 && !isAirborne(t)) || (hasRounds(e) && gunsHurt(e, t));
 }
 
 /** Fighter only: nearest enemy plane in the air it can see. */
 function acquireAir(state: MatchState, e: Entity): Entity | undefined {
-  if (!isFighterType(e.type) || e.air!.rounds <= 0) return undefined;
+  if (!isFighterType(e.type) || !hasRounds(e)) return undefined;
   const reach = catalog(e.type).sightTiles * state.tileSize;
   let best: Entity | undefined;
   let bestD = reach * reach;
@@ -649,7 +657,8 @@ function attackRun(
   const d = Math.hypot(tx - e.x, ty - e.y);
   const off = Math.abs(angOff(Math.atan2(ty - e.y, tx - e.x), e.facing));
   const bomb = a.bombs > 0;
-  const guns = a.rounds > 0 && !!target && gunsHurt(e, target);
+  // A forced fighter pass on a bare point still has something to shoot at: the ground.
+  const guns = hasRounds(e) && (target ? gunsHurt(e, target) : forced && isFighterType(e.type));
   if (!bomb && !guns) {
     if (liveHome(state, e)) e.order = { kind: "land" };
     else loiterHere(e);
@@ -663,10 +672,14 @@ function attackRun(
   const cone = (AIR_DIVE_CONE_DEG * Math.PI) / 180;
   const diving = d < AIR_DIVE_START_TILES * ts && off < cone;
   const goal = diving ? (bomb ? AIR_RELEASE_ALT : AIR_STRAFE_ALT) : AIR_CRUISE_ALT;
-  const gun = strafeGunOf(e);
-  if (diving && guns && d <= gun.rangeTiles * ts && off <= (gun.arcDeg * Math.PI) / 180) {
-    if (isFighterType(e.type)) fireCannon(state, e, target!, d);
-    else fireWingGuns(state, e, target!, d);
+  if (isFighterType(e.type)) {
+    // One barrage a pass: release on the nose, then fly out and come round for the next.
+    if (diving && guns && barrageReady(state, e, target, d, off)) {
+      fireBarrage(state, e, tx, ty, target, forced);
+      a.extend = true;
+    }
+  } else if (diving && guns && d <= STUKA_MG.rangeTiles * ts && off <= (STUKA_MG.arcDeg * Math.PI) / 180) {
+    fireWingGuns(state, e, target!, d);
   }
   if (bomb && diving && d <= BOMB_RELEASE_TILES * ts * 1.15 && off < (15 * Math.PI) / 180 && a.alt <= AIR_RELEASE_ALT + 3) {
     dropBomb(state, e, tx, ty, forced);
@@ -715,15 +728,15 @@ function fireWingGuns(state: MatchState, e: Entity, target: Entity, dist: number
 }
 
 /**
- * Fighter on a plane in the air: chase it, match its height, and fire the
- * cannon while it sits in front of the nose. A faster, tighter-turning plane
+ * Fighter on a plane in the air: chase it, match its height, and loose a
+ * barrage while it sits in front of the nose. A faster, tighter-turning plane
  * gets onto its tail; a target inside the turn is overshot and come round on.
  * Returns the height the plane is trying to hold.
  */
 function dogfight(state: MatchState, e: Entity, t: Entity, dt: number, turned: boolean): number {
   const a = e.air!;
   a.extend = false;
-  if (a.rounds <= 0) {
+  if (!hasRounds(e)) {
     if (liveHome(state, e)) e.order = { kind: "land" };
     else loiterHere(e);
     return AIR_CRUISE_ALT;
@@ -731,65 +744,87 @@ function dogfight(state: MatchState, e: Entity, t: Entity, dt: number, turned: b
   if (!turned) steerTo(state, e, t.x, t.y, dt);
   const d = Math.hypot(t.x - e.x, t.y - e.y);
   const off = Math.abs(angOff(Math.atan2(t.y - e.y, t.x - e.x), e.facing));
-  if (d <= FW190_CANNON.rangeTiles * state.tileSize && off <= (FW190_CANNON.arcDeg * Math.PI) / 180) {
-    fireCannon(state, e, t, d);
-  }
+  if (barrageReady(state, e, t, d, off)) fireBarrage(state, e, t.x, t.y, t, false);
   const zT = entityHeight(state, t) + airAlt(t);
   return Math.max(AIR_STRAFE_ALT, zT - worldTileHeight(state, e.x, e.y));
 }
 
+/** Target close, on the nose, guns loaded and cleared since the last barrage. */
+function barrageReady(state: MatchState, e: Entity, t: Entity | undefined, d: number, off: number): boolean {
+  if (e.cooldown > 0 || !hasRounds(e)) return false;
+  if (d > FW190_BARRAGE_TILES * state.tileSize || d < e.radius * 2) return false;
+  if (off > (FW190_BARRAGE_ARC_DEG * Math.PI) / 180) return false;
+  // Height matched before it fires on a plane.
+  return !t || !isAirborne(t) || Math.abs(airAlt(t) - e.air!.alt) <= AIR_STRAFE_ALT;
+}
+
 /**
- * One round from each wing, both laid on the target. Fired down at something
- * on the ground a round meets a hull's roof (fromAbove); at a plane it is a
- * plain hit.
+ * One barrage: both wing cannon at once, two straight parallel lines of rounds
+ * laid along the bearing to the target, one wing-gap apart, running from
+ * short of it to past it. On the ground each round comes down on its point of
+ * the line and meets a hull's roof (fromAbove); at a plane the lines run at
+ * its height. `tx, ty` is the point laid on: the target, or a force-fired
+ * point. A forced barrage, like a forced bomb, hits your own side too.
  */
-function fireCannon(state: MatchState, e: Entity, target: Entity, dist: number): void {
+function fireBarrage(state: MatchState, e: Entity, tx: number, ty: number, target: Entity | undefined, forced: boolean): void {
   const a = e.air!;
-  if (e.cooldown > 0 || a.rounds <= 0) return;
   const gun = FW190_CANNON;
-  const range = gun.rangeTiles * state.tileSize;
-  const aloft = isAirborne(target);
-  const moving = target.waypoints.length > 0 || target.state === "move";
+  const ts = state.tileSize;
+  const aloft = !!target && isAirborne(target);
+  const dx = tx - e.x;
+  const dy = ty - e.y;
+  const d = Math.max(1, Math.hypot(dx, dy));
+  const ux = dx / d;
+  const uy = dy / d;
+  const px = -uy;
+  const py = ux;
   const z0 = worldTileHeight(state, e.x, e.y) + a.alt;
-  const zAim = aloft ? entityHeight(state, target) + airAlt(target) : aimHeight(state, target);
-  const ground = worldTileHeight(state, target.x, target.y);
-  const drop = Math.max(0.1, z0 - zAim);
-  const travel = aloft
-    ? Math.min(range * 1.2, dist * 1.1 + 8)
-    : Math.min(range * 1.2, dist * Math.max(1, (z0 - ground) / drop) + 4);
-  const px = -Math.sin(e.facing);
-  const py = Math.cos(e.facing);
-  const n = Math.min(2, a.rounds);
-  for (let i = 0; i < n; i++) {
-    // Muzzles out under each wing, converging on the target.
-    const wing = (i === 0 ? 1 : -1) * e.radius * 0.7;
-    const mx = e.x + Math.cos(e.facing) * (e.radius + 2) + px * wing;
-    const my = e.y + Math.sin(e.facing) * (e.radius + 2) + py * wing;
-    const bearing = Math.atan2(target.y - my, target.x - mx);
-    const ang = aimAngle(bearing, gun.spreadDeg, dist, range, () => nextRand(state), moving);
-    state.projectiles.push({
-      id: state.nextId++,
-      ownerId: e.ownerId,
-      team: playerTeam(state, e.ownerId),
-      x: mx,
-      y: my,
-      vx: Math.cos(ang) * gun.projectileSpeed,
-      vy: Math.sin(ang) * gun.projectileSpeed,
-      damage: gun.damage,
-      penetration: gun.penetration,
-      caliber: gun.caliber,
-      life: travel / gun.projectileSpeed,
-      ignoreId: e.id,
-      fromId: e.id,
-      bounced: false,
-      shell: null,
-      z: z0,
-      vz: -((z0 - zAim) / Math.max(1e-6, dist)) * gun.projectileSpeed,
-      fromAbove: aloft ? undefined : true,
-    });
+  const zAir = aloft && target ? entityHeight(state, target) + airAlt(target) : 0;
+  const len = FW190_BARRAGE_LINE_TILES * ts;
+  // A plane moves on: its lines start at it and run on past.
+  const from = aloft ? -len * 0.2 : -len / 2;
+  const n = FW190_BARRAGE_ROUNDS;
+  const step = len / Math.max(1, n - 1);
+  const maxX = state.width * ts - 1;
+  const maxY = state.height * ts - 1;
+  for (const wing of [1, -1]) {
+    const gap = wing * e.radius * FW190_WING_GUN_OFFSET;
+    const mx = e.x + ux * (e.radius + 2) + px * gap;
+    const my = e.y + uy * (e.radius + 2) + py * gap;
+    for (let k = 0; k < n; k++) {
+      const along = from + step * k + (nextRand(state) - 0.5) * step * 0.4;
+      const lx = Math.max(0, Math.min(maxX, tx + ux * along + px * gap));
+      const ly = Math.max(0, Math.min(maxY, ty + uy * along + py * gap));
+      const run = Math.max(1, Math.hypot(lx - mx, ly - my));
+      const ang = Math.atan2(ly - my, lx - mx);
+      const zEnd = aloft ? zAir : worldTileHeight(state, lx, ly);
+      state.projectiles.push({
+        id: state.nextId++,
+        ownerId: e.ownerId,
+        team: playerTeam(state, e.ownerId),
+        x: mx,
+        y: my,
+        vx: Math.cos(ang) * gun.projectileSpeed,
+        vy: Math.sin(ang) * gun.projectileSpeed,
+        damage: gun.damage,
+        penetration: gun.penetration,
+        caliber: gun.caliber,
+        life: run / gun.projectileSpeed,
+        ignoreId: e.id,
+        fromId: e.id,
+        bounced: false,
+        shell: null,
+        z: z0,
+        vz: -((z0 - zEnd) / run) * gun.projectileSpeed,
+        fromAbove: aloft ? undefined : true,
+        landX: aloft ? undefined : lx,
+        landY: aloft ? undefined : ly,
+        harmAllies: forced ? true : undefined,
+      });
+    }
   }
-  a.rounds = Math.max(0, a.rounds - n);
-  e.cooldown = FW190_PAIR_SECONDS;
+  a.rounds = Math.max(0, a.rounds - 1);
+  e.cooldown = FW190_BARRAGE_COOLDOWN;
 }
 
 function dropBomb(state: MatchState, e: Entity, tx: number, ty: number, forced: boolean): void {

@@ -417,6 +417,7 @@ export type EntityType =
   | "airfield"
   | "ciws"
   | "bunker"
+  | "tower"
   | "ram"
   | "research"
   | "stuka"
@@ -431,11 +432,12 @@ export type EntityType =
   | "inn"
   | "chapel"
   | "sandbags"
-  | "teeth";
-export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "ram" | "bunker" | "research";
+  | "teeth"
+  | "trench";
+export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "ram" | "bunker" | "tower" | "research";
 /** Placed by an engineer, not the construction yard. */
-export type FieldStructureType = "sandbags" | "teeth";
-export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "teeth"];
+export type FieldStructureType = "sandbags" | "teeth" | "trench";
+export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "teeth", "trench"];
 export type CivilianType = "cottage" | "house" | "manor" | "shack" | "barn" | "inn" | "chapel";
 export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "cottage",
@@ -468,7 +470,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
   deploy: 2,
 };
 
-export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "research"];
+export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "tower", "research"];
 export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "apocalypse", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "fw190", "droneop"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
@@ -545,6 +547,8 @@ export interface CatalogEntry {
   /** Armored hulls leave an impassable wreck instead of vanishing. */
   leavesWreck?: boolean;
   wreckHp?: number;
+  /** False: infantry cannot take this structure by standing the capture. Default true for player buildings. */
+  capturable?: boolean;
   /** Infantry slots. 0 = cannot garrison. */
   garrisonCap?: number;
   /** Occupant HP multiplier while inside. 1 = no bonus. */
@@ -559,8 +563,14 @@ export interface CatalogEntry {
   garrisonWoundMul?: number;
   /** Sight and weapon reach added while inside, watch mode. Default GARRISON_WATCH_SIGHT_BONUS. */
   garrisonSightBonus?: number;
+  /** Weapon reach added while inside, watch mode. Default garrisonSightBonus. */
+  garrisonReachBonus?: number;
+  /** Eye height above the ground for watchers inside, elevation units. Omit: they look from the street. */
+  garrisonEye?: number;
   /** Every weapon works from inside: the Gunner lays his MG on the embrasure ledge. */
   garrisonFullArms?: boolean;
+  /** Open to the sky: a mortarman inside can still set his tube and fire. */
+  garrisonOpenTop?: boolean;
   /**
    * A medic inside: every occupant regains this share of max HP a second, and
    * the medic tends by this alone, not hands-on. Does not stack.
@@ -1039,6 +1049,16 @@ export const PYRO_COOKOFF_FIRES = 7;
  * against them. Farther than this, he leaves them and goes back to his order.
  */
 export const MEDIC_SEEK_TILES = t(6);
+/**
+ * An idle supply truck drives to allies short of ammo inside this disk and tops them up.
+ * Farther than this, it lets them go. A player order wins.
+ */
+export const SUPPLY_SEEK_TILES = t(6);
+/**
+ * An idle engineer walks to damaged allied armor inside this disk and patches it.
+ * Farther than this, he lets it go. A player order wins.
+ */
+export const ENGINEER_SEEK_TILES = t(6);
 /** Extra world pixels past body clearance that still count as hands-on. */
 export const MEDIC_TOUCH_SLACK = 8;
 /** HP per second while in contact. No charges and no cooldown. */
@@ -1064,6 +1084,8 @@ export const SUPPLY_ROUNDS_PER_POINT = 10;
 export const SUPPLY_PER_SEC = 8;
 /** Cargo restored per second while parked on an owned Armory. */
 export const SUPPLY_REARM_PER_SEC = 30;
+/** Cargo a truck scrounges back per second on its own, anywhere. Empty to full in four minutes. */
+export const SUPPLY_REGEN_PER_SEC = 0.5;
 /** Bodies in the cab and bed, factory driver included. */
 export const TRUCK_SEATS = 2;
 /**
@@ -1177,25 +1199,39 @@ export const STUKA_MG_PER_TICK = (MG42_RPM / 60 / (1 / TICK_DT)) * 2;
 export const STUKA_MG_ROUNDS = 1000;
 /**
  * Fw 190 fighter. No bomb: two 30 mm cannon, one in a gondola under each
- * wing. It hunts planes in the air and strafes the ground. Fired down from a
- * dive, a round meets a hull's roof — about ROOF_ARMOR_SHARE of its side
- * plate — so even the heaviest tank is hurt. Each round that bites takes
- * FW190_ROOF_HP_SHARE of the hull's max HP, whatever its size.
+ * wing. It hunts planes in the air and strafes the ground in barrages: each
+ * pass empties one burst from both wings at once, two straight parallel lines
+ * of rounds laid along the bearing to the target and walking through it.
+ * Fired down from the dive, a round meets a hull's roof — about
+ * ROOF_ARMOR_SHARE of its side plate — so even the heaviest tank is hurt. Each
+ * round that bites takes FW190_ROOF_HP_SHARE of the hull's max HP, whatever
+ * its size. Plunging fire comes down through tree cover; a house in the line
+ * still takes the rounds.
  */
-export const FW190_ROUNDS = 60;
-/**
- * On a ground target the cannon hold fire until this close, so the rounds come
- * down steeply on the roof instead of skimming into the houses and trees short
- * of it. Against a plane they open at FW190_CANNON.rangeTiles.
- */
-export const FW190_STRAFE_TILES = t(3.5);
-/** Both wings fire together this often: about 400 rounds a minute a gun. */
-export const FW190_PAIR_SECONDS = 0.15;
+export const FW190_BARRAGES = 3;
+/** Rounds in one wing's line. A barrage fires two lines. */
+export const FW190_BARRAGE_ROUNDS = 6;
+/** Release distance: the barrage goes when the target is this close and on the nose. */
+export const FW190_BARRAGE_TILES = t(4.5);
+/** Half-angle off the nose the target must be inside for a release. */
+export const FW190_BARRAGE_ARC_DEG = 12;
+/** Length of each line on the ground, centered on the target. */
+export const FW190_BARRAGE_LINE_TILES = t(1.25);
+/** Wing guns sit this share of the plane's radius either side of the centerline: the gap between the lines. */
+export const FW190_WING_GUN_OFFSET = 0.6;
+/** Seconds between barrages. A strafing run is longer than this; a dogfight is not. */
+export const FW190_BARRAGE_COOLDOWN = 2.5;
 /** Roof plate, as a share of the side plate. */
 export const ROOF_ARMOR_SHARE = 0.3;
-export const FW190_ROOF_HP_SHARE = 0.045;
+export const FW190_ROOF_HP_SHARE = 0.03;
 /** Chance a round through the roof wrecks the engine under the deck. */
 export const FW190_ROOF_ENGINE_CHANCE = 0.12;
+/**
+ * A 30 mm round that lands in the dirt bursts: soldiers inside this radius
+ * take up to FW190_SPLASH_DAMAGE, less toward the edge. Plate shrugs it off.
+ */
+export const FW190_SPLASH_TILES = t(0.25);
+export const FW190_SPLASH_DAMAGE = 34;
 
 /**
  * Bunker. Poured concrete, low to the ground, firing slits on every face.
@@ -1211,10 +1247,44 @@ export const BUNKER_WOUND_MUL = 0.35;
 export const BUNKER_COVER_HEIGHT = 4;
 /** Infantry that fit through the door and the firing slits. */
 export const BUNKER_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "medic", "engineer"];
+/**
+ * Trench. A one-man fighting slit an engineer digs in the field, with the
+ * spoil thrown up as a parapet. Moderate cover: better than the open, less
+ * than a house, far less than a bunker. Open-topped, so a mortar works from it.
+ */
+export const TRENCH_GARRISON_CAP = 1;
+/** Occupant HP multiplier inside. A house is 3×, a bunker 4×. */
+export const TRENCH_GARRISON_HP_MUL = 2;
+/** Share of each hit on the trench that reaches the man in it. A bunker passes 35%. */
+export const TRENCH_WOUND_MUL = 0.6;
+/** Parapet height above the ground, elevation units. Below a crouched man's eye. */
+export const TRENCH_COVER_HEIGHT = 2;
+/** The bunker's roster plus the mortarman, who needs the open sky. */
+export const TRENCH_TYPES: readonly EntityType[] = [...BUNKER_TYPES, "mortarman"];
 /** A medic inside: every occupant regains this share of max HP each second. Does not stack. */
 export const BUNKER_MEDIC_REGEN_FRAC = 0.004;
 /** An engineer inside: the bunker regains this much HP each second. Does not stack. */
 export const BUNKER_ENGINEER_REPAIR_PER_SEC = 1.5;
+
+/**
+ * Watch tower. A concrete shaft with a sandbagged, slitted cab on top. From up
+ * there the crew sees far past anyone on the ground, but a rifle does not
+ * carry much farther for being high, and the thin cab walls stop less than a
+ * bunker's slab. The same infantry that fit a bunker fit the tower.
+ */
+export const TOWER_GARRISON_CAP = 3;
+/** Occupant HP multiplier inside. Same as a civilian house, below the bunker. */
+export const TOWER_GARRISON_HP_MUL = 3;
+/** Share of each hit on the tower that reaches the men inside. Bunker is 0.35. */
+export const TOWER_WOUND_MUL = 0.6;
+/** Extra sight from the cab, watch mode. A house window is GARRISON_WATCH_SIGHT_BONUS. */
+export const TOWER_SIGHT_BONUS = t(8);
+/** Extra weapon reach from the cab. Same as a house window: height helps the eye more than the rifle. */
+export const TOWER_REACH_BONUS = t(2);
+/** Stories to the cab. Sets its solid height and the muzzle lift of the men inside. */
+export const TOWER_FLOORS = 3;
+/** Eye in the cab, elevation units: the muzzle lift of a garrison, well over the treetops. */
+export const TOWER_EYE_HEIGHT = TOWER_FLOORS * STORY_COVER_HEIGHT * 0.6;
 
 /**
  * CIWS. A stationary radar-laid 20mm gatling on a small concrete pad. It needs
@@ -1390,7 +1460,7 @@ export const STUKA_MG = {
   /** Half-angle off the nose the wing guns bear. */
   arcDeg: 10,
 } as const;
-/** Fw 190 wing cannon, 30 mm. See FW190_ROUNDS. */
+/** Fw 190 wing cannon, 30 mm. See FW190_BARRAGES. */
 export const FW190_CANNON = {
   damage: 30,
   penetration: 40,
@@ -1835,10 +1905,43 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonSightBonus: 0,
     garrisonFullArms: true,
     garrisonTypes: BUNKER_TYPES,
+    capturable: false,
     garrisonMedicRegen: BUNKER_MEDIC_REGEN_FRAC,
     garrisonEngineerRepair: BUNKER_ENGINEER_REPAIR_PER_SEC,
     coverHeight: BUNKER_COVER_HEIGHT,
-    blurb: `Reinforced concrete pillbox for ${BUNKER_GARRISON_CAP} infantry: riflemen, gunners, snipers, AT troops, rocketmen, medics, and engineers. The best cover on the field — the walls take most of every hit, and every weapon fires from the slits, the Gunner's MG included. Low, so it adds no sight or reach. A medic inside slowly patches everyone; an engineer inside slowly patches the concrete.`,
+    blurb: `Reinforced concrete pillbox for ${BUNKER_GARRISON_CAP} infantry: riflemen, gunners, snipers, AT troops, rocketmen, medics, and engineers. The best cover on the field — the walls take most of every hit, and every weapon fires from the slits, the Gunner's MG included. Low, so it adds no sight or reach. A medic inside slowly patches everyone; an engineer inside slowly patches the concrete. Enemy infantry cannot capture it — it has to be shot apart.`,
+  },
+  tower: {
+    type: "tower",
+    kind: "building",
+    name: "Watch Tower",
+    letter: "t",
+    cost: 500,
+    buildSeconds: 14,
+    hp: 1600,
+    power: 0,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    garrisonCap: TOWER_GARRISON_CAP,
+    garrisonHpMul: TOWER_GARRISON_HP_MUL,
+    garrisonWoundMul: TOWER_WOUND_MUL,
+    garrisonWindows: 4,
+    garrisonFloors: TOWER_FLOORS,
+    garrisonSightBonus: TOWER_SIGHT_BONUS,
+    garrisonReachBonus: TOWER_REACH_BONUS,
+    garrisonEye: TOWER_EYE_HEIGHT,
+    garrisonFullArms: true,
+    garrisonTypes: BUNKER_TYPES,
+    blurb: `Fortified watch tower for ${TOWER_GARRISON_CAP} infantry, the same troops a bunker takes. From the cab they see far across the field, well past anyone on the ground, and every weapon fires from the slits. Their reach grows only a little. The walls stop part of each hit: better than a house, not a bunker.`,
   },
   ram: {
     type: "ram",
@@ -1920,6 +2023,38 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: 0,
     spreadDeg: 0,
     blurb: "Four concrete pyramids, scattered along the line when placed. Tanks cannot cross. Infantry walk through.",
+  },
+  trench: {
+    type: "trench",
+    kind: "building",
+    name: "Trench",
+    letter: "H",
+    cost: 30,
+    buildSeconds: 8,
+    hp: 400,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: 0,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    garrisonCap: TRENCH_GARRISON_CAP,
+    garrisonHpMul: TRENCH_GARRISON_HP_MUL,
+    garrisonWoundMul: TRENCH_WOUND_MUL,
+    garrisonWindows: 1,
+    garrisonFloors: 1,
+    garrisonSightBonus: 0,
+    garrisonFullArms: true,
+    garrisonOpenTop: true,
+    garrisonTypes: TRENCH_TYPES,
+    coverHeight: TRENCH_COVER_HEIGHT,
+    blurb: "A one-man fighting trench with an earth parapet. Holds one rifleman, gunner, sniper, AT soldier, rocketman, pyro, mortarman, medic, or engineer. Moderate cover: he has double health and the earth soaks up part of every hit. Every weapon works from it, the Gunner's MG and the mortar included. Infantry and vehicles cross it freely.",
   },
   rifleman: {
     type: "rifleman",
@@ -2118,7 +2253,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "No gun. Builds sandbags and concrete tank obstacles, repairs armor and buildings, and cuts wrecks into scrap.",
+    blurb: "No gun. Builds sandbags, concrete tank obstacles, and one-man trenches, repairs armor and buildings, and cuts wrecks into scrap.",
   },
   medic: {
     type: "medic",
@@ -2444,7 +2579,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     leavesWreck: true,
     wreckHp: 28,
-    blurb: "Light truck. Tops up tank racks, coaxial belts, and the Walker's backpack, then refills itself at an Armory. Two seats. The factory driver stays at the wheel. A bullet in the front plate can kill the driver and leave the truck for anyone. A replacement driver can get out. The second soldier can fire a rifle or handgun from the bed — a machine gun, scoped rifle, or other large gun stays slung. Soldiers inside are a little harder to wound, and more so from the side or rear.",
+    blurb: "Light truck. Tops up tank racks, coaxial belts, and the Walker's backpack, and slowly scrounges its cargo back on its own — an Armory refills it fast. Two seats. The factory driver stays at the wheel. A bullet in the front plate can kill the driver and leave the truck for anyone. A replacement driver can get out. The second soldier can fire a rifle or handgun from the bed — a machine gun, scoped rifle, or other large gun stays slung. Soldiers inside are a little harder to wound, and more so from the side or rear.",
   },
   /** Ju 87 B dive bomber. Lives on an Airfield pad. */
   stuka: {
@@ -2488,9 +2623,9 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 11,
     moveTilesPerSec: t(6.5),
     turnDegPerSec: 150,
-    rangeTiles: FW190_CANNON.rangeTiles,
+    rangeTiles: FW190_BARRAGE_TILES,
     sightTiles: t(10),
-    cooldown: FW190_PAIR_SECONDS,
+    cooldown: FW190_BARRAGE_COOLDOWN,
     damage: FW190_CANNON.damage,
     projectileSpeed: SMALL_ARMS_SPEED,
     ...UNARMED,
@@ -2498,7 +2633,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: FW190_CANNON.caliber,
     spreadDeg: FW190_CANNON.spreadDeg,
     aircraft: true,
-    blurb: `Fighter. Two 30 mm cannon, one under each wing, and no bomb. Chases enemy planes out of the sky, and strafes the ground in a shallow dive — fired from above, a round comes down through a tank's thin roof, so even the heaviest hull bleeds. ${FW190_ROUNDS} rounds a sortie. Flies faster and turns tighter than the Stuka. Lands at its Airfield to refuel and rearm.`,
+    blurb: `Fighter. Two 30 mm cannon, one under each wing, and no bomb. ${FW190_BARRAGES} barrages a sortie: on each pass it lines up on the target and lays two straight lines of rounds through it, one from each wing, then comes round for the next. Fired from above, the rounds come down through a tank's thin roof, so even the heaviest hull bleeds. It chases enemy planes out of the sky the same way. Flies faster and turns tighter than the Stuka. Lands at its Airfield to refuel and rearm.`,
   },
   droneop: {
     type: "droneop",
@@ -2652,6 +2787,7 @@ export function isFieldStructure(type: EntityType): type is FieldStructureType {
 export function fieldSpan(type: EntityType): { length: number; thick: number } | null {
   if (type === "sandbags") return { length: 24, thick: 7 };
   if (type === "teeth") return { length: 14, thick: 14 };
+  if (type === "trench") return { length: 16, thick: 10 };
   return null;
 }
 
@@ -2693,7 +2829,7 @@ export function isAircraftType(type: EntityType): boolean {
 
 /** Bombs and gun rounds a plane carries on a full sortie. */
 export function airLoadoutOf(type: EntityType): { bombs: number; rounds: number } {
-  if (type === "fw190") return { bombs: 0, rounds: FW190_ROUNDS };
+  if (type === "fw190") return { bombs: 0, rounds: FW190_BARRAGES };
   return { bombs: STUKA_BOMBS, rounds: STUKA_MG_ROUNDS };
 }
 
@@ -2876,8 +3012,17 @@ export function garrisonSightBonusOf(type: EntityType): number {
   return catalog(type).garrisonSightBonus ?? GARRISON_WATCH_SIGHT_BONUS;
 }
 
+/** Weapon reach a watch garrison gains inside. A tower sees much farther than it shoots. */
+export function garrisonReachBonusOf(type: EntityType): number {
+  return catalog(type).garrisonReachBonus ?? garrisonSightBonusOf(type);
+}
+
 export function garrisonFullArmsOf(type: EntityType): boolean {
   return catalog(type).garrisonFullArms === true;
+}
+
+export function garrisonOpenTopOf(type: EntityType): boolean {
+  return catalog(type).garrisonOpenTop === true;
 }
 
 /**
@@ -2911,9 +3056,10 @@ export function entityIsScouting(e: { scoutOut?: boolean; scoutHp?: number }): b
   return !!e.scoutOut && (e.scoutHp ?? 0) > 0;
 }
 
-/** Player-built structures can change owner. Civilian houses cannot. */
+/** Player-built structures can change owner. Civilian houses and the Bunker cannot. */
 export function isCapturable(type: EntityType): boolean {
-  return catalog(type).kind === "building" && !isCivilianType(type) && !isFieldStructure(type);
+  const def = catalog(type);
+  return def.kind === "building" && def.capturable !== false && !isCivilianType(type) && !isFieldStructure(type);
 }
 
 export function hasTurret(type: EntityType): boolean {

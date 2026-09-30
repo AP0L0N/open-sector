@@ -1,7 +1,8 @@
 /**
  * Ammo strips under an allied health bar. Only finite stores a truck refills:
  * the shell rack, the coaxial belt, rocket pods, a belt that never reloads, and
- * the cyborg drum. Smoke is left out — it is a screen, not the gun's reserve.
+ * the cyborg drum. A supply truck shows its cargo. Smoke is left out — it is a
+ * screen, not the gun's reserve.
  */
 import {
   beltOf,
@@ -9,6 +10,7 @@ import {
   launcherOnlyOf,
   rocketAmmoOf,
   SHELL_TYPES,
+  SUPPLY_CARGO,
   supplyDrumOf,
   type EntityView,
 } from "@gridlock/shared";
@@ -21,8 +23,11 @@ function fraction(left: number, full: number): number {
 }
 
 /** Main gun first, then the secondary store. At most two. Empty when nothing is finite or the view is not allied. */
-export function ammoBarRatios(e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "wreck">): number[] {
+export function ammoBarRatios(
+  e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "wreck" | "supply">,
+): number[] {
   if (e.wreck) return [];
+  if (e.type === "supply") return e.supply != null ? [fraction(e.supply, SUPPLY_CARGO)] : [];
   const def = catalog(e.type);
   const primary: number[] = [];
   const secondary: number[] = [];

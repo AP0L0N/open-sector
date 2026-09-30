@@ -102,7 +102,7 @@ export interface AirState {
   /** Seconds of flight left in the tank. */
   fuel: number;
   bombs: number;
-  /** Wing-MG rounds left in both belts. */
+  /** Wing-MG rounds left in both belts. For the Fw 190: barrages left (whole ones fire). */
   rounds: number;
   /** Airfield this plane parks on. Null once it is gone and no other pad is free. */
   homeId: number | null;
@@ -320,7 +320,7 @@ export interface Projectile {
    * Omitted for rifles, machine guns, and tank shells.
    */
   flight?: "mortar" | "bomb" | "rocket" | "flame";
-  /** Fused landing point for a mortar bomb or a rocket. */
+  /** Fused landing point for a mortar bomb or a rocket. A plane's barrage round: its point on the line. */
   landX?: number;
   landY?: number;
   /** Peak air height in elevation units. */
