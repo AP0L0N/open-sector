@@ -562,7 +562,8 @@ function tickFly(state: MatchState, e: Entity, dt: number): void {
       loiterHere(e);
     } else if (t && isAirborne(t)) {
       altGoal = dogfight(state, e, t, dt, turned);
-    } else if (a.bombs <= 0 && !(t && gunsHurt(e, t) && hasRounds(e))) {
+    } else if (a.bombs <= 0 && !(hasRounds(e) && (t ? gunsHurt(e, t) : isFighterType(e.type)))) {
+      // Nothing left for it: a Stuka without its bomb flies to the point. A fighter's barrage takes a bare point too.
       e.order = { kind: "move", x: o.x, y: o.y };
     } else {
       altGoal = attackRun(state, e, t?.x ?? o.x, t?.y ?? o.y, t, dt, turned, true);
@@ -656,7 +657,8 @@ function attackRun(
   const d = Math.hypot(tx - e.x, ty - e.y);
   const off = Math.abs(angOff(Math.atan2(ty - e.y, tx - e.x), e.facing));
   const bomb = a.bombs > 0;
-  const guns = hasRounds(e) && !!target && gunsHurt(e, target);
+  // A forced fighter pass on a bare point still has something to shoot at: the ground.
+  const guns = hasRounds(e) && (target ? gunsHurt(e, target) : forced && isFighterType(e.type));
   if (!bomb && !guns) {
     if (liveHome(state, e)) e.order = { kind: "land" };
     else loiterHere(e);
@@ -672,8 +674,8 @@ function attackRun(
   const goal = diving ? (bomb ? AIR_RELEASE_ALT : AIR_STRAFE_ALT) : AIR_CRUISE_ALT;
   if (isFighterType(e.type)) {
     // One barrage a pass: release on the nose, then fly out and come round for the next.
-    if (diving && guns && barrageReady(state, e, target!, d, off)) {
-      fireBarrage(state, e, target!);
+    if (diving && guns && barrageReady(state, e, target, d, off)) {
+      fireBarrage(state, e, tx, ty, target, forced);
       a.extend = true;
     }
   } else if (diving && guns && d <= STUKA_MG.rangeTiles * ts && off <= (STUKA_MG.arcDeg * Math.PI) / 180) {
@@ -742,18 +744,18 @@ function dogfight(state: MatchState, e: Entity, t: Entity, dt: number, turned: b
   if (!turned) steerTo(state, e, t.x, t.y, dt);
   const d = Math.hypot(t.x - e.x, t.y - e.y);
   const off = Math.abs(angOff(Math.atan2(t.y - e.y, t.x - e.x), e.facing));
-  if (barrageReady(state, e, t, d, off)) fireBarrage(state, e, t);
+  if (barrageReady(state, e, t, d, off)) fireBarrage(state, e, t.x, t.y, t, false);
   const zT = entityHeight(state, t) + airAlt(t);
   return Math.max(AIR_STRAFE_ALT, zT - worldTileHeight(state, e.x, e.y));
 }
 
 /** Target close, on the nose, guns loaded and cleared since the last barrage. */
-function barrageReady(state: MatchState, e: Entity, t: Entity, d: number, off: number): boolean {
+function barrageReady(state: MatchState, e: Entity, t: Entity | undefined, d: number, off: number): boolean {
   if (e.cooldown > 0 || !hasRounds(e)) return false;
   if (d > FW190_BARRAGE_TILES * state.tileSize || d < e.radius * 2) return false;
   if (off > (FW190_BARRAGE_ARC_DEG * Math.PI) / 180) return false;
   // Height matched before it fires on a plane.
-  return !isAirborne(t) || Math.abs(airAlt(t) - e.air!.alt) <= AIR_STRAFE_ALT;
+  return !t || !isAirborne(t) || Math.abs(airAlt(t) - e.air!.alt) <= AIR_STRAFE_ALT;
 }
 
 /**
@@ -761,22 +763,23 @@ function barrageReady(state: MatchState, e: Entity, t: Entity, d: number, off: n
  * laid along the bearing to the target, one wing-gap apart, running from
  * short of it to past it. On the ground each round comes down on its point of
  * the line and meets a hull's roof (fromAbove); at a plane the lines run at
- * its height.
+ * its height. `tx, ty` is the point laid on: the target, or a force-fired
+ * point. A forced barrage, like a forced bomb, hits your own side too.
  */
-function fireBarrage(state: MatchState, e: Entity, target: Entity): void {
+function fireBarrage(state: MatchState, e: Entity, tx: number, ty: number, target: Entity | undefined, forced: boolean): void {
   const a = e.air!;
   const gun = FW190_CANNON;
   const ts = state.tileSize;
-  const aloft = isAirborne(target);
-  const dx = target.x - e.x;
-  const dy = target.y - e.y;
+  const aloft = !!target && isAirborne(target);
+  const dx = tx - e.x;
+  const dy = ty - e.y;
   const d = Math.max(1, Math.hypot(dx, dy));
   const ux = dx / d;
   const uy = dy / d;
   const px = -uy;
   const py = ux;
   const z0 = worldTileHeight(state, e.x, e.y) + a.alt;
-  const zAir = aloft ? entityHeight(state, target) + airAlt(target) : 0;
+  const zAir = aloft && target ? entityHeight(state, target) + airAlt(target) : 0;
   const len = FW190_BARRAGE_LINE_TILES * ts;
   // A plane moves on: its lines start at it and run on past.
   const from = aloft ? -len * 0.2 : -len / 2;
@@ -790,8 +793,8 @@ function fireBarrage(state: MatchState, e: Entity, target: Entity): void {
     const my = e.y + uy * (e.radius + 2) + py * gap;
     for (let k = 0; k < n; k++) {
       const along = from + step * k + (nextRand(state) - 0.5) * step * 0.4;
-      const lx = Math.max(0, Math.min(maxX, target.x + ux * along + px * gap));
-      const ly = Math.max(0, Math.min(maxY, target.y + uy * along + py * gap));
+      const lx = Math.max(0, Math.min(maxX, tx + ux * along + px * gap));
+      const ly = Math.max(0, Math.min(maxY, ty + uy * along + py * gap));
       const run = Math.max(1, Math.hypot(lx - mx, ly - my));
       const ang = Math.atan2(ly - my, lx - mx);
       const zEnd = aloft ? zAir : worldTileHeight(state, lx, ly);
@@ -816,6 +819,7 @@ function fireBarrage(state: MatchState, e: Entity, target: Entity): void {
         fromAbove: aloft ? undefined : true,
         landX: aloft ? undefined : lx,
         landY: aloft ? undefined : ly,
+        harmAllies: forced ? true : undefined,
       });
     }
   }

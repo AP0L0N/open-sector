@@ -33,6 +33,26 @@ const tigerGunGlob = import.meta.glob("../assets/units/tiger/gun/*.png", {
   import: "default",
 }) as Record<string, string>;
 
+const apocalypseHullGlob = import.meta.glob("../assets/units/apocalypse/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const apocalypseTurretGlob = import.meta.glob("../assets/units/apocalypse/turret/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const apocalypseGunGlob = import.meta.glob("../assets/units/apocalypse/gun/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const apocalypseCiwsGlob = import.meta.glob("../assets/units/apocalypse/ciws/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 const ss3HullGlob = import.meta.glob("../assets/units/ss3/hull/*.png", {
   eager: true,
   import: "default",
@@ -482,6 +502,42 @@ export function bindDroneSheets(hullImage: HTMLImageElement): void {
     })
     .catch((err) => {
       console.error("drone turntable", err);
+    });
+}
+
+let apocalypsePrevious: ComposedTurntable | null = null;
+
+/**
+ * Apocalypse: hull, turret, twin gun, and the roof CIWS, one transform for all four
+ * (tools/sprites/render_apocalypse.py). The roof mount turns on the turret's own axis.
+ */
+export function bindApocalypseSheets(
+  hullImage: HTMLImageElement,
+  turretImage: HTMLImageElement,
+  gunImage: HTMLImageElement,
+  ciwsImage: HTMLImageElement,
+): void {
+  let urls: string[][];
+  try {
+    urls = [apocalypseHullGlob, apocalypseTurretGlob, apocalypseGunGlob, apocalypseCiwsGlob].map((g) => pickTurntableUrls(g));
+  } catch (err) {
+    console.error("apocalypse turntable", err);
+    return;
+  }
+  void Promise.all(urls.map((layer) => Promise.all(layer.map(loadImage))))
+    .then((layers) => composeAligned(layers, TIGER_OPTS))
+    .then((next) => {
+      revoke(apocalypsePrevious);
+      apocalypsePrevious = next;
+      hullImage.src = next.sheetUrls[0] ?? "";
+      turretImage.src = next.sheetUrls[1] ?? "";
+      gunImage.src = next.sheetUrls[2] ?? "";
+      ciwsImage.src = next.sheetUrls[3] ?? "";
+      // The static apocalypse-cameo.png is a brightened 3/4 view; no runtime cameo.
+      URL.revokeObjectURL(next.cameoUrl);
+    })
+    .catch((err) => {
+      console.error("apocalypse turntable", err);
     });
 }
 

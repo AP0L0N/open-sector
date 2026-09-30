@@ -211,6 +211,12 @@ export interface Entity {
   rocketTarget?: number | null;
   /** Last Walker volley: sim tick, arms that fired, and the off-arm bearing when it took a second target. */
   gatlingFire?: { tick: number; arms: 1 | 2; offAim?: number };
+  /** Apocalypse roof mount's own traverse. Missing until it first moves: it rides the turret. */
+  ciwsFacing?: number;
+  /** Entity the roof mount is laying on, apart from the main guns' target. */
+  ciwsTarget?: number | null;
+  /** Sim tick the roof mount last fired, on a unit or a rocket. */
+  ciwsFireTick?: number;
   /** Seconds the MG42 bipod has been set while prone. 0 until the gunner crawls. */
   bipod: number;
   /** Coaxial MG rounds remaining. 0 if the type has no MG. */
