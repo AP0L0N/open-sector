@@ -160,6 +160,7 @@ import { escorting, reversing, stepTurn, turnToward, turnTurretTo, turnTurretTow
 import { airTargetSpreadMul, isAirborne, reachesAircraft, stepBomb } from "./air.js";
 import { stepCluster } from "./airdrop.js";
 import { projectileMeetsDrone, reachesDrone } from "./drone.js";
+import { reachesJet } from "./jet.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
 /** A twin mount's barrels sit this share of the hull radius either side of the bore line. */
@@ -422,6 +423,8 @@ function canFight(e: Entity): boolean {
  */
 function outOfReachAloft(e: Entity, target: Entity): boolean {
   if (target.drone) return !reachesDrone(e, target);
+  // A Jump Jet in the air: anti-air weapons only.
+  if (target.jet) return isAirborne(target) && !reachesJet(e);
   return isAirborne(target) && !reachesAircraft(e);
 }
 
@@ -1305,7 +1308,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
       if (e.hp > 0 && !smoked && res.kind !== "ricochet" && res.damage > 0) maybeWithdraw(state, e, p);
       hideScout(state, e);
     }
-    if (occupied) woundGarrison(state, e, res.damage, p.caliber);
+    if (occupied) woundGarrison(state, e, res.damage, p.caliber, !!p.plunging);
     if (e.type === "supply" && !e.wreck && e.hp > 0) {
       noteSupplyHit(state, e, res.face, false, chipWalls ? res.damage : 0);
     }
@@ -1507,6 +1510,8 @@ function fireRound(
 ): void {
   const target = opts?.target;
   const moving = !!target && (target.waypoints.length > 0 || target.state === "move");
+  // A Jump Jet in the air fires down on the ground: a crouch hides nothing from overhead.
+  const plunging = !!e.jet && isAirborne(e) && !(target && isAirborne(target));
   // A soldier inside does not turn: his round leaves the opening facing the target, aimed from there.
   const slit = garrisonMuzzleToward(state, e, aimX, aimY);
   // Fused ground shots aim at the click (plus spread), not along current turret facing.
@@ -1526,16 +1531,17 @@ function fireRound(
     moving,
     stats.spreadPower ?? 1,
     target
-      ? stanceTargetSpreadMul(target, unitInWater(state, target)) *
+      ? (plunging ? 1 : stanceTargetSpreadMul(target, unitInWater(state, target))) *
           (opts?.radar && isAirborne(target) ? CIWS_AIR_SPREAD : airTargetSpreadMul(target, e))
       : 1,
     opts?.accurateRange ?? range,
   );
   const speed = stats.projectileSpeed;
   const muzzleReach = e.radius + 2;
-  const travel = opts?.fuse ? Math.max(8, dist - muzzleReach) : range;
+  // A round fired down from the air goes into the ground just past what it was aimed at.
+  const travel = opts?.fuse ? Math.max(8, dist - muzzleReach) : plunging ? Math.max(8, dist - muzzleReach) + e.radius * 2 : range;
   // Fused rounds skip the 0.05s miss pad — at tank-shell speed that is 500px past the click.
-  const life = travel / Math.max(1, speed) + (opts?.fuse ? 0 : 0.05);
+  const life = travel / Math.max(1, speed) + (opts?.fuse || plunging ? 0 : 0.05);
   const dx = Math.cos(ang);
   const dy = Math.sin(ang);
   const side = opts?.side ?? 0;
@@ -1574,6 +1580,7 @@ function fireRound(
       opts?.radar || (!opts?.shell && (e.type === "walker" || radarLaidOf(e.type) || !!infantryGunFor(e)?.antiAir))
         ? true
         : undefined,
+    plunging: plunging || undefined,
     z: z0,
     vz: ((zAim - z0) / Math.max(1e-6, aimDist)) * speed,
   };
@@ -1648,7 +1655,8 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     p.z = z0 + (p.vz ?? 0) * stepDt;
     p.life -= dt;
     const z1 = p.z;
-    const bagHit = sandbagSweep(state, x0, y0, p.x, p.y, isTankShell(p));
+    // A round from overhead drops over the bags.
+    const bagHit = p.plunging ? null : sandbagSweep(state, x0, y0, p.x, p.y, isTankShell(p));
     const struck = nearestSweepHit(state, x0, y0, p, z0, z1);
     if (bagHit && (!struck || bagHit.t <= struck.t)) {
       woundBehindSandbags(state, bagHit.e, x0, y0, p.damage);
@@ -1657,7 +1665,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       continue;
     }
     // A barrage from a plane comes down through the canopy; only what it lands on counts.
-    const tree = p.fromAbove ? null : nearestTreeSweep(state, x0, y0, p, z0, z1, rand);
+    const tree = p.fromAbove || p.plunging ? null : nearestTreeSweep(state, x0, y0, p, z0, z1, rand);
     if (tree && (!struck || tree.t <= struck.t)) {
       if (canFellTrees(p)) fellTreeAt(state, tree.tx, tree.ty);
       pushImpact(state, p, "miss", tree.x, tree.y);
@@ -1775,7 +1783,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       }
       hideScout(state, e);
     }
-    if (occupied) woundGarrison(state, e, res.damage, p.caliber);
+    if (occupied) woundGarrison(state, e, res.damage, p.caliber, !!p.plunging);
     if (e.type === "supply" && !e.wreck && e.hp > 0) {
       noteSupplyHit(state, e, res.face, isSupplyBullet(p.caliber, p.shell, p.flight), chipWalls ? dealt : 0);
     }
@@ -1951,16 +1959,30 @@ function nearestSweepHit(
     const shotZ = z0 + (z1 - z0) * hit.t;
     // Shells, mortar bombs, and bombs pass a drone by; a high one takes only anti-air fire.
     if (e.drone && !projectileMeetsDrone(p, e)) continue;
+    // Only anti-air fire meets a Jump Jet in the air. A rifle round passes under him.
+    if (e.jet && isAirborne(e) && !p.antiAir) continue;
     if (isAirborne(e)) {
       // Only a round near the plane's height meets it. Everything else passes under or over.
       if (Math.abs(shotZ - (entityHeight(state, e) + airAlt(e))) > AIR_HIT_BAND) continue;
-    } else if (shotClearsCover(shotZ, entityHeight(state, e), coverHeightOf(e.type))) continue;
+    } else if (shotClearsCover(shotZ, entityHeight(state, e), coverHeightOf(e.type))) {
+      // A steep round clears his head at the edge of his circle and comes down into him further in.
+      if (!p.plunging || !plungesInto(state, x0, y0, p, z0, z1, e)) continue;
+    }
     if (e.air && (!parked || hit.t < parked.t)) parked = { e, t: hit.t, x: hit.x, y: hit.y };
     if (!best || hit.t < best.t) best = { e, t: hit.t, x: hit.x, y: hit.y };
   }
   // A plane on its hardstand sits on top of the strip. The round finds the plane, not the grass.
   if (best?.e.type === "airfield" && parked && !isAirborne(parked.e)) return parked;
   return best;
+}
+
+/** A plunging round is below the top of this unit where its line passes closest to his middle. */
+function plungesInto(state: MatchState, x0: number, y0: number, p: Projectile, z0: number, z1: number, e: Entity): boolean {
+  const dx = p.x - x0;
+  const dy = p.y - y0;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((e.x - x0) * dx + (e.y - y0) * dy) / len2)) : 0;
+  return !shotClearsCover(z0 + (z1 - z0) * t, entityHeight(state, e), coverHeightOf(e.type));
 }
 
 function sweepAgainst(
@@ -1973,7 +1995,7 @@ function sweepAgainst(
   if (e.type === "sandbags" || e.type === "teeth") return null;
   // An empty trench is a hole in the ground. Rounds only find it with a man in it.
   if (e.type === "trench" && livingGarrison(state, e).length === 0) return null;
-  const reach = e.radius * stanceHitRadiusMul(e, unitInWater(state, e));
+  const reach = e.radius * (p.plunging ? 1 : stanceHitRadiusMul(e, unitInWater(state, e)));
   const t =
     e.kind === "building"
       ? segmentAabbT(x0, y0, p.x, p.y, buildingBounds(e, state.tileSize))

@@ -14,6 +14,7 @@ import { moveWithCollision, stepGiveWay, tickMakeWay } from "./collision.js";
 import { hullTurnMul, moveSpeedMul } from "./crits.js";
 import { openSpotNear, spotTaken, unitClearance } from "./formation.js";
 import { setPath } from "./path.js";
+import { flyStep, jetAloft } from "./jet.js";
 import { slopeSpeedMul, tileHeight, weaponRangeWorld, worldTileHeight } from "./elevation.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -107,7 +108,8 @@ export function tickMovement(state: MatchState, dt: number): void {
     }
     const def = catalog(e.type);
     const speed = marchTilesPerSec(e) * state.tileSize;
-    if (stepGiveWay(state, e, def.moveTilesPerSec * state.tileSize * moveSpeedMul(e, unitInWater(state, e)), dt)) {
+    const flying = jetAloft(e);
+    if (!flying && stepGiveWay(state, e, def.moveTilesPerSec * state.tileSize * moveSpeedMul(e, unitInWater(state, e)), dt)) {
       e.tileX = worldToTile(e.x, state.tileSize);
       e.tileY = worldToTile(e.y, state.tileSize);
       continue;
@@ -199,6 +201,23 @@ export function tickMovement(state: MatchState, dt: number): void {
     if (e.waypoints.length === 0) {
       if (e.state === "move") e.state = "idle";
       if (e.order?.kind === "move" || e.order?.kind === "attackmove" || e.order?.kind === "withdraw") {
+        finishTravel(state, e);
+      }
+      continue;
+    }
+    if (flying) {
+      // Jet pack lit: straight at the goal over everything, no path, no shoving.
+      const goal = e.waypoints[e.waypoints.length - 1]!;
+      turnToward(e, goal.x, goal.y, def.turnDegPerSec, dt);
+      e.state =
+        e.order?.kind === "attack" || e.order?.kind === "attackmove" || e.order?.kind === "forceattack"
+          ? "attack"
+          : "move";
+      flyStep(state, e, dt);
+      if (
+        e.waypoints.length === 0 &&
+        (e.order?.kind === "move" || e.order?.kind === "attackmove" || e.order?.kind === "withdraw")
+      ) {
         finishTravel(state, e);
       }
       continue;

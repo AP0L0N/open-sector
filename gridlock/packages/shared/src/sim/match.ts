@@ -17,6 +17,7 @@ import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter } from
 import { aircraftDown, tickAir } from "./air.js";
 import { loseRiders, syncPlaneRiders, tickChutes, tickCrates, tickMines, tickPlaneBoarding } from "./airdrop.js";
 import { tickDrones } from "./drone.js";
+import { tickJets } from "./jet.js";
 import { tickCapture } from "./capture.js";
 import { detachGarrisoned, killGarrison, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
 import { seedRng } from "./rng.js";
@@ -147,6 +148,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   syncPlaneRiders(state);
   tickChutes(state, dt);
   tickDrones(state, dt);
+  tickJets(state, dt);
   tickCollision(state, dt);
   tickMines(state, dt);
   tickCrates(state, dt);

@@ -1,6 +1,7 @@
 import {
   AIR_FUEL_SECONDS,
   DRONE_BATTERY_SECONDS,
+  JET_FUEL_SECONDS,
   airLoadoutOf,
   beltOf,
   catalog,
@@ -34,7 +35,7 @@ import {
   type MapDef,
 } from "../maps.js";
 import { nextRand } from "./rng.js";
-import type { AirState, DroneLink, Entity, MatchState } from "./types.js";
+import type { AirState, DroneLink, Entity, JetState, MatchState } from "./types.js";
 
 /** Fresh flight state: fuelled, armed, parked on `pad` of Airfield `homeId`. */
 export function newAirState(homeId: number | null, pad: number, type: EntityType = "stuka"): AirState {
@@ -56,6 +57,16 @@ export function newAirState(homeId: number | null, pad: number, type: EntityType
     // A transport comes off the line with a mine canister in the bay.
     ...(isTransportType(type) ? { payload: "mines" as const } : {}),
   };
+}
+
+/** Jump Jet's pack: full, on the ground. */
+export function newJetState(): JetState {
+  return { alt: 0, up: false, fuel: JET_FUEL_SECONDS, refuel: 0 };
+}
+
+/** A Jump Jet off the ground or lifting off. He flies over men, walls, and water. */
+export function jetAloft(e: { jet?: JetState }): boolean {
+  return !!e.jet && (e.jet.up || e.jet.alt > 0);
 }
 
 /** Drone Op's link: one charged drone in hand, Surveillance by default. */
@@ -196,9 +207,11 @@ export function walkable(state: MatchState, x: number, y: number, type?: EntityT
 /** Infantry or a wading walker standing in a water tile. Other vehicles never count. */
 export function unitInWater(
   state: MatchState,
-  e: { type: EntityType; x: number; y: number; garrisonedIn?: number | null },
+  e: { type: EntityType; x: number; y: number; garrisonedIn?: number | null; jet?: JetState },
 ): boolean {
   if ((!isInfantryType(e.type) && !wadesOf(e.type)) || e.garrisonedIn) return false;
+  // A Jump Jet over a river is flying, not swimming.
+  if (e.jet && e.jet.alt > 0) return false;
   return isWater(state, worldToTile(e.x, state.tileSize), worldToTile(e.y, state.tileSize));
 }
 
@@ -547,6 +560,7 @@ export function makeEntity(
   };
   if (def.aircraft) e.air = newAirState(null, 0, type);
   if (type === "droneop") e.droneLink = newDroneLink();
+  if (type === "jumpjet") e.jet = newJetState();
   state.entities.set(id, e);
   occupyEntity(state, e);
   return e;

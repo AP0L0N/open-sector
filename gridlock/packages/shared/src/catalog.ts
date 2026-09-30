@@ -207,6 +207,8 @@ export const HEIGHT_RANGE_BONUS = 2;
  */
 export const HANDGUN_RANGE_TILES = t(3);
 export const RIFLE_RANGE_TILES = t(9);
+/** Jump Jet's assault rifle. Short of the rifle. */
+export const ASSAULT_RANGE_TILES = t(7.5);
 export const MG42_RANGE_TILES = t(11);
 export const WALKER_RANGE_TILES = t(8);
 export const CYBORG_RANGE_TILES = WALKER_RANGE_TILES;
@@ -426,6 +428,7 @@ export type EntityType =
   | "bv222"
   | "droneop"
   | "drone"
+  | "jumpjet"
   | "cottage"
   | "house"
   | "manor"
@@ -450,7 +453,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "apocalypse" | "ss3" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "supply" | "stuka" | "fw190" | "bv222" | "droneop";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "apocalypse" | "ss3" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "supply" | "stuka" | "fw190" | "bv222" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -473,7 +476,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "tower", "research"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "apocalypse", "ss3", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "supply", "stuka", "fw190", "bv222", "droneop"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "apocalypse", "ss3", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "supply", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
@@ -484,6 +487,7 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
   mammoth: "research",
   nebelwerfer: "research",
   droneop: "research",
+  jumpjet: "research",
 };
 
 export interface CatalogEntry {
@@ -632,8 +636,8 @@ export interface ShellDef {
 }
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
-export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer";
-export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer"];
+export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault"];
 export interface InfantryGun {
   id: InfantryWeaponId;
   name: string;
@@ -706,6 +710,26 @@ export const HANDGUN = {
   cooldown: 0.4,
   clip: 7,
   reload: 1.6,
+} as const satisfies InfantryGun;
+
+/**
+ * Jump Jet's assault rifle. A short burst from a thirty-round magazine: more
+ * rounds in the air than a rifle, a little less reach, a little less aim.
+ * Two rounds leave each time the cooldown elapses.
+ */
+export const ASSAULT = {
+  id: "assault" as const,
+  name: "Assault rifle",
+  blurb: "Two-round bursts from a thirty-round magazine. A little shorter and looser than the rifle, much more lead. Fired from the air it comes down past sandbags, trees, a crouch, and a trench parapet.",
+  damage: 9,
+  penetration: 5,
+  caliber: 8,
+  spreadDeg: 3,
+  cooldown: 0.5,
+  shotsPerTick: 2,
+  clip: 30,
+  reload: 2.6,
+  rangeTiles: ASSAULT_RANGE_TILES,
 } as const satisfies InfantryGun;
 
 /**
@@ -1514,8 +1538,35 @@ export const DRONE_WARHEAD = {
   caliber: 30,
 } as const;
 
+/**
+ * Jump Jet. A soldier with a jet pack: he walks like any trooper, and on
+ * command lifts to JET_ALT and flies straight over hills, water, walls, and
+ * men while the fuel lasts. Up there only anti-air weapons reach him (the
+ * MG42, the gatlings, the CIWS and RAM, and the Titan's pods), and his own
+ * rounds come down past sandbags, trees, a crouch, and a trench parapet.
+ * Low on fuel he lands by himself. The pack refills on the ground after a
+ * pause.
+ */
+/** Seconds of flight on a full pack. */
+export const JET_FUEL_SECONDS = 14;
+/** Fuel needed to take off. */
+export const JET_TAKEOFF_MIN_SECONDS = 4;
+/** He starts down with this much left, so there is fuel to find open ground. */
+export const JET_LAND_RESERVE = 1.5;
+/** Seconds on the ground after landing before the pack starts to refill. */
+export const JET_REFUEL_DELAY = 6;
+/** Fuel seconds regained per second once refilling. An empty pack fills in 16 s. */
+export const JET_REFUEL_PER_SEC = JET_FUEL_SECONDS / 16;
+/** Flying height, elevation units. Above a house roof, well under a plane. */
+export const JET_ALT = 7;
+/** Elevation units per second up or down. */
+export const JET_CLIMB_PER_SEC = 9;
+/** Air speed. Faster than he runs. */
+export const JET_FLY_TILES_PER_SEC = t(4);
+
 export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   rifle: RIFLE,
+  assault: ASSAULT,
   handgun: HANDGUN,
   mg42: MG42,
   scoped: SCOPED,
@@ -2805,6 +2856,31 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     blurb: "No gun of his own. Launches one quadcopter that flies as its own unit, only within his reach and only while its battery lasts. Surveillance holds it high with wide sight, where only machine guns and gatlings reach it. Search & Destroy brings it low to dive on a target and burst; down there rifles and rockets reach it too. Recall stows it to recharge. A lost drone takes him a long time to replace.",
   },
+  jumpjet: {
+    type: "jumpjet",
+    kind: "unit",
+    name: "Jump Jet",
+    letter: "j",
+    cost: 260,
+    buildSeconds: 13,
+    hp: 40,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: t(2.1),
+    turnDegPerSec: 1800,
+    rangeTiles: ASSAULT_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: ASSAULT.cooldown,
+    damage: ASSAULT.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: ASSAULT.penetration,
+    caliber: ASSAULT.caliber,
+    spreadDeg: ASSAULT.spreadDeg,
+    blurb: "Assault rifle, handgun, and a jet pack. Take off to fly straight over anything while the fuel lasts: up there only machine guns, gatlings, the CIWS and RAM, and Titan rockets reach him, and his bursts come down on men behind sandbags, in trees, crouched, or in a trench. Lands by himself when the pack runs low; it refills on the ground after a pause.",
+  },
   drone: {
     type: "drone",
     kind: "unit",
@@ -2968,7 +3044,12 @@ export function armorLabel(type: EntityType): string | null {
   return `F${d.armorFront} / S${d.armorSide} / R${d.armorRear}`;
 }
 
-const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "droneop"];
+const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "droneop", "jumpjet"];
+
+/** Soldier with a jet pack: the Jump Jet. */
+export function isJumpJetType(type: EntityType): boolean {
+  return type === "jumpjet";
+}
 
 /** Flies: the Stuka, the Fw 190, and the BV 222. */
 export function isAircraftType(type: EntityType): boolean {
@@ -3038,6 +3119,7 @@ export function primaryInfantryGun(type: EntityType): InfantryGun | null {
   if (type === "pyro") return FLAMER;
   if (type === "mortarman") return MORTAR;
   if (type === "cyborg") return GATLING;
+  if (type === "jumpjet") return ASSAULT;
   return null;
 }
 
@@ -3051,6 +3133,7 @@ export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
   if (type === "pyro") return [FLAMER];
   if (type === "mortarman") return [MORTAR];
   if (type === "cyborg") return [GATLING];
+  if (type === "jumpjet") return [ASSAULT, HANDGUN];
   return [];
 }
 

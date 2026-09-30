@@ -670,7 +670,15 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     ? ctx.match.players.find((p) => p.playerId === e.garrison!.ownerId)
     : owner;
   const who = occ?.name ?? (isGarrisonable(e.type) ? "civilian" : "—");
-  const flight = e.drone ? droneLine(e.drone) : e.droneLink ? droneLinkLine(e.droneLink) : e.air ? airLine(e.air, e.type) : "";
+  const flight = e.drone
+    ? droneLine(e.drone)
+    : e.droneLink
+      ? droneLinkLine(e.droneLink)
+      : e.jet
+        ? jetLine(e.jet)
+        : e.air
+          ? airLine(e.air, e.type)
+          : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
   box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}  ·  ${who}${q}${cargo}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
@@ -710,6 +718,16 @@ function droneLine(d: NonNullable<EntityView["drone"]>): string {
 }
 
 /** The operator's drone: up, being built, or stowed with its charge. */
+/** Jump Jet: flying or not, and for your own man the pack. */
+function jetLine(j: NonNullable<EntityView["jet"]>): string {
+  let s = j.alt > 0.5 ? "  ·  flying" : "";
+  if (j.fuel != null && j.fuelMax) {
+    s += `  ·  jet fuel ${Math.round((j.fuel / j.fuelMax) * 100)}%`;
+    if (j.refuel != null) s += ` (refuel in ${Math.ceil(j.refuel)}s)`;
+  }
+  return s;
+}
+
 function droneLinkLine(l: NonNullable<EntityView["droneLink"]>): string {
   if (l.droneId != null) return `  ·  drone up (${DRONE_MODE_LABEL[l.mode]})`;
   if (l.rebuild != null) return `  ·  new drone in ${Math.ceil(l.rebuild)}s`;
@@ -863,6 +881,7 @@ const TYPE_ORDER: EntityType[] = [
   "engineer",
   "medic",
   "droneop",
+  "jumpjet",
   "sandbags",
   "teeth",
   "trench",
@@ -1455,6 +1474,35 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   if (units.some((e) => e.type === "hauler")) {
     out.push({ slot: "harvest", act: "harvest", label: "Harvest", title: "Auto-harvest nearest scrap" });
   }
+  const jets = units.filter((e) => e.jet && e.hp > 0);
+  if (jets.length) {
+    const grounded = jets.filter((e) => !e.jet!.up);
+    const ready = grounded.filter(
+      (e) => e.jet!.fuel != null && e.jet!.fuel >= (e.jet!.takeoffMin ?? 0) && !e.crits?.includes("leg") && !e.swimming,
+    );
+    if (grounded.length) {
+      const low = grounded.find((e) => e.jet!.fuel != null && e.jet!.fuel < (e.jet!.takeoffMin ?? 0));
+      out.push({
+        slot: "jet-up",
+        act: "jet-up",
+        label: "Take off",
+        title: ready.length
+          ? "Light the jet pack (J). He flies straight over anything while the fuel lasts. Only machine guns, gatlings, the CIWS and RAM, and Titan rockets reach him up there; his bursts come down on men in cover."
+          : low
+            ? "Jet pack refuelling"
+            : "Cannot take off from here",
+        disabled: ready.length === 0,
+      });
+    }
+    if (jets.some((e) => e.jet!.up)) {
+      out.push({
+        slot: "jet-land",
+        act: "jet-land",
+        label: "Land",
+        title: "Set down on the nearest open ground (J). He lands by himself when the pack runs low.",
+      });
+    }
+  }
   const ops = units.filter((e) => e.droneLink);
   const drones = units.filter((e) => e.drone);
   if (ops.length || drones.length) {
@@ -1688,6 +1736,11 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   if (act === "land") {
     const planes = units.filter((e) => !!e.air && !e.drone);
     if (planes.length) ctx.net.send({ type: "cmd.land", ids: planes.map((e) => e.id) });
+    return;
+  }
+  if (act === "jet-up" || act === "jet-land") {
+    const ids = units.filter((e) => e.jet).map((e) => e.id);
+    if (ids.length) ctx.net.send({ type: "cmd.jet", ids, action: act === "jet-up" ? "up" : "land" });
     return;
   }
   if (act.startsWith("drone-")) {
