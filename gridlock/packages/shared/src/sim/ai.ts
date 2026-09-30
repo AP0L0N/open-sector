@@ -75,6 +75,7 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield", readon
   armory: [
     { unit: "ss3", want: 3 },
     { unit: "warden", want: 2 },
+    { unit: "apocalypse", want: 1 },
     { unit: "walker", want: 1 },
     { unit: "supply", want: 1 },
     { unit: "cyborg", want: 1 },
@@ -86,7 +87,7 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield", readon
 
 /**
  * Smelter second so the free Mauler funds Muster, Armory, troops, and tanks. Research next:
- * it unlocks the Tiger, Cyborg, Titan, Nebelwerfer, and Drone Op. Then air, then defenses.
+ * it unlocks the Tiger, Apocalypse, Cyborg, Titan, Nebelwerfer, and Drone Op. Then air, then defenses.
  */
 const BUILD_ORDER: readonly BuildingType[] = [
   "dynamo",
@@ -97,6 +98,7 @@ const BUILD_ORDER: readonly BuildingType[] = [
   "airfield",
   "ciws",
   "bunker",
+  "tower",
   "ram",
 ];
 /** Started as soon as scrap covers them. The rest wait for the first rifle wave and the second Mauler. */
@@ -104,14 +106,16 @@ const CORE_BUILDINGS: readonly BuildingType[] = ["dynamo", "smelter", "muster"];
 /** Troops train only once these stand, so scrap is held for them while they go up. */
 const FACTORIES: readonly BuildingType[] = [...CORE_BUILDINGS, "armory"];
 /** Fixed guns wait for a field army: static defense does not win a match. */
-const DEFENSES: readonly BuildingType[] = ["ciws", "bunker", "ram"];
+const DEFENSES: readonly BuildingType[] = ["ciws", "bunker", "tower", "ram"];
 
 /** Unarmed units that walk out with a wave beside a fighter. */
 const ESCORTS: ReadonlySet<string> = new Set(["medic", "supply", "droneop"]);
 /** Unarmed units that idle at home. Parked against a building they shut a Mauler lane. */
 const YARD_IDLERS: ReadonlySet<string> = new Set([...ESCORTS, "engineer"]);
-/** Soldiers the CPU leaves at home in its Bunker, in order of preference. */
+/** Soldiers the CPU leaves at home in its Bunker and Watch Tower, in order of preference. */
 const BUNKER_CREW: readonly string[] = ["gunner", "rifleman", "atinfantry", "rocketer"];
+/** Defenses the CPU mans with BUNKER_CREW. */
+const CREWED: readonly BuildingType[] = ["bunker", "tower"];
 
 export function tickAi(state: MatchState): void {
   if (state.ended) return;
@@ -281,13 +285,13 @@ function harvestIdle(state: MatchState, p: SimPlayer): void {
 }
 
 /**
- * Fill each Bunker with soldiers who are idle at home, machine guns first. They stay
- * behind the slits as the base guard. Waves never take a garrisoned soldier.
+ * Fill each Bunker and Watch Tower with soldiers who are idle at home, machine guns first.
+ * They stay behind the slits as the base guard. Waves never take a garrisoned soldier.
  */
 function crewBunkers(state: MatchState, p: SimPlayer): void {
   for (const b of state.entities.values()) {
-    if (b.ownerId !== p.playerId || b.type !== "bunker" || b.hp <= 0) continue;
-    const room = (catalog("bunker").garrisonCap ?? 0) - b.garrison.length;
+    if (b.ownerId !== p.playerId || !(CREWED as readonly string[]).includes(b.type) || b.hp <= 0) continue;
+    const room = (catalog(b.type).garrisonCap ?? 0) - b.garrison.length;
     if (room <= 0) continue;
     const idle: Entity[] = [];
     for (const e of state.entities.values()) {
@@ -469,6 +473,7 @@ function microUnits(state: MatchState, p: SimPlayer, hq: Entity): void {
     siege(state, p, e, sites);
     switch (e.type) {
       case "warden":
+      case "apocalypse":
       case "ss3":
         fitShell(state, p, e);
         break;

@@ -102,7 +102,7 @@ export interface AirState {
   /** Seconds of flight left in the tank. */
   fuel: number;
   bombs: number;
-  /** Wing-MG rounds left in both belts. */
+  /** Wing-MG rounds left in both belts. For the Fw 190: barrages left (whole ones fire). */
   rounds: number;
   /** Airfield this plane parks on. Null once it is gone and no other pad is free. */
   homeId: number | null;
@@ -257,6 +257,12 @@ export interface Entity {
   rocketTarget?: number | null;
   /** Last Walker volley: sim tick, arms that fired, and the off-arm bearing when it took a second target. */
   gatlingFire?: { tick: number; arms: 1 | 2; offAim?: number };
+  /** Apocalypse roof mount's own traverse. Missing until it first moves: it rides the turret. */
+  ciwsFacing?: number;
+  /** Entity the roof mount is laying on, apart from the main guns' target. */
+  ciwsTarget?: number | null;
+  /** Sim tick the roof mount last fired, on a unit or a rocket. */
+  ciwsFireTick?: number;
   /** Seconds the MG42 bipod has been set while prone. 0 until the gunner crawls. */
   bipod: number;
   /** Coaxial MG rounds remaining. 0 if the type has no MG. */
@@ -362,7 +368,7 @@ export interface Projectile {
    * Omitted for rifles, machine guns, and tank shells.
    */
   flight?: "mortar" | "bomb" | "rocket" | "flame" | "cluster";
-  /** Fused landing point for a mortar bomb or a rocket. */
+  /** Fused landing point for a mortar bomb or a rocket. A plane's barrage round: its point on the line. */
   landX?: number;
   landY?: number;
   /** Peak air height in elevation units. */

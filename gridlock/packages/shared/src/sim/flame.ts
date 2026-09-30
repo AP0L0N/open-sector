@@ -29,7 +29,7 @@ import {
 } from "../catalog.js";
 import { takeDamage } from "./crits.js";
 import { allies, isWater, nearestWalkable, occupant, playerTeam, tileCenter, worldToTile } from "./geo.js";
-import { livingGarrison, woundGarrison } from "./garrison.js";
+import { garrisonMuzzleToward, livingGarrison, woundGarrison } from "./garrison.js";
 import { mortarAirZ } from "./mortar.js";
 import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
@@ -62,19 +62,23 @@ export function throwFlame(
   const landX = Math.min(maxX, Math.max(0, e.x + ux * reach - uy * across));
   const landY = Math.min(maxY, Math.max(0, e.y + uy * reach + ux * across));
   const flight = FLAMER_GLOB_SECONDS * (0.55 + 0.45 * Math.min(1, reach / Math.max(1, range)));
+  // From inside, the jet leaves the opening facing the target, not the middle of the room.
+  const slit = garrisonMuzzleToward(state, e, aimX, aimY);
+  const fromX = slit?.x ?? e.x;
+  const fromY = slit?.y ?? e.y;
   const p: Projectile = {
     id: state.nextId++,
     ownerId: e.ownerId,
     team: playerTeam(state, e.ownerId),
-    x: e.x,
-    y: e.y,
-    vx: (landX - e.x) / flight,
-    vy: (landY - e.y) / flight,
+    x: fromX,
+    y: fromY,
+    vx: (landX - fromX) / flight,
+    vy: (landY - fromY) / flight,
     damage: FLAMER.damage,
     penetration: FLAMER.penetration,
     caliber: FLAMER.caliber,
     life: flight,
-    ignoreId: e.id,
+    ignoreId: slit?.house.id ?? e.id,
     fromId: e.id,
     bounced: false,
     shell: null,

@@ -174,7 +174,7 @@ function canRepairHit(
   const friendly = !hit.ownerId || hit.ownerId === you || allied(hit.ownerId);
   if (!friendly) return false;
   if (hit.kind === "unit") return isRepairableUnit(hit.type);
-  if (hit.type === "sandbags" || isFieldStructure(hit.type) && hit.type !== "teeth") return false;
+  if (hit.type === "sandbags" || isFieldStructure(hit.type) && hit.type !== "teeth" && hit.type !== "trench") return false;
   return hit.kind === "building";
 }
 
