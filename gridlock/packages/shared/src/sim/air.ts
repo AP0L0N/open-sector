@@ -37,6 +37,9 @@ import {
   BOMB_SCATTER_TILES,
   BOMB_SPLASH_TILES,
   BOMB_TRACK_CHANCE,
+  BV222_DROP_ALT,
+  BV222_DROP_TILES,
+  PARA_DOOR_SECONDS,
   CIWS_AIR_SPREAD,
   FW190_BARRAGE_ARC_DEG,
   FW190_BARRAGE_COOLDOWN,
@@ -59,7 +62,9 @@ import {
   isFighterType,
   isGarrisonable,
   isInfantryType,
+  isTransportType,
 } from "../catalog.js";
+import { hasCargo, payloadOf, planeRiders, releaseCanister, startJumping, tickDoor } from "./airdrop.js";
 import type { ImpactView } from "../protocol.js";
 import { aimAngle } from "./ballistics.js";
 import { takeDamage } from "./crits.js";
@@ -311,7 +316,8 @@ function secondsHome(state: MatchState, e: Entity, home: Entity): number {
   return d / Math.max(1, cruiseSpeed(state, e));
 }
 
-function spent(e: Entity): boolean {
+function spent(state: MatchState, e: Entity): boolean {
+  if (isTransportType(e.type)) return !hasCargo(state, e);
   return e.air!.bombs <= 0 && !hasRounds(e);
 }
 
@@ -441,7 +447,8 @@ function servicePad(state: MatchState, e: Entity, dt: number): void {
   const load = airLoadoutOf(e.type);
   // Belts fill in the same time whatever they hold.
   a.rounds = Math.min(load.rounds, a.rounds + ((AIR_BELT_REARM_PER_SEC * load.rounds) / STUKA_MG_ROUNDS) * s);
-  if (a.bombs < load.bombs) {
+  // A transport loaded for paratroops carries no canister: its riflemen board it.
+  if (a.bombs < load.bombs && a.payload !== "troops") {
     a.rearm += s;
     if (a.rearm >= BOMB_REARM_SECONDS) {
       a.bombs += 1;
@@ -522,8 +529,11 @@ function tickFly(state: MatchState, e: Entity, dt: number): void {
   const a = e.air!;
   a.speed = Math.min(1, a.speed + 0.5 * dt);
   const home = ensureHome(state, e);
-  if (e.order?.kind !== "land" && home) {
-    if (a.fuel <= secondsHome(state, e, home) + AIR_FUEL_RESERVE || spent(e)) {
+  const transport = isTransportType(e.type);
+  if (transport) normalizeTransportOrder(e);
+  const stick = transport && tickDoor(state, e, dt);
+  if (e.order?.kind !== "land" && home && !stick) {
+    if (a.fuel <= secondsHome(state, e, home) + AIR_FUEL_RESERVE || spent(state, e)) {
       e.order = { kind: "land" };
       e.attackTarget = null;
       a.extend = false;
@@ -534,7 +544,12 @@ function tickFly(state: MatchState, e: Entity, dt: number): void {
   const turned = edgeTurn(state, e, dt);
   const o = e.order!;
   e.state = "move";
-  if (o.kind === "land") {
+  if (stick) {
+    // Level and straight until the last man is out of the door.
+    altGoal = BV222_DROP_ALT;
+  } else if (transport && o.kind === "forceattack" && o.x != null && o.y != null) {
+    altGoal = dropRun(state, e, o.x, o.y, dt, turned);
+  } else if (o.kind === "land") {
     if (!home) {
       loiterHere(e);
     } else if (!turned) {
@@ -591,6 +606,54 @@ function flyToOrOrbit(state: MatchState, e: Entity, x: number, y: number, dt: nu
   const d = Math.hypot(x - e.x, y - e.y);
   if (d > orbitRadius(state, e) * 1.6) steerTo(state, e, x, y, dt);
   else orbit(state, e, x, y, dt);
+}
+
+/**
+ * A transport has nothing to attack with. Sent at a unit it drops on where
+ * the unit stands; an attack-move is just a flight there.
+ */
+function normalizeTransportOrder(e: Entity): void {
+  const o = e.order;
+  if (!o || (o.kind !== "attack" && o.kind !== "attackmove")) return;
+  e.attackTarget = null;
+  if (o.x == null || o.y == null) {
+    e.order = null;
+    return;
+  }
+  e.order = o.kind === "attack" ? { kind: "forceattack", x: o.x, y: o.y } : { kind: "move", x: o.x, y: o.y };
+}
+
+/**
+ * Transport run over the drop point: come down to BV222_DROP_ALT on the way
+ * in, fly over it, and let go — the canister, or the first of the stick.
+ * Missed it wide: fly out straight and come round again. Returns the height
+ * the plane is trying to hold.
+ */
+function dropRun(state: MatchState, e: Entity, tx: number, ty: number, dt: number, turned: boolean): number {
+  const a = e.air!;
+  const ts = state.tileSize;
+  if (!hasCargo(state, e)) {
+    if (liveHome(state, e)) e.order = { kind: "land" };
+    else loiterHere(e);
+    return AIR_CRUISE_ALT;
+  }
+  const d = Math.hypot(tx - e.x, ty - e.y);
+  if (a.extend) {
+    if (d > AIR_EXTEND_TILES * ts) a.extend = false;
+    return AIR_CRUISE_ALT;
+  }
+  if (!turned) steerTo(state, e, tx, ty, dt);
+  const off = Math.abs(angOff(Math.atan2(ty - e.y, tx - e.x), e.facing));
+  const troops = payloadOf(e) === "troops";
+  // The stick strings out along the track: the first man goes half its length short of the point.
+  const stick = troops ? (planeRiders(state, e).length * PARA_DOOR_SECONDS * cruiseSpeed(state, e) * a.speed) / 2 : 0;
+  if (d <= Math.max(BV222_DROP_TILES * ts, stick) && (d <= BV222_DROP_TILES * ts || off < Math.PI / 8)) {
+    if (troops) startJumping(e);
+    else releaseCanister(state, e, tx, ty);
+    return BV222_DROP_ALT;
+  }
+  if (d < ts * 2 || (off > (100 * Math.PI) / 180 && d < turnRadius(state, e))) a.extend = true;
+  return d < AIR_DIVE_START_TILES * ts ? BV222_DROP_ALT : AIR_CRUISE_ALT;
 }
 
 function canHurt(e: Entity, t: Entity): boolean {

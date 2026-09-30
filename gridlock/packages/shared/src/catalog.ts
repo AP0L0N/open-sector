@@ -422,6 +422,7 @@ export type EntityType =
   | "research"
   | "stuka"
   | "fw190"
+  | "bv222"
   | "droneop"
   | "drone"
   | "cottage"
@@ -448,7 +449,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "apocalypse" | "ss3" | "walker" | "cyborg" | "titan" | "nebelwerfer" | "supply" | "stuka" | "fw190" | "droneop";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "apocalypse" | "ss3" | "walker" | "cyborg" | "titan" | "nebelwerfer" | "supply" | "stuka" | "fw190" | "bv222" | "droneop";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -471,7 +472,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "tower", "research"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "apocalypse", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "fw190", "droneop"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "apocalypse", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "fw190", "bv222", "droneop"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
@@ -1234,6 +1235,67 @@ export const FW190_SPLASH_TILES = t(0.25);
 export const FW190_SPLASH_DAMAGE = 34;
 
 /**
+ * BV 222 transport flying boat. No guns and no bomb. Its bay holds one load,
+ * chosen on the pad: a canister of cluster mines, a supply crate, or a stick
+ * of up to BV222_TROOPS riflemen who board it on the hardstand. Force-attack
+ * the ground (Drop) and it runs in low and level over the point and lets go.
+ */
+export type AirDrop = "mines" | "crate" | "troops";
+export const AIR_DROPS: readonly AirDrop[] = ["mines", "crate", "troops"];
+export const BV222_TROOPS = 10;
+/** Player-facing name and one line for each load. */
+export const AIR_DROP_INFO: Record<AirDrop, { name: string; blurb: string }> = {
+  mines: { name: "Mines", blurb: "A canister of butterfly mines. It bursts over the point and scatters them; they wait for enemy feet and tracks." },
+  crate: { name: "Crate", blurb: "A supply crate on a parachute. Your units standing at it take ammo and patch up." },
+  troops: { name: "Paratroops", blurb: "Riflemen board on the hardstand (right-click the plane). They jump over the point and hang under canopies until they land." },
+};
+/** Height of the drop run: low and level, so a crate lands where it was meant to and the jumpers are not long in the air. */
+export const BV222_DROP_ALT = 9;
+/** Lets go once the drop point is this close under the nose. */
+export const BV222_DROP_TILES = t(1.2);
+/** Seconds between two jumpers leaving the door. The stick strings out along the plane's track. */
+export const PARA_DOOR_SECONDS = 0.12;
+/** Elevation units a parachute sinks each second. From the drop run that is about four seconds of hanging. */
+export const PARA_SINK_PER_SEC = 2.2;
+/** Share of the plane's speed a jumper carries out of the door. It bleeds off under the canopy. */
+export const PARA_THROW = 0.25;
+/** Per second: the share of that throw still left. */
+export const PARA_DRAG = 0.35;
+/** SD 2 butterfly bomblets scattered by one canister. Each lies where it falls as a mine. */
+export const CLUSTER_MINES = 14;
+export const CLUSTER_RADIUS_TILES = t(2.5);
+export const CLUSTER_FALL_SECONDS = 1.1;
+/** Seconds from landing until a bomblet is live. */
+export const MINE_ARM_SECONDS = 2;
+/** Seconds a mine lies before its fuze gives out and it pops by itself. */
+export const MINE_LIFE_SECONDS = 300;
+/** An enemy on the ground within this of a live mine sets it off. */
+export const MINE_TRIGGER_TILES = t(0.3);
+export const MINE_SPLASH_TILES = t(0.8);
+/** Soldier on top of it. A rifleman does not get up. */
+export const MINE_INFANTRY_DAMAGE = 55;
+/** Unarmored vehicle: share of max HP. */
+export const MINE_SOFT_SHARE = 0.3;
+/** Armored hull: share of max HP through the belly. */
+export const MINE_ARMOR_SHARE = 0.08;
+export const MINE_TRACK_CHANCE = 0.7;
+export const MINE_CALIBER = 20;
+/** The enemy sees a mine only once one of his men is this close to it. */
+export const MINE_SPOT_TILES = t(1.5);
+export const MINE_CAP = 240;
+/** Supply points in a dropped crate. The supply truck carries SUPPLY_CARGO. */
+export const CRATE_SUPPLY = 80;
+export const CRATE_SINK_PER_SEC = 2.5;
+/** Allied units this close to a crate on the ground draw from it. */
+export const CRATE_REACH_TILES = t(1.5);
+/** Hand-outs a second, shared among everyone at the crate. */
+export const CRATE_PER_SEC = 8;
+/** HP one supply point patches: a field dressing, or a crate of spares for a hull. */
+export const CRATE_HP_PER_POINT = 4;
+/** Seconds a crate lies before it is looted or rots, whatever is left. */
+export const CRATE_LIFE_SECONDS = 240;
+
+/**
  * Bunker. Poured concrete, low to the ground, firing slits on every face.
  * The walls take most of what hits them, so the men inside are the safest
  * infantry on the map. It sits low, so it adds no sight or reach.
@@ -1822,7 +1884,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Concrete strip with four revetted hardstands beside it. Trains dive bombers and fighters and keeps up to ${AIRFIELD_PADS}. Planes land here to refuel, rearm, and patch up.`,
+    blurb: `Concrete strip with four revetted hardstands beside it. Trains dive bombers, fighters, and the BV 222 transport and keeps up to ${AIRFIELD_PADS}. Planes land here to refuel, rearm, and patch up.`,
   },
   research: {
     type: "research",
@@ -2635,6 +2697,30 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     blurb: `Fighter. Two 30 mm cannon, one under each wing, and no bomb. ${FW190_BARRAGES} barrages a sortie: on each pass it lines up on the target and lays two straight lines of rounds through it, one from each wing, then comes round for the next. Fired from above, the rounds come down through a tank's thin roof, so even the heaviest hull bleeds. It chases enemy planes out of the sky the same way. Flies faster and turns tighter than the Stuka. Lands at its Airfield to refuel and rearm.`,
   },
+  /** BV 222 transport flying boat. Lives on an Airfield pad. */
+  bv222: {
+    type: "bv222",
+    kind: "unit",
+    name: "BV 222",
+    letter: "v",
+    cost: 650,
+    buildSeconds: 30,
+    hp: 220,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 16,
+    moveTilesPerSec: t(4.2),
+    turnDegPerSec: 60,
+    rangeTiles: 0,
+    sightTiles: t(9),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    aircraft: true,
+    blurb: `Six-engined transport flying boat. No guns. Its bay takes one load, chosen on the pad: a canister of ${CLUSTER_MINES} butterfly mines that scatter over the ground and wait for the enemy, a supply crate on a parachute that refills ammo and patches up whoever stands at it, or up to ${BV222_TROOPS} riflemen who board it on the hardstand and jump over the point, hanging under their canopies — where rifles and machine guns can reach them — until they touch down. Force-attack the ground to drop. Slow and big; lands at its Airfield to refuel and reload.`,
+  },
   droneop: {
     type: "droneop",
     kind: "unit",
@@ -2822,7 +2908,7 @@ export function armorLabel(type: EntityType): string | null {
 
 const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "droneop"];
 
-/** Flies: the Stuka and the Fw 190. */
+/** Flies: the Stuka, the Fw 190, and the BV 222. */
 export function isAircraftType(type: EntityType): boolean {
   return catalog(type).aircraft === true;
 }
@@ -2830,7 +2916,18 @@ export function isAircraftType(type: EntityType): boolean {
 /** Bombs and gun rounds a plane carries on a full sortie. */
 export function airLoadoutOf(type: EntityType): { bombs: number; rounds: number } {
   if (type === "fw190") return { bombs: 0, rounds: FW190_BARRAGES };
+  // The BV 222's one canister (mines or crate) rides in the bomb slot.
+  if (type === "bv222") return { bombs: 1, rounds: 0 };
   return { bombs: STUKA_BOMBS, rounds: STUKA_MG_ROUNDS };
+}
+
+/** Transport: drops a load (AirDrop) instead of attacking. */
+export function isTransportType(type: EntityType): boolean {
+  return type === "bv222";
+}
+
+export function isAirDrop(s: unknown): s is AirDrop {
+  return typeof s === "string" && (AIR_DROPS as readonly string[]).includes(s);
 }
 
 /** Fighter: hunts planes in the air as well as targets on the ground. */

@@ -97,8 +97,8 @@ export function tickMovement(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (e.kind !== "unit" || e.hp <= 0 || e.wreck || e.garrisonedIn) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
-    // Aircraft fly in tickAir.
-    if (e.air) continue;
+    // Aircraft fly in tickAir; paratroopers drift down in tickChutes.
+    if (e.air || e.chute) continue;
     if (e.braced) {
       // Outriggers down: the torso still aims and fires, the legs do not step.
       e.waypoints = [];

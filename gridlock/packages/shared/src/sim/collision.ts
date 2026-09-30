@@ -357,7 +357,7 @@ export function stepGiveWay(state: MatchState, e: Entity, speed: number, dt: num
 }
 
 export function tickCollision(state: MatchState, dt = TICK_DT): void {
-  const units = [...state.entities.values()].filter((e) => e.kind === "unit" && e.hp > 0 && !e.garrisonedIn && !e.air);
+  const units = [...state.entities.values()].filter((e) => e.kind === "unit" && e.hp > 0 && !e.garrisonedIn && !e.air && !e.chute);
   for (const a of units) {
     if (isActiveUnit(a)) crushTreesUnder(state, a);
   }

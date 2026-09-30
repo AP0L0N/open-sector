@@ -83,6 +83,11 @@ const stukaHullGlob = import.meta.glob("../assets/units/stuka/hull/*.png", {
   import: "default",
 }) as Record<string, string>;
 
+const bv222HullGlob = import.meta.glob("../assets/units/bv222/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 const fw190HullGlob = import.meta.glob("../assets/units/fw190/hull/*.png", {
   eager: true,
   import: "default",
@@ -98,6 +103,8 @@ export const SS3_OPTS: TurntableSheetOpts = { ...TIGER_OPTS };
 export const STUKA_OPTS: TurntableSheetOpts = { ...TIGER_OPTS, contactY: 0.8, padding: 2 };
 /** Fw 190: same aircraft fit as the Stuka. */
 export const FW190_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
+/** BV 222: same aircraft fit as the Stuka; the wingspan fills the cell. */
+export const BV222_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
 /** Quadcopter: same aircraft fit as the Stuka; the rotor span fills the cell, the pod's belly sits on the contact line. */
 export const DRONE_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
 
@@ -425,6 +432,30 @@ export function bindAircraftSheets(hullImage: HTMLImageElement): void {
     })
     .catch((err) => {
       console.error("stuka turntable", err);
+    });
+}
+
+let bv222Previous: ComposedTurntable | null = null;
+
+/** BV 222 drop-ins: one hull sheet and a cameo, same fit rules as the Stuka. */
+export function bindTransportSheets(hullImage: HTMLImageElement): void {
+  let hullUrls: string[];
+  try {
+    hullUrls = pickTurntableUrls(bv222HullGlob);
+  } catch (err) {
+    console.error("bv222 turntable", err);
+    return;
+  }
+  void Promise.all(hullUrls.map(loadImage))
+    .then((hullImgs) => composeAligned([hullImgs], BV222_OPTS))
+    .then((next) => {
+      revoke(bv222Previous);
+      bv222Previous = next;
+      hullImage.src = next.sheetUrls[0] ?? "";
+      applyCameo(next.cameoUrl, "--bv222-cameo");
+    })
+    .catch((err) => {
+      console.error("bv222 turntable", err);
     });
 }
 

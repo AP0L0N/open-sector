@@ -9,6 +9,8 @@ Blender path does, so the engine and compose tools treat them alike.
             gridlock/packages/client/src/assets/units/stuka/hull/0001.png … 0016.png
   fw190     the Fw 190 fighter, same camera, face order, and meters-to-px as the Stuka.
             gridlock/packages/client/src/assets/units/fw190/hull/0001.png … 0016.png
+  bv222     the BV 222 transport flying boat, same camera and face order; its wingspan sets the scale.
+            gridlock/packages/client/src/assets/units/bv222/hull/0001.png … 0016.png
   drone     the Drone Op's quadcopter, same camera and face order.
             gridlock/packages/client/src/assets/units/drone/hull/0001.png … 0016.png
 
@@ -367,6 +369,112 @@ def build_fw190() -> Mesh:
     return m
 
 
+def build_bv222() -> Mesh:
+    """BV 222 Wiking flying boat in meters. +x nose, +y left wing, +z up. Keel at z=0.
+
+    A deep two-step boat hull, a long high wing on the hull's back carrying six
+    engines on its leading edge, wing floats on struts outboard, and a single
+    fin with the tailplane set on the hull. Pale boat bottom, splinter camo on
+    top. Neutral band ahead of the tail, neutral wingtip panels, and neutral
+    spinners for the team tint.
+    """
+    m = Mesh()
+    zc = 2.8  # hull centerline height over the keel
+    stations = [
+        (18.0, 0.30, 0.60, 0.70),
+        (17.2, 1.05, 1.55, 0.40),
+        (15.4, 1.45, 2.25, 0.18),
+        (12.0, 1.60, 2.60, 0.00),
+        (5.0, 1.60, 2.60, 0.00),
+        (0.0, 1.50, 2.40, 0.22),
+        (-5.0, 1.20, 2.00, 0.62),
+        (-10.0, 0.82, 1.50, 1.20),
+        (-13.5, 0.62, 1.20, 1.60),
+        (-15.5, 0.46, 0.96, 1.90),
+        (-18.0, 0.14, 0.46, 2.30),
+    ]
+    rings = [ellipse_ring(x, 0.0, zc + oz, hw, hh, 20) for x, hw, hh, oz in stations]
+    n_ring = len(rings[0])
+
+    def hull_mat(r: int, s: int) -> str:
+        if r == 0:
+            return "metal"
+        if r == 8:
+            return "team"
+        # The boat bottom is pale up to the chines.
+        if math.sin(2 * math.pi * (s + 0.5) / n_ring) < -0.35:
+            return "under"
+        return "camo"
+
+    m.loft(rings, hull_mat)
+    # Flight-deck glazing high on the nose, and a row of cabin windows.
+    can = [
+        (15.2, 0.40, 0.10),
+        (14.6, 0.95, 0.42),
+        (13.2, 1.05, 0.52),
+        (12.2, 0.90, 0.30),
+    ]
+    can_rings = [ellipse_ring(x, 0.0, zc + 2.1, hw, hh, 14) for x, hw, hh in can]
+
+    def can_mat(r: int, s: int) -> str:
+        return "frame" if r == 0 or s % 5 == 0 else "glass"
+
+    m.loft(can_rings, can_mat)
+    for side in (1, -1):
+        for x in (9.0, 6.5, 4.0, 1.5, -1.0):
+            m.box((x - 0.35, side * 1.52 - 0.06, zc + 0.55), (x + 0.35, side * 1.52 + 0.06, zc + 1.05), "glass")
+    # Long high wing on a shallow fairing along the hull's back.
+    wz = zc + 2.55
+    m.box((-2.6, -0.9, zc + 1.9), (3.6, 0.9, wz), "camo")
+    tip_y, tip_z = 23.0, wz + 0.45
+    for side in (1, -1):
+        wing_panel(m, (3.8, -2.6, 0.6 * side, wz), (1.6, -1.1, tip_y * side, tip_z), "camo", "under", 0.95, 0.30)
+        wing_panel(
+            m,
+            (1.85, -1.25, (tip_y - 2.6) * side, tip_z - 0.05 + 0.03),
+            (1.6, -1.1, (tip_y - 0.4) * side, tip_z + 0.03),
+            "team",
+            "under",
+            0.34,
+            0.28,
+        )
+        # Three engines a side on the leading edge.
+        for ey in (4.6, 9.4, 14.2):
+            y = ey * side
+            u = ey / tip_y
+            lead = 3.8 + (1.6 - 3.8) * u
+            ez = wz + (tip_z - wz) * u - 0.05
+            nac = [
+                ellipse_ring(x, y, ez, r, r * 1.05, 12)
+                for x, r in ((lead + 2.6, 0.42), (lead + 2.3, 0.66), (lead + 0.6, 0.70), (lead - 1.6, 0.46), (lead - 2.6, 0.12))
+            ]
+            m.loft(nac, lambda r, s: "metal" if r == 0 else "camo")
+            spin = [ellipse_ring(x, y, ez, r, r, 10) for x, r in ((lead + 2.6, 0.30), (lead + 2.95, 0.18), (lead + 3.2, 0.02))]
+            m.loft(spin, "team")
+            ctr = m.v((lead + 2.8, y, ez))
+            n = 24
+            rim = [m.v((lead + 2.8, y + 1.75 * math.cos(2 * math.pi * k / n), ez + 1.75 * math.sin(2 * math.pi * k / n))) for k in range(n)]
+            for k in range(n):
+                m.tri(ctr, rim[k], rim[(k + 1) % n], "prop")
+        # Wing float on a pair of struts, lowered.
+        fy = 16.8 * side
+        fz = wz - 2.7
+        flt = [ellipse_ring(x, fy, fz, hw, hh, 10) for x, hw, hh in ((3.2, 0.08, 0.10), (2.4, 0.42, 0.40), (-0.4, 0.44, 0.42), (-2.2, 0.10, 0.14))]
+        m.loft(flt, lambda r, s: "under" if math.sin(2 * math.pi * (s + 0.5) / 10) < -0.3 else "camo")
+        for sx in (1.4, -0.6):
+            m.box((sx - 0.12, fy - 0.08, fz + 0.2), (sx + 0.12, fy + 0.08, wz + 0.25), "metal")
+    # Tailplane on the hull, and the tall single fin.
+    tz = zc + 2.35
+    for side in (1, -1):
+        wing_panel(m, (-13.6, -17.4, 0.4 * side, tz), (-15.4, -17.6, 7.4 * side, tz + 0.35), "camo", "under", 0.36, 0.14)
+    fin = [
+        [np.array([-13.4, -0.14, tz]), np.array([-18.0, -0.14, tz]), np.array([-18.2, 0.14, tz]), np.array([-13.4, 0.14, tz])],
+        [np.array([-16.2, -0.08, tz + 5.2]), np.array([-18.3, -0.08, tz + 5.2]), np.array([-18.4, 0.08, tz + 5.2]), np.array([-16.2, 0.08, tz + 5.2])],
+    ]
+    m.loft(fin, "camo")
+    return m
+
+
 def build_drone() -> Mesh:
     """Small X-frame quadcopter in decimeters. +x nose, +y left, +z up. Skids at z=0.
 
@@ -565,6 +673,12 @@ def render_fw190(out: Path, cell: int = 256, ss: int = 4) -> None:
     render_turntable(build_fw190(), out, "fw190_hull", "fw190-hull.json", 0.062, 1.0, cell=cell, ss=ss)
 
 
+def render_bv222(out: Path, cell: int = 256, ss: int = 4) -> None:
+    # A 46 m span cannot share the Stuka's meters -> px, so the wingspan sets the scale
+    # (the aircraft rule): same camera, light, palette, and outline, drawn bigger in game.
+    render_turntable(build_bv222(), out, "bv222_hull", "bv222-hull.json", 0.0195, 4.4, cell=cell, ss=ss)
+
+
 def render_drone(out: Path, cell: int = 256, ss: int = 4) -> None:
     # Decimeters -> px. Rotor tip to rotor tip is ~6 dm across the diagonal; the widest yaw fits the cell.
     render_turntable(build_drone(), out, "drone_hull", "drone-hull.json", 0.115, 0.9, cy_frac=0.56, cell=cell, ss=ss, outline_px=2)
@@ -634,10 +748,12 @@ def render_turntable(
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["stuka", "fw190", "drone"])
+    ap.add_argument("what", choices=["stuka", "fw190", "bv222", "drone"])
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
-    if args.what == "drone":
+    if args.what == "bv222":
+        render_bv222(Path(args.out))
+    elif args.what == "drone":
         render_drone(Path(args.out))
     elif args.what == "fw190":
         render_fw190(Path(args.out))

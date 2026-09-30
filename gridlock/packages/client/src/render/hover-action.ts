@@ -1,4 +1,6 @@
 import {
+  BV222_TROOPS,
+  isTransportType,
   SUPPLY_CARGO,
   TRUCK_SEATS,
   isArmoredType,
@@ -82,6 +84,7 @@ export function resolveHoverAction(args: {
   const trucks = ownUnits.filter((e) => e.type === "supply" && !e.bed?.open);
   if (hit && trucks.length > 0 && canSupplyHit(hit, you, args.allied, trucks)) return "supply";
   if (hit && hit.type === "supply" && canBoardHit(hit, you, args.allied, inf)) return "board";
+  if (hit && isTransportType(hit.type) && canBoardPlaneHit(hit, you, inf)) return "board";
 
   if (hit && isGarrisonable(hit.type) && hit.hp > 0 && !hit.wreck) {
     const occ = hit.garrison?.ownerId;
@@ -129,6 +132,13 @@ function canBoardHit(
   if (outside.length === 0 || truckFreeSeats(hit) <= 0) return false;
   if (hit.bed?.open) return true;
   return hit.ownerId === you || allied(hit.ownerId);
+}
+
+/** Your transport on its hardstand, loaded for paratroops with room aboard, and riflemen outside it selected. */
+function canBoardPlaneHit(hit: HoverEntity, you: string, inf: readonly HoverEntity[]): boolean {
+  if (hit.hp <= 0 || hit.ownerId !== you || hit.air?.phase !== "parked" || hit.air.payload !== "troops") return false;
+  if ((hit.air.troops ?? 0) >= BV222_TROOPS) return false;
+  return inf.some((e) => e.type === "rifleman" && e.garrisonedIn !== hit.id);
 }
 
 function canSupplyHit(

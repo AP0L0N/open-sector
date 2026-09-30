@@ -14,6 +14,7 @@ import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
 import type { ImpactView, RoomState } from "../protocol.js";
 import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter } from "./geo.js";
 import { aircraftDown, tickAir } from "./air.js";
+import { loseRiders, syncPlaneRiders, tickChutes, tickCrates, tickMines, tickPlaneBoarding } from "./airdrop.js";
 import { tickDrones } from "./drone.js";
 import { tickCapture } from "./capture.js";
 import { detachGarrisoned, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
@@ -65,6 +66,8 @@ export function createMatch(
     projectiles: [],
     smokeClouds: [],
     fires: [],
+    mines: [],
+    crates: [],
     impacts: [],
     rngState: seedRng(room.id),
     ended: false,
@@ -135,12 +138,17 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickHeal(state, dt);
   tickGarrisonCare(state, dt);
   tickSupply(state, dt);
+  tickPlaneBoarding(state);
   tickMaulerCart(state, dt);
   tickOrderQueue(state);
   tickMovement(state, dt);
   tickAir(state, dt);
+  syncPlaneRiders(state);
+  tickChutes(state, dt);
   tickDrones(state, dt);
   tickCollision(state, dt);
+  tickMines(state, dt);
+  tickCrates(state, dt);
   tickField(state, dt);
   tickHarvest(state, dt);
   tickBuild(state, dt);
@@ -179,7 +187,10 @@ function reapDead(state: MatchState): void {
     }
     if (e.type === "pyro") maybeCookOff(state, e);
     if (isInfantryType(e.type)) leaveCorpse(state, e);
-    if (e.air) aircraftDown(state, e);
+    if (e.air) {
+      loseRiders(state, e);
+      aircraftDown(state, e);
+    }
     dead.push(e.id);
   }
   if (madeWreck) {

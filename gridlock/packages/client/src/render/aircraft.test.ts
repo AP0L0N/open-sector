@@ -52,4 +52,16 @@ describe("aircraft draw", () => {
     assert.ok(high.alpha < low.alpha);
     assert.ok(high.scale >= low.scale);
   });
+
+  it("lifts a paratrooper by his canopy height and eases him onto the ground", () => {
+    const base = plane(0);
+    const hanging: EntityView = { ...base, type: "rifleman", air: undefined, chute: 6 };
+    const landed: EntityView = { ...base, type: "rifleman", air: undefined };
+    assert.ok(inAir(hanging));
+    assert.equal(lerpAirAlt(undefined, hanging, 1), 6);
+    assert.equal(lerpAirAlt(hanging, landed, 0.5), 3);
+    assert.equal(lerpAirAlt(hanging, landed, 1), 0);
+    assert.equal(inAir(landed), false);
+    assert.equal(lerpAirAlt(landed, landed, 0.5), 0);
+  });
 });

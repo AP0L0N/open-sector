@@ -1,4 +1,4 @@
-import type { BuildingType, Crit, DroneMode, EntityType, FieldStructureType, InfantryWeaponId, ShellType, Stance, TrainType } from "../catalog.js";
+import type { AirDrop, BuildingType, Crit, DroneMode, EntityType, FieldStructureType, InfantryWeaponId, ShellType, Stance, TrainType } from "../catalog.js";
 import type { AiDifficulty, ClientMessage, CorpseView, EntityState, ImpactView, ShellHoleView } from "../protocol.js";
 
 export interface Vec {
@@ -118,6 +118,52 @@ export interface AirState {
   taxi: boolean;
   /** Landing: wheels are down on the strip. */
   touched: boolean;
+  /** Transport only: the load its bay takes on the pad. The canister (mines, crate) is `bombs`; troops are its garrison. */
+  payload?: AirDrop;
+  /** Transport only: jumpers are going out of the door. The plane holds its course until the last is gone. */
+  jumping?: boolean;
+  /** Transport only: seconds until the next jumper goes. */
+  door?: number;
+}
+
+/** Soldier hanging under a canopy on the way down from a transport. */
+export interface Chute {
+  /** Elevation units above the ground. */
+  alt: number;
+  /** World px/s drift carried out of the door. */
+  vx: number;
+  vy: number;
+}
+
+/** A butterfly bomblet lying on the ground. Not an entity: nothing can shoot it. */
+export interface Mine {
+  id: number;
+  ownerId: string;
+  x: number;
+  y: number;
+  /** Seconds until it is live. */
+  arm: number;
+  /** Seconds until the fuze gives out. */
+  life: number;
+}
+
+/** A supply crate dropped by parachute. Allied units standing at it draw ammo and patch up. */
+export interface SupplyCrate {
+  id: number;
+  ownerId: string;
+  x: number;
+  y: number;
+  /** Elevation units above the ground while it hangs under its canopy. 0 once down. */
+  alt: number;
+  /** World px/s while falling: it drifts onto the drop point. */
+  vx: number;
+  vy: number;
+  supply: number;
+  life: number;
+  /** Seconds banked toward the next hand-out. */
+  work: number;
+  /** Rotates hand-outs among the units at the crate. */
+  turn: number;
 }
 
 /** Drone Op only: the one quadcopter he flies. */
@@ -284,6 +330,8 @@ export interface Entity {
   droneLink?: DroneLink;
   /** Drone only. */
   drone?: DroneState;
+  /** Paratrooper on the way down. No orders, no fire; small arms can reach him. */
+  chute?: Chute;
 }
 
 export interface Projectile {
@@ -319,7 +367,7 @@ export interface Projectile {
    * and fast, bursts at its fused point or on whatever it meets first).
    * Omitted for rifles, machine guns, and tank shells.
    */
-  flight?: "mortar" | "bomb" | "rocket" | "flame";
+  flight?: "mortar" | "bomb" | "rocket" | "flame" | "cluster";
   /** Fused landing point for a mortar bomb or a rocket. A plane's barrage round: its point on the line. */
   landX?: number;
   landY?: number;
@@ -424,6 +472,10 @@ export interface MatchState {
   smokeClouds: SmokeCloud[];
   /** Burning ground. Empty until the first flamethrower burst. */
   fires: GroundFire[];
+  /** Butterfly mines from a transport's cluster canister. Empty until the first drop. */
+  mines: Mine[];
+  /** Supply crates from a transport. Empty until the first drop. */
+  crates: SupplyCrate[];
   impacts: ImpactView[];
   rngState: number;
   winner?: { playerId: string; team: number };
