@@ -41,6 +41,7 @@ from compose_unit_sheet import (  # noqa: E402
     preview_strip,
     preview_turntable,
 )
+from derive_swim import WL_Y, bob_of, in_water, waist_half  # noqa: E402
 
 ROOT = HERE.parent.parent
 UNITS = ROOT / "gridlock/packages/client/src/assets/units"
@@ -62,6 +63,8 @@ OUTLINE = (26, 20, 16)  # #1a1410
 # the same size on the map.
 STAND_SCALE = 1.2
 PRONE_SCALE = STAND_SCALE * 22 / 28
+# Swim water plane, body units above the feet: just under the torso, over the hips.
+WATER_Z = 35.0
 
 # name: (shadow, mid, highlight), or a single colour for emissive.
 MATERIALS: dict[str, tuple] = {
@@ -416,6 +419,24 @@ def pose_crawl(t: float, spin: float = 0.0, flash: int = 0) -> tuple[Cloud, floa
     return c, 0.0
 
 
+def pose_swim(frame: int) -> tuple[Cloud, float]:
+    """The stand pose sunk to the belt: the water plane is z = 0 and everything
+    under it is gone. Legs and hips are under; the gatling rides above. Bobs
+    about 1 px with the shared pool's stroke."""
+    c, _ = pose_stand(None)
+    dz = -WATER_Z + bob_of(frame) / (STAND_SCALE * COS_P)
+    out = Cloud()
+    for p, n, m, k in zip(c.pts, c.nrm, c.mat, c.part):
+        p = p + np.array([0.0, 0.0, dz])
+        keep = p[:, 2] >= 0.0
+        if keep.any():
+            out.pts.append(p[keep])
+            out.nrm.append(n[keep])
+            out.mat.append(m[keep])
+            out.part.append(k[keep])
+    return out, 0.0
+
+
 def pose_dead() -> tuple[Cloud, float]:
     """Torso face down, gatling fallen aside, one leg torn off beside him."""
     c = Cloud()
@@ -564,6 +585,12 @@ class SheetSpec:
     contact_y: float
     scale: float
     pose: callable  # (frame) -> Cloud
+    post: callable | None = None  # (cell image, frame) -> cell image
+
+
+def swim_post(im: Image.Image, frame: int) -> Image.Image:
+    """The shared swim pool under the render; the 3D cut's front dips by sin(pitch)."""
+    return in_water(im, frame, waist_half(np.array(im)), dip=SIN_P)
 
 
 def spin_of(frame: int) -> float:
@@ -578,6 +605,9 @@ SHEETS = [
     SheetSpec("crawl-fire", 4, 0.72, PRONE_SCALE, lambda i: pose_crawl(0.0, spin_of(i), flash=i + 1)[0]),
     # Footprint centre at 0.72, the same pivot as the legless crawl, so he dies where he lay.
     SheetSpec("die", 4, 0.72, STAND_SCALE, lambda i: pose_dead()[0]),
+    # The waterline on the axis sits on the shared pool's centre; same cell and
+    # contactY as every other swim sheet (derive_swim.py).
+    SheetSpec("swim", 8, WL_Y / CELL, STAND_SCALE, lambda i: pose_swim(i)[0], swim_post),
 ]
 
 
@@ -585,7 +615,10 @@ def render_sheet(spec: SheetSpec) -> tuple[Image.Image, dict[str, Image.Image]]:
     clouds = [spec.pose(i) for i in range(spec.frames)]
     rows: list[list[Image.Image]] = []
     for r in range(16):
-        rows.append([render(cl, r, spec.scale, spec.contact_y) for cl in clouds])
+        cells = [render(cl, r, spec.scale, spec.contact_y) for cl in clouds]
+        if spec.post:
+            cells = [spec.post(im, i) for i, im in enumerate(cells)]
+        rows.append(cells)
     sheet = compose_sheet(rows, CELL)
     placed = {ENGINE_ORDER[r]: rows[r][0] for r in range(16)}
     return sheet, placed
