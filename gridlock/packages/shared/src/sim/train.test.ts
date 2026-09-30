@@ -328,7 +328,7 @@ describe("research gate", () => {
     makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 });
     seedMuster(state, 20, 10);
     const gated = Object.keys(TECH_REQUIRES) as TrainType[];
-    assert.deepEqual([...gated].sort(), ["cyborg", "droneop", "nebelwerfer", "titan", "warden"]);
+    assert.deepEqual([...gated].sort(), ["cyborg", "droneop", "jumpjet", "nebelwerfer", "titan", "warden"]);
     for (const unit of gated) {
       const r = applyCommand(state, "A", { type: "cmd.train", unit });
       assert.equal(r.ok, false, unit);

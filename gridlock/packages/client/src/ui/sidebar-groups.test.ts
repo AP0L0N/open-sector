@@ -22,7 +22,7 @@ describe("sidebarGroupOf", () => {
   });
 
   it("splits trainables into infantry, tanks, and aircraft", () => {
-    for (const t of ["rifleman", "gunner", "sniper", "engineer", "medic", "cyborg", "droneop"] as const) {
+    for (const t of ["rifleman", "gunner", "sniper", "engineer", "medic", "cyborg", "droneop", "jumpjet"] as const) {
       assert.equal(sidebarGroupOf(t), "infantry", t);
     }
     for (const t of ["hauler", "warden", "ss3", "walker", "titan", "supply"] as const) assert.equal(sidebarGroupOf(t), "tanks", t);

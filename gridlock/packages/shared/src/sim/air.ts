@@ -81,7 +81,7 @@ export const RUNWAY_HEADING = 0;
 export const PARK_HEADING = Math.PI / 2;
 
 /** In the air (or rolling off the pad). A parked plane is a ground target. */
-export function isAirborne(e: { air?: AirState | { alt: number; phase?: string } }): boolean {
+export function isAirborne(e: { air?: AirState | { alt: number; phase?: string }; jet?: { alt: number } }): boolean {
   return airAlt(e) > 0.5;
 }
 

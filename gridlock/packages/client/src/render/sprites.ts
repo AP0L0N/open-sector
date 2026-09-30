@@ -131,6 +131,12 @@ import droneopWalkUrl from "../assets/units/droneop-walk.png";
 import droneopCrouchUrl from "../assets/units/droneop-crouch.png";
 import droneopCrawlUrl from "../assets/units/droneop-crawl.png";
 import droneopDieUrl from "../assets/units/droneop-die.png";
+import jumpjetWalkUrl from "../assets/units/jumpjet-walk.png";
+import jumpjetCrouchUrl from "../assets/units/jumpjet-crouch.png";
+import jumpjetCrawlUrl from "../assets/units/jumpjet-crawl.png";
+import jumpjetFireUrl from "../assets/units/jumpjet-fire.png";
+import jumpjetFlyUrl from "../assets/units/jumpjet-fly.png";
+import jumpjetDieUrl from "../assets/units/jumpjet-die.png";
 import cyborgWalkUrl from "../assets/units/cyborg-walk.png";
 import cyborgFireUrl from "../assets/units/cyborg-fire.png";
 import cyborgCrawlUrl from "../assets/units/cyborg-crawl.png";
@@ -713,6 +719,82 @@ export const DRONEOP_DIE_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
+/**
+ * Jump Jet: the Rifleman re-kitted (tools/sprites/derive_jumpjet.py) with a
+ * twin-tank jet pack and a magazine-fed rifle. Same cell, scale, and contact
+ * as the trooper.
+ */
+export const JUMPJET_SPRITE: UnitSpriteDef = {
+  image: loadSheet(jumpjetWalkUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+export const JUMPJET_CROUCH_SPRITE: UnitSpriteDef = {
+  image: loadSheet(jumpjetCrouchUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.88,
+  facingSpace: "world",
+};
+
+export const JUMPJET_CRAWL_SPRITE: UnitSpriteDef = {
+  image: loadSheet(jumpjetCrawlUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 10,
+  drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
+  contactY: 0.72,
+  facingSpace: "world",
+};
+
+/** Assault-rifle burst. Played once, then the walk sheet returns. */
+export const JUMPJET_FIRE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(jumpjetFireUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+/**
+ * Hanging under the lit pack. Only the two plumes flicker; the map loops it
+ * on the clock and lifts the whole sprite by altitude over its ground shadow.
+ */
+export const JUMPJET_FLY_SPRITE: UnitSpriteDef = {
+  image: loadSheet(jumpjetFlyUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 12,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.9,
+  facingSpace: "world",
+};
+
+export const JUMPJET_DIE_SPRITE: UnitSpriteDef = {
+  image: loadSheet(jumpjetDieUrl),
+  dirs: 16,
+  frames: 4,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.82,
+  facingSpace: "world",
+};
+
 /** Cyborg standing / walking. Column 0 is the stand; the legs stride while moving.
  *  contactY is the point between the feet (render_cyborg.py pins it), not the lowest toe. */
 export const CYBORG_SPRITE: UnitSpriteDef = {
@@ -1139,6 +1221,11 @@ export function spriteFor(type: EntityType, stance?: Stance, swimming = false): 
     if (stance === "crouch") return MEDIC_CROUCH_SPRITE;
     if (stance === "crawl") return MEDIC_CRAWL_SPRITE;
     return MEDIC_SPRITE;
+  }
+  if (type === "jumpjet") {
+    if (stance === "crouch") return JUMPJET_CROUCH_SPRITE;
+    if (stance === "crawl") return JUMPJET_CRAWL_SPRITE;
+    return JUMPJET_SPRITE;
   }
   if (type === "droneop") {
     if (stance === "crouch") return DRONEOP_CROUCH_SPRITE;

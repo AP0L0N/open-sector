@@ -123,6 +123,12 @@ import {
   DRONEOP_CROUCH_SPRITE,
   DRONEOP_DIE_SPRITE,
   DRONEOP_SPRITE,
+  JUMPJET_CRAWL_SPRITE,
+  JUMPJET_CROUCH_SPRITE,
+  JUMPJET_DIE_SPRITE,
+  JUMPJET_FIRE_SPRITE,
+  JUMPJET_FLY_SPRITE,
+  JUMPJET_SPRITE,
   MEDIC_SPRITE,
   CYBORG_CRAWL_FIRE_SPRITE,
   CYBORG_CRAWL_SPRITE,
@@ -231,7 +237,7 @@ import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
 import { unitStepping } from "./stepping.js";
-import { atInfantrySheet, cyborgSheet, gunnerSheet, heldFrame, medicSheet, mortarmanSheet, pyroSheet, rocketerSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
+import { atInfantrySheet, cyborgSheet, gunnerSheet, heldFrame, jumpJetSheet, medicSheet, mortarmanSheet, pyroSheet, rocketerSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
 import {
   axisFootprint,
   compareDrawOrder,
@@ -308,6 +314,7 @@ const EXTRUDE: Record<EntityType, number> = {
   fw190: 12,
   drone: 8,
   droneop: 26,
+  jumpjet: 26,
   rig: 22,
   hauler: 16,
   warden: 28,
@@ -1649,6 +1656,11 @@ export class MapView {
       this.stanceHotkey("crawl");
       return;
     }
+    if (k === "j") {
+      e.preventDefault();
+      this.jetHotkey();
+      return;
+    }
     if (k === "i") {
       e.preventDefault();
       this.garrisonHideHotkey();
@@ -1727,6 +1739,17 @@ export class MapView {
   private useSpecial(e: EntityView): void {
     if (!this.canSpecial(e)) return;
     if (specialOf(e.type) === "deploy") this.command({ type: "cmd.deploy", id: e.id });
+  }
+
+  /** J: selected Jump Jets on the ground take off; if every one is already up, they land. */
+  private jetHotkey(): void {
+    const you = this.curr.youPlayerId;
+    const jets = this.curr.entities.filter(
+      (e) => this.selected.has(e.id) && e.ownerId === you && !e.wreck && e.hp > 0 && !!e.jet,
+    );
+    if (jets.length === 0) return;
+    const action = jets.every((e) => e.jet!.up) ? "land" : "up";
+    this.command({ type: "cmd.jet", ids: jets.map((e) => e.id), action });
   }
 
   private stanceHotkey(want: "crouch" | "crawl"): void {
@@ -2075,9 +2098,9 @@ export class MapView {
     return { x: worldToTile(w.x, ts), y: worldToTile(w.y, ts) };
   }
 
-  /** Screen pixels a plane sits above its ground point. 0 for everything on the ground. */
+  /** Screen pixels a plane (or a Jump Jet) sits above its ground point. 0 for everything on the ground. */
   private airLift(e: EntityView): number {
-    if (!e.air) return 0;
+    if (!e.air && !e.jet) return 0;
     const t = Math.min(1, (performance.now() - this.snapAt) / 100);
     return airLiftPx(lerpAirAlt(this.prevById.get(e.id), e, t));
   }
@@ -3673,6 +3696,22 @@ export class MapView {
       if (sheet === "swim") return spriteFor("droneop", "stand", true);
       return DRONEOP_SPRITE;
     }
+    if (e.type === "jumpjet") {
+      const sheet = jumpJetSheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        aloft: inAir(e),
+        shotAgeMs: this.infantryShotAge(e.id),
+      });
+      if (sheet === "die") return JUMPJET_DIE_SPRITE;
+      if (sheet === "fly") return JUMPJET_FLY_SPRITE;
+      if (sheet === "fire") return JUMPJET_FIRE_SPRITE;
+      if (sheet === "crouch") return JUMPJET_CROUCH_SPRITE;
+      if (sheet === "crawl") return JUMPJET_CRAWL_SPRITE;
+      if (sheet === "swim") return spriteFor("jumpjet", "stand", true);
+      return JUMPJET_SPRITE;
+    }
     if (e.type === "cyborg") {
       const sheet = cyborgSheet({
         swimming: e.swimming,
@@ -3811,9 +3850,12 @@ export class MapView {
     }
     const corpse = isInfantryType(e.type) && !!e.wreck;
     let frameIndex: number | undefined;
-    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
-    else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE || def === ROCKETER_FIRE_SPRITE || def === PYRO_FIRE_SPRITE) {
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE || def === ROCKETER_FIRE_SPRITE || def === PYRO_FIRE_SPRITE || def === JUMPJET_FIRE_SPRITE) {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
+    } else if (def === JUMPJET_FLY_SPRITE) {
+      // The plumes flicker whether he hovers or flies.
+      frameIndex = Math.floor((performance.now() / 1000) * def.fps + e.id) % def.frames;
     }
     ctx.save();
     ctx.save();
@@ -4026,6 +4068,8 @@ export class MapView {
                 ? MEDIC_DIE_SPRITE
               : body.type === "droneop"
                 ? DRONEOP_DIE_SPRITE
+              : body.type === "jumpjet"
+                ? JUMPJET_DIE_SPRITE
               : body.type === "cyborg"
                 ? CYBORG_DIE_SPRITE
               : body.type === "rifleman"
