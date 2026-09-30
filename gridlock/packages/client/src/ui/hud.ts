@@ -846,6 +846,7 @@ const TYPE_ORDER: EntityType[] = [
   "droneop",
   "sandbags",
   "teeth",
+  "trench",
   "rig",
   "core",
   "dynamo",
@@ -856,6 +857,7 @@ const TYPE_ORDER: EntityType[] = [
   "ciws",
   "research",
   "bunker",
+  "tower",
   "ram",
   "cottage",
   "shack",
@@ -1344,6 +1346,13 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: "Build concrete pyramids that stop vehicles. Scroll to turn, click to place one, or drag from start to end to lay a line.",
       on: view?.fieldPlace === "teeth",
     });
+    out.push({
+      slot: "field-trench",
+      act: "field-trench",
+      label: "Trench",
+      title: "Dig a one-man trench. Moderate cover for one soldier, mortarman included. Scroll to turn, click to place one, or drag from start to end to dig a line.",
+      on: view?.fieldPlace === "trench",
+    });
   }
   const inf = units.filter((e) => isInfantryType(e.type) && e.type !== "engineer" && e.type !== "cyborg");
   if (inf.length) {
@@ -1611,8 +1620,8 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     if (units.length) view.setGuardMode(!view.guardMode);
     return;
   }
-  if (act === "field-sandbags" || act === "field-teeth") {
-    view.setFieldPlace(act === "field-sandbags" ? "sandbags" : "teeth");
+  if (act === "field-sandbags" || act === "field-teeth" || act === "field-trench") {
+    view.setFieldPlace(act === "field-sandbags" ? "sandbags" : act === "field-teeth" ? "teeth" : "trench");
     return;
   }
   if (act === "hold") {
