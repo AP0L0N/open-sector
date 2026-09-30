@@ -3,6 +3,7 @@ import {
   DRONE_SURVEIL_ALT,
   DRONE_SURVEIL_SIGHT_BONUS,
   GARRISON_HIDE_SIGHT,
+  garrisonReachBonusOf,
   garrisonSightBonusOf,
   HEIGHT_BASE,
   HEIGHT_DOWNHILL_COST,
@@ -216,7 +217,7 @@ export function weaponRangeWorld(state: MatchState, e: Entity): number {
   const base = gun?.rangeTiles ?? catalog(e.type).rangeTiles;
   if (base <= 0) return 0;
   let tiles = rangeTilesOf(e.type, entityHeight(state, e), base);
-  if (inHouse && !host.garrisonHide) tiles += garrisonSightBonusOf(host.type);
+  if (inHouse && !host.garrisonHide) tiles += garrisonReachBonusOf(host.type);
   return tiles * state.tileSize;
 }
 

@@ -29,6 +29,7 @@ import airfieldUrl from "../assets/buildings/airfield.png";
 import airfieldGroundUrl from "../assets/buildings/airfield-ground.png";
 import ciwsUrl from "../assets/buildings/ciws.png";
 import bunkerUrl from "../assets/buildings/bunker.png";
+import towerUrl from "../assets/buildings/tower.png";
 import ciwsTurretUrl from "../assets/buildings/ciws-turret.png";
 import researchUrl from "../assets/buildings/research.png";
 import ramUrl from "../assets/buildings/ram.png";
@@ -1198,6 +1199,8 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   research: building(researchUrl, 384, 210, 324, 150, 70),
   // Concrete pillbox. Metrics from tools/sprites/render_bunker.py (bunker.json).
   bunker: building(bunkerUrl, 384, 222, 264, 222, 99),
+  // Concrete shaft and slitted cab. Metrics from tools/sprites/render_tower.py (tower.json).
+  tower: building(towerUrl, 384, 300, 426, 300, 133.8),
   // The CIWS pad under a rocket launcher. Metrics from tools/sprites/render_ram.py (ram.json).
   ram: building(ramUrl, 192, 126, 186, 126, 82.8),
 };

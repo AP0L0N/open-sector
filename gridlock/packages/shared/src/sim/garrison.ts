@@ -58,6 +58,14 @@ export function occupantSightTiles(state: MatchState, unit: Entity): number | un
   return sightTilesForEntity(state, unit);
 }
 
+/** Eye height for a watcher inside a raised garrison. Undefined when he looks from the street. */
+export function occupantEye(state: MatchState, unit: Entity): number | undefined {
+  if (unit.garrisonedIn == null) return undefined;
+  const house = state.entities.get(unit.garrisonedIn);
+  if (!house || house.garrisonHide) return undefined;
+  return catalog(house.type).garrisonEye;
+}
+
 export function setGarrisonHide(state: MatchState, house: Entity, hide: boolean): void {
   house.garrisonHide = hide;
   state.visionTick = -1;
