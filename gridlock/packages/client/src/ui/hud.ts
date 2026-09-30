@@ -26,6 +26,7 @@ import {
   getMap,
   hasAmmo,
   hasMg,
+  roofCiwsOf,
   hasScout,
   infantryGunFor,
   infantryLoadout,
@@ -635,7 +636,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
       : "";
   const mg =
     e.mgAmmo != null && !e.wreck
-      ? `  ·  MG ${e.mgAmmo}${e.mgOverheat && e.mgOverheat > 0 ? " HOT" : ""}`
+      ? `  ·  ${roofCiwsOf(e.type) ? "20mm" : "MG"} ${e.mgAmmo}${e.mgOverheat && e.mgOverheat > 0 ? " HOT" : ""}`
       : "";
   const garrison =
     e.garrison
@@ -679,7 +680,7 @@ const AIR_PHASE_LABEL: Record<NonNullable<EntityView["air"]>["phase"], string> =
   landing: "landing",
 };
 
-/** Phase, and for your own planes fuel, bomb, and belts. A fighter carries no bomb; its guns are cannon. */
+/** Phase, and for your own planes fuel, bomb, and belts. A fighter carries no bomb; it counts barrages. */
 function airLine(air: NonNullable<EntityView["air"]>, type: EntityType): string {
   let s = `  ·  ${AIR_PHASE_LABEL[air.phase]}`;
   if (air.fuel != null && air.fuelMax) s += `  ·  fuel ${Math.round((air.fuel / air.fuelMax) * 100)}%`;
@@ -692,7 +693,7 @@ function airLine(air: NonNullable<EntityView["air"]>, type: EntityType): string 
     return s;
   }
   if (air.bombs != null && load.bombs > 0) s += `  ·  bomb ${air.bombs > 0 ? "armed" : "spent"}`;
-  if (air.rounds != null) s += `  ·  ${load.bombs > 0 ? "MG" : "cannon"} ${Math.round(air.rounds)}`;
+  if (air.rounds != null) s += load.bombs > 0 ? `  ·  MG ${Math.round(air.rounds)}` : `  ·  barrages ${Math.floor(air.rounds)}`;
   if (air.phase !== "parked" && air.homeId == null && air.fuel != null) s += "  ·  NO AIRFIELD";
   return s;
 }
@@ -840,6 +841,7 @@ const TYPE_ORDER: EntityType[] = [
   "stuka",
   "drone",
   "warden",
+  "apocalypse",
   "ss3",
   "walker",
   "cyborg",
@@ -859,6 +861,7 @@ const TYPE_ORDER: EntityType[] = [
   "droneop",
   "sandbags",
   "teeth",
+  "trench",
   "rig",
   "core",
   "dynamo",
@@ -869,6 +872,7 @@ const TYPE_ORDER: EntityType[] = [
   "ciws",
   "research",
   "bunker",
+  "tower",
   "ram",
   "cottage",
   "shack",
@@ -1184,7 +1188,8 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
     const belt = mine.reduce((n, e) => n + (e.mgAmmo ?? 0), 0);
     const heat = mine.length ? mine.reduce((n, e) => n + (e.mgHeat ?? 0), 0) / mine.length : 0;
     const hot = mine.some((e) => (e.mgOverheat ?? 0) > 0);
-    setField(body, "mg-label", hot ? `MG  ${belt}  overheated` : `MG  ${belt}`);
+    const beltName = roofCiwsOf(focus.type) ? "20mm" : "MG";
+    setField(body, "mg-label", hot ? `${beltName}  ${belt}  overheated` : `${beltName}  ${belt}`);
     const bar = body.querySelector('[data-field="mg-heat"]');
     if (bar instanceof HTMLElement) {
       bar.classList.toggle("is-hot", hot);
@@ -1405,6 +1410,13 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       label: "Obstacle",
       title: "Build concrete pyramids that stop vehicles. Scroll to turn, click to place one, or drag from start to end to lay a line.",
       on: view?.fieldPlace === "teeth",
+    });
+    out.push({
+      slot: "field-trench",
+      act: "field-trench",
+      label: "Trench",
+      title: "Dig a one-man trench. Moderate cover for one soldier, mortarman included. Scroll to turn, click to place one, or drag from start to end to dig a line.",
+      on: view?.fieldPlace === "trench",
     });
   }
   const inf = units.filter((e) => isInfantryType(e.type) && e.type !== "engineer" && e.type !== "cyborg");
@@ -1690,8 +1702,8 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     if (units.length) view.setGuardMode(!view.guardMode);
     return;
   }
-  if (act === "field-sandbags" || act === "field-teeth") {
-    view.setFieldPlace(act === "field-sandbags" ? "sandbags" : "teeth");
+  if (act === "field-sandbags" || act === "field-teeth" || act === "field-trench") {
+    view.setFieldPlace(act === "field-sandbags" ? "sandbags" : act === "field-teeth" ? "teeth" : "trench");
     return;
   }
   if (act === "hold") {

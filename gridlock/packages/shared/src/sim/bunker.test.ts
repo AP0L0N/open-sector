@@ -15,6 +15,7 @@ import {
   catalog,
   coverHeightOf,
   garrisonCapOf,
+  isCapturable,
   type EntityType,
 } from "../catalog.js";
 import { applyCommand } from "./commands.js";
@@ -240,5 +241,63 @@ describe("bunker", () => {
       tank.attackTarget === bunker.id || tank.order?.targetId === bunker.id,
       `tank should engage the empty bunker, order=${tank.order?.kind} target=${tank.attackTarget}`,
     );
+  });
+
+  it("fires out of the slit facing the target, on every side, without hitting its own walls", () => {
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const { state, a, b } = twoPlayerMatch();
+      const ts = state.tileSize;
+      const bunker = bunkerAt(state, a);
+      const rifle = trooper(state, "rifleman", a);
+      assert.equal(enterGarrison(state, rifle, bunker), true);
+      rifle.facing = Math.atan2(-dy, -dx);
+      const foe = makeEntity(state, "rifleman", b, bunker.x + dx * ts * 8, bunker.y + dy * ts * 8);
+      rifle.order = { kind: "attack", targetId: foe.id };
+      tickCombat(state, TICK_DT);
+      const shot = state.projectiles.find((p) => p.fromId === rifle.id);
+      assert.ok(shot, `fires toward ${dx},${dy}`);
+      assert.equal(shot.ignoreId, bunker.id);
+      const x0 = bunker.tileX * ts;
+      const y0 = bunker.tileY * ts;
+      const outside =
+        shot.x < x0 || shot.x > x0 + bunker.tileW * ts || shot.y < y0 || shot.y > y0 + bunker.tileH * ts;
+      assert.ok(outside, `round starts outside the walls, at ${shot.x},${shot.y}`);
+      assert.ok(shot.vx * dx + shot.vy * dy > 0, `round heads at the target ${dx},${dy}, not along a stale facing`);
+      const hp0 = bunker.hp;
+      for (let i = 0; i < 400 && foe.hp > 0; i++) step(state, TICK_DT);
+      assert.equal(foe.hp, 0, `foe at ${dx},${dy} goes down`);
+      assert.equal(bunker.hp, hp0, "the bunker is not hit by its own men");
+    }
+  });
+
+  it("sends a rocket out of the slit, clear of its own walls", () => {
+    const { state, a, b } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const bunker = bunkerAt(state, a);
+    const rocketer = trooper(state, "rocketer", a);
+    assert.equal(enterGarrison(state, rocketer, bunker), true);
+    const tank = makeEntity(state, "warden", b, bunker.x - ts * 16, bunker.y);
+    rocketer.order = { kind: "attack", targetId: tank.id };
+    tickCombat(state, TICK_DT);
+    const rocket = state.projectiles.find((p) => p.fromId === rocketer.id);
+    assert.ok(rocket, "rocketer fires from inside");
+    assert.equal(rocket.ignoreId, bunker.id);
+    assert.ok(rocket.x < bunker.tileX * ts, `rocket leaves the west wall, at x=${rocket.x}`);
+    const hp0 = bunker.hp;
+    for (let i = 0; i < 30; i++) step(state, TICK_DT);
+    assert.equal(bunker.hp, hp0);
+  });
+
+  it("cannot be captured by enemy infantry, even while empty", () => {
+    assert.equal(isCapturable("bunker"), false);
+    assert.equal(isCapturable("dynamo"), true);
+    const { state, a, b } = twoPlayerMatch();
+    const bunker = bunkerAt(state, a);
+    const foes = [0, 1, 2].map((i) => trooper(state, "rifleman", b, 34, 12 + i));
+    for (const f of foes) f.order = { kind: "attack", targetId: bunker.id };
+    const secs = 60;
+    for (let i = 0; i < Math.round(secs / TICK_DT); i++) step(state, TICK_DT);
+    assert.equal(bunker.ownerId, a);
+    assert.equal(bunker.captureProgress, 0);
   });
 });

@@ -561,6 +561,9 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="ss3"] {
   background-image: var(--ss3-cameo, url("../assets/units/ss3-cameo.png"));
 }
+.prod-job[data-type="apocalypse"] {
+  background-image: url("../assets/units/apocalypse-cameo.png");
+}
 .prod-job[data-type="walker"] {
   background-image: url("../assets/units/walker-cameo.png");
 }
@@ -820,6 +823,7 @@ input[type="range"] { padding: 0; }
 #build-ciws,
 #build-research,
 #build-bunker,
+#build-tower,
 #build-ram {
   background-size: cover;
   background-position: right 10% center;
@@ -884,6 +888,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     var(--tiger-cameo, url("../assets/units/tiger-cameo.png"));
+}
+#train-apocalypse {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/apocalypse-cameo.png");
 }
 #train-ss3 {
   background-image:
@@ -1006,6 +1015,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/bunker-cameo.png");
+}
+#build-tower {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/tower-cameo.png");
 }
 #build-ram {
   background-image:
@@ -1160,6 +1174,7 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="hauler"] { background-image: url("../assets/units/hauler-cameo.png"); }
 .config-type[data-type="warden"] { background-image: var(--tiger-cameo, url("../assets/units/tiger-cameo.png")); }
 .config-type[data-type="ss3"] { background-image: var(--ss3-cameo, url("../assets/units/ss3-cameo.png")); }
+.config-type[data-type="apocalypse"] { background-image: url("../assets/units/apocalypse-cameo.png"); }
 .config-type[data-type="walker"],
 .prod-job[data-type="walker"] { background-image: url("../assets/units/walker-cameo.png"); }
 .config-type[data-type="cyborg"],
@@ -1183,6 +1198,7 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="ciws"] { background-image: url("../assets/buildings/ciws-cameo.png"); }
 .config-type[data-type="research"] { background-image: url("../assets/buildings/research-cameo.png"); }
 .config-type[data-type="bunker"] { background-image: url("../assets/buildings/bunker-cameo.png"); }
+.config-type[data-type="tower"] { background-image: url("../assets/buildings/tower-cameo.png"); }
 .config-type[data-type="ram"] { background-image: url("../assets/buildings/ram-cameo.png"); }
 .config-type[data-type="stuka"],
 .prod-job[data-type="stuka"] {
