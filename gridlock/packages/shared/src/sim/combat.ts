@@ -49,7 +49,9 @@ import {
   scopedHpFraction,
   entityIsScouting,
   garrisonFullArmsOf,
+  garrisonOpenTopOf,
   isCivilianType,
+  isFieldStructure,
   isGarrisonable,
   isInfantryType,
   isSmokeShell,
@@ -713,7 +715,12 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
 
 function mortarReady(state: MatchState, e: Entity): boolean {
   if (e.type !== "mortarman") return true;
-  if (unitInWater(state, e) || e.garrisonedIn != null) return false;
+  if (e.garrisonedIn != null) {
+    // A trench is open to the sky: the tube stands in the bottom of it. A roof is not.
+    const house = state.entities.get(e.garrisonedIn);
+    return !!house && garrisonOpenTopOf(house.type) && !hasCrit(e, "arm");
+  }
+  if (unitInWater(state, e)) return false;
   if (stanceOf(e) !== "crouch") return false;
   if (hasCrit(e, "arm") || hasCrit(e, "leg")) return false;
   if (e.state === "move") return false;
@@ -1803,6 +1810,8 @@ function sweepAgainst(
   e: Entity,
 ): { t: number; x: number; y: number } | null {
   if (e.type === "sandbags" || e.type === "teeth") return null;
+  // An empty trench is a hole in the ground. Rounds only find it with a man in it.
+  if (e.type === "trench" && livingGarrison(state, e).length === 0) return null;
   const reach = e.radius * stanceHitRadiusMul(e, unitInWater(state, e));
   const t =
     e.kind === "building"
@@ -1915,9 +1924,10 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
       if (!garrisonIsHostile(state, e.ownerId, o) || !garrisonLooksOccupied(state, e.ownerId, o)) continue;
     } else if (
       isGarrisonable(o.type) &&
-      isCivilianType(o.type) &&
+      (isCivilianType(o.type) || isFieldStructure(o.type)) &&
       (!garrisonLooksOccupied(state, e.ownerId, o) || !garrisonIsHostile(state, e.ownerId, o))
     ) {
+      // An empty house, or an empty trench, is not worth a round.
       continue;
     }
     const dx = o.x - e.x;
