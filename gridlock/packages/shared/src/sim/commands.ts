@@ -18,8 +18,11 @@ import {
   isStance,
   isTrainType,
   isDroneMode,
+  isAirDrop,
+  isTransportType,
   ORDER_QUEUE_MAX,
   pickLoadedShell,
+  type AirDrop,
   type DroneMode,
   type InfantryWeaponId,
   type ShellType,
@@ -40,6 +43,7 @@ import { setPath } from "./path.js";
 import { tickStance } from "./stance.js";
 import { dismountSupply, orderBoard, orderSupply, supplyCanDrive } from "./supply.js";
 import { orderAircraft, stopAircraft } from "./air.js";
+import { orderBoardPlane, setPayload, unloadPlane } from "./airdrop.js";
 import { droneOf, guardDrone, launchDrone, orderDrone, recallDrone, setDroneMode, stopDrone } from "./drone.js";
 import type { Entity, MatchState, QueueableCommand, Vec } from "./types.js";
 
@@ -158,8 +162,16 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       );
     case "cmd.repair":
       return wrap(orderRepair(state, playerId, owned(state, playerId, msg.ids), msg.targetId), "not_found");
-    case "cmd.board":
+    case "cmd.board": {
+      const plane = state.entities.get(msg.truckId);
+      if (plane && isTransportType(plane.type)) {
+        return wrap(orderBoardPlane(state, playerId, owned(state, playerId, msg.ids), plane), "busy");
+      }
       return wrap(orderBoard(state, playerId, owned(state, playerId, msg.ids), msg.truckId), "busy");
+    }
+    case "cmd.payload":
+      if (!isAirDrop(msg.payload)) return fail("bad_payload", "Unknown load.");
+      return cmdPayload(state, playerId, msg.ids, msg.payload);
     case "cmd.unboard":
       return cmdUnboard(state, playerId, msg.ids, msg.truckId);
     case "cmd.supply":
@@ -478,7 +490,8 @@ function owned(state: MatchState, playerId: string, ids: number[]) {
   const out = [];
   for (const id of ids) {
     const e = state.entities.get(id);
-    if (e && e.ownerId === playerId && e.hp > 0 && e.kind === "unit" && !e.wreck) out.push(e);
+    // A paratrooper takes orders once he is on the ground.
+    if (e && e.ownerId === playerId && e.hp > 0 && e.kind === "unit" && !e.wreck && !e.chute) out.push(e);
   }
   return out;
 }
@@ -832,7 +845,27 @@ function cmdGarrison(state: MatchState, playerId: string, ids: number[], buildin
   return ok();
 }
 
+/** Transports on their pads swap the load in the bay. */
+function cmdPayload(state: MatchState, playerId: string, ids: number[], payload: AirDrop): CmdResult {
+  if (!Array.isArray(ids)) return fail("bad_payload", "Bad load order.");
+  const planes = owned(state, playerId, ids).filter((e) => isTransportType(e.type));
+  if (planes.length === 0) return fail("not_yours", "Select a transport.");
+  let err: string | null = null;
+  let done = 0;
+  for (const e of planes) {
+    const why = setPayload(state, e, payload);
+    if (why) err = why;
+    else done++;
+  }
+  return done > 0 ? ok() : wrap(err, "busy");
+}
+
 function cmdUnboard(state: MatchState, playerId: string, ids?: number[], truckId?: number): CmdResult {
+  const plane = truckId != null ? state.entities.get(truckId) : undefined;
+  if (plane && isTransportType(plane.type)) {
+    if (plane.ownerId !== playerId) return fail("not_yours", "Not your plane.");
+    return wrap(unloadPlane(state, plane), "busy");
+  }
   const truck =
     truckId != null
       ? state.entities.get(truckId)

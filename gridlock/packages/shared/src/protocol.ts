@@ -1,6 +1,7 @@
 /** Shared wire + domain types. If a field is not here, it does not exist. */
 
 import type {
+  AirDrop,
   BuildingType,
   Crit,
   DroneMode,
@@ -13,7 +14,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 52;
+export const PROTOCOL_VERSION = 53;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -225,7 +226,13 @@ export interface EntityView {
     bombs?: number;
     rounds?: number;
     homeId?: number;
+    /** Transport: the load its bay takes. Friendly-only. */
+    payload?: AirDrop;
+    /** Transport: riflemen aboard. Friendly-only. */
+    troops?: number;
   };
+  /** Paratrooper under his canopy: elevation units above the ground. Everyone who sees him sees it. */
+  chute?: number;
   /** Planes homed on this Airfield, and its pad count. Allied Airfields only. */
   pads?: { used: number; cap: number };
   /**
@@ -394,6 +401,29 @@ export interface GroundFireView {
   lifeMax: number;
 }
 
+/** Butterfly mine on the ground. Your side's always; an enemy's once one of your men is close to it. */
+export interface MineView {
+  id: number;
+  ownerId: string;
+  x: number;
+  y: number;
+  /** False while it is still arming. Omitted once live. */
+  armed?: false;
+}
+
+/** Supply crate from a transport. */
+export interface CrateView {
+  id: number;
+  ownerId: string;
+  x: number;
+  y: number;
+  /** Elevation units while it hangs under its canopy. Omitted once down. */
+  alt?: number;
+  /** Supply points left. Allied crates only. */
+  supply?: number;
+  supplyMax?: number;
+}
+
 export interface MatchSnapshot {
   tick: number;
   /** Sim multiplier. 1–5. */
@@ -408,6 +438,10 @@ export interface MatchSnapshot {
   smoke: SmokeCloudView[];
   /** Burning ground on tiles you can see, and fires your side lit. Empty until the first flamethrower burst. */
   fires: GroundFireView[];
+  /** Mines you can see. Empty until the first cluster drop. */
+  mines: MineView[];
+  /** Supply crates you can see. Empty until the first crate drop. */
+  crates: CrateView[];
   scrap: ScrapCell[];
   /** Tree tiles a vehicle has crushed. Empty until the first flatten. */
   clearedTrees: { x: number; y: number }[];
@@ -505,6 +539,8 @@ export type ClientMessage =
   | { type: "cmd.supply"; ids: number[]; targetId: number; queue?: boolean }
   /** Aircraft fly home, land on their pad, and refuel and rearm there. */
   | { type: "cmd.land"; ids: number[] }
+  /** Transport on its pad: what the bay takes next — a mine canister, a supply crate, or paratroops. */
+  | { type: "cmd.payload"; ids: number[]; payload: AirDrop }
   /**
    * Drone Op and drone controls. `ids` may name operators or their drones.
    * launch: put the stowed drone up. recall: fly it back to be stowed.
@@ -548,4 +584,4 @@ export type ErrorCode =
   | "ended"
   | "cart";
 
-export type { BuildingType, EntityType, FieldStructureType, TrainType, EntityKind, ShellType, Crit, Stance };
+export type { AirDrop, BuildingType, EntityType, FieldStructureType, TrainType, EntityKind, ShellType, Crit, Stance };

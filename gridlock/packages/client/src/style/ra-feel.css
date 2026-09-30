@@ -811,6 +811,7 @@ input[type="range"] { padding: 0; }
 #train-supply,
 #train-stuka,
 #train-fw190,
+#train-bv222,
 #build-dynamo,
 #build-smelter,
 #build-muster,
@@ -1021,6 +1022,11 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     var(--fw190-cameo, url("../assets/units/fw190/hull/0013.png"));
 }
+#train-bv222 {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    var(--bv222-cameo, url("../assets/units/bv222/hull/0013.png"));
+}
 
 .cameo:disabled, .cameo.is-disabled {
   opacity: 0.38;
@@ -1185,6 +1191,10 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="fw190"],
 .prod-job[data-type="fw190"] {
   background-image: var(--fw190-cameo, url("../assets/units/fw190/hull/0013.png"));
+}
+.config-type[data-type="bv222"],
+.prod-job[data-type="bv222"] {
+  background-image: var(--bv222-cameo, url("../assets/units/bv222/hull/0013.png"));
 }
 .config-type[data-type="drone"],
 .prod-job[data-type="drone"] {
