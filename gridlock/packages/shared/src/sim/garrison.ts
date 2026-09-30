@@ -28,6 +28,15 @@ export function livingGarrison(state: MatchState, house: Entity): Entity[] {
   return out;
 }
 
+/**
+ * An occupied building: its walls stand in for the soldiers, so light rounds
+ * wound them instead of chipping the structure. A hull is not a wall — its
+ * armor decides the hit like any other vehicle, and nothing passes inside.
+ */
+export function wallsShieldGarrison(state: MatchState, e: Entity): boolean {
+  return e.kind === "building" && isGarrisonable(e.type) && livingGarrison(state, e).length > 0;
+}
+
 export function garrisonOwner(state: MatchState, house: Entity): string {
   return livingGarrison(state, house)[0]?.ownerId ?? NEUTRAL_OWNER;
 }
@@ -168,7 +177,7 @@ export function garrisonSpace(state: MatchState, house: Entity): number {
 
 export function canGarrison(state: MatchState, unit: Entity, house: Entity): string | null {
   if (!isInfantryType(unit.type) || unit.kind !== "unit" || unit.wreck) return "Only infantry can garrison.";
-  if (!isGarrisonable(house.type) || house.kind !== "building" || house.hp <= 0) return "Cannot enter that.";
+  if (!isGarrisonable(house.type) || house.hp <= 0 || house.wreck) return "Cannot enter that.";
   if (!garrisonAdmits(house.type, unit.type)) return `${catalog(unit.type).name} cannot enter the ${catalog(house.type).name}.`;
   const occ = garrisonOwner(state, house);
   if (occ && occ !== NEUTRAL_OWNER && !allies(state, unit.ownerId, occ)) return "Held by the enemy.";
@@ -180,11 +189,12 @@ export function canGarrison(state: MatchState, unit: Entity, house: Entity): str
   ) {
     return "Held by the enemy.";
   }
-  if (garrisonSpace(state, house) <= 0) return "Building is full.";
+  if (garrisonSpace(state, house) <= 0) return house.kind === "unit" ? `The ${catalog(house.type).name} is full.` : "Building is full.";
   return null;
 }
 
 export function approachTile(state: MatchState, house: Entity): { x: number; y: number } | null {
+  if (house.kind === "unit") return besideHull(state, house);
   const ring: { x: number; y: number }[] = [];
   for (let y = house.tileY - 1; y <= house.tileY + house.tileH; y++) {
     for (let x = house.tileX - 1; x <= house.tileX + house.tileW; x++) {
@@ -203,6 +213,29 @@ export function approachTile(state: MatchState, house: Entity): { x: number; y: 
     if (snap) return snap;
   }
   return nearestWalkable(state, house.tileX, house.tileY, "rifleman");
+}
+
+/**
+ * A walkable tile clear of a hull's plate, round the stern and then the sides.
+ * Each soldier still aboard shifts the pick one slot, so a squad getting out
+ * fans across the back instead of stacking on one tile.
+ */
+function besideHull(state: MatchState, hull: Entity): { x: number; y: number } | null {
+  const ts = state.tileSize;
+  // Well clear: a tile or two off the stern is still under the tall casemate on screen.
+  const out = hull.radius + 3 * ts;
+  const slot = hull.garrison.length;
+  for (let i = 0; i < 8; i++) {
+    const k = slot + i;
+    const turn = Math.ceil(k / 2) * (k % 2 ? 1 : -1) * (Math.PI / 5);
+    const ang = hull.facing + Math.PI + turn;
+    const tx = worldToTile(hull.x + Math.cos(ang) * out, ts);
+    const ty = worldToTile(hull.y + Math.sin(ang) * out, ts);
+    if (!inBounds(state, tx, ty)) continue;
+    const snap = nearestWalkable(state, tx, ty, "rifleman");
+    if (snap && Math.hypot(tileCenter(snap.x, ts) - hull.x, tileCenter(snap.y, ts) - hull.y) > hull.radius) return snap;
+  }
+  return nearestWalkable(state, worldToTile(hull.x, ts), worldToTile(hull.y, ts), "rifleman");
 }
 
 export function enterGarrison(state: MatchState, unit: Entity, house: Entity): boolean {
@@ -357,6 +390,11 @@ export function garrisonMuzzleToward(
   const house = state.entities.get(unit.garrisonedIn);
   if (!house) return null;
   const ang = Math.atan2(aimY - house.y, aimX - house.x);
+  if (house.kind === "unit") {
+    // A hull's slits ring its deck: the round leaves just past the plate on the side that faces the aim.
+    const out = house.radius + 4;
+    return { x: house.x + Math.cos(ang) * out, y: house.y + Math.sin(ang) * out, house };
+  }
   const w = pickGarrisonMuzzle(house, state.tileSize, ang, unit.id);
   const out = FACE_OUT[w.face];
   return { x: w.x + out.x * 4, y: w.y + out.y * 4, house };
@@ -386,8 +424,59 @@ export function tickGarrison(state: MatchState): void {
       e.state = "idle";
       continue;
     }
+    if (house.kind === "unit") {
+      boardHull(state, e, house);
+      continue;
+    }
     if (adjacentToBuilding(state, e, house)) enterGarrison(state, e, house);
   }
+}
+
+/** Side by side with the hull, it climbs in. Otherwise it keeps after it — the hull may be driving. */
+function boardHull(state: MatchState, e: Entity, hull: Entity): void {
+  const dx = e.x - hull.x;
+  const dy = e.y - hull.y;
+  const d = Math.hypot(dx, dy);
+  if (d <= e.radius + hull.radius + HULL_BOARD_SLACK) {
+    enterGarrison(state, e, hull);
+    return;
+  }
+  e.state = "move";
+  if (e.waypoints.length > 0 && state.tick % 8 !== 0) return;
+  const k = (hull.radius + e.radius + 4) / (d || 1);
+  setPath(state, e, hull.x + dx * k, hull.y + dy * k);
+}
+
+const HULL_BOARD_SLACK = 10;
+
+/** Soldiers inside a hull ride on it: sight and shots leave from where it is now. */
+export function syncHullGarrisons(state: MatchState): void {
+  for (const hull of state.entities.values()) {
+    if (hull.kind !== "unit" || hull.garrison.length === 0 || !isGarrisonable(hull.type)) continue;
+    for (const u of livingGarrison(state, hull)) {
+      u.x = hull.x;
+      u.y = hull.y;
+      u.tileX = hull.tileX;
+      u.tileY = hull.tileY;
+    }
+  }
+}
+
+/**
+ * The hull is destroyed with them inside. Everyone aboard dies with it and
+ * leaves no body in the open. Returns the dead so the reaper can remove them.
+ */
+export function killGarrison(state: MatchState, hull: Entity): Entity[] {
+  const units = livingGarrison(state, hull);
+  for (const u of units) {
+    u.hp = 0;
+    u.state = "dead";
+    u.order = null;
+    u.waypoints = [];
+    u.attackTarget = null;
+  }
+  hull.garrisonHide = false;
+  return units;
 }
 
 

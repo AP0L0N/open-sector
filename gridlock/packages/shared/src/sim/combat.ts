@@ -134,6 +134,8 @@ import {
   garrisonLooksOccupied,
   livingGarrison,
   garrisonMuzzleToward,
+  syncHullGarrisons,
+  wallsShieldGarrison,
   woundGarrison,
 } from "./garrison.js";
 import {
@@ -165,6 +167,7 @@ const TWIN_GUN_SIDE = 0.25;
 
 export function tickCombat(state: MatchState, dt: number): void {
   syncSupplyRiders(state);
+  syncHullGarrisons(state);
   for (const e of state.entities.values()) {
     if (!canFight(e) || !supplyRiderFights(state, e)) continue;
     tickWeaponClocks(e, dt);
@@ -1293,7 +1296,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
       vy: p.vy,
       rand,
     });
-    const occupied = isGarrisonable(e.type) && livingGarrison(state, e).length > 0;
+    const occupied = wallsShieldGarrison(state, e);
     const chipWalls = !occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER;
     if (chipWalls) {
       takeDamage(e, res.damage, state.tick);
@@ -1367,6 +1370,7 @@ function walkerSecondTarget(state: MatchState, e: Entity, primary: Entity): Enti
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
     if (
+      o.kind === "building" &&
       isGarrisonable(o.type) &&
       (!garrisonLooksOccupied(state, e.ownerId, o) || !garrisonIsHostile(state, e.ownerId, o))
     ) {
@@ -1740,7 +1744,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
           rand,
           exact: scopedInfantry,
         });
-    const occupied = isGarrisonable(e.type) && livingGarrison(state, e).length > 0;
+    const occupied = wallsShieldGarrison(state, e);
     // A walker round stops on the wall. It does not chew the structure, even
     // when the house is empty or the target is a Core.
     const walkerWall = e.kind === "building" && shooter?.type === "walker";

@@ -173,6 +173,7 @@ import {
   bindTransportSheets,
   bindSupplySheets,
   bindApocalypseSheets,
+  bindMammothSheets,
   bindNebelwerferSheets,
   bindTurntableSheets,
 } from "./turntable-sheet.js";
@@ -972,6 +973,19 @@ export const SUPPLY_SPRITE: UnitSpriteDef = {
 };
 bindSupplySheets(SUPPLY_SPRITE.image);
 
+/** Infantry battle platform. One hull sheet: the bow MG is part of the hull and aims with it. */
+export const MAMMOTH_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(84 * UNIT_VISUAL_SCALE),
+  contactY: 0.92,
+  facingSpace: "world",
+};
+bindMammothSheets(MAMMOTH_SPRITE.image);
+
 const nebelwerferLauncher: TurretSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
@@ -1169,6 +1183,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   apocalypse: APOCALYPSE_SPRITE,
   ss3: SS3_SPRITE,
   supply: SUPPLY_SPRITE,
+  mammoth: MAMMOTH_SPRITE,
   nebelwerfer: NEBELWERFER_SPRITE,
   stuka: STUKA_SPRITE,
   fw190: FW190_SPRITE,
