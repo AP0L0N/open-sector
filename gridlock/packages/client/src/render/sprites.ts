@@ -160,6 +160,7 @@ import {
   bindDroneSheets,
   bindFighterSheets,
   bindSupplySheets,
+  bindApocalypseSheets,
   bindNebelwerferSheets,
   bindTurntableSheets,
 } from "./turntable-sheet.js";
@@ -200,6 +201,8 @@ export interface UnitSpriteDef {
   turret?: TurretSpriteDef;
   /** Barrel drawn apart from hull/turret so it can recoil. */
   gun?: TurretSpriteDef;
+  /** A small mount on the turret roof with its own facing (the Apocalypse's CIWS). Drawn last. */
+  mount?: TurretSpriteDef;
   /**
    * `world` (default): project facing onto the iso view, then 0001 = screen south.
    * `screen`: engineRowFromScreen of the given vector.
@@ -879,6 +882,33 @@ export const TIGER_SPRITE: UnitSpriteDef = {
 };
 bindTurntableSheets(TIGER_SPRITE.image, tigerTurret.image, tigerGun.image);
 
+function tankLayer(): TurretSpriteDef {
+  return { image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: 128 };
+}
+/**
+ * Apocalypse: the Tiger's layers plus the roof CIWS, which aims on its own facing.
+ * Drawn a size up from the Tiger, as its hull is.
+ */
+export const APOCALYPSE_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(54 * UNIT_VISUAL_SCALE),
+  contactY: 0.92,
+  turret: tankLayer(),
+  gun: tankLayer(),
+  mount: tankLayer(),
+  facingSpace: "world",
+};
+bindApocalypseSheets(
+  APOCALYPSE_SPRITE.image,
+  APOCALYPSE_SPRITE.turret!.image,
+  APOCALYPSE_SPRITE.gun!.image,
+  APOCALYPSE_SPRITE.mount!.image,
+);
+
 const ss3Gun: TurretSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
@@ -1088,6 +1118,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   walker: WALKER_SPRITE,
   titan: TITAN_SPRITE,
   warden: TIGER_SPRITE,
+  apocalypse: APOCALYPSE_SPRITE,
   ss3: SS3_SPRITE,
   supply: SUPPLY_SPRITE,
   nebelwerfer: NEBELWERFER_SPRITE,
@@ -1652,6 +1683,10 @@ export function drawUnitSprite(
     gunShiftY?: number;
     /** Holds this cell instead of the move loop. Clamped to the sheet. */
     frameIndex?: number;
+    /** Roof mount's own facing and iso direction. Default: rides the turret. */
+    mountFacing?: number;
+    mountDx?: number;
+    mountDy?: number;
   },
 ): boolean {
   if (!spriteReady(def)) return false;
@@ -1687,6 +1722,13 @@ export function drawUnitSprite(
   }
   if (!gunBehind && gun && spriteReady(gun)) {
     blitOverlay(ctx, gun, def.facingSpace, tdx, tdy, gunFacing, frame, gx, gy, s);
+  }
+  // The roof mount sits above everything else on the hull, and rides the turret's recoil-free spot.
+  const mount = def.mount;
+  if (mount && spriteReady(mount)) {
+    const mdx = opts.mountDx ?? tdx;
+    const mdy = opts.mountDy ?? tdy;
+    blitOverlay(ctx, mount, def.facingSpace, mdx, mdy, opts.mountFacing ?? gunFacing, frame, hx, hy, s);
   }
   ctx.restore();
   return true;

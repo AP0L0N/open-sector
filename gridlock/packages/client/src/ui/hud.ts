@@ -21,6 +21,7 @@ import {
   getMap,
   hasAmmo,
   hasMg,
+  roofCiwsOf,
   hasScout,
   infantryGunFor,
   infantryLoadout,
@@ -631,7 +632,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
       : "";
   const mg =
     e.mgAmmo != null && !e.wreck
-      ? `  ·  MG ${e.mgAmmo}${e.mgOverheat && e.mgOverheat > 0 ? " HOT" : ""}`
+      ? `  ·  ${roofCiwsOf(e.type) ? "20mm" : "MG"} ${e.mgAmmo}${e.mgOverheat && e.mgOverheat > 0 ? " HOT" : ""}`
       : "";
   const garrison =
     e.garrison
@@ -828,6 +829,7 @@ const TYPE_ORDER: EntityType[] = [
   "stuka",
   "drone",
   "warden",
+  "apocalypse",
   "ss3",
   "walker",
   "cyborg",
@@ -1131,7 +1133,8 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
     const belt = mine.reduce((n, e) => n + (e.mgAmmo ?? 0), 0);
     const heat = mine.length ? mine.reduce((n, e) => n + (e.mgHeat ?? 0), 0) / mine.length : 0;
     const hot = mine.some((e) => (e.mgOverheat ?? 0) > 0);
-    setField(body, "mg-label", hot ? `MG  ${belt}  overheated` : `MG  ${belt}`);
+    const beltName = roofCiwsOf(focus.type) ? "20mm" : "MG";
+    setField(body, "mg-label", hot ? `${beltName}  ${belt}  overheated` : `${beltName}  ${belt}`);
     const bar = body.querySelector('[data-field="mg-heat"]');
     if (bar instanceof HTMLElement) {
       bar.classList.toggle("is-hot", hot);

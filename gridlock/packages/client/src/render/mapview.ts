@@ -181,6 +181,7 @@ import {
   type MuzzleSmokePuff,
 } from "./muzzle-smoke.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
+import { roofCiwsMuzzle } from "./roof-ciws.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { INTERCEPT_BURST_SIZE, RAM_MISS_BURST_SIZE, interceptorTrail } from "./ram.js";
 import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
@@ -307,6 +308,7 @@ const EXTRUDE: Record<EntityType, number> = {
   rig: 22,
   hauler: 16,
   warden: 28,
+  apocalypse: 32,
   ss3: 20,
   rifleman: 26,
   gunner: 26,
@@ -3692,6 +3694,7 @@ export class MapView {
     const hex = this.ownerColor(e);
     const dir = facingToIso(p.facing, this.ts());
     const turretDir = facingToIso(p.turretFacing ?? p.facing, this.ts());
+    const mountDir = e.ciws ? facingToIso(e.ciws.facing, this.ts()) : undefined;
     let hullShiftX = 0;
     let hullShiftY = 0;
     let gunShiftX = 0;
@@ -3739,6 +3742,9 @@ export class MapView {
       hullShiftY,
       gunShiftX,
       gunShiftY,
+      mountFacing: e.ciws?.facing,
+      mountDx: mountDir?.x,
+      mountDy: mountDir?.y,
     });
     if (drawn && e.scout?.out && !e.wreck) {
       drawScoutHead(ctx, s.x + hullShiftX, s.y + hullShiftY, turretDir.x, turretDir.y, size, p.turretFacing);
@@ -3749,6 +3755,10 @@ export class MapView {
       const now = performance.now();
       const muzzles = gatlingMuzzles(s.x, s.y, size, p.turretFacing ?? p.facing, e.gatling.arms, e.gatling.off);
       muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2));
+    }
+    if (drawn && e.ciws?.fire && !e.wreck) {
+      const m = roofCiwsMuzzle(s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size, e.ciws.facing);
+      drawGatlingFlash(ctx, m, size * 0.7, performance.now(), e.id);
     }
     if (drawn && e.type === "pyro" && !e.wreck && !e.swimming && e.clip !== 0) {
       // The igniter at the lance tip stays lit while there is fuel to light.
