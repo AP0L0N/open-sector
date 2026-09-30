@@ -10,6 +10,7 @@ import {
   entityIsScouting,
   garrisonCapOf,
   hasMg,
+  roofCiwsOf,
   hasScout,
   hasTurret,
   isGarrisonable,
@@ -41,6 +42,14 @@ function gatlingView(state: MatchState, e: Entity): EntityView["gatling"] {
   const f = e.gatlingFire;
   if (!f || e.wreck || state.tick - f.tick >= Math.max(1, clampGameSpeed(state.gameSpeed))) return undefined;
   return f.offAim != null ? { arms: f.arms, off: f.offAim } : { arms: f.arms };
+}
+
+/** Roof mount facing, and whether it fired inside the last batch of ticks (same window as gatlingView). */
+function ciwsView(state: MatchState, e: Entity): EntityView["ciws"] {
+  if (!roofCiwsOf(e.type)) return undefined;
+  const at = e.ciwsFireTick;
+  const fire = !e.wreck && at != null && state.tick - at < Math.max(1, clampGameSpeed(state.gameSpeed));
+  return fire ? { facing: e.ciwsFacing ?? e.turretFacing, fire: true } : { facing: e.ciwsFacing ?? e.turretFacing };
 }
 
 function scoutView(e: Entity, friendly: boolean): EntityView["scout"] {
@@ -219,6 +228,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       clip: friendly && (isInfantryType(e.type) || beltOf(e.type)) ? e.clip : undefined,
       guns: friendly && e.type === "walker" ? walkerGunsOf(e) : undefined,
       gatling: gatlingView(state, e),
+      ciws: ciwsView(state, e),
       reload: friendly && (isInfantryType(e.type) || beltOf(e.type)) && e.reload > 0 ? e.reload : undefined,
       bipod: plantRemaining(e, friendly),
       garrisonedIn: friendly && e.garrisonedIn ? e.garrisonedIn : undefined,

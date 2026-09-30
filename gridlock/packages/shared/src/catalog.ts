@@ -402,6 +402,7 @@ export type EntityType =
   | "medic"
   | "hauler"
   | "warden"
+  | "apocalypse"
   | "ss3"
   | "walker"
   | "cyborg"
@@ -445,7 +446,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "ss3" | "walker" | "cyborg" | "titan" | "nebelwerfer" | "supply" | "stuka" | "fw190" | "droneop";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "apocalypse" | "ss3" | "walker" | "cyborg" | "titan" | "nebelwerfer" | "supply" | "stuka" | "fw190" | "droneop";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -468,11 +469,12 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "research"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "fw190", "droneop"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "apocalypse", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "fw190", "droneop"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
   warden: "research",
+  apocalypse: "research",
   cyborg: "research",
   titan: "research",
   nebelwerfer: "research",
@@ -588,6 +590,14 @@ export interface CatalogEntry {
    * the gun to any height, and shoots rockets out of the air.
    */
   radarLaid?: boolean;
+  /**
+   * A radar-laid 20mm mount on the turret roof (the Apocalypse). It traverses and
+   * picks targets on its own, apart from the main gun, and bursts incoming
+   * rockets like the CIWS. It takes the coaxial MG's place: its belt is mgAmmo.
+   */
+  roofCiws?: boolean;
+  /** Main-gun barrels that fire together each reload. Default 1. */
+  twinGuns?: boolean;
   /** Quadcopter flown by a Drone Op. Hovers, ignores ground collision and paths. */
   drone?: boolean;
 }
@@ -1236,6 +1246,20 @@ export const CIWS_INTERCEPT_ROUNDS = 12;
 export const CIWS_INTERCEPTS_PER_TICK = 2;
 
 /**
+ * Apocalypse roof mount. The CIWS gun on a smaller house over the turret: the
+ * same 20mm rounds, fewer barrels, a shorter reach, and a belt the size of a
+ * tank's stowage. Like the pad it lays itself, planes first, and tries every
+ * hostile rocket that comes inside its reach.
+ */
+export const APOCALYPSE_CIWS_RANGE_TILES = t(7);
+/** Rounds each tick. Two a tick is 1,200 a minute. */
+export const APOCALYPSE_CIWS_SHOTS_PER_TICK = 2;
+/** Belt. About thirty seconds on the trigger. */
+export const APOCALYPSE_CIWS_BELT = 600;
+/** The small house swings much faster than the turret under it. */
+export const APOCALYPSE_CIWS_TURN_DEG_PER_SEC = 360;
+
+/**
  * RAM. A radar-laid launcher of short rockets on the same pad as the CIWS. Like
  * the CIWS it needs no orders: it swings onto the nearest enemy unit it can
  * hurt, planes first, and leaves tanks and buildings alone. It fires a barrage
@@ -1510,6 +1534,49 @@ export const STUG_SHELLS: Record<ShellType, ShellDef> = {
   },
 };
 
+/**
+ * Apocalypse twin 105mm rack. Both barrels fire the loaded shell together each
+ * reload, so a volley spends two rounds. Heavier and slower than the Tiger's 75mm.
+ */
+export const APOCALYPSE_SHELLS: Record<ShellType, ShellDef> = {
+  ap: {
+    id: "ap",
+    name: "AP",
+    blurb: "Twin armor-piercing shot. Two rounds a volley. Goes through a Tiger's front plate.",
+    damage: 60,
+    penetration: 125,
+    caliber: 105,
+    spreadDeg: 3,
+  },
+  he: {
+    id: "he",
+    name: "HE",
+    blurb: "Twin high explosive. Two rounds a volley. Clears infantry and knocks buildings down. Ricochets off armor.",
+    damage: 95,
+    penetration: 20,
+    caliber: 105,
+    spreadDeg: 5,
+  },
+  heat: {
+    id: "heat",
+    name: "HEAT",
+    blurb: "Twin shaped charges. The deepest punch in the rack. Two rounds a volley.",
+    damage: 68,
+    penetration: 160,
+    caliber: 105,
+    spreadDeg: 3.5,
+  },
+  smoke: {
+    id: "smoke",
+    name: "Smoke",
+    blurb: "Lays a vision-blocking screen. Never auto-fires — force-attack the ground to place one round, then the gun stops.",
+    damage: 0,
+    penetration: 0,
+    caliber: 105,
+    spreadDeg: 6,
+  },
+};
+
 const UNARMED = {
   armorFront: 0,
   armorSide: 0,
@@ -1707,7 +1774,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Cyborg, Titan, Nebelwerfer, and Drone Op.",
+    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Cyborg, Titan, Nebelwerfer, and Drone Op.",
   },
   ciws: {
     type: "ciws",
@@ -2138,6 +2205,44 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 70,
     hasScout: true,
     blurb: "Heavy tank. Independent turret, thick front plate. Slow hull, long-range rack.",
+  },
+  apocalypse: {
+    type: "apocalypse",
+    kind: "unit",
+    name: "Apocalypse",
+    letter: "A",
+    cost: 450,
+    buildSeconds: 20,
+    hp: 220,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 15,
+    moveTilesPerSec: t(1.1),
+    turnDegPerSec: 60,
+    rangeTiles: TIGER_RANGE_TILES,
+    sightTiles: t(8),
+    cooldown: 8,
+    damage: APOCALYPSE_SHELLS.ap.damage,
+    projectileSpeed: TANK_SHELL_SPEED,
+    turnInPlace: true,
+    tracked: true,
+    turretTurnDegPerSec: 140,
+    armorFront: 120,
+    armorSide: 60,
+    armorRear: 30,
+    penetration: APOCALYPSE_SHELLS.ap.penetration,
+    caliber: APOCALYPSE_SHELLS.ap.caliber,
+    spreadDeg: APOCALYPSE_SHELLS.ap.spreadDeg,
+    shells: APOCALYPSE_SHELLS,
+    twinGuns: true,
+    ammo: { ap: 16, he: 8, smoke: 2 },
+    defaultShell: "ap",
+    roofCiws: true,
+    mgAmmo: APOCALYPSE_CIWS_BELT,
+    leavesWreck: true,
+    wreckHp: 110,
+    blurb: `Super-heavy tank. Two 105mm guns on one turret fire together, two shells a volley, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. A radar-laid 20mm mount on the turret roof lays itself, apart from the main guns: planes first, then infantry and light hulls in reach, and it tries to burst incoming rockets. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
   },
   /** Spec: gridlock/packages/client/src/assets/units/ss3/stug-iii-ausf-g-late-saukopf.md */
   ss3: {
@@ -2981,6 +3086,16 @@ export function radarLaidOf(type: EntityType): boolean {
 }
 
 /** Carries a rocket rack: Titan pods, Nebelwerfer tubes, the RAM launcher. */
+/** Radar-laid 20mm on the turret roof. See CatalogEntry.roofCiws. */
+export function roofCiwsOf(type: EntityType): boolean {
+  return catalog(type).roofCiws === true;
+}
+
+/** Main-gun rounds released together each reload: two on a twin mount. */
+export function mainGunBarrels(type: EntityType): number {
+  return catalog(type).twinGuns ? 2 : 1;
+}
+
 export function rocketsOf(type: EntityType): boolean {
   return catalog(type).rockets === true;
 }
