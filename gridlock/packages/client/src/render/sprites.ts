@@ -159,6 +159,7 @@ import {
   bindCasemateSheets,
   bindDroneSheets,
   bindFighterSheets,
+  bindTransportSheets,
   bindSupplySheets,
   bindNebelwerferSheets,
   bindTurntableSheets,
@@ -958,6 +959,23 @@ export const FW190_SPRITE: UnitSpriteDef = {
 bindFighterSheets(FW190_SPRITE.image);
 
 /**
+ * BV 222 transport. Same camera and cell as the Stuka; its wingspan fills the cell,
+ * so it is drawn well over the Stuka's size to read as the big, slow flying boat it is —
+ * but still inside its hardstand when parked.
+ */
+export const BV222_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(90 * UNIT_VISUAL_SCALE),
+  contactY: 0.8,
+  facingSpace: "world",
+};
+bindTransportSheets(BV222_SPRITE.image);
+
+/**
  * Drone Op's quadcopter. Same camera and 128 cell as the Stuka; its rotor span reads about
  * twice a rifleman's width. The map lifts it by altitude over its own ground shadow.
  */
@@ -1093,6 +1111,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   nebelwerfer: NEBELWERFER_SPRITE,
   stuka: STUKA_SPRITE,
   fw190: FW190_SPRITE,
+  bv222: BV222_SPRITE,
   drone: DRONE_SPRITE,
   rig: RIG_SPRITE,
 };

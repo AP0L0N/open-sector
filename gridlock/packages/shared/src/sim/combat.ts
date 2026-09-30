@@ -141,6 +141,7 @@ import { canSeeEntity } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
 import { escorting, reversing, stepTurn, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
 import { airTargetSpreadMul, isAirborne, reachesAircraft, stepBomb } from "./air.js";
+import { stepCluster } from "./airdrop.js";
 import { projectileMeetsDrone, reachesDrone } from "./drone.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
@@ -269,7 +270,8 @@ function waterSilences(state: MatchState, e: Entity): boolean {
 
 function canFight(e: Entity): boolean {
   // Aircraft fire their own guns and bombs in tickAir.
-  return fires(e.type) && e.hp > 0 && !e.wreck && !e.air && e.state !== "deploy" && e.state !== "undeploy";
+  // A paratrooper under his canopy keeps his rifle slung until he is down.
+  return fires(e.type) && e.hp > 0 && !e.wreck && !e.air && !e.chute && e.state !== "deploy" && e.state !== "undeploy";
 }
 
 /**
@@ -1430,6 +1432,10 @@ export function tickProjectiles(state: MatchState, dt: number): void {
   for (const p of state.projectiles) {
     if (p.flight === "bomb") {
       if (stepBomb(state, p, dt)) keep.push(p);
+      continue;
+    }
+    if (p.flight === "cluster") {
+      if (stepCluster(state, p, dt)) keep.push(p);
       continue;
     }
     if (p.flight === "rocket") {

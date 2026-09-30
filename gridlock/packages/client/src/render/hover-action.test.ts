@@ -224,6 +224,19 @@ describe("resolveHoverAction", () => {
     assert.equal(act({ selected: [warden], hit: open }), "attack");
   });
 
+  it("boards riflemen onto your transport parked for paratroops, and nothing else", () => {
+    const ready = unit({ id: 60, type: "bv222", hp: 220, air: { phase: "parked", alt: 0, payload: "troops", troops: 3 } });
+    const mines = unit({ id: 61, type: "bv222", hp: 220, air: { phase: "parked", alt: 0, payload: "mines", troops: 0 } });
+    const aloft = unit({ id: 62, type: "bv222", hp: 220, air: { phase: "fly", alt: 16, payload: "troops", troops: 3 } });
+    const full = unit({ id: 63, type: "bv222", hp: 220, air: { phase: "parked", alt: 0, payload: "troops", troops: 10 } });
+    const gunner = unit({ id: 64, type: "gunner" });
+    assert.equal(act({ selected: [trooper], hit: ready }), "board");
+    assert.notEqual(act({ selected: [trooper], hit: mines }), "board");
+    assert.notEqual(act({ selected: [trooper], hit: aloft }), "board");
+    assert.notEqual(act({ selected: [trooper], hit: full }), "board");
+    assert.notEqual(act({ selected: [gunner], hit: ready }), "board");
+  });
+
   it("offers ammo to a CIWS that has fired, and not to a full one or a plain structure", () => {
     const crewed = unit({ id: 41, type: "supply", bed: { crew: true, seats: 0 }, supply: 120 });
     const spent = building({ id: 50, type: "ciws", clip: 400 });

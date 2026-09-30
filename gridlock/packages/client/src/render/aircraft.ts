@@ -6,11 +6,16 @@ import { isoLift, type EntityView } from "@gridlock/shared";
  */
 export const AIR_DRAW_LAYER = 3;
 
+/** A plane's height, or a paratrooper's under his canopy. 0 on the ground. */
+function heightOf(e: Pick<EntityView, "air" | "chute">): number {
+  return e.air?.alt ?? e.chute ?? 0;
+}
+
 /** Elevation units above the ground, eased between the last two snapshots. */
 export function lerpAirAlt(prev: EntityView | undefined, curr: EntityView, t: number): number {
-  const a = curr.air?.alt ?? 0;
-  const b = prev?.air?.alt;
-  if (b == null) return a;
+  const a = heightOf(curr);
+  if (!prev || (prev.air == null && prev.chute == null)) return a;
+  const b = heightOf(prev);
   const u = Math.max(0, Math.min(1, t));
   return b + (a - b) * u;
 }
@@ -20,8 +25,8 @@ export function airLiftPx(alt: number): number {
   return isoLift(alt);
 }
 
-export function inAir(e: Pick<EntityView, "air">): boolean {
-  return (e.air?.alt ?? 0) > 0.5;
+export function inAir(e: Pick<EntityView, "air" | "chute">): boolean {
+  return heightOf(e) > 0.5;
 }
 
 /**

@@ -11,6 +11,7 @@ import {
   isArmoredType,
   isFieldStructure,
   isInfantryType,
+  isTransportType,
   wadesOf,
   rocketAmmoOf,
   rocketsOf,
@@ -52,6 +53,8 @@ export function newAirState(homeId: number | null, pad: number, type: EntityType
     extend: false,
     taxi: false,
     touched: false,
+    // A transport comes off the line with a mine canister in the bay.
+    ...(isTransportType(type) ? { payload: "mines" as const } : {}),
   };
 }
 
