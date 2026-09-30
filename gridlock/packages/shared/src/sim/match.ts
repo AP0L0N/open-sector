@@ -2,6 +2,7 @@ import {
   catalog,
   clampGameSpeed,
   GAME_SPEED_DEFAULT,
+  garrisonDiesWithHostOf,
   isInfantryType,
   leavesWreck,
   NEUTRAL_OWNER,
@@ -16,7 +17,7 @@ import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter } from
 import { aircraftDown, tickAir } from "./air.js";
 import { tickDrones } from "./drone.js";
 import { tickCapture } from "./capture.js";
-import { detachGarrisoned, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
+import { detachGarrisoned, killGarrison, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
 import { seedRng } from "./rng.js";
 import { tickBuild } from "./build.js";
 import { restampForts, tickField } from "./field.js";
@@ -172,6 +173,9 @@ function reapDead(state: MatchState): void {
   let madeWreck = false;
   for (const e of state.entities.values()) {
     if (e.hp > 0) continue;
+    if (!e.wreck && e.garrison.length && garrisonDiesWithHostOf(e.type)) {
+      for (const u of killGarrison(state, e)) dead.push(u.id);
+    }
     if (!e.wreck && leavesWreck(e.type) && e.type !== "core" && e.type !== "rig") {
       toWreck(state, e);
       madeWreck = true;
