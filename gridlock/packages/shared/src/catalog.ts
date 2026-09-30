@@ -416,6 +416,7 @@ export type EntityType =
   | "airfield"
   | "ciws"
   | "bunker"
+  | "tower"
   | "ram"
   | "research"
   | "stuka"
@@ -432,7 +433,7 @@ export type EntityType =
   | "sandbags"
   | "teeth"
   | "trench";
-export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "ram" | "bunker" | "research";
+export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "ram" | "bunker" | "tower" | "research";
 /** Placed by an engineer, not the construction yard. */
 export type FieldStructureType = "sandbags" | "teeth" | "trench";
 export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "teeth", "trench"];
@@ -468,7 +469,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
   deploy: 2,
 };
 
-export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "research"];
+export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "tower", "research"];
 export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "ss3", "walker", "cyborg", "titan", "nebelwerfer", "supply", "stuka", "fw190", "droneop"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
@@ -560,6 +561,10 @@ export interface CatalogEntry {
   garrisonWoundMul?: number;
   /** Sight and weapon reach added while inside, watch mode. Default GARRISON_WATCH_SIGHT_BONUS. */
   garrisonSightBonus?: number;
+  /** Weapon reach added while inside, watch mode. Default garrisonSightBonus. */
+  garrisonReachBonus?: number;
+  /** Eye height above the ground for watchers inside, elevation units. Omit: they look from the street. */
+  garrisonEye?: number;
   /** Every weapon works from inside: the Gunner lays his MG on the embrasure ledge. */
   garrisonFullArms?: boolean;
   /** Open to the sky: a mortarman inside can still set his tube and fire. */
@@ -1252,6 +1257,26 @@ export const BUNKER_MEDIC_REGEN_FRAC = 0.004;
 export const BUNKER_ENGINEER_REPAIR_PER_SEC = 1.5;
 
 /**
+ * Watch tower. A concrete shaft with a sandbagged, slitted cab on top. From up
+ * there the crew sees far past anyone on the ground, but a rifle does not
+ * carry much farther for being high, and the thin cab walls stop less than a
+ * bunker's slab. The same infantry that fit a bunker fit the tower.
+ */
+export const TOWER_GARRISON_CAP = 3;
+/** Occupant HP multiplier inside. Same as a civilian house, below the bunker. */
+export const TOWER_GARRISON_HP_MUL = 3;
+/** Share of each hit on the tower that reaches the men inside. Bunker is 0.35. */
+export const TOWER_WOUND_MUL = 0.6;
+/** Extra sight from the cab, watch mode. A house window is GARRISON_WATCH_SIGHT_BONUS. */
+export const TOWER_SIGHT_BONUS = t(8);
+/** Extra weapon reach from the cab. Same as a house window: height helps the eye more than the rifle. */
+export const TOWER_REACH_BONUS = t(2);
+/** Stories to the cab. Sets its solid height and the muzzle lift of the men inside. */
+export const TOWER_FLOORS = 3;
+/** Eye in the cab, elevation units: the muzzle lift of a garrison, well over the treetops. */
+export const TOWER_EYE_HEIGHT = TOWER_FLOORS * STORY_COVER_HEIGHT * 0.6;
+
+/**
  * CIWS. A stationary radar-laid 20mm gatling on a small concrete pad. It needs
  * no crew and no orders: it swings onto the nearest enemy unit it can hurt,
  * planes first, and fires 1,800 rounds a minute. Tank plate shrugs the rounds
@@ -1818,6 +1843,38 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonEngineerRepair: BUNKER_ENGINEER_REPAIR_PER_SEC,
     coverHeight: BUNKER_COVER_HEIGHT,
     blurb: `Reinforced concrete pillbox for ${BUNKER_GARRISON_CAP} infantry: riflemen, gunners, snipers, AT troops, rocketmen, medics, and engineers. The best cover on the field — the walls take most of every hit, and every weapon fires from the slits, the Gunner's MG included. Low, so it adds no sight or reach. A medic inside slowly patches everyone; an engineer inside slowly patches the concrete. Enemy infantry cannot capture it — it has to be shot apart.`,
+  },
+  tower: {
+    type: "tower",
+    kind: "building",
+    name: "Watch Tower",
+    letter: "t",
+    cost: 500,
+    buildSeconds: 14,
+    hp: 1600,
+    power: 0,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    garrisonCap: TOWER_GARRISON_CAP,
+    garrisonHpMul: TOWER_GARRISON_HP_MUL,
+    garrisonWoundMul: TOWER_WOUND_MUL,
+    garrisonWindows: 4,
+    garrisonFloors: TOWER_FLOORS,
+    garrisonSightBonus: TOWER_SIGHT_BONUS,
+    garrisonReachBonus: TOWER_REACH_BONUS,
+    garrisonEye: TOWER_EYE_HEIGHT,
+    garrisonFullArms: true,
+    garrisonTypes: BUNKER_TYPES,
+    blurb: `Fortified watch tower for ${TOWER_GARRISON_CAP} infantry, the same troops a bunker takes. From the cab they see far across the field, well past anyone on the ground, and every weapon fires from the slits. Their reach grows only a little. The walls stop part of each hit: better than a house, not a bunker.`,
   },
   ram: {
     type: "ram",
@@ -2848,6 +2905,11 @@ export function garrisonWoundMulOf(type: EntityType): number {
 /** Sight and reach a watch garrison gains inside. Tall houses see farther; a bunker does not. */
 export function garrisonSightBonusOf(type: EntityType): number {
   return catalog(type).garrisonSightBonus ?? GARRISON_WATCH_SIGHT_BONUS;
+}
+
+/** Weapon reach a watch garrison gains inside. A tower sees much farther than it shoots. */
+export function garrisonReachBonusOf(type: EntityType): number {
+  return catalog(type).garrisonReachBonus ?? garrisonSightBonusOf(type);
 }
 
 export function garrisonFullArmsOf(type: EntityType): boolean {
