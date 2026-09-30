@@ -227,6 +227,46 @@ describe("Fw 190", () => {
     assert.equal(friend.hp, friend.hpMax, "the friend beside him does not");
   });
 
+  /** Your own fighter on its pad and one of your own units out on open ground. */
+  function ownRange(type: "rifleman" | "warden"): { state: MatchState; plane: Entity; target: Entity } {
+    const state = twoPlayerMatch();
+    seedCore(state);
+    const field = seedAirfield(state);
+    const plane = spawnUnit(state, "A", "fw190", field, false)!;
+    const ts = state.tileSize;
+    const target = makeEntity(state, type, "A", 120 * ts, 60 * ts);
+    target.holdPosition = true;
+    return { state, plane, target };
+  }
+
+  for (const type of ["rifleman", "warden"] as const) {
+    it(`force-attack on your own ${catalog(type).name} hurts it, as a forced bomb does`, () => {
+      const { state, plane, target } = ownRange(type);
+      const hp0 = target.hp;
+      const r = applyCommand(state, "A", { type: "cmd.forceattack", ids: [plane.id], x: target.x, y: target.y, targetId: target.id });
+      assert.equal(r.ok, true, !r.ok ? r.message : "");
+      const shot = nextBarrage(state, plane, 900);
+      assert.ok(shot, "a barrage should fire on a forced target");
+      assert.ok(!state.entities.has(target.id) || target.hp < hp0, `${type} hp ${target.hp}/${hp0}`);
+    });
+  }
+
+  it("force-fire on a bare ground point lays a barrage there", () => {
+    const state = twoPlayerMatch();
+    seedCore(state);
+    const field = seedAirfield(state);
+    const plane = spawnUnit(state, "A", "fw190", field, false)!;
+    const ts = state.tileSize;
+    const foe = makeEntity(state, "rifleman", "B", 120 * ts, 60 * ts);
+    foe.clip = 0;
+    foe.reload = 9999;
+    applyCommand(state, "A", { type: "cmd.forceattack", ids: [plane.id], x: foe.x, y: foe.y });
+    const shot = nextBarrage(state, plane, 900);
+    assert.ok(shot, "a barrage should fire on a ground point");
+    assert.equal(shot.impacts.length, FW190_BARRAGE_ROUNDS * 2);
+    assert.equal(state.entities.has(foe.id), false, "the soldier standing on the point dies");
+  });
+
   it("a Stuka still does not take a plane in the air", () => {
     const state = twoPlayerMatch();
     const ts = state.tileSize;
