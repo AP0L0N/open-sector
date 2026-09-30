@@ -8,7 +8,7 @@ import {
   isCapturable,
   isInfantryType,
 } from "../catalog.js";
-import { adjacentToBuilding, allies, tileCenter } from "./geo.js";
+import { adjacentToBuilding, allies, jetAloft, tileCenter } from "./geo.js";
 import { approachTile, spillGarrison } from "./garrison.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
@@ -20,6 +20,7 @@ export function wantsCapture(unit: Entity, target: Entity): boolean {
     unit.kind === "unit" &&
     !unit.wreck &&
     unit.garrisonedIn == null &&
+    !jetAloft(unit) &&
     target.kind === "building" &&
     isCapturable(target.type) &&
     !target.wreck &&

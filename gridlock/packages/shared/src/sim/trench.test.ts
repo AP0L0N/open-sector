@@ -147,6 +147,20 @@ describe("trench", () => {
       r.hp = r.hpMax;
     }
     assert.ok(coverHeightOf("trench") < coverHeightOf("bunker"), "lower than a bunker");
+    // Fire from overhead (a Jump Jet in the air) drops into the open hole: the earth soaks none of it.
+    let side = 0;
+    let above = 0;
+    for (let i = 0; i < 40; i++) {
+      let before = r.hp;
+      woundGarrison(state, trench, 50, 7.92);
+      side += before - r.hp;
+      r.hp = r.hpMax;
+      before = r.hp;
+      woundGarrison(state, trench, 50, 7.92, true);
+      above += before - r.hp;
+      r.hp = r.hpMax;
+    }
+    assert.ok(above > side / TRENCH_WOUND_MUL * 0.8, `overhead ${above} vs parapet ${side}`);
     const sight = sightTilesForEntity(state, trooper(state, "rifleman", a, 40, 30));
     assert.equal(sightTilesForEntity(state, r), sight, "no sight bonus from a hole");
   });

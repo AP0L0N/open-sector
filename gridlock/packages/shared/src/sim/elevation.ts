@@ -96,8 +96,9 @@ export function muzzleHeight(state: MatchState, e: Entity): number {
   return entityHeight(state, e) + observerEyeForEntity(e);
 }
 
-/** Elevation units a plane flies above the ground. 0 on the pad and for every ground type. */
-export function airAlt(e: { air?: { alt: number }; chute?: { alt: number } | number }): number {
+/** Elevation units a plane (or a Jump Jet) flies above the ground. 0 on the pad and for every ground type. */
+export function airAlt(e: { air?: { alt: number }; jet?: { alt: number }; chute?: { alt: number } | number }): number {
+  if (e.jet) return e.jet.alt > 0 ? e.jet.alt : 0;
   if (e.air && e.air.alt > 0) return e.air.alt;
   // A paratrooper under his canopy hangs in the air until he touches down.
   const c = typeof e.chute === "number" ? e.chute : e.chute?.alt;
@@ -178,6 +179,7 @@ export function observerEyeForEntity(e: {
   scoutOut?: boolean;
   scoutHp?: number;
   air?: { alt: number };
+  jet?: { alt: number };
 }): number {
   const alt = airAlt(e);
   if (alt > 0) return HULL_EYE_HEIGHT + alt;

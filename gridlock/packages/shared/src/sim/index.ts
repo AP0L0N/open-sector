@@ -45,6 +45,7 @@ export { powerOf, productionSpeed } from "./power.js";
 export { producerType } from "./train.js";
 export { airfieldPadWorld, airfieldRunway, isAirborne, PARK_HEADING, reachesAircraft, RUNWAY_HEADING } from "./air.js";
 export { droneIsHigh, droneModeAlt } from "./drone.js";
+export { jetAloft, reachesJet, takeoffBlocked } from "./jet.js";
 export { mortarAirZ, mortarArcPoints } from "./mortar.js";
 export type { MortarArcPoint } from "./mortar.js";
 export {

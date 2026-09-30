@@ -166,6 +166,18 @@ export interface SupplyCrate {
   turn: number;
 }
 
+/** Jump Jet only: his jet pack. */
+export interface JetState {
+  /** Elevation units above the ground under him. 0 while he walks. */
+  alt: number;
+  /** Wants to be in the air. False while he walks, and on the way down. */
+  up: boolean;
+  /** Seconds of flight left in the pack. */
+  fuel: number;
+  /** Seconds on the ground before the pack starts to refill. */
+  refuel: number;
+}
+
 /** Drone Op only: the one quadcopter he flies. */
 export interface DroneLink {
   /** Drone in the air. Null while it is stowed or being rebuilt. */
@@ -332,6 +344,8 @@ export interface Entity {
   drone?: DroneState;
   /** Paratrooper on the way down. No orders, no fire; small arms can reach him. */
   chute?: Chute;
+  /** Jump Jet only. */
+  jet?: JetState;
 }
 
 export interface Projectile {
@@ -389,6 +403,12 @@ export interface Projectile {
   antiAir?: boolean;
   /** Fired down from a plane's wing cannon: on a hull it meets the roof (resolveRoofHit), not a face. */
   fromAbove?: boolean;
+  /**
+   * Fired down by a Jump Jet in the air. It comes over sandbags and through
+   * the canopy, a crouch or a crawl does not shrink the man, and a trench
+   * parapet soaks none of it.
+   */
+  plunging?: boolean;
 }
 
 /** Lasting smoke screen from a 75mm smoke shell. */

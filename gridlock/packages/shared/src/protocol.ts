@@ -14,7 +14,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 56;
+export const PROTOCOL_VERSION = 57;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -247,6 +247,11 @@ export interface EntityView {
    * `charge` of the stowed drone, or `rebuild` seconds left on a new one.
    */
   droneLink?: { mode: DroneMode; droneId?: number; charge: number; chargeMax: number; rebuild?: number; launchMin: number };
+  /**
+   * Jump Jet's pack. Everyone sees the height (`alt`, elevation units over
+   * the ground). Fuel, whether he is lit, and the refill are friendly-only.
+   */
+  jet?: { alt: number; up?: boolean; fuel?: number; fuelMax?: number; takeoffMin?: number; refuel?: number };
 }
 
 export interface PlayerPublic {
@@ -549,6 +554,8 @@ export type ClientMessage =
    * mode: Surveillance (high, wide sight) or Search & Destroy (low, strikes).
    */
   | { type: "cmd.drone"; ids: number[]; action: "launch" | "recall" | "mode"; mode?: DroneMode }
+  /** Jump Jets: `up` lights the pack and lifts off; `land` sets down on the nearest open ground. */
+  | { type: "cmd.jet"; ids: number[]; action: "up" | "land" }
   | { type: "cmd.speed"; delta: number };
 
 export type ServerMessage =

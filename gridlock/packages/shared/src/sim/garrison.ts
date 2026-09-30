@@ -6,6 +6,7 @@ import {
   garrisonFloorsOf,
   garrisonHpMulOf,
   garrisonWindowsOf,
+  garrisonOpenTopOf,
   garrisonWoundMulOf,
   isCivilianType,
   isGarrisonable,
@@ -147,10 +148,11 @@ export function detachGarrisoned(state: MatchState, unit: Entity): void {
  * Incoming fire through the walls. A random occupant eats most of the hit;
  * others may catch splinters. Heavy calibers wound more of the stack.
  */
-export function woundGarrison(state: MatchState, house: Entity, incoming: number, caliber = 0): void {
+export function woundGarrison(state: MatchState, house: Entity, incoming: number, caliber = 0, plunging = false): void {
   const units = livingGarrison(state, house);
   if (units.length === 0 || incoming <= 0) return;
-  incoming *= garrisonWoundMulOf(house.type);
+  // Fire from overhead drops straight into an open-topped hole; the parapet is no help.
+  if (!(plunging && garrisonOpenTopOf(house.type))) incoming *= garrisonWoundMulOf(house.type);
   const heavy = caliber >= GARRISON_STRUCTURAL_CALIBER;
   const primary = units[Math.floor(nextRand(state) * units.length)]!;
   woundOccupant(primary, incoming * (heavy ? 0.5 + nextRand(state) * 0.7 : 0.4 + nextRand(state) * 0.7), state.tick);
