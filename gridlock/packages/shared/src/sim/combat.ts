@@ -1755,7 +1755,7 @@ function cannonSplash(state: MatchState, p: Projectile): void {
   const radius = FW190_SPLASH_TILES * state.tileSize;
   for (const e of state.entities.values()) {
     if (e.hp <= 0 || e.wreck || e.kind !== "unit" || e.garrisonedIn != null || isAirborne(e)) continue;
-    if (e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
+    if (!p.harmAllies && e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
     if (isArmored(catalog(e.type))) continue;
     const d = Math.hypot(e.x - p.x, e.y - p.y);
     if (d > radius + e.radius) continue;
@@ -1778,8 +1778,8 @@ function nearestSweepHit(
   for (const e of state.entities.values()) {
     if (e.hp <= 0) continue;
     if (e.id === p.ignoreId) continue;
-    // A pilot strafes the enemy's line, not his own side's.
-    if (p.fromAbove && e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
+    // A pilot strafes the enemy's line, not his own side's, unless he was told to (force-attack).
+    if (p.fromAbove && !p.harmAllies && e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
     if (e.garrisonedIn != null) continue;
     const hit = sweepAgainst(state, x0, y0, p, e);
     if (!hit) continue;
