@@ -19,6 +19,7 @@ import {
   infantryGunFor,
   isAircraftType,
   isInfantryType,
+  isTransportType,
   supplyDrumOf,
   supplyShortOf,
   rocketAmmoOf,
@@ -73,6 +74,8 @@ export function supplyShooter(state: MatchState, truck: Entity): Entity | null {
 export function supplyRiderFights(state: MatchState, e: Entity): boolean {
   if (e.garrisonedIn == null) return true;
   const host = state.entities.get(e.garrisonedIn);
+  // Jumpers in a transport's bay sit on their rifles until they are out of the door.
+  if (host && isTransportType(host.type)) return false;
   if (!host || host.type !== "supply") return true;
   const shooter = supplyShooter(state, host);
   if (!shooter || shooter.id !== e.id) return false;
@@ -327,7 +330,8 @@ function giveRounds(e: Entity, n: number): boolean {
   return false;
 }
 
-function transferOnce(truck: Entity, target: Entity): boolean {
+/** One hand-out from a store of supply points (a truck's bed, a dropped crate): a shell or rocket, else a belt's worth of rounds. */
+export function transferOnce(truck: { supply: number }, target: Entity): boolean {
   if (truck.supply <= 0) return false;
   if (truck.supply >= SUPPLY_SHELL_COST && (giveShell(target) || giveRocket(target))) {
     truck.supply -= SUPPLY_SHELL_COST;
@@ -444,6 +448,8 @@ function tickBoard(state: MatchState, unit: Entity): void {
     clearOrder(unit);
     return;
   }
+  // Boarding a transport on its hardstand is tickPlaneBoarding's.
+  if (isTransportType(truck.type)) return;
   if (canBoardTruck(state, unit, truck)) {
     clearOrder(unit);
     return;

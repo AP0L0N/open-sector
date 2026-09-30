@@ -20,6 +20,7 @@ import {
   walkerGunsOf,
 } from "../catalog.js";
 import { padsTaken } from "./air.js";
+import { crateViews, mineViews, payloadOf, planeRiders } from "./airdrop.js";
 import { cyborgShielded } from "./crits.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { allies, unitInWater } from "./geo.js";
@@ -260,8 +261,11 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
             bombs: friendly ? e.air.bombs : undefined,
             rounds: friendly ? e.air.rounds : undefined,
             homeId: friendly && e.air.homeId != null ? e.air.homeId : undefined,
+            payload: friendly ? payloadOf(e) : undefined,
+            troops: friendly && payloadOf(e) ? planeRiders(state, e).length : undefined,
           }
         : undefined,
+      chute: e.chute ? e.chute.alt : undefined,
       pads:
         friendly && e.type === "airfield" ? { used: padsTaken(state, e).size, cap: AIRFIELD_PADS } : undefined,
       drone: e.drone
@@ -345,9 +349,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
             ? Math.min(1, Math.max(0, ((p.flightTime ?? 0) - Math.max(0, p.life)) / (p.flightTime ?? 1)))
             : undefined,
         hang: p.flight === "mortar" || p.flight === "flame" ? p.flightTime : undefined,
-        bomb: p.flight === "bomb" ? true : undefined,
+        // A mine canister falls like a small bomb; its caliber tells the client it is not an SC 250.
+        bomb: p.flight === "bomb" || p.flight === "cluster" ? true : undefined,
         rocket: p.flight === "rocket" ? true : undefined,
-        ...(p.flight === "bomb" || p.flight === "rocket" ? { z: p.z ?? 0 } : {}),
+        ...(p.flight === "bomb" || p.flight === "rocket" || p.flight === "cluster" ? { z: p.z ?? 0 } : {}),
         ...(p.flight === "flame"
           ? {
               flame: true,
@@ -373,6 +378,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     fires: state.fires
       .filter((f) => allies(state, youPlayerId, f.ownerId) || canSeeWorld(state, vis, f.x, f.y))
       .map((f) => ({ id: f.id, x: f.x, y: f.y, radius: f.radius, life: f.life, lifeMax: f.lifeMax })),
+    mines: mineViews(state, youPlayerId, vis),
+    crates: crateViews(state, youPlayerId, vis),
     scrap,
     clearedTrees: state.clearedTrees.map((t) => ({ x: t.x, y: t.y })),
     bodies: visibleBodies(state, youPlayerId, vis),

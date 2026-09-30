@@ -12,6 +12,7 @@ import {
   isCivilianType,
   isFieldStructure,
   isInfantryType,
+  isTransportType,
   isStance,
   colorHex,
   entityOnMask,
@@ -222,6 +223,7 @@ import {
   type FlameParticle,
 } from "./flame-fx.js";
 import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir, lerpAirAlt } from "./aircraft.js";
+import { canopySway, drawCanopy, drawCrate, drawMine, troopCanopySpan } from "./airdrop-fx.js";
 import { barrageTracers, tracerLandsAt, tracerSpan, type BarrageTracer } from "./barrage-tracer.js";
 import { drawSandbags } from "./sandbags.js";
 import { drawTrench } from "./trench.js";
@@ -307,6 +309,7 @@ const EXTRUDE: Record<EntityType, number> = {
   ram: 26,
   stuka: 14,
   fw190: 12,
+  bv222: 22,
   drone: 8,
   droneop: 26,
   rig: 22,
@@ -1843,7 +1846,8 @@ export class MapView {
   private commitForceAttack(px: number, py: number): void {
     const ids = this.ownAimIds().filter((id) => {
       const ent = this.curr.entities.find((x) => x.id === id);
-      return !!ent && fires(ent.type);
+      // A transport has no gun: its force-attack is the drop.
+      return !!ent && (fires(ent.type) || isTransportType(ent.type));
     });
     if (!this.keepModeForQueue()) this.setForceAttackMode(false);
     if (ids.length === 0) return;
@@ -2079,7 +2083,7 @@ export class MapView {
 
   /** Screen pixels a plane sits above its ground point. 0 for everything on the ground. */
   private airLift(e: EntityView): number {
-    if (!e.air) return 0;
+    if (!e.air && e.chute == null) return 0;
     const t = Math.min(1, (performance.now() - this.snapAt) / 100);
     return airLiftPx(lerpAirAlt(this.prevById.get(e.id), e, t));
   }
@@ -2485,7 +2489,10 @@ export class MapView {
         run: () => {
           if (isFieldStructure(e.type)) this.drawField(e, ghost);
           else if (e.kind === "building") this.drawBuilding(e, ghost);
-          else if (!ghost && !e.garrisonedIn && this.unitNearView(e, w, h)) this.drawUnit(e);
+          else if (!ghost && !e.garrisonedIn && this.unitNearView(e, w, h)) {
+            this.drawUnit(e);
+            if (e.chute != null) this.drawTroopCanopy(e);
+          }
         },
       });
       if (e.kind === "building" && buildingGroundFor(e.type)) {
@@ -2507,6 +2514,7 @@ export class MapView {
     this.collectTrackKicks(items);
     this.collectMuzzleSmoke(items);
     this.collectFires(items, w, h);
+    this.collectAirdrops(items, w, h);
     for (const m of this.takeMoveClicks()) {
       items.push({
         layer: 0,
@@ -3778,6 +3786,16 @@ export class MapView {
     }
   }
 
+  /** A paratrooper's canopy, over his head at his height. */
+  private drawTroopCanopy(e: EntityView): void {
+    const def = this.spriteOf(e);
+    const size = def?.drawSize ?? 24;
+    const p = this.lerpEnt(e);
+    const s = this.toScreen(p.x, p.y);
+    const head = s.y - this.airLift(e) - size * (def?.contactY ?? 0.9) + size * 0.2;
+    drawCanopy(this.ctx, s.x, head, troopCanopySpan(size), canopySway(e.id, performance.now()));
+  }
+
   private drawSpritedUnit(e: EntityView, def: UnitSpriteDef): void {
     const ctx = this.ctx;
     const p = this.lerpEnt(e);
@@ -4238,6 +4256,47 @@ export class MapView {
    * the fire has flames behind him and in front of him. Smoke rolls off into
    * the rocket-smoke pool, which drifts and spreads it.
    */
+  private playerColor(ownerId: string): string {
+    const pl = this.curr.players.find((p) => p.playerId === ownerId);
+    return pl ? colorHex(pl.colorId) : "#b08968";
+  }
+
+  /** Mines in the grass, and supply crates on the ground or hanging under their canopies. */
+  private collectAirdrops(items: DrawItem[], w: number, h: number): void {
+    const now = performance.now();
+    const you = this.curr.youPlayerId;
+    for (const m of this.curr.mines ?? []) {
+      const s = this.toScreen(m.x, m.y);
+      if (s.x < -12 || s.y < -12 || s.x > w + 12 || s.y > h + 12) continue;
+      const own = ownerAllied(this.curr, m.ownerId) || m.ownerId === you;
+      items.push({
+        layer: GROUND_DECAL_DRAW_LAYER,
+        z: isoDepth(m.x, m.y),
+        run: () => drawMine(this.ctx, s.x, s.y, { seed: m.id, own, arming: m.armed === false, ring: this.playerColor(m.ownerId), nowMs: now }),
+      });
+    }
+    const t = Math.min(1, (now - this.snapAt) / 100);
+    for (const c of this.curr.crates ?? []) {
+      const prev = this.prev?.crates?.find((q) => q.id === c.id);
+      const wx = prev ? prev.x + (c.x - prev.x) * t : c.x;
+      const wy = prev ? prev.y + (c.y - prev.y) * t : c.y;
+      const alt = prev?.alt != null ? prev.alt + ((c.alt ?? 0) - prev.alt) * t : (c.alt ?? 0);
+      const s = this.toScreen(wx, wy);
+      if (s.x < -40 || s.y < -80 || s.x > w + 40 || s.y > h + 40) continue;
+      const size = Math.max(20, this.ts() * 2.4);
+      const left = c.supply != null && c.supplyMax ? c.supply / c.supplyMax : 1;
+      items.push({
+        layer: alt > 0.5 ? AIR_DRAW_LAYER : STANDING_DRAW_LAYER,
+        z: isoDepth(wx, wy),
+        run: () => {
+          const y = s.y - airLiftPx(alt);
+          drawCrate(this.ctx, s.x, y, size, this.playerColor(c.ownerId), left);
+          if (alt > 0.5) drawCanopy(this.ctx, s.x, y - size * 0.75, size * 1.6, canopySway(c.id, now));
+        },
+      });
+    }
+  }
+
   private collectFires(items: DrawItem[], w: number, h: number): void {
     const now = performance.now();
     const fires = this.curr.fires ?? [];

@@ -16,6 +16,11 @@ import {
   beltOf,
   carriesShell,
   airLoadoutOf,
+  AIR_DROPS,
+  AIR_DROP_INFO,
+  BV222_TROOPS,
+  isAirDrop,
+  isTransportType,
   catalog,
   colorHex,
   getMap,
@@ -249,7 +254,7 @@ export function mountBattlefield(
     });
   }
 
-  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-rockets]", (t) => {
+  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-rockets], [data-payload]", (t) => {
     runConfigAction(ctx, t);
   });
 
@@ -680,6 +685,13 @@ function airLine(air: NonNullable<EntityView["air"]>, type: EntityType): string 
   let s = `  ·  ${AIR_PHASE_LABEL[air.phase]}`;
   if (air.fuel != null && air.fuelMax) s += `  ·  fuel ${Math.round((air.fuel / air.fuelMax) * 100)}%`;
   const load = airLoadoutOf(type);
+  if (air.payload) {
+    const name = AIR_DROP_INFO[air.payload].name.toLowerCase();
+    if (air.payload === "troops") s += `  ·  paratroops ${air.troops ?? 0}/${BV222_TROOPS}`;
+    else if (air.bombs != null) s += `  ·  ${name} ${air.bombs > 0 ? "loaded" : air.phase === "parked" ? "loading" : "dropped"}`;
+    if (air.phase !== "parked" && air.homeId == null && air.fuel != null) s += "  ·  NO AIRFIELD";
+    return s;
+  }
   if (air.bombs != null && load.bombs > 0) s += `  ·  bomb ${air.bombs > 0 ? "armed" : "spent"}`;
   if (air.rounds != null) s += load.bombs > 0 ? `  ·  MG ${Math.round(air.rounds)}` : `  ·  barrages ${Math.floor(air.rounds)}`;
   if (air.phase !== "parked" && air.homeId == null && air.fuel != null) s += "  ·  NO AIRFIELD";
@@ -782,7 +794,7 @@ function updateRocketRack(body: HTMLElement, type: EntityType, mine: EntityView[
 }
 
 function loadoutButton(opts: {
-  attr: "data-shell" | "data-weapon" | "data-guns" | "data-rockets";
+  attr: "data-shell" | "data-weapon" | "data-guns" | "data-rockets" | "data-payload";
   id: string;
   name: string;
   blurb: string;
@@ -825,6 +837,7 @@ function infantryClipShown(e: EntityView, gunId: string): number {
 
 const TYPE_ORDER: EntityType[] = [
   "fw190",
+  "bv222",
   "stuka",
   "drone",
   "warden",
@@ -920,6 +933,7 @@ function configBodyLayout(focus: EntityView, live: EntityView[], wrecks: EntityV
   const mine = live.filter((e) => e.ownerId === you);
   const parts = [focus.type, "live"];
   if (focus.type === "walker") parts.push("gatling");
+  else if (isTransportType(focus.type)) parts.push(mine.length > 0 ? "payload" : "transport");
   else if (hasAmmo(focus.type)) parts.push("ammo");
   if (rocketsOf(focus.type) && mine.length > 0) parts.push("rockets");
   else if (isInfantryType(focus.type)) {
@@ -981,6 +995,16 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
     }
     body.append(el("div", { class: "tiny", text: "Gatling" }), rack);
     body.append(el("p", { class: "tiny", attrs: { "data-field": "clip" } }));
+  } else if (isTransportType(focus.type)) {
+    if (mine.length > 0) {
+      const rack = el("div", { class: "shell-rack" });
+      for (const id of AIR_DROPS) {
+        const d = AIR_DROP_INFO[id];
+        rack.append(loadoutButton({ attr: "data-payload", id, name: d.name, blurb: d.blurb, count: "", on: false }));
+      }
+      body.append(el("div", { class: "tiny", text: "Load (change on the pad)" }), rack);
+    }
+    body.append(el("p", { class: "tiny", attrs: { "data-field": "cargo" } }));
   } else if (hasAmmo(focus.type)) {
     const rack = el("div", { class: "shell-rack" });
     const table = shellsFor(focus.type);
@@ -1053,6 +1077,36 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
       });
     }
     setField(body, "clip", beltLine(live));
+  } else if (isTransportType(focus.type)) {
+    const mine = live.filter((e) => e.ownerId === you && e.air);
+    const load = mine[0]?.air?.payload;
+    const same = mine.length > 0 && mine.every((e) => e.air?.payload === load);
+    const parked = mine.some((e) => e.air?.phase === "parked");
+    for (const id of AIR_DROPS) {
+      const btn = body.querySelector(`[data-payload="${id}"]`);
+      if (!(btn instanceof HTMLElement)) continue;
+      const on = same && load === id;
+      const troops = mine.reduce((n, e) => n + (e.air?.payload === "troops" ? (e.air.troops ?? 0) : 0), 0);
+      const loaded = mine.filter((e) => e.air?.payload === id && (e.air.bombs ?? 0) > 0).length;
+      updateLoadoutButton(btn, {
+        count: !on ? "" : id === "troops" ? `${troops}/${BV222_TROOPS * mine.length}` : `${loaded}/${mine.length}`,
+        on,
+        empty: !on && !parked,
+      });
+    }
+    const lines = mine.map((e) => {
+      const a = e.air!;
+      if (a.payload === "troops") return `${a.troops ?? 0} riflemen aboard`;
+      const name = AIR_DROP_INFO[a.payload ?? "mines"].name;
+      return (a.bombs ?? 0) > 0 ? `${name} loaded` : a.phase === "parked" ? `${name} loading…` : `${name} dropped`;
+    });
+    setField(
+      body,
+      "cargo",
+      mine.length === 0
+        ? "Transport"
+        : `${[...new Set(lines)].join("  ·  ")}  ·  Force-attack the ground to drop.`,
+    );
   } else if (hasAmmo(focus.type)) {
     const shells = live.filter((e) => e.ownerId === you);
     const same = shells.length > 0 && shells.every((e) => e.shell === shells[0]!.shell);
@@ -1286,7 +1340,15 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       on: !!view?.attackMoveMode,
     });
   }
-  if (units.length || mounts.length) {
+  if (units.length > 0 && units.every((e) => isTransportType(e.type))) {
+    out.push({
+      slot: "forceattack",
+      act: "forceattack",
+      label: "Drop here",
+      title: "Fly over a point and drop the load: mines, a supply crate, or the paratroops (hold Ctrl and click).",
+      on: !!view?.forceAttackMode,
+    });
+  } else if (units.length || mounts.length) {
     out.push({
       slot: "forceattack",
       act: "forceattack",
@@ -1441,7 +1503,14 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
     });
   }
   const trucks = units.filter((e) => e.type === "supply" && e.bed);
-  if (trucks.some((e) => e.bed?.crew && (e.bed.seats ?? 0) > 0)) {
+  if (units.some((e) => isTransportType(e.type) && e.air?.phase === "parked" && (e.air.troops ?? 0) > 0)) {
+    out.push({
+      slot: "unboard",
+      act: "unboard",
+      label: "Unload",
+      title: "The riflemen aboard climb out onto the grass beside the hardstand.",
+    });
+  } else if (trucks.some((e) => e.bed?.crew && (e.bed.seats ?? 0) > 0)) {
     out.push({
       slot: "unboard",
       act: "unboard",
@@ -1546,6 +1615,16 @@ function runConfigAction(ctx: Ctx, t: HTMLElement): void {
     return;
   }
   if (!viewRef || !ctx.match) return;
+  const payload = t.dataset.payload;
+  if (payload) {
+    if (!isAirDrop(payload)) return;
+    const ids = selectedOfType(ctx, viewRef, configFocus)
+      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && isTransportType(ent.type))
+      .map((ent) => ent.id);
+    if (ids.length === 0) return;
+    ctx.net.send({ type: "cmd.payload", ids, payload });
+    return;
+  }
   const pods = t.dataset.rockets;
   if (pods === "on" || pods === "off") {
     const ids = selectedOfType(ctx, viewRef, configFocus)
@@ -1656,7 +1735,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     return;
   }
   if (act === "unboard") {
-    const trucks = units.filter((e) => e.type === "supply");
+    const trucks = units.filter((e) => e.type === "supply" || (isTransportType(e.type) && (e.air?.troops ?? 0) > 0));
     for (const truck of trucks) ctx.net.send({ type: "cmd.unboard", truckId: truck.id });
     return;
   }

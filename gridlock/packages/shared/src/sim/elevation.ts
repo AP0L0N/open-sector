@@ -97,8 +97,11 @@ export function muzzleHeight(state: MatchState, e: Entity): number {
 }
 
 /** Elevation units a plane flies above the ground. 0 on the pad and for every ground type. */
-export function airAlt(e: { air?: { alt: number } }): number {
-  return e.air && e.air.alt > 0 ? e.air.alt : 0;
+export function airAlt(e: { air?: { alt: number }; chute?: { alt: number } | number }): number {
+  if (e.air && e.air.alt > 0) return e.air.alt;
+  // A paratrooper under his canopy hangs in the air until he touches down.
+  const c = typeof e.chute === "number" ? e.chute : e.chute?.alt;
+  return c != null && c > 0 ? c : 0;
 }
 
 /**
