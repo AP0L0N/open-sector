@@ -1,5 +1,14 @@
 import {
   AIR_HIT_BAND,
+  APOCALYPSE_CIWS_RANGE_TILES,
+  APOCALYPSE_CIWS_SHOTS_PER_TICK,
+  APOCALYPSE_CIWS_TURN_DEG_PER_SEC,
+  CIWS_AIR_SPREAD,
+  CIWS_GUN,
+  FACE_FIRE_DEG,
+  mainGunBarrels,
+  roofCiwsOf,
+  SMALL_ARMS_SPEED,
   aimFacing,
   beltOf,
   CIWS_INTERCEPT_CHANCE,
@@ -98,6 +107,7 @@ import {
   airAlt,
   canAimWeapon,
   entityHeight,
+  rangeTilesOf,
   muzzleHeight,
   shotClearsCover,
   sightTilesForEntity,
@@ -151,6 +161,9 @@ import { airTargetSpreadMul, isAirborne, reachesAircraft, stepBomb } from "./air
 import { projectileMeetsDrone, reachesDrone } from "./drone.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
+/** A twin mount's barrels sit this share of the hull radius either side of the bore line. */
+const TWIN_GUN_SIDE = 0.25;
+
 export function tickCombat(state: MatchState, dt: number): void {
   syncSupplyRiders(state);
   syncHullGarrisons(state);
@@ -164,6 +177,7 @@ export function tickCombat(state: MatchState, dt: number): void {
   const downed = new Set<number>();
   for (const e of state.entities.values()) {
     if (!canFight(e) || !supplyRiderFights(state, e) || waterSilences(state, e) || garrisonIsHiding(state, e)) continue;
+    if (roofCiwsOf(e.type)) tickRoofCiws(state, e, dt, downed);
     if (interceptRockets(state, e, downed)) continue;
     fireAtCurrent(state, e, dt);
   }
@@ -185,7 +199,33 @@ function interceptRockets(state: MatchState, e: Entity, downed: Set<number>): bo
   if (!radarLaidOf(e.type)) return false;
   if (rocketsOf(e.type)) return launchInterceptor(state, e, downed);
   if (e.clip <= 0) return false;
-  const range = weaponRangeWorld(state, e);
+  return burstRockets(state, e, downed, {
+    range: weaponRangeWorld(state, e),
+    rounds: () => e.clip,
+    spend: (n) => {
+      e.clip -= n;
+    },
+    lay: (facing) => {
+      // The radar lays the barrels straight onto the nearest rocket.
+      e.turretFacing = facing;
+      e.gatlingFire = { tick: state.tick, arms: 1 };
+      e.cooldown = TICK_DT;
+    },
+  });
+}
+
+/** A radar-laid 20mm that bursts rockets: the CIWS pad's gun, or the Apocalypse's roof mount. */
+interface RocketGun {
+  range: number;
+  rounds: () => number;
+  spend: (n: number) => void;
+  /** Lays the barrels on the nearest rocket tried, and starts the gun's clock. */
+  lay: (facing: number) => void;
+}
+
+/** One burst at each hostile rocket in reach this mount has not tried, nearest first. True when it fired. */
+function burstRockets(state: MatchState, e: Entity, downed: Set<number>, gun: RocketGun): boolean {
+  const range = gun.range;
   const inbound: { p: Projectile; d: number }[] = [];
   for (const p of state.projectiles) {
     if (p.flight !== "rocket" || downed.has(p.id) || p.ciwsTried?.includes(e.id)) continue;
@@ -197,9 +237,9 @@ function interceptRockets(state: MatchState, e: Entity, downed: Set<number>): bo
   inbound.sort((a, b) => a.d - b.d || a.p.id - b.p.id);
   const first = inbound[0]!.p;
   for (const { p } of inbound.slice(0, CIWS_INTERCEPTS_PER_TICK)) {
-    if (e.clip <= 0) break;
-    const spent = Math.min(e.clip, CIWS_INTERCEPT_ROUNDS);
-    e.clip -= spent;
+    if (gun.rounds() <= 0) break;
+    const spent = Math.min(gun.rounds(), CIWS_INTERCEPT_ROUNDS);
+    gun.spend(spent);
     (p.ciwsTried ??= []).push(e.id);
     if (nextRand(state) >= CIWS_INTERCEPT_CHANCE * (spent / CIWS_INTERCEPT_ROUNDS)) continue;
     downed.add(p.id);
@@ -217,11 +257,105 @@ function interceptRockets(state: MatchState, e: Entity, downed: Set<number>): bo
       intercept: true,
     });
   }
-  // The radar lays the barrels straight onto the nearest rocket.
-  e.turretFacing = Math.atan2(first.y - e.y, first.x - e.x);
-  e.gatlingFire = { tick: state.tick, arms: 1 };
-  e.cooldown = TICK_DT;
+  gun.lay(Math.atan2(first.y - e.y, first.x - e.x));
   return true;
+}
+
+/** Roof mount reach: its own base, plus the height bonus every gun gets. */
+function roofCiwsRange(state: MatchState, e: Entity): number {
+  return rangeTilesOf(e.type, entityHeight(state, e), APOCALYPSE_CIWS_RANGE_TILES) * state.tileSize;
+}
+
+/** The 20mm can put damage on this unit from here. Soft targets and an open hatch always. */
+function roofRoundCanHarm(e: Entity, target: Entity): boolean {
+  const def = catalog(target.type);
+  if (!isArmored(def) || entityIsScouting(target)) return true;
+  return armorHarmPossible({
+    gun: CIWS_GUN_STATS,
+    target: def,
+    targetFacing: target.facing,
+    targetHpMax: target.hpMax,
+    vx: target.x - e.x,
+    vy: target.y - e.y,
+  });
+}
+
+/** The roof mount fires the CIWS pad's own 20mm round. */
+const CIWS_GUN_STATS = { ...CIWS_GUN, projectileSpeed: SMALL_ARMS_SPEED };
+
+/**
+ * What the roof mount lays on. Like the CIWS pad: units only, a plane or a
+ * drone in the air before anything on the ground, nearest first, seen by the
+ * side, and nothing its rounds cannot hurt. No player order moves it.
+ */
+function roofCiwsTarget(state: MatchState, e: Entity, range: number): Entity | undefined {
+  let best: Entity | undefined;
+  let bestD = range * range;
+  let bestAir: Entity | undefined;
+  let bestAirD = range * range;
+  for (const o of state.entities.values()) {
+    if (o.kind !== "unit" || o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn != null) continue;
+    if (allies(state, e.ownerId, o.ownerId)) continue;
+    const air = isAirborne(o) || !!o.drone;
+    const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
+    if (d > (air ? bestAirD : bestD)) continue;
+    if (!canSeeEntity(state, e.ownerId, o)) continue;
+    if (!air && !roofRoundCanHarm(e, o)) continue;
+    if (air) {
+      bestAirD = d;
+      bestAir = o;
+    } else {
+      bestD = d;
+      best = o;
+    }
+  }
+  return bestAir ?? best;
+}
+
+/**
+ * The Apocalypse's roof mount. Its own traverse, target, and clock, whatever
+ * the main guns are doing: a hostile rocket in reach first, then the best unit
+ * it can hurt. With nothing to shoot it swings back to ride the turret. The
+ * belt is the coaxial MG's (mgAmmo), so only a supply truck refills it.
+ */
+function tickRoofCiws(state: MatchState, e: Entity, dt: number, downed: Set<number>): void {
+  const range = roofCiwsRange(state, e);
+  if (e.mgAmmo > 0 && e.mgCooldown <= 0) {
+    const burst = burstRockets(state, e, downed, {
+      range,
+      rounds: () => e.mgAmmo,
+      spend: (n) => {
+        e.mgAmmo = Math.max(0, e.mgAmmo - n);
+      },
+      lay: (facing) => {
+        e.ciwsFacing = facing;
+        e.ciwsFireTick = state.tick;
+        e.mgCooldown = TICK_DT;
+      },
+    });
+    if (burst) {
+      e.ciwsTarget = null;
+      return;
+    }
+  }
+  const target = e.mgAmmo > 0 ? roofCiwsTarget(state, e, range) : undefined;
+  e.ciwsTarget = target?.id ?? null;
+  const want = target ? Math.atan2(target.y - e.y, target.x - e.x) : e.turretFacing;
+  const turn = stepTurn(e.ciwsFacing ?? e.turretFacing, want, APOCALYPSE_CIWS_TURN_DEG_PER_SEC, dt);
+  e.ciwsFacing = turn.angle;
+  if (!target || e.mgCooldown > 0 || Math.abs(turn.remainingDeg) > FACE_FIRE_DEG) return;
+  const dist = Math.hypot(target.x - e.x, target.y - e.y);
+  for (let i = 0; i < APOCALYPSE_CIWS_SHOTS_PER_TICK && e.mgAmmo > 0; i++) {
+    fireRound(state, e, target.x, target.y, CIWS_GUN_STATS, range, dist, {
+      target,
+      bearing: e.ciwsFacing,
+      accurateRange: range,
+      radar: true,
+    });
+    e.mgAmmo -= 1;
+  }
+  e.ciwsFireTick = state.tick;
+  e.mgCooldown = TICK_DT;
 }
 
 /**
@@ -656,7 +790,9 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (isSmokeShell(shell) && !mayFireSmoke(e)) return;
   if (shell) e.shell = shell;
   const gun = fireStats(e);
-  const burst = Math.max(1, infantryGun?.shotsPerTick ?? def.shotsPerTick ?? 1);
+  // A twin mount fires both barrels together. Smoke is one round on the spot asked.
+  const barrels = shell && !isSmokeShell(shell) ? mainGunBarrels(e.type) : 1;
+  const burst = Math.max(1, infantryGun?.shotsPerTick ?? def.shotsPerTick ?? barrels);
   let fired = 0;
   if (infantryGun?.id === "flamer") {
     // throwFlame paces the burst itself: a glob a tick, then a pause.
@@ -680,6 +816,8 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
       if (e.clip <= 0) beginReload(e, infantryGun);
       break;
     }
+    // The second barrel only fires while the rack still holds that shell.
+    if (shell && (e.ammo[shell] ?? 0) <= 0) break;
     fireRound(
       state,
       e,
@@ -699,6 +837,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
         shell,
         fuse: !!ground || isSmokeShell(shell),
         accurateRange: accurateWeaponRange(state, e, range),
+        side: barrels > 1 ? (i % 2 === 0 ? -1 : 1) * e.radius * TWIN_GUN_SIDE : undefined,
       },
     );
     fired++;
@@ -1292,7 +1431,8 @@ function tickWeaponClocks(e: Entity, dt: number): void {
 }
 
 function wantsMg(e: Entity, target: Entity): boolean {
-  if (!hasMg(e.type) || e.mgAmmo <= 0) return false;
+  // The roof mount spends that belt on its own (tickRoofCiws); there is no coaxial.
+  if (!hasMg(e.type) || e.mgAmmo <= 0 || roofCiwsOf(e.type)) return false;
   if (isInfantryType(target.type) || target.drone) return true;
   return entityIsScouting(target);
 }
@@ -1357,6 +1497,10 @@ function fireRound(
     fuse?: boolean;
     accurateRange?: number;
     bearing?: number;
+    /** Muzzle offset across the bore, world px, left of the shot negative. One barrel of a twin mount. */
+    side?: number;
+    /** A radar-laid 20mm off a hull (the roof mount): anti-air round, the CIWS's cone on a plane. */
+    radar?: boolean;
   },
 ): void {
   const target = opts?.target;
@@ -1379,7 +1523,10 @@ function fireRound(
     () => nextRand(state),
     moving,
     stats.spreadPower ?? 1,
-    target ? stanceTargetSpreadMul(target, unitInWater(state, target)) * airTargetSpreadMul(target, e) : 1,
+    target
+      ? stanceTargetSpreadMul(target, unitInWater(state, target)) *
+          (opts?.radar && isAirborne(target) ? CIWS_AIR_SPREAD : airTargetSpreadMul(target, e))
+      : 1,
     opts?.accurateRange ?? range,
   );
   const speed = stats.projectileSpeed;
@@ -1389,8 +1536,9 @@ function fireRound(
   const life = travel / Math.max(1, speed) + (opts?.fuse ? 0 : 0.05);
   const dx = Math.cos(ang);
   const dy = Math.sin(ang);
-  let x = e.x + dx * muzzleReach;
-  let y = e.y + dy * muzzleReach;
+  const side = opts?.side ?? 0;
+  let x = e.x + dx * muzzleReach - dy * side;
+  let y = e.y + dy * muzzleReach + dx * side;
   let ignoreId = e.id;
   if (slit) {
     x = slit.x;
@@ -1420,7 +1568,10 @@ function fireRound(
     bounced: false,
     shell: opts?.shell ?? null,
     hpFraction: gunId === "scoped" || gunId === "ptrd" ? scopedHpFraction(dist, range) : undefined,
-    antiAir: !opts?.shell && (e.type === "walker" || radarLaidOf(e.type) || !!infantryGunFor(e)?.antiAir) ? true : undefined,
+    antiAir:
+      opts?.radar || (!opts?.shell && (e.type === "walker" || radarLaidOf(e.type) || !!infantryGunFor(e)?.antiAir))
+        ? true
+        : undefined,
     z: z0,
     vz: ((zAim - z0) / Math.max(1e-6, aimDist)) * speed,
   };
@@ -1759,7 +1910,7 @@ function cannonSplash(state: MatchState, p: Projectile): void {
   const radius = FW190_SPLASH_TILES * state.tileSize;
   for (const e of state.entities.values()) {
     if (e.hp <= 0 || e.wreck || e.kind !== "unit" || e.garrisonedIn != null || isAirborne(e)) continue;
-    if (e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
+    if (!p.harmAllies && e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
     if (isArmored(catalog(e.type))) continue;
     const d = Math.hypot(e.x - p.x, e.y - p.y);
     if (d > radius + e.radius) continue;
@@ -1782,8 +1933,8 @@ function nearestSweepHit(
   for (const e of state.entities.values()) {
     if (e.hp <= 0) continue;
     if (e.id === p.ignoreId) continue;
-    // A pilot strafes the enemy's line, not his own side's.
-    if (p.fromAbove && e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
+    // A pilot strafes the enemy's line, not his own side's, unless he was told to (force-attack).
+    if (p.fromAbove && !p.harmAllies && e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
     if (e.garrisonedIn != null) continue;
     const hit = sweepAgainst(state, x0, y0, p, e);
     if (!hit) continue;
