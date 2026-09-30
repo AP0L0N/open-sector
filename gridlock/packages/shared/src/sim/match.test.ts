@@ -757,6 +757,72 @@ describe("harvest", () => {
     assert.ok(smelter.hp > 0);
   });
 
+  it("lets several Maulers dump at once on any edge of the Smelter", () => {
+    const { state } = twoPlayerMatch();
+    const player = state.players.get("A")!;
+    const before = player.scrap;
+    const ts = state.tileSize;
+    const sm = catalog("smelter");
+    const smelter = makeEntity(state, "smelter", "A", tileCenter(8, ts), tileCenter(8, ts), {
+      tileX: 8,
+      tileY: 8,
+    });
+    const haulers = [0, 1, 2, 3].map((k) => {
+      const h = makeEntity(state, "hauler", "A", tileCenter(8 + sm.tileW + 10 + k * 4, ts), tileCenter(8 + (k % 2) * 6, ts));
+      h.cargo = HAULER_CARGO;
+      h.state = "unload";
+      h.autoHarvest = false;
+      return h;
+    });
+    const n = haulers.length;
+    ticks(state, 240);
+    assert.equal(player.scrap, before + HAULER_CARGO * n, `delivered ${(player.scrap - before) / HAULER_CARGO} of ${n}`);
+    for (const h of haulers) assert.equal(h.cargo, 0);
+    assert.ok(smelter.hp > 0);
+  });
+
+  it("keeps four auto-harvesting Maulers cycling without jamming at the Smelter", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const sm = catalog("smelter");
+    makeEntity(state, "smelter", "A", tileCenter(8, ts), tileCenter(8, ts), { tileX: 8, tileY: 8 });
+    const fx = 8 + sm.tileW + 14;
+    for (let y = 4; y < 24; y++) {
+      for (let x = fx; x < fx + 8; x++) state.scrapYield[x + y * state.width] = HAULER_CARGO;
+    }
+    const haulers = [0, 1, 2, 3].map((k) => {
+      const h = makeEntity(state, "hauler", "A", tileCenter(fx + 2 + (k % 2) * 4, ts), tileCenter(6 + k * 4, ts));
+      applyCommand(state, "A", { type: "cmd.harvest", ids: [h.id] });
+      h.cargo = HAULER_CARGO;
+      return h;
+    });
+    const loads = new Map(haulers.map((h) => [h.id, 0]));
+    const carried = new Map(haulers.map((h) => [h.id, 0]));
+    const stuck = new Map(haulers.map((h) => [h.id, 0]));
+    let worstStuck = 0;
+    const near = (sm.tileW + 12) * ts;
+    const cx = (8 + sm.tileW / 2) * ts;
+    const cy = (8 + sm.tileH / 2) * ts;
+    for (let i = 0; i < 1200; i++) {
+      const at = haulers.map((h) => ({ x: h.x, y: h.y, facing: h.facing }));
+      step(state, TICK_DT);
+      haulers.forEach((h, k) => {
+        if (carried.get(h.id)! > 0 && h.cargo === 0) loads.set(h.id, loads.get(h.id)! + 1);
+        carried.set(h.id, h.cargo);
+        const was = at[k]!;
+        // Yawing in place is driving; a hull that neither rolls nor turns is jammed.
+        const still = Math.hypot(h.x - was.x, h.y - was.y) < 0.05 && Math.abs(h.facing - was.facing) < 1e-6;
+        const waiting = h.cargo > 0 && still && Math.hypot(h.x - cx, h.y - cy) < near && h.harvestTime === 0;
+        stuck.set(h.id, waiting ? stuck.get(h.id)! + 1 : 0);
+        worstStuck = Math.max(worstStuck, stuck.get(h.id)!);
+      });
+    }
+    for (const h of haulers) {
+      assert.ok(loads.get(h.id)! >= 3, `Mauler ${h.id} delivered ${loads.get(h.id)} loads, at ${h.x},${h.y} ${h.state}`);
+    }
+    assert.ok(worstStuck < 10, `a loaded Mauler sat still by the Smelter for ${worstStuck} ticks`);
+  });
+
   it("stops auto-harvest when sent somewhere until ordered onto scrap again", () => {
     const { state } = twoPlayerMatch();
     const ts = state.tileSize;

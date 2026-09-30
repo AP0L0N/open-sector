@@ -1,7 +1,7 @@
 import {
   FOV_ISLAND_LIMIT,
   GARRISON_HIDE_SIGHT,
-  GARRISON_WATCH_SIGHT_BONUS,
+  garrisonSightBonusOf,
   HEIGHT_MAX,
   SMOKE_PEEK_TILES,
   catalog,
@@ -24,7 +24,7 @@ import {
   type CoverField,
 } from "./elevation.js";
 import { allies, chebyshev, fillHullCover, footprint, inBounds, worldToTile } from "./geo.js";
-import { occupantSightTiles } from "./garrison.js";
+import { occupantEye, occupantSightTiles } from "./garrison.js";
 import { fillSmokeMask, smokeCloudTileBounds } from "./smoke.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -628,8 +628,9 @@ function alliedSight(state: MatchState, playerId: string): { e: Entity; p: Sight
   observers.sort((a, b) => observerRadius(state, b) - observerRadius(state, a));
   return observers.map((e) => {
     const sightTiles = occupantSightTiles(state, e) ?? (entityIsScouting(e) ? sightTilesForEntity(state, e) : undefined);
+    const observerEye = occupantEye(state, e);
     const p = sightParams(
-      sightTiles != null ? { ...e, sightTiles } : e,
+      sightTiles != null || observerEye != null ? { ...e, sightTiles, observerEye } : e,
       state.width,
       state.height,
       state.tileSize,
@@ -924,7 +925,16 @@ export function visionMaskFromSnapshot(
   );
   for (const e of allied) {
     const sightTiles = snapshotSightTiles(snap, e, elev, width, height, tileSize);
-    paintEntitySight(mask, width, height, tileSize, sightTiles != null ? { ...e, sightTiles } : e, elev, cover);
+    const observerEye = snapshotOccupantEye(snap, e);
+    paintEntitySight(
+      mask,
+      width,
+      height,
+      tileSize,
+      sightTiles != null || observerEye != null ? { ...e, sightTiles, observerEye } : e,
+      elev,
+      cover,
+    );
   }
   sealFovIslands(mask, width, height);
   return mask;
@@ -976,7 +986,14 @@ function snapshotOccupantSight(
   const tx = worldToTile(e.x, tileSize);
   const ty = worldToTile(e.y, tileSize);
   const h = elev ? elevAtSafe(elev, width, height, tx, ty) : 0;
-  return sightTilesOf(e.type, h) + GARRISON_WATCH_SIGHT_BONUS;
+  return sightTilesOf(e.type, h) + garrisonSightBonusOf(house.type);
+}
+
+function snapshotOccupantEye(snap: MatchSnapshot, e: EntityView): number | undefined {
+  if (!e.garrisonedIn) return undefined;
+  const house = snap.entities.find((x) => x.id === e.garrisonedIn);
+  if (!house || house.garrison?.hide) return undefined;
+  return catalog(house.type).garrisonEye;
 }
 
 /** Run lengths of a 0/1 mask, alternating 0-run / 1-run, starting with 0. */
@@ -1161,7 +1178,7 @@ function observerSeesTile(
     height,
     elev,
     cover,
-    observerEyeForEntity(obs),
+    occupantEye(state, obs) ?? observerEyeForEntity(obs),
     uphillSightForEntity(obs),
   );
 }

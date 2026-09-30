@@ -49,7 +49,9 @@ import {
   scopedHpFraction,
   entityIsScouting,
   garrisonFullArmsOf,
+  garrisonOpenTopOf,
   isCivilianType,
+  isFieldStructure,
   isGarrisonable,
   isInfantryType,
   isSmokeShell,
@@ -121,7 +123,7 @@ import {
   garrisonIsHostile,
   garrisonLooksOccupied,
   livingGarrison,
-  pickGarrisonMuzzle,
+  garrisonMuzzleToward,
   woundGarrison,
 } from "./garrison.js";
 import {
@@ -713,7 +715,12 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
 
 function mortarReady(state: MatchState, e: Entity): boolean {
   if (e.type !== "mortarman") return true;
-  if (unitInWater(state, e) || e.garrisonedIn != null) return false;
+  if (e.garrisonedIn != null) {
+    // A trench is open to the sky: the tube stands in the bottom of it. A roof is not.
+    const house = state.entities.get(e.garrisonedIn);
+    return !!house && garrisonOpenTopOf(house.type) && !hasCrit(e, "arm");
+  }
+  if (unitInWater(state, e)) return false;
   if (stanceOf(e) !== "crouch") return false;
   if (hasCrit(e, "arm") || hasCrit(e, "leg")) return false;
   if (e.state === "move") return false;
@@ -971,11 +978,15 @@ function launchRocket(
   const aloft = !!target && isAirborne(target);
   const moving = !!target && (aloft || target.waypoints.length > 0 || target.state === "move");
   // The pods lay on their own bearing, not the torso's. A tube lies along the soldier's.
-  const aim = Math.atan2(aimY - e.y, aimX - e.x);
+  // From inside, the tube pokes out of the opening facing the target.
+  const slit = garrisonMuzzleToward(state, e, aimX, aimY);
+  const fromX = slit?.x ?? e.x;
+  const fromY = slit?.y ?? e.y;
+  const aim = Math.atan2(aimY - fromY, aimX - fromX);
   const sideX = -Math.sin(aim);
   const sideY = Math.cos(aim);
-  const x = e.x + sideX * side;
-  const y = e.y + sideY * side;
+  const x = fromX + sideX * side;
+  const y = fromY + sideY * side;
   const z0 = muzzleHeight(state, e) + rack.podLift;
   let goalX = aimX;
   let goalY = aimY;
@@ -1009,7 +1020,7 @@ function launchRocket(
     penetration: rack.penetration,
     caliber: rack.caliber,
     life: flight,
-    ignoreId: e.id,
+    ignoreId: slit?.house.id ?? e.id,
     fromId: e.id,
     bounced: false,
     shell: null,
@@ -1346,8 +1357,16 @@ function fireRound(
 ): void {
   const target = opts?.target;
   const moving = !!target && (target.waypoints.length > 0 || target.state === "move");
+  // A soldier inside does not turn: his round leaves the opening facing the target, aimed from there.
+  const slit = garrisonMuzzleToward(state, e, aimX, aimY);
   // Fused ground shots aim at the click (plus spread), not along current turret facing.
-  const bearing = opts?.bearing ?? (opts?.fuse ? Math.atan2(aimY - e.y, aimX - e.x) : aimFacing(e));
+  const bearing =
+    opts?.bearing ??
+    (slit
+      ? Math.atan2(aimY - slit.y, aimX - slit.x)
+      : opts?.fuse
+      ? Math.atan2(aimY - e.y, aimX - e.x)
+      : aimFacing(e));
   const ang = aimAngle(
     bearing,
     stats.spreadDeg,
@@ -1369,14 +1388,10 @@ function fireRound(
   let x = e.x + dx * muzzleReach;
   let y = e.y + dy * muzzleReach;
   let ignoreId = e.id;
-  if (e.garrisonedIn != null) {
-    const house = state.entities.get(e.garrisonedIn);
-    if (house) {
-      const muzzle = pickGarrisonMuzzle(house, state.tileSize, ang, e.id);
-      x = muzzle.x + dx * 4;
-      y = muzzle.y + dy * 4;
-      ignoreId = house.id;
-    }
+  if (slit) {
+    x = slit.x;
+    y = slit.y;
+    ignoreId = slit.house.id;
   }
   const z0 = muzzleHeight(state, e);
   const zAim = target ? aimHeight(state, target) : worldTileHeight(state, aimX, aimY);
@@ -1795,6 +1810,8 @@ function sweepAgainst(
   e: Entity,
 ): { t: number; x: number; y: number } | null {
   if (e.type === "sandbags" || e.type === "teeth") return null;
+  // An empty trench is a hole in the ground. Rounds only find it with a man in it.
+  if (e.type === "trench" && livingGarrison(state, e).length === 0) return null;
   const reach = e.radius * stanceHitRadiusMul(e, unitInWater(state, e));
   const t =
     e.kind === "building"
@@ -1907,9 +1924,10 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
       if (!garrisonIsHostile(state, e.ownerId, o) || !garrisonLooksOccupied(state, e.ownerId, o)) continue;
     } else if (
       isGarrisonable(o.type) &&
-      isCivilianType(o.type) &&
+      (isCivilianType(o.type) || isFieldStructure(o.type)) &&
       (!garrisonLooksOccupied(state, e.ownerId, o) || !garrisonIsHostile(state, e.ownerId, o))
     ) {
+      // An empty house, or an empty trench, is not worth a round.
       continue;
     }
     const dx = o.x - e.x;

@@ -819,6 +819,7 @@ input[type="range"] { padding: 0; }
 #build-ciws,
 #build-research,
 #build-bunker,
+#build-tower,
 #build-ram {
   background-size: cover;
   background-position: right 10% center;
@@ -1006,6 +1007,11 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/bunker-cameo.png");
 }
+#build-tower {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/tower-cameo.png");
+}
 #build-ram {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
@@ -1177,6 +1183,7 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="ciws"] { background-image: url("../assets/buildings/ciws-cameo.png"); }
 .config-type[data-type="research"] { background-image: url("../assets/buildings/research-cameo.png"); }
 .config-type[data-type="bunker"] { background-image: url("../assets/buildings/bunker-cameo.png"); }
+.config-type[data-type="tower"] { background-image: url("../assets/buildings/tower-cameo.png"); }
 .config-type[data-type="ram"] { background-image: url("../assets/buildings/ram-cameo.png"); }
 .config-type[data-type="stuka"],
 .prod-job[data-type="stuka"] {
