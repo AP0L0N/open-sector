@@ -299,6 +299,19 @@ describe("easy CPU", () => {
     assert.ok(inbound.includes(gunner), "the MG goes in first");
   });
 
+  it("crews its Watch Tower with idle soldiers, up to its three", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    withBase(state, aiId, ["tower"]);
+    const tower = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "tower")!;
+    troopers(state, aiId, 6);
+    micro(state, aiId);
+    const inbound = [...state.entities.values()].filter(
+      (e) => e.ownerId === aiId && (e.order?.kind === "garrison" || e.garrisonedIn === tower.id),
+    );
+    assert.equal(inbound.length, catalog("tower").garrisonCap);
+  });
+
   it("fills the Armory with a mix of hulls", () => {
     const { state, aiId } = humanVsEasy();
     waitCore(state, aiId);
