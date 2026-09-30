@@ -5,6 +5,7 @@ import {
   MAULER_CART_HP,
   MAULER_CART_RESTORE_SECONDS,
   TRACK_ARRIVE_SLOP,
+  UNIT_SPACE_PAD,
   catalog,
 } from "../catalog.js";
 import { scrapAt, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
@@ -33,28 +34,24 @@ export function tickMaulerCart(state: MatchState, dt: number): void {
     e.attackTarget = null;
     e.order = null;
     const smelter = nearestOwned(state, e, "smelter");
-    const dock = smelter ? smelterDock(state, smelter) : null;
-    if (!dock) {
+    const dock = smelter ? claimDock(state, e, smelter) : null;
+    if (!smelter || !dock) {
       e.waypoints = [];
       e.harvestTime = 0;
       e.state = "idle";
       continue;
     }
-    if (!reached(e, dock.x, dock.y, state.tileSize * 0.75)) {
+    if (!driveToDock(state, e, smelter, dock)) {
       e.state = "move";
       e.harvestTime = 0;
-      const last = e.waypoints[e.waypoints.length - 1];
-      if (!last || Math.hypot(last.x - dock.x, last.y - dock.y) > state.tileSize) {
-        setPath(state, e, dock.x, dock.y);
-      }
       continue;
     }
-    e.waypoints = [];
     e.state = "idle";
     e.harvestTime += dt;
     if (e.harvestTime >= MAULER_CART_RESTORE_SECONDS) {
       e.cartHp = MAULER_CART_HP;
       e.harvestTime = 0;
+      dockClaim.delete(e);
     }
   }
 }
@@ -159,22 +156,16 @@ function tickHaulerUnload(state: MatchState, e: Entity, dt: number): void {
     e.state = "idle";
     return;
   }
-  const dock = smelterDock(state, smelter);
+  e.state = "unload";
+  const dock = claimDock(state, e, smelter);
   if (!dock) {
     e.state = "idle";
     return;
   }
-  if (!reached(e, dock.x, dock.y, state.tileSize * 0.75)) {
-    e.state = "unload";
+  if (!driveToDock(state, e, smelter, dock)) {
     e.order = { kind: "unload", targetId: smelter.id };
-    const last = e.waypoints[e.waypoints.length - 1];
-    if (!last || Math.hypot(last.x - dock.x, last.y - dock.y) > state.tileSize) {
-      setPath(state, e, dock.x, dock.y);
-    }
     return;
   }
-  e.waypoints = [];
-  e.state = "unload";
   e.harvestTime += dt;
   if (e.harvestTime >= HAULER_UNLOAD_SECONDS) {
     const p = state.players.get(e.ownerId);
@@ -183,26 +174,132 @@ function tickHaulerUnload(state: MatchState, e: Entity, dt: number): void {
     e.harvestTime = 0;
     e.order = null;
     e.state = "idle";
+    dockClaim.delete(e);
   }
 }
 
-/** First walkable pad around a Smelter. East, then west, south, north. */
-export function smelterDock(
-  state: MatchState,
-  smelter: Pick<Entity, "tileX" | "tileY" | "tileW" | "tileH">,
-): { x: number; y: number } | null {
+/** Dock pad a Mauler is driving to, so two Maulers never aim for the same spot. */
+const dockClaim = new WeakMap<Entity, { smelterId: number; x: number; y: number }>();
+
+type Footprint = Pick<Entity, "tileX" | "tileY" | "tileW" | "tileH">;
+
+/**
+ * Every walkable pad on the ring of tiles just outside a Smelter: the whole
+ * east, west, south, and north edges (each from its middle outward), then the
+ * corners. Any of them takes a load.
+ */
+export function smelterDocks(state: MatchState, smelter: Footprint): { x: number; y: number }[] {
   const ts = state.tileSize;
   const { tileX: tx, tileY: ty, tileW: tw, tileH: th } = smelter;
-  const spots = [
-    { x: (tx + tw) * ts + ts / 2, y: (ty + th / 2) * ts },
-    { x: tx * ts - ts / 2, y: (ty + th / 2) * ts },
-    { x: (tx + tw / 2) * ts, y: (ty + th) * ts + ts / 2 },
-    { x: (tx + tw / 2) * ts, y: ty * ts - ts / 2 },
-  ];
-  for (const p of spots) {
-    if (walkable(state, worldToTile(p.x, ts), worldToTile(p.y, ts), "hauler")) return p;
+  const out: { x: number; y: number }[] = [];
+  const add = (x: number, y: number): void => {
+    if (walkable(state, x, y, "hauler")) out.push({ x: tileCenter(x, ts), y: tileCenter(y, ts) });
+  };
+  const fromMiddle = (from: number, len: number): number[] => {
+    const mid = from + len / 2 - 0.5;
+    return Array.from({ length: len }, (_, i) => from + i).sort(
+      (a, b) => Math.abs(a - mid) - Math.abs(b - mid) || a - b,
+    );
+  };
+  for (const y of fromMiddle(ty, th)) add(tx + tw, y);
+  for (const y of fromMiddle(ty, th)) add(tx - 1, y);
+  for (const x of fromMiddle(tx, tw)) add(x, ty + th);
+  for (const x of fromMiddle(tx, tw)) add(x, ty - 1);
+  add(tx + tw, ty + th);
+  add(tx - 1, ty + th);
+  add(tx + tw, ty - 1);
+  add(tx - 1, ty - 1);
+  return out;
+}
+
+/** First walkable pad around a Smelter: the middle of the east edge when it is open. */
+export function smelterDock(state: MatchState, smelter: Footprint): { x: number; y: number } | null {
+  return smelterDocks(state, smelter)[0] ?? null;
+}
+
+/** Hull against any edge of the Smelter: close enough to dump or take a new cart. */
+function atSmelter(state: MatchState, e: Entity, smelter: Entity): boolean {
+  const ts = state.tileSize;
+  const x0 = smelter.tileX * ts;
+  const y0 = smelter.tileY * ts;
+  const dx = Math.max(x0 - e.x, 0, e.x - (x0 + smelter.tileW * ts));
+  const dy = Math.max(y0 - e.y, 0, e.y - (y0 + smelter.tileH * ts));
+  return Math.hypot(dx, dy) <= e.radius + ts / 2;
+}
+
+/** Heading to a Smelter pad: carrying a load home, or rolling in for a new cart. */
+function docking(e: Entity): boolean {
+  return e.type === "hauler" && (e.state === "unload" || e.cartHp <= 0);
+}
+
+/**
+ * The nearest pad no other hull stands on or has claimed. A Mauler keeps its
+ * pad while that stays free, so it does not re-path every tick.
+ */
+function claimDock(state: MatchState, e: Entity, smelter: Entity): { x: number; y: number } | null {
+  const docks = smelterDocks(state, smelter);
+  if (docks.length === 0) {
+    dockClaim.delete(e);
+    return null;
   }
-  return null;
+  const ts = state.tileSize;
+  const margin = ts * 4 + e.radius * 2;
+  const x0 = smelter.tileX * ts - margin;
+  const y0 = smelter.tileY * ts - margin;
+  const x1 = (smelter.tileX + smelter.tileW) * ts + margin;
+  const y1 = (smelter.tileY + smelter.tileH) * ts + margin;
+  const near: Entity[] = [];
+  for (const o of state.entities.values()) {
+    if (o.id === e.id || o.kind !== "unit" || o.hp <= 0 || o.garrisonedIn || o.air) continue;
+    const inside = o.x >= x0 && o.x <= x1 && o.y >= y0 && o.y <= y1;
+    if (!inside && !(docking(o) && dockClaim.get(o)?.smelterId === smelter.id)) continue;
+    near.push(o);
+  }
+  const taken = (p: { x: number; y: number }): boolean => {
+    for (const o of near) {
+      if (Math.hypot(o.x - p.x, o.y - p.y) < e.radius + o.radius) return true;
+      const c = docking(o) ? dockClaim.get(o) : undefined;
+      if (c && c.smelterId === smelter.id && Math.hypot(c.x - p.x, c.y - p.y) < e.radius + o.radius + UNIT_SPACE_PAD) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const cur = dockClaim.get(e);
+  if (cur && cur.smelterId === smelter.id && docks.some((p) => p.x === cur.x && p.y === cur.y) && !taken(cur)) {
+    return cur;
+  }
+  let best: { x: number; y: number } | null = null;
+  let bestD = Infinity;
+  let fallback = docks[0]!;
+  let fallbackD = Infinity;
+  for (const p of docks) {
+    const d = Math.hypot(p.x - e.x, p.y - e.y);
+    if (d < fallbackD) {
+      fallbackD = d;
+      fallback = p;
+    }
+    if (d < bestD && !taken(p)) {
+      bestD = d;
+      best = p;
+    }
+  }
+  const pick = best ?? fallback;
+  dockClaim.set(e, { smelterId: smelter.id, x: pick.x, y: pick.y });
+  return pick;
+}
+
+/** Drive toward the claimed pad. True once the hull is against any edge of the Smelter. */
+function driveToDock(state: MatchState, e: Entity, smelter: Entity, dock: { x: number; y: number }): boolean {
+  if (atSmelter(state, e, smelter)) {
+    e.waypoints = [];
+    return true;
+  }
+  const last = e.waypoints[e.waypoints.length - 1];
+  if (!last || Math.hypot(last.x - dock.x, last.y - dock.y) > state.tileSize) {
+    setPath(state, e, dock.x, dock.y);
+  }
+  return false;
 }
 
 function nearestOwned(state: MatchState, from: Entity, type: Entity["type"]): Entity | null {

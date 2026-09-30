@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import {
   DRIVER_KILL_CHANCE,
   SUPPLY_CARGO,
+  SUPPLY_SEEK_TILES,
+  SUPPLY_REGEN_PER_SEC,
   TRUCK_RIDER_HP_MUL,
   TRUCK_SEATS,
   WALKER_BELT,
@@ -20,7 +22,7 @@ import { applyCommand } from "./commands.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { noteSupplyHit, supplyBodies, supplyHasDriver, supplyShooter } from "./supply.js";
-import type { MatchState } from "./types.js";
+import type { MatchState, Order } from "./types.js";
 
 function match(): { state: MatchState; a: string; b: string } {
   const r = createRoom({
@@ -108,6 +110,20 @@ describe("supply truck", () => {
     const stayed = applyCommand(state, a, { type: "cmd.unboard", truckId: truck.id });
     assert.equal(stayed.ok, false);
     if (!stayed.ok) assert.match(stayed.message, /cannot dismount/i);
+  });
+
+  it("slowly scrounges its cargo back on its own, up to a full load", () => {
+    const { state, a } = match();
+    clearPad(state, 30, 30, 50, 50);
+    const ts = state.tileSize;
+    const truck = makeEntity(state, "supply", a, tileCenter(40, ts), tileCenter(40, ts));
+    truck.supply = 0;
+    const secs = 10;
+    ticks(state, Math.round(secs / TICK_DT));
+    assert.ok(Math.abs(truck.supply - SUPPLY_REGEN_PER_SEC * secs) < 0.01);
+    truck.supply = SUPPLY_CARGO - 0.1;
+    ticks(state, Math.round(secs / TICK_DT));
+    assert.equal(truck.supply, SUPPLY_CARGO);
   });
 
   it("stays parked after a soldier boards", () => {
@@ -264,5 +280,58 @@ describe("supply truck", () => {
     assert.equal(applyCommand(state, a, { type: "cmd.supply", ids: [truck.id], targetId: armory.id }).ok, true);
     ticks(state, 15);
     assert.ok(truck.supply > 0, `supply ${truck.supply}`);
+  });
+
+  it("drives to allies short of ammo nearby on its own, like a medic", () => {
+    const { state, a } = match();
+    clearPad(state, 20, 20, 80, 80);
+    const ts = state.tileSize;
+    const truck = makeEntity(state, "supply", a, tileCenter(40, ts), tileCenter(40, ts));
+    const tank = makeEntity(state, "warden", a, tileCenter(50, ts), tileCenter(40, ts));
+    tank.ammo = { ap: 0, he: 0, heat: 0, smoke: 0 };
+    tank.mgAmmo = 0;
+    ticks(state, 2);
+    assert.equal(truck.order?.kind, "supply");
+    assert.equal(truck.order?.auto, true);
+    assert.equal(truck.order?.targetId, tank.id);
+    ticks(state, 80);
+    assert.ok((tank.ammo.ap ?? 0) > 0, `ap ${tank.ammo.ap}`);
+  });
+
+  it("ignores enemies and allies past its seek range, and follows a player move order", () => {
+    const { state, a, b } = match();
+    clearPad(state, 20, 20, 80, 80);
+    const ts = state.tileSize;
+    const truck = makeEntity(state, "supply", a, tileCenter(30, ts), tileCenter(40, ts));
+    const far = makeEntity(state, "warden", a, tileCenter(30 + SUPPLY_SEEK_TILES + 4, ts), tileCenter(40, ts));
+    far.ammo = { ap: 0, he: 0, heat: 0, smoke: 0 };
+    const foe = makeEntity(state, "warden", b, tileCenter(34, ts), tileCenter(40, ts));
+    foe.ammo = { ap: 0, he: 0, heat: 0, smoke: 0 };
+    ticks(state, 10);
+    assert.equal(truck.order, null);
+    assert.equal(far.ammo.ap, 0);
+    assert.equal(foe.ammo.ap, 0);
+    foe.hp = 0;
+    state.entities.delete(foe.id);
+
+    const near = makeEntity(state, "warden", a, tileCenter(30, ts), tileCenter(36, ts));
+    near.ammo = { ap: 0, he: 0, heat: 0, smoke: 0 };
+    const res = applyCommand(state, a, { type: "cmd.move", ids: [truck.id], x: tileCenter(30, ts), y: tileCenter(46, ts) });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    ticks(state, 3);
+    const order = truck.order as Order | null;
+    assert.equal(order?.kind, "move");
+  });
+
+  it("stays put with an empty bed", () => {
+    const { state, a } = match();
+    clearPad(state, 20, 20, 80, 80);
+    const ts = state.tileSize;
+    const truck = makeEntity(state, "supply", a, tileCenter(40, ts), tileCenter(40, ts));
+    truck.supply = 0;
+    const tank = makeEntity(state, "warden", a, tileCenter(44, ts), tileCenter(40, ts));
+    tank.ammo = { ap: 0, he: 0, heat: 0, smoke: 0 };
+    ticks(state, 10);
+    assert.equal(truck.order, null);
   });
 });

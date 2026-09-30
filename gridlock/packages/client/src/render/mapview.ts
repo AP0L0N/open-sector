@@ -1,6 +1,7 @@
 import {
   AIRFIELD_BACK_DEPTH,
   catalog,
+  FW190_WING_GUN_OFFSET,
   clampIsoCamera,
   cloudScale,
   smokeCloudPuffs,
@@ -221,7 +222,9 @@ import {
   type FlameParticle,
 } from "./flame-fx.js";
 import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir, lerpAirAlt } from "./aircraft.js";
+import { barrageTracers, tracerLandsAt, tracerSpan, type BarrageTracer } from "./barrage-tracer.js";
 import { drawSandbags } from "./sandbags.js";
+import { drawTrench } from "./trench.js";
 import { pyroNozzleScreen } from "./pyro-nozzle.js";
 import { unitGroundSink } from "./unit-hit.js";
 import { engineRowFromScreen } from "./turntable.js";
@@ -300,6 +303,7 @@ const EXTRUDE: Record<EntityType, number> = {
   ciws: 26,
   research: 40,
   bunker: 18,
+  tower: 66,
   ram: 26,
   stuka: 14,
   fw190: 12,
@@ -322,6 +326,7 @@ const EXTRUDE: Record<EntityType, number> = {
   cyborg: 26,
   sandbags: 12,
   teeth: 16,
+  trench: 6,
   walker: 30,
   titan: 40,
   nebelwerfer: 22,
@@ -523,6 +528,10 @@ export class MapView {
   private wreckBornAt = new Map<number, number>();
   /** Wall-clock ms of the last small-arms shot from an infantry unit. */
   private infantryShotAt = new Map<number, number>();
+  /** Fw 190 barrage streaks in flight, with the gun and impact heights (absolute elevation). */
+  private tracers: (BarrageTracer & { z0: number; z1: number })[] = [];
+  /** Impact id -> wall-clock ms its barrage streak lands. The impact waits for it. */
+  private barrageLandAt = new Map<number, number>();
   private fx: {
     id: number;
     kind: string;
@@ -762,6 +771,7 @@ export class MapView {
     for (const [id, until] of this.damagedUntil) {
       if (!live.has(id) || until < now) this.damagedUntil.delete(id);
     }
+    this.noteBarrages(match, now);
     for (const i of match.impacts ?? []) {
       if (i.fromId != null && (i.caliber ?? 0) > 0 && (i.caliber ?? 0) < 40 && i.kind !== "crush") {
         const shooter = match.entities.find((e) => e.id === i.fromId);
@@ -780,7 +790,7 @@ export class MapView {
       if (i.rocket && i.z != null && !this.fxIds.has(i.id)) {
         this.rocketPuffs.push(...airBurstPuffs(i.x, i.y, i.z, now, i.id));
       }
-      const fx: MapView["fx"][number] = { ...i, at: now };
+      const fx: MapView["fx"][number] = { ...i, at: this.barrageLandAt.get(i.id) ?? now };
       // A rocket burst in the air by a CIWS stays where it was: no hull to snap to, no ground smoke.
       if (i.intercept) {
         // A RAM's interceptor leaves a smoke line from the cells to the burst.
@@ -928,6 +938,88 @@ export class MapView {
     if (!this.miniTerrain) this.miniTerrain = bakeMini(map, this.curr.scrap);
     else updateMiniScrap(this.miniTerrain, map, this.curr.scrap);
     this.applyClearedTrees();
+  }
+
+  /**
+   * An Fw 190 barrage lands in one tick. Turn its impacts into streaks from the
+   * wing guns, near rounds first, and a flash under each wing.
+   */
+  private noteBarrages(match: MatchSnapshot, now: number): void {
+    const byPlane = new Map<number, NonNullable<MatchSnapshot["impacts"]>>();
+    for (const i of match.impacts ?? []) {
+      if (i.fromId == null || this.fxIds.has(i.id) || this.barrageLandAt.has(i.id)) continue;
+      const list = byPlane.get(i.fromId);
+      if (list) list.push(i);
+      else byPlane.set(i.fromId, [i]);
+    }
+    for (const [fromId, hits] of byPlane) {
+      const plane = match.entities.find((e) => e.id === fromId);
+      if (plane?.type !== "fw190" || !plane.air) continue;
+      const gap = catalog("fw190").radius * FW190_WING_GUN_OFFSET;
+      const z0 = this.elevAt(plane.x, plane.y) + plane.air.alt;
+      const streaks = barrageTracers(plane, hits, gap, now);
+      for (const tr of streaks) {
+        // A round that met a plane ends at that plane's height; the rest come down in the dirt.
+        const aloft = match.entities.find(
+          (e) => e.id !== fromId && e.air && e.air.alt > 0.5 && Math.hypot(e.x - tr.x1, e.y - tr.y1) < 24,
+        );
+        const z1 = this.elevAt(tr.x1, tr.y1) + (aloft?.air?.alt ?? 0);
+        this.tracers.push({ ...tr, z0, z1 });
+        this.barrageLandAt.set(tr.id, tracerLandsAt(tr));
+      }
+      for (const wing of [1, -1] as const) {
+        const first = streaks.find((tr) => tr.wing === wing);
+        if (!first) continue;
+        this.addFx({
+          id: first.id + 9_000_000,
+          kind: "muzzle",
+          x: first.x0,
+          y: first.y0,
+          vx: first.x1 - first.x0,
+          vy: first.y1 - first.y0,
+          at: now,
+          caliber: 30,
+          lift: airLiftPx(plane.air.alt),
+        });
+      }
+    }
+    if (this.barrageLandAt.size > 600) {
+      for (const [id, at] of this.barrageLandAt) if (at < now - 2000) this.barrageLandAt.delete(id);
+    }
+  }
+
+  /** Glowing streaks of an Fw 190 barrage, gun to impact. */
+  private drawBarrageTracers(): void {
+    if (this.tracers.length === 0) return;
+    const now = performance.now();
+    const ctx = this.ctx;
+    const keep: typeof this.tracers = [];
+    ctx.save();
+    ctx.lineCap = "round";
+    for (const tr of this.tracers) {
+      if (now > tracerLandsAt(tr)) continue;
+      keep.push(tr);
+      const span = tracerSpan(tr, now);
+      if (!span) continue;
+      const at = (u: number) =>
+        this.toScreen(tr.x0 + (tr.x1 - tr.x0) * u, tr.y0 + (tr.y1 - tr.y0) * u, tr.z0 + (tr.z1 - tr.z0) * u);
+      const head = at(span.head);
+      const tail = at(span.tail);
+      ctx.strokeStyle = "rgba(255, 170, 60, 0.35)";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(tail.x, tail.y);
+      ctx.lineTo(head.x, head.y);
+      ctx.stroke();
+      ctx.strokeStyle = "rgba(255, 236, 170, 0.95)";
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(tail.x, tail.y);
+      ctx.lineTo(head.x, head.y);
+      ctx.stroke();
+    }
+    ctx.restore();
+    this.tracers = keep;
   }
 
   private addFx(f: MapView["fx"][number]): void {
@@ -2462,6 +2554,7 @@ export class MapView {
     this.drawTreeFalls();
     this.drawSmokeClouds();
     this.drawImpacts();
+    this.drawBarrageTracers();
 
     const toPlace = this.placeMode ? this.readyBuilding() : null;
     if (toPlace && this.mouseX >= 0) {
@@ -4414,6 +4507,11 @@ export class MapView {
         this.fxIds.delete(f.id);
         continue;
       }
+      // Waiting on its barrage streak to land.
+      if (age < 0) {
+        keep.push(f);
+        continue;
+      }
       keep.push(f);
       const t = age / life;
       const s = this.toScreen(f.x, f.y);
@@ -4841,6 +4939,23 @@ export class MapView {
       this.drawTeeth(e.x, e.y, e.facing, ghost ? 0.45 : 1, e.id);
       return;
     }
+    if (e.type === "trench") {
+      const manned = !ghost && (e.garrison?.count ?? 0) > 0;
+      const holder = manned ? this.curr.players.find((pl) => pl.playerId === e.garrison?.ownerId) : undefined;
+      this.drawTrenchPit(e.x, e.y, e.facing, {
+        alpha: ghost ? 0.45 : 1,
+        seed: e.id * 2654435761,
+        manned,
+        bandColor: holder ? colorHex(holder.colorId) : undefined,
+      });
+      if (!ghost) {
+        const s = this.toScreen(e.x, e.y, this.elevAt(e.x, e.y));
+        const w = Math.max(20, this.groundSpan(e.x, e.y, span?.length ?? 16));
+        this.maybeHp(e, s.x - w / 2, s.y - 10, w);
+        this.drawGarrisonBars(e, s.x - 9, s.y - 18);
+      }
+      return;
+    }
     this.drawSandbagWall(e.x, e.y, e.facing, { ruined: !!e.ruined, alpha: ghost ? 0.45 : 1, seed: e.id * 2654435761 });
   }
 
@@ -4865,6 +4980,8 @@ export class MapView {
           run: () => {
             if (site.structure === "teeth") {
               this.drawTeeth(site.x, site.y, site.facing, FIELD_SITE_ALPHA, 0);
+            } else if (site.structure === "trench") {
+              this.drawTrenchPit(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
             } else {
               this.drawSandbagWall(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
             }
@@ -4894,6 +5011,34 @@ export class MapView {
       seed: opts.seed >>> 0,
       alpha: opts.alpha,
       bad: opts.bad,
+      project: (wx, wy, up) => {
+        const p = this.toScreen(wx, wy, elev);
+        return { x: p.x, y: p.y - up * lift };
+      },
+    });
+  }
+
+  private drawTrenchPit(
+    x: number,
+    y: number,
+    facing: number,
+    opts: { alpha: number; seed: number; bad?: boolean; manned?: boolean; bandColor?: string },
+  ): void {
+    const span = fieldSpan("trench");
+    if (!span) return;
+    const elev = this.elevAt(x, y);
+    const lift = this.groundSpan(x, y, 10) / 10;
+    drawTrench(this.ctx, {
+      x,
+      y,
+      facing,
+      length: span.length,
+      thick: span.thick,
+      seed: opts.seed >>> 0,
+      alpha: opts.alpha,
+      bad: opts.bad,
+      manned: opts.manned,
+      bandColor: opts.bandColor,
       project: (wx, wy, up) => {
         const p = this.toScreen(wx, wy, elev);
         return { x: p.x, y: p.y - up * lift };
@@ -4948,6 +5093,8 @@ export class MapView {
       if (type === "teeth") {
         this.drawTeeth(p.x, p.y, p.facing, ok ? 0.72 : 0.4, 0);
         if (!ok) this.strokeFieldFoot(type, p, "#ff5a4a");
+      } else if (type === "trench") {
+        this.drawTrenchPit(p.x, p.y, p.facing, { alpha: 0.78, seed: 7, bad: !ok });
       } else {
         this.drawSandbagWall(p.x, p.y, p.facing, { alpha: 0.78, seed: 7, bad: !ok });
       }

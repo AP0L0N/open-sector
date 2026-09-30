@@ -2,9 +2,11 @@ import {
   NEUTRAL_OWNER,
   catalog,
   CYBORG_REPAIR_PER_SEC,
+  ENGINEER_SEEK_TILES,
   fieldSpan,
   MAX_UNIT_RADIUS,
   UNIT_SPACE_PAD,
+  isAircraftType,
   isArmoredType,
   isCyborg,
   isFieldStructure,
@@ -529,6 +531,59 @@ function tickRepair(state: MatchState, e: Entity, dt: number): void {
   finishWork(e);
 }
 
+/** Idle, or on a patch-up he picked for himself. A player order wins. */
+function mayAutoRepair(e: Entity): boolean {
+  if (e.garrisonedIn != null || e.state === "deploy" || e.state === "undeploy") return false;
+  const o = e.order;
+  return !o || (o.auto === true && o.kind === "repair");
+}
+
+/** Damaged allied armor on the ground, close enough to walk to. A held engineer only works what he can touch. */
+function canPatch(state: MatchState, eng: Entity, other: Entity): boolean {
+  if (other.kind !== "unit" || other.wreck || other.garrisonedIn != null) return false;
+  if (!isRepairableUnit(other.type) || isAircraftType(other.type)) return false;
+  if (!canRepairTarget(state, eng.ownerId, other)) return false;
+  if (eng.holdPosition) return nearRepair(eng, other, state.tileSize);
+  const seek = ENGINEER_SEEK_TILES * state.tileSize;
+  return Math.hypot(other.x - eng.x, other.y - eng.y) <= seek;
+}
+
+function choosePatch(state: MatchState, eng: Entity): Entity | null {
+  const currentId = eng.order?.kind === "repair" ? eng.order.targetId : undefined;
+  const current = currentId != null ? state.entities.get(currentId) : undefined;
+  if (current && canPatch(state, eng, current)) return current;
+  let best: Entity | null = null;
+  let bestD = Infinity;
+  for (const other of state.entities.values()) {
+    if (!canPatch(state, eng, other)) continue;
+    const d = Math.hypot(other.x - eng.x, other.y - eng.y);
+    if (!best || d < bestD - 0.5 || (Math.abs(d - bestD) <= 0.5 && other.id < best.id)) {
+      best = other;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+/** Like the medic: an idle engineer walks to the nearest damaged allied hull and fixes it. */
+function autoRepair(state: MatchState): void {
+  for (const eng of state.entities.values()) {
+    if (eng.type !== "engineer" || eng.kind !== "unit" || eng.hp <= 0) continue;
+    if (!mayAutoRepair(eng)) continue;
+    const target = choosePatch(state, eng);
+    if (!target) {
+      if (eng.order) finishWork(eng);
+      continue;
+    }
+    if (eng.order?.targetId === target.id) continue;
+    clearOrder(eng);
+    eng.order = { kind: "repair", targetId: target.id, auto: true };
+    eng.state = "move";
+    const spot = repairSpot(eng, target, state.tileSize);
+    setPath(state, eng, spot.x, spot.y);
+  }
+}
+
 /** Crouched or crawling infantry tucked against an intact sandbag wall. */
 export function sandbagCoverBonus(state: MatchState, e: Entity): number {
   if (e.hp <= 0 || e.garrisonedIn != null || !isInfantryType(e.type)) return 0;
@@ -565,6 +620,7 @@ function applyCoverHp(state: MatchState): void {
 }
 
 export function tickField(state: MatchState, dt: number): void {
+  autoRepair(state);
   for (const e of state.entities.values()) {
     if (e.hp <= 0 || e.kind !== "unit") continue;
     if (e.fieldQueue && e.order?.kind !== "build") e.fieldQueue = undefined;
@@ -675,11 +731,12 @@ function segmentObbT(
   return t0 < 0 ? 0 : t0;
 }
 
-/** 1 = sandbags (blocks everyone). 2 = dragon's teeth (vehicles only). */
+/** 1 = sandbags (blocks everyone). 2 = dragon's teeth (vehicles only). A trench blocks no one. */
 export function restampForts(state: MatchState): void {
   state.fortBlock.fill(0);
   for (const e of state.entities.values()) {
     if (!isFieldStructure(e.type) || e.hp <= 0 || e.ruined) continue;
+    if (e.type === "trench") continue;
     const code = e.type === "teeth" ? 2 : 1;
     for (const t of fieldTiles(state, e.type, e.x, e.y, e.facing, 0)) {
       state.fortBlock[tileIndex(state, t.x, t.y)] = code;

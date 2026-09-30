@@ -7,6 +7,7 @@ import {
   TITAN_ROCKET,
   AIR_CRUISE_ALT,
   SUPPLY_CARGO,
+  SUPPLY_REGEN_PER_SEC,
   SUPPLY_SHELL_COST,
   TITAN_ROCKET_AMMO,
   TITAN_ROCKET_INTERVAL,
@@ -302,9 +303,15 @@ describe("titan", () => {
     titan.rockets = 0;
     truck.supply = SUPPLY_CARGO;
     assert.equal(applyCommand(state, "A", { type: "cmd.supply", ids: [truck.id], targetId: titan.id }).ok, true);
-    ticks(state, 400);
+    // The truck scrounges cargo back while it works; take that out before counting the cost.
+    let regen = 0;
+    for (let n = 0; truck.order && n < 400; n++) {
+      if (truck.supply < SUPPLY_CARGO) regen += SUPPLY_REGEN_PER_SEC * TICK_DT;
+      ticks(state, 1);
+    }
     assert.equal(titan.rockets, TITAN_ROCKET_AMMO, "the whole rack, not one rocket");
-    assert.equal(truck.supply, SUPPLY_CARGO - TITAN_ROCKET_AMMO * SUPPLY_SHELL_COST, "a rocket costs what a shell costs");
+    const spent = SUPPLY_CARGO - truck.supply + regen;
+    assert.ok(Math.abs(spent - TITAN_ROCKET_AMMO * SUPPLY_SHELL_COST) < 1e-6, `a rocket costs what a shell costs (${spent})`);
     assert.equal(truck.order, null, "the truck stops once the rack is full");
   });
 
