@@ -8,10 +8,15 @@ only gun is a small ball-mounted machine gun in the bow plate.
   hull      a long, wide, low hull on two broad tracks; a raised boat bow so it
             can wade; a tall stepped fighting casemate over the rear two-thirds
             with firing slits on every face, and a gray team-tint roof hatch.
+  wade      the same hull sunk to the deck. Tracks and the belly are below the
+            pool; the casemate is what looks out. Same camera as the dry faces
+            so the client can share one scale and contact.
 
 0001 = nose screen-south, then clockwise 22.5° through 0016. No national insignia.
 
   python tools/sprites/render_mammoth.py \\
+      --out gridlock/packages/client/src/assets/units/mammoth
+  python tools/sprites/render_mammoth.py --wade \\
       --out gridlock/packages/client/src/assets/units/mammoth
 """
 
@@ -74,6 +79,43 @@ def track(m: Mesh, y: float) -> None:
     # Armored skirt along the top run.
     o = 1 if y > 0 else -1
     m.box((x0 + 0.1, min(y - TRACK_HALF - 0.08 * (o < 0), y + TRACK_HALF), 0.95), (x1 - 0.05, max(y + TRACK_HALF + 0.08 * (o > 0), y - TRACK_HALF), 1.38), "camo")
+
+
+def sink(m: Mesh, dz: float) -> None:
+    m.verts = [np.asarray(v, dtype=np.float64) + np.array([0.0, 0.0, dz]) for v in m.verts]
+
+
+def ellipse(m: Mesh, z: float, cx: float, cy: float, rx: float, ry: float, mat: str, n: int = 40) -> list[int]:
+    """Flat disc facing up. Returns the rim vertex ids."""
+    center = m.v((cx, cy, z))
+    rim = [m.v((cx + rx * math.cos(2 * math.pi * k / n), cy + ry * math.sin(2 * math.pi * k / n), z)) for k in range(n)]
+    for k in range(n):
+        m.tri(center, rim[k], rim[(k + 1) % n], mat)
+    return rim
+
+
+def ring(m: Mesh, z: float, cx: float, cy: float, rx0: float, ry0: float, rx1: float, ry1: float, mat: str, n: int = 40) -> None:
+    inner = [m.v((cx + rx0 * math.cos(2 * math.pi * k / n), cy + ry0 * math.sin(2 * math.pi * k / n), z)) for k in range(n)]
+    outer = [m.v((cx + rx1 * math.cos(2 * math.pi * k / n), cy + ry1 * math.sin(2 * math.pi * k / n), z)) for k in range(n)]
+    for k in range(n):
+        j = (k + 1) % n
+        m.quad(inner[k], outer[k], outer[j], inner[j], mat)
+
+
+# Half under. The cut runs through the lower casemate, about halfway up the
+# dry side view. Tracks, the belly, and the bow stay in the pool. The roof,
+# the upper walls, and the firing slits are what look out.
+WADE_Z = DECK_Z + 0.8
+
+
+def build_pool() -> Mesh:
+    """Pool on the contact plane, a little wider than the tracks, with one foam lip."""
+    m = Mesh()
+    cx, cy = 0.15, 0.0
+    rx, ry = 4.05, 2.7
+    ellipse(m, 0.03, cx, cy, rx, ry, "water")
+    ring(m, 0.08, cx, cy, rx * 0.78, ry * 0.78, rx * 0.92, ry * 0.92, "foam")
+    return m
 
 
 def build_hull() -> Mesh:
@@ -146,13 +188,35 @@ def cameo(out: Path, face: str = CAMEO_FACE, path: Path | None = None) -> None:
     print("wrote", path)
 
 
+def render_wade(out: Path, ss: int) -> None:
+    """Same camera as the dry hull. The mesh is dropped so the deck sits on the contact plane."""
+    hull = build_hull()
+    sink(hull, -WADE_Z)
+    render_turntable(
+        hull,
+        out / "wade",
+        "mammoth_wade",
+        "mammoth-wade.json",
+        scale_frac=SCALE_FRAC,
+        z_mid=Z_MID,
+        cy_frac=CY_FRAC,
+        ss=ss,
+        clip_z=0.0,
+        underlay=build_pool(),
+    )
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="unit folder; writes hull/ inside it")
     ap.add_argument("--ss", type=int, default=4)
     ap.add_argument("--cameo-only", action="store_true")
+    ap.add_argument("--wade", action="store_true", help="half-sunk water faces only (wade/)")
     args = ap.parse_args()
     out = Path(args.out)
+    if args.wade:
+        render_wade(out, args.ss)
+        return
     if not args.cameo_only:
         render_turntable(build_hull(), out / "hull", "mammoth_hull", "mammoth-hull.json",
                          scale_frac=SCALE_FRAC, z_mid=Z_MID, cy_frac=CY_FRAC, ss=args.ss)

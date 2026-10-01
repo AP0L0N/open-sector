@@ -23,6 +23,7 @@ describe("http + ws", () => {
       assert.equal(listRes.status, 200);
       const list = (await listRes.json()) as { id: string }[];
       assert.ok(list.some((m) => m.id === "yard-64"));
+      assert.ok(list.some((m) => m.id === "broad-143"));
 
       const mapRes = await fetch(`http://127.0.0.1:${started.port}/map/yard-64`);
       assert.equal(mapRes.status, 200);

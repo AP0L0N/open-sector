@@ -45,8 +45,10 @@ export interface Order {
     | "land";
   x?: number;
   y?: number;
-  /** World radians. Guard / rotate destination facing. */
+  /** World radians. Guard destination facing. */
   facing?: number;
+  /** World radians a move turns to once the unit arrives. Not the travel heading. */
+  arrive?: number;
   /** Attack, force-attack, garrison house, or the unit being escorted. */
   targetId?: number;
   tileX?: number;
@@ -55,6 +57,11 @@ export interface Order {
   auto?: boolean;
   /** Fire the main gun once, then idle. Smoke force-attack uses this; other one-shots can too. */
   once?: boolean;
+  /**
+   * Copied from a garrison host's force-attack. Dropped when that aim ends
+   * or the point leaves this soldier's range. Not a wire field.
+   */
+  relay?: boolean;
   /** Group-move cap in catalog tiles/sec. Slowest selected unit that can still walk. */
   pace?: number;
   /** Engineer field structure being built. */
@@ -90,7 +97,7 @@ export interface QueuedOrder {
 }
 
 /** Where a plane is in its sortie. */
-export type AirPhase = "parked" | "takeoff" | "fly" | "landing";
+export type AirPhase = "parked" | "takeoff" | "fly" | "landing" | "crash";
 
 /** Flight state. Aircraft only. */
 export interface AirState {
@@ -124,6 +131,15 @@ export interface AirState {
   jumping?: boolean;
   /** Transport only: seconds until the next jumper goes. */
   door?: number;
+  /**
+   * Area this plane was told to guard. Kept while it lands to rearm, then it
+   * flies back. Any other order clears it. Not a wire field.
+   */
+  guard?: { x: number; y: number } | null;
+  /** Crash only: heading the nose is wandering toward. */
+  drift?: number;
+  /** Crash only: entity ids this airframe has already struck. */
+  struck?: number[];
 }
 
 /** Soldier hanging under a canopy on the way down from a transport. */
@@ -215,6 +231,11 @@ export interface Entity {
   turretFacing: number;
   hp: number;
   hpMax: number;
+  /**
+   * Fire is what dropped this soldier to 0. Read when the corpse is left,
+   * then discarded with the entity. Not sent on a living unit.
+   */
+  fireDeath?: true;
   state: EntityState;
   tileX: number;
   tileY: number;
@@ -389,8 +410,11 @@ export interface Projectile {
   apex?: number;
   /** Seconds from the tube to the ground. */
   flightTime?: number;
-  /** Force-attack: the blast also catches allies. */
+  /** Force-attack: the blast also catches allies, and a tree on the aim burns. */
   harmAllies?: boolean;
+  /** Force-attack aim, before the glob scatters. Not sent to clients. */
+  aimX?: number;
+  aimY?: number;
   /** Rocket fused on a plane: it bursts in the air and only catches aircraft. */
   airBurst?: boolean;
   /** Rocket only: the carrier type whose rack (rocketRackOf) sets its splash and armor dent. */
@@ -515,8 +539,8 @@ export interface MatchState {
   /** Tick whose per-player entity-visibility cache is in `seeByPlayer`. */
   seeTick: number;
   seeByPlayer: Map<string, Map<number, boolean>>;
-  /** Tree tiles crushed by vehicles this match. */
-  clearedTrees: { x: number; y: number }[];
+  /** Tree tiles removed this match. `burn` is a flamethrower force-attack. */
+  clearedTrees: { x: number; y: number; burn?: true }[];
   /** Infantry who died in the open. Not entities: passable and indestructible. */
   bodies: CorpseView[];
   /** Heavy-shell craters. Not entities. */

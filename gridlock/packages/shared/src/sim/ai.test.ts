@@ -195,7 +195,7 @@ describe("easy CPU", () => {
     assert.equal(job?.type, "research");
   });
 
-  it("trains Troopers from the opening scrap pile", () => {
+  it("trains the first Trooper wave when the map opens with no scrap field", () => {
     const { state, aiId } = humanVsEasy();
     let trained = false;
     for (let i = 0; i < 800; i++) {

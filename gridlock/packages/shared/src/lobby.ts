@@ -398,8 +398,24 @@ export function startMatch(
   const pre = startPreconditions(room);
   if (!pre.ok) return pre;
   const resolved = resolveSpawns(room);
+  applyMapTeams(room, resolved);
   room.phase = "playing";
   return ok(resolved);
+}
+
+/** Broad Yard pairs share a suggested team. A team the slot already chose stays. */
+function applyMapTeams(
+  room: RoomState,
+  resolved: Map<string, { spawnId: number; x: number; y: number }>,
+): void {
+  const map = getMap(room.mapId);
+  if (!map?.applySuggestedTeams) return;
+  for (const slot of commanders(room)) {
+    if (slot.team !== 0 || !slot.playerId) continue;
+    const spawnId = resolved.get(slot.playerId)?.spawnId;
+    const team = map.spawns.find((s) => s.id === spawnId)?.suggestedTeam;
+    if (team) slot.team = team;
+  }
 }
 
 export function canCreateRoom(roomCount: number): LobbyResult<void> {

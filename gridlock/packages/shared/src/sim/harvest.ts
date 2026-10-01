@@ -58,7 +58,7 @@ export function tickMaulerCart(state: MatchState, dt: number): void {
 
 export function tickHarvest(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
-    if (e.type !== "hauler" || e.hp <= 0 || e.wreck) continue;
+    if (e.type !== "hauler" || e.hp <= 0 || e.wreck || e.garrisonedIn || e.chute) continue;
     if (e.cartHp <= 0) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
     if (e.returnToBase || e.order?.kind === "withdraw") continue;

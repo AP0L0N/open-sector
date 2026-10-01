@@ -1,5 +1,6 @@
 import {
   AIR_FUEL_SECONDS,
+  BV222_TROOPS,
   DRONE_BATTERY_SECONDS,
   DRONE_LAUNCH_MIN_SECONDS,
   JET_FUEL_SECONDS,
@@ -17,6 +18,7 @@ import {
   hasTurret,
   isGarrisonable,
   isInfantryType,
+  isTransportType,
   MG42_BIPOD_SECONDS,
   MORTAR_PLANT_SECONDS,
   walkerGunsOf,
@@ -157,7 +159,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     if (e.garrisonedIn && !friendly) continue;
     if (!friendly && !entityOnMask(e, vis, state.width, state.height, state.tileSize)) continue;
     const job = e.queue[0];
-    const occBars = isGarrisonable(e.type) ? garrisonBars(state, e) : [];
+    const transport = isTransportType(e.type);
+    const occBars = isGarrisonable(e.type) || transport ? garrisonBars(state, e) : [];
     entities.push({
       id: e.id,
       kind: e.kind,
@@ -249,7 +252,14 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
               hide: occFriendly && occBars.length > 0 && e.garrisonHide ? true : undefined,
             };
           })()
-        : undefined,
+        : transport && occBars.length > 0
+          ? {
+              count: occBars.length,
+              cap: BV222_TROOPS,
+              ownerId: garrisonOwner(state, e) || undefined,
+              bars: occBars,
+            }
+          : undefined,
       capture:
         e.kind === "building" && e.captureProgress > 0 && e.captureOwnerId
           ? { ownerId: e.captureOwnerId, progress: e.captureProgress }
@@ -393,7 +403,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     mines: mineViews(state, youPlayerId, vis),
     crates: crateViews(state, youPlayerId, vis),
     scrap,
-    clearedTrees: state.clearedTrees.map((t) => ({ x: t.x, y: t.y })),
+    clearedTrees: state.clearedTrees.map((t) => (t.burn ? { x: t.x, y: t.y, burn: true as const } : { x: t.x, y: t.y })),
     bodies: visibleBodies(state, youPlayerId, vis),
     holes: state.holes.map((h) => ({ ...h })),
     vision: you ? visionRuns(vis) : undefined,
@@ -427,6 +437,7 @@ function visibleBodies(state: MatchState, youPlayerId: string, vis: Uint8Array):
       facing: b.facing,
       bornTick: b.bornTick,
       blood: b.blood.map((s) => ({ ...s })),
+      ...(b.burned ? { burned: true as const } : {}),
     });
   }
   return bodies;

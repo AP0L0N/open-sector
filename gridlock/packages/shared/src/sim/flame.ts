@@ -28,7 +28,7 @@ import {
   PYRO_COOKOFF_RADIUS,
 } from "../catalog.js";
 import { takeDamage } from "./crits.js";
-import { allies, isWater, nearestWalkable, occupant, playerTeam, tileCenter, worldToTile } from "./geo.js";
+import { allies, burnTreeAt, isWater, nearestWalkable, occupant, playerTeam, tileCenter, worldToTile } from "./geo.js";
 import { garrisonMuzzleToward, livingGarrison, woundGarrison } from "./garrison.js";
 import { mortarAirZ } from "./mortar.js";
 import { setPath } from "./path.js";
@@ -89,6 +89,7 @@ export function throwFlame(
     flightTime: flight,
     harmAllies: forced,
     z: 0,
+    ...(forced ? { aimX, aimY } : {}),
   };
   state.projectiles.push(p);
   e.clip = Math.max(0, e.clip - 1);
@@ -127,8 +128,32 @@ export function burnShare(e: Entity): number {
   return isArmoredType(e.type) ? 0 : FIRE_SOFT_VEHICLE_MUL;
 }
 
+/** Fire is what killed this soldier. A later bullet cannot claim a man already at 0. */
+function markFireKill(e: Entity, before: number): void {
+  if (before > 0 && e.hp <= 0 && isInfantryType(e.type)) e.fireDeath = true;
+}
+
+/**
+ * A forced jet burns the tree it was aimed at, and the tree the glob actually
+ * lands on. Scatter often misses the trunk; the aim tile still goes. An
+ * ordinary attack leaves the woods standing.
+ */
+function burnForcedTrees(state: MatchState, p: Projectile): void {
+  if (!p.harmAllies) return;
+  const ts = state.tileSize;
+  const points = [{ x: p.x, y: p.y }];
+  if (p.aimX != null && p.aimY != null) points.push({ x: p.aimX, y: p.aimY });
+  for (const s of points) {
+    const tx = worldToTile(s.x, ts);
+    const ty = worldToTile(s.y, ts);
+    if (!burnTreeAt(state, tx, ty)) continue;
+    igniteAt(state, tileCenter(tx, ts), tileCenter(ty, ts), p.ownerId);
+  }
+}
+
 /** Burning fuel lands: it splashes whoever it falls among, pours in at a window, and sets the ground alight. */
 function landFlame(state: MatchState, p: Projectile): void {
+  burnForcedTrees(state, p);
   const tx = worldToTile(p.x, state.tileSize);
   const ty = worldToTile(p.y, state.tileSize);
   if (isWater(state, tx, ty)) return;
@@ -147,7 +172,9 @@ function landFlame(state: MatchState, p: Projectile): void {
     if (!p.harmAllies && allies(state, p.ownerId, e.ownerId)) continue;
     const d = Math.hypot(e.x - p.x, e.y - p.y);
     if (d > FLAMER_SPLASH + e.radius * 0.5) continue;
+    const before = e.hp;
     takeDamage(e, p.damage * share, state.tick);
+    markFireKill(e, before);
   }
   igniteAt(state, p.x, p.y, p.ownerId);
 }
@@ -226,7 +253,9 @@ export function tickFires(state: MatchState, dt: number): void {
     if (share <= 0) continue;
     const heat = heatAt(state, e.x, e.y, e.radius * 0.3);
     if (heat <= 0) continue;
+    const before = e.hp;
     takeDamage(e, FIRE_BURN_DPS * share * heat * dt, state.tick);
+    markFireKill(e, before);
     if (e.hp > 0 && isInfantryType(e.type) && e.type !== "pyro") stepOutOfFire(state, e);
   }
 }
@@ -315,7 +344,9 @@ export function cookOff(state: MatchState, e: Entity): void {
     else if (!isInfantryType(o.type)) mul = 0.8;
     const dmg = PYRO_COOKOFF_DAMAGE * falloff * mul;
     if (o.kind === "building" && livingGarrison(state, o).length > 0) woundGarrison(state, o, dmg * 0.5, FLAMER.caliber);
+    const before = o.hp;
     takeDamage(o, dmg, state.tick);
+    markFireKill(o, before);
   }
   igniteAt(state, e.x, e.y, e.ownerId);
   const spin = nextRand(state) * Math.PI * 2;

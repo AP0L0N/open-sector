@@ -2,18 +2,24 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
+  AIR_CRASH_BUILDING_DAMAGE,
   AIR_CRUISE_ALT,
   AIR_FUEL_SECONDS,
   AIRFIELD_PADS,
   BOMB_REARM_SECONDS,
+  FW190_BARRAGES,
   STUKA_MG_ROUNDS,
   TICK_DT,
   TRAIN_TYPES,
   catalog,
+  coverHeightOf,
+  hasTracks,
+  wreckHpOf,
 } from "../catalog.js";
 import { airfieldPadWorld, airfieldRunway, isAirborne, PARK_HEADING } from "./air.js";
 import { applyCommand } from "./commands.js";
-import { makeEntity, tileCenter } from "./geo.js";
+import { takeDamage } from "./crits.js";
+import { buildingBounds, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { spawnUnit } from "./train.js";
@@ -357,6 +363,10 @@ describe("stuka attack", () => {
     assert.ok(landed >= 0, "plane should land after the run");
     ticks(state, Math.ceil(BOMB_REARM_SECONDS / TICK_DT) + 5);
     assert.equal(plane.air!.bombs, 1, "bomb hung again on the pad");
+    plane.air!.fuel = AIR_FUEL_SECONDS;
+    plane.air!.rounds = STUKA_MG_ROUNDS;
+    ticks(state, 5);
+    assert.equal(plane.air?.phase, "parked", "an attack sortie stays on the pad once it has rearmed");
   });
 
   it("strafes infantry with the wing guns", () => {
@@ -372,6 +382,117 @@ describe("stuka attack", () => {
     applyCommand(state, "A", { type: "cmd.attack", ids: [plane.id], targetId: foe.id });
     const t = until(state, 1200, () => plane.air!.rounds < STUKA_MG_ROUNDS);
     assert.ok(t >= 0, "wing guns should fire");
+  });
+
+  it("guard fights the area, and when the ammo is gone it lands, rearms, and comes back", () => {
+    const state = twoPlayerMatch();
+    seedCore(state);
+    seedCore(state, "B", 200, 200);
+    const field = seedAirfield(state);
+    const plane = parkedPlane(state, field);
+    const ts = state.tileSize;
+    const gx = 110 * ts;
+    const gy = 40 * ts;
+    const foe = makeEntity(state, "warden", "B", gx, gy);
+    makeEntity(state, "rifleman", "A", gx - 2 * ts, gy);
+    assert.equal(applyCommand(state, "A", { type: "cmd.guard", ids: [plane.id], x: gx, y: gy, facing: 0 }).ok, true);
+    assert.equal(plane.order?.kind, "guard");
+    assert.equal(plane.air?.phase, "takeoff");
+    assert.deepEqual(plane.air!.guard, { x: gx, y: gy });
+    const saw = until(state, 900, () => plane.attackTarget === foe.id);
+    assert.ok(saw >= 0, "a guard should fight what it can see in the area");
+
+    plane.air!.bombs = 0;
+    plane.air!.rounds = 0;
+    plane.air!.fuel = AIR_FUEL_SECONDS;
+    ticks(state, 2);
+    assert.equal(plane.order?.kind, "land");
+    assert.deepEqual(plane.air!.guard, { x: gx, y: gy });
+
+    const landed = until(state, 1500, () => plane.air?.phase === "parked");
+    assert.ok(landed >= 0, "it should land to rearm");
+    assert.equal(plane.order?.kind, "guard");
+    assert.ok(plane.air!.bombs < 1 || plane.air!.rounds < STUKA_MG_ROUNDS || plane.air!.fuel < AIR_FUEL_SECONDS);
+
+    let launchedFull = false;
+    const back = until(state, 400, () => {
+      if (plane.air?.phase === "parked") return false;
+      launchedFull =
+        plane.air!.bombs >= 1 && plane.air!.rounds >= STUKA_MG_ROUNDS && plane.air!.fuel >= AIR_FUEL_SECONDS - 1;
+      return true;
+    });
+    assert.ok(back >= 0, "it should take off again");
+    assert.equal(launchedFull, true, "it waits for a full bomb, full belts, and a full tank");
+    assert.equal(plane.order?.kind, "guard");
+    assert.equal(plane.order?.x, gx);
+    assert.equal(plane.order?.y, gy);
+  });
+
+  it("an empty plane ordered to guard waits on the pad until the load is full", () => {
+    const state = twoPlayerMatch();
+    seedCore(state);
+    const field = seedAirfield(state);
+    const plane = parkedPlane(state, field);
+    plane.air!.bombs = 0;
+    plane.air!.rounds = 0;
+    plane.air!.fuel = AIR_FUEL_SECONDS;
+    const ts = state.tileSize;
+    const r = applyCommand(state, "A", { type: "cmd.guard", ids: [plane.id], x: 80 * ts, y: 40 * ts, facing: 1 });
+    assert.equal(r.ok, true);
+    assert.equal(plane.air?.phase, "parked");
+    assert.equal(plane.order?.kind, "guard");
+    ticks(state, 5);
+    assert.equal(plane.air?.phase, "parked");
+    assert.ok(plane.air!.rounds < STUKA_MG_ROUNDS);
+  });
+
+  it("a fighter on guard comes back only with every barrage", () => {
+    const state = twoPlayerMatch();
+    seedCore(state);
+    const field = seedAirfield(state);
+    const plane = spawnUnit(state, "A", "fw190", field, false);
+    assert.ok(plane);
+    plane.air!.rounds = 0;
+    plane.air!.fuel = AIR_FUEL_SECONDS;
+    const ts = state.tileSize;
+    applyCommand(state, "A", { type: "cmd.guard", ids: [plane.id], x: 90 * ts, y: 40 * ts, facing: 0 });
+    assert.equal(plane.air?.phase, "parked");
+    plane.air!.rounds = FW190_BARRAGES - 0.2;
+    ticks(state, 3);
+    assert.equal(plane.air?.phase, "parked", "a partial last barrage is not a full load");
+    plane.air!.rounds = FW190_BARRAGES;
+    ticks(state, 1);
+    assert.equal(plane.air?.phase, "takeoff");
+    assert.equal(plane.order?.kind, "guard");
+    assert.equal(plane.air!.rounds, FW190_BARRAGES);
+  });
+
+  it("stop, land, and a new move cancel the guard return", () => {
+    const state = twoPlayerMatch();
+    seedCore(state);
+    const field = seedAirfield(state);
+    const plane = parkedPlane(state, field);
+    const ts = state.tileSize;
+    applyCommand(state, "A", { type: "cmd.guard", ids: [plane.id], x: 80 * ts, y: 40 * ts, facing: 0 });
+    assert.ok(plane.air!.guard);
+    applyCommand(state, "A", { type: "cmd.stop", ids: [plane.id] });
+    assert.equal(plane.air!.guard ?? null, null);
+    assert.notEqual(plane.order?.kind, "guard");
+
+    applyCommand(state, "A", { type: "cmd.guard", ids: [plane.id], x: 80 * ts, y: 40 * ts, facing: 0 });
+    applyCommand(state, "A", { type: "cmd.land", ids: [plane.id] });
+    assert.equal(plane.air!.guard ?? null, null);
+    assert.ok(until(state, 200, () => plane.air?.phase === "parked") >= 0, "land should put it back on the pad");
+
+    plane.air!.bombs = 0;
+    plane.air!.rounds = 0;
+    applyCommand(state, "A", { type: "cmd.guard", ids: [plane.id], x: 80 * ts, y: 40 * ts, facing: 0 });
+    assert.equal(plane.air?.phase, "parked");
+    assert.deepEqual(plane.air!.guard, { x: 80 * ts, y: 40 * ts });
+    applyCommand(state, "A", { type: "cmd.move", ids: [plane.id], x: 70 * ts, y: 20 * ts });
+    assert.equal(plane.air!.guard ?? null, null);
+    assert.equal(plane.order?.kind, "move");
+    assert.equal(plane.air?.phase, "takeoff");
   });
 
   it("attack-move finds a target on the way", () => {
@@ -419,10 +540,13 @@ describe("anti-aircraft", () => {
     let engaged = false;
     const t = until(state, 1200, () => {
       if (shooters.some((s) => s.attackTarget === plane.id)) engaged = true;
-      return !state.entities.has(plane.id);
+      return plane.wreck;
     });
     assert.ok(engaged, "small arms should take the plane as a target");
     assert.ok(t >= 0, "the plane should go down");
+    assert.equal(plane.air, undefined);
+    assert.equal(plane.hp, wreckHpOf("stuka"));
+    assert.equal(state.entities.has(plane.id), true);
   });
 
   it("a parked plane is a ground target for a tank", () => {
@@ -459,8 +583,13 @@ describe("fuel", () => {
     plane.air!.alt = AIR_CRUISE_ALT;
     plane.air!.fuel = 1;
     plane.order = { kind: "move", x: plane.x, y: plane.y };
-    ticks(state, 20);
-    assert.equal(state.entities.has(plane.id), false);
+    const falling = until(state, 40, () => plane.air?.phase === "crash");
+    assert.ok(falling >= 0, "a dry tank starts the fall");
+    assert.equal(state.entities.has(plane.id), true);
+    const down = until(state, 200, () => plane.wreck);
+    assert.ok(down >= 0, "the fall ends as a wreck");
+    assert.equal(plane.air, undefined);
+    assert.equal(plane.hp, wreckHpOf("stuka"));
   });
 
   it("refuels on the pad", () => {
@@ -472,5 +601,131 @@ describe("fuel", () => {
     plane.air!.fuel = 10;
     ticks(state, 20);
     assert.ok(plane.air!.fuel > 10);
+  });
+});
+
+describe("aircraft crash", () => {
+  /** Ground with no hull and no building close enough to catch a falling plane. */
+  function openGround(state: MatchState): { x: number; y: number } {
+    const ts = state.tileSize;
+    const pad = ts * 8;
+    for (let ty = 24; ty < state.height - 24; ty += 5) {
+      for (let tx = 24; tx < state.width - 24; tx += 5) {
+        const x = tileCenter(tx, ts);
+        const y = tileCenter(ty, ts);
+        let busy = false;
+        for (const e of state.entities.values()) {
+          if (e.kind === "building") {
+            const b = buildingBounds(e, ts);
+            if (x >= b.x0 - pad && x <= b.x1 + pad && y >= b.y0 - pad && y <= b.y1 + pad) busy = true;
+          } else if (Math.hypot(e.x - x, e.y - y) < pad) busy = true;
+        }
+        if (!busy) return { x, y };
+      }
+    }
+    throw new Error("no open ground");
+  }
+
+  function aloft(state: MatchState, x: number, y: number, alt: number): Entity {
+    const plane = makeEntity(state, "stuka", "A", x, y);
+    plane.air!.phase = "fly";
+    plane.air!.alt = alt;
+    plane.air!.speed = 1;
+    plane.facing = 0;
+    plane.order = { kind: "move", x, y };
+    return plane;
+  }
+
+  it("falls indestructible instead of exploding, then wanders down into a wreck", () => {
+    const state = twoPlayerMatch();
+    const spot = openGround(state);
+    const plane = aloft(state, spot.x, spot.y, 40);
+    plane.hp = 0;
+    step(state, TICK_DT);
+    assert.equal(plane.air?.phase, "crash");
+    assert.equal(plane.hp, 1);
+    assert.equal(takeDamage(plane, 400, state.tick), 0);
+    assert.equal(plane.hp, 1);
+    const view = snapshotFor(state, "A").entities.find((e) => e.id === plane.id);
+    assert.equal(view?.air?.phase, "crash");
+    const facing0 = plane.facing;
+    ticks(state, 20);
+    assert.equal(plane.wreck, false);
+    assert.ok((plane.air?.alt ?? 0) > 30, "still well above the ground");
+    let d = plane.facing - facing0;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    assert.ok(Math.abs(d) > 0.02, `nose should wander, turned ${d.toFixed(3)} rad`);
+    const down = until(state, 250, () => plane.wreck);
+    assert.ok(down >= 0, "it should meet the ground");
+    assert.equal(plane.air, undefined);
+    assert.equal(plane.hp, wreckHpOf("stuka"));
+    assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === plane.id)?.air, undefined);
+  });
+
+  it("does not hurt a soldier it is still high above", () => {
+    const state = twoPlayerMatch();
+    const spot = openGround(state);
+    const plane = aloft(state, spot.x, spot.y, AIR_CRUISE_ALT);
+    const man = makeEntity(state, "rifleman", "B", plane.x, plane.y);
+    const hp = man.hp;
+    plane.hp = 0;
+    step(state, TICK_DT);
+    assert.equal(plane.air?.phase, "crash");
+    assert.equal(man.hp, hp);
+  });
+
+  it("kills a soldier it falls onto and keeps going", () => {
+    const state = twoPlayerMatch();
+    const spot = openGround(state);
+    const plane = aloft(state, spot.x, spot.y, 2.5);
+    const man = makeEntity(state, "rifleman", "A", plane.x, plane.y);
+    plane.hp = 0;
+    ticks(state, 2);
+    assert.ok(man.hp <= 0, "the man under the airframe dies");
+    assert.equal(plane.wreck, false);
+    assert.equal(plane.air?.phase, "crash");
+    assert.ok((plane.air?.alt ?? 0) > 0);
+  });
+
+  it("breaks a tank it comes down on, and the airframe stops as a wreck", () => {
+    const state = twoPlayerMatch();
+    const spot = openGround(state);
+    const plane = aloft(state, spot.x, spot.y, coverHeightOf("warden"));
+    const tank = makeEntity(state, "warden", "B", plane.x, plane.y);
+    const before = tank.hp;
+    plane.hp = 0;
+    ticks(state, 2);
+    assert.ok(before - tank.hp >= Math.round(tank.hpMax * 0.8), `tank hp ${tank.hp}/${before}`);
+    if (hasTracks("warden")) assert.ok(tank.crits.includes("tracks"));
+    assert.equal(plane.wreck, true);
+    assert.equal(plane.air, undefined);
+    assert.equal(plane.hp, wreckHpOf("stuka"));
+  });
+
+  it("smashes a house and stops on it", () => {
+    const state = twoPlayerMatch();
+    const spot = openGround(state);
+    const ts = state.tileSize;
+    const plane = aloft(state, spot.x, spot.y, coverHeightOf("house"));
+    const tx = plane.tileX;
+    const ty = plane.tileY;
+    const house = makeEntity(state, "house", "", tileCenter(tx, ts), tileCenter(ty, ts), { tileX: tx, tileY: ty });
+    plane.hp = 0;
+    ticks(state, 2);
+    assert.equal(house.hp, house.hpMax - AIR_CRASH_BUILDING_DAMAGE);
+    assert.equal(plane.wreck, true);
+    assert.equal(plane.air, undefined);
+  });
+
+  it("still removes a plane that dies on the pad", () => {
+    const state = twoPlayerMatch();
+    seedCore(state);
+    const field = seedAirfield(state);
+    const plane = parkedPlane(state, field);
+    assert.equal(isAirborne(plane), false);
+    plane.hp = 0;
+    step(state, TICK_DT);
+    assert.equal(state.entities.has(plane.id), false);
   });
 });

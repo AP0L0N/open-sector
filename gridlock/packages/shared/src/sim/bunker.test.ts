@@ -23,7 +23,7 @@ import { sellBuilding } from "./build.js";
 import { tickCombat } from "./combat.js";
 import { sightTilesForEntity, weaponRangeWorld } from "./elevation.js";
 import { makeEntity, tileCenter } from "./geo.js";
-import { canGarrison, enterGarrison, livingGarrison, woundGarrison } from "./garrison.js";
+import { canGarrison, enterGarrison, livingGarrison, setGarrisonHide, woundGarrison } from "./garrison.js";
 import { createMatch, step } from "./match.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -299,5 +299,76 @@ describe("bunker", () => {
     for (let i = 0; i < Math.round(secs / TICK_DT); i++) step(state, TICK_DT);
     assert.equal(bunker.ownerId, a);
     assert.equal(bunker.captureProgress, 0);
+  });
+
+  it("force-attack on the bunker aims soldiers who can reach, and they stay inside", () => {
+    const { state, a, b } = twoPlayerMatch();
+    const bunker = bunkerAt(state, a);
+    const rifle = trooper(state, "rifleman", a);
+    const gunner = trooper(state, "gunner", a);
+    const medic = trooper(state, "medic", a);
+    assert.equal(enterGarrison(state, rifle, bunker), true);
+    assert.equal(enterGarrison(state, gunner, bunker), true);
+    assert.equal(enterGarrison(state, medic, bunker), true);
+    const parked = bunker.x;
+    const range = weaponRangeWorld(state, rifle);
+    const x = bunker.x + range * 0.5;
+    const y = bunker.y;
+    assert.equal(applyCommand(state, a, { type: "cmd.forceattack", ids: [bunker.id], x, y }).ok, true);
+    assert.equal(rifle.order?.kind, "forceattack");
+    assert.equal(rifle.order?.relay, true);
+    assert.equal(gunner.order?.kind, "forceattack");
+    assert.equal(medic.order, null);
+    step(state, TICK_DT);
+    // A ground force-attack is fused to the click, so both rounds land in this same tick.
+    assert.ok(state.impacts.some((p) => p.fromId === rifle.id));
+    assert.ok(state.impacts.some((p) => p.fromId === gunner.id));
+    assert.equal(rifle.garrisonedIn, bunker.id);
+    assert.equal(gunner.garrisonedIn, bunker.id);
+    assert.equal(bunker.x, parked);
+
+    assert.equal(applyCommand(state, a, { type: "cmd.stop", ids: [bunker.id] }).ok, true);
+    assert.equal(rifle.order, null);
+    assert.equal(gunner.order, null);
+
+    const far = applyCommand(state, a, { type: "cmd.forceattack", ids: [bunker.id], x: bunker.x + range * 4, y });
+    assert.equal(far.ok, false);
+    if (!far.ok) assert.match(far.message, /Out of range/);
+    assert.equal(rifle.order, null);
+
+    setGarrisonHide(state, bunker, true);
+    const hidden = applyCommand(state, a, { type: "cmd.forceattack", ids: [bunker.id], x, y });
+    assert.equal(hidden.ok, false);
+    assert.equal(rifle.order, null);
+
+    assert.equal(applyCommand(state, b, { type: "cmd.forceattack", ids: [bunker.id], x, y }).ok, false);
+  });
+
+  it("does not aim a gunner out of a house window", () => {
+    const { state, a } = twoPlayerMatch();
+    const def = catalog("cottage");
+    const ts = state.tileSize;
+    const tx = 48;
+    const ty = 20;
+    const cottage = makeEntity(state, "cottage", "", (tx + def.tileW / 2) * ts, (ty + def.tileH / 2) * ts, {
+      tileX: tx,
+      tileY: ty,
+    });
+    const rifle = trooper(state, "rifleman", a, tx, ty);
+    const gunner = trooper(state, "gunner", a, tx, ty);
+    assert.equal(enterGarrison(state, rifle, cottage), true);
+    assert.equal(enterGarrison(state, gunner, cottage), true);
+    const range = weaponRangeWorld(state, rifle);
+    assert.equal(
+      applyCommand(state, a, { type: "cmd.forceattack", ids: [cottage.id], x: cottage.x + range * 0.5, y: cottage.y }).ok,
+      true,
+    );
+    assert.equal(rifle.order?.kind, "forceattack");
+    assert.equal(gunner.order, null);
+    step(state, TICK_DT);
+    assert.ok(state.impacts.some((p) => p.fromId === rifle.id));
+    assert.equal(state.impacts.some((p) => p.fromId === gunner.id), false);
+    assert.equal(rifle.garrisonedIn, cottage.id);
+    assert.equal(gunner.garrisonedIn, cottage.id);
   });
 });

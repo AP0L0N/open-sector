@@ -6,6 +6,7 @@ export { fireStats, hullTurnMul, immobilized, moveSpeedMul, rollCrits } from "./
 export { commandedStance, effectiveStance, tickStance } from "./stance.js";
 export { applyCommand } from "./commands.js";
 export { snapshotFor } from "./snapshot.js";
+export { burnVariant } from "./remains.js";
 export { previewField, previewPlace } from "./preview.js";
 export { pathToWorld, astar } from "./path.js";
 export type { MatchState } from "./types.js";
@@ -23,6 +24,7 @@ export {
   isTree,
   isSingleTree,
   fellTreeAt,
+  burnTreeAt,
   crushTreeAt,
   unitInWater,
 } from "./geo.js";

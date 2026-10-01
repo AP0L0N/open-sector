@@ -6,6 +6,7 @@ import {
   TILE_EMPTY,
   TILE_FENCE,
   TILE_ROAD,
+  TILE_ROCK,
   TILE_SCRAP,
   TILE_SUBDIV,
   TILE_TREE,
@@ -193,6 +194,11 @@ function paintRelief(
 function groundFill(map: MapDef, tx: number, ty: number, kind: number, scrap: boolean): string {
   if (kind === TILE_WATER) return "#1a4554";
   if (kind === TILE_BLOCKED) return "#3a3228";
+  if (kind === TILE_ROCK) {
+    const rock = hash2(tx, ty, 41) % 5;
+    const base = rock === 0 ? "#6e675c" : rock === 1 ? "#5a534a" : rock === 2 ? "#7a7264" : rock === 3 ? "#4e4942" : "#655e54";
+    return shade(base, elevShadeFactor(heightAt(map, tx, ty)));
+  }
   const bare = kind === TILE_ROAD || scrap;
   const fill = bare ? "#6b5840" : kind === TILE_TREE ? "#314628" : "#3e5232";
   return shade(fill, elevShadeFactor(heightAt(map, tx, ty)));
@@ -226,7 +232,7 @@ function texPattern(ctx: CanvasRenderingContext2D, img: HTMLImageElement): Canva
 
 /** One meadow, with a few broad drier or darker fields. Fine tiles stay the same photo. */
 function surfaceImage(kind: number, tx: number, ty: number, scrap: boolean): HTMLImageElement | null {
-  if (kind === TILE_BLOCKED || kind === TILE_WATER) return null;
+  if (kind === TILE_BLOCKED || kind === TILE_WATER || kind === TILE_ROCK) return null;
   if (kind === TILE_ROAD || scrap) return DIRT_TEX;
   const meadow = GRASS_TEXS[0];
   if (!meadow) return null;
@@ -1031,6 +1037,12 @@ function miniFill(map: MapDef, tx: number, ty: number, scrap: boolean): string {
   if (kind === TILE_ROAD) return "#8a7348";
   if (kind === TILE_FENCE) return "#6e5c3c";
   if (kind === TILE_BLOCKED) return "#3a2a22";
+  if (kind === TILE_ROCK) {
+    const u = (heightAt(map, tx, ty) - HEIGHT_BASE) / Math.max(1, HEIGHT_MAX - HEIGHT_BASE);
+    if (u > 0.45) return "#8a8174";
+    if (u > 0.15) return "#6e675c";
+    return "#514c45";
+  }
   if (scrap) return "#6a5428";
   const span = Math.max(1, HEIGHT_MAX - HEIGHT_BASE);
   const u = (heightAt(map, tx, ty) - HEIGHT_BASE) / span;

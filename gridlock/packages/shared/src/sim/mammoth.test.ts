@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   BUNKER_TYPES,
   MAMMOTH_GARRISON_CAP,
+  MAMMOTH_WADE_SPEED,
   TECH_REQUIRES,
   TICK_DT,
   TRAIN_TYPES,
@@ -12,7 +13,9 @@ import {
 } from "../catalog.js";
 import { TILE_EMPTY, TILE_WATER } from "../maps.js";
 import { applyCommand } from "./commands.js";
+import { weaponRangeWorld } from "./elevation.js";
 import { canGarrison, enterGarrison, livingGarrison, wallsShieldGarrison } from "./garrison.js";
+import { moveSpeedMul } from "./crits.js";
 import { makeEntity, tileCenter, unitInWater, walkable } from "./geo.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { createMatch, step } from "./match.js";
@@ -219,6 +222,15 @@ describe("mammoth", () => {
     assert.ok(riderShot || foe.hp < foe.hpMax, "the rider fires from the water");
   });
 
+  it("rolls thirty percent slower while it is wading", () => {
+    const { state, a } = twoPlayerMatch();
+    const hull = at(state, "mammoth", a, 60, Y);
+    assert.equal(moveSpeedMul(hull), 1);
+    assert.equal(moveSpeedMul(hull, true), MAMMOTH_WADE_SPEED);
+    assert.equal(MAMMOTH_WADE_SPEED, 0.7);
+    assert.equal(catalog("mammoth").wadeSpeed, MAMMOTH_WADE_SPEED);
+  });
+
   it("keeps its riders unhurt while the hull takes the hits", () => {
     const { state, a, b } = twoPlayerMatch();
     clearPad(state, 50, Y - 6, 80, Y + 6);
@@ -266,5 +278,60 @@ describe("mammoth", () => {
       assert.ok(Math.hypot(r.x - hull.x, r.y - hull.y) > hull.radius, "stepped off the hull");
     }
     assert.equal(hull.garrison.length, 0);
+  });
+
+  it("force-attack on the hull aims every rider who can reach that point", () => {
+    const { state, a, b } = twoPlayerMatch();
+    clearPad(state, 40, Y - 8, 140, Y + 8);
+    const hull = at(state, "mammoth", a, 60, Y);
+    hull.facing = Math.PI;
+    hull.holdPosition = true;
+    const rifles = [0, 1].map(() => {
+      const u = at(state, "rifleman", a, 60, Y);
+      assert.equal(enterGarrison(state, u, hull), true);
+      return u;
+    });
+    const sniper = at(state, "sniper", a, 60, Y);
+    const medic = at(state, "medic", a, 60, Y);
+    assert.equal(enterGarrison(state, sniper, hull), true);
+    assert.equal(enterGarrison(state, medic, hull), true);
+    const rifleRange = weaponRangeWorld(state, rifles[0]!);
+    const sniperRange = weaponRangeWorld(state, sniper);
+    assert.ok(sniperRange > rifleRange);
+    const aimX = hull.x + sniperRange + state.tileSize * 4;
+    const aimY = hull.y;
+    assert.equal(applyCommand(state, a, { type: "cmd.forceattack", ids: [hull.id], x: aimX, y: aimY }).ok, true);
+    assert.equal(hull.order?.kind, "forceattack");
+    for (const r of rifles) {
+      const before = r.order;
+      assert.equal(before, null, "a rifle cannot reach yet");
+    }
+    const sniperBefore = sniper.order;
+    assert.equal(sniperBefore, null);
+    const medicBefore = medic.order;
+    assert.equal(medicBefore, null);
+
+    hull.x = aimX - rifleRange * 0.5;
+    hull.waypoints = [];
+    step(state, TICK_DT);
+    for (const r of rifles) {
+      assert.equal(r.order?.kind, "forceattack");
+      assert.equal(r.order?.relay, true);
+      assert.equal(r.garrisonedIn, hull.id);
+    }
+    assert.equal(sniper.order?.kind, "forceattack");
+    const medicOrder = medic.order;
+    assert.equal(medicOrder, null, "a medic has no gun");
+    // A ground force-attack is fused to the click, so the round lands in this same tick.
+    assert.ok(
+      state.impacts.some((p) => p.fromId === rifles[0]!.id),
+      "the rifle fires from the hull",
+    );
+    assert.equal(Math.abs(hull.x - (aimX - rifleRange * 0.5)) < 1, true, "held still");
+
+    assert.equal(applyCommand(state, a, { type: "cmd.stop", ids: [hull.id] }).ok, true);
+    for (const r of [...rifles, sniper]) assert.equal(r.order, null);
+    assert.equal(applyCommand(state, b, { type: "cmd.forceattack", ids: [hull.id], x: aimX, y: aimY }).ok, false);
+    assert.equal(rifles[0]!.order, null);
   });
 });

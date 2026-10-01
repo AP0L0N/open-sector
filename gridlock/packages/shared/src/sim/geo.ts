@@ -29,6 +29,7 @@ import {
   TILE_BLOCKED,
   TILE_EMPTY,
   TILE_FENCE,
+  TILE_ROCK,
   TILE_SCRAP,
   TILE_TREE,
   TILE_WATER,
@@ -154,6 +155,19 @@ export function fellTreeAt(state: MatchState, x: number, y: number): boolean {
   return true;
 }
 
+/**
+ * A flamethrower force-attack sets this trunk alight. Same clear as a shell,
+ * marked so the client burns the tree instead of tossing leaves.
+ */
+export function burnTreeAt(state: MatchState, x: number, y: number): boolean {
+  if (!isTree(state, x, y)) return false;
+  const i = tileIndex(state, x, y);
+  state.terrain[i] = TILE_EMPTY;
+  state.clearedTrees.push({ x, y, burn: true });
+  state.visionTick = -1;
+  return true;
+}
+
 export function crushTreeAt(state: MatchState, x: number, y: number): boolean {
   if (!isSingleTree(state, x, y)) return false;
   return fellTreeAt(state, x, y);
@@ -259,7 +273,7 @@ export function initGrids(map: MapDef): {
   for (let i = 0; i < n; i++) {
     const t = map.tiles[i] ?? 0;
     terrain[i] = t;
-    if (t === TILE_BLOCKED || t === TILE_WATER || t === TILE_FENCE) blocked[i] = 1;
+    if (t === TILE_BLOCKED || t === TILE_WATER || t === TILE_FENCE || t === TILE_ROCK) blocked[i] = 1;
     if (t === TILE_SCRAP) scrapYield[i] = SCRAP_TILE_YIELD;
     heights[i] = map.heights[i] ?? 0;
   }

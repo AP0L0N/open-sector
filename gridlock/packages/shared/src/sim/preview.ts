@@ -1,5 +1,5 @@
 import { BUILD_RADIUS, catalog, type BuildingType, type FieldStructureType } from "../catalog.js";
-import { TILE_BLOCKED, TILE_FENCE, TILE_TREE, TILE_WATER, getMap } from "../maps.js";
+import { TILE_BLOCKED, TILE_FENCE, TILE_ROCK, TILE_TREE, TILE_WATER, getMap } from "../maps.js";
 import type { MatchSnapshot } from "../protocol.js";
 import { fieldTilesOn, overlapsFieldIn } from "./field.js";
 import { footprint, footprintGap } from "./geo.js";
@@ -20,7 +20,7 @@ export function previewField(
   for (const t of tiles) {
     const i = t.y * map.width + t.x;
     const kind = map.tiles[i] ?? TILE_BLOCKED;
-    if (kind === TILE_BLOCKED || kind === TILE_WATER || kind === TILE_FENCE) return false;
+    if (kind === TILE_BLOCKED || kind === TILE_WATER || kind === TILE_FENCE || kind === TILE_ROCK) return false;
     if (kind === TILE_TREE && !cleared.has(i)) return false;
     if (snap.scrap.some((s) => s.x === t.x && s.y === t.y && s.yield > 0)) return false;
     for (const e of snap.entities) {
@@ -40,7 +40,7 @@ export function previewPlace(snap: MatchSnapshot, type: BuildingType, tx: number
   for (const t of tiles) {
     if (t.x < 0 || t.y < 0 || t.x >= map.width || t.y >= map.height) return false;
     const kind = map.tiles[t.y * map.width + t.x] ?? TILE_BLOCKED;
-    if (kind === TILE_BLOCKED) return false;
+    if (kind === TILE_BLOCKED || kind === TILE_ROCK) return false;
     if (kind === TILE_TREE && !cleared.has(t.y * map.width + t.x)) return false;
     if (snap.scrap.some((s) => s.x === t.x && s.y === t.y && s.yield > 0)) return false;
     for (const e of snap.entities) {

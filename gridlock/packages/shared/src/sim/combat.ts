@@ -51,6 +51,7 @@ import {
   hasTracks,
   hasTurret,
   infantryGunFor,
+  isTransportType,
   PTRD_CALIBER,
   PTRD_CLOSE_TILES,
   PTRD_TRACK_CHANCE,
@@ -88,6 +89,7 @@ import {
 import {
   aimAngle,
   armorHarmPossible,
+  hitFace,
   isArmored,
   ptrdHarmPossible,
   resolveAtRifleHit,
@@ -151,24 +153,127 @@ import {
 } from "./mortar.js";
 import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
-import { isSupplyBullet, noteSupplyHit, supplyRiderFights, syncSupplyRiders } from "./supply.js";
+import { isSupplyBullet, noteSupplyHit, stowedInTransport, supplyRiderFights, syncSupplyRiders } from "./supply.js";
 import { spawnSmokeCloud } from "./smoke.js";
 import { stepFlame, throwFlame } from "./flame.js";
 import { canSeeEntity } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
 import { escorting, reversing, stepTurn, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
-import { airTargetSpreadMul, isAirborne, reachesAircraft, stepBomb } from "./air.js";
+import { airTargetSpreadMul, isAirborne, isCrashing, reachesAircraft, stepBomb } from "./air.js";
 import { stepCluster } from "./airdrop.js";
 import { projectileMeetsDrone, reachesDrone } from "./drone.js";
 import { reachesJet } from "./jet.js";
-import type { Entity, MatchState, Projectile } from "./types.js";
+import type { Entity, MatchState, Order, Projectile } from "./types.js";
 
 /** A twin mount's barrels sit this share of the hull radius either side of the bore line. */
 const TWIN_GUN_SIDE = 0.25;
 
+/**
+ * A soldier who can shoot from inside this host. A house window is not a
+ * bipod ledge, a roof is not a mortar pit, and a truck driver keeps his
+ * weapon slung. Hidden garrisons and men in a transport bay do not fire.
+ */
+export function garrisonCanShoot(state: MatchState, unit: Entity, host: Entity): boolean {
+  if (unit.hp <= 0 || unit.wreck || unit.garrisonedIn !== host.id) return false;
+  if (!fires(unit.type) || !supplyRiderFights(state, unit)) return false;
+  if (host.garrisonHide || isTransportType(host.type)) return false;
+  if (unit.type === "gunner") return garrisonFullArmsOf(host.type) && !hasCrit(unit, "arm");
+  if (unit.type === "mortarman") return garrisonOpenTopOf(host.type) && !hasCrit(unit, "arm");
+  if (
+    (unit.type === "sniper" || unit.type === "atinfantry" || unit.type === "rocketer" || unit.type === "pyro") &&
+    !infantryGunFor(unit)
+  ) {
+    return false;
+  }
+  return true;
+}
+
+/** The point is inside this soldier's reach from where he is standing now. */
+export function garrisonShotReaches(
+  state: MatchState,
+  unit: Entity,
+  x: number,
+  y: number,
+  target?: Entity,
+): boolean {
+  const dist = Math.hypot(x - unit.x, y - unit.y);
+  if (dist > weaponRangeWorld(state, unit)) return false;
+  const min = infantryGunFor(unit)?.minRangeTiles;
+  if (min != null && dist < min * state.tileSize) return false;
+  return canAimWeapon(state, unit, x, y, target);
+}
+
+/**
+ * A force-attack on a Mammoth, bunker, tower, house, or trench is also the
+ * aim of every soldier who can fire from it. They take the point only while
+ * it is in range, and they never leave the host to chase it.
+ */
+export function relayGarrisonForce(state: MatchState): void {
+  for (const host of state.entities.values()) {
+    if (host.hp <= 0 || host.garrison.length === 0) continue;
+    const order = host.order;
+    if (!order || order.kind !== "forceattack") {
+      releaseRelayedForce(state, host);
+      continue;
+    }
+    const aimed = forceAim(state, order);
+    if (!aimed || host.garrisonHide || isTransportType(host.type)) {
+      if (!aimed && !fires(host.type) && !radarLaidOf(host.type)) clearOrder(host);
+      releaseRelayedForce(state, host);
+      continue;
+    }
+    for (const u of livingGarrison(state, host)) {
+      if (!garrisonCanShoot(state, u, host) || !garrisonShotReaches(state, u, aimed.x, aimed.y, aimed.target)) {
+        if (u.order?.relay) clearOrder(u);
+        continue;
+      }
+      if (sameRelayedAim(u.order, order)) continue;
+      u.order = {
+        kind: "forceattack",
+        x: aimed.x,
+        y: aimed.y,
+        targetId: order.targetId,
+        relay: true,
+      };
+      u.attackTarget = order.targetId ?? null;
+      u.waypoints = [];
+      u.guardFacing = null;
+      u.harvestTile = null;
+      u.state = "garrison";
+    }
+  }
+}
+
+function forceAim(
+  state: MatchState,
+  order: Order,
+): { x: number; y: number; target?: Entity } | null {
+  if (order.targetId != null) {
+    const target = state.entities.get(order.targetId);
+    if (!target || target.hp <= 0) return null;
+    return { x: target.x, y: target.y, target };
+  }
+  if (order.x == null || order.y == null) return null;
+  return { x: order.x, y: order.y };
+}
+
+function sameRelayedAim(current: Order | null, host: Order): boolean {
+  if (!current?.relay || current.kind !== "forceattack") return false;
+  if ((current.targetId ?? null) !== (host.targetId ?? null)) return false;
+  if (host.targetId == null && (current.x !== host.x || current.y !== host.y)) return false;
+  return true;
+}
+
+function releaseRelayedForce(state: MatchState, host: Entity): void {
+  for (const u of livingGarrison(state, host)) {
+    if (u.order?.relay) clearOrder(u);
+  }
+}
+
 export function tickCombat(state: MatchState, dt: number): void {
   syncSupplyRiders(state);
   syncHullGarrisons(state);
+  relayGarrisonForce(state);
   for (const e of state.entities.values()) {
     if (!canFight(e) || !supplyRiderFights(state, e)) continue;
     tickWeaponClocks(e, dt);
@@ -450,7 +555,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       return undefined;
     }
     const t = state.entities.get(e.order.targetId);
-    if (!t || t.hp <= 0 || t.id === e.id || walkerSparesBuilding(state, e, t) || outOfReachAloft(e, t)) {
+    if (!t || t.hp <= 0 || t.id === e.id || isCrashing(t) || walkerSparesBuilding(state, e, t) || outOfReachAloft(e, t)) {
       e.order = null;
       e.attackTarget = null;
       if (e.state === "attack") e.state = "idle";
@@ -465,6 +570,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
     if (
       !target ||
       target.hp <= 0 ||
+      isCrashing(target) ||
       outOfReachAloft(e, target) ||
       skipsFriendly(state, e, target) ||
       dropsEmptyGarrison(state, e, target) ||
@@ -482,6 +588,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
     if (
       !target ||
       target.hp <= 0 ||
+      isCrashing(target) ||
       outOfReachAloft(e, target) ||
       skipsFriendly(state, e, target) ||
       dropsEmptyGarrison(state, e, target) ||
@@ -550,7 +657,7 @@ function currentTarget(state: MatchState, e: Entity): Entity | undefined {
     (e.order?.kind === "attack" || e.order?.kind === "forceattack" ? e.order.targetId : undefined);
   if (id == null) return undefined;
   const t = state.entities.get(id);
-  if (!t || t.hp <= 0 || t.id === e.id) return undefined;
+  if (!t || t.hp <= 0 || t.id === e.id || isCrashing(t)) return undefined;
   if (outOfReachAloft(e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && skipsFriendly(state, e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && dropsEmptyGarrison(state, e, t)) return undefined;
@@ -932,6 +1039,11 @@ function launchMortar(
  * own target, only while halted, and only once the frame bears on it.
  */
 function tickRocketPods(state: MatchState, e: Entity): void {
+  if (stowedInTransport(state, e)) {
+    e.rocketSalvo = 0;
+    e.rocketTarget = null;
+    return;
+  }
   if (e.rocketsOff || (e.rockets ?? 0) <= 0 || garrisonIsHiding(state, e)) {
     e.rocketSalvo = 0;
     e.rocketTarget = null;
@@ -995,7 +1107,7 @@ function mainTargetId(e: Entity): number | null {
  * planes in the air come first, then soldiers and hostile garrisons.
  */
 function podValue(state: MatchState, e: Entity, o: Entity): number {
-  if (o.hp <= 0 || o.wreck || o.garrisonedIn != null || o.id === e.id) return 0;
+  if (o.hp <= 0 || o.wreck || o.garrisonedIn != null || o.id === e.id || isCrashing(o)) return 0;
   if (allies(state, e.ownerId, o.ownerId)) return 0;
   if (o.kind === "building") {
     return isGarrisonable(o.type) && garrisonIsHostile(state, e.ownerId, o) && garrisonLooksOccupied(state, e.ownerId, o)
@@ -1271,7 +1383,14 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     }
     if (e.kind === "unit" && isArmored(def)) {
       const nick = rocket
-        ? rocketArmorDamage(rack.armorDamage, falloff, rand)
+        ? rocketArmorDamage(
+            rack.armorDamage,
+            falloff,
+            hasTracks(e.type),
+            hitFace(e.facing, p.vx || 0.01, p.vy),
+            d <= e.radius,
+            rand,
+          )
         : mortarArmorNick(def.hp, falloff, hasTracks(e.type), rand);
       e.hp = Math.max(0, e.hp - nick.damage);
       if (e.hp > 0 && nick.throwTrack) addCrit(e, "tracks");
@@ -1945,7 +2064,7 @@ function nearestSweepHit(
   let best: { e: Entity; t: number; x: number; y: number } | null = null;
   let parked: { e: Entity; t: number; x: number; y: number } | null = null;
   for (const e of state.entities.values()) {
-    if (e.hp <= 0) continue;
+    if (e.hp <= 0 || isCrashing(e)) continue;
     if (e.id === p.ignoreId) continue;
     // A pilot strafes the enemy's line, not his own side's, unless he was told to (force-attack).
     if (p.fromAbove && !p.harmAllies && e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
@@ -2083,7 +2202,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   let bestAir: Entity | undefined;
   let bestAirD = range * range;
   for (const o of state.entities.values()) {
-    if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn) continue;
+    if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn || isCrashing(o)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
     if (outOfReachAloft(e, o)) continue;

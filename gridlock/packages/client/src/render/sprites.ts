@@ -1066,7 +1066,22 @@ export const MAMMOTH_SPRITE: UnitSpriteDef = {
   contactY: 0.92,
   facingSpace: "world",
 };
-bindMammothSheets(MAMMOTH_SPRITE.image);
+
+/**
+ * Half under. Same cell, scale, and contact as the dry hull, so the casemate
+ * stays registered and only the upper body shows above the pool.
+ */
+export const MAMMOTH_WADE_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: MAMMOTH_SPRITE.drawSize,
+  contactY: MAMMOTH_SPRITE.contactY,
+  facingSpace: "world",
+};
+bindMammothSheets(MAMMOTH_SPRITE.image, MAMMOTH_WADE_SPRITE.image);
 
 const nebelwerferLauncher: TurretSpriteDef = {
   image: new Image(),
@@ -1273,6 +1288,26 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   drone: DRONE_SPRITE,
   rig: RIG_SPRITE,
 };
+
+const INFANTRY_DIE: Partial<Record<EntityType, UnitSpriteDef>> = {
+  rifleman: TROOPER_DIE_SPRITE,
+  gunner: GUNNER_DIE_SPRITE,
+  sniper: SNIPER_DIE_SPRITE,
+  atinfantry: ATINFANTRY_DIE_SPRITE,
+  rocketer: ROCKETER_DIE_SPRITE,
+  pyro: PYRO_DIE_SPRITE,
+  mortarman: MORTARMAN_DIE_SPRITE,
+  engineer: ENGINEER_DIE_SPRITE,
+  medic: MEDIC_DIE_SPRITE,
+  droneop: DRONEOP_DIE_SPRITE,
+  jumpjet: JUMPJET_DIE_SPRITE,
+  cyborg: CYBORG_DIE_SPRITE,
+};
+
+/** The one-shot collapse sheet. Undefined for vehicles and buildings. */
+export function infantryDieSprite(type: EntityType): UnitSpriteDef | undefined {
+  return INFANTRY_DIE[type];
+}
 
 export function spriteFor(type: EntityType, stance?: Stance, swimming = false): UnitSpriteDef | undefined {
   if (isInfantryType(type) && swimming) return SWIM_SPRITES[type] ?? INFANTRY_SWIM_SPRITE;

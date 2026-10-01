@@ -1,6 +1,7 @@
 /** Battlefield zoom. 1 is the default iso pixel = CSS pixel scale. */
 export const MAP_ZOOM_MIN = 0.9;
-export const MAP_ZOOM_MAX = 1.8;
+/** Close enough that a soldier fills a readable patch of the screen. */
+export const MAP_ZOOM_MAX = 6;
 /** Maps a pixel wheel delta onto a multiplicative zoom step. */
 export const MAP_ZOOM_WHEEL = 0.00125;
 

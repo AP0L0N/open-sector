@@ -271,3 +271,86 @@ describe("tank tracks", () => {
     assert.ok(angAbs(tank.facing, 0) < 0.2, `hull should stay bow-east facing=${tank.facing}`);
   });
 });
+
+describe("arrival facing", () => {
+  it("walks the travel heading, then turns to the held facing and goes idle", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    clearPad(state, 70, 46, 120, 70);
+    const man = makeEntity(state, "rifleman", "A", tileCenter(76, ts), tileCenter(52, ts));
+    man.facing = 0;
+    man.turretFacing = 0;
+    const destX = man.x + ts * 5;
+    const destY = man.y;
+    const face = Math.PI / 2;
+    applyCommand(state, "A", { type: "cmd.move", ids: [man.id], x: destX, y: destY, facing: face });
+    const ordered = man.order;
+    assert.equal(ordered?.kind, "move");
+    assert.equal(ordered?.arrive, face);
+    let sawTravel = false;
+    let sawRotate = false;
+    for (let i = 0; i < 160; i++) {
+      step(state, TICK_DT);
+      const dist = Math.hypot(man.x - destX, man.y - destY);
+      if (man.order?.kind === "move" && dist > ts * 1.5) {
+        assert.ok(angAbs(man.facing, 0) < 0.5, `turned before arriving facing=${man.facing}`);
+        sawTravel = true;
+      }
+      if (man.order?.kind === "rotate") {
+        sawRotate = true;
+        assert.ok(dist < ts * 2, `rotated away from the spot dist=${dist}`);
+      }
+      if (!man.order && dist < ts) break;
+    }
+    assert.ok(sawTravel, "never walked the travel heading");
+    assert.ok(sawRotate, "never took the arrival turn");
+    assert.equal(man.order, null);
+    assert.equal(man.holdPosition, false);
+    assert.ok(angAbs(man.facing, face) < 0.05, `facing=${man.facing}`);
+    assert.ok(Math.hypot(man.x - destX, man.y - destY) < ts, `x=${man.x} y=${man.y}`);
+  });
+
+  it("ignores a heading that is not a number and does not turn after a plain move", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    clearPad(state, 70, 46, 110, 70);
+    const man = makeEntity(state, "rifleman", "A", tileCenter(76, ts), tileCenter(52, ts));
+    man.facing = 0;
+    const destX = man.x + ts * 4;
+    const destY = man.y;
+    applyCommand(state, "A", { type: "cmd.move", ids: [man.id], x: destX, y: destY, facing: Number.NaN });
+    assert.equal(man.order?.arrive, undefined);
+    for (let i = 0; i < 120; i++) {
+      step(state, TICK_DT);
+      if (!man.order) break;
+      assert.notEqual(man.order.kind, "rotate");
+    }
+    assert.equal(man.order, null);
+    assert.ok(angAbs(man.facing, 0) < 0.4, `plain move should finish on the travel heading facing=${man.facing}`);
+  });
+
+  it("finishes the arrival turn before a queued move", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    clearPad(state, 70, 46, 130, 70);
+    const man = makeEntity(state, "rifleman", "A", tileCenter(76, ts), tileCenter(52, ts));
+    man.facing = 0;
+    const destY = man.y;
+    const first = man.x + ts * 4;
+    const second = man.x + ts * 10;
+    applyCommand(state, "A", { type: "cmd.move", ids: [man.id], x: first, y: destY, facing: Math.PI / 2 });
+    applyCommand(state, "A", { type: "cmd.move", ids: [man.id], x: second, y: destY, queue: true });
+    let sawRotate = false;
+    for (let i = 0; i < 200; i++) {
+      step(state, TICK_DT);
+      if (man.order?.kind === "rotate") {
+        sawRotate = true;
+        assert.ok(Math.hypot(man.x - second, man.y - destY) > ts * 3, "queued move started during the turn");
+      }
+      if (!man.order && Math.hypot(man.x - second, man.y - destY) < ts) break;
+    }
+    assert.ok(sawRotate);
+    assert.ok(Math.hypot(man.x - second, man.y - destY) < ts, `x=${man.x}`);
+    assert.ok(angAbs(man.facing, 0) < 0.4, `should face the second leg facing=${man.facing}`);
+  });
+});

@@ -231,8 +231,10 @@ export const TITAN_BRACED_HP_MUL = 1.75;
 /**
  * Titan shoulder rockets. The pods ripple a salvo, one rocket after another
  * from alternating sides, then reload. Each rocket flies straight and fast to a
- * scattered point and bursts like a small mortar bomb: it tears infantry apart
- * and dents a hull. Aimed at a plane, it flies at the plane's height and bursts
+ * scattered point — wide at full reach, tighter as the target closes — and
+ * bursts like a small mortar bomb: it tears infantry apart and dents a hull.
+ * On a tracked hull, a side or rear hit usually throws a track. Aimed at a
+ * plane, it flies at the plane's height and bursts
  * beside it. The rack is finite; a supply truck refills it like shells.
  * The pods ride above the waterline, so they fire while the Titan wades.
  */
@@ -243,9 +245,19 @@ export const TITAN_ROCKET_INTERVAL = 0.3;
 export const TITAN_ROCKET_RELOAD = 11;
 /** Rockets in a full rack: four salvos. */
 export const TITAN_ROCKET_AMMO = 16;
-/** Ground miss radius at point blank and at full reach. Low accuracy by design. */
-export const TITAN_ROCKET_SCATTER_NEAR_TILES = t(0.55);
+/**
+ * Ground miss radius at point blank and at full reach.
+ * Full reach keeps the wide disk. Inside that reach the rocket draws in
+ * (see rocketScatterRadius). Point blank is tight enough to land on a hull.
+ */
+export const TITAN_ROCKET_SCATTER_NEAR_TILES = t(0.2);
 export const TITAN_ROCKET_SCATTER_FAR_TILES = t(1.6);
+/**
+ * Chance a rocket that lands on a tracked hull throws a track, from the side
+ * or the rear. The front plate does not. Shared by the Titan, the Rocketer,
+ * the Nebelwerfer, and the RAM. Higher than a shell's side crit.
+ */
+export const ROCKET_TRACK_CHANCE = 0.75;
 /** Blast radius of one rocket. Smaller than a mortar bomb. */
 export const TITAN_ROCKET_SPLASH_TILES = t(1.3);
 /** World pixels per second. A mortar bomb takes ~2 s to cross this range; a rocket about two-thirds of a second. */
@@ -332,8 +344,9 @@ export const TITAN_ROCKET_RACK: RocketRackDef = {
  * one to three rockets at a time, never all twelve at once. The rockets fly
  * fast on a flat arc like a Titan's, so the crew fires on anything its side
  * can see, far past its own eyes: the longest reach in the game. They scatter
- * wide and each burst is lighter than a Titan rocket — a salvo blankets an
- * area rather than finding one soldier. Five full salvos in the rack.
+ * wide at full reach and draw in as the target closes, and each burst is lighter than a
+ * Titan rocket — a salvo blankets an area rather than finding one soldier.
+ * Five full salvos in the rack.
  */
 export const NEBELWERFER_RANGE_TILES = t(24);
 export const NEBELWERFER_MIN_RANGE_TILES = t(4);
@@ -345,7 +358,7 @@ export const NEBELWERFER_ROCKET: RocketRackDef = {
   intervalJitter: 0.2,
   volleyMax: 3,
   reload: 16,
-  scatterNearTiles: t(1.2),
+  scatterNearTiles: t(0.4),
   scatterFarTiles: t(3.4),
   splashTiles: t(1.5),
   speed: t(15) * TILE_SIZE,
@@ -596,6 +609,8 @@ export interface CatalogEntry {
   hasScout?: boolean;
   /** Walks through water tiles like a swimmer, and like a swimmer cannot fire from one. */
   wades?: boolean;
+  /** Move-speed share while wading. Omit and the hull uses TITAN_WADE_SPEED. */
+  wadeSpeed?: number;
   /** Deploy braces the unit in place: stationary, hull locked, max HP × this. */
   bracedHpMul?: number;
   /** Shoulder rocket pods (TITAN_ROCKET). They fire from water, where the main gun cannot. */
@@ -984,7 +999,7 @@ export const LAUNCHER_LIFT = 1;
 export const LAUNCHER = {
   id: "launcher" as const,
   name: "Rocket Launcher",
-  blurb: "One rocket at a time, straight and fast. Bursts among infantry, dents a tank, bursts beside a plane or a low drone. Slow to reload.",
+  blurb: "One rocket at a time, straight and fast. Loose at full reach, tighter as the target closes. Bursts among infantry, dents a tank, and a side or rear hit usually breaks a tank's tracks. Bursts beside a plane or a low drone. Slow to reload.",
   damage: TITAN_ROCKET.damage,
   penetration: TITAN_ROCKET.penetration,
   caliber: TITAN_ROCKET.caliber,
@@ -1026,7 +1041,7 @@ export const FLAMER_SPLASH = t(0.3) * TILE_SIZE;
 export const FLAMER = {
   id: "flamer" as const,
   name: "Flamethrower",
-  blurb: "A short jet of burning fuel. It splashes the soldiers it lands among and sets the ground alight. Three bursts in the tanks; only a supply truck refills them.",
+  blurb: "A short jet of burning fuel. It splashes the soldiers it lands among and sets the ground alight. Force-attack burns a tree down. Three bursts in the tanks; only a supply truck refills them.",
   damage: 6,
   penetration: 0,
   caliber: 1,
@@ -1136,7 +1151,9 @@ export const DRIVER_KILL_CHANCE = 0.18;
  * Ju 87 Stuka and the Airfield that keeps it. A plane lives on one pad of
  * one Airfield. It takes off on an order, flies straight over hills and
  * houses, and comes home to land when the bomb and belts are spent or the
- * tank runs low. On the pad it refuels, rearms, and patches up. With no
+ * tank runs low. On the pad it refuels, rearms, and patches up. Ordered to
+ * guard an area, it takes off again for that area once the load and the tank
+ * are full, and it keeps doing that until given another order. With no
  * pad to come home to it glides until the fuel runs out, then goes down.
  *
  * Heights are elevation units above the ground under the plane
@@ -1171,6 +1188,28 @@ export const AIR_STRAFE_ALT = 7;
 /** Elevation units per second the plane climbs or dives. */
 export const AIR_CLIMB_PER_SEC = 6;
 export const AIR_DIVE_PER_SEC = 14;
+/**
+ * A plane that dies in the air does not pop. It falls, nose wandering, trailing
+ * smoke, and nothing else can hurt it until it meets the ground.
+ */
+/** Elevation units per second the airframe sinks. Cruise is a few seconds of falling. */
+export const AIR_CRASH_SINK_PER_SEC = 3.2;
+/** Slowest share of cruise speed while it falls. */
+export const AIR_CRASH_SPEED = 0.75;
+/** Radians per second the heading it is chasing wanders. The nose follows more slowly. */
+export const AIR_CRASH_WANDER = 1.1;
+/** Share of the catalog turn rate the nose may use while falling. */
+export const AIR_CRASH_TURN_MUL = 0.42;
+/** Infantry, a drone, or a Jump Jet the airframe strikes. */
+export const AIR_CRASH_SOFT_DAMAGE = 500;
+/** Share of a hull's max HP when the airframe strikes it. */
+export const AIR_CRASH_HULL_SHARE = 0.85;
+/** At least this much, so a light hull does not shrug the impact. */
+export const AIR_CRASH_HULL_MIN = 90;
+/** A structure the airframe hits, at the contact. */
+export const AIR_CRASH_BUILDING_DAMAGE = 720;
+/** The ground impact also hurts this far out, gameplay tiles. */
+export const AIR_CRASH_SPLASH_TILES = t(1.15);
 /** Distance from the target the dive starts, gameplay tiles. */
 export const AIR_DIVE_START_TILES = t(8);
 /** Past the target, fly straight this far before turning in again. */
@@ -1268,7 +1307,7 @@ export const FW190_SPLASH_DAMAGE = 34;
 /**
  * BV 222 transport flying boat. No guns and no bomb. Its bay holds one load,
  * chosen on the pad: a canister of cluster mines, a supply crate, or a stick
- * of up to BV222_TROOPS riflemen who board it on the hardstand. Force-attack
+ * of up to BV222_TROOPS ground units who board it on the hardstand. Force-attack
  * the ground (Drop) and it runs in low and level over the point and lets go.
  */
 export type AirDrop = "mines" | "crate" | "troops";
@@ -1278,7 +1317,7 @@ export const BV222_TROOPS = 10;
 export const AIR_DROP_INFO: Record<AirDrop, { name: string; blurb: string }> = {
   mines: { name: "Mines", blurb: "A canister of butterfly mines. It bursts over the point and scatters them; they wait for enemy feet and tracks." },
   crate: { name: "Crate", blurb: "A supply crate on a parachute. Your units standing at it take ammo and patch up." },
-  troops: { name: "Paratroops", blurb: "Riflemen board on the hardstand (right-click the plane). They jump over the point and hang under canopies until they land." },
+  troops: { name: "Paratroops", blurb: "Any ground unit boards on the hardstand (right-click the plane). They jump over the point and hang under canopies until they land." },
 };
 /** Height of the drop run: low and level, so a crate lands where it was meant to and the jumpers are not long in the air. */
 export const BV222_DROP_ALT = 9;
@@ -1366,6 +1405,8 @@ export const MAMMOTH_MG_BELT = 60;
 export const MAMMOTH_MG_BELT_RELOAD = 4;
 export const MAMMOTH_MG_ARC = 25;
 export const MAMMOTH_MG_RANGE_TILES = t(8);
+/** Move-speed share while the Mammoth is wading. Thirty percent slower than dry ground. */
+export const MAMMOTH_WADE_SPEED = 0.7;
 /** A medic inside: every occupant regains this share of max HP each second. Does not stack. */
 export const BUNKER_MEDIC_REGEN_FRAC = 0.004;
 /** An engineer inside: the bunker regains this much HP each second. Does not stack. */
@@ -1454,7 +1495,7 @@ export const RAM_ROCKET: RocketRackDef = {
   intervalJitter: 0.1,
   volleyMax: 2,
   reload: 7,
-  scatterNearTiles: t(0.2),
+  scatterNearTiles: t(0.1),
   scatterFarTiles: t(0.6),
   splashTiles: t(1.1),
   speed: t(22) * TILE_SIZE,
@@ -2313,7 +2354,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LAUNCHER.penetration,
     caliber: LAUNCHER.caliber,
     spreadDeg: LAUNCHER.spreadDeg,
-    blurb: "One rocket launcher on the shoulder, loaded with the Titan's rockets. One shot, then a slow reload off his back. The burst scatters and tears through soldiers bunched together, dents a tank, and can go up beside a plane or a low drone. A broken arm puts the tube down.",
+    blurb: "One rocket launcher on the shoulder, loaded with the Titan's rockets. One shot, then a slow reload off his back. Loose at full reach and tighter as the target closes. The burst tears through soldiers bunched together, dents a tank, and a side or rear hit usually breaks its tracks. It can go up beside a plane or a low drone. A broken arm puts the tube down.",
   },
   pyro: {
     type: "pyro",
@@ -2338,7 +2379,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: FLAMER.penetration,
     caliber: FLAMER.caliber,
     spreadDeg: FLAMER.spreadDeg,
-    blurb: "Flamethrower with two fuel tanks on his back. Very short reach and only three bursts until a supply truck refills him, but the jet goes over sandbags and in through windows, and the ground it hits keeps burning, deadly to any soldier in it. When he is killed there is a small chance the tanks go up.",
+    blurb: "Flamethrower with two fuel tanks on his back. Very short reach and only three bursts until a supply truck refills him, but the jet goes over sandbags and in through windows, and the ground it hits keeps burning, deadly to any soldier in it. Force-attack sets a tree alight. When he is killed there is a small chance the tanks go up.",
   },
   mortarman: {
     type: "mortarman",
@@ -2643,10 +2684,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 90,
     special: "deploy",
     wades: true,
+    wadeSpeed: TITAN_WADE_SPEED,
     rockets: true,
     rocketAmmo: TITAN_ROCKET_AMMO,
     bracedHpMul: TITAN_BRACED_HP_MUL,
-    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide, shred infantry, dent tanks, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up.",
+    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up.",
   },
   mammoth: {
     type: "mammoth",
@@ -2681,6 +2723,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     leavesWreck: true,
     wreckHp: 120,
     wades: true,
+    wadeSpeed: MAMMOTH_WADE_SPEED,
     garrisonCap: MAMMOTH_GARRISON_CAP,
     garrisonHpMul: 1,
     garrisonWindows: 3,
@@ -2689,7 +2732,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonFullArms: true,
     garrisonTypes: BUNKER_TYPES,
     garrisonDiesWithHost: true,
-    blurb: `Armored battle platform on two sets of tracks. Very slow, very thick plate on every face, and it wades through water. Its own weapon is a small bow machine gun that swings only a little either side of the nose, and falls silent in water. It carries ${MAMMOTH_GARRISON_CAP} of the infantry a Bunker takes, and every one of them fires out of the deck slits, even while it wades. Nothing reaches them while the hull holds — but if it is destroyed, everyone inside dies with it.`,
+    blurb: `Armored battle platform on two sets of tracks. Very slow, very thick plate on every face, and in water it is thirty percent slower, sunk so only the casemate shows. Its own weapon is a small bow machine gun that swings only a little either side of the nose, and falls silent in water. It carries ${MAMMOTH_GARRISON_CAP} of the infantry a Bunker takes, and every one of them fires out of the deck slits, even while it wades. Force attack on the hull aims every soldier inside who can reach that point; they stay aboard. Nothing reaches them while the hull holds — but if it is destroyed, everyone inside dies with it.`,
   },
   nebelwerfer: {
     type: "nebelwerfer",
@@ -2724,7 +2767,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: NEBELWERFER_ROCKET_AMMO,
     rocketRack: NEBELWERFER_ROCKET,
-    blurb: "Rocket artillery on an armored truck. Twelve tubes on a traversing frame, emptied in about a second, one to three rockets at a time. The rockets fly fast on a flat arc, so it hits anything your side can see — the longest reach on the field, but it will not fire inside four tiles, its own eyes are short, and a tank or tree in the path takes the rocket. It must stop and swing the frame onto the target before it fires. Rockets scatter wide: a salvo blankets an area, shreds infantry in the open, and only dents armor. Five salvos in the rack; a supply truck refills it. Switch the tubes off to hold fire. Thin plate — keep it behind the line.",
+    blurb: "Rocket artillery on an armored truck. Twelve tubes on a traversing frame, emptied in about a second, one to three rockets at a time. The rockets fly fast on a flat arc, so it hits anything your side can see — the longest reach on the field, but it will not fire inside four tiles, its own eyes are short, and a tank or tree in the path takes the rocket. It must stop and swing the frame onto the target before it fires. Rockets scatter wide at full reach and draw in as the target closes: a salvo blankets an area and shreds infantry in the open. Armor only dents, but a side or rear hit usually breaks a tank's tracks. Five salvos in the rack; a supply truck refills it. Switch the tubes off to hold fire. Thin plate — keep it behind the line.",
   },
   supply: {
     type: "supply",
@@ -2781,7 +2824,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: STUKA_MG.caliber,
     spreadDeg: STUKA_MG.spreadDeg,
     aircraft: true,
-    blurb: "Dive bomber. One SC 250 per sortie, two wing MGs for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands at its Airfield to refuel and rearm.",
+    wreckHp: 46,
+    blurb: "Dive bomber. One SC 250 per sortie, two wing MGs for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands at its Airfield to refuel and rearm. On guard it comes back to the same area once the bomb, the belts, and the tank are full. Shot down, it falls trailing smoke and crashes as a wreck.",
   },
   /** Fw 190 fighter. Lives on an Airfield pad. */
   fw190: {
@@ -2808,7 +2852,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: FW190_CANNON.caliber,
     spreadDeg: FW190_CANNON.spreadDeg,
     aircraft: true,
-    blurb: `Fighter. Two 30 mm cannon, one under each wing, and no bomb. ${FW190_BARRAGES} barrages a sortie: on each pass it lines up on the target and lays two straight lines of rounds through it, one from each wing, then comes round for the next. Fired from above, the rounds come down through a tank's thin roof, so even the heaviest hull bleeds. It chases enemy planes out of the sky the same way. Flies faster and turns tighter than the Stuka. Lands at its Airfield to refuel and rearm.`,
+    wreckHp: 40,
+    blurb: `Fighter. Two 30 mm cannon, one under each wing, and no bomb. ${FW190_BARRAGES} barrages a sortie: on each pass it lines up on the target and lays two straight lines of rounds through it, one from each wing, then comes round for the next. Fired from above, the rounds come down through a tank's thin roof, so even the heaviest hull bleeds. It chases enemy planes out of the sky the same way. Flies faster and turns tighter than the Stuka. Lands at its Airfield to refuel and rearm. On guard it comes back to the same area once all ${FW190_BARRAGES} barrages and the tank are full. Shot down, it falls trailing smoke and crashes as a wreck.`,
   },
   /** BV 222 transport flying boat. Lives on an Airfield pad. */
   bv222: {
@@ -2832,7 +2877,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     aircraft: true,
-    blurb: `Six-engined transport flying boat. No guns. Its bay takes one load, chosen on the pad: a canister of ${CLUSTER_MINES} butterfly mines that scatter over the ground and wait for the enemy, a supply crate on a parachute that refills ammo and patches up whoever stands at it, or up to ${BV222_TROOPS} riflemen who board it on the hardstand and jump over the point, hanging under their canopies — where rifles and machine guns can reach them — until they touch down. Force-attack the ground to drop. Slow and big; lands at its Airfield to refuel and reload.`,
+    wreckHp: 80,
+    blurb: `Six-engined transport flying boat. No guns. Its bay takes one load, chosen on the pad: a canister of ${CLUSTER_MINES} butterfly mines that scatter over the ground and wait for the enemy, a supply crate on a parachute that refills ammo and patches up whoever stands at it, or up to ${BV222_TROOPS} ground units who board it on the hardstand and jump over the point, hanging under their canopies — where rifles and machine guns can reach them — until they touch down. Force-attack the ground to drop. Slow and big. Shot down, it falls trailing smoke and crashes as a wreck, and everyone still aboard goes with it. Lands at its Airfield to refuel and reload.`,
   },
   droneop: {
     type: "droneop",
@@ -3471,6 +3517,11 @@ export function specialLabel(type: EntityType, braced = false): string | null {
 /** Walks through water. Infantry swim; this is the vehicle flag. */
 export function wadesOf(type: EntityType): boolean {
   return catalog(type).wades === true;
+}
+
+/** Share of dry-ground speed while wading. A wader that omits wadeSpeed keeps the Titan's pace. */
+export function wadeSpeedOf(type: EntityType): number {
+  return catalog(type).wadeSpeed ?? TITAN_WADE_SPEED;
 }
 
 /** A radar-laid mount: the CIWS or the RAM. See CatalogEntry.radarLaid. */

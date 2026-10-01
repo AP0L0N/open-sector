@@ -1,6 +1,7 @@
 import {
   catalog,
   FACE_MOVE_DEG,
+  fires,
   hasTurret,
   REVERSE_CONE_DEG,
   REVERSE_TILES,
@@ -100,6 +101,14 @@ export function tickMovement(state: MatchState, dt: number): void {
     if (e.state === "deploy" || e.state === "undeploy") continue;
     // Aircraft fly in tickAir; paratroopers drift down in tickChutes.
     if (e.air || e.chute) continue;
+    // An unarmed hull only remembers the aim so the soldiers inside can shoot.
+    if (e.order?.kind === "forceattack" && !fires(e.type)) {
+      e.waypoints = [];
+      if (e.state === "move" || e.state === "attack") e.state = "idle";
+      e.tileX = worldToTile(e.x, state.tileSize);
+      e.tileY = worldToTile(e.y, state.tileSize);
+      continue;
+    }
     if (e.braced) {
       // Outriggers down: the torso still aims and fires, the legs do not step.
       e.waypoints = [];
@@ -345,6 +354,17 @@ function finishTravel(state: MatchState, e: Entity): void {
     e.waypoints = [];
     e.state = "idle";
     e.holdPosition = true;
+    return;
+  }
+  if (e.order?.kind === "move" && e.order.arrive != null) {
+    const face = e.order.arrive;
+    e.waypoints = [];
+    e.order = {
+      kind: "rotate",
+      x: e.x + Math.cos(face) * 48,
+      y: e.y + Math.sin(face) * 48,
+    };
+    e.state = "idle";
     return;
   }
   e.order = null;

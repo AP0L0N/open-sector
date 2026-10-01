@@ -112,9 +112,10 @@ describe("Fw 190", () => {
     const foe = planeOver(state, "stuka", "B", 110 * ts, 100 * ts);
     const fighter = planeOver(state, "fw190", "A", 100 * ts, 100 * ts);
     assert.equal(applyCommand(state, "A", { type: "cmd.attack", ids: [fighter.id], targetId: foe.id }).ok, true);
-    const t = until(state, 1200, () => !state.entities.has(foe.id));
-    assert.ok(t >= 0, `the Stuka should go down (hp ${foe.hp}/${foe.hpMax}, rounds ${fighter.air!.rounds})`);
-    assert.ok(fighter.air!.rounds < FW190_BARRAGES);
+    const t = until(state, 1400, () => foe.wreck);
+    assert.ok(t >= 0, `the Stuka should go down (hp ${foe.hp}/${foe.hpMax}, rounds ${fighter.air?.rounds})`);
+    assert.equal(foe.air, undefined);
+    assert.ok((fighter.air?.rounds ?? FW190_BARRAGES) < FW190_BARRAGES);
   });
 
   it("attack-move takes a plane in the air before a tank on the ground", () => {

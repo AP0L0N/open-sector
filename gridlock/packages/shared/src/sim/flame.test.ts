@@ -18,9 +18,11 @@ import {
   TICK_DT,
   TRAIN_TYPES,
 } from "../catalog.js";
-import { TILE_EMPTY, TILE_WATER } from "../maps.js";
+import { TILE_EMPTY, TILE_TREE, TILE_WATER } from "../maps.js";
 import { applyCommand } from "./commands.js";
-import { cookOff, cookOffChance, igniteAt } from "./flame.js";
+import { tickProjectiles } from "./combat.js";
+import { cookOff, cookOffChance, igniteAt, throwFlame } from "./flame.js";
+import { burnVariant } from "./remains.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { enterGarrison } from "./garrison.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
@@ -326,5 +328,86 @@ describe("pyro tanks", () => {
       assert.ok(state.bodies.some((b) => b.type === "pyro"), "he still leaves a body");
     }
     assert.ok(went > 0 && went < trials / 2, `cooked off ${went}/${trials}`);
+  });
+
+  it("a soldier the fireball kills is charred, with no blood", () => {
+    const { state, y, ts } = range();
+    const me = pyro(state, tileCenter(80, ts), tileCenter(y, ts));
+    const near = makeEntity(state, "rifleman", "B", tileCenter(81, ts), tileCenter(y, ts));
+    cookOff(state, me);
+    step(state, TICK_DT);
+    const body = state.bodies.find((b) => b.type === "rifleman" && b.x === near.x);
+    assert.ok(body, "he fell in the open");
+    assert.equal(body.burned, true);
+    assert.equal(body.blood.length, 0);
+    assert.equal(snapshotFor(state, "B").bodies.some((b) => b.id === body.id && b.burned), true);
+  });
+});
+
+describe("pyro and trees", () => {
+  function land(state: MatchState): void {
+    for (let i = 0; i < 8 && state.projectiles.some((p) => p.flight === "flame"); i++) tickProjectiles(state, TICK_DT);
+  }
+
+  it("a forced jet burns the aimed tree, and an ordinary jet leaves it standing", () => {
+    const { state, y, ts } = range();
+    const tx = 73;
+    const ty = y;
+    state.terrain[ty * state.width + tx] = TILE_TREE;
+    const me = pyro(state, tileCenter(70, ts), tileCenter(ty, ts));
+    const aimX = tileCenter(tx, ts);
+    const aimY = tileCenter(ty, ts);
+    const reach = catalog("pyro").rangeTiles * ts;
+    throwFlame(state, me, aimX, aimY, reach, false);
+    land(state);
+    assert.equal(state.terrain[ty * state.width + tx], TILE_TREE, "a normal jet does not fell it");
+    throwFlame(state, me, aimX, aimY, reach, true);
+    land(state);
+    assert.equal(state.terrain[ty * state.width + tx], TILE_EMPTY);
+    const cleared = state.clearedTrees.find((t) => t.x === tx && t.y === ty);
+    assert.equal(cleared?.burn, true);
+    assert.equal(snapshotFor(state, "A").clearedTrees.some((t) => t.x === tx && t.y === ty && t.burn), true);
+  });
+
+  it("force-attack on a tree burns that trunk", () => {
+    const { state, y, ts } = range();
+    const tx = 73;
+    const ty = y;
+    state.terrain[ty * state.width + tx] = TILE_TREE;
+    const me = pyro(state, tileCenter(70, ts), tileCenter(ty, ts));
+    const res = applyCommand(state, "A", {
+      type: "cmd.forceattack",
+      ids: [me.id],
+      x: tileCenter(tx, ts),
+      y: tileCenter(ty, ts),
+    });
+    assert.equal(res.ok, true);
+    let burned = false;
+    for (let i = 0; i < secs(3) && !burned; i++) {
+      step(state, TICK_DT);
+      burned = state.clearedTrees.some((t) => t.x === tx && t.y === ty && t.burn);
+    }
+    assert.equal(burned, true);
+    assert.equal(state.terrain[ty * state.width + tx], TILE_EMPTY);
+  });
+});
+
+describe("death by fire", () => {
+  it("kills the soldier where he stands and leaves a charred corpse with no blood", () => {
+    const { state, y, ts } = range();
+    const foe = makeEntity(state, "rifleman", "B", tileCenter(80, ts), tileCenter(y, ts));
+    foe.holdPosition = true;
+    foe.hp = 5;
+    igniteAt(state, foe.x, foe.y, "A");
+    for (let i = 0; i < secs(3) && state.entities.has(foe.id); i++) step(state, TICK_DT);
+    assert.equal(state.entities.has(foe.id), false, "he is dead at once, not still fighting through the burn");
+    const body = state.bodies.find((b) => b.type === "rifleman");
+    assert.ok(body);
+    assert.equal(body.burned, true);
+    assert.equal(body.blood.length, 0);
+    assert.equal(body.x, foe.x);
+    assert.equal(body.y, foe.y);
+    const v = burnVariant(body.id);
+    assert.ok(v === 0 || v === 1 || v === 2);
   });
 });
