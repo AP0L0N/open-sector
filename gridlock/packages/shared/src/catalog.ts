@@ -455,12 +455,13 @@ export type EntityType =
   | "inn"
   | "chapel"
   | "sandbags"
+  | "wall"
   | "teeth"
   | "trench";
 export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "ram" | "bunker" | "tower" | "research";
 /** Placed by an engineer, not the construction yard. */
-export type FieldStructureType = "sandbags" | "teeth" | "trench";
-export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "teeth", "trench"];
+export type FieldStructureType = "sandbags" | "wall" | "teeth" | "trench";
+export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "wall", "teeth", "trench"];
 export type CivilianType = "cottage" | "house" | "manor" | "shack" | "barn" | "inn" | "chapel";
 export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "cottage",
@@ -678,7 +679,7 @@ export interface InfantryGun {
   reload: number;
   /** Omit to use the unit catalog range. */
   rangeTiles?: number;
-  /** Too big to fire from a supply-truck bed. Rifle and handgun stay portable. */
+  /** Large weapon. The supply-truck bed still fires the ones weaponFitsTruck allows. */
   bulky?: boolean;
   /** Inside this the tube will not drop. Mortar only. */
   minRangeTiles?: number;
@@ -1362,8 +1363,10 @@ export const FW190_SPLASH_DAMAGE = 34;
 /**
  * BV 222 transport flying boat. No guns and no bomb. Its bay holds one load,
  * chosen on the pad: a canister of cluster mines, a supply crate, or a stick
- * of up to BV222_TROOPS ground units who board it on the hardstand. Force-attack
- * the ground (Drop) and it runs in low and level over the point and lets go.
+ * of up to BV222_TROOPS ground units. Infantry can board on the hardstand from
+ * any load; that selects paratroops, and the bay stays on paratroops while
+ * anyone is aboard. Force-attack the ground (Drop, or hold Ctrl and click)
+ * and it runs in low and level over the point and lets go, whatever the load.
  */
 export type AirDrop = "mines" | "crate" | "troops";
 export const AIR_DROPS: readonly AirDrop[] = ["mines", "crate", "troops"];
@@ -1372,7 +1375,7 @@ export const BV222_TROOPS = 10;
 export const AIR_DROP_INFO: Record<AirDrop, { name: string; blurb: string }> = {
   mines: { name: "Mines", blurb: "A canister of butterfly mines. It bursts over the point and scatters them; they wait for enemy feet and tracks." },
   crate: { name: "Crate", blurb: "A supply crate on a parachute. Your units standing at it take ammo and patch up." },
-  troops: { name: "Paratroops", blurb: "Any ground unit boards on the hardstand (right-click the plane). They jump over the point and hang under canopies until they land." },
+  troops: { name: "Paratroops", blurb: "Infantry board on the hardstand from any load (right-click the plane); that selects paratroops, and no other load can be chosen while anyone is aboard. Other ground units board once paratroops is selected. They jump over the point and hang under canopies until they land." },
 };
 /** Height of the drop run: low and level, so a crate lands where it was meant to and the jumpers are not long in the air. */
 export const BV222_DROP_ALT = 9;
@@ -1931,6 +1934,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 14,
     moveTilesPerSec: t(1.3),
     turnDegPerSec: 120,
+    turnInPlace: true,
     rangeTiles: 0,
     sightTiles: t(6),
     cooldown: 0,
@@ -2240,6 +2244,28 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     blurb: "Two bags high. Crouched or crawling infantry behind it gain extra health. A crawling soldier cannot fire a gun over it. One tank shell wrecks it and still hits the men.",
   },
+  wall: {
+    type: "wall",
+    kind: "building",
+    name: "Wall",
+    letter: "w",
+    cost: 30,
+    buildSeconds: 5,
+    hp: 120,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: 0,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "Concrete section with barbed wire. Scroll to turn it, then drag from the start to the end. The whole line is one job — longer for each piece — and it appears when the engineer finishes. Nothing walks through it while it stands. Shells and rockets break it; an engineer can repair it. Units beside it have extra health and take less from ground fire. Mortars, bombs, and shots from the air ignore that.",
+  },
   teeth: {
     type: "teeth",
     kind: "building",
@@ -2496,7 +2522,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "No gun. Builds sandbags, concrete tank obstacles, and one-man trenches, repairs armor and buildings, and cuts wrecks into scrap.",
+    blurb: "No gun. Builds sandbags, concrete walls, tank obstacles, and one-man trenches, repairs armor and buildings, and cuts wrecks into scrap.",
   },
   medic: {
     type: "medic",
@@ -2867,7 +2893,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     leavesWreck: true,
     wreckHp: 28,
-    blurb: "Light truck. Tops up tank racks, coaxial belts, and the Walker's backpack, and slowly scrounges its cargo back on its own — an Armory refills it fast. Two seats. The factory driver stays at the wheel. A bullet in the front plate can kill the driver and leave the truck for anyone. A replacement driver can get out. The second soldier can fire a rifle or handgun from the bed — a machine gun, scoped rifle, or other large gun stays slung. Soldiers inside are a little harder to wound, and more so from the side or rear.",
+    blurb: "Light truck. Tops up tank racks, coaxial belts, and the Walker's backpack, and slowly scrounges its cargo back on its own — an Armory refills it fast. Two seats. The factory driver stays at the wheel. A bullet in the front plate can kill the driver and leave the truck for anyone. A replacement driver can get out. The passenger fires from the bed: rifle, handgun, machine gun, scoped rifle, anti-tank rifle, rocket launcher, flamethrower, or a Jump Jet's assault rifle. A mortar and a cyborg gatling stay slung. Hit-point bars for the soldiers aboard sit beside the truck. Soldiers inside are a little harder to wound, and more so from the side or rear.",
   },
   /** Ju 87 B dive bomber. Lives on an Airfield pad. */
   stuka: {
@@ -2948,7 +2974,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     aircraft: true,
     wreckHp: 80,
-    blurb: `Six-engined transport flying boat. No guns. Its bay takes one load, chosen on the pad: a canister of ${CLUSTER_MINES} butterfly mines that scatter over the ground and wait for the enemy, a supply crate on a parachute that refills ammo and patches up whoever stands at it, or up to ${BV222_TROOPS} ground units who board it on the hardstand and jump over the point, hanging under their canopies — where rifles and machine guns can reach them — until they touch down. Force-attack the ground to drop. Slow and big. Shot down, it falls trailing smoke and crashes as a wreck, and everyone still aboard goes with it. Lands at its Airfield to refuel and reload.`,
+    blurb: `Six-engined transport flying boat. No guns. Its bay takes one load, chosen on the pad: a canister of ${CLUSTER_MINES} butterfly mines that scatter over the ground and wait for the enemy, a supply crate on a parachute that refills ammo and patches up whoever stands at it, or up to ${BV222_TROOPS} ground units. Infantry board on the hardstand from any load; that selects paratroops, and the bay stays on paratroops while anyone is aboard. They jump over the point and hang under canopies — where rifles and machine guns can reach them — until they touch down. Hold Ctrl and click, or Force attack, to drop whatever is loaded. Slow and big. Shot down, it falls trailing smoke and crashes as a wreck, and everyone still aboard goes with it. Lands at its Airfield to refuel and reload.`,
   },
   droneop: {
     type: "droneop",
@@ -3126,6 +3152,7 @@ export function isFieldStructure(type: EntityType): type is FieldStructureType {
 /** World-pixel length along the wall and thickness across it. Null for other types. */
 export function fieldSpan(type: EntityType): { length: number; thick: number } | null {
   if (type === "sandbags") return { length: 24, thick: 7 };
+  if (type === "wall") return { length: 24, thick: 8 };
   if (type === "teeth") return { length: 14, thick: 14 };
   if (type === "trench") return { length: 16, thick: 10 };
   return null;
@@ -3465,9 +3492,24 @@ export function hasMg(type: EntityType): boolean {
 }
 
 /** Backpack or belt that runs dry and reloads. Null on shells and dry guns. */
-/** Rifle and handgun fit the truck bed. Machine guns, scoped rifles, mortars, and the PTRD do not. */
-export function weaponFitsTruck(gun: Pick<InfantryGun, "bulky"> | null | undefined): boolean {
-  return !!gun && gun.bulky !== true;
+/**
+ * Guns a supply-truck passenger may fire from the bed.
+ * A mortar and a cyborg gatling stay slung. The bulky flag alone is not the rule.
+ */
+const TRUCK_BED_GUNS = new Set<string>([
+  "rifle",
+  "handgun",
+  "assault",
+  "mg42",
+  "scoped",
+  "ptrd",
+  "launcher",
+  "penetrator",
+  "flamer",
+]);
+
+export function weaponFitsTruck(gun: { id?: string } | null | undefined): boolean {
+  return !!gun?.id && TRUCK_BED_GUNS.has(gun.id);
 }
 
 export function isSupplyTruck(type: EntityType): boolean {

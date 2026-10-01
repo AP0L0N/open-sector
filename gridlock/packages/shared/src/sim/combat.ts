@@ -84,10 +84,13 @@ import {
 } from "../catalog.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
 import {
+  WALL_COVER_DR,
+  coverStrike,
   isTankShell,
   ruinSandbags,
   sandbagSweep,
   sandbagsBlockGun,
+  wallSweep,
   woundBehindSandbags,
 } from "./field.js";
 import {
@@ -181,7 +184,11 @@ export function garrisonCanShoot(state: MatchState, unit: Entity, host: Entity):
   if (unit.hp <= 0 || unit.wreck || unit.garrisonedIn !== host.id) return false;
   if (!fires(unit.type) || !supplyRiderFights(state, unit)) return false;
   if (host.garrisonHide || isTransportType(host.type)) return false;
-  if (unit.type === "gunner") return garrisonFullArmsOf(host.type) && !hasCrit(unit, "arm");
+  if (unit.type === "gunner") {
+    // The truck bed is a ledge for the bipod, the same as a bunker slit.
+    const ledge = host.type === "supply" || garrisonFullArmsOf(host.type);
+    return ledge && !hasCrit(unit, "arm");
+  }
   if (unit.type === "mortarman") return garrisonOpenTopOf(host.type) && !hasCrit(unit, "arm");
   if (
     (unit.type === "sniper" || unit.type === "atinfantry" || unit.type === "rocketer" || unit.type === "pyro") &&
@@ -1403,8 +1410,16 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
     p.z = z0 + (p.vz ?? 0) * stepDt;
   }
   // It flies low and fast, so a hull, a wall, or a tree in the way takes the burst.
+  const wallHit = wallSweep(state, x0, y0, p.x, p.y);
   const struck = nearestSweepHit(state, x0, y0, p, z0, p.z);
   const tree = nearestTreeSweep(state, x0, y0, p, z0, p.z, rand);
+  if (wallHit && (!struck || wallHit.t <= struck.t) && (!tree || wallHit.t <= tree.t)) {
+    p.x = wallHit.x;
+    p.y = wallHit.y;
+    p.airBurst = undefined;
+    detonateMortar(state, p, rand, wallHit.e);
+    return false;
+  }
   const first = struck && (!tree || struck.t <= tree.t) ? struck : tree;
   if (first) {
     p.x = first.x;
@@ -1474,7 +1489,12 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
             rand,
           )
         : mortarArmorNick(def.hp, falloff, hasTracks(e.type), rand);
-      e.hp = Math.max(0, e.hp - nick.damage);
+      let nickDmg = nick.damage;
+      if ((e.wallCover ?? 0) > 0) {
+        if (rocket) nickDmg = Math.max(1, Math.round(nickDmg * WALL_COVER_DR));
+        else if (nickDmg >= Math.max(0, e.hp - e.wallCover)) nickDmg = e.hp;
+      }
+      e.hp = Math.max(0, e.hp - nickDmg);
       if (e.hp > 0 && nick.throwTrack) addCrit(e, "tracks");
       damageMaulerCart(e, {
         caliber: p.caliber,
@@ -1503,7 +1523,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     const occupied = wallsShieldGarrison(state, e);
     const chipWalls = !occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER;
     if (chipWalls) {
-      takeDamage(e, res.damage, state.tick);
+      coverStrike(e, res.damage, state.tick, !rocket);
       if (e.hp > 0) rollCrits(e, res.face, res.kind, res.damage, rand);
       const smoked = maybeHaulerSmokeScreen(state, e, p);
       if (e.hp > 0 && !smoked && res.kind !== "ricochet" && res.damage > 0) maybeWithdraw(state, e, p);
@@ -1597,8 +1617,10 @@ function gunnerReady(state: MatchState, e: Entity): boolean {
   if (e.type !== "gunner") return true;
   if (e.garrisonedIn != null) {
     // A bunker slit is a ready ledge for the bipod. A house window is not.
+    // The supply-truck bed is a ledge too.
     const house = state.entities.get(e.garrisonedIn);
-    return !!house && garrisonFullArmsOf(house.type) && !hasCrit(e, "arm");
+    if (!house || hasCrit(e, "arm")) return false;
+    return house.type === "supply" || garrisonFullArmsOf(house.type);
   }
   if (unitInWater(state, e)) return false;
   if (stanceOf(e) !== "crawl") return false;
@@ -1861,13 +1883,21 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     p.z = z0 + (p.vz ?? 0) * stepDt;
     p.life -= dt;
     const z1 = p.z;
-    // A round from overhead drops over the bags.
-    const bagHit = p.plunging ? null : sandbagSweep(state, x0, y0, p.x, p.y, isTankShell(p));
+    // A round from overhead drops over the bags and the concrete.
+    const overheadShot = !!p.plunging || !!p.fromAbove;
+    const bagHit = overheadShot ? null : sandbagSweep(state, x0, y0, p.x, p.y, isTankShell(p));
+    const concrete = overheadShot ? null : wallSweep(state, x0, y0, p.x, p.y);
     const struck = nearestSweepHit(state, x0, y0, p, z0, z1);
-    if (bagHit && (!struck || bagHit.t <= struck.t)) {
-      woundBehindSandbags(state, bagHit.e, x0, y0, p.damage);
-      ruinSandbags(state, bagHit.e);
-      pushImpact(state, p, "hit", bagHit.x, bagHit.y);
+    const blocker = concrete && (!bagHit || concrete.t < bagHit.t) ? concrete : bagHit;
+    if (blocker && (!struck || blocker.t <= struck.t)) {
+      if (blocker.e.type === "wall") {
+        if (isTankShell(p)) takeDamage(blocker.e, Math.max(1, Math.round(p.damage)), state.tick);
+        pushImpact(state, p, "hit", blocker.x, blocker.y);
+        continue;
+      }
+      woundBehindSandbags(state, blocker.e, x0, y0, p.damage);
+      ruinSandbags(state, blocker.e);
+      pushImpact(state, p, "hit", blocker.x, blocker.y);
       continue;
     }
     // A barrage from a plane comes down through the canopy; only what it lands on counts.
@@ -1965,7 +1995,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const chipWalls = (!occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER) && !walkerWall;
     let dealt = res.damage;
     if (chipWalls) {
-      dealt = takeDamage(e, dealt, state.tick);
+      dealt = coverStrike(e, dealt, state.tick, !!(p.fromAbove || p.plunging));
       if (e.hp > 0 && roofHit) {
         if (res.kind === "pen" && isMotorVehicle(e.type) && rand() < FW190_ROOF_ENGINE_CHANCE) addCrit(e, "engine");
       } else if (e.hp > 0) {
@@ -2135,7 +2165,7 @@ function cannonSplash(state: MatchState, p: Projectile): void {
     const d = Math.hypot(e.x - p.x, e.y - p.y);
     if (d > radius + e.radius) continue;
     const dmg = Math.max(1, Math.round(FW190_SPLASH_DAMAGE * mortarFalloff(Math.max(0, d - e.radius), radius)));
-    const dealt = takeDamage(e, dmg, state.tick);
+    const dealt = coverStrike(e, dmg, state.tick, true);
     if (e.hp > 0) rollCrits(e, "none", "hit", dealt, () => nextRand(state));
   }
 }
@@ -2198,7 +2228,7 @@ function sweepAgainst(
   p: Projectile,
   e: Entity,
 ): { t: number; x: number; y: number } | null {
-  if (e.type === "sandbags" || e.type === "teeth") return null;
+  if (e.type === "sandbags" || e.type === "teeth" || e.type === "wall") return null;
   // An empty trench is a hole in the ground. Rounds only find it with a man in it.
   if (e.type === "trench" && livingGarrison(state, e).length === 0) return null;
   const reach = e.radius * (p.plunging ? 1 : stanceHitRadiusMul(e, unitInWater(state, e)));

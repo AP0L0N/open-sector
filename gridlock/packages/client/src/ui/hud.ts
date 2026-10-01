@@ -642,7 +642,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
       ? `  ·  ${roofCiwsOf(e.type) ? "20mm" : "MG"} ${e.mgAmmo}${e.mgOverheat && e.mgOverheat > 0 ? " HOT" : ""}`
       : "";
   const garrison =
-    e.garrison && !isTransportType(e.type)
+    e.garrison && !isTransportType(e.type) && e.type !== "supply"
       ? `  ·  garrison ${e.garrison.count}/${e.garrison.cap}${e.garrison.hide ? " hide" : e.garrison.count ? " watch" : ""}`
       : e.garrisonedIn
         ? "  ·  inside"
@@ -850,10 +850,14 @@ function loadoutButton(opts: {
 
 function updateLoadoutButton(
   btn: HTMLElement,
-  opts: { count: string; on: boolean; empty?: boolean; title?: string },
+  opts: { count: string; on: boolean; empty?: boolean; title?: string; locked?: boolean },
 ): void {
   btn.classList.toggle("is-on", opts.on);
   btn.classList.toggle("is-empty", !!opts.empty);
+  if (opts.locked != null) {
+    if (opts.locked) btn.setAttribute("aria-disabled", "true");
+    else btn.removeAttribute("aria-disabled");
+  }
   if (opts.title != null) btn.title = opts.title;
   const n = btn.querySelector(".shell-n");
   if (n && n.textContent !== opts.count) n.textContent = opts.count;
@@ -895,6 +899,7 @@ const TYPE_ORDER: EntityType[] = [
   "droneop",
   "jumpjet",
   "sandbags",
+  "wall",
   "teeth",
   "trench",
   "rig",
@@ -1130,16 +1135,21 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
     const load = mine[0]?.air?.payload;
     const same = mine.length > 0 && mine.every((e) => e.air?.payload === load);
     const parked = mine.some((e) => e.air?.phase === "parked");
+    const aboard = mine.some((e) => (e.air?.troops ?? 0) > 0);
     for (const id of AIR_DROPS) {
       const btn = body.querySelector(`[data-payload="${id}"]`);
       if (!(btn instanceof HTMLElement)) continue;
       const on = same && load === id;
       const troops = mine.reduce((n, e) => n + (e.air?.payload === "troops" ? (e.air.troops ?? 0) : 0), 0);
       const loaded = mine.filter((e) => e.air?.payload === id && (e.air.bombs ?? 0) > 0).length;
+      const info = AIR_DROP_INFO[id];
+      const locked = aboard && id !== "troops";
       updateLoadoutButton(btn, {
         count: !on ? "" : id === "troops" ? `${troops}/${BV222_TROOPS * mine.length}` : `${loaded}/${mine.length}`,
         on,
-        empty: !on && !parked,
+        empty: (!on && !parked) || locked,
+        locked,
+        title: locked ? `${info.name} — Unload the plane before changing the load.` : `${info.name} — ${info.blurb}`,
       });
     }
     const lines = mine.map((e) => {
@@ -1473,6 +1483,14 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: "Dig a one-man trench. Moderate cover for one soldier, mortarman included. Scroll to turn, click to place one, or drag from start to end to dig a line.",
       on: view?.fieldPlace === "trench",
     });
+    out.push({
+      slot: "field-wall",
+      act: "field-wall",
+      label: "Wall",
+      title:
+        "Build a concrete wall with barbed wire. Scroll to turn it before you set the start, then drag to the end. The line is one job and takes longer the more pieces you lay. It appears when the engineer finishes.",
+      on: view?.fieldPlace === "wall",
+    });
   }
   const inf = units.filter((e) => isInfantryType(e.type) && e.type !== "engineer" && e.type !== "cyborg");
   if (inf.length) {
@@ -1793,8 +1811,9 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     if (units.length) view.setGuardMode(!view.guardMode);
     return;
   }
-  if (act === "field-sandbags" || act === "field-teeth" || act === "field-trench") {
-    view.setFieldPlace(act === "field-sandbags" ? "sandbags" : act === "field-teeth" ? "teeth" : "trench");
+  if (act === "field-sandbags" || act === "field-teeth" || act === "field-trench" || act === "field-wall") {
+    const structure = act === "field-sandbags" ? "sandbags" : act === "field-teeth" ? "teeth" : act === "field-trench" ? "trench" : "wall";
+    view.setFieldPlace(structure);
     return;
   }
   if (act === "hold") {

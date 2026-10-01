@@ -61,6 +61,15 @@ describe("engineer repair cursor", () => {
     }
   });
 
+  it("offers repair on a damaged concrete wall", () => {
+    const standing = building({ id: 56, type: "wall", hp: 120, hpMax: 120 });
+    const chipped = building({ id: 57, type: "wall", hp: 40, hpMax: 120 });
+    const foe = building({ id: 58, type: "wall", hp: 40, hpMax: 120, ownerId: FOE });
+    assert.equal(act({ selected: [eng], hit: standing }), null);
+    assert.equal(act({ selected: [eng], hit: chipped }), "repair");
+    assert.notEqual(act({ selected: [eng], hit: foe }), "repair");
+  });
+
   it("offers repair on shelled sandbags only", () => {
     const standing = building({ id: 53, type: "sandbags", hp: 30, hpMax: 30 });
     const shelled = building({ id: 54, type: "sandbags", hp: 30, hpMax: 30, ruined: true });
@@ -233,10 +242,15 @@ describe("resolveHoverAction", () => {
     const stuka = unit({ id: 66, type: "stuka", air: { phase: "parked", alt: 0 } });
     const up = unit({ id: 67, type: "jumpjet", jet: { alt: 8 } });
     const braced = unit({ id: 68, type: "titan", braced: true });
+    const crate = unit({ id: 69, type: "bv222", hp: 220, air: { phase: "parked", alt: 0, payload: "crate", troops: 0 } });
     assert.equal(act({ selected: [trooper], hit: ready }), "board");
     assert.equal(act({ selected: [gunner], hit: ready }), "board");
     assert.equal(act({ selected: [warden], hit: ready }), "board");
-    assert.notEqual(act({ selected: [trooper], hit: mines }), "board");
+    assert.equal(act({ selected: [trooper], hit: mines }), "board");
+    assert.equal(act({ selected: [gunner], hit: crate }), "board");
+    assert.equal(act({ selected: [trooper, warden], hit: mines }), "board");
+    assert.notEqual(act({ selected: [warden], hit: mines }), "board");
+    assert.notEqual(act({ selected: [warden], hit: crate }), "board");
     assert.notEqual(act({ selected: [trooper], hit: aloft }), "board");
     assert.notEqual(act({ selected: [trooper], hit: full }), "board");
     assert.notEqual(act({ selected: [stuka], hit: ready }), "board");

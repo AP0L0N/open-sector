@@ -15,12 +15,14 @@ import {
   weaponFitsTruck,
   infantryGunById,
   TICK_DT,
+  type EntityType,
 } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { TILE_EMPTY } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
+import { snapshotFor } from "./snapshot.js";
 import { noteSupplyHit, supplyBodies, supplyHasDriver, supplyShooter } from "./supply.js";
 import type { MatchState, Order } from "./types.js";
 
@@ -76,10 +78,15 @@ describe("supply truck", () => {
     if (!trained.ok) assert.equal(trained.message, "Need an Armory.");
     assert.equal(weaponFitsTruck(infantryGunById("rifle")), true);
     assert.equal(weaponFitsTruck(infantryGunById("handgun")), true);
-    assert.equal(weaponFitsTruck(infantryGunById("mg42")), false);
-    assert.equal(weaponFitsTruck(infantryGunById("scoped")), false);
-    assert.equal(weaponFitsTruck(infantryGunById("ptrd")), false);
+    assert.equal(weaponFitsTruck(infantryGunById("assault")), true);
+    assert.equal(weaponFitsTruck(infantryGunById("mg42")), true);
+    assert.equal(weaponFitsTruck(infantryGunById("scoped")), true);
+    assert.equal(weaponFitsTruck(infantryGunById("ptrd")), true);
+    assert.equal(weaponFitsTruck(infantryGunById("launcher")), true);
+    assert.equal(weaponFitsTruck(infantryGunById("penetrator")), true);
+    assert.equal(weaponFitsTruck(infantryGunById("flamer")), true);
     assert.equal(weaponFitsTruck(infantryGunById("mortar")), false);
+    assert.equal(weaponFitsTruck({ id: "gatling" }), false);
     assert.equal(supplyShortOf("rifleman", undefined, undefined, 0), false);
     assert.equal(supplyShortOf("warden", { ap: 0 }, 0, undefined), true);
     assert.equal(supplyShortOf("walker", undefined, undefined, 0), true);
@@ -166,9 +173,6 @@ describe("supply truck", () => {
     ticks(state, 3);
     assert.equal(gunner.garrisonedIn, truck.id);
     assert.equal(supplyShooter(state, truck)?.id, gunner.id);
-    const belt = gunner.clip;
-    ticks(state, 12);
-    assert.equal(gunner.clip, belt);
     assert.equal(truck.crew, true);
     assert.equal(applyCommand(state, a, { type: "cmd.unboard", truckId: truck.id }).ok, true);
 
@@ -182,6 +186,84 @@ describe("supply truck", () => {
     const foeHp = foe.hp;
     ticks(state, 20);
     assert.ok(foe.hp < foeHp, `passenger rifle did not hit, foe hp ${foe.hp}`);
+  });
+
+  it("lets a gunner, sniper, anti-tank rifle, rocketer, pyro, and jump jet fire from the bed", () => {
+    const bed: readonly EntityType[] = ["gunner", "sniper", "atinfantry", "rocketer", "pyro", "jumpjet"];
+    for (const type of bed) {
+      const { state, a, b } = match();
+      clearPad(state, 20, 20, 60, 60);
+      const ts = state.tileSize;
+      const truck = makeEntity(state, "supply", a, tileCenter(40, ts), tileCenter(40, ts));
+      const man = makeEntity(state, type, a, tileCenter(38, ts), tileCenter(40, ts));
+      assert.equal(applyCommand(state, a, { type: "cmd.board", ids: [man.id], truckId: truck.id }).ok, true);
+      ticks(state, 5);
+      assert.equal(man.garrisonedIn, truck.id, type);
+      assert.equal(supplyShooter(state, truck)?.id, man.id, type);
+      const foe = makeEntity(state, "rifleman", b, tileCenter(44, ts), tileCenter(40, ts));
+      foe.clip = 0;
+      foe.reload = 999;
+      truck.facing = Math.PI;
+      const belt = man.clip;
+      ticks(state, 40);
+      assert.ok(man.clip < belt, `${type} did not fire from the bed (clip ${man.clip})`);
+      assert.equal(truck.crew, true);
+    }
+  });
+
+  it("keeps a mortar and a cyborg gatling slung in the bed", () => {
+    for (const type of ["mortarman", "cyborg"] as const) {
+      const { state, a, b } = match();
+      clearPad(state, 20, 20, 60, 60);
+      const ts = state.tileSize;
+      const truck = makeEntity(state, "supply", a, tileCenter(40, ts), tileCenter(40, ts));
+      const man = makeEntity(state, type, a, tileCenter(38, ts), tileCenter(40, ts));
+      assert.equal(applyCommand(state, a, { type: "cmd.board", ids: [man.id], truckId: truck.id }).ok, true);
+      ticks(state, 5);
+      assert.equal(supplyShooter(state, truck)?.id, man.id, type);
+      const foe = makeEntity(state, "rifleman", b, tileCenter(44, ts), tileCenter(40, ts));
+      foe.clip = 0;
+      foe.reload = 999;
+      const belt = man.clip;
+      ticks(state, 30);
+      assert.equal(man.clip, belt, `${type} fired from the bed`);
+      assert.equal(
+        state.projectiles.some((p) => p.fromId === man.id),
+        false,
+        `${type} launched from the bed`,
+      );
+    }
+  });
+
+  it("shows the riders' hit-point bars beside the truck to anyone who can see it", () => {
+    const { state, a, b } = match();
+    clearPad(state, 20, 20, 60, 60);
+    const ts = state.tileSize;
+    const truck = makeEntity(state, "supply", a, tileCenter(40, ts), tileCenter(40, ts));
+    const rifle = makeEntity(state, "rifleman", a, tileCenter(42, ts), tileCenter(40, ts));
+    assert.equal(applyCommand(state, a, { type: "cmd.board", ids: [rifle.id], truckId: truck.id }).ok, true);
+    ticks(state, 5);
+    rifle.hp = Math.max(1, Math.floor(rifle.hpMax / 2));
+    const yours = snapshotFor(state, a).entities.find((e) => e.id === truck.id);
+    assert.equal(yours?.garrison?.count, 1);
+    assert.equal(yours?.garrison?.cap, TRUCK_SEATS);
+    assert.equal(yours?.garrison?.ownerId, a);
+    assert.equal(yours?.garrison?.hide, undefined);
+    assert.deepEqual(yours?.garrison?.bars, [{ hp: rifle.hp, hpMax: rifle.hpMax }]);
+    assert.ok(yours?.bed);
+    truck.x = 90 * ts;
+    truck.y = 90 * ts;
+    rifle.x = truck.x;
+    rifle.y = truck.y;
+    makeEntity(state, "rifleman", b, truck.x + ts, truck.y);
+    state.visionTick = -1;
+    const seen = snapshotFor(state, b).entities.find((e) => e.id === truck.id);
+    assert.equal(seen?.garrison?.bars?.length, 1);
+    assert.equal(seen?.garrison?.bars?.[0]?.hp, rifle.hp);
+    assert.equal(
+      snapshotFor(state, b).entities.some((e) => e.garrisonedIn === truck.id),
+      false,
+    );
   });
 
   it("kills the driver on a front bullet and lets either side take the truck", () => {

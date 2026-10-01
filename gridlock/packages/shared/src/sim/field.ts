@@ -36,6 +36,12 @@ export const HULL_FIX_SECONDS = 3;
 export const SANDBAG_COVER_DEPTH = 22;
 /** Extra hit points while crouched or crawling against intact sandbags, as a share of catalog HP. */
 export const SANDBAG_COVER_BONUS = 0.5;
+/** How far past the concrete face a unit still counts as beside the wall. */
+export const WALL_COVER_DEPTH = 26;
+/** Extra hit points while beside an intact wall, as a share of catalog HP. */
+export const WALL_COVER_BONUS = 0.25;
+/** Ground hits beside a wall deal this share. Overhead attacks ignore the wall. */
+export const WALL_COVER_DR = 0.7;
 /** Overlap below this still counts as adjacent, so two structures can touch. */
 const PLACE_SLACK = 3;
 
@@ -433,10 +439,92 @@ function nextPiece(state: MatchState, e: Entity, structure: FieldStructureType):
   }
 }
 
+function wallPiecesOf(e: Entity): FieldPiece[] {
+  const order = e.order;
+  if (!order || order.x == null || order.y == null) return [];
+  return [{ x: order.x, y: order.y, facing: order.facing ?? 0 }, ...(e.fieldQueue ?? [])];
+}
+
+/**
+ * One job for the whole line. The engineer works `buildSeconds` for each piece,
+ * then every piece appears together.
+ */
+function tickWall(state: MatchState, e: Entity, dt: number): void {
+  const pieces = wallPiecesOf(e);
+  if (pieces.length === 0) {
+    finishWork(e);
+    return;
+  }
+  const first = pieces[0]!;
+  const spot = standPoint("wall", first.x, first.y, first.facing);
+  if (e.waypoints.length > 0) return;
+  if (Math.hypot(e.x - spot.x, e.y - spot.y) > WORK_REACH) {
+    e.state = "move";
+    if (state.tick % 8 === 0) setPath(state, e, spot.x, spot.y);
+    return;
+  }
+  if (e.work <= 0) {
+    const open = pieces.filter((p) => fieldSiteClear(state, "wall", p.x, p.y, p.facing));
+    if (open.length === 0) {
+      finishWork(e);
+      return;
+    }
+    const lead = open[0]!;
+    const leadSpot = standPoint("wall", lead.x, lead.y, lead.facing);
+    if (Math.hypot(e.x - leadSpot.x, e.y - leadSpot.y) > WORK_REACH) {
+      e.order = { kind: "build", x: lead.x, y: lead.y, facing: lead.facing, structure: "wall" };
+      e.fieldQueue = open.slice(1);
+      e.state = "move";
+      setPath(state, e, leadSpot.x, leadSpot.y);
+      return;
+    }
+    const def = catalog("wall");
+    const player = state.players.get(e.ownerId);
+    const n = player ? Math.min(open.length, Math.floor(player.scrap / def.cost)) : 0;
+    if (!player || n === 0) {
+      finishWork(e);
+      if (player) state.pendingComms.push("Not enough scrap.");
+      return;
+    }
+    const build = open.slice(0, n);
+    player.scrap -= def.cost * n;
+    const paid = build[0]!;
+    e.order = { kind: "build", x: paid.x, y: paid.y, facing: paid.facing, structure: "wall" };
+    e.fieldQueue = build.slice(1);
+  }
+  const count = wallPiecesOf(e).length;
+  e.waypoints = [];
+  e.state = "build";
+  const aim = wallPiecesOf(e)[0]!;
+  e.facing = Math.atan2(aim.y - e.y, aim.x - e.x);
+  e.turretFacing = e.facing;
+  e.work += dt;
+  // 0.1 added ten times a second undershoots the duration by a rounding error.
+  if (e.work + 1e-6 < catalog("wall").buildSeconds * count) return;
+  const player = state.players.get(e.ownerId);
+  let placed = 0;
+  for (const p of wallPiecesOf(e)) {
+    if (!fieldSiteClear(state, "wall", p.x, p.y, p.facing)) {
+      if (player) player.scrap += catalog("wall").cost;
+      continue;
+    }
+    const built = makeEntity(state, "wall", e.ownerId, p.x, p.y, { facing: p.facing });
+    built.facing = p.facing;
+    built.turretFacing = p.facing;
+    placed++;
+  }
+  if (placed > 0) restampForts(state);
+  finishWork(e);
+}
+
 function tickBuild(state: MatchState, e: Entity, dt: number): void {
   const order = e.order;
   if (!order || order.kind !== "build" || order.structure == null || order.x == null || order.y == null) return;
   const structure = order.structure;
+  if (structure === "wall") {
+    tickWall(state, e, dt);
+    return;
+  }
   const facing = order.facing ?? 0;
   const spot = standPoint(structure, order.x, order.y, facing);
   if (e.waypoints.length > 0) return;
@@ -605,11 +693,57 @@ export function sandbagCoverBonus(state: MatchState, e: Entity): number {
   return 0;
 }
 
+function aloft(e: Entity): boolean {
+  if (e.jet && e.jet.alt > 0.5) return true;
+  if (e.air && e.air.alt > 0.5) return true;
+  return (e.chute?.alt ?? 0) > 0.5;
+}
+
+/** Any ground unit pressed against an intact concrete wall, either side. */
+export function wallCoverBonus(state: MatchState, e: Entity): number {
+  if (e.hp <= 0 || e.wreck || e.kind !== "unit" || e.garrisonedIn != null || aloft(e)) return 0;
+  const span = fieldSpan("wall");
+  if (!span) return 0;
+  for (const wall of state.entities.values()) {
+    if (wall.type !== "wall" || wall.ruined || wall.hp <= 0) continue;
+    const { fx, fy, tx, ty } = wallAxes(wall.facing);
+    const dx = e.x - wall.x;
+    const dy = e.y - wall.y;
+    const along = dx * tx + dy * ty;
+    const across = dx * fx + dy * fy;
+    if (Math.abs(along) > span.length / 2 + 8) continue;
+    const depth = Math.abs(across) - span.thick / 2;
+    if (depth < -6 || depth > WALL_COVER_DEPTH) continue;
+    return Math.max(1, Math.round(catalog(e.type).hp * WALL_COVER_BONUS));
+  }
+  return 0;
+}
+
+/**
+ * Apply `damage` after wall cover. A unit with no wall bonus is unchanged.
+ * Overhead damage (mortar, bomb, a shot from the air) ignores the extra health
+ * and the reduction: the bonus cannot keep him alive.
+ */
+export function coverStrike(e: Entity, damage: number, tick: number, overhead: boolean): number {
+  const bonus = e.wallCover ?? 0;
+  if (bonus <= 0 || e.kind !== "unit") return takeDamage(e, damage, tick);
+  if (overhead) {
+    const base = Math.max(0, e.hp - bonus);
+    if (damage >= base) return takeDamage(e, Math.max(damage, e.hp), tick);
+  } else if (damage > 0) {
+    damage = Math.max(1, Math.round(damage * WALL_COVER_DR));
+  }
+  return takeDamage(e, damage, tick);
+}
+
 function applyCoverHp(state: MatchState): void {
   for (const e of state.entities.values()) {
-    if (!isInfantryType(e.type)) continue;
-    const next = e.hp <= 0 ? 0 : sandbagCoverBonus(state, e);
+    if (e.kind !== "unit") continue;
+    const sand = e.hp <= 0 ? 0 : sandbagCoverBonus(state, e);
+    const wall = e.hp <= 0 ? 0 : wallCoverBonus(state, e);
+    const next = sand + wall;
     const prev = e.coverBonus;
+    e.wallCover = wall;
     if (next === prev) continue;
     const delta = next - prev;
     e.coverBonus = next;
@@ -689,6 +823,36 @@ export function sandbagSweep(
   return sandbagOnSegment(state, x0, y0, x1, y1);
 }
 
+function wallOnSegment(
+  state: MatchState,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): { e: Entity; t: number; x: number; y: number } | null {
+  let best: { e: Entity; t: number; x: number; y: number } | null = null;
+  for (const e of state.entities.values()) {
+    if (e.type !== "wall" || e.hp <= 0 || e.ruined) continue;
+    const span = fieldSpan("wall")!;
+    const t = segmentObbT(x0, y0, x1, y1, e.x, e.y, e.facing, span.length / 2, span.thick / 2);
+    if (t == null) continue;
+    if (best && t >= best.t) continue;
+    best = { e, t, x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t };
+  }
+  return best;
+}
+
+/** The first intact concrete wall a straight shot crosses. Overhead rounds pass over. */
+export function wallSweep(
+  state: MatchState,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): { e: Entity; t: number; x: number; y: number } | null {
+  return wallOnSegment(state, x0, y0, x1, y1);
+}
+
 function segmentObbT(
   x0: number,
   y0: number,
@@ -731,7 +895,7 @@ function segmentObbT(
   return t0 < 0 ? 0 : t0;
 }
 
-/** 1 = sandbags (blocks everyone). 2 = dragon's teeth (vehicles only). A trench blocks no one. */
+/** 1 = sandbags and concrete walls (blocks everyone). 2 = dragon's teeth (vehicles only). A trench blocks no one. */
 export function restampForts(state: MatchState): void {
   state.fortBlock.fill(0);
   for (const e of state.entities.values()) {

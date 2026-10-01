@@ -35,7 +35,7 @@ import {
   type AirDrop,
 } from "../catalog.js";
 import type { CrateView, ImpactView, MineView } from "../protocol.js";
-import { takeDamage } from "./crits.js";
+import { coverStrike } from "./field.js";
 import { airAlt } from "./elevation.js";
 import { detachGarrisoned, livingGarrison } from "./garrison.js";
 import {
@@ -111,7 +111,10 @@ export function canBoardPlane(state: MatchState, unit: Entity, plane: Entity): s
   if (unit.garrisonedIn != null) return "Already inside.";
   if (unit.chute) return "Still in the air.";
   if (plane.ownerId !== unit.ownerId) return "Not your plane.";
-  if (payloadOf(plane) !== "troops") return "The bay is loaded for a drop. Load paratroops first.";
+  // Infantry board from any load. Climbing in selects paratroops.
+  if (!isInfantryType(unit.type) && payloadOf(plane) !== "troops") {
+    return "The bay is loaded for a drop. Load paratroops first.";
+  }
   if (plane.air?.phase !== "parked") return "Board on the hardstand.";
   if (planeRiders(state, plane).length >= BV222_TROOPS) return "The plane is full.";
   return null;
@@ -157,7 +160,17 @@ function atPlane(state: MatchState, e: Entity, plane: Entity): boolean {
   return Math.hypot(e.x - plane.x, e.y - plane.y) <= (field.tileW + field.tileH) * state.tileSize * 0.5;
 }
 
+/** Infantry climbing in selects paratroops and clears a canister that was hanging. */
+function armParatroops(plane: Entity): void {
+  const a = plane.air;
+  if (!a || a.payload === "troops") return;
+  a.payload = "troops";
+  a.bombs = 0;
+  a.rearm = 0;
+}
+
 function enterPlane(unit: Entity, plane: Entity): void {
+  if (isInfantryType(unit.type)) armParatroops(plane);
   unit.garrisonedIn = plane.id;
   if (!plane.garrison.includes(unit.id)) plane.garrison.push(unit.id);
   unit.x = plane.x;
@@ -241,6 +254,7 @@ export function setPayload(state: MatchState, plane: Entity, load: AirDrop): str
   if (!a || !isTransportType(plane.type) || plane.hp <= 0) return "Select a transport.";
   if (payloadOf(plane) === load) return null;
   if (!parkedTransport(plane)) return "Change the load on the pad.";
+  if (planeRiders(state, plane).length > 0) return "Unload the plane before changing the load.";
   if (payloadOf(plane) === "troops") climbOut(state, plane);
   a.payload = load;
   a.bombs = 0;
@@ -489,7 +503,7 @@ function detonateMine(state: MatchState, ownerId: string, x: number, y: number):
     } else {
       dmg = e.hpMax * MINE_SOFT_SHARE * fall;
     }
-    takeDamage(e, Math.max(1, Math.round(dmg)), state.tick);
+    coverStrike(e, Math.max(1, Math.round(dmg)), state.tick, false);
     if (e.hp <= 0) killed = true;
   }
   const impact: ImpactView = {

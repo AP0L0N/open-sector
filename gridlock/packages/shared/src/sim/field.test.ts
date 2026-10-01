@@ -1,20 +1,24 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { TILE_EMPTY } from "../maps.js";
-import { catalog, ENGINEER_SEEK_TILES, fieldSpan, TICK_DT, wreckScrapOf } from "../catalog.js";
+import { catalog, ENGINEER_SEEK_TILES, fieldSpan, TICK_DT, TITAN_ROCKET, wreckScrapOf } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { applyCommand } from "./commands.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
 import {
   HULL_FIX_SECONDS,
+  WALL_COVER_BONUS,
+  WALL_COVER_DR,
+  coverStrike,
   fieldLine,
   fieldLineMax,
   fieldSiteClear,
+  fieldTiles,
   restampForts,
   sandbagCoverBonus,
 } from "./field.js";
 import { toWreck } from "./wreck.js";
-import { makeEntity, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
+import { destroyEntity, makeEntity, playerTeam, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { astar } from "./path.js";
@@ -57,8 +61,8 @@ function ticks(state: MatchState, n: number): void {
   for (let i = 0; i < n; i++) step(state, TICK_DT);
 }
 
-function shot(state: MatchState, x: number, y: number, vx: number, damage: number, shell: Projectile["shell"]): void {
-  state.projectiles.push({
+function shot(state: MatchState, x: number, y: number, vx: number, damage: number, shell: Projectile["shell"]): Projectile {
+  const p: Projectile = {
     id: state.nextId++,
     ownerId: "B",
     team: 1,
@@ -74,7 +78,9 @@ function shot(state: MatchState, x: number, y: number, vx: number, damage: numbe
     fromId: -1,
     bounced: false,
     shell,
-  });
+  };
+  state.projectiles.push(p);
+  return p;
 }
 
 describe("engineer field works", () => {
@@ -536,5 +542,347 @@ describe("engineer field works", () => {
     ticks(state, 3);
     assert.equal(eng.order?.kind, "move");
     assert.notEqual(eng.order?.auto, true);
+  });
+});
+
+/** Same offset `standPoint` uses: half the slab plus the pad the engineer stands on. */
+function wallStand(x: number, y: number, facing: number): { x: number; y: number } {
+  const span = fieldSpan("wall")!;
+  const off = span.thick / 2 + 14;
+  return { x: x - Math.cos(facing) * off, y: y - Math.sin(facing) * off };
+}
+
+/** Put the engineer on the stand of the piece he is about to build, with no walk left. */
+function parkOnWall(eng: { order: { x?: number; y?: number; facing?: number } | null; x: number; y: number; waypoints: { x: number; y: number }[]; work: number }): void {
+  const o = eng.order;
+  if (!o || o.x == null || o.y == null) throw new Error("engineer has no build");
+  const spot = wallStand(o.x, o.y, o.facing ?? 0);
+  eng.x = spot.x;
+  eng.y = spot.y;
+  eng.waypoints = [];
+  eng.work = 0;
+}
+
+describe("concrete wall", () => {
+  it("keeps the facing set before the drag", () => {
+    const span = fieldSpan("wall")!;
+    const line = fieldLine("wall", 100, 100, 100 + span.length * 3, 100, Math.PI / 2 + 0.3);
+    assert.equal(line.length, 3);
+    for (const p of line) assert.ok(Math.abs(Math.sin(p.facing) - 1) < 1e-6, `facing=${p.facing}`);
+    const flipped = fieldLine("wall", 100, 100, 100 + span.length * 3, 100, -Math.PI / 2);
+    assert.ok(Math.abs(Math.sin(flipped[0]!.facing) + 1) < 1e-6);
+  });
+
+  it("raises every section together after one build time per piece", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 26, 26, 40, 16);
+    const ts = state.tileSize;
+    const span = fieldSpan("wall")!;
+    const x = tileCenter(30, ts);
+    const y = tileCenter(34, ts);
+    const eng = makeEntity(state, "engineer", "A", x, y - 40);
+    const scrap0 = state.players.get("A")!.scrap;
+    const res = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [eng.id],
+      structure: "wall",
+      x,
+      y,
+      facing: Math.PI / 2,
+      x2: x + span.length * 3,
+      y2: y,
+    });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    const queued = eng.fieldQueue?.length ?? 0;
+    assert.equal(queued, 2);
+    const sitesOf = (who: string) => snapshotFor(state, who).entities.find((e) => e.id === eng.id)?.fieldSites;
+    assert.equal(sitesOf("A")?.length, 3);
+    assert.equal(sitesOf("A")?.[0]?.progress, undefined);
+    assert.equal(sitesOf("B"), undefined);
+    parkOnWall(eng);
+    const spotter = makeEntity(state, "rifleman", "B", eng.x + 24, eng.y);
+    const per = Math.round(catalog("wall").buildSeconds / TICK_DT);
+    const built = () => [...state.entities.values()].filter((e) => e.type === "wall");
+    ticks(state, 1);
+    assert.equal(built().length, 0);
+    assert.equal(state.players.get("A")!.scrap, scrap0 - catalog("wall").cost * 3);
+    const digging = sitesOf("B");
+    assert.equal(digging?.length, 3);
+    const progress = digging?.[0]?.progress;
+    assert.ok(progress != null && progress > 0 && progress < 0.02, `progress ${progress}`);
+    assert.ok(digging!.every((s) => s.progress === progress));
+    destroyEntity(state, spotter);
+    state.projectiles.length = 0;
+    eng.hp = eng.hpMax;
+    ticks(state, per * 3 - 2);
+    assert.equal(built().length, 0, "the line waits until the whole job is done");
+    ticks(state, 1);
+    const walls = built();
+    assert.equal(walls.length, 3);
+    assert.ok(walls.every((w) => Math.abs(Math.sin(w.facing) - 1) < 1e-6));
+    assert.equal(eng.state, "idle");
+    assert.equal(state.players.get("A")!.scrap, scrap0 - catalog("wall").cost * 3);
+  });
+
+  it("pays for as many sections as the scrap allows", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 26, 26, 40, 16);
+    const ts = state.tileSize;
+    const span = fieldSpan("wall")!;
+    const x = tileCenter(30, ts);
+    const y = tileCenter(34, ts);
+    const eng = makeEntity(state, "engineer", "A", x, y - 40);
+    const cost = catalog("wall").cost;
+    state.players.get("A")!.scrap = cost * 2 + 5;
+    const res = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [eng.id],
+      structure: "wall",
+      x,
+      y,
+      facing: Math.PI / 2,
+      x2: x + span.length * 3,
+      y2: y,
+    });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    parkOnWall(eng);
+    const per = Math.round(catalog("wall").buildSeconds / TICK_DT);
+    ticks(state, 1);
+    assert.equal(eng.fieldQueue?.length, 1);
+    assert.equal(state.players.get("A")!.scrap, 5);
+    ticks(state, per * 2 - 1);
+    const walls = [...state.entities.values()].filter((e) => e.type === "wall");
+    assert.equal(walls.length, 2);
+    assert.equal(state.players.get("A")!.scrap, 5);
+  });
+
+  it("refunds a section that is blocked when the line is placed", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 26, 26, 40, 16);
+    const ts = state.tileSize;
+    const span = fieldSpan("wall")!;
+    const x = tileCenter(30, ts);
+    const y = tileCenter(34, ts);
+    const eng = makeEntity(state, "engineer", "A", x, y - 40);
+    applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [eng.id],
+      structure: "wall",
+      x,
+      y,
+      facing: Math.PI / 2,
+      x2: x + span.length * 3,
+      y2: y,
+    });
+    parkOnWall(eng);
+    ticks(state, 1);
+    const queue = eng.fieldQueue ?? [];
+    const last = queue[queue.length - 1];
+    assert.ok(last, "the line still has a later section");
+    const order = eng.order!;
+    const earlier = [{ x: order.x!, y: order.y!, facing: order.facing ?? 0 }, ...queue.slice(0, -1)];
+    const taken = new Set(
+      earlier.flatMap((p) => fieldTiles(state, "wall", p.x, p.y, p.facing).map((t) => `${t.x},${t.y}`)),
+    );
+    const free = fieldTiles(state, "wall", last.x, last.y, last.facing).find((t) => !taken.has(`${t.x},${t.y}`));
+    assert.ok(free, "the last section has a tile of its own");
+    state.occupy[tileIndex(state, free!.x, free!.y)] = 999999;
+    const scrap = state.players.get("A")!.scrap;
+    const per = Math.round(catalog("wall").buildSeconds / TICK_DT);
+    ticks(state, per * 3 - 1);
+    const walls = [...state.entities.values()].filter((e) => e.type === "wall");
+    assert.equal(walls.length, 2);
+    assert.equal(state.players.get("A")!.scrap, scrap + catalog("wall").cost);
+    assert.equal(eng.state, "idle");
+  });
+
+  it("splits a dragged line so each engineer raises his own run at once", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 26, 26, 40, 16);
+    const ts = state.tileSize;
+    const span = fieldSpan("wall")!;
+    const x = tileCenter(30, ts);
+    const y = tileCenter(34, ts);
+    const x2 = x + span.length * 4;
+    const a = makeEntity(state, "engineer", "A", x, y - 40);
+    const b = makeEntity(state, "engineer", "A", x2, y - 40);
+    const scrap0 = state.players.get("A")!.scrap;
+    const res = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [a.id, b.id],
+      structure: "wall",
+      x,
+      y,
+      facing: Math.PI / 2,
+      x2,
+      y2: y,
+    });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    assert.equal(a.fieldQueue?.length, 1);
+    assert.equal(b.fieldQueue?.length, 1);
+    parkOnWall(a);
+    parkOnWall(b);
+    const per = Math.round(catalog("wall").buildSeconds / TICK_DT);
+    const built = () => [...state.entities.values()].filter((e) => e.type === "wall");
+    ticks(state, per * 2 - 1);
+    assert.equal(built().length, 0);
+    ticks(state, 1);
+    assert.equal(built().length, 4);
+    assert.equal(state.players.get("A")!.scrap, scrap0 - catalog("wall").cost * 4);
+    assert.equal(a.state, "idle");
+    assert.equal(b.state, "idle");
+  });
+
+  it("blocks every unit while it stands, and the tile opens once a shell brings it down", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 30, 28, 16, 12);
+    const ts = state.tileSize;
+    const x = tileCenter(36, ts);
+    const y = tileCenter(32, ts);
+    const wall = makeEntity(state, "wall", "A", x, y, { facing: 0 });
+    wall.facing = 0;
+    restampForts(state);
+    const tx = worldToTile(x, ts);
+    const ty = worldToTile(y, ts);
+    assert.equal(walkable(state, tx, ty, "rifleman"), false);
+    assert.equal(walkable(state, tx, ty, "warden"), false);
+    const hp = wall.hp;
+    shot(state, x + 30, y, -800, 40, "ap");
+    tickProjectiles(state, TICK_DT);
+    assert.equal(wall.hp, hp - 40);
+    const rifle = shot(state, x + 30, y, -800, 12, null);
+    tickProjectiles(state, TICK_DT);
+    assert.equal(wall.hp, hp - 40);
+    assert.equal(state.projectiles.some((p) => p.id === rifle.id), false);
+    shot(state, x + 30, y, -800, wall.hp, "he");
+    tickProjectiles(state, TICK_DT);
+    assert.ok(wall.hp <= 0);
+    step(state, TICK_DT);
+    assert.equal(state.entities.has(wall.id), false);
+    assert.equal(walkable(state, tx, ty, "warden"), true);
+  });
+
+  it("takes a rocket hit and falls when the next one finishes it", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 30, 28, 16, 12);
+    const ts = state.tileSize;
+    const x = tileCenter(36, ts);
+    const y = tileCenter(32, ts);
+    const wall = makeEntity(state, "wall", "A", x, y, { facing: 0 });
+    wall.facing = 0;
+    const launch = () => {
+      state.projectiles.push({
+        id: state.nextId++,
+        ownerId: "B",
+        team: playerTeam(state, "B"),
+        x: x + 16,
+        y,
+        vx: -200,
+        vy: 0,
+        damage: TITAN_ROCKET.damage,
+        penetration: TITAN_ROCKET.penetration,
+        caliber: TITAN_ROCKET.caliber,
+        life: 0.3,
+        ignoreId: -1,
+        fromId: -1,
+        bounced: false,
+        shell: null,
+        flight: "rocket",
+        landX: x,
+        landY: y,
+        z: 6,
+        vz: 0,
+      });
+    };
+    launch();
+    tickProjectiles(state, TICK_DT);
+    assert.ok(wall.hp < wall.hpMax && wall.hp > 0, `rocket left ${wall.hp}`);
+    wall.hp = 1;
+    launch();
+    tickProjectiles(state, TICK_DT);
+    assert.ok(wall.hp <= 0);
+  });
+
+  it("gives units on either side extra health, and less from a shot along the ground", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 30, 28, 16, 12);
+    const ts = state.tileSize;
+    const x = tileCenter(36, ts);
+    const y = tileCenter(32, ts);
+    const wall = makeEntity(state, "wall", "A", x, y, { facing: 0 });
+    wall.facing = 0;
+    const man = makeEntity(state, "rifleman", "A", x + 18, y);
+    const tank = makeEntity(state, "warden", "A", x - 18, y);
+    const manBase = catalog("rifleman").hp;
+    const tankBase = catalog("warden").hp;
+    step(state, TICK_DT);
+    const manBonus = Math.round(manBase * WALL_COVER_BONUS);
+    const tankBonus = Math.round(tankBase * WALL_COVER_BONUS);
+    assert.equal(man.hpMax, manBase + manBonus);
+    assert.equal(man.hp, manBase + manBonus);
+    assert.equal(man.wallCover, manBonus);
+    assert.equal(tank.hpMax, tankBase + tankBonus);
+    assert.equal(tank.wallCover, tankBonus);
+
+    const before = man.hp;
+    coverStrike(man, 40, state.tick, false);
+    assert.equal(man.hp, before - Math.round(40 * WALL_COVER_DR));
+    const tankBefore = tank.hp;
+    coverStrike(tank, 10, state.tick, true);
+    assert.equal(tank.hp, tankBefore - 10);
+
+    man.hp = man.hpMax;
+    state.projectiles.push({
+      id: state.nextId++,
+      ownerId: "B",
+      team: playerTeam(state, "B"),
+      x: man.x,
+      y: man.y,
+      vx: 0,
+      vy: 0,
+      damage: 45,
+      penetration: 14,
+      caliber: 60,
+      life: 0.01,
+      ignoreId: -1,
+      fromId: -1,
+      bounced: false,
+      shell: null,
+      flight: "mortar",
+      landX: man.x,
+      landY: man.y,
+      apex: 20,
+      flightTime: 1,
+      z: 4,
+    });
+    tickProjectiles(state, TICK_DT);
+    assert.ok(man.hp <= 0, `mortar left ${man.hp}`);
+
+    tank.x = x - 80;
+    step(state, TICK_DT);
+    assert.equal(tank.hpMax, tankBase);
+    assert.equal(tank.wallCover, 0);
+  });
+
+  it("lets an engineer repair a damaged wall", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 30, 28, 16, 12);
+    const ts = state.tileSize;
+    const x = tileCenter(36, ts);
+    const y = tileCenter(32, ts);
+    const wall = makeEntity(state, "wall", "A", x, y, { facing: 0 });
+    wall.facing = 0;
+    wall.hp = wall.hpMax - 40;
+    const spot = wallStand(x, y, 0);
+    const eng = makeEntity(state, "engineer", "A", spot.x, spot.y);
+    const res = applyCommand(state, "A", { type: "cmd.repair", ids: [eng.id], targetId: wall.id });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    eng.waypoints = [];
+    const hurt = wall.hp;
+    ticks(state, 5);
+    assert.ok(wall.hp > hurt, `repair left ${wall.hp}`);
+    ticks(state, 40);
+    assert.equal(wall.hp, wall.hpMax);
+    assert.equal(eng.state, "idle");
   });
 });

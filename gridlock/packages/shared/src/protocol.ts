@@ -158,8 +158,9 @@ export interface EntityView {
    */
   plan?: PlanPointView[];
   /**
-   * Occupied civilian house. count/bars/ownerId are hidden from enemies while
-   * hide is set. hide itself is friendly-only.
+   * Soldiers inside a house, a hull, a supply truck, or a transport.
+   * count/bars/ownerId are hidden from enemies while hide is set.
+   * hide itself is friendly-only. A truck and a transport never hide.
    */
   garrison?: {
     count: number;

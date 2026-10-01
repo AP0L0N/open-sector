@@ -244,6 +244,7 @@ function structuredCloneBase(e: Entity): Entity {
     guardFacing: null,
     ruined: false,
     coverBonus: 0,
+    wallCover: 0,
     work: 0,
     crew: false,
     supply: 0,

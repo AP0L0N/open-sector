@@ -319,6 +319,36 @@ describe("BV 222", () => {
     assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === plane.id)?.garrison, undefined);
   });
 
+  it("lets infantry board from any load, selects paratroops, and keeps that load while anyone is aboard", () => {
+    const state = twoPlayerMatch();
+    const { plane, field } = trainedTransport(state);
+    assert.equal(payloadOf(plane), "mines");
+    assert.equal(plane.air!.bombs, 1);
+    const ts = state.tileSize;
+    const below = (field.tileY + field.tileH + 1) * ts;
+    const man = riflemanAt(state, "A", plane.x, below);
+    const tank = makeEntity(state, "warden", "A", plane.x + ts, below);
+    const refused = applyCommand(state, "A", { type: "cmd.board", ids: [tank.id], truckId: plane.id });
+    assert.equal(refused.ok, false);
+    if (!refused.ok) assert.match(refused.message, /paratroops/i);
+    assert.equal(payloadOf(plane), "mines");
+    assert.equal(applyCommand(state, "A", { type: "cmd.board", ids: [man.id], truckId: plane.id }).ok, true);
+    assert.ok(until(state, 800, () => man.garrisonedIn === plane.id) >= 0, "the rifleman climbs in");
+    assert.equal(payloadOf(plane), "troops");
+    assert.equal(plane.air!.bombs, 0);
+    assert.equal(planeRiders(state, plane).length, 1);
+    const locked = applyCommand(state, "A", { type: "cmd.payload", ids: [plane.id], payload: "crate" });
+    assert.equal(locked.ok, false);
+    if (!locked.ok) assert.match(locked.message, /Unload/);
+    assert.equal(payloadOf(plane), "troops");
+    assert.equal(man.garrisonedIn, plane.id, "changing the load does not dump the stick");
+    const unload = applyCommand(state, "A", { type: "cmd.unboard", truckId: plane.id });
+    assert.equal(unload.ok, true);
+    assert.equal(planeRiders(state, plane).length, 0);
+    assert.equal(applyCommand(state, "A", { type: "cmd.payload", ids: [plane.id], payload: "crate" }).ok, true);
+    assert.equal(payloadOf(plane), "crate");
+  });
+
   it("drops a stick of paratroopers who drift down under canopies and then fight", () => {
     const state = twoPlayerMatch();
     seedCore(state);

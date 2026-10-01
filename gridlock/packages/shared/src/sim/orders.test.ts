@@ -200,6 +200,33 @@ describe("tank tracks", () => {
     assert.ok(rolled >= 18, `should keep rolling after the first yaw rolled=${rolled}`);
   });
 
+  it("holds the Rig still until the hull finishes the yaw, then rolls", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    clearPad(state, 70, 46, 110, 70);
+    const rig = makeEntity(state, "rig", "A", tileCenter(76, ts), tileCenter(52, ts));
+    rig.facing = 0;
+    rig.turretFacing = 0;
+    const destX = rig.x;
+    const destY = tileCenter(64, ts);
+    applyCommand(state, "A", { type: "cmd.move", ids: [rig.id], x: destX, y: destY });
+    const x0 = rig.x;
+    const y0 = rig.y;
+    const want = Math.PI / 2;
+    for (let i = 0; i < 80; i++) {
+      if (angAbs(rig.facing, want) * (180 / Math.PI) <= FACE_MOVE_DEG) break;
+      step(state, TICK_DT);
+      assert.equal(rig.x, x0, `rolled during yaw tick ${i} x=${rig.x}`);
+      assert.equal(rig.y, y0, `rolled during yaw tick ${i} y=${rig.y}`);
+      assert.notEqual(rig.state, "move");
+    }
+    assert.ok(angAbs(rig.facing, want) * (180 / Math.PI) <= FACE_MOVE_DEG);
+    assert.equal(rig.x, x0);
+    assert.equal(rig.y, y0);
+    step(state, TICK_DT);
+    assert.ok(rig.y > y0, `should roll after yaw y=${rig.y} from ${y0}`);
+  });
+
   it("turns a walker around instead of reversing a short hop behind it", () => {
     const { state } = twoPlayerMatch();
     const ts = state.tileSize;
