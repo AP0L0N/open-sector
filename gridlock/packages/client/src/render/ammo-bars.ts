@@ -7,6 +7,7 @@
 import {
   beltOf,
   catalog,
+  heavyAmmoOf,
   launcherOnlyOf,
   rocketAmmoOf,
   SHELL_TYPES,
@@ -24,7 +25,7 @@ function fraction(left: number, full: number): number {
 
 /** Main store first (the yellow bar), then the secondary store. At most two. Empty when nothing is finite or the view is not allied. */
 export function ammoBarRatios(
-  e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "wreck" | "supply" | "jet">,
+  e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "heavy" | "wreck" | "supply" | "jet">,
 ): number[] {
   if (e.wreck) return [];
   if (e.type === "supply") return e.supply != null ? [fraction(e.supply, SUPPLY_CARGO)] : [];
@@ -52,6 +53,9 @@ export function ammoBarRatios(
   const belt = beltOf(e.type);
   const drum = belt && belt.reload <= 0 ? belt.clip : supplyDrumOf(e.type);
   if (drum > 0 && e.clip != null) primary.push(fraction(e.clip, drum));
+
+  const heavyCap = heavyAmmoOf(e.type);
+  if (heavyCap > 0 && e.heavy != null) primary.push(fraction(e.heavy, heavyCap));
 
   const pods = rocketAmmoOf(e.type);
   if (pods > 0 && e.rockets != null) {

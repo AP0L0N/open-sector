@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { crashTrailPuffs, CRASH_TRAIL_SPACING } from "./crash-smoke.js";
+import { crashTrailPuffs, layCrashTrail, CRASH_TRAIL_SPACING } from "./crash-smoke.js";
 import { trailPuffs } from "./rocket-smoke.js";
 
 describe("crash smoke", () => {
@@ -18,5 +18,17 @@ describe("crash smoke", () => {
 
   it("lays nothing on a step shorter than the spacing", () => {
     assert.equal(crashTrailPuffs({ x: 0, y: 0, z: 8 }, { x: 1, y: 0, z: 8 }, 0, 1).length, 0);
+  });
+
+  it("keeps a short step so the column does not skip", () => {
+    let from: { x: number; y: number; z: number } | undefined;
+    let n = 0;
+    for (let i = 1; i <= 12; i++) {
+      const laid = layCrashTrail(from, { x: i, y: 0, z: 16 }, 0, 3);
+      from = laid.from;
+      n += laid.puffs.length;
+    }
+    assert.ok(n >= 3, `short frames should add up, laid ${n}`);
+    assert.ok(from && from.x > 0);
   });
 });

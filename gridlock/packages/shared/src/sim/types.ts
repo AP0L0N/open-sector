@@ -136,8 +136,11 @@ export interface AirState {
    * flies back. Any other order clears it. Not a wire field.
    */
   guard?: { x: number; y: number } | null;
-  /** Crash only: heading the nose is wandering toward. */
-  drift?: number;
+  /** Crash only: signed radians per second. Rolled once when the fall starts. */
+  yaw?: number;
+  /** Crash only: world point the fall started. The glide stops at AIR_CRASH_RANGE. */
+  originX?: number;
+  originY?: number;
   /** Crash only: entity ids this airframe has already struck. */
   struck?: number[];
 }
@@ -282,6 +285,8 @@ export interface Entity {
   rocketCooldown?: number;
   /** Rockets left in the Titan's rack. Missing on types without pods. */
   rockets?: number;
+  /** High-penetration missiles carried. The Rocketer holds one. Missing means none. */
+  heavy?: number;
   /** Rockets still to leave in the salvo under way. 0 or missing between salvos. */
   rocketSalvo?: number;
   /** Player switched the pods off. Missing means on. */
@@ -426,8 +431,12 @@ export interface Projectile {
   launcher?: EntityType;
   /** Lobbed rocket only: height it left the tubes at. `apex` rides on top of the line from here to the ground. */
   launchZ?: number;
-  /** Rocket only: CIWS mounts that already fired a burst at it. Each gets one try. */
+  /** Rocket only: CIWS mounts that already fired a burst at it. An ordinary rocket gets one try. */
   ciwsTried?: number[];
+  /** High-penetration warhead. Splash and armor use that rack, not the carrier's catalog rack. */
+  heavy?: boolean;
+  /** Interceptor hits left. Missing means one connecting burst destroys the rocket. */
+  plate?: number;
   /** Fired by an anti-air gun (MG42, gatlings). Only these meet a high drone. */
   antiAir?: boolean;
   /** Fired down from a plane's wing cannon: on a hull it meets the roof (resolveRoofHit), not a face. */

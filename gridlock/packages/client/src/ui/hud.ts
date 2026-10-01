@@ -753,6 +753,15 @@ function beltLine(live: EntityView[]): string {
 function infantryClipLine(live: EntityView[]): string {
   const gun = live[0] ? infantryGunFor(live[0]) : null;
   if (!gun) return "Small arms";
+  if (gun.id === "penetrator") {
+    const have = live.reduce((n, e) => n + (e.heavy ?? 0), 0);
+    const cap = live.length;
+    const arming = live.filter((e) => (e.heavy ?? 0) > 0 && (e.reload ?? 0) > 0);
+    if (have <= 0) return `High penetration 0/${cap} — supply truck`;
+    if (arming.length === live.length) return `Arming ${Math.max(...arming.map((e) => e.reload ?? 0)).toFixed(1)}s`;
+    if (arming.length > 0) return `High penetration ${have}/${cap} · ${arming.length} arming`;
+    return `High penetration ${have}/${cap}`;
+  }
   if (live.length === 1) {
     const e = live[0]!;
     if ((e.reload ?? 0) > 0) return `Reloading ${e.reload!.toFixed(1)}s`;
@@ -851,6 +860,8 @@ function updateLoadoutButton(
 }
 
 function infantryClipShown(e: EntityView, gunId: string): number {
+  if (gunId === "penetrator") return e.heavy ?? 0;
+  if (e.type === "rocketer" && gunId === "launcher") return e.clip ?? 0;
   const live = infantryGunFor(e);
   if (live?.id === gunId) return (e.reload ?? 0) > 0 ? 0 : (e.clip ?? 0);
   const gun = infantryLoadout(e.type).find((g) => g.id === gunId);
@@ -1175,7 +1186,7 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
         updateLoadoutButton(btn, {
           count: String(left),
           on: !!(same && infantryGunFor(mine[0]!)?.id === gun.id),
-          empty: locked,
+          empty: locked || (gun.id === "penetrator" && left <= 0),
           title: locked ? `${gun.name} — broken arm. ${gun.blurb}` : `${gun.name} — ${gun.blurb}`,
         });
       }
@@ -1208,7 +1219,7 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
             : focus.type === "atinfantry"
               ? "PTRD-41. Same reach as the sniper. Tank side and rear up close, light armor farther out. A broken arm puts the rifle down."
               : focus.type === "rocketer"
-              ? "One Titan rocket in the tube, then a slow reload. Loose at full reach, tighter as the target closes. Bursts among soldiers, dents a tank, and a side or rear hit usually breaks its tracks. Goes up beside a plane or a low drone. A broken arm puts the tube down."
+              ? "The tube reloads off his back. Loose at full reach, tighter as the target closes. High penetration is one missile: faster, accurate at long range, and it wrecks armor. Fitting it takes a few seconds unless it is already loaded. He fires that round only when you order the shot. A supply truck brings another. A broken arm puts the tube down."
               : focus.type === "pyro"
               ? "Flamethrower: a few strides of reach, three bursts in the tanks, and only a supply truck refills them. The ground he hits burns for a while and kills soldiers who stand in it, his own side too. Over sandbags and in through windows. A broken arm puts the lance down; if he is killed the tanks may go up."
               : focus.type === "mortarman"

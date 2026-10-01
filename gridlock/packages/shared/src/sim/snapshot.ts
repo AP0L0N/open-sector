@@ -206,6 +206,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       braced: e.braced || undefined,
       rocketReload: friendly && (e.rocketCooldown ?? 0) > 0 ? e.rocketCooldown : undefined,
       rockets: friendly && e.rockets != null ? e.rockets : undefined,
+      heavy: friendly && e.type === "rocketer" ? (e.heavy ?? 0) : undefined,
       rocketsOff: friendly && e.rocketsOff ? true : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
       guardFacing: friendly && e.guardFacing != null ? e.guardFacing : undefined,
@@ -374,6 +375,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
         // A mine canister falls like a small bomb; its caliber tells the client it is not an SC 250.
         bomb: p.flight === "bomb" || p.flight === "cluster" ? true : undefined,
         rocket: p.flight === "rocket" ? true : undefined,
+        heavy: p.heavy ? true : undefined,
         ...(p.flight === "bomb" || p.flight === "rocket" || p.flight === "cluster" ? { z: p.z ?? 0 } : {}),
         ...(p.flight === "flame"
           ? {

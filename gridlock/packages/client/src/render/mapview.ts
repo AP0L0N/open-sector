@@ -234,7 +234,7 @@ import {
   type FlameParticle,
 } from "./flame-fx.js";
 import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir, lerpAirAlt } from "./aircraft.js";
-import { crashTrailPuffs, CRASH_PUFF_CAP } from "./crash-smoke.js";
+import { layCrashTrail, CRASH_PUFF_CAP } from "./crash-smoke.js";
 import { canopySway, drawCanopy, drawCrate, drawMine, troopCanopySpan } from "./airdrop-fx.js";
 import { barrageTracers, tracerLandsAt, tracerSpan, type BarrageTracer } from "./barrage-tracer.js";
 import { drawSandbags } from "./sandbags.js";
@@ -4422,9 +4422,14 @@ export class MapView {
       const y = prev ? prev.y + (e.y - prev.y) * blend : e.y;
       const alt = lerpAirAlt(prev, e, blend);
       const head = { x, y, z: this.elevAt(x, y) + alt };
-      const last = this.crashLast.get(e.id) ?? head;
-      this.crashPuffs.push(...crashTrailPuffs(last, head, now, (e.id * 2654435761 + Math.floor(now)) >>> 0));
-      this.crashLast.set(e.id, head);
+      const laid = layCrashTrail(
+        this.crashLast.get(e.id),
+        head,
+        now,
+        (e.id * 2654435761 + Math.floor(now)) >>> 0,
+      );
+      this.crashPuffs.push(...laid.puffs);
+      this.crashLast.set(e.id, laid.from);
     }
     for (const id of [...this.crashLast.keys()]) {
       if (!live.has(id)) this.crashLast.delete(id);
@@ -4458,7 +4463,7 @@ export class MapView {
     const now = performance.now();
     const blend = Math.min(1, (now - this.snapAt) / 100);
     const live = new Set<number>();
-    const heads: { x: number; y: number; dx: number; dy: number; id: number }[] = [];
+    const heads: { x: number; y: number; dx: number; dy: number; id: number; heavy: boolean }[] = [];
     for (const p of this.curr.projectiles) {
       if (!p.rocket) continue;
       live.add(p.id);
@@ -4476,7 +4481,14 @@ export class MapView {
       const dy = s.y - tail.y;
       const fallback = this.toScreen(wx - p.vx * 0.01, wy - p.vy * 0.01, wz);
       const moved = dx * dx + dy * dy > 0.25;
-      heads.push({ x: s.x, y: s.y, dx: moved ? dx : s.x - fallback.x, dy: moved ? dy : s.y - fallback.y, id: p.id });
+      heads.push({
+        x: s.x,
+        y: s.y,
+        dx: moved ? dx : s.x - fallback.x,
+        dy: moved ? dy : s.y - fallback.y,
+        id: p.id,
+        heavy: !!p.heavy,
+      });
     }
     for (const id of [...this.rocketLast.keys()]) {
       if (!live.has(id)) {
@@ -4503,7 +4515,7 @@ export class MapView {
     }
     ctx.restore();
     this.rocketPuffs = keep;
-    for (const h of heads) drawRocketHead(ctx, h.x, h.y, h.dx, h.dy, h.id);
+    for (const h of heads) drawRocketHead(ctx, h.x, h.y, h.dx, h.dy, h.id, h.heavy);
   }
 
   /**

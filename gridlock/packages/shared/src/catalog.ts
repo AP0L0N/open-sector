@@ -323,6 +323,11 @@ export interface RocketRackDef {
    * must bear on the target and the carrier must be halted before a rocket leaves.
    */
   laid?: boolean;
+  /**
+   * Connecting interceptor bursts this rocket takes before it comes apart.
+   * Omit for a rocket one burst destroys. A mount keeps shooting until then.
+   */
+  plate?: number;
 }
 
 export const TITAN_ROCKET_RACK: RocketRackDef = {
@@ -652,8 +657,8 @@ export interface ShellDef {
 }
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
-export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault";
-export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault"];
+export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator"];
 export interface InfantryGun {
   id: InfantryWeaponId;
   name: string;
@@ -1015,6 +1020,52 @@ export const LAUNCHER = {
 export const LAUNCHER_ROCKET_RACK: RocketRackDef = { ...TITAN_ROCKET_RACK, salvo: 1, podLift: LAUNCHER_LIFT };
 
 /**
+ * Rocketer's second round. One missile, not a pack: a supply truck brings
+ * another. Half again as fast as the tube's rocket, still on the hull at full
+ * reach, and the blast is built to wreck armor. Fitting it on the tube takes
+ * PENETRATOR_ARM_SECONDS when it was not already loaded. He spends it only on
+ * a shot you order. Interceptors have to connect several times to bring it down.
+ */
+export const PENETRATOR_ARM_SECONDS = 3.5;
+/** Supply points a truck spends to hand him another. A shell is SUPPLY_SHELL_COST. */
+export const PENETRATOR_SUPPLY_COST = 6;
+/** Connecting CIWS or RAM bursts before the missile comes apart. */
+export const PENETRATOR_PLATE = 4;
+export const PENETRATOR_SPEED = TITAN_ROCKET_SPEED * 1.5;
+export const PENETRATOR_RACK: RocketRackDef = {
+  salvo: 1,
+  interval: 0,
+  reload: 0,
+  scatterNearTiles: t(0.05),
+  scatterFarTiles: t(0.22),
+  splashTiles: t(0.6),
+  speed: PENETRATOR_SPEED,
+  podLift: LAUNCHER_LIFT,
+  damage: 36,
+  /** Flat hit points off an armored hull at the blast center. The tube's rocket is 11. */
+  armorDamage: 100,
+  airMul: 0.8,
+  penetration: 140,
+  caliber: 120,
+  antiAir: true,
+  plate: PENETRATOR_PLATE,
+};
+export const PENETRATOR = {
+  id: "penetrator" as const,
+  name: "High penetration",
+  blurb: "One missile. Half again as fast as the tube's rocket, accurate out to full reach, and it wrecks armor. Fitting it takes a few seconds unless it is already on the tube. He fires it only when you order the shot. A supply truck brings another. Hard for a CIWS or a RAM to bring down.",
+  damage: PENETRATOR_RACK.damage,
+  penetration: PENETRATOR_RACK.penetration,
+  caliber: PENETRATOR_RACK.caliber,
+  spreadDeg: 0,
+  cooldown: 1,
+  clip: 1,
+  reload: 0,
+  rangeTiles: LAUNCHER_RANGE_TILES,
+  bulky: true,
+} as const satisfies InfantryGun;
+
+/**
  * Pyro's flamethrower. Two fuel tanks on his back and a lance with a pilot
  * flame. A trigger pull throws a short burst: FLAMER_BURST globs of burning
  * fuel, one a tick, that arc onto the ground around the aim point and splash
@@ -1193,14 +1244,16 @@ export const AIR_DIVE_PER_SEC = 14;
  * A plane that dies in the air does not pop. It falls, nose wandering, trailing
  * smoke, and nothing else can hurt it until it meets the ground.
  */
-/** Elevation units per second the airframe sinks. Cruise is a few seconds of falling. */
-export const AIR_CRASH_SINK_PER_SEC = 3.2;
-/** Slowest share of cruise speed while it falls. */
-export const AIR_CRASH_SPEED = 0.75;
-/** Radians per second the heading it is chasing wanders. The nose follows more slowly. */
-export const AIR_CRASH_WANDER = 1.1;
-/** Share of the catalog turn rate the nose may use while falling. */
-export const AIR_CRASH_TURN_MUL = 0.42;
+/** Elevation units per second the airframe sinks. Cruise is about two seconds of falling. */
+export const AIR_CRASH_SINK_PER_SEC = 8;
+/** Share of cruise speed while it falls. A fast plane is pulled down to this. */
+export const AIR_CRASH_SPEED = 0.4;
+/** Slowest sustained yaw while falling, degrees per second. Sign is chosen per crash. */
+export const AIR_CRASH_YAW_MIN = 90;
+/** Fastest sustained yaw while falling, degrees per second. */
+export const AIR_CRASH_YAW_MAX = 150;
+/** How far the airframe may glide from where it was hit, gameplay tiles. */
+export const AIR_CRASH_RANGE = t(6);
 /** Infantry, a drone, or a Jump Jet the airframe strikes. */
 export const AIR_CRASH_SOFT_DAMAGE = 500;
 /** Share of a hull's max HP when the airframe strikes it. */
@@ -1456,7 +1509,7 @@ export const CIWS_GUN = {
 } as const;
 /** Spread multiple on a plane in the air. The radar lays the gun; small arms open AIR_TARGET_SPREAD. */
 export const CIWS_AIR_SPREAD = 1.3;
-/** Chance one burst bursts one rocket in the air. Each CIWS tries each rocket once. */
+/** Chance one burst connects on one rocket. Each CIWS tries an ordinary rocket once. A heavy round keeps drawing bursts until it comes apart. */
 export const CIWS_INTERCEPT_CHANCE = 0.45;
 /** Rounds one intercept burst spends. A short belt still tries, at a share of the chance. */
 export const CIWS_INTERCEPT_ROUNDS = 12;
@@ -1524,7 +1577,7 @@ export const RAM_ROCKET: RocketRackDef = {
   antiAir: true,
   laid: true,
 };
-/** Chance one interceptor bursts one rocket in the air. Each RAM tries each rocket once. */
+/** Chance one interceptor connects on one rocket. Each RAM tries an ordinary rocket once. A heavy round draws another interceptor until it comes apart. */
 export const RAM_INTERCEPT_CHANCE = 0.35;
 /** Seconds from one interceptor to the next. Between them the rack is not free to fire. */
 export const RAM_INTERCEPT_INTERVAL = 0.3;
@@ -1631,6 +1684,7 @@ export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   ptrd: PTRD,
   gatling: GATLING,
   launcher: LAUNCHER,
+  penetrator: PENETRATOR,
   flamer: FLAMER,
 };
 
@@ -2370,7 +2424,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LAUNCHER.penetration,
     caliber: LAUNCHER.caliber,
     spreadDeg: LAUNCHER.spreadDeg,
-    blurb: "One rocket launcher on the shoulder, loaded with the Titan's rockets. One shot, then a slow reload off his back. Loose at full reach and tighter as the target closes. The burst tears through soldiers bunched together, dents a tank, and a side or rear hit usually breaks its tracks. It can go up beside a plane or a low drone. A broken arm puts the tube down.",
+    blurb: "One rocket launcher. The tube reloads off his back: loose at full reach, tighter up close, a burst among soldiers that dents a tank. Config also loads one high-penetration missile — faster, accurate at long range, and heavy on armor. That round does not come back until a supply truck brings another, and fitting it takes a moment. He spends it only on a shot you order. A broken arm puts the tube down.",
   },
   pyro: {
     type: "pyro",
@@ -3191,7 +3245,7 @@ export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
   if (type === "gunner") return [MG42];
   if (type === "sniper") return [SCOPED];
   if (type === "atinfantry") return [PTRD];
-  if (type === "rocketer") return [LAUNCHER];
+  if (type === "rocketer") return [LAUNCHER, PENETRATOR];
   if (type === "pyro") return [FLAMER];
   if (type === "mortarman") return [MORTAR];
   if (type === "cyborg") return [GATLING];
@@ -3436,8 +3490,10 @@ export function supplyShortOf(
   mgAmmo: number | undefined,
   clip: number | undefined,
   rockets?: number,
+  heavy?: number,
 ): boolean {
   const def = catalog(type);
+  if ((heavy ?? 0) < heavyAmmoOf(type)) return true;
   if ((rockets ?? 0) < rocketAmmoOf(type)) return true;
   if (def.ammo) {
     for (const shell of SHELL_TYPES) {
@@ -3573,6 +3629,11 @@ export function launcherOnlyOf(type: EntityType): boolean {
 /** Rockets in a full rack. 0 on every type without pods. */
 export function rocketAmmoOf(type: EntityType): number {
   return rocketsOf(type) ? (catalog(type).rocketAmmo ?? 0) : 0;
+}
+
+/** High-penetration missiles this type carries when full. The Rocketer holds one. */
+export function heavyAmmoOf(type: EntityType): number {
+  return type === "rocketer" ? 1 : 0;
 }
 
 /** Braces on deploy instead of turning into another type. */

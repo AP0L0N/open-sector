@@ -23,6 +23,9 @@ import {
   supplyDrumOf,
   supplyShortOf,
   rocketAmmoOf,
+  heavyAmmoOf,
+  PENETRATOR_ARM_SECONDS,
+  PENETRATOR_SUPPLY_COST,
   weaponFitsTruck,
   type ShellType,
 } from "../catalog.js";
@@ -111,7 +114,7 @@ export function canBoardTruck(state: MatchState, unit: Entity, truck: Entity): s
 
 export function needsSupply(e: Entity): boolean {
   if (e.hp <= 0 || e.wreck || e.garrisonedIn != null) return false;
-  return supplyShortOf(e.type, e.ammo, e.mgAmmo, e.clip, e.rockets);
+  return supplyShortOf(e.type, e.ammo, e.mgAmmo, e.clip, e.rockets, e.heavy);
 }
 
 /** Point of a building's footprint nearest to (x, y). */
@@ -314,6 +317,17 @@ function giveShell(e: Entity): boolean {
   return false;
 }
 
+/** The Rocketer's one high-penetration missile. Costs more than a shell. */
+function giveHeavy(truck: { supply: number }, e: Entity): boolean {
+  const max = heavyAmmoOf(e.type);
+  if (max <= 0 || (e.heavy ?? 0) >= max || truck.supply < PENETRATOR_SUPPLY_COST) return false;
+  e.heavy = (e.heavy ?? 0) + 1;
+  truck.supply -= PENETRATOR_SUPPLY_COST;
+  // It arrives in the pack. On the tube, he still has to fit it before it fires.
+  if (infantryGunFor(e)?.id === "penetrator" && e.reload <= 0) e.reload = PENETRATOR_ARM_SECONDS;
+  return true;
+}
+
 /** One rocket back into the Titan's rack. Costs the same as a shell. */
 function giveRocket(e: Entity): boolean {
   const max = rocketAmmoOf(e.type);
@@ -347,6 +361,7 @@ function giveRounds(e: Entity, n: number): boolean {
 /** One hand-out from a store of supply points (a truck's bed, a dropped crate): a shell or rocket, else a belt's worth of rounds. */
 export function transferOnce(truck: { supply: number }, target: Entity): boolean {
   if (truck.supply <= 0) return false;
+  if (giveHeavy(truck, target)) return true;
   if (truck.supply >= SUPPLY_SHELL_COST && (giveShell(target) || giveRocket(target))) {
     truck.supply -= SUPPLY_SHELL_COST;
     return true;

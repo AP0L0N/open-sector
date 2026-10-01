@@ -23,7 +23,6 @@ import {
   type MapDef,
 } from "@gridlock/shared";
 import {
-  BUSH_FACES,
   DIRT_TEX,
   GRASS_TEXS,
   SCRAP_FACES,
@@ -33,7 +32,6 @@ import {
   drawPropSprite,
   whenImagesReady,
   PROP_IMAGES,
-  type PropSprite,
 } from "./sprites.js";
 import { contourSegments, hillshadeFactor } from "./relief.js";
 
@@ -510,12 +508,6 @@ function paintTileProps(
   }
 }
 
-/**
- * Bush and tuft sheets stay. Opening ground does not stamp them: the hash lays them in rows,
- * and those rows read as blast holes.
- */
-const STAMP_GROUND_DECOR = false;
-
 /** One decor sprite per neighborhood, chosen by the lowest hash so clumps do not stack. */
 function spacedDecor(tx: number, ty: number, mod: number, salt: number, spacing: number): boolean {
   const h = hash2(tx, ty, salt);
@@ -538,22 +530,18 @@ function paintDecor(
   originX: number,
   originY: number,
 ): void {
-  if (!STAMP_GROUND_DECOR) return;
-  const bushHere = spacedDecor(tx, ty, 64, 29, 5);
-  const tuftHere = !bushHere && spacedDecor(tx, ty, 17, 11, 2);
-  if (!bushHere && !tuftHere) return;
-  const faces: PropSprite[] = bushHere ? BUSH_FACES : TUFT_FACES;
+  // Bush sheets stay in the client. Opening ground does not stamp them.
+  if (!spacedDecor(tx, ty, 17, 11, 2)) return;
   const ts = map.tileSize;
   const elev = heightAt(map, tx, ty);
   const lift = isoLift(elev);
-  const h = hash2(tx, ty, bushHere ? 29 : 11);
+  const h = hash2(tx, ty, 11);
   const jx = ((h >>> 8) % 9) * 0.06 - 0.24;
   const jy = ((h >>> 4) % 9) * 0.06 - 0.18;
   const p = worldToIso((tx + 0.5 + jx) * ts, (ty + 0.62 + jy) * ts, ts);
-  const spr = faces[h % faces.length];
+  const spr = TUFT_FACES[h % TUFT_FACES.length];
   if (!spr) return;
-  const drawH = bushHere ? 18 + (h % 9) : 8 + (h % 6);
-  drawPropSprite(ctx, spr, p.x - originX, p.y - originY - lift, drawH, false);
+  drawPropSprite(ctx, spr, p.x - originX, p.y - originY - lift, 8 + (h % 6), false);
 }
 
 export function coverTile(

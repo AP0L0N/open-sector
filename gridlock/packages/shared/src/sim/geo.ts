@@ -548,6 +548,7 @@ export function makeEntity(
     weapon: primaryInfantryGun(type)?.id ?? null,
     gatlingGuns: type === "walker" ? 1 : undefined,
     rockets: rocketsOf(type) ? rocketAmmoOf(type) : undefined,
+    heavy: type === "rocketer" ? 1 : undefined,
     bipod: 0,
     mgAmmo: def.mgAmmo ?? 0,
     mgHeat: 0,

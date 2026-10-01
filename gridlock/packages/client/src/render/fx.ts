@@ -547,7 +547,10 @@ export function drawAirBurst(ctx: CanvasRenderingContext2D, x: number, y: number
   ctx.restore();
 }
 
-/** Rocket in flight: a short dark body along `dx, dy` and a flickering motor flame behind it. */
+/**
+ * Rocket in flight: a short dark body along `dx, dy` and a flickering motor flame behind it.
+ * A high-penetration missile is longer, with a pale body and a white exhaust.
+ */
 export function drawRocketHead(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -555,27 +558,29 @@ export function drawRocketHead(
   dx: number,
   dy: number,
   seed: number,
+  heavy = false,
 ): void {
   const len = Math.hypot(dx, dy);
   const ux = len > 1e-3 ? dx / len : 1;
   const uy = len > 1e-3 ? dy / len : 0;
   const flick = 0.75 + 0.25 * Math.sin(performance.now() / 23 + seed);
+  const body = heavy ? 1.55 : 1;
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(Math.atan2(uy, ux));
   ctx.globalCompositeOperation = "lighter";
-  softDisc(ctx, -5, 0, 7 * flick, 3.2 * flick, 255, 170, 70, 0.75);
-  softDisc(ctx, -3.5, 0, 3.2, 1.8, 255, 244, 200, 0.95);
+  softDisc(ctx, -5 * body, 0, 7 * flick * body, 3.2 * flick, 255, heavy ? 220 : 170, heavy ? 150 : 70, 0.75);
+  softDisc(ctx, -3.5 * body, 0, 3.2 * body, 1.8, 255, heavy ? 250 : 244, heavy ? 230 : 200, 0.95);
   ctx.globalCompositeOperation = "source-over";
-  ctx.fillStyle = "#3a3a2c";
-  ctx.strokeStyle = "#1a1410";
+  ctx.fillStyle = heavy ? "#d8d2c4" : "#3a3a2c";
+  ctx.strokeStyle = heavy ? "#6a6258" : "#1a1410";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(4.5, 0);
-  ctx.lineTo(1.5, -1.5);
-  ctx.lineTo(-3, -1.5);
-  ctx.lineTo(-3, 1.5);
-  ctx.lineTo(1.5, 1.5);
+  ctx.moveTo(4.5 * body, 0);
+  ctx.lineTo(1.5 * body, heavy ? -1.15 : -1.5);
+  ctx.lineTo(-3 * body, heavy ? -1.15 : -1.5);
+  ctx.lineTo(-3 * body, heavy ? 1.15 : 1.5);
+  ctx.lineTo(1.5 * body, heavy ? 1.15 : 1.5);
   ctx.closePath();
   ctx.fill();
   ctx.stroke();

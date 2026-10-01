@@ -14,7 +14,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 59;
+export const PROTOCOL_VERSION = 60;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -186,6 +186,8 @@ export interface EntityView {
   rocketReload?: number;
   /** Rockets left in the Titan's rack. Friendly snapshots. */
   rockets?: number;
+  /** Rocketer's high-penetration missile, 0 or 1. Friendly snapshots. A supply truck refills it. */
+  heavy?: number;
   /** Titan pods switched off. Friendly snapshots; omitted while on. */
   rocketsOff?: boolean;
   /** Stay put: no chase, no withdraw. Friendly snapshots. */
@@ -304,6 +306,8 @@ export interface ProjectileView {
   bomb?: boolean;
   /** Titan or Nebelwerfer rocket. `z` is its height; a Nebelwerfer rocket lobs, so it climbs and falls. */
   rocket?: boolean;
+  /** Rocketer high-penetration missile. Same flight as a rocket, a longer body in the air. */
+  heavy?: boolean;
   /**
    * Flamethrower glob. `z` is its height above the ground and `arc` is 0 at the
    * lance, 1 where it lands. `fromId` is the Pyro, so the jet can be drawn from his nozzle.
