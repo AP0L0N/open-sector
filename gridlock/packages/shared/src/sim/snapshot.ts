@@ -1,6 +1,7 @@
 import {
   AIR_FUEL_SECONDS,
   BV222_TROOPS,
+  TRUCK_SEATS,
   DRONE_BATTERY_SECONDS,
   DRONE_LAUNCH_MIN_SECONDS,
   JET_FUEL_SECONDS,
@@ -74,16 +75,24 @@ function fieldSitesView(e: Entity, friendly: boolean): EntityView["fieldSites"] 
   const digging = e.state === "build" && e.work > 0;
   if (!friendly && !digging) return undefined;
   const structure = o.structure;
+  const queued = e.fieldQueue ?? [];
+  const count = structure === "wall" ? 1 + queued.length : 1;
+  const progress = digging ? Math.min(1, e.work / (catalog(structure).buildSeconds * count)) : undefined;
   const sites: NonNullable<EntityView["fieldSites"]> = [
     {
       structure,
       x: o.x,
       y: o.y,
       facing: o.facing ?? 0,
-      progress: digging ? Math.min(1, e.work / catalog(structure).buildSeconds) : undefined,
+      progress,
     },
   ];
-  if (friendly) for (const p of e.fieldQueue ?? []) sites.push({ structure, x: p.x, y: p.y, facing: p.facing });
+  // A concrete line is one job: once he is building, everyone sees every piece.
+  if (friendly || (structure === "wall" && digging)) {
+    for (const p of queued) {
+      sites.push({ structure, x: p.x, y: p.y, facing: p.facing, progress: structure === "wall" ? progress : undefined });
+    }
+  }
   return sites;
 }
 
@@ -160,7 +169,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     if (!friendly && !entityOnMask(e, vis, state.width, state.height, state.tileSize)) continue;
     const job = e.queue[0];
     const transport = isTransportType(e.type);
-    const occBars = isGarrisonable(e.type) || transport ? garrisonBars(state, e) : [];
+    const supplyBed = e.type === "supply" && !e.wreck;
+    const occBars = isGarrisonable(e.type) || transport || supplyBed ? garrisonBars(state, e) : [];
     entities.push({
       id: e.id,
       kind: e.kind,
@@ -260,7 +270,14 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
               ownerId: garrisonOwner(state, e) || undefined,
               bars: occBars,
             }
-          : undefined,
+          : supplyBed && occBars.length > 0
+            ? {
+                count: occBars.length,
+                cap: TRUCK_SEATS,
+                ownerId: e.ownerId,
+                bars: occBars,
+              }
+            : undefined,
       capture:
         e.kind === "building" && e.captureProgress > 0 && e.captureOwnerId
           ? { ownerId: e.captureOwnerId, progress: e.captureProgress }

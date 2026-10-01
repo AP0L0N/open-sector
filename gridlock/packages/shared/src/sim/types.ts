@@ -342,8 +342,10 @@ export interface Entity {
   guardFacing: number | null;
   /** Sandbags broken by a tank shell. The entity stays as rubble. */
   ruined: boolean;
-  /** Extra hit points currently granted by sandbags. Removed when the soldier leaves. */
+  /** Extra hit points currently granted by sandbags and walls. Removed when the soldier leaves. */
   coverBonus: number;
+  /** Part of `coverBonus` granted by a concrete wall. Overhead hits ignore it. */
+  wallCover: number;
   /** Seconds spent on the current build or repair. */
   work: number;
   /** Shift-queued orders, run one after another once the current order ends. Cleared by any unqueued order. */

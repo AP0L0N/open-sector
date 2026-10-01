@@ -1,11 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { catalog } from "@gridlock/shared";
 import {
   spawnTrackKickPuffs,
   tankTracksKick,
   trackKickOrigins,
   trackKickPose,
   trackKickTravel,
+  treadReachWorld,
   TRACK_KICK_MS,
 } from "./track-kick.js";
 
@@ -21,6 +23,14 @@ describe("tankTracksKick", () => {
     assert.equal(tankTracksKick({ ...tank, garrisonedIn: 4 }), false);
     assert.equal(tankTracksKick({ kind: "unit" }), false);
     assert.equal(tankTracksKick({ kind: "building", turnInPlace: true }), false);
+  });
+
+  it("kicks for the Rig, which turns in place like a tank", () => {
+    assert.equal(catalog("rig").turnInPlace, true);
+    assert.equal(
+      tankTracksKick({ kind: "unit", turnInPlace: catalog("rig").turnInPlace }),
+      tankTracksKick({ kind: "unit", turnInPlace: catalog("warden").turnInPlace }),
+    );
   });
 });
 
@@ -58,6 +68,47 @@ describe("trackKickOrigins", () => {
     const [a, b] = trackKickOrigins(100, 50, 0, true, 12);
     assert.ok(a.x > 100 && b.x > 100);
     assert.ok(a.y < 50 && b.y > 50);
+  });
+
+  it("plants the treads at an explicit reach instead of the collision radius", () => {
+    const [a, b] = trackKickOrigins(100, 50, 0, false, 12, 30);
+    assert.ok(near(a.x, 70));
+    assert.ok(near(b.x, 70));
+    assert.ok(a.y < 50 && b.y > 50);
+  });
+});
+
+describe("treadReachWorld", () => {
+  it("reaches a painted tread that sticks out past the collision circle", () => {
+    const cell = 40;
+    const opaque = (x: number, y: number) => x === 4 && y === 39;
+    const reach = treadReachWorld({
+      cell,
+      contactY: 1,
+      drawSize: 40,
+      facing: 0,
+      radius: 4,
+      hw: 1,
+      hh: 0.5,
+      opaque,
+    });
+    assert.ok(near(reach.back, 13.2, 0.02), `back ${reach.back}`);
+  });
+
+  it("keeps the collision reach when the paint sits inside the circle", () => {
+    const opaque = (x: number, y: number) => x === 20 && y === 39;
+    const reach = treadReachWorld({
+      cell: 40,
+      contactY: 1,
+      drawSize: 40,
+      facing: 0,
+      radius: 4,
+      hw: 1,
+      hh: 0.5,
+      opaque,
+    });
+    assert.ok(near(reach.back, 4 * 0.95));
+    assert.ok(near(reach.front, 4 * 0.95));
   });
 });
 

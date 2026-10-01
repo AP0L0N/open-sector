@@ -82,6 +82,7 @@ import { hasCargo, loseRiders, payloadOf, planeRiders, releaseCanister, startJum
 import type { ImpactView } from "../protocol.js";
 import { aimAngle } from "./ballistics.js";
 import { takeDamage } from "./crits.js";
+import { coverStrike } from "./field.js";
 import { aimHeight, airAlt, entityHeight, worldTileHeight } from "./elevation.js";
 import { allies, buildingBounds, buildingContains, burnTreeAt, fellTreeAt, isTree, newAirState, playerTeam, tileCenter, worldToTile } from "./geo.js";
 import { livingGarrison, woundGarrison } from "./garrison.js";
@@ -1039,7 +1040,8 @@ function detonateBomb(state: MatchState, p: Projectile): void {
     } else {
       dmg = Math.round(BOMB_DAMAGE * fall);
     }
-    takeDamage(e, dmg, state.tick);
+    if (e.kind === "unit") coverStrike(e, dmg, state.tick, true);
+    else takeDamage(e, dmg, state.tick);
     if (e.hp <= 0) killed = true;
   }
   const impact: ImpactView = {
@@ -1172,7 +1174,8 @@ function crashHurt(state: MatchState, o: Entity): void {
     if (hasTracks(o.type)) addCrit(o, "tracks");
     hideScout(state, o);
   }
-  takeDamage(o, dmg, state.tick);
+  if (o.kind === "unit") coverStrike(o, dmg, state.tick, true);
+  else takeDamage(o, dmg, state.tick);
 }
 
 function burnTreesNear(state: MatchState, e: Entity, extra: number): void {

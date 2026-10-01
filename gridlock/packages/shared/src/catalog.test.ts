@@ -197,6 +197,8 @@ describe("injuries", () => {
     assert.equal(isMotorVehicle("ss3"), true);
     assert.equal(isMotorVehicle("hauler"), true);
     assert.equal(isMotorVehicle("rig"), true);
+    assert.equal(catalog("rig").turnInPlace, true);
+    assert.equal(catalog("warden").turnInPlace, catalog("rig").turnInPlace);
     assert.equal(isMotorVehicle("walker"), true);
     assert.equal(isInfantryType("walker"), false);
     assert.equal(isMotorVehicle("rifleman"), false);

@@ -569,6 +569,7 @@ export function makeEntity(
     guardFacing: null,
     ruined: false,
     coverBonus: 0,
+    wallCover: 0,
     work: 0,
     crew: type === "supply",
     supply: type === "supply" ? SUPPLY_CARGO : 0,

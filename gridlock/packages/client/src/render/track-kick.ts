@@ -10,6 +10,8 @@ export const TRACK_KICK_MS = 320;
 export const TRACK_KICK_SPACING = 6.5;
 const ALONG_FRAC = 0.95;
 const ACROSS_FRAC = 0.58;
+/** Painted pixels this far above the ground still count as the tread, as a fraction of drawSize. */
+const TREAD_BAND = 0.225;
 const TOSS_MIN = 4.5;
 const TOSS_MAX = 9.5;
 
@@ -57,19 +59,72 @@ export function trackKickTravel(
   return { dist, reverse, tossX: -dx / dist, tossY: -dy / dist };
 }
 
-/** Left and right tread contacts at the trailing end of the hull. */
+/**
+ * World distance from the hull origin to the painted tread, along the facing.
+ * `back` is behind the nose (forward roll). `front` is ahead of it (reverse).
+ * A hull that does not stick out past the collision circle keeps `radius * ALONG_FRAC`.
+ * `hw`/`hh` are `isoScale(tileSize)`. `opaque` is a cell pixel of the drawn facing.
+ */
+export function treadReachWorld(opts: {
+  cell: number;
+  contactY: number;
+  drawSize: number;
+  facing: number;
+  radius: number;
+  hw: number;
+  hh: number;
+  opaque: (x: number, y: number) => boolean;
+}): { back: number; front: number } {
+  const base = opts.radius * ALONG_FRAC;
+  const ax = opts.cell / 2;
+  const ay = opts.contactY * opts.cell;
+  const scale = opts.drawSize / opts.cell;
+  const band = opts.drawSize * TREAD_BAND;
+  const fx = Math.cos(opts.facing);
+  const fy = Math.sin(opts.facing);
+  const sdx = (fx - fy) * opts.hw;
+  const sdy = (fx + fy) * opts.hh;
+  const mag = Math.hypot(sdx, sdy) || 1;
+  const bx = -sdx / mag;
+  const by = -sdy / mag;
+  const fwx = sdx / mag;
+  const fwy = sdy / mag;
+  let back = -Infinity;
+  let front = -Infinity;
+  let n = 0;
+  for (let y = 0; y < opts.cell; y++) {
+    const sy = (y - ay) * scale;
+    if (sy < -band || sy > 4) continue;
+    for (let x = 0; x < opts.cell; x++) {
+      if (!opts.opaque(x, y)) continue;
+      const sx = (x - ax) * scale;
+      n++;
+      const bp = sx * bx + sy * by;
+      const fp = sx * fwx + sy * fwy;
+      if (bp > back) back = bp;
+      if (fp > front) front = fp;
+    }
+  }
+  if (n === 0) return { back: base, front: base };
+  return { back: Math.max(base, back / mag), front: Math.max(base, front / mag) };
+}
+
+/** Left and right tread contacts at the trailing end of the hull.
+ * `alongDist` is world units from the origin to that end. Omit it to use the collision radius.
+ */
 export function trackKickOrigins(
   x: number,
   y: number,
   facing: number,
   reverse: boolean,
   radius: number,
+  alongDist?: number,
 ): [{ x: number; y: number }, { x: number; y: number }] {
   const fx = Math.cos(facing);
   const fy = Math.sin(facing);
   const rx = -fy;
   const ry = fx;
-  const along = (reverse ? 1 : -1) * radius * ALONG_FRAC;
+  const along = (reverse ? 1 : -1) * (alongDist ?? radius * ALONG_FRAC);
   const across = radius * ACROSS_FRAC;
   const cx = x + fx * along;
   const cy = y + fy * along;

@@ -32,6 +32,9 @@ import {
   infantryGunFor,
   isoDepth,
   isoLift,
+  isoScale,
+  TANK_FACE_DIRS,
+  TANK_FACE_START_YAW,
   ISO_TILE_H,
   ISO_TILE_W,
   isoToWorld,
@@ -174,6 +177,7 @@ import {
   trackKickOrigins,
   trackKickPose,
   trackKickTravel,
+  treadReachWorld,
   TRACK_KICK_SPACING,
   type TrackKickPuff,
 } from "./track-kick.js";
@@ -239,9 +243,10 @@ import { canopySway, drawCanopy, drawCrate, drawMine, troopCanopySpan } from "./
 import { barrageTracers, tracerLandsAt, tracerSpan, type BarrageTracer } from "./barrage-tracer.js";
 import { drawSandbags } from "./sandbags.js";
 import { drawTrench } from "./trench.js";
+import { drawWall } from "./wall.js";
 import { pyroNozzleScreen } from "./pyro-nozzle.js";
 import { unitGroundSink } from "./unit-hit.js";
-import { engineRowFromScreen } from "./turntable.js";
+import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
@@ -344,6 +349,7 @@ const EXTRUDE: Record<EntityType, number> = {
   medic: 26,
   cyborg: 26,
   sandbags: 12,
+  wall: 18,
   teeth: 16,
   trench: 6,
   walker: 30,
@@ -494,6 +500,21 @@ function snapshotVisKey(match: MatchSnapshot): number {
   return h;
 }
 
+/** Alpha bytes of one sheet row. Null until the image can be read. */
+function sheetCellAlpha(img: HTMLImageElement, cell: number, row: number): Uint8ClampedArray | null {
+  if (cell <= 0 || !img.complete || img.naturalWidth < cell) return null;
+  const y = row * cell;
+  if (y + cell > img.naturalHeight) return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = cell;
+  canvas.height = cell;
+  const g = canvas.getContext("2d", { willReadFrequently: true });
+  if (!g) return null;
+  g.imageSmoothingEnabled = false;
+  g.drawImage(img, 0, y, cell, cell, 0, 0, cell, cell);
+  return g.getImageData(0, 0, cell, cell).data;
+}
+
 export class MapView {
   private readonly canvas: HTMLCanvasElement;
   private readonly mini: HTMLCanvasElement;
@@ -617,6 +638,8 @@ export class MapView {
   private moveClicks: { x: number; y: number; at: number }[] = [];
   private trackKicks: TrackKickPuff[] = [];
   private trackKickLast = new Map<number, { x: number; y: number }>();
+  /** Rig tread reach per snapped world face. The painted hull is longer than the collision radius. */
+  private rigTread = new Map<number, { back: number; front: number }>();
   private maulerCarts = new Map<number, CartPose>();
   private gunRecoil = new Map<number, GunRecoil>();
   private muzzleSmokes: MuzzleSmokePuff[] = [];
@@ -1454,6 +1477,12 @@ export class MapView {
           this.onPlaceMode();
           return;
         }
+        // Some window managers deliver Ctrl+left click as button 2. That is still force-attack
+        // (Drop here, when the selection is only transports).
+        if (e.ctrlKey && this.ownForceIds().length) {
+          this.commitForceAttack(mx, my);
+          return;
+        }
         this.onRight(mx, my);
         return;
       }
@@ -1765,7 +1794,7 @@ export class MapView {
     if (this.overControl || this.hoverSpecial) return false;
     if (this.guardMode || this.rotateMode || this.attackMoveMode) return false;
     if (this.forceAttackMode) return true;
-    return this.ctrlHeld && this.ownSelectedIds().length > 0;
+    return this.ctrlHeld && this.ownForceIds().length > 0;
   }
 
   private isSpeedUpKey(e: KeyboardEvent): boolean {
@@ -2836,7 +2865,14 @@ export class MapView {
       const e = this.curr.entities.find((x) => x.id === id);
       return !!e && e.kind === "unit" && e.ownerId === this.curr.youPlayerId;
     });
-    if (onlyBuildings && !this.overControl && !this.hoverSpecial && this.mouseX >= 0 && this.mouseY >= 0) {
+    if (
+      onlyBuildings &&
+      !this.aimingForceAttack() &&
+      !this.overControl &&
+      !this.hoverSpecial &&
+      this.mouseX >= 0 &&
+      this.mouseY >= 0
+    ) {
       ctx.font = "11px 'Share Tech Mono', monospace";
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
@@ -2871,10 +2907,18 @@ export class MapView {
     ctx.font = "11px 'Share Tech Mono', monospace";
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
+    const ids = this.ownForceIds();
+    const drop =
+      ids.length > 0 &&
+      ids.every((id) => {
+        const ent = this.curr.entities.find((u) => u.id === id);
+        return !!ent && isTransportType(ent.type);
+      });
+    const word = drop ? "DROP" : "FIRE";
     ctx.lineWidth = 3;
     ctx.strokeStyle = "#140e0a";
-    ctx.strokeText("FIRE", x + 12, y + 8);
-    ctx.fillText("FIRE", x + 12, y + 8);
+    ctx.strokeText(word, x + 12, y + 8);
+    ctx.fillText(word, x + 12, y + 8);
     ctx.restore();
   }
 
@@ -3343,6 +3387,36 @@ export class MapView {
     ctx.restore();
   }
 
+  /** World units from the Rig's origin to the painted tread on this facing. Undefined until the sheet can be read. */
+  private rigTrackAlong(facing: number, reverse: boolean, radius: number, tileSize: number): number | undefined {
+    const step = (Math.PI * 2) / TANK_FACE_DIRS;
+    const i = Math.round((facing - TANK_FACE_START_YAW) / step);
+    const key = ((i % TANK_FACE_DIRS) + TANK_FACE_DIRS) % TANK_FACE_DIRS;
+    let reach = this.rigTread.get(key);
+    if (!reach) {
+      const spr = spriteFor("rig");
+      if (!spr || !spriteReady(spr) || spr.frameSize <= 0) return undefined;
+      const snapped = TANK_FACE_START_YAW + key * step;
+      const row = engineRowFromProjectedFacing(snapped, tileSize);
+      const data = sheetCellAlpha(spr.image, spr.frameSize, row);
+      if (!data) return undefined;
+      const { hw, hh } = isoScale(tileSize);
+      const cell = spr.frameSize;
+      reach = treadReachWorld({
+        cell,
+        contactY: spr.contactY,
+        drawSize: spr.drawSize,
+        facing: snapped,
+        radius,
+        hw,
+        hh,
+        opaque: (x, y) => (data[(y * cell + x) * 4 + 3] ?? 0) > 32,
+      });
+      this.rigTread.set(key, reach);
+    }
+    return reverse ? reach.front : reach.back;
+  }
+
   private collectTrackKicks(items: DrawItem[]): void {
     const now = performance.now();
     const map = this.map();
@@ -3376,7 +3450,9 @@ export class MapView {
       const travel = trackKickTravel(dx, dy, p.facing);
       if (!travel || travel.dist < TRACK_KICK_SPACING) continue;
       const steps = Math.min(4, Math.floor(travel.dist / TRACK_KICK_SPACING));
-      const origins = trackKickOrigins(p.x, p.y, p.facing, travel.reverse, def.radius);
+      const along =
+        e.type === "rig" ? this.rigTrackAlong(p.facing, travel.reverse, def.radius, ts) : undefined;
+      const origins = trackKickOrigins(p.x, p.y, p.facing, travel.reverse, def.radius, along);
       const spr = spriteFor(e.type, e.stance, e.swimming);
       const scale = (spr?.drawSize ?? 48) / 48;
       for (let s = 1; s <= steps; s++) {
@@ -5067,7 +5143,7 @@ export class MapView {
         this.forceAttackMode ||
         this.rotateMode ||
         this.guardMode ||
-        (this.ctrlHeld && this.ownSelectedIds().length > 0)) &&
+        (this.ctrlHeld && this.ownForceIds().length > 0)) &&
       !this.overControl;
     if (!this.placeMode && !this.overControl && !this.box && this.mouseX >= 0) {
       const { w, h } = this.viewSize();
@@ -5322,6 +5398,16 @@ export class MapView {
       const pts = fieldFrameCorners(e.x, e.y, e.facing, span.length, span.thick, 5).map((p) => this.toScreen(p.x, p.y, elev));
       drawSelectFrame(this.ctx, pts, { hostile: this.hostileOwner(e.ownerId), now: performance.now() });
     }
+    if (e.type === "wall") {
+      const hurt = e.hpMax > 0 ? Math.max(0, 1 - e.hp / e.hpMax) : 0;
+      this.drawConcreteWall(e.x, e.y, e.facing, { hurt, alpha: ghost ? 0.45 : 1, seed: e.id * 2654435761 });
+      if (!ghost) {
+        const s = this.toScreen(e.x, e.y, this.elevAt(e.x, e.y));
+        const w = Math.max(22, this.groundSpan(e.x, e.y, span?.length ?? 24));
+        this.maybeHp(e, s.x - w / 2, s.y - 18, w);
+      }
+      return;
+    }
     if (e.type === "teeth") {
       this.drawTeeth(e.x, e.y, e.facing, ghost ? 0.45 : 1, e.id);
       return;
@@ -5367,6 +5453,8 @@ export class MapView {
           run: () => {
             if (site.structure === "teeth") {
               this.drawTeeth(site.x, site.y, site.facing, FIELD_SITE_ALPHA, 0);
+            } else if (site.structure === "wall") {
+              this.drawConcreteWall(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
             } else if (site.structure === "trench") {
               this.drawTrenchPit(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
             } else {
@@ -5376,6 +5464,33 @@ export class MapView {
         });
       }
     }
+  }
+
+  private drawConcreteWall(
+    x: number,
+    y: number,
+    facing: number,
+    opts: { hurt?: number; alpha: number; seed: number; bad?: boolean },
+  ): void {
+    const span = fieldSpan("wall");
+    if (!span) return;
+    const elev = this.elevAt(x, y);
+    const lift = this.groundSpan(x, y, 10) / 10;
+    drawWall(this.ctx, {
+      x,
+      y,
+      facing,
+      length: span.length,
+      thick: span.thick,
+      hurt: opts.hurt ?? 0,
+      seed: opts.seed >>> 0,
+      alpha: opts.alpha,
+      bad: opts.bad,
+      project: (wx, wy, up) => {
+        const p = this.toScreen(wx, wy, elev);
+        return { x: p.x, y: p.y - up * lift };
+      },
+    });
   }
 
   private drawSandbagWall(
@@ -5480,6 +5595,8 @@ export class MapView {
       if (type === "teeth") {
         this.drawTeeth(p.x, p.y, p.facing, ok ? 0.72 : 0.4, 0);
         if (!ok) this.strokeFieldFoot(type, p, "#ff5a4a");
+      } else if (type === "wall") {
+        this.drawConcreteWall(p.x, p.y, p.facing, { alpha: ok ? 0.78 : 0.5, seed: 7, bad: !ok });
       } else if (type === "trench") {
         this.drawTrenchPit(p.x, p.y, p.facing, { alpha: 0.78, seed: 7, bad: !ok });
       } else {

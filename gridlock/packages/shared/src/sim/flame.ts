@@ -27,7 +27,7 @@ import {
   PYRO_COOKOFF_FIRES,
   PYRO_COOKOFF_RADIUS,
 } from "../catalog.js";
-import { takeDamage } from "./crits.js";
+import { coverStrike } from "./field.js";
 import { allies, burnTreeAt, isWater, nearestWalkable, occupant, playerTeam, tileCenter, worldToTile } from "./geo.js";
 import { garrisonMuzzleToward, livingGarrison, woundGarrison } from "./garrison.js";
 import { mortarAirZ } from "./mortar.js";
@@ -173,7 +173,7 @@ function landFlame(state: MatchState, p: Projectile): void {
     const d = Math.hypot(e.x - p.x, e.y - p.y);
     if (d > FLAMER_SPLASH + e.radius * 0.5) continue;
     const before = e.hp;
-    takeDamage(e, p.damage * share, state.tick);
+    coverStrike(e, p.damage * share, state.tick, false);
     markFireKill(e, before);
   }
   igniteAt(state, p.x, p.y, p.ownerId);
@@ -254,7 +254,7 @@ export function tickFires(state: MatchState, dt: number): void {
     const heat = heatAt(state, e.x, e.y, e.radius * 0.3);
     if (heat <= 0) continue;
     const before = e.hp;
-    takeDamage(e, FIRE_BURN_DPS * share * heat * dt, state.tick);
+    coverStrike(e, FIRE_BURN_DPS * share * heat * dt, state.tick, false);
     markFireKill(e, before);
     if (e.hp > 0 && isInfantryType(e.type) && e.type !== "pyro") stepOutOfFire(state, e);
   }
@@ -345,7 +345,7 @@ export function cookOff(state: MatchState, e: Entity): void {
     const dmg = PYRO_COOKOFF_DAMAGE * falloff * mul;
     if (o.kind === "building" && livingGarrison(state, o).length > 0) woundGarrison(state, o, dmg * 0.5, FLAMER.caliber);
     const before = o.hp;
-    takeDamage(o, dmg, state.tick);
+    coverStrike(o, dmg, state.tick, false);
     markFireKill(o, before);
   }
   igniteAt(state, e.x, e.y, e.ownerId);

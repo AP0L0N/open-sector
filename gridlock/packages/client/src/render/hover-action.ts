@@ -148,11 +148,18 @@ function canBoardHit(
   return hit.ownerId === you || allied(hit.ownerId);
 }
 
-/** Your transport on its hardstand, loaded for paratroops with room aboard, and a ground unit outside it selected. */
+/**
+ * Your transport on its hardstand with room aboard, and a ground unit outside it selected.
+ * Infantry can climb in from any load. A vehicle still needs the bay on paratroops.
+ */
 function canBoardPlaneHit(hit: HoverEntity, you: string, units: readonly HoverEntity[]): boolean {
-  if (hit.hp <= 0 || hit.ownerId !== you || hit.air?.phase !== "parked" || hit.air.payload !== "troops") return false;
-  if ((hit.air.troops ?? 0) >= BV222_TROOPS) return false;
-  return units.some((e) => planeBoardCandidate(e) && e.garrisonedIn !== hit.id);
+  const air = hit.air;
+  if (hit.hp <= 0 || hit.ownerId !== you || !air || air.phase !== "parked") return false;
+  if ((air.troops ?? 0) >= BV222_TROOPS) return false;
+  const outside = units.filter((e) => planeBoardCandidate(e) && e.garrisonedIn !== hit.id);
+  if (outside.length === 0) return false;
+  if (air.payload === "troops") return true;
+  return outside.some((e) => isInfantryType(e.type));
 }
 
 function canSupplyHit(
@@ -188,7 +195,8 @@ function canRepairHit(
   const friendly = !hit.ownerId || hit.ownerId === you || allied(hit.ownerId);
   if (!friendly) return false;
   if (hit.kind === "unit") return isRepairableUnit(hit.type);
-  if (hit.type === "sandbags" || isFieldStructure(hit.type) && hit.type !== "teeth" && hit.type !== "trench") return false;
+  if (hit.type === "sandbags") return false;
+  if (isFieldStructure(hit.type) && hit.type !== "teeth" && hit.type !== "trench" && hit.type !== "wall") return false;
   return hit.kind === "building";
 }
 

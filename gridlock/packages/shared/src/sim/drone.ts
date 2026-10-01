@@ -29,6 +29,7 @@ import {
 } from "../catalog.js";
 import type { ImpactView } from "../protocol.js";
 import { takeDamage } from "./crits.js";
+import { coverStrike } from "./field.js";
 import { airAlt, droneSightExtra } from "./elevation.js";
 import { allies, destroyEntity, makeEntity, newAirState, newDroneLink, unitInWater, worldToTile } from "./geo.js";
 import { livingGarrison, woundGarrison } from "./garrison.js";
@@ -421,7 +422,8 @@ function burst(state: MatchState, d: Entity, target: Entity): void {
     } else {
       dmg = Math.round(DRONE_WARHEAD.damage * fall);
     }
-    takeDamage(e, dmg, state.tick);
+    if (e.kind === "unit") coverStrike(e, dmg, state.tick, true);
+    else takeDamage(e, dmg, state.tick);
     if (e.hp <= 0) killed = true;
   }
   const impact: ImpactView = {
