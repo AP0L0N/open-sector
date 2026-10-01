@@ -996,14 +996,14 @@ describe("fog of war", () => {
 });
 
 describe("maps scrap", () => {
-  it("keeps spawns empty and leaves scrap fields off the opening maps", () => {
+  it("keeps spawns empty and paints scrap fields", () => {
     for (const id of ["yard-64", "broad-143"] as const) {
       const map = getMap(id)!;
       let scrap = 0;
       for (let i = 0; i < map.tiles.length; i++) {
         if (map.tiles[i] === TILE_SCRAP) scrap++;
       }
-      assert.equal(scrap, 0, id);
+      assert.ok(scrap > 10, id);
       for (const s of map.spawns) {
         assert.notEqual(tileAt(map, s.x, s.y), TILE_BLOCKED);
         assert.notEqual(tileAt(map, s.x, s.y), TILE_ROCK);

@@ -510,6 +510,12 @@ function paintTileProps(
   }
 }
 
+/**
+ * Bush and tuft sheets stay. Opening ground does not stamp them: the hash lays them in rows,
+ * and those rows read as blast holes.
+ */
+const STAMP_GROUND_DECOR = false;
+
 /** One decor sprite per neighborhood, chosen by the lowest hash so clumps do not stack. */
 function spacedDecor(tx: number, ty: number, mod: number, salt: number, spacing: number): boolean {
   const h = hash2(tx, ty, salt);
@@ -532,6 +538,7 @@ function paintDecor(
   originX: number,
   originY: number,
 ): void {
+  if (!STAMP_GROUND_DECOR) return;
   const bushHere = spacedDecor(tx, ty, 64, 29, 5);
   const tuftHere = !bushHere && spacedDecor(tx, ty, 17, 11, 2);
   if (!bushHere && !tuftHere) return;

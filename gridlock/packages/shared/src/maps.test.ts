@@ -299,16 +299,17 @@ describe("maps", () => {
     let water = 0;
     let roads = 0;
     let scrap = 0;
+    let yardScrap = 0;
     for (const t of map.tiles) {
       if (t === TILE_WATER) water++;
       if (t === TILE_ROAD) roads++;
       if (t === TILE_SCRAP) scrap++;
       if (t === TILE_FENCE || t === TILE_BLOCKED) assert.fail(`broad yard tile ${t}`);
     }
-    assert.equal(scrap, 0);
-    assert.equal(yard.tiles.filter((t) => t === TILE_SCRAP).length, 0);
+    for (const t of yard.tiles) if (t === TILE_SCRAP) yardScrap++;
     assert.ok(water > 1500 && water < 16000, `water ${water}`);
     assert.ok(roads > yard.tiles.filter((t) => t === TILE_ROAD).length, `roads ${roads}`);
+    assert.ok(scrap > yardScrap, `scrap ${scrap} vs yard ${yardScrap}`);
     assert.ok(map.features.length >= 40, `houses ${map.features.length}`);
     const facings = new Set(map.features.map((f) => f.facing));
     assert.ok(facings.size >= 2, `facings ${[...facings]}`);
@@ -386,7 +387,7 @@ describe("maps", () => {
     }
   });
 
-  it("sets Broad Yard as four paired hills with one gate each", () => {
+  it("sets Broad Yard as four paired hills with one gate and one scrap each", () => {
     const map = MAPS["broad-143"]!;
     const w = map.width;
     const h = map.height;
@@ -428,7 +429,48 @@ describe("maps", () => {
       [0, -1],
     ];
 
-    assert.equal(map.tiles.filter((t) => t === TILE_SCRAP).length, 0);
+    const scrapSeen = new Uint8Array(w * h);
+    const scrapOnTeam = new Map<number, number>();
+    let fieldScrap = 0;
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const start = y * w + x;
+        if (scrapSeen[start] || map.tiles[start] !== TILE_SCRAP) continue;
+        const q = [{ x, y }];
+        scrapSeen[start] = 1;
+        const teams = new Set<number>();
+        let onSummit = 0;
+        for (let i = 0; i < q.length; i++) {
+          const c = q[i]!;
+          if (heightAt(map, c.x, c.y) === HEIGHT_MAX) {
+            onSummit += 1;
+            for (const [team, pair] of byTeam) {
+              for (const s of pair) {
+                if (Math.hypot(c.x - s.x, c.y - s.y) < 90) teams.add(team);
+              }
+            }
+          }
+          for (const [dx, dy] of ortho) {
+            const nx = c.x + dx;
+            const ny = c.y + dy;
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            const ni = ny * w + nx;
+            if (scrapSeen[ni] || map.tiles[ni] !== TILE_SCRAP) continue;
+            scrapSeen[ni] = 1;
+            q.push({ x: nx, y: ny });
+          }
+        }
+        if (onSummit < q.length * 0.8 || teams.size === 0) fieldScrap += 1;
+        else {
+          assert.equal(teams.size, 1, `scrap field shared by teams ${[...teams]}`);
+          const team = [...teams][0]!;
+          scrapOnTeam.set(team, (scrapOnTeam.get(team) ?? 0) + 1);
+          assert.ok(q.length >= 40, `team ${team} scrap ${q.length}`);
+        }
+      }
+    }
+    for (const team of [1, 2, 3, 4]) assert.equal(scrapOnTeam.get(team), 1, `team ${team} scrap fields`);
+    assert.ok(fieldScrap > 0, "yard between the hills keeps scrap");
 
     for (const [team, pair] of byTeam) {
       const home = pair[0]!;

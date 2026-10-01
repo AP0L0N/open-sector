@@ -86,10 +86,8 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield", readon
 };
 
 /**
- * Smelter second when the map has a scrap field, so the free Mauler funds Muster, Armory, troops,
- * and tanks. A map that opens with no field skips the Smelter and spends that purse on Muster and
- * the first rifles. Research next: it unlocks the Tiger, Apocalypse, Cyborg, Titan, Nebelwerfer,
- * and Drone Op. Then air, then defenses.
+ * Smelter second so the free Mauler funds Muster, Armory, troops, and tanks. Research next:
+ * it unlocks the Tiger, Apocalypse, Cyborg, Titan, Nebelwerfer, and Drone Op. Then air, then defenses.
  */
 const BUILD_ORDER: readonly BuildingType[] = [
   "dynamo",
@@ -170,35 +168,11 @@ function thinkEasy(state: MatchState, p: SimPlayer): void {
   }
 }
 
-/**
- * Scrap tiles are painted when the map is built, then only shrink. Remember the first look so a
- * Broad Yard think does not rescan every tile.
- */
-const scrapAtOpen = new WeakMap<MatchState, boolean>();
-
-/** True when some tile still holds scrap a Mauler can dig. Opening yards currently have none. */
-function mapHasScrap(state: MatchState): boolean {
-  const known = scrapAtOpen.get(state);
-  if (known != null) return known;
-  const piles = state.scrapYield;
-  let found = false;
-  for (let i = 0; i < piles.length; i++) {
-    if ((piles[i] ?? 0) > 0) {
-      found = true;
-      break;
-    }
-  }
-  scrapAtOpen.set(state, found);
-  return found;
-}
-
 function nextBuilding(state: MatchState, p: SimPlayer): BuildingType | null {
   const pow = powerOf(state, p.playerId);
   const roomy = (t: BuildingType): boolean => (p.aiNoRoomUntil?.[t] ?? 0) <= state.tick;
   for (const t of BUILD_ORDER) {
     if (countType(state, p.playerId, t) > 0 || !roomy(t)) continue;
-    // Nothing to dig: a Smelter would spend the purse that raises Muster and the first rifles.
-    if (t === "smelter" && !mapHasScrap(state)) continue;
     const draw = Math.max(0, -catalog(t).power);
     if (t !== "dynamo" && pow.used + draw > pow.provided) return roomy("dynamo") ? "dynamo" : null;
     return t;

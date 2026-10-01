@@ -106,10 +106,7 @@ function paintScrapBlob(tiles: number[], width: number, height: number, cx: numb
   }
 }
 
-/**
- * Scattered scrap fields. The seed keeps every client on the same yard.
- * Opening maps do not call this. A tile of the pile sprite in a row does not read.
- */
+/** Scattered scrap fields. The seed keeps every client on the same yard. */
 function paintYardScrap(
   tiles: number[],
   width: number,
@@ -1096,6 +1093,7 @@ export function makeYard64(): MapDef {
     { id: 7, x: 3, y: 31 },
     { id: 8, x: 60, y: 31 },
   ];
+  paintYardScrap(tiles, width, height, "yard-64-scrap", spawns);
   const pads = spawns.map((s) => ({ x: s.x, y: s.y, r: 4 }));
   const features = scatterCover(tiles, width, height, "yard-64-cover", pads);
   const sub = TILE_SUBDIV;
@@ -1221,7 +1219,7 @@ function clearDisk(
   }
 }
 
-/** Summit and a rock ring whose only walkable break faces the map center. */
+/** Summit, one scrap, and a rock ring whose only walkable break faces the map center. */
 function stampTeamHill(
   tiles: number[],
   heights: number[],
@@ -1291,7 +1289,6 @@ function stampTeamHill(
   }
 }
 
-/** Summit scrap disk, back from the gate. Opening maps do not call this. */
 function paintHillScrap(tiles: number[], width: number, height: number, hill: TeamHill): void {
   const cx = Math.round(hill.x - hill.ux * 52);
   const cy = Math.round(hill.y - hill.uy * 52);
@@ -1342,7 +1339,7 @@ function outsideTeamHills(features: MapFeature[]): MapFeature[] {
 
 /**
  * Five times Scrap Yard's ground, played as four pairs.
- * Each pair shares a summit and a rocky slope with a single gate toward the center.
+ * Each pair shares a summit, one scrap field, and a rocky slope with a single gate toward the center.
  * Coarse 143² / 64² ≈ 5, so the fine map is 572×572 against 256×256.
  */
 export function makeBroadYard(): MapDef {
@@ -1351,6 +1348,7 @@ export function makeBroadYard(): MapDef {
   const scale = (width * height) / (64 * 64);
   const tiles = new Array(width * height).fill(TILE_EMPTY);
   const hillPads = BROAD_HILL_SPOTS.map((s) => ({ x: s.cx, y: s.cy, r: 34 }));
+  paintYardScrap(tiles, width, height, "broad-143-scrap", [], Math.round(10 * scale));
   for (const p of hillPads) clearDisk(tiles, width, height, p.x, p.y, 28);
   const features = outsideTeamHills(scatterCover(tiles, width, height, "broad-143-cover", hillPads, scale));
   const sub = TILE_SUBDIV;
@@ -1374,6 +1372,7 @@ export function makeBroadYard(): MapDef {
   const locked = new Uint8Array(fineW * fineH);
   const heights = scatterHeights(fineW, fineH, "broad-143-elev", [], locked, scale);
   for (const hill of hills) stampTeamHill(fineTiles, heights, locked, fineW, fineH, hill);
+  for (const hill of hills) paintHillScrap(fineTiles, fineW, fineH, hill);
   paintBroadLanes(fineTiles, fineW, fineH, hills, features);
   for (const s of fineSpawns) clearDisk(fineTiles, fineW, fineH, s.x, s.y, 6);
   for (let i = 0; i < fineTiles.length; i++) {

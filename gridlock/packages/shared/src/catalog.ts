@@ -629,11 +629,12 @@ export interface CatalogEntry {
   radarLaid?: boolean;
   /**
    * A radar-laid 20mm mount on the turret roof (the Apocalypse). It traverses and
-   * picks targets on its own, apart from the main gun, and bursts incoming
-   * rockets like the CIWS. It takes the coaxial MG's place: its belt is mgAmmo.
+   * picks targets on its own, apart from the main gun. Incoming missiles come
+   * first, and it bursts them more often than the pad CIWS does. It takes the
+   * coaxial MG's place: its belt is mgAmmo.
    */
   roofCiws?: boolean;
-  /** Main-gun barrels that fire together each reload. Default 1. */
+  /** Main-gun barrels. A twin mount fires them one after another. Default 1. */
   twinGuns?: boolean;
   /** Quadcopter flown by a Drone Op. Hovers, ignores ground collision and paths. */
   drone?: boolean;
@@ -1242,18 +1243,19 @@ export const AIR_TARGET_SPREAD = 2.2;
 export const AIR_HIT_BAND = 4;
 /**
  * SC 250 under the belly. One per sortie.
- * A soldier inside the burst dies. A direct hit (inside BOMB_DIRECT_TILES)
- * goes through a tank's roof; a near miss throws a track and dents it.
+ * A soldier under the blast dies; the rim of the burst only wounds.
+ * A direct hit (inside BOMB_DIRECT_TILES) goes through a tank's roof and
+ * takes half the hull. A near miss throws a track and dents it.
  */
 export const BOMB_SPLASH_TILES = t(2);
 export const BOMB_DIRECT_TILES = t(0.5);
-export const BOMB_DAMAGE = 240;
+export const BOMB_DAMAGE = 70;
 /** Share of a hull's max HP on a direct hit, and at the center of a near miss. */
-export const BOMB_ARMOR_DIRECT = 0.85;
-export const BOMB_ARMOR_NEAR = 0.2;
+export const BOMB_ARMOR_DIRECT = 0.5;
+export const BOMB_ARMOR_NEAR = 0.1;
 export const BOMB_TRACK_CHANCE = 0.5;
 /** Buildings take this at the center, with the same falloff. */
-export const BOMB_BUILDING_DAMAGE = 420;
+export const BOMB_BUILDING_DAMAGE = 240;
 export const BOMB_CALIBER = 250;
 /** Seconds from release to the ground. */
 export const BOMB_FALL_SECONDS = 0.7;
@@ -1464,8 +1466,9 @@ export const CIWS_INTERCEPTS_PER_TICK = 2;
 /**
  * Apocalypse roof mount. The CIWS gun on a smaller house over the turret: the
  * same 20mm rounds, fewer barrels, a shorter reach, and a belt the size of a
- * tank's stowage. Like the pad it lays itself, planes first, and tries every
- * hostile rocket that comes inside its reach.
+ * tank's stowage. It lays itself. A hostile missile inside its reach is the
+ * first thing it shoots, and it bursts that missile more often than a pad CIWS
+ * does. With the sky clear it takes a plane, then infantry and light hulls.
  */
 export const APOCALYPSE_CIWS_RANGE_TILES = t(7);
 /** Rounds each tick. Two a tick is 1,200 a minute. */
@@ -1474,6 +1477,19 @@ export const APOCALYPSE_CIWS_SHOTS_PER_TICK = 2;
 export const APOCALYPSE_CIWS_BELT = 600;
 /** The small house swings much faster than the turret under it. */
 export const APOCALYPSE_CIWS_TURN_DEG_PER_SEC = 360;
+/**
+ * Chance the roof mount bursts one missile. The pad is a coin toss. This gun
+ * is the tank's own screen, so most missiles that reach it come apart.
+ */
+export const APOCALYPSE_CIWS_INTERCEPT_CHANCE = 0.75;
+/** Seconds between the two main-gun barrels. Six ticks. The long reload starts after the second. */
+export const APOCALYPSE_TWIN_GAP = 6 * TICK_DT;
+/**
+ * Seconds the second barrel stays owed, counting from the first shot. The gap
+ * sits inside this. If the gun cannot lay before it ends, that round is lost
+ * and the long reload starts.
+ */
+export const APOCALYPSE_TWIN_WINDOW = 12 * TICK_DT;
 
 /**
  * RAM. A radar-laid launcher of short rockets on the same pad as the CIWS. Like
@@ -1778,14 +1794,14 @@ export const STUG_SHELLS: Record<ShellType, ShellDef> = {
 };
 
 /**
- * Apocalypse twin 105mm rack. Both barrels fire the loaded shell together each
- * reload, so a volley spends two rounds. Heavier and slower than the Tiger's 75mm.
+ * Apocalypse twin 105mm rack. The two barrels fire the loaded shell one after
+ * the other, then the long reload. Heavier and slower than the Tiger's 75mm.
  */
 export const APOCALYPSE_SHELLS: Record<ShellType, ShellDef> = {
   ap: {
     id: "ap",
     name: "AP",
-    blurb: "Twin armor-piercing shot. Two rounds a volley. Goes through a Tiger's front plate.",
+    blurb: "Armor-piercing. The second barrel follows a moment later. Goes through a Tiger's front plate.",
     damage: 60,
     penetration: 125,
     caliber: 105,
@@ -1794,7 +1810,7 @@ export const APOCALYPSE_SHELLS: Record<ShellType, ShellDef> = {
   he: {
     id: "he",
     name: "HE",
-    blurb: "Twin high explosive. Two rounds a volley. Clears infantry and knocks buildings down. Ricochets off armor.",
+    blurb: "High explosive. The second barrel follows a moment later. Clears infantry and knocks buildings down. Ricochets off armor.",
     damage: 95,
     penetration: 20,
     caliber: 105,
@@ -1803,7 +1819,7 @@ export const APOCALYPSE_SHELLS: Record<ShellType, ShellDef> = {
   heat: {
     id: "heat",
     name: "HEAT",
-    blurb: "Twin shaped charges. The deepest punch in the rack. Two rounds a volley.",
+    blurb: "Shaped charge. The deepest punch in the rack. The second barrel follows a moment later.",
     damage: 68,
     penetration: 160,
     caliber: 105,
@@ -2550,7 +2566,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     mgAmmo: APOCALYPSE_CIWS_BELT,
     leavesWreck: true,
     wreckHp: 110,
-    blurb: `Super-heavy tank. Two 105mm guns on one turret fire together, two shells a volley, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. A radar-laid 20mm mount on the turret roof lays itself, apart from the main guns: planes first, then infantry and light hulls in reach, and it tries to burst incoming rockets. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
+    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts most of them, then planes, infantry, and light hulls. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
   },
   /** Spec: gridlock/packages/client/src/assets/units/ss3/stug-iii-ausf-g-late-saukopf.md */
   ss3: {
@@ -3535,7 +3551,7 @@ export function roofCiwsOf(type: EntityType): boolean {
   return catalog(type).roofCiws === true;
 }
 
-/** Main-gun rounds released together each reload: two on a twin mount. */
+/** Main-gun barrels on the mount. A twin fires them in succession, one reload for the pair. */
 export function mainGunBarrels(type: EntityType): number {
   return catalog(type).twinGuns ? 2 : 1;
 }
