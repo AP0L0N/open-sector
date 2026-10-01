@@ -1,8 +1,11 @@
 import {
   AIR_HIT_BAND,
+  APOCALYPSE_CIWS_INTERCEPT_CHANCE,
   APOCALYPSE_CIWS_RANGE_TILES,
   APOCALYPSE_CIWS_SHOTS_PER_TICK,
   APOCALYPSE_CIWS_TURN_DEG_PER_SEC,
+  APOCALYPSE_TWIN_GAP,
+  APOCALYPSE_TWIN_WINDOW,
   CIWS_AIR_SPREAD,
   CIWS_GUN,
   FACE_FIRE_DEG,
@@ -282,6 +285,8 @@ export function tickCombat(state: MatchState, dt: number): void {
   }
   tickStance(state);
   const downed = new Set<number>();
+  // Missiles launched later in this tick (a Rocketer, a Titan pod) are born at or after this id.
+  const bornAt = state.nextId;
   for (const e of state.entities.values()) {
     if (!canFight(e) || !supplyRiderFights(state, e) || waterSilences(state, e) || garrisonIsHiding(state, e)) continue;
     if (roofCiwsOf(e.type)) tickRoofCiws(state, e, dt, downed);
@@ -292,6 +297,11 @@ export function tickCombat(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (!rocketsOf(e.type) || !canFight(e)) continue;
     tickRocketPods(state, e);
+  }
+  // The roof mount's first look ran before those launches. Catch the new missiles before they fly.
+  for (const e of state.entities.values()) {
+    if (!roofCiwsOf(e.type) || !canFight(e) || waterSilences(state, e) || garrisonIsHiding(state, e)) continue;
+    if (roofRocketSweep(state, e, downed, bornAt)) e.ciwsTarget = null;
   }
   if (downed.size > 0) state.projectiles = state.projectiles.filter((p) => !downed.has(p.id));
 }
@@ -328,6 +338,10 @@ interface RocketGun {
   spend: (n: number) => void;
   /** Lays the barrels on the nearest rocket tried, and starts the gun's clock. */
   lay: (facing: number) => void;
+  /** Burst chance for one full belt burst. The pad uses CIWS_INTERCEPT_CHANCE. */
+  chance?: number;
+  /** Skip projectiles born before this id, so a second look only sees missiles launched this tick. */
+  bornAfter?: number;
 }
 
 /** One burst at each hostile rocket in reach this mount has not tried, nearest first. True when it fired. */
@@ -336,6 +350,7 @@ function burstRockets(state: MatchState, e: Entity, downed: Set<number>, gun: Ro
   const inbound: { p: Projectile; d: number }[] = [];
   for (const p of state.projectiles) {
     if (p.flight !== "rocket" || downed.has(p.id) || p.ciwsTried?.includes(e.id)) continue;
+    if (gun.bornAfter != null && p.id < gun.bornAfter) continue;
     if (allies(state, e.ownerId, p.ownerId)) continue;
     const d = Math.hypot(p.x - e.x, p.y - e.y);
     if (d <= range) inbound.push({ p, d });
@@ -343,12 +358,13 @@ function burstRockets(state: MatchState, e: Entity, downed: Set<number>, gun: Ro
   if (inbound.length === 0) return false;
   inbound.sort((a, b) => a.d - b.d || a.p.id - b.p.id);
   const first = inbound[0]!.p;
+  const chance = gun.chance ?? CIWS_INTERCEPT_CHANCE;
   for (const { p } of inbound.slice(0, CIWS_INTERCEPTS_PER_TICK)) {
     if (gun.rounds() <= 0) break;
     const spent = Math.min(gun.rounds(), CIWS_INTERCEPT_ROUNDS);
     gun.spend(spent);
     (p.ciwsTried ??= []).push(e.id);
-    if (nextRand(state) >= CIWS_INTERCEPT_CHANCE * (spent / CIWS_INTERCEPT_ROUNDS)) continue;
+    if (nextRand(state) >= chance * (spent / CIWS_INTERCEPT_ROUNDS)) continue;
     downed.add(p.id);
     state.impacts.push({
       id: state.nextId++,
@@ -420,30 +436,40 @@ function roofCiwsTarget(state: MatchState, e: Entity, range: number): Entity | u
 }
 
 /**
+ * One intercept look for the roof mount. `bornAfter` limits it to missiles
+ * launched this tick, so the look after the rocket pods does not spend a
+ * second burst on a rocket the first look already tried.
+ */
+function roofRocketSweep(state: MatchState, e: Entity, downed: Set<number>, bornAfter?: number): boolean {
+  if (e.mgAmmo <= 0) return false;
+  return burstRockets(state, e, downed, {
+    range: roofCiwsRange(state, e),
+    rounds: () => e.mgAmmo,
+    spend: (n) => {
+      e.mgAmmo = Math.max(0, e.mgAmmo - n);
+    },
+    lay: (facing) => {
+      e.ciwsFacing = facing;
+      e.ciwsFireTick = state.tick;
+      e.mgCooldown = TICK_DT;
+    },
+    chance: APOCALYPSE_CIWS_INTERCEPT_CHANCE,
+    bornAfter,
+  });
+}
+
+/**
  * The Apocalypse's roof mount. Its own traverse, target, and clock, whatever
- * the main guns are doing: a hostile rocket in reach first, then the best unit
+ * the main guns are doing: a hostile missile in reach first, then the best unit
  * it can hurt. With nothing to shoot it swings back to ride the turret. The
  * belt is the coaxial MG's (mgAmmo), so only a supply truck refills it.
+ * Missiles launched later in the tick get a second look from tickCombat.
  */
 function tickRoofCiws(state: MatchState, e: Entity, dt: number, downed: Set<number>): void {
   const range = roofCiwsRange(state, e);
-  if (e.mgAmmo > 0 && e.mgCooldown <= 0) {
-    const burst = burstRockets(state, e, downed, {
-      range,
-      rounds: () => e.mgAmmo,
-      spend: (n) => {
-        e.mgAmmo = Math.max(0, e.mgAmmo - n);
-      },
-      lay: (facing) => {
-        e.ciwsFacing = facing;
-        e.ciwsFireTick = state.tick;
-        e.mgCooldown = TICK_DT;
-      },
-    });
-    if (burst) {
-      e.ciwsTarget = null;
-      return;
-    }
+  if (e.mgCooldown <= 0 && roofRocketSweep(state, e, downed)) {
+    e.ciwsTarget = null;
+    return;
   }
   const target = e.mgAmmo > 0 ? roofCiwsTarget(state, e, range) : undefined;
   e.ciwsTarget = target?.id ?? null;
@@ -758,7 +784,19 @@ function dropsEmptyGarrison(state: MatchState, e: Entity, target: Entity): boole
   return true;
 }
 
+/**
+ * The owed second barrel has had its window. Drop it and start the long reload.
+ * During the window this does nothing, so the barrel can still leave once the gun lays.
+ */
+function settleTwin(state: MatchState, e: Entity): void {
+  if (e.twinUntil == null || state.tick <= e.twinUntil) return;
+  e.twinUntil = undefined;
+  const full = catalog(e.type).cooldown;
+  if (e.cooldown < full) e.cooldown = full;
+}
+
 function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
+  settleTwin(state, e);
   const holedUp = e.garrisonedIn != null;
   const target = currentTarget(state, e);
   const ground =
@@ -902,9 +940,10 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (isSmokeShell(shell) && !mayFireSmoke(e)) return;
   if (shell) e.shell = shell;
   const gun = fireStats(e);
-  // A twin mount fires both barrels together. Smoke is one round on the spot asked.
-  const barrels = shell && !isSmokeShell(shell) ? mainGunBarrels(e.type) : 1;
-  const burst = Math.max(1, infantryGun?.shotsPerTick ?? def.shotsPerTick ?? barrels);
+  // A twin mount fires one barrel, then the other after a short gap. Smoke is one round.
+  const twin = !!shell && !isSmokeShell(shell) && mainGunBarrels(e.type) > 1;
+  const second = twin && e.twinUntil != null;
+  const burst = Math.max(1, infantryGun?.shotsPerTick ?? def.shotsPerTick ?? 1);
   let fired = 0;
   if (infantryGun?.id === "flamer") {
     // throwFlame paces the burst itself: a glob a tick, then a pause.
@@ -949,7 +988,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
         shell,
         fuse: !!ground || isSmokeShell(shell),
         accurateRange: accurateWeaponRange(state, e, range),
-        side: barrels > 1 ? (i % 2 === 0 ? -1 : 1) * e.radius * TWIN_GUN_SIDE : undefined,
+        side: twin ? (second ? 1 : -1) * e.radius * TWIN_GUN_SIDE : undefined,
       },
     );
     fired++;
@@ -963,7 +1002,16 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
       }
     }
   }
-  if (fired > 0) e.cooldown = gun.cooldown;
+  if (fired > 0) {
+    const follow = twin && !second && !!shell && (e.ammo[shell] ?? 0) > 0;
+    if (follow) {
+      e.twinUntil = state.tick + Math.round(APOCALYPSE_TWIN_WINDOW / TICK_DT);
+      e.cooldown = APOCALYPSE_TWIN_GAP;
+    } else {
+      e.twinUntil = undefined;
+      e.cooldown = gun.cooldown;
+    }
+  }
   if (fired > 0 && e.order?.once) clearOrder(e);
 }
 
@@ -1531,7 +1579,11 @@ function beginReload(e: Entity, gun: { reload: number }): void {
 }
 
 function tickWeaponClocks(e: Entity, dt: number): void {
-  if (e.cooldown > 0) e.cooldown = Math.max(0, e.cooldown - dt);
+  if (e.cooldown > 0) {
+    e.cooldown = Math.max(0, e.cooldown - dt);
+    // 6 × TICK_DT minus six ticks leaves a dust remainder that would hold the gun an extra tick.
+    if (e.cooldown < 1e-9) e.cooldown = 0;
+  }
   if ((e.rocketCooldown ?? 0) > 0) e.rocketCooldown = Math.max(0, (e.rocketCooldown ?? 0) - dt);
   if (e.reload > 0) {
     e.reload = Math.max(0, e.reload - dt);

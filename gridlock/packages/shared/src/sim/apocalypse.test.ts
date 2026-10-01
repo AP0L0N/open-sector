@@ -3,7 +3,10 @@ import { describe, it } from "node:test";
 import {
   AIR_CRUISE_ALT,
   APOCALYPSE_CIWS_BELT,
+  APOCALYPSE_CIWS_INTERCEPT_CHANCE,
   APOCALYPSE_CIWS_RANGE_TILES,
+  APOCALYPSE_TWIN_GAP,
+  APOCALYPSE_TWIN_WINDOW,
   CIWS_INTERCEPT_ROUNDS,
   TECH_REQUIRES,
   TICK_DT,
@@ -140,7 +143,34 @@ describe("Apocalypse catalog", () => {
 });
 
 describe("Apocalypse main guns", () => {
-  it("fires both barrels together: two shells a volley, one reload", () => {
+  it("fires the two barrels one after the other, then one long reload", () => {
+    const state = match();
+    const ts = state.tileSize;
+    const tank = apocalypse(state);
+    const full = rackLeft(tank);
+    const tiger = makeEntity(state, "warden", "B", tank.x + 10 * ts, tank.y);
+    tiger.facing = Math.PI;
+    tiger.turretFacing = Math.PI;
+    tiger.holdPosition = true;
+    tiger.ammo = {};
+    tiger.hp = tiger.hpMax = 100000;
+    assert.equal(applyCommand(state, "A", { type: "cmd.attack", ids: [tank.id], targetId: tiger.id }).ok, true);
+    const t = until(state, 200, () => rackLeft(tank) < full);
+    assert.ok(t >= 0, "the first barrel fires");
+    assert.equal(rackLeft(tank), full - 1, "one shell, not both at once");
+    assert.equal(tank.cooldown, APOCALYPSE_TWIN_GAP);
+    const gapTicks = Math.round(APOCALYPSE_TWIN_GAP / TICK_DT);
+    const gap = until(state, 30, () => rackLeft(tank) < full - 1);
+    assert.equal(gap, gapTicks, "the second barrel follows after the gap");
+    assert.equal(rackLeft(tank), full - 2);
+    assert.equal(tank.ammo.ap, (catalog("apocalypse").ammo?.ap ?? 0) - 2);
+    assert.ok(tank.cooldown > catalog("apocalypse").cooldown - 0.5, "one reload for the pair");
+    const held = rackLeft(tank);
+    ticks(state, Math.round(2 / TICK_DT));
+    assert.equal(rackLeft(tank), held, "the long reload holds the third shell");
+  });
+
+  it("drops the owed barrel when there is nothing left to shoot", () => {
     const state = match();
     const ts = state.tileSize;
     const tank = apocalypse(state);
@@ -148,11 +178,21 @@ describe("Apocalypse main guns", () => {
     const tiger = makeEntity(state, "warden", "B", tank.x + 10 * ts, tank.y);
     tiger.holdPosition = true;
     tiger.ammo = {};
-    const t = until(state, 200, () => rackLeft(tank) < full);
-    assert.ok(t >= 0, "the guns fire");
-    assert.equal(rackLeft(tank), full - 2, "two shells leave together");
-    assert.equal(tank.ammo.ap, (catalog("apocalypse").ammo?.ap ?? 0) - 2);
-    assert.ok(tank.cooldown > catalog("apocalypse").cooldown - 0.5, "one reload for the pair");
+    tiger.hp = tiger.hpMax = 100000;
+    assert.ok(until(state, 200, () => rackLeft(tank) === full - 1) >= 0);
+    for (const id of [...state.entities.keys()]) {
+      if (id !== tank.id) state.entities.delete(id);
+    }
+    tank.order = null;
+    tank.attackTarget = null;
+    const due = tank.twinUntil ?? 0;
+    assert.ok(due > state.tick);
+    const waited = until(state, 40, () => state.tick > due);
+    assert.ok(waited >= 0);
+    assert.equal(rackLeft(tank), full - 1, "the second shell never leaves");
+    assert.equal(tank.twinUntil, undefined);
+    assert.ok(tank.cooldown > catalog("apocalypse").cooldown - 0.5);
+    assert.ok(APOCALYPSE_TWIN_WINDOW > APOCALYPSE_TWIN_GAP);
   });
 
   it("fires the last shell of a kind alone", () => {
@@ -250,6 +290,59 @@ describe("Apocalypse roof CIWS", () => {
     assert.ok(p.ciwsTried?.includes(tank.id), "the mount tried it");
     assert.equal(tank.mgAmmo, APOCALYPSE_CIWS_BELT - CIWS_INTERCEPT_ROUNDS);
     assert.ok(Math.abs(tank.ciwsFacing ?? 99) < 0.2, "laid east onto the rocket");
+  });
+
+  it("bursts most missiles, and tries each one once", () => {
+    let downed = 0;
+    const trials = 80;
+    for (let i = 0; i < trials; i++) {
+      const state = match();
+      state.rngState = 1000 + i * 7919;
+      const tank = apocalypse(state);
+      tank.ammo = {};
+      const at = inReach(state, tank, 0.4);
+      const p = rocket(state, "B", at.x, at.y);
+      step(state, TICK_DT);
+      assert.equal(tank.mgAmmo, APOCALYPSE_CIWS_BELT - CIWS_INTERCEPT_ROUNDS);
+      const shot = !state.projectiles.some((q) => q.id === p.id) && state.impacts.some((m) => m.intercept);
+      if (shot) {
+        downed++;
+        continue;
+      }
+      assert.deepEqual(p.ciwsTried, [tank.id]);
+      const left = tank.mgAmmo;
+      step(state, TICK_DT);
+      assert.equal(tank.mgAmmo, left, "the same missile is not tried twice");
+    }
+    const rate = downed / trials;
+    assert.ok(Math.abs(rate - APOCALYPSE_CIWS_INTERCEPT_CHANCE) < 0.15, `intercept rate ${rate}`);
+    assert.ok(rate > 0.5, "most missiles burst");
+  });
+
+  it("meets a missile launched beside it on the tick it leaves the rack", () => {
+    const state = match();
+    const ts = state.tileSize;
+    const tank = apocalypse(state);
+    tank.ammo = {};
+    const titan = makeEntity(state, "titan", "B", tank.x + 3 * ts, tank.y);
+    titan.facing = Math.PI;
+    titan.turretFacing = Math.PI;
+    titan.holdPosition = true;
+    titan.ammo = {};
+    titan.cooldown = 99;
+    titan.mgAmmo = 0;
+    assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [titan.id], targetId: tank.id }).ok, true);
+    let engaged = false;
+    for (let i = 0; i < 40 && !engaged; i++) {
+      const before = titan.rockets ?? 0;
+      const ammo = tank.mgAmmo;
+      step(state, TICK_DT);
+      if ((titan.rockets ?? 0) < before) {
+        assert.equal(tank.mgAmmo, ammo - CIWS_INTERCEPT_ROUNDS, "the mount spends the burst as the missile launches");
+        engaged = true;
+      }
+    }
+    assert.ok(engaged, "the Titan loosed a missile");
   });
 
   it("holds fire on an empty belt", () => {

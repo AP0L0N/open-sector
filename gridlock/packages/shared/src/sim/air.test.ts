@@ -6,7 +6,12 @@ import {
   AIR_CRUISE_ALT,
   AIR_FUEL_SECONDS,
   AIRFIELD_PADS,
+  BOMB_CALIBER,
+  BOMB_DAMAGE,
+  BOMB_DIRECT_TILES,
+  BOMB_FALL_SECONDS,
   BOMB_REARM_SECONDS,
+  BOMB_SPLASH_TILES,
   FW190_BARRAGES,
   STUKA_MG_ROUNDS,
   TICK_DT,
@@ -16,14 +21,15 @@ import {
   hasTracks,
   wreckHpOf,
 } from "../catalog.js";
-import { airfieldPadWorld, airfieldRunway, isAirborne, PARK_HEADING } from "./air.js";
+import { airfieldPadWorld, airfieldRunway, isAirborne, PARK_HEADING, stepBomb } from "./air.js";
+import { mortarFalloff } from "./mortar.js";
 import { applyCommand } from "./commands.js";
 import { takeDamage } from "./crits.js";
 import { buildingBounds, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { spawnUnit } from "./train.js";
-import type { Entity, MatchState } from "./types.js";
+import type { Entity, MatchState, Projectile } from "./types.js";
 
 function twoPlayerMatch(): MatchState {
   const r = createRoom({ id: "AIR1", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
@@ -49,6 +55,34 @@ function until(state: MatchState, max: number, done: () => boolean): number {
     step(state, TICK_DT);
   }
   return -1;
+}
+
+/** An SC 250 that has already reached the ground. */
+function burstBomb(state: MatchState, x: number, y: number): void {
+  const bomb: Projectile = {
+    id: state.nextId++,
+    ownerId: "A",
+    team: 1,
+    x,
+    y,
+    vx: 0,
+    vy: 0,
+    damage: BOMB_DAMAGE,
+    penetration: 0,
+    caliber: BOMB_CALIBER,
+    life: 0,
+    ignoreId: -1,
+    fromId: -1,
+    bounced: false,
+    shell: null,
+    flight: "bomb",
+    landX: x,
+    landY: y,
+    apex: 5,
+    flightTime: BOMB_FALL_SECONDS,
+    z: 0,
+  };
+  assert.equal(stepBomb(state, bomb, TICK_DT), false);
 }
 
 function seedCore(state: MatchState, owner = "A", tx = 4, ty = 4): Entity {
@@ -367,6 +401,37 @@ describe("stuka attack", () => {
     plane.air!.rounds = STUKA_MG_ROUNDS;
     ticks(state, 5);
     assert.equal(plane.air?.phase, "parked", "an attack sortie stays on the pad once it has rearmed");
+  });
+
+  it("a direct hit takes half a tank; the rim of the burst only wounds", () => {
+    const state = twoPlayerMatch();
+    const ts = state.tileSize;
+    const x = tileCenter(48, ts);
+    const y = tileCenter(48, ts);
+    const tank = makeEntity(state, "warden", "B", x, y);
+    const man = makeEntity(state, "rifleman", "B", x, y + 4);
+    const reach = BOMB_SPLASH_TILES * ts;
+    const edgeDist = reach * 0.92;
+    const edge = makeEntity(state, "rifleman", "B", x + edgeDist, y);
+    burstBomb(state, x, y);
+    assert.equal(tank.hp, tank.hpMax - Math.round(tank.hpMax * 0.5), "roof hit takes half the hull");
+    assert.ok(tank.hp > 0, "a fresh Tiger survives one bomb");
+    assert.equal(man.hp, 0, "a man under the blast dies");
+    assert.equal(edge.hp, edge.hpMax - Math.round(70 * mortarFalloff(edgeDist, reach)));
+    assert.ok(edge.hp > 0, "the rim wounds a rifleman and leaves him standing");
+
+    const dist = BOMB_DIRECT_TILES * ts * 1.5;
+    const near = makeEntity(state, "warden", "B", x, y + ts * 8);
+    const before = near.hp;
+    burstBomb(state, near.x - dist, near.y);
+    const lost = before - near.hp;
+    assert.equal(lost, Math.round(near.hpMax * 0.1 * mortarFalloff(dist, reach)));
+    assert.ok(lost < near.hpMax * 0.12, `a near miss dents, it took ${lost}`);
+
+    const house = makeEntity(state, "house", "", x + ts * 12, y, { tileX: 60, tileY: 48 });
+    burstBomb(state, house.x, house.y);
+    assert.equal(house.hp, house.hpMax - 240);
+    assert.ok(house.hp > house.hpMax * 0.6, "a house keeps most of its walls");
   });
 
   it("strafes infantry with the wing guns", () => {

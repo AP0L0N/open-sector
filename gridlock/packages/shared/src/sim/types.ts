@@ -296,6 +296,11 @@ export interface Entity {
   ciwsTarget?: number | null;
   /** Sim tick the roof mount last fired, on a unit or a rocket. */
   ciwsFireTick?: number;
+  /**
+   * Sim tick through which the second main-gun barrel is still owed.
+   * Missing between volleys. `cooldown` holds the gap before that barrel can fire.
+   */
+  twinUntil?: number;
   /** Seconds the MG42 bipod has been set while prone. 0 until the gunner crawls. */
   bipod: number;
   /** Coaxial MG rounds remaining. 0 if the type has no MG. */
