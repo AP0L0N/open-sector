@@ -14,7 +14,7 @@ import type {
   TrainType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 57;
+export const PROTOCOL_VERSION = 59;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -221,7 +221,7 @@ export interface EntityView {
    * Everyone sees phase and height; fuel, bombs, rounds, and home are friendly-only.
    */
   air?: {
-    phase: "parked" | "takeoff" | "fly" | "landing";
+    phase: "parked" | "takeoff" | "fly" | "landing" | "crash";
     alt: number;
     fuel?: number;
     fuelMax?: number;
@@ -230,7 +230,7 @@ export interface EntityView {
     homeId?: number;
     /** Transport: the load its bay takes. Friendly-only. */
     payload?: AirDrop;
-    /** Transport: riflemen aboard. Friendly-only. */
+    /** Transport: units aboard. Friendly-only. */
     troops?: number;
   };
   /** Paratrooper under his canopy: elevation units above the ground. Everyone who sees him sees it. */
@@ -368,6 +368,11 @@ export interface CorpseView {
   /** Sim tick the soldier fell. Drives the death pose. */
   bornTick: number;
   blood: BloodStainView[];
+  /**
+   * Killed by fire. No blood. The client holds a blackened sprite, then
+   * collapses it. Omitted for every other death.
+   */
+  burned?: true;
 }
 
 /** Persistent crater from a heavy shell on dirt. */
@@ -450,8 +455,11 @@ export interface MatchSnapshot {
   /** Supply crates you can see. Empty until the first crate drop. */
   crates: CrateView[];
   scrap: ScrapCell[];
-  /** Tree tiles a vehicle has crushed. Empty until the first flatten. */
-  clearedTrees: { x: number; y: number }[];
+  /**
+   * Tree tiles removed this match. Empty until the first one falls.
+   * `burn` is a tree a flamethrower force-attack set alight.
+   */
+  clearedTrees: { x: number; y: number; burn?: true }[];
   /** Fallen infantry. Empty until the first death in the open. */
   bodies: CorpseView[];
   /** Heavy-shell craters on dirt. Empty until the first ground strike. */
@@ -486,7 +494,8 @@ export type ClientMessage =
   | { type: "room.start" }
   | { type: "chat"; text: string }
   /** `queue`: Shift-queued. The unit runs it after its current and earlier queued orders finish. */
-  | { type: "cmd.move"; ids: number[]; x: number; y: number; queue?: boolean }
+  /** `facing`: world radians the unit turns to after it arrives. A held move click sets it. */
+  | { type: "cmd.move"; ids: number[]; x: number; y: number; facing?: number; queue?: boolean }
   | { type: "cmd.attack"; ids: number[]; targetId: number; queue?: boolean }
   | { type: "cmd.attackmove"; ids: number[]; x: number; y: number; queue?: boolean }
   | {

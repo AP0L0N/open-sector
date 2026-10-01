@@ -1,6 +1,15 @@
 import {
   AIR_BELT_REARM_PER_SEC,
   AIR_CLIMB_PER_SEC,
+  AIR_CRASH_BUILDING_DAMAGE,
+  AIR_CRASH_HULL_MIN,
+  AIR_CRASH_HULL_SHARE,
+  AIR_CRASH_SINK_PER_SEC,
+  AIR_CRASH_SOFT_DAMAGE,
+  AIR_CRASH_SPEED,
+  AIR_CRASH_SPLASH_TILES,
+  AIR_CRASH_TURN_MUL,
+  AIR_CRASH_WANDER,
   AIR_CRUISE_ALT,
   AIR_DIVE_CONE_DEG,
   AIR_DIVE_PER_SEC,
@@ -54,22 +63,26 @@ import {
   STUKA_MG_ROUNDS,
   addCrit,
   airLoadoutOf,
+  TREE_COVER_HEIGHT,
   catalog,
+  coverHeightOf,
   hasTracks,
   infantryGunFor,
   isAircraftType,
   isArmoredType,
+  isDroneType,
   isFighterType,
   isGarrisonable,
   isInfantryType,
+  isJumpJetType,
   isTransportType,
 } from "../catalog.js";
-import { hasCargo, payloadOf, planeRiders, releaseCanister, startJumping, tickDoor } from "./airdrop.js";
+import { hasCargo, loseRiders, payloadOf, planeRiders, releaseCanister, startJumping, tickDoor } from "./airdrop.js";
 import type { ImpactView } from "../protocol.js";
 import { aimAngle } from "./ballistics.js";
 import { takeDamage } from "./crits.js";
 import { aimHeight, airAlt, entityHeight, worldTileHeight } from "./elevation.js";
-import { allies, fellTreeAt, isTree, newAirState, playerTeam, worldToTile } from "./geo.js";
+import { allies, buildingBounds, buildingContains, burnTreeAt, fellTreeAt, isTree, newAirState, playerTeam, tileCenter, worldToTile } from "./geo.js";
 import { livingGarrison, woundGarrison } from "./garrison.js";
 import { mortarFalloff } from "./mortar.js";
 import { stepTurn } from "./orders.js";
@@ -78,6 +91,7 @@ import { noteImpactSurface } from "./remains.js";
 import { nextRand } from "./rng.js";
 import { hideScout } from "./scout.js";
 import { canSeeEntity } from "./vision.js";
+import { toWreck } from "./wreck.js";
 import type { AirState, Entity, MatchState, Order, Projectile } from "./types.js";
 
 /** Runway heading, world radians. The strip runs east–west. */
@@ -88,6 +102,11 @@ export const PARK_HEADING = Math.PI / 2;
 /** In the air (or rolling off the pad). A parked plane is a ground target. */
 export function isAirborne(e: { air?: AirState | { alt: number; phase?: string }; jet?: { alt: number } }): boolean {
   return airAlt(e) > 0.5;
+}
+
+/** Shot down and still falling. Nothing hurts it until the airframe hits. */
+export function isCrashing(e: { air?: { phase?: string } | null }): boolean {
+  return e.air?.phase === "crash";
 }
 
 /**
@@ -321,6 +340,20 @@ function spent(state: MatchState, e: Entity): boolean {
   return e.air!.bombs <= 0 && !hasRounds(e);
 }
 
+/** Bomb, belts, and tank all the way up. A troop bay is full when someone is aboard. */
+function loadFull(state: MatchState, e: Entity): boolean {
+  const a = e.air!;
+  if (a.fuel < AIR_FUEL_SECONDS - 1e-3) return false;
+  const load = airLoadoutOf(e.type);
+  if (isTransportType(e.type) && a.payload === "troops") return hasCargo(state, e);
+  return a.bombs >= load.bombs && a.rounds >= load.rounds - 1e-3;
+}
+
+function clearGuard(e: Entity): void {
+  if (e.air) e.air.guard = null;
+  e.guardFacing = null;
+}
+
 /** Guns loaded. A fighter fires whole barrages; the rearm tops the last one up in steps. */
 function hasRounds(e: Entity): boolean {
   const r = e.air!.rounds;
@@ -333,6 +366,7 @@ function hasRounds(e: Entity): boolean {
  * come down through any hull's roof, and reach planes in the air.
  */
 function gunsHurt(e: Entity, target: Entity): boolean {
+  if (isCrashing(target)) return false;
   if (target.kind !== "unit" || target.wreck) return false;
   if (isFighterType(e.type)) return isAirborne(target) ? !!target.air && !target.drone : true;
   if (isAirborne(target)) return false;
@@ -349,22 +383,35 @@ function loiterHere(e: Entity): void {
 /** Give a plane an order. A parked plane starts its takeoff roll. */
 export function orderAircraft(state: MatchState, e: Entity, order: Order): void {
   const a = e.air;
-  if (!a || e.hp <= 0) return;
+  if (!a || e.hp <= 0 || e.wreck || a.phase === "crash") return;
   if (order.kind === "land" && a.phase === "parked") {
+    clearGuard(e);
     e.order = null;
     return;
   }
   if (order.kind === "land" && a.phase === "takeoff" && a.taxi) {
     // Still on the taxiway: turn back to the hardstand.
+    clearGuard(e);
     taxiHome(e);
     return;
   }
   e.order = order;
   e.attackTarget = null;
   e.waypoints = [];
-  e.guardFacing = null;
   e.holdPosition = false;
   a.extend = false;
+  if (order.kind === "guard" && order.x != null && order.y != null) {
+    a.guard = { x: order.x, y: order.y };
+    e.guardFacing = order.facing ?? e.facing;
+  } else {
+    clearGuard(e);
+  }
+  // Short of a full load, a guard stays on the pad until the bomb, belts, and tank are full.
+  const onPad = a.phase === "parked" || (a.phase === "landing" && a.touched);
+  if (order.kind === "guard" && onPad && !loadFull(state, e)) {
+    if (a.phase === "parked") e.state = "idle";
+    return;
+  }
   if (a.phase === "parked" || (a.phase === "landing" && a.touched && order.kind !== "land")) {
     // Taxi out onto the strip, line up, and roll.
     a.phase = "takeoff";
@@ -392,7 +439,8 @@ function taxiHome(e: Entity): void {
 /** Stop in the air: circle where the plane is. On the pad: stay parked. */
 export function stopAircraft(e: Entity): void {
   const a = e.air;
-  if (!a) return;
+  if (!a || a.phase === "crash") return;
+  clearGuard(e);
   if (a.phase === "parked") {
     e.order = null;
     return;
@@ -411,8 +459,13 @@ export function stopAircraft(e: Entity): void {
 export function tickAir(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     const a = e.air;
-    // Drones fly in tickDrones.
-    if (!a || e.hp <= 0 || e.drone) continue;
+    // Drones fly in tickDrones. A wreck is a hulk on the ground.
+    if (!a || e.drone || e.wreck) continue;
+    if (a.phase === "crash") {
+      tickCrash(state, e, dt);
+      continue;
+    }
+    if (e.hp <= 0) continue;
     if (e.cooldown > 0) e.cooldown = Math.max(0, e.cooldown - dt);
     if (a.phase === "parked") {
       servicePad(state, e, dt);
@@ -447,7 +500,7 @@ function servicePad(state: MatchState, e: Entity, dt: number): void {
   const load = airLoadoutOf(e.type);
   // Belts fill in the same time whatever they hold.
   a.rounds = Math.min(load.rounds, a.rounds + ((AIR_BELT_REARM_PER_SEC * load.rounds) / STUKA_MG_ROUNDS) * s);
-  // A transport loaded for paratroops carries no canister: its riflemen board it.
+  // A transport loaded for paratroops carries no canister: its passengers board it.
   if (a.bombs < load.bombs && a.payload !== "troops") {
     a.rearm += s;
     if (a.rearm >= BOMB_REARM_SECONDS) {
@@ -456,6 +509,11 @@ function servicePad(state: MatchState, e: Entity, dt: number): void {
     }
   } else {
     a.rearm = 0;
+  }
+  // Guard survives the landing. A full bomb, full belts, and a full tank send it back out.
+  if (a.guard && loadFull(state, e)) {
+    const g = a.guard;
+    orderAircraft(state, e, { kind: "guard", x: g.x, y: g.y, facing: e.guardFacing ?? e.facing });
   }
 }
 
@@ -583,16 +641,22 @@ function tickFly(state: MatchState, e: Entity, dt: number): void {
     } else {
       altGoal = attackRun(state, e, t?.x ?? o.x, t?.y ?? o.y, t, dt, turned, true);
     }
-  } else if (o.kind === "attackmove" && o.x != null && o.y != null) {
-    let t = e.attackTarget != null ? state.entities.get(e.attackTarget) : undefined;
-    if (t && (t.hp <= 0 || !canSeeEntity(state, e.ownerId, t) || !canHurt(e, t))) t = undefined;
-    // A fighter clears the sky before it strafes.
-    if (!t || (!isAirborne(t) && isFighterType(e.type))) t = acquireAir(state, e) ?? t;
-    if (!t) t = acquireGround(state, e);
-    e.attackTarget = t?.id ?? null;
-    if (t && isAirborne(t)) altGoal = dogfight(state, e, t, dt, turned);
-    else if (t) altGoal = attackRun(state, e, t.x, t.y, t, dt, turned, false);
-    else if (!turned) flyToOrOrbit(state, e, o.x, o.y, dt);
+  } else if ((o.kind === "attackmove" || o.kind === "guard") && o.x != null && o.y != null) {
+    // A transport holds the area. It has no guns, and the bay stays shut until Drop.
+    if (o.kind === "guard" && transport) {
+      e.attackTarget = null;
+      if (!turned) flyToOrOrbit(state, e, o.x, o.y, dt);
+    } else {
+      let t = e.attackTarget != null ? state.entities.get(e.attackTarget) : undefined;
+      if (t && (t.hp <= 0 || !canSeeEntity(state, e.ownerId, t) || !canHurt(e, t))) t = undefined;
+      // A fighter clears the sky before it strafes.
+      if (!t || (!isAirborne(t) && isFighterType(e.type))) t = acquireAir(state, e) ?? t;
+      if (!t) t = acquireGround(state, e);
+      e.attackTarget = t?.id ?? null;
+      if (t && isAirborne(t)) altGoal = dogfight(state, e, t, dt, turned);
+      else if (t) altGoal = attackRun(state, e, t.x, t.y, t, dt, turned, false);
+      else if (!turned) flyToOrOrbit(state, e, o.x, o.y, dt);
+    }
   } else if (o.x != null && o.y != null) {
     if (!turned) flyToOrOrbit(state, e, o.x, o.y, dt);
   } else {
@@ -668,7 +732,7 @@ function acquireAir(state: MatchState, e: Entity): Entity | undefined {
   let best: Entity | undefined;
   let bestD = reach * reach;
   for (const o of state.entities.values()) {
-    if (o.hp <= 0 || o.id === e.id || !o.air || o.drone || !isAirborne(o)) continue;
+    if (o.hp <= 0 || o.id === e.id || !o.air || o.drone || o.air.phase === "crash" || !isAirborne(o)) continue;
     if (!o.ownerId || allies(state, e.ownerId, o.ownerId)) continue;
     const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
     if (d > bestD) continue;
@@ -724,7 +788,7 @@ function attackRun(
   const guns = hasRounds(e) && (target ? gunsHurt(e, target) : forced && isFighterType(e.type));
   if (!bomb && !guns) {
     if (liveHome(state, e)) e.order = { kind: "land" };
-    else loiterHere(e);
+    else if (!a.guard) loiterHere(e);
     return AIR_CRUISE_ALT;
   }
   if (a.extend) {
@@ -995,7 +1059,201 @@ function detonateBomb(state: MatchState, p: Projectile): void {
   state.impacts.push(impact);
 }
 
-/** A plane that dies in the air hits the ground in a fireball. */
+/**
+ * A plane that just died in the air starts falling instead of vanishing.
+ * It stays in the match, and further hits do not move its hit points.
+ */
+export function beginAircraftCrash(e: Entity): void {
+  const a = e.air;
+  if (!a || e.wreck || e.drone || !isAircraftType(e.type) || !isAirborne(e)) return;
+  if (a.phase === "crash") {
+    if (e.hp < 1) e.hp = 1;
+    return;
+  }
+  a.phase = "crash";
+  a.speed = Math.max(a.speed, AIR_CRASH_SPEED);
+  a.drift = e.facing;
+  a.struck = [];
+  a.extend = false;
+  a.taxi = false;
+  a.jumping = false;
+  a.door = undefined;
+  a.guard = null;
+  e.guardFacing = null;
+  e.hp = Math.max(1, e.hp);
+  e.order = null;
+  e.attackTarget = null;
+  e.waypoints = [];
+  e.cooldown = 0;
+  e.state = "move";
+}
+
+function tickCrash(state: MatchState, e: Entity, dt: number): void {
+  const a = e.air!;
+  e.state = "move";
+  e.order = null;
+  e.attackTarget = null;
+  if (e.hp < 1) e.hp = 1;
+  a.speed = Math.max(a.speed, AIR_CRASH_SPEED);
+  a.drift = (a.drift ?? e.facing) + (nextRand(state) - 0.5) * 2 * AIR_CRASH_WANDER * dt;
+  headTo(e, a.drift, dt, AIR_CRASH_TURN_MUL);
+  advance(state, e, dt);
+  a.alt = Math.max(0, a.alt - AIR_CRASH_SINK_PER_SEC * dt);
+  strikeWhileCrashing(state, e);
+}
+
+/** A building or a ground hull stops the airframe. Men, trees, and other planes do not. */
+function crashStopsOn(o: Entity): boolean {
+  if (o.air?.phase === "crash") return false;
+  if (o.wreck && o.kind === "unit") return true;
+  if (o.kind === "building") return o.type !== "trench";
+  if (o.kind !== "unit" || o.garrisonedIn != null) return false;
+  if (isInfantryType(o.type) || isAircraftType(o.type) || isDroneType(o.type) || isJumpJetType(o.type)) return false;
+  return true;
+}
+
+function crashTouches(state: MatchState, plane: Entity, o: Entity): boolean {
+  if (o.kind === "building") {
+    const b = buildingBounds(o, state.tileSize);
+    const r = plane.radius;
+    return plane.x >= b.x0 - r && plane.x <= b.x1 + r && plane.y >= b.y0 - r && plane.y <= b.y1 + r;
+  }
+  return Math.hypot(o.x - plane.x, o.y - plane.y) <= plane.radius + Math.max(4, o.radius);
+}
+
+function lowEnough(state: MatchState, plane: Entity, o: Entity): boolean {
+  const z = worldTileHeight(state, plane.x, plane.y) + (plane.air?.alt ?? 0);
+  return z <= entityHeight(state, o) + coverHeightOf(o.type) + 0.35;
+}
+
+function crashHurt(state: MatchState, o: Entity): void {
+  if (o.hp <= 0 || o.air?.phase === "crash") return;
+  let dmg: number;
+  if (o.kind === "building") {
+    dmg = AIR_CRASH_BUILDING_DAMAGE;
+    if (isGarrisonable(o.type) && livingGarrison(state, o).length > 0) woundGarrison(state, o, dmg, 120);
+  } else if (isInfantryType(o.type) || isDroneType(o.type) || isJumpJetType(o.type) || isAircraftType(o.type)) {
+    dmg = Math.max(AIR_CRASH_SOFT_DAMAGE, o.hpMax + 1);
+  } else {
+    dmg = Math.max(AIR_CRASH_HULL_MIN, Math.round(o.hpMax * AIR_CRASH_HULL_SHARE));
+    if (hasTracks(o.type)) addCrit(o, "tracks");
+    hideScout(state, o);
+  }
+  takeDamage(o, dmg, state.tick);
+}
+
+function burnTreesNear(state: MatchState, e: Entity, extra: number): void {
+  const alt = e.air?.alt ?? 0;
+  if (extra === 0 && alt > TREE_COVER_HEIGHT) return;
+  const ts = state.tileSize;
+  const r = e.radius + extra;
+  const x0 = worldToTile(e.x - r, ts);
+  const y0 = worldToTile(e.y - r, ts);
+  const x1 = worldToTile(e.x + r, ts);
+  const y1 = worldToTile(e.y + r, ts);
+  for (let ty = y0; ty <= y1; ty++) {
+    for (let tx = x0; tx <= x1; tx++) {
+      if (Math.hypot(tileCenter(tx, ts) - e.x, tileCenter(ty, ts) - e.y) > r) continue;
+      burnTreeAt(state, tx, ty);
+    }
+  }
+}
+
+/** Lay the hulk just outside a structure it came down on, so the pad stays the building's. */
+function shoveOffStructure(state: MatchState, e: Entity): void {
+  const ts = state.tileSize;
+  for (const o of state.entities.values()) {
+    if (o.kind !== "building" || o.type === "trench") continue;
+    if (!buildingContains(o, ts, e.x, e.y)) continue;
+    const b = buildingBounds(o, ts);
+    let dx = e.x - (b.x0 + b.x1) / 2;
+    let dy = e.y - (b.y0 + b.y1) / 2;
+    if (Math.hypot(dx, dy) < 1) {
+      dx = Math.cos(e.facing);
+      dy = Math.sin(e.facing);
+    }
+    const len = Math.hypot(dx, dy) || 1;
+    const step = ts * 0.35;
+    for (let i = 0; i < 36 && buildingContains(o, ts, e.x, e.y); i++) {
+      e.x += (dx / len) * step;
+      e.y += (dy / len) * step;
+    }
+    break;
+  }
+  const maxX = state.width * ts - 1;
+  const maxY = state.height * ts - 1;
+  e.x = Math.max(1, Math.min(maxX, e.x));
+  e.y = Math.max(1, Math.min(maxY, e.y));
+}
+
+function crashSplash(state: MatchState, e: Entity): void {
+  const radius = AIR_CRASH_SPLASH_TILES * state.tileSize;
+  const struck = e.air?.struck ?? [];
+  for (const o of state.entities.values()) {
+    if (o.id === e.id || o.hp <= 0 || o.garrisonedIn != null || o.air?.phase === "crash") continue;
+    if (struck.includes(o.id)) continue;
+    let d: number;
+    if (o.kind === "building") {
+      const b = buildingBounds(o, state.tileSize);
+      const dx = Math.max(b.x0 - e.x, 0, e.x - b.x1);
+      const dy = Math.max(b.y0 - e.y, 0, e.y - b.y1);
+      d = Math.hypot(dx, dy);
+    } else {
+      d = Math.max(0, Math.hypot(o.x - e.x, o.y - e.y) - o.radius);
+    }
+    if (d > radius) continue;
+    crashHurt(state, o);
+  }
+}
+
+function finishAircraftCrash(state: MatchState, e: Entity): void {
+  if (e.wreck || !e.air || e.air.phase !== "crash") return;
+  // The sink already clamps altitude to zero on the impact tick. Riders are
+  // only taken while the airframe is still airborne, so hold a sliver until then.
+  if (e.air.alt <= 0.5) e.air.alt = 0.51;
+  loseRiders(state, e);
+  crashSplash(state, e);
+  e.air.alt = 0;
+  burnTreesNear(state, e, state.tileSize);
+  shoveOffStructure(state, e);
+  const impact: ImpactView = {
+    id: state.nextId++,
+    ownerId: e.ownerId,
+    kind: "kill",
+    fromId: e.id,
+    x: e.x,
+    y: e.y,
+    vx: Math.cos(e.facing) * 80,
+    vy: Math.sin(e.facing) * 80,
+    caliber: 90,
+    blast: true,
+  };
+  noteImpactSurface(state, impact, { caliber: 90, shell: null, vx: impact.vx, vy: impact.vy }, "miss");
+  state.impacts.push(impact);
+  e.tileX = worldToTile(e.x, state.tileSize);
+  e.tileY = worldToTile(e.y, state.tileSize);
+  toWreck(state, e);
+  e.air = undefined;
+}
+
+function strikeWhileCrashing(state: MatchState, e: Entity): void {
+  const a = e.air;
+  if (!a || e.wreck || a.phase !== "crash") return;
+  const struck = (a.struck ??= []);
+  let stop = false;
+  for (const o of state.entities.values()) {
+    if (o.id === e.id || o.hp <= 0 || o.garrisonedIn != null || o.air?.phase === "crash") continue;
+    if (struck.includes(o.id)) continue;
+    if (!crashTouches(state, e, o) || !lowEnough(state, e, o)) continue;
+    struck.push(o.id);
+    crashHurt(state, o);
+    if (crashStopsOn(o)) stop = true;
+  }
+  if (a.alt <= TREE_COVER_HEIGHT) burnTreesNear(state, e, 0);
+  if (stop || a.alt <= 0) finishAircraftCrash(state, e);
+}
+
+/** A drone that dies in the air pops. A plane falls (see beginAircraftCrash) and crashes as a wreck. */
 export function aircraftDown(state: MatchState, e: Entity): void {
   if (!e.air || !isAirborne(e)) return;
   // A drone is a handful of plastic and a battery. It pops; it does not crater.
@@ -1091,7 +1349,9 @@ function stopOnGround(e: Entity, heading: number): void {
   a.extend = false;
   a.taxi = false;
   a.touched = false;
-  e.order = null;
+  const g = a.guard;
+  // The area guard is still the order. A queued follow-up waits until the player sends them somewhere else.
+  e.order = g ? { kind: "guard", x: g.x, y: g.y, facing: e.guardFacing ?? heading } : null;
   e.attackTarget = null;
   e.state = "idle";
 }

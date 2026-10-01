@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { SUPPLY_CARGO, catalog, rocketAmmoOf } from "@gridlock/shared";
+import { JET_FUEL_SECONDS, SUPPLY_CARGO, catalog, rocketAmmoOf } from "@gridlock/shared";
 import { ammoBarRatios } from "./ammo-bars.js";
 
 describe("ammoBarRatios", () => {
@@ -33,6 +33,18 @@ describe("ammoBarRatios", () => {
   it("shows a supply truck's cargo, hidden when the view carries none", () => {
     assert.deepEqual(ammoBarRatios({ type: "supply", supply: SUPPLY_CARGO / 4 }), [0.25]);
     assert.deepEqual(ammoBarRatios({ type: "supply" }), []);
+  });
+
+  it("shows a Jump Jet's fuel as the yellow bar, hidden from enemies and on a corpse", () => {
+    assert.deepEqual(
+      ammoBarRatios({ type: "jumpjet", jet: { alt: 0, fuel: JET_FUEL_SECONDS / 2, fuelMax: JET_FUEL_SECONDS } }),
+      [0.5],
+    );
+    assert.deepEqual(ammoBarRatios({ type: "jumpjet", jet: { alt: 7 } }), []);
+    assert.deepEqual(
+      ammoBarRatios({ type: "jumpjet", jet: { alt: 0, fuel: 1, fuelMax: JET_FUEL_SECONDS }, wreck: true }),
+      [],
+    );
   });
 
   it("hides on enemies (no rack in view) and wrecks", () => {

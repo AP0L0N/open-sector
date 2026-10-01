@@ -9,6 +9,13 @@ import {
   MORTAR_RANGE_TILES,
   MORTAR_SPLASH_TILES,
   MORTAR_TRACK_CHANCE,
+  CRIT_TRACKS_CHANCE,
+  PTRD_TRACK_CHANCE,
+  ROCKET_TRACK_CHANCE,
+  RAM_ROCKET,
+  NEBELWERFER_ROCKET,
+  TITAN_ROCKET_RACK,
+  LAUNCHER_ROCKET_RACK,
   TILE_SIZE,
   addCrit,
   catalog,
@@ -22,7 +29,15 @@ import { TILE_EMPTY, TILE_TREE, TILE_WATER } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { destroyEntity, makeEntity, tileCenter, tileIndex } from "./geo.js";
 import { createMatch, step } from "./match.js";
-import { mortarAirZ, mortarArcPoints, mortarArmorNick, mortarFalloff, mortarScatterRadius } from "./mortar.js";
+import {
+  mortarAirZ,
+  mortarArcPoints,
+  mortarArmorNick,
+  mortarFalloff,
+  mortarScatterRadius,
+  rocketArmorDamage,
+  rocketScatterRadius,
+} from "./mortar.js";
 import { nextRand } from "./rng.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
 import { snapshotFor } from "./snapshot.js";
@@ -425,5 +440,156 @@ describe("mortar", () => {
       state.clearedTrees.some((t) => t.x === far.x && t.y === far.y),
       false,
     );
+  });
+});
+
+describe("rocket accuracy and tracks", () => {
+  it("keeps the wide disk only at full reach and tightens inside it", () => {
+    const reach = 1000;
+    const far = TITAN_ROCKET_RACK.scatterFarTiles * TILE_SIZE;
+    const near = TITAN_ROCKET_RACK.scatterNearTiles * TILE_SIZE;
+    assert.equal(rocketScatterRadius(reach, reach), far, "max range is the rack's far scatter");
+    assert.ok(Math.abs(rocketScatterRadius(0, reach) - near) < 1e-6, "point blank is the near scatter");
+    const mid = rocketScatterRadius(reach / 2, reach);
+    const threeQ = rocketScatterRadius(reach * 0.75, reach);
+    assert.ok(near < mid && mid < threeQ && threeQ < far, `near ${near} mid ${mid} 3/4 ${threeQ} far ${far}`);
+    const linearMid = near + (far - near) * 0.5;
+    assert.ok(mid < linearMid * 0.75, `half reach ${mid} should beat a straight blend ${linearMid}`);
+    for (const rack of [TITAN_ROCKET_RACK, LAUNCHER_ROCKET_RACK, NEBELWERFER_ROCKET, RAM_ROCKET]) {
+      const atFar = rocketScatterRadius(reach, reach, 1, rack);
+      const atClose = rocketScatterRadius(reach * 0.25, reach, 1, rack);
+      assert.equal(atFar, rack.scatterFarTiles * TILE_SIZE);
+      assert.ok(atClose < atFar * 0.5, `${atClose} vs ${atFar}`);
+    }
+  });
+
+  it("throws a track from the side or rear of a tracked hull, and nowhere else", () => {
+    assert.ok(ROCKET_TRACK_CHANCE > CRIT_TRACKS_CHANCE);
+    assert.ok(ROCKET_TRACK_CHANCE > PTRD_TRACK_CHANCE);
+    assert.ok(ROCKET_TRACK_CHANCE >= 0.7);
+
+    const seq = (rolls: number[]) => {
+      let i = 0;
+      return () => rolls[i++] ?? 0;
+    };
+    const side = rocketArmorDamage(11, 1, true, "side", true, seq([0.5, 0]));
+    assert.equal(side.throwTrack, true);
+    assert.ok(side.damage >= 1);
+    const rear = rocketArmorDamage(11, 1, true, "rear", true, seq([0.5, ROCKET_TRACK_CHANCE - 0.01]));
+    assert.equal(rear.throwTrack, true);
+    const barely = rocketArmorDamage(11, 1, true, "rear", true, seq([0.5, ROCKET_TRACK_CHANCE]));
+    assert.equal(barely.throwTrack, false);
+    assert.equal(rocketArmorDamage(11, 1, true, "front", true, () => 0).throwTrack, false);
+    assert.equal(rocketArmorDamage(11, 1, false, "side", true, () => 0).throwTrack, false);
+    assert.equal(rocketArmorDamage(11, 1, true, "side", false, () => 0).throwTrack, false);
+  });
+
+  it("breaks a Tiger's tracks on a side or rear hit and leaves the front, a Walker, and a near miss", () => {
+    const { state, a } = match();
+    const ts = state.tileSize;
+    const tiger = makeEntity(state, "warden", "B", tileCenter(40, ts), tileCenter(40, ts));
+    tiger.holdPosition = true;
+    tiger.cooldown = 99;
+    state.terrain[tileIndex(state, 40, 40)] = TILE_EMPTY;
+
+    const burst = (x: number, y: number, vx: number, vy: number, seed: number) => {
+      tiger.hp = tiger.hpMax;
+      tiger.crits = [];
+      tiger.wreck = false;
+      state.projectiles.length = 0;
+      state.rngState = seed;
+      state.projectiles.push({
+        id: state.nextId++,
+        ownerId: a,
+        team: 1,
+        x: x - 1,
+        y,
+        vx,
+        vy,
+        damage: 42,
+        penetration: 30,
+        caliber: 80,
+        life: 0.01,
+        ignoreId: -1,
+        fromId: -1,
+        bounced: false,
+        shell: null,
+        flight: "rocket",
+        landX: x,
+        landY: y,
+        flightTime: 0.01,
+        launcher: "titan",
+        z: 4,
+        vz: 0,
+      });
+      tickProjectiles(state, 0.1);
+    };
+
+    let threwSide = false;
+    let threwRear = false;
+    for (let s = 1; s < 40 && (!threwSide || !threwRear); s++) {
+      tiger.facing = Math.PI / 2;
+      burst(tiger.x, tiger.y, 40, 0, s);
+      if (tiger.crits.includes("tracks")) threwSide = true;
+      tiger.facing = 0;
+      burst(tiger.x, tiger.y, 40, 0, s);
+      if (tiger.crits.includes("tracks")) threwRear = true;
+    }
+    assert.ok(threwSide, "a side hit throws the track");
+    assert.ok(threwRear, "a rear hit throws the track");
+
+    for (let s = 1; s < 30; s++) {
+      tiger.facing = Math.PI;
+      burst(tiger.x, tiger.y, 40, 0, s);
+      assert.equal(tiger.crits.includes("tracks"), false, `front seed ${s}`);
+      assert.ok(tiger.hp < tiger.hpMax, "the front still dents");
+
+      tiger.facing = 0;
+      burst(tiger.x + tiger.radius + 10, tiger.y, 40, 0, s);
+      assert.equal(tiger.crits.includes("tracks"), false, `splash seed ${s}`);
+      assert.ok(tiger.hp < tiger.hpMax, "a near miss still nicks");
+    }
+
+    const walker = makeEntity(state, "walker", "B", tileCenter(80, ts), tileCenter(40, ts));
+    walker.holdPosition = true;
+    walker.cooldown = 99;
+    const hauler = makeEntity(state, "hauler", "B", tileCenter(100, ts), tileCenter(40, ts));
+    hauler.holdPosition = true;
+    for (const hull of [walker, hauler]) {
+      for (let s = 1; s < 15; s++) {
+        hull.facing = Math.PI / 2;
+        hull.hp = hull.hpMax;
+        hull.crits = [];
+        state.projectiles.length = 0;
+        state.rngState = s;
+        state.projectiles.push({
+          id: state.nextId++,
+          ownerId: a,
+          team: 1,
+          x: hull.x - 1,
+          y: hull.y,
+          vx: 40,
+          vy: 0,
+          damage: 42,
+          penetration: 30,
+          caliber: 80,
+          life: 0.01,
+          ignoreId: -1,
+          fromId: -1,
+          bounced: false,
+          shell: null,
+          flight: "rocket",
+          landX: hull.x,
+          landY: hull.y,
+          flightTime: 0.01,
+          launcher: "nebelwerfer",
+          z: 4,
+          vz: 0,
+        });
+        tickProjectiles(state, 0.1);
+        assert.equal(hull.crits.includes("tracks"), false, `${hull.type} seed ${s}`);
+        assert.ok(hull.hp < hull.hpMax, `${hull.type} still dents`);
+      }
+    }
   });
 });

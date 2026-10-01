@@ -642,7 +642,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
       ? `  ·  ${roofCiwsOf(e.type) ? "20mm" : "MG"} ${e.mgAmmo}${e.mgOverheat && e.mgOverheat > 0 ? " HOT" : ""}`
       : "";
   const garrison =
-    e.garrison
+    e.garrison && !isTransportType(e.type)
       ? `  ·  garrison ${e.garrison.count}/${e.garrison.cap}${e.garrison.hide ? " hide" : e.garrison.count ? " watch" : ""}`
       : e.garrisonedIn
         ? "  ·  inside"
@@ -689,6 +689,7 @@ const AIR_PHASE_LABEL: Record<NonNullable<EntityView["air"]>["phase"], string> =
   takeoff: "taking off",
   fly: "airborne",
   landing: "landing",
+  crash: "going down",
 };
 
 /** Phase, and for your own planes fuel, bomb, and belts. A fighter carries no bomb; it counts barrages. */
@@ -916,6 +917,19 @@ function selectedOfType(ctx: Ctx, view: MapView | null, type: EntityType | null)
   return selectedViews(ctx, view).filter((e) => e.type === type);
 }
 
+/** A bunker, tower, house, or trench you occupy and have not shuttered. */
+function garrisonForceHosts(you: string, selected: EntityView[]): EntityView[] {
+  return selected.filter(
+    (e) =>
+      e.hp > 0 &&
+      !e.wreck &&
+      !isTransportType(e.type) &&
+      e.garrison?.ownerId === you &&
+      (e.garrison.count ?? 0) > 0 &&
+      !e.garrison.hide,
+  );
+}
+
 function occupiedHouses(ctx: Ctx, selected: EntityView[]): EntityView[] {
   const match = ctx.match;
   if (!match) return [];
@@ -1119,7 +1133,7 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
     }
     const lines = mine.map((e) => {
       const a = e.air!;
-      if (a.payload === "troops") return `${a.troops ?? 0} riflemen aboard`;
+      if (a.payload === "troops") return `${a.troops ?? 0} aboard`;
       const name = AIR_DROP_INFO[a.payload ?? "mines"].name;
       return (a.bombs ?? 0) > 0 ? `${name} loaded` : a.phase === "parked" ? `${name} loading…` : `${name} dropped`;
     });
@@ -1194,7 +1208,7 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
             : focus.type === "atinfantry"
               ? "PTRD-41. Same reach as the sniper. Tank side and rear up close, light armor farther out. A broken arm puts the rifle down."
               : focus.type === "rocketer"
-              ? "One Titan rocket in the tube, then a slow reload. Bursts among soldiers, dents a tank, goes up beside a plane or a low drone. A broken arm puts the tube down."
+              ? "One Titan rocket in the tube, then a slow reload. Loose at full reach, tighter as the target closes. Bursts among soldiers, dents a tank, and a side or rear hit usually breaks its tracks. Goes up beside a plane or a low drone. A broken arm puts the tube down."
               : focus.type === "pyro"
               ? "Flamethrower: a few strides of reach, three bursts in the tanks, and only a supply truck refills them. The ground he hits burns for a while and kills soldiers who stand in it, his own side too. Over sandbags and in through windows. A broken arm puts the lance down; if he is killed the tanks may go up."
               : focus.type === "mortarman"
@@ -1339,12 +1353,14 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   const units = ownCommandable(ctx, selected.filter((e) => e.kind === "unit"));
   const buildings = ownCommandable(ctx, selected.filter((e) => e.kind === "building"));
   const houses = selected.filter((e) => isGarrisonable(e.type) && e.hp > 0);
+  const you = ctx.match.youPlayerId;
+  const garrisonForce = garrisonForceHosts(you, houses);
   // A CIWS aims its own gun: it takes Stop, Force attack, and Rotate like a unit.
   const mounts = buildings.filter((e) => radarLaidOf(e.type));
   const out: QAct[] = [];
   if (units.length === 0 && buildings.length === 0 && houses.length === 0) return out;
 
-  if (units.length || mounts.length) {
+  if (units.length || mounts.length || garrisonForce.length) {
     out.push({
       slot: "stop",
       act: "stop",
@@ -1371,26 +1387,31 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: "Fly over a point and drop the load: mines, a supply crate, or the paratroops (hold Ctrl and click).",
       on: !!view?.forceAttackMode,
     });
-  } else if (units.length || mounts.length) {
+  } else if (units.length || mounts.length || garrisonForce.length) {
     out.push({
       slot: "forceattack",
       act: "forceattack",
       label: "Force attack here",
-      title: "Fire at a point or any unit, including friendlies (hold Ctrl and click). Smoke fires once.",
+      title:
+        "Fire at a point or any unit, including friendlies (hold Ctrl and click). Soldiers inside a selected garrison shoot too, when they can reach. Smoke fires once.",
       on: !!view?.forceAttackMode,
     });
   }
-  // Guard, hold, and rotate mean nothing to a plane. A drone guards by circling.
+  // Hold and rotate mean nothing to a plane. Guard does: it fights the area, lands when the ammo is gone, and comes back.
   const grounded = units.some((e) => !e.air);
-  if (grounded || units.some((e) => e.drone)) {
+  const plane = units.some((e) => !!e.air && !e.drone);
+  if (grounded || plane || units.some((e) => e.drone)) {
     const guarding = units.every((e) => e.guardFacing != null || e.guardTargetId != null);
+    const title = grounded
+      ? `Move here, face a direction, hold. Click a friendly unit to stay with it (${GUARD_HOTKEY.toUpperCase()}). Click and drag to face.`
+      : plane
+        ? `Guard this area. When the ammo is gone the plane lands, rearms to a full load, and comes back (${GUARD_HOTKEY.toUpperCase()}).`
+        : `Circle this spot, or over a friendly unit (${GUARD_HOTKEY.toUpperCase()}). Surveillance circles wide and slow; Search & Destroy dives on the first enemy it sees.`;
     out.push({
       slot: "guard",
       act: "guard",
       label: "Guard",
-      title: grounded
-        ? `Move here, face a direction, hold. Click a friendly unit to stay with it (${GUARD_HOTKEY.toUpperCase()}). Click and drag to face.`
-        : `Circle this spot, or over a friendly unit (${GUARD_HOTKEY.toUpperCase()}). Surveillance circles wide and slow; Search & Destroy dives on the first enemy it sees.`,
+      title,
       on: !!(view?.guardMode || guarding),
     });
   }
@@ -1560,7 +1581,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       slot: "unboard",
       act: "unboard",
       label: "Unload",
-      title: "The riflemen aboard climb out onto the grass beside the hardstand.",
+      title: "Everyone aboard climbs out onto the grass beside the hardstand.",
     });
   } else if (trucks.some((e) => e.bed?.crew && (e.bed.seats ?? 0) > 0)) {
     out.push({
@@ -1721,12 +1742,14 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   const units = ownCommandable(ctx, selected.filter((e) => e.kind === "unit"));
   const buildings = ownCommandable(ctx, selected.filter((e) => e.kind === "building"));
   const aimers = [...units, ...buildings.filter((e) => radarLaidOf(e.type))];
+  const garrisonForce = garrisonForceHosts(match.youPlayerId, selected);
   if (act === "stop") {
     view.setAttackMoveMode(false);
     view.setForceAttackMode(false);
     view.setRotateMode(false);
     view.setGuardMode(false);
-    if (aimers.length) ctx.net.send({ type: "cmd.stop", ids: aimers.map((e) => e.id) });
+    const stopIds = [...new Set([...aimers, ...garrisonForce].map((e) => e.id))];
+    if (stopIds.length) ctx.net.send({ type: "cmd.stop", ids: stopIds });
     return;
   }
   if (act === "attackmove") {
@@ -1752,7 +1775,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     return;
   }
   if (act === "forceattack") {
-    if (aimers.length) view.setForceAttackMode(!view.forceAttackMode);
+    if (aimers.length || garrisonForce.length) view.setForceAttackMode(!view.forceAttackMode);
     return;
   }
   if (act === "guard") {

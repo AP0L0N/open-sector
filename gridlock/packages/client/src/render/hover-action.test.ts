@@ -224,17 +224,24 @@ describe("resolveHoverAction", () => {
     assert.equal(act({ selected: [warden], hit: open }), "attack");
   });
 
-  it("boards riflemen onto your transport parked for paratroops, and nothing else", () => {
+  it("boards ground units onto your transport parked for paratroops", () => {
     const ready = unit({ id: 60, type: "bv222", hp: 220, air: { phase: "parked", alt: 0, payload: "troops", troops: 3 } });
     const mines = unit({ id: 61, type: "bv222", hp: 220, air: { phase: "parked", alt: 0, payload: "mines", troops: 0 } });
     const aloft = unit({ id: 62, type: "bv222", hp: 220, air: { phase: "fly", alt: 16, payload: "troops", troops: 3 } });
     const full = unit({ id: 63, type: "bv222", hp: 220, air: { phase: "parked", alt: 0, payload: "troops", troops: 10 } });
     const gunner = unit({ id: 64, type: "gunner" });
+    const stuka = unit({ id: 66, type: "stuka", air: { phase: "parked", alt: 0 } });
+    const up = unit({ id: 67, type: "jumpjet", jet: { alt: 8 } });
+    const braced = unit({ id: 68, type: "titan", braced: true });
     assert.equal(act({ selected: [trooper], hit: ready }), "board");
+    assert.equal(act({ selected: [gunner], hit: ready }), "board");
+    assert.equal(act({ selected: [warden], hit: ready }), "board");
     assert.notEqual(act({ selected: [trooper], hit: mines }), "board");
     assert.notEqual(act({ selected: [trooper], hit: aloft }), "board");
     assert.notEqual(act({ selected: [trooper], hit: full }), "board");
-    assert.notEqual(act({ selected: [gunner], hit: ready }), "board");
+    assert.notEqual(act({ selected: [stuka], hit: ready }), "board");
+    assert.notEqual(act({ selected: [up], hit: ready }), "board");
+    assert.notEqual(act({ selected: [braced], hit: ready }), "board");
   });
 
   it("offers ammo to a CIWS that has fired, and not to a full one or a plain structure", () => {

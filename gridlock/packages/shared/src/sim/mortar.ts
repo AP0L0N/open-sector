@@ -7,10 +7,12 @@ import {
   MORTAR_SCATTER_FAR_TILES,
   MORTAR_SCATTER_NEAR_TILES,
   MORTAR_TRACK_CHANCE,
+  ROCKET_TRACK_CHANCE,
   TILE_SIZE,
   TITAN_ROCKET_RACK,
   type RocketRackDef,
 } from "../catalog.js";
+import type { ArmorFace } from "./ballistics.js";
 
 function clamp01(u: number): number {
   return Math.min(1, Math.max(0, u));
@@ -120,7 +122,12 @@ export function mortarArmorNick(
   return { damage, throwTrack };
 }
 
-/** Titan rocket miss radius. Wider than a mortar at every range: the pods are unguided. */
+/**
+ * Rocket miss radius. At full attack range the disk is the rack's far scatter.
+ * Inside that reach it tightens toward the near radius with the square of the
+ * range fraction, so a shot at half the reach is already close to point-blank
+ * and only the long shot keeps the wide disk.
+ */
 export function rocketScatterRadius(
   dist: number,
   maxRange: number,
@@ -130,18 +137,26 @@ export function rocketScatterRadius(
   const near = rack.scatterNearTiles * TILE_SIZE;
   const far = rack.scatterFarTiles * TILE_SIZE;
   const u = clamp01(dist / Math.max(1, maxRange));
-  return (near + (far - near) * u) * Math.max(0.2, mul);
+  return (near + (far - near) * u * u) * Math.max(0.2, mul);
 }
 
 /**
  * A rocket against an armored hull. A flat dent, not a share of max HP, so it
- * hurts a light hull more than a heavy one. It never throws a track.
+ * hurts a light hull more than a heavy one. One that lands on a tracked hull
+ * from the side or the rear (`onHull`) has a high chance to throw a track.
+ * A splash that only reaches the hull, or a hit on the front, does not.
  */
 export function rocketArmorDamage(
   center: number,
   falloff: number,
+  tracked: boolean,
+  face: ArmorFace | "none",
+  onHull: boolean,
   rand: () => number,
 ): { damage: number; throwTrack: boolean } {
   const span = 0.8 + rand() * 0.4;
-  return { damage: Math.max(1, Math.round(center * Math.max(0, falloff) * span)), throwTrack: false };
+  const damage = Math.max(1, Math.round(center * Math.max(0, falloff) * span));
+  const flank = face === "side" || face === "rear";
+  const throwTrack = tracked && onHull && flank && rand() < ROCKET_TRACK_CHANCE;
+  return { damage, throwTrack };
 }

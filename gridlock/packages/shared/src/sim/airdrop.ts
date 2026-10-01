@@ -29,6 +29,7 @@ import {
   hasTracks,
   isAircraftType,
   isArmoredType,
+  isDroneType,
   isInfantryType,
   isTransportType,
   type AirDrop,
@@ -70,7 +71,7 @@ export function payloadOf(e: Entity): AirDrop | undefined {
   return e.air.payload ?? "mines";
 }
 
-/** Riflemen aboard, in the order they climbed in. */
+/** Units aboard, in the order they climbed in. */
 export function planeRiders(state: MatchState, plane: Entity): Entity[] {
   if (!isTransportType(plane.type)) return [];
   return livingGarrison(state, plane);
@@ -94,9 +95,17 @@ function homeField(state: MatchState, plane: Entity): Entity | undefined {
   return f && f.hp > 0 && f.type === "airfield" ? f : undefined;
 }
 
-/** Why this soldier cannot board this transport, or null. */
+/** Ground units jump. A plane and a drone do not climb into the bay. */
+function canParadrop(unit: Entity): boolean {
+  return unit.kind === "unit" && !isAircraftType(unit.type) && !isDroneType(unit.type);
+}
+
+/** Why this unit cannot board this transport, or null. */
 export function canBoardPlane(state: MatchState, unit: Entity, plane: Entity): string | null {
-  if (unit.type !== "rifleman" || unit.kind !== "unit" || unit.hp <= 0) return "Only riflemen jump.";
+  if (unit.kind !== "unit" || unit.hp <= 0 || unit.wreck) return "Only units jump.";
+  if (!canParadrop(unit)) return "That cannot board.";
+  if (unit.braced || unit.state === "deploy" || unit.state === "undeploy") return "Pack up to move.";
+  if (airAlt(unit) > 0.5) return "Land first.";
   if (!isTransportType(plane.type) || plane.hp <= 0) return "Cannot board that.";
   if (unit.garrisonedIn === plane.id) return "Already aboard.";
   if (unit.garrisonedIn != null) return "Already inside.";
@@ -108,10 +117,10 @@ export function canBoardPlane(state: MatchState, unit: Entity, plane: Entity): s
   return null;
 }
 
-/** Riflemen walk to the parked transport and climb in. */
+/** Units walk to the parked transport and climb in. */
 export function orderBoardPlane(state: MatchState, playerId: string, units: Entity[], plane: Entity): string | null {
-  const feet = units.filter((e) => e.ownerId === playerId && isInfantryType(e.type));
-  if (feet.length === 0) return "Select riflemen.";
+  const feet = units.filter((e) => e.ownerId === playerId && canParadrop(e));
+  if (feet.length === 0) return "Select units.";
   let room = BV222_TROOPS - planeRiders(state, plane).length;
   let why = "Cannot board.";
   let n = 0;
@@ -122,6 +131,8 @@ export function orderBoardPlane(state: MatchState, playerId: string, units: Enti
       continue;
     }
     clearOrder(e);
+    e.harvestTile = null;
+    if (e.type === "hauler") e.autoHarvest = false;
     e.order = { kind: "board", targetId: plane.id };
     e.state = "move";
     walkToPlane(state, e, plane);
@@ -160,7 +171,7 @@ function enterPlane(unit: Entity, plane: Entity): void {
   unit.state = "garrison";
 }
 
-/** Riflemen on a board order to a transport walk over and climb in. */
+/** Units on a board order to a transport walk over and climb in. */
 export function tickPlaneBoarding(state: MatchState): void {
   for (const e of state.entities.values()) {
     if (e.kind !== "unit" || e.hp <= 0 || e.garrisonedIn != null || e.order?.kind !== "board") continue;

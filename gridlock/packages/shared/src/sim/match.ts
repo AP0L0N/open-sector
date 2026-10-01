@@ -3,6 +3,7 @@ import {
   clampGameSpeed,
   GAME_SPEED_DEFAULT,
   garrisonDiesWithHostOf,
+  isAircraftType,
   isInfantryType,
   leavesWreck,
   NEUTRAL_OWNER,
@@ -14,7 +15,7 @@ import { commanders } from "../lobby.js";
 import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
 import type { ImpactView, RoomState } from "../protocol.js";
 import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter } from "./geo.js";
-import { aircraftDown, tickAir } from "./air.js";
+import { aircraftDown, beginAircraftCrash, isAirborne, tickAir } from "./air.js";
 import { loseRiders, syncPlaneRiders, tickChutes, tickCrates, tickMines, tickPlaneBoarding } from "./airdrop.js";
 import { tickDrones } from "./drone.js";
 import { tickJets } from "./jet.js";
@@ -183,6 +184,14 @@ function reapDead(state: MatchState): void {
   let madeWreck = false;
   for (const e of state.entities.values()) {
     if (e.hp > 0) continue;
+    if (e.air?.phase === "crash") {
+      e.hp = 1;
+      continue;
+    }
+    if (!e.wreck && e.air && isAircraftType(e.type) && !e.drone && isAirborne(e)) {
+      beginAircraftCrash(e);
+      continue;
+    }
     if (!e.wreck && e.garrison.length && garrisonDiesWithHostOf(e.type)) {
       for (const u of killGarrison(state, e)) dead.push(u.id);
     }

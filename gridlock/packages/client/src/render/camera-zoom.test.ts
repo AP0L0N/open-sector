@@ -18,7 +18,7 @@ describe("clampMapZoom", () => {
     assert.equal(clampMapZoom(MAP_ZOOM_MIN), MAP_ZOOM_MIN);
     assert.equal(clampMapZoom(MAP_ZOOM_MAX), MAP_ZOOM_MAX);
     assert.equal(clampMapZoom(0.1), MAP_ZOOM_MIN);
-    assert.equal(clampMapZoom(8), MAP_ZOOM_MAX);
+    assert.equal(clampMapZoom(MAP_ZOOM_MAX + 2), MAP_ZOOM_MAX);
     assert.equal(clampMapZoom(Number.NaN), 1);
   });
 });

@@ -18,7 +18,7 @@ import {
 import { isAirborne } from "./air.js";
 import { payloadOf, planeRiders, scatterMines } from "./airdrop.js";
 import { applyCommand } from "./commands.js";
-import { makeEntity, tileCenter } from "./geo.js";
+import { makeEntity, tileCenter, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { supplyRiderFights } from "./supply.js";
@@ -266,25 +266,57 @@ describe("BV 222", () => {
     assert.equal(state.crates[0]?.supply, CRATE_SUPPLY);
   });
 
-  it("boards up to ten riflemen on the pad and only riflemen", () => {
+  it("boards up to ten ground units, including a gunner and a tank", () => {
     const state = twoPlayerMatch();
     const { plane, field } = trainedTransport(state);
     assert.equal(applyCommand(state, "A", { type: "cmd.payload", ids: [plane.id], payload: "troops" }).ok, true);
     const ts = state.tileSize;
     const below = (field.tileY + field.tileH + 1) * ts;
     const men: Entity[] = [];
-    for (let i = 0; i < BV222_TROOPS + 2; i++) men.push(riflemanAt(state, "A", plane.x + (i - 6) * 6, below));
-    const gunner = makeEntity(state, "gunner", "A", plane.x, below + ts);
-    const r = applyCommand(state, "A", { type: "cmd.board", ids: [...men, gunner].map((e) => e.id), truckId: plane.id });
+    for (let i = 0; i < BV222_TROOPS; i++) men.push(riflemanAt(state, "A", plane.x + (i - 6) * 6, below));
+    const gunner = makeEntity(state, "gunner", "A", plane.x - 8, below);
+    const tank = makeEntity(state, "warden", "A", plane.x + 8, below);
+    const stuka = makeEntity(state, "stuka", "A", plane.x, below + ts);
+    const braced = makeEntity(state, "titan", "A", plane.x + ts, below);
+    braced.braced = true;
+    const r = applyCommand(state, "A", {
+      type: "cmd.board",
+      ids: [gunner.id, tank.id, ...men.map((e) => e.id), stuka.id, braced.id],
+      truckId: plane.id,
+    });
     assert.equal(r.ok, true, !r.ok ? r.message : "");
-    assert.ok(until(state, 1200, () => planeRiders(state, plane).length >= BV222_TROOPS) >= 0, "they climb in");
+    assert.notEqual(stuka.order?.kind, "board", "a plane does not climb in");
+    assert.notEqual(braced.order?.kind, "board", "a braced Titan packs up before it can board");
+    state.entities.delete(stuka.id);
+    state.entities.delete(braced.id);
+    assert.ok(until(state, 1600, () => planeRiders(state, plane).length >= BV222_TROOPS) >= 0, "they climb in");
     ticks(state, 20);
     assert.equal(planeRiders(state, plane).length, BV222_TROOPS);
-    assert.equal(gunner.garrisonedIn, null, "a gunner does not jump");
-    for (const r of planeRiders(state, plane)) assert.equal(supplyRiderFights(state, r), false, "no fire from the bay");
+    assert.equal(gunner.garrisonedIn, plane.id);
+    assert.equal(tank.garrisonedIn, plane.id);
+    for (const rider of planeRiders(state, plane)) assert.equal(supplyRiderFights(state, rider), false, "no fire from the bay");
+    const hurt = planeRiders(state, plane)[0]!;
+    hurt.hp = Math.max(1, Math.floor(hurt.hpMax / 2));
+    const yours = snapshotFor(state, "A").entities.find((e) => e.id === plane.id);
+    assert.equal(yours?.garrison?.count, BV222_TROOPS);
+    assert.equal(yours?.garrison?.cap, BV222_TROOPS);
+    assert.equal(yours?.garrison?.bars?.length, BV222_TROOPS);
+    assert.ok(yours?.garrison?.bars?.some((b) => b.hp === hurt.hp && b.hpMax === hurt.hpMax));
+    // The Airfield blocks sight across its pad. Out in the open, the other side sees the bars.
+    plane.x = 90 * ts;
+    plane.y = 90 * ts;
+    for (const rider of planeRiders(state, plane)) {
+      rider.x = plane.x;
+      rider.y = plane.y;
+    }
+    riflemanAt(state, "B", plane.x + ts, plane.y);
+    const seen = snapshotFor(state, "B").entities.find((e) => e.id === plane.id);
+    assert.equal(seen?.garrison?.bars?.length, BV222_TROOPS, "an enemy who can see the plane sees who is aboard");
+    assert.equal(snapshotFor(state, "B").entities.some((e) => e.garrisonedIn === plane.id), false);
     const unload = applyCommand(state, "A", { type: "cmd.unboard", truckId: plane.id });
     assert.equal(unload.ok, true);
     assert.equal(planeRiders(state, plane).length, 0);
+    assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === plane.id)?.garrison, undefined);
   });
 
   it("drops a stick of paratroopers who drift down under canopies and then fight", () => {
@@ -324,6 +356,72 @@ describe("BV 222", () => {
     assert.equal(ok.ok, true, "on the ground he takes orders");
   });
 
+  it("drops a tank under a canopy and puts it on the ground", () => {
+    const state = twoPlayerMatch();
+    seedCore(state);
+    seedAirfield(state);
+    const ts = state.tileSize;
+    const plane = transportOver(state, "A", 20 * ts, 120 * ts);
+    plane.air!.payload = "troops";
+    plane.air!.bombs = 0;
+    const tank = makeEntity(state, "warden", "A", plane.x, plane.y);
+    tank.garrisonedIn = plane.id;
+    plane.garrison.push(tank.id);
+    tank.state = "garrison";
+    const tx = 100 * ts;
+    const ty = 120 * ts;
+    applyCommand(state, "A", { type: "cmd.forceattack", ids: [plane.id], x: tx, y: ty });
+    assert.ok(until(state, 2000, () => !!tank.chute) >= 0, "the tank jumps");
+    assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === tank.id)?.chute != null, true);
+    const cmd = applyCommand(state, "A", { type: "cmd.move", ids: [tank.id], x: 0, y: 0 });
+    assert.equal(cmd.ok, false, "no orders in the air");
+    assert.ok(until(state, 600, () => !tank.chute) >= 0, "and on the ground");
+    assert.ok(tank.hp > 0);
+    assert.equal(tank.garrisonedIn, null);
+    assert.ok(Math.hypot(tank.x - tx, tank.y - ty) < t(6) * ts, "near the drop point");
+  });
+
+  it("does not let a Titan fire its rockets from the bay", () => {
+    const state = twoPlayerMatch();
+    seedCore(state);
+    seedAirfield(state);
+    const ts = state.tileSize;
+    const plane = transportOver(state, "A", 40 * ts, 40 * ts);
+    plane.air!.payload = "troops";
+    const titan = makeEntity(state, "titan", "A", plane.x, plane.y);
+    titan.garrisonedIn = plane.id;
+    plane.garrison.push(titan.id);
+    titan.state = "garrison";
+    const rockets = titan.rockets;
+    riflemanAt(state, "B", plane.x + ts * 3, plane.y);
+    const free = makeEntity(state, "titan", "A", plane.x + ts * 6, plane.y);
+    const freeRockets = free.rockets ?? 0;
+    ticks(state, 40);
+    assert.ok((free.rockets ?? 0) < freeRockets, "a Titan on the ground fires in this setup");
+    assert.equal(titan.rockets, rockets);
+    assert.equal(state.projectiles.some((p) => p.fromId === titan.id), false);
+    assert.ok(titan.hp > 0);
+  });
+
+  it("does not harvest scrap while a Mauler is in the bay", () => {
+    const state = twoPlayerMatch();
+    const { plane } = trainedTransport(state);
+    plane.air!.payload = "troops";
+    const hauler = makeEntity(state, "hauler", "A", plane.x, plane.y);
+    hauler.garrisonedIn = plane.id;
+    plane.garrison.push(hauler.id);
+    hauler.state = "garrison";
+    hauler.autoHarvest = true;
+    const tx = worldToTile(plane.x, state.tileSize);
+    const ty = worldToTile(plane.y, state.tileSize);
+    hauler.harvestTile = { x: tx, y: ty };
+    const idx = ty * state.width + tx;
+    state.scrapYield[idx] = 100;
+    ticks(state, 50);
+    assert.equal(hauler.cargo, 0);
+    assert.equal(state.scrapYield[idx], 100);
+  });
+
   it("takes the stick with it when shot down", () => {
     const state = twoPlayerMatch();
     const ts = state.tileSize;
@@ -333,7 +431,8 @@ describe("BV 222", () => {
     m.garrisonedIn = plane.id;
     plane.garrison.push(m.id);
     plane.hp = 0;
-    ticks(state, 3);
+    const down = until(state, 400, () => plane.wreck);
+    assert.ok(down >= 0, "the transport should crash");
     assert.equal(state.entities.has(m.id), false, "the rider dies in the crash");
   });
 });

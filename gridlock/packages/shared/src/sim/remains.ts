@@ -43,12 +43,23 @@ function bloodAround(id: number, x: number, y: number): BloodStainView[] {
   return stains;
 }
 
+/**
+ * Which charred collapse to play. Stable for a corpse id, so every client
+ * shows the same one of the three, and a death does not move the match RNG.
+ */
+export function burnVariant(id: number): 0 | 1 | 2 {
+  let s = (id >>> 0) || 1;
+  s = Math.imul(s ^ 0x9e3779b1, 0x85ebca6b) >>> 0;
+  return (s % 3) as 0 | 1 | 2;
+}
+
 /** Fallen soldier. Skips troops who died inside a building. Does not touch match RNG. */
 export function leaveCorpse(state: MatchState, e: Entity): void {
   if (!isInfantryType(e.type) || e.garrisonedIn != null) return;
   const tx = worldToTile(e.x, state.tileSize);
   const ty = worldToTile(e.y, state.tileSize);
   const id = state.nextId++;
+  const burned = e.fireDeath === true;
   state.bodies.push({
     id,
     type: e.type,
@@ -57,7 +68,8 @@ export function leaveCorpse(state: MatchState, e: Entity): void {
     y: e.y,
     facing: e.facing,
     bornTick: state.tick,
-    blood: isWater(state, tx, ty) ? [] : bloodAround(id, e.x, e.y),
+    blood: burned || isWater(state, tx, ty) ? [] : bloodAround(id, e.x, e.y),
+    ...(burned ? { burned: true as const } : {}),
   });
 }
 

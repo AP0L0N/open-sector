@@ -8,7 +8,7 @@ import { enterGarrison, spillGarrison } from "./garrison.js";
 import { makeEntity, occupant, tileCenter, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { tickCollision } from "./collision.js";
-import { MAX_SHELL_HOLES, shellHoleRadius } from "./remains.js";
+import { MAX_SHELL_HOLES, burnVariant, shellHoleRadius } from "./remains.js";
 import { snapshotFor } from "./snapshot.js";
 import { canSeeEntity } from "./vision.js";
 import type { MatchState, Projectile } from "./types.js";
@@ -111,6 +111,7 @@ describe("infantry bodies", () => {
     assert.equal(body.y, spot.y);
     assert.equal(body.facing, 1.2);
     assert.ok(body.blood.length >= 4 && body.blood.length <= 7);
+    assert.equal(body.burned, undefined);
     assert.equal(occupant(state, tile.x, tile.y), 0);
     assert.equal(walkable(state, tile.x, tile.y, "rifleman"), true);
     const walker = makeEntity(state, "rifleman", a, spot.x, spot.y);
@@ -201,6 +202,19 @@ describe("infantry bodies", () => {
     const id = state.bodies[0]!.id;
     assert.equal(snapshotFor(state, b).bodies.some((body) => body.id === id), true);
     assert.equal(snapshotFor(state, a).bodies.some((body) => body.id === id), false);
+  });
+});
+
+describe("burned corpses", () => {
+  it("picks each of the three collapses from the corpse id", () => {
+    const seen = new Set<number>();
+    for (let id = 1; id <= 48; id++) {
+      const v = burnVariant(id);
+      assert.ok(v === 0 || v === 1 || v === 2);
+      assert.equal(burnVariant(id), v);
+      seen.add(v);
+    }
+    assert.equal(seen.size, 3);
   });
 });
 

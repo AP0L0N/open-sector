@@ -195,8 +195,10 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
       sel.append(rnd);
       for (let i = 1; i <= 8; i++) {
         const taken = takenSpawns.has(i) && slot.spawnId !== i;
+        const suggested = map?.spawns.find((s) => s.id === i)?.suggestedTeam;
+        const teamBit = map?.applySuggestedTeams && suggested ? ` (team ${suggested})` : "";
         const o = el("option", {
-          text: taken ? `${i} (taken)` : String(i),
+          text: taken ? `${i}${teamBit} (taken)` : `${i}${teamBit}`,
           attrs: { value: String(i) },
         });
         if (taken) o.disabled = true;
@@ -207,10 +209,15 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
       sel.disabled = !canEdit;
       sel.addEventListener("change", () => {
         const spawnId = Number(sel.value);
+        const patch: { spawnId: number; team?: number } = { spawnId };
+        if (slot.team === 0 && spawnId > 0 && map?.applySuggestedTeams) {
+          const suggested = map.spawns.find((s) => s.id === spawnId)?.suggestedTeam;
+          if (suggested) patch.team = suggested;
+        }
         if (slot.status === "ai") {
-          ctx.net.send({ type: "slot.host", slotIndex: slot.index, spawnId });
+          ctx.net.send({ type: "slot.host", slotIndex: slot.index, ...patch });
         } else {
-          ctx.net.send({ type: "slot.update", spawnId });
+          ctx.net.send({ type: "slot.update", ...patch });
         }
       });
       spawnTd.append(sel);

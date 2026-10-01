@@ -76,6 +76,9 @@ MAT = {
     "rust": (hex_rgb("#8b3a2a"), 0.05, 1.0),
     "sock": (hex_rgb("#c45a12"), 0.0, 1.0),
     "white": (hex_rgb("#d8d4c4"), 0.0, 1.0),
+    # Wade pool. Close to the map's water tile, with a pale lip of foam.
+    "water": (hex_rgb("#1e5564"), 0.04, 1.0),
+    "foam": (hex_rgb("#d5e4e0"), 0.02, 1.0),
 }
 CAMO_B = hex_rgb("#35432c")
 
@@ -552,8 +555,13 @@ def rasterize(
     to_screen,
     size: tuple[int, int],
     model_normal_fn=None,
+    clip_z: float | None = None,
 ) -> Frame:
-    """to_screen(pts[N,3] world) -> (sx, sy, depth) arrays; bigger depth is closer."""
+    """to_screen(pts[N,3] world) -> (sx, sy, depth) arrays; bigger depth is closer.
+
+    `clip_z` drops every surface pixel whose model height is below that plane
+    (a waterline). Yaw is about Z, so model Z is the height.
+    """
     w, h = size
     verts = np.array(mesh.verts)
     sx, sy, dep = to_screen(verts)
@@ -565,10 +573,10 @@ def rasterize(
         if MAT[mat][2] < 1:
             translucent.append(ti)
             continue
-        _draw_tri(mesh, verts, sx, sy, dep, a, b, c, mat, zbuf, col, alpha, model_normal_fn, blend=False)
+        _draw_tri(mesh, verts, sx, sy, dep, a, b, c, mat, zbuf, col, alpha, model_normal_fn, blend=False, clip_z=clip_z)
     for ti in translucent:
         a, b, c, mat = mesh.tris[ti]
-        _draw_tri(mesh, verts, sx, sy, dep, a, b, c, mat, zbuf, col, alpha, model_normal_fn, blend=True)
+        _draw_tri(mesh, verts, sx, sy, dep, a, b, c, mat, zbuf, col, alpha, model_normal_fn, blend=True, clip_z=clip_z)
     return Frame(col, alpha)
 
 
@@ -583,7 +591,7 @@ def _shade(mat: str, n_world: np.ndarray, base: np.ndarray) -> np.ndarray:
     return np.clip(base * (0.42 + 0.72 * lam) + s + rim, 0, 1)
 
 
-def _draw_tri(mesh, verts, sx, sy, dep, a, b, c, mat, zbuf, col, alpha, model_normal_fn, blend):
+def _draw_tri(mesh, verts, sx, sy, dep, a, b, c, mat, zbuf, col, alpha, model_normal_fn, blend, clip_z=None):
     h, w = zbuf.shape
     x0, y0, x1, y1, x2, y2 = sx[a], sy[a], sx[b], sy[b], sx[c], sy[c]
     area = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0)
@@ -600,6 +608,9 @@ def _draw_tri(mesh, verts, sx, sy, dep, a, b, c, mat, zbuf, col, alpha, model_no
     w1 = ((x2 - xs) * (y0 - ys) - (x0 - xs) * (y2 - ys)) / area
     w2 = 1 - w0 - w1
     inside = (w0 >= 0) & (w1 >= 0) & (w2 >= 0)
+    if clip_z is not None:
+        mz = w0 * float(verts[a, 2]) + w1 * float(verts[b, 2]) + w2 * float(verts[c, 2])
+        inside = inside & (mz >= clip_z)
     if not inside.any():
         return
     d = w0 * dep[a] + w1 * dep[b] + w2 * dep[c]
@@ -693,6 +704,14 @@ def render_drone(out: Path, cell: int = 256, ss: int = 4) -> None:
     print("wrote", out.parent.parent / "drone-cameo.png")
 
 
+def paint_over(base: Frame, top: Frame) -> Frame:
+    """`top` covers `base`. A clipped hull painted over a pool keeps the pool in the hole."""
+    a = top.alpha[..., None]
+    color = base.color * (1.0 - a) + top.color * a
+    alpha = np.maximum(base.alpha, top.alpha)
+    return Frame(np.clip(color, 0, 1), alpha)
+
+
 def render_turntable(
     mesh: Mesh,
     out: Path,
@@ -704,8 +723,14 @@ def render_turntable(
     cell: int = 256,
     ss: int = 4,
     outline_px: int = 1,
+    clip_z: float | None = None,
+    underlay: Mesh | None = None,
 ) -> None:
-    """16 unique faces of one mesh, 0001 = nose screen-south, clockwise. `scale_frac` is px per model unit / cell px."""
+    """16 unique faces of one mesh, 0001 = nose screen-south, clockwise. `scale_frac` is px per model unit / cell px.
+
+    `clip_z` cuts the mesh on a model-height plane. `underlay` (a pool) is drawn
+    first, without an outline, and the outlined mesh is painted over it.
+    """
     out.mkdir(parents=True, exist_ok=True)
     size = cell * ss
     scale = size * scale_frac
@@ -735,8 +760,11 @@ def render_turntable(
         def normal_fn(a, b, c):
             return to_world(a), to_world(b), to_world(c)
 
-        fr = rasterize(mesh, to_screen, (size, size), normal_fn)
+        fr = rasterize(mesh, to_screen, (size, size), normal_fn, clip_z=clip_z)
         fr = add_outline(fr, max(1, ss * outline_px))
+        if underlay is not None:
+            pool = rasterize(underlay, to_screen, (size, size), normal_fn)
+            fr = paint_over(pool, fr)
         img = downsample(fr, ss)
         name = f"{k + 1:04d}.png"
         img.save(out / name)

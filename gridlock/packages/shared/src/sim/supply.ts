@@ -70,12 +70,26 @@ export function supplyShooter(state: MatchState, truck: Entity): Entity | null {
   return riders.length >= 2 ? (riders[1] ?? null) : null;
 }
 
-/** False only for a truck rider who must keep their weapon slung. */
+/** True when this unit, or the hull it is inside, is sitting in a transport's bay. */
+export function stowedInTransport(state: MatchState, e: Entity): boolean {
+  let id = e.garrisonedIn;
+  const seen = new Set<number>();
+  while (id != null && !seen.has(id)) {
+    seen.add(id);
+    const host = state.entities.get(id);
+    if (!host) return false;
+    if (isTransportType(host.type)) return true;
+    id = host.garrisonedIn;
+  }
+  return false;
+}
+
+/** False only for a truck rider who must keep their weapon slung, or anyone in a transport bay. */
 export function supplyRiderFights(state: MatchState, e: Entity): boolean {
   if (e.garrisonedIn == null) return true;
+  // Jumpers in a transport's bay keep their weapons slung until they are out of the door.
+  if (stowedInTransport(state, e)) return false;
   const host = state.entities.get(e.garrisonedIn);
-  // Jumpers in a transport's bay sit on their rifles until they are out of the door.
-  if (host && isTransportType(host.type)) return false;
   if (!host || host.type !== "supply") return true;
   const shooter = supplyShooter(state, host);
   if (!shooter || shooter.id !== e.id) return false;

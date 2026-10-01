@@ -31,6 +31,7 @@ import {
 import type { ClientMessage, ErrorCode } from "../protocol.js";
 import { pathToCapture, wantsCapture } from "./capture.js";
 import { allies, clearOrder, hqOf, worldToTile } from "./geo.js";
+import { garrisonCanShoot, garrisonShotReaches, relayGarrisonForce } from "./combat.js";
 import { approachTile, canGarrison, exitGarrison, garrisonOwner, livingGarrison, setGarrisonHide } from "./garrison.js";
 import { setScoutOut } from "./scout.js";
 import { cancelStructure, pauseStructure, placeBuilding, sellBuilding, startBuild } from "./build.js";
@@ -72,7 +73,7 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
 
   switch (msg.type) {
     case "cmd.move":
-      return cmdMove(state, playerId, msg.ids, msg.x, msg.y);
+      return cmdMove(state, playerId, msg.ids, msg.x, msg.y, msg.facing);
     case "cmd.attack":
       return cmdAttack(state, playerId, msg.ids, msg.targetId);
     case "cmd.attackmove":
@@ -480,8 +481,17 @@ function routeAircraft(state: MatchState, playerId: string, msg: ClientMessage):
       case "cmd.land":
         orderAircraft(state, e, { kind: "land" });
         break;
+      case "cmd.guard": {
+        const t = msg.targetId != null ? state.entities.get(msg.targetId) : undefined;
+        const baseX = t && t.hp > 0 ? t.x : msg.x;
+        const baseY = t && t.hp > 0 ? t.y : msg.y;
+        if (baseX == null || baseY == null || !Number.isFinite(baseX) || !Number.isFinite(baseY)) break;
+        const face = Number.isFinite(msg.facing) ? msg.facing : e.facing;
+        orderAircraft(state, e, { kind: "guard", x: baseX + ox, y: baseY + oy, facing: face });
+        break;
+      }
       default:
-        // Hold, guard, and rotate mean nothing to a plane.
+        // Hold and rotate mean nothing to a plane.
         break;
     }
   });
@@ -530,9 +540,17 @@ function ownedMounts(state: MatchState, playerId: string, ids: number[]) {
   return out;
 }
 
-function cmdMove(state: MatchState, playerId: string, ids: number[], x: number, y: number): CmdResult {
+function cmdMove(
+  state: MatchState,
+  playerId: string,
+  ids: number[],
+  x: number,
+  y: number,
+  facing?: number,
+): CmdResult {
   const units = owned(state, playerId, ids);
   if (units.length === 0) return fail("not_yours", "No owned units.");
+  const arrive = Number.isFinite(facing) ? facing : undefined;
   const movers = units.filter(
     (e) => e.state !== "deploy" && e.state !== "undeploy" && !e.braced && supplyCanDrive(state, e),
   );
@@ -546,7 +564,10 @@ function cmdMove(state: MatchState, playerId: string, ids: number[], x: number, 
     if (e.garrisonedIn) {
       e.guardFacing = null;
       exitGarrison(state, e, d);
-      if (pace != null && e.order) e.order.pace = pace;
+      if (e.order?.kind === "move") {
+        if (pace != null) e.order.pace = pace;
+        if (arrive != null) e.order.arrive = arrive;
+      }
       continue;
     }
     e.returnToBase = false;
@@ -562,6 +583,7 @@ function cmdMove(state: MatchState, playerId: string, ids: number[], x: number, 
       continue;
     }
     e.order = { kind: "move", x: d.x, y: d.y };
+    if (arrive != null) e.order.arrive = arrive;
     if (pace != null) e.order.pace = pace;
     e.state = "move";
     setPath(state, e, d.x, d.y);
@@ -621,8 +643,10 @@ function cmdForceAttack(
   }
   const units = owned(state, playerId, ids);
   const mounts = ownedMounts(state, playerId, ids);
-  if (units.length === 0 && mounts.length === 0) return fail("not_yours", "No owned units.");
+  const hosts = forceHosts(state, playerId, ids);
+  if (units.length === 0 && mounts.length === 0 && hosts.length === 0) return fail("not_yours", "No owned units.");
   let n = 0;
+  let outOfRange = false;
   // A CIWS holds the forced aim until Stop, a new order, or the target is gone. Rockets still cut in.
   for (const e of mounts) {
     if (t && e.id === t.id) continue;
@@ -665,8 +689,48 @@ function cmdForceAttack(
     }
     n++;
   }
-  if (n === 0) return fail("busy", "No guns in that selection.");
+  const aim = t ? { x: t.x, y: t.y } : { x, y };
+  for (const host of hosts) {
+    if (t && host.id === t.id) continue;
+    const shooters = livingGarrison(state, host).filter(
+      (u) => u.ownerId === playerId && garrisonCanShoot(state, u, host),
+    );
+    if (shooters.length === 0) continue;
+    const reached = shooters.some((u) => garrisonShotReaches(state, u, aim.x, aim.y, t));
+    const hostAims = fires(host.type) || radarLaidOf(host.type);
+    // A gun on the host closes the range itself. A building only keeps an aim someone can already reach.
+    if (!reached && !hostAims) {
+      outOfRange = true;
+      continue;
+    }
+    if (host.order?.kind !== "forceattack") {
+      host.order = t
+        ? { kind: "forceattack", targetId: t.id, x: t.x, y: t.y }
+        : { kind: "forceattack", x, y };
+      host.attackTarget = t ? t.id : null;
+      host.waypoints = [];
+    }
+    n++;
+  }
+  if (n > 0) relayGarrisonForce(state);
+  if (n === 0) return fail("busy", outOfRange ? "Out of range." : "No guns in that selection.");
   return ok();
+}
+
+/** Selected garrison hosts this player holds. A transport's bay is a drop, not a firing slit. */
+function forceHosts(state: MatchState, playerId: string, ids: number[]): Entity[] {
+  const out: Entity[] = [];
+  const seen = new Set<number>();
+  for (const id of ids) {
+    const e = state.entities.get(id);
+    if (!e || e.hp <= 0 || e.wreck || e.garrison.length === 0 || seen.has(e.id)) continue;
+    if (isTransportType(e.type)) continue;
+    if (e.kind !== "unit" && e.kind !== "building") continue;
+    if (garrisonOwner(state, e) !== playerId) continue;
+    seen.add(e.id);
+    out.push(e);
+  }
+  return out;
 }
 
 function cmdAttack(state: MatchState, playerId: string, ids: number[], targetId: number): CmdResult {
@@ -976,10 +1040,15 @@ function cmdStop(state: MatchState, playerId: string, ids: number[]): CmdResult 
   const hq = hqOf(state, playerId);
   for (const id of ids) {
     const e = state.entities.get(id);
-    if (!e || e.ownerId !== playerId) continue;
+    if (!e) continue;
+    const holdsGarrison = e.garrison.length > 0 && garrisonOwner(state, e) === playerId;
+    if (e.ownerId !== playerId && !holdsGarrison) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
     clearOrder(e);
     if (e.type === "hauler") e.autoHarvest = false;
+    for (const u of livingGarrison(state, e)) {
+      if (u.ownerId === playerId && u.order?.relay) clearOrder(u);
+    }
   }
   void hq;
   return ok();

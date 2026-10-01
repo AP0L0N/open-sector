@@ -30,6 +30,11 @@ export interface MapDef {
   maxHeight: number;
   /** Civilian houses. Tile origin is the fine-grid top-left. */
   features: MapFeature[];
+  /**
+   * When set, a commander still on team 0 takes the suggested team of the
+   * spawn the match actually gives them. An explicit team is left alone.
+   */
+  applySuggestedTeams?: boolean;
 }
 
 export interface MapFeature {
@@ -49,6 +54,11 @@ export const TILE_TREE = 4;
 export const TILE_ROAD = 5;
 /** Wooden fence. Blocks walking. A shot still passes over it. */
 export const TILE_FENCE = 6;
+/**
+ * Rocky slope. Blocks walking the same way a fence does, and does not stop
+ * sight or a shot, so a hilltop still looks down across it.
+ */
+export const TILE_ROCK = 7;
 
 function idx(width: number, x: number, y: number): number {
   return y * width + x;
@@ -96,19 +106,24 @@ function paintScrapBlob(tiles: number[], width: number, height: number, cx: numb
   }
 }
 
-/** Scattered scrap fields. The seed keeps every client on the same yard. */
+/**
+ * Scattered scrap fields. The seed keeps every client on the same yard.
+ * Opening maps do not call this. A tile of the pile sprite in a row does not read.
+ */
 function paintYardScrap(
   tiles: number[],
   width: number,
   height: number,
   seed: string,
   spawns: readonly { x: number; y: number }[],
+  blobs = 14,
 ): void {
   const rng = { n: hash32(seed) };
   const pads = spawns.map((s) => ({ x: s.x, y: s.y, r: 7 }));
   const centers: { x: number; y: number }[] = [];
   let guard = 0;
-  while (centers.length < 14 && guard < 600) {
+  const guardMax = blobs === 14 ? 600 : blobs * 40;
+  while (centers.length < blobs && guard < guardMax) {
     guard += 1;
     const cx = 4 + Math.floor(nextRand(rng) * (width - 8));
     const cy = 4 + Math.floor(nextRand(rng) * (height - 8));
@@ -617,6 +632,76 @@ function paintYardPonds(
   pruneWaterSpecks(tiles, width, height);
 }
 
+function distPointSeg(px: number, py: number, x0: number, y0: number, x1: number, y1: number): number {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const len2 = dx * dx + dy * dy;
+  if (len2 <= 0) return Math.hypot(px - x0, py - y0);
+  const t = Math.max(0, Math.min(1, ((px - x0) * dx + (py - y0) * dy) / len2));
+  return Math.hypot(px - (x0 + t * dx), py - (y0 + t * dy));
+}
+
+/** Seeded ponds kept off the dirt lanes. Same shoreline pass as Scrap Yard. */
+function paintFieldPonds(
+  tiles: number[],
+  width: number,
+  height: number,
+  seed: string,
+  spawnPads: readonly { x: number; y: number; r: number }[],
+  features: readonly MapFeature[],
+  spawns: readonly { x: number; y: number }[],
+  count: number,
+): void {
+  const rng = { n: hash32(seed) };
+  const sub = TILE_SUBDIV;
+  const houses = houseBoxes(features, sub);
+  for (let i = 0; i < tiles.length; i++) {
+    if (tiles[i] === TILE_WATER) tiles[i] = TILE_EMPTY;
+  }
+  const midX = Math.floor(width / 2);
+  const midY = Math.floor(height / 2);
+  const margin = 18;
+  const lanes: [number, number, number, number][] = [
+    [margin, midY, width - 1 - margin, midY],
+    [midX, margin, midX, height - 1 - margin],
+  ];
+  for (const s of spawns) lanes.push([s.x, s.y, midX, midY]);
+  const placed: { x: number; y: number }[] = [];
+  let guard = 0;
+  while (placed.length < count && guard < count * 80) {
+    guard += 1;
+    const cx = 28 + nextRand(rng) * (width - 56);
+    const cy = 28 + nextRand(rng) * (height - 56);
+    if (inPad(spawnPads, cx, cy)) continue;
+    const tx = Math.round(cx);
+    const ty = Math.round(cy);
+    if (tx < 1 || ty < 1 || tx >= width - 1 || ty >= height - 1) continue;
+    if ((tiles[idx(width, tx, ty)] ?? 1) !== TILE_EMPTY) continue;
+    let blocked = false;
+    for (const [x0, y0, x1, y1] of lanes) {
+      if (distPointSeg(cx, cy, x0, y0, x1, y1) < 48) {
+        blocked = true;
+        break;
+      }
+    }
+    if (blocked) continue;
+    for (const p of placed) {
+      if (Math.hypot(p.x - cx, p.y - cy) < 96) {
+        blocked = true;
+        break;
+      }
+    }
+    if (blocked) continue;
+    const radius = (2.55 + nextRand(rng) * 0.7) * sub;
+    const painted = paintOrganicPond(tiles, width, height, cx, cy, radius, rng, spawnPads, houses);
+    if (painted < 18) continue;
+    placed.push({ x: cx, y: cy });
+  }
+  nibbleWaterShore(tiles, width, height, rng, spawnPads, houses);
+  fillWaterPockets(tiles, width, height);
+  pruneWaterSpecks(tiles, width, height);
+}
+
 function rectFree(
   tiles: number[],
   width: number,
@@ -731,8 +816,9 @@ function scatterTrees(
   height: number,
   rng: { n: number },
   pads: readonly { x: number; y: number; r: number }[],
+  scale = 1,
 ): void {
-  const groves = 16 + Math.floor(nextRand(rng) * 8);
+  const groves = Math.round((16 + Math.floor(nextRand(rng) * 8)) * scale);
   for (let i = 0; i < groves; i++) {
     for (let attempt = 0; attempt < 28; attempt++) {
       const cx = 5 + nextRand(rng) * (width - 10);
@@ -742,7 +828,7 @@ function scatterTrees(
       if (paintGrove(tiles, width, height, cx, cy, cells, rng, pads) > 0) break;
     }
   }
-  const clumps = 18 + Math.floor(nextRand(rng) * 10);
+  const clumps = Math.round((18 + Math.floor(nextRand(rng) * 10)) * scale);
   for (let i = 0; i < clumps; i++) {
     for (let attempt = 0; attempt < 24; attempt++) {
       const x = 2 + Math.floor(nextRand(rng) * (width - 4));
@@ -751,7 +837,7 @@ function scatterTrees(
       if (paintClump(tiles, width, height, x, y, extra, rng, pads) >= 2) break;
     }
   }
-  const singles = 110 + Math.floor(nextRand(rng) * 50);
+  const singles = Math.round((110 + Math.floor(nextRand(rng) * 50)) * scale);
   for (let i = 0; i < singles; i++) {
     for (let attempt = 0; attempt < 40; attempt++) {
       const x = 2 + Math.floor(nextRand(rng) * (width - 4));
@@ -817,9 +903,10 @@ function scatterCover(
   height: number,
   seed: string,
   pads: readonly { x: number; y: number; r: number }[],
+  scale = 1,
 ): MapFeature[] {
   const rng = { n: hash32(seed) };
-  scatterTrees(tiles, width, height, rng, pads);
+  scatterTrees(tiles, width, height, rng, pads, scale);
   const kinds: CivilianType[] = [
     "shack",
     "shack",
@@ -839,11 +926,15 @@ function scatterCover(
     "chapel",
   ];
   const features: MapFeature[] = [];
-  for (const type of kinds) {
+  const passes = Math.max(1, Math.round(scale));
+  const attempts = scale === 1 ? 80 : 160;
+  const roster: CivilianType[] = [];
+  for (let pass = 0; pass < passes; pass++) roster.push(...kinds);
+  for (const type of roster) {
     const def = catalog(type);
     const tw = Math.round(def.tileW / TILE_SUBDIV);
     const th = Math.round(def.tileH / TILE_SUBDIV);
-    for (let attempt = 0; attempt < 80; attempt++) {
+    for (let attempt = 0; attempt < attempts; attempt++) {
       const x = 2 + Math.floor(nextRand(rng) * (width - tw - 4));
       const y = 2 + Math.floor(nextRand(rng) * (height - th - 4));
       if (inPad(pads, x + tw / 2, y + th / 2)) continue;
@@ -878,6 +969,7 @@ export function scatterHeights(
   seed: string,
   pads: readonly { x: number; y: number; r: number }[],
   locked?: Uint8Array,
+  relief = 1,
 ): number[] {
   const heights = new Array(width * height).fill(HEIGHT_BASE);
   const rng = { n: hash32(seed) };
@@ -913,7 +1005,7 @@ export function scatterHeights(
     const stretch = 0.7 + nextRand(rng) * 0.6;
     splatDelta(heights, width, height, cx, cy, rad * stretch, rad / stretch, -depth);
   }
-  const extra = 8 + Math.floor(nextRand(rng) * 6);
+  const extra = Math.round((8 + Math.floor(nextRand(rng) * 6)) * relief);
   for (let i = 0; i < extra; i++) {
     const cx = 6 * TILE_SUBDIV + nextRand(rng) * (width - 12 * TILE_SUBDIV);
     const cy = 6 * TILE_SUBDIV + nextRand(rng) * (height - 12 * TILE_SUBDIV);
@@ -959,7 +1051,7 @@ function paintLane(
         if (inHouseBox(houses, xx, yy)) continue;
         const k = idx(width, xx, yy);
         const t = tiles[k];
-        if (t === TILE_WATER || t === TILE_SCRAP || t === TILE_BLOCKED || t === TILE_FENCE) continue;
+        if (t === TILE_WATER || t === TILE_SCRAP || t === TILE_BLOCKED || t === TILE_FENCE || t === TILE_ROCK) continue;
         tiles[k] = TILE_ROAD;
       }
     }
@@ -1004,7 +1096,6 @@ export function makeYard64(): MapDef {
     { id: 7, x: 3, y: 31 },
     { id: 8, x: 60, y: 31 },
   ];
-  paintYardScrap(tiles, width, height, "yard-64-scrap", spawns);
   const pads = spawns.map((s) => ({ x: s.x, y: s.y, r: 4 }));
   const features = scatterCover(tiles, width, height, "yard-64-cover", pads);
   const sub = TILE_SUBDIV;
@@ -1034,8 +1125,283 @@ export function makeYard64(): MapDef {
   };
 }
 
+/** Flat top of a Broad Yard team hill, in fine tiles. */
+const BROAD_PLATEAU_R = 78;
+/** Outer edge of the rocky slope around that top. */
+const BROAD_ROCK_R = 96;
+/** Half-width of the one walkable gate. Full gap is 17 tiles, enough for a tank column. */
+const BROAD_GATE_HALF = 8;
+/** How far the gate road runs past the rock onto the yard. */
+const BROAD_GATE_OUT = 14;
+
+interface TeamHill {
+  team: number;
+  x: number;
+  y: number;
+  ux: number;
+  uy: number;
+  px: number;
+  py: number;
+}
+
+const BROAD_HILL_SPOTS: readonly { team: number; cx: number; cy: number }[] = [
+  { team: 1, cx: 32, cy: 32 },
+  { team: 2, cx: 110, cy: 32 },
+  { team: 3, cx: 32, cy: 110 },
+  { team: 4, cx: 110, cy: 110 },
+];
+
+function broadHills(fine: number): TeamHill[] {
+  const mid = fine / 2;
+  return BROAD_HILL_SPOTS.map((s) => {
+    const x = s.cx * TILE_SUBDIV + 2;
+    const y = s.cy * TILE_SUBDIV + 2;
+    const dx = mid - x;
+    const dy = mid - y;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+    return { team: s.team, x, y, ux, uy, px: -uy, py: ux };
+  });
+}
+
+function hillAxes(hill: TeamHill, x: number, y: number): { dist: number; along: number; side: number } {
+  const dx = x - hill.x;
+  const dy = y - hill.y;
+  return {
+    dist: Math.hypot(dx, dy),
+    along: dx * hill.ux + dy * hill.uy,
+    side: dx * hill.px + dy * hill.py,
+  };
+}
+
+/** Center-facing slot through the rock. The back of the ring stays shut. */
+function onBroadGate(hill: TeamHill, x: number, y: number): boolean {
+  const a = hillAxes(hill, x, y);
+  return Math.abs(a.side) <= BROAD_GATE_HALF && a.along > BROAD_PLATEAU_R - 16;
+}
+
+function broadSpawns(hills: readonly TeamHill[]): SpawnDef[] {
+  const out: SpawnDef[] = [];
+  let id = 1;
+  for (const h of hills) {
+    for (const sign of [1, -1]) {
+      out.push({
+        id,
+        x: Math.round(h.x - h.ux * 30 + h.px * sign * 22),
+        y: Math.round(h.y - h.uy * 30 + h.py * sign * 22),
+        suggestedTeam: h.team,
+      });
+      id += 1;
+    }
+  }
+  return out;
+}
+
+function clearDisk(
+  tiles: number[],
+  width: number,
+  height: number,
+  cx: number,
+  cy: number,
+  r: number,
+): void {
+  const r2 = r * r;
+  const x0 = Math.max(0, Math.floor(cx - r));
+  const x1 = Math.min(width - 1, Math.ceil(cx + r));
+  const y0 = Math.max(0, Math.floor(cy - r));
+  const y1 = Math.min(height - 1, Math.ceil(cy + r));
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      if (dx * dx + dy * dy > r2) continue;
+      tiles[idx(width, x, y)] = TILE_EMPTY;
+    }
+  }
+}
+
+/** Summit and a rock ring whose only walkable break faces the map center. */
+function stampTeamHill(
+  tiles: number[],
+  heights: number[],
+  locked: Uint8Array,
+  width: number,
+  height: number,
+  hill: TeamHill,
+): void {
+  const reach = BROAD_ROCK_R + BROAD_GATE_OUT + 2;
+  const x0 = Math.max(0, Math.floor(hill.x - reach));
+  const x1 = Math.min(width - 1, Math.ceil(hill.x + reach));
+  const y0 = Math.max(0, Math.floor(hill.y - reach));
+  const y1 = Math.min(height - 1, Math.ceil(hill.y + reach));
+  const gdist = new Int16Array(width * height);
+  gdist.fill(-1);
+  const q: number[] = [];
+  for (let y = y0; y <= y1; y++) {
+    for (let x = x0; x <= x1; x++) {
+      const a = hillAxes(hill, x, y);
+      const gate = onBroadGate(hill, x, y);
+      const i = idx(width, x, y);
+      if (a.dist <= BROAD_PLATEAU_R) {
+        tiles[i] = TILE_EMPTY;
+        heights[i] = HEIGHT_MAX;
+        locked[i] = 1;
+        gdist[i] = 0;
+        q.push(i);
+      } else if (a.dist <= BROAD_ROCK_R && !gate) {
+        tiles[i] = TILE_ROCK;
+      } else if (gate && a.along > 0 && a.dist <= BROAD_ROCK_R + BROAD_GATE_OUT) {
+        tiles[i] = TILE_ROAD;
+      }
+    }
+  }
+  const dirs: readonly [number, number][] = [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+    [1, 1],
+    [1, -1],
+    [-1, 1],
+    [-1, -1],
+  ];
+  for (let qi = 0; qi < q.length; qi++) {
+    const i = q[qi]!;
+    const x = i % width;
+    const y = (i / width) | 0;
+    const base = gdist[i] ?? 0;
+    for (const [dx, dy] of dirs) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+      const ni = idx(width, nx, ny);
+      if (gdist[ni] !== -1) continue;
+      const a = hillAxes(hill, nx, ny);
+      const gate = onBroadGate(hill, nx, ny);
+      const inSkirt = a.dist <= BROAD_ROCK_R || (gate && a.along > 0 && a.dist <= BROAD_ROCK_R + BROAD_GATE_OUT);
+      if (!inSkirt) continue;
+      const step = base + 1;
+      gdist[ni] = step;
+      const z = HEIGHT_MAX - step;
+      heights[ni] = z < HEIGHT_BASE ? HEIGHT_BASE : z;
+      locked[ni] = 1;
+      q.push(ni);
+    }
+  }
+}
+
+/** Summit scrap disk, back from the gate. Opening maps do not call this. */
+function paintHillScrap(tiles: number[], width: number, height: number, hill: TeamHill): void {
+  const cx = Math.round(hill.x - hill.ux * 52);
+  const cy = Math.round(hill.y - hill.uy * 52);
+  const r = 8;
+  const r2 = r * r;
+  for (let y = cy - r; y <= cy + r; y++) {
+    for (let x = cx - r; x <= cx + r; x++) {
+      if (x < 0 || y < 0 || x >= width || y >= height) continue;
+      const dx = x - cx;
+      const dy = y - cy;
+      if (dx * dx + dy * dy > r2) continue;
+      const i = idx(width, x, y);
+      if (tiles[i] === TILE_EMPTY) tiles[i] = TILE_SCRAP;
+    }
+  }
+}
+
+function paintBroadLanes(
+  tiles: number[],
+  width: number,
+  height: number,
+  hills: readonly TeamHill[],
+  features: readonly MapFeature[],
+): void {
+  const houses = houseBoxes(features, TILE_SUBDIV);
+  const midX = Math.floor(width / 2);
+  const midY = Math.floor(height / 2);
+  const margin = 18;
+  paintLane(tiles, width, height, margin, midY, width - 1 - margin, midY, 2, houses);
+  paintLane(tiles, width, height, midX, margin, midX, height - 1 - margin, 2, houses);
+  for (const hill of hills) {
+    const mx = Math.round(hill.x + hill.ux * (BROAD_ROCK_R + 6));
+    const my = Math.round(hill.y + hill.uy * (BROAD_ROCK_R + 6));
+    paintLane(tiles, width, height, mx, my, midX, midY, 2, houses);
+  }
+}
+
+function outsideTeamHills(features: MapFeature[]): MapFeature[] {
+  return features.filter((f) => {
+    const def = catalog(f.type);
+    const tw = Math.round(def.tileW / TILE_SUBDIV);
+    const th = Math.round(def.tileH / TILE_SUBDIV);
+    const cx = f.x + tw / 2;
+    const cy = f.y + th / 2;
+    return BROAD_HILL_SPOTS.every((s) => Math.hypot(cx - s.cx, cy - s.cy) > 30);
+  });
+}
+
+/**
+ * Five times Scrap Yard's ground, played as four pairs.
+ * Each pair shares a summit and a rocky slope with a single gate toward the center.
+ * Coarse 143² / 64² ≈ 5, so the fine map is 572×572 against 256×256.
+ */
+export function makeBroadYard(): MapDef {
+  const width = 143;
+  const height = 143;
+  const scale = (width * height) / (64 * 64);
+  const tiles = new Array(width * height).fill(TILE_EMPTY);
+  const hillPads = BROAD_HILL_SPOTS.map((s) => ({ x: s.cx, y: s.cy, r: 34 }));
+  for (const p of hillPads) clearDisk(tiles, width, height, p.x, p.y, 28);
+  const features = outsideTeamHills(scatterCover(tiles, width, height, "broad-143-cover", hillPads, scale));
+  const sub = TILE_SUBDIV;
+  const fineTiles = upsampleTiles(tiles, width, height, sub);
+  const fineW = width * sub;
+  const fineH = height * sub;
+  thinIsolatedTrees(fineTiles, fineW, fineH, tiles, width, height, sub);
+  const hills = broadHills(fineW);
+  const fineSpawns = broadSpawns(hills);
+  const finePads = hills.map((h) => ({ x: h.x, y: h.y, r: BROAD_ROCK_R + 24 }));
+  paintFieldPonds(
+    fineTiles,
+    fineW,
+    fineH,
+    "broad-143-ponds",
+    finePads,
+    features,
+    fineSpawns,
+    Math.round(2 * scale),
+  );
+  const locked = new Uint8Array(fineW * fineH);
+  const heights = scatterHeights(fineW, fineH, "broad-143-elev", [], locked, scale);
+  for (const hill of hills) stampTeamHill(fineTiles, heights, locked, fineW, fineH, hill);
+  paintBroadLanes(fineTiles, fineW, fineH, hills, features);
+  for (const s of fineSpawns) clearDisk(fineTiles, fineW, fineH, s.x, s.y, 6);
+  for (let i = 0; i < fineTiles.length; i++) {
+    if (fineTiles[i] === TILE_WATER) {
+      heights[i] = 0;
+      locked[i] = 1;
+    }
+  }
+  flattenTerrain(heights, fineTiles, fineW, fineH, TILE_WATER, locked);
+
+  return {
+    id: "broad-143",
+    name: "Broad Yard",
+    width: fineW,
+    height: fineH,
+    tileSize: TILE_SIZE,
+    tiles: fineTiles,
+    heights,
+    maxHeight: peakHeight(heights),
+    spawns: fineSpawns,
+    features: scaleFeatures(features, sub),
+    applySuggestedTeams: true,
+  };
+}
+
 export const MAPS: Record<string, MapDef> = {
   "yard-64": makeYard64(),
+  "broad-143": makeBroadYard(),
 };
 
 export const DEFAULT_MAP_ID = "yard-64";

@@ -22,6 +22,7 @@ import {
   TILE_TREE,
   TILE_WATER,
   TICK_DT,
+  burnVariant,
   DRONE_LEASH_TILES,
   garrisonWindowLift,
   hasScout,
@@ -94,6 +95,7 @@ import {
   wreckFireAlpha,
   wreckFireCount,
 } from "./fx.js";
+import { aimMoveFace, moveFaceArmed, moveFaceCommand } from "./move-face.js";
 import {
   UNIT_VISUAL_SCALE,
   INFANTRY_VISUAL_SCALE,
@@ -111,6 +113,7 @@ import {
   drawPropSprite,
   drawScoutHead,
   drawUnitSprite,
+  infantryDieSprite,
   snapHitToUnitSprite,
   spriteFor,
   spriteReady,
@@ -139,6 +142,8 @@ import {
   TITAN_BRACED_SPRITE,
   TITAN_SPRITE,
   TITAN_WADE_SPRITE,
+  MAMMOTH_SPRITE,
+  MAMMOTH_WADE_SPRITE,
   MORTARMAN_DIE_SPRITE,
   MORTARMAN_FIRE_SPRITE,
   ENGINEER_BUILD_SPRITE,
@@ -229,6 +234,7 @@ import {
   type FlameParticle,
 } from "./flame-fx.js";
 import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir, lerpAirAlt } from "./aircraft.js";
+import { crashTrailPuffs, CRASH_PUFF_CAP } from "./crash-smoke.js";
 import { canopySway, drawCanopy, drawCrate, drawMine, troopCanopySpan } from "./airdrop-fx.js";
 import { barrageTracers, tracerLandsAt, tracerSpan, type BarrageTracer } from "./barrage-tracer.js";
 import { drawSandbags } from "./sandbags.js";
@@ -251,8 +257,11 @@ import {
   STANDING_DRAW_LAYER,
 } from "./corpse-depth.js";
 import { drawTreeFall, TREE_FALL_MS } from "./tree-fall.js";
+import { drawBurnedCorpse, drawBurningTree } from "./burn-draw.js";
+import { burnAnimMs, burnDeathPose } from "./burn-death.js";
+import { TREE_BURN_MS, treeStamp } from "./tree-burn.js";
 import { lerpHullPose } from "./hull-lerp.js";
-import { canGuardUnit, resolveHoverAction, type HoverAction } from "./hover-action.js";
+import { canGuardUnit, planeBoardCandidate, resolveHoverAction, type HoverAction } from "./hover-action.js";
 import { planColor, withQueue } from "./order-queue.js";
 import { guardHeightTag, guardReach, type GuardUnit } from "./guard-reach.js";
 import {
@@ -283,7 +292,7 @@ export const GUARD_HOTKEY = "g";
 export const GARRISON_HOTKEY = "u";
 
 const EDGE_SCROLL_KEY = "gridlock.edgeScroll";
-const TREE_SCALE = 1.3;
+
 /** World span the pyramid sprite is scaled against. Its cell holds far more than the pyramid itself. */
 const TEETH_DRAW_WORLD = 56;
 let edgeScroll = localStorage.getItem(EDGE_SCROLL_KEY) === "1";
@@ -497,7 +506,7 @@ export class MapView {
   /** Top-left of the viewport in isometric space. */
   private camX = 0;
   private camY = 0;
-  /** CSS pixels per iso pixel. 1 is the default; wheel zooms a little around this. */
+  /** CSS pixels per iso pixel. 1 is the default; the wheel zooms in and out from here. */
   private zoom = 1;
   private keys = new Set<string>();
   private panning = false;
@@ -579,6 +588,10 @@ export class MapView {
   private rocketFrom = new Map<number, { x: number; y: number; z: number }>();
   /** Head of each rocket as of the last frame; the next frame lays trail puffs from here. */
   private rocketLast = new Map<number, { x: number; y: number; z: number }>();
+  /** Where a falling plane was last frame, so the smoke column has no gaps. */
+  private crashLast = new Map<number, { x: number; y: number; z: number }>();
+  /** Black smoke behind planes that are going down. */
+  private crashPuffs: RocketPuff[] = [];
   /** Rocket trail, backblast, and air-burst smoke. World space, absolute elevation. */
   private rocketPuffs: RocketPuff[] = [];
   /** Burning fuel from Pyro jets and cook-offs. World ground point, screen height. */
@@ -595,6 +608,10 @@ export class MapView {
   private fireSmokeAt = new Map<number, number>();
   /** Leaves and husk from a tree a shell just opened. */
   private treeFalls: { x: number; y: number; at: number; seed: number }[] = [];
+  /** A tree a flamethrower force-attack set alight. Wall-clock from `at`. */
+  private treeBurns: { x: number; y: number; at: number; seed: number; stamp: ReturnType<typeof treeStamp> | null }[] = [];
+  /** Wall-clock start of a burned corpse's char, keyed by corpse id. */
+  private burnSeen = new Map<number, number>();
   /** First cleared-tree list is history. Later ones play the fall. */
   private clearedBoot = false;
   private moveClicks: { x: number; y: number; at: number }[] = [];
@@ -631,6 +648,17 @@ export class MapView {
   private guardAnchor: { x: number; y: number } | null = null;
   private guardFacing = 0;
   private guardDragging = false;
+  /** Right-click held on open ground: walk here, then turn to `facing`. */
+  private moveFace: {
+    ids: number[];
+    x: number;
+    y: number;
+    px: number;
+    py: number;
+    facing: number;
+    armed: boolean;
+    at: number;
+  } | null = null;
   private ctrlHeld = false;
   /** Shift held: unit orders are queued behind the current ones. */
   private shiftHeld = false;
@@ -927,7 +955,7 @@ export class MapView {
       if (!match.entities.some((e) => e.id === id)) this.selected.delete(id);
     }
     if (this.attackMoveMode && this.ownSelectedIds().length === 0) this.setAttackMoveMode(false);
-    if (this.forceAttackMode && this.ownAimIds().length === 0) this.setForceAttackMode(false);
+    if (this.forceAttackMode && this.ownForceIds().length === 0) this.setForceAttackMode(false);
     if (this.rotateMode && this.ownAimIds().length === 0) this.setRotateMode(false);
     if (this.guardMode && this.ownSelectedIds().length === 0) this.setGuardMode(false);
     if (this.fieldPlace && !this.curr.entities.some((e) => this.selected.has(e.id) && e.type === "engineer" && e.ownerId === this.curr.youPlayerId)) {
@@ -1169,16 +1197,19 @@ export class MapView {
       if (t.x < 0 || t.y < 0 || t.x >= w || t.y >= map.height) continue;
       const i = t.y * w + t.x;
       if (map.tiles[i] !== TILE_TREE) continue;
+      const kind = treePropKind(map, t.x, t.y);
       map.tiles[i] = TILE_EMPTY;
       dirty.push(i);
       if (live) {
         const ts = map.tileSize;
-        this.treeFalls.push({
-          x: (t.x + 0.5) * ts,
-          y: (t.y + 0.55) * ts,
-          at: now,
-          seed: (t.x * 131 + t.y * 977 + n * 17) >>> 0,
-        });
+        const x = (t.x + 0.5) * ts;
+        const y = (t.y + 0.55) * ts;
+        const seed = (t.x * 131 + t.y * 977 + n * 17) >>> 0;
+        if (t.burn) {
+          this.treeBurns.push({ x, y, at: now, seed, stamp: kind ? treeStamp(t.x, t.y, kind) : null });
+        } else {
+          this.treeFalls.push({ x, y, at: now, seed });
+        }
       }
     }
     this.clearedApplied = list.length;
@@ -1450,7 +1481,7 @@ export class MapView {
           this.commitAttackMove(mx, my);
           return;
         }
-        if (e.ctrlKey && this.ownAimIds().length) {
+        if (e.ctrlKey && this.ownForceIds().length) {
           e.preventDefault();
           this.commitForceAttack(mx, my);
           return;
@@ -1490,6 +1521,10 @@ export class MapView {
 
   private onUp = (e: MouseEvent): void => {
     if (e.button === 1) this.panning = false;
+    if (e.button === 2 && this.moveFace) {
+      this.commitMoveFace();
+      return;
+    }
     if (e.button === 0 && this.guardDragging) {
       this.commitGuard(this.mouseX, this.mouseY);
       return;
@@ -1563,6 +1598,7 @@ export class MapView {
       this.box.y1 = this.mouseY;
     }
     if (this.guardDragging && this.guardAnchor) this.aimGuard(this.mouseX, this.mouseY);
+    if (this.moveFace) this.refreshMoveFace();
     this.syncCursor();
   };
 
@@ -1708,6 +1744,7 @@ export class MapView {
     this.shiftHeld = false;
     this.queuedFromMode = false;
     this.keys.clear();
+    this.moveFace = null;
   };
 
   private isCameraKey(k: string): boolean {
@@ -1715,11 +1752,12 @@ export class MapView {
   }
 
   private stopSelected(): void {
+    this.moveFace = null;
     this.setAttackMoveMode(false);
     this.setForceAttackMode(false);
     this.setRotateMode(false);
     this.setGuardMode(false);
-    const ids = this.ownAimIds();
+    const ids = this.ownForceIds();
     if (ids.length) this.command({ type: "cmd.stop", ids });
   }
 
@@ -1853,6 +1891,32 @@ export class MapView {
     });
   }
 
+  /**
+   * Guns, plus a garrison host whose soldiers shoot from inside (a Mammoth,
+   * bunker, tower, house, or trench). Rotate stays on ownAimIds.
+   */
+  private ownForceIds(): number[] {
+    const ids = this.ownAimIds();
+    const seen = new Set(ids);
+    const you = this.curr.youPlayerId;
+    for (const id of this.selected) {
+      if (seen.has(id)) continue;
+      const ent = this.curr.entities.find((e) => e.id === id);
+      if (!ent || !this.forceHost(ent, you)) continue;
+      seen.add(id);
+      ids.push(id);
+    }
+    return ids;
+  }
+
+  /** Occupied by you, and not shuttered. A transport bay is not a firing slit. */
+  private forceHost(e: EntityView, you: string): boolean {
+    if (isTransportType(e.type) || e.hp <= 0 || e.wreck) return false;
+    if (e.garrison?.ownerId === you && (e.garrison.count ?? 0) > 0 && !e.garrison.hide) return true;
+    if (e.ownerId !== you) return false;
+    return this.curr.entities.some((u) => u.garrisonedIn === e.id && u.ownerId === you && fires(u.type));
+  }
+
   private commitAttackMove(px: number, py: number): void {
     const ids = this.ownSelectedIds();
     if (!this.keepModeForQueue()) this.setAttackMoveMode(false);
@@ -1868,10 +1932,11 @@ export class MapView {
   }
 
   private commitForceAttack(px: number, py: number): void {
-    const ids = this.ownAimIds().filter((id) => {
+    const you = this.curr.youPlayerId;
+    const ids = this.ownForceIds().filter((id) => {
       const ent = this.curr.entities.find((x) => x.id === id);
       // A transport has no gun: its force-attack is the drop.
-      return !!ent && (fires(ent.type) || isTransportType(ent.type));
+      return !!ent && (fires(ent.type) || isTransportType(ent.type) || this.forceHost(ent, you));
     });
     if (!this.keepModeForQueue()) this.setForceAttackMode(false);
     if (ids.length === 0) return;
@@ -2336,7 +2401,9 @@ export class MapView {
       return;
     }
     if (action === "board" && hit) {
-      const riders = own.filter((e) => e.kind === "unit" && isInfantryType(e.type) && e.garrisonedIn !== hit.id);
+      const riders = isTransportType(hit.type)
+        ? own.filter((e) => planeBoardCandidate(e) && e.garrisonedIn !== hit.id)
+        : own.filter((e) => e.kind === "unit" && isInfantryType(e.type) && e.garrisonedIn !== hit.id);
       if (riders.length) this.command({ type: "cmd.board", ids: riders.map((e) => e.id), truckId: hit.id });
       return;
     }
@@ -2382,8 +2449,45 @@ export class MapView {
     const movers = own.filter((e) => e.kind === "unit");
     if (movers.length === 0) return;
     const w = this.screenToWorld(px, py);
-    this.pulseMoveClick(w.x, w.y);
-    this.command({ type: "cmd.move", ids: movers.map((e) => e.id), x: w.x, y: w.y });
+    this.beginMoveFace(movers.map((e) => e.id), w.x, w.y, px, py);
+  }
+
+  /** Right button is down on a ground move. Release sends it; a hold aims the arrival heading. */
+  private beginMoveFace(ids: number[], x: number, y: number, px: number, py: number): void {
+    if (ids.length === 0) return;
+    this.mouseX = px;
+    this.mouseY = py;
+    this.moveFace = {
+      ids,
+      x,
+      y,
+      px,
+      py,
+      facing: this.meanSelectedFacing(),
+      armed: false,
+      at: performance.now(),
+    };
+  }
+
+  private refreshMoveFace(): void {
+    const g = this.moveFace;
+    if (!g) return;
+    const drag = Math.hypot(this.mouseX - g.px, this.mouseY - g.py);
+    g.armed = moveFaceArmed(g, performance.now(), drag);
+    if (!g.armed || this.mouseX < 0 || this.mouseY < 0) return;
+    const w = this.screenToWorld(this.mouseX, this.mouseY);
+    const aim = aimMoveFace(g, w, g.facing);
+    if (aim.aimed) g.facing = aim.facing;
+  }
+
+  private commitMoveFace(): void {
+    if (!this.moveFace) return;
+    this.refreshMoveFace();
+    const g = this.moveFace;
+    this.moveFace = null;
+    if (!g) return;
+    this.pulseMoveClick(g.x, g.y);
+    this.command(moveFaceCommand(g));
   }
 
   private pulseMoveClick(x: number, y: number): void {
@@ -2396,6 +2500,7 @@ export class MapView {
     const dt = this.lastT ? Math.min(0.05, (t - this.lastT) / 1000) : 0;
     this.lastT = t;
     this.fit();
+    this.refreshMoveFace();
     if (!this.centered) this.centerOnHq();
     const speed = CAM_PAN_SPEED;
     let vx = 0;
@@ -2530,6 +2635,7 @@ export class MapView {
     }
     this.collectFieldSites(items);
     this.collectTrees(items, castShadows);
+    this.collectTreeBurns(items);
     // One path under craters and unit blobs, so overlapping shadows don't stack.
     items.push({ layer: HOLE_DRAW_LAYER, z: -Infinity, run: () => drawCastShadows(this.ctx, castShadows) });
     this.collectRemains(items);
@@ -2580,6 +2686,7 @@ export class MapView {
       }
     }
     this.drawMortarArcs();
+    this.drawCrashSmoke();
     this.drawRockets();
     this.drawFlames();
     this.drawFallingBombs();
@@ -2605,6 +2712,7 @@ export class MapView {
     this.drawAttackCursor();
     this.drawForceCursor();
     this.drawRotateCursor();
+    this.drawMoveFaceOverlay();
     this.drawGuardOverlay();
     this.drawRallyOverlay();
     this.drawPlanOverlay();
@@ -2796,6 +2904,82 @@ export class MapView {
     ctx.strokeStyle = "#140e0a";
     ctx.strokeText("FACE", x + 14, y + 8);
     ctx.fillText("FACE", x + 14, y + 8);
+    ctx.restore();
+  }
+
+  /** Heading the unit takes after a held move. The mark sits on the destination. */
+  private drawMoveFaceOverlay(): void {
+    const g = this.moveFace;
+    if (!g?.armed || this.mouseX < 0 || this.mouseY < 0) return;
+    const ts = this.ts();
+    const len = ts * 2.4;
+    const facing = g.facing;
+    const elev = this.knownElevAt(g.x, g.y, this.elevAt(g.x, g.y));
+    const at = (wx: number, wy: number) => this.toScreen(wx, wy, this.knownElevAt(wx, wy, elev));
+    const apex = at(g.x, g.y);
+    const tip = at(g.x + Math.cos(facing) * len, g.y + Math.sin(facing) * len);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    const ringR = ts * 0.55;
+    ctx.beginPath();
+    for (let i = 0; i <= 28; i++) {
+      const a = (i / 28) * Math.PI * 2;
+      const p = at(g.x + Math.cos(a) * ringR, g.y + Math.sin(a) * ringR);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = "rgba(232, 184, 74, 0.16)";
+    ctx.fill();
+    ctx.strokeStyle = "#e8b84a";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.beginPath();
+    const arcR = ts * 1.15;
+    const sweep = Math.PI * 0.7;
+    const a0 = facing - sweep;
+    for (let i = 0; i <= 16; i++) {
+      const a = a0 + (sweep * i) / 16;
+      const p = at(g.x + Math.cos(a) * arcR, g.y + Math.sin(a) * arcR);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.strokeStyle = "rgba(232, 184, 74, 0.95)";
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(apex.x, apex.y);
+    ctx.lineTo(tip.x, tip.y);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    const iso = facingToIso(facing, ts);
+    const il = Math.hypot(iso.x, iso.y) || 1;
+    const ux = iso.x / il;
+    const uy = iso.y / il;
+    ctx.fillStyle = "#e8b84a";
+    ctx.beginPath();
+    ctx.moveTo(tip.x, tip.y);
+    ctx.lineTo(tip.x - ux * 12 + uy * 6, tip.y - uy * 12 - ux * 6);
+    ctx.lineTo(tip.x - ux * 12 - uy * 6, tip.y - uy * 12 + ux * 6);
+    ctx.closePath();
+    ctx.fill();
+    const arcTip = at(g.x + Math.cos(facing) * arcR, g.y + Math.sin(facing) * arcR);
+    ctx.beginPath();
+    ctx.moveTo(arcTip.x, arcTip.y);
+    ctx.lineTo(arcTip.x - ux * 8 + uy * 4, arcTip.y - uy * 8 - ux * 4);
+    ctx.lineTo(arcTip.x - ux * 8 - uy * 4, arcTip.y - uy * 8 + ux * 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#140e0a";
+    ctx.strokeText("ROTATE", this.mouseX + 14, this.mouseY + 8);
+    ctx.fillStyle = "#e8b84a";
+    ctx.fillText("ROTATE", this.mouseX + 14, this.mouseY + 8);
     ctx.restore();
   }
 
@@ -3326,12 +3510,10 @@ export class MapView {
       // Iso AABB of the viewport covers most of the map; skip sprites that
       // actually sit off-screen. Source art is ~800–1200px tall.
       if (p.x < -96 || p.y < -96 || p.x > vw + 96 || p.y > vh + 48) continue;
-      const h = Math.imul(tx * 374761393 + ty * 668265263 + 9, 1103515245) >>> 0;
-      const pine = kind === "lone" ? h % 3 !== 1 : h % 5 === 0;
-      const faces = pine ? PINE_FACES : OAK_FACES;
-      const spr = faces[h % faces.length];
-      const drawH =
-        TREE_SCALE * (kind === "lone" ? (pine ? 54 : 46) + (h % 5) * 2 : (pine ? 40 : 34) + (h % 4));
+      const stamp = treeStamp(tx, ty, kind);
+      const faces = stamp.pine ? PINE_FACES : OAK_FACES;
+      const spr = faces[stamp.face % faces.length];
+      const drawH = stamp.drawH;
       const dim = !this.lit(tx, ty);
       this.pushCastShadow(
         shadows,
@@ -3613,6 +3795,10 @@ export class MapView {
       // In water only the torso and pods show above the pool.
       return e.wading ? TITAN_WADE_SPRITE : TITAN_SPRITE;
     }
+    if (e.type === "mammoth") {
+      // In water the hull is sunk to the casemate. Same draw size as on land.
+      return e.wading ? MAMMOTH_WADE_SPRITE : MAMMOTH_SPRITE;
+    }
     if (e.type === "rifleman") {
       const sheet = trooperSheet({
         swimming: e.swimming,
@@ -3881,6 +4067,12 @@ export class MapView {
     }
     ctx.save();
     ctx.save();
+    if (e.air?.phase === "crash") {
+      const roll = Math.sin(performance.now() * 0.003 + e.id * 1.7) * 0.22;
+      ctx.translate(s.x, s.y);
+      ctx.rotate(roll);
+      ctx.translate(-s.x, -s.y);
+    }
     if (e.wreck && !corpse) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
     const stepping = unitStepping({ type: e.type, state: e.state, swimming: e.swimming, prev: this.prevById.get(e.id), curr: e });
     const drawn = drawUnitSprite(ctx, def, s.x, s.y, dir.x, dir.y, {
@@ -4031,6 +4223,10 @@ export class MapView {
         run: () => this.drawHole(hole, alpha),
       });
     }
+    const liveBodies = new Set((this.curr.bodies ?? []).map((b) => b.id));
+    for (const id of this.burnSeen.keys()) {
+      if (!liveBodies.has(id)) this.burnSeen.delete(id);
+    }
     for (const body of this.curr.bodies ?? []) {
       const z = isoDepth(body.x, body.y);
       items.push({
@@ -4079,50 +4275,50 @@ export class MapView {
     }
   }
 
+  /**
+   * Wall-clock age of a burned corpse. A body that was already down when it
+   * first came into view skips the char. A death watched from the start plays
+   * the full second or two even when the match is sped up.
+   */
+  private burnAge(id: number, simAgeMs: number, doneMs: number): number {
+    let at = this.burnSeen.get(id);
+    if (at == null) {
+      // A few sped-up snapshots can arrive before the first paint. Only a body
+      // that has already been down for a while skips the char.
+      const staleMs = doneMs + 4000;
+      at = performance.now() - (simAgeMs > staleMs ? doneMs + 40 : 0);
+      this.burnSeen.set(id, at);
+    }
+    return performance.now() - at;
+  }
+
   private drawBody(body: CorpseView): void {
-    const def =
-      body.type === "gunner"
-        ? GUNNER_DIE_SPRITE
-        : body.type === "sniper"
-          ? SNIPER_DIE_SPRITE
-          : body.type === "atinfantry"
-            ? ATINFANTRY_DIE_SPRITE
-            : body.type === "rocketer"
-            ? ROCKETER_DIE_SPRITE
-            : body.type === "pyro"
-            ? PYRO_DIE_SPRITE
-            : body.type === "mortarman"
-            ? MORTARMAN_DIE_SPRITE
-            : body.type === "engineer"
-              ? ENGINEER_DIE_SPRITE
-              : body.type === "medic"
-                ? MEDIC_DIE_SPRITE
-              : body.type === "droneop"
-                ? DRONEOP_DIE_SPRITE
-              : body.type === "jumpjet"
-                ? JUMPJET_DIE_SPRITE
-              : body.type === "cyborg"
-                ? CYBORG_DIE_SPRITE
-              : body.type === "rifleman"
-              ? TROOPER_DIE_SPRITE
-              : null;
-    if (!def) return;
+    const die = infantryDieSprite(body.type);
+    if (!die) return;
+    const variant = body.burned ? burnVariant(body.id) : 0;
+    const simAgeMs = Math.max(0, (this.curr.tick - body.bornTick) * TICK_DT * 1000);
+    const ageMs = body.burned ? this.burnAge(body.id, simAgeMs, burnAnimMs(variant)) : simAgeMs;
+    const stand = body.burned ? (spriteFor(body.type) ?? die) : die;
+    const fadeDef = body.burned && burnDeathPose(ageMs, variant).phase === "burn" ? stand : die;
     const s = this.toScreen(body.x, body.y);
     const dir = facingToIso(body.facing, this.ts());
-    const ageMs = Math.max(0, (this.curr.tick - body.bornTick) * TICK_DT * 1000);
-    const fade = this.corpseFade(body.x, body.y, def);
+    const fade = this.corpseFade(body.x, body.y, fadeDef);
     this.ctx.save();
     this.ctx.globalAlpha = fade;
-    drawUnitSprite(this.ctx, def, s.x, s.y, dir.x, dir.y, {
-      moving: false,
-      id: body.id,
-      now: 0,
-      frameIndex: heldFrame(ageMs, def.fps, def.frames),
-      facing: body.facing,
-    });
-    // A dead cyborg bleeds (the stains under him) and his hips spit a few sparks.
-    if (body.type === "cyborg") {
-      drawCyborgDeathSparks(this.ctx, s.x, s.y, def.drawSize, dir.x, dir.y, ageMs, body.id);
+    if (body.burned) {
+      drawBurnedCorpse(this.ctx, stand, die, s.x, s.y, dir.x, dir.y, body.facing, ageMs, variant, body.id, performance.now());
+    } else {
+      drawUnitSprite(this.ctx, die, s.x, s.y, dir.x, dir.y, {
+        moving: false,
+        id: body.id,
+        now: 0,
+        frameIndex: heldFrame(ageMs, die.fps, die.frames),
+        facing: body.facing,
+      });
+      // A dead cyborg bleeds (the stains under him) and his hips spit a few sparks.
+      if (body.type === "cyborg") {
+        drawCyborgDeathSparks(this.ctx, s.x, s.y, die.drawSize, dir.x, dir.y, ageMs, body.id);
+      }
     }
     this.ctx.restore();
   }
@@ -4157,6 +4353,29 @@ export class MapView {
     return 1;
   }
 
+  /** A burning trunk, depth-sorted with the standing trees. */
+  private collectTreeBurns(items: DrawItem[]): void {
+    const now = performance.now();
+    const keep: MapView["treeBurns"] = [];
+    for (const f of this.treeBurns) {
+      const t = (now - f.at) / TREE_BURN_MS;
+      if (t >= 1) continue;
+      keep.push(f);
+      const x = f.x;
+      const y = f.y;
+      items.push({
+        layer: STANDING_DRAW_LAYER,
+        z: isoDepth(x, y),
+        at: { x, y },
+        run: () => {
+          const s = this.toScreen(x, y);
+          drawBurningTree(this.ctx, s.x, s.y, f.stamp, t, f.seed, now);
+        },
+      });
+    }
+    this.treeBurns = keep;
+  }
+
   /** Leaves and a broken trunk where a shell just took a tree down. */
   private drawTreeFalls(): void {
     const now = performance.now();
@@ -4185,6 +4404,49 @@ export class MapView {
       const dir = facingToIso(Math.atan2(p.vy, p.vx), this.ts());
       drawFallingBomb(this.ctx, s.x, s.y - airLiftPx(wz), dir.x, dir.y + 0.6);
     }
+  }
+
+  /**
+   * A falling plane lays a thick black column along the stretch it flew.
+   * The puffs hang after the airframe has passed.
+   */
+  private drawCrashSmoke(): void {
+    const now = performance.now();
+    const blend = Math.min(1, (now - this.snapAt) / 100);
+    const live = new Set<number>();
+    for (const e of this.curr.entities) {
+      if (e.air?.phase !== "crash") continue;
+      live.add(e.id);
+      const prev = this.prevById.get(e.id);
+      const x = prev ? prev.x + (e.x - prev.x) * blend : e.x;
+      const y = prev ? prev.y + (e.y - prev.y) * blend : e.y;
+      const alt = lerpAirAlt(prev, e, blend);
+      const head = { x, y, z: this.elevAt(x, y) + alt };
+      const last = this.crashLast.get(e.id) ?? head;
+      this.crashPuffs.push(...crashTrailPuffs(last, head, now, (e.id * 2654435761 + Math.floor(now)) >>> 0));
+      this.crashLast.set(e.id, head);
+    }
+    for (const id of [...this.crashLast.keys()]) {
+      if (!live.has(id)) this.crashLast.delete(id);
+    }
+    if (this.crashPuffs.length > CRASH_PUFF_CAP) {
+      this.crashPuffs.splice(0, this.crashPuffs.length - CRASH_PUFF_CAP);
+    }
+    const ctx = this.ctx;
+    const keep: RocketPuff[] = [];
+    ctx.save();
+    for (const puff of this.crashPuffs) {
+      const pose = rocketPuffPose(puff, now);
+      if (!pose) {
+        if (now < puff.at) keep.push(puff);
+        continue;
+      }
+      keep.push(puff);
+      const s = this.toScreen(pose.x, pose.y, pose.z);
+      drawSoot(ctx, s.x, s.y, pose.r, pose.alpha, 1 - puff.shade);
+    }
+    ctx.restore();
+    this.crashPuffs = keep;
   }
 
   /**
@@ -4779,6 +5041,13 @@ export class MapView {
   private hoverAction: HoverAction | null = null;
 
   private syncCursor(): void {
+    if (this.moveFace) {
+      this.hoverSpecial = false;
+      this.hoverAction = null;
+      this.canvas.classList.remove("cursor-special", "cursor-attack", "cursor-action");
+      this.canvas.style.cursor = "";
+      return;
+    }
     let special = false;
     let action: HoverAction | null = null;
     const aiming =
@@ -4963,7 +5232,7 @@ export class MapView {
     ctx.restore();
   }
 
-  /** Thin yellow (main gun) and gray (secondary) strips under the health bar. */
+  /** Thin yellow (main store, or a Jump Jet's fuel) and gray (secondary) strips under the health bar. */
   private paintAmmoBars(e: EntityView, x: number, y: number, w: number, alpha: number): void {
     const ratios = ammoBarRatios(e);
     const ctx = this.ctx;

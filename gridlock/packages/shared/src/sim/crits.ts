@@ -9,7 +9,6 @@ import {
   STANCE_AIM_SPREAD,
   STANCE_SPEED,
   SWIM_SPEED,
-  TITAN_WADE_SPEED,
   addCrit,
   catalog,
   cyborgLegsLost,
@@ -23,6 +22,7 @@ import {
   pickLoadedShell,
   secondsToTicks,
   stanceOf,
+  wadeSpeedOf,
   wadesOf,
   type Crit,
 } from "../catalog.js";
@@ -34,7 +34,7 @@ export function moveSpeedMul(e: Entity, swimming = false): number {
   if (e.braced || hasCrit(e, "tracks") || hasCrit(e, "engine")) return 0;
   if (isInfantryType(e.type) && swimming) return SWIM_SPEED;
   if (isCyborg(e.type) && hasCrit(e, "leg")) return CYBORG_DRAG_SPEED;
-  if (swimming && wadesOf(e.type)) return TITAN_WADE_SPEED;
+  if (swimming && wadesOf(e.type)) return wadeSpeedOf(e.type);
   if (isInfantryType(e.type)) return STANCE_SPEED[stanceOf(e)];
   return 1;
 }
@@ -85,6 +85,8 @@ export function cyborgShielded(e: { type: Entity["type"]; shieldUntilTick?: numb
  */
 export function takeDamage(e: Entity, damage: number, tick: number): number {
   if (damage <= 0 || e.hp <= 0) return 0;
+  // A plane already falling cannot be shot out of the crash.
+  if (e.air?.phase === "crash") return 0;
   const before = e.hp;
   if (isCyborg(e.type)) {
     if (cyborgShielded(e, tick)) return 0;

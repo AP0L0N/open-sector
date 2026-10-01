@@ -1,5 +1,7 @@
 import {
   BV222_TROOPS,
+  isAircraftType,
+  isDroneType,
   isTransportType,
   SUPPLY_CARGO,
   TRUCK_SEATS,
@@ -48,7 +50,18 @@ export type HoverEntity = Pick<
   | "crits"
   | "air"
   | "drone"
+  | "jet"
+  | "braced"
 >;
+
+/** A ground unit that can climb into a transport and jump. Planes and drones stay out. */
+export function planeBoardCandidate(e: HoverEntity): boolean {
+  if (e.kind !== "unit" || e.hp <= 0 || e.wreck) return false;
+  if (isAircraftType(e.type) || isDroneType(e.type)) return false;
+  if (e.braced) return false;
+  if ((e.jet?.alt ?? 0) > 0) return false;
+  return true;
+}
 
 /** Guard mode: click this unit to escort it instead of planting an overwatch point. */
 export function canGuardUnit(args: {
@@ -84,7 +97,7 @@ export function resolveHoverAction(args: {
   const trucks = ownUnits.filter((e) => e.type === "supply" && !e.bed?.open);
   if (hit && trucks.length > 0 && canSupplyHit(hit, you, args.allied, trucks)) return "supply";
   if (hit && hit.type === "supply" && canBoardHit(hit, you, args.allied, inf)) return "board";
-  if (hit && isTransportType(hit.type) && canBoardPlaneHit(hit, you, inf)) return "board";
+  if (hit && isTransportType(hit.type) && canBoardPlaneHit(hit, you, ownUnits)) return "board";
 
   if (hit && isGarrisonable(hit.type) && hit.hp > 0 && !hit.wreck) {
     const occ = hit.garrison?.ownerId;
@@ -134,11 +147,11 @@ function canBoardHit(
   return hit.ownerId === you || allied(hit.ownerId);
 }
 
-/** Your transport on its hardstand, loaded for paratroops with room aboard, and riflemen outside it selected. */
-function canBoardPlaneHit(hit: HoverEntity, you: string, inf: readonly HoverEntity[]): boolean {
+/** Your transport on its hardstand, loaded for paratroops with room aboard, and a ground unit outside it selected. */
+function canBoardPlaneHit(hit: HoverEntity, you: string, units: readonly HoverEntity[]): boolean {
   if (hit.hp <= 0 || hit.ownerId !== you || hit.air?.phase !== "parked" || hit.air.payload !== "troops") return false;
   if ((hit.air.troops ?? 0) >= BV222_TROOPS) return false;
-  return inf.some((e) => e.type === "rifleman" && e.garrisonedIn !== hit.id);
+  return units.some((e) => planeBoardCandidate(e) && e.garrisonedIn !== hit.id);
 }
 
 function canSupplyHit(

@@ -228,6 +228,50 @@ describe("lobby rules", () => {
     assert.notEqual(started.value.get("host")?.spawnId, started.value.get("ai:1")?.spawnId);
   });
 
+  it("leaves Scrap Yard free-for-all when nobody picks a team", () => {
+    const r = room();
+    updateSelf(r, "host", { ready: true });
+    assert.equal(startMatch(r, "host").ok, true);
+    assert.equal(r.slots[0]?.team, 0);
+  });
+
+  it("pairs Broad Yard by hill when the team is still free-for-all", () => {
+    const made = createRoom({
+      id: "BROAD",
+      hostId: "host",
+      hostName: "Host",
+      mapId: "broad-143",
+      maxSlots: 8,
+    });
+    assert.equal(made.ok, true);
+    if (!made.ok) return;
+    const r = made.value;
+    for (let i = 2; i <= 8; i++) assert.equal(joinRoom(r, `p${i}`, `P${i}`).ok, true);
+    for (const s of r.slots) {
+      if (s.playerId) assert.equal(updateSelf(r, s.playerId, { ready: true, spawnId: 0 }).ok, true);
+    }
+    assert.equal(startMatch(r, "host").ok, true);
+    const teams = [1, 1, 2, 2, 3, 3, 4, 4];
+    for (let i = 0; i < teams.length; i++) assert.equal(r.slots[i]?.team, teams[i], `slot ${i}`);
+  });
+
+  it("keeps an explicit Broad Yard team", () => {
+    const made = createRoom({
+      id: "BROAD",
+      hostId: "host",
+      hostName: "Host",
+      mapId: "broad-143",
+      maxSlots: 8,
+    });
+    assert.equal(made.ok, true);
+    if (!made.ok) return;
+    const r = made.value;
+    assert.equal(updateSelf(r, "host", { ready: true, team: 4, spawnId: 1 }).ok, true);
+    assert.equal(startMatch(r, "host").ok, true);
+    assert.equal(r.slots[0]?.team, 4);
+    assert.equal(r.slots[0]?.spawnId, 1);
+  });
+
   it("lets the host remove an Easy CPU", () => {
     const r = room();
     assert.equal(hostSlot(r, "host", 1, { status: "ai" }).ok, true);

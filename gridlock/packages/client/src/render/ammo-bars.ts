@@ -1,8 +1,8 @@
 /**
  * Ammo strips under an allied health bar. Only finite stores a truck refills:
  * the shell rack, the coaxial belt, rocket pods, a belt that never reloads, and
- * the cyborg drum. A supply truck shows its cargo. Smoke is left out — it is a
- * screen, not the gun's reserve.
+ * the cyborg drum. A supply truck shows its cargo. A Jump Jet shows his pack
+ * as the yellow bar. Smoke is left out — it is a screen, not the gun's reserve.
  */
 import {
   beltOf,
@@ -22,12 +22,18 @@ function fraction(left: number, full: number): number {
   return Math.max(0, Math.min(1, left / full));
 }
 
-/** Main gun first, then the secondary store. At most two. Empty when nothing is finite or the view is not allied. */
+/** Main store first (the yellow bar), then the secondary store. At most two. Empty when nothing is finite or the view is not allied. */
 export function ammoBarRatios(
-  e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "wreck" | "supply">,
+  e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "wreck" | "supply" | "jet">,
 ): number[] {
   if (e.wreck) return [];
   if (e.type === "supply") return e.supply != null ? [fraction(e.supply, SUPPLY_CARGO)] : [];
+  // The pack is the yellow bar. Enemies get height only, so the strip stays hidden.
+  if (e.type === "jumpjet") {
+    const fuel = e.jet?.fuel;
+    const full = e.jet?.fuelMax ?? 0;
+    return fuel != null && full > 0 ? [fraction(fuel, full)] : [];
+  }
   const def = catalog(e.type);
   const primary: number[] = [];
   const secondary: number[] = [];

@@ -8,6 +8,7 @@ import {
   TILE_BLOCKED,
   TILE_EMPTY,
   TILE_FENCE,
+  TILE_ROCK,
   TILE_ROAD,
   TILE_SCRAP,
   TILE_TREE,
@@ -82,6 +83,7 @@ export function mapLayout(id: string): Record<string, unknown> | null {
     tileTree: TILE_TREE,
     tileRoad: TILE_ROAD,
     tileFence: TILE_FENCE,
+    tileRock: TILE_ROCK,
   };
 }
 
