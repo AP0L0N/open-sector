@@ -33,3 +33,19 @@ export function crashTrailPuffs(
     dy: p.dy * 0.6,
   }));
 }
+
+/**
+ * Puffs for one frame of the fall. A step shorter than the spacing is kept
+ * on `from`, so the next frame can finish it. Dropping that remainder made
+ * the column appear at the first long step and then go thin.
+ */
+export function layCrashTrail(
+  last: { x: number; y: number; z: number } | undefined,
+  head: { x: number; y: number; z: number },
+  now: number,
+  seed: number,
+): { from: { x: number; y: number; z: number }; puffs: RocketPuff[] } {
+  const from = last ?? head;
+  const puffs = crashTrailPuffs(from, head, now, seed);
+  return { from: puffs.length > 0 ? head : from, puffs };
+}

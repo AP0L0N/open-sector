@@ -24,6 +24,12 @@ describe("ammoBarRatios", () => {
     assert.deepEqual(ammoBarRatios({ type: "nebelwerfer", rockets: 0 }), [0]);
   });
 
+  it("shows the Rocketer's one high-penetration missile, and hides it from enemies", () => {
+    assert.deepEqual(ammoBarRatios({ type: "rocketer", heavy: 1 }), [1]);
+    assert.deepEqual(ammoBarRatios({ type: "rocketer", heavy: 0 }), [0]);
+    assert.deepEqual(ammoBarRatios({ type: "rocketer" }), []);
+  });
+
   it("tracks belts and drums that never reload, not rifle magazines", () => {
     assert.equal(ammoBarRatios({ type: "ciws", clip: 0 }).length, 1);
     assert.equal(ammoBarRatios({ type: "cyborg", clip: 0 }).length, 1);

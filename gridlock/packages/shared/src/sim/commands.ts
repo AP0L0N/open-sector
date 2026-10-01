@@ -22,6 +22,8 @@ import {
   isTransportType,
   ORDER_QUEUE_MAX,
   pickLoadedShell,
+  PENETRATOR_ARM_SECONDS,
+  reloadSecondsOf,
   type AirDrop,
   type DroneMode,
   type InfantryWeaponId,
@@ -1131,6 +1133,21 @@ function cmdWeapon(
     const gun = infantryLoadout(e.type).find((g) => g.id === weapon);
     if (!gun) continue;
     const live = infantryGunFor(e);
+    // The Rocketer's tube and his one heavy missile are separate stores.
+    // Switching onto the heavy round arms it, unless it is already on the tube.
+    if (e.type === "rocketer") {
+      if (live?.id !== weapon) {
+        e.weapon = weapon;
+        e.cooldown = 0;
+        if (weapon === "penetrator") {
+          e.reload = (e.heavy ?? 0) > 0 ? PENETRATOR_ARM_SECONDS : 0;
+        } else {
+          e.reload = e.clip <= 0 ? reloadSecondsOf(gun, e.reloadMul) : 0;
+        }
+      }
+      n++;
+      continue;
+    }
     e.weapon = weapon;
     if (live?.id !== weapon) {
       e.clip = gun.clip;

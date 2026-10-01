@@ -6,10 +6,11 @@ import {
   AIR_CRASH_HULL_SHARE,
   AIR_CRASH_SINK_PER_SEC,
   AIR_CRASH_SOFT_DAMAGE,
+  AIR_CRASH_RANGE,
   AIR_CRASH_SPEED,
   AIR_CRASH_SPLASH_TILES,
-  AIR_CRASH_TURN_MUL,
-  AIR_CRASH_WANDER,
+  AIR_CRASH_YAW_MAX,
+  AIR_CRASH_YAW_MIN,
   AIR_CRUISE_ALT,
   AIR_DIVE_CONE_DEG,
   AIR_DIVE_PER_SEC,
@@ -1071,8 +1072,10 @@ export function beginAircraftCrash(e: Entity): void {
     return;
   }
   a.phase = "crash";
-  a.speed = Math.max(a.speed, AIR_CRASH_SPEED);
-  a.drift = e.facing;
+  a.speed = AIR_CRASH_SPEED;
+  a.originX = e.x;
+  a.originY = e.y;
+  a.yaw = undefined;
   a.struck = [];
   a.extend = false;
   a.taxi = false;
@@ -1094,12 +1097,42 @@ function tickCrash(state: MatchState, e: Entity, dt: number): void {
   e.order = null;
   e.attackTarget = null;
   if (e.hp < 1) e.hp = 1;
-  a.speed = Math.max(a.speed, AIR_CRASH_SPEED);
-  a.drift = (a.drift ?? e.facing) + (nextRand(state) - 0.5) * 2 * AIR_CRASH_WANDER * dt;
-  headTo(e, a.drift, dt, AIR_CRASH_TURN_MUL);
-  advance(state, e, dt);
+  a.speed = AIR_CRASH_SPEED;
+  if (a.yaw == null) {
+    const deg = AIR_CRASH_YAW_MIN + nextRand(state) * (AIR_CRASH_YAW_MAX - AIR_CRASH_YAW_MIN);
+    a.yaw = (nextRand(state) < 0.5 ? -1 : 1) * deg * (Math.PI / 180);
+  }
+  // A few degrees of shiver on the chosen bank, so the arc is not a compass circle.
+  const shiver = (nextRand(state) - 0.5) * 2 * ((12 * Math.PI) / 180);
+  e.facing += (a.yaw + shiver) * dt;
+  e.turretFacing = e.facing;
+  glideCrash(state, e, dt);
   a.alt = Math.max(0, a.alt - AIR_CRASH_SINK_PER_SEC * dt);
   strikeWhileCrashing(state, e);
+}
+
+/** Glide at the crash speed, and stop going farther than the range from where it was hit. */
+function glideCrash(state: MatchState, e: Entity, dt: number): void {
+  const a = e.air!;
+  const ox = a.originX ?? e.x;
+  const oy = a.originY ?? e.y;
+  const maxR = AIR_CRASH_RANGE * state.tileSize;
+  const v = cruiseSpeed(state, e) * a.speed;
+  let x = e.x + Math.cos(e.facing) * v * dt;
+  let y = e.y + Math.sin(e.facing) * v * dt;
+  const dx = x - ox;
+  const dy = y - oy;
+  const d = Math.hypot(dx, dy);
+  if (d > maxR) {
+    x = ox + (dx / d) * maxR;
+    y = oy + (dy / d) * maxR;
+  }
+  const maxX = state.width * state.tileSize - 1;
+  const maxY = state.height * state.tileSize - 1;
+  e.x = Math.max(1, Math.min(maxX, x));
+  e.y = Math.max(1, Math.min(maxY, y));
+  e.tileX = worldToTile(e.x, state.tileSize);
+  e.tileY = worldToTile(e.y, state.tileSize);
 }
 
 /** A building or a ground hull stops the airframe. Men, trees, and other planes do not. */

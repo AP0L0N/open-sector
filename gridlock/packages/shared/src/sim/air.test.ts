@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   AIR_CRASH_BUILDING_DAMAGE,
+  AIR_CRASH_RANGE,
   AIR_CRUISE_ALT,
   AIR_FUEL_SECONDS,
   AIRFIELD_PADS,
@@ -714,15 +715,23 @@ describe("aircraft crash", () => {
     const view = snapshotFor(state, "A").entities.find((e) => e.id === plane.id);
     assert.equal(view?.air?.phase, "crash");
     const facing0 = plane.facing;
-    ticks(state, 20);
+    const x0 = plane.x;
+    const y0 = plane.y;
+    ticks(state, 8);
     assert.equal(plane.wreck, false);
     assert.ok((plane.air?.alt ?? 0) > 30, "still well above the ground");
     let d = plane.facing - facing0;
     while (d > Math.PI) d -= Math.PI * 2;
     while (d < -Math.PI) d += Math.PI * 2;
-    assert.ok(Math.abs(d) > 0.02, `nose should wander, turned ${d.toFixed(3)} rad`);
-    const down = until(state, 250, () => plane.wreck);
+    assert.ok(Math.abs(d) > 1, `nose should bank hard, turned ${d.toFixed(3)} rad`);
+    const reach = AIR_CRASH_RANGE * state.tileSize + 1;
+    let far = Math.hypot(plane.x - x0, plane.y - y0);
+    const down = until(state, 250, () => {
+      far = Math.max(far, Math.hypot(plane.x - x0, plane.y - y0));
+      return plane.wreck;
+    });
     assert.ok(down >= 0, "it should meet the ground");
+    assert.ok(far <= reach, `glided ${far.toFixed(0)}px, max ${reach.toFixed(0)}`);
     assert.equal(plane.air, undefined);
     assert.equal(plane.hp, wreckHpOf("stuka"));
     assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === plane.id)?.air, undefined);

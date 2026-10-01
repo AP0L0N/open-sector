@@ -77,6 +77,7 @@ import {
   rocketRackOf,
   type RocketRackDef,
   LAUNCHER_ROCKET_RACK,
+  PENETRATOR_RACK,
   FLAMER_BURST,
   type CatalogEntry,
   type ShellType,
@@ -363,13 +364,19 @@ function burstRockets(state: MatchState, e: Entity, downed: Set<number>, gun: Ro
     if (gun.rounds() <= 0) break;
     const spent = Math.min(gun.rounds(), CIWS_INTERCEPT_ROUNDS);
     gun.spend(spent);
-    (p.ciwsTried ??= []).push(e.id);
+    // An ordinary rocket gets one try. A heavy round stays on the gun until it comes apart.
+    const heavy = (p.plate ?? 1) > 1;
+    if (!heavy) (p.ciwsTried ??= []).push(e.id);
     if (nextRand(state) >= chance * (spent / CIWS_INTERCEPT_ROUNDS)) continue;
-    downed.add(p.id);
+    const killed = burstBreaksRocket(p);
+    if (killed) {
+      if (heavy) (p.ciwsTried ??= []).push(e.id);
+      downed.add(p.id);
+    }
     state.impacts.push({
       id: state.nextId++,
       ownerId: e.ownerId,
-      kind: "kill",
+      kind: killed ? "kill" : "hit",
       fromId: e.id,
       x: p.x,
       y: p.y,
@@ -516,15 +523,20 @@ function launchInterceptor(state: MatchState, e: Entity, downed: Set<number>): b
   e.rockets = Math.max(0, (e.rockets ?? 0) - 1);
   if (e.rockets <= 0) e.rocketSalvo = 0;
   e.rocketCooldown = e.rockets > 0 ? RAM_INTERCEPT_INTERVAL : rocketRackOf(e.type).reload;
-  (best.ciwsTried ??= []).push(e.id);
+  const heavy = (best.plate ?? 1) > 1;
+  if (!heavy) (best.ciwsTried ??= []).push(e.id);
   e.turretFacing = Math.atan2(best.y - e.y, best.x - e.x);
-  const hit = nextRand(state) < RAM_INTERCEPT_CHANCE;
-  if (hit) downed.add(best.id);
+  const connected = nextRand(state) < RAM_INTERCEPT_CHANCE;
+  const killed = connected && burstBreaksRocket(best);
+  if (killed) {
+    if (heavy) (best.ciwsTried ??= []).push(e.id);
+    downed.add(best.id);
+  }
   // A burst in the air either way: the interceptor's own, on the rocket or just off it.
   state.impacts.push({
     id: state.nextId++,
     ownerId: e.ownerId,
-    kind: hit ? "kill" : "miss",
+    kind: killed ? "kill" : connected ? "hit" : "miss",
     fromId: e.id,
     x: best.x,
     y: best.y,
@@ -929,6 +941,16 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (e.reload > 0) return;
   if (e.cooldown > 0) return;
   const infantryGun = infantryGunFor(e);
+  // The heavy missile is not the tube. An empty tube, or a tube still reloading, does not block it.
+  // He spends the one round only on a shot the player ordered.
+  if (infantryGun?.id === "penetrator") {
+    if (e.order?.auto || (e.heavy ?? 0) <= 0) return;
+    launchRocket(state, e, PENETRATOR_RACK, aimX, aimY, range, dist, target, 0);
+    e.heavy = 0;
+    e.cooldown = infantryGun.cooldown;
+    if (e.order?.once) clearOrder(e);
+    return;
+  }
   const belt = beltOf(e.type);
   if ((infantryGun || belt) && e.clip <= 0) {
     const reloadSec = infantryGun?.reload ?? belt?.reload ?? 0;
@@ -1340,8 +1362,20 @@ function launchRocket(
     z: z0,
     vz: (zLand - z0) / flight,
     launcher: e.type,
+    heavy: rack.plate != null && rack.plate > 1 ? true : undefined,
+    plate: rack.plate != null && rack.plate > 1 ? rack.plate : undefined,
     ...lob(rack, dist, range, z0),
   });
+}
+
+/** True when this connecting burst destroys the rocket. A heavy round loses one plate and flies on. */
+function burstBreaksRocket(p: Projectile): boolean {
+  const plate = p.plate ?? 1;
+  if (plate > 1) {
+    p.plate = plate - 1;
+    return false;
+  }
+  return true;
 }
 
 /** Arc fields for a rack whose rockets arc: the peak over the straight line grows with the shot. */
@@ -1408,7 +1442,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
   const tx = worldToTile(p.x, state.tileSize);
   const ty = worldToTile(p.y, state.tileSize);
   if (!inAir && isTree(state, tx, ty)) fellTreeAt(state, tx, ty);
-  const rack = rocketRackOf(p.launcher ?? "titan");
+  const rack = p.heavy ? PENETRATOR_RACK : rocketRackOf(p.launcher ?? "titan");
   const radius = (rocket ? rack.splashTiles : MORTAR_SPLASH_TILES) * state.tileSize;
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null) continue;
@@ -1590,8 +1624,9 @@ function tickWeaponClocks(e: Entity, dt: number): void {
     if (e.reload <= 0) {
       const gun = infantryGunFor(e);
       const belt = beltOf(e.type);
-      if (gun) e.clip = gun.clip;
-      else if (belt) e.clip = belt.clip;
+      // Arming the heavy missile shares this clock. Finishing it must not refill the tube.
+      if (gun && gun.id !== "penetrator") e.clip = gun.clip;
+      else if (!gun && belt) e.clip = belt.clip;
     }
   }
   if (!hasMg(e.type)) return;

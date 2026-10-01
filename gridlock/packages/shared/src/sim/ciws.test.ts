@@ -232,6 +232,33 @@ describe("CIWS against rockets", () => {
     assert.ok(through > 0, "some rockets get through");
   });
 
+  it("chips a high-penetration missile instead of bursting it on one connecting burst", () => {
+    const one = (seed: number, plate?: number): { gone: boolean; left?: number } => {
+      const state = match();
+      state.rngState = seed;
+      const ts = state.tileSize;
+      const ciws = seedCiws(state);
+      const p = rocket(state, "B", ciws.x - 20 * ts, ciws.y + 6 * ts);
+      if (plate != null) {
+        p.plate = plate;
+        p.heavy = true;
+      }
+      step(state, TICK_DT);
+      const still = state.projectiles.find((q) => q.id === p.id);
+      return { gone: !still, left: still?.plate };
+    };
+    for (let i = 1; i < 80; i++) {
+      const seed = i * 7919;
+      const ordinary = one(seed);
+      const heavy = one(seed, 4);
+      if (!ordinary.gone) continue;
+      assert.equal(heavy.gone, false);
+      assert.equal(heavy.left, 3);
+      return;
+    }
+    assert.fail("no seed where the burst connected");
+  });
+
   it("an intercepted rocket hurts nothing under it", () => {
     const state = match();
     const ts = state.tileSize;
