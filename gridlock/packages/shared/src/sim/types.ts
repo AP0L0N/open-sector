@@ -301,8 +301,10 @@ export interface Entity {
   gatlingGuns?: 1 | 2;
   /** Player turned Walker self-destroy off. Missing means on. */
   selfDestructOff?: true;
-  /** Charging to detonate. Sim-only. Cleared when the option is off or HP recovers. */
+  /** Charging to detonate. Cleared when the option is off or HP recovers. */
   charging?: true;
+  /** The charge has multiplied hp and hpMax. Sim-only. */
+  chargeBuff?: true;
   /** Titan outriggers are down: stationary, hull locked, braced max HP. Missing means false. */
   braced?: boolean;
   /** Seconds until the Titan's pods can fire the next rocket. Missing means ready. */

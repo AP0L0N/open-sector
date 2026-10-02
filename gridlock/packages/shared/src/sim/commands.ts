@@ -34,6 +34,7 @@ import {
 import type { ClientMessage, ErrorCode } from "../protocol.js";
 import { pathToCapture, wantsCapture } from "./capture.js";
 import { allies, clearOrder, hqOf, worldToTile } from "./geo.js";
+import { endWalkerCharge } from "./walker-charge.js";
 import { garrisonCanShoot, garrisonShotReaches, relayGarrisonForce } from "./combat.js";
 import { approachTile, canGarrison, exitGarrison, garrisonOwner, livingGarrison, setGarrisonHide } from "./garrison.js";
 import { setScoutOut } from "./scout.js";
@@ -1230,12 +1231,9 @@ function cmdSelfDestruct(state: MatchState, playerId: string, ids: number[], on:
   if (units.length === 0) return fail("not_yours", "Select a Walker.");
   for (const e of units) {
     e.selfDestructOff = on ? undefined : true;
-    // The charge is a move order. Turning it off has to drop that order now,
-    // or the walker keeps running until the next charge tick.
-    if (!on && e.charging) {
-      e.charging = undefined;
-      clearOrder(e);
-    }
+    // The charge is a move order, and the swollen hit points have to come off
+    // with it. Waiting for the next charge tick would leave him huge and running.
+    if (!on) endWalkerCharge(e);
   }
   return ok();
 }

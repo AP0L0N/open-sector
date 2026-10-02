@@ -23,16 +23,16 @@
     "SSE"
   ],
   "contactY": 0.72,
-  "scale": 0.9586,
+  "scale": 0.9271,
   "out": "gridlock/packages/client/src/assets/units/engineer-crawl.png",
   "size_pop_dirs": [
+    "S",
     "WSW",
     "W",
     "WNW",
     "NNW",
     "N",
     "NNE",
-    "NE",
     "E",
     "ESE"
   ],

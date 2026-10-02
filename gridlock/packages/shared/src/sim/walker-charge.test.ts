@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { TICK_DT, WALKER_SELF_DESTRUCT_HP, catalog } from "../catalog.js";
+import { TICK_DT, WALKER_CHARGE_HP, WALKER_SELF_DESTRUCT_HP, catalog } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { TILE_EMPTY } from "../maps.js";
 import { applyCommand } from "./commands.js";
@@ -160,6 +160,9 @@ describe("Walker self-destroy", () => {
     ticks(state, 20);
     assert.ok(walker.x > x + 8, `closed ${walker.x - x}`);
     assert.equal(applyCommand(state, "A", { type: "cmd.selfdestruct", ids: [walker.id], on: false }).ok, true);
+    assert.equal(walker.hpMax, catalog("walker").hp);
+    assert.equal(walker.hp, Math.round(catalog("walker").hp * WALKER_SELF_DESTRUCT_HP));
+    assert.equal(walker.chargeBuff, undefined);
     const held = walker.x;
     ticks(state, 40);
     assert.ok(Math.abs(walker.x - held) < 2, `drifted to ${walker.x}`);
@@ -190,6 +193,35 @@ describe("Walker self-destroy", () => {
     assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === walker.id)?.selfDestruct, false);
     assert.equal(applyCommand(state, "A", { type: "cmd.selfdestruct", ids: [walker.id], on: true }).ok, true);
     assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === walker.id)?.selfDestruct, true);
+  });
+
+  it("swells to five times the same fraction and runs faster", () => {
+    const state = match();
+    const ts = state.tileSize;
+    const x = tileCenter(100, ts);
+    const y = tileCenter(120, ts);
+    const walker = lowWalker(state, x, y);
+    walker.facing = 0;
+    const truck = makeEntity(state, "supply", "B", x + 220, y);
+    truck.holdPosition = true;
+    const base = catalog("walker").hp;
+    const low = Math.round(base * WALKER_SELF_DESTRUCT_HP);
+    ticks(state, 2);
+    assert.equal(walker.hpMax, base * WALKER_CHARGE_HP);
+    assert.equal(walker.hp, low * WALKER_CHARGE_HP);
+    assert.equal(walker.hp / walker.hpMax, WALKER_SELF_DESTRUCT_HP);
+    assert.equal(walker.charging, true);
+    assert.equal(state.smokeClouds.length, 0);
+    const own = snapshotFor(state, "A").entities.find((e) => e.id === walker.id);
+    assert.equal(own?.charging, true);
+    assert.equal(own?.hp, walker.hp);
+    assert.equal(own?.hpMax, walker.hpMax);
+    const x1 = walker.x;
+    ticks(state, 10);
+    const gained = walker.x - x1;
+    const normal = catalog("walker").moveTilesPerSec * ts * TICK_DT * 10;
+    assert.ok(gained > normal * 1.25, `gained ${gained} vs normal ${normal}`);
+    assert.ok(gained < normal * 1.55, `gained ${gained} vs normal ${normal}`);
   });
 
   it("still leaves a wreck when he is destroyed without detonating", () => {

@@ -2,6 +2,9 @@
 """
 Cyborg unit sheets — a primitive-built 3D miniature under one locked camera.
 
+A heavy assault cyborg: slate armour plates over a machine frame, a red visor
+slit, an exposed ribbed waist, a back power pack, a gatling right forearm.
+
 No Blender and no image model: the cyborg is a set of capsules, ellipsoids,
 boxes, and cylinders in body space (+x forward, +y left, +z up, feet on z=0).
 Each pose is splatted as dense surface points, z-buffered, shaded in three flat
@@ -64,7 +67,7 @@ OUTLINE = (26, 20, 16)  # #1a1410
 STAND_SCALE = 1.2
 PRONE_SCALE = STAND_SCALE * 22 / 28
 # Swim water plane, body units above the feet: just under the torso, over the hips.
-WATER_Z = 35.0
+WATER_Z = 41.0
 
 # name: (shadow, mid, highlight), or a single colour for emissive.
 MATERIALS: dict[str, tuple] = {
@@ -76,13 +79,17 @@ MATERIALS: dict[str, tuple] = {
     "leather": ((62, 42, 30), (92, 64, 48), (118, 86, 64)),
     "brass": ((125, 97, 40), (176, 138, 58), (212, 160, 23)),
     "rust": ((100, 40, 30), (139, 58, 42), (168, 82, 60)),
-    "eye": (235, 64, 40),
+    "armor": ((38, 42, 50), (62, 68, 78), (96, 102, 114)),  # slate armour
+    "plate": ((82, 86, 92), (126, 130, 134), (172, 174, 176)),  # steel plates
+    "cyred": ((92, 20, 18), (146, 30, 24), (192, 54, 38)),
+    "glow": (255, 110, 40),
+    "eye": (255, 52, 30),
     "spark": (255, 196, 64),
     "flash_core": (255, 244, 190),
     "flash": (255, 176, 40),
     "pupil": (26, 20, 16),
 }
-EMISSIVE = {"eye", "spark", "flash_core", "flash", "pupil"}
+EMISSIVE = {"eye", "glow", "spark", "flash_core", "flash", "pupil"}
 MAT_IDS = {name: i for i, name in enumerate(MATERIALS)}
 # Rows whose model spilled past the cell edge during the current sheet.
 CLIPPED: list[int] = []
@@ -232,15 +239,10 @@ def rot_x(a: float) -> np.ndarray:
 
 
 # ---------------------------------------------------------------- parts
-
-
-def half_body(p: np.ndarray) -> np.ndarray:
-    """Left half (+y) is the soldier, right half (−y) is plating."""
-    return np.where(p[:, 1] >= 0.4, "olive", "metal")
-
-
-def half_face(p: np.ndarray) -> np.ndarray:
-    return np.where(p[:, 1] >= 0.3, "skin", "metal")
+#
+# A heavy assault cyborg: slate armour over a machine frame, steel plates on
+# the shoulders, chest, and knees, a red visor slit, an exposed ribbed waist,
+# a power pack on the back, a gatling for a right forearm, and a claw on the left.
 
 
 def gatling(c: Cloud, base, spin: float, length: float = 15.0, flash: int = 0, tilt=None) -> np.ndarray:
@@ -250,24 +252,24 @@ def gatling(c: Cloud, base, spin: float, length: float = 15.0, flash: int = 0, t
     fwd = R @ np.array([1.0, 0, 0])
     side = R @ np.array([0, 1.0, 0])
     up = R @ np.array([0, 0, 1.0])
-    # Motor housing and the drum feed chute.
-    box(c, base + fwd * 3.2, (4.4, 3.3, 3.4), "metal", rot=R)
-    box(c, base + fwd * 2.0 + up * 3.6, (2.6, 1.6, 0.8), "rust", rot=R)
-    cylinder(c, base + fwd * 7.4, base + fwd * 8.8, 2.9, "dark")
+    # Armoured motor housing over the forearm, red band, feed chute on top.
+    box(c, base + fwd * 3.0, (4.8, 3.4, 3.4), "armor", rot=R)
+    box(c, base + fwd * 3.0 + up * 3.5, (3.6, 2.4, 0.4), "plate", rot=R)
+    box(c, base + fwd * 6.8, (0.6, 3.5, 3.5), "cyred", rot=R)
+    cylinder(c, base + fwd * 7.6, base + fwd * 9.0, 2.9, "dark")
     # Six barrels around the spindle, a clamp, and the muzzle ring.
-    b0 = base + fwd * 8.6
-    b1 = base + fwd * (8.6 + length)
+    b0 = base + fwd * 8.8
+    b1 = base + fwd * (8.8 + length)
     for i in range(6):
         a = spin + i * math.pi / 3
         off = (math.cos(a) * side + math.sin(a) * up) * 1.75
         capsule(c, b0 + off, b1 + off, 0.8, mat="metal" if i % 2 else "dark", caps=False)
-    cylinder(c, b0 + fwd * length * 0.45, b0 + fwd * (length * 0.45 + 1.4), 2.35, "metal")
-    cylinder(c, b1 - fwd * 1.0, b1 - fwd * 0.2, 2.2, "dark")
+    cylinder(c, b0 + fwd * length * 0.45, b0 + fwd * (length * 0.45 + 1.4), 2.4, "armor")
+    cylinder(c, b1 - fwd * 1.2, b1 - fwd * 0.2, 2.3, "dark")
     muzzle = b1 + fwd * 0.3
     if flash:
         # Big / small / big / tiny. The big star stays inside the 96 cell on E and W.
         s = {1: 1.15, 2: 0.8, 3: 1.05, 4: 0.45}[flash]
-        # Star: a long spike down the bore, four short spikes across it, a hot core.
         ellipsoid(c, muzzle + fwd * 4.6 * s, (5.6 * s, 1.1 * s, 1.1 * s), "flash", rot=R)
         for k in range(4):
             d = rot_x(k * math.pi / 2 + spin) @ np.array([0.0, 1.0, 0.0])
@@ -282,7 +284,7 @@ def feed_belt(c: Cloud, a, b, ctrl, n: int = 9) -> None:
     for i in range(n):
         t = (i + 0.5) / n
         p = (1 - t) ** 2 * a + 2 * (1 - t) * t * ctrl + t**2 * b
-        ellipsoid(c, p, (0.95, 0.95, 0.95), "brass")
+        ellipsoid(c, p, (0.75, 0.75, 0.75), "dark")
 
 
 def leg_ik(hip, foot, l1: float, l2: float) -> np.ndarray:
@@ -300,25 +302,39 @@ def leg_ik(hip, foot, l1: float, l2: float) -> np.ndarray:
     return hip + dirv * a + perp * h
 
 
+THIGH_L, SHIN_L = 15.6, 14.6
+
+
 def mech_leg(c: Cloud, hip, foot, side: float) -> None:
-    knee = leg_ik(hip, foot + np.array([0, 0, 2.6]), 14.0, 13.5)
-    ankle = foot + np.array([0, 0, 2.6])
-    capsule(c, hip, knee, 3.4, 2.9, "metal")
-    # Hydraulic ram along the back of the thigh.
-    capsule(c, hip + np.array([-2.6, 0, -1]), knee + np.array([-2.4, 0, 0.5]), 1.0, mat="dark")
+    hip = np.asarray(hip, float)
+    foot = np.asarray(foot, float)
+    ankle = foot + np.array([0, 0, 3.2])
+    knee = leg_ik(hip, ankle, THIGH_L, SHIN_L)
+    # Armoured thigh with a steel plate on the front.
+    capsule(c, hip, knee, 3.9, 3.1, "armor")
+    mid = (hip + knee) / 2
+    d = (knee - hip) / np.linalg.norm(knee - hip)
+    capsule(c, mid + np.array([2.6, 0, 0]) - d * 4.0, mid + np.array([2.4, 0, 0]) + d * 4.0, 1.7, mat="plate")
+    # Knee: a big steel cap.
+    ellipsoid(c, knee + np.array([1.4, 0, 0.4]), (2.9, 3.0, 3.2), "plate")
+    # Shin: a narrow strut with a piston behind it, and a calf guard.
     capsule(c, knee, ankle, 2.5, 2.1, "dark")
-    ellipsoid(c, knee + np.array([0.9, 0, 0]), (3.0, 3.3, 3.0), "metal")
-    box(c, foot + np.array([2.0, 0, 1.4]), (4.6, 2.7, 1.4), "dark")
-    box(c, foot + np.array([4.4, 0, 1.9]), (1.6, 2.5, 1.2), "metal")
+    capsule(c, knee + np.array([-2.4, 0, -1.0]), ankle + np.array([-2.6, 0, 1.2]), 0.9, mat="metal")
+    capsule(c, knee + np.array([0.9, 0, -2.0]), ankle + np.array([1.4, 0, 2.6]), 2.0, 1.7, "armor")
+    ellipsoid(c, ankle, (2.2, 2.4, 2.0), "dark")
+    # Heavy armoured foot, steel toe.
+    box(c, foot + np.array([1.6, 0, 1.5]), (4.6, 2.8, 1.5), "armor")
+    box(c, foot + np.array([5.0, 0, 1.3]), (1.4, 2.6, 1.2), "plate")
+    box(c, foot + np.array([-2.6, 0, 1.6]), (1.0, 2.2, 1.6), "dark")
 
 
 def stumps(c: Cloud, pelvis, back: np.ndarray, t: float) -> None:
     """Torn hips: short ragged struts, cut cables, and a spark that flickers with `t`."""
     for s in (1, -1):
         hip = pelvis + np.array([0, s * 5.0, 0])
-        capsule(c, hip, hip + back * 3.2, 3.0, 2.4, "metal")
+        capsule(c, hip, hip + back * 3.2, 3.2, 2.6, "armor")
         tip = hip + back * 3.8
-        cylinder(c, tip - back * 0.6, tip + back * 0.8, 1.6, "rust")
+        cylinder(c, tip - back * 0.6, tip + back * 0.8, 1.6, "cyred")
         for k, ang in enumerate((0.6, -0.5, 1.8)):
             d = back * 2.4 + np.array([0, math.cos(ang + s) * 1.6, math.sin(ang) * 1.6])
             capsule(c, tip, tip + d, 0.5, mat="dark" if k else "brass", caps=False)
@@ -326,56 +342,106 @@ def stumps(c: Cloud, pelvis, back: np.ndarray, t: float) -> None:
             ellipsoid(c, tip + back * 2.8 + np.array([0, 0, 0.8]), (1.2, 1.2, 1.2), "spark")
 
 
+def cy_head(c: Cloud, at, R=None) -> None:
+    """Armoured skull: steel crest, red visor slit, breathing hoses at the jaw."""
+    at = np.asarray(at, float)
+    R = np.eye(3) if R is None else R
+    P = lambda *v: at + R @ np.array(v, float)  # noqa: E731
+    ellipsoid(c, at, (4.8, 4.3, 5.0), "armor", rot=R)
+    box(c, P(3.4, 0, -2.2), (1.6, 2.6, 1.9), "plate", rot=R)  # jaw guard
+    box(c, P(4.4, 0, 0.6), (0.8, 3.4, 0.75), "eye", rot=R)  # visor slit
+    box(c, P(0.0, 0, 4.4), (4.2, 0.9, 1.0), "plate", rot=R)  # crest
+    for s in (1, -1):
+        box(c, P(0.2, s * 4.2, 0.0), (2.4, 0.5, 2.6), "plate", rot=R)  # ear plates
+        capsule(c, P(3.8, s * 1.8, -3.4), P(2.2, s * 4.0, -7.8), 0.7, mat="dark")
+
+
+def cy_torso(c: Cloud, z: float, R=None, base=(0.0, 0.0, 0.0)) -> np.ndarray:
+    """Pelvis to collar. `z` is the hip height. Returns the shoulder-line centre."""
+    R = np.eye(3) if R is None else R
+    o = np.asarray(base, float)
+    P = lambda *v: o + R @ np.array(v, float)  # noqa: E731
+    # Pelvis armour and the hip actuators.
+    box(c, P(-0.4, 0, z + 1.2), (3.8, 6.6, 3.0), "armor", rot=R)
+    box(c, P(3.2, 0, z + 0.6), (0.9, 3.0, 2.6), "plate", rot=R)
+    for s in (1, -1):
+        cylinder(c, P(-0.4, s * 5.2, z), P(-0.4, s * 7.8, z), 3.0, "dark")
+        cylinder(c, P(-0.4, s * 7.6, z), P(-0.4, s * 8.2, z), 2.2, "plate")
+    # Exposed waist: a ribbed spine stack with cables either side.
+    for i in range(3):
+        zz = z + 5.0 + i * 2.2
+        cylinder(c, P(-0.4, 0, zz), P(-0.4, 0, zz + 1.4), 4.4 - 0.2 * i, "dark")
+    for s in (1, -1):
+        capsule(c, P(1.8, s * 3.4, z + 3.8), P(2.4, s * 4.4, z + 11.0), 0.7, mat="cyred")
+    # Chest: a broad armoured barrel, a steel breastplate, red stripe.
+    ellipsoid(c, P(0.0, 0, z + 17.5), (6.6, 9.4, 7.8), "armor", rot=R)
+    box(c, P(5.4, 0, z + 18.0), (1.3, 6.2, 5.0), "plate", rot=R @ rot_y(-0.12))
+    box(c, P(6.75, 0, z + 18.4), (0.15, 1.0, 4.4), "cyred", rot=R @ rot_y(-0.12))
+    box(c, P(0.4, 0, z + 24.6), (4.2, 5.0, 1.4), "armor", rot=R)  # collar
+    # Power pack on the back: two exhaust stacks and a glowing core.
+    box(c, P(-8.6, 0, z + 18.0), (2.8, 6.0, 6.6), "armor", rot=R)
+    box(c, P(-11.5, 0, z + 17.0), (0.25, 2.6, 2.6), "glow", rot=R)
+    for s in (1, -1):
+        cylinder(c, P(-8.6, s * 3.8, z + 24.0), P(-9.0, s * 3.8, z + 28.0), 1.3, "dark")
+        cylinder(c, P(-9.0, s * 3.8, z + 27.6), P(-9.05, s * 3.8, z + 28.1), 1.5, "metal")
+    return P(0.0, 0, z + 22.0)
+
+
+def pauldron(c: Cloud, at, side: float, R=None) -> None:
+    R = np.eye(3) if R is None else R
+    at = np.asarray(at, float)
+    ellipsoid(c, at, (5.4, 4.6, 4.4), "plate", rot=R, keep=lambda p, z=at[2]: p[:, 2] >= z - 1.2)
+    ellipsoid(c, at + R @ np.array([0, side * 0.4, -1.2]), (5.6, 4.8, 0.7), "cyred", rot=R)
+
+
+def claw(c: Cloud, wrist, fwd) -> None:
+    wrist = np.asarray(wrist, float)
+    fwd = np.asarray(fwd, float) / np.linalg.norm(fwd)
+    ellipsoid(c, wrist, (1.9, 1.9, 1.9), "dark")
+    side = np.cross(np.array([0, 0, 1.0]), fwd)
+    side = side / max(1e-6, np.linalg.norm(side))
+    for k in (-1, 0, 1):
+        a = wrist + fwd * 1.2 + side * k * 1.0
+        capsule(c, a, a + fwd * 2.4 + np.array([0, 0, -1.2]) + side * k * 0.6, 0.55, mat="metal")
+
+
 # ---------------------------------------------------------------- poses
+
+
+HIP_Z = 33.0
 
 
 def pose_stand(phase: float | None, spin: float = 0.0, flash: int = 0) -> tuple[Cloud, float]:
     c = Cloud()
     stride = 0.0 if phase is None else 1.0
-    bob = 0.0 if phase is None else 0.7 * abs(math.sin(2 * math.pi * phase))
+    bob = 0.0 if phase is None else 0.8 * abs(math.sin(2 * math.pi * phase))
     feet = []
     for s, off in ((1, 0.0), (-1, 0.5)):
         p = 0.0 if phase is None else (phase + off) % 1.0
-        fx = -5.5 * math.cos(2 * math.pi * p) * stride
-        lift = 2.6 * max(0.0, math.sin(2 * math.pi * p)) * stride
-        feet.append((s, np.array([fx, s * 5.4, lift])))
-    hz = 29.5 - bob
+        fx = -6.0 * math.cos(2 * math.pi * p) * stride
+        lift = 3.0 * max(0.0, math.sin(2 * math.pi * p)) * stride
+        feet.append((s, np.array([fx, s * 5.6, lift])))
+    hz = HIP_Z - bob
     for s, foot in feet:
-        mech_leg(c, np.array([-0.5, s * 5.0, hz]), foot, s)
-    # Pelvis block and hip actuators.
-    box(c, (-0.5, 0, hz + 1.4), (3.6, 6.4, 3.0), "dark")
-    for s in (1, -1):
-        cylinder(c, (-0.5, s * 5.2, hz), (-0.5, s * 7.6, hz), 2.8, "metal")
-    z = hz - 29.5
-    # Torso: soldier on the left, plating on the right.
-    ellipsoid(c, (0.2, 0, 43.5 + z), (6.0, 8.8, 10.2), half_body)
-    box(c, (4.8, -4.4, 45 + z), (1.6, 4.0, 5.4), "metal")  # chest plate
-    box(c, (4.2, 4.6, 40.5 + z), (1.7, 2.6, 2.2), "leather")  # pouch
-    capsule(c, (4.9, 7.0, 51 + z), (5.4, -2.0, 37 + z), 0.8, mat="leather")  # strap
-    # Drum magazine on the back, fed to the gun around the right hip.
-    cylinder(c, (-8.8, -6.2, 45 + z), (-8.8, 6.2, 45 + z), 6.0, "dark")
-    cylinder(c, (-8.8, -6.6, 45 + z), (-8.8, -6.0, 45 + z), 6.4, "brass")
-    cylinder(c, (-8.8, 6.0, 45 + z), (-8.8, 6.6, 45 + z), 6.4, "metal")
-    box(c, (-9.6, 0, 45 + z), (2.2, 6.3, 1.2), "rust")
-    feed_belt(c, (-6.0, -7.5, 40 + z), (0.6, -12.2, 39.6 + z), (-3.6, -14.5, 36 + z))
-    # Neck cables, face half flesh half machine, helmet.
-    capsule(c, (0, 0, 53.5 + z), (0.6, 0, 57 + z), 2.9, mat="dark")
-    ellipsoid(c, (1.0, 0, 60.5 + z), (5.8, 5.8, 6.2), half_face)
-    box(c, (5.4, -2.6, 57.8 + z), (1.3, 2.4, 1.5), "metal")  # jaw plate
-    ellipsoid(c, (6.4, -2.3, 61.2 + z), (1.1, 1.35, 1.2), "eye")
-    ellipsoid(c, (6.6, 2.3, 61.2 + z), (0.6, 0.7, 0.7), "pupil")
-    ellipsoid(c, (0.4, 0, 63.6 + z), (7.2, 7.4, 5.2), "helmet", keep=lambda p: p[:, 2] >= 62.4 + z)
-    ellipsoid(c, (0.0, 0, 62.6 + z), (8.2, 8.2, 1.0), "helmet")
-    # Right shoulder pauldron and the gun arm.
-    ellipsoid(c, (0, -10.2, 51.5 + z), (4.8, 4.2, 3.6), "metal")
-    capsule(c, (0, -10.6, 50 + z), (1.4, -11.0, 42.5 + z), 2.8, mat="dark")
-    muzzle = gatling(c, (0.8, -11.0, 41.2 + z), spin, flash=flash)
-    # Left arm, human: sleeve, forearm across to the top handle.
-    ellipsoid(c, (0, 9.4, 51 + z), (3.6, 3.4, 3.4), "olive")
-    capsule(c, (0, 9.8, 50 + z), (2.6, 10.4, 42.5 + z), 2.6, mat="olive")
-    capsule(c, (2.6, 10.4, 42.5 + z), (7.8, -5.6, 44.5 + z), 2.1, 2.0, "skin")
-    ellipsoid(c, (8.2, -7.0, 44.8 + z), (2.2, 2.0, 2.0), "skin")
-    capsule(c, (6.4, -11.0, 44.4 + z), (9.8, -11.0, 44.4 + z), 0.9, mat="dark")  # carry handle
+        mech_leg(c, np.array([-0.4, s * 5.2, hz]), foot, s)
+    cy_torso(c, hz)
+    z = hz - HIP_Z
+    cy_head(c, (1.4, 0, 64.2 + z))
+    capsule(c, (0.2, 0, 57.0 + z), (0.8, 0, 60.4 + z), 2.6, mat="dark")
+    # Right: pauldron, armoured upper arm, the gatling for a forearm.
+    pauldron(c, (0.0, -10.6, 55.2 + z), -1)
+    capsule(c, (0.2, -11.0, 53.0 + z), (1.2, -11.6, 46.0 + z), 3.0, 2.6, "armor")
+    ellipsoid(c, (1.2, -11.6, 45.4 + z), (2.6, 2.6, 2.6), "dark")
+    muzzle = gatling(c, (0.8, -11.6, 44.2 + z), spin, flash=flash)
+    # Ammo feed from the pack round to the gun.
+    feed_belt(c, (-7.0, -6.6, 46.0 + z), (1.0, -12.4, 47.6 + z), (-4.0, -14.6, 44.0 + z), n=8)
+    # Left: pauldron, mech arm, claw on the gun's top handle.
+    pauldron(c, (0.0, 10.6, 55.2 + z), 1)
+    capsule(c, (0.2, 11.0, 53.0 + z), (2.6, 11.6, 46.4 + z), 2.8, 2.4, "armor")
+    ellipsoid(c, (2.6, 11.6, 46.0 + z), (2.4, 2.4, 2.4), "dark")
+    capsule(c, (2.6, 11.6, 46.0 + z), (8.4, -2.0, 48.6 + z), 2.2, 1.9, "plate")
+    claw(c, (9.2, -4.0, 48.8 + z), (0.3, -1.0, -0.1))
+    capsule(c, (6.4, -11.6, 48.0 + z), (10.4, -11.6, 48.0 + z), 0.9, mat="dark")  # carry handle
     return c, 0.0
 
 
@@ -385,37 +451,34 @@ def pose_crawl(t: float, spin: float = 0.0, flash: int = 0) -> tuple[Cloud, floa
     pull = math.sin(2 * math.pi * t)
     heave = 0.6 * max(0.0, pull)
     z0 = heave
-    # Torso lying along +x.
-    ellipsoid(c, (0, 0, 6.2 + z0), (10.5, 8.6, 5.6), half_body)
-    box(c, (1.0, -4.2, 11.0 + z0), (6.0, 3.6, 1.2), "metal")  # back plating
-    box(c, (-4.0, 4.6, 10.4 + z0), (2.4, 2.4, 1.4), "leather")
-    stumps(c, np.array([-10.0, 0, 5.0 + z0]), np.array([-1.0, 0, -0.1]), t)
-    box(c, (-9.2, 0, 5.2 + z0), (2.2, 6.4, 2.6), "dark")  # pelvis stub
-    # Drum on the back.
-    cylinder(c, (-2.0, -5.6, 14.2 + z0), (-2.0, 5.6, 14.2 + z0), 5.0, "dark")
-    cylinder(c, (-2.0, -6.0, 14.2 + z0), (-2.0, -5.4, 14.2 + z0), 5.4, "metal")
-    cylinder(c, (-2.0, 5.4, 14.2 + z0), (-2.0, 6.0, 14.2 + z0), 5.4, "metal")
-    feed_belt(c, (0.0, -6.6, 12.0 + z0), (7.6, -11.0, 7.0 + z0), (3.6, -11.8, 12.0 + z0), n=7)
+    # Torso lying along +x, back up.
+    ellipsoid(c, (0, 0, 6.4 + z0), (11.0, 9.0, 5.8), "armor")
+    box(c, (2.0, 0, 11.4 + z0), (6.6, 4.4, 1.0), "plate")
+    box(c, (2.0, 0, 12.5 + z0), (5.6, 0.8, 0.2), "cyred")
+    for i in range(3):
+        cylinder(c, (-7.0 - i * 1.6, 0, 5.4 + z0), (-8.0 - i * 1.6, 0, 5.4 + z0), 4.2 - 0.3 * i, "dark")
+    stumps(c, np.array([-12.6, 0, 5.0 + z0]), np.array([-1.0, 0, -0.1]), t)
+    box(c, (-11.6, 0, 5.2 + z0), (2.2, 6.6, 2.6), "armor")
+    # Power pack on the back.
+    box(c, (-1.0, 0, 15.0 + z0), (5.6, 5.4, 2.4), "armor")
+    box(c, (-1.0, 0, 17.5 + z0), (2.4, 2.4, 0.2), "glow")
+    feed_belt(c, (2.0, -5.6, 12.0 + z0), (8.6, -11.4, 7.0 + z0), (5.0, -12.4, 12.0 + z0), n=7)
     # Head raised, looking along the gun.
-    capsule(c, (9.0, 0, 9.0 + z0), (11.6, 0, 11.6 + z0), 2.8, mat="dark")
-    ellipsoid(c, (13.0, 0, 13.4 + z0), (5.6, 5.8, 5.8), half_face)
-    box(c, (17.2, -2.6, 11.2 + z0), (1.2, 2.3, 1.4), "metal")
-    ellipsoid(c, (18.3, -2.3, 14.0 + z0), (1.1, 1.3, 1.2), "eye")
-    ellipsoid(c, (18.5, 2.3, 14.0 + z0), (0.6, 0.7, 0.7), "pupil")
-    ellipsoid(c, (12.6, 0, 16.4 + z0), (7.0, 7.2, 4.8), "helmet", keep=lambda p: p[:, 2] >= 15.4 + z0)
-    ellipsoid(c, (12.2, 0, 15.5 + z0), (7.8, 7.8, 0.9), "helmet")
+    capsule(c, (9.0, 0, 9.0 + z0), (11.6, 0, 11.6 + z0), 2.6, mat="dark")
+    cy_head(c, (14.0, 0, 13.4 + z0))
     # Gun arm forward along the ground.
-    ellipsoid(c, (7.0, -9.6, 8.4 + z0), (4.2, 4.0, 3.4), "metal")
-    capsule(c, (7.0, -10.2, 7.4 + z0), (9.0, -10.8, 5.0 + z0), 2.6, mat="dark")
+    pauldron(c, (7.0, -9.8, 9.6 + z0), -1)
+    capsule(c, (7.0, -10.2, 7.4 + z0), (9.0, -10.8, 5.0 + z0), 2.6, mat="armor")
     muzzle = gatling(c, (9.6, -10.8, 4.6 + z0), spin, length=14.0, flash=flash)
-    # Left arm reaching forward and dragging: elbow plants, hand claws the dirt.
+    # Left arm reaching forward and dragging: elbow plants, claw digs the dirt.
     reach = 4.0 * pull
-    ellipsoid(c, (7.0, 9.0, 8.6 + z0), (3.4, 3.2, 3.2), "olive")
-    elbow = np.array([12.5 + reach * 0.5, 11.4, 2.2])
-    hand = np.array([19.0 + reach, 9.4, 1.4])
-    capsule(c, (7.0, 9.4, 8.0 + z0), elbow, 2.5, mat="olive")
-    capsule(c, elbow, hand, 2.1, 1.9, "skin")
-    ellipsoid(c, hand + np.array([0.8, 0, 0]), (2.2, 2.0, 1.5), "skin")
+    pauldron(c, (7.0, 9.6, 9.6 + z0), 1)
+    elbow = np.array([12.5 + reach * 0.5, 11.6, 2.4])
+    hand = np.array([19.0 + reach, 9.6, 1.8])
+    capsule(c, (7.0, 9.6, 8.0 + z0), elbow, 2.6, mat="armor")
+    ellipsoid(c, elbow, (2.2, 2.2, 2.2), "dark")
+    capsule(c, elbow, hand, 2.1, 1.8, "plate")
+    claw(c, hand, (1.0, -0.1, 0.0))
     return c, 0.0
 
 
@@ -440,32 +503,31 @@ def pose_swim(frame: int) -> tuple[Cloud, float]:
 def pose_dead() -> tuple[Cloud, float]:
     """Torso face down, gatling fallen aside, one leg torn off beside him."""
     c = Cloud()
-    ellipsoid(c, (0, 0, 4.4), (10.5, 8.8, 4.6), half_body)
-    box(c, (1.0, -4.0, 8.6), (6.0, 3.6, 1.0), "metal")
-    stumps(c, np.array([-10.0, 0, 3.6]), np.array([-1.0, 0, -0.05]), 0.0)
-    box(c, (-9.4, 0, 3.8), (2.2, 6.4, 2.2), "dark")
-    cylinder(c, (-5.0, -5.4, 9.0), (-5.0, 5.4, 9.0), 4.6, "dark")
-    cylinder(c, (-5.0, -5.8, 9.0), (-5.0, -5.2, 9.0), 5.0, "metal")
-    cylinder(c, (-5.0, 5.2, 9.0), (-5.0, 5.8, 9.0), 5.0, "metal")
-    # Head down on the dirt.
-    ellipsoid(c, (13.0, 1.0, 4.6), (5.6, 5.8, 4.8), half_face)
-    ellipsoid(c, (12.2, 1.0, 6.8), (7.0, 7.2, 4.2), "helmet", keep=lambda p: p[:, 2] >= 6.0)
-    ellipsoid(c, (12.0, 1.0, 6.4), (7.6, 7.6, 0.9), "helmet")
-    ellipsoid(c, (18.0, -1.3, 4.6), (0.9, 1.1, 1.0), "rust")  # dead optic
+    ellipsoid(c, (0, 0, 4.6), (11.0, 9.0, 4.8), "armor")
+    box(c, (1.0, 0, 9.0), (6.6, 4.4, 1.0), "plate")
+    stumps(c, np.array([-12.0, 0, 3.6]), np.array([-1.0, 0, -0.05]), 0.0)
+    box(c, (-11.0, 0, 3.8), (2.2, 6.6, 2.2), "armor")
+    box(c, (-4.0, 0, 10.6), (4.6, 5.0, 2.0), "armor")
+    box(c, (-4.0, 0, 12.7), (2.0, 2.0, 0.2), "rust")  # dead core
+    # Head down on the dirt, visor dark.
+    cy_head(c, (14.0, 1.0, 4.8), rot_x(math.radians(-25)))
     # Gun arm flung out to the right.
     tilt = rot_z(math.radians(-38))
-    ellipsoid(c, (6.0, -9.6, 5.6), (4.2, 4.0, 3.2), "metal")
-    gatling(c, (7.6, -11.4, 3.4), 0.3, length=13.0, tilt=tilt)
+    pauldron(c, (6.0, -9.8, 6.0), -1)
+    gatling(c, (7.6, -11.6, 3.4), 0.3, length=13.0, tilt=tilt)
     # Left arm limp forward.
-    capsule(c, (6.0, 9.0, 5.0), (12.0, 12.0, 2.0), 2.4, mat="olive")
-    capsule(c, (12.0, 12.0, 2.0), (18.0, 11.0, 1.6), 2.0, mat="skin")
+    capsule(c, (6.0, 9.0, 5.0), (12.0, 12.0, 2.0), 2.4, mat="armor")
+    capsule(c, (12.0, 12.0, 2.0), (18.0, 11.0, 1.6), 2.0, mat="plate")
+    claw(c, (18.6, 10.8, 1.6), (1.0, -0.2, 0.0))
     # A torn leg beside him, on its side, foot toward his hips.
     lr = rot_z(math.radians(95)) @ rot_x(math.radians(90))
-    base = np.array([0.0, 16.0, 3.2])
-    capsule(c, base, base + lr @ np.array([0, 0, -12.0]), 3.0, 2.6, "metal")
-    ellipsoid(c, base + lr @ np.array([0.8, 0, -12.0]), (2.9, 3.0, 2.9), "metal")
-    capsule(c, base + lr @ np.array([0, 0, -12.0]), base + lr @ np.array([-2.0, 0, -23.0]), 2.3, 2.0, "dark")
-    box(c, base + lr @ np.array([0.0, 0, -25.0]), (4.0, 2.4, 1.3), "dark", rot=lr)
+    base = np.array([0.0, 16.0, 3.4])
+    capsule(c, base, base + lr @ np.array([0, 0, -12.0]), 3.4, 2.8, "armor")
+    ellipsoid(c, base + lr @ np.array([1.2, 0, -12.0]), (2.8, 2.9, 2.8), "plate")
+    capsule(c, base + lr @ np.array([0, 0, -12.0]), base + lr @ np.array([-2.0, 0, -23.0]), 2.4, 2.0, "dark")
+    box(c, base + lr @ np.array([0.0, 0, -25.0]), (4.4, 2.6, 1.4), "armor", rot=lr)
+    for p in c.pts:
+        p[:, 2] = np.maximum(p[:, 2], 0.35)
     # The corpse's contact is the centre of its footprint, so every yaw fits the cell.
     allp = np.concatenate(c.pts)
     ctr = np.array([(allp[:, 0].min() + allp[:, 0].max()) / 2, (allp[:, 1].min() + allp[:, 1].max()) / 2, 0.0])

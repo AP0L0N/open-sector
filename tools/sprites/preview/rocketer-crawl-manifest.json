@@ -23,11 +23,20 @@
     "SSE"
   ],
   "contactY": 0.72,
-  "scale": 0.9586,
+  "scale": 0.9271,
   "out": "gridlock/packages/client/src/assets/units/rocketer-crawl.png",
   "size_pop_dirs": [
+    "SW",
+    "WSW",
     "W",
-    "WNW"
+    "NW",
+    "NNW",
+    "N",
+    "NNE",
+    "NE",
+    "E",
+    "ESE",
+    "SE"
   ],
   "empty_dirs": [],
   "clipped_dirs": [],

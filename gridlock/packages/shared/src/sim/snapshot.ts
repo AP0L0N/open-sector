@@ -297,6 +297,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       clip: friendly && (isInfantryType(e.type) || beltOf(e.type)) ? e.clip : undefined,
       guns: friendly && e.type === "walker" ? walkerGunsOf(e) : undefined,
       selfDestruct: friendly && e.type === "walker" && !e.wreck ? !e.selfDestructOff : undefined,
+      charging: e.type === "walker" && e.charging ? true : undefined,
       gatling: gatlingView(state, e),
       ciws: ciwsView(state, e),
       reload: friendly && (isInfantryType(e.type) || beltOf(e.type)) && e.reload > 0 ? e.reload : undefined,

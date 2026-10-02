@@ -826,6 +826,10 @@ export const WALKER_GUN_MODES = [
  * enemy he can see and detonates. Config is the off switch.
  */
 export const WALKER_SELF_DESTRUCT_HP = 0.2;
+/** How much faster he runs once the charge is on. */
+export const WALKER_CHARGE_SPEED = 1.4;
+/** Hit points and max hit points, multiplied once when the charge starts. The fraction stays put. */
+export const WALKER_CHARGE_HP = 5;
 /** Blast radius of that detonation, in gameplay tiles. */
 export const WALKER_BLAST_TILES = t(1.5);
 /** HP at the center against a hull heavier than light plate. The rim still nicks. */
@@ -837,7 +841,7 @@ export const WALKER_SELF_DESTRUCT_MODES = [
   {
     id: "on" as const,
     name: "Self destroy",
-    blurb: "At a fifth of his health he charges the nearest enemy and detonates. The blast nicks a tank and hits everything else harder. Nothing is left of him.",
+    blurb: "At a fifth of his health he charges the nearest enemy and detonates. That remainder swells to five times the hit points, he runs faster, and dark smoke trails him. The blast nicks a tank and hits everything else harder. Nothing is left of him.",
   },
   {
     id: "off" as const,
@@ -1099,6 +1103,8 @@ export const ARTILLERY_TOW_GAP = 2;
 export const ARTILLERY_HITCH_SLACK = 10;
 /** Field-gun shells hit buildings this many times harder. */
 export const ARTILLERY_BUILDING_MUL = 2;
+/** Rockets and missiles (Rocketer, Titan pods, Nebelwerfer) hit buildings this much harder. */
+export const ROCKET_BUILDING_MUL = 1.3;
 export const ARTILLERY_SHELL: LobShellDef = {
   damage: 150,
   penetration: 40,
@@ -2841,7 +2847,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     belt: WALKER_BELT,
     leavesWreck: true,
     wreckHp: 36,
-    blurb: "Each arm is a gatling at the MG42's 1,200 rounds a minute, the same bullet. A round sometimes bites a Walker or a truck; tank plate turns it. The torso turns on the hips, so he fires while he walks. The backpack is a 1,200-round rack and does not reload by itself. One arm spends it slowly. Both arms spend it twice as fast and can split across two targets. The guns do not bring a building down. At a fifth of his health he charges the nearest enemy he can see and detonates, unless Self destroy is off in Config. The blast nicks a tank and hits everything else harder, and he leaves no wreck.",
+    blurb: "Each arm is a gatling at the MG42's 1,200 rounds a minute, the same bullet. A round sometimes bites a Walker or a truck; tank plate turns it. The torso turns on the hips, so he fires while he walks. The backpack is a 1,200-round rack and does not reload by itself. One arm spends it slowly. Both arms spend it twice as fast and can split across two targets. The guns do not bring a building down. At a fifth of his health he charges the nearest enemy he can see and detonates, unless Self destroy is off in Config. That remainder swells to five times the hit points, still a fifth of his bar, and he runs faster with a short trail of dark smoke. The blast nicks a tank and hits everything else harder, and he leaves no wreck.",
   },
   cyborg: {
     type: "cyborg",
