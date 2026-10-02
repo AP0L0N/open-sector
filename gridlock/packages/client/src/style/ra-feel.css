@@ -582,6 +582,9 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="nebelwerfer"] {
   background-image: url("../assets/units/nebelwerfer-cameo.png");
 }
+.prod-job[data-type="artillery"] {
+  background-image: url("../assets/units/artillery-cameo.png");
+}
 
 #map-canvas {
   width: 100%;
@@ -817,6 +820,7 @@ input[type="range"] { padding: 0; }
 #train-titan,
 #train-mammoth,
 #train-nebelwerfer,
+#train-artillery,
 #train-supply,
 #train-stuka,
 #train-fw190,
@@ -942,6 +946,11 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/nebelwerfer-cameo.png");
 }
+#train-artillery {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/artillery-cameo.png");
+}
 .cameo-count {
   position: absolute;
   right: 3px;
@@ -1046,13 +1055,13 @@ input[type="range"] { padding: 0; }
 }
 #build-sandbags {
   background-image:
-    linear-gradient(90deg, rgba(18, 12, 8, 0.88) 0%, rgba(18, 12, 8, 0.45) 58%, rgba(18, 12, 8, 0.2) 100%),
-    repeating-linear-gradient(#6a5a3a 0 6px, #3e3424 6px 8px);
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/sandbags-cameo.png");
 }
 #build-wall {
   background-image:
-    linear-gradient(90deg, rgba(18, 12, 8, 0.88) 0%, rgba(18, 12, 8, 0.45) 58%, rgba(18, 12, 8, 0.2) 100%),
-    repeating-linear-gradient(#8a8c84 0 10px, #5a5c56 10px 12px);
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/wall-cameo.png");
 }
 #train-stuka {
   background-image:
@@ -1220,6 +1229,10 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="nebelwerfer"],
 .prod-job[data-type="nebelwerfer"] {
   background-image: url("../assets/units/nebelwerfer-cameo.png");
+}
+.config-type[data-type="artillery"],
+.prod-job[data-type="artillery"] {
+  background-image: url("../assets/units/artillery-cameo.png");
 }
 .config-type[data-type="rig"] { background-image: url("../assets/units/rig-cameo.png"); }
 .config-type[data-type="dynamo"] { background-image: url("../assets/buildings/dynamo-cameo.png"); }

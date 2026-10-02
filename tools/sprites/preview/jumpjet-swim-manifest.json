@@ -1,0 +1,32 @@
+{
+  "id": "jumpjet-swim",
+  "cell": 96,
+  "cols": 8,
+  "rows": 16,
+  "facing": 16,
+  "order": [
+    "S",
+    "SSW",
+    "SW",
+    "WSW",
+    "W",
+    "WNW",
+    "NW",
+    "NNW",
+    "N",
+    "NNE",
+    "NE",
+    "ENE",
+    "E",
+    "ESE",
+    "SE",
+    "SSE"
+  ],
+  "contactY": 0.4895833333333333,
+  "scale": 1.22,
+  "out": "gridlock/packages/client/src/assets/units/jumpjet-swim.png",
+  "size_pop_dirs": [],
+  "empty_dirs": [],
+  "clipped_dirs": [],
+  "source": "render_infantry.py (16 unique yaws, real gait, no mirror)"
+}

@@ -257,19 +257,23 @@ Hull and turret are separate 16-dir sheets, same cell size, composited at the sa
 
 Do **not** ask a still generator for a walk cycle. Do **not** fake a gait by shifting the cell. `compose_unit_sheet.py` crops to the opaque bbox and pins the feet to `contactY`, so a vertical bob in the source strip is erased. Eight shifted copies become eight identical frames.
 
-**Held pose (Gunner walk, and any stance that is a turntable still):** repeat the picked facing 8 times (4 for fire and death) so `frames` in `sprites.ts` stays valid. Facing is correct. The legs do not stride.
+**Human infantry** (Rifleman, Gunner, Sniper, AT Infantry, Rocketer, Pyro, Mortarman, Medic, Engineer, Drone Op, Jump Jet) are one locked-camera model in `tools/sprites/render_infantry.py`. Same rasterizer as the Cyborg. 16 unique yaws, no mirroring. Walk, crouch, and crawl are 8-frame loops and **every frame is a step**, including frame 0 (the idle contact pose). Re-run the script after a pose change. Do not replace these sheets with held stills or per-facing videos.
 
-**Real stride (Rifleman walk):** one `image_to_video` per unique facing, from that facing's still. Do not pin the last frame.
+```bash
+python3 tools/sprites/render_infantry.py                  # every human sheet
+python3 tools/sprites/render_infantry.py --only pyro      # one role
+python3 tools/sprites/render_infantry.py --only rifleman --draft
+```
 
-> He takes several clear steps in place. Each foot travels from back to front. The body stays centered in the frame. The camera stays locked. The magenta field stays empty.
+The script writes the engine PNGs, cameos, east locks, and the Pyro lance table in `pyro-nozzle.ts`. It exits 2 if a row is empty or clipped. A `size_pop` on a north row is the weapon changing the bbox, not a scale change, when the body stays the same size.
 
-Harvest at `fps=12`, pick **8 frames that loop**, restore flat magenta if the video dirties it, save horizontal strips `E.png` … `ENE.png`, compose with `--strips-dir --frames 8`. At most **two** videos at a time. Four at once returns HTTP 429.
+**Cyborg** stays on `tools/sprites/render_cyborg.py`. He has no crouch sheet.
 
 Vehicles are 1 frame. Do not invent track-cycle frames unless the engine `frames` value changes.
 
-Hatch heads: generate a dedicated east helmet+face lock and video-yaw it. Do not crop a walking soldier — the pack pollutes the cell.
+Hatch heads: generate a dedicated east helmet+face lock and video-yaw it. Do not crop a walking soldier — the pack pollutes the cell. At most **two** videos at a time.
 
-Swim is per unit, but do not video it. `python tools/sprites/derive_swim.py` sinks each unit's own stand yaws (`src/<id>-stand/`) chest-deep in one shared pool at that unit's walk scale, and writes `<id>-swim.png`. `render_cyborg.py` renders the cyborg's swimmer in 3D over the same pool. `infantry-swim.png` is the Rifleman's, and it is the fallback for a type with no sheet of its own. Add a new infantry type to `HUMANS` in `derive_swim.py` and to `SWIM_SPRITES` in `sprites.ts`.
+Swim is per unit, but do not video it. Human swimmers and the Cyborg are rendered in 3D over one shared pool (`render_infantry.py`, `render_cyborg.py`). `infantry-swim.png` is the Rifleman's, and it is the fallback for a type with no sheet of its own. A new human goes in `ROLES` in `render_infantry.py` and in `SWIM_SPRITES` in `sprites.ts`. Do not run `derive_swim.py` on these sheets — it mirrors west facings and flips the weapon hand.
 
 ### 6. Compose
 
@@ -350,48 +354,59 @@ One east painting, then every other frame is that same soldier turned. Lock from
 
 `image_gen` the first east lock. Every later pose is `image_edit` or `image_to_video` from that file, not a fresh generation.
 
-### Poses, one turntable each
+### Poses
 
-Shoot a turntable per pose. Same camera, same scale, same costume. Do not combine yaw and a gait in one clip.
+Human infantry and the Cyborg are the procedural model in Animation. The turntable shot further down is for hatch heads and any painted sheet that is not on that roster.
 
-| Unit | Sheets | Frames | What the clip is |
+| Unit | Sheets | Frames | What it is |
 |---|---|---|---|
-| Rifleman | walk | 8 | stride video **per unique facing** (see Animation) |
-| Rifleman | crouch, handgun | 8 | turntable of that pose, then 8 copies of each picked still |
-| Rifleman | crawl | 8 | prone turntable |
-| Rifleman | rifle-fire | 4 | standing fire turntable; 4 copies |
-| Rifleman | die | 4 | corpse turntable; 4 copies of each still |
-| Gunner | walk, crouch | 8 | standing / kneeling turntable; 8 copies (held pose) |
-| Gunner | crawl | 8 | prone with the MG deployed |
-| Gunner | fire | 4 | the **crawl** stills, plus a muzzle flash drawn on the barrel |
-| Gunner | die | 4 | corpse turntable |
-| Sniper | walk, crouch | 8 | standing / kneeling turntable; 8 copies (held pose) |
-| Sniper | crawl | 8 | prone with the scoped rifle |
-| Sniper | fire | 4 | the stand stills, plus a muzzle flash on the barrel |
-| Sniper | die | 4 | corpse turntable; body stays flat |
-| Mortarman | walk, crouch | 8 | standing / kneeling turntable; 8 copies (held pose). Crouch is the planted tube |
-| Mortarman | crawl | 8 | prone with the mortar |
-| Mortarman | fire | 4 | the crouch stills, plus a flash at the muzzle |
-| Mortarman | die | 4 | corpse turntable; body stays flat, tube beside him |
-| AT Infantry | walk, crouch | 8 | standing / kneeling turntable; 8 copies (held pose). The PTRD is aimed, stock at the shoulder |
-| AT Infantry | crawl | 8 | prone with the PTRD |
-| AT Infantry | fire | 4 | the stand stills, plus a muzzle flash on the barrel |
-| AT Infantry | die | 4 | corpse turntable; body stays flat, rifle beside him |
-| Medic | walk, crouch | 8 | standing / kneeling turntable; 8 copies (held pose). No weapon. Satchel and white armband |
-| Medic | crawl | 8 | prone with the satchel |
-| Medic | die | 4 | corpse turntable; body stays flat, satchel beside him |
+| Rifleman | walk, crouch, crawl, handgun | 8 | `render_infantry.py`. Stride in every frame. Handgun is the same body with a pistol |
+| Rifleman | rifle-fire | 4 | stand pose, muzzle flash. Held on frame index while the shot plays |
+| Rifleman | die | 4 | collapse; frame 3 is flat and is the frame the corpse holds |
+| Gunner | walk, crouch, crawl | 8 | helmet, thick MG, brass belt. Crawl carries the gun; fire plants it |
+| Gunner | fire | 4 | crawl contact pose plus bipod and a muzzle flash |
+| Gunner | die | 4 | collapse; the MG lies beside him |
+| Sniper | walk, crouch, crawl | 8 | ghillie hood, darker cloth, scoped rifle |
+| Sniper | fire | 4 | stand pose plus a muzzle flash |
+| Sniper | die | 4 | collapse under the hood |
+| Mortarman | walk | 8 | tube on his back, hands on the sling. No rifle |
+| Mortarman | crouch | 8 | duck-walk with the tube planted |
+| Mortarman | crawl | 8 | prone, tube along the body |
+| Mortarman | fire | 4 | planted tube. The flash is on frame 0 — that frame is what a planted shot shows |
+| Mortarman | die | 4 | collapse; the client plays it and holds frame 3 |
+| AT Infantry | walk, crouch, crawl | 8 | helmet, long rifle, thick breech and muzzle brake |
+| AT Infantry | fire | 4 | stand pose plus a short muzzle flash |
+| AT Infantry | die | 4 | collapse; the rifle lies beside him |
+| Rocketer | walk, crouch, crawl | 8 | shoulder tube, spare rocket on the back |
+| Rocketer | fire | 4 | stand pose, muzzle puff and backblast |
+| Rocketer | die | 4 | collapse |
+| Pyro | walk, crouch, crawl | 8 | black rubber, gas-mask lenses, twin tanks, lance. The lance tip on frame 0 is what `pyro-nozzle.ts` measures |
+| Pyro | fire | 4 | same lance pose plus a short tongue. Do not recoil the tip off the measured point |
+| Pyro | die | 4 | collapse |
+| Medic | walk, crouch, crawl | 8 | khaki, white helmet band, white left sleeve, white satchel. No rifle |
+| Medic | die | 4 | collapse |
+| Engineer | walk, crouch, crawl | 8 | khaki, garrison cap, wrench, tool belt. No helmet |
+| Engineer | build, fix | 4 | kneel. Build swings a hammer; fix turns a wrench |
+| Engineer | die | 4 | collapse. `spriteOf` returns this sheet when he is a wreck |
+| Drone Op | walk, crouch, crawl | 8 | soft cap, headset, chest controller, pack antenna |
+| Drone Op | die | 4 | collapse |
+| Jump Jet | walk, crouch, crawl | 8 | flight suit, visor helmet, twin-nozzle pack, short rifle |
+| Jump Jet | fly | 4 | feet tucked, plumes flicker. Looped while he is aloft |
+| Jump Jet | fire | 4 | stand pose plus a muzzle flash |
+| Jump Jet | die | 4 | collapse |
+| Jump Jet | swim | 8 | `jumpjet-swim.png`, registered in `SWIM_SPRITES` |
 | Cyborg | walk | 8 | 3D primitive render, real stride (`tools/sprites/render_cyborg.py`). No crouch sheet — he never crouches |
 | Cyborg | fire | 4 | the stand pose, barrels spinning, flash big / small / big / tiny |
 | Cyborg | crawl, crawl-fire | 8, 4 | legs torn off: torso on the dirt, dragging on the left arm; fire adds the flash. Prone scale |
 | Cyborg | die | 4 | torso face down, gatling flung aside, one leg beside him |
 | All infantry | cameo | 1 | crop of the east stand, 72×72, feet near the bottom |
-| Cyborg | swim | 8 | the stand pose clipped at the water plane (legs and hips under), on the shared pool |
+| Cyborg | swim | 8 | chest-deep in the shared pool (`render_cyborg.py`) |
 | Rifleman | swim | 8 | `infantry-swim.png` (also the fallback) |
-| Other infantry | swim | 8 | `derive_swim.py`: the unit's stand yaws, chest-deep in the shared pool, ripples and a 1 px bob |
+| Other human infantry | swim | 8 | `render_infantry.py`: chest-deep in the same pool, arms paddling |
 
-Stand is column 0 of the walk sheet. The client plays later columns only while the unit is moving.
+Stand is column 0 of the walk sheet. The client plays later columns only while the unit is moving, and frame 0 is inside that loop, so it has to be a real step.
 
-File names stay `trooper-*.png` for the Rifleman. Gunner files are `gunner-*.png`. Sniper files are `sniper-*.png`. Mortarman files are `mortarman-*.png`. AT Infantry files are `atinfantry-*.png`. Medic files are `medic-*.png`. Cyborg files are `cyborg-*.png`; they come from `python tools/sprites/render_cyborg.py`, which renders 16 unique yaws of one locked-camera model (no mirroring) and pins the ground contact to `contactY` on every frame — re-run it after editing the model instead of hand-editing the PNGs. Its contact is a pivot, not the lowest pixel: the point between the feet (walk / fire, `0.88`, so the striding toe stays inside the cell), the hips-on-dirt point (crawl, `0.72`), and the corpse's footprint centre (die, `0.72`). The script fails if any row spills past the cell edge (`clipped_dirs` in the manifest). Shipped PNGs go in `gridlock/packages/client/src/assets/units/`. Unique stills go in `tools/sprites/src/<id>-<pose>/` as `E.png` … `ENE.png`.
+File names stay `trooper-*.png` for the Rifleman. The other humans are `gunner`, `sniper`, `atinfantry`, `rocketer`, `pyro`, `mortarman`, `medic`, `engineer`, `droneop`, and `jumpjet`. Human sheets come from `python3 tools/sprites/render_infantry.py`. Cyborg files are `cyborg-*.png`; they come from `python tools/sprites/render_cyborg.py`, which renders 16 unique yaws of one locked-camera model (no mirroring) and pins the ground contact to `contactY` on every frame — re-run it after editing the model instead of hand-editing the PNGs. Its contact is a pivot, not the lowest pixel: the point between the feet (walk / fire, `0.88`, so the striding toe stays inside the cell), the hips-on-dirt point (crawl, `0.72`), and the corpse's footprint centre (die, `0.72`). The script fails if any row spills past the cell edge (`clipped_dirs` in the manifest). Shipped PNGs go in `gridlock/packages/client/src/assets/units/`. East locks from the human renderer land in `tools/sprites/src/<id>-east.png`.
 
 ### Turntable shot
 

@@ -1,4 +1,5 @@
 import {
+  ARTILLERY_TOW_SPEED,
   CRIT_ARM_CHANCE,
   CRIT_ENGINE_CHANCE,
   CRIT_LEG_CHANCE,
@@ -27,11 +28,14 @@ import {
   type Crit,
 } from "../catalog.js";
 import type { ImpactKind } from "../protocol.js";
+import { artilleryHaulMul, gunCrewOf } from "./artillery.js";
 import type { ArmorFace } from "./ballistics.js";
 import type { Entity } from "./types.js";
 
 export function moveSpeedMul(e: Entity, swimming = false): number {
   if (e.braced || hasCrit(e, "tracks") || hasCrit(e, "engine")) return 0;
+  if (e.type === "artillery") return artilleryHaulMul(e);
+  if (e.towing != null) return ARTILLERY_TOW_SPEED;
   if (isInfantryType(e.type) && swimming) return SWIM_SPEED;
   if (isCyborg(e.type) && hasCrit(e, "leg")) return CYBORG_DRAG_SPEED;
   if (swimming && wadesOf(e.type)) return wadeSpeedOf(e.type);
@@ -44,6 +48,7 @@ export function moveSpeedMul(e: Entity, swimming = false): number {
  * Broken tracks stop the roll (`moveSpeedMul`) but still pivot the hull so a casemate can aim.
  */
 export function hullTurnMul(e: Entity): number {
+  if (e.type === "artillery") return e.towedBy == null && gunCrewOf(e) > 0 ? 1 : 0;
   return e.braced || hasCrit(e, "engine") ? 0 : 1;
 }
 
@@ -156,5 +161,6 @@ export function rollCrits(
   }
   if (!isMotorVehicle(e.type)) return;
   if (face === "side" && rand() < trackChance) addCrit(e, "tracks");
-  if (face === "rear" && rand() < CRIT_ENGINE_CHANCE) addCrit(e, "engine");
+  // A towed gun has wheels to break but no engine.
+  if (face === "rear" && e.type !== "artillery" && rand() < CRIT_ENGINE_CHANCE) addCrit(e, "engine");
 }

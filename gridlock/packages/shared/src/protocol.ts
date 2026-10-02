@@ -15,7 +15,7 @@ import type {
   YardFieldType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 60;
+export const PROTOCOL_VERSION = 63;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -74,6 +74,8 @@ export interface StructureQueueView {
   totalTicks: number;
   ready: boolean;
   paused: boolean;
+  /** Sandbag or wall line already sited. Omitted for ordinary structures. */
+  sites?: { x: number; y: number; facing: number }[];
 }
 
 export interface TrainJobView {
@@ -198,6 +200,11 @@ export interface EntityView {
   guardFacing?: number;
   /** Friendly unit this entity is escorting. Omitted when not guarding a unit. */
   guardTargetId?: number;
+  /**
+   * Patrol polyline in world pixels, first point where the unit started.
+   * Friendly snapshots only. The unit walks it and then back.
+   */
+  patrol?: { x: number; y: number }[];
   /** Infantry this medic is bandaging. Omitted while he is only walking over. */
   tend?: number;
   /** Sandbags wrecked by a tank shell. The rubble stays. */
@@ -220,6 +227,13 @@ export interface EntityView {
   bed?: { crew?: boolean; seats: number; open?: boolean; riders?: number[] };
   /** Supply points left. Friendly supply trucks only. */
   supply?: number;
+  /**
+   * Field gun. Everyone sees how many men serve it (0 means any infantry can
+   * take it) and the truck towing it. Crew health is friendly-only.
+   */
+  gun?: { crew: number; cap: number; bars?: { hp: number; hpMax: number }[]; towedBy?: number };
+  /** Supply truck: the field gun hitched behind it. */
+  towing?: number;
   /**
    * Aircraft flight. `alt` is elevation units above the ground (0 on the pad).
    * Everyone sees phase and height; fuel, bombs, rounds, and home are friendly-only.
@@ -298,6 +312,8 @@ export interface ProjectileView {
   z?: number;
   /** Arcing mortar bomb. Omitted for direct fire. */
   mortar?: boolean;
+  /** Field-gun shell on the mortar arc. Drawn bigger than the bomb. */
+  big?: boolean;
   /** Peak air height in elevation units. Mortar bombs only. */
   apex?: number;
   /** 0 at the tube, 1 at the ground. Mortar bombs and flamethrower globs. */
@@ -504,6 +520,8 @@ export type ClientMessage =
   | { type: "cmd.move"; ids: number[]; x: number; y: number; facing?: number; queue?: boolean }
   | { type: "cmd.attack"; ids: number[]; targetId: number; queue?: boolean }
   | { type: "cmd.attackmove"; ids: number[]; x: number; y: number; queue?: boolean }
+  /** Walk `points` in order, then back along them. Left-click places, right-click sends. */
+  | { type: "cmd.patrol"; ids: number[]; points: { x: number; y: number }[] }
   | {
       type: "cmd.forceattack";
       ids: number[];
@@ -559,6 +577,8 @@ export type ClientMessage =
   | { type: "cmd.board"; ids: number[]; truckId: number; queue?: boolean }
   | { type: "cmd.unboard"; ids?: number[]; truckId?: number }
   | { type: "cmd.supply"; ids: number[]; targetId: number; queue?: boolean }
+  /** Supply trucks hitch the field gun `targetId`. Without one, they drop whatever they tow. */
+  | { type: "cmd.tow"; ids: number[]; targetId?: number }
   /** Aircraft fly home, land on their pad, and refuel and rearm there. */
   | { type: "cmd.land"; ids: number[] }
   /** Transport on its pad: what the bay takes next — a mine canister, a supply crate, or paratroops. */

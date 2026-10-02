@@ -27,6 +27,7 @@ export type HoverAction =
   | "scrap"
   | "board"
   | "supply"
+  | "tow"
   | "land";
 
 export type HoverEntity = Pick<
@@ -43,6 +44,8 @@ export type HoverEntity = Pick<
   | "ruined"
   | "bed"
   | "supply"
+  | "gun"
+  | "towing"
   | "ammo"
   | "rockets"
   | "heavy"
@@ -96,7 +99,9 @@ export function resolveHoverAction(args: {
   if (hit && engineers.length > 0 && canRepairHit(hit, you, args.allied)) return "repair";
 
   const trucks = ownUnits.filter((e) => e.type === "supply" && !e.bed?.open);
+  if (hit && trucks.length > 0 && canTowHit(hit, you, trucks)) return "tow";
   if (hit && trucks.length > 0 && canSupplyHit(hit, you, args.allied, trucks)) return "supply";
+  if (hit && canCrewGunHit(hit, you, args.allied, inf)) return "board";
   if (hit && hit.type === "supply" && canBoardHit(hit, you, args.allied, inf)) return "board";
   if (hit && isTransportType(hit.type) && canBoardPlaneHit(hit, you, ownUnits)) return "board";
 
@@ -128,6 +133,25 @@ export function resolveHoverAction(args: {
   const planes = ownUnits.some((e) => !!e.air && !e.drone);
   if (hit && planes && hit.type === "airfield" && hit.ownerId === you && hit.hp > 0 && !hit.wreck) return "land";
   return null;
+}
+
+/** Your field gun, not hitched yet. A gun already in tow falls through to a resupply. */
+function canTowHit(hit: HoverEntity, you: string, trucks: readonly HoverEntity[]): boolean {
+  if (hit.type !== "artillery" || hit.hp <= 0 || hit.wreck || hit.ownerId !== you || !hit.gun) return false;
+  return hit.gun.towedBy == null && trucks.some((t) => t.towing == null);
+}
+
+/** A field gun one man short: your own or an ally's, or an empty one anyone can take. */
+function canCrewGunHit(
+  hit: HoverEntity,
+  you: string,
+  allied: (ownerId: string | undefined) => boolean,
+  inf: readonly HoverEntity[],
+): boolean {
+  if (hit.type !== "artillery" || hit.hp <= 0 || hit.wreck || !hit.gun) return false;
+  if (hit.gun.crew >= hit.gun.cap) return false;
+  if (!inf.some((e) => !e.garrisonedIn && e.type !== "cyborg")) return false;
+  return hit.gun.crew === 0 || hit.ownerId === you || allied(hit.ownerId);
 }
 
 function truckFreeSeats(hit: HoverEntity): number {

@@ -163,7 +163,7 @@ export function observerEyeOf(type: EntityType): number {
   return usesInfantrySight(type) ? INFANTRY_EYE_HEIGHT : HULL_EYE_HEIGHT;
 }
 
-/** Extra Chebyshev reach per elevation step between observer and tile (up or down). */
+/** Extra sight reach per elevation step between observer and tile (up or down). */
 export function uphillSightOf(type: EntityType): number {
   return usesInfantrySight(type) ? INFANTRY_UPHILL_SIGHT : HULL_LEVEL_SIGHT;
 }
@@ -249,7 +249,7 @@ export function canAimWeapon(
 ): boolean {
   if (isInfantryType(shooter.type) || radarLaidOf(shooter.type) || catalog(shooter.type).rangeTiles <= 0) return true;
   // A laid launcher lobs its rockets; the gun-elevation limit is a direct-fire rule.
-  if (launcherOnlyOf(shooter.type)) return true;
+  if (launcherOnlyOf(shooter.type) || shooter.type === "artillery") return true;
   const fromH = entityHeight(state, shooter);
   const toH = target ? entityHeight(state, target) : worldTileHeight(state, aimX, aimY);
   return gunCanElevate(fromH, toH, Math.hypot(aimX - shooter.x, aimY - shooter.y));

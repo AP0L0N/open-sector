@@ -1,7 +1,8 @@
 /**
  * Concrete field wall with barbed wire, drawn in the wall's own frame so it
  * matches the sim box at any facing. `along` runs down the wall, `across` is
- * the look direction, `up` is world units above the ground.
+ * the look direction. The slab top is one level across a connected run; the
+ * bottom follows the ground under each corner.
  */
 
 export interface WallDraw {
@@ -16,7 +17,36 @@ export interface WallDraw {
   alpha: number;
   /** Ghost on a spot the engineer cannot use. */
   bad?: boolean;
-  project: (wx: number, wy: number, up: number) => { x: number; y: number };
+  /** Terrain level under a world point. */
+  ground: (wx: number, wy: number) => number;
+  /** Terrain level of the slab top for this connected run. */
+  topElev: number;
+  /** Screen pixels per terrain level. */
+  levelPx: number;
+  /** Screen pixels per world unit, for the wire above the slab. */
+  worldPx: number;
+  project: (wx: number, wy: number, elev: number) => { x: number; y: number };
+}
+
+export interface WallSeg {
+  x: number;
+  y: number;
+  length: number;
+}
+
+/** Neighboring sections share a top when their ends meet. */
+export function wallSectionsConnect(a: WallSeg, b: WallSeg): boolean {
+  const reach = Math.max(a.length, b.length) + 4;
+  const d = Math.hypot(a.x - b.x, a.y - b.y);
+  return d > 0.5 && d <= reach;
+}
+
+/** Slab top: the highest ground under the run, plus the slab. */
+export function wallTopElev(grounds: readonly number[], slabLevels: number): number {
+  let m = Number.NEGATIVE_INFINITY;
+  for (const g of grounds) if (g > m) m = g;
+  if (!Number.isFinite(m)) m = 0;
+  return m + Math.max(0, slabLevels);
 }
 
 /** Slab height in world units. About chest-high on a standing soldier. */
@@ -45,9 +75,24 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
     x: d.x + tx * along + fx * across,
     y: d.y + ty * along + fy * across,
   });
+  const slab = WALL_SLAB_H * (1 - d.hurt * 0.08);
+  const fullLevels = d.levelPx > 0 ? (WALL_SLAB_H * d.worldPx) / d.levelPx : 0;
+  const slabLevels = d.levelPx > 0 ? (slab * d.worldPx) / d.levelPx : 0;
+  const top = d.topElev - (fullLevels - slabLevels);
   const at = (along: number, across: number, up: number) => {
     const w = world(along, across);
-    return d.project(w.x, w.y, up);
+    const g = d.ground(w.x, w.y);
+    let elev = g;
+    if (up > 0 && slab > 0) {
+      if (up >= slab) {
+        const extra = d.levelPx > 0 ? ((up - slab) * d.worldPx) / d.levelPx : 0;
+        elev = top + extra;
+      } else {
+        elev = g + (top - g) * (up / slab);
+      }
+    }
+    if (elev < g) elev = g;
+    return d.project(w.x, w.y, elev);
   };
   const base = d.bad ? [176, 72, 58] : [138, 140, 132];
   const [br, bg, bb] = base as [number, number, number];
@@ -57,7 +102,6 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
   const line = Math.max(0.6, Math.min(1.4, px * 0.45));
   const hl = d.length / 2;
   const ht = d.thick / 2;
-  const slab = WALL_SLAB_H * (1 - d.hurt * 0.08);
   const signs: [number, number][] = [
     [-1, -1],
     [1, -1],
@@ -81,7 +125,9 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
 
   const ground = [0, 1, 2, 3, 4, 5].map((k) => {
     const a = (k / 6) * Math.PI * 2;
-    return d.project(d.x + Math.cos(a) * hl * 0.92, d.y + Math.sin(a) * ht * 1.15, 0);
+    const wx = d.x + Math.cos(a) * hl * 0.92;
+    const wy = d.y + Math.sin(a) * ht * 1.15;
+    return d.project(wx, wy, d.ground(wx, wy));
   });
   ctx.fillStyle = d.bad ? "rgba(120, 40, 32, 0.35)" : "rgba(40, 42, 36, 0.28)";
   ctx.beginPath();

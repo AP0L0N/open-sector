@@ -30,11 +30,12 @@ import {
 import type { ImpactView } from "../protocol.js";
 import { takeDamage } from "./crits.js";
 import { coverStrike } from "./field.js";
-import { airAlt, droneSightExtra } from "./elevation.js";
+import { airAlt, droneSightExtra, weaponRangeWorld } from "./elevation.js";
 import { allies, destroyEntity, makeEntity, newAirState, newDroneLink, unitInWater, worldToTile } from "./geo.js";
 import { livingGarrison, woundGarrison } from "./garrison.js";
 import { mortarFalloff } from "./mortar.js";
 import { stepTurn } from "./orders.js";
+import { distToRoute, stepPatrolLeg } from "./patrol.js";
 import { noteImpactSurface } from "./remains.js";
 import { nextRand } from "./rng.js";
 import { hideScout } from "./scout.js";
@@ -335,6 +336,10 @@ function tickDrone(state: MatchState, d: Entity, dt: number): boolean {
       return false;
     }
   }
+  if (d.order?.kind === "patrol" && d.order.route && d.order.route.length >= 2) {
+    flyPatrol(state, d, op, dt);
+    return false;
+  }
   if (d.order?.kind === "move" && d.order.x != null && d.order.y != null) {
     const goal = inLeash(state, op, d.order.x, d.order.y);
     if (flyTo(state, d, goal.x, goal.y, dt)) d.order = null;
@@ -352,6 +357,77 @@ function tickDrone(state: MatchState, d: Entity, dt: number): boolean {
   approachAlt(d, altGoal, dt);
   clampToLeash(state, d, op);
   return false;
+}
+
+/**
+ * Walk the patrol polyline, then back. Search & Destroy dives on an enemy
+ * within sight of that line and keeps the patrol order.
+ */
+function flyPatrol(state: MatchState, d: Entity, op: Entity, dt: number): void {
+  const o = d.order;
+  if (!o || o.kind !== "patrol" || !o.route || o.route.length < 2) return;
+  const route = o.route;
+  const s = d.drone!;
+  const a = d.air!;
+  let altGoal = droneModeAlt(s.mode);
+  if (s.mode === "strike") {
+    const t = patrolDroneTarget(state, d, op, route);
+    if (t) {
+      d.attackTarget = t.id;
+      const flat = Math.hypot(t.x - d.x, t.y - d.y);
+      if (flat < state.tileSize * 3) altGoal = 0;
+      flyTo(state, d, t.x, t.y, dt);
+      approachAlt(d, altGoal, dt, altGoal === 0 ? DRONE_CLIMB_PER_SEC * 2.5 : DRONE_CLIMB_PER_SEC);
+      if (Math.hypot(t.x - d.x, t.y - d.y) <= DRONE_STRIKE_TILES * state.tileSize + t.radius && a.alt <= 1.5) {
+        burst(state, d, t);
+      }
+      clampToLeash(state, d, op);
+      return;
+    }
+  }
+  d.attackTarget = null;
+  let leg = o.leg ?? 1;
+  if (leg < 0 || leg >= route.length) leg = 1;
+  const raw = route[leg] ?? route[route.length - 1]!;
+  const goal = inLeash(state, op, raw.x, raw.y);
+  if (flyTo(state, d, goal.x, goal.y, dt)) {
+    const stepped = stepPatrolLeg(route, leg, o.dir === -1 ? -1 : 1);
+    o.leg = stepped.leg;
+    o.dir = stepped.dir;
+  }
+  approachAlt(d, altGoal, dt);
+  clampToLeash(state, d, op);
+}
+
+/** Strike-mode contact: a unit the operator can still reach, seen, and near the patrol line. */
+function patrolDroneTarget(
+  state: MatchState,
+  d: Entity,
+  op: Entity,
+  route: readonly { x: number; y: number }[],
+): Entity | undefined {
+  const sight = catalog(d.type).sightTiles * state.tileSize;
+  const reach = Math.max(weaponRangeWorld(state, d), sight);
+  if (reach <= 0) return undefined;
+  const hit = (t: Entity | undefined): t is Entity =>
+    !!t &&
+    t.kind === "unit" &&
+    validStrikeTarget(state, d, op, t) &&
+    canSeeEntity(state, d.ownerId, t) &&
+    distToRoute(route, t.x, t.y) <= reach;
+  const sticky = d.attackTarget != null ? state.entities.get(d.attackTarget) : undefined;
+  if (hit(sticky)) return sticky;
+  let best: Entity | undefined;
+  let bestD = Infinity;
+  for (const o of state.entities.values()) {
+    if (!hit(o)) continue;
+    const dist = distToRoute(route, o.x, o.y);
+    if (dist < bestD) {
+      bestD = dist;
+      best = o;
+    }
+  }
+  return best;
 }
 
 /** Where the guard ring is centred now. Null once a guarded unit is gone. */

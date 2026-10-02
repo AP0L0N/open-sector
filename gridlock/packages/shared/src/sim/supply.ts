@@ -29,6 +29,7 @@ import {
   weaponFitsTruck,
   type ShellType,
 } from "../catalog.js";
+import { gunCrewOf } from "./artillery.js";
 import type { ArmorFace } from "./ballistics.js";
 import { takeDamage } from "./crits.js";
 import { detachGarrisoned, livingGarrison } from "./garrison.js";
@@ -46,8 +47,9 @@ export function supplyHasDriver(state: MatchState, truck: Entity): boolean {
   return livingGarrison(state, truck).length > 0;
 }
 
-/** Non-trucks always drive. An open supply truck does not. */
+/** Non-trucks always drive. An open supply truck does not, nor a field gun with no crew or on a tow. */
 export function supplyCanDrive(state: MatchState, e: Entity): boolean {
+  if (e.type === "artillery") return gunCrewOf(e) > 0 && e.towedBy == null;
   if (e.type !== "supply") return true;
   return supplyHasDriver(state, e);
 }
@@ -477,8 +479,8 @@ function tickBoard(state: MatchState, unit: Entity): void {
     clearOrder(unit);
     return;
   }
-  // Boarding a transport on its hardstand is tickPlaneBoarding's.
-  if (isTransportType(truck.type)) return;
+  // Boarding a transport on its hardstand is tickPlaneBoarding's; crewing a field gun is tickArtillery's.
+  if (isTransportType(truck.type) || truck.type === "artillery") return;
   if (canBoardTruck(state, unit, truck)) {
     clearOrder(unit);
     return;

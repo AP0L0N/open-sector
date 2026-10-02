@@ -1055,7 +1055,100 @@ function paintLane(
   }
 }
 
-/** Dirt lanes from each start into a cross. */
+/** Stamp a road disk of radius `r` at (x, y), skipping ground a lane may not cover. */
+function stampRoad(
+  tiles: number[],
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+  r: number,
+  houses: readonly { x0: number; y0: number; x1: number; y1: number }[],
+): void {
+  const ri = Math.ceil(r);
+  const r2 = r * r + 0.25;
+  const cx = Math.round(x);
+  const cy = Math.round(y);
+  for (let dy = -ri; dy <= ri; dy++) {
+    for (let dx = -ri; dx <= ri; dx++) {
+      const ox = cx + dx - x;
+      const oy = cy + dy - y;
+      if (ox * ox + oy * oy > r2) continue;
+      const xx = cx + dx;
+      const yy = cy + dy;
+      if (xx < 1 || yy < 1 || xx >= width - 1 || yy >= height - 1) continue;
+      if (inHouseBox(houses, xx, yy)) continue;
+      const k = idx(width, xx, yy);
+      const t = tiles[k];
+      if (t === TILE_WATER || t === TILE_SCRAP || t === TILE_BLOCKED || t === TILE_FENCE || t === TILE_ROCK) continue;
+      tiles[k] = TILE_ROAD;
+    }
+  }
+}
+
+function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number): number {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return 0.5 * (2 * p1 + (p2 - p0) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (3 * p1 - p0 - 3 * p2 + p3) * t3);
+}
+
+/**
+ * Seeded meandering dirt lane. Control points are pushed sideways off the
+ * straight line (tapered to zero at both ends so the endpoints stay put), a
+ * Catmull-Rom spline runs through them, and the stamp width breathes between
+ * `radius` and `radius + 1`.
+ */
+function paintWindingLane(
+  tiles: number[],
+  width: number,
+  height: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  radius: number,
+  houses: readonly { x0: number; y0: number; x1: number; y1: number }[],
+  rng: { n: number },
+): void {
+  const len = Math.hypot(x1 - x0, y1 - y0);
+  if (len < 1) {
+    stampRoad(tiles, width, height, x0, y0, radius, houses);
+    return;
+  }
+  const nx = -(y1 - y0) / len;
+  const ny = (x1 - x0) / len;
+  const segs = Math.max(2, Math.round(len / 34));
+  const amp = Math.min(16, len * 0.14);
+  const pts: { x: number; y: number }[] = [];
+  for (let i = 0; i <= segs; i++) {
+    const t = i / segs;
+    const taper = Math.sin(Math.PI * t);
+    const along = i === 0 || i === segs ? 0 : (nextRand(rng) - 0.5) * (len / segs) * 0.4;
+    const side = (nextRand(rng) * 2 - 1) * amp * taper;
+    const bx = x0 + (x1 - x0) * t + ((x1 - x0) / len) * along;
+    const by = y0 + (y1 - y0) * t + ((y1 - y0) / len) * along;
+    pts.push({ x: bx + nx * side, y: by + ny * side });
+  }
+  const seed = rng.n;
+  const steps = Math.max(2, Math.ceil((len / segs) * 2));
+  let walked = 0;
+  for (let i = 0; i < segs; i++) {
+    const p0 = pts[Math.max(0, i - 1)]!;
+    const p1 = pts[i]!;
+    const p2 = pts[i + 1]!;
+    const p3 = pts[Math.min(segs, i + 2)]!;
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps;
+      const x = catmullRom(p0.x, p1.x, p2.x, p3.x, t);
+      const y = catmullRom(p0.y, p1.y, p2.y, p3.y, t);
+      const r = radius + smoothNoise(walked / 14, 0.5, seed);
+      stampRoad(tiles, width, height, x, y, r, houses);
+      walked += 0.5;
+    }
+  }
+}
+
+/** Dirt lanes from each start into a widened village square. */
 function paintYardDress(
   tiles: number[],
   width: number,
@@ -1064,13 +1157,157 @@ function paintYardDress(
   features: readonly MapFeature[],
 ): void {
   const houses = houseBoxes(features, TILE_SUBDIV);
+  const rng = { n: hash32("yard-64-lanes") };
   const midX = Math.floor(width / 2);
   const midY = Math.floor(height / 2);
   const margin = 18;
-  paintLane(tiles, width, height, margin, midY, width - 1 - margin, midY, 2, houses);
-  paintLane(tiles, width, height, midX, margin, midX, height - 1 - margin, 2, houses);
+  paintWindingLane(tiles, width, height, margin, midY, width - 1 - margin, midY, 2, houses, rng);
+  paintWindingLane(tiles, width, height, midX, margin, midX, height - 1 - margin, 2, houses, rng);
   for (const s of spawns) {
-    paintLane(tiles, width, height, s.x, s.y, midX, midY, 2, houses);
+    paintWindingLane(tiles, width, height, s.x, s.y, midX, midY, 2, houses, rng);
+  }
+  stampRoad(tiles, width, height, midX, midY, 6.5, houses);
+}
+
+/** Open-ground flood (4-neighbour) from `sx, sy`. Rock, water, fence, and blocks stop it. */
+function floodWalk(tiles: readonly number[], width: number, height: number, sx: number, sy: number): Uint8Array {
+  const seen = new Uint8Array(width * height);
+  const open = (t: number | undefined): boolean =>
+    t !== undefined && t !== TILE_BLOCKED && t !== TILE_WATER && t !== TILE_FENCE && t !== TILE_ROCK;
+  const start = idx(width, sx, sy);
+  if (!open(tiles[start])) return seen;
+  const q = [start];
+  seen[start] = 1;
+  for (let qi = 0; qi < q.length; qi++) {
+    const i = q[qi]!;
+    const x = i % width;
+    const y = (i / width) | 0;
+    for (const [dx, dy] of WATER_ORTHO) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+      const ni = idx(width, nx, ny);
+      if (seen[ni] || !open(tiles[ni])) continue;
+      seen[ni] = 1;
+      q.push(ni);
+    }
+  }
+  return seen;
+}
+
+/** Raised hill summits: local height maxima well above the base, kept apart. */
+function findHillPeaks(heights: readonly number[], width: number, height: number): { x: number; y: number; h: number }[] {
+  const cand: { x: number; y: number; h: number }[] = [];
+  const win = 10;
+  for (let y = win; y < height - win; y += 2) {
+    for (let x = win; x < width - win; x += 2) {
+      const h = heights[idx(width, x, y)] ?? 0;
+      if (h < HEIGHT_BASE + 4) continue;
+      let top = true;
+      for (let dy = -win; dy <= win && top; dy += 2) {
+        for (let dx = -win; dx <= win; dx += 2) {
+          if ((heights[idx(width, x + dx, y + dy)] ?? 0) > h) {
+            top = false;
+            break;
+          }
+        }
+      }
+      if (top) cand.push({ x, y, h });
+    }
+  }
+  cand.sort((a, b) => b.h - a.h || a.y - b.y || a.x - b.x);
+  const peaks: { x: number; y: number; h: number }[] = [];
+  for (const c of cand) {
+    if (peaks.some((p) => Math.hypot(p.x - c.x, p.y - c.y) < 36)) continue;
+    peaks.push(c);
+  }
+  return peaks;
+}
+
+/**
+ * Rocky flanks on a few hills. Rock only goes on open ground, one sector of
+ * each hill stays a walkable ramp, and a patch that would cut off any ground
+ * that was reachable before it (spawns, scrap, summits) is taken back.
+ */
+function paintYardRocks(
+  tiles: number[],
+  heights: readonly number[],
+  width: number,
+  height: number,
+  seed: string,
+  pads: readonly { x: number; y: number; r: number }[],
+  houses: readonly { x0: number; y0: number; x1: number; y1: number }[],
+): void {
+  const rng = { n: hash32(seed) };
+  const noiseSeed = hash32(`${seed}:grain`);
+  const peaks = findHillPeaks(heights, width, height);
+  const want = Math.min(peaks.length, 3 + Math.floor(nextRand(rng) * 3));
+  const start = pads[0];
+  if (!start) return;
+  let reach = floodWalk(tiles, width, height, start.x, start.y);
+  let placed = 0;
+  for (const peak of peaks) {
+    if (placed >= want) break;
+    const rise = peak.h - HEIGHT_BASE;
+    const maxR = rise * 2.4 + 8;
+    const toMid = Math.atan2(height / 2 - peak.y, width / 2 - peak.x);
+    const ramp = toMid + (nextRand(rng) - 0.5) * 1.4;
+    const rampHalf = 0.7 + nextRand(rng) * 0.25;
+    const bandTop = peak.h - 2;
+    const bandLow = peak.h - Math.max(4, Math.round(rise * 0.7));
+    const patch: number[] = [];
+    const r0 = Math.ceil(maxR);
+    for (let y = peak.y - r0; y <= peak.y + r0; y++) {
+      for (let x = peak.x - r0; x <= peak.x + r0; x++) {
+        if (x < 3 || y < 3 || x >= width - 3 || y >= height - 3) continue;
+        const d = Math.hypot(x - peak.x, y - peak.y);
+        if (d > maxR || d < 3) continue;
+        let da = Math.atan2(y - peak.y, x - peak.x) - ramp;
+        da = Math.atan2(Math.sin(da), Math.cos(da));
+        if (Math.abs(da) < rampHalf) continue;
+        const i = idx(width, x, y);
+        if (tiles[i] !== TILE_EMPTY) continue;
+        const h = heights[i] ?? 0;
+        if (h > bandTop || h < bandLow) continue;
+        const gx = (heights[idx(width, x + 2, y)] ?? 0) - (heights[idx(width, x - 2, y)] ?? 0);
+        const gy = (heights[idx(width, x, y + 2)] ?? 0) - (heights[idx(width, x, y - 2)] ?? 0);
+        if (Math.abs(gx) + Math.abs(gy) < 3) continue;
+        if (smoothNoise(x / 6, y / 6, noiseSeed) < 0.3) continue;
+        if (inHouseBox(houses, x, y)) continue;
+        if (pads.some((p) => Math.hypot(x - p.x, y - p.y) <= p.r + 6)) continue;
+        let crowded = false;
+        for (const [dx, dy] of WATER_ORTHO) {
+          const t = tiles[idx(width, x + dx, y + dy)];
+          if (t === TILE_ROAD || t === TILE_SCRAP || t === TILE_WATER) crowded = true;
+        }
+        if (crowded) continue;
+        patch.push(i);
+      }
+    }
+    if (patch.length < 24) continue;
+    for (const i of patch) tiles[i] = TILE_ROCK;
+    let next = floodWalk(tiles, width, height, start.x, start.y);
+    // Tiny open pockets sealed inside the outcrop become rock too; anything
+    // bigger, or anything that is not plain ground, rejects the patch.
+    const sealed: number[] = [];
+    let ok = true;
+    for (let i = 0; i < reach.length && ok; i++) {
+      if (!reach[i] || next[i] || tiles[i] === TILE_ROCK) continue;
+      if (tiles[i] !== TILE_EMPTY || inPad(pads, i % width, (i / width) | 0)) ok = false;
+      sealed.push(i);
+    }
+    if (sealed.length > 24) ok = false;
+    if (ok && sealed.length > 0) {
+      for (const i of sealed) tiles[i] = TILE_ROCK;
+      patch.push(...sealed);
+      next = floodWalk(tiles, width, height, start.x, start.y);
+    }
+    if (!ok) {
+      for (const i of patch) tiles[i] = TILE_EMPTY;
+      continue;
+    }
+    reach = next;
+    placed += 1;
   }
 }
 
@@ -1108,6 +1345,7 @@ export function makeYard64(): MapDef {
   const locked = new Uint8Array(fineW * fineH);
   const heights = scatterHeights(fineW, fineH, "yard-64-elev", fineSpawnPads, locked);
   flattenTerrain(heights, fineTiles, fineW, fineH, TILE_WATER, locked);
+  paintYardRocks(fineTiles, heights, fineW, fineH, "yard-64-rocks", fineSpawnPads, houseBoxes(features, sub));
 
   return {
     id: "yard-64",

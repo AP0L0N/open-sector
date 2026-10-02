@@ -78,6 +78,11 @@ const nebelwerferLauncherGlob = import.meta.glob("../assets/units/nebelwerfer/la
   import: "default",
 }) as Record<string, string>;
 
+const artilleryHullGlob = import.meta.glob("../assets/units/artillery/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 const mammothHullGlob = import.meta.glob("../assets/units/mammoth/hull/*.png", {
   eager: true,
   import: "default",
@@ -558,6 +563,30 @@ export function bindNebelwerferSheets(hullImage: HTMLImageElement, launcherImage
     })
     .catch((err) => {
       console.error("nebelwerfer turntable", err);
+    });
+}
+
+let artilleryPrevious: ComposedTurntable | null = null;
+
+/** Field gun: one sheet, the barrel is the facing. The static artillery-cameo.png is the sidebar art. */
+export function bindArtillerySheets(hullImage: HTMLImageElement): void {
+  let hullUrls: string[];
+  try {
+    hullUrls = pickTurntableUrls(artilleryHullGlob);
+  } catch (err) {
+    console.error("artillery turntable", err);
+    return;
+  }
+  void Promise.all(hullUrls.map(loadImage))
+    .then((hullImgs) => composeAligned([hullImgs], TIGER_OPTS))
+    .then((next) => {
+      revoke(artilleryPrevious);
+      artilleryPrevious = next;
+      hullImage.src = next.sheetUrls[0] ?? "";
+      URL.revokeObjectURL(next.cameoUrl);
+    })
+    .catch((err) => {
+      console.error("artillery turntable", err);
     });
 }
 

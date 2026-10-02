@@ -1,5 +1,8 @@
 import {
   AIR_FUEL_SECONDS,
+  ARTILLERY_CREW,
+  ARTILLERY_CREW_HP,
+  ARTILLERY_SETUP_SECONDS,
   BV222_TROOPS,
   TRUCK_SEATS,
   DRONE_BATTERY_SECONDS,
@@ -13,6 +16,8 @@ import {
   deploySecondsOf,
   entityIsScouting,
   garrisonCapOf,
+  isCivilianType,
+  NEUTRAL_OWNER,
   hasMg,
   roofCiwsOf,
   hasScout,
@@ -25,6 +30,7 @@ import {
   walkerGunsOf,
 } from "../catalog.js";
 import { padsTaken } from "./air.js";
+import { artilleryCanLay, gunCrewOf } from "./artillery.js";
 import { crateViews, mineViews, payloadOf, planeRiders } from "./airdrop.js";
 import { cyborgShielded } from "./crits.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
@@ -38,7 +44,14 @@ import type { CorpseView, EntityView, MatchSnapshot, PlanKind, PlanPointView, Sc
 
 function plantRemaining(e: Entity, friendly: boolean): number | undefined {
   if (!friendly) return undefined;
-  const limit = e.type === "gunner" ? MG42_BIPOD_SECONDS : e.type === "mortarman" ? MORTAR_PLANT_SECONDS : 0;
+  const limit =
+    e.type === "gunner"
+      ? MG42_BIPOD_SECONDS
+      : e.type === "mortarman"
+        ? MORTAR_PLANT_SECONDS
+        : e.type === "artillery" && artilleryCanLay(e)
+          ? ARTILLERY_SETUP_SECONDS
+          : 0;
   if (limit <= 0 || e.bipod >= limit) return undefined;
   return Math.max(0, limit - e.bipod);
 }
@@ -157,6 +170,28 @@ function planView(state: MatchState, e: Entity, own: boolean): PlanPointView[] |
   return out.length > 0 ? out : undefined;
 }
 
+/** A map house out of sight. Its shape is scenery; who holds it stays hidden. */
+function sceneryView(e: Entity): EntityView {
+  return {
+    id: e.id,
+    kind: e.kind,
+    type: e.type,
+    ownerId: NEUTRAL_OWNER,
+    x: e.x,
+    y: e.y,
+    facing: e.facing,
+    hp: e.hp,
+    hpMax: e.hpMax,
+    state: e.state,
+    tileW: e.tileW,
+    tileH: e.tileH,
+    tileX: e.tileX,
+    tileY: e.tileY,
+    ruined: e.ruined || undefined,
+    garrison: isGarrisonable(e.type) ? { count: 0, cap: garrisonCapOf(e.type) } : undefined,
+  };
+}
+
 export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapshot {
   const you = state.players.get(youPlayerId);
   const power = you ? powerOf(state, youPlayerId) : { provided: 0, used: 0, lowPower: false };
@@ -166,7 +201,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     if (e.hp <= 0) continue;
     const friendly = allies(state, youPlayerId, e.ownerId);
     if (e.garrisonedIn && !friendly) continue;
-    if (!friendly && !entityOnMask(e, vis, state.width, state.height, state.tileSize)) continue;
+    if (!friendly && !entityOnMask(e, vis, state.width, state.height, state.tileSize)) {
+      if (e.kind === "building" && isCivilianType(e.type)) entities.push(sceneryView(e));
+      continue;
+    }
     const job = e.queue[0];
     const transport = isTransportType(e.type);
     const supplyBed = e.type === "supply" && !e.wreck;
@@ -219,6 +257,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       heavy: friendly && e.type === "rocketer" ? (e.heavy ?? 0) : undefined,
       rocketsOff: friendly && e.rocketsOff ? true : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
+      patrol:
+        friendly && e.order?.kind === "patrol" && e.order.route
+          ? e.order.route.map((p) => ({ x: p.x, y: p.y }))
+          : undefined,
       guardFacing: friendly && e.guardFacing != null ? e.guardFacing : undefined,
       guardTargetId:
         friendly && e.order?.kind === "guard" && e.order.targetId != null ? e.order.targetId : undefined,
@@ -227,6 +269,16 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       fieldSites: e.type === "engineer" ? fieldSitesView(e, friendly) : undefined,
       scout: scoutView(e, friendly),
       supply: friendly && e.type === "supply" && !e.wreck ? e.supply : undefined,
+      gun:
+        e.type === "artillery" && !e.wreck
+          ? {
+              crew: gunCrewOf(e),
+              cap: ARTILLERY_CREW,
+              bars: friendly ? (e.gunCrew ?? []).map((hp) => ({ hp, hpMax: ARTILLERY_CREW_HP })) : undefined,
+              towedBy: e.towedBy,
+            }
+          : undefined,
+      towing: e.type === "supply" && e.towing != null ? e.towing : undefined,
       bed:
         e.type === "supply" && !e.wreck
           ? {
@@ -355,6 +407,9 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
             totalTicks: you.structure.totalTicks,
             ready: you.structure.ready,
             paused: you.structure.paused,
+            ...(you.structure.sites?.length
+              ? { sites: you.structure.sites.map((s) => ({ x: s.x, y: s.y, facing: s.facing })) }
+              : {}),
           }
         : null,
       placingType: you?.placingType ?? null,
@@ -383,6 +438,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
         shell: p.shell ?? undefined,
         z: p.flight === "mortar" ? (p.z ?? 0) : undefined,
         mortar: p.flight === "mortar" ? true : undefined,
+        big: p.flight === "mortar" && p.big ? true : undefined,
         apex: p.flight === "mortar" ? p.apex : undefined,
         arc:
           p.flight === "mortar" && (p.flightTime ?? 0) > 0

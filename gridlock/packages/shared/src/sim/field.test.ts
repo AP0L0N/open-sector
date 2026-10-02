@@ -897,19 +897,24 @@ function deployCore(state: MatchState): void {
   assert.ok([...state.entities.values()].some((e) => e.ownerId === "A" && e.type === "core"));
 }
 
-function readyYard(state: MatchState, type: "sandbags" | "wall"): void {
-  deployCore(state);
-  const before = state.players.get("A")!.scrap;
-  const res = applyCommand(state, "A", { type: "cmd.build", building: type });
-  assert.equal(res.ok, true, res.ok ? "" : res.message);
-  ticks(state, catalog(type).buildSeconds * 10 + 5);
-  const p = state.players.get("A")!;
-  assert.equal(p.structure?.ready, true);
-  assert.equal(p.placingType, type);
-  assert.equal(p.structure?.paid, catalog(type).cost);
-  assert.equal(p.scrap, before - catalog(type).cost);
-  assert.equal(snapshotFor(state, "A").you.structureQueue?.type, type);
-  assert.equal(snapshotFor(state, "A").you.placingType, type);
+function placeYard(
+  state: MatchState,
+  type: "sandbags" | "wall",
+  x: number,
+  y: number,
+  facing: number,
+  x2?: number,
+  y2?: number,
+) {
+  return applyCommand(state, "A", {
+    type: "cmd.field",
+    ids: [],
+    structure: type,
+    x,
+    y,
+    facing,
+    ...(x2 != null && y2 != null ? { x2, y2 } : {}),
+  });
 }
 
 function besideCore(state: MatchState): { x: number; y: number } {
@@ -929,43 +934,32 @@ function farOpen(state: MatchState): { x: number; y: number } {
 }
 
 describe("defences tab field works", () => {
-  it("does not treat an empty field order as an engineer", () => {
+  it("does not treat teeth as a yard placement, and will not site a wall before the Rig is deployed", () => {
     const { state } = twoPlayerMatch();
     const bag = applyCommand(state, "A", { type: "cmd.field", ids: [], structure: "sandbags", x: 10, y: 10, facing: 0 });
     assert.equal(bag.ok, false);
-    if (!bag.ok) assert.match(bag.message, /not ready/);
+    if (!bag.ok) assert.equal(bag.code, "no_core");
     const teeth = applyCommand(state, "A", { type: "cmd.field", ids: [], structure: "teeth", x: 10, y: 10, facing: 0 });
     assert.equal(teeth.ok, false);
     if (!teeth.ok) assert.match(teeth.message, /not ready/);
-  });
-
-  it("will not queue a wall before the Rig is deployed", () => {
-    const { state } = twoPlayerMatch();
-    const res = applyCommand(state, "A", { type: "cmd.build", building: "wall" });
-    assert.equal(res.ok, false);
-    if (!res.ok) assert.equal(res.code, "no_core");
+    const queued = applyCommand(state, "A", { type: "cmd.build", building: "wall" });
+    assert.equal(queued.ok, false);
+    if (!queued.ok) assert.match(queued.message, /Place that/);
   });
 
   for (const type of ["sandbags", "wall"] as const) {
-    it(`places ${type} from the yard beside the core and refuses a spot in the field`, () => {
+    it(`sites ${type} beside the core, then builds it`, () => {
       const { state } = twoPlayerMatch();
-      readyYard(state, type);
+      deployCore(state);
       const far = farOpen(state);
       const spot = besideCore(state);
       const snap = snapshotFor(state, "A");
       assert.equal(previewYardField(snap, type, spot.x, spot.y, 0), true);
       assert.equal(previewYardField(snap, type, far.x, far.y, 0), false);
-      const away = applyCommand(state, "A", {
-        type: "cmd.field",
-        ids: [],
-        structure: type,
-        x: far.x,
-        y: far.y,
-        facing: 0,
-      });
+      const away = placeYard(state, type, far.x, far.y, 0);
       assert.equal(away.ok, false);
       if (!away.ok) assert.match(away.message, /Too far/);
-      assert.equal(state.players.get("A")!.structure?.ready, true);
+      assert.equal(state.players.get("A")!.structure, null);
       const eng = makeEntity(state, "engineer", "A", far.x - 30, far.y);
       const crew = applyCommand(state, "A", {
         type: "cmd.field",
@@ -977,89 +971,99 @@ describe("defences tab field works", () => {
       });
       assert.equal(crew.ok, true, crew.ok ? "" : crew.message);
       assert.equal(eng.order?.kind, "build");
-      assert.equal(state.players.get("A")!.structure?.ready, true);
-      const scrap = state.players.get("A")!.scrap;
-      const placed = applyCommand(state, "A", {
-        type: "cmd.field",
-        ids: [],
-        structure: type,
-        x: spot.x,
-        y: spot.y,
-        facing: 0,
-      });
+      const before = state.players.get("A")!.scrap;
+      const placed = placeYard(state, type, spot.x, spot.y, 0);
       assert.equal(placed.ok, true, placed.ok ? "" : placed.message);
+      const job = state.players.get("A")!.structure;
+      assert.equal(job?.ready, false);
+      assert.equal(job?.sites?.length, 1);
+      assert.equal(job?.totalTicks, catalog(type).buildSeconds * 10);
+      assert.equal(state.players.get("A")!.scrap, before);
+      assert.equal([...state.entities.values()].some((e) => e.type === type), false);
+      const view = snapshotFor(state, "A").you.structureQueue;
+      assert.equal(view?.type, type);
+      assert.equal(view?.sites?.length, 1);
+      eng.order = null;
+      eng.state = "idle";
+      eng.waypoints = [];
+      ticks(state, catalog(type).buildSeconds * 10);
       const built = [...state.entities.values()].filter((e) => e.type === type && e.hp > 0);
       assert.equal(built.length, 1);
-      assert.equal(state.players.get("A")!.scrap, scrap);
+      assert.equal(state.players.get("A")!.scrap, before - catalog(type).cost);
       assert.equal(state.players.get("A")!.structure, null);
-      assert.equal(state.players.get("A")!.placingType, null);
     });
   }
 
-  it("charges extra wall sections and keeps the prefix the purse can pay", () => {
+  it("builds a longer wall more slowly and charges every section", () => {
     const { state } = twoPlayerMatch();
-    readyYard(state, "wall");
+    deployCore(state);
     const spot = besideCore(state);
     const span = fieldSpan("wall")!.length;
     const p = state.players.get("A")!;
-    p.scrap = catalog("wall").cost;
-    const res = applyCommand(state, "A", {
-      type: "cmd.field",
-      ids: [],
-      structure: "wall",
-      x: spot.x,
-      y: spot.y,
-      facing: Math.PI / 2,
-      x2: spot.x + span * 3,
-      y2: spot.y,
-    });
+    const before = p.scrap;
+    const res = placeYard(state, "wall", spot.x, spot.y, Math.PI / 2, spot.x + span * 3, spot.y);
     assert.equal(res.ok, true, res.ok ? "" : res.message);
+    const n = p.structure?.sites?.length ?? 0;
+    assert.equal(n, 3);
+    assert.equal(p.structure?.totalTicks, catalog("wall").buildSeconds * n * 10);
+    assert.equal([...state.entities.values()].some((e) => e.type === "wall"), false);
+    ticks(state, catalog("wall").buildSeconds * 10);
+    assert.equal([...state.entities.values()].some((e) => e.type === "wall"), false);
+    ticks(state, catalog("wall").buildSeconds * (n - 1) * 10);
     const built = [...state.entities.values()].filter((e) => e.type === "wall");
-    const n = built.length;
-    assert.equal(n, 2);
-    assert.equal(p.scrap, 0);
+    assert.equal(built.length, n);
+    assert.equal(p.scrap, before - catalog("wall").cost * n);
     assert.equal(p.structure, null);
   });
 
-  it("leaves the job ready when the first section is blocked", () => {
+  it("refunds a cancelled line and does not leave a section behind", () => {
     const { state } = twoPlayerMatch();
-    readyYard(state, "sandbags");
+    deployCore(state);
+    const spot = besideCore(state);
+    const p = state.players.get("A")!;
+    const before = p.scrap;
+    const res = placeYard(state, "sandbags", spot.x, spot.y, 0);
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    ticks(state, 8);
+    assert.ok((p.structure?.paid ?? 0) > 0);
+    const cancel = applyCommand(state, "A", { type: "cmd.cancel", what: "structure" });
+    assert.equal(cancel.ok, true, cancel.ok ? "" : cancel.message);
+    assert.equal(p.scrap, before);
+    assert.equal(p.structure, null);
+    assert.equal([...state.entities.values()].some((e) => e.type === "sandbags"), false);
+  });
+
+  it("refuses a blocked first section without starting a job", () => {
+    const { state } = twoPlayerMatch();
+    deployCore(state);
     const core = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "core")!;
     const ts = state.tileSize;
     const p = state.players.get("A")!;
     const scrap = p.scrap;
-    const res = applyCommand(state, "A", {
-      type: "cmd.field",
-      ids: [],
-      structure: "sandbags",
-      x: tileCenter(core.tileX + Math.floor(core.tileW / 2), ts),
-      y: tileCenter(core.tileY + Math.floor(core.tileH / 2), ts),
-      facing: 0,
-    });
+    const res = placeYard(
+      state,
+      "sandbags",
+      tileCenter(core.tileX + Math.floor(core.tileW / 2), ts),
+      tileCenter(core.tileY + Math.floor(core.tileH / 2), ts),
+      0,
+    );
     assert.equal(res.ok, false);
     if (!res.ok) assert.match(res.message, /Cannot place/);
-    assert.equal(p.structure?.ready, true);
+    assert.equal(p.structure, null);
     assert.equal(p.scrap, scrap);
     assert.equal([...state.entities.values()].some((e) => e.type === "sandbags"), false);
   });
 
   it("does not let a field wall extend the yard's build radius", () => {
     const { state } = twoPlayerMatch();
-    readyYard(state, "sandbags");
+    deployCore(state);
     const far = farOpen(state);
     const wall = makeEntity(state, "wall", "A", far.x, far.y, { facing: 0 });
     wall.facing = 0;
-    const beside = applyCommand(state, "A", {
-      type: "cmd.field",
-      ids: [],
-      structure: "sandbags",
-      x: far.x + 40,
-      y: far.y,
-      facing: 0,
-    });
+    const beside = placeYard(state, "sandbags", far.x + 40, far.y, 0);
     assert.equal(beside.ok, false);
     if (!beside.ok) assert.match(beside.message, /Too far/);
-    assert.equal(state.players.get("A")!.structure?.ready, true);
+    assert.equal(state.players.get("A")!.structure, null);
     assert.equal(previewYardField(snapshotFor(state, "A"), "sandbags", far.x + 40, far.y, 0), false);
   });
 });

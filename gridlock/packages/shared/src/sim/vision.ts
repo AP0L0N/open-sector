@@ -23,7 +23,7 @@ import {
   uphillSightForEntity,
   type CoverField,
 } from "./elevation.js";
-import { allies, chebyshev, fillHullCover, footprint, inBounds, worldToTile } from "./geo.js";
+import { allies, fillHullCover, footprint, inBounds, worldToTile } from "./geo.js";
 import { occupantEye, occupantSightTiles } from "./garrison.js";
 import { fillSmokeMask, smokeCloudTileBounds } from "./smoke.js";
 import type { Entity, MatchState } from "./types.js";
@@ -170,6 +170,11 @@ function recolorSmallIslands(
   }
 }
 
+/** Sight reach in whole tiles, measured round so a sight ring is a circle, not a square. */
+export function sightDist(ax: number, ay: number, bx: number, by: number): number {
+  return Math.round(Math.hypot(ax - bx, ay - by));
+}
+
 export function paintChebyshev(
   mask: Uint8Array,
   width: number,
@@ -184,7 +189,7 @@ export function paintChebyshev(
   const y1 = Math.min(height - 1, oy + radius);
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
-      if (chebyshev(x, y, ox, oy) <= radius) mask[y * width + x] = 1;
+      if (sightDist(x, y, ox, oy) <= radius) mask[y * width + x] = 1;
     }
   }
 }
@@ -370,7 +375,7 @@ function paintSightBox(
     const row = y * width;
     for (let x = x0; x <= x1; x++) {
       if (mask[row + x]) continue;
-      const d = chebyshev(x, y, ox, oy);
+      const d = sightDist(x, y, ox, oy);
       if (d > boxR || d < minD) continue;
       const extra = levelSightExtra(h0, elevAtSafe(elev, width, height, x, y), uphillBonus);
       if (d > catalogR + extra) continue;
@@ -701,7 +706,7 @@ function observerLightsTile(
 ): boolean {
   if (p.fw > 0 && x >= p.fx && x < p.fx + p.fw && y >= p.fy && y < p.fy + p.fh) return true;
   if (p.radius <= 0) return false;
-  const d = chebyshev(x, y, p.ox, p.oy);
+  const d = sightDist(x, y, p.ox, p.oy);
   if (d > p.radius) {
     if (p.uphill <= 0 || d > sightBoxRadius(p, true)) return false;
     const h0 = elevAtSafe(elev, width, height, p.ox, p.oy);
@@ -1197,7 +1202,7 @@ function tileInSight(
   uphillBonus: number,
 ): boolean {
   if (radius <= 0) return ox === tx && oy === ty;
-  const d = chebyshev(tx, ty, ox, oy);
+  const d = sightDist(tx, ty, ox, oy);
   const h0 = elevAtSafe(elev, width, height, ox, oy);
   const extra = levelSightExtra(h0, elevAtSafe(elev, width, height, tx, ty), uphillBonus);
   if (d > radius + extra) return false;

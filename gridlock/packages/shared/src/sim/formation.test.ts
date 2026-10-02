@@ -4,7 +4,7 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { TICK_DT, catalog, snapTankYaw } from "../catalog.js";
 import { TILE_EMPTY } from "../maps.js";
 import { applyCommand } from "./commands.js";
-import { groupMovePace, groupMoveTargets, unitClearance } from "./formation.js";
+import { groupMovePace, groupMoveTargets, packSlots, unitClearance } from "./formation.js";
 import { makeEntity, tileCenter, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import type { Entity, MatchState } from "./types.js";
@@ -55,6 +55,28 @@ function assertSpaced(units: Entity[]): void {
     }
   }
 }
+
+describe("packSlots", () => {
+  it("stands a stacked squad in a block", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    clearPad(state, 10, 10, 40, 40);
+    const at = tileCenter(24, ts);
+    const units = [];
+    for (let i = 0; i < 7; i++) units.push(makeEntity(state, "rifleman", "A", at, at));
+    const slots = packSlots(state, units, at, at);
+    const placed = units.map((u) => {
+      const p = slots.get(u.id);
+      assert.ok(p);
+      return { ...u, x: p.x, y: p.y };
+    });
+    assertSpaced(placed);
+    const xs = placed.map((p) => p.x);
+    const ys = placed.map((p) => p.y);
+    assert.ok(Math.max(...xs) - Math.min(...xs) > 8);
+    assert.ok(Math.max(...ys) - Math.min(...ys) > 8);
+  });
+});
 
 describe("groupMoveTargets", () => {
   it("sends a single unit to the click", () => {

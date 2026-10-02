@@ -1,4 +1,6 @@
 import {
+  ARTILLERY_CREW,
+  ARTILLERY_CREW_HP,
   BUILD_RADIUS,
   AIR_FUEL_SECONDS,
   DRONE_BATTERY_SECONDS,
@@ -603,6 +605,7 @@ export function makeEntity(
     supply: type === "supply" ? SUPPLY_CARGO : 0,
   };
   if (def.aircraft) e.air = newAirState(null, 0, type);
+  if (type === "artillery") e.gunCrew = Array.from({ length: ARTILLERY_CREW }, () => ARTILLERY_CREW_HP);
   if (type === "droneop") e.droneLink = newDroneLink();
   if (type === "jumpjet") e.jet = newJetState();
   state.entities.set(id, e);

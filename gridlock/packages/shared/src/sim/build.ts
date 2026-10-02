@@ -3,6 +3,7 @@ import {
   catalog,
   isCivilianType,
   isFieldStructure,
+  isYardField,
   secondsToTicks,
   SELL_REFUND,
   type BuildingType,
@@ -64,6 +65,10 @@ export function tickBuild(state: MatchState, _dt: number): void {
   for (const p of state.players.values()) {
     if (!p.alive || !p.structure || p.structure.ready || p.structure.paused) continue;
     if (!hasCore(state, p.playerId)) continue;
+    if (isYardField(p.structure.type)) {
+      finishYardField(state, p.playerId);
+      continue;
+    }
     const def = catalog(p.structure.type);
     const pow = powerOf(state, p.playerId);
     advancePaidJob(p, p.structure, def.cost, productionSpeed(pow.provided, pow.used));
@@ -73,6 +78,38 @@ export function tickBuild(state: MatchState, _dt: number): void {
       p.placingType = p.structure.type;
     }
   }
+}
+
+/** A sited sandbag or wall line. Time and scrap scale with the number of sections. */
+function finishYardField(state: MatchState, playerId: string): void {
+  const p = state.players.get(playerId);
+  const job = p?.structure;
+  if (!p || !job || !isYardField(job.type)) return;
+  const sites = job.sites ?? [];
+  if (sites.length === 0) {
+    p.structure = null;
+    p.placingType = null;
+    return;
+  }
+  const def = catalog(job.type);
+  const cost = def.cost * sites.length;
+  const pow = powerOf(state, playerId);
+  advancePaidJob(p, job, cost, productionSpeed(pow.provided, pow.used));
+  if (!jobFullyPaid(job, cost)) return;
+  let placed = 0;
+  for (const piece of sites) {
+    if (!fieldSiteClear(state, job.type, piece.x, piece.y, piece.facing)) {
+      p.scrap += def.cost;
+      continue;
+    }
+    const built = makeEntity(state, job.type, playerId, piece.x, piece.y, { facing: piece.facing });
+    built.facing = piece.facing;
+    built.turretFacing = piece.facing;
+    placed++;
+  }
+  if (placed > 0) restampForts(state);
+  p.structure = null;
+  p.placingType = null;
 }
 
 export function placeBuilding(
@@ -110,9 +147,9 @@ function pieceNearOwnBuildings(state: MatchState, ownerId: string, structure: Ya
 }
 
 /**
- * Drop a queued sandbag or wall line. The job already paid for the first section.
- * Further sections cost the catalog price each. The line stops at the first piece
- * that is blocked, out of range, or unpaid. Nothing is spent when the first piece fails.
+ * Site a sandbag or wall line from the Defences tab. The sections appear when the
+ * yard finishes them. Build time and cost are the catalog numbers times the length.
+ * The line stops at the first piece that is blocked or out of range.
  */
 export function placeBaseField(
   state: MatchState,
@@ -126,13 +163,12 @@ export function placeBaseField(
 ): string | null {
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
-  if (!p.structure?.ready || p.structure.type !== structure) return "That structure is not ready.";
+  if (p.structure) return "Construction already underway.";
   if (!hasCore(state, playerId)) return "Deploy the Rig.";
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(facing)) return "Cannot place there.";
   const line = x2 != null && y2 != null && Number.isFinite(x2) && Number.isFinite(y2);
   const pieces = line ? fieldLine(structure, x, y, x2, y2, facing) : [{ x, y, facing }];
   if (pieces.length === 0) return "Cannot place there.";
-  const cost = catalog(structure).cost;
   const accepted: FieldPiece[] = [];
   let stop: string | null = null;
   for (const piece of pieces) {
@@ -144,18 +180,19 @@ export function placeBaseField(
       stop = "Too far from your base.";
       break;
     }
-    if (accepted.length > 0 && p.scrap < cost * accepted.length) break;
     accepted.push(piece);
   }
   if (accepted.length === 0) return stop ?? "Cannot place there.";
-  p.scrap -= cost * (accepted.length - 1);
-  for (const piece of accepted) {
-    const built = makeEntity(state, structure, playerId, piece.x, piece.y, { facing: piece.facing });
-    built.facing = piece.facing;
-    built.turretFacing = piece.facing;
-  }
-  restampForts(state);
-  p.structure = null;
+  const def = catalog(structure);
+  p.structure = {
+    type: structure,
+    progressTicks: 0,
+    totalTicks: secondsToTicks(def.buildSeconds * accepted.length),
+    ready: false,
+    paused: false,
+    paid: 0,
+    sites: accepted.map((piece) => ({ x: piece.x, y: piece.y, facing: piece.facing })),
+  };
   p.placingType = null;
   return null;
 }

@@ -371,3 +371,24 @@ describe("plane return-to-airfield cursor", () => {
     assert.equal(act({ selected: [plane], hit: building({ id: 76, type: "airfield", hp: 0 }) }), null);
   });
 });
+
+describe("resolveHoverAction field gun", () => {
+  const gun = (partial: Partial<HoverEntity> = {}) =>
+    unit({ id: 50, type: "artillery", hp: 160, gun: { crew: 1, cap: 2 }, ...partial });
+
+  it("a supply truck hitches your gun, then resupplies it once in tow", () => {
+    const truck = unit({ id: 1, type: "supply", bed: { crew: true } });
+    assert.equal(act({ selected: [truck], hit: gun() }), "tow");
+    const hitched = { ...truck, towing: 50 };
+    const short = gun({ gun: { crew: 2, cap: 2, towedBy: 1 }, ammo: { he: 2 } });
+    assert.equal(act({ selected: [hitched], hit: short }), "supply");
+  });
+
+  it("infantry man your gun one short, or take an empty enemy gun", () => {
+    const rifle = unit({ id: 2, type: "rifleman" });
+    assert.equal(act({ selected: [rifle], hit: gun() }), "board");
+    assert.equal(act({ selected: [rifle], hit: gun({ gun: { crew: 2, cap: 2 } }) }), null);
+    assert.equal(act({ selected: [rifle], hit: gun({ ownerId: FOE, gun: { crew: 0, cap: 2 } }) }), "board");
+    assert.equal(act({ selected: [rifle], hit: gun({ ownerId: FOE }) }), "attack");
+  });
+});

@@ -24,6 +24,8 @@ export interface StructureJob {
   paused: boolean;
   /** Scrap already drained for this job. */
   paid: number;
+  /** Sandbag or wall line sited before the yard builds it. */
+  sites?: { x: number; y: number; facing: number }[];
 }
 
 export interface Order {
@@ -31,6 +33,7 @@ export interface Order {
     | "move"
     | "attack"
     | "attackmove"
+    | "patrol"
     | "forceattack"
     | "harvest"
     | "unload"
@@ -42,6 +45,7 @@ export interface Order {
     | "repair"
     | "board"
     | "supply"
+    | "tow"
     | "land";
   x?: number;
   y?: number;
@@ -68,6 +72,17 @@ export interface Order {
   structure?: FieldStructureType;
   /** Panic retreat: after this order, the Mauler returns to HQ and holds. */
   returnToBase?: boolean;
+  /**
+   * Patrol polyline in world pixels. Index 0 is where the unit stood.
+   * Not a wire field; the command sends the clicks and the snapshot sends `patrol`.
+   */
+  route?: Vec[];
+  /** Index in `route` the unit is walking toward. */
+  leg?: number;
+  /** 1 toward the end of the route, -1 back toward the start. */
+  dir?: 1 | -1;
+  /** Units given this patrol together. One contact pulls the group. */
+  group?: number;
 }
 
 /** Player commands that Shift can queue. */
@@ -270,6 +285,11 @@ export interface Entity {
   queue: TrainJob[];
   /** Producer rally point. New units walk here on spawn. Unset means stay at the door. */
   rally?: Vec;
+  /**
+   * Still loitering with the units that came out this door. A player order
+   * clears it. The next spawn packs the cluster into a block. Not on the wire.
+   */
+  doorGroup?: true;
   attackTarget: number | null;
   /** True after an armored hull dies; blocks until the wreck is destroyed. */
   wreck: boolean;
@@ -369,6 +389,12 @@ export interface Entity {
   crew: boolean;
   /** Supply points left. 0 on every type except the supply truck. */
   supply: number;
+  /** Artillery only: health of each living crewman. Empty means nobody serves the gun. */
+  gunCrew?: number[];
+  /** Supply truck only: the gun hitched behind it. */
+  towing?: number;
+  /** Artillery only: the truck towing it. */
+  towedBy?: number;
   /** Aircraft only. Drones carry it too, for their height. */
   air?: AirState;
   /** Drone Op only. */
@@ -409,6 +435,8 @@ export interface Projectile {
   z?: number;
   /** Elevation units per second along the shot. Direct fire only. */
   vz?: number;
+  /** A field gun's shell on the mortar arc: the bigger burst. Omitted for the mortar bomb. */
+  big?: boolean;
   /**
    * Arcing mortar bomb, a bomb falling from a plane, or a Titan rocket (straight
    * and fast, bursts at its fused point or on whatever it meets first).

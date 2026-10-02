@@ -132,6 +132,67 @@ export function spotTaken(state: MatchState, u: Entity, x: number, y: number): b
   return false;
 }
 
+/** How many hex rings a block of `count` units needs. One unit is just the center. */
+function hexRing(count: number): number {
+  if (count <= 1) return 0;
+  let ring = 1;
+  let covered = 1;
+  while (covered + 6 * ring < count) {
+    covered += 6 * ring;
+    ring += 1;
+  }
+  return ring;
+}
+
+/** Offset of slot `index` in a hex block. Slot 0 is the center. `bearing` aims the first spoke. */
+function hexOffset(index: number, pitch: number, bearing: number): Vec {
+  if (index <= 0) return { x: 0, y: 0 };
+  let ring = 1;
+  let start = 1;
+  while (start + 6 * ring <= index) {
+    start += 6 * ring;
+    ring += 1;
+  }
+  const spoke = 6 * ring;
+  const ang = bearing + ((index - start) / spoke) * Math.PI * 2;
+  const r = ring * pitch;
+  return { x: Math.cos(ang) * r, y: Math.sin(ang) * r };
+}
+
+/** How far a packed block of `count` units reaches from its center, at this pitch. */
+export function packRadius(count: number, pitch: number): number {
+  return hexRing(count) * pitch;
+}
+
+/**
+ * Slots for units standing outside a producer. A hex block around (x, y):
+ * the oldest unit stays in the middle and each newcomer takes the next hole,
+ * so they form a group instead of a line. `bearing` aims the first spoke.
+ */
+export function packSlots(
+  state: MatchState,
+  units: readonly Entity[],
+  x: number,
+  y: number,
+  bearing = 0,
+): Map<number, Vec> {
+  const out = new Map<number, Vec>();
+  if (units.length === 0) return out;
+  const order = units.slice().sort((a, b) => a.id - b.id);
+  let pitch = 0;
+  for (const u of order) pitch = Math.max(pitch, u.radius * 2 + UNIT_SPACE_PAD);
+  const claimed = claimedSpots(state, x, y, new Set(order.map((u) => u.id)), order[0]!.ownerId);
+  const placed: Spot[] = [];
+  for (let i = 0; i < order.length; i++) {
+    const u = order[i]!;
+    const off = hexOffset(i, pitch, bearing);
+    const spot = nearestClear(state, x + off.x, y + off.y, u.radius, [...obstaclesFor(u, claimed), ...placed], u.type);
+    placed.push({ x: spot.x, y: spot.y, radius: u.radius, givesWay: isInfantryType(u.type) });
+    out.set(u.id, spot);
+  }
+  return out;
+}
+
 /**
  * Destinations for a group move: keep the group's shape but pull it in tight
  * around the click, then honor each unit's reserved radius so they do not

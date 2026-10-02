@@ -1,7 +1,7 @@
-import { AIRFIELD_PADS, catalog, isAircraftType, secondsToTicks, TECH_REQUIRES, TRAIN_QUEUE_CAP, UNIT_CAP, type BuildingType, type TrainType } from "../catalog.js";
+import { AIRFIELD_PADS, catalog, isAircraftType, secondsToTicks, TECH_REQUIRES, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, PARK_HEADING } from "./air.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
-import { openSpotNear } from "./formation.js";
+import { openSpotNear, packRadius, packSlots } from "./formation.js";
 import { setPath } from "./path.js";
 import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
@@ -205,10 +205,85 @@ export function spawnUnit(
     u.order = { kind: "move", x: spot.x, y: spot.y };
     u.state = "move";
     setPath(state, u, spot.x, spot.y);
-  } else if (type === "hauler") {
-    u.autoHarvest = true;
+  } else {
+    if (type === "hauler") u.autoHarvest = true;
+    packAtDoor(state, from, u, door);
   }
   return u;
+}
+
+/** Idle, or walking to the slot the last spawn gave it. A self-issued move is left alone. */
+function looseAtDoor(e: Entity): boolean {
+  if (e.kind !== "unit" || e.hp <= 0 || e.wreck) return false;
+  if (e.garrisonedIn || e.air || e.chute) return false;
+  if (e.state === "deploy" || e.state === "undeploy" || e.braced) return false;
+  if (e.holdPosition) return false;
+  if (e.jet && e.jet.alt > 0) return false;
+  const o = e.order;
+  if (!o) return true;
+  return o.kind === "move" && o.auto !== true;
+}
+
+/** Door-group units still standing close enough to be packed with the newcomer. */
+function doorMates(state: MatchState, fresh: Entity, door: { x: number; y: number }): Entity[] {
+  const pool: Entity[] = [];
+  for (const e of state.entities.values()) {
+    if (e !== fresh && !e.doorGroup) continue;
+    if (e.ownerId !== fresh.ownerId) continue;
+    if (!looseAtDoor(e)) continue;
+    pool.push(e);
+  }
+  let pitch = 0;
+  for (const e of pool) pitch = Math.max(pitch, e.radius * 2 + UNIT_SPACE_PAD);
+  const reach = Math.max(state.tileSize * 4, (pitch || state.tileSize) * 10);
+  const keep: Entity[] = [];
+  for (const e of pool) {
+    if (e === fresh || Math.hypot(e.x - door.x, e.y - door.y) <= reach) keep.push(e);
+    else delete e.doorGroup;
+  }
+  return keep;
+}
+
+/**
+ * Drop the new unit into a hex block with whoever is still loitering at this
+ * door, and walk anyone the new shape displaced back onto their slot.
+ */
+function packAtDoor(state: MatchState, from: Entity, fresh: Entity, door: { x: number; y: number }): void {
+  fresh.doorGroup = true;
+  const mates = doorMates(state, fresh, door);
+  if (mates.length < 2) return;
+  let pitch = 0;
+  for (const e of mates) pitch = Math.max(pitch, e.radius * 2 + UNIT_SPACE_PAD);
+  const ts = state.tileSize;
+  const bx = (from.tileX + from.tileW / 2) * ts;
+  const by = (from.tileY + from.tileH / 2) * ts;
+  let dx = door.x - bx;
+  let dy = door.y - by;
+  const len = Math.hypot(dx, dy) || 1;
+  dx /= len;
+  dy /= len;
+  const shift = packRadius(mates.length, pitch);
+  const slots = packSlots(state, mates, door.x + dx * shift, door.y + dy * shift, Math.atan2(dy, dx));
+  const here = slots.get(fresh.id);
+  if (here) {
+    fresh.x = here.x;
+    fresh.y = here.y;
+    fresh.tileX = worldToTile(here.x, ts);
+    fresh.tileY = worldToTile(here.y, ts);
+  }
+  const slop = 4;
+  for (const e of mates) {
+    if (e.id === fresh.id) continue;
+    const spot = slots.get(e.id);
+    if (!spot) continue;
+    if (Math.hypot(e.x - spot.x, e.y - spot.y) <= slop) continue;
+    const ox = e.order?.kind === "move" ? e.order.x : undefined;
+    const oy = e.order?.kind === "move" ? e.order.y : undefined;
+    if (ox != null && oy != null && Math.hypot(ox - spot.x, oy - spot.y) <= slop) continue;
+    e.order = { kind: "move", x: spot.x, y: spot.y };
+    e.state = "move";
+    setPath(state, e, spot.x, spot.y);
+  }
 }
 
 export function isProducer(e: Entity): boolean {

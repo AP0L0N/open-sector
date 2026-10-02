@@ -24,6 +24,7 @@ import {
   TICK_DT,
   burnVariant,
   DRONE_LEASH_TILES,
+  PATROL_POINTS_MAX,
   garrisonWindowLift,
   hasScout,
   isGarrisonable,
@@ -32,6 +33,7 @@ import {
   infantryGunFor,
   isoDepth,
   isoLift,
+  ISO_ELEVATION,
   isoScale,
   TANK_FACE_DIRS,
   TANK_FACE_START_YAW,
@@ -50,7 +52,6 @@ import {
   fieldLine,
   specialOf,
   specialReady,
-  tileDiamond,
   tileOnMask,
   decodeVisionRuns,
   visionMaskFromSnapshot,
@@ -154,6 +155,8 @@ import {
   MORTARMAN_DIE_SPRITE,
   MORTARMAN_FIRE_SPRITE,
   ENGINEER_BUILD_SPRITE,
+  ENGINEER_CRAWL_SPRITE,
+  ENGINEER_CROUCH_SPRITE,
   ENGINEER_DIE_SPRITE,
   ENGINEER_FIX_SPRITE,
   ENGINEER_SPRITE,
@@ -257,7 +260,7 @@ import { canopySway, drawCanopy, drawCrate, drawMine, troopCanopySpan } from "./
 import { barrageTracers, tracerLandsAt, tracerSpan, type BarrageTracer } from "./barrage-tracer.js";
 import { drawSandbags } from "./sandbags.js";
 import { drawTrench } from "./trench.js";
-import { drawWall } from "./wall.js";
+import { drawWall, WALL_SLAB_H, wallSectionsConnect, wallTopElev } from "./wall.js";
 import { pyroNozzleScreen } from "./pyro-nozzle.js";
 import { unitGroundSink } from "./unit-hit.js";
 import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
@@ -283,13 +286,13 @@ import { lerpHullPose } from "./hull-lerp.js";
 import { canGuardUnit, planeBoardCandidate, resolveHoverAction, type HoverAction } from "./hover-action.js";
 import { planColor, withQueue } from "./order-queue.js";
 import { guardHeightTag, guardReach, type GuardUnit } from "./guard-reach.js";
+import { BuildingVeil, columnPolygon, uniformVeil, veilCells } from "./building-fog.js";
+import { FOG_RGB, FogField } from "./fog-field.js";
+import { FogFlat, FogGl } from "./fog-gl.js";
 import {
-  blitAtlas,
   blitTerrain,
   bakeMini,
   bakeTerrain,
-  coverTile,
-  fillElevatedTile,
   restampMini,
   restampTiles,
   resetTerrainCache,
@@ -305,6 +308,7 @@ import {
 export const SPECIAL_HOTKEY = "e";
 export const STOP_HOTKEY = "s";
 export const ATTACK_MOVE_HOTKEY = "a";
+export const PATROL_HOTKEY = "y";
 export const ROTATE_HOTKEY = "r";
 export const GUARD_HOTKEY = "g";
 /** Enter / leave a garrisonable building. */
@@ -370,6 +374,7 @@ const EXTRUDE: Record<EntityType, number> = {
   titan: 40,
   mammoth: 30,
   nebelwerfer: 22,
+  artillery: 14,
   supply: 18,
   cottage: 28,
   shack: 24,
@@ -392,75 +397,9 @@ const HP_FILL_HOSTILE_VIVID = "#ff5a4a";
 /** Sprite alpha when a building volume sits in front of a body. */
 const OCCLUDED_UNIT_ALPHA = 0.46;
 const FIELD_SITE_ALPHA = 0.8;
+const UNIT_SIGHT_FADE_MS = 250;
 
 type DrawItem = DrawKey & { run: () => void };
-/** Closes the 1px raster crack between diamonds. The veil itself is one fill, so this overlap does not stack. */
-const FOG_SEAM_PX = 2;
-
-/** One 55% black fill for a shroud patch. Overlapping diamonds stay the same darkness. */
-function veilShroud(
-  ctx: CanvasRenderingContext2D,
-  map: MapDef,
-  indices: number[],
-  originX: number,
-  originY: number,
-  seam: number,
-): void {
-  const w = map.width;
-  const h = map.height;
-  const ts = map.tileSize;
-  const pad = seam + 2;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const i of indices) {
-    const tx = i % w;
-    const ty = (i / w) | 0;
-    const d = tileDiamond(tx, ty, ts);
-    const z = isoLift(
-      Math.max(
-        heightAt(map, tx, ty),
-        heightAt(map, tx + 1, ty),
-        heightAt(map, tx, ty + 1),
-        heightAt(map, tx + 1, ty + 1),
-      ),
-    );
-    for (const p of [d.n, d.e, d.s, d.w]) {
-      const x = p.x - originX;
-      const y = p.y - originY;
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y - z);
-      maxY = Math.max(maxY, y);
-    }
-  }
-  const x0 = Math.max(0, Math.floor(minX - pad));
-  const y0 = Math.max(0, Math.floor(minY - pad));
-  const x1 = Math.min(ctx.canvas.width, Math.ceil(maxX + pad));
-  const y1 = Math.min(ctx.canvas.height, Math.ceil(maxY + pad));
-  const bw = x1 - x0;
-  const bh = y1 - y0;
-  if (bw < 2 || bh < 2) return;
-  const mask = document.createElement("canvas");
-  mask.width = bw;
-  mask.height = bh;
-  const mctx = mask.getContext("2d");
-  if (!mctx) return;
-  const ox = originX + x0;
-  const oy = originY + y0;
-  for (const i of indices) {
-    fillElevatedTile(mctx, map, i % w, (i / w) | 0, "#ffffff", ox, oy, false, seam);
-  }
-  mctx.globalCompositeOperation = "source-in";
-  mctx.fillStyle = "rgba(0,0,0,0.55)";
-  mctx.fillRect(0, 0, bw, bh);
-  const prev = ctx.globalCompositeOperation;
-  ctx.globalCompositeOperation = "source-over";
-  ctx.drawImage(mask, x0, y0);
-  ctx.globalCompositeOperation = prev;
-}
-
 function mixHash(h: number, v: number): number {
   return Math.imul(h ^ (v | 0), 16777619);
 }
@@ -532,7 +471,11 @@ function sheetCellAlpha(img: HTMLImageElement, cell: number, row: number): Uint8
 export class MapView {
   private readonly canvas: HTMLCanvasElement;
   private readonly mini: HTMLCanvasElement;
-  private readonly ctx: CanvasRenderingContext2D;
+  /** Swapped for a scratch layer while a fogged building draws; see `drawVeiled`. */
+  private ctx: CanvasRenderingContext2D;
+  private readonly buildingVeil = new BuildingVeil();
+  /** Wall-clock ms a foreign unit first appeared in a snapshot. */
+  private unitSeenAt = new Map<number, number>();
   private readonly mctx: CanvasRenderingContext2D;
   private curr: MatchSnapshot;
   private prev: MatchSnapshot | null = null;
@@ -573,8 +516,12 @@ export class MapView {
   private miniTerrain: MiniBake | null = null;
   private liveMap: MapDef | null = null;
   private treeStems: { tx: number; ty: number }[] | null = null;
-  private fog: HTMLCanvasElement | null = null;
-  private fogCtx: CanvasRenderingContext2D | null = null;
+  private fogField: FogField | null = null;
+  /** Undefined until first tried; null when WebGL2 is unavailable. */
+  private fogGl: FogGl | null | undefined = undefined;
+  private fogFlat: FogFlat | null = null;
+  /** Every tile counts as known ground: the map is never shrouded. */
+  private knownGround: Uint8Array | null = null;
   private miniFog: HTMLCanvasElement | null = null;
   private miniFogCtx: CanvasRenderingContext2D | null = null;
   private miniFogData: ImageData | null = null;
@@ -673,7 +620,12 @@ export class MapView {
   }[] = [];
   selected = new Set<number>();
   placeMode = false;
+  /** Defences-tab sandbags or wall, armed before the line is sited. */
+  yardArm: YardFieldType | null = null;
   attackMoveMode = false;
+  /** Left click adds a point. Right click sends the patrol, or cancels when none are down. */
+  patrolMode = false;
+  private patrolPoints: { x: number; y: number }[] = [];
   forceAttackMode = false;
   rotateMode = false;
   guardMode = false;
@@ -728,6 +680,26 @@ export class MapView {
       this.rotateMode = false;
       this.fieldPlace = null;
       this.setGuardMode(false);
+      this.setPatrolMode(false);
+    }
+    this.onAttackMoveMode();
+    this.onPlaceMode();
+  }
+
+  setPatrolMode(on: boolean): void {
+    if (this.patrolMode === on) {
+      if (!on) this.patrolPoints = [];
+      return;
+    }
+    this.patrolMode = on;
+    this.patrolPoints = [];
+    if (on) {
+      this.placeMode = false;
+      this.attackMoveMode = false;
+      this.forceAttackMode = false;
+      this.rotateMode = false;
+      this.fieldPlace = null;
+      this.setGuardMode(false);
     }
     this.onAttackMoveMode();
     this.onPlaceMode();
@@ -742,6 +714,7 @@ export class MapView {
       this.rotateMode = false;
       this.fieldPlace = null;
       this.setGuardMode(false);
+      this.setPatrolMode(false);
     }
     this.onAttackMoveMode();
     this.onPlaceMode();
@@ -756,6 +729,7 @@ export class MapView {
       this.forceAttackMode = false;
       this.fieldPlace = null;
       this.setGuardMode(false);
+      this.setPatrolMode(false);
     }
     this.onAttackMoveMode();
     this.onPlaceMode();
@@ -770,6 +744,7 @@ export class MapView {
       this.forceAttackMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
+      this.setPatrolMode(false);
       this.guardFacing = this.meanSelectedFacing();
     } else {
       this.guardAnchor = null;
@@ -785,10 +760,12 @@ export class MapView {
     this.fieldDrag = null;
     if (next) {
       this.placeMode = false;
+      this.yardArm = null;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
       this.rotateMode = false;
       this.guardMode = false;
+      this.setPatrolMode(false);
       this.guardDragging = false;
       this.fieldFacing = this.meanSelectedFacing();
       this.fieldShown = this.fieldFacing;
@@ -902,6 +879,7 @@ export class MapView {
       }
       if (p.mortar) {
         if (shooter?.type === "mortarman" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
+        if (p.big && shooter?.type === "artillery" && !shooter.wreck) this.noteFieldGunShot(shooter, p, now);
         continue;
       }
       if (p.rocket) {
@@ -1000,6 +978,7 @@ export class MapView {
       if (!match.entities.some((e) => e.id === id)) this.selected.delete(id);
     }
     if (this.attackMoveMode && this.ownSelectedIds().length === 0) this.setAttackMoveMode(false);
+    if (this.patrolMode && this.ownSelectedIds().length === 0) this.setPatrolMode(false);
     if (this.forceAttackMode && this.ownForceIds().length === 0) this.setForceAttackMode(false);
     if (this.rotateMode && this.ownAimIds().length === 0) this.setRotateMode(false);
     if (this.guardMode && this.ownSelectedIds().length === 0) this.setGuardMode(false);
@@ -1007,8 +986,10 @@ export class MapView {
       this.fieldPlace = null;
       this.onPlaceMode();
     }
+    if (!this.placeMode) this.yardArm = null;
+    if (this.yardArm && this.curr.you.structureQueue) this.yardArm = null;
     const placing = this.placeMode;
-    if (!this.placingKind()) this.placeMode = false;
+    if (!this.placingKind() && !this.yardArm) this.placeMode = false;
     if (this.placeMode !== placing) this.onPlaceMode();
     this.syncAtlases();
     this.revealFrom(match);
@@ -1153,6 +1134,38 @@ export class MapView {
     });
   }
 
+  /** Field gun: flash and a big smoke puff at the muzzle, out along the barrel. */
+  private noteFieldGunShot(shooter: EntityView, shot: { id: number; caliber: number }, now: number): void {
+    const spr = spriteFor(shooter.type);
+    const reach = catalog(shooter.type).radius * 2.4;
+    const x = shooter.x + Math.cos(shooter.facing) * reach;
+    const y = shooter.y + Math.sin(shooter.facing) * reach;
+    const dirX = Math.cos(shooter.facing);
+    const dirY = Math.sin(shooter.facing);
+    this.muzzleSmokes.push(
+      ...spawnMuzzleSmoke({
+        x,
+        y,
+        dirX,
+        dirY,
+        now,
+        seed: (shot.id * 2654435761 + Math.floor(now)) >>> 0,
+        scale: ((spr?.drawSize ?? 48) / 48) * 1.6,
+      }),
+    );
+    this.addFx({
+      id: shot.id + 8_000_000,
+      kind: "muzzle",
+      x,
+      y,
+      vx: dirX,
+      vy: dirY,
+      at: now,
+      caliber: shot.caliber,
+      lift: Math.round((spr?.drawSize ?? 48) * 0.3),
+    });
+  }
+
   private nearestHullEntity(wx: number, wy: number): EntityView | undefined {
     let best: EntityView | undefined;
     let bestD = 40;
@@ -1265,18 +1278,8 @@ export class MapView {
   }
 
   private resetFog(map: { id: string; width: number; height: number }): void {
-    const bake = this.terrain;
-    if (!bake) return;
-    const fog = document.createElement("canvas");
-    fog.width = bake.width;
-    fog.height = bake.height;
-    const ctx = fog.getContext("2d");
-    if (!ctx) return;
-    ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = "#050403";
-    ctx.fillRect(0, 0, bake.width, bake.height);
-    this.fog = fog;
-    this.fogCtx = ctx;
+    this.fogField = new FogField(map.width, map.height);
+    this.knownGround = new Uint8Array(map.width * map.height).fill(1);
     const mini = document.createElement("canvas");
     mini.width = Math.max(1, map.width);
     mini.height = Math.max(1, map.height);
@@ -1321,8 +1324,8 @@ export class MapView {
       this.visKey = key;
       vis = visionMaskFromSnapshot(match, map.width, map.height, map.tileSize);
     }
-    const prevVis = this.vis;
-    this.patchFog(map, prevVis, this.explored, vis);
+    const first = this.vis == null;
+    this.fogField?.set(vis, performance.now(), first);
     this.vis = vis;
     for (let i = 0; i < n; i++) {
       if (vis[i]) this.explored[i] = 1;
@@ -1342,89 +1345,18 @@ export class MapView {
     }
   }
 
-  private patchFog(map: MapDef, prevVis: Uint8Array | null, explored: Uint8Array, vis: Uint8Array): void {
-    const ctx = this.fogCtx;
-    const bake = this.terrain;
-    if (!ctx || !bake) return;
-    ctx.imageSmoothingEnabled = false;
-    const w = map.width;
-    const n = w * map.height;
-    const punch: number[] = [];
-    const dim: number[] = [];
-    const hide: number[] = [];
-    for (let i = 0; i < n; i++) {
-      const wasSeen = explored[i] ?? 0;
-      const wasLit = prevVis?.[i] ?? 0;
-      const lit = vis[i] ?? 0;
-      const seen = wasSeen || lit;
-      if (seen === wasSeen && lit === wasLit) continue;
-      if (!seen) hide.push(i);
-      else if (!lit) {
-        punch.push(i);
-        dim.push(i);
-      } else punch.push(i);
-    }
-    const ox = bake.originX;
-    const oy = bake.originY;
-    const cover = (i: number, fill: string): void => {
-      coverTile(ctx, map, i % w, (i / w) | 0, bake.scrap.has(i), ox, oy, fill, FOG_SEAM_PX);
-    };
-    // destination-out punches explored diamonds so the overlay is transparent over terrain
-    ctx.globalCompositeOperation = "destination-out";
-    for (const i of punch) cover(i, "#ffffff");
-    // One veil for the whole shroud patch. Per-diamond destination-over stacks
-    // on the overlap and turns those edges into black grid lines.
-    if (dim.length) veilShroud(ctx, map, dim, ox, oy, FOG_SEAM_PX);
-    ctx.globalCompositeOperation = "destination-out";
-    const cleared = new Set<number>();
-    const clearLit = (i: number): void => {
-      if (cleared.has(i) || !vis[i]) return;
-      cleared.add(i);
-      cover(i, "#ffffff");
-    };
-    for (const i of punch) clearLit(i);
-    for (const i of dim) {
-      const x = i % w;
-      const y = (i / w) | 0;
-      for (let dy = -1; dy <= 1; dy++) {
-        for (let dx = -1; dx <= 1; dx++) {
-          if (dx === 0 && dy === 0) continue;
-          const nx = x + dx;
-          const ny = y + dy;
-          if (nx < 0 || ny < 0 || nx >= w || ny >= map.height) continue;
-          clearLit(ny * w + nx);
-        }
-      }
-    }
-    ctx.globalCompositeOperation = "source-over";
-    for (const i of hide) cover(i, "#050403");
-  }
-
   private rebuildMiniFog(map: { width: number; height: number }, n: number): void {
     const ctx = this.miniFogCtx;
     const data = this.miniFogData;
     if (!ctx || !data || data.width !== map.width || data.height !== map.height) return;
     const pix = data.data;
-    const vis = this.vis;
-    const exp = this.explored;
+    const sight = this.fogField?.next;
     for (let i = 0; i < n; i++) {
       const o = i * 4;
-      if (!exp || !exp[i]) {
-        pix[o] = 5;
-        pix[o + 1] = 4;
-        pix[o + 2] = 3;
-        pix[o + 3] = 255;
-      } else if (!vis || !vis[i]) {
-        pix[o] = 0;
-        pix[o + 1] = 0;
-        pix[o + 2] = 0;
-        pix[o + 3] = 140;
-      } else {
-        pix[o] = 0;
-        pix[o + 1] = 0;
-        pix[o + 2] = 0;
-        pix[o + 3] = 0;
-      }
+      pix[o] = FOG_RGB[0];
+      pix[o + 1] = FOG_RGB[1];
+      pix[o + 2] = FOG_RGB[2];
+      pix[o + 3] = Math.round(150 * (1 - (sight?.[i] ?? 0)));
     }
     ctx.putImageData(data, 0, 0);
   }
@@ -1469,8 +1401,22 @@ export class MapView {
   /** Armed Defences-tab sandbags or wall. The engineer's field button wins when both are on. */
   private readyYardField(): YardFieldType | null {
     if (!this.placeMode || this.fieldPlace) return null;
-    const type = this.placingKind();
-    return type && isYardField(type) ? type : null;
+    return this.yardArm;
+  }
+
+  /** Clicking Wall or Sandbags on the Defences tab sites the line before it builds. */
+  armYardField(type: YardFieldType): void {
+    this.fieldPlace = null;
+    this.fieldDrag = null;
+    this.yardArm = type;
+    this.placeMode = true;
+    this.attackMoveMode = false;
+    this.forceAttackMode = false;
+    this.rotateMode = false;
+    this.guardMode = false;
+    this.guardDragging = false;
+    this.onAttackMoveMode();
+    this.onPlaceMode();
   }
 
   private map() {
@@ -1501,6 +1447,11 @@ export class MapView {
       this.shiftHeld = e.shiftKey;
       if (e.button === 2) {
         e.preventDefault();
+        if (this.patrolMode) {
+          if (this.patrolPoints.length > 0) this.commitPatrol();
+          else this.setPatrolMode(false);
+          return;
+        }
         if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode || this.fieldPlace) {
           this.setAttackMoveMode(false);
           this.setForceAttackMode(false);
@@ -1542,6 +1493,10 @@ export class MapView {
         }
         if (this.attackMoveMode) {
           this.commitAttackMove(mx, my);
+          return;
+        }
+        if (this.patrolMode) {
+          this.addPatrolPoint(mx, my);
           return;
         }
         if (e.ctrlKey && this.ownForceIds().length) {
@@ -1726,6 +1681,12 @@ export class MapView {
       if (ids.length) this.setAttackMoveMode(!this.attackMoveMode);
       return;
     }
+    if (k === PATROL_HOTKEY) {
+      e.preventDefault();
+      const ids = this.ownSelectedIds();
+      if (ids.length) this.setPatrolMode(!this.patrolMode);
+      return;
+    }
     if (k === ROTATE_HOTKEY) {
       e.preventDefault();
       if (this.fieldPlace || this.readyYardField()) return;
@@ -1739,6 +1700,7 @@ export class MapView {
       this.setForceAttackMode(false);
       this.setRotateMode(false);
       this.setGuardMode(false);
+      this.setPatrolMode(false);
       const own = this.curr.entities.filter(
         (ent) =>
           this.selected.has(ent.id) &&
@@ -1773,12 +1735,13 @@ export class MapView {
       return;
     }
     if (k === "escape") {
-      if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode) {
+      if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode || this.patrolMode) {
         e.preventDefault();
         this.setAttackMoveMode(false);
         this.setForceAttackMode(false);
         this.setRotateMode(false);
         this.setGuardMode(false);
+        this.setPatrolMode(false);
       }
     }
   };
@@ -1820,13 +1783,14 @@ export class MapView {
     this.setForceAttackMode(false);
     this.setRotateMode(false);
     this.setGuardMode(false);
+    this.setPatrolMode(false);
     const ids = this.ownForceIds();
     if (ids.length) this.command({ type: "cmd.stop", ids });
   }
 
   private aimingForceAttack(): boolean {
     if (this.overControl || this.hoverSpecial) return false;
-    if (this.guardMode || this.rotateMode || this.attackMoveMode) return false;
+    if (this.guardMode || this.rotateMode || this.attackMoveMode || this.patrolMode) return false;
     if (this.forceAttackMode) return true;
     return this.ctrlHeld && this.ownForceIds().length > 0;
   }
@@ -2045,13 +2009,12 @@ export class MapView {
     return out;
   }
 
-  /** Ground height where the player has looked; `fallback` under never-seen fog. */
+  /** Ground height on the map; `fallback` off its edge. */
   private knownElevAt(wx: number, wy: number, fallback: number): number {
     const map = this.map();
     const tx = worldToTile(wx, map.tileSize);
     const ty = worldToTile(wy, map.tileSize);
     if (tx < 0 || ty < 0 || tx >= map.width || ty >= map.height) return fallback;
-    if (!this.explored?.[ty * map.width + tx]) return fallback;
     return heightAt(map, tx, ty);
   }
 
@@ -2426,8 +2389,9 @@ export class MapView {
   }
 
   private onRight(px: number, py: number): void {
-    if (this.placeMode || this.fieldPlace) {
+    if (this.placeMode || this.fieldPlace || this.yardArm) {
       this.placeMode = false;
+      this.yardArm = null;
       this.fieldPlace = null;
       this.fieldDrag = null;
       this.onPlaceMode();
@@ -2464,6 +2428,11 @@ export class MapView {
     if (action === "supply" && hit) {
       const trucks = own.filter((e) => e.type === "supply");
       if (trucks.length) this.command({ type: "cmd.supply", ids: trucks.map((e) => e.id), targetId: hit.id });
+      return;
+    }
+    if (action === "tow" && hit) {
+      const trucks = own.filter((e) => e.type === "supply" && !e.bed?.open);
+      if (trucks.length) this.command({ type: "cmd.tow", ids: trucks.map((e) => e.id), targetId: hit.id });
       return;
     }
     if (action === "board" && hit) {
@@ -2650,6 +2619,46 @@ export class MapView {
     };
   }
 
+  /** Foreign units ease in over `UNIT_SIGHT_FADE_MS` when they enter sight, instead of popping at the soft fog edge. */
+  private sightFade(e: EntityView, now: number): number {
+    if (e.ownerId === this.curr.youPlayerId) return 1;
+    let at = this.unitSeenAt.get(e.id);
+    if (at == null) {
+      at = this.fogField && this.fogField.version > 1 ? now : -Infinity;
+      this.unitSeenAt.set(e.id, at);
+    }
+    return Math.min(1, Math.max(0, (now - at) / UNIT_SIGHT_FADE_MS));
+  }
+
+  /** Soft veil over ground out of sight, laid on the hills. Drawn under everything standing. */
+  private drawGroundFog(): void {
+    const field = this.fogField;
+    if (!field) return;
+    const now = performance.now();
+    if (this.fogGl === undefined) this.fogGl = FogGl.create();
+    const gl = this.fogGl;
+    if (gl) {
+      const dpr = Math.min(devicePixelRatio || 1, 1.5);
+      gl.setMap(this.map());
+      gl.render(field, {
+        camX: this.camX,
+        camY: this.camY,
+        scale: dpr * this.zoom,
+        width: this.canvas.width,
+        height: this.canvas.height,
+        now,
+      });
+      const ctx = this.ctx;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(gl.canvas, 0, 0);
+      ctx.restore();
+      return;
+    }
+    this.fogFlat ??= new FogFlat();
+    this.fogFlat.draw(this.ctx, field, this.camX, this.camY, now);
+  }
+
   private draw(): void {
     const ctx = this.ctx;
     const { w, h } = this.viewSize();
@@ -2660,13 +2669,15 @@ export class MapView {
     ctx.imageSmoothingEnabled = false;
     if (bake) {
       blitTerrain(ctx, bake, this.camX, this.camY, w, h);
-      if (this.fog) blitAtlas(ctx, this.fog, bake.originX, bake.originY, this.camX, this.camY, w, h);
+      this.drawGroundFog();
     }
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "low";
     this.cacheOccluders();
 
     const liveIds = new Set(this.curr.entities.map((e) => e.id));
+    const now = performance.now();
+    for (const id of this.unitSeenAt.keys()) if (!liveIds.has(id)) this.unitSeenAt.delete(id);
     const drawList: EntityView[] = [
       ...this.curr.entities,
       ...[...this.ghosts.values()].filter((g) => !liveIds.has(g.id)),
@@ -2685,8 +2696,13 @@ export class MapView {
           if (isFieldStructure(e.type)) this.drawField(e, ghost);
           else if (e.kind === "building") this.drawBuilding(e, ghost);
           else if (!ghost && !e.garrisonedIn && this.unitNearView(e, w, h)) {
+            const fade = this.sightFade(e, now);
+            const ctx = this.ctx;
+            const prev = ctx.globalAlpha;
+            ctx.globalAlpha = prev * fade;
             this.drawUnit(e);
             if (e.chute != null) this.drawTroopCanopy(e);
+            ctx.globalAlpha = prev;
           }
         },
       });
@@ -2707,6 +2723,7 @@ export class MapView {
     this.collectRemains(items);
     this.collectUnitShadows(items);
     this.collectMaulerCarts(items, w, h);
+    this.collectGunCrews(items, w, h);
     this.collectTrackKicks(items);
     this.collectMuzzleSmoke(items);
     this.collectFires(items, w, h);
@@ -2765,6 +2782,7 @@ export class MapView {
     if (toPlace && this.mouseX >= 0) {
       this.drawGhost(toPlace);
     }
+    this.drawYardBuild();
     if (this.fieldPlace && this.mouseX >= 0) this.drawFieldGhost(this.fieldPlace, false);
     else if (this.mouseX >= 0) {
       const yard = this.readyYardField();
@@ -2780,6 +2798,8 @@ export class MapView {
     this.drawSpecialCursor();
     this.drawHoverCursor();
     this.drawAttackCursor();
+    this.drawPatrolCursor();
+    this.drawPatrolOverlay();
     this.drawForceCursor();
     this.drawRotateCursor();
     this.drawMoveFaceOverlay();
@@ -3083,7 +3103,7 @@ export class MapView {
     const facing = this.guardFacing;
     const half = (GUARD_CONE_DEG * Math.PI) / 360;
     const arcSteps = 24;
-    const reach = guardReach(this.map(), this.explored, this.selectedGuardUnits(), origin.x, origin.y, facing, half, arcSteps);
+    const reach = guardReach(this.map(), this.knownGround, this.selectedGuardUnits(), origin.x, origin.y, facing, half, arcSteps);
     const range = reach.rangeWorld;
     const elev = reach.elev;
     const ctx = this.ctx;
@@ -3209,6 +3229,110 @@ export class MapView {
     ctx.strokeText("GUARD UNIT", this.mouseX + 14, this.mouseY + 8);
     ctx.fillStyle = "#e8b84a";
     ctx.fillText("GUARD UNIT", this.mouseX + 14, this.mouseY + 8);
+    ctx.restore();
+  }
+
+  private addPatrolPoint(mx: number, my: number): void {
+    if (this.patrolPoints.length >= PATROL_POINTS_MAX) return;
+    const w = this.screenToWorld(mx, my);
+    const prev = this.patrolPoints[this.patrolPoints.length - 1];
+    if (prev && Math.hypot(prev.x - w.x, prev.y - w.y) < this.ts()) return;
+    this.patrolPoints.push({ x: w.x, y: w.y });
+  }
+
+  private commitPatrol(): void {
+    const points = this.patrolPoints.map((p) => ({ x: p.x, y: p.y }));
+    const ids = this.ownSelectedIds();
+    this.setPatrolMode(false);
+    if (points.length > 0 && ids.length > 0) this.command({ type: "cmd.patrol", ids, points });
+  }
+
+  /** Draft clicks, then the route each selected unit is already walking. */
+  private drawPatrolOverlay(): void {
+    const ctx = this.ctx;
+    const you = this.curr.youPlayerId;
+    ctx.save();
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    const stroke = (pts: { x: number; y: number }[], toCursor: boolean) => {
+      if (pts.length === 0 && !toCursor) return;
+      ctx.strokeStyle = "rgba(232, 184, 74, 0.9)";
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      let started = false;
+      for (const p of pts) {
+        const s = this.toScreen(p.x, p.y);
+        if (!started) {
+          ctx.moveTo(s.x, s.y);
+          started = true;
+        } else ctx.lineTo(s.x, s.y);
+      }
+      if (toCursor && this.mouseX >= 0) {
+        if (!started) ctx.moveTo(this.mouseX, this.mouseY);
+        else ctx.lineTo(this.mouseX, this.mouseY);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      for (const p of pts) {
+        const s = this.toScreen(p.x, p.y);
+        ctx.fillStyle = "#140e0a";
+        ctx.beginPath();
+        ctx.ellipse(s.x, s.y, 5, 2.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#e8b84a";
+        ctx.beginPath();
+        ctx.ellipse(s.x, s.y, 3.2, 1.7, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+    if (this.patrolMode) {
+      const ids = this.ownSelectedIds();
+      const from: { x: number; y: number }[] = [];
+      for (const id of ids) {
+        const e = this.curr.entities.find((u) => u.id === id);
+        if (e) from.push({ x: e.x, y: e.y });
+      }
+      if (from.length === 0) stroke(this.patrolPoints, true);
+      else {
+        for (const origin of from) stroke([origin, ...this.patrolPoints], true);
+      }
+    }
+    for (const e of this.curr.entities) {
+      if (!this.selected.has(e.id) || e.ownerId !== you || !e.patrol || e.patrol.length < 2) continue;
+      stroke(e.patrol, false);
+    }
+    ctx.restore();
+  }
+
+  private drawPatrolCursor(): void {
+    if (!this.patrolMode || this.overControl || this.hoverSpecial) return;
+    if (this.mouseX < 0 || this.mouseY < 0) return;
+    const ctx = this.ctx;
+    const x = this.mouseX;
+    const y = this.mouseY;
+    const label = this.patrolPoints.length > 0 ? "RIGHT FINISH" : "PATROL";
+    ctx.save();
+    ctx.strokeStyle = "#e8b84a";
+    ctx.fillStyle = "#e8b84a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, y - 10);
+    ctx.lineTo(x, y + 10);
+    ctx.moveTo(x - 10, y);
+    ctx.lineTo(x + 10, y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#140e0a";
+    ctx.strokeText(label, x + 12, y + 8);
+    ctx.fillStyle = "#e8b84a";
+    ctx.fillText(label, x + 12, y + 8);
     ctx.restore();
   }
 
@@ -3413,6 +3537,77 @@ export class MapView {
     }
   }
 
+  /**
+   * Field-gun crews: hauling on the trail while the gun moves, crouched at the
+   * breech once it stops. A towed gun's crew rides the truck. The tow bar
+   * joins a hitched gun to its truck.
+   */
+  private collectGunCrews(items: DrawItem[], w: number, h: number): void {
+    const byId = new Map(this.curr.entities.map((e) => [e.id, e]));
+    for (const e of this.curr.entities) {
+      if (e.type !== "artillery" || !e.gun || e.wreck || !this.unitNearView(e, w, h)) continue;
+      const p = this.lerpEnt(e);
+      const truck = e.gun.towedBy != null ? byId.get(e.gun.towedBy) : undefined;
+      if (truck) {
+        const t = this.lerpEnt(truck);
+        const hook = { x: t.x - Math.cos(t.facing) * catalog(truck.type).radius, y: t.y - Math.sin(t.facing) * catalog(truck.type).radius };
+        const trail = { x: p.x - Math.cos(p.facing) * catalog(e.type).radius, y: p.y - Math.sin(p.facing) * catalog(e.type).radius };
+        items.push({
+          layer: STANDING_DRAW_LAYER,
+          z: isoDepth((hook.x + trail.x) / 2, (hook.y + trail.y) / 2) - 0.5,
+          run: () => this.drawTowBar(hook, trail),
+        });
+        continue;
+      }
+      // "walker" asks for real travel only, so a gun swinging onto a target does not walk its crew.
+      const hauling = e.state === "move" || unitStepping({ type: "walker", state: e.state, prev: this.prevById.get(e.id), curr: e });
+      const back = p.facing + Math.PI;
+      const side = p.facing + Math.PI / 2;
+      const r = catalog(e.type).radius;
+      for (let i = 0; i < e.gun.crew; i++) {
+        const s = i === 0 ? 1 : -1;
+        const along = hauling ? r * 1.9 : r * 0.55;
+        const across = hauling ? r * 0.4 * s : r * 1.05 * s;
+        const x = p.x + Math.cos(back) * along + Math.cos(side) * across;
+        const y = p.y + Math.sin(back) * along + Math.sin(side) * across;
+        const facing = hauling ? back : p.facing;
+        items.push({
+          layer: STANDING_DRAW_LAYER,
+          z: isoDepth(x, y),
+          at: { x, y },
+          run: () => this.drawGunCrewman(e, x, y, facing, hauling, i),
+        });
+      }
+    }
+  }
+
+  private drawGunCrewman(e: EntityView, x: number, y: number, facing: number, hauling: boolean, slot: number): void {
+    const def = spriteFor("rifleman", hauling ? "stand" : "crouch");
+    if (!def) return;
+    const s = this.toScreen(x, y);
+    const dir = facingToIso(facing, this.ts());
+    drawUnitSprite(this.ctx, def, s.x, s.y, dir.x, dir.y, {
+      moving: hauling,
+      id: e.id * 3 + slot,
+      now: performance.now() * (this.curr.gameSpeed || 1),
+      facing,
+    });
+  }
+
+  private drawTowBar(hook: { x: number; y: number }, trail: { x: number; y: number }): void {
+    const ctx = this.ctx;
+    const a = this.toScreen(hook.x, hook.y);
+    const b = this.toScreen(trail.x, trail.y);
+    ctx.save();
+    ctx.strokeStyle = "rgba(24, 22, 18, 0.95)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y - 3);
+    ctx.lineTo(b.x, b.y - 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   private drawMaulerCart(e: EntityView, pose: CartPose): void {
     const ctx = this.ctx;
     const s = this.toScreen(pose.x, pose.y);
@@ -3613,12 +3808,11 @@ export class MapView {
   private collectTrees(items: DrawItem[], shadows: IsoPt[][]): void {
     const map = this.map();
     const ts = map.tileSize;
-    const explored = this.explored;
     const w = map.width;
     const { w: vw, h: vh } = this.viewSize();
+    const now = performance.now();
     for (const { tx, ty } of this.stemsOf(map)) {
       if (map.tiles[ty * w + tx] !== TILE_TREE) continue;
-      if (explored && !explored[ty * w + tx]) continue;
       const kind = treePropKind(map, tx, ty);
       if (!kind) continue;
       const wx = (tx + 0.5) * ts;
@@ -3631,7 +3825,7 @@ export class MapView {
       const faces = stamp.pine ? PINE_FACES : OAK_FACES;
       const spr = faces[stamp.face % faces.length];
       const drawH = stamp.drawH;
-      const dim = !this.lit(tx, ty);
+      const veil = this.fogField?.veil(tx + 0.5, ty + 0.55, now) ?? 0;
       this.pushCastShadow(
         shadows,
         treeShadowFootprint({
@@ -3648,11 +3842,7 @@ export class MapView {
         z: isoDepth(wx, wy),
         at: { x: wx, y: wy },
         run: () => {
-          const ctx = this.ctx;
-          ctx.save();
-          if (dim) ctx.globalAlpha = 0.48;
-          if (spr) drawPropSprite(ctx, spr, p.x, p.y, drawH, false);
-          ctx.restore();
+          if (spr) drawPropSprite(this.ctx, spr, p.x, p.y, drawH, false, veil);
         },
       });
     }
@@ -3665,6 +3855,64 @@ export class MapView {
       }
     }
     return false;
+  }
+
+  /**
+   * Run `draw` so the fog veil lands only on its own pixels, per footprint
+   * column: the part of a building in sight stays clear, the rest matches the
+   * ground veil around it. `rise` is the wall height in screen pixels.
+   */
+  private drawVeiled(
+    e: Pick<EntityView, "tileX" | "tileY" | "tileW" | "tileH">,
+    elev: number,
+    rise: number,
+    bounds: { x: number; y: number; w: number; h: number },
+    draw: () => void,
+  ): void {
+    const field = this.fogField;
+    if (!field) {
+      draw();
+      return;
+    }
+    const now = performance.now();
+    const cells = veilCells(e.tileX, e.tileY, e.tileW, e.tileH);
+    const alphas = cells.map((c) => field.veil(c.cu, c.cv, now));
+    const uni = uniformVeil(alphas);
+    if (uni != null && uni < 0.002) {
+      draw();
+      return;
+    }
+    const main = this.ctx;
+    const scratch = this.buildingVeil.begin(main);
+    if (!scratch) {
+      draw();
+      return;
+    }
+    this.ctx = scratch;
+    try {
+      draw();
+    } finally {
+      this.ctx = main;
+    }
+    const ts = this.ts();
+    const columns = cells.map((c, i) => {
+      const x0 = c.tx * ts;
+      const y0 = c.ty * ts;
+      const x1 = (c.tx + c.tw) * ts;
+      const y1 = (c.ty + c.th) * ts;
+      return {
+        poly: columnPolygon(
+          this.toScreen(x0, y0, elev),
+          this.toScreen(x1, y0, elev),
+          this.toScreen(x1, y1, elev),
+          this.toScreen(x0, y1, elev),
+          rise,
+        ),
+        alpha: alphas[i]!,
+      };
+    });
+    const base = alphas.reduce((s, a) => s + a, 0) / Math.max(1, alphas.length);
+    this.buildingVeil.end(main, bounds, columns, base);
   }
 
   /** The flat part of a building (Airfield strip and hardstands), with its selection frame. */
@@ -3681,10 +3929,15 @@ export class MapView {
     const south = this.toScreen(x + bw, y + bh, elev);
     const east = this.toScreen(x + bw, y, elev);
     const west = this.toScreen(x, y + bh, elev);
-    ctx.save();
-    ctx.globalAlpha = ghost || !this.buildingLit(e) ? 0.5 : 1;
-    drawBuildingSprite(ctx, spr, south.x, south.y, east.x - west.x);
-    ctx.restore();
+    const footprintW = east.x - west.x;
+    const scale = footprintW / spr.padWidth;
+    const bounds = {
+      x: south.x - spr.padSouthX * scale,
+      y: south.y - spr.padSouthY * scale,
+      w: spr.image.naturalWidth * scale,
+      h: spr.image.naturalHeight * scale,
+    };
+    this.drawVeiled(e, elev, 0, bounds, () => drawBuildingSprite(this.ctx, spr, south.x, south.y, footprintW));
     if (!ghost && this.selected.has(e.id)) {
       const pad = 3;
       const pts = [
@@ -3707,7 +3960,6 @@ export class MapView {
     const ez = this.extrude(e.type);
     const elev = heightAt(this.map(), e.tileX, e.tileY);
     const hex = this.ownerColor(e);
-    const dim = ghost || !this.buildingLit(e);
     const spr = buildingSpriteFor(e.type, e.facing);
     const south = this.toScreen(x + bw, y + bh, elev);
     const east = this.toScreen(x + bw, y, elev);
@@ -3728,40 +3980,51 @@ export class MapView {
     }
     if (spr && spriteReady(spr)) {
       const footprintW = east.x - west.x;
-      ctx.save();
-      ctx.globalAlpha = dim ? 0.5 : 1;
-      drawBuildingSprite(ctx, spr, south.x, south.y, footprintW);
-      ctx.restore();
-      if (e.type === "ciws") {
-        this.drawCiwsGun(spr, south.x, south.y, footprintW, dim ? 0.5 : 1, e.turretFacing ?? e.facing, ghost ? undefined : e);
-      } else if (e.type === "ram") {
-        this.drawCiwsGun(spr, south.x, south.y, footprintW, dim ? 0.5 : 1, e.turretFacing ?? e.facing, undefined, RAM_TURRET_SHEET);
-      }
-      if (!ghost && !dim) {
-        drawBuildingAnim(
-          ctx,
-          spr,
-          e,
-          south.x,
-          south.y,
-          footprintW,
-          performance.now() * (this.curr.gameSpeed || 1),
-        );
-      }
+      const scale = footprintW / spr.padWidth;
+      const bounds = {
+        x: south.x - spr.padSouthX * scale,
+        y: south.y - spr.padSouthY * scale,
+        w: spr.image.naturalWidth * scale,
+        h: spr.image.naturalHeight * scale,
+      };
+      const rise = buildingOccludeEz(spr, footprintW, ez);
+      this.drawVeiled(e, elev, rise, bounds, () => {
+        const c = this.ctx;
+        drawBuildingSprite(c, spr, south.x, south.y, footprintW);
+        if (e.type === "ciws") {
+          this.drawCiwsGun(spr, south.x, south.y, footprintW, 1, e.turretFacing ?? e.facing, ghost ? undefined : e);
+        } else if (e.type === "ram") {
+          this.drawCiwsGun(spr, south.x, south.y, footprintW, 1, e.turretFacing ?? e.facing, undefined, RAM_TURRET_SHEET);
+        }
+        if (!ghost) {
+          drawBuildingAnim(
+            c,
+            spr,
+            e,
+            south.x,
+            south.y,
+            footprintW,
+            performance.now() * (this.curr.gameSpeed || 1),
+          );
+        }
+      });
       stack = buildingStackAt(spr, south.x, south.y, footprintW);
     } else {
-      const top = this.drawIsoBox(x, y, bw, bh, ez, hex, {
-        alpha: dim ? 0.5 : 1,
-        stroke: ghost ? "#2a2018" : "#111",
-        strokeW: 1.5,
-        elev,
+      const north = this.toScreen(x, y, elev);
+      const bounds = { x: west.x - 2, y: north.y - ez - 2, w: east.x - west.x + 4, h: south.y - north.y + ez + 4 };
+      this.drawVeiled(e, elev, ez, bounds, () => {
+        const c = this.ctx;
+        const top = this.drawIsoBox(x, y, bw, bh, ez, hex, {
+          stroke: ghost ? "#2a2018" : "#111",
+          strokeW: 1.5,
+          elev,
+        });
+        c.fillStyle = "#e8dcc4";
+        c.font = "bold 16px Oswald, sans-serif";
+        c.textAlign = "center";
+        c.textBaseline = "middle";
+        c.fillText(catalog(e.type).letter, top.cx, top.cy);
       });
-      ctx.globalAlpha = dim ? 0.7 : 1;
-      ctx.fillStyle = "#e8dcc4";
-      ctx.font = "bold 16px Oswald, sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(catalog(e.type).letter, top.cx, top.cy);
     }
     const layoutW = bw * 0.56;
     if (e.ownerId === this.curr.youPlayerId && (e.type === "core" || e.type === "rig")) {
@@ -4042,8 +4305,11 @@ export class MapView {
     }
     if (e.type === "engineer") {
       if (e.swimming) return spriteFor(e.type, e.stance, true);
+      if (e.wreck) return ENGINEER_DIE_SPRITE;
       if (e.state === "build") return ENGINEER_BUILD_SPRITE;
       if (e.state === "repair") return ENGINEER_FIX_SPRITE;
+      if (e.stance === "crouch") return ENGINEER_CROUCH_SPRITE;
+      if (e.stance === "crawl") return ENGINEER_CRAWL_SPRITE;
       return ENGINEER_SPRITE;
     }
     return spriteFor(e.type, e.stance, e.swimming);
@@ -4175,7 +4441,7 @@ export class MapView {
     }
     const corpse = isInfantryType(e.type) && !!e.wreck;
     let frameIndex: number | undefined;
-    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
     else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE || def === ROCKETER_FIRE_SPRITE || def === PYRO_FIRE_SPRITE || def === JUMPJET_FIRE_SPRITE) {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
     } else if (def === JUMPJET_FLY_SPRITE) {
@@ -5298,6 +5564,7 @@ export class MapView {
     let action: HoverAction | null = null;
     const aiming =
       (this.attackMoveMode ||
+        this.patrolMode ||
         this.forceAttackMode ||
         this.rotateMode ||
         this.guardMode ||
@@ -5423,14 +5690,14 @@ export class MapView {
   }
 
   private drawGarrisonBars(e: EntityView, x: number, y: number): void {
-    const bars = e.garrison?.bars;
+    const bars = e.garrison?.bars ?? e.gun?.bars;
     if (!bars || bars.length === 0) return;
     const barW = 18;
     const barH = 3;
     const gap = 2;
     const pad = 2;
     const totalH = bars.length * (barH + gap) - gap;
-    const hostile = this.hostileOwner(e.garrison?.ownerId);
+    const hostile = this.hostileOwner(e.garrison ? e.garrison.ownerId : e.ownerId);
     const ctx = this.ctx;
     ctx.save();
     ctx.globalAlpha = 0.55;
@@ -5549,6 +5816,30 @@ export class MapView {
     });
   }
 
+  /** Field structures carry the same fog veil as the ground under their span. */
+  private drawFieldVeiled(e: EntityView, span: { length: number; thick: number } | null | undefined, draw: () => void): void {
+    const ts = this.ts();
+    const corners = fieldFrameCorners(e.x, e.y, e.facing, span?.length ?? 24, span?.thick ?? 8, 2);
+    const xs = corners.map((p) => p.x);
+    const ys = corners.map((p) => p.y);
+    const tx0 = Math.floor(Math.min(...xs) / ts);
+    const ty0 = Math.floor(Math.min(...ys) / ts);
+    const foot = {
+      tileX: tx0,
+      tileY: ty0,
+      tileW: Math.max(1, Math.ceil(Math.max(...xs) / ts) - tx0),
+      tileH: Math.max(1, Math.ceil(Math.max(...ys) / ts) - ty0),
+    };
+    const elev = this.elevAt(e.x, e.y);
+    const screen = corners.map((p) => this.toScreen(p.x, p.y, elev));
+    const sx = screen.map((p) => p.x);
+    const sy = screen.map((p) => p.y);
+    const x0 = Math.min(...sx) - 8;
+    const y0 = Math.min(...sy) - 40;
+    const bounds = { x: x0, y: y0, w: Math.max(...sx) + 8 - x0, h: Math.max(...sy) + 8 - y0 };
+    this.drawVeiled(foot, elev, 24, bounds, draw);
+  }
+
   private drawField(e: EntityView, ghost: boolean): void {
     const span = fieldSpan(e.type);
     if (!ghost && span && this.selected.has(e.id)) {
@@ -5556,9 +5847,10 @@ export class MapView {
       const pts = fieldFrameCorners(e.x, e.y, e.facing, span.length, span.thick, 5).map((p) => this.toScreen(p.x, p.y, elev));
       drawSelectFrame(this.ctx, pts, { hostile: this.hostileOwner(e.ownerId), now: performance.now() });
     }
+    const veiled = (draw: () => void): void => this.drawFieldVeiled(e, span, draw);
     if (e.type === "wall") {
       const hurt = e.hpMax > 0 ? Math.max(0, 1 - e.hp / e.hpMax) : 0;
-      this.drawConcreteWall(e.x, e.y, e.facing, { hurt, alpha: ghost ? 0.45 : 1, seed: e.id * 2654435761 });
+      veiled(() => this.drawConcreteWall(e.x, e.y, e.facing, { hurt, alpha: ghost ? 0.45 : 1, seed: e.id * 2654435761 }));
       if (!ghost) {
         const s = this.toScreen(e.x, e.y, this.elevAt(e.x, e.y));
         const w = Math.max(22, this.groundSpan(e.x, e.y, span?.length ?? 24));
@@ -5567,18 +5859,18 @@ export class MapView {
       return;
     }
     if (e.type === "teeth") {
-      this.drawTeeth(e.x, e.y, e.facing, ghost ? 0.45 : 1, e.id);
+      veiled(() => this.drawTeeth(e.x, e.y, e.facing, ghost ? 0.45 : 1, e.id));
       return;
     }
     if (e.type === "trench") {
       const manned = !ghost && (e.garrison?.count ?? 0) > 0;
       const holder = manned ? this.curr.players.find((pl) => pl.playerId === e.garrison?.ownerId) : undefined;
-      this.drawTrenchPit(e.x, e.y, e.facing, {
+      veiled(() => this.drawTrenchPit(e.x, e.y, e.facing, {
         alpha: ghost ? 0.45 : 1,
         seed: e.id * 2654435761,
         manned,
         bandColor: holder ? colorHex(holder.colorId) : undefined,
-      });
+      }));
       if (!ghost) {
         const s = this.toScreen(e.x, e.y, this.elevAt(e.x, e.y));
         const w = Math.max(20, this.groundSpan(e.x, e.y, span?.length ?? 16));
@@ -5587,7 +5879,7 @@ export class MapView {
       }
       return;
     }
-    this.drawSandbagWall(e.x, e.y, e.facing, { ruined: !!e.ruined, alpha: ghost ? 0.45 : 1, seed: e.id * 2654435761 });
+    veiled(() => this.drawSandbagWall(e.x, e.y, e.facing, { ruined: !!e.ruined, alpha: ghost ? 0.45 : 1, seed: e.id * 2654435761 }));
   }
 
   /** Structures an engineer has been ordered to lay, drawn as a ghost until the real one replaces them. */
@@ -5629,11 +5921,15 @@ export class MapView {
     y: number,
     facing: number,
     opts: { hurt?: number; alpha: number; seed: number; bad?: boolean },
+    extras?: { x: number; y: number; facing: number }[],
   ): void {
     const span = fieldSpan("wall");
     if (!span) return;
-    const elev = this.elevAt(x, y);
-    const lift = this.groundSpan(x, y, 10) / 10;
+    const run = this.wallRun({ x, y, facing }, extras ?? []);
+    const grounds: number[] = [];
+    for (const seg of run) grounds.push(...this.wallGrounds(seg, span.thick));
+    const worldPx = this.groundSpan(x, y, 10) / 10;
+    const slabLevels = ISO_ELEVATION > 0 ? (WALL_SLAB_H * worldPx) / ISO_ELEVATION : 0;
     drawWall(this.ctx, {
       x,
       y,
@@ -5644,11 +5940,62 @@ export class MapView {
       seed: opts.seed >>> 0,
       alpha: opts.alpha,
       bad: opts.bad,
-      project: (wx, wy, up) => {
-        const p = this.toScreen(wx, wy, elev);
-        return { x: p.x, y: p.y - up * lift };
-      },
+      ground: (wx, wy) => this.elevAt(wx, wy),
+      topElev: wallTopElev(grounds, slabLevels),
+      levelPx: ISO_ELEVATION,
+      worldPx,
+      project: (wx, wy, elev) => this.toScreen(wx, wy, elev),
     });
+  }
+
+  /** This section plus every wall whose ends meet it, including a line still being sited. */
+  private wallRun(
+    origin: { x: number; y: number; facing: number },
+    extras: { x: number; y: number; facing: number }[],
+  ): { x: number; y: number; length: number; facing: number }[] {
+    const span = fieldSpan("wall");
+    if (!span) return [];
+    const all: { x: number; y: number; length: number; facing: number }[] = [];
+    const add = (x: number, y: number, facing: number) => {
+      if (all.some((s) => Math.hypot(s.x - x, s.y - y) < 0.5)) return;
+      all.push({ x, y, length: span.length, facing });
+    };
+    add(origin.x, origin.y, origin.facing);
+    for (const e of extras) add(e.x, e.y, e.facing);
+    for (const e of this.curr.entities) {
+      if (e.type === "wall" && e.hp > 0) add(e.x, e.y, e.facing);
+    }
+    const group: { x: number; y: number; length: number; facing: number }[] = [];
+    const seen = new Set<number>();
+    const originIndex = all.findIndex((s) => Math.hypot(s.x - origin.x, s.y - origin.y) < 0.5);
+    if (originIndex < 0) return [];
+    seen.add(originIndex);
+    group.push(all[originIndex]!);
+    for (let i = 0; i < group.length; i++) {
+      for (let j = 0; j < all.length; j++) {
+        if (seen.has(j)) continue;
+        if (!wallSectionsConnect(group[i]!, all[j]!)) continue;
+        seen.add(j);
+        group.push(all[j]!);
+      }
+    }
+    return group;
+  }
+
+  private wallGrounds(seg: { x: number; y: number; length: number; facing: number }, thick: number): number[] {
+    const tx = -Math.sin(seg.facing);
+    const ty = Math.cos(seg.facing);
+    const fx = Math.cos(seg.facing);
+    const fy = Math.sin(seg.facing);
+    const hl = seg.length / 2;
+    const ht = thick / 2;
+    const out: number[] = [];
+    for (const a of [-hl, 0, hl]) {
+      for (const c of [-ht, 0, ht]) {
+        out.push(this.elevAt(seg.x + tx * a + fx * c, seg.y + ty * a + fy * c));
+      }
+    }
+    return out;
   }
 
   private drawSandbagWall(
@@ -5753,15 +6100,14 @@ export class MapView {
     for (const p of pieces) {
       const clear = previewField(this.curr, type, p.x, p.y, p.facing);
       const near = !fromBase || (isYardField(type) && previewYardField(this.curr, type, p.x, p.y, p.facing));
-      let ok = fromBase ? open && clear && near : clear && affordAll;
-      if (fromBase && ok && accepted > 0 && this.curr.you.scrap < each * accepted) ok = false;
+      const ok = fromBase ? open && clear && near : clear && affordAll;
       if (fromBase && !ok) open = false;
       if (ok) accepted++;
       if (type === "teeth") {
         this.drawTeeth(p.x, p.y, p.facing, ok ? 0.72 : 0.4, 0);
         if (!ok) this.strokeFieldFoot(type, p, "#ff5a4a");
       } else if (type === "wall") {
-        this.drawConcreteWall(p.x, p.y, p.facing, { alpha: ok ? 0.78 : 0.5, seed: 7, bad: !ok });
+        this.drawConcreteWall(p.x, p.y, p.facing, { alpha: ok ? 0.78 : 0.5, seed: 7, bad: !ok }, pieces);
       } else if (type === "trench") {
         this.drawTrenchPit(p.x, p.y, p.facing, { alpha: 0.78, seed: 7, bad: !ok });
       } else {
@@ -5772,9 +6118,9 @@ export class MapView {
     const last = pieces[pieces.length - 1]!;
     const s = this.toScreen(last.x, last.y);
     const ctx = this.ctx;
-    const extra = fromBase ? Math.max(0, accepted - 1) : pieces.length;
-    const bill = fromBase ? extra * each : each * pieces.length;
-    const afford = fromBase ? accepted === pieces.length : affordAll;
+    const billCount = fromBase ? accepted : pieces.length;
+    const bill = each * billCount;
+    const afford = fromBase ? accepted === pieces.length && this.curr.you.scrap >= bill : affordAll;
     ctx.save();
     ctx.font = "11px 'Share Tech Mono', monospace";
     ctx.textAlign = "left";
@@ -5782,10 +6128,23 @@ export class MapView {
     ctx.lineWidth = 3;
     ctx.strokeStyle = "#140e0a";
     ctx.fillStyle = afford ? "#e8b84a" : "#ff5a4a";
-    const label = fromBase ? `${extra} × ${each} = ${bill}` : `${pieces.length} × ${each} = ${bill}`;
+    const label = `${billCount} × ${each} = ${bill}`;
     ctx.strokeText(label, s.x + 14, s.y - 14);
     ctx.fillText(label, s.x + 14, s.y - 14);
     ctx.restore();
+  }
+
+  /** The line sited from the Defences tab, drawn until the yard finishes it. */
+  private drawYardBuild(): void {
+    const q = this.curr.you.structureQueue;
+    if (!q?.sites || q.sites.length === 0 || !isYardField(q.type)) return;
+    for (const s of q.sites) {
+      if (q.type === "wall") {
+        this.drawConcreteWall(s.x, s.y, s.facing, { alpha: 0.55, seed: 3 }, q.sites);
+      } else {
+        this.drawSandbagWall(s.x, s.y, s.facing, { alpha: 0.55, seed: 3 });
+      }
+    }
   }
 
   private strokeFieldFoot(type: FieldStructureType, p: { x: number; y: number; facing: number }, color: string): void {
@@ -5825,7 +6184,11 @@ export class MapView {
     const dh = map.height * scale;
     ctx.imageSmoothingEnabled = false;
     if (this.miniTerrain) ctx.drawImage(this.miniTerrain.canvas, 0, 0, dw, dh);
-    if (this.miniFog) ctx.drawImage(this.miniFog, 0, 0, dw, dh);
+    if (this.miniFog) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(this.miniFog, 0, 0, dw, dh);
+      ctx.imageSmoothingEnabled = false;
+    }
     const ts = map.tileSize;
     const { w: vw, h: vh } = this.viewSize();
     const corners = [

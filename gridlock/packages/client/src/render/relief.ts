@@ -12,8 +12,11 @@ const HILLSHADE_MAX = 0.34;
  * sun catch it; slopes falling away go dark. Flat ground returns 1.
  */
 export function hillshadeFactor(nH: number, eH: number, sH: number, wH: number): number {
-  const gx = (eH + sH - nH - wH) / 2;
-  const gy = (sH + wH - nH - eH) / 2;
+  return hillshadeGradient((eH + sH - nH - wH) / 2, (sH + wH - nH - eH) / 2);
+}
+
+/** Same light from a height gradient in elevation units per tile along world x and y. */
+export function hillshadeGradient(gx: number, gy: number): number {
   const lit = -(gx * SUN_X + gy * SUN_Y) * HILLSHADE_PER_UNIT;
   return 1 + Math.max(-HILLSHADE_MAX, Math.min(HILLSHADE_MAX, lit));
 }

@@ -1,0 +1,42 @@
+{
+  "id": "medic-crawl",
+  "cell": 96,
+  "cols": 8,
+  "rows": 16,
+  "facing": 16,
+  "order": [
+    "S",
+    "SSW",
+    "SW",
+    "WSW",
+    "W",
+    "WNW",
+    "NW",
+    "NNW",
+    "N",
+    "NNE",
+    "NE",
+    "ENE",
+    "E",
+    "ESE",
+    "SE",
+    "SSE"
+  ],
+  "contactY": 0.72,
+  "scale": 0.9586,
+  "out": "gridlock/packages/client/src/assets/units/medic-crawl.png",
+  "size_pop_dirs": [
+    "WSW",
+    "W",
+    "WNW",
+    "NNW",
+    "N",
+    "NNE",
+    "E",
+    "ESE",
+    "SE"
+  ],
+  "empty_dirs": [],
+  "clipped_dirs": [],
+  "source": "render_infantry.py (16 unique yaws, real gait, no mirror)"
+}

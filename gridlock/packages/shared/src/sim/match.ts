@@ -24,7 +24,7 @@ import { detachGarrisoned, killGarrison, spillGarrison, tickGarrison, tickGarris
 import { seedRng } from "./rng.js";
 import { tickBuild } from "./build.js";
 import { restampForts, tickField } from "./field.js";
-import { tickCombat, tickProjectiles } from "./combat.js";
+import { tickCombat, tickPatrol, tickProjectiles } from "./combat.js";
 import { tickSmoke } from "./smoke.js";
 import { maybeCookOff, tickFires } from "./flame.js";
 import { tickBipod, tickStance } from "./stance.js";
@@ -33,6 +33,7 @@ import { tickDeploy } from "./deploy.js";
 import { tickHarvest, tickMaulerCart } from "./harvest.js";
 import { tickHeal } from "./heal.js";
 import { tickSupply } from "./supply.js";
+import { syncTowedGuns, tickArtillery } from "./artillery.js";
 import { tickMovement, repathIfBlocked } from "./orders.js";
 import { tickOrderQueue } from "./commands.js";
 import { tickTrain } from "./train.js";
@@ -141,9 +142,11 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickHeal(state, dt);
   tickGarrisonCare(state, dt);
   tickSupply(state, dt);
+  tickArtillery(state, dt);
   tickPlaneBoarding(state);
   tickMaulerCart(state, dt);
   tickOrderQueue(state);
+  tickPatrol(state);
   tickMovement(state, dt);
   tickAir(state, dt);
   syncPlaneRiders(state);
@@ -151,6 +154,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickDrones(state, dt);
   tickJets(state, dt);
   tickCollision(state, dt);
+  syncTowedGuns(state);
   tickMines(state, dt);
   tickCrates(state, dt);
   tickField(state, dt);

@@ -46,7 +46,9 @@ import { escortAnchor } from "./orders.js";
 import { setPath } from "./path.js";
 import { tickStance } from "./stance.js";
 import { dismountSupply, orderBoard, orderSupply, supplyCanDrive } from "./supply.js";
+import { orderCrew, orderTow } from "./artillery.js";
 import { orderAircraft, stopAircraft } from "./air.js";
+import { buildPatrolRoute, cleanPatrolPoints } from "./patrol.js";
 import { orderBoardPlane, setPayload, unloadPlane } from "./airdrop.js";
 import { droneOf, guardDrone, launchDrone, orderDrone, recallDrone, setDroneMode, stopDrone } from "./drone.js";
 import { landJet, takeOff } from "./jet.js";
@@ -69,6 +71,7 @@ export function applyCommand(state: MatchState, playerId: string, msg: ClientMes
 }
 
 function runCommand(state: MatchState, playerId: string, msg: ClientMessage): CmdResult {
+  if (RELEASES_DOOR_GROUP.has(msg.type)) releaseDoorGroup(state, playerId, commandIds(msg));
   const drones = routeDrones(state, playerId, msg);
   if (drones) return drones;
   const air = routeAircraft(state, playerId, msg);
@@ -81,6 +84,8 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       return cmdAttack(state, playerId, msg.ids, msg.targetId);
     case "cmd.attackmove":
       return cmdAttackMove(state, playerId, msg.ids, msg.x, msg.y);
+    case "cmd.patrol":
+      return cmdPatrol(state, playerId, msg.ids, msg.points);
     case "cmd.forceattack":
       return cmdForceAttack(state, playerId, msg.ids, msg.x, msg.y, msg.targetId, msg.once);
     case "cmd.stop":
@@ -100,7 +105,8 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       if (msg.guns !== 1 && msg.guns !== 2) return fail("bad_payload", "Unknown gatling setting.");
       return cmdGuns(state, playerId, msg.ids, msg.guns);
     case "cmd.build":
-      if (!isBuildingType(msg.building) && !isYardField(msg.building)) return fail("bad_payload", "Unknown structure.");
+      if (isYardField(msg.building)) return fail("bad_payload", "Place that on the map.");
+      if (!isBuildingType(msg.building)) return fail("bad_payload", "Unknown structure.");
       return wrap(startBuild(state, playerId, msg.building), "no_core");
     case "cmd.place":
       if (!isBuildingType(msg.building)) return fail("bad_payload", "Unknown structure.");
@@ -179,6 +185,9 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       if (plane && isTransportType(plane.type)) {
         return wrap(orderBoardPlane(state, playerId, owned(state, playerId, msg.ids), plane), "busy");
       }
+      if (plane?.type === "artillery") {
+        return wrap(orderCrew(state, playerId, owned(state, playerId, msg.ids), plane.id), "busy");
+      }
       return wrap(orderBoard(state, playerId, owned(state, playerId, msg.ids), msg.truckId), "busy");
     }
     case "cmd.payload":
@@ -188,6 +197,10 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       return cmdUnboard(state, playerId, msg.ids, msg.truckId);
     case "cmd.supply":
       return wrap(orderSupply(state, playerId, owned(state, playerId, msg.ids), msg.targetId), "not_found");
+    case "cmd.tow":
+      if (!Array.isArray(msg.ids)) return fail("bad_payload", "Bad tow order.");
+      if (msg.targetId != null && typeof msg.targetId !== "number") return fail("bad_payload", "Bad tow order.");
+      return wrap(orderTow(state, playerId, owned(state, playerId, msg.ids), msg.targetId), "not_found");
     case "cmd.drone":
       if (!Array.isArray(msg.ids)) return fail("bad_payload", "Bad drone order.");
       if (msg.action !== "launch" && msg.action !== "recall" && msg.action !== "mode") {
@@ -226,9 +239,28 @@ const DROPS_QUEUE = new Set<string>([
   "cmd.field",
   "cmd.ungarrison",
   "cmd.unboard",
+  "cmd.tow",
   "cmd.land",
   "cmd.deploy",
+  "cmd.patrol",
 ]);
+
+/** Orders that take a unit out of the pack waiting at the producer's door. */
+const RELEASES_DOOR_GROUP = new Set<string>([...DROPS_QUEUE, "cmd.jet", "cmd.drone"]);
+
+function commandIds(msg: ClientMessage): readonly number[] {
+  if (msg.type === "cmd.deploy") return [msg.id];
+  if ("ids" in msg && Array.isArray(msg.ids)) return msg.ids;
+  return [];
+}
+
+/** A player order means this unit is no longer part of the door pack. */
+function releaseDoorGroup(state: MatchState, playerId: string, ids: readonly number[]): void {
+  for (const id of ids) {
+    const e = state.entities.get(id);
+    if (e && e.ownerId === playerId) delete e.doorGroup;
+  }
+}
 
 function isQueueable(msg: ClientMessage): msg is QueueableCommand {
   return QUEUEABLE.has(msg.type);
@@ -289,6 +321,7 @@ function queueCommand(state: MatchState, playerId: string, msg: QueueableCommand
     spots = groupMoveTargets(state, from, at.x, at.y);
     pace = groupMovePace(ground);
   }
+  for (const e of ground) delete e.doorGroup;
   for (const e of ground) {
     const spot = spots?.get(e.id);
     const one = { ...msg, ids: [e.id], queue: undefined, ...(spot ? { x: spot.x, y: spot.y } : {}) } as QueueableCommand;
@@ -616,10 +649,77 @@ function stopHaulerLoop(e: Entity): void {
   if (e.type === "hauler") e.autoHarvest = false;
 }
 
+function cmdPatrol(
+  state: MatchState,
+  playerId: string,
+  ids: number[],
+  raw: { x: number; y: number }[] | undefined,
+): CmdResult {
+  const points = cleanPatrolPoints(state, raw);
+  if (!points) return fail("bad_payload", "Place a patrol point.");
+  const ownedUnits = owned(state, playerId, ids);
+  if (ownedUnits.length === 0) return fail("not_yours", "No owned units.");
+  const drones = ownedUnits.filter((e) => e.drone);
+  const planes = ownedUnits.filter((e) => e.air && !e.drone);
+  const ground = ownedUnits.filter(
+    (e) => !e.air && !e.drone && e.state !== "deploy" && e.state !== "undeploy" && !e.braced && supplyCanDrive(state, e),
+  );
+  if (drones.length === 0 && planes.length === 0 && ground.length === 0) {
+    return fail("busy", ownedUnits.every((e) => e.braced) ? "Deployed. Pack up to move." : "No driver.");
+  }
+  const group = state.nextId++;
+  for (const e of ground) {
+    if (e.garrisonedIn) {
+      e.guardFacing = null;
+      exitGarrison(state, e);
+    }
+  }
+  let cx = 0;
+  let cy = 0;
+  for (const e of ground) {
+    cx += e.x;
+    cy += e.y;
+  }
+  if (ground.length > 0) {
+    cx /= ground.length;
+    cy /= ground.length;
+  }
+  const pace = groupMovePace(ground);
+  for (const e of ground) {
+    const route = buildPatrolRoute(state, e, points, e.x - cx, e.y - cy);
+    const dest = route[1]!;
+    e.returnToBase = false;
+    e.attackTarget = null;
+    e.harvestTile = null;
+    e.guardFacing = null;
+    stopHaulerLoop(e);
+    e.order = { kind: "patrol", route, leg: 1, dir: 1, group };
+    if (pace != null) e.order.pace = pace;
+    e.state = "move";
+    setPath(state, e, dest.x, dest.y);
+  }
+  planes.forEach((e, i) => {
+    const ang = (i / Math.max(1, planes.length)) * Math.PI * 2;
+    const spread = planes.length > 1 ? state.tileSize * 3 : 0;
+    const ox = Math.cos(ang) * spread;
+    const oy = Math.sin(ang) * spread;
+    const shifted = points.map((p) => ({ x: p.x + ox, y: p.y + oy }));
+    const route = buildPatrolRoute(state, e, shifted, 0, 0);
+    orderAircraft(state, e, { kind: "patrol", route, leg: 1, dir: 1, group });
+  });
+  for (const d of drones) {
+    const route = buildPatrolRoute(state, d, points, 0, 0);
+    orderDrone(state, d, { kind: "patrol", route, leg: 1, dir: 1, group });
+  }
+  return ok();
+}
+
 function cmdAttackMove(state: MatchState, playerId: string, ids: number[], x: number, y: number): CmdResult {
   const units = owned(state, playerId, ids);
   if (units.length === 0) return fail("not_yours", "No owned units.");
-  const movers = units.filter((e) => e.state !== "deploy" && e.state !== "undeploy" && !e.braced);
+  const movers = units.filter(
+    (e) => e.state !== "deploy" && e.state !== "undeploy" && !e.braced && supplyCanDrive(state, e),
+  );
   const dests = groupMoveTargets(state, movers, x, y);
   const pace = groupMovePace(movers);
   for (const e of movers) {

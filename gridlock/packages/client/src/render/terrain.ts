@@ -33,7 +33,9 @@ import {
   whenImagesReady,
   PROP_IMAGES,
 } from "./sprites.js";
-import { contourSegments, hillshadeFactor } from "./relief.js";
+import { hillshadeFactor } from "./relief.js";
+import { elevShadeFactor, hash2 } from "./terrain-light.js";
+import { groundGlReady, paintGlGround } from "./terrain-light-gl.js";
 
 const WALL_H = 20;
 const TREE_H = 14;
@@ -126,16 +128,9 @@ function bakePt(p: IsoPt, originX: number, originY: number): IsoPt {
   return { x: p.x - originX, y: p.y - originY };
 }
 
-function elevShadeFactor(h: number): number {
-  const span = Math.max(1, HEIGHT_MAX - HEIGHT_BASE);
-  const u = (h - HEIGHT_BASE) / span;
-  // Valleys sink harder than peaks lift so a hollow reads at a glance.
-  return 1 + u * (u < 0 ? 0.6 : 0.62);
-}
-
 /**
- * Height cues over the ground texture, which would otherwise hide the base
- * fill: altitude tone, sun-side hillshade, and a contour per terrace.
+ * Per-tile height cue for the no-WebGL fallback: altitude tone and sun-side
+ * hillshade. The GL ground does the same light smoothly per vertex.
  */
 function paintRelief(
   ctx: CanvasRenderingContext2D,
@@ -166,27 +161,6 @@ function paintRelief(
         : `rgba(250, 232, 170, ${Math.min(0.28, (tone - 1) * 0.45).toFixed(3)})`;
     fillQuad(ctx, ...expandQuad(...quad, TILE_OVERLAP_PX));
   }
-  const seg = contourSegments(quad, hs);
-  if (seg.length === 0) return;
-  ctx.save();
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  for (let k = 0; k < seg.length; k += 2) {
-    ctx.moveTo(seg[k]!.x, seg[k]!.y + 1);
-    ctx.lineTo(seg[k + 1]!.x, seg[k + 1]!.y + 1);
-  }
-  ctx.strokeStyle = "rgba(12, 10, 6, 0.42)";
-  ctx.lineWidth = 1.2;
-  ctx.stroke();
-  ctx.beginPath();
-  for (let k = 0; k < seg.length; k += 2) {
-    ctx.moveTo(seg[k]!.x, seg[k]!.y);
-    ctx.lineTo(seg[k + 1]!.x, seg[k + 1]!.y);
-  }
-  ctx.strokeStyle = "rgba(236, 222, 170, 0.16)";
-  ctx.lineWidth = 0.8;
-  ctx.stroke();
-  ctx.restore();
 }
 
 function groundFill(map: MapDef, tx: number, ty: number, kind: number, scrap: boolean): string {
@@ -200,10 +174,6 @@ function groundFill(map: MapDef, tx: number, ty: number, kind: number, scrap: bo
   const bare = kind === TILE_ROAD || scrap;
   const fill = bare ? "#6b5840" : kind === TILE_TREE ? "#314628" : "#3e5232";
   return shade(fill, elevShadeFactor(heightAt(map, tx, ty)));
-}
-
-function hash2(tx: number, ty: number, salt: number): number {
-  return (Math.imul(tx * 374761393 + ty * 668265263 + salt, 1103515245) >>> 0);
 }
 
 function waterPattern(ctx: CanvasRenderingContext2D, frame = 0): CanvasPattern | null {
@@ -567,14 +537,52 @@ function paintGround(
   scrap: boolean,
   originX: number,
   originY: number,
+  /** Land surface and light come from the GL pass; only the backing fill and edge skirts paint here. */
+  glLand = false,
 ): void {
   const kind = map.tiles[ty * map.width + tx] ?? 0;
-  fillElevatedTile(ctx, map, tx, ty, groundFill(map, tx, ty, kind, scrap), originX, originY, kind !== TILE_WATER);
-  if (kind === TILE_WATER) paintWaterOverlay(ctx, map, tx, ty, originX, originY);
-  else {
+  const water = kind === TILE_WATER;
+  fillElevatedTile(ctx, map, tx, ty, groundFill(map, tx, ty, kind, scrap), originX, originY, !water && !glLand);
+  if (water) paintWaterOverlay(ctx, map, tx, ty, originX, originY);
+  else if (!glLand) {
     paintSurface(ctx, map, tx, ty, kind, scrap, originX, originY);
     paintRelief(ctx, map, tx, ty, originX, originY);
   }
+}
+
+/** Lifted, slightly grown diamonds of `indices`: the ground a restamp repainted. */
+function stampedGround(
+  map: MapDef,
+  indices: number[],
+  originX: number,
+  originY: number,
+): { path: Path2D; rect: { x: number; y: number; w: number; h: number } } {
+  const path = new Path2D();
+  const w = map.width;
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const i of indices) {
+    const tx = i % w;
+    const ty = (i / w) | 0;
+    const d = tileDiamond(tx, ty, map.tileSize);
+    const up = (p: IsoPt, vx: number, vy: number): IsoPt => {
+      const q = bakePt(p, originX, originY);
+      return { x: q.x, y: q.y - isoLift(vertexElev(map.heights, map.width, map.height, vx, vy)) };
+    };
+    const quad = expandQuad(up(d.n, tx, ty), up(d.e, tx + 1, ty), up(d.s, tx + 1, ty + 1), up(d.w, tx, ty + 1), 1.5);
+    path.moveTo(quad[0].x, quad[0].y);
+    for (let k = 1; k < 4; k++) path.lineTo(quad[k]!.x, quad[k]!.y);
+    path.closePath();
+    for (const p of quad) {
+      minX = Math.min(minX, p.x);
+      minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x);
+      maxY = Math.max(maxY, p.y);
+    }
+  }
+  return { path, rect: { x: minX - 2, y: minY - 2, w: maxX - minX + 4, h: maxY - minY + 4 } };
 }
 
 /** Blur radius that rounds a one-tile stair into a bank. */
@@ -800,9 +808,14 @@ function paintTileStamp(
   shoreClip?: { x: number; y: number; w: number; h: number },
 ): void {
   const w = map.width;
+  const gl = groundGlReady();
   indices.sort((a, b) => (a % w) + ((a / w) | 0) - ((b % w) + ((b / w) | 0)));
   for (const i of indices) {
-    paintGround(ctx, map, i % w, (i / w) | 0, scrap.has(i), originX, originY);
+    paintGround(ctx, map, i % w, (i / w) | 0, scrap.has(i), originX, originY, gl);
+  }
+  if (gl && indices.length) {
+    const { path, rect } = stampedGround(map, indices, originX, originY);
+    paintGlGround(ctx, map, scrap, originX, originY, rect, path);
   }
   if (shoreClip) paintSmoothShores(ctx, map, originX, originY, shoreClip);
   for (const i of indices) {
@@ -842,7 +855,9 @@ function makeAtlasCanvas(map: MapDef): {
 export function bakeTerrain(map: MapDef, scrap: Iterable<ScrapCell>): TerrainBake {
   const { canvas, ctx, originX, originY, width, height } = makeAtlasCanvas(map);
   const packed = packScrap(scrap, map.width);
-  forEachTile(map, (x, y) => paintGround(ctx, map, x, y, packed.has(y * map.width + x), originX, originY));
+  const gl = groundGlReady();
+  forEachTile(map, (x, y) => paintGround(ctx, map, x, y, packed.has(y * map.width + x), originX, originY, gl));
+  if (gl) paintGlGround(ctx, map, packed, originX, originY, { x: 0, y: 0, w: width, h: height });
   paintSmoothShores(ctx, map, originX, originY);
   forEachTile(map, (x, y) => paintTileProps(ctx, map, x, y, packed.has(y * map.width + x), originX, originY));
   return { canvas, originX, originY, width, height, scrap: packed };

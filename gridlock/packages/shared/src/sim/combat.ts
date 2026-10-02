@@ -24,9 +24,13 @@ import {
   TICK_DT,
   MG42_BIPOD_SECONDS,
   MORTAR,
+  MORTAR_LOB,
   MORTAR_MIN_RANGE_TILES,
   MORTAR_PLANT_SECONDS,
   MORTAR_SPLASH_TILES,
+  ARTILLERY_MIN_RANGE_TILES,
+  ARTILLERY_SHELL,
+  type LobShellDef,
   addCrit,
   FW190_BARRAGE_LINE_TILES,
   FW190_ROOF_ENGINE_CHANCE,
@@ -109,6 +113,7 @@ import {
 } from "./ballistics.js";
 import { fireStats, hullTurnMul, immobilized, rollCrits, takeDamage } from "./crits.js";
 import { damageMaulerCart } from "./mauler-cart.js";
+import { artilleryCanLay, artilleryReady, artilleryReloadMul, blastOnGun, bulletOnGun, gunCrewOf } from "./artillery.js";
 import { noteImpactSurface } from "./remains.js";
 import { stanceHitRadiusMul, stanceTargetSpreadMul, tickStance } from "./stance.js";
 import {
@@ -163,6 +168,7 @@ import { nextRand } from "./rng.js";
 import { isSupplyBullet, noteSupplyHit, stowedInTransport, supplyRiderFights, syncSupplyRiders } from "./supply.js";
 import { spawnSmokeCloud } from "./smoke.js";
 import { stepFlame, throwFlame } from "./flame.js";
+import { distToRoute } from "./patrol.js";
 import { canSeeEntity } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
 import { escorting, reversing, stepTurn, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
@@ -564,6 +570,7 @@ function waterSilences(state: MatchState, e: Entity): boolean {
 function canFight(e: Entity): boolean {
   // Aircraft fire their own guns and bombs in tickAir.
   // A paratrooper under his canopy keeps his rifle slung until he is down.
+  if (e.type === "artillery" && gunCrewOf(e) === 0) return false;
   return fires(e.type) && e.hp > 0 && !e.wreck && !e.air && !e.chute && e.state !== "deploy" && e.state !== "undeploy";
 }
 
@@ -578,10 +585,128 @@ function outOfReachAloft(e: Entity, target: Entity): boolean {
   return isAirborne(target) && !reachesAircraft(e);
 }
 
-/** Move, attack-move, and unit-escort all engage in-range enemies. Attack-move halts; the others keep walking. */
+/** Move, attack-move, patrol, and unit-escort all engage in-range enemies. Attack-move halts; the others keep walking. */
 function travelFights(e: Entity): boolean {
   const k = e.order?.kind;
-  return k === "attackmove" || k === "move" || escorting(e);
+  return k === "attackmove" || k === "move" || k === "patrol" || escorting(e);
+}
+
+/**
+ * Patrol contact. Runs before movement so a unit peels off the same tick an
+ * enemy comes within weapon range of its route. The order stays a patrol.
+ */
+export function tickPatrol(state: MatchState): void {
+  const groups = new Map<number, Entity[]>();
+  const solo: Entity[] = [];
+  for (const e of state.entities.values()) {
+    if (e.order?.kind !== "patrol" || !e.order.route || e.order.route.length < 2) continue;
+    if (e.hp <= 0 || e.wreck || e.air) continue;
+    const g = e.order.group;
+    if (g == null) solo.push(e);
+    else {
+      const list = groups.get(g);
+      if (list) list.push(e);
+      else groups.set(g, [e]);
+    }
+  }
+  for (const members of groups.values()) focusPatrolGroup(state, members);
+  for (const e of solo) focusPatrolGroup(state, [e]);
+}
+
+/** A patrol member who can actually shoot. Haulers, medics, and a dry pyro keep walking. */
+function patrolCanFight(e: Entity): boolean {
+  if (!fires(e.type) || e.hp <= 0 || e.wreck || e.air || e.chute) return false;
+  if (e.garrisonedIn != null || e.state === "deploy" || e.state === "undeploy") return false;
+  if (e.type === "pyro" && e.clip <= 0 && e.reload <= 0) return false;
+  return true;
+}
+
+/** Enemy unit this fighter can harm, seen, and within weapon range of the patrol line. */
+function patrolContact(state: MatchState, e: Entity, o: Entity): boolean {
+  const route = e.order?.route;
+  if (!route) return false;
+  if (o.kind !== "unit" || o.hp <= 0 || o.wreck || o.id === e.id || o.garrisonedIn != null) return false;
+  if (isCrashing(o) || !o.ownerId || allies(state, e.ownerId, o.ownerId)) return false;
+  if (!canSeeEntity(state, e.ownerId, o) || outOfReachAloft(e, o)) return false;
+  if (dropsUnharmedArmor(state, e, o)) return false;
+  const range = weaponRangeWorld(state, e);
+  if (range <= 0) return false;
+  return distToRoute(route, o.x, o.y) <= range;
+}
+
+/**
+ * One patrol order. Every fighter who can reach the shared enemy takes it.
+ * The enemy the most of them can reach wins. A tie stays on the target they
+ * already had, then the one closest to the path. A fighter who cannot reach
+ * that one takes his own nearest contact.
+ */
+function focusPatrolGroup(state: MatchState, members: Entity[]): void {
+  const fighters = members.filter(patrolCanFight);
+  const rows = new Map<number, { enemy: Entity; who: Entity[]; dist: number }>();
+  for (const e of fighters) {
+    const route = e.order!.route!;
+    for (const o of state.entities.values()) {
+      if (!patrolContact(state, e, o)) continue;
+      let row = rows.get(o.id);
+      if (!row) {
+        row = { enemy: o, who: [], dist: distToRoute(route, o.x, o.y) };
+        rows.set(o.id, row);
+      }
+      row.who.push(e);
+      row.dist = Math.min(row.dist, distToRoute(route, o.x, o.y));
+    }
+  }
+
+  let sticky: number | null = null;
+  let stickyN = 0;
+  const tallies = new Map<number, number>();
+  for (const e of fighters) {
+    if (e.attackTarget == null) continue;
+    const n = (tallies.get(e.attackTarget) ?? 0) + 1;
+    tallies.set(e.attackTarget, n);
+    if (n > stickyN) {
+      sticky = e.attackTarget;
+      stickyN = n;
+    }
+  }
+
+  let bestId: number | null = null;
+  let bestCount = 0;
+  let bestDist = Infinity;
+  for (const [id, row] of rows) {
+    const count = row.who.length;
+    const closerTie = count === bestCount && id !== sticky && bestId !== sticky && row.dist < bestDist;
+    const keepSticky = count === bestCount && id === sticky && bestId !== sticky;
+    if (bestId == null || count > bestCount || keepSticky || closerTie) {
+      bestId = id;
+      bestCount = count;
+      bestDist = row.dist;
+    }
+  }
+
+  const focus = bestId != null ? rows.get(bestId) : undefined;
+  const onFocus = new Set(focus?.who.map((f) => f.id) ?? []);
+  for (const e of members) {
+    if (!patrolCanFight(e)) {
+      e.attackTarget = null;
+      continue;
+    }
+    if (focus && onFocus.has(e.id)) {
+      e.attackTarget = focus.enemy.id;
+      continue;
+    }
+    let near: Entity | undefined;
+    let nearD = Infinity;
+    for (const row of rows.values()) {
+      if (!row.who.includes(e)) continue;
+      const d = Math.hypot(row.enemy.x - e.x, row.enemy.y - e.y);
+      if (d < nearD) {
+        nearD = d;
+        near = row.enemy;
+      }
+    }
+    e.attackTarget = near?.id ?? null;
+  }
 }
 
 function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
@@ -738,6 +863,12 @@ function dropsUnharmedArmor(state: MatchState, e: Entity, target: Entity): boole
 /** The shot from here can put damage on that hull. Unarmored targets always can. Covers the CIWS gun too. */
 function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boolean {
   if (target.kind !== "unit") return true;
+  // Bullets only find the crew. An empty field gun is worth a bomb or a rocket, not a rifle.
+  if (target.type === "artillery" && gunCrewOf(target) === 0) {
+    const gun = infantryGunFor(e);
+    if (radarLaidOf(e.type)) return false;
+    return !!gun && (gun.id === "mortar" || gun.id === "launcher" || gun.id === "penetrator" || gun.caliber >= GARRISON_STRUCTURAL_CALIBER);
+  }
   const def = catalog(target.type);
   if (!isArmored(def)) return true;
   if (radarLaidOf(e.type)) {
@@ -856,6 +987,10 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   }
   if (e.type === "mortarman" && dist < MORTAR_MIN_RANGE_TILES * state.tileSize) {
     if (!holedUp) e.state = "attack";
+    return;
+  }
+  if (e.type === "artillery") {
+    fireArtillery(state, e, aimX, aimY, range, dist, target, dt);
     return;
   }
   if (!canAimWeapon(state, e, aimX, aimY, target)) {
@@ -1058,6 +1193,44 @@ function mortarReady(state: MatchState, e: Entity): boolean {
   return e.bipod >= MORTAR_PLANT_SECONDS;
 }
 
+/**
+ * The field gun lays the whole carriage on the target, then needs the trail
+ * set again before it fires. Inside its minimum it will not fire; an
+ * auto-picked target that close is dropped so it can find another.
+ */
+function fireArtillery(
+  state: MatchState,
+  e: Entity,
+  aimX: number,
+  aimY: number,
+  range: number,
+  dist: number,
+  target: Entity | undefined,
+  dt: number,
+): void {
+  e.state = "attack";
+  if (dist < ARTILLERY_MIN_RANGE_TILES * state.tileSize) {
+    if (e.order?.auto) {
+      e.order = null;
+      e.state = "idle";
+    }
+    if (e.order?.kind !== "attack" && e.order?.kind !== "forceattack") e.attackTarget = null;
+    return;
+  }
+  if (!artilleryCanLay(e)) return;
+  const rest = turnToward(e, aimX, aimY, catalog(e.type).turnDegPerSec * hullTurnMul(e), dt);
+  if (Math.abs(rest) > gunArcDegOf(e.type)) {
+    e.bipod = 0;
+    return;
+  }
+  if (!artilleryReady(e) || e.cooldown > 0) return;
+  if ((e.ammo.he ?? 0) <= 0) return;
+  launchMortar(state, e, aimX, aimY, range, dist, target, ARTILLERY_SHELL);
+  e.ammo.he = Math.max(0, (e.ammo.he ?? 0) - 1);
+  e.cooldown = catalog(e.type).cooldown * artilleryReloadMul(e);
+  if (e.order?.once) clearOrder(e);
+}
+
 function launchMortar(
   state: MatchState,
   e: Entity,
@@ -1066,18 +1239,19 @@ function launchMortar(
   range: number,
   dist: number,
   target: Entity | undefined,
+  lob: LobShellDef = MORTAR_LOB,
 ): void {
   const moving = !!target && (target.waypoints.length > 0 || target.state === "move");
   const posture = target ? stanceTargetSpreadMul(target, unitInWater(state, target)) : 1;
   let mul = 1 + (posture - 1) * 0.25;
   if (moving) mul *= 1.12;
-  const radius = mortarScatterRadius(dist, range, mul);
+  const radius = mortarScatterRadius(dist, range, mul, lob);
   const land = mortarLanding(aimX, aimY, radius, () => nextRand(state));
   const maxX = Math.max(1, state.width * state.tileSize - 1);
   const maxY = Math.max(1, state.height * state.tileSize - 1);
   land.x = Math.min(maxX, Math.max(0, land.x));
   land.y = Math.min(maxY, Math.max(0, land.y));
-  const flight = mortarFlightSeconds(dist, range);
+  const flight = mortarFlightSeconds(dist, range, lob);
   const p: Projectile = {
     id: state.nextId++,
     ownerId: e.ownerId,
@@ -1086,9 +1260,10 @@ function launchMortar(
     y: e.y,
     vx: (land.x - e.x) / flight,
     vy: (land.y - e.y) / flight,
-    damage: MORTAR.damage,
-    penetration: MORTAR.penetration,
-    caliber: MORTAR.caliber,
+    damage: lob.damage,
+    penetration: lob.penetration,
+    caliber: lob.caliber,
+    big: lob === MORTAR_LOB ? undefined : true,
     life: flight,
     ignoreId: e.id,
     fromId: e.id,
@@ -1097,7 +1272,7 @@ function launchMortar(
     flight: "mortar",
     landX: land.x,
     landY: land.y,
-    apex: mortarApex(dist, range),
+    apex: mortarApex(dist, range, lob),
     flightTime: flight,
     harmAllies: e.order?.kind === "forceattack",
     z: 0,
@@ -1458,7 +1633,8 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
   const ty = worldToTile(p.y, state.tileSize);
   if (!inAir && isTree(state, tx, ty)) fellTreeAt(state, tx, ty);
   const rack = p.heavy ? PENETRATOR_RACK : rocketRackOf(p.launcher ?? "titan");
-  const radius = (rocket ? rack.splashTiles : MORTAR_SPLASH_TILES) * state.tileSize;
+  const lob = p.big ? ARTILLERY_SHELL : MORTAR_LOB;
+  const radius = (rocket ? rack.splashTiles : p.big ? lob.splashTiles : MORTAR_SPLASH_TILES) * state.tileSize;
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null) continue;
     // A ground burst never reaches a plane; an air burst only catches planes.
@@ -1488,7 +1664,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
             d <= e.radius,
             rand,
           )
-        : mortarArmorNick(def.hp, falloff, hasTracks(e.type), rand);
+        : mortarArmorNick(def.hp, falloff, hasTracks(e.type), rand, lob);
       let nickDmg = nick.damage;
       if ((e.wallCover ?? 0) > 0) {
         if (rocket) nickDmg = Math.max(1, Math.round(nickDmg * WALL_COVER_DR));
@@ -1533,6 +1709,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     if (e.type === "supply" && !e.wreck && e.hp > 0) {
       noteSupplyHit(state, e, res.face, false, chipWalls ? res.damage : 0);
     }
+    if (e.type === "artillery") blastOnGun(state, e, res.damage);
   }
   pushImpact(state, p, "miss", p.x, p.y);
 }
@@ -1936,6 +2113,14 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       pushImpact(state, p, "hit", e.x, e.y);
       continue;
     }
+    // Small arms ring off the steel. Some find a crewman instead.
+    if (e.type === "artillery" && !e.wreck && isSupplyBullet(p.caliber, p.shell, p.flight)) {
+      const face = hitFace(e.facing, p.vx, p.vy);
+      const dmg = Math.max(1, Math.round(p.damage * (0.9 + rand() * 0.2)));
+      const crewHit = bulletOnGun(state, e, face, dmg);
+      pushImpact(state, p, crewHit ? "hit" : "ricochet", struck.x, struck.y, -p.vx * 0.2, -p.vy * 0.2);
+      continue;
+    }
     const liveDef = catalog(e.type);
     const targetDef = e.wreck ? wreckHitDef(e, p.caliber) : liveDef;
     const frac = p.hpFraction;
@@ -2023,6 +2208,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     if (e.type === "supply" && !e.wreck && e.hp > 0) {
       noteSupplyHit(state, e, res.face, isSupplyBullet(p.caliber, p.shell, p.flight), chipWalls ? dealt : 0);
     }
+    if (e.type === "artillery" && !e.wreck) blastOnGun(state, e, dealt);
     const lethal = e.hp <= 0 && res.kind !== "ricochet";
     let kind: ImpactKind = lethal ? "kill" : res.kind;
     if (!chipWalls && kind === "kill") kind = "hit";
@@ -2097,6 +2283,7 @@ function pushImpact(
     caliber: p.caliber,
     blast: blast || undefined,
     mortar: p.flight === "mortar" ? true : undefined,
+    bomb: p.flight === "mortar" && p.big ? true : undefined,
     rocket: p.flight === "rocket" ? true : undefined,
     z: p.airBurst ? (p.z ?? 0) : undefined,
   };
@@ -2354,6 +2541,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     const d = dx * dx + dy * dy;
     if (d > bestD) continue;
     if (launcherOnlyOf(e.type) && !inLauncherBand(state, e, o.x, o.y)) continue;
+    if (e.type === "artillery" && d < (ARTILLERY_MIN_RANGE_TILES * state.tileSize) ** 2) continue;
     if (coneOnly && !inGuardCone(e, o)) continue;
     if (!canSeeEntity(state, e.ownerId, o)) continue;
     if (!canAimWeapon(state, e, o.x, o.y, o)) continue;
