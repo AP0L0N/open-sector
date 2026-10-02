@@ -363,6 +363,7 @@ const EXTRUDE: Record<EntityType, number> = {
   warden: 28,
   apocalypse: 32,
   ss3: 20,
+  jagdtiger: 26,
   rifleman: 26,
   gunner: 26,
   sniper: 26,

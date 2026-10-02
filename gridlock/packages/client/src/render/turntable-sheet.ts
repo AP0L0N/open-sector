@@ -63,6 +63,16 @@ const ss3GunGlob = import.meta.glob("../assets/units/ss3/gun/*.png", {
   import: "default",
 }) as Record<string, string>;
 
+const jagdtigerHullGlob = import.meta.glob("../assets/units/jagdtiger/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const jagdtigerGunGlob = import.meta.glob("../assets/units/jagdtiger/gun/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 const supplyHullGlob = import.meta.glob("../assets/units/supply-truck/hull/*.png", {
   eager: true,
   import: "default",
@@ -370,6 +380,32 @@ export function bindCasemateSheets(hullImage: HTMLImageElement, gunImage: HTMLIm
     })
     .catch((err) => {
       console.error("ss3 turntable", err);
+    });
+}
+
+let jagdtigerPrevious: ComposedTurntable | null = null;
+
+/** Jagdtiger: casemate hull + recoiling 128mm, like the StuG. The static jagdtiger-cameo.png is the sidebar portrait. */
+export function bindJagdtigerSheets(hullImage: HTMLImageElement, gunImage: HTMLImageElement): void {
+  let hullUrls: string[];
+  let gunUrls: string[];
+  try {
+    hullUrls = pickTurntableUrls(jagdtigerHullGlob);
+    gunUrls = pickTurntableUrls(jagdtigerGunGlob);
+  } catch (err) {
+    console.error("jagdtiger turntable", err);
+    return;
+  }
+  void Promise.all([Promise.all(hullUrls.map(loadImage)), Promise.all(gunUrls.map(loadImage))])
+    .then(([hullImgs, gunImgs]) => composeAligned([hullImgs, gunImgs], TIGER_OPTS))
+    .then((next) => {
+      revoke(jagdtigerPrevious);
+      jagdtigerPrevious = next;
+      hullImage.src = next.sheetUrls[0] ?? "";
+      gunImage.src = next.sheetUrls[1] ?? "";
+    })
+    .catch((err) => {
+      console.error("jagdtiger turntable", err);
     });
 }
 
