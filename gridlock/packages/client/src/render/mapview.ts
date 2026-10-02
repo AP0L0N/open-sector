@@ -380,7 +380,7 @@ const EXTRUDE: Record<EntityType, number> = {
   trench: 6,
   walker: 30,
   titan: 40,
-  mammoth: 30,
+  mammoth: 15,
   nebelwerfer: 22,
   artillery: 14,
   supply: 18,

@@ -16,7 +16,7 @@ export function unitStepping(opts: {
   curr: Pos;
 }): boolean {
   const travelled = !!opts.prev && Math.hypot(opts.prev.x - opts.curr.x, opts.prev.y - opts.curr.y) > STEP_MIN_TRAVEL;
-  // Big walkers only stride while the hull really moves, not while turning in place.
-  if (opts.type === "walker" || opts.type === "titan") return travelled;
+  // Big walkers (and the Mammoth) only stride while the hull really moves, not while turning in place.
+  if (opts.type === "walker" || opts.type === "titan" || opts.type === "mammoth") return travelled;
   return travelled || opts.state === "move" || !!opts.swimming || opts.state === "build" || opts.state === "repair";
 }

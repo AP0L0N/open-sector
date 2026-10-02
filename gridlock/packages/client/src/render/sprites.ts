@@ -179,6 +179,8 @@ import haulerHullUrl from "../assets/units/hauler-hull.png";
 import haulerCartUrl from "../assets/units/hauler-cart.png";
 import walkerLegsUrl from "../assets/units/walker-legs.png";
 import walkerTorsoUrl from "../assets/units/walker-torso.png";
+import mammothWalkUrl from "../assets/units/mammoth-walk.png";
+import mammothWadeUrl from "../assets/units/mammoth-wade.png";
 import titanLegsUrl from "../assets/units/titan-legs.png";
 import titanTorsoUrl from "../assets/units/titan-torso.png";
 import titanGunUrl from "../assets/units/titan-gun.png";
@@ -197,7 +199,6 @@ import {
   bindTransportSheets,
   bindSupplySheets,
   bindApocalypseSheets,
-  bindMammothSheets,
   bindNebelwerferSheets,
   bindArtillerySheets,
   bindTurntableSheets,
@@ -1114,24 +1115,28 @@ export const SUPPLY_SPRITE: UnitSpriteDef = {
 };
 bindSupplySheets(SUPPLY_SPRITE.image);
 
-/** Infantry battle platform. One hull sheet: the bow MG is part of the hull and aims with it. */
+/**
+ * Infantry battle platform on four legs. Columns are an 8-frame trot, rows the
+ * 16 faces; the chin MG is part of the body and aims with it. Drawn at half the
+ * old tracked hull's size.
+ */
 export const MAMMOTH_SPRITE: UnitSpriteDef = {
-  image: new Image(),
+  image: loadSheet(mammothWalkUrl),
   dirs: TANK_FACE_DIRS,
-  frames: 1,
+  frames: 8,
   frameSize: 128,
   fps: 8,
-  drawSize: Math.round(84 * UNIT_VISUAL_SCALE),
+  drawSize: Math.round(42 * UNIT_VISUAL_SCALE),
   contactY: 0.92,
   facingSpace: "world",
 };
 
 /**
- * Half under. Same cell, scale, and contact as the dry hull, so the casemate
- * stays registered and only the upper body shows above the pool.
+ * Waist deep. Same cell, scale, and contact as the walk sheet (one fit in
+ * render_mammoth.py), so the body stays registered and the legs are under the pool.
  */
 export const MAMMOTH_WADE_SPRITE: UnitSpriteDef = {
-  image: new Image(),
+  image: loadSheet(mammothWadeUrl),
   dirs: TANK_FACE_DIRS,
   frames: 1,
   frameSize: 128,
@@ -1140,7 +1145,6 @@ export const MAMMOTH_WADE_SPRITE: UnitSpriteDef = {
   contactY: MAMMOTH_SPRITE.contactY,
   facingSpace: "world",
 };
-bindMammothSheets(MAMMOTH_SPRITE.image, MAMMOTH_WADE_SPRITE.image);
 
 const nebelwerferLauncher: TurretSpriteDef = {
   image: new Image(),
