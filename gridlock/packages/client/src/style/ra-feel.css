@@ -830,7 +830,9 @@ input[type="range"] { padding: 0; }
 #build-research,
 #build-bunker,
 #build-tower,
-#build-ram {
+#build-ram,
+#build-sandbags,
+#build-wall {
   background-size: cover;
   background-position: right 10% center;
   min-height: 3.1rem;
@@ -1041,6 +1043,16 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/ram-cameo.png");
+}
+#build-sandbags {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.88) 0%, rgba(18, 12, 8, 0.45) 58%, rgba(18, 12, 8, 0.2) 100%),
+    repeating-linear-gradient(#6a5a3a 0 6px, #3e3424 6px 8px);
+}
+#build-wall {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.88) 0%, rgba(18, 12, 8, 0.45) 58%, rgba(18, 12, 8, 0.2) 100%),
+    repeating-linear-gradient(#8a8c84 0 10px, #5a5c56 10px 12px);
 }
 #train-stuka {
   background-image:
@@ -1305,16 +1317,70 @@ input[type="range"] { padding: 0; }
   width: 100%;
 }
 
-.quick-actions {
+.battle-commands {
   position: absolute;
   left: 10px;
   bottom: 10px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: min(420px, calc(100% - 24px));
+  pointer-events: none;
+}
+.garrison-roster {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 148px;
+  overflow-y: auto;
+  pointer-events: auto;
+  max-width: 100%;
+}
+.garrison-roster:empty { display: none; }
+.garrison-seat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 44px;
+}
+.garrison-seat .config-type {
+  width: 44px;
+  height: 32px;
+  cursor: default;
+}
+.garrison-seat .config-type:hover { border-color: var(--rust); }
+.seat-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.seat-track {
+  display: block;
+  height: 3px;
+  background: #0a0806;
+  border: 1px solid #3a2418;
+}
+.seat-track[hidden] { display: none; }
+.seat-track > span {
+  display: block;
+  height: 100%;
+  width: 0;
+}
+/* Same fills as the map bars: HP_FILL_* and AMMO_PRIMARY_FILL / AMMO_SECONDARY_FILL. */
+.seat-hp { background: #6aaa58; }
+.seat-hp.is-mid { background: #b8923c; }
+.seat-hp.is-low { background: #b45448; }
+.seat-ammo { background: rgba(226, 190, 72, 0.95); }
+.seat-ammo.is-secondary { background: rgba(178, 176, 168, 0.9); }
+.quick-actions {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  z-index: 6;
   pointer-events: auto;
-  max-width: min(420px, calc(100% - 24px));
+  max-width: 100%;
 }
 .quick-actions:empty { display: none; }
 .qact {

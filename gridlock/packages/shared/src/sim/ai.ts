@@ -16,6 +16,7 @@ import {
   isAircraftType,
   isArmoredType,
   isDroneType,
+  isBuildingType,
   isFieldStructure,
   isInfantryType,
   type BuildingType,
@@ -135,7 +136,7 @@ function thinkEasy(state: MatchState, p: SimPlayer): void {
     return;
   }
 
-  if (p.structure?.ready) {
+  if (p.structure?.ready && isBuildingType(p.structure.type)) {
     const type = p.structure.type;
     const spot = findBuildTile(state, p.playerId, type);
     if (spot) {
@@ -259,7 +260,7 @@ function neediest(
 /** Hold scrap for the next factory. Do not starve the first troop wave to save for Armory. */
 function trainReserve(state: MatchState, p: SimPlayer): number {
   // A factory under way is paid for first. Extras (Research, air, defenses) share scrap with the army.
-  if (p.structure && !p.structure.ready && FACTORIES.includes(p.structure.type)) {
+  if (p.structure && !p.structure.ready && isBuildingType(p.structure.type) && FACTORIES.includes(p.structure.type)) {
     return Math.max(0, catalog(p.structure.type).cost - p.structure.paid);
   }
   if (countType(state, p.playerId, "dynamo") === 0) return catalog("dynamo").cost;

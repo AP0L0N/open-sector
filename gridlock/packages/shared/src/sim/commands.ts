@@ -10,6 +10,7 @@ import {
   infantryLoadout,
   isBuildingType,
   isFieldStructure,
+  isYardField,
   isGarrisonable,
   isInfantryType,
   isInfantryWeaponId,
@@ -36,7 +37,7 @@ import { allies, clearOrder, hqOf, worldToTile } from "./geo.js";
 import { garrisonCanShoot, garrisonShotReaches, relayGarrisonForce } from "./combat.js";
 import { approachTile, canGarrison, exitGarrison, garrisonOwner, livingGarrison, setGarrisonHide } from "./garrison.js";
 import { setScoutOut } from "./scout.js";
-import { cancelStructure, pauseStructure, placeBuilding, sellBuilding, startBuild } from "./build.js";
+import { cancelStructure, pauseStructure, placeBaseField, placeBuilding, sellBuilding, startBuild } from "./build.js";
 import { orderFieldBuild, orderRepair } from "./field.js";
 import { deployId } from "./deploy.js";
 import { cancelTrain, pauseTrain, setRally, startTrain } from "./train.js";
@@ -99,7 +100,7 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       if (msg.guns !== 1 && msg.guns !== 2) return fail("bad_payload", "Unknown gatling setting.");
       return cmdGuns(state, playerId, msg.ids, msg.guns);
     case "cmd.build":
-      if (!isBuildingType(msg.building)) return fail("bad_payload", "Unknown structure.");
+      if (!isBuildingType(msg.building) && !isYardField(msg.building)) return fail("bad_payload", "Unknown structure.");
       return wrap(startBuild(state, playerId, msg.building), "no_core");
     case "cmd.place":
       if (!isBuildingType(msg.building)) return fail("bad_payload", "Unknown structure.");
@@ -150,6 +151,13 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       return cmdGuard(state, playerId, msg.ids, msg.x, msg.y, msg.facing, msg.targetId);
     case "cmd.field":
       if (!isFieldStructure(msg.structure)) return fail("bad_payload", "Unknown structure.");
+      if (!Array.isArray(msg.ids) || msg.ids.length === 0) {
+        if (!isYardField(msg.structure)) return wrap("That structure is not ready.", "invalid_place");
+        return wrap(
+          placeBaseField(state, playerId, msg.structure, msg.x, msg.y, msg.facing, msg.x2, msg.y2),
+          "invalid_place",
+        );
+      }
       return wrap(
         orderFieldBuild(
           state,

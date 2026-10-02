@@ -1,12 +1,14 @@
 import {
   BUILDING_TYPES,
   TRAIN_TYPES,
+  YARD_FIELD_TYPES,
   catalog,
   isAircraftType,
   isGarrisonable,
   isInfantryType,
   type BuildingType,
   type TrainType,
+  type YardFieldType,
 } from "@gridlock/shared";
 
 export type SidebarGroup = "structures" | "defences" | "infantry" | "tanks" | "aircraft";
@@ -33,13 +35,14 @@ export function sidebarGroupOf(type: BuildingType | TrainType): SidebarGroup {
 export interface GroupEntry {
   /** Cameo id: `build-<type>` or `train-<type>`. */
   id: string;
-  type: BuildingType | TrainType;
+  type: BuildingType | TrainType | YardFieldType;
 }
 
 /** Cameos in each group, in catalog order. */
 export function groupEntries(): Record<SidebarGroup, GroupEntry[]> {
   const out: Record<SidebarGroup, GroupEntry[]> = { structures: [], defences: [], infantry: [], tanks: [], aircraft: [] };
   for (const type of BUILDING_TYPES) out[sidebarGroupOf(type)].push({ id: "build-" + type, type });
+  for (const type of YARD_FIELD_TYPES) out.defences.push({ id: "build-" + type, type });
   for (const type of TRAIN_TYPES) out[sidebarGroupOf(type)].push({ id: "train-" + type, type });
   return out;
 }

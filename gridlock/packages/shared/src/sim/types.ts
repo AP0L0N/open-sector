@@ -1,4 +1,4 @@
-import type { AirDrop, BuildingType, Crit, DroneMode, EntityType, FieldStructureType, InfantryWeaponId, ShellType, Stance, TrainType } from "../catalog.js";
+import type { AirDrop, BuildingType, Crit, DroneMode, EntityType, FieldStructureType, InfantryWeaponId, ShellType, Stance, TrainType, YardFieldType } from "../catalog.js";
 import type { AiDifficulty, ClientMessage, CorpseView, EntityState, ImpactView, ShellHoleView } from "../protocol.js";
 
 export interface Vec {
@@ -17,7 +17,7 @@ export interface TrainJob {
 }
 
 export interface StructureJob {
-  type: BuildingType;
+  type: BuildingType | YardFieldType;
   progressTicks: number;
   totalTicks: number;
   ready: boolean;
@@ -488,7 +488,7 @@ export interface SimPlayer {
   alive: boolean;
   scrap: number;
   structure: StructureJob | null;
-  placingType: BuildingType | null;
+  placingType: BuildingType | YardFieldType | null;
   hqId: number;
   /** CPU seat. Omitted for humans. */
   ai?: AiDifficulty;

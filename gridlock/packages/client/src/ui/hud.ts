@@ -1,5 +1,6 @@
 import {
   BUILDING_TYPES,
+  YARD_FIELD_TYPES,
   CRIT_LABEL,
   DRONE_MODE_LABEL,
   SHELL_TYPES,
@@ -49,6 +50,7 @@ import {
   wreckScrapOf,
   WALKER_GUN_MODES,
   type BuildingType,
+  type YardFieldType,
   type EntityType,
   type EntityView,
   type MatchSnapshot,
@@ -67,6 +69,7 @@ import {
 } from "../render/mapview.js";
 import { buzzDeny } from "./audio.js";
 import { el } from "./dom.js";
+import { garrisonRoster, type GarrisonSeat } from "./garrison-roster.js";
 import {
   SIDEBAR_GROUPS,
   groupEntries,
@@ -77,7 +80,7 @@ import {
 let viewRef: MapView | null = null;
 let configFocus: EntityType | null = null;
 /** Ready structure: first right-click is a no-op; second cancels. */
-let readyCancelArmed: BuildingType | null = null;
+let readyCancelArmed: BuildingType | YardFieldType | null = null;
 let sidebarGroup: SidebarGroup = "structures";
 
 /** Fire on press so a snapshot rebuild cannot swallow the click between mousedown and mouseup. */
@@ -128,8 +131,11 @@ export function mountBattlefield(
   const body = el("div", { class: "battle-canvas-wrap" });
   const canvas = el("canvas", { attrs: { id: "map-canvas" } });
   const queue = el("div", { class: "prod-queue", attrs: { id: "prod-queue" } });
+  const roster = el("div", { class: "garrison-roster", attrs: { id: "garrison-roster" } });
   const actions = el("div", { class: "quick-actions", attrs: { id: "quick-actions" } });
-  body.append(canvas, queue, actions);
+  const commands = el("div", { class: "battle-commands" });
+  commands.append(roster, actions);
+  body.append(canvas, queue, commands);
 
   const side = el("aside", { class: "sidebar" });
   side.append(el("h3", { text: "Radar" }));
@@ -188,9 +194,10 @@ export function mountBattlefield(
     paintInspect(ctx, view);
     paintConfig(ctx, view);
     paintQuickActions(ctx, view);
+    paintGarrisonRoster(ctx, view);
   };
 
-  for (const type of BUILDING_TYPES) {
+  for (const type of [...BUILDING_TYPES, ...YARD_FIELD_TYPES]) {
     const btn = document.getElementById("build-" + type);
     btn?.addEventListener("click", (e) => {
       const m = ctx.match;
@@ -200,7 +207,7 @@ export function mountBattlefield(
         paintBattleHud(ctx);
         return;
       }
-      if (q?.type === type && !q.ready) {
+      if (q && q.type === type && !q.ready) {
         if ((e.target as HTMLElement | null)?.closest(".cameo-hold, .cameo-paused") || q.paused) {
           ctx.net.send({ type: "cmd.pause", what: "structure", paused: !q.paused });
         }
@@ -277,7 +284,7 @@ export function mountBattlefield(
   return view;
 }
 
-function structureReady(m: MatchSnapshot | null | undefined, type: BuildingType): boolean {
+function structureReady(m: MatchSnapshot | null | undefined, type: BuildingType | YardFieldType): boolean {
   if (!m) return false;
   if (m.you.placingType === type) return true;
   return m.you.structureQueue?.ready === true && m.you.structureQueue.type === type;
@@ -463,7 +470,7 @@ export function paintBattleHud(ctx: Ctx): void {
   const coreUp = m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === "core");
   const q = m.you.structureQueue;
   if (!q?.ready || q.type !== readyCancelArmed) readyCancelArmed = null;
-  for (const type of BUILDING_TYPES) {
+  for (const type of [...BUILDING_TYPES, ...YARD_FIELD_TYPES]) {
     const btn = document.getElementById("build-" + type) as HTMLButtonElement | null;
     if (!btn) continue;
     const job = q?.type === type ? q : null;
@@ -542,6 +549,7 @@ export function paintBattleHud(ctx: Ctx): void {
   paintInspect(ctx, viewRef);
   paintConfig(ctx, viewRef);
   paintQuickActions(ctx, viewRef);
+  paintGarrisonRoster(ctx, viewRef);
 }
 
 function paintInspect(ctx: Ctx, view: MapView | null): void {
@@ -1339,6 +1347,74 @@ function paintConfig(ctx: Ctx, view: MapView | null): void {
     body.dataset.layout = layout;
   }
   patchConfigBody(body, focus, live, wrecks, you);
+}
+
+function paintGarrisonRoster(ctx: Ctx, view: MapView | null): void {
+  const root = document.getElementById("garrison-roster");
+  if (!root) return;
+  const hosts = new Set<number>();
+  if (ctx.match && view) {
+    for (const e of selectedViews(ctx, view)) {
+      if ((e.garrison?.count ?? 0) > 0 && e.hp > 0) hosts.add(e.id);
+    }
+  }
+  const seats = ctx.match ? garrisonRoster(ctx.match.entities, hosts) : [];
+  const sig = seats.map((s) => s.id).join(",");
+  if (root.dataset.seats !== sig) {
+    root.dataset.seats = sig;
+    root.replaceChildren(...seats.map(garrisonSeatNode));
+  }
+  const nodes = root.children;
+  for (let i = 0; i < seats.length; i++) {
+    const node = nodes[i] as HTMLElement | undefined;
+    const seat = seats[i];
+    if (node && seat) patchGarrisonSeat(node, seat);
+  }
+}
+
+function garrisonSeatNode(seat: GarrisonSeat): HTMLElement {
+  const name = catalog(seat.type).name;
+  const node = el("div", { class: "garrison-seat", attrs: { "data-id": String(seat.id), title: name } });
+  const cameo = el("div", { class: "config-type", attrs: { "data-type": seat.type, title: name } });
+  const bars = el("div", { class: "seat-bars" });
+  const hp = el("span", { class: "seat-track" });
+  hp.append(el("span", { class: "seat-hp" }));
+  const primary = el("span", { class: "seat-track" });
+  primary.append(el("span", { class: "seat-ammo" }));
+  const secondary = el("span", { class: "seat-track" });
+  secondary.append(el("span", { class: "seat-ammo is-secondary" }));
+  bars.append(hp, primary, secondary);
+  node.append(cameo, bars);
+  return node;
+}
+
+function patchGarrisonSeat(node: HTMLElement, seat: GarrisonSeat): void {
+  const name = catalog(seat.type).name;
+  node.title = name;
+  const cameo = node.querySelector(".config-type");
+  if (cameo instanceof HTMLElement && cameo.dataset.type !== seat.type) {
+    cameo.dataset.type = seat.type;
+    cameo.title = name;
+  }
+  const hp = node.querySelector(".seat-hp");
+  if (hp instanceof HTMLElement) {
+    hp.style.width = `${Math.round(seat.hp * 100)}%`;
+    hp.classList.toggle("is-mid", seat.tone === "mid");
+    hp.classList.toggle("is-low", seat.tone === "low");
+  }
+  const tracks = node.querySelectorAll(".seat-track");
+  for (let i = 1; i < tracks.length; i++) {
+    const track = tracks[i];
+    const fill = track?.querySelector(".seat-ammo");
+    const value = seat.ammo[i - 1];
+    if (!(track instanceof HTMLElement) || !(fill instanceof HTMLElement)) continue;
+    if (value == null) {
+      track.hidden = true;
+      continue;
+    }
+    track.hidden = false;
+    fill.style.width = `${Math.round(value * 100)}%`;
+  }
 }
 
 function paintQuickActions(ctx: Ctx, view: MapView | null): void {
