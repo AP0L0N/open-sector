@@ -36,6 +36,19 @@ describe("unitShadowFootprint", () => {
     assert.ok(e.w > e.h);
   });
 
+  it("puts a contact patch under the feet, not with the slid blob", () => {
+    const foot = unitShadowFootprint({ x: 40, y: 80, facing: 0, radius: 12, elongated: true });
+    const cx = foot.contact.reduce((s, p) => s + p.x, 0) / foot.contact.length;
+    const cy = foot.contact.reduce((s, p) => s + p.y, 0) / foot.contact.length;
+    assert.ok(Math.abs(cx - 40) < 1e-9 && Math.abs(cy - 80) < 1e-9);
+    assert.ok(extent(foot.contact).w < extent(foot.points).w);
+  });
+
+  it("has no contact patch while airborne", () => {
+    const foot = unitShadowFootprint({ x: 0, y: 0, facing: 0, radius: 12, elongated: true, airborne: true });
+    assert.equal(foot.contact.length, 0);
+  });
+
   it("keeps infantry roughly round", () => {
     const e = extent(unitShadowFootprint({ x: 0, y: 0, facing: 0, radius: 7, elongated: false }).points);
     assert.ok(Math.abs(e.w - e.h) < 0.05);

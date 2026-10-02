@@ -9,6 +9,8 @@ const SLIDE_ANGLE = Math.PI / 8;
 /** How far the blob center slides from the feet, per unit of height. */
 const SLIDE = 0.18;
 const SEGS = 16;
+/** Contact patch size, as a share of the blob. */
+const CONTACT = 0.62;
 
 export function shadowStanceScale(stance?: string): number {
   if (stance === "crawl") return 0.38;
@@ -31,7 +33,9 @@ export function unitShadowFootprint(opts: {
   radius: number;
   elongated: boolean;
   stance?: string;
-}): { cx: number; cy: number; points: { x: number; y: number }[] } {
+  /** Off the ground (a flying plane): no contact patch under it. */
+  airborne?: boolean;
+}): { cx: number; cy: number; points: { x: number; y: number }[]; contact: { x: number; y: number }[] } {
   const height = Math.max(2, opts.radius * 0.7 * shadowStanceScale(opts.stance));
   const cx = opts.x + Math.cos(SLIDE_ANGLE) * height * SLIDE;
   const cy = opts.y + Math.sin(SLIDE_ANGLE) * height * SLIDE;
@@ -39,20 +43,27 @@ export function unitShadowFootprint(opts: {
   const across = opts.radius * (opts.elongated ? 0.52 : 0.72);
   const fx = Math.cos(opts.facing);
   const fy = Math.sin(opts.facing);
-  const points: { x: number; y: number }[] = [];
-  for (let i = 0; i < SEGS; i++) {
-    const t = (i / SEGS) * Math.PI * 2;
-    const ca = Math.cos(t);
-    const sa = Math.sin(t);
-    points.push({
-      x: cx + fx * along * ca - fy * across * sa,
-      y: cy + fy * along * ca + fx * across * sa,
-    });
-  }
-  return { cx, cy, points };
+  const ring = (ox: number, oy: number, a: number, b: number): { x: number; y: number }[] => {
+    const out: { x: number; y: number }[] = [];
+    for (let i = 0; i < SEGS; i++) {
+      const t = (i / SEGS) * Math.PI * 2;
+      const ca = Math.cos(t);
+      const sa = Math.sin(t);
+      out.push({ x: ox + fx * a * ca - fy * b * sa, y: oy + fy * a * ca + fx * b * sa });
+    }
+    return out;
+  };
+  const points = ring(cx, cy, along, across);
+  // Right under the feet or tracks, where the body meets the ground.
+  const contact = opts.airborne ? [] : ring(opts.x, opts.y, along * CONTACT, across * CONTACT);
+  return { cx, cy, points, contact };
 }
 
-export function drawGroundShadow(ctx: CanvasRenderingContext2D, points: { x: number; y: number }[]): void {
+export function drawGroundShadow(
+  ctx: CanvasRenderingContext2D,
+  points: { x: number; y: number }[],
+  contact: { x: number; y: number }[] = [],
+): void {
   if (points.length < 3) return;
   let cx = 0;
   let cy = 0;
@@ -80,5 +91,13 @@ export function drawGroundShadow(ctx: CanvasRenderingContext2D, points: { x: num
   for (let i = 1; i < points.length; i++) ctx.lineTo(points[i]!.x, points[i]!.y);
   ctx.closePath();
   ctx.fill();
+  if (contact.length >= 3) {
+    ctx.fillStyle = "rgba(10, 8, 5, 0.2)";
+    ctx.beginPath();
+    ctx.moveTo(contact[0]!.x, contact[0]!.y);
+    for (let i = 1; i < contact.length; i++) ctx.lineTo(contact[i]!.x, contact[i]!.y);
+    ctx.closePath();
+    ctx.fill();
+  }
   ctx.restore();
 }
