@@ -12,10 +12,11 @@ import {
   TRAIN_TYPES,
   catalog,
   isAircraftType,
+  isCivilianType,
 } from "../catalog.js";
 import { resolveRoofHit, roofArmorOf } from "./ballistics.js";
 import { applyCommand } from "./commands.js";
-import { makeEntity, tileCenter } from "./geo.js";
+import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { spawnUnit } from "./train.js";
 import type { ImpactView } from "../protocol.js";
@@ -120,6 +121,11 @@ describe("Fw 190", () => {
 
   it("attack-move takes a plane in the air before a tank on the ground", () => {
     const state = twoPlayerMatch();
+    // Open, flat sky over the crossroads: the village and its levelled lots are not the point here.
+    state.heights.fill(0);
+    for (const e of [...state.entities.values()]) {
+      if (isCivilianType(e.type)) destroyEntity(state, e);
+    }
     const ts = state.tileSize;
     makeEntity(state, "warden", "B", 106 * ts, 100 * ts);
     const foe = planeOver(state, "stuka", "B", 108 * ts, 100 * ts);
