@@ -299,6 +299,10 @@ export interface Entity {
   weapon: InfantryWeaponId | null;
   /** Walker arms in use. 1 conserves the rack. 2 is both guns. Other types omit it. */
   gatlingGuns?: 1 | 2;
+  /** Player turned Walker self-destroy off. Missing means on. */
+  selfDestructOff?: true;
+  /** Charging to detonate. Sim-only. Cleared when the option is off or HP recovers. */
+  charging?: true;
   /** Titan outriggers are down: stationary, hull locked, braced max HP. Missing means false. */
   braced?: boolean;
   /** Seconds until the Titan's pods can fire the next rocket. Missing means ready. */
@@ -426,6 +430,11 @@ export interface Projectile {
   bounced: boolean;
   /** Loaded 75mm type. Null for rifles / MG. */
   shell: ShellType | null;
+  /**
+   * Walker, Cyborg, pad CIWS, or Apocalypse roof round. A living light hull
+   * only sometimes takes it. Not on the wire.
+   */
+  gatling?: boolean;
   /**
    * Infantry hit deals this share of the victim's max HP.
    * Set by the scoped rifle and the PTRD. Omitted for every other gun.

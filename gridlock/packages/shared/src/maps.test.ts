@@ -231,7 +231,8 @@ describe("maps", () => {
     );
     const w = yard.width;
     const h = yard.height;
-    const open = (t: number): boolean => t !== TILE_FENCE && t !== TILE_BLOCKED && t !== TILE_WATER;
+    const open = (t: number): boolean =>
+      t !== TILE_FENCE && t !== TILE_BLOCKED && t !== TILE_WATER && t !== TILE_ROCK;
     const start = yard.spawns[0]!;
     const seen = new Uint8Array(w * h);
     const q: { x: number; y: number }[] = [{ x: start.x, y: start.y }];
@@ -257,6 +258,98 @@ describe("maps", () => {
     for (const s of yard.spawns) {
       assert.equal(seen[s.y * w + s.x], 1, `spawn ${s.id} is fenced off`);
       assert.notEqual(tileAt(yard, s.x, s.y), TILE_FENCE, `spawn ${s.id} on a fence`);
+    }
+    for (let k = 0; k < yard.tiles.length; k++) {
+      if (yard.tiles[k] === TILE_SCRAP) assert.equal(seen[k], 1, `scrap at ${k % w},${(k / w) | 0} is cut off`);
+    }
+  });
+
+  it("winds the scrap-yard lanes instead of ruling them straight", () => {
+    const yard = MAPS["yard-64"]!;
+    const w = yard.width;
+    const midX = Math.floor(w / 2);
+    const midY = Math.floor(yard.height / 2);
+    const nearestRoad = (px: number, py: number): number => {
+      for (let r = 0; r < 40; r++) {
+        for (let dy = -r; dy <= r; dy++) {
+          for (let dx = -r; dx <= r; dx++) {
+            if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
+            if (tileAt(yard, px + dx, py + dy) === TILE_ROAD) return r;
+          }
+        }
+      }
+      return 40;
+    };
+    for (const s of yard.spawns.slice(0, 4)) {
+      let wander = 0;
+      for (let i = 1; i < 10; i++) {
+        const t = 0.2 + (i / 10) * 0.6;
+        const px = Math.round(s.x + (midX - s.x) * t);
+        const py = Math.round(s.y + (midY - s.y) * t);
+        wander = Math.max(wander, nearestRoad(px, py));
+      }
+      assert.ok(wander >= 3, `spawn ${s.id} lane is ruler-straight (wander ${wander})`);
+    }
+  });
+
+  it("puts rocky flanks on scrap-yard hills and leaves every summit a way up", () => {
+    const yard = MAPS["yard-64"]!;
+    const w = yard.width;
+    const h = yard.height;
+    let rock = 0;
+    for (let k = 0; k < yard.tiles.length; k++) {
+      if (yard.tiles[k] !== TILE_ROCK) continue;
+      rock++;
+      assert.ok(heightAt(yard, k % w, (k / w) | 0) > HEIGHT_BASE, `rock on flat ground at ${k % w},${(k / w) | 0}`);
+    }
+    assert.ok(rock > 150, `rock ${rock}`);
+    for (const s of yard.spawns) {
+      for (let dy = -20; dy <= 20; dy++) {
+        for (let dx = -20; dx <= 20; dx++) {
+          assert.notEqual(tileAt(yard, s.x + dx, s.y + dy), TILE_ROCK, `rock by spawn ${s.id}`);
+        }
+      }
+    }
+    const closed = (t: number): boolean =>
+      t === TILE_ROCK || t === TILE_BLOCKED || t === TILE_WATER || t === TILE_FENCE;
+    const start = yard.spawns[0]!;
+    const seen = new Uint8Array(w * h);
+    const q: { x: number; y: number }[] = [{ x: start.x, y: start.y }];
+    seen[start.y * w + start.x] = 1;
+    for (let i = 0; i < q.length; i++) {
+      const c = q[i]!;
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        const x = c.x + dx;
+        const y = c.y + dy;
+        if (x < 0 || y < 0 || x >= w || y >= h) continue;
+        const k = y * w + x;
+        if (seen[k] || closed(yard.tiles[k] ?? TILE_BLOCKED)) continue;
+        if (Math.abs(heightAt(yard, c.x, c.y) - heightAt(yard, x, y)) > HEIGHT_STEP_MAX) continue;
+        seen[k] = 1;
+        q.push({ x, y });
+      }
+    }
+    for (let y = 10; y < h - 10; y++) {
+      for (let x = 10; x < w - 10; x++) {
+        const top = heightAt(yard, x, y);
+        if (top < HEIGHT_BASE + 4) continue;
+        let peak = true;
+        for (let dy = -10; dy <= 10 && peak; dy++) {
+          for (let dx = -10; dx <= 10; dx++) {
+            if (heightAt(yard, x + dx, y + dy) > top) {
+              peak = false;
+              break;
+            }
+          }
+        }
+        if (!peak || closed(tileAt(yard, x, y))) continue;
+        assert.equal(seen[y * w + x], 1, `summit ${x},${y} (h ${top}) is walled in`);
+      }
     }
   });
 

@@ -822,6 +822,31 @@ export const WALKER_GUN_MODES = [
 ] as const;
 
 /**
+ * Self destroy. On by default. At a fifth of his health he charges the nearest
+ * enemy he can see and detonates. Config is the off switch.
+ */
+export const WALKER_SELF_DESTRUCT_HP = 0.2;
+/** Blast radius of that detonation, in gameplay tiles. */
+export const WALKER_BLAST_TILES = t(1.5);
+/** HP at the center against a hull heavier than light plate. The rim still nicks. */
+export const WALKER_BLAST_HEAVY = 14;
+/** HP at the center against infantry, light hulls, buildings, and everything else. */
+export const WALKER_BLAST_SOFT = 48;
+
+export const WALKER_SELF_DESTRUCT_MODES = [
+  {
+    id: "on" as const,
+    name: "Self destroy",
+    blurb: "At a fifth of his health he charges the nearest enemy and detonates. The blast nicks a tank and hits everything else harder. Nothing is left of him.",
+  },
+  {
+    id: "off" as const,
+    name: "Hold together",
+    blurb: "He does not charge. Shot apart, he leaves a wreck.",
+  },
+] as const;
+
+/**
  * Cyborg. Half soldier, half machine: one gatling in place of the right arm,
  * the same bullet and cadence as one Walker gun, fed from a drum on his back.
  * The drum does not reload by itself — a supply truck tops it up.
@@ -913,6 +938,17 @@ export const PTRD_PEN_CLOSE = 35;
 export const PTRD_PEN_FAR = 22;
 /** Front plate at or under this is a light hull. The Walker is 18. */
 export const PTRD_LIGHT_FRONT = 20;
+/**
+ * Chance a gatling round punches a living light hull. Walker gatlings, the
+ * Cyborg's arm, the pad CIWS, and the Apocalypse roof. The Gunner's MG42 is
+ * the same bullet and is not included. Heavier plate stays on the normal hit.
+ */
+export const GATLING_LIGHT_CHANCE = 0.08;
+
+/** A vehicle whose front plate is thin enough for a PTRD, and for a gatling nick. */
+export function isLightHull(def: { kind: string; armorFront: number }): boolean {
+  return def.kind === "unit" && def.armorFront > 0 && def.armorFront <= PTRD_LIGHT_FRONT;
+}
 /**
  * Share of max HP on a penetrating hit. A 14.5 mm hole, not a shell burst.
  * Light hulls lose about a third. A tank side is a wound and a component.
@@ -1061,6 +1097,8 @@ export const ARTILLERY_TOW_SPEED = 0.8;
 export const ARTILLERY_TOW_GAP = 2;
 /** A truck within this gap of the gun hitches it, and the gun swings round behind. */
 export const ARTILLERY_HITCH_SLACK = 10;
+/** Field-gun shells hit buildings this many times harder. */
+export const ARTILLERY_BUILDING_MUL = 2;
 export const ARTILLERY_SHELL: LobShellDef = {
   damage: 150,
   penetration: 40,
@@ -1589,7 +1627,7 @@ export const CIWS_SHOTS_PER_TICK = 3;
 export const CIWS_BELT = 1200;
 export const CIWS_GUN = {
   damage: 9,
-  /** Through a Walker, a truck, and a light tank's thin side. Not a tank's front. */
+  /** A light tank's thin side. A Walker or a truck only sometimes takes a round. Not a tank's front. */
   penetration: 22,
   caliber: 20,
   spreadDeg: 3.5,
@@ -1608,7 +1646,7 @@ export const CIWS_INTERCEPTS_PER_TICK = 2;
  * same 20mm rounds, fewer barrels, a shorter reach, and a belt the size of a
  * tank's stowage. It lays itself. A hostile missile inside its reach is the
  * first thing it shoots, and it bursts that missile more often than a pad CIWS
- * does. With the sky clear it takes a plane, then infantry and light hulls.
+ * does. With the sky clear it takes a plane, then infantry, and sometimes a Walker or a truck.
  */
 export const APOCALYPSE_CIWS_RANGE_TILES = t(7);
 /** Rounds each tick. Two a tick is 1,200 a minute. */
@@ -2206,7 +2244,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shotsPerTick: CIWS_SHOTS_PER_TICK,
     belt: CIWS_BELT,
     radarLaid: true,
-    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, and tries to burst incoming rockets in the air. Leaves tanks and buildings alone. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, and tries to burst incoming rockets in the air. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
   },
   bunker: {
     type: "bunker",
@@ -2730,7 +2768,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     mgAmmo: APOCALYPSE_CIWS_BELT,
     leavesWreck: true,
     wreckHp: 110,
-    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts most of them, then planes, infantry, and light hulls. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
+    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts most of them, then planes, infantry, and sometimes a Walker or a truck. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
   },
   /** Spec: gridlock/packages/client/src/assets/units/ss3/stug-iii-ausf-g-late-saukopf.md */
   ss3: {
@@ -2803,7 +2841,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     belt: WALKER_BELT,
     leavesWreck: true,
     wreckHp: 36,
-    blurb: "Each arm is a gatling at the MG42's 1,200 rounds a minute, the same bullet. The torso turns on the hips, so he fires while he walks. The backpack is a 1,200-round rack and does not reload by itself. One arm spends it slowly. Both arms spend it twice as fast and can split across two targets. The guns do not bring a building down.",
+    blurb: "Each arm is a gatling at the MG42's 1,200 rounds a minute, the same bullet. A round sometimes bites a Walker or a truck; tank plate turns it. The torso turns on the hips, so he fires while he walks. The backpack is a 1,200-round rack and does not reload by itself. One arm spends it slowly. Both arms spend it twice as fast and can split across two targets. The guns do not bring a building down. At a fifth of his health he charges the nearest enemy he can see and detonates, unless Self destroy is off in Config. The blast nicks a tank and hits everything else harder, and he leaves no wreck.",
   },
   cyborg: {
     type: "cyborg",
@@ -2828,7 +2866,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: GATLING.penetration,
     caliber: GATLING.caliber,
     spreadDeg: GATLING.spreadDeg,
-    blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back.",
+    blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back.",
   },
   titan: {
     type: "titan",

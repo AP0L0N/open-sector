@@ -15,7 +15,7 @@ import type {
   YardFieldType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 63;
+export const PROTOCOL_VERSION = 64;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -145,6 +145,11 @@ export interface EntityView {
   clip?: number;
   /** Walker arms selected. 1 or 2. Omitted for everyone else. */
   guns?: 1 | 2;
+  /**
+   * Own living Walker. True when Self destroy is on. False when the player
+   * turned it off. Omitted for everyone else.
+   */
+  selfDestruct?: boolean;
   /** Walker arms that fired during the last step. `off` is the second arm's bearing when it took another target. */
   gatling?: { arms: 1 | 2; off?: number };
   /** Apocalypse roof mount: its world facing, and `fire` when it shot during the last step. */
@@ -536,6 +541,8 @@ export type ClientMessage =
   | { type: "cmd.ammo"; ids: number[]; shell: ShellType }
   | { type: "cmd.weapon"; ids: number[]; weapon: InfantryWeaponId }
   | { type: "cmd.guns"; ids: number[]; guns: 1 | 2 }
+  /** Walker self-destroy. On by default. `on: false` is Hold together. */
+  | { type: "cmd.selfdestruct"; ids: number[]; on: boolean }
   | { type: "cmd.rockets"; ids: number[]; on: boolean }
   | { type: "cmd.build"; building: BuildingType | YardFieldType }
   | { type: "cmd.place"; building: BuildingType; tx: number; ty: number }

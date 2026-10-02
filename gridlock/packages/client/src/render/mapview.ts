@@ -109,6 +109,10 @@ import {
   INFANTRY_VISUAL_SCALE,
   OAK_FACES,
   PINE_FACES,
+  BOULDER_FACES,
+  BUSH_FACES,
+  SIGN_FACES,
+  STUMP_FACES,
   CRATER_FACES,
   CIWS_TURRET_SHEET,
   RAM_TURRET_SHEET,
@@ -119,6 +123,7 @@ import {
   critIcon,
   drawBuildingSprite,
   drawPropSprite,
+  type PropSprite,
   drawScoutHead,
   drawUnitSprite,
   infantryDieSprite,
@@ -282,6 +287,7 @@ import { drawTreeFall, TREE_FALL_MS } from "./tree-fall.js";
 import { drawBurnedCorpse, drawBurningTree } from "./burn-draw.js";
 import { burnAnimMs, burnDeathPose } from "./burn-death.js";
 import { TREE_BURN_MS, treeStamp } from "./tree-burn.js";
+import { decorFor, type DecorKind } from "./decor.js";
 import { lerpHullPose } from "./hull-lerp.js";
 import { canGuardUnit, planeBoardCandidate, resolveHoverAction, type HoverAction } from "./hover-action.js";
 import { planColor, withQueue } from "./order-queue.js";
@@ -318,6 +324,8 @@ const EDGE_SCROLL_KEY = "gridlock.edgeScroll";
 
 /** World span the pyramid sprite is scaled against. Its cell holds far more than the pyramid itself. */
 const TEETH_DRAW_WORLD = 56;
+/** A field gun must sit still this long (ms) before its crew drops from the trail to the breech. */
+const GUN_CREW_SETTLE_MS = 600;
 let edgeScroll = localStorage.getItem(EDGE_SCROLL_KEY) === "1";
 
 /** Iso-space px/s for arrow keys, W/D, and optional edge scroll. */
@@ -468,6 +476,15 @@ function sheetCellAlpha(img: HTMLImageElement, cell: number, row: number): Uint8
   return g.getImageData(0, 0, cell, cell).data;
 }
 
+const DECOR_FACES: Record<DecorKind, readonly PropSprite[]> = {
+  bush: BUSH_FACES,
+  sign: SIGN_FACES,
+  boulder: BOULDER_FACES,
+  stump: STUMP_FACES,
+  stones: [],
+  crater: [],
+};
+
 export class MapView {
   private readonly canvas: HTMLCanvasElement;
   private readonly mini: HTMLCanvasElement;
@@ -604,6 +621,8 @@ export class MapView {
   /** Rig tread reach per snapped world face. The painted hull is longer than the collision radius. */
   private rigTread = new Map<number, { back: number; front: number }>();
   private maulerCarts = new Map<number, CartPose>();
+  /** Field guns whose crew is on the trail, and when the gun last moved (ms). */
+  private gunHaulAt = new Map<number, number>();
   private gunRecoil = new Map<number, GunRecoil>();
   private muzzleSmokes: MuzzleSmokePuff[] = [];
   private occBuildings: {
@@ -2717,6 +2736,7 @@ export class MapView {
     }
     this.collectFieldSites(items);
     this.collectTrees(items, castShadows);
+    this.collectDecor(items);
     this.collectTreeBurns(items);
     // One path under craters and unit blobs, so overlapping shadows don't stack.
     items.push({ layer: HOLE_DRAW_LAYER, z: -Infinity, run: () => drawCastShadows(this.ctx, castShadows) });
@@ -3549,6 +3569,7 @@ export class MapView {
       const p = this.lerpEnt(e);
       const truck = e.gun.towedBy != null ? byId.get(e.gun.towedBy) : undefined;
       if (truck) {
+        this.gunHaulAt.delete(e.id);
         const t = this.lerpEnt(truck);
         const hook = { x: t.x - Math.cos(t.facing) * catalog(truck.type).radius, y: t.y - Math.sin(t.facing) * catalog(truck.type).radius };
         const trail = { x: p.x - Math.cos(p.facing) * catalog(e.type).radius, y: p.y - Math.sin(p.facing) * catalog(e.type).radius };
@@ -3560,7 +3581,13 @@ export class MapView {
         continue;
       }
       // "walker" asks for real travel only, so a gun swinging onto a target does not walk its crew.
-      const hauling = e.state === "move" || unitStepping({ type: "walker", state: e.state, prev: this.prevById.get(e.id), curr: e });
+      const moving = e.state === "move" || unitStepping({ type: "walker", state: e.state, prev: this.prevById.get(e.id), curr: e });
+      // A crawling gun can sit still for a snapshot or two; the crew stays on the trail until it has really stopped.
+      const now = performance.now();
+      if (moving) this.gunHaulAt.set(e.id, now);
+      const last = this.gunHaulAt.get(e.id);
+      const hauling = last != null && now - last < GUN_CREW_SETTLE_MS;
+      if (!hauling) this.gunHaulAt.delete(e.id);
       const back = p.facing + Math.PI;
       const side = p.facing + Math.PI / 2;
       const r = catalog(e.type).radius;
@@ -3843,6 +3870,44 @@ export class MapView {
         at: { x: wx, y: wy },
         run: () => {
           if (spr) drawPropSprite(this.ctx, spr, p.x, p.y, drawH, false, veil);
+        },
+      });
+    }
+  }
+
+  /** Bushes, signposts, boulders, and stumps from the map dress, sorted with units. */
+  private collectDecor(items: DrawItem[]): void {
+    const map = this.map();
+    const ts = map.tileSize;
+    const w = map.width;
+    const { w: vw, h: vh } = this.viewSize();
+    const now = performance.now();
+    // A structure raised on dressed ground hides the prop under it.
+    const built = new Set<number>();
+    const cover = (e: EntityView): void => {
+      if (e.kind !== "building") return;
+      for (let y = e.tileY; y < e.tileY + e.tileH; y++) {
+        for (let x = e.tileX; x < e.tileX + e.tileW; x++) built.add(y * w + x);
+      }
+    };
+    for (const e of this.curr.entities) cover(e);
+    for (const e of this.ghosts.values()) cover(e);
+    for (const it of decorFor(map).standing) {
+      if (built.has(it.ty * w + it.tx)) continue;
+      const wx = (it.tx + it.ox) * ts;
+      const wy = (it.ty + it.oy) * ts;
+      const p = this.toScreen(wx, wy);
+      if (p.x < -64 || p.y < -16 || p.x > vw + 64 || p.y > vh + 64) continue;
+      const faces = DECOR_FACES[it.kind];
+      const spr = faces[it.face % faces.length];
+      if (!spr) continue;
+      const veil = this.fogField?.veil(it.tx + it.ox, it.ty + it.oy, now) ?? 0;
+      items.push({
+        layer: STANDING_DRAW_LAYER,
+        z: isoDepth(wx, wy),
+        at: { x: wx, y: wy },
+        run: () => {
+          drawPropSprite(this.ctx, spr, p.x, p.y, it.drawH, it.flip, veil);
         },
       });
     }

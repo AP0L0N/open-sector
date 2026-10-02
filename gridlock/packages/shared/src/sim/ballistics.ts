@@ -2,6 +2,7 @@
 
 import {
   FW190_ROOF_HP_SHARE,
+  GATLING_LIGHT_CHANCE,
   PTRD_CALIBER,
   PTRD_CLOSE_TILES,
   PTRD_DMG_LIGHT,
@@ -375,6 +376,39 @@ export function resolveRoofHit(opts: {
   const damage = Math.min(opts.targetHp, Math.max(1, Math.round(opts.targetHpMax * frac)));
   if (damage >= opts.targetHp) return kill(opts.targetHp, "rear", roof, overmatch);
   return { kind: "pen", face: "rear", damage, bounceVx: 0, bounceVy: 0, effectiveArmor: roof, overmatch };
+}
+
+/**
+ * Gatling round against a living light hull. Most spark. A few punch through
+ * and deal the round's own damage. A grazing angle always sparks. Heavier
+ * plate stays on resolveHit. The nick does not roll a mobility crit.
+ */
+export function resolveGatlingLight(opts: {
+  damage: number;
+  caliber: number;
+  target: CatalogEntry;
+  targetFacing: number;
+  targetHp: number;
+  vx: number;
+  vy: number;
+  rand: () => number;
+}): HitResolution {
+  const { target, rand } = opts;
+  const speed = Math.hypot(opts.vx, opts.vy) || 1;
+  const face = hitFace(opts.targetFacing, opts.vx, opts.vy);
+  const armor = armorOn(target, face);
+  const n = faceNormal(opts.targetFacing, face, opts.vx, opts.vy);
+  const ix = opts.vx / speed;
+  const iy = opts.vy / speed;
+  const cosInc = clamp(-(ix * n.x + iy * n.y), 0, 1);
+  const incDeg = (Math.acos(cosInc) * 180) / Math.PI;
+  const effective = armor / Math.max(cosInc, MIN_COS);
+  const spark = (): HitResolution =>
+    reflect(ix, iy, n.x, n.y, speed, face, effective, 0, rand, opts.caliber);
+  if (incDeg >= RICOCHET_DEG || rand() >= GATLING_LIGHT_CHANCE) return spark();
+  const damage = Math.min(opts.targetHp, Math.max(1, Math.round(opts.damage * (0.9 + rand() * 0.2))));
+  if (damage >= opts.targetHp) return kill(opts.targetHp, face, effective, 1);
+  return { kind: "hit", face, damage, bounceVx: 0, bounceVy: 0, effectiveArmor: effective, overmatch: 1 };
 }
 
 /** Same bite test as resolveAtRifleHit, without the damage roll. */
