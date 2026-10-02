@@ -99,15 +99,25 @@ function tracePolys(ctx: CanvasRenderingContext2D, polys: Pt[][], grow: number):
   }
 }
 
-/** Screen-space polygons, all wound the same way. A soft rim, then the core. */
+/**
+ * Graded rims, outermost first. A single hard edge under a building reads as the
+ * edge of a slab it stands on; stacked rims let the shadow fade into the ground.
+ */
+const SHADOW_RIMS: readonly { grow: number; alpha: number }[] = [
+  { grow: 1.1, alpha: 0.05 },
+  { grow: 1.05, alpha: 0.06 },
+  { grow: 1, alpha: 0.07 },
+  { grow: 0.93, alpha: 0.08 },
+];
+
+/** Screen-space polygons, all wound the same way. Soft rims, then the core. */
 export function drawCastShadows(ctx: CanvasRenderingContext2D, polys: Pt[][]): void {
   if (polys.length === 0) return;
   ctx.save();
-  ctx.fillStyle = "rgba(10, 8, 5, 0.08)";
-  tracePolys(ctx, polys, 1.08);
-  ctx.fill("nonzero");
-  ctx.fillStyle = "rgba(10, 8, 5, 0.2)";
-  tracePolys(ctx, polys, 1);
-  ctx.fill("nonzero");
+  for (const rim of SHADOW_RIMS) {
+    ctx.fillStyle = `rgba(10, 8, 5, ${rim.alpha})`;
+    tracePolys(ctx, polys, rim.grow);
+    ctx.fill("nonzero");
+  }
   ctx.restore();
 }

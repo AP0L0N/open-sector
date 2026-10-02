@@ -208,6 +208,7 @@ import armIconUrl from "../assets/status/arm.png";
 import legIconUrl from "../assets/status/leg.png";
 import tracksIconUrl from "../assets/status/tracks.png";
 import engineIconUrl from "../assets/status/engine.png";
+import { blendPadInPlace } from "./pad-blend.js";
 
 /** Extra on-map scale for every unit (sprites and box fallbacks). */
 export const UNIT_VISUAL_SCALE = 1.25;
@@ -1447,6 +1448,8 @@ export interface BuildingSpriteDef {
   /** Source pixel at the center of the HP / selection stack, next to the roof. */
   stackX: number;
   stackY: number;
+  /** False keeps the pad's hard edge (a non-square footprint, like the Airfield). */
+  blend?: boolean;
 }
 
 function building(
@@ -1456,8 +1459,9 @@ function building(
   padSouthY: number,
   stackX: number,
   stackY: number,
+  blend = true,
 ): BuildingSpriteDef {
-  return { image: loadSheet(src), padWidth, padSouthX, padSouthY, stackX, stackY };
+  return { image: loadSheet(src), padWidth, padSouthX, padSouthY, stackX, stackY, blend };
 }
 
 const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
@@ -1467,7 +1471,7 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   muster: building(musterUrl, 385, 194.5, 333, 278, 52),
   smelter: building(smelterUrl, 384, 194, 393, 138, 90),
   // Hangar, tower, dump, tents. Metrics from tools/sprites/render_airfield.py (airfield.json).
-  airfield: building(airfieldUrl, 960, 652, 552, 604, 112),
+  airfield: building(airfieldUrl, 960, 652, 552, 604, 112, false),
   // Pad and plinth. Metrics from tools/sprites/render_ciws.py (ciws.json).
   ciws: building(ciwsUrl, 192, 126, 186, 126, 82.8),
   // Lab, dome, mast, coil annex. Metrics from tools/sprites/render_research.py (research.json).
@@ -1490,7 +1494,7 @@ export const RAM_TURRET_SHEET: HTMLImageElement = loadSheet(ramTurretUrl);
  * strip, hardstands, and revetments. Same canvas and anchor as its props image.
  */
 const BUILDING_GROUNDS: Partial<Record<EntityType, BuildingSpriteDef>> = {
-  airfield: building(airfieldGroundUrl, 960, 652, 552, 604, 112),
+  airfield: building(airfieldGroundUrl, 960, 652, 552, 604, 112, false),
 };
 
 export function buildingGroundFor(type: EntityType): BuildingSpriteDef | undefined {
@@ -1880,6 +1884,36 @@ export function snapHitToUnitSprite(
   return { x: dest.x + snap.x, y: dest.y + snap.y };
 }
 
+const blendedPads = new WeakMap<BuildingSpriteDef, HTMLCanvasElement | null>();
+
+/** The sprite with its baked pad frayed into the ground (`pad-blend.ts`), built once per def. */
+function blendedPad(def: BuildingSpriteDef): CanvasImageSource {
+  if (def.blend === false) return def.image;
+  const hit = blendedPads.get(def);
+  if (hit !== undefined) return hit ?? def.image;
+  const w = def.image.naturalWidth;
+  const h = def.image.naturalHeight;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const g = canvas.getContext("2d", { willReadFrequently: true });
+  if (!g) {
+    blendedPads.set(def, null);
+    return def.image;
+  }
+  g.drawImage(def.image, 0, 0);
+  try {
+    const px = g.getImageData(0, 0, w, h);
+    blendPadInPlace(px.data, w, h, def);
+    g.putImageData(px, 0, 0);
+  } catch {
+    blendedPads.set(def, null);
+    return def.image;
+  }
+  blendedPads.set(def, canvas);
+  return canvas;
+}
+
 export function drawBuildingSprite(
   ctx: CanvasRenderingContext2D,
   def: BuildingSpriteDef,
@@ -1894,7 +1928,7 @@ export function drawBuildingSprite(
   ctx.save();
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "low";
-  ctx.drawImage(def.image, southX - def.padSouthX * scale, southY - def.padSouthY * scale, dw, dh);
+  ctx.drawImage(blendedPad(def), southX - def.padSouthX * scale, southY - def.padSouthY * scale, dw, dh);
   ctx.restore();
   return true;
 }
