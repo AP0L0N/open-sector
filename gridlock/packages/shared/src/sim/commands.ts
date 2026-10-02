@@ -104,6 +104,9 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.guns":
       if (msg.guns !== 1 && msg.guns !== 2) return fail("bad_payload", "Unknown gatling setting.");
       return cmdGuns(state, playerId, msg.ids, msg.guns);
+    case "cmd.selfdestruct":
+      if (typeof msg.on !== "boolean") return fail("bad_payload", "Unknown self-destroy setting.");
+      return cmdSelfDestruct(state, playerId, msg.ids, msg.on);
     case "cmd.build":
       if (isYardField(msg.building)) return fail("bad_payload", "Place that on the map.");
       if (!isBuildingType(msg.building)) return fail("bad_payload", "Unknown structure.");
@@ -1219,6 +1222,21 @@ function cmdGuns(state: MatchState, playerId: string, ids: number[], guns: 1 | 2
   const units = owned(state, playerId, ids).filter((e) => e.type === "walker");
   if (units.length === 0) return fail("not_yours", "Select a Walker.");
   for (const e of units) e.gatlingGuns = guns;
+  return ok();
+}
+
+function cmdSelfDestruct(state: MatchState, playerId: string, ids: number[], on: boolean): CmdResult {
+  const units = owned(state, playerId, ids).filter((e) => e.type === "walker");
+  if (units.length === 0) return fail("not_yours", "Select a Walker.");
+  for (const e of units) {
+    e.selfDestructOff = on ? undefined : true;
+    // The charge is a move order. Turning it off has to drop that order now,
+    // or the walker keeps running until the next charge tick.
+    if (!on && e.charging) {
+      e.charging = undefined;
+      clearOrder(e);
+    }
+  }
   return ok();
 }
 

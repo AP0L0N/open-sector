@@ -88,6 +88,16 @@ import grassMeadowUrl from "../assets/terrain/grass-meadow.png";
 import grassDryUrl from "../assets/terrain/grass-dry.png";
 import grassDampUrl from "../assets/terrain/grass-damp.png";
 import dirtUrl from "../assets/terrain/ground-dirt.png";
+import rockTexUrl from "../assets/terrain/ground-rock.png";
+import boulder1Url from "../assets/terrain/boulder-1.png";
+import boulder2Url from "../assets/terrain/boulder-2.png";
+import boulder3Url from "../assets/terrain/boulder-3.png";
+import stones1Url from "../assets/terrain/stones-1.png";
+import stones2Url from "../assets/terrain/stones-2.png";
+import stump1Url from "../assets/terrain/stump-1.png";
+import stump2Url from "../assets/terrain/stump-2.png";
+import signpost1Url from "../assets/terrain/signpost-1.png";
+import signpost2Url from "../assets/terrain/signpost-2.png";
 import trooperSheetUrl from "../assets/units/trooper-walk.png";
 import trooperCrouchUrl from "../assets/units/trooper-crouch.png";
 import trooperCrawlUrl from "../assets/units/trooper-crawl.png";
@@ -1563,6 +1573,16 @@ export const TUFT_FACES: PropSprite[] = [
   prop(tuft3Url, 233, 334),
 ];
 export const SCRAP_FACES: PropSprite[] = [prop(scrap1Url, 213, 278), prop(scrap3Url, 185, 417)];
+/** Map dress from `tools/sprites/render_props.py`. Contact is printed by that script. */
+export const BOULDER_FACES: PropSprite[] = [
+  prop(boulder1Url, 149, 182),
+  prop(boulder2Url, 188, 157),
+  prop(boulder3Url, 130, 184),
+];
+export const STONE_FACES: PropSprite[] = [prop(stones1Url, 105, 95), prop(stones2Url, 126, 97)];
+export const STUMP_FACES: PropSprite[] = [prop(stump1Url, 113, 125), prop(stump2Url, 100, 124)];
+/** Contact is the post foot; boards overhang to either side. */
+export const SIGN_FACES: PropSprite[] = [prop(signpost1Url, 138, 427), prop(signpost2Url, 20, 427)];
 
 /** Flat shell crater. Contact is the pit; `bowl` is that pit's width in source pixels. */
 export interface CraterSprite extends PropSprite {
@@ -1590,6 +1610,7 @@ export const GRASS_TEXS: HTMLImageElement[] = [
   loadSheet(grassDampUrl),
 ];
 export const DIRT_TEX = loadSheet(dirtUrl);
+export const ROCK_TEX = loadSheet(rockTexUrl);
 
 export const PROP_IMAGES: HTMLImageElement[] = [
   ...OAK_FACES.map((f) => f.image),
@@ -1598,12 +1619,17 @@ export const PROP_IMAGES: HTMLImageElement[] = [
   ...TUFT_FACES.map((f) => f.image),
   ...SCRAP_FACES.map((f) => f.image),
   ...CRATER_FACES.map((f) => f.image),
+  ...BOULDER_FACES.map((f) => f.image),
+  ...STONE_FACES.map((f) => f.image),
+  ...STUMP_FACES.map((f) => f.image),
+  ...SIGN_FACES.map((f) => f.image),
   FENCE_X.image,
   FENCE_Y.image,
   WATER_TEX,
   WATER_TEX_B,
   ...GRASS_TEXS,
   DIRT_TEX,
+  ROCK_TEX,
   ...Object.values(CIV_FACES).flatMap((faces) => faces.map((f) => f.image)),
 ];
 

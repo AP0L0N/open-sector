@@ -1,7 +1,7 @@
 import type { MapDef } from "@gridlock/shared";
 import { compileProgram, dataTexture, freeVao, glContext, meshVao, noiseTexture, type MeshVao } from "./gl.js";
 import { heightMesh } from "./height-mesh.js";
-import { DIRT_TEX, GRASS_TEXS } from "./sprites.js";
+import { DIRT_TEX, GRASS_TEXS, ROCK_TEX } from "./sprites.js";
 import { materialBytes, vertexTones } from "./terrain-light.js";
 
 const VS = `#version 300 es
@@ -35,6 +35,7 @@ uniform sampler2D uG0;
 uniform sampler2D uG1;
 uniform sampler2D uG2;
 uniform sampler2D uDirt;
+uniform sampler2D uRock;
 uniform vec2 uMapSize;
 out vec4 o;
 
@@ -70,7 +71,8 @@ void main() {
   vec3 bare = mix(rgb(107.0, 88.0, 64.0), tex(uDirt), 0.92);
   col = mix(col, bare, dirt);
   float grain = texture(uNoise, vUv / 1.3).r;
-  vec3 stone = mix(rgb(78.0, 73.0, 66.0), rgb(122.0, 114.0, 100.0), clamp(nf * 0.7 + grain * 0.5, 0.0, 1.0));
+  vec3 noiseStone = mix(rgb(78.0, 73.0, 66.0), rgb(122.0, 114.0, 100.0), clamp(nf * 0.7 + grain * 0.5, 0.0, 1.0));
+  vec3 stone = mix(noiseStone, tex(uRock), 0.85);
   col = mix(col, stone, rock);
   col = mix(col, rgb(58.0, 50.0, 40.0), blocked);
 
@@ -107,7 +109,7 @@ function init(): State | null {
   if (!gl) return null;
   const prog = compileProgram(gl, VS, FS);
   if (!prog) return null;
-  const names = ["uAtlasOrigin", "uChunk", "uSize", "uMatA", "uMatB", "uNoise", "uG0", "uG1", "uG2", "uDirt", "uMapSize"];
+  const names = ["uAtlasOrigin", "uChunk", "uSize", "uMatA", "uMatB", "uNoise", "uG0", "uG1", "uG2", "uDirt", "uRock", "uMapSize"];
   const dims = gl.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array;
   const maxRb = gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) as number;
   state = {
@@ -187,6 +189,7 @@ export function paintGlGround(
   const g1 = imageTexture(s, GRASS_TEXS[1] ?? GRASS_TEXS[0]!, [62, 82, 50]);
   const g2 = imageTexture(s, GRASS_TEXS[2] ?? GRASS_TEXS[0]!, [62, 82, 50]);
   const dirt = imageTexture(s, DIRT_TEX, [107, 88, 64]);
+  const rock = imageTexture(s, ROCK_TEX, [100, 94, 84]);
 
   gl.useProgram(s.prog);
   gl.disable(gl.BLEND);
@@ -202,6 +205,7 @@ export function paintGlGround(
   bind(4, g1, "uG1");
   bind(5, g2, "uG2");
   bind(6, dirt, "uDirt");
+  bind(7, rock, "uRock");
   gl.uniform2f(s.loc.uAtlasOrigin!, originX, originY);
   gl.uniform2f(s.loc.uMapSize!, map.width, map.height);
 

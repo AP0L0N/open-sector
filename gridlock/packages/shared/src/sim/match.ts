@@ -35,6 +35,7 @@ import { tickHeal } from "./heal.js";
 import { tickSupply } from "./supply.js";
 import { syncTowedGuns, tickArtillery } from "./artillery.js";
 import { tickMovement, repathIfBlocked } from "./orders.js";
+import { tickWalkerCharge } from "./walker-charge.js";
 import { tickOrderQueue } from "./commands.js";
 import { tickTrain } from "./train.js";
 import type { MatchState, SimPlayer } from "./types.js";
@@ -148,6 +149,9 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickOrderQueue(state);
   tickPatrol(state);
   tickMovement(state, dt);
+  // After movement, before collision, so a charging walker detonates on
+  // infantry he is overlapping instead of crushing them and walking on.
+  tickWalkerCharge(state);
   tickAir(state, dt);
   syncPlaneRiders(state);
   tickChutes(state, dt);

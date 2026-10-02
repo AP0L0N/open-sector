@@ -29,6 +29,7 @@ import {
   MORTAR_PLANT_SECONDS,
   MORTAR_SPLASH_TILES,
   ARTILLERY_MIN_RANGE_TILES,
+  ARTILLERY_BUILDING_MUL,
   ARTILLERY_SHELL,
   type LobShellDef,
   addCrit,
@@ -38,6 +39,7 @@ import {
   FW190_SPLASH_TILES,
   isMotorVehicle,
   catalog,
+  isLightHull,
   gunArcDegOf,
   GARRISON_STRUCTURAL_CALIBER,
   GUARD_CONE_DEG,
@@ -104,6 +106,7 @@ import {
   isArmored,
   ptrdHarmPossible,
   resolveAtRifleHit,
+  resolveGatlingLight,
   resolveRoofHit,
   resolveHit,
   scatterHullImpact,
@@ -886,6 +889,8 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
   if (!gun) return false;
   // A bomb or a rocket burst always nicks the hull.
   if (gun.id === "mortar" || gun.id === "launcher") return true;
+  // The Cyborg's gatling sometimes bites a Walker or a truck, so he engages them.
+  if (gun.id === "gatling" && isLightHull(def)) return true;
   if (entityIsScouting(target) && gun.caliber < GARRISON_STRUCTURAL_CALIBER) return true;
   const vx = target.x - e.x;
   const vy = target.y - e.y;
@@ -1699,7 +1704,8 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     const occupied = wallsShieldGarrison(state, e);
     const chipWalls = !occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER;
     if (chipWalls) {
-      coverStrike(e, res.damage, state.tick, !rocket);
+      const wallDmg = p.big && e.kind === "building" ? res.damage * ARTILLERY_BUILDING_MUL : res.damage;
+      coverStrike(e, wallDmg, state.tick, !rocket);
       if (e.hp > 0) rollCrits(e, res.face, res.kind, res.damage, rand);
       const smoked = maybeHaulerSmokeScreen(state, e, p);
       if (e.hp > 0 && !smoked && res.kind !== "ricochet" && res.damage > 0) maybeWithdraw(state, e, p);
@@ -1985,6 +1991,9 @@ function fireRound(
       opts?.radar || (!opts?.shell && (e.type === "walker" || radarLaidOf(e.type) || !!infantryGunFor(e)?.antiAir))
         ? true
         : undefined,
+    // Walker, Cyborg, pad CIWS, and the Apocalypse roof. Not the Gunner's MG42, not the main gun.
+    gatling:
+      opts?.radar || e.type === "walker" || e.type === "ciws" || e.type === "cyborg" ? true : undefined,
     plunging: plunging || undefined,
     z: z0,
     vz: ((zAim - z0) / Math.max(1e-6, aimDist)) * speed,
@@ -2144,6 +2153,9 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       atArmor && shooter
         ? Math.hypot(e.x - shooter.x, e.y - shooter.y) / state.tileSize
         : PTRD_CLOSE_TILES + 1;
+    // Living light hulls: a gatling round rolls a nick instead of the plate test.
+    // StuG sides, a Tiger's rear, and every heavier face stay on resolveHit.
+    const gatlingLight = !!p.gatling && !p.bounced && !e.wreck && !roofHit && !atArmor && isLightHull(liveDef);
     const res = roofHit
       ? resolveRoofHit({ penetration: p.penetration, target: liveDef, targetHp: e.hp, targetHpMax: e.hpMax, rand })
       : atArmor
@@ -2154,6 +2166,17 @@ export function tickProjectiles(state: MatchState, dt: number): void {
           targetFacing: e.facing,
           targetHp: e.hp,
           targetHpMax: e.hpMax,
+          vx: p.vx,
+          vy: p.vy,
+          rand,
+        })
+      : gatlingLight
+      ? resolveGatlingLight({
+          damage: p.damage,
+          caliber: p.caliber,
+          target: liveDef,
+          targetFacing: e.facing,
+          targetHp: e.hp,
           vx: p.vx,
           vy: p.vy,
           rand,
@@ -2183,7 +2206,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       dealt = coverStrike(e, dealt, state.tick, !!(p.fromAbove || p.plunging));
       if (e.hp > 0 && roofHit) {
         if (res.kind === "pen" && isMotorVehicle(e.type) && rand() < FW190_ROOF_ENGINE_CHANCE) addCrit(e, "engine");
-      } else if (e.hp > 0) {
+      } else if (e.hp > 0 && !gatlingLight) {
         const tracks =
           p.caliber === PTRD_CALIBER && res.kind === "pen" && res.face === "side" ? PTRD_TRACK_CHANCE : undefined;
         rollCrits(e, res.face, res.kind, dealt, rand, tracks);

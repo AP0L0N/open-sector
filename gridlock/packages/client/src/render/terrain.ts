@@ -23,9 +23,12 @@ import {
   type MapDef,
 } from "@gridlock/shared";
 import {
+  CRATER_FACES,
   DIRT_TEX,
   GRASS_TEXS,
+  ROCK_TEX,
   SCRAP_FACES,
+  STONE_FACES,
   TUFT_FACES,
   WATER_TEX,
   WATER_TEX_B,
@@ -33,6 +36,7 @@ import {
   whenImagesReady,
   PROP_IMAGES,
 } from "./sprites.js";
+import { decorFor } from "./decor.js";
 import { hillshadeFactor } from "./relief.js";
 import { elevShadeFactor, hash2 } from "./terrain-light.js";
 import { groundGlReady, paintGlGround } from "./terrain-light-gl.js";
@@ -200,7 +204,8 @@ function texPattern(ctx: CanvasRenderingContext2D, img: HTMLImageElement): Canva
 
 /** One meadow, with a few broad drier or darker fields. Fine tiles stay the same photo. */
 function surfaceImage(kind: number, tx: number, ty: number, scrap: boolean): HTMLImageElement | null {
-  if (kind === TILE_BLOCKED || kind === TILE_WATER || kind === TILE_ROCK) return null;
+  if (kind === TILE_BLOCKED || kind === TILE_WATER) return null;
+  if (kind === TILE_ROCK) return ROCK_TEX;
   if (kind === TILE_ROAD || scrap) return DIRT_TEX;
   const meadow = GRASS_TEXS[0];
   if (!meadow) return null;
@@ -475,6 +480,43 @@ function paintTileProps(
     }
   } else if (kind === TILE_EMPTY) {
     paintDecor(ctx, map, tx, ty, originX, originY);
+    paintFlatDecor(ctx, map, tx, ty, originX, originY);
+  }
+}
+
+/** Old craters and rubble from the map dress, baked flat so restamps keep them. */
+function paintFlatDecor(
+  ctx: CanvasRenderingContext2D,
+  map: MapDef,
+  tx: number,
+  ty: number,
+  originX: number,
+  originY: number,
+): void {
+  const list = decorFor(map).flatAt.get(ty * map.width + tx);
+  if (!list) return;
+  const ts = map.tileSize;
+  const lift = isoLift(heightAt(map, tx, ty));
+  for (const it of list) {
+    const wx = (tx + it.ox) * ts;
+    const wy = (ty + it.oy) * ts;
+    const p = worldToIso(wx, wy, ts);
+    const x = p.x - originX;
+    const y = p.y - originY - lift;
+    const prev = ctx.globalAlpha;
+    ctx.globalAlpha = prev * it.alpha;
+    if (it.kind === "crater") {
+      const face = CRATER_FACES[it.face % CRATER_FACES.length];
+      if (face && face.image.naturalWidth > 0 && face.bowl > 0) {
+        const e = worldToIso(wx + it.drawH * ts, wy, ts);
+        const rx = Math.hypot(e.x - p.x, e.y - p.y);
+        drawPropSprite(ctx, face, x, y, (face.image.naturalHeight * rx * 2.05) / face.bowl, it.flip);
+      }
+    } else if (it.kind === "stones") {
+      const face = STONE_FACES[it.face % STONE_FACES.length];
+      if (face) drawPropSprite(ctx, face, x, y, it.drawH, it.flip);
+    }
+    ctx.globalAlpha = prev;
   }
 }
 

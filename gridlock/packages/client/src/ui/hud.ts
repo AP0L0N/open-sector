@@ -50,6 +50,8 @@ import {
   specialReady,
   wreckScrapOf,
   WALKER_GUN_MODES,
+  WALKER_SELF_DESTRUCT_HP,
+  WALKER_SELF_DESTRUCT_MODES,
   type BuildingType,
   type YardFieldType,
   type EntityType,
@@ -284,7 +286,7 @@ export function mountBattlefield(
     });
   }
 
-  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-rockets], [data-payload]", (t) => {
+  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-selfdestruct], [data-rockets], [data-payload]", (t) => {
     runConfigAction(ctx, t);
   });
 
@@ -690,6 +692,14 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
         : e.holdPosition
           ? "  ·  HOLD"
           : "";
+  const selfDestroy =
+    e.type === "walker" &&
+    !e.wreck &&
+    e.ownerId === ctx.match.youPlayerId &&
+    e.selfDestruct !== false &&
+    e.hp <= e.hpMax * WALKER_SELF_DESTRUCT_HP
+      ? "  ·  SELF DESTROY"
+      : "";
   const tending =
     e.tend != null ? "  ·  tending" : ctx.match.entities.some((o) => o.tend === e.id) ? "  ·  being tended" : "";
   const scout =
@@ -719,7 +729,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
           ? airLine(e.air, e.type)
           : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}  ·  ${who}${q}${cargo}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${tending}`;
+  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}  ·  ${who}${q}${cargo}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
 
@@ -864,7 +874,7 @@ function updateRocketRack(body: HTMLElement, type: EntityType, mine: EntityView[
 }
 
 function loadoutButton(opts: {
-  attr: "data-shell" | "data-weapon" | "data-guns" | "data-rockets" | "data-payload";
+  attr: "data-shell" | "data-weapon" | "data-guns" | "data-selfdestruct" | "data-rockets" | "data-payload";
   id: string;
   name: string;
   blurb: string;
@@ -1025,7 +1035,10 @@ function configBodyLayout(focus: EntityView, live: EntityView[], wrecks: EntityV
   const def = catalog(focus.type);
   const mine = live.filter((e) => e.ownerId === you);
   const parts = [focus.type, "live"];
-  if (focus.type === "walker") parts.push("gatling");
+  if (focus.type === "walker") {
+    parts.push("gatling");
+    if (mine.length > 0) parts.push("charge");
+  }
   else if (isTransportType(focus.type)) parts.push(mine.length > 0 ? "payload" : "transport");
   else if (hasAmmo(focus.type)) parts.push("ammo");
   if (rocketsOf(focus.type) && mine.length > 0) parts.push("rockets");
@@ -1087,6 +1100,22 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
       );
     }
     body.append(el("div", { class: "tiny", text: "Gatling" }), rack);
+    if (mine.length > 0) {
+      const charge = el("div", { class: "shell-rack" });
+      for (const mode of WALKER_SELF_DESTRUCT_MODES) {
+        charge.append(
+          loadoutButton({
+            attr: "data-selfdestruct",
+            id: mode.id,
+            name: mode.name,
+            blurb: mode.blurb,
+            count: "",
+            on: false,
+          }),
+        );
+      }
+      body.append(el("div", { class: "tiny", text: "Self destroy" }), charge);
+    }
     body.append(el("p", { class: "tiny", attrs: { "data-field": "clip" } }));
   } else if (isTransportType(focus.type)) {
     if (mine.length > 0) {
@@ -1168,6 +1197,13 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
         on: same && guns === mode.guns,
         empty: left <= 0,
       });
+    }
+    const chargeOn = mine.length > 0 && mine.every((ent) => ent.selfDestruct !== false);
+    const chargeOff = mine.length > 0 && mine.every((ent) => ent.selfDestruct === false);
+    for (const mode of WALKER_SELF_DESTRUCT_MODES) {
+      const btn = body.querySelector(`[data-selfdestruct="${mode.id}"]`);
+      if (!(btn instanceof HTMLElement)) continue;
+      updateLoadoutButton(btn, { count: "", on: mode.id === "on" ? chargeOn : chargeOff });
     }
     setField(body, "clip", beltLine(live));
   } else if (isTransportType(focus.type)) {
@@ -1866,6 +1902,15 @@ function runConfigAction(ctx: Ctx, t: HTMLElement): void {
       .map((ent) => ent.id);
     if (ids.length === 0) return;
     ctx.net.send({ type: "cmd.guns", ids, guns: guns === "1" ? 1 : 2 });
+    return;
+  }
+  const charge = t.dataset.selfdestruct;
+  if (charge === "on" || charge === "off") {
+    const ids = selectedOfType(ctx, viewRef, configFocus)
+      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck && ent.type === "walker")
+      .map((ent) => ent.id);
+    if (ids.length === 0) return;
+    ctx.net.send({ type: "cmd.selfdestruct", ids, on: charge === "on" });
     return;
   }
   const weapon = t.dataset.weapon;
