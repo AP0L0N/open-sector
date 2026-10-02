@@ -191,6 +191,7 @@ import titanWadeGunUrl from "../assets/units/titan-wade-gun.png";
 import {
   bindAircraftSheets,
   bindCasemateSheets,
+  bindJagdtigerSheets,
   bindDroneSheets,
   bindFighterSheets,
   bindTransportSheets,
@@ -1084,6 +1085,23 @@ export const SS3_SPRITE: UnitSpriteDef = {
 };
 bindCasemateSheets(SS3_SPRITE.image, ss3Gun.image);
 
+/**
+ * Jagdtiger: the StuG's casemate layout on a heavier hull. The long 128mm sets
+ * the cell fit, so it draws a size up from the Tiger to keep the hull heavier.
+ */
+export const JAGDTIGER_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(62 * UNIT_VISUAL_SCALE),
+  contactY: 0.92,
+  gun: tankLayer(),
+  facingSpace: "world",
+};
+bindJagdtigerSheets(JAGDTIGER_SPRITE.image, JAGDTIGER_SPRITE.gun!.image);
+
 export const SUPPLY_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
@@ -1333,6 +1351,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   warden: TIGER_SPRITE,
   apocalypse: APOCALYPSE_SPRITE,
   ss3: SS3_SPRITE,
+  jagdtiger: JAGDTIGER_SPRITE,
   supply: SUPPLY_SPRITE,
   mammoth: MAMMOTH_SPRITE,
   nebelwerfer: NEBELWERFER_SPRITE,

@@ -202,7 +202,7 @@ export const HEIGHT_RANGE_BONUS = 2;
  * reach on the field: it sits just inside the sniper's scoped sight.
  *
  * Cells: handgun 3, flamethrower 3.5, walker 8, cyborg 8, rifle 9, MG42 11, StuG 12, PTRD 13,
- * Rocketer 12, Tiger and Titan 14, scoped rifle 15, mortar 23 (it will not drop inside 3),
+ * Rocketer 12, Tiger and Titan 14, scoped rifle 15, Jagdtiger 16, mortar 23 (it will not drop inside 3),
  * Nebelwerfer 24 (it will not fire inside 4).
  */
 export const HANDGUN_RANGE_TILES = t(3);
@@ -220,6 +220,8 @@ export const LAUNCHER_RANGE_TILES = t(12);
 export const FLAMER_RANGE_TILES = t(3.5);
 export const STUG_RANGE_TILES = t(12);
 export const TIGER_RANGE_TILES = t(14);
+/** Jagdtiger's 128mm. The longest tank gun: past the scope, well past its own eyes, short of the mortar. */
+export const JAGDTIGER_RANGE_TILES = t(16);
 /** Titan carries the Tiger's gun, so it keeps the Tiger's reach. Its rockets share that reach. */
 export const TITAN_RANGE_TILES = TIGER_RANGE_TILES;
 /** Titan wading pace, as a share of its dry-ground walk. */
@@ -424,6 +426,7 @@ export type EntityType =
   | "warden"
   | "apocalypse"
   | "ss3"
+  | "jagdtiger"
   | "walker"
   | "cyborg"
   | "titan"
@@ -476,7 +479,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "apocalypse" | "ss3" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "stuka" | "fw190" | "bv222" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "stuka" | "fw190" | "bv222" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -499,12 +502,13 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "tower", "research"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "apocalypse", "ss3", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
   warden: "research",
   apocalypse: "research",
+  jagdtiger: "research",
   cyborg: "research",
   titan: "research",
   mammoth: "research",
@@ -1979,6 +1983,50 @@ export const STUG_SHELLS: Record<ShellType, ShellDef> = {
 };
 
 /**
+ * Jagdtiger 128mm rack. AP goes through every front plate on the field and
+ * usually kills a Tiger outright. No HEAT or smoke on the rack; the table
+ * still fills every shell slot because ShellDef is keyed by ShellType.
+ */
+export const JAGDTIGER_SHELLS: Record<ShellType, ShellDef> = {
+  ap: {
+    id: "ap",
+    name: "AP",
+    blurb: "128mm armor-piercing. Goes through any front plate on the field. One hit usually kills a Tiger from any side.",
+    damage: 90,
+    penetration: 200,
+    caliber: 128,
+    spreadDeg: 2.5,
+  },
+  he: {
+    id: "he",
+    name: "HE",
+    blurb: "128mm high explosive. A huge burst among infantry and against buildings. Ricochets off armor.",
+    damage: 120,
+    penetration: 24,
+    caliber: 128,
+    spreadDeg: 4.5,
+  },
+  heat: {
+    id: "heat",
+    name: "HEAT",
+    blurb: "Not carried. The 128mm armor-piercing round already goes through every front plate.",
+    damage: 0,
+    penetration: 0,
+    caliber: 128,
+    spreadDeg: 3.5,
+  },
+  smoke: {
+    id: "smoke",
+    name: "Smoke",
+    blurb: "Not carried. Screen a Jagdtiger with a Tiger or a StuG.",
+    damage: 0,
+    penetration: 0,
+    caliber: 128,
+    spreadDeg: 6,
+  },
+};
+
+/**
  * Apocalypse twin 105mm rack. The two barrels fire the loaded shell one after
  * the other, then the long reload. Heavier and slower than the Tiger's 75mm.
  */
@@ -2219,7 +2267,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Cyborg, Titan, Nebelwerfer, and Drone Op.",
+    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Titan, Nebelwerfer, and Drone Op.",
   },
   ciws: {
     type: "ciws",
@@ -2813,6 +2861,44 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 50,
     hasScout: true,
     blurb: "Casemate assault gun. No turret — hull-steer to aim. Strong front, thin sides.",
+  },
+  /** Casemate tank destroyer: a fixed 128mm on a far heavier hull than the StuG's. */
+  jagdtiger: {
+    type: "jagdtiger",
+    kind: "unit",
+    name: "Jagdtiger",
+    letter: "d",
+    cost: 420,
+    buildSeconds: 18,
+    hp: 160,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 13,
+    moveTilesPerSec: t(1.0),
+    turnDegPerSec: 38,
+    rangeTiles: JAGDTIGER_RANGE_TILES,
+    sightTiles: t(7),
+    cooldown: 10,
+    damage: JAGDTIGER_SHELLS.ap.damage,
+    projectileSpeed: TANK_SHELL_SPEED,
+    turnInPlace: true,
+    tracked: true,
+    gunArcDeg: 10,
+    armorFront: 150,
+    armorSide: 50,
+    armorRear: 30,
+    penetration: JAGDTIGER_SHELLS.ap.penetration,
+    caliber: JAGDTIGER_SHELLS.ap.caliber,
+    spreadDeg: JAGDTIGER_SHELLS.ap.spreadDeg,
+    shells: JAGDTIGER_SHELLS,
+    ammo: { ap: 10, he: 4 },
+    defaultShell: "ap",
+    mgAmmo: TANK_MG.ammo,
+    leavesWreck: true,
+    wreckHp: 100,
+    hasScout: true,
+    blurb: "Heavy tank destroyer. No turret: the 128mm sits in a fixed casemate and swings only a little either side of the nose, so the slow hull must turn to aim. The thickest front plate on the field, heavy sides, a thin rear. Its armor-piercing shell goes through any front plate and usually kills a Tiger in one hit, from the longest reach of any tank gun. A long reload between shots, and no HEAT or smoke on the rack.",
   },
   walker: {
     type: "walker",
