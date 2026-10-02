@@ -893,7 +893,163 @@ function flattenTerrain(
   relaxSlopes(heights, width, height, locked);
 }
 
-/** Trees, ponds, and civilian houses. Authoring-grid coords; caller upsamples tiles. */
+/**
+ * A village on two crossing streets. `fx, fy` are the fine-grid centre lines of
+ * the streets (where the lanes run); `arm` is how far each street reaches from
+ * the crossing, in authoring tiles.
+ */
+export interface VillageSpec {
+  fx: number;
+  fy: number;
+  arm: number;
+}
+
+/** Village houses; barns and shacks go out to farmsteads instead. */
+const VILLAGE_TYPES: ReadonlySet<CivilianType> = new Set(["cottage", "house", "inn", "chapel", "manor"]);
+/** First lot along each street, in authoring tiles from the crossing: room for the square. */
+const VILLAGE_SQUARE = 3;
+/** A one-tile alley after every this many houses on a street side, so infantry can get between rows. */
+const VILLAGE_ALLEY_EVERY = 2;
+
+function houseSize(type: CivilianType): { tw: number; th: number } {
+  const def = catalog(type);
+  return { tw: Math.round(def.tileW / TILE_SUBDIV), th: Math.round(def.tileH / TILE_SUBDIV) };
+}
+
+/** Authoring-tile span a lane of radius 2 covers around a fine centre line. */
+function streetBand(fine: number): { lo: number; hi: number } {
+  return { lo: Math.floor((fine - 3) / TILE_SUBDIV), hi: Math.floor((fine + 3) / TILE_SUBDIV) };
+}
+
+/** Open ground or trees: a village fells what stands on its lots. */
+function lotClear(tiles: number[], width: number, height: number, x0: number, y0: number, tw: number, th: number): boolean {
+  for (let y = y0; y < y0 + th; y++) {
+    for (let x = x0; x < x0 + tw; x++) {
+      if (x < 0 || y < 0 || x >= width || y >= height) return false;
+      const t = tiles[idx(width, x, y)];
+      if (t !== TILE_EMPTY && t !== TILE_TREE) return false;
+    }
+  }
+  return true;
+}
+
+/** Reserve a house lot: tiles go blocked until `scatterCover` hands the ground back. */
+function claimLot(tiles: number[], width: number, height: number, x: number, y: number, tw: number, th: number): void {
+  fillRect(tiles, width, height, x, y, x + tw - 1, y + th - 1, TILE_BLOCKED);
+}
+
+/**
+ * Houses shoulder to shoulder along both sides of both streets, doors on the
+ * street, biggest near the square. Every few houses an alley breaks the row.
+ * Takes houses from the front of `pool` until the streets are full.
+ */
+function layVillage(
+  tiles: number[],
+  width: number,
+  height: number,
+  v: VillageSpec,
+  pool: CivilianType[],
+  pads: readonly { x: number; y: number; r: number }[],
+  features: MapFeature[],
+): void {
+  const row = streetBand(v.fy);
+  const col = streetBand(v.fx);
+  const cx = Math.floor(v.fx / TILE_SUBDIV);
+  const cy = Math.floor(v.fy / TILE_SUBDIV);
+  // Eight street sides: along the E-W street (east/west arm × north/south side), then the N-S one.
+  const sides: { alongX: boolean; sign: 1 | -1; low: boolean; cursor: number; placed: number }[] = [];
+  for (const alongX of [true, false]) {
+    for (const sign of [1, -1] as const) {
+      for (const low of [true, false]) sides.push({ alongX, sign, low, cursor: VILLAGE_SQUARE, placed: 0 });
+    }
+  }
+  let progress = true;
+  while (progress && pool.length > 0) {
+    progress = false;
+    for (const s of sides) {
+      const type = pool[0];
+      if (!type) break;
+      if (s.cursor >= v.arm) continue;
+      progress = true;
+      const { tw, th } = houseSize(type);
+      let x: number;
+      let y: number;
+      let facing: number;
+      if (s.alongX) {
+        x = s.sign > 0 ? cx + s.cursor : cx - s.cursor - tw + 1;
+        y = s.low ? row.lo - th : row.hi + 1;
+        facing = s.low ? 1 : 3;
+      } else {
+        y = s.sign > 0 ? cy + s.cursor : cy - s.cursor - th + 1;
+        x = s.low ? col.lo - tw : col.hi + 1;
+        facing = s.low ? 0 : 2;
+      }
+      if (!lotClear(tiles, width, height, x, y, tw, th) || inPad(pads, x + tw / 2, y + th / 2)) {
+        s.cursor += 1;
+        continue;
+      }
+      pool.shift();
+      features.push({ type, x, y, facing });
+      claimLot(tiles, width, height, x, y, tw, th);
+      s.placed += 1;
+      s.cursor += (s.alongX ? tw : th) + (s.placed % VILLAGE_ALLEY_EVERY === 0 ? 1 : 0);
+    }
+  }
+}
+
+/** A farm: two or three buildings around one yard, each touching the last or a step off it. */
+function layFarmstead(
+  tiles: number[],
+  width: number,
+  height: number,
+  rng: { n: number },
+  group: CivilianType[],
+  pads: readonly { x: number; y: number; r: number }[],
+  features: MapFeature[],
+  attempts: number,
+): CivilianType[] {
+  const first = group[0];
+  if (!first) return [];
+  const a = houseSize(first);
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const x = 2 + Math.floor(nextRand(rng) * (width - a.tw - 4));
+    const y = 2 + Math.floor(nextRand(rng) * (height - a.th - 4));
+    if (inPad(pads, x + a.tw / 2, y + a.th / 2)) continue;
+    if (!rectFree(tiles, width, height, x, y, a.tw, a.th)) continue;
+    features.push({ type: first, x, y, facing: hash32(`${first}:${x}:${y}:face`) % 4 });
+    claimLot(tiles, width, height, x, y, a.tw, a.th);
+    const left: CivilianType[] = [];
+    let prev = { x, y, tw: a.tw, th: a.th };
+    for (const type of group.slice(1)) {
+      const b = houseSize(type);
+      let done = false;
+      for (let t = 0; t < 16 && !done; t++) {
+        const gap = Math.floor(nextRand(rng) * 2);
+        const side = Math.floor(nextRand(rng) * 4);
+        const slide = Math.floor(nextRand(rng) * 3) - 1;
+        const bx =
+          side === 0 ? prev.x + prev.tw + gap : side === 2 ? prev.x - b.tw - gap : prev.x + slide;
+        const by =
+          side === 1 ? prev.y + prev.th + gap : side === 3 ? prev.y - b.th - gap : prev.y + slide;
+        if (inPad(pads, bx + b.tw / 2, by + b.th / 2)) continue;
+        if (!rectFree(tiles, width, height, bx, by, b.tw, b.th)) continue;
+        features.push({ type, x: bx, y: by, facing: hash32(`${type}:${bx}:${by}:face`) % 4 });
+        claimLot(tiles, width, height, bx, by, b.tw, b.th);
+        prev = { x: bx, y: by, tw: b.tw, th: b.th };
+        done = true;
+      }
+      if (!done) left.push(type);
+    }
+    return left;
+  }
+  return group;
+}
+
+/**
+ * Trees, ponds, and civilian houses. Authoring-grid coords; caller upsamples tiles.
+ * Villages go down first, then trees around them, then farmsteads; whatever is
+ * left over scatters on its own as before.
+ */
 function scatterCover(
   tiles: number[],
   width: number,
@@ -901,9 +1057,10 @@ function scatterCover(
   seed: string,
   pads: readonly { x: number; y: number; r: number }[],
   scale = 1,
+  villages: readonly VillageSpec[] = [],
 ): MapFeature[] {
   const rng = { n: hash32(seed) };
-  scatterTrees(tiles, width, height, rng, pads, scale);
+  const features: MapFeature[] = [];
   const kinds: CivilianType[] = [
     "shack",
     "shack",
@@ -922,12 +1079,52 @@ function scatterCover(
     "cottage",
     "chapel",
   ];
-  const features: MapFeature[] = [];
   const passes = Math.max(1, Math.round(scale));
   const attempts = scale === 1 ? 80 : 160;
   const roster: CivilianType[] = [];
   for (let pass = 0; pass < passes; pass++) roster.push(...kinds);
-  for (const type of roster) {
+
+  // Big houses nearest the square, cottages out at the ends of the streets.
+  const townPool = roster
+    .filter((t) => VILLAGE_TYPES.has(t))
+    .sort((a, b) => houseSize(b).tw - houseSize(a).tw);
+  const farmPool = roster.filter((t) => !VILLAGE_TYPES.has(t));
+  // Trees first and on the same draw as ever, so the woods do not move; the
+  // village then clears its own lots and streets.
+  scatterTrees(tiles, width, height, rng, pads, scale);
+  for (const v of villages) layVillage(tiles, width, height, v, townPool, pads, features);
+  const streets: number[] = [];
+  for (const v of villages) {
+    const row = streetBand(v.fy);
+    const col = streetBand(v.fx);
+    const cx = Math.floor(v.fx / TILE_SUBDIV);
+    const cy = Math.floor(v.fy / TILE_SUBDIV);
+    for (let y = row.lo; y <= row.hi; y++) {
+      for (let x = cx - v.arm; x <= cx + v.arm; x++) streets.push(x, y);
+    }
+    for (let x = col.lo; x <= col.hi; x++) {
+      for (let y = cy - v.arm; y <= cy + v.arm; y++) streets.push(x, y);
+    }
+  }
+  for (let i = 0; i < streets.length; i += 2) {
+    const x = streets[i]!;
+    const y = streets[i + 1]!;
+    if (x < 0 || y < 0 || x >= width || y >= height) continue;
+    const k = idx(width, x, y);
+    if (tiles[k] === TILE_TREE) tiles[k] = TILE_EMPTY;
+  }
+
+  const leftover: CivilianType[] = [...townPool];
+  // Farms: a barn with a shack or two beside it.
+  const barns = farmPool.filter((t) => t === "barn");
+  const shacks = farmPool.filter((t) => t !== "barn");
+  for (const barn of barns) {
+    const group: CivilianType[] = [barn];
+    for (let n = 0; n < 2 && shacks.length > 0; n++) group.push(shacks.shift()!);
+    leftover.push(...layFarmstead(tiles, width, height, rng, group, pads, features, attempts));
+  }
+  leftover.push(...shacks);
+  for (const type of leftover) {
     const def = catalog(type);
     const tw = Math.round(def.tileW / TILE_SUBDIV);
     const th = Math.round(def.tileH / TILE_SUBDIV);
@@ -1148,25 +1345,156 @@ function paintWindingLane(
   }
 }
 
-/** Dirt lanes from each start into a widened village square. */
+/** Ends of a village's streets, in fine tiles: east, west, south, north. Outside lanes come in here. */
+function villageGates(v: VillageSpec): { x: number; y: number }[] {
+  const reach = (v.arm + 1) * TILE_SUBDIV;
+  return [
+    { x: v.fx + reach, y: v.fy },
+    { x: v.fx - reach, y: v.fy },
+    { x: v.fx, y: v.fy + reach },
+    { x: v.fx, y: v.fy - reach },
+  ];
+}
+
+function nearestGate(v: VillageSpec, x: number, y: number): { x: number; y: number } {
+  let best = villageGates(v)[0]!;
+  for (const g of villageGates(v)) {
+    if (Math.hypot(g.x - x, g.y - y) < Math.hypot(best.x - x, best.y - y)) best = g;
+  }
+  return best;
+}
+
+/** Straight streets through a village and its square. A winding lane here would cut between the houses. */
+function paintVillageStreets(
+  tiles: number[],
+  width: number,
+  height: number,
+  v: VillageSpec,
+  houses: readonly { x0: number; y0: number; x1: number; y1: number }[],
+): void {
+  const reach = (v.arm + 1) * TILE_SUBDIV;
+  paintLane(tiles, width, height, v.fx - reach, v.fy, v.fx + reach, v.fy, 2, houses);
+  paintLane(tiles, width, height, v.fx, v.fy - reach, v.fx, v.fy + reach, 2, houses);
+  stampRoad(tiles, width, height, v.fx, v.fy, 6.5, houses);
+}
+
+/** Dirt lanes from each start to the village, and its straight streets through the middle. */
 function paintYardDress(
   tiles: number[],
   width: number,
   height: number,
   spawns: readonly { x: number; y: number }[],
   features: readonly MapFeature[],
+  village: VillageSpec,
 ): void {
   const houses = houseBoxes(features, TILE_SUBDIV);
   const rng = { n: hash32("yard-64-lanes") };
-  const midX = Math.floor(width / 2);
-  const midY = Math.floor(height / 2);
   const margin = 18;
-  paintWindingLane(tiles, width, height, margin, midY, width - 1 - margin, midY, 2, houses, rng);
-  paintWindingLane(tiles, width, height, midX, margin, midX, height - 1 - margin, 2, houses, rng);
+  const [east, west, south, north] = villageGates(village) as [
+    { x: number; y: number },
+    { x: number; y: number },
+    { x: number; y: number },
+    { x: number; y: number },
+  ];
+  paintWindingLane(tiles, width, height, margin, village.fy, west.x, west.y, 2, houses, rng);
+  paintWindingLane(tiles, width, height, east.x, east.y, width - 1 - margin, village.fy, 2, houses, rng);
+  paintWindingLane(tiles, width, height, village.fx, margin, north.x, north.y, 2, houses, rng);
+  paintWindingLane(tiles, width, height, south.x, south.y, village.fx, height - 1 - margin, 2, houses, rng);
   for (const s of spawns) {
-    paintWindingLane(tiles, width, height, s.x, s.y, midX, midY, 2, houses, rng);
+    const g = nearestGate(village, s.x, s.y);
+    paintWindingLane(tiles, width, height, s.x, s.y, g.x, g.y, 2, houses, rng);
   }
-  stampRoad(tiles, width, height, midX, midY, 6.5, houses);
+  paintVillageStreets(tiles, width, height, village, houses);
+}
+
+/** Fine tiles between two house lots below which they are levelled together. */
+const LOT_SHARE_GAP = 6;
+/** How far from a lot fixed ground (water, pads, hill skirts) still bounds its level. */
+const LOT_FIXED_REACH = 12;
+
+/**
+ * Level ground under every house, a tile past its walls, at the lot's mean
+ * height, and lock it so slope relaxing builds ramps around it, not under it.
+ */
+function levelHouseLots(
+  heights: number[],
+  tiles: readonly number[],
+  width: number,
+  height: number,
+  features: readonly MapFeature[],
+  locked: Uint8Array,
+): void {
+  const boxes = houseBoxes(features, TILE_SUBDIV);
+  // Houses this close share one level, like a terraced row. Two locked lots at
+  // different heights with no free ground between them would leave a cliff.
+  const near = LOT_SHARE_GAP;
+  const group = boxes.map((_, i) => i);
+  const root = (i: number): number => {
+    while (group[i] !== i) i = group[i] = group[group[i]!]!;
+    return i;
+  };
+  for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i]!;
+      const b = boxes[j]!;
+      const gx = Math.max(a.x0, b.x0) - Math.min(a.x1, b.x1);
+      const gy = Math.max(a.y0, b.y0) - Math.min(a.y1, b.y1);
+      if (Math.max(gx, gy) <= near) group[root(i)] = root(j);
+    }
+  }
+  const sums = new Map<number, { sum: number; n: number }>();
+  boxes.forEach((b, i) => {
+    const acc = sums.get(root(i)) ?? { sum: 0, n: 0 };
+    for (let y = b.y0; y <= b.y1; y++) {
+      for (let x = b.x0; x <= b.x1; x++) {
+        acc.sum += heights[idx(width, x, y)] ?? 0;
+        acc.n++;
+      }
+    }
+    sums.set(root(i), acc);
+  });
+  // Ground that was fixed before the houses (water, pads, hill skirts) bounds a
+  // group's level: no more than one step per tile away from it, or a cliff.
+  const prefixed = new Uint8Array(locked);
+  const fixed = (i: number): boolean => prefixed[i] === 1 || tiles[i] === TILE_WATER;
+  const fixedZ = (i: number): number => (tiles[i] === TILE_WATER ? 0 : (heights[i] ?? 0));
+  const bounds = new Map<number, { lo: number; hi: number }>();
+  boxes.forEach((b, i) => {
+    const r = root(i);
+    const acc = bounds.get(r) ?? { lo: -Infinity, hi: Infinity };
+    for (let y = Math.max(0, b.y0 - LOT_FIXED_REACH); y <= Math.min(height - 1, b.y1 + LOT_FIXED_REACH); y++) {
+      for (let x = Math.max(0, b.x0 - LOT_FIXED_REACH); x <= Math.min(width - 1, b.x1 + LOT_FIXED_REACH); x++) {
+        const k = idx(width, x, y);
+        if (!fixed(k)) continue;
+        // Counted from the levelled margin, a tile past the walls.
+        const d = Math.max(1, Math.max(b.x0 - x, x - b.x1, b.y0 - y, y - b.y1) - 1);
+        const z = fixedZ(k);
+        acc.lo = Math.max(acc.lo, z - HEIGHT_STEP_MAX * d);
+        acc.hi = Math.min(acc.hi, z + HEIGHT_STEP_MAX * d);
+      }
+    }
+    bounds.set(r, acc);
+  });
+  const lots = boxes.map((b, i) => {
+    const acc = sums.get(root(i))!;
+    const bound = bounds.get(root(i))!;
+    const mean = Math.round(acc.sum / Math.max(1, acc.n));
+    return { ...b, z: Math.min(bound.hi, Math.max(bound.lo, mean)) };
+  });
+  const level = (x0: number, y0: number, x1: number, y1: number, z: number): void => {
+    for (let y = Math.max(0, y0); y <= Math.min(height - 1, y1); y++) {
+      for (let x = Math.max(0, x0); x <= Math.min(width - 1, x1); x++) {
+        const i = idx(width, x, y);
+        if (fixed(i)) continue;
+        heights[i] = z;
+        locked[i] = 1;
+      }
+    }
+  };
+  // Margins first, then the lots: a neighbour's margin never tilts a house that touches it.
+  for (const b of lots) level(b.x0 - 1, b.y0 - 1, b.x1 + 1, b.y1 + 1, b.z);
+  for (const b of lots) level(b.x0, b.y0, b.x1, b.y1, b.z);
+  relaxSlopes(heights, width, height, locked);
 }
 
 /** Open-ground flood (4-neighbour) from `sx, sy`. Rock, water, fence, and blocks stop it. */
@@ -1332,8 +1660,10 @@ export function makeYard64(): MapDef {
   ];
   paintYardScrap(tiles, width, height, "yard-64-scrap", spawns);
   const pads = spawns.map((s) => ({ x: s.x, y: s.y, r: 4 }));
-  const features = scatterCover(tiles, width, height, "yard-64-cover", pads);
   const sub = TILE_SUBDIV;
+  // One village on the crossroads in the middle of the yard.
+  const village: VillageSpec = { fx: (width * sub) / 2, fy: (height * sub) / 2, arm: 9 };
+  const features = scatterCover(tiles, width, height, "yard-64-cover", pads, 1, [village]);
   const fineTiles = upsampleTiles(tiles, width, height, sub);
   const fineW = width * sub;
   const fineH = height * sub;
@@ -1341,9 +1671,10 @@ export function makeYard64(): MapDef {
   const fineSpawns = spawns.map((s) => scaleSpawn(s, sub));
   const fineSpawnPads = fineSpawns.map((s) => ({ x: s.x, y: s.y, r: 4 * sub }));
   paintYardPonds(fineTiles, fineW, fineH, "yard-64-ponds", fineSpawnPads, features);
-  paintYardDress(fineTiles, fineW, fineH, fineSpawns, features);
+  paintYardDress(fineTiles, fineW, fineH, fineSpawns, features, village);
   const locked = new Uint8Array(fineW * fineH);
   const heights = scatterHeights(fineW, fineH, "yard-64-elev", fineSpawnPads, locked);
+  levelHouseLots(heights, fineTiles, fineW, fineH, features, locked);
   flattenTerrain(heights, fineTiles, fineW, fineH, TILE_WATER, locked);
   paintYardRocks(fineTiles, heights, fineW, fineH, "yard-64-rocks", fineSpawnPads, houseBoxes(features, sub));
 
@@ -1550,6 +1881,7 @@ function paintBroadLanes(
   height: number,
   hills: readonly TeamHill[],
   features: readonly MapFeature[],
+  villages: readonly VillageSpec[],
 ): void {
   const houses = houseBoxes(features, TILE_SUBDIV);
   const midX = Math.floor(width / 2);
@@ -1557,11 +1889,31 @@ function paintBroadLanes(
   const margin = 18;
   paintLane(tiles, width, height, margin, midY, width - 1 - margin, midY, 2, houses);
   paintLane(tiles, width, height, midX, margin, midX, height - 1 - margin, 2, houses);
+  const town = villages[0];
   for (const hill of hills) {
     const mx = Math.round(hill.x + hill.ux * (BROAD_ROCK_R + 6));
     const my = Math.round(hill.y + hill.uy * (BROAD_ROCK_R + 6));
-    paintLane(tiles, width, height, mx, my, midX, midY, 2, houses);
+    // Into the town by its nearest gate, not across the backs of its houses.
+    const g = town ? nearestGate(town, mx, my) : { x: midX, y: midY };
+    paintLane(tiles, width, height, mx, my, g.x, g.y, 2, houses);
   }
+  for (const v of villages) paintVillageStreets(tiles, width, height, v, houses);
+}
+
+/**
+ * Broad Yard's settlements: a town on the central crossroads, and a village
+ * on each main lane halfway out to the edge, between two team hills.
+ */
+function broadVillages(fine: number): VillageSpec[] {
+  const mid = fine / 2;
+  const out = 36 * TILE_SUBDIV;
+  return [
+    { fx: mid, fy: mid, arm: 14 },
+    { fx: mid, fy: mid - out, arm: 7 },
+    { fx: mid, fy: mid + out, arm: 7 },
+    { fx: mid - out, fy: mid, arm: 7 },
+    { fx: mid + out, fy: mid, arm: 7 },
+  ];
 }
 
 function outsideTeamHills(features: MapFeature[]): MapFeature[] {
@@ -1588,8 +1940,9 @@ export function makeBroadYard(): MapDef {
   const hillPads = BROAD_HILL_SPOTS.map((s) => ({ x: s.cx, y: s.cy, r: 34 }));
   paintYardScrap(tiles, width, height, "broad-143-scrap", [], Math.round(10 * scale));
   for (const p of hillPads) clearDisk(tiles, width, height, p.x, p.y, 28);
-  const features = outsideTeamHills(scatterCover(tiles, width, height, "broad-143-cover", hillPads, scale));
   const sub = TILE_SUBDIV;
+  const villages = broadVillages(width * sub);
+  const features = outsideTeamHills(scatterCover(tiles, width, height, "broad-143-cover", hillPads, scale, villages));
   const fineTiles = upsampleTiles(tiles, width, height, sub);
   const fineW = width * sub;
   const fineH = height * sub;
@@ -1611,7 +1964,7 @@ export function makeBroadYard(): MapDef {
   const heights = scatterHeights(fineW, fineH, "broad-143-elev", [], locked, scale);
   for (const hill of hills) stampTeamHill(fineTiles, heights, locked, fineW, fineH, hill);
   for (const hill of hills) paintHillScrap(fineTiles, fineW, fineH, hill);
-  paintBroadLanes(fineTiles, fineW, fineH, hills, features);
+  paintBroadLanes(fineTiles, fineW, fineH, hills, features, villages);
   for (const s of fineSpawns) clearDisk(fineTiles, fineW, fineH, s.x, s.y, 6);
   for (let i = 0; i < fineTiles.length; i++) {
     if (fineTiles[i] === TILE_WATER) {
@@ -1619,6 +1972,7 @@ export function makeBroadYard(): MapDef {
       locked[i] = 1;
     }
   }
+  levelHouseLots(heights, fineTiles, fineW, fineH, features, locked);
   flattenTerrain(heights, fineTiles, fineW, fineH, TILE_WATER, locked);
 
   return {

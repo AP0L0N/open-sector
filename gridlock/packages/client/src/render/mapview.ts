@@ -225,6 +225,7 @@ import { INTERCEPT_BURST_SIZE, RAM_MISS_BURST_SIZE, interceptorTrail } from "./r
 import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
 import { buildingShadowFootprint, drawCastShadows, treeShadowFootprint } from "./cast-shadow.js";
+import { buildingGroundElev, drawYardWear, wallFootprint, yardWearFootprint } from "./building-ground.js";
 import {
   airBurstPuffs,
   backblastPuffs,
@@ -2193,6 +2194,12 @@ export class MapView {
     return heightAt(map, worldToTile(wx, map.tileSize), worldToTile(wy, map.tileSize));
   }
 
+  /** Height a building sits at: its lowest visible corner, so a slope never shows air under it. */
+  private buildingElev(b: { tileX: number; tileY: number; tileW: number; tileH: number }): number {
+    const map = this.map();
+    return buildingGroundElev(map.heights, map.width, map.height, b.tileX, b.tileY, b.tileW, b.tileH);
+  }
+
   private toScreen(wx: number, wy: number, elev?: number): IsoPt {
     const p = worldToIso(wx, wy, this.ts());
     const z = isoLift(elev ?? this.elevAt(wx, wy));
@@ -2350,7 +2357,7 @@ export class MapView {
           e.tileH * ts,
           this.extrude(e.type),
           ts,
-          isoLift(heightAt(this.map(), e.tileX, e.tileY)),
+          isoLift(this.buildingElev(e)),
         )
       ) {
         return e;
@@ -2712,11 +2719,13 @@ export class MapView {
     ];
     const items: DrawItem[] = [];
     const castShadows: IsoPt[][] = [];
+    const yardWear: IsoPt[][] = [];
     for (const e of drawList) {
       const ghost = !liveIds.has(e.id);
       // The Airfield is flat ground; its decal would sit in its own shadow.
       if (e.kind === "building" && !isFieldStructure(e.type) && !buildingGroundFor(e.type)) {
         this.pushCastShadow(castShadows, this.buildingShadow(e), w, h);
+        this.pushYardWear(yardWear, e, w, h);
       }
       items.push({
         ...this.drawKey(e),
@@ -2747,6 +2756,8 @@ export class MapView {
     this.collectTrees(items, castShadows);
     this.collectDecor(items);
     this.collectTreeBurns(items);
+    // Worn yards merge into one patch, under the Airfield strip and every shadow.
+    items.push({ layer: GROUND_DECAL_DRAW_LAYER, z: -Infinity, run: () => drawYardWear(this.ctx, yardWear) });
     // One path under craters and unit blobs, so overlapping shadows don't stack.
     items.push({ layer: HOLE_DRAW_LAYER, z: -Infinity, run: () => drawCastShadows(this.ctx, castShadows) });
     this.collectRemains(items);
@@ -3486,9 +3497,10 @@ export class MapView {
 
   private pushGroundShadow(
     items: DrawItem[],
-    foot: { cx: number; cy: number; points: { x: number; y: number }[] },
+    foot: { cx: number; cy: number; points: { x: number; y: number }[]; contact?: { x: number; y: number }[] },
   ): void {
     const { w, h } = this.viewSize();
+    const contact = (foot.contact ?? []).map((q) => this.toScreen(q.x, q.y));
     const screen: { x: number; y: number }[] = [];
     let minX = Infinity;
     let minY = Infinity;
@@ -3506,7 +3518,7 @@ export class MapView {
     items.push({
       layer: HOLE_DRAW_LAYER,
       z: isoDepth(foot.cx, foot.cy),
-      run: () => drawGroundShadow(this.ctx, screen),
+      run: () => drawGroundShadow(this.ctx, screen, contact),
     });
   }
 
@@ -3528,6 +3540,7 @@ export class MapView {
           radius: def.radius * scale,
           elongated: !isInfantryType(e.type),
           stance: e.stance,
+          airborne: (e.air?.alt ?? 0) > 0 || (e.jet?.alt ?? 0) > 0,
         }),
       );
     }
@@ -3816,12 +3829,16 @@ export class MapView {
   private buildingShadow(e: EntityView): { x: number; y: number }[] {
     const ts = this.ts();
     return buildingShadowFootprint({
-      x: e.tileX * ts,
-      y: e.tileY * ts,
-      w: e.tileW * ts,
-      h: e.tileH * ts,
+      ...wallFootprint(e.tileX * ts, e.tileY * ts, e.tileW * ts, e.tileH * ts),
       height: (this.extrude(e.type) * ts) / ISO_TILE_H,
     });
+  }
+
+  /** Trampled earth around a building, laid on the terrain under each point. */
+  private pushYardWear(out: IsoPt[][], e: EntityView, w: number, h: number): void {
+    const ts = this.ts();
+    const foot = { x: e.tileX * ts, y: e.tileY * ts, w: e.tileW * ts, h: e.tileH * ts };
+    this.pushCastShadow(out, yardWearFootprint(foot), w, h);
   }
 
   /** Projects a world shadow to screen and keeps it when it touches the view. */
@@ -4000,7 +4017,7 @@ export class MapView {
     const y = e.tileY * ts;
     const bw = e.tileW * ts;
     const bh = e.tileH * ts;
-    const elev = heightAt(this.map(), e.tileX, e.tileY);
+    const elev = this.buildingElev(e);
     const south = this.toScreen(x + bw, y + bh, elev);
     const east = this.toScreen(x + bw, y, elev);
     const west = this.toScreen(x, y + bh, elev);
@@ -4033,7 +4050,7 @@ export class MapView {
     const bw = e.tileW * ts;
     const bh = e.tileH * ts;
     const ez = this.extrude(e.type);
-    const elev = heightAt(this.map(), e.tileX, e.tileY);
+    const elev = this.buildingElev(e);
     const hex = this.ownerColor(e);
     const spr = buildingSpriteFor(e.type, e.facing);
     const south = this.toScreen(x + bw, y + bh, elev);
@@ -4163,7 +4180,7 @@ export class MapView {
     );
     ctx.restore();
     if (!e?.gatling || e.wreck) return;
-    const elev = heightAt(this.map(), e.tileX, e.tileY);
+    const elev = this.buildingElev(e);
     const tip = this.toScreen(
       e.x + Math.cos(facing) * CIWS_MUZZLE_REACH,
       e.y + Math.sin(facing) * CIWS_MUZZLE_REACH,
@@ -4204,7 +4221,7 @@ export class MapView {
       const y = e.tileY * ts;
       const w = e.tileW * ts;
       const h = e.tileH * ts;
-      const elev = heightAt(this.map(), e.tileX, e.tileY);
+      const elev = this.buildingElev(e);
       const east = this.toScreen(x + w, y, elev);
       const west = this.toScreen(x, y + h, elev);
       const south = this.toScreen(x + w, y + h, elev);
@@ -5931,7 +5948,7 @@ export class MapView {
     const y = tile.y * ts;
     const bw = def.tileW * ts;
     const bh = def.tileH * ts;
-    const elev = heightAt(this.map(), tile.x, tile.y);
+    const elev = this.buildingElev({ tileX: tile.x, tileY: tile.y, tileW: def.tileW, tileH: def.tileH });
     const spr = buildingSpriteFor(type);
     if (spr && spriteReady(spr)) {
       const south = this.toScreen(x + bw, y + bh, elev);

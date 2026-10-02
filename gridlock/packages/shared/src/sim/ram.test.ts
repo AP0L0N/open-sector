@@ -23,12 +23,13 @@ import {
   rocketAmmoOf,
   rocketRackOf,
   supplyShortOf,
+  isCivilianType,
 } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { TILE_EMPTY } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { reachesDrone } from "./drone.js";
-import { makeEntity, playerTeam, tileCenter } from "./geo.js";
+import { destroyEntity, makeEntity, playerTeam, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
@@ -44,6 +45,10 @@ function match(): MatchState {
   if (!started.ok) throw new Error(started.message);
   const state = createMatch(room, started.value);
   // Flat, open ground in the middle of the map: nothing blocks sight or shots.
+  // The village on the crossroads goes too.
+  for (const e of [...state.entities.values()]) {
+    if (isCivilianType(e.type)) destroyEntity(state, e);
+  }
   for (let y = 90; y <= 170; y++) {
     for (let x = 90; x <= 170; x++) {
       const i = y * state.width + x;

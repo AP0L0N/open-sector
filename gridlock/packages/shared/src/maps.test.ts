@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { HEIGHT_BASE, HEIGHT_MAX, HEIGHT_STEP_MAX, TILE_SUBDIV } from "./catalog.js";
+import { HEIGHT_BASE, HEIGHT_MAX, HEIGHT_STEP_MAX, TILE_SUBDIV, catalog } from "./catalog.js";
 import {
   MAPS,
+  type MapDef,
+  type MapFeature,
   TILE_BLOCKED,
   TILE_FENCE,
   TILE_ROAD,
@@ -682,5 +684,93 @@ describe("maps", () => {
       for (const s of pair) assert.equal(reach[s.y * w + s.x], 0, `team ${team} still has a way up`);
       assert.equal(map.applySuggestedTeams, true);
     }
+  });
+});
+
+function lot(f: MapFeature): { x0: number; y0: number; x1: number; y1: number } {
+  const d = catalog(f.type);
+  return { x0: f.x, y0: f.y, x1: f.x + d.tileW, y1: f.y + d.tileH };
+}
+
+/** Houses whose walls meet along a side: a terrace, not two lots with a yard between. */
+function touchingPairs(map: MapDef): number {
+  const lots = map.features.map(lot);
+  let n = 0;
+  for (let i = 0; i < lots.length; i++) {
+    for (let j = i + 1; j < lots.length; j++) {
+      const a = lots[i]!;
+      const b = lots[j]!;
+      const gx = Math.max(a.x0, b.x0) - Math.min(a.x1, b.x1);
+      const gy = Math.max(a.y0, b.y0) - Math.min(a.y1, b.y1);
+      assert.ok(gx >= 0 || gy >= 0, `houses overlap at ${a.x0},${a.y0} and ${b.x0},${b.y0}`);
+      if ((gx === 0 && gy < 0) || (gy === 0 && gx < 0)) n++;
+    }
+  }
+  return n;
+}
+
+describe("villages", () => {
+  it("builds Scrap Yard's houses into a village on the crossroads", () => {
+    const yard = MAPS["yard-64"]!;
+    const mid = yard.width / 2;
+    const reach = 10 * TILE_SUBDIV;
+    const inTown = yard.features.filter((f) => {
+      const b = lot(f);
+      return Math.abs((b.x0 + b.x1) / 2 - mid) < reach && Math.abs((b.y0 + b.y1) / 2 - mid) < reach;
+    });
+    assert.ok(inTown.length >= 8, `village houses ${inTown.length}`);
+    assert.ok(touchingPairs(yard) >= 4, `touching pairs ${touchingPairs(yard)}`);
+  });
+
+  it("turns village doors onto the street", () => {
+    const yard = MAPS["yard-64"]!;
+    const mid = yard.width / 2;
+    // Facing: 0 east, 1 south, 2 west, 3 north. A door looks toward the street it fronts.
+    for (const f of yard.features) {
+      const b = lot(f);
+      const cx = (b.x0 + b.x1) / 2;
+      const cy = (b.y0 + b.y1) / 2;
+      if (b.y1 <= mid && b.y1 >= mid - 4 && Math.abs(cx - mid) > 8) assert.equal(f.facing, 1, `north of the street at ${f.x},${f.y}`);
+      if (b.y0 >= mid && b.y0 <= mid + 4 && Math.abs(cx - mid) > 8) assert.equal(f.facing, 3, `south of the street at ${f.x},${f.y}`);
+      if (b.x1 <= mid && b.x1 >= mid - 4 && Math.abs(cy - mid) > 8) assert.equal(f.facing, 0, `west of the street at ${f.x},${f.y}`);
+      if (b.x0 >= mid && b.x0 <= mid + 4 && Math.abs(cy - mid) > 8) assert.equal(f.facing, 2, `east of the street at ${f.x},${f.y}`);
+    }
+  });
+
+  it("keeps the village street a road and not a lot", () => {
+    const yard = MAPS["yard-64"]!;
+    const mid = yard.width / 2;
+    let road = 0;
+    for (let x = mid - 30; x <= mid + 30; x++) if (tileAt(yard, x, mid) === TILE_ROAD) road++;
+    assert.ok(road >= 55, `street road tiles ${road}`);
+    for (const f of yard.features) {
+      const b = lot(f);
+      assert.ok(!(b.y0 <= mid && b.y1 > mid && b.x0 < mid + 30 && b.x1 > mid - 30), `house on the street at ${f.x},${f.y}`);
+    }
+  });
+
+  it("levels the ground under every house", () => {
+    for (const map of Object.values(MAPS)) {
+      for (const f of map.features) {
+        const b = lot(f);
+        const z = heightAt(map, b.x0, b.y0);
+        for (let y = b.y0; y < b.y1; y++) {
+          for (let x = b.x0; x < b.x1; x++) {
+            assert.equal(heightAt(map, x, y), z, `${map.id} ${f.type} at ${f.x},${f.y} is not level`);
+          }
+        }
+      }
+    }
+  });
+
+  it("gives Broad Yard a town and outlying villages of terraced houses", () => {
+    const map = MAPS["broad-143"]!;
+    assert.ok(touchingPairs(map) >= 20, `touching pairs ${touchingPairs(map)}`);
+    const mid = map.width / 2;
+    const town = map.features.filter((f) => {
+      const b = lot(f);
+      return Math.abs((b.x0 + b.x1) / 2 - mid) < 16 * TILE_SUBDIV && Math.abs((b.y0 + b.y1) / 2 - mid) < 16 * TILE_SUBDIV;
+    });
+    assert.ok(town.length >= 16, `town houses ${town.length}`);
   });
 });
