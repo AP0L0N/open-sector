@@ -243,6 +243,19 @@ describe("shell holes and water splashes", () => {
     assert.equal(state.impacts[0]!.splash, undefined);
   });
 
+  it("sends a heavy round's damage with its impact so the burst can be sized", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const tile = landTile(state);
+    const x = tileCenter(tile.x, state.tileSize);
+    const y = tileCenter(tile.y, state.tileSize);
+    dropRound(state, x, y, 8);
+    assert.equal(state.impacts[0]!.damage, undefined);
+    state.impacts = [];
+    dropRound(state, x, y, 75, "he");
+    assert.equal(state.impacts[0]!.damage, catalog("warden").damage);
+  });
+
   it("splashes on water for shells and bullets and never leaves a hole", () => {
     const { state } = twoPlayerMatch();
     clearCover(state);

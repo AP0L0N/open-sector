@@ -22,6 +22,7 @@ import {
   ptrdPenetration,
 } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
+import { TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { ptrdHarmPossible, resolveAtRifleHit } from "./ballistics.js";
 import { rollCrits } from "./crits.js";
@@ -46,7 +47,12 @@ function match(): { state: MatchState; a: string; b: string } {
   updateSelf(room, "B", { ready: true, spawnId: 4 });
   const started = startMatch(room, "A");
   if (!started.ok) throw new Error(started.message);
-  return { state: createMatch(room, started.value), a: "A", b: "B" };
+  const state = createMatch(room, started.value);
+  // Yard trees sit on these lanes and stop a round before it meets the plate.
+  for (let i = 0; i < state.terrain.length; i++) {
+    if (state.terrain[i] === TILE_TREE) state.terrain[i] = TILE_EMPTY;
+  }
+  return { state, a: "A", b: "B" };
 }
 
 function ticks(state: MatchState, n: number): void {

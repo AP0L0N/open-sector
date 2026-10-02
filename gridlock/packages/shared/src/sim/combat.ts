@@ -2304,6 +2304,7 @@ function pushImpact(
     vx: vx ?? p.vx,
     vy: vy ?? p.vy,
     caliber: p.caliber,
+    damage: p.caliber >= GARRISON_STRUCTURAL_CALIBER && p.damage > 0 ? p.damage : undefined,
     blast: blast || undefined,
     mortar: p.flight === "mortar" ? true : undefined,
     bomb: p.flight === "mortar" && p.big ? true : undefined,

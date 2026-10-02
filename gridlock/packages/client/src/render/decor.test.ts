@@ -65,10 +65,21 @@ describe("map dress", () => {
     let flat = 0;
     for (const list of layout.flatAt.values()) {
       for (const it of list) {
-        assert.ok(!it.standing && (it.kind === "crater" || it.kind === "stones"));
+        assert.ok(!it.standing && (it.kind === "crater" || it.kind === "stones" || it.kind === "boulder"));
         flat++;
       }
     }
     assert.equal(flat + layout.standing.length, layout.items.length);
+  });
+
+  it("bakes boulders into the ground so units and structures always draw over them", () => {
+    for (const map of Object.values(MAPS)) {
+      const boulders = placeDecor(map).filter((it) => it.kind === "boulder");
+      assert.ok(boulders.length > 0, `${map.id} boulders`);
+      for (const it of boulders) {
+        assert.equal(it.standing, false, `${map.id} boulder at ${it.tx},${it.ty} stands`);
+        assert.ok(it.drawH <= 10, `${map.id} boulder drawH ${it.drawH}`);
+      }
+    }
   });
 });

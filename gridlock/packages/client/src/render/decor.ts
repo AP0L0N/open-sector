@@ -41,7 +41,7 @@ export interface DecorItem {
 export interface DecorLayout {
   items: DecorItem[];
   standing: DecorItem[];
-  /** Flat items by the tile they are baked on (`ty * width + tx`). */
+  /** Ground-baked items (craters, rubble, boulders) by tile (`ty * width + tx`). Units and structures always draw over them. */
   flatAt: Map<number, DecorItem[]>;
 }
 
@@ -215,7 +215,7 @@ export function placeDecor(map: MapDef): DecorItem[] {
   };
 
   for (const p of signSpots(map, free)) {
-    add("sign", p.tx, p.ty, 30 + (hash2(p.tx, p.ty, s(3)) % 5), true, 3).face = p.face;
+    add("sign", p.tx, p.ty, 30 + (hash2(p.tx, p.ty, s(3)) % 4), true, 3).face = p.face;
     claim(p.tx, p.ty, 3);
   }
 
@@ -225,7 +225,7 @@ export function placeDecor(map: MapDef): DecorItem[] {
       const i = ty * w + tx;
       if (map.tiles[i] !== TILE_ROCK || out[i] || used[i]) continue;
       if (!spaced(s(11), tx, ty, 5, 2)) continue;
-      add("boulder", tx, ty, 14 + (hash2(tx, ty, s(29)) % 9), true, 11);
+      add("boulder", tx, ty, 6 + (hash2(tx, ty, s(29)) % 4), false, 11);
       claim(tx, ty, 2);
     }
   }
@@ -252,7 +252,7 @@ export function placeDecor(map: MapDef): DecorItem[] {
           }
         }
         if (below && spaced(s(13), tx, ty, 6, 3)) {
-          add("boulder", tx, ty, 11 + (hv % 8), true, 13);
+          add("boulder", tx, ty, 5 + (hv % 4), false, 13);
           claim(tx, ty, 2);
           continue;
         }
@@ -301,7 +301,7 @@ export function placeDecor(map: MapDef): DecorItem[] {
         continue;
       }
       if (spaced(s(47), tx, ty, 420, 8)) {
-        add("boulder", tx, ty, 10 + (hv % 6), true, 47);
+        add("boulder", tx, ty, 5 + (hv % 3), false, 47);
         claim(tx, ty, 2);
       }
     }

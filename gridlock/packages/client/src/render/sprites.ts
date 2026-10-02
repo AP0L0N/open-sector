@@ -74,6 +74,9 @@ import scrap3Url from "../assets/terrain/scrap-3.png";
 import crater1Url from "../assets/terrain/crater-1.png";
 import crater2Url from "../assets/terrain/crater-2.png";
 import crater3Url from "../assets/terrain/crater-3.png";
+import crater4Url from "../assets/terrain/crater-4.png";
+import crater5Url from "../assets/terrain/crater-5.png";
+import crater6Url from "../assets/terrain/crater-6.png";
 import bush1Url from "../assets/terrain/bush-1.png";
 import bush2Url from "../assets/terrain/bush-2.png";
 import bush3Url from "../assets/terrain/bush-3.png";
@@ -1582,7 +1585,7 @@ export const BOULDER_FACES: PropSprite[] = [
 export const STONE_FACES: PropSprite[] = [prop(stones1Url, 105, 95), prop(stones2Url, 126, 97)];
 export const STUMP_FACES: PropSprite[] = [prop(stump1Url, 113, 125), prop(stump2Url, 100, 124)];
 /** Contact is the post foot; boards overhang to either side. */
-export const SIGN_FACES: PropSprite[] = [prop(signpost1Url, 138, 427), prop(signpost2Url, 20, 427)];
+export const SIGN_FACES: PropSprite[] = [prop(signpost1Url, 171, 300), prop(signpost2Url, 25, 300)];
 
 /** Flat shell crater. Contact is the pit; `bowl` is that pit's width in source pixels. */
 export interface CraterSprite extends PropSprite {
@@ -1594,9 +1597,13 @@ function crater(src: string, contactX: number, contactY: number, bowl: number): 
 }
 
 export const CRATER_FACES: CraterSprite[] = [
-  crater(crater1Url, 171, 105, 288),
-  crater(crater2Url, 189, 117, 312),
-  crater(crater3Url, 173, 112, 300),
+  // tools/sprites/render_craters.py prints these.
+  crater(crater1Url, 270, 135, 240),
+  crater(crater2Url, 270, 135, 240),
+  crater(crater3Url, 270, 135, 240),
+  crater(crater4Url, 270, 135, 240),
+  crater(crater5Url, 270, 135, 240),
+  crater(crater6Url, 270, 135, 240),
 ];
 /** Rail runs down-right (world +x). Contact is midway between the post bases. */
 export const FENCE_X = prop(fenceXUrl, 300, 525);

@@ -93,7 +93,6 @@ import {
   drawMortarBurst,
   drawMortarSmoke,
   MORTAR_BURST_MS,
-  SHELL_BURST_MS,
   drawMoveClick,
   drawWreckFire,
   fxFrameAt,
@@ -103,13 +102,13 @@ import {
   wreckFireAlpha,
   wreckFireCount,
 } from "./fx.js";
+import { SMOULDER_MS, burstLifeMs, burstSpec, drawExplosion, drawSmoulder, type BurstSpec } from "./explosion.js";
 import { aimMoveFace, moveFaceArmed, moveFaceCommand } from "./move-face.js";
 import {
   UNIT_VISUAL_SCALE,
   INFANTRY_VISUAL_SCALE,
   OAK_FACES,
   PINE_FACES,
-  BOULDER_FACES,
   BUSH_FACES,
   SIGN_FACES,
   STUMP_FACES,
@@ -265,7 +264,7 @@ import { canopySway, drawCanopy, drawCrate, drawMine, troopCanopySpan } from "./
 import { barrageTracers, tracerLandsAt, tracerSpan, type BarrageTracer } from "./barrage-tracer.js";
 import { drawSandbags } from "./sandbags.js";
 import { drawTrench } from "./trench.js";
-import { drawWall, WALL_SLAB_H, wallSectionsConnect, wallTopElev } from "./wall.js";
+import { drawWall, WALL_SLAB_H, wallEndSeal, wallSectionsConnect, wallTopElev } from "./wall.js";
 import { pyroNozzleScreen } from "./pyro-nozzle.js";
 import { unitGroundSink } from "./unit-hit.js";
 import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
@@ -479,7 +478,7 @@ function sheetCellAlpha(img: HTMLImageElement, cell: number, row: number): Uint8
 const DECOR_FACES: Record<DecorKind, readonly PropSprite[]> = {
   bush: BUSH_FACES,
   sign: SIGN_FACES,
-  boulder: BOULDER_FACES,
+  boulder: [],
   stump: STUMP_FACES,
   stones: [],
   crater: [],
@@ -576,8 +575,12 @@ export class MapView {
     sx?: number;
     window?: boolean;
     shell?: string;
+    /** Center damage of a heavy round. Sizes its ground burst. */
+    damage?: number;
   }[] = [];
   private fxIds = new Set<number>();
+  /** When each crater was struck, for its smoulder. Holes already there on first sight never smoke. */
+  private holeBorn = new Map<number, number>();
   private seenShots = new Set<number>();
   /** Bounced spark origin, snapped to the same hull pixel as the ricochet FX. */
   private bounceTrace = new Map<number, { x: number; y: number; sx: number; lift: number }>();
@@ -1156,7 +1159,8 @@ export class MapView {
   /** Field gun: flash and a big smoke puff at the muzzle, out along the barrel. */
   private noteFieldGunShot(shooter: EntityView, shot: { id: number; caliber: number }, now: number): void {
     const spr = spriteFor(shooter.type);
-    const reach = catalog(shooter.type).radius * 2.4;
+    // The barrel sits at 45°: the muzzle is short of the axle on the ground and high above it.
+    const reach = catalog(shooter.type).radius * 1.75;
     const x = shooter.x + Math.cos(shooter.facing) * reach;
     const y = shooter.y + Math.sin(shooter.facing) * reach;
     const dirX = Math.cos(shooter.facing);
@@ -1181,7 +1185,7 @@ export class MapView {
       vy: dirY,
       at: now,
       caliber: shot.caliber,
-      lift: Math.round((spr?.drawSize ?? 48) * 0.3),
+      lift: Math.round((spr?.drawSize ?? 48) * 0.54),
     });
   }
 
@@ -5442,10 +5446,11 @@ export class MapView {
     const ctx = this.ctx;
     const keep: typeof this.fx = [];
     for (const f of this.fx) {
-      const life = f.mortar || f.rocket
-        ? MORTAR_BURST_MS
-        : f.kind === "miss" && isShellCaliber(f.caliber)
-          ? SHELL_BURST_MS
+      const burst = groundBurst(f);
+      const life = burst
+        ? burstLifeMs(burst)
+        : f.mortar || f.rocket
+          ? MORTAR_BURST_MS
           : fxLifeMs(f.kind, f.blast);
       const age = now - f.at;
       if (age > life) {
@@ -5466,9 +5471,11 @@ export class MapView {
       if (f.rocket && f.z != null) {
         const air = this.toScreen(f.x, f.y, f.z);
         drawAirBurst(ctx, air.x, air.y, t, f.id);
+      } else if (burst) {
+        drawExplosion(ctx, s.x, s.y, age, f.id, burst, dirX, dirY);
       } else if (f.mortar || f.rocket) {
-        const scale = f.bomb ? AIR_BOMB_BURST_SCALE : f.rocket ? ROCKET_BURST_SCALE : 1;
-        drawMortarBurst(ctx, s.x, s.y, t, f.id, !!f.splash, scale);
+        // On water: the splash column, grown with the round's firepower.
+        drawMortarBurst(ctx, s.x, s.y, t, f.id, waterColumnScale(f));
       } else if (f.splash) {
         drawWaterDetonation(ctx, s.x, s.y, t, f.id, f.caliber);
       }
@@ -5523,11 +5530,37 @@ export class MapView {
         );
       } else if (f.kind === "ricochet") {
         drawRicochetSparks(ctx, x, y, dirX, dirY, t, f.id, f.caliber);
-      } else if (f.kind === "miss" && !f.splash && !f.mortar && !f.rocket) {
-        drawGroundMiss(ctx, s.x, s.y, t, f.id, f.caliber, dirX, dirY, f.shell);
+      } else if (f.kind === "miss" && !burst && !f.splash && !f.mortar && !f.rocket) {
+        drawGroundMiss(ctx, s.x, s.y, t, f.id, dirX, dirY);
       }
     }
     this.fx = keep;
+    this.drawSmoulders(now);
+  }
+
+  /** Thin smoke off craters struck while you watched. */
+  private drawSmoulders(now: number): void {
+    const holes = this.curr.holes ?? [];
+    if (holes.length === 0) return;
+    const map = this.map();
+    const ts = map.tileSize;
+    for (const hole of holes) {
+      let born = this.holeBorn.get(hole.id);
+      if (born == null) {
+        const strike = this.fx.find((f) => f.id === hole.seed);
+        born = strike ? strike.at : -Infinity;
+        this.holeBorn.set(hole.id, born);
+      }
+      const age = now - born;
+      if (!(age < SMOULDER_MS)) continue;
+      if (!this.lit(worldToTile(hole.x, ts), worldToTile(hole.y, ts))) continue;
+      const c = this.toScreen(hole.x, hole.y);
+      drawSmoulder(this.ctx, c.x, c.y, age, hole.seed, this.groundSpan(hole.x, hole.y, hole.radius));
+    }
+    if (this.holeBorn.size > holes.length + 64) {
+      const live = new Set(holes.map((h) => h.id));
+      for (const id of this.holeBorn.keys()) if (!live.has(id)) this.holeBorn.delete(id);
+    }
   }
 
   private drawSmokeClouds(): void {
@@ -6010,6 +6043,7 @@ export class MapView {
       levelPx: ISO_ELEVATION,
       worldPx,
       project: (wx, wy, elev) => this.toScreen(wx, wy, elev),
+      seal: wallEndSeal({ x, y, facing, length: span.length, thick: span.thick }, run),
     });
   }
 
@@ -6282,4 +6316,34 @@ export class MapView {
       ctx.fillRect(tx * scale - sz / 2, ty * scale - sz / 2, sz, sz);
     }
   }
+}
+
+/**
+ * A heavy round bursting on dry ground: a shell into the dirt, or a mortar
+ * bomb, field-gun shell, rocket, or aircraft bomb that did not land in water
+ * or go off in the air. Undefined for everything else.
+ */
+function groundBurst(f: {
+  kind: string;
+  caliber?: number;
+  damage?: number;
+  shell?: string;
+  splash?: boolean;
+  mortar?: boolean;
+  bomb?: boolean;
+  rocket?: boolean;
+  z?: number;
+  intercept?: boolean;
+}): BurstSpec | undefined {
+  if (f.splash || f.intercept || (f.rocket && f.z != null)) return undefined;
+  if (f.mortar || f.rocket) return burstSpec(f);
+  if (f.kind === "miss" && isShellCaliber(f.caliber) && f.shell !== "smoke") return burstSpec(f);
+  return undefined;
+}
+
+/** A lobbed round in water: the splash column at its old scale, grown with firepower. */
+function waterColumnScale(f: { caliber?: number; damage?: number; bomb?: boolean; rocket?: boolean; mortar?: boolean }): number {
+  const base = f.bomb ? AIR_BOMB_BURST_SCALE : f.rocket ? ROCKET_BURST_SCALE : 1;
+  const ref = burstSpec(f.bomb ? { caliber: 250, damage: 70, bomb: true, mortar: true } : f.rocket ? { caliber: 80, damage: 42, rocket: true } : { caliber: 60, damage: 56, mortar: true });
+  return base * (burstSpec(f).power / ref.power);
 }

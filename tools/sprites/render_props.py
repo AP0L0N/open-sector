@@ -353,24 +353,24 @@ def wood_fill(h: int, w: int, rng: np.random.Generator, base: np.ndarray, along:
     grain = 0.5 + 0.5 * np.sin(t / (2.2 * SS) + warp * 9 + np.sin(s / (40 * SS)) * 1.5)
     fine = fbm(h, w, 3 * SS, rng, 2)
     tone = 0.78 + 0.16 * grain + 0.16 * fine
-    stain = (fbm(h, w, 16 * SS, rng, 3) > 0.62).astype(float) * 0.18
+    stain = (fbm(h, w, 16 * SS, rng, 3) > 0.62).astype(float) * 0.08
     return base[None, None, :] * (tone - stain)[..., None]
 
 
 def render_signpost(seed: int) -> Image.Image:
     rng = np.random.default_rng(seed)
-    w, h = 300 * SS, 520 * SS
+    w, h = 380 * SS, 340 * SS
     rgb = np.zeros((h, w, 3))
     a = np.zeros((h, w))
-    wood = np.array([150, 118, 82], float) * (0.85 + rng.random() * 0.1)
+    wood = np.array([204, 176, 132], float) * (0.85 + rng.random() * 0.1)
     grey = np.array([128, 120, 106], float)
-    weather = 0.45 + rng.random() * 0.25
+    weather = 0.3 + rng.random() * 0.2
     plank = wood * (1 - weather) + grey * weather
 
     cx = w * 0.5
     foot = h * 0.94
-    post_w = 15 * SS
-    post_top = h * 0.12
+    post_w = 20 * SS
+    post_top = h * 0.06
     # Post: lit left face, shaded right face, a little cap.
     left = poly_mask(h, w, [(cx - post_w, post_top + post_w * 0.5), (cx, post_top + post_w), (cx, foot), (cx - post_w, foot - post_w * 0.5)])
     right = poly_mask(h, w, [(cx, post_top + post_w), (cx + post_w, post_top + post_w * 0.5), (cx + post_w, foot - post_w * 0.5), (cx, foot)])
@@ -381,19 +381,19 @@ def render_signpost(seed: int) -> Image.Image:
     over(rgb, a, post_wood * 1.1, capm)
     # Earth darkening at the foot.
     yy = np.mgrid[0:h, 0:w][0].astype(float)
-    rgb *= (1 - 0.35 * np.clip((yy - (foot - 40 * SS)) / (40 * SS), 0, 1) * (a > 0))[..., None]
+    rgb *= (1 - 0.35 * np.clip((yy - (foot - 30 * SS)) / (30 * SS), 0, 1) * (a > 0))[..., None]
 
     # Boards along the two iso axes: +x runs down-right (2,1), +y down-left (-2,1).
     # Odd seeds carry two boards (a crossing), even seeds one weathered board.
     first = 1 if rng.random() < 0.5 else -1
-    boards = [(first, 0.24), (-first, 0.40)] if seed % 2 == 1 else [(first, 0.26)]
+    boards = [(first, 0.1), (-first, 0.36)] if seed % 2 == 1 else [(first, 0.14)]
     for side, at in boards:
         ux, uy = 2 / math.sqrt(5) * side, 1 / math.sqrt(5)
         y0 = h * at
-        length = (110 + rng.random() * 25) * SS
-        bh = 40 * SS
+        length = (130 + rng.random() * 20) * SS
+        bh = 62 * SS
         sx = cx + side * post_w * 0.6
-        tip = 18 * SS
+        tip = 28 * SS
         ex = sx + ux * length
         ey = y0 + uy * length
         tilt = (rng.random() - 0.5) * 6 * SS
@@ -414,7 +414,7 @@ def render_signpost(seed: int) -> Image.Image:
         over(rgb, a, face * 1.18, edge * 0.9)
         # Nail heads.
         for nx_, ny_ in [(sx + ux * 10 * SS, y0 + uy * 10 * SS + bh * 0.3), (sx + ux * 10 * SS, y0 + uy * 10 * SS + bh * 0.7)]:
-            dot = ellipse_mask(h, w, nx_, ny_, 2.2 * SS, 2.2 * SS)
+            dot = ellipse_mask(h, w, nx_, ny_, 3.5 * SS, 3.5 * SS)
             over(rgb, a, np.broadcast_to(np.array([52, 46, 40], float), (h, w, 3)).copy(), dot)
     return to_image(rgb, a)
 
