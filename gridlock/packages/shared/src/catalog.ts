@@ -1580,8 +1580,8 @@ export const TRENCH_COVER_HEIGHT = 2;
 /** The bunker's roster plus the mortarman, who needs the open sky. */
 export const TRENCH_TYPES: readonly EntityType[] = [...BUNKER_TYPES, "mortarman"];
 /**
- * Mammoth. A slow armored battle platform: a fighting deck with firing slits
- * on every side over two sets of tracks. It carries a Bunker's worth of
+ * Mammoth. A slow armored battle platform on four legs, with firing slits
+ * down both flanks. It carries a Bunker's worth of
  * infantry and they fire out of it. The hull takes every hit and nothing
  * reaches them, but they go down with it.
  */
@@ -2956,7 +2956,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonFullArms: true,
     garrisonTypes: BUNKER_TYPES,
     garrisonDiesWithHost: true,
-    blurb: `Armored battle platform on two sets of tracks. Very slow, very thick plate on every face, and in water it is thirty percent slower, sunk so only the casemate shows. Its own weapon is a small bow machine gun that swings only a little either side of the nose, and falls silent in water. It carries ${MAMMOTH_GARRISON_CAP} of the infantry a Bunker takes, and every one of them fires out of the deck slits, even while it wades. Force attack on the hull aims every soldier inside who can reach that point; they stay aboard. Nothing reaches them while the hull holds — but if it is destroyed, everyone inside dies with it.`,
+    blurb: `Armored battle platform on four legs. Very slow, very thick plate on every face, and in water it is thirty percent slower, sunk to the waist so only the body shows. Its own weapon is a twin machine gun under the cab that swings only a little either side of the nose, and falls silent in water. It carries ${MAMMOTH_GARRISON_CAP} of the infantry a Bunker takes, and every one of them fires out of the slits along its flanks, even while it wades. Force attack on the hull aims every soldier inside who can reach that point; they stay aboard. Nothing reaches them while the hull holds — but if it is destroyed, everyone inside dies with it.`,
   },
   nebelwerfer: {
     type: "nebelwerfer",
