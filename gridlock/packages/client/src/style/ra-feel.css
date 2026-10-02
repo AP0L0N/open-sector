@@ -815,6 +815,7 @@ input[type="range"] { padding: 0; }
 #train-warden,
 #train-apocalypse,
 #train-ss3,
+#train-jagdtiger,
 #train-walker,
 #train-cyborg,
 #train-titan,
@@ -915,6 +916,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     var(--ss3-cameo, url("../assets/units/ss3-cameo.png"));
+}
+#train-jagdtiger {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/jagdtiger-cameo.png");
 }
 #train-walker {
   background-image:
@@ -1213,6 +1219,8 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="hauler"] { background-image: url("../assets/units/hauler-cameo.png"); }
 .config-type[data-type="warden"] { background-image: var(--tiger-cameo, url("../assets/units/tiger-cameo.png")); }
 .config-type[data-type="ss3"] { background-image: var(--ss3-cameo, url("../assets/units/ss3-cameo.png")); }
+.config-type[data-type="jagdtiger"],
+.prod-job[data-type="jagdtiger"] { background-image: url("../assets/units/jagdtiger-cameo.png"); }
 .config-type[data-type="apocalypse"] { background-image: url("../assets/units/apocalypse-cameo.png"); }
 .config-type[data-type="walker"],
 .prod-job[data-type="walker"] { background-image: url("../assets/units/walker-cameo.png"); }

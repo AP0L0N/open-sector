@@ -929,6 +929,7 @@ const TYPE_ORDER: EntityType[] = [
   "warden",
   "apocalypse",
   "ss3",
+  "jagdtiger",
   "walker",
   "cyborg",
   "titan",

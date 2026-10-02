@@ -23,15 +23,21 @@
     "SSE"
   ],
   "contactY": 0.72,
-  "scale": 0.9586,
+  "scale": 0.9271,
   "out": "gridlock/packages/client/src/assets/units/gunner-fire.png",
   "size_pop_dirs": [
+    "S",
+    "SSW",
+    "WSW",
     "W",
     "WNW",
+    "NNW",
     "N",
     "NNE",
+    "ENE",
     "E",
-    "ESE"
+    "ESE",
+    "SSE"
   ],
   "empty_dirs": [],
   "clipped_dirs": [],

@@ -10,6 +10,7 @@ import {
   STANCE_AIM_SPREAD,
   STANCE_SPEED,
   SWIM_SPEED,
+  WALKER_CHARGE_SPEED,
   addCrit,
   catalog,
   cyborgLegsLost,
@@ -40,6 +41,7 @@ export function moveSpeedMul(e: Entity, swimming = false): number {
   if (isCyborg(e.type) && hasCrit(e, "leg")) return CYBORG_DRAG_SPEED;
   if (swimming && wadesOf(e.type)) return wadeSpeedOf(e.type);
   if (isInfantryType(e.type)) return STANCE_SPEED[stanceOf(e)];
+  if (e.charging) return WALKER_CHARGE_SPEED;
   return 1;
 }
 

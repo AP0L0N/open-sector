@@ -31,6 +31,7 @@ import {
   ARTILLERY_MIN_RANGE_TILES,
   ARTILLERY_BUILDING_MUL,
   ARTILLERY_SHELL,
+  ROCKET_BUILDING_MUL,
   type LobShellDef,
   addCrit,
   FW190_BARRAGE_LINE_TILES,
@@ -1704,7 +1705,8 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     const occupied = wallsShieldGarrison(state, e);
     const chipWalls = !occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER;
     if (chipWalls) {
-      const wallDmg = p.big && e.kind === "building" ? res.damage * ARTILLERY_BUILDING_MUL : res.damage;
+      const wallMul = e.kind !== "building" ? 1 : p.big ? ARTILLERY_BUILDING_MUL : rocket ? ROCKET_BUILDING_MUL : 1;
+      const wallDmg = Math.round(res.damage * wallMul);
       coverStrike(e, wallDmg, state.tick, !rocket);
       if (e.hp > 0) rollCrits(e, res.face, res.kind, res.damage, rand);
       const smoked = maybeHaulerSmokeScreen(state, e, p);

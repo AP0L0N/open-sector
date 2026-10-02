@@ -202,7 +202,7 @@ export const HEIGHT_RANGE_BONUS = 2;
  * reach on the field: it sits just inside the sniper's scoped sight.
  *
  * Cells: handgun 3, flamethrower 3.5, walker 8, cyborg 8, rifle 9, MG42 11, StuG 12, PTRD 13,
- * Rocketer 12, Tiger and Titan 14, scoped rifle 15, mortar 23 (it will not drop inside 3),
+ * Rocketer 12, Tiger and Titan 14, scoped rifle 15, Jagdtiger 16, mortar 23 (it will not drop inside 3),
  * Nebelwerfer 24 (it will not fire inside 4).
  */
 export const HANDGUN_RANGE_TILES = t(3);
@@ -220,6 +220,8 @@ export const LAUNCHER_RANGE_TILES = t(12);
 export const FLAMER_RANGE_TILES = t(3.5);
 export const STUG_RANGE_TILES = t(12);
 export const TIGER_RANGE_TILES = t(14);
+/** Jagdtiger's 128mm. The longest tank gun: past the scope, well past its own eyes, short of the mortar. */
+export const JAGDTIGER_RANGE_TILES = t(16);
 /** Titan carries the Tiger's gun, so it keeps the Tiger's reach. Its rockets share that reach. */
 export const TITAN_RANGE_TILES = TIGER_RANGE_TILES;
 /** Titan wading pace, as a share of its dry-ground walk. */
@@ -424,6 +426,7 @@ export type EntityType =
   | "warden"
   | "apocalypse"
   | "ss3"
+  | "jagdtiger"
   | "walker"
   | "cyborg"
   | "titan"
@@ -476,7 +479,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "apocalypse" | "ss3" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "stuka" | "fw190" | "bv222" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "stuka" | "fw190" | "bv222" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -499,12 +502,13 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "tower", "research"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "apocalypse", "ss3", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
   warden: "research",
   apocalypse: "research",
+  jagdtiger: "research",
   cyborg: "research",
   titan: "research",
   mammoth: "research",
@@ -826,6 +830,10 @@ export const WALKER_GUN_MODES = [
  * enemy he can see and detonates. Config is the off switch.
  */
 export const WALKER_SELF_DESTRUCT_HP = 0.2;
+/** How much faster he runs once the charge is on. */
+export const WALKER_CHARGE_SPEED = 1.4;
+/** Hit points and max hit points, multiplied once when the charge starts. The fraction stays put. */
+export const WALKER_CHARGE_HP = 5;
 /** Blast radius of that detonation, in gameplay tiles. */
 export const WALKER_BLAST_TILES = t(1.5);
 /** HP at the center against a hull heavier than light plate. The rim still nicks. */
@@ -837,7 +845,7 @@ export const WALKER_SELF_DESTRUCT_MODES = [
   {
     id: "on" as const,
     name: "Self destroy",
-    blurb: "At a fifth of his health he charges the nearest enemy and detonates. The blast nicks a tank and hits everything else harder. Nothing is left of him.",
+    blurb: "At a fifth of his health he charges the nearest enemy and detonates. That remainder swells to five times the hit points, he runs faster, and dark smoke trails him. The blast nicks a tank and hits everything else harder. Nothing is left of him.",
   },
   {
     id: "off" as const,
@@ -1099,6 +1107,8 @@ export const ARTILLERY_TOW_GAP = 2;
 export const ARTILLERY_HITCH_SLACK = 10;
 /** Field-gun shells hit buildings this many times harder. */
 export const ARTILLERY_BUILDING_MUL = 2;
+/** Rockets and missiles (Rocketer, Titan pods, Nebelwerfer) hit buildings this much harder. */
+export const ROCKET_BUILDING_MUL = 1.3;
 export const ARTILLERY_SHELL: LobShellDef = {
   damage: 150,
   penetration: 40,
@@ -1574,8 +1584,8 @@ export const TRENCH_COVER_HEIGHT = 2;
 /** The bunker's roster plus the mortarman, who needs the open sky. */
 export const TRENCH_TYPES: readonly EntityType[] = [...BUNKER_TYPES, "mortarman"];
 /**
- * Mammoth. A slow armored battle platform: a fighting deck with firing slits
- * on every side over two sets of tracks. It carries a Bunker's worth of
+ * Mammoth. A slow armored battle platform on four legs, with firing slits
+ * down both flanks. It carries a Bunker's worth of
  * infantry and they fire out of it. The hull takes every hit and nothing
  * reaches them, but they go down with it.
  */
@@ -1973,6 +1983,50 @@ export const STUG_SHELLS: Record<ShellType, ShellDef> = {
 };
 
 /**
+ * Jagdtiger 128mm rack. AP goes through every front plate on the field and
+ * usually kills a Tiger outright. No HEAT or smoke on the rack; the table
+ * still fills every shell slot because ShellDef is keyed by ShellType.
+ */
+export const JAGDTIGER_SHELLS: Record<ShellType, ShellDef> = {
+  ap: {
+    id: "ap",
+    name: "AP",
+    blurb: "128mm armor-piercing. Goes through any front plate on the field. One hit usually kills a Tiger from any side.",
+    damage: 90,
+    penetration: 200,
+    caliber: 128,
+    spreadDeg: 2.5,
+  },
+  he: {
+    id: "he",
+    name: "HE",
+    blurb: "128mm high explosive. A huge burst among infantry and against buildings. Ricochets off armor.",
+    damage: 120,
+    penetration: 24,
+    caliber: 128,
+    spreadDeg: 4.5,
+  },
+  heat: {
+    id: "heat",
+    name: "HEAT",
+    blurb: "Not carried. The 128mm armor-piercing round already goes through every front plate.",
+    damage: 0,
+    penetration: 0,
+    caliber: 128,
+    spreadDeg: 3.5,
+  },
+  smoke: {
+    id: "smoke",
+    name: "Smoke",
+    blurb: "Not carried. Screen a Jagdtiger with a Tiger or a StuG.",
+    damage: 0,
+    penetration: 0,
+    caliber: 128,
+    spreadDeg: 6,
+  },
+};
+
+/**
  * Apocalypse twin 105mm rack. The two barrels fire the loaded shell one after
  * the other, then the long reload. Heavier and slower than the Tiger's 75mm.
  */
@@ -2213,7 +2267,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Cyborg, Titan, Nebelwerfer, and Drone Op.",
+    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Titan, Nebelwerfer, and Drone Op.",
   },
   ciws: {
     type: "ciws",
@@ -2808,6 +2862,44 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     hasScout: true,
     blurb: "Casemate assault gun. No turret — hull-steer to aim. Strong front, thin sides.",
   },
+  /** Casemate tank destroyer: a fixed 128mm on a far heavier hull than the StuG's. */
+  jagdtiger: {
+    type: "jagdtiger",
+    kind: "unit",
+    name: "Jagdtiger",
+    letter: "d",
+    cost: 420,
+    buildSeconds: 18,
+    hp: 160,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 13,
+    moveTilesPerSec: t(1.0),
+    turnDegPerSec: 38,
+    rangeTiles: JAGDTIGER_RANGE_TILES,
+    sightTiles: t(7),
+    cooldown: 10,
+    damage: JAGDTIGER_SHELLS.ap.damage,
+    projectileSpeed: TANK_SHELL_SPEED,
+    turnInPlace: true,
+    tracked: true,
+    gunArcDeg: 10,
+    armorFront: 150,
+    armorSide: 50,
+    armorRear: 30,
+    penetration: JAGDTIGER_SHELLS.ap.penetration,
+    caliber: JAGDTIGER_SHELLS.ap.caliber,
+    spreadDeg: JAGDTIGER_SHELLS.ap.spreadDeg,
+    shells: JAGDTIGER_SHELLS,
+    ammo: { ap: 10, he: 4 },
+    defaultShell: "ap",
+    mgAmmo: TANK_MG.ammo,
+    leavesWreck: true,
+    wreckHp: 100,
+    hasScout: true,
+    blurb: "Heavy tank destroyer. No turret: the 128mm sits in a fixed casemate and swings only a little either side of the nose, so the slow hull must turn to aim. The thickest front plate on the field, heavy sides, a thin rear. Its armor-piercing shell goes through any front plate and usually kills a Tiger in one hit, from the longest reach of any tank gun. A long reload between shots, and no HEAT or smoke on the rack.",
+  },
   walker: {
     type: "walker",
     kind: "unit",
@@ -2841,7 +2933,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     belt: WALKER_BELT,
     leavesWreck: true,
     wreckHp: 36,
-    blurb: "Each arm is a gatling at the MG42's 1,200 rounds a minute, the same bullet. A round sometimes bites a Walker or a truck; tank plate turns it. The torso turns on the hips, so he fires while he walks. The backpack is a 1,200-round rack and does not reload by itself. One arm spends it slowly. Both arms spend it twice as fast and can split across two targets. The guns do not bring a building down. At a fifth of his health he charges the nearest enemy he can see and detonates, unless Self destroy is off in Config. The blast nicks a tank and hits everything else harder, and he leaves no wreck.",
+    blurb: "Each arm is a gatling at the MG42's 1,200 rounds a minute, the same bullet. A round sometimes bites a Walker or a truck; tank plate turns it. The torso turns on the hips, so he fires while he walks. The backpack is a 1,200-round rack and does not reload by itself. One arm spends it slowly. Both arms spend it twice as fast and can split across two targets. The guns do not bring a building down. At a fifth of his health he charges the nearest enemy he can see and detonates, unless Self destroy is off in Config. That remainder swells to five times the hit points, still a fifth of his bar, and he runs faster with a short trail of dark smoke. The blast nicks a tank and hits everything else harder, and he leaves no wreck.",
   },
   cyborg: {
     type: "cyborg",
@@ -2950,7 +3042,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonFullArms: true,
     garrisonTypes: BUNKER_TYPES,
     garrisonDiesWithHost: true,
-    blurb: `Armored battle platform on two sets of tracks. Very slow, very thick plate on every face, and in water it is thirty percent slower, sunk so only the casemate shows. Its own weapon is a small bow machine gun that swings only a little either side of the nose, and falls silent in water. It carries ${MAMMOTH_GARRISON_CAP} of the infantry a Bunker takes, and every one of them fires out of the deck slits, even while it wades. Force attack on the hull aims every soldier inside who can reach that point; they stay aboard. Nothing reaches them while the hull holds — but if it is destroyed, everyone inside dies with it.`,
+    blurb: `Armored battle platform on four legs. Very slow, very thick plate on every face, and in water it is thirty percent slower, sunk to the waist so only the body shows. Its own weapon is a twin machine gun under the cab that swings only a little either side of the nose, and falls silent in water. It carries ${MAMMOTH_GARRISON_CAP} of the infantry a Bunker takes, and every one of them fires out of the slits along its flanks, even while it wades. Force attack on the hull aims every soldier inside who can reach that point; they stay aboard. Nothing reaches them while the hull holds — but if it is destroyed, everyone inside dies with it.`,
   },
   nebelwerfer: {
     type: "nebelwerfer",

@@ -15,7 +15,7 @@ import type {
   YardFieldType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 65;
+export const PROTOCOL_VERSION = 67;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -150,6 +150,8 @@ export interface EntityView {
    * turned it off. Omitted for everyone else.
    */
   selfDestruct?: boolean;
+  /** Walker is charging to detonate. Anyone who can see him sees it. */
+  charging?: true;
   /** Walker arms that fired during the last step. `off` is the second arm's bearing when it took another target. */
   gatling?: { arms: 1 | 2; off?: number };
   /** Apocalypse roof mount: its world facing, and `fire` when it shot during the last step. */

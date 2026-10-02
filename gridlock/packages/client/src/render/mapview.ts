@@ -260,7 +260,7 @@ import {
   type FlameParticle,
 } from "./flame-fx.js";
 import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir, lerpAirAlt } from "./aircraft.js";
-import { layCrashTrail, CRASH_PUFF_CAP } from "./crash-smoke.js";
+import { layCrashTrail, layChargeTrail, CRASH_PUFF_CAP, CHARGE_PUFF_CAP } from "./crash-smoke.js";
 import { canopySway, drawCanopy, drawCrate, drawMine, troopCanopySpan } from "./airdrop-fx.js";
 import { barrageTracers, tracerLandsAt, tracerSpan, type BarrageTracer } from "./barrage-tracer.js";
 import { drawSandbags } from "./sandbags.js";
@@ -364,6 +364,7 @@ const EXTRUDE: Record<EntityType, number> = {
   warden: 28,
   apocalypse: 32,
   ss3: 20,
+  jagdtiger: 26,
   rifleman: 26,
   gunner: 26,
   sniper: 26,
@@ -597,6 +598,10 @@ export class MapView {
   private crashLast = new Map<number, { x: number; y: number; z: number }>();
   /** Black smoke behind planes that are going down. */
   private crashPuffs: RocketPuff[] = [];
+  /** Where a charging Walker was last frame, so his exhaust has no gaps. */
+  private chargeLast = new Map<number, { x: number; y: number; z: number }>();
+  /** Short dark trail behind a Walker charging to detonate. */
+  private chargePuffs: RocketPuff[] = [];
   /** Rocket trail, backblast, and air-burst smoke. World space, absolute elevation. */
   private rocketPuffs: RocketPuff[] = [];
   /** Burning fuel from Pyro jets and cook-offs. World ground point, screen height. */
@@ -2805,6 +2810,7 @@ export class MapView {
     }
     this.drawMortarArcs();
     this.drawCrashSmoke();
+    this.drawChargeSmoke();
     this.drawRockets();
     this.drawFlames();
     this.drawFallingBombs();
@@ -4921,6 +4927,50 @@ export class MapView {
     }
     ctx.restore();
     this.crashPuffs = keep;
+  }
+
+  /** A charging Walker leaves a short trail of dark smoke on the ground behind him. */
+  private drawChargeSmoke(): void {
+    const now = performance.now();
+    const blend = Math.min(1, (now - this.snapAt) / 100);
+    const live = new Set<number>();
+    for (const e of this.curr.entities) {
+      if (e.type !== "walker" || !e.charging || e.wreck) continue;
+      live.add(e.id);
+      const prev = this.prevById.get(e.id);
+      const x = prev ? prev.x + (e.x - prev.x) * blend : e.x;
+      const y = prev ? prev.y + (e.y - prev.y) * blend : e.y;
+      const head = { x, y, z: this.elevAt(x, y) };
+      const laid = layChargeTrail(
+        this.chargeLast.get(e.id),
+        head,
+        now,
+        (e.id * 2246822519 + Math.floor(now)) >>> 0,
+      );
+      this.chargePuffs.push(...laid.puffs);
+      this.chargeLast.set(e.id, laid.from);
+    }
+    for (const id of [...this.chargeLast.keys()]) {
+      if (!live.has(id)) this.chargeLast.delete(id);
+    }
+    if (this.chargePuffs.length > CHARGE_PUFF_CAP) {
+      this.chargePuffs.splice(0, this.chargePuffs.length - CHARGE_PUFF_CAP);
+    }
+    const ctx = this.ctx;
+    const keep: RocketPuff[] = [];
+    ctx.save();
+    for (const puff of this.chargePuffs) {
+      const pose = rocketPuffPose(puff, now);
+      if (!pose) {
+        if (now < puff.at) keep.push(puff);
+        continue;
+      }
+      keep.push(puff);
+      const s = this.toScreen(pose.x, pose.y, pose.z);
+      drawSoot(ctx, s.x, s.y, pose.r, pose.alpha, 1 - puff.shade);
+    }
+    ctx.restore();
+    this.chargePuffs = keep;
   }
 
   /**
