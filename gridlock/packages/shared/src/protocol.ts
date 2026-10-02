@@ -15,7 +15,7 @@ import type {
   YardFieldType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 64;
+export const PROTOCOL_VERSION = 65;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -350,6 +350,8 @@ export interface ImpactView {
   vy: number;
   /** mm. Omitted for crush kills. */
   caliber?: number;
+  /** Center damage of a heavy round (40mm and up). With the caliber it sizes the burst. */
+  damage?: number;
   /** Ammo cook-off / structure collapse. Fireball, not a kinetic spark. */
   blast?: boolean;
   /** Round struck water. Client plays a splash; no dirt scar. */

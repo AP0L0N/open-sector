@@ -317,9 +317,6 @@ export function drawRicochetSparks(
 /** How long a mortar burst stays up, ms. The column rises, then thins out. */
 export const MORTAR_BURST_MS = 1450;
 
-/** How long a tank shell's ground burst stays up, ms. */
-export const SHELL_BURST_MS = 1250;
-
 export interface MortarSmokePuff {
   x: number;
   y: number;
@@ -374,20 +371,6 @@ export function drawMortarSmoke(
   ctx.restore();
 }
 
-interface BurstShape {
-  /** 0 = dirt and sparks, 1 = a low fireball. */
-  fire: number;
-  /** How high the soil and smoke climb. */
-  rise: number;
-  /** 0 = straight up, 1 = thrown along the incoming shot. */
-  down: number;
-  smoke: number;
-  chunks: number;
-  scale: number;
-  /** Smoke width. A mortar column is narrow; a tank burst is wide. */
-  girth: number;
-}
-
 /** Soft disc. `rx`/`ry` are pixels. Alpha lives in the gradient so piles can overlap. */
 function softDisc(
   ctx: CanvasRenderingContext2D,
@@ -411,115 +394,6 @@ function softDisc(
   ctx.beginPath();
   ctx.arc(0, 0, 1, 0, Math.PI * 2);
   ctx.fill();
-  ctx.restore();
-}
-
-/**
- * Ground detonation. Flash, a short fireball, clods on arcs, then a dust column.
- * `t` runs 0–1. Random draws are fixed per seed so the clods do not jump.
- */
-function drawGroundBurst(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  t: number,
-  seed: number,
-  dirX: number,
-  dirY: number,
-  shape: BurstShape,
-): void {
-  const rnd = rng(seed ^ 0x51ed);
-  const along = dirOf(dirX, dirY);
-  const s = shape.scale;
-  const { fire, rise, down, smoke, chunks, girth } = shape;
-  const clods = [];
-  for (let i = 0; i < chunks; i++) {
-    clods.push({
-      ga: rnd() * Math.PI * 2,
-      delay: rnd() * 0.045,
-      flight: 0.36 + rnd() * 0.3,
-      speed: (14 + rnd() * 28) * s * (0.62 + down * 0.75),
-      kick: (26 + rnd() * (28 + 30 * rise)) * s * (0.48 + rise * 0.6),
-      rw: (1.7 + rnd() * 2.6) * s * (rnd() > 0.76 ? 1.55 : 1),
-      shade: rnd(),
-    });
-  }
-
-  const ring = 1 - (1 - Math.min(1, t / 0.42)) ** 2;
-  const skirt = t < 0.5 ? 1 : Math.max(0, 1 - (t - 0.5) / 0.5);
-  const skirtR = (7 + ring * (22 + 14 * fire)) * s;
-  softDisc(ctx, x, y + 1, skirtR, skirtR * 0.46, 78, 62, 46, 0.5 * skirt);
-  softDisc(ctx, x, y + 1, skirtR * 0.6, skirtR * 0.24, 54, 42, 32, 0.38 * skirt);
-
-  const puffs = 6;
-  for (let i = 0; i < puffs; i++) {
-    const born = 0.02 + (i % 3) * 0.03;
-    if (t < born) continue;
-    const u = (t - born) / (0.96 - born);
-    if (u <= 0 || u > 1) continue;
-    const riseE = 1 - (1 - Math.min(1, u / 0.5)) ** 2;
-    const wob = Math.sin(seed * 0.17 + i * 2.2 + u * 5.5) * (3.5 + u * 5) * s;
-    const drift = along.x * down * u * (16 + i * 3) * s;
-    const spread = (i - (puffs - 1) / 2) * (3 + u * 5) * s * girth;
-    const px = x + wob * 0.45 + drift + spread * 0.4;
-    const height = (32 + i * 8) * s * (0.35 + rise * 0.9);
-    const py = y - riseE * height + along.y * down * u * 10 * s;
-    const rad = (9 + i * 2.2) * s * (0.42 + u * 1.15);
-    const cr = 28 + u * 78;
-    const cg = 24 + u * 70;
-    const cb = 20 + u * 58;
-    const a = Math.sin(u * Math.PI) ** 0.8 * (0.4 + smoke * 0.3);
-    const tall = rise > 0.95 ? 1.15 : 0.92;
-    softDisc(ctx, px, py, rad * girth, rad * tall, cr, cg, cb, a);
-  }
-
-  ctx.save();
-  for (const c of clods) {
-    const local = (t - c.delay) / c.flight;
-    if (local <= 0 || local >= 1) continue;
-    const gx = Math.cos(c.ga) * (1 - down) + along.x * down;
-    const gy = Math.sin(c.ga) * 0.46 * (1 - down) + along.y * down * 0.4;
-    const px = x + gx * c.speed * local;
-    const py = y + gy * c.speed * local - Math.sin(local * Math.PI) * c.kick;
-    ctx.globalAlpha = (1 - local) * 0.94;
-    ctx.fillStyle = c.shade > 0.66 ? "#3a2e24" : c.shade > 0.33 ? "#705843" : "#96785c";
-    ctx.beginPath();
-    ctx.ellipse(px, py, c.rw, c.rw * 0.58, c.ga * 0.35, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.restore();
-
-  ctx.save();
-  ctx.globalCompositeOperation = "lighter";
-  if (fire > 0.2 && t < 0.32) {
-    const u = t / 0.32;
-    const a = (1 - u) ** 1.35 * (0.3 + fire * 0.7);
-    const lift = u * (10 + 16 * rise) * s;
-    softDisc(
-      ctx,
-      x + along.x * 2 * s,
-      y - lift,
-      (9 + fire * 16) * s * (1 - u * 0.2),
-      (7 + fire * 11) * s,
-      255,
-      104,
-      24,
-      a,
-    );
-    softDisc(ctx, x, y - lift - 2 * s, (3.2 + fire * 5) * s, (3 + fire * 4.5) * s, 255, 236, 186, Math.min(1, a * 1.1));
-    for (let k = 0; k < 3; k++) {
-      const ang = seed * 0.01 + k * 2.1;
-      const ox = Math.cos(ang) * (4 + u * 7) * s;
-      const oy = Math.sin(ang) * (2.4 + u * 3) * s - lift * 0.35;
-      softDisc(ctx, x + ox, y + oy, (4.5 + fire * 3) * s, (3.4 + fire * 2.2) * s, 220, 70, 16, a * 0.5);
-    }
-  }
-  if (t < 0.1) {
-    const u = t / 0.1;
-    const a = (1 - u) * (1 - u);
-    softDisc(ctx, x, y, (8 + fire * 18) * s, (4 + fire * 7) * s, 255, 232, 186, a * 0.95);
-    softDisc(ctx, x, y - 2 * s, (2.6 + fire * 4) * s, (2.6 + fire * 4) * s, 255, 255, 255, a);
-  }
   ctx.restore();
 }
 
@@ -588,9 +462,8 @@ export function drawRocketHead(
 }
 
 /**
- * Mortar impact. On dirt the bomb flashes, throws soil straight up, and leaves
- * a narrow dust column. On water it is a splash column. `scale` grows it about
- * the ground point (an aircraft bomb).
+ * A lobbed round or rocket in water: a splash column. `scale` grows it about
+ * the water point. On dry ground the burst is `drawExplosion` in explosion.ts.
  */
 export function drawMortarBurst(
   ctx: CanvasRenderingContext2D,
@@ -598,7 +471,6 @@ export function drawMortarBurst(
   y: number,
   t: number,
   seed: number,
-  water = false,
   scale = 1,
 ): void {
   if (scale !== 1) {
@@ -606,20 +478,8 @@ export function drawMortarBurst(
     ctx.translate(x, y);
     ctx.scale(scale, scale);
     ctx.translate(-x, -y);
-    drawMortarBurst(ctx, x, y, t, seed, water);
+    drawMortarBurst(ctx, x, y, t, seed);
     ctx.restore();
-    return;
-  }
-  if (!water) {
-    drawGroundBurst(ctx, x, y, t, seed, 0, -1, {
-      fire: 0.94,
-      rise: 1.28,
-      down: 0.05,
-      smoke: 1,
-      chunks: 20,
-      scale: 1.08,
-      girth: 0.7,
-    });
     return;
   }
   const rnd = rng(seed ^ 0x60a7);
@@ -935,20 +795,9 @@ export function drawBloodStain(
   ctx.restore();
 }
 
-function burstForShell(shell: string | undefined, caliber: number | undefined): BurstShape {
-  const scale = Math.max(0.8, (caliber ?? 75) / 75);
-  if (shell === "ap") {
-    return { fire: 0.26, rise: 0.4, down: 0.84, smoke: 0.5, chunks: 16, scale, girth: 1.15 };
-  }
-  if (shell === "heat") {
-    return { fire: 0.78, rise: 0.58, down: 0.34, smoke: 0.7, chunks: 14, scale: scale * 0.92, girth: 0.9 };
-  }
-  return { fire: 1, rise: 0.86, down: 0.24, smoke: 1, chunks: 22, scale, girth: 1.2 };
-}
-
 /**
- * Ground impact. A heavy shell detonates: flash, fire, clods, and dust.
- * Small arms keep a short puff of dirt along the shot.
+ * Small-arms round into the dirt: a short puff of soil along the shot.
+ * A heavy shell's ground burst is `drawExplosion` in explosion.ts.
  */
 export function drawGroundMiss(
   ctx: CanvasRenderingContext2D,
@@ -956,31 +805,10 @@ export function drawGroundMiss(
   y: number,
   t: number,
   seed: number,
-  caliber?: number,
   dirX = 0,
   dirY = -1,
-  shell?: string,
 ): void {
   const incoming = dirOf(dirX, dirY);
-  if (isShellCaliber(caliber)) {
-    const shape = burstForShell(shell, caliber);
-    drawGroundBurst(ctx, x, y, t, seed, incoming.x, incoming.y, shape);
-    if (shell === "ap" || shell === "heat") {
-      drawSparkBurst(
-        ctx,
-        x,
-        y,
-        incoming.x,
-        incoming.y,
-        t,
-        seed ^ 0x21,
-        shell === "ap" ? 9 : 5,
-        18 * shape.scale,
-        true,
-      );
-    }
-    return;
-  }
   const fade = 1 - t;
   const gouge = Math.atan2(incoming.y, incoming.x);
   ctx.save();

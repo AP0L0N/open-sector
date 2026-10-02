@@ -197,6 +197,27 @@ describe("artillery", () => {
     assert.equal(shellsFrom(state, g).length, 0);
   });
 
+  it("backs straight in on a bearing between two faces instead of zig-zagging", () => {
+    const { state, y } = range();
+    const ts = state.tileSize;
+    const g = gunAt(state, 20, y);
+    g.holdPosition = false;
+    const goal = { x: g.x + 10 * ts, y: g.y + 3 * ts };
+    applyCommand(state, "A", { type: "cmd.move", ids: [g.id], ...goal });
+    let turns = 0;
+    let turning = false;
+    for (let i = 0; i < secs(40) && g.waypoints.length > 0; i++) {
+      const f = g.facing;
+      step(state, TICK_DT);
+      const now = g.facing !== f;
+      if (now && !turning) turns++;
+      turning = now;
+    }
+    assert.equal(g.waypoints.length, 0, "it arrived");
+    assert.ok(Math.hypot(goal.x - g.x, goal.y - g.y) <= ts, "it stopped on the spot");
+    assert.ok(turns <= 3, `turned ${turns} times on the way`);
+  });
+
   it("shrugs off bullets, but they kill the crew", () => {
     const { state, y } = range();
     const g = gunAt(state, 30, y);

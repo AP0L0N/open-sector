@@ -23,6 +23,7 @@ import {
   type MapDef,
 } from "@gridlock/shared";
 import {
+  BOULDER_FACES,
   CRATER_FACES,
   DIRT_TEX,
   GRASS_TEXS,
@@ -481,10 +482,12 @@ function paintTileProps(
   } else if (kind === TILE_EMPTY) {
     paintDecor(ctx, map, tx, ty, originX, originY);
     paintFlatDecor(ctx, map, tx, ty, originX, originY);
+  } else if (kind === TILE_ROCK) {
+    paintFlatDecor(ctx, map, tx, ty, originX, originY);
   }
 }
 
-/** Old craters and rubble from the map dress, baked flat so restamps keep them. */
+/** Old craters, rubble, and boulders from the map dress, baked into the ground so restamps keep them. */
 function paintFlatDecor(
   ctx: CanvasRenderingContext2D,
   map: MapDef,
@@ -512,8 +515,9 @@ function paintFlatDecor(
         const rx = Math.hypot(e.x - p.x, e.y - p.y);
         drawPropSprite(ctx, face, x, y, (face.image.naturalHeight * rx * 2.05) / face.bowl, it.flip);
       }
-    } else if (it.kind === "stones") {
-      const face = STONE_FACES[it.face % STONE_FACES.length];
+    } else if (it.kind === "stones" || it.kind === "boulder") {
+      const faces = it.kind === "boulder" ? BOULDER_FACES : STONE_FACES;
+      const face = faces[it.face % faces.length];
       if (face) drawPropSprite(ctx, face, x, y, it.drawH, it.flip);
     }
     ctx.globalAlpha = prev;

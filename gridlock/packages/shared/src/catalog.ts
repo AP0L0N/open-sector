@@ -1075,7 +1075,7 @@ export const MORTAR_LOB: LobShellDef = {
  * shield. Any infantry can take a dead man's place, and an empty gun goes to
  * whoever crews it. Shells, bombs, rockets, and blasts wreck it.
  */
-export const ARTILLERY_RANGE_TILES = t(36);
+export const ARTILLERY_RANGE_TILES = t(27);
 export const ARTILLERY_MIN_RANGE_TILES = t(8);
 /** Crewmen it leaves the Armory with, and the most it holds. */
 export const ARTILLERY_CREW = 2;

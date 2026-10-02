@@ -26,6 +26,8 @@ export interface WallDraw {
   /** Screen pixels per world unit, for the wire above the slab. */
   worldPx: number;
   project: (wx: number, wy: number, elev: number) => { x: number; y: number };
+  /** Ends buried in a neighboring section. Those faces are not drawn. */
+  seal?: { neg: boolean; pos: boolean };
 }
 
 export interface WallSeg {
@@ -39,6 +41,33 @@ export function wallSectionsConnect(a: WallSeg, b: WallSeg): boolean {
   const reach = Math.max(a.length, b.length) + 4;
   const d = Math.hypot(a.x - b.x, a.y - b.y);
   return d > 0.5 && d <= reach;
+}
+
+/**
+ * Ends that butt into another section. Those caps are inside the run, so the
+ * slab draws through them instead of painting a joint.
+ */
+export function wallEndSeal(
+  section: { x: number; y: number; facing: number; length: number; thick: number },
+  others: readonly { x: number; y: number }[],
+): { neg: boolean; pos: boolean } {
+  const tx = -Math.sin(section.facing);
+  const ty = Math.cos(section.facing);
+  const fx = Math.cos(section.facing);
+  const fy = Math.sin(section.facing);
+  let neg = false;
+  let pos = false;
+  for (const o of others) {
+    const dx = o.x - section.x;
+    const dy = o.y - section.y;
+    const along = dx * tx + dy * ty;
+    const across = dx * fx + dy * fy;
+    if (Math.abs(across) > section.thick) continue;
+    if (Math.abs(Math.abs(along) - section.length) > 4) continue;
+    if (along > 0) pos = true;
+    else if (along < 0) neg = true;
+  }
+  return { neg, pos };
 }
 
 /** Slab top: the highest ground under the run, plus the slab. */
@@ -102,21 +131,34 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
   const line = Math.max(0.6, Math.min(1.4, px * 0.45));
   const hl = d.length / 2;
   const ht = d.thick / 2;
-  const signs: [number, number][] = [
-    [-1, -1],
-    [1, -1],
-    [1, 1],
-    [-1, 1],
+  const seal = d.seal ?? { neg: false, pos: false };
+  const tuck = Math.min(1.5, d.thick * 0.2);
+  const alongNeg = -hl - (seal.neg ? tuck : 0);
+  const alongPos = hl + (seal.pos ? tuck : 0);
+  const corners: [number, number][] = [
+    [alongNeg, -ht],
+    [alongPos, -ht],
+    [alongPos, ht],
+    [alongNeg, ht],
   ];
-  const lo = signs.map(([a, c]) => at(a * hl, c * ht, 0));
-  const hi = signs.map(([a, c]) => at(a * hl, c * ht, slab));
+  const lo = corners.map(([a, c]) => at(a, c, 0));
+  const hi = corners.map(([a, c]) => at(a, c, slab));
   const light = (nx: number, ny: number) => 0.55 + 0.45 * Math.max(0, nx * LIT.x + ny * LIT.y);
+  const cornerW = corners.map(([a, c]) => world(a, c));
   const faces = [
-    { n: { x: -fx, y: -fy }, i: [0, 1] },
-    { n: { x: tx, y: ty }, i: [1, 2] },
-    { n: { x: fx, y: fy }, i: [2, 3] },
-    { n: { x: -tx, y: -ty }, i: [3, 0] },
-  ].filter((f) => f.n.x + f.n.y > 0);
+    { n: { x: -fx, y: -fy }, i: [0, 1] as [number, number], end: null },
+    { n: { x: tx, y: ty }, i: [1, 2] as [number, number], end: "pos" as const },
+    { n: { x: fx, y: fy }, i: [2, 3] as [number, number], end: null },
+    { n: { x: -tx, y: -ty }, i: [3, 0] as [number, number], end: "neg" as const },
+  ].filter((f) => (f.end === "pos" ? !seal.pos : f.end === "neg" ? !seal.neg : true));
+  faces.sort((a, b) => {
+    const depth = (f: { i: [number, number] }) => {
+      const p = cornerW[f.i[0]]!;
+      const q = cornerW[f.i[1]]!;
+      return p.x + p.y + q.x + q.y;
+    };
+    return depth(a) - depth(b);
+  });
 
   ctx.save();
   ctx.globalAlpha = d.alpha;
@@ -135,42 +177,25 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
   ctx.closePath();
   ctx.fill();
 
-  ctx.beginPath();
-  lo.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-  hi.forEach((p) => ctx.lineTo(p.x, p.y));
-  ctx.closePath();
-  ctx.fillStyle = rgb(br, bg, bb, 0.72);
-  ctx.fill();
-
-  for (const f of faces) {
-    const [i0, i1] = f.i as [number, number];
+  const paint = (pts: { x: number; y: number }[], color: string) => {
     ctx.beginPath();
-    ctx.moveTo(lo[i0]!.x, lo[i0]!.y);
-    ctx.lineTo(lo[i1]!.x, lo[i1]!.y);
-    ctx.lineTo(hi[i1]!.x, hi[i1]!.y);
-    ctx.lineTo(hi[i0]!.x, hi[i0]!.y);
+    pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
     ctx.closePath();
-    ctx.fillStyle = rgb(br, bg, bb, light(f.n.x, f.n.y));
+    ctx.fillStyle = color;
     ctx.fill();
+    // Same color as the face, so the seam between polygons does not show the ground.
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  };
+  for (const f of faces) {
+    const [i0, i1] = f.i;
+    paint(
+      [lo[i0]!, lo[i1]!, hi[i1]!, hi[i0]!],
+      rgb(br, bg, bb, light(f.n.x, f.n.y)),
+    );
   }
-  ctx.beginPath();
-  hi.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-  ctx.closePath();
-  ctx.fillStyle = rgb(br, bg, bb, 1.12);
-  ctx.fill();
-
-  ctx.strokeStyle = "rgba(48, 50, 44, 0.9)";
-  ctx.lineWidth = line;
-  ctx.beginPath();
-  lo.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-  ctx.closePath();
-  hi.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-  ctx.closePath();
-  for (let i = 0; i < 4; i++) {
-    ctx.moveTo(lo[i]!.x, lo[i]!.y);
-    ctx.lineTo(hi[i]!.x, hi[i]!.y);
-  }
-  ctx.stroke();
+  paint(hi, rgb(br, bg, bb, 1.12));
 
   if (d.hurt > 0.2) {
     ctx.strokeStyle = `rgba(42, 40, 36, ${0.35 + d.hurt * 0.45})`;

@@ -29,7 +29,7 @@ from render_procedural import Mesh, render_turntable
 WHEEL_R = 0.62
 AXLE_Z = WHEEL_R
 TRUNNION_Z = 1.1
-ELEV = math.radians(14)  # barrel elevation
+ELEV = math.radians(45)  # barrel elevation: high-angle fire
 BARREL_LEN = 3.3
 SCALE_FRAC = 0.1  # px per meter / cell px, locked to the Nebelwerfer
 Z_MID = 1.0

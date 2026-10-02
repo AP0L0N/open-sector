@@ -498,7 +498,10 @@ function hullWant(e: Entity, want: number): number {
 }
 
 /** Locked travel face for the current waypoint so dest-heading snap does not flicker. */
-const committedFace = new WeakMap<Entity, { face: number; wx: number; wy: number; acrossMax: number }>();
+const committedFace = new WeakMap<
+  Entity,
+  { face: number; wx: number; wy: number; acrossMax: number; back: boolean }
+>();
 
 function hullAcrossSlop(e: Entity, wp: { x: number; y: number }): number {
   const prev = committedFace.get(e);
@@ -507,13 +510,17 @@ function hullAcrossSlop(e: Entity, wp: { x: number; y: number }): number {
 }
 
 function hullSteerWant(e: Entity, wp: { x: number; y: number }): number {
-  if (reversing(e)) return hullWant(e, reverseHeading(e, wp));
-  const dest = Math.atan2(wp.y - e.y, wp.x - e.x);
-  if (!catalog(e.type).turnInPlace) return dest;
+  const back = reversing(e);
+  if (back && e.order?.facing != null) return hullWant(e, e.order.facing);
   const dx = wp.x - e.x;
   const dy = wp.y - e.y;
-  const fx = Math.cos(e.facing);
-  const fy = Math.sin(e.facing);
+  // Heading of travel toward the waypoint; the hull points the other way when it backs up.
+  const dest = Math.atan2(dy, dx);
+  const hullDest = back ? dest + Math.PI : dest;
+  if (!catalog(e.type).turnInPlace) return hullDest;
+  const travel = back ? e.facing + Math.PI : e.facing;
+  const fx = Math.cos(travel);
+  const fy = Math.sin(travel);
   const along = dx * fx + dy * fy;
   const across = dx * -fy + dy * fx;
   // Already on a face with the waypoint's foot within arrival slop of the
@@ -522,19 +529,16 @@ function hullSteerWant(e: Entity, wp: { x: number; y: number }): number {
   const face = snapTankYaw(e.facing);
   const onFace = Math.abs(angRemainingDeg(e.facing, face)) <= FACE_MOVE_DEG;
   if (onFace && Math.abs(across) <= TRACK_ARRIVE_SLOP && along > -TRACK_ARRIVE_SLOP) return face;
-  const destSnap = snapTankYaw(dest);
+  const destSnap = snapTankYaw(hullDest);
   const prev = committedFace.get(e);
-  if (prev && prev.wx === wp.x && prev.wy === wp.y && along > 2) return prev.face;
+  // Backing up needs the lock as much as rolling forward: a bearing on the
+  // edge between two faces would otherwise flip the hull every step.
+  if (prev && prev.wx === wp.x && prev.wy === wp.y && prev.back === back && along > 2) return prev.face;
   const dist = Math.hypot(dx, dy);
-  const err = (Math.abs(angRemainingDeg(dest, destSnap)) * Math.PI) / 180;
+  const err = (Math.abs(angRemainingDeg(hullDest, destSnap)) * Math.PI) / 180;
   const acrossMax = dist * Math.sin(err) + TRACK_ARRIVE_SLOP;
-  committedFace.set(e, { face: destSnap, wx: wp.x, wy: wp.y, acrossMax });
+  committedFace.set(e, { face: destSnap, wx: wp.x, wy: wp.y, acrossMax, back });
   return destSnap;
-}
-
-function reverseHeading(e: Entity, wp: { x: number; y: number }): number {
-  if (e.order?.facing != null) return e.order.facing;
-  return Math.atan2(e.y - wp.y, e.x - wp.x);
 }
 
 function liveEscortTarget(state: MatchState, e: Entity): Entity | undefined {

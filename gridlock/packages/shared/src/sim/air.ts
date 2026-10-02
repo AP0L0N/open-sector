@@ -1101,6 +1101,7 @@ function detonateBomb(state: MatchState, p: Projectile): void {
     vx: p.vx,
     vy: p.vy,
     caliber: p.caliber,
+    damage: BOMB_DAMAGE,
     blast: true,
     mortar: true,
     bomb: true,

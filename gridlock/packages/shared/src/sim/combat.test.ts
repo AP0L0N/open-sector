@@ -185,8 +185,8 @@ describe("tank shells vs buildings", () => {
 
   it("lets HE slam a house instead of skipping it", () => {
     const { state } = twoPlayerMatch();
-    state.heights.fill(0);
-    clearCivilians(state);
+    // The yard's trees sit on this lane. Clear them so the shell meets the house.
+    clearCover(state);
     const ts = state.tileSize;
     const tileX = 36;
     const tileY = 28;
