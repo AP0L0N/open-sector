@@ -23,10 +23,9 @@
     "SSE"
   ],
   "contactY": 0.88,
-  "scale": 1.22,
+  "scale": 1.18,
   "out": "gridlock/packages/client/src/assets/units/engineer-fix.png",
   "size_pop_dirs": [
-    "NNW",
     "N",
     "NNE",
     "NE"
