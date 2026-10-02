@@ -77,6 +77,7 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield", readon
     { unit: "ss3", want: 3 },
     { unit: "warden", want: 2 },
     { unit: "apocalypse", want: 1 },
+    { unit: "jagdtiger", want: 1 },
     { unit: "walker", want: 1 },
     { unit: "supply", want: 1 },
     { unit: "cyborg", want: 1 },
@@ -88,7 +89,7 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield", readon
 
 /**
  * Smelter second so the free Mauler funds Muster, Armory, troops, and tanks. Research next:
- * it unlocks the Tiger, Apocalypse, Cyborg, Titan, Nebelwerfer, and Drone Op. Then air, then defenses.
+ * it unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Titan, Nebelwerfer, and Drone Op. Then air, then defenses.
  */
 const BUILD_ORDER: readonly BuildingType[] = [
   "dynamo",
@@ -476,6 +477,7 @@ function microUnits(state: MatchState, p: SimPlayer, hq: Entity): void {
       case "warden":
       case "apocalypse":
       case "ss3":
+      case "jagdtiger":
         fitShell(state, p, e);
         break;
       case "walker":

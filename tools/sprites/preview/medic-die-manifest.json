@@ -23,11 +23,9 @@
     "SSE"
   ],
   "contactY": 0.82,
-  "scale": 1.22,
+  "scale": 1.18,
   "out": "gridlock/packages/client/src/assets/units/medic-die.png",
-  "size_pop_dirs": [
-    "S"
-  ],
+  "size_pop_dirs": [],
   "empty_dirs": [],
   "clipped_dirs": [],
   "source": "render_infantry.py (16 unique yaws, real gait, no mirror)"

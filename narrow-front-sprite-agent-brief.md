@@ -360,42 +360,42 @@ Human infantry and the Cyborg are the procedural model in Animation. The turntab
 
 | Unit | Sheets | Frames | What it is |
 |---|---|---|---|
-| Rifleman | walk, crouch, crawl, handgun | 8 | `render_infantry.py`. Stride in every frame. Handgun is the same body with a pistol |
+| Rifleman | walk, crouch, crawl, handgun | 8 | `render_infantry.py`. Field grey, coal-scuttle helmet, marching boots, Y-straps, pouches, gas-mask can, Kar98k. Stride in every frame. Handgun is the same body with a pistol |
 | Rifleman | rifle-fire | 4 | stand pose, muzzle flash. Held on frame index while the shot plays |
 | Rifleman | die | 4 | collapse; frame 3 is flat and is the frame the corpse holds |
-| Gunner | walk, crouch, crawl | 8 | helmet, thick MG, brass belt. Crawl carries the gun; fire plants it |
+| Gunner | walk, crouch, crawl | 8 | MG42 from the hip (perforated jacket, bipod), brass belts crossed on the chest. Crawl carries the gun; fire plants it |
 | Gunner | fire | 4 | crawl contact pose plus bipod and a muzzle flash |
 | Gunner | die | 4 | collapse; the MG lies beside him |
-| Sniper | walk, crouch, crawl | 8 | ghillie hood, darker cloth, scoped rifle |
+| Sniper | walk, crouch, crawl | 8 | splinter-camo smock, leafy helmet cover, scoped rifle |
 | Sniper | fire | 4 | stand pose plus a muzzle flash |
-| Sniper | die | 4 | collapse under the hood |
-| Mortarman | walk | 8 | tube on his back, hands on the sling. No rifle |
+| Sniper | die | 4 | collapse; the scoped rifle lies beside him |
+| Mortarman | walk | 8 | tube and baseplate on his back, a round case in his left hand. No rifle |
 | Mortarman | crouch | 8 | duck-walk with the tube planted |
 | Mortarman | crawl | 8 | prone, tube along the body |
 | Mortarman | fire | 4 | planted tube. The flash is on frame 0 — that frame is what a planted shot shows |
 | Mortarman | die | 4 | collapse; the client plays it and holds frame 3 |
-| AT Infantry | walk, crouch, crawl | 8 | helmet, long rifle, thick breech and muzzle brake |
+| AT Infantry | walk, crouch, crawl | 8 | long greatcoat, very long AT rifle, thick breech and muzzle brake |
 | AT Infantry | fire | 4 | stand pose plus a short muzzle flash |
 | AT Infantry | die | 4 | collapse; the rifle lies beside him |
-| Rocketer | walk, crouch, crawl | 8 | shoulder tube, spare rocket on the back |
+| Rocketer | walk, crouch, crawl | 8 | shoulder tube with a blast shield, two spare rockets on a back frame |
 | Rocketer | fire | 4 | stand pose, muzzle puff and backblast |
 | Rocketer | die | 4 | collapse |
-| Pyro | walk, crouch, crawl | 8 | black rubber, gas-mask lenses, twin tanks, lance. The lance tip on frame 0 is what `pyro-nozzle.ts` measures |
+| Pyro | walk, crouch, crawl | 8 | black rubber, gas mask under a helmet, big + small bottle, lance. The lance tip on frame 0 is what `pyro-nozzle.ts` measures |
 | Pyro | fire | 4 | same lance pose plus a short tongue. Do not recoil the tip off the measured point |
 | Pyro | die | 4 | collapse |
-| Medic | walk, crouch, crawl | 8 | khaki, white helmet band, white left sleeve, white satchel. No rifle |
+| Medic | walk, crouch, crawl | 8 | field grey, white tabard with a red cross front and back, marked helmet, white left sleeve, aid bags. No rifle |
 | Medic | die | 4 | collapse |
-| Engineer | walk, crouch, crawl | 8 | khaki, garrison cap, wrench, tool belt. No helmet |
+| Engineer | walk, crouch, crawl | 8 | reed-green drill fatigues, peaked field cap, gaiters, wrench, tool bag, satchel charge. No helmet |
 | Engineer | build, fix | 4 | kneel. Build swings a hammer; fix turns a wrench |
 | Engineer | die | 4 | collapse. `spriteOf` returns this sheet when he is a wreck |
-| Drone Op | walk, crouch, crawl | 8 | soft cap, headset, chest controller, pack antenna |
+| Drone Op | walk, crouch, crawl | 8 | field cap, headset, both hands on a chest controller, backpack radio with a tall whip |
 | Drone Op | die | 4 | collapse |
-| Jump Jet | walk, crouch, crawl | 8 | flight suit, visor helmet, twin-nozzle pack, short rifle |
+| Jump Jet | walk, crouch, crawl | 8 | paratrooper: rimless helmet, camo smock, blue-grey trousers, twin-nozzle pack, short rifle |
 | Jump Jet | fly | 4 | feet tucked, plumes flicker. Looped while he is aloft |
 | Jump Jet | fire | 4 | stand pose plus a muzzle flash |
 | Jump Jet | die | 4 | collapse |
 | Jump Jet | swim | 8 | `jumpjet-swim.png`, registered in `SWIM_SPRITES` |
-| Cyborg | walk | 8 | 3D primitive render, real stride (`tools/sprites/render_cyborg.py`). No crouch sheet — he never crouches |
+| Cyborg | walk | 8 | heavy assault cyborg: slate armour, steel pauldrons and knee caps, red visor slit, ribbed waist, back power pack, gatling forearm, claw. 3D primitive render, real stride (`tools/sprites/render_cyborg.py`). No crouch sheet — he never crouches |
 | Cyborg | fire | 4 | the stand pose, barrels spinning, flash big / small / big / tiny |
 | Cyborg | crawl, crawl-fire | 8, 4 | legs torn off: torso on the dirt, dragging on the left arm; fire adds the flash. Prone scale |
 | Cyborg | die | 4 | torso face down, gatling flung aside, one leg beside him |

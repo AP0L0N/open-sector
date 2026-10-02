@@ -6,6 +6,7 @@ import {
   WALKER_BLAST_HEAVY,
   WALKER_BLAST_SOFT,
   WALKER_BLAST_TILES,
+  WALKER_CHARGE_HP,
   WALKER_SELF_DESTRUCT_HP,
   catalog,
   isFieldStructure,
@@ -40,12 +41,10 @@ export function tickWalkerCharge(state: MatchState): void {
     if (!state.entities.has(e.id) || e.hp <= 0 || e.wreck) continue;
     const armed = !e.selfDestructOff && e.hp <= e.hpMax * WALKER_SELF_DESTRUCT_HP;
     if (!armed) {
-      if (e.charging) {
-        e.charging = undefined;
-        clearOrder(e);
-      }
+      endWalkerCharge(e);
       continue;
     }
+    swellWalker(e);
     e.charging = true;
     e.holdPosition = false;
     e.orderQueue = undefined;
@@ -71,6 +70,34 @@ export function tickWalkerCharge(state: MatchState): void {
     e.guardFacing = null;
     if (e.waypoints.length === 0 || state.tick % REPATH_EVERY === 0) setPath(state, e, goal.x, goal.y);
   }
+}
+
+/** Drop the charge and put his hit points back. Cover stays on the hull. */
+export function endWalkerCharge(e: Entity): void {
+  if (e.chargeBuff) {
+    const cover = e.coverBonus;
+    const baseHp = Math.max(0, e.hp - cover);
+    const baseMax = Math.max(1, e.hpMax - cover);
+    e.hpMax = Math.max(1, Math.round(baseMax / WALKER_CHARGE_HP) + cover);
+    e.hp = Math.max(1, Math.round(baseHp / WALKER_CHARGE_HP) + cover);
+    if (e.hp > e.hpMax) e.hp = e.hpMax;
+    e.chargeBuff = undefined;
+  }
+  if (e.charging) {
+    e.charging = undefined;
+    clearOrder(e);
+  }
+}
+
+/** Five times the hit points, same share of the bar. Once per charge. */
+function swellWalker(e: Entity): void {
+  if (e.chargeBuff) return;
+  const cover = e.coverBonus;
+  const baseHp = Math.max(0, e.hp - cover);
+  const baseMax = Math.max(1, e.hpMax - cover);
+  e.hp = baseHp * WALKER_CHARGE_HP + cover;
+  e.hpMax = baseMax * WALKER_CHARGE_HP + cover;
+  e.chargeBuff = true;
 }
 
 function chargeTarget(state: MatchState, walker: Entity): Entity | undefined {
