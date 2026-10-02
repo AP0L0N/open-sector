@@ -83,11 +83,12 @@ import type { ImpactView } from "../protocol.js";
 import { aimAngle } from "./ballistics.js";
 import { takeDamage } from "./crits.js";
 import { coverStrike } from "./field.js";
-import { aimHeight, airAlt, entityHeight, worldTileHeight } from "./elevation.js";
+import { aimHeight, airAlt, entityHeight, weaponRangeWorld, worldTileHeight } from "./elevation.js";
 import { allies, buildingBounds, buildingContains, burnTreeAt, fellTreeAt, isTree, newAirState, playerTeam, tileCenter, worldToTile } from "./geo.js";
 import { livingGarrison, woundGarrison } from "./garrison.js";
 import { mortarFalloff } from "./mortar.js";
 import { stepTurn } from "./orders.js";
+import { distToRoute, stepPatrolLeg } from "./patrol.js";
 import { powerOf, productionSpeed } from "./power.js";
 import { noteImpactSurface } from "./remains.js";
 import { nextRand } from "./rng.js";
@@ -659,6 +660,24 @@ function tickFly(state: MatchState, e: Entity, dt: number): void {
       else if (t) altGoal = attackRun(state, e, t.x, t.y, t, dt, turned, false);
       else if (!turned) flyToOrOrbit(state, e, o.x, o.y, dt);
     }
+  } else if (o.kind === "patrol" && o.route && o.route.length >= 2) {
+    const route = o.route;
+    const t = transport ? undefined : patrolPlaneTarget(state, e);
+    e.attackTarget = t?.id ?? null;
+    if (t && isAirborne(t)) altGoal = dogfight(state, e, t, dt, turned);
+    else if (t) altGoal = attackRun(state, e, t.x, t.y, t, dt, turned, false);
+    else if (!turned) {
+      let leg = o.leg ?? 1;
+      if (leg < 0 || leg >= route.length) leg = 1;
+      let dest = route[leg] ?? route[route.length - 1]!;
+      if (Math.hypot(dest.x - e.x, dest.y - e.y) <= orbitRadius(state, e)) {
+        const stepped = stepPatrolLeg(route, leg, o.dir === -1 ? -1 : 1);
+        o.leg = stepped.leg;
+        o.dir = stepped.dir;
+        dest = route[stepped.leg] ?? dest;
+      }
+      flyToOrOrbit(state, e, dest.x, dest.y, dt);
+    }
   } else if (o.x != null && o.y != null) {
     if (!turned) flyToOrOrbit(state, e, o.x, o.y, dt);
   } else {
@@ -720,6 +739,34 @@ function dropRun(state: MatchState, e: Entity, tx: number, ty: number, dt: numbe
   }
   if (d < ts * 2 || (off > (100 * Math.PI) / 180 && d < turnRadius(state, e))) a.extend = true;
   return d < AIR_DIVE_START_TILES * ts ? BV222_DROP_ALT : AIR_CRUISE_ALT;
+}
+
+/** Enemy unit this plane can hurt, seen, and within weapon range of the patrol line. */
+function patrolPlaneTarget(state: MatchState, e: Entity): Entity | undefined {
+  const route = e.order?.route;
+  if (!route || route.length < 2) return undefined;
+  const range = weaponRangeWorld(state, e);
+  if (range <= 0) return undefined;
+  const sticky = e.attackTarget != null ? state.entities.get(e.attackTarget) : undefined;
+  if (sticky && planePatrolContact(state, e, sticky, route, range)) return sticky;
+  let best: Entity | undefined;
+  let bestD = Infinity;
+  for (const o of state.entities.values()) {
+    if (!planePatrolContact(state, e, o, route, range)) continue;
+    const d = distToRoute(route, o.x, o.y);
+    if (d < bestD) {
+      bestD = d;
+      best = o;
+    }
+  }
+  return best;
+}
+
+function planePatrolContact(state: MatchState, e: Entity, o: Entity, route: readonly { x: number; y: number }[], range: number): boolean {
+  if (o.kind !== "unit" || o.hp <= 0 || o.wreck || o.id === e.id || isCrashing(o)) return false;
+  if (!o.ownerId || allies(state, e.ownerId, o.ownerId)) return false;
+  if (!canSeeEntity(state, e.ownerId, o) || !canHurt(e, o)) return false;
+  return distToRoute(route, o.x, o.y) <= range;
 }
 
 function canHurt(e: Entity, t: Entity): boolean {

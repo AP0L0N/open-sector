@@ -1,15 +1,9 @@
 import {
-  MORTAR_APEX_FAR,
-  MORTAR_APEX_NEAR,
-  MORTAR_ARMOR_CHIP,
-  MORTAR_FLIGHT_FAR,
-  MORTAR_FLIGHT_NEAR,
-  MORTAR_SCATTER_FAR_TILES,
-  MORTAR_SCATTER_NEAR_TILES,
-  MORTAR_TRACK_CHANCE,
+  MORTAR_LOB,
   ROCKET_TRACK_CHANCE,
   TILE_SIZE,
   TITAN_ROCKET_RACK,
+  type LobShellDef,
   type RocketRackDef,
 } from "../catalog.js";
 import type { ArmorFace } from "./ballistics.js";
@@ -19,9 +13,9 @@ function clamp01(u: number): number {
 }
 
 /** Ground miss radius. Grows with range. `mul` is target posture and movement. */
-export function mortarScatterRadius(dist: number, maxRange: number, mul = 1): number {
-  const near = MORTAR_SCATTER_NEAR_TILES * TILE_SIZE;
-  const far = MORTAR_SCATTER_FAR_TILES * TILE_SIZE;
+export function mortarScatterRadius(dist: number, maxRange: number, mul = 1, lob: LobShellDef = MORTAR_LOB): number {
+  const near = lob.scatterNearTiles * TILE_SIZE;
+  const far = lob.scatterFarTiles * TILE_SIZE;
   const u = clamp01(dist / Math.max(1, maxRange));
   return (near + (far - near) * u) * Math.max(0.2, mul);
 }
@@ -39,15 +33,15 @@ export function mortarLanding(
 }
 
 /** Seconds in the air. Long shots hang longer so the arc can be seen. */
-export function mortarFlightSeconds(dist: number, maxRange: number): number {
+export function mortarFlightSeconds(dist: number, maxRange: number, lob: LobShellDef = MORTAR_LOB): number {
   const u = clamp01(dist / Math.max(1, maxRange));
-  return MORTAR_FLIGHT_NEAR + (MORTAR_FLIGHT_FAR - MORTAR_FLIGHT_NEAR) * u;
+  return lob.flightNear + (lob.flightFar - lob.flightNear) * u;
 }
 
 /** Peak air height in elevation units. Short shots still go mostly up. */
-export function mortarApex(dist: number, maxRange: number): number {
+export function mortarApex(dist: number, maxRange: number, lob: LobShellDef = MORTAR_LOB): number {
   const u = clamp01(dist / Math.max(1, maxRange));
-  return MORTAR_APEX_NEAR + (MORTAR_APEX_FAR - MORTAR_APEX_NEAR) * u;
+  return lob.apexNear + (lob.apexFar - lob.apexNear) * u;
 }
 
 /** Parabola. 0 at the tube and at the ground, `apex` at the middle. */
@@ -108,17 +102,18 @@ export function mortarFalloff(dist: number, radius: number): number {
 
 /**
  * Nick an armored hull. `falloff` is mortarFalloff at the hull center.
- * A tracked tank rolls MORTAR_TRACK_CHANCE on top of the nick.
+ * A tracked tank rolls the lob's track chance on top of the nick.
  */
 export function mortarArmorNick(
   hpMax: number,
   falloff: number,
   tracked: boolean,
   rand: () => number,
+  lob: LobShellDef = MORTAR_LOB,
 ): { damage: number; throwTrack: boolean } {
   const span = 0.75 + rand() * 0.5;
-  const damage = Math.max(1, Math.round(hpMax * MORTAR_ARMOR_CHIP * Math.max(0, falloff) * span));
-  const throwTrack = tracked && rand() < MORTAR_TRACK_CHANCE;
+  const damage = Math.max(1, Math.round(hpMax * lob.armorChip * Math.max(0, falloff) * span));
+  const throwTrack = tracked && rand() < lob.trackChance;
   return { damage, throwTrack };
 }
 

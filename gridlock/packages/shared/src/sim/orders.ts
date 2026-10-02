@@ -15,6 +15,7 @@ import { moveWithCollision, stepGiveWay, tickMakeWay } from "./collision.js";
 import { hullTurnMul, moveSpeedMul } from "./crits.js";
 import { openSpotNear, spotTaken, unitClearance } from "./formation.js";
 import { setPath } from "./path.js";
+import { stepPatrolLeg } from "./patrol.js";
 import { flyStep, jetAloft } from "./jet.js";
 import { slopeSpeedMul, tileHeight, weaponRangeWorld, worldTileHeight } from "./elevation.js";
 import type { Entity, MatchState } from "./types.js";
@@ -66,9 +67,11 @@ export function turnToward(e: Entity, tx: number, ty: number, degPerSec: number,
 
 /** Hull stays on the bow heading and the tracks roll backward. */
 export function reversing(e: Entity): boolean {
+  // The crew walks ahead pulling the trail, so the barrel always trails.
+  if (e.type === "artillery") return e.waypoints.length > 0 && e.towedBy == null;
   if (!catalog(e.type).turnInPlace || catalog(e.type).noReverse) return false;
   const kind = e.order?.kind;
-  if (kind !== "move" && kind !== "attackmove") return false;
+  if (kind !== "move" && kind !== "attackmove" && kind !== "patrol") return false;
   const wp = e.waypoints[0];
   return !!wp && closeRearWaypoint(e, wp);
 }
@@ -145,6 +148,13 @@ export function tickMovement(state: MatchState, dt: number): void {
         continue;
       }
     }
+    if (e.order?.kind === "patrol") {
+      if (steerPatrol(state, e)) {
+        e.tileX = worldToTile(e.x, state.tileSize);
+        e.tileY = worldToTile(e.y, state.tileSize);
+        continue;
+      }
+    }
     const chaseId =
       (e.order?.kind === "attack" || e.order?.kind === "forceattack") && e.order.targetId != null
         ? e.order.targetId
@@ -208,6 +218,11 @@ export function tickMovement(state: MatchState, dt: number): void {
       }
     }
     if (e.waypoints.length === 0) {
+      if (e.order?.kind === "patrol") {
+        e.tileX = worldToTile(e.x, state.tileSize);
+        e.tileY = worldToTile(e.y, state.tileSize);
+        continue;
+      }
       if (e.state === "move") e.state = "idle";
       if (e.order?.kind === "move" || e.order?.kind === "attackmove" || e.order?.kind === "withdraw") {
         finishTravel(state, e);
@@ -218,12 +233,11 @@ export function tickMovement(state: MatchState, dt: number): void {
       // Jet pack lit: straight at the goal over everything, no path, no shoving.
       const goal = e.waypoints[e.waypoints.length - 1]!;
       turnToward(e, goal.x, goal.y, def.turnDegPerSec, dt);
-      e.state =
-        e.order?.kind === "attack" || e.order?.kind === "attackmove" || e.order?.kind === "forceattack"
-          ? "attack"
-          : "move";
+      e.state = movingState(e);
       flyStep(state, e, dt);
-      if (
+      if (e.waypoints.length === 0 && e.order?.kind === "patrol") {
+        commitPatrolArrival(state, e);
+      } else if (
         e.waypoints.length === 0 &&
         (e.order?.kind === "move" || e.order?.kind === "attackmove" || e.order?.kind === "withdraw")
       ) {
@@ -233,7 +247,8 @@ export function tickMovement(state: MatchState, dt: number): void {
     }
     if (settleNearGoal(state, e)) {
       if (e.state === "move") e.state = "idle";
-      if (e.order?.kind === "move" || e.order?.kind === "attackmove" || e.order?.kind === "withdraw") {
+      if (e.order?.kind === "patrol") commitPatrolArrival(state, e);
+      else if (e.order?.kind === "move" || e.order?.kind === "attackmove" || e.order?.kind === "withdraw") {
         finishTravel(state, e);
       }
       continue;
@@ -245,23 +260,13 @@ export function tickMovement(state: MatchState, dt: number): void {
     // Must already be on the travel face at tick start — not after this tick's yaw.
     if (def.turnInPlace && Math.abs(angRemainingDeg(e.facing, want)) > FACE_MOVE_DEG) {
       turnTo(e, want, rate, dt);
-      e.state =
-        e.order?.kind === "attack" || e.order?.kind === "attackmove" || e.order?.kind === "forceattack"
-          ? "attack"
-          : "idle";
+      e.state = movingState(e) === "attack" ? "attack" : "idle";
       e.tileX = worldToTile(e.x, state.tileSize);
       e.tileY = worldToTile(e.y, state.tileSize);
       continue;
     }
     if (wp) turnTo(e, want, rate, dt);
-    e.state =
-      e.order?.kind === "attack" || e.order?.kind === "attackmove" || e.order?.kind === "forceattack"
-        ? "attack"
-        : e.order?.kind === "harvest"
-          ? "harvest"
-          : e.order?.kind === "unload"
-            ? "unload"
-            : "move";
+    e.state = movingState(e);
     const dest = e.waypoints[0];
     const dh = dest
       ? tileHeight(state, worldToTile(dest.x, state.tileSize), worldToTile(dest.y, state.tileSize)) -
@@ -283,13 +288,83 @@ export function tickMovement(state: MatchState, dt: number): void {
       const last = e.waypoints[e.waypoints.length - 1];
       if (last) setPath(state, e, last.x, last.y);
     }
-    if (
+    if (e.waypoints.length === 0 && e.order?.kind === "patrol") {
+      commitPatrolArrival(state, e);
+    } else if (
       e.waypoints.length === 0 &&
       (e.order?.kind === "move" || e.order?.kind === "attackmove" || e.order?.kind === "withdraw")
     ) {
       finishTravel(state, e);
     }
   }
+}
+
+/** Attack pose while closing on a patrol contact. The route itself stays a walk. */
+function movingState(e: Entity): "attack" | "move" | "harvest" | "unload" {
+  const kind = e.order?.kind;
+  if (kind === "attack" || kind === "attackmove" || kind === "forceattack") return "attack";
+  if (kind === "patrol" && e.attackTarget != null) return "attack";
+  if (kind === "harvest") return "harvest";
+  if (kind === "unload") return "unload";
+  return "move";
+}
+
+/**
+ * Keep a patrol on its leg, or peel off toward the contact combat picked.
+ * True when the unit is in range and should stand and shoot this tick.
+ */
+function steerPatrol(state: MatchState, e: Entity): boolean {
+  const o = e.order;
+  if (!o || o.kind !== "patrol" || !o.route || o.route.length < 2) return false;
+  const route = o.route;
+  let leg = o.leg ?? 1;
+  if (leg < 0 || leg >= route.length) leg = 1;
+  const dest = route[leg] ?? route[1] ?? route[0];
+  if (!dest) return false;
+
+  if (e.attackTarget != null) {
+    const t = state.entities.get(e.attackTarget);
+    if (t && t.hp > 0) {
+      const range = weaponRangeWorld(state, e);
+      const dist = Math.hypot(t.x - e.x, t.y - e.y);
+      if (dist <= range && !unitInWater(state, e)) {
+        e.waypoints = [];
+        e.state = "attack";
+        return true;
+      }
+      // In the water the gun is silent. Stay on the route instead of wading closer.
+      if (!(unitInWater(state, e) && dist <= range)) {
+        const goal = e.waypoints[e.waypoints.length - 1];
+        if (!goal || Math.hypot(goal.x - t.x, goal.y - t.y) > state.tileSize || state.tick % 5 === 0) {
+          setPath(state, e, t.x, t.y);
+        }
+        return false;
+      }
+      e.attackTarget = null;
+    }
+  }
+
+  const close = Math.hypot(dest.x - e.x, dest.y - e.y) <= Math.max(state.tileSize * 2, e.radius * 4);
+  if (e.waypoints.length === 0 && close) {
+    commitPatrolArrival(state, e);
+    return false;
+  }
+  const goal = e.waypoints[e.waypoints.length - 1];
+  const aimed = !!goal && Math.hypot(goal.x - dest.x, goal.y - dest.y) <= state.tileSize;
+  if (!aimed) setPath(state, e, dest.x, dest.y);
+  return false;
+}
+
+/** The current leg is done. Step along the route, and turn around at either end. */
+function commitPatrolArrival(state: MatchState, e: Entity): void {
+  const o = e.order;
+  if (!o || o.kind !== "patrol" || !o.route || o.route.length < 2) return;
+  if (e.attackTarget != null) return;
+  const next = stepPatrolLeg(o.route, o.leg ?? 1, o.dir === -1 ? -1 : 1);
+  o.leg = next.leg;
+  o.dir = next.dir;
+  const dest = o.route[next.leg];
+  if (dest) setPath(state, e, dest.x, dest.y);
 }
 
 /** Distances below are in the unit's own radius; units are wider than a tile. */
@@ -308,8 +383,10 @@ const approach = new WeakMap<Entity, { gx: number; gy: number; best: number; tic
  */
 function settleNearGoal(state: MatchState, e: Entity): boolean {
   const kind = e.order?.kind;
-  if (kind !== "move" && kind !== "attackmove" && kind !== "guard" && kind !== "withdraw") return false;
-  if (escorting(e) || (kind === "attackmove" && e.attackTarget != null)) return false;
+  if (kind !== "move" && kind !== "attackmove" && kind !== "guard" && kind !== "withdraw" && kind !== "patrol") {
+    return false;
+  }
+  if (escorting(e) || ((kind === "attackmove" || kind === "patrol") && e.attackTarget != null)) return false;
   const goal = e.waypoints[e.waypoints.length - 1];
   if (!goal) return false;
   const r = Math.max(e.radius, state.tileSize);

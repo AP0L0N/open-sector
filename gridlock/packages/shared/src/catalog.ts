@@ -85,7 +85,7 @@ export const HP_BAR_SECONDS = 2;
 export const GARRISON_STRUCTURAL_CALIBER = 40;
 /** Peek through shutters. Occupied hide mode only. */
 export const GARRISON_HIDE_SIGHT = t(1);
-/** Extra Chebyshev tiles for a watch garrison versus standing outside. */
+/** Extra sight tiles for a watch garrison versus standing outside. */
 export const GARRISON_WATCH_SIGHT_BONUS = t(2);
 /**
  * Hatch-crew HP vs a standing trooper. Same 3× as a garrisoned occupant —
@@ -154,11 +154,11 @@ export const HEIGHT_DOWNHILL_SPEED = 1.12 ** (1 / TILE_SUBDIV);
 export const HEIGHT_UPHILL_COST = 1.7 ** (1 / TILE_SUBDIV);
 /** A* step-cost multiplier per adjacent-tile descent. */
 export const HEIGHT_DOWNHILL_COST = 0.9 ** (1 / TILE_SUBDIV);
-/** Extra Chebyshev sight tiles per elevation step above HEIGHT_BASE. One terrace ≈ +4 cells of fog reach. */
+/** Extra sight tiles per elevation step above HEIGHT_BASE. One terrace ≈ +4 cells of fog reach. */
 export const HEIGHT_SIGHT_BONUS = 4;
-/** Extra Chebyshev tiles infantry gain per elevation step of a tile above or below them. */
+/** Extra sight tiles infantry gain per elevation step of a tile above or below them. */
 export const INFANTRY_UPHILL_SIGHT = 3;
-/** Extra Chebyshev tiles a hull gains per elevation step of a tile above or below it. */
+/** Extra sight tiles a hull gains per elevation step of a tile above or below it. */
 export const HULL_LEVEL_SIGHT = 1;
 /**
  * Rise that must poke through the sight ray before terrain occludes.
@@ -184,7 +184,7 @@ export const TANK_GUN_ELEV_DEG = 20;
  * a valley floor versus the plateau still has to pass the elevation angle.
  */
 export const TANK_GUN_CLIMB = TILE_SUBDIV;
-/** Chebyshev fog radius. Troopers and player-built structures share this. */
+/** Round fog radius. Troopers and player-built structures share this. */
 export const INFANTRY_SIGHT_TILES = t(12);
 /**
  * Extra gameplay tiles of weapon reach per elevation step above HEIGHT_BASE.
@@ -429,6 +429,7 @@ export type EntityType =
   | "titan"
   | "mammoth"
   | "nebelwerfer"
+  | "artillery"
   | "supply"
   | "core"
   | "dynamo"
@@ -475,7 +476,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "apocalypse" | "ss3" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "supply" | "stuka" | "fw190" | "bv222" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "apocalypse" | "ss3" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "stuka" | "fw190" | "bv222" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -498,7 +499,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "tower", "research"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "apocalypse", "ss3", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "supply", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "apocalypse", "ss3", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
@@ -529,7 +530,7 @@ export interface CatalogEntry {
   /** Flat-ground max. Live reach adds HEIGHT_RANGE_BONUS per step above the plain. */
   rangeTiles: number;
   sightTiles: number;
-  /** Extra Chebyshev sight from optics. The sniper's scope. Added on top of sightTiles. */
+  /** Extra sight from optics. The sniper's scope. Added on top of sightTiles. */
   sightBonusTiles?: number;
   cooldown: number;
   damage: number;
@@ -994,6 +995,86 @@ export const MORTAR = {
   minRangeTiles: MORTAR_MIN_RANGE_TILES,
   bulky: true,
 } as const satisfies InfantryGun;
+
+/** A lobbed round: the mortar bomb or the field gun's shell. Tiles are sim tiles, seconds are flight time. */
+export interface LobShellDef {
+  damage: number;
+  penetration: number;
+  caliber: number;
+  splashTiles: number;
+  scatterNearTiles: number;
+  scatterFarTiles: number;
+  flightNear: number;
+  flightFar: number;
+  apexNear: number;
+  apexFar: number;
+  /** Share of an armored hull's max HP taken at the blast center. */
+  armorChip: number;
+  trackChance: number;
+}
+
+export const MORTAR_LOB: LobShellDef = {
+  damage: MORTAR.damage,
+  penetration: MORTAR.penetration,
+  caliber: MORTAR.caliber,
+  splashTiles: MORTAR_SPLASH_TILES,
+  scatterNearTiles: MORTAR_SCATTER_NEAR_TILES,
+  scatterFarTiles: MORTAR_SCATTER_FAR_TILES,
+  flightNear: MORTAR_FLIGHT_NEAR,
+  flightFar: MORTAR_FLIGHT_FAR,
+  apexNear: MORTAR_APEX_NEAR,
+  apexFar: MORTAR_APEX_FAR,
+  armorChip: MORTAR_ARMOR_CHIP,
+  trackChance: MORTAR_TRACK_CHANCE,
+};
+
+/**
+ * Towed field gun. Two crewmen haul it by the trail, barrel last, at a crawl.
+ * A supply truck can hitch it and tow it far faster. It fires only once it has
+ * stopped and the crew has set the trail. The shell is lobbed like a mortar
+ * bomb but far bigger: a wide burst that kills infantry, smashes buildings,
+ * and takes a real bite out of a tank. The longest reach on the field, a very
+ * slow reload, and it will not fire at anything close.
+ * Small arms cannot hurt the gun. They hit the crew, less often through the
+ * shield. Any infantry can take a dead man's place, and an empty gun goes to
+ * whoever crews it. Shells, bombs, rockets, and blasts wreck it.
+ */
+export const ARTILLERY_RANGE_TILES = t(36);
+export const ARTILLERY_MIN_RANGE_TILES = t(8);
+/** Crewmen it leaves the Armory with, and the most it holds. */
+export const ARTILLERY_CREW = 2;
+/** One crewman's health. A soldier who joins keeps his share of it. */
+export const ARTILLERY_CREW_HP = 40;
+/** Seconds the crew needs to set the trail after the gun stops. */
+export const ARTILLERY_SETUP_SECONDS = 4;
+/** Seconds between shots with a full crew. One man alone takes twice as long. */
+export const ARTILLERY_RELOAD = 14;
+/** Chance a bullet on the gun finds a crewman, by the face it strikes. The shield covers the front. */
+export const ARTILLERY_CREW_HIT_FRONT = 0.3;
+export const ARTILLERY_CREW_HIT_SIDE = 0.65;
+export const ARTILLERY_CREW_HIT_REAR = 0.85;
+/** Share of a shell or blast on the gun that also lands on each crewman. */
+export const ARTILLERY_CREW_BLAST_SHARE = 0.6;
+/** Towing truck's speed as a share of its own. */
+export const ARTILLERY_TOW_SPEED = 0.8;
+/** Gap between the truck's tail and the gun's trail while hitched. */
+export const ARTILLERY_TOW_GAP = 2;
+/** A truck within this gap of the gun hitches it, and the gun swings round behind. */
+export const ARTILLERY_HITCH_SLACK = 10;
+export const ARTILLERY_SHELL: LobShellDef = {
+  damage: 150,
+  penetration: 40,
+  caliber: 105,
+  splashTiles: t(3.6),
+  scatterNearTiles: t(0.6),
+  scatterFarTiles: t(1.8),
+  flightNear: 2.6,
+  flightFar: 4.6,
+  apexNear: 70,
+  apexFar: 120,
+  armorChip: 0.2,
+  trackChance: 0.35,
+};
 
 /**
  * Rocketer's launcher: one tube on the shoulder, one Titan rocket in it. The
@@ -1747,7 +1828,7 @@ export function maulerCartHpOf(type: EntityType): number {
 export const SMOKE_HALF_ALONG = t(2.5);
 /** Ellipse half-width across the shot, in gameplay tiles. */
 export const SMOKE_HALF_ACROSS = t(1.5);
-/** Chebyshev tiles into a cloud an observer can still see. */
+/** Tiles into a cloud an observer can still see. */
 export const SMOKE_PEEK_TILES = 1;
 
 /**
@@ -2868,6 +2949,37 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rocketRack: NEBELWERFER_ROCKET,
     blurb: "Rocket artillery on an armored truck. Twelve tubes on a traversing frame, emptied in about a second, one to three rockets at a time. The rockets fly fast on a flat arc, so it hits anything your side can see — the longest reach on the field, but it will not fire inside four tiles, its own eyes are short, and a tank or tree in the path takes the rocket. It must stop and swing the frame onto the target before it fires. Rockets scatter wide at full reach and draw in as the target closes: a salvo blankets an area and shreds infantry in the open. Armor only dents, but a side or rear hit usually breaks a tank's tracks. Five salvos in the rack; a supply truck refills it. Switch the tubes off to hold fire. Thin plate — keep it behind the line.",
   },
+  artillery: {
+    type: "artillery",
+    kind: "unit",
+    name: "Artillery",
+    letter: "g",
+    cost: 550,
+    buildSeconds: 22,
+    hp: 160,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 10,
+    moveTilesPerSec: t(0.55),
+    turnDegPerSec: 30,
+    rangeTiles: ARTILLERY_RANGE_TILES,
+    sightTiles: t(5),
+    cooldown: ARTILLERY_RELOAD,
+    damage: ARTILLERY_SHELL.damage,
+    projectileSpeed: 0,
+    turnInPlace: true,
+    gunArcDeg: 6,
+    armorFront: 0,
+    armorSide: 0,
+    armorRear: 0,
+    penetration: ARTILLERY_SHELL.penetration,
+    caliber: ARTILLERY_SHELL.caliber,
+    spreadDeg: 0,
+    ammo: { he: 10 },
+    defaultShell: "he",
+    blurb: `Towed field gun. Two crewmen haul it by the trail at a crawl; a supply truck can hitch it and tow it much faster. It must stop and set the trail before it fires. The shell is lobbed like a mortar bomb but far bigger: a wide burst that kills infantry, smashes buildings, and takes a real bite out of a tank. The longest reach on the field and a very slow reload, and it will not fire inside ${ARTILLERY_MIN_RANGE_TILES / TILE_SUBDIV} tiles. Bullets cannot hurt the gun, but they kill the crew; any infantry can take a dead man's place, and an empty gun goes to whoever crews it. Shells, bombs, and blasts wreck it. Ten shells; a supply truck refills them.`,
+  },
   supply: {
     type: "supply",
     kind: "unit",
@@ -3244,7 +3356,7 @@ export function isCyborg(type: EntityType): boolean {
 
 /** An engineer can patch this unit: armored hulls and the cyborg's plating. */
 export function isRepairableUnit(type: EntityType): boolean {
-  return isArmoredType(type) || isCyborg(type);
+  return isArmoredType(type) || isCyborg(type) || type === "artillery";
 }
 
 /**

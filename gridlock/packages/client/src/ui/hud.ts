@@ -41,6 +41,7 @@ import {
   rocketAmmoOf,
   launcherOnlyOf,
   isStance,
+  isYardField,
   producerType,
   productionSpeed,
   shellsFor,
@@ -60,6 +61,7 @@ import {
 import type { Ctx } from "../ctx.js";
 import {
   ATTACK_MOVE_HOTKEY,
+  PATROL_HOTKEY,
   GARRISON_HOTKEY,
   GUARD_HOTKEY,
   MapView,
@@ -202,6 +204,18 @@ export function mountBattlefield(
     btn?.addEventListener("click", (e) => {
       const m = ctx.match;
       const q = m?.you.structureQueue;
+      if (isYardField(type)) {
+        if (q && q.type === type && !q.ready) {
+          if ((e.target as HTMLElement | null)?.closest(".cameo-hold, .cameo-paused") || q.paused) {
+            ctx.net.send({ type: "cmd.pause", what: "structure", paused: !q.paused });
+          }
+          return;
+        }
+        if (q) return;
+        view.armYardField(type);
+        paintBattleHud(ctx);
+        return;
+      }
       if (structureReady(m, type)) {
         view.placeMode = true;
         paintBattleHud(ctx);
@@ -219,6 +233,15 @@ export function mountBattlefield(
     btn?.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       const q = ctx.match?.you.structureQueue;
+      if (isYardField(type)) {
+        if (q?.type === type) ctx.net.send({ type: "cmd.cancel", what: "structure" });
+        else {
+          view.yardArm = null;
+          view.placeMode = false;
+          paintBattleHud(ctx);
+        }
+        return;
+      }
       if (!q || q.type !== type) {
         readyCancelArmed = null;
         return;
@@ -482,9 +505,10 @@ export function paintBattleHud(ctx: Ctx): void {
     const ready = job?.ready === true;
     const paused = !!job && job.paused && !job.ready;
     const stalled = !!job && !job.ready && !job.paused && m.you.scrap <= 0;
+    const siting = isYardField(type) && viewRef?.yardArm === type && !!viewRef.placeMode;
     btn.classList.toggle("is-ready", ready);
     btn.classList.toggle("is-building", !!job && !ready);
-    btn.classList.toggle("is-placing", ready && !!viewRef?.placeMode);
+    btn.classList.toggle("is-placing", (ready && !!viewRef?.placeMode) || siting);
     btn.classList.toggle("is-paused", paused);
     btn.classList.toggle("unaffordable", stalled);
     btn.classList.toggle("slow-power", m.you.lowPower && !!job && !job.ready && !job.paused);
@@ -657,8 +681,15 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
         : "";
   const capturing =
     e.capture && e.capture.progress > 0 ? `  ·  capturing ${Math.round(e.capture.progress * 100)}%` : "";
-  const holding =
-    e.guardTargetId != null ? "  ·  GUARD UNIT" : e.guardFacing != null ? "  ·  GUARD" : e.holdPosition ? "  ·  HOLD" : "";
+  const holding = e.patrol?.length
+    ? "  ·  PATROL"
+    : e.guardTargetId != null
+      ? "  ·  GUARD UNIT"
+      : e.guardFacing != null
+        ? "  ·  GUARD"
+        : e.holdPosition
+          ? "  ·  HOLD"
+          : "";
   const tending =
     e.tend != null ? "  ·  tending" : ctx.match.entities.some((o) => o.tend === e.id) ? "  ·  being tended" : "";
   const scout =
@@ -893,6 +924,7 @@ const TYPE_ORDER: EntityType[] = [
   "titan",
   "mammoth",
   "nebelwerfer",
+  "artillery",
   "supply",
   "hauler",
   "rifleman",
@@ -1475,6 +1507,13 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: `Move, halt to fire (${ATTACK_MOVE_HOTKEY.toUpperCase()})`,
       on: !!view?.attackMoveMode,
     });
+    out.push({
+      slot: "patrol",
+      act: "patrol",
+      label: "Patrol",
+      title: `Place points, right-click to finish. They walk them and back, and fight enemies on that path (${PATROL_HOTKEY.toUpperCase()})`,
+      on: !!view?.patrolMode,
+    });
   }
   if (units.length > 0 && units.every((e) => isTransportType(e.type))) {
     out.push({
@@ -1703,6 +1742,14 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: "The driver climbs out and leaves the truck for anyone to take.",
     });
   }
+  if (trucks.some((e) => e.towing != null)) {
+    out.push({
+      slot: "unhitch",
+      act: "unhitch",
+      label: "Unhitch",
+      title: "Drop the field gun here. The crew sets it up to fire.",
+    });
+  }
   if (buildings.some((e) => e.type !== "core" && !isCivilianType(e.type))) {
     out.push({ slot: "sell", act: "sell", label: "Sell", title: "Sell selected structures" });
   }
@@ -1853,12 +1900,17 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     view.setForceAttackMode(false);
     view.setRotateMode(false);
     view.setGuardMode(false);
+    view.setPatrolMode(false);
     const stopIds = [...new Set([...aimers, ...garrisonForce].map((e) => e.id))];
     if (stopIds.length) ctx.net.send({ type: "cmd.stop", ids: stopIds });
     return;
   }
   if (act === "attackmove") {
     if (units.length) view.setAttackMoveMode(!view.attackMoveMode);
+    return;
+  }
+  if (act === "patrol") {
+    if (units.length) view.setPatrolMode(!view.patrolMode);
     return;
   }
   if (act === "land") {
@@ -1897,6 +1949,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     view.setForceAttackMode(false);
     view.setRotateMode(false);
     view.setGuardMode(false);
+    view.setPatrolMode(false);
     if (units.length) {
       const hold = !units.every((e) => e.holdPosition);
       ctx.net.send({ type: "cmd.hold", ids: units.map((e) => e.id), hold });
@@ -1923,6 +1976,11 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   if (act === "unboard") {
     const trucks = units.filter((e) => e.type === "supply" || (isTransportType(e.type) && (e.air?.troops ?? 0) > 0));
     for (const truck of trucks) ctx.net.send({ type: "cmd.unboard", truckId: truck.id });
+    return;
+  }
+  if (act === "unhitch") {
+    const towing = units.filter((e) => e.type === "supply" && e.towing != null);
+    if (towing.length) ctx.net.send({ type: "cmd.tow", ids: towing.map((e) => e.id) });
     return;
   }
   if (act === "sell") {

@@ -1,0 +1,34 @@
+{
+  "id": "medic-die",
+  "cell": 96,
+  "cols": 4,
+  "rows": 16,
+  "facing": 16,
+  "order": [
+    "S",
+    "SSW",
+    "SW",
+    "WSW",
+    "W",
+    "WNW",
+    "NW",
+    "NNW",
+    "N",
+    "NNE",
+    "NE",
+    "ENE",
+    "E",
+    "ESE",
+    "SE",
+    "SSE"
+  ],
+  "contactY": 0.82,
+  "scale": 1.22,
+  "out": "gridlock/packages/client/src/assets/units/medic-die.png",
+  "size_pop_dirs": [
+    "S"
+  ],
+  "empty_dirs": [],
+  "clipped_dirs": [],
+  "source": "render_infantry.py (16 unique yaws, real gait, no mirror)"
+}

@@ -8,6 +8,7 @@ import {
   type EntityType,
   type Stance,
 } from "@gridlock/shared";
+import { veiledCopy } from "./building-fog.js";
 import {
   buildingAlphaOpaqueAt,
   buildingSpriteSrcAt,
@@ -137,12 +138,15 @@ import jumpjetCrawlUrl from "../assets/units/jumpjet-crawl.png";
 import jumpjetFireUrl from "../assets/units/jumpjet-fire.png";
 import jumpjetFlyUrl from "../assets/units/jumpjet-fly.png";
 import jumpjetDieUrl from "../assets/units/jumpjet-die.png";
+import jumpjetSwimUrl from "../assets/units/jumpjet-swim.png";
 import cyborgWalkUrl from "../assets/units/cyborg-walk.png";
 import cyborgFireUrl from "../assets/units/cyborg-fire.png";
 import cyborgCrawlUrl from "../assets/units/cyborg-crawl.png";
 import cyborgCrawlFireUrl from "../assets/units/cyborg-crawl-fire.png";
 import cyborgDieUrl from "../assets/units/cyborg-die.png";
 import engineerWalkUrl from "../assets/units/engineer-walk.png";
+import engineerCrouchUrl from "../assets/units/engineer-crouch.png";
+import engineerCrawlUrl from "../assets/units/engineer-crawl.png";
 import engineerBuildUrl from "../assets/units/engineer-build.png";
 import engineerFixUrl from "../assets/units/engineer-fix.png";
 import engineerDieUrl from "../assets/units/engineer-die.png";
@@ -181,6 +185,7 @@ import {
   bindApocalypseSheets,
   bindMammothSheets,
   bindNebelwerferSheets,
+  bindArtillerySheets,
   bindTurntableSheets,
 } from "./turntable-sheet.js";
 import { engineRowFromFacing, engineRowFromScreen } from "./turntable.js";
@@ -882,6 +887,28 @@ export const ENGINEER_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
+export const ENGINEER_CROUCH_SPRITE: UnitSpriteDef = {
+  image: loadSheet(engineerCrouchUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 8,
+  drawSize: UNIT_SPRITE_DRAW_SIZE,
+  contactY: 0.88,
+  facingSpace: "world",
+};
+
+export const ENGINEER_CRAWL_SPRITE: UnitSpriteDef = {
+  image: loadSheet(engineerCrawlUrl),
+  dirs: 16,
+  frames: 8,
+  frameSize: 96,
+  fps: 10,
+  drawSize: Math.round(28 * INFANTRY_VISUAL_SCALE),
+  contactY: 0.72,
+  facingSpace: "world",
+};
+
 export const ENGINEER_BUILD_SPRITE: UnitSpriteDef = {
   image: loadSheet(engineerBuildUrl),
   dirs: 16,
@@ -944,7 +971,7 @@ function swimSprite(url: string): UnitSpriteDef {
 /** The Rifleman's swim sheet; the fallback for any infantry type without its own. */
 export const INFANTRY_SWIM_SPRITE: UnitSpriteDef = swimSprite(infantrySwimUrl);
 
-/** Each type's own swimmer (tools/sprites/derive_swim.py, render_cyborg.py). */
+/** Each type's own swimmer. Humans: render_infantry.py. Cyborg: render_cyborg.py. */
 const SWIM_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   gunner: swimSprite(gunnerSwimUrl),
   sniper: swimSprite(sniperSwimUrl),
@@ -955,6 +982,7 @@ const SWIM_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   medic: swimSprite(medicSwimUrl),
   droneop: swimSprite(droneopSwimUrl),
   engineer: swimSprite(engineerSwimUrl),
+  jumpjet: swimSprite(jumpjetSwimUrl),
   cyborg: swimSprite(cyborgSwimUrl),
 };
 
@@ -1102,6 +1130,19 @@ export const NEBELWERFER_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 bindNebelwerferSheets(NEBELWERFER_SPRITE.image, nebelwerferLauncher.image);
+
+/** Towed field gun. One sheet; the barrel is the facing. The crew is drawn beside it by the map. */
+export const ARTILLERY_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(40 * UNIT_VISUAL_SCALE),
+  contactY: 0.92,
+  facingSpace: "world",
+};
+bindArtillerySheets(ARTILLERY_SPRITE.image);
 
 /** Ju 87 dive bomber. Same sheet on the strip and in the air; the map lifts it by altitude. */
 export const STUKA_SPRITE: UnitSpriteDef = {
@@ -1282,6 +1323,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   supply: SUPPLY_SPRITE,
   mammoth: MAMMOTH_SPRITE,
   nebelwerfer: NEBELWERFER_SPRITE,
+  artillery: ARTILLERY_SPRITE,
   stuka: STUKA_SPRITE,
   fw190: FW190_SPRITE,
   bv222: BV222_SPRITE,
@@ -1361,7 +1403,11 @@ export function spriteFor(type: EntityType, stance?: Stance, swimming = false): 
     if (stance === "crawl") return DRONEOP_CRAWL_SPRITE;
     return DRONEOP_SPRITE;
   }
-  if (type === "engineer") return ENGINEER_SPRITE;
+  if (type === "engineer") {
+    if (stance === "crouch") return ENGINEER_CROUCH_SPRITE;
+    if (stance === "crawl") return ENGINEER_CRAWL_SPRITE;
+    return ENGINEER_SPRITE;
+  }
   if (type === "cyborg") return stance === "crawl" ? CYBORG_CRAWL_SPRITE : CYBORG_SPRITE;
   return UNIT_SPRITES[type];
 }
@@ -1610,13 +1656,15 @@ export function drawPropSprite(
   y: number,
   drawH: number,
   flip = false,
+  /** Fog veil opacity over the prop's own pixels. */
+  veil = 0,
 ): boolean {
   const blit = propBlit(def, drawH, flip);
   if (!blit) return false;
   const scale = blit.height / def.image.naturalHeight;
   const cx = (flip ? def.image.naturalWidth - def.contactX : def.contactX) * scale;
   const cy = def.contactY * scale;
-  ctx.drawImage(blit, x - cx, y - cy);
+  ctx.drawImage(veil > 0 ? veiledCopy(blit, veil) : blit, x - cx, y - cy);
   return true;
 }
 

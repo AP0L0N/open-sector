@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { fieldSpan } from "@gridlock/shared";
-import { WALL_SLAB_H, WALL_WIRE_H, wallPostAlong } from "./wall.js";
+import { WALL_SLAB_H, WALL_WIRE_H, wallPostAlong, wallSectionsConnect, wallTopElev } from "./wall.js";
 
 describe("concrete wall", () => {
   const span = fieldSpan("wall")!;
@@ -14,5 +14,13 @@ describe("concrete wall", () => {
     assert.ok(posts[1]! < span.length / 2);
     assert.ok(WALL_WIRE_H > 0);
     assert.ok(WALL_SLAB_H > span.thick);
+  });
+
+  it("keeps one top across sections that meet, and stretches from the highest ground", () => {
+    const length = span.length;
+    assert.equal(wallSectionsConnect({ x: 0, y: 0, length }, { x: length, y: 0, length }), true);
+    assert.equal(wallSectionsConnect({ x: 0, y: 0, length }, { x: length * 2, y: 0, length }), false);
+    assert.equal(wallTopElev([2, 5, 3], 4), 9);
+    assert.equal(wallTopElev([], 4), 4);
   });
 });

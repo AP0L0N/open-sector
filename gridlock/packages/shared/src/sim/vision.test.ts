@@ -527,6 +527,43 @@ describe("armored hull cover", () => {
   });
 });
 
+describe("sight shape", () => {
+  it("reveals a circle, not a square", () => {
+    const { state, a } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const r = sightTilesOf("rifleman", 0);
+    const ox = r + 2;
+    const oy = r + 2;
+    assert.ok(ox + r < state.width && oy + r < state.height);
+    const inf = makeEntity(state, "rifleman", a, tileCenter(ox, ts), tileCenter(oy, ts));
+    for (const elev of [undefined, state.heights]) {
+      const mask = new Uint8Array(state.width * state.height);
+      paintEntitySight(mask, state.width, state.height, ts, inf, elev);
+      assert.equal(tileOnMask(mask, state.width, ox + r, oy), true, "edge on axis");
+      assert.equal(tileOnMask(mask, state.width, ox, oy - r), true, "edge on axis");
+      assert.equal(tileOnMask(mask, state.width, ox + r, oy + r), false, "square corner");
+      const d = Math.floor(r * 0.7 - 0.5);
+      assert.equal(tileOnMask(mask, state.width, ox + d, oy + d), true, "inside the circle");
+    }
+  });
+});
+
+describe("map houses in fog", () => {
+  it("are always in the snapshot, without giving away who holds them", () => {
+    const { state, a, b } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const house = makeEntity(state, "manor", b, tileCenter(200, ts), tileCenter(200, ts), { tileX: 200, tileY: 200 });
+    const tower = makeEntity(state, "tower", b, tileCenter(190, ts), tileCenter(200, ts), { tileX: 190, tileY: 200 });
+    const snap = snapshotFor(state, a);
+    const seen = snap.entities.find((e) => e.id === house.id);
+    assert.ok(seen, "house out of sight is sent");
+    assert.equal(seen.ownerId, "");
+    assert.equal(seen.garrison?.count ?? 0, 0);
+    assert.equal(snap.entities.some((e) => e.id === tower.id), false, "enemy-built tower stays hidden");
+  });
+});
+
 describe("combat visibility", () => {
   it("matches the fog mask", () => {
     const { state, a, b } = twoPlayerMatch();

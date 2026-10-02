@@ -59,6 +59,9 @@ python tools/sprites/compose_unit_sheet.py \
   --strips-dir tools/sprites/src/<id> \
   --cell 96 --frames 8 --contact-y <from brief> \
   --out gridlock/packages/client/src/assets/units/<file>.png
+
+# human infantry (walk, crouch, crawl, fire, die, swim, cameos)
+python3 tools/sprites/render_infantry.py
 ```
 
 Previews land in `tools/sprites/preview/`: 4×4 labeled turntable, gameplay strip, JSON manifest.

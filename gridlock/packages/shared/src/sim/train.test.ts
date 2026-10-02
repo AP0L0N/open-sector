@@ -320,6 +320,66 @@ describe("rally point", () => {
   });
 });
 
+describe("spawn grouping", () => {
+  function riflemen(state: MatchState) {
+    return [...state.entities.values()].filter((e) => e.type === "rifleman" && e.ownerId === "A" && e.hp > 0);
+  }
+
+  function span(units: { x: number; y: number }[]): { x: number; y: number } {
+    const xs = units.map((u) => u.x);
+    const ys = units.map((u) => u.y);
+    return { x: Math.max(...xs) - Math.min(...xs), y: Math.max(...ys) - Math.min(...ys) };
+  }
+
+  it("packs each new rifleman into a block at the door instead of a line", () => {
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    state.players.get("A")!.scrap = 99999;
+    seedMuster(state, 20, 4);
+    const n = 8;
+    for (let i = 0; i < n; i++) applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
+    ticks(state, secondsToTicks(catalog("rifleman").buildSeconds) * n + 80);
+    const units = riflemen(state);
+    assert.equal(units.length, n);
+    for (const u of units) assert.equal(u.state, "idle", `unit ${u.id} still ${u.state}`);
+    const box = span(units);
+    assert.ok(box.x > 8 && box.y > 8, `still a line, span ${box.x.toFixed(1)} x ${box.y.toFixed(1)}`);
+    assert.ok(box.x < 80 && box.y < 80, `scattered, span ${box.x.toFixed(1)} x ${box.y.toFixed(1)}`);
+    for (let i = 0; i < units.length; i++) {
+      for (let j = i + 1; j < units.length; j++) {
+        const a = units[i]!;
+        const b = units[j]!;
+        assert.ok(Math.hypot(a.x - b.x, a.y - b.y) + 1e-6 >= a.radius + b.radius, `units ${a.id},${b.id} overlap`);
+      }
+    }
+  });
+
+  it("leaves a unit that was ordered away out of the next pack", () => {
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    state.players.get("A")!.scrap = 99999;
+    seedMuster(state, 20, 4);
+    const ts = state.tileSize;
+    for (let i = 0; i < 3; i++) applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
+    ticks(state, secondsToTicks(catalog("rifleman").buildSeconds) * 3 + 40);
+    const first = riflemen(state);
+    assert.equal(first.length, 3);
+    const wanderer = first[0]!;
+    const dest = { x: tileCenter(40, ts), y: tileCenter(30, ts) };
+    applyCommand(state, "A", { type: "cmd.move", ids: [wanderer.id], x: dest.x, y: dest.y });
+    ticks(state, 400);
+    assert.ok(Math.hypot(wanderer.x - dest.x, wanderer.y - dest.y) < ts * 3);
+    const left = { x: wanderer.x, y: wanderer.y };
+    for (let i = 0; i < 3; i++) applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
+    ticks(state, secondsToTicks(catalog("rifleman").buildSeconds) * 3 + 80);
+    assert.ok(Math.hypot(wanderer.x - left.x, wanderer.y - left.y) < ts, "ordered unit was pulled back into the pack");
+    const stayed = riflemen(state).filter((e) => e.id !== wanderer.id);
+    assert.equal(stayed.length, 5);
+    const box = span(stayed);
+    assert.ok(box.x > 8 && box.y > 8, `pack collapsed to a line, span ${box.x.toFixed(1)} x ${box.y.toFixed(1)}`);
+  });
+});
+
 describe("research gate", () => {
   it("locks the advanced units until a Research Facility stands", () => {
     const { state } = twoPlayerMatch();
