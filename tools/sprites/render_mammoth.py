@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mammoth: slow armored battle platform that carries infantry. One 16-face hull sheet.
+"""Mammoth: slow armored battle platform that carries infantry. A 16-face walk sheet and a wade sheet.
 
 Same numpy rasterizer, camera, and outline as render_procedural.py (Stuka,
 drone) and render_nebelwerfer.py, but its own late-war three-tone camouflage
@@ -15,18 +15,22 @@ in a ball mount under the cab.
             below the pool. Same camera as the dry faces so the client can share
             one scale and contact.
 
-0001 = nose screen-south, then clockwise 22.5° through 0016. No national insignia.
+Row 0 = nose screen-south, then clockwise 22.5° through row 15. No national insignia.
 
-  python tools/sprites/render_mammoth.py \\
-      --out gridlock/packages/client/src/assets/units/mammoth
-  python tools/sprites/render_mammoth.py --wade \\
-      --out gridlock/packages/client/src/assets/units/mammoth
+Writes the engine sheets directly (one fit shared by walk and wade, like the
+Titan's): mammoth-walk.png (8 walk frames x 16 faces), mammoth-wade.png
+(1 x 16), and mammoth-cameo.png.
+
+  python tools/sprites/render_mammoth.py
 """
 
 from __future__ import annotations
 
 import argparse
 import math
+import os
+import tempfile
+from multiprocessing import Pool
 from pathlib import Path
 
 import numpy as np
@@ -106,25 +110,60 @@ def beam(m: Mesh, p0: tuple[float, float, float], p1: tuple[float, float, float]
     m.loft([[np.array(p0) + c for c in corners], [np.array(p1) + c for c in corners]], mat)
 
 
-def leg(m: Mesh, fx: int, sy: int) -> None:
-    """One leg. `fx` +1 fore, -1 aft; `sy` +1 left, -1 right. Hip housing, splayed thigh, louvred shin, broad pad."""
-    hip = (fx * HIP_X, sy * HIP_Y, HIP_Z)
-    knee = (fx * (HIP_X + 0.6), sy * (HIP_Y + 0.9), 1.85)
-    ankle = (fx * (HIP_X + 0.3), sy * (HIP_Y + 0.9), 0.5)
-    cyl(m, hip, 1, 0.48, 0.7, "metal")
-    beam(m, hip, knee, 0.72, 0.95, "camo")
+# Walk cycle: a slow trot. Diagonal pairs move together; each foot is planted
+# for the first half of its cycle (sliding aft under the body) and swings
+# forward, lifted, for the second half.
+WALK_FRAMES = 8
+STRIDE = 1.3  # fore-aft foot travel, m
+LIFT = 0.5  # foot height at mid-swing, m
+BOB = 0.07  # body dip at mid-stance, m
+
+
+def ik_knee(hip: np.ndarray, ankle: np.ndarray, l1: float, l2: float, hint: np.ndarray) -> np.ndarray:
+    """Two-bone knee: thigh `l1` from the hip, shin `l2` to the ankle, bent toward `hint`."""
+    d_vec = ankle - hip
+    d = min(float(np.linalg.norm(d_vec)), l1 + l2 - 1e-3)
+    u = d_vec / np.linalg.norm(d_vec)
+    a = (l1 * l1 - l2 * l2 + d * d) / (2 * d)
+    h = math.sqrt(max(0.0, l1 * l1 - a * a))
+    p = hint - float(np.dot(hint, u)) * u
+    p /= np.linalg.norm(p)
+    return hip + u * a + p * h
+
+
+def leg(m: Mesh, fx: int, sy: int, phase: float | None = None, bob: float = 0.0) -> None:
+    """One leg. `fx` +1 fore, -1 aft; `sy` +1 left, -1 right. Hip housing, splayed thigh, louvred shin, broad pad.
+
+    `phase` (radians) places the foot in the walk cycle; None is the planted rest pose.
+    """
+    hip0 = np.array([fx * HIP_X, sy * HIP_Y, HIP_Z])
+    knee0 = np.array([fx * (HIP_X + 0.6), sy * (HIP_Y + 0.9), 1.85])
+    ankle0 = np.array([fx * (HIP_X + 0.3), sy * (HIP_Y + 0.9), 0.5])
+    l1 = float(np.linalg.norm(knee0 - hip0))
+    l2 = float(np.linalg.norm(ankle0 - knee0))
+    axis0 = (ankle0 - hip0) / np.linalg.norm(ankle0 - hip0)
+    hint = (knee0 - hip0) - float(np.dot(knee0 - hip0, axis0)) * axis0
+    dx, lift = 0.0, 0.0
+    if phase is not None:
+        dx = STRIDE / 2 * math.cos(phase)
+        lift = LIFT * max(0.0, -math.sin(phase))
+    hip = hip0 + np.array([0.0, 0.0, bob])
+    ankle = ankle0 + np.array([dx, 0.0, lift])
+    knee = ik_knee(hip, ankle, l1, l2, hint)
+    cyl(m, tuple(hip), 1, 0.48, 0.7, "metal")
+    beam(m, tuple(hip), tuple(knee), 0.72, 0.95, "camo")
     # Armored knee cap over the joint, then the shin with cooling louvres down its outer face.
-    cyl(m, knee, 1, 0.4, 0.95, "metal")
-    beam(m, (knee[0], knee[1], knee[2] + 0.15), ankle, 0.78, 0.82, "camo")
-    face = ankle[1] + sy * 0.4
-    for i in range(3):
-        z = 0.85 + i * 0.22
-        m.box((ankle[0] - 0.25, min(face, face + sy * 0.03), z), (ankle[0] + 0.25, max(face, face + sy * 0.03), z + 0.09), "tire")
+    cyl(m, tuple(knee), 1, 0.4, 0.95, "metal")
+    beam(m, (knee[0], knee[1], knee[2] + 0.15), tuple(ankle), 0.78, 0.82, "camo")
+    for f in (0.3, 0.45, 0.6):
+        c = ankle + (knee - ankle) * f
+        face = c[1] + sy * 0.4
+        m.box((c[0] - 0.25, min(face, face + sy * 0.03), c[2]), (c[0] + 0.25, max(face, face + sy * 0.03), c[2] + 0.09), "tire")
     # Foot pad with a sloped toe and heel, wider than the shin so the stance reads planted.
-    ax, ay = ankle[0], ankle[1]
-    slab(m, [(ax - 0.75, ay - 0.62), (ax + 0.95, ay - 0.62), (ax + 0.95, ay + 0.62), (ax - 0.75, ay + 0.62)], 0.0, 0.5,
+    ax, ay, az = ankle[0], ankle[1], lift
+    slab(m, [(ax - 0.75, ay - 0.62), (ax + 0.95, ay - 0.62), (ax + 0.95, ay + 0.62), (ax - 0.75, ay + 0.62)], az, az + 0.5,
          [(ax - 0.45, ay - 0.48), (ax + 0.55, ay - 0.48), (ax + 0.55, ay + 0.48), (ax - 0.45, ay + 0.48)], "frame")
-    m.box((ax - 0.3, ay - 0.42, 0.5), (ax + 0.3, ay + 0.42, 0.62), "metal")
+    m.box((ax - 0.3, ay - 0.42, az + 0.5), (ax + 0.3, ay + 0.42, az + 0.62), "metal")
 
 
 def pod(m: Mesh, sy: int) -> None:
@@ -193,7 +232,8 @@ def build_pool() -> Mesh:
     return m
 
 
-def build_hull() -> Mesh:
+def build_hull(frame: int | None = None) -> Mesh:
+    """Whole walker. `frame` 0..WALK_FRAMES-1 is a walk-cycle pose; None is the planted rest pose."""
     m = Mesh()
     # Body slung between the hips: sloped side plates, a belly plate underneath.
     slab(m, [(-2.55, -1.45), (2.3, -1.45), (2.3, 1.45), (-2.55, 1.45)], BELLY_Z, DECK_Z,
@@ -249,21 +289,37 @@ def build_hull() -> Mesh:
         m.box((-2.85, y, 3.1), (-2.55, y + 0.3, 3.7), "frame")
     for s in (-1, 1):
         pod(m, s)
+    t = None if frame is None else 2 * math.pi * frame / WALK_FRAMES
+    # The body dips while a diagonal pair is mid-stance and rides up as the pairs swap.
+    bob = 0.0 if t is None else -BOB * math.sin(2 * t) ** 2
+    body = len(m.verts)
+    for i in range(body):
+        m.verts[i] = m.verts[i] + np.array([0.0, 0.0, bob])
     for fx in (-1, 1):
         for s in (-1, 1):
-            leg(m, fx, s)
+            # Fore-left with aft-right, fore-right with aft-left.
+            ph = None if t is None else t + (0.0 if fx * s > 0 else math.pi)
+            leg(m, fx, s, ph, bob)
     return m
 
 
 # A 3/4 front view reads the bow, one track, and the slitted casemate.
+# A 3/4 front view reads the cab, two legs, and the slitted pod.
 CAMEO_FACE = "0014"
 CAMEO_GAIN = 1.55
 CAMEO_LIFT = 0.04
 
+# Engine sheet: 128 cells, columns = walk frames, rows = the 16 faces (south first).
+CELL = 128
+CONTACT_Y = 0.92
+PADDING = 4
+ROOT = Path(__file__).resolve().parents[2]
+UNITS = ROOT / "gridlock/packages/client/src/assets/units"
 
-def cameo(out: Path, face: str = CAMEO_FACE, path: Path | None = None) -> None:
+
+def cameo(face_png: Path, path: Path) -> None:
     """Static cameo, brightened for the dark sidebar and filling the 128 frame, like the Nebelwerfer's."""
-    hull = Image.open(out / "hull" / f"{face}.png").convert("RGBA")
+    hull = Image.open(face_png).convert("RGBA")
     crop = hull.crop(hull.getbbox())
     px = np.asarray(crop).astype(np.float64) / 255
     rgb = px[..., :3]
@@ -276,44 +332,82 @@ def cameo(out: Path, face: str = CAMEO_FACE, path: Path | None = None) -> None:
     small = crop.resize((max(1, round(crop.width * fit)), max(1, round(crop.height * fit))), Image.Resampling.LANCZOS)
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     img.alpha_composite(small, ((size - small.width) // 2, size - pad - small.height))
-    path = path or out.parent / "mammoth-cameo.png"
     img.save(path)
     print("wrote", path)
 
 
-def render_wade(out: Path, ss: int) -> None:
-    """Same camera as the dry hull. The mesh is dropped so the deck sits on the contact plane."""
+def _render_frame(job: tuple[Path, int, int]) -> None:
+    work, frame, ss = job
+    render_turntable(build_hull(frame), work / f"walk{frame}", "mammoth_walk", f"walk{frame}.json",
+                     scale_frac=SCALE_FRAC, z_mid=Z_MID, cy_frac=CY_FRAC, ss=ss)
+
+
+def _render_wade(job: tuple[Path, int]) -> None:
+    """Same camera as the dry walker. The mesh is dropped so the pods sit on the waterline; the legs are under."""
+    work, ss = job
     hull = build_hull()
     sink(hull, -WADE_Z)
-    render_turntable(
-        hull,
-        out / "wade",
-        "mammoth_wade",
-        "mammoth-wade.json",
-        scale_frac=SCALE_FRAC,
-        z_mid=Z_MID,
-        cy_frac=CY_FRAC,
-        ss=ss,
-        clip_z=0.0,
-        underlay=build_pool(),
-    )
+    render_turntable(hull, work / "wade", "mammoth_wade", "wade.json", scale_frac=SCALE_FRAC, z_mid=Z_MID,
+                     cy_frac=CY_FRAC, ss=ss, clip_z=0.0, underlay=build_pool())
+
+
+def compose(work: Path, walk_out: Path, wade_out: Path) -> None:
+    """One fit for every walk frame and the wade faces: the union box of the walk fits the cell,
+    and the rest pose's median foot line sits on CONTACT_Y. Same rule as composeLocked in turntable-sheet.ts."""
+    walk = [[Image.open(work / f"walk{f}" / f"{d + 1:04d}.png").convert("RGBA") for d in range(16)] for f in range(WALK_FRAMES)]
+    wade = [Image.open(work / "wade" / f"{d + 1:04d}.png").convert("RGBA") for d in range(16)]
+    boxes = [im.getbbox() for row in walk for im in row]
+    if any(b is None for b in boxes) or any(im.getbbox() is None for im in wade):
+        raise SystemExit("empty face")
+    x0 = min(b[0] for b in boxes)
+    y0 = min(b[1] for b in boxes)
+    x1 = max(b[2] for b in boxes)
+    y1 = max(b[3] for b in boxes)
+    src = walk[0][0].width
+    scale = min((CELL - 2 * PADDING) / (x1 - x0), (CELL - 2 * PADDING) / (y1 - y0), 1.0)
+    bottoms = sorted(im.getbbox()[3] for im in walk[0])
+    med = bottoms[len(bottoms) // 2]
+    ox = CELL / 2 - src / 2 * scale
+    oy = CELL * CONTACT_Y - med * scale
+    lo, hi = PADDING - y0 * scale, CELL - PADDING - y1 * scale
+    oy = (lo + hi) / 2 if hi < lo else min(hi, max(lo, oy))
+    size = round(src * scale)
+
+    def place(sheet: Image.Image, im: Image.Image, col: int, row: int) -> None:
+        small = im.resize((size, size), Image.Resampling.LANCZOS)
+        cell = Image.new("RGBA", (CELL, CELL), (0, 0, 0, 0))
+        cell.paste(small, (round(ox), round(oy)), small)
+        sheet.alpha_composite(cell, (col * CELL, row * CELL))
+
+    sheet = Image.new("RGBA", (WALK_FRAMES * CELL, 16 * CELL), (0, 0, 0, 0))
+    for f in range(WALK_FRAMES):
+        for d in range(16):
+            place(sheet, walk[f][d], f, d)
+    sheet.save(walk_out)
+    print("wrote", walk_out, sheet.size, "scale", round(scale, 3))
+    wsheet = Image.new("RGBA", (CELL, 16 * CELL), (0, 0, 0, 0))
+    for d in range(16):
+        place(wsheet, wade[d], 0, d)
+    wsheet.save(wade_out)
+    print("wrote", wade_out, wsheet.size)
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", required=True, help="unit folder; writes hull/ inside it")
     ap.add_argument("--ss", type=int, default=4)
-    ap.add_argument("--cameo-only", action="store_true")
-    ap.add_argument("--wade", action="store_true", help="half-sunk water faces only (wade/)")
+    ap.add_argument("--frames-dir", help="keep the 256 px faces here instead of a temp dir")
+    ap.add_argument("--jobs", type=int, default=min(9, os.cpu_count() or 1))
     args = ap.parse_args()
-    out = Path(args.out)
-    if args.wade:
-        render_wade(out, args.ss)
-        return
-    if not args.cameo_only:
-        render_turntable(build_hull(), out / "hull", "mammoth_hull", "mammoth-hull.json",
-                         scale_frac=SCALE_FRAC, z_mid=Z_MID, cy_frac=CY_FRAC, ss=args.ss)
-    cameo(out)
+    with tempfile.TemporaryDirectory() as tmp:
+        work = Path(args.frames_dir or tmp)
+        work.mkdir(parents=True, exist_ok=True)
+        with Pool(args.jobs) as pool:
+            pool.map(_render_frame, [(work, f, args.ss) for f in range(WALK_FRAMES)] , chunksize=1)
+            pool.map(_render_wade, [(work, args.ss)])
+        compose(work, UNITS / "mammoth-walk.png", UNITS / "mammoth-wade.png")
+        rest = work / "rest"
+        render_turntable(build_hull(), rest, "mammoth_rest", "rest.json", scale_frac=SCALE_FRAC, z_mid=Z_MID, cy_frac=CY_FRAC, ss=args.ss)
+        cameo(rest / f"{CAMEO_FACE}.png", UNITS / "mammoth-cameo.png")
 
 
 if __name__ == "__main__":
