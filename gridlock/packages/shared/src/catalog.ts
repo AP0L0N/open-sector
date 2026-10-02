@@ -459,9 +459,12 @@ export type EntityType =
   | "teeth"
   | "trench";
 export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "ram" | "bunker" | "tower" | "research";
-/** Placed by an engineer, not the construction yard. */
+/** Placed by an engineer. Sandbags and walls can also be queued from the Defences tab. */
 export type FieldStructureType = "sandbags" | "wall" | "teeth" | "trench";
 export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "wall", "teeth", "trench"];
+/** Field works the construction yard can queue. An engineer can still place these anywhere. */
+export type YardFieldType = "sandbags" | "wall";
+export const YARD_FIELD_TYPES: readonly YardFieldType[] = ["sandbags", "wall"];
 export type CivilianType = "cottage" | "house" | "manor" | "shack" | "barn" | "inn" | "chapel";
 export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "cottage",
@@ -3147,6 +3150,10 @@ export function isBuildingType(type: string): type is BuildingType {
 
 export function isFieldStructure(type: EntityType): type is FieldStructureType {
   return (FIELD_STRUCTURES as readonly string[]).includes(type);
+}
+
+export function isYardField(type: string): type is YardFieldType {
+  return (YARD_FIELD_TYPES as readonly string[]).includes(type);
 }
 
 /** World-pixel length along the wall and thickness across it. Null for other types. */

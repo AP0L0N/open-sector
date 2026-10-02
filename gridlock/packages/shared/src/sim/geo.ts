@@ -1,4 +1,5 @@
 import {
+  BUILD_RADIUS,
   AIR_FUEL_SECONDS,
   DRONE_BATTERY_SECONDS,
   JET_FUEL_SECONDS,
@@ -398,6 +399,33 @@ export function inBuildRadius(state: MatchState, ownerId: string, tx: number, ty
   for (const e of state.entities.values()) {
     if (e.kind !== "building" || e.ownerId !== ownerId || e.hp <= 0) continue;
     if (footprintGap(tx, ty, w, h, e.tileX, e.tileY, e.tileW, e.tileH) <= radius) return true;
+  }
+  return false;
+}
+
+/**
+ * A 1×1 tile within BUILD_RADIUS of the owner's own buildings.
+ * Field structures are not anchors, so a wall in the field cannot extend the yard.
+ */
+export function tileNearOwnBuildings(
+  buildings: Iterable<{
+    kind: string;
+    ownerId: string;
+    hp: number;
+    type: EntityType;
+    tileX: number;
+    tileY: number;
+    tileW: number;
+    tileH: number;
+  }>,
+  ownerId: string,
+  tx: number,
+  ty: number,
+): boolean {
+  for (const e of buildings) {
+    if (e.kind !== "building" || e.ownerId !== ownerId || e.hp <= 0) continue;
+    if (isFieldStructure(e.type)) continue;
+    if (footprintGap(tx, ty, 1, 1, e.tileX, e.tileY, e.tileW, e.tileH) <= BUILD_RADIUS) return true;
   }
   return false;
 }

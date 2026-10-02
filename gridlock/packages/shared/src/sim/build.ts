@@ -6,6 +6,7 @@ import {
   secondsToTicks,
   SELL_REFUND,
   type BuildingType,
+  type YardFieldType,
 } from "../catalog.js";
 import {
   buildingCenter,
@@ -13,18 +14,19 @@ import {
   hasCore,
   inBuildRadius,
   makeEntity,
+  tileNearOwnBuildings,
   tilesBlockedOrScrap,
 } from "./geo.js";
 import { ejectUnits } from "./deploy.js";
 import { spillGarrison } from "./garrison.js";
-import { restampForts } from "./field.js";
+import { fieldLine, fieldSiteClear, fieldTiles, restampForts, type FieldPiece } from "./field.js";
 import { repathIfBlocked } from "./orders.js";
 import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
 import { spawnUnit } from "./train.js";
 import type { MatchState } from "./types.js";
 
-export function startBuild(state: MatchState, playerId: string, type: BuildingType): string | null {
+export function startBuild(state: MatchState, playerId: string, type: BuildingType | YardFieldType): string | null {
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
   if (!hasCore(state, playerId)) return "Deploy the Rig.";
@@ -96,6 +98,63 @@ export function placeBuilding(
     if (u.kind === "unit") repathIfBlocked(state, u);
   }
   if (type === "smelter") spawnUnit(state, playerId, "hauler", b, true);
+  p.structure = null;
+  p.placingType = null;
+  return null;
+}
+
+function pieceNearOwnBuildings(state: MatchState, ownerId: string, structure: YardFieldType, piece: FieldPiece): boolean {
+  const tiles = fieldTiles(state, structure, piece.x, piece.y, piece.facing, 0);
+  if (tiles.length === 0) return false;
+  return tiles.some((t) => tileNearOwnBuildings(state.entities.values(), ownerId, t.x, t.y));
+}
+
+/**
+ * Drop a queued sandbag or wall line. The job already paid for the first section.
+ * Further sections cost the catalog price each. The line stops at the first piece
+ * that is blocked, out of range, or unpaid. Nothing is spent when the first piece fails.
+ */
+export function placeBaseField(
+  state: MatchState,
+  playerId: string,
+  structure: YardFieldType,
+  x: number,
+  y: number,
+  facing: number,
+  x2?: number,
+  y2?: number,
+): string | null {
+  const p = state.players.get(playerId);
+  if (!p || !p.alive) return "You are out of the fight.";
+  if (!p.structure?.ready || p.structure.type !== structure) return "That structure is not ready.";
+  if (!hasCore(state, playerId)) return "Deploy the Rig.";
+  if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(facing)) return "Cannot place there.";
+  const line = x2 != null && y2 != null && Number.isFinite(x2) && Number.isFinite(y2);
+  const pieces = line ? fieldLine(structure, x, y, x2, y2, facing) : [{ x, y, facing }];
+  if (pieces.length === 0) return "Cannot place there.";
+  const cost = catalog(structure).cost;
+  const accepted: FieldPiece[] = [];
+  let stop: string | null = null;
+  for (const piece of pieces) {
+    if (!fieldSiteClear(state, structure, piece.x, piece.y, piece.facing)) {
+      stop = "Cannot place there.";
+      break;
+    }
+    if (!pieceNearOwnBuildings(state, playerId, structure, piece)) {
+      stop = "Too far from your base.";
+      break;
+    }
+    if (accepted.length > 0 && p.scrap < cost * accepted.length) break;
+    accepted.push(piece);
+  }
+  if (accepted.length === 0) return stop ?? "Cannot place there.";
+  p.scrap -= cost * (accepted.length - 1);
+  for (const piece of accepted) {
+    const built = makeEntity(state, structure, playerId, piece.x, piece.y, { facing: piece.facing });
+    built.facing = piece.facing;
+    built.turretFacing = piece.facing;
+  }
+  restampForts(state);
   p.structure = null;
   p.placingType = null;
   return null;

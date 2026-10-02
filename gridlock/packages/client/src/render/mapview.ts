@@ -42,8 +42,11 @@ import {
   unitBehindIsoBox,
   pickElevatedTile,
   pointInIsoBox,
+  isBuildingType,
+  isYardField,
   previewField,
   previewPlace,
+  previewYardField,
   fieldLine,
   specialOf,
   specialReady,
@@ -56,6 +59,7 @@ import {
   worldToIso3,
   worldToTile,
   type BuildingType,
+  type YardFieldType,
   type ClientMessage,
   type CorpseView,
   type EntityType,
@@ -183,6 +187,16 @@ import {
 } from "./track-kick.js";
 import { followCart, type CartPose } from "./mauler-cart.js";
 import { AMMO_PRIMARY_FILL, AMMO_SECONDARY_FILL, ammoBarRatios } from "./ammo-bars.js";
+import {
+  backtrackPoints,
+  claimsShot,
+  flameLaunchPoint,
+  garrisonFlameNozzle,
+  garrisonHeadPoint,
+  garrisonMouthLift,
+  garrisonMouthPoint,
+  shotHostFrom,
+} from "./garrison-shot.js";
 import { isDoubleClick, sameTypeOnScreen, type ClickMark } from "./same-type-select.js";
 import {
   recoilAmounts,
@@ -607,6 +621,8 @@ export class MapView {
   private mortarSmoke = new Map<number, { pts: { x: number; y: number; z: number; u: number }[]; at: number }>();
   /** Where each Titan rocket was first seen, so its smoke trail starts at the pod. World space. */
   private rocketFrom = new Map<number, { x: number; y: number; z: number }>();
+  /** Garrison launch: the host the trail is pinned to, and the soldier id that picks the window. */
+  private rocketHost = new Map<number, { hostId: number; salt: number }>();
   /** Head of each rocket as of the last frame; the next frame lays trail puffs from here. */
   private rocketLast = new Map<number, { x: number; y: number; z: number }>();
   /** Where a falling plane was last frame, so the smoke column has no gaps. */
@@ -621,8 +637,8 @@ export class MapView {
   private cookOffsSeen = new Set<number>();
   /** Black smoke off burning fuel. Same drift as rocket smoke, sooty colour. `shade` 1 is black. */
   private fireSmoke: RocketPuff[] = [];
-  /** Per Pyro: when his newest glob was first seen, and where the burst is laid. */
-  private jets = new Map<number, { at: number; land: { x: number; y: number } }>();
+  /** Per Pyro: when his newest glob was first seen, where the burst is laid, and the host if he is inside. */
+  private jets = new Map<number, { at: number; land: { x: number; y: number }; hostId?: number }>();
   /** Charred ground under each fire, kept after it goes out. `seen` is the last time it burned. */
   private scorches = new Map<number, { x: number; y: number; r: number; born: number; seen: number }>();
   /** When each fire last sent up a smoke puff. */
@@ -879,7 +895,9 @@ export class MapView {
       if (p.flame) {
         // A new glob: the trigger is still held. The jet itself is drawn per frame from his nozzle.
         if (shooter?.type === "pyro" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
-        this.jets.set(p.fromId, { at: now, land: jetLanding(p) });
+        const host = this.garrisonShotHost(shooter, p);
+        this.jets.set(p.fromId, { at: now, land: jetLanding(p), hostId: host?.id });
+        if (host) this.flashAperture(host, p, now, true);
         continue;
       }
       if (p.mortar) {
@@ -888,33 +906,37 @@ export class MapView {
       }
       if (p.rocket) {
         // Pod or tube flash and backblast. Not a tank shot: the main gun does not recoil.
-        this.rocketFrom.set(p.id, { x: p.x, y: p.y, z: p.z ?? 0 });
-        if (shooter?.type === "rocketer" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
-        if (shooter && !shooter.wreck) {
-          this.rocketPuffs.push(
-            ...backblastPuffs({
-              x: shooter.x,
-              y: shooter.y,
-              z: p.z ?? 0,
-              ground: this.elevAt(shooter.x, shooter.y),
-              dirX: p.vx,
-              dirY: p.vy,
-              now,
-              seed: (p.id * 2246822519) >>> 0,
-            }),
-          );
+        const host = this.garrisonShotHost(shooter, p);
+        if (host) this.flashAperture(host, p, now, false);
+        else {
+          this.rocketFrom.set(p.id, { x: p.x, y: p.y, z: p.z ?? 0 });
+          if (shooter && !shooter.wreck) {
+            this.rocketPuffs.push(
+              ...backblastPuffs({
+                x: shooter.x,
+                y: shooter.y,
+                z: p.z ?? 0,
+                ground: this.elevAt(shooter.x, shooter.y),
+                dirX: p.vx,
+                dirY: p.vy,
+                now,
+                seed: (p.id * 2246822519) >>> 0,
+              }),
+            );
+          }
+          this.addFx({
+            id: p.id + 8_000_000,
+            kind: "muzzle",
+            x: p.x,
+            y: p.y,
+            vx: p.vx,
+            vy: p.vy,
+            at: now,
+            caliber: 20,
+            lift: isoLift(p.z ?? 0) - isoLift(this.elevAt(p.x, p.y)),
+          });
         }
-        this.addFx({
-          id: p.id + 8_000_000,
-          kind: "muzzle",
-          x: p.x,
-          y: p.y,
-          vx: p.vx,
-          vy: p.vy,
-          at: now,
-          caliber: 20,
-          lift: isoLift(p.z ?? 0) - isoLift(this.elevAt(p.x, p.y)),
-        });
+        if (shooter?.type === "rocketer" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
         continue;
       }
       const fromGarrison =
@@ -986,7 +1008,7 @@ export class MapView {
       this.onPlaceMode();
     }
     const placing = this.placeMode;
-    if (!this.readyBuilding()) this.placeMode = false;
+    if (!this.placingKind()) this.placeMode = false;
     if (this.placeMode !== placing) this.onPlaceMode();
     this.syncAtlases();
     this.revealFrom(match);
@@ -1433,10 +1455,22 @@ export class MapView {
     this.centerOnHq();
   }
 
-  private readyBuilding(): BuildingType | null {
+  private placingKind(): BuildingType | YardFieldType | null {
     if (this.curr.you.placingType) return this.curr.you.placingType;
     const q = this.curr.you.structureQueue;
     return q?.ready ? q.type : null;
+  }
+
+  private readyBuilding(): BuildingType | null {
+    const type = this.placingKind();
+    return type && isBuildingType(type) ? type : null;
+  }
+
+  /** Armed Defences-tab sandbags or wall. The engineer's field button wins when both are on. */
+  private readyYardField(): YardFieldType | null {
+    if (!this.placeMode || this.fieldPlace) return null;
+    const type = this.placingKind();
+    return type && isYardField(type) ? type : null;
   }
 
   private map() {
@@ -1493,7 +1527,7 @@ export class MapView {
           this.beginGuard(mx, my);
           return;
         }
-        if (this.fieldPlace) {
+        if (this.fieldPlace || this.readyYardField()) {
           const w = this.screenToWorld(mx, my);
           this.fieldDrag = { x: w.x, y: w.y };
           return;
@@ -1558,7 +1592,7 @@ export class MapView {
       this.commitGuard(this.mouseX, this.mouseY);
       return;
     }
-    if (e.button === 0 && this.fieldDrag && this.fieldPlace) {
+    if (e.button === 0 && this.fieldDrag && (this.fieldPlace || this.readyYardField())) {
       this.commitField();
       this.fieldDrag = null;
       return;
@@ -1582,7 +1616,7 @@ export class MapView {
   private onWheel = (e: WheelEvent): void => {
     e.preventDefault();
     if (this.box) return;
-    if (this.fieldPlace) {
+    if (this.fieldPlace || this.readyYardField()) {
       this.rotateField(e.deltaY, e.deltaMode);
       return;
     }
@@ -1694,7 +1728,7 @@ export class MapView {
     }
     if (k === ROTATE_HOTKEY) {
       e.preventDefault();
-      if (this.fieldPlace) return;
+      if (this.fieldPlace || this.readyYardField()) return;
       const ids = this.ownAimIds();
       if (ids.length) this.setRotateMode(!this.rotateMode);
       return;
@@ -2054,22 +2088,25 @@ export class MapView {
   }
 
   private commitField(): void {
-    const structure = this.fieldPlace;
     const drag = this.fieldDrag;
+    const yard = this.readyYardField();
+    const structure = this.fieldPlace ?? yard;
     if (!structure || !drag) return;
-    const ids = this.curr.entities
-      .filter((e) => this.selected.has(e.id) && e.ownerId === this.curr.youPlayerId && e.type === "engineer" && !e.wreck)
-      .map((e) => e.id);
-    if (ids.length === 0) return;
+    const ids = this.fieldPlace
+      ? this.curr.entities
+          .filter((e) => this.selected.has(e.id) && e.ownerId === this.curr.youPlayerId && e.type === "engineer" && !e.wreck)
+          .map((e) => e.id)
+      : [];
+    if (this.fieldPlace && ids.length === 0) return;
     const w = this.screenToWorld(this.mouseX, this.mouseY);
     const pieces = this.fieldPieces(structure, false);
     const facing = this.fieldFacing;
+    const one = pieces[0];
+    if (!one) return;
     if (pieces.length > 1) {
       this.command({ type: "cmd.field", ids, structure, x: drag.x, y: drag.y, facing, x2: w.x, y2: w.y });
       return;
     }
-    const one = pieces[0];
-    if (!one) return;
     this.command({ type: "cmd.field", ids, structure, x: one.x, y: one.y, facing: one.facing });
   }
 
@@ -2728,7 +2765,11 @@ export class MapView {
     if (toPlace && this.mouseX >= 0) {
       this.drawGhost(toPlace);
     }
-    if (this.fieldPlace && this.mouseX >= 0) this.drawFieldGhost(this.fieldPlace);
+    if (this.fieldPlace && this.mouseX >= 0) this.drawFieldGhost(this.fieldPlace, false);
+    else if (this.mouseX >= 0) {
+      const yard = this.readyYardField();
+      if (yard) this.drawFieldGhost(yard, true);
+    }
 
     if (this.box) {
       const b = this.box;
@@ -4531,6 +4572,121 @@ export class MapView {
   }
 
   /**
+   * Host a garrisoned shot leaves. A friendly soldier names his house. An omitted
+   * shooter is walked back along the shot onto an occupied building or hull.
+   */
+  private garrisonShotHost(
+    shooter: EntityView | undefined,
+    p: { x: number; y: number; vx: number; vy: number; arc?: number; hang?: number; flame?: boolean },
+  ): EntityView | undefined {
+    if (shooter && shooter.garrisonedIn == null) return undefined;
+    if (shooter?.garrisonedIn != null) {
+      const host = this.curr.entities.find((e) => e.id === shooter.garrisonedIn);
+      return host && host.hp > 0 && !host.wreck ? host : undefined;
+    }
+    const origin = p.flame ? flameLaunchPoint(p) : { x: p.x, y: p.y };
+    const ts = this.ts();
+    for (const pt of backtrackPoints(origin, p.vx, p.vy)) {
+      const house = this.houseAt(pt.x, pt.y);
+      if (!house || house.wreck || house.hp <= 0 || (house.garrison?.count ?? 0) <= 0) continue;
+      if (!claimsShot(shotHostFrom(house), origin, ts)) continue;
+      return house;
+    }
+    return undefined;
+  }
+
+  /** Window or hull-slit flash. A rocket's trail and backblast start at that mouth. */
+  private flashAperture(
+    host: EntityView,
+    p: { id: number; x: number; y: number; vx: number; vy: number; z?: number; fromId: number },
+    now: number,
+    flame: boolean,
+  ): void {
+    const shape = shotHostFrom(host);
+    const salt = p.fromId;
+    const mouth = garrisonMouthPoint(shape, p.x + p.vx, p.y + p.vy, this.ts(), salt);
+    const ground = this.elevAt(mouth.x, mouth.y);
+    const simZ = p.z ?? ground;
+    const simLift = isoLift(simZ) - isoLift(ground);
+    const mouthLift = garrisonMouthLift(shape, salt);
+    const launch = garrisonHeadPoint({
+      host: shape,
+      sim: { x: mouth.x, y: mouth.y, z: simZ },
+      mouth,
+      mouthLiftPx: mouthLift,
+      simLiftPx: Math.max(0, simLift),
+    });
+    if (!flame) {
+      this.rocketFrom.set(p.id, { x: mouth.x, y: mouth.y, z: launch.z });
+      this.rocketHost.set(p.id, { hostId: host.id, salt });
+      this.rocketPuffs.push(
+        ...backblastPuffs({
+          x: mouth.x,
+          y: mouth.y,
+          z: launch.z,
+          ground,
+          dirX: p.vx,
+          dirY: p.vy,
+          now,
+          seed: (p.id * 2246822519) >>> 0,
+        }),
+      );
+    }
+    this.addFx({
+      id: p.id + 8_000_000,
+      kind: "muzzle",
+      x: mouth.x,
+      y: mouth.y,
+      vx: p.vx,
+      vy: p.vy,
+      at: now,
+      caliber: flame ? 1 : 20,
+      lift: mouthLift,
+      window: shape.kind === "building",
+    });
+  }
+
+  /** Sim head, or the mouth until the rocket clears the host sprite. */
+  private garrisonRocketHead(
+    id: number,
+    sim: { x: number; y: number; z: number },
+    vx: number,
+    vy: number,
+  ): { x: number; y: number; z: number } {
+    const rec = this.rocketHost.get(id);
+    if (!rec) return sim;
+    const host = this.curr.entities.find((e) => e.id === rec.hostId);
+    if (!host || host.hp <= 0 || host.wreck) return sim;
+    const shape = shotHostFrom(host);
+    const mouth = garrisonMouthPoint(shape, sim.x + vx, sim.y + vy, this.ts(), rec.salt);
+    const ground = this.elevAt(mouth.x, mouth.y);
+    return garrisonHeadPoint({
+      host: shape,
+      sim,
+      mouth,
+      mouthLiftPx: garrisonMouthLift(shape, rec.salt),
+      simLiftPx: Math.max(0, isoLift(sim.z) - isoLift(ground)),
+    });
+  }
+
+  /**
+   * Outdoor Pyro: the lance on his sprite. Garrisoned or omitted: the host aperture,
+   * recomputed from where the host is now so a moving hull does not leave the jet behind.
+   */
+  private flameNozzle(
+    id: number,
+    shooter: EntityView | undefined,
+    jet: { land: { x: number; y: number }; hostId?: number },
+  ): { x: number; y: number; h: number } | null {
+    if (shooter && !shooter.wreck && shooter.garrisonedIn == null && !shooter.swimming) return this.pyroNozzle(shooter);
+    const hostId = shooter?.garrisonedIn ?? jet.hostId;
+    if (hostId == null) return null;
+    const host = this.curr.entities.find((q) => q.id === hostId);
+    if (!host || host.wreck || host.hp <= 0) return null;
+    return garrisonFlameNozzle(shotHostFrom(host), jet.land, this.ts(), id);
+  }
+
+  /**
    * Titan rockets: every frame lays puffs along the stretch each rocket flew,
    * so the trail is a thick ribbon that hangs and spreads after the rocket is
    * gone. Backblast and air-burst puffs share the same pool.
@@ -4547,15 +4703,15 @@ export class MapView {
       const wx = prev ? prev.x + (p.x - prev.x) * blend : p.x;
       const wy = prev ? prev.y + (p.y - prev.y) * blend : p.y;
       const wz = prev?.z != null && p.z != null ? prev.z + (p.z - prev.z) * blend : (p.z ?? 0);
-      const head = { x: wx, y: wy, z: wz };
+      const head = this.garrisonRocketHead(p.id, { x: wx, y: wy, z: wz }, p.vx, p.vy);
       const last = this.rocketLast.get(p.id) ?? this.rocketFrom.get(p.id) ?? head;
       this.rocketPuffs.push(...trailPuffs(last, head, now, (p.id * 2654435761 + Math.floor(now)) >>> 0));
       this.rocketLast.set(p.id, head);
-      const s = this.toScreen(wx, wy, wz);
+      const s = this.toScreen(head.x, head.y, head.z);
       const tail = this.toScreen(last.x, last.y, last.z);
       const dx = s.x - tail.x;
       const dy = s.y - tail.y;
-      const fallback = this.toScreen(wx - p.vx * 0.01, wy - p.vy * 0.01, wz);
+      const fallback = this.toScreen(head.x - p.vx * 0.01, head.y - p.vy * 0.01, head.z);
       const moved = dx * dx + dy * dy > 0.25;
       heads.push({
         x: s.x,
@@ -4570,6 +4726,7 @@ export class MapView {
       if (!live.has(id)) {
         this.rocketLast.delete(id);
         this.rocketFrom.delete(id);
+        this.rocketHost.delete(id);
       }
     }
     if (this.rocketPuffs.length > ROCKET_PUFF_CAP) {
@@ -4816,9 +4973,10 @@ export class MapView {
       }
       if (now - jet.at > held) continue;
       const e = this.curr.entities.find((q) => q.id === id);
-      if (!e || e.wreck || e.garrisonedIn || e.swimming) continue;
+      const nozzle = this.flameNozzle(id, e, jet);
+      if (!nozzle) continue;
       this.flameParticles.push(
-        ...jetParticles({ nozzle: this.pyroNozzle(e), land: jet.land, now, dtMs, seed: (id * 2654435761 + Math.floor(now * 7)) >>> 0 }),
+        ...jetParticles({ nozzle, land: jet.land, now, dtMs, seed: (id * 2654435761 + Math.floor(now * 7)) >>> 0 }),
       );
     }
     if (this.flameParticles.length > FLAME_PARTICLE_CAP) {
@@ -5580,7 +5738,7 @@ export class MapView {
     return pieces;
   }
 
-  private drawFieldGhost(type: FieldStructureType): void {
+  private drawFieldGhost(type: FieldStructureType, fromBase: boolean): void {
     const now = performance.now();
     const dt = Math.min(0.1, Math.max(0, (now - this.fieldShownAt) / 1000));
     this.fieldShownAt = now;
@@ -5588,10 +5746,17 @@ export class MapView {
     d = Math.atan2(Math.sin(d), Math.cos(d));
     this.fieldShown += d * Math.min(1, dt * 16);
     const pieces = this.fieldPieces(type, true);
-    const cost = catalog(type).cost * pieces.length;
-    const afford = this.curr.you.scrap >= cost;
+    const each = catalog(type).cost;
+    const affordAll = this.curr.you.scrap >= each * pieces.length;
+    let accepted = 0;
+    let open = true;
     for (const p of pieces) {
-      const ok = afford && previewField(this.curr, type, p.x, p.y, p.facing);
+      const clear = previewField(this.curr, type, p.x, p.y, p.facing);
+      const near = !fromBase || (isYardField(type) && previewYardField(this.curr, type, p.x, p.y, p.facing));
+      let ok = fromBase ? open && clear && near : clear && affordAll;
+      if (fromBase && ok && accepted > 0 && this.curr.you.scrap < each * accepted) ok = false;
+      if (fromBase && !ok) open = false;
+      if (ok) accepted++;
       if (type === "teeth") {
         this.drawTeeth(p.x, p.y, p.facing, ok ? 0.72 : 0.4, 0);
         if (!ok) this.strokeFieldFoot(type, p, "#ff5a4a");
@@ -5607,6 +5772,9 @@ export class MapView {
     const last = pieces[pieces.length - 1]!;
     const s = this.toScreen(last.x, last.y);
     const ctx = this.ctx;
+    const extra = fromBase ? Math.max(0, accepted - 1) : pieces.length;
+    const bill = fromBase ? extra * each : each * pieces.length;
+    const afford = fromBase ? accepted === pieces.length : affordAll;
     ctx.save();
     ctx.font = "11px 'Share Tech Mono', monospace";
     ctx.textAlign = "left";
@@ -5614,7 +5782,7 @@ export class MapView {
     ctx.lineWidth = 3;
     ctx.strokeStyle = "#140e0a";
     ctx.fillStyle = afford ? "#e8b84a" : "#ff5a4a";
-    const label = `${pieces.length} × ${catalog(type).cost} = ${cost}`;
+    const label = fromBase ? `${extra} × ${each} = ${bill}` : `${pieces.length} × ${each} = ${bill}`;
     ctx.strokeText(label, s.x + 14, s.y - 14);
     ctx.fillText(label, s.x + 14, s.y - 14);
     ctx.restore();

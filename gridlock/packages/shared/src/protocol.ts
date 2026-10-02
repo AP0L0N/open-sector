@@ -12,6 +12,7 @@ import type {
   FieldStructureType,
   Stance,
   TrainType,
+  YardFieldType,
 } from "./catalog.js";
 
 export const PROTOCOL_VERSION = 60;
@@ -68,7 +69,7 @@ export interface RoomState {
 }
 
 export interface StructureQueueView {
-  type: BuildingType;
+  type: BuildingType | YardFieldType;
   progressTicks: number;
   totalTicks: number;
   ready: boolean;
@@ -271,7 +272,7 @@ export interface YouState {
   used: number;
   lowPower: boolean;
   structureQueue: StructureQueueView | null;
-  placingType: BuildingType | null;
+  placingType: BuildingType | YardFieldType | null;
   alive: boolean;
   hqId: number | null;
 }
@@ -518,7 +519,7 @@ export type ClientMessage =
   | { type: "cmd.weapon"; ids: number[]; weapon: InfantryWeaponId }
   | { type: "cmd.guns"; ids: number[]; guns: 1 | 2 }
   | { type: "cmd.rockets"; ids: number[]; on: boolean }
-  | { type: "cmd.build"; building: BuildingType }
+  | { type: "cmd.build"; building: BuildingType | YardFieldType }
   | { type: "cmd.place"; building: BuildingType; tx: number; ty: number }
   | { type: "cmd.train"; unit: TrainType }
   | { type: "cmd.pause"; what: "train" | "structure"; jobId?: number; unit?: TrainType; paused?: boolean }
@@ -607,4 +608,4 @@ export type ErrorCode =
   | "ended"
   | "cart";
 
-export type { AirDrop, BuildingType, EntityType, FieldStructureType, TrainType, EntityKind, ShellType, Crit, Stance };
+export type { AirDrop, BuildingType, EntityType, FieldStructureType, TrainType, EntityKind, ShellType, Crit, Stance, YardFieldType };

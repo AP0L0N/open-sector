@@ -9,8 +9,12 @@ describe("sidebarGroupOf", () => {
   it("files every buildable and trainable type into exactly one group", () => {
     const g = groupEntries();
     const all = Object.values(g).flat();
-    assert.equal(all.length, BUILDING_TYPES.length + TRAIN_TYPES.length);
+    assert.equal(all.length, BUILDING_TYPES.length + TRAIN_TYPES.length + 2);
     assert.equal(new Set(all.map((e) => e.id)).size, all.length);
+    const defenceTypes = g.defences.map((e) => e.type);
+    assert.ok(defenceTypes.includes("sandbags"));
+    assert.ok(defenceTypes.includes("wall"));
+    assert.equal(all.some((e) => e.id === "build-teeth" || e.id === "build-trench"), false);
   });
 
   it("puts the gun building under defences and the rest under structures", () => {

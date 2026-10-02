@@ -1,8 +1,8 @@
-import { BUILD_RADIUS, catalog, type BuildingType, type FieldStructureType } from "../catalog.js";
+import { BUILD_RADIUS, catalog, isYardField, type BuildingType, type FieldStructureType, type YardFieldType } from "../catalog.js";
 import { TILE_BLOCKED, TILE_FENCE, TILE_ROCK, TILE_TREE, TILE_WATER, getMap } from "../maps.js";
 import type { MatchSnapshot } from "../protocol.js";
 import { fieldTilesOn, overlapsFieldIn } from "./field.js";
-import { footprint, footprintGap } from "./geo.js";
+import { footprint, footprintGap, tileNearOwnBuildings } from "./geo.js";
 
 /** Snapshot-side twin of `fieldSiteClear`: ground, scrap, buildings, and other field structures. */
 export function previewField(
@@ -29,6 +29,15 @@ export function previewField(
     }
   }
   return !overlapsFieldIn(snap.entities, type, x, y, facing);
+}
+
+/** Snapshot twin of a Defences-tab sandbag or wall piece: clear ground, and next to your own buildings. */
+export function previewYardField(snap: MatchSnapshot, type: YardFieldType, x: number, y: number, facing: number): boolean {
+  if (!isYardField(type) || !previewField(snap, type, x, y, facing)) return false;
+  const map = getMap(snap.mapId);
+  if (!map) return false;
+  const tiles = fieldTilesOn(map, type, x, y, facing, 0);
+  return tiles.some((t) => tileNearOwnBuildings(snap.entities, snap.youPlayerId, t.x, t.y));
 }
 
 export function previewPlace(snap: MatchSnapshot, type: BuildingType, tx: number, ty: number): boolean {
