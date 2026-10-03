@@ -1,6 +1,5 @@
 import {
   HEIGHT_BASE,
-  HEIGHT_MAX,
   ISO_TILE_H,
   TILE_BLOCKED,
   TILE_EMPTY,
@@ -158,7 +157,7 @@ function paintRelief(
     return { x: q.x, y: q.y - isoLift(z) };
   };
   const quad: [IsoPt, IsoPt, IsoPt, IsoPt] = [up(d.n, hs[0]), up(d.e, hs[1]), up(d.s, hs[2]), up(d.w, hs[3])];
-  const tone = elevShadeFactor(heightAt(map, tx, ty)) * hillshadeFactor(...hs);
+  const tone = elevShadeFactor(heightAt(map, tx, ty), map.maxHeight) * hillshadeFactor(...hs);
   if (Math.abs(tone - 1) > 0.01) {
     ctx.fillStyle =
       tone < 1
@@ -174,11 +173,11 @@ function groundFill(map: MapDef, tx: number, ty: number, kind: number, scrap: bo
   if (kind === TILE_ROCK) {
     const rock = hash2(tx, ty, 41) % 5;
     const base = rock === 0 ? "#6e675c" : rock === 1 ? "#5a534a" : rock === 2 ? "#7a7264" : rock === 3 ? "#4e4942" : "#655e54";
-    return shade(base, elevShadeFactor(heightAt(map, tx, ty)));
+    return shade(base, elevShadeFactor(heightAt(map, tx, ty), map.maxHeight));
   }
   const bare = kind === TILE_ROAD || scrap;
   const fill = bare ? "#6b5840" : kind === TILE_TREE ? "#314628" : "#3e5232";
-  return shade(fill, elevShadeFactor(heightAt(map, tx, ty)));
+  return shade(fill, elevShadeFactor(heightAt(map, tx, ty), map.maxHeight));
 }
 
 function waterPattern(ctx: CanvasRenderingContext2D, frame = 0): CanvasPattern | null {
@@ -1093,15 +1092,14 @@ function miniFill(map: MapDef, tx: number, ty: number, scrap: boolean): string {
   if (kind === TILE_ROAD) return "#8a7348";
   if (kind === TILE_FENCE) return "#6e5c3c";
   if (kind === TILE_BLOCKED) return "#3a2a22";
+  const span = Math.max(1, map.maxHeight - HEIGHT_BASE);
+  const u = (heightAt(map, tx, ty) - HEIGHT_BASE) / span;
   if (kind === TILE_ROCK) {
-    const u = (heightAt(map, tx, ty) - HEIGHT_BASE) / Math.max(1, HEIGHT_MAX - HEIGHT_BASE);
     if (u > 0.45) return "#8a8174";
     if (u > 0.15) return "#6e675c";
     return "#514c45";
   }
   if (scrap) return "#6a5428";
-  const span = Math.max(1, HEIGHT_MAX - HEIGHT_BASE);
-  const u = (heightAt(map, tx, ty) - HEIGHT_BASE) / span;
   if (u >= 0.75) return "#5a6a3c";
   if (u >= 0.35) return "#4a5a32";
   if (u > 0.08) return "#3a4c2c";

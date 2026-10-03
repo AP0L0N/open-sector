@@ -164,6 +164,7 @@ function splatDelta(
   radX: number,
   radY: number,
   delta: number,
+  ceil = HEIGHT_MAX,
 ): void {
   if (delta === 0) return;
   const rx = Math.max(1.5, radX);
@@ -182,7 +183,7 @@ function splatDelta(
       if (mag === 0) continue;
       const i = idx(width, x, y);
       const cur = heights[i] ?? HEIGHT_BASE;
-      heights[i] = Math.min(HEIGHT_MAX, Math.max(0, cur + mag));
+      heights[i] = Math.min(ceil, Math.max(0, cur + mag));
     }
   }
 }
@@ -217,13 +218,13 @@ function rollingDelta(x: number, y: number, seed: number): number {
   return Math.round((n - 0.5) * 6);
 }
 
-function paintRolling(heights: number[], width: number, height: number, seed: string): void {
+function paintRolling(heights: number[], width: number, height: number, seed: string, ceil = HEIGHT_MAX): void {
   const s = hash32(seed);
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const i = idx(width, x, y);
       const cur = heights[i] ?? HEIGHT_BASE;
-      heights[i] = Math.min(HEIGHT_MAX, Math.max(0, cur + rollingDelta(x, y, s)));
+      heights[i] = Math.min(ceil, Math.max(0, cur + rollingDelta(x, y, s)));
     }
   }
 }
@@ -1156,7 +1157,7 @@ function scaleFeatures(features: MapFeature[], sub: number): MapFeature[] {
   return features.map((f) => ({ type: f.type, x: f.x * sub, y: f.y * sub, facing: f.facing }));
 }
 
-/** Seeded rolling hills and valleys. Spawns stay on the base; slopes never cliff. */
+/** Seeded rolling hills and valleys. Spawns stay on the base; slopes never cliff. `ceil` caps a peak. */
 export function scatterHeights(
   width: number,
   height: number,
@@ -1164,11 +1165,12 @@ export function scatterHeights(
   pads: readonly { x: number; y: number; r: number }[],
   locked?: Uint8Array,
   relief = 1,
+  ceil = HEIGHT_MAX,
 ): number[] {
   const heights = new Array(width * height).fill(HEIGHT_BASE);
   const rng = { n: hash32(seed) };
-  paintRolling(heights, width, height, `${seed}:roll`);
-  const riseMax = HEIGHT_MAX - HEIGHT_BASE;
+  paintRolling(heights, width, height, `${seed}:roll`, ceil);
+  const riseMax = ceil - HEIGHT_BASE;
   const hillSpots: readonly [number, number][] = [
     [width * 0.3, height * 0.28],
     [width * 0.7, height * 0.3],
@@ -1189,7 +1191,7 @@ export function scatterHeights(
     const rise = Math.max(4, Math.round(riseMax * (0.55 + nextRand(rng) * 0.45)));
     const rad = rise * (1.25 + nextRand(rng) * 0.7);
     const stretch = 0.75 + nextRand(rng) * 0.55;
-    splatDelta(heights, width, height, cx, cy, rad * stretch, rad / stretch, rise);
+    splatDelta(heights, width, height, cx, cy, rad * stretch, rad / stretch, rise, ceil);
   }
   for (const [qx, qy] of valleySpots) {
     const cx = qx + (nextRand(rng) - 0.5) * 8 * TILE_SUBDIV;
@@ -1197,7 +1199,7 @@ export function scatterHeights(
     const depth = Math.max(3, Math.round(HEIGHT_BASE * (0.55 + nextRand(rng) * 0.45)));
     const rad = depth * (1.35 + nextRand(rng) * 0.8);
     const stretch = 0.7 + nextRand(rng) * 0.6;
-    splatDelta(heights, width, height, cx, cy, rad * stretch, rad / stretch, -depth);
+    splatDelta(heights, width, height, cx, cy, rad * stretch, rad / stretch, -depth, ceil);
   }
   const extra = Math.round((8 + Math.floor(nextRand(rng) * 6)) * relief);
   for (let i = 0; i < extra; i++) {
@@ -1209,7 +1211,7 @@ export function scatterHeights(
       : 2 + Math.floor(nextRand(rng) * riseMax);
     const rad = Math.abs(mag) * (1.2 + nextRand(rng) * 0.9);
     const stretch = 0.7 + nextRand(rng) * 0.7;
-    splatDelta(heights, width, height, cx, cy, rad * stretch, rad / stretch, mag);
+    splatDelta(heights, width, height, cx, cy, rad * stretch, rad / stretch, mag, ceil);
   }
   const lock = locked ?? new Uint8Array(width * height);
   for (const p of pads) {
@@ -1692,6 +1694,11 @@ export function makeYard64(): MapDef {
   };
 }
 
+/**
+ * Discrete elevation of a Broad Yard team summit.
+ * Lower than HEIGHT_MAX, which Scrap Yard hills reach.
+ */
+export const BROAD_SUMMIT = 5 * TILE_SUBDIV;
 /** Flat top of a Broad Yard team hill, in fine tiles. */
 const BROAD_PLATEAU_R = 78;
 /** Outer edge of the rocky slope around that top. */
@@ -1812,7 +1819,7 @@ function stampTeamHill(
       const i = idx(width, x, y);
       if (a.dist <= BROAD_PLATEAU_R) {
         tiles[i] = TILE_EMPTY;
-        heights[i] = HEIGHT_MAX;
+        heights[i] = BROAD_SUMMIT;
         locked[i] = 1;
         gdist[i] = 0;
         q.push(i);
@@ -1850,7 +1857,7 @@ function stampTeamHill(
       if (!inSkirt) continue;
       const step = base + 1;
       gdist[ni] = step;
-      const z = HEIGHT_MAX - step;
+      const z = BROAD_SUMMIT - step;
       heights[ni] = z < HEIGHT_BASE ? HEIGHT_BASE : z;
       locked[ni] = 1;
       q.push(ni);
@@ -1961,7 +1968,7 @@ export function makeBroadYard(): MapDef {
     Math.round(2 * scale),
   );
   const locked = new Uint8Array(fineW * fineH);
-  const heights = scatterHeights(fineW, fineH, "broad-143-elev", [], locked, scale);
+  const heights = scatterHeights(fineW, fineH, "broad-143-elev", [], locked, scale, BROAD_SUMMIT);
   for (const hill of hills) stampTeamHill(fineTiles, heights, locked, fineW, fineH, hill);
   for (const hill of hills) paintHillScrap(fineTiles, fineW, fineH, hill);
   paintBroadLanes(fineTiles, fineW, fineH, hills, features, villages);

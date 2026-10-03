@@ -1,4 +1,6 @@
 import {
+  BOMB_CALIBER,
+  BOMB_HOLE_SCALE,
   GARRISON_STRUCTURAL_CALIBER,
   isInfantryType,
   isSmokeShell,
@@ -105,7 +107,9 @@ export function noteImpactSurface(
     const blocker = state.entities.get(occ);
     if (blocker?.kind === "building") return;
   }
-  const radius = shellHoleRadius(p.caliber);
+  // SC 250 scar: half the hole that caliber would dig.
+  const craterScale = impact.bomb && p.caliber >= BOMB_CALIBER ? BOMB_HOLE_SCALE : 1;
+  const radius = shellHoleRadius(p.caliber) * craterScale;
   state.holes.push({
     id: state.nextId++,
     x: impact.x,

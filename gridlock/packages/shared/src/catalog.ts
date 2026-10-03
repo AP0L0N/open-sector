@@ -142,8 +142,11 @@ export const WATER_PATH_COST = 2.5;
 export const UNIT_SPACE_PAD = 2;
 /** Default ground. Maps are lifted so valleys can sit below this. */
 export const HEIGHT_BASE = t(2);
-/** Peak discrete elevation. 0 is the valley floor. */
-export const HEIGHT_MAX = t(5);
+/**
+ * Peak discrete elevation. 0 is the valley floor.
+ * Scrap Yard hills reach this. Sight scans and elevated picking assume no tile is taller.
+ */
+export const HEIGHT_MAX = t(8);
 /** Adjacent walkable tiles may differ by at most this many levels. */
 export const HEIGHT_STEP_MAX = 1;
 /** Move-speed multiplier per adjacent-tile climb. TILE_SUBDIV steps ≈ one old terrace. */
@@ -1455,6 +1458,8 @@ export const BOMB_TRACK_CHANCE = 0.5;
 /** Buildings take this at the center, with the same falloff. */
 export const BOMB_BUILDING_DAMAGE = 240;
 export const BOMB_CALIBER = 250;
+/** Dirt scar relative to a shell of this caliber. The SC 250 leaves half that hole. */
+export const BOMB_HOLE_SCALE = 0.5;
 /** Seconds from release to the ground. */
 export const BOMB_FALL_SECONDS = 0.7;
 /** Release this far short of the target so the bomb carries onto it. */
