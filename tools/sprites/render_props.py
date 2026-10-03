@@ -447,6 +447,275 @@ def render_rock_tex(seed: int, size: int = 384) -> Image.Image:
     return Image.fromarray(np.clip(col, 0, 255).astype(np.uint8), "RGB")
 
 
+# --------------------------------------------------------------------------- scrap
+#
+# Battlefield salvage built from convex solids: drums, tyres, I-beams, bent
+# armour plate. Same 2:1 camera as the rest of the dress. World axes: u runs
+# screen down-right, v down-left, z up. Screen = (u - v, (u + v) / 2 - z).
+
+VIEW = np.array([1.0, 1.0, 1.0]) / math.sqrt(3)
+# Sun from the upper left of the screen: tops bright, +u faces mid, +v faces dark.
+SUN = np.array([0.35, -0.55, 0.76])
+SUN = SUN / np.linalg.norm(SUN)
+
+SCRAP_PAINT = {
+    "olive": (96, 100, 62),
+    "grey": (112, 114, 108),
+    "sand": (128, 116, 84),
+    "red": (128, 52, 34),
+    "rust": (128, 70, 36),
+    "rubber": (40, 38, 36),
+}
+RUST = np.array([112, 70, 44], float)
+RUST_DARK = np.array([70, 46, 32], float)
+
+
+class Solid:
+    """A convex polyhedron: faces as 3D point loops with outward normals."""
+
+    def __init__(self, faces: list[np.ndarray], paint: str, rust: float):
+        self.faces = faces
+        self.paint = paint
+        self.rust = rust
+        pts = np.concatenate(faces)
+        self.depth = float((pts[:, 0] + pts[:, 1]).mean() + pts[:, 2].mean() * 0.5)
+
+
+def rot(yaw: float, pitch: float = 0.0, roll: float = 0.0) -> np.ndarray:
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    cr, sr = math.cos(roll), math.sin(roll)
+    rz = np.array([[cy, -sy, 0], [sy, cy, 0], [0, 0, 1]])
+    ry = np.array([[cp, 0, sp], [0, 1, 0], [-sp, 0, cp]])
+    rx = np.array([[1, 0, 0], [0, cr, -sr], [0, sr, cr]])
+    return rz @ ry @ rx
+
+
+def box(c, size, m: np.ndarray, paint: str, rust: float) -> Solid:
+    sx, sy, sz = (s / 2 for s in size)
+    v = np.array([[x, y, z] for x in (-sx, sx) for y in (-sy, sy) for z in (-sz, sz)])
+    idx = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+    w = v @ m.T + np.array(c)
+    return Solid([w[list(f)] for f in idx], paint, rust)
+
+
+def cylinder(c, r: float, length: float, m: np.ndarray, paint: str, rust: float, sides: int = 16) -> Solid:
+    """Axis along local z before `m`."""
+    ang = np.linspace(0, 2 * math.pi, sides, endpoint=False)
+    ring = np.stack([np.cos(ang) * r, np.sin(ang) * r], 1)
+    lo = np.column_stack([ring, np.full(sides, -length / 2)])
+    hi = np.column_stack([ring, np.full(sides, length / 2)])
+    off = np.array(c)
+    lo_w = lo @ m.T + off
+    hi_w = hi @ m.T + off
+    faces = [lo_w[::-1], hi_w]
+    for k in range(sides):
+        j = (k + 1) % sides
+        faces.append(np.array([lo_w[k], lo_w[j], hi_w[j], hi_w[k]]))
+    return Solid(faces, paint, rust)
+
+
+def face_normal(f: np.ndarray, centre: np.ndarray) -> np.ndarray:
+    n = np.cross(f[1] - f[0], f[2] - f[0])
+    if np.linalg.norm(n) < 1e-9 and len(f) > 3:
+        n = np.cross(f[2] - f[0], f[3] - f[0])
+    n = n / max(1e-9, np.linalg.norm(n))
+    # Outward: away from the solid's centre.
+    if np.dot(n, f.mean(0) - centre) < 0:
+        n = -n
+    return n
+
+
+class ScrapCanvas:
+    def __init__(self, w: int, h: int, scale: float, seed: int):
+        self.w, self.h = w * SS, h * SS
+        self.k = scale * SS
+        self.ox, self.oy = self.w / 2, self.h * 0.68
+        self.rgb = np.zeros((self.h, self.w, 3))
+        self.a = np.zeros((self.h, self.w))
+        rng = np.random.default_rng(seed)
+        self.blotch = fbm(self.h, self.w, 9 * SS, rng, 3)
+        self.flake = fbm(self.h, self.w, 3 * SS, rng, 2)
+        self.grime = fbm(self.h, self.w, 16 * SS, rng, 3)
+
+    def proj(self, p: np.ndarray) -> np.ndarray:
+        x = (p[..., 0] - p[..., 1]) * self.k + self.ox
+        y = ((p[..., 0] + p[..., 1]) * 0.5 - p[..., 2]) * self.k + self.oy
+        return np.stack([x, y], -1)
+
+    def draw(self, s: Solid) -> None:
+        centre = np.concatenate(s.faces).mean(0)
+        base = np.array(SCRAP_PAINT[s.paint], float)
+        for f in s.faces:
+            n = face_normal(f, centre)
+            if np.dot(n, VIEW) <= 0.02:
+                continue
+            pts = [tuple(p) for p in self.proj(f)]
+            m = poly_mask(self.h, self.w, pts)
+            if m.max() <= 0:
+                continue
+            lit = 0.4 + 0.75 * max(0.0, float(np.dot(n, SUN)))
+            # Paint flakes to rust in blotches; bare metal on rust stays rust.
+            rusty = np.clip((self.blotch - 0.6 + s.rust * 0.2) * 3.2, 0, 0.85)
+            rusty = np.maximum(rusty, (self.flake > 0.78 - s.rust * 0.08) * 0.6 * (s.rust > 0))
+            if s.rust <= 0:
+                rusty = rusty * 0
+            rust_col = RUST * (1 - self.grime[..., None] * 0.5) + RUST_DARK * (self.grime[..., None] * 0.5)
+            col = base[None, None, :] * (1 - rusty[..., None]) + rust_col * rusty[..., None]
+            col = col * (lit * (0.86 + 0.24 * self.flake))[..., None]
+            # Faces pointing at the sky catch a pale sheen at their crest.
+            if n[2] > 0.6:
+                col = col * 1.04
+            over(self.rgb, self.a, col, m)
+        # Hard dark seams so pieces separate at sprite scale.
+        for f in s.faces:
+            n = face_normal(f, centre)
+            if np.dot(n, VIEW) <= 0.02:
+                continue
+            q = [tuple(p) for p in self.proj(f)]
+            seam = Image.new("L", (self.w, self.h), 0)
+            ImageDraw.Draw(seam).line(q + [q[0]], fill=255, width=max(1, SS))
+            sm = np.asarray(seam, float) / 255 * 0.35
+            over(self.rgb, self.a, np.zeros((self.h, self.w, 3)) + 22, sm * (self.a > 0.5))
+
+    def draw_all(self, solids: list[Solid]) -> None:
+        for s in sorted(solids, key=lambda s: s.depth):
+            self.draw(s)
+
+    def mound(self, rx: float, ry: float, rng: np.random.Generator) -> None:
+        """Low rubble bed the heap sits in: dark earth, rust grit, shadow."""
+        cx, cy = self.ox, self.oy
+        c, m = rock_layer(self.h, self.w, cx, cy, rx * self.k, ry * self.k, rng, (88, 66, 50), facets=14, lichen=0.0)
+        grit = (fbm(self.h, self.w, 2 * SS, rng, 2) > 0.6).astype(float)
+        c = c * (1 - grit[..., None] * 0.3) + RUST * grit[..., None] * 0.3
+        over(self.rgb, self.a, c, m)
+
+    def image(self) -> Image.Image:
+        return to_image(self.rgb, self.a)
+
+
+def drum(c, rng, standing: bool) -> list[Solid]:
+    paint = ["red", "olive", "grey", "sand"][int(rng.integers(0, 4))]
+    if standing:
+        m = rot(rng.random() * math.pi, rng.normal(0, 0.08), rng.normal(0, 0.08))
+        z = c[2] + 7
+    else:
+        m = rot(rng.random() * math.pi) @ rot(0, math.pi / 2)
+        z = c[2] + 5
+    body = cylinder((c[0], c[1], z), 5, 14, m, paint, 0.45 + rng.random() * 0.3)
+    return [body]
+
+
+def tyre(c, rng) -> list[Solid]:
+    m = rot(rng.random() * math.pi, rng.normal(0, 0.15), rng.normal(0, 0.15))
+    return [cylinder((c[0], c[1], c[2] + 2.2), 8.5, 4.4, m, "rubber", 0.0, sides=18)]
+
+
+def ibeam(c, rng, length: float = 34) -> list[Solid]:
+    yaw = rng.random() * math.pi
+    tilt = rng.normal(0, 0.18)
+    m = rot(yaw, tilt)
+    paint = "rust" if rng.random() < 0.6 else "grey"
+    out = []
+    for dz in (-3.0, 3.0):
+        off = m @ np.array([0, 0, dz])
+        out.append(box((c[0] + off[0], c[1] + off[1], c[2] + 3.5 + off[2]), (length, 7, 1.2), m, paint, 0.8))
+    out.append(box((c[0], c[1], c[2] + 3.5), (length, 1.2, 6), m, paint, 0.8))
+    return out
+
+
+def plate(c, rng, size=(22, 16)) -> list[Solid]:
+    """Armour plate, often folded once along its length."""
+    yaw = rng.random() * math.pi
+    paint = ["olive", "olive", "grey", "sand"][int(rng.integers(0, 4))]
+    rust = 0.35 + rng.random() * 0.3
+    if rng.random() < 0.55:
+        bend = 0.5 + rng.random() * 0.6
+        a = rot(yaw, 0, -bend)
+        b = rot(yaw, 0, bend * 0.4)
+        h = size[1] / 2
+        oa = a @ np.array([0, -h / 2, 0])
+        ob = b @ np.array([0, h / 2, 0])
+        return [
+            box((c[0] + oa[0], c[1] + oa[1], c[2] + 4 + oa[2]), (size[0], h, 1.6), a, paint, rust),
+            box((c[0] + ob[0], c[1] + ob[1], c[2] + 4 + ob[2]), (size[0], h, 1.6), b, paint, rust),
+        ]
+    m = rot(yaw, rng.normal(0, 0.35), rng.normal(0, 0.45))
+    return [box((c[0], c[1], c[2] + 4), (size[0], size[1], 1.6), m, paint, rust)]
+
+
+def hull_chunk(c, rng) -> list[Solid]:
+    """A torn tank hull section with a turret ring stub: the heap's centrepiece."""
+    yaw = rng.random() * math.pi
+    m = rot(yaw, rng.normal(0, 0.12), rng.normal(0, 0.1))
+    paint = "olive" if rng.random() < 0.7 else "sand"
+    body = box((c[0], c[1], c[2] + 8), (36, 24, 14), m, paint, 0.5)
+    top = m @ np.array([0, 0, 7]) + np.array([c[0], c[1], c[2] + 8])
+    ring = cylinder((top[0], top[1], top[2] + 1.5), 7, 3, m, paint, 0.7)
+    return [body, ring]
+
+
+def render_scrap_heap(seed: int) -> Image.Image:
+    rng = np.random.default_rng(seed)
+    cv = ScrapCanvas(420, 300, 3.2, seed)
+    cv.mound(44, 26, rng)
+    solids: list[Solid] = []
+    solids += hull_chunk((rng.normal(0, 3), rng.normal(0, 3), 0), rng)
+    # Ring of mixed junk around the centrepiece.
+    picks = [plate, plate, ibeam, tyre, drum, plate]
+    rng.shuffle(picks)
+    for k, fn in enumerate(picks):
+        ang = (k / len(picks) + rng.random() * 0.1) * 2 * math.pi
+        r = 22 + rng.random() * 8
+        c = (math.cos(ang) * r, math.sin(ang) * r, 0.0)
+        if fn is drum:
+            solids += drum(c, rng, rng.random() < 0.5)
+        else:
+            solids += fn(c, rng)
+    cv.draw_all(solids)
+    return cv.image()
+
+
+def render_scrap_piece(seed: int) -> Image.Image:
+    """A single readable item: drum, tyre stack, beam, or plate."""
+    rng = np.random.default_rng(seed)
+    cv = ScrapCanvas(260, 200, 3.2, seed)
+    kind = seed % 4
+    solids: list[Solid] = []
+    if kind == 0:
+        solids += drum((-4, 2, 0), rng, True)
+        solids += drum((8, -6, 0), rng, False)
+    elif kind == 1:
+        solids += tyre((0, 0, 0), rng)
+        solids += tyre((3, -2, 4.4), rng)
+        solids += plate((-12, 10, 0), rng, (14, 10))
+    elif kind == 2:
+        solids += ibeam((0, 0, 0), rng, 38)
+        solids += plate((6, 8, 0), rng, (16, 12))
+    else:
+        solids += plate((0, 0, 0), rng, (26, 18))
+        solids += ibeam((-6, -8, 0), rng, 22)
+    cv.draw_all(solids)
+    return cv.image()
+
+
+def render_scrap_bits(seed: int) -> Image.Image:
+    """Loose shards and bolts for the ragged rim of a field."""
+    rng = np.random.default_rng(seed)
+    cv = ScrapCanvas(240, 150, 3.2, seed)
+    solids: list[Solid] = []
+    for _ in range(5 + int(rng.random() * 3)):
+        ang = rng.random() * 2 * math.pi
+        r = rng.random() ** 0.6 * 20
+        c = (math.cos(ang) * r, math.sin(ang) * r, 0.0)
+        size = (5 + rng.random() * 9, 4 + rng.random() * 6, 1.2)
+        m = rot(rng.random() * math.pi, rng.normal(0, 0.3), rng.normal(0, 0.3))
+        paint = ["rust", "rust", "olive", "grey"][int(rng.integers(0, 4))]
+        solids.append(box((c[0], c[1], c[2] + 1.5), size, m, paint, 0.7))
+    cv.draw_all(solids)
+    return cv.image()
+
+
 # --------------------------------------------------------------------------- main
 
 
@@ -462,7 +731,7 @@ def contact(img: Image.Image, kind: str) -> tuple[int, int]:
         col = alpha[:, :].sum(0)
         cx = int(np.argmax(col))
         return cx, int(bottom - 3)
-    lift = {"boulder": 0.1, "stones": 0.25, "stump": 0.12}.get(kind, 0.1)
+    lift = {"boulder": 0.1, "stones": 0.25, "stump": 0.12, "scrap": 0.3}.get(kind, 0.1)
     return cx, int(bottom - (bottom - ys.min()) * lift)
 
 
@@ -471,6 +740,18 @@ JOBS = {
     "stones": [(render_stones, "stones-1.png", 5), (render_stones, "stones-2.png", 17)],
     "stump": [(render_stump, "stump-1.png", 7), (render_stump, "stump-2.png", 19)],
     "signpost": [(render_signpost, "signpost-1.png", 3), (render_signpost, "signpost-2.png", 8)],
+    "scrap": [
+        (render_scrap_heap, "scrap-heap-1.png", 4),
+        (render_scrap_heap, "scrap-heap-2.png", 9),
+        (render_scrap_heap, "scrap-heap-3.png", 21),
+        (render_scrap_piece, "scrap-piece-1.png", 12),
+        (render_scrap_piece, "scrap-piece-2.png", 13),
+        (render_scrap_piece, "scrap-piece-3.png", 14),
+        (render_scrap_piece, "scrap-piece-4.png", 15),
+        (render_scrap_bits, "scrap-bits-1.png", 2),
+        (render_scrap_bits, "scrap-bits-2.png", 6),
+        (render_scrap_bits, "scrap-bits-3.png", 10),
+    ],
 }
 
 
