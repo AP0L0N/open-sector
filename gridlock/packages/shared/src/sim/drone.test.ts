@@ -457,7 +457,7 @@ describe("drone guard", () => {
     assert.equal(d.drone!.guard, null);
   });
 
-  it("the Drone Op walks at 80% of his old t(2) pace", () => {
-    assert.equal(catalog("droneop").moveTilesPerSec, 2 * TILE_SUBDIV * 0.8);
+  it("the Drone Op walks at 70% of his old 80% pace", () => {
+    assert.equal(catalog("droneop").moveTilesPerSec, 2 * TILE_SUBDIV * 0.8 * 0.7);
   });
 });

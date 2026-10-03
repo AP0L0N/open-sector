@@ -138,7 +138,7 @@ describe("CIWS catalog", () => {
     makeEntity(state, "core", "A", tileCenter(120, ts), tileCenter(120, ts), { tileX: 118, tileY: 118 });
     makeEntity(state, "dynamo", "A", 0, 0, { tileX: 110, tileY: 110 });
     assert.equal(applyCommand(state, "A", { type: "cmd.build", building: "ciws" }).ok, true);
-    const t = until(state, 600, () => state.players.get("A")!.structure?.ready === true);
+    const t = until(state, 600, () => state.players.get("A")!.defence?.ready === true);
     assert.ok(t >= 0, "the CIWS finishes building");
     assert.equal(applyCommand(state, "A", { type: "cmd.place", building: "ciws", tx: 132, ty: 120 }).ok, true);
     const placed = [...state.entities.values()].find((e) => e.type === "ciws");

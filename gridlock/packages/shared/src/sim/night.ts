@@ -1,5 +1,10 @@
 import {
   DAY_SECONDS,
+  LAMP_HEADING_STEP_DEG,
+  isAircraftType,
+  isArmoredType,
+  isCyborg,
+  isDroneType,
   DUSK_SECONDS,
   NEUTRAL_OWNER,
   NIGHT_REACH_MUL,
@@ -41,6 +46,30 @@ export function spotlightsOn(tick: number): boolean {
 
 export function hasSpotlight(type: EntityType): boolean {
   return type === "tower";
+}
+
+/** Armored ground hulls and the Cyborg carry a headlight. Planes and drones fly dark. */
+export function hasHeadlight(type: EntityType): boolean {
+  if (isCyborg(type)) return true;
+  return isArmoredType(type) && !isAircraftType(type) && !isDroneType(type) && !hasSpotlight(type);
+}
+
+/** A headlight burns on a live hull out in the open, not on a wreck or a passenger. */
+export function headlightLit(e: {
+  type: EntityType;
+  kind: string;
+  hp?: number;
+  wreck?: boolean;
+  garrisonedIn?: number | null;
+  air?: unknown;
+}): boolean {
+  return e.kind === "unit" && hasHeadlight(e.type) && (e.hp ?? 1) > 0 && !e.wreck && e.garrisonedIn == null && !e.air;
+}
+
+/** A lamp's heading as sight reads it: snapped to LAMP_HEADING_STEP_DEG. */
+export function lampHeading(a: number): number {
+  const step = (LAMP_HEADING_STEP_DEG * Math.PI) / 180;
+  return Math.round(a / step) * step;
 }
 
 /** A tower someone holds carries a working lamp. A neutral one stands dark. */

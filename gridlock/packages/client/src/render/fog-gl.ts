@@ -47,6 +47,9 @@ export type FogView = {
   width: number;
   height: number;
   now: number;
+  /** Veil alpha and colour; the day veil when missing. */
+  alpha?: number;
+  rgb?: readonly [number, number, number];
 };
 
 /** Ground veil laid on the lifted height mesh, so it follows the hills. */
@@ -125,8 +128,9 @@ export class FogGl {
     gl.uniform1f(this.loc.uMix!, field.mix(view.now));
     gl.uniform2f(this.loc.uMapSize!, field.w, field.h);
     gl.uniform1f(this.loc.uTime!, (view.now / 1000) % 10000);
-    gl.uniform1f(this.loc.uAlpha!, FOG_VEIL_ALPHA);
-    gl.uniform3f(this.loc.uColor!, FOG_RGB[0] / 255, FOG_RGB[1] / 255, FOG_RGB[2] / 255);
+    const rgb = view.rgb ?? FOG_RGB;
+    gl.uniform1f(this.loc.uAlpha!, view.alpha ?? FOG_VEIL_ALPHA);
+    gl.uniform3f(this.loc.uColor!, rgb[0] / 255, rgb[1] / 255, rgb[2] / 255);
     gl.bindVertexArray(this.mesh.vao);
     gl.drawElements(gl.TRIANGLES, this.mesh.count, gl.UNSIGNED_INT, 0);
     gl.bindVertexArray(null);
@@ -143,13 +147,21 @@ export class FogFlat {
   private data: ImageData | null = null;
   private drawn = -1;
   private drawnMix = -1;
+  private drawnLook = "";
 
   constructor() {
     this.canvas = document.createElement("canvas");
     this.ctx = this.canvas.getContext("2d");
   }
 
-  draw(ctx: CanvasRenderingContext2D, field: FogField, camX: number, camY: number, now: number): void {
+  draw(
+    ctx: CanvasRenderingContext2D,
+    field: FogField,
+    camX: number,
+    camY: number,
+    now: number,
+    look: { alpha: number; rgb: readonly [number, number, number] } = { alpha: FOG_VEIL_ALPHA, rgb: FOG_RGB },
+  ): void {
     const g = this.ctx;
     if (!g) return;
     if (this.canvas.width !== field.w || this.canvas.height !== field.h || !this.data) {
@@ -159,15 +171,17 @@ export class FogFlat {
       this.drawn = -1;
     }
     const t = field.mix(now);
-    if (this.drawn !== field.version || Math.abs(this.drawnMix - t) > 0.02) {
+    const lookKey = `${look.alpha.toFixed(3)}:${look.rgb.map((v) => Math.round(v)).join(",")}`;
+    if (this.drawn !== field.version || Math.abs(this.drawnMix - t) > 0.02 || this.drawnLook !== lookKey) {
+      this.drawnLook = lookKey;
       const pix = this.data.data;
       for (let i = 0; i < field.prev.length; i++) {
         const s = field.prev[i]! + (field.next[i]! - field.prev[i]!) * t;
         const o = i * 4;
-        pix[o] = FOG_RGB[0];
-        pix[o + 1] = FOG_RGB[1];
-        pix[o + 2] = FOG_RGB[2];
-        pix[o + 3] = Math.round(FOG_VEIL_ALPHA * (1 - s) * 255);
+        pix[o] = look.rgb[0];
+        pix[o + 1] = look.rgb[1];
+        pix[o + 2] = look.rgb[2];
+        pix[o + 3] = Math.round(look.alpha * (1 - s) * 255);
       }
       g.putImageData(this.data, 0, 0);
       this.drawn = field.version;

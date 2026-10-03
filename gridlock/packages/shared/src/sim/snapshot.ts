@@ -42,8 +42,16 @@ import { supplyHasDriver, supplyRiders } from "./supply.js";
 import { powerOf } from "./power.js";
 import { canSeeWorld, encodeVisionRuns, entityOnMask, visionMask } from "./vision.js";
 import { spotFacingOf, spotlightManned } from "./night.js";
-import type { Entity, MatchState, Order, QueueableCommand } from "./types.js";
-import type { CorpseView, EntityView, MatchSnapshot, PlanKind, PlanPointView, ScrapCell } from "../protocol.js";
+import type { Entity, MatchState, Order, QueueableCommand, StructureJob } from "./types.js";
+import type {
+  CorpseView,
+  EntityView,
+  MatchSnapshot,
+  PlanKind,
+  PlanPointView,
+  ScrapCell,
+  StructureQueueView,
+} from "../protocol.js";
 
 function plantRemaining(e: Entity, friendly: boolean): number | undefined {
   if (!friendly) return undefined;
@@ -111,6 +119,18 @@ function fieldSitesView(e: Entity, friendly: boolean): EntityView["fieldSites"] 
     }
   }
   return sites;
+}
+
+function structureQueueView(job: StructureJob | null | undefined): StructureQueueView | null {
+  if (!job) return null;
+  return {
+    type: job.type,
+    progressTicks: job.progressTicks,
+    totalTicks: job.totalTicks,
+    ready: job.ready,
+    paused: job.paused,
+    ...(job.sites?.length ? { sites: job.sites.map((s) => ({ x: s.x, y: s.y, facing: s.facing })) } : {}),
+  };
 }
 
 function entityAt(state: MatchState, id: number | undefined): PlanPointView | null {
@@ -420,18 +440,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       provided: power.provided,
       used: power.used,
       lowPower: power.lowPower,
-      structureQueue: you?.structure
-        ? {
-            type: you.structure.type,
-            progressTicks: you.structure.progressTicks,
-            totalTicks: you.structure.totalTicks,
-            ready: you.structure.ready,
-            paused: you.structure.paused,
-            ...(you.structure.sites?.length
-              ? { sites: you.structure.sites.map((s) => ({ x: s.x, y: s.y, facing: s.facing })) }
-              : {}),
-          }
-        : null,
+      structureQueue: structureQueueView(you?.structure),
+      defenceQueue: structureQueueView(you?.defence),
       placingType: you?.placingType ?? null,
       alive: you?.alive ?? false,
       hqId: hq && hq.hp > 0 ? hq.id : (you?.hqId ?? null),
@@ -495,7 +505,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     fires: state.fires
       .filter((f) => allies(state, youPlayerId, f.ownerId) || canSeeWorld(state, vis, f.x, f.y))
       .map((f) => ({ id: f.id, x: f.x, y: f.y, radius: f.radius, life: f.life, lifeMax: f.lifeMax })),
-    mines: mineViews(state, youPlayerId, vis),
+    mines: mineViews(state, youPlayerId),
     crates: crateViews(state, youPlayerId, vis),
     scrap,
     clearedTrees: state.clearedTrees.map((t) => (t.burn ? { x: t.x, y: t.y, burn: true as const } : { x: t.x, y: t.y })),

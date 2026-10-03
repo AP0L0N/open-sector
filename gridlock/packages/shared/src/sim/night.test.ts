@@ -9,7 +9,9 @@ import {
   NIGHT_SECONDS,
   SPOTLIGHT_REACH_TILES,
   SPOTLIGHT_TURN_DEG_PER_SEC,
+  BUILDING_TYPES,
   TICK_DT,
+  TRAIN_TYPES,
   catalog,
   type EntityType,
 } from "../catalog.js";
@@ -18,9 +20,17 @@ import { applyCommand } from "./commands.js";
 import { sightTilesForEntity, weaponRangeWorld } from "./elevation.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch } from "./match.js";
-import { DAY_CYCLE_SECONDS, daylightAt, nightReachMul, nightTiles, spotlightsOn, tickSpotlights } from "./night.js";
+import {
+  DAY_CYCLE_SECONDS,
+  daylightAt,
+  hasHeadlight,
+  nightReachMul,
+  nightTiles,
+  spotlightsOn,
+  tickSpotlights,
+} from "./night.js";
 import { snapshotFor } from "./snapshot.js";
-import { visionMask } from "./vision.js";
+import { paintEntitySight, sightLightAt, visionMask, type SightSource } from "./vision.js";
 import type { Entity, MatchState } from "./types.js";
 
 const NIGHT_TICK = Math.round((DAY_SECONDS + DUSK_SECONDS + NIGHT_SECONDS / 2) / TICK_DT);
@@ -154,5 +164,77 @@ describe("watch tower spotlight", () => {
     assert.equal(view?.spotFacing, 1.25);
     const gone = snapshotFor(state, a).entities.find((e) => e.id === neutral.id);
     assert.equal(gone?.spotFacing, undefined);
+  });
+});
+
+describe("night sight for every eye", () => {
+  function litCount(src: SightSource, tick: number): number {
+    const w = 256;
+    const mask = new Uint8Array(w * w);
+    paintEntitySight(mask, w, w, 32, src, undefined, undefined, sightLightAt(tick));
+    let n = 0;
+    for (const v of mask) n += v;
+    return n;
+  }
+
+  it("shrinks what each unit and structure sees after dark, lamps or not", () => {
+    for (const type of [...TRAIN_TYPES, ...BUILDING_TYPES]) {
+      if (type === "tower") continue;
+      const def = catalog(type);
+      if (def.sightTiles <= 0) continue;
+      const building = def.kind === "building";
+      const src: SightSource = {
+        id: 1,
+        kind: building ? "building" : "unit",
+        type,
+        ownerId: "A",
+        x: 128 * 32 + 16,
+        y: 128 * 32 + 16,
+        tileX: 128,
+        tileY: 128,
+        tileW: building ? def.tileW : 1,
+        tileH: building ? def.tileH : 1,
+        facing: 0,
+        hp: 1,
+      };
+      const day = litCount(src, 0);
+      const night = litCount(src, NIGHT_TICK);
+      const cap = hasHeadlight(type) ? 0.45 : 0.32;
+      assert.ok(night < day * cap, `${type}: ${night} lit at night vs ${day} by day`);
+    }
+  });
+});
+
+describe("headlights", () => {
+  it("run on armored ground hulls and the Cyborg, not on foot soldiers or planes", () => {
+    assert.equal(hasHeadlight("cyborg"), true);
+    assert.equal(hasHeadlight("ss3"), true);
+    assert.equal(hasHeadlight("rifleman"), false);
+    assert.equal(hasHeadlight("stuka"), false);
+    assert.equal(hasHeadlight("tower"), false);
+  });
+
+  it("give back the daylight sight down the hull's nose only", () => {
+    const { state, a } = emptyField();
+    const tank = trooper(state, "ss3", a, 100, 128);
+    tank.facing = 0;
+    const r = sightTilesForEntity(state, tank);
+    state.tick = NIGHT_TICK;
+    assert.equal(lit(state, a, 100 + r - 2, 128), true, "ahead, in the light");
+    assert.equal(lit(state, a, 100 - (r - 2), 128), false, "behind, in the dark");
+    assert.equal(lit(state, a, 100, 128 + r - 2), false, "abeam, in the dark");
+    tank.facing = Math.PI;
+    assert.equal(lit(state, a, 100 - (r - 2), 128), true, "turns with the hull");
+  });
+
+  it("go out when the hull is a passenger", () => {
+    const { state, a } = emptyField();
+    const cy = trooper(state, "cyborg", a, 100, 128);
+    cy.facing = 0;
+    const r = sightTilesForEntity(state, cy);
+    state.tick = NIGHT_TICK;
+    assert.equal(lit(state, a, 100 + r - 2, 128), true);
+    cy.garrisonedIn = 9999;
+    assert.equal(lit(state, a, 100 + r - 2, 128), false);
   });
 });

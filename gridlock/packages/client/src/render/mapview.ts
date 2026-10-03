@@ -8,6 +8,12 @@ import {
   fires,
   radarLaidOf,
   hasSpotlight,
+  headlightLit,
+  HEADLIGHT_HALF_DEG,
+  BUILDING_TYPES,
+  NEUTRAL_OWNER,
+  sightTilesOf,
+  TILE_SUBDIV,
   daylightAt,
   SPOTLIGHT_HALF_DEG,
   SPOTLIGHT_REACH_TILES,
@@ -56,6 +62,7 @@ import {
   pickElevatedTile,
   pointInIsoBox,
   isBuildingType,
+  isDefenceStructure,
   isYardField,
   previewField,
   previewPlace,
@@ -326,9 +333,37 @@ import { canGuardUnit, planeBoardCandidate, resolveHoverAction, type HoverAction
 import { planColor, withQueue } from "./order-queue.js";
 import { guardHeightTag, guardReach, type GuardUnit } from "./guard-reach.js";
 import { BuildingVeil, columnPolygon, uniformVeil, veilCells } from "./building-fog.js";
-import { FOG_RGB, FogField } from "./fog-field.js";
+import { FOG_RGB, FOG_VEIL_ALPHA, FogField } from "./fog-field.js";
 import { FogFlat, FogGl } from "./fog-gl.js";
-import { NIGHT_RGB, beamPolygon, easeSpot, lampGlow, nightShade } from "./night.js";
+import {
+  NIGHT_RGB,
+  beamBlobs,
+  beamPolygon,
+  easeSpot,
+  lampGlow,
+  nightFog,
+  nightShade,
+  workLightBearings,
+  workLightCount,
+} from "./night.js";
+
+type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" };
+/** How much of the night tint each kind of pool lifts, per pool (they overlap), and how much it warms. */
+const POOL_CUT: Record<NightPool["kind"], number> = { tower: 0.7, head: 0.8, work: 0.75 };
+const POOL_WARM: Record<NightPool["kind"], number> = { tower: 0.2, head: 0.24, work: 0.2 };
+const POOL_RGB: Record<NightPool["kind"], string> = {
+  tower: "255, 236, 180",
+  head: "255, 242, 205",
+  work: "255, 212, 140",
+};
+
+/** Built structures that keep work lights burning round the yard. Not bunkers, walls, or the tower, which has its own lamp. */
+function workLit(e: EntityView): boolean {
+  if (e.kind !== "building" || e.hp <= 0 || e.wreck || e.ruined) return false;
+  if (!e.ownerId || e.ownerId === NEUTRAL_OWNER) return false;
+  if (e.type === "bunker" || e.type === "tower") return false;
+  return e.type === "core" || (BUILDING_TYPES as readonly string[]).includes(e.type);
+}
 import {
   blitTerrain,
   bakeMini,
@@ -598,6 +633,8 @@ export class MapView {
   /** Lamp heading on screen per tower, eased toward the snapshot. */
   private spotShown = new Map<number, number>();
   private spotFrameAt = 0;
+  /** Screen points of the headlights drawn this frame, for their lamp glints. */
+  private headlightNoses: IsoPt[] = [];
   /** Every tile counts as known ground: the map is never shrouded. */
   private knownGround: Uint8Array | null = null;
   private miniFog: HTMLCanvasElement | null = null;
@@ -711,6 +748,8 @@ export class MapView {
   }[] = [];
   selected = new Set<number>();
   placeMode = false;
+  /** Ready building the player chose to put down, when a base and a defence are both finished. */
+  placePick: BuildingType | null = null;
   /** Defences-tab sandbags or wall, armed before the line is sited. */
   yardArm: YardFieldType | null = null;
   attackMoveMode = false;
@@ -859,6 +898,7 @@ export class MapView {
     this.fieldPath = [];
     if (next) {
       this.placeMode = false;
+      this.placePick = null;
       this.yardArm = null;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
@@ -1090,8 +1130,9 @@ export class MapView {
       this.fieldDrag = null;
       this.onPlaceMode();
     }
+    if (this.placePick && !this.typeReady(this.placePick)) this.placePick = null;
     if (!this.placeMode) this.yardArm = null;
-    if (this.yardArm && this.curr.you.structureQueue) this.yardArm = null;
+    if (this.yardArm && this.curr.you.defenceQueue) this.yardArm = null;
     const placing = this.placeMode;
     if (!this.placingKind() && !this.yardArm) this.placeMode = false;
     if (this.placeMode !== placing) this.onPlaceMode();
@@ -1597,10 +1638,36 @@ export class MapView {
     this.centerOnHq();
   }
 
+  private typeReady(type: BuildingType | YardFieldType): boolean {
+    if (!isDefenceStructure(type) && this.curr.you.placingType === type) return true;
+    const q = isDefenceStructure(type) ? this.curr.you.defenceQueue : this.curr.you.structureQueue;
+    return q?.ready === true && q.type === type;
+  }
+
   private placingKind(): BuildingType | YardFieldType | null {
-    if (this.curr.you.placingType) return this.curr.you.placingType;
-    const q = this.curr.you.structureQueue;
-    return q?.ready ? q.type : null;
+    if (this.placePick && this.typeReady(this.placePick)) return this.placePick;
+    if (this.curr.you.placingType && this.typeReady(this.curr.you.placingType)) return this.curr.you.placingType;
+    const base = this.curr.you.structureQueue;
+    if (base?.ready) return base.type;
+    const defence = this.curr.you.defenceQueue;
+    if (defence?.ready && isBuildingType(defence.type)) return defence.type;
+    return null;
+  }
+
+  /** Place this finished building. A ready defence does not have to wait for a ready base. */
+  armPlace(type: BuildingType): void {
+    this.placePick = type;
+    this.yardArm = null;
+    this.fieldPlace = null;
+    this.fieldDrag = null;
+    this.placeMode = true;
+    this.attackMoveMode = false;
+    this.forceAttackMode = false;
+    this.rotateMode = false;
+    this.guardMode = false;
+    this.guardDragging = false;
+    this.onAttackMoveMode();
+    this.onPlaceMode();
   }
 
   private readyBuilding(): BuildingType | null {
@@ -1619,6 +1686,7 @@ export class MapView {
     this.fieldPlace = null;
     this.fieldDrag = null;
     this.fieldPath = [];
+    this.placePick = null;
     this.yardArm = type;
     this.placeMode = true;
     this.attackMoveMode = false;
@@ -2922,6 +2990,8 @@ export class MapView {
     const field = this.fogField;
     if (!field) return;
     const now = performance.now();
+    // Out of sight at night is near black: the dark sight rings and lamps read on the ground.
+    const look = nightFog(daylightAt(this.curr.tick), FOG_VEIL_ALPHA, FOG_RGB);
     if (this.fogGl === undefined) this.fogGl = FogGl.create();
     const gl = this.fogGl;
     if (gl) {
@@ -2934,6 +3004,7 @@ export class MapView {
         width: this.canvas.width,
         height: this.canvas.height,
         now,
+        ...look,
       });
       const ctx = this.ctx;
       ctx.save();
@@ -2943,7 +3014,7 @@ export class MapView {
       return;
     }
     this.fogFlat ??= new FogFlat();
-    this.fogFlat.draw(this.ctx, field, this.camX, this.camY, now);
+    this.fogFlat.draw(this.ctx, field, this.camX, this.camY, now, look);
   }
 
   private draw(): void {
@@ -3130,9 +3201,62 @@ export class MapView {
   }
 
   /**
-   * Dusk and night: a blue-black tint over the field, with each tower's beam
-   * cut out of it and warmed. By day a selected own tower shows where its
-   * lamp points, so Rotate can be set before dark.
+   * Every lamp burning this frame as soft pools on the ground, in screen
+   * space: tower beams, hull headlights, and the slow work lights round a base.
+   * `rx` is the pool's half-width on screen; it is half as tall (2:1 iso).
+   */
+  private nightPools(lamps: { e: EntityView; facing: number }[], w: number, h: number): NightPool[] {
+    const ts = this.ts();
+    const k = (Math.SQRT2 * ISO_TILE_W) / 2 / ts;
+    const out: NightPool[] = [];
+    const onView = (x: number, y: number, r: number): boolean => x > -r && y > -r && x < w + r && y < h + r;
+    const lay = (wx: number, wy: number, r: number, a: number, kind: NightPool["kind"]): void => {
+      const s = this.toScreen(wx, wy);
+      const rx = r * k;
+      if (onView(s.x, s.y, rx)) out.push({ x: s.x, y: s.y, rx, a, kind });
+    };
+    const towerReach = SPOTLIGHT_REACH_TILES * ts;
+    const towerBlobs = beamBlobs(towerReach, (SPOTLIGHT_HALF_DEG * Math.PI) / 180, { count: 24, widen: 1.15 });
+    for (const { e, facing } of lamps) {
+      const c = Math.cos(facing);
+      const s = Math.sin(facing);
+      for (const b of towerBlobs) lay(e.x + c * b.d, e.y + s * b.d, b.r, b.a, "tower");
+    }
+    const headHalf = (HEADLIGHT_HALF_DEG * Math.PI) / 180;
+    const noses = this.headlightNoses;
+    noses.length = 0;
+    for (const e of this.curr.entities) {
+      if (!headlightLit(e)) continue;
+      const reach = sightTilesOf(e.type, HEIGHT_BASE) * ts;
+      const pose = this.lerpEnt(e);
+      const at = this.toScreen(pose.x, pose.y);
+      if (!onView(at.x, at.y, reach * k)) continue;
+      const nose = catalog(e.type).radius;
+      const c = Math.cos(pose.facing);
+      const s = Math.sin(pose.facing);
+      for (const b of beamBlobs(reach, headHalf, { start: Math.min(0.25, nose / reach), count: 9, minR: nose * 0.9 })) {
+        lay(pose.x + c * b.d, pose.y + s * b.d, b.r, b.a, "head");
+      }
+      noses.push(this.toScreen(pose.x + c * nose, pose.y + s * nose));
+    }
+    const nowSec = performance.now() / 1000;
+    for (const e of this.curr.entities) {
+      if (!workLit(e)) continue;
+      const n = workLightCount(e.tileW, e.tileH, TILE_SUBDIV);
+      const orbit = (Math.max(e.tileW, e.tileH) / 2 + TILE_SUBDIV * 1.3) * ts;
+      const r = TILE_SUBDIV * 1.7 * ts;
+      for (const b of workLightBearings(e.id, n, nowSec)) {
+        lay(e.x + Math.cos(b) * orbit, e.y + Math.sin(b) * orbit, r, 0.8, "work");
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Dusk and night. Ground out of sight already sinks into the night fog
+   * (drawGroundFog); this lays a lighter blue-black over everything, cuts the
+   * lamps' pools out of it, and warms them. By day a selected own tower shows
+   * where its lamp points, so Rotate can be set before dark.
    */
   private drawNight(): void {
     const lamps = this.easedLamps();
@@ -3140,17 +3264,22 @@ export class MapView {
     const shade = nightShade(daylight);
     const glow = lampGlow(daylight);
     const ctx = this.ctx;
-    const reach = SPOTLIGHT_REACH_TILES * this.ts();
-    const half = (SPOTLIGHT_HALF_DEG * Math.PI) / 180;
-    const beamPath = (c: CanvasRenderingContext2D, e: EntityView, facing: number): { ax: number; ay: number; r: number } => {
-      const pts = beamPolygon(e.x, e.y, facing, reach, half, 16).map((p) => this.toScreen(p.x, p.y));
+    const { w: vw, h: vh } = this.viewSize();
+    const pools = glow > 0 ? this.nightPools(lamps, vw, vh) : [];
+    const fillPool = (c: CanvasRenderingContext2D, p: NightPool, rgb: string, a: number): void => {
+      if (a <= 0.002) return;
+      c.save();
+      c.translate(p.x, p.y);
+      c.scale(1, 0.5);
+      const g = c.createRadialGradient(0, 0, 0, 0, 0, p.rx);
+      g.addColorStop(0, `rgba(${rgb}, ${a})`);
+      g.addColorStop(0.5, `rgba(${rgb}, ${a * 0.55})`);
+      g.addColorStop(1, `rgba(${rgb}, 0)`);
+      c.fillStyle = g;
       c.beginPath();
-      pts.forEach((p, i) => (i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y)));
-      c.closePath();
-      const apex = pts[0]!;
-      let r = 1;
-      for (const p of pts) r = Math.max(r, Math.hypot(p.x - apex.x, p.y - apex.y));
-      return { ax: apex.x, ay: apex.y, r };
+      c.arc(0, 0, p.rx, 0, Math.PI * 2);
+      c.fill();
+      c.restore();
     };
     if (shade > 0.001) {
       const w = this.canvas.width;
@@ -3168,26 +3297,10 @@ export class MapView {
         n.clearRect(0, 0, w, h);
         n.fillStyle = `rgba(${NIGHT_RGB}, ${shade})`;
         n.fillRect(0, 0, w, h);
-        if (glow > 0) {
+        if (pools.length) {
           n.setTransform(ctx.getTransform());
           n.globalCompositeOperation = "destination-out";
-          for (const { e, facing } of lamps) {
-            const { ax, ay, r } = beamPath(n, e, facing);
-            const g = n.createRadialGradient(ax, ay, 0, ax, ay, r);
-            g.addColorStop(0, `rgba(0,0,0,${0.55 * glow})`);
-            g.addColorStop(0.75, `rgba(0,0,0,${0.85 * glow})`);
-            g.addColorStop(1, "rgba(0,0,0,0)");
-            n.fillStyle = g;
-            n.fill();
-            // A pool of light at the foot of the tower.
-            const foot = n.createRadialGradient(ax, ay, 0, ax, ay, this.ts() * 3);
-            foot.addColorStop(0, `rgba(0,0,0,${0.6 * glow})`);
-            foot.addColorStop(1, "rgba(0,0,0,0)");
-            n.fillStyle = foot;
-            n.beginPath();
-            n.arc(ax, ay, this.ts() * 3, 0, Math.PI * 2);
-            n.fill();
-          }
+          for (const p of pools) fillPool(n, p, "0,0,0", POOL_CUT[p.kind] * p.a * glow);
         }
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -3196,17 +3309,20 @@ export class MapView {
       }
     }
     ctx.save();
-    for (const { e, facing } of lamps) {
-      if (glow > 0) {
-        // Warm the beam, and burn a point of light on the cab.
-        ctx.globalCompositeOperation = "lighter";
-        const { ax, ay, r } = beamPath(ctx, e, facing);
-        const g = ctx.createRadialGradient(ax, ay, 0, ax, ay, r);
-        g.addColorStop(0, `rgba(255, 236, 180, ${0.16 * glow})`);
-        g.addColorStop(0.8, `rgba(255, 226, 160, ${0.08 * glow})`);
-        g.addColorStop(1, "rgba(255, 220, 150, 0)");
+    if (pools.length) {
+      ctx.globalCompositeOperation = "lighter";
+      for (const p of pools) fillPool(ctx, p, POOL_RGB[p.kind], POOL_WARM[p.kind] * p.a * glow);
+      for (const n of this.headlightNoses) {
+        const g = ctx.createRadialGradient(n.x, n.y - 3, 0, n.x, n.y - 3, 5);
+        g.addColorStop(0, `rgba(255, 250, 225, ${0.9 * glow})`);
+        g.addColorStop(1, "rgba(255, 240, 200, 0)");
         ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(n.x, n.y - 3, 5, 0, Math.PI * 2);
         ctx.fill();
+      }
+      // A point of light on each tower cab.
+      for (const { e } of lamps) {
         const cab = this.toScreen(e.x, e.y, this.elevAt(e.x, e.y) + TOWER_EYE_HEIGHT);
         const lamp = ctx.createRadialGradient(cab.x, cab.y, 0, cab.x, cab.y, 9);
         lamp.addColorStop(0, `rgba(255, 248, 220, ${0.95 * glow})`);
@@ -3215,15 +3331,24 @@ export class MapView {
         ctx.beginPath();
         ctx.arc(cab.x, cab.y, 9, 0, Math.PI * 2);
         ctx.fill();
-        ctx.globalCompositeOperation = "source-over";
-      } else if (this.selected.has(e.id) && e.ownerId === this.curr.youPlayerId) {
-        ctx.setLineDash([5, 6]);
-        ctx.lineWidth = 1.25;
-        ctx.strokeStyle = "rgba(255, 226, 150, 0.55)";
-        beamPath(ctx, e, facing);
-        ctx.stroke();
-        ctx.setLineDash([]);
       }
+      ctx.globalCompositeOperation = "source-over";
+    }
+    if (glow <= 0) {
+      const reach = SPOTLIGHT_REACH_TILES * this.ts();
+      const half = (SPOTLIGHT_HALF_DEG * Math.PI) / 180;
+      ctx.setLineDash([5, 6]);
+      ctx.lineWidth = 1.25;
+      ctx.strokeStyle = "rgba(255, 226, 150, 0.55)";
+      for (const { e, facing } of lamps) {
+        if (!this.selected.has(e.id) || e.ownerId !== this.curr.youPlayerId) continue;
+        const pts = beamPolygon(e.x, e.y, facing, reach, half, 16).map((p) => this.toScreen(p.x, p.y));
+        ctx.beginPath();
+        pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+        ctx.closePath();
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
     }
     ctx.restore();
   }
@@ -6861,7 +6986,7 @@ export class MapView {
 
   /** The line sited from the Defences tab, drawn until the yard finishes it. */
   private drawYardBuild(): void {
-    const q = this.curr.you.structureQueue;
+    const q = this.curr.you.defenceQueue;
     if (!q?.sites || q.sites.length === 0 || !isYardField(q.type)) return;
     for (const s of q.sites) {
       if (isConcreteLine(q.type)) {

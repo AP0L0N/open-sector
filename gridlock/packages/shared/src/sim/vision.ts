@@ -4,6 +4,7 @@ import {
   garrisonSightBonusOf,
   HEIGHT_MAX,
   SMOKE_PEEK_TILES,
+  HEADLIGHT_HALF_DEG,
   SPOTLIGHT_HALF_DEG,
   SPOTLIGHT_REACH_TILES,
   TOWER_EYE_HEIGHT,
@@ -29,7 +30,16 @@ import {
 import { allies, fillHullCover, footprint, inBounds, worldToTile } from "./geo.js";
 import { occupantEye, occupantSightTiles } from "./garrison.js";
 import { fillSmokeMask, smokeCloudTileBounds } from "./smoke.js";
-import { hasSpotlight, nightReachMul, nightTiles, spotFacingOf, spotlightManned, spotlightsOn } from "./night.js";
+import {
+  hasSpotlight,
+  headlightLit,
+  lampHeading,
+  nightReachMul,
+  nightTiles,
+  spotFacingOf,
+  spotlightManned,
+  spotlightsOn,
+} from "./night.js";
 import type { Entity, MatchState } from "./types.js";
 
 export type SightSource = {
@@ -70,6 +80,7 @@ export function sightLightAt(tick: number): SightLight {
 }
 
 const SPOT_COS = Math.cos((SPOTLIGHT_HALF_DEG * Math.PI) / 180);
+const HEADLIGHT_COS = Math.cos((HEADLIGHT_HALF_DEG * Math.PI) / 180);
 
 const FOV_N8: readonly [number, number][] = [
   [-1, -1],
@@ -228,22 +239,30 @@ type SightParams = {
   fy: number;
   fw: number;
   fh: number;
-  /** Lamp beam: reach in tiles (0 when dark or none), unit heading, and the cab's eye. */
+  /** Lamp beam: reach in tiles (0 when dark or none), unit heading, cos of half its width, and the lamp's eye. */
   sr: number;
   sdx: number;
   sdy: number;
+  scos: number;
   seye: number;
 };
 
-const NO_SPOT = { sr: 0, sdx: 0, sdy: 0, seye: 0 };
+const NO_SPOT = { sr: 0, sdx: 0, sdy: 0, scos: 1, seye: 0 };
 
-function spotOf(e: SightSource, light: SightLight): typeof NO_SPOT {
-  if (!light.spots || e.kind !== "building" || !hasSpotlight(e.type)) return NO_SPOT;
-  if (!spotlightManned({ type: e.type, ownerId: e.ownerId, hp: e.hp ?? 1, ruined: e.ruined, wreck: e.wreck })) {
-    return NO_SPOT;
+/** A held tower's spotlight, or a hull's headlight giving back its daylight sight down the nose. */
+function spotOf(e: SightSource, light: SightLight, daySight: number, eye: number): typeof NO_SPOT {
+  if (!light.spots) return NO_SPOT;
+  if (e.kind === "building") {
+    if (!hasSpotlight(e.type)) return NO_SPOT;
+    if (!spotlightManned({ type: e.type, ownerId: e.ownerId, hp: e.hp ?? 1, ruined: e.ruined, wreck: e.wreck })) {
+      return NO_SPOT;
+    }
+    const a = lampHeading(spotFacingOf({ facing: e.facing ?? 0, spotFacing: e.spotFacing }));
+    return { sr: SPOTLIGHT_REACH_TILES, sdx: Math.cos(a), sdy: Math.sin(a), scos: SPOT_COS, seye: TOWER_EYE_HEIGHT };
   }
-  const a = spotFacingOf({ facing: e.facing ?? 0, spotFacing: e.spotFacing });
-  return { sr: SPOTLIGHT_REACH_TILES, sdx: Math.cos(a), sdy: Math.sin(a), seye: TOWER_EYE_HEIGHT };
+  if (!headlightLit(e) || daySight <= 0) return NO_SPOT;
+  const a = lampHeading(e.facing ?? 0);
+  return { sr: daySight, sdx: Math.cos(a), sdy: Math.sin(a), scos: HEADLIGHT_COS, seye: eye };
 }
 
 function sightParams(
@@ -279,19 +298,18 @@ function sightParams(
       fy: e.tileY,
       fw: e.tileW,
       fh: e.tileH,
-      ...spotOf(e, light),
+      ...spotOf(e, light, 0, eye),
     };
   }
   const tx = worldToTile(e.x, tileSize);
   const ty = worldToTile(e.y, tileSize);
   const h = elev ? elevAtSafe(elev, width, height, tx, ty) : 0;
+  const daySight =
+    e.sightTiles ?? (entityIsScouting(e) ? sightTilesOf("rifleman", h) : sightTilesOf(e.type, h, droneSightExtra(e)));
   return {
     ox: tx,
     oy: ty,
-    radius: nightTiles(
-      e.sightTiles ?? (entityIsScouting(e) ? sightTilesOf("rifleman", h) : sightTilesOf(e.type, h, droneSightExtra(e))),
-      light.mul,
-    ),
+    radius: nightTiles(daySight, light.mul),
     eye,
     uphill,
     ignore,
@@ -299,7 +317,7 @@ function sightParams(
     fy: 0,
     fw: 0,
     fh: 0,
-    ...NO_SPOT,
+    ...spotOf(e, light, daySight, eye),
   };
 }
 
@@ -318,6 +336,7 @@ function sameSightParams(a: SightParams, b: SightParams): boolean {
     a.sr === b.sr &&
     a.sdx === b.sdx &&
     a.sdy === b.sdy &&
+    a.scos === b.scos &&
     a.seye === b.seye
   );
 }
@@ -336,7 +355,7 @@ function inSpotCone(p: SightParams, x: number, y: number): boolean {
   if (d < 1 || d > p.sr) return false;
   const dx = x - p.ox;
   const dy = y - p.oy;
-  return dx * p.sdx + dy * p.sdy >= SPOT_COS * Math.hypot(dx, dy);
+  return dx * p.sdx + dy * p.sdy >= p.scos * Math.hypot(dx, dy);
 }
 
 /** Same test as `paintSpot`, for one tile. */
@@ -550,7 +569,8 @@ function visionKey(state: MatchState, playerId: string): number {
     h = mix(h, e.scoutOut && e.scoutHp > 0 ? 1 : 0);
     h = mix(h, e.air ? Math.round(e.air.alt) : 0);
     h = mix(h, occupantSightTiles(state, e) ?? -1);
-    if (light.spots && hasSpotlight(e.type)) h = mix(h, Math.round(spotFacingOf(e) * 4096));
+    if (light.spots && hasSpotlight(e.type)) h = mix(h, Math.round(lampHeading(spotFacingOf(e)) * 4096));
+    if (light.spots && headlightLit(e)) h = mix(h, Math.round(lampHeading(e.facing) * 4096));
   }
   for (const c of state.smokeClouds) {
     h = mix(h, c.id);
@@ -1297,12 +1317,13 @@ function observerSeesTile(
   const ox = worldToTile(obs.x, state.tileSize);
   const oy = worldToTile(obs.y, state.tileSize);
   const h = elevAtSafe(elev, width, height, ox, oy);
+  const light = sightLightAt(state.tick);
   const radius = nightTiles(
     occupantSightTiles(state, obs) ??
       (entityIsScouting(obs) ? sightTilesOf("rifleman", h) : sightTilesOf(obs.type, h, droneSightExtra(obs))),
-    sightLightAt(state.tick).mul,
+    light.mul,
   );
-  return tileInSight(
+  const seen = tileInSight(
     tx,
     ty,
     ox,
@@ -1315,6 +1336,9 @@ function observerSeesTile(
     occupantEye(state, obs) ?? observerEyeForEntity(obs),
     uphillSightForEntity(obs),
   );
+  if (seen || !light.spots || !headlightLit(obs)) return seen;
+  const p = sightParams(obs, width, height, state.tileSize, elev, light);
+  return spotLightsTile(p, tx, ty, elev, width, height, cover);
 }
 
 function tileInSight(
