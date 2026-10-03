@@ -11,6 +11,7 @@ import {
 } from "@gridlock/shared";
 import { blurField } from "./fog-field.js";
 import { hillshadeGradient } from "./relief.js";
+import { scrapCoverByte, scrapField } from "./scrap-field.js";
 
 export function elevShadeFactor(h: number, peak = HEIGHT_MAX): number {
   const span = Math.max(1, peak - HEIGHT_BASE);
@@ -72,7 +73,8 @@ export function meadowField(tx: number, ty: number): 0 | 1 | 2 {
 
 /**
  * Per-tile material weights for the ground shader.
- * `a` = (dirt, dry meadow, damp meadow, rock); `b` = (tree floor, water, blocked, 0).
+ * `a` = (dirt, dry meadow, damp meadow, rock); `b` = (tree floor, water, blocked, scrap yard).
+ * Scrap is the blurred yard cover, so the stained ground has a rounded rim.
  */
 export function materialBytes(
   map: Pick<MapDef, "width" | "height" | "tiles">,
@@ -81,9 +83,11 @@ export function materialBytes(
   const n = map.width * map.height;
   const a = new Uint8Array(n * 4);
   const b = new Uint8Array(n * 4);
+  const yard = scrap.size ? scrapField(scrap, map.width, map.height) : null;
   for (let i = 0; i < n; i++) {
     const kind = map.tiles[i] ?? 0;
     const o = i * 4;
+    if (yard) b[o + 3] = scrapCoverByte(yard, i);
     if (kind === TILE_WATER) {
       b[o + 1] = 255;
       continue;
@@ -96,7 +100,7 @@ export function materialBytes(
       a[o + 3] = 255;
       continue;
     }
-    if (kind === TILE_ROAD || scrap.has(i)) {
+    if (kind === TILE_ROAD) {
       a[o] = 255;
       continue;
     }
