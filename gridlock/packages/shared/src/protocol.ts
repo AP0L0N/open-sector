@@ -15,7 +15,7 @@ import type {
   YardFieldType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 74;
+export const PROTOCOL_VERSION = 75;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -220,6 +220,10 @@ export interface EntityView {
   tend?: number;
   /** Sandbags wrecked by a tank shell. The rubble stays. */
   ruined?: boolean;
+  /** A Wall section converted into a gate: boom lift 0–1, and whether it is locked. */
+  gate?: { locked: boolean; open: number };
+  /** Concrete lines: terrain level of the slab top, fixed when the line was raised. */
+  wallTop?: number;
   /**
    * Engineer field structures not built yet. The first is the piece on the job; `progress` is 0–1
    * once digging starts. Friendlies also get the queued pieces; enemies only see a piece being dug.
@@ -602,6 +606,8 @@ export type ClientMessage =
   | { type: "cmd.rally"; ids: number[]; x: number; y: number }
   | { type: "cmd.sell"; id: number }
   | { type: "cmd.deploy"; id: number }
+  /** Turn own Wall sections into gates, or lock and unlock own gates. */
+  | { type: "cmd.gate"; ids: number[]; action: "convert" | "lock" | "unlock" }
   | { type: "cmd.garrison"; ids: number[]; buildingId: number; queue?: boolean }
   | { type: "cmd.ungarrison"; ids?: number[]; buildingId?: number; x?: number; y?: number }
   | { type: "cmd.garrisonhide"; ids: number[]; hide: boolean }

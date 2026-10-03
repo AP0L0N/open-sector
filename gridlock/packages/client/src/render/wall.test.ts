@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { fieldCornerStart, fieldPath, fieldSpan } from "@gridlock/shared";
 import {
+  GATE_POST_LEN,
+  gateBoom,
   LARGE_WALL_SLAB_H,
   LARGE_WALL_STYLE,
   WALL_SLAB_H,
@@ -115,5 +117,22 @@ describe("concrete wall", () => {
     assert.equal(WALL_STYLE.slits, false);
     const slits = wallSlitAlong(L);
     assert.deepEqual(slits, [-L / 4, L / 4]);
+  });
+});
+
+describe("gate boom", () => {
+  const L = fieldSpan("wall")!.length;
+
+  it("lies flat across the gap when down and stands nearly upright when up", () => {
+    const down = gateBoom(0, L, WALL_SLAB_H);
+    const arm = L - GATE_POST_LEN * 2 - 1;
+    assert.ok(Math.abs(down.a1 - down.a0 - arm) < 1e-9);
+    assert.equal(down.rise, 0);
+    assert.ok(down.hinge > WALL_SLAB_H * 0.6 && down.hinge < WALL_SLAB_H);
+    const up = gateBoom(1, L, WALL_SLAB_H);
+    assert.ok(up.rise > arm * 0.95, "nearly vertical");
+    assert.ok(up.a1 - up.a0 < arm * 0.15, "barely reaches across");
+    const half = gateBoom(0.5, L, WALL_SLAB_H);
+    assert.ok(half.rise > 0 && half.rise < up.rise);
   });
 });

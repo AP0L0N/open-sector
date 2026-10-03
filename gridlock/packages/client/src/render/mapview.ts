@@ -22,6 +22,7 @@ import {
   TOWER_EYE_HEIGHT,
   fieldSpan,
   isConcreteLine,
+  wallAxes,
   GUARD_CONE_DEG,
   isCivilianType,
   isFieldStructure,
@@ -3290,6 +3291,22 @@ export class MapView {
       const r = TILE_SUBDIV * 1.7 * ts;
       for (const b of workLightBearings(e.id, n, nowSec)) {
         lay(e.x + Math.cos(b) * orbit, e.y + Math.sin(b) * orbit, r, 0.8, "work");
+      }
+    }
+    // Gate lamps: a small pool off each post, on both sides of the boom.
+    const gateSpan = fieldSpan("wall");
+    if (gateSpan) {
+      const postAlong = gateSpan.length / 2 - 2.5;
+      const off = gateSpan.thick / 2 + TILE_SUBDIV * 0.8 * ts;
+      const r = TILE_SUBDIV * 1.1 * ts;
+      for (const e of this.curr.entities) {
+        if (!e.gate || e.hp <= 0 || e.ruined) continue;
+        const { fx, fy, tx, ty } = wallAxes(e.facing);
+        for (const a of [-postAlong, postAlong]) {
+          for (const side of [-1, 1]) {
+            lay(e.x + tx * a + fx * side * off, e.y + ty * a + fy * side * off, r, 0.7, "work");
+          }
+        }
       }
     }
     return out;
@@ -6646,6 +6663,8 @@ export class MapView {
           seed: e.id * 2654435761,
           manned,
           bandColor: holder ? colorHex(holder.colorId) : undefined,
+          gate: ghost ? undefined : e.gate,
+          top: ghost ? undefined : e.wallTop,
         }),
       );
       if (!ghost) {
@@ -6654,6 +6673,7 @@ export class MapView {
         const lift = type === "greatwall" ? 44 : 18;
         this.maybeHp(e, s.x - w / 2, s.y - lift, w);
         if (type === "greatwall") this.drawGarrisonBars(e, s.x - 9, s.y - lift - 8);
+        if (e.gate?.locked) this.drawPadlock(s.x, s.y - lift - 14);
       }
       return;
     }
@@ -6715,21 +6735,59 @@ export class MapView {
     }
   }
 
+  /** A locked gate: a padlock over it, so the shut boom is never read as one about to lift. */
+  private drawPadlock(sx: number, sy: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(20, 16, 12, 0.9)";
+    ctx.fillStyle = "#e8b84a";
+    ctx.beginPath();
+    ctx.rect(sx - 5, sy - 1, 10, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(sx, sy - 2, 3.4, Math.PI, 0);
+    ctx.strokeStyle = "#e8b84a";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = "rgba(20, 16, 12, 0.9)";
+    ctx.beginPath();
+    ctx.arc(sx, sy + 3, 1.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   private drawConcrete(
     type: ConcreteLineType,
     x: number,
     y: number,
     facing: number,
-    opts: { hurt?: number; alpha: number; seed: number; bad?: boolean; manned?: boolean; bandColor?: string },
+    opts: {
+      hurt?: number;
+      alpha: number;
+      seed: number;
+      bad?: boolean;
+      manned?: boolean;
+      bandColor?: string;
+      gate?: { open: number; locked: boolean };
+      /** Standing section: the slab top level the sim fixed when the line was raised. */
+      top?: number;
+    },
     extras?: readonly { x: number; y: number; facing: number }[],
   ): void {
     const span = fieldSpan(type);
     if (!span) return;
     const style = type === "greatwall" ? LARGE_WALL_STYLE : WALL_STYLE;
-    const section: WallSection = { x, y, facing, length: span.length, thick: span.thick };
+    const section: WallSection = { x, y, facing, length: span.length, thick: span.thick, top: opts.top };
     const run = this.fieldRun(type, section, extras ?? []);
+    // A ghost or a sited line levels to the highest ground under it and to any standing
+    // neighbour's fixed top, which is what the sim does when it raises the line.
     const grounds: number[] = [];
-    for (const seg of run) grounds.push(...this.wallGrounds(seg, span.thick));
+    for (const seg of run) {
+      if (seg.top != null) grounds.push(seg.top);
+      else grounds.push(...this.wallGrounds(seg, span.thick));
+    }
     const worldPx = this.groundSpan(x, y, 10) / 10;
     const slabLevels = ISO_ELEVATION > 0 ? (style.slabH * worldPx) / ISO_ELEVATION : 0;
     drawWall(this.ctx, {
@@ -6743,7 +6801,7 @@ export class MapView {
       alpha: opts.alpha,
       bad: opts.bad,
       ground: (wx, wy) => this.elevAt(wx, wy),
-      topElev: wallTopElev(grounds, slabLevels),
+      topElev: opts.top != null ? opts.top + slabLevels : wallTopElev(grounds, slabLevels),
       levelPx: ISO_ELEVATION,
       worldPx,
       project: (wx, wy, elev) => this.toScreen(wx, wy, elev),
@@ -6751,6 +6809,7 @@ export class MapView {
       style,
       manned: opts.manned,
       bandColor: opts.bandColor,
+      gate: opts.gate,
     });
   }
 
@@ -6786,16 +6845,16 @@ export class MapView {
     }
     const all: WallSection[] = [];
     const seen = new Set<string>();
-    const add = (x: number, y: number, facing: number) => {
+    const add = (x: number, y: number, facing: number, top?: number) => {
       const k = key(x, y);
       if (seen.has(k)) return;
       seen.add(k);
-      all.push({ x, y, facing, length: span.length, thick: span.thick });
+      all.push({ x, y, facing, length: span.length, thick: span.thick, top });
     };
     add(origin.x, origin.y, origin.facing);
     for (const e of extras) add(e.x, e.y, e.facing);
     for (const e of this.curr.entities) {
-      if (e.type === type && e.hp > 0 && !e.ruined) add(e.x, e.y, e.facing);
+      if (e.type === type && e.hp > 0 && !e.ruined) add(e.x, e.y, e.facing, e.wallTop);
     }
     return connectedRun(all, 0);
   }
@@ -6812,7 +6871,7 @@ export class MapView {
     const key = (x: number, y: number) => `${Math.round(x * 4)},${Math.round(y * 4)}`;
     const all: WallSection[] = [];
     for (const e of this.curr.entities) {
-      if (e.type === type && e.hp > 0 && !e.ruined) all.push({ x: e.x, y: e.y, facing: e.facing, length: span.length, thick: span.thick });
+      if (e.type === type && e.hp > 0 && !e.ruined) all.push({ x: e.x, y: e.y, facing: e.facing, length: span.length, thick: span.thick, top: e.wallTop });
     }
     const done = new Set<number>();
     for (let i = 0; i < all.length; i++) {

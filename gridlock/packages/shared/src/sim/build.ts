@@ -2,6 +2,7 @@ import {
   BUILD_RADIUS,
   catalog,
   isCivilianType,
+  isConcreteLine,
   isDefenceStructure,
   isFieldStructure,
   isYardField,
@@ -21,12 +22,12 @@ import {
 } from "./geo.js";
 import { ejectUnits } from "./deploy.js";
 import { spillGarrison } from "./garrison.js";
-import { fieldPiecesFor, fieldSiteClear, fieldTiles, restampForts, type FieldPiece } from "./field.js";
+import { fieldPiecesFor, fieldSiteClear, fieldTiles, levelConcreteLine, restampForts, type FieldPiece } from "./field.js";
 import { repathIfBlocked } from "./orders.js";
 import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
 import { spawnUnit } from "./train.js";
-import type { MatchState, SimPlayer, StructureJob } from "./types.js";
+import type { Entity, MatchState, SimPlayer, StructureJob } from "./types.js";
 
 type BuildSlot = "structure" | "defence";
 
@@ -151,6 +152,7 @@ function finishYardField(state: MatchState, p: SimPlayer, job: StructureJob): vo
   const type = job.type;
   // Check every piece before raising any: at a corner the first section would otherwise touch the second.
   const clear = sites.map((piece) => fieldSiteClear(state, type, piece.x, piece.y, piece.facing));
+  const raised: Entity[] = [];
   for (let i = 0; i < sites.length; i++) {
     const piece = sites[i]!;
     if (!clear[i]) {
@@ -160,8 +162,10 @@ function finishYardField(state: MatchState, p: SimPlayer, job: StructureJob): vo
     const built = makeEntity(state, type, p.playerId, piece.x, piece.y, { facing: piece.facing });
     built.facing = piece.facing;
     built.turretFacing = piece.facing;
+    raised.push(built);
     placed++;
   }
+  if (isConcreteLine(type)) levelConcreteLine(state, raised);
   if (placed > 0) restampForts(state);
   dropJob(p, job);
 }

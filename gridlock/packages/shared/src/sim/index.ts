@@ -121,8 +121,11 @@ export {
   fieldCornerStart,
   fieldLine,
   fieldPath,
+  fieldSectionsAdjoin,
   fieldSiteClear,
   fieldTurn,
+  gateOpen,
   sandbagCoverBonus,
   wallAxes,
+  wallFlankedBothEnds,
 } from "./field.js";
