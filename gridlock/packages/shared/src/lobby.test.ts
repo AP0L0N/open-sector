@@ -101,19 +101,40 @@ describe("lobby rules", () => {
     if (!res.ok) assert.equal(res.code, "not_host");
   });
 
-  it("keeps unique requested spawns and fills random from remaining sorted ids", () => {
+  it("keeps unique requested spawns and fills random from the remaining ids", () => {
     const r = room();
     joinRoom(r, "p2", "Two");
     joinRoom(r, "p3", "Three");
     updateSelf(r, "host", { spawnId: 8, ready: true });
     updateSelf(r, "p2", { spawnId: 0, ready: true });
     updateSelf(r, "p3", { spawnId: 2, ready: true });
-    const resolved = resolveSpawns(r);
+    const resolved = resolveSpawns(r, () => 0);
     assert.equal(resolved.get("host")?.spawnId, 8);
     assert.equal(resolved.get("p3")?.spawnId, 2);
     assert.equal(resolved.get("p2")?.spawnId, 1);
     const ids = [...resolved.values()].map((v) => v.spawnId);
     assert.equal(new Set(ids).size, 3);
+  });
+
+  it("draws a Random start from every free position, not by lobby order", () => {
+    const r = room();
+    joinRoom(r, "p2", "Two");
+    updateSelf(r, "p2", { spawnId: 3, ready: true });
+    const host = r.slots[0]!;
+    const draw = (rng?: () => number): number => {
+      host.spawnId = 0;
+      return resolveSpawns(r, rng).get("host")!.spawnId;
+    };
+    assert.equal(draw(() => 0), 1);
+    assert.equal(draw(() => 0.999), 8);
+    assert.equal(draw(() => 0.3), 4);
+    const seen = new Set<number>();
+    for (let i = 0; i < 200; i++) {
+      const id = draw();
+      assert.notEqual(id, 3);
+      seen.add(id);
+    }
+    assert.ok(seen.size >= 5, `random spawns seen ${[...seen].join(",")}`);
   });
 
   it("never overlaps random spawns", () => {
@@ -233,43 +254,6 @@ describe("lobby rules", () => {
     updateSelf(r, "host", { ready: true });
     assert.equal(startMatch(r, "host").ok, true);
     assert.equal(r.slots[0]?.team, 0);
-  });
-
-  it("pairs Broad Yard by hill when the team is still free-for-all", () => {
-    const made = createRoom({
-      id: "BROAD",
-      hostId: "host",
-      hostName: "Host",
-      mapId: "broad-143",
-      maxSlots: 8,
-    });
-    assert.equal(made.ok, true);
-    if (!made.ok) return;
-    const r = made.value;
-    for (let i = 2; i <= 8; i++) assert.equal(joinRoom(r, `p${i}`, `P${i}`).ok, true);
-    for (const s of r.slots) {
-      if (s.playerId) assert.equal(updateSelf(r, s.playerId, { ready: true, spawnId: 0 }).ok, true);
-    }
-    assert.equal(startMatch(r, "host").ok, true);
-    const teams = [1, 1, 2, 2, 3, 3, 4, 4];
-    for (let i = 0; i < teams.length; i++) assert.equal(r.slots[i]?.team, teams[i], `slot ${i}`);
-  });
-
-  it("keeps an explicit Broad Yard team", () => {
-    const made = createRoom({
-      id: "BROAD",
-      hostId: "host",
-      hostName: "Host",
-      mapId: "broad-143",
-      maxSlots: 8,
-    });
-    assert.equal(made.ok, true);
-    if (!made.ok) return;
-    const r = made.value;
-    assert.equal(updateSelf(r, "host", { ready: true, team: 4, spawnId: 1 }).ok, true);
-    assert.equal(startMatch(r, "host").ok, true);
-    assert.equal(r.slots[0]?.team, 4);
-    assert.equal(r.slots[0]?.spawnId, 1);
   });
 
   it("lets the host remove an Easy CPU", () => {

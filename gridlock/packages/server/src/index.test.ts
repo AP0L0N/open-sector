@@ -23,7 +23,7 @@ describe("http + ws", () => {
       assert.equal(listRes.status, 200);
       const list = (await listRes.json()) as { id: string }[];
       assert.ok(list.some((m) => m.id === "yard-64"));
-      assert.ok(list.some((m) => m.id === "broad-143"));
+      assert.ok(!list.some((m) => m.id === "broad-143"));
 
       const mapRes = await fetch(`http://127.0.0.1:${started.port}/map/yard-64`);
       assert.equal(mapRes.status, 200);
@@ -64,7 +64,7 @@ describe("http + ws", () => {
             ws.send(JSON.stringify({ type: "hello", name: "Test" }));
             ws.send(JSON.stringify({ type: "room.create", mapId: "yard-64", maxSlots: 4 }));
           }
-          if (messages.length >= 2) {
+          if ((messages.at(-1) as { type: string }).type === "room.state") {
             clearTimeout(timer);
             resolve();
           }
@@ -73,6 +73,7 @@ describe("http + ws", () => {
       ws.close();
       const types = messages.map((m) => (m as { type: string }).type);
       assert.equal(types[0], "welcome");
+      assert.equal(types[1], "maps.custom");
       assert.ok(types.includes("room.state"));
     } finally {
       await started.close();

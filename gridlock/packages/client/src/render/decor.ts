@@ -311,6 +311,10 @@ export function placeDecor(map: MapDef): DecorItem[] {
 
 const cache = new Map<string, DecorLayout>();
 
+export function forgetDecor(id: string): void {
+  cache.delete(id);
+}
+
 /** Cached dress for a map id. Uses the shipped map so cleared trees never move it. */
 export function decorFor(map: MapDef): DecorLayout {
   const hit = cache.get(map.id);

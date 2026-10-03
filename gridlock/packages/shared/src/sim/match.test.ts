@@ -33,7 +33,7 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   assert.equal(joinRoom(room, "B", "Bravo").ok, true);
   updateSelf(room, "A", { ready: true, spawnId: 1 });
   updateSelf(room, "B", { ready: true, spawnId: 4 });
-  const started = startMatch(room, "A");
+  const started = startMatch(room, "A", () => 0);
   if (!started.ok) throw new Error(started.message);
   const state = createMatch(room, started.value);
   return { state, a: "A", b: "B" };
@@ -44,33 +44,6 @@ function ticks(state: MatchState, n: number): void {
 }
 
 describe("createMatch", () => {
-  it("opens a skirmish on Broad Yard", () => {
-    const r = createRoom({
-      id: "BROAD",
-      hostId: "A",
-      hostName: "Alpha",
-      mapId: "broad-143",
-      maxSlots: 8,
-      mode: "skirmish",
-    });
-    if (!r.ok) throw new Error(r.message);
-    const started = startMatch(r.value, "A");
-    if (!started.ok) throw new Error(started.message);
-    const state = createMatch(r.value, started.value);
-    assert.equal(state.mapId, "broad-143");
-    assert.equal(state.width, 572);
-    assert.equal(state.height, 572);
-    assert.equal(r.value.slots[0]?.team, 1);
-    assert.equal(state.players.get("A")?.team, 1);
-    const rig = [...state.entities.values()].find((e) => e.type === "rig");
-    if (!rig) assert.fail("rig");
-    assert.ok(rig.x > 0 && rig.x < state.width * state.tileSize);
-    assert.ok(rig.y > 0 && rig.y < state.height * state.tileSize);
-    const snap = snapshotFor(state, "A");
-    assert.equal(snap.mapId, "broad-143");
-    assert.equal(snap.entities.filter((e) => e.type === "rig").length, 1);
-  });
-
   it("spawns one Rig per player on the spawn tile", () => {
     const { state } = twoPlayerMatch();
     const rigs = [...state.entities.values()].filter((e) => e.type === "rig");
@@ -1076,7 +1049,7 @@ describe("fog of war", () => {
 
 describe("maps scrap", () => {
   it("keeps spawns empty and paints scrap fields", () => {
-    for (const id of ["yard-64", "broad-143"] as const) {
+    for (const id of ["yard-64"] as const) {
       const map = getMap(id)!;
       let scrap = 0;
       for (let i = 0; i < map.tiles.length; i++) {
