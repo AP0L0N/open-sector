@@ -8,6 +8,7 @@ import {
   beltOf,
   catalog,
   heavyAmmoOf,
+  isInfantryType,
   launcherOnlyOf,
   rocketAmmoOf,
   SHELL_TYPES,
@@ -66,4 +67,39 @@ export function ammoBarRatios(
   if (mg > 0 && e.mgAmmo != null) secondary.push(fraction(e.mgAmmo, mg));
 
   return [...primary, ...secondary].slice(0, 2);
+}
+
+/**
+ * Every finite store the unit attacks with is empty: the shell rack (smoke
+ * aside), a belt or drum that never reloads, rocket pods, the coaxial belt.
+ * A soldier whose magazine reloads from nowhere is never out, and neither is
+ * the Rocketer — his one heavy missile rides on a tube that reloads. A supply
+ * truck's cargo and a Jump Jet's fuel are not ammunition. False when the view
+ * carries no ammo (an enemy).
+ */
+export function outOfAmmo(
+  e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "wreck">,
+): boolean {
+  if (e.wreck || e.type === "supply" || e.type === "jumpjet") return false;
+  const def = catalog(e.type);
+  // A soldier with a magazine that reloads by itself can always fight on.
+  if (isInfantryType(e.type) && supplyDrumOf(e.type) <= 0) return false;
+  const left: (number | undefined)[] = [];
+  if (def.ammo) {
+    let full = 0;
+    let have = 0;
+    for (const s of SHELL_TYPES) {
+      if (s === "smoke") continue;
+      full += def.ammo[s] ?? 0;
+      have += Math.max(0, e.ammo?.[s] ?? 0);
+    }
+    if (full > 0) left.push(e.ammo ? have : undefined);
+  }
+  const belt = beltOf(e.type);
+  const drum = belt && belt.reload <= 0 ? belt.clip : supplyDrumOf(e.type);
+  if (drum > 0) left.push(e.clip);
+  if (rocketAmmoOf(e.type) > 0) left.push(e.rockets);
+  if ((def.mgAmmo ?? 0) > 0) left.push(e.mgAmmo);
+  if (left.length === 0 || left.some((n) => n == null)) return false;
+  return left.every((n) => (n ?? 0) <= 0);
 }

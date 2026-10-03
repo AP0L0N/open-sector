@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { JET_FUEL_SECONDS, SUPPLY_CARGO, catalog, rocketAmmoOf } from "@gridlock/shared";
-import { ammoBarRatios } from "./ammo-bars.js";
+import { ammoBarRatios, outOfAmmo } from "./ammo-bars.js";
 
 describe("ammoBarRatios", () => {
   it("shows the shell rack and the coaxial belt on a tank", () => {
@@ -56,5 +56,38 @@ describe("ammoBarRatios", () => {
   it("hides on enemies (no rack in view) and wrecks", () => {
     assert.deepEqual(ammoBarRatios({ type: "warden" }), []);
     assert.deepEqual(ammoBarRatios({ type: "warden", ammo: { ap: 1 }, wreck: true }), []);
+  });
+});
+
+describe("outOfAmmo", () => {
+  it("marks a tank once the shells (smoke aside) and the coaxial belt are both gone", () => {
+    assert.equal(outOfAmmo({ type: "warden", ammo: { smoke: 2 }, mgAmmo: 0 }), true);
+    assert.equal(outOfAmmo({ type: "warden", ammo: { ap: 1 }, mgAmmo: 0 }), false);
+    assert.equal(outOfAmmo({ type: "warden", ammo: {}, mgAmmo: 5 }), false);
+  });
+
+  it("marks a CIWS on an empty belt and a RAM on an empty rack", () => {
+    assert.equal(outOfAmmo({ type: "ciws", clip: 0 }), true);
+    assert.equal(outOfAmmo({ type: "ciws", clip: 10 }), false);
+    assert.equal(outOfAmmo({ type: "ram", rockets: 0 }), true);
+    assert.equal(outOfAmmo({ type: "ram", rockets: 3 }), false);
+  });
+
+  it("marks a Walker or a Cyborg run dry, never a rifleman or a Rocketer", () => {
+    assert.equal(outOfAmmo({ type: "walker", clip: 0 }), true);
+    assert.equal(outOfAmmo({ type: "cyborg", clip: 0 }), true);
+    assert.equal(outOfAmmo({ type: "rifleman", clip: 0 }), false);
+    assert.equal(outOfAmmo({ type: "rocketer", clip: 0 }), false);
+  });
+
+  it("needs every store: a Titan with rockets left is still armed", () => {
+    assert.equal(outOfAmmo({ type: "titan", ammo: {}, rockets: 2, mgAmmo: 0 }), false);
+  });
+
+  it("stays off for enemies, wrecks, a supply truck, and a Jump Jet", () => {
+    assert.equal(outOfAmmo({ type: "warden" }), false);
+    assert.equal(outOfAmmo({ type: "ciws", clip: 0, wreck: true }), false);
+    assert.equal(outOfAmmo({ type: "supply" }), false);
+    assert.equal(outOfAmmo({ type: "jumpjet" }), false);
   });
 });

@@ -189,27 +189,33 @@ describe("CIWS fire", () => {
     assert.ok(t >= 0, "rounds reach the plane");
   });
 
-  it("sprays a plane: most rounds miss, and the stream walks above and below it but never into the ground", () => {
+  it("lays one stream on a plane: a tick's rounds fly together, the stream walks on and off it, never into the ground", () => {
     const state = match();
     const ts = state.tileSize;
     const ciws = seedCiws(state);
     const plane = planeOver(state, "B", ciws.x + 5 * ts, ciws.y - 3 * ts);
     plane.hp = plane.hpMax = 1e6;
     const ends: { kind: string; airZ?: number }[] = [];
+    const tickBearings: number[] = [];
     for (let i = 0; i < 40; i++) {
       step(state, TICK_DT);
-      for (const m of state.impacts) if (m.fromId === ciws.id) ends.push(m);
+      const mine = state.impacts.filter((m) => m.fromId === ciws.id);
+      ends.push(...mine);
+      const bearings = mine.map((m) => Math.atan2(m.vy, m.vx));
+      if (bearings.length < 2) continue;
+      const spreadDeg = ((Math.max(...bearings) - Math.min(...bearings)) * 180) / Math.PI;
+      assert.ok(spreadDeg < 6, `one tick's rounds fan ${spreadDeg}°`);
+      tickBearings.push(bearings.reduce((a, b) => a + b, 0) / bearings.length);
     }
+    const walk = ((Math.max(...tickBearings) - Math.min(...tickBearings)) * 180) / Math.PI;
+    assert.ok(walk > 3, `the stream walks ${walk}°`);
     const fired = CIWS_BELT - ciws.clip;
-    assert.ok(fired > 60, `fired ${fired}`);
+    assert.ok(fired > 30, `fired ${fired}`);
     const hits = ends.filter((m) => m.kind !== "miss").length;
-    assert.ok(hits / fired < 0.25, `hit share ${hits / fired}`);
-    assert.ok(hits > 0, "some rounds still connect");
-    const zs = ends.map((m) => m.airZ);
-    assert.ok(zs.every((z) => z != null && z > 0), "every round ends in the air");
-    const lost = ends.filter((m) => m.kind === "miss").map((m) => m.airZ!);
-    assert.ok(Math.max(...lost) - Math.min(...lost) > AIR_HIT_BAND * 4, "rounds spread in height");
-    assert.ok(CIWS_AIR_Z_SCATTER > AIR_HIT_BAND * 4);
+    assert.ok(hits > 0, "the stream connects");
+    assert.ok(hits < fired, "and walks off again");
+    assert.ok(ends.every((m) => m.airZ != null && m.airZ > 0), "every round ends in the air");
+    assert.ok(CIWS_AIR_Z_SCATTER < AIR_HIT_BAND * 2, "a round strays little off the stream");
   });
 
   it("is a weaker missile screen than a RAM", () => {
