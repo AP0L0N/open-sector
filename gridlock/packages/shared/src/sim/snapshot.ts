@@ -90,7 +90,8 @@ function fieldSitesView(e: Entity, friendly: boolean): EntityView["fieldSites"] 
   if (!friendly && !digging) return undefined;
   const structure = o.structure;
   const queued = e.fieldQueue ?? [];
-  const count = structure === "wall" ? 1 + queued.length : 1;
+  const line = isConcreteLine(structure);
+  const count = line ? 1 + queued.length : 1;
   const progress = digging ? Math.min(1, e.work / (catalog(structure).buildSeconds * count)) : undefined;
   const sites: NonNullable<EntityView["fieldSites"]> = [
     {
@@ -102,9 +103,9 @@ function fieldSitesView(e: Entity, friendly: boolean): EntityView["fieldSites"] 
     },
   ];
   // A concrete line is one job: once he is building, everyone sees every piece.
-  if (friendly || (structure === "wall" && digging)) {
+  if (friendly || (line && digging)) {
     for (const p of queued) {
-      sites.push({ structure, x: p.x, y: p.y, facing: p.facing, progress: structure === "wall" ? progress : undefined });
+      sites.push({ structure, x: p.x, y: p.y, facing: p.facing, progress: line ? progress : undefined });
     }
   }
   return sites;

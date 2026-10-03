@@ -107,6 +107,7 @@ import {
   sandbagSweep,
   sandbagsBlockGun,
   wallSweep,
+  greatWallSweep,
   woundBehindSandbags,
 } from "./field.js";
 import {
@@ -2165,11 +2166,14 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     // A round from overhead drops over the bags and the concrete.
     const overheadShot = !!p.plunging || !!p.fromAbove;
     const bagHit = overheadShot ? null : sandbagSweep(state, x0, y0, p.x, p.y, isTankShell(p));
-    const concrete = overheadShot ? null : wallSweep(state, x0, y0, p.x, p.y);
+    const thinWall = overheadShot ? null : wallSweep(state, x0, y0, p.x, p.y);
+    // Rifle fire flies over the rampart; a tank shell that meets it strikes the stone.
+    const rampart = overheadShot || !isTankShell(p) ? null : greatWallSweep(state, x0, y0, p.x, p.y);
+    const concrete = rampart && (!thinWall || rampart.t < thinWall.t) ? rampart : thinWall;
     const struck = nearestSweepHit(state, x0, y0, p, z0, z1);
     const blocker = concrete && (!bagHit || concrete.t < bagHit.t) ? concrete : bagHit;
     if (blocker && (!struck || blocker.t <= struck.t)) {
-      if (blocker.e.type === "wall") {
+      if (blocker.e.type === "wall" || blocker.e.type === "greatwall") {
         if (isTankShell(p)) takeDamage(blocker.e, Math.max(1, Math.round(p.damage)), state.tick);
         pushImpact(state, p, "hit", blocker.x, blocker.y);
         continue;
@@ -2533,7 +2537,7 @@ function sweepAgainst(
   p: Projectile,
   e: Entity,
 ): { t: number; x: number; y: number } | null {
-  if (e.type === "sandbags" || e.type === "teeth" || e.type === "wall") return null;
+  if (e.type === "sandbags" || e.type === "teeth" || e.type === "wall" || e.type === "greatwall") return null;
   // An empty trench is a hole in the ground. Rounds only find it with a man in it.
   if (e.type === "trench" && livingGarrison(state, e).length === 0) return null;
   const reach = e.radius * (p.plunging ? 1 : stanceHitRadiusMul(e, unitInWater(state, e)));

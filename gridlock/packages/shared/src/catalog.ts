@@ -193,6 +193,12 @@ export const INFANTRY_SIGHT_TILES = t(12);
  * firing range.
  */
 export const HEIGHT_RANGE_BONUS = 2;
+/** Extra gameplay tiles of weapon reach for infantry standing on a Great Wall. About one terrace. */
+export const GREAT_WALL_REACH_TILES = t(2);
+/** Extra fog tiles for infantry on a Great Wall, so the longer reach has eyes behind it. */
+export const GREAT_WALL_SIGHT_TILES = t(3);
+/** Extra hit points for infantry on a Great Wall, as a share of catalog HP. The parapet is cover. */
+export const GREAT_WALL_COVER_BONUS = 0.5;
 /**
  * Flat-ground reach, in gameplay tiles. `t(n)` is n cells on the 64-cell map.
  * Direct fire stops inside the shooter's own eyes, except the tank guns,
@@ -460,15 +466,21 @@ export type EntityType =
   | "chapel"
   | "sandbags"
   | "wall"
+  | "greatwall"
   | "teeth"
   | "trench";
 export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "ram" | "bunker" | "tower" | "research";
 /** Placed by an engineer. Sandbags and walls can also be queued from the Defences tab. */
-export type FieldStructureType = "sandbags" | "wall" | "teeth" | "trench";
-export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "wall", "teeth", "trench"];
+export type FieldStructureType = "sandbags" | "wall" | "greatwall" | "teeth" | "trench";
+export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "wall", "greatwall", "teeth", "trench"];
 /** Field works the construction yard can queue. An engineer can still place these anywhere. */
-export type YardFieldType = "sandbags" | "wall";
-export const YARD_FIELD_TYPES: readonly YardFieldType[] = ["sandbags", "wall"];
+export type YardFieldType = "sandbags" | "wall" | "greatwall";
+export const YARD_FIELD_TYPES: readonly YardFieldType[] = ["sandbags", "wall", "greatwall"];
+/** Concrete lines an engineer lays as one job: every piece appears together when he finishes. */
+export type ConcreteLineType = "wall" | "greatwall";
+export function isConcreteLine(type: string): type is ConcreteLineType {
+  return type === "wall" || type === "greatwall";
+}
 export type CivilianType = "cottage" | "house" | "manor" | "shack" | "barn" | "inn" | "chapel";
 export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "cottage",
@@ -2536,6 +2548,28 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     blurb: "Concrete section with barbed wire. Scroll to turn it, then drag from the start to the end. The whole line is one job — longer for each piece — and it appears when the engineer finishes. Nothing walks through it while it stands. Shells and rockets break it; an engineer can repair it. Units beside it have extra health and take less from ground fire. Mortars, bombs, and shots from the air ignore that.",
   },
+  greatwall: {
+    type: "greatwall",
+    kind: "building",
+    name: "Great Wall",
+    letter: "G",
+    cost: 80,
+    buildSeconds: 10,
+    hp: 600,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: 0,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: `Broad stone rampart with a parapet on both edges. Laid like the concrete wall: scroll to turn it, then drag from the start to the end, and the whole line appears when the engineer finishes. Vehicles cannot cross it, but infantry walk up and along the top. A soldier on the wall has ${Math.round(GREAT_WALL_COVER_BONUS * 100)}% extra health from the parapet, sees farther, and reaches ${GREAT_WALL_REACH_TILES / TILE_SUBDIV} cells farther with his gun. Tank shells that cross it strike the stone; an engineer can repair it.`,
+  },
   teeth: {
     type: "teeth",
     kind: "building",
@@ -3496,6 +3530,7 @@ export function isYardField(type: string): type is YardFieldType {
 export function fieldSpan(type: EntityType): { length: number; thick: number } | null {
   if (type === "sandbags") return { length: 24, thick: 7 };
   if (type === "wall") return { length: 24, thick: 8 };
+  if (type === "greatwall") return { length: 40, thick: 32 };
   if (type === "teeth") return { length: 14, thick: 14 };
   if (type === "trench") return { length: 16, thick: 10 };
   return null;
