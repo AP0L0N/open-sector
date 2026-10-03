@@ -235,6 +235,21 @@ describe("easy CPU", () => {
     assert.equal(state.players.get(aiId)!.structure?.type, "airfield");
   });
 
+  it("builds the Radar Station after the Airfield, once power covers it", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "airfield"]);
+    const hq = coreOf(state, aiId);
+    makeEntity(state, "dynamo", aiId, hq.x - 96, hq.y + 128, { tileX: hq.tileX - 12, tileY: hq.tileY + 16 });
+    makeEntity(state, "dynamo", aiId, hq.x - 96, hq.y + 192, { tileX: hq.tileX - 12, tileY: hq.tileY + 24 });
+    troopers(state, aiId, 4);
+    const cpu = state.players.get(aiId)!;
+    cpu.structure = null;
+    cpu.scrap = 5000;
+    tickAi(state);
+    assert.equal(state.players.get(aiId)!.structure?.type, "radar");
+  });
+
   it("builds a Dynamo before a CIWS that would overdraw power", () => {
     const { state, aiId } = humanVsEasy();
     waitCore(state, aiId);
@@ -265,8 +280,8 @@ describe("easy CPU", () => {
     state.blocked.set(blocked);
     cpu.scrap = 5000;
     tickAi(state);
-    assert.equal(state.players.get(aiId)!.defence?.type, "ciws");
-    assert.equal(state.players.get(aiId)!.structure, null);
+    // The Airfield waits for room; the base lane moves on to the Radar Station.
+    assert.equal(state.players.get(aiId)!.structure?.type, "radar");
   });
 
   it("keeps the Armory busy with unlocked hulls before Research stands", () => {

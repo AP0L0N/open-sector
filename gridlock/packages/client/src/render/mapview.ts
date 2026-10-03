@@ -199,6 +199,7 @@ import {
   type UnitSpriteDef,
 } from "./sprites.js";
 import { drawBuildingAnim } from "./building-fx.js";
+import { drawRadarContact, drawRadarOffline, radarContactLit } from "./radar-panel.js";
 import {
   drawTrackKick,
   spawnTrackKickPuffs,
@@ -407,6 +408,7 @@ const EXTRUDE: Record<EntityType, number> = {
   airfield: 14,
   ciws: 26,
   research: 40,
+  radar: 44,
   bunker: 18,
   tower: 66,
   ram: 26,
@@ -1758,6 +1760,8 @@ export class MapView {
     window.addEventListener("mousemove", this.onMove);
     this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     this.mini.addEventListener("mousedown", (e) => {
+      // A dark panel is not a map: nothing to click until a Radar Station stands.
+      if (!this.curr.you.radar) return;
       const map = this.map();
       const rect = this.mini.getBoundingClientRect();
       const mx = e.clientX - rect.left;
@@ -6906,6 +6910,11 @@ export class MapView {
     const h = this.mini.clientHeight;
     ctx.fillStyle = "#0a0806";
     ctx.fillRect(0, 0, w, h);
+    this.mini.classList.toggle("radar-off", !this.curr.you.radar);
+    if (!this.curr.you.radar) {
+      drawRadarOffline(ctx, w, h, performance.now());
+      return;
+    }
     const scale = Math.min(w / map.width, h / map.height);
     const dw = map.width * scale;
     const dh = map.height * scale;
@@ -6942,6 +6951,12 @@ export class MapView {
       const ty = e.kind === "building" ? e.tileY + e.tileH / 2 : e.y / ts;
       const sz = e.kind === "building" ? 4 : 3;
       ctx.fillRect(tx * scale - sz / 2, ty * scale - sz / 2, sz, sz);
+    }
+    // Aircraft the dish hears and nobody sees: a blinking contact, no sprite on the field.
+    const now = performance.now();
+    for (const c of this.curr.radar ?? []) {
+      if (!radarContactLit(now, c.id)) continue;
+      drawRadarContact(ctx, (c.x / ts) * scale, (c.y / ts) * scale);
     }
   }
 }
