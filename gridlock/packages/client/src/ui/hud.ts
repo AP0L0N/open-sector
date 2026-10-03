@@ -1680,7 +1680,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       act: "forceattack",
       label: "Force attack here",
       title:
-        "Fire at a point or any unit, including friendlies (hold Ctrl and click). Soldiers inside a selected garrison shoot too, when they can reach. Smoke fires once.",
+        "Fire at a point or any unit, including friendlies (hold Ctrl and click). Every selected gun in range fires at that point, even if it cannot see it. Soldiers inside a selected garrison shoot too, when they can reach. Smoke fires once.",
       on: !!view?.forceAttackMode,
     });
   }

@@ -21,7 +21,7 @@ import { applyCommand } from "./commands.js";
 import { RICOCHET_SPARK_SPEED } from "./ballistics.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
 import { enterGarrison } from "./garrison.js";
-import { entityHeight, rangeTilesOf, weaponRangeWorld } from "./elevation.js";
+import { canAimWeapon, entityHeight, rangeTilesOf, weaponRangeWorld } from "./elevation.js";
 import { buildingBounds, buildingCenter, destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { inSmokeCloud } from "./smoke.js";
 import { createMatch, step } from "./match.js";
@@ -502,6 +502,54 @@ describe("force attack", () => {
     assert.equal(gun.order?.targetId, pal.id);
     for (let i = 0; i < 20; i++) step(state, TICK_DT);
     assert.ok(pal.hp < hp0, `friendly hp ${pal.hp} vs ${hp0}`);
+  });
+
+  it("fires every selected gun in range at the point, even out of sight and up a lip", () => {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    clearCivilians(state);
+    const ts = state.tileSize;
+    const gap = HEIGHT_BASE;
+    const y = 40;
+    const x0 = 24;
+    const aimX = tileCenter(x0 + gap, ts);
+    const aimY = tileCenter(y, ts);
+    state.heights[y * state.width + (x0 + gap)] = HEIGHT_BASE;
+    for (let x = x0 + 2; x <= x0 + gap - 1; x++) {
+      for (let gy = y - 2; gy <= y + 6; gy++) state.terrain[gy * state.width + x] = TILE_TREE;
+    }
+    const rifle = makeEntity(state, "rifleman", "A", tileCenter(x0, ts), tileCenter(y, ts));
+    rifle.facing = 0;
+    const tank = makeEntity(state, "warden", "A", tileCenter(x0, ts), tileCenter(y + 4, ts));
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    const far = makeEntity(state, "rifleman", "A", tileCenter(x0, ts), tileCenter(y + 50, ts));
+    far.facing = 0;
+    far.holdPosition = true;
+    const hidden = makeEntity(state, "rifleman", "B", aimX, aimY);
+    hidden.holdPosition = true;
+    hidden.cooldown = 99;
+    assert.equal(canSeeEntity(state, "A", hidden), false, "the grove hides the point");
+    assert.equal(canAimWeapon(state, tank, aimX, aimY), false, "the lip is too steep to lay");
+    assert.ok(Math.hypot(aimX - rifle.x, aimY - rifle.y) <= weaponRangeWorld(state, rifle));
+    assert.ok(Math.hypot(aimX - tank.x, aimY - tank.y) <= weaponRangeWorld(state, tank));
+    assert.ok(Math.hypot(aimX - far.x, aimY - far.y) > weaponRangeWorld(state, far));
+    const ap0 = tank.ammo.ap ?? 0;
+    const clip0 = rifle.clip;
+    const farClip = far.clip;
+    assert.equal(
+      applyCommand(state, "A", {
+        type: "cmd.forceattack",
+        ids: [rifle.id, tank.id, far.id],
+        x: aimX,
+        y: aimY,
+      }).ok,
+      true,
+    );
+    for (let i = 0; i < 8; i++) step(state, TICK_DT);
+    assert.ok(rifle.clip < clip0, "the rifle fires without a view of the point");
+    assert.equal(tank.ammo.ap, ap0 - 1, "the tank fires up a lip it cannot lay on");
+    assert.equal(far.clip, farClip, "a gun outside its range does not fire");
   });
 });
 

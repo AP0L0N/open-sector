@@ -104,6 +104,27 @@ export function beamBlobs(
  */
 export const LAMP_BULB_SCALE = 0.7;
 
+/**
+ * A small pool just behind a missile, opposite its travel. Short and dim:
+ * a hint of the motor on the ground, not a lamp.
+ */
+export function missileSpot(
+  x: number,
+  y: number,
+  vx: number,
+  vy: number,
+  tile: number,
+): { x: number; y: number; r: number; a: number } {
+  const sp = Math.hypot(vx, vy) || 1;
+  const back = tile * 0.7;
+  return {
+    x: x - (vx / sp) * back,
+    y: y - (vy / sp) * back,
+    r: tile * 1.15,
+    a: 0.22,
+  };
+}
+
 /** Slow work lights around a structure: how many, by footprint. */
 export function workLightCount(tileW: number, tileH: number, subdiv: number): number {
   return Math.max(tileW, tileH) >= 3 * subdiv ? 3 : 2;

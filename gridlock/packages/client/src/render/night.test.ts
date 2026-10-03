@@ -9,6 +9,7 @@ import {
   beamPolygon,
   easeSpot,
   lampGlow,
+  missileSpot,
   nightFog,
   nightShade,
   workLightBearings,
@@ -60,6 +61,16 @@ describe("night render", () => {
     assert.ok(peak > 0 && peak < blobs.length / 2, "brightest early, then losing power");
     for (let i = peak + 1; i < blobs.length; i++) assert.ok(blobs[i]!.a <= blobs[i - 1]!.a, "fades steadily");
     for (const b of blobs) assert.ok(b.r >= b.d * Math.tan(Math.PI / 12), "pools spill past the cone edge");
+  });
+
+  it("puts a small dim pool just behind a missile", () => {
+    const spot = missileSpot(100, 40, 80, 0, 8);
+    assert.ok(spot.x < 100, "sits back along the travel");
+    assert.equal(spot.y, 40);
+    assert.ok(spot.r < 8 * 2, "shorter than a lamp");
+    assert.ok(spot.a > 0 && spot.a < 0.4, "only a hint");
+    const up = missileSpot(0, 0, 0, 10, 8);
+    assert.ok(up.y < 0, "behind a northbound missile");
   });
 
   it("drifts work lights very slowly, each on its own arc", () => {
