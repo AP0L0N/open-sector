@@ -97,7 +97,11 @@ export {
 export { canScout, setScoutOut, hideScout, woundScout } from "./scout.js";
 export {
   DAY_CYCLE_SECONDS,
+  CLOCK_OPEN_HOUR,
   daylightAt,
+  matchClock,
+  phaseStartText,
+  clockMarkLine,
   nightReachMul,
   nightTiles,
   spotlightsOn,
@@ -107,4 +111,5 @@ export {
   spotlightManned,
   spotFacingOf,
 } from "./night.js";
+export type { DayPhase, MatchClock } from "./night.js";
 export { fieldLine, fieldLineMax, fieldSiteClear, sandbagCoverBonus, wallAxes } from "./field.js";

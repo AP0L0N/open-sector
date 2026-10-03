@@ -653,7 +653,7 @@ export interface CatalogEntry {
   /** Flies. Parks on an Airfield pad, ignores ground collision and paths. */
   aircraft?: boolean;
   /**
-   * Radar-laid mount (the CIWS, the RAM). Fires on its own at units only, planes first,
+   * Radar-laid mount (the CIWS, the RAM). Fires on its own at units only, planes and paratroopers first,
    * lays on a plane with CIWS_AIR_SPREAD instead of AIR_TARGET_SPREAD, cranks
    * the gun to any height, and shoots rockets out of the air.
    */
@@ -1382,7 +1382,7 @@ export const AIR_TAXI_SPEED = 0.25;
 /** Turn-rate multiple for a plane pivoting on the ground. */
 export const AIR_GROUND_TURN_MUL = 1.5;
 /** Cruise height. Above every tree, house, and hill lip. */
-export const AIR_CRUISE_ALT = 16;
+export const AIR_CRUISE_ALT = 24;
 /** Height the dive pulls out at and lets the bomb go. */
 export const AIR_RELEASE_ALT = 5;
 /** Height a strafing pass (belts only, no bomb) settles at. */
@@ -1546,7 +1546,7 @@ export const BV222_TROOPS = 10;
 export const AIR_DROP_INFO: Record<AirDrop, { name: string; blurb: string }> = {
   mines: { name: "Mines", blurb: "A canister of mines. It bursts over the point and scatters them; they wait for any feet or tracks, friend or foe. You and your allies see each one. The enemy does not — it only goes off when something runs over it. A supply truck can disable one of yours for scrap." },
   crate: { name: "Crate", blurb: "A supply crate on a parachute. Your units standing at it take ammo and patch up." },
-  troops: { name: "Paratroops", blurb: "Infantry board on the hardstand from any load (right-click the plane); that selects paratroops, and no other load can be chosen while anyone is aboard. Other ground units board once paratroops is selected. They jump over the point and hang under canopies until they land." },
+  troops: { name: "Paratroops", blurb: "Infantry board on the hardstand from any load (right-click the plane); that selects paratroops, and no other load can be chosen while anyone is aboard. Other ground units board once paratroops is selected. They jump over the point and hang under canopies until they land. Rifles, machine guns, and anti-aircraft guns can reach them in the air. If the plane is destroyed, everyone still aboard bails out first." },
 };
 /** Height of the drop run: low and level, so a crate lands where it was meant to and the jumpers are not long in the air. */
 export const BV222_DROP_ALT = 9;
@@ -1696,7 +1696,7 @@ export const LAMP_HEADING_STEP_DEG = 3;
 /**
  * CIWS. A stationary radar-laid 20mm gatling on a small concrete pad. It needs
  * no crew and no orders: it swings onto the nearest enemy unit it can hurt,
- * planes first, and fires 1,800 rounds a minute. Most of them miss: on a
+ * planes and paratroopers first, and fires 1,800 rounds a minute. Most of them miss: on a
  * plane the stream sprays wide and high, and only a long pass tends to bring
  * one down. Tank plate shrugs the rounds off, so it leaves tanks alone. A Titan
  * rocket that flies into its reach draws a short burst that seldom bursts it. The belt does not refill by itself —
@@ -1852,7 +1852,7 @@ export const APOCALYPSE_TWIN_WINDOW = 12 * TICK_DT;
 /**
  * RAM. A radar-laid launcher of short rockets on the same pad as the CIWS. Like
  * the CIWS it needs no orders: it swings onto the nearest enemy unit it can
- * hurt, planes first, and leaves tanks and buildings alone. It fires a barrage
+ * hurt, planes and paratroopers first, and leaves tanks and buildings alone. It fires a barrage
  * like the Nebelwerfer's — one or two rockets at a time, a salvo of eight —
  * but short and tight: the rockets fly straight and fast and scatter a
  * fraction as wide. Aimed at a plane they burst at its height. An incoming
@@ -1917,7 +1917,7 @@ export const DRONE_RECHARGE_PER_SEC = DRONE_BATTERY_SECONDS / 20;
 export const DRONE_LAUNCH_MIN_SECONDS = 15;
 /** Seconds to put a new drone together after one is lost. */
 export const DRONE_REBUILD_SECONDS = 75;
-/** Surveillance height. Above the Stuka's cruise, out of rifle reach. */
+/** Surveillance height. Above DRONE_HIGH_ALT, so only anti-air guns reach it. */
 export const DRONE_SURVEIL_ALT = 22;
 /** Search & Destroy height. Low enough for rifles and rocket bursts. */
 export const DRONE_STRIKE_ALT = 5;
@@ -2468,7 +2468,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shotsPerTick: CIWS_SHOTS_PER_TICK,
     belt: CIWS_BELT,
     radarLaid: true,
-    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, and reaches farther for a plane than for anything on the ground. Against a plane it lays one stream of rounds, a tracer in every few, that walks on and off the airframe: often enough to bring one down on a pass. About a second and a half on the trigger overheats the barrels, and it falls silent while they cool. Max range reaches half as far again, but out there the fire scatters wide. It tries to burst incoming rockets, and rarely does — a RAM is the missile screen. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, and reaches farther for a plane than for anything on the ground. Against a plane it lays one stream of rounds, a tracer in every few, that walks on and off the airframe: often enough to bring one down on a pass. About a second and a half on the trigger overheats the barrels, and it falls silent while they cool. Max range reaches half as far again, but out there the fire scatters wide. It tries to burst incoming rockets, and rarely does — a RAM is the missile screen. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
   },
   bunker: {
     type: "bunker",
@@ -2566,7 +2566,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: RAM_ROCKET_AMMO,
     rocketRack: RAM_ROCKET,
-    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, in barrages of ${RAM_SALVO} short, accurate rockets, and sends an interceptor at incoming rockets that bursts most of them in the air. Shorter reach than a Nebelwerfer, longer than a CIWS. Max range reaches half as far again, but out there the rockets scatter wide. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, in barrages of ${RAM_SALVO} short, accurate rockets, and sends an interceptor at incoming rockets that bursts most of them in the air. Shorter reach than a Nebelwerfer, longer than a CIWS. Max range reaches half as far again, but out there the rockets scatter wide. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
   },
   sandbags: {
     type: "sandbags",
@@ -3234,7 +3234,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonFullArms: true,
     garrisonTypes: BUNKER_TYPES,
     garrisonDiesWithHost: true,
-    blurb: `Armored battle platform on four legs. Very slow, very thick plate on every face, and in water it is thirty percent slower, sunk to the waist so only the body shows. Its own weapon is a twin machine gun under the cab that swings only a little either side of the nose, and falls silent in water. It carries ${MAMMOTH_GARRISON_CAP} of the infantry a Bunker takes, and every one of them fires out of the slits along its flanks, even while it wades. Force attack on the hull aims every soldier inside who can reach that point; they stay aboard. Nothing reaches them while the hull holds — but if it is destroyed, everyone inside dies with it.`,
+    blurb: `Armored battle platform on four legs. Very slow, very thick plate on every face, and in water it is thirty percent slower, sunk to the waist so only the body shows. Its own weapon is a twin machine gun under the cab that swings only a little either side of the nose, and falls silent in water. It carries ${MAMMOTH_GARRISON_CAP} of the infantry a Bunker takes, and every one of them fires out of the slits along its flanks, even while it wades. Force attack on the hull aims every soldier inside who can reach that point; they stay aboard. Nothing reaches them while the hull holds — but if it is destroyed, everyone inside dies with it. Nothing throws a track. A hit in the rear can still wreck the engine and stop it.`,
   },
   nebelwerfer: {
     type: "nebelwerfer",
@@ -3358,7 +3358,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: STUKA_MG.spreadDeg,
     aircraft: true,
     wreckHp: 46,
-    blurb: "Dive bomber. One SC 250 per sortie, two wing MGs for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands at its Airfield to refuel and rearm. On guard it comes back to the same area once the bomb, the belts, and the tank are full. Shot down, it falls trailing smoke and crashes as a wreck.",
+    blurb: "Dive bomber. One SC 250 per sortie, two wing MGs for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands at its Airfield to refuel and rearm. On guard it comes back to the same area once the bomb, the belts, and the tank are full. It has no tracks to lose. A hit that wrecks the engine brings it down at once: it falls trailing smoke and crashes as a wreck.",
   },
   /** Fw 190 fighter. Lives on an Airfield pad. */
   fw190: {
@@ -3386,7 +3386,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: FW190_CANNON.spreadDeg,
     aircraft: true,
     wreckHp: 40,
-    blurb: `Fighter. Two 30 mm cannon, one under each wing, and no bomb. ${FW190_BARRAGES} barrages a sortie: on each pass it lines up on the target and lays two straight lines of rounds through it, one from each wing, then comes round for the next. Fired from above, the rounds come down through a tank's thin roof, so even the heaviest hull bleeds. It chases enemy planes out of the sky the same way. Flies faster and turns tighter than the Stuka. Lands at its Airfield to refuel and rearm. On guard it comes back to the same area once all ${FW190_BARRAGES} barrages and the tank are full. Shot down, it falls trailing smoke and crashes as a wreck.`,
+    blurb: `Fighter. Two 30 mm cannon, one under each wing, and no bomb. ${FW190_BARRAGES} barrages a sortie: on each pass it lines up on the target and lays two straight lines of rounds through it, one from each wing, then comes round for the next. Fired from above, the rounds come down through a tank's thin roof, so even the heaviest hull bleeds. It chases enemy planes out of the sky the same way. Flies faster and turns tighter than the Stuka. Lands at its Airfield to refuel and rearm. On guard it comes back to the same area once all ${FW190_BARRAGES} barrages and the tank are full. It has no tracks to lose. A hit that wrecks the engine brings it down at once: it falls trailing smoke and crashes as a wreck.`,
   },
   /** BV 222 transport flying boat. Lives on an Airfield pad. */
   bv222: {
@@ -3411,7 +3411,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     aircraft: true,
     wreckHp: 80,
-    blurb: `Six-engined transport flying boat. No guns. Its bay takes one load, chosen on the pad: a canister of ${CLUSTER_MINES} mines that scatter over the ground and wait for anyone, friend or foe (the enemy never sees them), a supply crate on a parachute that refills ammo and patches up whoever stands at it, or up to ${BV222_TROOPS} ground units. Infantry board on the hardstand from any load; that selects paratroops, and the bay stays on paratroops while anyone is aboard. They jump over the point and hang under canopies — where rifles and machine guns can reach them — until they touch down. Hold Ctrl and click, or Force attack, to drop whatever is loaded. Slow and big. Shot down, it falls trailing smoke and crashes as a wreck, and everyone still aboard goes with it. Lands at its Airfield to refuel and reload.`,
+    blurb: `Six-engined transport flying boat. No guns. Its bay takes one load, chosen on the pad: a canister of ${CLUSTER_MINES} mines that scatter over the ground and wait for anyone, friend or foe (the enemy never sees them), a supply crate on a parachute that refills ammo and patches up whoever stands at it, or up to ${BV222_TROOPS} ground units. Infantry board on the hardstand from any load; that selects paratroops, and the bay stays on paratroops while anyone is aboard. They jump over the point and hang under canopies — where rifles, machine guns, and anti-aircraft guns can reach them — until they touch down. Hold Ctrl and click, or Force attack, to drop whatever is loaded. Slow and big. It has no tracks to lose. Shot down in the air, or with its engine wrecked there, everyone still aboard bails out under canopies and then it falls trailing smoke and crashes as a wreck. On the pad the same hit puts them on the grass and the plane is gone. Lands at its Airfield to refuel and reload.`,
   },
   droneop: {
     type: "droneop",
@@ -3630,6 +3630,14 @@ export function isArmoredType(type: EntityType): boolean {
 /** Tiger and StuG. The Walker has legs, and the Mauler is not a tracked hull. */
 export function hasTracks(type: EntityType): boolean {
   return catalog(type).tracked === true;
+}
+
+/**
+ * A side hit, blast, or mine can throw tracks. The Mammoth and aircraft have
+ * none to lose. A rear hit can still wreck their engines.
+ */
+export function trackCritAllowed(type: EntityType): boolean {
+  return type !== "mammoth" && !isAircraftType(type);
 }
 
 export function armorLabel(type: EntityType): string | null {

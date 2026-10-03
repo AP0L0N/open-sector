@@ -21,6 +21,7 @@ import {
   isCyborg,
   isInfantryType,
   isMotorVehicle,
+  trackCritAllowed,
   pickLoadedShell,
   secondsToTicks,
   stanceOf,
@@ -162,7 +163,8 @@ export function rollCrits(
     return;
   }
   if (!isMotorVehicle(e.type)) return;
-  if (face === "side" && rand() < trackChance) addCrit(e, "tracks");
+  // The Mammoth and aircraft have no tracks to throw. A rear hit can still kill the engine.
+  if (face === "side" && trackCritAllowed(e.type) && rand() < trackChance) addCrit(e, "tracks");
   // A towed gun has wheels to break but no engine.
   if (face === "rear" && e.type !== "artillery" && rand() < CRIT_ENGINE_CHANCE) addCrit(e, "engine");
 }

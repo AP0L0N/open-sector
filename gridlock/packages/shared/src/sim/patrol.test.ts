@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { TICK_DT, isCivilianType } from "../catalog.js";
+import { NEUTRAL_OWNER, TICK_DT, catalog, isCivilianType } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE, TILE_WATER } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
@@ -188,4 +188,125 @@ describe("patrol", () => {
     assert.ok(mine?.patrol && mine.patrol.length >= 2);
     assert.equal(theirs?.patrol, undefined);
   });
+
+  it("turns a watch tower's spotlight along the points and leaves the tower where it stands", () => {
+    const { state, a, b } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const mid = Math.floor(state.width / 2);
+    const tower = towerAt(state, a, mid - 16, mid - 16);
+    tower.spotFacing = 0;
+    const x0 = tower.x;
+    const y0 = tower.y;
+    const north = { x: tower.x, y: tower.y + ts * 20 };
+    const west = { x: tower.x - ts * 20, y: tower.y };
+    const neutral = towerAt(state, NEUTRAL_OWNER, mid + 16, mid - 16);
+    assert.equal(applyCommand(state, b, { type: "cmd.patrol", ids: [tower.id], points: [north, west] }).ok, false);
+    assert.equal(applyCommand(state, a, { type: "cmd.patrol", ids: [neutral.id], points: [north] }).ok, false);
+    assert.equal(applyCommand(state, a, { type: "cmd.patrol", ids: [tower.id], points: [north, west] }).ok, true);
+    assert.equal(tower.order?.kind, "patrol");
+    assert.equal(tower.waypoints.length, 0);
+    assert.equal(tower.x, x0);
+    assert.equal(tower.y, y0);
+    const mine = snapshotFor(state, a).entities.find((e) => e.id === tower.id);
+    const theirs = snapshotFor(state, b).entities.find((e) => e.id === tower.id);
+    assert.ok(mine?.patrol && mine.patrol.length >= 3);
+    assert.equal(theirs?.patrol, undefined);
+
+    step(state, TICK_DT);
+    assert.equal(tower.x, x0);
+    assert.equal(tower.y, y0);
+    assert.ok(tower.spotFacing! > 0 && tower.spotFacing! < Math.PI / 2, "swings toward the first point");
+
+    let bestNorth = Infinity;
+    let swungWest = false;
+    for (let i = 0; i < 40; i++) {
+      step(state, TICK_DT);
+      const facing = tower.spotFacing!;
+      bestNorth = Math.min(bestNorth, angDiff(facing, Math.PI / 2));
+      if (facing > Math.PI / 2 + 0.25 && facing < Math.PI) swungWest = true;
+    }
+    assert.ok(bestNorth < 0.12, `came within ${bestNorth} of the first point`);
+    assert.equal(swungWest, true, "turns on toward the next point");
+    assert.equal(tower.order?.kind, "patrol");
+    assert.equal(tower.x, x0);
+    assert.equal(tower.y, y0);
+    assert.equal(tower.attackTarget, null);
+  });
+
+  it("stops a tower patrol where the beam is, and rotate replaces the sweep", () => {
+    const { state, a } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const mid = Math.floor(state.width / 2);
+    const tower = towerAt(state, a, mid - 16, mid - 16);
+    tower.spotFacing = 0;
+    const north = { x: tower.x, y: tower.y + ts * 20 };
+    assert.equal(applyCommand(state, a, { type: "cmd.patrol", ids: [tower.id], points: [north] }).ok, true);
+    for (let i = 0; i < 5; i++) step(state, TICK_DT);
+    const held = tower.spotFacing!;
+    assert.ok(held > 0);
+    assert.equal(applyCommand(state, a, { type: "cmd.stop", ids: [tower.id] }).ok, true);
+    const stoppedOrder = tower.order;
+    const stoppedAim = tower.spotAim;
+    assert.equal(stoppedOrder, null);
+    assert.equal(stoppedAim, undefined);
+    for (let i = 0; i < 10; i++) step(state, TICK_DT);
+    assert.equal(tower.spotFacing, held);
+
+    assert.equal(applyCommand(state, a, { type: "cmd.patrol", ids: [tower.id], points: [north] }).ok, true);
+    assert.equal(
+      applyCommand(state, a, { type: "cmd.rotate", ids: [tower.id], x: tower.x, y: tower.y - 500 }).ok,
+      true,
+    );
+    const turnedOrder = tower.order;
+    const turnedAim = tower.spotAim;
+    assert.equal(turnedOrder, null);
+    assert.ok(turnedAim != null && turnedAim < 0);
+    for (let i = 0; i < 40; i++) step(state, TICK_DT);
+    assert.ok(angDiff(tower.spotFacing!, -Math.PI / 2) < 0.05, "settles on the rotate heading");
+    for (let i = 0; i < 10; i++) step(state, TICK_DT);
+    assert.equal(tower.order, null);
+    assert.ok(angDiff(tower.spotFacing!, -Math.PI / 2) < 0.05, "does not resume the patrol");
+  });
+
+  it("walks a rifle on a shared patrol while the tower only turns", () => {
+    const { state, a } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const mid = Math.floor(state.width / 2);
+    const tower = towerAt(state, a, mid - 16, mid - 16);
+    tower.spotFacing = 0;
+    const rifle = makeEntity(state, "rifleman", a, tower.x + ts * 8, tower.y);
+    const spot = { x: tower.x, y: tower.y + ts * 30 };
+    const x0 = tower.x;
+    const y0 = tower.y;
+    assert.equal(applyCommand(state, a, { type: "cmd.patrol", ids: [tower.id, rifle.id], points: [spot] }).ok, true);
+    assert.equal(tower.order?.kind, "patrol");
+    assert.equal(rifle.order?.kind, "patrol");
+    assert.equal(tower.order?.group, rifle.order?.group);
+    const rifleY = rifle.y;
+    for (let i = 0; i < 40; i++) step(state, TICK_DT);
+    assert.equal(tower.x, x0);
+    assert.equal(tower.y, y0);
+    assert.ok(rifle.y > rifleY + ts, "the rifle walks the route");
+    assert.equal(tower.order?.kind, "patrol");
+    assert.ok(tower.spotFacing! > 0.2, "the lamp leaves its rest heading");
+  });
 });
+
+function towerAt(state: MatchState, owner: string, tx: number, ty: number) {
+  const def = catalog("tower");
+  const ts = state.tileSize;
+  return makeEntity(state, "tower", owner, (tx + def.tileW / 2) * ts, (ty + def.tileH / 2) * ts, {
+    tileX: tx,
+    tileY: ty,
+  });
+}
+
+function angDiff(a: number, b: number): number {
+  let d = a - b;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return Math.abs(d);
+}

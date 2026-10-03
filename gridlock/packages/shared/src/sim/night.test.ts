@@ -21,11 +21,15 @@ import { sightTilesForEntity, weaponRangeWorld } from "./elevation.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch } from "./match.js";
 import {
+  CLOCK_OPEN_HOUR,
   DAY_CYCLE_SECONDS,
+  clockMarkLine,
   daylightAt,
   hasHeadlight,
+  matchClock,
   nightReachMul,
   nightTiles,
+  phaseStartText,
   spotlightsOn,
   tickSpotlights,
 } from "./night.js";
@@ -85,6 +89,41 @@ describe("day and night", () => {
     assert.equal(nightReachMul(NIGHT_TICK), NIGHT_REACH_MUL);
     assert.equal(spotlightsOn(0), false);
     assert.equal(spotlightsOn(NIGHT_TICK), true);
+  });
+
+  it("reads a 24-hour clock that opens at morning and names the night", () => {
+    const open = matchClock(0);
+    assert.equal(open.phase, "day");
+    assert.equal(open.hour, CLOCK_OPEN_HOUR);
+    assert.equal(open.minute, 0);
+    assert.equal(open.text, "06:00");
+    assert.equal(phaseStartText("day"), "06:00");
+    assert.equal(phaseStartText("dusk"), "19:23");
+    assert.equal(phaseStartText("night"), "20:30");
+    assert.equal(phaseStartText("dawn"), "04:53");
+    assert.equal(clockMarkLine("day"), "night at 20:30");
+    assert.equal(clockMarkLine("dusk"), "night at 20:30");
+    assert.equal(clockMarkLine("night"), "dawn at 04:53");
+    assert.equal(clockMarkLine("dawn"), "day at 06:00");
+
+    const dusk = matchClock(DUSK_MID_TICK);
+    assert.equal(dusk.phase, "dusk");
+    assert.ok(dusk.hour >= 19 && dusk.hour <= 20, `dusk face ${dusk.text}`);
+
+    const night = matchClock(NIGHT_TICK);
+    assert.equal(night.phase, "night");
+    assert.equal(night.text, "00:41");
+    assert.equal(daylightAt(NIGHT_TICK), 0);
+
+    const dawnTick = Math.round((DAY_SECONDS + DUSK_SECONDS + NIGHT_SECONDS + DUSK_SECONDS / 2) / TICK_DT);
+    const dawn = matchClock(dawnTick);
+    assert.equal(dawn.phase, "dawn");
+    assert.equal(dawn.text, "05:26");
+
+    const nextMorning = matchClock(Math.round(DAY_CYCLE_SECONDS / TICK_DT) + 5);
+    assert.equal(nextMorning.phase, "day");
+    assert.equal(nextMorning.hour, CLOCK_OPEN_HOUR);
+    assert.ok(nextMorning.minute < 3, nextMorning.text);
   });
 
   it("halves weapon reach in full dark", () => {

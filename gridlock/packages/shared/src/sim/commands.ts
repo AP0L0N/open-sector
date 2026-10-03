@@ -53,7 +53,7 @@ import { buildPatrolRoute, cleanPatrolPoints } from "./patrol.js";
 import { orderBoardPlane, setPayload, unloadPlane } from "./airdrop.js";
 import { droneOf, guardDrone, launchDrone, orderDrone, recallDrone, setDroneMode, stopDrone } from "./drone.js";
 import { landJet, takeOff } from "./jet.js";
-import { spotFacingOf, spotlightManned } from "./night.js";
+import { aimSpotlightPatrol, hasSpotlight, spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, MatchState, QueueableCommand, Vec } from "./types.js";
 
 export type CmdResult = { ok: true } | { ok: false; code: ErrorCode; message: string };
@@ -690,13 +690,14 @@ function cmdPatrol(
   const points = cleanPatrolPoints(state, raw);
   if (!points) return fail("bad_payload", "Place a patrol point.");
   const ownedUnits = owned(state, playerId, ids);
-  if (ownedUnits.length === 0) return fail("not_yours", "No owned units.");
+  const lamps = ownedLamps(state, playerId, ids);
+  if (ownedUnits.length === 0 && lamps.length === 0) return fail("not_yours", "No owned units.");
   const drones = ownedUnits.filter((e) => e.drone);
   const planes = ownedUnits.filter((e) => e.air && !e.drone);
   const ground = ownedUnits.filter(
     (e) => !e.air && !e.drone && e.state !== "deploy" && e.state !== "undeploy" && !e.braced && supplyCanDrive(state, e),
   );
-  if (drones.length === 0 && planes.length === 0 && ground.length === 0) {
+  if (drones.length === 0 && planes.length === 0 && ground.length === 0 && lamps.length === 0) {
     return fail("busy", ownedUnits.every((e) => e.braced) ? "Deployed. Pack up to move." : "No driver.");
   }
   const group = state.nextId++;
@@ -706,15 +707,17 @@ function cmdPatrol(
       exitGarrison(state, e);
     }
   }
+  // Towers share the formation shift. They do not walk it.
+  const anchors = [...ground, ...lamps];
   let cx = 0;
   let cy = 0;
-  for (const e of ground) {
+  for (const e of anchors) {
     cx += e.x;
     cy += e.y;
   }
-  if (ground.length > 0) {
-    cx /= ground.length;
-    cy /= ground.length;
+  if (anchors.length > 0) {
+    cx /= anchors.length;
+    cy /= anchors.length;
   }
   const pace = groupMovePace(ground);
   for (const e of ground) {
@@ -729,6 +732,13 @@ function cmdPatrol(
     if (pace != null) e.order.pace = pace;
     e.state = "move";
     setPath(state, e, dest.x, dest.y);
+  }
+  for (const e of lamps) {
+    const route = buildPatrolRoute(state, e, points, e.x - cx, e.y - cy);
+    e.attackTarget = null;
+    e.waypoints = [];
+    e.order = { kind: "patrol", route, leg: 1, dir: 1, group };
+    aimSpotlightPatrol(e);
   }
   planes.forEach((e, i) => {
     const ang = (i / Math.max(1, planes.length)) * Math.PI * 2;
@@ -935,8 +945,9 @@ function cmdRotate(state: MatchState, playerId: string, ids: number[], x: number
   const mounts = ownedMounts(state, playerId, ids);
   const lamps = ownedLamps(state, playerId, ids);
   if (units.length === 0 && mounts.length === 0 && lamps.length === 0) return fail("not_yours", "No owned units.");
-  // The lamp swings over at its own pace; see tickSpotlights.
+  // The lamp swings over at its own pace; see tickSpotlights. A patrol sweep ends here.
   for (const e of lamps) {
+    if (e.order?.kind === "patrol") e.order = null;
     e.spotFacing = spotFacingOf(e);
     e.spotAim = Math.atan2(y - e.y, x - e.x);
   }
@@ -1193,6 +1204,8 @@ function cmdStop(state: MatchState, playerId: string, ids: number[]): CmdResult 
     if (e.ownerId !== playerId && !holdsGarrison) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
     clearOrder(e);
+    // Freeze a sweeping spotlight where it is. A unit's stop already dropped its order.
+    if (hasSpotlight(e.type)) e.spotAim = undefined;
     if (e.type === "hauler") e.autoHarvest = false;
     for (const u of livingGarrison(state, e)) {
       if (u.ownerId === playerId && u.order?.relay) clearOrder(u);

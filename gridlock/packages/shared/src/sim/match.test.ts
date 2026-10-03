@@ -282,7 +282,7 @@ describe("construction", () => {
     const paidNow = p.defence!.paid;
     const cancelDefence = applyCommand(state, "A", { type: "cmd.cancel", what: "structure", building: "tower" });
     assert.equal(cancelDefence.ok, true);
-    assert.ok(p.defence === null);
+    assert.equal(p.defence, null);
     assert.equal(p.structure?.type, "dynamo");
     assert.equal(p.scrap, scrapMid + paidNow);
     assert.ok(paidNow > defencePaid);
@@ -290,9 +290,10 @@ describe("construction", () => {
     assert.equal(again.ok, true, !again.ok ? again.message : "");
     applyCommand(state, "A", { type: "cmd.pause", what: "structure", paused: false, building: "dynamo" });
     ticks(state, catalog("dynamo").buildSeconds * 10);
-    assert.equal(p.structure?.ready, true);
-    assert.equal(p.placingType, "dynamo");
-    assert.equal(p.defence?.ready, false);
+    const built = state.players.get("A")!;
+    assert.equal(built.structure?.ready, true);
+    assert.equal(built.placingType, "dynamo");
+    assert.equal(built.defence?.ready, false);
     const you = snapshotFor(state, "A").you;
     assert.equal(you.structureQueue?.type, "dynamo");
     assert.equal(you.structureQueue?.ready, true);
@@ -305,12 +306,12 @@ describe("construction", () => {
       ty: core.tileY,
     });
     assert.equal(place.ok, true, !place.ok ? place.message : "");
-    assert.ok(p.structure === null);
-    assert.equal(p.placingType, null);
-    assert.equal(p.defence?.type, "tower");
+    assert.equal(built.structure, null);
+    assert.equal(built.placingType, null);
+    assert.equal(built.defence?.type, "tower");
     ticks(state, catalog("tower").buildSeconds * 10);
-    assert.equal(p.defence?.ready, true);
-    assert.equal(p.placingType, null);
+    assert.equal(built.defence?.ready, true);
+    assert.equal(built.placingType, null);
     const placeTower = applyCommand(state, "A", {
       type: "cmd.place",
       building: "tower",
@@ -318,9 +319,9 @@ describe("construction", () => {
       ty: core.tileY + catalog("dynamo").tileH,
     });
     assert.equal(placeTower.ok, true, !placeTower.ok ? placeTower.message : "");
-    assert.equal(p.defence, null);
+    assert.equal(built.defence, null);
     assert.ok([...state.entities.values()].some((e) => e.type === "tower" && e.ownerId === "A"));
-    assert.equal(p.scrap, before - catalog("dynamo").cost - catalog("tower").cost);
+    assert.equal(built.scrap, before - catalog("dynamo").cost - catalog("tower").cost);
   });
 
   it("right-click pause on a finished structure does not unready it; cancel refunds the full cost", () => {
