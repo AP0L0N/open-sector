@@ -15,7 +15,7 @@ import type {
   YardFieldType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 70;
+export const PROTOCOL_VERSION = 71;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -461,6 +461,8 @@ export interface MineView {
   y: number;
   /** False while it is still arming. Omitted once live. */
   armed?: false;
+  /** 0–1 while a supply truck is disabling it. Omitted otherwise. */
+  disarm?: number;
 }
 
 /** Supply crate from a transport. */
@@ -598,6 +600,8 @@ export type ClientMessage =
   | { type: "cmd.board"; ids: number[]; truckId: number; queue?: boolean }
   | { type: "cmd.unboard"; ids?: number[]; truckId?: number }
   | { type: "cmd.supply"; ids: number[]; targetId: number; queue?: boolean }
+  /** Supply trucks defuse mine `mineId`. It comes up as scrap when they finish. */
+  | { type: "cmd.disable"; ids: number[]; mineId: number; queue?: boolean }
   /** Supply trucks hitch the field gun `targetId`. Without one, they drop whatever they tow. */
   | { type: "cmd.tow"; ids: number[]; targetId?: number }
   /** Aircraft fly home, land on their pad, and refuel and rearm there. */

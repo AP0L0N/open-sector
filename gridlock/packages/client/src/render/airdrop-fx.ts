@@ -69,26 +69,18 @@ export function canopySway(id: number, nowMs: number): number {
 
 /**
  * SD 2 butterfly bomblet lying in the grass: a small dark case with its two
- * spring-open wing plates. Your own side's are ringed so you can walk round them;
- * an arming one blinks.
+ * spring-open wing plates. An arming one blinks. `disarm` 0–1 draws the bar
+ * while a supply truck is lifting it.
  */
 export function drawMine(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
-  opts: { seed: number; own: boolean; arming: boolean; ring: string; nowMs: number },
+  opts: { seed: number; arming: boolean; nowMs: number; disarm?: number },
 ): void {
   const ang = (opts.seed * 2.39996) % (Math.PI * 2);
   ctx.save();
-  if (opts.own) {
-    ctx.strokeStyle = opts.ring;
-    ctx.globalAlpha = opts.arming ? 0.45 + 0.45 * Math.abs(Math.sin(opts.nowMs / 160)) : 0.8;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.ellipse(x, y, 10, 5, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
+  if (opts.arming) ctx.globalAlpha = 0.45 + 0.45 * Math.abs(Math.sin(opts.nowMs / 160));
   ctx.translate(x, y);
   ctx.scale(1.6, 0.8);
   ctx.rotate(ang);
@@ -110,6 +102,16 @@ export function drawMine(
   ctx.fill();
   ctx.stroke();
   ctx.restore();
+  const p = opts.disarm;
+  if (p != null && p > 0) {
+    const w = 16;
+    const h = 3;
+    const top = y - 11;
+    ctx.fillStyle = "rgba(8, 6, 4, 0.78)";
+    ctx.fillRect(x - w / 2, top, w, h);
+    ctx.fillStyle = "#e8b84a";
+    ctx.fillRect(x - w / 2, top, w * Math.max(0, Math.min(1, p)), h);
+  }
 }
 
 /**

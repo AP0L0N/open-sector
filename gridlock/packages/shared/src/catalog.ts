@@ -1522,7 +1522,7 @@ export const AIR_DROPS: readonly AirDrop[] = ["mines", "crate", "troops"];
 export const BV222_TROOPS = 10;
 /** Player-facing name and one line for each load. */
 export const AIR_DROP_INFO: Record<AirDrop, { name: string; blurb: string }> = {
-  mines: { name: "Mines", blurb: "A canister of butterfly mines. It bursts over the point and scatters them; they wait for enemy feet and tracks." },
+  mines: { name: "Mines", blurb: "A canister of butterfly mines. It bursts over the point and scatters them; they wait for any feet or tracks, friend or foe. A supply truck can disable one for scrap." },
   crate: { name: "Crate", blurb: "A supply crate on a parachute. Your units standing at it take ammo and patch up." },
   troops: { name: "Paratroops", blurb: "Infantry board on the hardstand from any load (right-click the plane); that selects paratroops, and no other load can be chosen while anyone is aboard. Other ground units board once paratroops is selected. They jump over the point and hang under canopies until they land." },
 };
@@ -1546,7 +1546,7 @@ export const CLUSTER_FALL_SECONDS = 1.1;
 export const MINE_ARM_SECONDS = 2;
 /** Seconds a mine lies before its fuze gives out and it pops by itself. */
 export const MINE_LIFE_SECONDS = 300;
-/** An enemy on the ground within this of a live mine sets it off. */
+/** Any ground unit within this of a live mine sets it off. A supply truck defusing that mine does not. */
 export const MINE_TRIGGER_TILES = t(0.3);
 export const MINE_SPLASH_TILES = t(0.8);
 /** Soldier on top of it. A rifleman does not get up. */
@@ -1560,6 +1560,10 @@ export const MINE_CALIBER = 20;
 /** The enemy sees a mine only once one of his men is this close to it. */
 export const MINE_SPOT_TILES = t(1.5);
 export const MINE_CAP = 240;
+/** Seconds a supply truck spends disabling one mine. */
+export const MINE_DISABLE_SECONDS = 2;
+/** Scrap paid to the truck's owner when the mine comes up. */
+export const MINE_SCRAP = 40;
 /** Supply points in a dropped crate. The supply truck carries SUPPLY_CARGO. */
 export const CRATE_SUPPLY = 80;
 export const CRATE_SINK_PER_SEC = 2.5;
@@ -3293,7 +3297,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     leavesWreck: true,
     wreckHp: 28,
-    blurb: "Light truck. Tops up tank racks, coaxial belts, and the Walker's backpack, and slowly scrounges its cargo back on its own — an Armory refills it fast. Two seats. The factory driver stays at the wheel. A bullet in the front plate can kill the driver and leave the truck for anyone. A replacement driver can get out. The passenger fires from the bed: rifle, handgun, machine gun, scoped rifle, anti-tank rifle, rocket launcher, flamethrower, or a Jump Jet's assault rifle. A mortar and a cyborg gatling stay slung. Hit-point bars for the soldiers aboard sit beside the truck. Soldiers inside are a little harder to wound, and more so from the side or rear.",
+    blurb: "Light truck. Tops up tank racks, coaxial belts, and the Walker's backpack, and slowly scrounges its cargo back on its own — an Armory refills it fast. Right-click a mine, yours or the enemy's, and it spends a few seconds disabling it; the mine comes up as scrap and does not go off under the truck while it works. Two seats. The factory driver stays at the wheel. A bullet in the front plate can kill the driver and leave the truck for anyone. A replacement driver can get out. The passenger fires from the bed: rifle, handgun, machine gun, scoped rifle, anti-tank rifle, rocket launcher, flamethrower, or a Jump Jet's assault rifle. A mortar and a cyborg gatling stay slung. Hit-point bars for the soldiers aboard sit beside the truck. Soldiers inside are a little harder to wound, and more so from the side or rear.",
   },
   /** Ju 87 B dive bomber. Lives on an Airfield pad. */
   stuka: {
@@ -3374,7 +3378,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     aircraft: true,
     wreckHp: 80,
-    blurb: `Six-engined transport flying boat. No guns. Its bay takes one load, chosen on the pad: a canister of ${CLUSTER_MINES} butterfly mines that scatter over the ground and wait for the enemy, a supply crate on a parachute that refills ammo and patches up whoever stands at it, or up to ${BV222_TROOPS} ground units. Infantry board on the hardstand from any load; that selects paratroops, and the bay stays on paratroops while anyone is aboard. They jump over the point and hang under canopies — where rifles and machine guns can reach them — until they touch down. Hold Ctrl and click, or Force attack, to drop whatever is loaded. Slow and big. Shot down, it falls trailing smoke and crashes as a wreck, and everyone still aboard goes with it. Lands at its Airfield to refuel and reload.`,
+    blurb: `Six-engined transport flying boat. No guns. Its bay takes one load, chosen on the pad: a canister of ${CLUSTER_MINES} butterfly mines that scatter over the ground and wait for anyone, friend or foe, a supply crate on a parachute that refills ammo and patches up whoever stands at it, or up to ${BV222_TROOPS} ground units. Infantry board on the hardstand from any load; that selects paratroops, and the bay stays on paratroops while anyone is aboard. They jump over the point and hang under canopies — where rifles and machine guns can reach them — until they touch down. Hold Ctrl and click, or Force attack, to drop whatever is loaded. Slow and big. Shot down, it falls trailing smoke and crashes as a wreck, and everyone still aboard goes with it. Lands at its Airfield to refuel and reload.`,
   },
   droneop: {
     type: "droneop",

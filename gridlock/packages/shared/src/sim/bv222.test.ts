@@ -146,23 +146,42 @@ describe("BV 222", () => {
     assert.equal(state.projectiles.filter((p) => p.flight === "bomb").length, 0, "it never drops a bomb");
   });
 
-  it("mines arm, then kill an enemy soldier who walks onto them; friends walk through", () => {
+  it("mines arm, then go off under a friend or a foe", () => {
     const state = twoPlayerMatch();
     const ts = state.tileSize;
     const x = 20 * ts + ts / 2;
     const y = 20 * ts + ts / 2;
     state.mines.push({ id: state.nextId++, ownerId: "A", x, y, arm: MINE_ARM_SECONDS, life: 300 });
     const friend = riflemanAt(state, "A", x, y);
-    ticks(state, Math.ceil(MINE_ARM_SECONDS / TICK_DT) + 5);
-    assert.equal(state.mines.length, 1, "a friend on top does not set it off");
+    ticks(state, 5);
+    assert.equal(state.mines.length, 1, "still arming");
     assert.ok(friend.hp > 0);
+    ticks(state, Math.ceil(MINE_ARM_SECONDS / TICK_DT));
+    assert.equal(state.mines.length, 0, "a friend on top sets it off");
+    assert.ok(friend.hp <= 0, "the blast hits the side that laid it");
+
+    state.mines.push({ id: state.nextId++, ownerId: "A", x, y, arm: 0, life: 300 });
     const foe = riflemanAt(state, "B", x + ts * 3, y);
     const r = applyCommand(state, "B", { type: "cmd.move", ids: [foe.id], x, y });
     assert.equal(r.ok, true, !r.ok ? r.message : "");
     const n = until(state, 400, () => state.mines.length === 0);
     assert.ok(n >= 0, "the mine goes off");
     assert.ok(foe.hp <= 0 || !state.entities.has(foe.id), "the soldier on it is killed");
-    assert.ok(friend.hp > 0, "the blast spares the side that laid it");
+  });
+
+  it("a supply truck that rolls onto a mine sets it off and gains no scrap", () => {
+    const state = twoPlayerMatch();
+    const ts = state.tileSize;
+    const x = 24 * ts + ts / 2;
+    const y = 24 * ts + ts / 2;
+    state.mines.push({ id: state.nextId++, ownerId: "B", x, y, arm: 0, life: 300 });
+    const truck = makeEntity(state, "supply", "A", x, y);
+    const scrap = state.players.get("A")!.scrap;
+    const hp = truck.hp;
+    ticks(state, 1);
+    assert.equal(state.mines.length, 0);
+    assert.ok(truck.hp < hp);
+    assert.equal(state.players.get("A")!.scrap, scrap);
   });
 
   it("does not go off while still arming", () => {

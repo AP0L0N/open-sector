@@ -118,6 +118,12 @@ function entityAt(state: MatchState, id: number | undefined): PlanPointView | nu
   return t && t.hp > 0 ? { kind: "other", x: t.x, y: t.y } : null;
 }
 
+function minePoint(state: MatchState, id: number | undefined): PlanPointView | null {
+  if (id == null) return null;
+  const m = state.mines.find((mine) => mine.id === id);
+  return m ? { kind: "other", x: m.x, y: m.y } : null;
+}
+
 function planKind(k: Order["kind"] | QueueableCommand["type"]): PlanKind {
   const s = k.startsWith("cmd.") ? k.slice(4) : k;
   if (s === "move") return "move";
@@ -133,6 +139,9 @@ function queuedPoint(state: MatchState, m: QueueableCommand): PlanPointView | nu
     case "cmd.repair":
     case "cmd.supply":
       at = entityAt(state, m.targetId);
+      break;
+    case "cmd.disable":
+      at = minePoint(state, m.mineId);
       break;
     case "cmd.forceattack":
       at = entityAt(state, m.targetId) ?? { kind, x: m.x, y: m.y };
@@ -164,7 +173,10 @@ function planView(state: MatchState, e: Entity, own: boolean): PlanPointView[] |
   const out: PlanPointView[] = [];
   const o = e.order;
   if (o && !o.auto) {
-    const at = entityAt(state, o.targetId) ?? (o.x != null && o.y != null ? { kind: "other" as const, x: o.x, y: o.y } : null);
+    const at =
+      entityAt(state, o.targetId) ??
+      (o.kind === "disable" ? minePoint(state, o.targetId) : null) ??
+      (o.x != null && o.y != null ? { kind: "other" as const, x: o.x, y: o.y } : null);
     if (at) out.push({ ...at, kind: planKind(o.kind) });
   }
   for (const q of e.orderQueue) {

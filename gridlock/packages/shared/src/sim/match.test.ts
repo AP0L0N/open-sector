@@ -415,6 +415,7 @@ describe("combat", () => {
 
   it("rifle ricochets zip off armor and puff on landing", () => {
     const { state } = twoPlayerMatch();
+    state.heights.fill(0);
     for (let i = 0; i < state.terrain.length; i++) {
       if (state.terrain[i] === TILE_TREE) state.terrain[i] = TILE_EMPTY;
     }
@@ -458,6 +459,7 @@ describe("combat", () => {
 
   it("cannot wound a hauler with rifle fire", () => {
     const { state } = twoPlayerMatch();
+    state.heights.fill(0);
     const t1 = makeEntity(state, "rifleman", "A", 20 * 32, 20 * 32);
     const truck = makeEntity(state, "hauler", "B", 23 * 32, 20 * 32);
     truck.autoHarvest = false;
@@ -474,6 +476,7 @@ describe("combat", () => {
 
   it("kills a Warden with one rear shot", () => {
     const { state } = twoPlayerMatch();
+    state.heights.fill(0);
     const a = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
     const b = makeEntity(state, "warden", "B", 23 * 32, 20 * 32);
     a.facing = 0;

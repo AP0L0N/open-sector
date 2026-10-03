@@ -13,6 +13,7 @@ import {
   MINE_ARMOR_SHARE,
   MINE_CALIBER,
   MINE_CAP,
+  MINE_DISABLE_SECONDS,
   MINE_INFANTRY_DAMAGE,
   MINE_LIFE_SECONDS,
   MINE_SOFT_SHARE,
@@ -453,12 +454,17 @@ export function scatterMines(state: MatchState, ownerId: string, x: number, y: n
   });
 }
 
-/** An enemy standing on the ground: what sets off a mine, and what its blast reaches. */
+/** A unit standing on the ground: what sets off a mine, and what its blast reaches. */
 function onGround(e: Entity): boolean {
   return e.kind === "unit" && e.hp > 0 && !e.wreck && e.garrisonedIn == null && airAlt(e) <= 0.5 && !e.drone;
 }
 
-/** Live mines go off under an enemy's feet or tracks; old ones pop by themselves. */
+/** The truck was told to lift this mine, so its own hull does not set that one off. */
+function defusing(e: Entity, mineId: number): boolean {
+  return e.type === "supply" && e.order?.kind === "disable" && e.order.targetId === mineId;
+}
+
+/** Live mines go off under anyone's feet or tracks. A supply truck defusing one is spared that mine. Old ones pop by themselves. */
 export function tickMines(state: MatchState, dt: number): void {
   if (state.mines.length === 0) return;
   const ts = state.tileSize;
@@ -474,7 +480,7 @@ export function tickMines(state: MatchState, dt: number): void {
     }
     let hit = false;
     for (const e of state.entities.values()) {
-      if (!onGround(e) || !e.ownerId || allies(state, m.ownerId, e.ownerId)) continue;
+      if (!onGround(e) || !e.ownerId || defusing(e, m.id)) continue;
       if (Math.hypot(e.x - m.x, e.y - m.y) <= trigger + e.radius) {
         hit = true;
         break;
@@ -490,7 +496,7 @@ function detonateMine(state: MatchState, ownerId: string, x: number, y: number):
   const reach = MINE_SPLASH_TILES * state.tileSize;
   let killed = false;
   for (const e of [...state.entities.values()]) {
-    if (!onGround(e) || !e.ownerId || allies(state, ownerId, e.ownerId)) continue;
+    if (!onGround(e) || !e.ownerId) continue;
     const d = Math.hypot(e.x - x, e.y - y);
     if (d > reach + e.radius) continue;
     const fall = mortarFalloff(Math.max(0, d - e.radius), reach);
@@ -599,6 +605,13 @@ export function mineViews(state: MatchState, youPlayerId: string, vis: Uint8Arra
   const out: MineView[] = [];
   if (state.mines.length === 0) return out;
   const spot = MINE_SPOT_TILES * state.tileSize;
+  const disarm = new Map<number, number>();
+  for (const e of state.entities.values()) {
+    if (e.type !== "supply" || e.order?.kind !== "disable" || e.order.targetId == null || e.work <= 0) continue;
+    const p = Math.min(1, e.work / MINE_DISABLE_SECONDS);
+    const prev = disarm.get(e.order.targetId) ?? 0;
+    if (p > prev) disarm.set(e.order.targetId, p);
+  }
   const eyes = [...state.entities.values()].filter(
     (e) => e.kind === "unit" && e.hp > 0 && e.garrisonedIn == null && allies(state, youPlayerId, e.ownerId),
   );
@@ -608,7 +621,15 @@ export function mineViews(state: MatchState, youPlayerId: string, vis: Uint8Arra
       if (!canSeeWorld(state, vis, m.x, m.y)) continue;
       if (!eyes.some((e) => Math.hypot(e.x - m.x, e.y - m.y) <= spot)) continue;
     }
-    out.push({ id: m.id, ownerId: m.ownerId, x: m.x, y: m.y, armed: m.arm <= 0 ? undefined : false });
+    const progress = disarm.get(m.id);
+    out.push({
+      id: m.id,
+      ownerId: m.ownerId,
+      x: m.x,
+      y: m.y,
+      armed: m.arm <= 0 ? undefined : false,
+      disarm: progress != null && progress > 0 ? Math.round(progress * 100) / 100 : undefined,
+    });
   }
   return out;
 }

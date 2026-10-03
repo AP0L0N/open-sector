@@ -79,6 +79,7 @@ import {
   type IsoPt,
   type MapDef,
   type MatchSnapshot,
+  type MineView,
   type ShellHoleView,
 } from "@gridlock/shared";
 import {
@@ -2542,6 +2543,20 @@ export class MapView {
     return null;
   }
 
+  /** Nearest mine under the cursor, in screen pixels. Mines are small, so the target is a little wider than the sprite. */
+  private mineAt(px: number, py: number): MineView | null {
+    let best: MineView | null = null;
+    let bestD = 18;
+    for (const m of this.curr.mines ?? []) {
+      const s = this.toScreen(m.x, m.y);
+      const d = Math.hypot(s.x - px, s.y - py);
+      if (d > bestD) continue;
+      best = m;
+      bestD = d;
+    }
+    return best;
+  }
+
   private clickSelect(px: number, py: number, shift: boolean): void {
     const hit = this.hit(px, py);
     const prev = this.lastClick;
@@ -2622,6 +2637,7 @@ export class MapView {
       return;
     }
     const hit = this.hit(px, py);
+    const mine = this.mineAt(px, py);
     const tile = this.screenToTile(px, py);
     const scrap = this.curr.scrap.some((s) => s.x === tile.x && s.y === tile.y && s.yield > 0);
     const action = resolveHoverAction({
@@ -2629,8 +2645,14 @@ export class MapView {
       selected,
       hit,
       scrap,
+      mine: mine != null,
       allied: (id) => ownerAllied(this.curr, id),
     });
+    if (action === "disable" && mine) {
+      const trucks = own.filter((e) => e.type === "supply" && !e.bed?.open);
+      if (trucks.length) this.command({ type: "cmd.disable", ids: trucks.map((e) => e.id), mineId: mine.id });
+      return;
+    }
     if ((action === "repair" || action === "scrap") && hit) {
       const engineers = own.filter((e) => e.type === "engineer");
       if (engineers.length) this.command({ type: "cmd.repair", ids: engineers.map((e) => e.id), targetId: hit.id });
@@ -5585,15 +5607,19 @@ export class MapView {
   /** Mines in the grass, and supply crates on the ground or hanging under their canopies. */
   private collectAirdrops(items: DrawItem[], w: number, h: number): void {
     const now = performance.now();
-    const you = this.curr.youPlayerId;
     for (const m of this.curr.mines ?? []) {
       const s = this.toScreen(m.x, m.y);
       if (s.x < -12 || s.y < -12 || s.x > w + 12 || s.y > h + 12) continue;
-      const own = ownerAllied(this.curr, m.ownerId) || m.ownerId === you;
       items.push({
         layer: GROUND_DECAL_DRAW_LAYER,
         z: isoDepth(m.x, m.y),
-        run: () => drawMine(this.ctx, s.x, s.y, { seed: m.id, own, arming: m.armed === false, ring: this.playerColor(m.ownerId), nowMs: now }),
+        run: () =>
+          drawMine(this.ctx, s.x, s.y, {
+            seed: m.id,
+            arming: m.armed === false,
+            nowMs: now,
+            disarm: m.disarm,
+          }),
       });
     }
     const t = Math.min(1, (now - this.snapAt) / 100);
@@ -6117,6 +6143,7 @@ export class MapView {
             selected,
             hit,
             scrap,
+            mine: this.mineAt(this.mouseX, this.mouseY) != null,
             allied: (id) => ownerAllied(this.curr, id),
           });
         }
