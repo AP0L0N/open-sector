@@ -13,6 +13,7 @@ import {
   heightAt,
   isoBoxSilhouette,
   isoLift,
+  isoToWorld,
   isoMapBounds,
   maxHeightOf,
   tileDiamond,
@@ -27,7 +28,9 @@ import {
   DIRT_TEX,
   GRASS_TEXS,
   ROCK_TEX,
-  SCRAP_FACES,
+  SCRAP_BIT_FACES,
+  SCRAP_HEAP_FACES,
+  SCRAP_PIECE_FACES,
   STONE_FACES,
   TUFT_FACES,
   WATER_TEX,
@@ -37,17 +40,22 @@ import {
   PROP_IMAGES,
 } from "./sprites.js";
 import { decorFor } from "./decor.js";
+import { SCRAP_SOFT_REACH, scrapDressAt, scrapField, scrapGround, type ScrapField } from "./scrap-field.js";
 import { hillshadeFactor } from "./relief.js";
 import { elevShadeFactor, hash2 } from "./terrain-light.js";
 import { groundGlReady, paintGlGround } from "./terrain-light-gl.js";
 
 const WALL_H = 20;
 const TREE_H = 14;
-const SCRAP_H = 12;
 /** Isolated trees extrude past the tile diamond; restamp must repaint that far. */
 const RESTAMP_RADIUS = Math.ceil((TREE_H + 8) / ISO_TILE_H) + 3;
 /** Wall boxes extend above the northern ground bound. */
 const PROP_PAD = WALL_H + 10;
+/** How far a tile's baked props (walls, scrap heaps, craters) reach past its lifted diamond, atlas px. */
+const PROP_REACH = { side: 40, up: 40, down: 18 };
+/** Half-width of a restamp clear box, in tiles past the tile itself. Scrap heaps are wide. */
+const STAMP_SPREAD = 0.4;
+const SCRAP_STAMP_SPREAD = 1.1;
 
 export type ScrapCell = { x: number; y: number };
 
@@ -442,7 +450,7 @@ function paintTileProps(
   map: MapDef,
   tx: number,
   ty: number,
-  scrap: boolean,
+  yard: ScrapField | null,
   originX: number,
   originY: number,
   fillOverride?: string,
@@ -452,38 +460,39 @@ function paintTileProps(
   const elev = heightAt(map, tx, ty);
   if (kind === TILE_BLOCKED) {
     isoBox(ctx, tx * ts, ty * ts, ts, ts, WALL_H, fillOverride ?? "#3a2a22", elev, ts, originX, originY);
-  } else if (kind === TILE_TREE) {
     return;
-  } else if (scrap) {
-    const lift = isoLift(elev);
-    const p = worldToIso((tx + 0.5) * ts, (ty + 0.55) * ts, ts);
-    const x = p.x - originX;
-    const y = p.y - originY - lift;
-    const h = hash2(tx, ty, 3);
-    const pile = SCRAP_FACES[h % SCRAP_FACES.length] ?? SCRAP_FACES[0];
-    const drawn = pile ? drawPropSprite(ctx, pile, x, y, 12 + (h % 5), false) : false;
-    if (!drawn) {
-      const inset = ts * 0.18;
-      isoBox(
-        ctx,
-        tx * ts + inset,
-        ty * ts + inset,
-        ts - inset * 2,
-        ts - inset * 2,
-        SCRAP_H,
-        fillOverride ?? "#c4a24a",
-        elev,
-        ts,
-        originX,
-        originY,
-      );
-    }
-  } else if (kind === TILE_EMPTY) {
+  }
+  if (kind === TILE_TREE) return;
+  if (kind === TILE_EMPTY) {
     paintDecor(ctx, map, tx, ty, originX, originY);
     paintFlatDecor(ctx, map, tx, ty, originX, originY);
   } else if (kind === TILE_ROCK) {
     paintFlatDecor(ctx, map, tx, ty, originX, originY);
   }
+  if (yard && (kind === TILE_EMPTY || kind === TILE_SCRAP)) paintScrapDress(ctx, map, tx, ty, yard, originX, originY);
+}
+
+const SCRAP_DRESS_FACES = { heap: SCRAP_HEAP_FACES, piece: SCRAP_PIECE_FACES, bits: SCRAP_BIT_FACES };
+
+/** Salvage on this tile, placed by the blurred yard cover so the field has a rounded rim. */
+function paintScrapDress(
+  ctx: CanvasRenderingContext2D,
+  map: MapDef,
+  tx: number,
+  ty: number,
+  yard: ScrapField,
+  originX: number,
+  originY: number,
+): void {
+  const dress = scrapDressAt(yard, tx, ty);
+  if (!dress) return;
+  const faces = SCRAP_DRESS_FACES[dress.kind];
+  const face = faces[dress.face % faces.length];
+  if (!face) return;
+  const ts = map.tileSize;
+  const p = worldToIso(dress.fx * ts, dress.fy * ts, ts);
+  const lift = isoLift(heightAt(map, Math.floor(dress.fx), Math.floor(dress.fy)));
+  drawPropSprite(ctx, face, p.x - originX, p.y - originY - lift, dress.drawH, dress.flip);
 }
 
 /** Old craters, rubble, and boulders from the map dress, baked into the ground so restamps keep them. */
@@ -557,21 +566,6 @@ function paintDecor(
   const spr = TUFT_FACES[h % TUFT_FACES.length];
   if (!spr) return;
   drawPropSprite(ctx, spr, p.x - originX, p.y - originY - lift, 8 + (h % 6), false);
-}
-
-export function coverTile(
-  ctx: CanvasRenderingContext2D,
-  map: MapDef,
-  tx: number,
-  ty: number,
-  scrap: boolean,
-  originX: number,
-  originY: number,
-  fill: string,
-  expandPx = TILE_OVERLAP_PX,
-): void {
-  fillElevatedTile(ctx, map, tx, ty, fill, originX, originY, false, expandPx);
-  paintTileProps(ctx, map, tx, ty, scrap, originX, originY, fill);
 }
 
 function paintGround(
@@ -847,7 +841,7 @@ function paintTileStamp(
   ctx: CanvasRenderingContext2D,
   map: MapDef,
   indices: number[],
-  scrap: Set<number>,
+  yard: ScrapField,
   originX: number,
   originY: number,
   shoreClip?: { x: number; y: number; w: number; h: number },
@@ -856,15 +850,15 @@ function paintTileStamp(
   const gl = groundGlReady();
   indices.sort((a, b) => (a % w) + ((a / w) | 0) - ((b % w) + ((b / w) | 0)));
   for (const i of indices) {
-    paintGround(ctx, map, i % w, (i / w) | 0, scrap.has(i), originX, originY, gl);
+    paintGround(ctx, map, i % w, (i / w) | 0, scrapGround(yard, i), originX, originY, gl);
   }
   if (gl && indices.length) {
     const { path, rect } = stampedGround(map, indices, originX, originY);
-    paintGlGround(ctx, map, scrap, originX, originY, rect, path);
+    paintGlGround(ctx, map, yard.set, originX, originY, rect, path);
   }
   if (shoreClip) paintSmoothShores(ctx, map, originX, originY, shoreClip);
   for (const i of indices) {
-    paintTileProps(ctx, map, i % w, (i / w) | 0, scrap.has(i), originX, originY);
+    paintTileProps(ctx, map, i % w, (i / w) | 0, yard, originX, originY);
   }
 }
 
@@ -900,23 +894,20 @@ function makeAtlasCanvas(map: MapDef): {
 export function bakeTerrain(map: MapDef, scrap: Iterable<ScrapCell>): TerrainBake {
   const { canvas, ctx, originX, originY, width, height } = makeAtlasCanvas(map);
   const packed = packScrap(scrap, map.width);
+  const yard = scrapField(packed, map.width, map.height);
   const gl = groundGlReady();
-  forEachTile(map, (x, y) => paintGround(ctx, map, x, y, packed.has(y * map.width + x), originX, originY, gl));
+  forEachTile(map, (x, y) => paintGround(ctx, map, x, y, scrapGround(yard, y * map.width + x), originX, originY, gl));
   if (gl) paintGlGround(ctx, map, packed, originX, originY, { x: 0, y: 0, w: width, h: height });
   paintSmoothShores(ctx, map, originX, originY);
-  forEachTile(map, (x, y) => paintTileProps(ctx, map, x, y, packed.has(y * map.width + x), originX, originY));
+  forEachTile(map, (x, y) => paintTileProps(ctx, map, x, y, yard, originX, originY));
   return { canvas, originX, originY, width, height, scrap: packed };
 }
 
-function tileStampBounds(
-  map: MapDef,
-  tx: number,
-  ty: number,
-  originX: number,
-  originY: number,
-): { x: number; y: number; w: number; h: number } {
+type Rect = { x: number; y: number; w: number; h: number };
+
+function tileStampBounds(map: MapDef, tx: number, ty: number, originX: number, originY: number, spread: number): Rect {
   const ts = map.tileSize;
-  const inset = ts * -0.4;
+  const inset = ts * -spread;
   const sil = isoBoxSilhouette(
     tx * ts + inset,
     ty * ts + inset,
@@ -941,23 +932,87 @@ function tileStampBounds(
   };
 }
 
-function expandIndices(map: MapDef, indices: number[], radius: number): number[] {
-  const w = map.width;
-  const h = map.height;
-  const expanded = new Set<number>();
-  for (const i of indices) {
-    const x = i % w;
-    const y = (i / w) | 0;
-    for (let dy = -radius; dy <= radius; dy++) {
-      for (let dx = -radius; dx <= radius; dx++) {
-        const nx = x + dx;
-        const ny = y + dy;
-        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-        expanded.add(ny * w + nx);
+/** Lifted diamond of a tile grown by how far its baked props can reach, in atlas px. */
+function tileReachBox(map: MapDef, tx: number, ty: number, originX: number, originY: number): Rect {
+  const d = tileDiamond(tx, ty, map.tileSize);
+  const v = (vx: number, vy: number): number => isoLift(vertexElev(map.heights, map.width, map.height, vx, vy));
+  const top = d.n.y - Math.max(v(tx, ty), v(tx + 1, ty), v(tx, ty + 1)) - originY;
+  const bottom = d.s.y - Math.min(v(tx + 1, ty + 1), v(tx + 1, ty), v(tx, ty + 1)) - originY;
+  return {
+    x: d.w.x - originX - PROP_REACH.side,
+    y: top - PROP_REACH.up,
+    w: d.e.x - d.w.x + PROP_REACH.side * 2,
+    h: bottom - top + PROP_REACH.up + PROP_REACH.down,
+  };
+}
+
+/** Fold overlapping clear boxes into a few rectangles; a mined yard dirties hundreds of tiles at once. */
+function mergeRects(rects: readonly Rect[]): Rect[] {
+  const out = rects.map((r) => ({ ...r }));
+  for (let merged = true; merged; ) {
+    merged = false;
+    for (let i = 0; i < out.length; i++) {
+      for (let j = out.length - 1; j > i; j--) {
+        const a = out[i]!;
+        const b = out[j]!;
+        if (!rectsOverlap(a, b)) continue;
+        const x = Math.min(a.x, b.x);
+        const y = Math.min(a.y, b.y);
+        out[i] = { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+        out.splice(j, 1);
+        merged = true;
       }
     }
   }
-  return [...expanded];
+  return out;
+}
+
+/**
+ * Every tile whose ground or props can land inside `rects`. Higher ground to
+ * the south-east rises into view over a low tile, so the search reaches as far
+ * as the tallest lift on the map, not a fixed radius.
+ */
+function tilesReaching(map: MapDef, rects: readonly Rect[], originX: number, originY: number): number[] {
+  const w = map.width;
+  const h = map.height;
+  const ts = map.tileSize;
+  const liftRows = Math.ceil(isoLift(maxHeightOf(map)) / (ISO_TILE_H / 2));
+  const seen = new Uint8Array(w * h);
+  const out: number[] = [];
+  for (const r of rects) {
+    // Flat-ground tile range under the rect, then grown by prop reach and lift.
+    let tx0 = Infinity;
+    let ty0 = Infinity;
+    let tx1 = -Infinity;
+    let ty1 = -Infinity;
+    for (const [px, py] of [
+      [r.x, r.y],
+      [r.x + r.w, r.y],
+      [r.x, r.y + r.h],
+      [r.x + r.w, r.y + r.h],
+    ] as const) {
+      const wp = isoToWorld(px + originX, py + originY, ts);
+      tx0 = Math.min(tx0, wp.x / ts);
+      ty0 = Math.min(ty0, wp.y / ts);
+      tx1 = Math.max(tx1, wp.x / ts);
+      ty1 = Math.max(ty1, wp.y / ts);
+    }
+    const x0 = Math.max(0, Math.floor(tx0) - RESTAMP_RADIUS);
+    const y0 = Math.max(0, Math.floor(ty0) - RESTAMP_RADIUS);
+    const x1 = Math.min(w - 1, Math.ceil(tx1) + RESTAMP_RADIUS + liftRows);
+    const y1 = Math.min(h - 1, Math.ceil(ty1) + RESTAMP_RADIUS + liftRows);
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const i = y * w + x;
+        if (seen[i]) continue;
+        const b = tileReachBox(map, x, y, originX, originY);
+        if (!rectsOverlap(b, r)) continue;
+        seen[i] = 1;
+        out.push(i);
+      }
+    }
+  }
+  return out;
 }
 
 export function restampTiles(
@@ -965,19 +1020,25 @@ export function restampTiles(
   map: MapDef,
   indices: number[],
   scrapCells: Iterable<ScrapCell>,
+  /** Half-width of each tile's clear box past the tile, in tiles. Scrap heaps need more than trees. */
+  spread = STAMP_SPREAD,
 ): void {
   if (indices.length === 0) return;
   const ctx = bake.canvas.getContext("2d");
   if (!ctx) return;
   const packed = packScrap(scrapCells, map.width);
   const w = map.width;
+  const rects = mergeRects(
+    indices.map((i) => tileStampBounds(map, i % w, (i / w) | 0, bake.originX, bake.originY, spread)),
+  );
+  const clip = new Path2D();
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  for (const i of indices) {
-    const b = tileStampBounds(map, i % w, (i / w) | 0, bake.originX, bake.originY);
+  for (const b of rects) {
     ctx.clearRect(b.x, b.y, b.w, b.h);
+    clip.rect(b.x, b.y, b.w, b.h);
     minX = Math.min(minX, b.x);
     minY = Math.min(minY, b.y);
     maxX = Math.max(maxX, b.x + b.w);
@@ -986,15 +1047,20 @@ export function restampTiles(
   const shoreClip = shoreTouches(map, indices)
     ? { x: minX, y: minY, w: Math.max(1, maxX - minX), h: Math.max(1, maxY - minY) }
     : undefined;
+  // Repaint only inside what was cleared, from every tile that reaches it, so
+  // nothing outside is painted twice and nothing inside is left transparent.
+  ctx.save();
+  ctx.clip(clip);
   paintTileStamp(
     ctx,
     map,
-    expandIndices(map, indices, RESTAMP_RADIUS),
-    packed,
+    tilesReaching(map, rects, bake.originX, bake.originY),
+    scrapField(packed, map.width, map.height),
     bake.originX,
     bake.originY,
     shoreClip,
   );
+  ctx.restore();
   bake.scrap = packed;
 }
 
@@ -1030,6 +1096,25 @@ export function restampMini(
   bake.scrap = packed;
 }
 
+function expandIndices(map: MapDef, indices: number[], radius: number): number[] {
+  const w = map.width;
+  const h = map.height;
+  const expanded = new Set<number>();
+  for (const i of indices) {
+    const x = i % w;
+    const y = (i / w) | 0;
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        expanded.add(ny * w + nx);
+      }
+    }
+  }
+  return [...expanded];
+}
+
 export function updateScrap(bake: TerrainBake, map: MapDef, scrapCells: Iterable<ScrapCell>): void {
   const next = packScrap(scrapCells, map.width);
   const prev = bake.scrap;
@@ -1040,9 +1125,9 @@ export function updateScrap(bake: TerrainBake, map: MapDef, scrapCells: Iterable
     bake.scrap = next;
     return;
   }
-  // Same clear+repaint path as felled trees: scrap sprites sit above the
-  // diamond, so overpainting ground leaves outline pixels behind.
-  restampTiles(bake, map, dirty, scrapCells);
+  // The yard is drawn from blurred cover, so one emptied tile can move the
+  // rim and the salvage a few tiles around it. Clear and repaint that reach.
+  restampTiles(bake, map, expandIndices(map, dirty, SCRAP_SOFT_REACH), scrapCells, SCRAP_STAMP_SPREAD);
 }
 
 export function blitTerrain(

@@ -69,8 +69,16 @@ import oak3Url from "../assets/terrain/tree-oak-3.png";
 import pine1Url from "../assets/terrain/tree-pine-1.png";
 import pine2Url from "../assets/terrain/tree-pine-2.png";
 import pine3Url from "../assets/terrain/tree-pine-3.png";
-import scrap1Url from "../assets/terrain/scrap-1.png";
-import scrap3Url from "../assets/terrain/scrap-3.png";
+import scrapHeap1Url from "../assets/terrain/scrap-heap-1.png";
+import scrapHeap2Url from "../assets/terrain/scrap-heap-2.png";
+import scrapHeap3Url from "../assets/terrain/scrap-heap-3.png";
+import scrapPiece1Url from "../assets/terrain/scrap-piece-1.png";
+import scrapPiece2Url from "../assets/terrain/scrap-piece-2.png";
+import scrapPiece3Url from "../assets/terrain/scrap-piece-3.png";
+import scrapPiece4Url from "../assets/terrain/scrap-piece-4.png";
+import scrapBits1Url from "../assets/terrain/scrap-bits-1.png";
+import scrapBits2Url from "../assets/terrain/scrap-bits-2.png";
+import scrapBits3Url from "../assets/terrain/scrap-bits-3.png";
 import crater1Url from "../assets/terrain/crater-1.png";
 import crater2Url from "../assets/terrain/crater-2.png";
 import crater3Url from "../assets/terrain/crater-3.png";
@@ -211,6 +219,7 @@ import legIconUrl from "../assets/status/leg.png";
 import tracksIconUrl from "../assets/status/tracks.png";
 import engineIconUrl from "../assets/status/engine.png";
 import { blendPadInPlace } from "./pad-blend.js";
+import { MAULER_SCALE } from "./mauler-cart.js";
 
 /** Extra on-map scale for every unit (sprites and box fallbacks). */
 export const UNIT_VISUAL_SCALE = 1.25;
@@ -1320,7 +1329,7 @@ export const HAULER_SPRITE: UnitSpriteDef = {
   frames: 1,
   frameSize: 128,
   fps: 8,
-  drawSize: Math.round(38 * UNIT_VISUAL_SCALE),
+  drawSize: Math.round(38 * MAULER_SCALE * UNIT_VISUAL_SCALE),
   contactY: 0.92,
   facingSpace: "world",
 };
@@ -1602,7 +1611,23 @@ export const TUFT_FACES: PropSprite[] = [
   prop(tuft2Url, 140, 329),
   prop(tuft3Url, 233, 334),
 ];
-export const SCRAP_FACES: PropSprite[] = [prop(scrap1Url, 213, 278), prop(scrap3Url, 185, 417)];
+/** Scrap field dress from `tools/sprites/render_props.py`: hull-chunk heaps, single items, loose shards. */
+export const SCRAP_HEAP_FACES: PropSprite[] = [
+  prop(scrapHeap1Url, 189, 138),
+  prop(scrapHeap2Url, 196, 135),
+  prop(scrapHeap3Url, 180, 130),
+];
+export const SCRAP_PIECE_FACES: PropSprite[] = [
+  prop(scrapPiece1Url, 95, 58),
+  prop(scrapPiece2Url, 116, 55),
+  prop(scrapPiece3Url, 93, 63),
+  prop(scrapPiece4Url, 88, 59),
+];
+export const SCRAP_BIT_FACES: PropSprite[] = [
+  prop(scrapBits1Url, 105, 58),
+  prop(scrapBits2Url, 71, 49),
+  prop(scrapBits3Url, 53, 79),
+];
 /** Map dress from `tools/sprites/render_props.py`. Contact is printed by that script. */
 export const BOULDER_FACES: PropSprite[] = [
   prop(boulder1Url, 149, 182),
@@ -1651,7 +1676,9 @@ export const PROP_IMAGES: HTMLImageElement[] = [
   ...PINE_FACES.map((f) => f.image),
   ...BUSH_FACES.map((f) => f.image),
   ...TUFT_FACES.map((f) => f.image),
-  ...SCRAP_FACES.map((f) => f.image),
+  ...SCRAP_HEAP_FACES.map((f) => f.image),
+  ...SCRAP_PIECE_FACES.map((f) => f.image),
+  ...SCRAP_BIT_FACES.map((f) => f.image),
   ...CRATER_FACES.map((f) => f.image),
   ...BOULDER_FACES.map((f) => f.image),
   ...STONE_FACES.map((f) => f.image),
