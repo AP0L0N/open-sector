@@ -98,6 +98,12 @@ export function beamBlobs(
   return out;
 }
 
+/**
+ * The bulb drawn on a hull, and the disc of light fixed on that bulb, against
+ * the old size. The beam past that disc is unchanged.
+ */
+export const LAMP_BULB_SCALE = 0.7;
+
 /** Slow work lights around a structure: how many, by footprint. */
 export function workLightCount(tileW: number, tileH: number, subdiv: number): number {
   return Math.max(tileW, tileH) >= 3 * subdiv ? 3 : 2;
