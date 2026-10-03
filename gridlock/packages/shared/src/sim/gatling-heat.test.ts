@@ -4,6 +4,7 @@ import {
   AIR_CRUISE_ALT,
   CIWS_AIR_REACH_MUL,
   CIWS_HEAT,
+  CIWS_LAY,
   CIWS_RANGE_TILES,
   CYBORG_HEAT,
   RADAR_LONG_RANGE_MUL,
@@ -88,8 +89,8 @@ describe("gatling heat", () => {
     dummy(state, ciws.x + 12 * ts, ciws.y);
     const hot = untilHot(state, ciws, 200);
     assert.ok(hot > 0, "it overheats");
-    // Under two and a half seconds on the trigger.
-    assert.ok(hot * TICK_DT > 1.5 && hot * TICK_DT < 3.2, `overheated after ${hot * TICK_DT}s`);
+    // About a second and a half of fire, plus the swing onto the target.
+    assert.ok(hot * TICK_DT >= 1.3 && hot * TICK_DT <= 2.5, `overheated after ${hot * TICK_DT}s`);
     const snap = snapshotFor(state, "A").entities.find((e) => e.id === ciws.id);
     assert.ok((snap?.mgOverheat ?? 0) > 0, "the owner sees the lock");
     assert.equal(snap?.mgHeat, 1);
@@ -152,6 +153,8 @@ describe("gatling heat", () => {
     dummy(state, tank.x + 6 * ts, tank.y);
     const hot = untilHot(state, tank, 200);
     assert.ok(hot > 0, "the roof mount overheats");
+    // A little over a second of fire, plus the swing onto the target.
+    assert.ok(hot * TICK_DT >= 1 && hot * TICK_DT <= 2.2, `roof overheated after ${hot * TICK_DT}s`);
     const left = tank.mgAmmo;
     ticks(state, 5);
     assert.equal(tank.mgAmmo, left, "the roof mount holds while locked");
@@ -162,6 +165,13 @@ describe("gatling accuracy", () => {
   it("cheap gatlings and the secondary roof mount spray wider than the CIWS pad", () => {
     const pad = gatlingSprayOf("ciws");
     for (const type of ["walker", "cyborg", "apocalypse"] as const) assert.ok(gatlingSprayOf(type) > pad, type);
+  });
+
+  it("the pad and the roof lay half again as tight; the other gatlings do not", () => {
+    assert.ok(Math.abs(gatlingSprayOf("ciws") * CIWS_LAY - 1) < 1e-9);
+    assert.ok(Math.abs(gatlingSprayOf("apocalypse") * CIWS_LAY - 1.5) < 1e-9);
+    assert.equal(gatlingSprayOf("walker"), 1.6);
+    assert.equal(gatlingSprayOf("cyborg"), 1.8);
   });
 
   it("a Walker's rounds at a plane end in the sky, not in the dirt", () => {

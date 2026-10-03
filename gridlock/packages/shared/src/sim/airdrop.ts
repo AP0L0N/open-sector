@@ -18,7 +18,6 @@ import {
   MINE_LIFE_SECONDS,
   MINE_SOFT_SHARE,
   MINE_SPLASH_TILES,
-  MINE_SPOT_TILES,
   MINE_TRACK_CHANCE,
   MINE_TRIGGER_TILES,
   PARA_DOOR_SECONDS,
@@ -600,11 +599,10 @@ function landCrate(state: MatchState, c: { x: number; y: number; vx: number; vy:
   c.y = tileCenter(snap.y, ts);
 }
 
-/** Your side's mines, and enemy mines one of your men is close enough to see. */
-export function mineViews(state: MatchState, youPlayerId: string, vis: Uint8Array): MineView[] {
+/** Mines laid by you or an ally. The enemy is never told where they are. */
+export function mineViews(state: MatchState, youPlayerId: string): MineView[] {
   const out: MineView[] = [];
   if (state.mines.length === 0) return out;
-  const spot = MINE_SPOT_TILES * state.tileSize;
   const disarm = new Map<number, number>();
   for (const e of state.entities.values()) {
     if (e.type !== "supply" || e.order?.kind !== "disable" || e.order.targetId == null || e.work <= 0) continue;
@@ -612,15 +610,8 @@ export function mineViews(state: MatchState, youPlayerId: string, vis: Uint8Arra
     const prev = disarm.get(e.order.targetId) ?? 0;
     if (p > prev) disarm.set(e.order.targetId, p);
   }
-  const eyes = [...state.entities.values()].filter(
-    (e) => e.kind === "unit" && e.hp > 0 && e.garrisonedIn == null && allies(state, youPlayerId, e.ownerId),
-  );
   for (const m of state.mines) {
-    const own = allies(state, youPlayerId, m.ownerId);
-    if (!own) {
-      if (!canSeeWorld(state, vis, m.x, m.y)) continue;
-      if (!eyes.some((e) => Math.hypot(e.x - m.x, e.y - m.y) <= spot)) continue;
-    }
+    if (!allies(state, youPlayerId, m.ownerId)) continue;
     const progress = disarm.get(m.id);
     out.push({
       id: m.id,

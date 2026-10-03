@@ -426,7 +426,7 @@ describe("supply truck", () => {
     const x = tileCenter(24, ts);
     const y = tileCenter(24, ts);
     const mineId = state.nextId++;
-    state.mines.push({ id: mineId, ownerId: "B", x, y, arm: 0, life: 300 });
+    state.mines.push({ id: mineId, ownerId: a, x, y, arm: 0, life: 300 });
     const truck = makeEntity(state, "supply", a, x + 28, y);
     const scrap = state.players.get(a)!.scrap;
     const hp = truck.hp;

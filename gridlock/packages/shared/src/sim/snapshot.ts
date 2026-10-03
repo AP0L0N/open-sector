@@ -495,7 +495,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     fires: state.fires
       .filter((f) => allies(state, youPlayerId, f.ownerId) || canSeeWorld(state, vis, f.x, f.y))
       .map((f) => ({ id: f.id, x: f.x, y: f.y, radius: f.radius, life: f.life, lifeMax: f.lifeMax })),
-    mines: mineViews(state, youPlayerId, vis),
+    mines: mineViews(state, youPlayerId),
     crates: crateViews(state, youPlayerId, vis),
     scrap,
     clearedTrees: state.clearedTrees.map((t) => (t.burn ? { x: t.x, y: t.y, burn: true as const } : { x: t.x, y: t.y })),
