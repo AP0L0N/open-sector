@@ -2,6 +2,7 @@ import {
   BUILD_RADIUS,
   catalog,
   isCivilianType,
+  isDefenceStructure,
   isFieldStructure,
   isYardField,
   secondsToTicks,
@@ -25,75 +26,125 @@ import { repathIfBlocked } from "./orders.js";
 import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
 import { spawnUnit } from "./train.js";
-import type { MatchState } from "./types.js";
+import type { MatchState, SimPlayer, StructureJob } from "./types.js";
+
+type BuildSlot = "structure" | "defence";
+
+function slotOf(type: BuildingType | YardFieldType): BuildSlot {
+  return isDefenceStructure(type) ? "defence" : "structure";
+}
+
+function jobIn(p: SimPlayer, slot: BuildSlot): StructureJob | null {
+  return slot === "defence" ? p.defence : p.structure;
+}
+
+function putJob(p: SimPlayer, slot: BuildSlot, job: StructureJob | null): void {
+  if (slot === "defence") p.defence = job;
+  else p.structure = job;
+}
+
+/** Drop this job from whichever lane holds it. Clears a placement ghost only for this type. */
+function dropJob(p: SimPlayer, job: StructureJob): void {
+  if (p.structure === job) p.structure = null;
+  if (p.defence === job) p.defence = null;
+  if (p.placingType === job.type) p.placingType = null;
+}
+
+/**
+ * The named cameo when `building` is set.
+ * Otherwise the base job, or the defence job when the base lane is idle.
+ */
+function resolveJob(p: SimPlayer, building?: BuildingType | YardFieldType): StructureJob | null {
+  if (building != null) {
+    const job = jobIn(p, slotOf(building));
+    return job?.type === building ? job : null;
+  }
+  return p.structure ?? p.defence;
+}
 
 export function startBuild(state: MatchState, playerId: string, type: BuildingType | YardFieldType): string | null {
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
   if (!hasCore(state, playerId)) return "Deploy the Rig.";
-  if (p.structure) return "Construction already underway.";
+  const slot = slotOf(type);
+  if (jobIn(p, slot)) return "Construction already underway.";
   const def = catalog(type);
-  p.structure = {
+  putJob(p, slot, {
     type,
     progressTicks: 0,
     totalTicks: secondsToTicks(def.buildSeconds),
     ready: false,
     paused: false,
     paid: 0,
-  };
-  p.placingType = null;
+  });
+  // A new base job has no ghost yet. Leave a ready defence's placement alone.
+  if (slot === "structure") p.placingType = null;
   return null;
 }
 
-export function pauseStructure(state: MatchState, playerId: string, paused?: boolean): string | null {
+export function pauseStructure(
+  state: MatchState,
+  playerId: string,
+  paused?: boolean,
+  building?: BuildingType | YardFieldType,
+): string | null {
   const p = state.players.get(playerId);
-  if (!p?.structure) return "Nothing to pause.";
-  p.structure.paused = paused === undefined ? !p.structure.paused : paused;
+  const job = p ? resolveJob(p, building) : null;
+  if (!job) return "Nothing to pause.";
+  job.paused = paused === undefined ? !job.paused : paused;
   return null;
 }
 
-export function cancelStructure(state: MatchState, playerId: string): string | null {
+export function cancelStructure(
+  state: MatchState,
+  playerId: string,
+  building?: BuildingType | YardFieldType,
+): string | null {
   const p = state.players.get(playerId);
-  if (!p?.structure) return "Nothing to cancel.";
-  refundPaid(p, p.structure);
-  p.structure = null;
-  p.placingType = null;
+  const job = p ? resolveJob(p, building) : null;
+  if (!p || !job) return "Nothing to cancel.";
+  refundPaid(p, job);
+  dropJob(p, job);
   return null;
 }
 
 export function tickBuild(state: MatchState, _dt: number): void {
   for (const p of state.players.values()) {
-    if (!p.alive || !p.structure || p.structure.ready || p.structure.paused) continue;
-    if (!hasCore(state, p.playerId)) continue;
-    if (isYardField(p.structure.type)) {
-      finishYardField(state, p.playerId);
-      continue;
-    }
-    const def = catalog(p.structure.type);
-    const pow = powerOf(state, p.playerId);
-    advancePaidJob(p, p.structure, def.cost, productionSpeed(pow.provided, pow.used));
-    if (jobFullyPaid(p.structure, def.cost)) {
-      p.structure.ready = true;
-      p.structure.progressTicks = p.structure.totalTicks;
-      p.placingType = p.structure.type;
-    }
+    if (!p.alive || !hasCore(state, p.playerId)) continue;
+    // Base first, then the defence, so a short scrap pile funds the base.
+    advanceStructure(state, p, p.structure, "structure");
+    advanceStructure(state, p, p.defence, "defence");
+  }
+}
+
+function advanceStructure(state: MatchState, p: SimPlayer, job: StructureJob | null, slot: BuildSlot): void {
+  if (!job || job.ready || job.paused) return;
+  if (isYardField(job.type)) {
+    finishYardField(state, p, job);
+    return;
+  }
+  const def = catalog(job.type);
+  const pow = powerOf(state, p.playerId);
+  advancePaidJob(p, job, def.cost, productionSpeed(pow.provided, pow.used));
+  if (jobFullyPaid(job, def.cost)) {
+    job.ready = true;
+    job.progressTicks = job.totalTicks;
+    // A ready defence is placed from its own queue, so it does not steal the base ghost.
+    if (slot === "structure") p.placingType = job.type;
   }
 }
 
 /** A sited sandbag or wall line. Time and scrap scale with the number of sections. */
-function finishYardField(state: MatchState, playerId: string): void {
-  const p = state.players.get(playerId);
-  const job = p?.structure;
-  if (!p || !job || !isYardField(job.type)) return;
+function finishYardField(state: MatchState, p: SimPlayer, job: StructureJob): void {
+  if (!isYardField(job.type)) return;
   const sites = job.sites ?? [];
   if (sites.length === 0) {
-    p.structure = null;
-    p.placingType = null;
+    dropJob(p, job);
     return;
   }
   const def = catalog(job.type);
   const cost = def.cost * sites.length;
-  const pow = powerOf(state, playerId);
+  const pow = powerOf(state, p.playerId);
   advancePaidJob(p, job, cost, productionSpeed(pow.provided, pow.used));
   if (!jobFullyPaid(job, cost)) return;
   let placed = 0;
@@ -106,14 +157,13 @@ function finishYardField(state: MatchState, playerId: string): void {
       p.scrap += def.cost;
       continue;
     }
-    const built = makeEntity(state, type, playerId, piece.x, piece.y, { facing: piece.facing });
+    const built = makeEntity(state, type, p.playerId, piece.x, piece.y, { facing: piece.facing });
     built.facing = piece.facing;
     built.turretFacing = piece.facing;
     placed++;
   }
   if (placed > 0) restampForts(state);
-  p.structure = null;
-  p.placingType = null;
+  dropJob(p, job);
 }
 
 export function placeBuilding(
@@ -125,7 +175,8 @@ export function placeBuilding(
 ): string | null {
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
-  if (!p.structure?.ready || p.structure.type !== type) return "That structure is not ready.";
+  const job = jobIn(p, slotOf(type));
+  if (!job?.ready || job.type !== type) return "That structure is not ready.";
   if (!hasCore(state, playerId)) return "Deploy the Rig.";
   const def = catalog(type);
   if (tilesBlockedOrScrap(state, tx, ty, def.tileW, def.tileH)) return "Cannot place there.";
@@ -139,8 +190,7 @@ export function placeBuilding(
     if (u.kind === "unit") repathIfBlocked(state, u);
   }
   if (type === "smelter") spawnUnit(state, playerId, "hauler", b, true);
-  p.structure = null;
-  p.placingType = null;
+  dropJob(p, job);
   return null;
 }
 
@@ -168,7 +218,7 @@ export function placeBaseField(
 ): string | null {
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
-  if (p.structure) return "Construction already underway.";
+  if (p.defence) return "Construction already underway.";
   if (!hasCore(state, playerId)) return "Deploy the Rig.";
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(facing)) return "Cannot place there.";
   const pieces = fieldPiecesFor(structure, x, y, facing, x2, y2, path);
@@ -188,7 +238,7 @@ export function placeBaseField(
   }
   if (accepted.length === 0) return stop ?? "Cannot place there.";
   const def = catalog(structure);
-  p.structure = {
+  p.defence = {
     type: structure,
     progressTicks: 0,
     totalTicks: secondsToTicks(def.buildSeconds * accepted.length),
@@ -197,7 +247,6 @@ export function placeBaseField(
     paid: 0,
     sites: accepted.map((piece) => ({ x: piece.x, y: piece.y, facing: piece.facing })),
   };
-  p.placingType = null;
   return null;
 }
 

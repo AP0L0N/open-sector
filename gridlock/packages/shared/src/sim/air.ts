@@ -4,13 +4,21 @@ import {
   AIR_CRASH_BUILDING_DAMAGE,
   AIR_CRASH_HULL_MIN,
   AIR_CRASH_HULL_SHARE,
-  AIR_CRASH_SINK_PER_SEC,
+  AIR_CRASH_COVER_MAX,
+  AIR_CRASH_COVER_MIN,
+  AIR_CRASH_RANGE_MAX,
+  AIR_CRASH_RANGE_MIN,
+  AIR_CRASH_SHIVER_DEG,
+  AIR_CRASH_SINK_MAX,
+  AIR_CRASH_SINK_MIN,
   AIR_CRASH_SOFT_DAMAGE,
-  AIR_CRASH_RANGE,
-  AIR_CRASH_SPEED,
+  AIR_CRASH_SPEED_MAX,
+  AIR_CRASH_SPEED_MIN,
   AIR_CRASH_SPLASH_TILES,
-  AIR_CRASH_YAW_MAX,
-  AIR_CRASH_YAW_MIN,
+  AIR_CRASH_TIME_MAX,
+  AIR_CRASH_TIME_MIN,
+  AIR_CRASH_TURN_MAX,
+  AIR_CRASH_TURN_MIN,
   AIR_CRUISE_ALT,
   AIR_DIVE_CONE_DEG,
   AIR_DIVE_PER_SEC,
@@ -1127,10 +1135,11 @@ export function beginAircraftCrash(e: Entity): void {
     return;
   }
   a.phase = "crash";
-  a.speed = AIR_CRASH_SPEED;
   a.originX = e.x;
   a.originY = e.y;
   a.yaw = undefined;
+  a.sink = undefined;
+  a.reach = undefined;
   a.struck = [];
   a.extend = false;
   a.taxi = false;
@@ -1146,32 +1155,56 @@ export function beginAircraftCrash(e: Entity): void {
   e.state = "move";
 }
 
+/**
+ * Roll how this airframe comes down. One draw picks the family: a short,
+ * steep hook or a long, shallow glide, and the degrees in between.
+ * Speed, sink, and the turn are tied to that draw so the wreck actually
+ * lands at different distances instead of spiraling in place.
+ */
+function rollCrashFlight(state: MatchState, e: Entity): void {
+  const a = e.air!;
+  const u = nextRand(state);
+  const reachTiles = AIR_CRASH_RANGE_MIN + u * (AIR_CRASH_RANGE_MAX - AIR_CRASH_RANGE_MIN);
+  a.reach = reachTiles * state.tileSize;
+  a.speed = AIR_CRASH_SPEED_MIN + u * (AIR_CRASH_SPEED_MAX - AIR_CRASH_SPEED_MIN);
+  const v = Math.max(1, cruiseSpeed(state, e) * a.speed);
+  const cover = AIR_CRASH_COVER_MIN + u * (AIR_CRASH_COVER_MAX - AIR_CRASH_COVER_MIN);
+  let flight = a.reach / cover / v;
+  flight = Math.max(AIR_CRASH_TIME_MIN, Math.min(AIR_CRASH_TIME_MAX, flight));
+  const alt = Math.max(a.alt, 0.5);
+  a.sink = Math.max(AIR_CRASH_SINK_MIN, Math.min(AIR_CRASH_SINK_MAX, alt / flight));
+  const turnJitter = 0.75 + nextRand(state) * 0.5;
+  const turnDeg = (AIR_CRASH_TURN_MAX + u * (AIR_CRASH_TURN_MIN - AIR_CRASH_TURN_MAX)) * turnJitter;
+  const yawRate = (turnDeg * Math.PI) / 180 / flight;
+  a.yaw = (nextRand(state) < 0.5 ? -1 : 1) * yawRate;
+}
+
 function tickCrash(state: MatchState, e: Entity, dt: number): void {
   const a = e.air!;
   e.state = "move";
   e.order = null;
   e.attackTarget = null;
   if (e.hp < 1) e.hp = 1;
-  a.speed = AIR_CRASH_SPEED;
-  if (a.yaw == null) {
-    const deg = AIR_CRASH_YAW_MIN + nextRand(state) * (AIR_CRASH_YAW_MAX - AIR_CRASH_YAW_MIN);
-    a.yaw = (nextRand(state) < 0.5 ? -1 : 1) * deg * (Math.PI / 180);
-  }
-  // A few degrees of shiver on the chosen bank, so the arc is not a compass circle.
-  const shiver = (nextRand(state) - 0.5) * 2 * ((12 * Math.PI) / 180);
-  e.facing += (a.yaw + shiver) * dt;
+  if (a.yaw == null) rollCrashFlight(state, e);
+  const ox = a.originX ?? e.x;
+  const oy = a.originY ?? e.y;
+  const maxR = a.reach ?? AIR_CRASH_RANGE_MAX * state.tileSize;
+  // Once the rolled distance is spent, drop the rest of the way instead of orbiting the rim.
+  if (Math.hypot(e.x - ox, e.y - oy) >= maxR * 0.97) a.yaw = 0;
+  const shiver = a.yaw === 0 ? 0 : (nextRand(state) - 0.5) * 2 * ((AIR_CRASH_SHIVER_DEG * Math.PI) / 180);
+  e.facing += ((a.yaw ?? 0) + shiver) * dt;
   e.turretFacing = e.facing;
   glideCrash(state, e, dt);
-  a.alt = Math.max(0, a.alt - AIR_CRASH_SINK_PER_SEC * dt);
+  a.alt = Math.max(0, a.alt - (a.sink ?? AIR_CRASH_SINK_MIN) * dt);
   strikeWhileCrashing(state, e);
 }
 
-/** Glide at the crash speed, and stop going farther than the range from where it was hit. */
+/** Glide at the rolled crash speed, and stop at the distance rolled for this fall. */
 function glideCrash(state: MatchState, e: Entity, dt: number): void {
   const a = e.air!;
   const ox = a.originX ?? e.x;
   const oy = a.originY ?? e.y;
-  const maxR = AIR_CRASH_RANGE * state.tileSize;
+  const maxR = a.reach ?? AIR_CRASH_RANGE_MAX * state.tileSize;
   const v = cruiseSpeed(state, e) * a.speed;
   let x = e.x + Math.cos(e.facing) * v * dt;
   let y = e.y + Math.sin(e.facing) * v * dt;

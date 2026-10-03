@@ -217,20 +217,24 @@ describe("BV 222", () => {
     assert.ok(tracked, "a mine can break a track");
   });
 
-  it("hides enemy mines until one of your men is close", () => {
+  it("shows mines to the side that laid them and to allies, and hides them from the enemy", () => {
     const state = twoPlayerMatch();
     seedCore(state, "A", 4, 4);
     seedCore(state, "B", 50, 50);
     const ts = state.tileSize;
     scatterMines(state, "A", 30 * ts, 30 * ts);
-    assert.ok(snapshotFor(state, "A").mines.length > 0, "the side that laid them sees them");
-    const eye = riflemanAt(state, "B", 30 * ts, 30 * ts + t(6) * ts);
-    step(state, TICK_DT);
-    assert.equal(snapshotFor(state, "B").mines.length, 0, "not spotted from afar");
-    eye.x = state.mines[0]!.x + 4;
-    eye.y = state.mines[0]!.y;
+    const laid = snapshotFor(state, "A").mines.length;
+    assert.ok(laid > 0, "the side that laid them sees them");
+    assert.equal(snapshotFor(state, "B").mines.length, 0, "another side does not");
+    state.players.get("A")!.team = 1;
+    state.players.get("B")!.team = 1;
+    assert.equal(snapshotFor(state, "B").mines.length, laid, "an ally sees the same mines");
+    state.players.get("B")!.team = 2;
+    const mine = state.mines[0]!;
+    riflemanAt(state, "B", mine.x, mine.y);
     state.visionTick = -1;
-    assert.ok(snapshotFor(state, "B").mines.length > 0, "spotted up close");
+    assert.equal(snapshotFor(state, "B").mines.length, 0, "standing on an enemy mine still shows nothing");
+    assert.ok(state.mines.length > 0, "the mine is still there until something sets it off");
   });
 
   it("changes load only on the pad", () => {

@@ -165,7 +165,7 @@ describe("RAM catalog", () => {
     const d = catalog("dynamo");
     makeEntity(state, "dynamo", "A", (110 + d.tileW / 2) * ts, (110 + d.tileH / 2) * ts, { tileX: 110, tileY: 110 });
     assert.equal(applyCommand(state, "A", { type: "cmd.build", building: "ram" }).ok, true);
-    const t = until(state, 900, () => state.players.get("A")!.structure?.ready === true);
+    const t = until(state, 900, () => state.players.get("A")!.defence?.ready === true);
     assert.ok(t >= 0, "the RAM finishes building");
     assert.equal(applyCommand(state, "A", { type: "cmd.place", building: "ram", tx: 132, ty: 120 }).ok, true);
     const placed = [...state.entities.values()].find((e) => e.type === "ram");

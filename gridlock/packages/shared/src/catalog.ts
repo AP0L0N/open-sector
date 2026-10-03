@@ -136,6 +136,8 @@ export const STANCE_HIT_RADIUS: Record<Stance, number> = {
 export const CRIT_LEG_SPEED = STANCE_SPEED.crawl;
 /** Infantry swim speed vs standing on land. Vehicles cannot enter water. */
 export const SWIM_SPEED = 0.4;
+/** Share of each soldier's authored walk. 0.7 is about 30% slower on foot. */
+export const INFANTRY_PACE = 0.7;
 /** A* step-cost multiplier on water so troops prefer a short land detour. */
 export const WATER_PATH_COST = 2.5;
 /** Extra world pixels between unit reserved radii on a group move. */
@@ -1385,17 +1387,37 @@ export const AIR_DIVE_PER_SEC = 14;
 /**
  * A plane that dies in the air does not pop. It falls, nose wandering, trailing
  * smoke, and nothing else can hurt it until it meets the ground.
+ * Each fall rolls its own glide. A low roll drops nearby. A high roll runs out
+ * much farther, still banking, and meets the ground around the end of that run.
  */
-/** Elevation units per second the airframe sinks. Cruise is about two seconds of falling. */
-export const AIR_CRASH_SINK_PER_SEC = 8;
-/** Share of cruise speed while it falls. A fast plane is pulled down to this. */
-export const AIR_CRASH_SPEED = 0.4;
-/** Slowest sustained yaw while falling, degrees per second. Sign is chosen per crash. */
-export const AIR_CRASH_YAW_MIN = 90;
-/** Fastest sustained yaw while falling, degrees per second. */
-export const AIR_CRASH_YAW_MAX = 150;
-/** How far the airframe may glide from where it was hit, gameplay tiles. */
-export const AIR_CRASH_RANGE = t(6);
+/** Nearest a wreck comes down, counted the same way as other tile ranges. */
+export const AIR_CRASH_RANGE_MIN = t(0.55);
+/** Farthest a wreck may glide from where the plane was hit. */
+export const AIR_CRASH_RANGE_MAX = t(8);
+/** Cruise-speed share on a short fall. */
+export const AIR_CRASH_SPEED_MIN = 0.28;
+/** Cruise-speed share on a long glide. */
+export const AIR_CRASH_SPEED_MAX = 0.92;
+/** Slowest sink, elevation units per second. A plane that is already low still comes down. */
+export const AIR_CRASH_SINK_MIN = 3.5;
+/** Fastest sink. A short fall from cruise is pulled down at this rate. */
+export const AIR_CRASH_SINK_MAX = 11;
+/** Heading change along a long glide, degrees. A bend, so the track is not a ruler line. */
+export const AIR_CRASH_TURN_MIN = 28;
+/** Heading change along a short fall, degrees. A hook, not a loop back onto the hit. */
+export const AIR_CRASH_TURN_MAX = 100;
+/** Shortest a fall lasts, seconds, so a tiny glide is still a fall. */
+export const AIR_CRASH_TIME_MIN = 0.65;
+/** Longest a fall lasts, seconds. Past this the airframe is pulled down. */
+export const AIR_CRASH_TIME_MAX = 5.5;
+/**
+ * How much of a straight run the sink is timed for. Short falls are timed under
+ * their reach so they drop. Long glides are timed to arrive as they touch.
+ */
+export const AIR_CRASH_COVER_MIN = 0.62;
+export const AIR_CRASH_COVER_MAX = 1;
+/** Degrees per second of shiver on the chosen bank. */
+export const AIR_CRASH_SHIVER_DEG = 8;
 /** Infantry, a drone, or a Jump Jet the airframe strikes. */
 export const AIR_CRASH_SOFT_DAMAGE = 500;
 /** Share of a hull's max HP when the airframe strikes it. */
@@ -1516,7 +1538,7 @@ export const AIR_DROPS: readonly AirDrop[] = ["mines", "crate", "troops"];
 export const BV222_TROOPS = 10;
 /** Player-facing name and one line for each load. */
 export const AIR_DROP_INFO: Record<AirDrop, { name: string; blurb: string }> = {
-  mines: { name: "Mines", blurb: "A canister of butterfly mines. It bursts over the point and scatters them; they wait for any feet or tracks, friend or foe. A supply truck can disable one for scrap." },
+  mines: { name: "Mines", blurb: "A canister of mines. It bursts over the point and scatters them; they wait for any feet or tracks, friend or foe. You and your allies see each one. The enemy does not — it only goes off when something runs over it. A supply truck can disable one of yours for scrap." },
   crate: { name: "Crate", blurb: "A supply crate on a parachute. Your units standing at it take ammo and patch up." },
   troops: { name: "Paratroops", blurb: "Infantry board on the hardstand from any load (right-click the plane); that selects paratroops, and no other load can be chosen while anyone is aboard. Other ground units board once paratroops is selected. They jump over the point and hang under canopies until they land." },
 };
@@ -1532,7 +1554,7 @@ export const PARA_SINK_PER_SEC = 2.2;
 export const PARA_THROW = 0.25;
 /** Per second: the share of that throw still left. */
 export const PARA_DRAG = 0.35;
-/** SD 2 butterfly bomblets scattered by one canister. Each lies where it falls as a mine. */
+/** Bomblets scattered by one canister. Each lies where it falls as a mine. */
 export const CLUSTER_MINES = 14;
 export const CLUSTER_RADIUS_TILES = t(2.5);
 export const CLUSTER_FALL_SECONDS = 1.1;
@@ -1551,8 +1573,6 @@ export const MINE_SOFT_SHARE = 0.3;
 export const MINE_ARMOR_SHARE = 0.08;
 export const MINE_TRACK_CHANCE = 0.7;
 export const MINE_CALIBER = 20;
-/** The enemy sees a mine only once one of his men is this close to it. */
-export const MINE_SPOT_TILES = t(1.5);
 export const MINE_CAP = 240;
 /** Seconds a supply truck spends disabling one mine. */
 export const MINE_DISABLE_SECONDS = 2;
@@ -1679,6 +1699,14 @@ export const SPOTLIGHT_REACH_TILES = INFANTRY_SIGHT_TILES + TOWER_SIGHT_BONUS;
 /** Half the beam's width. */
 export const SPOTLIGHT_HALF_DEG = 14;
 export const SPOTLIGHT_TURN_DEG_PER_SEC = 60;
+/**
+ * Armored ground hulls and the Cyborg run a headlight in the dark. Down the
+ * hull's nose it gives back the unit's own daylight sight; everywhere else
+ * the night ring stands.
+ */
+export const HEADLIGHT_HALF_DEG = 20;
+/** Lamp headings snap to this step for sight, so a turning hull does not repaint every degree. */
+export const LAMP_HEADING_STEP_DEG = 3;
 
 /**
  * CIWS. A stationary radar-laid 20mm gatling on a small concrete pad. It needs
@@ -1745,14 +1773,14 @@ export interface GatlingHeat {
   /** Seconds the gun cannot fire once it reaches 1. */
   overheatSeconds: number;
 }
-/** CIWS pad. 30 rounds a second: under two and a half seconds on the trigger, then four to cool. */
-export const CIWS_HEAT: GatlingHeat = { perRound: 1 / 54.6, coolPerSec: 0.12, overheatSeconds: 4 };
+/** CIWS pad. 30 rounds a second. Half again the heat per round: about a second and a half on the trigger, then four to cool. */
+export const CIWS_HEAT: GatlingHeat = { perRound: 1.5 / 54.6, coolPerSec: 0.12, overheatSeconds: 4 };
 /** Walker. Both arms heat one set of barrels: one arm (20 a second) lasts under three seconds, both about one. */
 export const WALKER_HEAT: GatlingHeat = { perRound: 1 / 42.2, coolPerSec: 0.1, overheatSeconds: 4 };
 /** Cyborg arm. A single gun on a man's shoulder, 20 a second: under two seconds on the trigger. */
 export const CYBORG_HEAT: GatlingHeat = { perRound: 1 / 28.8, coolPerSec: 0.1, overheatSeconds: 4.5 };
-/** Apocalypse roof mount. Fewer barrels than the pad, 20 a second: about two seconds on the trigger. */
-export const APOCALYPSE_CIWS_HEAT: GatlingHeat = { perRound: 1 / 32.4, coolPerSec: 0.12, overheatSeconds: 4 };
+/** Apocalypse roof mount. 20 a second. Half again the heat per round: a little over a second on the trigger. */
+export const APOCALYPSE_CIWS_HEAT: GatlingHeat = { perRound: 1.5 / 32.4, coolPerSec: 0.12, overheatSeconds: 4 };
 
 /** The gatling's heat, or null for a unit without one. The Apocalypse's is its roof mount. */
 export function gatlingHeatOf(type: EntityType): GatlingHeat | null {
@@ -1764,10 +1792,11 @@ export function gatlingHeatOf(type: EntityType): GatlingHeat | null {
 }
 
 /**
- * How loosely a gatling throws its rounds, against the CIWS pad's 1. It
- * widens the cone on every target and the height scatter on a plane. A cheap
- * gun (the Walker, the Cyborg) and a secondary mount (the Apocalypse roof)
- * are laid worse than the dedicated pad.
+ * How loosely a gatling throws its rounds, against a CIWS pad of 1 before
+ * CIWS_LAY. It widens the cone on every target and the height scatter on a
+ * plane. A cheap gun (the Walker, the Cyborg) and a secondary mount (the
+ * Apocalypse roof) are laid worse than the dedicated pad. The pad and the
+ * roof then lay CIWS_LAY times tighter than these numbers.
  */
 export const GATLING_SPRAY: Partial<Record<EntityType, number>> = {
   ciws: 1,
@@ -1776,8 +1805,12 @@ export const GATLING_SPRAY: Partial<Record<EntityType, number>> = {
   apocalypse: 1.5,
 };
 
+/** The pad and the Apocalypse roof lay this many times tighter than GATLING_SPRAY. Half again as accurate. */
+export const CIWS_LAY = 1.5;
+
 export function gatlingSprayOf(type: EntityType): number {
-  return GATLING_SPRAY[type] ?? 1;
+  const spray = GATLING_SPRAY[type] ?? 1;
+  return type === "ciws" || type === "apocalypse" ? spray / CIWS_LAY : spray;
 }
 
 /**
@@ -2450,7 +2483,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shotsPerTick: CIWS_SHOTS_PER_TICK,
     belt: CIWS_BELT,
     radarLaid: true,
-    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, and reaches farther for a plane than for anything on the ground. Against a plane it lays one stream of rounds, a tracer in every few, that walks on and off the airframe: often enough to bring one down on a pass. A couple of seconds on the trigger overheats the barrels, and it falls silent while they cool. Max range reaches half as far again, but out there the fire scatters wide. It tries to burst incoming rockets, and rarely does — a RAM is the missile screen. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, and reaches farther for a plane than for anything on the ground. Against a plane it lays one stream of rounds, a tracer in every few, that walks on and off the airframe: often enough to bring one down on a pass. About a second and a half on the trigger overheats the barrels, and it falls silent while they cool. Max range reaches half as far again, but out there the fire scatters wide. It tries to burst incoming rockets, and rarely does — a RAM is the missile screen. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
   },
   bunker: {
     type: "bunker",
@@ -2699,7 +2732,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(2.2),
+    moveTilesPerSec: t(2.2 * INFANTRY_PACE),
     turnDegPerSec: 1800,
     rangeTiles: RIFLE_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2723,7 +2756,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.65),
+    moveTilesPerSec: t(1.65 * INFANTRY_PACE),
     turnDegPerSec: 1400,
     rangeTiles: MG42_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2748,7 +2781,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.8),
+    moveTilesPerSec: t(1.8 * INFANTRY_PACE),
     turnDegPerSec: 1600,
     rangeTiles: SCOPED_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2774,7 +2807,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.65),
+    moveTilesPerSec: t(1.65 * INFANTRY_PACE),
     turnDegPerSec: 1400,
     rangeTiles: PTRD_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2800,7 +2833,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.6),
+    moveTilesPerSec: t(1.6 * INFANTRY_PACE),
     turnDegPerSec: 1400,
     rangeTiles: LAUNCHER_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2825,7 +2858,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.7),
+    moveTilesPerSec: t(1.7 * INFANTRY_PACE),
     turnDegPerSec: 1500,
     rangeTiles: FLAMER_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2850,7 +2883,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.5),
+    moveTilesPerSec: t(1.5 * INFANTRY_PACE),
     turnDegPerSec: 1200,
     rangeTiles: MORTAR_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2875,7 +2908,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(2),
+    moveTilesPerSec: t(2 * INFANTRY_PACE),
     turnDegPerSec: 1600,
     rangeTiles: 0,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2897,7 +2930,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(2),
+    moveTilesPerSec: t(2 * INFANTRY_PACE),
     turnDegPerSec: 1600,
     rangeTiles: 0,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -3007,7 +3040,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     mgAmmo: APOCALYPSE_CIWS_BELT,
     leavesWreck: true,
     wreckHp: 110,
-    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts some of them, then planes, infantry, and sometimes a Walker or a truck. A secondary mount, it sprays wider than a pad CIWS and overheats after about two seconds on the trigger. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
+    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts some of them, then planes, infantry, and sometimes a Walker or a truck. A secondary mount, it sprays wider than a pad CIWS and overheats after a little over a second on the trigger. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
   },
   /** Spec: gridlock/packages/client/src/assets/units/ss3/stug-iii-ausf-g-late-saukopf.md */
   ss3: {
@@ -3132,7 +3165,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.6),
+    moveTilesPerSec: t(1.6 * INFANTRY_PACE),
     turnDegPerSec: 900,
     rangeTiles: CYBORG_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -3323,7 +3356,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 0,
     leavesWreck: true,
     wreckHp: 28,
-    blurb: "Light truck. Tops up tank racks, coaxial belts, and the Walker's backpack, and slowly scrounges its cargo back on its own — an Armory refills it fast. Right-click a mine, yours or the enemy's, and it spends a few seconds disabling it; the mine comes up as scrap and does not go off under the truck while it works. Two seats. The factory driver stays at the wheel. A bullet in the front plate can kill the driver and leave the truck for anyone. A replacement driver can get out. The passenger fires from the bed: rifle, handgun, machine gun, scoped rifle, anti-tank rifle, rocket launcher, flamethrower, or a Jump Jet's assault rifle. A mortar and a cyborg gatling stay slung. Hit-point bars for the soldiers aboard sit beside the truck. Soldiers inside are a little harder to wound, and more so from the side or rear.",
+    blurb: "Light truck. Tops up tank racks, coaxial belts, and the Walker's backpack, and slowly scrounges its cargo back on its own — an Armory refills it fast. Right-click a mine, yours or an ally's, and it spends a few seconds disabling it; the mine comes up as scrap and does not go off under the truck while it works. Two seats. The factory driver stays at the wheel. A bullet in the front plate can kill the driver and leave the truck for anyone. A replacement driver can get out. The passenger fires from the bed: rifle, handgun, machine gun, scoped rifle, anti-tank rifle, rocket launcher, flamethrower, or a Jump Jet's assault rifle. A mortar and a cyborg gatling stay slung. Hit-point bars for the soldiers aboard sit beside the truck. Soldiers inside are a little harder to wound, and more so from the side or rear.",
   },
   /** Ju 87 B dive bomber. Lives on an Airfield pad. */
   stuka: {
@@ -3404,7 +3437,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     aircraft: true,
     wreckHp: 80,
-    blurb: `Six-engined transport flying boat. No guns. Its bay takes one load, chosen on the pad: a canister of ${CLUSTER_MINES} butterfly mines that scatter over the ground and wait for anyone, friend or foe, a supply crate on a parachute that refills ammo and patches up whoever stands at it, or up to ${BV222_TROOPS} ground units. Infantry board on the hardstand from any load; that selects paratroops, and the bay stays on paratroops while anyone is aboard. They jump over the point and hang under canopies — where rifles and machine guns can reach them — until they touch down. Hold Ctrl and click, or Force attack, to drop whatever is loaded. Slow and big. Shot down, it falls trailing smoke and crashes as a wreck, and everyone still aboard goes with it. Lands at its Airfield to refuel and reload.`,
+    blurb: `Six-engined transport flying boat. No guns. Its bay takes one load, chosen on the pad: a canister of ${CLUSTER_MINES} mines that scatter over the ground and wait for anyone, friend or foe (the enemy never sees them), a supply crate on a parachute that refills ammo and patches up whoever stands at it, or up to ${BV222_TROOPS} ground units. Infantry board on the hardstand from any load; that selects paratroops, and the bay stays on paratroops while anyone is aboard. They jump over the point and hang under canopies — where rifles and machine guns can reach them — until they touch down. Hold Ctrl and click, or Force attack, to drop whatever is loaded. Slow and big. Shot down, it falls trailing smoke and crashes as a wreck, and everyone still aboard goes with it. Lands at its Airfield to refuel and reload.`,
   },
   droneop: {
     type: "droneop",
@@ -3418,7 +3451,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.6),
+    moveTilesPerSec: t(1.6 * INFANTRY_PACE),
     turnDegPerSec: 1600,
     rangeTiles: 0,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -3440,7 +3473,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(2.1),
+    moveTilesPerSec: t(2.1 * INFANTRY_PACE),
     turnDegPerSec: 1800,
     rangeTiles: ASSAULT_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -3581,6 +3614,15 @@ export function isFieldStructure(type: EntityType): type is FieldStructureType {
 
 export function isYardField(type: string): type is YardFieldType {
   return (YARD_FIELD_TYPES as readonly string[]).includes(type);
+}
+
+/**
+ * Guns, garrisons, and the sandbag and wall lines.
+ * They build on their own lane, beside a base structure.
+ */
+export function isDefenceStructure(type: string): boolean {
+  if (isYardField(type)) return true;
+  return isBuildingType(type) && (catalog(type).rangeTiles > 0 || isGarrisonable(type));
 }
 
 /** World-pixel length along the wall and thickness across it. Null for other types. */
