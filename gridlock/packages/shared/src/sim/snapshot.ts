@@ -305,6 +305,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
         friendly && e.order?.kind === "guard" && e.order.targetId != null ? e.order.targetId : undefined,
       tend: medicTendView(state, e),
       ruined: e.ruined || undefined,
+      gate: e.gate ? { locked: e.gate.locked, open: Math.round(e.gate.open * 100) / 100 } : undefined,
+      wallTop: e.wallTop,
       fieldSites: e.type === "engineer" ? fieldSitesView(e, friendly) : undefined,
       scout: scoutView(e, friendly),
       supply: friendly && e.type === "supply" && !e.wreck ? e.supply : undefined,
