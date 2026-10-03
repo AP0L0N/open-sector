@@ -17,6 +17,7 @@ import {
   listMaps,
 } from "@gridlock/shared";
 import { Hub } from "./room.js";
+import { MapStore } from "./map-store.js";
 import { attachSocket } from "./ws.js";
 
 const MIME: Record<string, string> = {
@@ -35,6 +36,14 @@ export interface ListenOpts {
   port?: number;
   host?: string;
   staticDir?: string | null;
+  /** Where Map Builder maps live. null keeps them in memory. */
+  mapsDir?: string | null;
+}
+
+function defaultMapsDir(): string | null {
+  if (process.env.GRIDLOCK_MAPS_DIR) return process.env.GRIDLOCK_MAPS_DIR;
+  if (process.env.NODE_TEST_CONTEXT) return null;
+  return fileURLToPath(new URL("../../../data/maps", import.meta.url));
 }
 
 function defaultStaticDir(): string {
@@ -96,7 +105,14 @@ function serveApi(pathname: string, res: http.ServerResponse): boolean {
     sendJson(
       res,
       200,
-      listMaps().map((m) => ({ id: m.id, name: m.name, width: m.width, height: m.height })),
+      listMaps().map((m) => ({
+        id: m.id,
+        name: m.name,
+        width: m.width,
+        height: m.height,
+        players: m.spawns.length,
+        custom: Boolean(m.custom),
+      })),
     );
     return true;
   }
@@ -151,7 +167,10 @@ export function startServer(opts: ListenOpts = {}): Promise<{
       ? null
       : (opts.staticDir ?? (isProd ? defaultStaticDir() : null));
 
-  const hub = new Hub();
+  const store = new MapStore(opts.mapsDir === undefined ? defaultMapsDir() : opts.mapsDir);
+  const loaded = store.load();
+  if (loaded > 0) console.log(JSON.stringify({ t: new Date().toISOString(), event: "maps.load", count: loaded }));
+  const hub = new Hub(store);
   const server = http.createServer((req, res) => {
     const pathname = (req.url ?? "/").split("?")[0] ?? "/";
     if (serveApi(pathname, res)) return;

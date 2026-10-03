@@ -14,8 +14,9 @@ import type {
   TrainType,
   YardFieldType,
 } from "./catalog.js";
+import type { CustomMapSpec } from "./custom-maps.js";
 
-export const PROTOCOL_VERSION = 74;
+export const PROTOCOL_VERSION = 75;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -551,6 +552,12 @@ export type ClientMessage =
     }
   | { type: "room.map"; mapId: string }
   | { type: "room.start" }
+  /**
+   * Map Builder save. `key` is the browser's private map key: the first save
+   * of an id claims it, and only the same key may overwrite or delete it.
+   */
+  | { type: "map.save"; map: CustomMapSpec; key: string }
+  | { type: "map.delete"; id: string; key: string }
   | { type: "chat"; text: string }
   /** `queue`: Shift-queued. The unit runs it after its current and earlier queued orders finish. */
   /** `facing`: world radians the unit turns to after it arrives. A held move click sets it. */
@@ -664,7 +671,14 @@ export type ServerMessage =
   | { type: "match.snapshot"; match: MatchSnapshot }
   | { type: "match.end"; winnerPlayerId: string | null; winnerTeam: number | null; reason: "core" | "host" }
   | { type: "room.closed"; reason: string }
-  | { type: "chat"; from: string; name: string; text: string; at: number };
+  | { type: "chat"; from: string; name: string; text: string; at: number }
+  /** Every stored custom map. Sent once after `welcome`. */
+  | { type: "maps.custom"; maps: CustomMapSpec[] }
+  /** A custom map was saved. Sent to everyone. */
+  | { type: "map.upsert"; map: CustomMapSpec }
+  | { type: "map.removed"; id: string }
+  /** Your own save landed. */
+  | { type: "map.saved"; id: string };
 
 export type ErrorCode =
   | "bad_payload"
@@ -678,6 +692,11 @@ export type ErrorCode =
   | "not_ready"
   | "no_map"
   | "too_few"
+  | "too_many"
+  | "map_invalid"
+  | "map_locked"
+  | "map_owner"
+  | "map_cap"
   | "room_cap"
   | "closed"
   | "bad_slot"

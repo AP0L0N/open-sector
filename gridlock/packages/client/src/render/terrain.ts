@@ -39,7 +39,7 @@ import {
   whenImagesReady,
   PROP_IMAGES,
 } from "./sprites.js";
-import { decorFor } from "./decor.js";
+import { decorFor, forgetDecor } from "./decor.js";
 import { SCRAP_SOFT_REACH, scrapDressAt, scrapField, scrapGround, type ScrapField } from "./scrap-field.js";
 import { hillshadeFactor } from "./relief.js";
 import { elevShadeFactor, hash2 } from "./terrain-light.js";
@@ -1248,6 +1248,14 @@ export function miniFor(map: MapDef, scrap: Iterable<ScrapCell>): MiniBake {
 export function resetTerrainCache(): void {
   terrainCache.clear();
   miniCache.clear();
+}
+
+/** Drop every bake of one map id. A Map Builder map can be saved again under the same id. */
+export function forgetTerrain(id: string): void {
+  terrainCache.delete(id);
+  miniCache.delete(id);
+  mapScrapCache.delete(id);
+  forgetDecor(id);
 }
 
 export function whenTerrainArtReady(cb: () => void): void {
