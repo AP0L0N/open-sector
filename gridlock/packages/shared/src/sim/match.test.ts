@@ -248,6 +248,81 @@ describe("construction", () => {
     assert.equal(state.players.get("A")!.scrap, before);
   });
 
+  it("builds a defence while a base structure is underway", () => {
+    const { state } = twoPlayerMatch();
+    const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig")!;
+    applyCommand(state, "A", { type: "cmd.deploy", id: rig.id });
+    ticks(state, 35);
+    const before = state.players.get("A")!.scrap;
+    const base = applyCommand(state, "A", { type: "cmd.build", building: "dynamo" });
+    assert.equal(base.ok, true, !base.ok ? base.message : "");
+    const defence = applyCommand(state, "A", { type: "cmd.build", building: "tower" });
+    assert.equal(defence.ok, true, !defence.ok ? defence.message : "");
+    const blockedBase = applyCommand(state, "A", { type: "cmd.build", building: "smelter" });
+    assert.equal(blockedBase.ok, false);
+    if (!blockedBase.ok) assert.match(blockedBase.message, /already underway/);
+    const blockedDefence = applyCommand(state, "A", { type: "cmd.build", building: "bunker" });
+    assert.equal(blockedDefence.ok, false);
+    if (!blockedDefence.ok) assert.match(blockedDefence.message, /already underway/);
+    const p = state.players.get("A")!;
+    assert.equal(p.structure?.type, "dynamo");
+    assert.equal(p.defence?.type, "tower");
+    ticks(state, 20);
+    assert.ok((p.structure?.progressTicks ?? 0) > 0);
+    assert.ok((p.defence?.progressTicks ?? 0) > 0);
+    const baseAt = p.structure!.progressTicks;
+    const defenceAt = p.defence!.progressTicks;
+    const defencePaid = p.defence!.paid;
+    const pause = applyCommand(state, "A", { type: "cmd.pause", what: "structure", paused: true, building: "dynamo" });
+    assert.equal(pause.ok, true);
+    ticks(state, 15);
+    assert.equal(p.structure!.progressTicks, baseAt);
+    assert.ok(p.defence!.progressTicks > defenceAt);
+    const scrapMid = p.scrap;
+    const paidNow = p.defence!.paid;
+    const cancelDefence = applyCommand(state, "A", { type: "cmd.cancel", what: "structure", building: "tower" });
+    assert.equal(cancelDefence.ok, true);
+    assert.ok(p.defence === null);
+    assert.equal(p.structure?.type, "dynamo");
+    assert.equal(p.scrap, scrapMid + paidNow);
+    assert.ok(paidNow > defencePaid);
+    const again = applyCommand(state, "A", { type: "cmd.build", building: "tower" });
+    assert.equal(again.ok, true, !again.ok ? again.message : "");
+    applyCommand(state, "A", { type: "cmd.pause", what: "structure", paused: false, building: "dynamo" });
+    ticks(state, catalog("dynamo").buildSeconds * 10);
+    assert.equal(p.structure?.ready, true);
+    assert.equal(p.placingType, "dynamo");
+    assert.equal(p.defence?.ready, false);
+    const you = snapshotFor(state, "A").you;
+    assert.equal(you.structureQueue?.type, "dynamo");
+    assert.equal(you.structureQueue?.ready, true);
+    assert.equal(you.defenceQueue?.type, "tower");
+    const core = [...state.entities.values()].find((e) => e.type === "core" && e.ownerId === "A")!;
+    const place = applyCommand(state, "A", {
+      type: "cmd.place",
+      building: "dynamo",
+      tx: core.tileX + core.tileW,
+      ty: core.tileY,
+    });
+    assert.equal(place.ok, true, !place.ok ? place.message : "");
+    assert.ok(p.structure === null);
+    assert.equal(p.placingType, null);
+    assert.equal(p.defence?.type, "tower");
+    ticks(state, catalog("tower").buildSeconds * 10);
+    assert.equal(p.defence?.ready, true);
+    assert.equal(p.placingType, null);
+    const placeTower = applyCommand(state, "A", {
+      type: "cmd.place",
+      building: "tower",
+      tx: core.tileX + core.tileW,
+      ty: core.tileY + catalog("dynamo").tileH,
+    });
+    assert.equal(placeTower.ok, true, !placeTower.ok ? placeTower.message : "");
+    assert.equal(p.defence, null);
+    assert.ok([...state.entities.values()].some((e) => e.type === "tower" && e.ownerId === "A"));
+    assert.equal(p.scrap, before - catalog("dynamo").cost - catalog("tower").cost);
+  });
+
   it("right-click pause on a finished structure does not unready it; cancel refunds the full cost", () => {
     const { state } = twoPlayerMatch();
     const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig")!;

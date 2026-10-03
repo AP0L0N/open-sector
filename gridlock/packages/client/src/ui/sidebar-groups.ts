@@ -4,7 +4,7 @@ import {
   YARD_FIELD_TYPES,
   catalog,
   isAircraftType,
-  isGarrisonable,
+  isDefenceStructure,
   isInfantryType,
   type BuildingType,
   type TrainType,
@@ -25,7 +25,7 @@ export const SIDEBAR_GROUPS: readonly { id: SidebarGroup; label: string; short: 
 /** Buildings with a gun or a garrison are defences. Trainables split by body: foot, air, or hull. */
 export function sidebarGroupOf(type: BuildingType | TrainType): SidebarGroup {
   if (catalog(type).kind === "building") {
-    return catalog(type).rangeTiles > 0 || isGarrisonable(type) ? "defences" : "structures";
+    return isDefenceStructure(type) ? "defences" : "structures";
   }
   if (isInfantryType(type)) return "infantry";
   if (isAircraftType(type)) return "aircraft";

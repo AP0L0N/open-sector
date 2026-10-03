@@ -265,7 +265,8 @@ describe("easy CPU", () => {
     state.blocked.set(blocked);
     cpu.scrap = 5000;
     tickAi(state);
-    assert.equal(state.players.get(aiId)!.structure?.type, "ciws");
+    assert.equal(state.players.get(aiId)!.defence?.type, "ciws");
+    assert.equal(state.players.get(aiId)!.structure, null);
   });
 
   it("keeps the Armory busy with unlocked hulls before Research stands", () => {

@@ -34,6 +34,7 @@ import {
   infantryGunFor,
   infantryLoadout,
   isCivilianType,
+  isDefenceStructure,
   isGarrisonable,
   hasSpotlight,
   isInfantryType,
@@ -208,11 +209,12 @@ export function mountBattlefield(
     const btn = document.getElementById("build-" + type);
     btn?.addEventListener("click", (e) => {
       const m = ctx.match;
-      const q = m?.you.structureQueue;
+      const q = laneQueue(m, type);
+      const mine = q?.type === type ? q : null;
       if (isYardField(type)) {
-        if (q && q.type === type && !q.ready) {
-          if ((e.target as HTMLElement | null)?.closest(".cameo-hold, .cameo-paused") || q.paused) {
-            ctx.net.send({ type: "cmd.pause", what: "structure", paused: !q.paused });
+        if (mine && !mine.ready) {
+          if ((e.target as HTMLElement | null)?.closest(".cameo-hold, .cameo-paused") || mine.paused) {
+            ctx.net.send({ type: "cmd.pause", what: "structure", paused: !mine.paused, building: type });
           }
           return;
         }
@@ -222,13 +224,13 @@ export function mountBattlefield(
         return;
       }
       if (structureReady(m, type)) {
-        view.placeMode = true;
+        view.armPlace(type);
         paintBattleHud(ctx);
         return;
       }
-      if (q && q.type === type && !q.ready) {
-        if ((e.target as HTMLElement | null)?.closest(".cameo-hold, .cameo-paused") || q.paused) {
-          ctx.net.send({ type: "cmd.pause", what: "structure", paused: !q.paused });
+      if (mine && !mine.ready) {
+        if ((e.target as HTMLElement | null)?.closest(".cameo-hold, .cameo-paused") || mine.paused) {
+          ctx.net.send({ type: "cmd.pause", what: "structure", paused: !mine.paused, building: type });
         }
         return;
       }
@@ -237,9 +239,9 @@ export function mountBattlefield(
     });
     btn?.addEventListener("contextmenu", (e) => {
       e.preventDefault();
-      const q = ctx.match?.you.structureQueue;
+      const q = laneQueue(ctx.match, type);
       if (isYardField(type)) {
-        if (q?.type === type) ctx.net.send({ type: "cmd.cancel", what: "structure" });
+        if (q?.type === type) ctx.net.send({ type: "cmd.cancel", what: "structure", building: type });
         else {
           view.yardArm = null;
           view.placeMode = false;
@@ -257,12 +259,12 @@ export function mountBattlefield(
           return;
         }
         readyCancelArmed = null;
-        ctx.net.send({ type: "cmd.cancel", what: "structure" });
+        ctx.net.send({ type: "cmd.cancel", what: "structure", building: type });
         return;
       }
       readyCancelArmed = null;
-      if (!q.paused) ctx.net.send({ type: "cmd.pause", what: "structure", paused: true });
-      else ctx.net.send({ type: "cmd.cancel", what: "structure" });
+      if (!q.paused) ctx.net.send({ type: "cmd.pause", what: "structure", paused: true, building: type });
+      else ctx.net.send({ type: "cmd.cancel", what: "structure", building: type });
     });
   }
   for (const unit of TRAIN_TYPES) {
@@ -312,10 +314,17 @@ export function mountBattlefield(
   return view;
 }
 
+/** The construction lane this cameo belongs to. A base job does not occupy the defence lane. */
+function laneQueue(m: MatchSnapshot | null | undefined, type: BuildingType | YardFieldType) {
+  if (!m) return null;
+  return isDefenceStructure(type) ? m.you.defenceQueue : m.you.structureQueue;
+}
+
 function structureReady(m: MatchSnapshot | null | undefined, type: BuildingType | YardFieldType): boolean {
   if (!m) return false;
-  if (m.you.placingType === type) return true;
-  return m.you.structureQueue?.ready === true && m.you.structureQueue.type === type;
+  if (!isDefenceStructure(type) && m.you.placingType === type) return true;
+  const q = laneQueue(m, type);
+  return q?.ready === true && q.type === type;
 }
 
 function cameoButton(
@@ -496,13 +505,14 @@ export function paintBattleHud(ctx: Ctx): void {
   top?.classList.toggle("low-power", m.you.lowPower);
 
   const coreUp = m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === "core");
-  const q = m.you.structureQueue;
-  if (!q?.ready || q.type !== readyCancelArmed) readyCancelArmed = null;
+  const armed = readyCancelArmed ? laneQueue(m, readyCancelArmed) : null;
+  if (!armed?.ready || armed.type !== readyCancelArmed) readyCancelArmed = null;
   for (const type of [...BUILDING_TYPES, ...YARD_FIELD_TYPES]) {
     const btn = document.getElementById("build-" + type) as HTMLButtonElement | null;
     if (!btn) continue;
-    const job = q?.type === type ? q : null;
-    btn.disabled = !coreUp || (!!q && !job);
+    const lane = laneQueue(m, type);
+    const job = lane?.type === type ? lane : null;
+    btn.disabled = !coreUp || (!!lane && !job);
     const pip = btn.querySelector(".pip") as HTMLElement | null;
     if (pip && job) {
       pip.style.width = `${Math.round((job.progressTicks / job.totalTicks) * 100)}%`;
