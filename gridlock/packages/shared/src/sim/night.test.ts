@@ -171,7 +171,8 @@ describe("watch tower spotlight", () => {
     tickSpotlights(state, TICK_DT);
     const step = (SPOTLIGHT_TURN_DEG_PER_SEC * TICK_DT * Math.PI) / 180;
     assert.ok(Math.abs(tower.spotFacing! - step) < 1e-9, "one tick of swing, not a snap");
-    for (let i = 0; i < 40; i++) tickSpotlights(state, TICK_DT);
+    const settleTicks = Math.ceil(90 / (SPOTLIGHT_TURN_DEG_PER_SEC * TICK_DT)) + 2;
+    for (let i = 0; i < settleTicks; i++) tickSpotlights(state, TICK_DT);
     assert.ok(Math.abs(tower.spotFacing! - Math.PI / 2) < 1e-9, "settles on the heading");
     assert.equal(tower.spotAim, undefined);
   });
@@ -186,7 +187,8 @@ describe("watch tower spotlight", () => {
     const far = SPOTLIGHT_REACH_TILES - 6;
     assert.equal(lit(state, a, ox, oy + far), false);
     applyCommand(state, a, { type: "cmd.rotate", ids: [tower.id], x: tower.x, y: tower.y + 500 });
-    for (let i = 0; i < 40; i++) tickSpotlights(state, TICK_DT);
+    const settleTicks = Math.ceil(90 / (SPOTLIGHT_TURN_DEG_PER_SEC * TICK_DT)) + 2;
+    for (let i = 0; i < settleTicks; i++) tickSpotlights(state, TICK_DT);
     assert.equal(lit(state, a, ox, oy + far), true, "the new heading is lit");
     assert.equal(lit(state, a, ox + far, oy), false, "the old one went dark");
   });

@@ -1,6 +1,9 @@
 import {
   DAY_SECONDS,
   LAMP_HEADING_STEP_DEG,
+  MAMMOTH_LAMP_PERIOD_SECONDS,
+  MAMMOTH_LAMP_STEP_DEG,
+  MAMMOTH_LAMP_SWING_DEG,
   isAircraftType,
   isArmoredType,
   isCyborg,
@@ -127,6 +130,36 @@ export function hasSpotlight(type: EntityType): boolean {
 export function hasHeadlight(type: EntityType): boolean {
   if (isCyborg(type)) return true;
   return isArmoredType(type) && !isAircraftType(type) && !isDroneType(type) && !hasSpotlight(type);
+}
+
+/** One hull lamp: where its beam points, and where the bulb is fixed on the hull. Offsets are radians from the nose. */
+export interface HullLamp {
+  beam: number;
+  mount: number;
+}
+
+/** Every hull but the Mammoth: one lamp, fixed on the nose. */
+const NOSE_LAMP: readonly HullLamp[] = [{ beam: 0, mount: 0 }];
+
+const MAMMOTH_LAMP_STEP = (MAMMOTH_LAMP_STEP_DEG * Math.PI) / 180;
+const MAMMOTH_LAMP_SWING = (MAMMOTH_LAMP_SWING_DEG * Math.PI) / 180;
+const MAMMOTH_LAMP_OMEGA = (2 * Math.PI) / MAMMOTH_LAMP_PERIOD_SECONDS;
+
+/**
+ * Lamps on this hull at `seconds` into the match. A Mammoth has the nose lamp
+ * plus one on each flank; the flank beams drift through a small arc and the
+ * bulbs stay on the hull. Every other hull is the nose lamp only.
+ */
+export function hullLamps(type: EntityType, id: number, seconds: number): readonly HullLamp[] {
+  if (type !== "mammoth") return NOSE_LAMP;
+  const phase = (id % 4096) * 0.37;
+  const swing = MAMMOTH_LAMP_SWING * Math.sin(seconds * MAMMOTH_LAMP_OMEGA + phase);
+  const other = MAMMOTH_LAMP_SWING * Math.sin(seconds * MAMMOTH_LAMP_OMEGA + phase + Math.PI);
+  return [
+    { beam: 0, mount: 0 },
+    { beam: MAMMOTH_LAMP_STEP + swing, mount: MAMMOTH_LAMP_STEP },
+    { beam: -MAMMOTH_LAMP_STEP + other, mount: -MAMMOTH_LAMP_STEP },
+  ];
 }
 
 /** A headlight burns on a live hull out in the open, not on a wreck or a passenger. */

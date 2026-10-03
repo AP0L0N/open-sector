@@ -5,8 +5,6 @@ import {
   GARRISON_HIDE_SIGHT,
   garrisonReachBonusOf,
   garrisonSightBonusOf,
-  GREAT_WALL_REACH_TILES,
-  GREAT_WALL_SIGHT_TILES,
   HEIGHT_BASE,
   HEIGHT_DOWNHILL_COST,
   HEIGHT_DOWNHILL_SPEED,
@@ -215,8 +213,7 @@ export function sightTilesForEntity(state: MatchState, e: Entity): number {
     }
   }
   if (entityIsScouting(e)) return sightTilesOf("rifleman", entityHeight(state, e));
-  const rampart = e.onRampart ? GREAT_WALL_SIGHT_TILES : 0;
-  return sightTilesOf(e.type, entityHeight(state, e), droneSightExtra(e) + rampart);
+  return sightTilesOf(e.type, entityHeight(state, e), droneSightExtra(e));
 }
 
 export function weaponRangeWorld(state: MatchState, e: Entity): number {
@@ -228,7 +225,6 @@ export function weaponRangeWorld(state: MatchState, e: Entity): number {
   if (base <= 0) return 0;
   let tiles = rangeTilesOf(e.type, entityHeight(state, e), base);
   if (inHouse && !host.garrisonHide) tiles += garrisonReachBonusOf(host.type);
-  if (e.onRampart) tiles += GREAT_WALL_REACH_TILES;
   return tiles * state.tileSize * longReachMul(e) * nightReachMul(state.tick);
 }
 

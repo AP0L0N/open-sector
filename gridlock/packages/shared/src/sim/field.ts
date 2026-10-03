@@ -4,7 +4,6 @@ import {
   CYBORG_REPAIR_PER_SEC,
   ENGINEER_SEEK_TILES,
   fieldSpan,
-  GREAT_WALL_COVER_BONUS,
   isConcreteLine,
   MAX_UNIT_RADIUS,
   UNIT_SPACE_PAD,
@@ -175,14 +174,13 @@ function overlapsField(state: MatchState, type: FieldStructureType, x: number, y
   return overlapsFieldIn(state.entities.values(), type, x, y, facing);
 }
 
-/** Longest line one drag can lay, in world units. */
-export const FIELD_LINE_REACH = 288;
-
-/** Most pieces one drag can lay for this structure. */
-export function fieldLineMax(type: FieldStructureType): number {
-  const span = fieldSpan(type);
-  return span ? Math.max(1, Math.floor(FIELD_LINE_REACH / span.length)) : 1;
-}
+/**
+ * Sharpest turn a line can take at a corner, radians of deflection. Past this
+ * the next leg folds back over the last one, so the leg is dropped.
+ */
+export const FIELD_TURN_MAX = (3 * Math.PI) / 4;
+/** Most pieces one order can lay. Well past a line across the whole map. */
+export const FIELD_PIECES_MAX = 512;
 
 export interface FieldPiece {
   x: number;
@@ -203,23 +201,108 @@ export function fieldLine(
   y1: number,
   facing: number,
 ): FieldPiece[] {
+  return fieldPath(type, [{ x: x0, y: y0 }, { x: x1, y: y1 }], facing);
+}
+
+/** Deflection between two unit directions, 0 straight on to π folded back. */
+export function fieldTurn(ax: number, ay: number, bx: number, by: number): number {
+  return Math.acos(Math.max(-1, Math.min(1, ax * bx + ay * by)));
+}
+
+/**
+ * Where the next leg starts when a line turns at the end `(ex, ey)` of a leg
+ * running along `(ux, uy)` into one along `(vx, vy)`. Both legs are pushed past the
+ * corner by half the thickness times tan(turn / 2), which is the mitre: a right angle
+ * puts the new leg's first piece exactly on the flank of the old leg's last piece, so
+ * the two never overlap by more than a touch and leave no gap on the outer corner.
+ */
+export function fieldCornerStart(
+  thick: number,
+  ex: number,
+  ey: number,
+  ux: number,
+  uy: number,
+  vx: number,
+  vy: number,
+): { x: number; y: number } {
+  const turn = fieldTurn(ux, uy, vx, vy);
+  const off = (thick / 2) * Math.tan(Math.min(turn, FIELD_TURN_MAX) / 2);
+  return { x: ex + off * (vx - ux), y: ey + off * (vy - uy) };
+}
+
+/**
+ * Pieces along a polyline. The first point is where the line starts; each later point
+ * is where the player released or clicked next. Every leg is laid in whole pieces from
+ * its start, so a leg ends a little short of or past the point, and the next leg starts
+ * at that end, offset into the mitre of the corner. A single point is one piece on
+ * `facing`. The first leg faces whichever flank is closer to `facing`, and every later
+ * leg faces the same flank, so the front of the line stays the front round every corner.
+ * A leg shorter than half a piece, or one folded back past FIELD_TURN_MAX, is skipped.
+ */
+export function fieldPath(type: FieldStructureType, points: readonly { x: number; y: number }[], facing: number): FieldPiece[] {
   const span = fieldSpan(type);
-  if (!span) return [];
-  const dx = x1 - x0;
-  const dy = y1 - y0;
-  const dist = Math.hypot(dx, dy);
-  if (dist < span.length * 0.5) return [{ x: x0, y: y0, facing }];
-  const ux = dx / dist;
-  const uy = dy / dist;
-  let face = Math.atan2(-ux, uy);
-  if (Math.cos(face - facing) < 0) face += Math.PI;
-  const n = Math.min(fieldLineMax(type), Math.max(1, Math.round(dist / span.length)));
+  if (!span || points.length === 0) return [];
+  const first = points[0]!;
   const out: FieldPiece[] = [];
-  for (let i = 0; i < n; i++) {
-    const along = span.length * (i + 0.5);
-    out.push({ x: x0 + ux * along, y: y0 + uy * along, facing: face });
+  let sx = first.x;
+  let sy = first.y;
+  let ux: number | null = null;
+  let uy = 0;
+  // Which flank the front is on: 1 right of the direction of travel, -1 left. Set by the first leg.
+  let side = 0;
+  for (let i = 1; i < points.length && out.length < FIELD_PIECES_MAX; i++) {
+    const target = points[i]!;
+    const dx = target.x - sx;
+    const dy = target.y - sy;
+    let dist = Math.hypot(dx, dy);
+    if (dist < span.length * 0.5) continue;
+    const vx = dx / dist;
+    const vy = dy / dist;
+    let x0 = sx;
+    let y0 = sy;
+    if (ux != null) {
+      if (fieldTurn(ux, uy, vx, vy) > FIELD_TURN_MAX) continue;
+      // The leg keeps the heading from the old end to the point; only its start moves into the mitre.
+      const start = fieldCornerStart(span.thick, sx, sy, ux, uy, vx, vy);
+      x0 = start.x;
+      y0 = start.y;
+      dist = (target.x - x0) * vx + (target.y - y0) * vy;
+      if (dist < span.length * 0.5) continue;
+    }
+    const right = Math.atan2(-vx, vy);
+    if (side === 0) side = Math.cos(right - facing) < 0 ? -1 : 1;
+    const legFace = side > 0 ? right : right + Math.PI;
+    const n = Math.min(FIELD_PIECES_MAX - out.length, Math.max(1, Math.round(dist / span.length)));
+    for (let k = 0; k < n; k++) {
+      const along = span.length * (k + 0.5);
+      out.push({ x: x0 + vx * along, y: y0 + vy * along, facing: legFace });
+    }
+    sx = x0 + vx * span.length * n;
+    sy = y0 + vy * span.length * n;
+    ux = vx;
+    uy = vy;
   }
+  if (out.length === 0) return [{ x: first.x, y: first.y, facing }];
   return out;
+}
+
+/** The pieces an order describes: a polyline, a drag, or one piece. */
+export function fieldPiecesFor(
+  type: FieldStructureType,
+  x: number,
+  y: number,
+  facing: number,
+  x2?: number,
+  y2?: number,
+  path?: readonly { x: number; y: number }[],
+): FieldPiece[] {
+  if (path && path.length > 0) {
+    const pts = path.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+    if (pts.length === 0) return [];
+    return fieldPath(type, pts, facing);
+  }
+  const line = x2 != null && y2 != null && Number.isFinite(x2) && Number.isFinite(y2);
+  return line ? fieldLine(type, x, y, x2, y2, facing) : [{ x, y, facing }];
 }
 
 export function fieldSiteClear(
@@ -264,7 +347,7 @@ function startPiece(state: MatchState, eng: Entity, structure: FieldStructureTyp
 }
 
 /**
- * One piece at (x, y), or a sandbag line toward (x2, y2).
+ * One piece at (x, y), a line toward (x2, y2), or a polyline along `path`.
  * Several engineers split a line into runs and each starts at his own end of it.
  */
 export function orderFieldBuild(
@@ -277,14 +360,12 @@ export function orderFieldBuild(
   facing: number,
   x2?: number,
   y2?: number,
+  path?: readonly { x: number; y: number }[],
 ): string | null {
   const crew = engineers.filter((e) => e.type === "engineer" && e.hp > 0 && !e.wreck);
   if (crew.length === 0) return "Select an engineer.";
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(facing)) return "Cannot place there.";
-  const line = x2 != null && y2 != null && Number.isFinite(x2) && Number.isFinite(y2);
-  const pieces = (line ? fieldLine(structure, x, y, x2, y2, facing) : [{ x, y, facing }]).filter((p) =>
-    pieceBuildable(state, structure, p),
-  );
+  const pieces = fieldPiecesFor(structure, x, y, facing, x2, y2, path).filter((p) => pieceBuildable(state, structure, p));
   if (pieces.length === 0) return "Cannot place there.";
   const workers = crew.slice(0, pieces.length);
   const ux = pieces.length > 1 ? pieces[pieces.length - 1]!.x - pieces[0]!.x : 0;
@@ -506,8 +587,12 @@ function tickWall(state: MatchState, e: Entity, dt: number, structure: ConcreteL
   if (e.work + 1e-6 < catalog(structure).buildSeconds * count) return;
   const player = state.players.get(e.ownerId);
   let placed = 0;
-  for (const p of wallPiecesOf(e)) {
-    if (!fieldSiteClear(state, structure, p.x, p.y, p.facing)) {
+  const done = wallPiecesOf(e);
+  // Check every piece before raising any: at a corner the first section would otherwise touch the second.
+  const clear = done.map((p) => fieldSiteClear(state, structure, p.x, p.y, p.facing));
+  for (let i = 0; i < done.length; i++) {
+    const p = done[i]!;
+    if (!clear[i]) {
       if (player) player.scrap += catalog(structure).cost;
       continue;
     }
@@ -739,31 +824,12 @@ export function coverStrike(e: Entity, damage: number, tick: number, overhead: b
   return takeDamage(e, damage, tick);
 }
 
-/** The intact Great Wall section this soldier is standing on, if any. */
-export function rampartUnder(state: MatchState, e: Entity): Entity | null {
-  if (e.hp <= 0 || e.wreck || e.kind !== "unit" || e.garrisonedIn != null || aloft(e)) return null;
-  if (!isInfantryType(e.type)) return null;
-  const span = fieldSpan("greatwall")!;
-  for (const wall of state.entities.values()) {
-    if (wall.type !== "greatwall" || wall.ruined || wall.hp <= 0) continue;
-    if (inFieldRect(e.x, e.y, wall.x, wall.y, wall.facing, span.length, span.thick)) return wall;
-  }
-  return null;
-}
-
-/** Infantry on top of a Great Wall, behind its parapet. */
-export function rampartCoverBonus(e: Entity): number {
-  if (!e.onRampart) return 0;
-  return Math.max(1, Math.round(catalog(e.type).hp * GREAT_WALL_COVER_BONUS));
-}
-
 function applyCoverHp(state: MatchState): void {
   for (const e of state.entities.values()) {
     if (e.kind !== "unit") continue;
-    e.onRampart = rampartUnder(state, e) != null ? true : undefined;
     const sand = e.hp <= 0 ? 0 : sandbagCoverBonus(state, e);
     const wall = e.hp <= 0 ? 0 : wallCoverBonus(state, e);
-    const next = sand + wall + rampartCoverBonus(e);
+    const next = sand + wall;
     const prev = e.coverBonus;
     e.wallCover = wall;
     if (next === prev) continue;
@@ -854,8 +920,8 @@ function wallOnSegment(
 ): { e: Entity; t: number; x: number; y: number } | null {
   let best: { e: Entity; t: number; x: number; y: number } | null = null;
   for (const e of state.entities.values()) {
-    if (e.type !== "wall" || e.hp <= 0 || e.ruined) continue;
-    const span = fieldSpan("wall")!;
+    if (!isConcreteLine(e.type) || e.hp <= 0 || e.ruined) continue;
+    const span = fieldSpan(e.type)!;
     const t = segmentObbT(x0, y0, x1, y1, e.x, e.y, e.facing, span.length / 2, span.thick / 2);
     if (t == null) continue;
     if (best && t >= best.t) continue;
@@ -864,31 +930,7 @@ function wallOnSegment(
   return best;
 }
 
-/**
- * The first intact Great Wall a low shot runs into from outside. A round that starts
- * on the wall flies off it, so men on top fire freely.
- */
-export function greatWallSweep(
-  state: MatchState,
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-): { e: Entity; t: number; x: number; y: number } | null {
-  let best: { e: Entity; t: number; x: number; y: number } | null = null;
-  const span = fieldSpan("greatwall")!;
-  for (const e of state.entities.values()) {
-    if (e.type !== "greatwall" || e.hp <= 0 || e.ruined) continue;
-    if (inFieldRect(x0, y0, e.x, e.y, e.facing, span.length, span.thick)) continue;
-    const t = segmentObbT(x0, y0, x1, y1, e.x, e.y, e.facing, span.length / 2, span.thick / 2);
-    if (t == null) continue;
-    if (best && t >= best.t) continue;
-    best = { e, t, x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t };
-  }
-  return best;
-}
-
-/** The first intact concrete wall a straight shot crosses. Overhead rounds pass over. */
+/** The first intact concrete wall, ordinary or Large, that a straight shot crosses. Overhead rounds pass over. */
 export function wallSweep(
   state: MatchState,
   x0: number,
@@ -942,15 +984,15 @@ function segmentObbT(
 }
 
 /**
- * 1 = sandbags and concrete walls (blocks everyone). 2 = dragon's teeth and the Great Wall
- * (vehicles only; infantry walk through the teeth and over the rampart). A trench blocks no one.
+ * 1 = sandbags and both concrete walls (blocks everyone). 2 = dragon's teeth
+ * (vehicles only; infantry walk through). A trench blocks no one.
  */
 export function restampForts(state: MatchState): void {
   state.fortBlock.fill(0);
   for (const e of state.entities.values()) {
     if (!isFieldStructure(e.type) || e.hp <= 0 || e.ruined) continue;
     if (e.type === "trench") continue;
-    const code = e.type === "teeth" || e.type === "greatwall" ? 2 : 1;
+    const code = e.type === "teeth" ? 2 : 1;
     for (const t of fieldTiles(state, e.type, e.x, e.y, e.facing, 0)) {
       state.fortBlock[tileIndex(state, t.x, t.y)] = code;
     }

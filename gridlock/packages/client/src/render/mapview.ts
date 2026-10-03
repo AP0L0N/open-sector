@@ -20,6 +20,7 @@ import {
   SPOTLIGHT_TURN_DEG_PER_SEC,
   TOWER_EYE_HEIGHT,
   fieldSpan,
+  isConcreteLine,
   GUARD_CONE_DEG,
   isCivilianType,
   isFieldStructure,
@@ -66,7 +67,7 @@ import {
   previewField,
   previewPlace,
   previewYardField,
-  fieldLine,
+  fieldPath,
   specialOf,
   specialReady,
   tileOnMask,
@@ -82,6 +83,7 @@ import {
   type CorpseView,
   type EntityType,
   type FieldStructureType,
+  type ConcreteLineType,
   type EntityView,
   type IsoPt,
   type MapDef,
@@ -252,7 +254,7 @@ const CYBORG_ARM_LIFT = 0.3;
 import { INTERCEPT_BURST_SIZE, RAM_MISS_BURST_SIZE, interceptorTrail } from "./ram.js";
 import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
-import { buildingShadowFootprint, drawCastShadows, treeShadowFootprint } from "./cast-shadow.js";
+import { buildingShadowFootprint, convexHull, drawCastShadows, shadowOffset, treeShadowFootprint } from "./cast-shadow.js";
 import { buildingGroundElev, drawYardWear, wallFootprint, yardWearFootprint } from "./building-ground.js";
 import {
   airBurstPuffs,
@@ -291,10 +293,20 @@ import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir,
 import { layCrashTrail, layChargeTrail, CRASH_PUFF_CAP, CHARGE_PUFF_CAP } from "./crash-smoke.js";
 import { canopySway, drawCanopy, drawCrate, drawMine, troopCanopySpan } from "./airdrop-fx.js";
 import { barrageTracers, tracerLandsAt, tracerSpan, type BarrageTracer } from "./barrage-tracer.js";
-import { drawSandbags } from "./sandbags.js";
+import { courseHeight, drawSandbags } from "./sandbags.js";
+import { fieldPointsWithCursor, pinFieldPoint, undoFieldPoint } from "./field-place.js";
 import { drawTrench } from "./trench.js";
-import { drawWall, WALL_SLAB_H, wallEndSeal, wallSectionsConnect, wallTopElev } from "./wall.js";
-import { drawGreatWall, onRampart, rampartTopElev, type RampartBox } from "./greatwall.js";
+import {
+  drawWall,
+  LARGE_WALL_STYLE,
+  WALL_STYLE,
+  wallFootprintWorld,
+  wallJoins,
+  wallSectionsConnect,
+  wallShadowHeight,
+  wallTopElev,
+  type WallSection,
+} from "./wall.js";
 import { pyroNozzleScreen } from "./pyro-nozzle.js";
 import { unitGroundSink } from "./unit-hit.js";
 import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
@@ -436,7 +448,7 @@ const EXTRUDE: Record<EntityType, number> = {
   cyborg: 26,
   sandbags: 12,
   wall: 18,
-  greatwall: 22,
+  greatwall: 34,
   teeth: 16,
   trench: 6,
   walker: 30,
@@ -545,6 +557,26 @@ const DECOR_FACES: Record<DecorKind, readonly PropSprite[]> = {
   stones: [],
   crater: [],
 };
+
+
+/** The sections reachable from `all[start]` through ends that meet, straight on or round a corner. */
+function connectedRun(all: readonly WallSection[], start: number): WallSection[] {
+  const group: WallSection[] = [];
+  const seen = new Set<number>();
+  const origin = all[start];
+  if (!origin) return group;
+  seen.add(start);
+  group.push(origin);
+  for (let i = 0; i < group.length; i++) {
+    for (let j = 0; j < all.length; j++) {
+      if (seen.has(j)) continue;
+      if (!wallSectionsConnect(group[i]!, all[j]!)) continue;
+      seen.add(j);
+      group.push(all[j]!);
+    }
+  }
+  return group;
+}
 
 export class MapView {
   private readonly canvas: HTMLCanvasElement;
@@ -729,8 +761,15 @@ export class MapView {
   forceAttackMode = false;
   rotateMode = false;
   guardMode = false;
-  /** Structure ghost. A click places one piece facing the cursor; a drag lays a wall from press to release. */
+  /**
+   * Structure ghost. A press sets the start, a drag or the next click sets each corner,
+   * and the line goes to the sim as one order on Confirm.
+   */
   fieldPlace: FieldStructureType | null = null;
+  /** Corners pinned so far, start first. Empty until the first release. */
+  private fieldPath: { x: number; y: number }[] = [];
+  /** Connected runs of same-type field structures in the current snapshot, by section key. */
+  private fieldRunCache: { snap: unknown; byType: Map<string, Map<string, WallSection[]>> } | null = null;
   private fieldFacing = Math.PI / 2;
   /** Eased ghost facing so the piece swings instead of snapping. */
   private fieldShown = Math.PI / 2;
@@ -858,6 +897,7 @@ export class MapView {
     const next = this.fieldPlace === structure ? null : structure;
     this.fieldPlace = next;
     this.fieldDrag = null;
+    this.fieldPath = [];
     if (next) {
       this.placeMode = false;
       this.placePick = null;
@@ -1088,6 +1128,8 @@ export class MapView {
     if (this.guardMode && this.ownSelectedIds().length === 0) this.setGuardMode(false);
     if (this.fieldPlace && !this.curr.entities.some((e) => this.selected.has(e.id) && e.type === "engineer" && e.ownerId === this.curr.youPlayerId)) {
       this.fieldPlace = null;
+      this.fieldPath = [];
+      this.fieldDrag = null;
       this.onPlaceMode();
     }
     if (this.placePick && !this.typeReady(this.placePick)) this.placePick = null;
@@ -1645,6 +1687,7 @@ export class MapView {
   armYardField(type: YardFieldType): void {
     this.fieldPlace = null;
     this.fieldDrag = null;
+    this.fieldPath = [];
     this.placePick = null;
     this.yardArm = type;
     this.placeMode = true;
@@ -1690,6 +1733,12 @@ export class MapView {
           else this.setPatrolMode(false);
           return;
         }
+        if (this.fieldPath.length > 0 && (this.fieldPlace || this.readyYardField())) {
+          this.fieldPath = undoFieldPoint(this.fieldPath);
+          this.fieldDrag = null;
+          this.onPlaceMode();
+          return;
+        }
         if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode || this.fieldPlace) {
           this.setAttackMoveMode(false);
           this.setForceAttackMode(false);
@@ -1697,6 +1746,7 @@ export class MapView {
           this.setGuardMode(false);
           this.fieldPlace = null;
           this.fieldDrag = null;
+          this.fieldPath = [];
           this.onPlaceMode();
           return;
         }
@@ -1788,8 +1838,11 @@ export class MapView {
       return;
     }
     if (e.button === 0 && this.fieldDrag && (this.fieldPlace || this.readyYardField())) {
-      this.commitField();
+      const type = this.fieldPlace ?? this.readyYardField()!;
+      const w = this.screenToWorld(this.mouseX, this.mouseY);
+      this.fieldPath = pinFieldPoint(this.fieldPath, this.fieldDrag, w, (fieldSpan(type)?.length ?? 24) * 0.5);
       this.fieldDrag = null;
+      this.onPlaceMode();
       return;
     }
     if (e.button === 0 && this.box) {
@@ -2326,27 +2379,49 @@ export class MapView {
     this.command({ type: "cmd.guard", ids, x: anchor.x, y: anchor.y, facing });
   }
 
-  private commitField(): void {
-    const drag = this.fieldDrag;
+  /** A line is drawn and waits for Confirm. */
+  fieldPending(): boolean {
+    return this.fieldPath.length > 0 && !!(this.fieldPlace || this.readyYardField());
+  }
+
+  /** Lay the drawn line: one order for the selected engineers, or one yard job. Clears the drawing. */
+  confirmField(): void {
     const yard = this.readyYardField();
     const structure = this.fieldPlace ?? yard;
-    if (!structure || !drag) return;
+    const path = this.fieldPath;
+    if (!structure || path.length === 0) return;
     const ids = this.fieldPlace
       ? this.curr.entities
           .filter((e) => this.selected.has(e.id) && e.ownerId === this.curr.youPlayerId && e.type === "engineer" && !e.wreck)
           .map((e) => e.id)
       : [];
     if (this.fieldPlace && ids.length === 0) return;
-    const w = this.screenToWorld(this.mouseX, this.mouseY);
-    const pieces = this.fieldPieces(structure, false);
+    const first = path[0]!;
     const facing = this.fieldFacing;
-    const one = pieces[0];
-    if (!one) return;
-    if (pieces.length > 1) {
-      this.command({ type: "cmd.field", ids, structure, x: drag.x, y: drag.y, facing, x2: w.x, y2: w.y });
-      return;
+    if (path.length === 1) {
+      this.command({ type: "cmd.field", ids, structure, x: first.x, y: first.y, facing });
+    } else {
+      this.command({ type: "cmd.field", ids, structure, x: first.x, y: first.y, facing, path: path.map((p) => ({ x: p.x, y: p.y })) });
     }
-    this.command({ type: "cmd.field", ids, structure, x: one.x, y: one.y, facing: one.facing });
+    // The line is placed: the tool is put down, like a building after it lands.
+    this.fieldPath = [];
+    this.fieldDrag = null;
+    this.fieldPlace = null;
+    this.yardArm = null;
+    this.placeMode = false;
+    this.onPlaceMode();
+  }
+
+  /** Drop the line being drawn and the placing mode with it. True when there was one. */
+  cancelFieldPlacing(): boolean {
+    if (!this.fieldPlace && !this.readyYardField()) return false;
+    this.fieldPath = [];
+    this.fieldDrag = null;
+    this.fieldPlace = null;
+    this.yardArm = null;
+    this.placeMode = false;
+    this.onPlaceMode();
+    return true;
   }
 
   private commitGuardUnit(hit: EntityView | null): boolean {
@@ -2488,34 +2563,6 @@ export class MapView {
     return airLiftPx(lerpAirAlt(this.prevById.get(e.id), e, t));
   }
 
-  /** Intact Great Wall sections in the current snapshot, with their walkway level. Rebuilt per snapshot. */
-  private rampartCache: { snap: unknown; boxes: RampartBox[] } | null = null;
-
-  private ramparts(): RampartBox[] {
-    if (this.rampartCache?.snap === this.curr) return this.rampartCache.boxes;
-    const span = fieldSpan("greatwall");
-    const boxes: RampartBox[] = [];
-    if (span) {
-      for (const e of this.curr.entities) {
-        if (e.type !== "greatwall" || e.hp <= 0 || e.ruined) continue;
-        const top = rampartTopElev(this.wallGrounds({ x: e.x, y: e.y, length: span.length, facing: e.facing }, span.thick));
-        boxes.push({ x: e.x, y: e.y, facing: e.facing, length: span.length, thick: span.thick, top });
-      }
-    }
-    this.rampartCache = { snap: this.curr, boxes };
-    return boxes;
-  }
-
-  /** Screen pixels a soldier on a Great Wall stands above the ground under him. */
-  private rampartLift(e: EntityView, p: { x: number; y: number }): number {
-    if (!isInfantryType(e.type) || e.garrisonedIn || e.air || e.jet || e.chute != null) return 0;
-    for (const box of this.ramparts()) {
-      if (!onRampart(box, p.x, p.y)) continue;
-      return Math.max(0, isoLift(box.top) - isoLift(this.elevAt(p.x, p.y)));
-    }
-    return 0;
-  }
-
   private lerpEnt(e: EntityView): { x: number; y: number; facing: number; turretFacing: number } {
     const turretNow = e.turretFacing ?? e.facing;
     const t = Math.min(1, (performance.now() - this.snapAt) / 100);
@@ -2598,7 +2645,7 @@ export class MapView {
         const spr = this.spriteOf(e);
         if (spr) {
           const s = this.toScreen(p.x, p.y);
-          s.y -= this.airLift(e) + this.rampartLift(e, p);
+          s.y -= this.airLift(e);
           const size = spr.drawSize;
           const top = s.y - size * spr.contactY;
           if (px >= s.x - size * 0.4 && px <= s.x + size * 0.4 && py >= top && py <= top + size) {
@@ -2714,10 +2761,17 @@ export class MapView {
 
   private onRight(px: number, py: number): void {
     if (this.placeMode || this.fieldPlace || this.yardArm) {
+      if (this.fieldPath.length > 0 && (this.fieldPlace || this.readyYardField())) {
+        this.fieldPath = undoFieldPoint(this.fieldPath);
+        this.fieldDrag = null;
+        this.onPlaceMode();
+        return;
+      }
       this.placeMode = false;
       this.yardArm = null;
       this.fieldPlace = null;
       this.fieldDrag = null;
+      this.fieldPath = [];
       this.onPlaceMode();
       return;
     }
@@ -3025,6 +3079,9 @@ export class MapView {
       if (e.kind === "building" && !isFieldStructure(e.type) && !buildingGroundFor(e.type)) {
         this.pushCastShadow(castShadows, this.buildingShadow(e), w, h);
         this.pushYardWear(yardWear, e, w, h);
+      }
+      if (!ghost && e.hp > 0 && !e.ruined && (e.type === "sandbags" || isConcreteLine(e.type))) {
+        this.pushCastShadow(castShadows, this.fieldShadow(e), w, h);
       }
       items.push({
         ...this.drawKey(e),
@@ -5036,7 +5093,7 @@ export class MapView {
     const p = this.lerpEnt(e);
     const size = def.drawSize;
     const s = this.toScreen(p.x, p.y);
-    s.y -= this.airLift(e) + this.rampartLift(e, p);
+    s.y -= this.airLift(e);
     const hex = this.ownerColor(e);
     const dir = facingToIso(p.facing, this.ts());
     const turretDir = facingToIso(p.turretFacing ?? p.facing, this.ts());
@@ -6563,24 +6620,26 @@ export class MapView {
       drawSelectFrame(this.ctx, pts, { hostile: this.hostileOwner(e.ownerId), now: performance.now() });
     }
     const veiled = (draw: () => void): void => this.drawFieldVeiled(e, span, draw);
-    if (e.type === "greatwall") {
+    if (isConcreteLine(e.type)) {
+      const type = e.type;
       const hurt = e.hpMax > 0 ? Math.max(0, 1 - e.hp / e.hpMax) : 0;
-      veiled(() => this.drawRampart(e.x, e.y, e.facing, { hurt, alpha: ghost ? 0.45 : 1, seed: e.id * 2654435761 }));
-      if (!ghost) {
-        const top = this.ramparts().find((b) => b.x === e.x && b.y === e.y)?.top ?? this.elevAt(e.x, e.y);
-        const s = this.toScreen(e.x, e.y, top);
-        const w = Math.max(28, this.groundSpan(e.x, e.y, span?.length ?? 40));
-        this.maybeHp(e, s.x - w / 2, s.y - 30, w);
-      }
-      return;
-    }
-    if (e.type === "wall") {
-      const hurt = e.hpMax > 0 ? Math.max(0, 1 - e.hp / e.hpMax) : 0;
-      veiled(() => this.drawConcreteWall(e.x, e.y, e.facing, { hurt, alpha: ghost ? 0.45 : 1, seed: e.id * 2654435761 }));
+      const manned = !ghost && type === "greatwall" && (e.garrison?.count ?? 0) > 0;
+      const holder = manned ? this.curr.players.find((pl) => pl.playerId === e.garrison?.ownerId) : undefined;
+      veiled(() =>
+        this.drawConcrete(type, e.x, e.y, e.facing, {
+          hurt,
+          alpha: ghost ? 0.45 : 1,
+          seed: e.id * 2654435761,
+          manned,
+          bandColor: holder ? colorHex(holder.colorId) : undefined,
+        }),
+      );
       if (!ghost) {
         const s = this.toScreen(e.x, e.y, this.elevAt(e.x, e.y));
         const w = Math.max(22, this.groundSpan(e.x, e.y, span?.length ?? 24));
-        this.maybeHp(e, s.x - w / 2, s.y - 18, w);
+        const lift = type === "greatwall" ? 44 : 18;
+        this.maybeHp(e, s.x - w / 2, s.y - lift, w);
+        if (type === "greatwall") this.drawGarrisonBars(e, s.x - 9, s.y - lift - 8);
       }
       return;
     }
@@ -6629,14 +6688,12 @@ export class MapView {
           run: () => {
             if (site.structure === "teeth") {
               this.drawTeeth(site.x, site.y, site.facing, FIELD_SITE_ALPHA, 0);
-            } else if (site.structure === "wall") {
-              this.drawConcreteWall(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
-            } else if (site.structure === "greatwall") {
-              this.drawRampart(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
+            } else if (isConcreteLine(site.structure)) {
+              this.drawConcrete(site.structure, site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 }, e.fieldSites);
             } else if (site.structure === "trench") {
               this.drawTrenchPit(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
             } else {
-              this.drawSandbagWall(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
+              this.drawSandbagWall(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 }, e.fieldSites);
             }
           },
         });
@@ -6644,20 +6701,23 @@ export class MapView {
     }
   }
 
-  private drawConcreteWall(
+  private drawConcrete(
+    type: ConcreteLineType,
     x: number,
     y: number,
     facing: number,
-    opts: { hurt?: number; alpha: number; seed: number; bad?: boolean },
-    extras?: { x: number; y: number; facing: number }[],
+    opts: { hurt?: number; alpha: number; seed: number; bad?: boolean; manned?: boolean; bandColor?: string },
+    extras?: readonly { x: number; y: number; facing: number }[],
   ): void {
-    const span = fieldSpan("wall");
+    const span = fieldSpan(type);
     if (!span) return;
-    const run = this.wallRun({ x, y, facing }, extras ?? []);
+    const style = type === "greatwall" ? LARGE_WALL_STYLE : WALL_STYLE;
+    const section: WallSection = { x, y, facing, length: span.length, thick: span.thick };
+    const run = this.fieldRun(type, section, extras ?? []);
     const grounds: number[] = [];
     for (const seg of run) grounds.push(...this.wallGrounds(seg, span.thick));
     const worldPx = this.groundSpan(x, y, 10) / 10;
-    const slabLevels = ISO_ELEVATION > 0 ? (WALL_SLAB_H * worldPx) / ISO_ELEVATION : 0;
+    const slabLevels = ISO_ELEVATION > 0 ? (style.slabH * worldPx) / ISO_ELEVATION : 0;
     drawWall(this.ctx, {
       x,
       y,
@@ -6673,42 +6733,85 @@ export class MapView {
       levelPx: ISO_ELEVATION,
       worldPx,
       project: (wx, wy, elev) => this.toScreen(wx, wy, elev),
-      seal: wallEndSeal({ x, y, facing, length: span.length, thick: span.thick }, run),
+      joins: wallJoins(section, run),
+      style,
+      manned: opts.manned,
+      bandColor: opts.bandColor,
     });
   }
 
-  /** This section plus every wall whose ends meet it, including a line still being sited. */
-  private wallRun(
-    origin: { x: number; y: number; facing: number },
-    extras: { x: number; y: number; facing: number }[],
-  ): { x: number; y: number; length: number; facing: number }[] {
-    const span = fieldSpan("wall");
+  /** Ground a sandbag or concrete section shades, pushed along the sun. */
+  private fieldShadow(e: EntityView): { x: number; y: number }[] {
+    const span = fieldSpan(e.type);
     if (!span) return [];
-    const all: { x: number; y: number; length: number; facing: number }[] = [];
+    const section: WallSection = { x: e.x, y: e.y, facing: e.facing, length: span.length, thick: span.thick };
+    const joins = isConcreteLine(e.type) || e.type === "sandbags" ? wallJoins(section, this.fieldRun(e.type, section, [])) : undefined;
+    const foot = wallFootprintWorld(section, joins);
+    const height =
+      e.type === "sandbags" ? courseHeight(span.thick) * 3.1 : wallShadowHeight(e.type === "greatwall" ? LARGE_WALL_STYLE : WALL_STYLE);
+    const d = shadowOffset(height);
+    return convexHull([...foot, ...foot.map((p) => ({ x: p.x + d.x, y: p.y + d.y }))]);
+  }
+
+  /**
+   * This section plus every same-type section whose ends meet it, straight on or round a
+   * corner, including a line still being sited. Runs of standing sections are cached per
+   * snapshot; a ghost or a sited line is joined in on the fly.
+   */
+  private fieldRun(
+    type: FieldStructureType,
+    origin: WallSection,
+    extras: readonly { x: number; y: number; facing: number }[],
+  ): WallSection[] {
+    const span = fieldSpan(type);
+    if (!span) return [];
+    const key = (x: number, y: number) => `${Math.round(x * 4)},${Math.round(y * 4)}`;
+    if (extras.length === 0) {
+      const cached = this.fieldRuns(type).get(key(origin.x, origin.y));
+      if (cached) return cached;
+    }
+    const all: WallSection[] = [];
+    const seen = new Set<string>();
     const add = (x: number, y: number, facing: number) => {
-      if (all.some((s) => Math.hypot(s.x - x, s.y - y) < 0.5)) return;
-      all.push({ x, y, length: span.length, facing });
+      const k = key(x, y);
+      if (seen.has(k)) return;
+      seen.add(k);
+      all.push({ x, y, facing, length: span.length, thick: span.thick });
     };
     add(origin.x, origin.y, origin.facing);
     for (const e of extras) add(e.x, e.y, e.facing);
     for (const e of this.curr.entities) {
-      if (e.type === "wall" && e.hp > 0) add(e.x, e.y, e.facing);
+      if (e.type === type && e.hp > 0 && !e.ruined) add(e.x, e.y, e.facing);
     }
-    const group: { x: number; y: number; length: number; facing: number }[] = [];
-    const seen = new Set<number>();
-    const originIndex = all.findIndex((s) => Math.hypot(s.x - origin.x, s.y - origin.y) < 0.5);
-    if (originIndex < 0) return [];
-    seen.add(originIndex);
-    group.push(all[originIndex]!);
-    for (let i = 0; i < group.length; i++) {
-      for (let j = 0; j < all.length; j++) {
-        if (seen.has(j)) continue;
-        if (!wallSectionsConnect(group[i]!, all[j]!)) continue;
-        seen.add(j);
-        group.push(all[j]!);
+    return connectedRun(all, 0);
+  }
+
+  /** Every standing run of this type in the snapshot, keyed by each section's position. */
+  private fieldRuns(type: FieldStructureType): Map<string, WallSection[]> {
+    if (this.fieldRunCache?.snap !== this.curr) this.fieldRunCache = { snap: this.curr, byType: new Map() };
+    const byType = this.fieldRunCache.byType;
+    let runs = byType.get(type);
+    if (runs) return runs;
+    runs = new Map();
+    const span = fieldSpan(type);
+    if (!span) return runs;
+    const key = (x: number, y: number) => `${Math.round(x * 4)},${Math.round(y * 4)}`;
+    const all: WallSection[] = [];
+    for (const e of this.curr.entities) {
+      if (e.type === type && e.hp > 0 && !e.ruined) all.push({ x: e.x, y: e.y, facing: e.facing, length: span.length, thick: span.thick });
+    }
+    const done = new Set<number>();
+    for (let i = 0; i < all.length; i++) {
+      if (done.has(i)) continue;
+      const group = connectedRun(all, i);
+      for (const g of group) {
+        runs.set(key(g.x, g.y), group);
+        const idx = all.indexOf(g);
+        if (idx >= 0) done.add(idx);
       }
     }
-    return group;
+    byType.set(type, runs);
+    return runs;
   }
 
   private wallGrounds(seg: { x: number; y: number; length: number; facing: number }, thick: number): number[] {
@@ -6727,41 +6830,21 @@ export class MapView {
     return out;
   }
 
-  private drawRampart(
-    x: number,
-    y: number,
-    facing: number,
-    opts: { hurt?: number; alpha: number; seed: number; bad?: boolean },
-  ): void {
-    const span = fieldSpan("greatwall");
-    if (!span) return;
-    drawGreatWall(this.ctx, {
-      x,
-      y,
-      facing,
-      length: span.length,
-      thick: span.thick,
-      hurt: opts.hurt ?? 0,
-      seed: opts.seed >>> 0,
-      alpha: opts.alpha,
-      bad: opts.bad,
-      ground: (wx, wy) => this.elevAt(wx, wy),
-      top: rampartTopElev(this.wallGrounds({ x, y, length: span.length, facing }, span.thick)),
-      project: (wx, wy, elev) => this.toScreen(wx, wy, elev),
-    });
-  }
-
   private drawSandbagWall(
     x: number,
     y: number,
     facing: number,
     opts: { ruined?: boolean; alpha: number; seed: number; bad?: boolean },
+    extras?: readonly { x: number; y: number; facing: number }[],
   ): void {
     const span = fieldSpan("sandbags");
     if (!span) return;
     const elev = this.elevAt(x, y);
     const lift = this.groundSpan(x, y, 10) / 10;
+    const section: WallSection = { x, y, facing, length: span.length, thick: span.thick };
+    const joins = opts.ruined ? undefined : wallJoins(section, this.fieldRun("sandbags", section, extras ?? []));
     drawSandbags(this.ctx, {
+      joins,
       x,
       y,
       facing,
@@ -6828,14 +6911,19 @@ export class MapView {
     this.fieldFacing += notches * (Math.PI / 12);
   }
 
+  /** Every piece the drawing describes: the pinned legs plus the live one to the cursor. */
   private fieldPieces(type: FieldStructureType, shown: boolean): { x: number; y: number; facing: number }[] {
     const w = this.screenToWorld(this.mouseX, this.mouseY);
-    const face = this.fieldFacing;
-    const drag = this.fieldDrag;
-    if (!drag) return [{ x: w.x, y: w.y, facing: shown ? this.fieldShown : face }];
-    const pieces = fieldLine(type, drag.x, drag.y, w.x, w.y, face);
-    if (shown && pieces.length === 1 && pieces[0]) pieces[0].facing = this.fieldShown;
+    const pts = fieldPointsWithCursor(this.fieldPath, this.fieldDrag, w);
+    const pieces = fieldPath(type, pts, this.fieldFacing);
+    if (shown && pts.length === 1 && pieces[0]) pieces[0].facing = this.fieldShown;
     return pieces;
+  }
+
+  /** How many of those pieces are already pinned. The rest follow the cursor. */
+  private fieldPinnedCount(type: FieldStructureType): number {
+    if (this.fieldPath.length < 2) return 0;
+    return fieldPath(type, this.fieldPath, this.fieldFacing).length;
   }
 
   private drawFieldGhost(type: FieldStructureType, fromBase: boolean): void {
@@ -6846,33 +6934,63 @@ export class MapView {
     d = Math.atan2(Math.sin(d), Math.cos(d));
     this.fieldShown += d * Math.min(1, dt * 16);
     const pieces = this.fieldPieces(type, true);
+    const pinned = this.fieldPinnedCount(type);
     const each = catalog(type).cost;
     const affordAll = this.curr.you.scrap >= each * pieces.length;
     let accepted = 0;
     let open = true;
-    for (const p of pieces) {
+    const sorted = pieces
+      .map((p, i) => ({ p, i, depth: isoDepth(p.x, p.y) }))
+      .sort((a, b) => a.depth - b.depth);
+    const okOf: boolean[] = [];
+    for (const { p, i } of pieces.map((p, i) => ({ p, i }))) {
       const clear = previewField(this.curr, type, p.x, p.y, p.facing);
       const near = !fromBase || (isYardField(type) && previewYardField(this.curr, type, p.x, p.y, p.facing));
       const ok = fromBase ? open && clear && near : clear && affordAll;
       if (fromBase && !ok) open = false;
       if (ok) accepted++;
+      okOf[i] = ok;
+    }
+    for (const { p, i } of sorted) {
+      const ok = okOf[i] ?? false;
+      // Pinned legs sit solid; the live leg to the cursor is lighter until it is pinned too.
+      const alpha = i < pinned ? (ok ? 0.88 : 0.55) : ok ? 0.68 : 0.42;
       if (type === "teeth") {
-        this.drawTeeth(p.x, p.y, p.facing, ok ? 0.72 : 0.4, 0);
+        this.drawTeeth(p.x, p.y, p.facing, alpha, 0);
         if (!ok) this.strokeFieldFoot(type, p, "#ff5a4a");
-      } else if (type === "wall") {
-        this.drawConcreteWall(p.x, p.y, p.facing, { alpha: ok ? 0.78 : 0.5, seed: 7, bad: !ok }, pieces);
-      } else if (type === "greatwall") {
-        this.drawRampart(p.x, p.y, p.facing, { alpha: ok ? 0.78 : 0.5, seed: 7, bad: !ok });
+      } else if (isConcreteLine(type)) {
+        this.drawConcrete(type, p.x, p.y, p.facing, { alpha, seed: 7, bad: !ok }, pieces);
       } else if (type === "trench") {
-        this.drawTrenchPit(p.x, p.y, p.facing, { alpha: 0.78, seed: 7, bad: !ok });
+        this.drawTrenchPit(p.x, p.y, p.facing, { alpha, seed: 7, bad: !ok });
       } else {
-        this.drawSandbagWall(p.x, p.y, p.facing, { alpha: 0.78, seed: 7, bad: !ok });
+        this.drawSandbagWall(p.x, p.y, p.facing, { alpha, seed: 7, bad: !ok }, pieces);
       }
     }
-    if (pieces.length < 2) return;
+    const ctx = this.ctx;
+    if (pinned > 0 && pinned < pieces.length) {
+      // Where the live leg starts: the end of the last pinned piece.
+      const first = pieces[pinned]!;
+      const next = pieces[pinned + 1] ?? this.screenToWorld(this.mouseX, this.mouseY);
+      const ux = -Math.sin(first.facing);
+      const uy = Math.cos(first.facing);
+      const sign = (next.x - first.x) * ux + (next.y - first.y) * uy >= 0 ? 1 : -1;
+      const half = (fieldSpan(type)?.length ?? 24) / 2;
+      const anchor = this.toScreen(first.x - ux * sign * half, first.y - uy * sign * half);
+      ctx.save();
+      ctx.strokeStyle = "#e8b84a";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(anchor.x, anchor.y - 6);
+      ctx.lineTo(anchor.x + 9, anchor.y);
+      ctx.lineTo(anchor.x, anchor.y + 6);
+      ctx.lineTo(anchor.x - 9, anchor.y);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (pieces.length < 2 && this.fieldPath.length === 0) return;
     const last = pieces[pieces.length - 1]!;
     const s = this.toScreen(last.x, last.y);
-    const ctx = this.ctx;
     const billCount = fromBase ? accepted : pieces.length;
     const bill = each * billCount;
     const afford = fromBase ? accepted === pieces.length && this.curr.you.scrap >= bill : affordAll;
@@ -6886,6 +7004,13 @@ export class MapView {
     const label = `${billCount} × ${each} = ${bill}`;
     ctx.strokeText(label, s.x + 14, s.y - 14);
     ctx.fillText(label, s.x + 14, s.y - 14);
+    if (this.fieldPath.length > 0) {
+      ctx.font = "10px 'Share Tech Mono', monospace";
+      ctx.fillStyle = "#e8dcc4";
+      const hint = "Enter / Confirm placement to build · click adds a leg · right-click takes one back";
+      ctx.strokeText(hint, s.x + 14, s.y + 2);
+      ctx.fillText(hint, s.x + 14, s.y + 2);
+    }
     ctx.restore();
   }
 
@@ -6894,12 +7019,10 @@ export class MapView {
     const q = this.curr.you.defenceQueue;
     if (!q?.sites || q.sites.length === 0 || !isYardField(q.type)) return;
     for (const s of q.sites) {
-      if (q.type === "wall") {
-        this.drawConcreteWall(s.x, s.y, s.facing, { alpha: 0.55, seed: 3 }, q.sites);
-      } else if (q.type === "greatwall") {
-        this.drawRampart(s.x, s.y, s.facing, { alpha: 0.55, seed: 3 });
+      if (isConcreteLine(q.type)) {
+        this.drawConcrete(q.type, s.x, s.y, s.facing, { alpha: 0.55, seed: 3 }, q.sites);
       } else {
-        this.drawSandbagWall(s.x, s.y, s.facing, { alpha: 0.55, seed: 3 });
+        this.drawSandbagWall(s.x, s.y, s.facing, { alpha: 0.55, seed: 3 }, q.sites);
       }
     }
   }
