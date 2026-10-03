@@ -23,7 +23,7 @@ describe("sidebarGroupOf", () => {
     assert.equal(sidebarGroupOf("bunker"), "defences");
     assert.equal(sidebarGroupOf("tower"), "defences");
     assert.equal(sidebarGroupOf("ram"), "defences");
-    for (const t of ["dynamo", "smelter", "muster", "armory", "airfield", "research"] as const) assert.equal(sidebarGroupOf(t), "structures");
+    for (const t of ["dynamo", "smelter", "muster", "armory", "airfield", "research", "radar"] as const) assert.equal(sidebarGroupOf(t), "structures");
   });
 
   it("splits trainables into infantry, tanks, and aircraft", () => {
