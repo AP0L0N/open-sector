@@ -25,6 +25,7 @@ export function drawActionCursor(
   else if (action === "repair") drawRepair(ctx, "FIX");
   else if (action === "scrap") drawRepair(ctx, "SCRAP");
   else if (action === "supply") drawRepair(ctx, "AMMO");
+  else if (action === "disable") drawRepair(ctx, "DISABLE");
   else if (action === "tow") drawRepair(ctx, "TOW");
   else if (action === "land") drawLand(ctx, t);
   else drawGather(ctx, t);

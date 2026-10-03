@@ -1477,12 +1477,57 @@ function levelHouseLots(
     }
     bounds.set(r, acc);
   });
-  const lots = boxes.map((b, i) => {
-    const acc = sums.get(root(i))!;
-    const bound = bounds.get(root(i))!;
-    const mean = Math.round(acc.sum / Math.max(1, acc.n));
-    return { ...b, z: Math.min(bound.hi, Math.max(bound.lo, mean)) };
+  const groups = new Map<number, { lo: number; hi: number; z: number; boxes: typeof boxes }>();
+  boxes.forEach((b, i) => {
+    const r = root(i);
+    let g = groups.get(r);
+    if (!g) {
+      const acc = sums.get(r)!;
+      const bound = bounds.get(r)!;
+      const mean = Math.round(acc.sum / Math.max(1, acc.n));
+      g = { lo: bound.lo, hi: bound.hi, z: Math.min(bound.hi, Math.max(bound.lo, mean)), boxes: [] };
+      groups.set(r, g);
+    }
+    g.boxes.push(b);
   });
+  // Margins are locked too. Two lots must sit close enough in height that the
+  // ground between those margins can ramp one step per tile.
+  const marginDist = (
+    a: { x0: number; y0: number; x1: number; y1: number },
+    b: { x0: number; y0: number; x1: number; y1: number },
+  ): number => {
+    const gx = Math.max(a.x0 - 1, b.x0 - 1) - Math.min(a.x1 + 1, b.x1 + 1);
+    const gy = Math.max(a.y0 - 1, b.y0 - 1) - Math.min(a.y1 + 1, b.y1 + 1);
+    return Math.max(gx, gy, 0);
+  };
+  const grouped = [...groups.values()];
+  let changed = true;
+  for (let guard = 0; changed && guard < grouped.length; guard++) {
+    changed = false;
+    for (let i = 0; i < grouped.length; i++) {
+      for (let j = i + 1; j < grouped.length; j++) {
+        const a = grouped[i]!;
+        const b = grouped[j]!;
+        let apart = Infinity;
+        for (const ba of a.boxes) {
+          for (const bb of b.boxes) apart = Math.min(apart, marginDist(ba, bb));
+        }
+        const maxDz = apart * HEIGHT_STEP_MAX;
+        const hi = a.z >= b.z ? a : b;
+        const lo = hi === a ? b : a;
+        const excess = hi.z - lo.z - maxDz;
+        if (excess <= 0) continue;
+        const drop = Math.min(hi.z - hi.lo, Math.ceil(excess / 2));
+        const rise = Math.min(lo.hi - lo.z, excess - drop);
+        const drop2 = Math.min(hi.z - hi.lo, excess - rise);
+        if (drop2 === 0 && rise === 0) continue;
+        hi.z -= drop2;
+        lo.z += rise;
+        changed = true;
+      }
+    }
+  }
+  const lots = boxes.map((b, i) => ({ ...b, z: groups.get(root(i))!.z }));
   const level = (x0: number, y0: number, x1: number, y1: number, z: number): void => {
     for (let y = Math.max(0, y0); y <= Math.min(height - 1, y1); y++) {
       for (let x = Math.max(0, x0); x <= Math.min(width - 1, x1); x++) {

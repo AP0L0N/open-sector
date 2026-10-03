@@ -49,7 +49,7 @@ function match(): MatchState {
   for (const e of [...state.entities.values()]) {
     if (isCivilianType(e.type)) destroyEntity(state, e);
   }
-  for (let y = 90; y <= 170; y++) {
+  for (let y = 60; y <= 170; y++) {
     for (let x = 90; x <= 170; x++) {
       const i = y * state.width + x;
       state.terrain[i] = TILE_EMPTY;

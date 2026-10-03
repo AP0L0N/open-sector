@@ -12,6 +12,7 @@ const QUEUEABLE = new Set<ClientMessage["type"]>([
   "cmd.harvest",
   "cmd.repair",
   "cmd.supply",
+  "cmd.disable",
   "cmd.board",
 ]);
 

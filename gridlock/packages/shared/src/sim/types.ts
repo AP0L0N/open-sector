@@ -45,6 +45,7 @@ export interface Order {
     | "repair"
     | "board"
     | "supply"
+    | "disable"
     | "tow"
     | "land";
   x?: number;
@@ -100,6 +101,7 @@ export type QueueableCommand = Extract<
       | "cmd.harvest"
       | "cmd.repair"
       | "cmd.supply"
+      | "cmd.disable"
       | "cmd.board";
   }
 >;
@@ -171,7 +173,7 @@ export interface Chute {
   vy: number;
 }
 
-/** A butterfly bomblet lying on the ground. Not an entity: nothing can shoot it. */
+/** A butterfly bomblet lying on the ground. Not an entity: nothing can shoot it. Any ground unit sets it off. A supply truck can disable it. */
 export interface Mine {
   id: number;
   ownerId: string;

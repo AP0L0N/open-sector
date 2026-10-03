@@ -618,7 +618,7 @@ function engineerWork(state: MatchState, p: SimPlayer, e: Entity, hq: Entity): v
 
 /** Top up anyone short nearby, refill at the Armory when the bed runs low, else rejoin the army. */
 function truckWork(state: MatchState, p: SimPlayer, e: Entity, hq: Entity, stage: Staging): void {
-  if (e.order?.kind === "supply") return;
+  if (e.order?.kind === "supply" || e.order?.kind === "disable") return;
   if (e.supply < SUPPLY_CARGO / 3) {
     const armory = nearestOwned(state, p.playerId, "armory", e);
     if (armory) applyCommand(state, p.playerId, { type: "cmd.supply", ids: [e.id], targetId: armory.id });

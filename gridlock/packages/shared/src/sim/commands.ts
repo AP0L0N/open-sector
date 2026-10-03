@@ -46,7 +46,7 @@ import { groupMovePace, groupMoveTargets } from "./formation.js";
 import { escortAnchor } from "./orders.js";
 import { setPath } from "./path.js";
 import { tickStance } from "./stance.js";
-import { dismountSupply, orderBoard, orderSupply, supplyCanDrive } from "./supply.js";
+import { dismountSupply, orderBoard, orderDisable, orderSupply, supplyCanDrive } from "./supply.js";
 import { orderCrew, orderTow } from "./artillery.js";
 import { orderAircraft, stopAircraft } from "./air.js";
 import { buildPatrolRoute, cleanPatrolPoints } from "./patrol.js";
@@ -205,6 +205,9 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       return cmdUnboard(state, playerId, msg.ids, msg.truckId);
     case "cmd.supply":
       return wrap(orderSupply(state, playerId, owned(state, playerId, msg.ids), msg.targetId), "not_found");
+    case "cmd.disable":
+      if (!Array.isArray(msg.ids) || typeof msg.mineId !== "number") return fail("bad_payload", "Bad disable order.");
+      return wrap(orderDisable(state, playerId, owned(state, playerId, msg.ids), msg.mineId), "not_found");
     case "cmd.tow":
       if (!Array.isArray(msg.ids)) return fail("bad_payload", "Bad tow order.");
       if (msg.targetId != null && typeof msg.targetId !== "number") return fail("bad_payload", "Bad tow order.");
@@ -236,6 +239,7 @@ const QUEUEABLE = new Set<string>([
   "cmd.harvest",
   "cmd.repair",
   "cmd.supply",
+  "cmd.disable",
   "cmd.board",
 ]);
 

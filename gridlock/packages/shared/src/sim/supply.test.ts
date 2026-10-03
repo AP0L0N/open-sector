@@ -14,6 +14,8 @@ import {
   supplyShortOf,
   weaponFitsTruck,
   infantryGunById,
+  MINE_DISABLE_SECONDS,
+  MINE_SCRAP,
   TICK_DT,
   type EntityType,
 } from "../catalog.js";
@@ -415,5 +417,32 @@ describe("supply truck", () => {
     tank.ammo = { ap: 0, he: 0, heat: 0, smoke: 0 };
     ticks(state, 10);
     assert.equal(truck.order, null);
+  });
+
+  it("disables a mine for scrap without setting that mine off", () => {
+    const { state, a } = match();
+    clearPad(state, 10, 10, 50, 50);
+    const ts = state.tileSize;
+    const x = tileCenter(24, ts);
+    const y = tileCenter(24, ts);
+    const mineId = state.nextId++;
+    state.mines.push({ id: mineId, ownerId: "B", x, y, arm: 0, life: 300 });
+    const truck = makeEntity(state, "supply", a, x + 28, y);
+    const scrap = state.players.get(a)!.scrap;
+    const hp = truck.hp;
+    const denied = applyCommand(state, a, { type: "cmd.disable", ids: [truck.id], mineId: mineId + 9 });
+    assert.equal(denied.ok, false);
+    const r = applyCommand(state, a, { type: "cmd.disable", ids: [truck.id], mineId });
+    assert.equal(r.ok, true, r.ok ? "" : r.message);
+    ticks(state, 5);
+    assert.equal(state.mines.length, 1);
+    assert.ok((snapshotFor(state, a).mines.find((m) => m.id === mineId)?.disarm ?? 0) > 0);
+    assert.equal(state.players.get(a)!.scrap, scrap);
+    assert.equal(truck.hp, hp);
+    ticks(state, Math.ceil(MINE_DISABLE_SECONDS / TICK_DT));
+    assert.equal(state.mines.length, 0);
+    assert.equal(state.players.get(a)!.scrap, scrap + MINE_SCRAP);
+    assert.equal(truck.hp, hp);
+    assert.notEqual(truck.order?.kind, "disable");
   });
 });

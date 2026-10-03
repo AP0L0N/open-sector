@@ -1,5 +1,8 @@
 import {
   DRIVER_KILL_CHANCE,
+  MINE_DISABLE_SECONDS,
+  MINE_SCRAP,
+  MINE_TRIGGER_TILES,
   GARRISON_STRUCTURAL_CALIBER,
   SHELL_TYPES,
   SUPPLY_CARGO,
@@ -420,6 +423,62 @@ function tickResupply(state: MatchState, truck: Entity, dt: number): void {
   if (stuck || truck.supply <= 0 || !needsSupply(target)) stall(truck);
 }
 
+/** World px past the fuze the truck stands, so the hull stays off the bomblet. */
+const DISABLE_PAD = 10;
+
+function mineFuze(ts: number, radius: number): number {
+  return MINE_TRIGGER_TILES * ts + radius;
+}
+
+function disableReach(ts: number, radius: number): number {
+  return mineFuze(ts, radius) + DISABLE_PAD + 8;
+}
+
+/** A point just outside the fuze, on the side the truck is already on. */
+function disableStand(truck: Entity, mine: { x: number; y: number }, ts: number): { x: number; y: number } {
+  const stand = mineFuze(ts, truck.radius) + DISABLE_PAD;
+  const dx = truck.x - mine.x;
+  const dy = truck.y - mine.y;
+  const d = Math.hypot(dx, dy) || 1;
+  return { x: mine.x + (dx / d) * stand, y: mine.y + (dy / d) * stand };
+}
+
+function tickDisable(state: MatchState, truck: Entity, dt: number): void {
+  const id = truck.order?.kind === "disable" ? truck.order.targetId : undefined;
+  const mine = id != null ? state.mines.find((m) => m.id === id) : undefined;
+  if (!mine || !supplyHasDriver(state, truck)) {
+    truck.work = 0;
+    stall(truck);
+    return;
+  }
+  const d = Math.hypot(truck.x - mine.x, truck.y - mine.y);
+  if (d > disableReach(state.tileSize, truck.radius)) {
+    truck.state = "move";
+    truck.work = 0;
+    if (truck.waypoints.length === 0 || state.tick % 8 === 0) {
+      const spot = disableStand(truck, mine, state.tileSize);
+      setPath(state, truck, spot.x, spot.y);
+    }
+    return;
+  }
+  truck.waypoints = [];
+  truck.state = "idle";
+  if (!hasCrit(truck, "engine")) {
+    truck.facing = Math.atan2(mine.y - truck.y, mine.x - truck.x);
+    truck.turretFacing = truck.facing;
+  }
+  truck.work += dt;
+  if (truck.work < MINE_DISABLE_SECONDS) return;
+  const i = state.mines.findIndex((m) => m.id === mine.id);
+  if (i >= 0) {
+    state.mines.splice(i, 1);
+    const player = state.players.get(truck.ownerId);
+    if (player) player.scrap += MINE_SCRAP;
+  }
+  truck.work = 0;
+  stall(truck);
+}
+
 /** Idle, or on a top-up it picked for itself. A player order wins. */
 function mayAutoSupply(truck: Entity): boolean {
   if (truck.garrisonedIn != null) return false;
@@ -510,7 +569,28 @@ export function tickSupply(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (e.type !== "supply" || e.hp <= 0 || e.wreck) continue;
     if (e.order?.kind === "supply") tickResupply(state, e, dt);
+    else if (e.order?.kind === "disable") tickDisable(state, e, dt);
   }
+}
+
+export function orderDisable(state: MatchState, playerId: string, trucks: Entity[], mineId: number): string | null {
+  const mine = state.mines.find((m) => m.id === mineId);
+  if (!mine) return "No mine there.";
+  const crew = trucks.filter((e) => e.type === "supply" && e.ownerId === playerId && e.hp > 0 && !e.wreck);
+  if (crew.length === 0) return "Select a supply truck.";
+  let sent = 0;
+  for (const truck of crew) {
+    if (!supplyHasDriver(state, truck)) continue;
+    clearOrder(truck);
+    truck.order = { kind: "disable", targetId: mineId };
+    truck.work = 0;
+    truck.state = "move";
+    const spot = disableStand(truck, mine, state.tileSize);
+    setPath(state, truck, spot.x, spot.y);
+    sent++;
+  }
+  if (sent === 0) return "No driver.";
+  return null;
 }
 
 export function orderSupply(state: MatchState, playerId: string, trucks: Entity[], targetId: number): string | null {

@@ -39,12 +39,14 @@ function act(opts: {
   selected: HoverEntity[];
   hit?: HoverEntity | null;
   scrap?: boolean;
+  mine?: boolean;
 }): ReturnType<typeof resolveHoverAction> {
   return resolveHoverAction({
     youPlayerId: YOU,
     selected: opts.selected,
     hit: opts.hit ?? null,
     scrap: opts.scrap ?? false,
+    mine: opts.mine,
     allied,
   });
 }
@@ -276,6 +278,18 @@ describe("resolveHoverAction", () => {
     const full = unit({ id: 61, type: "titan", ...loaded, rockets: def.rocketAmmo });
     assert.equal(act({ selected: [crewed], hit: spent }), "supply");
     assert.notEqual(act({ selected: [crewed], hit: full }), "supply");
+  });
+
+  it("offers disable on a mine when a crewed supply truck is selected", () => {
+    const crewed = unit({ id: 41, type: "supply", bed: { crew: true, seats: 0 }, supply: 120 });
+    const open = unit({ id: 42, type: "supply", bed: { seats: 0, open: true } });
+    const rifle = unit({ id: 43, type: "rifleman" });
+    const foe = unit({ id: 44, type: "rifleman", ownerId: FOE });
+    assert.equal(act({ selected: [crewed], mine: true }), "disable");
+    assert.equal(act({ selected: [open], mine: true }), null);
+    assert.equal(act({ selected: [rifle], mine: true }), null);
+    assert.equal(act({ selected: [crewed] }), null);
+    assert.equal(act({ selected: [crewed], hit: foe, mine: true }), "attack");
   });
 });
 
