@@ -206,12 +206,14 @@ import {
 } from "./garrison-shot.js";
 import { isDoubleClick, sameTypeOnScreen, type ClickMark } from "./same-type-select.js";
 import {
+  fieldGunNudgePx,
   recoilAmounts,
   recoilLayerShift,
   recoilPixels,
   tankGunRecoils,
   type GunRecoil,
 } from "./gun-recoil.js";
+import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
 import {
   drawMuzzleSmoke,
   muzzleSmokePose,
@@ -221,6 +223,8 @@ import {
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
 import { roofCiwsMuzzle } from "./roof-ciws.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
+import { ciwsBurstTracers, ciwsTracers } from "./ciws-tracer.js";
+import { ROOF_CIWS_LIFT } from "./roof-ciws.js";
 import { INTERCEPT_BURST_SIZE, RAM_MISS_BURST_SIZE, interceptorTrail } from "./ram.js";
 import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
@@ -550,6 +554,8 @@ export class MapView {
   private infantryShotAt = new Map<number, number>();
   /** Fw 190 barrage streaks in flight, with the gun and impact heights (absolute elevation). */
   private tracers: (BarrageTracer & { z0: number; z1: number })[] = [];
+  /** Mount id and tick of each rocket burst already given its fan of tracers. */
+  private ciwsBurstSeen = new Set<string>();
   /** Impact id -> wall-clock ms its barrage streak lands. The impact waits for it. */
   private barrageLandAt = new Map<number, number>();
   private fx: {
@@ -634,6 +640,7 @@ export class MapView {
   private gunHaulAt = new Map<number, number>();
   private gunRecoil = new Map<number, GunRecoil>();
   private muzzleSmokes: MuzzleSmokePuff[] = [];
+  private fieldGunSmokes: FieldGunSmokePuff[] = [];
   private occBuildings: {
     x: number;
     y: number;
@@ -855,12 +862,15 @@ export class MapView {
       if (!live.has(id) || until < now) this.damagedUntil.delete(id);
     }
     this.noteBarrages(match, now);
+    this.noteCiwsFire(match, now);
     for (const i of match.impacts ?? []) {
       if (i.fromId != null && (i.caliber ?? 0) > 0 && (i.caliber ?? 0) < 40 && i.kind !== "crush") {
         const shooter = match.entities.find((e) => e.id === i.fromId);
         if (shooter && isInfantryType(shooter.type) && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
       }
       if (i.kind === "crush") continue;
+      // A 20mm round that missed a plane climbed away into the sky: its tracer is all there is.
+      if (i.airZ != null && i.kind === "miss") continue;
       if (i.cookoff) {
         // A fuel fireball, not a shell burst: it has its own particles and smoke.
         if (!this.cookOffsSeen.has(i.id)) {
@@ -1081,6 +1091,66 @@ export class MapView {
     }
   }
 
+  /**
+   * CIWS and Apocalypse roof-mount rounds: a tracer in every few, barrels to
+   * where the round ended. A burst at a rocket leaves no rounds behind, so it
+   * gets a short fan along the gun's bearing.
+   */
+  private noteCiwsFire(match: MatchSnapshot, now: number): void {
+    const byMount = new Map<number, NonNullable<MatchSnapshot["impacts"]>>();
+    for (const i of match.impacts ?? []) {
+      if (i.fromId == null || i.intercept || i.caliber !== 20 || this.fxIds.has(i.id) || this.barrageLandAt.has(i.id)) continue;
+      const list = byMount.get(i.fromId);
+      if (list) list.push(i);
+      else byMount.set(i.fromId, [i]);
+    }
+    const ts = this.ts();
+    for (const e of match.entities) {
+      if (e.wreck) continue;
+      const pad = e.type === "ciws";
+      if (!pad && !e.ciws) continue;
+      const facing = pad ? (e.turretFacing ?? e.facing) : e.ciws!.facing;
+      const muzzle = this.ciwsMuzzleWorld(e, facing, pad);
+      if (!muzzle) continue;
+      const rounds = byMount.get(e.id);
+      if (rounds?.length) {
+        for (const tr of ciwsTracers(muzzle, rounds, (x, y) => this.elevAt(x, y), now, ts)) {
+          this.tracers.push(tr);
+          this.barrageLandAt.set(tr.id, tracerLandsAt(tr));
+        }
+        continue;
+      }
+      const firing = pad ? !!e.gatling : !!e.ciws?.fire;
+      const key = `${e.id}:${match.tick}`;
+      if (!firing || this.ciwsBurstSeen.has(key)) continue;
+      if (this.ciwsBurstSeen.size > 200) this.ciwsBurstSeen.clear();
+      this.ciwsBurstSeen.add(key);
+      const reach = catalog(pad ? "ciws" : "apocalypse").rangeTiles * ts * (pad ? 0.6 : 0.5);
+      this.tracers.push(...ciwsBurstTracers(muzzle, facing, reach, CIWS_INTERCEPT_LIFT / ISO_ELEVATION, now, e.id * 31 + match.tick, ts));
+    }
+  }
+
+  /** World point and elevation of the barrels: the pad gun, or the Apocalypse's roof mount. */
+  private ciwsMuzzleWorld(e: EntityView, facing: number, pad: boolean): { x: number; y: number; z: number } | null {
+    if (pad) {
+      const spr = buildingSpriteFor(e.type, e.facing);
+      if (!spr || !spriteReady(spr)) return null;
+      const ts = this.ts();
+      const elev = this.buildingElev(e);
+      const x = e.tileX * ts;
+      const y = e.tileY * ts;
+      const footprintW = this.toScreen(x + e.tileW * ts, y, elev).x - this.toScreen(x, y + e.tileH * ts, elev).x;
+      return {
+        x: e.x + Math.cos(facing) * CIWS_MUZZLE_REACH,
+        y: e.y + Math.sin(facing) * CIWS_MUZZLE_REACH,
+        z: elev + ciwsMuzzleLift(footprintW / spr.padWidth) / ISO_ELEVATION,
+      };
+    }
+    const p = this.lerpEnt(e);
+    const size = this.spriteOf(e)?.drawSize ?? 64;
+    return { x: p.x, y: p.y, z: this.elevAt(p.x, p.y) + (ROOF_CIWS_LIFT * size) / ISO_ELEVATION };
+  }
+
   /** Glowing streaks of an Fw 190 barrage, gun to impact. */
   private drawBarrageTracers(): void {
     if (this.tracers.length === 0) return;
@@ -1162,7 +1232,7 @@ export class MapView {
     });
   }
 
-  /** Field gun: flash and a big smoke puff at the muzzle, out along the barrel. */
+  /** Field gun: flash and a big smoke puff at the muzzle, a thick blast cloud behind the shield, and the carriage jumps back. */
   private noteFieldGunShot(shooter: EntityView, shot: { id: number; caliber: number }, now: number): void {
     const spr = spriteFor(shooter.type);
     // The barrel sits at 45°: the muzzle is short of the axle on the ground and high above it.
@@ -1180,6 +1250,17 @@ export class MapView {
         now,
         seed: (shot.id * 2654435761 + Math.floor(now)) >>> 0,
         scale: ((spr?.drawSize ?? 48) / 48) * 1.6,
+      }),
+    );
+    this.gunRecoil.set(shooter.id, { at: now });
+    this.fieldGunSmokes.push(
+      ...spawnFieldGunSmoke({
+        x: shooter.x,
+        y: shooter.y,
+        facing: shooter.facing,
+        radius: catalog(shooter.type).radius,
+        now,
+        seed: (shot.id * 2246822519 + Math.floor(now)) >>> 0,
       }),
     );
     this.addFx({
@@ -3823,6 +3904,30 @@ export class MapView {
       });
     }
     this.muzzleSmokes = keep;
+    this.collectFieldGunSmoke(items, now);
+  }
+
+  private collectFieldGunSmoke(items: DrawItem[], now: number): void {
+    if (this.fieldGunSmokes.length > 280) this.fieldGunSmokes.splice(0, this.fieldGunSmokes.length - 280);
+    const o = worldToIso(0, 0, this.ts());
+    const u = worldToIso(1, 0, this.ts());
+    const scale = Math.hypot(u.x - o.x, u.y - o.y);
+    const keep: FieldGunSmokePuff[] = [];
+    for (const puff of this.fieldGunSmokes) {
+      const pose = fieldGunSmokePose(puff, now);
+      if (!pose) {
+        if (now < puff.at) keep.push(puff);
+        continue;
+      }
+      keep.push(puff);
+      const screen = this.toScreen(pose.x, pose.y);
+      items.push({
+        layer: 1,
+        z: isoDepth(pose.x, pose.y) + 0.2,
+        run: () => drawFieldGunSmoke(this.ctx, screen.x, screen.y - pose.lift, pose.t, pose.radius, puff.seed, scale),
+      });
+    }
+    this.fieldGunSmokes = keep;
   }
 
   /** World footprint of a building's cast shadow; EXTRUDE is its screen height. */
@@ -4529,6 +4634,14 @@ export class MapView {
         hullShiftY = shift.hullY;
         gunShiftX = shift.gunX;
         gunShiftY = shift.gunY;
+      }
+    } else if (rec && e.type === "artillery" && !e.wreck) {
+      const nudge = fieldGunNudgePx(rec.at, performance.now(), size);
+      if (nudge == null) this.gunRecoil.delete(e.id);
+      else {
+        const len = Math.hypot(dir.x, dir.y) || 1;
+        hullShiftX = (-dir.x / len) * nudge;
+        hullShiftY = (-dir.y / len) * nudge;
       }
     }
     const corpse = isInfantryType(e.type) && !!e.wreck;

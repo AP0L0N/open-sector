@@ -7,6 +7,7 @@ import {
   APOCALYPSE_TWIN_GAP,
   APOCALYPSE_TWIN_WINDOW,
   CIWS_AIR_SPREAD,
+  CIWS_AIR_Z_SCATTER,
   CIWS_GUN,
   FACE_FIRE_DEG,
   mainGunBarrels,
@@ -1967,7 +1968,14 @@ function fireRound(
     ignoreId = slit.house.id;
   }
   const z0 = muzzleHeight(state, e);
-  const zAim = target ? aimHeight(state, target) : worldTileHeight(state, aimX, aimY);
+  let zAim = target ? aimHeight(state, target) : worldTileHeight(state, aimX, aimY);
+  const aloft = !!target && isAirborne(target) && (!!opts?.radar || radarLaidOf(e.type));
+  // The radar lays the 20mm by bearing; in height the stream walks above and below a plane.
+  // It never dips below half the climb, so a stray round does not rake the ground around the mount.
+  if (aloft) {
+    const low = Math.min(CIWS_AIR_Z_SCATTER, Math.max(0, zAim - z0) * 0.5);
+    zAim += -low + nextRand(state) * (low + CIWS_AIR_Z_SCATTER);
+  }
   const aimDist = Math.hypot(aimX - x, aimY - y);
   const gunId = infantryGunFor(e)?.id;
   const distTiles = dist / state.tileSize;
@@ -1997,6 +2005,7 @@ function fireRound(
     gatling:
       opts?.radar || e.type === "walker" || e.type === "ciws" || e.type === "cyborg" ? true : undefined,
     plunging: plunging || undefined,
+    aloft: aloft || undefined,
     z: z0,
     vz: ((zAim - z0) / Math.max(1e-6, aimDist)) * speed,
   };
@@ -2312,9 +2321,10 @@ function pushImpact(
     bomb: p.flight === "mortar" && p.big ? true : undefined,
     rocket: p.flight === "rocket" ? true : undefined,
     z: p.airBurst ? (p.z ?? 0) : undefined,
+    airZ: p.aloft ? (p.z ?? 0) : undefined,
   };
-  // An air burst leaves no crater and no splash under the plane.
-  if (!p.airBurst) noteImpactSurface(state, impact, p, kind);
+  // An air burst leaves no crater and no splash under the plane. Nor does a round lost in the sky.
+  if (!p.airBurst && !p.aloft) noteImpactSurface(state, impact, p, kind);
   state.impacts.push(impact);
 }
 

@@ -404,6 +404,30 @@ describe("stuka attack", () => {
     assert.equal(plane.air?.phase, "parked", "an attack sortie stays on the pad once it has rearmed");
   });
 
+  it("turns for home once the bomb is gone, belts or not", () => {
+    const state = twoPlayerMatch();
+    seedCore(state);
+    seedCore(state, "B", 200, 200);
+    const field = seedAirfield(state);
+    const plane = parkedPlane(state, field);
+    const ts = state.tileSize;
+    // Soft target: the wing guns could keep at it, but the bomb ends the sortie.
+    const foe = makeEntity(state, "rifleman", "B", 110 * ts, 50 * ts);
+    // Tough enough to live through the strafe and still be there for the bomb.
+    foe.hp = foe.hpMax = 100_000;
+    makeEntity(state, "dynamo", "A", 0, 0, { tileX: 106, tileY: 54 });
+    applyCommand(state, "A", { type: "cmd.attack", ids: [plane.id], targetId: foe.id });
+    const t = until(state, 1200, () => plane.air!.bombs === 0);
+    assert.ok(t >= 0, "bomb should drop");
+    ticks(state, 2);
+    assert.ok(plane.air!.rounds > 0, "belts still hold rounds");
+    assert.equal(plane.order?.kind, "land");
+    assert.ok(until(state, 1500, () => plane.air?.phase === "parked") >= 0, "it lands to rearm");
+    assert.equal(plane.air!.bombed, true);
+    applyCommand(state, "A", { type: "cmd.move", ids: [plane.id], x: 90 * ts, y: 40 * ts });
+    assert.equal(plane.air!.bombed, false, "a new sortie starts clean");
+  });
+
   it("a direct hit takes half a tank; the rim of the burst only wounds", () => {
     const state = twoPlayerMatch();
     const ts = state.tileSize;

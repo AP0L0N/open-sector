@@ -340,6 +340,8 @@ function secondsHome(state: MatchState, e: Entity, home: Entity): number {
 
 function spent(state: MatchState, e: Entity): boolean {
   if (isTransportType(e.type)) return !hasCargo(state, e);
+  // Once the bomb is gone the sortie is over; the belts are only for the way in.
+  if (e.air!.bombed) return true;
   return e.air!.bombs <= 0 && !hasRounds(e);
 }
 
@@ -418,6 +420,7 @@ export function orderAircraft(state: MatchState, e: Entity, order: Order): void 
   if (a.phase === "parked" || (a.phase === "landing" && a.touched && order.kind !== "land")) {
     // Taxi out onto the strip, line up, and roll.
     a.phase = "takeoff";
+    a.bombed = false;
     a.taxi = true;
     a.touched = false;
     a.roll = 0;
@@ -1037,6 +1040,7 @@ function dropBomb(state: MatchState, e: Entity, tx: number, ty: number, forced: 
     z: a.alt,
   });
   a.bombs -= 1;
+  a.bombed = true;
 }
 
 /** Advance a falling bomb. False once it has burst. */

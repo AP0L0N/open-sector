@@ -124,6 +124,8 @@ export interface AirState {
   /** Seconds of flight left in the tank. */
   fuel: number;
   bombs: number;
+  /** The bomb went this sortie. The plane turns for home. Cleared on takeoff. Not a wire field. */
+  bombed?: boolean;
   /** Wing-MG rounds left in both belts. For the Fw 190: barrages left (whole ones fire). */
   rounds: number;
   /** Airfield this plane parks on. Null once it is gone and no other pad is free. */
@@ -468,6 +470,8 @@ export interface Projectile {
   aimY?: number;
   /** Rocket fused on a plane: it bursts in the air and only catches aircraft. */
   airBurst?: boolean;
+  /** A radar-laid 20mm round fired at a plane. A miss keeps climbing and ends in the sky, not the dirt. */
+  aloft?: boolean;
   /** Rocket only: the carrier type whose rack (rocketRackOf) sets its splash and armor dent. */
   launcher?: EntityType;
   /** Lobbed rocket only: height it left the tubes at. `apex` rides on top of the line from here to the ground. */

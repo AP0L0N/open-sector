@@ -84,3 +84,20 @@ export function recoilPixels(
     gunPx: drawSize * GUN_RECOIL_FRAC * amount.gun,
   };
 }
+
+/**
+ * A towed field gun has no turret layer. The whole carriage jumps back on its
+ * wheels and the trail spade drags it to a stop, a slower and longer shove
+ * than a tank hull's rock.
+ */
+export const FIELD_GUN_KICK_MS = 70;
+export const FIELD_GUN_RECOVER_MS = 620;
+/** Peak carriage travel as a fraction of sprite drawSize. */
+export const FIELD_GUN_RECOIL_FRAC = 0.11;
+
+/** Screen pixels the carriage sits back from its spot, or null once it has settled. */
+export function fieldGunNudgePx(at: number, now: number, drawSize: number): number | null {
+  const age = now - at;
+  if (age < 0 || age >= FIELD_GUN_KICK_MS + FIELD_GUN_RECOVER_MS) return null;
+  return drawSize * FIELD_GUN_RECOIL_FRAC * recoilEnvelope(age, FIELD_GUN_KICK_MS, FIELD_GUN_RECOVER_MS);
+}

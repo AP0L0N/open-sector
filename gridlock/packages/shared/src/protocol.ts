@@ -15,7 +15,7 @@ import type {
   YardFieldType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 67;
+export const PROTOCOL_VERSION = 68;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -370,6 +370,11 @@ export interface ImpactView {
   rocket?: boolean;
   /** Rocket air burst beside a plane: elevation units above the ground. No dirt, no crater. */
   z?: number;
+  /**
+   * A radar-laid 20mm round fired at a plane: elevation units (projectile z) where
+   * it ended. It met the plane, or missed and climbed away. No dirt, no crater.
+   */
+  airZ?: number;
   /** A CIWS or RAM met a rocket in the air. "kill": it burst, nothing hurt under it. "miss" (RAM): the interceptor went off beside it. */
   intercept?: boolean;
   /** A killed Pyro's fuel tanks went up. A big rolling fireball, then burning ground around him. */

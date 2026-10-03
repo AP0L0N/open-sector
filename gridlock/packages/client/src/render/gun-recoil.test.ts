@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  FIELD_GUN_KICK_MS,
+  FIELD_GUN_RECOIL_FRAC,
+  FIELD_GUN_RECOVER_MS,
+  fieldGunNudgePx,
   GUN_KICK_MS,
   GUN_RECOVER_MS,
   HULL_DELAY_MS,
@@ -94,5 +98,21 @@ describe("recoilPixels", () => {
     assert.ok(near(b.gunPx, a.gunPx * 2));
     assert.ok(near(b.hullPx, a.hullPx * 2));
     assert.ok(a.gunPx > a.hullPx * 2);
+  });
+});
+
+describe("fieldGunNudgePx", () => {
+  it("shoves the carriage back, then settles to nothing", () => {
+    assert.equal(fieldGunNudgePx(100, 100, 60), 0);
+    const peak = fieldGunNudgePx(100, 100 + FIELD_GUN_KICK_MS, 60)!;
+    assert.ok(Math.abs(peak - 60 * FIELD_GUN_RECOIL_FRAC) < 1e-9);
+    const mid = fieldGunNudgePx(100, 100 + FIELD_GUN_KICK_MS + FIELD_GUN_RECOVER_MS / 2, 60)!;
+    assert.ok(mid > 0 && mid < peak);
+    assert.equal(fieldGunNudgePx(100, 100 + FIELD_GUN_KICK_MS + FIELD_GUN_RECOVER_MS, 60), null);
+    assert.equal(fieldGunNudgePx(100, 50, 60), null);
+  });
+
+  it("is a longer shove than a tank hull's rock", () => {
+    assert.ok(FIELD_GUN_KICK_MS + FIELD_GUN_RECOVER_MS > HULL_DELAY_MS + HULL_KICK_MS + HULL_RECOVER_MS);
   });
 });

@@ -7,6 +7,7 @@ import {
   APOCALYPSE_CIWS_RANGE_TILES,
   APOCALYPSE_TWIN_GAP,
   APOCALYPSE_TWIN_WINDOW,
+  CIWS_INTERCEPT_CHANCE,
   CIWS_INTERCEPT_ROUNDS,
   TECH_REQUIRES,
   TICK_DT,
@@ -292,7 +293,7 @@ describe("Apocalypse roof CIWS", () => {
     assert.ok(Math.abs(tank.ciwsFacing ?? 99) < 0.2, "laid east onto the rocket");
   });
 
-  it("bursts most missiles, and tries each one once", () => {
+  it("bursts some missiles, more than a pad CIWS, and tries each one once", () => {
     let downed = 0;
     const trials = 80;
     for (let i = 0; i < trials; i++) {
@@ -316,7 +317,8 @@ describe("Apocalypse roof CIWS", () => {
     }
     const rate = downed / trials;
     assert.ok(Math.abs(rate - APOCALYPSE_CIWS_INTERCEPT_CHANCE) < 0.15, `intercept rate ${rate}`);
-    assert.ok(rate > 0.5, "most missiles burst");
+    assert.ok(rate < 0.5, "most missiles get through");
+    assert.ok(APOCALYPSE_CIWS_INTERCEPT_CHANCE > CIWS_INTERCEPT_CHANCE, "better than the pad");
   });
 
   it("meets a missile launched beside it on the tick it leaves the rack", () => {
