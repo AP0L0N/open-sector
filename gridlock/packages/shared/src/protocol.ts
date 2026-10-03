@@ -16,7 +16,7 @@ import type {
 } from "./catalog.js";
 import type { CustomMapSpec } from "./custom-maps.js";
 
-export const PROTOCOL_VERSION = 77;
+export const PROTOCOL_VERSION = 78;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -223,6 +223,8 @@ export interface EntityView {
   tend?: number;
   /** Sandbags wrecked by a tank shell. The rubble stays. */
   ruined?: boolean;
+  /** A Wall section converted into a gate: boom lift 0–1, and whether it is locked. */
+  gate?: { locked: boolean; open: number };
   /**
    * Terrain peak a concrete run was built up to, in map height units.
    * The drawn top does not fall below this when a higher section is destroyed.
@@ -621,6 +623,8 @@ export type ClientMessage =
   | { type: "cmd.rally"; ids: number[]; x: number; y: number }
   | { type: "cmd.sell"; id: number }
   | { type: "cmd.deploy"; id: number }
+  /** Turn own Wall sections into gates, or lock and unlock own gates. */
+  | { type: "cmd.gate"; ids: number[]; action: "convert" | "lock" | "unlock" }
   | { type: "cmd.garrison"; ids: number[]; buildingId: number; queue?: boolean }
   | { type: "cmd.ungarrison"; ids?: number[]; buildingId?: number; x?: number; y?: number }
   | { type: "cmd.garrisonhide"; ids: number[]; hide: boolean }

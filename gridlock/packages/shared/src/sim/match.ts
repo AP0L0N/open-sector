@@ -69,6 +69,7 @@ export function createMatch(
     occupy: grids.occupy,
     wreckBlock: new Uint8Array(map.width * map.height),
     fortBlock: new Uint8Array(map.width * map.height),
+    fortOwner: new Map(),
     players,
     entities: new Map(),
     projectiles: [],

@@ -123,6 +123,8 @@ export {
   fieldPath,
   fieldSiteClear,
   fieldTurn,
+  gateOpen,
   sandbagCoverBonus,
   wallAxes,
+  wallFlankedBothEnds,
 } from "./field.js";

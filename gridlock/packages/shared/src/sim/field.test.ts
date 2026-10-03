@@ -5,6 +5,7 @@ import {
   catalog,
   ENGINEER_SEEK_TILES,
   fieldSpan,
+  GATE_COST,
   LARGE_WALL_GARRISON_CAP,
   LARGE_WALL_GARRISON_HP_MUL,
   LARGE_WALL_REACH_BONUS,
@@ -42,7 +43,7 @@ import { createMatch, step } from "./match.js";
 import { previewYardField } from "./preview.js";
 import { snapshotFor } from "./snapshot.js";
 import { astar } from "./path.js";
-import type { MatchState, Projectile } from "./types.js";
+import type { MatchState, Projectile, Entity } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string } {
   const r = createRoom({
@@ -1455,5 +1456,226 @@ describe("defences tab field works", () => {
     assert.equal(p.defence, null);
     assert.equal(p.structure?.type, "dynamo");
     assert.notEqual(p.structure?.ready, true);
+  });
+});
+
+describe("gates", () => {
+  const span = fieldSpan("wall")!;
+  const L = span.length;
+  /** A straight wall running along y through (x, y0): `count` sections, the middle one returned. */
+  function wallLine(state: MatchState, x: number, y0: number, count: number): Entity[] {
+    const out: Entity[] = [];
+    for (let k = 0; k < count; k++) {
+      const w = makeEntity(state, "wall", "A", x, y0 + k * L, { facing: 0 });
+      w.facing = 0;
+      w.turretFacing = 0;
+      out.push(w);
+    }
+    restampForts(state);
+    return out;
+  }
+  function gateTile(state: MatchState, g: Entity): { x: number; y: number } {
+    return { x: worldToTile(g.x, state.tileSize), y: worldToTile(g.y, state.tileSize) };
+  }
+
+  it("converts only a section with wall on both ends, for scrap, and opens the tiles to its own side", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 20, 20, 30, 30);
+    const ts = state.tileSize;
+    const x = tileCenter(34, ts);
+    const line = wallLine(state, x, tileCenter(26, ts), 5);
+    const p = state.players.get("A")!;
+    p.scrap = 500;
+    const end = applyCommand(state, "A", { type: "cmd.gate", ids: [line[0]!.id], action: "convert" });
+    assert.equal(end.ok, false, "an end section has wall on one side only");
+    assert.equal(line[0]!.gate, undefined);
+    const mid = line[2]!;
+    const res = applyCommand(state, "A", { type: "cmd.gate", ids: [mid.id], action: "convert" });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    assert.equal(p.scrap, 500 - GATE_COST);
+    assert.deepEqual(mid.gate, { locked: false, open: 0 });
+    const t = gateTile(state, mid);
+    assert.equal(state.fortBlock[tileIndex(state, t.x, t.y)], 3);
+    assert.equal(state.fortOwner.get(tileIndex(state, t.x, t.y)), "A");
+    assert.equal(walkable(state, t.x, t.y, "rifleman"), true, "paths run through the gate");
+    assert.equal(walkable(state, t.x, t.y, "warden"), true);
+    const wallT = gateTile(state, line[1]!);
+    assert.equal(walkable(state, wallT.x, wallT.y, "rifleman"), false);
+    const again = applyCommand(state, "A", { type: "cmd.gate", ids: [mid.id], action: "convert" });
+    assert.equal(again.ok, false, "a gate is not converted twice");
+    assert.equal(p.scrap, 500 - GATE_COST);
+    const lock = applyCommand(state, "A", { type: "cmd.gate", ids: [mid.id], action: "lock" });
+    assert.equal(lock.ok, true);
+    assert.equal(mid.gate?.locked, true);
+    assert.equal(state.fortBlock[tileIndex(state, t.x, t.y)], 1, "locked, it is a wall again");
+    assert.equal(walkable(state, t.x, t.y, "rifleman"), false);
+    const unlock = applyCommand(state, "A", { type: "cmd.gate", ids: [mid.id], action: "unlock" });
+    assert.equal(unlock.ok, true);
+    assert.equal(state.fortBlock[tileIndex(state, t.x, t.y)], 3);
+    const theirs = applyCommand(state, "B", { type: "cmd.gate", ids: [line[1]!.id], action: "convert" });
+    assert.equal(theirs.ok, false, "not your wall");
+  });
+
+  it("lifts the boom for its own side, stays down for the enemy, and the enemy stops at it", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 14, 14, 40, 40);
+    const ts = state.tileSize;
+    const x = tileCenter(34, ts);
+    const line = wallLine(state, x, tileCenter(20, ts), 11);
+    const gate = line[5]!;
+    state.players.get("A")!.scrap = 500;
+    assert.equal(applyCommand(state, "A", { type: "cmd.gate", ids: [gate.id], action: "convert" }).ok, true);
+    const gy = gate.y;
+    // Passing through the gate: from the west face to the east face while within the section's span.
+    // Walking round the end of the wall is not passing the gate.
+    const makeWatch = (u: Entity) => {
+      let side = Math.sign(u.x - x);
+      let passed = false;
+      return () => {
+        const inSpan = Math.abs(u.y - gy) < L / 2 + 2;
+        if (Math.abs(u.x - x) > span.thick / 2) {
+          const now = Math.sign(u.x - x);
+          if (now !== side && inSpan) passed = true;
+          side = now;
+        }
+        return passed;
+      };
+    };
+    // Own man: the boom lifts as he comes and he walks through.
+    const mine = makeEntity(state, "rifleman", "A", x - 50, gy);
+    ticks(state, 30);
+    assert.equal(gate.gate?.open, 1, "boom up for a friendly nearby");
+    applyCommand(state, "A", { type: "cmd.move", ids: [mine.id], x: x + 70, y: gy });
+    const mineWatch = makeWatch(mine);
+    let through = false;
+    for (let i = 0; i < 600 && !through; i++) {
+      step(state, TICK_DT);
+      through = mineWatch();
+    }
+    assert.equal(through, true, "he passes the gate");
+    destroyEntity(state, mine);
+    ticks(state, 30);
+    assert.equal(gate.gate?.open, 0, "boom down again once he is gone");
+    // Enemy: the boom stays down and the gate tile stops him.
+    const foe = makeEntity(state, "rifleman", "B", x - 50, gy);
+    ticks(state, 15);
+    assert.equal(gate.gate?.open, 0, "no lift for the other side");
+    applyCommand(state, "B", { type: "cmd.move", ids: [foe.id], x: x + 70, y: gy });
+    const foeWatch = makeWatch(foe);
+    for (let i = 0; i < 400; i++) {
+      step(state, TICK_DT);
+      assert.equal(foeWatch(), false, `the enemy never passes through the gate (tick ${i})`);
+    }
+    destroyEntity(state, foe);
+    // Locked: even its owner is kept out.
+    assert.equal(applyCommand(state, "A", { type: "cmd.gate", ids: [gate.id], action: "lock" }).ok, true);
+    const late = makeEntity(state, "rifleman", "A", x - 50, gy);
+    applyCommand(state, "A", { type: "cmd.move", ids: [late.id], x: x + 70, y: gy });
+    const lateWatch = makeWatch(late);
+    for (let i = 0; i < 400; i++) {
+      step(state, TICK_DT);
+      assert.equal(gate.gate?.open, 0, "locked boom stays down");
+      assert.equal(lateWatch(), false, `locked: nothing passes (tick ${i})`);
+    }
+  });
+
+  it("stops rounds while the boom is down and lets them through while it is up, and gives no cover", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 20, 20, 30, 30);
+    const ts = state.tileSize;
+    const x = tileCenter(34, ts);
+    const line = wallLine(state, x, tileCenter(26, ts), 3);
+    const gate = line[1]!;
+    state.players.get("A")!.scrap = 500;
+    assert.equal(applyCommand(state, "A", { type: "cmd.gate", ids: [gate.id], action: "convert" }).ok, true);
+    const down = shot(state, x + 40, gate.y, -800, 12, null);
+    tickProjectiles(state, TICK_DT);
+    assert.equal(state.projectiles.some((p) => p.id === down.id), false, "the shut boom stops the round");
+    gate.gate!.open = 1;
+    const up = shot(state, x + 40, gate.y, -800, 12, null);
+    tickProjectiles(state, TICK_DT);
+    assert.equal(state.projectiles.some((p) => p.id === up.id), true, "the lifted boom lets it fly on");
+    state.projectiles.length = 0;
+    const man = makeEntity(state, "rifleman", "A", x - span.thick / 2 - 8, gate.y);
+    const beside = makeEntity(state, "rifleman", "A", x - span.thick / 2 - 8, line[0]!.y);
+    step(state, TICK_DT);
+    assert.equal(man.wallCover, 0, "no cover from a gate");
+    assert.ok(beside.wallCover > 0, "the wall beside it still covers");
+  });
+});
+
+describe("wall height", () => {
+  const L = fieldSpan("wall")!.length;
+
+  it("raises a line to one level, keeps it when a section falls, and a joining line adopts it", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 20, 20, 30, 30);
+    const ts = state.tileSize;
+    const x = tileCenter(34, ts);
+    const y = tileCenter(26, ts);
+    // Flatten the map, then stand the first section on a knoll three levels up.
+    state.heights.fill(0);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) state.heights[tileIndex(state, 34 + dx, 26 + dy)] = 3;
+    }
+    const eng = makeEntity(state, "engineer", "A", x + 30, y - 30);
+    const res = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [eng.id],
+      structure: "wall",
+      x,
+      y,
+      facing: 0,
+      path: [
+        { x, y },
+        { x, y: y + L * 3 },
+      ],
+    });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    const walls = () => [...state.entities.values()].filter((e) => e.type === "wall" && e.hp > 0);
+    for (let i = 0; i < 1500 && walls().length < 3; i++) step(state, TICK_DT);
+    const line = walls().sort((a, b) => a.y - b.y);
+    assert.equal(line.length, 3);
+    for (const w of line) assert.equal(w.wallCrest, 3, "every section levels to the highest ground under the line");
+    destroyEntity(state, line[1]!);
+    ticks(state, 5);
+    assert.equal(line[0]!.wallCrest, 3, "the knoll section keeps its top");
+    assert.equal(line[2]!.wallCrest, 3, "so does the one on the flat, with its neighbour gone");
+    // A second line on the flat, butted onto the end of the first, takes the same top.
+    const eng2 = makeEntity(state, "engineer", "A", x + 30, y + L * 3 + 30);
+    const more = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [eng2.id],
+      structure: "wall",
+      x,
+      y: y + L * 3,
+      facing: 0,
+      path: [
+        { x, y: y + L * 3 },
+        { x, y: y + L * 5 },
+      ],
+    });
+    assert.equal(more.ok, true, more.ok ? "" : more.message);
+    for (let i = 0; i < 1500 && walls().length < 4; i++) step(state, TICK_DT);
+    const joined = walls().filter((w) => w.y > y + L * 2.9);
+    assert.equal(joined.length, 2);
+    for (const w of joined) assert.equal(w.wallCrest, 3, "a joining line adopts the standing top");
+    // A line on its own on the flat sits at ground level.
+    const eng3 = makeEntity(state, "engineer", "A", x + 200, y - 30);
+    const alone = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [eng3.id],
+      structure: "wall",
+      x: x + 180,
+      y,
+      facing: 0,
+      path: [
+        { x: x + 180, y },
+        { x: x + 180, y: y + L * 2 },
+      ],
+    });
+    assert.equal(alone.ok, true, alone.ok ? "" : alone.message);
+    for (let i = 0; i < 1500 && walls().length < 6; i++) step(state, TICK_DT);
+    for (const w of walls().filter((w) => w.x > x + 100)) assert.equal(w.wallCrest, 0);
   });
 });
