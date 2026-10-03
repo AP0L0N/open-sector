@@ -1641,26 +1641,102 @@ export const CIWS_GUN = {
   /** A light tank's thin side. A Walker or a truck only sometimes takes a round. Not a tank's front. */
   penetration: 22,
   caliber: 20,
-  spreadDeg: 3.5,
+  spreadDeg: 3,
 } as const;
 /**
- * Spread multiple on a plane in the air. The radar lays the mount on the
- * plane's bearing but cannot hold a crossing airframe, so the stream hoses
- * a wide cone around it — far wider than AIR_TARGET_SPREAD for small arms,
- * which fire a few aimed rounds instead of a stream.
+ * Spread multiple on a plane in the air, for every gatling. The radar lays the
+ * mount on the plane's bearing but cannot hold a crossing airframe, so the
+ * stream hoses a wide cone around it — far wider than AIR_TARGET_SPREAD for
+ * small arms, which fire a few aimed rounds instead of a stream.
  */
-export const CIWS_AIR_SPREAD = 9;
+export const CIWS_AIR_SPREAD = 9.2;
 /**
- * Elevation units a round aimed at a plane wanders above or below it. A plane
- * is only met within AIR_HIT_BAND, so most of a burst passes over or under.
+ * Elevation units a gatling round aimed at a plane wanders above or below it
+ * (times gatlingSprayOf). A plane is only met within AIR_HIT_BAND, so most of
+ * a burst passes over or under.
  */
-export const CIWS_AIR_Z_SCATTER = 40;
+export const CIWS_AIR_Z_SCATTER = 35;
+/** The pad reaches this much farther for a plane in the air: the radar sees it coming. */
+export const CIWS_AIR_REACH_MUL = 1.4;
 /** Chance one burst connects on one rocket: a long shot. Each CIWS tries an ordinary rocket once. A heavy round keeps drawing bursts until it comes apart. */
 export const CIWS_INTERCEPT_CHANCE = 0.15;
 /** Rounds one intercept burst spends. A short belt still tries, at a share of the chance. */
 export const CIWS_INTERCEPT_ROUNDS = 12;
 /** Rockets one CIWS can engage in one tick. A full Titan salvo takes two ticks. */
 export const CIWS_INTERCEPTS_PER_TICK = 2;
+
+/**
+ * Gatling heat. Every gatling — the Walker's arms, the Cyborg's arm, the CIWS
+ * pad, and the Apocalypse's roof mount — heats with each round and sheds heat
+ * all the time. Heat runs 0 to 1. At 1 the barrels are too hot to fire: the
+ * gun sits out overheatSeconds and comes back cold. A short burst never
+ * overheats; holding the trigger always does.
+ */
+export interface GatlingHeat {
+  /** Heat each round adds. */
+  perRound: number;
+  /** Heat shed each second, firing or not. */
+  coolPerSec: number;
+  /** Seconds the gun cannot fire once it reaches 1. */
+  overheatSeconds: number;
+}
+/** CIWS pad. 30 rounds a second: about seven seconds on the trigger, then four to cool. */
+export const CIWS_HEAT: GatlingHeat = { perRound: 1 / 114, coolPerSec: 0.12, overheatSeconds: 4 };
+/** Walker. Both arms heat one set of barrels: one arm (20 a second) lasts about eight seconds, both about three. */
+export const WALKER_HEAT: GatlingHeat = { perRound: 1 / 89, coolPerSec: 0.1, overheatSeconds: 4 };
+/** Cyborg arm. A single gun on a man's shoulder, 20 a second: about five seconds on the trigger. */
+export const CYBORG_HEAT: GatlingHeat = { perRound: 1 / 67, coolPerSec: 0.1, overheatSeconds: 4.5 };
+/** Apocalypse roof mount. Fewer barrels than the pad, 20 a second: about six seconds on the trigger. */
+export const APOCALYPSE_CIWS_HEAT: GatlingHeat = { perRound: 1 / 70, coolPerSec: 0.12, overheatSeconds: 4 };
+
+/** The gatling's heat, or null for a unit without one. The Apocalypse's is its roof mount. */
+export function gatlingHeatOf(type: EntityType): GatlingHeat | null {
+  if (type === "ciws") return CIWS_HEAT;
+  if (type === "walker") return WALKER_HEAT;
+  if (type === "cyborg") return CYBORG_HEAT;
+  if (type === "apocalypse") return APOCALYPSE_CIWS_HEAT;
+  return null;
+}
+
+/**
+ * How loosely a gatling throws its rounds, against the CIWS pad's 1. It
+ * widens the cone on every target and the height scatter on a plane. A cheap
+ * gun (the Walker, the Cyborg) and a secondary mount (the Apocalypse roof)
+ * are laid worse than the dedicated pad.
+ */
+export const GATLING_SPRAY: Partial<Record<EntityType, number>> = {
+  ciws: 1,
+  walker: 1.6,
+  cyborg: 1.8,
+  apocalypse: 1.5,
+};
+
+export function gatlingSprayOf(type: EntityType): number {
+  return GATLING_SPRAY[type] ?? 1;
+}
+
+/**
+ * Max range. A CIWS or a RAM told to reach out lays on targets out to this
+ * many times its normal reach. Past the normal reach its fire scatters wider
+ * the farther it goes, up to RADAR_LONG_RANGE_SPREAD at the edge. Rockets are
+ * still only met inside the normal reach.
+ */
+export const RADAR_LONG_RANGE_MUL = 1.5;
+/** Cone (and rocket scatter) multiple at the far edge of max range. */
+export const RADAR_LONG_RANGE_SPREAD = 4;
+
+export const RADAR_RANGE_MODES = [
+  {
+    id: "normal" as const,
+    name: "Normal reach",
+    blurb: "Engage inside the mount's own reach, where it is laid best.",
+  },
+  {
+    id: "max" as const,
+    name: "Max range",
+    blurb: "Reach half as far again. Past the normal reach the fire scatters wide — at the edge it rarely hits. Rockets are still only met up close.",
+  },
+] as const;
 
 /**
  * Apocalypse roof mount. The CIWS gun on a smaller house over the turret: the
@@ -2309,7 +2385,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shotsPerTick: CIWS_SHOTS_PER_TICK,
     belt: CIWS_BELT,
     radarLaid: true,
-    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first. Against a plane the stream sprays wide, with a tracer in every few rounds: it chews the belt fast and seldom brings one down on a single pass. It tries to burst incoming rockets, and rarely does — a RAM is the missile screen. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, and reaches farther for a plane than for anything on the ground. Against a plane the stream sprays wide, with a tracer in every few rounds: it chews the belt fast and seldom brings one down on a single pass. About seven seconds on the trigger overheats the barrels, and it falls silent while they cool. Max range reaches half as far again, but out there the fire scatters wide. It tries to burst incoming rockets, and rarely does — a RAM is the missile screen. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
   },
   bunker: {
     type: "bunker",
@@ -2407,7 +2483,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: RAM_ROCKET_AMMO,
     rocketRack: RAM_ROCKET,
-    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, in barrages of ${RAM_SALVO} short, accurate rockets, and sends an interceptor at incoming rockets that bursts most of them in the air. Shorter reach than a Nebelwerfer, longer than a CIWS. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, in barrages of ${RAM_SALVO} short, accurate rockets, and sends an interceptor at incoming rockets that bursts most of them in the air. Shorter reach than a Nebelwerfer, longer than a CIWS. Max range reaches half as far again, but out there the rockets scatter wide. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
   },
   sandbags: {
     type: "sandbags",
@@ -2833,7 +2909,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     mgAmmo: APOCALYPSE_CIWS_BELT,
     leavesWreck: true,
     wreckHp: 110,
-    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts some of them, then planes, infantry, and sometimes a Walker or a truck. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
+    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts some of them, then planes, infantry, and sometimes a Walker or a truck. A secondary mount, it sprays wider than a pad CIWS and overheats after about six seconds on the trigger. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
   },
   /** Spec: gridlock/packages/client/src/assets/units/ss3/stug-iii-ausf-g-late-saukopf.md */
   ss3: {
@@ -2944,7 +3020,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     belt: WALKER_BELT,
     leavesWreck: true,
     wreckHp: 36,
-    blurb: "Each arm is a gatling at the MG42's 1,200 rounds a minute, the same bullet. A round sometimes bites a Walker or a truck; tank plate turns it. The torso turns on the hips, so he fires while he walks. The backpack is a 1,200-round rack and does not reload by itself. One arm spends it slowly. Both arms spend it twice as fast and can split across two targets. The guns do not bring a building down. At a fifth of his health he charges the nearest enemy he can see and detonates, unless Self destroy is off in Config. That remainder swells to five times the hit points, still a fifth of his bar, and he runs faster with a short trail of dark smoke. The blast nicks a tank and hits everything else harder, and he leaves no wreck.",
+    blurb: "Each arm is a gatling at the MG42's 1,200 rounds a minute, the same bullet. A round sometimes bites a Walker or a truck; tank plate turns it. The torso turns on the hips, so he fires while he walks. The backpack is a 1,200-round rack and does not reload by itself. The gatlings spray wide, with tracers, and overheat: about eight seconds on one arm, three on both, then they fall silent to cool. One arm spends it slowly. Both arms spend it twice as fast and can split across two targets. The guns do not bring a building down. At a fifth of his health he charges the nearest enemy he can see and detonates, unless Self destroy is off in Config. That remainder swells to five times the hit points, still a fifth of his bar, and he runs faster with a short trail of dark smoke. The blast nicks a tank and hits everything else harder, and he leaves no wreck.",
   },
   cyborg: {
     type: "cyborg",
@@ -2969,7 +3045,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: GATLING.penetration,
     caliber: GATLING.caliber,
     spreadDeg: GATLING.spreadDeg,
-    blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back.",
+    blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. It sprays wide, with tracers, and overheats after about five seconds on the trigger. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back.",
   },
   titan: {
     type: "titan",

@@ -19,6 +19,7 @@ import {
   isCivilianType,
   NEUTRAL_OWNER,
   hasMg,
+  gatlingHeatOf,
   roofCiwsOf,
   hasScout,
   hasTurret,
@@ -256,6 +257,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       rockets: friendly && e.rockets != null ? e.rockets : undefined,
       heavy: friendly && e.type === "rocketer" ? (e.heavy ?? 0) : undefined,
       rocketsOff: friendly && e.rocketsOff ? true : undefined,
+      longRange: friendly && e.longRange ? true : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
       patrol:
         friendly && e.order?.kind === "patrol" && e.order.route
@@ -291,8 +293,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       ammo: friendly && Object.keys(e.ammo).length > 0 ? { ...e.ammo } : undefined,
       shell: friendly && e.shell ? e.shell : undefined,
       mgAmmo: friendly && hasMg(e.type) ? e.mgAmmo : undefined,
-      mgHeat: friendly && hasMg(e.type) ? e.mgHeat : undefined,
-      mgOverheat: friendly && hasMg(e.type) && e.mgOverheat > 0 ? e.mgOverheat : undefined,
+      mgHeat: friendly && (hasMg(e.type) || !!gatlingHeatOf(e.type)) ? e.mgHeat : undefined,
+      mgOverheat: friendly && (hasMg(e.type) || !!gatlingHeatOf(e.type)) && e.mgOverheat > 0 ? e.mgOverheat : undefined,
       weapon: friendly && isInfantryType(e.type) ? (e.weapon ?? undefined) : undefined,
       clip: friendly && (isInfantryType(e.type) || beltOf(e.type)) ? e.clip : undefined,
       guns: friendly && e.type === "walker" ? walkerGunsOf(e) : undefined,

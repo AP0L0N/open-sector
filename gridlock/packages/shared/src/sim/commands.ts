@@ -102,6 +102,9 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.rockets":
       if (typeof msg.on !== "boolean") return fail("bad_payload", "Unknown rocket setting.");
       return cmdRockets(state, playerId, msg.ids, msg.on);
+    case "cmd.reach":
+      if (typeof msg.max !== "boolean") return fail("bad_payload", "Unknown reach setting.");
+      return cmdReach(state, playerId, msg.ids, msg.max);
     case "cmd.guns":
       if (msg.guns !== 1 && msg.guns !== 2) return fail("bad_payload", "Unknown gatling setting.");
       return cmdGuns(state, playerId, msg.ids, msg.guns);
@@ -1216,6 +1219,13 @@ function cmdRockets(state: MatchState, playerId: string, ids: number[], on: bool
     // Switching off mid-salvo holds the rest in the rack.
     if (!on) e.rocketSalvo = 0;
   }
+  return ok();
+}
+
+function cmdReach(state: MatchState, playerId: string, ids: number[], max: boolean): CmdResult {
+  const mounts = ownedMounts(state, playerId, ids);
+  if (mounts.length === 0) return fail("not_yours", "Select a CIWS or a RAM.");
+  for (const e of mounts) e.longRange = max ? true : undefined;
   return ok();
 }
 

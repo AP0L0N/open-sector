@@ -6,10 +6,14 @@ import {
   APOCALYPSE_CIWS_TURN_DEG_PER_SEC,
   APOCALYPSE_TWIN_GAP,
   APOCALYPSE_TWIN_WINDOW,
+  CIWS_AIR_REACH_MUL,
   CIWS_AIR_SPREAD,
   CIWS_AIR_Z_SCATTER,
   CIWS_GUN,
   FACE_FIRE_DEG,
+  gatlingHeatOf,
+  gatlingSprayOf,
+  RADAR_LONG_RANGE_SPREAD,
   mainGunBarrels,
   roofCiwsOf,
   SMALL_ARMS_SPEED,
@@ -126,6 +130,7 @@ import {
   airAlt,
   canAimWeapon,
   entityHeight,
+  longReachMul,
   rangeTilesOf,
   muzzleHeight,
   shotClearsCover,
@@ -334,12 +339,14 @@ export function tickCombat(state: MatchState, dt: number): void {
 function interceptRockets(state: MatchState, e: Entity, downed: Set<number>): boolean {
   if (!radarLaidOf(e.type)) return false;
   if (rocketsOf(e.type)) return launchInterceptor(state, e, downed);
-  if (e.clip <= 0) return false;
+  if (e.clip <= 0 || gatlingHot(e)) return false;
   return burstRockets(state, e, downed, {
-    range: weaponRangeWorld(state, e),
+    // Max range reaches for units only. Rockets are met inside the normal reach.
+    range: weaponRangeWorld(state, e) / longReachMul(e),
     rounds: () => e.clip,
     spend: (n) => {
       e.clip -= n;
+      heatGatling(e, n);
     },
     lay: (facing) => {
       // The radar lays the barrels straight onto the nearest rocket.
@@ -466,12 +473,13 @@ function roofCiwsTarget(state: MatchState, e: Entity, range: number): Entity | u
  * second burst on a rocket the first look already tried.
  */
 function roofRocketSweep(state: MatchState, e: Entity, downed: Set<number>, bornAfter?: number): boolean {
-  if (e.mgAmmo <= 0) return false;
+  if (e.mgAmmo <= 0 || gatlingHot(e)) return false;
   return burstRockets(state, e, downed, {
     range: roofCiwsRange(state, e),
     rounds: () => e.mgAmmo,
     spend: (n) => {
       e.mgAmmo = Math.max(0, e.mgAmmo - n);
+      heatGatling(e, n);
     },
     lay: (facing) => {
       e.ciwsFacing = facing;
@@ -501,7 +509,7 @@ function tickRoofCiws(state: MatchState, e: Entity, dt: number, downed: Set<numb
   const want = target ? Math.atan2(target.y - e.y, target.x - e.x) : e.turretFacing;
   const turn = stepTurn(e.ciwsFacing ?? e.turretFacing, want, APOCALYPSE_CIWS_TURN_DEG_PER_SEC, dt);
   e.ciwsFacing = turn.angle;
-  if (!target || e.mgCooldown > 0 || Math.abs(turn.remainingDeg) > FACE_FIRE_DEG) return;
+  if (!target || e.mgCooldown > 0 || gatlingHot(e) || Math.abs(turn.remainingDeg) > FACE_FIRE_DEG) return;
   const dist = Math.hypot(target.x - e.x, target.y - e.y);
   for (let i = 0; i < APOCALYPSE_CIWS_SHOTS_PER_TICK && e.mgAmmo > 0; i++) {
     fireRound(state, e, target.x, target.y, CIWS_GUN_STATS, range, dist, {
@@ -511,6 +519,7 @@ function tickRoofCiws(state: MatchState, e: Entity, dt: number, downed: Set<numb
       radar: true,
     });
     e.mgAmmo -= 1;
+    heatGatling(e, 1);
   }
   e.ciwsFireTick = state.tick;
   e.mgCooldown = TICK_DT;
@@ -525,7 +534,7 @@ function tickRoofCiws(state: MatchState, e: Entity, dt: number, downed: Set<numb
  */
 function launchInterceptor(state: MatchState, e: Entity, downed: Set<number>): boolean {
   if (e.rocketsOff || (e.rockets ?? 0) <= 0 || (e.rocketCooldown ?? 0) > 0) return false;
-  const range = weaponRangeWorld(state, e);
+  const range = weaponRangeWorld(state, e) / longReachMul(e);
   let best: Projectile | undefined;
   let bestD = Infinity;
   for (const p of state.projectiles) {
@@ -981,7 +990,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
       return;
     }
   }
-  const range = weaponRangeWorld(state, e);
+  const range = weaponRangeWorld(state, e) * airReachMul(e, target);
   const dist = Math.hypot(aimX - e.x, aimY - e.y);
   if (dist > range) {
     if (!holedUp) e.state = "attack";
@@ -1122,8 +1131,11 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     if (e.order?.once && e.clip % FLAMER_BURST === 0) clearOrder(e);
     return;
   }
+  // The Cyborg's arm heats like every gatling. (The Apocalypse's heat is its roof mount, not this gun.)
+  const armGatling = infantryGun?.id === "gatling";
   for (let i = 0; i < burst; i++) {
     if ((infantryGun || belt) && e.clip <= 0) break;
+    if (armGatling && gatlingHot(e)) break;
     if (infantryGun?.id === "mortar") {
       launchMortar(state, e, aimX, aimY, range, dist, target);
       fired++;
@@ -1163,6 +1175,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
       },
     );
     fired++;
+    if (armGatling) heatGatling(e, 1);
     if (shell) e.ammo[shell] = Math.max(0, (e.ammo[shell] ?? 0) - 1);
     if (infantryGun || belt) {
       e.clip = Math.max(0, e.clip - 1);
@@ -1514,7 +1527,14 @@ function launchRocket(
     goalX += Math.cos(target.facing) * speed * lead;
     goalY += Math.sin(target.facing) * speed * lead;
   }
-  const radius = rocketScatterRadius(dist, range, moving ? 1.15 : 1, rack);
+  // A RAM at Max range scatters as at its normal reach, then wider the farther past it.
+  const reach = longReachMul(e);
+  const normal = range / reach;
+  const far = reach > 1 ? Math.max(0, Math.min(1, (dist - normal) / Math.max(1e-6, range - normal))) : 0;
+  const radius =
+    reach > 1
+      ? rocketScatterRadius(Math.min(dist, normal), normal, moving ? 1.15 : 1, rack) * (1 + far * (RADAR_LONG_RANGE_SPREAD - 1))
+      : rocketScatterRadius(dist, range, moving ? 1.15 : 1, rack);
   const land = mortarLanding(goalX, goalY, radius, () => nextRand(state));
   const maxX = Math.max(1, state.width * state.tileSize - 1);
   const maxY = Math.max(1, state.height * state.tileSize - 1);
@@ -1732,7 +1752,7 @@ function fireWalker(
   dist: number,
   target: Entity | undefined,
 ): void {
-  if (e.cooldown > 0 || e.clip <= 0) return;
+  if (e.cooldown > 0 || e.clip <= 0 || gatlingHot(e)) return;
   const guns = walkerGunsOf(e);
   // Walker: one arm's burst. The CIWS barrel cluster: its catalog rate.
   const per = e.type === "walker" ? WALKER_ONE_BURST : (catalog(e.type).shotsPerTick ?? 1);
@@ -1745,14 +1765,20 @@ function fireWalker(
     spreadDeg: gun.spreadDeg,
     projectileSpeed: catalog(e.type).projectileSpeed,
   };
+  // Max range, or the pad's longer reach on a plane: inside the normal reach the mount is
+  // laid as usual; past it the cone opens the farther the round has to go.
+  const normal = range / (longReachMul(e) * airReachMul(e, target));
   const shoot = (x: number, y: number, n: number, tgt: Entity | undefined, d: number) => {
-    for (let i = 0; i < n && e.clip > 0; i++) {
+    const far = range > normal + 1e-6 ? Math.max(0, Math.min(1, (d - normal) / (range - normal))) : 0;
+    for (let i = 0; i < n && e.clip > 0 && !gatlingHot(e); i++) {
       fireRound(state, e, x, y, stats, range, d, {
         target: tgt,
         accurateRange: accurateWeaponRange(state, e, range),
         bearing: Math.atan2(y - e.y, x - e.x),
+        spreadMul: 1 + far * (RADAR_LONG_RANGE_SPREAD - 1),
       });
       e.clip -= 1;
+      heatGatling(e, 1);
     }
   };
   const before = e.clip;
@@ -1837,6 +1863,18 @@ function tickWeaponClocks(e: Entity, dt: number): void {
       else if (!gun && belt) e.clip = belt.clip;
     }
   }
+  const heat = gatlingHeatOf(e.type);
+  if (heat) {
+    // The roof mount keeps the coaxial's clock; its heat is the gatling's, not the MG's.
+    if (e.mgCooldown > 0) e.mgCooldown = Math.max(0, e.mgCooldown - dt);
+    if (e.mgOverheat > 0) {
+      e.mgOverheat = Math.max(0, e.mgOverheat - dt);
+      if (e.mgOverheat <= 0) e.mgHeat = 0;
+      return;
+    }
+    e.mgHeat = Math.max(0, e.mgHeat - heat.coolPerSec * dt);
+    return;
+  }
   if (!hasMg(e.type)) return;
   const bursting = e.mgCooldown > 0 || e.mgOverheat > 0;
   if (e.mgCooldown > 0) e.mgCooldown = Math.max(0, e.mgCooldown - dt);
@@ -1847,6 +1885,24 @@ function tickWeaponClocks(e: Entity, dt: number): void {
   }
   if (bursting) return;
   e.mgHeat = Math.max(0, e.mgHeat - TANK_MG.heatCoolPerSec * dt);
+}
+
+/** The CIWS pad reaches farther for a plane in the air than for anything on the ground. */
+function airReachMul(e: Entity, target: Entity | undefined): number {
+  return e.type === "ciws" && !!target && isAirborne(target) ? CIWS_AIR_REACH_MUL : 1;
+}
+
+/** The gatling is sitting out an overheat and cannot fire. */
+function gatlingHot(e: Entity): boolean {
+  return !!gatlingHeatOf(e.type) && e.mgOverheat > 0;
+}
+
+/** Heat from `rounds` just fired. At full heat the gun locks for its overheat time. */
+function heatGatling(e: Entity, rounds: number): void {
+  const heat = gatlingHeatOf(e.type);
+  if (!heat || rounds <= 0) return;
+  e.mgHeat = Math.min(1, e.mgHeat + heat.perRound * rounds);
+  if (e.mgHeat >= 1 && e.mgOverheat <= 0) e.mgOverheat = heat.overheatSeconds;
 }
 
 function wantsMg(e: Entity, target: Entity): boolean {
@@ -1920,9 +1976,15 @@ function fireRound(
     side?: number;
     /** A radar-laid 20mm off a hull (the roof mount): anti-air round, the CIWS's cone on a plane. */
     radar?: boolean;
+    /** Extra cone and height scatter: a CIWS reaching past its normal range. */
+    spreadMul?: number;
   },
 ): void {
   const target = opts?.target;
+  // Walker, Cyborg, pad CIWS, and the Apocalypse roof. Not the Gunner's MG42, not the main gun.
+  const gatling =!!opts?.radar || e.type === "walker" || e.type === "ciws" || e.type === "cyborg";
+  // A gatling hoses its rounds; a cheap gun or a secondary mount hoses them wider.
+  const spray = (gatling ? gatlingSprayOf(e.type) : 1) * (opts?.spreadMul ?? 1);
   const moving = !!target && (target.waypoints.length > 0 || target.state === "move");
   // A Jump Jet in the air fires down on the ground: a crouch hides nothing from overhead.
   const plunging = !!e.jet && isAirborne(e) && !(target && isAirborne(target));
@@ -1938,7 +2000,7 @@ function fireRound(
       : aimFacing(e));
   const ang = aimAngle(
     bearing,
-    stats.spreadDeg,
+    stats.spreadDeg * spray,
     dist,
     range,
     () => nextRand(state),
@@ -1946,7 +2008,8 @@ function fireRound(
     stats.spreadPower ?? 1,
     target
       ? (plunging ? 1 : stanceTargetSpreadMul(target, unitInWater(state, target))) *
-          (opts?.radar && isAirborne(target) ? CIWS_AIR_SPREAD : airTargetSpreadMul(target, e))
+          // Every gatling hoses a plane the way the CIWS does; small arms take aimed shots.
+          (gatling && isAirborne(target) ? CIWS_AIR_SPREAD : airTargetSpreadMul(target, e))
       : 1,
     opts?.accurateRange ?? range,
   );
@@ -1969,12 +2032,13 @@ function fireRound(
   }
   const z0 = muzzleHeight(state, e);
   let zAim = target ? aimHeight(state, target) : worldTileHeight(state, aimX, aimY);
-  const aloft = !!target && isAirborne(target) && (!!opts?.radar || radarLaidOf(e.type));
-  // The radar lays the 20mm by bearing; in height the stream walks above and below a plane.
-  // It never dips below half the climb, so a stray round does not rake the ground around the mount.
+  const aloft = !!target && isAirborne(target) && gatling;
+  // A gatling is laid on a plane by bearing; in height the stream walks above and below it.
+  // It never dips below half the climb, so a stray round does not rake the ground around the gun.
   if (aloft) {
-    const low = Math.min(CIWS_AIR_Z_SCATTER, Math.max(0, zAim - z0) * 0.5);
-    zAim += -low + nextRand(state) * (low + CIWS_AIR_Z_SCATTER);
+    const scatter = CIWS_AIR_Z_SCATTER * spray;
+    const low = Math.min(scatter, Math.max(0, zAim - z0) * 0.5);
+    zAim += -low + nextRand(state) * (low + scatter);
   }
   const aimDist = Math.hypot(aimX - x, aimY - y);
   const gunId = infantryGunFor(e)?.id;
@@ -2001,9 +2065,7 @@ function fireRound(
       opts?.radar || (!opts?.shell && (e.type === "walker" || radarLaidOf(e.type) || !!infantryGunFor(e)?.antiAir))
         ? true
         : undefined,
-    // Walker, Cyborg, pad CIWS, and the Apocalypse roof. Not the Gunner's MG42, not the main gun.
-    gatling:
-      opts?.radar || e.type === "walker" || e.type === "ciws" || e.type === "cyborg" ? true : undefined,
+    gatling: gatling || undefined,
     plunging: plunging || undefined,
     aloft: aloft || undefined,
     z: z0,
@@ -2540,7 +2602,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   let best: Entity | undefined;
   let bestD = range * range;
   let bestAir: Entity | undefined;
-  let bestAirD = range * range;
+  let bestAirD = (range * (e.type === "ciws" ? CIWS_AIR_REACH_MUL : 1)) ** 2;
   for (const o of state.entities.values()) {
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn || isCrashing(o)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;

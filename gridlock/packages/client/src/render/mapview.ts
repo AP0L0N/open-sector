@@ -24,6 +24,10 @@ import {
   TICK_DT,
   burnVariant,
   DRONE_LEASH_TILES,
+  CIWS_AIR_REACH_MUL,
+  HEIGHT_BASE,
+  HEIGHT_RANGE_BONUS,
+  RADAR_LONG_RANGE_MUL,
   PATROL_POINTS_MAX,
   garrisonWindowLift,
   hasScout,
@@ -225,6 +229,10 @@ import { roofCiwsMuzzle } from "./roof-ciws.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { ciwsBurstTracers, ciwsTracers } from "./ciws-tracer.js";
 import { ROOF_CIWS_LIFT } from "./roof-ciws.js";
+
+/** Gatling barrels above the ground point, as a share of the drawn cell. The Walker matches gatling-flash ARM_LIFT. */
+const WALKER_ARM_LIFT = 0.45;
+const CYBORG_ARM_LIFT = 0.3;
 import { INTERCEPT_BURST_SIZE, RAM_MISS_BURST_SIZE, interceptorTrail } from "./ram.js";
 import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
@@ -862,7 +870,7 @@ export class MapView {
       if (!live.has(id) || until < now) this.damagedUntil.delete(id);
     }
     this.noteBarrages(match, now);
-    this.noteCiwsFire(match, now);
+    this.noteGatlingFire(match, now);
     for (const i of match.impacts ?? []) {
       if (i.fromId != null && (i.caliber ?? 0) > 0 && (i.caliber ?? 0) < 40 && i.kind !== "crush") {
         const shooter = match.entities.find((e) => e.id === i.fromId);
@@ -1092,29 +1100,46 @@ export class MapView {
   }
 
   /**
-   * CIWS and Apocalypse roof-mount rounds: a tracer in every few, barrels to
-   * where the round ended. A burst at a rocket leaves no rounds behind, so it
-   * gets a short fan along the gun's bearing.
+   * Gatling rounds — the Walker's arms, the Cyborg's arm, the CIWS pad, and the
+   * Apocalypse's roof mount: a tracer in every few, barrels to where the round
+   * ended. A burst at a rocket leaves no rounds behind, so it gets a short fan
+   * along the gun's bearing.
    */
-  private noteCiwsFire(match: MatchSnapshot, now: number): void {
-    const byMount = new Map<number, NonNullable<MatchSnapshot["impacts"]>>();
+  private noteGatlingFire(match: MatchSnapshot, now: number): void {
+    const byGun = new Map<number, NonNullable<MatchSnapshot["impacts"]>>();
     for (const i of match.impacts ?? []) {
-      if (i.fromId == null || i.intercept || i.caliber !== 20 || this.fxIds.has(i.id) || this.barrageLandAt.has(i.id)) continue;
-      const list = byMount.get(i.fromId);
+      if (i.fromId == null || i.intercept || this.fxIds.has(i.id) || this.barrageLandAt.has(i.id)) continue;
+      const list = byGun.get(i.fromId);
       if (list) list.push(i);
-      else byMount.set(i.fromId, [i]);
+      else byGun.set(i.fromId, [i]);
     }
     const ts = this.ts();
+    const ground = (x: number, y: number) => this.elevAt(x, y);
     for (const e of match.entities) {
       if (e.wreck) continue;
+      if (e.type === "walker" || e.type === "cyborg") {
+        const rounds = byGun.get(e.id);
+        if (!rounds?.length) continue;
+        const muzzles = this.armMuzzlesWorld(e);
+        // Both arms firing: the rounds take turns between the two barrels.
+        muzzles.forEach((m, arm) => {
+          const mine = rounds.filter((_, k) => k % muzzles.length === arm);
+          for (const tr of ciwsTracers(m, mine, ground, now, ts)) {
+            this.tracers.push(tr);
+            this.barrageLandAt.set(tr.id, tracerLandsAt(tr));
+          }
+        });
+        continue;
+      }
       const pad = e.type === "ciws";
       if (!pad && !e.ciws) continue;
       const facing = pad ? (e.turretFacing ?? e.facing) : e.ciws!.facing;
       const muzzle = this.ciwsMuzzleWorld(e, facing, pad);
       if (!muzzle) continue;
-      const rounds = byMount.get(e.id);
+      // The Apocalypse's main guns land here too; only the roof mount's 20mm carries tracers.
+      const rounds = byGun.get(e.id)?.filter((i) => pad || i.caliber === 20);
       if (rounds?.length) {
-        for (const tr of ciwsTracers(muzzle, rounds, (x, y) => this.elevAt(x, y), now, ts)) {
+        for (const tr of ciwsTracers(muzzle, rounds, ground, now, ts)) {
           this.tracers.push(tr);
           this.barrageLandAt.set(tr.id, tracerLandsAt(tr));
         }
@@ -1149,6 +1174,23 @@ export class MapView {
     const p = this.lerpEnt(e);
     const size = this.spriteOf(e)?.drawSize ?? 64;
     return { x: p.x, y: p.y, z: this.elevAt(p.x, p.y) + (ROOF_CIWS_LIFT * size) / ISO_ELEVATION };
+  }
+
+  /** World points and elevation of the gatling barrels on a Walker's arms (one or both) or a Cyborg's arm. */
+  private armMuzzlesWorld(e: EntityView): { x: number; y: number; z: number }[] {
+    const p = this.lerpEnt(e);
+    const size = this.spriteOf(e)?.drawSize ?? 48;
+    const facing = p.turretFacing ?? p.facing;
+    const r = catalog(e.type).radius;
+    const fx = Math.cos(facing);
+    const fy = Math.sin(facing);
+    const walker = e.type === "walker";
+    // Out ahead of the body, and on the Walker one arm to each side; at arm height on the sprite.
+    const ahead = r * (walker ? 0.9 : 0.6);
+    const z = this.elevAt(p.x, p.y) + ((walker ? WALKER_ARM_LIFT : CYBORG_ARM_LIFT) * size) / ISO_ELEVATION;
+    const arm = (side: number) => ({ x: p.x + fx * ahead - fy * side, y: p.y + fy * ahead + fx * side, z });
+    if (!walker) return [arm(r * 0.4)];
+    return (e.gatling?.arms ?? 1) === 2 ? [arm(r * 0.6), arm(-r * 0.6)] : [arm(r * 0.6)];
   }
 
   /** Glowing streaks of an Fw 190 barrage, gun to impact. */
@@ -2929,6 +2971,7 @@ export class MapView {
     this.drawRallyOverlay();
     this.drawPlanOverlay();
     this.drawDroneLeash();
+    this.drawRadarReach();
   }
 
   /** Dashed ring of the operator's reach while he or his drone is selected. */
@@ -2955,6 +2998,40 @@ export class MapView {
       for (let i = 0; i <= 64; i++) {
         const a = (i / 64) * Math.PI * 2;
         const s = this.toScreen(c.x + Math.cos(a) * r, c.y + Math.sin(a) * r);
+        if (i === 0) ctx.moveTo(s.x, s.y);
+        else ctx.lineTo(s.x, s.y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Faint blue dashed ring of a selected CIWS or RAM's farthest reach: Max range
+   * when it is set, and for the CIWS its longer reach on a plane.
+   */
+  private drawRadarReach(): void {
+    const you = this.curr.youPlayerId;
+    const mounts = this.curr.entities.filter(
+      (e) => this.selected.has(e.id) && e.ownerId === you && e.hp > 0 && !e.wreck && radarLaidOf(e.type),
+    );
+    if (mounts.length === 0) return;
+    const ts = this.ts();
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setLineDash([5, 6]);
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = "rgba(110, 170, 255, 0.45)";
+    for (const e of mounts) {
+      const def = catalog(e.type);
+      const elev = this.buildingElev(e);
+      const tiles = def.rangeTiles + Math.max(0, elev - HEIGHT_BASE) * HEIGHT_RANGE_BONUS;
+      const r =
+        tiles * ts * (e.longRange ? RADAR_LONG_RANGE_MUL : 1) * (e.type === "ciws" ? CIWS_AIR_REACH_MUL : 1);
+      ctx.beginPath();
+      for (let i = 0; i <= 96; i++) {
+        const a = (i / 96) * Math.PI * 2;
+        const s = this.toScreen(e.x + Math.cos(a) * r, e.y + Math.sin(a) * r);
         if (i === 0) ctx.moveTo(s.x, s.y);
         else ctx.lineTo(s.x, s.y);
       }

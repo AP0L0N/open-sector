@@ -319,6 +319,8 @@ export interface Entity {
   rocketSalvo?: number;
   /** Player switched the pods off. Missing means on. */
   rocketsOff?: boolean;
+  /** CIWS or RAM set to Max range (RADAR_LONG_RANGE_MUL). Missing means normal reach. */
+  longRange?: boolean;
   /** Entity the Titan's pods are laying on, apart from the main gun's target. */
   rocketTarget?: number | null;
   /** Last Walker volley: sim tick, arms that fired, and the off-arm bearing when it took a second target. */
