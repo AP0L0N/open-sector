@@ -4,6 +4,9 @@ import {
   CYBORG_REPAIR_PER_SEC,
   ENGINEER_SEEK_TILES,
   fieldSpan,
+  GATE_COST,
+  GATE_OPEN_SECONDS,
+  GATE_SENSE_TILES,
   isConcreteLine,
   MAX_UNIT_RADIUS,
   UNIT_SPACE_PAD,
@@ -804,7 +807,7 @@ export function wallCoverBonus(state: MatchState, e: Entity): number {
   const span = fieldSpan("wall");
   if (!span) return 0;
   for (const wall of state.entities.values()) {
-    if (wall.type !== "wall" || wall.ruined || wall.hp <= 0) continue;
+    if (wall.type !== "wall" || wall.ruined || wall.hp <= 0 || wall.gate) continue;
     const { fx, fy, tx, ty } = wallAxes(wall.facing);
     const dx = e.x - wall.x;
     const dy = e.y - wall.y;
@@ -860,6 +863,7 @@ export function tickField(state: MatchState, dt: number): void {
     if (e.order?.kind === "build") tickBuild(state, e, dt);
     else if (e.order?.kind === "repair") tickRepair(state, e, dt);
   }
+  tickGates(state, dt);
   applyCoverHp(state);
 }
 
@@ -932,6 +936,8 @@ function wallOnSegment(
   let best: { e: Entity; t: number; x: number; y: number } | null = null;
   for (const e of state.entities.values()) {
     if (!isConcreteLine(e.type) || e.hp <= 0 || e.ruined) continue;
+    // A lifted boom is open air: rounds fly through the gap.
+    if (gateOpen(e)) continue;
     const span = fieldSpan(e.type)!;
     const t = segmentObbT(x0, y0, x1, y1, e.x, e.y, e.facing, span.length / 2, span.thick / 2);
     if (t == null) continue;
@@ -1068,13 +1074,116 @@ export function raiseWallCrest(state: MatchState, built: readonly Entity[]): voi
  */
 export function restampForts(state: MatchState): void {
   state.fortBlock.fill(0);
+  state.fortOwner.clear();
   for (const e of state.entities.values()) {
     if (!isFieldStructure(e.type) || e.hp <= 0 || e.ruined) continue;
     if (e.type === "trench") continue;
-    const code = e.type === "teeth" ? 2 : 1;
+    // An unlocked gate is 3: open to its owner's side. Locked, it is a wall again.
+    const code = e.type === "teeth" ? 2 : e.gate && !e.gate.locked ? 3 : 1;
     for (const t of fieldTiles(state, e.type, e.x, e.y, e.facing, 0)) {
-      state.fortBlock[tileIndex(state, t.x, t.y)] = code;
+      const i = tileIndex(state, t.x, t.y);
+      state.fortBlock[i] = code;
+      if (code === 3) state.fortOwner.set(i, e.ownerId);
     }
+  }
+}
+
+/**
+ * A Wall section with another standing concrete section butted straight onto
+ * each end. Only such a section can become a gate: the posts need something to
+ * hold, and the boom spans the gap between them.
+ */
+export function wallFlankedBothEnds(
+  walls: Iterable<{ id: number; type: string; x: number; y: number; hp: number; ruined?: boolean }>,
+  wall: { id: number; x: number; y: number; facing: number },
+): boolean {
+  const span = fieldSpan("wall");
+  if (!span) return false;
+  const { tx, ty } = wallAxes(wall.facing);
+  let neg = false;
+  let pos = false;
+  for (const w of walls) {
+    if (w.id === wall.id || !isConcreteLine(w.type) || w.hp <= 0 || w.ruined) continue;
+    for (const sign of [-1, 1] as const) {
+      const px = wall.x + tx * sign * span.length;
+      const py = wall.y + ty * sign * span.length;
+      if (Math.hypot(w.x - px, w.y - py) > span.length * 0.35) continue;
+      if (sign < 0) neg = true;
+      else pos = true;
+    }
+    if (neg && pos) return true;
+  }
+  return false;
+}
+
+/** Boom lifted enough for rounds and men to pass. */
+export function gateOpen(e: { gate?: { open: number } | undefined }): boolean {
+  return (e.gate?.open ?? 0) >= 0.5;
+}
+
+/**
+ * Turn own standing Wall sections into gates, GATE_COST each. A section already
+ * a gate, or without wall on both ends, is skipped; the order fails only when
+ * nothing could be converted.
+ */
+export function convertToGates(state: MatchState, playerId: string, ids: readonly number[]): string | null {
+  const p = state.players.get(playerId);
+  if (!p || !p.alive) return "You are out of the fight.";
+  let done = 0;
+  let unflanked = 0;
+  for (const id of ids) {
+    const e = state.entities.get(id);
+    if (!e || e.type !== "wall" || e.ownerId !== playerId || e.hp <= 0 || e.ruined || e.gate) continue;
+    if (!wallFlankedBothEnds(state.entities.values(), e)) {
+      unflanked++;
+      continue;
+    }
+    if (p.scrap < GATE_COST) return done > 0 ? null : "Not enough scrap.";
+    p.scrap -= GATE_COST;
+    e.gate = { locked: false, open: 0 };
+    done++;
+  }
+  if (done === 0) return unflanked > 0 ? "A gate needs wall on both ends." : "Select a wall section.";
+  restampForts(state);
+  return null;
+}
+
+/** Lock or unlock own gates. Locked, the boom drops and nobody passes. */
+export function setGatesLocked(state: MatchState, playerId: string, ids: readonly number[], locked: boolean): string | null {
+  let done = 0;
+  for (const id of ids) {
+    const e = state.entities.get(id);
+    if (!e || !e.gate || e.ownerId !== playerId || e.hp <= 0) continue;
+    if (e.gate.locked === locked) {
+      done++;
+      continue;
+    }
+    e.gate.locked = locked;
+    done++;
+  }
+  if (done === 0) return "Select a gate.";
+  restampForts(state);
+  return null;
+}
+
+/** The boom lifts while a friendly ground unit is near an unlocked gate, and drops otherwise. */
+function tickGates(state: MatchState, dt: number): void {
+  const sense = GATE_SENSE_TILES * state.tileSize;
+  const step = dt / Math.max(0.05, GATE_OPEN_SECONDS);
+  for (const g of state.entities.values()) {
+    if (!g.gate || g.hp <= 0) continue;
+    let want = 0;
+    if (!g.gate.locked) {
+      for (const u of state.entities.values()) {
+        if (u.kind !== "unit" || u.hp <= 0 || u.wreck || u.garrisonedIn != null || aloft(u)) continue;
+        if (isAircraftType(u.type) || !allies(state, u.ownerId, g.ownerId)) continue;
+        if (Math.hypot(u.x - g.x, u.y - g.y) > sense) continue;
+        want = 1;
+        break;
+      }
+    }
+    const open = g.gate.open;
+    g.gate.open = want > open ? Math.min(1, open + step) : Math.max(0, open - step);
   }
 }
 

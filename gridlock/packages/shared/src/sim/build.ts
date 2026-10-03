@@ -2,6 +2,7 @@ import {
   BUILD_RADIUS,
   catalog,
   isCivilianType,
+  isConcreteLine,
   isDefenceStructure,
   isFieldStructure,
   isYardField,

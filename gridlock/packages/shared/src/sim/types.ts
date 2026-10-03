@@ -248,6 +248,14 @@ export interface DroneState {
   guard?: { x: number; y: number; targetId?: number } | null;
 }
 
+/** A Wall section turned into a lifting gate. */
+export interface GateState {
+  /** Locked: nobody passes and the boom stays down. */
+  locked: boolean;
+  /** Boom lift, 0 down to 1 up. */
+  open: number;
+}
+
 export interface Entity {
   id: number;
   kind: "unit" | "building";
@@ -395,6 +403,8 @@ export interface Entity {
   coverBonus: number;
   /** Part of `coverBonus` granted by a concrete wall. Overhead hits ignore it. */
   wallCover: number;
+  /** Set on a Wall section converted into a lifting gate. */
+  gate?: GateState;
   /** Seconds spent on the current build or repair. */
   work: number;
   /** Shift-queued orders, run one after another once the current order ends. Cleared by any unqueued order. */
@@ -592,8 +602,13 @@ export interface MatchState {
   occupy: Int32Array;
   /** 1 = too close to a wreck for a unit to path through. */
   wreckBlock: Uint8Array;
-  /** 1 = sandbags block every unit. 2 = dragon's teeth block vehicles only. */
+  /**
+   * 1 = sandbags and concrete block every unit. 2 = dragon's teeth block vehicles
+   * only. 3 = an unlocked gate: its owner's side walks through, everyone else stops.
+   */
   fortBlock: Uint8Array;
+  /** Owner of the gate on each fortBlock 3 tile, by tile index. */
+  fortOwner: Map<number, string>;
   players: Map<string, SimPlayer>;
   entities: Map<number, Entity>;
   projectiles: Projectile[];

@@ -21,6 +21,7 @@ import {
   SPOTLIGHT_TURN_DEG_PER_SEC,
   fieldSpan,
   isConcreteLine,
+  wallAxes,
   GUARD_CONE_DEG,
   isCivilianType,
   isFieldStructure,
@@ -3298,6 +3299,22 @@ export class MapView {
       const r = TILE_SUBDIV * 1.7 * ts;
       for (const b of workLightBearings(e.id, n, nowSec)) {
         lay(e.x + Math.cos(b) * orbit, e.y + Math.sin(b) * orbit, r, 0.8, "work");
+      }
+    }
+    // Gate lamps: a small pool off each post, on both sides of the boom.
+    const gateSpan = fieldSpan("wall");
+    if (gateSpan) {
+      const postAlong = gateSpan.length / 2 - 2.5;
+      const off = gateSpan.thick / 2 + TILE_SUBDIV * 0.8 * ts;
+      const r = TILE_SUBDIV * 1.1 * ts;
+      for (const e of this.curr.entities) {
+        if (!e.gate || e.hp <= 0 || e.ruined) continue;
+        const { fx, fy, tx, ty } = wallAxes(e.facing);
+        for (const a of [-postAlong, postAlong]) {
+          for (const side of [-1, 1]) {
+            lay(e.x + tx * a + fx * side * off, e.y + ty * a + fy * side * off, r, 0.7, "work");
+          }
+        }
       }
     }
     return out;
@@ -6709,6 +6726,8 @@ export class MapView {
           seed: e.id * 2654435761,
           manned,
           bandColor: holder ? colorHex(holder.colorId) : undefined,
+          gate: ghost ? undefined : e.gate,
+          crest: ghost ? undefined : e.wallCrest,
         }),
       );
       if (!ghost) {
@@ -6717,6 +6736,7 @@ export class MapView {
         const lift = type === "greatwall" ? 44 : 18;
         this.maybeHp(e, s.x - w / 2, s.y - lift, w);
         if (type === "greatwall") this.drawGarrisonBars(e, s.x - 9, s.y - lift - 8);
+        if (e.gate?.locked) this.drawPadlock(s.x, s.y - lift - 14);
       }
       return;
     }
@@ -6778,18 +6798,51 @@ export class MapView {
     }
   }
 
+  /** A locked gate: a padlock over it, so the shut boom is never read as one about to lift. */
+  private drawPadlock(sx: number, sy: number): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(20, 16, 12, 0.9)";
+    ctx.fillStyle = "#e8b84a";
+    ctx.beginPath();
+    ctx.rect(sx - 5, sy - 1, 10, 8);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(sx, sy - 2, 3.4, Math.PI, 0);
+    ctx.strokeStyle = "#e8b84a";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.fillStyle = "rgba(20, 16, 12, 0.9)";
+    ctx.beginPath();
+    ctx.arc(sx, sy + 3, 1.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   private drawConcrete(
     type: ConcreteLineType,
     x: number,
     y: number,
     facing: number,
-    opts: { hurt?: number; alpha: number; seed: number; bad?: boolean; manned?: boolean; bandColor?: string },
+    opts: {
+      hurt?: number;
+      alpha: number;
+      seed: number;
+      bad?: boolean;
+      manned?: boolean;
+      bandColor?: string;
+      gate?: { open: number; locked: boolean };
+      /** Standing section: the crest the sim stamped when the line was raised. */
+      crest?: number;
+    },
     extras?: readonly { x: number; y: number; facing: number }[],
   ): void {
     const span = fieldSpan(type);
     if (!span) return;
     const style = type === "greatwall" ? LARGE_WALL_STYLE : WALL_STYLE;
-    const section: WallSection = { x, y, facing, length: span.length, thick: span.thick };
+    const section: WallSection = { x, y, facing, length: span.length, thick: span.thick, crest: opts.crest };
     const run = this.fieldRun(type, section, extras ?? []);
     const grounds: number[] = [];
     const crests: number[] = [];
@@ -6818,6 +6871,7 @@ export class MapView {
       style,
       manned: opts.manned,
       bandColor: opts.bandColor,
+      gate: opts.gate,
     });
   }
 

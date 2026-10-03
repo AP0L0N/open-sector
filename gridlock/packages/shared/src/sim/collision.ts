@@ -53,8 +53,11 @@ function tileFree(state: MatchState, e: Entity, x: number, y: number): boolean {
   if (isWall(state, tx, ty)) return false;
   if (isWater(state, tx, ty) && !isInfantryType(e.type) && !wadesOf(e.type)) return false;
   if (isTree(state, tx, ty) && !walkable(state, tx, ty, e.type)) return false;
-  const fort = state.fortBlock[tileIndex(state, tx, ty)] ?? 0;
-  if (fort === 1 || (fort === 2 && !isInfantryType(e.type))) {
+  const idx = tileIndex(state, tx, ty);
+  const fort = state.fortBlock[idx] ?? 0;
+  // An unlocked gate lifts for its owner's side; anyone else stops at the boom.
+  const shutGate = fort === 3 && !allies(state, e.ownerId, state.fortOwner.get(idx) ?? "");
+  if (fort === 1 || (fort === 2 && !isInfantryType(e.type)) || shutGate) {
     const cx = worldToTile(e.x, ts);
     const cy = worldToTile(e.y, ts);
     if (tx !== cx || ty !== cy) return false;

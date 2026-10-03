@@ -215,6 +215,26 @@ export interface WallDraw {
   manned?: boolean;
   /** Their side colour, for a band over each slit. */
   bandColor?: string;
+  /** A Wall section converted into a gate: two posts and a lifting boom instead of the slab. */
+  gate?: { open: number; locked: boolean };
+}
+
+/** Length of each gate post along the section, world units. */
+export const GATE_POST_LEN = 5;
+/** Hinge height of the boom on its post, as a share of the slab height. */
+export const GATE_HINGE = 0.82;
+
+/**
+ * The boom of a gate, in the section's frame: it swings from flat across the
+ * gap (open 0) to nearly upright (open 1) about a hinge on the -along post.
+ */
+export function gateBoom(open: number, length: number, slabH: number): { a0: number; a1: number; rise: number; hinge: number } {
+  const hl = length / 2;
+  const a0 = -hl + GATE_POST_LEN;
+  const arm = length - GATE_POST_LEN * 2 - 1;
+  const theta = Math.max(0, Math.min(1, open)) * (Math.PI / 2) * 0.94;
+  const hinge = slabH * GATE_HINGE;
+  return { a0, a1: a0 + Math.cos(theta) * arm, rise: Math.sin(theta) * arm, hinge };
 }
 
 function rgb(r: number, g: number, b: number, k: number): string {
@@ -255,10 +275,9 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
     x: d.x + tx * along + fx * across,
     y: d.y + ty * along + fy * across,
   });
-  const slab = style.slabH * (1 - d.hurt * 0.08);
-  const fullLevels = d.levelPx > 0 ? (style.slabH * d.worldPx) / d.levelPx : 0;
-  const slabLevels = d.levelPx > 0 ? (slab * d.worldPx) / d.levelPx : 0;
-  const top = d.topElev - (fullLevels - slabLevels);
+  // The slab keeps its height whatever its damage: cracks only, so neighbours never step.
+  const slab = style.slabH;
+  const top = d.topElev;
   /** A world point lifted `up` world units: the bottom hangs on the terrain, the top is one flat level. */
   const at = (w: Pt, up: number): Pt => {
     const g = d.ground(w.x, w.y);
@@ -359,6 +378,59 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
     ctx.lineWidth = 1;
     ctx.stroke();
   };
+  if (d.gate) {
+    // Two concrete posts where the slab's ends were, a lamp head on each, and the boom between them.
+    const postLen = Math.min(GATE_POST_LEN, hl * 0.4);
+    const post = (a0: number, a1: number): void => {
+      const corners = [world(a0, -ht), world(a1, -ht), world(a1, ht), world(a0, ht)];
+      const ns = [nNeg, u, nPos, { x: -u.x, y: -u.y }];
+      const sides = corners.map((c, i) => ({ a: c, b: corners[(i + 1) % 4]!, n: ns[i]! }));
+      sides.sort((p, q) => p.a.x + p.a.y + p.b.x + p.b.y - (q.a.x + q.a.y + q.b.x + q.b.y));
+      for (const f of sides) {
+        const k = light(f.n);
+        paint([at(f.a, 0), at(f.b, 0), at(f.b, slab), at(f.a, slab)], rgb(br, bg, bb, k));
+      }
+      paint(corners.map((c) => at(c, slab)), rgb(br, bg, bb, 1.3));
+      // Lamp head on the post top: a small hooded box with a warm face on each flank.
+      const mid = (a0 + a1) / 2;
+      for (const side of [-1, 1] as const) {
+        const h0 = atF(mid, side * (ht + 0.4), slab + 0.6);
+        const r = Math.max(1.2, px * 1.6);
+        ctx.fillStyle = "rgba(38, 40, 36, 0.95)";
+        ctx.beginPath();
+        ctx.arc(h0.x, h0.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = d.bad ? "rgba(255, 150, 120, 0.9)" : "rgba(255, 214, 140, 0.95)";
+        ctx.beginPath();
+        ctx.arc(h0.x + side * fx * r * 0.35, h0.y + side * fy * r * 0.2, r * 0.45, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+    post(-hl, -hl + postLen);
+    post(hl - postLen, hl);
+    const boom = gateBoom(d.gate.open, d.length, slab);
+    const steps = 6;
+    ctx.lineCap = "butt";
+    ctx.lineWidth = Math.max(2, line * 2.8);
+    for (let i = 0; i < steps; i++) {
+      const t0 = i / steps;
+      const t1 = (i + 1) / steps;
+      const p0 = atF(boom.a0 + (boom.a1 - boom.a0) * t0, 0, boom.hinge + boom.rise * t0);
+      const p1 = atF(boom.a0 + (boom.a1 - boom.a0) * t1, 0, boom.hinge + boom.rise * t1);
+      ctx.strokeStyle = i % 2 === 0 ? (d.bad ? "#7a2a22" : "#c43a2c") : "#e9e4d6";
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.stroke();
+    }
+    const hinge = atF(boom.a0, 0, boom.hinge);
+    ctx.fillStyle = "rgba(40, 42, 38, 0.95)";
+    ctx.beginPath();
+    ctx.arc(hinge.x, hinge.y, Math.max(1.4, line * 1.6), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
   const slits = style.slits ? wallSlitAlong(d.length) : [];
   const grime = `rgba(28, 26, 22, ${d.bad ? 0.1 : 0.16})`;
   const streak = `rgba(34, 32, 28, ${d.bad ? 0.08 : 0.12})`;

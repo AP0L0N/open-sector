@@ -1693,6 +1693,18 @@ export const LARGE_WALL_COVER_HEIGHT = 3;
 export const LARGE_WALL_EYE_HEIGHT = LARGE_WALL_COVER_HEIGHT * 0.6;
 
 /**
+ * Gate. A Wall section with a wall on both ends can be turned into a gate: two
+ * concrete posts and a lifting boom, like a car-park barrier, with a small lamp
+ * on each post. It lifts for its owner's side and their allies and stays down
+ * for everyone else; locked, it lets nobody through and shows a padlock.
+ */
+export const GATE_COST = 40;
+/** Seconds for the boom to lift fully, or to drop. */
+export const GATE_OPEN_SECONDS = 0.8;
+/** Gameplay tiles from the gate at which a friendly ground unit lifts the boom. */
+export const GATE_SENSE_TILES = t(3);
+
+/**
  * Day and night. A match opens at morning and runs day, dusk, night, dawn,
  * then day again. In full dark every sight ring and every weapon reach is
  * NIGHT_REACH_MUL of its daylight value; dusk and dawn slide between the two.
@@ -2683,7 +2695,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Concrete section with barbed wire. Scroll to turn it, then drag from the start to the end. The whole line is one job — longer for each piece — and it appears when the engineer finishes. Nothing walks through it while it stands. Shells and rockets break it; an engineer can repair it. Units beside it have extra health and take less from ground fire. Mortars, bombs, and shots from the air ignore that.",
+    blurb: "Concrete section with barbed wire. Scroll to turn it, then drag from the start to the end. The whole line is one job — longer for each piece — and it appears when the engineer finishes. Nothing walks through it while it stands. Shells and rockets break it; an engineer can repair it. Units beside it have extra health and take less from ground fire. Mortars, bombs, and shots from the air ignore that. A section with wall on both ends can be converted into a gate that lifts for your side.",
   },
   greatwall: {
     type: "greatwall",
