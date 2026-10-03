@@ -35,7 +35,7 @@ import { allies, destroyEntity, makeEntity, newAirState, newDroneLink, unitInWat
 import { livingGarrison, woundGarrison } from "./garrison.js";
 import { mortarFalloff } from "./mortar.js";
 import { stepTurn } from "./orders.js";
-import { distToRoute, stepPatrolLeg } from "./patrol.js";
+import { distToRoute, patrolLegIndex, stepPatrolLeg } from "./patrol.js";
 import { noteImpactSurface } from "./remains.js";
 import { nextRand } from "./rng.js";
 import { hideScout } from "./scout.js";
@@ -360,8 +360,9 @@ function tickDrone(state: MatchState, d: Entity, dt: number): boolean {
 }
 
 /**
- * Walk the patrol polyline, then back. Search & Destroy dives on an enemy
- * within sight of that line and keeps the patrol order.
+ * Walk the patrol polyline. An open route turns back; a loop wraps to the
+ * first spot. Search & Destroy dives on an enemy within sight of that line
+ * and keeps the patrol order.
  */
 function flyPatrol(state: MatchState, d: Entity, op: Entity, dt: number): void {
   const o = d.order;
@@ -386,12 +387,12 @@ function flyPatrol(state: MatchState, d: Entity, op: Entity, dt: number): void {
     }
   }
   d.attackTarget = null;
-  let leg = o.leg ?? 1;
-  if (leg < 0 || leg >= route.length) leg = 1;
+  const loop = o.loop === true;
+  const leg = patrolLegIndex(route.length, o.leg, loop);
   const raw = route[leg] ?? route[route.length - 1]!;
   const goal = inLeash(state, op, raw.x, raw.y);
   if (flyTo(state, d, goal.x, goal.y, dt)) {
-    const stepped = stepPatrolLeg(route, leg, o.dir === -1 ? -1 : 1);
+    const stepped = stepPatrolLeg(route, leg, o.dir === -1 ? -1 : 1, loop);
     o.leg = stepped.leg;
     o.dir = stepped.dir;
   }
@@ -414,14 +415,14 @@ function patrolDroneTarget(
     t.kind === "unit" &&
     validStrikeTarget(state, d, op, t) &&
     canSeeEntity(state, d.ownerId, t) &&
-    distToRoute(route, t.x, t.y) <= reach;
+    distToRoute(route, t.x, t.y, d.order?.loop === true) <= reach;
   const sticky = d.attackTarget != null ? state.entities.get(d.attackTarget) : undefined;
   if (hit(sticky)) return sticky;
   let best: Entity | undefined;
   let bestD = Infinity;
   for (const o of state.entities.values()) {
     if (!hit(o)) continue;
-    const dist = distToRoute(route, o.x, o.y);
+    const dist = distToRoute(route, o.x, o.y, d.order?.loop === true);
     if (dist < bestD) {
       bestD = dist;
       best = o;

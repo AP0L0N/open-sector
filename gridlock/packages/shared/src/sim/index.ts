@@ -9,7 +9,7 @@ export { snapshotFor } from "./snapshot.js";
 export { burnVariant } from "./remains.js";
 export { previewField, previewPlace, previewYardField } from "./preview.js";
 export { pathToWorld, astar } from "./path.js";
-export { PATROL_POINTS_MAX } from "./patrol.js";
+export { PATROL_POINTS_MAX, connectPatrolPoints } from "./patrol.js";
 export type { MatchState } from "./types.js";
 export {
   hasCore,
@@ -121,7 +121,6 @@ export {
   fieldCornerStart,
   fieldLine,
   fieldPath,
-  fieldSectionsAdjoin,
   fieldSiteClear,
   fieldTurn,
   gateOpen,

@@ -22,7 +22,7 @@ import {
 } from "./geo.js";
 import { ejectUnits } from "./deploy.js";
 import { spillGarrison } from "./garrison.js";
-import { fieldPiecesFor, fieldSiteClear, fieldTiles, levelConcreteLine, restampForts, type FieldPiece } from "./field.js";
+import { fieldPiecesFor, fieldSiteClear, fieldTiles, raiseWallCrest, restampForts, type FieldPiece } from "./field.js";
 import { repathIfBlocked } from "./orders.js";
 import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
@@ -149,10 +149,10 @@ function finishYardField(state: MatchState, p: SimPlayer, job: StructureJob): vo
   advancePaidJob(p, job, cost, productionSpeed(pow.provided, pow.used));
   if (!jobFullyPaid(job, cost)) return;
   let placed = 0;
+  const raised: Entity[] = [];
   const type = job.type;
   // Check every piece before raising any: at a corner the first section would otherwise touch the second.
   const clear = sites.map((piece) => fieldSiteClear(state, type, piece.x, piece.y, piece.facing));
-  const raised: Entity[] = [];
   for (let i = 0; i < sites.length; i++) {
     const piece = sites[i]!;
     if (!clear[i]) {
@@ -165,8 +165,10 @@ function finishYardField(state: MatchState, p: SimPlayer, job: StructureJob): vo
     raised.push(built);
     placed++;
   }
-  if (isConcreteLine(type)) levelConcreteLine(state, raised);
-  if (placed > 0) restampForts(state);
+  if (placed > 0) {
+    raiseWallCrest(state, raised);
+    restampForts(state);
+  }
   dropJob(p, job);
 }
 

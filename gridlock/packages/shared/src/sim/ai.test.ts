@@ -21,7 +21,7 @@ function humanVsEasy(): { state: MatchState; aiId: string } {
   const add = hostSlot(room, "A", 1, { status: "ai" });
   if (!add.ok) throw new Error(add.message);
   updateSelf(room, "A", { ready: true });
-  const started = startMatch(room, "A");
+  const started = startMatch(room, "A", () => 0);
   if (!started.ok) throw new Error(started.message);
   return { state: createMatch(room, started.value), aiId: "ai:1" };
 }

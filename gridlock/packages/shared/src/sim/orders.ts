@@ -15,7 +15,7 @@ import { moveWithCollision, stepGiveWay, tickMakeWay } from "./collision.js";
 import { hullTurnMul, moveSpeedMul } from "./crits.js";
 import { openSpotNear, spotTaken, unitClearance } from "./formation.js";
 import { setPath } from "./path.js";
-import { stepPatrolLeg } from "./patrol.js";
+import { patrolLegIndex, stepPatrolLeg } from "./patrol.js";
 import { flyStep, jetAloft } from "./jet.js";
 import { slopeSpeedMul, tileHeight, weaponRangeWorld, worldTileHeight } from "./elevation.js";
 import type { Entity, MatchState } from "./types.js";
@@ -317,9 +317,9 @@ function steerPatrol(state: MatchState, e: Entity): boolean {
   const o = e.order;
   if (!o || o.kind !== "patrol" || !o.route || o.route.length < 2) return false;
   const route = o.route;
-  let leg = o.leg ?? 1;
-  if (leg < 0 || leg >= route.length) leg = 1;
-  const dest = route[leg] ?? route[1] ?? route[0];
+  const loop = o.loop === true;
+  const leg = patrolLegIndex(route.length, o.leg, loop);
+  const dest = route[leg] ?? route[loop ? 0 : 1] ?? route[0];
   if (!dest) return false;
 
   if (e.attackTarget != null) {
@@ -355,12 +355,14 @@ function steerPatrol(state: MatchState, e: Entity): boolean {
   return false;
 }
 
-/** The current leg is done. Step along the route, and turn around at either end. */
+/** The current leg is done. An open route turns around. A loop wraps to the first spot. */
 function commitPatrolArrival(state: MatchState, e: Entity): void {
   const o = e.order;
   if (!o || o.kind !== "patrol" || !o.route || o.route.length < 2) return;
   if (e.attackTarget != null) return;
-  const next = stepPatrolLeg(o.route, o.leg ?? 1, o.dir === -1 ? -1 : 1);
+  const loop = o.loop === true;
+  const leg = patrolLegIndex(o.route.length, o.leg, loop);
+  const next = stepPatrolLeg(o.route, leg, o.dir === -1 ? -1 : 1, loop);
   o.leg = next.leg;
   o.dir = next.dir;
   const dest = o.route[next.leg];

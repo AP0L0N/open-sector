@@ -34,7 +34,7 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   assert.equal(joinRoom(room, "B", "Bravo").ok, true);
   updateSelf(room, "A", { ready: true, spawnId: 1 });
   updateSelf(room, "B", { ready: true, spawnId: 4 });
-  const started = startMatch(room, "A");
+  const started = startMatch(room, "A", () => 0);
   if (!started.ok) throw new Error(started.message);
   const state = createMatch(room, started.value);
   state.heights.fill(0);

@@ -39,6 +39,7 @@ describe("concrete wall", () => {
     assert.equal(wallSectionsConnect({ x: 0, y: 0, length: L }, { x: L * 2, y: 0, length: L }), false);
     assert.equal(wallTopElev([2, 5, 3], 4), 9);
     assert.equal(wallTopElev([], 4), 4);
+    assert.equal(wallTopElev([2, 3], 4, [5]), 9);
   });
 
   it("hides the cap where the next section butts straight on", () => {

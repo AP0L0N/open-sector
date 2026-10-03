@@ -1,6 +1,6 @@
 import "./style/ra-feel.css";
-import type { ServerMessage } from "@gridlock/shared";
-import { DEFAULT_MAP_ID, getMap } from "@gridlock/shared";
+import type { CustomMapSpec, ServerMessage } from "@gridlock/shared";
+import { DEFAULT_MAP_ID, getMap, listMaps, loadCustomMap, unregisterMap } from "@gridlock/shared";
 import { GameSocket } from "./net/client.js";
 import type { Ctx, Screen } from "./ctx.js";
 import { bindClicks, getMusic, getSfx, setMusic, setSfx } from "./ui/audio.js";
@@ -10,6 +10,8 @@ import { renderPlay } from "./ui/play.js";
 import { renderLobby } from "./ui/lobby.js";
 import { renderOptions } from "./ui/options.js";
 import { renderCredits } from "./ui/credits.js";
+import { builderError, builderMapSaved, refreshBuilder, renderBuilder } from "./ui/builder.js";
+import { forgetTerrain } from "./render/terrain.js";
 import { flashNoScrap, mountBattlefield, paintBattleHud, renderLeaveModal } from "./ui/hud.js";
 import { el } from "./ui/dom.js";
 import type { MapView } from "./render/mapview.js";
@@ -52,6 +54,7 @@ const ctx: Ctx = {
   connected: false,
   pendingJoin: roomParam,
   pendingSkirmish: false,
+  pendingSkirmishMap: null,
   leaveOpen: false,
   winner: null,
   goto(screen: Screen) {
@@ -74,20 +77,22 @@ const ctx: Ctx = {
     ctx.name = name.trim().slice(0, 24);
     localStorage.setItem(NAME_KEY, ctx.name);
   },
-  enterSkirmish() {
+  enterSkirmish(mapId?: string) {
     ctx.playMode = "skirmish";
     if (!ctx.net.connected) {
       ctx.pendingSkirmish = true;
+      ctx.pendingSkirmishMap = mapId ?? null;
       ctx.banner = "Linking…";
       ctx.net.connect();
       ctx.render();
       return;
     }
     ctx.pendingSkirmish = false;
+    ctx.pendingSkirmishMap = null;
     ctx.net.send({ type: "hello", name: ctx.name });
     ctx.net.send({
       type: "room.create",
-      mapId: DEFAULT_MAP_ID,
+      mapId: mapId ?? DEFAULT_MAP_ID,
       maxSlots: 8,
       mode: "skirmish",
     });
@@ -95,7 +100,23 @@ const ctx: Ctx = {
   render,
 };
 
+/** Register a Map Builder map from the hub. Its old bake (if any) is dropped. */
+function takeCustomMap(spec: CustomMapSpec): void {
+  forgetTerrain(spec.id);
+  loadCustomMap(spec);
+}
+
+/** Lobby and builder list maps; redraw them when the list changes. */
+function mapsChanged(): void {
+  if (ctx.screen === "builder") refreshBuilder(ctx);
+  else if (ctx.screen === "lobby") ctx.render();
+}
+
 function render(): void {
+  if (ctx.screen === "builder" && document.getElementById("builder-root")) {
+    refreshBuilder(ctx);
+    return;
+  }
   if (ctx.screen === "battle" && document.getElementById("battlefield") && mapView) {
     if (ctx.match) mapView.setSnapshot(ctx.match);
     paintBattleHud(ctx);
@@ -138,6 +159,9 @@ function render(): void {
     case "credits":
       renderCredits(appEl, ctx);
       break;
+    case "builder":
+      renderBuilder(appEl, ctx);
+      break;
   }
 }
 
@@ -152,10 +176,11 @@ function onMessage(msg: ServerMessage): void {
         ctx.pendingSkirmish = false;
         net.send({
           type: "room.create",
-          mapId: DEFAULT_MAP_ID,
+          mapId: ctx.pendingSkirmishMap ?? DEFAULT_MAP_ID,
           maxSlots: 8,
           mode: "skirmish",
         });
+        ctx.pendingSkirmishMap = null;
       }
       break;
     case "room.state":
@@ -168,7 +193,8 @@ function onMessage(msg: ServerMessage): void {
         ctx.screen === "play" ||
         ctx.screen === "menu" ||
         ctx.screen === "lobby" ||
-        ctx.screen === "callsign"
+        ctx.screen === "callsign" ||
+        ctx.screen === "builder"
       ) {
         ctx.screen = "lobby";
       }
@@ -179,6 +205,7 @@ function onMessage(msg: ServerMessage): void {
         flashNoScrap();
         return;
       }
+      if (builderError(ctx, msg.message)) return;
       ctx.banner = msg.message;
       ctx.render();
       break;
@@ -213,6 +240,30 @@ function onMessage(msg: ServerMessage): void {
       ctx.banner = msg.reason === "kicked" ? "You were removed from the roster." : "Host left.";
       ctx.goto("menu");
       break;
+    case "maps.custom": {
+      const keep = new Set(msg.maps.map((m) => m.id));
+      for (const m of listMaps()) {
+        if (m.custom && !keep.has(m.id)) {
+          unregisterMap(m.id);
+          forgetTerrain(m.id);
+        }
+      }
+      for (const spec of msg.maps) takeCustomMap(spec);
+      mapsChanged();
+      break;
+    }
+    case "map.upsert":
+      takeCustomMap(msg.map);
+      mapsChanged();
+      break;
+    case "map.removed":
+      unregisterMap(msg.id);
+      forgetTerrain(msg.id);
+      mapsChanged();
+      break;
+    case "map.saved":
+      builderMapSaved(ctx, msg.id);
+      break;
     case "chat":
       ctx.chat.push({ name: msg.name, text: msg.text, at: msg.at });
       if (ctx.chat.length > 50) ctx.chat.shift();
@@ -224,7 +275,8 @@ function onMessage(msg: ServerMessage): void {
 net.onMessage = onMessage;
 net.onStatus = (connected) => {
   ctx.connected = connected;
-  if (!connected && ctx.screen !== "menu" && ctx.screen !== "callsign") {
+  // The Map Builder edits offline; only saving needs the hub.
+  if (!connected && ctx.screen !== "menu" && ctx.screen !== "callsign" && ctx.screen !== "builder") {
     ctx.banner = "Link lost.";
     ctx.room = null;
     ctx.match = null;

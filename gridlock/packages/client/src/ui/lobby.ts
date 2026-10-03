@@ -1,74 +1,15 @@
 import {
   COLORS,
-  colorHex,
   getMap,
-  heightAt,
-  isoLift,
   listMaps,
-  tileDiamond,
   usedColors,
   usedSpawns,
   waitingReason,
-  worldToIso,
-  type IsoPt,
   type Slot,
 } from "@gridlock/shared";
 import type { Ctx } from "../ctx.js";
-import { scrapFromMapTiles, terrainFor } from "../render/terrain.js";
 import { copyText, el } from "./dom.js";
-
-function drawPreview(canvas: HTMLCanvasElement, mapId: string, slots: Slot[]): void {
-  const map = getMap(mapId);
-  const ctx = canvas.getContext("2d");
-  if (!map || !ctx) return;
-  const dpr = Math.min(devicePixelRatio || 1, 1.5);
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
-  const bw = Math.floor(w * dpr);
-  const bh = Math.floor(h * dpr);
-  if (canvas.width !== bw || canvas.height !== bh) {
-    canvas.width = bw;
-    canvas.height = bh;
-  }
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = "#0a0806";
-  ctx.fillRect(0, 0, w, h);
-  const bake = terrainFor(map, scrapFromMapTiles(map));
-  const scale = Math.min(w / bake.width, h / bake.height) * 0.94;
-  const ox = (w - bake.width * scale) / 2;
-  const oy = (h - bake.height * scale) / 2;
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "low";
-  ctx.drawImage(bake.canvas, ox, oy, bake.width * scale, bake.height * scale);
-  const to = (p: { x: number; y: number }): { x: number; y: number } => ({
-    x: (p.x - bake.originX) * scale + ox,
-    y: (p.y - bake.originY) * scale + oy,
-  });
-  const lift = (p: IsoPt, z: number): IsoPt => to({ x: p.x, y: p.y - z });
-  for (const f of map.features ?? []) {
-    const d = tileDiamond(f.x, f.y, map.tileSize);
-    const ez = 6;
-    ctx.fillStyle = "#b08968";
-    ctx.beginPath();
-    ctx.moveTo(lift(d.n, ez).x, lift(d.n, ez).y);
-    ctx.lineTo(lift(d.e, ez).x, lift(d.e, ez).y);
-    ctx.lineTo(lift(d.s, 0).x, lift(d.s, 0).y);
-    ctx.lineTo(lift(d.w, 0).x, lift(d.w, 0).y);
-    ctx.closePath();
-    ctx.fill();
-  }
-  for (const spawn of map.spawns) {
-    const occupant = slots.find(
-      (s) => (s.status === "human" || s.status === "ai") && s.spawnId === spawn.id,
-    );
-    const iso = worldToIso((spawn.x + 0.5) * map.tileSize, (spawn.y + 0.5) * map.tileSize, map.tileSize);
-    const p = to({ x: iso.x, y: iso.y - isoLift(heightAt(map, spawn.x, spawn.y)) });
-    ctx.fillStyle = occupant ? colorHex(occupant.colorId) : "#e8b84a";
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-    ctx.fill();
-  }
-}
+import { drawMapPreview } from "./map-preview.js";
 
 export function renderLobby(root: HTMLElement, ctx: Ctx): void {
   const room = ctx.room;
@@ -193,12 +134,11 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
       const rnd = el("option", { text: "Random", attrs: { value: "0" } });
       if (slot.spawnId === 0) rnd.selected = true;
       sel.append(rnd);
-      for (let i = 1; i <= 8; i++) {
+      for (const spawn of map?.spawns ?? []) {
+        const i = spawn.id;
         const taken = takenSpawns.has(i) && slot.spawnId !== i;
-        const suggested = map?.spawns.find((s) => s.id === i)?.suggestedTeam;
-        const teamBit = map?.applySuggestedTeams && suggested ? ` (team ${suggested})` : "";
         const o = el("option", {
-          text: taken ? `${i}${teamBit} (taken)` : `${i}${teamBit}`,
+          text: taken ? `${i} (taken)` : String(i),
           attrs: { value: String(i) },
         });
         if (taken) o.disabled = true;
@@ -208,12 +148,7 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
       const canEdit = slot.playerId === you || (isHost && slot.status === "ai");
       sel.disabled = !canEdit;
       sel.addEventListener("change", () => {
-        const spawnId = Number(sel.value);
-        const patch: { spawnId: number; team?: number } = { spawnId };
-        if (slot.team === 0 && spawnId > 0 && map?.applySuggestedTeams) {
-          const suggested = map.spawns.find((s) => s.id === spawnId)?.suggestedTeam;
-          if (suggested) patch.team = suggested;
-        }
+        const patch = { spawnId: Number(sel.value) };
         if (slot.status === "ai") {
           ctx.net.send({ type: "slot.host", slotIndex: slot.index, ...patch });
         } else {
@@ -288,22 +223,28 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
   brief.append(el("h2", { text: map?.name ?? "Map" }));
   if (isHost) {
     const mapSel = el("select");
+    const builtIn = el("optgroup", { attrs: { label: "Built-in" } });
+    const custom = el("optgroup", { attrs: { label: "Map Builder" } });
     for (const m of listMaps()) {
-      const o = el("option", { text: m.name, attrs: { value: m.id } });
+      const by = m.custom ? ` · ${m.custom.author}` : "";
+      const o = el("option", { text: `${m.name} (${m.spawns.length}p${by})`, attrs: { value: m.id } });
       if (m.id === room.mapId) o.selected = true;
-      mapSel.append(o);
+      (m.custom ? custom : builtIn).append(o);
     }
+    mapSel.append(builtIn);
+    if (custom.childElementCount > 0) mapSel.append(custom);
     mapSel.addEventListener("change", () => ctx.net.send({ type: "room.map", mapId: mapSel.value }));
     brief.append(el("label", { text: "Theatre" }), mapSel);
   }
   const preview = el("canvas");
+  preview.style.height = "240px";
   brief.append(preview);
   const filled = room.slots.filter((s) => s.status === "human" || s.status === "ai").length;
   const cpus = room.slots.filter((s) => s.status === "ai").length;
   brief.append(
     el("p", {
       class: "tiny",
-      text: `${filled} / ${room.maxSlots} commanders${cpus ? ` · ${cpus} CPU` : ""}`,
+      text: `${filled} / ${room.maxSlots} commanders${cpus ? ` · ${cpus} CPU` : ""} · map seats ${map?.spawns.length ?? 0}`,
     }),
     el("p", { class: "tiny", text: "Host: Easy on an open slot for a harvesting CPU that pushes now and then." }),
   );
@@ -324,7 +265,9 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
   }
   wrap.append(brief);
 
-  requestAnimationFrame(() => drawPreview(preview, room.mapId, room.slots));
+  requestAnimationFrame(() => {
+    if (map) drawMapPreview(preview, map, room.slots);
+  });
 
   const foot = el("div", { class: "lobby-foot" });
   const leave = el("button", { class: "btn btn-ghost", text: "Leave", attrs: { type: "button" } });

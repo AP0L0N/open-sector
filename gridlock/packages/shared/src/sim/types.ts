@@ -74,14 +74,17 @@ export interface Order {
   /** Panic retreat: after this order, the Mauler returns to HQ and holds. */
   returnToBase?: boolean;
   /**
-   * Patrol polyline in world pixels. Index 0 is where the unit stood.
-   * Not a wire field; the command sends the clicks and the snapshot sends `patrol`.
+   * Patrol polyline in world pixels. An open route starts where the unit stood.
+   * A loop is only the closed spots. Not a wire field; the command sends the
+   * clicks and the snapshot sends `patrol`.
    */
   route?: Vec[];
   /** Index in `route` the unit is walking toward. A tower's lamp turns toward this spot. */
   leg?: number;
-  /** 1 toward the end of the route, -1 back toward the start. */
+  /** 1 toward the end of the route, -1 back toward the start. A loop stays at 1. */
   dir?: 1 | -1;
+  /** Circuit. The last spot leads back to the first, and the route does not reverse. */
+  loop?: boolean;
   /** Units given this patrol together. One contact pulls the group. */
   group?: number;
 }
@@ -390,18 +393,18 @@ export interface Entity {
   guardFacing: number | null;
   /** Sandbags broken by a tank shell. The entity stays as rubble. */
   ruined: boolean;
+  /**
+   * Highest terrain sample under this concrete run, in map height units.
+   * Stamped when a section is placed and only ever raised. Missing on everything else.
+   * The drawn top stays here after a higher section is destroyed.
+   */
+  wallCrest?: number;
   /** Extra hit points currently granted by sandbags and walls. Removed when the soldier leaves. */
   coverBonus: number;
   /** Part of `coverBonus` granted by a concrete wall. Overhead hits ignore it. */
   wallCover: number;
   /** Set on a Wall section converted into a lifting gate. */
   gate?: GateState;
-  /**
-   * Concrete lines: the terrain level the slab top was levelled to when the line
-   * was raised. Fixed for the section's life, so a neighbour falling or a new line
-   * joining never moves it.
-   */
-  wallTop?: number;
   /** Seconds spent on the current build or repair. */
   work: number;
   /** Shift-queued orders, run one after another once the current order ends. Cleared by any unqueued order. */

@@ -30,6 +30,7 @@ import {
   fieldPath,
   fieldSiteClear,
   fieldTiles,
+  raiseWallCrest,
   inFieldRect,
   overlapsFieldIn,
   restampForts,
@@ -57,7 +58,7 @@ function twoPlayerMatch(): { state: MatchState; a: string } {
   assert.equal(joinRoom(room, "B", "Bravo").ok, true);
   updateSelf(room, "A", { ready: true, spawnId: 1 });
   updateSelf(room, "B", { ready: true, spawnId: 4 });
-  const started = startMatch(room, "A");
+  const started = startMatch(room, "A", () => 0);
   if (!started.ok) throw new Error(started.message);
   const state = createMatch(room, started.value);
   return { state, a: "A" };
@@ -905,6 +906,56 @@ describe("concrete wall", () => {
     assert.equal(wall.hp, wall.hpMax);
     assert.equal(eng.state, "idle");
   });
+
+  it("keeps the run's height after the highest section is destroyed", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 26, 26, 40, 16);
+    const ts = state.tileSize;
+    const span = fieldSpan("wall")!;
+    const x = tileCenter(30, ts);
+    const y = tileCenter(34, ts);
+    const x2 = x + span.length * 3;
+    const pieces = fieldLine("wall", x, y, x2, y, Math.PI / 2);
+    assert.equal(pieces.length, 3);
+    const high = pieces[pieces.length - 1]!;
+    const highTile = tileIndex(state, worldToTile(high.x, ts), worldToTile(high.y, ts));
+    state.heights[highTile] = 7;
+    const eng = makeEntity(state, "engineer", "A", x, y - 40);
+    const res = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [eng.id],
+      structure: "wall",
+      x,
+      y,
+      facing: Math.PI / 2,
+      x2,
+      y2: y,
+    });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    parkOnWall(eng);
+    const count = 1 + (eng.fieldQueue?.length ?? 0);
+    assert.equal(count, 3);
+    eng.work = catalog("wall").buildSeconds * count - 0.05;
+    ticks(state, 1);
+    const walls = [...state.entities.values()].filter((e) => e.type === "wall");
+    assert.equal(walls.length, 3);
+    assert.ok(walls.every((w) => w.wallCrest === 7));
+    const peak = walls.find((w) => Math.hypot(w.x - high.x, w.y - high.y) < 1);
+    assert.ok(peak);
+    destroyEntity(state, peak);
+    const rest = walls.filter((w) => w !== peak);
+    assert.equal(rest.length, 2);
+    assert.ok(rest.every((w) => w.wallCrest === 7));
+    const snap = snapshotFor(state, "A");
+    for (const w of rest) assert.equal(snap.entities.find((e) => e.id === w.id)?.wallCrest, 7);
+    assert.equal(snap.entities.some((e) => e.id === peak.id), false);
+    state.heights[highTile] = 0;
+    const extra = makeEntity(state, "wall", "A", high.x, high.y, { facing: peak.facing });
+    extra.facing = peak.facing;
+    raiseWallCrest(state, [extra]);
+    assert.equal(extra.wallCrest, 7);
+    assert.ok(rest.every((w) => w.wallCrest === 7));
+  });
 });
 
 function deployCore(state: MatchState): void {
@@ -1301,6 +1352,7 @@ describe("defences tab field works", () => {
     ticks(state, catalog("wall").buildSeconds * (n - 1) * 10);
     const built = [...state.entities.values()].filter((e) => e.type === "wall");
     assert.equal(built.length, n);
+    assert.ok(built.every((w) => w.wallCrest === 0));
     assert.equal(p.scrap, before - catalog("wall").cost * n);
     assert.equal(p.defence, null);
   });
@@ -1555,11 +1607,11 @@ describe("wall height", () => {
     for (let i = 0; i < 1500 && walls().length < 3; i++) step(state, TICK_DT);
     const line = walls().sort((a, b) => a.y - b.y);
     assert.equal(line.length, 3);
-    for (const w of line) assert.equal(w.wallTop, 3, "every section levels to the highest ground under the line");
+    for (const w of line) assert.equal(w.wallCrest, 3, "every section levels to the highest ground under the line");
     destroyEntity(state, line[1]!);
     ticks(state, 5);
-    assert.equal(line[0]!.wallTop, 3, "the knoll section keeps its top");
-    assert.equal(line[2]!.wallTop, 3, "so does the one on the flat, with its neighbour gone");
+    assert.equal(line[0]!.wallCrest, 3, "the knoll section keeps its top");
+    assert.equal(line[2]!.wallCrest, 3, "so does the one on the flat, with its neighbour gone");
     // A second line on the flat, butted onto the end of the first, takes the same top.
     const eng2 = makeEntity(state, "engineer", "A", x + 30, y + L * 3 + 30);
     const more = applyCommand(state, "A", {
@@ -1578,7 +1630,7 @@ describe("wall height", () => {
     for (let i = 0; i < 1500 && walls().length < 4; i++) step(state, TICK_DT);
     const joined = walls().filter((w) => w.y > y + L * 2.9);
     assert.equal(joined.length, 2);
-    for (const w of joined) assert.equal(w.wallTop, 3, "a joining line adopts the standing top");
+    for (const w of joined) assert.equal(w.wallCrest, 3, "a joining line adopts the standing top");
     // A line on its own on the flat sits at ground level.
     const eng3 = makeEntity(state, "engineer", "A", x + 200, y - 30);
     const alone = applyCommand(state, "A", {
@@ -1595,6 +1647,6 @@ describe("wall height", () => {
     });
     assert.equal(alone.ok, true, alone.ok ? "" : alone.message);
     for (let i = 0; i < 1500 && walls().length < 6; i++) step(state, TICK_DT);
-    for (const w of walls().filter((w) => w.x > x + 100)) assert.equal(w.wallTop, 0);
+    for (const w of walls().filter((w) => w.x > x + 100)) assert.equal(w.wallCrest, 0);
   });
 });

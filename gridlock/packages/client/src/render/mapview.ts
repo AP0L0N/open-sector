@@ -44,6 +44,7 @@ import {
   HEIGHT_RANGE_BONUS,
   RADAR_LONG_RANGE_MUL,
   PATROL_POINTS_MAX,
+  connectPatrolPoints,
   garrisonWindowLift,
   hasScout,
   isGarrisonable,
@@ -125,6 +126,13 @@ import {
   wreckFireCount,
 } from "./fx.js";
 import { SMOULDER_MS, burstLifeMs, burstSpec, drawExplosion, drawSmoulder, type BurstSpec } from "./explosion.js";
+import {
+  coverWithWater,
+  fallbackHoleRect,
+  propScreenRect,
+  screenWaterCovers,
+  unionRect,
+} from "./water-cover.js";
 import { aimMoveFace, moveFaceArmed, moveFaceCommand } from "./move-face.js";
 import {
   UNIT_VISUAL_SCALE,
@@ -391,6 +399,8 @@ export const SPECIAL_HOTKEY = "e";
 export const STOP_HOTKEY = "s";
 export const ATTACK_MOVE_HOTKEY = "a";
 export const PATROL_HOTKEY = "y";
+/** Click this close to a placed spot, in view pixels, to close the loop on it. */
+const PATROL_CONNECT_PX = 20;
 export const ROTATE_HOTKEY = "r";
 export const GUARD_HOTKEY = "g";
 /** Enter / leave a garrisonable building. */
@@ -690,6 +700,8 @@ export class MapView {
   private fxIds = new Set<number>();
   /** When each crater was struck, for its smoulder. Holes already there on first sight never smoke. */
   private holeBorn = new Map<number, number>();
+  /** Scratch a crater is drawn into so the pond can be punched out of it. */
+  private holeCover: HTMLCanvasElement | null = null;
   private seenShots = new Set<number>();
   /** Bounced spark origin, snapped to the same hull pixel as the ricochet FX. */
   private bounceTrace = new Map<number, { x: number; y: number; sx: number; lift: number }>();
@@ -761,9 +773,11 @@ export class MapView {
   /** Defences-tab sandbags or wall, armed before the line is sited. */
   yardArm: YardFieldType | null = null;
   attackMoveMode = false;
-  /** Left click adds a point. Right click sends the patrol, or cancels when none are down. */
+  /** Left click adds a point. Click an earlier point to close a loop. Right click sends, or cancels when none are down. */
   patrolMode = false;
   private patrolPoints: { x: number; y: number }[] = [];
+  /** The draft was closed onto an earlier spot. The tail before that spot is already gone. */
+  private patrolLoop = false;
   forceAttackMode = false;
   rotateMode = false;
   guardMode = false;
@@ -833,11 +847,15 @@ export class MapView {
 
   setPatrolMode(on: boolean): void {
     if (this.patrolMode === on) {
-      if (!on) this.patrolPoints = [];
+      if (!on) {
+        this.patrolPoints = [];
+        this.patrolLoop = false;
+      }
       return;
     }
     this.patrolMode = on;
     this.patrolPoints = [];
+    this.patrolLoop = false;
     if (on) {
       this.placeMode = false;
       this.attackMoveMode = false;
@@ -3871,7 +3889,36 @@ export class MapView {
     ctx.restore();
   }
 
+  /** Earlier placed spot under the cursor. The last spot is the pen, not a place to close. */
+  private patrolConnectIndex(mx: number, my: number): number {
+    if (this.patrolLoop || mx < 0 || my < 0) return -1;
+    const n = this.patrolPoints.length;
+    if (n < 2) return -1;
+    let best = -1;
+    let bestD = PATROL_CONNECT_PX;
+    for (let i = 0; i < n - 1; i++) {
+      const p = this.patrolPoints[i]!;
+      const s = this.toScreen(p.x, p.y);
+      const d = Math.hypot(s.x - mx, s.y - my);
+      if (d <= bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    return best;
+  }
+
   private addPatrolPoint(mx: number, my: number): void {
+    if (this.patrolLoop) return;
+    const hit = this.patrolConnectIndex(mx, my);
+    if (hit >= 0) {
+      const ring = connectPatrolPoints(this.patrolPoints, hit);
+      if (ring) {
+        this.patrolPoints = ring;
+        this.patrolLoop = true;
+      }
+      return;
+    }
     if (this.patrolPoints.length >= PATROL_POINTS_MAX) return;
     const w = this.screenToWorld(mx, my);
     const prev = this.patrolPoints[this.patrolPoints.length - 1];
@@ -3881,9 +3928,11 @@ export class MapView {
 
   private commitPatrol(): void {
     const points = this.patrolPoints.map((p) => ({ x: p.x, y: p.y }));
+    const loop = this.patrolLoop;
     const ids = this.ownPatrolIds();
     this.setPatrolMode(false);
-    if (points.length > 0 && ids.length > 0) this.command({ type: "cmd.patrol", ids, points });
+    if (points.length === 0 || ids.length === 0) return;
+    this.command(loop ? { type: "cmd.patrol", ids, points, loop: true } : { type: "cmd.patrol", ids, points });
   }
 
   /** Draft clicks, then the route each selected unit is already walking. */
@@ -3893,7 +3942,7 @@ export class MapView {
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
-    const stroke = (pts: { x: number; y: number }[], toCursor: boolean) => {
+    const stroke = (pts: { x: number; y: number }[], toCursor: boolean, closed = false) => {
       if (pts.length === 0 && !toCursor) return;
       ctx.strokeStyle = "rgba(232, 184, 74, 0.9)";
       ctx.lineWidth = 1.6;
@@ -3907,7 +3956,10 @@ export class MapView {
           started = true;
         } else ctx.lineTo(s.x, s.y);
       }
-      if (toCursor && this.mouseX >= 0) {
+      if (closed && started && pts.length >= 2) {
+        const s = this.toScreen(pts[0]!.x, pts[0]!.y);
+        ctx.lineTo(s.x, s.y);
+      } else if (toCursor && this.mouseX >= 0) {
         if (!started) ctx.moveTo(this.mouseX, this.mouseY);
         else ctx.lineTo(this.mouseX, this.mouseY);
       }
@@ -3932,14 +3984,24 @@ export class MapView {
         const e = this.curr.entities.find((u) => u.id === id);
         if (e) from.push({ x: e.x, y: e.y });
       }
-      if (from.length === 0) stroke(this.patrolPoints, true);
+      const connectAt = this.overControl ? -1 : this.patrolConnectIndex(this.mouseX, this.mouseY);
+      const ring = this.patrolLoop
+        ? this.patrolPoints
+        : connectAt >= 0
+          ? this.patrolPoints.slice(connectAt)
+          : null;
+      if (ring && ring.length >= 2) {
+        stroke(ring, false, true);
+        const join = ring[0]!;
+        for (const origin of from) stroke([origin, join], false);
+      } else if (from.length === 0) stroke(this.patrolPoints, true);
       else {
         for (const origin of from) stroke([origin, ...this.patrolPoints], true);
       }
     }
     for (const e of this.curr.entities) {
       if (!this.selected.has(e.id) || e.ownerId !== you || !e.patrol || e.patrol.length < 2) continue;
-      stroke(e.patrol, false);
+      stroke(e.patrol, false, !!e.patrolLoop);
     }
     ctx.restore();
   }
@@ -3950,7 +4012,8 @@ export class MapView {
     const ctx = this.ctx;
     const x = this.mouseX;
     const y = this.mouseY;
-    const label = this.patrolPoints.length > 0 ? "RIGHT FINISH" : "PATROL";
+    const connectAt = this.patrolConnectIndex(x, y);
+    const label = connectAt >= 0 ? "CONNECT" : this.patrolPoints.length > 0 ? "RIGHT FINISH" : "PATROL";
     ctx.save();
     ctx.strokeStyle = "#e8b84a";
     ctx.fillStyle = "#e8b84a";
@@ -3964,6 +4027,13 @@ export class MapView {
     ctx.beginPath();
     ctx.arc(x, y, 5, 0, Math.PI * 2);
     ctx.stroke();
+    if (connectAt >= 0) {
+      const spot = this.patrolPoints[connectAt]!;
+      const s = this.toScreen(spot.x, spot.y);
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 11, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.font = "11px 'Share Tech Mono', monospace";
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
@@ -5309,7 +5379,7 @@ export class MapView {
     }
   }
 
-  /** Craters on the ground. Blood and the fallen pose sit under every unit. */
+  /** Craters on the ground, under the water. Blood and the fallen pose sit under every unit. */
   private collectRemains(items: DrawItem[]): void {
     const map = this.map();
     const ts = map.tileSize;
@@ -5357,17 +5427,40 @@ export class MapView {
     const c = this.toScreen(hole.x, hole.y);
     const rx = this.groundSpan(hole.x, hole.y, hole.radius);
     const face = CRATER_FACES[(hole.seed >>> 0) % CRATER_FACES.length];
-    if (face && face.image.naturalWidth > 0 && face.bowl > 0) {
-      const drawH = (face.image.naturalHeight * rx * 2.05) / face.bowl;
-      this.ctx.save();
-      this.ctx.globalAlpha = alpha;
-      const drew = drawPropSprite(this.ctx, face, c.x, c.y, drawH, false);
-      this.ctx.restore();
-      if (drew) return;
-    }
-    const tip = this.toScreen(hole.x + Math.cos(hole.ang), hole.y + Math.sin(hole.ang));
-    const ang = hole.round ? 0 : Math.atan2(tip.y - c.y, tip.x - c.x);
-    drawShellHole(this.ctx, c.x, c.y, rx, rx * 0.5, ang, hole.seed, alpha);
+    const sprite = face && face.image.naturalWidth > 0 && face.bowl > 0 ? face : null;
+    const drawH = sprite ? (sprite.image.naturalHeight * rx * 2.05) / sprite.bowl : 0;
+    const fallback = fallbackHoleRect(c.x, c.y, rx, rx * 0.5);
+    const dest = sprite
+      ? unionRect(
+          propScreenRect(
+            c.x,
+            c.y,
+            drawH,
+            sprite.image.naturalWidth,
+            sprite.image.naturalHeight,
+            sprite.contactX,
+            sprite.contactY,
+          ),
+          fallback,
+        )
+      : fallback;
+    const bake = this.terrain;
+    const masks = bake?.water?.length
+      ? screenWaterCovers(bake.water, this.camX, this.camY, bake.originX, bake.originY)
+      : [];
+    this.holeCover ??= document.createElement("canvas");
+    coverWithWater(this.ctx, this.holeCover, dest, masks, (ctx) => {
+      if (sprite) {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        const drew = drawPropSprite(ctx, sprite, c.x, c.y, drawH, false);
+        ctx.restore();
+        if (drew) return;
+      }
+      const tip = this.toScreen(hole.x + Math.cos(hole.ang), hole.y + Math.sin(hole.ang));
+      const ang = hole.round ? 0 : Math.atan2(tip.y - c.y, tip.x - c.x);
+      drawShellHole(ctx, c.x, c.y, rx, rx * 0.5, ang, hole.seed, alpha);
+    });
   }
 
   private drawBodyBlood(body: CorpseView): void {
@@ -6664,7 +6757,7 @@ export class MapView {
           manned,
           bandColor: holder ? colorHex(holder.colorId) : undefined,
           gate: ghost ? undefined : e.gate,
-          top: ghost ? undefined : e.wallTop,
+          crest: ghost ? undefined : e.wallCrest,
         }),
       );
       if (!ghost) {
@@ -6771,22 +6864,21 @@ export class MapView {
       manned?: boolean;
       bandColor?: string;
       gate?: { open: number; locked: boolean };
-      /** Standing section: the slab top level the sim fixed when the line was raised. */
-      top?: number;
+      /** Standing section: the crest the sim stamped when the line was raised. */
+      crest?: number;
     },
     extras?: readonly { x: number; y: number; facing: number }[],
   ): void {
     const span = fieldSpan(type);
     if (!span) return;
     const style = type === "greatwall" ? LARGE_WALL_STYLE : WALL_STYLE;
-    const section: WallSection = { x, y, facing, length: span.length, thick: span.thick, top: opts.top };
+    const section: WallSection = { x, y, facing, length: span.length, thick: span.thick, crest: opts.crest };
     const run = this.fieldRun(type, section, extras ?? []);
-    // A ghost or a sited line levels to the highest ground under it and to any standing
-    // neighbour's fixed top, which is what the sim does when it raises the line.
     const grounds: number[] = [];
+    const crests: number[] = [];
     for (const seg of run) {
-      if (seg.top != null) grounds.push(seg.top);
-      else grounds.push(...this.wallGrounds(seg, span.thick));
+      grounds.push(...this.wallGrounds(seg, span.thick));
+      if (seg.crest != null) crests.push(seg.crest);
     }
     const worldPx = this.groundSpan(x, y, 10) / 10;
     const slabLevels = ISO_ELEVATION > 0 ? (style.slabH * worldPx) / ISO_ELEVATION : 0;
@@ -6801,7 +6893,7 @@ export class MapView {
       alpha: opts.alpha,
       bad: opts.bad,
       ground: (wx, wy) => this.elevAt(wx, wy),
-      topElev: opts.top != null ? opts.top + slabLevels : wallTopElev(grounds, slabLevels),
+      topElev: wallTopElev(grounds, slabLevels, crests),
       levelPx: ISO_ELEVATION,
       worldPx,
       project: (wx, wy, elev) => this.toScreen(wx, wy, elev),
@@ -6844,17 +6936,22 @@ export class MapView {
       if (cached) return cached;
     }
     const all: WallSection[] = [];
-    const seen = new Set<string>();
-    const add = (x: number, y: number, facing: number, top?: number) => {
+    const byKey = new Map<string, WallSection>();
+    const add = (x: number, y: number, facing: number, crest?: number) => {
       const k = key(x, y);
-      if (seen.has(k)) return;
-      seen.add(k);
-      all.push({ x, y, facing, length: span.length, thick: span.thick, top });
+      const prev = byKey.get(k);
+      if (prev) {
+        if (crest != null && (prev.crest == null || crest > prev.crest)) prev.crest = crest;
+        return;
+      }
+      const section: WallSection = { x, y, facing, length: span.length, thick: span.thick, crest };
+      byKey.set(k, section);
+      all.push(section);
     };
-    add(origin.x, origin.y, origin.facing);
-    for (const e of extras) add(e.x, e.y, e.facing);
+    add(origin.x, origin.y, origin.facing, origin.crest);
+    for (const extra of extras) add(extra.x, extra.y, extra.facing);
     for (const e of this.curr.entities) {
-      if (e.type === type && e.hp > 0 && !e.ruined) add(e.x, e.y, e.facing, e.wallTop);
+      if (e.type === type && e.hp > 0 && !e.ruined) add(e.x, e.y, e.facing, e.wallCrest);
     }
     return connectedRun(all, 0);
   }
@@ -6871,7 +6968,9 @@ export class MapView {
     const key = (x: number, y: number) => `${Math.round(x * 4)},${Math.round(y * 4)}`;
     const all: WallSection[] = [];
     for (const e of this.curr.entities) {
-      if (e.type === type && e.hp > 0 && !e.ruined) all.push({ x: e.x, y: e.y, facing: e.facing, length: span.length, thick: span.thick, top: e.wallTop });
+      if (e.type === type && e.hp > 0 && !e.ruined) {
+        all.push({ x: e.x, y: e.y, facing: e.facing, length: span.length, thick: span.thick, crest: e.wallCrest });
+      }
     }
     const done = new Set<number>();
     for (let i = 0; i < all.length; i++) {

@@ -26,7 +26,6 @@ import {
 } from "../catalog.js";
 import { allies, clearOrder, inBounds, isTree, isWater, makeEntity, scrapAt, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
 import { takeDamage } from "./crits.js";
-import { worldTileHeight } from "./elevation.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -591,10 +590,10 @@ function tickWall(state: MatchState, e: Entity, dt: number, structure: ConcreteL
   if (e.work + 1e-6 < catalog(structure).buildSeconds * count) return;
   const player = state.players.get(e.ownerId);
   let placed = 0;
+  const raised: Entity[] = [];
   const done = wallPiecesOf(e);
   // Check every piece before raising any: at a corner the first section would otherwise touch the second.
   const clear = done.map((p) => fieldSiteClear(state, structure, p.x, p.y, p.facing));
-  const raised: Entity[] = [];
   for (let i = 0; i < done.length; i++) {
     const p = done[i]!;
     if (!clear[i]) {
@@ -607,8 +606,10 @@ function tickWall(state: MatchState, e: Entity, dt: number, structure: ConcreteL
     raised.push(built);
     placed++;
   }
-  levelConcreteLine(state, raised);
-  if (placed > 0) restampForts(state);
+  if (placed > 0) {
+    raiseWallCrest(state, raised);
+    restampForts(state);
+  }
   finishWork(e);
 }
 
@@ -993,6 +994,74 @@ function segmentObbT(
   return t0 < 0 ? 0 : t0;
 }
 
+/** Same reach as the client's `wallSectionsConnect`: ends that meet, straight on or round a corner. */
+const WALL_RUN_SLACK = 4;
+
+function wallGroundPeak(state: MatchState, e: Entity): number {
+  const span = fieldSpan(e.type);
+  if (!span) return 0;
+  const alongX = -Math.sin(e.facing);
+  const alongY = Math.cos(e.facing);
+  const acrossX = Math.cos(e.facing);
+  const acrossY = Math.sin(e.facing);
+  const halfL = span.length / 2;
+  const halfT = span.thick / 2;
+  let peak = 0;
+  for (const along of [-halfL, 0, halfL]) {
+    for (const across of [-halfT, 0, halfT]) {
+      const gx = worldToTile(e.x + alongX * along + acrossX * across, state.tileSize);
+      const gy = worldToTile(e.y + alongY * along + acrossY * across, state.tileSize);
+      const h = inBounds(state, gx, gy) ? (state.heights[tileIndex(state, gx, gy)] ?? 0) : 0;
+      if (h > peak) peak = h;
+    }
+  }
+  return peak;
+}
+
+function sectionsShareRun(a: Entity, b: Entity, length: number): boolean {
+  const d = Math.hypot(a.x - b.x, a.y - b.y);
+  return d > 0.5 && d <= length + WALL_RUN_SLACK;
+}
+
+/**
+ * Remember the highest ground under a concrete run on every section of it.
+ * A later section can raise that peak. Destroying the high section does not lower it,
+ * so the standing wall keeps the height it was built to.
+ */
+export function raiseWallCrest(state: MatchState, built: readonly Entity[]): void {
+  const seeds = built.filter((e) => isConcreteLine(e.type) && e.hp > 0 && !e.ruined);
+  const types = new Set(seeds.map((e) => e.type));
+  for (const type of types) {
+    const span = fieldSpan(type);
+    if (!span) continue;
+    const standing = [...state.entities.values()].filter((e) => e.type === type && e.hp > 0 && !e.ruined);
+    const seen = new Set<number>();
+    for (const seed of seeds) {
+      if (seed.type !== type || seen.has(seed.id)) continue;
+      const group: Entity[] = [];
+      const stack = [seed];
+      seen.add(seed.id);
+      while (stack.length > 0) {
+        const cur = stack.pop()!;
+        group.push(cur);
+        for (const other of standing) {
+          if (seen.has(other.id) || !sectionsShareRun(cur, other, span.length)) continue;
+          seen.add(other.id);
+          stack.push(other);
+        }
+      }
+      let crest = Number.NEGATIVE_INFINITY;
+      for (const section of group) {
+        const peak = wallGroundPeak(state, section);
+        if (peak > crest) crest = peak;
+        if (section.wallCrest != null && section.wallCrest > crest) crest = section.wallCrest;
+      }
+      if (!Number.isFinite(crest)) crest = 0;
+      for (const section of group) section.wallCrest = crest;
+    }
+  }
+}
+
 /**
  * 1 = sandbags and both concrete walls (blocks everyone). 2 = dragon's teeth
  * (vehicles only; infantry walk through). A trench blocks no one.
@@ -1011,12 +1080,6 @@ export function restampForts(state: MatchState): void {
       if (code === 3) state.fortOwner.set(i, e.ownerId);
     }
   }
-}
-
-/** Two same-length sections whose ends meet, straight on or round a corner. */
-export function fieldSectionsAdjoin(ax: number, ay: number, bx: number, by: number, length: number): boolean {
-  const d = Math.hypot(ax - bx, ay - by);
-  return d > 0.5 && d <= length + 4;
 }
 
 /**
@@ -1116,35 +1179,6 @@ function tickGates(state: MatchState, dt: number): void {
     const open = g.gate.open;
     g.gate.open = want > open ? Math.min(1, open + step) : Math.max(0, open - step);
   }
-}
-
-/**
- * Level a line of concrete just raised: every section gets one slab top, the
- * highest ground under any of them, lifted to any standing neighbour it joins so
- * two lines read as one wall. Stored on the section and never recomputed, so a
- * neighbour falling later leaves the rest standing at the same height.
- */
-export function levelConcreteLine(state: MatchState, built: readonly Entity[]): void {
-  if (built.length === 0) return;
-  const type = built[0]!.type;
-  const span = fieldSpan(type);
-  if (!span) return;
-  let top = Number.NEGATIVE_INFINITY;
-  const mine = new Set(built.map((e) => e.id));
-  for (const e of built) {
-    const { fx, fy, tx, ty } = wallAxes(e.facing);
-    for (const a of [-span.length / 2, 0, span.length / 2]) {
-      for (const c of [-span.thick / 2, 0, span.thick / 2]) {
-        top = Math.max(top, worldTileHeight(state, e.x + tx * a + fx * c, e.y + ty * a + fy * c));
-      }
-    }
-    for (const o of state.entities.values()) {
-      if (mine.has(o.id) || o.type !== type || o.hp <= 0 || o.ruined || o.wallTop == null) continue;
-      if (fieldSectionsAdjoin(e.x, e.y, o.x, o.y, span.length)) top = Math.max(top, o.wallTop);
-    }
-  }
-  if (!Number.isFinite(top)) top = 0;
-  for (const e of built) e.wallTop = top;
 }
 
 /** A crawling gun cannot shoot across intact sandbags. Mortar bombs arc over. */
