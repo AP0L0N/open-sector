@@ -1,4 +1,5 @@
 import {
+  isConcreteLine,
   AIR_HIT_BAND,
   APOCALYPSE_CIWS_INTERCEPT_CHANCE,
   APOCALYPSE_CIWS_RANGE_TILES,
@@ -107,7 +108,6 @@ import {
   sandbagSweep,
   sandbagsBlockGun,
   wallSweep,
-  greatWallSweep,
   woundBehindSandbags,
 } from "./field.js";
 import {
@@ -2170,15 +2170,14 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     // A round from overhead drops over the bags and the concrete.
     const overheadShot = !!p.plunging || !!p.fromAbove;
     const bagHit = overheadShot ? null : sandbagSweep(state, x0, y0, p.x, p.y, isTankShell(p));
-    const thinWall = overheadShot ? null : wallSweep(state, x0, y0, p.x, p.y);
-    // Rifle fire flies over the rampart; a tank shell that meets it strikes the stone.
-    const rampart = overheadShot || !isTankShell(p) ? null : greatWallSweep(state, x0, y0, p.x, p.y);
-    const concrete = rampart && (!thinWall || rampart.t < thinWall.t) ? rampart : thinWall;
+    const concrete = overheadShot ? null : wallSweep(state, x0, y0, p.x, p.y);
     const struck = nearestSweepHit(state, x0, y0, p, z0, z1);
     const blocker = concrete && (!bagHit || concrete.t < bagHit.t) ? concrete : bagHit;
     if (blocker && (!struck || blocker.t <= struck.t)) {
-      if (blocker.e.type === "wall" || blocker.e.type === "greatwall") {
+      if (isConcreteLine(blocker.e.type)) {
+        // A shell chips the concrete. Any round that stops on a manned Large wall reaches the slits.
         if (isTankShell(p)) takeDamage(blocker.e, Math.max(1, Math.round(p.damage)), state.tick);
+        if (wallsShieldGarrison(state, blocker.e)) woundGarrison(state, blocker.e, p.damage, p.caliber, false);
         pushImpact(state, p, "hit", blocker.x, blocker.y);
         continue;
       }

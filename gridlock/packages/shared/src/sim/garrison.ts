@@ -1,5 +1,6 @@
 import {
   catalog,
+  fieldSpan,
   GARRISON_STRUCTURAL_CALIBER,
   garrisonAdmits,
   garrisonCapOf,
@@ -397,13 +398,42 @@ export function garrisonMuzzleToward(
     const out = house.radius + 4;
     return { x: house.x + Math.cos(ang) * out, y: house.y + Math.sin(ang) * out, house };
   }
+  if (house.type === "greatwall") {
+    const slit = largeWallSlit(house, aimX, aimY, unit.id);
+    return { x: slit.x, y: slit.y, house };
+  }
   const w = pickGarrisonMuzzle(house, state.tileSize, ang, unit.id);
   const out = FACE_OUT[w.face];
   return { x: w.x + out.x * 4, y: w.y + out.y * 4, house };
 }
 
+/** Screen pixels from the ground to a Large wall slit at zoom 1. */
+export const LARGE_WALL_SLIT_LIFT_PX = 30;
+
+/**
+ * A firing slit on the face of a Large wall section that looks at the aim, a hair
+ * outside the concrete so the round never starts inside its own wall. Each man
+ * has his own slit along the section.
+ */
+export function largeWallSlit(
+  wall: { x: number; y: number; facing: number },
+  aimX: number,
+  aimY: number,
+  salt: number,
+): { x: number; y: number } {
+  const span = fieldSpan("greatwall") ?? { length: 24, thick: 12 };
+  const fx = Math.cos(wall.facing);
+  const fy = Math.sin(wall.facing);
+  const side = (aimX - wall.x) * fx + (aimY - wall.y) * fy >= 0 ? 1 : -1;
+  const slot = ((Math.abs(salt) % 2) - 0.5) * 0.5;
+  const along = slot * span.length;
+  const out = span.thick / 2 + 4;
+  return { x: wall.x + fx * side * out - fy * along, y: wall.y + fy * side * out + fx * along };
+}
+
 /** Screen-pixel lift from the pad to a glowing window, by story. */
 export function garrisonWindowLift(type: Entity["type"], salt: number): number {
+  if (type === "greatwall") return LARGE_WALL_SLIT_LIFT_PX;
   const floors = Math.max(1, garrisonFloorsOf(type));
   const floor = ((salt % floors) + floors) % floors;
   const base = floors >= 3 ? 24 : floors === 2 ? 22 : 20;

@@ -1,7 +1,11 @@
 /**
  * Sandbag wall, drawn bag by bag in the wall's own frame so it matches the sim box at any facing.
  * `along` runs down the wall, `across` is the look direction, `up` is world units above the ground.
+ * Where a line turns, the section at the end of the old leg piles bags into the outer
+ * angle of the corner so the two legs read as one wall.
  */
+
+import type { WallJoins } from "./wall.js";
 
 export interface Bag {
   along: number;
@@ -30,6 +34,8 @@ export interface SandbagDraw {
   bad?: boolean;
   /** World point plus height to screen. */
   project: (wx: number, wy: number, up: number) => { x: number; y: number };
+  /** What each end meets. A corner gets bags piled into its outer angle. */
+  joins?: WallJoins;
 }
 
 /** Gap between bags as a share of wall thickness. */
@@ -91,6 +97,76 @@ export function sandbagLayout(length: number, thick: number, ruined: boolean, se
     for (let i = 0; i < 3; i++) push((i - 1) * bagLen, side, row, 1);
   }
   for (let i = 0; i < 3; i++) push((i - 1) * bagLen, 0, row * 1.15, 2);
+  return out;
+}
+
+/**
+ * Bags for the outer angle where this section's `sign` end turns into the next leg.
+ * The uncovered ground is the triangle between this section's cap, the next leg's
+ * cap, and the outer flank running from this section's outer end corner to the
+ * next leg's outer start corner (`outer` and `inner` are that cap, as world
+ * offsets from this section's centre). One bag per course sits on it, turned to
+ * the bisector of the bend. A straight joint and a right angle leave no triangle.
+ */
+export function cornerBags(
+  length: number,
+  thick: number,
+  facing: number,
+  sign: 1 | -1,
+  outer: { x: number; y: number },
+  inner: { x: number; y: number },
+  outerSide: 1 | -1,
+  seed: number,
+): Bag[] {
+  const ux = -Math.sin(facing);
+  const uy = Math.cos(facing);
+  const fx = Math.cos(facing);
+  const fy = Math.sin(facing);
+  const hl = length / 2;
+  const ht = thick / 2;
+  // This section's outer end corner, and the point where its cap meets the next leg's cap.
+  const mx = ux * sign * hl + fx * outerSide * ht;
+  const my = uy * sign * hl + fy * outerSide * ht;
+  const ex = ux * sign * hl;
+  const ey = uy * sign * hl;
+  const cx = outer.x - inner.x;
+  const cy = outer.y - inner.y;
+  const den = fx * cy - fy * cx;
+  if (Math.abs(den) < 1e-6) return [];
+  const s = ((inner.x - ex) * cy - (inner.y - ey) * cx) / den;
+  const xx = ex + fx * s;
+  const xy = ey + fy * s;
+  const area = Math.abs((outer.x - mx) * (xy - my) - (outer.y - my) * (xx - mx)) / 2;
+  if (area < thick * thick * 0.03) return [];
+  const rand = rng(seed ^ 0x51ed270b);
+  const h = courseHeight(thick);
+  const bagLen = length / 4;
+  const row = thick / 4;
+  // The pile sits on the triangle, nudged a touch outward so the corner reads as rounded.
+  const px = (mx + outer.x + xx) / 3 + fx * outerSide * row * 0.3;
+  const py = (my + outer.y + xy) / 3 + fy * outerSide * row * 0.3;
+  const along = px * ux + py * uy;
+  const across = px * fx + py * fy;
+  const gx = outer.x - mx;
+  const gy = outer.y - my;
+  const gap = Math.hypot(gx, gy) || 1;
+  const bx = ux * sign + gx / gap;
+  const by = uy * sign + gy / gap;
+  const yaw = Math.atan2(bx * fx + by * fy, bx * ux + by * uy);
+  const out: Bag[] = [];
+  for (let course = 0; course < 3; course++) {
+    const squeeze = course === 2 ? 0.8 : 1;
+    out.push({
+      along: along + (rand() - 0.5) * 0.6,
+      across: across + (rand() - 0.5) * 0.5,
+      halfAlong: (bagLen / 2) * 0.9 * squeeze,
+      halfAcross: row * squeeze,
+      z0: course * h,
+      z1: (course + 1) * h + h * 0.12,
+      yaw,
+      tone: 0.93 + rand() * 0.12,
+    });
+  }
   return out;
 }
 
@@ -158,6 +234,15 @@ export function drawSandbags(ctx: CanvasRenderingContext2D, d: SandbagDraw): voi
   const base = d.bad ? [196, 74, 58] : [178, 150, 100];
   const [br, bg, bb] = base as [number, number, number];
   const bags = sandbagLayout(d.length, d.thick, d.ruined, d.seed);
+  if (!d.ruined && d.joins) {
+    for (const sign of [1, -1] as const) {
+      const end = sign > 0 ? d.joins.pos : d.joins.neg;
+      if (!end || end.kind !== "corner") continue;
+      const outer = { x: end.outer.x - d.x, y: end.outer.y - d.y };
+      const inner = { x: end.inner.x - d.x, y: end.inner.y - d.y };
+      bags.push(...cornerBags(d.length, d.thick, d.facing, sign, outer, inner, end.outerSide, d.seed + sign));
+    }
+  }
   const o0 = d.project(d.x, d.y, 0);
   const o1 = d.project(d.x + 1, d.y, 0);
   const px = Math.hypot(o1.x - o0.x, o1.y - o0.y);
