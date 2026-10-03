@@ -15,7 +15,7 @@ import type {
   YardFieldType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 71;
+export const PROTOCOL_VERSION = 72;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -595,6 +595,11 @@ export type ClientMessage =
       /** Drag end. When set, pieces are laid end to end from (x, y) toward it. */
       x2?: number;
       y2?: number;
+      /**
+       * Corners of a line laid in several legs, start first. When set it replaces (x, y)
+       * and the drag end; pieces follow every leg and turn at each corner.
+       */
+      path?: { x: number; y: number }[];
     }
   | { type: "cmd.repair"; ids: number[]; targetId: number; queue?: boolean }
   | { type: "cmd.board"; ids: number[]; truckId: number; queue?: boolean }

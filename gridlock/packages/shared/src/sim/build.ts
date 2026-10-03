@@ -20,7 +20,7 @@ import {
 } from "./geo.js";
 import { ejectUnits } from "./deploy.js";
 import { spillGarrison } from "./garrison.js";
-import { fieldLine, fieldSiteClear, fieldTiles, restampForts, type FieldPiece } from "./field.js";
+import { fieldPiecesFor, fieldSiteClear, fieldTiles, restampForts, type FieldPiece } from "./field.js";
 import { repathIfBlocked } from "./orders.js";
 import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
@@ -97,12 +97,16 @@ function finishYardField(state: MatchState, playerId: string): void {
   advancePaidJob(p, job, cost, productionSpeed(pow.provided, pow.used));
   if (!jobFullyPaid(job, cost)) return;
   let placed = 0;
-  for (const piece of sites) {
-    if (!fieldSiteClear(state, job.type, piece.x, piece.y, piece.facing)) {
+  const type = job.type;
+  // Check every piece before raising any: at a corner the first section would otherwise touch the second.
+  const clear = sites.map((piece) => fieldSiteClear(state, type, piece.x, piece.y, piece.facing));
+  for (let i = 0; i < sites.length; i++) {
+    const piece = sites[i]!;
+    if (!clear[i]) {
       p.scrap += def.cost;
       continue;
     }
-    const built = makeEntity(state, job.type, playerId, piece.x, piece.y, { facing: piece.facing });
+    const built = makeEntity(state, type, playerId, piece.x, piece.y, { facing: piece.facing });
     built.facing = piece.facing;
     built.turretFacing = piece.facing;
     placed++;
@@ -160,14 +164,14 @@ export function placeBaseField(
   facing: number,
   x2?: number,
   y2?: number,
+  path?: readonly { x: number; y: number }[],
 ): string | null {
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
   if (p.structure) return "Construction already underway.";
   if (!hasCore(state, playerId)) return "Deploy the Rig.";
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(facing)) return "Cannot place there.";
-  const line = x2 != null && y2 != null && Number.isFinite(x2) && Number.isFinite(y2);
-  const pieces = line ? fieldLine(structure, x, y, x2, y2, facing) : [{ x, y, facing }];
+  const pieces = fieldPiecesFor(structure, x, y, facing, x2, y2, path);
   if (pieces.length === 0) return "Cannot place there.";
   const accepted: FieldPiece[] = [];
   let stop: string | null = null;

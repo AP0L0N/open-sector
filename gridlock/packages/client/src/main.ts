@@ -239,7 +239,13 @@ net.onStatus = (connected) => {
 };
 
 window.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && ctx.screen === "battle" && mapView?.fieldPending()) {
+    e.preventDefault();
+    mapView.confirmField();
+    return;
+  }
   if (e.key === "Escape" && ctx.screen === "battle") {
+    if (mapView?.cancelFieldPlacing()) return;
     if (mapView?.placeMode) {
       mapView.placeMode = false;
       mapView.onPlaceMode();

@@ -196,12 +196,6 @@ export const INFANTRY_SIGHT_TILES = t(12);
  * firing range.
  */
 export const HEIGHT_RANGE_BONUS = 2;
-/** Extra gameplay tiles of weapon reach for infantry standing on a Great Wall. About one terrace. */
-export const GREAT_WALL_REACH_TILES = t(2);
-/** Extra fog tiles for infantry on a Great Wall, so the longer reach has eyes behind it. */
-export const GREAT_WALL_SIGHT_TILES = t(3);
-/** Extra hit points for infantry on a Great Wall, as a share of catalog HP. The parapet is cover. */
-export const GREAT_WALL_COVER_BONUS = 0.5;
 /**
  * Flat-ground reach, in gameplay tiles. `t(n)` is n cells on the 64-cell map.
  * Direct fire stops inside the shooter's own eyes, except the tank guns,
@@ -479,7 +473,7 @@ export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "wal
 /** Field works the construction yard can queue. An engineer can still place these anywhere. */
 export type YardFieldType = "sandbags" | "wall" | "greatwall";
 export const YARD_FIELD_TYPES: readonly YardFieldType[] = ["sandbags", "wall", "greatwall"];
-/** Concrete lines an engineer lays as one job: every piece appears together when he finishes. */
+/** Concrete lines an engineer lays as one job: every piece appears together when he finishes. The Large wall is the `greatwall` id. */
 export type ConcreteLineType = "wall" | "greatwall";
 export function isConcreteLine(type: string): type is ConcreteLineType {
   return type === "wall" || type === "greatwall";
@@ -1644,6 +1638,27 @@ export const TOWER_FLOORS = 3;
 export const TOWER_EYE_HEIGHT = TOWER_FLOORS * STORY_COVER_HEIGHT * 0.6;
 
 /**
+ * Large wall. A tall concrete wall section with firing slits down both faces,
+ * laid like the ordinary wall and joined to its neighbours. Infantry garrison
+ * a section and fire from the slits; nothing walks through it. Concrete
+ * between the bunker and the tower: thinner than a pillbox slab, thicker than
+ * a cab wall.
+ */
+export const LARGE_WALL_GARRISON_CAP = 2;
+/** Occupant HP multiplier inside. A tower is 3×, a bunker 4×. */
+export const LARGE_WALL_GARRISON_HP_MUL = 3;
+/** Share of each hit on the section that reaches the men behind the slits. Bunker 0.35, tower 0.6. */
+export const LARGE_WALL_WOUND_MUL = 0.5;
+/** Extra sight from the slits, watch mode. A house window is GARRISON_WATCH_SIGHT_BONUS. */
+export const LARGE_WALL_SIGHT_BONUS = t(2);
+/** Extra weapon reach from the slits. About one terrace. */
+export const LARGE_WALL_REACH_BONUS = t(2);
+/** Solid height of the section, elevation units. A bunker slab is 4, a trench parapet 2. */
+export const LARGE_WALL_COVER_HEIGHT = 3;
+/** Eye at the slit, elevation units: the muzzle lift of the men inside. */
+export const LARGE_WALL_EYE_HEIGHT = LARGE_WALL_COVER_HEIGHT * 0.6;
+
+/**
  * Day and night. A match opens at morning and runs day, dusk, night, dawn,
  * then day again. In full dark every sight ring and every weapon reach is
  * NIGHT_REACH_MUL of its daylight value; dusk and dawn slide between the two.
@@ -2582,11 +2597,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   greatwall: {
     type: "greatwall",
     kind: "building",
-    name: "Great Wall",
-    letter: "G",
-    cost: 80,
-    buildSeconds: 10,
-    hp: 600,
+    name: "Large wall",
+    letter: "L",
+    cost: 60,
+    buildSeconds: 8,
+    hp: 400,
     power: 0,
     tileW: 1,
     tileH: 1,
@@ -2599,7 +2614,18 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Broad stone rampart with a parapet on both edges. Laid like the concrete wall: scroll to turn it, then drag from the start to the end, and the whole line appears when the engineer finishes. Vehicles cannot cross it, but infantry walk up and along the top. A soldier on the wall has ${Math.round(GREAT_WALL_COVER_BONUS * 100)}% extra health from the parapet, sees farther, and reaches ${GREAT_WALL_REACH_TILES / TILE_SUBDIV} cells farther with his gun. Tank shells that cross it strike the stone; an engineer can repair it.`,
+    garrisonCap: LARGE_WALL_GARRISON_CAP,
+    garrisonHpMul: LARGE_WALL_GARRISON_HP_MUL,
+    garrisonWoundMul: LARGE_WALL_WOUND_MUL,
+    garrisonWindows: 2,
+    garrisonFloors: 1,
+    garrisonSightBonus: LARGE_WALL_SIGHT_BONUS,
+    garrisonReachBonus: LARGE_WALL_REACH_BONUS,
+    garrisonEye: LARGE_WALL_EYE_HEIGHT,
+    garrisonFullArms: true,
+    garrisonTypes: BUNKER_TYPES,
+    coverHeight: LARGE_WALL_COVER_HEIGHT,
+    blurb: `Tall concrete wall with firing slits down both faces. Laid like the ordinary wall: scroll to turn, click and drag a line, keep going round corners, then Confirm. Each section holds ${LARGE_WALL_GARRISON_CAP} of the infantry a bunker takes, and every weapon fires from the slits. Men inside have triple health, the concrete stops half of every hit, and they see and reach a little farther. Nothing walks through it and no direct fire crosses it; shells and rockets break it, and an engineer repairs it.`,
   },
   teeth: {
     type: "teeth",
@@ -3561,7 +3587,7 @@ export function isYardField(type: string): type is YardFieldType {
 export function fieldSpan(type: EntityType): { length: number; thick: number } | null {
   if (type === "sandbags") return { length: 24, thick: 7 };
   if (type === "wall") return { length: 24, thick: 8 };
-  if (type === "greatwall") return { length: 40, thick: 32 };
+  if (type === "greatwall") return { length: 24, thick: 12 };
   if (type === "teeth") return { length: 14, thick: 14 };
   if (type === "trench") return { length: 16, thick: 10 };
   return null;
