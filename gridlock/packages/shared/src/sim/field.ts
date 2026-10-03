@@ -587,6 +587,7 @@ function tickWall(state: MatchState, e: Entity, dt: number, structure: ConcreteL
   if (e.work + 1e-6 < catalog(structure).buildSeconds * count) return;
   const player = state.players.get(e.ownerId);
   let placed = 0;
+  const raised: Entity[] = [];
   const done = wallPiecesOf(e);
   // Check every piece before raising any: at a corner the first section would otherwise touch the second.
   const clear = done.map((p) => fieldSiteClear(state, structure, p.x, p.y, p.facing));
@@ -599,9 +600,13 @@ function tickWall(state: MatchState, e: Entity, dt: number, structure: ConcreteL
     const built = makeEntity(state, structure, e.ownerId, p.x, p.y, { facing: p.facing });
     built.facing = p.facing;
     built.turretFacing = p.facing;
+    raised.push(built);
     placed++;
   }
-  if (placed > 0) restampForts(state);
+  if (placed > 0) {
+    raiseWallCrest(state, raised);
+    restampForts(state);
+  }
   finishWork(e);
 }
 
@@ -981,6 +986,74 @@ function segmentObbT(
   if (!clip(dy, box.y1 - ly0)) return null;
   if (t0 > t1 || t0 > 1 || t1 < 0) return null;
   return t0 < 0 ? 0 : t0;
+}
+
+/** Same reach as the client's `wallSectionsConnect`: ends that meet, straight on or round a corner. */
+const WALL_RUN_SLACK = 4;
+
+function wallGroundPeak(state: MatchState, e: Entity): number {
+  const span = fieldSpan(e.type);
+  if (!span) return 0;
+  const alongX = -Math.sin(e.facing);
+  const alongY = Math.cos(e.facing);
+  const acrossX = Math.cos(e.facing);
+  const acrossY = Math.sin(e.facing);
+  const halfL = span.length / 2;
+  const halfT = span.thick / 2;
+  let peak = 0;
+  for (const along of [-halfL, 0, halfL]) {
+    for (const across of [-halfT, 0, halfT]) {
+      const gx = worldToTile(e.x + alongX * along + acrossX * across, state.tileSize);
+      const gy = worldToTile(e.y + alongY * along + acrossY * across, state.tileSize);
+      const h = inBounds(state, gx, gy) ? (state.heights[tileIndex(state, gx, gy)] ?? 0) : 0;
+      if (h > peak) peak = h;
+    }
+  }
+  return peak;
+}
+
+function sectionsShareRun(a: Entity, b: Entity, length: number): boolean {
+  const d = Math.hypot(a.x - b.x, a.y - b.y);
+  return d > 0.5 && d <= length + WALL_RUN_SLACK;
+}
+
+/**
+ * Remember the highest ground under a concrete run on every section of it.
+ * A later section can raise that peak. Destroying the high section does not lower it,
+ * so the standing wall keeps the height it was built to.
+ */
+export function raiseWallCrest(state: MatchState, built: readonly Entity[]): void {
+  const seeds = built.filter((e) => isConcreteLine(e.type) && e.hp > 0 && !e.ruined);
+  const types = new Set(seeds.map((e) => e.type));
+  for (const type of types) {
+    const span = fieldSpan(type);
+    if (!span) continue;
+    const standing = [...state.entities.values()].filter((e) => e.type === type && e.hp > 0 && !e.ruined);
+    const seen = new Set<number>();
+    for (const seed of seeds) {
+      if (seed.type !== type || seen.has(seed.id)) continue;
+      const group: Entity[] = [];
+      const stack = [seed];
+      seen.add(seed.id);
+      while (stack.length > 0) {
+        const cur = stack.pop()!;
+        group.push(cur);
+        for (const other of standing) {
+          if (seen.has(other.id) || !sectionsShareRun(cur, other, span.length)) continue;
+          seen.add(other.id);
+          stack.push(other);
+        }
+      }
+      let crest = Number.NEGATIVE_INFINITY;
+      for (const section of group) {
+        const peak = wallGroundPeak(state, section);
+        if (peak > crest) crest = peak;
+        if (section.wallCrest != null && section.wallCrest > crest) crest = section.wallCrest;
+      }
+      if (!Number.isFinite(crest)) crest = 0;
+      for (const section of group) section.wallCrest = crest;
+    }
+  }
 }
 
 /**

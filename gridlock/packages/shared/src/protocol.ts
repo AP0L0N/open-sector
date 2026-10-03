@@ -16,7 +16,7 @@ import type {
 } from "./catalog.js";
 import type { CustomMapSpec } from "./custom-maps.js";
 
-export const PROTOCOL_VERSION = 75;
+export const PROTOCOL_VERSION = 76;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -213,14 +213,22 @@ export interface EntityView {
   /** Friendly unit this entity is escorting. Omitted when not guarding a unit. */
   guardTargetId?: number;
   /**
-   * Patrol polyline in world pixels, first point where the unit started.
-   * Friendly snapshots only. The unit walks it and then back.
+   * Patrol polyline in world pixels. An open route starts where the unit stood
+   * and is walked back. A loop is the closed spots only. Friendly snapshots.
    */
   patrol?: { x: number; y: number }[];
+  /** The patrol circles. Omitted on an out-and-back route. Friendly snapshots. */
+  patrolLoop?: boolean;
   /** Infantry this medic is bandaging. Omitted while he is only walking over. */
   tend?: number;
   /** Sandbags wrecked by a tank shell. The rubble stays. */
   ruined?: boolean;
+  /**
+   * Terrain peak a concrete run was built up to, in map height units.
+   * The drawn top does not fall below this when a higher section is destroyed.
+   * Omitted on everything that is not a wall.
+   */
+  wallCrest?: number;
   /**
    * Engineer field structures not built yet. The first is the piece on the job; `progress` is 0–1
    * once digging starts. Friendlies also get the queued pieces; enemies only see a piece being dug.
@@ -564,8 +572,12 @@ export type ClientMessage =
   | { type: "cmd.move"; ids: number[]; x: number; y: number; facing?: number; queue?: boolean }
   | { type: "cmd.attack"; ids: number[]; targetId: number; queue?: boolean }
   | { type: "cmd.attackmove"; ids: number[]; x: number; y: number; queue?: boolean }
-  /** Walk `points` in order, then back along them. Left-click places, right-click sends. */
-  | { type: "cmd.patrol"; ids: number[]; points: { x: number; y: number }[] }
+  /**
+   * Walk `points` in order. `loop` circles them (the last spot returns to the
+   * first). Otherwise the unit walks back. Left-click places, right-click sends.
+   * Clicking a point already placed closes the loop and drops the spots before it.
+   */
+  | { type: "cmd.patrol"; ids: number[]; points: { x: number; y: number }[]; loop?: boolean }
   | {
       type: "cmd.forceattack";
       ids: number[];

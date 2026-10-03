@@ -1625,8 +1625,8 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   }
   if (units.length || lamps.length) {
     const patrolTitle = units.length
-      ? `Place points, right-click to finish. They walk them and back, and fight enemies on that path (${PATROL_HOTKEY.toUpperCase()})${lamps.length ? " A tower turns its spotlight along the same points." : ""}`
-      : `Place points, right-click to finish. The spotlight turns toward each point, then back (${PATROL_HOTKEY.toUpperCase()})`;
+      ? `Place points, right-click to finish. Click a point already placed to close a loop and circle it; otherwise they walk the points and back. They fight enemies along that path (${PATROL_HOTKEY.toUpperCase()})${lamps.length ? " A tower turns its spotlight the same way." : ""}`
+      : `Place points, right-click to finish. Click a point already placed to close a loop; otherwise the spotlight goes out and back (${PATROL_HOTKEY.toUpperCase()})`;
     out.push({
       slot: "patrol",
       act: "patrol",
