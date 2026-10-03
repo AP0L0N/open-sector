@@ -10,6 +10,10 @@ import {
   CIWS_AIR_SPREAD,
   CIWS_AIR_Z_SCATTER,
   CIWS_GUN,
+  GATLING_GROUND_SPREAD_MUL,
+  GATLING_STREAM_WANDER_DEG,
+  GATLING_STREAM_WANDER_HZ,
+  GATLING_STREAM_WANDER_Z,
   FACE_FIRE_DEG,
   gatlingHeatOf,
   gatlingSprayOf,
@@ -1887,6 +1891,20 @@ function tickWeaponClocks(e: Entity, dt: number): void {
   e.mgHeat = Math.max(0, e.mgHeat - TANK_MG.heatCoolPerSec * dt);
 }
 
+/**
+ * Where a gatling's stream sits off a plane at this tick, each axis -1..1:
+ * two slow swells per gun, so every round of a burst shares it and the stream
+ * walks onto the airframe and off again. Seeded by the gun, not the match RNG.
+ */
+export function streamWander(gunId: number, tick: number): { yaw: number; z: number } {
+  const t = tick * TICK_DT * Math.PI * 2 * GATLING_STREAM_WANDER_HZ;
+  const p = gunId * 1.37;
+  return {
+    yaw: 0.65 * Math.sin(t + p) + 0.35 * Math.sin(t * 2.3 + p * 2.1),
+    z: 0.65 * Math.sin(t * 0.8 + p * 1.7 + 1.1) + 0.35 * Math.sin(t * 1.9 + p * 0.6 + 2.3),
+  };
+}
+
 /** The CIWS pad reaches farther for a plane in the air than for anything on the ground. */
 function airReachMul(e: Entity, target: Entity | undefined): number {
   return e.type === "ciws" && !!target && isAirborne(target) ? CIWS_AIR_REACH_MUL : 1;
@@ -1998,9 +2016,12 @@ function fireRound(
       : opts?.fuse
       ? Math.atan2(aimY - e.y, aimX - e.x)
       : aimFacing(e));
+  const aloft = !!target && isAirborne(target) && gatling;
+  // On a plane the whole stream drifts on and off the airframe together; on the ground the cone is tight.
+  const wander = aloft ? streamWander(e.id, state.tick) : null;
   const ang = aimAngle(
-    bearing,
-    stats.spreadDeg * spray,
+    bearing + (wander ? (wander.yaw * GATLING_STREAM_WANDER_DEG * spray * Math.PI) / 180 : 0),
+    stats.spreadDeg * spray * (gatling && !aloft ? GATLING_GROUND_SPREAD_MUL : 1),
     dist,
     range,
     () => nextRand(state),
@@ -2032,13 +2053,12 @@ function fireRound(
   }
   const z0 = muzzleHeight(state, e);
   let zAim = target ? aimHeight(state, target) : worldTileHeight(state, aimX, aimY);
-  const aloft = !!target && isAirborne(target) && gatling;
-  // A gatling is laid on a plane by bearing; in height the stream walks above and below it.
+  // In height too the stream walks above and below the plane, each round a little off the stream.
   // It never dips below half the climb, so a stray round does not rake the ground around the gun.
-  if (aloft) {
-    const scatter = CIWS_AIR_Z_SCATTER * spray;
-    const low = Math.min(scatter, Math.max(0, zAim - z0) * 0.5);
-    zAim += -low + nextRand(state) * (low + scatter);
+  if (wander) {
+    const floor = z0 + Math.max(0, zAim - z0) * 0.5;
+    const off = wander.z * GATLING_STREAM_WANDER_Z * spray + (nextRand(state) * 2 - 1) * CIWS_AIR_Z_SCATTER * spray;
+    zAim = Math.max(floor, zAim + off);
   }
   const aimDist = Math.hypot(aimX - x, aimY - y);
   const gunId = infantryGunFor(e)?.id;

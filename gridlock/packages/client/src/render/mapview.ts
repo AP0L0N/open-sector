@@ -197,7 +197,8 @@ import {
   type TrackKickPuff,
 } from "./track-kick.js";
 import { followCart, type CartPose } from "./mauler-cart.js";
-import { AMMO_PRIMARY_FILL, AMMO_SECONDARY_FILL, ammoBarRatios } from "./ammo-bars.js";
+import { AMMO_PRIMARY_FILL, AMMO_SECONDARY_FILL, ammoBarRatios, outOfAmmo } from "./ammo-bars.js";
+import { OUT_OF_AMMO_SIZE, drawOutOfAmmo } from "./out-of-ammo.js";
 import {
   backtrackPoints,
   claimsShot,
@@ -6085,33 +6086,36 @@ export class MapView {
     const selected = this.selected.has(e.id);
     const damaged = (this.damagedUntil.get(e.id) ?? 0) > now;
     const unit = e.kind === "unit";
+    // A CIWS or RAM always shows its bars, like a unit, wider and thicker: the belt is what it lives on.
+    const mount = radarLaidOf(e.type);
     const capturing = (e.capture?.progress ?? 0) > 0;
-    if (!(unit || selected || damaged || capturing)) return;
+    if (!(unit || mount || selected || damaged || capturing)) return;
     const ratio = Math.max(0, Math.min(1, e.hp / e.hpMax));
-    const barW = Math.max(8, selected ? w * 0.48 : w * 0.4);
-    const barH = selected ? 3 : 2;
+    const barW = Math.max(8, mount ? w * (selected ? 0.95 : 0.85) : selected ? w * 0.48 : w * 0.4);
+    const barH = mount ? (selected ? 4 : 3) : selected ? 3 : 2;
     const bx = x + (w - barW) / 2;
     const by = y - (selected ? 4 : 3);
-    const alpha = selected ? 1 : damaged ? 0.42 : 0.28;
+    const alpha = selected ? 1 : damaged ? 0.42 : mount ? 0.55 : 0.28;
     const ctx = this.ctx;
     ctx.save();
     this.paintHpBar(bx, by, barW, barH, ratio, alpha, this.hostileOwner(e.ownerId), selected);
-    this.paintAmmoBars(e, bx, by + barH + 1, barW, Math.min(1, alpha + 0.12));
+    this.paintAmmoBars(e, bx, by + barH + 1, barW, Math.min(1, alpha + 0.12), mount ? 2 : 1);
+    if (outOfAmmo(e)) drawOutOfAmmo(ctx, bx - OUT_OF_AMMO_SIZE - 3, by + barH / 2 - OUT_OF_AMMO_SIZE / 2, Math.max(alpha, 0.85));
     ctx.restore();
   }
 
-  /** Thin yellow (main store, or a Jump Jet's fuel) and gray (secondary) strips under the health bar. */
-  private paintAmmoBars(e: EntityView, x: number, y: number, w: number, alpha: number): void {
+  /** Yellow (main store, or a Jump Jet's fuel) and gray (secondary) strips under the health bar. */
+  private paintAmmoBars(e: EntityView, x: number, y: number, w: number, alpha: number, h = 1): void {
     const ratios = ammoBarRatios(e);
     const ctx = this.ctx;
     for (let i = 0; i < ratios.length; i++) {
-      const by = y + i * 2;
+      const by = y + i * (h + 1);
       ctx.globalAlpha = alpha * 0.85;
       ctx.fillStyle = "rgba(8, 6, 4, 0.72)";
-      ctx.fillRect(x, by, w, 1);
+      ctx.fillRect(x, by, w, h);
       ctx.globalAlpha = alpha;
       ctx.fillStyle = i === 0 ? AMMO_PRIMARY_FILL : AMMO_SECONDARY_FILL;
-      ctx.fillRect(x, by, w * ratios[i]!, 1);
+      ctx.fillRect(x, by, w * ratios[i]!, h);
     }
   }
 
