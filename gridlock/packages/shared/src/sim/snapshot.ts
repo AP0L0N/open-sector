@@ -12,6 +12,7 @@ import {
   AIRFIELD_PADS,
   beltOf,
   catalog,
+  isConcreteLine,
   clampGameSpeed,
   deploySecondsOf,
   entityIsScouting,

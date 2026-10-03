@@ -1,7 +1,19 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { TILE_EMPTY } from "../maps.js";
-import { catalog, ENGINEER_SEEK_TILES, fieldSpan, TICK_DT, TITAN_ROCKET, wreckScrapOf } from "../catalog.js";
+import {
+  catalog,
+  ENGINEER_SEEK_TILES,
+  fieldSpan,
+  GREAT_WALL_COVER_BONUS,
+  GREAT_WALL_REACH_TILES,
+  GREAT_WALL_SIGHT_TILES,
+  TICK_DT,
+  TITAN_ROCKET,
+  wreckScrapOf,
+  type YardFieldType,
+} from "../catalog.js";
+import { sightTilesForEntity, weaponRangeWorld } from "./elevation.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { applyCommand } from "./commands.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
@@ -899,7 +911,7 @@ function deployCore(state: MatchState): void {
 
 function placeYard(
   state: MatchState,
-  type: "sandbags" | "wall",
+  type: YardFieldType,
   x: number,
   y: number,
   facing: number,
@@ -933,6 +945,119 @@ function farOpen(state: MatchState): { x: number; y: number } {
   return { x: tileCenter(148, ts), y: tileCenter(148, ts) };
 }
 
+describe("great wall", () => {
+  function greatWall(state: MatchState): { x: number; y: number; wall: ReturnType<typeof makeEntity> } {
+    clearPatch(state, 26, 24, 24, 20);
+    const ts = state.tileSize;
+    const x = tileCenter(38, ts);
+    const y = tileCenter(34, ts);
+    const wall = makeEntity(state, "greatwall", "A", x, y, { facing: 0 });
+    wall.facing = 0;
+    restampForts(state);
+    return { x, y, wall };
+  }
+
+  it("stops vehicles and lets infantry walk onto the top", () => {
+    const { state } = twoPlayerMatch();
+    const { x, y } = greatWall(state);
+    const tx = worldToTile(x, state.tileSize);
+    const ty = worldToTile(y, state.tileSize);
+    assert.equal(walkable(state, tx, ty, "rifleman"), true);
+    assert.equal(walkable(state, tx, ty, "warden"), false);
+    const span = fieldSpan("greatwall")!;
+    assert.ok(span.thick > fieldSpan("wall")!.thick * 2, "wider than the concrete wall");
+    assert.ok(span.length > fieldSpan("wall")!.length, "longer than the concrete wall");
+  });
+
+  it("gives infantry on top extra health, sight, and reach, and takes them away when he steps off", () => {
+    const { state } = twoPlayerMatch();
+    const { x, y } = greatWall(state);
+    const man = makeEntity(state, "rifleman", "A", x - 120, y);
+    step(state, TICK_DT);
+    const base = catalog("rifleman").hp;
+    const reach0 = weaponRangeWorld(state, man);
+    const sight0 = sightTilesForEntity(state, man);
+    assert.equal(man.onRampart, undefined);
+    assert.equal(man.hpMax, base);
+
+    man.x = x;
+    man.y = y;
+    man.waypoints = [];
+    step(state, TICK_DT);
+    const bonus = Math.round(base * GREAT_WALL_COVER_BONUS);
+    assert.equal(man.onRampart, true);
+    assert.equal(man.hpMax, base + bonus);
+    assert.equal(man.hp, base + bonus);
+    assert.equal(weaponRangeWorld(state, man), reach0 + GREAT_WALL_REACH_TILES * state.tileSize);
+    assert.equal(sightTilesForEntity(state, man), sight0 + GREAT_WALL_SIGHT_TILES);
+
+    man.x = x - 120;
+    step(state, TICK_DT);
+    assert.equal(man.onRampart, undefined);
+    assert.equal(man.hpMax, base);
+    assert.equal(weaponRangeWorld(state, man), reach0);
+  });
+
+  it("gives vehicles nothing for standing beside it", () => {
+    const { state } = twoPlayerMatch();
+    const { x, y } = greatWall(state);
+    const tank = makeEntity(state, "warden", "A", x - fieldSpan("greatwall")!.thick / 2 - 14, y);
+    step(state, TICK_DT);
+    assert.equal(tank.onRampart, undefined);
+    assert.equal(tank.hpMax, catalog("warden").hp);
+  });
+
+  it("takes tank shells that run into it, lets rifle fire over, and lets a shell fired from the top fly off", () => {
+    const { state } = twoPlayerMatch();
+    const { x, y, wall } = greatWall(state);
+    const hp = wall.hp;
+    shot(state, x + 40, y, -800, 40, "ap");
+    tickProjectiles(state, TICK_DT);
+    assert.equal(wall.hp, hp - 40);
+    const rifle = shot(state, x + 40, y, -800, 12, null);
+    tickProjectiles(state, TICK_DT);
+    assert.equal(wall.hp, hp - 40);
+    assert.equal(state.projectiles.some((p) => p.id === rifle.id), true, "the bullet flies on over the rampart");
+    state.projectiles.length = 0;
+    const outbound = shot(state, x, y, 800, 40, "ap");
+    tickProjectiles(state, TICK_DT);
+    assert.equal(wall.hp, hp - 40);
+    assert.equal(state.projectiles.some((p) => p.id === outbound.id), true);
+  });
+
+  it("is laid by an engineer as one line job", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 20, 22, 44, 24);
+    const ts = state.tileSize;
+    const span = fieldSpan("greatwall")!;
+    const x = tileCenter(26, ts);
+    const y = tileCenter(36, ts);
+    const eng = makeEntity(state, "engineer", "A", x, y - 50);
+    const scrap0 = state.players.get("A")!.scrap;
+    const res = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [eng.id],
+      structure: "greatwall",
+      x,
+      y,
+      facing: Math.PI / 2,
+      x2: x + span.length * 2,
+      y2: y,
+    });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    assert.equal(eng.fieldQueue?.length, 1);
+    const built = () => [...state.entities.values()].filter((e) => e.type === "greatwall");
+    const per = Math.round(catalog("greatwall").buildSeconds / TICK_DT);
+    for (let i = 0; i < 400 && eng.state !== "build"; i++) step(state, TICK_DT);
+    assert.equal(eng.state, "build");
+    assert.equal(state.players.get("A")!.scrap, scrap0 - catalog("greatwall").cost * 2);
+    ticks(state, per * 2 - 3);
+    assert.equal(built().length, 0, "the line waits until the whole job is done");
+    ticks(state, 4);
+    assert.equal(built().length, 2);
+  });
+});
+
 describe("defences tab field works", () => {
   it("does not treat teeth as a yard placement, and will not site a wall before the Rig is deployed", () => {
     const { state } = twoPlayerMatch();
@@ -947,7 +1072,7 @@ describe("defences tab field works", () => {
     if (!queued.ok) assert.match(queued.message, /Place that/);
   });
 
-  for (const type of ["sandbags", "wall"] as const) {
+  for (const type of ["sandbags", "wall", "greatwall"] as const) {
     it(`sites ${type} beside the core, then builds it`, () => {
       const { state } = twoPlayerMatch();
       deployCore(state);

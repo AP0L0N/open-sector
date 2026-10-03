@@ -279,6 +279,7 @@ import { barrageTracers, tracerLandsAt, tracerSpan, type BarrageTracer } from ".
 import { drawSandbags } from "./sandbags.js";
 import { drawTrench } from "./trench.js";
 import { drawWall, WALL_SLAB_H, wallEndSeal, wallSectionsConnect, wallTopElev } from "./wall.js";
+import { drawGreatWall, onRampart, rampartTopElev, type RampartBox } from "./greatwall.js";
 import { pyroNozzleScreen } from "./pyro-nozzle.js";
 import { unitGroundSink } from "./unit-hit.js";
 import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
@@ -390,6 +391,7 @@ const EXTRUDE: Record<EntityType, number> = {
   cyborg: 26,
   sandbags: 12,
   wall: 18,
+  greatwall: 22,
   teeth: 16,
   trench: 6,
   walker: 30,
@@ -2365,6 +2367,34 @@ export class MapView {
     return airLiftPx(lerpAirAlt(this.prevById.get(e.id), e, t));
   }
 
+  /** Intact Great Wall sections in the current snapshot, with their walkway level. Rebuilt per snapshot. */
+  private rampartCache: { snap: unknown; boxes: RampartBox[] } | null = null;
+
+  private ramparts(): RampartBox[] {
+    if (this.rampartCache?.snap === this.curr) return this.rampartCache.boxes;
+    const span = fieldSpan("greatwall");
+    const boxes: RampartBox[] = [];
+    if (span) {
+      for (const e of this.curr.entities) {
+        if (e.type !== "greatwall" || e.hp <= 0 || e.ruined) continue;
+        const top = rampartTopElev(this.wallGrounds({ x: e.x, y: e.y, length: span.length, facing: e.facing }, span.thick));
+        boxes.push({ x: e.x, y: e.y, facing: e.facing, length: span.length, thick: span.thick, top });
+      }
+    }
+    this.rampartCache = { snap: this.curr, boxes };
+    return boxes;
+  }
+
+  /** Screen pixels a soldier on a Great Wall stands above the ground under him. */
+  private rampartLift(e: EntityView, p: { x: number; y: number }): number {
+    if (!isInfantryType(e.type) || e.garrisonedIn || e.air || e.jet || e.chute != null) return 0;
+    for (const box of this.ramparts()) {
+      if (!onRampart(box, p.x, p.y)) continue;
+      return Math.max(0, isoLift(box.top) - isoLift(this.elevAt(p.x, p.y)));
+    }
+    return 0;
+  }
+
   private lerpEnt(e: EntityView): { x: number; y: number; facing: number; turretFacing: number } {
     const turretNow = e.turretFacing ?? e.facing;
     const t = Math.min(1, (performance.now() - this.snapAt) / 100);
@@ -2447,7 +2477,7 @@ export class MapView {
         const spr = this.spriteOf(e);
         if (spr) {
           const s = this.toScreen(p.x, p.y);
-          s.y -= this.airLift(e);
+          s.y -= this.airLift(e) + this.rampartLift(e, p);
           const size = spr.drawSize;
           const top = s.y - size * spr.contactY;
           if (px >= s.x - size * 0.4 && px <= s.x + size * 0.4 && py >= top && py <= top + size) {
@@ -4685,7 +4715,7 @@ export class MapView {
     const p = this.lerpEnt(e);
     const size = def.drawSize;
     const s = this.toScreen(p.x, p.y);
-    s.y -= this.airLift(e);
+    s.y -= this.airLift(e) + this.rampartLift(e, p);
     const hex = this.ownerColor(e);
     const dir = facingToIso(p.facing, this.ts());
     const turretDir = facingToIso(p.turretFacing ?? p.facing, this.ts());
@@ -6207,6 +6237,17 @@ export class MapView {
       drawSelectFrame(this.ctx, pts, { hostile: this.hostileOwner(e.ownerId), now: performance.now() });
     }
     const veiled = (draw: () => void): void => this.drawFieldVeiled(e, span, draw);
+    if (e.type === "greatwall") {
+      const hurt = e.hpMax > 0 ? Math.max(0, 1 - e.hp / e.hpMax) : 0;
+      veiled(() => this.drawRampart(e.x, e.y, e.facing, { hurt, alpha: ghost ? 0.45 : 1, seed: e.id * 2654435761 }));
+      if (!ghost) {
+        const top = this.ramparts().find((b) => b.x === e.x && b.y === e.y)?.top ?? this.elevAt(e.x, e.y);
+        const s = this.toScreen(e.x, e.y, top);
+        const w = Math.max(28, this.groundSpan(e.x, e.y, span?.length ?? 40));
+        this.maybeHp(e, s.x - w / 2, s.y - 30, w);
+      }
+      return;
+    }
     if (e.type === "wall") {
       const hurt = e.hpMax > 0 ? Math.max(0, 1 - e.hp / e.hpMax) : 0;
       veiled(() => this.drawConcreteWall(e.x, e.y, e.facing, { hurt, alpha: ghost ? 0.45 : 1, seed: e.id * 2654435761 }));
@@ -6264,6 +6305,8 @@ export class MapView {
               this.drawTeeth(site.x, site.y, site.facing, FIELD_SITE_ALPHA, 0);
             } else if (site.structure === "wall") {
               this.drawConcreteWall(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
+            } else if (site.structure === "greatwall") {
+              this.drawRampart(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
             } else if (site.structure === "trench") {
               this.drawTrenchPit(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
             } else {
@@ -6356,6 +6399,30 @@ export class MapView {
       }
     }
     return out;
+  }
+
+  private drawRampart(
+    x: number,
+    y: number,
+    facing: number,
+    opts: { hurt?: number; alpha: number; seed: number; bad?: boolean },
+  ): void {
+    const span = fieldSpan("greatwall");
+    if (!span) return;
+    drawGreatWall(this.ctx, {
+      x,
+      y,
+      facing,
+      length: span.length,
+      thick: span.thick,
+      hurt: opts.hurt ?? 0,
+      seed: opts.seed >>> 0,
+      alpha: opts.alpha,
+      bad: opts.bad,
+      ground: (wx, wy) => this.elevAt(wx, wy),
+      top: rampartTopElev(this.wallGrounds({ x, y, length: span.length, facing }, span.thick)),
+      project: (wx, wy, elev) => this.toScreen(wx, wy, elev),
+    });
   }
 
   private drawSandbagWall(
@@ -6468,6 +6535,8 @@ export class MapView {
         if (!ok) this.strokeFieldFoot(type, p, "#ff5a4a");
       } else if (type === "wall") {
         this.drawConcreteWall(p.x, p.y, p.facing, { alpha: ok ? 0.78 : 0.5, seed: 7, bad: !ok }, pieces);
+      } else if (type === "greatwall") {
+        this.drawRampart(p.x, p.y, p.facing, { alpha: ok ? 0.78 : 0.5, seed: 7, bad: !ok });
       } else if (type === "trench") {
         this.drawTrenchPit(p.x, p.y, p.facing, { alpha: 0.78, seed: 7, bad: !ok });
       } else {
@@ -6501,6 +6570,8 @@ export class MapView {
     for (const s of q.sites) {
       if (q.type === "wall") {
         this.drawConcreteWall(s.x, s.y, s.facing, { alpha: 0.55, seed: 3 }, q.sites);
+      } else if (q.type === "greatwall") {
+        this.drawRampart(s.x, s.y, s.facing, { alpha: 0.55, seed: 3 });
       } else {
         this.drawSandbagWall(s.x, s.y, s.facing, { alpha: 0.55, seed: 3 });
       }
