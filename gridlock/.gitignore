@@ -7,3 +7,4 @@ dist-client/
 .env.local
 .vite/
 coverage/
+data/

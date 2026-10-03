@@ -41,7 +41,7 @@ function match(): { state: MatchState; a: string; b: string } {
   assert.equal(joinRoom(room, "B", "Bravo").ok, true);
   updateSelf(room, "A", { ready: true, spawnId: 1, team: 0 });
   updateSelf(room, "B", { ready: true, spawnId: 4, team: 0 });
-  const started = startMatch(room, "A");
+  const started = startMatch(room, "A", () => 0);
   if (!started.ok) throw new Error(started.message);
   return { state: createMatch(room, started.value), a: "A", b: "B" };
 }

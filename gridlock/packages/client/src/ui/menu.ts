@@ -17,6 +17,7 @@ export function renderMenu(root: HTMLElement, ctx: Ctx): void {
   });
   const skirmish = el("button", { class: "btn btn-primary", text: "Skirmish", attrs: { type: "button" } });
   const network = el("button", { class: "btn", text: "Network", attrs: { type: "button" } });
+  const builder = el("button", { class: "btn", text: "Map Builder", attrs: { type: "button" } });
   const options = el("button", { class: "btn", text: "Options", attrs: { type: "button" } });
   const credits = el("button", { class: "btn", text: "Credits", attrs: { type: "button" } });
   const exit = el("button", { class: "btn btn-ghost", text: "Exit", attrs: { type: "button" } });
@@ -29,6 +30,11 @@ export function renderMenu(root: HTMLElement, ctx: Ctx): void {
     ctx.networkStep = "choose";
     ctx.goto("play");
   });
+  builder.addEventListener("click", () => {
+    if (!ctx.net.connected) ctx.net.connect();
+    ctx.banner = "";
+    ctx.goto("builder");
+  });
   options.addEventListener("click", () => ctx.goto("options"));
   credits.addEventListener("click", () => ctx.goto("credits"));
   exit.addEventListener("click", () => {
@@ -37,7 +43,7 @@ export function renderMenu(root: HTMLElement, ctx: Ctx): void {
     ctx.render();
   });
 
-  stack.append(campaign, skirmish, network, options, credits, exit);
+  stack.append(campaign, skirmish, network, builder, options, credits, exit);
   screen.append(stack);
   screen.append(el("div", { class: "version", text: "M1 · prototype" }));
   const pip = el("div", {
