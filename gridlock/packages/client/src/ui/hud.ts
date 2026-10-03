@@ -87,6 +87,9 @@ import {
   type SidebarGroup,
 } from "./sidebar-groups.js";
 
+/** Key that lays a field line being placed. */
+export const FIELD_CONFIRM_KEY = "Enter";
+
 let viewRef: MapView | null = null;
 let configFocus: EntityType | null = null;
 /** Ready structure: first right-click is a no-op; second cancels. */
@@ -1571,10 +1574,22 @@ interface QAct {
   title: string;
   on?: boolean;
   disabled?: boolean;
+  /** The one thing the player is being asked to do now: lit up so it cannot be missed. */
+  urgent?: boolean;
 }
 
 function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   if (!ctx.match) return [];
+  const out: QAct[] = [];
+  if (view?.fieldPending()) {
+    out.push({
+      slot: "confirm-field",
+      act: "confirm-field",
+      label: "Confirm placement",
+      title: `Lay the line as drawn (${FIELD_CONFIRM_KEY}). Click to add another leg; right-click takes the last leg back; Esc drops the line.`,
+      urgent: true,
+    });
+  }
   const selected = selectedViews(ctx, view);
   const units = ownCommandable(ctx, selected.filter((e) => e.kind === "unit"));
   const buildings = ownCommandable(ctx, selected.filter((e) => e.kind === "building"));
@@ -1584,7 +1599,6 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   // A CIWS aims its own gun: it takes Stop, Force attack, and Rotate like a unit.
   const mounts = buildings.filter((e) => radarLaidOf(e.type));
   const lamps = buildings.filter((e) => hasSpotlight(e.type) && e.spotFacing != null);
-  const out: QAct[] = [];
   if (units.length === 0 && buildings.length === 0 && houses.length === 0) return out;
 
   if (units.length || mounts.length || garrisonForce.length || lamps.length) {
@@ -1695,21 +1709,21 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       slot: "field-sandbags",
       act: "field-sandbags",
       label: "Sandbags",
-      title: "Build sandbags. Scroll to turn, click to place one, or drag from start to end to lay a wall.",
+      title: "Build sandbags. Scroll to turn. Click to set one, or drag a line; keep clicking to add legs round corners, then Confirm.",
       on: view?.fieldPlace === "sandbags",
     });
     out.push({
       slot: "field-teeth",
       act: "field-teeth",
       label: "Obstacle",
-      title: "Build concrete pyramids that stop vehicles. Scroll to turn, click to place one, or drag from start to end to lay a line.",
+      title: "Build concrete pyramids that stop vehicles. Scroll to turn. Click to set one, or drag a line; keep clicking to add legs, then Confirm.",
       on: view?.fieldPlace === "teeth",
     });
     out.push({
       slot: "field-trench",
       act: "field-trench",
       label: "Trench",
-      title: "Dig a one-man trench. Moderate cover for one soldier, mortarman included. Scroll to turn, click to place one, or drag from start to end to dig a line.",
+      title: "Dig a one-man trench. Moderate cover for one soldier, mortarman included. Scroll to turn. Click to set one, or drag a line; keep clicking to add legs, then Confirm.",
       on: view?.fieldPlace === "trench",
     });
     out.push({
@@ -1717,15 +1731,15 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       act: "field-wall",
       label: "Wall",
       title:
-        "Build a concrete wall with barbed wire. Scroll to turn it before you set the start, then drag to the end. The line is one job and takes longer the more pieces you lay. It appears when the engineer finishes.",
+        "Build a concrete wall with barbed wire. Scroll to turn it, drag the first run, then keep clicking to carry the wall round corners; it joins up as one wall. Confirm to start the job, which takes longer the more pieces you lay. It appears when the engineer finishes.",
       on: view?.fieldPlace === "wall",
     });
     out.push({
       slot: "field-greatwall",
       act: "field-greatwall",
-      label: "Great Wall",
+      label: "Large wall",
       title:
-        "Build a broad stone rampart. Vehicles cannot cross it; infantry walk up onto it and gain health, sight, and reach on top. Scroll to turn it before you set the start, then drag to the end. The line is one job and appears when the engineer finishes.",
+        "Build a tall concrete wall with firing slits. Two infantry garrison each section and fire from it with triple health. Laid like the wall: drag, keep clicking round corners, then Confirm. One job; it appears when the engineer finishes.",
       on: view?.fieldPlace === "greatwall",
     });
   }
@@ -1950,6 +1964,7 @@ function updateQact(node: HTMLElement, item: QAct): void {
   if (node.textContent !== item.label) node.textContent = item.label;
   if (node.title !== item.title) node.title = item.title;
   node.classList.toggle("is-on", !!item.on);
+  node.classList.toggle("is-urgent", !!item.urgent);
   node.classList.toggle("is-disabled", !!item.disabled);
   node.setAttribute("aria-disabled", item.disabled ? "true" : "false");
 }
@@ -2030,6 +2045,10 @@ function runConfigAction(ctx: Ctx, t: HTMLElement): void {
 function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   const match = ctx.match;
   if (!match) return;
+  if (act === "confirm-field") {
+    view.confirmField();
+    return;
+  }
   const selected = selectedViews(ctx, view);
   const units = ownCommandable(ctx, selected.filter((e) => e.kind === "unit"));
   const buildings = ownCommandable(ctx, selected.filter((e) => e.kind === "building"));

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { NEUTRAL_OWNER, TICK_DT, catalog, isCivilianType } from "../catalog.js";
+import { NEUTRAL_OWNER, SPOTLIGHT_TURN_DEG_PER_SEC, TICK_DT, catalog, isCivilianType } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE, TILE_WATER } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
@@ -220,7 +220,8 @@ describe("patrol", () => {
 
     let bestNorth = Infinity;
     let swungWest = false;
-    for (let i = 0; i < 40; i++) {
+    const sweepTicks = Math.ceil(120 / (SPOTLIGHT_TURN_DEG_PER_SEC * TICK_DT)) + 2;
+    for (let i = 0; i < sweepTicks; i++) {
       step(state, TICK_DT);
       const facing = tower.spotFacing!;
       bestNorth = Math.min(bestNorth, angDiff(facing, Math.PI / 2));
@@ -263,7 +264,8 @@ describe("patrol", () => {
     const turnedAim = tower.spotAim;
     assert.equal(turnedOrder, null);
     assert.ok(turnedAim != null && turnedAim < 0);
-    for (let i = 0; i < 40; i++) step(state, TICK_DT);
+    const settleTicks = Math.ceil(180 / (SPOTLIGHT_TURN_DEG_PER_SEC * TICK_DT)) + 2;
+    for (let i = 0; i < settleTicks; i++) step(state, TICK_DT);
     assert.ok(angDiff(tower.spotFacing!, -Math.PI / 2) < 0.05, "settles on the rotate heading");
     for (let i = 0; i < 10; i++) step(state, TICK_DT);
     assert.equal(tower.order, null);

@@ -42,6 +42,8 @@ export {
   pickGarrisonMuzzle,
   garrisonWindowLift,
   garrisonWindows,
+  largeWallSlit,
+  LARGE_WALL_SLIT_LIFT_PX,
 } from "./garrison.js";
 export { wantsCapture, captureDurationSec } from "./capture.js";
 export { powerOf, productionSpeed } from "./power.js";
@@ -109,8 +111,18 @@ export {
   hasSpotlight,
   hasHeadlight,
   headlightLit,
+  hullLamps,
   spotlightManned,
   spotFacingOf,
 } from "./night.js";
-export type { DayPhase, MatchClock } from "./night.js";
-export { fieldLine, fieldLineMax, fieldSiteClear, sandbagCoverBonus, wallAxes } from "./field.js";
+export type { DayPhase, HullLamp, MatchClock } from "./night.js";
+export {
+  FIELD_TURN_MAX,
+  fieldCornerStart,
+  fieldLine,
+  fieldPath,
+  fieldSiteClear,
+  fieldTurn,
+  sandbagCoverBonus,
+  wallAxes,
+} from "./field.js";

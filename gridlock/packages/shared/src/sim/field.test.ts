@@ -5,9 +5,10 @@ import {
   catalog,
   ENGINEER_SEEK_TILES,
   fieldSpan,
-  GREAT_WALL_COVER_BONUS,
-  GREAT_WALL_REACH_TILES,
-  GREAT_WALL_SIGHT_TILES,
+  LARGE_WALL_GARRISON_CAP,
+  LARGE_WALL_GARRISON_HP_MUL,
+  LARGE_WALL_REACH_BONUS,
+  LARGE_WALL_SIGHT_BONUS,
   TICK_DT,
   TITAN_ROCKET,
   wreckScrapOf,
@@ -22,13 +23,18 @@ import {
   WALL_COVER_BONUS,
   WALL_COVER_DR,
   coverStrike,
+  FIELD_TURN_MAX,
+  fieldCornerStart,
   fieldLine,
-  fieldLineMax,
+  fieldPath,
   fieldSiteClear,
   fieldTiles,
+  inFieldRect,
+  overlapsFieldIn,
   restampForts,
   sandbagCoverBonus,
 } from "./field.js";
+import { enterGarrison, garrisonMuzzleToward } from "./garrison.js";
 import { toWreck } from "./wreck.js";
 import { destroyEntity, makeEntity, playerTeam, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
@@ -159,7 +165,7 @@ describe("engineer field works", () => {
     const flipped = fieldLine("sandbags", 100, 100, 100 + span.length * 3, 100, -Math.PI / 2);
     assert.ok(Math.abs(Math.sin(flipped[0]!.facing) + 1) < 1e-6);
     const long = fieldLine("sandbags", 0, 0, span.length * 100, 0, 0);
-    assert.equal(long.length, fieldLineMax("sandbags"));
+    assert.equal(long.length, 100, "no cap on how far one drag reaches");
   });
 
   it("builds a dragged wall piece by piece and splits it between engineers", () => {
@@ -945,8 +951,9 @@ function farOpen(state: MatchState): { x: number; y: number } {
   return { x: tileCenter(148, ts), y: tileCenter(148, ts) };
 }
 
-describe("great wall", () => {
-  function greatWall(state: MatchState): { x: number; y: number; wall: ReturnType<typeof makeEntity> } {
+describe("large wall", () => {
+  const span = fieldSpan("greatwall")!;
+  function largeWall(state: MatchState): { x: number; y: number; wall: ReturnType<typeof makeEntity> } {
     clearPatch(state, 26, 24, 24, 20);
     const ts = state.tileSize;
     const x = tileCenter(38, ts);
@@ -957,79 +964,88 @@ describe("great wall", () => {
     return { x, y, wall };
   }
 
-  it("stops vehicles and lets infantry walk onto the top", () => {
+  it("is a concrete wall section nobody walks through, as long as the ordinary wall and a little thicker", () => {
     const { state } = twoPlayerMatch();
-    const { x, y } = greatWall(state);
+    const { x, y } = largeWall(state);
     const tx = worldToTile(x, state.tileSize);
     const ty = worldToTile(y, state.tileSize);
-    assert.equal(walkable(state, tx, ty, "rifleman"), true);
+    assert.equal(walkable(state, tx, ty, "rifleman"), false);
     assert.equal(walkable(state, tx, ty, "warden"), false);
-    const span = fieldSpan("greatwall")!;
-    assert.ok(span.thick > fieldSpan("wall")!.thick * 2, "wider than the concrete wall");
-    assert.ok(span.length > fieldSpan("wall")!.length, "longer than the concrete wall");
+    assert.equal(span.length, fieldSpan("wall")!.length);
+    assert.ok(span.thick > fieldSpan("wall")!.thick);
+    assert.ok(span.thick < fieldSpan("wall")!.thick * 2);
+    assert.equal(catalog("greatwall").name, "Large wall");
   });
 
-  it("gives infantry on top extra health, sight, and reach, and takes them away when he steps off", () => {
+  it("holds the infantry a bunker takes, who fire from a slit on the face toward the aim", () => {
     const { state } = twoPlayerMatch();
-    const { x, y } = greatWall(state);
-    const man = makeEntity(state, "rifleman", "A", x - 120, y);
+    const { x, y, wall } = largeWall(state);
+    const man = makeEntity(state, "rifleman", "A", x - 40, y);
     step(state, TICK_DT);
     const base = catalog("rifleman").hp;
     const reach0 = weaponRangeWorld(state, man);
     const sight0 = sightTilesForEntity(state, man);
-    assert.equal(man.onRampart, undefined);
-    assert.equal(man.hpMax, base);
-
-    man.x = x;
-    man.y = y;
-    man.waypoints = [];
-    step(state, TICK_DT);
-    const bonus = Math.round(base * GREAT_WALL_COVER_BONUS);
-    assert.equal(man.onRampart, true);
-    assert.equal(man.hpMax, base + bonus);
-    assert.equal(man.hp, base + bonus);
-    assert.equal(weaponRangeWorld(state, man), reach0 + GREAT_WALL_REACH_TILES * state.tileSize);
-    assert.equal(sightTilesForEntity(state, man), sight0 + GREAT_WALL_SIGHT_TILES);
-
-    man.x = x - 120;
-    step(state, TICK_DT);
-    assert.equal(man.onRampart, undefined);
-    assert.equal(man.hpMax, base);
-    assert.equal(weaponRangeWorld(state, man), reach0);
+    const res = applyCommand(state, "A", { type: "cmd.garrison", ids: [man.id], buildingId: wall.id });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    for (let i = 0; i < 300 && man.garrisonedIn == null; i++) step(state, TICK_DT);
+    assert.equal(man.garrisonedIn, wall.id, "he walks in");
+    assert.equal(man.hpMax, base * LARGE_WALL_GARRISON_HP_MUL);
+    assert.equal(weaponRangeWorld(state, man), reach0 + LARGE_WALL_REACH_BONUS * state.tileSize);
+    assert.equal(sightTilesForEntity(state, man), sight0 + LARGE_WALL_SIGHT_BONUS);
+    const east = garrisonMuzzleToward(state, man, x + 200, y);
+    assert.ok(east, "a slit faces the aim");
+    assert.ok(!inFieldRect(east!.x, east!.y, x, y, 0, span.length, span.thick), "the round starts outside the concrete");
+    assert.ok(east!.x > x, "on the face toward the target");
+    const west = garrisonMuzzleToward(state, man, x - 200, y);
+    assert.ok(west!.x < x);
+    const gunner = makeEntity(state, "gunner", "A", x - 40, y);
+    assert.equal(enterGarrison(state, gunner, wall), true);
+    const extra = makeEntity(state, "sniper", "A", x - 40, y);
+    assert.equal(enterGarrison(state, extra, wall), false, `holds ${LARGE_WALL_GARRISON_CAP}`);
+    const mortar = makeEntity(state, "mortarman", "A", x - 40, y);
+    assert.equal(enterGarrison(state, mortar, wall), false, "no mortar behind a slit");
+    assert.equal(wall.garrison.length, LARGE_WALL_GARRISON_CAP);
   });
 
   it("gives vehicles nothing for standing beside it", () => {
     const { state } = twoPlayerMatch();
-    const { x, y } = greatWall(state);
-    const tank = makeEntity(state, "warden", "A", x - fieldSpan("greatwall")!.thick / 2 - 14, y);
+    const { x, y } = largeWall(state);
+    const tank = makeEntity(state, "warden", "A", x - span.thick / 2 - 14, y);
     step(state, TICK_DT);
-    assert.equal(tank.onRampart, undefined);
     assert.equal(tank.hpMax, catalog("warden").hp);
   });
 
-  it("takes tank shells that run into it, lets rifle fire over, and lets a shell fired from the top fly off", () => {
+  it("stops every direct round: shells chip the concrete, and a round on a manned section reaches the men", () => {
     const { state } = twoPlayerMatch();
-    const { x, y, wall } = greatWall(state);
+    const { x, y, wall } = largeWall(state);
     const hp = wall.hp;
     shot(state, x + 40, y, -800, 40, "ap");
     tickProjectiles(state, TICK_DT);
     assert.equal(wall.hp, hp - 40);
     const rifle = shot(state, x + 40, y, -800, 12, null);
     tickProjectiles(state, TICK_DT);
-    assert.equal(wall.hp, hp - 40);
-    assert.equal(state.projectiles.some((p) => p.id === rifle.id), true, "the bullet flies on over the rampart");
+    assert.equal(wall.hp, hp - 40, "small arms do not chip it");
+    assert.equal(state.projectiles.some((p) => p.id === rifle.id), false, "the bullet stops on the concrete");
+    const man = makeEntity(state, "rifleman", "A", x - 40, y);
+    assert.equal(enterGarrison(state, man, wall), true);
+    const full = man.hp;
+    for (let i = 0; i < 6 && man.hp === full; i++) {
+      shot(state, x + 40, y, -800, 12, null);
+      tickProjectiles(state, TICK_DT);
+    }
+    assert.ok(man.hp < full, "part of the round comes through the slit");
     state.projectiles.length = 0;
-    const outbound = shot(state, x, y, 800, 40, "ap");
+    const slit = garrisonMuzzleToward(state, man, x + 200, y)!;
+    const outbound = shot(state, slit.x, slit.y, 800, 40, "ap");
     tickProjectiles(state, TICK_DT);
     assert.equal(wall.hp, hp - 40);
-    assert.equal(state.projectiles.some((p) => p.id === outbound.id), true);
+    assert.equal(state.projectiles.some((p) => p.id === outbound.id), true, "his own round flies clear");
   });
 
   it("is laid by an engineer as one line job", () => {
     const { state } = twoPlayerMatch();
     clearPatch(state, 20, 22, 44, 24);
     const ts = state.tileSize;
-    const span = fieldSpan("greatwall")!;
     const x = tileCenter(26, ts);
     const y = tileCenter(36, ts);
     const eng = makeEntity(state, "engineer", "A", x, y - 50);
@@ -1055,6 +1071,152 @@ describe("great wall", () => {
     assert.equal(built().length, 0, "the line waits until the whole job is done");
     ticks(state, 4);
     assert.equal(built().length, 2);
+  });
+});
+
+describe("field lines round corners", () => {
+  const span = fieldSpan("wall")!;
+  const L = span.length;
+  const T = span.thick;
+
+  it("turns a corner into the mitre, keeps the front on the same flank, and drops a leg folded back", () => {
+    const pieces = fieldPath(
+      "wall",
+      [
+        { x: 0, y: 0 },
+        { x: L * 3, y: 0 },
+        { x: L * 3, y: L * 3 },
+      ],
+      Math.PI / 2,
+    );
+    assert.equal(pieces.length, 6);
+    for (let i = 0; i < 3; i++) {
+      assert.ok(Math.abs(pieces[i]!.x - L * (i + 0.5)) < 1e-6);
+      assert.ok(Math.abs(pieces[i]!.y) < 1e-6);
+      assert.ok(Math.abs(Math.sin(pieces[i]!.facing) - 1) < 1e-6, "first leg faces +y, the hint");
+    }
+    const corner = fieldCornerStart(T, L * 3, 0, 1, 0, 0, 1);
+    assert.ok(Math.abs(corner.x - (L * 3 - T / 2)) < 1e-6);
+    assert.ok(Math.abs(corner.y - T / 2) < 1e-6);
+    for (let i = 3; i < 6; i++) {
+      assert.ok(Math.abs(pieces[i]!.x - corner.x) < 1e-6, "second leg starts on the flank of the first");
+      assert.ok(Math.abs(pieces[i]!.y - (corner.y + L * (i - 3 + 0.5))) < 1e-6);
+      assert.ok(Math.abs(Math.cos(pieces[i]!.facing) + 1) < 1e-6, "second leg faces -x: the same flank, inside the turn");
+    }
+    const asEntity = (p: { x: number; y: number; facing: number }) => ({ type: "wall" as const, x: p.x, y: p.y, facing: p.facing, hp: 1 });
+    for (let i = 0; i < pieces.length; i++) {
+      for (let j = i + 1; j < pieces.length; j++) {
+        const a = pieces[i]!;
+        assert.equal(overlapsFieldIn([asEntity(pieces[j]!)], "wall", a.x, a.y, a.facing), false, `pieces ${i} and ${j} touch, no more`);
+      }
+    }
+    const back = fieldPath(
+      "wall",
+      [
+        { x: 0, y: 0 },
+        { x: L * 3, y: 0 },
+        { x: 0, y: 0 },
+      ],
+      Math.PI / 2,
+    );
+    assert.equal(back.length, 3, "a leg folded straight back is dropped");
+    assert.ok(FIELD_TURN_MAX > Math.PI / 2 && FIELD_TURN_MAX < Math.PI);
+    const bend = fieldPath(
+      "wall",
+      [
+        { x: 0, y: 0 },
+        { x: L * 3, y: 0 },
+        { x: L * 3 + L * 3 * Math.cos(2.0), y: L * 3 * Math.sin(2.0) },
+      ],
+      Math.PI / 2,
+    );
+    assert.equal(bend.length, 6, "a sharp bend inside the limit still lays");
+    for (let i = 0; i < bend.length; i++) {
+      for (let j = i + 1; j < bend.length; j++) {
+        const a = bend[i]!;
+        assert.equal(overlapsFieldIn([asEntity(bend[j]!)], "wall", a.x, a.y, a.facing), false, `bend pieces ${i} and ${j}`);
+      }
+    }
+    const single = fieldPath("wall", [{ x: 5, y: 7 }], 0.3);
+    assert.deepEqual(single, [{ x: 5, y: 7, facing: 0.3 }]);
+  });
+
+  it("builds a cornered concrete wall as one job with every section standing", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 20, 22, 44, 24);
+    const ts = state.tileSize;
+    const x = tileCenter(26, ts);
+    const y = tileCenter(36, ts);
+    const eng = makeEntity(state, "engineer", "A", x + 20, y - 40);
+    const res = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [eng.id],
+      structure: "wall",
+      x,
+      y,
+      facing: -Math.PI / 2,
+      path: [
+        { x, y },
+        { x: x + L * 3, y },
+        { x: x + L * 3, y: y - L * 3 },
+      ],
+    });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    assert.equal(eng.fieldQueue?.length, 5);
+    const built = () => [...state.entities.values()].filter((e) => e.type === "wall");
+    for (let i = 0; i < 1500 && built().length < 6; i++) step(state, TICK_DT);
+    assert.equal(built().length, 6, "both legs stand, the corner included");
+    assert.equal(eng.state, "idle");
+  });
+
+  it("builds a cornered sandbag line bag by bag without the corner fouling", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 20, 22, 44, 24);
+    const ts = state.tileSize;
+    const s = fieldSpan("sandbags")!.length;
+    const x = tileCenter(26, ts);
+    const y = tileCenter(36, ts);
+    const eng = makeEntity(state, "engineer", "A", x + 20, y - 40);
+    const res = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [eng.id],
+      structure: "sandbags",
+      x,
+      y,
+      facing: -Math.PI / 2,
+      path: [
+        { x, y },
+        { x: x + s * 3, y },
+        { x: x + s * 3, y: y - s * 3 },
+      ],
+    });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    const built = () => [...state.entities.values()].filter((e) => e.type === "sandbags");
+    for (let i = 0; i < 3000 && built().length < 6; i++) step(state, TICK_DT);
+    assert.equal(built().length, 6);
+  });
+
+  it("sites a cornered line from the Defences tab", () => {
+    const { state } = twoPlayerMatch();
+    deployCore(state);
+    const spot = besideCore(state);
+    const res = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [],
+      structure: "wall",
+      x: spot.x,
+      y: spot.y,
+      facing: Math.PI / 2,
+      path: [
+        { x: spot.x, y: spot.y },
+        { x: spot.x + L * 2, y: spot.y },
+        { x: spot.x + L * 2, y: spot.y + L * 2 },
+      ],
+    });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    const job = state.players.get("A")!.defence;
+    assert.equal(job?.sites?.length, 4);
+    assert.equal(job?.totalTicks, catalog("wall").buildSeconds * 4 * 10);
   });
 });
 

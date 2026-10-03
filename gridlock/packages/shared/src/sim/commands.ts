@@ -56,6 +56,19 @@ import { landJet, takeOff } from "./jet.js";
 import { aimSpotlightPatrol, hasSpotlight, spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, MatchState, QueueableCommand, Vec } from "./types.js";
 
+/** The corners of a `cmd.field` line, or undefined when the message has none worth reading. */
+function fieldPathOf(path: unknown): { x: number; y: number }[] | undefined {
+  if (!Array.isArray(path) || path.length === 0) return undefined;
+  const out: { x: number; y: number }[] = [];
+  for (const p of path) {
+    if (!p || typeof p !== "object") return undefined;
+    const { x, y } = p as { x?: unknown; y?: unknown };
+    if (typeof x !== "number" || typeof y !== "number" || !Number.isFinite(x) || !Number.isFinite(y)) return undefined;
+    out.push({ x, y });
+  }
+  return out;
+}
+
 export type CmdResult = { ok: true } | { ok: false; code: ErrorCode; message: string };
 
 const ok = (): CmdResult => ({ ok: true });
@@ -178,7 +191,7 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       if (!Array.isArray(msg.ids) || msg.ids.length === 0) {
         if (!isYardField(msg.structure)) return wrap("That structure is not ready.", "invalid_place");
         return wrap(
-          placeBaseField(state, playerId, msg.structure, msg.x, msg.y, msg.facing, msg.x2, msg.y2),
+          placeBaseField(state, playerId, msg.structure, msg.x, msg.y, msg.facing, msg.x2, msg.y2, fieldPathOf(msg.path)),
           "invalid_place",
         );
       }
@@ -193,6 +206,7 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
           msg.facing,
           msg.x2,
           msg.y2,
+          fieldPathOf(msg.path),
         ),
         "invalid_place",
       );

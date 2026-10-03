@@ -8,6 +8,7 @@ import {
   catalog,
   garrisonWindowLift,
   ISO_ELEVATION,
+  largeWallSlit,
   pickGarrisonMuzzle,
   type EntityType,
   type EntityView,
@@ -40,6 +41,8 @@ export interface ShotHost {
   tileY: number;
   tileW: number;
   tileH: number;
+  /** Set on a Large wall section, whose slits sit on its own rotated flanks. */
+  facing?: number;
 }
 
 export function shotHostFrom(
@@ -102,6 +105,7 @@ export function garrisonMouthPoint(
     const out = (host.radius > 0 ? host.radius : 16) + HULL_MOUTH_OUT;
     return { x: host.x + Math.cos(ang) * out, y: host.y + Math.sin(ang) * out };
   }
+  if (host.type === "greatwall") return largeWallSlit({ x: host.x, y: host.y, facing: host.facing ?? 0 }, aimX, aimY, salt);
   const w = pickGarrisonMuzzle(host as never, tileSize, ang, salt);
   const out = FACE_OUT[w.face];
   return { x: w.x + out.x * 4, y: w.y + out.y * 4 };
@@ -124,6 +128,7 @@ export function claimsShot(host: ShotHost, origin: { x: number; y: number }, til
     const reach = (host.radius > 0 ? host.radius : 16) + HULL_MOUTH_OUT + 24;
     return Math.hypot(origin.x - host.x, origin.y - host.y) <= reach;
   }
+  if (host.type === "greatwall") return Math.hypot(origin.x - host.x, origin.y - host.y) <= 40;
   const x0 = host.tileX * tileSize;
   const y0 = host.tileY * tileSize;
   const pad = 48;

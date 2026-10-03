@@ -386,8 +386,6 @@ export interface Entity {
   coverBonus: number;
   /** Part of `coverBonus` granted by a concrete wall. Overhead hits ignore it. */
   wallCover: number;
-  /** Infantry standing on an intact Great Wall: more health, sight, and reach. */
-  onRampart?: boolean;
   /** Seconds spent on the current build or repair. */
   work: number;
   /** Shift-queued orders, run one after another once the current order ends. Cleared by any unqueued order. */
