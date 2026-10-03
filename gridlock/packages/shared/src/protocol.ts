@@ -15,7 +15,7 @@ import type {
   YardFieldType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 73;
+export const PROTOCOL_VERSION = 74;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -302,6 +302,19 @@ export interface YouState {
   placingType: BuildingType | YardFieldType | null;
   alive: boolean;
   hqId: number | null;
+  /** A Radar Station stands on your side. False leaves the command bar's radar panel dark. */
+  radar: boolean;
+}
+
+/**
+ * An enemy aircraft the radar hears but nobody sees: in the air, inside a
+ * standing Radar Station's sweep, off the fog mask. World pixels. The panel
+ * blinks it; the field shows nothing.
+ */
+export interface RadarContactView {
+  id: number;
+  x: number;
+  y: number;
 }
 
 export interface ScrapCell {
@@ -513,6 +526,8 @@ export interface MatchSnapshot {
    * alternate hidden / lit starting with hidden. See `decodeVisionRuns`.
    */
   vision?: number[];
+  /** Radar contacts for `youPlayerId`. Omitted while no Radar Station stands on your side. */
+  radar?: RadarContactView[];
   winner?: { playerId: string; team: number };
 }
 

@@ -3,8 +3,10 @@ import {
   clampGameSpeed,
   GAME_SPEED_DEFAULT,
   garrisonDiesWithHostOf,
+  hasCrit,
   isAircraftType,
   isInfantryType,
+  isTransportType,
   leavesWreck,
   NEUTRAL_OWNER,
   START_SCRAP,
@@ -16,7 +18,7 @@ import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
 import type { ImpactView, RoomState } from "../protocol.js";
 import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter } from "./geo.js";
 import { aircraftDown, beginAircraftCrash, isAirborne, tickAir } from "./air.js";
-import { loseRiders, syncPlaneRiders, tickChutes, tickCrates, tickMines, tickPlaneBoarding } from "./airdrop.js";
+import { ejectParatroopers, loseRiders, syncPlaneRiders, tickChutes, tickCrates, tickMines, tickPlaneBoarding } from "./airdrop.js";
 import { tickDrones } from "./drone.js";
 import { tickJets } from "./jet.js";
 import { tickCapture } from "./capture.js";
@@ -193,12 +195,19 @@ export function stepMatch(state: MatchState, dt = TICK_DT): void {
 function reapDead(state: MatchState): void {
   const dead: number[] = [];
   let madeWreck = false;
+  // A wrecked engine destroys an aircraft at once. It does not limp on.
+  for (const e of state.entities.values()) {
+    if (e.hp <= 0 || e.wreck || e.air?.phase === "crash" || e.drone) continue;
+    if (isAircraftType(e.type) && hasCrit(e, "engine")) e.hp = 0;
+  }
   for (const e of state.entities.values()) {
     if (e.hp > 0) continue;
     if (e.air?.phase === "crash") {
       e.hp = 1;
       continue;
     }
+    // The stick bails out before the airframe starts down or becomes a wreck.
+    if (!e.wreck && isTransportType(e.type)) ejectParatroopers(state, e);
     if (!e.wreck && e.air && isAircraftType(e.type) && !e.drone && isAirborne(e)) {
       beginAircraftCrash(e);
       continue;

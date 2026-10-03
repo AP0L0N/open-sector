@@ -138,6 +138,14 @@ export const CRIT_LEG_SPEED = STANCE_SPEED.crawl;
 export const SWIM_SPEED = 0.4;
 /** Share of each soldier's authored walk. 0.7 is about 30% slower on foot. */
 export const INFANTRY_PACE = 0.7;
+/**
+ * Share of every unit's current move pace. Infantry stack this on INFANTRY_PACE.
+ * Hulls, walkers, aircraft, the drone, and the jump jet's flight use it once.
+ * 0.7 is another 30% slower.
+ */
+export const UNIT_PACE = 0.7;
+/** Authoring tiles per second after UNIT_PACE. Buildings stay at 0. */
+const paced = (tiles: number): number => t(tiles * UNIT_PACE);
 /** A* step-cost multiplier on water so troops prefer a short land detour. */
 export const WATER_PATH_COST = 2.5;
 /** Extra world pixels between unit reserved radii on a group move. */
@@ -450,6 +458,7 @@ export type EntityType =
   | "tower"
   | "ram"
   | "research"
+  | "radar"
   | "stuka"
   | "fw190"
   | "bv222"
@@ -468,7 +477,7 @@ export type EntityType =
   | "greatwall"
   | "teeth"
   | "trench";
-export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "ram" | "bunker" | "tower" | "research";
+export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "ram" | "bunker" | "tower" | "research" | "radar";
 /** Placed by an engineer. Sandbags and walls can also be queued from the Defences tab. */
 export type FieldStructureType = "sandbags" | "wall" | "greatwall" | "teeth" | "trench";
 export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "wall", "greatwall", "teeth", "trench"];
@@ -512,7 +521,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
   deploy: 2,
 };
 
-export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "tower", "research"];
+export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "tower", "research", "radar"];
 export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
@@ -647,7 +656,7 @@ export interface CatalogEntry {
   /** Flies. Parks on an Airfield pad, ignores ground collision and paths. */
   aircraft?: boolean;
   /**
-   * Radar-laid mount (the CIWS, the RAM). Fires on its own at units only, planes first,
+   * Radar-laid mount (the CIWS, the RAM). Fires on its own at units only, planes and paratroopers first,
    * lays on a plane with CIWS_AIR_SPREAD instead of AIR_TARGET_SPREAD, cranks
    * the gun to any height, and shoots rockets out of the air.
    */
@@ -1376,7 +1385,7 @@ export const AIR_TAXI_SPEED = 0.25;
 /** Turn-rate multiple for a plane pivoting on the ground. */
 export const AIR_GROUND_TURN_MUL = 1.5;
 /** Cruise height. Above every tree, house, and hill lip. */
-export const AIR_CRUISE_ALT = 16;
+export const AIR_CRUISE_ALT = 24;
 /** Height the dive pulls out at and lets the bomb go. */
 export const AIR_RELEASE_ALT = 5;
 /** Height a strafing pass (belts only, no bomb) settles at. */
@@ -1540,7 +1549,7 @@ export const BV222_TROOPS = 10;
 export const AIR_DROP_INFO: Record<AirDrop, { name: string; blurb: string }> = {
   mines: { name: "Mines", blurb: "A canister of mines. It bursts over the point and scatters them; they wait for any feet or tracks, friend or foe. You and your allies see each one. The enemy does not — it only goes off when something runs over it. A supply truck can disable one of yours for scrap." },
   crate: { name: "Crate", blurb: "A supply crate on a parachute. Your units standing at it take ammo and patch up." },
-  troops: { name: "Paratroops", blurb: "Infantry board on the hardstand from any load (right-click the plane); that selects paratroops, and no other load can be chosen while anyone is aboard. Other ground units board once paratroops is selected. They jump over the point and hang under canopies until they land." },
+  troops: { name: "Paratroops", blurb: "Infantry board on the hardstand from any load (right-click the plane); that selects paratroops, and no other load can be chosen while anyone is aboard. Other ground units board once paratroops is selected. They jump over the point and hang under canopies until they land. Rifles, machine guns, and anti-aircraft guns can reach them in the air. If the plane is destroyed, everyone still aboard bails out first." },
 };
 /** Height of the drop run: low and level, so a crate lands where it was meant to and the jumpers are not long in the air. */
 export const BV222_DROP_ALT = 9;
@@ -1698,20 +1707,40 @@ export const SPOTLIGHT_ON_DAYLIGHT = 0.5;
 export const SPOTLIGHT_REACH_TILES = INFANTRY_SIGHT_TILES + TOWER_SIGHT_BONUS;
 /** Half the beam's width. */
 export const SPOTLIGHT_HALF_DEG = 14;
-export const SPOTLIGHT_TURN_DEG_PER_SEC = 60;
+/** How fast the cab lamp turns, for Rotate and for a patrol sweep. */
+export const SPOTLIGHT_TURN_DEG_PER_SEC = 18;
 /**
  * Armored ground hulls and the Cyborg run a headlight in the dark. Down the
  * hull's nose it gives back the unit's own daylight sight; everywhere else
- * the night ring stands.
+ * the night ring stands. The Mammoth adds two more, one to each side, and
+ * those two drift through a small arc.
  */
 export const HEADLIGHT_HALF_DEG = 20;
 /** Lamp headings snap to this step for sight, so a turning hull does not repaint every degree. */
 export const LAMP_HEADING_STEP_DEG = 3;
+/** Mammoth lamps, counting the nose light. The other two sit on the flanks. */
+export const MAMMOTH_LAMPS = 3;
+/** Degrees off the nose where each flank lamp is mounted. */
+export const MAMMOTH_LAMP_STEP_DEG = 90;
+/** Degrees a flank lamp swings either side of its mount. A small arc. */
+export const MAMMOTH_LAMP_SWING_DEG = 18;
+/** Seconds for one full swing of a flank lamp, out and back. */
+export const MAMMOTH_LAMP_PERIOD_SECONDS = 12;
+
+/**
+ * Radar Station. A dish on a lattice mast beside an ops hut. While one stands
+ * on your side, the command bar's radar panel paints the map; without it the
+ * panel is dark and the map has to be read from the field. The dish also
+ * sweeps far past anyone's eyes for aircraft: an enemy plane or drone in the
+ * air within RADAR_RANGE_TILES that nobody can see shows as a blinking
+ * contact on the panel, and nowhere else. The ground stays as dark as before.
+ */
+export const RADAR_RANGE_TILES = t(56);
 
 /**
  * CIWS. A stationary radar-laid 20mm gatling on a small concrete pad. It needs
  * no crew and no orders: it swings onto the nearest enemy unit it can hurt,
- * planes first, and fires 1,800 rounds a minute. Most of them miss: on a
+ * planes and paratroopers first, and fires 1,800 rounds a minute. Most of them miss: on a
  * plane the stream sprays wide and high, and only a long pass tends to bring
  * one down. Tank plate shrugs the rounds off, so it leaves tanks alone. A Titan
  * rocket that flies into its reach draws a short burst that seldom bursts it. The belt does not refill by itself —
@@ -1867,7 +1896,7 @@ export const APOCALYPSE_TWIN_WINDOW = 12 * TICK_DT;
 /**
  * RAM. A radar-laid launcher of short rockets on the same pad as the CIWS. Like
  * the CIWS it needs no orders: it swings onto the nearest enemy unit it can
- * hurt, planes first, and leaves tanks and buildings alone. It fires a barrage
+ * hurt, planes and paratroopers first, and leaves tanks and buildings alone. It fires a barrage
  * like the Nebelwerfer's — one or two rockets at a time, a salvo of eight —
  * but short and tight: the rockets fly straight and fast and scatter a
  * fraction as wide. Aimed at a plane they burst at its height. An incoming
@@ -1932,7 +1961,7 @@ export const DRONE_RECHARGE_PER_SEC = DRONE_BATTERY_SECONDS / 20;
 export const DRONE_LAUNCH_MIN_SECONDS = 15;
 /** Seconds to put a new drone together after one is lost. */
 export const DRONE_REBUILD_SECONDS = 75;
-/** Surveillance height. Above the Stuka's cruise, out of rifle reach. */
+/** Surveillance height. Above DRONE_HIGH_ALT, so only anti-air guns reach it. */
 export const DRONE_SURVEIL_ALT = 22;
 /** Search & Destroy height. Low enough for rifles and rocket bursts. */
 export const DRONE_STRIKE_ALT = 5;
@@ -1991,8 +2020,8 @@ export const JET_REFUEL_PER_SEC = JET_FUEL_SECONDS / 16;
 export const JET_ALT = 7;
 /** Elevation units per second up or down. */
 export const JET_CLIMB_PER_SEC = 9;
-/** Air speed. Faster than he runs. */
-export const JET_FLY_TILES_PER_SEC = t(4);
+/** Air speed. Faster than he runs. Same UNIT_PACE cut as the walk. */
+export const JET_FLY_TILES_PER_SEC = paced(4);
 
 export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   rifle: RIFLE,
@@ -2293,7 +2322,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 14,
-    moveTilesPerSec: t(1.3),
+    moveTilesPerSec: paced(1.3),
     turnDegPerSec: 120,
     turnInPlace: true,
     rangeTiles: 0,
@@ -2454,6 +2483,28 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Titan, Nebelwerfer, and Drone Op.",
   },
+  radar: {
+    type: "radar",
+    kind: "building",
+    name: "Radar Station",
+    letter: "R",
+    cost: 1000,
+    buildSeconds: 20,
+    hp: 800,
+    power: -40,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "Ops hut and a dish on a lattice mast. Lights the radar panel in the command bar: without a standing Radar Station the panel is dark. The dish sweeps far past anyone's eyes for aircraft. An enemy plane or drone in the air that nobody can see shows as a blinking contact on the panel only; nothing changes on the field until someone sees it.",
+  },
   ciws: {
     type: "ciws",
     kind: "building",
@@ -2483,7 +2534,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shotsPerTick: CIWS_SHOTS_PER_TICK,
     belt: CIWS_BELT,
     radarLaid: true,
-    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, and reaches farther for a plane than for anything on the ground. Against a plane it lays one stream of rounds, a tracer in every few, that walks on and off the airframe: often enough to bring one down on a pass. About a second and a half on the trigger overheats the barrels, and it falls silent while they cool. Max range reaches half as far again, but out there the fire scatters wide. It tries to burst incoming rockets, and rarely does — a RAM is the missile screen. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, and reaches farther for a plane than for anything on the ground. Against a plane it lays one stream of rounds, a tracer in every few, that walks on and off the airframe: often enough to bring one down on a pass. About a second and a half on the trigger overheats the barrels, and it falls silent while they cool. Max range reaches half as far again, but out there the fire scatters wide. It tries to burst incoming rockets, and rarely does — a RAM is the missile screen. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
   },
   bunker: {
     type: "bunker",
@@ -2581,7 +2632,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: RAM_ROCKET_AMMO,
     rocketRack: RAM_ROCKET,
-    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, in barrages of ${RAM_SALVO} short, accurate rockets, and sends an interceptor at incoming rockets that bursts most of them in the air. Shorter reach than a Nebelwerfer, longer than a CIWS. Max range reaches half as far again, but out there the rockets scatter wide. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, in barrages of ${RAM_SALVO} short, accurate rockets, and sends an interceptor at incoming rockets that bursts most of them in the air. Shorter reach than a Nebelwerfer, longer than a CIWS. Max range reaches half as far again, but out there the rockets scatter wide. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
   },
   sandbags: {
     type: "sandbags",
@@ -2732,7 +2783,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(2.2 * INFANTRY_PACE),
+    moveTilesPerSec: paced(2.2 * INFANTRY_PACE),
     turnDegPerSec: 1800,
     rangeTiles: RIFLE_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2756,7 +2807,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.65 * INFANTRY_PACE),
+    moveTilesPerSec: paced(1.65 * INFANTRY_PACE),
     turnDegPerSec: 1400,
     rangeTiles: MG42_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2781,7 +2832,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.8 * INFANTRY_PACE),
+    moveTilesPerSec: paced(1.8 * INFANTRY_PACE),
     turnDegPerSec: 1600,
     rangeTiles: SCOPED_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2807,7 +2858,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.65 * INFANTRY_PACE),
+    moveTilesPerSec: paced(1.65 * INFANTRY_PACE),
     turnDegPerSec: 1400,
     rangeTiles: PTRD_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2833,7 +2884,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.6 * INFANTRY_PACE),
+    moveTilesPerSec: paced(1.6 * INFANTRY_PACE),
     turnDegPerSec: 1400,
     rangeTiles: LAUNCHER_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2858,7 +2909,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.7 * INFANTRY_PACE),
+    moveTilesPerSec: paced(1.7 * INFANTRY_PACE),
     turnDegPerSec: 1500,
     rangeTiles: FLAMER_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2883,7 +2934,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.5 * INFANTRY_PACE),
+    moveTilesPerSec: paced(1.5 * INFANTRY_PACE),
     turnDegPerSec: 1200,
     rangeTiles: MORTAR_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2908,7 +2959,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(2 * INFANTRY_PACE),
+    moveTilesPerSec: paced(2 * INFANTRY_PACE),
     turnDegPerSec: 1600,
     rangeTiles: 0,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2930,7 +2981,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(2 * INFANTRY_PACE),
+    moveTilesPerSec: paced(2 * INFANTRY_PACE),
     turnDegPerSec: 1600,
     rangeTiles: 0,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2952,7 +3003,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 11,
-    moveTilesPerSec: t(1.9),
+    moveTilesPerSec: paced(1.9),
     turnDegPerSec: 140,
     rangeTiles: 0,
     sightTiles: t(4),
@@ -2980,7 +3031,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 12,
-    moveTilesPerSec: t(1.45),
+    moveTilesPerSec: paced(1.45),
     turnDegPerSec: 85,
     rangeTiles: TIGER_RANGE_TILES,
     sightTiles: t(8),
@@ -3016,7 +3067,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 15,
-    moveTilesPerSec: t(1.1),
+    moveTilesPerSec: paced(1.1),
     turnDegPerSec: 60,
     rangeTiles: TIGER_RANGE_TILES,
     sightTiles: t(8),
@@ -3055,7 +3106,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 10,
-    moveTilesPerSec: t(1.55),
+    moveTilesPerSec: paced(1.55),
     turnDegPerSec: 60,
     rangeTiles: STUG_RANGE_TILES,
     sightTiles: t(7),
@@ -3093,7 +3144,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 13,
-    moveTilesPerSec: t(1.0),
+    moveTilesPerSec: paced(1.0),
     turnDegPerSec: 38,
     rangeTiles: JAGDTIGER_RANGE_TILES,
     sightTiles: t(7),
@@ -3130,7 +3181,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 8,
-    moveTilesPerSec: t(1.3),
+    moveTilesPerSec: paced(1.3),
     turnDegPerSec: 160,
     rangeTiles: WALKER_RANGE_TILES,
     sightTiles: t(9),
@@ -3165,7 +3216,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.6 * INFANTRY_PACE),
+    moveTilesPerSec: paced(1.6 * INFANTRY_PACE),
     turnDegPerSec: 900,
     rangeTiles: CYBORG_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -3190,7 +3241,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 13,
-    moveTilesPerSec: t(1.15),
+    moveTilesPerSec: paced(1.15),
     turnDegPerSec: 70,
     rangeTiles: TITAN_RANGE_TILES,
     sightTiles: t(8),
@@ -3230,7 +3281,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 17,
-    moveTilesPerSec: t(0.75),
+    moveTilesPerSec: paced(0.75),
     turnDegPerSec: 45,
     rangeTiles: MAMMOTH_MG_RANGE_TILES,
     sightTiles: t(7),
@@ -3260,7 +3311,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonFullArms: true,
     garrisonTypes: BUNKER_TYPES,
     garrisonDiesWithHost: true,
-    blurb: `Armored battle platform on four legs. Very slow, very thick plate on every face, and in water it is thirty percent slower, sunk to the waist so only the body shows. Its own weapon is a twin machine gun under the cab that swings only a little either side of the nose, and falls silent in water. It carries ${MAMMOTH_GARRISON_CAP} of the infantry a Bunker takes, and every one of them fires out of the slits along its flanks, even while it wades. Force attack on the hull aims every soldier inside who can reach that point; they stay aboard. Nothing reaches them while the hull holds — but if it is destroyed, everyone inside dies with it.`,
+    blurb: `Armored battle platform on four legs. Very slow, very thick plate on every face, and in water it is thirty percent slower, sunk to the waist so only the body shows. Its own weapon is a twin machine gun under the cab that swings only a little either side of the nose, and falls silent in water. It carries ${MAMMOTH_GARRISON_CAP} of the infantry a Bunker takes, and every one of them fires out of the slits along its flanks, even while it wades. Force attack on the hull aims every soldier inside who can reach that point; they stay aboard. Nothing reaches them while the hull holds — but if it is destroyed, everyone inside dies with it. Nothing throws a track. A hit in the rear can still wreck the engine and stop it. At night a lamp on the nose and one on each flank light the ground out to its daylight sight. The flank lamps drift slowly through a small arc.`,
   },
   nebelwerfer: {
     type: "nebelwerfer",
@@ -3274,7 +3325,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 12,
-    moveTilesPerSec: t(1.9),
+    moveTilesPerSec: paced(1.9),
     turnDegPerSec: 120,
     rangeTiles: NEBELWERFER_RANGE_TILES,
     sightTiles: t(6),
@@ -3309,7 +3360,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 10,
-    moveTilesPerSec: t(0.55),
+    moveTilesPerSec: paced(0.55),
     turnDegPerSec: 30,
     rangeTiles: ARTILLERY_RANGE_TILES,
     sightTiles: t(5),
@@ -3340,7 +3391,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 11,
-    moveTilesPerSec: t(2.15),
+    moveTilesPerSec: paced(2.15),
     turnDegPerSec: 150,
     rangeTiles: 0,
     sightTiles: t(6),
@@ -3371,7 +3422,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 12,
-    moveTilesPerSec: t(5),
+    moveTilesPerSec: paced(5),
     turnDegPerSec: 120,
     rangeTiles: STUKA_MG.rangeTiles,
     sightTiles: t(10),
@@ -3384,7 +3435,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: STUKA_MG.spreadDeg,
     aircraft: true,
     wreckHp: 46,
-    blurb: "Dive bomber. One SC 250 per sortie, two wing MGs for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands at its Airfield to refuel and rearm. On guard it comes back to the same area once the bomb, the belts, and the tank are full. Shot down, it falls trailing smoke and crashes as a wreck.",
+    blurb: "Dive bomber. One SC 250 per sortie, two wing MGs for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands at its Airfield to refuel and rearm. On guard it comes back to the same area once the bomb, the belts, and the tank are full. It has no tracks to lose. A hit that wrecks the engine brings it down at once: it falls trailing smoke and crashes as a wreck.",
   },
   /** Fw 190 fighter. Lives on an Airfield pad. */
   fw190: {
@@ -3399,7 +3450,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 11,
-    moveTilesPerSec: t(6.5),
+    moveTilesPerSec: paced(6.5),
     turnDegPerSec: 150,
     rangeTiles: FW190_BARRAGE_TILES,
     sightTiles: t(10),
@@ -3412,7 +3463,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: FW190_CANNON.spreadDeg,
     aircraft: true,
     wreckHp: 40,
-    blurb: `Fighter. Two 30 mm cannon, one under each wing, and no bomb. ${FW190_BARRAGES} barrages a sortie: on each pass it lines up on the target and lays two straight lines of rounds through it, one from each wing, then comes round for the next. Fired from above, the rounds come down through a tank's thin roof, so even the heaviest hull bleeds. It chases enemy planes out of the sky the same way. Flies faster and turns tighter than the Stuka. Lands at its Airfield to refuel and rearm. On guard it comes back to the same area once all ${FW190_BARRAGES} barrages and the tank are full. Shot down, it falls trailing smoke and crashes as a wreck.`,
+    blurb: `Fighter. Two 30 mm cannon, one under each wing, and no bomb. ${FW190_BARRAGES} barrages a sortie: on each pass it lines up on the target and lays two straight lines of rounds through it, one from each wing, then comes round for the next. Fired from above, the rounds come down through a tank's thin roof, so even the heaviest hull bleeds. It chases enemy planes out of the sky the same way. Flies faster and turns tighter than the Stuka. Lands at its Airfield to refuel and rearm. On guard it comes back to the same area once all ${FW190_BARRAGES} barrages and the tank are full. It has no tracks to lose. A hit that wrecks the engine brings it down at once: it falls trailing smoke and crashes as a wreck.`,
   },
   /** BV 222 transport flying boat. Lives on an Airfield pad. */
   bv222: {
@@ -3427,7 +3478,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 16,
-    moveTilesPerSec: t(4.2),
+    moveTilesPerSec: paced(4.2),
     turnDegPerSec: 60,
     rangeTiles: 0,
     sightTiles: t(9),
@@ -3437,7 +3488,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     aircraft: true,
     wreckHp: 80,
-    blurb: `Six-engined transport flying boat. No guns. Its bay takes one load, chosen on the pad: a canister of ${CLUSTER_MINES} mines that scatter over the ground and wait for anyone, friend or foe (the enemy never sees them), a supply crate on a parachute that refills ammo and patches up whoever stands at it, or up to ${BV222_TROOPS} ground units. Infantry board on the hardstand from any load; that selects paratroops, and the bay stays on paratroops while anyone is aboard. They jump over the point and hang under canopies — where rifles and machine guns can reach them — until they touch down. Hold Ctrl and click, or Force attack, to drop whatever is loaded. Slow and big. Shot down, it falls trailing smoke and crashes as a wreck, and everyone still aboard goes with it. Lands at its Airfield to refuel and reload.`,
+    blurb: `Six-engined transport flying boat. No guns. Its bay takes one load, chosen on the pad: a canister of ${CLUSTER_MINES} mines that scatter over the ground and wait for anyone, friend or foe (the enemy never sees them), a supply crate on a parachute that refills ammo and patches up whoever stands at it, or up to ${BV222_TROOPS} ground units. Infantry board on the hardstand from any load; that selects paratroops, and the bay stays on paratroops while anyone is aboard. They jump over the point and hang under canopies — where rifles, machine guns, and anti-aircraft guns can reach them — until they touch down. Hold Ctrl and click, or Force attack, to drop whatever is loaded. Slow and big. It has no tracks to lose. Shot down in the air, or with its engine wrecked there, everyone still aboard bails out under canopies and then it falls trailing smoke and crashes as a wreck. On the pad the same hit puts them on the grass and the plane is gone. Lands at its Airfield to refuel and reload.`,
   },
   droneop: {
     type: "droneop",
@@ -3451,7 +3502,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.6 * INFANTRY_PACE),
+    moveTilesPerSec: paced(1.6 * INFANTRY_PACE),
     turnDegPerSec: 1600,
     rangeTiles: 0,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -3473,7 +3524,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(2.1 * INFANTRY_PACE),
+    moveTilesPerSec: paced(2.1 * INFANTRY_PACE),
     turnDegPerSec: 1800,
     rangeTiles: ASSAULT_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -3498,7 +3549,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 6,
-    moveTilesPerSec: t(3.5),
+    moveTilesPerSec: paced(3.5),
     turnDegPerSec: 360,
     rangeTiles: 0,
     sightTiles: t(9),
@@ -3656,6 +3707,14 @@ export function isArmoredType(type: EntityType): boolean {
 /** Tiger and StuG. The Walker has legs, and the Mauler is not a tracked hull. */
 export function hasTracks(type: EntityType): boolean {
   return catalog(type).tracked === true;
+}
+
+/**
+ * A side hit, blast, or mine can throw tracks. The Mammoth and aircraft have
+ * none to lose. A rear hit can still wreck their engines.
+ */
+export function trackCritAllowed(type: EntityType): boolean {
+  return type !== "mammoth" && !isAircraftType(type);
 }
 
 export function armorLabel(type: EntityType): string | null {

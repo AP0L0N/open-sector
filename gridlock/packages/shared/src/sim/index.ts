@@ -47,6 +47,7 @@ export {
 } from "./garrison.js";
 export { wantsCapture, captureDurationSec } from "./capture.js";
 export { powerOf, productionSpeed } from "./power.js";
+export { radarContacts, radarOnline, radarStations } from "./radar.js";
 export { producerType } from "./train.js";
 export { airfieldPadWorld, airfieldRunway, isAirborne, PARK_HEADING, reachesAircraft, RUNWAY_HEADING } from "./air.js";
 export { droneIsHigh, droneModeAlt } from "./drone.js";
@@ -99,16 +100,22 @@ export {
 export { canScout, setScoutOut, hideScout, woundScout } from "./scout.js";
 export {
   DAY_CYCLE_SECONDS,
+  CLOCK_OPEN_HOUR,
   daylightAt,
+  matchClock,
+  phaseStartText,
+  clockMarkLine,
   nightReachMul,
   nightTiles,
   spotlightsOn,
   hasSpotlight,
   hasHeadlight,
   headlightLit,
+  hullLamps,
   spotlightManned,
   spotFacingOf,
 } from "./night.js";
+export type { DayPhase, HullLamp, MatchClock } from "./night.js";
 export {
   FIELD_TURN_MAX,
   fieldCornerStart,

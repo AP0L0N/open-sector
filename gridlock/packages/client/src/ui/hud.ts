@@ -23,8 +23,10 @@ import {
   isAirDrop,
   isTransportType,
   catalog,
+  clockMarkLine,
   colorHex,
   getMap,
+  matchClock,
   hasAmmo,
   hasMg,
   gatlingHeatOf,
@@ -149,9 +151,18 @@ export function mountBattlefield(
   body.append(canvas, queue, commands);
 
   const side = el("aside", { class: "sidebar" });
-  side.append(el("h3", { text: "Radar" }));
+  const radarHead = el("div", { class: "radar-head" });
+  const clock = el("div", {
+    class: "match-clock",
+    attrs: { id: "match-clock", "data-phase": "day" },
+  });
+  clock.append(
+    el("span", { class: "match-clock-time", text: "06:00" }),
+    el("span", { class: "match-clock-next", text: "NIGHT AT 20:30" }),
+  );
+  radarHead.append(el("h3", { text: "Radar" }), clock);
   const mini = el("canvas", { attrs: { id: "minimap" } });
-  side.append(mini);
+  side.append(radarHead, mini);
 
   const tabs = el("div", { class: "group-tabs", attrs: { id: "group-tabs", role: "tablist" } });
   const heading = el("h3", { class: "group-heading", attrs: { id: "group-heading" } });
@@ -506,6 +517,7 @@ export function paintBattleHud(ctx: Ctx): void {
   }
   const top = document.getElementById("topbar");
   top?.classList.toggle("low-power", m.you.lowPower);
+  paintMatchClock(m.tick);
 
   const coreUp = m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === "core");
   const armed = readyCancelArmed ? laneQueue(m, readyCancelArmed) : null;
@@ -592,6 +604,22 @@ export function paintBattleHud(ctx: Ctx): void {
   paintConfig(ctx, viewRef);
   paintQuickActions(ctx, viewRef);
   paintGarrisonRoster(ctx, viewRef);
+}
+
+/** Digital match clock beside Radar. The face is the sim day; the line under it names when night, dawn, or morning starts. */
+function paintMatchClock(tick: number): void {
+  const node = document.getElementById("match-clock");
+  if (!node) return;
+  const clock = matchClock(tick);
+  const time = node.querySelector(".match-clock-time");
+  const next = node.querySelector(".match-clock-next");
+  if (time && time.textContent !== clock.text) time.textContent = clock.text;
+  const mark = clockMarkLine(clock.phase).toUpperCase();
+  if (next && next.textContent !== mark) next.textContent = mark;
+  if (node.dataset.phase !== clock.phase) node.dataset.phase = clock.phase;
+  const label = `${clock.text}, ${clock.phase}. ${mark}.`;
+  if (node.title !== label) node.title = label;
+  if (node.getAttribute("aria-label") !== label) node.setAttribute("aria-label", label);
 }
 
 function paintInspect(ctx: Ctx, view: MapView | null): void {
@@ -979,6 +1007,7 @@ const TYPE_ORDER: EntityType[] = [
   "airfield",
   "ciws",
   "research",
+  "radar",
   "bunker",
   "tower",
   "ram",
@@ -1572,14 +1601,17 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   const lamps = buildings.filter((e) => hasSpotlight(e.type) && e.spotFacing != null);
   if (units.length === 0 && buildings.length === 0 && houses.length === 0) return out;
 
-  if (units.length || mounts.length || garrisonForce.length) {
+  if (units.length || mounts.length || garrisonForce.length || lamps.length) {
+    const stopTitle = units.length
+      ? `Halt selected units (${STOP_HOTKEY.toUpperCase()})`
+      : lamps.length && mounts.length === 0 && garrisonForce.length === 0
+        ? `Stop the spotlight (${STOP_HOTKEY.toUpperCase()})`
+        : `Drop the forced aim and pick targets again (${STOP_HOTKEY.toUpperCase()})`;
     out.push({
       slot: "stop",
       act: "stop",
       label: "Stop",
-      title: units.length
-        ? `Halt selected units (${STOP_HOTKEY.toUpperCase()})`
-        : `Drop the forced aim and pick targets again (${STOP_HOTKEY.toUpperCase()})`,
+      title: stopTitle,
     });
   }
   if (units.length) {
@@ -1590,11 +1622,16 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: `Move, halt to fire (${ATTACK_MOVE_HOTKEY.toUpperCase()})`,
       on: !!view?.attackMoveMode,
     });
+  }
+  if (units.length || lamps.length) {
+    const patrolTitle = units.length
+      ? `Place points, right-click to finish. They walk them and back, and fight enemies on that path (${PATROL_HOTKEY.toUpperCase()})${lamps.length ? " A tower turns its spotlight along the same points." : ""}`
+      : `Place points, right-click to finish. The spotlight turns toward each point, then back (${PATROL_HOTKEY.toUpperCase()})`;
     out.push({
       slot: "patrol",
       act: "patrol",
       label: "Patrol",
-      title: `Place points, right-click to finish. They walk them and back, and fight enemies on that path (${PATROL_HOTKEY.toUpperCase()})`,
+      title: patrolTitle,
       on: !!view?.patrolMode,
     });
   }
@@ -2016,6 +2053,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   const units = ownCommandable(ctx, selected.filter((e) => e.kind === "unit"));
   const buildings = ownCommandable(ctx, selected.filter((e) => e.kind === "building"));
   const aimers = [...units, ...buildings.filter((e) => radarLaidOf(e.type))];
+  const lamps = buildings.filter((e) => hasSpotlight(e.type) && e.spotFacing != null);
   const garrisonForce = garrisonForceHosts(match.youPlayerId, selected);
   if (act === "stop") {
     view.setAttackMoveMode(false);
@@ -2023,7 +2061,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     view.setRotateMode(false);
     view.setGuardMode(false);
     view.setPatrolMode(false);
-    const stopIds = [...new Set([...aimers, ...garrisonForce].map((e) => e.id))];
+    const stopIds = [...new Set([...aimers, ...garrisonForce, ...lamps].map((e) => e.id))];
     if (stopIds.length) ctx.net.send({ type: "cmd.stop", ids: stopIds });
     return;
   }
@@ -2032,7 +2070,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     return;
   }
   if (act === "patrol") {
-    if (units.length) view.setPatrolMode(!view.patrolMode);
+    if (units.length || lamps.length) view.setPatrolMode(!view.patrolMode);
     return;
   }
   if (act === "land") {
@@ -2094,7 +2132,6 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     return;
   }
   if (act === "rotate") {
-    const lamps = buildings.filter((e) => hasSpotlight(e.type) && e.spotFacing != null);
     if (aimers.length || lamps.length) view.setRotateMode(!view.rotateMode);
     return;
   }

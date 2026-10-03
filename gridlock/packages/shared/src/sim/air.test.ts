@@ -426,6 +426,8 @@ describe("stuka attack", () => {
     ticks(state, 2);
     assert.ok(plane.air!.rounds > 0, "belts still hold rounds");
     assert.equal(plane.order?.kind, "land");
+    // He lived through the strafe. The slower return would sit in his rifle fire, so he steps out of this check.
+    foe.hp = 0;
     assert.ok(until(state, 1500, () => plane.air?.phase === "parked") >= 0, "it lands to rearm");
     assert.equal(plane.air!.bombed, true);
     applyCommand(state, "A", { type: "cmd.move", ids: [plane.id], x: 90 * ts, y: 40 * ts });

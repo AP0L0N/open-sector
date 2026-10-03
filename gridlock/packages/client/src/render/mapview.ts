@@ -9,6 +9,7 @@ import {
   radarLaidOf,
   hasSpotlight,
   headlightLit,
+  hullLamps,
   HEADLIGHT_HALF_DEG,
   BUILDING_TYPES,
   NEUTRAL_OWNER,
@@ -201,6 +202,7 @@ import {
   type UnitSpriteDef,
 } from "./sprites.js";
 import { drawBuildingAnim } from "./building-fx.js";
+import { drawRadarContact, drawRadarOffline, radarContactLit } from "./radar-panel.js";
 import {
   drawTrackKick,
   spawnTrackKickPuffs,
@@ -337,6 +339,7 @@ import { FOG_RGB, FOG_VEIL_ALPHA, FogField } from "./fog-field.js";
 import { FogFlat, FogGl } from "./fog-gl.js";
 import {
   NIGHT_RGB,
+  LAMP_BULB_SCALE,
   beamBlobs,
   beamPolygon,
   easeSpot,
@@ -346,6 +349,9 @@ import {
   workLightBearings,
   workLightCount,
 } from "./night.js";
+
+/** Screen px of the old hull bulb. The beam on the ground is separate. */
+const HEADLIGHT_BULB_R = 5 * LAMP_BULB_SCALE;
 
 type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" };
 /** How much of the night tint each kind of pool lifts, per pool (they overlap), and how much it warms. */
@@ -419,6 +425,7 @@ const EXTRUDE: Record<EntityType, number> = {
   airfield: 14,
   ciws: 26,
   research: 40,
+  radar: 44,
   bunker: 18,
   tower: 66,
   ram: 26,
@@ -1120,7 +1127,7 @@ export class MapView {
       if (!match.entities.some((e) => e.id === id)) this.selected.delete(id);
     }
     if (this.attackMoveMode && this.ownSelectedIds().length === 0) this.setAttackMoveMode(false);
-    if (this.patrolMode && this.ownSelectedIds().length === 0) this.setPatrolMode(false);
+    if (this.patrolMode && this.ownPatrolIds().length === 0) this.setPatrolMode(false);
     if (this.forceAttackMode && this.ownForceIds().length === 0) this.setForceAttackMode(false);
     if (this.rotateMode && this.ownRotateIds().length === 0) this.setRotateMode(false);
     if (this.guardMode && this.ownSelectedIds().length === 0) this.setGuardMode(false);
@@ -1808,6 +1815,8 @@ export class MapView {
     window.addEventListener("mousemove", this.onMove);
     this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     this.mini.addEventListener("mousedown", (e) => {
+      // A dark panel is not a map: nothing to click until a Radar Station stands.
+      if (!this.curr.you.radar) return;
       const map = this.map();
       const rect = this.mini.getBoundingClientRect();
       const mx = e.clientX - rect.left;
@@ -1972,7 +1981,7 @@ export class MapView {
     }
     if (k === PATROL_HOTKEY) {
       e.preventDefault();
-      const ids = this.ownSelectedIds();
+      const ids = this.ownPatrolIds();
       if (ids.length) this.setPatrolMode(!this.patrolMode);
       return;
     }
@@ -2074,6 +2083,10 @@ export class MapView {
     this.setGuardMode(false);
     this.setPatrolMode(false);
     const ids = this.ownForceIds();
+    const seen = new Set(ids);
+    for (const id of this.ownLampIds()) {
+      if (!seen.has(id)) ids.push(id);
+    }
     if (ids.length) this.command({ type: "cmd.stop", ids });
   }
 
@@ -2205,6 +2218,28 @@ export class MapView {
       if (!ent || ent.ownerId !== this.curr.youPlayerId || ent.wreck) return false;
       return ent.kind === "unit" || radarLaidOf(ent.type);
     });
+  }
+
+  /** Own watch towers. Patrol turns the spotlight along the points; Stop freezes it. */
+  private ownLampIds(): number[] {
+    const out: number[] = [];
+    for (const id of this.selected) {
+      const ent = this.curr.entities.find((x) => x.id === id);
+      if (ent && ent.ownerId === this.curr.youPlayerId && ent.hp > 0 && ent.spotFacing != null && hasSpotlight(ent.type)) {
+        out.push(id);
+      }
+    }
+    return out;
+  }
+
+  /** Units that walk a patrol, plus watch towers that sweep a spotlight along the same points. */
+  private ownPatrolIds(): number[] {
+    const ids = this.ownSelectedIds();
+    const seen = new Set(ids);
+    for (const id of this.ownLampIds()) {
+      if (!seen.has(id)) ids.push(id);
+    }
+    return ids;
   }
 
   /** What Rotate turns: the aimers, plus own watch towers, whose spotlight swings. */
@@ -3232,12 +3267,20 @@ export class MapView {
       const at = this.toScreen(pose.x, pose.y);
       if (!onView(at.x, at.y, reach * k)) continue;
       const nose = catalog(e.type).radius;
-      const c = Math.cos(pose.facing);
-      const s = Math.sin(pose.facing);
-      for (const b of beamBlobs(reach, headHalf, { start: Math.min(0.25, nose / reach), count: 9, minR: nose * 0.9 })) {
-        lay(pose.x + c * b.d, pose.y + s * b.d, b.r, b.a, "head");
+      const blobs = beamBlobs(reach, headHalf, {
+        start: Math.min(0.25, nose / reach),
+        count: 9,
+        minR: nose * 0.9 * LAMP_BULB_SCALE,
+      });
+      const sec = this.curr.tick * TICK_DT;
+      for (const lamp of hullLamps(e.type, e.id, sec)) {
+        const beam = pose.facing + lamp.beam;
+        const c = Math.cos(beam);
+        const s = Math.sin(beam);
+        for (const b of blobs) lay(pose.x + c * b.d, pose.y + s * b.d, b.r, b.a, "head");
+        const mount = pose.facing + lamp.mount;
+        noses.push(this.toScreen(pose.x + Math.cos(mount) * nose, pose.y + Math.sin(mount) * nose));
       }
-      noses.push(this.toScreen(pose.x + c * nose, pose.y + s * nose));
     }
     const nowSec = performance.now() / 1000;
     for (const e of this.curr.entities) {
@@ -3313,12 +3356,13 @@ export class MapView {
       ctx.globalCompositeOperation = "lighter";
       for (const p of pools) fillPool(ctx, p, POOL_RGB[p.kind], POOL_WARM[p.kind] * p.a * glow);
       for (const n of this.headlightNoses) {
-        const g = ctx.createRadialGradient(n.x, n.y - 3, 0, n.x, n.y - 3, 5);
+        const lift = 3 * LAMP_BULB_SCALE;
+        const g = ctx.createRadialGradient(n.x, n.y - lift, 0, n.x, n.y - lift, HEADLIGHT_BULB_R);
         g.addColorStop(0, `rgba(255, 250, 225, ${0.9 * glow})`);
         g.addColorStop(1, "rgba(255, 240, 200, 0)");
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(n.x, n.y - 3, 5, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y - lift, HEADLIGHT_BULB_R, 0, Math.PI * 2);
         ctx.fill();
       }
       // A point of light on each tower cab.
@@ -3820,7 +3864,7 @@ export class MapView {
 
   private commitPatrol(): void {
     const points = this.patrolPoints.map((p) => ({ x: p.x, y: p.y }));
-    const ids = this.ownSelectedIds();
+    const ids = this.ownPatrolIds();
     this.setPatrolMode(false);
     if (points.length > 0 && ids.length > 0) this.command({ type: "cmd.patrol", ids, points });
   }
@@ -3865,7 +3909,7 @@ export class MapView {
       }
     };
     if (this.patrolMode) {
-      const ids = this.ownSelectedIds();
+      const ids = this.ownPatrolIds();
       const from: { x: number; y: number }[] = [];
       for (const id of ids) {
         const e = this.curr.entities.find((u) => u.id === id);
@@ -7029,6 +7073,11 @@ export class MapView {
     const h = this.mini.clientHeight;
     ctx.fillStyle = "#0a0806";
     ctx.fillRect(0, 0, w, h);
+    this.mini.classList.toggle("radar-off", !this.curr.you.radar);
+    if (!this.curr.you.radar) {
+      drawRadarOffline(ctx, w, h, performance.now());
+      return;
+    }
     const scale = Math.min(w / map.width, h / map.height);
     const dw = map.width * scale;
     const dh = map.height * scale;
@@ -7065,6 +7114,12 @@ export class MapView {
       const ty = e.kind === "building" ? e.tileY + e.tileH / 2 : e.y / ts;
       const sz = e.kind === "building" ? 4 : 3;
       ctx.fillRect(tx * scale - sz / 2, ty * scale - sz / 2, sz, sz);
+    }
+    // Aircraft the dish hears and nobody sees: a blinking contact, no sprite on the field.
+    const now = performance.now();
+    for (const c of this.curr.radar ?? []) {
+      if (!radarContactLit(now, c.id)) continue;
+      drawRadarContact(ctx, (c.x / ts) * scale, (c.y / ts) * scale);
     }
   }
 }

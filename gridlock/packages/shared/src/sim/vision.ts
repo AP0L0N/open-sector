@@ -8,6 +8,7 @@ import {
   SPOTLIGHT_HALF_DEG,
   SPOTLIGHT_REACH_TILES,
   TOWER_EYE_HEIGHT,
+  TICK_DT,
   catalog,
   entityIsScouting,
   isArmoredType,
@@ -33,6 +34,7 @@ import { fillSmokeMask, smokeCloudTileBounds } from "./smoke.js";
 import {
   hasSpotlight,
   headlightLit,
+  hullLamps,
   lampHeading,
   nightReachMul,
   nightTiles,
@@ -70,13 +72,13 @@ export type SightSource = {
   wreck?: boolean;
 };
 
-/** Light at the moment sight is painted: how far it carries, and whether lamps are lit. */
-export type SightLight = { mul: number; spots: boolean };
+/** Light at the moment sight is painted: how far it carries, whether lamps are lit, and match seconds for lamps that sweep. */
+export type SightLight = { mul: number; spots: boolean; sec: number };
 
-const DAYLIGHT: SightLight = { mul: 1, spots: false };
+const DAYLIGHT: SightLight = { mul: 1, spots: false, sec: 0 };
 
 export function sightLightAt(tick: number): SightLight {
-  return { mul: nightReachMul(tick), spots: spotlightsOn(tick) };
+  return { mul: nightReachMul(tick), spots: spotlightsOn(tick), sec: tick * TICK_DT };
 }
 
 const SPOT_COS = Math.cos((SPOTLIGHT_HALF_DEG * Math.PI) / 180);
@@ -245,12 +247,23 @@ type SightParams = {
   sdy: number;
   scos: number;
   seye: number;
+  /** Mammoth flank lamps, same reach and width as the nose light. Absent on every other eye. */
+  flanks?: readonly { dx: number; dy: number }[];
 };
 
-const NO_SPOT = { sr: 0, sdx: 0, sdy: 0, scos: 1, seye: 0 };
+type SpotPaint = {
+  sr: number;
+  sdx: number;
+  sdy: number;
+  scos: number;
+  seye: number;
+  flanks?: readonly { dx: number; dy: number }[];
+};
+
+const NO_SPOT: SpotPaint = { sr: 0, sdx: 0, sdy: 0, scos: 1, seye: 0 };
 
 /** A held tower's spotlight, or a hull's headlight giving back its daylight sight down the nose. */
-function spotOf(e: SightSource, light: SightLight, daySight: number, eye: number): typeof NO_SPOT {
+function spotOf(e: SightSource, light: SightLight, daySight: number, eye: number): SpotPaint {
   if (!light.spots) return NO_SPOT;
   if (e.kind === "building") {
     if (!hasSpotlight(e.type)) return NO_SPOT;
@@ -261,8 +274,25 @@ function spotOf(e: SightSource, light: SightLight, daySight: number, eye: number
     return { sr: SPOTLIGHT_REACH_TILES, sdx: Math.cos(a), sdy: Math.sin(a), scos: SPOT_COS, seye: TOWER_EYE_HEIGHT };
   }
   if (!headlightLit(e) || daySight <= 0) return NO_SPOT;
-  const a = lampHeading(e.facing ?? 0);
-  return { sr: daySight, sdx: Math.cos(a), sdy: Math.sin(a), scos: HEADLIGHT_COS, seye: eye };
+  const facing = e.facing ?? 0;
+  const lamps = hullLamps(e.type, e.id ?? 0, light.sec);
+  const nose = lampHeading(facing + lamps[0]!.beam);
+  const spot: SpotPaint = {
+    sr: daySight,
+    sdx: Math.cos(nose),
+    sdy: Math.sin(nose),
+    scos: HEADLIGHT_COS,
+    seye: eye,
+  };
+  if (lamps.length > 1) {
+    const flanks: { dx: number; dy: number }[] = [];
+    for (let i = 1; i < lamps.length; i++) {
+      const a = lampHeading(facing + lamps[i]!.beam);
+      flanks.push({ dx: Math.cos(a), dy: Math.sin(a) });
+    }
+    spot.flanks = flanks;
+  }
+  return spot;
 }
 
 function sightParams(
@@ -337,8 +367,21 @@ function sameSightParams(a: SightParams, b: SightParams): boolean {
     a.sdx === b.sdx &&
     a.sdy === b.sdy &&
     a.scos === b.scos &&
-    a.seye === b.seye
+    a.seye === b.seye &&
+    sameFlanks(a.flanks, b.flanks)
   );
+}
+
+function sameFlanks(
+  a: readonly { dx: number; dy: number }[] | undefined,
+  b: readonly { dx: number; dy: number }[] | undefined,
+): boolean {
+  if (a == null || b == null) return a == null && b == null;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i]!.dx !== b[i]!.dx || a[i]!.dy !== b[i]!.dy) return false;
+  }
+  return true;
 }
 
 /** Chebyshev reach of the box `paintSight` scans, uphill bonus included. */
@@ -348,14 +391,26 @@ function sightBoxRadius(p: SightParams, elev: boolean): number {
   return Math.max(r, p.sr);
 }
 
-/** The lamp's beam reaches this tile, before line of sight and smoke. */
-function inSpotCone(p: SightParams, x: number, y: number): boolean {
+/** One lamp's beam reaches this tile, before line of sight and smoke. */
+function inSpotCone(p: SightParams, sdx: number, sdy: number, x: number, y: number): boolean {
   if (p.sr <= 0) return false;
   const d = sightDist(x, y, p.ox, p.oy);
   if (d < 1 || d > p.sr) return false;
   const dx = x - p.ox;
   const dy = y - p.oy;
-  return dx * p.sdx + dy * p.sdy >= p.scos * Math.hypot(dx, dy);
+  return dx * sdx + dy * sdy >= p.scos * Math.hypot(dx, dy);
+}
+
+/** Nose lamp, or any Mammoth flank lamp. */
+function inAnyLamp(p: SightParams, x: number, y: number): boolean {
+  if (inSpotCone(p, p.sdx, p.sdy, x, y)) return true;
+  const flanks = p.flanks;
+  if (!flanks) return false;
+  for (let i = 0; i < flanks.length; i++) {
+    const f = flanks[i]!;
+    if (inSpotCone(p, f.dx, f.dy, x, y)) return true;
+  }
+  return false;
 }
 
 /** Same test as `paintSpot`, for one tile. */
@@ -368,7 +423,7 @@ function spotLightsTile(
   height: number,
   cover: CoverField | undefined,
 ): boolean {
-  if (!inSpotCone(p, x, y)) return false;
+  if (!inAnyLamp(p, x, y)) return false;
   if (!elev) return true;
   if (cover) cover.ignoreOccupyId = p.ignore;
   if (!hasFullLos(elev, width, height, p.ox, p.oy, x, y, cover, p.seye)) return false;
@@ -570,7 +625,15 @@ function visionKey(state: MatchState, playerId: string): number {
     h = mix(h, e.air ? Math.round(e.air.alt) : 0);
     h = mix(h, occupantSightTiles(state, e) ?? -1);
     if (light.spots && hasSpotlight(e.type)) h = mix(h, Math.round(lampHeading(spotFacingOf(e)) * 4096));
-    if (light.spots && headlightLit(e)) h = mix(h, Math.round(lampHeading(e.facing) * 4096));
+    if (light.spots && headlightLit(e)) {
+      const facing = e.facing ?? 0;
+      if (e.type === "mammoth") {
+        const lamps = hullLamps(e.type, e.id, light.sec);
+        for (let i = 0; i < lamps.length; i++) h = mix(h, Math.round(lampHeading(facing + lamps[i]!.beam) * 4096));
+      } else {
+        h = mix(h, Math.round(lampHeading(facing) * 4096));
+      }
+    }
   }
   for (const c of state.smokeClouds) {
     h = mix(h, c.id);

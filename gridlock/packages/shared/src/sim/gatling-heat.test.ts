@@ -185,9 +185,24 @@ describe("gatling accuracy", () => {
     plane.air!.speed = 1;
     plane.order = { kind: "move", x: plane.x, y: plane.y };
     plane.hp = plane.hpMax = 1e6;
+    const holdX = plane.x;
+    const holdY = plane.y;
     const ends: { airZ?: number }[] = [];
     for (let i = 0; i < 20; i++) {
       step(state, TICK_DT);
+      // A rear hit wrecks the engine and the plane starts down. This pass is measuring the rounds, so put that airframe back up.
+      if (plane.air && (plane.air.phase !== "fly" || plane.crits.includes("engine"))) {
+        plane.hp = plane.hpMax;
+        plane.wreck = false;
+        plane.crits = plane.crits.filter((c) => c !== "engine");
+        plane.air.phase = "fly";
+        plane.air.alt = AIR_CRUISE_ALT;
+        plane.air.speed = 1;
+        plane.air.yaw = undefined;
+        plane.air.sink = undefined;
+        plane.air.reach = undefined;
+        plane.order = { kind: "move", x: holdX, y: holdY };
+      }
       for (const m of state.impacts) if (m.fromId === w.id) ends.push(m);
     }
     assert.ok(ends.length > 10, `rounds ${ends.length}`);

@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   NIGHT_FOG_ALPHA,
   NIGHT_SHADE_MAX,
+  LAMP_BULB_SCALE,
   WORK_LIGHT_TURN,
   beamBlobs,
   beamPolygon,
@@ -18,6 +19,10 @@ describe("night render", () => {
     assert.equal(nightShade(1), 0);
     assert.equal(nightShade(0), NIGHT_SHADE_MAX);
     assert.ok(nightShade(0.5) > 0 && nightShade(0.5) < NIGHT_SHADE_MAX);
+  });
+
+  it("draws the hull bulb at seventy percent of the old disc", () => {
+    assert.equal(LAMP_BULB_SCALE, 0.7);
   });
 
   it("keeps the lamps dark by day and full at night", () => {

@@ -55,7 +55,11 @@ import {
   pickLoadedShell,
   clampGameSpeed,
   INFANTRY_PACE,
+  UNIT_PACE,
+  JET_FLY_TILES_PER_SEC,
   TILE_SUBDIV,
+  CIVILIAN_TYPES,
+  FIELD_STRUCTURES,
   isInfantryType,
   isMotorVehicle,
   isStance,
@@ -219,8 +223,8 @@ describe("injuries", () => {
     assert.ok(WATER_PATH_COST > 1);
   });
 
-  it("walks at 70% of each soldier's authored pace", () => {
-    const authored = {
+  it("moves every unit at 70% of its current pace", () => {
+    const foot = {
       rifleman: 2.2,
       gunner: 1.65,
       sniper: 1.8,
@@ -234,14 +238,36 @@ describe("injuries", () => {
       droneop: 1.6,
       jumpjet: 2.1,
     } as const;
+    const hull = {
+      rig: 1.3,
+      hauler: 1.9,
+      warden: 1.45,
+      apocalypse: 1.1,
+      ss3: 1.55,
+      jagdtiger: 1.0,
+      walker: 1.3,
+      titan: 1.15,
+      mammoth: 0.75,
+      nebelwerfer: 1.9,
+      artillery: 0.55,
+      supply: 2.15,
+      stuka: 5,
+      fw190: 6.5,
+      bv222: 4.2,
+      drone: 3.5,
+    } as const;
     assert.equal(INFANTRY_PACE, 0.7);
-    for (const type of Object.keys(authored) as (keyof typeof authored)[]) {
-      assert.equal(catalog(type).moveTilesPerSec, authored[type] * INFANTRY_PACE * TILE_SUBDIV);
+    assert.equal(UNIT_PACE, 0.7);
+    for (const type of Object.keys(foot) as (keyof typeof foot)[]) {
+      assert.equal(catalog(type).moveTilesPerSec, foot[type] * INFANTRY_PACE * UNIT_PACE * TILE_SUBDIV, type);
     }
-    assert.equal(catalog("warden").moveTilesPerSec, 1.45 * TILE_SUBDIV);
-    assert.equal(catalog("hauler").moveTilesPerSec, 1.9 * TILE_SUBDIV);
-    assert.equal(catalog("walker").moveTilesPerSec, 1.3 * TILE_SUBDIV);
-    assert.equal(catalog("drone").moveTilesPerSec, 3.5 * TILE_SUBDIV);
+    for (const type of Object.keys(hull) as (keyof typeof hull)[]) {
+      assert.equal(catalog(type).moveTilesPerSec, hull[type] * UNIT_PACE * TILE_SUBDIV, type);
+    }
+    assert.equal(JET_FLY_TILES_PER_SEC, 4 * UNIT_PACE * TILE_SUBDIV);
+    for (const type of [...BUILDING_TYPES, ...CIVILIAN_TYPES, ...FIELD_STRUCTURES, "core" as const]) {
+      assert.equal(catalog(type).moveTilesPerSec, 0, type);
+    }
   });
 });
 

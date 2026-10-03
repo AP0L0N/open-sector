@@ -69,6 +69,7 @@ import {
   hasCrit,
   hasMg,
   hasTracks,
+  trackCritAllowed,
   hasTurret,
   infantryGunFor,
   isTransportType,
@@ -447,8 +448,8 @@ function roofRoundCanHarm(e: Entity, target: Entity): boolean {
 const CIWS_GUN_STATS = { ...CIWS_GUN, projectileSpeed: SMALL_ARMS_SPEED };
 
 /**
- * What the roof mount lays on. Like the CIWS pad: units only, a plane or a
- * drone in the air before anything on the ground, nearest first, seen by the
+ * What the roof mount lays on. Like the CIWS pad: units only, a plane, a
+ * paratrooper, or a drone in the air before anything on the ground, nearest first, seen by the
  * side, and nothing its rounds cannot hurt. No player order moves it.
  */
 function roofCiwsTarget(state: MatchState, e: Entity, range: number): Entity | undefined {
@@ -597,8 +598,8 @@ function canFight(e: Entity): boolean {
 }
 
 /**
- * A plane in the air is out of reach for tank guns and the mortar. A drone
- * has its own rule: high, only anti-air guns; low, bullets and rockets.
+ * A plane or a paratrooper in the air is out of reach for tank guns and the mortar.
+ * A drone has its own rule: high, only anti-air guns; low, bullets and rockets.
  */
 function outOfReachAloft(e: Entity, target: Entity): boolean {
   if (target.drone) return !reachesDrone(e, target);
@@ -621,6 +622,7 @@ export function tickPatrol(state: MatchState): void {
   const groups = new Map<number, Entity[]>();
   const solo: Entity[] = [];
   for (const e of state.entities.values()) {
+    if (e.kind !== "unit") continue;
     if (e.order?.kind !== "patrol" || !e.order.route || e.order.route.length < 2) continue;
     if (e.hp <= 0 || e.wreck || e.air) continue;
     const g = e.order.group;
@@ -1695,12 +1697,12 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
         ? rocketArmorDamage(
             rack.armorDamage,
             falloff,
-            hasTracks(e.type),
+            hasTracks(e.type) && trackCritAllowed(e.type),
             hitFace(e.facing, p.vx || 0.01, p.vy),
             d <= e.radius,
             rand,
           )
-        : mortarArmorNick(def.hp, falloff, hasTracks(e.type), rand, lob);
+        : mortarArmorNick(def.hp, falloff, hasTracks(e.type) && trackCritAllowed(e.type), rand, lob);
       let nickDmg = nick.damage;
       if ((e.wallCover ?? 0) > 0) {
         if (rocket) nickDmg = Math.max(1, Math.round(nickDmg * WALL_COVER_DR));

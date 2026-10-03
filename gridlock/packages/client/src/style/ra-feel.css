@@ -618,6 +618,63 @@ input[type="range"] { padding: 0; }
   color: var(--amber);
 }
 
+.radar-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.sidebar .radar-head h3 {
+  margin: 0;
+}
+
+.match-clock {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  padding: 1px 6px 2px;
+  background: #0a0806;
+  border: 1px solid #3a2418;
+  box-shadow: inset 0 0 0 1px #000;
+  user-select: none;
+}
+
+.match-clock-time {
+  font-family: "Share Tech Mono", monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 1rem;
+  line-height: 1.05;
+  letter-spacing: 0.06em;
+  color: var(--amber);
+  text-shadow: 0 0 6px rgba(232, 184, 74, 0.4);
+}
+
+.match-clock-next {
+  font-family: "Oswald", sans-serif;
+  font-size: 0.58rem;
+  line-height: 1.1;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.match-clock[data-phase="dusk"] .match-clock-time {
+  color: #ffb15a;
+  text-shadow: 0 0 8px rgba(255, 150, 50, 0.55);
+}
+
+.match-clock[data-phase="night"] .match-clock-time {
+  color: #b7c7ea;
+  text-shadow: 0 0 8px rgba(90, 130, 210, 0.55);
+}
+
+.match-clock[data-phase="dawn"] .match-clock-time {
+  color: #f0d0a8;
+  text-shadow: 0 0 6px rgba(240, 180, 110, 0.4);
+}
+
 .sidebar .btn {
   font-size: 0.8rem;
   padding: 0.55rem 0.6rem;
@@ -643,6 +700,12 @@ input[type="range"] { padding: 0; }
   image-rendering: pixelated;
   cursor: pointer;
   flex-shrink: 0;
+}
+
+/* No Radar Station standing: the panel is dark and goes nowhere. */
+#minimap.radar-off {
+  cursor: default;
+  border-color: #3a2418;
 }
 
 .group-tabs {
@@ -833,6 +896,7 @@ input[type="range"] { padding: 0; }
 #build-airfield,
 #build-ciws,
 #build-research,
+#build-radar,
 #build-bunker,
 #build-tower,
 #build-ram,
@@ -1043,6 +1107,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/research-cameo.png");
+}
+#build-radar {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/radar-cameo.png");
 }
 #build-bunker {
   background-image:
