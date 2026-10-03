@@ -40,6 +40,7 @@ import { allies, unitInWater } from "./geo.js";
 import { medicTendView } from "./heal.js";
 import { supplyHasDriver, supplyRiders } from "./supply.js";
 import { powerOf } from "./power.js";
+import { radarContacts, radarOnline } from "./radar.js";
 import { canSeeWorld, encodeVisionRuns, entityOnMask, visionMask } from "./vision.js";
 import { spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, MatchState, Order, QueueableCommand, StructureJob } from "./types.js";
@@ -430,6 +431,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     }
   }
   const hq = you ? state.entities.get(you.hqId) : undefined;
+  const radar = you ? radarOnline(state, youPlayerId) : false;
   return {
     tick: state.tick,
     gameSpeed: clampGameSpeed(state.gameSpeed),
@@ -445,6 +447,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       placingType: you?.placingType ?? null,
       alive: you?.alive ?? false,
       hqId: hq && hq.hp > 0 ? hq.id : (you?.hqId ?? null),
+      radar,
     },
     players: [...state.players.values()].map((p) => ({
       playerId: p.playerId,
@@ -512,6 +515,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     bodies: visibleBodies(state, youPlayerId, vis),
     holes: state.holes.map((h) => ({ ...h })),
     vision: you ? visionRuns(vis) : undefined,
+    radar: radar ? radarContacts(state, youPlayerId, vis) : undefined,
     winner: state.winner,
   };
 }

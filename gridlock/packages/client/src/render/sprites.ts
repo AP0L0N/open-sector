@@ -33,6 +33,7 @@ import bunkerUrl from "../assets/buildings/bunker.png";
 import towerUrl from "../assets/buildings/tower.png";
 import ciwsTurretUrl from "../assets/buildings/ciws-turret.png";
 import researchUrl from "../assets/buildings/research.png";
+import radarUrl from "../assets/buildings/radar.png";
 import ramUrl from "../assets/buildings/ram.png";
 import ramTurretUrl from "../assets/buildings/ram-turret.png";
 import cottageUrl from "../assets/buildings/cottage.png";
@@ -1508,6 +1509,8 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   ciws: building(ciwsUrl, 192, 126, 186, 126, 82.8),
   // Lab, dome, mast, coil annex. Metrics from tools/sprites/render_research.py (research.json).
   research: building(researchUrl, 384, 210, 324, 150, 70),
+  // Ops hut, lattice mast, dish. Metrics from tools/sprites/render_radar.py (radar.json); the stack hangs over the dish.
+  radar: building(radarUrl, 384, 210, 354, 216, 58),
   // Concrete pillbox. Metrics from tools/sprites/render_bunker.py (bunker.json).
   bunker: building(bunkerUrl, 384, 222, 264, 222, 99),
   // Concrete shaft and slitted cab. Metrics from tools/sprites/render_tower.py (tower.json).

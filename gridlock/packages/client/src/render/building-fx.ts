@@ -4,7 +4,7 @@ import type { BuildingSpriteDef } from "./sprites.js";
 /** Buildings that train units. Full-strength overlay only while a job is running. */
 const PRODUCERS = new Set<EntityType>(["muster", "smelter", "armory"]);
 /** Keep a quiet always-on overlay: blinks, the Smelter's chimneys, the lab's coil. */
-const IDLE_ALWAYS = new Set<EntityType>(["core", "dynamo", "smelter", "research"]);
+const IDLE_ALWAYS = new Set<EntityType>(["core", "dynamo", "smelter", "research", "radar"]);
 /** Chimney smoke never fades below this, so an idle Smelter still reads as lit. */
 const IDLE_SMOKE_GAIN = 0.75;
 
@@ -124,6 +124,18 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
       { x: 210, y: 42, r: 5, color: "#ff5a4a", period: 2000, phase: 0.0, mode: "blink" },
     ],
     arcs: [{ x: 325, y: 167 }],
+  },
+  // Spots from tools/sprites/render_radar.py (radar.json): the scope-green window band, the mast lamp, the whip lamp.
+  radar: {
+    lights: [
+      { x: 298, y: 270, r: 8, color: "#8fe8a8", period: 2600, phase: 0.0, mode: "pulse" },
+      { x: 271, y: 283, r: 8, color: "#8fe8a8", period: 2600, phase: 0.12, mode: "pulse" },
+      { x: 244, y: 297, r: 8, color: "#8fe8a8", period: 2600, phase: 0.24, mode: "pulse" },
+      { x: 149, y: 271, r: 8, color: "#8fe8a8", period: 3000, phase: 0.4, mode: "pulse" },
+      { x: 176, y: 285, r: 8, color: "#8fe8a8", period: 3000, phase: 0.55, mode: "pulse" },
+      { x: 216, y: 100, r: 6, color: "#ff5a4a", period: 1400, phase: 0.0, mode: "blink" },
+      { x: 294, y: 200, r: 4, color: "#ffe08a", period: 2200, phase: 0.5, mode: "blink" },
+    ],
   },
   armory: {
     lights: [
