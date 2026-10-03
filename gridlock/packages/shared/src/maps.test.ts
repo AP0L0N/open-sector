@@ -12,6 +12,7 @@ import {
   TILE_SCRAP,
   TILE_TREE,
   TILE_WATER,
+  BROAD_SUMMIT,
   heightAt,
   maxHeightOf,
   tileAt,
@@ -65,12 +66,20 @@ describe("maps", () => {
     for (const s of yard.spawns) {
       const h = heightAt(yard, s.x, s.y);
       if (yard.id === "broad-143") {
-        assert.equal(h, HEIGHT_MAX, `${yard.id} spawn ${s.id} height ${h}`);
+        assert.equal(h, BROAD_SUMMIT, `${yard.id} spawn ${s.id} height ${h}`);
       } else {
         assert.equal(h, HEIGHT_BASE, `${yard.id} spawn ${s.id} on a slope`);
       }
     }
     }
+  });
+
+  it("raises Scrap Yard hills well above the plain", () => {
+    const yard = MAPS["yard-64"]!;
+    const broad = MAPS["broad-143"]!;
+    assert.ok(maxHeightOf(yard) > maxHeightOf(broad), `yard ${maxHeightOf(yard)} broad ${maxHeightOf(broad)}`);
+    // The old yard peaks rose about ten levels over the plain. This asks for twice that.
+    assert.ok(maxHeightOf(yard) >= HEIGHT_BASE + 5 * TILE_SUBDIV, `peak ${maxHeightOf(yard)}`);
   });
 
   it("runs a peak down in many one-step tiles, not a 3-terrace stair", () => {
@@ -537,7 +546,7 @@ describe("maps", () => {
         let onSummit = 0;
         for (let i = 0; i < q.length; i++) {
           const c = q[i]!;
-          if (heightAt(map, c.x, c.y) === HEIGHT_MAX) {
+          if (heightAt(map, c.x, c.y) === BROAD_SUMMIT) {
             onSummit += 1;
             for (const [team, pair] of byTeam) {
               for (const s of pair) {
@@ -578,7 +587,7 @@ describe("maps", () => {
           const nx = c.x + dx;
           const ny = c.y + dy;
           if (!stepOk(c.x, c.y, nx, ny)) continue;
-          if (heightAt(map, nx, ny) < HEIGHT_MAX) continue;
+          if (heightAt(map, nx, ny) < BROAD_SUMMIT) continue;
           const k = ny * w + nx;
           if (high[k]) continue;
           high[k] = 1;
@@ -636,7 +645,7 @@ describe("maps", () => {
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
           if (Math.hypot(x - cx, y - cy) > 36) continue;
-          if (heightAt(map, x, y) >= HEIGHT_MAX && !cluster[y * w + x]) continue;
+          if (heightAt(map, x, y) >= BROAD_SUMMIT && !cluster[y * w + x]) continue;
           const t = sealed[y * w + x] ?? TILE_BLOCKED;
           if (t === TILE_WATER) continue;
           sealed[y * w + x] = TILE_ROCK;

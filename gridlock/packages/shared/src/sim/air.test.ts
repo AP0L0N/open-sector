@@ -11,6 +11,7 @@ import {
   BOMB_DAMAGE,
   BOMB_DIRECT_TILES,
   BOMB_FALL_SECONDS,
+  BOMB_HOLE_SCALE,
   BOMB_REARM_SECONDS,
   BOMB_SPLASH_TILES,
   FW190_BARRAGES,
@@ -22,11 +23,13 @@ import {
   hasTracks,
   wreckHpOf,
 } from "../catalog.js";
+import { TILE_EMPTY } from "../maps.js";
 import { airfieldPadWorld, airfieldRunway, isAirborne, PARK_HEADING, stepBomb } from "./air.js";
+import { shellHoleRadius } from "./remains.js";
 import { mortarFalloff } from "./mortar.js";
 import { applyCommand } from "./commands.js";
 import { takeDamage } from "./crits.js";
-import { buildingBounds, makeEntity, tileCenter } from "./geo.js";
+import { buildingBounds, makeEntity, occupant, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { spawnUnit } from "./train.js";
@@ -457,6 +460,30 @@ describe("stuka attack", () => {
     burstBomb(state, house.x, house.y);
     assert.equal(house.hp, house.hpMax - 240);
     assert.ok(house.hp > house.hpMax * 0.6, "a house keeps most of its walls");
+  });
+
+  it("leaves a crater half as wide as a shell of the same caliber", () => {
+    const state = twoPlayerMatch();
+    const ts = state.tileSize;
+    let tx = -1;
+    let ty = -1;
+    for (let y = 2; y < state.height - 2 && tx < 0; y++) {
+      for (let x = 2; x < state.width - 2; x++) {
+        if (state.terrain[y * state.width + x] !== TILE_EMPTY) continue;
+        const occ = occupant(state, x, y);
+        if (occ != null && state.entities.get(occ)?.kind === "building") continue;
+        tx = x;
+        ty = y;
+        break;
+      }
+    }
+    assert.ok(tx >= 0, "open dirt");
+    const x = tileCenter(tx, ts);
+    const y = tileCenter(ty, ts);
+    burstBomb(state, x, y);
+    assert.equal(state.holes.length, 1);
+    assert.equal(state.holes[0]!.radius, shellHoleRadius(BOMB_CALIBER) * BOMB_HOLE_SCALE);
+    assert.equal(state.impacts.at(-1)?.caliber, BOMB_CALIBER);
   });
 
   it("strafes infantry with the wing guns", () => {

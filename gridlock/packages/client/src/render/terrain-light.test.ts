@@ -24,8 +24,8 @@ describe("terrain light", () => {
     }
     const cols = w + 1;
     const mid = 6 * cols + 6;
-    const lit = vertexTones(rise)[mid]! / elevShadeFactor(HEIGHT_BASE + 5.5);
-    const dark = vertexTones(fall)[mid]! / elevShadeFactor(HEIGHT_BASE + 6.5);
+    const lit = vertexTones(rise)[mid]! / elevShadeFactor(HEIGHT_BASE + 5.5, Math.max(...rise.heights));
+    const dark = vertexTones(fall)[mid]! / elevShadeFactor(HEIGHT_BASE + 6.5, Math.max(...fall.heights));
     assert.ok(lit > 1, `lit ${lit}`);
     assert.ok(dark < 1, `dark ${dark}`);
   });

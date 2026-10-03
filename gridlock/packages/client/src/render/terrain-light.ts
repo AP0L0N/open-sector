@@ -12,11 +12,21 @@ import {
 import { blurField } from "./fog-field.js";
 import { hillshadeGradient } from "./relief.js";
 
-export function elevShadeFactor(h: number): number {
-  const span = Math.max(1, HEIGHT_MAX - HEIGHT_BASE);
+export function elevShadeFactor(h: number, peak = HEIGHT_MAX): number {
+  const span = Math.max(1, peak - HEIGHT_BASE);
   const u = (h - HEIGHT_BASE) / span;
   // Valleys sink harder than peaks lift so a hollow reads at a glance.
   return 1 + u * (u < 0 ? 0.6 : 0.62);
+}
+
+/** Tallest sample in the field, at least the plain, so a map shades across its own relief. */
+function shadePeak(heights: ArrayLike<number>): number {
+  let peak = HEIGHT_BASE;
+  for (let i = 0; i < heights.length; i++) {
+    const z = heights[i] ?? 0;
+    if (z > peak) peak = z;
+  }
+  return peak;
 }
 
 export function hash2(tx: number, ty: number, salt: number): number {
@@ -38,6 +48,7 @@ export function vertexTones(map: Pick<MapDef, "width" | "height" | "heights">): 
     for (let vx = 0; vx < cols; vx++) h[vy * cols + vx] = vertexElev(map.heights, map.width, map.height, vx, vy);
   }
   blurField(h, cols, rows, SHADE_BLUR);
+  const peak = shadePeak(map.heights);
   const at = (x: number, y: number): number =>
     h[Math.min(rows - 1, Math.max(0, y)) * cols + Math.min(cols - 1, Math.max(0, x))]!;
   const out = new Float32Array(cols * rows);
@@ -45,7 +56,7 @@ export function vertexTones(map: Pick<MapDef, "width" | "height" | "heights">): 
     for (let vx = 0; vx < cols; vx++) {
       const gx = (at(vx + 1, vy) - at(vx - 1, vy)) / 2;
       const gy = (at(vx, vy + 1) - at(vx, vy - 1)) / 2;
-      out[vy * cols + vx] = elevShadeFactor(at(vx, vy)) * hillshadeGradient(gx, gy);
+      out[vy * cols + vx] = elevShadeFactor(at(vx, vy), peak) * hillshadeGradient(gx, gy);
     }
   }
   return out;
