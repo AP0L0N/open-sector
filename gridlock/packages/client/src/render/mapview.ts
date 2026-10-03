@@ -9,6 +9,7 @@ import {
   radarLaidOf,
   hasSpotlight,
   headlightLit,
+  hullLamps,
   HEADLIGHT_HALF_DEG,
   BUILDING_TYPES,
   NEUTRAL_OWNER,
@@ -338,6 +339,7 @@ import { FOG_RGB, FOG_VEIL_ALPHA, FogField } from "./fog-field.js";
 import { FogFlat, FogGl } from "./fog-gl.js";
 import {
   NIGHT_RGB,
+  LAMP_BULB_SCALE,
   beamBlobs,
   beamPolygon,
   easeSpot,
@@ -347,6 +349,9 @@ import {
   workLightBearings,
   workLightCount,
 } from "./night.js";
+
+/** Screen px of the old hull bulb. The beam on the ground is separate. */
+const HEADLIGHT_BULB_R = 5 * LAMP_BULB_SCALE;
 
 type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" };
 /** How much of the night tint each kind of pool lifts, per pool (they overlap), and how much it warms. */
@@ -3262,12 +3267,20 @@ export class MapView {
       const at = this.toScreen(pose.x, pose.y);
       if (!onView(at.x, at.y, reach * k)) continue;
       const nose = catalog(e.type).radius;
-      const c = Math.cos(pose.facing);
-      const s = Math.sin(pose.facing);
-      for (const b of beamBlobs(reach, headHalf, { start: Math.min(0.25, nose / reach), count: 9, minR: nose * 0.9 })) {
-        lay(pose.x + c * b.d, pose.y + s * b.d, b.r, b.a, "head");
+      const blobs = beamBlobs(reach, headHalf, {
+        start: Math.min(0.25, nose / reach),
+        count: 9,
+        minR: nose * 0.9 * LAMP_BULB_SCALE,
+      });
+      const sec = this.curr.tick * TICK_DT;
+      for (const lamp of hullLamps(e.type, e.id, sec)) {
+        const beam = pose.facing + lamp.beam;
+        const c = Math.cos(beam);
+        const s = Math.sin(beam);
+        for (const b of blobs) lay(pose.x + c * b.d, pose.y + s * b.d, b.r, b.a, "head");
+        const mount = pose.facing + lamp.mount;
+        noses.push(this.toScreen(pose.x + Math.cos(mount) * nose, pose.y + Math.sin(mount) * nose));
       }
-      noses.push(this.toScreen(pose.x + c * nose, pose.y + s * nose));
     }
     const nowSec = performance.now() / 1000;
     for (const e of this.curr.entities) {
@@ -3343,12 +3356,13 @@ export class MapView {
       ctx.globalCompositeOperation = "lighter";
       for (const p of pools) fillPool(ctx, p, POOL_RGB[p.kind], POOL_WARM[p.kind] * p.a * glow);
       for (const n of this.headlightNoses) {
-        const g = ctx.createRadialGradient(n.x, n.y - 3, 0, n.x, n.y - 3, 5);
+        const lift = 3 * LAMP_BULB_SCALE;
+        const g = ctx.createRadialGradient(n.x, n.y - lift, 0, n.x, n.y - lift, HEADLIGHT_BULB_R);
         g.addColorStop(0, `rgba(255, 250, 225, ${0.9 * glow})`);
         g.addColorStop(1, "rgba(255, 240, 200, 0)");
         ctx.fillStyle = g;
         ctx.beginPath();
-        ctx.arc(n.x, n.y - 3, 5, 0, Math.PI * 2);
+        ctx.arc(n.x, n.y - lift, HEADLIGHT_BULB_R, 0, Math.PI * 2);
         ctx.fill();
       }
       // A point of light on each tower cab.

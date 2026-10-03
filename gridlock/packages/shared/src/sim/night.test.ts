@@ -4,6 +4,11 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   DAY_SECONDS,
   DUSK_SECONDS,
+  HEADLIGHT_HALF_DEG,
+  LAMP_HEADING_STEP_DEG,
+  MAMMOTH_LAMP_PERIOD_SECONDS,
+  MAMMOTH_LAMP_STEP_DEG,
+  MAMMOTH_LAMP_SWING_DEG,
   NEUTRAL_OWNER,
   NIGHT_REACH_MUL,
   NIGHT_SECONDS,
@@ -26,6 +31,8 @@ import {
   clockMarkLine,
   daylightAt,
   hasHeadlight,
+  hullLamps,
+  lampHeading,
   matchClock,
   nightReachMul,
   nightTiles,
@@ -240,7 +247,8 @@ describe("night sight for every eye", () => {
       };
       const day = litCount(src, 0);
       const night = litCount(src, NIGHT_TICK);
-      const cap = hasHeadlight(type) ? 0.45 : 0.32;
+      // Three Mammoth lamps light more of the night than one nose lamp, and still less than day.
+      const cap = type === "mammoth" ? 0.68 : hasHeadlight(type) ? 0.45 : 0.32;
       assert.ok(night < day * cap, `${type}: ${night} lit at night vs ${day} by day`);
     }
   });
@@ -266,6 +274,60 @@ describe("headlights", () => {
     assert.equal(lit(state, a, 100, 128 + r - 2), false, "abeam, in the dark");
     tank.facing = Math.PI;
     assert.equal(lit(state, a, 100 - (r - 2), 128), true, "turns with the hull");
+  });
+
+  it("gives a Mammoth a nose lamp and two flank lamps that sweep a small arc", () => {
+    assert.deepEqual(hullLamps("ss3", 1, 4), [{ beam: 0, mount: 0 }]);
+    const step = (MAMMOTH_LAMP_STEP_DEG * Math.PI) / 180;
+    const swing = (MAMMOTH_LAMP_SWING_DEG * Math.PI) / 180;
+    const a = hullLamps("mammoth", 3, 0);
+    const b = hullLamps("mammoth", 9, 0);
+    assert.equal(a.length, 3);
+    assert.equal(a[0]!.beam, 0);
+    assert.equal(a[0]!.mount, 0);
+    assert.equal(a[1]!.mount, step);
+    assert.equal(a[2]!.mount, -step);
+    assert.notEqual(a[1]!.beam, b[1]!.beam);
+    let moved = false;
+    for (let i = 0; i <= 48; i++) {
+      const lamps = hullLamps("mammoth", 3, (i / 48) * MAMMOTH_LAMP_PERIOD_SECONDS);
+      assert.equal(lamps[0]!.beam, 0, "the nose lamp stays on the bow");
+      assert.equal(lamps[1]!.mount, step);
+      assert.equal(lamps[2]!.mount, -step);
+      assert.ok(Math.abs(lamps[1]!.beam - step) <= swing + 1e-9);
+      assert.ok(Math.abs(lamps[2]!.beam + step) <= swing + 1e-9);
+      if (Math.abs(lamps[1]!.beam - a[1]!.beam) > swing * 0.5) moved = true;
+    }
+    assert.ok(moved, "a flank lamp travels its arc");
+  });
+
+  it("lights three directions at night and leaves the gaps dark", () => {
+    const { state, a } = emptyField();
+    const tank = trooper(state, "mammoth", a, 100, 128);
+    tank.facing = 0;
+    const r = sightTilesForEntity(state, tank);
+    state.tick = NIGHT_TICK;
+    const half = (HEADLIGHT_HALF_DEG * Math.PI) / 180;
+    const swing = (MAMMOTH_LAMP_SWING_DEG * Math.PI) / 180;
+    const step = (MAMMOTH_LAMP_STEP_DEG * Math.PI) / 180;
+    const snap = ((LAMP_HEADING_STEP_DEG / 2) * Math.PI) / 180;
+    const gapNear = half + snap;
+    const gapFar = step - swing - half - snap;
+    assert.ok(gapFar > gapNear, "the nose beam and a flank beam do not meet");
+    const gap = (gapNear + gapFar) / 2;
+    const dist = r - 2;
+    const along = (rad: number) => ({
+      x: 100 + Math.round(Math.cos(rad) * dist),
+      y: 128 + Math.round(Math.sin(rad) * dist),
+    });
+    const dark = along(gap);
+    assert.equal(lit(state, a, dark.x, dark.y), false, "the gap between nose and flank stays dark");
+    const lamps = hullLamps("mammoth", tank.id, NIGHT_TICK * TICK_DT);
+    for (const lamp of lamps) {
+      const aim = lampHeading(tank.facing + lamp.beam);
+      const tile = along(aim);
+      assert.equal(lit(state, a, tile.x, tile.y), true, `lit along ${aim}`);
+    }
   });
 
   it("go out when the hull is a passenger", () => {

@@ -138,6 +138,14 @@ export const CRIT_LEG_SPEED = STANCE_SPEED.crawl;
 export const SWIM_SPEED = 0.4;
 /** Share of each soldier's authored walk. 0.7 is about 30% slower on foot. */
 export const INFANTRY_PACE = 0.7;
+/**
+ * Share of every unit's current move pace. Infantry stack this on INFANTRY_PACE.
+ * Hulls, walkers, aircraft, the drone, and the jump jet's flight use it once.
+ * 0.7 is another 30% slower.
+ */
+export const UNIT_PACE = 0.7;
+/** Authoring tiles per second after UNIT_PACE. Buildings stay at 0. */
+const paced = (tiles: number): number => t(tiles * UNIT_PACE);
 /** A* step-cost multiplier on water so troops prefer a short land detour. */
 export const WATER_PATH_COST = 2.5;
 /** Extra world pixels between unit reserved radii on a group move. */
@@ -1699,7 +1707,8 @@ export const SPOTLIGHT_ON_DAYLIGHT = 0.5;
 export const SPOTLIGHT_REACH_TILES = INFANTRY_SIGHT_TILES + TOWER_SIGHT_BONUS;
 /** Half the beam's width. */
 export const SPOTLIGHT_HALF_DEG = 14;
-export const SPOTLIGHT_TURN_DEG_PER_SEC = 60;
+/** How fast the cab lamp turns, for Rotate and for a patrol sweep. */
+export const SPOTLIGHT_TURN_DEG_PER_SEC = 18;
 /**
  * Armored ground hulls and the Cyborg run a headlight in the dark. Down the
  * hull's nose it gives back the unit's own daylight sight; everywhere else
@@ -2011,8 +2020,8 @@ export const JET_REFUEL_PER_SEC = JET_FUEL_SECONDS / 16;
 export const JET_ALT = 7;
 /** Elevation units per second up or down. */
 export const JET_CLIMB_PER_SEC = 9;
-/** Air speed. Faster than he runs. */
-export const JET_FLY_TILES_PER_SEC = t(4);
+/** Air speed. Faster than he runs. Same UNIT_PACE cut as the walk. */
+export const JET_FLY_TILES_PER_SEC = paced(4);
 
 export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   rifle: RIFLE,
@@ -2313,7 +2322,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 14,
-    moveTilesPerSec: t(1.3),
+    moveTilesPerSec: paced(1.3),
     turnDegPerSec: 120,
     turnInPlace: true,
     rangeTiles: 0,
@@ -2774,7 +2783,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(2.2 * INFANTRY_PACE),
+    moveTilesPerSec: paced(2.2 * INFANTRY_PACE),
     turnDegPerSec: 1800,
     rangeTiles: RIFLE_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2798,7 +2807,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.65 * INFANTRY_PACE),
+    moveTilesPerSec: paced(1.65 * INFANTRY_PACE),
     turnDegPerSec: 1400,
     rangeTiles: MG42_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2823,7 +2832,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.8 * INFANTRY_PACE),
+    moveTilesPerSec: paced(1.8 * INFANTRY_PACE),
     turnDegPerSec: 1600,
     rangeTiles: SCOPED_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2849,7 +2858,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.65 * INFANTRY_PACE),
+    moveTilesPerSec: paced(1.65 * INFANTRY_PACE),
     turnDegPerSec: 1400,
     rangeTiles: PTRD_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2875,7 +2884,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.6 * INFANTRY_PACE),
+    moveTilesPerSec: paced(1.6 * INFANTRY_PACE),
     turnDegPerSec: 1400,
     rangeTiles: LAUNCHER_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2900,7 +2909,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.7 * INFANTRY_PACE),
+    moveTilesPerSec: paced(1.7 * INFANTRY_PACE),
     turnDegPerSec: 1500,
     rangeTiles: FLAMER_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2925,7 +2934,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.5 * INFANTRY_PACE),
+    moveTilesPerSec: paced(1.5 * INFANTRY_PACE),
     turnDegPerSec: 1200,
     rangeTiles: MORTAR_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2950,7 +2959,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(2 * INFANTRY_PACE),
+    moveTilesPerSec: paced(2 * INFANTRY_PACE),
     turnDegPerSec: 1600,
     rangeTiles: 0,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2972,7 +2981,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(2 * INFANTRY_PACE),
+    moveTilesPerSec: paced(2 * INFANTRY_PACE),
     turnDegPerSec: 1600,
     rangeTiles: 0,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -2994,7 +3003,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 11,
-    moveTilesPerSec: t(1.9),
+    moveTilesPerSec: paced(1.9),
     turnDegPerSec: 140,
     rangeTiles: 0,
     sightTiles: t(4),
@@ -3022,7 +3031,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 12,
-    moveTilesPerSec: t(1.45),
+    moveTilesPerSec: paced(1.45),
     turnDegPerSec: 85,
     rangeTiles: TIGER_RANGE_TILES,
     sightTiles: t(8),
@@ -3058,7 +3067,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 15,
-    moveTilesPerSec: t(1.1),
+    moveTilesPerSec: paced(1.1),
     turnDegPerSec: 60,
     rangeTiles: TIGER_RANGE_TILES,
     sightTiles: t(8),
@@ -3097,7 +3106,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 10,
-    moveTilesPerSec: t(1.55),
+    moveTilesPerSec: paced(1.55),
     turnDegPerSec: 60,
     rangeTiles: STUG_RANGE_TILES,
     sightTiles: t(7),
@@ -3135,7 +3144,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 13,
-    moveTilesPerSec: t(1.0),
+    moveTilesPerSec: paced(1.0),
     turnDegPerSec: 38,
     rangeTiles: JAGDTIGER_RANGE_TILES,
     sightTiles: t(7),
@@ -3172,7 +3181,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 8,
-    moveTilesPerSec: t(1.3),
+    moveTilesPerSec: paced(1.3),
     turnDegPerSec: 160,
     rangeTiles: WALKER_RANGE_TILES,
     sightTiles: t(9),
@@ -3207,7 +3216,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.6 * INFANTRY_PACE),
+    moveTilesPerSec: paced(1.6 * INFANTRY_PACE),
     turnDegPerSec: 900,
     rangeTiles: CYBORG_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -3232,7 +3241,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 13,
-    moveTilesPerSec: t(1.15),
+    moveTilesPerSec: paced(1.15),
     turnDegPerSec: 70,
     rangeTiles: TITAN_RANGE_TILES,
     sightTiles: t(8),
@@ -3272,7 +3281,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 17,
-    moveTilesPerSec: t(0.75),
+    moveTilesPerSec: paced(0.75),
     turnDegPerSec: 45,
     rangeTiles: MAMMOTH_MG_RANGE_TILES,
     sightTiles: t(7),
@@ -3316,7 +3325,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 12,
-    moveTilesPerSec: t(1.9),
+    moveTilesPerSec: paced(1.9),
     turnDegPerSec: 120,
     rangeTiles: NEBELWERFER_RANGE_TILES,
     sightTiles: t(6),
@@ -3351,7 +3360,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 10,
-    moveTilesPerSec: t(0.55),
+    moveTilesPerSec: paced(0.55),
     turnDegPerSec: 30,
     rangeTiles: ARTILLERY_RANGE_TILES,
     sightTiles: t(5),
@@ -3382,7 +3391,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 11,
-    moveTilesPerSec: t(2.15),
+    moveTilesPerSec: paced(2.15),
     turnDegPerSec: 150,
     rangeTiles: 0,
     sightTiles: t(6),
@@ -3413,7 +3422,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 12,
-    moveTilesPerSec: t(5),
+    moveTilesPerSec: paced(5),
     turnDegPerSec: 120,
     rangeTiles: STUKA_MG.rangeTiles,
     sightTiles: t(10),
@@ -3441,7 +3450,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 11,
-    moveTilesPerSec: t(6.5),
+    moveTilesPerSec: paced(6.5),
     turnDegPerSec: 150,
     rangeTiles: FW190_BARRAGE_TILES,
     sightTiles: t(10),
@@ -3469,7 +3478,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 16,
-    moveTilesPerSec: t(4.2),
+    moveTilesPerSec: paced(4.2),
     turnDegPerSec: 60,
     rangeTiles: 0,
     sightTiles: t(9),
@@ -3493,7 +3502,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(1.6 * INFANTRY_PACE),
+    moveTilesPerSec: paced(1.6 * INFANTRY_PACE),
     turnDegPerSec: 1600,
     rangeTiles: 0,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -3515,7 +3524,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 7,
-    moveTilesPerSec: t(2.1 * INFANTRY_PACE),
+    moveTilesPerSec: paced(2.1 * INFANTRY_PACE),
     turnDegPerSec: 1800,
     rangeTiles: ASSAULT_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
@@ -3540,7 +3549,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 6,
-    moveTilesPerSec: t(3.5),
+    moveTilesPerSec: paced(3.5),
     turnDegPerSec: 360,
     rangeTiles: 0,
     sightTiles: t(9),
