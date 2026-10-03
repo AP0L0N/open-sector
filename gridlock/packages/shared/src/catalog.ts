@@ -100,6 +100,10 @@ export const CRIT_LEG_CHANCE = 0.25;
 export const CRIT_TRACKS_CHANCE = 0.2;
 /** Rear-plate hit on a motor vehicle → broken engine. */
 export const CRIT_ENGINE_CHANCE = 0.4;
+/** A bullet that meets a hull or a watch tower may smash every lamp on it. */
+export const CRIT_LAMP_CHANCE = 0.06;
+/** The scoped rifle breaks those lamps much more often than other bullets. */
+export const CRIT_LAMP_SNIPER_CHANCE = 0.35;
 /** Infantry posture. Stand is the default; crawl is prone. */
 export type Stance = "stand" | "crouch" | "crawl";
 export const STANCES: readonly Stance[] = ["stand", "crouch", "crawl"];
@@ -506,14 +510,15 @@ export type SpecialAction = "deploy";
 /** Tank / gun shells. Infantry small-arms use clips; magazines never run dry. */
 export type ShellType = "ap" | "he" | "heat" | "smoke";
 export const SHELL_TYPES: readonly ShellType[] = ["ap", "he", "heat", "smoke"];
-/** Lasting injuries. Infantry: arm / leg. Motor vehicles: tracks / engine. */
-export type Crit = "arm" | "leg" | "tracks" | "engine";
-export const CRIT_TYPES: readonly Crit[] = ["arm", "leg", "tracks", "engine"];
+/** Lasting injuries. Infantry: arm / leg. Motor vehicles: tracks / engine. A lamp crit darkens every spotlight on that hull or tower. */
+export type Crit = "arm" | "leg" | "tracks" | "engine" | "lamp";
+export const CRIT_TYPES: readonly Crit[] = ["arm", "leg", "tracks", "engine", "lamp"];
 export const CRIT_LABEL: Record<Crit, string> = {
   arm: "broken arm",
   leg: "broken leg",
   tracks: "broken tracks",
   engine: "broken engine",
+  lamp: "broken spotlight",
 };
 /** Floor for every special. Individual actions may be longer. */
 export const SPECIAL_COOLDOWN_MIN = 2;
@@ -1702,7 +1707,8 @@ export const SPOTLIGHT_ON_DAYLIGHT = 0.5;
 /**
  * A held watch tower carries a spotlight on the cab. In the dark its beam
  * lights a cone of ground out to the cab's full daylight watch, seen from the
- * cab's height. Rotate swings it; it does not need a crew.
+ * cab's height. Rotate swings it; it does not need a crew. A bullet can smash
+ * it, and a scoped rifle does that more often. An engineer fits a new one.
  */
 export const SPOTLIGHT_REACH_TILES = INFANTRY_SIGHT_TILES + TOWER_SIGHT_BONUS;
 /** Half the beam's width. */
@@ -1713,7 +1719,8 @@ export const SPOTLIGHT_TURN_DEG_PER_SEC = 18;
  * Armored ground hulls and the Cyborg run a headlight in the dark. Down the
  * hull's nose it gives back the unit's own daylight sight; everywhere else
  * the night ring stands. The Mammoth adds two more, one to each side, and
- * those two drift through a small arc.
+ * those two drift through a small arc. One smashed fitting darkens every
+ * lamp on that hull.
  */
 export const HEADLIGHT_HALF_DEG = 20;
 /** Lamp headings snap to this step for sight, so a turning hull does not repaint every degree. */
@@ -2967,7 +2974,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "No gun. Builds sandbags, concrete walls, tank obstacles, and one-man trenches, repairs armor and buildings, and cuts wrecks into scrap.",
+    blurb: "No gun. Builds sandbags, concrete walls, tank obstacles, and one-man trenches, repairs armor, buildings, and spotlights, and cuts wrecks into scrap.",
   },
   medic: {
     type: "medic",

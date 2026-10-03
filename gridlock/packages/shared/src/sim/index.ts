@@ -2,7 +2,7 @@ export { createMatch, step, stepMatch } from "./match.js";
 export { tickAi, findBuildTile } from "./ai.js";
 export { tickCollision, moveWithCollision } from "./collision.js";
 export { toWreck } from "./wreck.js";
-export { fireStats, hullTurnMul, immobilized, moveSpeedMul, rollCrits } from "./crits.js";
+export { fireStats, hullTurnMul, immobilized, moveSpeedMul, rollCrits, rollLamp } from "./crits.js";
 export { commandedStance, effectiveStance, tickStance } from "./stance.js";
 export { applyCommand } from "./commands.js";
 export { snapshotFor } from "./snapshot.js";

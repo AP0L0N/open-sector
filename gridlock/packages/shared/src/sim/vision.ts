@@ -12,6 +12,7 @@ import {
   catalog,
   entityIsScouting,
   isArmoredType,
+  type Crit,
 } from "../catalog.js";
 import type { EntityView, MatchSnapshot } from "../protocol.js";
 import { getMap, TILE_EMPTY, TILE_TREE } from "../maps.js";
@@ -70,6 +71,8 @@ export type SightSource = {
   hp?: number;
   ruined?: boolean;
   wreck?: boolean;
+  /** A lamp crit darkens every spotlight on this hull or tower. */
+  crits?: readonly Crit[];
 };
 
 /** Light at the moment sight is painted: how far it carries, whether lamps are lit, and match seconds for lamps that sweep. */
@@ -267,7 +270,7 @@ function spotOf(e: SightSource, light: SightLight, daySight: number, eye: number
   if (!light.spots) return NO_SPOT;
   if (e.kind === "building") {
     if (!hasSpotlight(e.type)) return NO_SPOT;
-    if (!spotlightManned({ type: e.type, ownerId: e.ownerId, hp: e.hp ?? 1, ruined: e.ruined, wreck: e.wreck })) {
+    if (!spotlightManned({ type: e.type, ownerId: e.ownerId, hp: e.hp ?? 1, ruined: e.ruined, wreck: e.wreck, crits: e.crits })) {
       return NO_SPOT;
     }
     const a = lampHeading(spotFacingOf({ facing: e.facing ?? 0, spotFacing: e.spotFacing }));
@@ -624,7 +627,10 @@ function visionKey(state: MatchState, playerId: string): number {
     h = mix(h, e.scoutOut && e.scoutHp > 0 ? 1 : 0);
     h = mix(h, e.air ? Math.round(e.air.alt) : 0);
     h = mix(h, occupantSightTiles(state, e) ?? -1);
-    if (light.spots && hasSpotlight(e.type)) h = mix(h, Math.round(lampHeading(spotFacingOf(e)) * 4096));
+    if (light.spots && hasSpotlight(e.type)) {
+      h = mix(h, e.crits.includes("lamp") ? 0 : 1);
+      h = mix(h, Math.round(lampHeading(spotFacingOf(e)) * 4096));
+    }
     if (light.spots && headlightLit(e)) {
       const facing = e.facing ?? 0;
       if (e.type === "mammoth") {

@@ -276,6 +276,28 @@ describe("headlights", () => {
     assert.equal(lit(state, a, 100 - (r - 2), 128), true, "turns with the hull");
   });
 
+  it("goes dark in every direction once the lamps are smashed", () => {
+    const { state, a } = emptyField();
+    const tank = trooper(state, "mammoth", a, 100, 128);
+    tank.facing = 0;
+    state.tick = NIGHT_TICK;
+    const r = sightTilesForEntity(state, tank);
+    const ahead = lit(state, a, 100 + r - 2, 128);
+    assert.equal(ahead, true, "the nose lamp is lit");
+    tank.crits = ["lamp"];
+    assert.equal(lit(state, a, 100 + r - 2, 128), false, "nose went dark");
+    assert.equal(lit(state, a, 100, 128 + r - 2), false, "flank went dark");
+
+    const tower = towerAt(state, a, 40, 40);
+    tower.spotFacing = 0;
+    const ox = tower.tileX + Math.floor(tower.tileW / 2);
+    const oy = tower.tileY + Math.floor(tower.tileH / 2);
+    const far = SPOTLIGHT_REACH_TILES - 6;
+    assert.equal(lit(state, a, ox + far, oy), true, "the cab lamp is lit");
+    tower.crits = ["lamp"];
+    assert.equal(lit(state, a, ox + far, oy), false, "the cab lamp is out");
+  });
+
   it("gives a Mammoth a nose lamp and two flank lamps that sweep a small arc", () => {
     assert.deepEqual(hullLamps("ss3", 1, 4), [{ beam: 0, mount: 0 }]);
     const step = (MAMMOTH_LAMP_STEP_DEG * Math.PI) / 180;

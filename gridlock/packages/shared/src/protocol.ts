@@ -16,7 +16,7 @@ import type {
 } from "./catalog.js";
 import type { CustomMapSpec } from "./custom-maps.js";
 
-export const PROTOCOL_VERSION = 76;
+export const PROTOCOL_VERSION = 77;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;

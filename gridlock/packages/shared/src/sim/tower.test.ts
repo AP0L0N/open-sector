@@ -19,7 +19,7 @@ import {
   garrisonCapOf,
   type EntityType,
 } from "../catalog.js";
-import { TILE_EMPTY } from "../maps.js";
+import { TILE_EMPTY, getMap, registerMap } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { tickCombat } from "./combat.js";
 import { sightTilesForEntity, weaponRangeWorld } from "./elevation.js";
@@ -30,8 +30,8 @@ import { snapshotFor } from "./snapshot.js";
 import { visionMask, visionMaskFromSnapshot } from "./vision.js";
 import type { Entity, MatchState } from "./types.js";
 
-function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
-  const r = createRoom({ id: "WT", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
+function twoPlayerMatch(mapId = "yard-64"): { state: MatchState; a: string; b: string } {
+  const r = createRoom({ id: "WT", hostId: "A", hostName: "Alpha", mapId, maxSlots: 8 });
   if (!r.ok) throw new Error(r.message);
   const room = r.value;
   assert.equal(joinRoom(room, "B", "Bravo").ok, true);
@@ -174,8 +174,12 @@ describe("watch tower", () => {
   });
 
   it("paints its far sight into the client fog, where a bunker adds none", () => {
+    // The client's fog reads the map's own heights, not the flattened fixture,
+    // so compare on a flat copy of the yard: this is about reach, not Scrap Yard's hills.
+    const yard = getMap("yard-64")!;
+    registerMap({ ...yard, id: "yard-64-flat", heights: yard.heights.map(() => 0), maxHeight: 0 });
     const paint = (type: EntityType) => {
-      const { state, a } = twoPlayerMatch();
+      const { state, a } = twoPlayerMatch("yard-64-flat");
       const house = structureAt(state, type, a);
       assert.equal(enterGarrison(state, trooper(state, "rifleman", a), house), true);
       return seenCount(visionMaskFromSnapshot(snapshotFor(state, a), state.width, state.height, state.tileSize));

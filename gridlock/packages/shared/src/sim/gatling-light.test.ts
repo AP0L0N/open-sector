@@ -212,7 +212,9 @@ describe("gatling rounds against light plate", () => {
     const other = truckEastOf(state, tank.x + 48, tank.y);
     other.holdPosition = true;
     const before = other.hp;
-    const roof = countFire(state, 40);
+    // A bullet that meets the truck can also smash its lamp, so the nick roll
+    // shares the stream and the first bite lands later than the Cyborg's.
+    const roof = countFire(state, 80);
     assert.ok(roof.spark > roof.bite, `roof sparks ${roof.spark} bites ${roof.bite}`);
     assert.ok(roof.bite > 0);
     assert.ok(other.hp < before || other.wreck);

@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   CRIT_ENGINE_CHANCE,
+  CRIT_LAMP_CHANCE,
+  CRIT_LAMP_SNIPER_CHANCE,
   CRIT_LEG_SPEED,
   CRIT_TRACKS_CHANCE,
   HANDGUN,
@@ -10,7 +12,8 @@ import {
   catalog,
 } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { fireStats, hullTurnMul, immobilized, moveSpeedMul, rollCrits } from "./crits.js";
+import { fireStats, hullTurnMul, immobilized, moveSpeedMul, rollCrits, rollLamp } from "./crits.js";
+import { tickProjectiles } from "./combat.js";
 import { entityHeight, rangeTilesOf, weaponRangeWorld } from "./elevation.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
@@ -117,6 +120,97 @@ describe("rollCrits", () => {
     addCrit(t, "arm");
     rollCrits(t, "front", "hit", 12, () => 0);
     assert.deepEqual(t.crits, ["arm", "leg"]);
+  });
+});
+
+describe("rollLamp", () => {
+  it("smashes every lamp on a hull or a tower, and ignores a shell or a soldier", () => {
+    const { state, a } = twoPlayerMatch();
+    const tank = makeEntity(state, "mammoth", a, 100, 100);
+    rollLamp(tank, "bullet", () => CRIT_LAMP_CHANCE - 0.001);
+    assert.deepEqual(tank.crits, ["lamp"]);
+    rollLamp(tank, "bullet", () => 0);
+    assert.deepEqual(tank.crits, ["lamp"]);
+
+    const cold = makeEntity(state, "ss3", a, 140, 100);
+    rollLamp(cold, "bullet", () => CRIT_LAMP_CHANCE);
+    assert.deepEqual(cold.crits, []);
+    rollLamp(cold, "sniper", () => CRIT_LAMP_SNIPER_CHANCE - 0.001);
+    assert.deepEqual(cold.crits, ["lamp"]);
+
+    const missed = makeEntity(state, "warden", a, 180, 100);
+    rollLamp(missed, "sniper", () => CRIT_LAMP_SNIPER_CHANCE);
+    assert.deepEqual(missed.crits, []);
+    rollLamp(missed, undefined, () => 0);
+    assert.deepEqual(missed.crits, []);
+
+    const tower = makeEntity(state, "tower", a, 400, 400, { tileX: 10, tileY: 10 });
+    rollLamp(tower, "bullet", () => 0);
+    assert.deepEqual(tower.crits, ["lamp"]);
+
+    const man = makeEntity(state, "rifleman", a, 220, 100);
+    rollLamp(man, "sniper", () => 0);
+    assert.deepEqual(man.crits, []);
+  });
+
+  it("lets a connecting bullet smash a spotlight, and a shell does not", () => {
+    const { state, a } = twoPlayerMatch();
+    const tank = makeEntity(state, "warden", a, 400, 400);
+    const shoot = (shell: "ap" | null, sniper: boolean) => {
+      tank.hp = tank.hpMax;
+      state.projectiles.push({
+        id: state.nextId++,
+        ownerId: "B",
+        team: 1,
+        x: tank.x - 28,
+        y: tank.y,
+        vx: 600,
+        vy: 0,
+        damage: 1,
+        penetration: 1,
+        caliber: shell ? 75 : 8,
+        life: 1,
+        ignoreId: -1,
+        fromId: -1,
+        bounced: false,
+        shell,
+        hpFraction: sniper ? 1 : undefined,
+      });
+      tickProjectiles(state, TICK_DT);
+    };
+    for (let i = 0; i < 30; i++) shoot("ap", false);
+    assert.equal(tank.crits.includes("lamp"), false);
+    let bullets = 0;
+    for (; bullets < 160 && !tank.crits.includes("lamp"); bullets++) shoot(null, false);
+    assert.equal(tank.crits.includes("lamp"), true, `still lit after ${bullets} bullets`);
+
+    const other = makeEntity(state, "ss3", a, 700, 400);
+    let scoped = 0;
+    for (; scoped < 40 && !other.crits.includes("lamp"); scoped++) {
+      other.hp = other.hpMax;
+      state.projectiles.push({
+        id: state.nextId++,
+        ownerId: "B",
+        team: 1,
+        x: other.x - 28,
+        y: other.y,
+        vx: 600,
+        vy: 0,
+        damage: 1,
+        penetration: 1,
+        caliber: 8,
+        life: 1,
+        ignoreId: -1,
+        fromId: -1,
+        bounced: false,
+        shell: null,
+        hpFraction: 1,
+      });
+      tickProjectiles(state, TICK_DT);
+    }
+    assert.equal(other.crits.includes("lamp"), true, `still lit after ${scoped} scoped shots`);
+    const view = snapshotFor(state, a).entities.find((e) => e.id === other.id);
+    assert.deepEqual(view?.crits, ["lamp"]);
   });
 });
 

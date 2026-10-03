@@ -482,6 +482,35 @@ describe("engineer field works", () => {
     assert.equal(eng.state, "idle");
   });
 
+  it("fits a new spotlight on a hull and on a tower that still have all their hit points", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 30, 28, 16, 12);
+    const ts = state.tileSize;
+    const x = tileCenter(36, ts);
+    const y = tileCenter(32, ts);
+    const eng = makeEntity(state, "engineer", "A", x, y);
+    const tank = makeEntity(state, "warden", "A", x + 28, y);
+    tank.crits = ["lamp"];
+    const res = applyCommand(state, "A", { type: "cmd.repair", ids: [eng.id], targetId: tank.id });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    ticks(state, 5);
+    assert.deepEqual(tank.crits, ["lamp"]);
+    ticks(state, Math.ceil(HULL_FIX_SECONDS / TICK_DT) + 20);
+    assert.deepEqual(tank.crits, []);
+
+    const def = catalog("tower");
+    const tower = makeEntity(state, "tower", "A", x, y + 80, { tileX: 34, tileY: 36 });
+    tower.hp = tower.hpMax;
+    tower.crits = ["lamp"];
+    eng.x = tower.x + def.tileW * ts;
+    eng.y = tower.y;
+    const fix = applyCommand(state, "A", { type: "cmd.repair", ids: [eng.id], targetId: tower.id });
+    assert.equal(fix.ok, true, fix.ok ? "" : fix.message);
+    ticks(state, Math.ceil(HULL_FIX_SECONDS / TICK_DT) + 30);
+    assert.deepEqual(tower.crits, []);
+    assert.equal(eng.state, "idle");
+  });
+
   it("scraps an armored wreck for scrap and removes the hull", () => {
     const { state } = twoPlayerMatch();
     clearPatch(state, 30, 28, 16, 12);

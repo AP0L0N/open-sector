@@ -4,10 +4,12 @@ import {
   MAMMOTH_LAMP_PERIOD_SECONDS,
   MAMMOTH_LAMP_STEP_DEG,
   MAMMOTH_LAMP_SWING_DEG,
+  hasCrit,
   isAircraftType,
   isArmoredType,
   isCyborg,
   isDroneType,
+  type Crit,
   DUSK_SECONDS,
   NEUTRAL_OWNER,
   NIGHT_REACH_MUL,
@@ -170,7 +172,9 @@ export function headlightLit(e: {
   wreck?: boolean;
   garrisonedIn?: number | null;
   air?: unknown;
+  crits?: readonly Crit[];
 }): boolean {
+  if (hasCrit({ crits: e.crits ?? [] }, "lamp")) return false;
   return e.kind === "unit" && hasHeadlight(e.type) && (e.hp ?? 1) > 0 && !e.wreck && e.garrisonedIn == null && !e.air;
 }
 
@@ -187,7 +191,9 @@ export function spotlightManned(e: {
   hp: number;
   ruined?: boolean;
   wreck?: boolean;
+  crits?: readonly Crit[];
 }): boolean {
+  if (hasCrit({ crits: e.crits ?? [] }, "lamp")) return false;
   return hasSpotlight(e.type) && e.ownerId !== NEUTRAL_OWNER && e.hp > 0 && !e.ruined && !e.wreck;
 }
 

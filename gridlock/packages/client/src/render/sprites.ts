@@ -219,6 +219,7 @@ import armIconUrl from "../assets/status/arm.png";
 import legIconUrl from "../assets/status/leg.png";
 import tracksIconUrl from "../assets/status/tracks.png";
 import engineIconUrl from "../assets/status/engine.png";
+import lampIconUrl from "../assets/status/lamp.png";
 import { blendPadInPlace } from "./pad-blend.js";
 import { MAULER_SCALE } from "./mauler-cart.js";
 
@@ -1464,6 +1465,7 @@ const CRIT_ICONS: Record<Crit, HTMLImageElement> = {
   leg: loadSheet(legIconUrl),
   tracks: loadSheet(tracksIconUrl),
   engine: loadSheet(engineIconUrl),
+  lamp: loadSheet(lampIconUrl),
 };
 
 export function critIcon(c: Crit): HTMLImageElement {

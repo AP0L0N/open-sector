@@ -126,7 +126,7 @@ import {
   RICOCHET_TRAVEL,
   RICOCHET_TRAVEL_MIN,
 } from "./ballistics.js";
-import { fireStats, hullTurnMul, immobilized, rollCrits, takeDamage } from "./crits.js";
+import { fireStats, hullTurnMul, immobilized, rollCrits, rollLamp, takeDamage } from "./crits.js";
 import { damageMaulerCart } from "./mauler-cart.js";
 import { artilleryCanLay, artilleryReady, artilleryReloadMul, blastOnGun, bulletOnGun, gunCrewOf } from "./artillery.js";
 import { noteImpactSurface } from "./remains.js";
@@ -2331,6 +2331,8 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       hideScout(state, e);
     }
     if (occupied) woundGarrison(state, e, res.damage, p.caliber, !!p.plunging);
+    // A bullet that meets the body can smash the lamps, even when it only sparks.
+    if (e.hp > 0 && !e.wreck) rollLamp(e, lampShotOf(p), rand);
     if (e.type === "supply" && !e.wreck && e.hp > 0) {
       noteSupplyHit(state, e, res.face, isSupplyBullet(p.caliber, p.shell, p.flight), chipWalls ? dealt : 0);
     }
@@ -2483,6 +2485,13 @@ function cannonSplash(state: MatchState, p: Projectile): void {
     const dealt = coverStrike(e, dmg, state.tick, true);
     if (e.hp > 0) rollCrits(e, "none", "hit", dealt, () => nextRand(state));
   }
+}
+
+/** A small-arms round. The scoped rifle is the sniper's shot; every other bullet is ordinary. */
+function lampShotOf(p: Projectile): "bullet" | "sniper" | undefined {
+  if (!isSupplyBullet(p.caliber, p.shell, p.flight)) return undefined;
+  if (p.hpFraction != null && p.caliber < PTRD_CALIBER) return "sniper";
+  return "bullet";
 }
 
 function nearestSweepHit(

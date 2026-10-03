@@ -152,31 +152,43 @@ function nextRand(state: { n: number }): number {
   return state.n / 4294967296;
 }
 
-function splatDelta(
+/**
+ * A flat-topped hill or a flat-floored basin. Inside the crown ellipse the
+ * ground moves by the full `delta`; past its rim the ground falls off at one
+ * step per tile along every ray, the same ramp a pond bank gets. The flank
+ * then reads as one incline between two flat levels instead of a rounded
+ * swell whose slope is too gentle to shade.
+ */
+function splatMesa(
   heights: number[],
   width: number,
   height: number,
   cx: number,
   cy: number,
-  radX: number,
-  radY: number,
+  crownX: number,
+  crownY: number,
   delta: number,
   ceil = HEIGHT_MAX,
 ): void {
   if (delta === 0) return;
-  const rx = Math.max(1.5, radX);
-  const ry = Math.max(1.5, radY);
-  const x0 = Math.max(0, Math.floor(cx - rx - 1));
-  const x1 = Math.min(width - 1, Math.ceil(cx + rx + 1));
-  const y0 = Math.max(0, Math.floor(cy - ry - 1));
-  const y1 = Math.min(height - 1, Math.ceil(cy + ry + 1));
+  const run = Math.abs(delta);
+  const kx = Math.max(1, crownX);
+  const ky = Math.max(1, crownY);
+  const reach = Math.max(kx, ky) + run + 1;
+  const x0 = Math.max(0, Math.floor(cx - reach));
+  const x1 = Math.min(width - 1, Math.ceil(cx + reach));
+  const y0 = Math.max(0, Math.floor(cy - reach));
+  const y1 = Math.min(height - 1, Math.ceil(cy + reach));
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
-      const dx = (x - cx) / rx;
-      const dy = (y - cy) / ry;
-      const d = Math.sqrt(dx * dx + dy * dy);
-      if (d >= 1) continue;
-      const mag = Math.round(delta * (1 - d));
+      const ox = x - cx;
+      const oy = y - cy;
+      // Distance to the crown rim in crown radii (1 on the rim)...
+      const d = Math.hypot(ox / kx, oy / ky);
+      // ...and in tiles along this ray, so the ramp is `run` tiles long everywhere.
+      const past = d <= 1 ? 0 : Math.hypot(ox, oy) * (1 - 1 / d);
+      if (past >= run) continue;
+      const mag = Math.round(delta * (1 - past / run));
       if (mag === 0) continue;
       const i = idx(width, x, y);
       const cur = heights[i] ?? HEIGHT_BASE;
@@ -1084,7 +1096,11 @@ function scaleFeatures(features: MapFeature[], sub: number): MapFeature[] {
   return features.map((f) => ({ type: f.type, x: f.x * sub, y: f.y * sub, facing: f.facing }));
 }
 
-/** Seeded rolling hills and valleys. Spawns stay on the base; slopes never cliff. `ceil` caps a peak. */
+/**
+ * Seeded flat-topped hills and sunken fields on rolling ground. Every flank is
+ * a one-step-per-tile ramp between two flat levels, the shape a pond bank has.
+ * Spawns stay on the base; slopes never cliff. `ceil` caps a peak.
+ */
 export function scatterHeights(
   width: number,
   height: number,
@@ -1106,7 +1122,7 @@ export function scatterHeights(
     [width * 0.5, height * 0.48],
   ];
   const valleySpots: readonly [number, number][] = [
-    [width * 0.5, height * 0.2],
+    [width * 0.57, height * 0.25],
     [width * 0.2, height * 0.5],
     [width * 0.8, height * 0.52],
     [width * 0.48, height * 0.8],
@@ -1116,17 +1132,21 @@ export function scatterHeights(
     const cx = qx + (nextRand(rng) - 0.5) * 8 * TILE_SUBDIV;
     const cy = qy + (nextRand(rng) - 0.5) * 8 * TILE_SUBDIV;
     const rise = Math.max(4, Math.round(riseMax * (0.55 + nextRand(rng) * 0.45)));
-    const rad = rise * (1.25 + nextRand(rng) * 0.7);
+    // A flat summit a squad can stand on, then a ramp `rise` tiles long.
+    const crown = rise * (0.35 + nextRand(rng) * 0.45);
     const stretch = 0.75 + nextRand(rng) * 0.55;
-    splatDelta(heights, width, height, cx, cy, rad * stretch, rad / stretch, rise, ceil);
+    splatMesa(heights, width, height, cx, cy, crown * stretch, crown / stretch, rise, ceil);
   }
   for (const [qx, qy] of valleySpots) {
     const cx = qx + (nextRand(rng) - 0.5) * 8 * TILE_SUBDIV;
     const cy = qy + (nextRand(rng) - 0.5) * 8 * TILE_SUBDIV;
-    const depth = Math.max(3, Math.round(HEIGHT_BASE * (0.55 + nextRand(rng) * 0.45)));
-    const rad = depth * (1.35 + nextRand(rng) * 0.8);
+    // Sunken fields: a broad flat floor a few steps above the water level, so
+    // the plain around it stands as high ground and its edge reads like a dry
+    // pond bank, while a pond inside one still keeps a bank of its own.
+    const depth = Math.min(HEIGHT_BASE - 2, 4 + Math.floor(nextRand(rng) * 3));
+    const crown = depth * (2 + nextRand(rng) * 1.5);
     const stretch = 0.7 + nextRand(rng) * 0.6;
-    splatDelta(heights, width, height, cx, cy, rad * stretch, rad / stretch, -depth, ceil);
+    splatMesa(heights, width, height, cx, cy, crown * stretch, crown / stretch, -depth, ceil);
   }
   const extra = Math.round((8 + Math.floor(nextRand(rng) * 6)) * relief);
   for (let i = 0; i < extra; i++) {
@@ -1136,9 +1156,9 @@ export function scatterHeights(
     const mag = valley
       ? -(2 + Math.floor(nextRand(rng) * (HEIGHT_BASE - 1)))
       : 2 + Math.floor(nextRand(rng) * riseMax);
-    const rad = Math.abs(mag) * (1.2 + nextRand(rng) * 0.9);
+    const crown = Math.abs(mag) * (0.4 + nextRand(rng) * 0.8);
     const stretch = 0.7 + nextRand(rng) * 0.7;
-    splatDelta(heights, width, height, cx, cy, rad * stretch, rad / stretch, mag, ceil);
+    splatMesa(heights, width, height, cx, cy, crown * stretch, crown / stretch, mag, ceil);
   }
   const lock = locked ?? new Uint8Array(width * height);
   for (const p of pads) {

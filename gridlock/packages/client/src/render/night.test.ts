@@ -21,7 +21,7 @@ describe("night render", () => {
     assert.ok(nightShade(0.5) > 0 && nightShade(0.5) < NIGHT_SHADE_MAX);
   });
 
-  it("draws the hull bulb at seventy percent of the old disc", () => {
+  it("keeps the near end of a hull beam at seventy percent of the old disc", () => {
     assert.equal(LAMP_BULB_SCALE, 0.7);
   });
 
