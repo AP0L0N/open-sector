@@ -97,7 +97,7 @@ import { allies, buildingBounds, buildingContains, burnTreeAt, fellTreeAt, isTre
 import { livingGarrison, woundGarrison } from "./garrison.js";
 import { mortarFalloff } from "./mortar.js";
 import { stepTurn } from "./orders.js";
-import { distToRoute, stepPatrolLeg } from "./patrol.js";
+import { distToRoute, patrolLegIndex, stepPatrolLeg } from "./patrol.js";
 import { powerOf, productionSpeed } from "./power.js";
 import { noteImpactSurface } from "./remains.js";
 import { nextRand } from "./rng.js";
@@ -680,11 +680,11 @@ function tickFly(state: MatchState, e: Entity, dt: number): void {
     if (t && isAirborne(t)) altGoal = dogfight(state, e, t, dt, turned);
     else if (t) altGoal = attackRun(state, e, t.x, t.y, t, dt, turned, false);
     else if (!turned) {
-      let leg = o.leg ?? 1;
-      if (leg < 0 || leg >= route.length) leg = 1;
+      const loop = o.loop === true;
+      const leg = patrolLegIndex(route.length, o.leg, loop);
       let dest = route[leg] ?? route[route.length - 1]!;
       if (Math.hypot(dest.x - e.x, dest.y - e.y) <= orbitRadius(state, e)) {
-        const stepped = stepPatrolLeg(route, leg, o.dir === -1 ? -1 : 1);
+        const stepped = stepPatrolLeg(route, leg, o.dir === -1 ? -1 : 1, loop);
         o.leg = stepped.leg;
         o.dir = stepped.dir;
         dest = route[stepped.leg] ?? dest;
@@ -766,7 +766,7 @@ function patrolPlaneTarget(state: MatchState, e: Entity): Entity | undefined {
   let bestD = Infinity;
   for (const o of state.entities.values()) {
     if (!planePatrolContact(state, e, o, route, range)) continue;
-    const d = distToRoute(route, o.x, o.y);
+    const d = distToRoute(route, o.x, o.y, e.order?.loop === true);
     if (d < bestD) {
       bestD = d;
       best = o;
@@ -779,7 +779,7 @@ function planePatrolContact(state: MatchState, e: Entity, o: Entity, route: read
   if (o.kind !== "unit" || o.hp <= 0 || o.wreck || o.id === e.id || isCrashing(o)) return false;
   if (!o.ownerId || allies(state, e.ownerId, o.ownerId)) return false;
   if (!canSeeEntity(state, e.ownerId, o) || !canHurt(e, o)) return false;
-  return distToRoute(route, o.x, o.y) <= range;
+  return distToRoute(route, o.x, o.y, e.order?.loop === true) <= range;
 }
 
 function canHurt(e: Entity, t: Entity): boolean {

@@ -100,7 +100,7 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.attackmove":
       return cmdAttackMove(state, playerId, msg.ids, msg.x, msg.y);
     case "cmd.patrol":
-      return cmdPatrol(state, playerId, msg.ids, msg.points);
+      return cmdPatrol(state, playerId, msg.ids, msg.points, msg.loop);
     case "cmd.forceattack":
       return cmdForceAttack(state, playerId, msg.ids, msg.x, msg.y, msg.targetId, msg.once);
     case "cmd.stop":
@@ -700,9 +700,12 @@ function cmdPatrol(
   playerId: string,
   ids: number[],
   raw: { x: number; y: number }[] | undefined,
+  loopRaw?: boolean,
 ): CmdResult {
   const points = cleanPatrolPoints(state, raw);
   if (!points) return fail("bad_payload", "Place a patrol point.");
+  // One spot cannot circle. A shorter list is the out-and-back the click already was.
+  const loop = loopRaw === true && points.length >= 2;
   const ownedUnits = owned(state, playerId, ids);
   const lamps = ownedLamps(state, playerId, ids);
   if (ownedUnits.length === 0 && lamps.length === 0) return fail("not_yours", "No owned units.");
@@ -734,24 +737,33 @@ function cmdPatrol(
     cy /= anchors.length;
   }
   const pace = groupMovePace(ground);
+  const patrolOrder = (route: ReturnType<typeof buildPatrolRoute>) => ({
+    kind: "patrol" as const,
+    route,
+    leg: loop ? 0 : 1,
+    dir: 1 as const,
+    group,
+    ...(loop ? { loop: true as const } : {}),
+  });
   for (const e of ground) {
-    const route = buildPatrolRoute(state, e, points, e.x - cx, e.y - cy);
-    const dest = route[1]!;
+    const route = buildPatrolRoute(state, e, points, e.x - cx, e.y - cy, loop);
+    const order = patrolOrder(route);
+    const dest = route[order.leg]!;
     e.returnToBase = false;
     e.attackTarget = null;
     e.harvestTile = null;
     e.guardFacing = null;
     stopHaulerLoop(e);
-    e.order = { kind: "patrol", route, leg: 1, dir: 1, group };
+    e.order = order;
     if (pace != null) e.order.pace = pace;
     e.state = "move";
     setPath(state, e, dest.x, dest.y);
   }
   for (const e of lamps) {
-    const route = buildPatrolRoute(state, e, points, e.x - cx, e.y - cy);
+    const route = buildPatrolRoute(state, e, points, e.x - cx, e.y - cy, loop);
     e.attackTarget = null;
     e.waypoints = [];
-    e.order = { kind: "patrol", route, leg: 1, dir: 1, group };
+    e.order = patrolOrder(route);
     aimSpotlightPatrol(e);
   }
   planes.forEach((e, i) => {
@@ -760,12 +772,12 @@ function cmdPatrol(
     const ox = Math.cos(ang) * spread;
     const oy = Math.sin(ang) * spread;
     const shifted = points.map((p) => ({ x: p.x + ox, y: p.y + oy }));
-    const route = buildPatrolRoute(state, e, shifted, 0, 0);
-    orderAircraft(state, e, { kind: "patrol", route, leg: 1, dir: 1, group });
+    const route = buildPatrolRoute(state, e, shifted, 0, 0, loop);
+    orderAircraft(state, e, patrolOrder(route));
   });
   for (const d of drones) {
-    const route = buildPatrolRoute(state, d, points, 0, 0);
-    orderDrone(state, d, { kind: "patrol", route, leg: 1, dir: 1, group });
+    const route = buildPatrolRoute(state, d, points, 0, 0, loop);
+    orderDrone(state, d, patrolOrder(route));
   }
   return ok();
 }

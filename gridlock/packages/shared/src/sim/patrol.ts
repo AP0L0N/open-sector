@@ -30,28 +30,67 @@ export function cleanPatrolPoints(state: MatchState, raw: { x: number; y: number
 }
 
 /**
- * Where this unit walks. The first point is where it stood. Later points are
- * the clicks, shifted by (ox, oy) so a group keeps its shape along the route.
+ * Close a draft onto an earlier spot. Spots before that one are off the
+ * circuit, so they are dropped. Null when the click is not an earlier spot.
  */
-export function buildPatrolRoute(state: MatchState, origin: Vec, points: readonly Vec[], ox: number, oy: number): Vec[] {
-  const route: Vec[] = [clampWorld(state, origin.x, origin.y)];
+export function connectPatrolPoints<T>(points: readonly T[], index: number): T[] | null {
+  if (!Number.isInteger(index) || index < 0 || index >= points.length - 1) return null;
+  const ring = points.slice(index);
+  return ring.length >= 2 ? ring : null;
+}
+
+/**
+ * Where this unit walks. An open route starts where it stood, then the clicks.
+ * A loop is only the clicks: the unit joins the ring and keeps circling.
+ * Clicks are shifted by (ox, oy) so a group keeps its shape.
+ */
+export function buildPatrolRoute(
+  state: MatchState,
+  origin: Vec,
+  points: readonly Vec[],
+  ox: number,
+  oy: number,
+  loop = false,
+): Vec[] {
+  const route: Vec[] = [];
+  if (!loop) route.push(clampWorld(state, origin.x, origin.y));
   for (const p of points) {
     const at = clampWorld(state, p.x + ox, p.y + oy);
-    const prev = route[route.length - 1]!;
-    if (Math.hypot(prev.x - at.x, prev.y - at.y) < state.tileSize) continue;
+    const prev = route[route.length - 1];
+    if (prev && Math.hypot(prev.x - at.x, prev.y - at.y) < state.tileSize) continue;
     route.push(at);
   }
   if (route.length < 2) {
-    const start = route[0]!;
+    const start = route[0] ?? clampWorld(state, origin.x, origin.y);
+    if (route.length === 0) route.push(start);
     route.push(clampWorld(state, start.x + state.tileSize * 2, start.y));
   }
   return route;
 }
 
-/** Next point on a ping-pong. At either end the direction flips. */
-export function stepPatrolLeg(route: readonly Vec[], leg: number, dir: 1 | -1): { leg: number; dir: 1 | -1 } {
+/** Spot index to walk toward. A loop starts at the first; an open route starts at the second. */
+export function patrolLegIndex(routeLength: number, leg: number | undefined, loop: boolean): number {
+  const fallback = loop ? 0 : Math.min(1, Math.max(0, routeLength - 1));
+  if (leg == null || leg < 0 || leg >= routeLength) return fallback;
+  return leg;
+}
+
+/**
+ * Next spot. An open route turns around at either end. A loop wraps forward
+ * from the last spot to the first. Omit `loop` and the route still ping-pongs.
+ */
+export function stepPatrolLeg(
+  route: readonly Vec[],
+  leg: number,
+  dir: 1 | -1,
+  loop = false,
+): { leg: number; dir: 1 | -1 } {
   const n = route.length;
   if (n < 2) return { leg: 0, dir: 1 };
+  if (loop) {
+    const next = leg + 1;
+    return { leg: next >= n || next < 0 ? 0 : next, dir: 1 };
+  }
   let d: 1 | -1 = dir === -1 ? -1 : 1;
   let next = leg + d;
   if (next >= n) {
@@ -64,8 +103,8 @@ export function stepPatrolLeg(route: readonly Vec[], leg: number, dir: 1 | -1): 
   return { leg: next, dir: d };
 }
 
-/** Distance from a point to the closest spot on the polyline. */
-export function distToRoute(route: readonly Vec[], x: number, y: number): number {
+/** Distance from a point to the closest spot on the polyline. A loop includes the return to the first spot. */
+export function distToRoute(route: readonly Vec[], x: number, y: number, loop = false): number {
   if (route.length === 0) return Infinity;
   const first = route[0]!;
   let best = Math.hypot(first.x - x, first.y - y);
@@ -73,6 +112,11 @@ export function distToRoute(route: readonly Vec[], x: number, y: number): number
     const a = route[i]!;
     const b = route[i + 1]!;
     const d = distToSegment(a.x, a.y, b.x, b.y, x, y);
+    if (d < best) best = d;
+  }
+  if (loop && route.length >= 2) {
+    const last = route[route.length - 1]!;
+    const d = distToSegment(last.x, last.y, first.x, first.y, x, y);
     if (d < best) best = d;
   }
   return best;

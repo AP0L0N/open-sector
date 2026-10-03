@@ -655,7 +655,7 @@ function patrolContact(state: MatchState, e: Entity, o: Entity): boolean {
   if (dropsUnharmedArmor(state, e, o)) return false;
   const range = weaponRangeWorld(state, e);
   if (range <= 0) return false;
-  return distToRoute(route, o.x, o.y) <= range;
+  return distToRoute(route, o.x, o.y, e.order?.loop === true) <= range;
 }
 
 /**
@@ -669,15 +669,16 @@ function focusPatrolGroup(state: MatchState, members: Entity[]): void {
   const rows = new Map<number, { enemy: Entity; who: Entity[]; dist: number }>();
   for (const e of fighters) {
     const route = e.order!.route!;
+    const loop = e.order?.loop === true;
     for (const o of state.entities.values()) {
       if (!patrolContact(state, e, o)) continue;
       let row = rows.get(o.id);
       if (!row) {
-        row = { enemy: o, who: [], dist: distToRoute(route, o.x, o.y) };
+        row = { enemy: o, who: [], dist: distToRoute(route, o.x, o.y, loop) };
         rows.set(o.id, row);
       }
       row.who.push(e);
-      row.dist = Math.min(row.dist, distToRoute(route, o.x, o.y));
+      row.dist = Math.min(row.dist, distToRoute(route, o.x, o.y, loop));
     }
   }
 

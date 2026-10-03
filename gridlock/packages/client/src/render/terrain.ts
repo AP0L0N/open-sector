@@ -59,6 +59,13 @@ const SCRAP_STAMP_SPREAD = 1.1;
 
 export type ScrapCell = { x: number; y: number };
 
+/** Opaque rounded pond, in atlas pixels. Used to keep shell holes under the water. */
+export type WaterMask = {
+  canvas: HTMLCanvasElement;
+  x: number;
+  y: number;
+};
+
 export type TerrainBake = {
   canvas: HTMLCanvasElement;
   originX: number;
@@ -66,6 +73,8 @@ export type TerrainBake = {
   width: number;
   height: number;
   scrap: Set<number>;
+  /** One mask per body of water. Empty on a dry map. */
+  water: WaterMask[];
 };
 
 export type MiniBake = {
@@ -690,17 +699,23 @@ function rectsOverlap(
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
-/** Soft bank painted over the diamond water so the shore reads as a curve. */
+/**
+ * Soft bank painted over the diamond water so the shore reads as a curve.
+ * Each returned mask is the opaque pond (alpha 255 on water). The tinted
+ * pond painted into the atlas is slightly translucent, so the mask — not
+ * that tint — is what covers a crater.
+ */
 function paintSmoothShores(
   ctx: CanvasRenderingContext2D,
   map: MapDef,
   originX: number,
   originY: number,
   clip?: { x: number; y: number; w: number; h: number },
-): void {
+): WaterMask[] {
+  const masks: WaterMask[] = [];
   const atlasW = ctx.canvas.width;
   const atlasH = ctx.canvas.height;
-  if (atlasW < 2 || atlasH < 2) return;
+  if (atlasW < 2 || atlasH < 2) return masks;
   const pad = (SHORE_BLUR + 4) * 3;
   const elev = map.heights;
   const mw = map.width;
@@ -769,6 +784,7 @@ function paintSmoothShores(
       data[i + 3] = on ? 255 : 0;
     }
     sctx.putImageData(pix, 0, 0);
+    masks.push({ canvas: soft, x: x0, y: y0 });
 
     // Points of the diamond stair that fall outside the rounded bank.
     const tips = document.createElement("canvas");
@@ -835,6 +851,7 @@ function paintSmoothShores(
     ctx.drawImage(pond, x0, y0);
     ctx.restore();
   }
+  return masks;
 }
 
 function paintTileStamp(
@@ -898,9 +915,9 @@ export function bakeTerrain(map: MapDef, scrap: Iterable<ScrapCell>): TerrainBak
   const gl = groundGlReady();
   forEachTile(map, (x, y) => paintGround(ctx, map, x, y, scrapGround(yard, y * map.width + x), originX, originY, gl));
   if (gl) paintGlGround(ctx, map, packed, originX, originY, { x: 0, y: 0, w: width, h: height });
-  paintSmoothShores(ctx, map, originX, originY);
+  const water = paintSmoothShores(ctx, map, originX, originY);
   forEachTile(map, (x, y) => paintTileProps(ctx, map, x, y, yard, originX, originY));
-  return { canvas, originX, originY, width, height, scrap: packed };
+  return { canvas, originX, originY, width, height, scrap: packed, water };
 }
 
 type Rect = { x: number; y: number; w: number; h: number };

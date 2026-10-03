@@ -2,7 +2,8 @@
  * Concrete field walls, drawn in the wall's own frame so each section matches
  * the sim box at any facing. `along` runs down the wall, `across` is the look
  * direction. The slab top is one level across a connected run; the bottom
- * follows the ground under each corner.
+ * follows the ground under each corner. That level is the highest ground the
+ * run has stood on. A section that falls does not lower the rest.
  *
  * The ordinary Wall is a chest-high slab with barbed wire. The Large wall is
  * the same concrete, taller, with firing slits down both flanks for the men
@@ -23,6 +24,8 @@ export interface WallSection {
   facing: number;
   length: number;
   thick: number;
+  /** Terrain peak this section remembers for the run. Missing on a ghost. */
+  crest?: number;
 }
 
 type Pt = { x: number; y: number };
@@ -142,10 +145,15 @@ export function wallSectionsConnect(a: WallSeg, b: WallSeg): boolean {
   return d > 0.5 && d <= reach;
 }
 
-/** Slab top: the highest ground under the run, plus the slab. */
-export function wallTopElev(grounds: readonly number[], slabLevels: number): number {
+/**
+ * Slab top: the highest ground under the run, plus the slab.
+ * `crests` are terrain peaks the standing sections still remember, so losing
+ * the high section does not drop the run.
+ */
+export function wallTopElev(grounds: readonly number[], slabLevels: number, crests?: readonly number[]): number {
   let m = Number.NEGATIVE_INFINITY;
   for (const g of grounds) if (g > m) m = g;
+  if (crests) for (const c of crests) if (c > m) m = c;
   if (!Number.isFinite(m)) m = 0;
   return m + Math.max(0, slabLevels);
 }

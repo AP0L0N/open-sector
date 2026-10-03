@@ -17,7 +17,7 @@ import {
   TICK_DT,
 } from "../catalog.js";
 import type { EntityType } from "../protocol.js";
-import { stepPatrolLeg } from "./patrol.js";
+import { patrolLegIndex, stepPatrolLeg } from "./patrol.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** One full day: day, dusk, night, dawn. Dawn is as long as dusk. */
@@ -213,8 +213,9 @@ export function aimSpotlightPatrol(e: Entity): void {
   const o = e.order;
   if (!o || o.kind !== "patrol" || !o.route || o.route.length < 2) return;
   const route = o.route;
-  let leg = o.leg ?? 1;
-  let dir: 1 | -1 = o.dir === -1 ? -1 : 1;
+  const loop = o.loop === true;
+  let leg = patrolLegIndex(route.length, o.leg, loop);
+  let dir: 1 | -1 = loop ? 1 : o.dir === -1 ? -1 : 1;
   for (let n = 0; n < route.length; n++) {
     const dest = route[leg];
     if (dest && Math.hypot(dest.x - e.x, dest.y - e.y) >= LAMP_SPOT_MIN) {
@@ -224,7 +225,7 @@ export function aimSpotlightPatrol(e: Entity): void {
       e.spotAim = Math.atan2(dest.y - e.y, dest.x - e.x);
       return;
     }
-    const next = stepPatrolLeg(route, leg, dir);
+    const next = stepPatrolLeg(route, leg, dir, loop);
     if (next.leg === leg && next.dir === dir) return;
     leg = next.leg;
     dir = next.dir;
@@ -250,7 +251,8 @@ export function tickSpotlights(state: MatchState, dt: number): void {
     // The beam has settled on this spot. Turn it toward the next one.
     const o = e.order;
     if (o?.kind !== "patrol" || !o.route || o.route.length < 2 || e.spotAim != null) continue;
-    const next = stepPatrolLeg(o.route, o.leg ?? 1, o.dir === -1 ? -1 : 1);
+    const loop = o.loop === true;
+    const next = stepPatrolLeg(o.route, patrolLegIndex(o.route.length, o.leg, loop), o.dir === -1 ? -1 : 1, loop);
     o.leg = next.leg;
     o.dir = next.dir;
     aimSpotlightPatrol(e);
