@@ -456,6 +456,7 @@ export type EntityType =
   | "tower"
   | "ram"
   | "research"
+  | "radar"
   | "stuka"
   | "fw190"
   | "bv222"
@@ -474,7 +475,7 @@ export type EntityType =
   | "greatwall"
   | "teeth"
   | "trench";
-export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "ram" | "bunker" | "tower" | "research";
+export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "ram" | "bunker" | "tower" | "research" | "radar";
 /** Placed by an engineer. Sandbags and walls can also be queued from the Defences tab. */
 export type FieldStructureType = "sandbags" | "wall" | "greatwall" | "teeth" | "trench";
 export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "wall", "greatwall", "teeth", "trench"];
@@ -518,7 +519,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
   deploy: 2,
 };
 
-export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "tower", "research"];
+export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "tower", "research", "radar"];
 export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
@@ -1694,6 +1695,16 @@ export const HEADLIGHT_HALF_DEG = 20;
 export const LAMP_HEADING_STEP_DEG = 3;
 
 /**
+ * Radar Station. A dish on a lattice mast beside an ops hut. While one stands
+ * on your side, the command bar's radar panel paints the map; without it the
+ * panel is dark and the map has to be read from the field. The dish also
+ * sweeps far past anyone's eyes for aircraft: an enemy plane or drone in the
+ * air within RADAR_RANGE_TILES that nobody can see shows as a blinking
+ * contact on the panel, and nowhere else. The ground stays as dark as before.
+ */
+export const RADAR_RANGE_TILES = t(56);
+
+/**
  * CIWS. A stationary radar-laid 20mm gatling on a small concrete pad. It needs
  * no crew and no orders: it swings onto the nearest enemy unit it can hurt,
  * planes and paratroopers first, and fires 1,800 rounds a minute. Most of them miss: on a
@@ -2438,6 +2449,28 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Titan, Nebelwerfer, and Drone Op.",
+  },
+  radar: {
+    type: "radar",
+    kind: "building",
+    name: "Radar Station",
+    letter: "R",
+    cost: 1000,
+    buildSeconds: 20,
+    hp: 800,
+    power: -40,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "Ops hut and a dish on a lattice mast. Lights the radar panel in the command bar: without a standing Radar Station the panel is dark. The dish sweeps far past anyone's eyes for aircraft. An enemy plane or drone in the air that nobody can see shows as a blinking contact on the panel only; nothing changes on the field until someone sees it.",
   },
   ciws: {
     type: "ciws",

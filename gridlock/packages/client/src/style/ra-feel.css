@@ -702,6 +702,12 @@ input[type="range"] { padding: 0; }
   flex-shrink: 0;
 }
 
+/* No Radar Station standing: the panel is dark and goes nowhere. */
+#minimap.radar-off {
+  cursor: default;
+  border-color: #3a2418;
+}
+
 .group-tabs {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -890,6 +896,7 @@ input[type="range"] { padding: 0; }
 #build-airfield,
 #build-ciws,
 #build-research,
+#build-radar,
 #build-bunker,
 #build-tower,
 #build-ram,
@@ -1100,6 +1107,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/research-cameo.png");
+}
+#build-radar {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/radar-cameo.png");
 }
 #build-bunker {
   background-image:
