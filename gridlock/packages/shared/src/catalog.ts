@@ -1625,9 +1625,10 @@ export const TOWER_EYE_HEIGHT = TOWER_FLOORS * STORY_COVER_HEIGHT * 0.6;
 /**
  * CIWS. A stationary radar-laid 20mm gatling on a small concrete pad. It needs
  * no crew and no orders: it swings onto the nearest enemy unit it can hurt,
- * planes first, and fires 1,800 rounds a minute. Tank plate shrugs the rounds
- * off, so it leaves tanks alone. A Titan rocket that flies into its reach draws
- * a short burst and may burst in the air. The belt does not refill by itself —
+ * planes first, and fires 1,800 rounds a minute. Most of them miss: on a
+ * plane the stream sprays wide and high, and only a long pass tends to bring
+ * one down. Tank plate shrugs the rounds off, so it leaves tanks alone. A Titan
+ * rocket that flies into its reach draws a short burst that seldom bursts it. The belt does not refill by itself —
  * a supply truck tops it up, one full truck for one empty belt.
  */
 export const CIWS_RANGE_TILES = t(8);
@@ -1642,10 +1643,20 @@ export const CIWS_GUN = {
   caliber: 20,
   spreadDeg: 3.5,
 } as const;
-/** Spread multiple on a plane in the air. The radar lays the gun; small arms open AIR_TARGET_SPREAD. */
-export const CIWS_AIR_SPREAD = 1.3;
-/** Chance one burst connects on one rocket. Each CIWS tries an ordinary rocket once. A heavy round keeps drawing bursts until it comes apart. */
-export const CIWS_INTERCEPT_CHANCE = 0.45;
+/**
+ * Spread multiple on a plane in the air. The radar lays the mount on the
+ * plane's bearing but cannot hold a crossing airframe, so the stream hoses
+ * a wide cone around it — far wider than AIR_TARGET_SPREAD for small arms,
+ * which fire a few aimed rounds instead of a stream.
+ */
+export const CIWS_AIR_SPREAD = 9;
+/**
+ * Elevation units a round aimed at a plane wanders above or below it. A plane
+ * is only met within AIR_HIT_BAND, so most of a burst passes over or under.
+ */
+export const CIWS_AIR_Z_SCATTER = 40;
+/** Chance one burst connects on one rocket: a long shot. Each CIWS tries an ordinary rocket once. A heavy round keeps drawing bursts until it comes apart. */
+export const CIWS_INTERCEPT_CHANCE = 0.15;
 /** Rounds one intercept burst spends. A short belt still tries, at a share of the chance. */
 export const CIWS_INTERCEPT_ROUNDS = 12;
 /** Rockets one CIWS can engage in one tick. A full Titan salvo takes two ticks. */
@@ -1666,10 +1677,10 @@ export const APOCALYPSE_CIWS_BELT = 600;
 /** The small house swings much faster than the turret under it. */
 export const APOCALYPSE_CIWS_TURN_DEG_PER_SEC = 360;
 /**
- * Chance the roof mount bursts one missile. The pad is a coin toss. This gun
- * is the tank's own screen, so most missiles that reach it come apart.
+ * Chance the roof mount bursts one missile. Better than the pad, because the
+ * missile is coming straight at the gun, but most still get through.
  */
-export const APOCALYPSE_CIWS_INTERCEPT_CHANCE = 0.75;
+export const APOCALYPSE_CIWS_INTERCEPT_CHANCE = 0.3;
 /** Seconds between the two main-gun barrels. Six ticks. The long reload starts after the second. */
 export const APOCALYPSE_TWIN_GAP = 6 * TICK_DT;
 /**
@@ -1712,8 +1723,8 @@ export const RAM_ROCKET: RocketRackDef = {
   antiAir: true,
   laid: true,
 };
-/** Chance one interceptor connects on one rocket. Each RAM tries an ordinary rocket once. A heavy round draws another interceptor until it comes apart. */
-export const RAM_INTERCEPT_CHANCE = 0.35;
+/** Chance one interceptor connects on one rocket. The RAM, not the CIWS, is the missile screen. Each RAM tries an ordinary rocket once. A heavy round draws another interceptor until it comes apart. */
+export const RAM_INTERCEPT_CHANCE = 0.6;
 /** Seconds from one interceptor to the next. Between them the rack is not free to fire. */
 export const RAM_INTERCEPT_INTERVAL = 0.3;
 
@@ -2298,7 +2309,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shotsPerTick: CIWS_SHOTS_PER_TICK,
     belt: CIWS_BELT,
     radarLaid: true,
-    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, and tries to burst incoming rockets in the air. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first. Against a plane the stream sprays wide, with a tracer in every few rounds: it chews the belt fast and seldom brings one down on a single pass. It tries to burst incoming rockets, and rarely does — a RAM is the missile screen. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
   },
   bunker: {
     type: "bunker",
@@ -2396,7 +2407,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: RAM_ROCKET_AMMO,
     rocketRack: RAM_ROCKET,
-    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, in barrages of ${RAM_SALVO} short, accurate rockets, and sends an interceptor at incoming rockets that may burst them in the air. Shorter reach than a Nebelwerfer, longer than a CIWS. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes first, in barrages of ${RAM_SALVO} short, accurate rockets, and sends an interceptor at incoming rockets that bursts most of them in the air. Shorter reach than a Nebelwerfer, longer than a CIWS. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
   },
   sandbags: {
     type: "sandbags",
@@ -2822,7 +2833,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     mgAmmo: APOCALYPSE_CIWS_BELT,
     leavesWreck: true,
     wreckHp: 110,
-    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts most of them, then planes, infantry, and sometimes a Walker or a truck. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
+    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts some of them, then planes, infantry, and sometimes a Walker or a truck. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
   },
   /** Spec: gridlock/packages/client/src/assets/units/ss3/stug-iii-ausf-g-late-saukopf.md */
   ss3: {

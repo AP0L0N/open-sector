@@ -3,10 +3,13 @@ import { describe, it } from "node:test";
 import {
   AIR_CRUISE_ALT,
   BUILDING_TYPES,
+  AIR_HIT_BAND,
+  CIWS_AIR_Z_SCATTER,
   CIWS_BELT,
   CIWS_INTERCEPT_CHANCE,
   CIWS_INTERCEPT_ROUNDS,
   CIWS_RANGE_TILES,
+  RAM_INTERCEPT_CHANCE,
   SUPPLY_CARGO,
   TICK_DT,
   TITAN_ROCKET,
@@ -184,6 +187,34 @@ describe("CIWS fire", () => {
     assert.equal(ciws.attackTarget, plane.id);
     const t = until(state, 80, () => !state.entities.has(plane.id) || plane.hp < plane.hpMax);
     assert.ok(t >= 0, "rounds reach the plane");
+  });
+
+  it("sprays a plane: most rounds miss, and the stream walks above and below it but never into the ground", () => {
+    const state = match();
+    const ts = state.tileSize;
+    const ciws = seedCiws(state);
+    const plane = planeOver(state, "B", ciws.x + 5 * ts, ciws.y - 3 * ts);
+    plane.hp = plane.hpMax = 1e6;
+    const ends: { kind: string; airZ?: number }[] = [];
+    for (let i = 0; i < 40; i++) {
+      step(state, TICK_DT);
+      for (const m of state.impacts) if (m.fromId === ciws.id) ends.push(m);
+    }
+    const fired = CIWS_BELT - ciws.clip;
+    assert.ok(fired > 60, `fired ${fired}`);
+    const hits = ends.filter((m) => m.kind !== "miss").length;
+    assert.ok(hits / fired < 0.25, `hit share ${hits / fired}`);
+    assert.ok(hits > 0, "some rounds still connect");
+    const zs = ends.map((m) => m.airZ);
+    assert.ok(zs.every((z) => z != null && z > 0), "every round ends in the air");
+    const lost = ends.filter((m) => m.kind === "miss").map((m) => m.airZ!);
+    assert.ok(Math.max(...lost) - Math.min(...lost) > AIR_HIT_BAND * 4, "rounds spread in height");
+    assert.ok(CIWS_AIR_Z_SCATTER > AIR_HIT_BAND * 4);
+  });
+
+  it("is a weaker missile screen than a RAM", () => {
+    assert.ok(CIWS_INTERCEPT_CHANCE < RAM_INTERCEPT_CHANCE);
+    assert.ok(CIWS_INTERCEPT_CHANCE <= 0.2, "most rockets get through");
   });
 
   it("stops firing on an empty belt, and a supply truck fills it from the footprint's edge", () => {
