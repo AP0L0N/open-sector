@@ -1640,6 +1640,28 @@ export const TOWER_FLOORS = 3;
 export const TOWER_EYE_HEIGHT = TOWER_FLOORS * STORY_COVER_HEIGHT * 0.6;
 
 /**
+ * Day and night. A match opens at morning and runs day, dusk, night, dawn,
+ * then day again. In full dark every sight ring and every weapon reach is
+ * NIGHT_REACH_MUL of its daylight value; dusk and dawn slide between the two.
+ */
+export const DAY_SECONDS = 240;
+export const DUSK_SECONDS = 20;
+export const NIGHT_SECONDS = 150;
+/** Sight and weapon reach in full dark, as a share of daylight. */
+export const NIGHT_REACH_MUL = 0.5;
+/** Lamps come on, and spotlights light the ground, once daylight drops below this. */
+export const SPOTLIGHT_ON_DAYLIGHT = 0.5;
+/**
+ * A held watch tower carries a spotlight on the cab. In the dark its beam
+ * lights a cone of ground out to the cab's full daylight watch, seen from the
+ * cab's height. Rotate swings it; it does not need a crew.
+ */
+export const SPOTLIGHT_REACH_TILES = INFANTRY_SIGHT_TILES + TOWER_SIGHT_BONUS;
+/** Half the beam's width. */
+export const SPOTLIGHT_HALF_DEG = 14;
+export const SPOTLIGHT_TURN_DEG_PER_SEC = 60;
+
+/**
  * CIWS. A stationary radar-laid 20mm gatling on a small concrete pad. It needs
  * no crew and no orders: it swings onto the nearest enemy unit it can hurt,
  * planes first, and fires 1,800 rounds a minute. Most of them miss: on a

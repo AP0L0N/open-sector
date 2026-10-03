@@ -53,6 +53,7 @@ import { buildPatrolRoute, cleanPatrolPoints } from "./patrol.js";
 import { orderBoardPlane, setPayload, unloadPlane } from "./airdrop.js";
 import { droneOf, guardDrone, launchDrone, orderDrone, recallDrone, setDroneMode, stopDrone } from "./drone.js";
 import { landJet, takeOff } from "./jet.js";
+import { spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, MatchState, QueueableCommand, Vec } from "./types.js";
 
 export type CmdResult = { ok: true } | { ok: false; code: ErrorCode; message: string };
@@ -580,6 +581,16 @@ function owned(state: MatchState, playerId: string, ids: number[]) {
   return out;
 }
 
+/** Own watch towers in the selection. Rotate swings the spotlight. */
+function ownedLamps(state: MatchState, playerId: string, ids: number[]) {
+  const out = [];
+  for (const id of ids) {
+    const e = state.entities.get(id);
+    if (e && e.ownerId === playerId && e.kind === "building" && spotlightManned(e)) out.push(e);
+  }
+  return out;
+}
+
 /** Own CIWS mounts in the selection. A structure with its own gun: it takes Rotate, Force attack, and Stop. */
 function ownedMounts(state: MatchState, playerId: string, ids: number[]) {
   const out = [];
@@ -908,7 +919,13 @@ function cmdRotate(state: MatchState, playerId: string, ids: number[], x: number
     (e) => e.state !== "deploy" && e.state !== "undeploy" && !e.garrisonedIn,
   );
   const mounts = ownedMounts(state, playerId, ids);
-  if (units.length === 0 && mounts.length === 0) return fail("not_yours", "No owned units.");
+  const lamps = ownedLamps(state, playerId, ids);
+  if (units.length === 0 && mounts.length === 0 && lamps.length === 0) return fail("not_yours", "No owned units.");
+  // The lamp swings over at its own pace; see tickSpotlights.
+  for (const e of lamps) {
+    e.spotFacing = spotFacingOf(e);
+    e.spotAim = Math.atan2(y - e.y, x - e.x);
+  }
   // A CIWS rests its gun on this heading between targets, and drops a forced aim.
   for (const e of mounts) {
     e.facing = Math.atan2(y - e.y, x - e.x);

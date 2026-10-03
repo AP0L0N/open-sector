@@ -41,6 +41,7 @@ import { medicTendView } from "./heal.js";
 import { supplyHasDriver, supplyRiders } from "./supply.js";
 import { powerOf } from "./power.js";
 import { canSeeWorld, encodeVisionRuns, entityOnMask, visionMask } from "./vision.js";
+import { spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, MatchState, Order, QueueableCommand } from "./types.js";
 import type { CorpseView, EntityView, MatchSnapshot, PlanKind, PlanPointView, ScrapCell } from "../protocol.js";
 
@@ -260,6 +261,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       heavy: friendly && e.type === "rocketer" ? (e.heavy ?? 0) : undefined,
       rocketsOff: friendly && e.rocketsOff ? true : undefined,
       longRange: friendly && e.longRange ? true : undefined,
+      spotFacing: e.kind === "building" && spotlightManned(e) ? spotFacingOf(e) : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
       patrol:
         friendly && e.order?.kind === "patrol" && e.order.route

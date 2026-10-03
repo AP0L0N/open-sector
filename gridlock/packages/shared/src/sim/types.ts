@@ -321,6 +321,10 @@ export interface Entity {
   rocketsOff?: boolean;
   /** CIWS or RAM set to Max range (RADAR_LONG_RANGE_MUL). Missing means normal reach. */
   longRange?: boolean;
+  /** Watch tower spotlight heading, radians. Missing until the tower is first held. */
+  spotFacing?: number;
+  /** Heading Rotate asked the spotlight for. It swings there at SPOTLIGHT_TURN_DEG_PER_SEC. */
+  spotAim?: number;
   /** Entity the Titan's pods are laying on, apart from the main gun's target. */
   rocketTarget?: number | null;
   /** Last Walker volley: sim tick, arms that fired, and the off-arm bearing when it took a second target. */

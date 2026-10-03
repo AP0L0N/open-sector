@@ -38,6 +38,7 @@ import { tickMovement, repathIfBlocked } from "./orders.js";
 import { tickWalkerCharge } from "./walker-charge.js";
 import { tickOrderQueue } from "./commands.js";
 import { tickTrain } from "./train.js";
+import { tickSpotlights } from "./night.js";
 import type { MatchState, SimPlayer } from "./types.js";
 import { leaveCorpse } from "./remains.js";
 import { toWreck } from "./wreck.js";
@@ -136,6 +137,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   state.impacts = [];
   restampForts(state);
   tickSmoke(state, dt);
+  tickSpotlights(state, dt);
   tickStance(state);
   tickBipod(state);
   tickDeploy(state, dt);

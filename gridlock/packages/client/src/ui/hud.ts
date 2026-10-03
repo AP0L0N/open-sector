@@ -35,6 +35,7 @@ import {
   infantryLoadout,
   isCivilianType,
   isGarrisonable,
+  hasSpotlight,
   isInfantryType,
   isInfantryWeaponId,
   isShellType,
@@ -1543,6 +1544,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   const garrisonForce = garrisonForceHosts(you, houses);
   // A CIWS aims its own gun: it takes Stop, Force attack, and Rotate like a unit.
   const mounts = buildings.filter((e) => radarLaidOf(e.type));
+  const lamps = buildings.filter((e) => hasSpotlight(e.type) && e.spotFacing != null);
   const out: QAct[] = [];
   if (units.length === 0 && buildings.length === 0 && houses.length === 0) return out;
 
@@ -1630,6 +1632,14 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       act: "rotate",
       label: "Rotate",
       title: `Rest the gun on a heading between targets (${ROTATE_HOTKEY.toUpperCase()}).`,
+      on: !!view?.rotateMode,
+    });
+  } else if (lamps.length) {
+    out.push({
+      slot: "rotate",
+      act: "rotate",
+      label: "Rotate",
+      title: `Swing the spotlight (${ROTATE_HOTKEY.toUpperCase()}). At night its beam lights the ground far out.`,
       on: !!view?.rotateMode,
     });
   }
@@ -2055,7 +2065,8 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     return;
   }
   if (act === "rotate") {
-    if (aimers.length) view.setRotateMode(!view.rotateMode);
+    const lamps = buildings.filter((e) => hasSpotlight(e.type) && e.spotFacing != null);
+    if (aimers.length || lamps.length) view.setRotateMode(!view.rotateMode);
     return;
   }
   if (act === "deploy") {

@@ -191,6 +191,7 @@ import { airTargetSpreadMul, isAirborne, isCrashing, reachesAircraft, stepBomb }
 import { stepCluster } from "./airdrop.js";
 import { projectileMeetsDrone, reachesDrone } from "./drone.js";
 import { reachesJet } from "./jet.js";
+import { nightReachMul, nightTiles } from "./night.js";
 import type { Entity, MatchState, Order, Projectile } from "./types.js";
 
 /** A twin mount's barrels sit this share of the hull radius either side of the bore line. */
@@ -423,7 +424,9 @@ function burstRockets(state: MatchState, e: Entity, downed: Set<number>, gun: Ro
 
 /** Roof mount reach: its own base, plus the height bonus every gun gets. */
 function roofCiwsRange(state: MatchState, e: Entity): number {
-  return rangeTilesOf(e.type, entityHeight(state, e), APOCALYPSE_CIWS_RANGE_TILES) * state.tileSize;
+  return (
+    rangeTilesOf(e.type, entityHeight(state, e), APOCALYPSE_CIWS_RANGE_TILES) * state.tileSize * nightReachMul(state.tick)
+  );
 }
 
 /** The 20mm can put damage on this unit from here. Soft targets and an open hatch always. */
@@ -912,7 +915,8 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
   const vy = target.y - e.y;
   if (gun.id === "ptrd") {
     const distTiles = Math.hypot(vx, vy) / state.tileSize;
-    const rangeTiles = weaponRangeWorld(state, e) / Math.max(1e-6, state.tileSize);
+    // Penetration falls off over the daylight reach; the dark shortens the sight, not the round.
+    const rangeTiles = weaponRangeWorld(state, e) / nightReachMul(state.tick) / Math.max(1e-6, state.tileSize);
     return ptrdHarmPossible({
       penetration: ptrdPenetration(distTiles, rangeTiles),
       distTiles,
@@ -1941,7 +1945,7 @@ function aimRemainingDeg(e: Entity, aimX: number, aimY: number): number {
  * that sight — a Tiger or StuG firing on a spotter — opens LONG_SHOT_SPREAD.
  */
 function accurateWeaponRange(state: MatchState, e: Entity, range: number): number {
-  const sight = sightTilesForEntity(state, e) * state.tileSize;
+  const sight = nightTiles(sightTilesForEntity(state, e), nightReachMul(state.tick)) * state.tileSize;
   return Math.min(range, sight);
 }
 
@@ -2064,7 +2068,7 @@ function fireRound(
   const aimDist = Math.hypot(aimX - x, aimY - y);
   const gunId = infantryGunFor(e)?.id;
   const distTiles = dist / state.tileSize;
-  const rangeTiles = range / Math.max(1e-6, state.tileSize);
+  const rangeTiles = range / nightReachMul(state.tick) / Math.max(1e-6, state.tileSize);
   const p: Projectile = {
     id: state.nextId++,
     ownerId: e.ownerId,

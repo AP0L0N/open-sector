@@ -201,6 +201,8 @@ export interface EntityView {
   heavy?: number;
   /** CIWS or RAM set to Max range. Friendly snapshots; omitted at normal reach. */
   longRange?: boolean;
+  /** Held watch tower's spotlight heading, radians. Everyone who sees the tower sees the beam. */
+  spotFacing?: number;
   /** Titan pods switched off. Friendly snapshots; omitted while on. */
   rocketsOff?: boolean;
   /** Stay put: no chase, no withdraw. Friendly snapshots. */
