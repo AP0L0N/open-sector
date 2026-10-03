@@ -267,7 +267,8 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
     return d.project(w.x, w.y, elev);
   };
   const atF = (along: number, across: number, up: number): Pt => at(world(along, across), up);
-  const base = d.bad ? [176, 72, 58] : [138, 140, 132];
+  // The Tower's concrete: about (112,112,104) in the light, (72,72,64) in shade, (144,144,128) on top.
+  const base = d.bad ? [176, 72, 58] : [108, 110, 100];
   const [br, bg, bb] = base as [number, number, number];
   const o0 = d.project(d.x, d.y, 0);
   const o1 = d.project(d.x + 1, d.y, 0);
@@ -429,7 +430,7 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
     }
   }
   const topPts = topPoly.map((p) => at(p, slab));
-  paint(topPts, rgb(br, bg, bb, 1.12));
+  paint(topPts, rgb(br, bg, bb, 1.3));
   // Scruff on the top: chipped edges and a few spalls.
   const rand = mulberry(d.seed ^ 0x9e3779b9);
   const chips = 2 + Math.floor(rand() * 2);
@@ -528,7 +529,7 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
     }
   } else {
     // Coping: a lighter edge where the top meets the lit flank.
-    ctx.strokeStyle = rgb(br, bg, bb, 1.3);
+    ctx.strokeStyle = rgb(br, bg, bb, 1.45);
     ctx.lineWidth = Math.max(0.8, line * 0.9);
     const negLit = nNeg.x * LIT.x + nNeg.y * LIT.y >= nPos.x * LIT.x + nPos.y * LIT.y;
     const e0 = at(negLit ? neg0 : pos0, slab);

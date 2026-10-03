@@ -231,7 +231,7 @@ export function drawSandbags(ctx: CanvasRenderingContext2D, d: SandbagDraw): voi
     x: d.x + tx * along + fx * across,
     y: d.y + ty * along + fy * across,
   });
-  const base = d.bad ? [196, 74, 58] : [178, 150, 100];
+  const base = d.bad ? [196, 74, 58] : [142, 118, 78];
   const [br, bg, bb] = base as [number, number, number];
   const bags = sandbagLayout(d.length, d.thick, d.ruined, d.seed);
   if (!d.ruined && d.joins) {
@@ -254,7 +254,7 @@ export function drawSandbags(ctx: CanvasRenderingContext2D, d: SandbagDraw): voi
 
   if (d.ruined) {
     const rand = rng(d.seed ^ 0x9e3779b9);
-    ctx.fillStyle = d.bad ? "rgba(170, 70, 50, 0.5)" : "rgba(150, 124, 80, 0.55)";
+    ctx.fillStyle = d.bad ? "rgba(170, 70, 50, 0.5)" : "rgba(120, 98, 62, 0.55)";
     for (let i = 0; i < 4; i++) {
       const c = world((rand() - 0.5) * d.length * 0.9, (rand() - 0.5) * d.thick * 1.6);
       const r = d.thick * (0.14 + rand() * 0.22);
