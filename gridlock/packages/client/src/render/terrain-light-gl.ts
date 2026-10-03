@@ -76,6 +76,14 @@ void main() {
   col = mix(col, stone, rock);
   col = mix(col, rgb(58.0, 50.0, 40.0), blocked);
 
+  // Scrap yard: churned earth, dark with oil, rust bleeding into it. The cover
+  // is already blurred, so the rim is a curve; broad noise bends it, fine noise roughens it.
+  float yard = smoothstep(0.34, 0.58, b.a + (n1 - 0.5) * 0.4 + (nf - 0.5) * 0.12);
+  vec3 churned = mix(rgb(70.0, 58.0, 45.0), tex(uDirt) * 0.78, 0.55);
+  vec3 stained = mix(churned, rgb(38.0, 33.0, 29.0), clamp((n1 - 0.45) * 2.2, 0.0, 0.55));
+  stained = mix(stained, rgb(104.0, 64.0, 38.0), clamp((grain - 0.62) * 2.5, 0.0, 0.35));
+  col = mix(col, stained, yard * (1.0 - water));
+
   float t = vTone;
   if (t < 1.0) col = mix(col, rgb(10.0, 12.0, 8.0), min(0.55, (1.0 - t) * 0.9));
   else col = mix(col, rgb(250.0, 232.0, 170.0), min(0.28, (t - 1.0) * 0.45));

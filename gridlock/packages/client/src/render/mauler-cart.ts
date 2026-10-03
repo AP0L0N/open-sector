@@ -7,10 +7,12 @@
  * on a turn and swings out when the dozer yaws in place.
  */
 
+/** Mauler hull and cart draw this much larger than the base vehicle scale; the hitch grows with them. */
+export const MAULER_SCALE = 1.2;
 /** World px from the dozer's centre back to the hitch pin. */
-export const CART_HITCH_BACK = 9;
+export const CART_HITCH_BACK = 9 * MAULER_SCALE;
 /** World px from the hitch pin to the cart's centre. */
-export const CART_TONGUE = 7;
+export const CART_TONGUE = 7 * MAULER_SCALE;
 /** Hardest the tongue can fold against the dozer's rear before the cart would clip it. */
 export const CART_MAX_FOLD = (75 * Math.PI) / 180;
 /** A hitch that jumps farther than this in one frame (spawn, fog reveal) resets the cart. */

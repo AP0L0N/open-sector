@@ -47,7 +47,9 @@ describe("terrain light", () => {
     const { a, b } = materialBytes(map, new Set([2]));
     assert.equal(a[0], 255);
     assert.equal(b[4 + 1], 255);
-    assert.equal(a[8], 255, "scrap reads as bare dirt");
+    assert.equal(a[8], 0, "scrap is its own channel, not road dirt");
+    assert.ok(b[8 + 3]! > 0, "scrap cover reaches its own tile");
+    assert.ok(b[4 + 3]! > 0, "and blurs onto the neighbor");
   });
 
   it("orders mesh triangles back to front", () => {
