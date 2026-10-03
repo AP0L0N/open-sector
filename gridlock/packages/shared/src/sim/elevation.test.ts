@@ -33,7 +33,7 @@ import {
   slopeSpeedMul,
   uphillSightOf,
 } from "./elevation.js";
-import { makeEntity, tileCenter } from "./geo.js";
+import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch } from "./match.js";
 import { tickMovement } from "./orders.js";
 import { tickCombat } from "./combat.js";
@@ -57,6 +57,13 @@ function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   if (!started.ok) throw new Error(started.message);
   const state = createMatch(room, started.value);
   return { state, a: "A", b: "B" };
+}
+
+/** The opening Rig stands in the line of fire of the test row. */
+function dropRig(state: MatchState): void {
+  for (const e of [...state.entities.values()]) {
+    if (e.type === "rig") destroyEntity(state, e);
+  }
 }
 
 describe("slope multipliers", () => {
@@ -266,6 +273,7 @@ describe("tank gun elevation", () => {
   it("lets infantry fire up a lip that hides a hull gun", () => {
     const { state, a, b } = twoPlayerMatch();
     state.heights.fill(0);
+    dropRig(state);
     const ts = state.tileSize;
     const gap = HEIGHT_BASE;
     const shooter = makeEntity(state, "rifleman", a, tileCenter(12, ts), tileCenter(12, ts));
@@ -315,6 +323,7 @@ describe("tank gun elevation", () => {
   it("still engages across one authoring terrace", () => {
     const { state, a, b } = twoPlayerMatch();
     state.heights.fill(0);
+    dropRig(state);
     const ts = state.tileSize;
     const gap = TANK_GUN_CLIMB;
     const shooter = makeEntity(state, "warden", a, tileCenter(12, ts), tileCenter(12, ts));

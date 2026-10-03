@@ -77,6 +77,20 @@ export const GUARD_CONE_DEG = 90;
 /** Displace this far when a stationary unit auto-withdraws. */
 export const WITHDRAW_TILES = t(5);
 export const PROJECTILE_RADIUS = 3;
+/**
+ * A friendly unit or building in the line of fire. The gun holds, looks for
+ * another target with a clear line, and steps aside. After this long on the
+ * same target it fires anyway, and a friend still in the way takes the round.
+ */
+export const ALLY_LINE_PATIENCE_SECONDS = 3;
+/** World px added around a friend in the line, for the spread of the round. */
+export const ALLY_LINE_MARGIN = 2;
+/** How often a held gun looks again for another target or a spot with a clear line. */
+export const ALLY_LINE_RETRY_SECONDS = 0.5;
+/** Farthest a gun steps aside for a clear line, in its own diameters. */
+export const ALLY_SIDESTEP_STEPS = 6;
+/** The patience clock stops while the gun walks aside, for at most this long. */
+export const ALLY_SIDESTEP_MAX_SECONDS = 4;
 export const HP_BAR_SECONDS = 2;
 /**
  * Shells at or above this caliber chew the walls of an occupied house.

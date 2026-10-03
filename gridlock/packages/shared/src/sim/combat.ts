@@ -154,6 +154,8 @@ import {
   isTree,
   nearestWalkable,
   playerTeam,
+  segmentAabbT,
+  segmentCircleT,
   tileCenter,
   unitInWater,
   worldToTile,
@@ -188,6 +190,7 @@ import { distToRoute } from "./patrol.js";
 import { canSeeEntity } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
 import { escorting, reversing, stepTurn, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
+import { allyInLine, holdForAlly, needsClearLine } from "./lineoffire.js";
 import { airTargetSpreadMul, isAirborne, isCrashing, reachesAircraft, stepBomb } from "./air.js";
 import { stepCluster } from "./airdrop.js";
 import { projectileMeetsDrone, reachesDrone } from "./drone.js";
@@ -862,6 +865,19 @@ function currentTarget(state: MatchState, e: Entity): Entity | undefined {
   return t;
 }
 
+/**
+ * A friend fouls the line to an enemy the unit picked for itself. Switch to
+ * the nearest enemy it can shoot clear. A target the player named is kept.
+ */
+function retargetClearLine(state: MatchState, e: Entity, current: Entity | undefined): boolean {
+  if (!current || (e.order?.kind === "attack" && !e.order.auto)) return false;
+  const pick = acquire(state, e, e.guardFacing != null && inGuardCone(e, current));
+  if (!pick || pick.id === current.id || allyInLine(state, e, e.x, e.y, pick)) return false;
+  e.attackTarget = pick.id;
+  if (e.order?.kind === "attack") e.order = { kind: "attack", targetId: pick.id, auto: true };
+  return true;
+}
+
 function skipsFriendly(state: MatchState, e: Entity, target: Entity): boolean {
   return !target.wreck && allies(state, e.ownerId, target.ownerId);
 }
@@ -1030,6 +1046,15 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   const crawlingGun = stanceOf(e) === "crawl" && infantryGunFor(e)?.id !== "mortar";
   if (!ground && crawlingGun && sandbagsBlockGun(state, e.x, e.y, aimX, aimY)) {
     if (!holedUp) e.state = "attack";
+    return;
+  }
+  // A friend in the line: hold, look for another target, step aside. Patience runs out and it fires anyway.
+  const forced = !!ground || e.order?.kind === "forceattack";
+  if (holdForAlly(state, e, target, forced, range, () => retargetClearLine(state, e, target))) {
+    if (!holedUp && e.waypoints.length === 0) {
+      e.state = "attack";
+      if (!turreted) turnToward(e, aimX, aimY, def.turnDegPerSec * hullTurnMul(e), dt);
+    }
     return;
   }
   if (e.waypoints.length > 0 && !travelFights(e) && !reversing(e) && !holedUp) return;
@@ -2578,66 +2603,6 @@ function sweepAgainst(
   return { t, x: x0 + (p.x - x0) * t, y: y0 + (p.y - y0) * t };
 }
 
-function segmentAabbT(
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-  box: { x0: number; y0: number; x1: number; y1: number },
-): number | null {
-  if (x0 >= box.x0 && x0 < box.x1 && y0 >= box.y0 && y0 < box.y1) return 0;
-  const dx = x1 - x0;
-  const dy = y1 - y0;
-  let t0 = 0;
-  let t1 = 1;
-  const clip = (p: number, q: number): boolean => {
-    if (Math.abs(p) < 1e-12) return q >= 0;
-    const r = q / p;
-    if (p < 0) {
-      if (r > t1) return false;
-      if (r > t0) t0 = r;
-    } else {
-      if (r < t0) return false;
-      if (r < t1) t1 = r;
-    }
-    return true;
-  };
-  if (!clip(-dx, x0 - box.x0)) return null;
-  if (!clip(dx, box.x1 - x0)) return null;
-  if (!clip(-dy, y0 - box.y0)) return null;
-  if (!clip(dy, box.y1 - y0)) return null;
-  if (t0 > t1 || t0 > 1 || t1 < 0) return null;
-  return t0 < 0 ? 0 : t0;
-}
-
-function segmentCircleT(
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-  cx: number,
-  cy: number,
-  r: number,
-): number | null {
-  const dx = x1 - x0;
-  const dy = y1 - y0;
-  const fx = x0 - cx;
-  const fy = y0 - cy;
-  const a = dx * dx + dy * dy;
-  const c0 = fx * fx + fy * fy - r * r;
-  if (c0 <= 0) return 0;
-  if (a < 1e-8) return null;
-  const b = 2 * (fx * dx + fy * dy);
-  const disc = b * b - 4 * a * c0;
-  if (disc < 0) return null;
-  const s = Math.sqrt(disc);
-  const t1 = (-b - s) / (2 * a);
-  const t2 = (-b + s) / (2 * a);
-  if (t1 >= 0 && t1 <= 1) return t1;
-  if (t2 >= 0 && t2 <= 1) return t2;
-  return null;
-}
-
 function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undefined {
   // Dry tanks: the Pyro has nothing to go at them with until a truck refills him.
   if (e.type === "pyro" && e.clip <= 0) return undefined;
@@ -2648,6 +2613,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   let bestD = range * range;
   let bestAir: Entity | undefined;
   let bestAirD = (range * (e.type === "ciws" ? CIWS_AIR_REACH_MUL : 1)) ** 2;
+  const near: { o: Entity; d: number; i: number }[] = [];
   for (const o of state.entities.values()) {
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn || isCrashing(o)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
@@ -2689,10 +2655,16 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (!canSeeEntity(state, e.ownerId, o)) continue;
     if (!canAimWeapon(state, e, o.x, o.y, o)) continue;
     if (isInfantryType(e.type) && !infantryRoundCanHarm(state, e, o)) continue;
-    bestD = d;
-    best = o;
+    near.push({ o, d, i: near.length });
   }
-  return bestAir ?? best;
+  if (bestAir) return bestAir;
+  // Nearest first. A target with a friend in the line goes behind one with a clear line.
+  // Equal distance: the later one wins, as the plain nearest-first scan did.
+  near.sort((a, b) => a.d - b.d || b.i - a.i);
+  for (const c of near) {
+    if (!needsClearLine(e, c.o) || !allyInLine(state, e, e.x, e.y, c.o)) return c.o;
+  }
+  return near[0]?.o ?? best;
 }
 
 export function inGuardCone(e: Entity, t: { x: number; y: number }): boolean {
