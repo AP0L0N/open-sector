@@ -18,9 +18,10 @@ import {
   TITAN_ROCKET_RACK,
   TRAIN_TYPES,
 } from "../catalog.js";
-import { TILE_EMPTY } from "../maps.js";
+import { TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { makeEntity, playerTeam, tileCenter } from "./geo.js";
+import { canSeeEntity } from "./vision.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { createMatch, step } from "./match.js";
 import { rocketScatterRadius } from "./mortar.js";
@@ -291,6 +292,68 @@ describe("nebelwerfer", () => {
     step(state, TICK_DT);
     const lost = hp0 - tank.hp;
     assert.ok(lost > 0 && lost <= hp0 * 0.1, `tank lost ${lost} of ${hp0}`);
+  });
+
+  it("force-attacks a point it cannot see, over a wall and a grove", () => {
+    const { state, y, ts } = range();
+    const x0 = 30;
+    const n = launcher(state, x0, y);
+    const far = 40;
+    const aimX = tileCenter(x0 + far, ts);
+    const aimY = tileCenter(y, ts);
+    const foe = dummy(state, "B", x0 + far, y);
+    assert.ok(far > catalog("nebelwerfer").sightTiles, "past its own eyes");
+    assert.ok(far < NEBELWERFER_RANGE_TILES && far > NEBELWERFER_MIN_RANGE_TILES);
+    assert.equal(canSeeEntity(state, "A", foe), false);
+    for (let x = x0 + 8; x <= x0 + 12; x++) {
+      for (let gy = y - 3; gy <= y + 3; gy++) state.terrain[gy * state.width + x] = TILE_TREE;
+    }
+    const wallX = tileCenter(x0 + 16, ts);
+    const walls = [-16, 0, 16].map((dy) => makeEntity(state, "wall", "A", wallX, aimY + dy, { facing: 0 }));
+    const wallHp = walls.map((w) => w.hp);
+    assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [n.id], x: aimX, y: aimY }).ok, true);
+    let burst: { x: number; y: number } | undefined;
+    for (let i = 0; i < 40 && !burst; i++) {
+      step(state, TICK_DT);
+      const hit = state.impacts.find((im) => im.fromId === n.id);
+      if (hit) burst = { x: hit.x, y: hit.y };
+    }
+    assert.ok(burst, "a rocket bursts");
+    const dist = Math.hypot(aimX - n.x, aimY - n.y);
+    const reach = NEBELWERFER_RANGE_TILES * ts;
+    const scatter = rocketScatterRadius(dist, reach, 1, NEBELWERFER_ROCKET);
+    assert.ok(Math.hypot(burst.x - aimX, burst.y - aimY) <= scatter * 1.4, "it lands on the point");
+    assert.ok(Math.hypot(burst.x - wallX, burst.y - aimY) > ts * 4, "it does not burst on the wall");
+    walls.forEach((w, i) => assert.equal(w.hp, wallHp[i], "the wall is still whole"));
+    assert.equal(
+      state.clearedTrees.some((t) => t.x >= x0 + 8 && t.x <= x0 + 12),
+      false,
+      "the grove on the way stays standing",
+    );
+  });
+
+  it("still loses a rocket on a wall when the shot is aimed at a target", () => {
+    const { state, y, ts } = range();
+    const x0 = 30;
+    const n = launcher(state, x0, y);
+    const far = 40;
+    const foe = dummy(state, "B", x0 + far, y);
+    const wallX = tileCenter(x0 + 16, ts);
+    const aimY = tileCenter(y, ts);
+    // The other side's wall. A normal rocket stops on it; a friendly section would be left alone.
+    const walls = [-16, 0, 16].map((dy) => makeEntity(state, "wall", "B", wallX, aimY + dy, { facing: 0 }));
+    const wallHp = walls.reduce((s, w) => s + w.hp, 0);
+    assert.equal(applyCommand(state, "A", { type: "cmd.attack", ids: [n.id], targetId: foe.id }).ok, true);
+    let burst: { x: number; y: number } | undefined;
+    for (let i = 0; i < 40 && !burst; i++) {
+      step(state, TICK_DT);
+      const hit = state.impacts.find((im) => im.fromId === n.id);
+      if (hit) burst = { x: hit.x, y: hit.y };
+    }
+    assert.ok(burst, "a rocket bursts");
+    assert.ok(Math.hypot(burst.x - wallX, burst.y - aimY) < ts * 3, "it meets the wall");
+    assert.ok(walls.reduce((s, w) => s + w.hp, 0) < wallHp, "the wall takes the rocket");
+    assert.equal(foe.hp, foe.hpMax, "the man past the wall is not hit");
   });
 
   it("never lays on a plane", () => {

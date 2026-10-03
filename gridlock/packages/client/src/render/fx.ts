@@ -443,6 +443,8 @@ export function drawRocketHead(
   ctx.translate(x, y);
   ctx.rotate(Math.atan2(uy, ux));
   ctx.globalCompositeOperation = "lighter";
+  // A hint of light trailing the motor, well short of a hull lamp.
+  softDisc(ctx, -13 * body, 0, 10 * flick * body, 4.4 * flick, 255, 214, 150, 0.2);
   softDisc(ctx, -5 * body, 0, 7 * flick * body, 3.2 * flick, 255, heavy ? 220 : 170, heavy ? 150 : 70, 0.75);
   softDisc(ctx, -3.5 * body, 0, 3.2 * body, 1.8, 255, heavy ? 250 : 244, heavy ? 230 : 200, 0.95);
   ctx.globalCompositeOperation = "source-over";

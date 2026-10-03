@@ -19,6 +19,7 @@ import {
   SPOTLIGHT_HALF_DEG,
   SPOTLIGHT_REACH_TILES,
   SPOTLIGHT_TURN_DEG_PER_SEC,
+  TOWER_EYE_HEIGHT,
   fieldSpan,
   isConcreteLine,
   wallAxes,
@@ -352,20 +353,22 @@ import {
   beamPolygon,
   easeSpot,
   lampGlow,
+  missileSpot,
   nightFog,
   nightShade,
   workLightBearings,
   workLightCount,
 } from "./night.js";
 
-type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" };
+type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" | "missile" };
 /** How much of the night tint each kind of pool lifts, per pool (they overlap), and how much it warms. */
-const POOL_CUT: Record<NightPool["kind"], number> = { tower: 0.7, head: 0.8, work: 0.75 };
-const POOL_WARM: Record<NightPool["kind"], number> = { tower: 0.2, head: 0.24, work: 0.2 };
+const POOL_CUT: Record<NightPool["kind"], number> = { tower: 0.7, head: 0.8, work: 0.75, missile: 0.4 };
+const POOL_WARM: Record<NightPool["kind"], number> = { tower: 0.2, head: 0.24, work: 0.2, missile: 0.14 };
 const POOL_RGB: Record<NightPool["kind"], string> = {
   tower: "255, 236, 180",
   head: "255, 242, 205",
   work: "255, 212, 140",
+  missile: "255, 214, 150",
 };
 
 /** Built structures that keep work lights burning round the yard. Not bunkers, walls, or the tower, which has its own lamp. */
@@ -3291,6 +3294,15 @@ export class MapView {
         for (const b of blobs) lay(pose.x + c * b.d, pose.y + s * b.d, b.r, b.a, "head");
       }
     }
+    const blend = Math.min(1, (performance.now() - this.snapAt) / 100);
+    for (const p of this.curr.projectiles) {
+      if (!p.rocket) continue;
+      const prev = this.prev?.projectiles.find((q) => q.id === p.id);
+      const wx = prev ? prev.x + (p.x - prev.x) * blend : p.x;
+      const wy = prev ? prev.y + (p.y - prev.y) * blend : p.y;
+      const spot = missileSpot(wx, wy, p.vx, p.vy, ts);
+      lay(spot.x, spot.y, spot.r, spot.a, "missile");
+    }
     const nowSec = performance.now() / 1000;
     for (const e of this.curr.entities) {
       if (!workLit(e)) continue;
@@ -3380,6 +3392,17 @@ export class MapView {
     if (pools.length) {
       ctx.globalCompositeOperation = "lighter";
       for (const p of pools) fillPool(ctx, p, POOL_RGB[p.kind], POOL_WARM[p.kind] * p.a * glow);
+      // The cab lamp. Hull headlights stay a beam only.
+      for (const { e } of lamps) {
+        const cab = this.toScreen(e.x, e.y, this.elevAt(e.x, e.y) + TOWER_EYE_HEIGHT);
+        const lamp = ctx.createRadialGradient(cab.x, cab.y, 0, cab.x, cab.y, 9);
+        lamp.addColorStop(0, `rgba(255, 248, 220, ${0.95 * glow})`);
+        lamp.addColorStop(1, "rgba(255, 230, 170, 0)");
+        ctx.fillStyle = lamp;
+        ctx.beginPath();
+        ctx.arc(cab.x, cab.y, 9, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.globalCompositeOperation = "source-over";
     }
     if (glow <= 0) {

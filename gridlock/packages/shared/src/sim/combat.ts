@@ -1021,12 +1021,14 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     fireArtillery(state, e, aimX, aimY, range, dist, target, dt);
     return;
   }
-  if (!canAimWeapon(state, e, aimX, aimY, target)) {
+  // Force attack here: a gun in range shoots at the point. A lip the barrel
+  // cannot crank up, and sandbags in front of a crawling gun, do not hold it.
+  if (!ground && !canAimWeapon(state, e, aimX, aimY, target)) {
     if (!holedUp) e.state = "attack";
     return;
   }
   const crawlingGun = stanceOf(e) === "crawl" && infantryGunFor(e)?.id !== "mortar";
-  if (crawlingGun && sandbagsBlockGun(state, e.x, e.y, aimX, aimY)) {
+  if (!ground && crawlingGun && sandbagsBlockGun(state, e.x, e.y, aimX, aimY)) {
     if (!holedUp) e.state = "attack";
     return;
   }
@@ -1623,26 +1625,30 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
   } else {
     p.z = z0 + (p.vz ?? 0) * stepDt;
   }
-  // It flies low and fast, so a hull, a wall, or a tree in the way takes the burst.
-  const wallHit = wallSweep(state, x0, y0, p.x, p.y);
-  const struck = nearestSweepHit(state, x0, y0, p, z0, p.z);
-  const tree = nearestTreeSweep(state, x0, y0, p, z0, p.z, rand);
-  if (wallHit && (!struck || wallHit.t <= struck.t) && (!tree || wallHit.t <= tree.t)) {
-    p.x = wallHit.x;
-    p.y = wallHit.y;
-    p.airBurst = undefined;
-    detonateMortar(state, p, rand, wallHit.e);
-    return false;
-  }
-  const first = struck && (!tree || struck.t <= tree.t) ? struck : tree;
-  if (first) {
-    p.x = first.x;
-    p.y = first.y;
-    const hit = struck && first === struck ? struck.e : undefined;
-    // Met something on the ground before the plane: a ground burst after all.
-    p.airBurst = hit && isAirborne(hit) ? true : undefined;
-    detonateMortar(state, p, rand, hit);
-    return false;
+  // A forced Nebelwerfer rocket is fused on the point. It clears walls, trees,
+  // and hulls on the way and bursts where it was aimed. Any other rocket flies
+  // low, so the first thing in the path takes the burst.
+  if (!(p.harmAllies && p.launcher === "nebelwerfer")) {
+    const wallHit = wallSweep(state, x0, y0, p.x, p.y);
+    const struck = nearestSweepHit(state, x0, y0, p, z0, p.z);
+    const tree = nearestTreeSweep(state, x0, y0, p, z0, p.z, rand);
+    if (wallHit && (!struck || wallHit.t <= struck.t) && (!tree || wallHit.t <= tree.t)) {
+      p.x = wallHit.x;
+      p.y = wallHit.y;
+      p.airBurst = undefined;
+      detonateMortar(state, p, rand, wallHit.e);
+      return false;
+    }
+    const first = struck && (!tree || struck.t <= tree.t) ? struck : tree;
+    if (first) {
+      p.x = first.x;
+      p.y = first.y;
+      const hit = struck && first === struck ? struck.e : undefined;
+      // Met something on the ground before the plane: a ground burst after all.
+      p.airBurst = hit && isAirborne(hit) ? true : undefined;
+      detonateMortar(state, p, rand, hit);
+      return false;
+    }
   }
   if (p.life > 0) return true;
   if (p.landX != null && p.landY != null) {
