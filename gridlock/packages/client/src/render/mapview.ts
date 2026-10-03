@@ -19,7 +19,6 @@ import {
   SPOTLIGHT_HALF_DEG,
   SPOTLIGHT_REACH_TILES,
   SPOTLIGHT_TURN_DEG_PER_SEC,
-  TOWER_EYE_HEIGHT,
   fieldSpan,
   isConcreteLine,
   GUARD_CONE_DEG,
@@ -358,9 +357,6 @@ import {
   workLightCount,
 } from "./night.js";
 
-/** Screen px of the old hull bulb. The beam on the ground is separate. */
-const HEADLIGHT_BULB_R = 5 * LAMP_BULB_SCALE;
-
 type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" };
 /** How much of the night tint each kind of pool lifts, per pool (they overlap), and how much it warms. */
 const POOL_CUT: Record<NightPool["kind"], number> = { tower: 0.7, head: 0.8, work: 0.75 };
@@ -650,8 +646,6 @@ export class MapView {
   /** Lamp heading on screen per tower, eased toward the snapshot. */
   private spotShown = new Map<number, number>();
   private spotFrameAt = 0;
-  /** Screen points of the headlights drawn this frame, for their lamp glints. */
-  private headlightNoses: IsoPt[] = [];
   /** Every tile counts as known ground: the map is never shrouded. */
   private knownGround: Uint8Array | null = null;
   private miniFog: HTMLCanvasElement | null = null;
@@ -3242,7 +3236,7 @@ export class MapView {
     const out: { e: EntityView; facing: number }[] = [];
     const live = new Set<number>();
     for (const e of this.curr.entities) {
-      if (e.spotFacing == null || !hasSpotlight(e.type) || e.hp <= 0) continue;
+      if (e.spotFacing == null || !hasSpotlight(e.type) || e.hp <= 0 || e.crits?.includes("lamp")) continue;
       live.add(e.id);
       const was = this.spotShown.get(e.id);
       const facing = was == null ? e.spotFacing : easeSpot(was, e.spotFacing, maxStep);
@@ -3276,8 +3270,6 @@ export class MapView {
       for (const b of towerBlobs) lay(e.x + c * b.d, e.y + s * b.d, b.r, b.a, "tower");
     }
     const headHalf = (HEADLIGHT_HALF_DEG * Math.PI) / 180;
-    const noses = this.headlightNoses;
-    noses.length = 0;
     for (const e of this.curr.entities) {
       if (!headlightLit(e)) continue;
       const reach = sightTilesOf(e.type, HEIGHT_BASE) * ts;
@@ -3296,8 +3288,6 @@ export class MapView {
         const c = Math.cos(beam);
         const s = Math.sin(beam);
         for (const b of blobs) lay(pose.x + c * b.d, pose.y + s * b.d, b.r, b.a, "head");
-        const mount = pose.facing + lamp.mount;
-        noses.push(this.toScreen(pose.x + Math.cos(mount) * nose, pose.y + Math.sin(mount) * nose));
       }
     }
     const nowSec = performance.now() / 1000;
@@ -3373,27 +3363,6 @@ export class MapView {
     if (pools.length) {
       ctx.globalCompositeOperation = "lighter";
       for (const p of pools) fillPool(ctx, p, POOL_RGB[p.kind], POOL_WARM[p.kind] * p.a * glow);
-      for (const n of this.headlightNoses) {
-        const lift = 3 * LAMP_BULB_SCALE;
-        const g = ctx.createRadialGradient(n.x, n.y - lift, 0, n.x, n.y - lift, HEADLIGHT_BULB_R);
-        g.addColorStop(0, `rgba(255, 250, 225, ${0.9 * glow})`);
-        g.addColorStop(1, "rgba(255, 240, 200, 0)");
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(n.x, n.y - lift, HEADLIGHT_BULB_R, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      // A point of light on each tower cab.
-      for (const { e } of lamps) {
-        const cab = this.toScreen(e.x, e.y, this.elevAt(e.x, e.y) + TOWER_EYE_HEIGHT);
-        const lamp = ctx.createRadialGradient(cab.x, cab.y, 0, cab.x, cab.y, 9);
-        lamp.addColorStop(0, `rgba(255, 248, 220, ${0.95 * glow})`);
-        lamp.addColorStop(1, "rgba(255, 230, 170, 0)");
-        ctx.fillStyle = lamp;
-        ctx.beginPath();
-        ctx.arc(cab.x, cab.y, 9, 0, Math.PI * 2);
-        ctx.fill();
-      }
       ctx.globalCompositeOperation = "source-over";
     }
     if (glow <= 0) {
@@ -4804,6 +4773,7 @@ export class MapView {
     if (!ghost) {
       this.maybeHp(e, stack.x - layoutW / 2, stack.y + 3, layoutW);
       this.drawGarrisonBars(e, stack.x + layoutW * 0.28, stack.y - 2);
+      this.drawCrits(e, stack.x + layoutW / 2, stack.y - 18);
     }
     this.drawDeployProgress(e, bar.x - layoutW / 2, bar.y + 4, layoutW);
     if (!ghost) {

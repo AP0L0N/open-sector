@@ -99,8 +99,8 @@ export function beamBlobs(
 }
 
 /**
- * The bulb drawn on a hull, and the disc of light fixed on that bulb, against
- * the old size. The beam past that disc is unchanged.
+ * Near disc of a hull beam, against the old bulb size. The bright point that
+ * used to sit on the lamp itself is not drawn. The beam past this disc is unchanged.
  */
 export const LAMP_BULB_SCALE = 0.7;
 

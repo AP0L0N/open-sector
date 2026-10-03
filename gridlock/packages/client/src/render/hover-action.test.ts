@@ -63,6 +63,15 @@ describe("engineer repair cursor", () => {
     }
   });
 
+  it("offers repair on a full-health hull or tower with a smashed spotlight", () => {
+    const tank = unit({ id: 59, type: "warden", hp: 100, hpMax: 100, crits: ["lamp"] });
+    const tower = building({ id: 60, type: "tower", hp: 400, hpMax: 400, crits: ["lamp"] });
+    const whole = building({ id: 61, type: "tower", hp: 400, hpMax: 400 });
+    assert.equal(act({ selected: [eng], hit: tank }), "repair");
+    assert.equal(act({ selected: [eng], hit: tower }), "repair");
+    assert.notEqual(act({ selected: [eng], hit: whole }), "repair");
+  });
+
   it("offers repair on a damaged concrete wall", () => {
     const standing = building({ id: 56, type: "wall", hp: 120, hpMax: 120 });
     const chipped = building({ id: 57, type: "wall", hp: 40, hpMax: 120 });

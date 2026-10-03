@@ -398,6 +398,11 @@ function hullDamaged(target: Entity): boolean {
   return target.crits.includes("tracks") || target.crits.includes("engine");
 }
 
+/** Every lamp on this hull or tower is out. */
+function lampsOut(target: Entity): boolean {
+  return target.crits.includes("lamp");
+}
+
 /** A tank-shelled sandbag wall an engineer can stack back up, unless something new was built on its spot. */
 function canRestackSandbags(state: MatchState, target: Entity): boolean {
   if (target.type !== "sandbags" || !target.ruined || target.hp <= 0) return false;
@@ -422,7 +427,7 @@ export function canRepairTarget(state: MatchState, playerId: string, target: Ent
     return repairOwner(state, playerId, target.ownerId) && canRestackSandbags(state, target);
   }
   if (target.hp <= 0 || target.wreck || target.ruined) return false;
-  if (target.hp >= target.hpMax && !(target.kind === "unit" && hullDamaged(target))) return false;
+  if (target.hp >= target.hpMax && !(target.kind === "unit" && hullDamaged(target)) && !lampsOut(target)) return false;
   if (!repairOwner(state, playerId, target.ownerId)) return false;
   if (target.kind === "unit") return isRepairableUnit(target.type);
   if (target.type === "sandbags") return false;
@@ -702,13 +707,14 @@ function tickRepair(state: MatchState, e: Entity, dt: number): void {
     const rate = isCyborg(target.type) ? CYBORG_REPAIR_PER_SEC : REPAIR_PER_SEC;
     target.hp = Math.min(target.hpMax, target.hp + rate * dt);
     if (target.hp < target.hpMax) return;
-  } else if (target.kind === "unit" && hullDamaged(target)) {
+  } else if ((target.kind === "unit" && hullDamaged(target)) || lampsOut(target)) {
     e.work += dt;
     if (e.work < HULL_FIX_SECONDS) return;
   }
-  if (target.kind === "unit") {
-    target.crits = target.crits.filter((c) => c !== "tracks" && c !== "engine");
-  }
+  target.crits = target.crits.filter((c) => {
+    if (c === "lamp") return false;
+    return target.kind !== "unit" || (c !== "tracks" && c !== "engine");
+  });
   finishWork(e);
 }
 

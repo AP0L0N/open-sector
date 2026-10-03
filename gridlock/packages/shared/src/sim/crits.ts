@@ -2,6 +2,8 @@ import {
   ARTILLERY_TOW_SPEED,
   CRIT_ARM_CHANCE,
   CRIT_ENGINE_CHANCE,
+  CRIT_LAMP_CHANCE,
+  CRIT_LAMP_SNIPER_CHANCE,
   CRIT_LEG_CHANCE,
   CRIT_TRACKS_CHANCE,
   CYBORG_CRAWL_SHIELD_SECONDS,
@@ -32,6 +34,7 @@ import {
 import type { ImpactKind } from "../protocol.js";
 import { artilleryHaulMul, gunCrewOf } from "./artillery.js";
 import type { ArmorFace } from "./ballistics.js";
+import { hasHeadlight, hasSpotlight } from "./night.js";
 import type { Entity } from "./types.js";
 
 export function moveSpeedMul(e: Entity, swimming = false): number {
@@ -167,4 +170,16 @@ export function rollCrits(
   if (face === "side" && trackCritAllowed(e.type) && rand() < trackChance) addCrit(e, "tracks");
   // A towed gun has wheels to break but no engine.
   if (face === "rear" && e.type !== "artillery" && rand() < CRIT_ENGINE_CHANCE) addCrit(e, "engine");
+}
+
+/**
+ * A bullet that meets a hull or a watch tower may smash its lamps. Every lamp
+ * on that body goes dark together. Shells, rockets, and bombs do not roll this.
+ * `shot` is omitted when the round is not a bullet, and then no die is thrown.
+ */
+export function rollLamp(e: Entity, shot: "bullet" | "sniper" | undefined, rand: () => number): void {
+  if (!shot || e.hp <= 0 || e.wreck || e.ruined) return;
+  if (!hasHeadlight(e.type) && !hasSpotlight(e.type)) return;
+  const chance = shot === "sniper" ? CRIT_LAMP_SNIPER_CHANCE : CRIT_LAMP_CHANCE;
+  if (rand() < chance) addCrit(e, "lamp");
 }
