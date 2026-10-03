@@ -1,4 +1,5 @@
 import {
+  DEFAULT_MAP_ID,
   PROTOCOL_VERSION,
   DISCONNECT_GRACE_MS,
   TICK_MS,
@@ -25,6 +26,7 @@ import {
   type RoomState,
   type ServerMessage,
 } from "@gridlock/shared";
+import { MapStore } from "./map-store.js";
 
 export type SendFn = (msg: ServerMessage) => void;
 
@@ -54,10 +56,13 @@ export class Hub {
   private readonly members = new Map<string, Set<string>>();
   private readonly tickers = new Map<string, ReturnType<typeof setInterval>>();
 
+  constructor(readonly maps: MapStore = new MapStore(null)) {}
+
   connect(playerId: string, send: SendFn): Session {
     const session = new Session(playerId, defaultName(playerId), send);
     this.sessions.set(playerId, session);
     session.send({ type: "welcome", playerId, protocol: PROTOCOL_VERSION });
+    session.send({ type: "maps.custom", maps: this.maps.list() });
     return session;
   }
 
@@ -127,6 +132,12 @@ export class Hub {
         break;
       case "cmd.speed":
         this.onSpeed(session, msg.delta);
+        break;
+      case "map.save":
+        this.onMapSave(session, msg.map, msg.key);
+        break;
+      case "map.delete":
+        this.onMapDelete(session, msg.id, msg.key);
         break;
       default:
         if (msg.type.startsWith("cmd.")) this.onCmd(session, msg);
@@ -319,6 +330,61 @@ export class Hub {
     const res = setMap(room, session.playerId, mapId);
     if (!res.ok) return this.err(session, res.code, res.message);
     this.broadcastState(room.id);
+  }
+
+  /** Rooms on `mapId`. A running match pins its map; a lobby can be told it changed. */
+  private roomsOnMap(mapId: string): { lobby: RoomState[]; playing: boolean } {
+    const lobby: RoomState[] = [];
+    let playing = false;
+    for (const room of this.rooms.values()) {
+      if (room.mapId !== mapId) continue;
+      if (room.phase === "lobby") lobby.push(room);
+      else playing = true;
+    }
+    return { lobby, playing };
+  }
+
+  private toAll(msg: ServerMessage): void {
+    for (const s of this.sessions.values()) s.send(msg);
+  }
+
+  /** Lobby picks were made against the old starts. */
+  private resetLobbyStarts(room: RoomState): void {
+    for (const s of room.slots) {
+      s.spawnId = 0;
+      if (s.status === "human") s.ready = false;
+    }
+  }
+
+  private onMapSave(session: Session, map: unknown, key: unknown): void {
+    const id = (map as { id?: unknown } | null)?.id;
+    if (typeof id === "string" && this.roomsOnMap(id).playing) {
+      return this.err(session, "map_locked", "A match is running on that map. Save a copy, or try again after it ends.");
+    }
+    const saved = this.maps.save(map, key, session.name);
+    if (!saved.ok) return this.err(session, saved.code, saved.message);
+    log("map.save", { playerId: session.playerId, mapId: saved.value.id });
+    this.toAll({ type: "map.upsert", map: saved.value });
+    session.send({ type: "map.saved", id: saved.value.id });
+    for (const room of this.roomsOnMap(saved.value.id).lobby) {
+      this.resetLobbyStarts(room);
+      this.broadcastState(room.id);
+    }
+  }
+
+  private onMapDelete(session: Session, id: unknown, key: unknown): void {
+    if (typeof id !== "string") return this.err(session, "bad_payload", "Invalid map.");
+    const using = this.roomsOnMap(id);
+    if (using.playing) return this.err(session, "map_locked", "A match is running on that map.");
+    const removed = this.maps.remove(id, key);
+    if (!removed.ok) return this.err(session, removed.code, removed.message);
+    log("map.delete", { playerId: session.playerId, mapId: id });
+    for (const room of using.lobby) {
+      room.mapId = DEFAULT_MAP_ID;
+      this.resetLobbyStarts(room);
+      this.broadcastState(room.id);
+    }
+    this.toAll({ type: "map.removed", id });
   }
 
   private onStart(session: Session): void {

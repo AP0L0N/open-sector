@@ -40,7 +40,7 @@ function match(opts?: { team?: number }): { state: MatchState; a: string; b: str
   const team = opts?.team;
   updateSelf(room, "A", { ready: true, spawnId: 1, team });
   updateSelf(room, "B", { ready: true, spawnId: 4, team });
-  const started = startMatch(room, "A");
+  const started = startMatch(room, "A", () => 0);
   if (!started.ok) throw new Error(started.message);
   return { state: createMatch(room, started.value), a: "A", b: "B" };
 }

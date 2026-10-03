@@ -87,8 +87,9 @@ export function createRoom(opts: {
   now?: number;
 }): LobbyResult<RoomState> {
   const mode: RoomMode = opts.mode === "skirmish" ? "skirmish" : "network";
-  const maxSlots = clampMaxSlots(opts.maxSlots);
-  if (!getMap(opts.mapId)) return fail("no_map", "Unknown map.");
+  const map = getMap(opts.mapId);
+  if (!map) return fail("no_map", "Unknown map.");
+  const maxSlots = Math.min(clampMaxSlots(opts.maxSlots), Math.max(MIN_SLOTS, map.spawns.length));
   const slots = Array.from({ length: SLOT_COUNT }, (_, i) =>
     emptySlot(i, i === 0 ? "human" : i < maxSlots ? "open" : "closed"),
   );
@@ -166,6 +167,7 @@ export function joinRoom(room: RoomState, playerId: string, name: string): Lobby
   if (findPlayerSlot(room, playerId)) return okVoid();
   const slot = firstOpenSlot(room);
   if (!slot) return fail("full", "Room is full.");
+  if (commanders(room).length >= seatsOf(room)) return fail("full", "Every start on this map is taken.");
   slot.status = "human";
   slot.playerId = playerId;
   slot.name = name;
@@ -259,6 +261,9 @@ export function hostSlot(
     resetSlot(slot, "open");
   } else if (action.status === "ai") {
     if (slot.status === "human") return fail("bad_slot", "Kick the player first.");
+    if (slot.status !== "ai" && commanders(room).length >= seatsOf(room)) {
+      return fail("too_many", `This map seats ${seatsOf(room)}.`);
+    }
     fillAiSlot(room, slot, "easy");
   }
 
@@ -314,6 +319,11 @@ function patchAiSeat(
   return okVoid();
 }
 
+/** Commanders the room's map has starts for. */
+function seatsOf(room: RoomState): number {
+  return getMap(room.mapId)?.spawns.length ?? SLOT_COUNT;
+}
+
 function syncMaxSlots(room: RoomState): void {
   const filled = commanders(room).length + room.slots.filter((s) => s.status === "open").length;
   room.maxSlots = Math.max(MIN_SLOTS, Math.min(MAX_SLOTS, filled));
@@ -322,18 +332,32 @@ function syncMaxSlots(room: RoomState): void {
 export function setMap(room: RoomState, hostId: string, mapId: string): LobbyResult<void> {
   if (room.hostId !== hostId) return fail("not_host", "Only the host can change the map.");
   if (room.phase !== "lobby") return fail("started", "Match already started.");
-  if (!getMap(mapId)) return fail("no_map", "Unknown map.");
+  const map = getMap(mapId);
+  if (!map) return fail("no_map", "Unknown map.");
   room.mapId = mapId;
   for (const s of room.slots) {
     s.spawnId = 0;
     if (s.status === "human") s.ready = false;
   }
+  // Close empty seats the new map has no start for. Seated commanders stay.
+  let seats = commanders(room).length + room.slots.filter((s) => s.status === "open").length;
+  for (let i = room.slots.length - 1; i >= 0 && seats > map.spawns.length; i--) {
+    const slot = room.slots[i]!;
+    if (slot.status !== "open") continue;
+    resetSlot(slot, "closed");
+    seats--;
+  }
+  syncMaxSlots(room);
   return okVoid();
 }
 
 export function startPreconditions(room: RoomState): LobbyResult<void> {
   if (room.phase !== "lobby") return fail("started", "Match already started.");
-  if (!getMap(room.mapId)) return fail("no_map", "Unknown map.");
+  const map = getMap(room.mapId);
+  if (!map) return fail("no_map", "Unknown map.");
+  if (commanders(room).length > map.spawns.length) {
+    return fail("too_many", `${map.name} has ${map.spawns.length} start positions.`);
+  }
   const filled = humans(room);
   if (filled.length < MIN_HUMANS_TO_START) {
     return fail("too_few", "Need at least one commander.");
@@ -351,10 +375,12 @@ export function startPreconditions(room: RoomState): LobbyResult<void> {
 /**
  * Resolve spawn ids:
  * 1. Keep unique requested spawnIds.
- * 2. Random / missing pick from remaining ids, in slot order.
- * Remaining list is sorted by id (deterministic).
+ * 2. Random / missing each draw one of the remaining ids at random.
  */
-export function resolveSpawns(room: RoomState): Map<string, { spawnId: number; x: number; y: number }> {
+export function resolveSpawns(
+  room: RoomState,
+  rng: () => number = Math.random,
+): Map<string, { spawnId: number; x: number; y: number }> {
   const map = getMap(room.mapId);
   if (!map) throw new Error("map missing");
   const filled = commanders(room).slice().sort((a, b) => a.index - b.index);
@@ -373,11 +399,11 @@ export function resolveSpawns(room: RoomState): Map<string, { spawnId: number; x
   });
 
   const leftover = remaining.filter((id) => !assigned.has(id));
-  leftover.sort((a, b) => a - b);
 
   for (const slot of stillNeed) {
-    const id = leftover.shift();
-    if (id === undefined) throw new Error("not enough spawns");
+    if (leftover.length === 0) throw new Error("not enough spawns");
+    const pick = Math.min(leftover.length - 1, Math.floor(rng() * leftover.length));
+    const id = leftover.splice(pick, 1)[0]!;
     assigned.set(id, slot);
     slot.spawnId = id;
   }
@@ -393,29 +419,14 @@ export function resolveSpawns(room: RoomState): Map<string, { spawnId: number; x
 export function startMatch(
   room: RoomState,
   hostId: string,
+  rng: () => number = Math.random,
 ): LobbyResult<Map<string, { spawnId: number; x: number; y: number }>> {
   if (room.hostId !== hostId) return fail("not_host", "Only the host can start.");
   const pre = startPreconditions(room);
   if (!pre.ok) return pre;
-  const resolved = resolveSpawns(room);
-  applyMapTeams(room, resolved);
+  const resolved = resolveSpawns(room, rng);
   room.phase = "playing";
   return ok(resolved);
-}
-
-/** Broad Yard pairs share a suggested team. A team the slot already chose stays. */
-function applyMapTeams(
-  room: RoomState,
-  resolved: Map<string, { spawnId: number; x: number; y: number }>,
-): void {
-  const map = getMap(room.mapId);
-  if (!map?.applySuggestedTeams) return;
-  for (const slot of commanders(room)) {
-    if (slot.team !== 0 || !slot.playerId) continue;
-    const spawnId = resolved.get(slot.playerId)?.spawnId;
-    const team = map.spawns.find((s) => s.id === spawnId)?.suggestedTeam;
-    if (team) slot.team = team;
-  }
 }
 
 export function canCreateRoom(roomCount: number): LobbyResult<void> {
