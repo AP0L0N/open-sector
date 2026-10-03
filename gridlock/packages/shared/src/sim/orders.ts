@@ -11,7 +11,7 @@ import {
 } from "../catalog.js";
 import { adjacentToBuilding, hqOf, rallyPoint, unitInWater, worldToTile } from "./geo.js";
 import { wantsCapture, pathToCapture } from "./capture.js";
-import { moveWithCollision, stepGiveWay, tickMakeWay } from "./collision.js";
+import { moveWithCollision, pathAroundParked, stepGiveWay, tickMakeWay, tickShuffle } from "./collision.js";
 import { hullTurnMul, moveSpeedMul } from "./crits.js";
 import { openSpotNear, spotTaken, unitClearance } from "./formation.js";
 import { setPath } from "./path.js";
@@ -99,6 +99,7 @@ export function turnTurretToward(e: Entity, tx: number, ty: number, degPerSec: n
 
 export function tickMovement(state: MatchState, dt: number): void {
   tickMakeWay(state);
+  tickShuffle(state);
   for (const e of state.entities.values()) {
     if (e.kind !== "unit" || e.hp <= 0 || e.wreck || e.garrisonedIn) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
@@ -286,7 +287,7 @@ export function tickMovement(state: MatchState, dt: number): void {
     e.tileY = worldToTile(e.y, state.tileSize);
     if (e.waypoints.length > 0 && Math.hypot(e.x - ox, e.y - oy) < 0.25 && state.tick % 10 === 0) {
       const last = e.waypoints[e.waypoints.length - 1];
-      if (last) setPath(state, e, last.x, last.y);
+      if (last) pathAroundParked(state, e, last.x, last.y);
     }
     if (e.waypoints.length === 0 && e.order?.kind === "patrol") {
       commitPatrolArrival(state, e);
