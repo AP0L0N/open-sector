@@ -300,13 +300,14 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
         friendly && e.order?.kind === "patrol" && e.order.route
           ? e.order.route.map((p) => ({ x: p.x, y: p.y }))
           : undefined,
+      patrolLoop: friendly && e.order?.kind === "patrol" && e.order.loop ? true : undefined,
       guardFacing: friendly && e.guardFacing != null ? e.guardFacing : undefined,
       guardTargetId:
         friendly && e.order?.kind === "guard" && e.order.targetId != null ? e.order.targetId : undefined,
       tend: medicTendView(state, e),
       ruined: e.ruined || undefined,
       gate: e.gate ? { locked: e.gate.locked, open: Math.round(e.gate.open * 100) / 100 } : undefined,
-      wallTop: e.wallTop,
+      wallCrest: isConcreteLine(e.type) && e.wallCrest != null ? e.wallCrest : undefined,
       fieldSites: e.type === "engineer" ? fieldSitesView(e, friendly) : undefined,
       scout: scoutView(e, friendly),
       supply: friendly && e.type === "supply" && !e.wreck ? e.supply : undefined,

@@ -4,8 +4,10 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { NEUTRAL_OWNER, SPOTLIGHT_TURN_DEG_PER_SEC, TICK_DT, catalog, isCivilianType } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE, TILE_WATER } from "../maps.js";
 import { applyCommand } from "./commands.js";
+import { weaponRangeWorld } from "./elevation.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
+import { connectPatrolPoints, distToRoute, stepPatrolLeg } from "./patrol.js";
 import { snapshotFor } from "./snapshot.js";
 import type { MatchState } from "./types.js";
 
@@ -294,6 +296,156 @@ describe("patrol", () => {
     assert.ok(rifle.y > rifleY + ts, "the rifle walks the route");
     assert.equal(tower.order?.kind, "patrol");
     assert.ok(tower.spotFacing! > 0.2, "the lamp leaves its rest heading");
+  });
+
+  it("drops the tail when a draft connects to an earlier spot", () => {
+    assert.deepEqual(connectPatrolPoints(["S", "A", "B", "C", "D"], 2), ["B", "C", "D"]);
+    assert.deepEqual(connectPatrolPoints(["A", "B", "C"], 0), ["A", "B", "C"]);
+    assert.equal(connectPatrolPoints(["A", "B", "C"], 2), null);
+    assert.equal(connectPatrolPoints(["A"], 0), null);
+    assert.equal(connectPatrolPoints(["A", "B"], -1), null);
+    const square = [
+      { x: 0, y: 0 },
+      { x: 30, y: 0 },
+      { x: 30, y: 30 },
+      { x: 0, y: 30 },
+    ];
+    assert.deepEqual(stepPatrolLeg(square, 3, 1, true), { leg: 0, dir: 1 });
+    assert.deepEqual(stepPatrolLeg(square, 3, -1, true), { leg: 0, dir: 1 });
+    assert.deepEqual(stepPatrolLeg(square, 3, 1), { leg: 2, dir: -1 });
+    const mid = { x: 0, y: 15 };
+    assert.ok(distToRoute(square, mid.x, mid.y) > 10);
+    assert.ok(distToRoute(square, mid.x, mid.y, true) < 0.01);
+  });
+
+  it("circles a closed route and does not turn back along it", () => {
+    const { state, a, b } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const mid = Math.floor(state.width / 2);
+    const rifle = makeEntity(state, "rifleman", a, tileCenter(mid, ts), tileCenter(mid, ts));
+    const startX = rifle.x;
+    const startY = rifle.y;
+    const A = { x: startX + ts * 8, y: startY };
+    const B = { x: A.x, y: startY + ts * 8 };
+    const C = { x: startX, y: startY + ts * 8 };
+    const spot = { x: startX + ts * 20, y: startY };
+    assert.equal(applyCommand(state, a, { type: "cmd.patrol", ids: [rifle.id], points: [spot], loop: true }).ok, true);
+    const openLeg = rifle.order?.kind === "patrol" ? rifle.order.leg : undefined;
+    const openLoop = rifle.order?.kind === "patrol" ? rifle.order.loop : undefined;
+    assert.equal(openLeg, 1);
+    assert.equal(openLoop, undefined);
+
+    assert.equal(applyCommand(state, a, { type: "cmd.patrol", ids: [rifle.id], points: [A, B, C], loop: true }).ok, true);
+    const issued = state.entities.get(rifle.id);
+    const order = issued?.order?.kind === "patrol" ? issued.order : undefined;
+    assert.ok(order);
+    assert.equal(order?.loop, true);
+    assert.equal(order?.dir, 1);
+    assert.equal(order?.leg, 0);
+    const route = order?.route ?? [];
+    assert.equal(route.length, 3);
+    assert.ok(Math.hypot(route[0]!.x - A.x, route[0]!.y - A.y) < 1);
+    assert.ok(Math.hypot(route[0]!.x - startX, route[0]!.y - startY) > ts * 4, "the stand point is not on the ring");
+    const mine = snapshotFor(state, a).entities.find((e) => e.id === rifle.id);
+    const theirs = snapshotFor(state, b).entities.find((e) => e.id === rifle.id);
+    assert.equal(mine?.patrolLoop, true);
+    assert.equal(mine?.patrol?.length, 3);
+    assert.equal(theirs?.patrol, undefined);
+    assert.equal(theirs?.patrolLoop, undefined);
+
+    const seen: number[] = [0];
+    for (let i = 0; i < 500 && seen.length < 4; i++) {
+      step(state, TICK_DT);
+      const now = state.entities.get(rifle.id);
+      const leg = now?.order?.kind === "patrol" ? now.order.leg : undefined;
+      const dir = now?.order?.kind === "patrol" ? now.order.dir : undefined;
+      assert.equal(dir, 1);
+      if (leg != null && leg !== seen[seen.length - 1]) seen.push(leg);
+    }
+    assert.deepEqual(seen, [0, 1, 2, 0]);
+  });
+
+  it("fights an enemy on the closing edge of a loop", () => {
+    const { state, a, b } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const x0 = tileCenter(20, ts);
+    const y0 = tileCenter(12, ts);
+    const side = ts * 36;
+    const A = { x: x0, y: y0 };
+    const B = { x: x0 + side, y: y0 };
+    const C = { x: x0 + side, y: y0 + side };
+    const D = { x: x0, y: y0 + side };
+    const foe = makeEntity(state, "rifleman", b, x0, y0 + side / 2);
+    foe.hp = 500;
+    foe.clip = 0;
+    foe.reload = 30;
+    const rifle = makeEntity(state, "rifleman", a, x0 - ts * 10, foe.y);
+    rifle.crits = ["arm"];
+    const sent = applyCommand(state, a, { type: "cmd.patrol", ids: [rifle.id], points: [A, B, C, D], loop: true });
+    assert.equal(sent.ok, true);
+    const order = state.entities.get(rifle.id)?.order;
+    const route = order?.kind === "patrol" ? order.route : undefined;
+    assert.ok(route && route.length === 4);
+    const range = weaponRangeWorld(state, rifle);
+    const along = distToRoute(route!, foe.x, foe.y, true);
+    const open = distToRoute(route!, foe.x, foe.y, false);
+    assert.ok(along <= range, `closing edge ${along} outside range ${range}`);
+    assert.ok(open > range, `open ring already reached the foe (${open} <= ${range})`);
+    let engaged = false;
+    for (let i = 0; i < 20; i++) {
+      step(state, TICK_DT);
+      const now = state.entities.get(rifle.id);
+      if (now?.attackTarget === foe.id) {
+        engaged = true;
+        break;
+      }
+    }
+    assert.equal(engaged, true);
+    const still = state.entities.get(rifle.id)?.order?.kind;
+    assert.equal(still, "patrol");
+  });
+
+  it("sweeps a tower spotlight around a loop and back to the first spot", () => {
+    const { state, a } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const mid = Math.floor(state.width / 2);
+    const tower = towerAt(state, a, mid - 16, mid - 16);
+    tower.spotFacing = 0;
+    const x0 = tower.x;
+    const y0 = tower.y;
+    const north = { x: tower.x, y: tower.y + ts * 16 };
+    const west = { x: tower.x - ts * 16, y: tower.y };
+    const south = { x: tower.x, y: tower.y - ts * 16 };
+    assert.equal(
+      applyCommand(state, a, { type: "cmd.patrol", ids: [tower.id], points: [north, west, south], loop: true }).ok,
+      true,
+    );
+    const issued = state.entities.get(tower.id)?.order;
+    assert.equal(issued?.kind, "patrol");
+    assert.equal(issued?.kind === "patrol" ? issued.loop : undefined, true);
+    assert.equal(issued?.kind === "patrol" ? issued.route?.length : 0, 3);
+    const parked = tower.waypoints.length;
+    assert.equal(parked, 0);
+    const seen: number[] = [];
+    const first = issued?.kind === "patrol" ? issued.leg : undefined;
+    if (first != null) seen.push(first);
+    const sweepTicks = Math.ceil(360 / (SPOTLIGHT_TURN_DEG_PER_SEC * TICK_DT)) + 4;
+    for (let i = 0; i < sweepTicks && seen.length < 4; i++) {
+      step(state, TICK_DT);
+      const now = state.entities.get(tower.id);
+      const leg = now?.order?.kind === "patrol" ? now.order.leg : undefined;
+      const dir = now?.order?.kind === "patrol" ? now.order.dir : undefined;
+      assert.equal(dir, 1);
+      if (leg != null && leg !== seen[seen.length - 1]) seen.push(leg);
+    }
+    assert.deepEqual(seen, [0, 1, 2, 0]);
+    assert.equal(tower.x, x0);
+    assert.equal(tower.y, y0);
+    const stillParked = tower.waypoints.length;
+    assert.equal(stillParked, 0);
   });
 });
 

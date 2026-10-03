@@ -14,8 +14,9 @@ import type {
   TrainType,
   YardFieldType,
 } from "./catalog.js";
+import type { CustomMapSpec } from "./custom-maps.js";
 
-export const PROTOCOL_VERSION = 75;
+export const PROTOCOL_VERSION = 77;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -212,18 +213,24 @@ export interface EntityView {
   /** Friendly unit this entity is escorting. Omitted when not guarding a unit. */
   guardTargetId?: number;
   /**
-   * Patrol polyline in world pixels, first point where the unit started.
-   * Friendly snapshots only. The unit walks it and then back.
+   * Patrol polyline in world pixels. An open route starts where the unit stood
+   * and is walked back. A loop is the closed spots only. Friendly snapshots.
    */
   patrol?: { x: number; y: number }[];
+  /** The patrol circles. Omitted on an out-and-back route. Friendly snapshots. */
+  patrolLoop?: boolean;
   /** Infantry this medic is bandaging. Omitted while he is only walking over. */
   tend?: number;
   /** Sandbags wrecked by a tank shell. The rubble stays. */
   ruined?: boolean;
   /** A Wall section converted into a gate: boom lift 0–1, and whether it is locked. */
   gate?: { locked: boolean; open: number };
-  /** Concrete lines: terrain level of the slab top, fixed when the line was raised. */
-  wallTop?: number;
+  /**
+   * Terrain peak a concrete run was built up to, in map height units.
+   * The drawn top does not fall below this when a higher section is destroyed.
+   * Omitted on everything that is not a wall.
+   */
+  wallCrest?: number;
   /**
    * Engineer field structures not built yet. The first is the piece on the job; `progress` is 0–1
    * once digging starts. Friendlies also get the queued pieces; enemies only see a piece being dug.
@@ -555,14 +562,24 @@ export type ClientMessage =
     }
   | { type: "room.map"; mapId: string }
   | { type: "room.start" }
+  /**
+   * Map Builder save. `key` is the browser's private map key: the first save
+   * of an id claims it, and only the same key may overwrite or delete it.
+   */
+  | { type: "map.save"; map: CustomMapSpec; key: string }
+  | { type: "map.delete"; id: string; key: string }
   | { type: "chat"; text: string }
   /** `queue`: Shift-queued. The unit runs it after its current and earlier queued orders finish. */
   /** `facing`: world radians the unit turns to after it arrives. A held move click sets it. */
   | { type: "cmd.move"; ids: number[]; x: number; y: number; facing?: number; queue?: boolean }
   | { type: "cmd.attack"; ids: number[]; targetId: number; queue?: boolean }
   | { type: "cmd.attackmove"; ids: number[]; x: number; y: number; queue?: boolean }
-  /** Walk `points` in order, then back along them. Left-click places, right-click sends. */
-  | { type: "cmd.patrol"; ids: number[]; points: { x: number; y: number }[] }
+  /**
+   * Walk `points` in order. `loop` circles them (the last spot returns to the
+   * first). Otherwise the unit walks back. Left-click places, right-click sends.
+   * Clicking a point already placed closes the loop and drops the spots before it.
+   */
+  | { type: "cmd.patrol"; ids: number[]; points: { x: number; y: number }[]; loop?: boolean }
   | {
       type: "cmd.forceattack";
       ids: number[];
@@ -670,7 +687,14 @@ export type ServerMessage =
   | { type: "match.snapshot"; match: MatchSnapshot }
   | { type: "match.end"; winnerPlayerId: string | null; winnerTeam: number | null; reason: "core" | "host" }
   | { type: "room.closed"; reason: string }
-  | { type: "chat"; from: string; name: string; text: string; at: number };
+  | { type: "chat"; from: string; name: string; text: string; at: number }
+  /** Every stored custom map. Sent once after `welcome`. */
+  | { type: "maps.custom"; maps: CustomMapSpec[] }
+  /** A custom map was saved. Sent to everyone. */
+  | { type: "map.upsert"; map: CustomMapSpec }
+  | { type: "map.removed"; id: string }
+  /** Your own save landed. */
+  | { type: "map.saved"; id: string };
 
 export type ErrorCode =
   | "bad_payload"
@@ -684,6 +708,11 @@ export type ErrorCode =
   | "not_ready"
   | "no_map"
   | "too_few"
+  | "too_many"
+  | "map_invalid"
+  | "map_locked"
+  | "map_owner"
+  | "map_cap"
   | "room_cap"
   | "closed"
   | "bad_slot"
