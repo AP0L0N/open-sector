@@ -4,6 +4,11 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   DAY_SECONDS,
   DUSK_SECONDS,
+  HEADLIGHT_HALF_DEG,
+  LAMP_HEADING_STEP_DEG,
+  MAMMOTH_LAMP_PERIOD_SECONDS,
+  MAMMOTH_LAMP_STEP_DEG,
+  MAMMOTH_LAMP_SWING_DEG,
   NEUTRAL_OWNER,
   NIGHT_REACH_MUL,
   NIGHT_SECONDS,
@@ -21,11 +26,17 @@ import { sightTilesForEntity, weaponRangeWorld } from "./elevation.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch } from "./match.js";
 import {
+  CLOCK_OPEN_HOUR,
   DAY_CYCLE_SECONDS,
+  clockMarkLine,
   daylightAt,
   hasHeadlight,
+  hullLamps,
+  lampHeading,
+  matchClock,
   nightReachMul,
   nightTiles,
+  phaseStartText,
   spotlightsOn,
   tickSpotlights,
 } from "./night.js";
@@ -87,6 +98,41 @@ describe("day and night", () => {
     assert.equal(spotlightsOn(NIGHT_TICK), true);
   });
 
+  it("reads a 24-hour clock that opens at morning and names the night", () => {
+    const open = matchClock(0);
+    assert.equal(open.phase, "day");
+    assert.equal(open.hour, CLOCK_OPEN_HOUR);
+    assert.equal(open.minute, 0);
+    assert.equal(open.text, "06:00");
+    assert.equal(phaseStartText("day"), "06:00");
+    assert.equal(phaseStartText("dusk"), "19:23");
+    assert.equal(phaseStartText("night"), "20:30");
+    assert.equal(phaseStartText("dawn"), "04:53");
+    assert.equal(clockMarkLine("day"), "night at 20:30");
+    assert.equal(clockMarkLine("dusk"), "night at 20:30");
+    assert.equal(clockMarkLine("night"), "dawn at 04:53");
+    assert.equal(clockMarkLine("dawn"), "day at 06:00");
+
+    const dusk = matchClock(DUSK_MID_TICK);
+    assert.equal(dusk.phase, "dusk");
+    assert.ok(dusk.hour >= 19 && dusk.hour <= 20, `dusk face ${dusk.text}`);
+
+    const night = matchClock(NIGHT_TICK);
+    assert.equal(night.phase, "night");
+    assert.equal(night.text, "00:41");
+    assert.equal(daylightAt(NIGHT_TICK), 0);
+
+    const dawnTick = Math.round((DAY_SECONDS + DUSK_SECONDS + NIGHT_SECONDS + DUSK_SECONDS / 2) / TICK_DT);
+    const dawn = matchClock(dawnTick);
+    assert.equal(dawn.phase, "dawn");
+    assert.equal(dawn.text, "05:26");
+
+    const nextMorning = matchClock(Math.round(DAY_CYCLE_SECONDS / TICK_DT) + 5);
+    assert.equal(nextMorning.phase, "day");
+    assert.equal(nextMorning.hour, CLOCK_OPEN_HOUR);
+    assert.ok(nextMorning.minute < 3, nextMorning.text);
+  });
+
   it("halves weapon reach in full dark", () => {
     const { state, a } = emptyField();
     const rifle = trooper(state, "rifleman", a, 100, 100);
@@ -132,7 +178,8 @@ describe("watch tower spotlight", () => {
     tickSpotlights(state, TICK_DT);
     const step = (SPOTLIGHT_TURN_DEG_PER_SEC * TICK_DT * Math.PI) / 180;
     assert.ok(Math.abs(tower.spotFacing! - step) < 1e-9, "one tick of swing, not a snap");
-    for (let i = 0; i < 40; i++) tickSpotlights(state, TICK_DT);
+    const settleTicks = Math.ceil(90 / (SPOTLIGHT_TURN_DEG_PER_SEC * TICK_DT)) + 2;
+    for (let i = 0; i < settleTicks; i++) tickSpotlights(state, TICK_DT);
     assert.ok(Math.abs(tower.spotFacing! - Math.PI / 2) < 1e-9, "settles on the heading");
     assert.equal(tower.spotAim, undefined);
   });
@@ -147,7 +194,8 @@ describe("watch tower spotlight", () => {
     const far = SPOTLIGHT_REACH_TILES - 6;
     assert.equal(lit(state, a, ox, oy + far), false);
     applyCommand(state, a, { type: "cmd.rotate", ids: [tower.id], x: tower.x, y: tower.y + 500 });
-    for (let i = 0; i < 40; i++) tickSpotlights(state, TICK_DT);
+    const settleTicks = Math.ceil(90 / (SPOTLIGHT_TURN_DEG_PER_SEC * TICK_DT)) + 2;
+    for (let i = 0; i < settleTicks; i++) tickSpotlights(state, TICK_DT);
     assert.equal(lit(state, a, ox, oy + far), true, "the new heading is lit");
     assert.equal(lit(state, a, ox + far, oy), false, "the old one went dark");
   });
@@ -199,7 +247,8 @@ describe("night sight for every eye", () => {
       };
       const day = litCount(src, 0);
       const night = litCount(src, NIGHT_TICK);
-      const cap = hasHeadlight(type) ? 0.45 : 0.32;
+      // Three Mammoth lamps light more of the night than one nose lamp, and still less than day.
+      const cap = type === "mammoth" ? 0.68 : hasHeadlight(type) ? 0.45 : 0.32;
       assert.ok(night < day * cap, `${type}: ${night} lit at night vs ${day} by day`);
     }
   });
@@ -225,6 +274,60 @@ describe("headlights", () => {
     assert.equal(lit(state, a, 100, 128 + r - 2), false, "abeam, in the dark");
     tank.facing = Math.PI;
     assert.equal(lit(state, a, 100 - (r - 2), 128), true, "turns with the hull");
+  });
+
+  it("gives a Mammoth a nose lamp and two flank lamps that sweep a small arc", () => {
+    assert.deepEqual(hullLamps("ss3", 1, 4), [{ beam: 0, mount: 0 }]);
+    const step = (MAMMOTH_LAMP_STEP_DEG * Math.PI) / 180;
+    const swing = (MAMMOTH_LAMP_SWING_DEG * Math.PI) / 180;
+    const a = hullLamps("mammoth", 3, 0);
+    const b = hullLamps("mammoth", 9, 0);
+    assert.equal(a.length, 3);
+    assert.equal(a[0]!.beam, 0);
+    assert.equal(a[0]!.mount, 0);
+    assert.equal(a[1]!.mount, step);
+    assert.equal(a[2]!.mount, -step);
+    assert.notEqual(a[1]!.beam, b[1]!.beam);
+    let moved = false;
+    for (let i = 0; i <= 48; i++) {
+      const lamps = hullLamps("mammoth", 3, (i / 48) * MAMMOTH_LAMP_PERIOD_SECONDS);
+      assert.equal(lamps[0]!.beam, 0, "the nose lamp stays on the bow");
+      assert.equal(lamps[1]!.mount, step);
+      assert.equal(lamps[2]!.mount, -step);
+      assert.ok(Math.abs(lamps[1]!.beam - step) <= swing + 1e-9);
+      assert.ok(Math.abs(lamps[2]!.beam + step) <= swing + 1e-9);
+      if (Math.abs(lamps[1]!.beam - a[1]!.beam) > swing * 0.5) moved = true;
+    }
+    assert.ok(moved, "a flank lamp travels its arc");
+  });
+
+  it("lights three directions at night and leaves the gaps dark", () => {
+    const { state, a } = emptyField();
+    const tank = trooper(state, "mammoth", a, 100, 128);
+    tank.facing = 0;
+    const r = sightTilesForEntity(state, tank);
+    state.tick = NIGHT_TICK;
+    const half = (HEADLIGHT_HALF_DEG * Math.PI) / 180;
+    const swing = (MAMMOTH_LAMP_SWING_DEG * Math.PI) / 180;
+    const step = (MAMMOTH_LAMP_STEP_DEG * Math.PI) / 180;
+    const snap = ((LAMP_HEADING_STEP_DEG / 2) * Math.PI) / 180;
+    const gapNear = half + snap;
+    const gapFar = step - swing - half - snap;
+    assert.ok(gapFar > gapNear, "the nose beam and a flank beam do not meet");
+    const gap = (gapNear + gapFar) / 2;
+    const dist = r - 2;
+    const along = (rad: number) => ({
+      x: 100 + Math.round(Math.cos(rad) * dist),
+      y: 128 + Math.round(Math.sin(rad) * dist),
+    });
+    const dark = along(gap);
+    assert.equal(lit(state, a, dark.x, dark.y), false, "the gap between nose and flank stays dark");
+    const lamps = hullLamps("mammoth", tank.id, NIGHT_TICK * TICK_DT);
+    for (const lamp of lamps) {
+      const aim = lampHeading(tank.facing + lamp.beam);
+      const tile = along(aim);
+      assert.equal(lit(state, a, tile.x, tile.y), true, `lit along ${aim}`);
+    }
   });
 
   it("go out when the hull is a passenger", () => {

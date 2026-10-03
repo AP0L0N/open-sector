@@ -1,4 +1,4 @@
-import { isoLift, type EntityView } from "@gridlock/shared";
+import { AIR_CRUISE_ALT, isoLift, type EntityView } from "@gridlock/shared";
 
 /**
  * Planes in the air draw above every standing thing, at their height over
@@ -34,7 +34,7 @@ export function inAir(e: Pick<EntityView, "air" | "jet" | "chute">): boolean {
  * smudge at cruise height.
  */
 export function aircraftShadowScale(alt: number): { scale: number; alpha: number } {
-  const u = Math.max(0, Math.min(1, alt / 16));
+  const u = Math.max(0, Math.min(1, alt / AIR_CRUISE_ALT));
   return { scale: 1.4 + 0.3 * u, alpha: 1 - 0.55 * u };
 }
 

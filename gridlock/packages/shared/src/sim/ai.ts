@@ -90,7 +90,8 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield", readon
 
 /**
  * Smelter second so the free Mauler funds Muster, Armory, troops, and tanks. Research next:
- * it unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Titan, Nebelwerfer, and Drone Op. Then air, then defenses.
+ * it unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Titan, Nebelwerfer, and Drone Op. Then air, the
+ * Radar Station, then defenses.
  */
 const BUILD_ORDER: readonly BuildingType[] = [
   "dynamo",
@@ -99,6 +100,7 @@ const BUILD_ORDER: readonly BuildingType[] = [
   "armory",
   "research",
   "airfield",
+  "radar",
   "ciws",
   "bunker",
   "tower",

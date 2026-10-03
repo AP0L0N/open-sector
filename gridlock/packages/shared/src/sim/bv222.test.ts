@@ -11,6 +11,7 @@ import {
   TICK_DT,
   TILE_SUBDIV,
   TRAIN_TYPES,
+  addCrit,
   catalog,
   isAircraftType,
   isTransportType,
@@ -475,7 +476,7 @@ describe("BV 222", () => {
     assert.equal(state.scrapYield[idx], 100);
   });
 
-  it("takes the stick with it when shot down", () => {
+  it("bails the stick out before it goes down", () => {
     const state = twoPlayerMatch();
     const ts = state.tileSize;
     const plane = transportOver(state, "A", 20 * ts, 20 * ts);
@@ -484,8 +485,46 @@ describe("BV 222", () => {
     m.garrisonedIn = plane.id;
     plane.garrison.push(m.id);
     plane.hp = 0;
-    const down = until(state, 400, () => plane.wreck);
+    const down = until(state, 5, () => plane.air?.phase === "crash");
     assert.ok(down >= 0, "the transport should crash");
-    assert.equal(state.entities.has(m.id), false, "the rider dies in the crash");
+    assert.equal(m.garrisonedIn, null);
+    assert.ok(m.chute && m.chute.alt > 1, "he leaves under a canopy at height");
+    assert.ok(m.hp > 0);
+    assert.equal(state.entities.has(m.id), true);
+  });
+
+  it("a wrecked engine destroys it and bails the stick out first", () => {
+    const state = twoPlayerMatch();
+    const ts = state.tileSize;
+    const plane = transportOver(state, "A", 24 * ts, 24 * ts);
+    plane.air!.payload = "troops";
+    const m = riflemanAt(state, "A", plane.x, plane.y);
+    m.garrisonedIn = plane.id;
+    plane.garrison.push(m.id);
+    addCrit(plane, "engine");
+    step(state, TICK_DT);
+    assert.equal(plane.air?.phase, "crash");
+    assert.equal(m.garrisonedIn, null);
+    assert.ok(m.chute && m.chute.alt > 1);
+    assert.ok(m.hp > 0);
+  });
+
+  it("puts the stick on the pad when a parked plane's engine is wrecked", () => {
+    const state = twoPlayerMatch();
+    const ts = state.tileSize;
+    const plane = makeEntity(state, "bv222", "A", 20 * ts, 20 * ts);
+    plane.air!.payload = "troops";
+    const m = riflemanAt(state, "A", plane.x, plane.y);
+    m.garrisonedIn = plane.id;
+    plane.garrison.push(m.id);
+    addCrit(plane, "engine");
+    step(state, TICK_DT);
+    // A plane that dies on the pad is removed, the same as any other pad death.
+    assert.equal(state.entities.has(plane.id), false);
+    assert.equal(m.garrisonedIn, null);
+    assert.equal(m.chute, undefined);
+    assert.ok(m.hp > 0);
+    assert.equal(state.entities.has(m.id), true);
+    assert.ok(Math.hypot(m.x - plane.x, m.y - plane.y) > 4, "he climbed off the hardstand");
   });
 });

@@ -15,6 +15,8 @@ import {
   RIFLE,
   TICK_DT,
   TILE_SUBDIV,
+  INFANTRY_PACE,
+  UNIT_PACE,
   TRAIN_TYPES,
   catalog,
   type InfantryGun,
@@ -457,7 +459,7 @@ describe("drone guard", () => {
     assert.equal(d.drone!.guard, null);
   });
 
-  it("the Drone Op walks at 70% of his old 80% pace", () => {
-    assert.equal(catalog("droneop").moveTilesPerSec, 2 * TILE_SUBDIV * 0.8 * 0.7);
+  it("the Drone Op walks at 70% of his old 80% pace, then another 30%", () => {
+    assert.equal(catalog("droneop").moveTilesPerSec, 2 * TILE_SUBDIV * 0.8 * INFANTRY_PACE * UNIT_PACE);
   });
 });
