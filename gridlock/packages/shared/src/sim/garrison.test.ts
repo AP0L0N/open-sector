@@ -108,7 +108,6 @@ describe("garrison", () => {
     assert.equal(walkable(state, 34, 12) || true, true);
 
     const dummy = makeEntity(state, "hauler", b, inf.x + catalog("rifleman").rangeTiles * ts * 0.5, inf.y);
-    dummy.autoHarvest = false;
     inf.facing = 0;
     inf.order = { kind: "attack", targetId: dummy.id };
     tickCombat(state, TICK_DT);
@@ -408,7 +407,6 @@ describe("garrison", () => {
     const inf = makeEntity(state, "rifleman", a, tileCenter(34, ts), tileCenter(12, ts));
     assert.equal(enterGarrison(state, inf, house), true);
     const dummy = makeEntity(state, "hauler", b, inf.x + catalog("rifleman").rangeTiles * ts * 0.5, inf.y);
-    dummy.autoHarvest = false;
     inf.facing = 0;
     inf.order = { kind: "attack", targetId: dummy.id };
     setGarrisonHide(state, house, true);

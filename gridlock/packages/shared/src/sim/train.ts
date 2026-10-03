@@ -7,9 +7,8 @@ import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
 import type { Entity, MatchState, TrainJob } from "./types.js";
 
-export function producerType(unit: TrainType): "muster" | "smelter" | "armory" | "airfield" {
+export function producerType(unit: TrainType): "muster" | "armory" | "airfield" {
   if (unit === "rifleman" || unit === "gunner" || unit === "sniper" || unit === "atinfantry" || unit === "rocketer" || unit === "pyro" || unit === "mortarman" || unit === "engineer" || unit === "medic" || unit === "droneop" || unit === "jumpjet") return "muster";
-  if (unit === "hauler") return "smelter";
   if (isAircraftType(unit)) return "airfield";
   return "armory";
 }
@@ -58,7 +57,6 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
     if (busy) return "Queue is full.";
     if (want === "airfield") return "Need an Airfield.";
     if (want === "muster") return "Need a Muster.";
-    if (unit === "hauler") return "Need a Smelter.";
     return "Need an Armory.";
   }
   const tech = techMissing(state, playerId, unit);
@@ -206,7 +204,6 @@ export function spawnUnit(
     u.state = "move";
     setPath(state, u, spot.x, spot.y);
   } else {
-    if (type === "hauler") u.autoHarvest = true;
     packAtDoor(state, from, u, door);
   }
   return u;
@@ -287,7 +284,7 @@ function packAtDoor(state: MatchState, from: Entity, fresh: Entity, door: { x: n
 }
 
 export function isProducer(e: Entity): boolean {
-  return e.kind === "building" && (e.type === "muster" || e.type === "smelter" || e.type === "armory");
+  return e.kind === "building" && (e.type === "muster" || e.type === "armory");
 }
 
 /** Sets the rally point on every owned producer in `ids`. A point on the building's own footprint clears it. */

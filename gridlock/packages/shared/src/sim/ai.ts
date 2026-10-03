@@ -25,8 +25,8 @@ import {
 } from "../catalog.js";
 import { applyCommand } from "./commands.js";
 import { canRepairTarget, canScrapWreck } from "./field.js";
-import { allies, footprintGap, hasCore, hqOf, inBuildRadius, tilesBlockedOrScrap, walkable } from "./geo.js";
-import { smelterDock } from "./harvest.js";
+import { allies, footprintGap, hasCore, hqOf, inBuildRadius, scrapAt, tilesBlockedOrScrap, walkable } from "./geo.js";
+import { smelterSiteOk } from "./smelter.js";
 import { powerOf } from "./power.js";
 import { needsSupply } from "./supply.js";
 import { canSeeEntity } from "./vision.js";
@@ -40,15 +40,12 @@ export const EASY_MICRO_EVERY_TICKS = 2 * TICK_HZ;
 /** A building with no legal spot in the base waits this long before the CPU tries it again. */
 export const EASY_NO_ROOM_RETRY_TICKS = 60 * TICK_HZ;
 export const EASY_MIN_FIGHTERS = 4;
-export const EASY_WANT_HAULERS = 2;
+/** Smelters the CPU raises on scrap near its base. The second comes once the whole base stands. */
+export const EASY_WANT_SMELTERS = 2;
 /** Enemies this far from the HQ, in tiles, pull the home guard. */
 export const EASY_DEFEND_TILES = BUILD_RADIUS + 6 * 4;
-/** Footprint gap the CPU keeps between its buildings, in tiles. 1 = touching; 5 leaves a Mauler lane. */
+/** Footprint gap the CPU keeps between its buildings, in tiles. 1 = touching; 5 leaves a vehicle lane. */
 const EASY_BUILD_LANE_TILES = 5;
-/** A Mauler stuck this long mid-trip is jammed. */
-export const EASY_HAULER_JAM_TICKS = 10 * TICK_HZ;
-/** How far a jammed Mauler backs off, in tiles. */
-const EASY_HAULER_BACKOFF_TILES = 4 * 4;
 /** A wave this close to a seen enemy building, in tiles, turns on it. */
 const EASY_SIEGE_TILES = 16 * 4;
 /** Engineers and trucks look for work this far from themselves, in tiles. */
@@ -89,9 +86,9 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield", readon
 };
 
 /**
- * Smelter second so the free Mauler funds Muster, Armory, troops, and tanks. Research next:
+ * Smelter second so its scrap funds Muster, Armory, troops, and tanks. Research next:
  * it unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Titan, Nebelwerfer, and Drone Op. Then air, the
- * Radar Station, then defenses.
+ * Radar Station, then defenses. With all of that standing, more Smelters up to EASY_WANT_SMELTERS.
  */
 const BUILD_ORDER: readonly BuildingType[] = [
   "dynamo",
@@ -106,7 +103,7 @@ const BUILD_ORDER: readonly BuildingType[] = [
   "tower",
   "ram",
 ];
-/** Started as soon as scrap covers them. The rest wait for the first rifle wave and the second Mauler. */
+/** Started as soon as scrap covers them. The rest wait for the first rifle wave. */
 const CORE_BUILDINGS: readonly BuildingType[] = ["dynamo", "smelter", "muster"];
 /** Troops train only once these stand, so scrap is held for them while they go up. */
 const FACTORIES: readonly BuildingType[] = [...CORE_BUILDINGS, "armory"];
@@ -115,7 +112,7 @@ const DEFENSES: readonly BuildingType[] = ["ciws", "bunker", "tower", "ram"];
 
 /** Unarmed units that walk out with a wave beside a fighter. */
 const ESCORTS: ReadonlySet<string> = new Set(["medic", "supply", "droneop"]);
-/** Unarmed units that idle at home. Parked against a building they shut a Mauler lane. */
+/** Unarmed units that idle at home. Parked against a building they shut a base lane. */
 const YARD_IDLERS: ReadonlySet<string> = new Set([...ESCORTS, "engineer"]);
 /** Soldiers the CPU leaves at home in its Bunker and Watch Tower, in order of preference. */
 const BUNKER_CREW: readonly string[] = ["gunner", "rifleman", "atinfantry", "rocketer"];
@@ -154,14 +151,12 @@ function thinkEasy(state: MatchState, p: SimPlayer): void {
     }
   }
 
-  harvestIdle(state, p);
   trainEasy(state, p);
   maybeAttack(state, p);
   if (state.tick >= (p.aiNextMicroTick ?? 0)) {
     p.aiNextMicroTick = state.tick + EASY_MICRO_EVERY_TICKS;
     defendBase(state, p, hq);
     microUnits(state, p, hq);
-    unjamHaulers(state, p);
     crewBunkers(state, p);
   }
 }
@@ -191,6 +186,12 @@ function nextBuilding(state: MatchState, p: SimPlayer): BuildingType | null {
     return t;
   }
   if (pow.used >= pow.provided && roomy("dynamo")) return "dynamo";
+  // The base is complete: a second Smelter on another scrap field doubles the pour.
+  if (countType(state, p.playerId, "smelter") < EASY_WANT_SMELTERS && roomy("smelter")) {
+    const draw = Math.max(0, -catalog("smelter").power);
+    if (pow.used + draw > pow.provided) return roomy("dynamo") ? "dynamo" : null;
+    return "smelter";
+  }
   return null;
 }
 
@@ -204,18 +205,8 @@ function canStartBuilding(state: MatchState, p: SimPlayer, next: BuildingType): 
   if (CORE_BUILDINGS.includes(next)) return true;
   if (DEFENSES.includes(next) && fighterCount(state, p.playerId) < EASY_MIN_FIGHTERS * 2) return false;
   const troopers = countType(state, p.playerId, "rifleman");
-  let hold = Math.max(0, FIRST_WAVE_TROOPERS - troopers) * catalog("rifleman").cost;
-  if (savingForMauler(state, p)) hold += catalog("hauler").cost;
+  const hold = Math.max(0, FIRST_WAVE_TROOPERS - troopers) * catalog("rifleman").cost;
   return p.scrap >= cost + hold;
-}
-
-/** The first rifle wave stands and a Smelter waits on its second Mauler: income comes first. */
-function savingForMauler(state: MatchState, p: SimPlayer): boolean {
-  return (
-    countType(state, p.playerId, "hauler") < EASY_WANT_HAULERS &&
-    countType(state, p.playerId, "rifleman") >= FIRST_WAVE_TROOPERS &&
-    ownsLive(state, p.playerId, "smelter")
-  );
 }
 
 function fighterCount(state: MatchState, playerId: string): number {
@@ -232,9 +223,7 @@ function trainEasy(state: MatchState, p: SimPlayer): void {
     if (p.scrap < catalog(unit).cost + reserve) return false;
     return applyCommand(state, p.playerId, { type: "cmd.train", unit }).ok;
   };
-  if (tryTrain("hauler", EASY_WANT_HAULERS)) return;
   if (tryTrain("rifleman", FIRST_WAVE_TROOPERS)) return;
-  if (savingForMauler(state, p)) return;
   // One job per factory, neediest rank first. Stop at the first pick scrap cannot cover and save
   // for it, so a trickle of income does not all go to cheap riflemen ahead of a Titan or a Stuka.
   const picks: { unit: TrainType; want: number; share: number }[] = [];
@@ -289,18 +278,6 @@ function trainReserve(state: MatchState, p: SimPlayer): number {
   return next ? catalog(next).cost : 0;
 }
 
-function harvestIdle(state: MatchState, p: SimPlayer): void {
-  const ids: number[] = [];
-  for (const e of state.entities.values()) {
-    if (e.ownerId !== p.playerId || e.type !== "hauler" || e.hp <= 0 || e.wreck || e.cartHp <= 0) continue;
-    if (e.returnToBase || e.holdPosition || e.order?.kind === "withdraw") continue;
-    if (e.autoHarvest || e.order || e.state === "harvest" || e.state === "unload") continue;
-    // A full cart takes the harvest order to the Smelter first. Backed off from a jam, one waits here.
-    ids.push(e.id);
-  }
-  if (ids.length === 0) return;
-  applyCommand(state, p.playerId, { type: "cmd.harvest", ids });
-}
 
 /**
  * Fill each Bunker and Watch Tower with soldiers who are idle at home, machine guns first.
@@ -327,53 +304,7 @@ function crewBunkers(state: MatchState, p: SimPlayer): void {
   }
 }
 
-/**
- * Two Maulers can lock nose to nose at a Smelter dock or in a lane, and neither gives way.
- * One that has not moved for a while mid-trip backs off a few tiles, away from whatever it is
- * pressed against. Arrived and idle, it picks the haul up again by itself.
- */
-function unjamHaulers(state: MatchState, p: SimPlayer): void {
-  const seen: NonNullable<SimPlayer["aiHaulerStill"]> = {};
-  for (const e of state.entities.values()) {
-    if (e.ownerId !== p.playerId || e.type !== "hauler" || e.hp <= 0 || e.wreck) continue;
-    const busy = e.state === "harvest" || e.state === "unload" || e.state === "move";
-    if (!busy || e.waypoints.length === 0 || e.holdPosition || e.returnToBase) continue;
-    const last = p.aiHaulerStill?.[e.id];
-    const still = last && Math.hypot(e.x - last.x, e.y - last.y) < 2;
-    const since = still ? last.since : state.tick;
-    seen[e.id] = { x: still ? last.x : e.x, y: still ? last.y : e.y, since };
-    if (state.tick - since < EASY_HAULER_JAM_TICKS) continue;
-    const away = backOff(state, e);
-    applyCommand(state, p.playerId, { type: "cmd.move", ids: [e.id], x: away.x, y: away.y });
-    delete seen[e.id];
-  }
-  p.aiHaulerStill = seen;
-}
 
-/** A point a few tiles off, away from the nearest thing the hull is jammed against. */
-function backOff(state: MatchState, e: Entity): { x: number; y: number } {
-  let nx = 0;
-  let ny = 0;
-  let bestD = Infinity;
-  for (const o of state.entities.values()) {
-    if (o.id === e.id || o.hp <= 0 || o.garrisonedIn || o.air) continue;
-    const d = Math.hypot(o.x - e.x, o.y - e.y);
-    if (d >= bestD || d > 64) continue;
-    bestD = d;
-    nx = o.x;
-    ny = o.y;
-  }
-  let dx = e.x - nx;
-  let dy = e.y - ny;
-  if (bestD === Infinity || Math.hypot(dx, dy) < 1) {
-    const a = (e.id * 2.39996) % (Math.PI * 2);
-    dx = Math.cos(a);
-    dy = Math.sin(a);
-  }
-  const len = Math.hypot(dx, dy);
-  const step = EASY_HAULER_BACKOFF_TILES * state.tileSize;
-  return { x: e.x + (dx / len) * step, y: e.y + (dy / len) * step };
-}
 
 function maybeAttack(state: MatchState, p: SimPlayer): void {
   if (state.tick < p.aiNextAttackTick) return;
@@ -536,7 +467,7 @@ function stagingFinder(state: MatchState, hq: Entity): Staging {
         ] as const) {
           const tx = ox + dx * inwardX;
           const ty = oy + dy * inwardY;
-          if (!walkable(state, tx, ty, "hauler") || !keepsLanes(state, tx, ty, 1, 1)) continue;
+          if (!walkable(state, tx, ty, "warden") || !keepsLanes(state, tx, ty, 1, 1)) continue;
           spot = { x: (tx + 0.5) * state.tileSize, y: (ty + 0.5) * state.tileSize };
           break;
         }
@@ -547,7 +478,7 @@ function stagingFinder(state: MatchState, hq: Entity): Staging {
   };
 }
 
-/** Parked against a building: a Mauler cannot shove past, so the lane is shut. */
+/** Parked against a building: a hull cannot shove past, so the lane is shut. */
 function nearBuilding(state: MatchState, e: Entity): boolean {
   return !keepsLanes(state, Math.floor(e.x / state.tileSize), Math.floor(e.y / state.tileSize), 1, 1);
 }
@@ -711,6 +642,7 @@ export function findBuildTile(
   playerId: string,
   type: BuildingType,
 ): { tx: number; ty: number } | null {
+  if (type === "smelter") return findSmelterTile(state, playerId);
   const def = catalog(type);
   const hq = hqOf(state, playerId);
   if (!hq) return null;
@@ -738,9 +670,6 @@ export function findBuildTile(
       if (tilesBlockedOrScrap(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
       if (!inBuildRadius(state, playerId, spot.tx, spot.ty, def.tileW, def.tileH, BUILD_RADIUS)) continue;
       if (!keepsLanes(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
-      if (type === "smelter" && !smelterDock(state, { tileX: spot.tx, tileY: spot.ty, tileW: def.tileW, tileH: def.tileH })) {
-        continue;
-      }
       return { tx: spot.tx, ty: spot.ty };
     }
   }
@@ -748,8 +677,36 @@ export function findBuildTile(
 }
 
 /**
- * Leave a Mauler-wide lane around every standing building. Packed edge to edge,
- * a big footprint like the Airfield walls off the Smelter dock and income stops.
+ * The scrap field nearest the HQ that is still in build range: the footprint with the
+ * most scrap under it, nearest first. Null when no field within reach can take a Smelter.
+ */
+export function findSmelterTile(state: MatchState, playerId: string): { tx: number; ty: number } | null {
+  const def = catalog("smelter");
+  const hq = hqOf(state, playerId);
+  if (!hq) return null;
+  const ox = hq.tileX + hq.tileW / 2;
+  const oy = hq.tileY + hq.tileH / 2;
+  let best: { tx: number; ty: number } | null = null;
+  let bestD = Infinity;
+  for (let ty = 0; ty + def.tileH <= state.height; ty++) {
+    for (let tx = 0; tx + def.tileW <= state.width; tx++) {
+      // Cheap gate first: the middle of the footprint has to be scrap at all.
+      if (scrapAt(state, tx + (def.tileW >> 1), ty + (def.tileH >> 1)) <= 0) continue;
+      const d = Math.hypot(tx + def.tileW / 2 - ox, ty + def.tileH / 2 - oy);
+      if (d >= bestD) continue;
+      if (!smelterSiteOk(state, tx, ty)) continue;
+      if (!inBuildRadius(state, playerId, tx, ty, def.tileW, def.tileH, BUILD_RADIUS)) continue;
+      if (!keepsLanes(state, tx, ty, def.tileW, def.tileH)) continue;
+      best = { tx, ty };
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+/**
+ * Leave a vehicle-wide lane around every standing building. Packed edge to edge,
+ * a big footprint like the Airfield walls off the doors and nothing gets out.
  */
 function keepsLanes(state: MatchState, tx: number, ty: number, w: number, h: number): boolean {
   for (const b of state.entities.values()) {

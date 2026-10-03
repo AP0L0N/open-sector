@@ -132,7 +132,6 @@ describe("bunker", () => {
     const gunner = trooper(state, "gunner", a);
     assert.equal(enterGarrison(state, gunner, bunker), true);
     const dummy = makeEntity(state, "hauler", b, gunner.x + ts * 12, gunner.y);
-    dummy.autoHarvest = false;
     gunner.order = { kind: "attack", targetId: dummy.id };
     tickCombat(state, TICK_DT);
     assert.ok(state.projectiles.length > 0, "bunker gunner fires");
@@ -143,7 +142,6 @@ describe("bunker", () => {
     const g2 = trooper(s2, "gunner", a2);
     assert.equal(enterGarrison(s2, g2, cottage), true);
     const d2 = makeEntity(s2, "hauler", b2, g2.x + ts * 12, g2.y);
-    d2.autoHarvest = false;
     g2.order = { kind: "attack", targetId: d2.id };
     tickCombat(s2, TICK_DT);
     assert.equal(s2.projectiles.length, 0, "house gunner still cannot set his bipod");

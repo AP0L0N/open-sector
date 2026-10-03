@@ -620,7 +620,9 @@ function tickWall(state: MatchState, e: Entity, dt: number, structure: ConcreteL
 
 function tickBuild(state: MatchState, e: Entity, dt: number): void {
   const order = e.order;
-  if (!order || order.kind !== "build" || order.structure == null || order.x == null || order.y == null) return;
+  // A base building in the field (the Smelter on scrap) is construct.ts's job.
+  if (!order || order.kind !== "build" || order.building != null) return;
+  if (order.structure == null || order.x == null || order.y == null) return;
   const structure = order.structure;
   if (isConcreteLine(structure)) {
     tickWall(state, e, dt, structure);

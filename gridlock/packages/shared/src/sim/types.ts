@@ -35,8 +35,6 @@ export interface Order {
     | "attackmove"
     | "patrol"
     | "forceattack"
-    | "harvest"
-    | "unload"
     | "garrison"
     | "rotate"
     | "guard"
@@ -71,6 +69,8 @@ export interface Order {
   pace?: number;
   /** Engineer field structure being built. */
   structure?: FieldStructureType;
+  /** Base building an engineer is raising at `tileX`, `tileY`. The Smelter on distant scrap. */
+  building?: BuildingType;
   /** Panic retreat: after this order, the Mauler returns to HQ and holds. */
   returnToBase?: boolean;
   /**
@@ -101,7 +101,6 @@ export type QueueableCommand = Extract<
       | "cmd.guard"
       | "cmd.rotate"
       | "cmd.garrison"
-      | "cmd.harvest"
       | "cmd.repair"
       | "cmd.supply"
       | "cmd.disable"
@@ -288,12 +287,8 @@ export interface Entity {
   reload: number;
   /** Personal reload-time scale. 1 = catalog. Baked at spawn. */
   reloadMul: number;
-  harvestTime: number;
-  cargo: number;
   /** Scrap cart on a Mauler. 0 on every other type, and 0 when the cart is off. */
   cartHp: number;
-  harvestTile: Vec | null;
-  autoHarvest: boolean;
   /** Popped smoke and is fleeing / holding at HQ. Player orders clear this. */
   returnToBase: boolean;
   deployTime: number;
@@ -576,8 +571,8 @@ export interface SimPlayer {
   aiNextMicroTick?: number;
   /** Sim tick before which the CPU skips a building that found no room in its base. */
   aiNoRoomUntil?: Partial<Record<BuildingType, number>>;
-  /** Where each CPU Mauler last stood still, and since which tick. Finds jams at a dock or a lane. */
-  aiHaulerStill?: Record<number, { x: number; y: number; since: number }>;
+  /** Fraction of a scrap point the Smelters have earned but not yet paid. `scrap` stays whole. */
+  scrapCarry: number;
 }
 
 export interface MatchState {

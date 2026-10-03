@@ -31,7 +31,7 @@ The server runs the shared sim. It does not grow its own combat. Two clients mus
 
 Sim randomness uses a seeded generator tied to the match or the event. A snapshot or command field that changes shape bumps `PROTOCOL_VERSION` in the same change as its readers and writers.
 
-Keep catalog type ids (`rifleman`, `gunner`, `sniper`, `hauler`, `warden`, `ss3`, buildings as named). The name on screen is `catalog.name`. Read `TRAIN_TYPES` for the current roster. The opening army is `START_UNITS`; the hauler is omitted so it does not start harvesting.
+Keep catalog type ids (`rifleman`, `gunner`, `sniper`, `hauler`, `warden`, `ss3`, buildings as named). The name on screen is `catalog.name`. Read `TRAIN_TYPES` for the current roster. The opening army is `START_UNITS`. The `hauler` (Mauler) stays in the catalog but is out of `TRAIN_TYPES` for now: scrap comes from Smelters standing on scrap fields (`sim/smelter.ts`), and an engineer can raise one in the field (`sim/construct.ts`).
 
 ## How to work
 

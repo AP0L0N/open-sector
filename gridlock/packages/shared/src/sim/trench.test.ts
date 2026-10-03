@@ -172,7 +172,6 @@ describe("trench", () => {
     const m = trooper(state, "mortarman", a);
     assert.equal(enterGarrison(state, m, trench), true);
     const dummy = makeEntity(state, "hauler", b, m.x + ts * (MORTAR_MIN_RANGE_TILES + 6), m.y);
-    dummy.autoHarvest = false;
     m.order = { kind: "attack", targetId: dummy.id };
     tickCombat(state, TICK_DT);
     assert.ok(state.projectiles.some((p) => p.flight === "mortar"), "a bomb leaves the trench");
@@ -185,7 +184,6 @@ describe("trench", () => {
     const g = trooper(state, "gunner", a);
     assert.equal(enterGarrison(state, g, trench), true);
     const dummy = makeEntity(state, "hauler", b, g.x + ts * 10, g.y);
-    dummy.autoHarvest = false;
     g.order = { kind: "attack", targetId: dummy.id };
     tickCombat(state, TICK_DT);
     assert.ok(state.projectiles.length > 0);

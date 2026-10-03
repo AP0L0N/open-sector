@@ -1,4 +1,4 @@
-import { BUILD_RADIUS, catalog, isYardField, type BuildingType, type FieldStructureType, type YardFieldType } from "../catalog.js";
+import { BUILD_RADIUS, SMELTER_SCRAP_COVER, catalog, isEngineerBuilding, isYardField, type BuildingType, type FieldStructureType, type YardFieldType } from "../catalog.js";
 import { TILE_BLOCKED, TILE_FENCE, TILE_ROCK, TILE_TREE, TILE_WATER, getMap } from "../maps.js";
 import type { MatchSnapshot } from "../protocol.js";
 import { fieldTilesOn, overlapsFieldIn } from "./field.js";
@@ -40,18 +40,29 @@ export function previewYardField(snap: MatchSnapshot, type: YardFieldType, x: nu
   return tiles.some((t) => tileNearOwnBuildings(snap.entities, snap.youPlayerId, t.x, t.y));
 }
 
-export function previewPlace(snap: MatchSnapshot, type: BuildingType, tx: number, ty: number): boolean {
+/**
+ * Snapshot twin of the sim's site check: open ground under the footprint, and for a
+ * Smelter enough scrap under it; for everything else no scrap at all.
+ */
+export function previewSite(snap: MatchSnapshot, type: BuildingType, tx: number, ty: number): boolean {
   const map = getMap(snap.mapId);
   if (!map) return false;
   const def = catalog(type);
   const tiles = footprint(tx, ty, def.tileW, def.tileH);
   const cleared = new Set((snap.clearedTrees ?? []).map((c) => c.y * map.width + c.x));
+  const scrapCells = new Set<number>();
+  for (const s of snap.scrap) if (s.yield > 0) scrapCells.add(s.y * map.width + s.x);
+  let scrapUnder = 0;
   for (const t of tiles) {
     if (t.x < 0 || t.y < 0 || t.x >= map.width || t.y >= map.height) return false;
-    const kind = map.tiles[t.y * map.width + t.x] ?? TILE_BLOCKED;
+    const i = t.y * map.width + t.x;
+    const kind = map.tiles[i] ?? TILE_BLOCKED;
     if (kind === TILE_BLOCKED || kind === TILE_ROCK) return false;
-    if (kind === TILE_TREE && !cleared.has(t.y * map.width + t.x)) return false;
-    if (snap.scrap.some((s) => s.x === t.x && s.y === t.y && s.yield > 0)) return false;
+    if (kind === TILE_TREE && !cleared.has(i)) return false;
+    if (scrapCells.has(i)) {
+      if (type !== "smelter") return false;
+      scrapUnder++;
+    }
     for (const e of snap.entities) {
       if (e.kind !== "building") continue;
       if (
@@ -64,6 +75,19 @@ export function previewPlace(snap: MatchSnapshot, type: BuildingType, tx: number
       }
     }
   }
+  if (type === "smelter" && scrapUnder < Math.ceil(def.tileW * def.tileH * SMELTER_SCRAP_COVER)) return false;
+  return true;
+}
+
+/** Where an engineer may raise a base building: the site rule alone, any distance from the yard. */
+export function previewConstruct(snap: MatchSnapshot, type: BuildingType, tx: number, ty: number): boolean {
+  return isEngineerBuilding(type) && previewSite(snap, type, tx, ty);
+}
+
+/** A yard-built structure: the site rule, and within build range of your own buildings. */
+export function previewPlace(snap: MatchSnapshot, type: BuildingType, tx: number, ty: number): boolean {
+  if (!previewSite(snap, type, tx, ty)) return false;
+  const def = catalog(type);
   const you = snap.youPlayerId;
   for (const e of snap.entities) {
     if (e.kind !== "building" || e.ownerId !== you) continue;

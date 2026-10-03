@@ -9,6 +9,7 @@ import {
   infantryGunFor,
   infantryLoadout,
   isBuildingType,
+  isEngineerBuilding,
   isFieldStructure,
   isYardField,
   isGarrisonable,
@@ -40,6 +41,7 @@ import { approachTile, canGarrison, exitGarrison, garrisonOwner, livingGarrison,
 import { setScoutOut } from "./scout.js";
 import { cancelStructure, pauseStructure, placeBaseField, placeBuilding, sellBuilding, startBuild } from "./build.js";
 import { convertToGates, orderFieldBuild, orderRepair, setGatesLocked } from "./field.js";
+import { orderConstruct } from "./construct.js";
 import { deployId } from "./deploy.js";
 import { cancelTrain, pauseTrain, setRally, startTrain } from "./train.js";
 import { groupMovePace, groupMoveTargets } from "./formation.js";
@@ -105,8 +107,6 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       return cmdForceAttack(state, playerId, msg.ids, msg.x, msg.y, msg.targetId, msg.once);
     case "cmd.stop":
       return cmdStop(state, playerId, msg.ids);
-    case "cmd.harvest":
-      return cmdHarvest(state, playerId, msg.ids, msg.tileX, msg.tileY);
     case "cmd.ammo":
       if (!isShellType(msg.shell)) return fail("bad_payload", "Unknown shell.");
       return cmdAmmo(state, playerId, msg.ids, msg.shell);
@@ -219,6 +219,13 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
         ),
         "invalid_place",
       );
+    case "cmd.construct":
+      if (!isEngineerBuilding(msg.building)) return fail("bad_payload", "An engineer cannot build that.");
+      if (!Array.isArray(msg.ids) || msg.ids.length === 0) return fail("not_yours", "Select an engineer.");
+      return wrap(
+        orderConstruct(state, playerId, owned(state, playerId, msg.ids), msg.building, msg.tx, msg.ty),
+        "invalid_place",
+      );
     case "cmd.repair":
       return wrap(orderRepair(state, playerId, owned(state, playerId, msg.ids), msg.targetId), "not_found");
     case "cmd.board": {
@@ -269,7 +276,6 @@ const QUEUEABLE = new Set<string>([
   "cmd.guard",
   "cmd.rotate",
   "cmd.garrison",
-  "cmd.harvest",
   "cmd.repair",
   "cmd.supply",
   "cmd.disable",
@@ -282,6 +288,7 @@ const DROPS_QUEUE = new Set<string>([
   "cmd.stop",
   "cmd.hold",
   "cmd.field",
+  "cmd.construct",
   "cmd.ungarrison",
   "cmd.unboard",
   "cmd.tow",
@@ -670,16 +677,7 @@ function cmdMove(
     }
     e.returnToBase = false;
     e.attackTarget = null;
-    e.harvestTile = null;
     e.guardFacing = null;
-    stopHaulerLoop(e);
-    const dropoff = e.type === "hauler" && e.cargo > 0 ? smelterAt(state, playerId, x, y) : null;
-    if (dropoff) {
-      e.order = { kind: "unload", targetId: dropoff.id };
-      e.state = "unload";
-      e.waypoints = [];
-      continue;
-    }
     e.order = { kind: "move", x: d.x, y: d.y };
     if (arrive != null) e.order.arrive = arrive;
     if (pace != null) e.order.pace = pace;
@@ -687,21 +685,6 @@ function cmdMove(
     setPath(state, e, d.x, d.y);
   }
   return ok();
-}
-
-/** Owned Smelter whose footprint contains this point. A move there dumps the cart. */
-function smelterAt(state: MatchState, playerId: string, x: number, y: number): Entity | null {
-  const tx = worldToTile(x, state.tileSize);
-  const ty = worldToTile(y, state.tileSize);
-  for (const b of state.entities.values()) {
-    if (b.ownerId !== playerId || b.type !== "smelter" || b.hp <= 0) continue;
-    if (tx >= b.tileX && tx < b.tileX + b.tileW && ty >= b.tileY && ty < b.tileY + b.tileH) return b;
-  }
-  return null;
-}
-
-function stopHaulerLoop(e: Entity): void {
-  if (e.type === "hauler") e.autoHarvest = false;
 }
 
 function cmdPatrol(
@@ -760,9 +743,7 @@ function cmdPatrol(
     const dest = route[order.leg]!;
     e.returnToBase = false;
     e.attackTarget = null;
-    e.harvestTile = null;
     e.guardFacing = null;
-    stopHaulerLoop(e);
     e.order = order;
     if (pace != null) e.order.pace = pace;
     e.state = "move";
@@ -805,9 +786,7 @@ function cmdAttackMove(state: MatchState, playerId: string, ids: number[], x: nu
     if (pace != null) e.order.pace = pace;
     e.returnToBase = false;
     e.attackTarget = null;
-    e.harvestTile = null;
     e.guardFacing = null;
-    stopHaulerLoop(e);
     e.state = "move";
     setPath(state, e, d.x, d.y);
   }
@@ -848,7 +827,6 @@ function cmdForceAttack(
     if (!fires(e.type)) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
     if (t && e.id === t.id) continue;
-    e.harvestTile = null;
     e.guardFacing = null;
     const oneShot = !!once || isSmokeShell(pickLoadedShell(e.ammo, e.shell));
     if (t) {
@@ -997,8 +975,6 @@ function cmdRotate(state: MatchState, playerId: string, ids: number[], x: number
     e.order = { kind: "rotate", x, y };
     e.returnToBase = false;
     e.attackTarget = null;
-    e.harvestTile = null;
-    stopHaulerLoop(e);
     e.waypoints = [];
     e.state = "idle";
     if (e.guardFacing != null) e.guardFacing = Math.atan2(y - e.y, x - e.x);
@@ -1033,8 +1009,6 @@ function cmdGuard(
     e.returnToBase = false;
     e.guardFacing = face;
     e.attackTarget = null;
-    e.harvestTile = null;
-    stopHaulerLoop(e);
     e.order = { kind: "guard", x: d.x, y: d.y, facing: face };
     if (pace != null) e.order.pace = pace;
     if (e.garrisonedIn) {
@@ -1067,8 +1041,6 @@ function cmdGuardUnit(state: MatchState, playerId: string, ids: number[], target
     e.returnToBase = false;
     e.guardFacing = null;
     e.attackTarget = null;
-    e.harvestTile = null;
-    stopHaulerLoop(e);
     e.order = { kind: "guard", targetId: t.id };
     if (e.garrisonedIn) {
       exitGarrison(state, e, d);
@@ -1116,7 +1088,6 @@ function cmdGarrison(state: MatchState, playerId: string, ids: number[], buildin
     if (e.garrisonedIn) exitGarrison(state, e);
     e.order = { kind: "garrison", targetId: house.id };
     e.attackTarget = null;
-    e.harvestTile = null;
     e.guardFacing = null;
     e.state = "move";
     const door = approachTile(state, house);
@@ -1241,7 +1212,6 @@ function cmdStop(state: MatchState, playerId: string, ids: number[]): CmdResult 
     clearOrder(e);
     // Freeze a sweeping spotlight where it is. A unit's stop already dropped its order.
     if (hasSpotlight(e.type)) e.spotAim = undefined;
-    if (e.type === "hauler") e.autoHarvest = false;
     for (const u of livingGarrison(state, e)) {
       if (u.ownerId === playerId && u.order?.relay) clearOrder(u);
     }
@@ -1250,35 +1220,6 @@ function cmdStop(state: MatchState, playerId: string, ids: number[]): CmdResult 
   return ok();
 }
 
-function cmdHarvest(
-  state: MatchState,
-  playerId: string,
-  ids: number[],
-  tileX?: number,
-  tileY?: number,
-): CmdResult {
-  const units = owned(state, playerId, ids).filter((e) => e.type === "hauler" && e.cartHp > 0);
-  if (units.length === 0) {
-    const any = owned(state, playerId, ids).some((e) => e.type === "hauler");
-    return fail(any ? "cart" : "not_yours", any ? "Cart is off. It has to refit at the Smelter." : "Select a Mauler.");
-  }
-  for (const e of units) {
-    e.autoHarvest = true;
-    e.returnToBase = false;
-    e.state = "harvest";
-    e.guardFacing = null;
-    if (tileX != null && tileY != null) {
-      e.order = { kind: "harvest", tileX, tileY };
-      e.harvestTile = { x: tileX, y: tileY };
-      const ts = state.tileSize;
-      setPath(state, e, tileX * ts + ts / 2, tileY * ts + ts / 2);
-    } else {
-      e.order = { kind: "harvest" };
-      e.harvestTile = null;
-    }
-  }
-  return ok();
-}
 
 function cmdAmmo(state: MatchState, playerId: string, ids: number[], shell: ShellType): CmdResult {
   const guns = owned(state, playerId, ids).filter((e) => hasAmmo(e.type));

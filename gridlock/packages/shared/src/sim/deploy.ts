@@ -138,7 +138,6 @@ function finishDeploy(state: MatchState, rig: Entity): void {
     deployTime: 0,
     queue: [],
     attackTarget: null,
-    autoHarvest: false,
   };
   state.entities.set(core.id, core);
   armSpecialCooldown(core);
@@ -178,7 +177,6 @@ function finishUndeploy(state: MatchState, core: Entity): void {
     deployTime: 0,
     queue: [],
     attackTarget: null,
-    autoHarvest: false,
   };
   state.entities.set(rig.id, rig);
   armSpecialCooldown(rig);
@@ -209,11 +207,7 @@ function structuredCloneBase(e: Entity): Entity {
     clip: 0,
     reload: 0,
     reloadMul: 1,
-    harvestTime: 0,
-    cargo: e.cargo,
     cartHp: e.cartHp,
-    harvestTile: null,
-    autoHarvest: false,
     returnToBase: false,
     deployTime: 0,
     specialCooldown: e.specialCooldown,

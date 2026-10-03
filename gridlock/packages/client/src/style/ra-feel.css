@@ -437,6 +437,13 @@ input[type="range"] { padding: 0; }
   100% { color: var(--amber); }
 }
 #hud-scrap.scrap-denied b { color: var(--danger); }
+/* The Smelters' pour, beside the scrap count. */
+#hud-scrap .pour {
+  font-style: normal;
+  font-size: 0.8em;
+  opacity: 0.75;
+  margin-left: 0.3em;
+}
 
 .scrap-toast {
   font-family: "Share Tech Mono", monospace;

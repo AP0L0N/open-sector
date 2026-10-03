@@ -1,4 +1,5 @@
 import {
+  BUILD_RADIUS,
   HEIGHT_BASE,
   HEIGHT_MAX,
   SPAWN_EDGE_MARGIN,
@@ -303,6 +304,27 @@ export function scrapCells(s: Sheet): number {
   let n = 0;
   for (const t of s.tiles) if (t === TILE_SCRAP) n++;
   return n;
+}
+
+/** Cells from a start within which a scrap field is in the yard's build range once the Rig unpacks. */
+const HOME_SCRAP_CELLS = BUILD_RADIUS / TILE_SUBDIV + 2;
+
+/** Start numbers with no scrap cell near enough for the yard to place a Smelter. */
+export function startsFarFromScrap(s: Sheet): number[] {
+  const out: number[] = [];
+  for (const sp of s.spawns) {
+    let near = false;
+    for (let y = Math.max(0, sp.y - HOME_SCRAP_CELLS); y <= Math.min(s.height - 1, sp.y + HOME_SCRAP_CELLS) && !near; y++) {
+      for (let x = Math.max(0, sp.x - HOME_SCRAP_CELLS); x <= Math.min(s.width - 1, sp.x + HOME_SCRAP_CELLS); x++) {
+        if (s.tiles[y * s.width + x] === TILE_SCRAP && Math.hypot(x - sp.x, y - sp.y) <= HOME_SCRAP_CELLS) {
+          near = true;
+          break;
+        }
+      }
+    }
+    if (!near) out.push(sp.id);
+  }
+  return out.sort((a, b) => a - b);
 }
 
 /** Compact copy for undo. */

@@ -135,8 +135,6 @@ export function orderBoardPlane(state: MatchState, playerId: string, units: Enti
       continue;
     }
     clearOrder(e);
-    e.harvestTile = null;
-    if (e.type === "hauler") e.autoHarvest = false;
     e.order = { kind: "board", targetId: plane.id };
     e.state = "move";
     walkToPlane(state, e, plane);

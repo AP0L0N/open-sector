@@ -22,7 +22,6 @@ export type HoverAction =
   | "ungarrison"
   | "attack"
   | "capture"
-  | "gather"
   | "repair"
   | "scrap"
   | "board"
@@ -85,7 +84,6 @@ export function resolveHoverAction(args: {
   youPlayerId: string;
   selected: readonly HoverEntity[];
   hit: HoverEntity | null;
-  scrap: boolean;
   /** Cursor is on a mine. The truck lifts it; an entity under the cursor still wins. */
   mine?: boolean;
   allied: (ownerId: string | undefined) => boolean;
@@ -132,7 +130,6 @@ export function resolveHoverAction(args: {
     return "attack";
   }
   if (args.mine && trucks.length > 0) return "disable";
-  if (args.scrap && ownUnits.some((e) => e.type === "hauler")) return "gather";
   // Your own strip: planes go home to land and rearm.
   const planes = ownUnits.some((e) => !!e.air && !e.drone);
   if (hit && planes && hit.type === "airfield" && hit.ownerId === you && hit.hp > 0 && !hit.wreck) return "land";

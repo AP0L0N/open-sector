@@ -252,7 +252,6 @@ export function enterGarrison(state: MatchState, unit: Entity, house: Entity): b
   unit.waypoints = [];
   unit.order = null;
   unit.attackTarget = null;
-  unit.harvestTile = null;
   unit.state = "garrison";
   if (isCivilianType(house.type)) {
     house.ownerId = NEUTRAL_OWNER;

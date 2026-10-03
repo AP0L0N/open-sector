@@ -103,7 +103,15 @@ function paintScrapBlob(tiles: number[], width: number, height: number, cx: numb
   }
 }
 
-/** Scattered scrap fields. The seed keeps every client on the same yard. */
+/** Cells from a start to the scrap field a commander is given: past the Rig's pad, inside the yard's build range. */
+const HOME_SCRAP_CELLS = 9;
+/** A scattered field this close to a start, in cells, already serves as its home field. */
+const HOME_SCRAP_REACH_CELLS = 12;
+
+/**
+ * Scattered scrap fields. The seed keeps every client on the same yard. A start that none of
+ * them landed near gets one toward the map's middle, so a Smelter can always go up from the yard.
+ */
 function paintYardScrap(
   tiles: number[],
   width: number,
@@ -133,6 +141,17 @@ function paintYardScrap(
       }
     }
     if (crowded) continue;
+    centers.push({ x: cx, y: cy });
+    paintScrapBlob(tiles, width, height, cx, cy);
+  }
+  // A start with no field in yard range gets one toward the middle, past the Rig's pad.
+  for (const s of spawns) {
+    if (centers.some((c) => Math.hypot(c.x - s.x, c.y - s.y) <= HOME_SCRAP_REACH_CELLS)) continue;
+    const dx = width / 2 - s.x;
+    const dy = height / 2 - s.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const cx = Math.round(s.x + (dx / len) * HOME_SCRAP_CELLS);
+    const cy = Math.round(s.y + (dy / len) * HOME_SCRAP_CELLS);
     centers.push({ x: cx, y: cy });
     paintScrapBlob(tiles, width, height, cx, cy);
   }

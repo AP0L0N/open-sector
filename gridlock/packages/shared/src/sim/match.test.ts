@@ -4,7 +4,6 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   catalog,
   GAME_SPEED_MIN,
-  HAULER_CARGO,
   LOW_POWER_MIN_SPEED,
   TANK_MG,
   START_SCRAP,
@@ -511,7 +510,6 @@ describe("combat", () => {
     state.heights.fill(0);
     const t1 = makeEntity(state, "rifleman", "A", 20 * 32, 20 * 32);
     const truck = makeEntity(state, "hauler", "B", 23 * 32, 20 * 32);
-    truck.autoHarvest = false;
     truck.facing = Math.PI;
     const hp0 = truck.hp;
     const cart0 = truck.cartHp;
@@ -575,7 +573,6 @@ describe("combat", () => {
     const ts = state.tileSize;
     const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
     const dummy = makeEntity(state, "hauler", "B", tileCenter(24, ts), tileCenter(28, ts));
-    dummy.autoHarvest = false;
     dummy.holdPosition = true;
     tank.facing = 0;
     tank.turretFacing = 0;
@@ -708,7 +705,6 @@ describe("combat", () => {
     s3.heights.fill(0);
     const hunter = makeEntity(s3, "warden", "A", 20 * 32, 20 * 32);
     const hauler = makeEntity(s3, "hauler", "B", 23 * 32, 20 * 32);
-    hauler.autoHarvest = false;
     hauler.holdPosition = true;
     hunter.facing = 0;
     hunter.turretFacing = 0;
@@ -779,218 +775,6 @@ describe("combat", () => {
     assert.equal(state.players.get("A")?.alive, false);
     assert.equal(state.ended, true);
     assert.equal(state.winner?.playerId, "B");
-  });
-});
-
-describe("harvest", () => {
-  it("credits scrap after a harvest cycle", () => {
-    const { state } = twoPlayerMatch();
-    const player = state.players.get("A")!;
-    const before = player.scrap;
-    const ts = state.tileSize;
-    const sm = catalog("smelter");
-    const smelter = makeEntity(state, "smelter", "A", tileCenter(8, ts), tileCenter(8, ts), {
-      tileX: 8,
-      tileY: 8,
-    });
-    const hx = 8 + sm.tileW + 2;
-    const hy = 10;
-    const hauler = makeEntity(state, "hauler", "A", tileCenter(hx, ts), tileCenter(hy, ts));
-    hauler.autoHarvest = true;
-    const i = hx + hy * state.width;
-    state.scrapYield[i] = 400;
-    applyCommand(state, "A", { type: "cmd.harvest", ids: [hauler.id], tileX: hx, tileY: hy });
-    ticks(state, 120);
-    assert.ok(
-      player.scrap >= before + HAULER_CARGO,
-      `scrap ${player.scrap} vs ${before} (need at least +${HAULER_CARGO})`,
-    );
-    assert.ok(smelter.hp > 0);
-  });
-
-  it("unloads on another side when the east dock is blocked", () => {
-    const { state } = twoPlayerMatch();
-    const player = state.players.get("A")!;
-    const before = player.scrap;
-    const ts = state.tileSize;
-    const sm = catalog("smelter");
-    const smelter = makeEntity(state, "smelter", "A", tileCenter(8, ts), tileCenter(8, ts), {
-      tileX: 8,
-      tileY: 8,
-    });
-    makeEntity(state, "dynamo", "A", tileCenter(8 + sm.tileW, ts), tileCenter(8, ts), {
-      tileX: 8 + sm.tileW,
-      tileY: 8,
-    });
-    const hx = 8 + Math.floor(sm.tileW / 2);
-    const hy = 8 + sm.tileH + 2;
-    const hauler = makeEntity(state, "hauler", "A", tileCenter(hx, ts), tileCenter(hy, ts));
-    hauler.cargo = HAULER_CARGO;
-    hauler.state = "unload";
-    hauler.autoHarvest = true;
-    ticks(state, 160);
-    assert.ok(
-      player.scrap >= before + HAULER_CARGO,
-      `scrap ${player.scrap} vs ${before} (need at least +${HAULER_CARGO})`,
-    );
-    assert.ok(smelter.hp > 0);
-  });
-
-  it("lets several Maulers dump at once on any edge of the Smelter", () => {
-    const { state } = twoPlayerMatch();
-    const player = state.players.get("A")!;
-    const before = player.scrap;
-    const ts = state.tileSize;
-    const sm = catalog("smelter");
-    const smelter = makeEntity(state, "smelter", "A", tileCenter(8, ts), tileCenter(8, ts), {
-      tileX: 8,
-      tileY: 8,
-    });
-    const haulers = [0, 1, 2, 3].map((k) => {
-      const h = makeEntity(state, "hauler", "A", tileCenter(8 + sm.tileW + 10 + k * 4, ts), tileCenter(8 + (k % 2) * 6, ts));
-      h.cargo = HAULER_CARGO;
-      h.state = "unload";
-      h.autoHarvest = false;
-      return h;
-    });
-    const n = haulers.length;
-    ticks(state, 240);
-    assert.equal(player.scrap, before + HAULER_CARGO * n, `delivered ${(player.scrap - before) / HAULER_CARGO} of ${n}`);
-    for (const h of haulers) assert.equal(h.cargo, 0);
-    assert.ok(smelter.hp > 0);
-  });
-
-  it("keeps four auto-harvesting Maulers cycling without jamming at the Smelter", () => {
-    const { state } = twoPlayerMatch();
-    const ts = state.tileSize;
-    const sm = catalog("smelter");
-    makeEntity(state, "smelter", "A", tileCenter(8, ts), tileCenter(8, ts), { tileX: 8, tileY: 8 });
-    const fx = 8 + sm.tileW + 14;
-    for (let y = 4; y < 24; y++) {
-      for (let x = fx; x < fx + 8; x++) state.scrapYield[x + y * state.width] = HAULER_CARGO;
-    }
-    const haulers = [0, 1, 2, 3].map((k) => {
-      const h = makeEntity(state, "hauler", "A", tileCenter(fx + 2 + (k % 2) * 4, ts), tileCenter(6 + k * 4, ts));
-      applyCommand(state, "A", { type: "cmd.harvest", ids: [h.id] });
-      h.cargo = HAULER_CARGO;
-      return h;
-    });
-    const loads = new Map(haulers.map((h) => [h.id, 0]));
-    const carried = new Map(haulers.map((h) => [h.id, 0]));
-    const stuck = new Map(haulers.map((h) => [h.id, 0]));
-    let worstStuck = 0;
-    const near = (sm.tileW + 12) * ts;
-    const cx = (8 + sm.tileW / 2) * ts;
-    const cy = (8 + sm.tileH / 2) * ts;
-    for (let i = 0; i < 1200; i++) {
-      const at = haulers.map((h) => ({ x: h.x, y: h.y, facing: h.facing }));
-      step(state, TICK_DT);
-      haulers.forEach((h, k) => {
-        if (carried.get(h.id)! > 0 && h.cargo === 0) loads.set(h.id, loads.get(h.id)! + 1);
-        carried.set(h.id, h.cargo);
-        const was = at[k]!;
-        // Yawing in place is driving; a hull that neither rolls nor turns is jammed.
-        const still = Math.hypot(h.x - was.x, h.y - was.y) < 0.05 && Math.abs(h.facing - was.facing) < 1e-6;
-        const waiting = h.cargo > 0 && still && Math.hypot(h.x - cx, h.y - cy) < near && h.harvestTime === 0;
-        stuck.set(h.id, waiting ? stuck.get(h.id)! + 1 : 0);
-        worstStuck = Math.max(worstStuck, stuck.get(h.id)!);
-      });
-    }
-    for (const h of haulers) {
-      assert.ok(loads.get(h.id)! >= 3, `Mauler ${h.id} delivered ${loads.get(h.id)} loads, at ${h.x},${h.y} ${h.state}`);
-    }
-    assert.ok(worstStuck < 10, `a loaded Mauler sat still by the Smelter for ${worstStuck} ticks`);
-  });
-
-  it("stops auto-harvest when sent somewhere until ordered onto scrap again", () => {
-    const { state } = twoPlayerMatch();
-    const ts = state.tileSize;
-    const hx = 22;
-    const hy = 16;
-    state.scrapYield[hx + hy * state.width] = 400;
-    const hauler = makeEntity(state, "hauler", "A", tileCenter(hx, ts), tileCenter(hy, ts));
-    applyCommand(state, "A", { type: "cmd.harvest", ids: [hauler.id], tileX: hx, tileY: hy });
-    assert.equal(hauler.autoHarvest, true);
-    step(state);
-    assert.equal(hauler.order?.kind, "harvest");
-
-    const destX = tileCenter(hx + 12, ts);
-    const destY = tileCenter(hy, ts);
-    applyCommand(state, "A", { type: "cmd.move", ids: [hauler.id], x: destX, y: destY });
-    assert.equal(hauler.autoHarvest, false);
-    assert.equal(hauler.order?.kind, "move");
-    assert.equal(hauler.harvestTile == null, true);
-
-    ticks(state, 5);
-    assert.equal(hauler.autoHarvest, false);
-    assert.equal(hauler.order?.kind, "move");
-    assert.equal(hauler.harvestTile == null, true);
-
-    ticks(state, 80);
-    assert.equal(hauler.autoHarvest, false);
-    assert.equal(hauler.harvestTile == null, true);
-    assert.ok(hauler.order == null || hauler.order.kind === "move");
-    assert.notEqual(hauler.state, "harvest");
-    assert.ok(Math.hypot(hauler.x - destX, hauler.y - destY) < ts * 2, `parked at ${hauler.x},${hauler.y}`);
-
-    applyCommand(state, "A", { type: "cmd.harvest", ids: [hauler.id], tileX: hx, tileY: hy });
-    assert.equal(hauler.autoHarvest, true);
-    assert.equal(hauler.order?.kind, "harvest");
-    assert.equal(hauler.harvestTile?.x, hx);
-    assert.equal(hauler.harvestTile?.y, hy);
-  });
-
-  it("keeps a loaded Mauler on a move instead of hauling the cart home", () => {
-    const { state } = twoPlayerMatch();
-    const ts = state.tileSize;
-    makeEntity(state, "smelter", "A", tileCenter(8, ts), tileCenter(8, ts), { tileX: 8, tileY: 8 });
-    const hauler = makeEntity(state, "hauler", "A", tileCenter(22, ts), tileCenter(16, ts));
-    hauler.cargo = HAULER_CARGO;
-    hauler.autoHarvest = true;
-    const destX = tileCenter(40, ts);
-    const destY = tileCenter(16, ts);
-    applyCommand(state, "A", { type: "cmd.move", ids: [hauler.id], x: destX, y: destY });
-    assert.equal(hauler.order?.kind, "move");
-    ticks(state, 5);
-    assert.equal(hauler.order?.kind, "move");
-    assert.notEqual(hauler.state, "unload");
-    ticks(state, 80);
-    assert.equal(hauler.autoHarvest, false);
-    assert.ok(hauler.order == null || hauler.order.kind === "move");
-    assert.notEqual(hauler.state, "unload");
-    assert.notEqual(hauler.state, "harvest");
-    assert.equal(hauler.cargo, HAULER_CARGO);
-    assert.ok(Math.hypot(hauler.x - destX, hauler.y - destY) < ts * 2, `parked at ${hauler.x},${hauler.y}`);
-  });
-
-  it("dumps the cart when sent onto its Smelter and does not resume harvest", () => {
-    const { state } = twoPlayerMatch();
-    const player = state.players.get("A")!;
-    const before = player.scrap;
-    const ts = state.tileSize;
-    const sm = catalog("smelter");
-    const smelter = makeEntity(state, "smelter", "A", tileCenter(8, ts), tileCenter(8, ts), {
-      tileX: 8,
-      tileY: 8,
-    });
-    const cx = (smelter.tileX + sm.tileW / 2) * ts;
-    const cy = (smelter.tileY + sm.tileH / 2) * ts;
-    const hauler = makeEntity(state, "hauler", "A", tileCenter(22, ts), tileCenter(16, ts));
-    hauler.cargo = HAULER_CARGO;
-    hauler.autoHarvest = true;
-    state.scrapYield[30 + 16 * state.width] = 500;
-    applyCommand(state, "A", { type: "cmd.move", ids: [hauler.id], x: cx, y: cy });
-    assert.equal(hauler.autoHarvest, false);
-    assert.equal(hauler.order?.kind, "unload");
-    ticks(state, 200);
-    assert.ok(player.scrap >= before + HAULER_CARGO, `scrap ${player.scrap} vs ${before}`);
-    assert.equal(hauler.cargo, 0);
-    assert.equal(hauler.autoHarvest, false);
-    assert.notEqual(hauler.order?.kind, "harvest");
-    ticks(state, 40);
-    assert.equal(hauler.autoHarvest, false);
-    assert.notEqual(hauler.order?.kind, "harvest");
-    assert.equal(hauler.cargo, 0);
   });
 });
 

@@ -481,7 +481,6 @@ describe("armored hull cover", () => {
     const ox = 80;
     makeEntity(state, "rifleman", a, tileCenter(ox, ts), tileCenter(oy, ts));
     const truck = makeEntity(state, "hauler", b, tileCenter(ox + 8, ts), tileCenter(oy, ts));
-    truck.autoHarvest = false;
     const hid = makeEntity(state, "rifleman", b, tileCenter(ox + 12, ts), tileCenter(oy, ts));
     assert.equal(canSeeEntity(state, a, hid), false, "infantry behind the hull is hidden");
   });

@@ -32,7 +32,8 @@ import { maybeCookOff, tickFires } from "./flame.js";
 import { tickBipod, tickStance } from "./stance.js";
 import { tickCollision } from "./collision.js";
 import { tickDeploy } from "./deploy.js";
-import { tickHarvest, tickMaulerCart } from "./harvest.js";
+import { tickSmelters } from "./smelter.js";
+import { tickConstructs } from "./construct.js";
 import { tickHeal } from "./heal.js";
 import { tickSupply } from "./supply.js";
 import { syncTowedGuns, tickArtillery } from "./artillery.js";
@@ -113,6 +114,7 @@ export function createMatch(
       team: slot.team,
       alive: true,
       scrap: START_SCRAP,
+      scrapCarry: 0,
       structure: null,
       defence: null,
       placingType: null,
@@ -151,7 +153,6 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickSupply(state, dt);
   tickArtillery(state, dt);
   tickPlaneBoarding(state);
-  tickMaulerCart(state, dt);
   tickOrderQueue(state);
   tickPatrol(state);
   tickMovement(state, dt);
@@ -168,7 +169,8 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickMines(state, dt);
   tickCrates(state, dt);
   tickField(state, dt);
-  tickHarvest(state, dt);
+  tickConstructs(state, dt);
+  tickSmelters(state, dt);
   tickBuild(state, dt);
   tickTrain(state, dt);
   tickCombat(state, dt);

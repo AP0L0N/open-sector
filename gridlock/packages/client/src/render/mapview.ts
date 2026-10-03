@@ -67,6 +67,7 @@ import {
   isBuildingType,
   isDefenceStructure,
   isYardField,
+  previewConstruct,
   previewField,
   previewPlace,
   previewYardField,
@@ -783,6 +784,8 @@ export class MapView {
    * and the line goes to the sim as one order on Confirm.
    */
   fieldPlace: FieldStructureType | null = null;
+  /** Base building the selected engineers will raise where the player clicks. The Smelter on scrap. */
+  constructPlace: BuildingType | null = null;
   /** Corners pinned so far, start first. Empty until the first release. */
   private fieldPath: { x: number; y: number }[] = [];
   /** Connected runs of same-type field structures in the current snapshot, by section key. */
@@ -835,6 +838,7 @@ export class MapView {
       this.forceAttackMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
+      this.constructPlace = null;
       this.setGuardMode(false);
       this.setPatrolMode(false);
     }
@@ -859,6 +863,7 @@ export class MapView {
       this.forceAttackMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
+      this.constructPlace = null;
       this.setGuardMode(false);
     }
     this.onAttackMoveMode();
@@ -873,6 +878,7 @@ export class MapView {
       this.attackMoveMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
+      this.constructPlace = null;
       this.setGuardMode(false);
       this.setPatrolMode(false);
     }
@@ -888,6 +894,7 @@ export class MapView {
       this.attackMoveMode = false;
       this.forceAttackMode = false;
       this.fieldPlace = null;
+      this.constructPlace = null;
       this.setGuardMode(false);
       this.setPatrolMode(false);
     }
@@ -904,6 +911,7 @@ export class MapView {
       this.forceAttackMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
+      this.constructPlace = null;
       this.setPatrolMode(false);
       this.guardFacing = this.meanSelectedFacing();
     } else {
@@ -914,9 +922,32 @@ export class MapView {
     this.onPlaceMode();
   }
 
+  /** Arm or disarm the engineer's building ghost. Clicking the same button again puts it down. */
+  setConstructPlace(building: BuildingType | null): void {
+    const next = this.constructPlace === building ? null : building;
+    this.constructPlace = next;
+    this.fieldPlace = null;
+    this.fieldDrag = null;
+    this.fieldPath = [];
+    if (next) {
+      this.placeMode = false;
+      this.placePick = null;
+      this.yardArm = null;
+      this.attackMoveMode = false;
+      this.forceAttackMode = false;
+      this.rotateMode = false;
+      this.guardMode = false;
+      this.setPatrolMode(false);
+      this.guardDragging = false;
+    }
+    this.onAttackMoveMode();
+    this.onPlaceMode();
+  }
+
   setFieldPlace(structure: FieldStructureType | null): void {
     const next = this.fieldPlace === structure ? null : structure;
     this.fieldPlace = next;
+    this.constructPlace = null;
     this.fieldDrag = null;
     this.fieldPath = [];
     if (next) {
@@ -1147,8 +1178,9 @@ export class MapView {
     if (this.forceAttackMode && this.ownForceIds().length === 0) this.setForceAttackMode(false);
     if (this.rotateMode && this.ownRotateIds().length === 0) this.setRotateMode(false);
     if (this.guardMode && this.ownSelectedIds().length === 0) this.setGuardMode(false);
-    if (this.fieldPlace && !this.curr.entities.some((e) => this.selected.has(e.id) && e.type === "engineer" && e.ownerId === this.curr.youPlayerId)) {
+    if ((this.fieldPlace || this.constructPlace) && !this.curr.entities.some((e) => this.selected.has(e.id) && e.type === "engineer" && e.ownerId === this.curr.youPlayerId)) {
       this.fieldPlace = null;
+      this.constructPlace = null;
       this.fieldPath = [];
       this.fieldDrag = null;
       this.onPlaceMode();
@@ -1682,6 +1714,7 @@ export class MapView {
     this.placePick = type;
     this.yardArm = null;
     this.fieldPlace = null;
+    this.constructPlace = null;
     this.fieldDrag = null;
     this.placeMode = true;
     this.attackMoveMode = false;
@@ -1707,6 +1740,7 @@ export class MapView {
   /** Clicking Wall or Sandbags on the Defences tab sites the line before it builds. */
   armYardField(type: YardFieldType): void {
     this.fieldPlace = null;
+    this.constructPlace = null;
     this.fieldDrag = null;
     this.fieldPath = [];
     this.placePick = null;
@@ -1760,12 +1794,13 @@ export class MapView {
           this.onPlaceMode();
           return;
         }
-        if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode || this.fieldPlace) {
+        if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode || this.fieldPlace || this.constructPlace) {
           this.setAttackMoveMode(false);
           this.setForceAttackMode(false);
           this.setRotateMode(false);
           this.setGuardMode(false);
           this.fieldPlace = null;
+          this.constructPlace = null;
           this.fieldDrag = null;
           this.fieldPath = [];
           this.onPlaceMode();
@@ -1785,6 +1820,10 @@ export class MapView {
         if (this.guardMode) {
           if (this.commitGuardUnit(this.hit(mx, my))) return;
           this.beginGuard(mx, my);
+          return;
+        }
+        if (this.constructPlace) {
+          this.commitConstruct(mx, my);
           return;
         }
         if (this.fieldPlace || this.readyYardField()) {
@@ -2428,17 +2467,34 @@ export class MapView {
     this.fieldPath = [];
     this.fieldDrag = null;
     this.fieldPlace = null;
+    this.constructPlace = null;
     this.yardArm = null;
     this.placeMode = false;
     this.onPlaceMode();
   }
 
+  /** The selected engineers raise the armed building with its top-left tile under the cursor. */
+  private commitConstruct(mx: number, my: number): void {
+    const building = this.constructPlace;
+    if (!building) return;
+    const tile = this.screenToTile(mx, my);
+    const ids = this.curr.entities
+      .filter((e) => this.selected.has(e.id) && e.ownerId === this.curr.youPlayerId && e.type === "engineer" && !e.wreck && e.hp > 0)
+      .map((e) => e.id);
+    if (ids.length === 0) return;
+    this.command({ type: "cmd.construct", ids, building, tx: tile.x, ty: tile.y });
+    // The site is given: the tool is put down, like a building after it lands.
+    this.constructPlace = null;
+    this.onPlaceMode();
+  }
+
   /** Drop the line being drawn and the placing mode with it. True when there was one. */
   cancelFieldPlacing(): boolean {
-    if (!this.fieldPlace && !this.readyYardField()) return false;
+    if (!this.fieldPlace && !this.readyYardField() && !this.constructPlace) return false;
     this.fieldPath = [];
     this.fieldDrag = null;
     this.fieldPlace = null;
+    this.constructPlace = null;
     this.yardArm = null;
     this.placeMode = false;
     this.onPlaceMode();
@@ -2781,7 +2837,7 @@ export class MapView {
   }
 
   private onRight(px: number, py: number): void {
-    if (this.placeMode || this.fieldPlace || this.yardArm) {
+    if (this.placeMode || this.fieldPlace || this.yardArm || this.constructPlace) {
       if (this.fieldPath.length > 0 && (this.fieldPlace || this.readyYardField())) {
         this.fieldPath = undoFieldPoint(this.fieldPath);
         this.fieldDrag = null;
@@ -2791,6 +2847,7 @@ export class MapView {
       this.placeMode = false;
       this.yardArm = null;
       this.fieldPlace = null;
+      this.constructPlace = null;
       this.fieldDrag = null;
       this.fieldPath = [];
       this.onPlaceMode();
@@ -2811,13 +2868,10 @@ export class MapView {
     }
     const hit = this.hit(px, py);
     const mine = this.mineAt(px, py);
-    const tile = this.screenToTile(px, py);
-    const scrap = this.curr.scrap.some((s) => s.x === tile.x && s.y === tile.y && s.yield > 0);
     const action = resolveHoverAction({
       youPlayerId: you,
       selected,
       hit,
-      scrap,
       mine: mine != null,
       allied: (id) => ownerAllied(this.curr, id),
     });
@@ -2859,18 +2913,6 @@ export class MapView {
     }
     if ((action === "attack" || action === "capture") && hit) {
       this.command({ type: "cmd.attack", ids: own.map((e) => e.id), targetId: hit.id });
-      return;
-    }
-    const haulers = own.filter((e) => e.type === "hauler");
-    if (action === "gather" && haulers.length) {
-      const dest = this.screenToWorld(px, py);
-      this.pulseMoveClick(dest.x, dest.y);
-      this.command({ type: "cmd.harvest", ids: haulers.map((e) => e.id), tileX: tile.x, tileY: tile.y });
-      return;
-    }
-    if (hit?.type === "smelter" && hit.ownerId === this.curr.youPlayerId && haulers.length) {
-      this.pulseMoveClick(hit.x, hit.y);
-      this.command({ type: "cmd.move", ids: haulers.map((e) => e.id), x: hit.x, y: hit.y });
       return;
     }
     const drones = own.filter((e) => e.drone && e.drone.opId === hit?.id);
@@ -3201,6 +3243,8 @@ export class MapView {
     const toPlace = this.placeMode ? this.readyBuilding() : null;
     if (toPlace && this.mouseX >= 0) {
       this.drawGhost(toPlace);
+    } else if (this.constructPlace && this.mouseX >= 0) {
+      this.drawGhost(this.constructPlace, previewConstruct);
     }
     this.drawYardBuild();
     if (this.fieldPlace && this.mouseX >= 0) this.drawFieldGhost(this.fieldPlace, false);
@@ -6465,13 +6509,10 @@ export class MapView {
           const selected = this.curr.entities.filter(
             (e) => this.selected.has(e.id) && !e.wreck && e.hp > 0,
           );
-          const tile = this.screenToTile(this.mouseX, this.mouseY);
-          const scrap = this.curr.scrap.some((s) => s.x === tile.x && s.y === tile.y && s.yield > 0);
           action = resolveHoverAction({
             youPlayerId: you,
             selected,
             hit,
-            scrap,
             mine: this.mineAt(this.mouseX, this.mouseY) != null,
             allied: (id) => ownerAllied(this.curr, id),
           });
@@ -6662,10 +6703,10 @@ export class MapView {
     return colorHex(p?.colorId ?? 0);
   }
 
-  private drawGhost(type: BuildingType): void {
+  private drawGhost(type: BuildingType, siteOk: typeof previewPlace = previewPlace): void {
     const def = catalog(type);
     const tile = this.screenToTile(this.mouseX, this.mouseY);
-    const ok = previewPlace(this.curr, type, tile.x, tile.y);
+    const ok = siteOk(this.curr, type, tile.x, tile.y);
     const ts = this.ts();
     const top = ok ? "#7dff6a" : "#ff5a4a";
     const x = tile.x * ts;

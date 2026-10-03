@@ -16,7 +16,7 @@ import type {
 } from "./catalog.js";
 import type { CustomMapSpec } from "./custom-maps.js";
 
-export const PROTOCOL_VERSION = 78;
+export const PROTOCOL_VERSION = 79;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -34,8 +34,6 @@ export type EntityState =
   | "idle"
   | "move"
   | "attack"
-  | "harvest"
-  | "unload"
   | "train"
   | "deploy"
   | "undeploy"
@@ -117,7 +115,6 @@ export interface EntityView {
   trainQueue?: TrainJobView[];
   /** Own producer rally point, world pixels. Omitted when unset or not yours. */
   rally?: { x: number; y: number };
-  cargo?: number;
   /** Mauler scrap-cart hit points. 0 means the cart is off. Omitted for other types. */
   cart?: number;
   /** Allied Mauler smoke grenades remaining. Omitted for enemies and other types. */
@@ -590,7 +587,6 @@ export type ClientMessage =
       queue?: boolean;
     }
   | { type: "cmd.stop"; ids: number[] }
-  | { type: "cmd.harvest"; ids: number[]; tileX?: number; tileY?: number; queue?: boolean }
   | { type: "cmd.ammo"; ids: number[]; shell: ShellType }
   | { type: "cmd.weapon"; ids: number[]; weapon: InfantryWeaponId }
   | { type: "cmd.guns"; ids: number[]; guns: 1 | 2 }
@@ -657,6 +653,8 @@ export type ClientMessage =
        */
       path?: { x: number; y: number }[];
     }
+  /** Selected engineers walk to the tile and raise this base building there. A Smelter on distant scrap. */
+  | { type: "cmd.construct"; ids: number[]; building: BuildingType; tx: number; ty: number }
   | { type: "cmd.repair"; ids: number[]; targetId: number; queue?: boolean }
   | { type: "cmd.board"; ids: number[]; truckId: number; queue?: boolean }
   | { type: "cmd.unboard"; ids?: number[]; truckId?: number }
@@ -723,7 +721,6 @@ export type ErrorCode =
   | "no_core"
   | "not_yours"
   | "unit_cap"
-  | "ended"
-  | "cart";
+  | "ended";
 
 export type { AirDrop, BuildingType, EntityType, FieldStructureType, TrainType, EntityKind, ShellType, Crit, Stance, YardFieldType };

@@ -10,8 +10,11 @@ import {
   TRAIN_TYPES,
   TICK_DT,
   WALKER_ONE_BURST,
+  ENGINEER_BUILDINGS,
   HAULER_SMOKE_CHARGES,
   MAULER_CART_HP,
+  SMELTER_SCRAP_PER_SEC,
+  isEngineerBuilding,
   ammoOf,
   armorLabel,
   beltOf,
@@ -498,7 +501,9 @@ export function paintBattleHud(ctx: Ctx): void {
   if (!m) return;
   const scrap = document.getElementById("hud-scrap");
   if (scrap) {
-    const next = `SCRAP <b>${m.you.scrap}</b>`;
+    const smelters = m.entities.filter((e) => e.ownerId === m.youPlayerId && e.type === "smelter" && e.hp > 0 && !e.wreck).length;
+    const pour = Math.round(smelters * SMELTER_SCRAP_PER_SEC * productionSpeed(m.you.provided, m.you.used));
+    const next = `SCRAP <b>${m.you.scrap}</b>${pour > 0 ? ` <i class="pour">+${pour}/s</i>` : ""}`;
     if (scrap.innerHTML !== next) scrap.innerHTML = next;
   }
   const power = document.getElementById("hud-power");
@@ -645,7 +650,6 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     e.trainProgress != null
       ? `  ·  train ${qPaused ? "paused " : ""}${Math.round(e.trainProgress * 100)}%${qn > 1 ? " ×" + qn : ""}`
       : "";
-  const cargo = e.cargo ? `  ·  cargo ${e.cargo}` : "";
   const cart =
     e.type === "hauler" && !e.wreck && e.cart != null
       ? e.cart <= 0
@@ -775,7 +779,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
           ? airLine(e.air, e.type)
           : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}  ·  ${who}${q}${cargo}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
+  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}  ·  ${who}${q}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
 
@@ -1100,7 +1104,6 @@ function configBodyLayout(focus: EntityView, live: EntityView[], wrecks: EntityV
   if (hasMg(focus.type)) parts.push("mg");
   if (hasScout(focus.type)) parts.push("scout");
   if (armorLabel(focus.type)) parts.push("armor");
-  if (focus.type === "hauler") parts.push("cargo");
   if (specialLabel(focus.type)) parts.push("spec");
   return parts.join("|");
 }
@@ -1226,7 +1229,6 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
   }
   if (hasScout(focus.type)) body.append(el("p", { class: "tiny", attrs: { "data-field": "scout" } }));
   if (armorLabel(focus.type)) body.append(el("p", { class: "tiny", attrs: { "data-field": "armor" } }));
-  if (focus.type === "hauler") body.append(el("p", { class: "tiny", attrs: { "data-field": "cargo" } }));
   if (specialLabel(focus.type)) body.append(el("p", { class: "tiny", attrs: { "data-field": "special" } }));
 }
 
@@ -1410,11 +1412,6 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
   }
   const armor = armorLabel(focus.type);
   if (armor) setField(body, "armor", "Armor  " + armor);
-  if (focus.type === "hauler") {
-    const cargo = live.reduce((n, e) => n + (e.cargo ?? 0), 0);
-    const off = live.some((e) => (e.cart ?? MAULER_CART_HP) <= 0);
-    setField(body, "cargo", off ? `Cargo  ${cargo}  ·  cart off, refitting` : `Cargo  ${cargo}`);
-  }
   const spec = specialLabel(focus.type, live.length > 0 && live.every((e) => e.braced));
   if (spec) {
     const ready = live.some((e) => specialReady(e.type, e.state, e.specialCooldown ?? 0));
@@ -1773,6 +1770,16 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
         "Build a tall concrete wall with firing slits. Two infantry garrison each section and fire from it with triple health. Laid like the wall: drag, keep clicking round corners, then Confirm. One job; it appears when the engineer finishes.",
       on: view?.fieldPlace === "greatwall",
     });
+    for (const building of ENGINEER_BUILDINGS) {
+      const def = catalog(building);
+      out.push({
+        slot: "construct-" + building,
+        act: "construct-" + building,
+        label: def.name,
+        title: `Raise a ${def.name} on a scrap field, any distance from the yard, for ${def.cost} scrap. Click the field with at least half the footprint on scrap. He pays when he starts and works ${def.buildSeconds}s. It pours ${SMELTER_SCRAP_PER_SEC} scrap a second and pushes your build range out to it.`,
+        on: view?.constructPlace === building,
+      });
+    }
   }
   const inf = units.filter((e) => isInfantryType(e.type) && e.type !== "engineer" && e.type !== "cyborg");
   if (inf.length) {
@@ -1802,9 +1809,6 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       label: specialUnits.every((e) => e.braced) ? "Pack" : "Deploy",
       title: `Special (${SPECIAL_HOTKEY.toUpperCase()})`,
     });
-  }
-  if (units.some((e) => e.type === "hauler")) {
-    out.push({ slot: "harvest", act: "harvest", label: "Harvest", title: "Auto-harvest nearest scrap" });
   }
   const jets = units.filter((e) => e.jet && e.hp > 0);
   if (jets.length) {
@@ -2186,9 +2190,9 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     }
     return;
   }
-  if (act === "harvest") {
-    const haulers = units.filter((e) => e.type === "hauler");
-    if (haulers.length) ctx.net.send({ type: "cmd.harvest", ids: haulers.map((e) => e.id) });
+  if (act.startsWith("construct-")) {
+    const building = act.slice("construct-".length);
+    if (isEngineerBuilding(building)) view.setConstructPlace(building);
     return;
   }
   if (act === "unboard") {

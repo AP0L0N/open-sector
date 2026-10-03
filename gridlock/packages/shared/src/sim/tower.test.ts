@@ -141,7 +141,6 @@ describe("watch tower", () => {
     const gunner = trooper(state, "gunner", a);
     assert.equal(enterGarrison(state, gunner, tower), true);
     const dummy = makeEntity(state, "hauler", b, gunner.x + state.tileSize * 12, gunner.y);
-    dummy.autoHarvest = false;
     gunner.order = { kind: "attack", targetId: dummy.id };
     tickCombat(state, TICK_DT);
     assert.ok(state.projectiles.length > 0, "tower gunner fires");

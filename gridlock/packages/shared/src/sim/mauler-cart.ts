@@ -29,9 +29,6 @@ export function damageMaulerCart(e: Entity, hit: CartStrike): void {
   const dmg = Math.max(1, Math.round(hit.damage));
   e.cartHp = Math.max(0, e.cartHp - dmg);
   if (e.cartHp > 0) return;
-  e.cargo = 0;
-  e.harvestTile = null;
-  e.harvestTime = 0;
   e.order = null;
   e.waypoints = [];
   e.attackTarget = null;

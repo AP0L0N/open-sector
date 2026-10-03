@@ -94,7 +94,6 @@ function placeHauler(state: MatchState, ownerId: string): ReturnType<typeof make
   const hx = worldToTile(hq.x, ts);
   const hy = worldToTile(hq.y, ts);
   const hauler = makeEntity(state, "hauler", ownerId, tileCenter(hx + 48, ts), tileCenter(hy, ts));
-  hauler.autoHarvest = false;
   hauler.facing = Math.PI;
   return hauler;
 }
@@ -145,7 +144,6 @@ describe("hauler smoke screen", () => {
     const ty = worldToTile(hauler.y, ts);
     assert.equal(inSmokeCloud(cloud, ts, tx, ty), true);
     assert.equal(hauler.returnToBase, true);
-    assert.equal(hauler.autoHarvest, false);
     assert.equal(hauler.order?.kind, "withdraw");
     for (let i = 0; i < 24; i++) step(state, TICK_DT);
     assert.ok(hauler.x > x0 + ts * 4, `should flee east x=${hauler.x} from ${x0}`);
@@ -195,7 +193,6 @@ describe("hauler smoke screen", () => {
     assert.ok(hauler.hp > 0, `hauler died hp=${hauler.hp}`);
     assert.equal(withdrew, true, "never left the impact tile");
     assert.equal(held, true, `never held at base order=${hauler.order?.kind} x=${hauler.x}`);
-    assert.equal(hauler.autoHarvest, false);
     assert.equal(hauler.returnToBase, true);
     const ts = state.tileSize;
     const nearHq =
@@ -205,7 +202,6 @@ describe("hauler smoke screen", () => {
     const xHold = hauler.x;
     for (let i = 0; i < 20; i++) step(state, TICK_DT);
     assert.ok(Math.abs(hauler.x - xHold) < ts, `left hold x=${hauler.x}`);
-    assert.equal(hauler.autoHarvest, false);
   });
 
   it("does not stack a second screen while recharging", () => {
@@ -292,35 +288,4 @@ describe("hauler smoke screen", () => {
     assert.ok(Math.abs(hauler.x - x0) < 6, `held Mauler fled x=${hauler.x}`);
   });
 
-  it("drops a harvest job when the shell lands", () => {
-    const { state } = twoPlayerMatch();
-    clearCover(state);
-    const hauler = placeHauler(state, "A");
-    const ts = state.tileSize;
-    const tx = worldToTile(hauler.x, ts) + 4;
-    const ty = worldToTile(hauler.y, ts);
-    applyCommand(state, "A", { type: "cmd.harvest", ids: [hauler.id], tileX: tx, tileY: ty });
-    assert.equal(hauler.autoHarvest, true);
-    shellFromWest(state, hauler);
-    step(state, TICK_DT);
-    assert.equal(hauler.autoHarvest, false);
-    assert.equal(hauler.returnToBase, true);
-    assert.equal(hauler.order?.kind, "withdraw");
-  });
-});
-
-describe("easy CPU hauler shelter", () => {
-  it("does not send a panicking Mauler back to harvest", () => {
-    const { state } = twoPlayerMatch();
-    clearCover(state);
-    const hauler = placeHauler(state, "A");
-    const p = state.players.get("A")!;
-    p.ai = "easy";
-    shellFromWest(state, hauler);
-    step(state, TICK_DT);
-    assert.equal(hauler.returnToBase, true);
-    tickAi(state);
-    assert.equal(hauler.autoHarvest, false);
-    assert.ok(hauler.order?.kind === "withdraw" || hauler.order?.kind === "move");
-  });
 });

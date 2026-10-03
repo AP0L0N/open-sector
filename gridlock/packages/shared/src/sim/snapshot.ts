@@ -176,12 +176,6 @@ function queuedPoint(state: MatchState, m: QueueableCommand): PlanPointView | nu
     case "cmd.board":
       at = entityAt(state, m.truckId);
       break;
-    case "cmd.harvest":
-      at =
-        m.tileX != null && m.tileY != null
-          ? { kind, x: (m.tileX + 0.5) * state.tileSize, y: (m.tileY + 0.5) * state.tileSize }
-          : null;
-      break;
     default:
       at = { kind, x: m.x, y: m.y };
   }
@@ -273,7 +267,6 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
             }))
           : undefined,
       rally: e.rally && e.ownerId === youPlayerId ? { x: e.rally.x, y: e.rally.y } : undefined,
-      cargo: e.type === "hauler" ? e.cargo : undefined,
       cart: e.type === "hauler" ? e.cartHp : undefined,
       smokeCharges: friendly && e.type === "hauler" && !e.wreck ? e.smokeCharges : undefined,
       deployProgress:

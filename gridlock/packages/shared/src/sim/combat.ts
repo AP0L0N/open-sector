@@ -272,7 +272,6 @@ export function relayGarrisonForce(state: MatchState): void {
       u.attackTarget = order.targetId ?? null;
       u.waypoints = [];
       u.guardFacing = null;
-      u.harvestTile = null;
       u.state = "garrison";
     }
   }
@@ -2725,8 +2724,6 @@ function maybeHaulerSmokeScreen(state: MatchState, victim: Entity, p: Projectile
   const dest = withdrawDest(state, victim, victim.x - p.vx, victim.y - p.vy);
   if (!dest) return true;
   victim.returnToBase = true;
-  victim.autoHarvest = false;
-  victim.harvestTile = null;
   victim.order = { kind: "withdraw", x: dest.x, y: dest.y, returnToBase: true };
   victim.attackTarget = null;
   victim.state = "move";
@@ -2749,7 +2746,6 @@ function maybeWithdraw(state: MatchState, victim: Entity, p: Projectile): void {
   if (!dest) return;
   victim.order = { kind: "withdraw", x: dest.x, y: dest.y };
   victim.attackTarget = null;
-  victim.harvestTile = null;
   victim.state = "move";
   setPath(state, victim, dest.x, dest.y);
 }

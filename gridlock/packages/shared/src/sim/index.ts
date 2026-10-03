@@ -1,5 +1,5 @@
 export { createMatch, step, stepMatch } from "./match.js";
-export { tickAi, findBuildTile } from "./ai.js";
+export { tickAi, findBuildTile, findSmelterTile } from "./ai.js";
 export { tickCollision, moveWithCollision } from "./collision.js";
 export { toWreck } from "./wreck.js";
 export { fireStats, hullTurnMul, immobilized, moveSpeedMul, rollCrits, rollLamp } from "./crits.js";
@@ -7,7 +7,8 @@ export { commandedStance, effectiveStance, tickStance } from "./stance.js";
 export { applyCommand } from "./commands.js";
 export { snapshotFor } from "./snapshot.js";
 export { burnVariant } from "./remains.js";
-export { previewField, previewPlace, previewYardField } from "./preview.js";
+export { previewConstruct, previewField, previewPlace, previewSite, previewYardField } from "./preview.js";
+export { smelterIncome, smelterOnScrap, smelterScrapNeeded, smelterSiteOk } from "./smelter.js";
 export { pathToWorld, astar } from "./path.js";
 export { PATROL_POINTS_MAX, connectPatrolPoints } from "./patrol.js";
 export type { MatchState } from "./types.js";

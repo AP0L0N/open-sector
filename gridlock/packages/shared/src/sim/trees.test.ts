@@ -415,7 +415,6 @@ describe("trees", () => {
     plant(state, valley, y);
     const tank = makeEntity(state, "warden", a, tileCenter(x0 + 4, ts), tileCenter(y, ts));
     const dummy = makeEntity(state, "hauler", b, tileCenter(x0 + 18, ts), tileCenter(y, ts));
-    dummy.autoHarvest = false;
     dummy.holdPosition = true;
     tank.facing = 0;
     tank.turretFacing = 0;

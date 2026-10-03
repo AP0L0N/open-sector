@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { START_SCRAP, catalog } from "../catalog.js";
 import { createRoom, hostSlot, startMatch, updateSelf } from "../lobby.js";
-import { EASY_ARMY, EASY_HAULER_JAM_TICKS, tickAi } from "./ai.js";
+import { EASY_ARMY, tickAi } from "./ai.js";
 import { hasCore, makeEntity } from "./geo.js";
 import { createMatch, stepMatch } from "./match.js";
 import { producerType } from "./train.js";
@@ -91,33 +91,6 @@ describe("easy CPU", () => {
     assert.equal(dynamo, true);
   });
 
-  it("sends idle Maulers to harvest", () => {
-    const { state, aiId } = humanVsEasy();
-    waitCore(state, aiId);
-    const hq = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "core")!;
-    const hauler = makeEntity(state, "hauler", aiId, hq.x + 24, hq.y);
-    hauler.autoHarvest = false;
-    hauler.order = null;
-    hauler.state = "idle";
-    tickAi(state);
-    assert.equal(hauler.autoHarvest, true);
-  });
-
-  it("leaves a Mauler that is holding at base idle", () => {
-    const { state, aiId } = humanVsEasy();
-    waitCore(state, aiId);
-    const hq = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "core")!;
-    const hauler = makeEntity(state, "hauler", aiId, hq.x + 24, hq.y);
-    hauler.autoHarvest = false;
-    hauler.returnToBase = true;
-    hauler.holdPosition = true;
-    hauler.order = null;
-    hauler.state = "idle";
-    tickAi(state);
-    assert.equal(hauler.autoHarvest, false);
-    assert.equal(hauler.holdPosition, true);
-  });
-
   it("attack-moves troops at the enemy HQ now and then", () => {
     const { state, aiId } = humanVsEasy();
     waitCore(state, aiId);
@@ -198,7 +171,8 @@ describe("easy CPU", () => {
   it("trains Troopers from the opening scrap pile", () => {
     const { state, aiId } = humanVsEasy();
     let trained = false;
-    for (let i = 0; i < 800; i++) {
+    // Dynamo, Smelter, then its pour pays for the Muster: the first Trooper takes a little over a minute.
+    for (let i = 0; i < 1000; i++) {
       stepMatch(state);
       if ([...state.entities.values()].some((e) => e.ownerId === aiId && e.type === "rifleman" && e.hp > 0)) {
         trained = true;
@@ -474,27 +448,6 @@ describe("easy CPU", () => {
     tiger.attackTarget = shed.id;
     micro(state, aiId);
     assert.equal(tiger.shell, "he");
-  });
-
-  it("backs a jammed Mauler off, then sends it back to the haul", () => {
-    const { state, aiId } = humanVsEasy();
-    waitCore(state, aiId);
-    const hq = coreOf(state, aiId);
-    const hauler = makeEntity(state, "hauler", aiId, hq.x - 60, hq.y + 60);
-    hauler.cargo = 400;
-    hauler.state = "unload";
-    hauler.autoHarvest = true;
-    hauler.waypoints = [{ x: hq.x, y: hq.y + 60 }];
-    const cpu = state.players.get(aiId)!;
-    cpu.aiHaulerStill = { [hauler.id]: { x: hauler.x, y: hauler.y, since: state.tick - EASY_HAULER_JAM_TICKS } };
-    micro(state, aiId);
-    assert.equal(hauler.order?.kind, "move");
-    hauler.order = null;
-    hauler.autoHarvest = false;
-    hauler.state = "idle";
-    hauler.waypoints = [];
-    tickAi(state);
-    assert.equal(hauler.autoHarvest, true, "a loaded Mauler goes back to work");
   });
 
   it("moves an idle truck parked against a building out of the lane", () => {

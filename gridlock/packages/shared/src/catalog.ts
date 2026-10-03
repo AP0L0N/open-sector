@@ -27,11 +27,12 @@ export const SELL_REFUND = 0.5;
 export const WRECK_SCRAP_MUL = 0.2;
 /** Seconds of the fixing pose to cut a wreck into scrap. */
 export const WRECK_SCRAP_SECONDS = 5;
+/** Marks a scrap tile. Scrap is never used up: a Smelter standing on it draws from it for the whole match. */
 export const SCRAP_TILE_YIELD = 800;
-export const SCRAP_MID_YIELD = 1000;
-export const HAULER_CARGO = 400;
-export const HAULER_HARVEST_SECONDS = 2;
-export const HAULER_UNLOAD_SECONDS = 1.2;
+/** Scrap a Smelter on a scrap field earns its owner each second at full power. Low power slows it like production. */
+export const SMELTER_SCRAP_PER_SEC = 25;
+/** Share of a Smelter's footprint that must lie on scrap tiles before it can be placed. */
+export const SMELTER_SCRAP_COVER = 0.5;
 export const LOW_POWER_MIN_SPEED = 0.25;
 export const FACE_FIRE_DEG = 8;
 /** Hull must finish its yaw before tracks roll. 1° ≈ aligned this tick. */
@@ -505,7 +506,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "hauler" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "stuka" | "fw190" | "bv222" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "stuka" | "fw190" | "bv222" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -529,7 +530,12 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "tower", "research", "radar"];
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "hauler", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
+/** Base buildings an engineer can raise in the field, away from the yard. The Smelter, so distant scrap can be claimed. */
+export const ENGINEER_BUILDINGS: readonly BuildingType[] = ["smelter"];
+export function isEngineerBuilding(type: string): type is BuildingType {
+  return (ENGINEER_BUILDINGS as readonly string[]).includes(type);
+}
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
@@ -2102,8 +2108,6 @@ export function haulerSmokeChargesOf(type: EntityType): number {
  * Rifles, machine guns, and the anti-tank rifle do not touch it.
  */
 export const MAULER_CART_HP = 80;
-/** Seconds parked on a Smelter dock before a lost cart is fitted again. */
-export const MAULER_CART_RESTORE_SECONDS = 8;
 export function maulerCartHpOf(type: EntityType): number {
   return type === "hauler" ? MAULER_CART_HP : 0;
 }
@@ -2417,6 +2421,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
+    blurb: `Stands on a scrap field: at least half its footprint must cover scrap. It melts the field down for ${SMELTER_SCRAP_PER_SEC} scrap a second for as long as it stands, and the field never runs out. Each Smelter adds its own share. Low power slows it. The yard places one near the base; an engineer can raise one on any scrap field he can walk to, which also pushes your build range out to it.`,
   },
   muster: {
     type: "muster",
@@ -3038,7 +3043,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     armorRear: 80,
     leavesWreck: true,
     wreckHp: 70,
-    blurb: "Heavily armored bulldozer. Thick plate on every face. Shells knock the scrap cart off the hitch. Without it, the Mauler drops its load and waits at the Smelter for a new cart.",
+    blurb: "Heavily armored bulldozer. Thick plate on every face. Shells knock the scrap cart off the hitch. Out of the roster for now: Smelters stand on the scrap fields and pour on their own.",
   },
   warden: {
     type: "warden",

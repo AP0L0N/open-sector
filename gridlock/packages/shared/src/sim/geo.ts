@@ -388,14 +388,29 @@ export function destroyEntity(state: MatchState, e: Entity): void {
 }
 
 export function tilesBlockedOrScrap(state: MatchState, tx: number, ty: number, w: number, h: number): boolean {
+  if (tilesBlocked(state, tx, ty, w, h)) return true;
+  for (const t of footprint(tx, ty, w, h)) {
+    if (scrapAt(state, t.x, t.y) > 0) return true;
+  }
+  return false;
+}
+
+/** Ground, trees, buildings, and wrecks under a footprint. Scrap does not count: the Smelter stands on it. */
+export function tilesBlocked(state: MatchState, tx: number, ty: number, w: number, h: number): boolean {
   for (const t of footprint(tx, ty, w, h)) {
     if (!inBounds(state, t.x, t.y)) return true;
     if (state.blocked[tileIndex(state, t.x, t.y)] === 1) return true;
     if (isTree(state, t.x, t.y)) return true;
-    if (scrapAt(state, t.x, t.y) > 0) return true;
     if (occupant(state, t.x, t.y) !== 0) return true;
   }
   return false;
+}
+
+/** Scrap tiles under a footprint. */
+export function scrapTilesUnder(state: MatchState, tx: number, ty: number, w: number, h: number): number {
+  let n = 0;
+  for (const t of footprint(tx, ty, w, h)) if (scrapAt(state, t.x, t.y) > 0) n++;
+  return n;
 }
 
 export function inBuildRadius(state: MatchState, ownerId: string, tx: number, ty: number, w: number, h: number, radius: number): boolean {
@@ -562,11 +577,7 @@ export function makeEntity(
     clip: gun?.clip ?? belt?.clip ?? 0,
     reload: 0,
     reloadMul: gun || belt ? rollReloadMul(() => nextRand(state)) : 1,
-    harvestTime: 0,
-    cargo: 0,
     cartHp: maulerCartHpOf(type),
-    harvestTile: null,
-    autoHarvest: type === "hauler",
     returnToBase: false,
     deployTime: 0,
     specialCooldown: 0,
@@ -618,7 +629,6 @@ export function clearOrder(e: Entity): void {
   e.order = null;
   e.waypoints = [];
   e.attackTarget = null;
-  e.harvestTile = null;
   e.guardFacing = null;
   e.returnToBase = false;
   e.work = 0;
@@ -634,8 +644,6 @@ export function clearOrder(e: Entity): void {
   if (
     e.state === "move" ||
     e.state === "attack" ||
-    e.state === "harvest" ||
-    e.state === "unload" ||
     e.state === "build" ||
     e.state === "repair"
   ) {

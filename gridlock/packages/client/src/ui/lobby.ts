@@ -246,7 +246,7 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
       class: "tiny",
       text: `${filled} / ${room.maxSlots} commanders${cpus ? ` · ${cpus} CPU` : ""} · map seats ${map?.spawns.length ?? 0}`,
     }),
-    el("p", { class: "tiny", text: "Host: Easy on an open slot for a harvesting CPU that pushes now and then." }),
+    el("p", { class: "tiny", text: "Host: Easy on an open slot for a CPU that builds up and pushes now and then." }),
   );
   if (!skirmish) {
     const codeRow = el("div", { class: "code-row" });

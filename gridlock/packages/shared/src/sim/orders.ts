@@ -300,12 +300,10 @@ export function tickMovement(state: MatchState, dt: number): void {
 }
 
 /** Attack pose while closing on a patrol contact. The route itself stays a walk. */
-function movingState(e: Entity): "attack" | "move" | "harvest" | "unload" {
+function movingState(e: Entity): "attack" | "move" {
   const kind = e.order?.kind;
   if (kind === "attack" || kind === "attackmove" || kind === "forceattack") return "attack";
   if (kind === "patrol" && e.attackTarget != null) return "attack";
-  if (kind === "harvest") return "harvest";
-  if (kind === "unload") return "unload";
   return "move";
 }
 

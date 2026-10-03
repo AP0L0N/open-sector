@@ -15,8 +15,6 @@ export function toWreck(state: MatchState, e: Entity): void {
   e.order = null;
   e.waypoints = [];
   e.attackTarget = null;
-  e.harvestTile = null;
-  e.autoHarvest = false;
   e.cooldown = 0;
   e.reload = 0;
   e.mgCooldown = 0;

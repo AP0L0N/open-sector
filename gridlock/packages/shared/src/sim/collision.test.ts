@@ -39,7 +39,6 @@ describe("unit collision", () => {
     const y = tileCenter(16, ts);
     const hauler = makeEntity(state, "hauler", "A", tileCenter(36, ts), y);
     const trooper = makeEntity(state, "rifleman", "A", hauler.x + hauler.radius + 6, y);
-    hauler.autoHarvest = false;
     hauler.facing = 0;
     const destX = tileCenter(56, ts);
     applyCommand(state, "A", { type: "cmd.move", ids: [hauler.id], x: destX, y });
@@ -241,7 +240,6 @@ describe("warden ammo", () => {
     state.heights.fill(0);
     const tank = makeEntity(state, "warden", "A", 20 * 32, 20 * 32);
     const dummy = makeEntity(state, "hauler", "B", 24 * 32, 20 * 32);
-    dummy.autoHarvest = false;
     tank.facing = 0;
     dummy.facing = Math.PI;
     const ap0 = tank.ammo.ap ?? 0;

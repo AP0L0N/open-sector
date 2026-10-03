@@ -9,7 +9,6 @@ const QUEUEABLE = new Set<ClientMessage["type"]>([
   "cmd.guard",
   "cmd.rotate",
   "cmd.garrison",
-  "cmd.harvest",
   "cmd.repair",
   "cmd.supply",
   "cmd.disable",

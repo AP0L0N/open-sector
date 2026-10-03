@@ -18,6 +18,7 @@ import {
   inBuildRadius,
   makeEntity,
   tileNearOwnBuildings,
+  tilesBlocked,
   tilesBlockedOrScrap,
 } from "./geo.js";
 import { ejectUnits } from "./deploy.js";
@@ -26,7 +27,7 @@ import { fieldPiecesFor, fieldSiteClear, fieldTiles, raiseWallCrest, restampFort
 import { repathIfBlocked } from "./orders.js";
 import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
-import { spawnUnit } from "./train.js";
+import { smelterSiteOk } from "./smelter.js";
 import type { Entity, MatchState, SimPlayer, StructureJob } from "./types.js";
 
 type BuildSlot = "structure" | "defence";
@@ -185,19 +186,42 @@ export function placeBuilding(
   if (!job?.ready || job.type !== type) return "That structure is not ready.";
   if (!hasCore(state, playerId)) return "Deploy the Rig.";
   const def = catalog(type);
-  if (tilesBlockedOrScrap(state, tx, ty, def.tileW, def.tileH)) return "Cannot place there.";
+  const siteErr = buildingSiteError(state, type, tx, ty);
+  if (siteErr) return siteErr;
   if (!inBuildRadius(state, playerId, tx, ty, def.tileW, def.tileH, BUILD_RADIUS)) {
     return "Too far from your base.";
   }
+  raiseBuilding(state, playerId, type, tx, ty);
+  dropJob(p, job);
+  return null;
+}
+
+/** Why this footprint cannot take the building, or null when the ground is right for it. */
+export function buildingSiteError(state: MatchState, type: BuildingType, tx: number, ty: number): string | null {
+  const def = catalog(type);
+  if (type === "smelter") {
+    if (!smelterSiteOk(state, tx, ty)) {
+      return tilesBlockedOrScrap(state, tx, ty, def.tileW, def.tileH) && !tilesBlocked(state, tx, ty, def.tileW, def.tileH)
+        ? "Not enough scrap under the Smelter."
+        : tilesBlocked(state, tx, ty, def.tileW, def.tileH)
+          ? "Cannot place there."
+          : "A Smelter has to stand on scrap.";
+    }
+    return null;
+  }
+  return tilesBlockedOrScrap(state, tx, ty, def.tileW, def.tileH) ? "Cannot place there." : null;
+}
+
+/** Stand the building up: occupy its tiles, push units off them, and make blocked walkers re-path. */
+export function raiseBuilding(state: MatchState, playerId: string, type: BuildingType, tx: number, ty: number): Entity {
+  const def = catalog(type);
   const c = buildingCenter(tx, ty, def.tileW, def.tileH, state.tileSize);
   const b = makeEntity(state, type, playerId, c.x, c.y, { tileX: tx, tileY: ty });
   ejectUnits(state, b);
   for (const u of state.entities.values()) {
     if (u.kind === "unit") repathIfBlocked(state, u);
   }
-  if (type === "smelter") spawnUnit(state, playerId, "hauler", b, true);
-  dropJob(p, job);
-  return null;
+  return b;
 }
 
 function pieceNearOwnBuildings(state: MatchState, ownerId: string, structure: YardFieldType, piece: FieldPiece): boolean {

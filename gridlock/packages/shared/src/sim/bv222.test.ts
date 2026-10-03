@@ -457,25 +457,6 @@ describe("BV 222", () => {
     assert.ok(titan.hp > 0);
   });
 
-  it("does not harvest scrap while a Mauler is in the bay", () => {
-    const state = twoPlayerMatch();
-    const { plane } = trainedTransport(state);
-    plane.air!.payload = "troops";
-    const hauler = makeEntity(state, "hauler", "A", plane.x, plane.y);
-    hauler.garrisonedIn = plane.id;
-    plane.garrison.push(hauler.id);
-    hauler.state = "garrison";
-    hauler.autoHarvest = true;
-    const tx = worldToTile(plane.x, state.tileSize);
-    const ty = worldToTile(plane.y, state.tileSize);
-    hauler.harvestTile = { x: tx, y: ty };
-    const idx = ty * state.width + tx;
-    state.scrapYield[idx] = 100;
-    ticks(state, 50);
-    assert.equal(hauler.cargo, 0);
-    assert.equal(state.scrapYield[idx], 100);
-  });
-
   it("bails the stick out before it goes down", () => {
     const state = twoPlayerMatch();
     const ts = state.tileSize;

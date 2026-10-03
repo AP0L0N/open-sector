@@ -38,14 +38,12 @@ function building(partial: Partial<HoverEntity> & Pick<HoverEntity, "id" | "type
 function act(opts: {
   selected: HoverEntity[];
   hit?: HoverEntity | null;
-  scrap?: boolean;
   mine?: boolean;
 }): ReturnType<typeof resolveHoverAction> {
   return resolveHoverAction({
     youPlayerId: YOU,
     selected: opts.selected,
     hit: opts.hit ?? null,
-    scrap: opts.scrap ?? false,
     mine: opts.mine,
     allied,
   });
@@ -199,26 +197,6 @@ describe("resolveHoverAction", () => {
     const wreck = unit({ id: 40, type: "warden", ownerId: FOE, wreck: true, hp: 30 });
     assert.equal(act({ selected: [eng], hit: wreck }), "scrap");
     assert.equal(act({ selected: [eng], hit: unit({ id: 41, type: "warden", ownerId: YOU, wreck: true, hp: 10 }) }), "scrap");
-  });
-
-  it("gathers scrap when a hauler is selected", () => {
-    assert.equal(act({ selected: [hauler], scrap: true }), "gather");
-  });
-
-  it("gathers scrap under a friendly unit", () => {
-    assert.equal(act({ selected: [hauler], hit: trooper, scrap: true }), "gather");
-  });
-
-  it("does not gather without a hauler", () => {
-    assert.equal(act({ selected: [trooper], scrap: true }), null);
-  });
-
-  it("prefers attack over gather when hovering an enemy on scrap", () => {
-    assert.equal(act({ selected: [hauler], hit: foeTrooper, scrap: true }), "attack");
-  });
-
-  it("prefers capture over gather", () => {
-    assert.equal(act({ selected: [trooper, hauler], hit: foeCore, scrap: true }), "capture");
   });
 
   it("ignores selection of wrecks and empty selection", () => {

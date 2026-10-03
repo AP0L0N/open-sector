@@ -58,7 +58,7 @@ interface GroundKind {
 const GROUND: readonly GroundKind[] = [
   { tile: TILE_EMPTY, name: "Grass", img: grassUrl, hint: "Open ground. Paints over anything." },
   { tile: TILE_ROAD, name: "Road", img: dirtUrl, hint: "Dirt lane. Same footing as grass." },
-  { tile: TILE_SCRAP, name: "Scrap", img: scrapUrl, hint: "Scrap field. Haulers harvest it." },
+  { tile: TILE_SCRAP, name: "Scrap", img: scrapUrl, hint: "Scrap field. A Smelter built on it pours scrap for the whole match. Paint at least 3×3." },
   { tile: TILE_WATER, name: "Water", img: waterUrl, hint: "Pond. Sinks to the valley floor." },
   { tile: TILE_TREE, name: "Trees", img: treeUrl, hint: "Woods. Block sight and walking." },
   { tile: TILE_FENCE, name: "Fence", img: fenceUrl, hint: "Blocks walking. Shots pass over." },
@@ -630,7 +630,9 @@ function paintChecks(): void {
   };
   add(s.spawns.length === s.maxPlayers ? "ok" : "bad", `Starts placed: ${s.spawns.length} / ${s.maxPlayers}`);
   const scrap = M.scrapCells(s);
-  add(scrap > 0 ? "ok" : "warn", scrap > 0 ? `Scrap: ${scrap} tiles` : "No scrap yet: nothing to harvest");
+  add(scrap > 0 ? "ok" : "warn", scrap > 0 ? `Scrap: ${scrap} tiles` : "No scrap yet: nowhere to stand a Smelter");
+  const far = M.startsFarFromScrap(s);
+  if (far.length > 0) add("warn", `Starts with no scrap in yard range: ${far.join(", ")} (an engineer would have to walk out)`);
   add("ok", `Buildings: ${s.features.length}`);
   const problem = M.sheetProblem(s);
   if (problem && !problem.startsWith("Place all")) add("bad", problem);
