@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BUILDING_TYPES, TRAIN_TYPES } from "@gridlock/shared";
+import { BUILDING_TYPES, TRAIN_TYPES, YARD_FIELD_TYPES } from "@gridlock/shared";
 import { groupEntries, groupState, sidebarGroupOf, type CameoFlags } from "./sidebar-groups.js";
 
 const idle: CameoFlags = { disabled: false, ready: false, working: false, paused: false };
@@ -9,11 +9,12 @@ describe("sidebarGroupOf", () => {
   it("files every buildable and trainable type into exactly one group", () => {
     const g = groupEntries();
     const all = Object.values(g).flat();
-    assert.equal(all.length, BUILDING_TYPES.length + TRAIN_TYPES.length + 2);
+    assert.equal(all.length, BUILDING_TYPES.length + TRAIN_TYPES.length + YARD_FIELD_TYPES.length);
     assert.equal(new Set(all.map((e) => e.id)).size, all.length);
     const defenceTypes = g.defences.map((e) => e.type);
     assert.ok(defenceTypes.includes("sandbags"));
     assert.ok(defenceTypes.includes("wall"));
+    assert.ok(defenceTypes.includes("greatwall"));
     assert.equal(all.some((e) => e.id === "build-teeth" || e.id === "build-trench"), false);
   });
 

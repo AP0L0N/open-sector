@@ -953,6 +953,7 @@ const TYPE_ORDER: EntityType[] = [
   "jumpjet",
   "sandbags",
   "wall",
+  "greatwall",
   "teeth",
   "trench",
   "rig",
@@ -1662,6 +1663,14 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
         "Build a concrete wall with barbed wire. Scroll to turn it before you set the start, then drag to the end. The line is one job and takes longer the more pieces you lay. It appears when the engineer finishes.",
       on: view?.fieldPlace === "wall",
     });
+    out.push({
+      slot: "field-greatwall",
+      act: "field-greatwall",
+      label: "Great Wall",
+      title:
+        "Build a broad stone rampart. Vehicles cannot cross it; infantry walk up onto it and gain health, sight, and reach on top. Scroll to turn it before you set the start, then drag to the end. The line is one job and appears when the engineer finishes.",
+      on: view?.fieldPlace === "greatwall",
+    });
   }
   const inf = units.filter((e) => isInfantryType(e.type) && e.type !== "engineer" && e.type !== "cyborg");
   if (inf.length) {
@@ -2013,8 +2022,23 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     if (units.length) view.setGuardMode(!view.guardMode);
     return;
   }
-  if (act === "field-sandbags" || act === "field-teeth" || act === "field-trench" || act === "field-wall") {
-    const structure = act === "field-sandbags" ? "sandbags" : act === "field-teeth" ? "teeth" : act === "field-trench" ? "trench" : "wall";
+  if (
+    act === "field-sandbags" ||
+    act === "field-teeth" ||
+    act === "field-trench" ||
+    act === "field-wall" ||
+    act === "field-greatwall"
+  ) {
+    const structure =
+      act === "field-sandbags"
+        ? "sandbags"
+        : act === "field-teeth"
+          ? "teeth"
+          : act === "field-trench"
+            ? "trench"
+            : act === "field-greatwall"
+              ? "greatwall"
+              : "wall";
     view.setFieldPlace(structure);
     return;
   }
