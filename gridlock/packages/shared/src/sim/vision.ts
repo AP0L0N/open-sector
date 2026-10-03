@@ -4,6 +4,9 @@ import {
   garrisonSightBonusOf,
   HEIGHT_MAX,
   SMOKE_PEEK_TILES,
+  SPOTLIGHT_HALF_DEG,
+  SPOTLIGHT_REACH_TILES,
+  TOWER_EYE_HEIGHT,
   catalog,
   entityIsScouting,
   isArmoredType,
@@ -26,6 +29,7 @@ import {
 import { allies, fillHullCover, footprint, inBounds, worldToTile } from "./geo.js";
 import { occupantEye, occupantSightTiles } from "./garrison.js";
 import { fillSmokeMask, smokeCloudTileBounds } from "./smoke.js";
+import { hasSpotlight, nightReachMul, nightTiles, spotFacingOf, spotlightManned, spotlightsOn } from "./night.js";
 import type { Entity, MatchState } from "./types.js";
 
 export type SightSource = {
@@ -48,7 +52,24 @@ export type SightSource = {
   scoutHp?: number;
   /** Aircraft height. A plane in the air looks down over hills. */
   air?: { alt: number };
+  /** Read for a watch tower's lamp. */
+  facing?: number;
+  spotFacing?: number;
+  hp?: number;
+  ruined?: boolean;
+  wreck?: boolean;
 };
+
+/** Light at the moment sight is painted: how far it carries, and whether lamps are lit. */
+export type SightLight = { mul: number; spots: boolean };
+
+const DAYLIGHT: SightLight = { mul: 1, spots: false };
+
+export function sightLightAt(tick: number): SightLight {
+  return { mul: nightReachMul(tick), spots: spotlightsOn(tick) };
+}
+
+const SPOT_COS = Math.cos((SPOTLIGHT_HALF_DEG * Math.PI) / 180);
 
 const FOV_N8: readonly [number, number][] = [
   [-1, -1],
@@ -207,7 +228,23 @@ type SightParams = {
   fy: number;
   fw: number;
   fh: number;
+  /** Lamp beam: reach in tiles (0 when dark or none), unit heading, and the cab's eye. */
+  sr: number;
+  sdx: number;
+  sdy: number;
+  seye: number;
 };
+
+const NO_SPOT = { sr: 0, sdx: 0, sdy: 0, seye: 0 };
+
+function spotOf(e: SightSource, light: SightLight): typeof NO_SPOT {
+  if (!light.spots || e.kind !== "building" || !hasSpotlight(e.type)) return NO_SPOT;
+  if (!spotlightManned({ type: e.type, ownerId: e.ownerId, hp: e.hp ?? 1, ruined: e.ruined, wreck: e.wreck })) {
+    return NO_SPOT;
+  }
+  const a = spotFacingOf({ facing: e.facing ?? 0, spotFacing: e.spotFacing });
+  return { sr: SPOTLIGHT_REACH_TILES, sdx: Math.cos(a), sdy: Math.sin(a), seye: TOWER_EYE_HEIGHT };
+}
 
 function sightParams(
   e: SightSource,
@@ -215,6 +252,7 @@ function sightParams(
   height: number,
   tileSize: number,
   elev?: ArrayLike<number>,
+  light: SightLight = DAYLIGHT,
 ): SightParams {
   const ignore = coverIgnoreId(e);
   const eye = e.observerEye ?? observerEyeForEntity(e);
@@ -233,7 +271,7 @@ function sightParams(
     return {
       ox: e.tileX + Math.floor(e.tileW / 2),
       oy: e.tileY + Math.floor(e.tileH / 2),
-      radius: e.sightTiles ?? sightTilesOf(e.type, maxH),
+      radius: nightTiles(e.sightTiles ?? sightTilesOf(e.type, maxH), light.mul),
       eye,
       uphill,
       ignore,
@@ -241,6 +279,7 @@ function sightParams(
       fy: e.tileY,
       fw: e.tileW,
       fh: e.tileH,
+      ...spotOf(e, light),
     };
   }
   const tx = worldToTile(e.x, tileSize);
@@ -249,7 +288,10 @@ function sightParams(
   return {
     ox: tx,
     oy: ty,
-    radius: e.sightTiles ?? (entityIsScouting(e) ? sightTilesOf("rifleman", h) : sightTilesOf(e.type, h, droneSightExtra(e))),
+    radius: nightTiles(
+      e.sightTiles ?? (entityIsScouting(e) ? sightTilesOf("rifleman", h) : sightTilesOf(e.type, h, droneSightExtra(e))),
+      light.mul,
+    ),
     eye,
     uphill,
     ignore,
@@ -257,6 +299,7 @@ function sightParams(
     fy: 0,
     fw: 0,
     fh: 0,
+    ...NO_SPOT,
   };
 }
 
@@ -271,15 +314,70 @@ function sameSightParams(a: SightParams, b: SightParams): boolean {
     a.fx === b.fx &&
     a.fy === b.fy &&
     a.fw === b.fw &&
-    a.fh === b.fh
+    a.fh === b.fh &&
+    a.sr === b.sr &&
+    a.sdx === b.sdx &&
+    a.sdy === b.sdy &&
+    a.seye === b.seye
   );
 }
 
 /** Chebyshev reach of the box `paintSight` scans, uphill bonus included. */
 function sightBoxRadius(p: SightParams, elev: boolean): number {
-  if (p.radius <= 0) return 0;
-  if (!elev) return p.radius;
-  return p.radius + (p.uphill > 0 ? HEIGHT_MAX * p.uphill : 0);
+  let r = 0;
+  if (p.radius > 0) r = !elev ? p.radius : p.radius + (p.uphill > 0 ? HEIGHT_MAX * p.uphill : 0);
+  return Math.max(r, p.sr);
+}
+
+/** The lamp's beam reaches this tile, before line of sight and smoke. */
+function inSpotCone(p: SightParams, x: number, y: number): boolean {
+  if (p.sr <= 0) return false;
+  const d = sightDist(x, y, p.ox, p.oy);
+  if (d < 1 || d > p.sr) return false;
+  const dx = x - p.ox;
+  const dy = y - p.oy;
+  return dx * p.sdx + dy * p.sdy >= SPOT_COS * Math.hypot(dx, dy);
+}
+
+/** Same test as `paintSpot`, for one tile. */
+function spotLightsTile(
+  p: SightParams,
+  x: number,
+  y: number,
+  elev: ArrayLike<number> | undefined,
+  width: number,
+  height: number,
+  cover: CoverField | undefined,
+): boolean {
+  if (!inSpotCone(p, x, y)) return false;
+  if (!elev) return true;
+  if (cover) cover.ignoreOccupyId = p.ignore;
+  if (!hasFullLos(elev, width, height, p.ox, p.oy, x, y, cover, p.seye)) return false;
+  if (cover && coverSmokeAt(cover, width, height, x, y) && sightDist(x, y, p.ox, p.oy) > SMOKE_PEEK_TILES) return false;
+  return true;
+}
+
+/** Ground the lamp lights, seen from the cab. The beam stops on what stops an eye. */
+function paintSpot(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  p: SightParams,
+  elev?: ArrayLike<number>,
+  cover?: CoverField,
+): void {
+  if (p.sr <= 0) return;
+  const x0 = Math.max(0, p.ox - p.sr);
+  const x1 = Math.min(width - 1, p.ox + p.sr);
+  const y0 = Math.max(0, p.oy - p.sr);
+  const y1 = Math.min(height - 1, p.oy + p.sr);
+  for (let y = y0; y <= y1; y++) {
+    const row = y * width;
+    for (let x = x0; x <= x1; x++) {
+      if (mask[row + x]) continue;
+      if (spotLightsTile(p, x, y, elev, width, height, cover)) mask[row + x] = 1;
+    }
+  }
 }
 
 function paintSightParams(
@@ -298,6 +396,7 @@ function paintSightParams(
     }
   }
   paintSight(mask, width, height, p.ox, p.oy, p.radius, elev, cover, p.eye, p.uphill);
+  paintSpot(mask, width, height, p, elev, cover);
 }
 
 export function paintEntitySight(
@@ -308,8 +407,9 @@ export function paintEntitySight(
   e: SightSource,
   elev?: ArrayLike<number>,
   cover?: CoverField,
+  light: SightLight = DAYLIGHT,
 ): void {
-  paintSightParams(mask, width, height, sightParams(e, width, height, tileSize, elev), elev, cover);
+  paintSightParams(mask, width, height, sightParams(e, width, height, tileSize, elev, light), elev, cover);
 }
 
 function elevAtSafe(elev: ArrayLike<number>, width: number, height: number, x: number, y: number): number {
@@ -425,6 +525,9 @@ function mix(h: number, v: number): number {
 function visionKey(state: MatchState, playerId: string): number {
   let h = 2166136261;
   h = mix(h, state.clearedTrees.length);
+  const light = sightLightAt(state.tick);
+  h = mix(h, Math.round(light.mul * 4096));
+  h = mix(h, light.spots ? 1 : 0);
   for (const e of state.entities.values()) {
     if (e.hp <= 0) continue;
     if (e.kind === "unit" && isArmoredType(e.type)) {
@@ -447,6 +550,7 @@ function visionKey(state: MatchState, playerId: string): number {
     h = mix(h, e.scoutOut && e.scoutHp > 0 ? 1 : 0);
     h = mix(h, e.air ? Math.round(e.air.alt) : 0);
     h = mix(h, occupantSightTiles(state, e) ?? -1);
+    if (light.spots && hasSpotlight(e.type)) h = mix(h, Math.round(spotFacingOf(e) * 4096));
   }
   for (const c of state.smokeClouds) {
     h = mix(h, c.id);
@@ -631,6 +735,7 @@ function alliedSight(state: MatchState, playerId: string): { e: Entity; p: Sight
     observers.push(e);
   }
   observers.sort((a, b) => observerRadius(state, b) - observerRadius(state, a));
+  const light = sightLightAt(state.tick);
   return observers.map((e) => {
     const sightTiles = occupantSightTiles(state, e) ?? (entityIsScouting(e) ? sightTilesForEntity(state, e) : undefined);
     const observerEye = occupantEye(state, e);
@@ -640,6 +745,7 @@ function alliedSight(state: MatchState, playerId: string): { e: Entity; p: Sight
       state.height,
       state.tileSize,
       state.heights,
+      light,
     );
     return { e, p };
   });
@@ -705,10 +811,23 @@ function observerLightsTile(
   cover: CoverField,
 ): boolean {
   if (p.fw > 0 && x >= p.fx && x < p.fx + p.fw && y >= p.fy && y < p.fy + p.fh) return true;
+  if (eyeLightsTile(p, x, y, elev, width, height, cover)) return true;
+  return spotLightsTile(p, x, y, elev, width, height, cover);
+}
+
+function eyeLightsTile(
+  p: SightParams,
+  x: number,
+  y: number,
+  elev: ArrayLike<number>,
+  width: number,
+  height: number,
+  cover: CoverField,
+): boolean {
   if (p.radius <= 0) return false;
   const d = sightDist(x, y, p.ox, p.oy);
   if (d > p.radius) {
-    if (p.uphill <= 0 || d > sightBoxRadius(p, true)) return false;
+    if (p.uphill <= 0 || d > p.radius + HEIGHT_MAX * p.uphill) return false;
     const h0 = elevAtSafe(elev, width, height, p.ox, p.oy);
     if (d > p.radius + levelSightExtra(h0, elevAtSafe(elev, width, height, x, y), p.uphill)) return false;
   }
@@ -917,6 +1036,7 @@ export function visionMaskFromSnapshot(
         smoke,
       }
     : undefined;
+  const light = sightLightAt(snap.tick);
   const allied: EntityView[] = [];
   for (const e of snap.entities) {
     if (e.wreck) continue;
@@ -939,6 +1059,7 @@ export function visionMaskFromSnapshot(
       sightTiles != null || observerEye != null ? { ...e, sightTiles, observerEye } : e,
       elev,
       cover,
+      light,
     );
   }
   sealFovIslands(mask, width, height);
@@ -1154,8 +1275,9 @@ function observerSeesTile(
     }
     const ox = obs.tileX + Math.floor(obs.tileW / 2);
     const oy = obs.tileY + Math.floor(obs.tileH / 2);
-    const radius = occupantSightTiles(state, obs) ?? sightTilesOf(obs.type, maxH);
-    return tileInSight(
+    const light = sightLightAt(state.tick);
+    const radius = nightTiles(occupantSightTiles(state, obs) ?? sightTilesOf(obs.type, maxH), light.mul);
+    const seen = tileInSight(
       tx,
       ty,
       ox,
@@ -1168,11 +1290,18 @@ function observerSeesTile(
       observerEyeForEntity(obs),
       uphillSightForEntity(obs),
     );
+    if (seen) return true;
+    const p = sightParams(obs, width, height, state.tileSize, elev, light);
+    return spotLightsTile(p, tx, ty, elev, width, height, cover);
   }
   const ox = worldToTile(obs.x, state.tileSize);
   const oy = worldToTile(obs.y, state.tileSize);
   const h = elevAtSafe(elev, width, height, ox, oy);
-  const radius = occupantSightTiles(state, obs) ?? (entityIsScouting(obs) ? sightTilesOf("rifleman", h) : sightTilesOf(obs.type, h, droneSightExtra(obs)));
+  const radius = nightTiles(
+    occupantSightTiles(state, obs) ??
+      (entityIsScouting(obs) ? sightTilesOf("rifleman", h) : sightTilesOf(obs.type, h, droneSightExtra(obs))),
+    sightLightAt(state.tick).mul,
+  );
   return tileInSight(
     tx,
     ty,

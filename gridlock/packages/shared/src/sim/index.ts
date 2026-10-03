@@ -60,7 +60,9 @@ export {
   tileOnMask,
   entityOnMask,
   canSeeEntity,
+  sightLightAt,
 } from "./vision.js";
+export type { SightLight } from "./vision.js";
 export {
   inSmokeCloud,
   tileInSmoke,
@@ -93,4 +95,14 @@ export {
   coverSmokeAt,
 } from "./elevation.js";
 export { canScout, setScoutOut, hideScout, woundScout } from "./scout.js";
+export {
+  DAY_CYCLE_SECONDS,
+  daylightAt,
+  nightReachMul,
+  nightTiles,
+  spotlightsOn,
+  hasSpotlight,
+  spotlightManned,
+  spotFacingOf,
+} from "./night.js";
 export { fieldLine, fieldLineMax, fieldSiteClear, sandbagCoverBonus, wallAxes } from "./field.js";

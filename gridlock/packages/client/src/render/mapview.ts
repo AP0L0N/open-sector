@@ -7,6 +7,12 @@ import {
   smokeCloudPuffs,
   fires,
   radarLaidOf,
+  hasSpotlight,
+  daylightAt,
+  SPOTLIGHT_HALF_DEG,
+  SPOTLIGHT_REACH_TILES,
+  SPOTLIGHT_TURN_DEG_PER_SEC,
+  TOWER_EYE_HEIGHT,
   fieldSpan,
   GUARD_CONE_DEG,
   isCivilianType,
@@ -309,6 +315,7 @@ import { guardHeightTag, guardReach, type GuardUnit } from "./guard-reach.js";
 import { BuildingVeil, columnPolygon, uniformVeil, veilCells } from "./building-fog.js";
 import { FOG_RGB, FogField } from "./fog-field.js";
 import { FogFlat, FogGl } from "./fog-gl.js";
+import { NIGHT_RGB, beamPolygon, easeSpot, lampGlow, nightShade } from "./night.js";
 import {
   blitTerrain,
   bakeMini,
@@ -553,6 +560,11 @@ export class MapView {
   /** Undefined until first tried; null when WebGL2 is unavailable. */
   private fogGl: FogGl | null | undefined = undefined;
   private fogFlat: FogFlat | null = null;
+  /** Night tint, drawn here with the lamp beams cut out, then laid over the field. */
+  private nightLayer: HTMLCanvasElement | null = null;
+  /** Lamp heading on screen per tower, eased toward the snapshot. */
+  private spotShown = new Map<number, number>();
+  private spotFrameAt = 0;
   /** Every tile counts as known ground: the map is never shrouded. */
   private knownGround: Uint8Array | null = null;
   private miniFog: HTMLCanvasElement | null = null;
@@ -1029,7 +1041,7 @@ export class MapView {
     if (this.attackMoveMode && this.ownSelectedIds().length === 0) this.setAttackMoveMode(false);
     if (this.patrolMode && this.ownSelectedIds().length === 0) this.setPatrolMode(false);
     if (this.forceAttackMode && this.ownForceIds().length === 0) this.setForceAttackMode(false);
-    if (this.rotateMode && this.ownAimIds().length === 0) this.setRotateMode(false);
+    if (this.rotateMode && this.ownRotateIds().length === 0) this.setRotateMode(false);
     if (this.guardMode && this.ownSelectedIds().length === 0) this.setGuardMode(false);
     if (this.fieldPlace && !this.curr.entities.some((e) => this.selected.has(e.id) && e.type === "engineer" && e.ownerId === this.curr.youPlayerId)) {
       this.fieldPlace = null;
@@ -1845,7 +1857,7 @@ export class MapView {
     if (k === ROTATE_HOTKEY) {
       e.preventDefault();
       if (this.fieldPlace || this.readyYardField()) return;
-      const ids = this.ownAimIds();
+      const ids = this.ownRotateIds();
       if (ids.length) this.setRotateMode(!this.rotateMode);
       return;
     }
@@ -2073,6 +2085,16 @@ export class MapView {
     });
   }
 
+  /** What Rotate turns: the aimers, plus own watch towers, whose spotlight swings. */
+  private ownRotateIds(): number[] {
+    const out = this.ownAimIds();
+    for (const id of this.selected) {
+      const ent = this.curr.entities.find((x) => x.id === id);
+      if (ent && ent.ownerId === this.curr.youPlayerId && ent.spotFacing != null && hasSpotlight(ent.type)) out.push(id);
+    }
+    return out;
+  }
+
   /**
    * Guns, plus a garrison host whose soldiers shoot from inside (a Mammoth,
    * bunker, tower, house, or trench). Rotate stays on ownAimIds.
@@ -2132,7 +2154,7 @@ export class MapView {
   }
 
   private commitRotate(px: number, py: number): void {
-    const ids = this.ownAimIds();
+    const ids = this.ownRotateIds();
     if (!this.keepModeForQueue()) this.setRotateMode(false);
     if (ids.length === 0) return;
     const hit = this.hit(px, py);
@@ -2934,6 +2956,8 @@ export class MapView {
     }
     items.sort(compareDrawOrder);
     for (const it of items) it.run();
+    // Over the ground and everything on it; shots and blasts after stay bright in the dark.
+    this.drawNight();
 
     for (const p of this.curr.projectiles) {
       if (p.bounced !== true) continue;
@@ -3003,6 +3027,126 @@ export class MapView {
     this.drawPlanOverlay();
     this.drawDroneLeash();
     this.drawRadarReach();
+  }
+
+  /** Towers with a lit lamp, each with the heading its beam shows this frame. */
+  private easedLamps(): { e: EntityView; facing: number }[] {
+    const now = performance.now();
+    const dt = this.spotFrameAt > 0 ? Math.min(0.25, (now - this.spotFrameAt) / 1000) : 0;
+    this.spotFrameAt = now;
+    const speed = Math.max(1, this.curr.gameSpeed || 1);
+    const maxStep = ((SPOTLIGHT_TURN_DEG_PER_SEC * speed * 1.25 * Math.PI) / 180) * dt;
+    const out: { e: EntityView; facing: number }[] = [];
+    const live = new Set<number>();
+    for (const e of this.curr.entities) {
+      if (e.spotFacing == null || !hasSpotlight(e.type) || e.hp <= 0) continue;
+      live.add(e.id);
+      const was = this.spotShown.get(e.id);
+      const facing = was == null ? e.spotFacing : easeSpot(was, e.spotFacing, maxStep);
+      this.spotShown.set(e.id, facing);
+      out.push({ e, facing });
+    }
+    for (const id of this.spotShown.keys()) if (!live.has(id)) this.spotShown.delete(id);
+    return out;
+  }
+
+  /**
+   * Dusk and night: a blue-black tint over the field, with each tower's beam
+   * cut out of it and warmed. By day a selected own tower shows where its
+   * lamp points, so Rotate can be set before dark.
+   */
+  private drawNight(): void {
+    const lamps = this.easedLamps();
+    const daylight = daylightAt(this.curr.tick);
+    const shade = nightShade(daylight);
+    const glow = lampGlow(daylight);
+    const ctx = this.ctx;
+    const reach = SPOTLIGHT_REACH_TILES * this.ts();
+    const half = (SPOTLIGHT_HALF_DEG * Math.PI) / 180;
+    const beamPath = (c: CanvasRenderingContext2D, e: EntityView, facing: number): { ax: number; ay: number; r: number } => {
+      const pts = beamPolygon(e.x, e.y, facing, reach, half, 16).map((p) => this.toScreen(p.x, p.y));
+      c.beginPath();
+      pts.forEach((p, i) => (i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y)));
+      c.closePath();
+      const apex = pts[0]!;
+      let r = 1;
+      for (const p of pts) r = Math.max(r, Math.hypot(p.x - apex.x, p.y - apex.y));
+      return { ax: apex.x, ay: apex.y, r };
+    };
+    if (shade > 0.001) {
+      const w = this.canvas.width;
+      const h = this.canvas.height;
+      this.nightLayer ??= document.createElement("canvas");
+      const layer = this.nightLayer;
+      if (layer.width !== w || layer.height !== h) {
+        layer.width = w;
+        layer.height = h;
+      }
+      const n = layer.getContext("2d");
+      if (n) {
+        n.setTransform(1, 0, 0, 1, 0, 0);
+        n.globalCompositeOperation = "source-over";
+        n.clearRect(0, 0, w, h);
+        n.fillStyle = `rgba(${NIGHT_RGB}, ${shade})`;
+        n.fillRect(0, 0, w, h);
+        if (glow > 0) {
+          n.setTransform(ctx.getTransform());
+          n.globalCompositeOperation = "destination-out";
+          for (const { e, facing } of lamps) {
+            const { ax, ay, r } = beamPath(n, e, facing);
+            const g = n.createRadialGradient(ax, ay, 0, ax, ay, r);
+            g.addColorStop(0, `rgba(0,0,0,${0.55 * glow})`);
+            g.addColorStop(0.75, `rgba(0,0,0,${0.85 * glow})`);
+            g.addColorStop(1, "rgba(0,0,0,0)");
+            n.fillStyle = g;
+            n.fill();
+            // A pool of light at the foot of the tower.
+            const foot = n.createRadialGradient(ax, ay, 0, ax, ay, this.ts() * 3);
+            foot.addColorStop(0, `rgba(0,0,0,${0.6 * glow})`);
+            foot.addColorStop(1, "rgba(0,0,0,0)");
+            n.fillStyle = foot;
+            n.beginPath();
+            n.arc(ax, ay, this.ts() * 3, 0, Math.PI * 2);
+            n.fill();
+          }
+        }
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.drawImage(layer, 0, 0);
+        ctx.restore();
+      }
+    }
+    ctx.save();
+    for (const { e, facing } of lamps) {
+      if (glow > 0) {
+        // Warm the beam, and burn a point of light on the cab.
+        ctx.globalCompositeOperation = "lighter";
+        const { ax, ay, r } = beamPath(ctx, e, facing);
+        const g = ctx.createRadialGradient(ax, ay, 0, ax, ay, r);
+        g.addColorStop(0, `rgba(255, 236, 180, ${0.16 * glow})`);
+        g.addColorStop(0.8, `rgba(255, 226, 160, ${0.08 * glow})`);
+        g.addColorStop(1, "rgba(255, 220, 150, 0)");
+        ctx.fillStyle = g;
+        ctx.fill();
+        const cab = this.toScreen(e.x, e.y, this.elevAt(e.x, e.y) + TOWER_EYE_HEIGHT);
+        const lamp = ctx.createRadialGradient(cab.x, cab.y, 0, cab.x, cab.y, 9);
+        lamp.addColorStop(0, `rgba(255, 248, 220, ${0.95 * glow})`);
+        lamp.addColorStop(1, "rgba(255, 230, 170, 0)");
+        ctx.fillStyle = lamp;
+        ctx.beginPath();
+        ctx.arc(cab.x, cab.y, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalCompositeOperation = "source-over";
+      } else if (this.selected.has(e.id) && e.ownerId === this.curr.youPlayerId) {
+        ctx.setLineDash([5, 6]);
+        ctx.lineWidth = 1.25;
+        ctx.strokeStyle = "rgba(255, 226, 150, 0.55)";
+        beamPath(ctx, e, facing);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+    ctx.restore();
   }
 
   /** Dashed ring of the operator's reach while he or his drone is selected. */
