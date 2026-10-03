@@ -102,6 +102,8 @@ export {
   nightTiles,
   spotlightsOn,
   hasSpotlight,
+  hasHeadlight,
+  headlightLit,
   spotlightManned,
   spotFacingOf,
 } from "./night.js";

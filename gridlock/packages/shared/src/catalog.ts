@@ -1664,6 +1664,14 @@ export const SPOTLIGHT_REACH_TILES = INFANTRY_SIGHT_TILES + TOWER_SIGHT_BONUS;
 /** Half the beam's width. */
 export const SPOTLIGHT_HALF_DEG = 14;
 export const SPOTLIGHT_TURN_DEG_PER_SEC = 60;
+/**
+ * Armored ground hulls and the Cyborg run a headlight in the dark. Down the
+ * hull's nose it gives back the unit's own daylight sight; everywhere else
+ * the night ring stands.
+ */
+export const HEADLIGHT_HALF_DEG = 20;
+/** Lamp headings snap to this step for sight, so a turning hull does not repaint every degree. */
+export const LAMP_HEADING_STEP_DEG = 3;
 
 /**
  * CIWS. A stationary radar-laid 20mm gatling on a small concrete pad. It needs
