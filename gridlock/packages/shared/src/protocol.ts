@@ -15,7 +15,7 @@ import type {
   YardFieldType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 68;
+export const PROTOCOL_VERSION = 69;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -135,9 +135,9 @@ export interface EntityView {
   shell?: ShellType;
   /** Allied coaxial MG belt. Omitted when the type has no MG. */
   mgAmmo?: number;
-  /** 0–1 heat. Allied MG only. */
+  /** 0–1 heat. Allied MG, or a gatling (Walker, Cyborg, CIWS, the Apocalypse roof mount). */
   mgHeat?: number;
-  /** Seconds the MG is jammed. Omitted when cool. */
+  /** Seconds the MG or gatling is locked by an overheat. Omitted when cool. */
   mgOverheat?: number;
   /** Selected infantry gun. Allied infantry only. */
   weapon?: InfantryWeaponId;
@@ -199,6 +199,8 @@ export interface EntityView {
   rockets?: number;
   /** Rocketer's high-penetration missile, 0 or 1. Friendly snapshots. A supply truck refills it. */
   heavy?: number;
+  /** CIWS or RAM set to Max range. Friendly snapshots; omitted at normal reach. */
+  longRange?: boolean;
   /** Titan pods switched off. Friendly snapshots; omitted while on. */
   rocketsOff?: boolean;
   /** Stay put: no chase, no withdraw. Friendly snapshots. */
@@ -553,6 +555,7 @@ export type ClientMessage =
   /** Walker self-destroy. On by default. `on: false` is Hold together. */
   | { type: "cmd.selfdestruct"; ids: number[]; on: boolean }
   | { type: "cmd.rockets"; ids: number[]; on: boolean }
+  | { type: "cmd.reach"; ids: number[]; max: boolean }
   | { type: "cmd.build"; building: BuildingType | YardFieldType }
   | { type: "cmd.place"; building: BuildingType; tx: number; ty: number }
   | { type: "cmd.train"; unit: TrainType }

@@ -27,6 +27,8 @@ import {
   getMap,
   hasAmmo,
   hasMg,
+  gatlingHeatOf,
+  RADAR_RANGE_MODES,
   roofCiwsOf,
   hasScout,
   infantryGunFor,
@@ -286,7 +288,7 @@ export function mountBattlefield(
     });
   }
 
-  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-selfdestruct], [data-rockets], [data-payload]", (t) => {
+  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-selfdestruct], [data-rockets], [data-reach], [data-payload]", (t) => {
     runConfigAction(ctx, t);
   });
 
@@ -874,7 +876,7 @@ function updateRocketRack(body: HTMLElement, type: EntityType, mine: EntityView[
 }
 
 function loadoutButton(opts: {
-  attr: "data-shell" | "data-weapon" | "data-guns" | "data-selfdestruct" | "data-rockets" | "data-payload";
+  attr: "data-shell" | "data-weapon" | "data-guns" | "data-selfdestruct" | "data-rockets" | "data-reach" | "data-payload";
   id: string;
   name: string;
   blurb: string;
@@ -1163,7 +1165,14 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
       el("p", { class: "tiny", attrs: { "data-field": "posture-help" } }),
     );
   }
-  if (hasMg(focus.type)) {
+  if (radarLaidOf(focus.type) && mine.length > 0) {
+    const reach = el("div", { class: "shell-rack" });
+    for (const mode of RADAR_RANGE_MODES) {
+      reach.append(loadoutButton({ attr: "data-reach", id: mode.id, name: mode.name, blurb: mode.blurb, count: "", on: false }));
+    }
+    body.append(el("div", { class: "tiny", text: "Reach" }), reach);
+  }
+  if (hasMg(focus.type) || gatlingHeatOf(focus.type)) {
     body.append(el("div", { class: "tiny", attrs: { "data-field": "mg-label" } }));
     const bar = el("div", { class: "mg-heat", attrs: { "data-field": "mg-heat" } });
     bar.append(el("span"));
@@ -1318,12 +1327,22 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
               : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",
     );
   }
-  if (hasMg(focus.type)) {
+  if (radarLaidOf(focus.type)) {
     const mine = live.filter((e) => e.ownerId === you);
-    const belt = mine.reduce((n, e) => n + (e.mgAmmo ?? 0), 0);
+    const max = mine.length > 0 && mine.every((e) => e.longRange);
+    const normal = mine.length > 0 && mine.every((e) => !e.longRange);
+    for (const mode of RADAR_RANGE_MODES) {
+      const btn = body.querySelector(`[data-reach="${mode.id}"]`);
+      if (btn instanceof HTMLElement) updateLoadoutButton(btn, { count: "", on: mode.id === "max" ? max : normal });
+    }
+  }
+  if (hasMg(focus.type) || gatlingHeatOf(focus.type)) {
+    const mine = live.filter((e) => e.ownerId === you);
+    // A gatling without a coaxial belt feeds from its clip (the Walker's rack, the Cyborg's drum, the CIWS belt).
+    const belt = mine.reduce((n, e) => n + (hasMg(focus.type) ? (e.mgAmmo ?? 0) : (e.clip ?? 0)), 0);
     const heat = mine.length ? mine.reduce((n, e) => n + (e.mgHeat ?? 0), 0) / mine.length : 0;
     const hot = mine.some((e) => (e.mgOverheat ?? 0) > 0);
-    const beltName = roofCiwsOf(focus.type) ? "20mm" : "MG";
+    const beltName = roofCiwsOf(focus.type) || focus.type === "ciws" ? "20mm" : hasMg(focus.type) ? "MG" : "Gatling";
     setField(body, "mg-label", hot ? `${beltName}  ${belt}  overheated` : `${beltName}  ${belt}`);
     const bar = body.querySelector('[data-field="mg-heat"]');
     if (bar instanceof HTMLElement) {
@@ -1894,6 +1913,15 @@ function runConfigAction(ctx: Ctx, t: HTMLElement): void {
       .map((ent) => ent.id);
     if (ids.length === 0) return;
     ctx.net.send({ type: "cmd.rockets", ids, on: pods === "on" });
+    return;
+  }
+  const reach = t.dataset.reach;
+  if (reach === "normal" || reach === "max") {
+    const ids = selectedOfType(ctx, viewRef, configFocus)
+      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck && radarLaidOf(ent.type))
+      .map((ent) => ent.id);
+    if (ids.length === 0) return;
+    ctx.net.send({ type: "cmd.reach", ids, max: reach === "max" });
     return;
   }
   const guns = t.dataset.guns;

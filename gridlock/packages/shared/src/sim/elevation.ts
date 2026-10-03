@@ -19,6 +19,7 @@ import {
   INFANTRY_EYE_HEIGHT,
   INFANTRY_UPHILL_SIGHT,
   LOS_TERRAIN_SLACK,
+  RADAR_LONG_RANGE_MUL,
   TANK_GUN_CLIMB,
   TANK_GUN_ELEV_DEG,
   TREE_LOS_THROUGH,
@@ -223,7 +224,12 @@ export function weaponRangeWorld(state: MatchState, e: Entity): number {
   if (base <= 0) return 0;
   let tiles = rangeTilesOf(e.type, entityHeight(state, e), base);
   if (inHouse && !host.garrisonHide) tiles += garrisonReachBonusOf(host.type);
-  return tiles * state.tileSize;
+  return tiles * state.tileSize * longReachMul(e);
+}
+
+/** A CIWS or RAM set to Max range reaches this many times farther. 1 for everything else. */
+export function longReachMul(e: Pick<Entity, "type" | "longRange">): number {
+  return e.longRange && radarLaidOf(e.type) ? RADAR_LONG_RANGE_MUL : 1;
 }
 
 const TANK_GUN_ELEV_TAN = Math.tan((TANK_GUN_ELEV_DEG * Math.PI) / 180);
