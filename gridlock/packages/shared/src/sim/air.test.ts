@@ -3,7 +3,8 @@ import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   AIR_CRASH_BUILDING_DAMAGE,
-  AIR_CRASH_RANGE,
+  AIR_CRASH_RANGE_MAX,
+  AIR_CRASH_RANGE_MIN,
   AIR_CRUISE_ALT,
   AIR_FUEL_SECONDS,
   AIRFIELD_PADS,
@@ -770,12 +771,12 @@ describe("aircraft crash", () => {
     const y0 = plane.y;
     ticks(state, 8);
     assert.equal(plane.wreck, false);
-    assert.ok((plane.air?.alt ?? 0) > 30, "still well above the ground");
+    assert.ok((plane.air?.alt ?? 0) < 40, "it is losing height");
     let d = plane.facing - facing0;
     while (d > Math.PI) d -= Math.PI * 2;
     while (d < -Math.PI) d += Math.PI * 2;
-    assert.ok(Math.abs(d) > 1, `nose should bank hard, turned ${d.toFixed(3)} rad`);
-    const reach = AIR_CRASH_RANGE * state.tileSize + 1;
+    assert.ok(Math.abs(d) > 0.05, `nose should leave its heading, turned ${d.toFixed(3)} rad`);
+    const reach = AIR_CRASH_RANGE_MAX * state.tileSize + 1;
     let far = Math.hypot(plane.x - x0, plane.y - y0);
     const down = until(state, 250, () => {
       far = Math.max(far, Math.hypot(plane.x - x0, plane.y - y0));
@@ -841,6 +842,28 @@ describe("aircraft crash", () => {
     assert.equal(house.hp, house.hpMax - AIR_CRASH_BUILDING_DAMAGE);
     assert.equal(plane.wreck, true);
     assert.equal(plane.air, undefined);
+  });
+
+  it("some wrecks come down nearby and some glide much farther", () => {
+    const state = twoPlayerMatch();
+    const ts = state.tileSize;
+    const x = (state.width * ts) / 2;
+    const y = (state.height * ts) / 2;
+    for (const e of [...state.entities.values()]) {
+      if (e.type !== "rig") state.entities.delete(e.id);
+    }
+    const planes: Entity[] = [];
+    for (let i = 0; i < 12; i++) planes.push(aloft(state, x, y, AIR_CRUISE_ALT));
+    for (const p of planes) p.hp = 0;
+    const down = until(state, 80, () => planes.every((p) => p.wreck));
+    assert.ok(down >= 0, "every airframe should meet the ground");
+    const dists = planes.map((p) => Math.hypot(p.x - x, p.y - y));
+    const near = Math.min(...dists);
+    const far = Math.max(...dists);
+    assert.ok(far > near * 3, `distances should spread, nearest ${near.toFixed(0)} farthest ${far.toFixed(0)}`);
+    assert.ok(near < AIR_CRASH_RANGE_MIN * ts * 4, `a short fall stays close (${near.toFixed(0)})`);
+    assert.ok(far > AIR_CRASH_RANGE_MAX * ts * 0.5, `a long glide runs out (${far.toFixed(0)})`);
+    for (const d of dists) assert.ok(d <= AIR_CRASH_RANGE_MAX * ts + 1, `glided ${d.toFixed(0)}`);
   });
 
   it("still removes a plane that dies on the pad", () => {

@@ -155,11 +155,15 @@ export interface AirState {
    * flies back. Any other order clears it. Not a wire field.
    */
   guard?: { x: number; y: number } | null;
-  /** Crash only: signed radians per second. Rolled once when the fall starts. */
+  /** Crash only: signed radians per second. Rolled once when the fall starts. Zero once the glide is spent. */
   yaw?: number;
-  /** Crash only: world point the fall started. The glide stops at AIR_CRASH_RANGE. */
+  /** Crash only: elevation units per second this airframe sinks. Rolled once. */
+  sink?: number;
+  /** Crash only: world point the fall started. */
   originX?: number;
   originY?: number;
+  /** Crash only: how far this fall may travel from the origin, world px. Rolled once. */
+  reach?: number;
   /** Crash only: entity ids this airframe has already struck. */
   struck?: number[];
 }
@@ -173,7 +177,7 @@ export interface Chute {
   vy: number;
 }
 
-/** A butterfly bomblet lying on the ground. Not an entity: nothing can shoot it. Any ground unit sets it off. A supply truck can disable it. */
+/** A mine lying on the ground. Not an entity: nothing can shoot it. Any ground unit sets it off. A supply truck on your side can disable it. The enemy is not shown it. */
 export interface Mine {
   id: number;
   ownerId: string;
@@ -540,7 +544,11 @@ export interface SimPlayer {
   team: number;
   alive: boolean;
   scrap: number;
+  /** Base structures: power, factories, the airfield, research. One at a time. */
   structure: StructureJob | null;
+  /** Defences: guns, garrisons, sandbags, and walls. One at a time, beside `structure`. */
+  defence: StructureJob | null;
+  /** Base structure waiting to be placed. A ready defence stays on `defence`. */
   placingType: BuildingType | YardFieldType | null;
   hqId: number;
   /** CPU seat. Omitted for humans. */

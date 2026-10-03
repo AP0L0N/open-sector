@@ -1,6 +1,6 @@
 /**
  * What a transport leaves behind: parachute canopies over jumpers and crates,
- * butterfly mines on the ground, and supply crates. Pure canvas drawing; the
+ * mines on the ground, and supply crates. Pure canvas drawing; the
  * sim decides where each one is.
  */
 
@@ -67,10 +67,26 @@ export function canopySway(id: number, nowMs: number): number {
   return Math.sin(nowMs / 700 + id * 1.7) * 0.12;
 }
 
+/** How often a live friendly mine's lamp comes on, and how long that blink lasts. */
+const MINE_LAMP_PERIOD_MS = 1600;
+const MINE_LAMP_WINDOW_MS = 220;
+
 /**
- * SD 2 butterfly bomblet lying in the grass: a small dark case with its two
- * spring-open wing plates. An arming one blinks. `disarm` 0–1 draws the bar
- * while a supply truck is lifting it.
+ * 0–1 brightness of a mine's red lamp. Dark while it is still arming, then a
+ * short pulse and a long dark. Seeded so a scattered field does not blink as one.
+ */
+export function mineLamp(seed: number, nowMs: number, arming: boolean): number {
+  if (arming) return 0;
+  const period = MINE_LAMP_PERIOD_MS;
+  const phase = ((nowMs + seed * 173) % period + period) % period;
+  if (phase >= MINE_LAMP_WINDOW_MS) return 0;
+  return Math.sin((phase / MINE_LAMP_WINDOW_MS) * Math.PI);
+}
+
+/**
+ * A mine on the ground: a small dark speck. Once it is live, a faint red lamp
+ * blinks on it. The enemy is not sent the mine, so this is only drawn for you
+ * and your allies. `disarm` 0–1 is the bar while a supply truck is lifting it.
  */
 export function drawMine(
   ctx: CanvasRenderingContext2D,
@@ -78,35 +94,29 @@ export function drawMine(
   y: number,
   opts: { seed: number; arming: boolean; nowMs: number; disarm?: number },
 ): void {
-  const ang = (opts.seed * 2.39996) % (Math.PI * 2);
   ctx.save();
-  if (opts.arming) ctx.globalAlpha = 0.45 + 0.45 * Math.abs(Math.sin(opts.nowMs / 160));
   ctx.translate(x, y);
-  ctx.scale(1.6, 0.8);
-  ctx.rotate(ang);
-  ctx.fillStyle = "#9a9a7c";
-  ctx.strokeStyle = OUTLINE;
-  ctx.lineWidth = 1;
-  for (const s of [-1, 1]) {
-    ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.lineTo(s * 4.5, -2.5);
-    ctx.lineTo(s * 4.5, 2.5);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-  }
-  ctx.fillStyle = "#3a3c30";
+  ctx.fillStyle = "#2c2822";
   ctx.beginPath();
-  ctx.arc(0, 0, 2.2, 0, Math.PI * 2);
+  ctx.ellipse(0, 0.4, 1.7, 1.05, 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.stroke();
+  const lamp = mineLamp(opts.seed, opts.nowMs, opts.arming);
+  if (lamp > 0.02) {
+    ctx.fillStyle = `rgba(170, 28, 22, ${(0.14 * lamp).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(0, -0.2, 3.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(214, 46, 34, ${(0.32 + 0.48 * lamp).toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(0, -0.2, 1.25, 0, Math.PI * 2);
+    ctx.fill();
+  }
   ctx.restore();
   const p = opts.disarm;
   if (p != null && p > 0) {
-    const w = 16;
-    const h = 3;
-    const top = y - 11;
+    const w = 10;
+    const h = 2;
+    const top = y - 7;
     ctx.fillStyle = "rgba(8, 6, 4, 0.78)";
     ctx.fillRect(x - w / 2, top, w, h);
     ctx.fillStyle = "#e8b84a";

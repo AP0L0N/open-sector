@@ -15,7 +15,7 @@ import type {
   YardFieldType,
 } from "./catalog.js";
 
-export const PROTOCOL_VERSION = 71;
+export const PROTOCOL_VERSION = 72;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -297,6 +297,8 @@ export interface YouState {
   used: number;
   lowPower: boolean;
   structureQueue: StructureQueueView | null;
+  /** Defences build beside `structureQueue`. Null when that lane is idle. */
+  defenceQueue: StructureQueueView | null;
   placingType: BuildingType | YardFieldType | null;
   alive: boolean;
   hqId: number | null;
@@ -453,7 +455,7 @@ export interface GroundFireView {
   lifeMax: number;
 }
 
-/** Butterfly mine on the ground. Your side's always; an enemy's once one of your men is close to it. */
+/** Mine on the ground. Sent to the side that laid it and to its allies. The enemy is not told. */
 export interface MineView {
   id: number;
   ownerId: string;
@@ -563,8 +565,24 @@ export type ClientMessage =
   | { type: "cmd.build"; building: BuildingType | YardFieldType }
   | { type: "cmd.place"; building: BuildingType; tx: number; ty: number }
   | { type: "cmd.train"; unit: TrainType }
-  | { type: "cmd.pause"; what: "train" | "structure"; jobId?: number; unit?: TrainType; paused?: boolean }
-  | { type: "cmd.cancel"; what: "structure" | "train"; buildingId?: number; jobId?: number; unit?: TrainType }
+  | {
+      type: "cmd.pause";
+      what: "train" | "structure";
+      jobId?: number;
+      unit?: TrainType;
+      paused?: boolean;
+      /** Which construction cameo. Omitted: the base job, or the defence when the base lane is idle. */
+      building?: BuildingType | YardFieldType;
+    }
+  | {
+      type: "cmd.cancel";
+      what: "structure" | "train";
+      buildingId?: number;
+      jobId?: number;
+      unit?: TrainType;
+      /** Which construction cameo. Omitted: the base job, or the defence when the base lane is idle. */
+      building?: BuildingType | YardFieldType;
+    }
   /** Rally point for owned producers in `ids`. A point on a building's own footprint clears its rally. */
   | { type: "cmd.rally"; ids: number[]; x: number; y: number }
   | { type: "cmd.sell"; id: number }
