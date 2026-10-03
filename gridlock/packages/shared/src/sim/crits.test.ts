@@ -13,7 +13,7 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { fireStats, hullTurnMul, immobilized, moveSpeedMul, rollCrits } from "./crits.js";
 import { entityHeight, rangeTilesOf, weaponRangeWorld } from "./elevation.js";
 import { makeEntity, tileCenter } from "./geo.js";
-import { createMatch } from "./match.js";
+import { createMatch, step } from "./match.js";
 import { tickMovement } from "./orders.js";
 import { snapshotFor } from "./snapshot.js";
 import type { MatchState } from "./types.js";
@@ -84,6 +84,31 @@ describe("rollCrits", () => {
     const core = makeEntity(state, "core", a, 200, 200);
     rollCrits(core, "side", "hit", 40, () => 0);
     assert.deepEqual(core.crits, []);
+  });
+
+  it("does not throw tracks on a Mammoth or a plane, and a dead engine brings the plane down", () => {
+    const { state, a } = twoPlayerMatch();
+    const mammoth = makeEntity(state, "mammoth", a, 100, 100);
+    rollCrits(mammoth, "side", "pen", 40, () => 0);
+    assert.deepEqual(mammoth.crits, []);
+    rollCrits(mammoth, "rear", "hit", 40, () => 0);
+    assert.deepEqual(mammoth.crits, ["engine"]);
+    const hp = mammoth.hp;
+    step(state, TICK_DT);
+    assert.equal(mammoth.hp, hp);
+    assert.equal(!!mammoth.wreck, false);
+
+    const plane = makeEntity(state, "stuka", a, 800, 800);
+    plane.air!.phase = "fly";
+    plane.air!.alt = 24;
+    plane.air!.speed = 1;
+    rollCrits(plane, "side", "pen", 40, () => 0);
+    assert.deepEqual(plane.crits, []);
+    rollCrits(plane, "rear", "hit", 40, () => 0);
+    assert.deepEqual(plane.crits, ["engine"]);
+    step(state, TICK_DT);
+    assert.equal(plane.air?.phase, "crash");
+    assert.ok(plane.hp > 0, "it falls instead of popping");
   });
 
   it("does not stack the same injury twice", () => {

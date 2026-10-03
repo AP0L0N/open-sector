@@ -78,7 +78,7 @@ export interface Order {
    * Not a wire field; the command sends the clicks and the snapshot sends `patrol`.
    */
   route?: Vec[];
-  /** Index in `route` the unit is walking toward. */
+  /** Index in `route` the unit is walking toward. A tower's lamp turns toward this spot. */
   leg?: number;
   /** 1 toward the end of the route, -1 back toward the start. */
   dir?: 1 | -1;

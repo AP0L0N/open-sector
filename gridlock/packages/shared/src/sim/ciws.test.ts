@@ -176,6 +176,21 @@ describe("CIWS fire", () => {
     assert.equal(ciws.attackTarget, null);
   });
 
+  it("takes a paratrooper under a canopy before a nearer soldier, and hurts him", () => {
+    const state = match();
+    const ts = state.tileSize;
+    const ciws = seedCiws(state);
+    const soldier = makeEntity(state, "rifleman", "B", ciws.x + 4 * ts, ciws.y);
+    soldier.holdPosition = true;
+    const jumper = makeEntity(state, "rifleman", "B", ciws.x + 8 * ts, ciws.y);
+    jumper.chute = { alt: 10, vx: 0, vy: 0 };
+    jumper.holdPosition = true;
+    step(state, TICK_DT);
+    assert.equal(ciws.attackTarget, jumper.id);
+    const t = until(state, 80, () => jumper.hp < jumper.hpMax);
+    assert.ok(t >= 0, "rounds reach the paratrooper");
+  });
+
   it("takes a plane in the air before a nearer soldier on the ground, and hurts it", () => {
     const state = match();
     const ts = state.tileSize;
@@ -195,10 +210,25 @@ describe("CIWS fire", () => {
     const ciws = seedCiws(state);
     const plane = planeOver(state, "B", ciws.x + 5 * ts, ciws.y - 3 * ts);
     plane.hp = plane.hpMax = 1e6;
+    const holdX = plane.x;
+    const holdY = plane.y;
     const ends: { kind: string; airZ?: number }[] = [];
     const tickBearings: number[] = [];
     for (let i = 0; i < 40; i++) {
       step(state, TICK_DT);
+      // A rear hit wrecks the engine and the plane starts down at once. This pass is measuring the stream, so put that airframe back up.
+      if (plane.air && (plane.air.phase !== "fly" || plane.crits.includes("engine"))) {
+        plane.hp = plane.hpMax;
+        plane.wreck = false;
+        plane.crits = plane.crits.filter((c) => c !== "engine");
+        plane.air.phase = "fly";
+        plane.air.alt = AIR_CRUISE_ALT;
+        plane.air.speed = 1;
+        plane.air.yaw = undefined;
+        plane.air.sink = undefined;
+        plane.air.reach = undefined;
+        plane.order = { kind: "move", x: holdX, y: holdY };
+      }
       const mine = state.impacts.filter((m) => m.fromId === ciws.id);
       ends.push(...mine);
       const bearings = mine.map((m) => Math.atan2(m.vy, m.vx));

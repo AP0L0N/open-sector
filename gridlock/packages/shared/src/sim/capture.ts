@@ -123,6 +123,11 @@ function completeCapture(state: MatchState, building: Entity, ownerId: string, c
   building.captureProgress = 0;
   building.queue = [];
   delete building.rally;
+  // The sweep belonged to the side that lost the tower. The beam stays where it is.
+  if (building.order?.kind === "patrol") {
+    building.order = null;
+    building.spotAim = undefined;
+  }
   if (building.garrison.length) spillGarrison(state, building, { damage: false });
   state.visionTick = -1;
   const p = state.players.get(ownerId);

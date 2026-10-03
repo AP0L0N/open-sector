@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { isoLift, type EntityView } from "@gridlock/shared";
+import { AIR_CRUISE_ALT, isoLift, type EntityView } from "@gridlock/shared";
 import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, inAir, lerpAirAlt } from "./aircraft.js";
 import { STANDING_DRAW_LAYER } from "./corpse-depth.js";
 
@@ -48,7 +48,7 @@ describe("aircraft draw", () => {
 
   it("the shadow softens with height", () => {
     const low = aircraftShadowScale(0);
-    const high = aircraftShadowScale(16);
+    const high = aircraftShadowScale(AIR_CRUISE_ALT);
     assert.ok(high.alpha < low.alpha);
     assert.ok(high.scale >= low.scale);
   });

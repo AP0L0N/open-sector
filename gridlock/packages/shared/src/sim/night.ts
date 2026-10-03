@@ -14,6 +14,7 @@ import {
   TICK_DT,
 } from "../catalog.js";
 import type { EntityType } from "../protocol.js";
+import { stepPatrolLeg } from "./patrol.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** One full day: day, dusk, night, dawn. Dawn is as long as dusk. */
@@ -26,6 +27,80 @@ export function daylightAt(tick: number): number {
   if (s < DAY_SECONDS + DUSK_SECONDS) return 1 - (s - DAY_SECONDS) / DUSK_SECONDS;
   if (s < DAY_SECONDS + DUSK_SECONDS + NIGHT_SECONDS) return 0;
   return Math.min(1, (s - DAY_SECONDS - DUSK_SECONDS - NIGHT_SECONDS) / DUSK_SECONDS);
+}
+
+/**
+ * The match clock. The fight opens at CLOCK_OPEN_HOUR:00 in full day, and one
+ * cycle is 24 hours on the face. Dusk, night, and dawn land on the evening
+ * and the small hours, so the digits tell you when the dark arrives.
+ */
+export const CLOCK_OPEN_HOUR = 6;
+
+export type DayPhase = "day" | "dusk" | "night" | "dawn";
+
+export interface MatchClock {
+  hour: number;
+  minute: number;
+  /** "HH:MM", 24-hour. */
+  text: string;
+  phase: DayPhase;
+}
+
+const MINUTES_PER_DAY = 24 * 60;
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+/** Seconds from morning, wrapped onto one cycle. */
+function cycleSeconds(tick: number): number {
+  return (tick * TICK_DT) % DAY_CYCLE_SECONDS;
+}
+
+function phaseAtSeconds(s: number): DayPhase {
+  if (s < DAY_SECONDS) return "day";
+  if (s < DAY_SECONDS + DUSK_SECONDS) return "dusk";
+  if (s < DAY_SECONDS + DUSK_SECONDS + NIGHT_SECONDS) return "night";
+  return "dawn";
+}
+
+function phaseStartSeconds(phase: DayPhase): number {
+  if (phase === "dusk") return DAY_SECONDS;
+  if (phase === "night") return DAY_SECONDS + DUSK_SECONDS;
+  if (phase === "dawn") return DAY_SECONDS + DUSK_SECONDS + NIGHT_SECONDS;
+  return 0;
+}
+
+/** Hour and minute for a moment in the cycle, in seconds from morning. */
+function clockFace(seconds: number): { hour: number; minute: number; text: string } {
+  const span = DAY_CYCLE_SECONDS;
+  let s = seconds % span;
+  if (s < 0) s += span;
+  const into = Math.floor((s / span) * MINUTES_PER_DAY + 1e-9);
+  const total = (CLOCK_OPEN_HOUR * 60 + into) % MINUTES_PER_DAY;
+  const hour = Math.floor(total / 60);
+  const minute = total % 60;
+  return { hour, minute, text: `${pad2(hour)}:${pad2(minute)}` };
+}
+
+/** Where the clock stands at this tick. Same cycle as daylightAt. */
+export function matchClock(tick: number): MatchClock {
+  const s = cycleSeconds(tick);
+  return { ...clockFace(s), phase: phaseAtSeconds(s) };
+}
+
+/** Clock face at the start of a phase. Night is the evening hour the dark begins. */
+export function phaseStartText(phase: DayPhase): string {
+  return clockFace(phaseStartSeconds(phase)).text;
+}
+
+/**
+ * The line under the clock. Day and dusk both name when night starts;
+ * night names the dawn; dawn names the morning.
+ */
+export function clockMarkLine(phase: DayPhase): string {
+  const mark: DayPhase = phase === "night" ? "dawn" : phase === "dawn" ? "day" : "night";
+  return `${mark} at ${phaseStartText(mark)}`;
 }
 
 /** Share of daylight sight and weapon reach left at this tick. */
@@ -94,20 +169,57 @@ function wrap(a: number): number {
   return a;
 }
 
-/** Swing every held lamp toward the heading Rotate gave it. */
+/** A patrol spot this close to the tower is its own footprint, not a place to look. */
+const LAMP_SPOT_MIN = 1;
+
+/**
+ * Point a patrolling lamp at its current leg. A spot on the tower itself is
+ * skipped, so the beam sweeps the placed points and not the cab.
+ */
+export function aimSpotlightPatrol(e: Entity): void {
+  const o = e.order;
+  if (!o || o.kind !== "patrol" || !o.route || o.route.length < 2) return;
+  const route = o.route;
+  let leg = o.leg ?? 1;
+  let dir: 1 | -1 = o.dir === -1 ? -1 : 1;
+  for (let n = 0; n < route.length; n++) {
+    const dest = route[leg];
+    if (dest && Math.hypot(dest.x - e.x, dest.y - e.y) >= LAMP_SPOT_MIN) {
+      o.leg = leg;
+      o.dir = dir;
+      e.spotFacing = spotFacingOf(e);
+      e.spotAim = Math.atan2(dest.y - e.y, dest.x - e.x);
+      return;
+    }
+    const next = stepPatrolLeg(route, leg, dir);
+    if (next.leg === leg && next.dir === dir) return;
+    leg = next.leg;
+    dir = next.dir;
+  }
+}
+
+/** Swing every held lamp toward the heading Rotate or a patrol spot gave it. */
 export function tickSpotlights(state: MatchState, dt: number): void {
   const max = ((SPOTLIGHT_TURN_DEG_PER_SEC * Math.PI) / 180) * dt;
   for (const e of state.entities.values()) {
     if (e.kind !== "building" || !spotlightManned(e)) continue;
     const at = spotFacingOf(e);
     e.spotFacing = at;
-    if (e.spotAim == null) continue;
-    const delta = wrap(e.spotAim - at);
-    if (Math.abs(delta) <= max) {
-      e.spotFacing = wrap(e.spotAim);
-      e.spotAim = undefined;
-    } else {
-      e.spotFacing = wrap(at + Math.sign(delta) * max);
+    if (e.spotAim != null) {
+      const delta = wrap(e.spotAim - at);
+      if (Math.abs(delta) <= max) {
+        e.spotFacing = wrap(e.spotAim);
+        e.spotAim = undefined;
+      } else {
+        e.spotFacing = wrap(at + Math.sign(delta) * max);
+      }
     }
+    // The beam has settled on this spot. Turn it toward the next one.
+    const o = e.order;
+    if (o?.kind !== "patrol" || !o.route || o.route.length < 2 || e.spotAim != null) continue;
+    const next = stepPatrolLeg(o.route, o.leg ?? 1, o.dir === -1 ? -1 : 1);
+    o.leg = next.leg;
+    o.dir = next.dir;
+    aimSpotlightPatrol(e);
   }
 }

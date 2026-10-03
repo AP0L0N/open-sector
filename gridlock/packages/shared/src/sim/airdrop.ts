@@ -27,6 +27,7 @@ import {
   addCrit,
   catalog,
   hasTracks,
+  trackCritAllowed,
   isAircraftType,
   isArmoredType,
   isDroneType,
@@ -392,16 +393,26 @@ export function tickChutes(state: MatchState, dt: number): void {
   }
 }
 
-/** A plane that goes down in the air takes everyone in the bay with it. */
-export function loseRiders(state: MatchState, plane: Entity): void {
-  if (!isTransportType(plane.type) || airAlt(plane) <= 0.5) return;
-  for (const r of planeRiders(state, plane)) {
-    detachGarrisoned(state, r);
-    r.x = plane.x;
-    r.y = plane.y;
-    r.hp = 0;
-    r.state = "dead";
+/**
+ * The stick leaves before the airframe is gone. In the air they take canopies
+ * at the plane's height. On the pad they climb out beside it.
+ */
+export function ejectParatroopers(state: MatchState, plane: Entity): void {
+  if (!isTransportType(plane.type) || plane.wreck) return;
+  const riders = planeRiders(state, plane);
+  if (riders.length === 0) return;
+  if (airAlt(plane) > 0.5 && plane.air) {
+    for (const r of riders) jump(state, plane, r);
+    plane.air.jumping = false;
+    plane.air.door = 0;
+    return;
   }
+  climbOut(state, plane);
+}
+
+/** Anyone still aboard when the airframe meets the ground gets out the same way. */
+export function loseRiders(state: MatchState, plane: Entity): void {
+  ejectParatroopers(state, plane);
 }
 
 /** Advance a falling mine canister. False once it has burst and scattered its bomblets. */
@@ -504,7 +515,7 @@ function detonateMine(state: MatchState, ownerId: string, x: number, y: number):
       dmg = MINE_INFANTRY_DAMAGE * fall;
     } else if (isArmoredType(e.type)) {
       dmg = e.hpMax * MINE_ARMOR_SHARE * fall;
-      if (hasTracks(e.type) && nextRand(state) < MINE_TRACK_CHANCE * fall) addCrit(e, "tracks");
+      if (hasTracks(e.type) && trackCritAllowed(e.type) && nextRand(state) < MINE_TRACK_CHANCE * fall) addCrit(e, "tracks");
     } else {
       dmg = e.hpMax * MINE_SOFT_SHARE * fall;
     }

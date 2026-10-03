@@ -1080,7 +1080,7 @@ export class MapView {
       if (!match.entities.some((e) => e.id === id)) this.selected.delete(id);
     }
     if (this.attackMoveMode && this.ownSelectedIds().length === 0) this.setAttackMoveMode(false);
-    if (this.patrolMode && this.ownSelectedIds().length === 0) this.setPatrolMode(false);
+    if (this.patrolMode && this.ownPatrolIds().length === 0) this.setPatrolMode(false);
     if (this.forceAttackMode && this.ownForceIds().length === 0) this.setForceAttackMode(false);
     if (this.rotateMode && this.ownRotateIds().length === 0) this.setRotateMode(false);
     if (this.guardMode && this.ownSelectedIds().length === 0) this.setGuardMode(false);
@@ -1919,7 +1919,7 @@ export class MapView {
     }
     if (k === PATROL_HOTKEY) {
       e.preventDefault();
-      const ids = this.ownSelectedIds();
+      const ids = this.ownPatrolIds();
       if (ids.length) this.setPatrolMode(!this.patrolMode);
       return;
     }
@@ -2021,6 +2021,10 @@ export class MapView {
     this.setGuardMode(false);
     this.setPatrolMode(false);
     const ids = this.ownForceIds();
+    const seen = new Set(ids);
+    for (const id of this.ownLampIds()) {
+      if (!seen.has(id)) ids.push(id);
+    }
     if (ids.length) this.command({ type: "cmd.stop", ids });
   }
 
@@ -2152,6 +2156,28 @@ export class MapView {
       if (!ent || ent.ownerId !== this.curr.youPlayerId || ent.wreck) return false;
       return ent.kind === "unit" || radarLaidOf(ent.type);
     });
+  }
+
+  /** Own watch towers. Patrol turns the spotlight along the points; Stop freezes it. */
+  private ownLampIds(): number[] {
+    const out: number[] = [];
+    for (const id of this.selected) {
+      const ent = this.curr.entities.find((x) => x.id === id);
+      if (ent && ent.ownerId === this.curr.youPlayerId && ent.hp > 0 && ent.spotFacing != null && hasSpotlight(ent.type)) {
+        out.push(id);
+      }
+    }
+    return out;
+  }
+
+  /** Units that walk a patrol, plus watch towers that sweep a spotlight along the same points. */
+  private ownPatrolIds(): number[] {
+    const ids = this.ownSelectedIds();
+    const seen = new Set(ids);
+    for (const id of this.ownLampIds()) {
+      if (!seen.has(id)) ids.push(id);
+    }
+    return ids;
   }
 
   /** What Rotate turns: the aimers, plus own watch towers, whose spotlight swings. */
@@ -3763,7 +3789,7 @@ export class MapView {
 
   private commitPatrol(): void {
     const points = this.patrolPoints.map((p) => ({ x: p.x, y: p.y }));
-    const ids = this.ownSelectedIds();
+    const ids = this.ownPatrolIds();
     this.setPatrolMode(false);
     if (points.length > 0 && ids.length > 0) this.command({ type: "cmd.patrol", ids, points });
   }
@@ -3808,7 +3834,7 @@ export class MapView {
       }
     };
     if (this.patrolMode) {
-      const ids = this.ownSelectedIds();
+      const ids = this.ownPatrolIds();
       const from: { x: number; y: number }[] = [];
       for (const id of ids) {
         const e = this.curr.entities.find((u) => u.id === id);

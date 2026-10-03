@@ -76,6 +76,7 @@ import {
   catalog,
   coverHeightOf,
   hasTracks,
+  trackCritAllowed,
   infantryGunFor,
   isAircraftType,
   isArmoredType,
@@ -1095,7 +1096,7 @@ function detonateBomb(state: MatchState, p: Projectile): void {
       if (isGarrisonable(e.type) && livingGarrison(state, e).length > 0) woundGarrison(state, e, dmg, p.caliber);
     } else if (isArmoredType(e.type) && !isInfantryType(e.type)) {
       dmg = Math.round(e.hpMax * (d <= direct ? BOMB_ARMOR_DIRECT : BOMB_ARMOR_NEAR * fall));
-      if (hasTracks(e.type) && nextRand(state) < BOMB_TRACK_CHANCE * fall) addCrit(e, "tracks");
+      if (hasTracks(e.type) && trackCritAllowed(e.type) && nextRand(state) < BOMB_TRACK_CHANCE * fall) addCrit(e, "tracks");
       hideScout(state, e);
     } else {
       dmg = Math.round(BOMB_DAMAGE * fall);
@@ -1257,7 +1258,7 @@ function crashHurt(state: MatchState, o: Entity): void {
     dmg = Math.max(AIR_CRASH_SOFT_DAMAGE, o.hpMax + 1);
   } else {
     dmg = Math.max(AIR_CRASH_HULL_MIN, Math.round(o.hpMax * AIR_CRASH_HULL_SHARE));
-    if (hasTracks(o.type)) addCrit(o, "tracks");
+    if (hasTracks(o.type) && trackCritAllowed(o.type)) addCrit(o, "tracks");
     hideScout(state, o);
   }
   if (o.kind === "unit") coverStrike(o, dmg, state.tick, true);
