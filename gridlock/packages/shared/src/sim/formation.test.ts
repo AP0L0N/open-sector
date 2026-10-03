@@ -270,7 +270,7 @@ describe("groupMovePace", () => {
     const truck = makeEntity(state, "hauler", "A", 180, 100);
     assert.equal(groupMovePace([inf, tank]), catalog("warden").moveTilesPerSec);
     assert.equal(groupMovePace([inf, tank, truck]), catalog("warden").moveTilesPerSec);
-    assert.equal(groupMovePace([inf, truck]), catalog("hauler").moveTilesPerSec);
+    assert.equal(groupMovePace([inf, truck]), catalog("rifleman").moveTilesPerSec);
   });
 
   it("leaves a solo unit and a same-type group uncapped", () => {

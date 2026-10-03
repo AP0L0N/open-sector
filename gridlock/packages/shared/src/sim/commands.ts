@@ -123,7 +123,12 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       if (!isTrainType(msg.unit)) return fail("bad_payload", "Unknown unit.");
       return wrap(startTrain(state, playerId, msg.unit), "busy");
     case "cmd.pause":
-      if (msg.what === "structure") return wrap(pauseStructure(state, playerId, msg.paused), "busy");
+      if (msg.what === "structure") {
+        if (msg.building != null && !isBuildingType(msg.building) && !isYardField(msg.building)) {
+          return fail("bad_payload", "Unknown structure.");
+        }
+        return wrap(pauseStructure(state, playerId, msg.paused, msg.building), "busy");
+      }
       if (msg.what !== "train") return fail("bad_payload", "Unknown pause.");
       if (msg.unit != null && !isTrainType(msg.unit)) return fail("bad_payload", "Unknown unit.");
       return wrap(
@@ -131,7 +136,12 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
         "busy",
       );
     case "cmd.cancel":
-      if (msg.what === "structure") return wrap(cancelStructure(state, playerId), "busy");
+      if (msg.what === "structure") {
+        if (msg.building != null && !isBuildingType(msg.building) && !isYardField(msg.building)) {
+          return fail("bad_payload", "Unknown structure.");
+        }
+        return wrap(cancelStructure(state, playerId, msg.building), "busy");
+      }
       if (msg.unit != null && !isTrainType(msg.unit)) return fail("bad_payload", "Unknown unit.");
       return wrap(
         cancelTrain(state, playerId, { buildingId: msg.buildingId, jobId: msg.jobId, unit: msg.unit }),

@@ -61,6 +61,7 @@ import {
   pickElevatedTile,
   pointInIsoBox,
   isBuildingType,
+  isDefenceStructure,
   isYardField,
   previewField,
   previewPlace,
@@ -715,6 +716,8 @@ export class MapView {
   }[] = [];
   selected = new Set<number>();
   placeMode = false;
+  /** Ready building the player chose to put down, when a base and a defence are both finished. */
+  placePick: BuildingType | null = null;
   /** Defences-tab sandbags or wall, armed before the line is sited. */
   yardArm: YardFieldType | null = null;
   attackMoveMode = false;
@@ -855,6 +858,7 @@ export class MapView {
     this.fieldDrag = null;
     if (next) {
       this.placeMode = false;
+      this.placePick = null;
       this.yardArm = null;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
@@ -1084,8 +1088,9 @@ export class MapView {
       this.fieldPlace = null;
       this.onPlaceMode();
     }
+    if (this.placePick && !this.typeReady(this.placePick)) this.placePick = null;
     if (!this.placeMode) this.yardArm = null;
-    if (this.yardArm && this.curr.you.structureQueue) this.yardArm = null;
+    if (this.yardArm && this.curr.you.defenceQueue) this.yardArm = null;
     const placing = this.placeMode;
     if (!this.placingKind() && !this.yardArm) this.placeMode = false;
     if (this.placeMode !== placing) this.onPlaceMode();
@@ -1591,10 +1596,36 @@ export class MapView {
     this.centerOnHq();
   }
 
+  private typeReady(type: BuildingType | YardFieldType): boolean {
+    if (!isDefenceStructure(type) && this.curr.you.placingType === type) return true;
+    const q = isDefenceStructure(type) ? this.curr.you.defenceQueue : this.curr.you.structureQueue;
+    return q?.ready === true && q.type === type;
+  }
+
   private placingKind(): BuildingType | YardFieldType | null {
-    if (this.curr.you.placingType) return this.curr.you.placingType;
-    const q = this.curr.you.structureQueue;
-    return q?.ready ? q.type : null;
+    if (this.placePick && this.typeReady(this.placePick)) return this.placePick;
+    if (this.curr.you.placingType && this.typeReady(this.curr.you.placingType)) return this.curr.you.placingType;
+    const base = this.curr.you.structureQueue;
+    if (base?.ready) return base.type;
+    const defence = this.curr.you.defenceQueue;
+    if (defence?.ready && isBuildingType(defence.type)) return defence.type;
+    return null;
+  }
+
+  /** Place this finished building. A ready defence does not have to wait for a ready base. */
+  armPlace(type: BuildingType): void {
+    this.placePick = type;
+    this.yardArm = null;
+    this.fieldPlace = null;
+    this.fieldDrag = null;
+    this.placeMode = true;
+    this.attackMoveMode = false;
+    this.forceAttackMode = false;
+    this.rotateMode = false;
+    this.guardMode = false;
+    this.guardDragging = false;
+    this.onAttackMoveMode();
+    this.onPlaceMode();
   }
 
   private readyBuilding(): BuildingType | null {
@@ -1612,6 +1643,7 @@ export class MapView {
   armYardField(type: YardFieldType): void {
     this.fieldPlace = null;
     this.fieldDrag = null;
+    this.placePick = null;
     this.yardArm = type;
     this.placeMode = true;
     this.attackMoveMode = false;
@@ -6829,7 +6861,7 @@ export class MapView {
 
   /** The line sited from the Defences tab, drawn until the yard finishes it. */
   private drawYardBuild(): void {
-    const q = this.curr.you.structureQueue;
+    const q = this.curr.you.defenceQueue;
     if (!q?.sites || q.sites.length === 0 || !isYardField(q.type)) return;
     for (const s of q.sites) {
       if (q.type === "wall") {

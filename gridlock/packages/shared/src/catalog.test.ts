@@ -54,6 +54,8 @@ import {
   SCOUT_HP_MUL,
   pickLoadedShell,
   clampGameSpeed,
+  INFANTRY_PACE,
+  TILE_SUBDIV,
   isInfantryType,
   isMotorVehicle,
   isStance,
@@ -215,6 +217,31 @@ describe("injuries", () => {
     assert.ok(SWIM_SPEED < STANCE_SPEED.stand);
     assert.ok(SWIM_SPEED < STANCE_SPEED.crouch);
     assert.ok(WATER_PATH_COST > 1);
+  });
+
+  it("walks at 70% of each soldier's authored pace", () => {
+    const authored = {
+      rifleman: 2.2,
+      gunner: 1.65,
+      sniper: 1.8,
+      atinfantry: 1.65,
+      rocketer: 1.6,
+      pyro: 1.7,
+      mortarman: 1.5,
+      engineer: 2,
+      medic: 2,
+      cyborg: 1.6,
+      droneop: 1.6,
+      jumpjet: 2.1,
+    } as const;
+    assert.equal(INFANTRY_PACE, 0.7);
+    for (const type of Object.keys(authored) as (keyof typeof authored)[]) {
+      assert.equal(catalog(type).moveTilesPerSec, authored[type] * INFANTRY_PACE * TILE_SUBDIV);
+    }
+    assert.equal(catalog("warden").moveTilesPerSec, 1.45 * TILE_SUBDIV);
+    assert.equal(catalog("hauler").moveTilesPerSec, 1.9 * TILE_SUBDIV);
+    assert.equal(catalog("walker").moveTilesPerSec, 1.3 * TILE_SUBDIV);
+    assert.equal(catalog("drone").moveTilesPerSec, 3.5 * TILE_SUBDIV);
   });
 });
 

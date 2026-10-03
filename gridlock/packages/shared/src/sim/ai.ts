@@ -17,6 +17,7 @@ import {
   isArmoredType,
   isDroneType,
   isBuildingType,
+  isDefenceStructure,
   isFieldStructure,
   isInfantryType,
   type BuildingType,
@@ -29,7 +30,7 @@ import { smelterDock } from "./harvest.js";
 import { powerOf } from "./power.js";
 import { needsSupply } from "./supply.js";
 import { canSeeEntity } from "./vision.js";
-import type { Entity, MatchState, SimPlayer } from "./types.js";
+import type { Entity, MatchState, SimPlayer, StructureJob } from "./types.js";
 
 export const EASY_ATTACK_FIRST_TICKS = 70 * TICK_HZ;
 export const EASY_ATTACK_EVERY_TICKS = 55 * TICK_HZ;
@@ -137,19 +138,12 @@ function thinkEasy(state: MatchState, p: SimPlayer): void {
     return;
   }
 
-  if (p.structure?.ready && isBuildingType(p.structure.type)) {
-    const type = p.structure.type;
-    const spot = findBuildTile(state, p.playerId, type);
-    if (spot) {
-      applyCommand(state, p.playerId, { type: "cmd.place", building: type, tx: spot.tx, ty: spot.ty });
-    } else {
-      // Trees, scrap, and the map edge can leave no room. Take the refund rather than block the yard.
-      applyCommand(state, p.playerId, { type: "cmd.cancel", what: "structure" });
-      noRoom(state, p, type);
-    }
-  } else if (!p.structure) {
+  const placedBase = placeReadyBuilding(state, p, p.structure);
+  const placedDefence = placeReadyBuilding(state, p, p.defence);
+  if (!placedBase && !placedDefence) {
     const next = nextBuilding(state, p);
-    if (next && canStartBuilding(state, p, next)) {
+    const laneBusy = next != null && (isDefenceStructure(next) ? p.defence : p.structure);
+    if (next && !laneBusy && canStartBuilding(state, p, next)) {
       if (findBuildTile(state, p.playerId, next)) {
         applyCommand(state, p.playerId, { type: "cmd.build", building: next });
       } else {
@@ -168,6 +162,21 @@ function thinkEasy(state: MatchState, p: SimPlayer): void {
     unjamHaulers(state, p);
     crewBunkers(state, p);
   }
+}
+
+/** Place a finished building, or refund it when the base has no room. Returns whether this job was ready. */
+function placeReadyBuilding(state: MatchState, p: SimPlayer, job: StructureJob | null): boolean {
+  if (!job?.ready || !isBuildingType(job.type)) return false;
+  const type = job.type;
+  const spot = findBuildTile(state, p.playerId, type);
+  if (spot) {
+    applyCommand(state, p.playerId, { type: "cmd.place", building: type, tx: spot.tx, ty: spot.ty });
+  } else {
+    // Trees, scrap, and the map edge can leave no room. Take the refund rather than block the lane.
+    applyCommand(state, p.playerId, { type: "cmd.cancel", what: "structure", building: type });
+    noRoom(state, p, type);
+  }
+  return true;
 }
 
 function nextBuilding(state: MatchState, p: SimPlayer): BuildingType | null {
@@ -261,15 +270,20 @@ function neediest(
 /** Hold scrap for the next factory. Do not starve the first troop wave to save for Armory. */
 function trainReserve(state: MatchState, p: SimPlayer): number {
   // A factory under way is paid for first. Extras (Research, air, defenses) share scrap with the army.
-  if (p.structure && !p.structure.ready && isBuildingType(p.structure.type) && FACTORIES.includes(p.structure.type)) {
-    return Math.max(0, catalog(p.structure.type).cost - p.structure.paid);
+  const paying = [p.structure, p.defence].find(
+    (j) => j && !j.ready && isBuildingType(j.type) && FACTORIES.includes(j.type),
+  );
+  if (paying && isBuildingType(paying.type)) {
+    return Math.max(0, catalog(paying.type).cost - paying.paid);
   }
   if (countType(state, p.playerId, "dynamo") === 0) return catalog("dynamo").cost;
   if (countType(state, p.playerId, "muster") === 0) return catalog("muster").cost;
   if (countType(state, p.playerId, "rifleman") < FIRST_WAVE_TROOPERS) return 0;
   if (countType(state, p.playerId, "armory") === 0) return catalog("armory").cost;
   if (fighterCount(state, p.playerId) < EASY_MIN_FIGHTERS * 2) return 0;
-  const next = p.structure ? null : nextBuilding(state, p);
+  // Either lane already drawing scrap is the build being saved for. Do not reserve it twice.
+  if (p.structure || p.defence) return 0;
+  const next = nextBuilding(state, p);
   return next ? catalog(next).cost : 0;
 }
 
