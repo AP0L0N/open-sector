@@ -14,6 +14,7 @@ import { wantsCapture, pathToCapture } from "./capture.js";
 import { moveWithCollision, stepGiveWay, tickMakeWay } from "./collision.js";
 import { hullTurnMul, moveSpeedMul } from "./crits.js";
 import { openSpotNear, spotTaken, unitClearance } from "./formation.js";
+import { sidestepGoal } from "./lineoffire.js";
 import { setPath } from "./path.js";
 import { patrolLegIndex, stepPatrolLeg } from "./patrol.js";
 import { flyStep, jetAloft } from "./jet.js";
@@ -140,6 +141,8 @@ export function tickMovement(state: MatchState, dt: number): void {
         continue;
       }
     }
+    // Stepping aside for a clear line of fire: walk the short path, and let the order wait.
+    const aside = sidestepGoal(state, e) != null;
     if (e.guardFacing != null && e.waypoints.length === 0 && !e.attackTarget) {
       if (!e.order || e.order.kind === "guard") {
         tickGuardFacing(e, dt);
@@ -159,7 +162,7 @@ export function tickMovement(state: MatchState, dt: number): void {
       (e.order?.kind === "attack" || e.order?.kind === "forceattack") && e.order.targetId != null
         ? e.order.targetId
         : null;
-    if (chaseId != null) {
+    if (chaseId != null && !aside) {
       const t = state.entities.get(chaseId);
       if (t && t.hp > 0) {
         if (wantsCapture(e, t)) {
@@ -195,7 +198,7 @@ export function tickMovement(state: MatchState, dt: number): void {
         setPath(state, e, e.order.x, e.order.y);
       }
     }
-    if (e.order?.kind === "attackmove" && e.attackTarget != null) {
+    if (e.order?.kind === "attackmove" && e.attackTarget != null && !aside) {
       const t = state.entities.get(e.attackTarget);
       if (t && t.hp > 0) {
         if (wantsCapture(e, t)) {

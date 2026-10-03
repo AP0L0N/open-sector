@@ -357,6 +357,20 @@ export interface Entity {
    * Missing between volleys. `cooldown` holds the gap before that barrel can fire.
    */
   twinUntil?: number;
+  /**
+   * A friend stands in this gun's line to its target. Sim only, never sent.
+   * `since` starts the patience clock; `seen` is the last tick combat found the line still fouled;
+   * `spot` is where the unit is stepping for a clear line; `look` is the next tick it searches again;
+   * `walked` counts the ticks spent stepping aside.
+   */
+  lineBlock?: {
+    targetId: number;
+    since: number;
+    seen: number;
+    look: number;
+    walked: number;
+    spot: { x: number; y: number } | null;
+  };
   /** Seconds the MG42 bipod has been set while prone. 0 until the gunner crawls. */
   bipod: number;
   /** Coaxial MG rounds remaining. 0 if the type has no MG. */
