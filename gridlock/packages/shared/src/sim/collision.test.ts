@@ -6,7 +6,7 @@ import { applyCommand } from "./commands.js";
 import { makeEntity, tileCenter, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { astar } from "./path.js";
-import type { MatchState } from "./types.js";
+import type { Entity, MatchState } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   const r = createRoom({
@@ -342,5 +342,135 @@ describe("warden tracks vs obstacles", () => {
       if (tank.waypoints.length === 0) break;
     }
     assert.equal(tank.waypoints.length, 0);
+  });
+});
+
+describe("parked friends make room", () => {
+  /** Flat, open ground with no other units, so only the units under test meet. */
+  function openField(): { state: MatchState; ts: number; y: number } {
+    const { state } = twoPlayerMatch();
+    for (const e of [...state.entities.values()]) if (e.kind === "unit") state.entities.delete(e.id);
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const row = 64;
+    for (let gy = row - 24; gy <= row + 24; gy++) {
+      for (let gx = 8; gx < state.width - 8; gx++) {
+        const i = gy * state.width + gx;
+        state.terrain[i] = 0;
+        state.blocked[i] = 0;
+        state.occupy[i] = 0;
+      }
+    }
+    return { state, ts, y: tileCenter(row, ts) };
+  }
+
+  function parkedAt(state: MatchState, type: "warden" | "artillery" | "rifleman", x: number, y: number): Entity {
+    const e = makeEntity(state, type, "A", x, y);
+    e.facing = 0;
+    e.turretFacing = 0;
+    e.holdPosition = false;
+    return e;
+  }
+
+  function runUntilIdle(state: MatchState, units: Entity[], max: number): void {
+    for (let i = 0; i < max; i++) {
+      step(state, TICK_DT);
+      if (units.every((u) => !u.order && u.waypoints.length === 0)) return;
+    }
+  }
+
+  it("an idle tank in the lane rolls aside and the mover drives through", () => {
+    const { state, ts, y } = openField();
+    const tank = parkedAt(state, "warden", tileCenter(40, ts), y);
+    const parked = parkedAt(state, "warden", tileCenter(70, ts), y);
+    const destX = tileCenter(110, ts);
+    applyCommand(state, "A", { type: "cmd.move", ids: [tank.id], x: destX, y });
+    runUntilIdle(state, [tank], 600);
+    assert.ok(Math.hypot(tank.x - destX, tank.y - y) < ts * 4, `mover stuck at ${tank.x},${tank.y}`);
+    assert.ok(Math.abs(parked.y - y) >= tank.radius, "the parked tank cleared the lane");
+  });
+
+  it("a wall of parked friends parts for a column", () => {
+    const { state, ts, y } = openField();
+    for (let i = -2; i <= 2; i++) parkedAt(state, "warden", tileCenter(70, ts), y + i * 32);
+    const movers: Entity[] = [];
+    for (let i = 0; i < 4; i++) {
+      movers.push(parkedAt(state, "warden", tileCenter(30 + (i % 2) * 4, ts), y + (i < 2 ? -16 : 16)));
+    }
+    applyCommand(state, "A", { type: "cmd.move", ids: movers.map((e) => e.id), x: tileCenter(120, ts), y });
+    runUntilIdle(state, movers, 900);
+    for (const m of movers) assert.ok(m.x > tileCenter(100, ts), `mover ${m.id} stuck at x=${m.x}`);
+  });
+
+  it("a unit on hold position does not move aside", () => {
+    const { state, ts, y } = openField();
+    const tank = parkedAt(state, "warden", tileCenter(40, ts), y);
+    const holding = parkedAt(state, "warden", tileCenter(60, ts), y);
+    holding.holdPosition = true;
+    const x0 = holding.x;
+    applyCommand(state, "A", { type: "cmd.move", ids: [tank.id], x: tileCenter(90, ts), y });
+    for (let i = 0; i < 300; i++) step(state, TICK_DT);
+    assert.equal(holding.x, x0);
+    assert.equal(holding.y, y);
+  });
+
+  it("an enemy never moves aside", () => {
+    const { state, ts, y } = openField();
+    const tank = parkedAt(state, "warden", tileCenter(40, ts), y);
+    const enemy = makeEntity(state, "warden", "B", tileCenter(60, ts), y);
+    enemy.holdPosition = false;
+    tank.order = { kind: "move", x: tileCenter(90, ts), y };
+    tank.state = "move";
+    tank.waypoints = [{ x: tileCenter(90, ts), y }];
+    for (let i = 0; i < 60; i++) step(state, TICK_DT);
+    assert.notEqual(enemy.order?.kind, "move");
+    assert.equal(enemy.waypoints.length, 0);
+  });
+
+  it("riflemen standing in a gun's path step aside for it", () => {
+    const { state, ts, y } = openField();
+    const gun = parkedAt(state, "artillery", tileCenter(40, ts), y);
+    for (let i = -1; i <= 1; i++) parkedAt(state, "rifleman", tileCenter(56, ts), y + i * 14);
+    const destX = tileCenter(80, ts);
+    applyCommand(state, "A", { type: "cmd.move", ids: [gun.id], x: destX, y });
+    runUntilIdle(state, [gun], 1200);
+    assert.equal(gun.waypoints.length, 0, "the gun arrived");
+    assert.ok(Math.abs(gun.x - destX) < ts * 4, `gun stuck at ${gun.x}, dest ${destX}`);
+  });
+
+  it("a gun whose last spot is a hair behind its travel axis calls it reached", () => {
+    const { state, ts, y } = openField();
+    // Barrel east, hauled trail first to the west: a spot 6 px east sits behind the travel axis.
+    const gun = parkedAt(state, "artillery", tileCenter(60, ts), y);
+    const spot = { x: gun.x + 6, y };
+    gun.order = { kind: "move", ...spot };
+    gun.state = "move";
+    gun.waypoints = [spot];
+    for (let i = 0; i < 30 && gun.waypoints.length > 0; i++) step(state, TICK_DT);
+    assert.equal(gun.waypoints.length, 0);
+  });
+
+  it("a soldier marching ahead of friendly tanks keeps walking instead of shaking", () => {
+    const { state, ts, y } = openField();
+    const left = parkedAt(state, "warden", tileCenter(40, ts), y - 18);
+    const right = parkedAt(state, "warden", tileCenter(40, ts), y + 18);
+    const man = parkedAt(state, "rifleman", tileCenter(45, ts), y);
+    applyCommand(state, "A", { type: "cmd.move", ids: [left.id, right.id, man.id], x: tileCenter(90, ts), y });
+    let flips = 0;
+    let last: number | null = null;
+    for (let i = 0; i < 200; i++) {
+      const ox = man.x;
+      const oy = man.y;
+      step(state, TICK_DT);
+      if (Math.hypot(man.x - ox, man.y - oy) < 0.05) continue;
+      const dir = Math.atan2(man.y - oy, man.x - ox);
+      if (last != null) {
+        let d = Math.abs(dir - last);
+        if (d > Math.PI) d = Math.PI * 2 - d;
+        if (d > 2) flips++;
+      }
+      last = dir;
+    }
+    assert.ok(flips <= 2, `soldier reversed ${flips} times`);
   });
 });

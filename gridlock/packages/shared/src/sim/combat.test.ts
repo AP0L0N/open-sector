@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
+  ALLY_LINE_PATIENCE_SECONDS,
   GAME_SPEED_MAX,
   HANDGUN,
   HEIGHT_BASE,
@@ -566,10 +567,7 @@ describe("friendly fire", () => {
     assert.notEqual(a.order?.kind, "forceattack");
   });
 
-  it("hits an allied unit standing in the line of fire", () => {
-    const { state } = twoPlayerMatch();
-    state.heights.fill(0);
-    clearCivilians(state);
+  function lineUp(state: MatchState) {
     const ts = state.tileSize;
     const gun = makeEntity(state, "rifleman", "A", tileCenter(20, ts), tileCenter(24, ts));
     const pal = makeEntity(state, "rifleman", "A", tileCenter(22, ts), tileCenter(24, ts));
@@ -579,10 +577,85 @@ describe("friendly fire", () => {
     dummy.holdPosition = true;
     dummy.cooldown = 99;
     gun.facing = 0;
+    return { gun, pal, dummy };
+  }
+
+  it("holds a held gun while a friend is in the line, then fires through him", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const { gun, pal, dummy } = lineUp(state);
+    gun.holdPosition = true;
     const palHp = pal.hp;
+    const x0 = gun.x;
+    const y0 = gun.y;
     applyCommand(state, "A", { type: "cmd.attack", ids: [gun.id], targetId: dummy.id });
-    for (let i = 0; i < 16; i++) step(state, TICK_DT);
+    const waitTicks = Math.floor((ALLY_LINE_PATIENCE_SECONDS / TICK_DT) * 0.8);
+    let shots = 0;
+    for (let i = 0; i < waitTicks; i++) {
+      step(state, TICK_DT);
+      shots += state.projectiles.filter((p) => p.fromId === gun.id).length;
+    }
+    assert.equal(shots, 0, "no round while the patience clock runs");
+    assert.equal(pal.hp, palHp);
+    for (let i = 0; i < 30; i++) step(state, TICK_DT);
     assert.ok(pal.hp < palHp, `blocker hp ${pal.hp} vs ${palHp}`);
+    assert.ok(Math.hypot(gun.x - x0, gun.y - y0) < 2, "a held gun does not step aside");
+  });
+
+  it("steps aside for a clear line and hits the target, sparing the friend", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const { gun, pal, dummy } = lineUp(state);
+    const palHp = pal.hp;
+    const dummyHp = dummy.hp;
+    const y0 = gun.y;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [gun.id], targetId: dummy.id });
+    for (let i = 0; i < 60; i++) step(state, TICK_DT);
+    assert.ok(dummy.hp < dummyHp, `target hp ${dummy.hp} vs ${dummyHp}`);
+    assert.equal(pal.hp, palHp, "the friend is not shot");
+    assert.ok(Math.abs(gun.y - y0) > gun.radius, `gun stayed on the line y=${gun.y} from ${y0}`);
+  });
+
+  it("auto-fire takes an enemy with a clear line over a nearer one behind a friend", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const { gun, dummy } = lineUp(state);
+    const open = makeEntity(state, "rifleman", "B", tileCenter(20, ts), tileCenter(36, ts));
+    open.holdPosition = true;
+    open.cooldown = 99;
+    assert.ok(Math.hypot(dummy.x - gun.x, dummy.y - gun.y) < Math.hypot(open.x - gun.x, open.y - gun.y));
+    tickCombat(state, TICK_DT);
+    assert.equal(gun.attackTarget, open.id);
+  });
+
+  it("keeps an attack-move going after stepping aside for a shot", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const { gun, dummy } = lineUp(state);
+    const goalX = tileCenter(60, ts);
+    const goalY = tileCenter(24, ts);
+    applyCommand(state, "A", { type: "cmd.attackmove", ids: [gun.id], x: goalX, y: goalY });
+    let stepped = false;
+    for (let i = 0; i < 400; i++) {
+      step(state, TICK_DT);
+      if (gun.lineBlock?.spot) stepped = true;
+      if (dummy.hp <= 0 && gun.order == null) break;
+    }
+    assert.ok(stepped, "the gun stepped aside");
+    assert.ok(dummy.hp <= 0, `target hp ${dummy.hp}`);
+    assert.ok(Math.hypot(gun.x - goalX, gun.y - goalY) < ts * 8, `gun stopped at ${gun.x},${gun.y}`);
+  });
+
+  it("does not wait for a friend in the line on a force-attack", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const { gun, dummy } = lineUp(state);
+    const clip0 = gun.clip;
+    applyCommand(state, "A", { type: "cmd.forceattack", ids: [gun.id], x: dummy.x, y: dummy.y, targetId: dummy.id });
+    for (let i = 0; i < 10; i++) step(state, TICK_DT);
+    assert.ok(gun.clip < clip0, "the forced gun fires at once");
   });
 });
 
@@ -1146,7 +1219,8 @@ describe("spotted fire", () => {
     const range = weaponRangeWorld(state, tank);
     const gap = sight + Math.floor((range / ts - sight) / 2);
     const dummy = makeEntity(state, "hauler", "B", tileCenter(ox + gap, ts), tileCenter(oy, ts));
-    makeEntity(state, "rifleman", "A", tileCenter(ox + sight - 2, ts), tileCenter(oy, ts));
+    // Off to the side, so the spotter is not in the tank's line of fire.
+    makeEntity(state, "rifleman", "A", tileCenter(ox + sight - 2, ts), tileCenter(oy + 6, ts));
     tank.facing = 0;
     tank.turretFacing = 0;
     assert.equal(canSeeEntity(state, "A", dummy), true, "spotter must light the target");
@@ -1768,6 +1842,8 @@ describe("walker gatlings", () => {
   it("fires both guns for four rounds and stops when the rack is empty", () => {
     const { state } = twoPlayerMatch();
     clearCover(state);
+    // The opening Rig stands in the line of fire.
+    stripOwner(state, "A");
     const ts = state.tileSize;
     const shooter = makeEntity(state, "walker", "A", tileCenter(12, ts), tileCenter(12, ts));
     const target = makeEntity(state, "rifleman", "B", tileCenter(16, ts), tileCenter(12, ts));
@@ -1793,6 +1869,7 @@ describe("walker gatlings", () => {
   it("cmd.guns switches one gatling and both, and the owner sees the setting", () => {
     const { state, a, b } = twoPlayerMatch();
     clearCover(state);
+    stripOwner(state, a);
     const ts = state.tileSize;
     const walker = makeEntity(state, "walker", a, tileCenter(12, ts), tileCenter(12, ts));
     const target = makeEntity(state, "rifleman", b, tileCenter(16, ts), tileCenter(12, ts));

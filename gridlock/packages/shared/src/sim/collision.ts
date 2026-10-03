@@ -5,11 +5,15 @@ import {
   isInfantryType,
   wadesOf,
   isMotorVehicle,
+  REVERSE_TILES,
+  snapTankYaw,
   TICK_DT,
+  TILE_SIZE,
   TRACK_ARRIVE_SLOP,
   UNIT_SPACE_PAD,
 } from "../catalog.js";
-import { takeDamage } from "./crits.js";
+import { moveSpeedMul, takeDamage } from "./crits.js";
+import { setPath } from "./path.js";
 import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, jetAloft, occupant, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -104,29 +108,51 @@ export function crushTreesUnder(state: MatchState, e: Entity): void {
   }
 }
 
-function blockedByUnit(state: MatchState, e: Entity, x: number, y: number, ignoreId?: number): boolean {
+/**
+ * Two friendly units that are both on the move may brush this far into each
+ * other; the separation pass eases them apart. A column flows past itself
+ * instead of locking up on hard contact.
+ */
+const FRIENDLY_MOVER_SQUEEZE = 0.6;
+
+/** The unit `e` would run into standing at (x, y), if any. */
+function blockerAt(
+  state: MatchState,
+  e: Entity,
+  x: number,
+  y: number,
+  ignoreId?: number,
+  passes?: (o: Entity) => boolean,
+): Entity | null {
   const r = e.radius;
+  const moving = rolling(e);
   for (const o of state.entities.values()) {
     if (o.id === e.id || o.id === ignoreId || o.hp <= 0 || o.garrisonedIn) continue;
+    if (passes?.(o)) continue;
     if (o.kind === "building" || o.air || jetAloft(o)) continue;
-    const need = r + o.radius;
+    let need = r + o.radius;
     const dx = x - o.x;
     const dy = y - o.y;
     const newD = dx * dx + dy * dy;
     if (newD >= need * need) continue;
     if (canCrush(state, e, o)) continue;
-    if (rolling(e) && makesWayFor(state, o, e)) continue;
+    if (moving && makesWayFor(state, o, e)) continue;
+    // A soldier also slips through the gap between parked friendly vehicles.
+    if (moving && !o.wreck && (rolling(o) || isInfantryType(e.type)) && allies(state, e.ownerId, o.ownerId)) {
+      need *= FRIENDLY_MOVER_SQUEEZE;
+      if (newD >= need * need) continue;
+    }
     const odx = e.x - o.x;
     const ody = e.y - o.y;
     const oldD = odx * odx + ody * ody;
     if (oldD < need * need && newD + 1e-6 >= oldD) continue;
-    return true;
+    return o;
   }
-  return false;
+  return null;
 }
 
 function canStand(state: MatchState, e: Entity, x: number, y: number, ignoreId?: number): boolean {
-  return tileFree(state, e, x, y) && !blockedByUnit(state, e, x, y, ignoreId);
+  return tileFree(state, e, x, y) && !blockerAt(state, e, x, y, ignoreId);
 }
 
 function yieldSide(across: number, id: number): 1 | -1 {
@@ -184,6 +210,9 @@ export function moveWithCollision(
   let arrive = false;
   const tracks = !!catalog(e.type).turnInPlace;
   const slop = Math.max(TRACK_ARRIVE_SLOP, acrossSlop);
+  // A few pixels past the waypoint on the travel axis: the steering keeps the
+  // face, so the hull would sit there forever. Call it reached.
+  let overshot = false;
   if (tracks) {
     const fx = Math.cos(e.facing);
     const fy = Math.sin(e.facing);
@@ -197,6 +226,8 @@ export function moveWithCollision(
     wantX = e.x + fx * travel;
     wantY = e.y + fy * travel;
     arrive = Math.abs(along) <= step && Math.abs(across) <= slop;
+    const ahead = reverse ? -along : along;
+    overshot = ahead < 0 && ahead > -TRACK_ARRIVE_SLOP && Math.abs(across) <= slop;
   } else if (dist <= 2 || dist <= step) {
     wantX = wp.x;
     wantY = wp.y;
@@ -210,14 +241,38 @@ export function moveWithCollision(
   e.y = pos.y;
   crushTreesUnder(state, e);
   const left = Math.hypot(e.x - wp.x, e.y - wp.y);
-  if (arrive && left <= slop) {
+  if (!pos.blocked) blockedFor.delete(e);
+  if ((arrive && left <= slop) || overshot) {
     e.waypoints.shift();
   } else if (pos.blocked && e.waypoints.length > 1 && left < step * 1.4) {
     e.waypoints.shift();
-  } else if (pos.blocked && tracks && !reverse) {
-    planTrackDetour(state, e);
+  } else if (pos.blocked && tracks && !waitForFriend(state, e, wantX, wantY)) {
+    planTrackDetour(state, e, reverse);
   }
   return e.waypoints.length > 0;
+}
+
+/** Ticks a hull has sat blocked in a row. */
+const blockedFor = new WeakMap<Entity, number>();
+/** How long a hull waits on a friend that is already moving before it drives around. */
+const FRIEND_PATIENCE_TICKS = 30;
+
+/**
+ * A friend in the way that is rolling or stepping aside will clear the lane on
+ * its own. Hold for a moment instead of laying a detour around it.
+ */
+function waitForFriend(state: MatchState, e: Entity, wantX: number, wantY: number): boolean {
+  const n = (blockedFor.get(e) ?? 0) + 1;
+  blockedFor.set(e, n);
+  if (n > FRIEND_PATIENCE_TICKS) return false;
+  const b = blockerAt(state, e, wantX, wantY);
+  if (!b || b.wreck || !allies(state, e.ownerId, b.ownerId)) return false;
+  if (rolling(b) || shuffledFor(state, b) || givingWay.has(b)) return true;
+  // Nose against a parked friend: ask it to roll aside, then wait for it.
+  const dx = wantX - e.x;
+  const dy = wantY - e.y;
+  const d = Math.hypot(dx, dy);
+  return d > 1e-6 && canShuffle(state, b, e) && askToShuffle(state, b, e, dx / d, dy / d);
 }
 
 /**
@@ -252,13 +307,15 @@ const TRACK_DETOUR_COOLDOWN_TICKS = 5;
  * toward each leg and rolls, then yaws back onto its path. Replaces the old
  * perpendicular slide, which moved the hull without turning it.
  */
-function planTrackDetour(state: MatchState, e: Entity): boolean {
+function planTrackDetour(state: MatchState, e: Entity, back = false): boolean {
   const wp = e.waypoints[0];
   if (!wp) return false;
   const prev = trackDetour.get(e);
   if (prev && (prev.legs.includes(wp) || state.tick - prev.tick < TRACK_DETOUR_COOLDOWN_TICKS)) return false;
-  const fx = Math.cos(e.facing);
-  const fy = Math.sin(e.facing);
+  // A hull backing up (a gun hauled trail first) detours along its travel axis, not its bow.
+  const travel = back ? e.facing + Math.PI : e.facing;
+  const fx = Math.cos(travel);
+  const fy = Math.sin(travel);
   const px = -fy;
   const py = fx;
   const across = (wp.x - e.x) * px + (wp.y - e.y) * py;
@@ -311,6 +368,13 @@ export function tickMakeWay(state: MatchState): void {
     const reach = hull.waypoints.length > 1 ? lane : Math.min(lane, d + hull.radius);
     for (const inf of walkers) {
       if (!makesWayFor(state, inf, hull)) continue;
+      // Marching the same way as the hull: keep walking. Stepping out of one
+      // hull's lane only to land in the next one's makes a soldier shake.
+      const iwp = inf.waypoints[0];
+      if (iwp && rolling(inf) && !givingWay.has(inf)) {
+        const iw = Math.hypot(iwp.x - inf.x, iwp.y - inf.y);
+        if (iw > 1e-3 && ((iwp.x - inf.x) * ux + (iwp.y - inf.y) * uy) / iw > 0.5) continue;
+      }
       const clear = hull.radius + inf.radius + UNIT_SPACE_PAD;
       const rx = inf.x - hull.x;
       const ry = inf.y - hull.y;
@@ -337,6 +401,214 @@ export function tickMakeWay(state: MatchState): void {
     }
   }
 }
+
+/** When an idle friend was last sent out of a lane, and its spot. */
+const shuffled = new WeakMap<Entity, { x: number; y: number; tick: number }>();
+const SHUFFLE_COOLDOWN_TICKS = 15;
+/** A side spot farther than this many unit radii past the lane is not worth the trip. */
+const SHUFFLE_MAX_RADII = 4;
+
+/** Still rolling to the spot a mover asked it to clear to. */
+function shuffledFor(state: MatchState, e: Entity): boolean {
+  const s = shuffled.get(e);
+  if (!s || state.tick - s.tick > 60) return false;
+  const last = e.waypoints[e.waypoints.length - 1];
+  return !!last && last.x === s.x && last.y === s.y;
+}
+
+/** Parked friend with nothing to do: free to roll aside. Hold position, braced, and busy units stay put. */
+function canShuffle(state: MatchState, o: Entity, mover: Entity): boolean {
+  if (!isActiveUnit(o) || o.id === mover.id || o.chute) return false;
+  if (!allies(state, o.ownerId, mover.ownerId)) return false;
+  // A hull or gun never gives way to a soldier; he walks around it.
+  if (isInfantryType(mover.type) && !isInfantryType(o.type)) return false;
+  if (o.order || o.waypoints.length > 0 || o.holdPosition || o.braced) return false;
+  if (o.state !== "idle" || o.attackTarget != null || o.towedBy != null || o.towing != null) return false;
+  if (catalog(o.type).moveTilesPerSec <= 0 || moveSpeedMul(o) <= 0) return false;
+  const prev = shuffled.get(o);
+  return !prev || state.tick - prev.tick >= SHUFFLE_COOLDOWN_TICKS;
+}
+
+function angDiff(a: number, b: number): number {
+  let d = a - b;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return Math.abs(d);
+}
+
+/**
+ * Quickest spot beside the lane for `o`. A tracked hull prefers rolling along
+ * its own axis (no yaw); a gun is hauled trail first; feet go anywhere.
+ */
+function shuffleSpot(
+  state: MatchState,
+  o: Entity,
+  mover: Entity,
+  ux: number,
+  uy: number,
+  clear: number,
+): { x: number; y: number } | null {
+  const def = catalog(o.type);
+  const px = -uy;
+  const py = ux;
+  const across0 = (o.x - mover.x) * px + (o.y - mover.y) * py;
+  const speed = Math.max(1e-3, def.moveTilesPerSec * state.tileSize * moveSpeedMul(o));
+  const turn = Math.max(1e-3, def.turnDegPerSec);
+  const tracks = !!def.turnInPlace;
+  const trailFirst = o.type === "artillery";
+  const side = yieldSide(across0, o.id);
+  const sideways = [Math.atan2(py * side, px * side), Math.atan2(-py * side, -px * side)];
+  const heads: number[] = [];
+  if (tracks) {
+    // Travel headings the hull rolls without a yaw come first.
+    if (trailFirst) heads.push(o.facing + Math.PI);
+    else {
+      heads.push(o.facing);
+      if (!def.noReverse) heads.push(o.facing + Math.PI);
+    }
+    for (const a of sideways) {
+      const hull = snapTankYaw(trailFirst ? a + Math.PI : a);
+      heads.push(trailFirst ? hull + Math.PI : hull);
+    }
+  } else {
+    heads.push(...sideways);
+  }
+  let best: { x: number; y: number } | null = null;
+  let bestCost = Infinity;
+  for (const h of heads) {
+    const vx = Math.cos(h);
+    const vy = Math.sin(h);
+    const vp = vx * px + vy * py;
+    if (Math.abs(vp) < 0.3) continue;
+    const d = (clear - Math.sign(vp) * across0) / Math.abs(vp) + 1;
+    if (d <= 0 || d > o.radius * SHUFFLE_MAX_RADII + clear) continue;
+    // A tank only backs up a short hop; farther it spins and drives.
+    const backing = tracks && !trailFirst && angDiff(h, o.facing) > Math.PI / 2;
+    if (backing && d > REVERSE_TILES * TILE_SIZE) continue;
+    const hull = tracks ? (trailFirst || backing ? h + Math.PI : h) : o.facing;
+    const yaw = tracks ? (angDiff(hull, o.facing) * 180) / Math.PI : 0;
+    let cost = d / speed + yaw / turn;
+    if (cost >= bestCost) continue;
+    const sx = o.x + vx * d;
+    const sy = o.y + vy * d;
+    const mx = o.x + vx * d * 0.5;
+    const my = o.y + vy * d * 0.5;
+    if (!tileFree(state, o, sx, sy) || !tileFree(state, o, mx, my)) continue;
+    if (blockerAt(state, o, sx, sy, mover.id) || blockerAt(state, o, mx, my, mover.id)) {
+      // Packed in: take a spot only parked friends hold; they shuffle on in turn.
+      const parked = (b: Entity): boolean => canShuffle(state, b, mover);
+      if (blockerAt(state, o, sx, sy, mover.id, parked) || blockerAt(state, o, mx, my, mover.id, parked)) continue;
+      cost += SHUFFLE_CHAIN_PENALTY_SEC;
+      if (cost >= bestCost) continue;
+    }
+    best = { x: sx, y: sy };
+    bestCost = cost;
+  }
+  return best;
+}
+
+/** A spot that makes another parked friend move too counts as this many seconds slower. */
+const SHUFFLE_CHAIN_PENALTY_SEC = 3;
+
+/**
+ * Idle friends parked in a mover's lane roll aside, the way a column parts
+ * for a tank coming through. Infantry clearing a hull's lane use tickMakeWay.
+ */
+export function tickShuffle(state: MatchState): void {
+  const units = [...state.entities.values()].filter(isActiveUnit);
+  const parked = units.filter((u) => u.waypoints.length === 0 && !u.order);
+  if (parked.length === 0) return;
+  for (const mover of units) {
+    if (!rolling(mover) || mover.waypoints.length === 0) continue;
+    const wp = mover.waypoints[0]!;
+    const dx = wp.x - mover.x;
+    const dy = wp.y - mover.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 1e-3) continue;
+    const lanes = [{ ux: dx / d, uy: dy / d }];
+    if (catalog(mover.type).turnInPlace) {
+      // Tracks roll along the hull axis, which can be a face off the waypoint bearing.
+      const sign = Math.cos(mover.facing) * dx + Math.sin(mover.facing) * dy >= 0 ? 1 : -1;
+      lanes.push({ ux: Math.cos(mover.facing) * sign, uy: Math.sin(mover.facing) * sign });
+    }
+    const goal = mover.waypoints[mover.waypoints.length - 1]!;
+    const toGoal = Math.hypot(goal.x - mover.x, goal.y - mover.y);
+    const reach = Math.min(mover.radius * 3, toGoal + mover.radius);
+    for (const o of parked) {
+      if (makesWayFor(state, o, mover) || !canShuffle(state, o, mover)) continue;
+      const clear = mover.radius + o.radius + UNIT_SPACE_PAD;
+      const rx = o.x - mover.x;
+      const ry = o.y - mover.y;
+      const lane = lanes.find(({ ux, uy }) => {
+        const along = rx * ux + ry * uy;
+        const across = rx * -uy + ry * ux;
+        return along >= 0 && along <= reach + o.radius && Math.abs(across) < clear;
+      });
+      if (!lane) continue;
+      // The mover is headed for this friend's own spot: it settles beside it instead.
+      // A friend already shuffling into this spot is the exception: it chains.
+      const chain = shuffledFor(state, mover);
+      if (!chain && mover.waypoints.length === 1 && Math.hypot(goal.x - o.x, goal.y - o.y) < clear) continue;
+      askToShuffle(state, o, mover, lane.ux, lane.uy);
+    }
+  }
+}
+
+/** Send an idle friend to the quickest spot clear of the mover's lane. */
+function askToShuffle(state: MatchState, o: Entity, mover: Entity, ux: number, uy: number): boolean {
+  const spot = shuffleSpot(state, o, mover, ux, uy, mover.radius + o.radius + UNIT_SPACE_PAD);
+  if (!spot) return false;
+  o.order = { kind: "move", x: spot.x, y: spot.y };
+  o.waypoints = [spot];
+  o.state = "move";
+  shuffled.set(o, { x: spot.x, y: spot.y, tick: state.tick });
+  return true;
+}
+
+/**
+ * Re-plan a stuck unit's route with the parked units in its way marked as
+ * ground it cannot cross, so it goes around a packed block instead of nosing
+ * into it again. Falls back to the plain route when that leaves no way through.
+ */
+export function pathAroundParked(state: MatchState, e: Entity, toX: number, toY: number): boolean {
+  const ts = state.tileSize;
+  const reach = PARKED_REACH_TILES * TILE_SIZE;
+  const ex = worldToTile(e.x, ts);
+  const ey = worldToTile(e.y, ts);
+  const stamped: number[] = [];
+  for (const o of state.entities.values()) {
+    if (o.id === e.id || !isActiveUnit(o) || o.waypoints.length > 0) continue;
+    if (Math.abs(o.x - e.x) > reach || Math.abs(o.y - e.y) > reach) continue;
+    if (canCrush(state, e, o) || makesWayFor(state, o, e)) continue;
+    const r = (o.radius + e.radius) * 0.9;
+    // Settling beside it at the end of the route is the settle pass's job.
+    if (Math.hypot(toX - o.x, toY - o.y) < r + ts) continue;
+    const x0 = worldToTile(o.x - r, ts);
+    const x1 = worldToTile(o.x + r, ts);
+    const y0 = worldToTile(o.y - r, ts);
+    const y1 = worldToTile(o.y + r, ts);
+    for (let ty = y0; ty <= y1; ty++) {
+      for (let tx = x0; tx <= x1; tx++) {
+        if (!inBounds(state, tx, ty) || (tx === ex && ty === ey)) continue;
+        if (Math.hypot(tileCenter(tx, ts) - o.x, tileCenter(ty, ts) - o.y) > r) continue;
+        const i = tileIndex(state, tx, ty);
+        if ((state.occupy[i] ?? 0) !== 0) continue;
+        state.occupy[i] = -1;
+        stamped.push(i);
+      }
+    }
+  }
+  let ok = false;
+  try {
+    ok = setPath(state, e, toX, toY);
+  } finally {
+    for (const i of stamped) state.occupy[i] = 0;
+  }
+  return ok || setPath(state, e, toX, toY);
+}
+
+/** How far around a stuck unit parked units count as obstacles, in sim tiles. */
+const PARKED_REACH_TILES = 48;
 
 /** Walk toward a pending side-step. Returns true while the soldier is still stepping aside. */
 export function stepGiveWay(state: MatchState, e: Entity, speed: number, dt: number): boolean {

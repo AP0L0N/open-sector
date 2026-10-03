@@ -61,7 +61,8 @@ function clearCover(state: MatchState): void {
   }
   state.blocked.fill(0);
   for (const e of [...state.entities.values()]) {
-    if (isCivilianType(e.type)) destroyEntity(state, e);
+    // The opening Rig too: it stands in the line of fire of the test row.
+    if (isCivilianType(e.type) || e.type === "rig") destroyEntity(state, e);
   }
 }
 

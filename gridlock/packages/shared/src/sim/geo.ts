@@ -676,3 +676,65 @@ export function hqOf(state: MatchState, playerId: string): Entity | undefined {
   }
   return undefined;
 }
+
+/** Where a segment first enters a box, 0–1 along it. 0 when it starts inside. Null on a miss. */
+export function segmentAabbT(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  box: { x0: number; y0: number; x1: number; y1: number },
+): number | null {
+  if (x0 >= box.x0 && x0 < box.x1 && y0 >= box.y0 && y0 < box.y1) return 0;
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  let t0 = 0;
+  let t1 = 1;
+  const clip = (p: number, q: number): boolean => {
+    if (Math.abs(p) < 1e-12) return q >= 0;
+    const r = q / p;
+    if (p < 0) {
+      if (r > t1) return false;
+      if (r > t0) t0 = r;
+    } else {
+      if (r < t0) return false;
+      if (r < t1) t1 = r;
+    }
+    return true;
+  };
+  if (!clip(-dx, x0 - box.x0)) return null;
+  if (!clip(dx, box.x1 - x0)) return null;
+  if (!clip(-dy, y0 - box.y0)) return null;
+  if (!clip(dy, box.y1 - y0)) return null;
+  if (t0 > t1 || t0 > 1 || t1 < 0) return null;
+  return t0 < 0 ? 0 : t0;
+}
+
+/** Where a segment first enters a circle, 0–1 along it. 0 when it starts inside. Null on a miss. */
+export function segmentCircleT(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  cx: number,
+  cy: number,
+  r: number,
+): number | null {
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  const fx = x0 - cx;
+  const fy = y0 - cy;
+  const a = dx * dx + dy * dy;
+  const c0 = fx * fx + fy * fy - r * r;
+  if (c0 <= 0) return 0;
+  if (a < 1e-8) return null;
+  const b = 2 * (fx * dx + fy * dy);
+  const disc = b * b - 4 * a * c0;
+  if (disc < 0) return null;
+  const s = Math.sqrt(disc);
+  const t1 = (-b - s) / (2 * a);
+  const t2 = (-b + s) / (2 * a);
+  if (t1 >= 0 && t1 <= 1) return t1;
+  if (t2 >= 0 && t2 <= 1) return t2;
+  return null;
+}
