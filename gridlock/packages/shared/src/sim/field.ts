@@ -4,6 +4,8 @@ import {
   CYBORG_REPAIR_PER_SEC,
   ENGINEER_SEEK_TILES,
   fieldSpan,
+  GREAT_WALL_COVER_BONUS,
+  isConcreteLine,
   MAX_UNIT_RADIUS,
   UNIT_SPACE_PAD,
   isAircraftType,
@@ -15,6 +17,7 @@ import {
   stanceOf,
   WRECK_SCRAP_SECONDS,
   wreckScrapOf,
+  type ConcreteLineType,
   type EntityType,
   type FieldStructureType,
   type ShellType,
@@ -449,14 +452,14 @@ function wallPiecesOf(e: Entity): FieldPiece[] {
  * One job for the whole line. The engineer works `buildSeconds` for each piece,
  * then every piece appears together.
  */
-function tickWall(state: MatchState, e: Entity, dt: number): void {
+function tickWall(state: MatchState, e: Entity, dt: number, structure: ConcreteLineType): void {
   const pieces = wallPiecesOf(e);
   if (pieces.length === 0) {
     finishWork(e);
     return;
   }
   const first = pieces[0]!;
-  const spot = standPoint("wall", first.x, first.y, first.facing);
+  const spot = standPoint(structure, first.x, first.y, first.facing);
   if (e.waypoints.length > 0) return;
   if (Math.hypot(e.x - spot.x, e.y - spot.y) > WORK_REACH) {
     e.state = "move";
@@ -464,21 +467,21 @@ function tickWall(state: MatchState, e: Entity, dt: number): void {
     return;
   }
   if (e.work <= 0) {
-    const open = pieces.filter((p) => fieldSiteClear(state, "wall", p.x, p.y, p.facing));
+    const open = pieces.filter((p) => fieldSiteClear(state, structure, p.x, p.y, p.facing));
     if (open.length === 0) {
       finishWork(e);
       return;
     }
     const lead = open[0]!;
-    const leadSpot = standPoint("wall", lead.x, lead.y, lead.facing);
+    const leadSpot = standPoint(structure, lead.x, lead.y, lead.facing);
     if (Math.hypot(e.x - leadSpot.x, e.y - leadSpot.y) > WORK_REACH) {
-      e.order = { kind: "build", x: lead.x, y: lead.y, facing: lead.facing, structure: "wall" };
+      e.order = { kind: "build", x: lead.x, y: lead.y, facing: lead.facing, structure };
       e.fieldQueue = open.slice(1);
       e.state = "move";
       setPath(state, e, leadSpot.x, leadSpot.y);
       return;
     }
-    const def = catalog("wall");
+    const def = catalog(structure);
     const player = state.players.get(e.ownerId);
     const n = player ? Math.min(open.length, Math.floor(player.scrap / def.cost)) : 0;
     if (!player || n === 0) {
@@ -489,7 +492,7 @@ function tickWall(state: MatchState, e: Entity, dt: number): void {
     const build = open.slice(0, n);
     player.scrap -= def.cost * n;
     const paid = build[0]!;
-    e.order = { kind: "build", x: paid.x, y: paid.y, facing: paid.facing, structure: "wall" };
+    e.order = { kind: "build", x: paid.x, y: paid.y, facing: paid.facing, structure };
     e.fieldQueue = build.slice(1);
   }
   const count = wallPiecesOf(e).length;
@@ -500,15 +503,15 @@ function tickWall(state: MatchState, e: Entity, dt: number): void {
   e.turretFacing = e.facing;
   e.work += dt;
   // 0.1 added ten times a second undershoots the duration by a rounding error.
-  if (e.work + 1e-6 < catalog("wall").buildSeconds * count) return;
+  if (e.work + 1e-6 < catalog(structure).buildSeconds * count) return;
   const player = state.players.get(e.ownerId);
   let placed = 0;
   for (const p of wallPiecesOf(e)) {
-    if (!fieldSiteClear(state, "wall", p.x, p.y, p.facing)) {
-      if (player) player.scrap += catalog("wall").cost;
+    if (!fieldSiteClear(state, structure, p.x, p.y, p.facing)) {
+      if (player) player.scrap += catalog(structure).cost;
       continue;
     }
-    const built = makeEntity(state, "wall", e.ownerId, p.x, p.y, { facing: p.facing });
+    const built = makeEntity(state, structure, e.ownerId, p.x, p.y, { facing: p.facing });
     built.facing = p.facing;
     built.turretFacing = p.facing;
     placed++;
@@ -521,8 +524,8 @@ function tickBuild(state: MatchState, e: Entity, dt: number): void {
   const order = e.order;
   if (!order || order.kind !== "build" || order.structure == null || order.x == null || order.y == null) return;
   const structure = order.structure;
-  if (structure === "wall") {
-    tickWall(state, e, dt);
+  if (isConcreteLine(structure)) {
+    tickWall(state, e, dt, structure);
     return;
   }
   const facing = order.facing ?? 0;
@@ -736,12 +739,31 @@ export function coverStrike(e: Entity, damage: number, tick: number, overhead: b
   return takeDamage(e, damage, tick);
 }
 
+/** The intact Great Wall section this soldier is standing on, if any. */
+export function rampartUnder(state: MatchState, e: Entity): Entity | null {
+  if (e.hp <= 0 || e.wreck || e.kind !== "unit" || e.garrisonedIn != null || aloft(e)) return null;
+  if (!isInfantryType(e.type)) return null;
+  const span = fieldSpan("greatwall")!;
+  for (const wall of state.entities.values()) {
+    if (wall.type !== "greatwall" || wall.ruined || wall.hp <= 0) continue;
+    if (inFieldRect(e.x, e.y, wall.x, wall.y, wall.facing, span.length, span.thick)) return wall;
+  }
+  return null;
+}
+
+/** Infantry on top of a Great Wall, behind its parapet. */
+export function rampartCoverBonus(e: Entity): number {
+  if (!e.onRampart) return 0;
+  return Math.max(1, Math.round(catalog(e.type).hp * GREAT_WALL_COVER_BONUS));
+}
+
 function applyCoverHp(state: MatchState): void {
   for (const e of state.entities.values()) {
     if (e.kind !== "unit") continue;
+    e.onRampart = rampartUnder(state, e) != null ? true : undefined;
     const sand = e.hp <= 0 ? 0 : sandbagCoverBonus(state, e);
     const wall = e.hp <= 0 ? 0 : wallCoverBonus(state, e);
-    const next = sand + wall;
+    const next = sand + wall + rampartCoverBonus(e);
     const prev = e.coverBonus;
     e.wallCover = wall;
     if (next === prev) continue;
@@ -842,6 +864,30 @@ function wallOnSegment(
   return best;
 }
 
+/**
+ * The first intact Great Wall a low shot runs into from outside. A round that starts
+ * on the wall flies off it, so men on top fire freely.
+ */
+export function greatWallSweep(
+  state: MatchState,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+): { e: Entity; t: number; x: number; y: number } | null {
+  let best: { e: Entity; t: number; x: number; y: number } | null = null;
+  const span = fieldSpan("greatwall")!;
+  for (const e of state.entities.values()) {
+    if (e.type !== "greatwall" || e.hp <= 0 || e.ruined) continue;
+    if (inFieldRect(x0, y0, e.x, e.y, e.facing, span.length, span.thick)) continue;
+    const t = segmentObbT(x0, y0, x1, y1, e.x, e.y, e.facing, span.length / 2, span.thick / 2);
+    if (t == null) continue;
+    if (best && t >= best.t) continue;
+    best = { e, t, x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t };
+  }
+  return best;
+}
+
 /** The first intact concrete wall a straight shot crosses. Overhead rounds pass over. */
 export function wallSweep(
   state: MatchState,
@@ -895,13 +941,16 @@ function segmentObbT(
   return t0 < 0 ? 0 : t0;
 }
 
-/** 1 = sandbags and concrete walls (blocks everyone). 2 = dragon's teeth (vehicles only). A trench blocks no one. */
+/**
+ * 1 = sandbags and concrete walls (blocks everyone). 2 = dragon's teeth and the Great Wall
+ * (vehicles only; infantry walk through the teeth and over the rampart). A trench blocks no one.
+ */
 export function restampForts(state: MatchState): void {
   state.fortBlock.fill(0);
   for (const e of state.entities.values()) {
     if (!isFieldStructure(e.type) || e.hp <= 0 || e.ruined) continue;
     if (e.type === "trench") continue;
-    const code = e.type === "teeth" ? 2 : 1;
+    const code = e.type === "teeth" || e.type === "greatwall" ? 2 : 1;
     for (const t of fieldTiles(state, e.type, e.x, e.y, e.facing, 0)) {
       state.fortBlock[tileIndex(state, t.x, t.y)] = code;
     }
