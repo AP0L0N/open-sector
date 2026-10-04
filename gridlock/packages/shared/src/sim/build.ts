@@ -1,5 +1,5 @@
 import {
-  BUILD_RADIUS,
+  buildRadiusOf,
   catalog,
   isCivilianType,
   isConcreteLine,
@@ -210,7 +210,7 @@ export function placeBuilding(
   const def = catalog(type);
   const siteErr = buildingSiteError(state, type, tx, ty, playerId);
   if (siteErr) return siteErr;
-  if (!inBuildRadius(state, playerId, tx, ty, def.tileW, def.tileH, BUILD_RADIUS)) {
+  if (!inBuildRadius(state, playerId, tx, ty, def.tileW, def.tileH, buildRadiusOf(type))) {
     return "Too far from your base.";
   }
   raiseBuilding(state, playerId, type, tx, ty);

@@ -16,8 +16,13 @@ export const TILE_SUBDIV = 4;
 /** World pixels along one gameplay tile. A 64-cell map stays 2048 world-wide. */
 export const TILE_SIZE = 32 / TILE_SUBDIV;
 const t = (n: number): number => n * TILE_SUBDIV;
-/** Chebyshev gap from any owned building's footprint; wide enough to fit an Airfield past the base clutter. */
-export const BUILD_RADIUS = t(14);
+/**
+ * Chebyshev gap from an owned base building's footprint within which the yard places a base building.
+ * Just reaches every start's home scrap field from the Core; farther scrap takes an engineer.
+ */
+export const BUILD_RADIUS = t(8);
+/** The same gap for the Defences tab: guns, garrisons, and lines ring the base a little past its buildings. */
+export const DEFENCE_BUILD_RADIUS = t(10);
 export const UNIT_CAP = 60;
 /** Max train jobs waiting or in progress on one producer. */
 export const TRAIN_QUEUE_CAP = 9;
@@ -3754,6 +3759,19 @@ export function isYardField(type: string): type is YardFieldType {
 export function isDefenceStructure(type: string): boolean {
   if (isYardField(type)) return true;
   return isBuildingType(type) && (catalog(type).rangeTiles > 0 || isGarrisonable(type));
+}
+
+/** How far from the base the yard may place this type. */
+export function buildRadiusOf(type: string): number {
+  return isDefenceStructure(type) ? DEFENCE_BUILD_RADIUS : BUILD_RADIUS;
+}
+
+/**
+ * Whether an owned structure extends build range. Only base buildings do,
+ * so a chain of towers or a wall run cannot carry the yard across the map.
+ */
+export function anchorsBuildRange(type: EntityType): boolean {
+  return !isFieldStructure(type) && !isDefenceStructure(type);
 }
 
 /** World-pixel length along the wall and thickness across it. Null for other types. */
