@@ -178,7 +178,6 @@ import {
   tileCenter,
   unitInWater,
   worldToTile,
-  makeEntity,
 } from "./geo.js";
 import {
   garrisonIsHiding,
@@ -217,7 +216,7 @@ import { stepCluster } from "./airdrop.js";
 import { projectileMeetsDrone, reachesDrone } from "./drone.js";
 import { reachesJet } from "./jet.js";
 import { nightSightMul, nightTiles } from "./night.js";
-import { afloat, diving, hiddenSubmarine, surface, surfaceToStrike, torpedoCannotReach } from "./naval.js";
+import { afloat, armTorpedo, diving, hiddenSubmarine, surface, surfaceToStrike, torpedoCannotReach } from "./naval.js";
 import { shipHullT, shipKeelDist, shipMountPoint, turretBearing } from "./battleship.js";
 import type { Entity, MatchState, Order, Projectile, ShipCiws } from "./types.js";
 
@@ -892,7 +891,66 @@ function outOfReachAloft(state: MatchState, e: Entity, target: Entity): boolean 
 /** Move, attack-move, patrol, and unit-escort all engage in-range enemies. Attack-move halts; the others keep walking. */
 function travelFights(e: Entity): boolean {
   const k = e.order?.kind;
-  return k === "attackmove" || k === "move" || k === "patrol" || escorting(e);
+  return k === "attackmove" || k === "move" || k === "patrol" || escorting(e) || forceUnderway(e);
+}
+
+/** A force-attack the player sent on a Move: the guns keep the aim while the hull drives. */
+export function forceUnderway(e: Entity): boolean {
+  return e.order?.kind === "forceattack" && e.order.travel != null;
+}
+
+/**
+ * The forced aim still works from where `e` is now: inside reach, outside the
+ * least range, and on a bearing the guns can take. A turret swings all the
+ * way round. A Battle Ship needs one turret clear of its blind arc astern. A
+ * hull gun on the move needs the aim inside its arc of the way it is driving;
+ * stopped, it turns to the aim as before.
+ */
+export function forceAimHolds(state: MatchState, e: Entity, aim: { x: number; y: number }): boolean {
+  const dist = Math.hypot(aim.x - e.x, aim.y - e.y);
+  if (dist > weaponRangeWorld(state, e)) return false;
+  if (e.ship && dist < BATTLESHIP_MIN_RANGE_TILES * state.tileSize) return false;
+  if (e.type === "mortarman" && dist < MORTAR_MIN_RANGE_TILES * state.tileSize) return false;
+  const bearing = Math.atan2(aim.y - e.y, aim.x - e.x);
+  if (e.ship) {
+    return BATTLESHIP_TURRET_AT.some((p) => {
+      const at = shipMountPoint(e, p);
+      return !turretBearing(e.facing, Math.atan2(aim.y - at.y, aim.x - at.x)).blind;
+    });
+  }
+  if (hasTurret(e.type) || e.waypoints.length === 0) return true;
+  const wp = e.waypoints[0]!;
+  const heading = reversing(e) ? e.facing : Math.atan2(wp.y - e.y, wp.x - e.x);
+  let d = bearing - heading;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return Math.abs(d) <= (gunArcDegOf(e.type) * Math.PI) / 180;
+}
+
+/** The forced point, or where the forced target stands. */
+function forceAimPoint(state: MatchState, e: Entity): { x: number; y: number } | null {
+  const o = e.order;
+  if (o?.kind !== "forceattack") return null;
+  if (o.targetId != null) {
+    const t = state.entities.get(o.targetId);
+    if (t && t.hp > 0) return { x: t.x, y: t.y };
+  }
+  return o.x != null && o.y != null ? { x: o.x, y: o.y } : null;
+}
+
+/** The aim on a Move no longer works: drop it and keep driving the course. */
+function releaseForceUnderway(e: Entity): void {
+  const o = e.order;
+  if (o?.kind !== "forceattack" || !o.travel) return;
+  e.attackTarget = null;
+  if (e.waypoints.length > 0) {
+    e.order = { kind: "move", x: o.travel.x, y: o.travel.y };
+    if (o.pace != null) e.order.pace = o.pace;
+    e.state = "move";
+  } else {
+    e.order = null;
+    if (e.state === "attack") e.state = "idle";
+  }
 }
 
 /**
@@ -1025,6 +1083,14 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
     e.order = pick ? { kind: "attack", targetId: pick.id, auto: true } : null;
     if (!pick && e.state === "attack") e.state = "idle";
     return pick;
+  }
+  // On a Move, a forced aim lasts while it works from the course; then the unit just drives.
+  if (forceUnderway(e)) {
+    const o = e.order!;
+    const t = o.targetId != null ? state.entities.get(o.targetId) : undefined;
+    const gone = o.targetId != null && (!t || t.hp <= 0);
+    const aim = gone ? null : forceAimPoint(state, e);
+    if (!aim || !forceAimHolds(state, e, aim)) releaseForceUnderway(e);
   }
   if (e.order?.kind === "forceattack") {
     if (e.order.targetId == null) {
@@ -1344,8 +1410,11 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (e.waypoints.length > 0 && !travelFights(e) && !reversing(e) && !holedUp) return;
 
   if (!holedUp) e.state = "attack";
+  // A hull gun under way keeps the course: the hull does not swing to the aim, it
+  // fires when the aim sits in its arc of the way it is going.
+  const driving = !turreted && !holedUp && forceUnderway(e) && e.waypoints.length > 0;
   if (!turreted && !holedUp) {
-    remainingDeg = turnToward(e, aimX, aimY, def.turnDegPerSec * hullTurnMul(e), dt);
+    remainingDeg = turnToward(e, aimX, aimY, driving ? 0 : def.turnDegPerSec * hullTurnMul(e), dt);
   }
   // No turret: remainingDeg is the hull, and the shot leaves along that facing.
   // A traversing turret fires along the turret once it is on the target.
@@ -1354,7 +1423,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   // A round that leaves along the barrel waits for the swing to finish, or the
   // first shot goes wide. A hull gun with its own traverse (gunArcDeg) lays the
   // round on the target anywhere inside that arc. A soldier inside fires from the opening.
-  const traverse = !turreted && catalog(e.type).gunArcDeg != null;
+  const traverse = (!turreted && catalog(e.type).gunArcDeg != null) || driving;
   const laid = holedUp || traverse || Math.abs(remainingDeg) <= FIRE_LAID_DEG;
   const bearing = traverse && !holedUp ? Math.atan2(aimY - e.y, aimX - e.x) : undefined;
 
@@ -2492,12 +2561,7 @@ function fireRound(
   };
   if (torpedoesOf(e.type)) {
     // The tube fires at the waterline, and the shot gives the boat away.
-    p.torpedo = true;
-    p.z = 0;
-    p.vz = 0;
-    p.deep = diving(e) || undefined;
-    // The torpedo runs in plain sight as its own body: a gun can shoot it before it arrives.
-    p.bodyId = makeEntity(state, "torpedo", e.ownerId, p.x, p.y, { facing: Math.atan2(p.vy, p.vx) }).id;
+    armTorpedo(state, p, diving(e));
     surface(state, e);
   }
   state.projectiles.push(p);

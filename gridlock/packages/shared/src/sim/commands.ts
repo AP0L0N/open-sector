@@ -38,7 +38,7 @@ import type { ClientMessage, ErrorCode } from "../protocol.js";
 import { pathToCapture, wantsCapture } from "./capture.js";
 import { allies, clearOrder, hqOf, worldToTile } from "./geo.js";
 import { endWalkerCharge } from "./walker-charge.js";
-import { garrisonCanShoot, garrisonShotReaches, relayGarrisonForce } from "./combat.js";
+import { forceAimHolds, garrisonCanShoot, garrisonShotReaches, relayGarrisonForce } from "./combat.js";
 import { approachTile, canGarrison, exitGarrison, garrisonOwner, livingGarrison, setGarrisonHide } from "./garrison.js";
 import { setScoutOut } from "./scout.js";
 import { cancelStructure, pauseStructure, placeBaseField, placeBuilding, sellBuilding, startBuild } from "./build.js";
@@ -698,6 +698,7 @@ function cmdMove(
       }
       continue;
     }
+    const aim = keptForceAim(state, e);
     e.returnToBase = false;
     e.attackTarget = null;
     e.guardFacing = null;
@@ -706,8 +707,35 @@ function cmdMove(
     if (pace != null) e.order.pace = pace;
     e.state = "move";
     setPath(state, e, d.x, d.y);
+    // Force attack here goes on under way while the guns can still work it from the course.
+    if (aim && forceAimHolds(state, e, aim)) {
+      e.order = { ...aim.order, travel: { x: d.x, y: d.y } };
+      if (pace != null) e.order.pace = pace;
+      e.attackTarget = aim.order.targetId ?? null;
+      e.state = "attack";
+    }
   }
   return ok();
+}
+
+/**
+ * The force-attack a Move may carry along: a ground unit's own repeating aim
+ * on a point or a standing target. A one-shot, a relayed aim, and an unarmed
+ * hull's aim end with the Move.
+ */
+function keptForceAim(
+  state: MatchState,
+  e: Entity,
+): { x: number; y: number; order: { kind: "forceattack"; x?: number; y?: number; targetId?: number } } | null {
+  const o = e.order;
+  if (o?.kind !== "forceattack" || o.once || o.relay || e.air || e.drone || !fires(e.type)) return null;
+  if (o.targetId != null) {
+    const t = state.entities.get(o.targetId);
+    if (!t || t.hp <= 0) return null;
+    return { x: t.x, y: t.y, order: { kind: "forceattack", targetId: t.id, x: t.x, y: t.y } };
+  }
+  if (o.x == null || o.y == null) return null;
+  return { x: o.x, y: o.y, order: { kind: "forceattack", x: o.x, y: o.y } };
 }
 
 function cmdPatrol(

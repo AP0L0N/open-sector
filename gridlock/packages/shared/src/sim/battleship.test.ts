@@ -29,6 +29,7 @@ import { TILE_EMPTY, TILE_WATER } from "../maps.js";
 import { shipHullT, shipKeelDist, turretBearing } from "./battleship.js";
 import { hasHeadlight, hasSpotlight } from "./night.js";
 import { applyCommand } from "./commands.js";
+import { weaponRangeWorld } from "./elevation.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
@@ -501,5 +502,102 @@ describe("Battle Ship on the wire", () => {
       assert.equal(theirs.ship!.turrets[0]!.ammo, undefined);
       assert.equal(theirs.ship!.ciws[0]!.ammo, undefined);
     }
+  });
+});
+
+describe("Battle Ship force attack under way", () => {
+  it("keeps bombarding the point while it sails off on a Move", () => {
+    const { state, x0, y0 } = bay();
+    const ship = spawn(state, "battleship", "A", x0 + 20, y0 + 10);
+    ship.facing = 0;
+    for (const t of ship.ship!.turrets) t.facing = 0;
+    const ts = state.tileSize;
+    const aimX = tileCenter(x0 + 56, ts);
+    const aimY = tileCenter(y0 + 10, ts);
+    assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [ship.id], x: aimX, y: aimY }).ok, true);
+    const moved = applyCommand(state, "A", {
+      type: "cmd.move",
+      ids: [ship.id],
+      x: tileCenter(x0 + 20, ts),
+      y: tileCenter(y0 - 12, ts),
+    });
+    assert.equal(moved.ok, true);
+    assert.equal(ship.order?.kind, "forceattack");
+    assert.equal(ship.order?.x, aimX);
+    assert.ok(ship.order?.travel, "the Move rides on the aim");
+    const startY = ship.y;
+    let firedUnderway = 0;
+    const seen = new Set<number>();
+    for (let i = 0; i < secondsToTicks(30); i++) {
+      step(state, TICK_DT);
+      for (const p of shipShells(state, ship.id)) {
+        if (seen.has(p.id)) continue;
+        seen.add(p.id);
+        if (ship.waypoints.length > 0) firedUnderway++;
+      }
+    }
+    assert.ok(firedUnderway > 0, "shells left while the ship was moving");
+    assert.ok(ship.y < startY - ts * 4, `the ship sailed north: ${startY} -> ${ship.y}`);
+    assert.equal(ship.order?.kind, "forceattack", "the aim still holds from the new spot");
+  });
+
+  it("drops the aim and keeps sailing once the point is out of reach", () => {
+    const { state, x0, y0 } = bay();
+    const ship = spawn(state, "battleship", "A", x0 + 30, y0 + 36);
+    ship.facing = -Math.PI / 2;
+    for (const t of ship.ship!.turrets) t.facing = -Math.PI / 2;
+    const ts = state.tileSize;
+    const reach = weaponRangeWorld(state, ship);
+    // Abeam to the east, just inside reach. Sailing north opens the range.
+    const aimX = ship.x + reach - ts;
+    const aimY = ship.y;
+    assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [ship.id], x: aimX, y: aimY }).ok, true);
+    const destX = ship.x;
+    const destY = tileCenter(y0 - 18, ts);
+    assert.equal(applyCommand(state, "A", { type: "cmd.move", ids: [ship.id], x: destX, y: destY }).ok, true);
+    assert.equal(ship.order?.kind, "forceattack");
+    let dropped = false;
+    for (let i = 0; i < secondsToTicks(40) && !dropped; i++) {
+      step(state, TICK_DT);
+      if (ship.order?.kind !== "forceattack") dropped = true;
+    }
+    assert.ok(dropped, "the aim ended");
+    const off = Math.hypot(aimX - ship.x, aimY - ship.y);
+    assert.ok(off > reach && off < reach + ts, `it ended at the edge of reach: ${off} vs ${reach}`);
+    assert.equal(ship.order?.kind, "move", "the course goes on");
+    assert.equal(ship.order?.y, destY);
+    assert.ok(ship.waypoints.length > 0);
+  });
+
+  it("drops the aim when the course puts the point in the blind arc astern", () => {
+    const { state, x0, y0 } = bay();
+    const ship = spawn(state, "battleship", "A", x0 + 30, y0 + 10);
+    ship.facing = 0;
+    for (const t of ship.ship!.turrets) t.facing = 0;
+    const ts = state.tileSize;
+    // North of the ship: in arc now, astern once the hull points south.
+    const aimX = ship.x;
+    const aimY = ship.y - ts * 20;
+    assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [ship.id], x: aimX, y: aimY }).ok, true);
+    assert.equal(
+      applyCommand(state, "A", { type: "cmd.move", ids: [ship.id], x: ship.x, y: tileCenter(y0 + 38, ts) }).ok,
+      true,
+    );
+    assert.equal(ship.order?.kind, "forceattack", "abeam at the order: still in arc");
+    let dropped = false;
+    for (let i = 0; i < secondsToTicks(30) && !dropped; i++) {
+      step(state, TICK_DT);
+      if (ship.order?.kind !== "forceattack") dropped = true;
+    }
+    assert.ok(dropped, "the aim ended once the guns could not bear");
+    assert.ok(ship.facing > Math.PI / 6, "only after the hull swung south");
+    assert.ok(Math.hypot(aimX - ship.x, aimY - ship.y) < weaponRangeWorld(state, ship), "still in reach: it was the arc");
+    assert.equal(ship.order?.kind, "move");
+  });
+
+  it("a Move with no aim is a plain Move", () => {
+    const { state, ship } = shoot(36);
+    assert.equal(applyCommand(state, "A", { type: "cmd.move", ids: [ship.id], x: ship.x, y: ship.y - 200 }).ok, true);
+    assert.equal(ship.order?.kind, "move");
   });
 });

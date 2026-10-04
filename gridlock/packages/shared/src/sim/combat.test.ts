@@ -596,6 +596,93 @@ describe("force attack", () => {
   });
 });
 
+describe("force attack under way", () => {
+  function tankAt(type: "warden" | "jagdtiger", tx: number, ty: number): { state: MatchState; tank: Entity } {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    stripOwner(state, "A");
+    stripOwner(state, "B");
+    const ts = state.tileSize;
+    const tank = makeEntity(state, type, "A", tileCenter(tx, ts), tileCenter(ty, ts));
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    return { state, tank };
+  }
+
+  it("a turret keeps shelling the point while the hull drives off on a Move", () => {
+    const { state, tank } = tankAt("warden", 24, 30);
+    const ts = state.tileSize;
+    const aimX = tileCenter(31, ts);
+    const aimY = tileCenter(30, ts);
+    assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [tank.id], x: aimX, y: aimY }).ok, true);
+    assert.equal(applyCommand(state, "A", { type: "cmd.move", ids: [tank.id], x: tileCenter(24, ts), y: tileCenter(20, ts) }).ok, true);
+    assert.equal(tank.order?.kind, "forceattack");
+    assert.deepEqual(tank.order?.travel, { x: tileCenter(24, ts), y: tileCenter(20, ts) });
+    const ap0 = tank.ammo.ap ?? 0;
+    let shotsUnderway = 0;
+    for (let i = 0; i < 400; i++) {
+      const before = tank.ammo.ap ?? 0;
+      step(state, TICK_DT);
+      if ((tank.ammo.ap ?? 0) < before && tank.waypoints.length > 0) shotsUnderway++;
+    }
+    assert.ok(shotsUnderway > 0, "a shell left while the tank was driving");
+    assert.ok((tank.ammo.ap ?? 0) < ap0);
+    assert.ok(Math.hypot(tank.x - tileCenter(24, ts), tank.y - tileCenter(20, ts)) < ts, "the tank reached the Move spot");
+    assert.equal(tank.order?.kind, "forceattack", "still in reach from there: it keeps firing");
+  });
+
+  it("drops the aim at the edge of reach and finishes the Move", () => {
+    const { state, tank } = tankAt("warden", 20, 30);
+    const ts = state.tileSize;
+    const reach = weaponRangeWorld(state, tank);
+    const aimX = tank.x - reach + ts;
+    const aimY = tank.y;
+    const destX = tileCenter(34, ts);
+    assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [tank.id], x: aimX, y: aimY }).ok, true);
+    assert.equal(applyCommand(state, "A", { type: "cmd.move", ids: [tank.id], x: destX, y: tank.y }).ok, true);
+    assert.equal(tank.order?.kind, "forceattack");
+    let droppedAt: number | undefined;
+    for (let i = 0; i < 600 && droppedAt == null; i++) {
+      step(state, TICK_DT);
+      if (tank.order?.kind !== "forceattack") droppedAt = Math.hypot(aimX - tank.x, aimY - tank.y);
+    }
+    assert.ok(droppedAt != null, "the aim ended");
+    assert.ok(droppedAt > reach && droppedAt < reach + ts, `ended at ${droppedAt}, reach ${reach}`);
+    assert.equal(tank.order?.kind, "move");
+    for (let i = 0; i < 600 && tank.order; i++) step(state, TICK_DT);
+    assert.ok(Math.abs(tank.x - destX) < ts, "the Move went on to its spot");
+  });
+
+  it("a casemate keeps the aim only on a course its gun can bear along", () => {
+    const side = tankAt("jagdtiger", 20, 30);
+    const ts = side.state.tileSize;
+    const sideAim = { x: tileCenter(28, ts), y: tileCenter(30, ts) };
+    applyCommand(side.state, "A", { type: "cmd.forceattack", ids: [side.tank.id], ...sideAim });
+    applyCommand(side.state, "A", { type: "cmd.move", ids: [side.tank.id], x: tileCenter(20, ts), y: tileCenter(20, ts) });
+    assert.equal(side.tank.order?.kind, "move", "driving north, the nose cannot bear east");
+
+    const ahead = tankAt("jagdtiger", 20, 30);
+    applyCommand(ahead.state, "A", { type: "cmd.forceattack", ids: [ahead.tank.id], x: tileCenter(32, ts), y: tileCenter(30, ts) });
+    applyCommand(ahead.state, "A", { type: "cmd.move", ids: [ahead.tank.id], x: tileCenter(25, ts), y: tileCenter(30, ts) });
+    assert.equal(ahead.tank.order?.kind, "forceattack", "driving at the point keeps it");
+    const facing0 = ahead.tank.facing;
+    for (let i = 0; i < 200; i++) step(ahead.state, TICK_DT);
+    assert.equal(ahead.tank.order?.kind, "forceattack");
+    assert.ok(Math.abs(ahead.tank.x - tileCenter(25, ts)) < ts, "it drove the course, not at the point");
+    assert.equal(ahead.tank.facing, facing0);
+  });
+
+  it("Stop ends an aim under way", () => {
+    const { state, tank } = tankAt("warden", 24, 30);
+    const ts = state.tileSize;
+    applyCommand(state, "A", { type: "cmd.forceattack", ids: [tank.id], x: tileCenter(30, ts), y: tileCenter(30, ts) });
+    applyCommand(state, "A", { type: "cmd.move", ids: [tank.id], x: tileCenter(24, ts), y: tileCenter(22, ts) });
+    assert.equal(tank.order?.kind, "forceattack");
+    assert.equal(applyCommand(state, "A", { type: "cmd.stop", ids: [tank.id] }).ok, true);
+    assert.equal(tank.order, null);
+  });
+});
+
 describe("friendly fire", () => {
   it("does not auto-attack an ally", () => {
     const { state } = twoPlayerMatch();
@@ -2286,7 +2373,7 @@ describe("force attack out of sight", () => {
   const NIGHT_TICK = Math.round((DAY_SECONDS + DUSK_SECONDS + NIGHT_SECONDS / 2) / TICK_DT);
   /** Armed ground units. Planes fly their own runs; ships need water. */
   const GROUND_GUNS = TRAIN_TYPES.filter(
-    (t) => fires(t) && !isNavalType(t) && !["stuka", "fw190", "bv222", "droneop"].includes(t),
+    (t) => fires(t) && !isNavalType(t) && !["stuka", "fw190", "bv222", "he111", "droneop"].includes(t),
   );
 
   function bareField(night: boolean): MatchState {
