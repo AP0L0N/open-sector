@@ -31,6 +31,7 @@ import {
   GATLING_STREAM_WANDER_HZ,
   GATLING_STREAM_WANDER_Z,
   FACE_FIRE_DEG,
+  FIRE_LAID_DEG,
   gatlingHeatOf,
   gatlingSprayOf,
   RADAR_LONG_RANGE_SPREAD,
@@ -743,8 +744,8 @@ function fireShipBarrel(
  * barrels in a random order, a short random gap apart, each shell lobbed on
  * the ship's low, fast arc. Each barrel then reloads on its own clock and
  * spends its own shells. Laid off the target mid-volley, the rest wait for
- * the next one. With the whole battery blind and the ship halted, the hull
- * comes round.
+ * the next one. Only the turrets train: the hull turns only for Rotate or
+ * when the ship moves, so a target in the blind arc waits for that.
  */
 function fireShip(state: MatchState, e: Entity, dt: number): void {
   const ship = e.ship!;
@@ -784,9 +785,6 @@ function fireShip(state: MatchState, e: Entity, dt: number): void {
   }
   if (e.waypoints.length > 0 && !travelFights(e) && !reversing(e)) return;
   e.state = "attack";
-  if (e.waypoints.length === 0 && trained.every((t) => t.blind)) {
-    turnToward(e, lay.x, lay.y, catalog(e.type).turnDegPerSec * hullTurnMul(e), dt);
-  }
   let fired = false;
   ship.turrets.forEach((t, i) => {
     if (trained[i]!.blind || trained[i]!.remainingDeg > SHIP_TURRET_LAY_DEG) {
@@ -1356,9 +1354,15 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   // A traversing turret fires along the turret once it is on the target.
   const gunArc = gunArcDegOf(e.type);
   const gunArcOk = Math.abs(remainingDeg) <= gunArc;
+  // A round that leaves along the barrel waits for the swing to finish, or the
+  // first shot goes wide. A hull gun with its own traverse (gunArcDeg) lays the
+  // round on the target anywhere inside that arc. A soldier inside fires from the opening.
+  const traverse = !turreted && catalog(e.type).gunArcDeg != null;
+  const laid = holedUp || traverse || Math.abs(remainingDeg) <= FIRE_LAID_DEG;
+  const bearing = traverse && !holedUp ? Math.atan2(aimY - e.y, aimX - e.x) : undefined;
 
   const useMg = !ground && !e.order?.once && target ? wantsMg(e, target) : false;
-  if (useMg && target && gunArcOk && e.mgCooldown <= 0 && e.mgOverheat <= 0 && e.mgAmmo > 0) {
+  if (useMg && target && gunArcOk && laid && e.mgCooldown <= 0 && e.mgOverheat <= 0 && e.mgAmmo > 0) {
     fireRound(
       state,
       e,
@@ -1377,6 +1381,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
       {
         target,
         accurateRange: accurateWeaponRange(state, e, range),
+        bearing,
       },
     );
     e.mgCooldown = TANK_MG.cooldown;
@@ -1424,6 +1429,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   // A broken arm drops the scoped rifle, the PTRD, and the launcher. There is no sidearm.
   if ((e.type === "sniper" || e.type === "atinfantry" || e.type === "rocketer" || e.type === "pyro") && !infantryGunFor(e)) return;
 
+  if (!laid) return;
   if (e.reload > 0) return;
   if (e.cooldown > 0) return;
   const infantryGun = infantryGunFor(e);
@@ -1500,6 +1506,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
         fuse: !!ground || isSmokeShell(shell),
         accurateRange: accurateWeaponRange(state, e, range),
         side: twin ? (second ? 1 : -1) * e.radius * TWIN_GUN_SIDE : undefined,
+        bearing,
       },
     );
     fired++;

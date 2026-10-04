@@ -8,6 +8,7 @@ import {
   FLAMER,
   FLAMER_BURST,
   FLAMER_BURSTS,
+  HE_FIRE_PATCHES,
   HE_FIRE_RADIUS,
   HANDGUN_RANGE_TILES,
   infantryGunFor,
@@ -454,7 +455,7 @@ describe("tank HE", () => {
     land(state);
     const burst = state.impacts.find((i) => i.heBurst);
     assert.ok(burst, `impacts=${state.impacts.map((i) => i.kind).join(",")}`);
-    assert.ok(state.fires.length >= 8, `burning patches ${state.fires.length}`);
+    assert.ok(state.fires.length >= HE_FIRE_PATCHES, `burning patches ${state.fires.length}`);
     const spread = Math.max(...state.fires.map((f) => Math.hypot(f.x - burst.x, f.y - burst.y)));
     assert.ok(spread > HE_FIRE_RADIUS * 0.6, `fire reaches out ${spread}`);
     assert.ok(spread <= HE_FIRE_RADIUS + 1, "and no farther than the burst");

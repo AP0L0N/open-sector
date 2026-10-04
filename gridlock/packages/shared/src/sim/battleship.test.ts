@@ -201,16 +201,26 @@ describe("Battle Ship main battery", () => {
     assert.ok(Math.abs(Math.abs(astern.facing) - limit) < 1e-9);
   });
 
-  it("brings the hull round for a target dead astern, then fires", () => {
+  it("trains only the turrets on a target abeam: the hull keeps its heading", () => {
+    const { state, ship, target } = shoot(36);
+    ship.facing = Math.PI / 2;
+    ship.turretFacing = Math.PI / 2;
+    for (const t of ship.ship!.turrets) t.facing = Math.PI / 2;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [ship.id], targetId: target.id });
+    ticks(state, secondsToTicks(16));
+    assert.equal(ship.facing, Math.PI / 2, "the hull did not turn");
+    assert.ok(ship.ship!.turrets.some((t) => t.firedTick.some((x) => x != null)), "the turrets fired");
+  });
+
+  it("does not bring the hull round for a target dead astern", () => {
     const { state, ship, target } = shoot(36);
     ship.facing = Math.PI;
     ship.turretFacing = Math.PI;
     for (const t of ship.ship!.turrets) t.facing = Math.PI;
     applyCommand(state, "A", { type: "cmd.attack", ids: [ship.id], targetId: target.id });
-    ticks(state, 10);
-    assert.equal(shipShells(state, ship.id).length, 0, "blind at first");
     ticks(state, secondsToTicks(16));
-    assert.ok(shipShells(state, ship.id).length > 0 || ship.ship!.turrets.some((t) => t.firedTick.some((x) => x != null)));
+    assert.equal(ship.facing, Math.PI, "the hull waits for Rotate or a move");
+    assert.equal(shipShells(state, ship.id).length, 0, "blind, so the battery holds");
   });
 });
 

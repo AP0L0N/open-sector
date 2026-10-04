@@ -91,7 +91,17 @@ const immortal = new Set<Entity>();
 
 function unkillable(...ents: Entity[]): void {
   for (const t of ents) {
-    t.hp = t.hpMax = 100000;
+    t.hpMax = 100000;
+    // Never reaches 0, so it never wrecks: a kill would end the orders aimed at it.
+    let hp = t.hpMax;
+    Object.defineProperty(t, "hp", {
+      get: () => hp,
+      set: (n: number) => {
+        hp = Math.max(1, n);
+      },
+      enumerable: true,
+      configurable: true,
+    });
     immortal.add(t);
   }
 }

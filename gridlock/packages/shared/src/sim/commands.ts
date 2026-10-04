@@ -827,8 +827,11 @@ function cmdForceAttack(
 ): CmdResult {
   let t = targetId != null ? state.entities.get(targetId) : undefined;
   if (targetId != null) {
-    if (!t || t.hp <= 0) return fail("not_found", "No such target.");
-    if (t.garrisonedIn) t = state.entities.get(t.garrisonedIn) ?? t;
+    // A building remembered in the fog may be gone. The guns still lay on where it stood.
+    if (!t || t.hp <= 0) {
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return fail("not_found", "No such target.");
+      t = undefined;
+    } else if (t.garrisonedIn) t = state.entities.get(t.garrisonedIn) ?? t;
   }
   const units = owned(state, playerId, ids);
   const mounts = ownedMounts(state, playerId, ids);
