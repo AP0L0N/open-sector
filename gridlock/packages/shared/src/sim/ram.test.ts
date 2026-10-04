@@ -30,7 +30,7 @@ import { TILE_EMPTY } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { reachesDrone } from "./drone.js";
 import { destroyEntity, makeEntity, playerTeam, tileCenter } from "./geo.js";
-import { createMatch, step } from "./match.js";
+import { createMatch, step, stepMatch } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
@@ -122,6 +122,39 @@ function rocket(state: MatchState, ownerId: string, x: number, y: number): Proje
     flightTime: 0.5,
     z: 40,
     vz: 0,
+  };
+  state.projectiles.push(p);
+  return p;
+}
+
+/** A rocket fused at a plane's height, two ticks short of its fuse point, flying east. */
+function airRocket(state: MatchState, from: Entity | undefined, launcher: Projectile["launcher"], x: number, y: number): Projectile {
+  const speed = RAM_ROCKET.speed;
+  const life = 2 * TICK_DT;
+  const p: Projectile = {
+    id: state.nextId++,
+    ownerId: from?.ownerId ?? "A",
+    team: playerTeam(state, from?.ownerId ?? "A"),
+    x,
+    y,
+    vx: speed,
+    vy: 0,
+    damage: RAM_ROCKET.damage,
+    penetration: RAM_ROCKET.penetration,
+    caliber: RAM_ROCKET.caliber,
+    life,
+    ignoreId: from?.id ?? -1,
+    fromId: from?.id ?? -1,
+    bounced: false,
+    shell: null,
+    flight: "rocket",
+    landX: x + speed * life,
+    landY: y,
+    flightTime: life,
+    airBurst: true,
+    z: AIR_CRUISE_ALT,
+    vz: 0,
+    launcher,
   };
   state.projectiles.push(p);
   return p;
@@ -244,6 +277,75 @@ describe("RAM fire", () => {
     assert.equal(ram.attackTarget, plane.id);
     const t = until(state, 120, () => !state.entities.has(plane.id) || plane.hp < plane.hpMax);
     assert.ok(t >= 0, "rockets reach the plane");
+  });
+
+  it("sends a rocket that finds no plane at its fuse on past, down to burst on the ground", () => {
+    const state = match();
+    const ts = state.tileSize;
+    const ram = seedRam(state);
+    ram.rockets = 0;
+    const p = airRocket(state, ram, "ram", 110 * ts, 100 * ts);
+    const fuseX = p.landX!;
+    const heights: number[] = [];
+    let burst: MatchState["impacts"][number] | undefined;
+    const t = until(state, 120, () => {
+      burst = state.impacts.find((i) => i.rocket && i.fromId === ram.id);
+      if (state.projectiles.includes(p)) heights.push(p.z ?? 0);
+      return !!burst;
+    });
+    assert.ok(t > 3, "it flies on for a while past its fuse point");
+    assert.ok(burst, "and bursts in the end");
+    assert.equal(burst.z, undefined, "on the ground, not in the air");
+    assert.ok(burst.x - fuseX > 6 * ts, "well past where it was fused");
+    assert.ok(heights.at(-1)! < heights[0]!, "coming down as it goes");
+  });
+
+  it("still bursts a rocket in the air beside a plane in reach of its fuse", () => {
+    const state = match();
+    const ts = state.tileSize;
+    const ram = seedRam(state);
+    ram.rockets = 0;
+    const p = airRocket(state, ram, "ram", 110 * ts, 100 * ts);
+    const plane = planeOver(state, "B", p.landX! + 0.3 * ts, p.landY!);
+    let burst: MatchState["impacts"][number] | undefined;
+    until(state, 20, () => {
+      burst = state.impacts.find((i) => i.rocket && i.fromId === ram.id);
+      return !!burst;
+    });
+    assert.ok(burst?.z != null, "an air burst");
+    assert.ok(plane.hp < plane.hpMax);
+  });
+
+  it("reports each launch to its side, even a rocket that bursts between snapshots", () => {
+    const state = match();
+    const ts = state.tileSize;
+    const ram = seedRam(state);
+    const soldier = makeEntity(state, "rifleman", "B", ram.x + 3 * ts, ram.y);
+    soldier.holdPosition = true;
+    state.gameSpeed = 5;
+    const launched = new Set<number>();
+    const burst = new Set<number>();
+    for (let i = 0; i < 40 && burst.size === 0; i++) {
+      stepMatch(state);
+      const snap = snapshotFor(state, "A");
+      for (const l of snap.launches) if (l.fromId === ram.id) launched.add(l.id);
+      for (const im of snap.impacts) if (im.rocket && im.fromId === ram.id && im.shot != null) burst.add(im.shot);
+    }
+    assert.ok(burst.size > 0, "a rocket burst");
+    for (const id of burst) assert.ok(launched.has(id), `burst ${id} was launched in a snapshot`);
+  });
+
+  it("leaves a Titan rocket that misses a plane bursting in the air, as before", () => {
+    const state = match();
+    const ts = state.tileSize;
+    const p = airRocket(state, undefined, "titan", 110 * ts, 100 * ts);
+    let burst: MatchState["impacts"][number] | undefined;
+    const t = until(state, 20, () => {
+      burst = state.impacts.find((i) => i.rocket && i.x === p.landX);
+      return !!burst;
+    });
+    assert.ok(t >= 0 && t <= 4);
+    assert.ok(burst?.z != null);
   });
 
   it("lays on a low drone, but not a high one its rockets cannot reach", () => {

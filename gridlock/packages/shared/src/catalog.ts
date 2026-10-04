@@ -375,6 +375,12 @@ export interface RocketRackDef {
    * Omit for a rocket one burst destroys. A mount keeps shooting until then.
    */
   plate?: number;
+  /**
+   * A rocket fused at a plane's height that finds no plane in its burst flies
+   * on this far past, gameplay tiles, and comes down to burst on the ground.
+   * Omit for a rocket that bursts in the air regardless.
+   */
+  missCoastTiles?: number;
 }
 
 export const TITAN_ROCKET_RACK: RocketRackDef = {
@@ -2038,6 +2044,7 @@ export const RAM_ROCKET: RocketRackDef = {
   caliber: 127,
   antiAir: true,
   laid: true,
+  missCoastTiles: t(8),
 };
 /** Chance one interceptor connects on one rocket. The RAM, not the CIWS, is the missile screen. Each RAM tries an ordinary rocket once. A heavy round draws another interceptor until it comes apart. */
 export const RAM_INTERCEPT_CHANCE = 0.6;

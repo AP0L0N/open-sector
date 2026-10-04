@@ -766,6 +766,8 @@ export class MapView {
   private rocketHost = new Map<number, { hostId: number; salt: number }>();
   /** Head of each rocket as of the last frame; the next frame lays trail puffs from here. */
   private rocketLast = new Map<number, { x: number; y: number; z: number }>();
+  /** Pod point of each launched rocket until it bursts: a rocket no snapshot caught still gets its trail. */
+  private rocketLaunched = new Map<number, { x: number; y: number; z: number }>();
   /** Where a falling plane was last frame, so the smoke column has no gaps. */
   private crashLast = new Map<number, { x: number; y: number; z: number }>();
   /** Black smoke behind planes that are going down. */
@@ -1080,6 +1082,16 @@ export class MapView {
     }
     this.noteBarrages(match, now);
     this.noteGatlingFire(match, now);
+    // A fast rocket (a RAM's, at a plane overhead) can leave and burst between two
+    // snapshots. Its launch still comes through, so it gets its flash and backblast.
+    if (this.rocketLaunched.size > 400) this.rocketLaunched.clear();
+    for (const l of match.launches ?? []) {
+      if (this.seenShots.has(l.id)) continue;
+      this.seenShots.add(l.id);
+      const shooter = match.entities.find((e) => e.id === l.fromId);
+      this.noteRocketLaunch(shooter, l, now);
+      this.rocketLaunched.set(l.id, this.rocketFrom.get(l.id) ?? { x: l.x, y: l.y, z: l.z });
+    }
     for (const i of match.impacts ?? []) {
       if (i.fromId != null && (i.caliber ?? 0) > 0 && (i.caliber ?? 0) < 40 && i.kind !== "crush") {
         const shooter = match.entities.find((e) => e.id === i.fromId);
@@ -1096,6 +1108,20 @@ export class MapView {
           this.cookOffFx(i.x, i.y, i.id, now);
         }
         continue;
+      }
+      if (i.rocket && i.shot != null && !this.fxIds.has(i.id)) {
+        // Close the trail to the burst: from the last drawn head, or from the pod
+        // when the rocket flew and burst between snapshots.
+        const from = this.rocketLast.get(i.shot) ?? this.rocketLaunched.get(i.shot);
+        if (from) {
+          const to = { x: i.x, y: i.y, z: i.z ?? this.elevAt(i.x, i.y) };
+          this.rocketPuffs.push(...trailPuffs(from, to, now, (i.shot * 2654435761) >>> 0));
+        }
+        this.rocketLaunched.delete(i.shot);
+        if (!match.projectiles.some((p) => p.id === i.shot)) {
+          this.rocketFrom.delete(i.shot);
+          this.rocketHost.delete(i.shot);
+        }
       }
       if (i.rocket && i.z != null && !this.fxIds.has(i.id)) {
         this.rocketPuffs.push(...airBurstPuffs(i.x, i.y, i.z, now, i.id));
@@ -1138,38 +1164,7 @@ export class MapView {
         continue;
       }
       if (p.rocket) {
-        // Pod or tube flash and backblast. Not a tank shot: the main gun does not recoil.
-        const host = this.garrisonShotHost(shooter, p);
-        if (host) this.flashAperture(host, p, now, false);
-        else {
-          this.rocketFrom.set(p.id, { x: p.x, y: p.y, z: p.z ?? 0 });
-          if (shooter && !shooter.wreck) {
-            this.rocketPuffs.push(
-              ...backblastPuffs({
-                x: shooter.x,
-                y: shooter.y,
-                z: p.z ?? 0,
-                ground: this.elevAt(shooter.x, shooter.y),
-                dirX: p.vx,
-                dirY: p.vy,
-                now,
-                seed: (p.id * 2246822519) >>> 0,
-              }),
-            );
-          }
-          this.addFx({
-            id: p.id + 8_000_000,
-            kind: "muzzle",
-            x: p.x,
-            y: p.y,
-            vx: p.vx,
-            vy: p.vy,
-            at: now,
-            caliber: 20,
-            lift: isoLift(p.z ?? 0) - isoLift(this.elevAt(p.x, p.y)),
-          });
-        }
-        if (shooter?.type === "rocketer" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
+        this.noteRocketLaunch(shooter, p, now);
         continue;
       }
       const fromGarrison =
@@ -6172,6 +6167,45 @@ export class MapView {
       return house;
     }
     return undefined;
+  }
+
+  /** Pod or tube flash and backblast. Not a tank shot: the main gun does not recoil. */
+  private noteRocketLaunch(
+    shooter: EntityView | undefined,
+    p: { id: number; x: number; y: number; vx: number; vy: number; z?: number; fromId: number },
+    now: number,
+  ): void {
+    const host = this.garrisonShotHost(shooter, p);
+    if (host) this.flashAperture(host, p, now, false);
+    else {
+      this.rocketFrom.set(p.id, { x: p.x, y: p.y, z: p.z ?? 0 });
+      if (shooter && !shooter.wreck) {
+        this.rocketPuffs.push(
+          ...backblastPuffs({
+            x: shooter.x,
+            y: shooter.y,
+            z: p.z ?? 0,
+            ground: this.elevAt(shooter.x, shooter.y),
+            dirX: p.vx,
+            dirY: p.vy,
+            now,
+            seed: (p.id * 2246822519) >>> 0,
+          }),
+        );
+      }
+      this.addFx({
+        id: p.id + 8_000_000,
+        kind: "muzzle",
+        x: p.x,
+        y: p.y,
+        vx: p.vx,
+        vy: p.vy,
+        at: now,
+        caliber: 20,
+        lift: isoLift(p.z ?? 0) - isoLift(this.elevAt(p.x, p.y)),
+      });
+    }
+    if (shooter?.type === "rocketer" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
   }
 
   /** Window or hull-slit flash. A rocket's trail and backblast start at that mouth. */

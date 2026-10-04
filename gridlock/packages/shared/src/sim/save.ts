@@ -217,6 +217,7 @@ export function restoreMatch(
     mines: save.mines.map((m) => ({ ...m, ownerId: mapOwner(m.ownerId) })),
     crates: save.crates.map((c) => ({ ...c, ownerId: mapOwner(c.ownerId) })),
     impacts: [],
+    launches: [],
     rngState: save.rngState >>> 0,
     winner: save.winner ? { playerId: mapOwner(save.winner.playerId), team: save.winner.team } : undefined,
     ended: save.ended,
