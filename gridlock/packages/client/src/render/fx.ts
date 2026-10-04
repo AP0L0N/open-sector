@@ -397,12 +397,6 @@ function softDisc(
   ctx.restore();
 }
 
-/** An aircraft bomb's burst is the mortar column drawn this much larger. */
-export const AIR_BOMB_BURST_SCALE = 1.9;
-
-/** A Titan rocket's burst is the mortar column drawn this much smaller. */
-export const ROCKET_BURST_SCALE = 0.72;
-
 /** Rocket air burst beside a plane: a flash and a short fireball, no dirt. Smoke comes from the puff pool. */
 export function drawAirBurst(ctx: CanvasRenderingContext2D, x: number, y: number, t: number, seed: number): void {
   if (t > 0.35) return;
@@ -460,63 +454,6 @@ export function drawRocketHead(
   ctx.closePath();
   ctx.fill();
   ctx.stroke();
-  ctx.restore();
-}
-
-/**
- * A lobbed round or rocket in water: a splash column. `scale` grows it about
- * the water point. On dry ground the burst is `drawExplosion` in explosion.ts.
- */
-export function drawMortarBurst(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  t: number,
-  seed: number,
-  scale = 1,
-): void {
-  if (scale !== 1) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(scale, scale);
-    ctx.translate(-x, -y);
-    drawMortarBurst(ctx, x, y, t, seed);
-    ctx.restore();
-    return;
-  }
-  const rnd = rng(seed ^ 0x60a7);
-  const fade = 1 - t;
-  const column = 1 - (1 - Math.min(1, t / 0.42)) ** 2;
-  ctx.save();
-  ctx.globalAlpha = fade * 0.55;
-  ctx.fillStyle = "#d7efea";
-  ctx.beginPath();
-  ctx.ellipse(x, y, 7 + t * 20, 3.2 + t * 6, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = fade * 0.72;
-  ctx.fillStyle = "#f5fffc";
-  ctx.beginPath();
-  ctx.ellipse(x, y - column * 34, 3.4, 8 + column * 16, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.globalAlpha = fade * 0.4;
-  ctx.fillStyle = "#9fd4e0";
-  ctx.beginPath();
-  ctx.ellipse(x, y - column * 18, 5, 4 + column * 6, 0, 0, Math.PI * 2);
-  ctx.fill();
-  for (let i = 0; i < 16; i++) {
-    const delay = rnd() * 0.06;
-    const flight = 0.62 + rnd() * 0.34;
-    const reach = (rnd() - 0.5) * 22;
-    const kick = 16 + rnd() * 26;
-    const drop = rnd() > 0.5;
-    const local = (t - delay) / flight;
-    if (local <= 0 || local >= 1) continue;
-    ctx.globalAlpha = (1 - local) * 0.9;
-    ctx.fillStyle = drop ? "#f7fffc" : "#b7e0ea";
-    ctx.beginPath();
-    ctx.arc(x + reach * local, y - Math.sin(local * Math.PI) * kick, 1.3 + (i % 3) * 0.5, 0, Math.PI * 2);
-    ctx.fill();
-  }
   ctx.restore();
 }
 
@@ -656,7 +593,7 @@ function drawDirtCone(
   ctx.restore();
 }
 
-/** Column and foam where a round hits water. `t` runs 0–1. */
+/** Small-arms splash where a bullet hits water. `t` runs 0–1. Heavy rounds use `drawWaterBurst`. */
 export function drawWaterDetonation(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -831,20 +768,6 @@ export function drawGroundMiss(
   drawDust(ctx, x, y, t, seed, 3, 6);
   drawDirtCone(ctx, x, y, incoming.x, incoming.y, t, seed, 8, 12 + t * 4, 0.5);
   drawSparkBurst(ctx, x, y, incoming.x, incoming.y, t, seed, 1, 5);
-}
-
-/** Extra shock and sparks around a cook-off fireball. */
-export function drawCookoffBurst(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  t: number,
-  seed: number,
-): void {
-  drawShockRing(ctx, x, y, Math.min(1, t / 0.7), 46, 0.95);
-  if (t < 0.45) drawShockRing(ctx, x, y, Math.min(1, t / 0.4), 22, 0.7);
-  drawContactFlash(ctx, x, y, t, 14);
-  drawSparkBurst(ctx, x, y, 1, 0, t, seed, 18, 52);
 }
 
 /** How long a wreck's hull fires last at 1×, ms. Second fire dies sooner. */

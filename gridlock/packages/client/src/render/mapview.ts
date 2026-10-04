@@ -98,7 +98,6 @@ import {
 import {
   FX_BOOM,
   FX_SMOKE,
-  drawCookoffBurst,
   drawFxFrame,
   drawBloodStain,
   drawGroundMiss,
@@ -110,11 +109,8 @@ import {
   drawRicochetSparks,
   drawRicochetTrace,
   armorHitLift,
-  AIR_BOMB_BURST_SCALE,
-  ROCKET_BURST_SCALE,
   drawAirBurst,
   drawRocketHead,
-  drawMortarBurst,
   drawMortarSmoke,
   MORTAR_BURST_MS,
   drawMoveClick,
@@ -126,7 +122,20 @@ import {
   wreckFireAlpha,
   wreckFireCount,
 } from "./fx.js";
-import { SMOULDER_MS, burstLifeMs, burstSpec, drawExplosion, drawSmoulder, type BurstSpec } from "./explosion.js";
+import {
+  SMOULDER_MS,
+  burstLifeMs,
+  burstSpec,
+  deathBlastLifeMs,
+  deathBlastSpec,
+  drawDeathBlast,
+  drawExplosion,
+  drawSmoulder,
+  drawWaterBurst,
+  waterBurstLifeMs,
+  type BurstSpec,
+  type DeathBlastSpec,
+} from "./explosion.js";
 import {
   coverWithWater,
   fallbackHoleRect,
@@ -694,6 +703,8 @@ export class MapView {
     shell?: string;
     /** Center damage of a heavy round. Sizes its ground burst. */
     damage?: number;
+    /** A hull or structure destroyed: its blast, sized by what went up. */
+    death?: DeathBlastSpec;
   }[] = [];
   private fxIds = new Set<number>();
   /** When each crater was struck, for its smoulder. Holes already there on first sight never smoke. */
@@ -1054,10 +1065,8 @@ export class MapView {
         continue;
       }
       this.snapHullFx(fx);
+      if (i.kind === "kill" && i.blast) fx.death = this.deathBlastAt(i.x, i.y, i.caliber, match.entities);
       this.addFx(fx);
-      if (i.kind === "kill" && i.blast) {
-        this.addFx({ id: i.id + 7_000_000, kind: "smoke", x: i.x, y: i.y, vx: 0, vy: 0, at: now });
-      }
     }
     this.bindBounceTraces(match);
     if (this.seenShots.size > 400) this.seenShots.clear();
@@ -1485,6 +1494,36 @@ export class MapView {
       }
     }
     return best;
+  }
+
+  /** What went up at a kill blast: the structure's footprint or the hull's radius sizes the fireball. */
+  private deathBlastAt(
+    wx: number,
+    wy: number,
+    caliber: number | undefined,
+    entities: readonly EntityView[],
+  ): DeathBlastSpec {
+    const ts = this.ts();
+    let best: EntityView | undefined;
+    let bestD = 24;
+    for (const e of [...entities, ...this.curr.entities]) {
+      if (e.garrisonedIn) continue;
+      let d: number;
+      if (e.kind === "building") {
+        const x0 = e.tileX * ts;
+        const y0 = e.tileY * ts;
+        d = Math.hypot(Math.max(x0 - wx, 0, wx - (x0 + e.tileW * ts)), Math.max(y0 - wy, 0, wy - (y0 + e.tileH * ts)));
+      } else {
+        d = Math.max(0, Math.hypot(e.x - wx, e.y - wy) - catalog(e.type).radius);
+      }
+      if (d < bestD) {
+        best = e;
+        bestD = d;
+      }
+    }
+    if (best?.kind === "building") return deathBlastSpec({ tiles: best.tileW * best.tileH });
+    if (best) return deathBlastSpec({ radius: catalog(best.type).radius });
+    return deathBlastSpec({ caliber });
   }
 
   /** Pin armor sparks to painted sprite pixels so they don't float in empty canvas. */
@@ -6283,11 +6322,16 @@ export class MapView {
     const keep: typeof this.fx = [];
     for (const f of this.fx) {
       const burst = groundBurst(f);
-      const life = burst
-        ? burstLifeMs(burst)
-        : f.mortar || f.rocket
-          ? MORTAR_BURST_MS
-          : fxLifeMs(f.kind, f.blast);
+      const wet = f.death ? undefined : waterBurst(f);
+      const life = f.death
+        ? deathBlastLifeMs(f.death)
+        : burst
+          ? burstLifeMs(burst)
+          : wet
+            ? waterBurstLifeMs(wet)
+            : f.mortar || f.rocket
+              ? MORTAR_BURST_MS
+              : fxLifeMs(f.kind, f.blast);
       const age = now - f.at;
       if (age > life) {
         this.fxIds.delete(f.id);
@@ -6309,9 +6353,8 @@ export class MapView {
         drawAirBurst(ctx, air.x, air.y, t, f.id);
       } else if (burst) {
         drawExplosion(ctx, s.x, s.y, age, f.id, burst, dirX, dirY);
-      } else if (f.mortar || f.rocket) {
-        // On water: the splash column, grown with the round's firepower.
-        drawMortarBurst(ctx, s.x, s.y, t, f.id, waterColumnScale(f));
+      } else if (wet) {
+        drawWaterBurst(ctx, s.x, s.y, age, f.id, wet, dirX, dirY);
       } else if (f.splash) {
         drawWaterDetonation(ctx, s.x, s.y, t, f.id, f.caliber);
       }
@@ -6328,10 +6371,8 @@ export class MapView {
         // A RAM interceptor that went off beside the rocket without bursting it: a smaller puff.
         const size = f.kind === "miss" ? RAM_MISS_BURST_SIZE : INTERCEPT_BURST_SIZE;
         drawFxFrame(ctx, FX_BOOM, frame, s.x, s.y - CIWS_INTERCEPT_LIFT, size, 1 - t * 0.5);
-      } else if (f.kind === "kill" && f.blast) {
-        drawCookoffBurst(ctx, x, y, t, f.id);
-        const frame = fxFrameAt(age, life, FX_BOOM.frames, false);
-        drawFxFrame(ctx, FX_BOOM, frame, x, y, 56, 1 - t * 0.35);
+      } else if (f.death) {
+        drawDeathBlast(ctx, s.x, s.y, age, f.id, f.death);
       } else if (f.kind === "kill" || f.kind === "pen" || f.kind === "hit" || f.kind === "glance") {
         const k: "hit" | "pen" | "glance" =
           f.kind === "pen" ? "pen" : f.kind === "glance" ? "glance" : "hit";
@@ -7344,9 +7385,19 @@ function groundBurst(f: {
   return undefined;
 }
 
-/** A lobbed round in water: the splash column at its old scale, grown with firepower. */
-function waterColumnScale(f: { caliber?: number; damage?: number; bomb?: boolean; rocket?: boolean; mortar?: boolean }): number {
-  const base = f.bomb ? AIR_BOMB_BURST_SCALE : f.rocket ? ROCKET_BURST_SCALE : 1;
-  const ref = burstSpec(f.bomb ? { caliber: 250, damage: 70, bomb: true, mortar: true } : f.rocket ? { caliber: 80, damage: 42, rocket: true } : { caliber: 60, damage: 56, mortar: true });
-  return base * (burstSpec(f).power / ref.power);
+/** A heavy round in water: the spray column, sized like the ground burst of the same round. Bullets keep their small splash. */
+function waterBurst(f: {
+  caliber?: number;
+  damage?: number;
+  shell?: string;
+  splash?: boolean;
+  mortar?: boolean;
+  bomb?: boolean;
+  rocket?: boolean;
+  z?: number;
+  intercept?: boolean;
+}): BurstSpec | undefined {
+  if (!f.splash || f.intercept || (f.rocket && f.z != null)) return undefined;
+  if (f.mortar || f.rocket || isShellCaliber(f.caliber)) return burstSpec(f);
+  return undefined;
 }

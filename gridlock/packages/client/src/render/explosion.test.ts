@@ -11,7 +11,16 @@ import {
   STUG_SHELLS,
   TITAN_ROCKET,
 } from "@gridlock/shared";
-import { burstFamily, burstLifeMs, burstPower, burstSpec, puffField } from "./explosion.js";
+import {
+  burstFamily,
+  burstLifeMs,
+  burstPower,
+  burstSpec,
+  deathBlastLifeMs,
+  deathBlastSpec,
+  puffField,
+  waterBurstLifeMs,
+} from "./explosion.js";
 
 const tigerHe = { caliber: SHELLS.he.caliber, damage: SHELLS.he.damage, shell: "he" };
 const stugHe = { caliber: STUG_SHELLS.he.caliber, damage: STUG_SHELLS.he.damage, shell: "he" };
@@ -79,5 +88,38 @@ describe("puffField", () => {
       }
     }
     assert.ok(upperLeft > lowerRight, `${upperLeft} vs ${lowerRight}`);
+  });
+});
+
+describe("deathBlastSpec", () => {
+  it("is 1 for a medium tank's hull and grows with the hull", () => {
+    assert.equal(deathBlastSpec({ radius: 12 }).power, 1);
+    assert.ok(deathBlastSpec({ radius: 16 }).power > deathBlastSpec({ radius: 10 }).power);
+    assert.equal(deathBlastSpec({ radius: 12 }).building, false);
+  });
+
+  it("puts a structure above any hull, and a bigger footprint above a smaller one", () => {
+    const shed = deathBlastSpec({ tiles: 4 });
+    const yard = deathBlastSpec({ tiles: 9 });
+    assert.equal(shed.building, true);
+    assert.ok(shed.power > deathBlastSpec({ radius: 17 }).power);
+    assert.ok(yard.power > shed.power);
+  });
+
+  it("falls back to the caliber when nothing is found", () => {
+    assert.ok(deathBlastSpec({ caliber: 12 }).power < deathBlastSpec({ caliber: 60 }).power);
+    assert.equal(deathBlastSpec({}).power, 1);
+  });
+
+  it("lets a structure's smoke hang longer than a hull's", () => {
+    assert.ok(deathBlastLifeMs(deathBlastSpec({ tiles: 4 })) > deathBlastLifeMs(deathBlastSpec({ radius: 12 })));
+    assert.ok(deathBlastLifeMs(deathBlastSpec({ radius: 12 })) > burstLifeMs(burstSpec(tigerHe)));
+  });
+});
+
+describe("waterBurstLifeMs", () => {
+  it("lets a bomb's column hang longer than a shell's, and solid shot settle quickest", () => {
+    assert.ok(waterBurstLifeMs(burstSpec(bomb)) > waterBurstLifeMs(burstSpec(tigerHe)));
+    assert.ok(waterBurstLifeMs(burstSpec({ caliber: 75, damage: 55, shell: "ap" })) < waterBurstLifeMs(burstSpec(tigerHe)));
   });
 });
