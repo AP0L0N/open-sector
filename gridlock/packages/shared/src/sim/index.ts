@@ -4,6 +4,7 @@ export type { RestoredMatch, SaveGame, SaveResult, SaveSeat } from "./save.js";
 export { tickAi, findBuildTile, findSmelterTile } from "./ai.js";
 export { tickCollision, moveWithCollision } from "./collision.js";
 export { toWreck } from "./wreck.js";
+export { shipMountPoint } from "./battleship.js";
 export { fireStats, hullTurnMul, immobilized, moveSpeedMul, rollCrits, rollLamp } from "./crits.js";
 export { commandedStance, effectiveStance, tickStance } from "./stance.js";
 export { applyCommand } from "./commands.js";

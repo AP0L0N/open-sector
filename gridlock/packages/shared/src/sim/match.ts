@@ -37,6 +37,7 @@ import { tickConstructs } from "./construct.js";
 import { tickHeal } from "./heal.js";
 import { tickSupply } from "./supply.js";
 import { syncTowedGuns, tickArtillery } from "./artillery.js";
+import { tickShipRearm } from "./battleship.js";
 import { tickMovement, repathIfBlocked } from "./orders.js";
 import { tickWalkerCharge } from "./walker-charge.js";
 import { tickOrderQueue } from "./commands.js";
@@ -165,6 +166,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickHeal(state, dt);
   tickGarrisonCare(state, dt);
   tickSupply(state, dt);
+  tickShipRearm(state, dt);
   tickArtillery(state, dt);
   tickPlaneBoarding(state);
   tickOrderQueue(state);

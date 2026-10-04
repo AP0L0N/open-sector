@@ -1009,6 +1009,7 @@ const TYPE_ORDER: EntityType[] = [
   "hauler",
   "gunboat",
   "submarine",
+  "battleship",
   "rifleman",
   "gunner",
   "sniper",

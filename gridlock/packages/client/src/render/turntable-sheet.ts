@@ -123,6 +123,13 @@ const submarineHullGlob = import.meta.glob("../assets/units/submarine/hull/*.png
   import: "default",
 }) as Record<string, string>;
 
+const battleshipGlobs = {
+  hull: import.meta.glob("../assets/units/battleship/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  super: import.meta.glob("../assets/units/battleship/super/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  turret: import.meta.glob("../assets/units/battleship/turret/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  ciws: import.meta.glob("../assets/units/battleship/ciws/*.png", { eager: true, import: "default" }) as Record<string, string>,
+};
+
 export const SS3_OPTS: TurntableSheetOpts = { ...TIGER_OPTS };
 /** Plane cell. Wingspan fills it, so it keeps a little more room; wheels sit on the contact line. */
 export const STUKA_OPTS: TurntableSheetOpts = { ...TIGER_OPTS, contactY: 0.8, padding: 2 };
@@ -513,6 +520,46 @@ export function bindNavalSheets(kind: "gunboat" | "submarine", hullImage: HTMLIm
     })
     .catch((err) => {
       console.error(`${kind} turntable`, err);
+    });
+}
+
+let battleshipPrevious: string[] = [];
+
+/**
+ * Battle Ship: hull, superstructure, turret, and CIWS (tools/sprites/render_battleship.py).
+ * The faces are stacked 1:1 into rows, never refit, so the model origin stays at the same
+ * cell point in every layer and render/battleship.ts can place each mount by its model position.
+ */
+export function bindBattleshipSheets(images: Record<keyof typeof battleshipGlobs, HTMLImageElement>): void {
+  const names = Object.keys(battleshipGlobs) as (keyof typeof battleshipGlobs)[];
+  let urls: string[][];
+  try {
+    urls = names.map((n) => pickTurntableUrls(battleshipGlobs[n]));
+  } catch (err) {
+    console.error("battleship turntable", err);
+    return;
+  }
+  void Promise.all(urls.map((list) => Promise.all(list.map(loadImage))))
+    .then(async (layers) => {
+      const sheets = layers.map((frames) => {
+        const cell = frames[0]!.naturalWidth;
+        const sheet = makeSheetCanvas(cell);
+        const g = sheet.getContext("2d");
+        if (!g) throw new Error("2d context");
+        frames.forEach((img, i) => g.drawImage(img, 0, engineRowFromFrame(i + 1) * cell));
+        return sheet;
+      });
+      return Promise.all(sheets.map(canvasPngUrl));
+    })
+    .then((next) => {
+      for (const url of battleshipPrevious) URL.revokeObjectURL(url);
+      battleshipPrevious = next;
+      names.forEach((n, i) => {
+        images[n].src = next[i] ?? "";
+      });
+    })
+    .catch((err) => {
+      console.error("battleship turntable", err);
     });
 }
 

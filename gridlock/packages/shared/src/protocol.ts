@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 86;
+export const PROTOCOL_VERSION = 87;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -155,6 +155,14 @@ export interface EntityView {
   gatling?: { arms: 1 | 2; off?: number };
   /** Apocalypse roof mount: its world facing, and `fire` when it shot during the last step. */
   ciws?: { facing: number; fire?: true };
+  /**
+   * Battle Ship: each main turret's world facing and, for its own side, the shells left in each
+   * barrel; each CIWS mount's facing, `fire` when it shot during the last step, and its belt.
+   */
+  ship?: {
+    turrets: { facing: number; ammo?: number[] }[];
+    ciws: { facing: number; fire?: true; ammo?: number }[];
+  };
   /** Seconds left on a magazine change. Allied infantry. Omitted when idle. */
   reload?: number;
   /** Seconds until a planted support weapon can fire. Gunner bipod, or the mortar tube. Omitted once it is set. */
@@ -353,6 +361,8 @@ export interface ProjectileView {
   mortar?: boolean;
   /** Field-gun shell on the mortar arc. Drawn bigger than the bomb. */
   big?: boolean;
+  /** A Battle Ship's shell: the barrel it left, turret × 3 + gun. */
+  shipBarrel?: number;
   /** Peak air height in elevation units. Mortar bombs only. */
   apex?: number;
   /** 0 at the tube, 1 at the ground. Mortar bombs and flamethrower globs. */

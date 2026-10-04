@@ -43,6 +43,7 @@ import {
   type MapDef,
 } from "../maps.js";
 import { nextRand } from "./rng.js";
+import { newShipState } from "./battleship.js";
 import type { AirState, DroneLink, Entity, JetState, MatchState } from "./types.js";
 
 /** Fresh flight state: fuelled, armed, parked on `pad` of Airfield `homeId`. */
@@ -628,6 +629,7 @@ export function makeEntity(
   };
   if (def.aircraft) e.air = newAirState(null, 0, type);
   if (type === "artillery") e.gunCrew = Array.from({ length: ARTILLERY_CREW }, () => ARTILLERY_CREW_HP);
+  if (type === "battleship") e.ship = newShipState(facing);
   if (type === "droneop") e.droneLink = newDroneLink();
   if (type === "jumpjet") e.jet = newJetState();
   state.entities.set(id, e);
