@@ -29,6 +29,8 @@ import {
   isTransportType,
   MG42_BIPOD_SECONDS,
   MORTAR_PLANT_SECONDS,
+  SUB_DIVE_SECONDS,
+  submergesOf,
   walkerGunsOf,
 } from "../catalog.js";
 import { padsTaken } from "./air.js";
@@ -37,7 +39,7 @@ import { crateViews, mineViews, payloadOf, planeRiders } from "./airdrop.js";
 import { cyborgShielded } from "./crits.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { allies, unitInWater } from "./geo.js";
-import { hiddenSubmarine, submerged } from "./naval.js";
+import { diving, hiddenSubmarine } from "./naval.js";
 import { medicTendView } from "./heal.js";
 import { supplyHasDriver, supplyRiders } from "./supply.js";
 import { powerOf } from "./power.js";
@@ -305,7 +307,11 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       stanceOrder: isInfantryType(e.type) && e.stanceOrder !== e.stance ? e.stanceOrder : undefined,
       swimming: isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
       wading: !isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
-      submerged: friendly && submerged(state, e) ? true : undefined,
+      submerged: friendly && diving(e) ? true : undefined,
+      dive:
+        friendly && submergesOf(e.type)
+          ? { air: e.dive?.air ?? SUB_DIVE_SECONDS, airMax: SUB_DIVE_SECONDS, winded: e.dive?.winded || undefined }
+          : undefined,
       braced: e.braced || undefined,
       rocketReload: friendly && (e.rocketCooldown ?? 0) > 0 ? e.rocketCooldown : undefined,
       rockets: friendly && e.rockets != null ? e.rockets : undefined,
@@ -482,6 +488,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     })),
     entities,
     projectiles: state.projectiles
+      // A torpedo shows as its body, an entity.
+      .filter((p) => p.bodyId == null)
       .filter((p) => allies(state, youPlayerId, p.ownerId) || canSeeWorld(state, vis, p.x, p.y))
       .map((p) => ({
         id: p.id,

@@ -30,6 +30,7 @@ import {
   isBuildingType,
   isFieldStructure,
   isInfantryType,
+  isTorpedoBody,
   type BuildingType,
   type TrainType,
 } from "../catalog.js";
@@ -1027,7 +1028,7 @@ function campaign(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): vo
 
 function unitCount(state: MatchState, playerId: string): number {
   let n = 0;
-  for (const e of state.entities.values()) if (e.ownerId === playerId && e.kind === "unit" && e.hp > 0) n++;
+  for (const e of state.entities.values()) if (e.ownerId === playerId && e.kind === "unit" && e.hp > 0 && !isTorpedoBody(e.type)) n++;
   return n;
 }
 

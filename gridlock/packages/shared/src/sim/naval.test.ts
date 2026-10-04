@@ -3,12 +3,16 @@ import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   BUILDING_TYPES,
+  SUB_AIR_RECOVER_MUL,
   SUB_DETECT_TILES,
+  SUB_DIVE_SECONDS,
   SUB_REVEAL_SECONDS,
   TICK_DT,
+  TORPEDO_SPEED,
   TRAIN_TYPES,
   catalog,
   isNavalType,
+  isTorpedoBody,
   leavesWreck,
   secondsToTicks,
   trackCritAllowed,
@@ -22,7 +26,7 @@ import { applyCommand } from "./commands.js";
 import { canAimWeapon } from "./elevation.js";
 import { hqOf, isWater, makeEntity, tileCenter, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
-import { afloat, hiddenSubmarine } from "./naval.js";
+import { afloat, diving, hiddenSubmarine } from "./naval.js";
 import { setPath } from "./path.js";
 import { previewSite } from "./preview.js";
 import { snapshotFor } from "./snapshot.js";
@@ -250,11 +254,64 @@ describe("Submarine torpedoes", () => {
     sub.facing = 0;
     const boat = spawn(state, "gunboat", "B", lx0 + 22, ly0 + 10);
     boat.holdPosition = true;
+    boat.cooldown = 1e6;
     const hp = boat.hp;
     applyCommand(state, "A", { type: "cmd.attack", ids: [sub.id], targetId: boat.id });
-    for (let i = 0; i < 80 && boat.hp === hp; i++) step(state, TICK_DT);
+    for (let i = 0; i < 200 && boat.hp === hp; i++) step(state, TICK_DT);
     assert.ok(boat.hp < hp, "the torpedo found it");
     assert.notEqual(sub.surfacedTick, undefined);
+  });
+
+  it("runs slow and in sight as a body the enemy can see but nobody can order", () => {
+    const { state, lx0, ly0 } = harbour();
+    const sub = spawn(state, "submarine", "A", lx0 + 4, ly0 + 10);
+    sub.facing = 0;
+    const boat = spawn(state, "gunboat", "B", lx0 + 40, ly0 + 10);
+    boat.holdPosition = true;
+    boat.cooldown = 1e6;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [sub.id], targetId: boat.id });
+    let body: Entity | undefined;
+    for (let i = 0; i < 200 && !body; i++) {
+      step(state, TICK_DT);
+      body = [...state.entities.values()].find((e) => isTorpedoBody(e.type) && e.hp > 0);
+    }
+    assert.ok(body, "the torpedo runs as an entity");
+    assert.equal(body.ownerId, "A");
+    const p = state.projectiles.find((q) => q.bodyId === body!.id);
+    assert.ok(p, "its warhead round rides with it");
+    assert.equal(Math.hypot(p.vx, p.vy), TORPEDO_SPEED);
+    assert.equal(snapshotFor(state, "B").entities.some((v) => v.id === body!.id), true, "the enemy sees it running");
+    assert.equal(snapshotFor(state, "A").projectiles.some((v) => v.id === p.id), false, "drawn as its body, not as a round");
+    const x0 = body.x;
+    step(state, TICK_DT);
+    assert.ok(body.x > x0, "the body moves with its round");
+    assert.equal(applyCommand(state, "A", { type: "cmd.move", ids: [body.id], x: body.x, y: body.y + 40 }).ok, false);
+  });
+
+  it("is lost when a gun shoots its body apart before it arrives", () => {
+    const { state, lx0, ly0 } = harbour();
+    const sub = spawn(state, "submarine", "A", lx0 + 4, ly0 + 10);
+    sub.facing = 0;
+    const boat = spawn(state, "gunboat", "B", lx0 + 40, ly0 + 10);
+    boat.holdPosition = true;
+    boat.cooldown = 1e6;
+    const hp = boat.hp;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [sub.id], targetId: boat.id });
+    let body: Entity | undefined;
+    for (let i = 0; i < 200 && !body; i++) {
+      step(state, TICK_DT);
+      body = [...state.entities.values()].find((e) => isTorpedoBody(e.type) && e.hp > 0);
+    }
+    assert.ok(body);
+    sub.cooldown = 1e6;
+    boat.cooldown = 0;
+    assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [boat.id], targetId: body.id }).ok, true);
+    const id = body.id;
+    for (let i = 0; i < 200 && state.entities.has(id); i++) step(state, TICK_DT);
+    assert.equal(state.entities.has(id), false, "the 20mm took it apart");
+    assert.equal(state.projectiles.some((q) => q.bodyId === id), false, "and its warhead with it");
+    ticks(state, 100);
+    assert.equal(boat.hp, hp, "it never arrived");
   });
 
   it("runs aground on a spit of land between it and the target", () => {
@@ -281,6 +338,9 @@ describe("Submarine runs submerged", () => {
     watcher.holdPosition = true;
     watcher.cooldown = 1e6; // and hold its gun, or it sinks the sub the moment it shows
     step(state, TICK_DT);
+    assert.equal(hiddenSubmarine(state, "A", sub), false, "it leaves the slip surfaced");
+    assert.equal(applyCommand(state, "B", { type: "cmd.dive", ids: [sub.id], down: true }).ok, true);
+    step(state, TICK_DT);
     assert.equal(hiddenSubmarine(state, "A", sub), true);
     assert.equal(canSeeEntity(state, "A", sub), false);
     assert.equal(snapshotFor(state, "A").entities.some((v) => v.id === sub.id), false, "not in A's snapshot");
@@ -297,5 +357,87 @@ describe("Submarine runs submerged", () => {
     watcher.y = close.y;
     assert.equal(hiddenSubmarine(state, "A", sub), false);
     assert.equal(canSeeEntity(state, "A", sub), true, "close by, it is spotted");
+  });
+
+  it("spawns surfaced with full air, spends it below, and comes up when it runs out", () => {
+    const { state, lx0, ly0 } = harbour();
+    const sub = spawn(state, "submarine", "A", lx0 + 10, ly0 + 10);
+    sub.cooldown = 1e6;
+    const view = snapshotFor(state, "A").entities.find((v) => v.id === sub.id);
+    assert.equal(view?.submerged, undefined, "surfaced by default");
+    assert.deepEqual(view?.dive, { air: SUB_DIVE_SECONDS, airMax: SUB_DIVE_SECONDS, winded: undefined });
+    assert.equal(applyCommand(state, "A", { type: "cmd.dive", ids: [sub.id], down: true }).ok, true);
+    assert.equal(diving(sub), true);
+    ticks(state, secondsToTicks(10));
+    assert.ok(Math.abs(sub.dive!.air - (SUB_DIVE_SECONDS - 10)) < 0.5, "ten seconds of air spent");
+    assert.equal(snapshotFor(state, "A").entities.find((v) => v.id === sub.id)?.submerged, true);
+    // Nearly out.
+    sub.dive!.air = 0.5;
+    ticks(state, secondsToTicks(1));
+    assert.equal(diving(sub), false, "out of air, it surfaced");
+    assert.equal(sub.dive!.winded, true);
+    const refused = applyCommand(state, "A", { type: "cmd.dive", ids: [sub.id], down: true });
+    assert.equal(refused.ok, false, "it cannot go back down yet");
+    ticks(state, secondsToTicks(SUB_DIVE_SECONDS / SUB_AIR_RECOVER_MUL) + 2);
+    assert.equal(sub.dive!.air, SUB_DIVE_SECONDS, "the air is back");
+    assert.equal(sub.dive!.winded, undefined);
+    assert.equal(applyCommand(state, "A", { type: "cmd.dive", ids: [sub.id], down: true }).ok, true);
+    assert.equal(diving(sub), true);
+  });
+
+  it("must surface to strike a boat; an attack order brings it up", () => {
+    const { state, lx0, ly0 } = harbour();
+    const sub = spawn(state, "submarine", "A", lx0 + 4, ly0 + 10);
+    sub.facing = 0;
+    const boat = spawn(state, "gunboat", "B", lx0 + 14, ly0 + 10);
+    boat.holdPosition = true;
+    boat.cooldown = 1e6;
+    const hp = boat.hp;
+    applyCommand(state, "A", { type: "cmd.dive", ids: [sub.id], down: true });
+    ticks(state, 120);
+    assert.equal(boat.hp, hp, "below, it lets the hull pass");
+    assert.equal(sub.surfacedTick, undefined, "and never fired");
+    applyCommand(state, "A", { type: "cmd.attack", ids: [sub.id], targetId: boat.id });
+    assert.equal(diving(sub), false, "the attack order brought it up");
+    for (let i = 0; i < 200 && boat.hp === hp; i++) step(state, TICK_DT);
+    assert.ok(boat.hp < hp);
+  });
+
+  it("torpedoes another submarine that is down, staying under", () => {
+    const { state, lx0, ly0 } = harbour();
+    const sub = spawn(state, "submarine", "A", lx0 + 4, ly0 + 10);
+    sub.facing = 0;
+    const prey = spawn(state, "submarine", "B", lx0 + 14, ly0 + 10);
+    prey.holdPosition = true;
+    prey.cooldown = 1e6;
+    applyCommand(state, "A", { type: "cmd.dive", ids: [sub.id], down: true });
+    applyCommand(state, "B", { type: "cmd.dive", ids: [prey.id], down: true });
+    const hp = prey.hp;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [sub.id], targetId: prey.id });
+    assert.equal(diving(sub), true, "a target below needs no surfacing");
+    for (let i = 0; i < 200 && prey.hp === hp; i++) step(state, TICK_DT);
+    assert.ok(prey.hp < hp, "the deep torpedo found it");
+  });
+});
+
+describe("boats turn before they move", () => {
+  it("swings the bow onto the course before it makes way", () => {
+    const { state, lx0, ly0 } = harbour();
+    for (const type of ["gunboat", "submarine"] as const) {
+      const boat = spawn(state, type, "A", lx0 + 20, ly0 + 10 + (type === "gunboat" ? 0 : 10));
+      boat.facing = 0;
+      boat.cooldown = 1e6;
+      const behind = { x: boat.x - 15 * state.tileSize, y: boat.y };
+      const x0 = boat.x;
+      const y0 = boat.y;
+      applyCommand(state, "A", { type: "cmd.move", ids: [boat.id], x: behind.x, y: behind.y });
+      step(state, TICK_DT);
+      step(state, TICK_DT);
+      assert.equal(boat.x, x0, `${type} holds while it turns`);
+      assert.equal(boat.y, y0, `${type} holds while it turns`);
+      assert.notEqual(boat.facing, 0, `${type} is turning`);
+      ticks(state, 200);
+      assert.ok(boat.x < x0 - 5 * state.tileSize, `${type} got under way once round`);
+    }
   });
 });

@@ -26,7 +26,8 @@ import { detachGarrisoned, killGarrison, spillGarrison, tickGarrison, tickGarris
 import { seedRng } from "./rng.js";
 import { tickBuild } from "./build.js";
 import { raiseWallCrest, restampForts, tickField } from "./field.js";
-import { tickCombat, tickPatrol, tickProjectiles } from "./combat.js";
+import { syncTorpedoes, tickCombat, tickPatrol, tickProjectiles } from "./combat.js";
+import { tickSubmarines } from "./naval.js";
 import { tickSmoke } from "./smoke.js";
 import { maybeCookOff, tickFires } from "./flame.js";
 import { tickBipod, tickStance } from "./stance.js";
@@ -179,6 +180,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   syncPlaneRiders(state);
   tickChutes(state, dt);
   tickDrones(state, dt);
+  tickSubmarines(state, dt);
   tickJets(state, dt);
   tickCollision(state, dt);
   syncTowedGuns(state);
@@ -191,6 +193,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickTrain(state, dt);
   tickCombat(state, dt);
   tickProjectiles(state, dt);
+  syncTorpedoes(state);
   tickFires(state, dt);
   tickCapture(state, dt);
   reapDead(state);

@@ -500,6 +500,7 @@ export type EntityType =
   | "bv222"
   | "droneop"
   | "drone"
+  | "torpedo"
   | "jumpjet"
   | "cottage"
   | "house"
@@ -741,8 +742,13 @@ export interface CatalogEntry {
    * stands in the water, and dies where the water ends.
    */
   torpedoes?: boolean;
-  /** Runs submerged: enemies see it only close by, or for a short while after it fires. */
+  /**
+   * Can dive: submerged, enemies see it only close by, or for a short while after it fires.
+   * Down, it only torpedoes another boat that is down too. It must surface to strike a hull.
+   */
   submerges?: boolean;
+  /** A torpedo running in the water. Nobody commands it; any gun can shoot it before it arrives. */
+  torpedoBody?: boolean;
 }
 
 export interface ShellDef {
@@ -2408,12 +2414,21 @@ const CIV_BUILDING = {
 export const GUNBOAT_RANGE_TILES = t(10);
 /** A torpedo's run. It stops sooner where the water ends. */
 export const TORPEDO_RANGE_TILES = t(13);
-/** Torpedo speed, world px a second. Slow enough that a boat under way can slip one. */
-export const TORPEDO_SPEED = t(8) * TILE_SIZE;
+/**
+ * Torpedo speed, world px a second. Slow and in plain sight: a boat under way can slip one,
+ * and a gun on the target has a few seconds to shoot it apart.
+ */
+export const TORPEDO_SPEED = t(3) * TILE_SIZE;
+/** A running torpedo's hit points. A few 20mm rounds or one rifle clip finish it. */
+export const TORPEDO_HP = 30;
 /** A submerged boat is seen by any enemy unit or building within this many tiles. */
 export const SUB_DETECT_TILES = t(4);
 /** After it fires, a submarine stays in sight this long. */
 export const SUB_REVEAL_SECONDS = 4;
+/** Seconds of air a submarine has for running submerged. */
+export const SUB_DIVE_SECONDS = 150;
+/** Surfaced, it takes in air this many times faster than it spends it below. */
+export const SUB_AIR_RECOVER_MUL = 5;
 
 /**
  * Battle Ship. Two triple 16-inch turrets on the foredeck, each barrel loaded
@@ -3632,6 +3647,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     moveTilesPerSec: paced(2.6),
     turnDegPerSec: 110,
     noReverse: true,
+    turnInPlace: true,
     turretTurnDegPerSec: 240,
     rangeTiles: GUNBOAT_RANGE_TILES,
     sightTiles: t(9),
@@ -3659,10 +3675,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     power: 0,
     tileW: 1,
     tileH: 1,
-    radius: 12,
+    radius: 14.4,
     moveTilesPerSec: paced(1.6),
     turnDegPerSec: 80,
     noReverse: true,
+    turnInPlace: true,
     gunArcDeg: 20,
     rangeTiles: TORPEDO_RANGE_TILES,
     sightTiles: t(8),
@@ -3678,7 +3695,32 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     naval: true,
     torpedoes: true,
     submerges: true,
-    blurb: `Coastal submarine. Water only. It runs submerged: the enemy sees it only within ${SUB_DETECT_TILES / TILE_SUBDIV} tiles of one of their units or buildings, or for ${SUB_REVEAL_SECONDS} seconds after it fires. Its bow tubes fire slow torpedoes that run at the waterline and strike only what floats or stands in the water — boats, swimmers, a Marine Base. A torpedo dies where the water ends. Turn the bow to aim.`,
+    blurb: `Coastal submarine. Water only. It leaves the slip surfaced; Dive and Surface set its depth. Submerged, the enemy sees it only within ${SUB_DETECT_TILES / TILE_SUBDIV} tiles of one of their units or buildings, or for ${SUB_REVEAL_SECONDS} seconds after it fires, and its torpedoes find only another submarine that is down too — it must surface to strike a boat, a swimmer, or a Marine Base. An order to attack one brings it up. It holds ${SUB_DIVE_SECONDS} seconds of air below; when that runs out it surfaces and stays up until its air is back. Its bow tubes fire slow torpedoes that run in plain sight at the waterline — any gun can shoot one apart before it arrives. A torpedo dies where the water ends. Turn the bow to aim.`,
+  },
+  /** A running torpedo: the body guns can shoot. It rides with its warhead round. */
+  torpedo: {
+    type: "torpedo",
+    kind: "unit",
+    name: "Torpedo",
+    letter: "t",
+    cost: 0,
+    buildSeconds: 0,
+    hp: TORPEDO_HP,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 5,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: t(1),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    naval: true,
+    torpedoBody: true,
+    blurb: "A submarine's torpedo running at the waterline. It strikes the first thing in the water across its path. Slow and in plain sight: shoot it apart before it arrives.",
   },
   /** Fast battleship, after the Iowa class (USS Wisconsin, BB-64). Water only. */
   battleship: {
@@ -4066,9 +4108,14 @@ export function torpedoesOf(type: EntityType): boolean {
   return catalog(type).torpedoes === true;
 }
 
-/** Runs submerged and stays out of enemy sight unless spotted close or just fired. */
+/** Can dive, and down it stays out of enemy sight unless spotted close or just fired. */
 export function submergesOf(type: EntityType): boolean {
   return catalog(type).submerges === true;
+}
+
+/** A running torpedo's body. Not a unit anyone commands. */
+export function isTorpedoBody(type: EntityType): boolean {
+  return catalog(type).torpedoBody === true;
 }
 
 export function armorLabel(type: EntityType): string | null {

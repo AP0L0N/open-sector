@@ -115,6 +115,7 @@ import {
   type CatalogEntry,
   type ShellType,
   torpedoesOf,
+  isTorpedoBody,
 } from "../catalog.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
 import {
@@ -176,6 +177,7 @@ import {
   tileCenter,
   unitInWater,
   worldToTile,
+  makeEntity,
 } from "./geo.js";
 import {
   garrisonIsHiding,
@@ -214,7 +216,7 @@ import { stepCluster } from "./airdrop.js";
 import { projectileMeetsDrone, reachesDrone } from "./drone.js";
 import { reachesJet } from "./jet.js";
 import { nightReachMul, nightSightMul, nightTiles } from "./night.js";
-import { afloat, surface, torpedoCannotReach } from "./naval.js";
+import { afloat, diving, surface, torpedoCannotReach } from "./naval.js";
 import { shipMountPoint, turretBearing } from "./battleship.js";
 import type { Entity, MatchState, Order, Projectile, ShipCiws } from "./types.js";
 
@@ -2397,9 +2399,37 @@ function fireRound(
     p.torpedo = true;
     p.z = 0;
     p.vz = 0;
+    p.deep = diving(e) || undefined;
+    // The torpedo runs in plain sight as its own body: a gun can shoot it before it arrives.
+    p.bodyId = makeEntity(state, "torpedo", e.ownerId, p.x, p.y, { facing: Math.atan2(p.vy, p.vx) }).id;
     surface(state, e);
   }
   state.projectiles.push(p);
+}
+
+/**
+ * Each torpedo's body runs where its round runs. A body shot apart takes the round with it;
+ * a round that struck, ran ashore, or ran out takes its body.
+ */
+export function syncTorpedoes(state: MatchState): void {
+  const running = new Set<number>();
+  state.projectiles = state.projectiles.filter((p) => {
+    if (p.bodyId == null) return true;
+    const body = state.entities.get(p.bodyId);
+    if (!body || body.hp <= 0) {
+      pushImpact(state, p, "hit", p.x, p.y);
+      return false;
+    }
+    body.x = p.x;
+    body.y = p.y;
+    body.tileX = worldToTile(p.x, state.tileSize);
+    body.tileY = worldToTile(p.y, state.tileSize);
+    running.add(body.id);
+    return true;
+  });
+  for (const e of state.entities.values()) {
+    if (isTorpedoBody(e.type) && e.hp > 0 && !running.has(e.id)) e.hp = 0;
+  }
 }
 
 /**
@@ -2824,7 +2854,8 @@ function nearestSweepHit(
     // A pilot strafes the enemy's line, not his own side's, unless he was told to (force-attack).
     if (p.fromAbove && !p.harmAllies && e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
     if (e.garrisonedIn != null) continue;
-    if (p.torpedo && !afloat(state, e)) continue;
+    // A torpedo meets what is in the water, never another torpedo. One running deep meets only a boat that is down.
+    if (p.torpedo && (!afloat(state, e) || isTorpedoBody(e.type) || (p.deep && !diving(e)))) continue;
     const hit = sweepAgainst(state, x0, y0, p, e);
     if (!hit) continue;
     // Plunging fire is still high over everything short of its line; it only strikes near where it lands.

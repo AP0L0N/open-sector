@@ -28,6 +28,7 @@ import {
   isFieldStructure,
   isInfantryType,
   isNavalType,
+  isTorpedoBody,
   isTransportType,
   isStance,
   colorHex,
@@ -504,6 +505,7 @@ const EXTRUDE: Record<EntityType, number> = {
   gunboat: 10,
   submarine: 7,
   battleship: 20,
+  torpedo: 2,
   cottage: 28,
   shack: 24,
   house: 36,
@@ -543,6 +545,9 @@ function ownerAllied(match: MatchSnapshot, ownerId: string | undefined): boolean
 
 /** How much of a submerged submarine its owner still sees through the water. */
 const SUBMERGED_ALPHA = 0.5;
+/** Half a torpedo's drawn length, world px, and how far behind it its wake trails, in body halves. */
+const TORPEDO_BODY_HALF = 7;
+const TORPEDO_WAKE_MUL = 6;
 
 function isProducerView(e: EntityView): boolean {
   // The Airfield trains too, but its planes park on the strip; it has no rally point.
@@ -3011,6 +3016,8 @@ export class MapView {
     if (!shift) this.selected.clear();
     for (const e of this.curr.entities) {
       if (e.kind !== "unit" || e.ownerId !== this.curr.youPlayerId || e.wreck || e.garrisonedIn) continue;
+      // A running torpedo is nobody's to command.
+      if (isTorpedoBody(e.type)) continue;
       const p = this.lerpEnt(e);
       const s = this.toScreen(p.x, p.y);
       // Aloft, the box has to take the plane itself, not the shadow under it.
@@ -5417,7 +5424,47 @@ export class MapView {
     return s.x >= -m && s.y >= -m && s.x <= w + m && s.y <= h + m;
   }
 
+  /** A running torpedo: a dark body at the waterline trailing a white wake. */
+  private drawTorpedo(e: EntityView): void {
+    const ctx = this.ctx;
+    const p = this.lerpEnt(e);
+    const ux = Math.cos(p.facing);
+    const uy = Math.sin(p.facing);
+    const half = TORPEDO_BODY_HALF;
+    const nose = this.toScreen(p.x + ux * half, p.y + uy * half);
+    const tail = this.toScreen(p.x - ux * half, p.y - uy * half);
+    const wake = this.toScreen(p.x - ux * half * TORPEDO_WAKE_MUL, p.y - uy * half * TORPEDO_WAKE_MUL);
+    ctx.save();
+    ctx.lineCap = "round";
+    const foam = ctx.createLinearGradient(tail.x, tail.y, wake.x, wake.y);
+    foam.addColorStop(0, "rgba(240,248,255,0.85)");
+    foam.addColorStop(1, "rgba(240,248,255,0)");
+    ctx.strokeStyle = foam;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(tail.x, tail.y);
+    ctx.lineTo(wake.x, wake.y);
+    ctx.stroke();
+    ctx.strokeStyle = "#111";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(tail.x, tail.y);
+    ctx.lineTo(nose.x, nose.y);
+    ctx.stroke();
+    ctx.strokeStyle = this.ownerColor(e);
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(tail.x, tail.y);
+    ctx.lineTo(nose.x, nose.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   private drawUnit(e: EntityView): void {
+    if (isTorpedoBody(e.type)) {
+      this.drawTorpedo(e);
+      return;
+    }
     const spr = this.spriteOf(e);
     if (spr) {
       // Your own submarine running submerged shows faint under the surface.
