@@ -64,7 +64,7 @@ export function orderConstruct(
   if (!p || !p.alive) return "You are out of the fight.";
   if (!hasCore(state, playerId)) return "Deploy the Rig.";
   if (!Number.isInteger(tx) || !Number.isInteger(ty)) return "Cannot place there.";
-  const err = buildingSiteError(state, building, tx, ty);
+  const err = buildingSiteError(state, building, tx, ty, playerId);
   if (err) return err;
   const site = siteOf(building, tx, ty);
   const spot = standSpot(state, site);
@@ -104,7 +104,7 @@ function tickConstruct(state: MatchState, e: Entity, dt: number): void {
   }
   const player = state.players.get(e.ownerId);
   if (e.work <= 0) {
-    const err = buildingSiteError(state, building, o.tileX, o.tileY);
+    const err = buildingSiteError(state, building, o.tileX, o.tileY, e.ownerId);
     if (err) {
       finishWork(e);
       if (player) state.pendingComms.push(err);
@@ -129,7 +129,7 @@ function tickConstruct(state: MatchState, e: Entity, dt: number): void {
   e.work += dt;
   // 0.1 added ten times a second undershoots the duration by a rounding error.
   if (e.work + 1e-6 < def.buildSeconds) return;
-  if (buildingSiteError(state, building, o.tileX, o.tileY)) {
+  if (buildingSiteError(state, building, o.tileX, o.tileY, e.ownerId)) {
     if (player) player.scrap += def.cost;
     finishWork(e);
     return;

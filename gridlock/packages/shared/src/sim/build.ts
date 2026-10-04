@@ -14,6 +14,7 @@ import {
 import {
   buildingCenter,
   destroyEntity,
+  footprint,
   hasCore,
   inBuildRadius,
   makeEntity,
@@ -31,6 +32,7 @@ import {
   raiseGate,
   raiseWallCrest,
   restampForts,
+  sitedLineTiles,
   type FieldPiece,
 } from "./field.js";
 import { repathIfBlocked } from "./orders.js";
@@ -206,7 +208,7 @@ export function placeBuilding(
   if (!job?.ready || job.type !== type) return "That structure is not ready.";
   if (!hasCore(state, playerId)) return "Deploy the Rig.";
   const def = catalog(type);
-  const siteErr = buildingSiteError(state, type, tx, ty);
+  const siteErr = buildingSiteError(state, type, tx, ty, playerId);
   if (siteErr) return siteErr;
   if (!inBuildRadius(state, playerId, tx, ty, def.tileW, def.tileH, BUILD_RADIUS)) {
     return "Too far from your base.";
@@ -216,9 +218,24 @@ export function placeBuilding(
   return null;
 }
 
-/** Why this footprint cannot take the building, or null when the ground is right for it. */
-export function buildingSiteError(state: MatchState, type: BuildingType, tx: number, ty: number): string | null {
+/**
+ * Why this footprint cannot take the building, or null when the ground is right for it.
+ * With `ownerId`, that player's sited wall or sandbag line counts as already standing.
+ */
+export function buildingSiteError(
+  state: MatchState,
+  type: BuildingType,
+  tx: number,
+  ty: number,
+  ownerId?: string,
+): string | null {
   const def = catalog(type);
+  if (ownerId != null) {
+    const sited = sitedLineTiles(state, state.players.get(ownerId)?.line);
+    if (sited.size > 0 && footprint(tx, ty, def.tileW, def.tileH).some((t) => sited.has(t.y * state.width + t.x))) {
+      return "Cannot place there.";
+    }
+  }
   if (type === "smelter") {
     if (!smelterSiteOk(state, tx, ty)) {
       return tilesBlockedOrScrap(state, tx, ty, def.tileW, def.tileH) && !tilesBlocked(state, tx, ty, def.tileW, def.tileH)
