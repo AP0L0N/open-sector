@@ -1,4 +1,4 @@
-import { BUILD_RADIUS, SMELTER_SCRAP_COVER, catalog, isEngineerBuilding, isYardField, type BuildingType, type FieldStructureType, type YardFieldType } from "../catalog.js";
+import { SMELTER_SCRAP_COVER, anchorsBuildRange, buildRadiusOf, catalog, isEngineerBuilding, isYardField, type BuildingType, type FieldStructureType, type YardFieldType } from "../catalog.js";
 import { TILE_BLOCKED, TILE_FENCE, TILE_ROCK, TILE_TREE, TILE_WATER, getMap } from "../maps.js";
 import type { MatchSnapshot } from "../protocol.js";
 import { fieldTilesOn, overlapsFieldIn, overlapsSitedLine, sitedLineTiles } from "./field.js";
@@ -88,14 +88,16 @@ export function previewConstruct(snap: MatchSnapshot, type: BuildingType, tx: nu
   return isEngineerBuilding(type) && previewSite(snap, type, tx, ty);
 }
 
-/** A yard-built structure: the site rule, and within build range of your own buildings. */
+/** A yard-built structure: the site rule, and within its build range of your own base buildings. */
 export function previewPlace(snap: MatchSnapshot, type: BuildingType, tx: number, ty: number): boolean {
   if (!previewSite(snap, type, tx, ty)) return false;
   const def = catalog(type);
+  const radius = buildRadiusOf(type);
   const you = snap.youPlayerId;
   for (const e of snap.entities) {
-    if (e.kind !== "building" || e.ownerId !== you) continue;
-    if (footprintGap(tx, ty, def.tileW, def.tileH, e.tileX, e.tileY, e.tileW, e.tileH) <= BUILD_RADIUS) return true;
+    if (e.kind !== "building" || e.ownerId !== you || e.hp <= 0) continue;
+    if (!anchorsBuildRange(e.type)) continue;
+    if (footprintGap(tx, ty, def.tileW, def.tileH, e.tileX, e.tileY, e.tileW, e.tileH) <= radius) return true;
   }
   return false;
 }

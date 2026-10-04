@@ -1,11 +1,12 @@
 import {
   ARTILLERY_CREW,
   ARTILLERY_CREW_HP,
-  BUILD_RADIUS,
+  DEFENCE_BUILD_RADIUS,
   AIR_FUEL_SECONDS,
   DRONE_BATTERY_SECONDS,
   JET_FUEL_SECONDS,
   airLoadoutOf,
+  anchorsBuildRange,
   beltOf,
   catalog,
   haulerSmokeChargesOf,
@@ -416,17 +417,19 @@ export function scrapTilesUnder(state: MatchState, tx: number, ty: number, w: nu
   return n;
 }
 
+/** A footprint within `radius` of one of the owner's base buildings. Defences and lines are not anchors. */
 export function inBuildRadius(state: MatchState, ownerId: string, tx: number, ty: number, w: number, h: number, radius: number): boolean {
   for (const e of state.entities.values()) {
     if (e.kind !== "building" || e.ownerId !== ownerId || e.hp <= 0) continue;
+    if (!anchorsBuildRange(e.type)) continue;
     if (footprintGap(tx, ty, w, h, e.tileX, e.tileY, e.tileW, e.tileH) <= radius) return true;
   }
   return false;
 }
 
 /**
- * A 1×1 tile within BUILD_RADIUS of the owner's own buildings.
- * Field structures are not anchors, so a wall in the field cannot extend the yard.
+ * A 1×1 tile within DEFENCE_BUILD_RADIUS of the owner's own base buildings: where a Defences-tab line may go.
+ * Field structures and guns are not anchors, so a wall or a tower in the field cannot extend the yard.
  */
 export function tileNearOwnBuildings(
   buildings: Iterable<{
@@ -445,8 +448,8 @@ export function tileNearOwnBuildings(
 ): boolean {
   for (const e of buildings) {
     if (e.kind !== "building" || e.ownerId !== ownerId || e.hp <= 0) continue;
-    if (isFieldStructure(e.type)) continue;
-    if (footprintGap(tx, ty, 1, 1, e.tileX, e.tileY, e.tileW, e.tileH) <= BUILD_RADIUS) return true;
+    if (!anchorsBuildRange(e.type)) continue;
+    if (footprintGap(tx, ty, 1, 1, e.tileX, e.tileY, e.tileW, e.tileH) <= DEFENCE_BUILD_RADIUS) return true;
   }
   return false;
 }

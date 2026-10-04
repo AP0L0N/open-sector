@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   BUILD_RADIUS,
+  DEFENCE_BUILD_RADIUS,
   DIAMOND_SCRAP_MUL,
   DIAMOND_SCRAP_TILE_YIELD,
   SMELTER_SCRAP_COVER,
@@ -12,11 +13,14 @@ import {
   TILE_SUBDIV,
   TRAIN_TYPES,
   catalog,
+  isDefenceStructure,
+  type BuildingType,
 } from "../catalog.js";
 import { TILE_DIAMOND_SCRAP, TILE_EMPTY, TILE_ROAD, TILE_SCRAP, getMap } from "../maps.js";
 import { findSmelterTile } from "./ai.js";
+import { raiseBuilding } from "./build.js";
 import { applyCommand } from "./commands.js";
-import { buildingCenter, hqOf, makeEntity, scrapAt, tileCenter } from "./geo.js";
+import { buildingCenter, footprintGap, hqOf, makeEntity, scrapAt, tileCenter, tilesBlockedOrScrap } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { previewConstruct, previewPlace } from "./preview.js";
 import { smelterIncome, smelterRateOn, smelterScrapNeeded, smelterSiteOk, tickSmelters } from "./smelter.js";
@@ -406,5 +410,94 @@ describe("yard scrap and the CPU", () => {
     p.structure = { type: "smelter", progressTicks: 1, totalTicks: 1, ready: true, paused: false, paid: catalog("smelter").cost };
     const res = applyCommand(state, "A", { type: "cmd.place", building: "smelter", tx: spot!.tx, ty: spot!.ty });
     assert.equal(res.ok, true, res.ok ? "" : res.message);
+  });
+});
+
+/** Solo match on the yard with player A at this start. */
+function soloAt(spawnId: number): MatchState {
+  const r = createRoom({ id: `SR${spawnId}`, hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
+  if (!r.ok) throw new Error(r.message);
+  updateSelf(r.value, "A", { ready: true, spawnId });
+  const started = startMatch(r.value, "A", () => 0);
+  if (!started.ok) throw new Error(started.message);
+  return createMatch(r.value, started.value);
+}
+
+/** Hand A a finished job of this type in its lane and place it. Null when the yard takes it. */
+function place(state: MatchState, type: BuildingType, tx: number, ty: number): string | null {
+  const p = state.players.get("A")!;
+  p.scrap = 10_000;
+  const job = { type, progressTicks: 1, totalTicks: 1, ready: true, paused: false, paid: catalog(type).cost };
+  if (isDefenceStructure(type)) p.defence = job;
+  else p.structure = job;
+  const res = applyCommand(state, "A", { type: "cmd.place", building: type, tx, ty });
+  return res.ok ? null : res.message;
+}
+
+describe("yard build range", () => {
+  it("reaches a home Smelter site from the Core alone at every start", () => {
+    for (const s of getMap("yard-64")!.spawns) {
+      const state = soloAt(s.id);
+      deploy(state, "A");
+      assert.ok(findSmelterTile(state, "A"), `start ${s.id} has no Smelter site in yard range`);
+    }
+  });
+
+  it("keeps base buildings close, lets defences reach farther, and never anchors on a gun", () => {
+    const { state } = twoPlayerMatch();
+    deploy(state, "A");
+    const hq = hqOf(state, "A")!;
+    const east = hq.tileX + hq.tileW / 2 < state.width / 2;
+    /** Left edge of a w-wide footprint `gap` tiles out from the Core, toward the middle. */
+    const out = (gap: number, w: number): number => (east ? hq.tileX + hq.tileW - 1 + gap : hq.tileX - gap - w + 1);
+    const dyn = catalog("dynamo").tileW;
+    const tow = catalog("tower").tileW;
+    const far = DEFENCE_BUILD_RADIUS + tow + BUILD_RADIUS;
+    const ty = hq.tileY;
+    clearGround(state, Math.min(out(1, 0), out(far, 0)), ty, far, catalog("tower").tileH);
+
+    assert.match(place(state, "dynamo", out(BUILD_RADIUS + 1, dyn), ty) ?? "", /Too far/);
+    assert.match(place(state, "tower", out(DEFENCE_BUILD_RADIUS + 1, tow), ty) ?? "", /Too far/);
+    assert.equal(place(state, "tower", out(DEFENCE_BUILD_RADIUS, tow), ty), null, "a tower at the edge of defence range");
+    // In base range of the tower, but a tower is not a base building.
+    assert.match(place(state, "dynamo", out(DEFENCE_BUILD_RADIUS + tow + 4, dyn), ty) ?? "", /Too far/);
+    assert.equal(place(state, "dynamo", out(BUILD_RADIUS, dyn), ty), null, "a Dynamo at the edge of base range");
+  });
+
+  it("leaves the diamond field to an engineer, then lets the yard guard the field Smelter", () => {
+    const { state } = twoPlayerMatch();
+    deploy(state, "A");
+    const sm = catalog("smelter");
+    const tower = catalog("tower");
+    const yieldAt = (x: number, y: number): number => scrapAt(state, x, y);
+    let site: { tx: number; ty: number } | null = null;
+    for (let ty = 0; ty + sm.tileH <= state.height && !site; ty++) {
+      for (let tx = 0; tx + sm.tileW <= state.width; tx++) {
+        if (smelterSiteOk(state, tx, ty) && smelterRateOn(yieldAt, tx, ty) > SMELTER_SCRAP_PER_SEC) {
+          site = { tx, ty };
+          break;
+        }
+      }
+    }
+    assert.ok(site, "the yard has a diamond field");
+    const { tx, ty } = site!;
+    assert.equal(previewPlace(snapshotFor(state, "A"), "smelter", tx, ty), false, "ghost stays red");
+    assert.match(place(state, "smelter", tx, ty) ?? "", /Too far/);
+
+    // Open ground for a tower in defence range of the field.
+    let gun: { x: number; y: number } | null = null;
+    for (let y = ty - DEFENCE_BUILD_RADIUS; y <= ty + sm.tileH + DEFENCE_BUILD_RADIUS && !gun; y++) {
+      for (let x = tx - DEFENCE_BUILD_RADIUS; x <= tx + sm.tileW + DEFENCE_BUILD_RADIUS; x++) {
+        if (footprintGap(x, y, tower.tileW, tower.tileH, tx, ty, sm.tileW, sm.tileH) < 1) continue;
+        if (tilesBlockedOrScrap(state, x, y, tower.tileW, tower.tileH)) continue;
+        gun = { x, y };
+        break;
+      }
+    }
+    assert.ok(gun, "open ground beside the diamond field");
+    assert.match(place(state, "tower", gun!.x, gun!.y) ?? "", /Too far/, "no guns out there before the Smelter");
+    // What an engineer's finished construction leaves standing.
+    raiseBuilding(state, "A", "smelter", tx, ty);
+    assert.equal(place(state, "tower", gun!.x, gun!.y), null, "a tower beside the field Smelter");
   });
 });

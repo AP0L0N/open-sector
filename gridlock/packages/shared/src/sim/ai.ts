@@ -9,6 +9,7 @@
 
 import {
   BUILD_RADIUS,
+  DEFENCE_BUILD_RADIUS,
   DIAMOND_SCRAP_MUL,
   DIAMOND_SCRAP_TILE_YIELD,
   DRONE_LAUNCH_MIN_SECONDS,
@@ -19,6 +20,7 @@ import {
   TECH_REQUIRES,
   TICK_HZ,
   UNIT_CAP,
+  buildRadiusOf,
   catalog,
   fieldSpan,
   fires,
@@ -55,7 +57,7 @@ export const EASY_MIN_FIGHTERS = 4;
 /** Smelters the CPU raises on scrap near its base. The second comes once the whole base stands. */
 export const EASY_WANT_SMELTERS = 2;
 /** Enemies this far from the HQ, in tiles, pull the home guard. */
-export const EASY_DEFEND_TILES = BUILD_RADIUS + 6 * 4;
+export const EASY_DEFEND_TILES = DEFENCE_BUILD_RADIUS + 6 * 4;
 /** Fortify gives up waiting on its defences after this long and campaigns anyway. */
 export const EASY_FORTIFY_MAX_TICKS = 10 * 60 * TICK_HZ;
 /** Fighters the first force needs before it walks out for the middle. */
@@ -738,7 +740,7 @@ export function findSiteNear(
         const ty = cy + dy;
         if (tx < 0 || ty < 0 || tx + def.tileW > state.width || ty + def.tileH > state.height) continue;
         if (buildingSiteError(state, type, tx, ty, playerId)) continue;
-        if (!inBuildRadius(state, playerId, tx, ty, def.tileW, def.tileH, BUILD_RADIUS)) continue;
+        if (!inBuildRadius(state, playerId, tx, ty, def.tileW, def.tileH, buildRadiusOf(type))) continue;
         if (!keepsLanes(state, tx, ty, def.tileW, def.tileH)) continue;
         best = { tx, ty };
         bestD = d;
@@ -1545,7 +1547,8 @@ export function findBuildTile(
   const oy = hq.tileY + Math.floor(hq.tileH / 2);
   const inwardX = Math.sign(state.width / 2 - ox) || 1;
   const inwardY = Math.sign(state.height / 2 - oy) || 1;
-  const maxR = BUILD_RADIUS + Math.max(def.tileW, def.tileH);
+  const radius = buildRadiusOf(type);
+  const maxR = radius + Math.max(def.tileW, def.tileH);
   const halfW = Math.floor(def.tileW / 2);
   const halfH = Math.floor(def.tileH / 2);
   for (let r = 1; r <= maxR; r++) {
@@ -1563,7 +1566,7 @@ export function findBuildTile(
     ring.sort((a, b) => b.inward - a.inward);
     for (const spot of ring) {
       if (tilesBlockedOrScrap(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
-      if (!inBuildRadius(state, playerId, spot.tx, spot.ty, def.tileW, def.tileH, BUILD_RADIUS)) continue;
+      if (!inBuildRadius(state, playerId, spot.tx, spot.ty, def.tileW, def.tileH, radius)) continue;
       if (!keepsLanes(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
       return { tx: spot.tx, ty: spot.ty };
     }
