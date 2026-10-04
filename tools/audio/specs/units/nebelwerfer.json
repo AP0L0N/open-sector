@@ -1,0 +1,67 @@
+{
+  "key": "nebelwerfer",
+  "out": "units/nebelwerfer",
+  "voice": {
+    "name": "Open Sector - Nebelwerfer",
+    "description": "Wiry young male rocket artillery gunner in his mid twenties, high-energy and manic, slightly raspy tenor voice, talks fast and giggles at explosions, a gleeful pyromaniac who loves big booms, shouting happily over a truck radio with a light Central European accent.",
+    "sample": "Oh, oh, oh, look at that! Twelve tubes, one second, boom boom boom! Did you hear them scream? Beautiful! Give me another target, please, I want to see the sky light up again!",
+    "stability": 0.3,
+    "similarity": 0.8,
+    "style": 0.6,
+    "voice_id": "FGY2WhTYpPnrIDTdsKH5",
+    "stock_voice": "Laura"
+  },
+  "lines": {
+    "select": [
+      "Something to blow up?",
+      "Tubes loaded!",
+      "[laughs] Yes yes yes?",
+      "Twelve ways to say hello.",
+      "Point me at it!"
+    ],
+    "move": [
+      "Rolling, rolling!",
+      "New firing spot!",
+      "Careful with the cargo!",
+      "Okay, okay, going!",
+      "Moving the fireworks."
+    ],
+    "attack": [
+      "[shouting] Let them scream!",
+      "Full salvo, boom!",
+      "[laughs] Fireworks time!",
+      "All twelve, now!"
+    ],
+    "ready": [
+      "Nebelwerfer loaded and giggling!"
+    ],
+    "hit": [
+      "Hey! Not the rockets!",
+      "[gasps] Too close!"
+    ],
+    "die": [
+      "[screaming] Big boom!",
+      "Oh no... the tubes..."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Rippling salvo of rocket artillery launching in rapid succession, whooshing ignitions and eerie rising screaming rocket wails flying away, medium distance outdoors, no music, no voice",
+      "duration": 2.0,
+      "variants": 3,
+      "influence": 0.7
+    },
+    "move": {
+      "prompt": "WWII military truck diesel engine revving and pulling away, rattling rocket tubes on the back, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Rocket truck explodes, main blast followed by several rockets cooking off with whistles and popping secondary explosions, medium distance, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

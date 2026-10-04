@@ -1,0 +1,67 @@
+{
+  "key": "gunboat",
+  "out": "units/gunboat",
+  "voice": {
+    "name": "Open Sector - Attack Boat",
+    "description": "Brash cocky young male gunboat skipper in his early twenties, bright confident voice with a swaggering coastal accent, loud over engine roar, thrill-seeker who loves speed and showing off, cheeky and boastful, shouting into the radio with a grin.",
+    "sample": "Hah! Did you see that turn? Nobody catches this boat, nobody! Throttle wide open, cannon hot, spray in my face, best job in the whole navy. Point me at something and watch me dance around it.",
+    "stability": 0.35,
+    "similarity": 0.8,
+    "style": 0.55,
+    "voice_id": "EXAVITQu4vr4xnSDxMaL",
+    "stock_voice": "Sarah"
+  },
+  "lines": {
+    "select": [
+      "Skipper here, make it quick!",
+      "Fastest boat afloat!",
+      "Yeah? What's up?",
+      "Engines hot!",
+      "Ready to ride the waves."
+    ],
+    "move": [
+      "Full throttle!",
+      "Hold onto your hats!",
+      "Cutting through!",
+      "Watch this turn!",
+      "Off like a shot."
+    ],
+    "attack": [
+      "[shouting] Hose 'em down!",
+      "Cannon's singing!",
+      "Strafing run!",
+      "[laughs] Too slow!"
+    ],
+    "ready": [
+      "Attack boat in the water, let's go!"
+    ],
+    "hit": [
+      "Whoa, that one stung!",
+      "[shouting] We're taking water!"
+    ],
+    "die": [
+      "[screaming] Abandon ship!",
+      "[gasps] Not like this..."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "20mm autocannon firing a fast burst of five heavy rounds from a boat deck, sharp punchy thumps with metallic rattle, medium distance on open water, no music, no voice",
+      "duration": 1.2,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Fast motor gunboat engines roaring to full throttle, hull slapping waves, water spray, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Small boat explodes on water, blast followed by big splash, hissing steam and gurgling as the hull sinks, medium distance, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

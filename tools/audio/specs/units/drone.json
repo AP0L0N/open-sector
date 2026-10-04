@@ -1,0 +1,24 @@
+{
+  "key": "drone",
+  "out": "units/drone",
+  "sfx": {
+    "move": {
+      "prompt": "Small quadcopter drone flying past overhead, high-pitched electric propeller buzz with doppler fly-by, outdoors, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "fire": {
+      "prompt": "Small quadcopter drone diving with rising propeller whine followed by a short burst of small-arms gunfire, outdoors battlefield, close, no music, no voice",
+      "duration": 1.5,
+      "variants": 2,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Small quadcopter drone shot down: propellers sputter, plastic shattering as it crashes into the ground, small electrical pop and sparks, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

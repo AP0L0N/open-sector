@@ -1,0 +1,72 @@
+{
+  "key": "he111",
+  "out": "units/he111",
+  "voice": {
+    "name": "Open Sector - He 111",
+    "description": "Male bomber crew captain in his early forties, methodical and businesslike over the intercom, steady even mid-low voice with a crisp precise northern accent, sounds like an engineer reading a checklist, dry understated humor, never hurries, everything by the book.",
+    "sample": "Crew, checklist. Altitude fifty meters, speed two hundred and sixty, bearing one-four-zero. Torpedo armed. Navigator, confirm the target. Good. We do this once, and we do it properly.",
+    "stability": 0.6,
+    "similarity": 0.8,
+    "style": 0.3,
+    "voice_id": "Xb7hH8MSUJpSbSDYk0k2",
+    "stock_voice": "Alice"
+  },
+  "lines": {
+    "select": [
+      "Bomber crew, standing by.",
+      "Captain speaking.",
+      "Checklist complete.",
+      "Awaiting coordinates.",
+      "All stations report ready."
+    ],
+    "move": [
+      "Course plotted.",
+      "Bearing confirmed.",
+      "Proceeding as ordered.",
+      "Holding altitude.",
+      "Navigator, take us there."
+    ],
+    "attack": [
+      "Begin attack run.",
+      "Descending to drop height.",
+      "Target acquired. Steady.",
+      "By the book, gentlemen."
+    ],
+    "ready": [
+      "He 111 crew on board. Torpedo secured."
+    ],
+    "hit": [
+      "Damage report, please.",
+      "[groans] Port engine is smoking."
+    ],
+    "die": [
+      "[shouting] Bail out, everyone!",
+      "That was not on the checklist."
+    ],
+    "special": [
+      "Torpedo away!",
+      "Release. Pulling up.",
+      "Returning to rearm."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Air-dropped torpedo released from a bomber with a mechanical clunk, falling with a short whoosh and splashing heavily into the sea, then a running torpedo motor whirring underwater, no music, no voice",
+      "duration": 2.5,
+      "variants": 2,
+      "influence": 0.6
+    },
+    "move": {
+      "prompt": "WWII twin-engine bomber flying overhead, deep throbbing unsynchronized propeller engine drone with doppler fly-by, outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.55
+    },
+    "die": {
+      "prompt": "Twin-engine bomber shot down, engines sputtering and smoking, whining descent and crash with explosion and breaking metal, outdoors, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.55
+    }
+  }
+}

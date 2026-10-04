@@ -1,0 +1,76 @@
+{
+  "key": "gunner",
+  "out": "units/gunner",
+  "voice": {
+    "name": "Open Sector - Gunner",
+    "description": "Big burly male machine gunner in his mid thirties, deep gravelly chest voice with a thick rural farmhand accent, slow confident drawl, cheerful and a bit bloodthirsty, loves his gun like a pet, chuckles low between words, sounds like he has carried heavy steel for miles and enjoys it.",
+    "sample": "Gunner here, belt's loaded and she's hungry. Set me down anywhere you like, boss, I'll keep the whole field quiet. Heh. Fifty rounds, then fifty more. Nobody crosses that line while I'm awake.",
+    "stability": 0.4,
+    "similarity": 0.8,
+    "style": 0.5
+  },
+  "lines": {
+    "select": [
+      "Gunner here.",
+      "She's loaded, boss.",
+      "Got a belt for 'em.",
+      "[laughs] What's the trouble?",
+      "Heavy and ready."
+    ],
+    "move": [
+      "Hauling the iron.",
+      "Movin', movin'.",
+      "Lugging her over.",
+      "Right behind ya.",
+      "Gun's coming."
+    ],
+    "attack": [
+      "[shouting] Hose 'em down!",
+      "Time to sing, girl.",
+      "[laughs] Mow 'em flat!",
+      "Lay down the lead!"
+    ],
+    "ready": [
+      "Gunner, belted and ready."
+    ],
+    "hit": [
+      "[groans] Watch the gun!",
+      "[shouting] They're onto me!"
+    ],
+    "die": [
+      "[screaming] Aargh!",
+      "[gasps] Keep... firing..."
+    ],
+    "special": [
+      "Bipod down.",
+      "Setting up shop.",
+      "Nobody crosses this line."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "WWII MG42 machine gun firing a fast ripping burst, extremely high rate of fire like tearing cloth, outdoors on a battlefield, close range, short echo, no music, no voice",
+      "duration": 1.5,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Heavy-laden soldier jogging on dirt carrying a machine gun, ammo belts clinking and metal gear rattling, short burst of footsteps, close, no music, no voice",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Machine gun bipod legs snapping open and gun set down on dirt, metal clank, ammunition belt laid into feed tray, cover slammed shut, close up, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "reload": {
+      "prompt": "Belt-fed machine gun reload, feed cover flipped open, new ammunition belt laid in with metallic rattle, cover slammed shut, charging handle pulled, close up, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

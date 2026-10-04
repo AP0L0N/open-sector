@@ -84,6 +84,7 @@ import {
   STOP_HOTKEY,
 } from "../render/mapview.js";
 import { buzzDeny } from "./audio.js";
+import { announce, selectionVoice } from "./game-audio.js";
 import { el } from "./dom.js";
 import { garrisonRoster, type GarrisonSeat } from "./garrison-roster.js";
 import {
@@ -218,6 +219,7 @@ export function mountBattlefield(
   view.onPlaceMode = () => paintBattleHud(ctx);
   view.onAttackMoveMode = () => paintQuickActions(ctx, view);
   view.onSelect = (ids) => {
+    selectionVoice(ids, ctx.match);
     ctx.inspect = ids[0] ?? null;
     paintInspect(ctx, view);
     paintConfig(ctx, view);
@@ -491,6 +493,7 @@ export function flashNoScrap(cameo?: HTMLElement | null): void {
   retrigger(toast, "show");
   if (cameo) retrigger(cameo, "scrap-denied");
   buzzDeny();
+  announce("noscrap");
   window.setTimeout(() => {
     scrapEl?.classList.remove("scrap-denied");
     toast?.classList.remove("show");

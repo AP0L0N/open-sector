@@ -1,0 +1,67 @@
+{
+  "key": "pyro",
+  "out": "units/pyro",
+  "voice": {
+    "name": "Open Sector - Pyro",
+    "description": "Unhinged, gleeful male flamethrower trooper of indeterminate age, nasal high-pitched voice with a manic giggle, sing-song delivery, talks about fire like a lover, slightly muffled as if through a heat mask, unpredictable shifts from whispering to cackling, clearly enjoys his job far too much.",
+    "sample": "Pyro! Ooh, is it my turn? Everything's so cold and green out there. Let's fix that, hm? Just a little warmth, a little crackle. Hee hee. Everybody loves a campfire, don't they?",
+    "stability": 0.3,
+    "similarity": 0.8,
+    "style": 0.65,
+    "voice_id": "N2lVS1w4EtoT3dr4eOWO",
+    "stock_voice": "Callum"
+  },
+  "lines": {
+    "select": [
+      "Pyro! Hee hee.",
+      "Ooh, is it my turn?",
+      "Smells like smoke.",
+      "[whispers] Got a light?",
+      "Warm and toasty!"
+    ],
+    "move": [
+      "Sloshing along!",
+      "Tanks are full!",
+      "[laughs] Coming, coming!",
+      "Trailing sparks.",
+      "Off we toddle."
+    ],
+    "attack": [
+      "[laughs] Burn, burn!",
+      "Toast 'em!",
+      "Who's cold?",
+      "[shouting] Campfire time!"
+    ],
+    "ready": [
+      "Pyro's here. Hee hee."
+    ],
+    "hit": [
+      "[gasps] Not the tanks!",
+      "[shouting] Careful, I'm flammable!"
+    ],
+    "die": [
+      "[screaming] Uh-oh!",
+      "[laughs] Pretty..."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Flamethrower burst, roaring whoosh of ignited fuel jet spraying fire, crackling flames and hissing pressure, outdoors, close range, no music, no voice",
+      "duration": 2.0,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Soldier jogging on dirt with heavy fuel tanks on his back, liquid sloshing, metal hoses clinking, short burst of footsteps, close, no music, no voice",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Flamethrower fuel tanks rupturing and exploding, sharp burst then whooshing fireball and crackling flames, outdoors, close range, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.65
+    }
+  }
+}

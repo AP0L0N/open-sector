@@ -15,6 +15,8 @@ import { forgetTerrain } from "./render/terrain.js";
 import { flashNoScrap, mountBattlefield, paintBattleHud, renderLeaveModal } from "./ui/hud.js";
 import { battleModalKey, beginLoad, renderMenuLoad, renderPauseModal, storeSavedGame } from "./ui/pause.js";
 import { el } from "./ui/dom.js";
+import { acknowledgeOrder } from "./ui/game-audio.js";
+import { initMusic, setMusicMode } from "./ui/music.js";
 import type { MapView } from "./render/mapview.js";
 
 const NAME_KEY = "gridlock.name";
@@ -148,6 +150,7 @@ function mapsChanged(): void {
 }
 
 function render(): void {
+  setMusicMode(ctx.screen === "battle" || ctx.screen === "deploy" ? "battle" : "menu");
   if (ctx.screen === "builder" && document.getElementById("builder-root")) {
     refreshBuilder(ctx);
     return;
@@ -418,5 +421,9 @@ window.addEventListener("keydown", (e) => {
 });
 
 bindClicks(appEl);
+initMusic();
+net.onSend = (msg) => {
+  if (ctx.screen === "battle") acknowledgeOrder(msg, ctx.match);
+};
 net.connect();
 ctx.render();

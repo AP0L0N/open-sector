@@ -1,0 +1,72 @@
+{
+  "key": "jumpjet",
+  "out": "units/jumpjet",
+  "voice": {
+    "name": "Open Sector - Jump Jet",
+    "description": "Male airborne trooper in his late twenties, cocky reckless daredevil with a grin you can hear, loud confident voice with a swaggering drawl, thrill-seeker who loves speed and height, laughs at danger, teasing and boastful, sounds like he is shouting over wind and engine roar.",
+    "sample": "Jump Jet here, and gravity is just a suggestion. Strap in, sir, I'll be over that wall before they even look up. Fuel's full, nerves are empty, let's fly!",
+    "stability": 0.35,
+    "similarity": 0.8,
+    "style": 0.55,
+    "voice_id": "TX3LPaxmHKxFdv7VOQHJ",
+    "stock_voice": "Liam"
+  },
+  "lines": {
+    "select": [
+      "Jump Jet, ready!",
+      "Wanna see a trick?",
+      "Fuel's topped off.",
+      "Where to, boss?",
+      "[laughs] Miss me?"
+    ],
+    "move": [
+      "Hang on!",
+      "Coming in hot!",
+      "Easy ride.",
+      "Over the top!",
+      "Watch this!"
+    ],
+    "attack": [
+      "[shouting] Death from above!",
+      "Surprise!",
+      "Lighting 'em up!",
+      "They never look up."
+    ],
+    "ready": [
+      "Jump Jet, cleared for launch."
+    ],
+    "hit": [
+      "[shouting] Hey, mind the hair!",
+      "[groans] Ow, that stung!"
+    ],
+    "die": [
+      "[screaming] Nooo!",
+      "[gasps] Out of fuel..."
+    ],
+    "special": [
+      "[shouting] Liftoff!",
+      "Up, up and gone!",
+      "Going vertical!"
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Short burst from a WWII assault rifle, three fast rounds, sharp cracks with short echo, close range outdoors, no music, no voice",
+      "duration": 1.0,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Jet pack whoosh: short roaring thrust burst as a soldier leaps and glides through the air, rushing wind, close, no music, no voice",
+      "duration": 1.8,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Jet pack ignition: click, hiss of fuel, then a powerful roaring rocket thrust launching upward and fading, close, outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.65
+    }
+  }
+}

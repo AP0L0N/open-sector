@@ -1,0 +1,65 @@
+{
+  "key": "warden",
+  "out": "units/warden",
+  "voice": {
+    "name": "Open Sector - Tiger",
+    "description": "Veteran male tank commander in his late forties, deep warm baritone with a faint gravelly Central European flavor, proud and utterly unflappable, speaks slowly and with dry confidence over a crackly tank intercom radio, the calm of a man who has survived a hundred battles and expects to survive this one.",
+    "sample": "Tiger, at your command. Front plate is thick, the gun is long, and the crew is steady. Point me at the enemy and I will do the rest. No hurry, gentlemen. They are not going anywhere.",
+    "stability": 0.55,
+    "similarity": 0.8,
+    "style": 0.4
+  },
+  "lines": {
+    "select": [
+      "Tiger here.",
+      "Steady as ever.",
+      "The big cat listens.",
+      "Commander speaking.",
+      "Armor holding. Orders?"
+    ],
+    "move": [
+      "Rolling, slowly.",
+      "We get there when we get there.",
+      "Advancing.",
+      "Tracks turning.",
+      "Understood. Moving."
+    ],
+    "attack": [
+      "Gunner, take him.",
+      "Seventy-five, fire!",
+      "One shot. Make it count.",
+      "[laughs] Too easy."
+    ],
+    "ready": [
+      "Tiger, ready. Let them come."
+    ],
+    "hit": [
+      "Bounced. As expected.",
+      "[groans] Just paint."
+    ],
+    "die": [
+      "[gasps] Bail out, boys!",
+      "[sighs] Good run..."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Heavy 75mm tank cannon firing, deep powerful boom with sharp crack and rolling echo, medium distance outdoors, no music, no voice",
+      "duration": 1.8,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Heavy WWII tank engine revving up and steel tracks starting to clank and grind forward, short one-shot, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Heavy tank destroyed, internal ammunition explosion, massive metal blast with debris falling and fire crackle, medium distance outdoors, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

@@ -1,0 +1,75 @@
+{
+  "key": "apocalypse",
+  "out": "units/apocalypse",
+  "voice": {
+    "name": "Open Sector - Apocalypse",
+    "description": "Huge booming male tank commander in his fifties, enormous chesty bass voice, domineering and theatrical, speaks like a warlord who owns the battlefield, slow heavy emphasis on every word, rumbling and menacing with a hint of grim humor, heard over a powerful tank radio.",
+    "sample": "Apocalypse rolling. Twin guns, steel walls, and nothing on this field can stop me. Clear the road, little ones. When I arrive, the battle is already over. Bow before the heavy armor.",
+    "stability": 0.5,
+    "similarity": 0.8,
+    "style": 0.55
+  },
+  "lines": {
+    "select": [
+      "Apocalypse.",
+      "Speak.",
+      "The end has arrived.",
+      "Who dares?",
+      "I am listening."
+    ],
+    "move": [
+      "Clear the road.",
+      "The earth trembles.",
+      "Crushing forward.",
+      "Nothing stands in my way.",
+      "Advancing. Slowly. Inevitably."
+    ],
+    "attack": [
+      "[shouting] Both barrels!",
+      "Erase them.",
+      "Left gun. Right gun. Gone.",
+      "[laughs] Kneel!"
+    ],
+    "ready": [
+      "Apocalypse has arrived."
+    ],
+    "hit": [
+      "Was that a pebble?",
+      "[laughs] Is that all?"
+    ],
+    "die": [
+      "[groans] Impossible...",
+      "[shouting] Not like this!"
+    ],
+    "special": [
+      "Sweep the sky!",
+      "Swat those flies!"
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Two massive super-heavy tank cannons firing one right after another, double thunderous boom in quick succession with deep rumbling echo, medium distance outdoors, no music, no voice",
+      "duration": 2.2,
+      "variants": 3,
+      "influence": 0.7
+    },
+    "move": {
+      "prompt": "Gigantic super-heavy tank diesel engine roaring to life and enormous steel tracks grinding and squealing forward, ground rumble, close, no music, no voice",
+      "duration": 2.8,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Enormous super-heavy tank exploding, colossal ammunition cook-off blast, heavy armor plates tearing and crashing, long rumble with fire, medium distance outdoors, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Rotary 20mm gatling anti-aircraft cannon firing a fast short burst, rapid buzzing roar of shots with brass casings clinking, medium distance outdoors, no music, no voice",
+      "duration": 1.5,
+      "variants": 2,
+      "influence": 0.7
+    }
+  }
+}

@@ -1,0 +1,71 @@
+{
+  "key": "supplyboat",
+  "out": "units/supplyboat",
+  "voice": {
+    "name": "Open Sector - Supply Boat",
+    "description": "Weathered old male sailor in his sixties, salty gravelly voice roughened by decades of sea wind and pipe smoke, slow drawling West Country style seafaring accent, grumbling but kind, unhurried and wry, calling over a ship radio.",
+    "sample": "Aye, aye, I hear you. Forty years on these waters and still they've got me hauling crates. Mind the swell, lads, cargo's coming alongside. Fresh shells and tinned beans, the finest the navy can spare.",
+    "stability": 0.55,
+    "similarity": 0.8,
+    "style": 0.4,
+    "voice_id": "pqHfZKP75CvOlQylNhV4",
+    "stock_voice": "Bill"
+  },
+  "lines": {
+    "select": [
+      "Aye?",
+      "Supply launch, listening.",
+      "What now, cap'n?",
+      "Cargo's dry, sir.",
+      "[sighs] Here we go."
+    ],
+    "move": [
+      "Aye aye.",
+      "Steady as she goes.",
+      "Chugging along.",
+      "Mind the swell.",
+      "She'll get there."
+    ],
+    "attack": [
+      "With a boathook?",
+      "[laughs] I've got beans, son.",
+      "Not my line of work."
+    ],
+    "ready": [
+      "Supply launch, loaded to the gunwales."
+    ],
+    "hit": [
+      "Ach, they've holed her!",
+      "[groans] Not the old tub!"
+    ],
+    "die": [
+      "[sighs] Down she goes...",
+      "Every man for himself!"
+    ],
+    "special": [
+      "Coming alongside!",
+      "Cargo's going over.",
+      "Fresh shells, lads."
+    ]
+  },
+  "sfx": {
+    "move": {
+      "prompt": "Old cargo launch diesel engine chugging steadily, low putt-putt rhythm, water lapping against wooden hull, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Small wooden boat breaking apart and sinking, cracking timbers, big splash, bubbling and gurgling water swallowing the hull, medium distance, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Cargo transfer between boats at sea, rope pulley squeaking, crates swung over and thudding onto a wooden deck, water lapping, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

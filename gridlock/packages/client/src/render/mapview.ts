@@ -292,6 +292,8 @@ import {
 import tigerCannonUrl from "../assets/sfx/tiger-cannon.wav";
 import { playSample, preloadSample } from "../ui/audio.js";
 import { spatialMix } from "../ui/spatial-sfx.js";
+import { playSoundEvents, warmBattle } from "../ui/game-audio.js";
+import { SoundTracker } from "./sound-events.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
 import { roofCiwsMuzzle } from "./roof-ciws.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
@@ -775,6 +777,8 @@ export class MapView {
   /** Scratch a crater is drawn into so the pond can be punched out of it. */
   private holeCover: HTMLCanvasElement | null = null;
   private seenShots = new Set<number>();
+  /** Shots, deaths, and base alerts read off the snapshots, for the sound. */
+  private sounds = new SoundTracker();
   /** Bounced spark origin, snapped to the same hull pixel as the ricochet FX. */
   private bounceTrace = new Map<number, { x: number; y: number; sx: number; lift: number }>();
   /** Last smoke arc of a mortar bomb, kept briefly after it lands. World space. */
@@ -1062,6 +1066,7 @@ export class MapView {
     this.curr = match;
     this.snapAt = performance.now();
     preloadSample(tigerCannonUrl);
+    warmBattle();
     this.syncAtlases();
     this.revealFrom(match);
     this.bind();
@@ -1273,6 +1278,11 @@ export class MapView {
     if (this.placeMode !== placing) this.onPlaceMode();
     this.syncAtlases();
     this.revealFrom(match);
+    playSoundEvents(this.sounds.step(match, now), (x, y) => {
+      const p = this.toScreen(x, y);
+      const { w, h } = this.viewSize();
+      return spatialMix(p.x, p.y, w, h);
+    });
   }
 
   private syncAtlases(): void {

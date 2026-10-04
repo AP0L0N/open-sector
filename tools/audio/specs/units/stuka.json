@@ -1,0 +1,77 @@
+{
+  "key": "stuka",
+  "out": "units/stuka",
+  "voice": {
+    "name": "Open Sector - Stuka",
+    "description": "Young male dive-bomber pilot in his late twenties, speaking over a cockpit radio, fearless and slightly unhinged, giggles at danger, wild breathless enthusiasm with a manic gleam, quick sharp voice with a light Bavarian flavored accent, loves the vertical dive more than life itself.",
+    "sample": "Ha! Straight down, that's the only direction worth flying! Hold on to your stomach, gunner, we're going vertical. Siren on, bomb armed, and pull up at the very last second. Probably.",
+    "stability": 0.3,
+    "similarity": 0.8,
+    "style": 0.6,
+    "voice_id": "hpp4J3VqNfWAUOO0d1Us",
+    "stock_voice": "Bella"
+  },
+  "lines": {
+    "select": [
+      "Stuka here! Point me down!",
+      "Bomb's armed, nerves aren't.",
+      "Ready to scream!",
+      "[laughs] You called?",
+      "Pilot reporting!"
+    ],
+    "move": [
+      "Climbing!",
+      "Wheels up, heads down!",
+      "On our way, gunner!",
+      "Gaining altitude.",
+      "Wheee!"
+    ],
+    "attack": [
+      "[shouting] Going vertical!",
+      "Bombs away!",
+      "Pull up later!",
+      "[laughs] Straight down the chimney!"
+    ],
+    "ready": [
+      "Stuka fueled and bombed up. Let's dive!"
+    ],
+    "hit": [
+      "Flak! Lovely flak!",
+      "[groans] They nicked the wing!"
+    ],
+    "die": [
+      "[screaming] Pull up! Pull up!",
+      "[laughs] What a dive..."
+    ],
+    "special": [
+      "Siren on!",
+      "Back to base to rearm."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Aerial bomb falling with a descending whistle followed by a heavy ground explosion, medium distance outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 2,
+      "influence": 0.6
+    },
+    "move": {
+      "prompt": "WWII single-engine piston dive bomber flying past overhead, propeller engine roar with doppler shift, outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.55
+    },
+    "special": {
+      "prompt": "Screaming wind-driven dive siren of a WWII dive bomber rising in pitch as the plane dives steeply, piercing howl over engine roar, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Propeller plane crashing, sputtering engine and whining dive, then impact into the ground with explosion and crunching metal debris, outdoors, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.55
+    }
+  }
+}

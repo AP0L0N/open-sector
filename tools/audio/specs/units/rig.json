@@ -1,0 +1,66 @@
+{
+  "key": "rig",
+  "out": "units/rig",
+  "voice": {
+    "name": "Open Sector - Rig",
+    "description": "Older male construction-crew foreman in his fifties speaking over a vehicle radio, deep gruff steady baritone with a rough smoker's rasp, slow patient and unshakeable, blue-collar heavy-machinery veteran, dry humor, sounds like he has parked a thousand trucks and nothing surprises him anymore.",
+    "sample": "Rig here, rolling slow and steady. Point me at flat ground and I'll unpack you a whole headquarters before lunch. Don't rush the big girl, she gets there when she gets there.",
+    "stability": 0.55,
+    "similarity": 0.8,
+    "style": 0.35,
+    "voice_id": "pqHfZKP75CvOlQylNhV4",
+    "stock_voice": "Bill"
+  },
+  "lines": {
+    "select": [
+      "Rig here.",
+      "Foreman speaking.",
+      "Where we building?",
+      "Big rig, standing by.",
+      "Need flat ground."
+    ],
+    "move": [
+      "Rolling out.",
+      "Slow and steady.",
+      "Coming through, wide load.",
+      "Heading there.",
+      "Don't rush her."
+    ],
+    "ready": [
+      "Rig, ready to roll."
+    ],
+    "hit": [
+      "[shouting] We're unarmed here!",
+      "Hull's taking hits!"
+    ],
+    "die": [
+      "[shouting] Abandon the rig!",
+      "[groans] Lost the base..."
+    ],
+    "special": [
+      "Unpacking now.",
+      "Deploying the Core.",
+      "Stand clear, she's opening."
+    ]
+  },
+  "sfx": {
+    "move": {
+      "prompt": "Huge heavy diesel truck engine revving up and starting to roll, deep rumbling exhaust and gear grind, close, outdoors, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "special": {
+      "prompt": "Heavy mobile base vehicle deploying: loud hydraulic pistons hissing, large steel panels unfolding and clanking into place, motors whirring, metal locking clunk at the end, close, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "die": {
+      "prompt": "Large armored truck explosion: massive blast, metal tearing apart, debris raining down, fire roaring, medium distance outdoors, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

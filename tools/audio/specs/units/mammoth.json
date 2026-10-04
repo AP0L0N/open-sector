@@ -1,0 +1,76 @@
+{
+  "key": "mammoth",
+  "out": "units/mammoth",
+  "voice": {
+    "name": "Open Sector - Mammoth",
+    "description": "Elderly male tank captain in his late sixties, deep gravelly bass voice with a slow, warm, unhurried cadence, faintly old-world European accent, fatherly and utterly unshakeable, speaking calmly over a crackly armored-vehicle intercom as if nothing on earth could hurry him, dry gentle humor.",
+    "sample": "Easy now, boys, easy. The old girl has walked through worse than this. Climb aboard, mind your heads, and keep those rifles pointed out the slits. We go where we please, and nothing stops us.",
+    "stability": 0.6,
+    "similarity": 0.8,
+    "style": 0.35
+  },
+  "lines": {
+    "select": [
+      "The old girl stands ready.",
+      "Steady as a mountain.",
+      "Yes, my boy?",
+      "Mammoth, at your service.",
+      "Patience. We are coming."
+    ],
+    "move": [
+      "One step at a time.",
+      "Slow and certain.",
+      "We'll get there, son.",
+      "Through the river, then.",
+      "Walking on."
+    ],
+    "attack": [
+      "Teach them some manners.",
+      "Boys, open the slits!",
+      "[laughs] Is that all?",
+      "Crush them gently."
+    ],
+    "ready": [
+      "Mammoth on her feet. Steady now."
+    ],
+    "hit": [
+      "Just a scratch on the plate.",
+      "[sighs] Rude of them."
+    ],
+    "die": [
+      "[sighs] Rest now, old girl...",
+      "Get the boys out!"
+    ],
+    "special": [
+      "All aboard, lads.",
+      "Mind your heads, climb in.",
+      "Plenty of room inside."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Twin heavy machine guns firing a short rattling burst from an armored vehicle, metallic clatter, medium distance outdoors, no music, no voice",
+      "duration": 1.2,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Colossal mechanical walker taking two massive slow footsteps, deep ground-shaking thuds, hydraulic hiss and groaning steel joints, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Huge armored walking machine destroyed, heavy explosion, twisting steel collapsing to the ground with a massive crash and debris, medium distance, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Heavy steel hatch clanging open, soldiers' boots climbing up metal rungs, hatch slamming shut, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

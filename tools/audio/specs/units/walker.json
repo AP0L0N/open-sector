@@ -1,0 +1,78 @@
+{
+  "key": "walker",
+  "out": "units/walker",
+  "voice": {
+    "name": "Open Sector - Walker",
+    "description": "Intense young male mech pilot in his late twenties, wired and slightly unhinged, sharp raspy tenor, talks fast with manic energy and nervous laughter, too much adrenaline, sounds like he is shouting through a cramped cockpit radio with a slightly metallic processed edge.",
+    "sample": "Walker online! Both guns spinning, heat's climbing, and I love it! Point me at something, anything, I need to shoot. Twelve hundred rounds a minute per arm, baby, and if it gets bad, I'm taking them with me!",
+    "stability": 0.3,
+    "similarity": 0.8,
+    "style": 0.6,
+    "voice_id": "SOYHLrjzK2X1ezoPC6cr",
+    "stock_voice": "Harry"
+  },
+  "lines": {
+    "select": [
+      "Walker online!",
+      "Systems hot!",
+      "[laughs] Who's next?",
+      "Legs ready, guns ready!",
+      "Talk to me!"
+    ],
+    "move": [
+      "Stomping over!",
+      "Big steps!",
+      "Walking, walking!",
+      "On the move!",
+      "Legs don't fail me now."
+    ],
+    "attack": [
+      "[shouting] Spin 'em up!",
+      "Shred 'em!",
+      "[laughs] Light 'em up, both arms!",
+      "Full auto!"
+    ],
+    "ready": [
+      "Walker online. Let's dance!"
+    ],
+    "hit": [
+      "[shouting] Hull breach!",
+      "Heat's critical!"
+    ],
+    "die": [
+      "[screaming] Reactor's gone!",
+      "[laughs] Worth it..."
+    ],
+    "special": [
+      "[shouting] If I go, you go!",
+      "[laughs] Coming in hot!",
+      "[shouting] Self-destruct armed!"
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Twin rotary gatling guns firing a fast short burst, high rate buzzsaw roar with whirring barrels and spent casings, medium distance outdoors, no music, no voice",
+      "duration": 1.5,
+      "variants": 3,
+      "influence": 0.7
+    },
+    "move": {
+      "prompt": "Heavy bipedal robot mech walking, two heavy metal footsteps thudding with hydraulic hiss and servo whine, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "die": {
+      "prompt": "Mech robot destroyed, metal frame exploding with electrical sparks and crashing heavy steel collapse, medium distance outdoors, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Rapid electronic overload alarm beeping faster and faster then a huge explosion, machine self destruct, medium distance outdoors, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.7
+    }
+  }
+}

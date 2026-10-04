@@ -1,0 +1,84 @@
+{
+  "key": "titan",
+  "out": "units/titan",
+  "voice": {
+    "name": "Open Sector - Titan",
+    "description": "Towering, calm, commanding male walker pilot in his forties, deep resonant baritone with slow steady cadence, authoritative like a battleship captain, never raises his voice, quiet confidence and gravity, with a subtle metallic cockpit radio quality.",
+    "sample": "Titan, standing tall. My gun reaches far and my rockets reach farther. Rivers do not stop me, walls do not stop me. Give the order, and I will anchor here and hold this ground until nothing is left standing.",
+    "stability": 0.6,
+    "similarity": 0.8,
+    "style": 0.4,
+    "voice_id": "pNInz6obpgDQGcFmaJgB",
+    "stock_voice": "Adam"
+  },
+  "lines": {
+    "select": [
+      "Titan.",
+      "Standing tall.",
+      "Awaiting command.",
+      "I see everything from up here.",
+      "Speak, commander."
+    ],
+    "move": [
+      "Striding forward.",
+      "Water is no obstacle.",
+      "Advancing.",
+      "Each step, a tremor.",
+      "Understood."
+    ],
+    "attack": [
+      "Gun and rockets.",
+      "Target acquired. Firing.",
+      "Rocket salvo, away.",
+      "They will fall."
+    ],
+    "ready": [
+      "Titan, online. The ground shakes."
+    ],
+    "hit": [
+      "Armor holding.",
+      "[sighs] Minor damage."
+    ],
+    "die": [
+      "[groans] The giant falls...",
+      "[gasps] Systems failing..."
+    ],
+    "special": [
+      "Deploying outriggers.",
+      "Anchoring. We hold here.",
+      "Locked down."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Heavy 75mm cannon fired from a large war machine, deep boom with sharp crack and echo, medium distance outdoors, no music, no voice",
+      "duration": 1.8,
+      "variants": 2,
+      "influence": 0.65
+    },
+    "rockets": {
+      "prompt": "Ripple salvo of four rockets launching one after another in quick succession, whooshing roar of rocket motors streaking away, medium distance outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 2,
+      "influence": 0.7
+    },
+    "move": {
+      "prompt": "Giant heavy walking war machine taking two enormous ground-shaking footsteps, deep metallic thuds with hydraulic hiss and servo groan, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "die": {
+      "prompt": "Giant walking war machine destroyed, huge explosion with tearing metal and massive steel frame crashing to the ground, medium distance outdoors, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Heavy hydraulic stabilizer legs extending and slamming down into the ground, loud metal clunks and hydraulic hiss, anchoring lock clank, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.7
+    }
+  }
+}

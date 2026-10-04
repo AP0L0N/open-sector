@@ -1,0 +1,67 @@
+{
+  "key": "battleship",
+  "out": "units/battleship",
+  "voice": {
+    "name": "Open Sector - Battleship",
+    "description": "Older male fleet admiral in his late fifties, booming, grand and theatrical voice with rich deep resonance, a pompous upper-class naval accent, speaks as if every order were a line from a stage play, proud, bombastic and utterly confident in his enormous guns.",
+    "sample": "Gentlemen, behold! Fifty thousand tons of steel and splendour, and every one of them pointed at the enemy. Bring the forward turrets about. Let history record that we were magnificent!",
+    "stability": 0.35,
+    "similarity": 0.8,
+    "style": 0.6,
+    "voice_id": "onwK4e9ZLuTAKqWW03F9",
+    "stock_voice": "Daniel"
+  },
+  "lines": {
+    "select": [
+      "The Admiral is on deck!",
+      "Speak, and the fleet obeys.",
+      "Magnificent, isn't she?",
+      "All guns at your service.",
+      "Yes, yes, splendid."
+    ],
+    "move": [
+      "Full steam ahead!",
+      "Make way, make way!",
+      "Plotting a glorious course.",
+      "Onward, to destiny!",
+      "Helm, bring her about."
+    ],
+    "attack": [
+      "[shouting] Full broadside!",
+      "Sixteen inches of diplomacy!",
+      "Rain fire upon them!",
+      "[laughs] Let them tremble!"
+    ],
+    "ready": [
+      "The battleship is launched! Prepare for greatness."
+    ],
+    "hit": [
+      "How dare they!",
+      "[shouting] Damage control, at once!"
+    ],
+    "die": [
+      "[sighs] Abandon ship... with dignity.",
+      "[shouting] I shall go down with her!"
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Colossal 16-inch battleship naval gun broadside firing at sea, enormous deep thunderous boom with massive concussion and long rolling echo over open water, medium distance, no music, no voice",
+      "duration": 2.5,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Huge warship horn blast followed by deep rumbling steam turbine engines and bow wake churning, close, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.55
+    },
+    "die": {
+      "prompt": "Massive battleship magazine explosion, huge fireball blast, tearing steel and secondary explosions, hull groaning as it sinks into the sea with hissing steam, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.55
+    }
+  }
+}

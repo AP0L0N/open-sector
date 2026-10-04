@@ -1,0 +1,65 @@
+{
+  "key": "rifleman",
+  "out": "units/rifleman",
+  "voice": {
+    "name": "Open Sector - Rifleman",
+    "description": "Young male infantry private in his early twenties, eager and a little nervous, clear mid-range voice with a working-class accent, speaking fast and crisp like a soldier answering over a field radio, energetic and loyal.",
+    "sample": "Rifleman, ready for orders! Moving up to that ridge now, sir. Contact front, engaging! Keep your heads down, boys, we're going in.",
+    "stability": 0.4,
+    "similarity": 0.8,
+    "style": 0.45
+  },
+  "lines": {
+    "select": [
+      "Rifleman reporting.",
+      "Yes sir?",
+      "Orders?",
+      "Ready to go.",
+      "[breathing heavily] Standing by."
+    ],
+    "move": [
+      "Moving out!",
+      "On my way.",
+      "Double time!",
+      "Heading there now.",
+      "Roger that."
+    ],
+    "attack": [
+      "[shouting] Open fire!",
+      "Engaging!",
+      "Target sighted!",
+      "[shouting] Light 'em up!"
+    ],
+    "ready": [
+      "Rifleman, ready for duty."
+    ],
+    "hit": [
+      "[shouting] Taking fire!",
+      "[groans] I'm hit!"
+    ],
+    "die": [
+      "[screaming] Aagh!",
+      "[gasps] Medic..."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Single bolt-action rifle shot outdoors on a battlefield, sharp crack with short echo, close range, no music",
+      "duration": 1.0,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Soldier's boots jogging on dirt with rifle sling and gear rattling, short burst of running footsteps, close, no music, no voice",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "reload": {
+      "prompt": "Bolt-action rifle reload, bolt pulled back, stripper clip pushed in, bolt closed, metallic clicks, close up",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

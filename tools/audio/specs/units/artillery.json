@@ -1,0 +1,84 @@
+{
+  "key": "artillery",
+  "out": "units/artillery",
+  "voice": {
+    "name": "Open Sector - Artillery",
+    "description": "Sturdy middle-aged male gun sergeant in his forties, thick barrel chest, booming low baritone with a gruff rural accent, practical and no-nonsense, barking orders at his loader like a veteran field gun crew chief, proud of his big gun, short and punchy delivery.",
+    "sample": "Right, lad, drop the trail and dig in those spades! Shell in, breech closed, range four thousand. Stand clear and cover your ears. Fire! Now that is how you knock on a door.",
+    "stability": 0.5,
+    "similarity": 0.8,
+    "style": 0.4,
+    "voice_id": "JBFqnCBsd6RMkjVDRZzb",
+    "stock_voice": "George"
+  },
+  "lines": {
+    "select": [
+      "Gun crew here.",
+      "Sergeant listening.",
+      "What needs flattening?",
+      "Big gun, small crew.",
+      "Ready when you are."
+    ],
+    "move": [
+      "Hitch her up, lad!",
+      "Heave! Moving.",
+      "Pulling the gun.",
+      "Mind the wheels.",
+      "On our way, slowly."
+    ],
+    "attack": [
+      "Shell in, fire!",
+      "Cover your ears!",
+      "Range set. Fire!",
+      "Knock knock."
+    ],
+    "ready": [
+      "Gun crew reporting, one oh five ready."
+    ],
+    "hit": [
+      "Protect the gun!",
+      "[groans] We're exposed!"
+    ],
+    "die": [
+      "[shouting] Gun's lost!",
+      "[groans] Tell my wife..."
+    ],
+    "special": [
+      "Drop the trail!",
+      "Spades in, set her down.",
+      "Gun's set. Give us a target."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Big 105mm field howitzer firing, huge deep boom with pressure wave, rolling echo across the valley, shell whistling away, medium distance outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 2,
+      "influence": 0.7
+    },
+    "move": {
+      "prompt": "Heavy towed field gun being hauled, iron wheels creaking and rolling on gravel, chains clinking, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Field gun hit by explosion, ammunition crates detonating, metal debris clattering down, medium distance, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Heavy artillery gun trail legs dropped and spread with metal clank, spades hammered into dirt, breech opened and shell slid in, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "reload": {
+      "prompt": "Artillery breech block opening, heavy brass shell casing ejected with a clang, new shell rammed in, breech slamming shut, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

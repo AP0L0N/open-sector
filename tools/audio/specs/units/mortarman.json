@@ -1,0 +1,67 @@
+{
+  "key": "mortarman",
+  "out": "units/mortarman",
+  "voice": {
+    "name": "Open Sector - Mortarman",
+    "description": "Middle-aged male mortar crewman in his fifties, warm husky voice with a soft Scottish-style lilt, fatherly and methodical, a former schoolteacher who treats ballistics like arithmetic, mild and polite but slightly half-deaf from the noise so he speaks a little loud, dry understated humor.",
+    "sample": "Mortarman here. Right then, give me the grid and a moment to plant the tube. Angle, charge, and a wee bit of patience. Up she goes, and down she comes, exactly where she ought to. Simple sums, really.",
+    "stability": 0.5,
+    "similarity": 0.8,
+    "style": 0.4,
+    "voice_id": "SAz9YHcvj6GT2YYXdXww",
+    "stock_voice": "River"
+  },
+  "lines": {
+    "select": [
+      "Mortarman.",
+      "Give me a grid.",
+      "Eh? Speak up!",
+      "Tube's ready.",
+      "Right then."
+    ],
+    "move": [
+      "Packing up.",
+      "Off we go.",
+      "Tube and all.",
+      "New position.",
+      "Aye, moving."
+    ],
+    "attack": [
+      "[shouting] Round away!",
+      "Up she goes!",
+      "Incoming, for them.",
+      "Simple sums."
+    ],
+    "ready": [
+      "Mortarman, tube in hand."
+    ],
+    "hit": [
+      "[groans] Oof, rude.",
+      "[shouting] They've got our range!"
+    ],
+    "die": [
+      "[screaming] Aagh!",
+      "[gasps] Wrong... sums..."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "60mm mortar launching a bomb, hollow metallic thunk of round dropped into tube then deep pop and whoosh as the shell leaves the barrel, outdoors, close range, no music, no voice",
+      "duration": 1.5,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Soldier jogging on dirt carrying a mortar tube and baseplate, metal clanking and gear rattling, short burst of footsteps, close, no music, no voice",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Mortar baseplate thumped into dirt, bipod legs opened with metal clicks, tube locked in place, close up, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

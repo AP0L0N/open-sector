@@ -1,0 +1,58 @@
+{
+  "key": "engineer",
+  "out": "units/engineer",
+  "voice": {
+    "name": "Open Sector - Engineer",
+    "description": "Middle-aged male combat engineer in his late forties, gravelly but good-natured, a slow practical drawl like a seasoned bridge-builder, unflappable and dryly sarcastic, sounds like he would rather be fixing something than fighting, speaks with a pencil behind his ear and a hammer in hand.",
+    "sample": "Engineer here. Give me a shovel and ten minutes and I'll have you a wall the enemy can cry about. Measure twice, cut once, and keep your heads down while I work.",
+    "stability": 0.5,
+    "similarity": 0.8,
+    "style": 0.4
+  },
+  "lines": {
+    "select": [
+      "Engineer here.",
+      "Got a job for me?",
+      "What needs fixing?",
+      "Tools are ready.",
+      "[sighs] What broke now?"
+    ],
+    "move": [
+      "On my way.",
+      "Bringing the toolbox.",
+      "Moving, carefully.",
+      "Right behind you.",
+      "Measure twice, go once."
+    ],
+    "ready": [
+      "Engineer, reporting for work."
+    ],
+    "hit": [
+      "[shouting] Hey, I'm unarmed!",
+      "[groans] Watch it!"
+    ],
+    "die": [
+      "[groans] Unfinished business...",
+      "[screaming] Aagh!"
+    ],
+    "special": [
+      "Building it now.",
+      "I can fix that.",
+      "Good as new."
+    ]
+  },
+  "sfx": {
+    "move": {
+      "prompt": "Soldier jogging on dirt with heavy toolbox and tools clanking on his belt, short burst of footsteps, close, no music, no voice",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Field repair work: hammer striking metal a few times, wrench ratchet, short welding torch hiss and sparks, close, outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 2,
+      "influence": 0.6
+    }
+  }
+}

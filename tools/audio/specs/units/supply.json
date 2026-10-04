@@ -1,0 +1,71 @@
+{
+  "key": "supply",
+  "out": "units/supply",
+  "voice": {
+    "name": "Open Sector - Supply Truck",
+    "description": "Cheerful chatty male quartermaster truck driver in his thirties, bright friendly tenor with a lively urban accent, always talking, upbeat and a bit of a hustler, sounds like he is grinning while leaning out the cab window, treats ammo crates like he is delivering pastries.",
+    "sample": "Morning, morning! Supply truck, fresh ammo, hot off the line! Who ordered the shells? Sign here, here, and here. Oh, and mind the mine there, I'll take care of that little fella for you, no charge.",
+    "stability": 0.35,
+    "similarity": 0.8,
+    "style": 0.55,
+    "voice_id": "cgSgspJ2msm6clMCkdW9",
+    "stock_voice": "Jessica"
+  },
+  "lines": {
+    "select": [
+      "Supply truck, what'll it be?",
+      "Delivery service!",
+      "[laughs] Who's buying?",
+      "Got everything you need.",
+      "Quartermaster here!"
+    ],
+    "move": [
+      "Delivery on the way!",
+      "Beep beep!",
+      "Shortcut, trust me.",
+      "Rolling out with the goods.",
+      "Right away, boss."
+    ],
+    "attack": [
+      "I'm just the delivery guy!",
+      "Ram them? Really?",
+      "[sighs] With what, crates?"
+    ],
+    "ready": [
+      "Supply truck, open for business!"
+    ],
+    "hit": [
+      "Hey, mind the paintwork!",
+      "[gasps] Not the cargo!"
+    ],
+    "die": [
+      "[screaming] There goes the inventory!",
+      "[groans] No refunds..."
+    ],
+    "special": [
+      "Ammo's here, help yourselves!",
+      "Topping you up!",
+      "Easy... mine's disarmed."
+    ]
+  },
+  "sfx": {
+    "move": {
+      "prompt": "Light WWII military truck engine starting and revving, gears crunching, pulling away on dirt road, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Light truck explodes, ammunition crates popping and cracking in fire, glass and metal debris, medium distance, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Wooden ammunition crates unloaded from a truck bed, heavy clanking boxes set down, metal ammo belts and shells rattling, tailgate clank, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

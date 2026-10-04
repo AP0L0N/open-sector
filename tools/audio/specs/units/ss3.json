@@ -1,0 +1,67 @@
+{
+  "key": "ss3",
+  "out": "units/ss3",
+  "voice": {
+    "name": "Open Sector - StuG III",
+    "description": "Scrappy male assault gun crewman in his late twenties, quick wiry mid-range voice with a cheeky streetwise accent, practical and blunt, a bit sarcastic, talks fast like a mechanic who fixes things with a hammer, shouting over engine noise on a tank radio.",
+    "sample": "StuG here, low and mean. No turret, no problem, we just point the whole tank at it. Keep them in front of us and we'll knock them flat. Just don't let anybody sneak round the side, alright?",
+    "stability": 0.4,
+    "similarity": 0.8,
+    "style": 0.5,
+    "voice_id": "iP95p4xoKVk53GoZ742B",
+    "stock_voice": "Chris"
+  },
+  "lines": {
+    "select": [
+      "StuG here.",
+      "Low and ready.",
+      "What's the job?",
+      "Yeah, boss?",
+      "Assault gun, listening."
+    ],
+    "move": [
+      "Swinging the hull round.",
+      "Moving.",
+      "On it.",
+      "Point and go.",
+      "Keep our nose forward."
+    ],
+    "attack": [
+      "Line it up!",
+      "Turn the whole tank, fire!",
+      "[shouting] Gotcha in the sights!",
+      "Front toward enemy!"
+    ],
+    "ready": [
+      "StuG three, built and ready."
+    ],
+    "hit": [
+      "[shouting] Not the sides!",
+      "[groans] Ow, that rattled."
+    ],
+    "die": [
+      "[shouting] Out, out, out!",
+      "[groans] Should've had a turret..."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "WWII assault gun 75mm cannon firing, sharp punchy boom with metallic ring and short echo, medium distance outdoors, no music, no voice",
+      "duration": 1.6,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Medium WWII armored vehicle engine revving and steel tracks pivoting on dirt, squealing turn and clanking, short one-shot, close, no music, no voice",
+      "duration": 2.2,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Armored vehicle hit and exploding, sharp metal blast and burning wreck crackle with debris, medium distance outdoors, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

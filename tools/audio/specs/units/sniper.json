@@ -1,0 +1,71 @@
+{
+  "key": "sniper",
+  "out": "units/sniper",
+  "voice": {
+    "name": "Open Sector - Sniper",
+    "description": "Calm, cold female marksman in her early thirties, low quiet voice barely above a murmur, precise clipped diction with a faint northern European lilt, unhurried and emotionless, dry dark humor, every word measured like a breath before the trigger, close-mic intimate near-whisper delivery.",
+    "sample": "Sniper. I see you, and you do not see me. Wind is low, the light is good. One breath in, half out, and then it is over. Tell me who, and I will tell you when.",
+    "stability": 0.6,
+    "similarity": 0.8,
+    "style": 0.3,
+    "voice_id": "pFZP5JQG7iQjIQuC4Bku",
+    "stock_voice": "Lily"
+  },
+  "lines": {
+    "select": [
+      "Sniper.",
+      "I'm watching.",
+      "Quietly.",
+      "[whispers] Who's next?",
+      "Patience."
+    ],
+    "move": [
+      "Relocating.",
+      "New nest.",
+      "Moving. Quietly.",
+      "Changing angle.",
+      "As you wish."
+    ],
+    "attack": [
+      "One shot.",
+      "[whispers] Hold still.",
+      "Target acquired.",
+      "Goodnight."
+    ],
+    "ready": [
+      "Sniper. In position."
+    ],
+    "hit": [
+      "[gasps] I'm spotted.",
+      "Compromised."
+    ],
+    "die": [
+      "[gasps] Missed one...",
+      "[sighs] Too slow..."
+    ],
+    "special": [
+      "Steadying.",
+      "[whispers] Breathe out."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Single powerful scoped sniper rifle shot outdoors, sharp heavy crack with long rolling echo across a valley, medium distance, no music, no voice",
+      "duration": 1.8,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Soldier moving stealthily on grass and dirt, soft cautious footsteps and quiet rustle of camouflage cloth, close, no music, no voice",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "reload": {
+      "prompt": "Precise bolt-action sniper rifle bolt cycled slowly, single brass casing ejected and tinkling on stone, bolt locked, close up, no music, no voice",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

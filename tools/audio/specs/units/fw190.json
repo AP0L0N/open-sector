@@ -1,0 +1,67 @@
+{
+  "key": "fw190",
+  "out": "units/fw190",
+  "voice": {
+    "name": "Open Sector - Fw 190",
+    "description": "Male ace fighter pilot in his early thirties, ice-cool and effortlessly smooth over the cockpit radio, relaxed low baritone with a hint of a continental European accent, laconic and a little arrogant, never raises his voice, sounds like he is smiling behind his oxygen mask.",
+    "sample": "Relax, I have the bandit. Rolling in from the sun, he never sees me. Two short bursts and he is finished. Back home in time for coffee. Nobody out-turns me up here, nobody.",
+    "stability": 0.5,
+    "similarity": 0.8,
+    "style": 0.4,
+    "voice_id": "XrExE9yKIg1WjnnlVkGX",
+    "stock_voice": "Matilda"
+  },
+  "lines": {
+    "select": [
+      "Ace on the line.",
+      "Go ahead.",
+      "Fighter ready.",
+      "You need the best?",
+      "Cool and steady."
+    ],
+    "move": [
+      "Vectoring.",
+      "Full throttle.",
+      "Already there.",
+      "Out of the sun.",
+      "Try to keep up."
+    ],
+    "attack": [
+      "Bandit in my sights.",
+      "Guns hot.",
+      "Rolling in.",
+      "Short burst, long goodbye."
+    ],
+    "ready": [
+      "Fw 190, airborne and bored. Find me someone."
+    ],
+    "hit": [
+      "Hm. A lucky one.",
+      "[groans] They've got my tail."
+    ],
+    "die": [
+      "[gasps] Not like this...",
+      "Going in. Tell them I was fast."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Aircraft 30mm cannon strafing burst, heavy rapid thudding autocannon fire from a fighter plane with shell impacts, outdoors medium distance, no music, no voice",
+      "duration": 1.5,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "WWII radial-engine fighter plane accelerating and flying past fast overhead, loud powerful engine roar with doppler shift, outdoors, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.55
+    },
+    "die": {
+      "prompt": "Fighter plane shot down, engine sputtering and screaming as it dives, crash impact and explosion with scattering metal debris, outdoors, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.55
+    }
+  }
+}

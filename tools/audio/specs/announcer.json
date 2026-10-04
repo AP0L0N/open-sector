@@ -1,0 +1,38 @@
+{
+  "key": "announcer",
+  "out": "announcer",
+  "voice": {
+    "name": "Open Sector - Battle Control",
+    "description": "Cool, composed female operations officer in her thirties, the base's battle-control voice. Clipped, precise, neutral accent, low-mid register, calm authority with no emotion, every word clearly enunciated like a military command channel, slight crisp radio presence.",
+    "sample": "Battle control online. Construction complete. Warning: our base is under attack. Reinforcements have arrived. Insufficient scrap. Low power. Unit ready.",
+    "stability": 0.7,
+    "similarity": 0.8,
+    "style": 0.2,
+    "speed": 1.0
+  },
+  "lines": {
+    "ready": ["Unit ready."],
+    "building": ["Building."],
+    "complete": ["Construction complete."],
+    "placed": ["Structure placed."],
+    "training": ["Training."],
+    "onhold": ["On hold."],
+    "cancelled": ["Cancelled."],
+    "noscrap": ["Insufficient scrap."],
+    "lowpower": ["Low power."],
+    "powerrestored": ["Power restored."],
+    "underattack": ["Our base is under attack.", "Warning: base under attack."],
+    "unitattack": ["Our units are under attack.", "Units engaged. Taking fire."],
+    "unitlost": ["Unit lost."],
+    "buildinglost": ["Structure lost."],
+    "captured": ["Building captured."],
+    "buildingcaptured": ["Our building has been captured."],
+    "start": ["Battle control online."],
+    "victory": ["Mission accomplished. You are victorious."],
+    "defeat": ["Mission failed. You have been defeated."],
+    "selecttarget": ["Select target."],
+    "cannotdeploy": ["Cannot deploy here."],
+    "reinforcements": ["Reinforcements have arrived."],
+    "newconstruction": ["New construction options."]
+  }
+}

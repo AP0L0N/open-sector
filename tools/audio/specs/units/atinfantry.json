@@ -1,0 +1,67 @@
+{
+  "key": "atinfantry",
+  "out": "units/atinfantry",
+  "voice": {
+    "name": "Open Sector - AT Infantry",
+    "description": "Stocky male anti-tank rifleman in his forties, deep rough baritone with a heavy Eastern European accent, blunt and stubborn, deadpan humor, speaks in short heavy sentences like dropping shells, unimpressed by tanks, a veteran who has seen too much and grumbles about his heavy rifle.",
+    "sample": "Anti-tank. Yes, the rifle is heavy, I know, I carry it. Show me the tank. Side or back, does not matter. One shot, track is gone. Two shots, crew is gone. Tanks are only big tins.",
+    "stability": 0.5,
+    "similarity": 0.8,
+    "style": 0.4,
+    "voice_id": "IKne3meq5aSn9XLyUdCD",
+    "stock_voice": "Charlie"
+  },
+  "lines": {
+    "select": [
+      "Anti-tank.",
+      "Show me tank.",
+      "Rifle is heavy.",
+      "[sighs] Yes, what?",
+      "Big gun, small man."
+    ],
+    "move": [
+      "I go.",
+      "Carrying long gun.",
+      "[groans] Heavy, heavy.",
+      "Moving.",
+      "Fine, fine."
+    ],
+    "attack": [
+      "Open the tin!",
+      "Aim for track.",
+      "[shouting] Punch it!",
+      "Through the side!"
+    ],
+    "ready": [
+      "Anti-tank rifle. Bring tanks."
+    ],
+    "hit": [
+      "[groans] Not good.",
+      "[shouting] Shooting at me!"
+    ],
+    "die": [
+      "[screaming] Aagh!",
+      "[gasps] Take... rifle..."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "WWII 14.5mm anti-tank rifle firing a single shot, enormous booming crack louder than a rifle, deep concussive blast with muzzle brake bark and long echo, outdoors, close range, no music, no voice",
+      "duration": 1.8,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Soldier jogging on dirt carrying a very long heavy rifle, heavy boots, gear and metal clinking, short burst of footsteps, close, no music, no voice",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "reload": {
+      "prompt": "Heavy single-shot anti-tank rifle reload, large bolt thrown open, huge brass cartridge ejected clanging on ground, new round shoved in, bolt slammed shut, close up, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "key": "submarine",
+  "out": "units/submarine",
+  "voice": {
+    "name": "Open Sector - Submarine",
+    "description": "Middle-aged male submarine captain in his forties, speaking in a low hushed near-whisper as if the enemy could hear through the hull, calm, tense and calculating, dry and slightly gravelly voice with a clipped northern European accent, every word measured and precise, a cold patient hunter.",
+    "sample": "Quiet, everyone. Periscope depth. I see her... a fat merchant, three thousand meters, steady course. Flood tubes one and two. We wait. Patience is the only weapon that never runs dry.",
+    "stability": 0.55,
+    "similarity": 0.8,
+    "style": 0.35
+  },
+  "lines": {
+    "select": [
+      "[whispers] Captain here.",
+      "Silent running.",
+      "Quietly, please.",
+      "Periscope up.",
+      "The sea is listening."
+    ],
+    "move": [
+      "Steady as she goes.",
+      "Ahead slow.",
+      "Changing course.",
+      "Gliding through.",
+      "[whispers] Like a shadow."
+    ],
+    "attack": [
+      "Flood tubes one and two.",
+      "Torpedoes, fire.",
+      "She won't hear it coming.",
+      "Target bearing locked."
+    ],
+    "ready": [
+      "Submarine commissioned. Air is fresh, for now."
+    ],
+    "hit": [
+      "Depth charges!",
+      "[gasps] Seal the bulkheads!"
+    ],
+    "die": [
+      "[gasps] We're flooding!",
+      "Too deep... too deep..."
+    ],
+    "special": [
+      "Dive, dive, dive!",
+      "Surfacing. Fresh air, boys.",
+      "Take her down."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Submarine torpedo launch underwater, sharp compressed air whoosh from the tube followed by a rush of bubbles and a fading propeller whine, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 2,
+      "influence": 0.6
+    },
+    "move": {
+      "prompt": "Submarine diesel-electric engine humming up and propeller churning water, muffled hull creak, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.55
+    },
+    "die": {
+      "prompt": "Submarine hull breaching under water pressure, metal groaning and cracking, muffled explosion, water rushing in and big bubbles rising, sinking, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.55
+    },
+    "special": {
+      "prompt": "Submarine dive alarm klaxon sounding twice, followed by ballast tanks venting and flooding with a loud rush of water and air, close, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

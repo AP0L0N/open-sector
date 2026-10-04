@@ -1,0 +1,71 @@
+{
+  "key": "bv222",
+  "out": "units/bv222",
+  "voice": {
+    "name": "Open Sector - BV 222",
+    "description": "Male transport flying-boat pilot in his mid-forties, easygoing and good-humored, warm mellow chuckling voice over the radio with a relaxed coastal accent, unhurried like a bus driver on a sunny route, a friendly uncle figure who treats every delivery as a pleasant day trip.",
+    "sample": "Afternoon, everybody! Big bird's coming in low and slow, all six engines purring like kittens. Got your crate, got your paratroopers, even got a thermos of coffee. Where would you like it dropped?",
+    "stability": 0.5,
+    "similarity": 0.8,
+    "style": 0.45,
+    "voice_id": "CwhRBWXzGAHq8TQ4Fs17",
+    "stock_voice": "Roger"
+  },
+  "lines": {
+    "select": [
+      "Big bird here.",
+      "Delivery service!",
+      "What's the cargo today?",
+      "[laughs] Afternoon!",
+      "All six engines humming."
+    ],
+    "move": [
+      "Low and slow.",
+      "Scenic route it is.",
+      "Heading over.",
+      "No rush, no rush.",
+      "Taking the long way."
+    ],
+    "attack": [
+      "We don't have guns, friend.",
+      "I'll fly over menacingly.",
+      "[sighs] Wrong plane for that."
+    ],
+    "ready": [
+      "BV 222 ready. Mind the propellers."
+    ],
+    "hit": [
+      "Hey! I'm a delivery plane!",
+      "[groans] Lost an engine. Five left."
+    ],
+    "die": [
+      "[sighs] Well. Return to sender.",
+      "[shouting] Everybody jump!"
+    ],
+    "special": [
+      "Package away!",
+      "Go, go, paratroopers out!",
+      "Mines dropping. Watch your step."
+    ]
+  },
+  "sfx": {
+    "move": {
+      "prompt": "Huge six-engined WWII flying boat flying overhead, deep heavy droning of many propeller engines with slow doppler fly-by, outdoors, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.55
+    },
+    "special": {
+      "prompt": "Aircraft cargo bay doors opening with hydraulic whine and rushing wind, crate released, parachutes snapping open and fluttering, engine drone in background, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Large multi-engine flying boat crashing into the sea, engines failing, heavy impact on water with a huge splash, explosion and metal breaking apart, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.55
+    }
+  }
+}

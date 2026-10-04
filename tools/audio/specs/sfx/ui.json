@@ -1,0 +1,19 @@
+{
+  "key": "ui",
+  "out": "sfx/ui",
+  "sfx": {
+    "click": {"prompt": "Crisp military console toggle switch click with a short metallic spring resonance tail, hard plastic and metal switch, short, no music", "duration": 0.5, "variants": 2, "influence": 0.7},
+    "select": {"prompt": "Short electronic radio chirp blip, military field radio squelch tick, crisp, very short, no music", "duration": 0.5, "variants": 2, "influence": 0.7},
+    "order": {"prompt": "Quick confirmation tick, short digital radio acknowledgement click with slight squelch, crisp, very short, no music", "duration": 0.5, "variants": 2, "influence": 0.7},
+    "deny": {"prompt": "Short low error buzz, harsh electronic military console reject tone, very short, no music", "duration": 0.5, "variants": 2, "influence": 0.7},
+    "place": {"prompt": "Heavy building foundation placed on ground, deep solid thud with metal clank, short, no music", "duration": 0.8, "variants": 2, "influence": 0.65},
+    "build_start": {"prompt": "Industrial machinery starting up, short hydraulic hiss and heavy gear engaging clunk, short, no music", "duration": 1.0, "variants": 1, "influence": 0.65},
+    "build_complete": {"prompt": "Heavy mechanical clunk of a steel lock engaging and a pneumatic release hiss, industrial, short, no chime, no music", "duration": 1.0, "variants": 1, "influence": 0.65},
+    "train_start": {"prompt": "Short metal locker door clank and quick ratchet, military industrial, short, no music, no voice", "duration": 0.8, "variants": 1, "influence": 0.65},
+    "power_down": {"prompt": "Electrical generator hum winding down and dying out, electric power failure drone pitching down, short, no music", "duration": 1.5, "variants": 1, "influence": 0.65},
+    "radar_on": {"prompt": "Radar system powering up, rising electronic whine with short sweep blips and static, short, no music", "duration": 1.5, "variants": 1, "influence": 0.65},
+    "scrap_gain": {"prompt": "Scrap metal pieces dropped into a steel bin, short bright metallic clinks, short, no music", "duration": 0.6, "variants": 2, "influence": 0.65},
+    "sell": {"prompt": "Short metal ratchet and heavy mechanical register clunk, industrial, short, no music, no voice", "duration": 0.8, "variants": 1, "influence": 0.65},
+    "alert": {"prompt": "Soft short military alert tone, two pulsing electronic warning beeps on a console, not too loud, no music, no voice", "duration": 1.2, "variants": 1, "influence": 0.7}
+  }
+}

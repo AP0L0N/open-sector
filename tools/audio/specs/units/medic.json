@@ -1,0 +1,58 @@
+{
+  "key": "medic",
+  "out": "units/medic",
+  "voice": {
+    "name": "Open Sector - Medic",
+    "description": "Young female field medic in her mid twenties, warm but brisk and no-nonsense, clear bright voice with a slight country accent, calm under fire like she has seen it all, a little bossy with patients and fiercely protective, speaks quickly with gentle authority.",
+    "sample": "Medic here, hold still and stop whining, it's just a scratch. I'll have you patched up and back on your feet before the next shell lands. Breathe, soldier, I've got you.",
+    "stability": 0.45,
+    "similarity": 0.8,
+    "style": 0.45
+  },
+  "lines": {
+    "select": [
+      "Medic here.",
+      "Who's bleeding?",
+      "Need patching up?",
+      "Say 'ah'.",
+      "Doctor's in."
+    ],
+    "move": [
+      "On my way.",
+      "Coming through!",
+      "Hold on, I'm coming.",
+      "Moving.",
+      "Keep pressure on it!"
+    ],
+    "ready": [
+      "Medic, ready to patch you up."
+    ],
+    "hit": [
+      "[shouting] I'm a medic!",
+      "[gasps] Ow, ow!"
+    ],
+    "die": [
+      "[gasps] Who heals the healer...",
+      "[screaming] Aagh!"
+    ],
+    "special": [
+      "Hold still.",
+      "Just a scratch.",
+      "Back on your feet!"
+    ]
+  },
+  "sfx": {
+    "move": {
+      "prompt": "Soldier jogging on dirt with a medical satchel bouncing and canteen rattling, short burst of footsteps, close, no music, no voice",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Field medic at work: canvas medical bag unzipped, bandage roll unwrapped and torn, gauze ripped, glass vial clink, close up, no music, no voice",
+      "duration": 2.0,
+      "variants": 2,
+      "influence": 0.6
+    }
+  }
+}

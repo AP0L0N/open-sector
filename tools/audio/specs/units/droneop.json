@@ -1,0 +1,65 @@
+{
+  "key": "droneop",
+  "out": "units/droneop",
+  "voice": {
+    "name": "Open Sector - Drone Op",
+    "description": "Young male drone operator around twenty, quick-talking tech geek with a light nasal tone, enthusiastic and a little smug, sounds like he is talking with a controller in his hands and his eyes on a screen, casual slang, playful, more excited about gadgets than about the war.",
+    "sample": "Drone op here, batteries charged and props spinning. Give me a target and I'll give you eyes from the sky. Honestly, this thing flies better than half our pilots.",
+    "stability": 0.4,
+    "similarity": 0.8,
+    "style": 0.5,
+    "voice_id": "bIHbv24MWmeRgasZH58o",
+    "stock_voice": "Will"
+  },
+  "lines": {
+    "select": [
+      "Drone op, online.",
+      "Eyes in the sky?",
+      "Batteries charged.",
+      "What's the mission?",
+      "Signal's strong."
+    ],
+    "move": [
+      "Relocating.",
+      "On it.",
+      "Moving my rig.",
+      "Gotcha.",
+      "Finding better signal."
+    ],
+    "attack": [
+      "Painting the target.",
+      "Dropping in on 'em!",
+      "Hunter mode, engaged."
+    ],
+    "ready": [
+      "Drone op, ready to fly."
+    ],
+    "hit": [
+      "[shouting] Hey, I'm support!",
+      "[gasps] Not the controller!"
+    ],
+    "die": [
+      "[gasps] Signal... lost...",
+      "[screaming] Aagh!"
+    ],
+    "special": [
+      "Drone's up!",
+      "Bird is airborne.",
+      "Bringing her home."
+    ]
+  },
+  "sfx": {
+    "move": {
+      "prompt": "Soldier jogging on dirt with backpack of electronics and antenna rattling, short burst of footsteps, close, no music, no voice",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Small quadcopter drone spinning up its four electric propellers from rest then lifting off and climbing away, rising buzzing whine, close, outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.65
+    }
+  }
+}

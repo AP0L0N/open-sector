@@ -24,6 +24,7 @@ export function setSfx(v: number): void {
 export function setMusic(v: number): void {
   localStorage.setItem(KEY_MUSIC, String(v));
   document.documentElement.style.setProperty("--music", String(v));
+  window.dispatchEvent(new Event("gridlock-music"));
 }
 
 let ctx: AudioContext | null = null;
@@ -178,4 +179,63 @@ export function playSample(
       release();
     }
   });
+}
+
+export interface Clip {
+  stop(): void;
+}
+
+/**
+ * One unplaced play of a sound file: a unit's answer, the announcer, a UI click.
+ * Unlike `playSample` a late decode still plays (up to `maxLateS`), since a voice
+ * line is not tied to a muzzle flash. `stop()` cuts it short, before or after it starts.
+ */
+export function playClip(
+  url: string,
+  volume: number,
+  opts: { maxLateS?: number; onEnded?: () => void } = {},
+): Clip {
+  let stopped = false;
+  let src: AudioBufferSourceNode | null = null;
+  const clip: Clip = {
+    stop() {
+      stopped = true;
+      try {
+        src?.stop();
+      } catch {
+        /* already ended */
+      }
+    },
+  };
+  const vol = getSfx() * volume;
+  if (vol <= 0.001 || document.hidden) {
+    opts.onEnded?.();
+    return clip;
+  }
+  try {
+    ctx ??= new AudioContext();
+    if (ctx.state === "suspended") void ctx.resume();
+  } catch {
+    opts.onEnded?.();
+    return clip;
+  }
+  const at = ctx.currentTime;
+  void sample(url).then((buf) => {
+    if (stopped || !buf || !ctx || ctx.currentTime - at > (opts.maxLateS ?? 1.5)) {
+      opts.onEnded?.();
+      return;
+    }
+    try {
+      src = ctx.createBufferSource();
+      src.buffer = buf;
+      const g = ctx.createGain();
+      g.gain.value = vol;
+      src.connect(g).connect(sampleBus(ctx));
+      src.onended = () => opts.onEnded?.();
+      src.start();
+    } catch {
+      opts.onEnded?.();
+    }
+  });
+  return clip;
 }

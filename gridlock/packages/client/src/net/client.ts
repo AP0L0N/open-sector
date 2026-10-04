@@ -35,9 +35,13 @@ export class GameSocket {
     });
   }
 
+  /** Every message that goes out, for the order acknowledgements (unit answers, announcer). */
+  onSend: (msg: ClientMessage) => void = () => {};
+
   send(msg: ClientMessage): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
+      this.onSend(msg);
     }
   }
 

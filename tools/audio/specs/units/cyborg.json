@@ -1,0 +1,67 @@
+{
+  "key": "cyborg",
+  "out": "units/cyborg",
+  "voice": {
+    "name": "Open Sector - Cyborg",
+    "description": "Deep male voice of a half-human half-machine soldier, heavily processed and metallic with a cold synthetic edge, slow, flat and menacing, every word clipped like a machine reading a kill order, a faint mechanical rasp and buzz under the voice, utterly fearless and dryly grim.",
+    "sample": "Cyborg unit online. Ammunition drum at full capacity. Target acquired. Flesh is weak, steel is patient. I will walk through your fire and I will not stop.",
+    "stability": 0.6,
+    "similarity": 0.8,
+    "style": 0.35,
+    "voice_id": "axwQa6O8mRLk9BJK606F",
+    "stock_voice": "Cyborg"
+  },
+  "lines": {
+    "select": [
+      "Cyborg online.",
+      "Awaiting directive.",
+      "Systems nominal.",
+      "Flesh and steel ready.",
+      "Speak."
+    ],
+    "move": [
+      "Relocating.",
+      "Path computed.",
+      "Advancing.",
+      "Affirmative.",
+      "Nothing stops me."
+    ],
+    "attack": [
+      "Target acquired.",
+      "Commence termination.",
+      "Spinning up.",
+      "[laughs] Six hundred rounds."
+    ],
+    "ready": [
+      "Cyborg unit, fully assembled."
+    ],
+    "hit": [
+      "Damage registered.",
+      "Armor breached."
+    ],
+    "die": [
+      "System... failure...",
+      "Still... firing..."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Short burst from an electric gatling gun arm, rapid spinning barrels firing very fast, mechanical whir spin-up and spin-down, close, outdoors battlefield, no music, no voice",
+      "duration": 1.8,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Cyborg soldier walking: servo motor whine and hydraulic hiss with heavy metallic footsteps on dirt, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Cyborg destroyed: electrical sparks crackling, short circuit buzz, servo powering down, heavy metal body collapsing onto the ground, close, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

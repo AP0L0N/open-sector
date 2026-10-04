@@ -1,0 +1,25 @@
+{
+  "key": "battle",
+  "out": "sfx/battle",
+  "sfx": {
+    "explosion_small": {"prompt": "Small high-explosive blast on a battlefield, sharp punchy boom with dirt debris falling, medium distance outdoors, no music, no voice", "duration": 1.5, "variants": 3, "influence": 0.6},
+    "explosion_large": {"prompt": "Large heavy explosion, deep thunderous boom with rumbling low end and debris raining down, vehicle fuel tank blowing up, medium distance outdoors, no music, no voice", "duration": 2.5, "variants": 3, "influence": 0.6},
+    "explosion_building": {"prompt": "Concrete and steel building collapsing after an explosion, big boom then crumbling masonry, groaning metal beams and rubble avalanche, medium distance outdoors, no music, no voice", "duration": 4.0, "variants": 2, "influence": 0.6},
+    "shell_impact": {"prompt": "Artillery shell hitting dirt, thud blast with earth and gravel spraying, medium distance outdoors, no music, no voice", "duration": 1.2, "variants": 3, "influence": 0.6},
+    "ricochet": {"prompt": "Bullet or tank shell glancing off thick steel armor, sharp metallic clang and whining ricochet zing, close, no music, no voice", "duration": 0.8, "variants": 3, "influence": 0.65},
+    "penetrate": {"prompt": "Armor-piercing tank shell punching through steel armor plate, violent metal crunch and tearing with a heavy clang, close, no music, no voice", "duration": 1.0, "variants": 3, "influence": 0.65},
+    "bullet_impact": {"prompt": "Burst of rifle bullets hitting dirt and soil, quick sharp thuds and puffs of earth, close, no music, no voice", "duration": 0.7, "variants": 3, "influence": 0.6},
+    "wreck_burn": {"prompt": "Burning destroyed tank wreck, steady fire crackle and roar with occasional metal pings, continuous ambience, no music, no voice", "duration": 4.0, "variants": 1, "influence": 0.5, "loop": true},
+    "splash": {"prompt": "Artillery shell landing in water, deep underwater thump and tall water column splash falling back down, medium distance, no music, no voice", "duration": 1.8, "variants": 3, "influence": 0.6},
+    "building_fire": {"prompt": "Large building on fire, roaring flames, crackling burning timber, continuous fire ambience, no music, no voice", "duration": 4.0, "variants": 1, "influence": 0.5, "loop": true},
+    "cookoff": {"prompt": "Ammunition cook-off inside a burning tank, rapid chain of popping and banging rounds detonating with metal rattling, medium distance, no music, no voice", "duration": 3.0, "variants": 2, "influence": 0.6},
+    "rocket_flyby": {"prompt": "Rocket missile flying past overhead, fast rushing whoosh with a hissing motor, passing left to right, no explosion, no music, no voice", "duration": 1.5, "variants": 3, "influence": 0.6},
+    "intercept": {"prompt": "Missile shot down in mid-air, sharp airburst explosion high in the sky with crackling fragments, medium distance, no music, no voice", "duration": 1.5, "variants": 3, "influence": 0.6},
+    "ciws": {"prompt": "20mm rotary gatling cannon close-in weapon system firing a short burst, extremely fast buzzing roar of gunfire, medium distance outdoors, no music, no voice", "duration": 1.5, "variants": 3, "influence": 0.65},
+    "ram_launch": {"prompt": "Defensive surface-to-air rocket launched from a launcher, ignition bang and loud hissing whoosh as the rocket leaves, close, no music, no voice", "duration": 1.5, "variants": 3, "influence": 0.6},
+    "mine_explode": {"prompt": "Land mine detonation, sudden sharp blast from the ground with dirt and gravel thrown up, close, no music, no voice", "duration": 1.5, "variants": 3, "influence": 0.6},
+    "smoke_pop": {"prompt": "Smoke grenade popping and hissing as thick smoke pours out, small pop followed by steady hiss, close, no music, no voice", "duration": 1.5, "variants": 2, "influence": 0.6},
+    "body_fall": {"prompt": "Soldier's body collapsing onto dirt ground with gear and rifle clattering, dull thud, close, no voice, no music", "duration": 0.8, "variants": 3, "influence": 0.6},
+    "capture": {"prompt": "Heavy steel door latch clunking shut and a metal flag pole rope ratcheting quickly, mechanical take-over sound, no jingle, no music, no voice", "duration": 1.2, "variants": 2, "influence": 0.6}
+  }
+}

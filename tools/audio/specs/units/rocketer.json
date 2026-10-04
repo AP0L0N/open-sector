@@ -1,0 +1,78 @@
+{
+  "key": "rocketer",
+  "out": "units/rocketer",
+  "voice": {
+    "name": "Open Sector - Rocketer",
+    "description": "Wiry, hyperactive young male rocket trooper in his mid twenties, slightly raspy tenor voice with a fast-talking big-city street accent, cocky show-off energy, loves explosions, talks quickly with excited laughs, a bit reckless and very proud of his launcher.",
+    "sample": "Rocketer here, tube's hot and I got plenty on my back! You point, I make it go boom, simple as that. And the big one? The guided one? Oh, that's special. That one you gotta ask nice for.",
+    "stability": 0.35,
+    "similarity": 0.8,
+    "style": 0.55,
+    "voice_id": "cjVigY5qzO86Huf0OWal",
+    "stock_voice": "Eric"
+  },
+  "lines": {
+    "select": [
+      "Rocketer!",
+      "Tube's hot.",
+      "Need a boom?",
+      "[laughs] Who's getting it?",
+      "Loaded and loud."
+    ],
+    "move": [
+      "On the move!",
+      "Hoofing it.",
+      "Gotcha, going.",
+      "Back's full, let's go.",
+      "Yeah yeah, moving."
+    ],
+    "attack": [
+      "[shouting] Rocket out!",
+      "Boom time!",
+      "Eat this!",
+      "[laughs] Special delivery!"
+    ],
+    "ready": [
+      "Rocketer, packing heat."
+    ],
+    "hit": [
+      "[shouting] Hey, watch it!",
+      "[groans] Ow, the tubes!"
+    ],
+    "die": [
+      "[screaming] Noo!",
+      "[gasps] Shoulda... ducked..."
+    ],
+    "special": [
+      "Big one, coming up!",
+      "[shouting] Missile away!",
+      "Guiding it in."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Shoulder-fired rocket launcher firing, sharp whoosh of rocket ignition and backblast, rocket hissing away into the distance, outdoors, close range, no music, no voice",
+      "duration": 1.8,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Soldier jogging on dirt with rocket tubes and metal launcher rattling on his back, short burst of footsteps, close, no music, no voice",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Guided anti-tank missile launch, ejection pop then powerful rocket motor ignition roaring and screaming away with sustained hiss and wire whine, outdoors, close range, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "reload": {
+      "prompt": "Rocket pulled from a back rack and slid into a metal launcher tube, metallic scrape and latch click, close up, no music, no voice",
+      "duration": 1.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

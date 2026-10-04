@@ -1,0 +1,73 @@
+{
+  "key": "jagdtiger",
+  "out": "units/jagdtiger",
+  "voice": {
+    "name": "Open Sector - Jagdtiger",
+    "description": "Patient, deliberate male hunter in his fifties, very deep slow bass voice, quiet and calculating, almost a murmur, speaks like a sniper stalking prey from far away, each word measured and cold, faint rasp, heard over a tank intercom.",
+    "sample": "Jagdtiger. I do not chase. I wait. They will come into my sights, one by one, and one shot is all I need. Patience is the heaviest armor. Let them think they are safe.",
+    "stability": 0.65,
+    "similarity": 0.8,
+    "style": 0.35,
+    "voice_id": "nPczCjzI2devNBz1zQrb",
+    "stock_voice": "Brian"
+  },
+  "lines": {
+    "select": [
+      "Hunter here.",
+      "[whispers] Patience.",
+      "I am watching.",
+      "Jagdtiger.",
+      "The long gun waits."
+    ],
+    "move": [
+      "Repositioning.",
+      "Finding a hide.",
+      "Slowly. Quietly.",
+      "Moving to the ridge.",
+      "As you wish."
+    ],
+    "attack": [
+      "One shot.",
+      "In my sights.",
+      "[whispers] Goodbye.",
+      "The hunt ends."
+    ],
+    "ready": [
+      "Jagdtiger. The hunt begins."
+    ],
+    "hit": [
+      "[sighs] Scratched.",
+      "They found me."
+    ],
+    "die": [
+      "[groans] Outhunted...",
+      "[sighs] Too slow..."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Enormous 128mm heavy anti-tank cannon blast, gigantic deep concussive boom with sharp supersonic crack and long rolling thunder echo, medium distance outdoors, no music, no voice",
+      "duration": 2.4,
+      "variants": 3,
+      "influence": 0.7
+    },
+    "move": {
+      "prompt": "Very heavy tank destroyer engine growling and slow heavy steel tracks grinding forward, deep rumble, short one-shot, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Very heavy armored vehicle explodes, huge ammunition detonation with steel plates bursting and burning debris, medium distance outdoors, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "reload": {
+      "prompt": "Heavy tank cannon breech opening with metallic clang, huge shell loaded and breech slamming shut, close interior, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}
