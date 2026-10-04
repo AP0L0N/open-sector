@@ -34,7 +34,7 @@ export function captureDurationSec(building: Entity): number {
 }
 
 export function pathToCapture(state: MatchState, unit: Entity, building: Entity): void {
-  const door = approachTile(state, building);
+  const door = approachTile(state, building, unit);
   const ts = state.tileSize;
   if (door) setPath(state, unit, tileCenter(door.x, ts), tileCenter(door.y, ts));
   else setPath(state, unit, building.x, building.y);

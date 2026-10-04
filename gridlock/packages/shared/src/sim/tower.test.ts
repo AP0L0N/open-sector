@@ -24,8 +24,8 @@ import { applyCommand } from "./commands.js";
 import { tickCombat } from "./combat.js";
 import { sightTilesForEntity, weaponRangeWorld } from "./elevation.js";
 import { makeEntity, tileCenter, worldToTile } from "./geo.js";
-import { canGarrison, enterGarrison, setGarrisonHide, woundGarrison } from "./garrison.js";
-import { createMatch } from "./match.js";
+import { approachTile, canGarrison, enterGarrison, setGarrisonHide, woundGarrison } from "./garrison.js";
+import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { visionMask, visionMaskFromSnapshot } from "./vision.js";
 import type { Entity, MatchState } from "./types.js";
@@ -184,5 +184,42 @@ describe("watch tower", () => {
       return seenCount(visionMaskFromSnapshot(snapshotFor(state, a), state.width, state.height, state.tileSize));
     };
     assert.ok(paint("tower") > paint("bunker") * 1.5, "the tower paints a much wider circle");
+  });
+});
+
+describe("garrison approach", () => {
+  /** Wall off the whole north face of a structure, corners included. */
+  function blockNorth(state: MatchState, s: Entity): void {
+    for (let x = s.tileX - 1; x <= s.tileX + s.tileW; x++) state.blocked[(s.tileY - 1) * state.width + x] = 1;
+  }
+
+  for (const [side, ty] of [["south", 22], ["north", 2]] as const) {
+    it(`gets into a tower walled off on the north, coming from the ${side}`, () => {
+      const { state, a } = twoPlayerMatch();
+      const tower = structureAt(state, "tower", a);
+      blockNorth(state, tower);
+      const inf = trooper(state, "rifleman", a, tower.tileX, ty);
+      const res = applyCommand(state, a, { type: "cmd.garrison", ids: [inf.id], buildingId: tower.id });
+      assert.equal(res.ok, true, !res.ok ? res.message : "");
+      for (let i = 0; i < 400 && inf.garrisonedIn == null; i++) step(state, TICK_DT);
+      assert.equal(inf.garrisonedIn, tower.id);
+    });
+  }
+
+  it("heads for the side it is standing on", () => {
+    const { state, a } = twoPlayerMatch();
+    const tower = structureAt(state, "tower", a);
+    const ts = state.tileSize;
+    const spots = [
+      [tower.tileX, 22],
+      [tower.tileX + tower.tileW + 6, tower.tileY],
+      [tower.tileX - 6, tower.tileY],
+    ];
+    for (const [tx, ty] of spots) {
+      const inf = trooper(state, "rifleman", a, tx, ty);
+      const door = approachTile(state, tower, inf)!;
+      const far = Math.hypot(tileCenter(door.x, ts) - inf.x, tileCenter(door.y, ts) - inf.y);
+      assert.ok(far < Math.hypot(tower.x - inf.x, tower.y - inf.y), `door ${door.x},${door.y} is past the tower`);
+    }
   });
 });
