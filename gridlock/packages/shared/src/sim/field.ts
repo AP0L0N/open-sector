@@ -1326,8 +1326,10 @@ function tickGates(state: MatchState, dt: number): void {
         break;
       }
     }
+    // Ease toward `want` and hold there: a boom already up stays still while a friend waits.
     const open = g.gate.open;
-    g.gate.open = want > open ? Math.min(1, open + step) : Math.max(0, open - step);
+    if (want > open) g.gate.open = Math.min(want, open + step);
+    else if (want < open) g.gate.open = Math.max(want, open - step);
   }
 }
 

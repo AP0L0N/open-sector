@@ -1670,6 +1670,10 @@ describe("gates", () => {
     const mine = makeEntity(state, "rifleman", "A", x - 50, gy);
     ticks(state, 30);
     assert.equal(gate.gate?.open, 1, "boom up for a friendly nearby");
+    for (let i = 0; i < 10; i++) {
+      step(state, TICK_DT);
+      assert.equal(gate.gate?.open, 1, `the lifted boom holds still while he waits (tick ${i})`);
+    }
     applyCommand(state, "A", { type: "cmd.move", ids: [mine.id], x: x + 70, y: gy });
     const mineWatch = makeWatch(mine);
     let through = false;

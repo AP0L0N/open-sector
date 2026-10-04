@@ -1753,21 +1753,6 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: "Build concrete pyramids that stop vehicles. Scroll to turn. Click to set one, or drag a line; keep clicking to add legs, then Confirm.",
       on: view?.fieldPlace === "teeth",
     });
-    out.push({
-      slot: "field-trench",
-      act: "field-trench",
-      label: "Trench",
-      title: "Dig a one-man trench. Moderate cover for one soldier, mortarman included. Scroll to turn. Click to set one, or drag a line; keep clicking to add legs, then Confirm.",
-      on: view?.fieldPlace === "trench",
-    });
-    out.push({
-      slot: "field-wall",
-      act: "field-wall",
-      label: "Wall",
-      title:
-        "Build a concrete wall with barbed wire. Scroll to turn it, drag the first run, then keep clicking to carry the wall round corners; it joins up as one wall. Confirm to start the job, which takes longer the more pieces you lay. It appears when the engineer finishes.",
-      on: view?.fieldPlace === "wall",
-    });
     if (!isHiddenField("greatwall")) {
       out.push({
         slot: "field-greatwall",
@@ -2142,23 +2127,8 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     if (units.length) view.setGuardMode(!view.guardMode);
     return;
   }
-  if (
-    act === "field-sandbags" ||
-    act === "field-teeth" ||
-    act === "field-trench" ||
-    act === "field-wall" ||
-    act === "field-greatwall"
-  ) {
-    const structure =
-      act === "field-sandbags"
-        ? "sandbags"
-        : act === "field-teeth"
-          ? "teeth"
-          : act === "field-trench"
-            ? "trench"
-            : act === "field-greatwall"
-              ? "greatwall"
-              : "wall";
+  if (act === "field-sandbags" || act === "field-teeth" || act === "field-greatwall") {
+    const structure = act === "field-sandbags" ? "sandbags" : act === "field-teeth" ? "teeth" : "greatwall";
     view.setFieldPlace(structure);
     return;
   }
