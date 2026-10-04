@@ -1848,6 +1848,8 @@ function walkerSecondTarget(state: MatchState, e: Entity, primary: Entity): Enti
   for (const o of state.entities.values()) {
     if (o.id === primary.id || o.id === e.id || o.hp <= 0 || o.wreck || o.garrisonedIn) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
+    // A map defence nobody has taken yet is no one's enemy.
+    if (o.kind === "building" && !o.ownerId && !isCivilianType(o.type)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
     if (
       o.kind === "building" &&

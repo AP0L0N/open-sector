@@ -1,5 +1,7 @@
-import { CIVILIAN_TYPES, HEIGHT_MAX, TILE_SIZE, TILE_SUBDIV, catalog, type CivilianType } from "./catalog.js";
+import { CIVILIAN_TYPES, HEIGHT_MAX, TILE_SIZE, TILE_SUBDIV } from "./catalog.js";
 import {
+  MAP_DEFENCE_TYPES,
+  PLAYTEST_MAP_PREFIX,
   SPAWN_PAD_R,
   TILE_DIAMOND_SCRAP,
   TILE_EMPTY,
@@ -9,13 +11,17 @@ import {
   TILE_SCRAP,
   TILE_TREE,
   TILE_WATER,
+  featureBox,
   getMap,
   isBuiltinMap,
+  isMapSection,
+  isPlaytestMapId,
   normalizeTerrain,
   peakHeight,
   registerMap,
   type MapDef,
   type MapFeature,
+  type MapFeatureType,
 } from "./maps.js";
 
 /**
@@ -111,12 +117,17 @@ function cleanText(raw: unknown, max: number): string {
   return raw.replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, max);
 }
 
-export function featureBox(f: MapFeature): { x0: number; y0: number; x1: number; y1: number } {
-  const def = catalog(f.type);
-  return { x0: f.x, y0: f.y, x1: f.x + def.tileW, y1: f.y + def.tileH };
+/** Everything a builder map may stand on the field: houses, then the neutral defences. */
+export const MAP_FEATURE_TYPES: readonly MapFeatureType[] = [...CIVILIAN_TYPES, ...MAP_DEFENCE_TYPES];
+
+export function newPlaytestMapId(rng: () => number = Math.random): string {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+  let id = PLAYTEST_MAP_PREFIX;
+  for (let i = 0; i < 8; i++) id += chars[Math.floor(rng() * chars.length)];
+  return id;
 }
 
-/** True when the house footprint touches a start's pad. */
+/** True when the feature's footprint touches a start's pad. */
 export function featureOnPad(f: MapFeature, spawns: readonly { x: number; y: number }[]): boolean {
   const b = featureBox(f);
   return spawns.some((s) => {
@@ -138,12 +149,12 @@ export type CustomMapCheck = { ok: true; spec: CustomMapSpec } | { ok: false; me
  * Validate a map from the wire or disk and return a clean copy. The message
  * is what the builder shows when a save is refused.
  */
-export function validateCustomMap(raw: unknown): CustomMapCheck {
+export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {}): CustomMapCheck {
   const bad = (message: string): CustomMapCheck => ({ ok: false, message });
   if (!raw || typeof raw !== "object") return bad("No map.");
   const m = raw as Record<string, unknown>;
   const id = typeof m.id === "string" ? m.id : "";
-  if (!isCustomMapId(id)) return bad("Bad map id.");
+  if (!isCustomMapId(id) || isPlaytestMapId(id) !== Boolean(opts.playtest)) return bad("Bad map id.");
   if (isBuiltinMap(id)) return bad("Built-in maps cannot be changed.");
   const name = cleanText(m.name, CUSTOM_MAP_NAME_MAX);
   if (!name) return bad("Give the map a name.");
@@ -177,13 +188,15 @@ export function validateCustomMap(raw: unknown): CustomMapCheck {
     if (!Number.isInteger(sid) || !Number.isInteger(sx) || !Number.isInteger(sy)) return bad("Bad start positions.");
     spawns.push({ id: sid as number, x: sx as number, y: sy as number });
   }
-  if (spawns.length !== maxPlayers) {
-    return bad(`Place all ${maxPlayers} start positions (${spawns.length} placed).`);
+  // A play test needs one start to drop the tester on; a saved map seats every player.
+  if (opts.playtest ? spawns.length < 1 || spawns.length > maxPlayers : spawns.length !== maxPlayers) {
+    return bad(opts.playtest ? "Place a start position to play test." : `Place all ${maxPlayers} start positions (${spawns.length} placed).`);
   }
   spawns.sort((a, b) => a.id - b.id);
   for (let i = 0; i < spawns.length; i++) {
     const s = spawns[i]!;
-    if (s.id !== i + 1) return bad("Start positions must be numbered 1 to max players.");
+    const numbered = opts.playtest ? s.id >= 1 && s.id <= maxPlayers && (i === 0 || s.id > spawns[i - 1]!.id) : s.id === i + 1;
+    if (!numbered) return bad("Start positions must be numbered 1 to max players.");
     const lo = SPAWN_EDGE_MARGIN;
     if (s.x < lo || s.y < lo || s.x >= width - lo || s.y >= height - lo) {
       return bad(`Start ${s.id} is too close to the edge.`);
@@ -195,20 +208,23 @@ export function validateCustomMap(raw: unknown): CustomMapCheck {
   }
 
   if (!Array.isArray(m.features) || m.features.length > CUSTOM_MAP_MAX_FEATURES) {
-    return bad(`At most ${CUSTOM_MAP_MAX_FEATURES} buildings.`);
+    return bad(`At most ${CUSTOM_MAP_MAX_FEATURES} buildings and defences.`);
   }
   const features: MapFeature[] = [];
   for (const f of m.features as unknown[]) {
     const o = (f ?? {}) as Record<string, unknown>;
     const type = o.type;
-    if (typeof type !== "string" || !(CIVILIAN_TYPES as readonly string[]).includes(type)) return bad("Unknown building.");
+    if (typeof type !== "string" || !(MAP_FEATURE_TYPES as readonly string[]).includes(type)) return bad("Unknown building.");
     const fx = o.x;
     const fy = o.y;
     const facing = o.facing ?? 0;
     if (!Number.isInteger(fx) || !Number.isInteger(fy) || !Number.isInteger(facing)) return bad("Bad building.");
-    const feat: MapFeature = { type: type as CivilianType, x: fx as number, y: fy as number, facing: (facing as number) & 3 };
+    const feat: MapFeature = { type: type as MapFeatureType, x: fx as number, y: fy as number, facing: (facing as number) & 3 };
     const b = featureBox(feat);
-    if (feat.x % TILE_SUBDIV !== 0 || feat.y % TILE_SUBDIV !== 0) return bad("Buildings sit on the cell grid.");
+    // Sandbags and walls sit on any fine tile; lots keep to the cell grid.
+    if (!isMapSection(feat.type) && (feat.x % TILE_SUBDIV !== 0 || feat.y % TILE_SUBDIV !== 0)) {
+      return bad("Buildings sit on the cell grid.");
+    }
     if (b.x0 < 0 || b.y0 < 0 || b.x1 > width || b.y1 > height) return bad("A building is off the map.");
     if (features.some((o2) => featuresOverlap(o2, feat))) return bad("Two buildings overlap.");
     if (featureOnPad(feat, spawns)) return bad("A building stands on a start position.");
@@ -257,8 +273,11 @@ export function buildCustomMap(spec: CustomMapSpec): MapDef {
 }
 
 /** Validate, build, and register. Returns the refusal message when the spec is bad. */
-export function loadCustomMap(raw: unknown): { ok: true; map: MapDef; spec: CustomMapSpec } | { ok: false; message: string } {
-  const checked = validateCustomMap(raw);
+export function loadCustomMap(
+  raw: unknown,
+  opts: { playtest?: boolean } = {},
+): { ok: true; map: MapDef; spec: CustomMapSpec } | { ok: false; message: string } {
+  const checked = validateCustomMap(raw, opts);
   if (!checked.ok) return checked;
   const map = buildCustomMap(checked.spec);
   if (!registerMap(map)) return { ok: false, message: "Built-in maps cannot be changed." };

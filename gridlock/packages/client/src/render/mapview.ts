@@ -6906,6 +6906,8 @@ export class MapView {
       }
       return CIV_FILL;
     }
+    // A map defence nobody has taken yet.
+    if (!e.ownerId) return CIV_FILL;
     const p = this.curr.players.find((pl) => pl.playerId === e.ownerId);
     return colorHex(p?.colorId ?? 0);
   }

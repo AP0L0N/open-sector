@@ -42,6 +42,7 @@ import {
   worldToTile,
 } from "./geo.js";
 import { takeDamage } from "./crits.js";
+import { claimNeutral } from "./garrison.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -925,6 +926,34 @@ export function tickField(state: MatchState, dt: number): void {
   }
   tickGates(state, dt);
   applyCoverHp(state);
+  claimNeutralSections(state);
+}
+
+/**
+ * A neutral sandbag or wall section from the map goes to the side whose
+ * infantry stand in its cover. Two sides there at once leave it neutral.
+ */
+function claimNeutralSections(state: MatchState): void {
+  for (const sec of state.entities.values()) {
+    if (sec.type !== "sandbags" && sec.type !== "wall") continue;
+    if ((sec.ownerId && sec.ownerId !== NEUTRAL_OWNER) || sec.ruined || sec.hp <= 0) continue;
+    const span = fieldSpan(sec.type)!;
+    const reach = sec.type === "sandbags" ? SANDBAG_COVER_DEPTH : WALL_COVER_DEPTH;
+    const { fx, fy, tx, ty } = wallAxes(sec.facing);
+    let taker: Entity | null = null;
+    let contested = false;
+    for (const u of state.entities.values()) {
+      if (u.kind !== "unit" || u.hp <= 0 || u.garrisonedIn != null || !u.ownerId || !isInfantryType(u.type) || aloft(u)) continue;
+      const dx = u.x - sec.x;
+      const dy = u.y - sec.y;
+      if (Math.abs(dx * tx + dy * ty) > span.length / 2 + 8) continue;
+      const depth = Math.abs(dx * fx + dy * fy) - span.thick / 2;
+      if (depth < -6 || depth > reach) continue;
+      if (!taker) taker = u;
+      else if (!allies(state, taker.ownerId, u.ownerId)) contested = true;
+    }
+    if (taker && !contested) claimNeutral(state, sec, taker.ownerId);
+  }
 }
 
 export function ruinSandbags(state: MatchState, bag: Entity): void {

@@ -16,15 +16,18 @@ import {
   featureBox,
   featureOnPad,
   featuresOverlap,
+  isMapSection,
   isScrapTile,
+  MAP_DEFENCE_TYPES,
   normalizeTerrain,
   peakHeight,
+  PLAYTEST_MAP_PREFIX,
   rollHeights,
   validateCustomMap,
-  type CivilianType,
   type CustomMapSpec,
   type MapDef,
   type MapFeature,
+  type MapFeatureType,
 } from "@gridlock/shared";
 
 /** The map being edited. Grids are plain fine-tile arrays, already playable after `settle`. */
@@ -227,19 +230,54 @@ export function levelDisk(s: Sheet, cx: number, cy: number, r: number, z: number
   return seeds.length;
 }
 
-/** A house of `type` centred on the cursor tile, snapped to the cell grid. */
-export function houseAt(type: CivilianType, tx: number, ty: number, facing: number): MapFeature {
+/**
+ * A feature of `type` centred on the cursor tile. A house, bunker, or tower
+ * snaps to the cell grid; a sandbag or wall section sits on the tile itself.
+ */
+export function houseAt(type: MapFeatureType, tx: number, ty: number, facing: number): MapFeature {
+  if (isMapSection(type)) return { type, x: tx, y: ty, facing: facing & 3 };
   const def = catalog(type);
   const snap = (v: number, span: number): number => Math.round((v - span / 2) / TILE_SUBDIV) * TILE_SUBDIV;
   return { type, x: snap(tx, def.tileW), y: snap(ty, def.tileH), facing: facing & 3 };
 }
 
-export function houseProblem(s: Sheet, f: MapFeature): string | null {
+/** Why `f` cannot stand where it is. `ignore` is the index of a feature being moved, which does not block itself. */
+export function houseProblem(s: Sheet, f: MapFeature, ignore = -1): string | null {
   const b = featureBox(f);
   if (b.x0 < 0 || b.y0 < 0 || b.x1 > s.width || b.y1 > s.height) return "Off the map.";
-  if (s.features.some((o) => featuresOverlap(o, f))) return "Overlaps another building.";
+  if (s.features.some((o, i) => i !== ignore && featuresOverlap(o, f))) return "Overlaps another building.";
   if (featureOnPad(f, s.spawns)) return "Too close to a start position.";
   return null;
+}
+
+/**
+ * Set a placed feature down `dx`, `dy` fine tiles from where it stood at
+ * `from`. A lot keeps to the cell grid. Null when it moved, else the reason.
+ */
+export function moveFeature(s: Sheet, index: number, from: MapFeature, dx: number, dy: number): string | null {
+  if (!s.features[index]) return "Nothing selected.";
+  const step = isMapSection(from.type) ? 1 : TILE_SUBDIV;
+  const next = { ...from, x: from.x + Math.round(dx / step) * step, y: from.y + Math.round(dy / step) * step };
+  const problem = houseProblem(s, next, index);
+  if (problem) return problem;
+  s.features[index] = next;
+  return null;
+}
+
+/** Turn a placed feature a quarter in place. Null when the turned shape fits. */
+export function turnFeature(s: Sheet, index: number): string | null {
+  const f = s.features[index];
+  if (!f) return "Nothing selected.";
+  const next = { ...f, facing: (f.facing + 1) & 3 };
+  const problem = houseProblem(s, next, index);
+  if (problem) return problem;
+  s.features[index] = next;
+  return null;
+}
+
+/** Defence count: the bunkers, towers, sandbags, and walls on the sheet. Everything else is a house. */
+export function defenceCount(s: Sheet): number {
+  return s.features.filter((f) => (MAP_DEFENCE_TYPES as readonly string[]).includes(f.type)).length;
 }
 
 export function featureIndexAt(s: Sheet, tx: number, ty: number): number {
@@ -297,6 +335,17 @@ export function setMaxPlayers(s: Sheet, n: number): number {
 /** What still stops a save, or null when it would go through. */
 export function sheetProblem(s: Sheet): string | null {
   const r = validateCustomMap(sheetToSpec(s));
+  return r.ok ? null : r.message;
+}
+
+/** The sheet as a play-test map under `id`. One start is enough. */
+export function playtestSpec(s: Sheet, id: string): CustomMapSpec {
+  return { ...sheetToSpec(s), id, name: s.name.trim() || "Play test" };
+}
+
+/** What stops a play test, or null when the sheet can be played as it stands. */
+export function playtestProblem(s: Sheet): string | null {
+  const r = validateCustomMap(playtestSpec(s, `${PLAYTEST_MAP_PREFIX}check`), { playtest: true });
   return r.ok ? null : r.message;
 }
 

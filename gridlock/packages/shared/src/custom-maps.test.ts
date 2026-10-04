@@ -25,7 +25,13 @@ import {
   tileAt,
   unregisterMap,
 } from "./maps.js";
-import { createMatch } from "./sim/match.js";
+import { createMatch, step } from "./sim/match.js";
+import { enterGarrison } from "./sim/garrison.js";
+import { makeEntity, tileCenter } from "./sim/geo.js";
+import { spotlightManned } from "./sim/night.js";
+import { NEUTRAL_OWNER } from "./catalog.js";
+import { featureBox, isPlaytestMapId } from "./maps.js";
+import { newPlaytestMapId } from "./custom-maps.js";
 
 const SIDE = 48 * TILE_SUBDIV;
 
@@ -256,6 +262,98 @@ describe("custom map registry", () => {
       if (!pre.ok) assert.equal(pre.code, "too_many");
     } finally {
       unregisterMap("c-crowded01");
+    }
+  });
+});
+
+describe("map defences and play tests", () => {
+  const defences = [
+    { type: "tower" as const, x: 64, y: 64, facing: 1 },
+    { type: "bunker" as const, x: 96, y: 64, facing: 0 },
+    { type: "sandbags" as const, x: 61, y: 121, facing: 0 },
+    { type: "wall" as const, x: 101, y: 121, facing: 1 },
+  ];
+
+  it("validates defences: lots on the cell grid, sections on any tile", () => {
+    const r = validateCustomMap(sheet({ features: defences }));
+    assert.equal(r.ok, true, r.ok ? "" : r.message);
+    const offGrid = validateCustomMap(sheet({ features: [{ type: "bunker", x: 97, y: 64, facing: 0 }] }));
+    assert.equal(offGrid.ok, false);
+    const crossed = validateCustomMap(
+      sheet({
+        features: [
+          { type: "wall", x: 100, y: 100, facing: 0 },
+          { type: "wall", x: 100, y: 100, facing: 1 },
+        ],
+      }),
+    );
+    assert.equal(crossed.ok, false, "two sections crossing on one tile overlap");
+    assert.equal(validateCustomMap(sheet({ features: [{ type: "dynamo" as never, x: 64, y: 64, facing: 0 }] })).ok, false);
+  });
+
+  it("gives a section a three-tile run across the way it faces", () => {
+    assert.deepEqual(featureBox({ type: "sandbags", x: 10, y: 10, facing: 0 }), { x0: 10, y0: 9, x1: 11, y1: 12 });
+    assert.deepEqual(featureBox({ type: "wall", x: 10, y: 10, facing: 3 }), { x0: 9, y0: 10, x1: 12, y1: 11 });
+  });
+
+  it("plays a test map with one start but never saves one", () => {
+    const one = { maxPlayers: 4, spawns: [{ id: 1, x: 30, y: 30 }] };
+    const id = newPlaytestMapId();
+    assert.equal(isPlaytestMapId(id), true);
+    assert.equal(validateCustomMap(sheet({ ...one, id }), { playtest: true }).ok, true);
+    assert.equal(validateCustomMap(sheet({ ...one, id: "c-testmap01" }), { playtest: true }).ok, false, "a play test needs a play-test id");
+    assert.equal(validateCustomMap(sheet({ ...one, id })).ok, false, "a saved map needs every start and a normal id");
+    assert.equal(validateCustomMap(sheet({ id, spawns: [] }), { playtest: true }).ok, false, "a play test still needs a start");
+  });
+
+  it("keeps a play test off the map lists", () => {
+    const id = newPlaytestMapId();
+    const loaded = loadCustomMap(sheet({ id, maxPlayers: 4, spawns: [{ id: 1, x: 30, y: 30 }] }), { playtest: true });
+    assert.equal(loaded.ok, true);
+    try {
+      assert.ok(getMap(id));
+      assert.equal(listMaps().some((m) => m.id === id), false);
+    } finally {
+      unregisterMap(id);
+    }
+  });
+
+  it("stands map defences neutral, and the side that takes one holds it", () => {
+    const id = newPlaytestMapId();
+    const loaded = loadCustomMap(
+      sheet({ id, maxPlayers: 4, spawns: [{ id: 1, x: 30, y: 30 }], features: defences }),
+      { playtest: true },
+    );
+    if (!loaded.ok) throw new Error(loaded.message);
+    try {
+      const made = createRoom({ id: "TEST", hostId: "A", hostName: "A", mapId: id, maxSlots: 8, mode: "skirmish" });
+      if (!made.ok) throw new Error(made.message);
+      const started = startMatch(made.value, "A");
+      if (!started.ok) throw new Error(started.message);
+      const state = createMatch(made.value, started.value);
+      const of = (type: string) => [...state.entities.values()].find((e) => e.type === type)!;
+      const tower = of("tower");
+      const bunker = of("bunker");
+      const bags = of("sandbags");
+      const wall = of("wall");
+      for (const e of [tower, bunker, bags, wall]) assert.equal(e.ownerId, NEUTRAL_OWNER, `${e.type} starts neutral`);
+      assert.equal(state.fortBlock.some((v) => v > 0), true, "map sections block like built ones");
+      assert.equal(spotlightManned(tower), false, "an untaken tower stands dark");
+
+      const ts = state.tileSize;
+      const climber = makeEntity(state, "rifleman", "A", tower.x, tower.y + 40);
+      assert.equal(enterGarrison(state, climber, tower), true);
+      assert.equal(tower.ownerId, "A");
+      assert.equal(spotlightManned(tower), true, "the lamp lights once someone holds the tower");
+
+      // Behind the bags on their east face, inside the cover band.
+      makeEntity(state, "rifleman", "A", tileCenter(61, ts) + 10, tileCenter(121, ts));
+      step(state);
+      assert.equal(bags.ownerId, "A");
+      assert.equal(wall.ownerId, NEUTRAL_OWNER, "nobody is at the wall");
+      assert.equal(bunker.ownerId, NEUTRAL_OWNER);
+    } finally {
+      unregisterMap(id);
     }
   });
 });

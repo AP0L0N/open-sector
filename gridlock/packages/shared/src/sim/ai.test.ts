@@ -303,7 +303,7 @@ describe("easy CPU", () => {
     cpu.scrap = 5000;
     micro(state, aiId);
     assert.equal(cpu.defence?.type, "tower");
-    assert.notEqual(cpu.structure?.type, "armory", "the Machine Shop waits for a tower");
+    assert.notEqual(state.players.get(aiId)!.structure?.type, "armory", "the Machine Shop waits for a tower");
     cpu.defence!.ready = true;
     cpu.defence!.paid = catalog("tower").cost;
     micro(state, aiId);
@@ -339,7 +339,7 @@ describe("easy CPU", () => {
       assert.ok((s.x - tower.x) * dir.x + (s.y - tower.y) * dir.y > 0, "the wall stands in front of the tower");
     }
     assert.ok(planOf(state, aiId).gate, "a gate waits on the line");
-    for (let i = 0; i < 2000 && !(cpu.line?.type === "gate"); i++) {
+    for (let i = 0; i < 2000 && state.players.get(aiId)!.line?.type !== "gate"; i++) {
       cpu.scrap = 50000;
       stepMatch(state);
     }
@@ -560,7 +560,7 @@ describe("easy CPU", () => {
     cpu.structure = null;
     cpu.scrap = 20000;
     tickAi(state);
-    assert.notEqual(cpu.structure?.type, "research");
+    assert.notEqual(state.players.get(aiId)!.structure?.type, "research");
   });
 
   it("builds the Radar Station after the Airfield, once power covers it", () => {

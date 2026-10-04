@@ -1,6 +1,10 @@
 import {
   DEFAULT_MAP_ID,
   PROTOCOL_VERSION,
+  SLOT_COUNT,
+  isPlaytestMapId,
+  loadCustomMap,
+  unregisterMap,
   DISCONNECT_GRACE_MS,
   TICK_MS,
   applyCommand,
@@ -151,6 +155,9 @@ export class Hub {
       case "map.delete":
         this.onMapDelete(session, msg.id, msg.key);
         break;
+      case "map.test":
+        this.onMapTest(session, msg.map);
+        break;
       default:
         if (msg.type.startsWith("cmd.")) this.onCmd(session, msg);
         break;
@@ -279,6 +286,8 @@ export class Hub {
     const ids = [...(this.members.get(roomId) ?? [])];
     const room = this.rooms.get(roomId);
     if (room) room.phase = "ended";
+    // A play test's sheet lives only as long as its room.
+    if (room && isPlaytestMapId(room.mapId)) unregisterMap(room.mapId);
     this.stopTicker(roomId);
     this.matches.delete(roomId);
     this.rooms.delete(roomId);
@@ -366,6 +375,27 @@ export class Hub {
       s.spawnId = 0;
       if (s.status === "human") s.ready = false;
     }
+  }
+
+  /**
+   * Map Builder play test: load the sheet as a private map, open a skirmish on
+   * it with the sender alone, and start. Nothing is stored or announced.
+   */
+  private onMapTest(session: Session, map: unknown): void {
+    const id = (map as { id?: unknown } | null)?.id;
+    if (typeof id !== "string" || !isPlaytestMapId(id)) return this.err(session, "bad_payload", "Invalid play test.");
+    const using = this.roomsOnMap(id);
+    if (using.playing || using.lobby.length > 0) return this.err(session, "map_locked", "That play test is already running.");
+    const loaded = loadCustomMap({ ...(map as object), author: session.name, updatedAt: 0 }, { playtest: true });
+    if (!loaded.ok) return this.err(session, "map_invalid", loaded.message);
+    log("map.test", { playerId: session.playerId, mapId: id });
+    this.onCreate(session, id, SLOT_COUNT, "skirmish");
+    const room = this.roomOf(session);
+    if (room?.mapId !== id) {
+      unregisterMap(id);
+      return;
+    }
+    this.onStart(session);
   }
 
   private onMapSave(session: Session, map: unknown, key: unknown): void {
