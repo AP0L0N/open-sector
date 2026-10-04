@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BUILDING_TYPES, TRAIN_TYPES, YARD_FIELD_TYPES, isHiddenField } from "@gridlock/shared";
+import { BUILDING_TYPES, TRAIN_TYPES, YARD_FIELD_TYPES, catalog, isHiddenField } from "@gridlock/shared";
 import { groupEntries, groupState, sidebarGroupOf, type CameoFlags } from "./sidebar-groups.js";
 
 const idle: CameoFlags = { disabled: false, ready: false, working: false, paused: false };
@@ -35,6 +35,11 @@ describe("sidebarGroupOf", () => {
     assert.equal(sidebarGroupOf("stuka"), "aircraft");
     assert.equal(sidebarGroupOf("fw190"), "aircraft");
     assert.equal(sidebarGroupOf("bv222"), "aircraft");
+  });
+
+  it("lists tanks cheapest first", () => {
+    const costs = groupEntries().tanks.map((e) => catalog(e.type).cost);
+    assert.deepEqual(costs, [...costs].sort((a, b) => a - b));
   });
 });
 

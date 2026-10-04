@@ -39,7 +39,7 @@ export interface GroupEntry {
   type: BuildingType | TrainType | YardFieldType;
 }
 
-/** Cameos in each group, in catalog order. */
+/** Cameos in each group, in catalog order. Tanks run cheapest first; ties keep catalog order. */
 export function groupEntries(): Record<SidebarGroup, GroupEntry[]> {
   const out: Record<SidebarGroup, GroupEntry[]> = { structures: [], defences: [], infantry: [], tanks: [], aircraft: [] };
   for (const type of BUILDING_TYPES) out[sidebarGroupOf(type)].push({ id: "build-" + type, type });
@@ -47,6 +47,7 @@ export function groupEntries(): Record<SidebarGroup, GroupEntry[]> {
     if (!isHiddenField(type)) out.defences.push({ id: "build-" + type, type });
   }
   for (const type of TRAIN_TYPES) out[sidebarGroupOf(type)].push({ id: "train-" + type, type });
+  out.tanks.sort((a, b) => catalog(a.type).cost - catalog(b.type).cost);
   return out;
 }
 
