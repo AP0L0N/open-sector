@@ -3,7 +3,9 @@
  * the sim box at any facing. `along` runs down the wall, `across` is the look
  * direction. The slab top is one level across a connected run; the bottom
  * follows the ground under each corner. That level is the highest ground the
- * run has stood on. A section that falls does not lower the rest.
+ * run has stood on. A section that falls does not lower the rest. Where that
+ * level would stand a section more than two slabs over its ground, the run is
+ * cut there and the low part starts its own top (`wallRunTops`).
  *
  * The ordinary Wall is a chest-high slab with barbed wire. The Large wall is
  * the same concrete, taller, with firing slits down both flanks for the men
@@ -16,7 +18,7 @@
  * the corner, and nothing shows in the inner angle.
  */
 
-import { FIELD_TURN_MAX, fieldTurn } from "@gridlock/shared";
+import { FIELD_TURN_MAX, fieldTurn, LARGE_WALL_SLAB_HEIGHT, WALL_SLAB_HEIGHT } from "@gridlock/shared";
 
 export interface WallSection {
   x: number;
@@ -159,11 +161,11 @@ export function wallTopElev(grounds: readonly number[], slabLevels: number, cres
 }
 
 /** Slab height in world units. About chest-high on a standing soldier. */
-export const WALL_SLAB_H = 15;
+export const WALL_SLAB_H = WALL_SLAB_HEIGHT;
 /** Barbed wire above the slab, in world units. */
 export const WALL_WIRE_H = 5.5;
 /** Large wall slab, world units. Well over a standing man; the slits sit at his shoulder. */
-export const LARGE_WALL_SLAB_H = 24;
+export const LARGE_WALL_SLAB_H = LARGE_WALL_SLAB_HEIGHT;
 
 export interface WallStyle {
   /** Slab height, world units. */

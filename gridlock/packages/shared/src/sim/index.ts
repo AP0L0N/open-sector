@@ -130,4 +130,7 @@ export {
   sandbagCoverBonus,
   wallAxes,
   wallFlankedBothEnds,
+  wallRiseLimit,
+  wallRunTops,
 } from "./field.js";
+export type { WallTopSample } from "./field.js";

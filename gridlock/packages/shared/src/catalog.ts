@@ -3738,6 +3738,20 @@ export function fieldSpan(type: EntityType): { length: number; thick: number } |
   return null;
 }
 
+/** Wall slab height, world units. About chest-high on a standing soldier. */
+export const WALL_SLAB_HEIGHT = 15;
+/** Large wall slab, world units. Well over a standing man; the slits sit at his shoulder. */
+export const LARGE_WALL_SLAB_HEIGHT = 24;
+/**
+ * Most a concrete run lifts its slab above the ground under a section, in slab heights.
+ * Past that the run is cut and the low part starts its own top.
+ */
+export const WALL_RISE_MAX_SLABS = 2;
+
+export function wallSlabHeight(type: ConcreteLineType): number {
+  return type === "greatwall" ? LARGE_WALL_SLAB_HEIGHT : WALL_SLAB_HEIGHT;
+}
+
 export function isTrainType(type: string): type is TrainType {
   return (TRAIN_TYPES as readonly string[]).includes(type);
 }

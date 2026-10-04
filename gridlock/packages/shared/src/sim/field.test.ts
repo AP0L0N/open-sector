@@ -36,6 +36,8 @@ import {
   overlapsFieldIn,
   restampForts,
   sandbagCoverBonus,
+  wallRiseLimit,
+  wallRunTops,
 } from "./field.js";
 import { enterGarrison, garrisonMuzzleToward } from "./garrison.js";
 import { toWreck } from "./wreck.js";
@@ -1707,5 +1709,55 @@ describe("wall height", () => {
     assert.equal(alone.ok, true, alone.ok ? "" : alone.message);
     for (let i = 0; i < 1500 && walls().length < 6; i++) step(state, TICK_DT);
     for (const w of walls().filter((w) => w.x > x + 100)) assert.equal(w.wallCrest, 0);
+  });
+
+  it("cuts a run where its top would stand more than twice the slab over the ground", () => {
+    const line = (i: number, j: number) => Math.abs(i - j) === 1;
+    // A hilltop section at 10, then the run falls away to the flat.
+    const samples = [
+      { peak: 10, low: 9 },
+      { peak: 9, low: 4 },
+      { peak: 4, low: 0 },
+      { peak: 0, low: 0 },
+      { peak: 0, low: 0 },
+    ];
+    // The third section would stand 10 over its foot: cut, and the rest start from its own peak.
+    assert.deepEqual(wallRunTops(samples, line, 6), [10, 10, 4, 4, 4]);
+    assert.deepEqual(wallRunTops(samples, line, 100), [10, 10, 10, 10, 10], "no cut under the limit");
+    // A remembered crest still holds its section, and the cut keeps the low part low.
+    assert.deepEqual(wallRunTops([{ peak: 0, low: 0, crest: 10 }, { peak: 0, low: 0 }], line, 6), [10, 0]);
+  });
+
+  it("restarts the top of a line that runs off a tall knoll", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 20, 20, 30, 30);
+    const ts = state.tileSize;
+    const x = tileCenter(34, ts);
+    const y = tileCenter(26, ts);
+    const tall = Math.ceil(wallRiseLimit("wall")) + 2;
+    state.heights.fill(0);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) state.heights[tileIndex(state, 34 + dx, 26 + dy)] = tall;
+    }
+    const eng = makeEntity(state, "engineer", "A", x + 30, y - 30);
+    const res = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [eng.id],
+      structure: "wall",
+      x,
+      y,
+      facing: 0,
+      path: [
+        { x, y },
+        { x, y: y + L * 4 },
+      ],
+    });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    const walls = () => [...state.entities.values()].filter((e) => e.type === "wall" && e.hp > 0);
+    for (let i = 0; i < 2000 && walls().length < 4; i++) step(state, TICK_DT);
+    const built = walls().sort((a, b) => a.y - b.y);
+    assert.equal(built.length, 4);
+    assert.equal(built[0]!.wallCrest, tall, "the knoll section stands on the knoll");
+    for (const w of built.slice(1)) assert.equal(w.wallCrest, 0, "the flat sections start their own top");
   });
 });
