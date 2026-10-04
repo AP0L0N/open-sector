@@ -3465,6 +3465,7 @@ export class MapView {
       }
     }
     this.collectFieldSites(items);
+    this.collectBuildSites(items);
     this.collectTrees(items, castShadows);
     this.collectDecor(items);
     this.collectTreeBurns(items);
@@ -7435,6 +7436,52 @@ export class MapView {
           },
         });
       }
+    }
+  }
+
+  /**
+   * The Smelter or Marine Base an engineer is set to raise, drawn as a see-through building on its
+   * footprint like a Wall site, until the real one stands. Only his owner's snapshot carries it.
+   */
+  private collectBuildSites(items: DrawItem[]): void {
+    const ts = this.ts();
+    for (const e of this.curr.entities) {
+      const site = e.buildSite;
+      if (!site || e.garrisonedIn || e.ownerId !== this.curr.youPlayerId) continue;
+      const box = buildingSite(site.building, site.tileX, site.tileY, 0, ts);
+      const x = box.tileX * ts;
+      const y = box.tileY * ts;
+      const bw = box.tileW * ts;
+      const bh = box.tileH * ts;
+      const foot = axisFootprint(x, y, bw, bh);
+      items.push({
+        layer: STANDING_DRAW_LAYER,
+        z: isoDepth(foot.cx, foot.cy),
+        foot,
+        run: () => {
+          const elev = this.buildingElev(box);
+          const spr = buildingSpriteFor(site.building, box.facing);
+          const ctx = this.ctx;
+          ctx.save();
+          ctx.globalAlpha = FIELD_SITE_ALPHA;
+          if (spr && spriteReady(spr)) {
+            const south = this.toScreen(x + bw, y + bh, elev);
+            const east = this.toScreen(x + bw, y, elev);
+            const west = this.toScreen(x, y + bh, elev);
+            const ground = buildingGroundFor(site.building, box.facing);
+            if (ground && spriteReady(ground)) drawBuildingSprite(ctx, ground, south.x, south.y, east.x - west.x);
+            drawBuildingSprite(ctx, spr, south.x, south.y, east.x - west.x);
+          } else {
+            this.drawIsoBox(x, y, bw, bh, this.extrude(site.building), this.ownerColor(e), {
+              alpha: FIELD_SITE_ALPHA,
+              stroke: "#2a2018",
+              strokeW: 1.5,
+              elev,
+            });
+          }
+          ctx.restore();
+        },
+      });
     }
   }
 

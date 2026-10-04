@@ -12,6 +12,7 @@ import {
   AIRFIELD_PADS,
   beltOf,
   catalog,
+  engineerBuildSeconds,
   isConcreteLine,
   clampGameSpeed,
   deploySecondsOf,
@@ -145,6 +146,15 @@ function fieldSitesView(e: Entity, friendly: boolean): EntityView["fieldSites"] 
     }
   }
   return sites;
+}
+
+/** The base building a friendly engineer is set to raise. Enemies never get it. */
+function buildSiteView(e: Entity, friendly: boolean): EntityView["buildSite"] {
+  const o = e.order;
+  if (!friendly || o?.kind !== "build" || o.building == null || o.tileX == null || o.tileY == null) return undefined;
+  const working = e.state === "build" && e.work > 0;
+  const progress = working ? Math.min(1, e.work / engineerBuildSeconds(o.building)) : undefined;
+  return { building: o.building, tileX: o.tileX, tileY: o.tileY, progress };
 }
 
 function structureQueueView(job: StructureJob | null | undefined): StructureQueueView | null {
@@ -335,6 +345,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       gate: e.gate ? { locked: e.gate.locked, open: Math.round(e.gate.open * 100) / 100 } : undefined,
       wallCrest: isConcreteLine(e.type) && e.wallCrest != null ? e.wallCrest : undefined,
       fieldSites: e.type === "engineer" ? fieldSitesView(e, friendly) : undefined,
+      buildSite: e.type === "engineer" ? buildSiteView(e, friendly) : undefined,
       scout: scoutView(e, friendly),
       supply: friendly && isSupplyCarrier(e.type) && !e.wreck ? e.supply : undefined,
       gun:

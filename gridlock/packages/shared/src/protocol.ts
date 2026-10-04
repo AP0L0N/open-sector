@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 93;
+export const PROTOCOL_VERSION = 94;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -246,6 +246,11 @@ export interface EntityView {
    * once digging starts. Friendlies also get the queued pieces; enemies only see a piece being dug.
    */
   fieldSites?: { structure: FieldStructureType; x: number; y: number; facing: number; progress?: number }[];
+  /**
+   * Base building (Smelter, Marine Base) this engineer is on his way to raise or is raising, with its
+   * top-left tile. `progress` is 0–1 once he works. Only his owner gets it: the enemy sees no site.
+   */
+  buildSite?: { building: BuildingType; tileX: number; tileY: number; progress?: number };
   /**
    * Hatch crew on a tank. Friendlies always see hp. `out` means the head is
    * visible; enemies only receive this object while the hatch is open.

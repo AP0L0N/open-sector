@@ -593,6 +593,19 @@ export const ENGINEER_BUILDINGS: readonly BuildingType[] = ["smelter", "dock"];
 export function isEngineerBuilding(type: string): type is BuildingType {
   return (ENGINEER_BUILDINGS as readonly string[]).includes(type);
 }
+/** The yard raises an engineer building this much faster than its catalog `buildSeconds`. */
+export const YARD_ENGINEER_BUILDING_SPEED = 1.5;
+/** An engineer in the field works at this fraction of the catalog pace. */
+export const ENGINEER_BUILD_SPEED = 0.8;
+/** Seconds the yard spends on a base building. */
+export function yardBuildSeconds(type: BuildingType): number {
+  const s = catalog(type).buildSeconds;
+  return isEngineerBuilding(type) ? s / YARD_ENGINEER_BUILDING_SPEED : s;
+}
+/** Seconds an engineer works to raise `type` in the field. */
+export function engineerBuildSeconds(type: BuildingType): number {
+  return catalog(type).buildSeconds / ENGINEER_BUILD_SPEED;
+}
 /**
  * Base buildings the player turns before placing them, like a wall or sandbags: one
  * BUILDING_TURN_STEP per wheel notch. The footprint turns with the building.

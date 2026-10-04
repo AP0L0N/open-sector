@@ -14,7 +14,10 @@ import {
   TILE_SUBDIV,
   TRAIN_TYPES,
   catalog,
+  engineerBuildSeconds,
   isDefenceStructure,
+  secondsToTicks,
+  yardBuildSeconds,
   type BuildingType,
 } from "../catalog.js";
 import { TILE_DIAMOND_SCRAP, TILE_EMPTY, TILE_ROAD, TILE_SCRAP, getMap } from "../maps.js";
@@ -364,7 +367,9 @@ describe("engineer raises a Smelter", () => {
     }
     assert.ok(paidAt >= 0, "the cost was taken");
     assert.ok(builtAt > paidAt, `Smelter never rose (paid=${paidAt} built=${builtAt})`);
-    assert.ok(builtAt - paidAt >= sm.buildSeconds / TICK_DT - 2, `worked ${(builtAt - paidAt) * TICK_DT}s, wants ${sm.buildSeconds}s`);
+    const work = engineerBuildSeconds("smelter");
+    assert.ok(work > sm.buildSeconds, "an engineer is slower than the catalog pace");
+    assert.ok(builtAt - paidAt >= work / TICK_DT - 2, `worked ${(builtAt - paidAt) * TICK_DT}s, wants ${work}s`);
     const smelter = [...state.entities.values()].find((e) => e.type === "smelter" && e.ownerId === "A")!;
     assert.equal(smelter.tileX, tx);
     assert.equal(smelter.tileY, ty);
@@ -409,13 +414,52 @@ describe("engineer raises a Smelter", () => {
     const dyn = catalog("dynamo");
     const c = buildingCenter(tx, ty, dyn.tileW, dyn.tileH, state.tileSize);
     makeEntity(state, "dynamo", "B", c.x, c.y, { tileX: tx, tileY: ty });
-    ticks(state, Math.ceil(sm.buildSeconds / TICK_DT) + 5);
+    ticks(state, Math.ceil(engineerBuildSeconds("smelter") / TICK_DT) + 5);
     assert.equal(
       [...state.entities.values()].some((e) => e.type === "smelter" && e.ownerId === "A"),
       false,
     );
     assert.equal(p.scrap, sm.cost, "the cost comes back");
     assert.equal(eng.order, null);
+  });
+
+  it("shows the site to his owner only, with progress once he works", () => {
+    const { state, eng, tx, ty } = fixture();
+    const p = state.players.get("A")!;
+    p.scrap = sm.cost;
+    applyCommand(state, "A", { type: "cmd.construct", ids: [eng.id], building: "smelter", tx, ty });
+    const siteFor = (who: string) => snapshotFor(state, who).entities.find((e) => e.id === eng.id)?.buildSite;
+    assert.deepEqual(siteFor("A"), { building: "smelter", tileX: tx, tileY: ty, progress: undefined });
+    assert.equal(siteFor("B"), undefined, "the enemy sees no site on the way");
+    for (let i = 0; i < 600 && p.scrap > 0; i++) step(state, TICK_DT);
+    ticks(state, 20);
+    const prog = siteFor("A")?.progress ?? 0;
+    assert.ok(prog > 0 && prog < 1, `progress ${prog}`);
+    assert.equal(siteFor("B"), undefined, "nor while he works");
+  });
+});
+
+describe("Smelter and Marine Base build time", () => {
+  it("the yard builds them 50% faster and an engineer 20% slower than the catalog pace", () => {
+    for (const type of ["smelter", "dock"] as const) {
+      const s = catalog(type).buildSeconds;
+      assert.equal(yardBuildSeconds(type), s / 1.5);
+      assert.equal(engineerBuildSeconds(type), s / 0.8);
+    }
+    assert.equal(yardBuildSeconds("dynamo"), catalog("dynamo").buildSeconds, "other buildings keep their time");
+  });
+
+  it("queues the yard job at the faster time; a Dynamo keeps its catalog time", () => {
+    const { state } = twoPlayerMatch();
+    deploy(state, "A");
+    const p = state.players.get("A")!;
+    const job = () => p.structure;
+    const res = applyCommand(state, "A", { type: "cmd.build", building: "smelter" });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    assert.equal(job()?.totalTicks, secondsToTicks(catalog("smelter").buildSeconds / 1.5));
+    p.structure = null;
+    assert.equal(applyCommand(state, "A", { type: "cmd.build", building: "dynamo" }).ok, true);
+    assert.equal(job()?.totalTicks, secondsToTicks(catalog("dynamo").buildSeconds));
   });
 });
 

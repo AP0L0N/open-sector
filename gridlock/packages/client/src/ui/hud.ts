@@ -57,6 +57,7 @@ import {
   producerType,
   productionSpeed,
   shellsFor,
+  engineerBuildSeconds,
   specialLabel,
   specialOf,
   specialReady,
@@ -1798,8 +1799,8 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
         label: def.name,
         title:
           building === "dock"
-            ? `Raise a ${def.name} on open water, any distance from the yard, for ${def.cost} scrap. Every tile under it must be water; he swims out to the site. He pays when he starts and works ${def.buildSeconds}s. It trains boats there and pushes your build range out to it.`
-            : `Raise a ${def.name} on a scrap field, any distance from the yard, for ${def.cost} scrap. Click the field with at least half the footprint on scrap. He pays when he starts and works ${def.buildSeconds}s. It pours ${SMELTER_SCRAP_PER_SEC} scrap a second and pushes your build range out to it.`,
+            ? `Raise a ${def.name} on open water, any distance from the yard, for ${def.cost} scrap. Every tile under it must be water; he swims out to the site. He pays when he starts and works ${Math.round(engineerBuildSeconds(building))}s. It trains boats there and pushes your build range out to it.`
+            : `Raise a ${def.name} on a scrap field, any distance from the yard, for ${def.cost} scrap. Click the field with at least half the footprint on scrap. He pays when he starts and works ${Math.round(engineerBuildSeconds(building))}s. It pours ${SMELTER_SCRAP_PER_SEC} scrap a second and pushes your build range out to it.`,
         on: view?.constructPlace === building,
       });
     }
