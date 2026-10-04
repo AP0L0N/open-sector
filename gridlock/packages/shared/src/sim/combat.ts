@@ -2499,7 +2499,8 @@ export function syncTorpedoes(state: MatchState): void {
     if (p.bodyId == null) return true;
     const body = state.entities.get(p.bodyId);
     if (!body || body.hp <= 0) {
-      pushImpact(state, p, "hit", p.x, p.y);
+      // Shot apart, it struck nothing: the warhead goes off in open water.
+      pushImpact(state, p, "miss", p.x, p.y);
       return false;
     }
     body.x = p.x;
@@ -2834,6 +2835,7 @@ function pushImpact(
     shot: p.flight === "rocket" ? p.id : undefined,
     z: p.airBurst ? (p.z ?? 0) : undefined,
     airZ: p.aloft ? (p.z ?? 0) : undefined,
+    torpedo: p.torpedo || undefined,
   };
   // An air burst leaves no crater and no splash under the plane. Nor does a round lost in the sky.
   if (!p.airBurst && !p.aloft) noteImpactSurface(state, impact, p, kind);

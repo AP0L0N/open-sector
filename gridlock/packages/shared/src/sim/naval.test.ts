@@ -24,6 +24,7 @@ import {
 } from "../catalog.js";
 import { HEIGHT_BASE } from "../catalog.js";
 import { TILE_EMPTY, TILE_WATER, getMap } from "../maps.js";
+import type { ImpactView } from "../protocol.js";
 import { canBoardPlane } from "./airdrop.js";
 import { buildingSiteError } from "./build.js";
 import { applyCommand } from "./commands.js";
@@ -264,9 +265,17 @@ describe("Submarine torpedoes", () => {
     boat.cooldown = 1e6;
     const hp = boat.hp;
     applyCommand(state, "A", { type: "cmd.attack", ids: [sub.id], targetId: boat.id });
-    for (let i = 0; i < 200 && boat.hp === hp; i++) step(state, TICK_DT);
+    const seen: ImpactView[] = [];
+    for (let i = 0; i < 200 && boat.hp === hp; i++) {
+      step(state, TICK_DT);
+      seen.push(...state.impacts);
+    }
     assert.ok(boat.hp < hp, "the torpedo found it");
     assert.notEqual(sub.surfacedTick, undefined);
+    const blow = seen.find((v) => v.torpedo);
+    assert.ok(blow, "the impact is marked a torpedo's");
+    assert.ok(["hit", "pen", "kill"].includes(blow.kind), "it went off against the hull");
+    assert.equal(blow.splash, true, "in the water");
   });
 
   it("runs slow and in sight as a body the enemy can see but nobody can order", () => {
@@ -314,8 +323,15 @@ describe("Submarine torpedoes", () => {
     boat.cooldown = 0;
     assert.equal(applyCommand(state, "B", { type: "cmd.attack", ids: [boat.id], targetId: body.id }).ok, true);
     const id = body.id;
-    for (let i = 0; i < 200 && state.entities.has(id); i++) step(state, TICK_DT);
+    const seen: ImpactView[] = [];
+    for (let i = 0; i < 200 && state.entities.has(id); i++) {
+      step(state, TICK_DT);
+      seen.push(...state.impacts);
+    }
     assert.equal(state.entities.has(id), false, "the 20mm took it apart");
+    const blow = seen.find((v) => v.torpedo);
+    assert.equal(blow?.kind, "miss", "it struck nothing");
+    assert.equal(blow?.splash, true, "it went off in open water");
     assert.equal(state.projectiles.some((q) => q.bodyId === id), false, "and its warhead with it");
     ticks(state, 100);
     assert.equal(boat.hp, hp, "it never arrived");
