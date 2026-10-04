@@ -6,7 +6,9 @@ import {
   SUB_AIR_RECOVER_MUL,
   SUB_DETECT_TILES,
   SUB_DIVE_SECONDS,
+  SUB_REARM_SECONDS,
   SUB_REVEAL_SECONDS,
+  SUB_TORPEDOES,
   TICK_DT,
   TORPEDO_SPEED,
   TRAIN_TYPES,
@@ -284,7 +286,7 @@ describe("Submarine torpedoes", () => {
     assert.equal(body.ownerId, "A");
     const p = state.projectiles.find((q) => q.bodyId === body!.id);
     assert.ok(p, "its warhead round rides with it");
-    assert.equal(Math.hypot(p.vx, p.vy), TORPEDO_SPEED);
+    assert.ok(Math.abs(Math.hypot(p.vx, p.vy) - TORPEDO_SPEED) < 1e-9);
     assert.equal(snapshotFor(state, "B").entities.some((v) => v.id === body!.id), true, "the enemy sees it running");
     assert.equal(snapshotFor(state, "A").projectiles.some((v) => v.id === p.id), false, "drawn as its body, not as a round");
     const x0 = body.x;
@@ -331,6 +333,46 @@ describe("Submarine torpedoes", () => {
     ticks(state, 60);
     assert.notEqual(sub.surfacedTick, undefined, "it fired");
     assert.equal(boat.hp, hp, "the spit took the torpedo");
+  });
+});
+
+describe("Submarine torpedo load", () => {
+  it("leaves the slip with a full load and spends one torpedo a shot", () => {
+    const { state, lx0, ly0 } = harbour();
+    const sub = spawn(state, "submarine", "A", lx0 + 4, ly0 + 10);
+    assert.equal(sub.clip, SUB_TORPEDOES);
+    sub.facing = 0;
+    sub.clip = 1;
+    const boat = spawn(state, "gunboat", "B", lx0 + 22, ly0 + 10);
+    boat.holdPosition = true;
+    boat.cooldown = 1e6;
+    boat.hp = boat.hpMax = 1_000_000;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [sub.id], targetId: boat.id });
+    for (let i = 0; i < 200 && boat.hp === boat.hpMax; i++) step(state, TICK_DT);
+    assert.ok(boat.hp < boat.hpMax, "the last torpedo found it");
+    assert.equal(sub.clip, 0);
+    const hp = boat.hp;
+    ticks(state, secondsToTicks(catalog("submarine").cooldown * 3));
+    assert.equal(boat.hp, hp, "empty tubes stay silent");
+    const running = [...state.entities.values()].filter((e) => isTorpedoBody(e.type) && e.hp > 0);
+    assert.equal(running.length, 0);
+  });
+
+  it("loads again only beside a friendly Marine Base", () => {
+    const { state, lx0, ly0 } = harbour();
+    const sub = spawn(state, "submarine", "A", lx0 + 10, ly0 + 10);
+    sub.holdPosition = true;
+    sub.clip = 0;
+    ticks(state, secondsToTicks(SUB_REARM_SECONDS) + 2);
+    assert.equal(sub.clip, 0, "no base, no torpedoes");
+    makeEntity(state, "dock", "A", tileCenter(lx0 + 13, state.tileSize), tileCenter(ly0 + 10, state.tileSize), {
+      tileX: lx0 + 13,
+      tileY: ly0 + 9,
+    });
+    ticks(state, secondsToTicks(SUB_REARM_SECONDS) + 2);
+    assert.equal(sub.clip, 1);
+    ticks(state, secondsToTicks(SUB_REARM_SECONDS * (SUB_TORPEDOES + 2)));
+    assert.equal(sub.clip, SUB_TORPEDOES, "never past a full load");
   });
 });
 
@@ -428,8 +470,12 @@ describe("Submarine runs submerged", () => {
 describe("boats turn before they move", () => {
   it("swings the bow onto the course before it makes way", () => {
     const { state, lx0, ly0 } = harbour();
-    for (const type of ["gunboat", "submarine"] as const) {
-      const boat = spawn(state, type, "A", lx0 + 20, ly0 + 10 + (type === "gunboat" ? 0 : 10));
+    const ships = TRAIN_TYPES.filter((t) => isNavalType(t));
+    assert.deepEqual([...ships].sort(), ["battleship", "gunboat", "submarine"]);
+    for (const type of ships) {
+      assert.equal(catalog(type).turnInPlace, true, `${type} turns before it moves`);
+      const lane = type === "gunboat" ? 4 : type === "submarine" ? 10 : 20;
+      const boat = spawn(state, type, "A", lx0 + 25, ly0 + lane);
       boat.facing = 0;
       boat.cooldown = 1e6;
       const behind = { x: boat.x - 15 * state.tileSize, y: boat.y };
@@ -441,7 +487,7 @@ describe("boats turn before they move", () => {
       assert.equal(boat.x, x0, `${type} holds while it turns`);
       assert.equal(boat.y, y0, `${type} holds while it turns`);
       assert.notEqual(boat.facing, 0, `${type} is turning`);
-      ticks(state, 200);
+      ticks(state, secondsToTicks(180 / catalog(type).turnDegPerSec) + 200);
       assert.ok(boat.x < x0 - 5 * state.tileSize, `${type} got under way once round`);
     }
   });

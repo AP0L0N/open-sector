@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 91;
+export const PROTOCOL_VERSION = 92;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -660,7 +660,8 @@ export type ClientMessage =
   | { type: "cmd.scout"; ids: number[]; out: boolean }
   | { type: "cmd.stance"; ids: number[]; stance: Stance }
   | { type: "cmd.hold"; ids: number[]; hold: boolean }
-  | { type: "cmd.rotate"; ids: number[]; x: number; y: number; queue?: boolean }
+  /** `light`: Rotate light. Swings only the selection's spotlights (a Battle Ship's), not hulls or guns. */
+  | { type: "cmd.rotate"; ids: number[]; x: number; y: number; queue?: boolean; light?: boolean }
   | {
       type: "cmd.guard";
       ids: number[];

@@ -120,6 +120,21 @@ function path(ctx: CanvasRenderingContext2D, pts: P2[]): void {
 }
 
 /**
+ * Draws the same searchlight with its pivot base at screen point (x, y), at
+ * `u` screen px per mesh unit: the Battle Ship's lamp on its director.
+ */
+export function drawSearchlightAt(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  u: number,
+  facing: number,
+  look: SearchlightLook,
+): SearchlightPose {
+  return drawTowerSearchlight(ctx, x, y + ROOF_LIFT * u, u * PAD_UNITS, facing, look);
+}
+
+/**
  * Draws the searchlight on a tower sprite laid at this pad, turned to `facing`
  * (world radians, the beam's heading). Returns where its lens landed.
  */

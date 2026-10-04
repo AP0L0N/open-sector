@@ -198,7 +198,7 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.hold":
       return cmdHold(state, playerId, msg.ids, msg.hold);
     case "cmd.rotate":
-      return cmdRotate(state, playerId, msg.ids, msg.x, msg.y);
+      return cmdRotate(state, playerId, msg.ids, msg.x, msg.y, msg.light === true);
     case "cmd.guard":
       return cmdGuard(state, playerId, msg.ids, msg.x, msg.y, msg.facing, msg.targetId);
     case "cmd.field":
@@ -648,12 +648,12 @@ function owned(state: MatchState, playerId: string, ids: number[]) {
   return out;
 }
 
-/** Own watch towers in the selection. Rotate swings the spotlight. */
-function ownedLamps(state: MatchState, playerId: string, ids: number[]) {
+/** Own watch towers in the selection, whose Rotate swings the spotlight. `hulls`: a Battle Ship's lamp too (Rotate light). */
+function ownedLamps(state: MatchState, playerId: string, ids: number[], hulls = false) {
   const out = [];
   for (const id of ids) {
     const e = state.entities.get(id);
-    if (e && e.ownerId === playerId && e.kind === "building" && spotlightManned(e)) out.push(e);
+    if (e && e.ownerId === playerId && (e.kind === "building" || hulls) && spotlightManned(e)) out.push(e);
   }
   return out;
 }
@@ -976,16 +976,26 @@ function cmdHold(state: MatchState, playerId: string, ids: number[], hold: boole
   return ok();
 }
 
-function cmdRotate(state: MatchState, playerId: string, ids: number[], x: number, y: number): CmdResult {
-  const units = owned(state, playerId, ids).filter(
-    (e) => e.state !== "deploy" && e.state !== "undeploy" && !e.garrisonedIn,
-  );
-  const mounts = ownedMounts(state, playerId, ids);
-  const lamps = ownedLamps(state, playerId, ids);
-  if (units.length === 0 && mounts.length === 0 && lamps.length === 0) return fail("not_yours", "No owned units.");
-  // The lamp swings over at its own pace; see tickSpotlights. A patrol sweep ends here.
+function cmdRotate(
+  state: MatchState,
+  playerId: string,
+  ids: number[],
+  x: number,
+  y: number,
+  light = false,
+): CmdResult {
+  // Rotate light swings lamps only: the hull keeps its course and the guns their aim.
+  const units = light
+    ? []
+    : owned(state, playerId, ids).filter((e) => e.state !== "deploy" && e.state !== "undeploy" && !e.garrisonedIn);
+  const mounts = light ? [] : ownedMounts(state, playerId, ids);
+  const lamps = ownedLamps(state, playerId, ids, light);
+  if (units.length === 0 && mounts.length === 0 && lamps.length === 0) {
+    return fail("not_yours", light ? "No spotlight to turn." : "No owned units.");
+  }
+  // The lamp swings over at its own pace; see tickSpotlights. A tower's patrol sweep ends here.
   for (const e of lamps) {
-    if (e.order?.kind === "patrol") e.order = null;
+    if (e.kind === "building" && e.order?.kind === "patrol") e.order = null;
     e.spotFacing = spotFacingOf(e);
     e.spotAim = Math.atan2(y - e.y, x - e.x);
   }

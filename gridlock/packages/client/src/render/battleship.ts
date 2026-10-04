@@ -33,6 +33,11 @@ export const BATTLESHIP_MODEL = {
   ciwsBoreZ: 0.5,
   /** Middle of the superstructure, for drawing order against the turrets and the stern mount. */
   superAt: -1.2,
+  /** The searchlight's base: on the roof of the fire-control director (render_battleship.py). */
+  lampAt: 1.25,
+  lampZ: 4.12,
+  /** Searchlight mesh units per model unit: a big lamp, a few metres across. */
+  lampScale: 0.13,
 };
 
 const SIN_CAM = Math.sin(Math.PI / 6);
@@ -117,6 +122,12 @@ export function battleshipLayers(
   const mid = modelOffset(hullRow, midAt * L, BATTLESHIP_MODEL.ciwsZ[0], drawSize);
   items.push({ layer: "ciws", row: shipRow(ciwsFacings[0] ?? hullFacing, tileSize), dx: mid.dx, dy: mid.dy, far: mid.far });
   return items.map(({ layer, row, dx, dy }) => ({ layer, row, dx, dy }));
+}
+
+/** Screen offset of the searchlight's base from the ship's screen point, and its px per lamp mesh unit. */
+export function shipLampMount(hullFacing: number, drawSize: number, tileSize: number): { dx: number; dy: number; u: number } {
+  const o = modelOffset(shipRow(hullFacing, tileSize), BATTLESHIP_MODEL.lampAt, BATTLESHIP_MODEL.lampZ, drawSize);
+  return { dx: o.dx, dy: o.dy, u: screenPerUnit(drawSize) * BATTLESHIP_MODEL.lampScale };
 }
 
 /** World point and screen lift of barrel `k` of turret `i`: where the flash and smoke go. */

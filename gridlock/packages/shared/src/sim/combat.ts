@@ -495,11 +495,12 @@ function roofCiwsTarget(
   e: Entity,
   range: number,
   from: { x: number; y: number } = e,
+  airRange = range,
 ): Entity | undefined {
   let best: Entity | undefined;
   let bestD = range * range;
   let bestAir: Entity | undefined;
-  let bestAirD = range * range;
+  let bestAirD = airRange * airRange;
   for (const o of state.entities.values()) {
     if (o.kind !== "unit" || o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn != null) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
@@ -638,7 +639,10 @@ function tickShipCiws(state: MatchState, e: Entity, dt: number, downed: Set<numb
       return;
     }
     const at = shipMountPoint(e, BATTLESHIP_CIWS_AT[i]!);
-    const target = m.ammo > 0 ? roofCiwsTarget(state, e, range, at) : undefined;
+    const target =
+      m.ammo > 0
+        ? (shipCiwsOrdered(state, e, at, range) ?? roofCiwsTarget(state, e, range, at, range * CIWS_AIR_REACH_MUL))
+        : undefined;
     m.target = target?.id ?? null;
     const rest = BATTLESHIP_CIWS_AT[i]! < -0.5 ? e.facing + Math.PI : e.facing;
     const want = target ? Math.atan2(target.y - at.y, target.x - at.x) : rest;
@@ -661,6 +665,25 @@ function tickShipCiws(state: MatchState, e: Entity, dt: number, downed: Set<numb
     m.fireTick = state.tick;
     m.cooldown = TICK_DT;
   });
+}
+
+/** A plane, a paratrooper under canopy, a Jump Jet aloft, or a drone: the CIWS's work, never the main guns'. */
+function shipAirTarget(o: Entity): boolean {
+  return isAirborne(o) || !!o.drone;
+}
+
+/**
+ * The aircraft the player ordered the ship onto (attack or force-attack), when
+ * mount `at` can reach it. Force-attack takes a friendly one too.
+ */
+function shipCiwsOrdered(state: MatchState, e: Entity, at: { x: number; y: number }, range: number): Entity | undefined {
+  const order = e.order;
+  if (!order || order.auto || (order.kind !== "attack" && order.kind !== "forceattack")) return undefined;
+  const t = currentTarget(state, e);
+  if (!t || t.kind !== "unit" || !shipAirTarget(t)) return undefined;
+  if (Math.hypot(t.x - at.x, t.y - at.y) > range * CIWS_AIR_REACH_MUL) return undefined;
+  if (!canSeeEntity(state, e.ownerId, t)) return undefined;
+  return t;
 }
 
 /** A turret is laid when it is this close to the bearing. */
@@ -726,9 +749,13 @@ function fireShipBarrel(
 function fireShip(state: MatchState, e: Entity, dt: number): void {
   const ship = e.ship!;
   for (const t of ship.turrets) for (const b of t.barrels) if (b.cooldown > 0) b.cooldown = Math.max(0, b.cooldown - dt);
-  const target = currentTarget(state, e);
+  const picked = currentTarget(state, e);
+  // An aircraft is the CIWS mounts' work (tickShipCiws). The main battery holds and rests on the bow.
+  const aloft = !!picked && shipAirTarget(picked);
+  if (aloft) e.state = "attack";
+  const target = aloft ? undefined : picked;
   const ground =
-    !target && e.order?.kind === "forceattack" && e.order.x != null && e.order.y != null
+    !picked && e.order?.kind === "forceattack" && e.order.x != null && e.order.y != null
       ? { x: e.order.x, y: e.order.y }
       : null;
   const aim = ground ?? (target && target.hp > 0 ? { x: target.x, y: target.y } : null);
@@ -912,6 +939,7 @@ function patrolContact(state: MatchState, e: Entity, o: Entity): boolean {
   if (o.kind !== "unit" || o.hp <= 0 || o.wreck || o.id === e.id || o.garrisonedIn != null) return false;
   if (isCrashing(o) || !o.ownerId || allies(state, e.ownerId, o.ownerId)) return false;
   if (!canSeeEntity(state, e.ownerId, o) || outOfReachAloft(state, e, o)) return false;
+  if (e.ship && shipAirTarget(o)) return false;
   if (dropsUnharmedArmor(state, e, o)) return false;
   const range = weaponRangeWorld(state, e);
   if (range <= 0) return false;
@@ -2934,6 +2962,8 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
     if (outOfReachAloft(state, e, o)) continue;
+    // The ship's CIWS mounts pick their own aircraft. The main battery looks only at the surface.
+    if (e.ship && shipAirTarget(o)) continue;
     if (radar) {
       if (o.kind !== "unit") continue;
       const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;

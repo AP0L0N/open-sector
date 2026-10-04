@@ -4,6 +4,7 @@ import {
   MAMMOTH_LAMP_PERIOD_SECONDS,
   MAMMOTH_LAMP_STEP_DEG,
   MAMMOTH_LAMP_SWING_DEG,
+  catalog,
   hasCrit,
   isAircraftType,
   isArmoredType,
@@ -130,13 +131,18 @@ export function spotlightsOn(tick: number): boolean {
   return daylightAt(tick) < SPOTLIGHT_ON_DAYLIGHT;
 }
 
+/** The Watch Tower's cab lamp, and the Battle Ship's searchlight on the bridge. */
 export function hasSpotlight(type: EntityType): boolean {
-  return type === "tower";
+  return type === "tower" || type === "battleship";
 }
 
-/** Armored ground hulls and the Cyborg carry a headlight. Planes and drones fly dark. */
+/**
+ * Armored ground hulls and the Cyborg carry a headlight. Planes and drones fly
+ * dark, and so does a submarine.
+ */
 export function hasHeadlight(type: EntityType): boolean {
   if (isCyborg(type)) return true;
+  if (catalog(type).submerges) return false;
   return isArmoredType(type) && !isAircraftType(type) && !isDroneType(type) && !hasSpotlight(type);
 }
 
@@ -244,11 +250,18 @@ export function aimSpotlightPatrol(e: Entity): void {
   }
 }
 
-/** Swing every held lamp toward the heading Rotate or a patrol spot gave it. */
+/**
+ * Swing every held lamp toward the heading Rotate or a patrol spot gave it.
+ * A lamp on a hull (the Battle Ship) is carried round as the ship turns.
+ */
 export function tickSpotlights(state: MatchState, dt: number): void {
   const max = ((SPOTLIGHT_TURN_DEG_PER_SEC * Math.PI) / 180) * dt;
   for (const e of state.entities.values()) {
-    if (e.kind !== "building" || !spotlightManned(e)) continue;
+    if (!spotlightManned(e)) continue;
+    if (e.kind === "unit") {
+      if (e.spotFacing != null) e.spotFacing = wrap(e.spotFacing + wrap(e.facing - (e.spotHull ?? e.facing)));
+      e.spotHull = e.facing;
+    }
     const at = spotFacingOf(e);
     e.spotFacing = at;
     if (e.spotAim != null) {
@@ -260,8 +273,8 @@ export function tickSpotlights(state: MatchState, dt: number): void {
         e.spotFacing = wrap(at + Math.sign(delta) * max);
       }
     }
-    // The beam has settled on this spot. Turn it toward the next one.
-    const o = e.order;
+    // The beam has settled on this spot. Turn it toward the next one. A ship's patrol is its course, not the lamp's.
+    const o = e.kind === "building" ? e.order : null;
     if (o?.kind !== "patrol" || !o.route || o.route.length < 2 || e.spotAim != null) continue;
     const loop = o.loop === true;
     const next = stepPatrolLeg(o.route, patrolLegIndex(o.route.length, o.leg, loop), o.dir === -1 ? -1 : 1, loop);

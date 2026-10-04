@@ -32,6 +32,7 @@ import {
   clockMarkLine,
   daylightAt,
   hasHeadlight,
+  hasSpotlight,
   hullLamps,
   lampHeading,
   matchClock,
@@ -233,7 +234,8 @@ describe("night sight for every eye", () => {
 
   it("shrinks what each unit and structure sees after dark, lamps or not", () => {
     for (const type of [...TRAIN_TYPES, ...BUILDING_TYPES]) {
-      if (type === "tower") continue;
+      // The Watch Tower and the Battle Ship carry a searchlight that lights far out.
+      if (hasSpotlight(type)) continue;
       const def = catalog(type);
       if (def.sightTiles <= 0) continue;
       const building = def.kind === "building";

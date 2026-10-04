@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { JET_FUEL_SECONDS, SUPPLY_CARGO, catalog, rocketAmmoOf } from "@gridlock/shared";
+import {
+  BATTLESHIP_BARREL_AMMO,
+  BATTLESHIP_CIWS_BELT,
+  JET_FUEL_SECONDS,
+  SUB_TORPEDOES,
+  SUPPLY_CARGO,
+  catalog,
+  rocketAmmoOf,
+} from "@gridlock/shared";
 import { ammoBarRatios, outOfAmmo } from "./ammo-bars.js";
 
 describe("ammoBarRatios", () => {
@@ -51,6 +59,35 @@ describe("ammoBarRatios", () => {
       ammoBarRatios({ type: "jumpjet", jet: { alt: 0, fuel: 1, fuelMax: JET_FUEL_SECONDS }, wreck: true }),
       [],
     );
+  });
+
+  it("shows a Battle Ship's shells and CIWS belts, and marks it dry only when both are empty", () => {
+    const full = {
+      turrets: [
+        { facing: 0, ammo: [BATTLESHIP_BARREL_AMMO, BATTLESHIP_BARREL_AMMO, BATTLESHIP_BARREL_AMMO] },
+        { facing: 0, ammo: [0, 0, 0] },
+      ],
+      ciws: [
+        { facing: 0, ammo: BATTLESHIP_CIWS_BELT },
+        { facing: 0, ammo: BATTLESHIP_CIWS_BELT },
+      ],
+    };
+    assert.deepEqual(ammoBarRatios({ type: "battleship", ship: full }), [0.5, 1]);
+    assert.equal(outOfAmmo({ type: "battleship", ship: full }), false);
+    const dry = {
+      turrets: full.turrets.map((t) => ({ ...t, ammo: [0, 0, 0] })),
+      ciws: full.ciws.map((m) => ({ ...m, ammo: 0 })),
+    };
+    assert.equal(outOfAmmo({ type: "battleship", ship: dry }), true);
+    // An enemy ship carries facings only.
+    const theirs = { turrets: [{ facing: 0 }, { facing: 0 }], ciws: [{ facing: 0 }, { facing: 0 }] };
+    assert.deepEqual(ammoBarRatios({ type: "battleship", ship: theirs }), []);
+    assert.equal(outOfAmmo({ type: "battleship", ship: theirs }), false);
+  });
+
+  it("shows a submarine's torpedoes as the yellow bar", () => {
+    assert.deepEqual(ammoBarRatios({ type: "submarine", clip: SUB_TORPEDOES / 2 }), [0.5]);
+    assert.equal(outOfAmmo({ type: "submarine", clip: 0 }), true);
   });
 
   it("hides on enemies (no rack in view) and wrecks", () => {
