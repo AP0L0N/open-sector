@@ -1,12 +1,20 @@
-"""Seamless water texture for the terrain atlas.
+"""Seamless water texture for the terrain atlas, made from the water photo.
 
 The canvas repeats the water image edge to edge (`ctx.createPattern(img, "repeat")`),
-so every part of it must wrap: noise is built in frequency space (periodic by
-construction) and ripple rings use toroidal distance, so a ring that leaves one
-edge comes back on the opposite one. No gradient, no vignette.
+so the photo has to wrap. Two things broke that in the raw crop:
+
+1. Light falloff and bands: the top is lighter and bluer than the bottom, with
+   a dark olive strip near the bottom. Every row's (and column's) mean colour
+   is divided out, so tone is flat while the ripples and glints stay.
+2. Edges: the left/right and top/bottom content does not continue. Each axis is
+   cross-faded with a copy of the photo rolled by half its size, so the edge
+   rows come from the middle of the photo (which is continuous). The blend keeps
+   contrast (variance-preserving) so the joins do not go flat and grey.
+3. Patches: once it wraps, broad dark/light patches are evened out with a
+   wrap-around blur so a large lake does not show the tile as stripes.
 
     python3 tools/sprites/render_water.py            # writes water.png and water-b.png
-    python3 tools/sprites/render_water.py --preview  # also writes a 3x3 tiled check
+    python3 tools/sprites/render_water.py --preview /tmp/w.png  # also a 3x3 tiled check
 """
 
 from __future__ import annotations
@@ -18,69 +26,79 @@ import numpy as np
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[2]
+SRC = ROOT / "tools/sprites/src/terrain"
 OUT = ROOT / "gridlock/packages/client/src/assets/terrain"
-SIZE = 512
 
-# Palette locked to the old photo crop's mean (72, 84, 75): dark teal-green pond.
-DEEP = np.array([58.0, 71.0, 66.0])
-SHALLOW = np.array([80.0, 96.0, 90.0])
-GLINT = np.array([150.0, 170.0, 165.0])
-
-
-def periodic_noise(rng: np.random.Generator, n: int, lo: float, hi: float, aspect: float = 1.0) -> np.ndarray:
-    """Band-limited noise that tiles exactly: white noise filtered in the FFT domain."""
-    white = rng.standard_normal((n, n))
-    fy = np.fft.fftfreq(n)[:, None] * n
-    fx = np.fft.fftfreq(n)[None, :] * n
-    f = np.sqrt((fx * aspect) ** 2 + fy**2)
-    band = np.exp(-((np.log2(np.maximum(f, 1e-6)) - np.log2((lo * hi) ** 0.5)) ** 2) / (2 * (np.log2(hi / lo) / 2.5) ** 2))
-    band[0, 0] = 0
-    out = np.real(np.fft.ifft2(np.fft.fft2(white) * band))
-    return (out - out.mean()) / (out.std() + 1e-9)
+# Width of each cross-fade, as a fraction of the tile. Wider hides the join
+# better; narrower keeps more of the photo untouched.
+BLEND = 0.22
+# Big blotches (the photo's dark olive band) repeat as stripes on a lake. Tone
+# patches wider than this blur are evened out by LEVEL (1 = fully flat).
+LEVEL_SIGMA = 36.0
+LEVEL = 0.6
+# Row/column means are smoothed this much (px) before they are divided out.
+ROW_SIGMA = 3.0
 
 
-def wrap_delta(a: np.ndarray, c: float, n: int) -> np.ndarray:
-    return (a - c + n / 2) % n - n / 2
+def smooth1d(v: np.ndarray, sigma: float) -> np.ndarray:
+    """Gaussian smoothing along axis 0 (edges clamped)."""
+    r = int(3 * sigma)
+    k = np.exp(-0.5 * (np.arange(-r, r + 1) / sigma) ** 2)
+    k /= k.sum()
+    padded = np.concatenate([np.repeat(v[:1], r, 0), v, np.repeat(v[-1:], r, 0)])
+    return np.stack([np.convolve(padded[:, c], k, mode="valid") for c in range(v.shape[1])], axis=1)
 
 
-def ripples(rng: np.random.Generator, n: int, count: int) -> np.ndarray:
-    """Embossed concentric rings, wrapped on the torus. Returns signed shading."""
-    yy, xx = np.mgrid[0:n, 0:n].astype(float)
-    acc = np.zeros((n, n))
-    for _ in range(count):
-        cx, cy = rng.uniform(0, n, 2)
-        rmax = rng.uniform(n * 0.06, n * 0.2)
-        wave = rng.uniform(5.0, 8.0)
-        amp = rng.uniform(0.5, 1.0)
-        dx = wrap_delta(xx, cx, n)
-        # Flatten the rings vertically a little: the ground is seen at 2:1 iso.
-        dy = wrap_delta(yy, cy, n) * 1.6
-        r = np.sqrt(dx * dx + dy * dy)
-        env = np.clip(1 - r / rmax, 0, 1) ** 1.5 * np.clip(r / (wave * 1.5), 0, 1)
-        # sin gives the light/dark pair that reads as a raised ring.
-        acc += amp * env * np.sin(2 * np.pi * r / wave)
-    return acc
+def flatten_light(a: np.ndarray) -> np.ndarray:
+    """Even out every row's and column's mean colour, keep the photo's mean.
+
+    The photo's light falloff and its olive band both run across the frame, so
+    they live in the row means; ripples and glints do not and stay put.
+    """
+    mean = a.reshape(-1, 3).mean(0)
+    rows = smooth1d(a.mean(1), ROW_SIGMA)
+    a = a * (mean / rows)[:, None, :]
+    cols = smooth1d(a.mean(0), ROW_SIGMA)
+    return a * (mean / cols)[None, :, :]
 
 
-def render(seed: int) -> np.ndarray:
-    rng = np.random.default_rng(seed)
-    n = SIZE
-    depth = periodic_noise(rng, n, 1.5, 4.0)
-    mottle = periodic_noise(rng, n, 6.0, 16.0)
-    # Wind chop: long horizontal streaks, like the light catching low swell.
-    chop = periodic_noise(rng, n, 10.0, 40.0, aspect=3.0)
-    fine = periodic_noise(rng, n, 60.0, 140.0)
+def fade_weight(n: int) -> np.ndarray:
+    """1 in the middle, 0 at both ends, smoothstep across BLEND of the tile."""
+    d = np.minimum(np.arange(n) + 0.5, n - np.arange(n) - 0.5) / n  # 0 at edge, 0.5 mid
+    t = np.clip(d / BLEND, 0, 1)
+    return t * t * (3 - 2 * t)
 
-    t = np.clip(0.5 + 0.12 * depth + 0.1 * mottle, 0, 1)[..., None]
-    col = DEEP * (1 - t) + SHALLOW * t
-    col += (4.0 * chop + 1.6 * fine)[..., None]
 
-    ring = ripples(rng, n, 16)
-    col += (16.0 * ring)[..., None]
+def wrap_axis(a: np.ndarray, axis: int) -> np.ndarray:
+    n = a.shape[axis]
+    b = np.roll(a, n // 2, axis=axis)
+    w = fade_weight(n)
+    w = w[:, None, None] if axis == 0 else w[None, :, None]
+    mean = a.reshape(-1, 3).mean(0)
+    mix = w * (a - mean) + (1 - w) * (b - mean)
+    return mix / np.sqrt(w * w + (1 - w) ** 2) + mean
 
-    glint = np.clip(chop * 0.7 + fine * 0.5 - 1.9, 0, None)
-    col = col + (GLINT - col) * np.clip(glint * 0.35, 0, 0.45)[..., None]
-    return np.clip(col, 0, 255).astype(np.uint8)
+
+def level_patches(a: np.ndarray) -> np.ndarray:
+    """Divide out broad tone/tint patches with a wrap-around Gaussian, keep detail."""
+    h, w, _ = a.shape
+    fy = np.fft.fftfreq(h)[:, None]
+    fx = np.fft.fftfreq(w)[None, :]
+    g = np.exp(-2 * (np.pi * LEVEL_SIGMA) ** 2 * (fx * fx + fy * fy))
+    mean = a.reshape(-1, 3).mean(0)
+    out = np.empty_like(a)
+    for c in range(3):
+        low = np.real(np.fft.ifft2(np.fft.fft2(a[..., c]) * g))
+        out[..., c] = a[..., c] * (mean[c] / np.maximum(low, 1)) ** LEVEL
+    return out
+
+
+def make_seamless(img: np.ndarray) -> np.ndarray:
+    a = flatten_light(img.astype(float))
+    a = wrap_axis(a, 1)
+    a = wrap_axis(a, 0)
+    a = level_patches(a)
+    return np.clip(np.round(a), 0, 255).astype(np.uint8)
 
 
 def seam_score(img: np.ndarray) -> float:
@@ -95,10 +113,14 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--preview", type=Path, help="write a 3x3 tiled check image here")
     args = ap.parse_args()
-    for name, seed in (("water.png", 7), ("water-b.png", 19)):
-        img = render(seed)
+    for src, name in (("water-photo.png", "water.png"), ("water-photo-b.png", "water-b.png")):
+        raw = np.asarray(Image.open(SRC / src).convert("RGB"))
+        img = make_seamless(raw)
         Image.fromarray(img).save(OUT / name, optimize=True)
-        print(f"{name}: mean {img.reshape(-1, 3).mean(0).round(1)} seam {seam_score(img):.2f}")
+        print(
+            f"{name}: mean {img.reshape(-1, 3).mean(0).round(1)} (photo {raw.reshape(-1, 3).mean(0).round(1)})"
+            f" seam {seam_score(img):.2f} (photo {seam_score(raw):.2f})"
+        )
         if args.preview and name == "water.png":
             Image.fromarray(np.tile(img, (3, 3, 1))).save(args.preview)
 
