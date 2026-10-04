@@ -908,7 +908,8 @@ input[type="range"] { padding: 0; }
 #build-tower,
 #build-ram,
 #build-sandbags,
-#build-wall {
+#build-wall,
+#build-gate {
   background-size: cover;
   background-position: right 10% center;
   min-height: 3.1rem;
@@ -1144,6 +1145,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/wall-cameo.png");
+}
+#build-gate {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/gate-cameo.png");
 }
 #train-stuka {
   background-image:
