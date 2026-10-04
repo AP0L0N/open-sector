@@ -46,7 +46,7 @@ def probe(p: pathlib.Path) -> tuple[float, float]:
 def check(p: pathlib.Path) -> str | None:
     dur, peak = probe(p)
     lo, hi = next((v for k, v in LIMITS.items() if p.name.startswith(k)), MUSIC)
-    if p.parent.name == "ui":  # clicks and ticks are meant to be tiny
+    if p.parent.name in ("ui", "menu"):  # clicks and ticks are meant to be tiny
         lo = 0.05
     if peak < -30:
         return f"near silent (peak {peak} dB)"

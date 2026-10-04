@@ -29,26 +29,6 @@ export function setMusic(v: number): void {
 
 let ctx: AudioContext | null = null;
 
-export function beep(): void {
-  const vol = getSfx();
-  if (vol <= 0) return;
-  try {
-    ctx ??= new AudioContext();
-    const osc = ctx.createOscillator();
-    const g = ctx.createGain();
-    osc.type = "square";
-    osc.frequency.value = 420;
-    g.gain.value = 0.05 * vol;
-    osc.connect(g);
-    g.connect(ctx.destination);
-    osc.start();
-    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.07);
-    osc.stop(ctx.currentTime + 0.08);
-  } catch {
-    /* autoplay restrictions */
-  }
-}
-
 export function buzzDeny(): void {
   const vol = getSfx();
   if (vol <= 0) return;
@@ -69,17 +49,6 @@ export function buzzDeny(): void {
   } catch {
     /* autoplay restrictions */
   }
-}
-
-export function bindClicks(root: HTMLElement): void {
-  root.addEventListener("pointerdown", (e) => {
-    if (e.button !== 0) return;
-    const t = e.target;
-    const btn = t instanceof HTMLElement ? t.closest("button") : null;
-    if (btn instanceof HTMLButtonElement && !btn.disabled && btn.getAttribute("aria-disabled") !== "true") {
-      beep();
-    }
-  });
 }
 
 const buffers = new Map<string, Promise<AudioBuffer | null>>();

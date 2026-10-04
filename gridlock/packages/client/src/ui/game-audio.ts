@@ -276,3 +276,31 @@ export function updateAmbient(moving: readonly Mover[], mixAt: (x: number, y: nu
   if (bedWatchdog !== null) window.clearTimeout(bedWatchdog);
   bedWatchdog = window.setTimeout(stopBeds, BED_IDLE_MS);
 }
+
+// --- menus -----------------------------------------------------------------
+
+/** Menu sounds sit well under the music; a hover is barely there. */
+const MENU_VOLUME: Record<string, number> = {
+  hover: 0.16,
+  click: 0.45,
+  confirm: 0.6,
+  back: 0.45,
+  toggle: 0.4,
+  tick: 0.3,
+  type: 0.22,
+  deny: 0.5,
+  transition: 0.35,
+  deploy: 0.75,
+};
+/** Least gap between two plays of one sound: a dragged slider or fast typing must not machine-gun. */
+const MENU_GAP_MS: Record<string, number> = { hover: 60, tick: 70, type: 35, transition: 250 };
+const menuLast = new Map<string, number>();
+
+export function menuSound(cue: string, scale = 1): void {
+  const now = performance.now();
+  if (now - (menuLast.get(cue) ?? -Infinity) < (MENU_GAP_MS[cue] ?? 0)) return;
+  const url = pick("sfx/menu", `sfx-${cue}`);
+  if (!url) return;
+  menuLast.set(cue, now);
+  playClip(url, (MENU_VOLUME[cue] ?? 0.4) * scale, { maxLateS: 0.25 });
+}

@@ -2630,7 +2630,8 @@ export class MapView {
     if (!this.keepModeForQueue()) this.setAttackMoveMode(false);
     if (ids.length === 0) return;
     const hit = this.hit(px, py);
-    if (hit && !hit.wreck && hit.ownerId !== this.curr.youPlayerId) {
+    // A wall line under the click is ground to cross, not a target: the guns that can chip it take it themselves.
+    if (hit && !hit.wreck && hit.ownerId !== this.curr.youPlayerId && !isFieldStructure(hit.type)) {
       this.command({ type: "cmd.attack", ids, targetId: hit.id });
       return;
     }
