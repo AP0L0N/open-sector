@@ -5,6 +5,7 @@ import {
   catalog,
   isAircraftType,
   isDefenceStructure,
+  isHiddenField,
   isInfantryType,
   type BuildingType,
   type TrainType,
@@ -42,7 +43,9 @@ export interface GroupEntry {
 export function groupEntries(): Record<SidebarGroup, GroupEntry[]> {
   const out: Record<SidebarGroup, GroupEntry[]> = { structures: [], defences: [], infantry: [], tanks: [], aircraft: [] };
   for (const type of BUILDING_TYPES) out[sidebarGroupOf(type)].push({ id: "build-" + type, type });
-  for (const type of YARD_FIELD_TYPES) out.defences.push({ id: "build-" + type, type });
+  for (const type of YARD_FIELD_TYPES) {
+    if (!isHiddenField(type)) out.defences.push({ id: "build-" + type, type });
+  }
   for (const type of TRAIN_TYPES) out[sidebarGroupOf(type)].push({ id: "train-" + type, type });
   return out;
 }

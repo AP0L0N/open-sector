@@ -30,18 +30,21 @@ import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
 import { smelterSiteOk } from "./smelter.js";
 import type { Entity, MatchState, SimPlayer, StructureJob } from "./types.js";
 
-type BuildSlot = "structure" | "defence";
+type BuildSlot = "structure" | "defence" | "line";
 
+/** Sandbag and wall lines take so long that they get a lane of their own. */
 function slotOf(type: BuildingType | YardFieldType): BuildSlot {
+  if (isYardField(type)) return "line";
   return isDefenceStructure(type) ? "defence" : "structure";
 }
 
 function jobIn(p: SimPlayer, slot: BuildSlot): StructureJob | null {
-  return slot === "defence" ? p.defence : p.structure;
+  return slot === "line" ? p.line : slot === "defence" ? p.defence : p.structure;
 }
 
 function putJob(p: SimPlayer, slot: BuildSlot, job: StructureJob | null): void {
-  if (slot === "defence") p.defence = job;
+  if (slot === "line") p.line = job;
+  else if (slot === "defence") p.defence = job;
   else p.structure = job;
 }
 
@@ -49,19 +52,20 @@ function putJob(p: SimPlayer, slot: BuildSlot, job: StructureJob | null): void {
 function dropJob(p: SimPlayer, job: StructureJob): void {
   if (p.structure === job) p.structure = null;
   if (p.defence === job) p.defence = null;
+  if (p.line === job) p.line = null;
   if (p.placingType === job.type) p.placingType = null;
 }
 
 /**
  * The named cameo when `building` is set.
- * Otherwise the base job, or the defence job when the base lane is idle.
+ * Otherwise the base job, then the defence job, then the line.
  */
 function resolveJob(p: SimPlayer, building?: BuildingType | YardFieldType): StructureJob | null {
   if (building != null) {
     const job = jobIn(p, slotOf(building));
     return job?.type === building ? job : null;
   }
-  return p.structure ?? p.defence;
+  return p.structure ?? p.defence ?? p.line;
 }
 
 export function startBuild(state: MatchState, playerId: string, type: BuildingType | YardFieldType): string | null {
@@ -113,9 +117,10 @@ export function cancelStructure(
 export function tickBuild(state: MatchState, _dt: number): void {
   for (const p of state.players.values()) {
     if (!p.alive || !hasCore(state, p.playerId)) continue;
-    // Base first, then the defence, so a short scrap pile funds the base.
+    // Base first, then the defence, then the line, so a short scrap pile funds the base.
     advanceStructure(state, p, p.structure, "structure");
     advanceStructure(state, p, p.defence, "defence");
+    advanceStructure(state, p, p.line, "line");
   }
 }
 
@@ -248,7 +253,7 @@ export function placeBaseField(
 ): string | null {
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
-  if (p.defence) return "Construction already underway.";
+  if (p.line) return "Construction already underway.";
   if (!hasCore(state, playerId)) return "Deploy the Rig.";
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(facing)) return "Cannot place there.";
   const pieces = fieldPiecesFor(structure, x, y, facing, x2, y2, path);
@@ -268,7 +273,7 @@ export function placeBaseField(
   }
   if (accepted.length === 0) return stop ?? "Cannot place there.";
   const def = catalog(structure);
-  p.defence = {
+  p.line = {
     type: structure,
     progressTicks: 0,
     totalTicks: secondsToTicks(def.buildSeconds * accepted.length),

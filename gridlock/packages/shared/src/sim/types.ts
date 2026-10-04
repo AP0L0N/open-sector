@@ -572,8 +572,10 @@ export interface SimPlayer {
   scrap: number;
   /** Base structures: power, factories, the airfield, research. One at a time. */
   structure: StructureJob | null;
-  /** Defences: guns, garrisons, sandbags, and walls. One at a time, beside `structure`. */
+  /** Defences: guns and garrisons. One at a time, beside `structure`. */
   defence: StructureJob | null;
+  /** A sited sandbag or wall line from the Defences tab. One at a time, beside both other lanes. */
+  line: StructureJob | null;
   /** Base structure waiting to be placed. A ready defence stays on `defence`. */
   placingType: BuildingType | YardFieldType | null;
   hqId: number;

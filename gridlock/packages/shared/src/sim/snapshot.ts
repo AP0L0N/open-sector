@@ -441,6 +441,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       lowPower: power.lowPower,
       structureQueue: structureQueueView(you?.structure),
       defenceQueue: structureQueueView(you?.defence),
+      lineQueue: structureQueueView(you?.line),
       placingType: you?.placingType ?? null,
       alive: you?.alive ?? false,
       hqId: hq && hq.hp > 0 ? hq.id : (you?.hqId ?? null),
