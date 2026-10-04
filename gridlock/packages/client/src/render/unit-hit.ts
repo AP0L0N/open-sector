@@ -39,6 +39,82 @@ export function unitSpriteDest(
   };
 }
 
+/** Painted bounds inside one sheet cell, as fractions of the cell (0..1). */
+export interface CellBox {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+export interface ScreenRect {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Bounds of the texels at or over `alphaMin` in one `cell`×`cell` square of an
+ * alpha strip `stride` wide, starting at column `ox`. Null when nothing is painted.
+ */
+export function alphaCellBox(
+  a: Uint8Array,
+  stride: number,
+  ox: number,
+  cell: number,
+  alphaMin = UNIT_HIT_ALPHA_MIN,
+): CellBox | null {
+  let minX = cell;
+  let minY = cell;
+  let maxX = -1;
+  let maxY = -1;
+  for (let y = 0; y < cell; y++) {
+    const row = y * stride + ox;
+    for (let x = 0; x < cell; x++) {
+      if (a[row + x]! < alphaMin) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < 0) return null;
+  return { x0: minX / cell, y0: minY / cell, x1: (maxX + 1) / cell, y1: (maxY + 1) / cell };
+}
+
+export function unionCellBox(a: CellBox | null, b: CellBox | null): CellBox | null {
+  if (!a) return b;
+  if (!b) return a;
+  return { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) };
+}
+
+/** Screen rect of a painted cell box when the cell is drawn over `dest`. */
+export function cellBoxToDest(box: CellBox, dest: ScreenRect): ScreenRect {
+  return {
+    x: dest.x + box.x0 * dest.w,
+    y: dest.y + box.y0 * dest.h,
+    w: (box.x1 - box.x0) * dest.w,
+    h: (box.y1 - box.y0) * dest.h,
+  };
+}
+
+/**
+ * The click target for a unit: its painted bounds plus `pad` on each side,
+ * and never under `min` on either axis so a crawling soldier stays clickable.
+ */
+export function unitPickRect(paint: ScreenRect, pad = 2, min = 12): ScreenRect {
+  const w = Math.max(min, paint.w + pad * 2);
+  const h = Math.max(min, paint.h + pad * 2);
+  const cx = paint.x + paint.w / 2;
+  const cy = paint.y + paint.h / 2;
+  return { x: cx - w / 2, y: cy - h / 2, w, h };
+}
+
+export function inScreenRect(r: ScreenRect, px: number, py: number): boolean {
+  return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+}
+
 /** Dest-pixel mask of hull + turret + gun for one facing. */
 export function unitDestMaskFromSheets(
   destSize: number,

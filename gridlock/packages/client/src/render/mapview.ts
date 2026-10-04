@@ -172,6 +172,7 @@ import {
   snapHitToUnitSprite,
   spriteFor,
   spriteReady,
+  unitSpritePaintRect,
   wreckSpriteFor,
   GUNNER_DIE_SPRITE,
   GUNNER_FIRE_SPRITE,
@@ -334,7 +335,7 @@ import {
   type WallSection,
 } from "./wall.js";
 import { pyroNozzleScreen } from "./pyro-nozzle.js";
-import { unitGroundSink } from "./unit-hit.js";
+import { inScreenRect, unitGroundSink, unitPickRect, type ScreenRect } from "./unit-hit.js";
 import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
@@ -2799,10 +2800,16 @@ export class MapView {
         const p = this.lerpEnt(e);
         const spr = this.spriteOf(e);
         if (spr) {
+          // A plane or drone is picked where its art flies, never at its shadow on the ground.
           const s = this.toScreen(p.x, p.y);
           s.y -= this.airLift(e);
+          const paint = this.unitPaint(e, spr, p, s);
+          if (paint) {
+            if (inScreenRect(unitPickRect(paint), px, py)) return e;
+            continue;
+          }
           const size = spr.drawSize;
-          const top = s.y - size * spr.contactY;
+          const top = s.y - size * spr.contactY + unitGroundSink(size);
           if (px >= s.x - size * 0.4 && px <= s.x + size * 0.4 && py >= top && py <= top + size) {
             return e;
           }
@@ -2909,6 +2916,8 @@ export class MapView {
       if (e.kind !== "unit" || e.ownerId !== this.curr.youPlayerId || e.wreck || e.garrisonedIn) continue;
       const p = this.lerpEnt(e);
       const s = this.toScreen(p.x, p.y);
+      // Aloft, the box has to take the plane itself, not the shadow under it.
+      s.y -= this.airLift(e);
       if (s.x >= x0 && s.x <= x1 && s.y >= y0 && s.y <= y1) this.selected.add(e.id);
     }
     this.onSelect([...this.selected]);
@@ -5372,6 +5381,38 @@ export class MapView {
     drawCanopy(this.ctx, s.x, head, troopCanopySpan(size), canopySway(e.id, performance.now()));
   }
 
+  /** The sheet a unit is drawn from: a hulk's burnt-out sheet when it has one loaded. */
+  private drawnSheet(e: EntityView, def: UnitSpriteDef): UnitSpriteDef {
+    const corpse = isInfantryType(e.type) && !!e.wreck;
+    const hulk = e.wreck && !corpse ? wreckSpriteFor(e.type) : undefined;
+    return hulk && spriteReady(hulk) ? hulk : def;
+  }
+
+  /**
+   * Screen rect of a sprited unit's painted art at screen point `s` (already
+   * lifted for anything in the air). Null until its sheet has loaded.
+   */
+  private unitPaint(
+    e: EntityView,
+    def: UnitSpriteDef,
+    p: { facing: number; turretFacing?: number },
+    s: { x: number; y: number },
+  ): ScreenRect | null {
+    const ts = this.ts();
+    const dir = facingToIso(p.facing, ts);
+    const turretDir = facingToIso(p.turretFacing ?? p.facing, ts);
+    const mountDir = e.ciws ? facingToIso(e.ciws.facing, ts) : undefined;
+    return unitSpritePaintRect(this.drawnSheet(e, def), s.x, s.y, dir.x, dir.y, {
+      facing: p.facing,
+      turretDx: turretDir.x,
+      turretDy: turretDir.y,
+      turretFacing: p.turretFacing,
+      mountDx: mountDir?.x,
+      mountDy: mountDir?.y,
+      mountFacing: e.ciws?.facing,
+    });
+  }
+
   private drawSpritedUnit(e: EntityView, def: UnitSpriteDef): void {
     const ctx = this.ctx;
     const p = this.lerpEnt(e);
@@ -5416,8 +5457,7 @@ export class MapView {
     }
     const corpse = isInfantryType(e.type) && !!e.wreck;
     // A hulk has its own burnt-out sheet on the same cell and contact; without one it greys the live art.
-    const hulk = e.wreck && !corpse ? wreckSpriteFor(e.type) : undefined;
-    const sheet = hulk && spriteReady(hulk) ? hulk : def;
+    const sheet = this.drawnSheet(e, def);
     let frameIndex: number | undefined;
     if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
     else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE || def === ROCKETER_FIRE_SPRITE || def === PYRO_FIRE_SPRITE || def === JUMPJET_FIRE_SPRITE) {
@@ -5488,19 +5528,25 @@ export class MapView {
       ctx.restore();
       if (e.wreck) this.drawWreckFires(e, s.x, s.y, size, dir.x, dir.y);
     }
+    // Bars ride just over the painted art, not the top of the (mostly empty) sheet cell.
+    const paint = drawn ? this.unitPaint(e, def, p, s) : null;
+    const head = paint ? paint.y : s.y - size * def.contactY;
+    const right = paint ? Math.max(paint.x + paint.w, s.x + size * 0.2) : s.x + size * 0.45;
     if (e.ownerId === this.curr.youPlayerId && e.type === "rig") {
       const name = this.curr.players.find((pl) => pl.playerId === e.ownerId)?.name ?? "";
       ctx.font = "12px 'Share Tech Mono', monospace";
       ctx.textAlign = "center";
       ctx.fillStyle = "#e8dcc4";
-      ctx.fillText(name, s.x, s.y - size * def.contactY - 12);
+      ctx.fillText(name, s.x, head - 12);
     }
-    this.maybeHp(e, s.x - size * 0.45, s.y - size * def.contactY - 2, size * 0.9);
+    // Leave room under the health bar for the ammo strips, so they sit on the art and not in it.
+    const barBase = paint ? head - 1 - ammoBarRatios(e).length * 2 : head - 2;
+    this.maybeHp(e, s.x - size * 0.45, barBase, size * 0.9);
     // A hull that carries soldiers (the Mammoth) shows who is aboard, like a Bunker.
-    if (!e.wreck) this.drawGarrisonBars(e, s.x + size * 0.45 + 4, s.y - size * def.contactY - 2);
+    if (!e.wreck) this.drawGarrisonBars(e, right + 4, head - 2);
     if (e.tend != null && !e.wreck) this.drawHealMark(e);
-    this.drawScoutBar(e, s.x - size * 0.22, s.y - size * def.contactY - 8);
-    this.drawCrits(e, s.x + size * 0.48, s.y - size * def.contactY - 20);
+    this.drawScoutBar(e, s.x - size * 0.22, barBase - 6);
+    this.drawCrits(e, right + 2, head - 18);
     this.drawDeployProgress(e, s.x - size * 0.45, s.y + 6, size * 0.9);
     if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
       const prog = e.deployProgress ?? 0;
