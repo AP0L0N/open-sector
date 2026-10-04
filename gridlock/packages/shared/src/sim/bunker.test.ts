@@ -16,13 +16,15 @@ import {
   coverHeightOf,
   garrisonCapOf,
   isCapturable,
+  isCivilianType,
   type EntityType,
 } from "../catalog.js";
+import { TILE_EMPTY } from "../maps.js";
 import { applyCommand } from "./commands.js";
-import { sellBuilding } from "./build.js";
+import { placedFacing, raiseBuilding, sellBuilding } from "./build.js";
 import { tickCombat } from "./combat.js";
 import { sightTilesForEntity, weaponRangeWorld } from "./elevation.js";
-import { makeEntity, tileCenter } from "./geo.js";
+import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { canGarrison, enterGarrison, livingGarrison, setGarrisonHide, woundGarrison } from "./garrison.js";
 import { createMatch, step } from "./match.js";
 import type { Entity, MatchState } from "./types.js";
@@ -368,5 +370,56 @@ describe("bunker", () => {
     assert.equal(state.impacts.some((p) => p.fromId === gunner.id), false);
     assert.equal(rifle.garrisonedIn, cottage.id);
     assert.equal(gunner.garrisonedIn, cottage.id);
+  });
+});
+
+describe("placed facing", () => {
+  it("turns a Bunker or Watch Tower to the nearest quarter, and leaves other buildings facing east", () => {
+    assert.equal(placedFacing("bunker", Math.PI / 2 + 0.3), Math.PI / 2);
+    assert.equal(placedFacing("tower", -Math.PI / 2), (3 * Math.PI) / 2);
+    assert.equal(placedFacing("tower", Math.PI * 0.9), Math.PI);
+    assert.equal(placedFacing("bunker", 0.2), 0);
+    assert.equal(placedFacing("dynamo", Math.PI), 0);
+    const { state, a } = twoPlayerMatch();
+    const tower = raiseBuilding(state, a, "tower", 120, 120, Math.PI);
+    assert.equal(tower.facing, Math.PI);
+    const dynamo = raiseBuilding(state, a, "dynamo", 110, 110, Math.PI);
+    assert.equal(dynamo.facing, 0);
+  });
+
+  it("stands a placed Bunker at the facing the player turned it to", () => {
+    const { state, a } = twoPlayerMatch();
+    const ts = state.tileSize;
+    state.players.get(a)!.scrap = 50_000;
+    // Open ground round the yard: the village and the scrap go.
+    for (const e of [...state.entities.values()]) if (isCivilianType(e.type)) destroyEntity(state, e);
+    for (let y = 100; y <= 170; y++) {
+      for (let x = 100; x <= 170; x++) {
+        const i = y * state.width + x;
+        state.terrain[i] = TILE_EMPTY;
+        state.occupy[i] = 0;
+      }
+    }
+    const core = makeEntity(state, "core", a, tileCenter(120, ts), tileCenter(120, ts), { tileX: 118, tileY: 118 });
+    makeEntity(state, "dynamo", a, 0, 0, { tileX: 104, tileY: 104 });
+    const tx = core.tileX + core.tileW + 2;
+    const ty = core.tileY;
+    assert.equal(applyCommand(state, a, { type: "cmd.build", building: "bunker" }).ok, true);
+    let ready = false;
+    for (let i = 0; i < 6000 && !ready; i++) {
+      step(state, TICK_DT);
+      ready = state.players.get(a)!.defence?.ready === true;
+    }
+    assert.ok(ready, "the Bunker finishes building");
+    assert.equal(
+      applyCommand(state, a, { type: "cmd.place", building: "bunker", tx, ty, facing: Number.NaN }).ok,
+      false,
+      "a facing that is not a number is refused",
+    );
+    const res = applyCommand(state, a, { type: "cmd.place", building: "bunker", tx, ty, facing: Math.PI / 2 });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    const placed = [...state.entities.values()].find((e) => e.type === "bunker" && e.ownerId === a);
+    assert.ok(placed);
+    assert.equal(placed.facing, Math.PI / 2);
   });
 });

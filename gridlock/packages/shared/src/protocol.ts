@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 82;
+export const PROTOCOL_VERSION = 83;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -600,7 +600,8 @@ export type ClientMessage =
   | { type: "cmd.rockets"; ids: number[]; on: boolean }
   | { type: "cmd.reach"; ids: number[]; max: boolean }
   | { type: "cmd.build"; building: BuildingType | YardFieldType }
-  | { type: "cmd.place"; building: BuildingType; tx: number; ty: number }
+  /** `facing`: world radians for a Bunker or Watch Tower, snapped to the nearest quarter. Other buildings ignore it. */
+  | { type: "cmd.place"; building: BuildingType; tx: number; ty: number; facing?: number }
   | { type: "cmd.train"; unit: TrainType }
   | {
       type: "cmd.pause";

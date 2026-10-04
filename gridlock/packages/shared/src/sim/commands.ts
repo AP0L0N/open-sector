@@ -132,7 +132,10 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       return wrap(startBuild(state, playerId, msg.building), "no_core");
     case "cmd.place":
       if (!isBuildingType(msg.building)) return fail("bad_payload", "Unknown structure.");
-      return wrap(placeBuilding(state, playerId, msg.building, msg.tx, msg.ty), "invalid_place");
+      if (msg.facing != null && (typeof msg.facing !== "number" || !Number.isFinite(msg.facing))) {
+        return fail("bad_payload", "Unknown facing.");
+      }
+      return wrap(placeBuilding(state, playerId, msg.building, msg.tx, msg.ty, msg.facing ?? 0), "invalid_place");
     case "cmd.train":
       if (!isTrainType(msg.unit)) return fail("bad_payload", "Unknown unit.");
       return wrap(startTrain(state, playerId, msg.unit), "busy");

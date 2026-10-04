@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Watch Tower building art: a fortified concrete lookout, one static image.
+"""Watch Tower building art: a fortified concrete lookout, four cardinal faces.
 
 A square plinth banked with earth, a battered board-formed shaft, and a
 slitted concrete cab on top under an overhanging roof slab. Sandbags ring
-the foot and the rear door. The tower is the same from every side, so it
-ships a single cardinal image, like the Bunker. The roof's centre is left
+the foot and the rear door. The player turns it before placing, so like the
+Bunker it ships one image per facing: tower.png faces east (rungs east, door
+west), then tower-s, tower-w, tower-n. The roof's centre is left
 bare: the client draws the searchlight there (render/searchlight.ts) so it
 can turn with the beam.
 
@@ -124,31 +125,23 @@ def make_canvas() -> ra.Canvas:
 def render(out_dir: Path) -> None:
     cv = make_canvas()
     print("canvas", cv.w // SS, "x", cv.h // SS)
-    mesh = tower_mesh()
-    props = tower_mesh(ground=False)
-    sh = ra.shadow_mask(props, cv)
-    ao = ra.contact_ao(props, cv)
-    fr = ra.rasterize(mesh, cv)
-    ra.ink(fr, SS)
-    ra.silhouette(fr, SS)
-    ys, xs = np.mgrid[0 : cv.h, 0 : cv.w].astype(np.float64) + 0.5
-    gx, gy = cv.to_world_ground(xs, ys)
-    # The tall shaft throws its shadow well off the pad.
-    near = (gx > -40) & (gx < W + 40) & (gy > -40) & (gy < H + 40)
-    shadow = np.clip(sh * 0.42 + ao * 0.12, 0, 0.6) * near
-    solid = fr.alpha > 0.5
-    zpix = (fr.depth - (gx + gy)) / 3.0
-    up = solid & (fr.normal[..., 2] > 0.7) & (zpix < PLINTH_TOP + 0.5)
-    color = fr.color.copy()
-    color[up] *= (1 - shadow[up])[:, None]
-    alpha = fr.alpha.copy()
-    out = ~solid & (shadow > 0.02)
-    color[out] = ra.OUTLINE * 0.4
-    alpha[out] = shadow[out]
-    img = ra.downsample(color, alpha, SS)
-
     out_dir.mkdir(parents=True, exist_ok=True)
-    img.save(out_dir / "tower.png", optimize=True)
+    preview = Path(__file__).parent / "preview"
+    preview.mkdir(exist_ok=True)
+    faces: dict[str, Image.Image] = {}
+    for suffix, quarters in rb.FACES:
+        props = rb.turn(tower_mesh(ground=False), quarters)
+        fr = ra.rasterize(rb.turn(tower_mesh(), quarters), cv)
+        # The tall shaft throws its shadow well off the pad.
+        img = rb.shade(fr, cv, ra.shadow_mask(props, cv), ra.contact_ao(props, cv), 40.0, PLINTH_TOP)
+        img.save(out_dir / f"tower{suffix}.png", optimize=True)
+        bg = Image.new("RGBA", img.size, (74, 107, 50, 255))
+        bg.alpha_composite(img)
+        bg.save(preview / f"tower{suffix}.png")
+        faces[suffix] = img
+        print("wrote", out_dir / f"tower{suffix}.png")
+    # Every face shares the canvas and the square pad, so one set of metrics serves all four.
+    img = faces[""]
 
     south = cv.to_screen(np.array([[W, H, 0.0]]))
     stack = cv.to_screen(np.array([[CX, CY, ROOF_TOP + 6.0]]))
@@ -161,7 +154,7 @@ def render(out_dir: Path) -> None:
         "cell": list(img.size),
     }
     (out_dir / "tower.json").write_text(json.dumps(info, indent=2) + "\n")
-    print("wrote", out_dir / "tower.png", info)
+    print("metrics", info)
 
     # The sidebar shows a wide band through the cameo's middle, so centre it on the cab:
     # a square as wide as the tower body, from the roof down, leaving the shaft's foot out.
@@ -177,12 +170,6 @@ def render(out_dir: Path) -> None:
         crop = crop.resize((max(1, round(crop.width * f)), max(1, round(crop.height * f))), Image.Resampling.LANCZOS)
         cam.alpha_composite(crop, ((96 - crop.width) // 2, (96 - crop.height) // 2))
     cam.save(out_dir / "tower-cameo.png")
-
-    preview = Path(__file__).parent / "preview"
-    preview.mkdir(exist_ok=True)
-    bg = Image.new("RGBA", img.size, (74, 107, 50, 255))
-    bg.alpha_composite(img)
-    bg.save(preview / "tower.png")
 
 
 def main() -> None:

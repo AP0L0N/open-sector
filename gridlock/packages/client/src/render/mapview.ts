@@ -65,6 +65,7 @@ import {
   pickElevatedTile,
   pointInIsoBox,
   isBuildingType,
+  isRotatableBuilding,
   isDefenceStructure,
   isYardField,
   previewConstruct,
@@ -820,6 +821,10 @@ export class MapView {
   private fieldFacing = Math.PI / 2;
   /** Eased ghost facing so the piece swings instead of snapping. */
   private fieldShown = Math.PI / 2;
+  /** Quarter turns (0 = east) a Bunker or Watch Tower ghost is turned to. Kept between placements. */
+  private placeQuarter = 0;
+  /** Wheel travel toward the next quarter, so a trackpad needs a full notch's worth to turn it. */
+  private placeTurn = 0;
   private fieldShownAt = 0;
   private fieldDrag: { x: number; y: number } | null = null;
   private guardAnchor: { x: number; y: number } | null = null;
@@ -1919,6 +1924,7 @@ export class MapView {
             building: toPlace,
             tx: tile.x,
             ty: tile.y,
+            ...(isRotatableBuilding(toPlace) ? { facing: this.placeFacing() } : {}),
           });
           return;
         }
@@ -1986,6 +1992,11 @@ export class MapView {
     // A gate takes the walls' facing, so the wheel still zooms while one is armed.
     if (this.fieldPlace || (this.readyYardField() && this.readyYardField() !== "gate")) {
       this.rotateField(e.deltaY, e.deltaMode);
+      return;
+    }
+    const building = this.placeMode ? this.readyBuilding() : null;
+    if (building && isRotatableBuilding(building)) {
+      this.rotatePlace(e.deltaY, e.deltaMode);
       return;
     }
     const rect = this.canvas.getBoundingClientRect();
@@ -6908,7 +6919,8 @@ export class MapView {
     const bw = def.tileW * ts;
     const bh = def.tileH * ts;
     const elev = this.buildingElev({ tileX: tile.x, tileY: tile.y, tileW: def.tileW, tileH: def.tileH });
-    const spr = buildingSpriteFor(type);
+    const facing = isRotatableBuilding(type) ? this.placeFacing() : 0;
+    const spr = buildingSpriteFor(type, facing);
     if (spr && spriteReady(spr)) {
       const south = this.toScreen(x + bw, y + bh, elev);
       const east = this.toScreen(x + bw, y, elev);
@@ -6924,7 +6936,8 @@ export class MapView {
       if (ground && spriteReady(ground)) drawBuildingSprite(ctx, ground, south.x, south.y, east.x - west.x);
       drawBuildingSprite(ctx, spr, south.x, south.y, east.x - west.x);
       if (hasSpotlight(type)) {
-        drawTowerSearchlight(ctx, south.x, south.y, east.x - west.x, Math.PI / 4, { lit: 0, broken: false });
+        // The lamp starts out along the tower's front, as the placed tower's does.
+        drawTowerSearchlight(ctx, south.x, south.y, east.x - west.x, facing, { lit: 0, broken: false });
       }
       ctx.restore();
       // The ghost lays its gun toward the viewer.
@@ -7307,6 +7320,24 @@ export class MapView {
       facing,
     });
     this.ctx.restore();
+  }
+
+  /** One wheel notch turns a Bunker or Watch Tower ghost a quarter. Trackpad pixels add up to a notch first. */
+  private rotatePlace(deltaY: number, deltaMode: number): void {
+    this.placeTurn += deltaMode === 1 ? deltaY / 3 : deltaMode === 2 ? deltaY : deltaY / 100;
+    while (this.placeTurn >= 1) {
+      this.placeQuarter = (this.placeQuarter + 1) & 3;
+      this.placeTurn -= 1;
+    }
+    while (this.placeTurn <= -1) {
+      this.placeQuarter = (this.placeQuarter + 3) & 3;
+      this.placeTurn += 1;
+    }
+  }
+
+  /** World radians the turned ghost faces. */
+  private placeFacing(): number {
+    return this.placeQuarter * (Math.PI / 2);
   }
 
   /** One wheel notch turns the ghost 15°. Trackpads scroll in pixels, so they turn by fractions. */

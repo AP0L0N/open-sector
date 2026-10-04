@@ -5,6 +5,7 @@ import {
   isConcreteLine,
   isDefenceStructure,
   isFieldStructure,
+  isRotatableBuilding,
   isYardField,
   secondsToTicks,
   SELL_REFUND,
@@ -22,6 +23,7 @@ import {
   tilesBlocked,
   tilesBlockedOrScrap,
 } from "./geo.js";
+import { buildingFaceIndex } from "../iso.js";
 import { ejectUnits } from "./deploy.js";
 import { spillGarrison } from "./garrison.js";
 import {
@@ -201,6 +203,7 @@ export function placeBuilding(
   type: BuildingType,
   tx: number,
   ty: number,
+  facing = 0,
 ): string | null {
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
@@ -213,7 +216,7 @@ export function placeBuilding(
   if (!inBuildRadius(state, playerId, tx, ty, def.tileW, def.tileH, BUILD_RADIUS)) {
     return "Too far from your base.";
   }
-  raiseBuilding(state, playerId, type, tx, ty);
+  raiseBuilding(state, playerId, type, tx, ty, facing);
   dropJob(p, job);
   return null;
 }
@@ -249,11 +252,23 @@ export function buildingSiteError(
   return tilesBlockedOrScrap(state, tx, ty, def.tileW, def.tileH) ? "Cannot place there." : null;
 }
 
+/** The quarter a building stands at. A Bunker or Watch Tower takes the nearest one to `facing`; the rest face east. */
+export function placedFacing(type: BuildingType, facing: number): number {
+  return isRotatableBuilding(type) ? buildingFaceIndex(facing) * (Math.PI / 2) : 0;
+}
+
 /** Stand the building up: occupy its tiles, push units off them, and make blocked walkers re-path. */
-export function raiseBuilding(state: MatchState, playerId: string, type: BuildingType, tx: number, ty: number): Entity {
+export function raiseBuilding(
+  state: MatchState,
+  playerId: string,
+  type: BuildingType,
+  tx: number,
+  ty: number,
+  facing = 0,
+): Entity {
   const def = catalog(type);
   const c = buildingCenter(tx, ty, def.tileW, def.tileH, state.tileSize);
-  const b = makeEntity(state, type, playerId, c.x, c.y, { tileX: tx, tileY: ty });
+  const b = makeEntity(state, type, playerId, c.x, c.y, { tileX: tx, tileY: ty, facing: placedFacing(type, facing) });
   ejectUnits(state, b);
   for (const u of state.entities.values()) {
     if (u.kind === "unit") repathIfBlocked(state, u);

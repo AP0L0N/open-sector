@@ -35,7 +35,13 @@ import airfieldUrl from "../assets/buildings/airfield.png";
 import airfieldGroundUrl from "../assets/buildings/airfield-ground.png";
 import ciwsUrl from "../assets/buildings/ciws.png";
 import bunkerUrl from "../assets/buildings/bunker.png";
+import bunkerSUrl from "../assets/buildings/bunker-s.png";
+import bunkerWUrl from "../assets/buildings/bunker-w.png";
+import bunkerNUrl from "../assets/buildings/bunker-n.png";
 import towerUrl from "../assets/buildings/tower.png";
+import towerSUrl from "../assets/buildings/tower-s.png";
+import towerWUrl from "../assets/buildings/tower-w.png";
+import towerNUrl from "../assets/buildings/tower-n.png";
 import ciwsTurretUrl from "../assets/buildings/ciws-turret.png";
 import researchUrl from "../assets/buildings/research.png";
 import radarUrl from "../assets/buildings/radar.png";
@@ -1574,12 +1580,31 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   research: building(researchUrl, 384, 210, 324, 150, 70),
   // Ops hut, lattice mast, dish. Metrics from tools/sprites/render_radar.py (radar.json); the stack hangs over the dish.
   radar: building(radarUrl, 384, 210, 354, 216, 58),
-  // Concrete pillbox. Metrics from tools/sprites/render_bunker.py (bunker.json).
+  // Concrete pillbox. Metrics from tools/sprites/render_bunker.py (bunker.json). Turned faces in BUILDING_FACES.
   bunker: building(bunkerUrl, 384, 222, 264, 222, 99),
-  // Concrete shaft and slitted cab. Metrics from tools/sprites/render_tower.py (tower.json).
+  // Concrete shaft and slitted cab. Metrics from tools/sprites/render_tower.py (tower.json). Turned faces in BUILDING_FACES.
   tower: building(towerUrl, 384, 300, 426, 300, 133.8),
   // The CIWS pad under a rocket launcher. Metrics from tools/sprites/render_ram.py (ram.json).
   ram: building(ramUrl, 192, 126, 186, 126, 82.8),
+};
+
+/**
+ * Base buildings the player turns before placing: east, south, west, north, like CIV_FACES.
+ * Every face shares the east face's canvas and pad metrics.
+ */
+const BUILDING_FACES: Partial<Record<EntityType, BuildingSpriteDef[]>> = {
+  bunker: [
+    BUILDING_SPRITES.bunker!,
+    building(bunkerSUrl, 384, 222, 264, 222, 99),
+    building(bunkerWUrl, 384, 222, 264, 222, 99),
+    building(bunkerNUrl, 384, 222, 264, 222, 99),
+  ],
+  tower: [
+    BUILDING_SPRITES.tower!,
+    building(towerSUrl, 384, 300, 426, 300, 133.8),
+    building(towerWUrl, 384, 300, 426, 300, 133.8),
+    building(towerNUrl, 384, 300, 426, 300, 133.8),
+  ],
 };
 
 /** CIWS gun: 16 rows, each the base image's canvas and anchor (render/ciws.ts). */
@@ -1826,6 +1851,8 @@ export function buildingSpriteFor(type: EntityType, facing = 0): BuildingSpriteD
     const faces = CIV_FACES[type];
     return faces[buildingFaceIndex(facing) % faces.length];
   }
+  const faces = BUILDING_FACES[type];
+  if (faces) return faces[buildingFaceIndex(facing) % faces.length];
   return BUILDING_SPRITES[type];
 }
 
