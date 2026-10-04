@@ -73,10 +73,20 @@ function until(state: MatchState, max: number, done: () => boolean): number {
   return -1;
 }
 
+/** A Dynamo in the far corner, once per owner, so a radar-laid gun is not dark for want of power. */
+function powered(state: MatchState, owner: string): void {
+  if ([...state.entities.values()].some((e) => e.type === "dynamo" && e.ownerId === owner)) return;
+  const ts = state.tileSize;
+  const def = catalog("dynamo");
+  const tx = owner === "A" ? 2 : 4 + def.tileW;
+  makeEntity(state, "dynamo", owner, (tx + def.tileW / 2) * ts, (2 + def.tileH / 2) * ts, { tileX: tx, tileY: 2 });
+}
+
 /** A's CIWS with its footprint's corner on (tx, ty). */
 function seedCiws(state: MatchState, tx = 120, ty = 120, owner = "A"): Entity {
   const ts = state.tileSize;
   const def = catalog("ciws");
+  powered(state, owner);
   return makeEntity(state, "ciws", owner, (tx + def.tileW / 2) * ts, (ty + def.tileH / 2) * ts, {
     tileX: tx,
     tileY: ty,
@@ -289,10 +299,14 @@ describe("CIWS reach", () => {
     it(`hits a plane at the edge of its Max range ring on its own radar, past anyone's sight (${when})`, () => {
       const state = match();
       if (night) state.tick = NIGHT_TICK;
-      const ciws = seedCiws(state, 95, 120);
+      const def = catalog("ciws");
+      const ts = state.tileSize;
+      const ciws = makeEntity(state, "ciws", "A", (95 + def.tileW / 2) * ts, (120 + def.tileH / 2) * ts, { tileX: 95, tileY: 120 });
       ciws.longRange = true;
       const ring = weaponRangeWorld(state, ciws) * CIWS_AIR_REACH_MUL;
       const plane = planeOver(state, "B", ciws.x + ring * 0.95, ciws.y);
+      // Power last: the hit at the ring's edge is a seeded roll keyed on these ids.
+      powered(state, "A");
       step(state, TICK_DT);
       assert.equal(canSeeEntity(state, "A", plane), false, "nobody on A's side sees it");
       const t = until(state, 200, () => plane.hp < plane.hpMax || !state.entities.has(plane.id));
@@ -506,5 +520,39 @@ describe("CIWS orders", () => {
     const ciws = seedCiws(state);
     assert.equal(applyCommand(state, "B", { type: "cmd.rotate", ids: [ciws.id], x: 0, y: 0 }).ok, false);
     assert.equal(applyCommand(state, "B", { type: "cmd.forceattack", ids: [ciws.id], x: 0, y: 0 }).ok, false);
+  });
+});
+
+/** Pull down `owner`'s Dynamos so their buildings run short. */
+function unpowered(state: MatchState, owner: string): void {
+  for (const e of [...state.entities.values()]) if (e.type === "dynamo" && e.ownerId === owner) destroyEntity(state, e);
+}
+
+describe("CIWS on low power", () => {
+  it("neither fires nor bursts rockets while its owner is short on power, and wakes when power comes back", () => {
+    const state = match();
+    const ts = state.tileSize;
+    const ciws = seedCiws(state);
+    unpowered(state, "A");
+    const p = rocket(state, "B", ciws.x - 20 * ts, ciws.y + 6 * ts);
+    step(state, TICK_DT);
+    assert.equal(ciws.unpowered, true);
+    assert.equal(ciws.clip, CIWS_BELT, "no burst at the rocket");
+    assert.ok(!p.ciwsTried?.includes(ciws.id), "the rocket was never tried");
+    assert.ok(!state.impacts.some((m) => m.intercept));
+    state.projectiles = [];
+    assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === ciws.id)?.unpowered, true);
+
+    const soldier = makeEntity(state, "rifleman", "B", ciws.x + 20 * ts, ciws.y);
+    soldier.holdPosition = true;
+    ticks(state, 30);
+    assert.equal(soldier.hp, soldier.hpMax, "a dark gun leaves him alone");
+    assert.equal(ciws.clip, CIWS_BELT);
+
+    powered(state, "A");
+    const t = until(state, 60, () => soldier.hp <= 0 || !state.entities.has(soldier.id));
+    assert.ok(t >= 0, "back on power, it takes him");
+    assert.equal(ciws.unpowered, undefined);
+    assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === ciws.id)?.unpowered, undefined);
   });
 });

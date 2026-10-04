@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 93;
+export const PROTOCOL_VERSION = 94;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -214,6 +214,8 @@ export interface EntityView {
   longRange?: boolean;
   /** Held watch tower's spotlight heading, radians. Everyone who sees the tower sees the beam. */
   spotFacing?: number;
+  /** Building whose owner is short on power: its lamps are dark and a CIWS or RAM is silent. Omitted when powered. */
+  unpowered?: boolean;
   /** Titan pods switched off. Friendly snapshots; omitted while on. */
   rocketsOff?: boolean;
   /** Stay put: no chase, no withdraw. Friendly snapshots. */

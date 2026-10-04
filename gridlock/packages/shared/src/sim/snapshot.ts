@@ -321,6 +321,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       rocketsOff: friendly && e.rocketsOff ? true : undefined,
       longRange: friendly && e.longRange ? true : undefined,
       spotFacing: spotlightManned(e) ? spotFacingOf(e) : undefined,
+      unpowered: e.kind === "building" && e.unpowered ? true : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
       patrol:
         friendly && e.order?.kind === "patrol" && e.order.route

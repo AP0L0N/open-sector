@@ -41,6 +41,7 @@ import {
   spotlightsOn,
   tickSpotlights,
 } from "./night.js";
+import { tickPower } from "./power.js";
 import { snapshotFor } from "./snapshot.js";
 import { paintEntitySight, sightLightAt, visionMask, type SightSource } from "./vision.js";
 import type { Entity, MatchState } from "./types.js";
@@ -216,6 +217,38 @@ describe("watch tower spotlight", () => {
     assert.equal(view?.spotFacing, 1.25);
     const gone = snapshotFor(state, a).entities.find((e) => e.id === neutral.id);
     assert.equal(gone?.spotFacing, undefined);
+  });
+
+  it("goes dark while its owner is short on power, holds its heading, and burns again on power", () => {
+    const { state, a } = emptyField();
+    const tower = towerAt(state, a, 60, 128);
+    tower.spotFacing = 0;
+    const ox = tower.tileX + Math.floor(tower.tileW / 2);
+    const oy = tower.tileY + Math.floor(tower.tileH / 2);
+    const far = SPOTLIGHT_REACH_TILES - 6;
+    state.tick = NIGHT_TICK;
+    tickPower(state);
+    assert.equal(lit(state, a, ox + far, oy), true, "lit with nothing drawing power");
+
+    const gun = catalog("ciws");
+    makeEntity(state, "ciws", a, (20 + gun.tileW / 2) * state.tileSize, (20 + gun.tileH / 2) * state.tileSize, { tileX: 20, tileY: 20 });
+    tickPower(state);
+    assert.equal(tower.unpowered, true);
+    assert.equal(lit(state, a, ox + far, oy), false, "dark down the beam");
+    applyCommand(state, a, { type: "cmd.rotate", ids: [tower.id], x: tower.x, y: tower.y + 500 });
+    tickSpotlights(state, TICK_DT);
+    assert.equal(tower.spotFacing, 0, "a dark lamp does not swing");
+    const view = snapshotFor(state, a).entities.find((e) => e.id === tower.id);
+    assert.equal(view?.unpowered, true);
+    assert.equal(view?.spotFacing, 0, "the lamp keeps its heading on screen");
+
+    const dyn = catalog("dynamo");
+    makeEntity(state, "dynamo", a, (30 + dyn.tileW / 2) * state.tileSize, (20 + dyn.tileH / 2) * state.tileSize, { tileX: 30, tileY: 20 });
+    tickPower(state);
+    assert.equal(tower.unpowered, undefined);
+    assert.equal(lit(state, a, ox + far, oy), true, "burns again");
+    tickSpotlights(state, TICK_DT);
+    assert.ok(tower.spotFacing! > 0, "and swings toward the Rotate it was given");
   });
 });
 

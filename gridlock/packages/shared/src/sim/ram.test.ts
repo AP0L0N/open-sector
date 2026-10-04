@@ -78,10 +78,20 @@ function until(state: MatchState, max: number, done: () => boolean): number {
   return -1;
 }
 
+/** A Dynamo in the far corner, once per owner, so a radar-laid gun is not dark for want of power. */
+function powered(state: MatchState, owner: string): void {
+  if ([...state.entities.values()].some((e) => e.type === "dynamo" && e.ownerId === owner)) return;
+  const ts = state.tileSize;
+  const def = catalog("dynamo");
+  const tx = owner === "A" ? 2 : 4 + def.tileW;
+  makeEntity(state, "dynamo", owner, (tx + def.tileW / 2) * ts, (2 + def.tileH / 2) * ts, { tileX: tx, tileY: 2 });
+}
+
 /** A's RAM with its footprint's corner on (tx, ty). */
 function seedRam(state: MatchState, tx = 120, ty = 120, owner = "A"): Entity {
   const ts = state.tileSize;
   const def = catalog("ram");
+  powered(state, owner);
   return makeEntity(state, "ram", owner, (tx + def.tileW / 2) * ts, (ty + def.tileH / 2) * ts, {
     tileX: tx,
     tileY: ty,
@@ -91,6 +101,7 @@ function seedRam(state: MatchState, tx = 120, ty = 120, owner = "A"): Entity {
 function seedCiws(state: MatchState, tx: number, ty: number): Entity {
   const ts = state.tileSize;
   const def = catalog("ciws");
+  powered(state, "A");
   return makeEntity(state, "ciws", "A", (tx + def.tileW / 2) * ts, (ty + def.tileH / 2) * ts, { tileX: tx, tileY: ty });
 }
 
@@ -539,5 +550,31 @@ describe("RAM orders", () => {
     const state = match();
     const ram = seedRam(state);
     assert.equal(applyCommand(state, "B", { type: "cmd.forceattack", ids: [ram.id], x: 0, y: 0 }).ok, false);
+  });
+});
+
+/** Pull down `owner`'s Dynamos so their buildings run short. */
+function unpowered(state: MatchState, owner: string): void {
+  for (const e of [...state.entities.values()]) if (e.type === "dynamo" && e.ownerId === owner) destroyEntity(state, e);
+}
+
+describe("RAM on low power", () => {
+  it("launches nothing while its owner is short on power, and wakes when power comes back", () => {
+    const state = match();
+    const ts = state.tileSize;
+    const ram = seedRam(state);
+    unpowered(state, "A");
+    const soldier = makeEntity(state, "rifleman", "B", ram.x + 30 * ts, ram.y);
+    soldier.holdPosition = true;
+    ticks(state, 60);
+    assert.equal(ram.unpowered, true);
+    assert.equal(ram.rockets, RAM_ROCKET_AMMO, "the rack stays full");
+    assert.equal(ramRockets(state, ram).length, 0);
+    assert.equal(soldier.hp, soldier.hpMax);
+
+    powered(state, "A");
+    const t = until(state, 200, () => soldier.hp <= 0 || !state.entities.has(soldier.id));
+    assert.ok(t >= 0, "back on power, it takes him");
+    assert.ok((ram.rockets ?? 0) < RAM_ROCKET_AMMO);
   });
 });
