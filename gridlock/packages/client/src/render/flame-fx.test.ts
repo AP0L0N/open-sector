@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   cookoffParticles,
   emberPose,
+  FIRE_TONGUES_MIN,
   fireTongues,
   JET_RATE,
   flameParticleLook,
@@ -88,6 +89,12 @@ describe("burning ground", () => {
     assert.ok(big.length > small.length);
     assert.deepEqual(fireTongues(9, 10), small);
     for (const t of big) assert.ok(Math.hypot(t.u, t.v) <= 1);
+  });
+
+  it("draws fewer tongues per patch when the budget is shared, never below the floor", () => {
+    assert.equal(fireTongues(9, 30, 6).length, 6);
+    assert.equal(fireTongues(9, 30, 1).length, FIRE_TONGUES_MIN);
+    assert.ok(fireTongues(9, 30).length > 6);
   });
 
   it("burns hot, then dies down over the end of its life", () => {

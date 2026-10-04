@@ -43,9 +43,18 @@ export const FLAME_PARTICLE_CAP = 1600;
 /** Jet particles per second from one nozzle while the trigger is held. */
 export const JET_RATE = 280;
 /** ms a scorch stays after its fire goes out, fading. */
-export const SCORCH_MS = 45_000;
+export const SCORCH_MS = 15_000;
+/** Most scorches kept at once; the longest-cold go first. */
+export const SCORCH_CAP = 120;
 /** Most fire-smoke puffs kept at once. */
-export const FIRE_SMOKE_CAP = 1400;
+export const FIRE_SMOKE_CAP = 400;
+/** ms between smoke puffs off one patch burning hot; slower as it dies down. */
+export const FIRE_SMOKE_EVERY_MS = 220;
+/** Flame tongues shared by every burning patch; a big fire field draws fewer per patch. */
+export const FIRE_TONGUE_BUDGET = 360;
+/** Fewest and most tongues in one patch. */
+export const FIRE_TONGUES_MIN = 4;
+export const FIRE_TONGUES_MAX = 18;
 
 export function rng(seed: number): () => number {
   let s = (seed >>> 0) || 1;
@@ -234,9 +243,9 @@ export interface FireTongue {
 }
 
 /** Tongue layout for one patch. Stable per fire id; more tongues in a bigger patch. */
-export function fireTongues(seed: number, radius: number): FireTongue[] {
+export function fireTongues(seed: number, radius: number, most = FIRE_TONGUES_MAX): FireTongue[] {
   const rnd = rng(Math.imul(seed, 0x9e3779b9) + 7);
-  const n = Math.max(4, Math.min(18, Math.round(radius / 1.4)));
+  const n = Math.max(FIRE_TONGUES_MIN, Math.min(most, Math.round(radius / 1.4)));
   const out: FireTongue[] = [];
   for (let i = 0; i < n; i++) {
     // Sunflower spread so the tongues cover the patch without clumping.
