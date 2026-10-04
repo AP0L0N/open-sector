@@ -14,6 +14,7 @@ import {
   NEUTRAL_OWNER,
   NIGHT_REACH_MUL,
   NIGHT_SECONDS,
+  NIGHT_SIGHT_MUL,
   SPOTLIGHT_ON_DAYLIGHT,
   SPOTLIGHT_TURN_DEG_PER_SEC,
   TICK_DT,
@@ -108,9 +109,14 @@ export function clockMarkLine(phase: DayPhase): string {
   return `${mark} at ${phaseStartText(mark)}`;
 }
 
-/** Share of daylight sight and weapon reach left at this tick. */
+/** Share of daylight weapon reach left at this tick. */
 export function nightReachMul(tick: number): number {
   return NIGHT_REACH_MUL + (1 - NIGHT_REACH_MUL) * daylightAt(tick);
+}
+
+/** Share of daylight sight left at this tick. */
+export function nightSightMul(tick: number): number {
+  return NIGHT_SIGHT_MUL + (1 - NIGHT_SIGHT_MUL) * daylightAt(tick);
 }
 
 /** A sight or reach in tiles, cut for the dark. Never below one tile while it had any. */
