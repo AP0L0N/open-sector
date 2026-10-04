@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 81;
+export const PROTOCOL_VERSION = 82;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -221,7 +221,7 @@ export interface EntityView {
   tend?: number;
   /** Sandbags wrecked by a tank shell. The rubble stays. */
   ruined?: boolean;
-  /** A Wall section converted into a gate: boom lift 0–1, and whether it is locked. */
+  /** A gate: boom lift 0–1, and whether it is locked. */
   gate?: { locked: boolean; open: number };
   /**
    * Terrain peak a concrete run was built up to, in map height units.
@@ -624,8 +624,8 @@ export type ClientMessage =
   | { type: "cmd.rally"; ids: number[]; x: number; y: number }
   | { type: "cmd.sell"; id: number }
   | { type: "cmd.deploy"; id: number }
-  /** Turn own Wall sections into gates, or lock and unlock own gates. */
-  | { type: "cmd.gate"; ids: number[]; action: "convert" | "lock" | "unlock" }
+  /** Lock and unlock own gates. A gate is built from the Defences tab. */
+  | { type: "cmd.gate"; ids: number[]; action: "lock" | "unlock" }
   | { type: "cmd.garrison"; ids: number[]; buildingId: number; queue?: boolean }
   | { type: "cmd.ungarrison"; ids?: number[]; buildingId?: number; x?: number; y?: number }
   | { type: "cmd.garrisonhide"; ids: number[]; hide: boolean }

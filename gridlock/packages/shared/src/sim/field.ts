@@ -4,7 +4,6 @@ import {
   CYBORG_REPAIR_PER_SEC,
   ENGINEER_SEEK_TILES,
   fieldSpan,
-  GATE_COST,
   GATE_OPEN_SECONDS,
   GATE_SENSE_TILES,
   isConcreteLine,
@@ -28,7 +27,20 @@ import {
   type ShellType,
 } from "../catalog.js";
 import { ISO_ELEVATION, isoScale } from "../iso.js";
-import { allies, clearOrder, inBounds, isTree, isWater, makeEntity, scrapAt, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
+import {
+  allies,
+  clearOrder,
+  destroyEntity,
+  inBounds,
+  isTree,
+  isWater,
+  makeEntity,
+  scrapAt,
+  tileCenter,
+  tileIndex,
+  walkable,
+  worldToTile,
+} from "./geo.js";
 import { takeDamage } from "./crits.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
@@ -371,6 +383,7 @@ export function orderFieldBuild(
 ): string | null {
   const crew = engineers.filter((e) => e.type === "engineer" && e.hp > 0 && !e.wreck);
   if (crew.length === 0) return "Select an engineer.";
+  if (structure === "gate") return "Build a gate from the Defences tab.";
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(facing)) return "Cannot place there.";
   const pieces = fieldPiecesFor(structure, x, y, facing, x2, y2, path).filter((p) => pieceBuildable(state, structure, p));
   if (pieces.length === 0) return "Cannot place there.";
@@ -813,7 +826,7 @@ export function wallCoverBonus(state: MatchState, e: Entity): number {
   const span = fieldSpan("wall");
   if (!span) return 0;
   for (const wall of state.entities.values()) {
-    if (wall.type !== "wall" || wall.ruined || wall.hp <= 0 || wall.gate) continue;
+    if (wall.type !== "wall" || wall.ruined || wall.hp <= 0) continue;
     const { fx, fy, tx, ty } = wallAxes(wall.facing);
     const dx = e.x - wall.x;
     const dy = e.y - wall.y;
@@ -1147,64 +1160,87 @@ export function restampForts(state: MatchState): void {
   }
 }
 
-/**
- * A Wall section with another standing concrete section butted straight onto
- * each end. Only such a section can become a gate: the posts need something to
- * hold, and the boom spans the gap between them.
- */
-export function wallFlankedBothEnds(
-  walls: Iterable<{ id: number; type: string; x: number; y: number; hp: number; ruined?: boolean }>,
-  wall: { id: number; x: number; y: number; facing: number },
-): boolean {
-  const span = fieldSpan("wall");
-  if (!span) return false;
-  const { tx, ty } = wallAxes(wall.facing);
-  let neg = false;
-  let pos = false;
-  for (const w of walls) {
-    if (w.id === wall.id || !isConcreteLine(w.type) || w.hp <= 0 || w.ruined) continue;
-    for (const sign of [-1, 1] as const) {
-      const px = wall.x + tx * sign * span.length;
-      const py = wall.y + ty * sign * span.length;
-      if (Math.hypot(w.x - px, w.y - py) > span.length * 0.35) continue;
-      if (sign < 0) neg = true;
-      else pos = true;
-    }
-    if (neg && pos) return true;
-  }
-  return false;
-}
-
 /** Boom lifted enough for rounds and men to pass. */
 export function gateOpen(e: { gate?: { open: number } | undefined }): boolean {
   return (e.gate?.open ?? 0) >= 0.5;
 }
 
+/** Sections whose centres sit this close to a whole section length apart are side by side. */
+const GATE_PAIR_SLACK = 0.35;
+
+export interface GateSite {
+  x: number;
+  y: number;
+  facing: number;
+  /** The two Wall sections the gate stands in place of. */
+  ids: [number, number];
+}
+
+type WallLike = { id: number; type: string; ownerId: string; x: number; y: number; facing: number; hp: number; ruined?: boolean };
+
 /**
- * Turn own standing Wall sections into gates, GATE_COST each. A section already
- * a gate, or without wall on both ends, is skipped; the order fails only when
- * nothing could be converted.
+ * Where a gate goes for a pointer at (x, y): the two own standing Wall sections, butted
+ * end to end on one line, whose joint is nearest the pointer. The gate is centred on that
+ * joint and faces the way the walls do. Null when no such pair is within a section's
+ * length of the pointer. Works on the sim's entities and on a snapshot's.
  */
-export function convertToGates(state: MatchState, playerId: string, ids: readonly number[]): string | null {
-  const p = state.players.get(playerId);
-  if (!p || !p.alive) return "You are out of the fight.";
-  let done = 0;
-  let unflanked = 0;
-  for (const id of ids) {
-    const e = state.entities.get(id);
-    if (!e || e.type !== "wall" || e.ownerId !== playerId || e.hp <= 0 || e.ruined || e.gate) continue;
-    if (!wallFlankedBothEnds(state.entities.values(), e)) {
-      unflanked++;
-      continue;
-    }
-    if (p.scrap < GATE_COST) return done > 0 ? null : "Not enough scrap.";
-    p.scrap -= GATE_COST;
-    e.gate = { locked: false, open: 0 };
-    done++;
+export function gateSiteAt(entities: Iterable<WallLike>, ownerId: string, x: number, y: number): GateSite | null {
+  const span = fieldSpan("wall");
+  if (!span) return null;
+  const L = span.length;
+  const walls: WallLike[] = [];
+  for (const e of entities) {
+    if (e.type !== "wall" || e.ownerId !== ownerId || e.hp <= 0 || e.ruined) continue;
+    walls.push(e);
   }
-  if (done === 0) return unflanked > 0 ? "A gate needs wall on both ends." : "Select a wall section.";
+  let best: GateSite | null = null;
+  let bestD = L;
+  for (const a of walls) {
+    if (Math.hypot(a.x - x, a.y - y) > L * 1.5) continue;
+    const { tx, ty } = wallAxes(a.facing);
+    for (const b of walls) {
+      if (b.id === a.id) continue;
+      // Parallel either way round: a line keeps one facing, but a hand-laid one may not.
+      if (Math.abs(Math.sin(b.facing - a.facing)) > 0.05) continue;
+      if (Math.hypot(b.x - (a.x + tx * L), b.y - (a.y + ty * L)) > L * GATE_PAIR_SLACK) continue;
+      const mx = (a.x + b.x) / 2;
+      const my = (a.y + b.y) / 2;
+      const d = Math.hypot(mx - x, my - y);
+      if (d >= bestD) continue;
+      bestD = d;
+      best = { x: mx, y: my, facing: a.facing, ids: [a.id, b.id] };
+    }
+  }
+  return best;
+}
+
+/**
+ * Stand a finished gate in place of the two Wall sections under `at`. The gate keeps
+ * their share of health and the height the line was built to. Null when the pair is no
+ * longer there, so the caller can refund.
+ */
+export function raiseGate(state: MatchState, ownerId: string, at: { x: number; y: number }): Entity | null {
+  const site = gateSiteAt(state.entities.values(), ownerId, at.x, at.y);
+  if (!site || Math.hypot(site.x - at.x, site.y - at.y) > 1) return null;
+  const walls = site.ids.map((id) => state.entities.get(id)!);
+  let hp = 0;
+  let hpMax = 0;
+  let crest = Number.NEGATIVE_INFINITY;
+  for (const w of walls) {
+    hp += w.hp;
+    hpMax += w.hpMax;
+    if (w.wallCrest != null && w.wallCrest > crest) crest = w.wallCrest;
+    destroyEntity(state, w);
+  }
+  const gate = makeEntity(state, "gate", ownerId, site.x, site.y, { facing: site.facing });
+  gate.facing = site.facing;
+  gate.turretFacing = site.facing;
+  gate.hp = Math.max(1, Math.round(gate.hpMax * (hpMax > 0 ? hp / hpMax : 1)));
+  gate.gate = { locked: false, open: 0 };
+  if (Number.isFinite(crest)) gate.wallCrest = crest;
+  raiseWallCrest(state, [gate]);
   restampForts(state);
-  return null;
+  return gate;
 }
 
 /** Lock or unlock own gates. Locked, the boom drops and nobody passes. */
@@ -1225,7 +1261,10 @@ export function setGatesLocked(state: MatchState, playerId: string, ids: readonl
   return null;
 }
 
-/** The boom lifts while a friendly ground unit is near an unlocked gate, and drops otherwise. */
+/**
+ * The boom lifts while a friendly ground unit is near an unlocked gate, and drops otherwise.
+ * Near is measured from the gate's span, not its middle, so a man at either post lifts it.
+ */
 function tickGates(state: MatchState, dt: number): void {
   const sense = GATE_SENSE_TILES * state.tileSize;
   const step = dt / Math.max(0.05, GATE_OPEN_SECONDS);
@@ -1233,10 +1272,15 @@ function tickGates(state: MatchState, dt: number): void {
     if (!g.gate || g.hp <= 0) continue;
     let want = 0;
     if (!g.gate.locked) {
+      const half = (fieldSpan(g.type)?.length ?? 0) / 2;
+      const { fx, fy, tx, ty } = wallAxes(g.facing);
       for (const u of state.entities.values()) {
         if (u.kind !== "unit" || u.hp <= 0 || u.wreck || u.garrisonedIn != null || aloft(u)) continue;
         if (isAircraftType(u.type) || !allies(state, u.ownerId, g.ownerId)) continue;
-        if (Math.hypot(u.x - g.x, u.y - g.y) > sense) continue;
+        const dx = u.x - g.x;
+        const dy = u.y - g.y;
+        const along = Math.max(0, Math.abs(dx * tx + dy * ty) - half);
+        if (Math.hypot(along, dx * fx + dy * fy) > sense) continue;
         want = 1;
         break;
       }

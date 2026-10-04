@@ -127,10 +127,10 @@ export {
   fieldSiteClear,
   fieldTurn,
   gateOpen,
+  gateSiteAt,
   sandbagCoverBonus,
   wallAxes,
-  wallFlankedBothEnds,
   wallRiseLimit,
   wallRunTops,
 } from "./field.js";
-export type { WallTopSample } from "./field.js";
+export type { GateSite, WallTopSample } from "./field.js";

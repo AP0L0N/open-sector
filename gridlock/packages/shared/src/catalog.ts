@@ -502,24 +502,29 @@ export type EntityType =
   | "sandbags"
   | "wall"
   | "greatwall"
+  | "gate"
   | "teeth"
   | "trench";
 export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "ram" | "bunker" | "tower" | "research" | "radar";
-/** Placed by an engineer. Sandbags and walls can also be queued from the Defences tab. */
-export type FieldStructureType = "sandbags" | "wall" | "greatwall" | "teeth" | "trench";
-export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "wall", "greatwall", "teeth", "trench"];
-/** Field works the construction yard can queue. An engineer can still place these anywhere. */
-export type YardFieldType = "sandbags" | "wall" | "greatwall";
-export const YARD_FIELD_TYPES: readonly YardFieldType[] = ["sandbags", "wall", "greatwall"];
+/** Placed by an engineer. Sandbags and walls can also be queued from the Defences tab. The gate comes only from there. */
+export type FieldStructureType = "sandbags" | "wall" | "greatwall" | "gate" | "teeth" | "trench";
+export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "wall", "greatwall", "gate", "teeth", "trench"];
+/** Field works the construction yard can queue. An engineer can still place these anywhere, except the gate. */
+export type YardFieldType = "sandbags" | "wall" | "greatwall" | "gate";
+export const YARD_FIELD_TYPES: readonly YardFieldType[] = ["sandbags", "wall", "greatwall", "gate"];
 /** Kept in the sim but off the Defences tab and the engineer's command bar for now. */
 export const HIDDEN_FIELD_TYPES: readonly FieldStructureType[] = ["greatwall"];
 export function isHiddenField(type: string): boolean {
   return (HIDDEN_FIELD_TYPES as readonly string[]).includes(type);
 }
-/** Concrete lines an engineer lays as one job: every piece appears together when he finishes. The Large wall is the `greatwall` id. */
-export type ConcreteLineType = "wall" | "greatwall";
+/**
+ * Concrete lines: they block, stop direct fire, and take a crest height. An engineer lays
+ * the walls as one job: every piece appears together when he finishes. The Large wall is
+ * the `greatwall` id. The gate stands in place of two Wall sections.
+ */
+export type ConcreteLineType = "wall" | "greatwall" | "gate";
 export function isConcreteLine(type: string): type is ConcreteLineType {
-  return type === "wall" || type === "greatwall";
+  return type === "wall" || type === "greatwall" || type === "gate";
 }
 export type CivilianType = "cottage" | "house" | "manor" | "shack" | "barn" | "inn" | "chapel";
 export const CIVILIAN_TYPES: readonly CivilianType[] = [
@@ -1726,10 +1731,11 @@ export const LARGE_WALL_COVER_HEIGHT = 3;
 export const LARGE_WALL_EYE_HEIGHT = LARGE_WALL_COVER_HEIGHT * 0.6;
 
 /**
- * Gate. A Wall section with a wall on both ends can be turned into a gate: two
- * concrete posts and a lifting boom, like a car-park barrier, with a small lamp
- * on each post. It lifts for its owner's side and their allies and stays down
- * for everyone else; locked, it lets nobody through and shows a padlock.
+ * Gate. Built from the Defences tab onto two of your own Wall sections side by side;
+ * when the yard finishes it the two sections become one wide gate: two concrete posts
+ * and a lifting boom, like a car-park barrier, with a small lamp on each post. It lifts
+ * for its owner's side and their allies and stays down for everyone else; locked, it
+ * lets nobody through and shows a padlock.
  */
 export const GATE_COST = 40;
 /** Seconds for the boom to lift fully, or to drop. */
@@ -2727,7 +2733,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Concrete section with barbed wire. Scroll to turn it, then drag from the start to the end. The whole line is one job — longer for each piece — and it appears when the engineer finishes. Nothing walks through it while it stands. Shells and rockets break it; an engineer can repair it. Units beside it have extra health and take less from ground fire. Mortars, bombs, and shots from the air ignore that. A section with wall on both ends can be converted into a gate that lifts for your side.",
+    blurb: "Concrete section with barbed wire. Scroll to turn it, then drag from the start to the end. The whole line is one job — longer for each piece — and it appears when the engineer finishes. Nothing walks through it while it stands. Shells and rockets break it; an engineer can repair it. Units beside it have extra health and take less from ground fire. Mortars, bombs, and shots from the air ignore that.",
   },
   greatwall: {
     type: "greatwall",
@@ -2761,6 +2767,28 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonTypes: BUNKER_TYPES,
     coverHeight: LARGE_WALL_COVER_HEIGHT,
     blurb: `Tall concrete wall with firing slits down both faces. Laid like the ordinary wall: scroll to turn, click and drag a line, keep going round corners, then Confirm. Each section holds ${LARGE_WALL_GARRISON_CAP} of the infantry a bunker takes, and every weapon fires from the slits. Men inside have triple health, the concrete stops half of every hit, and they see and reach a little farther. Nothing walks through it and no direct fire crosses it; shells and rockets break it, and an engineer repairs it.`,
+  },
+  gate: {
+    type: "gate",
+    kind: "building",
+    name: "Gate",
+    letter: "b",
+    cost: GATE_COST,
+    buildSeconds: 6,
+    hp: 240,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: 0,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "Point at two of your Wall sections side by side. When it is finished they become one wide gate: two posts with lamps and a boom that lifts for your side and stays down for everyone else. Lock it to keep everyone out. Shells and rockets break it; an engineer can repair it.",
   },
   teeth: {
     type: "teeth",
@@ -3733,6 +3761,7 @@ export function fieldSpan(type: EntityType): { length: number; thick: number } |
   if (type === "sandbags") return { length: 24, thick: 7 };
   if (type === "wall") return { length: 24, thick: 8 };
   if (type === "greatwall") return { length: 24, thick: 12 };
+  if (type === "gate") return { length: 48, thick: 8 };
   if (type === "teeth") return { length: 14, thick: 14 };
   if (type === "trench") return { length: 16, thick: 10 };
   return null;

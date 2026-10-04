@@ -15,6 +15,7 @@ describe("sidebarGroupOf", () => {
     const defenceTypes = g.defences.map((e) => e.type);
     assert.ok(defenceTypes.includes("sandbags"));
     assert.ok(defenceTypes.includes("wall"));
+    assert.ok(defenceTypes.includes("gate"), "the gate is built from the Defences tab");
     assert.equal(defenceTypes.includes("greatwall"), false, "Large wall is hidden for now");
     assert.equal(all.some((e) => e.id === "build-teeth" || e.id === "build-trench"), false);
   });

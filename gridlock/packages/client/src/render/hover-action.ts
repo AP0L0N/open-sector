@@ -222,7 +222,7 @@ function canRepairHit(
   if (!friendly) return false;
   if (hit.kind === "unit") return isRepairableUnit(hit.type);
   if (hit.type === "sandbags") return false;
-  if (isFieldStructure(hit.type) && hit.type !== "teeth" && hit.type !== "trench" && hit.type !== "wall" && hit.type !== "greatwall") return false;
+  if (isFieldStructure(hit.type) && hit.type !== "teeth" && hit.type !== "trench" && hit.type !== "wall" && hit.type !== "greatwall" && hit.type !== "gate") return false;
   return hit.kind === "building";
 }
 
