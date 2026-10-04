@@ -17,6 +17,12 @@
     "battle-3": {
       "prompt": "Instrumental gritty electro-industrial track, relentless and mechanical. Fast driving synth bass arpeggios, clanging metallic percussion and hammer-on-steel hits, distorted drum machine, gritty saw leads, factory machinery textures, unstoppable momentum, no vocals.",
       "length_ms": 175000
+    },
+    "battle-steel-on-the-line": {
+      "title": "Steel on the Line",
+      "source": "imports/steel-on-the-line.m4a",
+      "song_id": "DS7tpFKSA68RgSPjpRbK",
+      "note": "Made by the user on the ElevenLabs site (the take rated thumbs-up)."
     }
   }
 }

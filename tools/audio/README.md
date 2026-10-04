@@ -76,5 +76,11 @@ current plan) is downloaded into `tools/audio/imports/` and named in the spec in
 Build masters it like a generated take; `pitch` (one number, or one per variant) slows it down
 for a bigger gun or speeds it up for a smaller one.
 
+**Songs made on the site.** The music library is reachable (`elevenlabs.py songs` lists it,
+`elevenlabs.py song <id> out` saves one). A music spec entry names the song instead of a prompt:
+`"battle-steel-on-the-line": {"source": "imports/steel-on-the-line.m4a", "song_id": "DS7tp..."}`;
+build fetches it into `imports/` (gitignored) when missing and masters it like the rest. Any
+`music/battle*.mp3` joins the in-match rotation; `music/menu*.mp3` plays on the menus.
+
 Prompts say "no music, no voice" and describe distance ("close", "medium distance outdoors").
 Original voices and sounds only: no named real actors, no Westwood/EA material.

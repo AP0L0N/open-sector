@@ -243,7 +243,10 @@ def run_job(el: ElevenLabs, spec: dict, voice_id: str | None, job: tuple) -> str
             keep_raw(rel, raw)
             finish(raw, path, "loop" if arg.get("loop") else "sfx", arg.get("lufs"))
         else:
-            raw = el.music(arg["prompt"], length_ms=int(arg.get("length_ms", 120_000)))
+            if arg.get("source"):
+                raw = source_bytes(arg, el)
+            else:
+                raw = el.music(arg["prompt"], length_ms=int(arg.get("length_ms", 120_000)))
             finish(raw, path, "music")
         log(f"  ok   {rel}")
         return "ok"
@@ -252,9 +255,14 @@ def run_job(el: ElevenLabs, spec: dict, voice_id: str | None, job: tuple) -> str
         return "fail"
 
 
-def source_bytes(s: dict) -> bytes:
-    """A hand-picked take (say, one saved from the ElevenLabs site) instead of a new generation."""
+def source_bytes(s: dict, el: ElevenLabs | None = None) -> bytes:
+    """
+    A hand-picked take (say, one saved from the ElevenLabs site) instead of a new generation.
+    A song from the account's music library names its `song_id` and is fetched when missing.
+    """
     src = HERE / s["source"]
+    if not src.is_file() and s.get("song_id") and el is not None:
+        el.download_song(s["song_id"], src)
     if not src.is_file():
         raise FileNotFoundError(f"sfx source {src} is missing")
     return src.read_bytes()

@@ -14,3 +14,5 @@ tools/sprites/preview/*/
 tools/audio/previews/
 tools/audio/__pycache__/
 tools/audio/raw/
+# Hand-picked takes and songs fetched from ElevenLabs; specs record where they came from.
+tools/audio/imports/

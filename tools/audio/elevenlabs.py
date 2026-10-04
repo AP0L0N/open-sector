@@ -22,6 +22,8 @@ As a CLI (one-off use):
     python3 tools/audio/elevenlabs.py sfx "prompt" out.mp3 [--duration 1.5] [--loop]
     python3 tools/audio/elevenlabs.py music "prompt" out.mp3 [--length-ms 60000]
     python3 tools/audio/elevenlabs.py design "voice description" "sample text" outdir/
+    python3 tools/audio/elevenlabs.py songs                 # music library, incl. songs made on the site
+    python3 tools/audio/elevenlabs.py song <song_id> out.mp3
 
 Every call retries on 429 and 5xx with backoff, so many workers can share one key.
 Writes are atomic (tmp file then rename) so an interrupted batch never leaves half files.
@@ -220,12 +222,29 @@ class ElevenLabs:
         return audio
 
 
+    # -- songs made on the site ----------------------------------------------
+
+    def songs(self) -> list[dict]:
+        """Songs in the account's music library (made here or on the ElevenLabs site), newest first."""
+        return self._request("GET", "/v1/music/songs")["songs"]
+
+    def download_song(self, song_id: str, out: str | os.PathLike) -> pathlib.Path:
+        """Save a library song. Its download_url is a signed storage link: fetched without the API key."""
+        song = next((s for s in self.songs() if s["id"] == song_id), None)
+        if not song or not song.get("download_url"):
+            raise ElevenLabsError(404, f"song {song_id} not found or not ready", "/v1/music/songs")
+        with urllib.request.urlopen(song["download_url"], timeout=self.timeout) as r:
+            return _write(out, r.read())
+
+
 def _main(argv: list[str]) -> None:
     import argparse
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("voices")
+    sub.add_parser("songs")
+    g = sub.add_parser("song"); g.add_argument("song_id"); g.add_argument("out")
     t = sub.add_parser("tts"); t.add_argument("voice_id"); t.add_argument("text"); t.add_argument("out")
     t.add_argument("--model", default=TTS_MODEL)
     s = sub.add_parser("sfx"); s.add_argument("prompt"); s.add_argument("out")
@@ -237,7 +256,12 @@ def _main(argv: list[str]) -> None:
     a = ap.parse_args(argv)
 
     el = ElevenLabs()
-    if a.cmd == "voices":
+    if a.cmd == "songs":
+        for s in el.songs():
+            print(s["id"], s["updated_at_utc"][:16], s["metadata"].get("title"), sep="\t")
+    elif a.cmd == "song":
+        print(el.download_song(a.song_id, a.out))
+    elif a.cmd == "voices":
         for v in el.voices():
             print(v["voice_id"], v["name"], sep="\t")
     elif a.cmd == "tts":
