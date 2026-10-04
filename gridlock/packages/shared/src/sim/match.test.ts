@@ -364,6 +364,7 @@ describe("construction", () => {
     const locked = applyCommand(state, "A", { type: "cmd.train", unit: "warden" });
     assert.equal(locked.ok, false);
     if (!locked.ok) assert.equal(locked.message, "Need a Research Facility.");
+    state.players.get("A")!.scrap += catalog("research").cost;
     const r = applyCommand(state, "A", { type: "cmd.build", building: "research" });
     assert.equal(r.ok, true, !r.ok ? r.message : "");
     ticks(state, catalog("research").buildSeconds * 10 + 2);

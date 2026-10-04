@@ -56,8 +56,8 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
     if (busy && want === "airfield") return `Airfield pads full (${AIRFIELD_PADS} planes). Build another Airfield.`;
     if (busy) return "Queue is full.";
     if (want === "airfield") return "Need an Airfield.";
-    if (want === "muster") return "Need a Muster.";
-    return "Need an Armory.";
+    if (want === "muster") return "Need a Barracks.";
+    return "Need a Machine Shop.";
   }
   const tech = techMissing(state, playerId, unit);
   if (tech) return `Need a ${catalog(tech).name}.`;
@@ -304,5 +304,5 @@ export function setRally(state: MatchState, playerId: string, ids: number[], x: 
     else b.rally = { x: px, y: py };
     n++;
   }
-  return n === 0 ? "Select a Muster, Smelter, or Armory." : null;
+  return n === 0 ? "Select a Barracks, Smelter, or Machine Shop." : null;
 }

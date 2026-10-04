@@ -137,7 +137,7 @@ describe("mortar", () => {
     assert.equal(infantryGunFor({ type: "mortarman", crits: ["arm"] }), null);
     const trained = applyCommand(match().state, "A", { type: "cmd.train", unit: "mortarman" });
     assert.equal(trained.ok, false);
-    if (!trained.ok) assert.equal(trained.message, "Need a Muster.");
+    if (!trained.ok) assert.equal(trained.message, "Need a Barracks.");
   });
 
   it("scatters more at range, peaks in the air, and still hurts at the rim", () => {

@@ -95,7 +95,7 @@ describe("cyborg", () => {
     assert.equal(GATLING.bulky, true);
     const trained = applyCommand(match().state, "A", { type: "cmd.train", unit: "cyborg" });
     assert.equal(trained.ok, false);
-    if (!trained.ok) assert.equal(trained.message, "Need an Armory.");
+    if (!trained.ok) assert.equal(trained.message, "Need a Machine Shop.");
   });
 
   it("spawns with a full drum, fires one gatling's burst, and stays dry at empty", () => {

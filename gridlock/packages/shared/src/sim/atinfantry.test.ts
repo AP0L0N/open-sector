@@ -123,7 +123,7 @@ describe("AT infantry", () => {
     assert.ok(ptrdPenetration(PTRD_CLOSE_TILES / 2, 80) > PTRD_PEN_CLOSE);
     const trained = applyCommand(match().state, "A", { type: "cmd.train", unit: "atinfantry" });
     assert.equal(trained.ok, false);
-    if (!trained.ok) assert.equal(trained.message, "Need a Muster.");
+    if (!trained.ok) assert.equal(trained.message, "Need a Barracks.");
   });
 
   it("opens light armor and a tank's side or rear up close, and nothing else", () => {

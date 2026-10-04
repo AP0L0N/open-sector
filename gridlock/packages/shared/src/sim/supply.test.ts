@@ -77,7 +77,7 @@ describe("supply truck", () => {
     assert.equal([...state.entities.values()].some((e) => e.type === "supply"), false);
     const trained = applyCommand(state, a, { type: "cmd.train", unit: "supply" });
     assert.equal(trained.ok, false);
-    if (!trained.ok) assert.equal(trained.message, "Need an Armory.");
+    if (!trained.ok) assert.equal(trained.message, "Need a Machine Shop.");
     assert.equal(weaponFitsTruck(infantryGunById("rifle")), true);
     assert.equal(weaponFitsTruck(infantryGunById("handgun")), true);
     assert.equal(weaponFitsTruck(infantryGunById("assault")), true);
