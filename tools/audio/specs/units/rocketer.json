@@ -51,10 +51,11 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Shoulder-fired rocket launcher firing, sharp whoosh of rocket ignition and backblast, rocket hissing away into the distance, outdoors, close range, no music, no voice",
-      "duration": 1.8,
+      "prompt": "A World War 2 anti-tank rocket launcher firing in an open field: a violent roaring backblast and a rocket screaming away into the distance.",
+      "duration": 3.5,
       "variants": 3,
-      "influence": 0.65
+      "influence": 0.6,
+      "lufs": -9
     },
     "move": {
       "prompt": "Soldier jogging on dirt with rocket tubes and metal launcher rattling on his back, short burst of footsteps, close, no music, no voice",
@@ -63,10 +64,11 @@
       "influence": 0.6
     },
     "special": {
-      "prompt": "Guided anti-tank missile launch, ejection pop then powerful rocket motor ignition roaring and screaming away with sustained hiss and wire whine, outdoors, close range, no music, no voice",
-      "duration": 2.5,
+      "prompt": "A heavy guided missile launching on a World War 2 battlefield: a sharp ignition bang and a long fierce roar as it streaks away into the distance.",
+      "duration": 4.0,
       "variants": 1,
-      "influence": 0.65
+      "influence": 0.6,
+      "lufs": -9
     },
     "reload": {
       "prompt": "Rocket pulled from a back rack and slid into a metal launcher tube, metallic scrape and latch click, close up, no music, no voice",

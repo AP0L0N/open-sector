@@ -51,10 +51,11 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Big 105mm field howitzer firing, huge deep boom with pressure wave, rolling echo across the valley, shell whistling away, medium distance outdoors, no music, no voice",
-      "duration": 2.5,
-      "variants": 2,
-      "influence": 0.7
+      "prompt": "Distant, thunderous boom of a World War 2 105mm field howitzer firing in an open field, the blast shaking the ground and echoing off the hills for seconds.",
+      "duration": 5.0,
+      "variants": 3,
+      "influence": 0.6,
+      "lufs": -9
     },
     "move": {
       "prompt": "Heavy towed field gun being hauled, iron wheels creaking and rolling on gravel, chains clinking, close, no music, no voice",

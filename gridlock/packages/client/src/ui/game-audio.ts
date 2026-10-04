@@ -9,7 +9,7 @@
 import type { SpatialMix } from "./spatial-sfx.js";
 import { playClip, playSample, preloadSample, type Clip } from "./audio.js";
 import { buildBank, LineDeck } from "./sound-bank.js";
-import type { SoundEvent } from "../render/sound-events.js";
+import type { SoundEvent, Weapon } from "../render/sound-events.js";
 import { leadType, orderCue, type UnitCue } from "./order-cues.js";
 import type { ClientMessage, MatchSnapshot } from "@gridlock/shared";
 
@@ -117,29 +117,53 @@ export function warmUnit(type: string): void {
   if (warmed.has(type)) return;
   warmed.add(type);
   const folder = unitFolder(type);
-  for (const cue of ["sfx-fire", "sfx-die", "voice-die"]) for (const url of bank.get(folder, cue)) preloadSample(url);
+  for (const cue of ["sfx-fire", "sfx-rockets", "sfx-die", "voice-die"]) for (const url of bank.get(folder, cue)) preloadSample(url);
 }
 
 export function warmBattle(): void {
-  for (const cue of ["explosion_small", "explosion_large", "shell_impact", "ricochet", "penetrate", "splash", "intercept", "cookoff"]) {
+  for (const cue of ["explosion_small", "explosion_large", "shell_impact", "ricochet", "penetrate", "splash", "intercept", "cookoff", "explosion_building", "mine_explode"]) {
     for (const url of bank.get("sfx/battle", `sfx-${cue}`)) preloadSample(url);
   }
 }
 
 const FIRE_VOLUME = 0.55;
 /** Guns and rocket launchers whose report is mastered hot (spec "lufs") and plays at full weight. */
-const HEAVY_FIRE = new Set(["ss3", "nebelwerfer"]);
+const HEAVY_FIRE = new Set([
+  "warden",
+  "ss3",
+  "jagdtiger",
+  "apocalypse",
+  "titan",
+  "artillery",
+  "battleship",
+  "mortarman",
+  "rocketer",
+  "nebelwerfer",
+  "stuka",
+  "fw190",
+]);
 const HEAVY_FIRE_VOLUME = 1;
+/** Their `fire` is a cannon, a bomb or a broadside: their machine guns and CIWS must not set it off. */
+const BIG_GUN_ONLY = new Set(["warden", "ss3", "jagdtiger", "apocalypse", "titan", "battleship", "stuka"]);
 const IMPACT_VOLUME: Record<string, number> = {
-  explosion_large: 0.75,
-  explosion_small: 0.55,
-  cookoff: 0.7,
-  shell_impact: 0.45,
+  explosion_large: 1,
+  explosion_small: 0.85,
+  cookoff: 1,
+  explosion_building: 1,
+  shell_impact: 0.75,
   ricochet: 0.4,
-  penetrate: 0.5,
+  penetrate: 0.85,
   splash: 0.45,
   intercept: 0.5,
 };
+
+/** Which take a shot plays: rockets use the unit's salvo when it has one (the Titan's pod). */
+function fireUrl(type: string, weapon: Weapon): string | null {
+  if (weapon === "small" && BIG_GUN_ONLY.has(type)) return null;
+  const folder = unitFolder(type);
+  if (weapon === "rocket") return pick(folder, "sfx-rockets") ?? pick(folder, "sfx-fire");
+  return pick(folder, "sfx-fire");
+}
 
 /** Plays what the snapshot tracker found. `mixAt` places a world point in the stereo field (null: too far). */
 export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number, y: number) => SpatialMix | null): void {
@@ -147,7 +171,7 @@ export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number
     switch (ev.kind) {
       case "fire": {
         warmUnit(ev.type);
-        const url = pick(unitFolder(ev.type), "sfx-fire");
+        const url = fireUrl(ev.type, ev.weapon);
         const mix = url ? mixAt(ev.x, ev.y) : null;
         if (url && mix) {
           const heavy = HEAVY_FIRE.has(ev.type);

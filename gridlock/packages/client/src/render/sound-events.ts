@@ -13,7 +13,8 @@ export type ImpactSound =
   | "penetrate"
   | "splash"
   | "intercept"
-  | "cookoff";
+  | "cookoff"
+  | "explosion_building";
 
 export type AnnounceEvent =
   | "start"
@@ -31,9 +32,12 @@ export type AnnounceEvent =
   | "victory"
   | "defeat";
 
+/** What went off: bullets (and autocannon), a shell or bomb, or a rocket. */
+export type Weapon = "small" | "shell" | "rocket";
+
 export type SoundEvent =
   /** A unit fired. Positioned at the shooter. */
-  | { kind: "fire"; type: string; x: number; y: number }
+  | { kind: "fire"; type: string; weapon: Weapon; x: number; y: number }
   /** A battlefield sound at a point. */
   | { kind: "impact"; sound: ImpactSound; x: number; y: number }
   /** An infantryman fell (voice) or a machine was destroyed (sfx). */
@@ -52,7 +56,7 @@ const FIRE_GAP_MS: Record<string, number> = {
   pyro: 1400,
   jumpjet: 260,
   gunboat: 320,
-  fw190: 700,
+  fw190: 1500,
   stuka: 500,
   nebelwerfer: 1600,
   titan: 350,
@@ -64,10 +68,23 @@ const FIRE_GAP_MS: Record<string, number> = {
   tower: 140,
 };
 const DEFAULT_FIRE_GAP_MS = 140;
+/**
+ * Shells: each is its own report, except where one sample already holds several
+ * barrels (the Apocalypse's pair, a battleship broadside, a Stuka's bomb run).
+ */
+const SHELL_GAP_MS: Record<string, number> = {
+  apocalypse: 1500,
+  battleship: 2500,
+  stuka: 2000,
+};
+/** Rockets: one salvo sample covers a whole ripple. Kept apart from the gun, so a Titan's pod never mutes its cannon. */
+const ROCKET_GAP_MS: Record<string, number> = {
+  nebelwerfer: 2500,
+  titan: 2500,
+};
+const DEFAULT_ROCKET_GAP_MS = 600;
 /** A shell's impact after its own projectile was already heard is not a second shot. */
 const SHELL_ECHO_MS = 2500;
-/** The Tiger's cannon is the hand-made sample mapview plays itself. */
-const SILENT_SHOOTERS = new Set(["warden"]);
 
 const UNDER_ATTACK_GAP_MS = 25_000;
 const UNIT_ATTACK_GAP_MS = 30_000;
@@ -90,6 +107,7 @@ export class SoundTracker {
   private seenImpacts = new Set<number>();
   private seenBodies = new Set<number>();
   private lastFire = new Map<number, number>();
+  private lastRocket = new Map<number, number>();
   private lastShellFire = new Map<number, number>();
   /** Share of health left, not raw hp: bracing or packing up rescales both hp and hpMax. */
   private lastHp = new Map<number, number>();
@@ -123,27 +141,32 @@ export class SoundTracker {
       return out;
     }
 
-    const fire = (shooterId: number, shell: boolean) => {
+    const fire = (shooterId: number, kind: Weapon) => {
       const s = byId.get(shooterId);
-      if (!s || s.wreck || SILENT_SHOOTERS.has(s.type)) return;
-      const gap = shell ? 0 : (FIRE_GAP_MS[s.type] ?? DEFAULT_FIRE_GAP_MS);
-      const last = this.lastFire.get(shooterId) ?? -Infinity;
-      if (now - last < gap) return;
-      this.lastFire.set(shooterId, now);
-      if (shell) this.lastShellFire.set(shooterId, now);
-      out.push({ kind: "fire", type: s.type, x: s.x, y: s.y });
+      if (!s || s.wreck) return;
+      const gap =
+        kind === "small"
+          ? (FIRE_GAP_MS[s.type] ?? DEFAULT_FIRE_GAP_MS)
+          : kind === "rocket"
+            ? (ROCKET_GAP_MS[s.type] ?? DEFAULT_ROCKET_GAP_MS)
+            : (SHELL_GAP_MS[s.type] ?? 0);
+      const track = kind === "rocket" ? this.lastRocket : this.lastFire;
+      if (now - (track.get(shooterId) ?? -Infinity) < gap) return;
+      track.set(shooterId, now);
+      if (kind === "shell") this.lastShellFire.set(shooterId, now);
+      out.push({ kind: "fire", type: s.type, weapon: kind, x: s.x, y: s.y });
     };
 
     // Shots that made a snapshot in flight.
     for (const p of match.projectiles) {
       if (p.bounced || this.seenShots.has(p.id)) continue;
       this.seenShots.add(p.id);
-      fire(p.fromId, isShell(p.caliber) || !!p.mortar || !!p.rocket);
+      fire(p.fromId, p.rocket ? "rocket" : isShell(p.caliber) || p.mortar || p.bomb ? "shell" : "small");
     }
     for (const l of match.launches ?? []) {
       if (this.seenShots.has(l.id)) continue;
       this.seenShots.add(l.id);
-      fire(l.fromId, true);
+      fire(l.fromId, "rocket");
     }
 
     for (const i of match.impacts ?? []) {
@@ -153,9 +176,9 @@ export class SoundTracker {
       // Hitscan rounds and shells too quick for a snapshot are only seen landing.
       if (i.fromId != null && !i.intercept && !i.cookoff && !i.blast && !i.rocket && !i.torpedo && !i.bomb) {
         if (!isShell(i.caliber)) {
-          if ((i.caliber ?? 0) > 0) fire(i.fromId, false);
+          if ((i.caliber ?? 0) > 0) fire(i.fromId, "small");
         } else if (now - (this.lastShellFire.get(i.fromId) ?? -Infinity) > SHELL_ECHO_MS && !this.seenShots.has(i.id)) {
-          fire(i.fromId, true);
+          fire(i.fromId, "shell");
         }
       }
       const sound = impactSound(i);
@@ -202,8 +225,9 @@ export class SoundTracker {
       if (byId.has(id)) continue;
       this.lastHp.delete(id);
       if (prev.wreck) continue;
-      if (prev.ownerId === me && isBuildingType(prev.type) && prev.hp <= prev.hpMax * LOST_HP_SHARE) {
-        out.push({ kind: "announce", event: "buildinglost" });
+      if (isBuildingType(prev.type) && prev.hp <= prev.hpMax * LOST_HP_SHARE) {
+        out.push({ kind: "impact", sound: "explosion_building", x: prev.x, y: prev.y });
+        if (prev.ownerId === me) out.push({ kind: "announce", event: "buildinglost" });
       } else if (prev.kind === "unit" && !isInfantryType(prev.type) && prev.hp <= prev.hpMax * LOST_HP_SHARE && !prev.garrisonedIn) {
         out.push({ kind: "death", type: prev.type, infantry: false, x: prev.x, y: prev.y });
       }
@@ -235,6 +259,7 @@ export class SoundTracker {
     if (this.seenShots.size > 2000) this.seenShots = new Set([...this.seenShots].slice(-500));
     if (this.seenImpacts.size > 4000) this.seenImpacts = new Set([...this.seenImpacts].slice(-1000));
     if (this.lastFire.size > 500) this.lastFire.clear();
+    if (this.lastRocket.size > 500) this.lastRocket.clear();
     return out;
   }
 

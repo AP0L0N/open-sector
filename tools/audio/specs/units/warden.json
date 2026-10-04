@@ -44,10 +44,11 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Heavy 75mm tank cannon firing, deep powerful boom with sharp crack and rolling echo, medium distance outdoors, no music, no voice",
-      "duration": 1.8,
+      "prompt": "Distant, powerful boom of a World War 2 Tiger tank firing its main cannon in an open field.",
+      "duration": 5.0,
       "variants": 3,
-      "influence": 0.65
+      "influence": 0.6,
+      "lufs": -9
     },
     "move": {
       "prompt": "Heavy WWII tank engine revving up and steel tracks starting to clank and grind forward, short one-shot, close, no music, no voice",

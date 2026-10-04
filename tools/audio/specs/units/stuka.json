@@ -50,10 +50,11 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Aerial bomb falling with a descending whistle followed by a heavy ground explosion, medium distance outdoors, no music, no voice",
-      "duration": 2.5,
-      "variants": 2,
-      "influence": 0.6
+      "prompt": "A World War 2 dive bomber's bomb falling with a rising terrifying whistle, then a massive explosion shaking the ground and debris raining down.",
+      "duration": 6.0,
+      "variants": 3,
+      "influence": 0.6,
+      "lufs": -9
     },
     "move": {
       "prompt": "WWII single-engine piston dive bomber flying past overhead, propeller engine roar with doppler shift, outdoors, no music, no voice",

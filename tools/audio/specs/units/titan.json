@@ -51,16 +51,18 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Heavy 75mm cannon fired from a large war machine, deep boom with sharp crack and echo, medium distance outdoors, no music, no voice",
-      "duration": 1.8,
-      "variants": 2,
-      "influence": 0.65
+      "prompt": "Distant, powerful boom of a heavy tank cannon firing in an open field during World War 2, a sharp crack and a long rolling echo.",
+      "duration": 5.0,
+      "variants": 3,
+      "influence": 0.6,
+      "lufs": -9
     },
     "rockets": {
-      "prompt": "Ripple salvo of four rockets launching one after another in quick succession, whooshing roar of rocket motors streaking away, medium distance outdoors, no music, no voice",
-      "duration": 2.5,
-      "variants": 2,
-      "influence": 0.7
+      "prompt": "Four rockets launching one after another from a war machine on a World War 2 battlefield, each a fierce roaring whoosh that screams away into the distance.",
+      "duration": 4.5,
+      "variants": 3,
+      "influence": 0.6,
+      "lufs": -9
     },
     "move": {
       "prompt": "Giant heavy walking war machine taking two enormous ground-shaking footsteps, deep metallic thuds with hydraulic hiss and servo groan, close, no music, no voice",

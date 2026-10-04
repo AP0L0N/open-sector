@@ -48,10 +48,11 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Two massive super-heavy tank cannons firing one right after another, double thunderous boom in quick succession with deep rumbling echo, medium distance outdoors, no music, no voice",
-      "duration": 2.2,
+      "prompt": "Two massive tank cannons firing one right after the other on a World War 2 battlefield, a pair of deafening booms half a second apart, rolling and echoing across an open field.",
+      "duration": 5.0,
       "variants": 3,
-      "influence": 0.7
+      "influence": 0.6,
+      "lufs": -9
     },
     "move": {
       "prompt": "Gigantic super-heavy tank diesel engine roaring to life and enormous steel tracks grinding and squealing forward, ground rumble, close, no music, no voice",

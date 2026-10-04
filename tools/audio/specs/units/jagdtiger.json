@@ -46,10 +46,11 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Enormous 128mm heavy anti-tank cannon blast, gigantic deep concussive boom with sharp supersonic crack and long rolling thunder echo, medium distance outdoors, no music, no voice",
-      "duration": 2.4,
+      "prompt": "Distant, earth-shaking boom of a World War 2 Jagdtiger tank destroyer firing its huge 128mm gun in an open field, a deep thunderous blast that rolls across the hills for seconds.",
+      "duration": 5.0,
       "variants": 3,
-      "influence": 0.7
+      "influence": 0.6,
+      "lufs": -9
     },
     "move": {
       "prompt": "Very heavy tank destroyer engine growling and slow heavy steel tracks grinding forward, deep rumble, short one-shot, close, no music, no voice",

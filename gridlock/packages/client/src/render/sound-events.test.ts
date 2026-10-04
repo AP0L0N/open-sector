@@ -48,16 +48,42 @@ describe("SoundTracker", () => {
     t.step(snap({ entities: ents }), 0);
     const shot = { id: 50, fromId: 1, x: 0, y: 0, vx: 1, vy: 0, caliber: 75, bounced: false };
     const evs = t.step(snap({ entities: ents, projectiles: [shot] as never }), 100);
-    assert.deepEqual(kinds(evs, "fire"), [{ kind: "fire", type: "ss3", x: 10, y: 5 }]);
+    assert.deepEqual(kinds(evs, "fire"), [{ kind: "fire", type: "ss3", weapon: "shell", x: 10, y: 5 }]);
     assert.equal(kinds(t.step(snap({ entities: ents, projectiles: [shot] as never }), 200), "fire").length, 0);
   });
 
-  it("leaves the Tiger's cannon to its own sample", () => {
+  it("hears one salvo for a ripple of rockets, and never mutes the Titan's gun with it", () => {
+    const t = new SoundTracker();
+    const ents = [unit(1, "titan")];
+    t.step(snap({ entities: ents }), 0);
+    const launch = (id: number) => ({ id, fromId: 1, x: 0, y: 0, z: 0, vx: 1, vy: 0 });
+    const shell = { id: 90, fromId: 1, x: 0, y: 0, vx: 1, vy: 0, caliber: 75, bounced: false };
+    const evs = t.step(snap({ entities: ents, launches: [launch(10), launch(11), launch(12), launch(13)] as never, projectiles: [shell] as never }), 100);
+    assert.deepEqual(
+      kinds(evs, "fire").map((e) => (e as { weapon: string }).weapon).sort(),
+      ["rocket", "shell"],
+    );
+    assert.equal(kinds(t.step(snap({ entities: ents, launches: [launch(14)] as never }), 1000), "fire").length, 0);
+    assert.equal(kinds(t.step(snap({ entities: ents, launches: [launch(15)] as never }), 3000), "fire").length, 1);
+  });
+
+  it("hears one broadside for a battleship's barrels", () => {
+    const t = new SoundTracker();
+    const ents = [unit(1, "battleship")];
+    t.step(snap({ entities: ents }), 0);
+    const barrel = (id: number) => ({ id, fromId: 1, x: 0, y: 0, vx: 1, vy: 0, caliber: 406, bounced: false, mortar: true });
+    const evs = t.step(snap({ entities: ents, projectiles: [barrel(1), barrel(2), barrel(3)] as never }), 100);
+    assert.equal(kinds(evs, "fire").length, 1);
+  });
+
+  it("tags a tank's machine gun as small arms, apart from its cannon", () => {
     const t = new SoundTracker();
     const ents = [unit(1, "warden")];
     t.step(snap({ entities: ents }), 0);
-    const shot = { id: 50, fromId: 1, x: 0, y: 0, vx: 1, vy: 0, caliber: 75, bounced: false };
-    assert.equal(kinds(t.step(snap({ entities: ents, projectiles: [shot] as never }), 100), "fire").length, 0);
+    const mg = { id: 7, kind: "miss", fromId: 1, caliber: 8, x: 0, y: 0, vx: 0, vy: 0, ownerId: ME };
+    assert.deepEqual(kinds(t.step(snap({ entities: ents, impacts: [mg] as never }), 100), "fire"), [
+      { kind: "fire", type: "warden", weapon: "small", x: 10, y: 5 },
+    ]);
   });
 
   it("throttles a machine gun's hitscan rounds into bursts", () => {
@@ -115,6 +141,7 @@ describe("SoundTracker", () => {
     t.step(snap({ entities: [building(1, "dynamo", ME, { hp: 100 }), building(2, "smelter")] }), 0);
     const evs = t.step(snap(), 100);
     assert.deepEqual(kinds(evs, "announce"), [{ kind: "announce", event: "buildinglost" }]);
+    assert.deepEqual(kinds(evs, "impact"), [{ kind: "impact", sound: "explosion_building", x: 1, y: 1 }]);
   });
 
   it("follows power and the construction lane", () => {

@@ -301,8 +301,6 @@ import {
   spawnMuzzleSmoke,
   type MuzzleSmokePuff,
 } from "./muzzle-smoke.js";
-import tigerCannonUrl from "../assets/sfx/tiger-cannon.wav";
-import { playSample, preloadSample } from "../ui/audio.js";
 import { spatialMix } from "../ui/spatial-sfx.js";
 import { playSoundEvents, warmBattle } from "../ui/game-audio.js";
 import { SoundTracker } from "./sound-events.js";
@@ -1081,7 +1079,6 @@ export class MapView {
     this.mctx = mctx;
     this.curr = match;
     this.snapAt = performance.now();
-    preloadSample(tigerCannonUrl);
     warmBattle();
     this.syncAtlases();
     this.revealFrom(match);
@@ -1602,15 +1599,6 @@ export class MapView {
       caliber: shot.caliber,
       lift: Math.round((spr?.drawSize ?? 48) * 0.38),
     });
-    if (shooter.type === "warden") this.playShotSound(tigerCannonUrl, shot.x, shot.y);
-  }
-
-  /** A gun report placed by where it went off on screen: loud in the middle, fading and muffled past the edges. */
-  private playShotSound(url: string, wx: number, wy: number): void {
-    const p = this.toScreen(wx, wy);
-    const { w, h } = this.viewSize();
-    const mix = spatialMix(p.x, p.y, w, h);
-    if (mix) playSample(url, mix, { volume: 0.6, maxVoices: 4 });
   }
 
   /** Field gun: flash and a big smoke puff at the muzzle, a thick blast cloud behind the shield, and the carriage jumps back. */
