@@ -1,6 +1,7 @@
 import type { Ctx } from "../ctx.js";
 import { getEdgeScroll, setEdgeScroll } from "../render/mapview.js";
-import { beep, getMusic, getSfx, setMusic, setSfx } from "./audio.js";
+import { getMusic, getSfx, setMusic, setSfx } from "./audio.js";
+import { menuSound } from "./game-audio.js";
 import { el } from "./dom.js";
 
 /** Audio and camera settings. The main menu and the in-battle menu both show these. */
@@ -13,13 +14,14 @@ export function optionsControls(): HTMLElement[] {
   sfx.addEventListener("input", () => {
     setSfx(Number(sfx.value) / 100);
   });
-  sfx.addEventListener("change", () => beep());
+  // Let go of the slider: one switch at the new level, so the player hears where it landed.
+  sfx.addEventListener("change", () => menuSound("click"));
   music.addEventListener("input", () => {
     setMusic(Number(music.value) / 100);
   });
 
-  const test = el("button", { class: "btn", text: "Test beep", attrs: { type: "button" } });
-  test.addEventListener("click", () => beep());
+  const test = el("button", { class: "btn", text: "Test sound", attrs: { type: "button" } });
+  test.addEventListener("click", () => menuSound("deploy"));
 
   const edge = el("input", { attrs: { type: "checkbox" } });
   edge.checked = getEdgeScroll();

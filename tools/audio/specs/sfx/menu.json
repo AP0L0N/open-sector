@@ -1,0 +1,66 @@
+{
+  "key": "menu",
+  "out": "sfx/menu",
+  "sfx": {
+    "hover": {
+      "prompt": "Very soft short tick of a small metal toggle being touched on a 1940s military radio panel, tiny and dry, close up, no music, no voice",
+      "duration": 0.5,
+      "variants": 2,
+      "influence": 0.7
+    },
+    "click": {
+      "prompt": "Crisp heavy click of a bakelite and steel switch on a World War 2 field radio panel, short and dry, close up, no music, no voice",
+      "duration": 0.5,
+      "variants": 3,
+      "influence": 0.7
+    },
+    "confirm": {
+      "prompt": "Solid mechanical clunk of a heavy steel lever locking into place on World War 2 military equipment, followed by a short low metallic ring, close up, no music, no voice",
+      "duration": 1.2,
+      "variants": 2,
+      "influence": 0.7
+    },
+    "back": {
+      "prompt": "Short muted thump of a steel switch being flipped back off on an old military control panel, slightly lower and softer, close up, no music, no voice",
+      "duration": 0.6,
+      "variants": 2,
+      "influence": 0.7
+    },
+    "toggle": {
+      "prompt": "Quick ratcheting click of a rotary selector knob turning one notch on a 1940s military radio, close up, no music, no voice",
+      "duration": 0.5,
+      "variants": 2,
+      "influence": 0.7
+    },
+    "tick": {
+      "prompt": "Tiny single detent click of a calibrated dial turning on vintage military radio equipment, very short, close up, no music, no voice",
+      "duration": 0.5,
+      "variants": 1,
+      "influence": 0.7
+    },
+    "type": {
+      "prompt": "Single key strike of a 1940s mechanical typewriter, a short crisp clack, close up, no music, no voice",
+      "duration": 0.5,
+      "variants": 3,
+      "influence": 0.75
+    },
+    "deny": {
+      "prompt": "Short dull double buzz of an old military field telephone rejecting a call, low and brief, close up, no music, no voice",
+      "duration": 0.6,
+      "variants": 1,
+      "influence": 0.7
+    },
+    "transition": {
+      "prompt": "Short low whoosh of a heavy canvas map sliding across a wooden command table with a faint radio static crackle, about one second, close up, no music, no voice",
+      "duration": 1.2,
+      "variants": 2,
+      "influence": 0.65
+    },
+    "deploy": {
+      "prompt": "Dramatic start of a World War 2 battle: a crackle of field radio static, a sharp snare drum roll, and a distant artillery boom rolling across the hills, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

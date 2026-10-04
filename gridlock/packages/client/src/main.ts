@@ -3,7 +3,7 @@ import type { CustomMapSpec, ServerMessage } from "@gridlock/shared";
 import { DEFAULT_MAP_ID, getMap, isPlaytestMapId, listMaps, loadCustomMap, unregisterMap } from "@gridlock/shared";
 import { GameSocket } from "./net/client.js";
 import type { Ctx, Screen } from "./ctx.js";
-import { bindClicks, getMusic, getSfx, setMusic, setSfx } from "./ui/audio.js";
+import { getMusic, getSfx, setMusic, setSfx } from "./ui/audio.js";
 import { renderCallsign } from "./ui/callsign.js";
 import { renderMenu } from "./ui/menu.js";
 import { renderPlay } from "./ui/play.js";
@@ -17,6 +17,7 @@ import { battleModalKey, beginLoad, renderMenuLoad, renderPauseModal, storeSaved
 import { el } from "./ui/dom.js";
 import { acknowledgeOrder } from "./ui/game-audio.js";
 import { initMusic, setMusicMode } from "./ui/music.js";
+import { bindMenuSounds, screenSound } from "./ui/menu-sounds.js";
 import type { MapView } from "./render/mapview.js";
 
 const NAME_KEY = "gridlock.name";
@@ -151,6 +152,7 @@ function mapsChanged(): void {
 
 function render(): void {
   setMusicMode(ctx.screen === "battle" || ctx.screen === "deploy" ? "battle" : "menu");
+  screenSound(ctx.screen);
   if (ctx.screen === "builder" && document.getElementById("builder-root")) {
     refreshBuilder(ctx);
     return;
@@ -425,7 +427,7 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-bindClicks(appEl);
+bindMenuSounds(appEl);
 initMusic();
 net.onSend = (msg) => {
   if (ctx.screen === "battle") acknowledgeOrder(msg, ctx.match);
