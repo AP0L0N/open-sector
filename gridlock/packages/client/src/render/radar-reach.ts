@@ -1,0 +1,41 @@
+/**
+ * The reach a selected CIWS or RAM ring shows. Client-only; it mirrors the
+ * sim's weaponRangeWorld for a pad: catalog reach plus the height bonus on the
+ * highest tile under the pad, Max range on top, and for the CIWS its longer
+ * reach on a plane in the air. Day or night, the reach is the same.
+ */
+
+import { CIWS_AIR_REACH_MUL, RADAR_LONG_RANGE_MUL, rangeTilesOf, type EntityType } from "@gridlock/shared";
+
+export interface RadarReach {
+  /** Tiles to anything on the ground. */
+  ground: number;
+  /** Tiles to a plane in the air. Equal to `ground` except on the CIWS. */
+  air: number;
+}
+
+/** Highest tile under a footprint, the height the sim gives a building. */
+export function footprintPeak(
+  heights: ArrayLike<number>,
+  width: number,
+  height: number,
+  tileX: number,
+  tileY: number,
+  tileW: number,
+  tileH: number,
+): number {
+  let h = 0;
+  for (let y = tileY; y < tileY + tileH; y++) {
+    for (let x = tileX; x < tileX + tileW; x++) {
+      if (x < 0 || y < 0 || x >= width || y >= height) continue;
+      const t = heights[y * width + x] ?? 0;
+      if (t > h) h = t;
+    }
+  }
+  return h;
+}
+
+export function radarReachTiles(type: EntityType, peak: number, longRange: boolean): RadarReach {
+  const ground = rangeTilesOf(type, peak) * (longRange ? RADAR_LONG_RANGE_MUL : 1);
+  return { ground, air: ground * (type === "ciws" ? CIWS_AIR_REACH_MUL : 1) };
+}

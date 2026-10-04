@@ -106,7 +106,6 @@ import { nextRand } from "./rng.js";
 import { hideScout } from "./scout.js";
 import { canSeeEntity } from "./vision.js";
 import { blastWrecks, toWreck } from "./wreck.js";
-import { nightReachMul } from "./night.js";
 import type { AirState, Entity, MatchState, Order, Projectile } from "./types.js";
 
 /** Runway heading of an unturned Airfield, world radians: the strip runs east–west. A turned one adds its facing. */
@@ -928,7 +927,7 @@ function attackRun(
       fireBarrage(state, e, tx, ty, target, forced);
       a.extend = true;
     }
-  } else if (diving && guns && d <= STUKA_MG.rangeTiles * ts * nightReachMul(state.tick) && off <= (STUKA_MG.arcDeg * Math.PI) / 180) {
+  } else if (diving && guns && d <= STUKA_MG.rangeTiles * ts && off <= (STUKA_MG.arcDeg * Math.PI) / 180) {
     fireWingGuns(state, e, target!, d);
   }
   if (bomb && diving && d <= BOMB_RELEASE_TILES * ts * 1.15 && off < (15 * Math.PI) / 180 && a.alt <= AIR_RELEASE_ALT + 3) {
@@ -942,7 +941,7 @@ function attackRun(
 function fireWingGuns(state: MatchState, e: Entity, target: Entity, dist: number): void {
   const a = e.air!;
   const n = Math.min(a.rounds, STUKA_MG_PER_TICK);
-  const range = STUKA_MG.rangeTiles * state.tileSize * nightReachMul(state.tick);
+  const range = STUKA_MG.rangeTiles * state.tileSize;
   const bearing = Math.atan2(target.y - e.y, target.x - e.x);
   const moving = target.waypoints.length > 0 || target.state === "move";
   const z0 = worldTileHeight(state, e.x, e.y) + a.alt;
