@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
+  AIR_CRUISE_ALT,
   ARTILLERY_SHELL,
+  BATTLESHIP_CIWS_RANGE_TILES,
+  CIWS_AIR_REACH_MUL,
   BATTLESHIP_BARREL_AMMO,
   BATTLESHIP_BARREL_GAP_MAX,
   BATTLESHIP_BARREL_RELOAD,
@@ -12,6 +15,7 @@ import {
   BATTLESHIP_REARM_SECONDS,
   BATTLESHIP_SHELL,
   BATTLESHIP_TURRET_BLIND_DEG,
+  SPOTLIGHT_TURN_DEG_PER_SEC,
   TICK_DT,
   TRAIN_TYPES,
   catalog,
@@ -21,6 +25,7 @@ import {
 } from "../catalog.js";
 import { TILE_EMPTY, TILE_WATER } from "../maps.js";
 import { turretBearing } from "./battleship.js";
+import { hasHeadlight, hasSpotlight } from "./night.js";
 import { applyCommand } from "./commands.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
@@ -254,6 +259,138 @@ describe("Battle Ship CIWS", () => {
     assert.equal(ship.ship!.ciws[1]!.ammo, 0);
     assert.equal(ship.ship!.ciws[1]!.fireTick, undefined);
     assert.ok(ship.ship!.ciws[0]!.ammo < BATTLESHIP_CIWS_BELT);
+  });
+});
+
+/** An enemy plane holding station at (x, y), flying. */
+function planeOver(state: MatchState, owner: string, x: number, y: number): Entity {
+  const plane = makeEntity(state, "stuka", owner, x, y);
+  plane.air!.phase = "fly";
+  plane.air!.alt = AIR_CRUISE_ALT;
+  plane.air!.speed = 1;
+  plane.order = { kind: "move", x, y };
+  return plane;
+}
+
+describe("Battle Ship CIWS against aircraft", () => {
+  function station(): { state: MatchState; ship: Entity } {
+    const { state, x0, y0 } = bay();
+    const ship = spawn(state, "battleship", "A", x0 + 20, y0 + 10);
+    ship.facing = 0;
+    ship.holdPosition = true;
+    return { state, ship };
+  }
+
+  it("lays both mounts on a plane overhead and brings it down", () => {
+    const { state, ship } = station();
+    const plane = planeOver(state, "B", ship.x, ship.y - BATTLESHIP_CIWS_RANGE_TILES * state.tileSize * 0.5);
+    let hit = -1;
+    for (let i = 0; i < 120 && hit < 0; i++) {
+      step(state, TICK_DT);
+      if (!state.entities.has(plane.id) || plane.hp < plane.hpMax) hit = i;
+    }
+    assert.ok(hit >= 0, "rounds reach the plane");
+    assert.ok(ship.ship!.ciws.every((m) => m.ammo < BATTLESHIP_CIWS_BELT), "both mounts fired");
+    assert.equal(shipShells(state, ship.id).length, 0, "the main guns held");
+  });
+
+  it("reaches a plane farther out than a target on the surface, like the CIWS pad", () => {
+    const { state, ship } = station();
+    const out = BATTLESHIP_CIWS_RANGE_TILES * state.tileSize * (1 + (CIWS_AIR_REACH_MUL - 1) / 2);
+    const plane = planeOver(state, "B", ship.x, ship.y - out);
+    ticks(state, 10);
+    assert.ok(ship.ship!.ciws.some((m) => m.target === plane.id));
+  });
+
+  it("an attack order on a plane sticks, the CIWS take it, and the main guns hold", () => {
+    const { state, ship } = station();
+    const plane = planeOver(state, "B", ship.x + 40, ship.y - BATTLESHIP_CIWS_RANGE_TILES * state.tileSize * 0.5);
+    plane.hp = plane.hpMax = 1_000_000;
+    const r = applyCommand(state, "A", { type: "cmd.attack", ids: [ship.id], targetId: plane.id });
+    assert.equal(r.ok, true);
+    ticks(state, 30);
+    assert.equal(ship.order?.kind, "attack");
+    assert.equal(ship.order?.targetId, plane.id);
+    assert.ok(ship.ship!.ciws.every((m) => m.target === plane.id));
+    assert.ok(plane.hp < plane.hpMax, "rounds reach the plane");
+    assert.equal(shipShells(state, ship.id).length, 0, "the main guns held");
+  });
+
+  it("an attack order on a plane goes ahead of a nearer swimmer", () => {
+    const { state, ship } = station();
+    const man = spawn(state, "rifleman", "B", Math.round(ship.x / state.tileSize) - 3, Math.round(ship.y / state.tileSize));
+    man.holdPosition = true;
+    man.hp = man.hpMax = 1_000_000;
+    const plane = planeOver(state, "B", ship.x, ship.y - BATTLESHIP_CIWS_RANGE_TILES * state.tileSize * 0.8);
+    plane.hp = plane.hpMax = 1_000_000;
+    applyCommand(state, "A", { type: "cmd.attack", ids: [ship.id], targetId: plane.id });
+    ticks(state, 10);
+    assert.ok(ship.ship!.ciws.every((m) => m.target === plane.id));
+  });
+
+  it("force-attack lays the CIWS on a friendly plane", () => {
+    const { state, ship } = station();
+    const plane = planeOver(state, "A", ship.x, ship.y - BATTLESHIP_CIWS_RANGE_TILES * state.tileSize * 0.5);
+    plane.hp = plane.hpMax = 1_000_000;
+    ticks(state, 10);
+    assert.ok(ship.ship!.ciws.every((m) => m.ammo === BATTLESHIP_CIWS_BELT), "a friendly plane is left alone");
+    applyCommand(state, "A", { type: "cmd.forceattack", ids: [ship.id], x: plane.x, y: plane.y, targetId: plane.id });
+    let laid = false;
+    let hurt = false;
+    for (let i = 0; i < 30; i++) {
+      step(state, TICK_DT);
+      laid ||= ship.ship!.ciws.some((m) => m.target === plane.id);
+      hurt ||= plane.hp < plane.hpMax;
+    }
+    assert.ok(laid, "a mount laid on it");
+    assert.ok(hurt, "rounds reach the plane");
+    assert.equal(shipShells(state, ship.id).length, 0, "the main guns held");
+  });
+});
+
+describe("Battle Ship spotlight", () => {
+  it("carries a searchlight like the Watch Tower, and no submarine carries a lamp at all", () => {
+    assert.equal(hasSpotlight("battleship"), true);
+    assert.equal(hasHeadlight("submarine"), false);
+    assert.equal(hasSpotlight("submarine"), false);
+  });
+
+  it("Rotate light swings the lamp at the lamp's pace, and leaves the hull and its course alone", () => {
+    const { state, x0, y0 } = bay();
+    const ship = spawn(state, "battleship", "A", x0 + 20, y0 + 10);
+    ship.facing = 0;
+    ship.holdPosition = true;
+    step(state, TICK_DT);
+    assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === ship.id)!.spotFacing, 0, "it rests over the bow");
+    const r = applyCommand(state, "A", { type: "cmd.rotate", ids: [ship.id], x: ship.x, y: ship.y + 100, light: true });
+    assert.equal(r.ok, true);
+    assert.equal(ship.order?.kind === "rotate", false, "the hull was not told to turn");
+    ticks(state, secondsToTicks(90 / SPOTLIGHT_TURN_DEG_PER_SEC) + 2);
+    assert.ok(Math.abs((ship.spotFacing ?? 0) - Math.PI / 2) < 1e-6, "the beam points where it was sent");
+    assert.equal(ship.facing, 0);
+  });
+
+  it("plain Rotate turns the hull and the lamp turns with it", () => {
+    const { state, x0, y0 } = bay();
+    const ship = spawn(state, "battleship", "A", x0 + 20, y0 + 10);
+    ship.facing = 0;
+    ship.holdPosition = true;
+    applyCommand(state, "A", { type: "cmd.rotate", ids: [ship.id], x: ship.x, y: ship.y + 100, light: true });
+    ticks(state, secondsToTicks(90 / SPOTLIGHT_TURN_DEG_PER_SEC) + 2);
+    applyCommand(state, "A", { type: "cmd.rotate", ids: [ship.id], x: ship.x + 100, y: ship.y - 100 });
+    ticks(state, secondsToTicks(180 / catalog("battleship").turnDegPerSec));
+    const turned = ship.facing;
+    assert.ok(Math.abs(turned) > 0.05, "the hull came round");
+    assert.equal(ship.spotAim, undefined, "the lamp was not sent anywhere");
+    assert.ok(Math.abs((ship.spotFacing ?? 0) - (Math.PI / 2 + turned)) < 1e-6, "it is carried with the hull");
+  });
+
+  it("a crit on the lamp darkens it", () => {
+    const { state, x0, y0 } = bay();
+    const ship = spawn(state, "battleship", "A", x0 + 20, y0 + 10);
+    ship.crits = ["lamp"];
+    step(state, TICK_DT);
+    assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === ship.id)!.spotFacing, undefined);
   });
 });
 

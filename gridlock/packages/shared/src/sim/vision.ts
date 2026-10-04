@@ -270,7 +270,7 @@ const NO_SPOT: SpotPaint = { sr: 0, sdx: 0, sdy: 0, scos: 1, seye: 0 };
 /** A held tower's spotlight, or a hull's headlight giving back its daylight sight down the nose. */
 function spotOf(e: SightSource, light: SightLight, daySight: number, eye: number): SpotPaint {
   if (!light.spots) return NO_SPOT;
-  if (e.kind === "building") {
+  if (e.kind === "building" || hasSpotlight(e.type)) {
     if (!hasSpotlight(e.type)) return NO_SPOT;
     if (!spotlightManned({ type: e.type, ownerId: e.ownerId, hp: e.hp ?? 1, ruined: e.ruined, wreck: e.wreck, crits: e.crits })) {
       return NO_SPOT;

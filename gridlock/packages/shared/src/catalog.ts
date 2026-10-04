@@ -2438,13 +2438,17 @@ export const SUB_REVEAL_SECONDS = 4;
 export const SUB_DIVE_SECONDS = 150;
 /** Surfaced, it takes in air this many times faster than it spends it below. */
 export const SUB_AIR_RECOVER_MUL = 5;
+/** Torpedoes a submarine carries. The tubes do not reload from nowhere. */
+export const SUB_TORPEDOES = 8;
+/** Beside a friendly Marine Base a submarine loads one torpedo this often, seconds. */
+export const SUB_REARM_SECONDS = 6;
 
 /**
  * Battle Ship. Two triple 16-inch turrets on the foredeck, each barrel loaded
  * and fired on its own. A turret that bears lets its loaded barrels go one at a
  * time in a random order, a short random gap apart, and each barrel then
- * reloads on its own clock. The shell is the field gun's, flatter and much
- * faster: a low arc, so it reaches less far. Each barrel holds its own shells.
+ * reloads on its own clock. The shell is the field gun's, fired flat and much
+ * faster: no arc, so it reaches less far. Each barrel holds its own shells.
  * Two radar-laid 20mm mounts, one on the superstructure and one on the stern,
  * each lay, heat, and spend their own belt like the Apocalypse's roof mount.
  */
@@ -2459,8 +2463,8 @@ export const BATTLESHIP_SHELL: LobShellDef = {
   scatterFarTiles: t(1.3),
   flightNear: 0.5,
   flightFar: 1.15,
-  apexNear: 10,
-  apexFar: 24,
+  apexNear: 0,
+  apexFar: 0,
   armorChip: 0.2,
   trackChance: 0.35,
 };
@@ -2482,7 +2486,7 @@ export const BATTLESHIP_TURRET_BLIND_DEG = 35;
 export const BATTLESHIP_TURRET_AT: readonly number[] = [0.6, 0.38];
 export const BATTLESHIP_CIWS_AT: readonly number[] = [-0.04, -0.8];
 /** Half the hull's length in world px, for where shells and rounds leave. */
-export const BATTLESHIP_HALF_LENGTH = 46;
+export const BATTLESHIP_HALF_LENGTH = 92;
 export const BATTLESHIP_CIWS_RANGE_TILES = t(7);
 export const BATTLESHIP_CIWS_BELT = 500;
 export const BATTLESHIP_CIWS_SHOTS_PER_TICK = 2;
@@ -3704,7 +3708,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     naval: true,
     torpedoes: true,
     submerges: true,
-    blurb: `Coastal submarine. Water only. It leaves the slip surfaced; Dive and Surface set its depth. Submerged, the enemy sees it only within ${SUB_DETECT_TILES / TILE_SUBDIV} tiles of one of their units or buildings, or for ${SUB_REVEAL_SECONDS} seconds after it fires, and its torpedoes find only another submarine that is down too — it must surface to strike a boat, a swimmer, or a Marine Base. An order to attack one brings it up. It holds ${SUB_DIVE_SECONDS} seconds of air below; when that runs out it surfaces and stays up until its air is back. Its bow tubes fire slow torpedoes that run in plain sight at the waterline — any gun can shoot one apart before it arrives. A torpedo dies where the water ends. Turn the bow to aim.`,
+    belt: SUB_TORPEDOES,
+    blurb: `Coastal submarine. Water only. It leaves the slip surfaced; Dive and Surface set its depth. Submerged, the enemy sees it only within ${SUB_DETECT_TILES / TILE_SUBDIV} tiles of one of their units or buildings, or for ${SUB_REVEAL_SECONDS} seconds after it fires, and its torpedoes find only another submarine that is down too — it must surface to strike a boat, a swimmer, or a Marine Base. An order to attack one brings it up. It holds ${SUB_DIVE_SECONDS} seconds of air below; when that runs out it surfaces and stays up until its air is back. Its bow tubes fire slow torpedoes that run in plain sight at the waterline — any gun can shoot one apart before it arrives. A torpedo dies where the water ends. Turn the bow to aim. It carries ${SUB_TORPEDOES} torpedoes; beside a Marine Base it loads one every ${SUB_REARM_SECONDS} seconds.`,
   },
   /** A running torpedo: the body guns can shoot. It rides with its warhead round. */
   torpedo: {
@@ -3743,10 +3748,11 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     power: 0,
     tileW: 1,
     tileH: 1,
-    radius: 20,
+    radius: 40,
     moveTilesPerSec: paced(1.25),
     turnDegPerSec: 16,
     noReverse: true,
+    turnInPlace: true,
     turretTurnDegPerSec: BATTLESHIP_TURRET_TURN_DEG_PER_SEC,
     rangeTiles: BATTLESHIP_RANGE_TILES,
     sightTiles: t(10),
@@ -3760,7 +3766,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: BATTLESHIP_SHELL.caliber,
     spreadDeg: 0,
     naval: true,
-    blurb: `Fast battleship, after the Iowa class. Water only. Two triple 16-inch turrets on the foredeck; every barrel loads and fires on its own, so a turret lets its guns go one by one in no set order. The shell is the field gun's, on a low, fast arc: it lands almost as soon as it leaves, but reaches less far than Artillery, and it will not fire inside ${BATTLESHIP_MIN_RANGE_TILES / TILE_SUBDIV} tiles. The turrets cannot fire astern through the superstructure. Two radar-laid 20mm CIWS mounts, one on the superstructure and one on the stern, lay themselves apart from the main guns: incoming missiles first, then planes, infantry, and light vehicles. Each barrel holds ${BATTLESHIP_BARREL_AMMO} shells and each CIWS a ${BATTLESHIP_CIWS_BELT}-round belt; they fill again slowly beside a Marine Base. Torpedoes and heavy shells are the danger.`,
+    blurb: `Fast battleship, after the Iowa class. Water only. Two triple 16-inch turrets on the foredeck; every barrel loads and fires on its own, so a turret lets its guns go one by one in no set order. The shell is the field gun's, fired flat and fast: it lands almost as soon as it leaves, but reaches less far than Artillery, and it will not fire inside ${BATTLESHIP_MIN_RANGE_TILES / TILE_SUBDIV} tiles. The turrets cannot fire astern through the superstructure. Two radar-laid 20mm CIWS mounts, one on the superstructure and one on the stern, lay themselves apart from the main guns: incoming missiles first, then planes, infantry, and light vehicles. Order an attack or force-attack on an aircraft and the CIWS take it while the main guns hold; they reach farther for a plane than for anything on the water or ashore. Each barrel holds ${BATTLESHIP_BARREL_AMMO} shells and each CIWS a ${BATTLESHIP_CIWS_BELT}-round belt; they fill again slowly beside a Marine Base. It swings its bow onto the course before it makes way. A big searchlight on the bridge lights the water far out at night; Rotate light swings it, and it turns with the ship. Torpedoes and heavy shells are the danger.`,
   },
   /** Ju 87 B dive bomber. Lives on an Airfield pad. */
   stuka: {

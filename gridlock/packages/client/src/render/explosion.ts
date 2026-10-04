@@ -946,6 +946,9 @@ const WATER_SHAPES: Record<BurstFamily, WaterShape> = {
   bomb: { rise: 1.5, fan: 0.4, jets: 16, down: 0, flash: 0.5 },
 };
 
+/** A heavy round's water burst is drawn this size against its ground burst. */
+export const WATER_BURST_SCALE = 0.5;
+
 /**
  * A heavy round bursting in water. `ageMs` runs from the strike to
  * `waterBurstLifeMs(spec)`. The surface darkens in a shock slick with a white
@@ -976,6 +979,9 @@ export function drawWaterBurst(
   const tailFade = 1 - ramp(ageMs / life, 0.45, 1);
 
   ctx.save();
+  // Every water burst is drawn at WATER_BURST_SCALE about the strike point.
+  ctx.translate(x * (1 - WATER_BURST_SCALE), y * (1 - WATER_BURST_SCALE));
+  ctx.scale(WATER_BURST_SCALE, WATER_BURST_SCALE);
 
   // Shock slick: the surface flattens and darkens in a disk with a white rim.
   {

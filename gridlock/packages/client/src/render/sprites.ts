@@ -1180,7 +1180,7 @@ export const SUBMARINE_SPRITE: UnitSpriteDef = {
 bindNavalSheets("submarine", SUBMARINE_SPRITE.image);
 
 function shipLayer(): TurretSpriteDef {
-  return { image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: 256 };
+  return { image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: 320 };
 }
 /**
  * Battle Ship hull, cut at the waterline over its wake. The superstructure, both
@@ -1191,7 +1191,7 @@ export const BATTLESHIP_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
   frames: 1,
-  frameSize: 256,
+  frameSize: 320,
   fps: 8,
   drawSize: Math.round(battleshipDrawSize(TILE_SIZE)),
   contactY: BATTLESHIP_MODEL.cyFrac,

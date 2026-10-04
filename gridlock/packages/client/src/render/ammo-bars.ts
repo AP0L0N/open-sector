@@ -5,6 +5,11 @@
  * as the yellow bar. Smoke is left out — it is a screen, not the gun's reserve.
  */
 import {
+  BATTLESHIP_BARREL_AMMO,
+  BATTLESHIP_BARRELS_PER_TURRET,
+  BATTLESHIP_CIWS_AT,
+  BATTLESHIP_CIWS_BELT,
+  BATTLESHIP_TURRET_AT,
   beltOf,
   catalog,
   heavyAmmoOf,
@@ -24,12 +29,36 @@ function fraction(left: number, full: number): number {
   return Math.max(0, Math.min(1, left / full));
 }
 
+/** Battle Ship: every barrel's shells, then both CIWS belts. Undefined when the view carries no stores (an enemy). */
+function shipStores(ship: EntityView["ship"]): { shells: number; rounds: number } | undefined {
+  if (!ship) return undefined;
+  let shells = 0;
+  let rounds = 0;
+  for (const t of ship.turrets) {
+    if (!t.ammo) return undefined;
+    for (const n of t.ammo) shells += Math.max(0, n);
+  }
+  for (const m of ship.ciws) {
+    if (m.ammo == null) return undefined;
+    rounds += Math.max(0, m.ammo);
+  }
+  return { shells, rounds };
+}
+
+const SHIP_SHELLS = BATTLESHIP_TURRET_AT.length * BATTLESHIP_BARRELS_PER_TURRET * BATTLESHIP_BARREL_AMMO;
+const SHIP_ROUNDS = BATTLESHIP_CIWS_AT.length * BATTLESHIP_CIWS_BELT;
+
 /** Main store first (the yellow bar), then the secondary store. At most two. Empty when nothing is finite or the view is not allied. */
 export function ammoBarRatios(
-  e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "heavy" | "wreck" | "supply" | "jet">,
+  e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "heavy" | "wreck" | "supply" | "jet" | "ship">,
 ): number[] {
   if (e.wreck) return [];
   if (e.type === "supply") return e.supply != null ? [fraction(e.supply, SUPPLY_CARGO)] : [];
+  // The Battle Ship: main-battery shells yellow, the CIWS belts gray.
+  if (e.type === "battleship") {
+    const s = shipStores(e.ship);
+    return s ? [fraction(s.shells, SHIP_SHELLS), fraction(s.rounds, SHIP_ROUNDS)] : [];
+  }
   // The pack is the yellow bar. Enemies get height only, so the strip stays hidden.
   if (e.type === "jumpjet") {
     const fuel = e.jet?.fuel;
@@ -78,9 +107,13 @@ export function ammoBarRatios(
  * carries no ammo (an enemy).
  */
 export function outOfAmmo(
-  e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "wreck">,
+  e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "wreck" | "ship">,
 ): boolean {
   if (e.wreck || e.type === "supply" || e.type === "jumpjet") return false;
+  if (e.type === "battleship") {
+    const s = shipStores(e.ship);
+    return !!s && s.shells <= 0 && s.rounds <= 0;
+  }
   const def = catalog(e.type);
   // A soldier with a magazine that reloads by itself can always fight on.
   if (isInfantryType(e.type) && supplyDrumOf(e.type) <= 0) return false;
