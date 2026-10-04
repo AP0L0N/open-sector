@@ -2393,7 +2393,7 @@ export class MapView {
     if (!this.keepModeForQueue()) this.setAttackMoveMode(false);
     if (ids.length === 0) return;
     const hit = this.hit(px, py);
-    if (hit && (hit.wreck || hit.ownerId !== this.curr.youPlayerId)) {
+    if (hit && !hit.wreck && hit.ownerId !== this.curr.youPlayerId) {
       this.command({ type: "cmd.attack", ids, targetId: hit.id });
       return;
     }

@@ -243,7 +243,8 @@ function isAttackTarget(
   you: string,
   allied: (ownerId: string | undefined) => boolean,
 ): boolean {
-  if (hit.wreck) return true;
+  // A wreck is only shot at on a force-attack order.
+  if (hit.wreck) return false;
   const occ = hit.garrison?.ownerId;
   if (isGarrisonable(hit.type) && isCivilianType(hit.type)) {
     return !!occ && occ !== you && !allied(occ);
