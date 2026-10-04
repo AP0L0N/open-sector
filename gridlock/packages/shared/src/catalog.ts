@@ -47,6 +47,8 @@ export const DIAMOND_SCRAP_MUL = 5;
 /** Marks a diamond scrap tile. */
 export const DIAMOND_SCRAP_TILE_YIELD = SCRAP_TILE_YIELD * DIAMOND_SCRAP_MUL;
 export const LOW_POWER_MIN_SPEED = 0.25;
+/** A building whose owner is short on power sees this share of its usual distance. */
+export const LOW_POWER_SIGHT_MUL = 0.8;
 export const FACE_FIRE_DEG = 8;
 /**
  * A round that leaves along the barrel waits until the gun has finished its
