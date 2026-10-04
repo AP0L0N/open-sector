@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { fieldCornerStart, fieldPath, fieldSpan } from "@gridlock/shared";
+import { fieldCornerStart, fieldPath, fieldSpan, WALL_RISE_MAX_SLABS } from "@gridlock/shared";
 import {
   GATE_POST_LEN,
   gateBoom,
@@ -13,6 +13,7 @@ import {
   wallJoins,
   wallPostAlong,
   wallSectionsConnect,
+  wallSlabTop,
   wallSlitAlong,
   wallTopElev,
   type WallSection,
@@ -40,6 +41,19 @@ describe("concrete wall", () => {
     assert.equal(wallTopElev([2, 5, 3], 4), 9);
     assert.equal(wallTopElev([], 4), 4);
     assert.equal(wallTopElev([2, 3], 4, [5]), 9);
+  });
+
+  it("never stands a slab under one slab or over the rise limit, at the cost of a level top", () => {
+    const slab = 4;
+    const tallest = slab * (1 + WALL_RISE_MAX_SLABS);
+    assert.equal(wallSlabTop(10, 3, slab), 10, "the run's level where it fits");
+    assert.equal(wallSlabTop(10, 8, slab), 8 + slab, "ground close under the level: still a full slab");
+    assert.equal(wallSlabTop(10, 12, slab), 12 + slab, "ground above the level: lifted, not buried");
+    assert.equal(wallSlabTop(100, 0, slab), tallest, "far under the level: capped");
+    for (const g of [-5, 0, 2.5, 6, 9, 20]) {
+      const h = wallSlabTop(9, g, slab) - g;
+      assert.ok(h >= slab && h <= tallest, `height ${h} over ground ${g}`);
+    }
   });
 
   it("hides the cap where the next section butts straight on", () => {

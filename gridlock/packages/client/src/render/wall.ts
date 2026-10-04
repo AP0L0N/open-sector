@@ -5,7 +5,10 @@
  * follows the ground under each corner. That level is the highest ground the
  * run has stood on. A section that falls does not lower the rest. Where that
  * level would stand a section more than two slabs over its ground, the run is
- * cut there and the low part starts its own top (`wallRunTops`).
+ * cut there and the low part starts its own top (`wallRunTops`). Wherever the
+ * level would still leave a corner of the slab under one slab or over the rise
+ * limit, that corner's top gives way (`wallSlabTop`): the height bounds win
+ * over a level top.
  *
  * The ordinary Wall is a chest-high slab with barbed wire. The Large wall is
  * the same concrete, taller, with firing slits down both flanks for the men
@@ -18,7 +21,7 @@
  * the corner, and nothing shows in the inner angle.
  */
 
-import { FIELD_TURN_MAX, fieldTurn, LARGE_WALL_SLAB_HEIGHT, WALL_SLAB_HEIGHT } from "@gridlock/shared";
+import { FIELD_TURN_MAX, fieldTurn, LARGE_WALL_SLAB_HEIGHT, WALL_RISE_MAX_SLABS, WALL_SLAB_HEIGHT } from "@gridlock/shared";
 
 export interface WallSection {
   x: number;
@@ -160,6 +163,18 @@ export function wallTopElev(grounds: readonly number[], slabLevels: number, cres
   return m + Math.max(0, slabLevels);
 }
 
+/**
+ * Slab top over one point of ground: the run's level `top`, held between one slab and
+ * one slab plus WALL_RISE_MAX_SLABS slabs above that ground. All in terrain levels.
+ * Where the bounds bite, the top is no longer level; the wall never stands short or towers.
+ */
+export function wallSlabTop(top: number, ground: number, slabLevels: number): number {
+  const slab = Math.max(0, slabLevels);
+  const lo = ground + slab;
+  const hi = lo + WALL_RISE_MAX_SLABS * slab;
+  return Math.min(hi, Math.max(lo, top));
+}
+
 /** Slab height in world units. About chest-high on a standing soldier. */
 export const WALL_SLAB_H = WALL_SLAB_HEIGHT;
 /** Barbed wire above the slab, in world units. */
@@ -279,10 +294,14 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
   });
   // The slab keeps its height whatever its damage: cracks only, so neighbours never step.
   const slab = style.slabH;
-  const top = d.topElev;
-  /** A world point lifted `up` world units: the bottom hangs on the terrain, the top is one flat level. */
+  const slabLevels = d.levelPx > 0 ? (slab * d.worldPx) / d.levelPx : 0;
+  /**
+   * A world point lifted `up` world units: the bottom hangs on the terrain, the top is the
+   * run's flat level, bent only where that level would leave the slab short or towering.
+   */
   const at = (w: Pt, up: number): Pt => {
     const g = d.ground(w.x, w.y);
+    const top = wallSlabTop(d.topElev, g, slabLevels);
     let elev = g;
     if (up > 0 && slab > 0) {
       if (up >= slab) {
