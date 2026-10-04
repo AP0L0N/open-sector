@@ -36,6 +36,7 @@ import {
   isFieldStructure,
   isInfantryType,
   isNavalType,
+  isSupplyCarrier,
   isTorpedoBody,
   isTransportType,
   isStance,
@@ -511,6 +512,7 @@ const EXTRUDE: Record<EntityType, number> = {
   artillery: 14,
   supply: 18,
   gunboat: 10,
+  supplyboat: 9,
   submarine: 7,
   battleship: 20,
   torpedo: 2,
@@ -3095,7 +3097,7 @@ export class MapView {
       return;
     }
     if (action === "supply" && hit) {
-      const trucks = own.filter((e) => e.type === "supply");
+      const trucks = own.filter((e) => isSupplyCarrier(e.type));
       if (trucks.length) this.command({ type: "cmd.supply", ids: trucks.map((e) => e.id), targetId: hit.id });
       return;
     }

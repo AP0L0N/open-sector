@@ -894,6 +894,7 @@ input[type="range"] { padding: 0; }
 #train-artillery,
 #train-supply,
 #train-gunboat,
+#train-supplyboat,
 #train-submarine,
 #train-battleship,
 #train-stuka,
@@ -1175,6 +1176,11 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     var(--gunboat-cameo, url("../assets/units/gunboat-cameo.png"));
 }
+#train-supplyboat {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    var(--supplyboat-cameo, url("../assets/units/supplyboat-cameo.png"));
+}
 #train-submarine {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
@@ -1418,6 +1424,10 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="gunboat"],
 .prod-job[data-type="gunboat"] {
   background-image: var(--gunboat-cameo, url("../assets/units/gunboat-cameo.png"));
+}
+.config-type[data-type="supplyboat"],
+.prod-job[data-type="supplyboat"] {
+  background-image: var(--supplyboat-cameo, url("../assets/units/supplyboat-cameo.png"));
 }
 .config-type[data-type="submarine"],
 .prod-job[data-type="submarine"] {

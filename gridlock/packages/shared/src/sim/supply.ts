@@ -1,5 +1,7 @@
 import { buildingRect, isTurnedBuilding, rectNearest } from "../building-rect.js";
 import {
+  BATTLESHIP_BARREL_AMMO,
+  BATTLESHIP_CIWS_BELT,
   DRIVER_KILL_CHANCE,
   MINE_DISABLE_SECONDS,
   MINE_SCRAP,
@@ -23,7 +25,11 @@ import {
   infantryGunFor,
   isAircraftType,
   isInfantryType,
+  isNavalType,
+  isSupplyCarrier,
   isTransportType,
+  shipShortOf,
+  supplyDepotOf,
   supplyDrumOf,
   supplyShortOf,
   rocketAmmoOf,
@@ -46,8 +52,9 @@ import type { Entity, MatchState } from "./types.js";
 const BOARD_SLACK = 12;
 const SUPPLY_REACH = 18;
 
+/** A supply boat's crew is never shot out of it, so it always has one while it floats. */
 export function supplyHasDriver(state: MatchState, truck: Entity): boolean {
-  if (truck.type !== "supply" || truck.hp <= 0 || truck.wreck) return false;
+  if (!isSupplyCarrier(truck.type) || truck.hp <= 0 || truck.wreck) return false;
   if (truck.crew) return true;
   return livingGarrison(state, truck).length > 0;
 }
@@ -121,7 +128,22 @@ export function canBoardTruck(state: MatchState, unit: Entity, truck: Entity): s
 
 export function needsSupply(e: Entity): boolean {
   if (e.hp <= 0 || e.wreck || e.garrisonedIn != null) return false;
+  if (e.ship && shipShortOf(shipBarrels(e).map((b) => b.ammo), e.ship.ciws.map((c) => c.ammo))) return true;
   return supplyShortOf(e.type, e.ammo, e.mgAmmo, e.clip, e.rockets, e.heavy);
+}
+
+function shipBarrels(e: Entity): { ammo: number }[] {
+  return e.ship ? e.ship.turrets.flatMap((t) => t.barrels) : [];
+}
+
+/** A truck serves what stands ashore, a boat what floats. */
+function servesHull(carrier: Entity, target: Entity): boolean {
+  return isNavalType(carrier.type) === isNavalType(target.type);
+}
+
+/** The carrier's own depot on its side: an Armory for a truck, a Marine Base for a boat. */
+function isDepotFor(state: MatchState, carrier: Entity, target: Entity): boolean {
+  return target.type === supplyDepotOf(carrier.type) && allies(state, carrier.ownerId, target.ownerId);
 }
 
 /** Point of a building's footprint nearest to (x, y). */
@@ -344,6 +366,24 @@ function giveRocket(e: Entity): boolean {
   return true;
 }
 
+/** One shell into the Battle Ship's emptiest barrel. Costs the same as a tank shell. */
+function giveShipShell(e: Entity): boolean {
+  let low: { ammo: number } | null = null;
+  for (const b of shipBarrels(e)) if (b.ammo < BATTLESHIP_BARREL_AMMO && (!low || b.ammo < low.ammo)) low = b;
+  if (!low) return false;
+  low.ammo += 1;
+  return true;
+}
+
+/** Rounds onto the Battle Ship's emptiest CIWS belt. */
+function giveShipRounds(e: Entity, n: number): boolean {
+  let low: { ammo: number } | null = null;
+  for (const c of e.ship?.ciws ?? []) if (c.ammo < BATTLESHIP_CIWS_BELT && (!low || c.ammo < low.ammo)) low = c;
+  if (!low) return false;
+  low.ammo = Math.min(BATTLESHIP_CIWS_BELT, low.ammo + n);
+  return true;
+}
+
 function giveRounds(e: Entity, n: number): boolean {
   const def = catalog(e.type);
   const beltClip = def.belt ?? 0;
@@ -366,15 +406,15 @@ function giveRounds(e: Entity, n: number): boolean {
   return false;
 }
 
-/** One hand-out from a store of supply points (a truck's bed, a dropped crate): a shell or rocket, else a belt's worth of rounds. */
+/** One hand-out from a store of supply points (a truck's or boat's cargo, a dropped crate): a shell or rocket, else a belt's worth of rounds. */
 export function transferOnce(truck: { supply: number }, target: Entity): boolean {
   if (truck.supply <= 0) return false;
   if (giveHeavy(truck, target)) return true;
-  if (truck.supply >= SUPPLY_SHELL_COST && (giveShell(target) || giveRocket(target))) {
+  if (truck.supply >= SUPPLY_SHELL_COST && (giveShell(target) || giveRocket(target) || giveShipShell(target))) {
     truck.supply -= SUPPLY_SHELL_COST;
     return true;
   }
-  if (giveRounds(target, SUPPLY_ROUNDS_PER_POINT)) {
+  if (giveRounds(target, SUPPLY_ROUNDS_PER_POINT) || giveShipRounds(target, SUPPLY_ROUNDS_PER_POINT)) {
     truck.supply = Math.max(0, truck.supply - 1);
     return true;
   }
@@ -388,8 +428,8 @@ function tickResupply(state: MatchState, truck: Entity, dt: number): void {
     stall(truck);
     return;
   }
-  const rearm = target.type === "armory" && allies(state, truck.ownerId, target.ownerId);
-  const filling = !rearm && allies(state, truck.ownerId, target.ownerId) && needsSupply(target);
+  const rearm = isDepotFor(state, truck, target);
+  const filling = !rearm && allies(state, truck.ownerId, target.ownerId) && servesHull(truck, target) && needsSupply(target);
   if (!rearm && !filling) {
     stall(truck);
     return;
@@ -489,9 +529,10 @@ function mayAutoSupply(truck: Entity): boolean {
   return !o || (o.auto === true && o.kind === "supply");
 }
 
-/** Allied ground unit short of ammo, close enough to drive over. Held trucks only serve what is alongside. */
+/** Allied ground unit (a ship, for a boat) short of ammo, close enough to drive over. Held carriers only serve what is alongside. */
 function canTopUp(state: MatchState, truck: Entity, other: Entity): boolean {
   if (other.id === truck.id || other.kind !== "unit" || isAircraftType(other.type)) return false;
+  if (!servesHull(truck, other)) return false;
   if (!needsSupply(other) || !allies(state, truck.ownerId, other.ownerId)) return false;
   if (truck.holdPosition) return nearTruck(state, truck, other, SUPPLY_REACH);
   const seek = SUPPLY_SEEK_TILES * state.tileSize;
@@ -515,10 +556,10 @@ function chooseTopUp(state: MatchState, truck: Entity): Entity | null {
   return best;
 }
 
-/** Like the medic: an idle crewed truck with cargo drives to the nearest ally short of ammo. */
+/** Like the medic: an idle crewed truck or boat with cargo goes to the nearest ally short of ammo. */
 function autoSupply(state: MatchState): void {
   for (const truck of state.entities.values()) {
-    if (truck.type !== "supply" || truck.hp <= 0 || truck.wreck) continue;
+    if (!isSupplyCarrier(truck.type) || truck.hp <= 0 || truck.wreck) continue;
     if (!mayAutoSupply(truck)) continue;
     const target = truck.supply > 0 && supplyHasDriver(state, truck) ? chooseTopUp(state, truck) : null;
     if (!target) {
@@ -560,7 +601,7 @@ function tickBoard(state: MatchState, unit: Entity): void {
 
 export function tickSupply(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
-    if (e.type !== "supply" || e.hp <= 0 || e.wreck) continue;
+    if (!isSupplyCarrier(e.type) || e.hp <= 0 || e.wreck) continue;
     if (e.supply < SUPPLY_CARGO) e.supply = Math.min(SUPPLY_CARGO, e.supply + SUPPLY_REGEN_PER_SEC * dt);
     if (!supplyHasDriver(state, e)) stall(e);
   }
@@ -570,7 +611,7 @@ export function tickSupply(state: MatchState, dt: number): void {
   }
   autoSupply(state);
   for (const e of state.entities.values()) {
-    if (e.type !== "supply" || e.hp <= 0 || e.wreck) continue;
+    if (!isSupplyCarrier(e.type) || e.hp <= 0 || e.wreck) continue;
     if (e.order?.kind === "supply") tickResupply(state, e, dt);
     else if (e.order?.kind === "disable") tickDisable(state, e, dt);
   }
@@ -599,15 +640,26 @@ export function orderDisable(state: MatchState, playerId: string, trucks: Entity
 export function orderSupply(state: MatchState, playerId: string, trucks: Entity[], targetId: number): string | null {
   const target = state.entities.get(targetId);
   if (!target || target.hp <= 0) return "Nothing to resupply.";
-  const crew = trucks.filter((e) => e.type === "supply" && e.ownerId === playerId && e.hp > 0 && !e.wreck);
+  const crew = trucks.filter((e) => isSupplyCarrier(e.type) && e.ownerId === playerId && e.hp > 0 && !e.wreck);
   if (crew.length === 0) return "Select a supply truck.";
-  const rearm = target.type === "armory" && allies(state, playerId, target.ownerId);
-  const filling = !rearm && allies(state, playerId, target.ownerId) && needsSupply(target);
-  if (!rearm && !filling) return "That unit does not need ammo.";
+  const friendly = allies(state, playerId, target.ownerId);
+  if (!friendly || (!crew.some((e) => isDepotFor(state, e, target)) && !needsSupply(target))) {
+    return "That unit does not need ammo.";
+  }
   let sent = 0;
+  let why = "No driver.";
   for (const truck of crew) {
+    const rearm = isDepotFor(state, truck, target);
+    if (!rearm && !servesHull(truck, target)) {
+      why = isNavalType(target.type) ? "Only a supply boat can reach a ship." : "A supply boat cannot reach that.";
+      continue;
+    }
+    if (!rearm && !needsSupply(target)) continue;
     if (!supplyHasDriver(state, truck)) continue;
-    if (rearm && truck.supply >= SUPPLY_CARGO) continue;
+    if (rearm && truck.supply >= SUPPLY_CARGO) {
+      why = isNavalType(truck.type) ? "The boat is already full." : "The truck is already full.";
+      continue;
+    }
     clearOrder(truck);
     truck.order = { kind: "supply", targetId };
     truck.work = 0;
@@ -616,8 +668,7 @@ export function orderSupply(state: MatchState, playerId: string, trucks: Entity[
     setPath(state, truck, spot.x, spot.y);
     sent++;
   }
-  if (sent === 0) return rearm ? "The truck is already full." : "No driver.";
-  return null;
+  return sent === 0 ? why : null;
 }
 
 export function orderBoard(state: MatchState, playerId: string, units: Entity[], truckId: number): string | null {

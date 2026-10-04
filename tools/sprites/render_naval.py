@@ -11,6 +11,10 @@ splinter camo, and outline as render_procedural.py and render_mammoth.py.
   submarine  a small coastal boat running awash: only the deck casing, the
              conning tower with its gray team-tint band, the periscope and
              the deck gun stand clear of the water. Same waterline cut.
+  supplyboat an unarmed cargo launch: a beamy, blunt hull, the wheelhouse
+             aft under a gray team-tint roof, an open well forward stacked
+             with banded ammunition crates and drums, a small derrick, and
+             fenders along the topsides. Same waterline cut.
 
 Row 0 = bow screen-south, then clockwise 22.5° through row 15. No insignia.
 
@@ -18,6 +22,8 @@ Row 0 = bow screen-south, then clockwise 22.5° through row 15. No insignia.
       --out gridlock/packages/client/src/assets/units/gunboat/hull
   python tools/sprites/render_naval.py submarine \\
       --out gridlock/packages/client/src/assets/units/submarine/hull
+  python tools/sprites/render_naval.py supplyboat \\
+      --out gridlock/packages/client/src/assets/units/supplyboat/hull
 """
 
 from __future__ import annotations
@@ -132,6 +138,63 @@ def build_gunboat() -> Mesh:
     return m
 
 
+def build_supplyboat() -> Mesh:
+    """Cargo launch in meters, beamier and blunter than the gunboat. +x bow, +y port, +z up. Waterline at z=0."""
+    m = Mesh()
+    keel = -0.6
+    stations = [
+        (5.6, 0.35, 1.25, keel + 0.9),
+        (5.0, 1.25, 1.15, keel + 0.35),
+        (3.6, 1.85, 1.0, keel + 0.05),
+        (0.5, 2.0, 0.95, keel),
+        (-3.5, 2.0, 0.95, keel),
+        (-5.4, 1.8, 1.0, keel + 0.1),
+    ]
+    rings = [hull_ring(x, hb, dz, kz, chine=0.6) for x, hb, dz, kz in stations]
+
+    def hull_mat(r: int, s: int) -> str:
+        return "frame" if s in (0, 1) else "camo"
+
+    m.loft(rings, hull_mat)
+    deck = 0.95
+    # Wheelhouse aft: a plain box, a strip of glazing forward, gray team-tint roof.
+    m.box((-4.6, -1.15, deck), (-2.6, 1.15, deck + 1.15), "camo")
+    m.box((-2.62, -1.0, deck + 0.62), (-2.56, 1.0, deck + 0.95), "glass")
+    m.box((-4.7, -1.22, deck + 1.15), (-2.5, 1.22, deck + 1.3), "team")
+    cyl(m, (-3.9, 0.0, deck + 1.8), 2, 0.05, 1.0, "metal", 6)  # mast
+    m.box((-3.95, -0.4, deck + 2.1), (-3.85, 0.4, deck + 2.17), "metal")  # yard
+    # Open cargo well forward: a low coaming, then the load.
+    for oy in (-1.55, 1.55):
+        m.box((-2.2, oy - 0.07, deck), (4.2, oy + 0.07, deck + 0.3), "frame")
+    m.box((4.1, -1.55, deck), (4.24, 1.55, deck + 0.3), "frame")
+    # Ammunition crates, wood with a hazard band, two tiers.
+    crates = [
+        (2.4, -0.75, 0), (2.4, 0.75, 0), (0.9, -0.75, 0), (0.9, 0.75, 0), (3.5, 0.0, 0),
+        (2.4, -0.4, 1), (1.0, 0.45, 1),
+    ]
+    for cx, cy, tier in crates:
+        z0 = deck + tier * 0.6
+        m.box((cx - 0.6, cy - 0.55, z0), (cx + 0.6, cy + 0.55, z0 + 0.58), "wall")
+        m.box((cx - 0.62, cy - 0.57, z0 + 0.22), (cx + 0.62, cy + 0.57, z0 + 0.32), "hazard")
+    # Fuel and shell drums behind the crates.
+    for k, oy in enumerate((-1.0, -0.35, 0.35, 1.0)):
+        cyl(m, (-0.6, oy, deck + 0.4), 2, 0.28, 0.8, "rust" if k % 2 else "bomb", 12)
+    # A small derrick to sling the load across.
+    cyl(m, (-1.8, 0.0, deck + 1.2), 2, 0.08, 2.4, "metal", 8)
+    boom = [(-1.8, 0.0, deck + 2.3), (1.6, 0.0, deck + 1.6)]
+    (x0, y0, z0), (x1, y1, z1) = boom
+    length = math.hypot(x1 - x0, z1 - z0)
+    steps = 6
+    for k in range(steps):
+        t = (k + 0.5) / steps
+        cyl(m, (x0 + (x1 - x0) * t, 0.0, z0 + (z1 - z0) * t), 0, 0.06, length / steps + 0.02, "metal", 6)
+    # Fenders along the topsides.
+    for oy in (-2.02, 2.02):
+        for x in (-3.0, -0.5, 2.0):
+            cyl(m, (x, oy, 0.55), 0, 0.16, 0.6, "tire", 8)
+    return m
+
+
 def build_submarine() -> Mesh:
     """Small coastal submarine running awash, meters. +x bow, +y port, +z up. Waterline at z=0."""
     m = Mesh()
@@ -180,6 +243,14 @@ def render_gunboat(out: Path, cell: int = 256, ss: int = 4) -> None:
     write_cameo(out, out.parent.parent / "gunboat-cameo.png")
 
 
+def render_supplyboat(out: Path, cell: int = 256, ss: int = 4) -> None:
+    render_turntable(
+        build_supplyboat(), out, "supplyboat_hull", "supplyboat-hull.json", NAVAL_SCALE, NAVAL_Z_MID,
+        cy_frac=0.56, cell=cell, ss=ss, clip_z=0.0, underlay=build_wake(7.0, 2.7, 0.1),
+    )
+    write_cameo(out, out.parent.parent / "supplyboat-cameo.png")
+
+
 def render_submarine(out: Path, cell: int = 256, ss: int = 4) -> None:
     render_turntable(
         build_submarine(), out, "submarine_hull", "submarine-hull.json", NAVAL_SCALE, NAVAL_Z_MID,
@@ -202,11 +273,13 @@ def write_cameo(faces: Path, path: Path) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["gunboat", "submarine"])
+    ap.add_argument("what", choices=["gunboat", "submarine", "supplyboat"])
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     if args.what == "gunboat":
         render_gunboat(Path(args.out))
+    elif args.what == "supplyboat":
+        render_supplyboat(Path(args.out))
     else:
         render_submarine(Path(args.out))
 

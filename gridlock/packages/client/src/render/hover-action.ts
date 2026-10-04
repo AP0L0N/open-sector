@@ -12,7 +12,11 @@ import {
   isFieldStructure,
   isGarrisonable,
   isInfantryType,
+  isNavalType,
   isRepairableUnit,
+  isSupplyCarrier,
+  shipShortOf,
+  supplyDepotOf,
   supplyShortOf,
   type EntityView,
 } from "@gridlock/shared";
@@ -56,6 +60,7 @@ export type HoverEntity = Pick<
   | "drone"
   | "jet"
   | "braced"
+  | "ship"
 >;
 
 /** A ground unit that can climb into a transport and jump. Planes and drones stay out. */
@@ -101,7 +106,8 @@ export function resolveHoverAction(args: {
 
   const trucks = ownUnits.filter((e) => e.type === "supply" && !e.bed?.open);
   if (hit && trucks.length > 0 && canTowHit(hit, you, trucks)) return "tow";
-  if (hit && trucks.length > 0 && canSupplyHit(hit, you, args.allied, trucks)) return "supply";
+  const carriers = [...trucks, ...ownUnits.filter((e) => e.type === "supplyboat")];
+  if (hit && carriers.length > 0 && canSupplyHit(hit, you, args.allied, carriers)) return "supply";
   if (hit && canCrewGunHit(hit, you, args.allied, inf)) return "board";
   if (hit && hit.type === "supply" && canBoardHit(hit, you, args.allied, inf)) return "board";
   if (hit && isTransportType(hit.type) && canBoardPlaneHit(hit, you, ownUnits)) return "board";
@@ -196,9 +202,17 @@ function canSupplyHit(
   if (hit.hp <= 0 || hit.wreck) return false;
   const friendly = hit.ownerId === you || allied(hit.ownerId);
   if (!friendly) return false;
-  if (hit.type === "armory") return trucks.some((t) => (t.supply ?? 0) < SUPPLY_CARGO);
+  // Each carrier restocks at its own depot: the Machine Shop for a truck, the Marine Base for a boat.
+  if (hit.type === "armory" || hit.type === "dock") {
+    return trucks.some((t) => supplyDepotOf(t.type) === hit.type && (t.supply ?? 0) < SUPPLY_CARGO);
+  }
   // Units, and a structure with its own belt (the CIWS). Every other structure is never short.
-  if (hit.type === "supply") return false;
+  if (isSupplyCarrier(hit.type)) return false;
+  // A truck serves what stands ashore, a boat what floats.
+  if (!trucks.some((t) => isNavalType(t.type) === isNavalType(hit.type))) return false;
+  if (hit.ship && shipShortOf(hit.ship.turrets.flatMap((t) => t.ammo ?? []), hit.ship.ciws.flatMap((c) => c.ammo ?? []))) {
+    return true;
+  }
   return supplyShortOf(hit.type, hit.ammo, hit.mgAmmo, hit.clip, hit.rockets, hit.heavy);
 }
 

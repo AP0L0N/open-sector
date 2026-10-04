@@ -26,6 +26,7 @@ import {
   hasTurret,
   isGarrisonable,
   isInfantryType,
+  isSupplyCarrier,
   isTransportType,
   MG42_BIPOD_SECONDS,
   MORTAR_PLANT_SECONDS,
@@ -335,7 +336,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       wallCrest: isConcreteLine(e.type) && e.wallCrest != null ? e.wallCrest : undefined,
       fieldSites: e.type === "engineer" ? fieldSitesView(e, friendly) : undefined,
       scout: scoutView(e, friendly),
-      supply: friendly && e.type === "supply" && !e.wreck ? e.supply : undefined,
+      supply: friendly && isSupplyCarrier(e.type) && !e.wreck ? e.supply : undefined,
       gun:
         e.type === "artillery" && !e.wreck
           ? {

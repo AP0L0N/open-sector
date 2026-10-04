@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 90;
+export const PROTOCOL_VERSION = 91;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -257,7 +257,7 @@ export interface EntityView {
    * aboard, not the factory driver. Rider ids are friendly-only.
    */
   bed?: { crew?: boolean; seats: number; open?: boolean; riders?: number[] };
-  /** Supply points left. Friendly supply trucks only. */
+  /** Supply points left. Friendly supply trucks and supply boats only. */
   supply?: number;
   /**
    * Field gun. Everyone sees how many men serve it (0 means any infantry can

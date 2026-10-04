@@ -17,6 +17,7 @@ import {
   isFieldStructure,
   isInfantryType,
   isNavalType,
+  isSupplyCarrier,
   isTorpedoBody,
   isTransportType,
   wadesOf,
@@ -646,8 +647,8 @@ export function makeEntity(
     coverBonus: 0,
     wallCover: 0,
     work: 0,
-    crew: type === "supply",
-    supply: type === "supply" ? SUPPLY_CARGO : 0,
+    crew: isSupplyCarrier(type),
+    supply: isSupplyCarrier(type) ? SUPPLY_CARGO : 0,
   };
   if (def.aircraft) e.air = newAirState(null, 0, type);
   if (type === "artillery") e.gunCrew = Array.from({ length: ARTILLERY_CREW }, () => ARTILLERY_CREW_HP);

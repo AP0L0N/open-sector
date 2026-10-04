@@ -482,6 +482,7 @@ export type EntityType =
   | "artillery"
   | "supply"
   | "gunboat"
+  | "supplyboat"
   | "submarine"
   | "battleship"
   | "core"
@@ -548,7 +549,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "submarine" | "battleship" | "stuka" | "fw190" | "bv222" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "stuka" | "fw190" | "bv222" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -589,7 +590,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "submarine", "battleship", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
@@ -1419,7 +1420,7 @@ export const MEDIC_SELF_MEND_DELAY = 20;
 /** Share of max HP a medic needs before he can set his own limbs. */
 export const MEDIC_SELF_MEND_HP = 0.5;
 
-/** Supply points a truck leaves the Armory with. Shells cost more than bullets. */
+/** Supply points a truck leaves the Armory with, or a supply boat the Marine Base. Shells cost more than bullets. */
 export const SUPPLY_CARGO = 120;
 /** Cargo spent to restore one tank shell. */
 export const SUPPLY_SHELL_COST = 2;
@@ -3672,6 +3673,37 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     naval: true,
     blurb: "Fast motor gunboat with a 20mm cannon on the foredeck. Water only: it never comes ashore. It fires on boats and on anything within reach of the bank, and its gun lays up a raised shore. Thin plating — an anti-tank rifle or a tank shell goes straight through. Torpedoes are the danger out on the water.",
   },
+  /** The supply truck's work on the water: it refills ships. Water only. */
+  supplyboat: {
+    type: "supplyboat",
+    kind: "unit",
+    name: "Supply Boat",
+    letter: "c",
+    cost: 450,
+    buildSeconds: 10,
+    hp: 64,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 12,
+    moveTilesPerSec: paced(2.15),
+    turnDegPerSec: 100,
+    noReverse: true,
+    turnInPlace: true,
+    rangeTiles: 0,
+    sightTiles: t(6),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    armorFront: 10,
+    armorSide: 8,
+    armorRear: 6,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
+    naval: true,
+    blurb: "Unarmed cargo launch, the supply truck's work on the water. It tops up a Battle Ship's barrels and CIWS belts, and slowly scrounges its cargo back on its own — a Marine Base refills it fast. An idle boat goes to ships nearby that are short of ammo. Water only: it never comes ashore, and it serves only what floats. Thin plating.",
+  },
   /** Coastal submarine. Water only, runs submerged. */
   submarine: {
     type: "submarine",
@@ -4460,6 +4492,21 @@ export function weaponFitsTruck(gun: { id?: string } | null | undefined): boolea
 
 export function isSupplyTruck(type: EntityType): boolean {
   return type === "supply";
+}
+
+/** Carries supply points and hands them out: the Supply Truck ashore, the Supply Boat afloat. */
+export function isSupplyCarrier(type: EntityType): boolean {
+  return type === "supply" || type === "supplyboat";
+}
+
+/** Where a carrier fills its cargo fast: the Machine Shop for a truck, the Marine Base for a boat. */
+export function supplyDepotOf(type: EntityType): BuildingType {
+  return type === "supplyboat" ? "dock" : "armory";
+}
+
+/** A Battle Ship below a full barrel or CIWS belt: shells per barrel, rounds per belt. */
+export function shipShortOf(barrels: readonly number[], belts: readonly number[]): boolean {
+  return barrels.some((n) => n < BATTLESHIP_BARREL_AMMO) || belts.some((n) => n < BATTLESHIP_CIWS_BELT);
 }
 
 export function beltOf(type: EntityType): { clip: number; reload: number } | null {

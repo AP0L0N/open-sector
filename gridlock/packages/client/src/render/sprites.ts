@@ -1179,6 +1179,19 @@ export const SUBMARINE_SPRITE: UnitSpriteDef = {
 };
 bindNavalSheets("submarine", SUBMARINE_SPRITE.image);
 
+/** Supply Boat: a beamy cargo launch about the Attack Boat's length, same waterline cut. */
+export const SUPPLYBOAT_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(46 * UNIT_VISUAL_SCALE),
+  contactY: 0.74,
+  facingSpace: "world",
+};
+bindNavalSheets("supplyboat", SUPPLYBOAT_SPRITE.image);
+
 function shipLayer(): TurretSpriteDef {
   return { image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: 256 };
 }
@@ -1490,6 +1503,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   jagdtiger: JAGDTIGER_SPRITE,
   supply: SUPPLY_SPRITE,
   gunboat: GUNBOAT_SPRITE,
+  supplyboat: SUPPLYBOAT_SPRITE,
   submarine: SUBMARINE_SPRITE,
   battleship: BATTLESHIP_SPRITE,
   mammoth: MAMMOTH_SPRITE,

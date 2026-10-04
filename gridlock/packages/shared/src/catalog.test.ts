@@ -252,6 +252,7 @@ describe("injuries", () => {
       artillery: 0.55,
       supply: 2.15,
       gunboat: 2.6,
+      supplyboat: 2.15,
       submarine: 1.6,
       stuka: 5,
       fw190: 6.5,
