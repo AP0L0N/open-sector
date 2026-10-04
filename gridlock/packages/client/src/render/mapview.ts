@@ -35,6 +35,7 @@ import {
   isCivilianType,
   isFieldStructure,
   isInfantryType,
+  PTRD_CALIBER,
   isNavalType,
   isSupplyCarrier,
   isTorpedoBody,
@@ -296,6 +297,7 @@ import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
 import { roofCiwsMuzzle } from "./roof-ciws.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { ciwsBurstTracers, ciwsTracers } from "./ciws-tracer.js";
+import { PTRD_MUZZLE_LIFT, ptrdTracers } from "./ptrd-tracer.js";
 import { ROOF_CIWS_LIFT } from "./roof-ciws.js";
 
 /** Gatling barrels above the ground point, as a share of the drawn cell. The Walker matches gatling-flash ARM_LIFT. */
@@ -1105,6 +1107,7 @@ export class MapView {
     }
     this.noteBarrages(match, now);
     this.noteGatlingFire(match, now);
+    this.notePtrdFire(match, now);
     // A fast rocket (a RAM's, at a plane overhead) can leave and burst between two
     // snapshots. Its launch still comes through, so it gets its flash and backblast.
     if (this.rocketLaunched.size > 400) this.rocketLaunched.clear();
@@ -1413,6 +1416,48 @@ export class MapView {
       this.ciwsBurstSeen.add(key);
       const reach = catalog(pad ? "ciws" : "apocalypse").rangeTiles * ts * (pad ? 0.6 : 0.5);
       this.tracers.push(...ciwsBurstTracers(muzzle, facing, reach, CIWS_INTERCEPT_LIFT / ISO_ELEVATION, now, e.id * 31 + match.tick, ts));
+    }
+  }
+
+  /**
+   * The AT soldier's PTRD round carries a tracer: a streak from his muzzle (or
+   * the window he fires from) to where each 14.5 mm round ended.
+   */
+  private notePtrdFire(match: MatchSnapshot, now: number): void {
+    const byShooter = new Map<number, NonNullable<MatchSnapshot["impacts"]>>();
+    for (const i of match.impacts ?? []) {
+      if (i.fromId == null || i.caliber !== PTRD_CALIBER || i.kind === "crush") continue;
+      if (this.fxIds.has(i.id) || this.barrageLandAt.has(i.id)) continue;
+      const list = byShooter.get(i.fromId);
+      if (list) list.push(i);
+      else byShooter.set(i.fromId, [i]);
+    }
+    if (byShooter.size === 0) return;
+    const ts = this.ts();
+    const ground = (x: number, y: number) => this.elevAt(x, y);
+    for (const [fromId, rounds] of byShooter) {
+      const e = match.entities.find((u) => u.id === fromId);
+      if (e?.type !== "atinfantry" || e.wreck) continue;
+      const house = e.garrisonedIn != null ? match.entities.find((b) => b.id === e.garrisonedIn) : undefined;
+      let muzzle: { x: number; y: number; z: number };
+      if (house) {
+        muzzle = { x: house.x, y: house.y, z: this.elevAt(house.x, house.y) + garrisonWindowLift(house.type, rounds[0]!.id) / ISO_ELEVATION };
+      } else {
+        const p = this.lerpEnt(e);
+        const size = this.spriteOf(e)?.drawSize ?? 48;
+        const r = catalog(e.type).radius;
+        const a = Math.atan2(rounds[0]!.y - p.y, rounds[0]!.x - p.x);
+        const lift = e.swimming ? 0.05 : PTRD_MUZZLE_LIFT[e.stance ?? "stand"];
+        muzzle = {
+          x: p.x + Math.cos(a) * r,
+          y: p.y + Math.sin(a) * r,
+          z: this.elevAt(p.x, p.y) + (lift * size) / ISO_ELEVATION,
+        };
+      }
+      for (const tr of ptrdTracers(muzzle, rounds, ground, now, ts)) {
+        this.tracers.push(tr);
+        this.barrageLandAt.set(tr.id, tracerLandsAt(tr));
+      }
     }
   }
 
