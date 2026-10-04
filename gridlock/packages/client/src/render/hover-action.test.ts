@@ -187,9 +187,13 @@ describe("resolveHoverAction", () => {
     assert.equal(act({ selected: [trooper], hit: foeTrooper }), "attack");
   });
 
-  it("attacks wrecks", () => {
+  it("ignores wrecks: only a force-attack shoots at one", () => {
     const wreck = unit({ id: 40, type: "warden", ownerId: FOE, wreck: true, hp: 30 });
-    assert.equal(act({ selected: [trooper], hit: wreck }), "attack");
+    const ownWreck = unit({ id: 41, type: "warden", ownerId: YOU, wreck: true, hp: 30 });
+    const corpse = unit({ id: 42, type: "rifleman", ownerId: FOE, wreck: true, hp: 1 });
+    assert.equal(act({ selected: [trooper], hit: wreck }), null);
+    assert.equal(act({ selected: [trooper], hit: ownWreck }), null);
+    assert.equal(act({ selected: [trooper], hit: corpse }), null);
   });
 
   it("sends an engineer to scrap an armored wreck", () => {
