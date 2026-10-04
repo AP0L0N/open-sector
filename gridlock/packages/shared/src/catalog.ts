@@ -2455,11 +2455,11 @@ export const SUB_REARM_SECONDS = 6;
  * and fired on its own. A turret that bears lets its loaded barrels go one at a
  * time in a random order, a short random gap apart, and each barrel then
  * reloads on its own clock. The shell is the field gun's, fired flat and much
- * faster: no arc, so it reaches less far. Each barrel holds its own shells.
+ * faster: no arc, but the turrets reach as far as Artillery. Each barrel holds its own shells.
  * Two radar-laid 20mm mounts, one on the superstructure and one on the stern,
  * each lay, heat, and spend their own belt like the Apocalypse's roof mount.
  */
-export const BATTLESHIP_RANGE_TILES = t(19);
+export const BATTLESHIP_RANGE_TILES = ARTILLERY_RANGE_TILES;
 export const BATTLESHIP_MIN_RANGE_TILES = t(4);
 export const BATTLESHIP_SHELL: LobShellDef = {
   damage: 160,
@@ -2468,8 +2468,8 @@ export const BATTLESHIP_SHELL: LobShellDef = {
   splashTiles: t(3.2),
   scatterNearTiles: t(0.45),
   scatterFarTiles: t(1.3),
-  flightNear: 0.5,
-  flightFar: 1.15,
+  flightNear: 0.125,
+  flightFar: 0.356,
   apexNear: 0,
   apexFar: 0,
   armorChip: 0.2,
@@ -3810,7 +3810,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     naval: true,
     leavesWreck: true,
     wreckHp: 100,
-    blurb: `Fast battleship, after the Iowa class. Water only. Two triple 16-inch turrets on the foredeck; every barrel loads and fires on its own, so a turret lets its guns go one by one in no set order. The shell is the field gun's, fired flat and fast: it lands almost as soon as it leaves, but reaches less far than Artillery, and it will not fire inside ${BATTLESHIP_MIN_RANGE_TILES / TILE_SUBDIV} tiles. The turrets cannot fire astern through the superstructure. Two radar-laid 20mm CIWS mounts, one on the superstructure and one on the stern, lay themselves apart from the main guns: incoming missiles first, then planes, infantry, and light vehicles. Order an attack or force-attack on an aircraft and the CIWS take it while the main guns hold; they reach farther for a plane than for anything on the water or ashore. Each barrel holds ${BATTLESHIP_BARREL_AMMO} shells and each CIWS a ${BATTLESHIP_CIWS_BELT}-round belt; they fill again slowly beside a Marine Base. It swings its bow onto the course before it makes way. A big searchlight on the bridge lights the water far out at night; Rotate light swings it, and it turns with the ship. Torpedoes and heavy shells are the danger. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
+    blurb: `Fast battleship, after the Iowa class. Water only. Two triple 16-inch turrets on the foredeck; every barrel loads and fires on its own, so a turret lets its guns go one by one in no set order. The shell is the field gun's, fired flat and fast: it lands almost as soon as it leaves and reaches as far as Artillery, but it will not fire inside ${BATTLESHIP_MIN_RANGE_TILES / TILE_SUBDIV} tiles. The turrets cannot fire astern through the superstructure. Two radar-laid 20mm CIWS mounts, one on the superstructure and one on the stern, lay themselves apart from the main guns: incoming missiles first, then planes, infantry, and light vehicles. Order an attack or force-attack on an aircraft and the CIWS take it while the main guns hold; they reach farther for a plane than for anything on the water or ashore. Each barrel holds ${BATTLESHIP_BARREL_AMMO} shells and each CIWS a ${BATTLESHIP_CIWS_BELT}-round belt; they fill again slowly beside a Marine Base. It swings its bow onto the course before it makes way. A big searchlight on the bridge lights the water far out at night; Rotate light swings it, and it turns with the ship. Torpedoes and heavy shells are the danger. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
   },
   /** Ju 87 B dive bomber. Lives on an Airfield pad. */
   stuka: {
