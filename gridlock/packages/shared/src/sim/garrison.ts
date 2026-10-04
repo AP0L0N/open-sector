@@ -17,8 +17,8 @@ import {
 import { sightTilesForEntity } from "./elevation.js";
 import { takeDamage } from "./crits.js";
 import { nextRand } from "./rng.js";
-import { adjacentToBuilding, allies, inBounds, nearestWalkable, tileCenter, worldToTile } from "./geo.js";
-import { setPath } from "./path.js";
+import { adjacentToBuilding, allies, inBounds, nearestWalkable, tileCenter, walkable, worldToTile } from "./geo.js";
+import { astar, setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
 
 export function livingGarrison(state: MatchState, house: Entity): Entity[] {
@@ -196,8 +196,21 @@ export function canGarrison(state: MatchState, unit: Entity, house: Entity): str
   return null;
 }
 
-export function approachTile(state: MatchState, house: Entity): { x: number; y: number } | null {
+/** Ring candidates tried with a full path search before settling for the nearest one. */
+const APPROACH_PATH_TRIES = 6;
+
+/**
+ * A free tile touching the building. Every side is a door: given the unit
+ * walking up, the nearest open side it can actually reach wins, so a blocked
+ * wall only sends it round to another one.
+ */
+export function approachTile(
+  state: MatchState,
+  house: Entity,
+  from?: Entity,
+): { x: number; y: number } | null {
   if (house.kind === "unit") return besideHull(state, house);
+  const type = from?.type ?? "rifleman";
   const ring: { x: number; y: number }[] = [];
   for (let y = house.tileY - 1; y <= house.tileY + house.tileH; y++) {
     for (let x = house.tileX - 1; x <= house.tileX + house.tileW; x++) {
@@ -207,14 +220,19 @@ export function approachTile(state: MatchState, house: Entity): { x: number; y: 
         x === house.tileX + house.tileW ||
         y === house.tileY + house.tileH;
       if (!onEdge) continue;
-      if (!inBounds(state, x, y)) continue;
+      if (!walkable(state, x, y, type)) continue;
       ring.push({ x, y });
     }
   }
-  for (const t of ring) {
-    const snap = nearestWalkable(state, t.x, t.y, "rifleman");
-    if (snap) return snap;
+  if (from && ring.length > 0) {
+    const fx = worldToTile(from.x, state.tileSize);
+    const fy = worldToTile(from.y, state.tileSize);
+    ring.sort((p, q) => Math.hypot(p.x - fx, p.y - fy) - Math.hypot(q.x - fx, q.y - fy));
+    for (const t of ring.slice(0, APPROACH_PATH_TRIES)) {
+      if ((t.x === fx && t.y === fy) || astar(state, fx, fy, t.x, t.y, type).length > 0) return t;
+    }
   }
+  if (ring[0]) return ring[0];
   return nearestWalkable(state, house.tileX, house.tileY, "rifleman");
 }
 
@@ -459,7 +477,15 @@ export function tickGarrison(state: MatchState): void {
       boardHull(state, e, house);
       continue;
     }
-    if (adjacentToBuilding(state, e, house)) enterGarrison(state, e, house);
+    if (adjacentToBuilding(state, e, house)) {
+      enterGarrison(state, e, house);
+      continue;
+    }
+    // Walked out its path without touching a wall (its door got blocked): head for another side.
+    if (e.waypoints.length === 0 && state.tick % 5 === 0) {
+      const door = approachTile(state, house, e);
+      if (door) setPath(state, e, tileCenter(door.x, state.tileSize), tileCenter(door.y, state.tileSize));
+    }
   }
 }
 

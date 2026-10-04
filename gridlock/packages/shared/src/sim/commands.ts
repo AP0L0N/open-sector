@@ -1090,7 +1090,7 @@ function cmdGarrison(state: MatchState, playerId: string, ids: number[], buildin
     e.attackTarget = null;
     e.guardFacing = null;
     e.state = "move";
-    const door = approachTile(state, house);
+    const door = approachTile(state, house, e);
     if (door) setPath(state, e, door.x * state.tileSize + state.tileSize / 2, door.y * state.tileSize + state.tileSize / 2);
     n++;
   }
