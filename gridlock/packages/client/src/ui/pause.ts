@@ -2,6 +2,7 @@ import { getMap, isPlaytestMapId, matchClock, unregisterMap, type SaveGame } fro
 import type { Ctx, PausePane } from "../ctx.js";
 import { forgetTerrain } from "../render/terrain.js";
 import { el } from "./dom.js";
+import { optionsControls } from "./options.js";
 import {
   cleanSaveName,
   dropSaveSlot,
@@ -16,7 +17,7 @@ import {
 /** Rebuild the battle modal only when this changes, so a snapshot does not wipe the name field. */
 export function battleModalKey(ctx: Ctx): string {
   if (!ctx.leaveOpen) return "";
-  if (ctx.playMode !== "skirmish") return `leave:${ctx.banner}`;
+  if (ctx.playMode !== "skirmish") return `leave:${ctx.pausePane}:${ctx.banner}`;
   return [
     "skirmish",
     ctx.pausePane,
@@ -33,6 +34,7 @@ export function renderPauseModal(root: HTMLElement, ctx: Ctx): void {
   if (ctx.banner) modal.append(el("div", { class: "banner", text: ctx.banner }));
   if (ctx.pausePane === "save") renderSavePane(modal, ctx);
   else if (ctx.pausePane === "load") renderSlotList(modal, ctx, "pause");
+  else if (ctx.pausePane === "options") renderOptionsPane(modal, ctx);
   else renderPauseMenu(modal, ctx);
   back.append(modal);
   root.append(back);
@@ -110,6 +112,7 @@ function renderPauseMenu(modal: HTMLElement, ctx: Ctx): void {
     modal.append(el("p", { class: "tiny", text: "Play test. Your map is waiting in the builder." }));
     stack.append(
       action("Resume", "btn btn-primary", () => ctx.resumeSkirmish()),
+      action("Options", "btn", () => openPane(ctx, "options")),
       action("Return to map builder", "btn", () => leaveMatch(ctx, "builder")),
     );
     modal.append(stack);
@@ -120,6 +123,7 @@ function renderPauseMenu(modal: HTMLElement, ctx: Ctx): void {
     action("Resume", "btn btn-primary", () => ctx.resumeSkirmish()),
     action("Save game", "btn", () => openPane(ctx, "save")),
     action("Load game", "btn", () => openPane(ctx, "load")),
+    action("Options", "btn", () => openPane(ctx, "options")),
     action("Leave", "btn btn-ghost", () => leaveMatch(ctx)),
   );
   modal.append(stack);
@@ -157,6 +161,15 @@ function renderSavePane(modal: HTMLElement, ctx: Ctx): void {
   row.append(action("Back", "btn btn-ghost", () => openPane(ctx, "menu")), save);
   modal.append(row);
   requestAnimationFrame(() => name.focus());
+}
+
+/** Sound and camera settings inside the battle menu. Back returns to that menu. */
+export function renderOptionsPane(modal: HTMLElement, ctx: Ctx): void {
+  modal.append(el("h2", { text: "Options" }), ...optionsControls());
+  const row = el("div", { class: "btn-row" });
+  row.style.marginTop = "12px";
+  row.append(action("Back", "btn btn-ghost", () => openPane(ctx, "menu")));
+  modal.append(row);
 }
 
 function renderSlotList(host: HTMLElement, ctx: Ctx, where: "menu" | "pause"): void {

@@ -85,6 +85,7 @@ import {
 } from "../render/mapview.js";
 import { buzzDeny } from "./audio.js";
 import { el } from "./dom.js";
+import { renderOptionsPane } from "./pause.js";
 import { garrisonRoster, type GarrisonSeat } from "./garrison-roster.js";
 import {
   SIDEBAR_GROUPS,
@@ -2287,11 +2288,23 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
 export function renderLeaveModal(root: HTMLElement, ctx: Ctx): void {
   const back = el("div", { class: "modal-back" });
   const modal = el("div", { class: "panel modal" });
+  if (ctx.pausePane === "options") {
+    // A network match never holds, so the fight keeps running behind the settings.
+    renderOptionsPane(modal, ctx);
+    back.append(modal);
+    root.append(back);
+    return;
+  }
   modal.append(el("h2", { text: "Leave match?" }));
   modal.append(el("p", { class: "tiny", text: "Host leave ends the match for everyone." }));
   const row = el("div", { class: "btn-row" });
   const stay = el("button", { class: "btn", text: "Stay", attrs: { type: "button" } });
   const go = el("button", { class: "btn btn-primary", text: "Leave", attrs: { type: "button" } });
+  const options = el("button", { class: "btn", text: "Options", attrs: { type: "button" } });
+  options.addEventListener("click", () => {
+    ctx.pausePane = "options";
+    ctx.render();
+  });
   stay.addEventListener("click", () => {
     ctx.leaveOpen = false;
     ctx.render();
@@ -2304,7 +2317,7 @@ export function renderLeaveModal(root: HTMLElement, ctx: Ctx): void {
     ctx.winner = null;
     ctx.goto("menu");
   });
-  row.append(stay, go);
+  row.append(stay, options, go);
   modal.append(row);
   back.append(modal);
   root.append(back);
