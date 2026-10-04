@@ -253,7 +253,7 @@ export const HEIGHT_RANGE_BONUS = 2;
  *
  * Cells: handgun 3, flamethrower 3.5, walker 8, cyborg 8, rifle 9, MG42 11, StuG 12, PTRD 13,
  * Rocketer 12, Tiger and Titan 14, scoped rifle 15, Jagdtiger 16, mortar 23 (it will not drop inside 3),
- * Nebelwerfer 24 (it will not fire inside 4).
+ * Panzerwerfer 16.75 (it will not fire inside 4).
  */
 export const HANDGUN_RANGE_TILES = t(3);
 export const RIFLE_RANGE_TILES = t(9);
@@ -402,18 +402,18 @@ export const TITAN_ROCKET_RACK: RocketRackDef = {
 };
 
 /**
- * Nebelwerfer: twelve tubes on an armored truck. It rolls into place, stops,
+ * Panzerwerfer (key "nebelwerfer"): twelve tubes on an armored truck. It rolls into place, stops,
  * swings the frame onto the target, and empties the frame in about a second:
  * one to three rockets at a time, never all twelve at once. The rockets fly
- * fast on a flat arc like a Titan's, far past its own eyes: the longest reach
- * in the game. Force attack throws them at any point in that reach, seen or
+ * fast on a flat arc like a Titan's, far past its own eyes and just past the
+ * Jagdtiger's gun. Force attack throws them at any point in that reach, seen or
  * not, and they pass over whatever stands in the way. A shot at a target still
  * meets a tank or a tree in the path. They scatter
  * wide at full reach and draw in as the target closes, and each burst is lighter than a
  * Titan rocket — a salvo blankets an area rather than finding one soldier.
  * Five full salvos in the rack.
  */
-export const NEBELWERFER_RANGE_TILES = t(24);
+export const NEBELWERFER_RANGE_TILES = t(16.75);
 export const NEBELWERFER_MIN_RANGE_TILES = t(4);
 export const NEBELWERFER_SALVO = 12;
 export const NEBELWERFER_ROCKET_AMMO = NEBELWERFER_SALVO * 5;
@@ -2753,7 +2753,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Titan, Nebelwerfer, and Drone Op.",
+    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Titan, Panzerwerfer, and Drone Op.",
   },
   radar: {
     type: "radar",
@@ -2904,7 +2904,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: RAM_ROCKET_AMMO,
     rocketRack: RAM_ROCKET,
-    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, in barrages of ${RAM_SALVO} short, accurate rockets, out to its full reach in fog or in the dark, and sends an interceptor at incoming rockets that bursts nine in ten of them in the air. Shorter reach than a Nebelwerfer, longer than a CIWS. Max range reaches half as far again, but out there the rockets scatter wide. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, in barrages of ${RAM_SALVO} short, accurate rockets, out to its full reach in fog or in the dark, and sends an interceptor at incoming rockets that bursts nine in ten of them in the air. Shorter reach than a Panzerwerfer, longer than a CIWS. Max range reaches half as far again, but out there the rockets scatter wide. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
   },
   sandbags: {
     type: "sandbags",
@@ -3610,7 +3610,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
   nebelwerfer: {
     type: "nebelwerfer",
     kind: "unit",
-    name: "Nebelwerfer",
+    name: "Panzerwerfer",
     letter: "n",
     cost: 2000,
     buildSeconds: 20,
@@ -3640,7 +3640,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: NEBELWERFER_ROCKET_AMMO,
     rocketRack: NEBELWERFER_ROCKET,
-    blurb: "Rocket artillery on an armored truck. Twelve tubes on a traversing frame, emptied in about a second, one to three rockets at a time. The rockets fly fast on a flat arc — the longest reach on the field. Force attack sends them anywhere in that reach, even into ground the side cannot see, and they fly over tanks and trees on the way. It will not fire inside four tiles. Its own eyes are short. Aimed at a target, a tank or tree in the path still takes the rocket. It must stop and swing the frame onto the target before it fires. Rockets scatter wide at full reach and draw in as the target closes: a salvo blankets an area and shreds infantry in the open. Armor only dents, but a side or rear hit usually breaks a tank's tracks. Five salvos in the rack; a supply truck refills it. Switch the tubes off to hold fire. Thin plate — keep it behind the line.",
+    blurb: "Rocket artillery on an armored truck. Twelve tubes on a traversing frame, emptied in about a second, one to three rockets at a time. The rockets fly fast on a flat arc, out past every tank gun. Force attack sends them anywhere in that reach, even into ground the side cannot see, and they fly over tanks and trees on the way. It will not fire inside four tiles. Its own eyes are short. Aimed at a target, a tank or tree in the path still takes the rocket. It must stop and swing the frame onto the target before it fires. Rockets scatter wide at full reach and draw in as the target closes: a salvo blankets an area and shreds infantry in the open. Armor only dents, but a side or rear hit usually breaks a tank's tracks. Five salvos in the rack; a supply truck refills it. Switch the tubes off to hold fire. Thin plate — keep it behind the line.",
   },
   artillery: {
     type: "artillery",

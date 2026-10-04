@@ -197,9 +197,9 @@ describe("RAM catalog", () => {
     assert.equal(supplyShortOf("ram", {}, 0, 0, RAM_ROCKET_AMMO - 1), true);
   });
 
-  it("reaches past a CIWS but short of a Nebelwerfer, and scatters far tighter", () => {
+  it("reaches past a CIWS but short of a Panzerwerfer, and scatters far tighter", () => {
     assert.ok(RAM_RANGE_TILES > CIWS_RANGE_TILES);
-    assert.ok(RAM_RANGE_TILES < NEBELWERFER_RANGE_TILES / 2);
+    assert.ok(RAM_RANGE_TILES < NEBELWERFER_RANGE_TILES);
     assert.ok(RAM_ROCKET.scatterNearTiles < NEBELWERFER_ROCKET.scatterNearTiles / 3);
     assert.ok(RAM_ROCKET.scatterFarTiles < NEBELWERFER_ROCKET.scatterFarTiles / 3);
     assert.ok((RAM_ROCKET.volleyMax ?? 1) > 1, "a barrage, not one rocket at a time");

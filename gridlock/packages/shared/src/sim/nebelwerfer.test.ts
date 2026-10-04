@@ -6,7 +6,7 @@ import {
   fires,
   MORTAR_APEX_NEAR,
   MORTAR_FLIGHT_FAR,
-  MORTAR_RANGE_TILES,
+  JAGDTIGER_RANGE_TILES,
   NEBELWERFER_MIN_RANGE_TILES,
   NEBELWERFER_RANGE_TILES,
   NEBELWERFER_ROCKET,
@@ -127,13 +127,13 @@ describe("nebelwerfer", () => {
     const def = catalog("nebelwerfer");
     assert.ok(TRAIN_TYPES.includes("nebelwerfer"));
     assert.equal(producerType("nebelwerfer"), "armory");
-    assert.equal(def.name, "Nebelwerfer");
+    assert.equal(def.name, "Panzerwerfer");
     assert.equal(def.damage, 0, "no gun besides the tubes");
     assert.equal(fires("nebelwerfer"), true, "still takes attack orders");
     assert.equal(NEBELWERFER_SALVO, 12);
     assert.equal(rocketAmmoOf("nebelwerfer"), NEBELWERFER_ROCKET_AMMO);
     assert.equal(NEBELWERFER_ROCKET_AMMO, 5 * 12);
-    assert.ok(NEBELWERFER_RANGE_TILES > MORTAR_RANGE_TILES, "longer reach than the mortar");
+    assert.ok(NEBELWERFER_RANGE_TILES > JAGDTIGER_RANGE_TILES, "outreaches every tank gun");
     assert.ok(def.armorFront > 0, "armored");
     assert.equal(def.tracked, undefined, "wheels, not tracks");
     assert.ok((def.turretTurnDegPerSec ?? 0) > 0, "the frame traverses");
