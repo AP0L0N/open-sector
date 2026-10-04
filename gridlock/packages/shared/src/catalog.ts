@@ -3800,7 +3800,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 48,
-    moveTilesPerSec: paced(1.25),
+    moveTilesPerSec: paced(1.4375),
     turnDegPerSec: 16,
     noReverse: true,
     turnInPlace: true,

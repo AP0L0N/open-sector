@@ -3740,7 +3740,7 @@ export class MapView {
       ctx.lineWidth = 1.25;
       ctx.strokeStyle = "rgba(255, 226, 150, 0.55)";
       for (const { e, facing } of lamps) {
-        if (!this.selected.has(e.id) || e.ownerId !== this.curr.youPlayerId) continue;
+        if (e.type !== "tower" || !this.selected.has(e.id) || e.ownerId !== this.curr.youPlayerId) continue;
         const pts = beamPolygon(e.x, e.y, facing, reach, half, 16).map((p) => this.toScreen(p.x, p.y));
         ctx.beginPath();
         pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
