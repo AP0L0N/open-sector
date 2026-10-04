@@ -4,9 +4,12 @@ import {
   AIR_CRUISE_ALT,
   BUILDING_TYPES,
   CIWS_RANGE_TILES,
+  DAY_SECONDS,
   DRONE_HIGH_ALT,
   DRONE_STRIKE_ALT,
   DRONE_SURVEIL_ALT,
+  DUSK_SECONDS,
+  NIGHT_SECONDS,
   NEBELWERFER_RANGE_TILES,
   NEBELWERFER_ROCKET,
   RAM_INTERCEPT_CHANCE,
@@ -29,9 +32,11 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { TILE_EMPTY } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { reachesDrone } from "./drone.js";
+import { weaponRangeWorld } from "./elevation.js";
 import { destroyEntity, makeEntity, playerTeam, tileCenter } from "./geo.js";
 import { createMatch, step, stepMatch } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
+import { canSeeEntity } from "./vision.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
 function match(): MatchState {
@@ -381,6 +386,28 @@ describe("RAM fire", () => {
     assert.ok(truck.supply < SUPPLY_CARGO, "the truck paid for it");
     assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === ram.id)?.rockets, ram.rockets);
   });
+});
+
+describe("RAM reach", () => {
+  const NIGHT_TICK = Math.round((DAY_SECONDS + DUSK_SECONDS + NIGHT_SECONDS / 2) / TICK_DT);
+
+  for (const night of [false, true]) {
+    const when = night ? "night" : "day";
+    it(`fires out to the edge of its Max range ring on its own radar, past anyone's sight (${when})`, () => {
+      const state = match();
+      const ts = state.tileSize;
+      if (night) state.tick = NIGHT_TICK;
+      const ram = seedRam(state, 95, 120);
+      ram.longRange = true;
+      const reach = weaponRangeWorld(state, ram);
+      const soldier = makeEntity(state, "rifleman", "B", ram.x + reach * 0.95, ram.y);
+      soldier.holdPosition = true;
+      step(state, TICK_DT);
+      assert.equal(canSeeEntity(state, "A", soldier), false, "nobody on A's side sees him");
+      const t = until(state, 400, () => (ram.rockets ?? 0) < RAM_ROCKET_AMMO);
+      assert.ok(t >= 0, `the RAM fires on the soldier at ${(reach * 0.95) / ts} tiles`);
+    });
+  }
 });
 
 describe("RAM against rockets", () => {

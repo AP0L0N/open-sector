@@ -4,11 +4,15 @@ import {
   AIR_CRUISE_ALT,
   BUILDING_TYPES,
   AIR_HIT_BAND,
+  CIWS_AIR_REACH_MUL,
   CIWS_AIR_Z_SCATTER,
   CIWS_BELT,
   CIWS_INTERCEPT_CHANCE,
   CIWS_INTERCEPT_ROUNDS,
   CIWS_RANGE_TILES,
+  DAY_SECONDS,
+  DUSK_SECONDS,
+  NIGHT_SECONDS,
   RAM_INTERCEPT_CHANCE,
   SUPPLY_CARGO,
   TICK_DT,
@@ -23,9 +27,11 @@ import {
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { TILE_EMPTY } from "../maps.js";
 import { applyCommand } from "./commands.js";
+import { weaponRangeWorld } from "./elevation.js";
 import { destroyEntity, makeEntity, playerTeam, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
+import { canSeeEntity } from "./vision.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
 function match(): MatchState {
@@ -272,6 +278,50 @@ describe("CIWS fire", () => {
     assert.ok(t >= 0, `belt ${ciws.clip}, truck ${truck.supply}`);
     assert.ok(truck.supply < SUPPLY_CARGO, "the truck paid for it");
     assert.equal(snapshotFor(state, "A").entities.find((e) => e.id === ciws.id)?.clip, CIWS_BELT);
+  });
+});
+
+describe("CIWS reach", () => {
+  const NIGHT_TICK = Math.round((DAY_SECONDS + DUSK_SECONDS + NIGHT_SECONDS / 2) / TICK_DT);
+
+  for (const night of [false, true]) {
+    const when = night ? "night" : "day";
+    it(`hits a plane at the edge of its Max range ring on its own radar, past anyone's sight (${when})`, () => {
+      const state = match();
+      if (night) state.tick = NIGHT_TICK;
+      const ciws = seedCiws(state, 95, 120);
+      ciws.longRange = true;
+      const ring = weaponRangeWorld(state, ciws) * CIWS_AIR_REACH_MUL;
+      const plane = planeOver(state, "B", ciws.x + ring * 0.95, ciws.y);
+      step(state, TICK_DT);
+      assert.equal(canSeeEntity(state, "A", plane), false, "nobody on A's side sees it");
+      const t = until(state, 200, () => plane.hp < plane.hpMax || !state.entities.has(plane.id));
+      assert.ok(t >= 0, "the plane takes rounds");
+    });
+  }
+
+  it("shoots a soldier at the edge of its ground reach in full dark, past its own sight", () => {
+    const state = match();
+    const ciws = seedCiws(state, 95, 120);
+    ciws.longRange = true;
+    const day = weaponRangeWorld(state, ciws);
+    state.tick = NIGHT_TICK;
+    assert.equal(weaponRangeWorld(state, ciws), day, "the dark does not shorten the reach");
+    const soldier = makeEntity(state, "rifleman", "B", ciws.x + day * 0.95, ciws.y);
+    soldier.holdPosition = true;
+    step(state, TICK_DT);
+    assert.equal(canSeeEntity(state, "A", soldier), false, "nobody on A's side sees him");
+    const t = until(state, 200, () => soldier.hp <= 0 || !state.entities.has(soldier.id));
+    assert.ok(t >= 0, "the soldier goes down");
+  });
+
+  it("does not reach a soldier just past the ring", () => {
+    const state = match();
+    const ciws = seedCiws(state, 95, 120);
+    const soldier = makeEntity(state, "rifleman", "B", ciws.x + weaponRangeWorld(state, ciws) * 1.05, ciws.y);
+    soldier.holdPosition = true;
+    ticks(state, 60);
+    assert.equal(ciws.clip, CIWS_BELT, "no round spent");
   });
 });
 
