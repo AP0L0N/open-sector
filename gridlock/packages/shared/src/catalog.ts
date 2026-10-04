@@ -1745,14 +1745,17 @@ export const GATE_SENSE_TILES = t(3);
 
 /**
  * Day and night. A match opens at morning and runs day, dusk, night, dawn,
- * then day again. In full dark every sight ring and every weapon reach is
- * NIGHT_REACH_MUL of its daylight value; dusk and dawn slide between the two.
+ * then day again. In full dark every weapon reach is NIGHT_REACH_MUL of its
+ * daylight value and every sight ring is NIGHT_SIGHT_MUL of it; dusk and dawn
+ * slide between the two.
  */
 export const DAY_SECONDS = 240;
 export const DUSK_SECONDS = 20;
 export const NIGHT_SECONDS = 150;
-/** Sight and weapon reach in full dark, as a share of daylight. */
+/** Weapon reach in full dark, as a share of daylight. */
 export const NIGHT_REACH_MUL = 0.5;
+/** Sight in full dark, as a share of daylight. Spotlights and headlights do not shrink with it. */
+export const NIGHT_SIGHT_MUL = 0.35;
 /** Lamps come on, and spotlights light the ground, once daylight drops below this. */
 export const SPOTLIGHT_ON_DAYLIGHT = 0.5;
 /**

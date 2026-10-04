@@ -109,6 +109,7 @@ export {
   phaseStartText,
   clockMarkLine,
   nightReachMul,
+  nightSightMul,
   nightTiles,
   spotlightsOn,
   hasSpotlight,

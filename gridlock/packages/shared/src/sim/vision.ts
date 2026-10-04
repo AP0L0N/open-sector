@@ -37,7 +37,7 @@ import {
   headlightLit,
   hullLamps,
   lampHeading,
-  nightReachMul,
+  nightSightMul,
   nightTiles,
   spotFacingOf,
   spotlightManned,
@@ -81,7 +81,7 @@ export type SightLight = { mul: number; spots: boolean; sec: number };
 const DAYLIGHT: SightLight = { mul: 1, spots: false, sec: 0 };
 
 export function sightLightAt(tick: number): SightLight {
-  return { mul: nightReachMul(tick), spots: spotlightsOn(tick), sec: tick * TICK_DT };
+  return { mul: nightSightMul(tick), spots: spotlightsOn(tick), sec: tick * TICK_DT };
 }
 
 const SPOT_COS = Math.cos((SPOTLIGHT_HALF_DEG * Math.PI) / 180);

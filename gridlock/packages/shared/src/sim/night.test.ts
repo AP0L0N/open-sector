@@ -12,6 +12,7 @@ import {
   NEUTRAL_OWNER,
   NIGHT_REACH_MUL,
   NIGHT_SECONDS,
+  NIGHT_SIGHT_MUL,
   SPOTLIGHT_REACH_TILES,
   SPOTLIGHT_TURN_DEG_PER_SEC,
   BUILDING_TYPES,
@@ -35,6 +36,7 @@ import {
   lampHeading,
   matchClock,
   nightReachMul,
+  nightSightMul,
   nightTiles,
   phaseStartText,
   spotlightsOn,
@@ -94,6 +96,8 @@ describe("day and night", () => {
     assert.equal(daylightAt(Math.round(DAY_CYCLE_SECONDS / TICK_DT) + 5), 1, "the next morning");
     assert.equal(nightReachMul(0), 1);
     assert.equal(nightReachMul(NIGHT_TICK), NIGHT_REACH_MUL);
+    assert.equal(nightSightMul(0), 1);
+    assert.equal(nightSightMul(NIGHT_TICK), NIGHT_SIGHT_MUL);
     assert.equal(spotlightsOn(0), false);
     assert.equal(spotlightsOn(NIGHT_TICK), true);
   });
@@ -141,16 +145,18 @@ describe("day and night", () => {
     assert.ok(Math.abs(weaponRangeWorld(state, rifle) - day * NIGHT_REACH_MUL) < 1e-6);
   });
 
-  it("halves a soldier's sight ring in full dark", () => {
+  it("cuts a soldier's sight ring harder than its weapon reach in full dark", () => {
     const { state, a } = emptyField();
     const rifle = trooper(state, "rifleman", a, 100, 128);
     const r = sightTilesForEntity(state, rifle);
-    const half = nightTiles(r, NIGHT_REACH_MUL);
-    assert.equal(half, Math.round(r / 2));
+    const dark = nightTiles(r, NIGHT_SIGHT_MUL);
+    assert.equal(dark, Math.round(r * NIGHT_SIGHT_MUL));
+    assert.ok(dark < nightTiles(r, NIGHT_REACH_MUL), "sight shrinks more than reach");
     assert.equal(lit(state, a, 100 + r - 2, 128), true, "seen by day");
     state.tick = NIGHT_TICK;
     assert.equal(lit(state, a, 100 + r - 2, 128), false, "lost in the dark");
-    assert.equal(lit(state, a, 100 + half - 2, 128), true, "close ground still seen");
+    assert.equal(lit(state, a, 100 + dark + 2, 128), false, "past the dark ring");
+    assert.equal(lit(state, a, 100 + dark - 1, 128), true, "close ground still seen");
   });
 });
 

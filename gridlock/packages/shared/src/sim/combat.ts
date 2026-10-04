@@ -196,7 +196,7 @@ import { airTargetSpreadMul, isAirborne, isCrashing, reachesAircraft, stepBomb }
 import { stepCluster } from "./airdrop.js";
 import { projectileMeetsDrone, reachesDrone } from "./drone.js";
 import { reachesJet } from "./jet.js";
-import { nightReachMul, nightTiles } from "./night.js";
+import { nightReachMul, nightSightMul, nightTiles } from "./night.js";
 import type { Entity, MatchState, Order, Projectile } from "./types.js";
 
 /** A twin mount's barrels sit this share of the hull radius either side of the bore line. */
@@ -1980,7 +1980,7 @@ function aimRemainingDeg(e: Entity, aimX: number, aimY: number): number {
  * that sight — a Tiger or StuG firing on a spotter — opens LONG_SHOT_SPREAD.
  */
 function accurateWeaponRange(state: MatchState, e: Entity, range: number): number {
-  const sight = nightTiles(sightTilesForEntity(state, e), nightReachMul(state.tick)) * state.tileSize;
+  const sight = nightTiles(sightTilesForEntity(state, e), nightSightMul(state.tick)) * state.tileSize;
   return Math.min(range, sight);
 }
 
