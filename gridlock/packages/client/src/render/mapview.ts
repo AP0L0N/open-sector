@@ -1,5 +1,13 @@
 import {
   AIRFIELD_BACK_DEPTH,
+  BUILDING_TURN_STEP,
+  buildingRect,
+  buildingSite,
+  isTurnedBuilding,
+  pointInIsoPrism,
+  rectCorners,
+  rectWorld,
+  turnedBox,
   catalog,
   FW190_WING_GUN_OFFSET,
   clampIsoCamera,
@@ -289,7 +297,7 @@ import { INTERCEPT_BURST_SIZE, RAM_MISS_BURST_SIZE, interceptorTrail } from "./r
 import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
 import { buildingShadowFootprint, convexHull, drawCastShadows, shadowOffset, treeShadowFootprint } from "./cast-shadow.js";
-import { buildingGroundElev, drawYardWear, wallFootprint, yardWearFootprint } from "./building-ground.js";
+import { buildingGroundElev, drawYardWear, WALL_SHARE, wallFootprint, yardWearFootprint } from "./building-ground.js";
 import {
   airBurstPuffs,
   backblastPuffs,
@@ -838,8 +846,8 @@ export class MapView {
   private fieldFacing = Math.PI / 2;
   /** Eased ghost facing so the piece swings instead of snapping. */
   private fieldShown = Math.PI / 2;
-  /** Quarter turns (0 = east) a Bunker or Watch Tower ghost is turned to. Kept between placements. */
-  private placeQuarter = 0;
+  /** BUILDING_TURN_STEPs (0 = east) a Bunker, Watch Tower, or Airfield ghost is turned to. Kept between placements. */
+  private placeStep = 0;
   /** Wheel travel toward the next quarter, so a trackpad needs a full notch's worth to turn it. */
   private placeTurn = 0;
   private fieldShownAt = 0;
@@ -2014,13 +2022,13 @@ export class MapView {
         }
         const toPlace = this.placeMode ? this.readyBuilding() : null;
         if (toPlace) {
-          const tile = this.screenToTile(mx, my);
+          const site = this.placeSite(toPlace, mx, my);
           this.command({
             type: "cmd.place",
             building: toPlace,
-            tx: tile.x,
-            ty: tile.y,
-            ...(isRotatableBuilding(toPlace) ? { facing: this.placeFacing() } : {}),
+            tx: site.tx,
+            ty: site.ty,
+            ...(isRotatableBuilding(toPlace) ? { facing: site.facing } : {}),
           });
           return;
         }
@@ -2871,6 +2879,14 @@ export class MapView {
       };
     }
     if (e.kind === "building") {
+      if (isTurnedBuilding(e)) {
+        // The same, along the turned walls: the back band runs on the field's own back edge.
+        const r = buildingRect(e, ts);
+        const band = buildingGroundFor(e.type) ? r.halfV * AIRFIELD_BACK_DEPTH : r.halfV;
+        const c = rectWorld(r, 0, band - r.halfV);
+        const foot = { cx: c.x, cy: c.y, ax: r.ux, ay: r.uy, halfAlong: r.halfU, halfAcross: band };
+        return { layer: STANDING_DRAW_LAYER, z: isoDepth(foot.cx, foot.cy), foot };
+      }
       // The Airfield's strip is a ground decal; only its back band of hangar and tower stands.
       const depth = buildingGroundFor(e.type) ? e.tileH * AIRFIELD_BACK_DEPTH : e.tileH;
       const foot = axisFootprint(e.tileX * ts, e.tileY * ts, e.tileW * ts, depth * ts);
@@ -2933,6 +2949,8 @@ export class MapView {
             return e;
           }
         }
+      } else if (isTurnedBuilding(e)) {
+        if (pointInIsoPrism(ix, iy, this.turnedCorners(e), this.extrude(e.type), ts, isoLift(this.buildingElev(e)))) return e;
       } else if (
         pointInIsoBox(
           ix,
@@ -3444,6 +3462,7 @@ export class MapView {
       if (yard === "gate") this.drawGateGhost();
       else if (yard) this.drawFieldGhost(yard, true);
     }
+    this.drawRotateHint();
 
     if (this.box) {
       const b = this.box;
@@ -4799,15 +4818,29 @@ export class MapView {
   /** World footprint of a building's cast shadow; EXTRUDE is its screen height. */
   private buildingShadow(e: EntityView): { x: number; y: number }[] {
     const ts = this.ts();
+    const base = isTurnedBuilding(e) ? this.turnedWalls(e) : undefined;
     return buildingShadowFootprint({
       ...wallFootprint(e.tileX * ts, e.tileY * ts, e.tileW * ts, e.tileH * ts),
       height: (this.extrude(e.type) * ts) / ISO_TILE_H,
+      base,
     });
+  }
+
+  /** A turned building's walls, drawn in from its footprint the way wallFootprint draws in a box. */
+  private turnedWalls(e: EntityView): { x: number; y: number }[] {
+    const r = buildingRect(e, this.ts());
+    return rectCorners({ ...r, halfU: r.halfU * WALL_SHARE, halfV: r.halfV * WALL_SHARE });
   }
 
   /** Trampled earth around a building, laid on the terrain under each point. */
   private pushYardWear(out: IsoPt[][], e: EntityView, w: number, h: number): void {
     const ts = this.ts();
+    if (isTurnedBuilding(e)) {
+      const def = catalog(e.type);
+      const corners = this.turnedCorners(e);
+      this.pushCastShadow(out, yardWearFootprint({ x: 0, y: 0, w: def.tileW * ts, h: def.tileH * ts, corners }), w, h);
+      return;
+    }
     const foot = { x: e.tileX * ts, y: e.tileY * ts, w: e.tileW * ts, h: e.tileH * ts };
     this.pushCastShadow(out, yardWearFootprint(foot), w, h);
   }
@@ -4981,7 +5014,7 @@ export class MapView {
 
   /** The flat part of a building (Airfield strip and hardstands), with its selection frame. */
   private drawBuildingGround(e: EntityView, ghost: boolean): void {
-    const spr = buildingGroundFor(e.type);
+    const spr = buildingGroundFor(e.type, e.facing);
     if (!spr || !spriteReady(spr)) return;
     const ts = this.ts();
     const ctx = this.ctx;
@@ -5004,7 +5037,7 @@ export class MapView {
     this.drawVeiled(e, elev, 0, bounds, () => drawBuildingSprite(this.ctx, spr, south.x, south.y, footprintW));
     if (!ghost && this.selected.has(e.id)) {
       const pad = 3;
-      const pts = [
+      const pts = isTurnedBuilding(e) ? this.turnedCorners(e, pad).map((p) => this.toScreen(p.x, p.y, elev)) : [
         this.toScreen(x - pad, y - pad, elev),
         this.toScreen(x + bw + pad, y - pad, elev),
         this.toScreen(x + bw + pad, y + bh + pad, elev),
@@ -5030,11 +5063,11 @@ export class MapView {
     const west = this.toScreen(x, y + bh, elev);
     const bar = this.toScreen(x + bw / 2, y + bh / 2, elev);
     let stack = { x: bar.x, y: bar.y - ez - 8 };
-    const ground = buildingGroundFor(e.type);
+    const ground = buildingGroundFor(e.type, e.facing);
     // A building with a ground decal draws its selection frame there, under everything standing.
     if (!ghost && this.selected.has(e.id) && !(ground && spriteReady(ground))) {
       const pad = 3;
-      const pts = [
+      const pts = isTurnedBuilding(e) ? this.turnedCorners(e, pad).map((p) => this.toScreen(p.x, p.y, elev)) : [
         this.toScreen(x - pad, y - pad, elev),
         this.toScreen(x + bw + pad, y - pad, elev),
         this.toScreen(x + bw + pad, y + bh + pad, elev),
@@ -5060,7 +5093,8 @@ export class MapView {
         } else if (e.type === "ram") {
           this.drawCiwsGun(spr, south.x, south.y, footprintW, 1, e.turretFacing ?? e.facing, undefined, RAM_TURRET_SHEET);
         } else if (hasSpotlight(e.type)) {
-          this.drawTowerLamp(e, south.x, south.y, footprintW, ghost);
+          const pad = this.unturnedPad(e, elev) ?? { x: south.x, y: south.y, w: footprintW };
+          this.drawTowerLamp(e, pad.x, pad.y, pad.w, ghost);
         }
         if (!ghost) {
           drawBuildingAnim(
@@ -7091,17 +7125,19 @@ export class MapView {
   }
 
   private drawGhost(type: BuildingType, siteOk: typeof previewPlace = previewPlace): void {
-    const def = catalog(type);
-    const tile = this.screenToTile(this.mouseX, this.mouseY);
-    const ok = siteOk(this.curr, type, tile.x, tile.y);
+    const placed = this.placeSite(type, this.mouseX, this.mouseY);
+    const facing = placed.facing;
+    const ok = siteOk(this.curr, type, placed.tx, placed.ty, facing);
     const ts = this.ts();
+    const site = buildingSite(type, placed.tx, placed.ty, facing, ts);
+    const turned = isTurnedBuilding(site);
     const top = ok ? "#7dff6a" : "#ff5a4a";
-    const x = tile.x * ts;
-    const y = tile.y * ts;
-    const bw = def.tileW * ts;
-    const bh = def.tileH * ts;
-    const elev = this.buildingElev({ tileX: tile.x, tileY: tile.y, tileW: def.tileW, tileH: def.tileH });
-    const facing = isRotatableBuilding(type) ? this.placeFacing() : 0;
+    const x = site.tileX * ts;
+    const y = site.tileY * ts;
+    const bw = site.tileW * ts;
+    const bh = site.tileH * ts;
+    const elev = this.buildingElev(site);
+    const corners = turned ? rectCorners(buildingRect(site, ts)) : null;
     const spr = buildingSpriteFor(type, facing);
     if (spr && spriteReady(spr)) {
       const south = this.toScreen(x + bw, y + bh, elev);
@@ -7112,14 +7148,18 @@ export class MapView {
       ctx.save();
       ctx.globalAlpha = 0.28;
       ctx.fillStyle = top;
-      this.fillQuad(n, east, south, west);
+      if (corners) {
+        this.groundPath(corners, elev);
+        ctx.fill();
+      } else this.fillQuad(n, east, south, west);
       ctx.globalAlpha = 0.55;
-      const ground = buildingGroundFor(type);
+      const ground = buildingGroundFor(type, facing);
       if (ground && spriteReady(ground)) drawBuildingSprite(ctx, ground, south.x, south.y, east.x - west.x);
       drawBuildingSprite(ctx, spr, south.x, south.y, east.x - west.x);
       if (hasSpotlight(type)) {
         // The lamp starts out along the tower's front, as the placed tower's does.
-        drawTowerSearchlight(ctx, south.x, south.y, east.x - west.x, facing, { lit: 0, broken: false });
+        const pad = this.unturnedPad(site, elev) ?? { x: south.x, y: south.y, w: east.x - west.x };
+        drawTowerSearchlight(ctx, pad.x, pad.y, pad.w, facing, { lit: 0, broken: false });
       }
       ctx.restore();
       // The ghost lays its gun toward the viewer.
@@ -7127,7 +7167,25 @@ export class MapView {
       if (type === "ram") this.drawCiwsGun(spr, south.x, south.y, east.x - west.x, 0.55, Math.PI / 4, undefined, RAM_TURRET_SHEET);
       ctx.strokeStyle = top;
       ctx.lineWidth = 2;
-      this.strokeGroundRect(x, y, bw, bh, elev);
+      if (corners) {
+        this.groundPath(corners, elev);
+        ctx.stroke();
+      } else this.strokeGroundRect(x, y, bw, bh, elev);
+      return;
+    }
+    if (corners) {
+      // Art still loading: the turned ground alone.
+      const ctx = this.ctx;
+      ctx.save();
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = top;
+      this.groundPath(corners, elev);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = top;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
       return;
     }
     this.drawIsoBox(x, y, bw, bh, this.extrude(type), top, {
@@ -7504,22 +7562,151 @@ export class MapView {
     this.ctx.restore();
   }
 
-  /** One wheel notch turns a Bunker or Watch Tower ghost a quarter. Trackpad pixels add up to a notch first. */
+  /**
+   * The facing of whatever ghost the wheel turns right now, or null when the wheel zooms:
+   * an engineer's field piece, a Defences-tab sandbag or wall line, or a ready Bunker,
+   * Watch Tower, or Airfield. The gate takes its walls' facing, so it does not turn.
+   */
+  private turnableGhostFacing(): number | null {
+    if (this.fieldPlace) return this.fieldFacing;
+    const yard = this.readyYardField();
+    if (yard && yard !== "gate") return this.fieldFacing;
+    const building = this.placeMode ? this.readyBuilding() : null;
+    if (building && isRotatableBuilding(building)) return this.placeFacing();
+    return null;
+  }
+
+  /** A tag beside the cursor while placing something the wheel turns: the hint and the current heading. */
+  private drawRotateHint(): void {
+    if (this.mouseX < 0 || this.overControl || this.box) return;
+    const facing = this.turnableGhostFacing();
+    if (facing == null) return;
+    const deg = Math.round((((facing * 180) / Math.PI) % 360) + 360) % 360;
+    const label = "Scroll to rotate";
+    const angle = `${deg}°`;
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.textBaseline = "middle";
+    ctx.textAlign = "left";
+    const icon = 14;
+    const gap = 6;
+    const padX = 7;
+    const labelW = ctx.measureText(label).width;
+    const angleW = ctx.measureText(angle).width;
+    const w = padX + icon + gap + labelW + gap * 1.5 + angleW + padX;
+    const h = 22;
+    // Below and right of the pointer, kept on the canvas.
+    const view = this.viewSize();
+    let x = this.mouseX + 18;
+    let y = this.mouseY + 22;
+    if (x + w > view.w - 4) x = this.mouseX - 18 - w;
+    if (y + h > view.h - 4) y = this.mouseY - 22 - h;
+    ctx.globalAlpha = 0.92;
+    ctx.fillStyle = "rgba(20, 14, 10, 0.86)";
+    ctx.strokeStyle = "#e8b84a";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(x + 0.5, y + 0.5, w, h, 4);
+    ctx.fill();
+    ctx.stroke();
+    // A turning arrow: most of a circle and its head.
+    const cx = x + padX + icon / 2;
+    const cy = y + h / 2 + 0.5;
+    const r = icon / 2 - 1.5;
+    const a0 = -Math.PI * 0.35;
+    const a1 = a0 + Math.PI * 1.55;
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = "#e8b84a";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, a0, a1);
+    ctx.stroke();
+    const hx = cx + Math.cos(a1) * r;
+    const hy = cy + Math.sin(a1) * r;
+    const tx = -Math.sin(a1);
+    const ty = Math.cos(a1);
+    ctx.fillStyle = "#e8b84a";
+    ctx.beginPath();
+    ctx.moveTo(hx + tx * 3.6, hy + ty * 3.6);
+    ctx.lineTo(hx - ty * 3, hy + tx * 3);
+    ctx.lineTo(hx + ty * 3, hy - tx * 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#e8dcc4";
+    const tx0 = x + padX + icon + gap;
+    ctx.fillText(label, tx0, cy);
+    ctx.fillStyle = "#e8b84a";
+    ctx.fillText(angle, tx0 + labelW + gap * 1.5, cy);
+    ctx.restore();
+  }
+
+  /** One wheel notch turns a Bunker, Watch Tower, or Airfield ghost 15°, like a wall. Trackpad pixels add up to a notch first. */
   private rotatePlace(deltaY: number, deltaMode: number): void {
+    const steps = Math.round((2 * Math.PI) / BUILDING_TURN_STEP);
     this.placeTurn += deltaMode === 1 ? deltaY / 3 : deltaMode === 2 ? deltaY : deltaY / 100;
     while (this.placeTurn >= 1) {
-      this.placeQuarter = (this.placeQuarter + 1) & 3;
+      this.placeStep = (this.placeStep + 1) % steps;
       this.placeTurn -= 1;
     }
     while (this.placeTurn <= -1) {
-      this.placeQuarter = (this.placeQuarter + 3) & 3;
+      this.placeStep = (this.placeStep + steps - 1) % steps;
       this.placeTurn += 1;
     }
   }
 
   /** World radians the turned ghost faces. */
   private placeFacing(): number {
-    return this.placeQuarter * (Math.PI / 2);
+    return this.placeStep * BUILDING_TURN_STEP;
+  }
+
+  /**
+   * Where a click at (px, py) would put this building. A rotatable one is centred on the
+   * tile under the cursor so it turns in place; the rest hang their top-left tile there.
+   */
+  private placeSite(type: BuildingType, px: number, py: number): { tx: number; ty: number; facing: number } {
+    const tile = this.screenToTile(px, py);
+    if (!isRotatableBuilding(type)) return { tx: tile.x, ty: tile.y, facing: 0 };
+    const facing = this.placeFacing();
+    const box = turnedBox(type, facing);
+    return { tx: tile.x - Math.floor(box.w / 2), ty: tile.y - Math.floor(box.h / 2), facing };
+  }
+
+  /** A ground polygon of world points at `elev`, as a closed path. */
+  private groundPath(pts: readonly { x: number; y: number }[], elev: number): void {
+    const ctx = this.ctx;
+    ctx.beginPath();
+    pts.forEach((p, i) => {
+      const s = this.toScreen(p.x, p.y, elev);
+      if (i === 0) ctx.moveTo(s.x, s.y);
+      else ctx.lineTo(s.x, s.y);
+    });
+    ctx.closePath();
+  }
+
+  /**
+   * For a turned building, the south corner and screen width of the pad it would have
+   * unturned on the same centre. Roof furniture drawn over the art (the searchlight) is
+   * laid out on that pad. Null for an unturned building: its own box is that pad.
+   */
+  private unturnedPad(
+    e: { type: EntityType; x: number; y: number; facing: number },
+    elev: number,
+  ): { x: number; y: number; w: number } | null {
+    if (!isTurnedBuilding(e)) return null;
+    const ts = this.ts();
+    const def = catalog(e.type);
+    const hw = (def.tileW * ts) / 2;
+    const hh = (def.tileH * ts) / 2;
+    const south = this.toScreen(e.x + hw, e.y + hh, elev);
+    const east = this.toScreen(e.x + hw, e.y - hh, elev);
+    const west = this.toScreen(e.x - hw, e.y + hh, elev);
+    return { x: south.x, y: south.y, w: east.x - west.x };
+  }
+
+  /** Ground corners of a turned building, `pad` world px out from its walls. */
+  private turnedCorners(e: EntityView, pad = 0): { x: number; y: number }[] {
+    return rectCorners(buildingRect(e, this.ts()), pad);
   }
 
   /** One wheel notch turns the ghost 15°. Trackpads scroll in pixels, so they turn by fractions. */

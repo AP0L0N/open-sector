@@ -1,3 +1,4 @@
+import { buildingRect, isTurnedBuilding, rectContains, rectNearest, rectWorld } from "../building-rect.js";
 import {
   NEUTRAL_OWNER,
   catalog,
@@ -517,6 +518,16 @@ function repairSpot(eng: Entity, target: Entity, tileSize: number): { x: number;
     const off = span.thick / 2 + STAND_PAD;
     return { x: target.x + fx * off * side, y: target.y + fy * off * side };
   }
+  if (isTurnedBuilding(target)) {
+    // Stand a hand's width off the turned wall nearest the engineer.
+    const r = buildingRect(target, tileSize);
+    const edge = rectNearest(r, eng.x, eng.y);
+    const dx = eng.x - edge.x;
+    const dy = eng.y - edge.y;
+    const d = Math.hypot(dx, dy);
+    if (d < 1) return rectWorld(r, r.halfU + 12, 0);
+    return { x: edge.x + (dx / d) * 12, y: edge.y + (dy / d) * 12 };
+  }
   const x0 = target.tileX * tileSize;
   const y0 = target.tileY * tileSize;
   const x1 = x0 + target.tileW * tileSize;
@@ -549,6 +560,7 @@ function nearRepair(eng: Entity, target: Entity, tileSize: number): boolean {
       span.thick + (STAND_PAD + WORK_REACH) * 2,
     );
   }
+  if (isTurnedBuilding(target)) return rectContains(buildingRect(target, tileSize), eng.x, eng.y, REPAIR_REACH);
   const x0 = target.tileX * tileSize - REPAIR_REACH;
   const y0 = target.tileY * tileSize - REPAIR_REACH;
   const x1 = (target.tileX + target.tileW) * tileSize + REPAIR_REACH;

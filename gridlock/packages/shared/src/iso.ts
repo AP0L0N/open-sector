@@ -166,6 +166,45 @@ export function pointInIsoBox(
 }
 
 /**
+ * True when (ix, iy) falls on a standing prism over a ground polygon of world `corners`
+ * (a turned building), `ez` iso pixels tall and lifted `lift`: the hull of its base and roof.
+ */
+export function pointInIsoPrism(
+  ix: number,
+  iy: number,
+  corners: readonly { x: number; y: number }[],
+  ez: number,
+  tileSize: number,
+  lift = 0,
+): boolean {
+  const pts: IsoPt[] = [];
+  for (const c of corners) {
+    const p = worldToIso(c.x, c.y, tileSize);
+    pts.push({ x: p.x, y: p.y - lift }, { x: p.x, y: p.y - lift - ez });
+  }
+  return pointInPoly(ix, iy, isoHull(pts));
+}
+
+/** Convex hull, counter-clockwise (monotone chain). */
+function isoHull(points: IsoPt[]): IsoPt[] {
+  const p = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  if (p.length < 3) return p;
+  const cross = (o: IsoPt, a: IsoPt, b: IsoPt) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lower: IsoPt[] = [];
+  for (const q of p) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2]!, lower[lower.length - 1]!, q) <= 0) lower.pop();
+    lower.push(q);
+  }
+  const upper: IsoPt[] = [];
+  for (let i = p.length - 1; i >= 0; i--) {
+    const q = p[i]!;
+    while (upper.length >= 2 && cross(upper[upper.length - 2]!, upper[upper.length - 1]!, q) <= 0) upper.pop();
+    upper.push(q);
+  }
+  return lower.slice(0, -1).concat(upper.slice(0, -1));
+}
+
+/**
  * True when a unit at (ux, uy) sits north/west of an iso box and its sprite
  * (lifted `visualLift` iso-pixels) overlaps the box silhouette. East or south
  * of the box is in front of the camera, so those units stay opaque.

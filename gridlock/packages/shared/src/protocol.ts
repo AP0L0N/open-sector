@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 89;
+export const PROTOCOL_VERSION = 90;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -624,7 +624,10 @@ export type ClientMessage =
   | { type: "cmd.rockets"; ids: number[]; on: boolean }
   | { type: "cmd.reach"; ids: number[]; max: boolean }
   | { type: "cmd.build"; building: BuildingType | YardFieldType }
-  /** `facing`: world radians for a Bunker or Watch Tower, snapped to the nearest quarter. Other buildings ignore it. */
+  /**
+   * `facing`: world radians for a Bunker, Watch Tower, or Airfield, snapped to the nearest BUILDING_TURN_STEP;
+   * other buildings ignore it. (tx, ty) is the top-left tile of the turned footprint's box (`turnedBox`).
+   */
   | { type: "cmd.place"; building: BuildingType; tx: number; ty: number; facing?: number }
   | { type: "cmd.train"; unit: TrainType }
   | {

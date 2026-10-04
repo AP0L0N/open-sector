@@ -1,0 +1,318 @@
+{
+ "name": "airfield",
+ "faces": [
+  {
+   "padWidth": 960.0,
+   "padSouthX": 645.96,
+   "padSouthY": 529.98,
+   "stackX": 597.96,
+   "stackY": 89.98,
+   "file": "00.png",
+   "ground": "ground-00.png",
+   "box": [
+    30,
+    15
+   ]
+  },
+  {
+   "padWidth": 1173.33,
+   "padSouthX": 545.3,
+   "padSouthY": 588.32,
+   "stackX": 569.28,
+   "stackY": 111.66,
+   "file": "01.png",
+   "ground": "ground-01.png",
+   "box": [
+    33,
+    22
+   ]
+  },
+  {
+   "padWidth": 1301.33,
+   "padSouthX": 394.3,
+   "padSouthY": 612.32,
+   "stackX": 501.96,
+   "stackY": 123.56,
+   "file": "02.png",
+   "ground": "ground-02.png",
+   "box": [
+    33,
+    28
+   ]
+  },
+  {
+   "padWidth": 1365.33,
+   "padSouthX": 234.96,
+   "padSouthY": 614.32,
+   "stackX": 404.67,
+   "stackY": 131.33,
+   "file": "03.png",
+   "ground": "ground-03.png",
+   "box": [
+    32,
+    32
+   ]
+  },
+  {
+   "padWidth": 1301.33,
+   "padSouthX": 287.63,
+   "padSouthY": 576.32,
+   "stackX": 507.82,
+   "stackY": 131.48,
+   "file": "04.png",
+   "ground": "ground-04.png",
+   "box": [
+    28,
+    33
+   ]
+  },
+  {
+   "padWidth": 1173.33,
+   "padSouthX": 310.63,
+   "padSouthY": 549.32,
+   "stackX": 580.59,
+   "stackY": 157.51,
+   "file": "05.png",
+   "ground": "ground-05.png",
+   "box": [
+    22,
+    33
+   ]
+  },
+  {
+   "padWidth": 960.0,
+   "padSouthX": 325.96,
+   "padSouthY": 482.98,
+   "stackX": 613.96,
+   "stackY": 162.98,
+   "file": "06.png",
+   "ground": "ground-06.png",
+   "box": [
+    15,
+    30
+   ]
+  },
+  {
+   "padWidth": 1173.33,
+   "padSouthX": 393.63,
+   "padSouthY": 507.32,
+   "stackX": 605.62,
+   "stackY": 148.64,
+   "file": "07.png",
+   "ground": "ground-07.png",
+   "box": [
+    22,
+    33
+   ]
+  },
+  {
+   "padWidth": 1301.33,
+   "padSouthX": 448.63,
+   "padSouthY": 496.32,
+   "stackX": 556.82,
+   "stackY": 115.48,
+   "file": "08.png",
+   "ground": "ground-08.png",
+   "box": [
+    28,
+    33
+   ]
+  },
+  {
+   "padWidth": 1365.33,
+   "padSouthX": 460.96,
+   "padSouthY": 459.32,
+   "stackX": 472.28,
+   "stackY": 66.84,
+   "file": "09.png",
+   "ground": "ground-09.png",
+   "box": [
+    32,
+    32
+   ]
+  },
+  {
+   "padWidth": 1301.33,
+   "padSouthX": 554.3,
+   "padSouthY": 496.32,
+   "stackX": 467.97,
+   "stackY": 118.41,
+   "file": "10.png",
+   "ground": "ground-10.png",
+   "box": [
+    33,
+    28
+   ]
+  },
+  {
+   "padWidth": 1173.33,
+   "padSouthX": 628.3,
+   "padSouthY": 507.32,
+   "stackX": 435.91,
+   "stackY": 154.3,
+   "file": "11.png",
+   "ground": "ground-11.png",
+   "box": [
+    33,
+    22
+   ]
+  },
+  {
+   "padWidth": 960.0,
+   "padSouthX": 645.96,
+   "padSouthY": 482.98,
+   "stackX": 373.96,
+   "stackY": 170.98,
+   "file": "12.png",
+   "ground": "ground-12.png",
+   "box": [
+    30,
+    15
+   ]
+  },
+  {
+   "padWidth": 1173.33,
+   "padSouthX": 545.3,
+   "padSouthY": 549.32,
+   "stackX": 286.65,
+   "stackY": 167.31,
+   "file": "13.png",
+   "ground": "ground-13.png",
+   "box": [
+    33,
+    22
+   ]
+  },
+  {
+   "padWidth": 1301.33,
+   "padSouthX": 395.3,
+   "padSouthY": 604.32,
+   "stackX": 180.97,
+   "stackY": 170.41,
+   "file": "14.png",
+   "ground": "ground-14.png",
+   "box": [
+    33,
+    28
+   ]
+  },
+  {
+   "padWidth": 1365.33,
+   "padSouthX": 233.96,
+   "padSouthY": 644.32,
+   "stackX": 64.26,
+   "stackY": 172.64,
+   "file": "15.png",
+   "ground": "ground-15.png",
+   "box": [
+    32,
+    32
+   ]
+  },
+  {
+   "padWidth": 1301.33,
+   "padSouthX": 286.63,
+   "padSouthY": 637.32,
+   "stackX": 173.11,
+   "stackY": 159.48,
+   "file": "16.png",
+   "ground": "ground-16.png",
+   "box": [
+    28,
+    33
+   ]
+  },
+  {
+   "padWidth": 1173.33,
+   "padSouthX": 308.63,
+   "padSouthY": 598.32,
+   "stackX": 273.34,
+   "stackY": 131.45,
+   "file": "17.png",
+   "ground": "ground-17.png",
+   "box": [
+    22,
+    33
+   ]
+  },
+  {
+   "padWidth": 960.0,
+   "padSouthX": 323.96,
+   "padSouthY": 521.98,
+   "stackX": 355.96,
+   "stackY": 89.98,
+   "file": "18.png",
+   "ground": "ground-18.png",
+   "box": [
+    15,
+    30
+   ]
+  },
+  {
+   "padWidth": 1173.33,
+   "padSouthX": 391.63,
+   "padSouthY": 539.32,
+   "stackX": 414.31,
+   "stackY": 39.33,
+   "file": "19.png",
+   "ground": "ground-19.png",
+   "box": [
+    22,
+    33
+   ]
+  },
+  {
+   "padWidth": 1301.33,
+   "padSouthX": 446.63,
+   "padSouthY": 549.32,
+   "stackX": 445.11,
+   "stackY": 7.48,
+   "file": "20.png",
+   "ground": "ground-20.png",
+   "box": [
+    28,
+    33
+   ]
+  },
+  {
+   "padWidth": 1365.33,
+   "padSouthX": 459.96,
+   "padSouthY": 567.32,
+   "stackX": 448.65,
+   "stackY": 5.13,
+   "file": "21.png",
+   "ground": "ground-21.png",
+   "box": [
+    32,
+    32
+   ]
+  },
+  {
+   "padWidth": 1301.33,
+   "padSouthX": 554.3,
+   "padSouthY": 567.32,
+   "stackX": 533.96,
+   "stackY": 22.56,
+   "file": "22.png",
+   "ground": "ground-22.png",
+   "box": [
+    33,
+    28
+   ]
+  },
+  {
+   "padWidth": 1173.33,
+   "padSouthX": 628.3,
+   "padSouthY": 564.32,
+   "stackX": 586.02,
+   "stackY": 58.67,
+   "file": "23.png",
+   "ground": "ground-23.png",
+   "box": [
+    33,
+    22
+   ]
+  }
+ ],
+ "backDepth": 0.27
+}

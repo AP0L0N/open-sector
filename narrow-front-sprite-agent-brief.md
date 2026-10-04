@@ -499,7 +499,7 @@ For each unit deliver:
 - How team tint is applied
 - What is shared FX vs unique art
 
-Buildings read as **blocks with a function**: door, pad, flag stub. Not cities. Buildings stay 4 cardinals.
+Buildings read as **blocks with a function**: door, pad, flag stub. Not cities. Buildings stay 4 cardinals, except the Bunker, Watch Tower, and Airfield, which turn before placing in 24 steps of 15° (`tools/sprites/turn_faces.py`).
 
 ---
 

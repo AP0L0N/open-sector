@@ -5,7 +5,6 @@ import {
   isConcreteLine,
   isDefenceStructure,
   isFieldStructure,
-  isRotatableBuilding,
   isYardField,
   onWaterBuilding,
   secondsToTicks,
@@ -14,20 +13,21 @@ import {
   type YardFieldType,
 } from "../catalog.js";
 import {
-  buildingCenter,
   destroyEntity,
-  footprint,
   hasCore,
   inBounds,
   inBuildRadius,
+  footprint,
   isWater,
   makeEntity,
   occupant,
   tileNearOwnBuildings,
+  scrapAt,
+  tileListBlocked,
   tilesBlocked,
   tilesBlockedOrScrap,
 } from "./geo.js";
-import { buildingFaceIndex } from "../iso.js";
+import { buildingSite, buildingTilesOf, snapBuildingFacing, turnedBox } from "../building-rect.js";
 import { ejectUnits } from "./deploy.js";
 import { spillGarrison } from "./garrison.js";
 import {
@@ -214,10 +214,10 @@ export function placeBuilding(
   const job = jobIn(p, slotOf(type));
   if (!job?.ready || job.type !== type) return "That structure is not ready.";
   if (!hasCore(state, playerId)) return "Deploy the Rig.";
-  const def = catalog(type);
-  const siteErr = buildingSiteError(state, type, tx, ty, playerId);
+  const siteErr = buildingSiteError(state, type, tx, ty, playerId, facing);
   if (siteErr) return siteErr;
-  if (!inBuildRadius(state, playerId, tx, ty, def.tileW, def.tileH, buildRadiusOf(type))) {
+  const box = turnedBox(type, facing);
+  if (!inBuildRadius(state, playerId, tx, ty, box.w, box.h, buildRadiusOf(type))) {
     return "Too far from your base.";
   }
   raiseBuilding(state, playerId, type, tx, ty, facing);
@@ -228,6 +228,7 @@ export function placeBuilding(
 /**
  * Why this footprint cannot take the building, or null when the ground is right for it.
  * With `ownerId`, that player's sited wall or sandbag line counts as already standing.
+ * `facing` turns a rotatable building's ground; (tx, ty) is the top-left of its turned box.
  */
 export function buildingSiteError(
   state: MatchState,
@@ -235,11 +236,13 @@ export function buildingSiteError(
   tx: number,
   ty: number,
   ownerId?: string,
+  facing = 0,
 ): string | null {
   const def = catalog(type);
+  const tiles = buildingTilesOf(buildingSite(type, tx, ty, facing, state.tileSize), state.tileSize);
   if (ownerId != null) {
     const sited = sitedLineTiles(state, state.players.get(ownerId)?.line);
-    if (sited.size > 0 && footprint(tx, ty, def.tileW, def.tileH).some((t) => sited.has(t.y * state.width + t.x))) {
+    if (sited.size > 0 && tiles.some((t) => sited.has(t.y * state.width + t.x))) {
       return "Cannot place there.";
     }
   }
@@ -254,7 +257,8 @@ export function buildingSiteError(
     }
     return null;
   }
-  return tilesBlockedOrScrap(state, tx, ty, def.tileW, def.tileH) ? "Cannot place there." : null;
+  if (tileListBlocked(state, tiles) || tiles.some((t) => scrapAt(state, t.x, t.y) > 0)) return "Cannot place there.";
+  return null;
 }
 
 /** A Marine Base floats: open water under every tile, and nothing standing there already. */
@@ -267,9 +271,9 @@ function waterSiteError(state: MatchState, tx: number, ty: number, w: number, h:
   return null;
 }
 
-/** The quarter a building stands at. A Bunker or Watch Tower takes the nearest one to `facing`; the rest face east. */
+/** The step a building stands at. A rotatable one takes the nearest BUILDING_TURN_STEP to `facing`; the rest face east. */
 export function placedFacing(type: BuildingType, facing: number): number {
-  return isRotatableBuilding(type) ? buildingFaceIndex(facing) * (Math.PI / 2) : 0;
+  return snapBuildingFacing(type, facing);
 }
 
 /** Stand the building up: occupy its tiles, push units off them, and make blocked walkers re-path. */
@@ -281,9 +285,14 @@ export function raiseBuilding(
   ty: number,
   facing = 0,
 ): Entity {
-  const def = catalog(type);
-  const c = buildingCenter(tx, ty, def.tileW, def.tileH, state.tileSize);
-  const b = makeEntity(state, type, playerId, c.x, c.y, { tileX: tx, tileY: ty, facing: placedFacing(type, facing) });
+  const site = buildingSite(type, tx, ty, facing, state.tileSize);
+  const b = makeEntity(state, type, playerId, site.x, site.y, {
+    tileX: tx,
+    tileY: ty,
+    facing: site.facing,
+    tileW: site.tileW,
+    tileH: site.tileH,
+  });
   ejectUnits(state, b);
   for (const u of state.entities.values()) {
     if (u.kind === "unit") repathIfBlocked(state, u);

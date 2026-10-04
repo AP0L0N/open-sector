@@ -2,7 +2,18 @@ import { SMELTER_SCRAP_COVER, anchorsBuildRange, buildRadiusOf, catalog, isEngin
 import { TILE_BLOCKED, TILE_FENCE, TILE_ROCK, TILE_TREE, TILE_WATER, getMap } from "../maps.js";
 import type { MatchSnapshot } from "../protocol.js";
 import { fieldTilesOn, overlapsFieldIn, overlapsSitedLine, sitedLineTiles } from "./field.js";
-import { footprint, footprintGap, tileNearOwnBuildings } from "./geo.js";
+import { buildingSite, buildingTilesOf, turnedBox } from "../building-rect.js";
+import { footprintGap, tileNearOwnBuildings } from "./geo.js";
+
+/** Tiles under the snapshot's standing buildings, turned ones on their real ground. */
+function buildingCells(snap: MatchSnapshot, width: number, tileSize: number, liveOnly: boolean): Set<number> {
+  const out = new Set<number>();
+  for (const e of snap.entities) {
+    if (e.kind !== "building" || (liveOnly && e.hp <= 0)) continue;
+    for (const t of buildingTilesOf(e, tileSize)) out.add(t.y * width + t.x);
+  }
+  return out;
+}
 
 /** Snapshot-side twin of `fieldSiteClear`: ground, scrap, buildings, and other field structures. */
 export function previewField(
@@ -18,16 +29,14 @@ export function previewField(
   if (tiles.length === 0) return false;
   if (overlapsSitedLine(snap.you.lineQueue, type, x, y, facing)) return false;
   const cleared = new Set((snap.clearedTrees ?? []).map((c) => c.y * map.width + c.x));
+  const built = buildingCells(snap, map.width, map.tileSize, true);
   for (const t of tiles) {
     const i = t.y * map.width + t.x;
     const kind = map.tiles[i] ?? TILE_BLOCKED;
     if (kind === TILE_BLOCKED || kind === TILE_WATER || kind === TILE_FENCE || kind === TILE_ROCK) return false;
     if (kind === TILE_TREE && !cleared.has(i)) return false;
     if (snap.scrap.some((s) => s.x === t.x && s.y === t.y && s.yield > 0)) return false;
-    for (const e of snap.entities) {
-      if (e.kind !== "building" || e.hp <= 0) continue;
-      if (t.x >= e.tileX && t.x < e.tileX + e.tileW && t.y >= e.tileY && t.y < e.tileY + e.tileH) return false;
-    }
+    if (built.has(i)) return false;
   }
   return !overlapsFieldIn(snap.entities, type, x, y, facing);
 }
@@ -45,12 +54,14 @@ export function previewYardField(snap: MatchSnapshot, type: YardFieldType, x: nu
  * Snapshot twin of the sim's site check: open ground under the footprint, and for a
  * Smelter enough scrap under it; for everything else no scrap at all. A Marine Base
  * wants open water under every tile; nothing else stands on water or a fence.
+ * `facing` turns a rotatable building; (tx, ty) is then the top-left of its turned box.
  */
-export function previewSite(snap: MatchSnapshot, type: BuildingType, tx: number, ty: number): boolean {
+export function previewSite(snap: MatchSnapshot, type: BuildingType, tx: number, ty: number, facing = 0): boolean {
   const map = getMap(snap.mapId);
   if (!map) return false;
   const def = catalog(type);
-  const tiles = footprint(tx, ty, def.tileW, def.tileH);
+  const tiles = buildingTilesOf(buildingSite(type, tx, ty, facing, map.tileSize), map.tileSize);
+  const built = buildingCells(snap, map.width, map.tileSize, false);
   const cleared = new Set((snap.clearedTrees ?? []).map((c) => c.y * map.width + c.x));
   const scrapCells = new Set<number>();
   for (const s of snap.scrap) if (s.yield > 0) scrapCells.add(s.y * map.width + s.x);
@@ -70,37 +81,27 @@ export function previewSite(snap: MatchSnapshot, type: BuildingType, tx: number,
       if (type !== "smelter") return false;
       scrapUnder++;
     }
-    for (const e of snap.entities) {
-      if (e.kind !== "building") continue;
-      if (
-        t.x >= e.tileX &&
-        t.x < e.tileX + e.tileW &&
-        t.y >= e.tileY &&
-        t.y < e.tileY + e.tileH
-      ) {
-        return false;
-      }
-    }
+    if (built.has(i)) return false;
   }
   if (type === "smelter" && scrapUnder < Math.ceil(def.tileW * def.tileH * SMELTER_SCRAP_COVER)) return false;
   return true;
 }
 
 /** Where an engineer may raise a base building: the site rule alone, any distance from the yard. */
-export function previewConstruct(snap: MatchSnapshot, type: BuildingType, tx: number, ty: number): boolean {
-  return isEngineerBuilding(type) && previewSite(snap, type, tx, ty);
+export function previewConstruct(snap: MatchSnapshot, type: BuildingType, tx: number, ty: number, facing = 0): boolean {
+  return isEngineerBuilding(type) && previewSite(snap, type, tx, ty, facing);
 }
 
 /** A yard-built structure: the site rule, and within its build range of your own base buildings. */
-export function previewPlace(snap: MatchSnapshot, type: BuildingType, tx: number, ty: number): boolean {
-  if (!previewSite(snap, type, tx, ty)) return false;
-  const def = catalog(type);
+export function previewPlace(snap: MatchSnapshot, type: BuildingType, tx: number, ty: number, facing = 0): boolean {
+  if (!previewSite(snap, type, tx, ty, facing)) return false;
+  const box = turnedBox(type, facing);
   const radius = buildRadiusOf(type);
   const you = snap.youPlayerId;
   for (const e of snap.entities) {
     if (e.kind !== "building" || e.ownerId !== you || e.hp <= 0) continue;
     if (!anchorsBuildRange(e.type)) continue;
-    if (footprintGap(tx, ty, def.tileW, def.tileH, e.tileX, e.tileY, e.tileW, e.tileH) <= radius) return true;
+    if (footprintGap(tx, ty, box.w, box.h, e.tileX, e.tileY, e.tileW, e.tileH) <= radius) return true;
   }
   return false;
 }

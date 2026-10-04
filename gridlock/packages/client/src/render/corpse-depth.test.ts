@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { AIRFIELD_BACK_DEPTH, AIRFIELD_PADS, airfieldPadWorld, airfieldRunway, catalog, isoDepth } from "@gridlock/shared";
+import {
+  AIRFIELD_BACK_DEPTH,
+  AIRFIELD_PADS,
+  BUILDING_TURN_STEP,
+  airfieldPadWorld,
+  airfieldRunway,
+  buildingRect,
+  buildingSite,
+  catalog,
+  isoDepth,
+  rectWorld,
+  runwayPoint,
+} from "@gridlock/shared";
 import {
   axisFootprint,
   BUSH_DRAW_LAYER,
@@ -106,7 +118,14 @@ describe("standing draw order", () => {
 
 describe("airfield draw order", () => {
   const ts = 8;
-  const field = { tileX: 20, tileY: 20, tileW: catalog("airfield").tileW, tileH: catalog("airfield").tileH };
+  const field = {
+    type: "airfield" as const,
+    facing: 0,
+    tileX: 20,
+    tileY: 20,
+    tileW: catalog("airfield").tileW,
+    tileH: catalog("airfield").tileH,
+  };
   const x = field.tileX * ts;
   const y = field.tileY * ts;
   // The keys MapView.drawKey and its ground pass build for an Airfield.
@@ -124,10 +143,33 @@ describe("airfield draw order", () => {
 
   it("a plane rolling along the strip, even off either end, paints over the field", () => {
     const rw = airfieldRunway(field, ts);
-    for (const px of [x - 12, rw.x0, rw.cx, rw.x1, x + field.tileW * ts + 12]) {
-      assert.ok(compareDrawOrder(unitAt(px, rw.y), props) > 0, `x ${px}`);
-      assert.ok(compareDrawOrder(unitAt(px, rw.y), strip) > 0, `x ${px}`);
+    for (const along of [-field.tileW * ts * 0.5 - 12, rw.u0, 0, rw.u1, field.tileW * ts * 0.5 + 12]) {
+      const p = runwayPoint(rw, along);
+      assert.ok(compareDrawOrder(unitAt(p.x, p.y), props) > 0, `along ${along}`);
+      assert.ok(compareDrawOrder(unitAt(p.x, p.y), strip) > 0, `along ${along}`);
     }
+  });
+
+  it("a turned field keeps planes on its hardstands and strip in front of its hangar band", () => {
+    let checked = 0;
+    for (const k of [1, 2, 21, 22, 23]) {
+      const facing = k * BUILDING_TURN_STEP;
+      const site = buildingSite("airfield", 40, 40, facing, ts);
+      // The key MapView.drawKey builds for a turned Airfield: the back band along the turned back edge.
+      const r = buildingRect(site, ts);
+      const band = r.halfV * AIRFIELD_BACK_DEPTH;
+      const c = rectWorld(r, 0, band - r.halfV);
+      const foot = { cx: c.x, cy: c.y, ax: r.ux, ay: r.uy, halfAlong: r.halfU, halfAcross: band };
+      const turnedProps: DrawKey = { layer: STANDING_DRAW_LAYER, z: isoDepth(foot.cx, foot.cy), foot };
+      for (let i = 0; i < AIRFIELD_PADS; i++) {
+        const p = airfieldPadWorld(site, i, ts);
+        // Faces that turn the hardstands south-east of the band; side by side on one depth line either order is right.
+        if (isoDepth(p.x, p.y) - isoDepth(c.x, c.y) < 8) continue;
+        assert.ok(compareDrawOrder(unitAt(p.x, p.y), turnedProps) > 0, `facing ${k} pad ${i}`);
+        checked++;
+      }
+    }
+    assert.ok(checked >= 10, `checked ${checked} pads`);
   });
 
   it("craters and shadows land on the strip, not under it", () => {

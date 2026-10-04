@@ -40,16 +40,28 @@ export function convexHull(points: Pt[]): Pt[] {
   return lower.slice(0, -1).concat(upper.slice(0, -1));
 }
 
-/** A box on its footprint, pushed along the sun: the hull of its base and its roof's shadow. */
-export function buildingShadowFootprint(opts: { x: number; y: number; w: number; h: number; height: number }): Pt[] {
+/**
+ * A box on its footprint, pushed along the sun: the hull of its base and its roof's shadow.
+ * `base` replaces the box corners for a turned building.
+ */
+export function buildingShadowFootprint(opts: {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  height: number;
+  base?: readonly Pt[];
+}): Pt[] {
   const { x, y, w, h } = opts;
   const d = shadowOffset(opts.height);
-  const base = [
-    { x, y },
-    { x: x + w, y },
-    { x: x + w, y: y + h },
-    { x, y: y + h },
-  ];
+  const base = opts.base
+    ? [...opts.base]
+    : [
+        { x, y },
+        { x: x + w, y },
+        { x: x + w, y: y + h },
+        { x, y: y + h },
+      ];
   return convexHull([...base, ...base.map((p) => ({ x: p.x + d.x, y: p.y + d.y }))]);
 }
 

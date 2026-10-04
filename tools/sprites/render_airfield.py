@@ -8,7 +8,9 @@ dump, tents, flak pit, and windsock are the *props* image, drawn in the
 standing layer against the back band of the footprint.
 
 Both images share size and anchor, so one set of BuildingSpriteDef metrics
-places either. Layout fractions match the Airfield constants in
+places either. The player turns the Airfield before placing it in 15 degree
+steps: `--turned` renders airfield/NN.png and ground-NN.png for every facing,
+with pad metrics in airfield/faces.json (see turn_faces.py). Layout fractions match the Airfield constants in
 gridlock/packages/shared/src/catalog.ts (AIRFIELD_*).
 
 Look: the inked, weathered style of the other structures. Per-pixel
@@ -909,10 +911,98 @@ def render(out_dir: Path) -> None:
     both.save(preview / "airfield-composite.png")
 
 
+# The footprint in gameplay tiles: catalog.ts tileW x tileH of the airfield, t(7.5) x t(3.75).
+TILES = (30, 15)
+
+
+def render_turned(out_dir: Path, only: list[int] | None = None) -> None:
+    """The 24 turned faces: airfield/NN.png (props) and airfield/ground-NN.png, metrics in airfield/faces.json.
+
+    Ground and props of one face share a crop, so one set of pad metrics places both.
+    """
+    import sys
+
+    import turn_faces as tf
+
+    # Run as a script this module is __main__: hand turn_faces the live one, not a second copy.
+    tf.ra = sys.modules[__name__]
+    tf.install_texture_frame()
+    cx, cy = W / 2, H / 2
+    tile_px = W / TILES[0]
+    radius = math.hypot(W, H) / 2
+    cv = tf.disc_canvas(cx, cy, radius, TOP_MARGIN + TOWER_CAB, SIDE_MARGIN + 30.0)
+    print("turned canvas", cv.w // SS, "x", cv.h // SS)
+    folder = out_dir / "airfield"
+    folder.mkdir(parents=True, exist_ok=True)
+    preview = Path(__file__).parent / "preview" / "airfield"
+    preview.mkdir(parents=True, exist_ok=True)
+    manifest = folder / "faces.json"
+    faces: list[dict | None] = [None] * tf.FACES
+    if manifest.exists():
+        for i, f in enumerate(json.loads(manifest.read_text()).get("faces", [])[: tf.FACES]):
+            faces[i] = f
+    ys, xs = np.mgrid[0 : cv.h, 0 : cv.w].astype(np.float64) + 0.5
+    gx, gy = cv.to_world_ground(xs, ys)
+    for k in range(tf.FACES):
+        if only is not None and k not in only:
+            continue
+        a = tf.face_angle(k)
+        tf.set_turn(a, cx, cy)
+        # Ground, read in the field's own frame.
+        X, Y = tf.unturn_points(gx, gy)
+        inside = (X > -8) & (X < W + 8) & (Y > -8) & (Y < H + 8)
+        g_col = np.zeros((cv.h, cv.w, 3))
+        g_a = np.zeros((cv.h, cv.w))
+        c, al = ground_color(X[inside], Y[inside])
+        g_col[inside] = c
+        g_a[inside] = al
+        low = tf.turn_mesh(build_ground_props(), a, cx, cy)
+        props, meta = build_props()
+        tf.turn_mesh(props, a, cx, cy)
+        sh = np.clip(shadow_mask(low, cv) + shadow_mask(props, cv), 0, 1)
+        ao = np.clip(contact_ao(low, cv) + contact_ao(props, cv), 0, 1)
+        g_col *= (1 - 0.42 * sh - 0.12 * ao)[..., None]
+        low_fr = rasterize(low, cv)
+        ink(low_fr, SS)
+        g_col, g_a = over(g_col, g_a, low_fr.color, low_fr.alpha)
+        ground = downsample(g_col, g_a, SS)
+        pr = rasterize(props, cv)
+        ink(pr, SS)
+        silhouette(pr, SS)
+        props_img = downsample(pr.color, pr.alpha, SS)
+        box = tf.crop_box(ground, props_img)
+        ground = ground.crop(box)
+        props_img = props_img.crop(box)
+        sx, sy, sz = meta["stack"]
+        dx, dy = sx - cx, sy - cy
+        stack = (cx + dx * math.cos(a) - dy * math.sin(a), cy + dx * math.sin(a) + dy * math.cos(a), sz)
+        bw, bh = tf.box_tiles(TILES[0], TILES[1], a)
+        info = tf.face_metrics(cv, cx, cy, bw * tile_px, bh * tile_px, stack, (box[0], box[1]))
+        info["file"] = f"{k:02d}.png"
+        info["ground"] = f"ground-{k:02d}.png"
+        info["box"] = [bw, bh]
+        ground.save(folder / info["ground"], optimize=True)
+        props_img.save(folder / info["file"], optimize=True)
+        both = Image.new("RGBA", ground.size, (74, 107, 50, 255))
+        both.alpha_composite(ground)
+        both.alpha_composite(props_img)
+        both.save(preview / f"{k:02d}.png")
+        faces[k] = info
+        tf.write_manifest(manifest, "airfield", [f for f in faces if f], backDepth=BACK_DEPTH)
+        print("face", k, "done", flush=True)
+    tf.set_turn(0.0, cx, cy)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="buildings asset folder")
+    ap.add_argument("--turned", action="store_true", help="render only the 24 turned faces")
+    ap.add_argument("--faces", default="", help="comma-separated face numbers, with --turned")
     args = ap.parse_args()
+    if args.turned:
+        only = [int(x) for x in args.faces.split(",") if x.strip()] or None
+        render_turned(Path(args.out), only)
+        return
     render(Path(args.out))
 
 

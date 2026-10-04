@@ -5,4 +5,5 @@ export * from "./custom-maps.js";
 export * from "./lobby.js";
 export * from "./catalog.js";
 export * from "./iso.js";
+export * from "./building-rect.js";
 export * from "./sim/index.js";

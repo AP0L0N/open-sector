@@ -32,6 +32,7 @@ import {
   UNIT_SPACE_PAD,
   type EntityType,
 } from "../catalog.js";
+import { buildingRect, buildingTilesOf, isTurnedBuilding, rectContains, segmentRectT } from "../building-rect.js";
 import {
   TILE_BLOCKED,
   TILE_DIAMOND_SCRAP,
@@ -370,7 +371,7 @@ function restampWreckBlock(state: MatchState): void {
 export function occupyEntity(state: MatchState, e: Entity): void {
   if (isFieldStructure(e.type)) return;
   if (e.kind !== "building" && !e.wreck) return;
-  for (const t of footprint(e.tileX, e.tileY, e.tileW, e.tileH)) {
+  for (const t of buildingTilesOf(e, state.tileSize)) {
     if (!inBounds(state, t.x, t.y)) continue;
     const i = tileIndex(state, t.x, t.y);
     const cur = state.occupy[i] ?? 0;
@@ -383,7 +384,7 @@ export function occupyEntity(state: MatchState, e: Entity): void {
 export function vacateEntity(state: MatchState, e: Entity): void {
   if (isFieldStructure(e.type)) return;
   if (e.kind !== "building" && !e.wreck) return;
-  for (const t of footprint(e.tileX, e.tileY, e.tileW, e.tileH)) {
+  for (const t of buildingTilesOf(e, state.tileSize)) {
     if (!inBounds(state, t.x, t.y)) continue;
     const i = tileIndex(state, t.x, t.y);
     if (state.occupy[i] === e.id) state.occupy[i] = 0;
@@ -406,7 +407,12 @@ export function tilesBlockedOrScrap(state: MatchState, tx: number, ty: number, w
 
 /** Ground, trees, buildings, and wrecks under a footprint. Scrap does not count: the Smelter stands on it. */
 export function tilesBlocked(state: MatchState, tx: number, ty: number, w: number, h: number): boolean {
-  for (const t of footprint(tx, ty, w, h)) {
+  return tileListBlocked(state, footprint(tx, ty, w, h));
+}
+
+/** tilesBlocked over any set of tiles, such as a turned building's ground. */
+export function tileListBlocked(state: MatchState, tiles: readonly { x: number; y: number }[]): boolean {
+  for (const t of tiles) {
     if (!inBounds(state, t.x, t.y)) return true;
     if (state.blocked[tileIndex(state, t.x, t.y)] === 1) return true;
     if (isTree(state, t.x, t.y)) return true;
@@ -479,15 +485,29 @@ export function buildingBounds(
 }
 
 export function buildingContains(e: Entity, tileSize: number, wx: number, wy: number): boolean {
+  if (isTurnedBuilding(e)) return rectContains(buildingRect(e, tileSize), wx, wy);
   const b = buildingBounds(e, tileSize);
   return wx >= b.x0 && wx < b.x1 && wy >= b.y0 && wy < b.y1;
+}
+
+/** Where along the segment (0..1) it first meets the building's ground, turned or not; null when it misses. */
+export function segmentBuildingT(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  e: Entity,
+  tileSize: number,
+): number | null {
+  if (isTurnedBuilding(e)) return segmentRectT(buildingRect(e, tileSize), x0, y0, x1, y1);
+  return segmentAabbT(x0, y0, x1, y1, buildingBounds(e, tileSize));
 }
 
 /** Chebyshev ≤ 1 to any footprint tile, including standing on the pad. */
 export function adjacentToBuilding(state: MatchState, unit: Entity, building: Entity): boolean {
   const tx = worldToTile(unit.x, state.tileSize);
   const ty = worldToTile(unit.y, state.tileSize);
-  for (const t of footprint(building.tileX, building.tileY, building.tileW, building.tileH)) {
+  for (const t of buildingTilesOf(building, state.tileSize)) {
     if (chebyshev(tx, ty, t.x, t.y) <= 1) return true;
   }
   return false;
@@ -557,7 +577,8 @@ export function makeEntity(
   ownerId: string,
   x: number,
   y: number,
-  opts?: { tileX?: number; tileY?: number; facing?: number },
+  /** tileW/tileH: a turned building's tile box, in place of the catalog's. */
+  opts?: { tileX?: number; tileY?: number; facing?: number; tileW?: number; tileH?: number },
 ): Entity {
   const def = catalog(type);
   const gun = infantryGunFor({ type, crits: [] });
@@ -580,8 +601,8 @@ export function makeEntity(
     state: "idle",
     tileX,
     tileY,
-    tileW: def.tileW,
-    tileH: def.tileH,
+    tileW: opts?.tileW ?? def.tileW,
+    tileH: opts?.tileH ?? def.tileH,
     radius: def.radius,
     order: null,
     waypoints: [],

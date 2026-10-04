@@ -53,7 +53,19 @@ export { wantsCapture, captureDurationSec } from "./capture.js";
 export { powerOf, productionSpeed } from "./power.js";
 export { radarContacts, radarOnline, radarStations } from "./radar.js";
 export { producerType } from "./train.js";
-export { airfieldPadWorld, airfieldRunway, isAirborne, PARK_HEADING, reachesAircraft, RUNWAY_HEADING } from "./air.js";
+export {
+  airfieldFrame,
+  airfieldPadWorld,
+  airfieldRunway,
+  isAirborne,
+  PARK_HEADING,
+  parkHeading,
+  reachesAircraft,
+  RUNWAY_HEADING,
+  runwayLocal,
+  runwayPoint,
+  type AirfieldRunway,
+} from "./air.js";
 export { droneIsHigh, droneModeAlt } from "./drone.js";
 export { jetAloft, reachesJet, takeoffBlocked } from "./jet.js";
 export { mortarAirZ, mortarArcPoints } from "./mortar.js";

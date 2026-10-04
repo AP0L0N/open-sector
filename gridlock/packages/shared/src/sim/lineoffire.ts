@@ -15,9 +15,9 @@ import { isAirborne, isCrashing } from "./air.js";
 import { aimHeight, canAimWeapon, entityHeight, muzzleHeight, shotClearsCover, worldTileHeight } from "./elevation.js";
 import {
   allies,
-  buildingBounds,
+  buildingContains,
   jetAloft,
-  segmentAabbT,
+  segmentBuildingT,
   segmentCircleT,
   unitInWater,
   walkable,
@@ -59,10 +59,9 @@ export function allyInLine(
     if (o.type === "trench" && livingGarrison(state, o).length === 0) continue;
     let t: number | null;
     if (o.kind === "building") {
-      const box = buildingBounds(o, state.tileSize);
       // The gun stands inside this footprint (a pad, a yard). Nothing to step around.
-      if (x0 >= box.x0 && x0 < box.x1 && y0 >= box.y0 && y0 < box.y1) continue;
-      t = segmentAabbT(x0, y0, x1, y1, box);
+      if (buildingContains(o, state.tileSize, x0, y0)) continue;
+      t = segmentBuildingT(x0, y0, x1, y1, o, state.tileSize);
     } else {
       const reach = o.radius * stanceHitRadiusMul(o, unitInWater(state, o)) + PROJECTILE_RADIUS + ALLY_LINE_MARGIN;
       t = segmentCircleT(x0, y0, x1, y1, o.x, o.y, reach);

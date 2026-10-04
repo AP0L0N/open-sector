@@ -1,3 +1,4 @@
+import { buildingTilesOf, isTurnedBuilding } from "../building-rect.js";
 import {
   FOV_ISLAND_LIMIT,
   GARRISON_HIDE_SIGHT,
@@ -1109,7 +1110,11 @@ export function visionMaskFromSnapshot(
     for (const e of snap.entities) {
       if (e.hp <= 0) continue;
       if (e.kind === "building" || e.wreck) {
-        stampOccupy(occupy, width, height, e.id, e.tileX, e.tileY, e.tileW, e.tileH);
+        if (isTurnedBuilding(e)) {
+          for (const t of buildingTilesOf(e, tileSize)) {
+            if (t.x >= 0 && t.y >= 0 && t.x < width && t.y < height) occupy[t.y * width + t.x] = e.id;
+          }
+        } else stampOccupy(occupy, width, height, e.id, e.tileX, e.tileY, e.tileW, e.tileH);
       }
     }
     fillHullCover(snap.entities, tileSize, width, height, hull);
