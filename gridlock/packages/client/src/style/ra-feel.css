@@ -717,7 +717,7 @@ input[type="range"] { padding: 0; }
 
 .group-tabs {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 3px;
   flex-shrink: 0;
 }
@@ -893,6 +893,8 @@ input[type="range"] { padding: 0; }
 #train-nebelwerfer,
 #train-artillery,
 #train-supply,
+#train-gunboat,
+#train-submarine,
 #train-stuka,
 #train-fw190,
 #train-bv222,
@@ -901,6 +903,7 @@ input[type="range"] { padding: 0; }
 #build-muster,
 #build-armory,
 #build-airfield,
+#build-dock,
 #build-ciws,
 #build-research,
 #build-radar,
@@ -1166,6 +1169,21 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     var(--bv222-cameo, url("../assets/units/bv222/hull/0013.png"));
 }
+#train-gunboat {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    var(--gunboat-cameo, url("../assets/units/gunboat-cameo.png"));
+}
+#train-submarine {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    var(--submarine-cameo, url("../assets/units/submarine-cameo.png"));
+}
+#build-dock {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/dock-cameo.png");
+}
 
 .cameo:disabled, .cameo.is-disabled {
   opacity: 0.38;
@@ -1391,6 +1409,16 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="bv222"] {
   background-image: var(--bv222-cameo, url("../assets/units/bv222/hull/0013.png"));
 }
+.config-type[data-type="gunboat"],
+.prod-job[data-type="gunboat"] {
+  background-image: var(--gunboat-cameo, url("../assets/units/gunboat-cameo.png"));
+}
+.config-type[data-type="submarine"],
+.prod-job[data-type="submarine"] {
+  background-image: var(--submarine-cameo, url("../assets/units/submarine-cameo.png"));
+}
+.config-type[data-type="dock"],
+.prod-job[data-type="dock"] { background-image: url("../assets/buildings/dock-cameo.png"); }
 .config-type[data-type="drone"],
 .prod-job[data-type="drone"] {
   background-image: var(--drone-cameo, url("../assets/units/drone-cameo.png"));

@@ -1,4 +1,4 @@
-import { SMELTER_SCRAP_COVER, anchorsBuildRange, buildRadiusOf, catalog, isEngineerBuilding, isYardField, type BuildingType, type FieldStructureType, type YardFieldType } from "../catalog.js";
+import { SMELTER_SCRAP_COVER, anchorsBuildRange, buildRadiusOf, catalog, isEngineerBuilding, isYardField, onWaterBuilding, type BuildingType, type FieldStructureType, type YardFieldType } from "../catalog.js";
 import { TILE_BLOCKED, TILE_FENCE, TILE_ROCK, TILE_TREE, TILE_WATER, getMap } from "../maps.js";
 import type { MatchSnapshot } from "../protocol.js";
 import { fieldTilesOn, overlapsFieldIn, overlapsSitedLine, sitedLineTiles } from "./field.js";
@@ -43,7 +43,8 @@ export function previewYardField(snap: MatchSnapshot, type: YardFieldType, x: nu
 
 /**
  * Snapshot twin of the sim's site check: open ground under the footprint, and for a
- * Smelter enough scrap under it; for everything else no scrap at all.
+ * Smelter enough scrap under it; for everything else no scrap at all. A Marine Base
+ * wants open water under every tile; nothing else stands on water or a fence.
  */
 export function previewSite(snap: MatchSnapshot, type: BuildingType, tx: number, ty: number): boolean {
   const map = getMap(snap.mapId);
@@ -56,12 +57,14 @@ export function previewSite(snap: MatchSnapshot, type: BuildingType, tx: number,
   // Your sited wall or sandbag line counts as standing while the yard builds it.
   const sited = sitedLineTiles(map, snap.you.lineQueue);
   let scrapUnder = 0;
+  const afloat = onWaterBuilding(type);
   for (const t of tiles) {
     if (t.x < 0 || t.y < 0 || t.x >= map.width || t.y >= map.height) return false;
     const i = t.y * map.width + t.x;
     if (sited.has(i)) return false;
     const kind = map.tiles[i] ?? TILE_BLOCKED;
-    if (kind === TILE_BLOCKED || kind === TILE_ROCK) return false;
+    if (afloat !== (kind === TILE_WATER)) return false;
+    if (kind === TILE_BLOCKED || kind === TILE_ROCK || kind === TILE_FENCE) return false;
     if (kind === TILE_TREE && !cleared.has(i)) return false;
     if (scrapCells.has(i)) {
       if (type !== "smelter") return false;

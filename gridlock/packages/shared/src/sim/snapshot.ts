@@ -37,6 +37,7 @@ import { crateViews, mineViews, payloadOf, planeRiders } from "./airdrop.js";
 import { cyborgShielded } from "./crits.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { allies, unitInWater } from "./geo.js";
+import { hiddenSubmarine, submerged } from "./naval.js";
 import { medicTendView } from "./heal.js";
 import { supplyHasDriver, supplyRiders } from "./supply.js";
 import { powerOf } from "./power.js";
@@ -232,6 +233,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     if (e.hp <= 0) continue;
     const friendly = allies(state, youPlayerId, e.ownerId);
     if (e.garrisonedIn && !friendly) continue;
+    // A submerged boat shows only to an enemy who has something close by it.
+    if (!friendly && hiddenSubmarine(state, youPlayerId, e)) continue;
     if (!friendly && !entityOnMask(e, vis, state.width, state.height, state.tileSize)) {
       // Houses and untaken map defences are part of the ground: their shape shows through the fog.
       if (e.kind === "building" && (isCivilianType(e.type) || e.ownerId === NEUTRAL_OWNER)) entities.push(sceneryView(e));
@@ -282,6 +285,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       stanceOrder: isInfantryType(e.type) && e.stanceOrder !== e.stance ? e.stanceOrder : undefined,
       swimming: isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
       wading: !isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
+      submerged: friendly && submerged(state, e) ? true : undefined,
       braced: e.braced || undefined,
       rocketReload: friendly && (e.rocketCooldown ?? 0) > 0 ? e.rocketCooldown : undefined,
       rockets: friendly && e.rockets != null ? e.rockets : undefined,

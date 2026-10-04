@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 85;
+export const PROTOCOL_VERSION = 86;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -190,6 +190,8 @@ export interface EntityView {
   swimming?: boolean;
   /** Wading walker (Titan) in a water tile: it cannot fire. Omitted when false. */
   wading?: boolean;
+  /** Your own submarine running submerged: the enemy cannot see it from afar. Omitted when false. */
+  submerged?: boolean;
   /** Titan outriggers down: stationary, braced max HP. Omitted when false. */
   braced?: boolean;
   /** Seconds until the Titan's pods can fire the next rocket. Friendly snapshots; omitted when ready. */

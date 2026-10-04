@@ -31,6 +31,7 @@ import {
   isAircraftType,
   isArmoredType,
   isDroneType,
+  isNavalType,
   isInfantryType,
   isTransportType,
   type AirDrop,
@@ -96,9 +97,9 @@ function homeField(state: MatchState, plane: Entity): Entity | undefined {
   return f && f.hp > 0 && f.type === "airfield" ? f : undefined;
 }
 
-/** Ground units jump. A plane and a drone do not climb into the bay. */
+/** Ground units jump. A plane, a drone, and a boat do not climb into the bay. */
 function canParadrop(unit: Entity): boolean {
-  return unit.kind === "unit" && !isAircraftType(unit.type) && !isDroneType(unit.type);
+  return unit.kind === "unit" && !isAircraftType(unit.type) && !isDroneType(unit.type) && !isNavalType(unit.type);
 }
 
 /** Why this unit cannot board this transport, or null. */

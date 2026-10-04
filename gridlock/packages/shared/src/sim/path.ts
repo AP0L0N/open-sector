@@ -1,4 +1,4 @@
-import { WATER_PATH_COST, type EntityType } from "../catalog.js";
+import { isNavalType, WATER_PATH_COST, type EntityType } from "../catalog.js";
 import { inBounds, isWater, nearestWalkable, tileCenter, walkable, worldToTile } from "./geo.js";
 import { climbableDelta, minSlopeCostMul, slopeCostMul, tileHeight } from "./elevation.js";
 import type { Entity, MatchState, Vec } from "./types.js";
@@ -383,7 +383,7 @@ function astarLegacy(
   return path;
 }
 
-/** Open-ground shortcut. Water is left to A* so infantry still prefer a land detour. */
+/** Open-ground shortcut. Water is left to A* so infantry still prefer a land detour. A boat's open ground is the water. */
 function straightPath(
   state: MatchState,
   sx: number,
@@ -392,7 +392,8 @@ function straightPath(
   gy: number,
   type?: EntityType,
 ): { x: number; y: number }[] | null {
-  return walkTileLine(state, sx, sy, gx, gy, type, sx, sy, () => false);
+  const afloat = !!type && isNavalType(type);
+  return walkTileLine(state, sx, sy, gx, gy, type, sx, sy, () => afloat);
 }
 
 /**
@@ -414,7 +415,8 @@ function pullString(
   const pathSet = new Set<number>();
   pathSet.add(key(originX, originY));
   for (const t of tiles) pathSet.add(key(t.x, t.y));
-  const waterOk = (x: number, y: number): boolean => pathSet.has(key(x, y));
+  const afloat = !!type && isNavalType(type);
+  const waterOk = (x: number, y: number): boolean => afloat || pathSet.has(key(x, y));
   const ts = state.tileSize;
   const out: Vec[] = [];
   let ax = fromX;
