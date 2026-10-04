@@ -186,7 +186,7 @@ import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
 import { isSupplyBullet, noteSupplyHit, stowedInTransport, supplyRiderFights, syncSupplyRiders } from "./supply.js";
 import { spawnSmokeCloud } from "./smoke.js";
-import { stepFlame, throwFlame } from "./flame.js";
+import { heGroundFire, stepFlame, throwFlame } from "./flame.js";
 import { distToRoute } from "./patrol.js";
 import { canSeeEntity } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
@@ -2384,7 +2384,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       res.kind === "ricochet" ? res.bounceVy : p.vy,
       blast,
     );
-    if (res.kind !== "ricochet") continue;
+    if (res.kind !== "ricochet" || heBursts(p)) continue;
     if (p.caliber === PTRD_CALIBER) p.penetration = 0;
     p.vx = res.bounceVx;
     p.vy = res.bounceVy;
@@ -2451,7 +2451,16 @@ function pushImpact(
   };
   // An air burst leaves no crater and no splash under the plane. Nor does a round lost in the sky.
   if (!p.airBurst && !p.aloft) noteImpactSurface(state, impact, p, kind);
+  if (heBursts(p)) {
+    impact.heBurst = true;
+    heGroundFire(state, x, y, p.ownerId);
+  }
   state.impacts.push(impact);
+}
+
+/** A tank's HE shell goes off where it first stops, whatever it met. It does not skip on. */
+function heBursts(p: Projectile): boolean {
+  return p.shell === "he" && !p.bounced && !p.airBurst && !p.aloft && isTankShell(p);
 }
 
 function canFellTrees(p: Projectile): boolean {

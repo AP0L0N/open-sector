@@ -352,7 +352,7 @@ describe("force attack", () => {
     state.heights.fill(0);
     clearCivilians(state);
     const ts = state.tileSize;
-    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const tank = makeEntity(state, "apocalypse", "A", tileCenter(24, ts), tileCenter(24, ts));
     tank.facing = 0;
     tank.turretFacing = 0;
     const destX = tileCenter(30, ts);
@@ -380,7 +380,7 @@ describe("force attack", () => {
     state.heights.fill(0);
     clearCivilians(state);
     const ts = state.tileSize;
-    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const tank = makeEntity(state, "apocalypse", "A", tileCenter(24, ts), tileCenter(24, ts));
     tank.facing = 0;
     tank.turretFacing = 0;
     const dummy = makeEntity(state, "hauler", "B", tileCenter(27, ts), tileCenter(24, ts));
@@ -451,7 +451,7 @@ describe("force attack", () => {
     state.heights.fill(0);
     clearCivilians(state);
     const ts = state.tileSize;
-    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const tank = makeEntity(state, "apocalypse", "A", tileCenter(24, ts), tileCenter(24, ts));
     const dummy = makeEntity(state, "hauler", "B", tileCenter(30, ts), tileCenter(24, ts));
     tank.facing = 0;
     tank.turretFacing = 0;
@@ -466,7 +466,7 @@ describe("force attack", () => {
     state.heights.fill(0);
     clearCivilians(state);
     const ts = state.tileSize;
-    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    const tank = makeEntity(state, "apocalypse", "A", tileCenter(24, ts), tileCenter(24, ts));
     const dummy = makeEntity(state, "hauler", "B", tileCenter(30, ts), tileCenter(24, ts));
     tank.facing = 0;
     tank.turretFacing = 0;

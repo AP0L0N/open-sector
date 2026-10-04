@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 82;
+export const PROTOCOL_VERSION = 83;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -409,6 +409,8 @@ export interface ImpactView {
   intercept?: boolean;
   /** A killed Pyro's fuel tanks went up. A big rolling fireball, then burning ground around him. */
   cookoff?: boolean;
+  /** A tank's HE shell burst here: a hull-sized fireball, and the ground around it is set burning. */
+  heBurst?: boolean;
 }
 
 /** Blood droplet around a corpse. World pixels. */

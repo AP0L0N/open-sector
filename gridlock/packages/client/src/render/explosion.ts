@@ -588,6 +588,11 @@ export function deathBlastSpec(src: { tiles?: number; radius?: number; caliber?:
   return { power: Math.min(1.4, Math.max(0.4, ((src.caliber ?? 60) / 60) ** 0.7)), building: false };
 }
 
+/** A tank's HE shell going off: the same blast as a medium tank's hull going up. */
+export function heBurstSpec(): DeathBlastSpec {
+  return deathBlastSpec({ radius: REF_HULL_RADIUS });
+}
+
 /** How long the blast stays up, ms, smoke column included. */
 export function deathBlastLifeMs(spec: DeathBlastSpec): number {
   return Math.round((spec.building ? 5600 : 4600) * timeScale(spec.power));

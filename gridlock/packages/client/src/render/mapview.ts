@@ -131,6 +131,7 @@ import {
   burstSpec,
   deathBlastLifeMs,
   deathBlastSpec,
+  heBurstSpec,
   drawDeathBlast,
   drawExplosion,
   drawSmoulder,
@@ -1082,6 +1083,7 @@ export class MapView {
       }
       this.snapHullFx(fx);
       if (i.kind === "kill" && i.blast) fx.death = this.deathBlastAt(i.x, i.y, i.caliber, match.entities);
+      else if (i.heBurst && !i.splash) fx.death = heBurstSpec();
       this.addFx(fx);
     }
     this.bindBounceTraces(match);
