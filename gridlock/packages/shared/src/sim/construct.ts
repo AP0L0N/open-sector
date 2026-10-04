@@ -1,6 +1,7 @@
 /**
- * An engineer raises a base building in the field. Today that is the Smelter,
- * so a scrap field far from the yard can be claimed. He walks to the site,
+ * An engineer raises a base building in the field: the Smelter, so a scrap field
+ * far from the yard can be claimed, or the Marine Base, so distant water can float
+ * a fleet. He walks (or swims) to the site,
  * pays the catalog cost when he starts, works `buildSeconds`, and the building
  * appears. A site that is taken while he works refunds the cost.
  */
