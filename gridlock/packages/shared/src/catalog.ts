@@ -1891,8 +1891,8 @@ export const GATLING_STREAM_WANDER_HZ = 0.8;
 export const GATLING_GROUND_SPREAD_MUL = 1 / 1.3;
 /** The pad reaches this much farther for a plane in the air: the radar sees it coming. */
 export const CIWS_AIR_REACH_MUL = 1.4;
-/** Chance one burst connects on one rocket: a long shot. Each CIWS tries an ordinary rocket once. A heavy round keeps drawing bursts until it comes apart. */
-export const CIWS_INTERCEPT_CHANCE = 0.15;
+/** Chance one burst connects on one rocket: nine in ten. Each CIWS tries an ordinary rocket once. A heavy round keeps drawing bursts until it comes apart. */
+export const CIWS_INTERCEPT_CHANCE = 0.9;
 /** Rounds one intercept burst spends. A short belt still tries, at a share of the chance. */
 export const CIWS_INTERCEPT_ROUNDS = 12;
 /** Rockets one CIWS can engage in one tick. A full Titan salvo takes two ticks. */
@@ -1913,8 +1913,8 @@ export interface GatlingHeat {
   /** Seconds the gun cannot fire once it reaches 1. */
   overheatSeconds: number;
 }
-/** CIWS pad. 30 rounds a second. Half again the heat per round: about a second and a half on the trigger, then four to cool. */
-export const CIWS_HEAT: GatlingHeat = { perRound: 1.5 / 54.6, coolPerSec: 0.12, overheatSeconds: 4 };
+/** CIWS pad. 30 rounds a second. 1.2x the heat per round: a little under two seconds on the trigger, then four to cool. */
+export const CIWS_HEAT: GatlingHeat = { perRound: 1.2 / 54.6, coolPerSec: 0.12, overheatSeconds: 4 };
 /** Walker. Both arms heat one set of barrels: one arm (20 a second) lasts under three seconds, both about one. */
 export const WALKER_HEAT: GatlingHeat = { perRound: 1 / 42.2, coolPerSec: 0.1, overheatSeconds: 4 };
 /** Cyborg arm. A single gun on a man's shoulder, 20 a second: under two seconds on the trigger. */
@@ -1981,8 +1981,7 @@ export const RADAR_RANGE_MODES = [
  * Apocalypse roof mount. The CIWS gun on a smaller house over the turret: the
  * same 20mm rounds, fewer barrels, a shorter reach, and a belt the size of a
  * tank's stowage. It lays itself. A hostile missile inside its reach is the
- * first thing it shoots, and it bursts that missile more often than a pad CIWS
- * does. With the sky clear it takes a plane, then infantry, and sometimes a Walker or a truck.
+ * first thing it shoots, and sometimes bursts it. With the sky clear it takes a plane, then infantry, and sometimes a Walker or a truck.
  */
 export const APOCALYPSE_CIWS_RANGE_TILES = t(7);
 /** Rounds each tick. Two a tick is 1,200 a minute. */
@@ -1992,8 +1991,7 @@ export const APOCALYPSE_CIWS_BELT = 600;
 /** The small house swings much faster than the turret under it. */
 export const APOCALYPSE_CIWS_TURN_DEG_PER_SEC = 360;
 /**
- * Chance the roof mount bursts one missile. Better than the pad, because the
- * missile is coming straight at the gun, but most still get through.
+ * Chance the roof mount bursts one missile. Most still get through.
  */
 export const APOCALYPSE_CIWS_INTERCEPT_CHANCE = 0.3;
 /** Seconds between the two main-gun barrels. Six ticks. The long reload starts after the second. */
@@ -2038,8 +2036,8 @@ export const RAM_ROCKET: RocketRackDef = {
   antiAir: true,
   laid: true,
 };
-/** Chance one interceptor connects on one rocket. The RAM, not the CIWS, is the missile screen. Each RAM tries an ordinary rocket once. A heavy round draws another interceptor until it comes apart. */
-export const RAM_INTERCEPT_CHANCE = 0.6;
+/** Chance one interceptor connects on one rocket: nine in ten. Each RAM tries an ordinary rocket once. A heavy round draws another interceptor until it comes apart. */
+export const RAM_INTERCEPT_CHANCE = 0.9;
 /** Seconds from one interceptor to the next. Between them the rack is not free to fire. */
 export const RAM_INTERCEPT_INTERVAL = 0.3;
 
@@ -2743,7 +2741,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shotsPerTick: CIWS_SHOTS_PER_TICK,
     belt: CIWS_BELT,
     radarLaid: true,
-    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, and reaches farther for a plane than for anything on the ground. Against a plane it lays one stream of rounds, a tracer in every few, that walks on and off the airframe: often enough to bring one down on a pass. About a second and a half on the trigger overheats the barrels, and it falls silent while they cool. Max range reaches half as far again, but out there the fire scatters wide. It tries to burst incoming rockets, and rarely does — a RAM is the missile screen. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, and reaches farther for a plane than for anything on the ground. Against a plane it lays one stream of rounds, a tracer in every few, that walks on and off the airframe: often enough to bring one down on a pass. A little under two seconds on the trigger overheats the barrels, and it falls silent while they cool. Max range reaches half as far again, but out there the fire scatters wide. It bursts nine in ten incoming rockets in the air. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
   },
   bunker: {
     type: "bunker",
@@ -2841,7 +2839,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: RAM_ROCKET_AMMO,
     rocketRack: RAM_ROCKET,
-    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, in barrages of ${RAM_SALVO} short, accurate rockets, and sends an interceptor at incoming rockets that bursts most of them in the air. Shorter reach than a Nebelwerfer, longer than a CIWS. Max range reaches half as far again, but out there the rockets scatter wide. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, in barrages of ${RAM_SALVO} short, accurate rockets, and sends an interceptor at incoming rockets that bursts nine in ten of them in the air. Shorter reach than a Nebelwerfer, longer than a CIWS. Max range reaches half as far again, but out there the rockets scatter wide. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
   },
   sandbags: {
     type: "sandbags",

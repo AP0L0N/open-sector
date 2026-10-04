@@ -248,9 +248,9 @@ describe("CIWS fire", () => {
     assert.ok(CIWS_AIR_Z_SCATTER < AIR_HIT_BAND * 2, "a round strays little off the stream");
   });
 
-  it("is a weaker missile screen than a RAM", () => {
-    assert.ok(CIWS_INTERCEPT_CHANCE < RAM_INTERCEPT_CHANCE);
-    assert.ok(CIWS_INTERCEPT_CHANCE <= 0.2, "most rockets get through");
+  it("bursts nine rockets in ten, the same as a RAM", () => {
+    assert.equal(CIWS_INTERCEPT_CHANCE, 0.9);
+    assert.equal(RAM_INTERCEPT_CHANCE, 0.9);
   });
 
   it("stops firing on an empty belt, and a supply truck fills it from the footprint's edge", () => {
@@ -275,7 +275,7 @@ describe("CIWS fire", () => {
 });
 
 describe("CIWS against rockets", () => {
-  it("bursts some incoming rockets in the air, tries each once, and spends a short burst on each", () => {
+  it("bursts most incoming rockets in the air, tries each once, and spends a short burst on each", () => {
     let downed = 0;
     let through = 0;
     const trials = 200;

@@ -89,8 +89,8 @@ describe("gatling heat", () => {
     dummy(state, ciws.x + 12 * ts, ciws.y);
     const hot = untilHot(state, ciws, 200);
     assert.ok(hot > 0, "it overheats");
-    // About a second and a half of fire, plus the swing onto the target.
-    assert.ok(hot * TICK_DT >= 1.3 && hot * TICK_DT <= 2.5, `overheated after ${hot * TICK_DT}s`);
+    // A little under two seconds of fire, plus the swing onto the target.
+    assert.ok(hot * TICK_DT >= 1.7 && hot * TICK_DT <= 3, `overheated after ${hot * TICK_DT}s`);
     const snap = snapshotFor(state, "A").entities.find((e) => e.id === ciws.id);
     assert.ok((snap?.mgOverheat ?? 0) > 0, "the owner sees the lock");
     assert.equal(snap?.mgHeat, 1);
