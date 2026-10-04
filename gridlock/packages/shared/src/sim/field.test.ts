@@ -10,6 +10,7 @@ import {
   LARGE_WALL_GARRISON_HP_MUL,
   LARGE_WALL_REACH_BONUS,
   LARGE_WALL_SIGHT_BONUS,
+  secondsToTicks,
   TICK_DT,
   TITAN_ROCKET,
   wreckScrapOf,
@@ -651,7 +652,8 @@ describe("concrete wall", () => {
     assert.equal(sitesOf("B"), undefined);
     parkOnWall(eng);
     const spotter = makeEntity(state, "rifleman", "B", eng.x + 24, eng.y);
-    const per = Math.round(catalog("wall").buildSeconds / TICK_DT);
+    // Ticks for a whole job of n sections: the engineer works buildSeconds per piece.
+    const job = (n: number) => Math.ceil((catalog("wall").buildSeconds * n) / TICK_DT - 1e-6);
     const built = () => [...state.entities.values()].filter((e) => e.type === "wall");
     ticks(state, 1);
     assert.equal(built().length, 0);
@@ -664,7 +666,7 @@ describe("concrete wall", () => {
     destroyEntity(state, spotter);
     state.projectiles.length = 0;
     eng.hp = eng.hpMax;
-    ticks(state, per * 3 - 2);
+    ticks(state, job(3) - 2);
     assert.equal(built().length, 0, "the line waits until the whole job is done");
     ticks(state, 1);
     const walls = built();
@@ -696,11 +698,12 @@ describe("concrete wall", () => {
     });
     assert.equal(res.ok, true, res.ok ? "" : res.message);
     parkOnWall(eng);
-    const per = Math.round(catalog("wall").buildSeconds / TICK_DT);
+    // Ticks for a whole job of n sections: the engineer works buildSeconds per piece.
+    const job = (n: number) => Math.ceil((catalog("wall").buildSeconds * n) / TICK_DT - 1e-6);
     ticks(state, 1);
     assert.equal(eng.fieldQueue?.length, 1);
     assert.equal(state.players.get("A")!.scrap, 5);
-    ticks(state, per * 2 - 1);
+    ticks(state, job(2) - 1);
     const walls = [...state.entities.values()].filter((e) => e.type === "wall");
     assert.equal(walls.length, 2);
     assert.equal(state.players.get("A")!.scrap, 5);
@@ -738,8 +741,9 @@ describe("concrete wall", () => {
     assert.ok(free, "the last section has a tile of its own");
     state.occupy[tileIndex(state, free!.x, free!.y)] = 999999;
     const scrap = state.players.get("A")!.scrap;
-    const per = Math.round(catalog("wall").buildSeconds / TICK_DT);
-    ticks(state, per * 3 - 1);
+    // Ticks for a whole job of n sections: the engineer works buildSeconds per piece.
+    const job = (n: number) => Math.ceil((catalog("wall").buildSeconds * n) / TICK_DT - 1e-6);
+    ticks(state, job(3) - 1);
     const walls = [...state.entities.values()].filter((e) => e.type === "wall");
     assert.equal(walls.length, 2);
     assert.equal(state.players.get("A")!.scrap, scrap + catalog("wall").cost);
@@ -772,9 +776,10 @@ describe("concrete wall", () => {
     assert.equal(b.fieldQueue?.length, 1);
     parkOnWall(a);
     parkOnWall(b);
-    const per = Math.round(catalog("wall").buildSeconds / TICK_DT);
+    // Ticks for a whole job of n sections: the engineer works buildSeconds per piece.
+    const job = (n: number) => Math.ceil((catalog("wall").buildSeconds * n) / TICK_DT - 1e-6);
     const built = () => [...state.entities.values()].filter((e) => e.type === "wall");
-    ticks(state, per * 2 - 1);
+    ticks(state, job(2) - 1);
     assert.equal(built().length, 0);
     ticks(state, 1);
     assert.equal(built().length, 4);
@@ -1295,9 +1300,9 @@ describe("field lines round corners", () => {
       ],
     });
     assert.equal(res.ok, true, res.ok ? "" : res.message);
-    const job = state.players.get("A")!.defence;
+    const job = state.players.get("A")!.line;
     assert.equal(job?.sites?.length, 4);
-    assert.equal(job?.totalTicks, catalog("wall").buildSeconds * 4 * 10);
+    assert.equal(job?.totalTicks, secondsToTicks(catalog("wall").buildSeconds * 4));
   });
 });
 
@@ -1327,7 +1332,7 @@ describe("defences tab field works", () => {
       const away = placeYard(state, type, far.x, far.y, 0);
       assert.equal(away.ok, false);
       if (!away.ok) assert.match(away.message, /Too far/);
-      assert.equal(state.players.get("A")!.defence, null);
+      assert.equal(state.players.get("A")!.line, null);
       const eng = makeEntity(state, "engineer", "A", far.x - 30, far.y);
       const crew = applyCommand(state, "A", {
         type: "cmd.field",
@@ -1342,13 +1347,13 @@ describe("defences tab field works", () => {
       const before = state.players.get("A")!.scrap;
       const placed = placeYard(state, type, spot.x, spot.y, 0);
       assert.equal(placed.ok, true, placed.ok ? "" : placed.message);
-      const job = state.players.get("A")!.defence;
+      const job = state.players.get("A")!.line;
       assert.equal(job?.ready, false);
       assert.equal(job?.sites?.length, 1);
-      assert.equal(job?.totalTicks, catalog(type).buildSeconds * 10);
+      assert.equal(job?.totalTicks, secondsToTicks(catalog(type).buildSeconds));
       assert.equal(state.players.get("A")!.scrap, before);
       assert.equal([...state.entities.values()].some((e) => e.type === type), false);
-      const view = snapshotFor(state, "A").you.defenceQueue;
+      const view = snapshotFor(state, "A").you.lineQueue;
       assert.equal(view?.type, type);
       assert.equal(view?.sites?.length, 1);
       assert.equal(snapshotFor(state, "A").you.structureQueue, null);
@@ -1359,7 +1364,7 @@ describe("defences tab field works", () => {
       const built = [...state.entities.values()].filter((e) => e.type === type && e.hp > 0);
       assert.equal(built.length, 1);
       assert.equal(state.players.get("A")!.scrap, before - catalog(type).cost);
-      assert.equal(state.players.get("A")!.defence, null);
+      assert.equal(state.players.get("A")!.line, null);
     });
   }
 
@@ -1372,9 +1377,9 @@ describe("defences tab field works", () => {
     const before = p.scrap;
     const res = placeYard(state, "wall", spot.x, spot.y, Math.PI / 2, spot.x + span * 3, spot.y);
     assert.equal(res.ok, true, res.ok ? "" : res.message);
-    const n = p.defence?.sites?.length ?? 0;
+    const n = p.line?.sites?.length ?? 0;
     assert.equal(n, 3);
-    assert.equal(p.defence?.totalTicks, catalog("wall").buildSeconds * n * 10);
+    assert.equal(p.line?.totalTicks, secondsToTicks(catalog("wall").buildSeconds * n));
     assert.equal([...state.entities.values()].some((e) => e.type === "wall"), false);
     ticks(state, catalog("wall").buildSeconds * 10);
     assert.equal([...state.entities.values()].some((e) => e.type === "wall"), false);
@@ -1383,7 +1388,7 @@ describe("defences tab field works", () => {
     assert.equal(built.length, n);
     assert.ok(built.every((w) => w.wallCrest === 0));
     assert.equal(p.scrap, before - catalog("wall").cost * n);
-    assert.equal(p.defence, null);
+    assert.equal(p.line, null);
   });
 
   it("refunds a cancelled line and does not leave a section behind", () => {
@@ -1395,11 +1400,11 @@ describe("defences tab field works", () => {
     const res = placeYard(state, "sandbags", spot.x, spot.y, 0);
     assert.equal(res.ok, true, res.ok ? "" : res.message);
     ticks(state, 8);
-    assert.ok((p.defence?.paid ?? 0) > 0);
+    assert.ok((p.line?.paid ?? 0) > 0);
     const cancel = applyCommand(state, "A", { type: "cmd.cancel", what: "structure", building: "sandbags" });
     assert.equal(cancel.ok, true, cancel.ok ? "" : cancel.message);
     assert.equal(p.scrap, before);
-    assert.equal(p.defence, null);
+    assert.equal(p.line, null);
     assert.equal([...state.entities.values()].some((e) => e.type === "sandbags"), false);
   });
 
@@ -1419,7 +1424,7 @@ describe("defences tab field works", () => {
     );
     assert.equal(res.ok, false);
     if (!res.ok) assert.match(res.message, /Cannot place/);
-    assert.equal(p.defence, null);
+    assert.equal(p.line, null);
     assert.equal(p.scrap, scrap);
     assert.equal([...state.entities.values()].some((e) => e.type === "sandbags"), false);
   });
@@ -1433,7 +1438,7 @@ describe("defences tab field works", () => {
     const beside = placeYard(state, "sandbags", far.x + 40, far.y, 0);
     assert.equal(beside.ok, false);
     if (!beside.ok) assert.match(beside.message, /Too far/);
-    assert.equal(state.players.get("A")!.defence, null);
+    assert.equal(state.players.get("A")!.line, null);
     assert.equal(previewYardField(snapshotFor(state, "A"), "sandbags", far.x + 40, far.y, 0), false);
   });
 
@@ -1447,15 +1452,40 @@ describe("defences tab field works", () => {
     assert.equal(placed.ok, true, placed.ok ? "" : placed.message);
     const p = state.players.get("A")!;
     assert.equal(p.structure?.type, "dynamo");
-    assert.equal(p.defence?.type, "sandbags");
+    assert.equal(p.line?.type, "sandbags");
     const blocked = placeYard(state, "wall", spot.x + 80, spot.y, 0);
     assert.equal(blocked.ok, false);
     if (!blocked.ok) assert.match(blocked.message, /already underway/);
     ticks(state, catalog("sandbags").buildSeconds * 10);
     assert.equal([...state.entities.values()].some((e) => e.type === "sandbags" && e.ownerId === "A"), true);
-    assert.equal(p.defence, null);
+    assert.equal(p.line, null);
     assert.equal(p.structure?.type, "dynamo");
     assert.notEqual(p.structure?.ready, true);
+  });
+
+  it("builds a wall line beside a gun on the defence lane", () => {
+    const { state } = twoPlayerMatch();
+    deployCore(state);
+    const gun = applyCommand(state, "A", { type: "cmd.build", building: "tower" });
+    assert.equal(gun.ok, true, gun.ok ? "" : gun.message);
+    const spot = besideCore(state);
+    const placed = placeYard(state, "wall", spot.x, spot.y, 0);
+    assert.equal(placed.ok, true, placed.ok ? "" : placed.message);
+    const p = state.players.get("A")!;
+    assert.equal(p.defence?.type, "tower");
+    assert.equal(p.line?.type, "wall");
+    const you = snapshotFor(state, "A").you;
+    assert.equal(you.defenceQueue?.type, "tower");
+    assert.equal(you.lineQueue?.type, "wall");
+    ticks(state, 20);
+    assert.ok((p.defence?.progressTicks ?? 0) > 0);
+    assert.ok((p.line?.progressTicks ?? 0) > 0);
+    // The gun lane stays busy for guns; a second line still waits on the first.
+    const bunker = applyCommand(state, "A", { type: "cmd.build", building: "bunker" });
+    assert.equal(bunker.ok, false);
+    const second = placeYard(state, "sandbags", spot.x + 80, spot.y, 0);
+    assert.equal(second.ok, false);
+    if (!second.ok) assert.match(second.message, /already underway/);
   });
 });
 

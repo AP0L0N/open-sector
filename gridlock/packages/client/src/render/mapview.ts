@@ -1187,7 +1187,7 @@ export class MapView {
     }
     if (this.placePick && !this.typeReady(this.placePick)) this.placePick = null;
     if (!this.placeMode) this.yardArm = null;
-    if (this.yardArm && this.curr.you.defenceQueue) this.yardArm = null;
+    if (this.yardArm && this.curr.you.lineQueue) this.yardArm = null;
     const placing = this.placeMode;
     if (!this.placingKind() && !this.yardArm) this.placeMode = false;
     if (this.placeMode !== placing) this.onPlaceMode();
@@ -1695,7 +1695,11 @@ export class MapView {
 
   private typeReady(type: BuildingType | YardFieldType): boolean {
     if (!isDefenceStructure(type) && this.curr.you.placingType === type) return true;
-    const q = isDefenceStructure(type) ? this.curr.you.defenceQueue : this.curr.you.structureQueue;
+    const q = isYardField(type)
+      ? this.curr.you.lineQueue
+      : isDefenceStructure(type)
+        ? this.curr.you.defenceQueue
+        : this.curr.you.structureQueue;
     return q?.ready === true && q.type === type;
   }
 
@@ -7227,7 +7231,7 @@ export class MapView {
 
   /** The line sited from the Defences tab, drawn until the yard finishes it. */
   private drawYardBuild(): void {
-    const q = this.curr.you.defenceQueue;
+    const q = this.curr.you.lineQueue;
     if (!q?.sites || q.sites.length === 0 || !isYardField(q.type)) return;
     for (const s of q.sites) {
       if (isConcreteLine(q.type)) {

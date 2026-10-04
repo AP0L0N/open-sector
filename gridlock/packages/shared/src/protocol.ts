@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 80;
+export const PROTOCOL_VERSION = 81;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -306,8 +306,10 @@ export interface YouState {
   used: number;
   lowPower: boolean;
   structureQueue: StructureQueueView | null;
-  /** Defences build beside `structureQueue`. Null when that lane is idle. */
+  /** Guns and garrisons build beside `structureQueue`. Null when that lane is idle. */
   defenceQueue: StructureQueueView | null;
+  /** A sandbag or wall line builds beside both. Null when that lane is idle. */
+  lineQueue: StructureQueueView | null;
   placingType: BuildingType | YardFieldType | null;
   alive: boolean;
   hqId: number | null;

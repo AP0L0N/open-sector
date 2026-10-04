@@ -505,6 +505,11 @@ export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "wal
 /** Field works the construction yard can queue. An engineer can still place these anywhere. */
 export type YardFieldType = "sandbags" | "wall" | "greatwall";
 export const YARD_FIELD_TYPES: readonly YardFieldType[] = ["sandbags", "wall", "greatwall"];
+/** Kept in the sim but off the Defences tab and the engineer's command bar for now. */
+export const HIDDEN_FIELD_TYPES: readonly FieldStructureType[] = ["greatwall"];
+export function isHiddenField(type: string): boolean {
+  return (HIDDEN_FIELD_TYPES as readonly string[]).includes(type);
+}
 /** Concrete lines an engineer lays as one job: every piece appears together when he finishes. The Large wall is the `greatwall` id. */
 export type ConcreteLineType = "wall" | "greatwall";
 export function isConcreteLine(type: string): type is ConcreteLineType {
@@ -2680,7 +2685,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Sandbags",
     letter: "Q",
     cost: 20,
-    buildSeconds: 4,
+    buildSeconds: 2.8,
     hp: 30,
     power: 0,
     tileW: 1,
@@ -2702,7 +2707,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     name: "Wall",
     letter: "w",
     cost: 30,
-    buildSeconds: 7.5,
+    buildSeconds: 5.25,
     hp: 120,
     power: 0,
     tileW: 1,
@@ -3708,8 +3713,9 @@ export function isYardField(type: string): type is YardFieldType {
 }
 
 /**
- * Guns, garrisons, and the sandbag and wall lines.
- * They build on their own lane, beside a base structure.
+ * Guns, garrisons, and the sandbag and wall lines: the Defences tab.
+ * Guns and garrisons build on their own lane, beside a base structure;
+ * the lines (`isYardField`) build on a third lane, beside both.
  */
 export function isDefenceStructure(type: string): boolean {
   if (isYardField(type)) return true;

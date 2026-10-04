@@ -41,6 +41,7 @@ import {
   isCivilianType,
   isDefenceStructure,
   isGarrisonable,
+  isHiddenField,
   hasSpotlight,
   isInfantryType,
   isInfantryWeaponId,
@@ -333,9 +334,10 @@ export function mountBattlefield(
   return view;
 }
 
-/** The construction lane this cameo belongs to. A base job does not occupy the defence lane. */
+/** The construction lane this cameo belongs to. Base, defence, and line lanes do not block each other. */
 function laneQueue(m: MatchSnapshot | null | undefined, type: BuildingType | YardFieldType) {
   if (!m) return null;
+  if (isYardField(type)) return m.you.lineQueue;
   return isDefenceStructure(type) ? m.you.defenceQueue : m.you.structureQueue;
 }
 
@@ -1762,14 +1764,16 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
         "Build a concrete wall with barbed wire. Scroll to turn it, drag the first run, then keep clicking to carry the wall round corners; it joins up as one wall. Confirm to start the job, which takes longer the more pieces you lay. It appears when the engineer finishes.",
       on: view?.fieldPlace === "wall",
     });
-    out.push({
-      slot: "field-greatwall",
-      act: "field-greatwall",
-      label: "Large wall",
-      title:
-        "Build a tall concrete wall with firing slits. Two infantry garrison each section and fire from it with triple health. Laid like the wall: drag, keep clicking round corners, then Confirm. One job; it appears when the engineer finishes.",
-      on: view?.fieldPlace === "greatwall",
-    });
+    if (!isHiddenField("greatwall")) {
+      out.push({
+        slot: "field-greatwall",
+        act: "field-greatwall",
+        label: "Large wall",
+        title:
+          "Build a tall concrete wall with firing slits. Two infantry garrison each section and fire from it with triple health. Laid like the wall: drag, keep clicking round corners, then Confirm. One job; it appears when the engineer finishes.",
+        on: view?.fieldPlace === "greatwall",
+      });
+    }
     for (const building of ENGINEER_BUILDINGS) {
       const def = catalog(building);
       out.push({

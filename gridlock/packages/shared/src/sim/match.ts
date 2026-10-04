@@ -117,6 +117,7 @@ export function createMatch(
       scrapCarry: 0,
       structure: null,
       defence: null,
+      line: null,
       placingType: null,
       hqId: rig.id,
       ai: slot.ai,
@@ -265,6 +266,7 @@ function eliminate(state: MatchState, playerId: string): void {
   p.alive = false;
   p.structure = null;
   p.defence = null;
+  p.line = null;
   p.placingType = null;
   state.pendingComms.push(`${p.name} Core down.`);
   for (const e of [...state.entities.values()]) {
