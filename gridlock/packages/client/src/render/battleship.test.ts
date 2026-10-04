@@ -65,9 +65,9 @@ describe("Battle Ship layout", () => {
 });
 
 describe("Battle Ship size and lamp", () => {
-  it("is twice its old length, and the hull reaches as far as the art", () => {
-    assert.equal(BATTLESHIP_HALF_LENGTH, 92);
-    assert.equal(catalog("battleship").radius, 40);
+  it("is 2.4 times its first length, and the hull reaches as far as the art", () => {
+    assert.equal(BATTLESHIP_HALF_LENGTH, 110.4);
+    assert.equal(catalog("battleship").radius, 48);
   });
 
   it("carries its searchlight high on the island, above the hull's waterline point", () => {

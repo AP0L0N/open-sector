@@ -10,6 +10,8 @@ import {
   BATTLESHIP_BARREL_GAP_MAX,
   BATTLESHIP_BARREL_RELOAD,
   BATTLESHIP_CIWS_BELT,
+  BATTLESHIP_HALF_BEAM,
+  BATTLESHIP_HALF_LENGTH,
   BATTLESHIP_MIN_RANGE_TILES,
   BATTLESHIP_RANGE_TILES,
   BATTLESHIP_REARM_SECONDS,
@@ -24,7 +26,7 @@ import {
   secondsToTicks,
 } from "../catalog.js";
 import { TILE_EMPTY, TILE_WATER } from "../maps.js";
-import { turretBearing } from "./battleship.js";
+import { shipHullT, shipKeelDist, turretBearing } from "./battleship.js";
 import { hasHeadlight, hasSpotlight } from "./night.js";
 import { applyCommand } from "./commands.js";
 import { makeEntity, tileCenter } from "./geo.js";
@@ -212,7 +214,65 @@ describe("Battle Ship main battery", () => {
   });
 });
 
+describe("Battle Ship hitbox", () => {
+  const ship = { x: 500, y: 500, facing: 0 };
+  const L = BATTLESHIP_HALF_LENGTH;
+
+  it("a round crossing near the bow or the stern meets the hull, not only one amidships", () => {
+    for (const along of [-0.95, -0.6, 0, 0.6, 0.95]) {
+      const x = ship.x + along * L;
+      const t = shipHullT(ship, x, 300, x, 700, 3);
+      assert.ok(t != null, `crossing at ${along} of the half-length`);
+      assert.ok(Math.abs(300 + 400 * t - (ship.y - BATTLESHIP_HALF_BEAM - 3)) < 1e-6, "met at the side of the hull");
+    }
+  });
+
+  it("only the keel line counts across the beam", () => {
+    assert.equal(shipHullT(ship, 300, ship.y + BATTLESHIP_HALF_BEAM + 8, 700, ship.y + BATTLESHIP_HALF_BEAM + 8, 3), null);
+    assert.equal(shipHullT(ship, ship.x + L + 20, 300, ship.x + L + 20, 700, 3), null, "past the bow");
+  });
+
+  it("turns with the ship", () => {
+    const north = { ...ship, facing: -Math.PI / 2 };
+    assert.ok(shipHullT(north, 300, ship.y - 0.9 * L, 700, ship.y - 0.9 * L, 3) != null);
+    assert.equal(shipHullT(north, ship.x + 0.9 * L, 300, ship.x + 0.9 * L, 700, 3), null);
+  });
+
+  it("a burst measures from the keel line", () => {
+    assert.equal(shipKeelDist(ship, ship.x + 0.8 * L, ship.y + 10), 10);
+    assert.equal(shipKeelDist(ship, ship.x + L + 6, ship.y), 6);
+  });
+});
+
 describe("Battle Ship armor", () => {
+  it("a torpedo running across the bow, off the ship's middle, still strikes", () => {
+    const { state, x0, y0 } = bay();
+    const ship = spawn(state, "battleship", "A", x0 + 30, y0 + 10);
+    ship.facing = 0;
+    ship.holdPosition = true;
+    for (const t of ship.ship!.turrets) for (const b of t.barrels) b.ammo = 0;
+    for (const m of ship.ship!.ciws) m.ammo = 0;
+    // Abeam of the bow, well outside the old circle round amidships: it fires square across the forecastle.
+    const bowX = ship.x + BATTLESHIP_HALF_LENGTH * 0.8;
+    const sub = makeEntity(state, "submarine", "B", bowX, ship.y + state.tileSize * 24);
+    sub.facing = -Math.PI / 2;
+    sub.holdPosition = true;
+    applyCommand(state, "B", { type: "cmd.attack", ids: [sub.id], targetId: ship.id });
+    const hp = ship.hp;
+    for (let i = 0; i < 200 && ship.hp === hp; i++) {
+      // Lay every round square across the bow, as if the boat had led a moving target there.
+      for (const p of state.projectiles) {
+        if (!p.torpedo || p.fromId !== sub.id) continue;
+        const speed = Math.hypot(p.vx, p.vy);
+        p.x = bowX;
+        p.vx = 0;
+        p.vy = -speed;
+      }
+      step(state, TICK_DT);
+    }
+    assert.ok(ship.hp < hp, "the torpedo found the bow");
+  });
+
   it("shrugs off most tank fire, but a torpedo bites", () => {
     const { state, x0, y0 } = bay();
     const ship = spawn(state, "battleship", "A", x0 + 30, y0 + 10);

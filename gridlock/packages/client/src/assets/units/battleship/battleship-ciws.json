@@ -1,6 +1,6 @@
 {
   "id": "battleship_ciws",
-  "cell": 320,
+  "cell": 384,
   "rows": 16,
   "facing": 16,
   "order": [

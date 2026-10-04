@@ -154,7 +154,7 @@
   {
     "type": "battleship",
     "out": "gridlock/packages/client/src/assets/units/wrecks/battleship.png",
-    "cell": 256,
+    "cell": 384,
     "rows": 16,
     "frames": 1,
     "contactY": 0.56,

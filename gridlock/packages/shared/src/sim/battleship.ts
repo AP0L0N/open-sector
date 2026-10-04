@@ -3,6 +3,7 @@ import {
   BATTLESHIP_BARRELS_PER_TURRET,
   BATTLESHIP_CIWS_AT,
   BATTLESHIP_CIWS_BELT,
+  BATTLESHIP_HALF_BEAM,
   BATTLESHIP_HALF_LENGTH,
   BATTLESHIP_REARM_ROUNDS,
   BATTLESHIP_REARM_SECONDS,
@@ -14,7 +15,7 @@ import {
   isBattleship,
   torpedoesOf,
 } from "../catalog.js";
-import { allies } from "./geo.js";
+import { allies, pointSegmentDist, segmentCapsuleT } from "./geo.js";
 import type { Entity, MatchState, ShipState } from "./types.js";
 
 /** A fresh ship: every barrel loaded, every belt full, the turrets trained on the bow. */
@@ -43,6 +44,35 @@ export function newShipState(facing: number): ShipState {
 export function shipMountPoint(e: Pick<Entity, "x" | "y" | "facing">, at: number): { x: number; y: number } {
   const d = at * BATTLESHIP_HALF_LENGTH;
   return { x: e.x + Math.cos(e.facing) * d, y: e.y + Math.sin(e.facing) * d };
+}
+
+/** Stern and bow on the keel line: the ship's hitbox runs between them. */
+function shipKeel(e: Pick<Entity, "x" | "y" | "facing">): { ax: number; ay: number; bx: number; by: number } {
+  const a = shipMountPoint(e, -1);
+  const b = shipMountPoint(e, 1);
+  return { ax: a.x, ay: a.y, bx: b.x, by: b.y };
+}
+
+/**
+ * Where a round's path from (x0, y0) to (x1, y1) first meets the hull, 0–1 along it.
+ * The whole length counts, stern to bow, but only within `pad` plus the half-beam of the keel line.
+ */
+export function shipHullT(
+  e: Pick<Entity, "x" | "y" | "facing">,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  pad: number,
+): number | null {
+  const k = shipKeel(e);
+  return segmentCapsuleT(x0, y0, x1, y1, k.ax, k.ay, k.bx, k.by, BATTLESHIP_HALF_BEAM + pad);
+}
+
+/** How far (x, y) lies from the keel line: what a burst's falloff measures against on a ship. */
+export function shipKeelDist(e: Pick<Entity, "x" | "y" | "facing">, x: number, y: number): number {
+  const k = shipKeel(e);
+  return pointSegmentDist(x, y, k.ax, k.ay, k.bx, k.by);
 }
 
 function wrapAngle(a: number): number {

@@ -1195,8 +1195,10 @@ export const SUPPLYBOAT_SPRITE: UnitSpriteDef = {
 };
 bindNavalSheets("supplyboat", SUPPLYBOAT_SPRITE.image);
 
+/** Cell of every Battle Ship sheet (render_battleship.py CELL), the hulk's included. */
+const BATTLESHIP_CELL = 384;
 function shipLayer(): TurretSpriteDef {
-  return { image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: 320 };
+  return { image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: BATTLESHIP_CELL };
 }
 /**
  * Battle Ship hull, cut at the waterline over its wake. The superstructure, both
@@ -1207,7 +1209,7 @@ export const BATTLESHIP_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
   frames: 1,
-  frameSize: 320,
+  frameSize: BATTLESHIP_CELL,
   fps: 8,
   drawSize: Math.round(battleshipDrawSize(TILE_SIZE)),
   contactY: BATTLESHIP_MODEL.cyFrac,

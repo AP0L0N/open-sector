@@ -64,7 +64,7 @@ CIWS_SIZE = 1.3
 
 SCALE_FRAC = 0.0325
 CY_FRAC = 0.56
-CELL = 320
+CELL = 384
 
 # Sheer: deck height along the hull. High at the bow, low aft.
 STATIONS = [

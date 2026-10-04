@@ -748,6 +748,61 @@ export function segmentAabbT(
   return t0 < 0 ? 0 : t0;
 }
 
+/**
+ * Where a segment first enters a capsule (every point within `r` of the line a–b),
+ * 0–1 along it. 0 when it starts inside. Null on a miss.
+ */
+export function segmentCapsuleT(
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  r: number,
+): number | null {
+  const len = Math.hypot(bx - ax, by - ay);
+  if (len < 1e-6) return segmentCircleT(x0, y0, x1, y1, ax, ay, r);
+  // The middle as a box in the capsule's own frame: u along a→b, v across it.
+  const ux = (bx - ax) / len;
+  const uy = (by - ay) / len;
+  const u0 = (x0 - ax) * ux + (y0 - ay) * uy;
+  const v0 = -(x0 - ax) * uy + (y0 - ay) * ux;
+  const du = (x1 - x0) * ux + (y1 - y0) * uy;
+  const dv = -(x1 - x0) * uy + (y1 - y0) * ux;
+  let t0 = 0;
+  let t1 = 1;
+  const clip = (d: number, lo: number, hi: number, at: number): boolean => {
+    if (Math.abs(d) < 1e-9) return at >= lo && at <= hi;
+    let ta = (lo - at) / d;
+    let tb = (hi - at) / d;
+    if (ta > tb) [ta, tb] = [tb, ta];
+    t0 = Math.max(t0, ta);
+    t1 = Math.min(t1, tb);
+    return t0 <= t1;
+  };
+  let best: number | null = clip(du, 0, len, u0) && clip(dv, -r, r, v0) ? t0 : null;
+  for (const [cx, cy] of [
+    [ax, ay],
+    [bx, by],
+  ] as const) {
+    const t = segmentCircleT(x0, y0, x1, y1, cx, cy, r);
+    if (t != null && (best == null || t < best)) best = t;
+  }
+  return best;
+}
+
+/** Distance from (px, py) to the nearest point of the line a–b. */
+export function pointSegmentDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
+  return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+}
+
 /** Where a segment first enters a circle, 0–1 along it. 0 when it starts inside. Null on a miss. */
 export function segmentCircleT(
   x0: number,

@@ -217,7 +217,7 @@ import { projectileMeetsDrone, reachesDrone } from "./drone.js";
 import { reachesJet } from "./jet.js";
 import { nightReachMul, nightSightMul, nightTiles } from "./night.js";
 import { afloat, diving, surface, torpedoCannotReach } from "./naval.js";
-import { shipMountPoint, turretBearing } from "./battleship.js";
+import { shipHullT, shipKeelDist, shipMountPoint, turretBearing } from "./battleship.js";
 import type { Entity, MatchState, Order, Projectile, ShipCiws } from "./types.js";
 
 /** A twin mount's barrels sit this share of the hull radius either side of the bore line. */
@@ -2053,7 +2053,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     // A ground burst never reaches a plane; an air burst only catches planes.
     // A drone is caught by a burst near its height, air or ground, or when the rocket meets it.
     if (e.drone ? e !== direct && !rocketCatchesDrone(state, p, e) : isAirborne(e) !== inAir) continue;
-    const d = e === direct ? 0 : Math.hypot(e.x - p.x, e.y - p.y);
+    const d = e === direct ? 0 : isBattleship(e.type) ? shipKeelDist(e, p.x, p.y) : Math.hypot(e.x - p.x, e.y - p.y);
     const reach =
       e.kind === "building"
         ? radius + Math.min(e.tileW, e.tileH) * state.tileSize * 0.25
@@ -2990,7 +2990,9 @@ function sweepAgainst(
   const t =
     e.kind === "building"
       ? segmentBuildingT(x0, y0, p.x, p.y, e, state.tileSize)
-      : segmentCircleT(
+      : isBattleship(e.type)
+        ? shipHullT(e, x0, y0, p.x, p.y, PROJECTILE_RADIUS)
+        : segmentCircleT(
           x0,
           y0,
           p.x,

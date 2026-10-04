@@ -2492,8 +2492,13 @@ export const BATTLESHIP_TURRET_BLIND_DEG = 35;
  */
 export const BATTLESHIP_TURRET_AT: readonly number[] = [0.6, 0.38];
 export const BATTLESHIP_CIWS_AT: readonly number[] = [-0.04, -0.8];
-/** Half the hull's length in world px, for where shells and rounds leave. */
-export const BATTLESHIP_HALF_LENGTH = 92;
+/** Half the hull's length in world px, for where shells and rounds leave and how far its hitbox runs. */
+export const BATTLESHIP_HALF_LENGTH = 110.4;
+/**
+ * Half the hull's beam in world px. A round meets the ship anywhere within this of
+ * the keel line from stern to bow, not inside a circle round amidships.
+ */
+export const BATTLESHIP_HALF_BEAM = 14;
 export const BATTLESHIP_CIWS_RANGE_TILES = t(7);
 export const BATTLESHIP_CIWS_BELT = 500;
 export const BATTLESHIP_CIWS_SHOTS_PER_TICK = 2;
@@ -3790,7 +3795,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     power: 0,
     tileW: 1,
     tileH: 1,
-    radius: 40,
+    radius: 48,
     moveTilesPerSec: paced(1.25),
     turnDegPerSec: 16,
     noReverse: true,
