@@ -159,8 +159,10 @@ export function tickMovement(state: MatchState, dt: number): void {
         continue;
       }
     }
+    // A force-attack sent on a Move drives that course; it never closes on the aim.
+    const underway = e.order?.kind === "forceattack" && e.order.travel != null;
     const chaseId =
-      (e.order?.kind === "attack" || e.order?.kind === "forceattack") && e.order.targetId != null
+      (e.order?.kind === "attack" || e.order?.kind === "forceattack") && e.order.targetId != null && !underway
         ? e.order.targetId
         : null;
     if (chaseId != null && !aside) {
@@ -185,7 +187,13 @@ export function tickMovement(state: MatchState, dt: number): void {
         }
       }
     }
-    if (e.order?.kind === "forceattack" && e.order.targetId == null && e.order.x != null && e.order.y != null) {
+    if (
+      e.order?.kind === "forceattack" &&
+      !underway &&
+      e.order.targetId == null &&
+      e.order.x != null &&
+      e.order.y != null
+    ) {
       const range = weaponRangeWorld(state, e);
       const dist = Math.hypot(e.order.x - e.x, e.order.y - e.y);
       if ((dist <= range && !unitInWater(state, e)) || e.holdPosition) {

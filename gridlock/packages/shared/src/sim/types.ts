@@ -65,6 +65,12 @@ export interface Order {
    * or the point leaves this soldier's range. Not a wire field.
    */
   relay?: boolean;
+  /**
+   * Force-attack under way: where a later Move sent the unit. It drives that
+   * course and fires on the aim, never closing on it. The aim ends once it
+   * leaves reach or the guns cannot bear. Not a wire field.
+   */
+  travel?: Vec;
   /** Group-move cap in catalog tiles/sec. Slowest selected unit that can still walk. */
   pace?: number;
   /** Engineer field structure being built. */
