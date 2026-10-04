@@ -11,6 +11,8 @@ import { isoDepth } from "@gridlock/shared";
 /** Flat building ground (the Airfield strip). Craters, shadows, and planes paint over it. */
 export const GROUND_DECAL_DRAW_LAYER = -2;
 export const HOLE_DRAW_LAYER = -1;
+/** Map-dress bushes: over craters and shadows, under move clicks, bodies, units, and buildings. */
+export const BUSH_DRAW_LAYER = -0.5;
 export const CORPSE_DRAW_LAYER = 0.5;
 export const STANDING_DRAW_LAYER = 1;
 

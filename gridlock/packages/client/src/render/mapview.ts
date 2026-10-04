@@ -339,6 +339,7 @@ import { unitStepping } from "./stepping.js";
 import { atInfantrySheet, cyborgSheet, gunnerSheet, heldFrame, jumpJetSheet, medicSheet, mortarmanSheet, pyroSheet, rocketerSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
 import {
   axisFootprint,
+  BUSH_DRAW_LAYER,
   compareDrawOrder,
   CORPSE_DRAW_LAYER,
   type DrawKey,
@@ -4731,7 +4732,7 @@ export class MapView {
     }
   }
 
-  /** Bushes, signposts, boulders, and stumps from the map dress, sorted with units. */
+  /** Bushes, signposts, boulders, and stumps from the map dress. Bushes paint under everything standing; the rest sort with units. */
   private collectDecor(items: DrawItem[]): void {
     const map = this.map();
     const ts = map.tileSize;
@@ -4759,7 +4760,8 @@ export class MapView {
       if (!spr) continue;
       const veil = this.fogField?.veil(it.tx + it.ox, it.ty + it.oy, now) ?? 0;
       items.push({
-        layer: STANDING_DRAW_LAYER,
+        // Bushes never cover a unit or building standing beside them.
+        layer: it.kind === "bush" ? BUSH_DRAW_LAYER : STANDING_DRAW_LAYER,
         z: isoDepth(wx, wy),
         at: { x: wx, y: wy },
         run: () => {
