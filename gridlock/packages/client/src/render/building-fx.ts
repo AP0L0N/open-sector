@@ -47,7 +47,7 @@ interface SmokeSpot {
   y: number;
   /** Rise height, source px at pad scale. Default 26 × the def scale. */
   rise?: number;
-  /** Lighter, thinner puffs: the far end of a plume already painted into the sprite. */
+  /** Lighter, thinner puffs that drift downwind: the long tail of a plume. */
   thin?: boolean;
 }
 
@@ -98,13 +98,13 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
       { x: 161, y: 274, r: 8, color: "#ff7a18", period: 580, phase: 0.22, mode: "pulse" },
       { x: 265, y: 290, r: 16, color: "#ff6a14", period: 520, phase: 0.0, mode: "pulse" },
     ],
-    // Mouths, then the tops of the plumes painted into smelter.png, so the motion
-    // reads above the static smoke too.
+    // All smoke is animated: smelter.png carries no painted plume. Each mouth has
+    // dense puffs plus a taller, thinner trail leaning downwind.
     smoke: [
-      { x: 216, y: 38 },
-      { x: 270, y: 70 },
-      { x: 236, y: 10, rise: 44, thin: true },
-      { x: 318, y: 22, rise: 44, thin: true },
+      { x: 226, y: 44 },
+      { x: 275, y: 74 },
+      { x: 226, y: 42, rise: 58, thin: true },
+      { x: 275, y: 72, rise: 58, thin: true },
     ],
   },
   muster: {
@@ -218,11 +218,11 @@ function drawChimneySmoke(
   for (let i = 0; i < puffs; i++) {
     const t = ((nowMs * 0.00018 + seed * 0.13 + i / puffs) % 1 + 1) % 1;
     const drift = Math.sin(nowMs * 0.0014 + seed + i * 1.7) * 4.5 * scale;
-    // Thin plume ends lean downwind (screen right), like the painted smoke.
+    // Thin plume ends lean downwind (screen right).
     const px = x + drift + (thin ? t * 14 * scale : 0);
     const py = y - t * rise * scale;
     const grow = 0.45 + t * 1.35;
-    const a = intensity * (1 - t) * Math.min(1, t * 3.2) * 0.38;
+    const a = intensity * (1 - t) * Math.min(1, t * 3.2) * 0.62;
     if (a <= 0.02) continue;
     ctx.save();
     ctx.globalAlpha = a;
