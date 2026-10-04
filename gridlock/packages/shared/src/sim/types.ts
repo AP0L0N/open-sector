@@ -563,6 +563,52 @@ export interface GroundFire {
   lifeMax: number;
 }
 
+/**
+ * A CPU task force in the field. It walks `route` one bound at a time, in ranks,
+ * and regroups between bounds. Plain data so it saves with the player.
+ */
+export interface AiForce {
+  id: number;
+  ids: number[];
+  /** Centre: take and hold the diamond scrap. Enemy: assault the enemy Core. */
+  goal: "centre" | "enemy";
+  /** Points left to reach, world pixels. The last is the objective. */
+  route: Vec[];
+  /** Fighters it set out with. It falls back once too few are left. */
+  size0: number;
+  /** Tick of the last bound. A force that cannot settle moves on after a while. */
+  boundTick: number;
+  /** It has met at its first route point. From then on stragglers drop out. */
+  gathered?: boolean;
+  /** Closest it has come to the next route point, world pixels, and the tick it last got closer. */
+  bestDist?: number;
+  progressTick?: number;
+}
+
+/** Easy CPU's standing plan. Plain data so it saves with the player. */
+export interface AiPlan {
+  /** Fortify: raise and crew the base defences first. Campaign: take the middle, then push. */
+  posture: "fortify" | "campaign";
+  forces: AiForce[];
+  nextForceId: number;
+  /** Waves sent at the enemy. Each one waits for a bigger army than the last. */
+  waves: number;
+  /** Flank the next enemy wave swings round. */
+  flank: -1 | 1;
+  /** Ground the defence under way is meant for, world pixels. */
+  site?: Vec;
+  /** Tick before which a site that found no room is skipped, by site key. */
+  siteRetry: Record<string, number>;
+  /** Towers already given a wall line, or found no room for one. */
+  walled: number[];
+  /** Middle of a wall line still waiting for its gate, world pixels. */
+  gate?: Vec & { facing: number };
+  /** Tick the CPU first saw an enemy plane, drone, or Airfield. */
+  airSeenTick?: number;
+  /** Campaign towers go up no faster than this. */
+  nextTowerTick: number;
+}
+
 export interface SimPlayer {
   playerId: string;
   name: string;
@@ -587,6 +633,8 @@ export interface SimPlayer {
   aiNextMicroTick?: number;
   /** Sim tick before which the CPU skips a building that found no room in its base. */
   aiNoRoomUntil?: Partial<Record<BuildingType, number>>;
+  /** CPU's standing plan: fortify, then campaign. Made on the first think. */
+  aiPlan?: AiPlan;
   /** Fraction of a scrap point the Smelters have earned but not yet paid. `scrap` stays whole. */
   scrapCarry: number;
 }
