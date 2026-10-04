@@ -31,6 +31,7 @@ import {
   GATLING_STREAM_WANDER_HZ,
   GATLING_STREAM_WANDER_Z,
   FACE_FIRE_DEG,
+  FIRE_LAID_DEG,
   gatlingHeatOf,
   gatlingSprayOf,
   RADAR_LONG_RANGE_SPREAD,
@@ -1356,9 +1357,15 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   // A traversing turret fires along the turret once it is on the target.
   const gunArc = gunArcDegOf(e.type);
   const gunArcOk = Math.abs(remainingDeg) <= gunArc;
+  // A round that leaves along the barrel waits for the swing to finish, or the
+  // first shot goes wide. A hull gun with its own traverse (gunArcDeg) lays the
+  // round on the target anywhere inside that arc. A soldier inside fires from the opening.
+  const traverse = !turreted && catalog(e.type).gunArcDeg != null;
+  const laid = holedUp || traverse || Math.abs(remainingDeg) <= FIRE_LAID_DEG;
+  const bearing = traverse && !holedUp ? Math.atan2(aimY - e.y, aimX - e.x) : undefined;
 
   const useMg = !ground && !e.order?.once && target ? wantsMg(e, target) : false;
-  if (useMg && target && gunArcOk && e.mgCooldown <= 0 && e.mgOverheat <= 0 && e.mgAmmo > 0) {
+  if (useMg && target && gunArcOk && laid && e.mgCooldown <= 0 && e.mgOverheat <= 0 && e.mgAmmo > 0) {
     fireRound(
       state,
       e,
@@ -1377,6 +1384,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
       {
         target,
         accurateRange: accurateWeaponRange(state, e, range),
+        bearing,
       },
     );
     e.mgCooldown = TANK_MG.cooldown;
@@ -1424,6 +1432,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   // A broken arm drops the scoped rifle, the PTRD, and the launcher. There is no sidearm.
   if ((e.type === "sniper" || e.type === "atinfantry" || e.type === "rocketer" || e.type === "pyro") && !infantryGunFor(e)) return;
 
+  if (!laid) return;
   if (e.reload > 0) return;
   if (e.cooldown > 0) return;
   const infantryGun = infantryGunFor(e);
@@ -1500,6 +1509,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
         fuse: !!ground || isSmokeShell(shell),
         accurateRange: accurateWeaponRange(state, e, range),
         side: twin ? (second ? 1 : -1) * e.radius * TWIN_GUN_SIDE : undefined,
+        bearing,
       },
     );
     fired++;
@@ -2499,7 +2509,8 @@ export function syncTorpedoes(state: MatchState): void {
     if (p.bodyId == null) return true;
     const body = state.entities.get(p.bodyId);
     if (!body || body.hp <= 0) {
-      pushImpact(state, p, "hit", p.x, p.y);
+      // Shot apart, it struck nothing: the warhead goes off in open water.
+      pushImpact(state, p, "miss", p.x, p.y);
       return false;
     }
     body.x = p.x;
@@ -2834,6 +2845,7 @@ function pushImpact(
     shot: p.flight === "rocket" ? p.id : undefined,
     z: p.airBurst ? (p.z ?? 0) : undefined,
     airZ: p.aloft ? (p.z ?? 0) : undefined,
+    torpedo: p.torpedo || undefined,
   };
   // An air burst leaves no crater and no splash under the plane. Nor does a round lost in the sky.
   if (!p.airBurst && !p.aloft) noteImpactSurface(state, impact, p, kind);

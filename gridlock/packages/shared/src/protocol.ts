@@ -427,6 +427,8 @@ export interface ImpactView {
   cookoff?: boolean;
   /** A tank's HE shell burst here: a hull-sized fireball, and the ground around it is set burning. */
   heBurst?: boolean;
+  /** A submarine's torpedo went off here. On a hull: the hull-sized fireball inside the water column. Otherwise the column alone. */
+  torpedo?: boolean;
   /** Rocket burst: the id of the rocket, as in its RocketLaunchView. */
   shot?: number;
 }

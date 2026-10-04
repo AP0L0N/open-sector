@@ -5,6 +5,7 @@ import {
   ALLY_LINE_PATIENCE_SECONDS,
   DAY_SECONDS,
   DUSK_SECONDS,
+  FIRE_LAID_DEG,
   GAME_SPEED_MAX,
   HANDGUN,
   HEIGHT_BASE,
@@ -34,7 +35,7 @@ import { inSmokeCloud } from "./smoke.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { canSeeEntity, visionMask } from "./vision.js";
-import type { MatchState, Projectile } from "./types.js";
+import type { Entity, MatchState, Projectile } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
   const r = createRoom({
@@ -299,6 +300,46 @@ describe("smoke shells", () => {
 });
 
 describe("force attack", () => {
+  /** Ticks until `shooter` spends a round; returns how far its gun was from the target then. */
+  function firstShotOffDeg(state: MatchState, shooter: Entity, target: Entity, turret: boolean): number {
+    const spent = () => shooter.clip + Object.values(shooter.ammo).reduce((n, k) => n + (k ?? 0), 0);
+    const before = spent();
+    for (let i = 0; i < 200; i++) {
+      step(state, TICK_DT);
+      if (spent() < before) {
+        const want = Math.atan2(target.y - shooter.y, target.x - shooter.x);
+        const gun = turret ? shooter.turretFacing : shooter.facing;
+        return (Math.abs(Math.atan2(Math.sin(want - gun), Math.cos(want - gun))) * 180) / Math.PI;
+      }
+    }
+    assert.fail("never fired");
+  }
+
+  it("holds a turret's first round until the turret has finished its swing", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    stripOwner(state, "B");
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+    tank.facing = Math.PI;
+    tank.turretFacing = Math.PI;
+    const foe = makeEntity(state, "warden", "B", tileCenter(30, ts), tileCenter(24, ts));
+    assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [tank.id], x: foe.x, y: foe.y, targetId: foe.id }).ok, true);
+    assert.ok(firstShotOffDeg(state, tank, foe, true) <= FIRE_LAID_DEG);
+  });
+
+  it("holds a soldier's first round until he has turned to face the target", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    stripOwner(state, "B");
+    const ts = state.tileSize;
+    const rifle = makeEntity(state, "rifleman", "A", tileCenter(24, ts), tileCenter(24, ts));
+    rifle.facing = Math.PI;
+    const foe = makeEntity(state, "rifleman", "B", tileCenter(28, ts), tileCenter(24, ts));
+    assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [rifle.id], x: foe.x, y: foe.y, targetId: foe.id }).ok, true);
+    assert.ok(firstShotOffDeg(state, rifle, foe, false) <= FIRE_LAID_DEG);
+  });
+
   it("fires at an empty point with no target", () => {
     const { state } = twoPlayerMatch();
     state.heights.fill(0);
@@ -982,7 +1023,7 @@ describe("escort", () => {
     const ts = state.tileSize;
     const tank = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
     const foe = makeEntity(state, "hauler", "B", tileCenter(30, ts), tileCenter(24, ts));
-    const enemy = applyCommand(state, "A", { type: "cmd.guard", ids: [tank.id], targetId: foe.id });
+    const enemy = applyCommand(state, "A", { type: "cmd.guard", ids: [tank.id], x: foe.x, y: foe.y, targetId: foe.id });
     assert.equal(enemy.ok, false);
     const self = applyCommand(state, "A", { type: "cmd.guard", ids: [tank.id], targetId: tank.id });
     assert.equal(self.ok, false);
