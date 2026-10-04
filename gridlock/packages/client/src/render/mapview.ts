@@ -760,6 +760,8 @@ export class MapView {
     damage?: number;
     /** A hull or structure destroyed: its blast, sized by what went up. */
     death?: DeathBlastSpec;
+    /** Submarine torpedo: a hull strike keeps its water column under the blast. */
+    torpedo?: boolean;
   }[] = [];
   private fxIds = new Set<number>();
   /** When each crater was struck, for its smoulder. Holes already there on first sight never smoke. */
@@ -1154,6 +1156,7 @@ export class MapView {
       }
       this.snapHullFx(fx);
       if (i.kind === "kill" && i.blast) fx.death = this.deathBlastAt(i.x, i.y, i.caliber, match.entities);
+      else if (i.torpedo && torpedoStruckHull(i.kind)) fx.death = heBurstSpec();
       else if (i.heBurst && !i.splash) fx.death = heBurstSpec();
       this.addFx(fx);
     }
@@ -6763,9 +6766,10 @@ export class MapView {
     const keep: typeof this.fx = [];
     for (const f of this.fx) {
       const burst = groundBurst(f);
-      const wet = f.death ? undefined : waterBurst(f);
+      // A torpedo on a hull: the fireball goes up inside the water column.
+      const wet = f.death && !f.torpedo ? undefined : waterBurst(f);
       const life = f.death
-        ? deathBlastLifeMs(f.death)
+        ? Math.max(deathBlastLifeMs(f.death), wet ? waterBurstLifeMs(wet) : 0)
         : burst
           ? burstLifeMs(burst)
           : wet
@@ -8032,6 +8036,11 @@ function groundBurst(f: {
   if (f.mortar || f.rocket) return burstSpec(f);
   if (f.kind === "miss" && isShellCaliber(f.caliber) && f.shell !== "smoke") return burstSpec(f);
   return undefined;
+}
+
+/** A torpedo that went off against a hull, not in open water or ashore. */
+function torpedoStruckHull(kind: string): boolean {
+  return kind === "hit" || kind === "pen" || kind === "kill" || kind === "glance" || kind === "ricochet";
 }
 
 /** A heavy round in water: the spray column, sized like the ground burst of the same round. Bullets keep their small splash. */
