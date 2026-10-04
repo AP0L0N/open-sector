@@ -17,6 +17,9 @@ import {
   isInfantryType,
   isRepairableUnit,
   stanceOf,
+  TILE_SIZE,
+  WALL_RISE_MAX_SLABS,
+  wallSlabHeight,
   WRECK_SCRAP_SECONDS,
   wreckScrapOf,
   type ConcreteLineType,
@@ -24,6 +27,7 @@ import {
   type FieldStructureType,
   type ShellType,
 } from "../catalog.js";
+import { ISO_ELEVATION, isoScale } from "../iso.js";
 import { allies, clearOrder, inBounds, isTree, isWater, makeEntity, scrapAt, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
 import { takeDamage } from "./crits.js";
 import { setPath } from "./path.js";
@@ -1005,9 +1009,9 @@ function segmentObbT(
 /** Same reach as the client's `wallSectionsConnect`: ends that meet, straight on or round a corner. */
 const WALL_RUN_SLACK = 4;
 
-function wallGroundPeak(state: MatchState, e: Entity): number {
+function wallGroundRange(state: MatchState, e: Entity): { peak: number; low: number } {
   const span = fieldSpan(e.type);
-  if (!span) return 0;
+  if (!span) return { peak: 0, low: 0 };
   const alongX = -Math.sin(e.facing);
   const alongY = Math.cos(e.facing);
   const acrossX = Math.cos(e.facing);
@@ -1015,15 +1019,17 @@ function wallGroundPeak(state: MatchState, e: Entity): number {
   const halfL = span.length / 2;
   const halfT = span.thick / 2;
   let peak = 0;
+  let low = Number.POSITIVE_INFINITY;
   for (const along of [-halfL, 0, halfL]) {
     for (const across of [-halfT, 0, halfT]) {
       const gx = worldToTile(e.x + alongX * along + acrossX * across, state.tileSize);
       const gy = worldToTile(e.y + alongY * along + acrossY * across, state.tileSize);
       const h = inBounds(state, gx, gy) ? (state.heights[tileIndex(state, gx, gy)] ?? 0) : 0;
       if (h > peak) peak = h;
+      if (h < low) low = h;
     }
   }
-  return peak;
+  return { peak, low };
 }
 
 function sectionsShareRun(a: Entity, b: Entity, length: number): boolean {
@@ -1032,9 +1038,61 @@ function sectionsShareRun(a: Entity, b: Entity, length: number): boolean {
 }
 
 /**
+ * Most a concrete run lifts its slab above the ground under a section, in map height
+ * units: WALL_RISE_MAX_SLABS slab heights, measured as the client draws the slab.
+ */
+export function wallRiseLimit(type: ConcreteLineType): number {
+  const { hw, hh } = isoScale(TILE_SIZE);
+  return (WALL_RISE_MAX_SLABS * wallSlabHeight(type) * Math.hypot(hw, hh)) / ISO_ELEVATION;
+}
+
+/** One section of a concrete run, for `wallRunTops`. Map height units. */
+export interface WallTopSample {
+  /** Highest ground under the section. */
+  peak: number;
+  /** Lowest ground under the section. */
+  low: number;
+  /** Top the section already stands at. Missing on a section not built yet. */
+  crest?: number | undefined;
+}
+
+/**
+ * Split a run into stretches that share one top. The highest section sets a top and
+ * the stretch takes in connected sections while that top stays within `maxRise` of
+ * their lowest ground. A section it would lift further is cut off and starts a new
+ * top at its own level. `connects(i, j)` says whether two sections butt together.
+ */
+export function wallRunTops(
+  sections: readonly WallTopSample[],
+  connects: (i: number, j: number) => boolean,
+  maxRise: number,
+): number[] {
+  const level = sections.map((s) => Math.max(s.peak, s.crest ?? Number.NEGATIVE_INFINITY));
+  const order = level.map((_, i) => i).sort((a, b) => level[b]! - level[a]!);
+  const tops: (number | undefined)[] = new Array(sections.length);
+  for (const seed of order) {
+    if (tops[seed] != null) continue;
+    const top = level[seed]!;
+    tops[seed] = top;
+    const stack = [seed];
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      for (let j = 0; j < sections.length; j++) {
+        if (tops[j] != null || !connects(cur, j)) continue;
+        if (top - sections[j]!.low > maxRise) continue;
+        tops[j] = top;
+        stack.push(j);
+      }
+    }
+  }
+  return tops as number[];
+}
+
+/**
  * Remember the highest ground under a concrete run on every section of it.
  * A later section can raise that peak. Destroying the high section does not lower it,
- * so the standing wall keeps the height it was built to.
+ * so the standing wall keeps the height it was built to. A section the peak would lift
+ * more than `wallRiseLimit` above its ground is cut off and starts a lower top.
  */
 export function raiseWallCrest(state: MatchState, built: readonly Entity[]): void {
   const seeds = built.filter((e) => isConcreteLine(e.type) && e.hp > 0 && !e.ruined);
@@ -1058,14 +1116,13 @@ export function raiseWallCrest(state: MatchState, built: readonly Entity[]): voi
           stack.push(other);
         }
       }
-      let crest = Number.NEGATIVE_INFINITY;
-      for (const section of group) {
-        const peak = wallGroundPeak(state, section);
-        if (peak > crest) crest = peak;
-        if (section.wallCrest != null && section.wallCrest > crest) crest = section.wallCrest;
-      }
-      if (!Number.isFinite(crest)) crest = 0;
-      for (const section of group) section.wallCrest = crest;
+      const samples = group.map((section) => ({ ...wallGroundRange(state, section), crest: section.wallCrest }));
+      const tops = wallRunTops(
+        samples,
+        (i, j) => sectionsShareRun(group[i]!, group[j]!, span.length),
+        wallRiseLimit(type as ConcreteLineType),
+      );
+      for (let i = 0; i < group.length; i++) group[i]!.wallCrest = tops[i]!;
     }
   }
 }

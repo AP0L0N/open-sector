@@ -94,6 +94,8 @@ import {
   type MatchSnapshot,
   type MineView,
   type ShellHoleView,
+  wallRiseLimit,
+  wallRunTops,
 } from "@gridlock/shared";
 import {
   FX_BOOM,
@@ -7014,12 +7016,13 @@ export class MapView {
     const style = type === "greatwall" ? LARGE_WALL_STYLE : WALL_STYLE;
     const section: WallSection = { x, y, facing, length: span.length, thick: span.thick, crest: opts.crest };
     const run = this.fieldRun(type, section, extras ?? []);
-    const grounds: number[] = [];
-    const crests: number[] = [];
-    for (const seg of run) {
-      grounds.push(...this.wallGrounds(seg, span.thick));
-      if (seg.crest != null) crests.push(seg.crest);
-    }
+    // run[0] is this section. The run is cut where its top would tower over the ground.
+    const samples = run.map((seg) => {
+      const g = this.wallGrounds(seg, span.thick);
+      return { peak: Math.max(...g), low: Math.min(...g), crest: seg.crest };
+    });
+    const tops = wallRunTops(samples, (i, j) => wallSectionsConnect(run[i]!, run[j]!), wallRiseLimit(type));
+    const grounds = [tops[0] ?? 0];
     const worldPx = this.groundSpan(x, y, 10) / 10;
     const slabLevels = ISO_ELEVATION > 0 ? (style.slabH * worldPx) / ISO_ELEVATION : 0;
     drawWall(this.ctx, {
@@ -7033,7 +7036,7 @@ export class MapView {
       alpha: opts.alpha,
       bad: opts.bad,
       ground: (wx, wy) => this.elevAt(wx, wy),
-      topElev: wallTopElev(grounds, slabLevels, crests),
+      topElev: wallTopElev(grounds, slabLevels),
       levelPx: ISO_ELEVATION,
       worldPx,
       project: (wx, wy, elev) => this.toScreen(wx, wy, elev),
