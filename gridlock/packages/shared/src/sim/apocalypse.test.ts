@@ -318,7 +318,7 @@ describe("Apocalypse roof CIWS", () => {
     const rate = downed / trials;
     assert.ok(Math.abs(rate - APOCALYPSE_CIWS_INTERCEPT_CHANCE) < 0.15, `intercept rate ${rate}`);
     assert.ok(rate < 0.5, "most missiles get through");
-    assert.ok(APOCALYPSE_CIWS_INTERCEPT_CHANCE > CIWS_INTERCEPT_CHANCE, "better than the pad");
+    assert.ok(APOCALYPSE_CIWS_INTERCEPT_CHANCE < CIWS_INTERCEPT_CHANCE, "worse than the pad");
   });
 
   it("meets a missile launched beside it on the tick it leaves the rack", () => {
