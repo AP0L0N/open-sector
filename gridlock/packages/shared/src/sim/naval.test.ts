@@ -348,8 +348,9 @@ describe("Submarine torpedo load", () => {
     boat.cooldown = 1e6;
     boat.hp = boat.hpMax = 1_000_000;
     applyCommand(state, "A", { type: "cmd.attack", ids: [sub.id], targetId: boat.id });
-    for (let i = 0; i < 200 && boat.hp === boat.hpMax; i++) step(state, TICK_DT);
-    assert.ok(boat.hp < boat.hpMax, "the last torpedo found it");
+    const startHp = boat.hp;
+    for (let i = 0; i < 200 && boat.hp === startHp; i++) step(state, TICK_DT);
+    assert.ok(boat.hp < startHp, "the last torpedo found it");
     assert.equal(sub.clip, 0);
     const hp = boat.hp;
     ticks(state, secondsToTicks(catalog("submarine").cooldown * 3));
@@ -471,10 +472,10 @@ describe("boats turn before they move", () => {
   it("swings the bow onto the course before it makes way", () => {
     const { state, lx0, ly0 } = harbour();
     const ships = TRAIN_TYPES.filter((t) => isNavalType(t));
-    assert.deepEqual([...ships].sort(), ["battleship", "gunboat", "submarine"]);
+    assert.deepEqual([...ships].sort(), ["battleship", "gunboat", "submarine", "supplyboat"]);
     for (const type of ships) {
       assert.equal(catalog(type).turnInPlace, true, `${type} turns before it moves`);
-      const lane = type === "gunboat" ? 4 : type === "submarine" ? 10 : 20;
+      const lane = type === "gunboat" ? 4 : type === "submarine" ? 10 : type === "supplyboat" ? 16 : 24;
       const boat = spawn(state, type, "A", lx0 + 25, ly0 + lane);
       boat.facing = 0;
       boat.cooldown = 1e6;
