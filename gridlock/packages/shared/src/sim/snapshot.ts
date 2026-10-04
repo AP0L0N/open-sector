@@ -44,6 +44,7 @@ import { medicTendView } from "./heal.js";
 import { supplyHasDriver, supplyRiders } from "./supply.js";
 import { powerOf } from "./power.js";
 import { radarContacts, radarOnline } from "./radar.js";
+import { scrapCap } from "./smelter.js";
 import { canSeeWorld, encodeVisionRuns, entityOnMask, visionMask } from "./vision.js";
 import { spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, MatchState, Order, QueueableCommand, StructureJob } from "./types.js";
@@ -468,6 +469,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     youPlayerId,
     you: {
       scrap: you?.scrap ?? 0,
+      scrapCap: you ? scrapCap(state, youPlayerId) : 0,
       provided: power.provided,
       used: power.used,
       lowPower: power.lowPower,

@@ -38,6 +38,8 @@ export const WRECK_BLAST_MUL = 0.5;
 export const SCRAP_TILE_YIELD = 800;
 /** Scrap a Smelter on a scrap field earns its owner each second at full power. Low power slows it like production. */
 export const SMELTER_SCRAP_PER_SEC = 25;
+/** Most scrap a commander can hold per standing Smelter. Earnings past it are lost; refunds still come back. */
+export const SCRAP_CAP_PER_SMELTER = 40_000;
 /** Share of a Smelter's footprint that must lie on scrap tiles before it can be placed. */
 export const SMELTER_SCRAP_COVER = 0.5;
 /** A Smelter whose scrap is mostly diamond scrap pours this many times the plain rate. */
@@ -2572,7 +2574,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Stands on a scrap field: at least half its footprint must cover scrap. It melts the field down for ${SMELTER_SCRAP_PER_SEC} scrap a second for as long as it stands, and the field never runs out. Each Smelter adds its own share. On diamond scrap, where stones glint through the salvage, it pours ${DIAMOND_SCRAP_MUL}× as much. Low power slows it. The yard places one near the base; an engineer can raise one on any scrap field he can walk to, which also pushes your build range out to it.`,
+    blurb: `Stands on a scrap field: at least half its footprint must cover scrap. It melts the field down for ${SMELTER_SCRAP_PER_SEC} scrap a second for as long as it stands, and the field never runs out. Each Smelter adds its own share. On diamond scrap, where stones glint through the salvage, it pours ${DIAMOND_SCRAP_MUL}× as much. Low power slows it. The yard places one near the base; an engineer can raise one on any scrap field he can walk to, which also pushes your build range out to it. Each standing Smelter lets you hold up to ${SCRAP_CAP_PER_SMELTER} scrap; past that, the pour and any salvage go to waste.`,
   },
   muster: {
     type: "muster",

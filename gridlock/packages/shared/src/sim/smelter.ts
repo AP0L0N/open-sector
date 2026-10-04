@@ -7,13 +7,14 @@
 import {
   DIAMOND_SCRAP_MUL,
   DIAMOND_SCRAP_TILE_YIELD,
+  SCRAP_CAP_PER_SMELTER,
   SMELTER_SCRAP_COVER,
   SMELTER_SCRAP_PER_SEC,
   catalog,
 } from "../catalog.js";
 import { scrapAt, scrapTilesUnder, tilesBlocked } from "./geo.js";
 import { powerOf, productionSpeed } from "./power.js";
-import type { Entity, MatchState } from "./types.js";
+import type { Entity, MatchState, SimPlayer } from "./types.js";
 
 /** Scrap tiles a Smelter footprint needs under it. */
 export function smelterScrapNeeded(): number {
@@ -70,18 +71,48 @@ export function smelterIncome(state: MatchState, playerId: string): number {
   return n;
 }
 
+/** Smelters this commander has standing, finished or not on scrap. */
+export function smelterCount(state: MatchState, playerId: string): number {
+  let n = 0;
+  for (const e of state.entities.values()) {
+    if (e.ownerId === playerId && e.kind === "building" && e.type === "smelter" && e.hp > 0 && !e.wreck) n++;
+  }
+  return n;
+}
+
+/** Most scrap this commander can hold: SCRAP_CAP_PER_SMELTER for each standing Smelter. */
+export function scrapCap(state: MatchState, playerId: string): number {
+  return smelterCount(state, playerId) * SCRAP_CAP_PER_SMELTER;
+}
+
+/**
+ * Credit earned scrap up to the commander's cap. Scrap already held over the cap
+ * (a Smelter fell) is kept, it just earns nothing more. Returns the amount credited.
+ */
+export function earnScrap(state: MatchState, p: SimPlayer, n: number): number {
+  const room = Math.max(0, scrapCap(state, p.playerId) - p.scrap);
+  const got = Math.max(0, Math.min(Math.floor(n), room));
+  p.scrap += got;
+  return got;
+}
+
 /** Pay every commander for the Smelters standing on scrap. Short power slows the pour like production. */
 export function tickSmelters(state: MatchState, dt: number): void {
   for (const p of state.players.values()) {
     if (!p.alive) continue;
     const rate = smelterIncome(state, p.playerId);
     if (rate <= 0) continue;
+    // A full store melts nothing: drop the fraction so it does not pile up behind the cap.
+    if (p.scrap >= scrapCap(state, p.playerId)) {
+      p.scrapCarry = 0;
+      continue;
+    }
     const pow = powerOf(state, p.playerId);
     p.scrapCarry += rate * productionSpeed(pow.provided, pow.used) * dt;
     // Pay whole points so the counter never shows a fraction.
     const whole = Math.floor(p.scrapCarry + 1e-9);
     if (whole <= 0) continue;
-    p.scrap += whole;
+    earnScrap(state, p, whole);
     p.scrapCarry -= whole;
   }
 }

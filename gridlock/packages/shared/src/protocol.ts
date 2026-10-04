@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 88;
+export const PROTOCOL_VERSION = 89;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -314,6 +314,8 @@ export interface PlayerPublic {
 
 export interface YouState {
   scrap: number;
+  /** Most scrap you can hold: SCRAP_CAP_PER_SMELTER for each standing Smelter. */
+  scrapCap: number;
   provided: number;
   used: number;
   lowPower: boolean;
