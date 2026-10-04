@@ -113,6 +113,16 @@ const droneHullGlob = import.meta.glob("../assets/units/drone/hull/*.png", {
   import: "default",
 }) as Record<string, string>;
 
+const gunboatHullGlob = import.meta.glob("../assets/units/gunboat/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const submarineHullGlob = import.meta.glob("../assets/units/submarine/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 export const SS3_OPTS: TurntableSheetOpts = { ...TIGER_OPTS };
 /** Plane cell. Wingspan fills it, so it keeps a little more room; wheels sit on the contact line. */
 export const STUKA_OPTS: TurntableSheetOpts = { ...TIGER_OPTS, contactY: 0.8, padding: 2 };
@@ -122,6 +132,12 @@ export const FW190_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
 export const BV222_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
 /** Quadcopter: same aircraft fit as the Stuka; the rotor span fills the cell, the pod's belly sits on the contact line. */
 export const DRONE_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
+/**
+ * Boats: the hull's length fills the cell like a plane's wingspan. The wake under the hull
+ * is the lowest thing in every face, so the contact line sits higher than a tank's to keep
+ * the hull's middle near the unit's point.
+ */
+export const NAVAL_OPTS: TurntableSheetOpts = { ...TIGER_OPTS, contactY: 0.74, padding: 2 };
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -473,6 +489,30 @@ export function bindArtillerySheets(hullImage: HTMLImageElement): void {
     })
     .catch((err) => {
       console.error("artillery turntable", err);
+    });
+}
+
+const navalPrevious = new Map<string, ComposedTurntable>();
+
+/** Hull-only boat drop-ins (Attack Boat, Submarine): one sheet and a cameo each. */
+export function bindNavalSheets(kind: "gunboat" | "submarine", hullImage: HTMLImageElement): void {
+  let hullUrls: string[];
+  try {
+    hullUrls = pickTurntableUrls(kind === "gunboat" ? gunboatHullGlob : submarineHullGlob);
+  } catch (err) {
+    console.error(`${kind} turntable`, err);
+    return;
+  }
+  void Promise.all(hullUrls.map(loadImage))
+    .then((hullImgs) => composeAligned([hullImgs], NAVAL_OPTS))
+    .then((next) => {
+      revoke(navalPrevious.get(kind) ?? null);
+      navalPrevious.set(kind, next);
+      hullImage.src = next.sheetUrls[0] ?? "";
+      applyCameo(next.cameoUrl, `--${kind}-cameo`);
+    })
+    .catch((err) => {
+      console.error(`${kind} turntable`, err);
     });
 }
 

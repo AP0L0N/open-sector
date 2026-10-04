@@ -7,29 +7,32 @@ import {
   isDefenceStructure,
   isHiddenField,
   isInfantryType,
+  isNavalType,
   type BuildingType,
   type TrainType,
   type YardFieldType,
 } from "@gridlock/shared";
 
-export type SidebarGroup = "structures" | "defences" | "infantry" | "tanks" | "aircraft";
+export type SidebarGroup = "structures" | "defences" | "infantry" | "tanks" | "naval" | "aircraft";
 
-/** `short` fits five tabs across the sidebar; `icon` is a 16×16 SVG path. */
+/** `short` fits six tabs across the sidebar; `icon` is a 16×16 SVG path. */
 export const SIDEBAR_GROUPS: readonly { id: SidebarGroup; label: string; short: string; icon: string }[] = [
   { id: "structures", label: "Structures", short: "Base", icon: "M1 15V8l4-3v3l4-3v3l4-3v2h2v8z" },
   { id: "defences", label: "Defences", short: "Def", icon: "M8 1l6 2.2V8c0 3.4-2.5 5.9-6 7-3.5-1.1-6-3.6-6-7V3.2z" },
   { id: "infantry", label: "Infantry", short: "Inf", icon: "M8 1a2.1 2.1 0 110 4.2A2.1 2.1 0 018 1zM4.5 6.4h7L10.3 11H9.4V15H6.6V11H5.7z" },
   { id: "tanks", label: "Tanks", short: "Tank", icon: "M4 5h6v2h5v1.2h-5V9H4zM1 10h14l-1.8 4H2.8z" },
+  { id: "naval", label: "Naval", short: "Sea", icon: "M6 3h3v3h3v3h3l-2.5 3.5h-9L1 9h5zM1 14.2c1.2 0 1.7-.8 2.3-.8s1.1.8 2.3.8 1.7-.8 2.3-.8 1.1.8 2.3.8 1.7-.8 2.3-.8 1.1.8 1.5.8V15c-.6 0-1-.8-1.5-.8s-1.1.8-2.3.8-1.7-.8-2.3-.8-1.1.8-2.3.8-1.7-.8-2.3-.8S2.2 15 1 15z" },
   { id: "aircraft", label: "Aircraft", short: "Air", icon: "M8 1c.7 0 1 1 1 2v3l6 3.2V11L9 9.4V12l2 1.6V15l-3-.9-3 .9v-1.4L7 12V9.4L1 11V9.2L7 6V3c0-1 .3-2 1-2z" },
 ];
 
-/** Buildings with a gun or a garrison are defences. Trainables split by body: foot, air, or hull. */
+/** Buildings with a gun or a garrison are defences. Trainables split by body: foot, air, boat, or hull. */
 export function sidebarGroupOf(type: BuildingType | TrainType): SidebarGroup {
   if (catalog(type).kind === "building") {
     return isDefenceStructure(type) ? "defences" : "structures";
   }
   if (isInfantryType(type)) return "infantry";
   if (isAircraftType(type)) return "aircraft";
+  if (isNavalType(type)) return "naval";
   return "tanks";
 }
 
@@ -40,11 +43,11 @@ export interface GroupEntry {
 }
 
 /** Groups whose cameos run cheapest first; ties keep catalog order. */
-const PRICE_SORTED_GROUPS: readonly SidebarGroup[] = ["defences", "infantry", "tanks", "aircraft"];
+const PRICE_SORTED_GROUPS: readonly SidebarGroup[] = ["defences", "infantry", "tanks", "naval", "aircraft"];
 
 /** Cameos in each group, in catalog order (price order for `PRICE_SORTED_GROUPS`). */
 export function groupEntries(): Record<SidebarGroup, GroupEntry[]> {
-  const out: Record<SidebarGroup, GroupEntry[]> = { structures: [], defences: [], infantry: [], tanks: [], aircraft: [] };
+  const out: Record<SidebarGroup, GroupEntry[]> = { structures: [], defences: [], infantry: [], tanks: [], naval: [], aircraft: [] };
   for (const type of BUILDING_TYPES) out[sidebarGroupOf(type)].push({ id: "build-" + type, type });
   for (const type of YARD_FIELD_TYPES) {
     if (!isHiddenField(type)) out.defences.push({ id: "build-" + type, type });

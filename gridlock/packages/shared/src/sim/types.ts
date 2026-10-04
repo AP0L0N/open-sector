@@ -347,6 +347,8 @@ export interface Entity {
   ciwsTarget?: number | null;
   /** Sim tick the roof mount last fired, on a unit or a rocket. */
   ciwsFireTick?: number;
+  /** Submarine: sim tick it last fired and showed itself. Missing until its first shot. */
+  surfacedTick?: number;
   /**
    * Sim tick through which the second main-gun barrel is still owed.
    * Missing between volleys. `cooldown` holds the gap before that barrel can fire.
@@ -474,6 +476,8 @@ export interface Projectile {
   bounced: boolean;
   /** Loaded 75mm type. Null for rifles / MG. */
   shell: ShellType | null;
+  /** A submarine's torpedo: runs at the waterline, meets only what is in the water, dies ashore. Not on the wire. */
+  torpedo?: boolean;
   /**
    * Walker, Cyborg, pad CIWS, or Apocalypse roof round. A living light hull
    * only sometimes takes it. Not on the wire.

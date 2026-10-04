@@ -1,4 +1,4 @@
-import { AIRFIELD_PADS, catalog, isAircraftType, secondsToTicks, TECH_REQUIRES, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
+import { AIRFIELD_PADS, catalog, isAircraftType, isNavalType, secondsToTicks, TECH_REQUIRES, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, PARK_HEADING } from "./air.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear, packRadius, packSlots } from "./formation.js";
@@ -7,9 +7,10 @@ import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
 import type { Entity, MatchState, TrainJob } from "./types.js";
 
-export function producerType(unit: TrainType): "muster" | "armory" | "airfield" {
+export function producerType(unit: TrainType): "muster" | "armory" | "airfield" | "dock" {
   if (unit === "rifleman" || unit === "gunner" || unit === "sniper" || unit === "atinfantry" || unit === "rocketer" || unit === "pyro" || unit === "mortarman" || unit === "engineer" || unit === "medic" || unit === "droneop" || unit === "jumpjet") return "muster";
   if (isAircraftType(unit)) return "airfield";
+  if (isNavalType(unit)) return "dock";
   return "armory";
 }
 
@@ -57,6 +58,7 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
     if (busy) return "Queue is full.";
     if (want === "airfield") return "Need an Airfield.";
     if (want === "muster") return "Need a Barracks.";
+    if (want === "dock") return "Need a Marine Base.";
     return "Need a Machine Shop.";
   }
   const tech = techMissing(state, playerId, unit);
@@ -196,7 +198,7 @@ export function spawnUnit(
     plane.air = newAirState(from.id, pad, type);
     return plane;
   }
-  const door = rallyPoint(state, from);
+  const door = rallyPoint(state, from, type);
   const u = makeEntity(state, type, playerId, door.x, door.y);
   if (from.rally) {
     const spot = openSpotNear(state, u, from.rally.x, from.rally.y);
@@ -284,7 +286,7 @@ function packAtDoor(state: MatchState, from: Entity, fresh: Entity, door: { x: n
 }
 
 export function isProducer(e: Entity): boolean {
-  return e.kind === "building" && (e.type === "muster" || e.type === "armory");
+  return e.kind === "building" && (e.type === "muster" || e.type === "armory" || e.type === "dock");
 }
 
 /** Sets the rally point on every owned producer in `ids`. A point on the building's own footprint clears it. */
@@ -304,5 +306,5 @@ export function setRally(state: MatchState, playerId: string, ids: number[], x: 
     else b.rally = { x: px, y: py };
     n++;
   }
-  return n === 0 ? "Select a Barracks, Smelter, or Machine Shop." : null;
+  return n === 0 ? "Select a Barracks, Smelter, Machine Shop, or Marine Base." : null;
 }

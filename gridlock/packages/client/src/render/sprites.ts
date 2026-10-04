@@ -45,6 +45,7 @@ import towerNUrl from "../assets/buildings/tower-n.png";
 import ciwsTurretUrl from "../assets/buildings/ciws-turret.png";
 import researchUrl from "../assets/buildings/research.png";
 import radarUrl from "../assets/buildings/radar.png";
+import dockUrl from "../assets/buildings/dock.png";
 import ramUrl from "../assets/buildings/ram.png";
 import ramTurretUrl from "../assets/buildings/ram-turret.png";
 import cottageUrl from "../assets/buildings/cottage.png";
@@ -232,6 +233,7 @@ import {
   bindFighterSheets,
   bindTransportSheets,
   bindSupplySheets,
+  bindNavalSheets,
   bindApocalypseSheets,
   bindNebelwerferSheets,
   bindArtillerySheets,
@@ -1152,6 +1154,32 @@ export const SUPPLY_SPRITE: UnitSpriteDef = {
 };
 bindSupplySheets(SUPPLY_SPRITE.image);
 
+/** Attack Boat: hull-only sheet cut at the waterline over its wake. */
+export const GUNBOAT_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(48 * UNIT_VISUAL_SCALE),
+  contactY: 0.74,
+  facingSpace: "world",
+};
+bindNavalSheets("gunboat", GUNBOAT_SPRITE.image);
+
+/** Submarine running awash: the longer hull, same meters-to-px as the Attack Boat. */
+export const SUBMARINE_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(64 * UNIT_VISUAL_SCALE),
+  contactY: 0.74,
+  facingSpace: "world",
+};
+bindNavalSheets("submarine", SUBMARINE_SPRITE.image);
+
 /**
  * Infantry battle platform on four legs. Columns are an 8-frame trot, rows the
  * 16 faces; the chin MG is part of the body and aims with it. Drawn at half the
@@ -1436,6 +1464,8 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   ss3: SS3_SPRITE,
   jagdtiger: JAGDTIGER_SPRITE,
   supply: SUPPLY_SPRITE,
+  gunboat: GUNBOAT_SPRITE,
+  submarine: SUBMARINE_SPRITE,
   mammoth: MAMMOTH_SPRITE,
   nebelwerfer: NEBELWERFER_SPRITE,
   artillery: ARTILLERY_SPRITE,
@@ -1580,6 +1610,8 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   research: building(researchUrl, 384, 210, 324, 150, 70),
   // Ops hut, lattice mast, dish. Metrics from tools/sprites/render_radar.py (radar.json); the stack hangs over the dish.
   radar: building(radarUrl, 384, 210, 354, 216, 58),
+  // The pier stands in its pond: a hard edge, no blend onto ground that is not there.
+  dock: building(dockUrl, 384, 210, 354, 214, 92, false),
   // Concrete pillbox. Metrics from tools/sprites/render_bunker.py (bunker.json). Turned faces in BUILDING_FACES.
   bunker: building(bunkerUrl, 384, 222, 264, 222, 99),
   // Concrete shaft and slitted cab. Metrics from tools/sprites/render_tower.py (tower.json). Turned faces in BUILDING_FACES.

@@ -25,10 +25,10 @@ describe("sidebarGroupOf", () => {
     assert.equal(sidebarGroupOf("bunker"), "defences");
     assert.equal(sidebarGroupOf("tower"), "defences");
     assert.equal(sidebarGroupOf("ram"), "defences");
-    for (const t of ["dynamo", "smelter", "muster", "armory", "airfield", "research", "radar"] as const) assert.equal(sidebarGroupOf(t), "structures");
+    for (const t of ["dynamo", "smelter", "muster", "armory", "airfield", "dock", "research", "radar"] as const) assert.equal(sidebarGroupOf(t), "structures");
   });
 
-  it("splits trainables into infantry, tanks, and aircraft", () => {
+  it("splits trainables into infantry, tanks, boats, and aircraft", () => {
     for (const t of ["rifleman", "gunner", "sniper", "engineer", "medic", "cyborg", "droneop", "jumpjet"] as const) {
       assert.equal(sidebarGroupOf(t), "infantry", t);
     }
@@ -36,15 +36,18 @@ describe("sidebarGroupOf", () => {
     assert.equal(sidebarGroupOf("stuka"), "aircraft");
     assert.equal(sidebarGroupOf("fw190"), "aircraft");
     assert.equal(sidebarGroupOf("bv222"), "aircraft");
+    assert.equal(sidebarGroupOf("gunboat"), "naval");
+    assert.equal(sidebarGroupOf("submarine"), "naval");
   });
 
-  it("lists defences, infantry, tanks, and aircraft cheapest first", () => {
+  it("lists defences, infantry, tanks, boats, and aircraft cheapest first", () => {
     const g = groupEntries();
-    for (const id of ["defences", "infantry", "tanks", "aircraft"] as const) {
+    for (const id of ["defences", "infantry", "tanks", "naval", "aircraft"] as const) {
       const costs = g[id].map((e) => catalog(e.type).cost);
       assert.deepEqual(costs, [...costs].sort((a, b) => a - b), id);
     }
     assert.deepEqual(g.aircraft.map((e) => e.type), ["fw190", "stuka", "bv222"]);
+    assert.deepEqual(g.naval.map((e) => e.type), ["gunboat", "submarine"]);
   });
 });
 

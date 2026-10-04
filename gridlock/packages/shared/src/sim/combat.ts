@@ -99,6 +99,7 @@ import {
   FLAMER_BURST,
   type CatalogEntry,
   type ShellType,
+  torpedoesOf,
 } from "../catalog.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
 import {
@@ -152,6 +153,7 @@ import {
   fellTreeAt,
   inBounds,
   isTree,
+  isWater,
   nearestWalkable,
   playerTeam,
   segmentAabbT,
@@ -197,6 +199,7 @@ import { stepCluster } from "./airdrop.js";
 import { projectileMeetsDrone, reachesDrone } from "./drone.js";
 import { reachesJet } from "./jet.js";
 import { nightReachMul, nightSightMul, nightTiles } from "./night.js";
+import { afloat, surface, torpedoCannotReach } from "./naval.js";
 import type { Entity, MatchState, Order, Projectile } from "./types.js";
 
 /** A twin mount's barrels sit this share of the hull radius either side of the bore line. */
@@ -604,7 +607,9 @@ function canFight(e: Entity): boolean {
  * A plane or a paratrooper in the air is out of reach for tank guns and the mortar.
  * A drone has its own rule: high, only anti-air guns; low, bullets and rockets.
  */
-function outOfReachAloft(e: Entity, target: Entity): boolean {
+function outOfReachAloft(state: MatchState, e: Entity, target: Entity): boolean {
+  // A torpedo only finds what is in the water.
+  if (torpedoCannotReach(state, e, target)) return true;
   if (target.drone) return !reachesDrone(e, target);
   // A Jump Jet in the air: anti-air weapons only.
   if (target.jet) return isAirborne(target) && !reachesJet(e);
@@ -654,7 +659,7 @@ function patrolContact(state: MatchState, e: Entity, o: Entity): boolean {
   if (!route) return false;
   if (o.kind !== "unit" || o.hp <= 0 || o.wreck || o.id === e.id || o.garrisonedIn != null) return false;
   if (isCrashing(o) || !o.ownerId || allies(state, e.ownerId, o.ownerId)) return false;
-  if (!canSeeEntity(state, e.ownerId, o) || outOfReachAloft(e, o)) return false;
+  if (!canSeeEntity(state, e.ownerId, o) || outOfReachAloft(state, e, o)) return false;
   if (dropsUnharmedArmor(state, e, o)) return false;
   const range = weaponRangeWorld(state, e);
   if (range <= 0) return false;
@@ -753,7 +758,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       return undefined;
     }
     const t = state.entities.get(e.order.targetId);
-    if (!t || t.hp <= 0 || t.id === e.id || isCrashing(t) || walkerSparesBuilding(state, e, t) || outOfReachAloft(e, t)) {
+    if (!t || t.hp <= 0 || t.id === e.id || isCrashing(t) || walkerSparesBuilding(state, e, t) || outOfReachAloft(state, e, t)) {
       e.order = null;
       e.attackTarget = null;
       if (e.state === "attack") e.state = "idle";
@@ -769,7 +774,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       !target ||
       target.hp <= 0 ||
       isCrashing(target) ||
-      outOfReachAloft(e, target) ||
+      outOfReachAloft(state, e, target) ||
       skipsFriendly(state, e, target) ||
       dropsEmptyGarrison(state, e, target) ||
       walkerSparesBuilding(state, e, target) ||
@@ -787,7 +792,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       !target ||
       target.hp <= 0 ||
       isCrashing(target) ||
-      outOfReachAloft(e, target) ||
+      outOfReachAloft(state, e, target) ||
       skipsFriendly(state, e, target) ||
       dropsEmptyGarrison(state, e, target) ||
       walkerSparesBuilding(state, e, target) ||
@@ -856,7 +861,7 @@ function currentTarget(state: MatchState, e: Entity): Entity | undefined {
   if (id == null) return undefined;
   const t = state.entities.get(id);
   if (!t || t.hp <= 0 || t.id === e.id || isCrashing(t)) return undefined;
-  if (outOfReachAloft(e, t)) return undefined;
+  if (outOfReachAloft(state, e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && skipsFriendly(state, e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && dropsEmptyGarrison(state, e, t)) return undefined;
   if (walkerSparesBuilding(state, e, t)) return undefined;
@@ -2133,6 +2138,13 @@ function fireRound(
     z: z0,
     vz: ((zAim - z0) / Math.max(1e-6, aimDist)) * speed,
   };
+  if (torpedoesOf(e.type)) {
+    // The tube fires at the waterline, and the shot gives the boat away.
+    p.torpedo = true;
+    p.z = 0;
+    p.vz = 0;
+    surface(state, e);
+  }
   state.projectiles.push(p);
 }
 
@@ -2204,8 +2216,8 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     p.z = z0 + (p.vz ?? 0) * stepDt;
     p.life -= dt;
     const z1 = p.z;
-    // A round from overhead drops over the bags and the concrete.
-    const overheadShot = !!p.plunging || !!p.fromAbove;
+    // A round from overhead drops over the bags and the concrete. A torpedo never meets them: they stand ashore.
+    const overheadShot = !!p.plunging || !!p.fromAbove || !!p.torpedo;
     const bagHit = overheadShot ? null : sandbagSweep(state, x0, y0, p.x, p.y, isTankShell(p));
     const concrete = overheadShot ? null : wallSweep(state, x0, y0, p.x, p.y);
     const struck = nearestSweepHit(state, x0, y0, p, z0, z1);
@@ -2224,7 +2236,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       continue;
     }
     // A barrage from a plane comes down through the canopy; only what it lands on counts.
-    const tree = p.fromAbove || p.plunging ? null : nearestTreeSweep(state, x0, y0, p, z0, z1, rand);
+    const tree = p.fromAbove || p.plunging || p.torpedo ? null : nearestTreeSweep(state, x0, y0, p, z0, z1, rand);
     if (tree && (!struck || tree.t <= struck.t)) {
       if (canFellTrees(p)) fellTreeAt(state, tree.tx, tree.ty);
       pushImpact(state, p, "miss", tree.x, tree.y);
@@ -2244,6 +2256,11 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       continue;
     }
     if (!struck) {
+      // A torpedo runs until the water ends.
+      if (p.torpedo && !isWater(state, worldToTile(p.x, state.tileSize), worldToTile(p.y, state.tileSize))) {
+        pushImpact(state, p, "miss", p.x, p.y);
+        continue;
+      }
       if (p.life <= 0) {
         if (p.fromAbove && !p.bounced) cannonSplash(state, p);
         pushImpact(state, p, p.bounced ? "puff" : "miss", p.x, p.y);
@@ -2553,6 +2570,7 @@ function nearestSweepHit(
     // A pilot strafes the enemy's line, not his own side's, unless he was told to (force-attack).
     if (p.fromAbove && !p.harmAllies && e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
     if (e.garrisonedIn != null) continue;
+    if (p.torpedo && !afloat(state, e)) continue;
     const hit = sweepAgainst(state, x0, y0, p, e);
     if (!hit) continue;
     // Plunging fire is still high over everything short of its line; it only strikes near where it lands.
@@ -2630,7 +2648,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn || isCrashing(o)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
-    if (outOfReachAloft(e, o)) continue;
+    if (outOfReachAloft(state, e, o)) continue;
     if (radar) {
       if (o.kind !== "unit") continue;
       const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;

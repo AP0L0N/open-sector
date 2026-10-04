@@ -16,6 +16,7 @@ import {
   isArmoredType,
   isFieldStructure,
   isInfantryType,
+  isNavalType,
   isTransportType,
   wadesOf,
   rocketAmmoOf,
@@ -214,6 +215,8 @@ export function walkable(state: MatchState, x: number, y: number, type?: EntityT
   if (fort === 1) return false;
   if (fort === 2 && !(type && isInfantryType(type))) return false;
   // 3 is an unlocked gate: everyone plans through it; the boom stops the wrong side in collision.
+  // A boat floats on open water and never comes ashore.
+  if (type && isNavalType(type)) return isWater(state, x, y);
   if (isWater(state, x, y)) return !!type && (isInfantryType(type) || wadesOf(type));
   if (state.blocked[i] === 1) return false;
   if (isTree(state, x, y)) {
@@ -529,7 +532,8 @@ export function nearestWalkable(
   return null;
 }
 
-export function rallyPoint(state: MatchState, building: Entity): { x: number; y: number } {
+/** The door a unit leaves `building` by. With `type`, the nearest tile that unit can stand on: water for a boat. */
+export function rallyPoint(state: MatchState, building: Entity, type?: EntityType): { x: number; y: number } {
   const cx = state.width / 2;
   const cy = state.height / 2;
   const bx = building.tileX + building.tileW / 2;
@@ -538,7 +542,7 @@ export function rallyPoint(state: MatchState, building: Entity): { x: number; y:
   const dy = Math.sign(cy - by) || 1;
   const tx = Math.round(bx + dx * (building.tileW / 2 + 1));
   const ty = Math.round(by + dy * (building.tileH / 2 + 1));
-  const snap = nearestWalkable(state, tx, ty) ?? { x: tx, y: ty };
+  const snap = nearestWalkable(state, tx, ty, type && isNavalType(type) ? type : undefined) ?? { x: tx, y: ty };
   return {
     x: tileCenter(snap.x, state.tileSize),
     y: tileCenter(snap.y, state.tileSize),

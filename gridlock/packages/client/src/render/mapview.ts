@@ -27,6 +27,7 @@ import {
   isCivilianType,
   isFieldStructure,
   isInfantryType,
+  isNavalType,
   isTransportType,
   isStance,
   colorHex,
@@ -456,6 +457,7 @@ const EXTRUDE: Record<EntityType, number> = {
   muster: 38,
   dynamo: 30,
   airfield: 14,
+  dock: 12,
   ciws: 26,
   research: 40,
   radar: 44,
@@ -496,6 +498,8 @@ const EXTRUDE: Record<EntityType, number> = {
   nebelwerfer: 22,
   artillery: 14,
   supply: 18,
+  gunboat: 10,
+  submarine: 7,
   cottage: 28,
   shack: 24,
   house: 36,
@@ -533,9 +537,12 @@ function ownerAllied(match: MatchSnapshot, ownerId: string | undefined): boolean
   return match.players.find((p) => p.playerId === ownerId)?.team === team;
 }
 
+/** How much of a submerged submarine its owner still sees through the water. */
+const SUBMERGED_ALPHA = 0.5;
+
 function isProducerView(e: EntityView): boolean {
   // The Airfield trains too, but its planes park on the strip; it has no rally point.
-  return e.kind === "building" && (e.type === "muster" || e.type === "smelter" || e.type === "armory");
+  return e.kind === "building" && (e.type === "muster" || e.type === "smelter" || e.type === "armory" || e.type === "dock");
 }
 
 function hpBarFill(ratio: number, hostile: boolean, vivid = false): string {
@@ -4373,7 +4380,8 @@ export class MapView {
 
   private collectUnitShadows(items: DrawItem[]): void {
     for (const e of this.curr.entities) {
-      const inWater = e.swimming || e.wading;
+      // A hull afloat casts no blob on the water, any more than a swimmer does.
+      const inWater = e.swimming || e.wading || isNavalType(e.type);
       if (!unitCastsShadow({ kind: e.kind, garrisonedIn: e.garrisonedIn, swimming: inWater })) continue;
       const def = catalog(e.type);
       let scale = isInfantryType(e.type) ? INFANTRY_VISUAL_SCALE : UNIT_VISUAL_SCALE;
@@ -5330,7 +5338,11 @@ export class MapView {
   private drawUnit(e: EntityView): void {
     const spr = this.spriteOf(e);
     if (spr) {
+      // Your own submarine running submerged shows faint under the surface.
+      const prev = this.ctx.globalAlpha;
+      if (e.submerged) this.ctx.globalAlpha = prev * SUBMERGED_ALPHA;
       this.drawSpritedUnit(e, spr);
+      this.ctx.globalAlpha = prev;
       return;
     }
     const ctx = this.ctx;

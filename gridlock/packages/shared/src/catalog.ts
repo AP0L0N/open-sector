@@ -479,12 +479,15 @@ export type EntityType =
   | "nebelwerfer"
   | "artillery"
   | "supply"
+  | "gunboat"
+  | "submarine"
   | "core"
   | "dynamo"
   | "smelter"
   | "muster"
   | "armory"
   | "airfield"
+  | "dock"
   | "ciws"
   | "bunker"
   | "tower"
@@ -510,7 +513,7 @@ export type EntityType =
   | "gate"
   | "teeth"
   | "trench";
-export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "ciws" | "ram" | "bunker" | "tower" | "research" | "radar";
+export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "dock" | "ciws" | "ram" | "bunker" | "tower" | "research" | "radar";
 /** Placed by an engineer. Sandbags and walls can also be queued from the Defences tab. The gate comes only from there. */
 export type FieldStructureType = "sandbags" | "wall" | "greatwall" | "gate" | "teeth" | "trench";
 export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "wall", "greatwall", "gate", "teeth", "trench"];
@@ -541,7 +544,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "stuka" | "fw190" | "bv222" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "submarine" | "stuka" | "fw190" | "bv222" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -564,7 +567,7 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
   deploy: 2,
 };
 
-export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "ciws", "ram", "bunker", "tower", "research", "radar"];
+export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "dock", "ciws", "ram", "bunker", "tower", "research", "radar"];
 /** Base buildings an engineer can raise in the field, away from the yard. The Smelter, so distant scrap can be claimed. */
 export const ENGINEER_BUILDINGS: readonly BuildingType[] = ["smelter"];
 export function isEngineerBuilding(type: string): type is BuildingType {
@@ -575,7 +578,7 @@ export const ROTATABLE_BUILDINGS: readonly BuildingType[] = ["bunker", "tower"];
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "submarine", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
@@ -725,6 +728,20 @@ export interface CatalogEntry {
   twinGuns?: boolean;
   /** Quadcopter flown by a Drone Op. Hovers, ignores ground collision and paths. */
   drone?: boolean;
+  /**
+   * A hull that floats: it moves on water tiles only and never comes ashore. It does not
+   * wade, so it fires from the water, and it sinks instead of leaving a wreck.
+   */
+  naval?: boolean;
+  /** Building: every footprint tile must be water. The Marine Base. */
+  onWater?: boolean;
+  /**
+   * The main gun is a torpedo tube. A torpedo runs at the waterline, only meets what floats or
+   * stands in the water, and dies where the water ends.
+   */
+  torpedoes?: boolean;
+  /** Runs submerged: enemies see it only close by, or for a short while after it fires. */
+  submerges?: boolean;
 }
 
 export interface ShellDef {
@@ -2385,6 +2402,17 @@ const CIV_BUILDING = {
   garrisonHpMul: 3,
 };
 
+/** Attack Boat's 20mm: flat, fast, and far enough to rake the bank from the water. */
+export const GUNBOAT_RANGE_TILES = t(10);
+/** A torpedo's run. It stops sooner where the water ends. */
+export const TORPEDO_RANGE_TILES = t(13);
+/** Torpedo speed, world px a second. Slow enough that a boat under way can slip one. */
+export const TORPEDO_SPEED = t(8) * TILE_SIZE;
+/** A submerged boat is seen by any enemy unit or building within this many tiles. */
+export const SUB_DETECT_TILES = t(4);
+/** After it fires, a submarine stays in sight this long. */
+export const SUB_REVEAL_SECONDS = 4;
+
 const ENTRIES: Record<EntityType, CatalogEntry> = {
   rig: {
     type: "rig",
@@ -2537,6 +2565,29 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     blurb: `Concrete strip with four revetted hardstands beside it. Trains dive bombers, fighters, and the BV 222 transport and keeps up to ${AIRFIELD_PADS}. Planes land here to refuel, rearm, and patch up.`,
+  },
+  dock: {
+    type: "dock",
+    kind: "building",
+    name: "Marine Base",
+    letter: "N",
+    cost: 1200,
+    buildSeconds: 20,
+    hp: 1000,
+    power: -30,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    onWater: true,
+    blurb: "Floating pier and slipway. It can only be built on water: every tile under it must be open water. Trains the Attack Boat and the Submarine, which launch into the water beside it and never come ashore.",
   },
   research: {
     type: "research",
@@ -3508,6 +3559,70 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 14,
     blurb: "Light truck. Tops up tank racks, coaxial belts, and the Walker's backpack, and slowly scrounges its cargo back on its own — a Machine Shop refills it fast. Right-click a mine, yours or an ally's, and it spends a few seconds disabling it; the mine comes up as scrap and does not go off under the truck while it works. Two seats. The factory driver stays at the wheel. A bullet in the front plate can kill the driver and leave the truck for anyone. A replacement driver can get out. The passenger fires from the bed: rifle, handgun, machine gun, scoped rifle, anti-tank rifle, rocket launcher, flamethrower, or a Jump Jet's assault rifle. A mortar and a cyborg gatling stay slung. Hit-point bars for the soldiers aboard sit beside the truck. Soldiers inside are a little harder to wound, and more so from the side or rear.",
   },
+  /** Motor gunboat. Water only. */
+  gunboat: {
+    type: "gunboat",
+    kind: "unit",
+    name: "Attack Boat",
+    letter: "B",
+    cost: 450,
+    buildSeconds: 10,
+    hp: 70,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 11,
+    moveTilesPerSec: paced(2.6),
+    turnDegPerSec: 110,
+    noReverse: true,
+    turretTurnDegPerSec: 240,
+    rangeTiles: GUNBOAT_RANGE_TILES,
+    sightTiles: t(9),
+    cooldown: 0.45,
+    damage: 12,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    armorFront: 12,
+    armorSide: 8,
+    armorRear: 6,
+    penetration: 28,
+    caliber: 20,
+    spreadDeg: 2.5,
+    naval: true,
+    blurb: "Fast motor gunboat with a 20mm cannon on the foredeck. Water only: it never comes ashore. It fires on boats and on anything within reach of the bank, and its gun lays up a raised shore. Thin plating — an anti-tank rifle or a tank shell goes straight through. Torpedoes are the danger out on the water.",
+  },
+  /** Coastal submarine. Water only, runs submerged. */
+  submarine: {
+    type: "submarine",
+    kind: "unit",
+    name: "Submarine",
+    letter: "U",
+    cost: 900,
+    buildSeconds: 16,
+    hp: 110,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 12,
+    moveTilesPerSec: paced(1.6),
+    turnDegPerSec: 80,
+    noReverse: true,
+    gunArcDeg: 20,
+    rangeTiles: TORPEDO_RANGE_TILES,
+    sightTiles: t(8),
+    cooldown: 7,
+    damage: 140,
+    projectileSpeed: TORPEDO_SPEED,
+    armorFront: 20,
+    armorSide: 20,
+    armorRear: 16,
+    penetration: 160,
+    caliber: 533,
+    spreadDeg: 1.5,
+    naval: true,
+    torpedoes: true,
+    submerges: true,
+    blurb: `Coastal submarine. Water only. It runs submerged: the enemy sees it only within ${SUB_DETECT_TILES / TILE_SUBDIV} tiles of one of their units or buildings, or for ${SUB_REVEAL_SECONDS} seconds after it fires. Its bow tubes fire slow torpedoes that run at the waterline and strike only what floats or stands in the water — boats, swimmers, a Marine Base. A torpedo dies where the water ends. Turn the bow to aim.`,
+  },
   /** Ju 87 B dive bomber. Lives on an Airfield pad. */
   stuka: {
     type: "stuka",
@@ -3842,7 +3957,27 @@ export function hasTracks(type: EntityType): boolean {
  * none to lose. A rear hit can still wreck their engines.
  */
 export function trackCritAllowed(type: EntityType): boolean {
-  return type !== "mammoth" && !isAircraftType(type);
+  return type !== "mammoth" && !isAircraftType(type) && !isNavalType(type);
+}
+
+/** Floats: the Attack Boat and the Submarine. Water tiles only. */
+export function isNavalType(type: EntityType): boolean {
+  return catalog(type).naval === true;
+}
+
+/** A building that must stand wholly on water: the Marine Base. */
+export function onWaterBuilding(type: EntityType): boolean {
+  return catalog(type).onWater === true;
+}
+
+/** The main gun is a torpedo tube. */
+export function torpedoesOf(type: EntityType): boolean {
+  return catalog(type).torpedoes === true;
+}
+
+/** Runs submerged and stays out of enemy sight unless spotted close or just fired. */
+export function submergesOf(type: EntityType): boolean {
+  return catalog(type).submerges === true;
 }
 
 export function armorLabel(type: EntityType): string | null {

@@ -3,6 +3,7 @@ import {
   hasTurret,
   isArmoredType,
   isInfantryType,
+  isNavalType,
   wadesOf,
   isMotorVehicle,
   REVERSE_TILES,
@@ -55,7 +56,9 @@ function tileFree(state: MatchState, e: Entity, x: number, y: number): boolean {
   const ty = worldToTile(y, ts);
   if (!inBounds(state, tx, ty)) return false;
   if (isWall(state, tx, ty)) return false;
-  if (isWater(state, tx, ty) && !isInfantryType(e.type) && !wadesOf(e.type)) return false;
+  if (isNavalType(e.type)) {
+    if (!isWater(state, tx, ty)) return false;
+  } else if (isWater(state, tx, ty) && !isInfantryType(e.type) && !wadesOf(e.type)) return false;
   if (isTree(state, tx, ty) && !walkable(state, tx, ty, e.type)) return false;
   const idx = tileIndex(state, tx, ty);
   const fort = state.fortBlock[idx] ?? 0;

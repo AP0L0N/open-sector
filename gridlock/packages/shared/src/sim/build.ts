@@ -7,6 +7,7 @@ import {
   isFieldStructure,
   isRotatableBuilding,
   isYardField,
+  onWaterBuilding,
   secondsToTicks,
   SELL_REFUND,
   type BuildingType,
@@ -17,8 +18,11 @@ import {
   destroyEntity,
   footprint,
   hasCore,
+  inBounds,
   inBuildRadius,
+  isWater,
   makeEntity,
+  occupant,
   tileNearOwnBuildings,
   tilesBlocked,
   tilesBlockedOrScrap,
@@ -239,6 +243,7 @@ export function buildingSiteError(
       return "Cannot place there.";
     }
   }
+  if (onWaterBuilding(type)) return waterSiteError(state, tx, ty, def.tileW, def.tileH);
   if (type === "smelter") {
     if (!smelterSiteOk(state, tx, ty)) {
       return tilesBlockedOrScrap(state, tx, ty, def.tileW, def.tileH) && !tilesBlocked(state, tx, ty, def.tileW, def.tileH)
@@ -250,6 +255,16 @@ export function buildingSiteError(
     return null;
   }
   return tilesBlockedOrScrap(state, tx, ty, def.tileW, def.tileH) ? "Cannot place there." : null;
+}
+
+/** A Marine Base floats: open water under every tile, and nothing standing there already. */
+function waterSiteError(state: MatchState, tx: number, ty: number, w: number, h: number): string | null {
+  for (const t of footprint(tx, ty, w, h)) {
+    if (!inBounds(state, t.x, t.y)) return "Cannot place there.";
+    if (!isWater(state, t.x, t.y)) return "A Marine Base has to stand on water.";
+    if (occupant(state, t.x, t.y) !== 0) return "Cannot place there.";
+  }
+  return null;
 }
 
 /** The quarter a building stands at. A Bunker or Watch Tower takes the nearest one to `facing`; the rest face east. */
