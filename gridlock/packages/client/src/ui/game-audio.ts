@@ -127,6 +127,9 @@ export function warmBattle(): void {
 }
 
 const FIRE_VOLUME = 0.55;
+/** Guns and rocket launchers whose report is mastered hot (spec "lufs") and plays at full weight. */
+const HEAVY_FIRE = new Set(["ss3", "nebelwerfer"]);
+const HEAVY_FIRE_VOLUME = 1;
 const IMPACT_VOLUME: Record<string, number> = {
   explosion_large: 0.75,
   explosion_small: 0.55,
@@ -146,7 +149,10 @@ export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number
         warmUnit(ev.type);
         const url = pick(unitFolder(ev.type), "sfx-fire");
         const mix = url ? mixAt(ev.x, ev.y) : null;
-        if (url && mix) playSample(url, mix, { volume: FIRE_VOLUME, maxVoices: 3 });
+        if (url && mix) {
+          const heavy = HEAVY_FIRE.has(ev.type);
+          playSample(url, mix, { volume: heavy ? HEAVY_FIRE_VOLUME : FIRE_VOLUME, maxVoices: 3, jitter: heavy ? 0.03 : undefined });
+        }
         break;
       }
       case "impact": {

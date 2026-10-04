@@ -13,3 +13,4 @@ tools/sprites/preview/*/
 # ElevenLabs voice design previews and Python caches.
 tools/audio/previews/
 tools/audio/__pycache__/
+tools/audio/raw/

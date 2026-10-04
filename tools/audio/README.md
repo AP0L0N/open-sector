@@ -63,5 +63,12 @@ aircraft are the pilot; machines (Walker, Cyborg) may sound processed or robotic
 | `special` | Unit-specific (deploy outriggers, torpedo launch, dive klaxon...) | optional |
 | `reload` | Optional | |
 
+**Heavy guns and rockets.** Their `fire` is a 5 s, plainly worded WW2 scene ("Distant, powerful
+boom of a World War 2 StuG III assault gun firing its 75mm cannon in an open field, ...") with
+`"lufs": -9`: build compresses it and drives it into a -1.5 dBFS limiter until it reaches that
+loudness, and the client plays those types at full volume (`HEAVY_FIRE` in `ui/game-audio.ts`).
+Every sound effect's untouched API take is kept in `raw/` (gitignored); after a mastering change,
+`build.py --remaster <specs>` re-masters from those takes without spending credits.
+
 Prompts say "no music, no voice" and describe distance ("close", "medium distance outdoors").
 Original voices and sounds only: no named real actors, no Westwood/EA material.

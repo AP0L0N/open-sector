@@ -46,10 +46,11 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "WWII assault gun 75mm cannon firing, sharp punchy boom with metallic ring and short echo, medium distance outdoors, no music, no voice",
-      "duration": 1.6,
+      "prompt": "Distant, powerful boom of a World War 2 StuG III assault gun firing its 75mm cannon in an open field, the blast rolling and echoing off the hills.",
+      "duration": 5.0,
       "variants": 3,
-      "influence": 0.65
+      "influence": 0.6,
+      "lufs": -9
     },
     "move": {
       "prompt": "Medium WWII armored vehicle engine revving and steel tracks pivoting on dirt, squealing turn and clanking, short one-shot, close, no music, no voice",

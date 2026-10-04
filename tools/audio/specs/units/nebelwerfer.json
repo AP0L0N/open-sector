@@ -46,10 +46,11 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Rippling salvo of rocket artillery launching in rapid succession, whooshing ignitions and eerie rising screaming rocket wails flying away, medium distance outdoors, no music, no voice",
-      "duration": 2.0,
+      "prompt": "Terrifying salvo of a World War 2 Nebelwerfer rocket launcher firing in an open field: six rockets launch one after another with a roaring whoosh, each shrieking and wailing like a scream as it climbs away into the distance.",
+      "duration": 5.0,
       "variants": 3,
-      "influence": 0.7
+      "influence": 0.6,
+      "lufs": -9
     },
     "move": {
       "prompt": "WWII military truck diesel engine revving and pulling away, rattling rocket tubes on the back, close, no music, no voice",

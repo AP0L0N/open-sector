@@ -23,7 +23,7 @@ Spec shape (every section optional):
         "stability": 0.4, "similarity": 0.8, "style": 0.45, "speed": 1.05
       },
       "lines": { "select": ["Rifleman here.", "[shouting] Ready!"], "move": [...], ... },
-      "sfx":   { "fire": {"prompt": "...", "duration": 0.8, "variants": 3, "influence": 0.6, "loop": false} },
+      "sfx":   { "fire": {"prompt": "...", "duration": 0.8, "variants": 3, "influence": 0.6, "loop": false, "lufs": -9} },
       "music": { "battle-1": {"prompt": "...", "length_ms": 150000} }
     }
 
@@ -53,6 +53,8 @@ HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 SPECS = HERE / "specs"
 VOICES = HERE / "voices"
+# Untouched API output, so a mastering change re-runs without spending credits (--remaster).
+RAW = HERE / "raw"
 ASSETS = ROOT / "gridlock/packages/client/src/assets/audio"
 
 FFMPEG = shutil.which("ffmpeg")
@@ -69,7 +71,7 @@ def trim_chain(threshold_db: int) -> str:
     return f"{rm},areverse,{rm},areverse"
 
 
-def finish(raw: bytes, out: pathlib.Path, kind: str) -> None:
+def finish(raw: bytes, out: pathlib.Path, kind: str, lufs: float | None = None) -> None:
     """Trim, normalize, and encode. Without ffmpeg the API mp3 is kept as is."""
     out.parent.mkdir(parents=True, exist_ok=True)
     if not FFMPEG:
@@ -78,6 +80,9 @@ def finish(raw: bytes, out: pathlib.Path, kind: str) -> None:
     if kind == "voice":
         af = f"highpass=f=90,{trim_chain(-45)},loudnorm=I=-15:TP=-1.5:LRA=7,apad=pad_dur=0.04"
         enc = ["-ac", "1", "-b:a", "96k"]
+    elif kind == "sfx" and lufs is not None:
+        master_heavy(raw, out, lufs)
+        return
     elif kind == "sfx":
         af = f"{trim_chain(-55)},loudnorm=I=-14:TP=-1:LRA=11"
         enc = ["-ac", "1", "-b:a", "112k"]
@@ -98,6 +103,54 @@ def finish(raw: bytes, out: pathlib.Path, kind: str) -> None:
             log(f"  ffmpeg failed on {out.name}, keeping raw: {r.stderr.strip()[:200]}")
             out.write_bytes(raw)
             return
+        shutil.move(str(tmp), out)
+
+
+HEAVY_CEILING_DB = -1.5  # leaves room for mp3 encoding overs
+HEAVY_MAX_DRIVE_DB = 14.0
+
+
+def _ff(args: list[str]) -> str:
+    return subprocess.run([FFMPEG, "-hide_banner", "-nostats", *args], capture_output=True, text=True).stderr
+
+
+def _measure(path: pathlib.Path) -> tuple[float, float]:
+    """(integrated LUFS, sample peak dBFS)."""
+    err = _ff(["-i", str(path), "-af", "ebur128,volumedetect", "-f", "null", "-"])
+    import re
+    lufs = float(re.findall(r"I:\s+(-?[\d.]+) LUFS", err)[-1])
+    peak = float(re.search(r"max_volume: (-?[\d.]+) dB", err)[1])
+    return lufs, peak
+
+
+def master_heavy(raw: bytes, out: pathlib.Path, lufs: float) -> None:
+    """
+    Gun and rocket reports, mastered hot ("lufs": -9): compress the body up under the
+    crack, then drive the whole thing into a brick-wall limiter, raising the drive until
+    the take reaches the target loudness. Plain loudnorm cannot do this on a sharp boom
+    with a long tail: it either clips or gives up several dB short.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        src = pathlib.Path(td) / "in.mp3"
+        src.write_bytes(raw)
+        body = pathlib.Path(td) / "body.wav"
+        _ff(["-y", "-i", str(src), "-af",
+             f"highpass=f=28,{trim_chain(-55)},acompressor=threshold=-24dB:ratio=4:attack=5:release=350:makeup=1",
+             "-ac", "1", "-ar", "44100", str(body)])
+        _, peak = _measure(body)
+        drive = 4.0
+        tmp = pathlib.Path(td) / "out.mp3"
+        ceiling = 10 ** (HEAVY_CEILING_DB / 20)
+        for _ in range(4):
+            gain = HEAVY_CEILING_DB - peak + drive
+            _ff(["-y", "-i", str(body), "-af",
+                 f"volume={gain:.2f}dB,alimiter=limit={ceiling:.4f}:attack=1:release=90:level=false",
+                 "-ar", "44100", "-ac", "1", "-b:a", "160k", str(tmp)])
+            got, _ = _measure(tmp)
+            if abs(got - lufs) < 0.7 or drive >= HEAVY_MAX_DRIVE_DB:
+                break
+            drive = max(0.0, min(HEAVY_MAX_DRIVE_DB, drive + (lufs - got)))
+        out.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(tmp), out)
 
 
@@ -177,7 +230,8 @@ def run_job(el: ElevenLabs, spec: dict, voice_id: str | None, job: tuple) -> str
         elif kind == "sfx":
             raw = el.sfx(arg["prompt"], duration=arg.get("duration"),
                          influence=arg.get("influence", 0.55), loop=arg.get("loop", False))
-            finish(raw, path, "loop" if arg.get("loop") else "sfx")
+            keep_raw(rel, raw)
+            finish(raw, path, "loop" if arg.get("loop") else "sfx", arg.get("lufs"))
         else:
             raw = el.music(arg["prompt"], length_ms=int(arg.get("length_ms", 120_000)))
             finish(raw, path, "music")
@@ -186,6 +240,26 @@ def run_job(el: ElevenLabs, spec: dict, voice_id: str | None, job: tuple) -> str
     except Exception as e:  # keep going; a rerun picks up what is missing
         log(f"  FAIL {rel}: {e}")
         return "fail"
+
+
+def keep_raw(rel: pathlib.Path, raw: bytes) -> None:
+    p = RAW / rel
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(raw)
+
+
+def remaster(paths: list[pathlib.Path]) -> None:
+    """Re-run mastering on every sound effect that has a kept raw take. No API calls."""
+    for sp in paths:
+        spec = json.loads(sp.read_text())
+        out_dir = ASSETS / spec.get("out", spec["key"])
+        for event, s in spec.get("sfx", {}).items():
+            for i in range(1, int(s.get("variants", 1)) + 1):
+                path = out_dir / f"sfx-{event}-{i}.mp3"
+                raw = RAW / path.relative_to(ASSETS)
+                if raw.exists():
+                    finish(raw.read_bytes(), path, "loop" if s.get("loop") else "sfx", s.get("lufs"))
+                    log(f"  remastered {path.relative_to(ASSETS)}")
 
 
 def build(paths: list[pathlib.Path], workers: int, force: bool, dry: bool) -> int:
@@ -219,10 +293,14 @@ def main() -> None:
     ap.add_argument("--workers", type=int, default=3)
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--remaster", action="store_true", help="re-master kept raw sound effects only, no API calls")
     a = ap.parse_args()
     paths = sorted(SPECS.rglob("*.json")) if a.all else a.specs
     if not paths:
         ap.error("give spec files or --all")
+    if a.remaster:
+        remaster(paths)
+        return
     fails = build(paths, a.workers, a.force, a.dry_run)
     if fails:
         log(f"{fails} file(s) failed; rerun to retry just those")
