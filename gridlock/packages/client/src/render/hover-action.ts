@@ -253,5 +253,7 @@ function isAttackTarget(
   if (occ && occ !== you && !allied(occ)) return true;
   if (hit.ownerId === you || allied(hit.ownerId)) return false;
   if (isCivilianType(hit.type)) return false;
+  // An untaken map defence: walk in or take cover behind it. Force-attack still shells it.
+  if (hit.kind === "building" && !hit.ownerId) return false;
   return true;
 }

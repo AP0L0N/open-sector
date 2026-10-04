@@ -233,7 +233,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     const friendly = allies(state, youPlayerId, e.ownerId);
     if (e.garrisonedIn && !friendly) continue;
     if (!friendly && !entityOnMask(e, vis, state.width, state.height, state.tileSize)) {
-      if (e.kind === "building" && isCivilianType(e.type)) entities.push(sceneryView(e));
+      // Houses and untaken map defences are part of the ground: their shape shows through the fog.
+      if (e.kind === "building" && (isCivilianType(e.type) || e.ownerId === NEUTRAL_OWNER)) entities.push(sceneryView(e));
       continue;
     }
     const job = e.queue[0];

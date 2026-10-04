@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 82;
+export const PROTOCOL_VERSION = 83;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -570,6 +570,12 @@ export type ClientMessage =
    */
   | { type: "map.save"; map: CustomMapSpec; key: string }
   | { type: "map.delete"; id: string; key: string }
+  /**
+   * Map Builder play test. The hub loads the unsaved sheet as a private map
+   * (id from `newPlaytestMapId`), seats the sender alone, and starts at once.
+   * One start position is enough.
+   */
+  | { type: "map.test"; map: CustomMapSpec }
   | { type: "chat"; text: string }
   /** `queue`: Shift-queued. The unit runs it after its current and earlier queued orders finish. */
   /** `facing`: world radians the unit turns to after it arrives. A held move click sets it. */

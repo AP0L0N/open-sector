@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import type { ServerMessage } from "@gridlock/shared";
-import { step, stepMatch } from "@gridlock/shared";
+import type { CustomMapSpec, ServerMessage } from "@gridlock/shared";
+import { HEIGHT_BASE, TILE_EMPTY, TILE_SUBDIV, encodeRuns, getMap, newPlaytestMapId, step, stepMatch } from "@gridlock/shared";
 import { Hub } from "./room.js";
 
 function client(hub: Hub, id: string) {
@@ -291,6 +291,64 @@ describe("hub rooms", () => {
       assert.equal(loaded.players.has("A"), false);
       assert.equal(loaded.players.has("ai:1"), true);
       assert.equal([...loaded.entities.values()].some((e) => e.ownerId === "B" && e.type === "rig"), true);
+    } finally {
+      hub.shutdown();
+    }
+  });
+});
+
+describe("hub map builder play test", () => {
+  function testSheet(id: string, spawns: { id: number; x: number; y: number }[]): CustomMapSpec {
+    const side = 48 * TILE_SUBDIV;
+    const n = side * side;
+    return {
+      id,
+      name: "Sketch",
+      author: "",
+      width: side,
+      height: side,
+      maxPlayers: 4,
+      tiles: encodeRuns(new Array(n).fill(TILE_EMPTY)),
+      heights: encodeRuns(new Array(n).fill(HEIGHT_BASE)),
+      spawns,
+      features: [{ type: "tower", x: 64, y: 64, facing: 0 }],
+      updatedAt: 0,
+    };
+  }
+
+  it("drops the tester alone onto an unsaved sheet with one start, then forgets it", () => {
+    const hub = new Hub();
+    try {
+      const a = client(hub, "A");
+      const other = client(hub, "B");
+      hub.handle("A", { type: "hello", name: "Alpha" });
+      const id = newPlaytestMapId();
+      hub.handle("A", { type: "map.test", map: testSheet(id, [{ id: 2, x: 30, y: 30 }]) });
+      assert.deepEqual(a.of("room.error"), []);
+      const start = a.of("match.start")[0];
+      assert.ok(start, "the match starts without a lobby step");
+      assert.equal(start.match.mapId, id);
+      const rigs = start.match.entities.filter((e) => e.type === "rig");
+      assert.equal(rigs.length, 1);
+      assert.equal(rigs[0]?.ownerId, "A");
+      assert.equal(hub.rooms.get(hub.sessions.get("A")!.roomId!)?.mode, "skirmish");
+      assert.equal(other.of("map.upsert").length, 0, "a play test is not announced");
+      assert.equal(hub.maps.has(id), false, "a play test is not stored");
+      hub.handle("A", { type: "room.leave" });
+      assert.equal(getMap(id), undefined, "leaving drops the sheet");
+    } finally {
+      hub.shutdown();
+    }
+  });
+
+  it("refuses a sheet with no start, or a play test under a saved map's id", () => {
+    const hub = new Hub();
+    try {
+      const a = client(hub, "A");
+      hub.handle("A", { type: "map.test", map: testSheet(newPlaytestMapId(), []) });
+      hub.handle("A", { type: "map.test", map: testSheet("c-savedmap01", [{ id: 1, x: 30, y: 30 }]) });
+      assert.equal(a.of("room.error").length, 2);
+      assert.equal(a.of("match.start").length, 0);
     } finally {
       hub.shutdown();
     }

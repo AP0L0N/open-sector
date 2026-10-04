@@ -28,18 +28,49 @@ export interface MapDef {
   heights: number[];
   /** Max of `heights`. Cached so render/pick do not scan the map. */
   maxHeight: number;
-  /** Civilian houses. Tile origin is the fine-grid top-left. */
+  /** Civilian houses and neutral defences. See `featureBox` for where each sits. */
   features: MapFeature[];
   /** Set on maps made in the Map Builder. Built-in maps leave it out and cannot be edited. */
   custom?: { author: string; updatedAt: number };
 }
 
+/** Defences a map stands on the field, neutral until someone takes them. */
+export type MapDefenceType = "bunker" | "tower" | "sandbags" | "wall";
+export const MAP_DEFENCE_TYPES: readonly MapDefenceType[] = ["bunker", "tower", "sandbags", "wall"];
+/** Map defences laid as a line section rather than on a building lot. */
+export type MapSectionType = "sandbags" | "wall";
+export type MapFeatureType = CivilianType | MapDefenceType;
+
 export interface MapFeature {
-  type: CivilianType;
+  type: MapFeatureType;
   x: number;
   y: number;
-  /** Cardinal face. 0 = east, then south, west, north. */
+  /** Cardinal face. 0 = east, then south, west, north. A section looks this way and runs across it. */
   facing: number;
+}
+
+export function isMapSection(type: string): type is MapSectionType {
+  return type === "sandbags" || type === "wall";
+}
+
+/** Fine tiles a map section covers along its run, centred on its own tile. */
+export const MAP_SECTION_TILES = 3;
+
+/** Fine-tile box of a feature, end exclusive. A lot's origin is its top-left; a section's is its centre. */
+export function featureBox(f: MapFeature): { x0: number; y0: number; x1: number; y1: number } {
+  if (isMapSection(f.type)) {
+    const half = (MAP_SECTION_TILES - 1) / 2;
+    // Looking east or west, the section runs north-south.
+    if ((f.facing & 1) === 0) return { x0: f.x, y0: f.y - half, x1: f.x + 1, y1: f.y + half + 1 };
+    return { x0: f.x - half, y0: f.y, x1: f.x + half + 1, y1: f.y + 1 };
+  }
+  const def = catalog(f.type);
+  return { x0: f.x, y0: f.y, x1: f.x + def.tileW, y1: f.y + def.tileH };
+}
+
+/** Houses, bunkers, and towers: the features that stand on a levelled lot. */
+export function lotFeatures(features: readonly MapFeature[]): MapFeature[] {
+  return features.filter((f) => !isMapSection(f.type));
 }
 
 export const TILE_EMPTY = 0;
@@ -1781,9 +1812,9 @@ export function normalizeTerrain(
     heights[i] = Math.max(0, Math.min(HEIGHT_MAX, Math.round(heights[i] ?? HEIGHT_BASE)));
   }
   for (const f of features) {
-    const def = catalog(f.type);
-    for (let y = f.y; y < Math.min(height, f.y + def.tileH); y++) {
-      for (let x = f.x; x < Math.min(width, f.x + def.tileW); x++) tiles[idx(width, x, y)] = TILE_EMPTY;
+    const b = featureBox(f);
+    for (let y = Math.max(0, b.y0); y < Math.min(height, b.y1); y++) {
+      for (let x = Math.max(0, b.x0); x < Math.min(width, b.x1); x++) tiles[idx(width, x, y)] = TILE_EMPTY;
     }
   }
   const r = SPAWN_PAD_R;
@@ -1807,7 +1838,7 @@ export function normalizeTerrain(
       locked[i] = 1;
     }
   }
-  const coarse = features.map((f) => ({ ...f, x: Math.floor(f.x / TILE_SUBDIV), y: Math.floor(f.y / TILE_SUBDIV) }));
+  const coarse = lotFeatures(features).map((f) => ({ ...f, x: Math.floor(f.x / TILE_SUBDIV), y: Math.floor(f.y / TILE_SUBDIV) }));
   levelHouseLots(heights, tiles, width, height, coarse, locked);
   relaxSlopes(heights, width, height, locked);
 }
@@ -1837,8 +1868,18 @@ export function getMap(id: string): MapDef | undefined {
 }
 
 /** Built-in maps first, then custom maps by name. */
+/** Map Builder play tests run on a private map with this id prefix. It is never saved or listed. */
+export const PLAYTEST_MAP_PREFIX = "c-playtest";
+
+export function isPlaytestMapId(id: string): boolean {
+  return id.startsWith(PLAYTEST_MAP_PREFIX);
+}
+
+/** Maps a lobby or the builder offers. A running play test's sheet is not one of them. */
 export function listMaps(): MapDef[] {
-  const custom = [...CUSTOM_MAPS.values()].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+  const custom = [...CUSTOM_MAPS.values()]
+    .filter((m) => !isPlaytestMapId(m.id))
+    .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
   return [...Object.values(MAPS), ...custom];
 }
 

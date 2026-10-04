@@ -12,7 +12,7 @@ import {
   START_SCRAP,
   TICK_DT,
 } from "../catalog.js";
-import { getMap } from "../maps.js";
+import { getMap, isMapSection } from "../maps.js";
 import { commanders } from "../lobby.js";
 import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
 import type { ImpactView, RoomState } from "../protocol.js";
@@ -25,7 +25,7 @@ import { tickCapture } from "./capture.js";
 import { detachGarrisoned, killGarrison, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
 import { seedRng } from "./rng.js";
 import { tickBuild } from "./build.js";
-import { restampForts, tickField } from "./field.js";
+import { raiseWallCrest, restampForts, tickField } from "./field.js";
 import { tickCombat, tickPatrol, tickProjectiles } from "./combat.js";
 import { tickSmoke } from "./smoke.js";
 import { maybeCookOff, tickFires } from "./flame.js";
@@ -42,7 +42,7 @@ import { tickWalkerCharge } from "./walker-charge.js";
 import { tickOrderQueue } from "./commands.js";
 import { tickTrain } from "./train.js";
 import { tickSpotlights } from "./night.js";
-import type { MatchState, SimPlayer } from "./types.js";
+import type { Entity, MatchState, SimPlayer } from "./types.js";
 import { leaveCorpse } from "./remains.js";
 import { toWreck } from "./wreck.js";
 
@@ -125,14 +125,27 @@ export function createMatch(
     });
   }
 
+  // Houses and map defences stand neutral. A defence changes hands when someone takes it.
+  const sections: Entity[] = [];
   for (const f of map.features ?? []) {
+    const facing = ((f.facing ?? 0) * Math.PI) / 2;
+    if (isMapSection(f.type)) {
+      const s = makeEntity(state, f.type, NEUTRAL_OWNER, tileCenter(f.x, map.tileSize), tileCenter(f.y, map.tileSize), { facing });
+      s.turretFacing = facing;
+      sections.push(s);
+      continue;
+    }
     const def = catalog(f.type);
     const c = buildingCenter(f.x, f.y, def.tileW, def.tileH, map.tileSize);
     makeEntity(state, f.type, NEUTRAL_OWNER, c.x, c.y, {
       tileX: f.x,
       tileY: f.y,
-      facing: ((f.facing ?? 0) * Math.PI) / 2,
+      facing,
     });
+  }
+  if (sections.length > 0) {
+    raiseWallCrest(state, sections);
+    restampForts(state);
   }
 
   return state;

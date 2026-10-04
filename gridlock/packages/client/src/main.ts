@@ -1,6 +1,6 @@
 import "./style/ra-feel.css";
 import type { CustomMapSpec, ServerMessage } from "@gridlock/shared";
-import { DEFAULT_MAP_ID, getMap, listMaps, loadCustomMap, unregisterMap } from "@gridlock/shared";
+import { DEFAULT_MAP_ID, getMap, isPlaytestMapId, listMaps, loadCustomMap, unregisterMap } from "@gridlock/shared";
 import { GameSocket } from "./net/client.js";
 import type { Ctx, Screen } from "./ctx.js";
 import { bindClicks, getMusic, getSfx, setMusic, setSfx } from "./ui/audio.js";
@@ -229,6 +229,8 @@ function onMessage(msg: ServerMessage): void {
       ctx.banner = "";
       ctx.pendingJoin = null;
       ctx.pendingSkirmish = false;
+      // A Map Builder play test starts the moment its room exists: no lobby in between.
+      if (isPlaytestMapId(msg.room.mapId) && msg.room.phase === "lobby") break;
       if (
         ctx.screen === "play" ||
         ctx.screen === "menu" ||
@@ -311,7 +313,7 @@ function onMessage(msg: ServerMessage): void {
     case "maps.custom": {
       const keep = new Set(msg.maps.map((m) => m.id));
       for (const m of listMaps()) {
-        if (m.custom && !keep.has(m.id)) {
+        if (m.custom && !keep.has(m.id) && !isPlaytestMapId(m.id)) {
           unregisterMap(m.id);
           forgetTerrain(m.id);
         }

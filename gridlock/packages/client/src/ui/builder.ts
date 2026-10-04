@@ -17,15 +17,23 @@ import {
   TILE_SUBDIV,
   TILE_TREE,
   TILE_WATER,
+  MAP_DEFENCE_TYPES,
+  MAP_SECTION_TILES,
   catalog,
   featureBox,
   getMap,
+  isCivilianType,
+  isMapSection,
   listMaps,
+  loadCustomMap,
   newCustomMapId,
+  newPlaytestMapId,
   rollHeights,
   specFromMap,
   type CivilianType,
+  type MapDefenceType,
   type MapFeature,
+  type MapFeatureType,
 } from "@gridlock/shared";
 import type { Ctx } from "../ctx.js";
 import { forgetTerrain } from "../render/terrain.js";
@@ -48,7 +56,7 @@ const UNDO_DEPTH = 40;
 /** Raise / Lower apply one step this often while the button is held. */
 const LIFT_EVERY_MS = 70;
 
-type ToolId = "raise" | "lower" | "level" | "ground" | "house" | "spawn" | "erase";
+type ToolId = "select" | "raise" | "lower" | "level" | "ground" | "house" | "defence" | "spawn" | "erase";
 
 interface GroundKind {
   tile: number;
@@ -77,10 +85,14 @@ interface Tool {
   id: ToolId;
   tile: number;
   house: CivilianType;
+  defence: MapDefenceType;
   facing: number;
   brush: number;
   level: number;
 }
+
+/** What the Select tool holds: a placed building or defence by index, or a start by number. */
+type Selection = { kind: "feature"; index: number } | { kind: "spawn"; id: number };
 
 interface Stage {
   root: HTMLElement;
@@ -90,16 +102,19 @@ interface Stage {
   msg: HTMLElement;
   checks: HTMLElement | null;
   maps: HTMLElement | null;
+  /** What the Select tool holds, and its Turn / Delete buttons. */
+  sel: HTMLElement | null;
 }
 
 let sheet: M.Sheet | null = null;
 let dirty = false;
 let newOpen = false;
 let msg = { text: "", tone: "" as "" | "bad" | "good" };
-let pendingSave: { id: string; test: boolean } | null = null;
+let pendingSave: string | null = null;
 const undo: M.SheetMark[] = [];
 const redo: M.SheetMark[] = [];
-const tool: Tool = { id: "raise", tile: TILE_WATER, house: "cottage", facing: 1, brush: 6, level: HEIGHT_BASE };
+const tool: Tool = { id: "raise", tile: TILE_WATER, house: "cottage", defence: "bunker", facing: 1, brush: 6, level: HEIGHT_BASE };
+let selected: Selection | null = null;
 const view = { zoom: 0, px: 0, py: 0 };
 let hover: { x: number; y: number; inside: boolean } = { x: 0, y: 0, inside: false };
 let stage: Stage | null = null;
@@ -181,6 +196,7 @@ function openSheet(next: M.Sheet, isDirty: boolean): void {
   undo.length = 0;
   redo.length = 0;
   newOpen = false;
+  selected = null;
   view.zoom = 0;
   ground = null;
   previewStale = true;
@@ -192,6 +208,7 @@ function step(from: M.SheetMark[], to: M.SheetMark[]): void {
   if (!mark) return;
   to.push(M.markSheet(sheet));
   M.restoreSheet(sheet, mark);
+  selected = null;
   changed();
   if (ctxRef) mountOrRefresh(ctxRef);
 }
@@ -274,6 +291,13 @@ function repaintGround(): void {
 
 // --- stage drawing -------------------------------------------------------------
 
+/** Fill and edge on the plan: houses in brick, concrete defences in grey, sandbags in burlap. */
+function featureColors(type: MapFeatureType): [string, string] {
+  if (isCivilianType(type)) return ["#c9a27a", "#2a1810"];
+  if (type === "sandbags") return ["#b9a06a", "#3a2c14"];
+  return ["#9c9a90", "#1d1c18"];
+}
+
 function fitView(canvas: HTMLCanvasElement, s: M.Sheet): void {
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
@@ -291,9 +315,22 @@ function queueDraw(): void {
   });
 }
 
+/** The building or defence the placing tools would set down. */
+function placingType(): MapFeatureType | null {
+  if (tool.id === "house") return tool.house;
+  if (tool.id === "defence") return tool.defence;
+  return null;
+}
+
 function houseGhost(): MapFeature | null {
-  if (!sheet || tool.id !== "house" || !hover.inside) return null;
-  return M.houseAt(tool.house, hover.x, hover.y, tool.facing);
+  const type = placingType();
+  if (!sheet || !type || !hover.inside) return null;
+  return M.houseAt(type, hover.x, hover.y, tool.facing);
+}
+
+function selectedFeature(): MapFeature | null {
+  if (!sheet || selected?.kind !== "feature") return null;
+  return sheet.features[selected.index] ?? null;
 }
 
 function drawStage(): void {
@@ -359,7 +396,7 @@ function drawStage(): void {
     c.beginPath();
     c.arc(mx + dx! * reach, my + dy! * reach, Math.max(1.5, z * 0.9), 0, Math.PI * 2);
     c.fill();
-    if (bw > 26) {
+    if (bw > 26 && bh > 26) {
       c.font = `600 ${Math.min(13, Math.max(9, bw / 5))}px Oswald, sans-serif`;
       c.textAlign = "center";
       c.textBaseline = "middle";
@@ -367,7 +404,22 @@ function drawStage(): void {
       c.fillText(catalog(f.type).name.toUpperCase(), mx, my);
     }
   };
-  for (const f of s.features) drawHouse(f, "#c9a27a", "#2a1810");
+  const frame = (f: MapFeature, color: string): void => {
+    const b = featureBox(f);
+    c.setLineDash([4, 3]);
+    c.strokeStyle = color;
+    c.lineWidth = 2;
+    c.strokeRect(sx(b.x0) - 3, sy(b.y0) - 3, (b.x1 - b.x0) * z + 6, (b.y1 - b.y0) * z + 6);
+    c.setLineDash([]);
+  };
+  for (const f of s.features) drawHouse(f, ...featureColors(f.type));
+  const picked = selectedFeature();
+  if (picked) frame(picked, "#e8b84a");
+  if (tool.id === "select" && hover.inside && !drag) {
+    const fi = M.featureIndexAt(s, hover.x, hover.y);
+    const f = fi >= 0 ? s.features[fi] : undefined;
+    if (f && f !== picked) frame(f, "rgba(255,244,220,0.7)");
+  }
 
   const r = Math.max(8, Math.min(16, z * 3));
   c.textAlign = "center";
@@ -389,6 +441,14 @@ function drawStage(): void {
     c.strokeStyle = "#e8b84a";
     c.lineWidth = 2.5;
     c.stroke();
+    if (selected?.kind === "spawn" && selected.id === sp.id) {
+      c.setLineDash([4, 3]);
+      c.lineWidth = 2;
+      c.beginPath();
+      c.arc(x, y, r + 5, 0, Math.PI * 2);
+      c.stroke();
+      c.setLineDash([]);
+    }
     c.fillStyle = "#e8b84a";
     c.font = `700 ${Math.round(r * 1.2)}px "Share Tech Mono", monospace`;
     c.fillText(String(sp.id), x, y + 1);
@@ -412,7 +472,7 @@ function drawStage(): void {
         c.stroke();
         c.setLineDash([]);
       }
-    } else if (tool.id !== "erase") {
+    } else if (tool.id !== "erase" && tool.id !== "select") {
       c.strokeStyle = "#fff4dc";
       c.lineWidth = 1.5;
       c.beginPath();
@@ -427,6 +487,9 @@ function drawStage(): void {
 type Drag =
   | { kind: "brush"; lastX: number; lastY: number; timer: ReturnType<typeof setInterval> | null }
   | { kind: "spawn"; id: number; moved: boolean }
+  | { kind: "move"; index: number; from: MapFeature; startX: number; startY: number; moved: boolean }
+  /** A sandbag or wall line: sections end to end along the drag, `done` holds the steps laid. */
+  | { kind: "lay"; x0: number; y0: number; axis: "x" | "y" | null; first: number; done: Set<number> }
   | { kind: "pan"; x: number; y: number; px: number; py: number }
   | { kind: "erase" };
 
@@ -455,14 +518,95 @@ function eraseAt(x: number, y: number): boolean {
   const fi = M.featureIndexAt(s, x, y);
   if (fi >= 0) {
     s.features.splice(fi, 1);
+    selected = null;
     return true;
   }
   const si = M.spawnIndexAt(s, x, y);
   if (si >= 0) {
     s.spawns.splice(si, 1);
+    selected = null;
     return true;
   }
   return false;
+}
+
+/** Remove whatever the Select tool holds. */
+function deleteSelected(): void {
+  const s = sheet;
+  if (!s || !selected) return;
+  pushUndo();
+  if (selected.kind === "feature") {
+    const f = s.features[selected.index];
+    s.features.splice(selected.index, 1);
+    say(f ? `${catalog(f.type).name} removed.` : "");
+  } else {
+    const id = selected.id;
+    s.spawns = s.spawns.filter((sp) => sp.id !== id);
+    say(`Start ${id} removed.`);
+  }
+  selected = null;
+  finishStroke();
+  paintSelection();
+}
+
+/** Give the selected building or defence a quarter turn. */
+function turnSelected(): void {
+  const s = sheet;
+  if (!s || selected?.kind !== "feature") return;
+  pushUndo();
+  const problem = M.turnFeature(s, selected.index);
+  if (problem) {
+    undo.pop();
+    say(`Cannot turn it here: ${problem.toLowerCase()}`, "bad");
+    return;
+  }
+  say("");
+  finishStroke();
+}
+
+/** Set down one building or defence from the placing tools. False when the spot is refused. */
+function placeAt(x: number, y: number, quiet: boolean, facing = tool.facing): boolean {
+  const s = sheet;
+  const type = placingType();
+  if (!s || !type) return false;
+  const f = M.houseAt(type, x, y, facing);
+  const problem = M.houseProblem(s, f);
+  if (problem) {
+    if (!quiet) say(problem, "bad");
+    return false;
+  }
+  s.features.push(f);
+  return true;
+}
+
+/**
+ * Grow a sandbag or wall line toward the cursor. The first move past two
+ * tiles picks the axis; every section then runs along it, end to end from
+ * the press point, looking to the side the tool faces.
+ */
+function layLine(s: M.Sheet, d: Extract<Drag, { kind: "lay" }>, x: number, y: number): void {
+  const dx = x - d.x0;
+  const dy = y - d.y0;
+  if (!d.axis) {
+    if (Math.max(Math.abs(dx), Math.abs(dy)) < 2) return;
+    d.axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
+  }
+  // Running along x, a section looks north or south (odd facing); along y, east or west.
+  const odd = d.axis === "x" ? 1 : 0;
+  const facing = (tool.facing & 1) === odd ? tool.facing : (tool.facing + 1) & 3;
+  const first = s.features[d.first];
+  if (first && first.facing !== facing) {
+    const turned = { ...first, facing };
+    if (!M.houseProblem(s, turned, d.first)) s.features[d.first] = turned;
+  }
+  const k = Math.round((d.axis === "x" ? dx : dy) / MAP_SECTION_TILES);
+  const dir = Math.sign(k);
+  for (let j = dir; dir !== 0 && Math.abs(j) <= Math.abs(k); j += dir) {
+    if (d.done.has(j)) continue;
+    d.done.add(j);
+    const at = j * MAP_SECTION_TILES;
+    placeAt(d.axis === "x" ? d.x0 + at : d.x0, d.axis === "y" ? d.y0 + at : d.y0, true, facing);
+  }
 }
 
 function finishStroke(): void {
@@ -489,20 +633,43 @@ function onDown(e: PointerEvent): void {
     say(`Level set to ${tool.level}.`);
     return;
   }
-  if (tool.id === "erase" || (e.shiftKey && (tool.id === "house" || tool.id === "spawn"))) {
+  if (tool.id === "erase" || (e.shiftKey && (tool.id === "house" || tool.id === "defence" || tool.id === "spawn" || tool.id === "select"))) {
     pushUndo();
     if (eraseAt(t.x, t.y)) finishStroke();
+    else undo.pop();
     drag = { kind: "erase" };
+    paintSelection();
     return;
   }
-  if (tool.id === "house") {
-    const f = M.houseAt(tool.house, t.x, t.y, tool.facing);
-    const problem = M.houseProblem(s, f);
-    if (problem) return say(problem, "bad");
-    pushUndo();
-    s.features.push(f);
+  if (tool.id === "select") {
+    const fi = M.featureIndexAt(s, t.x, t.y);
+    const si = fi < 0 ? M.spawnIndexAt(s, t.x, t.y) : -1;
+    if (fi >= 0) {
+      selected = { kind: "feature", index: fi };
+      pushUndo();
+      drag = { kind: "move", index: fi, from: { ...s.features[fi]! }, startX: t.x, startY: t.y, moved: false };
+    } else if (si >= 0) {
+      selected = { kind: "spawn", id: s.spawns[si]!.id };
+      pushUndo();
+      drag = { kind: "spawn", id: s.spawns[si]!.id, moved: false };
+    } else {
+      selected = null;
+    }
     say("");
-    finishStroke();
+    paintSelection();
+    return;
+  }
+  if (tool.id === "house" || tool.id === "defence") {
+    pushUndo();
+    if (!placeAt(t.x, t.y, false)) {
+      undo.pop();
+      return;
+    }
+    say("");
+    // A sandbag or wall line keeps going while the button is held.
+    if (isMapSection(tool.defence) && tool.id === "defence") {
+      drag = { kind: "lay", x0: t.x, y0: t.y, axis: null, first: s.features.length - 1, done: new Set([0]) };
+    } else finishStroke();
     return;
   }
   if (tool.id === "spawn") {
@@ -570,6 +737,14 @@ function onMove(e: PointerEvent): void {
     repaintGround();
   } else if (drag?.kind === "erase" && t.inside) {
     if (eraseAt(t.x, t.y)) finishStroke();
+  } else if (drag?.kind === "move" && t.inside) {
+    // Holds the last spot that fit; a refused one leaves it where it was.
+    if (!M.moveFeature(s, drag.index, drag.from, t.x - drag.startX, t.y - drag.startY)) {
+      const f = s.features[drag.index]!;
+      drag.moved = f.x !== drag.from.x || f.y !== drag.from.y;
+    }
+  } else if (drag?.kind === "lay" && t.inside) {
+    layLine(s, drag, t.x, t.y);
   } else if (drag?.kind === "spawn" && t.inside) {
     const moving = drag;
     const sp = s.spawns.find((o) => o.id === moving.id);
@@ -589,10 +764,24 @@ function onUp(): void {
   if (d.kind === "brush") {
     if (d.timer) clearInterval(d.timer);
     finishStroke();
+  } else if (d.kind === "lay") {
+    finishStroke();
+  } else if (d.kind === "move") {
+    if (!d.moved) {
+      undo.pop();
+      say("Drag to move it. R turns it, Delete removes it.");
+      return;
+    }
+    say("");
+    finishStroke();
   } else if (d.kind === "spawn") {
     if (!d.moved) {
       undo.pop();
-      say("Drag a start to move it. Shift+click or the Eraser removes it.");
+      say(
+        tool.id === "select"
+          ? "Drag a start to move it. Delete removes it."
+          : "Drag a start to move it. Shift+click or the Eraser removes it.",
+      );
       return;
     }
     const dropped = sheet ? M.clearPadHouses(sheet) : 0;
@@ -644,7 +833,9 @@ function paintChecks(): void {
   add(scrap > 0 ? "ok" : "warn", scrap > 0 ? `Scrap: ${scrap} tiles` : "No scrap yet: nowhere to stand a Smelter");
   const far = M.startsFarFromScrap(s);
   if (far.length > 0) add("warn", `Starts with no scrap in yard range: ${far.join(", ")} (an engineer would have to walk out)`);
-  add("ok", `Buildings: ${s.features.length}`);
+  const defences = M.defenceCount(s);
+  add("ok", `Buildings: ${s.features.length - defences} · Neutral defences: ${defences}`);
+  add(s.spawns.length > 0 ? "ok" : "warn", s.spawns.length > 0 ? "Play test: ready" : "Play test: place a start first");
   const problem = M.sheetProblem(s);
   if (problem && !problem.startsWith("Place all")) add("bad", problem);
   add(dirty ? "warn" : "ok", dirty ? "Unsaved changes" : "Saved");
@@ -652,7 +843,7 @@ function paintChecks(): void {
 
 // --- save / load -------------------------------------------------------------
 
-function save(ctx: Ctx, opts: { copy?: boolean; test?: boolean } = {}): void {
+function save(ctx: Ctx, opts: { copy?: boolean } = {}): void {
   const s = sheet;
   if (!s) return;
   if (!ctx.net.connected) return say("Not linked to the hub. Maps save on the server.", "bad");
@@ -661,29 +852,41 @@ function save(ctx: Ctx, opts: { copy?: boolean; test?: boolean } = {}): void {
     if (!/ copy$/i.test(s.name)) s.name = `${s.name} copy`.slice(0, 32);
     dirty = true;
   }
-  if (!opts.copy && !dirty && opts.test && getMap(s.id)) {
-    ctx.enterSkirmish(s.id);
-    return;
-  }
   const problem = M.sheetProblem(s);
   if (problem) return say(problem, "bad");
-  pendingSave = { id: s.id, test: Boolean(opts.test) };
+  pendingSave = s.id;
   say("Saving…");
   ctx.net.send({ type: "map.save", map: M.sheetToSpec(s), key: mapKey() });
+}
+
+/**
+ * Drop straight into the sheet as it stands, alone, on the first start. The
+ * map is not saved; Esc in the fight offers the way back here.
+ */
+function playtest(ctx: Ctx): void {
+  const s = sheet;
+  if (!s) return;
+  if (!ctx.net.connected) return say("Not linked to the hub. A play test runs on the server.", "bad");
+  const problem = M.playtestProblem(s);
+  if (problem) return say(problem, "bad");
+  const spec = M.playtestSpec(s, newPlaytestMapId());
+  // Both ends build the same map from the same sheet.
+  const loaded = loadCustomMap(spec, { playtest: true });
+  if (!loaded.ok) return say(loaded.message, "bad");
+  forgetTerrain(spec.id);
+  say("Starting play test…");
+  ctx.playMode = "skirmish";
+  ctx.net.send({ type: "hello", name: ctx.name });
+  ctx.net.send({ type: "map.test", map: spec });
 }
 
 /** The hub stored our map. */
 export function builderMapSaved(ctx: Ctx, id: string): void {
   claimMap(id);
-  if (!pendingSave || pendingSave.id !== id) return;
-  const test = pendingSave.test;
+  if (pendingSave !== id) return;
   pendingSave = null;
   if (sheet?.id === id) dirty = false;
   say(`Saved "${getMap(id)?.name ?? id}". It is in every lobby's map list now.`, "good");
-  if (test) {
-    ctx.enterSkirmish(id);
-    return;
-  }
   if (ctx.screen === "builder") mountOrRefresh(ctx);
 }
 
@@ -733,7 +936,7 @@ function asset(label: string, sub: string, on: boolean, art: Node, title: string
   return b;
 }
 
-function houseThumb(type: CivilianType, facing: number): HTMLCanvasElement {
+function houseThumb(type: CivilianType | "bunker" | "tower", facing: number): HTMLCanvasElement {
   const cv = el("canvas");
   cv.width = 96;
   cv.height = 76;
@@ -756,8 +959,63 @@ function setTool(ctx: Ctx, patch: Partial<Tool>): void {
   mountOrRefresh(ctx);
 }
 
+/** Fill the Select box: what is held, and the buttons that act on it. */
+function paintSelection(): void {
+  const box = stage?.sel;
+  const s = sheet;
+  if (!box) return;
+  box.innerHTML = "";
+  const f = selectedFeature();
+  const startId = selected?.kind === "spawn" ? selected.id : 0;
+  const start = startId ? s?.spawns.find((sp) => sp.id === startId) : undefined;
+  if (!f && !start) {
+    box.append(
+      el("p", {
+        class: "bld-hint",
+        text: tool.id === "select" ? "Click a building, defence, or start to pick it up. Drag to move it." : "Pick Select to move or remove what you placed.",
+      }),
+    );
+    return;
+  }
+  const faces = ["east", "south", "west", "north"];
+  const label = f ? `${catalog(f.type).name} · faces ${faces[f.facing & 3]}` : `Start ${start!.id}`;
+  box.append(el("div", { class: "bld-sel-name", text: label }));
+  const row = el("div", { class: "btn-row" });
+  if (f) {
+    const turn = el("button", { class: "btn btn-ghost bld-mini", text: "Turn (R)", attrs: { type: "button" } });
+    turn.addEventListener("click", () => {
+      turnSelected();
+      paintSelection();
+    });
+    row.append(turn);
+  }
+  const del = el("button", { class: "btn btn-ghost bld-mini", text: "Delete (Del)", attrs: { type: "button" } });
+  del.addEventListener("click", () => deleteSelected());
+  row.append(del);
+  box.append(row);
+}
+
+function defenceThumb(type: MapDefenceType, facing: number): HTMLElement {
+  if (!isMapSection(type)) return houseThumb(type, facing);
+  // Sections are drawn by the battlefield, not from a sheet: a plain mark stands in.
+  return el("span", { class: `bld-start-mark bld-${type}`, text: type === "sandbags" ? "▬" : "▮" });
+}
+
 function toolsPanel(ctx: Ctx): HTMLElement {
   const panel = el("div", { class: "bld-tools panel" });
+  const edit = el("div", { class: "bld-palette" });
+  edit.append(
+    asset("Select", "move, turn, delete", tool.id === "select", el("span", { class: "bld-start-mark", text: "⬚" }), "Pick up a placed building, defence, or start. Drag to move it, R turns it, Delete removes it.", () =>
+      setTool(ctx, { id: "select" }),
+    ),
+    asset("Eraser", "houses, starts", tool.id === "erase", el("span", { class: "bld-start-mark", text: "✕" }), "Remove buildings, defences, and starts.", () =>
+      setTool(ctx, { id: "erase" }),
+    ),
+  );
+  const sel = el("div", { class: "bld-sel" });
+  if (stage) stage.sel = sel;
+  panel.append(section("Edit", edit, sel));
+
   const relief = el("div", { class: "bld-palette three" });
   const reliefTool = (id: ToolId, label: string, glyph: string, title: string): HTMLButtonElement => {
     const art = el("span", { class: "bld-start-mark", text: glyph });
@@ -841,14 +1099,37 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     ),
   );
 
+  const defences = el("div", { class: "bld-palette" });
+  for (const type of MAP_DEFENCE_TYPES) {
+    const def = catalog(type);
+    const size = isMapSection(type) ? "one section" : `${def.tileW / TILE_SUBDIV}×${def.tileH / TILE_SUBDIV} cells`;
+    defences.append(
+      asset(def.name, size, tool.id === "defence" && tool.defence === type, defenceThumb(type, tool.facing), def.blurb ?? def.name, () =>
+        setTool(ctx, { id: "defence", defence: type }),
+      ),
+    );
+  }
+  const defFaceRow = el("div", { class: "bld-row" });
+  const defTurn = el("button", { class: "btn btn-ghost bld-mini", text: `Faces: ${faces[tool.facing]}`, attrs: { type: "button" } });
+  defTurn.addEventListener("click", () => setTool(ctx, { facing: (tool.facing + 1) & 3 }));
+  defFaceRow.append(defTurn);
+  panel.append(
+    section(
+      "Defences",
+      defences,
+      defFaceRow,
+      el("p", {
+        class: "bld-hint",
+        text: "Neutral until taken. Infantry that walk into a bunker or tower take it; a tower's lamp stays dark until someone holds it. Men who take cover at sandbags or a wall claim the section. Drag to lay a sandbag or wall line.",
+      }),
+    ),
+  );
+
   const starts = el("div", { class: "bld-palette" });
   const next = sheet ? M.nextSpawnId(sheet) : 1;
   starts.append(
     asset("Start", next === null ? "all placed" : `next: ${next}`, tool.id === "spawn", el("span", { class: "bld-start-mark", text: String(next ?? "✓") }), "Commander start position.", () =>
       setTool(ctx, { id: "spawn" }),
-    ),
-    asset("Eraser", "houses, starts", tool.id === "erase", el("span", { class: "bld-start-mark", text: "✕" }), "Remove buildings and starts.", () =>
-      setTool(ctx, { id: "erase" }),
     ),
   );
   panel.append(
@@ -1022,7 +1303,7 @@ function header(ctx: Ctx): HTMLElement {
   btn("Undo", "btn-ghost", () => step(undo, redo), !editing || undo.length === 0);
   btn("Save", "btn-primary", () => save(ctx), !editing);
   btn("Save copy", "", () => save(ctx, { copy: true }), !editing);
-  btn("Play test", "", () => save(ctx, { test: true }), !editing);
+  btn("Play test", "", () => playtest(ctx), !editing);
   btn("Back", "btn-ghost", () => {
     if (dirty && sheet && !confirm("Leave with unsaved changes? They stay here until you open another map.")) return;
     ctx.goto("menu");
@@ -1046,6 +1327,19 @@ function bindKeys(): void {
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
       e.preventDefault();
       step(redo, undo);
+    } else if ((e.key === "Delete" || e.key === "Backspace") && selected) {
+      e.preventDefault();
+      deleteSelected();
+    } else if (e.key === "Escape" && selected) {
+      selected = null;
+      say("");
+      paintSelection();
+      queueDraw();
+    } else if (e.key === "v" || e.key === "V") {
+      setTool(ctx, { id: "select" });
+    } else if ((e.key === "r" || e.key === "R") && tool.id === "select") {
+      turnSelected();
+      paintSelection();
     } else if (e.key === "r" || e.key === "R") {
       setTool(ctx, { facing: (tool.facing + 1) & 3 });
     } else if (e.key === "[") {
@@ -1077,10 +1371,11 @@ export function renderBuilder(root: HTMLElement, ctx: Ctx): void {
   const screen = el("div", { class: "screen", attrs: { id: "builder-root" } });
   const wrap = el("div", { class: "builder" });
   const canvas = el("canvas");
-  const status = el("div", { class: "bld-status", text: "Wheel zooms · right-drag pans · Ctrl+Z undoes" });
-  stage = { root: screen, canvas, status, preview: null, msg: el("div"), checks: null, maps: null };
+  const status = el("div", { class: "bld-status", text: "Wheel zooms · right-drag pans · Ctrl+Z undoes · V selects" });
+  stage = { root: screen, canvas, status, preview: null, msg: el("div"), checks: null, maps: null, sel: null };
   wrap.append(header(ctx));
   const tools = toolsPanel(ctx);
+  paintSelection();
   if (!sheet || newOpen) tools.style.visibility = "hidden";
   const stageBox = el("div", { class: "bld-stage panel" });
   stageBox.append(canvas, status);

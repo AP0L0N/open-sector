@@ -1,5 +1,6 @@
-import { getMap, matchClock, type SaveGame } from "@gridlock/shared";
+import { getMap, isPlaytestMapId, matchClock, unregisterMap, type SaveGame } from "@gridlock/shared";
 import type { Ctx, PausePane } from "../ctx.js";
+import { forgetTerrain } from "../render/terrain.js";
 import { el } from "./dom.js";
 import {
   cleanSaveName,
@@ -95,10 +96,26 @@ export function beginLoad(ctx: Ctx, save: SaveGame): void {
   ctx.net.send({ type: "match.load", save });
 }
 
+/** The skirmish underway is a Map Builder play test. */
+export function inPlaytest(ctx: Ctx): boolean {
+  const mapId = ctx.match?.mapId ?? ctx.room?.mapId;
+  return !!mapId && isPlaytestMapId(mapId);
+}
+
 function renderPauseMenu(modal: HTMLElement, ctx: Ctx): void {
   modal.append(el("h2", { text: "Paused" }));
-  modal.append(el("p", { class: "tiny", text: "The fight holds until you resume." }));
   const stack = el("div", { class: "stack" });
+  if (inPlaytest(ctx)) {
+    // A play test is thrown away on the way out, so there is nothing to save or load.
+    modal.append(el("p", { class: "tiny", text: "Play test. Your map is waiting in the builder." }));
+    stack.append(
+      action("Resume", "btn btn-primary", () => ctx.resumeSkirmish()),
+      action("Return to map builder", "btn", () => leaveMatch(ctx, "builder")),
+    );
+    modal.append(stack);
+    return;
+  }
+  modal.append(el("p", { class: "tiny", text: "The fight holds until you resume." }));
   stack.append(
     action("Resume", "btn btn-primary", () => ctx.resumeSkirmish()),
     action("Save game", "btn", () => openPane(ctx, "save")),
@@ -219,14 +236,19 @@ function openPane(ctx: Ctx, pane: PausePane): void {
   ctx.render();
 }
 
-function leaveMatch(ctx: Ctx): void {
+function leaveMatch(ctx: Ctx, to: "menu" | "builder" = "menu"): void {
+  const testMap = inPlaytest(ctx) ? (ctx.match?.mapId ?? ctx.room?.mapId) : undefined;
   ctx.leaveOpen = false;
   ctx.pausePane = "menu";
   ctx.net.send({ type: "room.leave" });
   ctx.room = null;
   ctx.match = null;
   ctx.winner = null;
-  ctx.goto("menu");
+  if (testMap) {
+    unregisterMap(testMap);
+    forgetTerrain(testMap);
+  }
+  ctx.goto(to);
 }
 
 function action(text: string, className: string, run: () => void): HTMLButtonElement {

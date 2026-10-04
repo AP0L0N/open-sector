@@ -257,9 +257,25 @@ export function enterGarrison(state: MatchState, unit: Entity, house: Entity): b
     house.ownerId = NEUTRAL_OWNER;
     house.captureOwnerId = "";
     house.captureProgress = 0;
+  } else if (house.kind === "building" && (!house.ownerId || house.ownerId === NEUTRAL_OWNER)) {
+    claimNeutral(state, house, unit.ownerId);
   }
   scaleGarrisonHp(unit, house);
   return true;
+}
+
+/**
+ * A map defence nobody held is now `ownerId`'s: the bunker or tower whose
+ * door a soldier walked through, or the wall a squad took cover behind.
+ */
+export function claimNeutral(state: MatchState, building: Entity, ownerId: string): void {
+  if (!ownerId || ownerId === NEUTRAL_OWNER) return;
+  building.ownerId = ownerId;
+  building.captureOwnerId = "";
+  building.captureProgress = 0;
+  state.visionTick = -1;
+  const p = state.players.get(ownerId);
+  if (p) state.pendingComms.push(`${p.name} took a ${catalog(building.type).name}.`);
 }
 
 export function exitGarrison(

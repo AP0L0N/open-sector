@@ -11,8 +11,12 @@ import {
   validateCustomMap,
 } from "@gridlock/shared";
 import {
+  defenceCount,
   houseAt,
   houseProblem,
+  moveFeature,
+  playtestProblem,
+  turnFeature,
   levelDisk,
   liftDisk,
   markSheet,
@@ -145,5 +149,53 @@ describe("map builder sheet", () => {
     restoreSheet(s, mark);
     assert.ok(s.heights.every((h) => h === HEIGHT_BASE));
     assert.equal(s.spawns.length, 0);
+  });
+});
+
+describe("builder select and defences", () => {
+  it("moves a picked-up house by whole cells and refuses an overlap", () => {
+    const s = fresh();
+    s.features.push(houseAt("cottage", 40, 40, 0), houseAt("barn", 100, 40, 0));
+    const from = { ...s.features[0]! };
+    assert.equal(moveFeature(s, 0, from, 5, 1), null);
+    assert.equal(s.features[0]!.x, from.x + TILE_SUBDIV, "five tiles rounds to one cell");
+    assert.equal(s.features[0]!.y, from.y);
+    const barn = s.features[1]!;
+    assert.notEqual(moveFeature(s, 0, from, barn.x - from.x, barn.y - from.y), null);
+    assert.equal(s.features[0]!.x, from.x + TILE_SUBDIV, "a refused move leaves it where it was");
+  });
+
+  it("turns a placed section in place unless the turn would cross another", () => {
+    const s = fresh();
+    s.features.push(houseAt("wall", 60, 60, 0));
+    assert.equal(turnFeature(s, 0), null);
+    assert.equal(s.features[0]!.facing, 1);
+    // Runs east-west on row 61; turned back north-south, the first wall would cross it at (60, 61).
+    s.features.push(houseAt("wall", 60, 61, 1));
+    assert.notEqual(turnFeature(s, 0), null);
+    assert.equal(s.features[0]!.facing, 1);
+  });
+
+  it("sets a section on the cursor tile and a bunker on the cell grid", () => {
+    assert.deepEqual(houseAt("sandbags", 37, 41, 2), { type: "sandbags", x: 37, y: 41, facing: 2 });
+    const bunker = houseAt("bunker", 37, 41, 0);
+    assert.equal(bunker.x % TILE_SUBDIV, 0);
+    assert.equal(bunker.y % TILE_SUBDIV, 0);
+  });
+
+  it("counts defences apart from houses and saves them", () => {
+    const s = fresh();
+    s.spawns.push({ id: 1, x: 30, y: 30 }, { id: 2, x: 150, y: 150 });
+    s.features.push(houseAt("cottage", 80, 80, 0), houseAt("tower", 120, 80, 0), houseAt("sandbags", 100, 120, 0));
+    assert.equal(defenceCount(s), 2);
+    assert.equal(sheetProblem(s), null);
+  });
+
+  it("play tests with a single start", () => {
+    const s = fresh(4);
+    assert.notEqual(playtestProblem(s), null);
+    s.spawns.push({ id: 1, x: 30, y: 30 });
+    assert.equal(playtestProblem(s), null);
+    assert.notEqual(sheetProblem(s), null, "saving still wants every start");
   });
 });

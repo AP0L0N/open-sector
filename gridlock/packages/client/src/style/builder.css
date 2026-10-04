@@ -126,6 +126,23 @@
   background: #140e0a;
 }
 
+.bld-start-mark.bld-sandbags,
+.bld-start-mark.bld-wall {
+  border-radius: 6px;
+}
+
+.bld-start-mark.bld-sandbags { color: #b9a06a; border-color: #b9a06a; }
+.bld-start-mark.bld-wall { color: #c4c2b8; border-color: #c4c2b8; }
+
+.bld-sel { margin-top: 6px; }
+
+.bld-sel-name {
+  font-family: "Share Tech Mono", monospace;
+  font-size: 0.78rem;
+  color: var(--amber);
+  margin-bottom: 6px;
+}
+
 .bld-row {
   display: flex;
   gap: 8px;
