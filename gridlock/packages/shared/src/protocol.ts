@@ -214,6 +214,8 @@ export interface EntityView {
   longRange?: boolean;
   /** Held watch tower's spotlight heading, radians. Everyone who sees the tower sees the beam. */
   spotFacing?: number;
+  /** Building whose owner is short on power: its lamps are dark and a CIWS or RAM is silent. Omitted when powered. */
+  unpowered?: boolean;
   /** Titan pods switched off. Friendly snapshots; omitted while on. */
   rocketsOff?: boolean;
   /** Stay put: no chase, no withdraw. Friendly snapshots. */

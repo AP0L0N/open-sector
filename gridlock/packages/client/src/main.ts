@@ -376,7 +376,7 @@ function syncBattleModal(): void {
 window.addEventListener("keydown", (e) => {
   const tag = (e.target as HTMLElement | null)?.tagName;
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
-    if (e.key === "Escape" && ctx.screen === "battle" && ctx.playMode === "skirmish" && ctx.leaveOpen && ctx.pausePane !== "menu") {
+    if (e.key === "Escape" && ctx.screen === "battle" && ctx.leaveOpen && ctx.pausePane !== "menu") {
       e.preventDefault();
       ctx.pausePane = "menu";
       ctx.banner = "";
@@ -410,6 +410,11 @@ window.addEventListener("keydown", (e) => {
         return;
       }
       ctx.resumeSkirmish();
+      return;
+    }
+    if (ctx.leaveOpen && ctx.pausePane !== "menu") {
+      ctx.pausePane = "menu";
+      ctx.render();
       return;
     }
     ctx.leaveOpen = !ctx.leaveOpen;

@@ -349,6 +349,8 @@ export interface Entity {
   rocketsOff?: boolean;
   /** CIWS or RAM set to Max range (RADAR_LONG_RANGE_MUL). Missing means normal reach. */
   longRange?: boolean;
+  /** Building whose owner uses more power than they provide: its lamps are dark and a CIWS or RAM is silent. Set each tick. */
+  unpowered?: boolean;
   /** Watch tower spotlight heading, radians. Missing until the tower is first held. */
   spotFacing?: number;
   /** Heading Rotate asked the spotlight for. It swings there at SPOTLIGHT_TURN_DEG_PER_SEC. */

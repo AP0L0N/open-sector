@@ -47,6 +47,7 @@ import { tickSpotlights } from "./night.js";
 import type { Entity, MatchState, SimPlayer } from "./types.js";
 import { leaveCorpse } from "./remains.js";
 import { toWreck } from "./wreck.js";
+import { tickPower } from "./power.js";
 
 export function createMatch(
   room: RoomState,
@@ -160,6 +161,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   state.impacts = [];
   state.launches = [];
   restampForts(state);
+  tickPower(state);
   tickSmoke(state, dt);
   tickSpotlights(state, dt);
   tickStance(state);
