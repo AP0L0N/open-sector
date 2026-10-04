@@ -16,6 +16,7 @@ export function renderMenu(root: HTMLElement, ctx: Ctx): void {
     attrs: { type: "button", disabled: "true", title: "Later." },
   });
   const skirmish = el("button", { class: "btn btn-primary", text: "Skirmish", attrs: { type: "button" } });
+  const load = el("button", { class: "btn", text: "Load Game", attrs: { type: "button" } });
   const network = el("button", { class: "btn", text: "Network", attrs: { type: "button" } });
   const builder = el("button", { class: "btn", text: "Map Builder", attrs: { type: "button" } });
   const options = el("button", { class: "btn", text: "Options", attrs: { type: "button" } });
@@ -23,6 +24,12 @@ export function renderMenu(root: HTMLElement, ctx: Ctx): void {
   const exit = el("button", { class: "btn btn-ghost", text: "Exit", attrs: { type: "button" } });
 
   skirmish.addEventListener("click", () => ctx.enterSkirmish());
+  load.addEventListener("click", () => {
+    ctx.banner = "";
+    ctx.menuLoad = true;
+    ctx.saveDeleteId = null;
+    ctx.render();
+  });
   network.addEventListener("click", () => {
     if (!ctx.net.connected) ctx.net.connect();
     ctx.pendingSkirmish = false;
@@ -43,7 +50,7 @@ export function renderMenu(root: HTMLElement, ctx: Ctx): void {
     ctx.render();
   });
 
-  stack.append(campaign, skirmish, network, builder, options, credits, exit);
+  stack.append(campaign, skirmish, load, network, builder, options, credits, exit);
   screen.append(stack);
   screen.append(el("div", { class: "version", text: "M1 · prototype" }));
   const pip = el("div", {

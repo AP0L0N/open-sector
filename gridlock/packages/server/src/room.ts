@@ -16,6 +16,9 @@ import {
   nudgeGameSpeed,
   setMap,
   snapshotFor,
+  applySaveSeats,
+  exportSave,
+  restoreMatch,
   startMatch,
   stepMatch,
   updateSelf,
@@ -132,6 +135,15 @@ export class Hub {
         break;
       case "cmd.speed":
         this.onSpeed(session, msg.delta);
+        break;
+      case "match.pause":
+        this.onMatchPause(session, msg.paused);
+        break;
+      case "match.save":
+        this.onMatchSave(session);
+        break;
+      case "match.load":
+        this.onMatchLoad(session, msg.save);
         break;
       case "map.save":
         this.onMapSave(session, msg.map, msg.key);
@@ -451,6 +463,94 @@ export class Hub {
     }
   }
 
+  private skirmishMatch(session: Session): { room: RoomState; match: MatchState } | undefined {
+    const room = this.roomOf(session);
+    if (!room) {
+      this.err(session, "not_member", "You are not in a room.");
+      return;
+    }
+    if (room.mode !== "skirmish") {
+      this.err(session, "closed", "That is for a skirmish.");
+      return;
+    }
+    if (room.hostId !== session.playerId) {
+      this.err(session, "not_host", "Only the commander can do that.");
+      return;
+    }
+    const match = this.matches.get(room.id);
+    if (!match) {
+      this.err(session, "started", "No match.");
+      return;
+    }
+    return { room, match };
+  }
+
+  private onMatchPause(session: Session, paused: boolean): void {
+    if (typeof paused !== "boolean") return this.err(session, "bad_payload", "Invalid pause.");
+    const found = this.skirmishMatch(session);
+    if (!found) return;
+    if (found.match.ended) return this.err(session, "ended", "Match is over.");
+    found.match.paused = paused;
+    this.broadcastSnapshots(found.room.id);
+  }
+
+  private onMatchSave(session: Session): void {
+    const found = this.skirmishMatch(session);
+    if (!found) return;
+    session.send({ type: "match.saved", save: exportSave(found.match, found.room) });
+  }
+
+  private onMatchLoad(session: Session, raw: unknown): void {
+    const existing = session.roomId ? this.rooms.get(session.roomId) : undefined;
+    if (existing && existing.mode !== "skirmish") {
+      return this.err(session, "closed", "Load is for a skirmish.");
+    }
+    let room = existing;
+    if (!room) {
+      let id: string;
+      try {
+        id = generateRoomCode(new Set(this.rooms.keys()));
+      } catch {
+        return this.err(session, "room_cap", "Could not allocate a room code.");
+      }
+      const cap = canCreateRoom(this.rooms.size);
+      if (!cap.ok) return this.err(session, cap.code, cap.message);
+      const restored = restoreMatch(raw, { roomId: id, humanPlayerId: session.playerId });
+      if (!restored.ok) return this.err(session, "bad_payload", restored.message);
+      const created = createRoom({
+        id,
+        hostId: session.playerId,
+        hostName: session.name,
+        mapId: restored.value.state.mapId,
+        maxSlots: restored.value.save.maxSlots,
+        mode: "skirmish",
+      });
+      if (!created.ok) return this.err(session, created.code, created.message);
+      room = created.value;
+      applySaveSeats(room, restored.value.save, session.playerId, session.name);
+      this.rooms.set(id, room);
+      this.members.set(id, new Set([session.playerId]));
+      session.roomId = id;
+      this.installLoaded(room, restored.value.state);
+      return;
+    }
+    const restored = restoreMatch(raw, { roomId: room.id, humanPlayerId: session.playerId });
+    if (!restored.ok) return this.err(session, "bad_payload", restored.message);
+    applySaveSeats(room, restored.value.save, session.playerId, session.name);
+    this.installLoaded(room, restored.value.state);
+  }
+
+  /** Swap the running fight for a loaded one and tell the commander. */
+  private installLoaded(room: RoomState, match: MatchState): void {
+    const wasTicking = this.tickers.has(room.id);
+    this.matches.set(room.id, match);
+    log("match.load", { room: room.id, mapId: match.mapId, tick: match.tick });
+    if (!wasTicking && !match.ended) this.startTicker(room.id);
+    for (const id of this.members.get(room.id) ?? []) {
+      this.sessions.get(id)?.send({ type: "match.resume", room, match: snapshotFor(match, id) });
+    }
+  }
+
   private onSpeed(session: Session, delta: number): void {
     const room = this.roomOf(session);
     if (!room) return this.err(session, "not_member", "You are not in a room.");
@@ -460,6 +560,7 @@ export class Hub {
     const match = this.matches.get(room.id);
     if (!match) return this.err(session, "started", "No match.");
     if (match.ended) return this.err(session, "ended", "Match is over.");
+    if (match.paused) return;
     const next = nudgeGameSpeed(match.gameSpeed, delta);
     if (next === match.gameSpeed) return;
     match.gameSpeed = next;

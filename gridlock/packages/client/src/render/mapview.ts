@@ -1780,6 +1780,7 @@ export class MapView {
         e.preventDefault();
         return;
       }
+      if (this.curr.paused) return;
       this.shiftHeld = e.shiftKey;
       if (e.button === 2) {
         e.preventDefault();
@@ -1996,6 +1997,20 @@ export class MapView {
       this.centerOnHq();
       return;
     }
+    if (
+      k === "escape" &&
+      (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode || this.patrolMode)
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.setAttackMoveMode(false);
+      this.setForceAttackMode(false);
+      this.setRotateMode(false);
+      this.setGuardMode(false);
+      this.setPatrolMode(false);
+      return;
+    }
+    if (this.curr.paused) return;
     if (this.isSpeedUpKey(e)) {
       e.preventDefault();
       this.command({ type: "cmd.speed", delta: 1 });
@@ -2086,16 +2101,6 @@ export class MapView {
       this.garrisonHideHotkey();
       this.scoutHotkey();
       return;
-    }
-    if (k === "escape") {
-      if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode || this.patrolMode) {
-        e.preventDefault();
-        this.setAttackMoveMode(false);
-        this.setForceAttackMode(false);
-        this.setRotateMode(false);
-        this.setGuardMode(false);
-        this.setPatrolMode(false);
-      }
     }
   };
 

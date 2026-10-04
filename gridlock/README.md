@@ -80,7 +80,7 @@ See [`godot/README.md`](godot/README.md). The Canvas client and the Godot client
 
 Enter a callsign on first launch (saved locally and skipped next time; also in Options).
 
-**Skirmish** is single-player: click Skirmish from the menu and you land in a solo briefing. No Ready switch, no room code, no join.
+**Skirmish** is single-player: click Skirmish from the menu and you land in a solo briefing. No Ready switch, no room code, no join. Esc pauses the fight. The pause menu can save it or load an earlier one, and Load Game on the main menu resumes a save kept in this browser.
 
 **Network:**
 

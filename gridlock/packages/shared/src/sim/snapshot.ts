@@ -431,6 +431,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
   return {
     tick: state.tick,
     gameSpeed: clampGameSpeed(state.gameSpeed),
+    ...(state.paused ? { paused: true as const } : {}),
     mapId: state.mapId,
     youPlayerId,
     you: {

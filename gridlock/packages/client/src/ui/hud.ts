@@ -516,7 +516,7 @@ export function paintBattleHud(ctx: Ctx): void {
   }
   const speed = document.getElementById("hud-speed");
   if (speed) {
-    const next = `SPEED <b>×${m.gameSpeed || 1}</b>`;
+    const next = m.paused ? "SPEED <b>PAUSED</b>" : `SPEED <b>×${m.gameSpeed || 1}</b>`;
     if (speed.innerHTML !== next) {
       speed.innerHTML = next;
       retrigger(speed, "speed-flash");

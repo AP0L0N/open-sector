@@ -182,8 +182,9 @@ export function step(state: MatchState, dt = TICK_DT): void {
   checkWin(state);
 }
 
-/** One wall-clock tick: `gameSpeed` sim steps (max 5×). */
+/** One wall-clock tick: `gameSpeed` sim steps (max 5×). A paused skirmish stays put. */
 export function stepMatch(state: MatchState, dt = TICK_DT): void {
+  if (state.paused) return;
   const n = clampGameSpeed(state.gameSpeed);
   const impacts: ImpactView[] = [];
   for (let i = 0; i < n; i++) {

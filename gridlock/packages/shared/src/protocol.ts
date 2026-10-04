@@ -15,8 +15,9 @@ import type {
   YardFieldType,
 } from "./catalog.js";
 import type { CustomMapSpec } from "./custom-maps.js";
+import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 79;
+export const PROTOCOL_VERSION = 80;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -505,6 +506,8 @@ export interface MatchSnapshot {
   tick: number;
   /** Sim multiplier. 1–5. */
   gameSpeed: number;
+  /** Skirmish is held. Omitted while the match is running. */
+  paused?: boolean;
   mapId: string;
   youPlayerId: string;
   you: YouState;
@@ -675,7 +678,13 @@ export type ClientMessage =
   | { type: "cmd.drone"; ids: number[]; action: "launch" | "recall" | "mode"; mode?: DroneMode }
   /** Jump Jets: `up` lights the pack and lifts off; `land` sets down on the nearest open ground. */
   | { type: "cmd.jet"; ids: number[]; action: "up" | "land" }
-  | { type: "cmd.speed"; delta: number };
+  | { type: "cmd.speed"; delta: number }
+  /** Skirmish only. Holds the sim without changing game speed. */
+  | { type: "match.pause"; paused: boolean }
+  /** Skirmish only. The hub answers with `match.saved`. */
+  | { type: "match.save" }
+  /** Skirmish only. Replaces the current fight, or opens one from the menu. */
+  | { type: "match.load"; save: SaveGame };
 
 export type ServerMessage =
   | { type: "welcome"; playerId: string; protocol: number }
@@ -683,6 +692,10 @@ export type ServerMessage =
   | { type: "room.error"; code: string; message: string }
   | { type: "match.start"; match: MatchSnapshot }
   | { type: "match.snapshot"; match: MatchSnapshot }
+  /** A loaded skirmish. The client draws it without the deploy splash. */
+  | { type: "match.resume"; room: RoomState; match: MatchSnapshot }
+  /** The authoritative save of the skirmish underway. The browser stores it. */
+  | { type: "match.saved"; save: SaveGame }
   | { type: "match.end"; winnerPlayerId: string | null; winnerTeam: number | null; reason: "core" | "host" }
   | { type: "room.closed"; reason: string }
   | { type: "chat"; from: string; name: string; text: string; at: number }
@@ -721,6 +734,7 @@ export type ErrorCode =
   | "no_core"
   | "not_yours"
   | "unit_cap"
-  | "ended";
+  | "ended"
+  | "paused";
 
 export type { AirDrop, BuildingType, EntityType, FieldStructureType, TrainType, EntityKind, ShellType, Crit, Stance, YardFieldType };

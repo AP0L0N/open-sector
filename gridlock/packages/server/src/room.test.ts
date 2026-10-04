@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { ServerMessage } from "@gridlock/shared";
-import { step } from "@gridlock/shared";
+import { step, stepMatch } from "@gridlock/shared";
 import { Hub } from "./room.js";
 
 function client(hub: Hub, id: string) {
@@ -207,6 +207,90 @@ describe("hub rooms", () => {
       const err = b.of("room.error").at(-1);
       assert.equal(err?.code, "not_host");
       assert.equal(hub.matches.get(hub.sessions.get("A")!.roomId!)!.gameSpeed, 1);
+    } finally {
+      hub.shutdown();
+    }
+  });
+
+  it("esc pause holds a skirmish and blocks orders", () => {
+    const hub = new Hub();
+    try {
+      const a = client(hub, "A");
+      hub.handle("A", { type: "hello", name: "Alpha" });
+      hub.handle("A", { type: "room.create", mapId: "yard-64", maxSlots: 8, mode: "skirmish" });
+      hub.handle("A", { type: "room.start" });
+      const roomId = hub.sessions.get("A")!.roomId!;
+      const match = hub.matches.get(roomId)!;
+      const tick = match.tick;
+      hub.handle("A", { type: "match.pause", paused: true });
+      assert.equal(match.paused, true);
+      const snap = a.of("match.snapshot").at(-1);
+      assert.equal(snap?.match.paused, true);
+      stepMatch(match);
+      assert.equal(match.tick, tick);
+      const rig = [...match.entities.values()].find((e) => e.type === "rig");
+      assert.ok(rig);
+      hub.handle("A", { type: "cmd.move", ids: [rig.id], x: rig.x + 40, y: rig.y });
+      assert.equal(a.of("room.error").at(-1)?.code, "paused");
+      assert.equal(rig.order, null);
+      hub.handle("A", { type: "match.pause", paused: false });
+      assert.equal(match.paused, false);
+      assert.equal(a.of("match.snapshot").at(-1)?.match.paused, undefined);
+    } finally {
+      hub.shutdown();
+    }
+  });
+
+  it("a network match cannot be paused", () => {
+    const hub = new Hub();
+    try {
+      const a = client(hub, "A");
+      hub.handle("A", { type: "hello", name: "Alpha" });
+      hub.handle("A", { type: "room.create", mapId: "yard-64", maxSlots: 8, mode: "network" });
+      hub.handle("A", { type: "slot.update", ready: true });
+      hub.handle("A", { type: "room.start" });
+      hub.handle("A", { type: "match.pause", paused: true });
+      assert.equal(a.of("room.error").at(-1)?.code, "closed");
+      assert.equal(hub.matches.get(hub.sessions.get("A")!.roomId!)!.paused, undefined);
+    } finally {
+      hub.shutdown();
+    }
+  });
+
+  it("saves a skirmish and loads it into a new session", () => {
+    const hub = new Hub();
+    try {
+      const a = client(hub, "A");
+      hub.handle("A", { type: "hello", name: "Alpha" });
+      hub.handle("A", { type: "room.create", mapId: "yard-64", maxSlots: 8, mode: "skirmish" });
+      hub.handle("A", { type: "slot.host", slotIndex: 1, status: "ai" });
+      hub.handle("A", { type: "room.start" });
+      const roomId = hub.sessions.get("A")!.roomId!;
+      const match = hub.matches.get(roomId)!;
+      for (let i = 0; i < 3; i++) step(match);
+      const tick = match.tick;
+      hub.handle("A", { type: "match.save" });
+      const saved = a.of("match.saved").at(-1);
+      assert.ok(saved);
+      assert.equal(saved.save.tick, tick);
+      assert.equal(saved.save.humanId, "A");
+      hub.handle("A", { type: "room.leave" });
+      const b = client(hub, "B");
+      hub.handle("B", { type: "hello", name: "Bravo" });
+      hub.handle("B", { type: "match.load", save: saved.save });
+      const resumed = b.of("match.resume").at(-1);
+      assert.ok(resumed);
+      assert.equal(resumed.match.youPlayerId, "B");
+      assert.equal(resumed.match.tick, tick);
+      assert.equal(resumed.match.mapId, "yard-64");
+      assert.equal(resumed.room.mode, "skirmish");
+      assert.equal(resumed.room.phase, "playing");
+      const loaded = hub.matches.get(hub.sessions.get("B")!.roomId!);
+      assert.ok(loaded);
+      assert.equal(loaded.players.has("B"), true);
+      assert.equal(loaded.players.has("A"), false);
+      assert.equal(loaded.players.has("ai:1"), true);
+      assert.equal([...loaded.entities.values()].some((e) => e.ownerId === "B" && e.type === "rig"), true);
     } finally {
       hub.shutdown();
     }

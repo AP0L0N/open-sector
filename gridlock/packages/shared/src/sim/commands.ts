@@ -78,6 +78,7 @@ const fail = (code: ErrorCode, message: string): CmdResult => ({ ok: false, code
 
 export function applyCommand(state: MatchState, playerId: string, msg: ClientMessage): CmdResult {
   if (state.ended) return fail("ended", "Match is over.");
+  if (state.paused) return fail("paused", "The match is paused.");
   const p = state.players.get(playerId);
   if (!p) return fail("not_member", "You are not in this match.");
   if (!p.alive && msg.type.startsWith("cmd.")) return fail("dead", "Your Core is down.");

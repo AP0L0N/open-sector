@@ -13,6 +13,7 @@ import { renderCredits } from "./ui/credits.js";
 import { builderError, builderMapSaved, refreshBuilder, renderBuilder } from "./ui/builder.js";
 import { forgetTerrain } from "./render/terrain.js";
 import { flashNoScrap, mountBattlefield, paintBattleHud, renderLeaveModal } from "./ui/hud.js";
+import { battleModalKey, beginLoad, renderMenuLoad, renderPauseModal, storeSavedGame } from "./ui/pause.js";
 import { el } from "./ui/dom.js";
 import type { MapView } from "./render/mapview.js";
 
@@ -55,7 +56,14 @@ const ctx: Ctx = {
   pendingJoin: roomParam,
   pendingSkirmish: false,
   pendingSkirmishMap: null,
+  pendingLoad: null,
   leaveOpen: false,
+  pausePane: "menu",
+  menuLoad: false,
+  saveDraft: "",
+  saveOverwriteId: null,
+  saveDeleteId: null,
+  saveWaiting: false,
   winner: null,
   goto(screen: Screen) {
     if (screen !== "battle") {
@@ -66,10 +74,13 @@ const ctx: Ctx = {
       clearTimeout(deployTimer);
       deployTimer = null;
     }
+    ctx.menuLoad = false;
     ctx.screen = screen;
     if (screen === "menu") {
       ctx.leaveOpen = false;
+      ctx.pausePane = "menu";
       ctx.networkStep = "choose";
+      appEl.dataset.modal = "";
     }
     ctx.render();
   },
@@ -78,6 +89,7 @@ const ctx: Ctx = {
     localStorage.setItem(NAME_KEY, ctx.name);
   },
   enterSkirmish(mapId?: string) {
+    ctx.menuLoad = false;
     ctx.playMode = "skirmish";
     if (!ctx.net.connected) {
       ctx.pendingSkirmish = true;
@@ -96,6 +108,29 @@ const ctx: Ctx = {
       maxSlots: 8,
       mode: "skirmish",
     });
+  },
+  holdSkirmish() {
+    ctx.leaveOpen = true;
+    ctx.pausePane = "menu";
+    ctx.banner = "";
+    ctx.saveWaiting = false;
+    if (ctx.match && !ctx.match.paused) {
+      ctx.match = { ...ctx.match, paused: true };
+      ctx.net.send({ type: "match.pause", paused: true });
+    }
+    ctx.render();
+  },
+  resumeSkirmish() {
+    ctx.leaveOpen = false;
+    ctx.pausePane = "menu";
+    ctx.banner = "";
+    ctx.saveDeleteId = null;
+    ctx.saveWaiting = false;
+    if (ctx.match?.paused) {
+      ctx.match = { ...ctx.match, paused: false };
+      ctx.net.send({ type: "match.pause", paused: false });
+    }
+    ctx.render();
   },
   render,
 };
@@ -120,18 +155,19 @@ function render(): void {
   if (ctx.screen === "battle" && document.getElementById("battlefield") && mapView) {
     if (ctx.match) mapView.setSnapshot(ctx.match);
     paintBattleHud(ctx);
-    if (ctx.leaveOpen && !document.querySelector(".modal-back")) renderLeaveModal(appEl, ctx);
-    if (!ctx.leaveOpen) document.querySelector(".modal-back")?.remove();
+    syncBattleModal();
     return;
   }
 
   appEl.innerHTML = "";
+  appEl.dataset.modal = "";
   switch (ctx.screen) {
     case "callsign":
       renderCallsign(appEl, ctx);
       break;
     case "menu":
-      renderMenu(appEl, ctx);
+      if (ctx.menuLoad) renderMenuLoad(appEl, ctx);
+      else renderMenu(appEl, ctx);
       break;
     case "play":
       renderPlay(appEl, ctx);
@@ -151,7 +187,7 @@ function render(): void {
     }
     case "battle":
       mapView = mountBattlefield(appEl, ctx, mapView);
-      if (ctx.leaveOpen) renderLeaveModal(appEl, ctx);
+      syncBattleModal();
       break;
     case "options":
       renderOptions(appEl, ctx);
@@ -172,6 +208,10 @@ function onMessage(msg: ServerMessage): void {
       if (ctx.screen === "callsign") break;
       if (ctx.pendingJoin) {
         net.send({ type: "room.join", code: ctx.pendingJoin });
+      } else if (ctx.pendingLoad) {
+        const save = ctx.pendingLoad;
+        ctx.pendingLoad = null;
+        net.send({ type: "match.load", save });
       } else if (ctx.pendingSkirmish) {
         ctx.pendingSkirmish = false;
         net.send({
@@ -201,11 +241,13 @@ function onMessage(msg: ServerMessage): void {
       ctx.render();
       break;
     case "room.error":
+      if (msg.code === "paused") return;
       if (ctx.screen === "battle" && msg.code === "low_scrap") {
         flashNoScrap();
         return;
       }
       if (builderError(ctx, msg.message)) return;
+      ctx.saveWaiting = false;
       ctx.banner = msg.message;
       ctx.render();
       break;
@@ -224,6 +266,32 @@ function onMessage(msg: ServerMessage): void {
       ctx.match = msg.match;
       if (msg.match.winner) ctx.winner = msg.match.winner;
       if (ctx.screen === "battle") ctx.render();
+      break;
+    case "match.resume":
+      ctx.room = msg.room;
+      ctx.playMode = msg.room.mode;
+      ctx.match = msg.match;
+      ctx.winner = msg.match.winner ?? null;
+      ctx.leaveOpen = false;
+      ctx.pausePane = "menu";
+      ctx.menuLoad = false;
+      ctx.pendingLoad = null;
+      ctx.pendingSkirmish = false;
+      ctx.saveWaiting = false;
+      ctx.banner = "";
+      ctx.chat = [];
+      if (deployTimer) {
+        clearTimeout(deployTimer);
+        deployTimer = null;
+      }
+      mapView?.destroy();
+      mapView = null;
+      appEl.dataset.modal = "";
+      ctx.screen = "battle";
+      ctx.render();
+      break;
+    case "match.saved":
+      storeSavedGame(ctx, msg.save);
       break;
     case "match.end":
       ctx.winner = msg.winnerPlayerId
@@ -282,6 +350,9 @@ net.onStatus = (connected) => {
     ctx.match = null;
     ctx.winner = null;
     ctx.pendingSkirmish = false;
+    ctx.pendingLoad = null;
+    ctx.leaveOpen = false;
+    ctx.saveWaiting = false;
     ctx.networkStep = "choose";
     mapView?.destroy();
     mapView = null;
@@ -290,7 +361,28 @@ net.onStatus = (connected) => {
   ctx.render();
 };
 
+function syncBattleModal(): void {
+  const key = battleModalKey(ctx);
+  if (appEl.dataset.modal === key && (key === "" || document.querySelector(".modal-back"))) return;
+  appEl.dataset.modal = key;
+  document.querySelector(".modal-back")?.remove();
+  if (!ctx.leaveOpen) return;
+  if (ctx.playMode === "skirmish") renderPauseModal(appEl, ctx);
+  else renderLeaveModal(appEl, ctx);
+}
+
 window.addEventListener("keydown", (e) => {
+  const tag = (e.target as HTMLElement | null)?.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
+    if (e.key === "Escape" && ctx.screen === "battle" && ctx.playMode === "skirmish" && ctx.leaveOpen && ctx.pausePane !== "menu") {
+      e.preventDefault();
+      ctx.pausePane = "menu";
+      ctx.banner = "";
+      ctx.saveDeleteId = null;
+      ctx.render();
+    }
+    return;
+  }
   if (e.key === "Enter" && ctx.screen === "battle" && mapView?.fieldPending()) {
     e.preventDefault();
     mapView.confirmField();
@@ -301,6 +393,21 @@ window.addEventListener("keydown", (e) => {
     if (mapView?.placeMode) {
       mapView.placeMode = false;
       mapView.onPlaceMode();
+      return;
+    }
+    if (ctx.playMode === "skirmish") {
+      if (!ctx.leaveOpen) {
+        ctx.holdSkirmish();
+        return;
+      }
+      if (ctx.pausePane !== "menu") {
+        ctx.pausePane = "menu";
+        ctx.banner = "";
+        ctx.saveDeleteId = null;
+        ctx.render();
+        return;
+      }
+      ctx.resumeSkirmish();
       return;
     }
     ctx.leaveOpen = !ctx.leaveOpen;

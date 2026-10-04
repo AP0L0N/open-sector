@@ -1,0 +1,130 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { createRoom, hostSlot, startMatch } from "../lobby.js";
+import { TILE_TREE } from "../maps.js";
+import { applyCommand } from "./commands.js";
+import { fellTreeAt } from "./geo.js";
+import { createMatch, step, stepMatch } from "./match.js";
+import { exportSave, restoreMatch } from "./save.js";
+import type { MatchState } from "./types.js";
+import type { RoomState } from "../protocol.js";
+
+function skirmish(): { state: MatchState; room: RoomState } {
+  const created = createRoom({
+    id: "SV",
+    hostId: "A",
+    hostName: "Alpha",
+    mapId: "yard-64",
+    maxSlots: 8,
+    mode: "skirmish",
+  });
+  if (!created.ok) throw new Error(created.message);
+  const room = created.value;
+  const ai = hostSlot(room, "A", 1, { status: "ai" });
+  if (!ai.ok) throw new Error(ai.message);
+  const started = startMatch(room, "A", () => 0);
+  if (!started.ok) throw new Error(started.message);
+  return { state: createMatch(room, started.value), room };
+}
+
+function finger(state: MatchState): string {
+  return JSON.stringify({
+    tick: state.tick,
+    rng: state.rngState,
+    nextId: state.nextId,
+    speed: state.gameSpeed,
+    ended: state.ended,
+    entities: [...state.entities.values()].sort((a, b) => a.id - b.id),
+    players: [...state.players.values()].sort((a, b) => a.playerId.localeCompare(b.playerId)),
+    projectiles: state.projectiles,
+    scrap: Array.from(state.scrapYield),
+    terrain: Array.from(state.terrain),
+    occupy: Array.from(state.occupy),
+    fort: Array.from(state.fortBlock),
+    wreck: Array.from(state.wreckBlock),
+    cleared: state.clearedTrees,
+    bodies: state.bodies,
+    holes: state.holes,
+  });
+}
+
+describe("skirmish save", () => {
+  it("round-trips a fight and keeps stepping the same way", () => {
+    const { state, room } = skirmish();
+    const rig = [...state.entities.values()].find((e) => e.type === "rig" && e.ownerId === "A");
+    assert.ok(rig);
+    assert.equal(applyCommand(state, "A", { type: "cmd.move", ids: [rig.id], x: rig.x + 90, y: rig.y + 30 }).ok, true);
+    step(state);
+    step(state);
+    let felled = false;
+    for (let i = 0; i < state.terrain.length; i++) {
+      if (state.terrain[i] !== TILE_TREE) continue;
+      felled = fellTreeAt(state, i % state.width, Math.floor(i / state.width));
+      break;
+    }
+    assert.equal(felled, true);
+    let scraped = -1;
+    for (let i = 0; i < state.scrapYield.length; i++) {
+      if ((state.scrapYield[i] ?? 0) <= 10) continue;
+      state.scrapYield[i] = 7;
+      scraped = i;
+      break;
+    }
+    assert.ok(scraped >= 0);
+    const saved = exportSave(state, room, 1_700_000_000_000);
+    const back = restoreMatch(saved, { roomId: "SV", humanPlayerId: "A" });
+    assert.equal(back.ok, true);
+    if (!back.ok) return;
+    assert.equal(back.value.state.paused, false);
+    assert.equal(finger(state), finger(back.value.state));
+    for (let i = 0; i < 5; i++) step(state);
+    for (let i = 0; i < 5; i++) step(back.value.state);
+    assert.equal(finger(state), finger(back.value.state));
+    assert.equal(back.value.state.scrapYield[scraped], 7);
+  });
+
+  it("gives the loaded fight to the commander who opened it", () => {
+    const { state, room } = skirmish();
+    const saved = exportSave(state, room, 1_700_000_000_000);
+    const back = restoreMatch(saved, { roomId: "NEXT", humanPlayerId: "Zed" });
+    assert.equal(back.ok, true);
+    if (!back.ok) return;
+    const restored = back.value.state;
+    assert.equal(restored.roomId, "NEXT");
+    assert.equal(restored.players.has("A"), false);
+    assert.equal(restored.players.has("Zed"), true);
+    assert.equal(restored.players.has("ai:1"), true);
+    const rig = [...restored.entities.values()].find((e) => e.type === "rig" && e.ownerId === "Zed");
+    assert.ok(rig);
+    assert.equal([...restored.entities.values()].some((e) => e.ownerId === "A"), false);
+    assert.equal([...restored.entities.values()].some((e) => e.ownerId === "ai:1"), true);
+  });
+
+  it("holds the sim while paused and rejects orders", () => {
+    const { state } = skirmish();
+    const tick = state.tick;
+    const rng = state.rngState;
+    state.paused = true;
+    stepMatch(state);
+    assert.equal(state.tick, tick);
+    assert.equal(state.rngState, rng);
+    const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig");
+    assert.ok(rig);
+    const ordered = applyCommand(state, "A", { type: "cmd.stop", ids: [rig.id] });
+    assert.equal(ordered.ok, false);
+    if (ordered.ok) return;
+    assert.equal(ordered.code, "paused");
+    state.paused = false;
+    stepMatch(state);
+    assert.ok(state.tick > tick);
+  });
+
+  it("rejects a save that is not this version", () => {
+    const { state, room } = skirmish();
+    const saved = exportSave(state, room, 1);
+    const bad = restoreMatch({ ...saved, v: 2 }, { roomId: "SV", humanPlayerId: "A" });
+    assert.equal(bad.ok, false);
+    const missing = restoreMatch(null, { roomId: "SV", humanPlayerId: "A" });
+    assert.equal(missing.ok, false);
+  });
+});

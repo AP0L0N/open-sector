@@ -1210,6 +1210,50 @@ input[type="range"] { padding: 0; }
   min-width: 320px;
 }
 
+.sheet {
+  width: min(440px, 94vw);
+  max-height: min(80vh, 640px);
+  overflow: auto;
+}
+
+.save-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 10px 0;
+}
+
+.save-row {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.save-row .btn {
+  flex: 1;
+  text-align: left;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.92rem;
+}
+
+.save-row .btn span,
+.save-row .btn small {
+  display: block;
+}
+
+.save-row .btn small {
+  font-family: "Share Tech Mono", monospace;
+  letter-spacing: 0.04em;
+  font-size: 0.68rem;
+  color: var(--muted);
+  text-transform: none;
+  margin-top: 2px;
+}
+
+.save-row .btn-ghost {
+  flex: 0 0 auto;
+}
+
 .tiny {
   font-family: "Share Tech Mono", monospace;
   font-size: 0.7rem;

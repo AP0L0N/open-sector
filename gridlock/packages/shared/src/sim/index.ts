@@ -1,4 +1,6 @@
 export { createMatch, step, stepMatch } from "./match.js";
+export { SAVE_VERSION, applySaveSeats, exportSave, restoreMatch } from "./save.js";
+export type { RestoredMatch, SaveGame, SaveResult, SaveSeat } from "./save.js";
 export { tickAi, findBuildTile, findSmelterTile } from "./ai.js";
 export { tickCollision, moveWithCollision } from "./collision.js";
 export { toWreck } from "./wreck.js";
