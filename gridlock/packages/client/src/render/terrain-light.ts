@@ -63,25 +63,15 @@ export function vertexTones(map: Pick<MapDef, "width" | "height" | "heights">): 
   return out;
 }
 
-/** Maps that keep one meadow. Their dry and damp fields read as stray patches on a small map. */
-const PLAIN_MEADOW_MAPS: ReadonlySet<string> = new Set(["yard-64"]);
-
-/** Broad drier / darker meadow fields, 64 tiles a side. Same pick as the 2D surface. */
-export function meadowField(tx: number, ty: number, mapId?: string): 0 | 1 | 2 {
-  if (mapId !== undefined && PLAIN_MEADOW_MAPS.has(mapId)) return 0;
-  const field = hash2(tx >> 6, ty >> 6, 5);
-  if (field % 5 === 0) return 1;
-  if (field % 8 === 0) return 2;
-  return 0;
-}
-
 /**
  * Per-tile material weights for the ground shader.
  * `a` = (dirt, dry meadow, damp meadow, rock); `b` = (tree floor, water, blocked, scrap yard).
+ * Grass is one meadow on every map: the dry and damp channels stay empty, since 64-tile
+ * fields read as stray green and yellow patches along the edges of a small map.
  * Scrap is the blurred yard cover, so the stained ground has a rounded rim.
  */
 export function materialBytes(
-  map: Pick<MapDef, "width" | "height" | "tiles"> & { id?: string },
+  map: Pick<MapDef, "width" | "height" | "tiles">,
   scrap: ReadonlySet<number>,
 ): { a: Uint8Array; b: Uint8Array } {
   const n = map.width * map.height;
@@ -109,9 +99,6 @@ export function materialBytes(
       continue;
     }
     if (kind === TILE_TREE) b[o] = 255;
-    const f = meadowField(i % map.width, (i / map.width) | 0, map.id);
-    if (f === 1) a[o + 1] = 255;
-    else if (f === 2) a[o + 2] = 255;
   }
   return { a, b };
 }

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { HEIGHT_BASE, TILE_EMPTY, TILE_ROAD, TILE_WATER } from "@gridlock/shared";
 import { heightMesh } from "./height-mesh.js";
-import { elevShadeFactor, materialBytes, meadowField, vertexTones } from "./terrain-light.js";
+import { elevShadeFactor, materialBytes, vertexTones } from "./terrain-light.js";
 
 const flat = (w: number, h: number, z: number) => ({ width: w, height: h, heights: new Array(w * h).fill(z) });
 
@@ -52,14 +52,13 @@ describe("terrain light", () => {
     assert.ok(b[4 + 3]! > 0, "and blurs onto the neighbor");
   });
 
-  it("keeps Scrap Yard one meadow, with no dry or damp fields", () => {
-    const fields = new Set<number>();
-    for (let ty = 0; ty < 256; ty += 64) for (let tx = 0; tx < 256; tx += 64) fields.add(meadowField(tx, ty));
-    assert.ok(fields.size > 1, "other maps still get broad fields");
-    const map = { id: "yard-64", width: 256, height: 256, tiles: new Array(256 * 256).fill(TILE_EMPTY) };
-    const { a } = materialBytes(map, new Set());
-    for (let i = 0; i < a.length; i += 4) {
-      if (a[i + 1] || a[i + 2]) assert.fail(`tile ${i / 4} is a dry or damp field`);
+  it("keeps every map one meadow, with no dry or damp fields", () => {
+    for (const size of [48, 96, 128, 256]) {
+      const map = { width: size, height: size, tiles: new Array(size * size).fill(TILE_EMPTY) };
+      const { a } = materialBytes(map, new Set());
+      for (let i = 0; i < a.length; i += 4) {
+        if (a[i + 1] || a[i + 2]) assert.fail(`${size}-cell map: tile ${i / 4} is a dry or damp field`);
+      }
     }
   });
 
