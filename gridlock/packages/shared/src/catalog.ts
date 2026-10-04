@@ -481,6 +481,7 @@ export type EntityType =
   | "supply"
   | "gunboat"
   | "submarine"
+  | "battleship"
   | "core"
   | "dynamo"
   | "smelter"
@@ -544,7 +545,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "submarine" | "stuka" | "fw190" | "bv222" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "submarine" | "battleship" | "stuka" | "fw190" | "bv222" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -578,7 +579,7 @@ export const ROTATABLE_BUILDINGS: readonly BuildingType[] = ["bunker", "tower"];
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "submarine", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "submarine", "battleship", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
@@ -1927,6 +1928,7 @@ export const GATLING_SPRAY: Partial<Record<EntityType, number>> = {
   walker: 1.6,
   cyborg: 1.8,
   apocalypse: 1.5,
+  battleship: 1.5,
 };
 
 /** The pad and the Apocalypse roof lay this many times tighter than GATLING_SPRAY. Half again as accurate. */
@@ -1934,7 +1936,7 @@ export const CIWS_LAY = 1.5;
 
 export function gatlingSprayOf(type: EntityType): number {
   const spray = GATLING_SPRAY[type] ?? 1;
-  return type === "ciws" || type === "apocalypse" ? spray / CIWS_LAY : spray;
+  return type === "ciws" || type === "apocalypse" || type === "battleship" ? spray / CIWS_LAY : spray;
 }
 
 /**
@@ -2412,6 +2414,61 @@ export const TORPEDO_SPEED = t(8) * TILE_SIZE;
 export const SUB_DETECT_TILES = t(4);
 /** After it fires, a submarine stays in sight this long. */
 export const SUB_REVEAL_SECONDS = 4;
+
+/**
+ * Battle Ship. Two triple 16-inch turrets on the foredeck, each barrel loaded
+ * and fired on its own. A turret that bears lets its loaded barrels go one at a
+ * time in a random order, a short random gap apart, and each barrel then
+ * reloads on its own clock. The shell is the field gun's, flatter and much
+ * faster: a low arc, so it reaches less far. Each barrel holds its own shells.
+ * Two radar-laid 20mm mounts, one on the superstructure and one on the stern,
+ * each lay, heat, and spend their own belt like the Apocalypse's roof mount.
+ */
+export const BATTLESHIP_RANGE_TILES = t(19);
+export const BATTLESHIP_MIN_RANGE_TILES = t(4);
+export const BATTLESHIP_SHELL: LobShellDef = {
+  damage: 160,
+  penetration: 60,
+  caliber: 406,
+  splashTiles: t(3.2),
+  scatterNearTiles: t(0.45),
+  scatterFarTiles: t(1.3),
+  flightNear: 0.5,
+  flightFar: 1.15,
+  apexNear: 10,
+  apexFar: 24,
+  armorChip: 0.2,
+  trackChance: 0.35,
+};
+/** Seconds one barrel takes to load again after it fires. */
+export const BATTLESHIP_BARREL_RELOAD = 10;
+/** Random gap between two barrels of one turret letting go, seconds. */
+export const BATTLESHIP_BARREL_GAP_MIN = 0.15;
+export const BATTLESHIP_BARREL_GAP_MAX = 0.55;
+/** Shells in each barrel's own magazine. Six barrels. */
+export const BATTLESHIP_BARREL_AMMO = 9;
+export const BATTLESHIP_BARRELS_PER_TURRET = 3;
+export const BATTLESHIP_TURRET_TURN_DEG_PER_SEC = 36;
+/** Half-angle astern the forward turrets cannot bear through the superstructure. */
+export const BATTLESHIP_TURRET_BLIND_DEG = 35;
+/**
+ * Where the mounts sit, as a share of the half-length forward of amidships
+ * (negative is aft). The art in tools/sprites/render_battleship.py uses the same shares.
+ */
+export const BATTLESHIP_TURRET_AT: readonly number[] = [0.6, 0.38];
+export const BATTLESHIP_CIWS_AT: readonly number[] = [-0.04, -0.8];
+/** Half the hull's length in world px, for where shells and rounds leave. */
+export const BATTLESHIP_HALF_LENGTH = 46;
+export const BATTLESHIP_CIWS_RANGE_TILES = t(7);
+export const BATTLESHIP_CIWS_BELT = 500;
+export const BATTLESHIP_CIWS_SHOTS_PER_TICK = 2;
+export const BATTLESHIP_CIWS_TURN_DEG_PER_SEC = 360;
+export const BATTLESHIP_CIWS_INTERCEPT_CHANCE = 0.3;
+/** Beside a friendly Marine Base (within this many tiles of it) the ship fills again: */
+export const BATTLESHIP_REARM_TILES = t(3);
+/** every this many seconds, one shell into each short barrel and this many rounds onto each short belt. */
+export const BATTLESHIP_REARM_SECONDS = 4;
+export const BATTLESHIP_REARM_ROUNDS = 50;
 
 const ENTRIES: Record<EntityType, CatalogEntry> = {
   rig: {
@@ -3623,6 +3680,37 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     submerges: true,
     blurb: `Coastal submarine. Water only. It runs submerged: the enemy sees it only within ${SUB_DETECT_TILES / TILE_SUBDIV} tiles of one of their units or buildings, or for ${SUB_REVEAL_SECONDS} seconds after it fires. Its bow tubes fire slow torpedoes that run at the waterline and strike only what floats or stands in the water — boats, swimmers, a Marine Base. A torpedo dies where the water ends. Turn the bow to aim.`,
   },
+  /** Fast battleship, after the Iowa class (USS Wisconsin, BB-64). Water only. */
+  battleship: {
+    type: "battleship",
+    kind: "unit",
+    name: "Battle Ship",
+    letter: "s",
+    cost: 4000,
+    buildSeconds: 32,
+    hp: 900,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 20,
+    moveTilesPerSec: paced(1.25),
+    turnDegPerSec: 16,
+    noReverse: true,
+    turretTurnDegPerSec: BATTLESHIP_TURRET_TURN_DEG_PER_SEC,
+    rangeTiles: BATTLESHIP_RANGE_TILES,
+    sightTiles: t(10),
+    cooldown: BATTLESHIP_BARREL_RELOAD,
+    damage: BATTLESHIP_SHELL.damage,
+    projectileSpeed: 0,
+    armorFront: 130,
+    armorSide: 120,
+    armorRear: 100,
+    penetration: BATTLESHIP_SHELL.penetration,
+    caliber: BATTLESHIP_SHELL.caliber,
+    spreadDeg: 0,
+    naval: true,
+    blurb: `Fast battleship, after the Iowa class. Water only. Two triple 16-inch turrets on the foredeck; every barrel loads and fires on its own, so a turret lets its guns go one by one in no set order. The shell is the field gun's, on a low, fast arc: it lands almost as soon as it leaves, but reaches less far than Artillery, and it will not fire inside ${BATTLESHIP_MIN_RANGE_TILES / TILE_SUBDIV} tiles. The turrets cannot fire astern through the superstructure. Two radar-laid 20mm CIWS mounts, one on the superstructure and one on the stern, lay themselves apart from the main guns: incoming missiles first, then planes, infantry, and light vehicles. Each barrel holds ${BATTLESHIP_BARREL_AMMO} shells and each CIWS a ${BATTLESHIP_CIWS_BELT}-round belt; they fill again slowly beside a Marine Base. Torpedoes and heavy shells are the danger.`,
+  },
   /** Ju 87 B dive bomber. Lives on an Airfield pad. */
   stuka: {
     type: "stuka",
@@ -3864,9 +3952,12 @@ export function catalog(type: EntityType): CatalogEntry {
   return ENTRIES[type];
 }
 
-/** Largest unit collision radius. Wreck pathing inflates by this so any hull can detour. */
+/**
+ * Largest collision radius of a unit that goes ashore. Wreck pathing inflates by this so any
+ * hull can detour. Boats are left out: they never meet a wreck on land, and they sink without one.
+ */
 export const MAX_UNIT_RADIUS = Math.max(
-  ...Object.values(ENTRIES).filter((d) => d.kind === "unit").map((d) => d.radius),
+  ...Object.values(ENTRIES).filter((d) => d.kind === "unit" && !d.naval).map((d) => d.radius),
 );
 
 export function isBuildingType(type: string): type is BuildingType {
@@ -4446,6 +4537,11 @@ export function radarLaidOf(type: EntityType): boolean {
 /** Radar-laid 20mm on the turret roof. See CatalogEntry.roofCiws. */
 export function roofCiwsOf(type: EntityType): boolean {
   return catalog(type).roofCiws === true;
+}
+
+/** The Battle Ship: two triple turrets and two CIWS mounts, each on its own clock (sim/battleship.ts). */
+export function isBattleship(type: EntityType): boolean {
+  return type === "battleship";
 }
 
 /** Main-gun barrels on the mount. A twin fires them in succession, one reload for the pair. */

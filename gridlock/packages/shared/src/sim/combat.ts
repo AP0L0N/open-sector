@@ -7,6 +7,21 @@ import {
   APOCALYPSE_CIWS_TURN_DEG_PER_SEC,
   APOCALYPSE_TWIN_GAP,
   APOCALYPSE_TWIN_WINDOW,
+  APOCALYPSE_CIWS_HEAT,
+  BATTLESHIP_BARREL_GAP_MAX,
+  BATTLESHIP_BARREL_GAP_MIN,
+  BATTLESHIP_BARREL_RELOAD,
+  BATTLESHIP_CIWS_AT,
+  BATTLESHIP_CIWS_INTERCEPT_CHANCE,
+  BATTLESHIP_CIWS_RANGE_TILES,
+  BATTLESHIP_CIWS_SHOTS_PER_TICK,
+  BATTLESHIP_CIWS_TURN_DEG_PER_SEC,
+  BATTLESHIP_HALF_LENGTH,
+  BATTLESHIP_MIN_RANGE_TILES,
+  BATTLESHIP_SHELL,
+  BATTLESHIP_TURRET_AT,
+  BATTLESHIP_TURRET_BLIND_DEG,
+  isBattleship,
   CIWS_AIR_REACH_MUL,
   CIWS_AIR_SPREAD,
   CIWS_AIR_Z_SCATTER,
@@ -200,7 +215,8 @@ import { projectileMeetsDrone, reachesDrone } from "./drone.js";
 import { reachesJet } from "./jet.js";
 import { nightReachMul, nightSightMul, nightTiles } from "./night.js";
 import { afloat, surface, torpedoCannotReach } from "./naval.js";
-import type { Entity, MatchState, Order, Projectile } from "./types.js";
+import { shipMountPoint, turretBearing } from "./battleship.js";
+import type { Entity, MatchState, Order, Projectile, ShipCiws } from "./types.js";
 
 /** A twin mount's barrels sit this share of the hull radius either side of the bore line. */
 const TWIN_GUN_SIDE = 0.25;
@@ -327,6 +343,7 @@ export function tickCombat(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (!canFight(e) || !supplyRiderFights(state, e) || waterSilences(state, e) || garrisonIsHiding(state, e)) continue;
     if (roofCiwsOf(e.type)) tickRoofCiws(state, e, dt, downed);
+    if (e.ship) tickShipCiws(state, e, dt, downed);
     if (interceptRockets(state, e, downed)) continue;
     fireAtCurrent(state, e, dt);
   }
@@ -337,6 +354,12 @@ export function tickCombat(state: MatchState, dt: number): void {
   }
   // The roof mount's first look ran before those launches. Catch the new missiles before they fly.
   for (const e of state.entities.values()) {
+    if (e.ship && canFight(e)) {
+      e.ship.ciws.forEach((m, i) => {
+        if (m.ammo > 0 && m.overheat <= 0 && shipRocketSweep(state, e, i, downed, bornAt)) m.target = null;
+      });
+      continue;
+    }
     if (!roofCiwsOf(e.type) || !canFight(e) || waterSilences(state, e) || garrisonIsHiding(state, e)) continue;
     if (roofRocketSweep(state, e, downed, bornAt)) e.ciwsTarget = null;
   }
@@ -381,17 +404,24 @@ interface RocketGun {
   chance?: number;
   /** Skip projectiles born before this id, so a second look only sees missiles launched this tick. */
   bornAfter?: number;
+  /** Where the barrels stand, when not at the hull's center (a Battle Ship mount). */
+  from?: { x: number; y: number };
+  /** Marks a rocket this mount has tried. Default the entity id; each ship mount has its own. */
+  key?: number;
 }
 
 /** One burst at each hostile rocket in reach this mount has not tried, nearest first. True when it fired. */
 function burstRockets(state: MatchState, e: Entity, downed: Set<number>, gun: RocketGun): boolean {
   const range = gun.range;
+  const key = gun.key ?? e.id;
+  const ox = gun.from?.x ?? e.x;
+  const oy = gun.from?.y ?? e.y;
   const inbound: { p: Projectile; d: number }[] = [];
   for (const p of state.projectiles) {
-    if (p.flight !== "rocket" || downed.has(p.id) || p.ciwsTried?.includes(e.id)) continue;
+    if (p.flight !== "rocket" || downed.has(p.id) || p.ciwsTried?.includes(key)) continue;
     if (gun.bornAfter != null && p.id < gun.bornAfter) continue;
     if (allies(state, e.ownerId, p.ownerId)) continue;
-    const d = Math.hypot(p.x - e.x, p.y - e.y);
+    const d = Math.hypot(p.x - ox, p.y - oy);
     if (d <= range) inbound.push({ p, d });
   }
   if (inbound.length === 0) return false;
@@ -404,11 +434,11 @@ function burstRockets(state: MatchState, e: Entity, downed: Set<number>, gun: Ro
     gun.spend(spent);
     // An ordinary rocket gets one try. A heavy round stays on the gun until it comes apart.
     const heavy = (p.plate ?? 1) > 1;
-    if (!heavy) (p.ciwsTried ??= []).push(e.id);
+    if (!heavy) (p.ciwsTried ??= []).push(key);
     if (nextRand(state) >= chance * (spent / CIWS_INTERCEPT_ROUNDS)) continue;
     const killed = burstBreaksRocket(p);
     if (killed) {
-      if (heavy) (p.ciwsTried ??= []).push(e.id);
+      if (heavy) (p.ciwsTried ??= []).push(key);
       downed.add(p.id);
     }
     state.impacts.push({
@@ -425,7 +455,7 @@ function burstRockets(state: MatchState, e: Entity, downed: Set<number>, gun: Ro
       intercept: true,
     });
   }
-  gun.lay(Math.atan2(first.y - e.y, first.x - e.x));
+  gun.lay(Math.atan2(first.y - oy, first.x - ox));
   return true;
 }
 
@@ -458,7 +488,12 @@ const CIWS_GUN_STATS = { ...CIWS_GUN, projectileSpeed: SMALL_ARMS_SPEED };
  * paratrooper, or a drone in the air before anything on the ground, nearest first, seen by the
  * side, and nothing its rounds cannot hurt. No player order moves it.
  */
-function roofCiwsTarget(state: MatchState, e: Entity, range: number): Entity | undefined {
+function roofCiwsTarget(
+  state: MatchState,
+  e: Entity,
+  range: number,
+  from: { x: number; y: number } = e,
+): Entity | undefined {
   let best: Entity | undefined;
   let bestD = range * range;
   let bestAir: Entity | undefined;
@@ -467,7 +502,7 @@ function roofCiwsTarget(state: MatchState, e: Entity, range: number): Entity | u
     if (o.kind !== "unit" || o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn != null) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     const air = isAirborne(o) || !!o.drone;
-    const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
+    const d = (o.x - from.x) ** 2 + (o.y - from.y) ** 2;
     if (d > (air ? bestAirD : bestD)) continue;
     if (!canSeeEntity(state, e.ownerId, o)) continue;
     if (!air && !roofRoundCanHarm(e, o)) continue;
@@ -538,6 +573,221 @@ function tickRoofCiws(state: MatchState, e: Entity, dt: number, downed: Set<numb
   }
   e.ciwsFireTick = state.tick;
   e.mgCooldown = TICK_DT;
+}
+
+/** A Battle Ship CIWS mount's reach: the roof mount's rule on its own base. */
+function shipCiwsRange(state: MatchState, e: Entity): number {
+  return (
+    rangeTilesOf(e.type, entityHeight(state, e), BATTLESHIP_CIWS_RANGE_TILES) * state.tileSize * nightReachMul(state.tick)
+  );
+}
+
+/** Marks a rocket one ship mount has tried. Apart from every entity id, and from the ship's other mount. */
+function shipCiwsKey(e: Entity, i: number): number {
+  return -(e.id * 8 + i + 1);
+}
+
+function heatShipCiws(m: ShipCiws, rounds: number): void {
+  m.heat = Math.min(1, m.heat + APOCALYPSE_CIWS_HEAT.perRound * rounds);
+  if (m.heat >= 1 && m.overheat <= 0) m.overheat = APOCALYPSE_CIWS_HEAT.overheatSeconds;
+}
+
+/** One intercept look for ship mount `i`. `bornAfter`: only missiles launched this tick. */
+function shipRocketSweep(state: MatchState, e: Entity, i: number, downed: Set<number>, bornAfter?: number): boolean {
+  const m = e.ship!.ciws[i]!;
+  return burstRockets(state, e, downed, {
+    range: shipCiwsRange(state, e),
+    rounds: () => m.ammo,
+    spend: (n) => {
+      m.ammo = Math.max(0, m.ammo - n);
+      heatShipCiws(m, n);
+    },
+    lay: (facing) => {
+      m.facing = facing;
+      m.fireTick = state.tick;
+      m.cooldown = TICK_DT;
+    },
+    chance: BATTLESHIP_CIWS_INTERCEPT_CHANCE,
+    bornAfter,
+    from: shipMountPoint(e, BATTLESHIP_CIWS_AT[i]!),
+    key: shipCiwsKey(e, i),
+  });
+}
+
+/**
+ * A Battle Ship's two CIWS mounts, each the Apocalypse roof mount's rule on its
+ * own spot, traverse, belt, heat, and clock: a hostile missile in reach first,
+ * then the best unit it can hurt. With nothing to shoot, the superstructure
+ * mount rests over the bow and the stern mount over the stern.
+ */
+function tickShipCiws(state: MatchState, e: Entity, dt: number, downed: Set<number>): void {
+  const range = shipCiwsRange(state, e);
+  e.ship!.ciws.forEach((m, i) => {
+    if (m.cooldown > 0) m.cooldown = Math.max(0, m.cooldown - dt);
+    if (m.overheat > 0) {
+      m.overheat = Math.max(0, m.overheat - dt);
+      if (m.overheat <= 0) m.heat = 0;
+    } else {
+      m.heat = Math.max(0, m.heat - APOCALYPSE_CIWS_HEAT.coolPerSec * dt);
+    }
+    const hot = m.overheat > 0;
+    if (m.cooldown <= 0 && m.ammo > 0 && !hot && shipRocketSweep(state, e, i, downed)) {
+      m.target = null;
+      return;
+    }
+    const at = shipMountPoint(e, BATTLESHIP_CIWS_AT[i]!);
+    const target = m.ammo > 0 ? roofCiwsTarget(state, e, range, at) : undefined;
+    m.target = target?.id ?? null;
+    const rest = BATTLESHIP_CIWS_AT[i]! < -0.5 ? e.facing + Math.PI : e.facing;
+    const want = target ? Math.atan2(target.y - at.y, target.x - at.x) : rest;
+    const turn = stepTurn(m.facing, want, BATTLESHIP_CIWS_TURN_DEG_PER_SEC, dt);
+    m.facing = turn.angle;
+    if (!target || m.cooldown > 0 || hot || Math.abs(turn.remainingDeg) > FACE_FIRE_DEG) return;
+    // The rounds leave the mount, not the middle of the hull.
+    const mount: Entity = { ...e, x: at.x, y: at.y, radius: 2 };
+    const dist = Math.hypot(target.x - at.x, target.y - at.y);
+    for (let k = 0; k < BATTLESHIP_CIWS_SHOTS_PER_TICK && m.ammo > 0; k++) {
+      fireRound(state, mount, target.x, target.y, CIWS_GUN_STATS, range, dist, {
+        target,
+        bearing: m.facing,
+        accurateRange: range,
+        radar: true,
+      });
+      m.ammo -= 1;
+      heatShipCiws(m, 1);
+    }
+    m.fireTick = state.tick;
+    m.cooldown = TICK_DT;
+  });
+}
+
+/** A turret is laid when it is this close to the bearing. */
+const SHIP_TURRET_LAY_DEG = 3;
+/** Barrel length and spacing as shares of the half-length: where each shell leaves. Matches the turret art. */
+const SHIP_MUZZLE_REACH = 0.22;
+const SHIP_BARREL_GAP = 0.02;
+
+/**
+ * Trains a forward turret toward `want`, the short way that does not cross the
+ * blind arc astern. Its bearing is kept against the hull, so a turning hull
+ * carries it round. Returns the degrees still to go and whether `want` is blind.
+ */
+function trainShipTurret(e: Entity, i: number, want: number, dt: number): { remainingDeg: number; blind: boolean } {
+  const t = e.ship!.turrets[i]!;
+  const limit = Math.PI - (BATTLESHIP_TURRET_BLIND_DEG * Math.PI) / 180;
+  const goal = turretBearing(e.facing, want);
+  const rel = (a: number) => Math.atan2(Math.sin(a - e.facing), Math.cos(a - e.facing));
+  const cur = Math.max(-limit, Math.min(limit, rel(t.facing)));
+  const aim = rel(goal.facing);
+  const step = ((catalog(e.type).turretTurnDegPerSec ?? 0) * Math.PI) / 180 * dt;
+  const next = cur + Math.max(-step, Math.min(step, aim - cur));
+  t.facing = e.facing + next;
+  const remainingDeg = (Math.abs(rel(want) - next) * 180) / Math.PI;
+  return { remainingDeg: goal.blind ? 180 : remainingDeg, blind: goal.blind };
+}
+
+/** Lets barrel `k` of turret `i` go: the field gun's shell on the ship's low arc, from that muzzle. */
+function fireShipBarrel(
+  state: MatchState,
+  e: Entity,
+  i: number,
+  k: number,
+  aimX: number,
+  aimY: number,
+  range: number,
+  target: Entity | undefined,
+): void {
+  const t = e.ship!.turrets[i]!;
+  const at = shipMountPoint(e, BATTLESHIP_TURRET_AT[i]!);
+  const fx = Math.cos(t.facing);
+  const fy = Math.sin(t.facing);
+  const reach = SHIP_MUZZLE_REACH * BATTLESHIP_HALF_LENGTH;
+  const side = (k - 1) * SHIP_BARREL_GAP * BATTLESHIP_HALF_LENGTH;
+  const x = at.x + fx * reach - fy * side;
+  const y = at.y + fy * reach + fx * side;
+  const muzzle: Entity = { ...e, x, y };
+  launchMortar(state, muzzle, aimX, aimY, range, Math.hypot(aimX - x, aimY - y), target, BATTLESHIP_SHELL);
+  const shell = state.projectiles[state.projectiles.length - 1];
+  if (shell) shell.shipBarrel = i * 3 + k;
+}
+
+/**
+ * The Battle Ship's main battery. Each turret trains on its own toward the
+ * target (or the force-attack point), never through the blind arc astern. A
+ * laid turret whose loaded barrels are all ready starts a volley: those
+ * barrels in a random order, a short random gap apart, each shell lobbed on
+ * the ship's low, fast arc. Each barrel then reloads on its own clock and
+ * spends its own shells. Laid off the target mid-volley, the rest wait for
+ * the next one. With the whole battery blind and the ship halted, the hull
+ * comes round.
+ */
+function fireShip(state: MatchState, e: Entity, dt: number): void {
+  const ship = e.ship!;
+  for (const t of ship.turrets) for (const b of t.barrels) if (b.cooldown > 0) b.cooldown = Math.max(0, b.cooldown - dt);
+  const target = currentTarget(state, e);
+  const ground =
+    !target && e.order?.kind === "forceattack" && e.order.x != null && e.order.y != null
+      ? { x: e.order.x, y: e.order.y }
+      : null;
+  const aim = ground ?? (target && target.hp > 0 ? { x: target.x, y: target.y } : null);
+  const range = weaponRangeWorld(state, e);
+  const minRange = BATTLESHIP_MIN_RANGE_TILES * state.tileSize;
+  const dist = aim ? Math.hypot(aim.x - e.x, aim.y - e.y) : 0;
+  const tooClose = !!aim && dist < minRange;
+  if (tooClose && e.order?.auto) {
+    e.order = null;
+    e.state = "idle";
+  }
+  const lay = aim && !tooClose ? aim : null;
+  const trained = ship.turrets.map((_, i) => {
+    const at = shipMountPoint(e, BATTLESHIP_TURRET_AT[i]!);
+    return trainShipTurret(e, i, lay ? Math.atan2(lay.y - at.y, lay.x - at.x) : e.facing, dt);
+  });
+  e.turretFacing = ship.turrets[0]!.facing;
+  if (!lay) {
+    for (const t of ship.turrets) t.volley = [];
+    if (tooClose && e.order?.kind !== "attack" && e.order?.kind !== "forceattack") e.attackTarget = null;
+    return;
+  }
+  if (dist > range) {
+    e.state = "attack";
+    return;
+  }
+  if (e.waypoints.length > 0 && !travelFights(e) && !reversing(e)) return;
+  e.state = "attack";
+  if (e.waypoints.length === 0 && trained.every((t) => t.blind)) {
+    turnToward(e, lay.x, lay.y, catalog(e.type).turnDegPerSec * hullTurnMul(e), dt);
+  }
+  let fired = false;
+  ship.turrets.forEach((t, i) => {
+    if (trained[i]!.blind || trained[i]!.remainingDeg > SHIP_TURRET_LAY_DEG) {
+      t.volley = [];
+      return;
+    }
+    if (t.volley.length === 0) {
+      const loaded = t.barrels.flatMap((b, k) => (b.ammo > 0 ? [k] : []));
+      if (loaded.length === 0 || loaded.some((k) => t.barrels[k]!.cooldown > 0)) return;
+      for (let a = loaded.length - 1; a > 0; a--) {
+        const j = Math.floor(nextRand(state) * (a + 1));
+        [loaded[a], loaded[j]] = [loaded[j]!, loaded[a]!];
+      }
+      t.volley = loaded;
+      t.nextShotTick = state.tick;
+    }
+    if (state.tick < t.nextShotTick) return;
+    const k = t.volley.shift()!;
+    const b = t.barrels[k]!;
+    if (b.ammo > 0 && b.cooldown <= 0) {
+      fireShipBarrel(state, e, i, k, lay.x, lay.y, range, target);
+      b.ammo -= 1;
+      b.cooldown = BATTLESHIP_BARREL_RELOAD;
+      t.firedTick[k] = state.tick;
+      fired = true;
+    }
+    const gap = BATTLESHIP_BARREL_GAP_MIN + nextRand(state) * (BATTLESHIP_BARREL_GAP_MAX - BATTLESHIP_BARREL_GAP_MIN);
+    t.nextShotTick = state.tick + Math.max(1, Math.round(gap / TICK_DT));
+  });
+  if (fired && e.order?.once && ship.turrets.every((t) => t.volley.length === 0)) clearOrder(e);
 }
 
 /**
@@ -995,6 +1245,10 @@ function settleTwin(state: MatchState, e: Entity): void {
 }
 
 function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
+  if (e.ship) {
+    fireShip(state, e, dt);
+    return;
+  }
   settleTwin(state, e);
   const holedUp = e.garrisonedIn != null;
   const target = currentTarget(state, e);
@@ -1708,7 +1962,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
   const ty = worldToTile(p.y, state.tileSize);
   if (!inAir && isTree(state, tx, ty)) fellTreeAt(state, tx, ty);
   const rack = p.heavy ? PENETRATOR_RACK : rocketRackOf(p.launcher ?? "titan");
-  const lob = p.big ? ARTILLERY_SHELL : MORTAR_LOB;
+  const lob = p.shipBarrel != null ? BATTLESHIP_SHELL : p.big ? ARTILLERY_SHELL : MORTAR_LOB;
   const radius = (rocket ? rack.splashTiles : p.big ? lob.splashTiles : MORTAR_SPLASH_TILES) * state.tileSize;
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null) continue;
@@ -2681,6 +2935,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (d > bestD) continue;
     if (launcherOnlyOf(e.type) && !inLauncherBand(state, e, o.x, o.y)) continue;
     if (e.type === "artillery" && d < (ARTILLERY_MIN_RANGE_TILES * state.tileSize) ** 2) continue;
+    if (isBattleship(e.type) && d < (BATTLESHIP_MIN_RANGE_TILES * state.tileSize) ** 2) continue;
     if (coneOnly && !inGuardCone(e, o)) continue;
     if (!canSeeEntity(state, e.ownerId, o)) continue;
     if (!canAimWeapon(state, e, o.x, o.y, o)) continue;

@@ -175,6 +175,8 @@ import {
   snapHitToUnitSprite,
   spriteFor,
   spriteReady,
+  BATTLESHIP_LAYERS,
+  BATTLESHIP_SPRITE,
   unitSpritePaintRect,
   wreckSpriteFor,
   GUNNER_DIE_SPRITE,
@@ -266,6 +268,7 @@ import {
   type GunRecoil,
 } from "./gun-recoil.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
+import { BATTLESHIP_WORLD_PER_UNIT, battleshipLayers, shipBarrelMuzzle, shipCiwsMuzzle } from "./battleship.js";
 import {
   drawMuzzleSmoke,
   muzzleSmokePose,
@@ -500,6 +503,7 @@ const EXTRUDE: Record<EntityType, number> = {
   supply: 18,
   gunboat: 10,
   submarine: 7,
+  battleship: 20,
   cottage: 28,
   shack: 24,
   house: 36,
@@ -1115,6 +1119,7 @@ export class MapView {
       if (p.mortar) {
         if (shooter?.type === "mortarman" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
         if (p.big && shooter?.type === "artillery" && !shooter.wreck) this.noteFieldGunShot(shooter, p, now);
+        if (p.shipBarrel != null && shooter?.ship && !shooter.wreck) this.noteShipShot(shooter, p.shipBarrel, p, now);
         continue;
       }
       if (p.rocket) {
@@ -1324,6 +1329,33 @@ export class MapView {
         });
         continue;
       }
+      if (e.ship) {
+        // Each 20mm round leaves whichever firing mount faces it best. The main guns lob; they carry no tracers.
+        const rounds = byGun.get(e.id)?.filter((i) => i.caliber === 20) ?? [];
+        const firing = e.ship.ciws.flatMap((m, i) => (m.fire ? [{ m, i }] : []));
+        if (rounds.length === 0 || firing.length === 0) continue;
+        const p = this.lerpEnt(e);
+        const size = BATTLESHIP_SPRITE.drawSize;
+        for (const { m, i } of firing) {
+          const mine = rounds.filter((r) => {
+            const a = Math.atan2(r.y - p.y, r.x - p.x);
+            const best = firing.reduce((b, f) =>
+              Math.abs(Math.atan2(Math.sin(a - f.m.facing), Math.cos(a - f.m.facing))) <
+              Math.abs(Math.atan2(Math.sin(a - b.m.facing), Math.cos(a - b.m.facing)))
+                ? f
+                : b,
+            );
+            return best.i === i;
+          });
+          const at = shipCiwsMuzzle(p, i, m.facing, size);
+          const muzzle = { x: at.x, y: at.y, z: this.elevAt(at.x, at.y) + at.lift / ISO_ELEVATION };
+          for (const tr of ciwsTracers(muzzle, mine, ground, now, ts)) {
+            this.tracers.push(tr);
+            this.barrageLandAt.set(tr.id, tracerLandsAt(tr));
+          }
+        }
+        continue;
+      }
       const pad = e.type === "ciws";
       if (!pad && !e.ciws) continue;
       const facing = pad ? (e.turretFacing ?? e.facing) : e.ciws!.facing;
@@ -1508,6 +1540,56 @@ export class MapView {
       at: now,
       caliber: shot.caliber,
       lift: Math.round((spr?.drawSize ?? 48) * 0.54),
+    });
+  }
+
+  /**
+   * One Battle Ship barrel: the field gun's flash and muzzle puff at that barrel's
+   * tip, and its thick blast cloud rolling back from behind that barrel.
+   */
+  private noteShipShot(shooter: EntityView, barrel: number, shot: { id: number; caliber: number }, now: number): void {
+    const i = Math.floor(barrel / 3);
+    const k = barrel % 3;
+    const turret = shooter.ship?.turrets[i];
+    if (!turret) return;
+    const size = BATTLESHIP_SPRITE.drawSize;
+    const m = shipBarrelMuzzle(shooter, i, k, turret.facing, size);
+    const dirX = Math.cos(turret.facing);
+    const dirY = Math.sin(turret.facing);
+    this.muzzleSmokes.push(
+      ...spawnMuzzleSmoke({
+        x: m.x,
+        y: m.y,
+        dirX,
+        dirY,
+        now,
+        seed: (shot.id * 2654435761 + Math.floor(now)) >>> 0,
+        scale: 1.3,
+      }),
+    );
+    // Behind the cannon: back along the barrel from its tip to the turret face. Six barrels
+    // each throw the field gun's cloud, so each one is a smaller cloud than the lone gun's.
+    const back = 2.4 * BATTLESHIP_WORLD_PER_UNIT;
+    this.fieldGunSmokes.push(
+      ...spawnFieldGunSmoke({
+        x: m.x - dirX * back,
+        y: m.y - dirY * back,
+        facing: turret.facing,
+        radius: 4.5,
+        now,
+        seed: (shot.id * 2246822519 + Math.floor(now)) >>> 0,
+      }),
+    );
+    this.addFx({
+      id: shot.id + 8_000_000,
+      kind: "muzzle",
+      x: m.x,
+      y: m.y,
+      vx: dirX,
+      vy: dirY,
+      at: now,
+      caliber: shot.caliber,
+      lift: Math.round(m.lift),
     });
   }
 
@@ -5433,6 +5515,28 @@ export class MapView {
     });
   }
 
+  /** Battle Ship superstructure, turrets, and CIWS mounts over its hull. (ox, oy) is the model origin on screen. */
+  private drawShipLayers(e: EntityView, facing: number, ox: number, oy: number, size: number): void {
+    const ship = e.ship;
+    if (!ship) return;
+    const ctx = this.ctx;
+    const layers = battleshipLayers(
+      facing,
+      ship.turrets.map((t) => t.facing),
+      ship.ciws.map((m) => m.facing),
+      size,
+      this.ts(),
+    );
+    const left = ox - size / 2;
+    const top = oy - size * BATTLESHIP_SPRITE.contactY;
+    for (const l of layers) {
+      const sheet = BATTLESHIP_LAYERS[l.layer];
+      if (!spriteReady(sheet)) continue;
+      const cell = sheet.frameSize;
+      ctx.drawImage(sheet.image, 0, l.row * cell, cell, cell, left + l.dx, top + l.dy, size, size);
+    }
+  }
+
   private drawSpritedUnit(e: EntityView, def: UnitSpriteDef): void {
     const ctx = this.ctx;
     const p = this.lerpEnt(e);
@@ -5495,6 +5599,8 @@ export class MapView {
       ctx.translate(-s.x, -s.y);
     }
     if (e.wreck && !corpse && sheet === def) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
+    // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
+    if (e.ship) hullShiftY -= unitGroundSink(size);
     const stepping = unitStepping({ type: e.type, state: e.state, swimming: e.swimming, prev: this.prevById.get(e.id), curr: e });
     const drawn = drawUnitSprite(ctx, sheet, s.x, s.y, dir.x, dir.y, {
       moving: !e.wreck && !immobilized(e) && stepping,
@@ -5516,8 +5622,21 @@ export class MapView {
     if (drawn && e.scout?.out && !e.wreck) {
       drawScoutHead(ctx, s.x + hullShiftX, s.y + hullShiftY, turretDir.x, turretDir.y, size, p.turretFacing);
     }
+    if (drawn && e.ship) this.drawShipLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
     ctx.restore();
     ctx.restore();
+    if (drawn && e.ship && !e.wreck) {
+      const now = performance.now();
+      e.ship.ciws.forEach((m, i) => {
+        if (!m.fire) return;
+        const at = shipCiwsMuzzle(p, i, m.facing, size);
+        const pt = this.toScreen(at.x, at.y);
+        const d = facingToIso(m.facing, this.ts());
+        const len = Math.hypot(d.x, d.y) || 1;
+        const muzzle = { x: pt.x, y: pt.y - at.lift, dirX: d.x / len, dirY: d.y / len };
+        drawGatlingFlash(ctx, muzzle, size * 0.25, now, e.id + i * 7);
+      });
+    }
     if (drawn && e.gatling && !e.wreck) {
       const now = performance.now();
       const muzzles = gatlingMuzzles(s.x, s.y, size, p.turretFacing ?? p.facing, e.gatling.arms, e.gatling.off);

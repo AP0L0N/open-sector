@@ -2,6 +2,7 @@ import {
   buildingFaceIndex,
   isCivilianType,
   TANK_FACE_DIRS,
+  TILE_SIZE,
   isInfantryType,
   type CivilianType,
   type Crit,
@@ -234,12 +235,14 @@ import {
   bindTransportSheets,
   bindSupplySheets,
   bindNavalSheets,
+  bindBattleshipSheets,
   bindApocalypseSheets,
   bindNebelwerferSheets,
   bindArtillerySheets,
   bindTurntableSheets,
 } from "./turntable-sheet.js";
 import { engineRowFromFacing, engineRowFromScreen } from "./turntable.js";
+import { BATTLESHIP_MODEL, battleshipDrawSize } from "./battleship.js";
 import scoutHeadUrl from "../assets/units/scout-head.png";
 import rigSheetUrl from "../assets/units/rig-move.png";
 import armIconUrl from "../assets/status/arm.png";
@@ -1180,6 +1183,32 @@ export const SUBMARINE_SPRITE: UnitSpriteDef = {
 };
 bindNavalSheets("submarine", SUBMARINE_SPRITE.image);
 
+function shipLayer(): TurretSpriteDef {
+  return { image: new Image(), dirs: TANK_FACE_DIRS, frames: 1, frameSize: 256 };
+}
+/**
+ * Battle Ship hull, cut at the waterline over its wake. The superstructure, both
+ * turrets, and both CIWS mounts are drawn over it by render/battleship.ts, each on
+ * its own pivot. Drawn at the sim's length, not UNIT_VISUAL_SCALE.
+ */
+export const BATTLESHIP_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 256,
+  fps: 8,
+  drawSize: Math.round(battleshipDrawSize(TILE_SIZE)),
+  contactY: BATTLESHIP_MODEL.cyFrac,
+  facingSpace: "world",
+};
+export const BATTLESHIP_LAYERS = { super: shipLayer(), turret: shipLayer(), ciws: shipLayer() };
+bindBattleshipSheets({
+  hull: BATTLESHIP_SPRITE.image,
+  super: BATTLESHIP_LAYERS.super.image,
+  turret: BATTLESHIP_LAYERS.turret.image,
+  ciws: BATTLESHIP_LAYERS.ciws.image,
+});
+
 /**
  * Infantry battle platform on four legs. Columns are an 8-frame trot, rows the
  * 16 faces; the chin MG is part of the body and aims with it. Drawn at half the
@@ -1466,6 +1495,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   supply: SUPPLY_SPRITE,
   gunboat: GUNBOAT_SPRITE,
   submarine: SUBMARINE_SPRITE,
+  battleship: BATTLESHIP_SPRITE,
   mammoth: MAMMOTH_SPRITE,
   nebelwerfer: NEBELWERFER_SPRITE,
   artillery: ARTILLERY_SPRITE,

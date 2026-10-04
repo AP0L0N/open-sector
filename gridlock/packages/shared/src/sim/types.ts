@@ -349,6 +349,8 @@ export interface Entity {
   ciwsFireTick?: number;
   /** Submarine: sim tick it last fired and showed itself. Missing until its first shot. */
   surfacedTick?: number;
+  /** Battle Ship: its turrets and CIWS mounts, each on its own clock. Missing on every other type. */
+  ship?: ShipState;
   /**
    * Sim tick through which the second main-gun barrel is still owed.
    * Missing between volleys. `cooldown` holds the gap before that barrel can fire.
@@ -457,6 +459,44 @@ export interface Entity {
   jet?: JetState;
 }
 
+/** One gun of a Battle Ship turret. */
+export interface ShipBarrel {
+  /** Shells left in this barrel's own magazine. */
+  ammo: number;
+  /** Seconds until it is loaded again. */
+  cooldown: number;
+}
+
+/** A Battle Ship main turret. Turret 0's facing is also the entity's `turretFacing`. */
+export interface ShipTurret {
+  facing: number;
+  barrels: ShipBarrel[];
+  /** Barrels still to let go in the volley under way, in order, and the tick the next one may. */
+  volley: number[];
+  nextShotTick: number;
+  /** Sim tick each barrel last fired. Missing until it first does. */
+  firedTick: (number | undefined)[];
+}
+
+/** A Battle Ship radar-laid 20mm mount: its own traverse, target, belt, heat, and clock. */
+export interface ShipCiws {
+  facing: number;
+  target: number | null;
+  ammo: number;
+  cooldown: number;
+  heat: number;
+  overheat: number;
+  /** Sim tick it last fired, on a unit or a rocket. */
+  fireTick?: number;
+}
+
+export interface ShipState {
+  turrets: ShipTurret[];
+  ciws: ShipCiws[];
+  /** Seconds banked toward the next refill beside a Marine Base. */
+  rearm: number;
+}
+
 export interface Projectile {
   id: number;
   ownerId: string;
@@ -494,6 +534,8 @@ export interface Projectile {
   vz?: number;
   /** A field gun's shell on the mortar arc: the bigger burst. Omitted for the mortar bomb. */
   big?: boolean;
+  /** A Battle Ship's shell: `big`, on the ship's low, fast arc (BATTLESHIP_SHELL). Its barrel: turret × 3 + gun. */
+  shipBarrel?: number;
   /**
    * Arcing mortar bomb, a bomb falling from a plane, or a Titan rocket (straight
    * and fast, bursts at its fused point or on whatever it meets first).

@@ -84,6 +84,26 @@ function ciwsView(state: MatchState, e: Entity): EntityView["ciws"] {
   return fire ? { facing: e.ciwsFacing ?? e.turretFacing, fire: true } : { facing: e.ciwsFacing ?? e.turretFacing };
 }
 
+/** Battle Ship turrets and CIWS mounts. Shells and belts only for the ship's own side. */
+function shipView(state: MatchState, e: Entity, friendly: boolean): EntityView["ship"] {
+  const ship = e.ship;
+  if (!ship) return undefined;
+  const window = Math.max(1, clampGameSpeed(state.gameSpeed));
+  return {
+    turrets: ship.turrets.map((t) =>
+      friendly ? { facing: t.facing, ammo: t.barrels.map((b) => b.ammo) } : { facing: t.facing },
+    ),
+    ciws: ship.ciws.map((m) => {
+      const fire = !e.wreck && m.fireTick != null && state.tick - m.fireTick < window;
+      return {
+        facing: m.facing,
+        ...(fire ? { fire: true as const } : {}),
+        ...(friendly ? { ammo: m.ammo } : {}),
+      };
+    }),
+  };
+}
+
 function scoutView(e: Entity, friendly: boolean): EntityView["scout"] {
   if (!hasScout(e.type) || e.scoutHpMax <= 0) return undefined;
   const out = entityIsScouting(e);
@@ -340,6 +360,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       charging: e.type === "walker" && e.charging ? true : undefined,
       gatling: gatlingView(state, e),
       ciws: ciwsView(state, e),
+      ship: shipView(state, e, friendly),
       reload: friendly && (isInfantryType(e.type) || beltOf(e.type)) && e.reload > 0 ? e.reload : undefined,
       bipod: plantRemaining(e, friendly),
       garrisonedIn: friendly && e.garrisonedIn ? e.garrisonedIn : undefined,
@@ -475,6 +496,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
         z: p.flight === "mortar" ? (p.z ?? 0) : undefined,
         mortar: p.flight === "mortar" ? true : undefined,
         big: p.flight === "mortar" && p.big ? true : undefined,
+        shipBarrel: p.flight === "mortar" ? p.shipBarrel : undefined,
         apex: p.flight === "mortar" ? p.apex : undefined,
         arc:
           p.flight === "mortar" && (p.flightTime ?? 0) > 0

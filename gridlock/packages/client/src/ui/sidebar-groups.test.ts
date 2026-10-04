@@ -38,6 +38,7 @@ describe("sidebarGroupOf", () => {
     assert.equal(sidebarGroupOf("bv222"), "aircraft");
     assert.equal(sidebarGroupOf("gunboat"), "naval");
     assert.equal(sidebarGroupOf("submarine"), "naval");
+    assert.equal(sidebarGroupOf("battleship"), "naval");
   });
 
   it("lists defences, infantry, tanks, boats, and aircraft cheapest first", () => {
@@ -47,7 +48,7 @@ describe("sidebarGroupOf", () => {
       assert.deepEqual(costs, [...costs].sort((a, b) => a - b), id);
     }
     assert.deepEqual(g.aircraft.map((e) => e.type), ["fw190", "stuka", "bv222"]);
-    assert.deepEqual(g.naval.map((e) => e.type), ["gunboat", "submarine"]);
+    assert.deepEqual(g.naval.map((e) => e.type), ["gunboat", "submarine", "battleship"]);
   });
 });
 
