@@ -177,6 +177,44 @@ function overlapsField(state: MatchState, type: FieldStructureType, x: number, y
   return overlapsFieldIn(state.entities.values(), type, x, y, facing);
 }
 
+/** A yard line sited and still building. Its sections count as standing for anything else placed. */
+export interface SitedLine {
+  type: EntityType;
+  sites?: readonly { x: number; y: number; facing: number }[];
+}
+
+/** True when this field piece would overlap a section of the sited line. Edges may meet. */
+export function overlapsSitedLine(
+  line: SitedLine | null | undefined,
+  type: FieldStructureType,
+  x: number,
+  y: number,
+  facing: number,
+): boolean {
+  if (!line?.sites?.length || !isFieldStructure(line.type)) return false;
+  const lineType = line.type;
+  return overlapsFieldIn(
+    line.sites.map((s) => ({ type: lineType, x: s.x, y: s.y, facing: s.facing, hp: 1 })),
+    type,
+    x,
+    y,
+    facing,
+  );
+}
+
+/** Tiles under the sections of a sited line, as `y * width + x`. */
+export function sitedLineTiles(
+  grid: { width: number; height: number; tileSize: number },
+  line: SitedLine | null | undefined,
+): Set<number> {
+  const out = new Set<number>();
+  if (!line?.sites?.length) return out;
+  for (const s of line.sites) {
+    for (const t of fieldTilesOn(grid, line.type, s.x, s.y, s.facing, 0)) out.add(t.y * grid.width + t.x);
+  }
+  return out;
+}
+
 /**
  * Sharpest turn a line can take at a corner, radians of deflection. Past this
  * the next leg folds back over the last one, so the leg is dropped.
@@ -314,9 +352,12 @@ export function fieldSiteClear(
   x: number,
   y: number,
   facing: number,
+  ownerId?: string,
 ): boolean {
   const tiles = fieldTiles(state, type, x, y, facing, 0);
   if (tiles.length === 0) return false;
+  // The owner's yard line, sited and still building, already holds its ground.
+  if (ownerId != null && overlapsSitedLine(state.players.get(ownerId)?.line, type, x, y, facing)) return false;
   for (const t of tiles) {
     if (!inBounds(state, t.x, t.y)) return false;
     const i = tileIndex(state, t.x, t.y);
@@ -335,8 +376,8 @@ function standPoint(type: FieldStructureType, x: number, y: number, facing: numb
   return { x: x - fx * off, y: y - fy * off };
 }
 
-function pieceBuildable(state: MatchState, structure: FieldStructureType, p: FieldPiece): boolean {
-  if (!fieldSiteClear(state, structure, p.x, p.y, p.facing)) return false;
+function pieceBuildable(state: MatchState, structure: FieldStructureType, p: FieldPiece, ownerId: string): boolean {
+  if (!fieldSiteClear(state, structure, p.x, p.y, p.facing, ownerId)) return false;
   const spot = standPoint(structure, p.x, p.y, p.facing);
   return walkable(state, worldToTile(spot.x, state.tileSize), worldToTile(spot.y, state.tileSize), "engineer");
 }
@@ -368,7 +409,7 @@ export function orderFieldBuild(
   const crew = engineers.filter((e) => e.type === "engineer" && e.hp > 0 && !e.wreck);
   if (crew.length === 0) return "Select an engineer.";
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(facing)) return "Cannot place there.";
-  const pieces = fieldPiecesFor(structure, x, y, facing, x2, y2, path).filter((p) => pieceBuildable(state, structure, p));
+  const pieces = fieldPiecesFor(structure, x, y, facing, x2, y2, path).filter((p) => pieceBuildable(state, structure, p, crew[0]!.ownerId));
   if (pieces.length === 0) return "Cannot place there.";
   const workers = crew.slice(0, pieces.length);
   const ux = pieces.length > 1 ? pieces[pieces.length - 1]!.x - pieces[0]!.x : 0;
@@ -524,7 +565,7 @@ function nextPiece(state: MatchState, e: Entity, structure: FieldStructureType):
   finishWork(e);
   while (queue.length > 0) {
     const p = queue.shift()!;
-    if (!pieceBuildable(state, structure, p)) continue;
+    if (!pieceBuildable(state, structure, p, e.ownerId)) continue;
     e.fieldQueue = queue;
     startPiece(state, e, structure, p);
     return;
@@ -556,7 +597,7 @@ function tickWall(state: MatchState, e: Entity, dt: number, structure: ConcreteL
     return;
   }
   if (e.work <= 0) {
-    const open = pieces.filter((p) => fieldSiteClear(state, structure, p.x, p.y, p.facing));
+    const open = pieces.filter((p) => fieldSiteClear(state, structure, p.x, p.y, p.facing, e.ownerId));
     if (open.length === 0) {
       finishWork(e);
       return;
@@ -598,7 +639,7 @@ function tickWall(state: MatchState, e: Entity, dt: number, structure: ConcreteL
   const raised: Entity[] = [];
   const done = wallPiecesOf(e);
   // Check every piece before raising any: at a corner the first section would otherwise touch the second.
-  const clear = done.map((p) => fieldSiteClear(state, structure, p.x, p.y, p.facing));
+  const clear = done.map((p) => fieldSiteClear(state, structure, p.x, p.y, p.facing, e.ownerId));
   for (let i = 0; i < done.length; i++) {
     const p = done[i]!;
     if (!clear[i]) {
@@ -644,7 +685,7 @@ function tickBuild(state: MatchState, e: Entity, dt: number): void {
       if (player) state.pendingComms.push("Not enough scrap.");
       return;
     }
-    if (!fieldSiteClear(state, structure, order.x, order.y, facing)) {
+    if (!fieldSiteClear(state, structure, order.x, order.y, facing, e.ownerId)) {
       nextPiece(state, e, structure);
       return;
     }
@@ -656,7 +697,7 @@ function tickBuild(state: MatchState, e: Entity, dt: number): void {
   e.turretFacing = e.facing;
   e.work += dt;
   if (e.work < catalog(structure).buildSeconds) return;
-  if (!fieldSiteClear(state, structure, order.x, order.y, facing)) {
+  if (!fieldSiteClear(state, structure, order.x, order.y, facing, e.ownerId)) {
     const player = state.players.get(e.ownerId);
     if (player) player.scrap += catalog(structure).cost;
     nextPiece(state, e, structure);

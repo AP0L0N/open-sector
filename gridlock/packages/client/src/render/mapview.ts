@@ -1749,14 +1749,9 @@ export class MapView {
     return q?.ready === true && q.type === type;
   }
 
+  /** Only the building the player picked off its cameo. A job finishing never takes over the cursor. */
   private placingKind(): BuildingType | YardFieldType | null {
-    if (this.placePick && this.typeReady(this.placePick)) return this.placePick;
-    if (this.curr.you.placingType && this.typeReady(this.curr.you.placingType)) return this.curr.you.placingType;
-    const base = this.curr.you.structureQueue;
-    if (base?.ready) return base.type;
-    const defence = this.curr.you.defenceQueue;
-    if (defence?.ready && isBuildingType(defence.type)) return defence.type;
-    return null;
+    return this.placePick && this.typeReady(this.placePick) ? this.placePick : null;
   }
 
   /** Place this finished building. A ready defence does not have to wait for a ready base. */

@@ -547,7 +547,7 @@ export function paintBattleHud(ctx: Ctx): void {
     const siting = isYardField(type) && viewRef?.yardArm === type && !!viewRef.placeMode;
     btn.classList.toggle("is-ready", ready);
     btn.classList.toggle("is-building", !!job && !ready);
-    btn.classList.toggle("is-placing", (ready && !!viewRef?.placeMode) || siting);
+    btn.classList.toggle("is-placing", (ready && !!viewRef?.placeMode && viewRef.placePick === type) || siting);
     btn.classList.toggle("is-paused", paused);
     btn.classList.toggle("unaffordable", stalled);
     btn.classList.toggle("slow-power", m.you.lowPower && !!job && !job.ready && !job.paused);

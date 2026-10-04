@@ -41,7 +41,8 @@ import { enterGarrison, garrisonMuzzleToward } from "./garrison.js";
 import { toWreck } from "./wreck.js";
 import { destroyEntity, makeEntity, playerTeam, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
-import { previewYardField } from "./preview.js";
+import { previewField, previewSite, previewYardField } from "./preview.js";
+import { buildingSiteError } from "./build.js";
 import { snapshotFor } from "./snapshot.js";
 import { astar } from "./path.js";
 import type { MatchState, Projectile, Entity } from "./types.js";
@@ -1367,6 +1368,28 @@ describe("defences tab field works", () => {
       assert.equal(state.players.get("A")!.line, null);
     });
   }
+
+  it("holds the ground of a sited line while the yard builds it", () => {
+    const { state } = twoPlayerMatch();
+    deployCore(state);
+    const spot = besideCore(state);
+    const placed = placeYard(state, "wall", spot.x, spot.y, 0);
+    assert.equal(placed.ok, true, placed.ok ? "" : placed.message);
+    const tile = { x: worldToTile(spot.x, state.tileSize), y: worldToTile(spot.y, state.tileSize) };
+    // A tower on the sited section is refused, as if the wall already stood. The enemy is not held back by it.
+    assert.match(buildingSiteError(state, "tower", tile.x, tile.y, "A") ?? "", /Cannot place/);
+    assert.equal(buildingSiteError(state, "tower", tile.x, tile.y, "B"), null);
+    assert.equal(previewSite(snapshotFor(state, "A"), "tower", tile.x, tile.y), false);
+    // Sandbags laid over it are refused too; well clear of it they are fine.
+    assert.equal(fieldSiteClear(state, "sandbags", spot.x, spot.y, 0, "A"), false);
+    assert.equal(previewField(snapshotFor(state, "A"), "sandbags", spot.x, spot.y, 0), false);
+    const clear = spot.x + fieldSpan("wall")!.length * 3;
+    assert.equal(fieldSiteClear(state, "sandbags", clear, spot.y, 0, "A"), true);
+    // Once raised the wall blocks on its own; the line no longer reserves anything.
+    ticks(state, catalog("wall").buildSeconds * 10);
+    assert.equal(state.players.get("A")!.line, null);
+    assert.equal([...state.entities.values()].filter((e) => e.type === "wall" && e.hp > 0).length, 1);
+  });
 
   it("builds a longer wall more slowly and charges every section", () => {
     const { state } = twoPlayerMatch();
