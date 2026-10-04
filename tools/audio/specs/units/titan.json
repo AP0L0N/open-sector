@@ -2,14 +2,13 @@
   "key": "titan",
   "out": "units/titan",
   "voice": {
-    "name": "Open Sector - Titan",
+    "name": "Titan - OS",
     "description": "Towering, calm, commanding male walker pilot in his forties, deep resonant baritone with slow steady cadence, authoritative like a battleship captain, never raises his voice, quiet confidence and gravity, with a subtle metallic cockpit radio quality.",
     "sample": "Titan, standing tall. My gun reaches far and my rockets reach farther. Rivers do not stop me, walls do not stop me. Give the order, and I will anchor here and hold this ground until nothing is left standing.",
     "stability": 0.6,
     "similarity": 0.8,
     "style": 0.4,
-    "voice_id": "pNInz6obpgDQGcFmaJgB",
-    "stock_voice": "Adam"
+    "voice_id": "OevMct46kM6nDuYKTTMr"
   },
   "lines": {
     "select": [
