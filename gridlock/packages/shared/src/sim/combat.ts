@@ -743,8 +743,8 @@ function fireShipBarrel(
  * barrels in a random order, a short random gap apart, each shell lobbed on
  * the ship's low, fast arc. Each barrel then reloads on its own clock and
  * spends its own shells. Laid off the target mid-volley, the rest wait for
- * the next one. With the whole battery blind and the ship halted, the hull
- * comes round.
+ * the next one. Only the turrets train: the hull turns only for Rotate or
+ * when the ship moves, so a target in the blind arc waits for that.
  */
 function fireShip(state: MatchState, e: Entity, dt: number): void {
   const ship = e.ship!;
@@ -784,9 +784,6 @@ function fireShip(state: MatchState, e: Entity, dt: number): void {
   }
   if (e.waypoints.length > 0 && !travelFights(e) && !reversing(e)) return;
   e.state = "attack";
-  if (e.waypoints.length === 0 && trained.every((t) => t.blind)) {
-    turnToward(e, lay.x, lay.y, catalog(e.type).turnDegPerSec * hullTurnMul(e), dt);
-  }
   let fired = false;
   ship.turrets.forEach((t, i) => {
     if (trained[i]!.blind || trained[i]!.remainingDeg > SHIP_TURRET_LAY_DEG) {
