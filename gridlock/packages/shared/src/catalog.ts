@@ -1397,10 +1397,11 @@ export const PYRO_COOKOFF_FIRES = 7;
 /**
  * A tank's HE shell bursts where it stops and leaves the ground around it
  * burning, the same fire the Pyro lays. Patches in two rings around the burst.
- * World pixels.
+ * World pixels. Kept few: every tank HE round lights them, and each patch is
+ * costly to draw, so a long tank fight would otherwise drag the frame rate down.
  */
 export const HE_FIRE_RADIUS = t(1.4) * TILE_SIZE;
-export const HE_FIRE_PATCHES = 12;
+export const HE_FIRE_PATCHES = 4;
 
 /**
  * Medic. He walks to wounded infantry inside this disk, then has to stand

@@ -326,6 +326,9 @@ import {
   drawScorch,
   drawSoot,
   FIRE_SMOKE_CAP,
+  FIRE_SMOKE_EVERY_MS,
+  FIRE_TONGUE_BUDGET,
+  FIRE_TONGUES_MAX,
   drawTongue,
   FLAME_PARTICLE_CAP,
   fireTongues,
@@ -334,6 +337,7 @@ import {
   jetParticles,
   patchHeat,
   rng as flameRng,
+  SCORCH_CAP,
   SCORCH_MS,
   stepFlameParticle,
   tonguePose,
@@ -6537,10 +6541,11 @@ export class MapView {
         run: () => drawScorch(this.ctx, s.x, s.y, rx, id, alpha * 0.9),
       });
     }
-    if (this.scorches.size > 400) {
+    if (this.scorches.size > SCORCH_CAP) {
       const old = [...this.scorches.entries()].filter(([id]) => !live.has(id)).sort((a, b) => a[1].seen - b[1].seen);
-      for (const [id] of old.slice(0, this.scorches.size - 400)) this.scorches.delete(id);
+      for (const [id] of old.slice(0, this.scorches.size - SCORCH_CAP)) this.scorches.delete(id);
     }
+    const tongues = Math.min(FIRE_TONGUES_MAX, Math.floor(FIRE_TONGUE_BUDGET / Math.max(1, fires.length)));
     // A light draft: flames lean and smoke drifts the same way.
     const wind = 0.28 + 0.12 * Math.sin(now * 0.00037);
     for (const f of fires) {
@@ -6559,7 +6564,7 @@ export class MapView {
         z: isoDepth(f.x, f.y) + 0.45,
         run: () => drawFuelBed(this.ctx, s.x, s.y, rx, heat, now, f.id),
       });
-      for (const t of fireTongues(f.id, rx)) {
+      for (const t of fireTongues(f.id, rx, tongues)) {
         const dx = t.u * rx * 0.9;
         const dy = t.v * rx * 0.45;
         const g = isoToWorld(dx, dy, ts);
@@ -6580,7 +6585,7 @@ export class MapView {
       });
       const last = this.fireSmokeAt.get(f.id) ?? 0;
       // Burning fuel smokes black and heavy; it thins to grey as the patch dies down.
-      const every = 110 / Math.max(0.2, heat);
+      const every = FIRE_SMOKE_EVERY_MS / Math.max(0.2, heat);
       if (now - last >= every) {
         this.fireSmokeAt.set(f.id, now);
         const rnd = flameRng((f.id * 2246822519 + Math.floor(now)) >>> 0);
