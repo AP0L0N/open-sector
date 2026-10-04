@@ -420,6 +420,7 @@ import {
   stackedLight,
   workLightBearings,
   workLightCount,
+  wreckNightAlpha,
 } from "./night.js";
 
 type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" | "missile" };
@@ -3429,6 +3430,14 @@ export class MapView {
     return Math.min(1, Math.max(0, (now - at) / UNIT_SIGHT_FADE_MS));
   }
 
+  /** A wreck out of sight sinks into the night fog with the ground; 1 for anything else. */
+  private wreckFade(e: EntityView, now: number): number {
+    if (!e.wreck || !this.fogField) return 1;
+    const ts = this.ts();
+    const p = this.lerpEnt(e);
+    return wreckNightAlpha(daylightAt(this.curr.tick), this.fogField.sample(p.x / ts, p.y / ts, now));
+  }
+
   /** Soft veil over ground out of sight, laid on the hills. Drawn under everything standing. */
   private drawGroundFog(): void {
     const field = this.fogField;
@@ -3503,7 +3512,8 @@ export class MapView {
           if (isFieldStructure(e.type)) this.drawField(e, ghost);
           else if (e.kind === "building") this.drawBuilding(e, ghost);
           else if (!ghost && !e.garrisonedIn && this.unitNearView(e, w, h)) {
-            const fade = this.sightFade(e, now);
+            const fade = this.sightFade(e, now) * this.wreckFade(e, now);
+            if (fade <= 0) return;
             const ctx = this.ctx;
             const prev = ctx.globalAlpha;
             ctx.globalAlpha = prev * fade;
@@ -4613,7 +4623,9 @@ export class MapView {
   private pushGroundShadow(
     items: DrawItem[],
     foot: { cx: number; cy: number; points: { x: number; y: number }[]; contact?: { x: number; y: number }[] },
+    alpha = 1,
   ): void {
+    if (alpha <= 0) return;
     const { w, h } = this.viewSize();
     const contact = (foot.contact ?? []).map((q) => this.toScreen(q.x, q.y));
     const screen: { x: number; y: number }[] = [];
@@ -4633,11 +4645,18 @@ export class MapView {
     items.push({
       layer: HOLE_DRAW_LAYER,
       z: isoDepth(foot.cx, foot.cy),
-      run: () => drawGroundShadow(this.ctx, screen, contact),
+      run: () => {
+        const ctx = this.ctx;
+        const prev = ctx.globalAlpha;
+        ctx.globalAlpha = prev * alpha;
+        drawGroundShadow(ctx, screen, contact);
+        ctx.globalAlpha = prev;
+      },
     });
   }
 
   private collectUnitShadows(items: DrawItem[]): void {
+    const now = performance.now();
     for (const e of this.curr.entities) {
       // A hull afloat casts no blob on the water, any more than a swimmer does.
       const inWater = e.swimming || e.wading || isNavalType(e.type);
@@ -4658,12 +4677,14 @@ export class MapView {
           stance: e.stance,
           airborne: (e.air?.alt ?? 0) > 0 || (e.jet?.alt ?? 0) > 0,
         }),
+        this.wreckFade(e, now),
       );
     }
   }
 
   /** Mauler carts draw as their own depth-sorted object behind the hitch. */
   private collectMaulerCarts(items: DrawItem[], w: number, h: number): void {
+    const now = performance.now();
     const live = new Set<number>();
     for (const e of this.curr.entities) {
       if (e.type !== "hauler" || e.garrisonedIn) continue;
@@ -4674,6 +4695,8 @@ export class MapView {
       const pose = e.wreck && prev ? prev : followCart(prev, p.x, p.y, p.facing);
       this.maulerCarts.set(e.id, pose);
       if (!this.unitNearView(e, w, h)) continue;
+      const fade = this.wreckFade(e, now);
+      if (fade <= 0) continue;
       this.pushGroundShadow(
         items,
         unitShadowFootprint({
@@ -4683,12 +4706,19 @@ export class MapView {
           radius: catalog(e.type).radius * UNIT_VISUAL_SCALE * 0.6,
           elongated: true,
         }),
+        fade,
       );
       items.push({
         layer: STANDING_DRAW_LAYER,
         z: isoDepth(pose.x, pose.y),
         at: { x: pose.x, y: pose.y },
-        run: () => this.drawMaulerCart(e, pose),
+        run: () => {
+          const ctx = this.ctx;
+          const prev = ctx.globalAlpha;
+          ctx.globalAlpha = prev * fade;
+          this.drawMaulerCart(e, pose);
+          ctx.globalAlpha = prev;
+        },
       });
     }
     for (const id of this.maulerCarts.keys()) {
@@ -6040,7 +6070,8 @@ export class MapView {
       const ox = ux * size * along + -uy * size * across;
       const lift = WRECK_FIRE_LIFT[e.type] ?? 1;
       const oy = uy * size * along * 0.45 + ux * size * across * 0.45 - size * (i === 0 ? 0.47 : 0.4) * lift;
-      drawWreckFire(this.ctx, x + ox, y + oy, now, e.id * 13 + i * 29, a);
+      // The flame sets its own alpha; carry the hull's sight and night fade into it.
+      drawWreckFire(this.ctx, x + ox, y + oy, now, e.id * 13 + i * 29, a * this.ctx.globalAlpha);
     }
   }
 
