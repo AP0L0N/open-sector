@@ -42,7 +42,7 @@ import {
 import { decorFor, forgetDecor } from "./decor.js";
 import { SCRAP_SOFT_REACH, scrapDressAt, scrapField, scrapGround, type ScrapField } from "./scrap-field.js";
 import { hillshadeFactor } from "./relief.js";
-import { elevShadeFactor, hash2 } from "./terrain-light.js";
+import { elevShadeFactor, hash2, meadowField } from "./terrain-light.js";
 import { groundGlReady, paintGlGround } from "./terrain-light-gl.js";
 
 const WALL_H = 20;
@@ -220,15 +220,15 @@ function texPattern(ctx: CanvasRenderingContext2D, img: HTMLImageElement): Canva
 }
 
 /** One meadow, with a few broad drier or darker fields. Fine tiles stay the same photo. */
-function surfaceImage(kind: number, tx: number, ty: number, scrap: boolean): HTMLImageElement | null {
+function surfaceImage(kind: number, tx: number, ty: number, scrap: boolean, mapId: string): HTMLImageElement | null {
   if (kind === TILE_BLOCKED || kind === TILE_WATER) return null;
   if (kind === TILE_ROCK) return ROCK_TEX;
   if (kind === TILE_ROAD || scrap) return DIRT_TEX;
   const meadow = GRASS_TEXS[0];
   if (!meadow) return null;
-  const field = hash2(tx >> 6, ty >> 6, 5);
-  if (field % 5 === 0) return GRASS_TEXS[1] ?? meadow;
-  if (field % 8 === 0) return GRASS_TEXS[2] ?? meadow;
+  const field = meadowField(tx, ty, mapId);
+  if (field === 1) return GRASS_TEXS[1] ?? meadow;
+  if (field === 2) return GRASS_TEXS[2] ?? meadow;
   return meadow;
 }
 
@@ -291,7 +291,7 @@ function paintSurface(
   originX: number,
   originY: number,
 ): void {
-  const img = surfaceImage(kind, tx, ty, scrap);
+  const img = surfaceImage(kind, tx, ty, scrap, map.id);
   if (!img) return;
   const pat = texPattern(ctx, img);
   if (!pat) return;

@@ -173,7 +173,7 @@ export const UNIT_SPACE_PAD = 2;
 export const HEIGHT_BASE = t(2);
 /**
  * Peak discrete elevation. 0 is the valley floor.
- * Scrap Yard hills reach this. Sight scans and elevated picking assume no tile is taller.
+ * The Map Builder can paint up to this. Sight scans and elevated picking assume no tile is taller.
  */
 export const HEIGHT_MAX = t(8);
 /** Adjacent walkable tiles may differ by at most this many levels. */

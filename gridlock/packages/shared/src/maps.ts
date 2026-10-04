@@ -1652,6 +1652,9 @@ function paintYardRocks(
   }
 }
 
+/** Scrap Yard summit: half the full rise over the plain, so a climb is a hill, not a mountain. */
+export const YARD_HILL_CEIL = HEIGHT_BASE + (HEIGHT_MAX - HEIGHT_BASE) / 2;
+
 /** 64×64 yard with a central compound and 8 edge/corner spawns. */
 export function makeYard64(): MapDef {
   const width = 64;
@@ -1686,7 +1689,7 @@ export function makeYard64(): MapDef {
   paintYardPonds(fineTiles, fineW, fineH, "yard-64-ponds", fineSpawnPads, features);
   paintYardDress(fineTiles, fineW, fineH, fineSpawns, features, village);
   const locked = new Uint8Array(fineW * fineH);
-  const heights = scatterHeights(fineW, fineH, "yard-64-elev", fineSpawnPads, locked);
+  const heights = scatterHeights(fineW, fineH, "yard-64-elev", fineSpawnPads, locked, 1, YARD_HILL_CEIL);
   levelHouseLots(heights, fineTiles, fineW, fineH, features, locked);
   flattenTerrain(heights, fineTiles, fineW, fineH, TILE_WATER, locked);
   paintYardRocks(fineTiles, heights, fineW, fineH, "yard-64-rocks", fineSpawnPads, houseBoxes(features, sub));
