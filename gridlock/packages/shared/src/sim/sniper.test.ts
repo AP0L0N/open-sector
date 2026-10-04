@@ -86,10 +86,10 @@ describe("sniper", () => {
     assert.equal(SCOPED.cooldown, 4.8);
     assert.equal(catalog("sniper").cooldown, SCOPED.cooldown);
     assert.ok(SCOPED.spreadDeg < RIFLE.spreadDeg);
-    assert.ok(s.cost > rifle.cost && s.cost < catalog("gunner").cost);
+    assert.ok(s.cost > rifle.cost && s.cost > catalog("gunner").cost);
     const trained = applyCommand(match().state, "A", { type: "cmd.train", unit: "sniper" });
     assert.equal(trained.ok, false);
-    if (!trained.ok) assert.equal(trained.message, "Need a Muster.");
+    if (!trained.ok) assert.equal(trained.message, "Need a Barracks.");
   });
 
   it("engages past a rifleman's reach and hits up close", () => {

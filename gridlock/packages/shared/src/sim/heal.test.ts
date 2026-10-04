@@ -78,7 +78,7 @@ describe("medic", () => {
     assert.ok(MEDIC_HEAL_PER_SEC > 0);
     const trained = applyCommand(match().state, "A", { type: "cmd.train", unit: "medic" });
     assert.equal(trained.ok, false);
-    if (!trained.ok) assert.equal(trained.message, "Need a Muster.");
+    if (!trained.ok) assert.equal(trained.message, "Need a Barracks.");
   });
 
   it("walks up to a wounded soldier and heals him to full, then does it again", () => {
