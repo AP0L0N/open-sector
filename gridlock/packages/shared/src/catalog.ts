@@ -35,6 +35,10 @@ export const SCRAP_TILE_YIELD = 800;
 export const SMELTER_SCRAP_PER_SEC = 25;
 /** Share of a Smelter's footprint that must lie on scrap tiles before it can be placed. */
 export const SMELTER_SCRAP_COVER = 0.5;
+/** A Smelter whose scrap is mostly diamond scrap pours this many times the plain rate. */
+export const DIAMOND_SCRAP_MUL = 5;
+/** Marks a diamond scrap tile. */
+export const DIAMOND_SCRAP_TILE_YIELD = SCRAP_TILE_YIELD * DIAMOND_SCRAP_MUL;
 export const LOW_POWER_MIN_SPEED = 0.25;
 export const FACE_FIRE_DEG = 8;
 /** Hull must finish its yaw before tracks roll. 1° ≈ aligned this tick. */
@@ -2442,7 +2446,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Stands on a scrap field: at least half its footprint must cover scrap. It melts the field down for ${SMELTER_SCRAP_PER_SEC} scrap a second for as long as it stands, and the field never runs out. Each Smelter adds its own share. Low power slows it. The yard places one near the base; an engineer can raise one on any scrap field he can walk to, which also pushes your build range out to it.`,
+    blurb: `Stands on a scrap field: at least half its footprint must cover scrap. It melts the field down for ${SMELTER_SCRAP_PER_SEC} scrap a second for as long as it stands, and the field never runs out. Each Smelter adds its own share. On diamond scrap, where stones glint through the salvage, it pours ${DIAMOND_SCRAP_MUL}× as much. Low power slows it. The yard places one near the base; an engineer can raise one on any scrap field he can walk to, which also pushes your build range out to it.`,
   },
   muster: {
     type: "muster",

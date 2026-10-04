@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   BUILD_RADIUS,
+  DIAMOND_SCRAP_MUL,
+  DIAMOND_SCRAP_TILE_YIELD,
   SMELTER_SCRAP_COVER,
   SMELTER_SCRAP_PER_SEC,
   SCRAP_TILE_YIELD,
@@ -11,13 +13,13 @@ import {
   TRAIN_TYPES,
   catalog,
 } from "../catalog.js";
-import { TILE_EMPTY, TILE_ROAD, TILE_SCRAP, getMap } from "../maps.js";
+import { TILE_DIAMOND_SCRAP, TILE_EMPTY, TILE_ROAD, TILE_SCRAP, getMap } from "../maps.js";
 import { findSmelterTile } from "./ai.js";
 import { applyCommand } from "./commands.js";
 import { buildingCenter, hqOf, makeEntity, scrapAt, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { previewConstruct, previewPlace } from "./preview.js";
-import { smelterIncome, smelterScrapNeeded, smelterSiteOk, tickSmelters } from "./smelter.js";
+import { smelterIncome, smelterRateOn, smelterScrapNeeded, smelterSiteOk, tickSmelters } from "./smelter.js";
 import { snapshotFor } from "./snapshot.js";
 import type { MatchState } from "./types.js";
 
@@ -55,6 +57,18 @@ function paintScrap(state: MatchState, tx: number, ty: number, w: number, h: num
       const i = y * state.width + x;
       state.scrapYield[i] = SCRAP_TILE_YIELD;
       state.terrain[i] = TILE_SCRAP;
+      state.blocked[i] = 0;
+    }
+  }
+}
+
+/** Paint a square diamond scrap field whose top-left tile is (tx, ty). */
+function paintDiamond(state: MatchState, tx: number, ty: number, w: number, h: number): void {
+  for (let y = ty; y < ty + h; y++) {
+    for (let x = tx; x < tx + w; x++) {
+      const i = y * state.width + x;
+      state.scrapYield[i] = DIAMOND_SCRAP_TILE_YIELD;
+      state.terrain[i] = TILE_DIAMOND_SCRAP;
       state.blocked[i] = 0;
     }
   }
@@ -217,6 +231,43 @@ describe("Smelter on scrap", () => {
     assert.equal(smelterIncome(state, "B"), SMELTER_SCRAP_PER_SEC);
     smelter.hp = 0;
     assert.equal(smelterIncome(state, "B"), 0);
+  });
+
+  it("pours five times as much on diamond scrap, when most of its scrap is diamond", () => {
+    const { state } = twoPlayerMatch();
+    deploy(state, "A");
+    const p = state.players.get("A")!;
+    clearGround(state, 60, 60, 60, 30);
+    const dyn = catalog("dynamo");
+    const dc = buildingCenter(60, 80, dyn.tileW, dyn.tileH, state.tileSize);
+    makeEntity(state, "dynamo", "A", dc.x, dc.y, { tileX: 60, tileY: 80 });
+    paintScrap(state, 64, 64, sm.tileW, sm.tileH);
+    paintDiamond(state, 64, 64, sm.tileW, sm.tileH);
+    const c = buildingCenter(64, 64, sm.tileW, sm.tileH, state.tileSize);
+    makeEntity(state, "smelter", "A", c.x, c.y, { tileX: 64, tileY: 64 });
+    assert.equal(DIAMOND_SCRAP_MUL, 5);
+    assert.equal(smelterIncome(state, "A"), DIAMOND_SCRAP_MUL * SMELTER_SCRAP_PER_SEC);
+    const before = p.scrap;
+    for (let i = 0; i < 10; i++) tickSmelters(state, TICK_DT);
+    assert.equal(p.scrap - before, DIAMOND_SCRAP_MUL * SMELTER_SCRAP_PER_SEC, "one second pays five times the plain rate");
+    assert.equal(scrapAt(state, 65, 65), DIAMOND_SCRAP_TILE_YIELD, "the diamond field is not used up");
+    // The snapshot carries the grade, so the HUD's pour matches the sim.
+    const snap = snapshotFor(state, "A");
+    const yields = new Map(snap.scrap.map((s) => [`${s.x},${s.y}`, s.yield]));
+    assert.equal(
+      smelterRateOn((x, y) => yields.get(`${x},${y}`) ?? 0, 64, 64),
+      DIAMOND_SCRAP_MUL * SMELTER_SCRAP_PER_SEC,
+    );
+    // Half plain, half diamond: the plain grade sets the rate.
+    paintScrap(state, 64, 64, sm.tileW / 2, sm.tileH);
+    assert.equal(smelterIncome(state, "A"), SMELTER_SCRAP_PER_SEC, "a tie pours the plain rate");
+    // Diamond under most of the scrap: the diamond rate.
+    paintDiamond(state, 64, 64, 1, sm.tileH);
+    assert.equal(smelterIncome(state, "A"), DIAMOND_SCRAP_MUL * SMELTER_SCRAP_PER_SEC);
+    // A Smelter is placed on diamond scrap like any other scrap.
+    clearGround(state, 90, 64, sm.tileW, sm.tileH);
+    paintDiamond(state, 90, 64, sm.tileW, sm.tileH);
+    assert.equal(smelterSiteOk(state, 90, 64), true);
   });
 });
 

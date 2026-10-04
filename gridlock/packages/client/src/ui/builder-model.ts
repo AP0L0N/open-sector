@@ -7,7 +7,6 @@ import {
   SPAWN_PAD_R,
   TILE_EMPTY,
   TILE_ROAD,
-  TILE_SCRAP,
   TILE_SIZE,
   TILE_SUBDIV,
   TILE_WATER,
@@ -17,6 +16,7 @@ import {
   featureBox,
   featureOnPad,
   featuresOverlap,
+  isScrapTile,
   normalizeTerrain,
   peakHeight,
   rollHeights,
@@ -302,7 +302,7 @@ export function sheetProblem(s: Sheet): string | null {
 
 export function scrapCells(s: Sheet): number {
   let n = 0;
-  for (const t of s.tiles) if (t === TILE_SCRAP) n++;
+  for (const t of s.tiles) if (isScrapTile(t)) n++;
   return n;
 }
 
@@ -316,7 +316,7 @@ export function startsFarFromScrap(s: Sheet): number[] {
     let near = false;
     for (let y = Math.max(0, sp.y - HOME_SCRAP_CELLS); y <= Math.min(s.height - 1, sp.y + HOME_SCRAP_CELLS) && !near; y++) {
       for (let x = Math.max(0, sp.x - HOME_SCRAP_CELLS); x <= Math.min(s.width - 1, sp.x + HOME_SCRAP_CELLS); x++) {
-        if (s.tiles[y * s.width + x] === TILE_SCRAP && Math.hypot(x - sp.x, y - sp.y) <= HOME_SCRAP_CELLS) {
+        if (isScrapTile(s.tiles[y * s.width + x]) && Math.hypot(x - sp.x, y - sp.y) <= HOME_SCRAP_CELLS) {
           near = true;
           break;
         }

@@ -6,6 +6,7 @@ import {
   type MapDef,
   type MapFeature,
   TILE_BLOCKED,
+  TILE_DIAMOND_SCRAP,
   TILE_FENCE,
   TILE_ROAD,
   TILE_ROCK,
@@ -14,6 +15,7 @@ import {
   TILE_WATER,
   YARD_HILL_CEIL,
   heightAt,
+  isScrapTile,
   maxHeightOf,
   tileAt,
 } from "./maps.js";
@@ -266,7 +268,44 @@ describe("maps", () => {
       assert.notEqual(tileAt(yard, s.x, s.y), TILE_FENCE, `spawn ${s.id} on a fence`);
     }
     for (let k = 0; k < yard.tiles.length; k++) {
-      if (yard.tiles[k] === TILE_SCRAP) assert.equal(seen[k], 1, `scrap at ${k % w},${(k / w) | 0} is cut off`);
+      if (isScrapTile(yard.tiles[k])) assert.equal(seen[k], 1, `scrap at ${k % w},${(k / w) | 0} is cut off`);
+    }
+  });
+
+  it("turns the scrap field in the middle of Scrap Yard to diamond scrap, and only that one", () => {
+    const yard = MAPS["yard-64"]!;
+    const w = yard.width;
+    const cx = (w - 1) / 2;
+    const cy = (yard.height - 1) / 2;
+    let diamond = 0;
+    let plain = 0;
+    let nearestPlain = Infinity;
+    let nearestDiamond = Infinity;
+    let sx = 0;
+    let sy = 0;
+    for (let k = 0; k < yard.tiles.length; k++) {
+      const d = Math.hypot((k % w) - cx, Math.floor(k / w) - cy);
+      if (yard.tiles[k] === TILE_DIAMOND_SCRAP) {
+        diamond++;
+        sx += k % w;
+        sy += Math.floor(k / w);
+        nearestDiamond = Math.min(nearestDiamond, d);
+      } else if (yard.tiles[k] === TILE_SCRAP) {
+        plain++;
+        nearestPlain = Math.min(nearestPlain, d);
+      }
+    }
+    // One whole blob of the coarse field, upsampled.
+    assert.equal(diamond, 8 * TILE_SUBDIV * TILE_SUBDIV, `diamond tiles ${diamond}`);
+    assert.ok(plain > diamond * 10, `plain fields stay plain: ${plain}`);
+    assert.ok(nearestDiamond < nearestPlain, "the diamond field is the one nearest the middle");
+    const off = Math.hypot(sx / diamond - cx, sy / diamond - cy);
+    assert.ok(off < 5 * TILE_SUBDIV, `diamond scrap sits in the middle: ${off}`);
+    for (const s of yard.spawns) {
+      const near = yard.tiles.some(
+        (t, k) => t === TILE_DIAMOND_SCRAP && Math.hypot((k % w) - s.x, Math.floor(k / w) - s.y) < 16 * TILE_SUBDIV,
+      );
+      assert.equal(near, false, `spawn ${s.id} is not handed the diamond field`);
     }
   });
 

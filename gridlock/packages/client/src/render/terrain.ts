@@ -2,15 +2,16 @@ import {
   HEIGHT_BASE,
   ISO_TILE_H,
   TILE_BLOCKED,
+  TILE_DIAMOND_SCRAP,
   TILE_EMPTY,
   TILE_FENCE,
   TILE_ROAD,
   TILE_ROCK,
-  TILE_SCRAP,
   TILE_SUBDIV,
   TILE_TREE,
   TILE_WATER,
   heightAt,
+  isScrapTile,
   isoBoxSilhouette,
   isoLift,
   isoToWorld,
@@ -40,7 +41,7 @@ import {
   PROP_IMAGES,
 } from "./sprites.js";
 import { decorFor, forgetDecor } from "./decor.js";
-import { SCRAP_SOFT_REACH, scrapDressAt, scrapField, scrapGround, type ScrapField } from "./scrap-field.js";
+import { SCRAP_SOFT_REACH, diamondGlintAt, scrapDressAt, scrapField, scrapGround, type ScrapField } from "./scrap-field.js";
 import { hillshadeFactor } from "./relief.js";
 import { elevShadeFactor, hash2, meadowField } from "./terrain-light.js";
 import { groundGlReady, paintGlGround } from "./terrain-light-gl.js";
@@ -103,7 +104,7 @@ export function scrapFromMapTiles(map: MapDef): ScrapCell[] {
   const tiles = map.tiles;
   const w = map.width;
   for (let i = 0; i < tiles.length; i++) {
-    if (tiles[i] === TILE_SCRAP) out.push({ x: i % w, y: (i / w) | 0 });
+    if (isScrapTile(tiles[i])) out.push({ x: i % w, y: (i / w) | 0 });
   }
   mapScrapCache.set(map.id, out);
   return out;
@@ -478,7 +479,57 @@ function paintTileProps(
   } else if (kind === TILE_ROCK) {
     paintFlatDecor(ctx, map, tx, ty, originX, originY);
   }
-  if (yard && (kind === TILE_EMPTY || kind === TILE_SCRAP)) paintScrapDress(ctx, map, tx, ty, yard, originX, originY);
+  if (yard && (kind === TILE_EMPTY || isScrapTile(kind))) paintScrapDress(ctx, map, tx, ty, yard, originX, originY);
+  if (kind === TILE_DIAMOND_SCRAP && yard?.set.has(ty * map.width + tx)) paintDiamondGlint(ctx, map, tx, ty, originX, originY);
+}
+
+/** A cut stone half-buried in the salvage: lit facet left, shaded facet right, one bright pixel. */
+function paintDiamondGlint(
+  ctx: CanvasRenderingContext2D,
+  map: MapDef,
+  tx: number,
+  ty: number,
+  originX: number,
+  originY: number,
+): void {
+  const g = diamondGlintAt(tx, ty);
+  if (!g) return;
+  const ts = map.tileSize;
+  const p = worldToIso(g.fx * ts, g.fy * ts, ts);
+  const x = p.x - originX;
+  const y = p.y - originY - isoLift(heightAt(map, tx, ty)) - 1;
+  const s = g.size;
+  ctx.save();
+  ctx.fillStyle = "#6fa7bd";
+  ctx.beginPath();
+  ctx.moveTo(x, y - s * 1.3);
+  ctx.lineTo(x + s, y);
+  ctx.lineTo(x, y + s * 0.8);
+  ctx.lineTo(x - s, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#d6f4ff";
+  ctx.beginPath();
+  ctx.moveTo(x, y - s * 1.3);
+  ctx.lineTo(x, y + s * 0.8);
+  ctx.lineTo(x - s, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(x - s * 0.55, y - s * 0.45, 1, 1);
+  if (g.sparkle) {
+    const r = s * 2.2;
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = "#f2fcff";
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(x - r, y - s * 0.3);
+    ctx.lineTo(x + r, y - s * 0.3);
+    ctx.moveTo(x, y - s * 0.3 - r);
+    ctx.lineTo(x, y - s * 0.3 + r);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 const SCRAP_DRESS_FACES = { heap: SCRAP_HEAP_FACES, piece: SCRAP_PIECE_FACES, bits: SCRAP_BIT_FACES };
