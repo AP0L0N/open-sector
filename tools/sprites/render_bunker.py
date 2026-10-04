@@ -4,9 +4,10 @@
 An octagonal board-formed casemate with a dark firing slit in every face,
 a thick roof slab that overhangs the slits, sod over the roof, an earth
 berm banked against the walls, and a few sandbags by the rear door.
-The player turns it before placing, so it ships one image per facing:
-bunker.png faces east (door to the west), then bunker-s, bunker-w, bunker-n,
-each the same mesh turned a quarter about the footprint under the same light.
+bunker.png is the unturned face (east, door to the west) and the cameo. The
+player turns it before placing in 15 degree steps, so bunker/00.png .. 23.png
+hold every facing, each the same mesh turned about the footprint under the
+same light, with pad metrics in bunker/faces.json (see turn_faces.py).
 
 Look: the inked structure style of render_airfield.py (same mesh, raster,
 ink, silhouette, key light, and cast shadow), at the 3x source zoom of the
@@ -26,9 +27,12 @@ import numpy as np
 from PIL import Image
 
 import render_airfield as ra
+import turn_faces as tf
 
 # Footprint, world px: t(2) x t(2) gameplay tiles. Must match catalog.ts.
 W = H = 64.0
+# The same footprint in gameplay tiles: catalog.ts tileW x tileH.
+TILES = (8, 8)
 CX, CY = W / 2, H / 2
 ra.ZOOM = 3.0
 SS = ra.SS
@@ -179,26 +183,23 @@ def bunker_mesh(ground: bool = True) -> ra.Mesh:
     return m
 
 
-# Suffix and quarter turns for each face, in the client's order: east, south, west, north.
-FACES = (("", 0), ("-s", 1), ("-w", 2), ("-n", 3))
-
-
-def turn(m: ra.Mesh, quarters: int, cx: float = CX, cy: float = CY) -> ra.Mesh:
-    """Turn the mesh clockwise on screen (east toward south) by quarter turns about the footprint centre."""
-    for _ in range(quarters % 4):
-        for v in m.verts:
-            dx, dy = v[0] - cx, v[1] - cy
-            v[0], v[1] = cx - dy, cy + dx
-    return m
-
-
-def shade(fr: ra.Frame, cv: ra.Canvas, sh: np.ndarray, ao: np.ndarray, reach: float, floor_top: float) -> Image.Image:
+def shade(
+    fr: ra.Frame,
+    cv: ra.Canvas,
+    sh: np.ndarray,
+    ao: np.ndarray,
+    reach: float,
+    floor_top: float,
+    cx: float = CX,
+    cy: float = CY,
+    radius: float = math.hypot(W, H) / 2,
+) -> Image.Image:
     """Ink, silhouette, and lay the cast shadow on the ground and on the low flats up to `floor_top`."""
     ra.ink(fr, SS)
     ra.silhouette(fr, SS)
     ys, xs = np.mgrid[0 : cv.h, 0 : cv.w].astype(np.float64) + 0.5
     gx, gy = cv.to_world_ground(xs, ys)
-    near = (gx > -reach) & (gx < W + reach) & (gy > -reach) & (gy < H + reach)
+    near = np.hypot(gx - cx, gy - cy) < radius + reach
     shadow = np.clip(sh * 0.42 + ao * 0.12, 0, 0.6) * near
     solid = fr.alpha > 0.5
     # Height of each drawn pixel: to_world_ground reads X+Y-2Z, the depth buffer X+Y+Z.
@@ -211,6 +212,55 @@ def shade(fr: ra.Frame, cv: ra.Canvas, sh: np.ndarray, ao: np.ndarray, reach: fl
     color[out] = ra.OUTLINE * 0.4
     alpha[out] = shadow[out]
     return ra.downsample(color, alpha, SS)
+
+
+def render_turned(
+    out_dir: Path,
+    name: str,
+    mesh_fn,
+    tiles: tuple[int, int],
+    top: float,
+    margin: float,
+    reach: float,
+    floor_top: float,
+    stack_z: float,
+) -> None:
+    """The 24 turned faces in <out>/<name>/NN.png and their pad metrics in <name>/faces.json."""
+    tf.install_texture_frame()
+    tile_px = W / tiles[0]
+    radius = math.hypot(W, H) / 2
+    cv = tf.disc_canvas(CX, CY, radius, top, margin)
+    folder = out_dir / name
+    folder.mkdir(parents=True, exist_ok=True)
+    preview = Path(__file__).parent / "preview" / name
+    preview.mkdir(parents=True, exist_ok=True)
+    faces = []
+    sheet = []
+    for k in range(tf.FACES):
+        a = tf.face_angle(k)
+        tf.set_turn(a, CX, CY)
+        props = tf.turn_mesh(mesh_fn(ground=False), a, CX, CY)
+        fr = ra.rasterize(tf.turn_mesh(mesh_fn(), a, CX, CY), cv)
+        img = shade(fr, cv, ra.shadow_mask(props, cv), ra.contact_ao(props, cv), reach, floor_top)
+        box = tf.crop_box(img)
+        img = img.crop(box)
+        bw, bh = tf.box_tiles(tiles[0], tiles[1], a)
+        info = tf.face_metrics(cv, CX, CY, bw * tile_px, bh * tile_px, (CX, CY, stack_z), (box[0], box[1]))
+        info["file"] = f"{k:02d}.png"
+        info["box"] = [bw, bh]
+        faces.append(info)
+        img.save(folder / info["file"], optimize=True)
+        sheet.append(img)
+    tf.set_turn(0.0, CX, CY)
+    tf.write_manifest(folder / "faces.json", name, faces)
+    # One contact sheet of every face on grass, six to a row, for a look over the set.
+    cw = max(im.width for im in sheet)
+    ch = max(im.height for im in sheet)
+    grid = Image.new("RGBA", (cw * 6, ch * 4), (74, 107, 50, 255))
+    for i, im in enumerate(sheet):
+        grid.alpha_composite(im, ((i % 6) * cw + (cw - im.width) // 2, (i // 6) * ch + (ch - im.height) // 2))
+    grid.save(preview / "faces.png")
+    print("wrote", tf.FACES, "faces to", folder)
 
 
 # ---------------------------------------------------------------- render
@@ -231,21 +281,15 @@ def render(out_dir: Path) -> None:
     cv = make_canvas()
     print("canvas", cv.w // SS, "x", cv.h // SS)
     out_dir.mkdir(parents=True, exist_ok=True)
+    props = bunker_mesh(ground=False)
+    fr = ra.rasterize(bunker_mesh(), cv)
+    img = shade(fr, cv, ra.shadow_mask(props, cv), ra.contact_ao(props, cv), 4.0, BERM_TOP)
+    img.save(out_dir / "bunker.png", optimize=True)
     preview = Path(__file__).parent / "preview"
     preview.mkdir(exist_ok=True)
-    faces: dict[str, Image.Image] = {}
-    for suffix, quarters in FACES:
-        props = turn(bunker_mesh(ground=False), quarters)
-        fr = ra.rasterize(turn(bunker_mesh(), quarters), cv)
-        img = shade(fr, cv, ra.shadow_mask(props, cv), ra.contact_ao(props, cv), 4.0, BERM_TOP)
-        img.save(out_dir / f"bunker{suffix}.png", optimize=True)
-        bg = Image.new("RGBA", img.size, (74, 107, 50, 255))
-        bg.alpha_composite(img)
-        bg.save(preview / f"bunker{suffix}.png")
-        faces[suffix] = img
-        print("wrote", out_dir / f"bunker{suffix}.png")
-    # Every face shares the canvas and the square pad, so one set of metrics serves all four.
-    img = faces[""]
+    bg = Image.new("RGBA", img.size, (74, 107, 50, 255))
+    bg.alpha_composite(img)
+    bg.save(preview / "bunker.png")
 
     south = cv.to_screen(np.array([[W, H, 0.0]]))
     stack = cv.to_screen(np.array([[CX, CY, SOD_TOP + 6.0]]))
@@ -268,6 +312,8 @@ def render(out_dir: Path) -> None:
         crop = crop.resize((max(1, round(crop.width * f)), max(1, round(crop.height * f))), Image.Resampling.LANCZOS)
         cam.alpha_composite(crop, ((96 - crop.width) // 2, (96 - crop.height) // 2))
     cam.save(out_dir / "bunker-cameo.png")
+
+    render_turned(out_dir, "bunker", bunker_mesh, TILES, TOP_MARGIN, SIDE_MARGIN, 4.0, BERM_TOP, SOD_TOP + 6.0)
 
 
 def main() -> None:

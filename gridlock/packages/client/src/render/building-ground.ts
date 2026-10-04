@@ -30,7 +30,7 @@ export function buildingGroundElev(
 }
 
 /** Share of the footprint the walls stand on; the rest is the art's own yard. */
-const WALL_SHARE = 0.7;
+export const WALL_SHARE = 0.7;
 
 /**
  * The walls' rectangle inside a footprint. A shadow cast from the full footprint
@@ -51,17 +51,20 @@ const WEAR_SIDE_SEGS = 10;
  * A ragged ring around a world-space footprint. The jitter is hashed from world
  * position, so the patch holds still from frame to frame.
  */
-export function yardWearFootprint(opts: { x: number; y: number; w: number; h: number }): Pt[] {
+export function yardWearFootprint(opts: { x: number; y: number; w: number; h: number; corners?: readonly Pt[] }): Pt[] {
   const { x, y, w, h } = opts;
   const reach = Math.min(w, h) * WEAR_REACH;
-  const cx = x + w / 2;
-  const cy = y + h / 2;
-  const corners: Pt[] = [
-    { x, y },
-    { x: x + w, y },
-    { x: x + w, y: y + h },
-    { x, y: y + h },
-  ];
+  // A turned building passes its own four corners; w and h are then its unturned sides.
+  const corners: Pt[] = opts.corners
+    ? [...opts.corners]
+    : [
+        { x, y },
+        { x: x + w, y },
+        { x: x + w, y: y + h },
+        { x, y: y + h },
+      ];
+  const cx = corners.reduce((s, c) => s + c.x, 0) / corners.length;
+  const cy = corners.reduce((s, c) => s + c.y, 0) / corners.length;
   const cell = Math.max(1, reach * 0.9);
   const out: Pt[] = [];
   for (let side = 0; side < 4; side++) {

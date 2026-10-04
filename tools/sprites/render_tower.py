@@ -3,9 +3,9 @@
 
 A square plinth banked with earth, a battered board-formed shaft, and a
 slitted concrete cab on top under an overhanging roof slab. Sandbags ring
-the foot and the rear door. The player turns it before placing, so like the
-Bunker it ships one image per facing: tower.png faces east (rungs east, door
-west), then tower-s, tower-w, tower-n. The roof's centre is left
+the foot and the rear door. tower.png is the unturned face (rungs east, door
+west) and the cameo source; like the Bunker, tower/00.png .. 23.png hold every
+15 degree facing with pad metrics in tower/faces.json. The roof's centre is left
 bare: the client draws the searchlight there (render/searchlight.ts) so it
 can turn with the beam.
 
@@ -51,6 +51,8 @@ SLIT_Z0 = 50.2
 SLIT_Z1 = 53.2
 ROOF_R = 17.0
 ROOF_TOP = 59.4  # render/searchlight.ts stands its lamp here
+# How far off the pad the shaft's shadow is kept, world px.
+SHADOW_REACH = 40.0
 
 
 def square(r: float, cx: float = CX, cy: float = CY) -> list[tuple[float, float]]:
@@ -126,22 +128,16 @@ def render(out_dir: Path) -> None:
     cv = make_canvas()
     print("canvas", cv.w // SS, "x", cv.h // SS)
     out_dir.mkdir(parents=True, exist_ok=True)
+    props = tower_mesh(ground=False)
+    fr = ra.rasterize(tower_mesh(), cv)
+    # The tall shaft throws its shadow well off the pad.
+    img = rb.shade(fr, cv, ra.shadow_mask(props, cv), ra.contact_ao(props, cv), SHADOW_REACH, PLINTH_TOP)
+    img.save(out_dir / "tower.png", optimize=True)
     preview = Path(__file__).parent / "preview"
     preview.mkdir(exist_ok=True)
-    faces: dict[str, Image.Image] = {}
-    for suffix, quarters in rb.FACES:
-        props = rb.turn(tower_mesh(ground=False), quarters)
-        fr = ra.rasterize(rb.turn(tower_mesh(), quarters), cv)
-        # The tall shaft throws its shadow well off the pad.
-        img = rb.shade(fr, cv, ra.shadow_mask(props, cv), ra.contact_ao(props, cv), 40.0, PLINTH_TOP)
-        img.save(out_dir / f"tower{suffix}.png", optimize=True)
-        bg = Image.new("RGBA", img.size, (74, 107, 50, 255))
-        bg.alpha_composite(img)
-        bg.save(preview / f"tower{suffix}.png")
-        faces[suffix] = img
-        print("wrote", out_dir / f"tower{suffix}.png")
-    # Every face shares the canvas and the square pad, so one set of metrics serves all four.
-    img = faces[""]
+    bg = Image.new("RGBA", img.size, (74, 107, 50, 255))
+    bg.alpha_composite(img)
+    bg.save(preview / "tower.png")
 
     south = cv.to_screen(np.array([[W, H, 0.0]]))
     stack = cv.to_screen(np.array([[CX, CY, ROOF_TOP + 6.0]]))
@@ -170,6 +166,8 @@ def render(out_dir: Path) -> None:
         crop = crop.resize((max(1, round(crop.width * f)), max(1, round(crop.height * f))), Image.Resampling.LANCZOS)
         cam.alpha_composite(crop, ((96 - crop.width) // 2, (96 - crop.height) // 2))
     cam.save(out_dir / "tower-cameo.png")
+
+    rb.render_turned(out_dir, "tower", tower_mesh, rb.TILES, TOP_MARGIN, SIDE_MARGIN, SHADOW_REACH, PLINTH_TOP, ROOF_TOP + 6.0)
 
 
 def main() -> None:

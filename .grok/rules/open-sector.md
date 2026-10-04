@@ -46,7 +46,7 @@ Keep catalog type ids (`rifleman`, `gunner`, `sniper`, `hauler`, `warden`, `ss3`
    - `npm run typecheck` when the change crosses packages
 6. A change the player can see gets exercised in the browser at the Vite origin (`gridlock/packages/client/vite.config.ts`, currently port 5177). `cd gridlock && npm run dev` serves the client and the hub (port 3010). If the browser is unavailable, say which tests ran and which clicks you could not make.
 
-Unit sheets, turrets, hatch heads, and stance sheets follow `narrow-front-sprite-agent-brief.md`. Buildings stay on four facings. Tiles stay a single image.
+Unit sheets, turrets, hatch heads, and stance sheets follow `narrow-front-sprite-agent-brief.md`. Buildings stay on four facings, except the Bunker, Watch Tower, and Airfield, which the player turns before placing: 24 faces, 15° apart (`tools/sprites/turn_faces.py`), and their footprint turns with them (`building-rect.ts`). Tiles stay a single image.
 
 Ship the request that was made. A new unit is a catalog entry, sprites, training, and tests. A new weapon behavior is a sim rule plus a catalog number. A new visual stays in the client when it does not change who wins. Update the README when you left a fact it states untrue, or when the user asks.
 

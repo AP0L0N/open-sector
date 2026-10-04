@@ -49,7 +49,7 @@ Before creating or replacing **unit** art (infantry, vehicles, turrets, hatch he
 
 - **16 faces, 22.5°.** `0001.png` = south (screen down), then clockwise through `0016.png`. A 17th file would equal `0001`. `UnitSpriteDef.dirs` must be `16`. Never ship an 8-dir unit sheet.
 - **One look, one size.** Lock palette, outline, camera (2:1 isometric), cell size, and contact point from an existing unit in the same class. Every facing in a sheet must match that lock — no size pop, no style pop between rows.
-- Buildings stay cardinal (4 faces). Tiles stay 1. Shared FX are not unit sheets.
+- Buildings stay cardinal (4 faces), except the ones the player turns before placing (Bunker, Watch Tower, Airfield): 24 faces, 15° apart, from `tools/sprites/turn_faces.py`. Tiles stay 1. Shared FX are not unit sheets.
 
 How to build a sheet, cell sizes, row order, and the consistency check are in the brief.
 

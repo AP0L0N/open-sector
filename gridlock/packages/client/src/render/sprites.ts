@@ -1,5 +1,7 @@
 import {
+  BUILDING_FACINGS,
   buildingFaceIndex,
+  buildingTurnIndex,
   isCivilianType,
   TANK_FACE_DIRS,
   isInfantryType,
@@ -35,13 +37,7 @@ import airfieldUrl from "../assets/buildings/airfield.png";
 import airfieldGroundUrl from "../assets/buildings/airfield-ground.png";
 import ciwsUrl from "../assets/buildings/ciws.png";
 import bunkerUrl from "../assets/buildings/bunker.png";
-import bunkerSUrl from "../assets/buildings/bunker-s.png";
-import bunkerWUrl from "../assets/buildings/bunker-w.png";
-import bunkerNUrl from "../assets/buildings/bunker-n.png";
 import towerUrl from "../assets/buildings/tower.png";
-import towerSUrl from "../assets/buildings/tower-s.png";
-import towerWUrl from "../assets/buildings/tower-w.png";
-import towerNUrl from "../assets/buildings/tower-n.png";
 import ciwsTurretUrl from "../assets/buildings/ciws-turret.png";
 import researchUrl from "../assets/buildings/research.png";
 import radarUrl from "../assets/buildings/radar.png";
@@ -1580,32 +1576,80 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   research: building(researchUrl, 384, 210, 324, 150, 70),
   // Ops hut, lattice mast, dish. Metrics from tools/sprites/render_radar.py (radar.json); the stack hangs over the dish.
   radar: building(radarUrl, 384, 210, 354, 216, 58),
-  // Concrete pillbox. Metrics from tools/sprites/render_bunker.py (bunker.json). Turned faces in BUILDING_FACES.
+  // Concrete pillbox. Metrics from tools/sprites/render_bunker.py (bunker.json). Turned faces in TURNED_FACES.
   bunker: building(bunkerUrl, 384, 222, 264, 222, 99),
-  // Concrete shaft and slitted cab. Metrics from tools/sprites/render_tower.py (tower.json). Turned faces in BUILDING_FACES.
+  // Concrete shaft and slitted cab. Metrics from tools/sprites/render_tower.py (tower.json). Turned faces in TURNED_FACES.
   tower: building(towerUrl, 384, 300, 426, 300, 133.8),
   // The CIWS pad under a rocket launcher. Metrics from tools/sprites/render_ram.py (ram.json).
   ram: building(ramUrl, 192, 126, 186, 126, 82.8),
 };
 
+/** One turned face as tools/sprites/turn_faces.py writes it: pad metrics in its own cropped pixels. */
+interface TurnedFaceInfo {
+  file: string;
+  ground?: string;
+  padWidth: number;
+  padSouthX: number;
+  padSouthY: number;
+  stackX: number;
+  stackY: number;
+}
+
+const turnedManifests = import.meta.glob("../assets/buildings/*/faces.json", {
+  eager: true,
+  import: "default",
+}) as Record<string, { name: string; faces: TurnedFaceInfo[] }>;
+
+const turnedUrls = import.meta.glob("../assets/buildings/*/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+/** A face whose image is fetched the first time it is drawn, so 24 facings cost nothing until used. */
+function lazyBuilding(url: string, info: TurnedFaceInfo, blend: boolean): BuildingSpriteDef {
+  const def: BuildingSpriteDef = {
+    image: new Image(),
+    padWidth: info.padWidth,
+    padSouthX: info.padSouthX,
+    padSouthY: info.padSouthY,
+    stackX: info.stackX,
+    stackY: info.stackY,
+    blend,
+  };
+  lazySrc.set(def, url);
+  return def;
+}
+const lazySrc = new WeakMap<BuildingSpriteDef, string>();
+
+function wake(def: BuildingSpriteDef): BuildingSpriteDef {
+  const src = lazySrc.get(def);
+  if (src) {
+    lazySrc.delete(def);
+    def.image.src = src;
+  }
+  return def;
+}
+
 /**
- * Base buildings the player turns before placing: east, south, west, north, like CIV_FACES.
- * Every face shares the east face's canvas and pad metrics.
+ * Buildings the player turns before placing (Bunker, Watch Tower, Airfield): one face per
+ * BUILDING_TURN_STEP, each anchored on the south corner of that facing's tile box.
  */
-const BUILDING_FACES: Partial<Record<EntityType, BuildingSpriteDef[]>> = {
-  bunker: [
-    BUILDING_SPRITES.bunker!,
-    building(bunkerSUrl, 384, 222, 264, 222, 99),
-    building(bunkerWUrl, 384, 222, 264, 222, 99),
-    building(bunkerNUrl, 384, 222, 264, 222, 99),
-  ],
-  tower: [
-    BUILDING_SPRITES.tower!,
-    building(towerSUrl, 384, 300, 426, 300, 133.8),
-    building(towerWUrl, 384, 300, 426, 300, 133.8),
-    building(towerNUrl, 384, 300, 426, 300, 133.8),
-  ],
-};
+const TURNED_FACES: Partial<Record<EntityType, { props: BuildingSpriteDef[]; ground: BuildingSpriteDef[] }>> = {};
+for (const [path, manifest] of Object.entries(turnedManifests)) {
+  const dir = path.slice(0, path.lastIndexOf("/") + 1);
+  const type = manifest.name as EntityType;
+  const blend = type !== "airfield";
+  const props: BuildingSpriteDef[] = [];
+  const ground: BuildingSpriteDef[] = [];
+  for (const info of manifest.faces) {
+    const url = turnedUrls[dir + info.file];
+    if (!url) continue;
+    props.push(lazyBuilding(url, info, blend));
+    const g = info.ground ? turnedUrls[dir + info.ground] : undefined;
+    if (g) ground.push(lazyBuilding(g, info, false));
+  }
+  if (props.length === BUILDING_FACINGS) TURNED_FACES[type] = { props, ground };
+}
 
 /** CIWS gun: 16 rows, each the base image's canvas and anchor (render/ciws.ts). */
 export const CIWS_TURRET_SHEET: HTMLImageElement = loadSheet(ciwsTurretUrl);
@@ -1620,7 +1664,11 @@ const BUILDING_GROUNDS: Partial<Record<EntityType, BuildingSpriteDef>> = {
   airfield: building(airfieldGroundUrl, 960, 652, 552, 604, 112, false),
 };
 
-export function buildingGroundFor(type: EntityType): BuildingSpriteDef | undefined {
+export function buildingGroundFor(type: EntityType, facing = 0): BuildingSpriteDef | undefined {
+  const turned = TURNED_FACES[type];
+  if (turned && turned.ground.length === BUILDING_FACINGS && buildingTurnIndex(facing) !== 0) {
+    return wake(turned.ground[buildingTurnIndex(facing)]!);
+  }
   return BUILDING_GROUNDS[type];
 }
 
@@ -1851,8 +1899,8 @@ export function buildingSpriteFor(type: EntityType, facing = 0): BuildingSpriteD
     const faces = CIV_FACES[type];
     return faces[buildingFaceIndex(facing) % faces.length];
   }
-  const faces = BUILDING_FACES[type];
-  if (faces) return faces[buildingFaceIndex(facing) % faces.length];
+  const turned = TURNED_FACES[type];
+  if (turned && buildingTurnIndex(facing) !== 0) return wake(turned.props[buildingTurnIndex(facing)]!);
   return BUILDING_SPRITES[type];
 }
 
