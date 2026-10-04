@@ -310,7 +310,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       wading: !isInfantryType(e.type) && unitInWater(state, e) ? true : undefined,
       submerged: friendly && diving(e) ? true : undefined,
       dive:
-        friendly && submergesOf(e.type)
+        friendly && submergesOf(e.type) && !e.wreck
           ? { air: e.dive?.air ?? SUB_DIVE_SECONDS, airMax: SUB_DIVE_SECONDS, winded: e.dive?.winded || undefined }
           : undefined,
       braced: e.braced || undefined,

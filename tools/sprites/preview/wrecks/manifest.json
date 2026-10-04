@@ -132,5 +132,32 @@
     "frames": 1,
     "contactY": 0.8,
     "clipped_dirs": []
+  },
+  {
+    "type": "gunboat",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/gunboat.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.74,
+    "clipped_dirs": []
+  },
+  {
+    "type": "submarine",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/submarine.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.74,
+    "clipped_dirs": []
+  },
+  {
+    "type": "battleship",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/battleship.png",
+    "cell": 256,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.56,
+    "clipped_dirs": []
   }
 ]

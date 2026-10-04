@@ -90,12 +90,12 @@ function shipShells(state: MatchState, shipId: number): Projectile[] {
 }
 
 describe("Battle Ship catalog", () => {
-  it("is a hull trained at the Marine Base that sinks", () => {
+  it("is a hull trained at the Marine Base that leaves a sunken hulk", () => {
     assert.ok(TRAIN_TYPES.includes("battleship"));
     assert.equal(catalog("battleship").name, "Battle Ship");
     assert.equal(isNavalType("battleship"), true);
     assert.equal(producerType("battleship"), "dock");
-    assert.equal(leavesWreck("battleship"), false);
+    assert.equal(leavesWreck("battleship"), true);
   });
 
   it("leaves the yard with two loaded triple turrets and two full CIWS belts", () => {

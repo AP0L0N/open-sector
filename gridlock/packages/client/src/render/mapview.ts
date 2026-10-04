@@ -553,6 +553,8 @@ function ownerAllied(match: MatchSnapshot, ownerId: string | undefined): boolean
 
 /** How much of a submerged submarine its owner still sees through the water. */
 const SUBMERGED_ALPHA = 0.5;
+/** Hull fires on a sunk ship sit this share of the usual height: the hulk rides low in the water. */
+const WRECK_FIRE_LIFT: Partial<Record<EntityType, number>> = { gunboat: 0.75, battleship: 0.3 };
 /** Half a torpedo's drawn length, world px, and how far behind it its wake trails, in body halves. */
 const TORPEDO_BODY_HALF = 7;
 const TORPEDO_WAKE_MUL = 6;
@@ -5503,7 +5505,7 @@ export class MapView {
     if (spr) {
       // Your own submarine running submerged shows faint under the surface.
       const prev = this.ctx.globalAlpha;
-      if (e.submerged) this.ctx.globalAlpha = prev * SUBMERGED_ALPHA;
+      if (e.submerged && !e.wreck) this.ctx.globalAlpha = prev * SUBMERGED_ALPHA;
       this.drawSpritedUnit(e, spr);
       this.ctx.globalAlpha = prev;
       return;
@@ -5681,7 +5683,7 @@ export class MapView {
     }
     if (e.wreck && !corpse && sheet === def) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
-    if (e.ship) hullShiftY -= unitGroundSink(size);
+    if (e.ship || def === BATTLESHIP_SPRITE) hullShiftY -= unitGroundSink(size);
     const stepping = unitStepping({ type: e.type, state: e.state, swimming: e.swimming, prev: this.prevById.get(e.id), curr: e });
     const drawn = drawUnitSprite(ctx, sheet, s.x, s.y, dir.x, dir.y, {
       moving: !e.wreck && !immobilized(e) && stepping,
@@ -5703,7 +5705,8 @@ export class MapView {
     if (drawn && e.scout?.out && !e.wreck) {
       drawScoutHead(ctx, s.x + hullShiftX, s.y + hullShiftY, turretDir.x, turretDir.y, size, p.turretFacing);
     }
-    if (drawn && e.ship) this.drawShipLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
+    // A sunk hulk has its superstructure and turrets baked in; the grey stand-in still needs them.
+    if (drawn && e.ship && (!e.wreck || sheet === def)) this.drawShipLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
     ctx.restore();
     ctx.restore();
     if (drawn && e.ship && !e.wreck) {
@@ -5826,7 +5829,8 @@ export class MapView {
       const along = i === 0 ? -0.02 : -0.1;
       const across = i === 0 ? 0.03 : -0.05;
       const ox = ux * size * along + -uy * size * across;
-      const oy = uy * size * along * 0.45 + ux * size * across * 0.45 - size * (i === 0 ? 0.47 : 0.4);
+      const lift = WRECK_FIRE_LIFT[e.type] ?? 1;
+      const oy = uy * size * along * 0.45 + ux * size * across * 0.45 - size * (i === 0 ? 0.47 : 0.4) * lift;
       drawWreckFire(this.ctx, x + ox, y + oy, now, e.id * 13 + i * 29, a);
     }
   }

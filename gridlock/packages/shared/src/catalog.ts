@@ -741,7 +741,8 @@ export interface CatalogEntry {
   drone?: boolean;
   /**
    * A hull that floats: it moves on water tiles only and never comes ashore. It does not
-   * wade, so it fires from the water, and it sinks instead of leaving a wreck.
+   * wade, so it fires from the water. Shot apart, it settles on the bottom as a wreck
+   * that blocks the water like a hulk ashore, until it is shot apart or a boat salvages it.
    */
   naval?: boolean;
   /** Building: every footprint tile must be water. The Marine Base. */
@@ -3670,7 +3671,9 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: 20,
     spreadDeg: 2.5,
     naval: true,
-    blurb: "Fast motor gunboat with a 20mm cannon on the foredeck. Water only: it never comes ashore. It fires on boats and on anything within reach of the bank, and its gun lays up a raised shore. Thin plating — an anti-tank rifle or a tank shell goes straight through. Torpedoes are the danger out on the water.",
+    leavesWreck: true,
+    wreckHp: 14,
+    blurb: "Fast motor gunboat with a 20mm cannon on the foredeck. Water only: it never comes ashore. It fires on boats and on anything within reach of the bank, and its gun lays up a raised shore. Thin plating — an anti-tank rifle or a tank shell goes straight through. Torpedoes are the danger out on the water. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.",
   },
   /** Coastal submarine. Water only, runs submerged. */
   submarine: {
@@ -3704,7 +3707,9 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     naval: true,
     torpedoes: true,
     submerges: true,
-    blurb: `Coastal submarine. Water only. It leaves the slip surfaced; Dive and Surface set its depth. Submerged, the enemy sees it only within ${SUB_DETECT_TILES / TILE_SUBDIV} tiles of one of their units or buildings, or for ${SUB_REVEAL_SECONDS} seconds after it fires, and its torpedoes find only another submarine that is down too — it must surface to strike a boat, a swimmer, or a Marine Base. An order to attack one brings it up. It holds ${SUB_DIVE_SECONDS} seconds of air below; when that runs out it surfaces and stays up until its air is back. Its bow tubes fire slow torpedoes that run in plain sight at the waterline — any gun can shoot one apart before it arrives. A torpedo dies where the water ends. Turn the bow to aim.`,
+    leavesWreck: true,
+    wreckHp: 40,
+    blurb: `Coastal submarine. Water only. It leaves the slip surfaced; Dive and Surface set its depth. Submerged, the enemy sees it only within ${SUB_DETECT_TILES / TILE_SUBDIV} tiles of one of their units or buildings, or for ${SUB_REVEAL_SECONDS} seconds after it fires, and its torpedoes find only another submarine that is down too — it must surface to strike a boat, a swimmer, or a Marine Base. An order to attack one brings it up. It holds ${SUB_DIVE_SECONDS} seconds of air below; when that runs out it surfaces and stays up until its air is back. Its bow tubes fire slow torpedoes that run in plain sight at the waterline — any gun can shoot one apart before it arrives. A torpedo dies where the water ends. Turn the bow to aim. Sunk, it leaves a hulk on the bottom, in plain sight, that blocks the water until it is shot apart.`,
   },
   /** A running torpedo: the body guns can shoot. It rides with its warhead round. */
   torpedo: {
@@ -3760,7 +3765,9 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: BATTLESHIP_SHELL.caliber,
     spreadDeg: 0,
     naval: true,
-    blurb: `Fast battleship, after the Iowa class. Water only. Two triple 16-inch turrets on the foredeck; every barrel loads and fires on its own, so a turret lets its guns go one by one in no set order. The shell is the field gun's, on a low, fast arc: it lands almost as soon as it leaves, but reaches less far than Artillery, and it will not fire inside ${BATTLESHIP_MIN_RANGE_TILES / TILE_SUBDIV} tiles. The turrets cannot fire astern through the superstructure. Two radar-laid 20mm CIWS mounts, one on the superstructure and one on the stern, lay themselves apart from the main guns: incoming missiles first, then planes, infantry, and light vehicles. Each barrel holds ${BATTLESHIP_BARREL_AMMO} shells and each CIWS a ${BATTLESHIP_CIWS_BELT}-round belt; they fill again slowly beside a Marine Base. Torpedoes and heavy shells are the danger.`,
+    leavesWreck: true,
+    wreckHp: 100,
+    blurb: `Fast battleship, after the Iowa class. Water only. Two triple 16-inch turrets on the foredeck; every barrel loads and fires on its own, so a turret lets its guns go one by one in no set order. The shell is the field gun's, on a low, fast arc: it lands almost as soon as it leaves, but reaches less far than Artillery, and it will not fire inside ${BATTLESHIP_MIN_RANGE_TILES / TILE_SUBDIV} tiles. The turrets cannot fire astern through the superstructure. Two radar-laid 20mm CIWS mounts, one on the superstructure and one on the stern, lay themselves apart from the main guns: incoming missiles first, then planes, infantry, and light vehicles. Each barrel holds ${BATTLESHIP_BARREL_AMMO} shells and each CIWS a ${BATTLESHIP_CIWS_BELT}-round belt; they fill again slowly beside a Marine Base. Torpedoes and heavy shells are the danger. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
   },
   /** Ju 87 B dive bomber. Lives on an Airfield pad. */
   stuka: {
@@ -4005,10 +4012,15 @@ export function catalog(type: EntityType): CatalogEntry {
 
 /**
  * Largest collision radius of a unit that goes ashore. Wreck pathing inflates by this so any
- * hull can detour. Boats are left out: they never meet a wreck on land, and they sink without one.
+ * hull can detour. Boats are left out: they never meet a wreck on land.
  */
 export const MAX_UNIT_RADIUS = Math.max(
   ...Object.values(ENTRIES).filter((d) => d.kind === "unit" && !d.naval).map((d) => d.radius),
+);
+
+/** Largest boat. A sunken hulk's pathing inflates by this too, so the Battle Ship can steer round it. */
+export const MAX_BOAT_RADIUS = Math.max(
+  ...Object.values(ENTRIES).filter((d) => d.kind === "unit" && d.naval).map((d) => d.radius),
 );
 
 export function isBuildingType(type: string): type is BuildingType {

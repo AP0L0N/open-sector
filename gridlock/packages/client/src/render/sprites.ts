@@ -209,6 +209,9 @@ import mammothWreckUrl from "../assets/units/wrecks/mammoth.png";
 import stukaWreckUrl from "../assets/units/wrecks/stuka.png";
 import fw190WreckUrl from "../assets/units/wrecks/fw190.png";
 import bv222WreckUrl from "../assets/units/wrecks/bv222.png";
+import gunboatWreckUrl from "../assets/units/wrecks/gunboat.png";
+import submarineWreckUrl from "../assets/units/wrecks/submarine.png";
+import battleshipWreckUrl from "../assets/units/wrecks/battleship.png";
 import walkerLegsUrl from "../assets/units/walker-legs.png";
 import walkerTorsoUrl from "../assets/units/walker-torso.png";
 import mammothWalkUrl from "../assets/units/mammoth-walk.png";
@@ -1469,6 +1472,10 @@ const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   stuka: wreckSheet(stukaWreckUrl, STUKA_SPRITE),
   fw190: wreckSheet(fw190WreckUrl, FW190_SPRITE),
   bv222: wreckSheet(bv222WreckUrl, BV222_SPRITE),
+  // Ships settle on the bottom: the superstructure and turrets are baked into the hulk.
+  gunboat: wreckSheet(gunboatWreckUrl, GUNBOAT_SPRITE),
+  submarine: wreckSheet(submarineWreckUrl, SUBMARINE_SPRITE),
+  battleship: wreckSheet(battleshipWreckUrl, BATTLESHIP_SPRITE),
 };
 
 /** The Mauler's cart burns with the dozer. */
