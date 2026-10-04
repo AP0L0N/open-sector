@@ -113,8 +113,8 @@ describe("Battle Ship catalog", () => {
     assert.deepEqual(ship.ship!.ciws.map((m) => m.ammo), [BATTLESHIP_CIWS_BELT, BATTLESHIP_CIWS_BELT]);
   });
 
-  it("shoots shorter than Artillery, on a much faster, flatter arc", () => {
-    assert.ok(BATTLESHIP_RANGE_TILES < catalog("artillery").rangeTiles);
+  it("shoots as far as Artillery, on a much faster, flatter arc", () => {
+    assert.equal(BATTLESHIP_RANGE_TILES, catalog("artillery").rangeTiles);
     assert.ok(BATTLESHIP_SHELL.flightFar * 2 < ARTILLERY_SHELL.flightNear);
     assert.ok(BATTLESHIP_SHELL.apexFar * 2 < ARTILLERY_SHELL.apexNear);
   });
