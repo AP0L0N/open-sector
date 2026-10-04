@@ -1338,6 +1338,13 @@ export const PYRO_COOKOFF_RADIUS = t(1.1) * TILE_SIZE;
 export const PYRO_COOKOFF_DAMAGE = 70;
 /** Fire patches the cook-off leaves in a ring around the body. */
 export const PYRO_COOKOFF_FIRES = 7;
+/**
+ * A tank's HE shell bursts where it stops and leaves the ground around it
+ * burning, the same fire the Pyro lays. Patches in two rings around the burst.
+ * World pixels.
+ */
+export const HE_FIRE_RADIUS = t(1.4) * TILE_SIZE;
+export const HE_FIRE_PATCHES = 12;
 
 /**
  * Medic. He walks to wounded infantry inside this disk, then has to stand
@@ -2183,7 +2190,7 @@ export const SHELLS: Record<ShellType, ShellDef> = {
   he: {
     id: "he",
     name: "HE",
-    blurb: "High explosive. Heavy damage to infantry and buildings. Poor penetration; ricochets off armor.",
+    blurb: "High explosive. Heavy damage to infantry and buildings, and the ground around the burst keeps burning. Poor penetration; bursts on armor.",
     damage: 90,
     penetration: 16,
     caliber: 75,
@@ -2201,7 +2208,7 @@ export const SHELLS: Record<ShellType, ShellDef> = {
   smoke: {
     id: "smoke",
     name: "Smoke",
-    blurb: "Lays a vision-blocking screen. Never auto-fires — force-attack the ground to place one round, then the gun stops.",
+    blurb: "Not carried. Screen a Tiger with an Apocalypse.",
     damage: 0,
     penetration: 0,
     caliber: 75,
@@ -2226,7 +2233,7 @@ export const STUG_SHELLS: Record<ShellType, ShellDef> = {
   he: {
     id: "he",
     name: "HE",
-    blurb: "Sprgr. 34. Infantry, guns, trucks, buildings. This is still an assault gun — keep HE on the rack.",
+    blurb: "Sprgr. 34. Infantry, guns, trucks, buildings; the ground around the burst keeps burning. This is still an assault gun — keep HE on the rack.",
     damage: 72,
     penetration: 14,
     caliber: 75,
@@ -2244,7 +2251,7 @@ export const STUG_SHELLS: Record<ShellType, ShellDef> = {
   smoke: {
     id: "smoke",
     name: "Smoke",
-    blurb: "Lays a vision-blocking screen. Never auto-fires — force-attack the ground to place one round, then the gun stops.",
+    blurb: "Not carried. Screen a StuG with an Apocalypse.",
     damage: 0,
     penetration: 0,
     caliber: 75,
@@ -2270,7 +2277,7 @@ export const JAGDTIGER_SHELLS: Record<ShellType, ShellDef> = {
   he: {
     id: "he",
     name: "HE",
-    blurb: "128mm high explosive. A huge burst among infantry and against buildings. Ricochets off armor.",
+    blurb: "128mm high explosive. A huge burst among infantry and against buildings, and the ground around it keeps burning. Bursts on armor.",
     damage: 120,
     penetration: 24,
     caliber: 128,
@@ -2288,7 +2295,7 @@ export const JAGDTIGER_SHELLS: Record<ShellType, ShellDef> = {
   smoke: {
     id: "smoke",
     name: "Smoke",
-    blurb: "Not carried. Screen a Jagdtiger with a Tiger or a StuG.",
+    blurb: "Not carried. Screen a Jagdtiger with an Apocalypse.",
     damage: 0,
     penetration: 0,
     caliber: 128,
@@ -2313,7 +2320,7 @@ export const APOCALYPSE_SHELLS: Record<ShellType, ShellDef> = {
   he: {
     id: "he",
     name: "HE",
-    blurb: "High explosive. The second barrel follows a moment later. Clears infantry and knocks buildings down. Ricochets off armor.",
+    blurb: "High explosive. The second barrel follows a moment later. Clears infantry, knocks buildings down, and leaves the ground burning. Bursts on armor.",
     damage: 95,
     penetration: 20,
     caliber: 105,
@@ -3126,7 +3133,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: 100,
     caliber: 75,
     spreadDeg: 3,
-    ammo: { ap: 12, he: 6, smoke: 4 },
+    ammo: { ap: 12, he: 6 },
     defaultShell: "ap",
     mgAmmo: TANK_MG.ammo,
     leavesWreck: true,
@@ -3201,7 +3208,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: 72,
     caliber: 75,
     spreadDeg: 3,
-    ammo: { ap: 10, smoke: 2 },
+    ammo: { ap: 10 },
     defaultShell: "ap",
     shells: STUG_SHELLS,
     mgAmmo: TANK_MG.ammo,

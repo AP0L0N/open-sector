@@ -18,6 +18,8 @@ import {
   FLAMER_SCATTER_ACROSS,
   FLAMER_SCATTER_ALONG,
   FLAMER_SPLASH,
+  HE_FIRE_PATCHES,
+  HE_FIRE_RADIUS,
   isArmoredType,
   isCyborg,
   isInfantryType,
@@ -367,4 +369,20 @@ export function cookOff(state: MatchState, e: Entity): void {
     blast: true,
     cookoff: true,
   });
+}
+
+/**
+ * A tank's HE shell burst here: the ground around it catches like the Pyro's
+ * fuel. A patch at the heart, then an inner and an outer ring. Water and
+ * building floors stay out of it, as with every fire.
+ */
+export function heGroundFire(state: MatchState, x: number, y: number, ownerId: string): void {
+  igniteAt(state, x, y, ownerId);
+  const spin = nextRand(state) * Math.PI * 2;
+  for (let i = 0; i < HE_FIRE_PATCHES; i++) {
+    const outer = i % 2 === 1;
+    const a = spin + (i / HE_FIRE_PATCHES) * Math.PI * 2 + (nextRand(state) - 0.5) * 0.4;
+    const d = HE_FIRE_RADIUS * (outer ? 0.75 + nextRand(state) * 0.25 : 0.3 + nextRand(state) * 0.2);
+    igniteAt(state, x + Math.cos(a) * d, y + Math.sin(a) * d, ownerId);
+  }
 }

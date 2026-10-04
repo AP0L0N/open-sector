@@ -18,6 +18,7 @@ import {
   burstSpec,
   deathBlastLifeMs,
   deathBlastSpec,
+  heBurstSpec,
   puffField,
   waterBurstLifeMs,
 } from "./explosion.js";
@@ -121,5 +122,12 @@ describe("waterBurstLifeMs", () => {
   it("lets a bomb's column hang longer than a shell's, and solid shot settle quickest", () => {
     assert.ok(waterBurstLifeMs(burstSpec(bomb)) > waterBurstLifeMs(burstSpec(tigerHe)));
     assert.ok(waterBurstLifeMs(burstSpec({ caliber: 75, damage: 55, shell: "ap" })) < waterBurstLifeMs(burstSpec(tigerHe)));
+  });
+});
+
+describe("heBurstSpec", () => {
+  it("is the blast of a medium tank's hull going up", () => {
+    assert.deepEqual(heBurstSpec(), deathBlastSpec({ radius: 12 }));
+    assert.equal(heBurstSpec().building, false);
   });
 });

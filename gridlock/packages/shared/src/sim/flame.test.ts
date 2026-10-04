@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  carriesShell,
   catalog,
   FIRE_BURN_DPS,
   FIRE_SECONDS,
   FLAMER,
   FLAMER_BURST,
   FLAMER_BURSTS,
+  HE_FIRE_RADIUS,
   HANDGUN_RANGE_TILES,
   infantryGunFor,
   infantryLoadout,
@@ -14,9 +16,11 @@ import {
   PYRO_COOKOFF_CHANCE_DRY,
   PYRO_COOKOFF_CHANCE_FULL,
   RIFLE_RANGE_TILES,
+  shellsFor,
   supplyShortOf,
   TICK_DT,
   TRAIN_TYPES,
+  type ShellType,
 } from "../catalog.js";
 import { TILE_EMPTY, TILE_TREE, TILE_WATER } from "../maps.js";
 import { applyCommand } from "./commands.js";
@@ -29,7 +33,7 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { producerType } from "./train.js";
-import type { Entity, MatchState } from "./types.js";
+import type { Entity, MatchState, Projectile } from "./types.js";
 
 function twoPlayerMatch(): MatchState {
   const r = createRoom({ id: "PY1", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
@@ -411,3 +415,96 @@ describe("death by fire", () => {
     assert.ok(v === 0 || v === 1 || v === 2);
   });
 });
+
+describe("tank HE", () => {
+  /** A Tiger round already in flight from (x, y), heading east. It stops after `life` seconds. */
+  function shell(state: MatchState, x: number, y: number, kind: ShellType, life = 1): Projectile {
+    const def = shellsFor("warden")[kind];
+    const p: Projectile = {
+      id: state.nextId++,
+      ownerId: "A",
+      team: 1,
+      x,
+      y,
+      vx: catalog("warden").projectileSpeed,
+      vy: 0,
+      damage: def.damage,
+      penetration: def.penetration,
+      caliber: def.caliber,
+      life,
+      ignoreId: -1,
+      fromId: -1,
+      bounced: false,
+      shell: kind,
+    };
+    state.projectiles.push(p);
+    return p;
+  }
+
+  /** Flight time to come down six tiles out, on the cleared pad. */
+  const hop = (ts: number) => (6 * ts) / catalog("warden").projectileSpeed;
+
+  function land(state: MatchState): void {
+    for (let i = 0; i < 60 && state.projectiles.length > 0; i++) tickProjectiles(state, TICK_DT);
+  }
+
+  it("sets a wide patch of ground burning where it lands, and the burst is flagged for the fireball", () => {
+    const { state, y, ts } = range();
+    shell(state, tileCenter(70, ts), tileCenter(y, ts), "he", hop(ts));
+    land(state);
+    const burst = state.impacts.find((i) => i.heBurst);
+    assert.ok(burst, `impacts=${state.impacts.map((i) => i.kind).join(",")}`);
+    assert.ok(state.fires.length >= 8, `burning patches ${state.fires.length}`);
+    const spread = Math.max(...state.fires.map((f) => Math.hypot(f.x - burst.x, f.y - burst.y)));
+    assert.ok(spread > HE_FIRE_RADIUS * 0.6, `fire reaches out ${spread}`);
+    assert.ok(spread <= HE_FIRE_RADIUS + 1, "and no farther than the burst");
+  });
+
+  it("burns the soldiers standing in it, like the Pyro's fuel", () => {
+    const { state, y, ts } = range();
+    const p = shell(state, tileCenter(70, ts), tileCenter(y, ts), "he", hop(ts));
+    land(state);
+    const at = state.impacts.find((i) => i.heBurst)!;
+    const man = makeEntity(state, "rifleman", "B", at.x, at.y);
+    man.holdPosition = true;
+    for (let i = 0; i < secs(1); i++) step(state, TICK_DT);
+    assert.ok(man.hp < man.hpMax, `hp ${man.hp}`);
+    assert.equal(p.shell, "he");
+  });
+
+  it("bursts on armor instead of skipping on", () => {
+    const { state, y, ts } = range();
+    const tank = dummy(state, "warden", tileCenter(80, ts), tileCenter(y, ts));
+    tank.facing = Math.PI;
+    shell(state, tileCenter(76, ts), tileCenter(y, ts), "he");
+    land(state);
+    assert.equal(state.projectiles.length, 0, "nothing bounces away");
+    assert.equal(state.impacts.filter((i) => i.heBurst).length, 1);
+    assert.ok(state.fires.length > 0, "the ground around the hull burns");
+  });
+
+  it("solid shot leaves no fire", () => {
+    const { state, y, ts } = range();
+    shell(state, tileCenter(70, ts), tileCenter(y, ts), "ap", hop(ts));
+    land(state);
+    assert.equal(state.fires.length, 0);
+    assert.equal(state.impacts.some((i) => i.heBurst), false);
+  });
+
+  it("does not set water alight", () => {
+    const { state, y, ts } = range();
+    for (let ty = y - 8; ty <= y + 8; ty++) {
+      for (let tx = 60; tx <= 130; tx++) state.terrain[ty * state.width + tx] = TILE_WATER;
+    }
+    shell(state, tileCenter(70, ts), tileCenter(y, ts), "he", hop(ts));
+    land(state);
+    assert.equal(state.fires.length, 0);
+  });
+
+  it("the Tiger and the StuG carry no smoke", () => {
+    assert.equal(carriesShell("warden", "smoke"), false);
+    assert.equal(carriesShell("ss3", "smoke"), false);
+    assert.equal(carriesShell("warden", "he"), true);
+  });
+});
+
