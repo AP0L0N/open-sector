@@ -7,9 +7,7 @@
     "sample": "Aye, aye, I hear you. Forty years on these waters and still they've got me hauling crates. Mind the swell, lads, cargo's coming alongside. Fresh shells and tinned beans, the finest the navy can spare.",
     "stability": 0.55,
     "similarity": 0.8,
-    "style": 0.4,
-    "voice_id": "pqHfZKP75CvOlQylNhV4",
-    "stock_voice": "Bill"
+    "style": 0.4
   },
   "lines": {
     "select": [

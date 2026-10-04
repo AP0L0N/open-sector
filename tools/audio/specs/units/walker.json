@@ -2,14 +2,13 @@
   "key": "walker",
   "out": "units/walker",
   "voice": {
-    "name": "Open Sector - Walker",
+    "name": "Walker - OS",
     "description": "Intense young male mech pilot in his late twenties, wired and slightly unhinged, sharp raspy tenor, talks fast with manic energy and nervous laughter, too much adrenaline, sounds like he is shouting through a cramped cockpit radio with a slightly metallic processed edge.",
     "sample": "Walker online! Both guns spinning, heat's climbing, and I love it! Point me at something, anything, I need to shoot. Twelve hundred rounds a minute per arm, baby, and if it gets bad, I'm taking them with me!",
     "stability": 0.3,
     "similarity": 0.8,
     "style": 0.6,
-    "voice_id": "SOYHLrjzK2X1ezoPC6cr",
-    "stock_voice": "Harry"
+    "voice_id": "scxaMMHjxKGbJroNO2ay"
   },
   "lines": {
     "select": [

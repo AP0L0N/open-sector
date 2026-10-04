@@ -7,9 +7,7 @@
     "sample": "Rig here, rolling slow and steady. Point me at flat ground and I'll unpack you a whole headquarters before lunch. Don't rush the big girl, she gets there when she gets there.",
     "stability": 0.55,
     "similarity": 0.8,
-    "style": 0.35,
-    "voice_id": "pqHfZKP75CvOlQylNhV4",
-    "stock_voice": "Bill"
+    "style": 0.35
   },
   "lines": {
     "select": [

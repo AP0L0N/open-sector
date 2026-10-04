@@ -22,7 +22,7 @@ python3 tools/audio/qa.py units/gunner
 
 ### Custom voices and the account cap
 
-The account holds a limited number of custom voices (10 on the current plan), so only some
+The account holds a limited number of custom voices (10 before the 2026-10 plan upgrade), so only some
 specs have a designed voice (`voices/<key>.json`). The rest name a stock ElevenLabs voice in
 the spec: `"voice": {"voice_id": "...", "stock_voice": "Harry", ...}`. Stock voices do not count
 against the cap. To give such a unit its own designed voice later, free a slot (or raise the
