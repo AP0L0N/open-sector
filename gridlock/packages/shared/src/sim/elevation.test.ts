@@ -16,6 +16,8 @@ import {
   TILE_SUBDIV,
   TREE_COVER_HEIGHT,
   HEIGHT_RANGE_BONUS,
+  AIRCRAFT_FLYING_SIGHT_BONUS,
+  SUB_SUBMERGED_SIGHT_TILES,
   catalog,
   coverHeightOf,
 } from "../catalog.js";
@@ -25,6 +27,7 @@ import {
   gunCanElevate,
   hasTerrainLos,
   levelSightExtra,
+  liveSightExtra,
   shotClearsCover,
   observerEyeOf,
   rangeTilesOf,
@@ -363,5 +366,27 @@ describe("tank gun elevation", () => {
     assert.equal(canAimWeapon(state, shooter, target.x, target.y, target), false);
     tickCombat(state, TICK_DT);
     assert.equal(state.projectiles.some((p) => p.fromId === shooter.id), false);
+  });
+});
+
+describe("live sight: submarine below, plane aloft", () => {
+  it("a diving submarine sees only periscope range; surfaced it has its catalog sight", () => {
+    const up = sightTilesOf("submarine", HEIGHT_BASE, liveSightExtra({ type: "submarine", dive: { down: false } }));
+    const down = sightTilesOf("submarine", HEIGHT_BASE, liveSightExtra({ type: "submarine", dive: { down: true } }));
+    assert.equal(up, sightTilesOf("submarine", HEIGHT_BASE));
+    assert.equal(down, SUB_SUBMERGED_SIGHT_TILES);
+    assert.ok(down < up / 2);
+    // Snapshot views carry `submerged` for your own boat instead of `dive.down`.
+    assert.equal(sightTilesOf("submarine", HEIGHT_BASE, liveSightExtra({ type: "submarine", submerged: true })), down);
+  });
+
+  it("a plane in the air sees much farther than on the pad, and farther than infantry", () => {
+    for (const type of ["stuka", "fw190", "bv222"] as const) {
+      const pad = sightTilesOf(type, HEIGHT_BASE, liveSightExtra({ type, air: { alt: 0 } }));
+      const aloft = sightTilesOf(type, HEIGHT_BASE, liveSightExtra({ type, air: { alt: 10 } }));
+      assert.equal(pad, catalog(type).sightTiles);
+      assert.equal(aloft, pad + AIRCRAFT_FLYING_SIGHT_BONUS);
+      assert.ok(aloft > sightTilesOf("rifleman", HEIGHT_BASE) * 1.5);
+    }
   });
 });

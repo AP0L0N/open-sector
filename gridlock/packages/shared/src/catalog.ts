@@ -2445,6 +2445,10 @@ export const TORPEDO_HP = 30;
 export const SUB_DETECT_TILES = t(4);
 /** After it fires, a submarine stays in sight this long. */
 export const SUB_REVEAL_SECONDS = 4;
+/** Sight of a submarine running below: the periscope only. Surfaced it has its catalog sight. */
+export const SUB_SUBMERGED_SIGHT_TILES = t(3);
+/** Extra sight a plane has while it flies, over its catalog sight on the pad. */
+export const AIRCRAFT_FLYING_SIGHT_BONUS = t(10);
 /** Seconds of air a submarine has for running submerged. */
 export const SUB_DIVE_SECONDS = 150;
 /** Surfaced, it takes in air this many times faster than it spends it below. */
@@ -3760,7 +3764,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     leavesWreck: true,
     wreckHp: 40,
     belt: SUB_TORPEDOES,
-    blurb: `Coastal submarine. Water only. It leaves the slip surfaced; Dive and Surface set its depth. Submerged, the enemy sees it only within ${SUB_DETECT_TILES / TILE_SUBDIV} tiles of one of their units or buildings, or for ${SUB_REVEAL_SECONDS} seconds after it fires, and its torpedoes find only another submarine that is down too — it must surface to strike a boat, a swimmer, or a Marine Base. Ordered to attack or force-attack one, it closes in below and surfaces once in range. It holds ${SUB_DIVE_SECONDS} seconds of air below; when that runs out it surfaces and stays up until its air is back. Its bow tubes fire slow torpedoes that run in plain sight at the waterline — any gun can shoot one apart before it arrives. A torpedo dies where the water ends. Turn the bow to aim. It carries ${SUB_TORPEDOES} torpedoes; beside a Marine Base it loads one every ${SUB_REARM_SECONDS} seconds. Sunk, it leaves a hulk on the bottom, in plain sight, that blocks the water until it is shot apart.`,
+    blurb: `Coastal submarine. Water only. It leaves the slip surfaced; Dive and Surface set its depth. Submerged, the enemy sees it only within ${SUB_DETECT_TILES / TILE_SUBDIV} tiles of one of their units or buildings, or for ${SUB_REVEAL_SECONDS} seconds after it fires. Below, it sees only ${SUB_SUBMERGED_SIGHT_TILES / TILE_SUBDIV} tiles through its periscope, and its torpedoes find only another submarine that is down too — it must surface to strike a boat, a swimmer, or a Marine Base. Ordered to attack or force-attack one, it closes in below and surfaces once in range. It holds ${SUB_DIVE_SECONDS} seconds of air below; when that runs out it surfaces and stays up until its air is back. Its bow tubes fire slow torpedoes that run in plain sight at the waterline — any gun can shoot one apart before it arrives. A torpedo dies where the water ends. Turn the bow to aim. It carries ${SUB_TORPEDOES} torpedoes; beside a Marine Base it loads one every ${SUB_REARM_SECONDS} seconds. Sunk, it leaves a hulk on the bottom, in plain sight, that blocks the water until it is shot apart.`,
   },
   /** A running torpedo: the body guns can shoot. It rides with its warhead round. */
   torpedo: {
