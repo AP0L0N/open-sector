@@ -242,7 +242,8 @@ import {
   type UnitSpriteDef,
 } from "./sprites.js";
 import { drawBuildingAnim } from "./building-fx.js";
-import { drawTowerSearchlight, type SearchlightPose } from "./searchlight.js";
+import { drawSearchlightAt, drawTowerSearchlight, type SearchlightPose } from "./searchlight.js";
+import { drawTorpedoBody } from "./torpedo-draw.js";
 import { drawRadarContact, drawRadarOffline, radarContactLit } from "./radar-panel.js";
 import {
   drawTrackKick,
@@ -278,7 +279,13 @@ import {
   type GunRecoil,
 } from "./gun-recoil.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
-import { BATTLESHIP_WORLD_PER_UNIT, battleshipLayers, shipBarrelMuzzle, shipCiwsMuzzle } from "./battleship.js";
+import {
+  BATTLESHIP_WORLD_PER_UNIT,
+  battleshipLayers,
+  shipBarrelMuzzle,
+  shipCiwsMuzzle,
+  shipLampMount,
+} from "./battleship.js";
 import {
   drawMuzzleSmoke,
   muzzleSmokePose,
@@ -559,6 +566,8 @@ const SUBMERGED_ALPHA = 0.5;
 const WRECK_FIRE_LIFT: Partial<Record<EntityType, number>> = { gunboat: 0.75, battleship: 0.3 };
 /** Half a torpedo's drawn length, world px, and how far behind it its wake trails, in body halves. */
 const TORPEDO_BODY_HALF = 7;
+/** A Battle Ship shell's smoke trail is this many times a mortar bomb's. */
+const SHIP_SHELL_SMOKE_THICK = 2.6;
 const TORPEDO_WAKE_MUL = 6;
 
 function isProducerView(e: EntityView): boolean {
@@ -761,13 +770,15 @@ export class MapView {
   /** Bounced spark origin, snapped to the same hull pixel as the ricochet FX. */
   private bounceTrace = new Map<number, { x: number; y: number; sx: number; lift: number }>();
   /** Last smoke arc of a mortar bomb, kept briefly after it lands. World space. */
-  private mortarSmoke = new Map<number, { pts: { x: number; y: number; z: number; u: number }[]; at: number }>();
+  private mortarSmoke = new Map<number, { pts: { x: number; y: number; z: number; u: number }[]; at: number; thick: number }>();
   /** Where each Titan rocket was first seen, so its smoke trail starts at the pod. World space. */
   private rocketFrom = new Map<number, { x: number; y: number; z: number }>();
   /** Garrison launch: the host the trail is pinned to, and the soldier id that picks the window. */
   private rocketHost = new Map<number, { hostId: number; salt: number }>();
   /** Head of each rocket as of the last frame; the next frame lays trail puffs from here. */
   private rocketLast = new Map<number, { x: number; y: number; z: number }>();
+  /** Pod point of each launched rocket until it bursts: a rocket no snapshot caught still gets its trail. */
+  private rocketLaunched = new Map<number, { x: number; y: number; z: number }>();
   /** Where a falling plane was last frame, so the smoke column has no gaps. */
   private crashLast = new Map<number, { x: number; y: number; z: number }>();
   /** Black smoke behind planes that are going down. */
@@ -835,6 +846,8 @@ export class MapView {
   private patrolLoop = false;
   forceAttackMode = false;
   rotateMode = false;
+  /** Rotate light: the rotate click swings only the selected Battle Ships' searchlights. */
+  rotateLight = false;
   guardMode = false;
   /**
    * Structure ghost. A press sets the start, a drag or the next click sets each corner,
@@ -947,9 +960,10 @@ export class MapView {
     this.onPlaceMode();
   }
 
-  setRotateMode(on: boolean): void {
-    if (this.rotateMode === on) return;
+  setRotateMode(on: boolean, light = false): void {
+    if (this.rotateMode === on && (!on || this.rotateLight === light)) return;
     this.rotateMode = on;
+    this.rotateLight = on && light;
     if (on) {
       this.placeMode = false;
       this.attackMoveMode = false;
@@ -1082,6 +1096,16 @@ export class MapView {
     }
     this.noteBarrages(match, now);
     this.noteGatlingFire(match, now);
+    // A fast rocket (a RAM's, at a plane overhead) can leave and burst between two
+    // snapshots. Its launch still comes through, so it gets its flash and backblast.
+    if (this.rocketLaunched.size > 400) this.rocketLaunched.clear();
+    for (const l of match.launches ?? []) {
+      if (this.seenShots.has(l.id)) continue;
+      this.seenShots.add(l.id);
+      const shooter = match.entities.find((e) => e.id === l.fromId);
+      this.noteRocketLaunch(shooter, l, now);
+      this.rocketLaunched.set(l.id, this.rocketFrom.get(l.id) ?? { x: l.x, y: l.y, z: l.z });
+    }
     for (const i of match.impacts ?? []) {
       if (i.fromId != null && (i.caliber ?? 0) > 0 && (i.caliber ?? 0) < 40 && i.kind !== "crush") {
         const shooter = match.entities.find((e) => e.id === i.fromId);
@@ -1098,6 +1122,20 @@ export class MapView {
           this.cookOffFx(i.x, i.y, i.id, now);
         }
         continue;
+      }
+      if (i.rocket && i.shot != null && !this.fxIds.has(i.id)) {
+        // Close the trail to the burst: from the last drawn head, or from the pod
+        // when the rocket flew and burst between snapshots.
+        const from = this.rocketLast.get(i.shot) ?? this.rocketLaunched.get(i.shot);
+        if (from) {
+          const to = { x: i.x, y: i.y, z: i.z ?? this.elevAt(i.x, i.y) };
+          this.rocketPuffs.push(...trailPuffs(from, to, now, (i.shot * 2654435761) >>> 0));
+        }
+        this.rocketLaunched.delete(i.shot);
+        if (!match.projectiles.some((p) => p.id === i.shot)) {
+          this.rocketFrom.delete(i.shot);
+          this.rocketHost.delete(i.shot);
+        }
       }
       if (i.rocket && i.z != null && !this.fxIds.has(i.id)) {
         this.rocketPuffs.push(...airBurstPuffs(i.x, i.y, i.z, now, i.id));
@@ -1140,38 +1178,7 @@ export class MapView {
         continue;
       }
       if (p.rocket) {
-        // Pod or tube flash and backblast. Not a tank shot: the main gun does not recoil.
-        const host = this.garrisonShotHost(shooter, p);
-        if (host) this.flashAperture(host, p, now, false);
-        else {
-          this.rocketFrom.set(p.id, { x: p.x, y: p.y, z: p.z ?? 0 });
-          if (shooter && !shooter.wreck) {
-            this.rocketPuffs.push(
-              ...backblastPuffs({
-                x: shooter.x,
-                y: shooter.y,
-                z: p.z ?? 0,
-                ground: this.elevAt(shooter.x, shooter.y),
-                dirX: p.vx,
-                dirY: p.vy,
-                now,
-                seed: (p.id * 2246822519) >>> 0,
-              }),
-            );
-          }
-          this.addFx({
-            id: p.id + 8_000_000,
-            kind: "muzzle",
-            x: p.x,
-            y: p.y,
-            vx: p.vx,
-            vy: p.vy,
-            at: now,
-            caliber: 20,
-            lift: isoLift(p.z ?? 0) - isoLift(this.elevAt(p.x, p.y)),
-          });
-        }
-        if (shooter?.type === "rocketer" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
+        this.noteRocketLaunch(shooter, p, now);
         continue;
       }
       const fromGarrison =
@@ -1237,7 +1244,9 @@ export class MapView {
     if (this.attackMoveMode && this.ownSelectedIds().length === 0) this.setAttackMoveMode(false);
     if (this.patrolMode && this.ownPatrolIds().length === 0) this.setPatrolMode(false);
     if (this.forceAttackMode && this.ownForceIds().length === 0) this.setForceAttackMode(false);
-    if (this.rotateMode && this.ownRotateIds().length === 0) this.setRotateMode(false);
+    if (this.rotateMode && (this.rotateLight ? this.ownShipLampIds() : this.ownRotateIds()).length === 0) {
+      this.setRotateMode(false);
+    }
     if (this.guardMode && this.ownSelectedIds().length === 0) this.setGuardMode(false);
     if ((this.fieldPlace || this.constructPlace) && !this.curr.entities.some((e) => this.selected.has(e.id) && e.type === "engineer" && e.ownerId === this.curr.youPlayerId)) {
       this.fieldPlace = null;
@@ -1584,17 +1593,25 @@ export class MapView {
         scale: 1.3,
       }),
     );
-    // Behind the cannon: back along the barrel from its tip to the turret face. Six barrels
-    // each throw the field gun's cloud, so each one is a smaller cloud than the lone gun's.
+    // Behind the cannon: back along the barrel from its tip to the turret face, a heavy cloud
+    // that rolls back over the deck, then a second one off the muzzle as the blast spreads.
     const back = 2.4 * BATTLESHIP_WORLD_PER_UNIT;
     this.fieldGunSmokes.push(
       ...spawnFieldGunSmoke({
         x: m.x - dirX * back,
         y: m.y - dirY * back,
         facing: turret.facing,
-        radius: 4.5,
+        radius: 11,
         now,
         seed: (shot.id * 2246822519 + Math.floor(now)) >>> 0,
+      }),
+      ...spawnFieldGunSmoke({
+        x: m.x,
+        y: m.y,
+        facing: turret.facing,
+        radius: 8,
+        now: now + 60,
+        seed: (shot.id * 3266489917 + Math.floor(now)) >>> 0,
       }),
     );
     this.addFx({
@@ -2463,7 +2480,19 @@ export class MapView {
     const out: number[] = [];
     for (const id of this.selected) {
       const ent = this.curr.entities.find((x) => x.id === id);
-      if (ent && ent.ownerId === this.curr.youPlayerId && ent.hp > 0 && ent.spotFacing != null && hasSpotlight(ent.type)) {
+      if (ent && ent.ownerId === this.curr.youPlayerId && ent.hp > 0 && ent.kind === "building" && ent.spotFacing != null && hasSpotlight(ent.type)) {
+        out.push(id);
+      }
+    }
+    return out;
+  }
+
+  /** Own Battle Ships in the selection whose searchlight burns: what Rotate light swings. */
+  private ownShipLampIds(): number[] {
+    const out: number[] = [];
+    for (const id of this.selected) {
+      const ent = this.curr.entities.find((x) => x.id === id);
+      if (ent && ent.ownerId === this.curr.youPlayerId && ent.hp > 0 && ent.kind === "unit" && ent.spotFacing != null && hasSpotlight(ent.type)) {
         out.push(id);
       }
     }
@@ -2485,7 +2514,9 @@ export class MapView {
     const out = this.ownAimIds();
     for (const id of this.selected) {
       const ent = this.curr.entities.find((x) => x.id === id);
-      if (ent && ent.ownerId === this.curr.youPlayerId && ent.spotFacing != null && hasSpotlight(ent.type)) out.push(id);
+      if (ent && ent.ownerId === this.curr.youPlayerId && ent.kind === "building" && ent.spotFacing != null && hasSpotlight(ent.type)) {
+        out.push(id);
+      }
     }
     return out;
   }
@@ -2549,12 +2580,13 @@ export class MapView {
   }
 
   private commitRotate(px: number, py: number): void {
-    const ids = this.ownRotateIds();
+    const light = this.rotateLight;
+    const ids = light ? this.ownShipLampIds() : this.ownRotateIds();
     if (!this.keepModeForQueue()) this.setRotateMode(false);
     if (ids.length === 0) return;
     const hit = this.hit(px, py);
     const w = hit ? { x: hit.x, y: hit.y } : this.screenToWorld(px, py);
-    this.command({ type: "cmd.rotate", ids, x: w.x, y: w.y });
+    this.command(light ? { type: "cmd.rotate", ids, x: w.x, y: w.y, light: true } : { type: "cmd.rotate", ids, x: w.x, y: w.y });
   }
 
   private meanSelectedFacing(): number {
@@ -3964,8 +3996,9 @@ export class MapView {
     ctx.textBaseline = "top";
     ctx.lineWidth = 3;
     ctx.strokeStyle = "#140e0a";
-    ctx.strokeText("FACE", x + 14, y + 8);
-    ctx.fillText("FACE", x + 14, y + 8);
+    const word = this.rotateLight ? "LIGHT" : "FACE";
+    ctx.strokeText(word, x + 14, y + 8);
+    ctx.fillText(word, x + 14, y + 8);
     ctx.restore();
   }
 
@@ -5462,7 +5495,7 @@ export class MapView {
     return s.x >= -m && s.y >= -m && s.x <= w + m && s.y <= h + m;
   }
 
-  /** A running torpedo: a dark body at the waterline trailing a white wake. */
+  /** A running torpedo, seen under the surface, trailing bubbles and a wake. */
   private drawTorpedo(e: EntityView): void {
     const ctx = this.ctx;
     const p = this.lerpEnt(e);
@@ -5472,30 +5505,7 @@ export class MapView {
     const nose = this.toScreen(p.x + ux * half, p.y + uy * half);
     const tail = this.toScreen(p.x - ux * half, p.y - uy * half);
     const wake = this.toScreen(p.x - ux * half * TORPEDO_WAKE_MUL, p.y - uy * half * TORPEDO_WAKE_MUL);
-    ctx.save();
-    ctx.lineCap = "round";
-    const foam = ctx.createLinearGradient(tail.x, tail.y, wake.x, wake.y);
-    foam.addColorStop(0, "rgba(240,248,255,0.85)");
-    foam.addColorStop(1, "rgba(240,248,255,0)");
-    ctx.strokeStyle = foam;
-    ctx.lineWidth = 4;
-    ctx.beginPath();
-    ctx.moveTo(tail.x, tail.y);
-    ctx.lineTo(wake.x, wake.y);
-    ctx.stroke();
-    ctx.strokeStyle = "#111";
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.moveTo(tail.x, tail.y);
-    ctx.lineTo(nose.x, nose.y);
-    ctx.stroke();
-    ctx.strokeStyle = this.ownerColor(e);
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(tail.x, tail.y);
-    ctx.lineTo(nose.x, nose.y);
-    ctx.stroke();
-    ctx.restore();
+    drawTorpedoBody(ctx, { tail, nose, wake, color: this.ownerColor(e), now: performance.now(), seed: e.id });
   }
 
   private drawUnit(e: EntityView): void {
@@ -5620,6 +5630,18 @@ export class MapView {
       const cell = sheet.frameSize;
       ctx.drawImage(sheet.image, 0, l.row * cell, cell, cell, left + l.dx, top + l.dy, size, size);
     }
+    if (!e.wreck) this.drawShipLamp(e, facing, ox, oy, size);
+  }
+
+  /** The Battle Ship's searchlight on top of the fire-control director, turned like its beam. */
+  private drawShipLamp(e: EntityView, facing: number, ox: number, oy: number, size: number): void {
+    const mount = shipLampMount(facing, size, this.ts());
+    const broken = !!e.crits?.includes("lamp");
+    const burning = e.spotFacing != null && e.hp > 0 && !broken;
+    const lit = burning ? lampGlow(daylightAt(this.curr.tick)) : 0;
+    const heading = this.spotShown.get(e.id) ?? e.spotFacing ?? facing;
+    const pose = drawSearchlightAt(this.ctx, ox + mount.dx, oy + mount.dy, mount.u, heading, { lit, broken });
+    this.lensAt.set(e.id, pose);
   }
 
   private drawSpritedUnit(e: EntityView, def: UnitSpriteDef): void {
@@ -6178,6 +6200,45 @@ export class MapView {
     return undefined;
   }
 
+  /** Pod or tube flash and backblast. Not a tank shot: the main gun does not recoil. */
+  private noteRocketLaunch(
+    shooter: EntityView | undefined,
+    p: { id: number; x: number; y: number; vx: number; vy: number; z?: number; fromId: number },
+    now: number,
+  ): void {
+    const host = this.garrisonShotHost(shooter, p);
+    if (host) this.flashAperture(host, p, now, false);
+    else {
+      this.rocketFrom.set(p.id, { x: p.x, y: p.y, z: p.z ?? 0 });
+      if (shooter && !shooter.wreck) {
+        this.rocketPuffs.push(
+          ...backblastPuffs({
+            x: shooter.x,
+            y: shooter.y,
+            z: p.z ?? 0,
+            ground: this.elevAt(shooter.x, shooter.y),
+            dirX: p.vx,
+            dirY: p.vy,
+            now,
+            seed: (p.id * 2246822519) >>> 0,
+          }),
+        );
+      }
+      this.addFx({
+        id: p.id + 8_000_000,
+        kind: "muzzle",
+        x: p.x,
+        y: p.y,
+        vx: p.vx,
+        vy: p.vy,
+        at: now,
+        caliber: 20,
+        lift: isoLift(p.z ?? 0) - isoLift(this.elevAt(p.x, p.y)),
+      });
+    }
+    if (shooter?.type === "rocketer" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
+  }
+
   /** Window or hull-slit flash. A rocket's trail and backblast start at that mouth. */
   private flashAperture(
     host: EntityView,
@@ -6670,17 +6731,20 @@ export class MapView {
         steps: 18,
       });
       const pts = world.map((pt) => ({ x: pt.x, y: pt.y, z: pt.z, u: pt.u }));
-      drawMortarSmoke(ctx, this.mortarSmokeScreen(pts), p.id);
-      this.mortarSmoke.set(p.id, { pts, at: now });
+      // A 16-inch shell drags a much heavier trail than a mortar bomb, and it hangs longer.
+      const thick = p.shipBarrel != null ? SHIP_SHELL_SMOKE_THICK : 1;
+      drawMortarSmoke(ctx, this.mortarSmokeScreen(pts), p.id, 1, thick);
+      this.mortarSmoke.set(p.id, { pts, at: now, thick });
     }
     for (const [id, trail] of this.mortarSmoke) {
       if (live.has(id)) continue;
       const age = now - trail.at;
-      if (age > 900) {
+      const hang = trail.thick > 1 ? 2200 : 900;
+      if (age > hang) {
         this.mortarSmoke.delete(id);
         continue;
       }
-      drawMortarSmoke(ctx, this.mortarSmokeScreen(trail.pts), id, 1 - age / 900);
+      drawMortarSmoke(ctx, this.mortarSmokeScreen(trail.pts), id, 1 - age / hang, trail.thick);
     }
   }
 

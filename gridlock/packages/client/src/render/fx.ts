@@ -333,6 +333,8 @@ export function drawMortarSmoke(
   pts: readonly MortarSmokePuff[],
   seed: number,
   fade = 1,
+  /** Trail thickness: 1 for a mortar bomb, more for a heavy naval shell. */
+  thick = 1,
 ): void {
   if (pts.length === 0 || fade <= 0) return;
   const headU = pts[pts.length - 1]?.u ?? 1;
@@ -340,9 +342,9 @@ export function drawMortarSmoke(
   for (let i = 0; i < pts.length - 1; i++) {
     const p = pts[i]!;
     const age = Math.max(0, headU - p.u);
-    const alpha = fade * (0.1 + p.u * 0.38) * (1 - age * 0.25);
+    const alpha = Math.min(0.9, fade * (0.1 + p.u * 0.38) * (1 - age * 0.25) * (1 + (thick - 1) * 0.45));
     if (alpha <= 0.02) continue;
-    const r = 1.8 + age * 6.2;
+    const r = (1.8 + age * 6.2) * thick;
     const wob = Math.sin(p.u * 11 + seed * 0.017) * (1.2 + age * 3.5);
     const hang = age * 11;
     ctx.globalAlpha = alpha * 0.55;

@@ -320,7 +320,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       heavy: friendly && e.type === "rocketer" ? (e.heavy ?? 0) : undefined,
       rocketsOff: friendly && e.rocketsOff ? true : undefined,
       longRange: friendly && e.longRange ? true : undefined,
-      spotFacing: e.kind === "building" && spotlightManned(e) ? spotFacingOf(e) : undefined,
+      spotFacing: spotlightManned(e) ? spotFacingOf(e) : undefined,
       holdPosition: friendly && e.holdPosition ? true : undefined,
       patrol:
         friendly && e.order?.kind === "patrol" && e.order.route
@@ -530,6 +530,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     impacts: state.impacts.filter(
       (i) => allies(state, youPlayerId, i.ownerId) || canSeeWorld(state, vis, i.x, i.y),
     ),
+    launches: state.launches.filter((l) => {
+      const from = state.entities.get(l.fromId);
+      return (from != null && allies(state, youPlayerId, from.ownerId)) || canSeeWorld(state, vis, l.x, l.y);
+    }),
     smoke: state.smokeClouds.map((c) => ({
       id: c.id,
       x: c.x,

@@ -87,6 +87,7 @@ import {
   isInfantryType,
   isJumpJetType,
   isTransportType,
+  isBattleship,
 } from "../catalog.js";
 import { hasCargo, loseRiders, payloadOf, planeRiders, releaseCanister, startJumping, tickDoor } from "./airdrop.js";
 import type { ImpactView } from "../protocol.js";
@@ -131,7 +132,8 @@ export function isCrashing(e: { air?: { phase?: string } | null }): boolean {
  * planes on their own (tickRocketPods), so the unit's own target stays on the ground.
  */
 export function reachesAircraft(e: Entity): boolean {
-  if (e.type === "walker" || radarLaidOf(e.type)) return true;
+  // The Battle Ship reaches a plane with its CIWS mounts, not its main guns.
+  if (e.type === "walker" || radarLaidOf(e.type) || isBattleship(e.type)) return true;
   const gun = infantryGunFor(e);
   return !!gun && gun.id !== "mortar";
 }

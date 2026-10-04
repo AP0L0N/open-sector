@@ -9,7 +9,10 @@ import {
   BATTLESHIP_REARM_TILES,
   BATTLESHIP_TURRET_AT,
   BATTLESHIP_TURRET_BLIND_DEG,
+  SUB_REARM_SECONDS,
+  beltOf,
   isBattleship,
+  torpedoesOf,
 } from "../catalog.js";
 import { allies } from "./geo.js";
 import type { Entity, MatchState, ShipState } from "./types.js";
@@ -79,7 +82,8 @@ function besideMarineBase(state: MatchState, e: Entity): boolean {
 /**
  * Beside a friendly Marine Base a Battle Ship fills again: every
  * BATTLESHIP_REARM_SECONDS one shell into each short barrel and a few rounds
- * onto each short belt. Away from one the clock waits.
+ * onto each short belt. Away from one the clock waits. Submarines load
+ * torpedoes there too.
  */
 export function tickShipRearm(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
@@ -99,5 +103,25 @@ export function tickShipRearm(state: MatchState, dt: number): void {
       for (const b of t.barrels) b.ammo = Math.min(BATTLESHIP_BARREL_AMMO, b.ammo + 1);
     }
     for (const c of ship.ciws) c.ammo = Math.min(BATTLESHIP_CIWS_BELT, c.ammo + BATTLESHIP_REARM_ROUNDS);
+  }
+  tickSubRearm(state, dt);
+}
+
+/**
+ * Beside a friendly Marine Base a submarine loads one torpedo every
+ * SUB_REARM_SECONDS until the tubes are full. Away from one the clock waits.
+ */
+function tickSubRearm(state: MatchState, dt: number): void {
+  for (const e of state.entities.values()) {
+    if (!torpedoesOf(e.type) || e.hp <= 0 || e.wreck) continue;
+    const full = beltOf(e.type)?.clip ?? 0;
+    if (e.clip >= full || !besideMarineBase(state, e)) {
+      e.torpedoRearm = undefined;
+      continue;
+    }
+    e.torpedoRearm = (e.torpedoRearm ?? 0) + dt;
+    if (e.torpedoRearm < SUB_REARM_SECONDS) continue;
+    e.torpedoRearm -= SUB_REARM_SECONDS;
+    e.clip = Math.min(full, e.clip + 1);
   }
 }

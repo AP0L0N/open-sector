@@ -1,5 +1,5 @@
 import type { AirDrop, BuildingType, Crit, DroneMode, EntityType, FieldStructureType, InfantryWeaponId, ShellType, Stance, TrainType, YardFieldType } from "../catalog.js";
-import type { AiDifficulty, ClientMessage, CorpseView, EntityState, ImpactView, ShellHoleView } from "../protocol.js";
+import type { AiDifficulty, ClientMessage, CorpseView, EntityState, ImpactView, RocketLaunchView, ShellHoleView } from "../protocol.js";
 
 export interface Vec {
   x: number;
@@ -347,6 +347,8 @@ export interface Entity {
   spotFacing?: number;
   /** Heading Rotate asked the spotlight for. It swings there at SPOTLIGHT_TURN_DEG_PER_SEC. */
   spotAim?: number;
+  /** Battle Ship: hull heading the lamp was last carried round with. */
+  spotHull?: number;
   /** Entity the Titan's pods are laying on, apart from the main gun's target. */
   rocketTarget?: number | null;
   /** Last Walker volley: sim tick, arms that fired, and the off-arm bearing when it took a second target. */
@@ -363,6 +365,8 @@ export interface Entity {
   ship?: ShipState;
   /** Submarine: depth and air. Missing means surfaced with full air. */
   dive?: DiveState;
+  /** Submarine: seconds banked toward the next torpedo loaded beside a Marine Base. */
+  torpedoRearm?: number;
   /**
    * Sim tick through which the second main-gun barrel is still owed.
    * Missing between volleys. `cooldown` holds the gap before that barrel can fire.
@@ -743,6 +747,8 @@ export interface MatchState {
   /** Supply crates from a transport. Empty until the first drop. */
   crates: SupplyCrate[];
   impacts: ImpactView[];
+  /** Rockets launched this tick (this wall-clock step after stepMatch). */
+  launches: RocketLaunchView[];
   rngState: number;
   winner?: { playerId: string; team: number };
   ended: boolean;

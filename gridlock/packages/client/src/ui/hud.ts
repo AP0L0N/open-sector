@@ -720,7 +720,9 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     ? infantryGunFor(e)
     : belt
       ? {
-          name: walkerMode?.name ?? (e.type === "ciws" ? "20mm belt" : e.type === "mammoth" ? "Bow MG" : "Gatlings"),
+          name:
+            walkerMode?.name ??
+            (e.type === "ciws" ? "20mm belt" : e.type === "mammoth" ? "Bow MG" : e.type === "submarine" ? "Torpedoes" : "Gatlings"),
           clip: belt.clip,
         }
       : null;
@@ -866,15 +868,16 @@ function droneLinkLine(l: NonNullable<EntityView["droneLink"]>): string {
 function beltLine(live: EntityView[]): string {
   const belt = live[0] ? beltOf(live[0].type) : null;
   if (!belt) return "Gatlings";
+  const word = live[0]!.type === "submarine" ? "Torpedoes" : "Belt";
   if (live.length === 1) {
     const e = live[0]!;
     if ((e.reload ?? 0) > 0) return `Reloading ${e.reload!.toFixed(1)}s`;
-    return `Belt ${e.clip ?? 0}/${belt.clip}`;
+    return `${word} ${e.clip ?? 0}/${belt.clip}`;
   }
   const reloading = live.filter((e) => (e.reload ?? 0) > 0).length;
   const rounds = live.reduce((n, e) => n + ((e.reload ?? 0) > 0 ? 0 : (e.clip ?? 0)), 0);
   const cap = belt.clip * live.length;
-  return reloading ? `Belt ${rounds}/${cap} · ${reloading} reloading` : `Belt ${rounds}/${cap}`;
+  return reloading ? `${word} ${rounds}/${cap} · ${reloading} reloading` : `${word} ${rounds}/${cap}`;
 }
 
 function infantryClipLine(live: EntityView[]): string {
@@ -1733,8 +1736,17 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       act: "rotate",
       label: "Rotate",
       title: `Face a direction (${ROTATE_HOTKEY.toUpperCase()}). Tanks turn hull and turret.`,
-      on: !!view?.rotateMode,
+      on: !!view?.rotateMode && !view.rotateLight,
     });
+    if (units.some((e) => hasSpotlight(e.type) && e.spotFacing != null)) {
+      out.push({
+        slot: "rotate-light",
+        act: "rotate-light",
+        label: "Rotate light",
+        title: "Swing the searchlight, then click where it should point. At night its beam lights the water far out. It turns with the ship.",
+        on: !!view?.rotateMode && !!view.rotateLight,
+      });
+    }
   } else if (mounts.length) {
     out.push({
       slot: "rotate",
@@ -2185,7 +2197,13 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     return;
   }
   if (act === "rotate") {
-    if (aimers.length || lamps.length) view.setRotateMode(!view.rotateMode);
+    if (aimers.length || lamps.length) view.setRotateMode(!(view.rotateMode && !view.rotateLight));
+    return;
+  }
+  if (act === "rotate-light") {
+    if (units.some((e) => hasSpotlight(e.type) && e.spotFacing != null)) {
+      view.setRotateMode(!(view.rotateMode && view.rotateLight), true);
+    }
     return;
   }
   if (act === "gate-lock") {

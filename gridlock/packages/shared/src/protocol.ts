@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 91;
+export const PROTOCOL_VERSION = 93;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -427,6 +427,24 @@ export interface ImpactView {
   cookoff?: boolean;
   /** A tank's HE shell burst here: a hull-sized fireball, and the ground around it is set burning. */
   heBurst?: boolean;
+  /** Rocket burst: the id of the rocket, as in its RocketLaunchView. */
+  shot?: number;
+}
+
+/**
+ * A rocket left its pod, tube, or cell this tick. Sent even when the rocket
+ * bursts before the next snapshot, so the backblast and trail still show.
+ */
+export interface RocketLaunchView {
+  /** The rocket's projectile id. */
+  id: number;
+  fromId: number;
+  x: number;
+  y: number;
+  /** Elevation units at the pod. */
+  z: number;
+  vx: number;
+  vy: number;
 }
 
 /** Blood droplet around a corpse. World pixels. */
@@ -535,6 +553,8 @@ export interface MatchSnapshot {
   entities: EntityView[];
   projectiles: ProjectileView[];
   impacts: ImpactView[];
+  /** Rockets launched since the last snapshot that you can see. */
+  launches: RocketLaunchView[];
   smoke: SmokeCloudView[];
   /** Burning ground on tiles you can see, and fires your side lit. Empty until the first flamethrower burst. */
   fires: GroundFireView[];
@@ -660,7 +680,8 @@ export type ClientMessage =
   | { type: "cmd.scout"; ids: number[]; out: boolean }
   | { type: "cmd.stance"; ids: number[]; stance: Stance }
   | { type: "cmd.hold"; ids: number[]; hold: boolean }
-  | { type: "cmd.rotate"; ids: number[]; x: number; y: number; queue?: boolean }
+  /** `light`: Rotate light. Swings only the selection's spotlights (a Battle Ship's), not hulls or guns. */
+  | { type: "cmd.rotate"; ids: number[]; x: number; y: number; queue?: boolean; light?: boolean }
   | {
       type: "cmd.guard";
       ids: number[];

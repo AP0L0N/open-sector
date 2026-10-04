@@ -495,11 +495,12 @@ function roofCiwsTarget(
   e: Entity,
   range: number,
   from: { x: number; y: number } = e,
+  airRange = range,
 ): Entity | undefined {
   let best: Entity | undefined;
   let bestD = range * range;
   let bestAir: Entity | undefined;
-  let bestAirD = range * range;
+  let bestAirD = airRange * airRange;
   for (const o of state.entities.values()) {
     if (o.kind !== "unit" || o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn != null) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
@@ -638,7 +639,10 @@ function tickShipCiws(state: MatchState, e: Entity, dt: number, downed: Set<numb
       return;
     }
     const at = shipMountPoint(e, BATTLESHIP_CIWS_AT[i]!);
-    const target = m.ammo > 0 ? roofCiwsTarget(state, e, range, at) : undefined;
+    const target =
+      m.ammo > 0
+        ? (shipCiwsOrdered(state, e, at, range) ?? roofCiwsTarget(state, e, range, at, range * CIWS_AIR_REACH_MUL))
+        : undefined;
     m.target = target?.id ?? null;
     const rest = BATTLESHIP_CIWS_AT[i]! < -0.5 ? e.facing + Math.PI : e.facing;
     const want = target ? Math.atan2(target.y - at.y, target.x - at.x) : rest;
@@ -661,6 +665,25 @@ function tickShipCiws(state: MatchState, e: Entity, dt: number, downed: Set<numb
     m.fireTick = state.tick;
     m.cooldown = TICK_DT;
   });
+}
+
+/** A plane, a paratrooper under canopy, a Jump Jet aloft, or a drone: the CIWS's work, never the main guns'. */
+function shipAirTarget(o: Entity): boolean {
+  return isAirborne(o) || !!o.drone;
+}
+
+/**
+ * The aircraft the player ordered the ship onto (attack or force-attack), when
+ * mount `at` can reach it. Force-attack takes a friendly one too.
+ */
+function shipCiwsOrdered(state: MatchState, e: Entity, at: { x: number; y: number }, range: number): Entity | undefined {
+  const order = e.order;
+  if (!order || order.auto || (order.kind !== "attack" && order.kind !== "forceattack")) return undefined;
+  const t = currentTarget(state, e);
+  if (!t || t.kind !== "unit" || !shipAirTarget(t)) return undefined;
+  if (Math.hypot(t.x - at.x, t.y - at.y) > range * CIWS_AIR_REACH_MUL) return undefined;
+  if (!canSeeEntity(state, e.ownerId, t)) return undefined;
+  return t;
 }
 
 /** A turret is laid when it is this close to the bearing. */
@@ -726,9 +749,13 @@ function fireShipBarrel(
 function fireShip(state: MatchState, e: Entity, dt: number): void {
   const ship = e.ship!;
   for (const t of ship.turrets) for (const b of t.barrels) if (b.cooldown > 0) b.cooldown = Math.max(0, b.cooldown - dt);
-  const target = currentTarget(state, e);
+  const picked = currentTarget(state, e);
+  // An aircraft is the CIWS mounts' work (tickShipCiws). The main battery holds and rests on the bow.
+  const aloft = !!picked && shipAirTarget(picked);
+  if (aloft) e.state = "attack";
+  const target = aloft ? undefined : picked;
   const ground =
-    !target && e.order?.kind === "forceattack" && e.order.x != null && e.order.y != null
+    !picked && e.order?.kind === "forceattack" && e.order.x != null && e.order.y != null
       ? { x: e.order.x, y: e.order.y }
       : null;
   const aim = ground ?? (target && target.hp > 0 ? { x: target.x, y: target.y } : null);
@@ -912,6 +939,7 @@ function patrolContact(state: MatchState, e: Entity, o: Entity): boolean {
   if (o.kind !== "unit" || o.hp <= 0 || o.wreck || o.id === e.id || o.garrisonedIn != null) return false;
   if (isCrashing(o) || !o.ownerId || allies(state, e.ownerId, o.ownerId)) return false;
   if (!canSeeEntity(state, e.ownerId, o) || outOfReachAloft(state, e, o)) return false;
+  if (e.ship && shipAirTarget(o)) return false;
   if (dropsUnharmedArmor(state, e, o)) return false;
   const range = weaponRangeWorld(state, e);
   if (range <= 0) return false;
@@ -1846,8 +1874,10 @@ function launchRocket(
   const flight = len / rack.speed;
   const zLand =
     aloft && target ? entityHeight(state, target) + airAlt(target) : worldTileHeight(state, land.x, land.y);
+  const id = state.nextId++;
+  state.launches.push({ id, fromId: e.id, x, y, z: z0, vx: dx / flight, vy: dy / flight });
   state.projectiles.push({
-    id: state.nextId++,
+    id,
     ownerId: e.ownerId,
     team: playerTeam(state, e.ownerId),
     x,
@@ -1941,9 +1971,61 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
     p.x = p.landX;
     p.y = p.landY;
   }
+  // Fused at the plane's height with no plane there: a RAM rocket flies on and comes down.
+  if (p.airBurst && !airBurstCatchesAny(state, p) && coastPastMiss(state, p)) return true;
   if (!p.airBurst) p.z = 0;
   detonateMortar(state, p, rand);
   return false;
+}
+
+/** True when an air burst here would catch a hostile plane or drone. */
+function airBurstCatchesAny(state: MatchState, p: Projectile): boolean {
+  const rack = p.heavy ? PENETRATOR_RACK : rocketRackOf(p.launcher ?? "titan");
+  const radius = rack.splashTiles * state.tileSize;
+  for (const e of state.entities.values()) {
+    if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null) continue;
+    if (e.drone ? !rocketCatchesDrone(state, p, e) : !isAirborne(e)) continue;
+    if (Math.hypot(e.x - p.x, e.y - p.y) > radius) continue;
+    if (e.ownerId !== "" && allies(state, p.ownerId, e.ownerId) && !p.harmAllies) continue;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * A missed rocket that coasts: it keeps its heading for the rack's
+ * missCoastTiles (short of the map edge), dropping ever more steeply, and bursts
+ * on the ground where it lands. False for a rack that bursts in the air regardless.
+ */
+function coastPastMiss(state: MatchState, p: Projectile): boolean {
+  const coast = (p.heavy ? undefined : rocketRackOf(p.launcher ?? "titan").missCoastTiles) ?? 0;
+  const speed = Math.hypot(p.vx, p.vy);
+  if (coast <= 0 || speed <= 0) return false;
+  const ux = p.vx / speed;
+  const uy = p.vy / speed;
+  const maxX = Math.max(1, state.width * state.tileSize - 1);
+  const maxY = Math.max(1, state.height * state.tileSize - 1);
+  let dist = coast * state.tileSize;
+  if (ux > 1e-6) dist = Math.min(dist, (maxX - p.x) / ux);
+  else if (ux < -1e-6) dist = Math.min(dist, -p.x / ux);
+  if (uy > 1e-6) dist = Math.min(dist, (maxY - p.y) / uy);
+  else if (uy < -1e-6) dist = Math.min(dist, -p.y / uy);
+  dist = Math.max(1, dist);
+  const flight = dist / speed;
+  const landX = Math.min(maxX, Math.max(0, p.x + ux * dist));
+  const landY = Math.min(maxY, Math.max(0, p.y + uy * dist));
+  const z0 = p.z ?? 0;
+  const zLand = worldTileHeight(state, landX, landY);
+  // z0 + (zLand - z0) u²: level at first, then a dive. The lob term carries the curve.
+  p.airBurst = undefined;
+  p.landX = landX;
+  p.landY = landY;
+  p.life = flight;
+  p.flightTime = flight;
+  p.launchZ = z0;
+  p.vz = (zLand - z0) / flight;
+  p.apex = Math.max(0, (z0 - zLand) / 4);
+  return true;
 }
 
 /** A rocket bursting near a low drone's height catches it in the splash. */
@@ -2749,6 +2831,7 @@ function pushImpact(
     mortar: p.flight === "mortar" ? true : undefined,
     bomb: p.flight === "mortar" && p.big ? true : undefined,
     rocket: p.flight === "rocket" ? true : undefined,
+    shot: p.flight === "rocket" ? p.id : undefined,
     z: p.airBurst ? (p.z ?? 0) : undefined,
     airZ: p.aloft ? (p.z ?? 0) : undefined,
   };
@@ -2934,6 +3017,8 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
     if (outOfReachAloft(state, e, o)) continue;
+    // The ship's CIWS mounts pick their own aircraft. The main battery looks only at the surface.
+    if (e.ship && shipAirTarget(o)) continue;
     if (radar) {
       if (o.kind !== "unit") continue;
       const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;

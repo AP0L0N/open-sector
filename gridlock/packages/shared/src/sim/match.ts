@@ -15,7 +15,7 @@ import {
 import { getMap, isMapSection } from "../maps.js";
 import { commanders } from "../lobby.js";
 import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
-import type { ImpactView, RoomState } from "../protocol.js";
+import type { ImpactView, RocketLaunchView, RoomState } from "../protocol.js";
 import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter } from "./geo.js";
 import { aircraftDown, beginAircraftCrash, isAirborne, tickAir } from "./air.js";
 import { ejectParatroopers, loseRiders, syncPlaneRiders, tickChutes, tickCrates, tickMines, tickPlaneBoarding } from "./airdrop.js";
@@ -81,6 +81,7 @@ export function createMatch(
     mines: [],
     crates: [],
     impacts: [],
+    launches: [],
     rngState: seedRng(room.id),
     ended: false,
     initialHumans: commanders(room).length,
@@ -157,6 +158,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   if (state.ended) return;
   state.tick += 1;
   state.impacts = [];
+  state.launches = [];
   restampForts(state);
   tickSmoke(state, dt);
   tickSpotlights(state, dt);
@@ -206,12 +208,15 @@ export function stepMatch(state: MatchState, dt = TICK_DT): void {
   if (state.paused) return;
   const n = clampGameSpeed(state.gameSpeed);
   const impacts: ImpactView[] = [];
+  const launches: RocketLaunchView[] = [];
   for (let i = 0; i < n; i++) {
     step(state, dt);
     impacts.push(...state.impacts);
+    launches.push(...state.launches);
     if (state.ended) break;
   }
   state.impacts = impacts;
+  state.launches = launches;
   tickAi(state);
 }
 
