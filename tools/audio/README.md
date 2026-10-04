@@ -70,5 +70,11 @@ loudness, and the client plays those types at full volume (`HEAVY_FIRE` in `ui/g
 Every sound effect's untouched API take is kept in `raw/` (gitignored); after a mastering change,
 `build.py --remaster <specs>` re-masters from those takes without spending credits.
 
+**Hand-picked takes.** A sound made on the ElevenLabs site (the API cannot read Assets on the
+current plan) is downloaded into `tools/audio/imports/` and named in the spec instead of a prompt:
+`"fire": {"source": "imports/tank-gun.opus", "variants": 3, "pitch": [1.0, 0.94, 1.06], "lufs": -9}`.
+Build masters it like a generated take; `pitch` (one number, or one per variant) slows it down
+for a bigger gun or speeds it up for a smaller one.
+
 Prompts say "no music, no voice" and describe distance ("close", "medium distance outdoors").
 Original voices and sounds only: no named real actors, no Westwood/EA material.

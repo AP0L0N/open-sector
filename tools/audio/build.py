@@ -71,7 +71,7 @@ def trim_chain(threshold_db: int) -> str:
     return f"{rm},areverse,{rm},areverse"
 
 
-def finish(raw: bytes, out: pathlib.Path, kind: str, lufs: float | None = None) -> None:
+def finish(raw: bytes, out: pathlib.Path, kind: str, lufs: float | None = None, pitch: float = 1.0) -> None:
     """Trim, normalize, and encode. Without ffmpeg the API mp3 is kept as is."""
     out.parent.mkdir(parents=True, exist_ok=True)
     if not FFMPEG:
@@ -81,7 +81,7 @@ def finish(raw: bytes, out: pathlib.Path, kind: str, lufs: float | None = None) 
         af = f"highpass=f=90,{trim_chain(-45)},loudnorm=I=-15:TP=-1.5:LRA=7,apad=pad_dur=0.04"
         enc = ["-ac", "1", "-b:a", "96k"]
     elif kind == "sfx" and lufs is not None:
-        master_heavy(raw, out, lufs)
+        master_heavy(raw, out, lufs, pitch)
         return
     elif kind == "sfx":
         af = f"{trim_chain(-55)},loudnorm=I=-14:TP=-1:LRA=11"
@@ -123,7 +123,14 @@ def _measure(path: pathlib.Path) -> tuple[float, float]:
     return lufs, peak
 
 
-def master_heavy(raw: bytes, out: pathlib.Path, lufs: float) -> None:
+def repitch(pitch: float) -> str:
+    """Tape-style speed change: below 1 a bigger, slower gun; above 1 a smaller, snappier one."""
+    if abs(pitch - 1.0) < 1e-3:
+        return ""
+    return f"aresample=44100,asetrate={44100 * pitch:.0f},aresample=44100,"
+
+
+def master_heavy(raw: bytes, out: pathlib.Path, lufs: float, pitch: float = 1.0) -> None:
     """
     Gun and rocket reports, mastered hot ("lufs": -9): compress the body up under the
     crack, then drive the whole thing into a brick-wall limiter, raising the drive until
@@ -135,7 +142,7 @@ def master_heavy(raw: bytes, out: pathlib.Path, lufs: float) -> None:
         src.write_bytes(raw)
         body = pathlib.Path(td) / "body.wav"
         _ff(["-y", "-i", str(src), "-af",
-             f"highpass=f=28,{trim_chain(-55)},acompressor=threshold=-24dB:ratio=4:attack=5:release=350:makeup=1",
+             f"{repitch(pitch)}highpass=f=28,{trim_chain(-55)},acompressor=threshold=-24dB:ratio=4:attack=5:release=350:makeup=1",
              "-ac", "1", "-ar", "44100", str(body)])
         _, peak = _measure(body)
         drive = 4.0
@@ -227,6 +234,9 @@ def run_job(el: ElevenLabs, spec: dict, voice_id: str | None, job: tuple) -> str
                     raise
                 raw = el.tts(voice_id, arg, model=TTS_FALLBACK_MODEL, **kw)
             finish(raw, path, "voice")
+        elif kind == "sfx" and arg.get("source"):
+            raw = source_bytes(arg)
+            finish(raw, path, "sfx", arg.get("lufs"), variant_pitch(arg, path))
         elif kind == "sfx":
             raw = el.sfx(arg["prompt"], duration=arg.get("duration"),
                          influence=arg.get("influence", 0.55), loop=arg.get("loop", False))
@@ -240,6 +250,23 @@ def run_job(el: ElevenLabs, spec: dict, voice_id: str | None, job: tuple) -> str
     except Exception as e:  # keep going; a rerun picks up what is missing
         log(f"  FAIL {rel}: {e}")
         return "fail"
+
+
+def source_bytes(s: dict) -> bytes:
+    """A hand-picked take (say, one saved from the ElevenLabs site) instead of a new generation."""
+    src = HERE / s["source"]
+    if not src.is_file():
+        raise FileNotFoundError(f"sfx source {src} is missing")
+    return src.read_bytes()
+
+
+def variant_pitch(s: dict, path: pathlib.Path) -> float:
+    """`pitch` is one number for every variant, or a list with one per variant."""
+    p = s.get("pitch", 1.0)
+    if isinstance(p, list):
+        n = int(path.stem.rsplit("-", 1)[1])
+        return float(p[(n - 1) % len(p)])
+    return float(p)
 
 
 def keep_raw(rel: pathlib.Path, raw: bytes) -> None:
@@ -256,6 +283,10 @@ def remaster(paths: list[pathlib.Path]) -> None:
         for event, s in spec.get("sfx", {}).items():
             for i in range(1, int(s.get("variants", 1)) + 1):
                 path = out_dir / f"sfx-{event}-{i}.mp3"
+                if s.get("source"):
+                    finish(source_bytes(s), path, "sfx", s.get("lufs"), variant_pitch(s, path))
+                    log(f"  remastered {path.relative_to(ASSETS)} from {s['source']}")
+                    continue
                 raw = RAW / path.relative_to(ASSETS)
                 if raw.exists():
                     finish(raw.read_bytes(), path, "loop" if s.get("loop") else "sfx", s.get("lufs"))
