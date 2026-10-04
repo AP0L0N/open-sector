@@ -234,6 +234,16 @@ export interface DroneLink {
   rebuild: number;
 }
 
+/** Submarine depth. It leaves the slip surfaced. */
+export interface DiveState {
+  /** Running submerged. */
+  down: boolean;
+  /** Seconds of air left below. Refills on the surface. */
+  air: number;
+  /** Ran out of air and came up: it stays up until the air is full again. */
+  winded?: boolean;
+}
+
 /** Drone only. Height lives on `air.alt`. */
 export interface DroneState {
   /** Drone Op flying it. */
@@ -349,6 +359,8 @@ export interface Entity {
   ciwsFireTick?: number;
   /** Submarine: sim tick it last fired and showed itself. Missing until its first shot. */
   surfacedTick?: number;
+  /** Submarine: depth and air. Missing means surfaced with full air. */
+  dive?: DiveState;
   /**
    * Sim tick through which the second main-gun barrel is still owed.
    * Missing between volleys. `cooldown` holds the gap before that barrel can fire.
@@ -478,6 +490,10 @@ export interface Projectile {
   shell: ShellType | null;
   /** A submarine's torpedo: runs at the waterline, meets only what is in the water, dies ashore. Not on the wire. */
   torpedo?: boolean;
+  /** Torpedo: the body entity guns can shoot. It rides with this round; kill it and the round is gone. */
+  bodyId?: number;
+  /** Torpedo from a submerged boat: it runs deep and only meets another submarine that is down. */
+  deep?: boolean;
   /**
    * Walker, Cyborg, pad CIWS, or Apocalypse roof round. A living light hull
    * only sometimes takes it. Not on the wire.

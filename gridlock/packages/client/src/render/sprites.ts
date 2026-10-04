@@ -1167,14 +1167,14 @@ export const GUNBOAT_SPRITE: UnitSpriteDef = {
 };
 bindNavalSheets("gunboat", GUNBOAT_SPRITE.image);
 
-/** Submarine running awash: the longer hull, same meters-to-px as the Attack Boat. */
+/** Submarine running awash: the longer hull, drawn a fifth bigger than the Attack Boat's scale. */
 export const SUBMARINE_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
   frames: 1,
   frameSize: 128,
   fps: 8,
-  drawSize: Math.round(64 * UNIT_VISUAL_SCALE),
+  drawSize: Math.round(64 * 1.2 * UNIT_VISUAL_SCALE),
   contactY: 0.74,
   facingSpace: "world",
 };

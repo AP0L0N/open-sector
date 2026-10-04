@@ -17,6 +17,7 @@ import {
   isFieldStructure,
   isInfantryType,
   isNavalType,
+  isTorpedoBody,
   isTransportType,
   wadesOf,
   rocketAmmoOf,
@@ -664,7 +665,7 @@ export function clearOrder(e: Entity): void {
 export function ownedUnits(state: MatchState, playerId: string): number {
   let n = 0;
   for (const e of state.entities.values()) {
-    if (e.kind === "unit" && e.ownerId === playerId && e.hp > 0 && !e.wreck) n++;
+    if (e.kind === "unit" && e.ownerId === playerId && e.hp > 0 && !e.wreck && !isTorpedoBody(e.type)) n++;
   }
   return n;
 }

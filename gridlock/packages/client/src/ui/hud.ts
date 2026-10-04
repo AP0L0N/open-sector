@@ -798,7 +798,8 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
           ? airLine(e.air, e.type)
           : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}  ·  ${who}${q}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
+  const depth = e.dive ? diveLine(e.dive, !!e.submerged) : "";
+  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}${depth}  ·  ${who}${q}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
 
@@ -826,6 +827,12 @@ function airLine(air: NonNullable<EntityView["air"]>, type: EntityType): string 
   if (air.rounds != null) s += load.bombs > 0 ? `  ·  MG ${Math.round(air.rounds)}` : `  ·  barrages ${Math.floor(air.rounds)}`;
   if (air.phase !== "parked" && air.homeId == null && air.fuel != null) s += "  ·  NO AIRFIELD";
   return s;
+}
+
+/** Your own submarine: depth and air. */
+function diveLine(d: NonNullable<EntityView["dive"]>, down: boolean): string {
+  const air = `air ${Math.round((d.air / Math.max(1, d.airMax)) * 100)}%`;
+  return `  ·  ${down ? "submerged" : "surfaced"}  ·  ${air}${d.winded ? " — recovering" : ""}`;
 }
 
 /** Mode, and for your own drone the battery and a recall. */
@@ -1878,6 +1885,27 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       on: modes.size === 1 && modes.has("strike"),
     });
   }
+  const subs = units.filter((e) => e.dive);
+  if (subs.length) {
+    const winded = subs.every((e) => e.dive!.winded);
+    out.push({
+      slot: "sub-surface",
+      act: "sub-surface",
+      label: "Surface",
+      title: "Run on the surface: seen like any boat, takes air back in, and its torpedoes strike boats, swimmers, and a Marine Base.",
+      on: subs.every((e) => !e.submerged),
+    });
+    out.push({
+      slot: "sub-dive",
+      act: "sub-dive",
+      label: "Dive",
+      title: winded
+        ? "Out of air — it stays up until its air is back."
+        : "Run submerged: the enemy sees it only close by or just after it fires, and its torpedoes find only another submarine that is down. It surfaces by itself when the air runs out.",
+      on: subs.every((e) => e.submerged),
+      disabled: winded,
+    });
+  }
   if (units.some((e) => e.air && !e.drone && e.air.phase !== "parked")) {
     out.push({
       slot: "land",
@@ -2112,6 +2140,11 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   if (act === "jet-up" || act === "jet-land") {
     const ids = units.filter((e) => e.jet).map((e) => e.id);
     if (ids.length) ctx.net.send({ type: "cmd.jet", ids, action: act === "jet-up" ? "up" : "land" });
+    return;
+  }
+  if (act === "sub-dive" || act === "sub-surface") {
+    const ids = units.filter((e) => e.dive).map((e) => e.id);
+    if (ids.length) ctx.net.send({ type: "cmd.dive", ids, down: act === "sub-dive" });
     return;
   }
   if (act.startsWith("drone-")) {

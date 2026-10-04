@@ -4,6 +4,7 @@ import {
   isArmoredType,
   isInfantryType,
   isNavalType,
+  isTorpedoBody,
   wadesOf,
   isMotorVehicle,
   REVERSE_TILES,
@@ -635,7 +636,10 @@ export function stepGiveWay(state: MatchState, e: Entity, speed: number, dt: num
 }
 
 export function tickCollision(state: MatchState, dt = TICK_DT): void {
-  const units = [...state.entities.values()].filter((e) => e.kind === "unit" && e.hp > 0 && !e.garrisonedIn && !e.air && !e.chute && !jetAloft(e));
+  // A running torpedo goes where its round goes: it neither shoves nor is shoved.
+  const units = [...state.entities.values()].filter(
+    (e) => e.kind === "unit" && e.hp > 0 && !e.garrisonedIn && !e.air && !e.chute && !jetAloft(e) && !isTorpedoBody(e.type),
+  );
   for (const a of units) {
     if (isActiveUnit(a)) crushTreesUnder(state, a);
   }

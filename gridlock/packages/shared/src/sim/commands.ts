@@ -22,6 +22,8 @@ import {
   isDroneMode,
   isAirDrop,
   isTransportType,
+  isTorpedoBody,
+  submergesOf,
   ORDER_QUEUE_MAX,
   pickLoadedShell,
   PENETRATOR_ARM_SECONDS,
@@ -55,6 +57,7 @@ import { buildPatrolRoute, cleanPatrolPoints } from "./patrol.js";
 import { orderBoardPlane, setPayload, unloadPlane } from "./airdrop.js";
 import { droneOf, guardDrone, launchDrone, orderDrone, recallDrone, setDroneMode, stopDrone } from "./drone.js";
 import { landJet, takeOff } from "./jet.js";
+import { diving, setDive } from "./naval.js";
 import { aimSpotlightPatrol, hasSpotlight, spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, MatchState, QueueableCommand, Vec } from "./types.js";
 
@@ -266,6 +269,9 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       if (!Array.isArray(msg.ids)) return fail("bad_payload", "Bad jet order.");
       if (msg.action !== "up" && msg.action !== "land") return fail("bad_payload", "Unknown jet order.");
       return cmdJet(state, playerId, msg.ids, msg.action);
+    case "cmd.dive":
+      if (!Array.isArray(msg.ids) || typeof msg.down !== "boolean") return fail("bad_payload", "Bad dive order.");
+      return cmdDive(state, playerId, msg.ids, msg.down);
     default:
       return fail("bad_payload", "Unknown command.");
   }
@@ -488,6 +494,20 @@ function routeDrones(state: MatchState, playerId: string, msg: ClientMessage): C
 }
 
 /** Take off or land every Jump Jet in the selection. Others ignore it. */
+function cmdDive(state: MatchState, playerId: string, ids: number[], down: boolean): CmdResult {
+  const subs = owned(state, playerId, ids).filter((e) => submergesOf(e.type));
+  if (subs.length === 0) return fail("not_yours", "Select a Submarine.");
+  let err: string | null = null;
+  let done = 0;
+  for (const e of subs) {
+    const why = setDive(e, down);
+    if (why) err = why;
+    else done++;
+  }
+  if (done > 0) return ok();
+  return wrap(err ?? "Cannot dive.", "busy");
+}
+
 function cmdJet(state: MatchState, playerId: string, ids: number[], action: "up" | "land"): CmdResult {
   const jets = owned(state, playerId, ids).filter((e) => e.jet && e.hp > 0);
   if (jets.length === 0) return fail("not_yours", "Select a Jump Jet.");
@@ -622,8 +642,8 @@ function owned(state: MatchState, playerId: string, ids: number[]) {
   const out = [];
   for (const id of ids) {
     const e = state.entities.get(id);
-    // A paratrooper takes orders once he is on the ground.
-    if (e && e.ownerId === playerId && e.hp > 0 && e.kind === "unit" && !e.wreck && !e.chute) out.push(e);
+    // A paratrooper takes orders once he is on the ground. A running torpedo takes none.
+    if (e && e.ownerId === playerId && e.hp > 0 && e.kind === "unit" && !e.wreck && !e.chute && !isTorpedoBody(e.type)) out.push(e);
   }
   return out;
 }
@@ -911,6 +931,8 @@ function cmdAttack(state: MatchState, playerId: string, ids: number[], targetId:
     if (!fires(e.type)) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
     if (e.id === t.id) continue;
+    // A submarine below has to come up to put a torpedo into a hull on the surface.
+    if (diving(e) && !diving(t)) setDive(e, false);
     e.order = { kind: "attack", targetId: t.id };
     e.attackTarget = t.id;
     e.guardFacing = null;
