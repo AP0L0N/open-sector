@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Bunker building art: a low reinforced-concrete pillbox, one static image.
+"""Bunker building art: a low reinforced-concrete pillbox, four cardinal faces.
 
 An octagonal board-formed casemate with a dark firing slit in every face,
 a thick roof slab that overhangs the slits, sod over the roof, an earth
 berm banked against the walls, and a few sandbags by the rear door.
-Buildings stay one image per facing; this one is the same from every side,
-so it ships a single cardinal image.
+The player turns it before placing, so it ships one image per facing:
+bunker.png faces east (door to the west), then bunker-s, bunker-w, bunker-n,
+each the same mesh turned a quarter about the footprint under the same light.
 
 Look: the inked structure style of render_airfield.py (same mesh, raster,
 ink, silhouette, key light, and cast shadow), at the 3x source zoom of the
@@ -178,6 +179,40 @@ def bunker_mesh(ground: bool = True) -> ra.Mesh:
     return m
 
 
+# Suffix and quarter turns for each face, in the client's order: east, south, west, north.
+FACES = (("", 0), ("-s", 1), ("-w", 2), ("-n", 3))
+
+
+def turn(m: ra.Mesh, quarters: int, cx: float = CX, cy: float = CY) -> ra.Mesh:
+    """Turn the mesh clockwise on screen (east toward south) by quarter turns about the footprint centre."""
+    for _ in range(quarters % 4):
+        for v in m.verts:
+            dx, dy = v[0] - cx, v[1] - cy
+            v[0], v[1] = cx - dy, cy + dx
+    return m
+
+
+def shade(fr: ra.Frame, cv: ra.Canvas, sh: np.ndarray, ao: np.ndarray, reach: float, floor_top: float) -> Image.Image:
+    """Ink, silhouette, and lay the cast shadow on the ground and on the low flats up to `floor_top`."""
+    ra.ink(fr, SS)
+    ra.silhouette(fr, SS)
+    ys, xs = np.mgrid[0 : cv.h, 0 : cv.w].astype(np.float64) + 0.5
+    gx, gy = cv.to_world_ground(xs, ys)
+    near = (gx > -reach) & (gx < W + reach) & (gy > -reach) & (gy < H + reach)
+    shadow = np.clip(sh * 0.42 + ao * 0.12, 0, 0.6) * near
+    solid = fr.alpha > 0.5
+    # Height of each drawn pixel: to_world_ground reads X+Y-2Z, the depth buffer X+Y+Z.
+    zpix = (fr.depth - (gx + gy)) / 3.0
+    up = solid & (fr.normal[..., 2] > 0.7) & (zpix < floor_top + 0.5)
+    color = fr.color.copy()
+    color[up] *= (1 - shadow[up])[:, None]
+    alpha = fr.alpha.copy()
+    out = ~solid & (shadow > 0.02)
+    color[out] = ra.OUTLINE * 0.4
+    alpha[out] = shadow[out]
+    return ra.downsample(color, alpha, SS)
+
+
 # ---------------------------------------------------------------- render
 
 
@@ -195,31 +230,22 @@ def make_canvas() -> ra.Canvas:
 def render(out_dir: Path) -> None:
     cv = make_canvas()
     print("canvas", cv.w // SS, "x", cv.h // SS)
-    mesh = bunker_mesh()
-    props = bunker_mesh(ground=False)
-    sh = ra.shadow_mask(props, cv)
-    ao = ra.contact_ao(props, cv)
-    fr = ra.rasterize(mesh, cv)
-    ra.ink(fr, SS)
-    ra.silhouette(fr, SS)
-    ys, xs = np.mgrid[0 : cv.h, 0 : cv.w].astype(np.float64) + 0.5
-    gx, gy = cv.to_world_ground(xs, ys)
-    near = (gx > -4) & (gx < W + 4) & (gy > -4) & (gy < H + 4)
-    shadow = np.clip(sh * 0.42 + ao * 0.12, 0, 0.6) * near
-    solid = fr.alpha > 0.5
-    # Height of each drawn pixel: to_world_ground reads X+Y-2Z, the depth buffer X+Y+Z.
-    zpix = (fr.depth - (gx + gy)) / 3.0
-    up = solid & (fr.normal[..., 2] > 0.7) & (zpix < BERM_TOP + 0.5)
-    color = fr.color.copy()
-    color[up] *= (1 - shadow[up])[:, None]
-    alpha = fr.alpha.copy()
-    out = ~solid & (shadow > 0.02)
-    color[out] = ra.OUTLINE * 0.4
-    alpha[out] = shadow[out]
-    img = ra.downsample(color, alpha, SS)
-
     out_dir.mkdir(parents=True, exist_ok=True)
-    img.save(out_dir / "bunker.png", optimize=True)
+    preview = Path(__file__).parent / "preview"
+    preview.mkdir(exist_ok=True)
+    faces: dict[str, Image.Image] = {}
+    for suffix, quarters in FACES:
+        props = turn(bunker_mesh(ground=False), quarters)
+        fr = ra.rasterize(turn(bunker_mesh(), quarters), cv)
+        img = shade(fr, cv, ra.shadow_mask(props, cv), ra.contact_ao(props, cv), 4.0, BERM_TOP)
+        img.save(out_dir / f"bunker{suffix}.png", optimize=True)
+        bg = Image.new("RGBA", img.size, (74, 107, 50, 255))
+        bg.alpha_composite(img)
+        bg.save(preview / f"bunker{suffix}.png")
+        faces[suffix] = img
+        print("wrote", out_dir / f"bunker{suffix}.png")
+    # Every face shares the canvas and the square pad, so one set of metrics serves all four.
+    img = faces[""]
 
     south = cv.to_screen(np.array([[W, H, 0.0]]))
     stack = cv.to_screen(np.array([[CX, CY, SOD_TOP + 6.0]]))
@@ -232,7 +258,7 @@ def render(out_dir: Path) -> None:
         "cell": list(img.size),
     }
     (out_dir / "bunker.json").write_text(json.dumps(info, indent=2) + "\n")
-    print("wrote", out_dir / "bunker.png", info)
+    print("metrics", info)
 
     cam = Image.new("RGBA", (96, 96), (0, 0, 0, 0))
     bb = img.getbbox()
@@ -242,12 +268,6 @@ def render(out_dir: Path) -> None:
         crop = crop.resize((max(1, round(crop.width * f)), max(1, round(crop.height * f))), Image.Resampling.LANCZOS)
         cam.alpha_composite(crop, ((96 - crop.width) // 2, (96 - crop.height) // 2))
     cam.save(out_dir / "bunker-cameo.png")
-
-    preview = Path(__file__).parent / "preview"
-    preview.mkdir(exist_ok=True)
-    bg = Image.new("RGBA", img.size, (74, 107, 50, 255))
-    bg.alpha_composite(img)
-    bg.save(preview / "bunker.png")
 
 
 def main() -> None:
