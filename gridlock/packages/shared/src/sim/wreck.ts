@@ -32,6 +32,23 @@ export function toWreck(state: MatchState, e: Entity): void {
   e.tileY = worldToTile(e.y, state.tileSize);
   occupyEntity(state, e);
   shoveFromWreck(state, e);
+  endOrdersOnKill(state, e);
+}
+
+/**
+ * The hulk keeps the dead unit's id. A player's attack or force-attack on the
+ * live hull is done once it wrecks; the guns do not go on to chew the wreck.
+ * A player who wants the wreck gone orders a fresh attack on it.
+ */
+function endOrdersOnKill(state: MatchState, wreck: Entity): void {
+  for (const o of state.entities.values()) {
+    const order = o.order;
+    if (!order || order.targetId !== wreck.id) continue;
+    if (order.auto || (order.kind !== "attack" && order.kind !== "forceattack")) continue;
+    o.order = null;
+    if (o.attackTarget === wreck.id) o.attackTarget = null;
+    if (o.state === "attack") o.state = "idle";
+  }
 }
 
 /** A ship's hulk on the bottom. Engineers stay ashore: only a boat can salvage it. */

@@ -1293,6 +1293,37 @@ describe("wrecks", () => {
     );
   });
 
+  for (const type of ["cmd.forceattack", "cmd.attack"] as const) {
+    it(`ends a ${type} on a live tank once it wrecks`, () => {
+      const { state } = twoPlayerMatch();
+      clearCover(state);
+      const ts = state.tileSize;
+      const gun = makeEntity(state, "warden", "A", tileCenter(24, ts), tileCenter(24, ts));
+      const foe = makeEntity(state, "warden", "B", tileCenter(30, ts), tileCenter(24, ts));
+      foe.holdPosition = true;
+      foe.cooldown = 99;
+      foe.mgCooldown = 99;
+      gun.facing = 0;
+      gun.turretFacing = 0;
+      gun.holdPosition = true;
+      const res =
+        type === "cmd.forceattack"
+          ? applyCommand(state, "A", { type, ids: [gun.id], targetId: foe.id, x: foe.x, y: foe.y })
+          : applyCommand(state, "A", { type, ids: [gun.id], targetId: foe.id });
+      assert.equal(res.ok, true, !res.ok ? res.message : "");
+      for (let i = 0; i < 200 && !foe.wreck; i++) step(state, TICK_DT);
+      assert.equal(foe.wreck, true, "the gun should kill the tank");
+      assert.equal(gun.order, null, `order should end on the kill, got ${gun.order?.kind}`);
+      assert.notEqual(gun.attackTarget, foe.id);
+      state.projectiles = [];
+      gun.cooldown = 0;
+      gun.mgCooldown = 0;
+      const wreckHp = foe.hp;
+      for (let i = 0; i < 40; i++) step(state, TICK_DT);
+      assert.equal(foe.hp, wreckHp, "the gun must not go on shelling the wreck");
+    });
+  }
+
   it("ricochets small arms off an armored wreck", () => {
     const { state } = twoPlayerMatch();
     clearCover(state);
