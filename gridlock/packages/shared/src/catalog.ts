@@ -512,6 +512,7 @@ export type EntityType =
   | "stuka"
   | "fw190"
   | "bv222"
+  | "he111"
   | "droneop"
   | "drone"
   | "torpedo"
@@ -560,7 +561,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "stuka" | "fw190" | "bv222" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "stuka" | "fw190" | "bv222" | "he111" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -601,7 +602,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "stuka", "fw190", "bv222", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "stuka", "fw190", "bv222", "he111", "droneop", "jumpjet"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
@@ -771,6 +772,11 @@ export interface CatalogEntry {
   submerges?: boolean;
   /** A torpedo running in the water. Nobody commands it; any gun can shoot it before it arrives. */
   torpedoBody?: boolean;
+  /**
+   * Torpedo bomber (the He 111). One torpedo slung under the belly, the submarine's own. It lets it go
+   * only over water, and the torpedo always runs its full length.
+   */
+  airTorpedo?: boolean;
 }
 
 export interface ShellDef {
@@ -1668,6 +1674,21 @@ export const PARA_DOOR_SECONDS = 0.12;
 export const PARA_SINK_PER_SEC = 2.2;
 /** Share of the plane's speed a jumper carries out of the door. It bleeds off under the canopy. */
 export const PARA_THROW = 0.25;
+
+/**
+ * He 111 H-6 torpedo bomber. No guns and no bomb: one torpedo under the belly,
+ * the submarine's own (TORPEDO, TORPEDO_SPEED, TORPEDO_HP). It comes down low
+ * on the way in, and lets go only with water under it and the target inside
+ * TORPEDO_RANGE_TILES, the submarine's own reach, on the nose. The torpedo
+ * always runs its full length, even on a force attack.
+ */
+export const HE111_TORPEDOES = 1;
+/** Height of the torpedo run: down on the water. */
+export const HE111_DROP_ALT = 4;
+/** The run in starts this far out: it goes low here, well before the release. */
+export const HE111_RUN_IN_TILES = t(20);
+/** Half-angle off the nose the target must be inside for the release. */
+export const HE111_DROP_ARC_DEG = 8;
 /** Per second: the share of that throw still left. */
 export const PARA_DRAG = 0.35;
 /** Bomblets scattered by one canister. Each lies where it falls as a mine. */
@@ -2439,6 +2460,8 @@ export const TORPEDO_RANGE_TILES = t(13);
  * and a gun on the target has a few seconds to shoot it apart.
  */
 export const TORPEDO_SPEED = t(3) * TILE_SIZE;
+/** The warhead and the run, the same whether a submarine or an He 111 lets it go. */
+export const TORPEDO = { damage: 140, penetration: 160, caliber: 533, spreadDeg: 1.5 } as const;
 /** A running torpedo's hit points. A few 20mm rounds or one rifle clip finish it. */
 export const TORPEDO_HP = 30;
 /** A submerged boat is seen by any enemy unit or building within this many tiles. */
@@ -3746,14 +3769,14 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rangeTiles: TORPEDO_RANGE_TILES,
     sightTiles: t(8),
     cooldown: 7,
-    damage: 140,
+    damage: TORPEDO.damage,
     projectileSpeed: TORPEDO_SPEED,
     armorFront: 20,
     armorSide: 20,
     armorRear: 16,
-    penetration: 160,
-    caliber: 533,
-    spreadDeg: 1.5,
+    penetration: TORPEDO.penetration,
+    caliber: TORPEDO.caliber,
+    spreadDeg: TORPEDO.spreadDeg,
     naval: true,
     torpedoes: true,
     submerges: true,
@@ -3800,7 +3823,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     tileW: 1,
     tileH: 1,
     radius: 48,
-    moveTilesPerSec: paced(1.25),
+    moveTilesPerSec: paced(1.4375),
     turnDegPerSec: 16,
     noReverse: true,
     turnInPlace: true,
@@ -3901,6 +3924,35 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     aircraft: true,
     wreckHp: 40,
     blurb: `Six-engined transport flying boat. No guns. Its bay takes one load, chosen on the pad: a canister of ${CLUSTER_MINES} mines that scatter over the ground and wait for anyone, friend or foe (the enemy never sees them), a supply crate on a parachute that refills ammo and patches up whoever stands at it, or up to ${BV222_TROOPS} ground units. Infantry board on the hardstand from any load; that selects paratroops, and the bay stays on paratroops while anyone is aboard. They jump over the point and hang under canopies — where rifles, machine guns, and anti-aircraft guns can reach them — until they touch down. Hold Ctrl and click, or Force attack, to drop whatever is loaded. Slow and big. It has no tracks to lose. Shot down in the air, or with its engine wrecked there, everyone still aboard bails out under canopies and then it falls trailing smoke and crashes as a wreck. On the pad the same hit puts them on the grass and the plane is gone. Lands at its Airfield to refuel and reload.`,
+  },
+  /** He 111 H-6 torpedo bomber. Lives on an Airfield pad. */
+  he111: {
+    type: "he111",
+    kind: "unit",
+    name: "He 111",
+    letter: "e",
+    cost: 2400,
+    buildSeconds: 26,
+    hp: 180,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 15,
+    moveTilesPerSec: paced(4.6),
+    turnDegPerSec: 75,
+    rangeTiles: TORPEDO_RANGE_TILES,
+    sightTiles: t(14),
+    cooldown: 0,
+    damage: TORPEDO.damage,
+    projectileSpeed: TORPEDO_SPEED,
+    ...UNARMED,
+    penetration: TORPEDO.penetration,
+    caliber: TORPEDO.caliber,
+    spreadDeg: TORPEDO.spreadDeg,
+    aircraft: true,
+    airTorpedo: true,
+    wreckHp: 36,
+    blurb: `Twin-engined torpedo bomber. No guns and no bomb: one torpedo under the belly, the same one a submarine fires. It attacks only what is in the water — a boat, a submarine surfaced or down, a swimmer, a Marine Base — and only with water under it. It comes down low over the water on the way in and lets the torpedo go when the target is ${TORPEDO_RANGE_TILES / TILE_SUBDIV} tiles off the nose, the submarine's own reach. The torpedo always runs its full length, even on a force attack, and strikes the first thing in the water across its path, friend or foe, surfaced or submerged. It runs slow and in plain sight; any gun can shoot it apart before it arrives. One torpedo a sortie: then it flies home to land, refuel, and load another. Low on the run in, rifles and anti-aircraft guns reach it easily. It has no tracks to lose. A hit that wrecks the engine brings it down at once: it falls trailing smoke and crashes as a wreck.`,
   },
   droneop: {
     type: "droneop",
@@ -4204,7 +4256,7 @@ export function isJumpJetType(type: EntityType): boolean {
   return type === "jumpjet";
 }
 
-/** Flies: the Stuka, the Fw 190, and the BV 222. */
+/** Flies: the Stuka, the Fw 190, the BV 222, and the He 111. */
 export function isAircraftType(type: EntityType): boolean {
   return catalog(type).aircraft === true;
 }
@@ -4214,7 +4266,14 @@ export function airLoadoutOf(type: EntityType): { bombs: number; rounds: number 
   if (type === "fw190") return { bombs: 0, rounds: FW190_BARRAGES };
   // The BV 222's one canister (mines or crate) rides in the bomb slot.
   if (type === "bv222") return { bombs: 1, rounds: 0 };
+  // The He 111's torpedo rides in the bomb slot: hung on the pad, spent on the run.
+  if (dropsTorpedo(type)) return { bombs: HE111_TORPEDOES, rounds: 0 };
   return { bombs: STUKA_BOMBS, rounds: STUKA_MG_ROUNDS };
+}
+
+/** Torpedo bomber: drops the submarine's torpedo over water instead of a bomb. */
+export function dropsTorpedo(type: EntityType): boolean {
+  return catalog(type).airTorpedo === true;
 }
 
 /** Transport: drops a load (AirDrop) instead of attacking. */

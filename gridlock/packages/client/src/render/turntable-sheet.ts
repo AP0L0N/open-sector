@@ -108,6 +108,11 @@ const fw190HullGlob = import.meta.glob("../assets/units/fw190/hull/*.png", {
   import: "default",
 }) as Record<string, string>;
 
+const he111HullGlob = import.meta.glob("../assets/units/he111/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 const droneHullGlob = import.meta.glob("../assets/units/drone/hull/*.png", {
   eager: true,
   import: "default",
@@ -148,6 +153,8 @@ export const STUKA_OPTS: TurntableSheetOpts = { ...TIGER_OPTS, contactY: 0.8, pa
 export const FW190_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
 /** BV 222: same aircraft fit as the Stuka; the wingspan fills the cell. */
 export const BV222_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
+/** He 111: same aircraft fit as the Stuka; the wingspan fills the cell. */
+export const HE111_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
 /** Quadcopter: same aircraft fit as the Stuka; the rotor span fills the cell, the pod's belly sits on the contact line. */
 export const DRONE_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
 /**
@@ -643,6 +650,30 @@ export function bindFighterSheets(hullImage: HTMLImageElement): void {
     })
     .catch((err) => {
       console.error("fw190 turntable", err);
+    });
+}
+
+let he111Previous: ComposedTurntable | null = null;
+
+/** He 111 drop-ins: one hull sheet and a cameo, same fit rules as the Stuka. */
+export function bindTorpedoBomberSheets(hullImage: HTMLImageElement): void {
+  let hullUrls: string[];
+  try {
+    hullUrls = pickTurntableUrls(he111HullGlob);
+  } catch (err) {
+    console.error("he111 turntable", err);
+    return;
+  }
+  void Promise.all(hullUrls.map(loadImage))
+    .then((hullImgs) => composeAligned([hullImgs], HE111_OPTS))
+    .then((next) => {
+      revoke(he111Previous);
+      he111Previous = next;
+      hullImage.src = next.sheetUrls[0] ?? "";
+      applyCameo(next.cameoUrl, "--he111-cameo");
+    })
+    .catch((err) => {
+      console.error("he111 turntable", err);
     });
 }
 

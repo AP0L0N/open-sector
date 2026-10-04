@@ -178,7 +178,6 @@ import {
   tileCenter,
   unitInWater,
   worldToTile,
-  makeEntity,
 } from "./geo.js";
 import {
   garrisonIsHiding,
@@ -217,7 +216,7 @@ import { stepCluster } from "./airdrop.js";
 import { projectileMeetsDrone, reachesDrone } from "./drone.js";
 import { reachesJet } from "./jet.js";
 import { nightSightMul, nightTiles } from "./night.js";
-import { afloat, diving, hiddenSubmarine, surface, surfaceToStrike, torpedoCannotReach } from "./naval.js";
+import { afloat, armTorpedo, diving, hiddenSubmarine, surface, surfaceToStrike, torpedoCannotReach } from "./naval.js";
 import { shipHullT, shipKeelDist, shipMountPoint, turretBearing } from "./battleship.js";
 import type { Entity, MatchState, Order, Projectile, ShipCiws } from "./types.js";
 
@@ -2562,12 +2561,7 @@ function fireRound(
   };
   if (torpedoesOf(e.type)) {
     // The tube fires at the waterline, and the shot gives the boat away.
-    p.torpedo = true;
-    p.z = 0;
-    p.vz = 0;
-    p.deep = diving(e) || undefined;
-    // The torpedo runs in plain sight as its own body: a gun can shoot it before it arrives.
-    p.bodyId = makeEntity(state, "torpedo", e.ownerId, p.x, p.y, { facing: Math.atan2(p.vy, p.vx) }).id;
+    armTorpedo(state, p, diving(e));
     surface(state, e);
   }
   state.projectiles.push(p);

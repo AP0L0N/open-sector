@@ -1005,6 +1005,7 @@ function infantryClipShown(e: EntityView, gunId: string): number {
 const TYPE_ORDER: EntityType[] = [
   "fw190",
   "bv222",
+  "he111",
   "stuka",
   "drone",
   "warden",
