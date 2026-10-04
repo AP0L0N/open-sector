@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  BATTLESHIP_BARREL_AMMO,
+  BATTLESHIP_CIWS_BELT,
   DRIVER_KILL_CHANCE,
   SUPPLY_CARGO,
   SUPPLY_SEEK_TILES,
@@ -11,6 +13,9 @@ import {
   catalog,
   isInfantryType,
   isMotorVehicle,
+  isNavalType,
+  isSupplyCarrier,
+  supplyDepotOf,
   supplyShortOf,
   weaponFitsTruck,
   infantryGunById,
@@ -20,13 +25,14 @@ import {
   type EntityType,
 } from "../catalog.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { TILE_EMPTY } from "../maps.js";
+import { TILE_EMPTY, TILE_WATER } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { noteSupplyHit, supplyBodies, supplyHasDriver, supplyShooter } from "./supply.js";
-import type { MatchState, Order } from "./types.js";
+import { producerType } from "./train.js";
+import type { Entity, MatchState, Order } from "./types.js";
 
 function match(): { state: MatchState; a: string; b: string } {
   const r = createRoom({
@@ -446,5 +452,131 @@ describe("supply truck", () => {
     assert.equal(state.players.get(a)!.scrap, scrap + MINE_SCRAP);
     assert.equal(truck.hp, hp);
     assert.notEqual(truck.order?.kind, "disable");
+  });
+});
+
+describe("supply boat", () => {
+  /** Open water over the rectangle, inclusive. */
+  function sea(state: MatchState, x0: number, y0: number, x1: number, y1: number): void {
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const i = y * state.width + x;
+        state.terrain[i] = TILE_WATER;
+        state.blocked[i] = 1;
+        state.occupy[i] = 0;
+        state.heights[i] = 0;
+      }
+    }
+    state.visionTick = -1;
+  }
+
+  /** A ship with two empty barrels and an empty belt, held still. */
+  function shortShip(state: MatchState, owner: string, tx: number, ty: number): Entity {
+    const ts = state.tileSize;
+    const ship = makeEntity(state, "battleship", owner, tileCenter(tx, ts), tileCenter(ty, ts));
+    ship.holdPosition = true;
+    ship.ship!.turrets[0]!.barrels[0]!.ammo = 0;
+    ship.ship!.turrets[1]!.barrels[2]!.ammo = 0;
+    ship.ship!.ciws[1]!.ammo = 0;
+    return ship;
+  }
+
+  function shells(ship: Entity): number {
+    return ship.ship!.turrets.reduce((n, t) => n + t.barrels.reduce((m, b) => m + b.ammo, 0), 0);
+  }
+
+  it("is an unarmed naval carrier trained at the Marine Base, leaving with a full load", () => {
+    const s = catalog("supplyboat");
+    assert.equal(s.name, "Supply Boat");
+    assert.equal(isNavalType("supplyboat"), true);
+    assert.equal(isSupplyCarrier("supplyboat"), true);
+    assert.equal(supplyDepotOf("supplyboat"), "dock");
+    assert.equal(supplyDepotOf("supply"), "armory");
+    assert.equal(producerType("supplyboat"), "dock");
+    assert.equal(s.damage, 0);
+    assert.equal(s.rangeTiles, 0);
+    const { state, a } = match();
+    clearPad(state, 20, 20, 80, 80);
+    sea(state, 30, 30, 70, 70);
+    const ts = state.tileSize;
+    const boat = makeEntity(state, "supplyboat", a, tileCenter(40, ts), tileCenter(40, ts));
+    assert.equal(boat.supply, SUPPLY_CARGO);
+    assert.equal(supplyHasDriver(state, boat), true);
+    const view = snapshotFor(state, a).entities.find((e) => e.id === boat.id)!;
+    assert.equal(view.supply, SUPPLY_CARGO);
+    assert.equal(view.bed, undefined);
+  });
+
+  it("refills a Battle Ship's barrels and CIWS belts on a right-click", () => {
+    const { state, a } = match();
+    clearPad(state, 20, 20, 80, 80);
+    sea(state, 30, 30, 70, 70);
+    const ts = state.tileSize;
+    const boat = makeEntity(state, "supplyboat", a, tileCenter(40, ts), tileCenter(40, ts));
+    boat.holdPosition = true;
+    const ship = shortShip(state, a, 50, 40);
+    const before = shells(ship);
+    const res = applyCommand(state, a, { type: "cmd.supply", ids: [boat.id], targetId: ship.id });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    ticks(state, 200);
+    assert.equal(shells(ship), before + 2 * BATTLESHIP_BARREL_AMMO);
+    assert.equal(ship.ship!.ciws[1]!.ammo, BATTLESHIP_CIWS_BELT);
+    assert.ok(boat.supply < SUPPLY_CARGO, `supply ${boat.supply}`);
+    assert.equal(boat.order, null, "it stops once the ship is full");
+  });
+
+  it("serves only what floats, and the truck only what stands ashore", () => {
+    const { state, a } = match();
+    clearPad(state, 20, 20, 90, 80);
+    sea(state, 30, 30, 60, 70);
+    const ts = state.tileSize;
+    const boat = makeEntity(state, "supplyboat", a, tileCenter(40, ts), tileCenter(40, ts));
+    const ship = shortShip(state, a, 50, 50);
+    const truck = makeEntity(state, "supply", a, tileCenter(70, ts), tileCenter(40, ts));
+    const tank = makeEntity(state, "warden", a, tileCenter(74, ts), tileCenter(40, ts));
+    tank.ammo = { ap: 0, he: 0, heat: 0, smoke: 0 };
+    const noTruck = applyCommand(state, a, { type: "cmd.supply", ids: [truck.id], targetId: ship.id });
+    assert.equal(noTruck.ok, false);
+    if (!noTruck.ok) assert.equal(noTruck.message, "Only a supply boat can reach a ship.");
+    const noBoat = applyCommand(state, a, { type: "cmd.supply", ids: [boat.id], targetId: tank.id });
+    assert.equal(noBoat.ok, false);
+    if (!noBoat.ok) assert.equal(noBoat.message, "A supply boat cannot reach that.");
+    // A mixed selection sends each carrier only where it can go.
+    assert.equal(applyCommand(state, a, { type: "cmd.supply", ids: [truck.id, boat.id], targetId: ship.id }).ok, true);
+    assert.equal(boat.order?.targetId, ship.id);
+    assert.notEqual(truck.order?.targetId, ship.id);
+  });
+
+  it("goes to allied ships short of ammo nearby on its own", () => {
+    const { state, a } = match();
+    clearPad(state, 20, 20, 80, 80);
+    sea(state, 30, 30, 70, 70);
+    const ts = state.tileSize;
+    const boat = makeEntity(state, "supplyboat", a, tileCenter(40, ts), tileCenter(40, ts));
+    const ship = shortShip(state, a, 48, 44);
+    const before = shells(ship);
+    ticks(state, 2);
+    assert.equal(boat.order?.kind, "supply");
+    assert.equal(boat.order?.auto, true);
+    assert.equal(boat.order?.targetId, ship.id);
+    ticks(state, 200);
+    assert.ok(shells(ship) > before, `shells ${shells(ship)}`);
+  });
+
+  it("restocks at a Marine Base, not at a Machine Shop", () => {
+    const { state, a } = match();
+    clearPad(state, 10, 10, 90, 80);
+    sea(state, 30, 30, 70, 70);
+    const ts = state.tileSize;
+    const boat = makeEntity(state, "supplyboat", a, tileCenter(40, ts), tileCenter(40, ts));
+    boat.supply = 0;
+    const armory = makeEntity(state, "armory", a, tileCenter(80, ts), tileCenter(40, ts));
+    const shop = applyCommand(state, a, { type: "cmd.supply", ids: [boat.id], targetId: armory.id });
+    assert.equal(shop.ok, false);
+    const dock = makeEntity(state, "dock", a, tileCenter(46, ts), tileCenter(40, ts), { tileX: 46, tileY: 38 });
+    const res = applyCommand(state, a, { type: "cmd.supply", ids: [boat.id], targetId: dock.id });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    ticks(state, 120);
+    assert.ok(boat.supply > SUPPLY_CARGO / 2, `supply ${boat.supply}`);
   });
 });

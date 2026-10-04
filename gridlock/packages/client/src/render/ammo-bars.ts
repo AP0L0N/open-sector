@@ -1,7 +1,7 @@
 /**
  * Ammo strips under an allied health bar. Only finite stores a truck refills:
  * the shell rack, the coaxial belt, rocket pods, a belt that never reloads, and
- * the cyborg drum. A supply truck shows its cargo. A Jump Jet shows his pack
+ * the cyborg drum. A supply truck or boat shows its cargo. A Jump Jet shows his pack
  * as the yellow bar. Smoke is left out — it is a screen, not the gun's reserve.
  */
 import {
@@ -9,6 +9,7 @@ import {
   catalog,
   heavyAmmoOf,
   isInfantryType,
+  isSupplyCarrier,
   launcherOnlyOf,
   rocketAmmoOf,
   SHELL_TYPES,
@@ -29,7 +30,7 @@ export function ammoBarRatios(
   e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "heavy" | "wreck" | "supply" | "jet">,
 ): number[] {
   if (e.wreck) return [];
-  if (e.type === "supply") return e.supply != null ? [fraction(e.supply, SUPPLY_CARGO)] : [];
+  if (isSupplyCarrier(e.type)) return e.supply != null ? [fraction(e.supply, SUPPLY_CARGO)] : [];
   // The pack is the yellow bar. Enemies get height only, so the strip stays hidden.
   if (e.type === "jumpjet") {
     const fuel = e.jet?.fuel;
@@ -80,7 +81,7 @@ export function ammoBarRatios(
 export function outOfAmmo(
   e: Pick<EntityView, "type" | "ammo" | "mgAmmo" | "clip" | "rockets" | "wreck">,
 ): boolean {
-  if (e.wreck || e.type === "supply" || e.type === "jumpjet") return false;
+  if (e.wreck || isSupplyCarrier(e.type) || e.type === "jumpjet") return false;
   const def = catalog(e.type);
   // A soldier with a magazine that reloads by itself can always fight on.
   if (isInfantryType(e.type) && supplyDrumOf(e.type) <= 0) return false;

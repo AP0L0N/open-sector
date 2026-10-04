@@ -123,6 +123,17 @@ const submarineHullGlob = import.meta.glob("../assets/units/submarine/hull/*.png
   import: "default",
 }) as Record<string, string>;
 
+const supplyboatHullGlob = import.meta.glob("../assets/units/supplyboat/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const navalHullGlobs = {
+  gunboat: gunboatHullGlob,
+  submarine: submarineHullGlob,
+  supplyboat: supplyboatHullGlob,
+} as const;
+
 const battleshipGlobs = {
   hull: import.meta.glob("../assets/units/battleship/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
   super: import.meta.glob("../assets/units/battleship/super/*.png", { eager: true, import: "default" }) as Record<string, string>,
@@ -501,11 +512,11 @@ export function bindArtillerySheets(hullImage: HTMLImageElement): void {
 
 const navalPrevious = new Map<string, ComposedTurntable>();
 
-/** Hull-only boat drop-ins (Attack Boat, Submarine): one sheet and a cameo each. */
-export function bindNavalSheets(kind: "gunboat" | "submarine", hullImage: HTMLImageElement): void {
+/** Hull-only boat drop-ins (Attack Boat, Submarine, Supply Boat): one sheet and a cameo each. */
+export function bindNavalSheets(kind: keyof typeof navalHullGlobs, hullImage: HTMLImageElement): void {
   let hullUrls: string[];
   try {
-    hullUrls = pickTurntableUrls(kind === "gunboat" ? gunboatHullGlob : submarineHullGlob);
+    hullUrls = pickTurntableUrls(navalHullGlobs[kind]);
   } catch (err) {
     console.error(`${kind} turntable`, err);
     return;
