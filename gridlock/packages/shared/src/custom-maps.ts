@@ -49,6 +49,8 @@ export const CUSTOM_MAP_SIZES: readonly { label: string; cells: number }[] = [
   { label: "Medium", cells: 64 },
   { label: "Large", cells: 96 },
   { label: "Huge", cells: 128 },
+  // Five Scrap Yards of ground (64² cells each). Bigger sheets outgrow the one-image terrain bake and the per-tick vision pass.
+  { label: "Vast", cells: 144 },
 ];
 
 /** Ground a builder brush may paint. Blocked tiles stay a generator detail. */

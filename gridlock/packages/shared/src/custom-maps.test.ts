@@ -90,6 +90,28 @@ describe("custom map validation", () => {
     assert.equal(r.ok, true);
   });
 
+  it("takes a Vast sheet: five Scrap Yards of ground, and nothing bigger", () => {
+    const yard = getMap("yard-64")!;
+    const side = 144 * TILE_SUBDIV;
+    assert.equal(side * side, 5 * yard.width * yard.height + 64 * 64);
+    const n = side * side;
+    const vast = {
+      width: side,
+      height: side,
+      tiles: encodeRuns(new Array(n).fill(TILE_EMPTY)),
+      heights: encodeRuns(new Array(n).fill(HEIGHT_BASE)),
+      spawns: [
+        { id: 1, x: 30, y: 30 },
+        { id: 2, x: side - 30, y: side - 30 },
+      ],
+    };
+    assert.equal(validateCustomMap(sheet(vast)).ok, true);
+    const big = 160 * TILE_SUBDIV;
+    const r = validateCustomMap(sheet({ ...vast, width: big, height: big }));
+    assert.equal(r.ok, false);
+    if (!r.ok) assert.match(r.message, /Unsupported map size/);
+  });
+
   it("asks for every start position", () => {
     const r = validateCustomMap(sheet({ maxPlayers: 3 }));
     assert.equal(r.ok, false);

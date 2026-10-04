@@ -117,8 +117,14 @@ const tool: Tool = { id: "raise", tile: TILE_WATER, house: "cottage", defence: "
 let selected: Selection | null = null;
 const view = { zoom: 0, px: 0, py: 0 };
 let hover: { x: number; y: number; inside: boolean } = { x: 0, y: 0, inside: false };
+/** The pointer is over the stage canvas (or captured by it mid-stroke). */
+let pointerOver = false;
 let stage: Stage | null = null;
 let ground: HTMLCanvasElement | null = null;
+/** Pixels behind `ground`, kept so a stroke rewrites only the tiles it touched. */
+let groundPx: ImageData | null = null;
+/** Tiles brushed since the last frame. */
+let pendingGround: M.Dirty = M.emptyDirty();
 let drawQueued = false;
 let previewTimer: ReturnType<typeof setTimeout> | null = null;
 /** The cached preview bake no longer matches the sheet. */
@@ -174,16 +180,22 @@ function say(text: string, tone: "" | "bad" | "good" = ""): void {
   }
 }
 
+/** Undo steps kept: the full depth up to Huge, fewer on bigger sheets so the history stays a few tens of MB. */
+function undoDepth(s: M.Sheet): number {
+  return Math.max(10, Math.min(UNDO_DEPTH, Math.floor((UNDO_DEPTH * 512 * 512) / (s.width * s.height))));
+}
+
 function pushUndo(): void {
   if (!sheet) return;
   undo.push(M.markSheet(sheet));
-  if (undo.length > UNDO_DEPTH) undo.shift();
+  while (undo.length > undoDepth(sheet)) undo.shift();
   redo.length = 0;
 }
 
 function changed(): void {
   dirty = true;
   previewStale = true;
+  pendingGround = M.emptyDirty();
   repaintGround();
   queueDraw();
   schedulePreview();
@@ -264,20 +276,32 @@ function tileColor(s: M.Sheet, x: number, y: number): [number, number, number] {
   return [c[0] * f, c[1] * f, c[2] * f];
 }
 
-function repaintGround(): void {
+/**
+ * Recolour the plan image. With `box`, only those tiles (plus the one-tile
+ * rim their shading reads) are redone, so a brush stroke on a big sheet
+ * costs the brush, not the map.
+ */
+function repaintGround(box?: M.Dirty): void {
   const s = sheet;
   if (!s) return;
-  if (!ground || ground.width !== s.width || ground.height !== s.height) {
+  if (!ground || ground.width !== s.width || ground.height !== s.height || !groundPx) {
     ground = document.createElement("canvas");
     ground.width = s.width;
     ground.height = s.height;
+    groundPx = null;
+    box = undefined;
   }
   const g = ground.getContext("2d");
   if (!g) return;
-  const img = g.createImageData(s.width, s.height);
-  const d = img.data;
-  for (let y = 0; y < s.height; y++) {
-    for (let x = 0; x < s.width; x++) {
+  groundPx ??= g.createImageData(s.width, s.height);
+  const x0 = box ? Math.max(0, box.x0 - 1) : 0;
+  const y0 = box ? Math.max(0, box.y0 - 1) : 0;
+  const x1 = box ? Math.min(s.width, box.x1 + 1) : s.width;
+  const y1 = box ? Math.min(s.height, box.y1 + 1) : s.height;
+  if (x1 <= x0 || y1 <= y0) return;
+  const d = groundPx.data;
+  for (let y = y0; y < y1; y++) {
+    for (let x = x0; x < x1; x++) {
       const [r, gg, b] = tileColor(s, x, y);
       const k = (y * s.width + x) * 4;
       d[k] = r;
@@ -286,7 +310,24 @@ function repaintGround(): void {
       d[k + 3] = 255;
     }
   }
-  g.putImageData(img, 0, 0);
+  g.putImageData(groundPx, 0, 0, x0, y0, x1 - x0, y1 - y0);
+}
+
+/** Note brush damage; the next frame repaints it once, however many pointer moves fed it. */
+function markGround(box: M.Dirty): void {
+  if (box.x1 <= box.x0) return;
+  pendingGround.x0 = Math.min(pendingGround.x0, box.x0);
+  pendingGround.y0 = Math.min(pendingGround.y0, box.y0);
+  pendingGround.x1 = Math.max(pendingGround.x1, box.x1);
+  pendingGround.y1 = Math.max(pendingGround.y1, box.y1);
+  queueDraw();
+}
+
+function flushGround(): void {
+  if (pendingGround.x1 <= pendingGround.x0) return;
+  const box = pendingGround;
+  pendingGround = M.emptyDirty();
+  repaintGround(box);
 }
 
 // --- stage drawing -------------------------------------------------------------
@@ -347,6 +388,7 @@ function drawStage(): void {
   }
   if (view.zoom === 0) fitView(canvas, s);
   if (!ground) repaintGround();
+  else flushGround();
   const c = canvas.getContext("2d");
   if (!c || !ground) return;
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -472,13 +514,14 @@ function drawStage(): void {
         c.stroke();
         c.setLineDash([]);
       }
-    } else if (tool.id !== "erase" && tool.id !== "select") {
-      c.strokeStyle = "#fff4dc";
-      c.lineWidth = 1.5;
-      c.beginPath();
-      c.arc(sx(hover.x + 0.5), sy(hover.y + 0.5), Math.max(2, (tool.brush + 0.5) * z), 0, Math.PI * 2);
-      c.stroke();
     }
+  }
+  if (pointerOver && isBrush(tool.id) && brushReaches(hover.x, hover.y)) {
+    c.strokeStyle = "#fff4dc";
+    c.lineWidth = 1.5;
+    c.beginPath();
+    c.arc(sx(hover.x + 0.5), sy(hover.y + 0.5), Math.max(2, (tool.brush + 0.5) * z), 0, Math.PI * 2);
+    c.stroke();
   }
 }
 
@@ -503,13 +546,32 @@ function toTile(e: PointerEvent | WheelEvent): { x: number; y: number; inside: b
   return { x, y, inside };
 }
 
+function isBrush(id: ToolId): boolean {
+  return id === "ground" || id === "raise" || id === "lower" || id === "level";
+}
+
+/** The brush ring at (x, y) reaches the sheet, even when its centre is past the edge. */
+function brushReaches(x: number, y: number): boolean {
+  return !!sheet && M.diskTouches(sheet, x, y, tool.brush);
+}
+
 function dab(x: number, y: number): void {
   const s = sheet;
-  if (!s) return;
-  if (tool.id === "ground") M.paintDisk(s, x, y, tool.brush, tool.tile);
-  else if (tool.id === "raise") M.liftDisk(s, x, y, tool.brush, 1);
-  else if (tool.id === "lower") M.liftDisk(s, x, y, tool.brush, -1);
-  else if (tool.id === "level") M.levelDisk(s, x, y, tool.brush, tool.level);
+  if (!s || !brushReaches(x, y)) return;
+  const box = M.emptyDirty();
+  if (tool.id === "ground") M.paintDisk(s, x, y, tool.brush, tool.tile, box);
+  else if (tool.id === "raise") M.liftDisk(s, x, y, tool.brush, 1, box);
+  else if (tool.id === "lower") M.liftDisk(s, x, y, tool.brush, -1, box);
+  else if (tool.id === "level") M.levelDisk(s, x, y, tool.brush, tool.level, box);
+  markGround(box);
+}
+
+/** Dab along the straight run from (x0, y0) to (x1, y1), close enough that a fast stroke leaves no gaps. */
+function dabLine(x0: number, y0: number, x1: number, y1: number): void {
+  const steps = Math.max(1, Math.ceil(Math.hypot(x1 - x0, y1 - y0) / Math.max(1, tool.brush / 2)));
+  for (let k = 1; k <= steps; k++) {
+    dab(Math.round(x0 + ((x1 - x0) * k) / steps), Math.round(y0 + ((y1 - y0) * k) / steps));
+  }
 }
 
 function eraseAt(x: number, y: number): boolean {
@@ -626,7 +688,10 @@ function onDown(e: PointerEvent): void {
   if (e.button !== 0) return;
   const t = toTile(e);
   hover = t;
-  if (!t.inside) return;
+  pointerOver = true;
+  // A brush whose ring overlaps the sheet paints from past the edge; everything else needs a tile.
+  const brushing = isBrush(tool.id) && !(tool.id === "level" && e.altKey);
+  if (brushing ? !brushReaches(t.x, t.y) : !t.inside) return;
   if (tool.id === "level" && e.altKey) {
     tool.level = s.heights[t.y * s.width + t.x]!;
     if (ctxRef) mountOrRefresh(ctxRef);
@@ -692,17 +757,9 @@ function onDown(e: PointerEvent): void {
   }
   pushUndo();
   dab(t.x, t.y);
-  repaintGround();
-  queueDraw();
   const lifting = tool.id === "raise" || tool.id === "lower";
-  const timer = lifting
-    ? setInterval(() => {
-        if (!hover.inside) return;
-        dab(hover.x, hover.y);
-        repaintGround();
-        queueDraw();
-      }, LIFT_EVERY_MS)
-    : null;
+  // dab() skips a ring that is wholly off the sheet.
+  const timer = lifting ? setInterval(() => dab(hover.x, hover.y), LIFT_EVERY_MS) : null;
   drag = { kind: "brush", lastX: t.x, lastY: t.y, timer };
 }
 
@@ -716,25 +773,23 @@ function onMove(e: PointerEvent): void {
     return;
   }
   const t = toTile(e);
-  const moved = t.x !== hover.x || t.y !== hover.y || t.inside !== hover.inside;
+  const moved = !pointerOver || t.x !== hover.x || t.y !== hover.y || t.inside !== hover.inside;
   hover = t;
+  pointerOver = true;
   if (t.inside) {
     const i = t.y * s.width + t.x;
     stage.status.textContent = `${t.x}, ${t.y} · height ${s.heights[i]} · ${groundName(s.tiles[i]!)}`;
+  } else if (moved) {
+    stage.status.textContent = "Off the map";
   }
   if (!moved) return;
-  if (drag?.kind === "brush" && t.inside && tool.id === "ground") {
-    // Fill the gap a fast stroke leaves between two moves.
-    const steps = Math.max(1, Math.ceil(Math.hypot(t.x - drag.lastX, t.y - drag.lastY) / Math.max(1, tool.brush / 2)));
-    for (let k = 1; k <= steps; k++) {
-      dab(Math.round(drag.lastX + ((t.x - drag.lastX) * k) / steps), Math.round(drag.lastY + ((t.y - drag.lastY) * k) / steps));
-    }
+  if (drag?.kind === "brush") {
+    // Follow the pointer's real path, off the sheet too: leaving and coming back
+    // elsewhere must not draw a line across the map, and a ring that hangs over
+    // the edge still paints the edge. Raise and Lower run on their timer.
+    if (tool.id === "ground" || tool.id === "level") dabLine(drag.lastX, drag.lastY, t.x, t.y);
     drag.lastX = t.x;
     drag.lastY = t.y;
-    repaintGround();
-  } else if (drag?.kind === "brush" && t.inside && tool.id === "level") {
-    dab(t.x, t.y);
-    repaintGround();
   } else if (drag?.kind === "erase" && t.inside) {
     if (eraseAt(t.x, t.y)) finishStroke();
   } else if (drag?.kind === "move" && t.inside) {
@@ -1388,7 +1443,10 @@ export function renderBuilder(root: HTMLElement, ctx: Ctx): void {
   canvas.addEventListener("pointermove", onMove);
   canvas.addEventListener("pointerup", onUp);
   canvas.addEventListener("pointercancel", onUp);
+  // Losing capture (alt-tab, a dialog) ends the stroke instead of leaving a brush stuck down.
+  canvas.addEventListener("lostpointercapture", onUp);
   canvas.addEventListener("pointerleave", () => {
+    pointerOver = false;
     hover = { ...hover, inside: false };
     queueDraw();
   });

@@ -12,6 +12,8 @@ import {
 } from "@gridlock/shared";
 import {
   defenceCount,
+  diskTouches,
+  emptyDirty,
   houseAt,
   houseProblem,
   moveFeature,
@@ -97,6 +99,30 @@ describe("map builder sheet", () => {
     assert.equal(s.tiles[40 * s.width + 40], TILE_EMPTY);
     paintDisk(s, 40, 40, 3, TILE_ROAD);
     assert.equal(s.tiles[40 * s.width + 40], TILE_ROAD);
+  });
+
+  it("paints the edge from a brush whose centre hangs past it", () => {
+    const s = fresh();
+    const box = emptyDirty();
+    assert.ok(diskTouches(s, -3, 50, 4));
+    assert.ok(!diskTouches(s, -6, 50, 4));
+    paintDisk(s, -3, 50, 4, TILE_TREE, box);
+    assert.equal(s.tiles[50 * s.width + 0], TILE_TREE);
+    assert.equal(s.tiles[50 * s.width + 1], TILE_TREE);
+    assert.deepEqual(box, { x0: 0, y0: 47, x1: 2, y1: 54 });
+    const far = s.width + 2;
+    liftDisk(s, far, 10, 3, 1);
+    assert.equal(s.heights[10 * s.width + s.width - 1], HEIGHT_BASE + 1);
+  });
+
+  it("reports the ramp a raise drags outside the brush", () => {
+    const s = fresh();
+    for (let i = 0; i < 4; i++) liftDisk(s, 96, 96, 2, 1);
+    const box = emptyDirty();
+    liftDisk(s, 96, 96, 2, 1, box);
+    // Four terraces of ramp beyond the radius-2 ring.
+    assert.ok(box.x0 <= 96 - 2 - 4 && box.x1 >= 96 + 2 + 5, JSON.stringify(box));
+    assert.ok(steepest(s) <= HEIGHT_STEP_MAX);
   });
 
   it("snaps houses to the cell grid and refuses overlaps and pads", () => {

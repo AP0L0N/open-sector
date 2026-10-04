@@ -133,39 +133,64 @@ function inBounds(s: Sheet, x: number, y: number): boolean {
   return x >= 0 && y >= 0 && x < s.width && y < s.height;
 }
 
+/** Fine tiles a brush touched, x0/y0 inclusive, x1/y1 exclusive. Empty while x1 <= x0. */
+export interface Dirty {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+export function emptyDirty(): Dirty {
+  return { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+}
+
+function touch(d: Dirty | undefined, x: number, y: number): void {
+  if (!d) return;
+  if (x < d.x0) d.x0 = x;
+  if (y < d.y0) d.y0 = y;
+  if (x + 1 > d.x1) d.x1 = x + 1;
+  if (y + 1 > d.y1) d.y1 = y + 1;
+}
+
+/** Cells of a disk that lie on the sheet. The centre may sit off the edge: the part on the map still counts. */
 function diskCells(s: Sheet, cx: number, cy: number, r: number): number[] {
   const out: number[] = [];
   const ri = Math.ceil(r);
-  for (let y = cy - ri; y <= cy + ri; y++) {
-    for (let x = cx - ri; x <= cx + ri; x++) {
-      if (!inBounds(s, x, y) || Math.hypot(x - cx, y - cy) > r + 0.25) continue;
+  for (let y = Math.max(0, cy - ri); y <= Math.min(s.height - 1, cy + ri); y++) {
+    for (let x = Math.max(0, cx - ri); x <= Math.min(s.width - 1, cx + ri); x++) {
+      if (Math.hypot(x - cx, y - cy) > r + 0.25) continue;
       out.push(y * s.width + x);
     }
   }
   return out;
 }
 
-function underHouse(s: Sheet, x: number, y: number): boolean {
-  return s.features.some((f) => {
-    const b = featureBox(f);
-    return x >= b.x0 && x < b.x1 && y >= b.y0 && y < b.y1;
-  });
-}
-
-function onPad(s: Sheet, x: number, y: number): boolean {
-  return s.spawns.some((sp) => Math.hypot(sp.x - x, sp.y - y) <= SPAWN_PAD_R);
+/** True when a brush of radius `r` at (cx, cy) reaches any tile of the sheet. */
+export function diskTouches(s: Sheet, cx: number, cy: number, r: number): boolean {
+  const nx = Math.max(0, Math.min(s.width - 1, cx));
+  const ny = Math.max(0, Math.min(s.height - 1, cy));
+  return Math.hypot(nx - cx, ny - cy) <= r + 0.25;
 }
 
 /** Paint ground in a disk. Houses keep their lots; start pads only take roads. Returns changed cells. */
-export function paintDisk(s: Sheet, cx: number, cy: number, r: number, tile: number): number {
+export function paintDisk(s: Sheet, cx: number, cy: number, r: number, tile: number, dirty?: Dirty): number {
+  const ri = Math.ceil(r);
+  // Only lots and pads near the brush can refuse a tile.
+  const lots = s.features
+    .map((f) => featureBox(f))
+    .filter((b) => b.x1 > cx - ri && b.x0 <= cx + ri && b.y1 > cy - ri && b.y0 <= cy + ri);
+  const pads = PAD_CLEARS(tile) ? s.spawns.filter((sp) => Math.hypot(sp.x - cx, sp.y - cy) <= SPAWN_PAD_R + ri + 1) : [];
   let changed = 0;
   for (const i of diskCells(s, cx, cy, r)) {
     const x = i % s.width;
     const y = (i / s.width) | 0;
-    if (s.tiles[i] === tile || underHouse(s, x, y)) continue;
-    if (PAD_CLEARS(tile) && onPad(s, x, y)) continue;
+    if (s.tiles[i] === tile) continue;
+    if (lots.some((b) => x >= b.x0 && x < b.x1 && y >= b.y0 && y < b.y1)) continue;
+    if (pads.some((sp) => Math.hypot(sp.x - x, sp.y - y) <= SPAWN_PAD_R)) continue;
     s.tiles[i] = tile;
     if (tile === TILE_WATER) s.heights[i] = 0;
+    touch(dirty, x, y);
     changed++;
   }
   return changed;
@@ -176,14 +201,15 @@ export function paintDisk(s: Sheet, cx: number, cy: number, r: number, tile: num
  * step: a raise pulls the ground around it up into a ramp, a cut drags it down.
  * Water stays on the floor.
  */
-function ripple(s: Sheet, seeds: readonly number[]): void {
-  const held = new Uint8Array(s.width * s.height);
-  for (const i of seeds) held[i] = 1;
+function ripple(s: Sheet, seeds: readonly number[], dirty?: Dirty): void {
+  // A set, not a whole-sheet mask: a dab runs on every pointer move, and big sheets are millions of tiles.
+  const held = new Set(seeds);
   const q = seeds.slice();
   for (let qi = 0; qi < q.length; qi++) {
     const i = q[qi]!;
     const x = i % s.width;
     const y = (i / s.width) | 0;
+    touch(dirty, x, y);
     const h = s.heights[i]!;
     for (let dy = -1; dy <= 1; dy++) {
       for (let dx = -1; dx <= 1; dx++) {
@@ -192,7 +218,7 @@ function ripple(s: Sheet, seeds: readonly number[]): void {
         const ny = y + dy;
         if (!inBounds(s, nx, ny)) continue;
         const ni = ny * s.width + nx;
-        if (held[ni] || s.tiles[ni] === TILE_WATER) continue;
+        if (held.has(ni) || s.tiles[ni] === TILE_WATER) continue;
         const nh = s.heights[ni]!;
         if (nh > h + 1) s.heights[ni] = h + 1;
         else if (nh < h - 1) s.heights[ni] = h - 1;
@@ -204,7 +230,7 @@ function ripple(s: Sheet, seeds: readonly number[]): void {
 }
 
 /** Raise (+1) or cut (-1) the ground in a disk by one step. */
-export function liftDisk(s: Sheet, cx: number, cy: number, r: number, delta: 1 | -1): number {
+export function liftDisk(s: Sheet, cx: number, cy: number, r: number, delta: 1 | -1, dirty?: Dirty): number {
   const seeds: number[] = [];
   for (const i of diskCells(s, cx, cy, r)) {
     if (s.tiles[i] === TILE_WATER) continue;
@@ -213,12 +239,12 @@ export function liftDisk(s: Sheet, cx: number, cy: number, r: number, delta: 1 |
     s.heights[i] = next;
     seeds.push(i);
   }
-  ripple(s, seeds);
+  ripple(s, seeds, dirty);
   return seeds.length;
 }
 
 /** Set a disk to elevation `z`, ramping the ground around it. */
-export function levelDisk(s: Sheet, cx: number, cy: number, r: number, z: number): number {
+export function levelDisk(s: Sheet, cx: number, cy: number, r: number, z: number, dirty?: Dirty): number {
   const level = Math.max(0, Math.min(HEIGHT_MAX, Math.round(z)));
   const seeds: number[] = [];
   for (const i of diskCells(s, cx, cy, r)) {
@@ -226,7 +252,7 @@ export function levelDisk(s: Sheet, cx: number, cy: number, r: number, z: number
     s.heights[i] = level;
     seeds.push(i);
   }
-  ripple(s, seeds);
+  ripple(s, seeds, dirty);
   return seeds.length;
 }
 
