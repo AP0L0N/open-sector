@@ -223,6 +223,7 @@ import {
   type UnitSpriteDef,
 } from "./sprites.js";
 import { drawBuildingAnim } from "./building-fx.js";
+import { drawTowerSearchlight, type SearchlightPose } from "./searchlight.js";
 import { drawRadarContact, drawRadarOffline, radarContactLit } from "./radar-panel.js";
 import {
   drawTrackKick,
@@ -668,6 +669,8 @@ export class MapView {
   /** Lamp heading on screen per tower, eased toward the snapshot. */
   private spotShown = new Map<number, number>();
   private spotFrameAt = 0;
+  /** Where each tower's searchlight lens landed this frame, for its glow at night. */
+  private lensAt = new Map<number, SearchlightPose>();
   /** Every tile counts as known ground: the map is never shrouded. */
   private knownGround: Uint8Array | null = null;
   private miniFog: HTMLCanvasElement | null = null;
@@ -3492,15 +3495,18 @@ export class MapView {
     if (pools.length) {
       this.drawLampLight(pools, glow, fillPool);
       ctx.globalCompositeOperation = "lighter";
-      // The cab lamp. Hull headlights stay a beam only.
+      // The roof searchlight's lens: brightest when it looks at the viewer. Hull headlights stay a beam only.
       for (const { e } of lamps) {
-        const cab = this.toScreen(e.x, e.y, this.elevAt(e.x, e.y) + TOWER_EYE_HEIGHT);
-        const lamp = ctx.createRadialGradient(cab.x, cab.y, 0, cab.x, cab.y, 9);
-        lamp.addColorStop(0, `rgba(255, 248, 220, ${0.95 * glow})`);
+        const pose = this.lensAt.get(e.id);
+        const at = pose?.lens ?? this.toScreen(e.x, e.y, this.elevAt(e.x, e.y) + TOWER_EYE_HEIGHT);
+        const face = pose ? pose.toViewer : 0.5;
+        const r = 6 + 10 * face;
+        const lamp = ctx.createRadialGradient(at.x, at.y, 0, at.x, at.y, r);
+        lamp.addColorStop(0, `rgba(255, 248, 220, ${(0.45 + 0.5 * face) * glow})`);
         lamp.addColorStop(1, "rgba(255, 230, 170, 0)");
         ctx.fillStyle = lamp;
         ctx.beginPath();
-        ctx.arc(cab.x, cab.y, 9, 0, Math.PI * 2);
+        ctx.arc(at.x, at.y, r, 0, Math.PI * 2);
         ctx.fill();
       }
       ctx.globalCompositeOperation = "source-over";
@@ -3522,6 +3528,7 @@ export class MapView {
       ctx.setLineDash([]);
     }
     ctx.restore();
+    this.lensAt.clear();
   }
 
   /**
@@ -4918,6 +4925,8 @@ export class MapView {
           this.drawCiwsGun(spr, south.x, south.y, footprintW, 1, e.turretFacing ?? e.facing, ghost ? undefined : e);
         } else if (e.type === "ram") {
           this.drawCiwsGun(spr, south.x, south.y, footprintW, 1, e.turretFacing ?? e.facing, undefined, RAM_TURRET_SHEET);
+        } else if (hasSpotlight(e.type)) {
+          this.drawTowerLamp(e, south.x, south.y, footprintW, ghost);
         }
         if (!ghost) {
           drawBuildingAnim(
@@ -4975,6 +4984,20 @@ export class MapView {
       this.strokeGroundRect(x + inset, y + inset, bw - inset * 2, bh - inset * 2, elev);
     }
     ctx.globalAlpha = 1;
+  }
+
+  /**
+   * The watch tower's roof searchlight, turned to the heading its beam shows
+   * (eased like the beam, so lamp and light swing together). The lens burns
+   * while the beam is lit and goes dark when a crit smashes it.
+   */
+  private drawTowerLamp(e: EntityView, southX: number, southY: number, footprintW: number, ghost: boolean): void {
+    const facing = this.spotShown.get(e.id) ?? e.spotFacing ?? Math.PI / 4;
+    const broken = !!e.crits?.includes("lamp");
+    const burning = !ghost && e.spotFacing != null && e.hp > 0 && !broken;
+    const lit = burning ? lampGlow(daylightAt(this.curr.tick)) : 0;
+    const pose = drawTowerSearchlight(this.ctx, southX, southY, footprintW, facing, { lit, broken });
+    if (!ghost) this.lensAt.set(e.id, pose);
   }
 
   /** CIWS gun (or RAM launcher) row over its pad, laid on `turretFacing`, and the CIWS barrel flash while it fires. */
@@ -6837,6 +6860,9 @@ export class MapView {
       const ground = buildingGroundFor(type);
       if (ground && spriteReady(ground)) drawBuildingSprite(ctx, ground, south.x, south.y, east.x - west.x);
       drawBuildingSprite(ctx, spr, south.x, south.y, east.x - west.x);
+      if (hasSpotlight(type)) {
+        drawTowerSearchlight(ctx, south.x, south.y, east.x - west.x, Math.PI / 4, { lit: 0, broken: false });
+      }
       ctx.restore();
       // The ghost lays its gun toward the viewer.
       if (type === "ciws") this.drawCiwsGun(spr, south.x, south.y, east.x - west.x, 0.55, Math.PI / 4);

@@ -2,9 +2,11 @@
 """Watch Tower building art: a fortified concrete lookout, one static image.
 
 A square plinth banked with earth, a battered board-formed shaft, and a
-slitted concrete cab on top under an overhanging roof slab, with a range
-mast and a lamp. Sandbags ring the foot and the rear door. The tower is the
-same from every side, so it ships a single cardinal image, like the Bunker.
+slitted concrete cab on top under an overhanging roof slab. Sandbags ring
+the foot and the rear door. The tower is the same from every side, so it
+ships a single cardinal image, like the Bunker. The roof's centre is left
+bare: the client draws the searchlight there (render/searchlight.ts) so it
+can turn with the beam.
 
 Look: the Bunker's inked structure style (render_bunker.py materials on the
 render_airfield.py mesh, raster, ink, silhouette, key light, and cast
@@ -47,8 +49,7 @@ CAB_Z1 = 57.0
 SLIT_Z0 = 50.2
 SLIT_Z1 = 53.2
 ROOF_R = 17.0
-ROOF_TOP = 59.4
-MAST_TOP = 71.0
+ROOF_TOP = 59.4  # render/searchlight.ts stands its lamp here
 
 
 def square(r: float, cx: float = CX, cy: float = CY) -> list[tuple[float, float]]:
@@ -94,11 +95,6 @@ def tower_mesh(ground: bool = True) -> ra.Mesh:
     ):
         m.new_part()
         m.box((x0, y0, ROOF_TOP), (x1, y1, ROOF_TOP + 1.6), "sandbag", part=False)
-    # Range mast and a lamp on a bracket.
-    m.cyl((CX + 6.0, CY + 6.0, ROOF_TOP), (CX + 6.0, CY + 6.0, MAST_TOP), 0.45, 0.35, "steel", n=8)
-    m.box((CX + 3.5, CY + 5.8, MAST_TOP - 3.0), (CX + 8.5, CY + 6.2, MAST_TOP - 2.5), "steel", part=False)
-    m.box((CX - 7.0, CY + 5.0, ROOF_TOP), (CX - 5.4, CY + 6.6, ROOF_TOP + 2.6), "steel")
-    m.cyl((CX - 6.2, CY + 5.8, ROOF_TOP + 3.4), (CX - 4.2, CY + 7.8, ROOF_TOP + 3.4), 1.3, 1.1, "metal", n=10)
     # Iron rungs up the east face.
     for k in range(12):
         z = PLINTH_TOP + 2.0 + k * 3.3
