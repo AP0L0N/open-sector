@@ -1987,12 +1987,13 @@ export function gatlingHeatOf(type: EntityType): GatlingHeat | null {
  * CIWS_LAY. It widens the cone on every target and the height scatter on a
  * plane. A cheap gun (the Walker, the Cyborg) and a secondary mount (the
  * Apocalypse roof) are laid worse than the dedicated pad. The pad and the
- * roof then lay CIWS_LAY times tighter than these numbers.
+ * roof then lay CIWS_LAY times tighter than these numbers. The Walker and the
+ * Cyborg are laid 30% tighter than they first were.
  */
 export const GATLING_SPRAY: Partial<Record<EntityType, number>> = {
   ciws: 1,
-  walker: 1.6,
-  cyborg: 1.8,
+  walker: 1.6 / 1.3,
+  cyborg: 1.8 / 1.3,
   apocalypse: 1.5,
   battleship: 1.5,
 };
