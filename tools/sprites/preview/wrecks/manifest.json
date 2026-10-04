@@ -1,0 +1,136 @@
+[
+  {
+    "type": "warden",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/warden.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.92,
+    "clipped_dirs": []
+  },
+  {
+    "type": "apocalypse",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/apocalypse.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.92,
+    "clipped_dirs": [
+      2,
+      7,
+      13,
+      14
+    ]
+  },
+  {
+    "type": "ss3",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/ss3.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.92,
+    "clipped_dirs": []
+  },
+  {
+    "type": "jagdtiger",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/jagdtiger.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.92,
+    "clipped_dirs": []
+  },
+  {
+    "type": "supply",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/supply.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.92,
+    "clipped_dirs": []
+  },
+  {
+    "type": "nebelwerfer",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/nebelwerfer.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.92,
+    "clipped_dirs": []
+  },
+  {
+    "type": "hauler",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/hauler.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.92,
+    "clipped_dirs": []
+  },
+  {
+    "type": "hauler-cart",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/hauler-cart.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.92,
+    "clipped_dirs": []
+  },
+  {
+    "type": "walker",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/walker.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.9,
+    "clipped_dirs": []
+  },
+  {
+    "type": "titan",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/titan.png",
+    "cell": 192,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.84,
+    "clipped_dirs": []
+  },
+  {
+    "type": "mammoth",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/mammoth.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.92,
+    "clipped_dirs": [
+      5,
+      13
+    ]
+  },
+  {
+    "type": "stuka",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/stuka.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.8,
+    "clipped_dirs": []
+  },
+  {
+    "type": "fw190",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/fw190.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.8,
+    "clipped_dirs": []
+  },
+  {
+    "type": "bv222",
+    "out": "gridlock/packages/client/src/assets/units/wrecks/bv222.png",
+    "cell": 128,
+    "rows": 16,
+    "frames": 1,
+    "contactY": 0.8,
+    "clipped_dirs": []
+  }
+]

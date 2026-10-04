@@ -27,6 +27,8 @@ export const SELL_REFUND = 0.5;
 export const WRECK_SCRAP_MUL = 0.2;
 /** Seconds of the fixing pose to cut a wreck into scrap. */
 export const WRECK_SCRAP_SECONDS = 5;
+/** Share of a ground burst's soft damage a burnt-out hulk inside it takes. */
+export const WRECK_BLAST_MUL = 0.5;
 /** Marks a scrap tile. Scrap is never used up: a Smelter standing on it draws from it for the whole match. */
 export const SCRAP_TILE_YIELD = 800;
 /** Scrap a Smelter on a scrap field earns its owner each second at full power. Low power slows it like production. */
@@ -3056,7 +3058,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     armorSide: 80,
     armorRear: 80,
     leavesWreck: true,
-    wreckHp: 70,
+    wreckHp: 35,
     blurb: "Heavily armored bulldozer. Thick plate on every face. Shells knock the scrap cart off the hitch. Out of the roster for now: Smelters stand on the scrap fields and pour on their own.",
   },
   warden: {
@@ -3091,7 +3093,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     defaultShell: "ap",
     mgAmmo: TANK_MG.ammo,
     leavesWreck: true,
-    wreckHp: 70,
+    wreckHp: 35,
     hasScout: true,
     blurb: "Heavy tank. Independent turret, thick front plate. Slow hull, long-range rack.",
   },
@@ -3130,7 +3132,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     roofCiws: true,
     mgAmmo: APOCALYPSE_CIWS_BELT,
     leavesWreck: true,
-    wreckHp: 110,
+    wreckHp: 55,
     blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts some of them, then planes, infantry, and sometimes a Walker or a truck. A secondary mount, it sprays wider than a pad CIWS and overheats after a little over a second on the trigger. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
   },
   /** Spec: gridlock/packages/client/src/assets/units/ss3/stug-iii-ausf-g-late-saukopf.md */
@@ -3167,7 +3169,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shells: STUG_SHELLS,
     mgAmmo: TANK_MG.ammo,
     leavesWreck: true,
-    wreckHp: 50,
+    wreckHp: 25,
     hasScout: true,
     blurb: "Casemate assault gun. No turret — hull-steer to aim. Strong front, thin sides.",
   },
@@ -3205,7 +3207,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     defaultShell: "ap",
     mgAmmo: TANK_MG.ammo,
     leavesWreck: true,
-    wreckHp: 100,
+    wreckHp: 50,
     hasScout: true,
     blurb: "Heavy tank destroyer. No turret: the 128mm sits in a fixed casemate and swings only a little either side of the nose, so the slow hull must turn to aim. The thickest front plate on the field, heavy sides, a thin rear. Its armor-piercing shell goes through any front plate and usually kills a Tiger in one hit, from the longest reach of any tank gun. A long reload between shots, and no HEAT or smoke on the rack.",
   },
@@ -3241,7 +3243,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     gunArcDeg: WALKER_GUN_ARC,
     belt: WALKER_BELT,
     leavesWreck: true,
-    wreckHp: 36,
+    wreckHp: 18,
     blurb: "Each arm is a gatling at the MG42's 1,200 rounds a minute, the same bullet. A round sometimes bites a Walker or a truck; tank plate turns it. The torso turns on the hips, so he fires while he walks. The backpack is a 1,200-round rack and does not reload by itself. The gatlings fire with tracers and overheat fast: under three seconds on one arm, about one on both, then they fall silent to cool. One arm spends it slowly. Both arms spend it twice as fast and can split across two targets. The guns do not bring a building down. At a fifth of his health he charges the nearest enemy he can see and detonates, unless Self destroy is off in Config. That remainder swells to five times the hit points, still a fifth of his bar, and he runs faster with a short trail of dark smoke. The blast nicks a tank and hits everything else harder, and he leaves no wreck.",
   },
   cyborg: {
@@ -3300,7 +3302,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ammo: { ap: 16 },
     defaultShell: "ap",
     leavesWreck: true,
-    wreckHp: 90,
+    wreckHp: 45,
     special: "deploy",
     wades: true,
     wadeSpeed: TITAN_WADE_SPEED,
@@ -3340,7 +3342,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: TANK_MG.caliber,
     spreadDeg: 6,
     leavesWreck: true,
-    wreckHp: 120,
+    wreckHp: 60,
     wades: true,
     wadeSpeed: MAMMOTH_WADE_SPEED,
     garrisonCap: MAMMOTH_GARRISON_CAP,
@@ -3382,7 +3384,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: 0,
     spreadDeg: 0,
     leavesWreck: true,
-    wreckHp: 36,
+    wreckHp: 18,
     rockets: true,
     rocketAmmo: NEBELWERFER_ROCKET_AMMO,
     rocketRack: NEBELWERFER_ROCKET,
@@ -3446,7 +3448,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: 0,
     spreadDeg: 0,
     leavesWreck: true,
-    wreckHp: 28,
+    wreckHp: 14,
     blurb: "Light truck. Tops up tank racks, coaxial belts, and the Walker's backpack, and slowly scrounges its cargo back on its own — an Armory refills it fast. Right-click a mine, yours or an ally's, and it spends a few seconds disabling it; the mine comes up as scrap and does not go off under the truck while it works. Two seats. The factory driver stays at the wheel. A bullet in the front plate can kill the driver and leave the truck for anyone. A replacement driver can get out. The passenger fires from the bed: rifle, handgun, machine gun, scoped rifle, anti-tank rifle, rocket launcher, flamethrower, or a Jump Jet's assault rifle. A mortar and a cyborg gatling stay slung. Hit-point bars for the soldiers aboard sit beside the truck. Soldiers inside are a little harder to wound, and more so from the side or rear.",
   },
   /** Ju 87 B dive bomber. Lives on an Airfield pad. */
@@ -3474,7 +3476,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: STUKA_MG.caliber,
     spreadDeg: STUKA_MG.spreadDeg,
     aircraft: true,
-    wreckHp: 46,
+    wreckHp: 23,
     blurb: "Dive bomber. One SC 250 per sortie, two wing MGs for soft targets. Flies over everything; only rifles, machine guns, the Walker, and the Titan's rockets can reach it in the air. Lands at its Airfield to refuel and rearm. On guard it comes back to the same area once the bomb, the belts, and the tank are full. It has no tracks to lose. A hit that wrecks the engine brings it down at once: it falls trailing smoke and crashes as a wreck.",
   },
   /** Fw 190 fighter. Lives on an Airfield pad. */
@@ -3502,7 +3504,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     caliber: FW190_CANNON.caliber,
     spreadDeg: FW190_CANNON.spreadDeg,
     aircraft: true,
-    wreckHp: 40,
+    wreckHp: 20,
     blurb: `Fighter. Two 30 mm cannon, one under each wing, and no bomb. ${FW190_BARRAGES} barrages a sortie: on each pass it lines up on the target and lays two straight lines of rounds through it, one from each wing, then comes round for the next. Fired from above, the rounds come down through a tank's thin roof, so even the heaviest hull bleeds. It chases enemy planes out of the sky the same way. Flies faster and turns tighter than the Stuka. Lands at its Airfield to refuel and rearm. On guard it comes back to the same area once all ${FW190_BARRAGES} barrages and the tank are full. It has no tracks to lose. A hit that wrecks the engine brings it down at once: it falls trailing smoke and crashes as a wreck.`,
   },
   /** BV 222 transport flying boat. Lives on an Airfield pad. */
@@ -3527,7 +3529,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     aircraft: true,
-    wreckHp: 80,
+    wreckHp: 40,
     blurb: `Six-engined transport flying boat. No guns. Its bay takes one load, chosen on the pad: a canister of ${CLUSTER_MINES} mines that scatter over the ground and wait for anyone, friend or foe (the enemy never sees them), a supply crate on a parachute that refills ammo and patches up whoever stands at it, or up to ${BV222_TROOPS} ground units. Infantry board on the hardstand from any load; that selects paratroops, and the bay stays on paratroops while anyone is aboard. They jump over the point and hang under canopies — where rifles, machine guns, and anti-aircraft guns can reach them — until they touch down. Hold Ctrl and click, or Force attack, to drop whatever is loaded. Slow and big. It has no tracks to lose. Shot down in the air, or with its engine wrecked there, everyone still aboard bails out under canopies and then it falls trailing smoke and crashes as a wreck. On the pad the same hit puts them on the grass and the plane is gone. Lands at its Airfield to refuel and reload.`,
   },
   droneop: {
@@ -4149,7 +4151,7 @@ export function wreckScrapOf(type: EntityType): number {
 
 export function wreckHpOf(type: EntityType): number {
   const d = catalog(type);
-  return d.wreckHp ?? Math.max(1, Math.round(d.hp * 0.35));
+  return d.wreckHp ?? Math.max(1, Math.round(d.hp * 0.18));
 }
 
 export function ammoOf(ammo: Partial<Record<ShellType, number>> | undefined, shell: ShellType): number {

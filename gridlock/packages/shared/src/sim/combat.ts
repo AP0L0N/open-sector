@@ -181,6 +181,7 @@ import {
   rocketArmorDamage,
   rocketScatterRadius,
 } from "./mortar.js";
+import { blastWrecks } from "./wreck.js";
 import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
 import { isSupplyBullet, noteSupplyHit, stowedInTransport, supplyRiderFights, syncSupplyRiders } from "./supply.js";
@@ -1782,6 +1783,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     }
     if (e.type === "artillery") blastOnGun(state, e, res.damage);
   }
+  if (!inAir) blastWrecks(state, p.x, p.y, radius, p.damage);
   pushImpact(state, p, "miss", p.x, p.y);
 }
 

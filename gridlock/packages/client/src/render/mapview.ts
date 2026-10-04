@@ -169,9 +169,11 @@ import {
   snapHitToUnitSprite,
   spriteFor,
   spriteReady,
+  wreckSpriteFor,
   GUNNER_DIE_SPRITE,
   GUNNER_FIRE_SPRITE,
   HAULER_CART_SPRITE,
+  HAULER_CART_WRECK_SPRITE,
   MEDIC_CROUCH_SPRITE,
   MEDIC_CRAWL_SPRITE,
   MEDIC_DIE_SPRITE,
@@ -4411,8 +4413,9 @@ export class MapView {
     const s = this.toScreen(pose.x, pose.y);
     const dir = facingToIso(pose.facing, this.ts());
     ctx.save();
-    if (e.wreck) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
-    drawUnitSprite(ctx, HAULER_CART_SPRITE, s.x, s.y, dir.x, dir.y, {
+    const wreck = e.wreck && spriteReady(HAULER_CART_WRECK_SPRITE);
+    if (e.wreck && !wreck) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
+    drawUnitSprite(ctx, wreck ? HAULER_CART_WRECK_SPRITE : HAULER_CART_SPRITE, s.x, s.y, dir.x, dir.y, {
       moving: false,
       id: e.id,
       now: 0,
@@ -5313,6 +5316,9 @@ export class MapView {
       }
     }
     const corpse = isInfantryType(e.type) && !!e.wreck;
+    // A hulk has its own burnt-out sheet on the same cell and contact; without one it greys the live art.
+    const hulk = e.wreck && !corpse ? wreckSpriteFor(e.type) : undefined;
+    const sheet = hulk && spriteReady(hulk) ? hulk : def;
     let frameIndex: number | undefined;
     if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
     else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE || def === ROCKETER_FIRE_SPRITE || def === PYRO_FIRE_SPRITE || def === JUMPJET_FIRE_SPRITE) {
@@ -5329,9 +5335,9 @@ export class MapView {
       ctx.rotate(roll);
       ctx.translate(-s.x, -s.y);
     }
-    if (e.wreck && !corpse) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
+    if (e.wreck && !corpse && sheet === def) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
     const stepping = unitStepping({ type: e.type, state: e.state, swimming: e.swimming, prev: this.prevById.get(e.id), curr: e });
-    const drawn = drawUnitSprite(ctx, def, s.x, s.y, dir.x, dir.y, {
+    const drawn = drawUnitSprite(ctx, sheet, s.x, s.y, dir.x, dir.y, {
       moving: !e.wreck && !immobilized(e) && stepping,
       id: e.id,
       now: performance.now() * (this.curr.gameSpeed || 1),

@@ -184,6 +184,9 @@ Match `UnitSpriteDef.frameSize` in `gridlock/packages/client/src/render/sprites.
 | Heavy vehicle | 192 | 1 | ~0.90 | `rig-move.png` |
 | Aircraft | 128 | 1 | 0.80 | `stuka/hull/0001.png` … `0016.png` (256 source, composed to 128 at runtime like the Tiger; the wingspan sets the scale, padding 2). The map lifts the sprite by altitude and draws a separate ground shadow |
 | Cameo | 72 (tank 128) | 1 | — | `trooper-cameo.png`, `gunner-cameo.png` |
+| Wreck | the live unit's cell | 1 | the live unit's | `wrecks/warden.png`, `wrecks/stuka.png` |
+
+**Wrecks** are their own 16-row sheets in `assets/units/wrecks/<type>.png`, one per hull that leaves a wreck (and every plane, which crashes as one), plus `hauler-cart.png`. They are derived from the shipped live layers by `python3 tools/sprites/render_wrecks.py` with the same fit as the runtime, so the hulk sits on the live contact line at the live draw size. Turret, gun, and launcher are baked in where the kill left them: knocked round on the ring, the barrel snapped. Re-run the script after replacing a unit's live art; check `tools/sprites/preview/wrecks/<type>.png` (live left, wreck right). A type without a wreck sheet falls back to the greyed live sprite.
 
 Sheet size = `(frames × cell) × (16 × cell)`. Walk is 768×1536. Prone draw size is `round(28 * INFANTRY_VISUAL_SCALE)`; standing draw size is `UNIT_SPRITE_DRAW_SIZE`. Do not change those scales for a new infantry sheet.
 
