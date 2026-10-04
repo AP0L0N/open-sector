@@ -83,9 +83,11 @@ import {
   SPECIAL_HOTKEY,
   STOP_HOTKEY,
 } from "../render/mapview.js";
-import { buzzDeny } from "./audio.js";
+import riflemanYesSirUrl from "../assets/sfx/rifleman-yes-sir.wav";
+import { buzzDeny, playSample, preloadSample } from "./audio.js";
 import { el } from "./dom.js";
 import { garrisonRoster, type GarrisonSeat } from "./garrison-roster.js";
+import { selectVoice } from "./select-voice.js";
 import {
   SIDEBAR_GROUPS,
   groupEntries,
@@ -217,7 +219,15 @@ export function mountBattlefield(
   view.onCommand = (msg) => ctx.net.send(msg);
   view.onPlaceMode = () => paintBattleHud(ctx);
   view.onAttackMoveMode = () => paintQuickActions(ctx, view);
+  preloadSample(riflemanYesSirUrl);
+  let lastSelected = new Set<number>();
   view.onSelect = (ids) => {
+    // A rifleman joining the selection answers once; the same clip never stacks.
+    const m = ctx.match;
+    if (m && selectVoice(m.entities, lastSelected, ids, m.youPlayerId) === "rifleman") {
+      playSample(riflemanYesSirUrl, { gain: 1, pan: 0, lowpassHz: 20000 }, { volume: 0.8, maxVoices: 1, jitter: 0.03 });
+    }
+    lastSelected = new Set(ids);
     ctx.inspect = ids[0] ?? null;
     paintInspect(ctx, view);
     paintConfig(ctx, view);
