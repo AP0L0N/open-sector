@@ -127,7 +127,8 @@ export {
   fieldSiteClear,
   fieldTurn,
   gateOpen,
+  gateSiteAt,
   sandbagCoverBonus,
   wallAxes,
-  wallFlankedBothEnds,
 } from "./field.js";
+export type { GateSite } from "./field.js";

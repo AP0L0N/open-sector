@@ -72,6 +72,7 @@ import {
   previewPlace,
   previewYardField,
   fieldPath,
+  gateSiteAt,
   specialOf,
   specialReady,
   tileOnMask,
@@ -479,6 +480,7 @@ const EXTRUDE: Record<EntityType, number> = {
   sandbags: 12,
   wall: 18,
   greatwall: 34,
+  gate: 18,
   teeth: 16,
   trench: 6,
   walker: 30,
@@ -1877,6 +1879,10 @@ export class MapView {
           this.commitConstruct(mx, my);
           return;
         }
+        if (!this.fieldPlace && this.readyYardField() === "gate") {
+          this.commitGate(mx, my);
+          return;
+        }
         if (this.fieldPlace || this.readyYardField()) {
           const w = this.screenToWorld(mx, my);
           this.fieldDrag = { x: w.x, y: w.y };
@@ -1975,7 +1981,8 @@ export class MapView {
   private onWheel = (e: WheelEvent): void => {
     e.preventDefault();
     if (this.box) return;
-    if (this.fieldPlace || this.readyYardField()) {
+    // A gate takes the walls' facing, so the wheel still zooms while one is armed.
+    if (this.fieldPlace || (this.readyYardField() && this.readyYardField() !== "gate")) {
       this.rotateField(e.deltaY, e.deltaMode);
       return;
     }
@@ -2526,6 +2533,16 @@ export class MapView {
     this.yardArm = null;
     this.placeMode = false;
     this.onPlaceMode();
+  }
+
+  /** Queue the armed gate over the pair of own wall sections nearest the pointer. Off a pair, nothing happens. */
+  private commitGate(mx: number, my: number): void {
+    const w = this.screenToWorld(mx, my);
+    const site = gateSiteAt(this.curr.entities, this.curr.youPlayerId, w.x, w.y);
+    if (!site) return;
+    this.command({ type: "cmd.field", ids: [], structure: "gate", x: site.x, y: site.y, facing: site.facing });
+    // The site is given: the tool is put down, like a line after Confirm.
+    this.cancelFieldPlacing();
   }
 
   /** The selected engineers raise the armed building with its top-left tile under the cursor. */
@@ -3305,7 +3322,8 @@ export class MapView {
     if (this.fieldPlace && this.mouseX >= 0) this.drawFieldGhost(this.fieldPlace, false);
     else if (this.mouseX >= 0) {
       const yard = this.readyYardField();
-      if (yard) this.drawFieldGhost(yard, true);
+      if (yard === "gate") this.drawGateGhost();
+      else if (yard) this.drawFieldGhost(yard, true);
     }
 
     if (this.box) {
@@ -3413,7 +3431,7 @@ export class MapView {
       }
     }
     // Gate lamps: a small pool off each post, on both sides of the boom.
-    const gateSpan = fieldSpan("wall");
+    const gateSpan = fieldSpan("gate");
     if (gateSpan) {
       const postAlong = gateSpan.length / 2 - 2.5;
       const off = gateSpan.thick / 2 + TILE_SUBDIV * 0.8 * ts;
@@ -7326,12 +7344,39 @@ export class MapView {
     ctx.restore();
   }
 
+  /** The armed gate snaps over the two own wall sections nearest the pointer; off a pair it says what it wants. */
+  private drawGateGhost(): void {
+    const w = this.screenToWorld(this.mouseX, this.mouseY);
+    const site = gateSiteAt(this.curr.entities, this.curr.youPlayerId, w.x, w.y);
+    const cost = catalog("gate").cost;
+    const afford = this.curr.you.scrap >= cost;
+    if (site) {
+      this.drawConcrete("gate", site.x, site.y, site.facing, { alpha: 0.8, seed: 7, bad: !afford, gate: { open: 0, locked: false } });
+    }
+    const s = this.toScreen(w.x, w.y);
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.font = "11px 'Share Tech Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "#140e0a";
+    ctx.fillStyle = site && afford ? "#e8b84a" : "#ff5a4a";
+    const label = site ? `Gate ${cost}` : "Point at two of your wall sections side by side";
+    ctx.strokeText(label, s.x + 14, s.y - 14);
+    ctx.fillText(label, s.x + 14, s.y - 14);
+    ctx.restore();
+  }
+
   /** The line sited from the Defences tab, drawn until the yard finishes it. */
   private drawYardBuild(): void {
     const q = this.curr.you.lineQueue;
     if (!q?.sites || q.sites.length === 0 || !isYardField(q.type)) return;
     for (const s of q.sites) {
-      if (isConcreteLine(q.type)) {
+      if (q.type === "gate") {
+        // Over the walls it replaces: the gate as it will stand, boom down.
+        this.drawConcrete("gate", s.x, s.y, s.facing, { alpha: 0.55, seed: 3, gate: { open: 0, locked: false } });
+      } else if (isConcreteLine(q.type)) {
         this.drawConcrete(q.type, s.x, s.y, s.facing, { alpha: 0.55, seed: 3 }, q.sites);
       } else {
         this.drawSandbagWall(s.x, s.y, s.facing, { alpha: 0.55, seed: 3 }, q.sites);

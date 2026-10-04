@@ -69,8 +69,6 @@ import {
   type MatchSnapshot,
   type Stance,
   type TrainType,
-  GATE_COST,
-  wallFlankedBothEnds,
 } from "@gridlock/shared";
 import type { Ctx } from "../ctx.js";
 import {
@@ -1004,6 +1002,7 @@ const TYPE_ORDER: EntityType[] = [
   "sandbags",
   "wall",
   "greatwall",
+  "gate",
   "teeth",
   "trench",
   "rig",
@@ -1602,22 +1601,8 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   const lamps = buildings.filter((e) => hasSpotlight(e.type) && e.spotFacing != null);
   if (units.length === 0 && buildings.length === 0 && houses.length === 0) return out;
 
-  // Walls: a flanked section becomes a gate; a gate locks and unlocks.
-  const walls = buildings.filter((e) => e.type === "wall");
-  const plainWalls = walls.filter((e) => !e.gate);
-  const gates = walls.filter((e) => e.gate);
-  if (plainWalls.length) {
-    const flanked = plainWalls.some((w) => wallFlankedBothEnds(ctx.match!.entities, w));
-    out.push({
-      slot: "gate-convert",
-      act: "gate-convert",
-      label: "Convert to gate",
-      title: flanked
-        ? `Turn the section into a lifting gate for ${GATE_COST} scrap: two posts with lamps and a boom that lifts for your side and stays down for everyone else.`
-        : "A gate needs wall on both ends of the section.",
-      disabled: !flanked,
-    });
-  }
+  // A gate locks and unlocks. It is built from the Defences tab.
+  const gates = buildings.filter((e) => e.gate);
   if (gates.length) {
     const locked = gates.every((g) => g.gate?.locked);
     out.push({
@@ -2172,11 +2157,6 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   }
   if (act === "rotate") {
     if (aimers.length || lamps.length) view.setRotateMode(!view.rotateMode);
-    return;
-  }
-  if (act === "gate-convert") {
-    const ids = buildings.filter((e) => e.type === "wall" && !e.gate).map((e) => e.id);
-    if (ids.length) ctx.net.send({ type: "cmd.gate", ids, action: "convert" });
     return;
   }
   if (act === "gate-lock") {

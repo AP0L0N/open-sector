@@ -40,7 +40,7 @@ import { garrisonCanShoot, garrisonShotReaches, relayGarrisonForce } from "./com
 import { approachTile, canGarrison, exitGarrison, garrisonOwner, livingGarrison, setGarrisonHide } from "./garrison.js";
 import { setScoutOut } from "./scout.js";
 import { cancelStructure, pauseStructure, placeBaseField, placeBuilding, sellBuilding, startBuild } from "./build.js";
-import { convertToGates, orderFieldBuild, orderRepair, setGatesLocked } from "./field.js";
+import { orderFieldBuild, orderRepair, setGatesLocked } from "./field.js";
 import { orderConstruct } from "./construct.js";
 import { deployId } from "./deploy.js";
 import { cancelTrain, pauseTrain, setRally, startTrain } from "./train.js";
@@ -171,9 +171,8 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       return wrap(err, "busy");
     }
     case "cmd.gate": {
-      if (!Array.isArray(msg.ids) || msg.ids.length === 0) return fail("bad_payload", "Select a wall section.");
+      if (!Array.isArray(msg.ids) || msg.ids.length === 0) return fail("bad_payload", "Select a gate.");
       const ids = msg.ids.filter((id): id is number => typeof id === "number");
-      if (msg.action === "convert") return wrap(convertToGates(state, playerId, ids), "busy");
       if (msg.action === "lock" || msg.action === "unlock") {
         return wrap(setGatesLocked(state, playerId, ids, msg.action === "lock"), "busy");
       }

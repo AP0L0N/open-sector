@@ -23,7 +23,16 @@ import {
 } from "./geo.js";
 import { ejectUnits } from "./deploy.js";
 import { spillGarrison } from "./garrison.js";
-import { fieldPiecesFor, fieldSiteClear, fieldTiles, raiseWallCrest, restampForts, type FieldPiece } from "./field.js";
+import {
+  fieldPiecesFor,
+  fieldSiteClear,
+  fieldTiles,
+  gateSiteAt,
+  raiseGate,
+  raiseWallCrest,
+  restampForts,
+  type FieldPiece,
+} from "./field.js";
 import { repathIfBlocked } from "./orders.js";
 import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
@@ -154,6 +163,12 @@ function finishYardField(state: MatchState, p: SimPlayer, job: StructureJob): vo
   const pow = powerOf(state, p.playerId);
   advancePaidJob(p, job, cost, productionSpeed(pow.provided, pow.used));
   if (!jobFullyPaid(job, cost)) return;
+  if (job.type === "gate") {
+    // The walls it was sited on fell or changed hands while it built: the scrap comes back.
+    for (const site of sites) if (!raiseGate(state, p.playerId, site)) p.scrap += def.cost;
+    dropJob(p, job);
+    return;
+  }
   let placed = 0;
   const raised: Entity[] = [];
   const type = job.type;
@@ -236,7 +251,7 @@ function pieceNearOwnBuildings(state: MatchState, ownerId: string, structure: Ya
 }
 
 /**
- * Site a sandbag or wall line from the Defences tab. The sections appear when the
+ * Site a sandbag or wall line, or a gate over two wall sections, from the Defences tab. The sections appear when the
  * yard finishes them. Build time and cost are the catalog numbers times the length.
  * The line stops at the first piece that is blocked or out of range.
  */
@@ -256,6 +271,22 @@ export function placeBaseField(
   if (p.line) return "Construction already underway.";
   if (!hasCore(state, playerId)) return "Deploy the Rig.";
   if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(facing)) return "Cannot place there.";
+  const def = catalog(structure);
+  if (structure === "gate") {
+    // A gate goes over walls you already stand, wherever they are, so it has no yard range.
+    const site = gateSiteAt(state.entities.values(), playerId, x, y);
+    if (!site) return "A gate goes on two of your Wall sections side by side.";
+    p.line = {
+      type: structure,
+      progressTicks: 0,
+      totalTicks: secondsToTicks(def.buildSeconds),
+      ready: false,
+      paused: false,
+      paid: 0,
+      sites: [{ x: site.x, y: site.y, facing: site.facing }],
+    };
+    return null;
+  }
   const pieces = fieldPiecesFor(structure, x, y, facing, x2, y2, path);
   if (pieces.length === 0) return "Cannot place there.";
   const accepted: FieldPiece[] = [];
@@ -272,7 +303,6 @@ export function placeBaseField(
     accepted.push(piece);
   }
   if (accepted.length === 0) return stop ?? "Cannot place there.";
-  const def = catalog(structure);
   p.line = {
     type: structure,
     progressTicks: 0,
