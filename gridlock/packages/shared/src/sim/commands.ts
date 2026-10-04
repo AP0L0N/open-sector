@@ -57,7 +57,7 @@ import { buildPatrolRoute, cleanPatrolPoints } from "./patrol.js";
 import { orderBoardPlane, setPayload, unloadPlane } from "./airdrop.js";
 import { droneOf, guardDrone, launchDrone, orderDrone, recallDrone, setDroneMode, stopDrone } from "./drone.js";
 import { landJet, takeOff } from "./jet.js";
-import { diving, setDive } from "./naval.js";
+import { setDive } from "./naval.js";
 import { aimSpotlightPatrol, hasSpotlight, spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, MatchState, QueueableCommand, Vec } from "./types.js";
 
@@ -934,8 +934,6 @@ function cmdAttack(state: MatchState, playerId: string, ids: number[], targetId:
     if (!fires(e.type)) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
     if (e.id === t.id) continue;
-    // A submarine below has to come up to put a torpedo into a hull on the surface.
-    if (diving(e) && !diving(t)) setDive(e, false);
     e.order = { kind: "attack", targetId: t.id };
     e.attackTarget = t.id;
     e.guardFacing = null;

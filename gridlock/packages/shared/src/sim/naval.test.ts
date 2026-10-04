@@ -10,6 +10,7 @@ import {
   SUB_REVEAL_SECONDS,
   SUB_TORPEDOES,
   TICK_DT,
+  TORPEDO_RANGE_TILES,
   TORPEDO_SPEED,
   TRAIN_TYPES,
   catalog,
@@ -462,9 +463,50 @@ describe("Submarine runs submerged", () => {
     assert.equal(boat.hp, hp, "below, it lets the hull pass");
     assert.equal(sub.surfacedTick, undefined, "and never fired");
     applyCommand(state, "A", { type: "cmd.attack", ids: [sub.id], targetId: boat.id });
-    assert.equal(diving(sub), false, "the attack order brought it up");
+    step(state, TICK_DT);
+    assert.equal(diving(sub), false, "in range, the attack order brought it up");
     for (let i = 0; i < 200 && boat.hp === hp; i++) step(state, TICK_DT);
     assert.ok(boat.hp < hp);
+  });
+
+  it("force-attacked from afar, it closes in below and surfaces once in range", () => {
+    const { state, lx0, ly0 } = harbour();
+    lake(state, lx0, ly0, lx0 + 80, ly0 + 30);
+    const sub = spawn(state, "submarine", "A", lx0 + 4, ly0 + 10);
+    sub.facing = 0;
+    const boat = spawn(state, "gunboat", "B", lx0 + 74, ly0 + 10);
+    boat.holdPosition = true;
+    boat.cooldown = 1e6;
+    const hp = boat.hp;
+    const range = TORPEDO_RANGE_TILES * state.tileSize;
+    assert.ok(boat.x - sub.x > range, "the hull starts out of torpedo range");
+    applyCommand(state, "A", { type: "cmd.dive", ids: [sub.id], down: true });
+    assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [sub.id], x: boat.x, y: boat.y, targetId: boat.id }).ok, true);
+    assert.equal(diving(sub), true, "out of range, it stays down");
+    const x0 = sub.x;
+    let surfacedAt: number | null = null;
+    for (let i = 0; i < secondsToTicks(60) && surfacedAt == null; i++) {
+      step(state, TICK_DT);
+      assert.equal(sub.order?.kind, "forceattack", "the order holds while it closes in");
+      if (!diving(sub)) surfacedAt = Math.hypot(boat.x - sub.x, boat.y - sub.y);
+    }
+    assert.ok(sub.x > x0, "it ran toward the hull");
+    assert.ok(surfacedAt != null && surfacedAt <= range, "it came up only inside torpedo range");
+    for (let i = 0; i < 400 && boat.hp === hp; i++) step(state, TICK_DT);
+    assert.ok(boat.hp < hp, "and struck the hull");
+  });
+
+  it("does not pick a surface hull on its own while below", () => {
+    const { state, lx0, ly0 } = harbour();
+    const sub = spawn(state, "submarine", "A", lx0 + 4, ly0 + 10);
+    sub.facing = 0;
+    const boat = spawn(state, "gunboat", "B", lx0 + 14, ly0 + 10);
+    boat.holdPosition = true;
+    boat.cooldown = 1e6;
+    applyCommand(state, "A", { type: "cmd.dive", ids: [sub.id], down: true });
+    ticks(state, 120);
+    assert.equal(diving(sub), true, "no order, it stays down");
+    assert.equal(sub.surfacedTick, undefined);
   });
 
   it("torpedoes another submarine that is down, staying under", () => {
