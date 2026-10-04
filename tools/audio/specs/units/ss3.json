@@ -7,9 +7,7 @@
     "sample": "StuG here, low and mean. No turret, no problem, we just point the whole tank at it. Keep them in front of us and we'll knock them flat. Just don't let anybody sneak round the side, alright?",
     "stability": 0.4,
     "similarity": 0.8,
-    "style": 0.5,
-    "voice_id": "iP95p4xoKVk53GoZ742B",
-    "stock_voice": "Chris"
+    "style": 0.5
   },
   "lines": {
     "select": [

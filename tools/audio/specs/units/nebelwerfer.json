@@ -7,9 +7,7 @@
     "sample": "Oh, oh, oh, look at that! Twelve tubes, one second, boom boom boom! Did you hear them scream? Beautiful! Give me another target, please, I want to see the sky light up again!",
     "stability": 0.3,
     "similarity": 0.8,
-    "style": 0.6,
-    "voice_id": "FGY2WhTYpPnrIDTdsKH5",
-    "stock_voice": "Laura"
+    "style": 0.6
   },
   "lines": {
     "select": [

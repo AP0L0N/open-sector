@@ -7,9 +7,7 @@
     "sample": "Sniper. I see you, and you do not see me. Wind is low, the light is good. One breath in, half out, and then it is over. Tell me who, and I will tell you when.",
     "stability": 0.6,
     "similarity": 0.8,
-    "style": 0.3,
-    "voice_id": "pFZP5JQG7iQjIQuC4Bku",
-    "stock_voice": "Lily"
+    "style": 0.3
   },
   "lines": {
     "select": [

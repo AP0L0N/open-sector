@@ -4,6 +4,7 @@
  * one before. Pure: no audio, no DOM. `game-audio.ts` plays what this returns.
  */
 import { isBuildingType, isInfantryType, type EntityView, type MatchSnapshot } from "@gridlock/shared";
+import { movers, type Mover } from "./ambient.js";
 
 export type ImpactSound =
   | "explosion_small"
@@ -37,7 +38,7 @@ export type Weapon = "small" | "shell" | "rocket";
 
 export type SoundEvent =
   /** A unit fired. Positioned at the shooter. */
-  | { kind: "fire"; type: string; weapon: Weapon; x: number; y: number }
+  | { kind: "fire"; id: number; type: string; weapon: Weapon; x: number; y: number }
   /** A battlefield sound at a point. */
   | { kind: "impact"; sound: ImpactSound; x: number; y: number }
   /** An infantryman fell (voice) or a machine was destroyed (sfx). */
@@ -117,6 +118,8 @@ export class SoundTracker {
   private underAttackAt = -Infinity;
   private unitAttackAt = -Infinity;
   private ended = false;
+  /** Units that moved since the last snapshot, for the ambient layer. */
+  moving: Mover[] = [];
 
   step(match: MatchSnapshot, now: number): SoundEvent[] {
     const out: SoundEvent[] = [];
@@ -154,7 +157,7 @@ export class SoundTracker {
       if (now - (track.get(shooterId) ?? -Infinity) < gap) return;
       track.set(shooterId, now);
       if (kind === "shell") this.lastShellFire.set(shooterId, now);
-      out.push({ kind: "fire", type: s.type, weapon: kind, x: s.x, y: s.y });
+      out.push({ kind: "fire", id: s.id, type: s.type, weapon: kind, x: s.x, y: s.y });
     };
 
     // Shots that made a snapshot in flight.
@@ -255,6 +258,7 @@ export class SoundTracker {
       out.push({ kind: "announce", event: won ? "victory" : "defeat" });
     }
 
+    this.moving = movers(this.prevById, match.entities);
     this.prevById = byId;
     if (this.seenShots.size > 2000) this.seenShots = new Set([...this.seenShots].slice(-500));
     if (this.seenImpacts.size > 4000) this.seenImpacts = new Set([...this.seenImpacts].slice(-1000));

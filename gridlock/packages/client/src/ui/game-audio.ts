@@ -7,7 +7,8 @@
  * The announcer has its own queue, one line at a time, each line with a cooldown.
  */
 import type { SpatialMix } from "./spatial-sfx.js";
-import { playClip, playSample, preloadSample, type Clip } from "./audio.js";
+import { playClip, playLoop, playSample, preloadSample, type Clip, type Loop } from "./audio.js";
+import { AMBIENT_KINDS, ambientMix, type AmbientKind, type Mover } from "../render/ambient.js";
 import { buildBank, LineDeck } from "./sound-bank.js";
 import type { SoundEvent, Weapon } from "../render/sound-events.js";
 import { leadType, orderCue, type UnitCue } from "./order-cues.js";
@@ -40,9 +41,15 @@ export function hasUnitAudio(type: string): boolean {
 
 let unitClip: Clip | null = null;
 let unitClipAt = 0;
+/** The units the current answer speaks for: if one of them opens fire, the shot wins and the line stops. */
+let speakers: ReadonlySet<number> = new Set();
 
 /** One answer from a unit type. `special` falls back to `move` for units without one. Returns whether a line played. */
-export function unitVoice(type: string, cue: UnitCue | "ready", opts: { withSfx?: boolean } = {}): boolean {
+export function unitVoice(
+  type: string,
+  cue: UnitCue | "ready",
+  opts: { withSfx?: boolean; ids?: readonly number[] } = {},
+): boolean {
   const folder = unitFolder(type);
   let url = pick(folder, `voice-${cue}`);
   if (!url && cue === "special") url = pick(folder, "voice-move");
@@ -50,6 +57,7 @@ export function unitVoice(type: string, cue: UnitCue | "ready", opts: { withSfx?
   unitClip?.stop();
   unitClip = playClip(url, UNIT_VOICE_VOLUME, { maxLateS: 0.8 });
   unitClipAt = performance.now();
+  speakers = new Set(opts.ids ?? []);
   // The engine, boots, or rotor under a move order: quiet, so the answer stays on top.
   if (opts.withSfx && (cue === "move" || cue === "special")) {
     const sfx = pick(folder, `sfx-${cue}`) ?? (cue === "special" ? pick(folder, "sfx-move") : null);
@@ -165,24 +173,40 @@ function fireUrl(type: string, weapon: Weapon): string | null {
   return pick(folder, "sfx-fire");
 }
 
+/** A heavy report close to the middle of the view pushes a unit's answer under it for a moment. */
+const DUCK_FROM_GAIN = 0.35;
+function duckVoices(gain: number): void {
+  if (gain >= DUCK_FROM_GAIN) unitClip?.duck(0.35, 900);
+}
+
 /** Plays what the snapshot tracker found. `mixAt` places a world point in the stereo field (null: too far). */
 export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number, y: number) => SpatialMix | null): void {
   for (const ev of events) {
     switch (ev.kind) {
       case "fire": {
+        // The unit that was talking opens fire: its shot cuts the line.
+        if (unitClip && speakers.has(ev.id)) {
+          unitClip.stop();
+          unitClip = null;
+          speakers = new Set();
+        }
         warmUnit(ev.type);
         const url = fireUrl(ev.type, ev.weapon);
         const mix = url ? mixAt(ev.x, ev.y) : null;
         if (url && mix) {
           const heavy = HEAVY_FIRE.has(ev.type);
           playSample(url, mix, { volume: heavy ? HEAVY_FIRE_VOLUME : FIRE_VOLUME, maxVoices: 3, jitter: heavy ? 0.03 : undefined });
+          if (heavy) duckVoices(mix.gain);
         }
         break;
       }
       case "impact": {
         const url = pick("sfx/battle", `sfx-${ev.sound}`);
         const mix = url ? mixAt(ev.x, ev.y) : null;
-        if (url && mix) playSample(url, mix, { volume: IMPACT_VOLUME[ev.sound] ?? 0.5, maxVoices: 3 });
+        if (url && mix) {
+          playSample(url, mix, { volume: IMPACT_VOLUME[ev.sound] ?? 0.5, maxVoices: 3 });
+          if ((IMPACT_VOLUME[ev.sound] ?? 0) >= 0.85) duckVoices(mix.gain);
+        }
         break;
       }
       case "death": {
@@ -210,7 +234,7 @@ export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number
 export function selectionVoice(ids: readonly number[], match: MatchSnapshot | null): void {
   if (!match || ids.length === 0) return;
   const type = leadType(ids, match.entities, match.youPlayerId);
-  if (type) unitVoice(type, "select");
+  if (type) unitVoice(type, "select", { ids });
 }
 
 /** Every order that goes out: the unit answers, or the announcer confirms a base order. */
@@ -218,7 +242,37 @@ export function acknowledgeOrder(msg: ClientMessage, match: MatchSnapshot | null
   if (!match) return;
   const cue = orderCue(msg, match.entities, match.youPlayerId);
   if (!cue) return;
-  if (cue.kind === "unit") unitVoice(cue.type, cue.cue, { withSfx: true });
+  if (cue.kind === "unit") unitVoice(cue.type, cue.cue, { withSfx: true, ids: "ids" in msg && Array.isArray(msg.ids) ? msg.ids : [] });
   else if (cue.kind === "announce") announce(cue.event);
   else uiSound(cue.sound);
+}
+
+// --- ambient layer ---------------------------------------------------------
+
+const beds = new Map<AmbientKind, Loop>();
+let bedWatchdog: number | null = null;
+/** No snapshot for this long (match left, tab asleep): the beds fade out and stop. */
+const BED_IDLE_MS = 1500;
+
+function stopBeds(): void {
+  for (const bed of beds.values()) bed.stop();
+  beds.clear();
+}
+
+/** Engines, rotors, tracks, and footsteps for what is moving near the view. Quietest layer of all. */
+export function updateAmbient(moving: readonly Mover[], mixAt: (x: number, y: number) => SpatialMix | null): void {
+  const mix = ambientMix(moving, mixAt);
+  for (const kind of AMBIENT_KINDS) {
+    const { level, pan } = mix[kind];
+    let bed = beds.get(kind);
+    if (!bed && level > 0) {
+      const url = bank.get("sfx/ambient", `sfx-${kind}`)[0];
+      if (!url) continue;
+      bed = playLoop(url);
+      beds.set(kind, bed);
+    }
+    bed?.set(level, pan, level > 0 ? 0.6 : 1.5);
+  }
+  if (bedWatchdog !== null) window.clearTimeout(bedWatchdog);
+  bedWatchdog = window.setTimeout(stopBeds, BED_IDLE_MS);
 }

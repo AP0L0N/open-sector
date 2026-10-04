@@ -7,9 +7,7 @@
     "sample": "Jump Jet here, and gravity is just a suggestion. Strap in, sir, I'll be over that wall before they even look up. Fuel's full, nerves are empty, let's fly!",
     "stability": 0.35,
     "similarity": 0.8,
-    "style": 0.55,
-    "voice_id": "TX3LPaxmHKxFdv7VOQHJ",
-    "stock_voice": "Liam"
+    "style": 0.55
   },
   "lines": {
     "select": [

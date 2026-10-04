@@ -20,6 +20,8 @@ export type MusicMode = "menu" | "battle" | "off";
 const FADE_MS = 2500;
 /** Music sits under the battle: the slider's top is not full scale. */
 const MUSIC_SCALE = 0.6;
+/** The menu theme is a low bed under the menus, quieter still. */
+const MENU_SCALE = 0.35;
 
 let mode: MusicMode = "off";
 let current: HTMLAudioElement | null = null;
@@ -29,7 +31,7 @@ let fadeTimer: number | null = null;
 let lastUrl: string | null = null;
 
 function level(): number {
-  return getMusic() * MUSIC_SCALE;
+  return getMusic() * (mode === "menu" ? MENU_SCALE : MUSIC_SCALE);
 }
 
 function fade(el: HTMLAudioElement, to: number, ms: number, done?: () => void): void {

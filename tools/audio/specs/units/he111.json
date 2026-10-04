@@ -7,9 +7,7 @@
     "sample": "Crew, checklist. Altitude fifty meters, speed two hundred and sixty, bearing one-four-zero. Torpedo armed. Navigator, confirm the target. Good. We do this once, and we do it properly.",
     "stability": 0.6,
     "similarity": 0.8,
-    "style": 0.3,
-    "voice_id": "Xb7hH8MSUJpSbSDYk0k2",
-    "stock_voice": "Alice"
+    "style": 0.3
   },
   "lines": {
     "select": [

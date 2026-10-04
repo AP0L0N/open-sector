@@ -7,9 +7,7 @@
     "sample": "Drone op here, batteries charged and props spinning. Give me a target and I'll give you eyes from the sky. Honestly, this thing flies better than half our pilots.",
     "stability": 0.4,
     "similarity": 0.8,
-    "style": 0.5,
-    "voice_id": "bIHbv24MWmeRgasZH58o",
-    "stock_voice": "Will"
+    "style": 0.5
   },
   "lines": {
     "select": [

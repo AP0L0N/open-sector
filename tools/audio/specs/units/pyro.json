@@ -7,9 +7,7 @@
     "sample": "Pyro! Ooh, is it my turn? Everything's so cold and green out there. Let's fix that, hm? Just a little warmth, a little crackle. Hee hee. Everybody loves a campfire, don't they?",
     "stability": 0.3,
     "similarity": 0.8,
-    "style": 0.65,
-    "voice_id": "N2lVS1w4EtoT3dr4eOWO",
-    "stock_voice": "Callum"
+    "style": 0.65
   },
   "lines": {
     "select": [

@@ -2,14 +2,12 @@
   "key": "battleship",
   "out": "units/battleship",
   "voice": {
-    "name": "Open Sector - Battleship",
+    "name": "Open Sector - Battle Ship",
     "description": "Older male fleet admiral in his late fifties, booming, grand and theatrical voice with rich deep resonance, a pompous upper-class naval accent, speaks as if every order were a line from a stage play, proud, bombastic and utterly confident in his enormous guns.",
     "sample": "Gentlemen, behold! Fifty thousand tons of steel and splendour, and every one of them pointed at the enemy. Bring the forward turrets about. Let history record that we were magnificent!",
     "stability": 0.35,
     "similarity": 0.8,
-    "style": 0.6,
-    "voice_id": "onwK4e9ZLuTAKqWW03F9",
-    "stock_voice": "Daniel"
+    "style": 0.6
   },
   "lines": {
     "select": [

@@ -7,9 +7,7 @@
     "sample": "Afternoon, everybody! Big bird's coming in low and slow, all six engines purring like kittens. Got your crate, got your paratroopers, even got a thermos of coffee. Where would you like it dropped?",
     "stability": 0.5,
     "similarity": 0.8,
-    "style": 0.45,
-    "voice_id": "CwhRBWXzGAHq8TQ4Fs17",
-    "stock_voice": "Roger"
+    "style": 0.45
   },
   "lines": {
     "select": [

@@ -302,7 +302,7 @@ import {
   type MuzzleSmokePuff,
 } from "./muzzle-smoke.js";
 import { spatialMix } from "../ui/spatial-sfx.js";
-import { playSoundEvents, warmBattle } from "../ui/game-audio.js";
+import { playSoundEvents, updateAmbient, warmBattle } from "../ui/game-audio.js";
 import { SoundTracker } from "./sound-events.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
 import { roofCiwsMuzzle } from "./roof-ciws.js";
@@ -1292,11 +1292,13 @@ export class MapView {
     if (this.placeMode !== placing) this.onPlaceMode();
     this.syncAtlases();
     this.revealFrom(match);
-    playSoundEvents(this.sounds.step(match, now), (x, y) => {
+    const mixAt = (x: number, y: number) => {
       const p = this.toScreen(x, y);
       const { w, h } = this.viewSize();
       return spatialMix(p.x, p.y, w, h);
-    });
+    };
+    playSoundEvents(this.sounds.step(match, now), mixAt);
+    updateAmbient(this.sounds.moving, mixAt);
   }
 
   private syncAtlases(): void {

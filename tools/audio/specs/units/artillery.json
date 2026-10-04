@@ -7,9 +7,7 @@
     "sample": "Right, lad, drop the trail and dig in those spades! Shell in, breech closed, range four thousand. Stand clear and cover your ears. Fire! Now that is how you knock on a door.",
     "stability": 0.5,
     "similarity": 0.8,
-    "style": 0.4,
-    "voice_id": "JBFqnCBsd6RMkjVDRZzb",
-    "stock_voice": "George"
+    "style": 0.4
   },
   "lines": {
     "select": [

@@ -183,6 +183,8 @@ export function playSample(
 
 export interface Clip {
   stop(): void;
+  /** Pull this clip down to `factor` of its level for `ms`, then let it come back. */
+  duck(factor: number, ms: number): void;
 }
 
 /**
@@ -197,17 +199,27 @@ export function playClip(
 ): Clip {
   let stopped = false;
   let src: AudioBufferSourceNode | null = null;
+  let gain: GainNode | null = null;
+  const vol = getSfx() * volume;
   const clip: Clip = {
     stop() {
       stopped = true;
       try {
-        src?.stop();
+        // A short fade, so a cut line does not click.
+        if (gain && ctx) gain.gain.setTargetAtTime(0, ctx.currentTime, 0.015);
+        src?.stop(ctx ? ctx.currentTime + 0.06 : 0);
       } catch {
         /* already ended */
       }
     },
+    duck(factor, ms) {
+      if (!gain || !ctx || stopped) return;
+      const now = ctx.currentTime;
+      gain.gain.cancelScheduledValues(now);
+      gain.gain.setTargetAtTime(vol * factor, now, 0.03);
+      gain.gain.setTargetAtTime(vol, now + ms / 1000, 0.25);
+    },
   };
-  const vol = getSfx() * volume;
   if (vol <= 0.001 || document.hidden) {
     opts.onEnded?.();
     return clip;
@@ -228,9 +240,9 @@ export function playClip(
     try {
       src = ctx.createBufferSource();
       src.buffer = buf;
-      const g = ctx.createGain();
-      g.gain.value = vol;
-      src.connect(g).connect(sampleBus(ctx));
+      gain = ctx.createGain();
+      gain.gain.value = vol;
+      src.connect(gain).connect(sampleBus(ctx));
       src.onended = () => opts.onEnded?.();
       src.start();
     } catch {
@@ -238,4 +250,73 @@ export function playClip(
     }
   });
   return clip;
+}
+
+export interface Loop {
+  /** Glide to `level` (0..1, before the SFX volume) and `pan` over about `glideS` seconds. */
+  set(level: number, pan: number, glideS?: number): void;
+  stop(): void;
+}
+
+/** MP3 pads both ends with a few ms of silence; looping over the inner part keeps the seam closed. */
+const LOOP_EDGE_S = 0.06;
+
+/**
+ * A looping bed (the ambient layer): starts silent, follows `set`, and sits under every
+ * other sound because its levels are small. One instance per kind of noise.
+ */
+export function playLoop(url: string): Loop {
+  let src: AudioBufferSourceNode | null = null;
+  let gain: GainNode | null = null;
+  let pan: StereoPannerNode | null = null;
+  let stopped = false;
+  let want = { level: 0, pan: 0, glide: 0.5 };
+  const apply = () => {
+    if (!ctx || !gain || !pan) return;
+    const now = ctx.currentTime;
+    const level = document.hidden ? 0 : want.level * getSfx();
+    gain.gain.setTargetAtTime(level, now, want.glide / 3);
+    pan.pan.setTargetAtTime(want.pan, now, want.glide / 3);
+  };
+  try {
+    ctx ??= new AudioContext();
+  } catch {
+    return { set() {}, stop() {} };
+  }
+  void sample(url).then((buf) => {
+    if (stopped || !buf || !ctx) return;
+    try {
+      src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.loop = true;
+      if (buf.duration > LOOP_EDGE_S * 4) {
+        src.loopStart = LOOP_EDGE_S;
+        src.loopEnd = buf.duration - LOOP_EDGE_S;
+      }
+      gain = ctx.createGain();
+      gain.gain.value = 0;
+      pan = ctx.createStereoPanner();
+      src.connect(pan).connect(gain).connect(sampleBus(ctx));
+      // Start somewhere inside, so two beds of the same kind never phase together.
+      src.start(0, LOOP_EDGE_S + Math.random() * Math.max(0, buf.duration - 4 * LOOP_EDGE_S));
+      apply();
+    } catch {
+      /* no audio */
+    }
+  });
+  return {
+    set(level, p, glideS = 0.5) {
+      want = { level, pan: p, glide: glideS };
+      apply();
+    },
+    stop() {
+      stopped = true;
+      try {
+        if (gain && ctx) gain.gain.setTargetAtTime(0, ctx.currentTime, 0.2);
+        src?.stop(ctx ? ctx.currentTime + 1 : 0);
+      } catch {
+        /* already stopped */
+      }
+    },
+  };
 }

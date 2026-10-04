@@ -7,9 +7,7 @@
     "sample": "Hah! Did you see that turn? Nobody catches this boat, nobody! Throttle wide open, cannon hot, spray in my face, best job in the whole navy. Point me at something and watch me dance around it.",
     "stability": 0.35,
     "similarity": 0.8,
-    "style": 0.55,
-    "voice_id": "EXAVITQu4vr4xnSDxMaL",
-    "stock_voice": "Sarah"
+    "style": 0.55
   },
   "lines": {
     "select": [

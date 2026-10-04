@@ -1,0 +1,41 @@
+{
+  "key": "ambient",
+  "out": "sfx/ambient",
+  "sfx": {
+    "air": {
+      "prompt": "Steady distant drone of World War 2 propeller aircraft engines flying overhead, a continuous deep hum, seamless loop, no music, no voice",
+      "duration": 10.0,
+      "variants": 1,
+      "influence": 0.6,
+      "loop": true
+    },
+    "naval": {
+      "prompt": "Steady chugging of boat engines with water rushing and splashing along a hull at sea, continuous, seamless loop, no music, no voice",
+      "duration": 10.0,
+      "variants": 1,
+      "influence": 0.6,
+      "loop": true
+    },
+    "armor": {
+      "prompt": "Steady rumble of World War 2 tanks rolling across dirt: heavy diesel engines and tracks clanking and squeaking, continuous, medium distance, seamless loop, no music, no voice",
+      "duration": 10.0,
+      "variants": 1,
+      "influence": 0.6,
+      "loop": true
+    },
+    "wheeled": {
+      "prompt": "Steady hum of World War 2 military trucks driving on a dirt road, engines droning and gravel crunching under the tyres, continuous, medium distance, seamless loop, no music, no voice",
+      "duration": 10.0,
+      "variants": 1,
+      "influence": 0.6,
+      "loop": true
+    },
+    "mech": {
+      "prompt": "Steady rhythmic heavy footsteps of a giant walking war machine, deep metal thuds with hydraulic hiss and servo whine, continuous, medium distance, seamless loop, no music, no voice",
+      "duration": 10.0,
+      "variants": 1,
+      "influence": 0.6,
+      "loop": true
+    }
+  }
+}

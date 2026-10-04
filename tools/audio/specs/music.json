@@ -2,9 +2,21 @@
   "key": "music",
   "out": "music",
   "music": {
-    "menu": {"prompt": "Instrumental atmospheric and ominous lobby theme for a war strategy game. Slow tempo, dark industrial synth pads, low droning bass, distant echoing war drums, metallic clanks and radio-static textures, building tension gradually with rising synth swells and heavier percussion toward the end, cold militaristic mood, no vocals.", "length_ms": 160000},
-    "battle-1": {"prompt": "Instrumental driving industrial-rock and electronic military march at 130 bpm. Heavy distorted palm-muted guitar riffs, pounding tight rock drums with marching snare rolls, pulsing synth bass, aggressive electronic stabs, high-energy combat intensity with breakdowns and big returning riff sections, no vocals.", "length_ms": 170000},
-    "battle-2": {"prompt": "Instrumental dark orchestral-electronic hybrid for tactical combat. Urgent staccato string ostinatos, booming taiko drums and crisp military snare, low brass hits, pulsing electronic bass and ticking synth sequences, tense and focused, steady rising urgency, no vocals.", "length_ms": 165000},
-    "battle-3": {"prompt": "Instrumental gritty electro-industrial track, relentless and mechanical. Fast driving synth bass arpeggios, clanging metallic percussion and hammer-on-steel hits, distorted drum machine, gritty saw leads, factory machinery textures, unstoppable momentum, no vocals.", "length_ms": 175000}
+    "menu": {
+      "prompt": "Deep, subtle, low-intensity instrumental background music for a war strategy game's main menu. Very slow, calm and brooding: warm dark synth pads, a soft sub-bass drone, slowly evolving textures, a faint distant cello and occasional muffled low timpani far away. Sparse, quiet and steady, no melody hooks, no drum beat, no build-up, no vocals.",
+      "length_ms": 180000
+    },
+    "battle-1": {
+      "prompt": "Instrumental driving industrial-rock and electronic military march at 130 bpm. Heavy distorted palm-muted guitar riffs, pounding tight rock drums with marching snare rolls, pulsing synth bass, aggressive electronic stabs, high-energy combat intensity with breakdowns and big returning riff sections, no vocals.",
+      "length_ms": 170000
+    },
+    "battle-2": {
+      "prompt": "Instrumental dark orchestral-electronic hybrid for tactical combat. Urgent staccato string ostinatos, booming taiko drums and crisp military snare, low brass hits, pulsing electronic bass and ticking synth sequences, tense and focused, steady rising urgency, no vocals.",
+      "length_ms": 165000
+    },
+    "battle-3": {
+      "prompt": "Instrumental gritty electro-industrial track, relentless and mechanical. Fast driving synth bass arpeggios, clanging metallic percussion and hammer-on-steel hits, distorted drum machine, gritty saw leads, factory machinery textures, unstoppable momentum, no vocals.",
+      "length_ms": 175000
+    }
   }
 }

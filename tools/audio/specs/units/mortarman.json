@@ -7,9 +7,7 @@
     "sample": "Mortarman here. Right then, give me the grid and a moment to plant the tube. Angle, charge, and a wee bit of patience. Up she goes, and down she comes, exactly where she ought to. Simple sums, really.",
     "stability": 0.5,
     "similarity": 0.8,
-    "style": 0.4,
-    "voice_id": "SAz9YHcvj6GT2YYXdXww",
-    "stock_voice": "River"
+    "style": 0.4
   },
   "lines": {
     "select": [

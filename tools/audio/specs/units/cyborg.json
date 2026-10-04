@@ -7,9 +7,7 @@
     "sample": "Cyborg unit online. Ammunition drum at full capacity. Target acquired. Flesh is weak, steel is patient. I will walk through your fire and I will not stop.",
     "stability": 0.6,
     "similarity": 0.8,
-    "style": 0.35,
-    "voice_id": "axwQa6O8mRLk9BJK606F",
-    "stock_voice": "Cyborg"
+    "style": 0.35
   },
   "lines": {
     "select": [
