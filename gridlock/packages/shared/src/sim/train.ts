@@ -1,5 +1,5 @@
 import { AIRFIELD_PADS, catalog, isAircraftType, secondsToTicks, TECH_REQUIRES, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
-import { airfieldPadWorld, freePad, padsSpoken, PARK_HEADING } from "./air.js";
+import { airfieldPadWorld, freePad, padsSpoken, parkHeading } from "./air.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear, packRadius, packSlots } from "./formation.js";
 import { setPath } from "./path.js";
@@ -192,7 +192,7 @@ export function spawnUnit(
     const pad = from.type === "airfield" ? freePad(state, from) : null;
     if (pad == null) return null;
     const at = airfieldPadWorld(from, pad, state.tileSize);
-    const plane = makeEntity(state, type, playerId, at.x, at.y, { facing: PARK_HEADING });
+    const plane = makeEntity(state, type, playerId, at.x, at.y, { facing: parkHeading(from, state.tileSize) });
     plane.air = newAirState(from.id, pad, type);
     return plane;
   }

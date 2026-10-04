@@ -1,3 +1,4 @@
+import { buildingRect, rectLocal, rectWorld, type BuildingRect } from "../building-rect.js";
 import {
   AIR_BELT_REARM_PER_SEC,
   AIR_CLIMB_PER_SEC,
@@ -107,9 +108,9 @@ import { blastWrecks, toWreck } from "./wreck.js";
 import { nightReachMul } from "./night.js";
 import type { AirState, Entity, MatchState, Order, Projectile } from "./types.js";
 
-/** Runway heading, world radians. The strip runs east–west. */
+/** Runway heading of an unturned Airfield, world radians: the strip runs east–west. A turned one adds its facing. */
 export const RUNWAY_HEADING = 0;
-/** Parked planes sit nose south in their revetment, tail to the strip. */
+/** Parked planes on an unturned Airfield sit nose south in their revetment, tail to the strip (see parkHeading). */
 export const PARK_HEADING = Math.PI / 2;
 
 /** In the air (or rolling off the pad). A parked plane is a ground target. */
@@ -141,42 +142,100 @@ export function airTargetSpreadMul(target: Entity, shooter?: Entity): number {
   return shooter && radarLaidOf(shooter.type) ? CIWS_AIR_SPREAD : AIR_TARGET_SPREAD;
 }
 
-type FieldRect = Pick<Entity, "tileX" | "tileY" | "tileW" | "tileH">;
+type FieldRect = Pick<Entity, "type" | "facing" | "tileX" | "tileY" | "tileW" | "tileH">;
+
+/**
+ * The Airfield's own frame: u runs along the strip (east at facing 0), v across it
+ * (south at facing 0), both from the middle of the field. The layout fractions in the
+ * catalog are shares of the unturned footprint, so every point is placed in u, v and
+ * turned into the world with the field.
+ */
+export function airfieldFrame(field: FieldRect, tileSize: number): BuildingRect {
+  const box = {
+    type: field.type,
+    facing: field.facing,
+    x: (field.tileX + field.tileW / 2) * tileSize,
+    y: (field.tileY + field.tileH / 2) * tileSize,
+  };
+  return buildingRect(box, tileSize);
+}
+
+/** Frame point from shares of the unturned footprint (0..1 along the strip, 0..1 from the back). */
+function frameAt(r: BuildingRect, along: number, across: number): { x: number; y: number } {
+  return rectWorld(r, (along - 0.5) * 2 * r.halfU, (across - 0.5) * 2 * r.halfV);
+}
 
 /** World pixel of a hardstand: a row beside the strip, on its near (south) side. */
 export function airfieldPadWorld(field: FieldRect, pad: number, tileSize: number): { x: number; y: number } {
   const i = Math.max(0, Math.min(AIRFIELD_PADS - 1, pad));
-  const w = field.tileW * tileSize;
-  const h = field.tileH * tileSize;
-  return { x: field.tileX * tileSize + w * AIRFIELD_PAD_X[i]!, y: field.tileY * tileSize + h * AIRFIELD_PAD_Y };
+  return frameAt(airfieldFrame(field, tileSize), AIRFIELD_PAD_X[i]!, AIRFIELD_PAD_Y);
 }
 
-/** Strip centreline `y`, its half-width, the touchdown marks `x0` (west) and `x1` (east), and the middle `cx`. */
-export function airfieldRunway(
-  field: FieldRect,
-  tileSize: number,
-): { y: number; half: number; x0: number; x1: number; cx: number } {
-  const w = field.tileW * tileSize;
-  const h = field.tileH * tileSize;
-  const left = field.tileX * tileSize;
+/**
+ * The strip in the field's frame: `heading` runs toward the east mark, `v` is the
+ * centreline across, `u0` / `u1` the west and east touchdown marks along, `half` its
+ * half-width. `frame` turns these into the world.
+ */
+export interface AirfieldRunway {
+  frame: BuildingRect;
+  heading: number;
+  v: number;
+  half: number;
+  u0: number;
+  u1: number;
+}
+
+export function airfieldRunway(field: FieldRect, tileSize: number): AirfieldRunway {
+  const frame = airfieldFrame(field, tileSize);
+  const w = frame.halfU * 2;
+  const h = frame.halfV * 2;
   return {
-    y: field.tileY * tileSize + h * AIRFIELD_RUNWAY_Y,
+    frame,
+    heading: Math.atan2(frame.uy, frame.ux) + RUNWAY_HEADING,
+    v: (AIRFIELD_RUNWAY_Y - 0.5) * h,
     half: h * AIRFIELD_RUNWAY_HALF,
-    x0: left + w * AIRFIELD_THRESHOLD,
-    x1: left + w * (1 - AIRFIELD_THRESHOLD),
-    cx: left + w / 2,
+    u0: (AIRFIELD_THRESHOLD - 0.5) * w,
+    u1: (0.5 - AIRFIELD_THRESHOLD) * w,
   };
+}
+
+/** A point on the strip: `along` from the field's middle, `off` across from the centreline. */
+export function runwayPoint(rw: AirfieldRunway, along: number, off = 0): { x: number; y: number } {
+  return rectWorld(rw.frame, along, rw.v + off);
+}
+
+/** A world point in strip terms: `along` from the field's middle, `lateral` off the centreline. */
+export function runwayLocal(rw: AirfieldRunway, x: number, y: number): { along: number; lateral: number } {
+  const l = rectLocal(rw.frame, x, y);
+  return { along: l.u, lateral: l.v - rw.v };
+}
+
+/** World heading of a strip-frame direction (`du` along, `dv` across). */
+function runwayHeadingOf(rw: AirfieldRunway, du: number, dv: number): number {
+  const f = rw.frame;
+  return Math.atan2(du * f.uy + dv * f.vy, du * f.ux + dv * f.vx);
+}
+
+/** Parked planes sit nose toward the near side of the field, tail to the strip. */
+export function parkHeading(field: FieldRect, tileSize: number): number {
+  return airfieldRunway(field, tileSize).heading - RUNWAY_HEADING + PARK_HEADING;
+}
+
+/** A hardstand's place along the strip, from the field's middle. */
+function padAlong(field: FieldRect, pad: number, tileSize: number): number {
+  const p = airfieldPadWorld(field, pad, tileSize);
+  return runwayLocal(airfieldRunway(field, tileSize), p.x, p.y).along;
 }
 
 /** Where a plane from this hardstand joins the strip. */
 function runwayEntry(field: FieldRect, pad: number, tileSize: number): { x: number; y: number } {
-  return { x: airfieldPadWorld(field, pad, tileSize).x, y: airfieldRunway(field, tileSize).y };
+  return runwayPoint(airfieldRunway(field, tileSize), padAlong(field, pad, tileSize));
 }
 
 /** Take off toward the longer run of strip: west pads roll east, east pads roll west. */
 function takeoffHeading(field: FieldRect, pad: number, tileSize: number): number {
-  const west = airfieldPadWorld(field, pad, tileSize).x <= airfieldRunway(field, tileSize).cx;
-  return west ? RUNWAY_HEADING : RUNWAY_HEADING + Math.PI;
+  const rw = airfieldRunway(field, tileSize);
+  return padAlong(field, pad, tileSize) <= 0 ? rw.heading : rw.heading + Math.PI;
 }
 
 export { newAirState };
@@ -334,11 +393,11 @@ function finalFix(state: MatchState, e: Entity, home: Entity): { x: number; y: n
   const ts = state.tileSize;
   const rw = airfieldRunway(home, ts);
   const len = AIR_FINAL_TILES * ts;
-  const x = airfieldPadWorld(home, e.air!.pad, ts).x <= rw.cx ? rw.x1 + len : rw.x0 - len;
+  const fix = runwayPoint(rw, padAlong(home, e.air!.pad, ts) <= 0 ? rw.u1 + len : rw.u0 - len);
   const m = turnRadius(state, e);
   const w = state.width * state.tileSize;
   const h = state.height * state.tileSize;
-  return { x: Math.max(m, Math.min(w - m, x)), y: Math.max(m, Math.min(h - m, rw.y)) };
+  return { x: Math.max(m, Math.min(w - m, fix.x)), y: Math.max(m, Math.min(h - m, fix.y)) };
 }
 
 /** Seconds to fly home and land from here. */
@@ -1419,16 +1478,17 @@ function tickLanding(state: MatchState, e: Entity, dt: number): void {
   const ts = state.tileSize;
   const pad = airfieldPadWorld(home, a.pad, ts);
   if (a.taxi) {
-    if (taxiTo(state, e, pad.x, pad.y, dt)) stopOnGround(e, PARK_HEADING);
+    if (taxiTo(state, e, pad.x, pad.y, dt)) stopOnGround(e, parkHeading(home, ts));
     return;
   }
   const rw = airfieldRunway(home, ts);
   const final = AIR_FINAL_TILES * ts;
+  const at = runwayLocal(rw, e.x, e.y);
   e.state = "move";
   if (a.touched) {
     // Roll out along the strip, braking to taxi speed at the turn-off.
-    const dir = Math.cos(e.facing) >= 0 ? 1 : -1;
-    const left = dir * (pad.x - e.x);
+    const dir = Math.cos(e.facing - rw.heading) >= 0 ? 1 : -1;
+    const left = dir * (runwayLocal(rw, pad.x, pad.y).along - at.along);
     const step = cruiseSpeed(state, e) * Math.max(a.speed, AIR_TAXI_SPEED) * dt;
     if (left <= step) {
       a.taxi = true;
@@ -1436,23 +1496,24 @@ function tickLanding(state: MatchState, e: Entity, dt: number): void {
     }
     a.alt = 0;
     a.speed = AIR_TAXI_SPEED + (AIR_ROLL_SPEED - AIR_TAXI_SPEED) * Math.min(1, left / (6 * ts));
-    headTo(e, Math.atan2(rw.y - e.y, dir * 3 * ts), dt);
+    headTo(e, runwayHeadingOf(rw, dir * 3 * ts, -at.lateral), dt);
     advance(state, e, dt);
     return;
   }
-  const dir = e.x < rw.cx ? 1 : -1;
-  const thr = dir > 0 ? rw.x0 : rw.x1;
-  const along = dir * (thr - e.x);
-  const lateral = e.y - rw.y;
+  const dir = at.along < 0 ? 1 : -1;
+  const thr = dir > 0 ? rw.u0 : rw.u1;
+  const along = dir * (thr - at.along);
+  const lateral = at.lateral;
   if (along > final * 1.8 || Math.abs(lateral) > final) {
     // Came in crossways. Go round.
     a.phase = "fly";
     return;
   }
   // Chase a point on the centreline ahead so the nose settles onto the strip.
-  headTo(e, Math.atan2(rw.y - e.y, dir * 6 * ts), dt);
+  headTo(e, runwayHeadingOf(rw, dir * 6 * ts, -lateral), dt);
   const u = Math.max(0, Math.min(1, along / final));
-  const lined = Math.abs(lateral) < final * 0.25 && Math.abs(angOff(dir > 0 ? 0 : Math.PI, e.facing)) < Math.PI / 6;
+  const lined =
+    Math.abs(lateral) < final * 0.25 && Math.abs(angOff(dir > 0 ? rw.heading : rw.heading + Math.PI, e.facing)) < Math.PI / 6;
   approachAlt(a, lined ? AIR_CRUISE_ALT * u : Math.max(4, a.alt), dt);
   a.speed = AIR_ROLL_SPEED + (1 - AIR_ROLL_SPEED) * u;
   if (a.alt <= 0.5 && along <= 2 * ts && Math.abs(lateral) <= rw.half) {

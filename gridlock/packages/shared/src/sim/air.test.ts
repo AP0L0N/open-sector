@@ -25,7 +25,7 @@ import {
   wreckHpOf,
 } from "../catalog.js";
 import { TILE_EMPTY } from "../maps.js";
-import { airfieldPadWorld, airfieldRunway, isAirborne, PARK_HEADING, stepBomb } from "./air.js";
+import { airfieldPadWorld, airfieldRunway, isAirborne, PARK_HEADING, parkHeading, runwayLocal, runwayPoint, stepBomb } from "./air.js";
 import { shellHoleRadius } from "./remains.js";
 import { mortarFalloff } from "./mortar.js";
 import { applyCommand } from "./commands.js";
@@ -34,6 +34,7 @@ import { buildingBounds, makeEntity, occupant, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { spawnUnit } from "./train.js";
+import { raiseBuilding } from "./build.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
 function twoPlayerMatch(): MatchState {
@@ -263,11 +264,11 @@ describe("stuka flight", () => {
     for (let i = 0; i < AIRFIELD_PADS; i++) {
       const p = airfieldPadWorld(field, i, ts);
       assert.ok(p.x > x0 && p.x < x0 + field.tileW * ts && p.y < y0 + field.tileH * ts, `pad ${i} inside`);
-      assert.ok(p.y - planeR > rw.y + rw.half, `pad ${i} is off the strip`);
+      assert.ok(runwayLocal(rw, p.x, p.y).lateral - planeR > rw.half, `pad ${i} is off the strip`);
       assert.ok(p.x - lastX > planeR * 3, `pad ${i} has room for wings`);
       lastX = p.x;
     }
-    assert.ok(rw.x1 - rw.x0 > field.tileH * ts * 1.5, "the strip is long");
+    assert.ok(rw.u1 - rw.u0 > field.tileH * ts * 1.5, "the strip is long");
   });
 
   it("takes off from the strip: taxis out of the revetment first, then rolls along the centreline", () => {
@@ -279,13 +280,13 @@ describe("stuka flight", () => {
     const rw = airfieldRunway(field, ts);
     assert.equal(plane.facing, PARK_HEADING);
     applyCommand(state, "A", { type: "cmd.move", ids: [plane.id], x: 150 * ts, y: 40 * ts });
-    let liftY: number | null = null;
+    let lift: number | null = null;
     const t = until(state, 120, () => {
-      if (liftY == null && isAirborne(plane)) liftY = plane.y;
+      if (lift == null && isAirborne(plane)) lift = runwayLocal(rw, plane.x, plane.y).lateral;
       return plane.air?.phase === "fly";
     });
     assert.ok(t >= 0, "plane should get airborne");
-    assert.ok(liftY != null && Math.abs(liftY - rw.y) <= rw.half, `lifted off at y ${liftY}, strip ${rw.y}`);
+    assert.ok(lift != null && Math.abs(lift) <= rw.half, `lifted off ${lift} off the centreline`);
   });
 
   it("lands on the strip, rolls out, and taxis nose-in onto its hardstand", () => {
@@ -300,18 +301,15 @@ describe("stuka flight", () => {
     until(state, 200, () => plane.air?.phase === "fly");
     ticks(state, 40);
     applyCommand(state, "A", { type: "cmd.land", ids: [plane.id] });
-    let touchY: number | null = null;
-    let touchX: number | null = null;
+    let touch: { along: number; lateral: number } | null = null;
     const t = until(state, 1500, () => {
-      if (touchY == null && plane.air?.touched) {
-        touchY = plane.y;
-        touchX = plane.x;
-      }
+      if (touch == null && plane.air?.touched) touch = runwayLocal(rw, plane.x, plane.y);
       return plane.air?.phase === "parked";
     });
     assert.ok(t >= 0, "plane should land and park");
-    assert.ok(touchY != null && Math.abs(touchY - rw.y) <= rw.half, `touched down at y ${touchY}`);
-    assert.ok(touchX != null && touchX >= rw.x0 - 3 * ts && touchX <= rw.x1 + 3 * ts, `touched down at x ${touchX}`);
+    const at = touch as { along: number; lateral: number } | null;
+    assert.ok(at != null && Math.abs(at.lateral) <= rw.half, `touched down ${at?.lateral} off the centreline`);
+    assert.ok(at != null && at.along >= rw.u0 - 3 * ts && at.along <= rw.u1 + 3 * ts, `touched down at ${at?.along} along`);
     assert.equal(plane.x, pad.x);
     assert.equal(plane.y, pad.y);
     assert.equal(plane.facing, PARK_HEADING);
@@ -326,18 +324,59 @@ describe("stuka flight", () => {
       const ts = state.tileSize;
       const rw = airfieldRunway(field, ts);
       const ang = (k * Math.PI) / 4;
-      plane.x = rw.cx + Math.cos(ang) * 70 * ts;
-      plane.y = rw.y + Math.sin(ang) * 70 * ts;
+      const mid = runwayPoint(rw, 0);
+      plane.x = mid.x + Math.cos(ang) * 70 * ts;
+      plane.y = mid.y + Math.sin(ang) * 70 * ts;
       plane.facing = ang + Math.PI / 2;
       Object.assign(plane.air!, { phase: "fly", alt: AIR_CRUISE_ALT, speed: 1, taxi: false, touched: false });
       plane.order = { kind: "land" };
-      let touchY: number | null = null;
+      let touch: number | null = null;
       const t = until(state, 1500, () => {
-        if (touchY == null && plane.air?.touched) touchY = plane.y;
+        if (touch == null && plane.air?.touched) touch = runwayLocal(rw, plane.x, plane.y).lateral;
         return plane.air?.phase === "parked";
       });
       assert.ok(t >= 0, `from ${k * 45}° the plane should park`);
-      assert.ok(touchY != null && Math.abs(touchY - rw.y) <= rw.half, `from ${k * 45}° touched at ${touchY}`);
+      assert.ok(touch != null && Math.abs(touch) <= rw.half, `from ${k * 45}° touched ${touch} off the centreline`);
+    }
+  });
+
+  it("a turned Airfield turns its strip and hardstands, and planes fly it the turned way", () => {
+    for (const turn of [Math.PI / 2, Math.PI / 4, (7 * Math.PI) / 6]) {
+      const state = twoPlayerMatch();
+      seedCore(state);
+      const ts = state.tileSize;
+      const field = raiseBuilding(state, "A", "airfield", 80, 70, turn);
+      const rw = airfieldRunway(field, ts);
+      assert.ok(Math.abs(Math.cos(rw.heading - turn) - 1) < 1e-9, "the strip runs along the facing");
+      for (let i = 0; i < AIRFIELD_PADS; i++) {
+        const p = airfieldPadWorld(field, i, ts);
+        assert.equal(occupant(state, Math.floor(p.x / ts), Math.floor(p.y / ts)), field.id, `pad ${i} is on the field`);
+      }
+      const plane = parkedPlane(state, field);
+      assert.ok(Math.abs(plane.facing - parkHeading(field, ts)) < 1e-9, "parks nose to the near side");
+      const pad = airfieldPadWorld(field, plane.air!.pad, ts);
+      applyCommand(state, "A", { type: "cmd.move", ids: [plane.id], x: 150 * ts, y: 150 * ts });
+      let lift: number | null = null;
+      assert.ok(
+        until(state, 200, () => {
+          if (lift == null && isAirborne(plane)) lift = runwayLocal(rw, plane.x, plane.y).lateral;
+          return plane.air?.phase === "fly";
+        }) >= 0,
+        `airborne off the ${Math.round((turn * 180) / Math.PI)}° strip`,
+      );
+      assert.ok(lift != null && Math.abs(lift) <= rw.half, `lifted off ${lift} off the turned centreline`);
+      ticks(state, 40);
+      applyCommand(state, "A", { type: "cmd.land", ids: [plane.id] });
+      let touch: number | null = null;
+      const t = until(state, 2000, () => {
+        if (touch == null && plane.air?.touched) touch = runwayLocal(rw, plane.x, plane.y).lateral;
+        return plane.air?.phase === "parked";
+      });
+      assert.ok(t >= 0, `lands on the ${Math.round((turn * 180) / Math.PI)}° strip`);
+      assert.ok(touch != null && Math.abs(touch) <= rw.half, `touched ${touch} off the turned centreline`);
+      assert.equal(plane.x, pad.x);
+      assert.equal(plane.y, pad.y);
+      assert.ok(Math.abs(plane.facing - parkHeading(field, ts)) < 1e-9);
     }
   });
 
