@@ -585,8 +585,11 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
 };
 
 export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "dock", "ciws", "ram", "bunker", "tower", "research", "radar"];
-/** Base buildings an engineer can raise in the field, away from the yard. The Smelter, so distant scrap can be claimed. */
-export const ENGINEER_BUILDINGS: readonly BuildingType[] = ["smelter"];
+/**
+ * Base buildings an engineer can raise in the field, away from the yard. The Smelter, so distant
+ * scrap can be claimed; the Marine Base, so water far from the base can still float a fleet.
+ */
+export const ENGINEER_BUILDINGS: readonly BuildingType[] = ["smelter", "dock"];
 export function isEngineerBuilding(type: string): type is BuildingType {
   return (ENGINEER_BUILDINGS as readonly string[]).includes(type);
 }
@@ -2703,8 +2706,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     buildSeconds: 20,
     hp: 1000,
     power: -30,
-    tileW: t(2),
-    tileH: t(2),
+    tileW: t(2.5),
+    tileH: t(2.5),
     radius: 0,
     moveTilesPerSec: 0,
     turnDegPerSec: 0,
@@ -2715,7 +2718,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     onWater: true,
-    blurb: "Floating pier and slipway. It can only be built on water: every tile under it must be open water. Trains the Attack Boat and the Submarine, which launch into the water beside it and never come ashore.",
+    blurb: "Floating pier and slipway. It can only be built on water: every tile under it must be open water. The yard places one in its build range; an engineer can raise one on any water he can swim to, which also pushes your build range out to it. Trains the Attack Boat and the Submarine, which launch into the water beside it and never come ashore.",
   },
   research: {
     type: "research",
