@@ -12,6 +12,7 @@ import {
   TILE_SCRAP,
   TILE_TREE,
   TILE_WATER,
+  YARD_HILL_CEIL,
   heightAt,
   maxHeightOf,
   tileAt,
@@ -69,10 +70,11 @@ describe("maps", () => {
     }
   });
 
-  it("raises Scrap Yard hills well above the plain", () => {
+  it("keeps Scrap Yard hills to half the full rise over the plain", () => {
     const yard = MAPS["yard-64"]!;
-    // The old yard peaks rose about ten levels over the plain. This asks for twice that.
-    assert.ok(maxHeightOf(yard) >= HEIGHT_BASE + 5 * TILE_SUBDIV, `peak ${maxHeightOf(yard)}`);
+    const peak = maxHeightOf(yard);
+    assert.ok(peak <= YARD_HILL_CEIL, `peak ${peak}`);
+    assert.ok(peak >= HEIGHT_BASE + 2 * TILE_SUBDIV, `peak ${peak} is too flat to hold`);
   });
 
   it("runs a peak down in many one-step tiles, not a 3-terrace stair", () => {

@@ -63,8 +63,12 @@ export function vertexTones(map: Pick<MapDef, "width" | "height" | "heights">): 
   return out;
 }
 
+/** Maps that keep one meadow. Their dry and damp fields read as stray patches on a small map. */
+const PLAIN_MEADOW_MAPS: ReadonlySet<string> = new Set(["yard-64"]);
+
 /** Broad drier / darker meadow fields, 64 tiles a side. Same pick as the 2D surface. */
-export function meadowField(tx: number, ty: number): 0 | 1 | 2 {
+export function meadowField(tx: number, ty: number, mapId?: string): 0 | 1 | 2 {
+  if (mapId !== undefined && PLAIN_MEADOW_MAPS.has(mapId)) return 0;
   const field = hash2(tx >> 6, ty >> 6, 5);
   if (field % 5 === 0) return 1;
   if (field % 8 === 0) return 2;
@@ -77,7 +81,7 @@ export function meadowField(tx: number, ty: number): 0 | 1 | 2 {
  * Scrap is the blurred yard cover, so the stained ground has a rounded rim.
  */
 export function materialBytes(
-  map: Pick<MapDef, "width" | "height" | "tiles">,
+  map: Pick<MapDef, "width" | "height" | "tiles"> & { id?: string },
   scrap: ReadonlySet<number>,
 ): { a: Uint8Array; b: Uint8Array } {
   const n = map.width * map.height;
@@ -105,7 +109,7 @@ export function materialBytes(
       continue;
     }
     if (kind === TILE_TREE) b[o] = 255;
-    const f = meadowField(i % map.width, (i / map.width) | 0);
+    const f = meadowField(i % map.width, (i / map.width) | 0, map.id);
     if (f === 1) a[o + 1] = 255;
     else if (f === 2) a[o + 2] = 255;
   }
