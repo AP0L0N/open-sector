@@ -34,11 +34,15 @@ import {
   SUB_DIVE_SECONDS,
   submergesOf,
   walkerGunsOf,
+  FORCE_FIELD_HP,
+  hasForceField,
+  TICK_DT,
 } from "../catalog.js";
 import { padsTaken } from "./air.js";
 import { artilleryCanLay, gunCrewOf } from "./artillery.js";
 import { crateViews, mineViews, payloadOf, planeRiders } from "./airdrop.js";
 import { cyborgShielded } from "./crits.js";
+import { laserProgress } from "./laser.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { allies, unitInWater } from "./geo.js";
 import { diving, hiddenSubmarine } from "./naval.js";
@@ -49,7 +53,7 @@ import { radarContacts, radarOnline } from "./radar.js";
 import { scrapCap } from "./smelter.js";
 import { canSeeWorld, encodeVisionRuns, entityOnMask, visionMask } from "./vision.js";
 import { spotFacingOf, spotlightManned } from "./night.js";
-import type { Entity, MatchState, Order, QueueableCommand, StructureJob } from "./types.js";
+import type { Entity, LaserBeam, MatchState, Order, QueueableCommand, StructureJob } from "./types.js";
 import type {
   CorpseView,
   EntityView,
@@ -314,6 +318,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       specialCooldown: e.specialCooldown > 0 ? e.specialCooldown : undefined,
       wreck: e.wreck || undefined,
       shielded: e.hp > 0 && cyborgShielded(e, state.tick) ? true : undefined,
+      field: e.hp > 0 && hasForceField(e.type) ? { hp: Math.round(e.field ?? 0), max: FORCE_FIELD_HP } : undefined,
+      laser: e.laser ? laserView(e.laser, state.tick) : undefined,
       crits: e.crits.length > 0 ? [...e.crits] : undefined,
       stance: isInfantryType(e.type) ? e.stance : undefined,
       stanceOrder: isInfantryType(e.type) && e.stanceOrder !== e.stance ? e.stanceOrder : undefined,
@@ -569,6 +575,18 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     vision: you ? visionRuns(vis) : undefined,
     radar: radar ? radarContacts(state, youPlayerId, vis) : undefined,
     winner: state.winner,
+  };
+}
+
+/** A Cyborg Commander's beam as every client that sees him draws it. */
+function laserView(beam: LaserBeam, tick: number): NonNullable<EntityView["laser"]> {
+  return {
+    a0: beam.a0,
+    a1: beam.a1,
+    u: beam.line ? 1 : laserProgress(beam, tick),
+    dur: Math.max(1, beam.endTick - beam.startTick) * TICK_DT,
+    lens: [...beam.lens],
+    line: beam.line ? true : undefined,
   };
 }
 

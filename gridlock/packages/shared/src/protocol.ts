@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 95;
+export const PROTOCOL_VERSION = 96;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -128,6 +128,14 @@ export interface EntityView {
   wreck?: boolean;
   /** Cyborg whose legs were just torn off. Nothing hurts him until it clears. Everyone who sees him sees it. */
   shielded?: boolean;
+  /** Cyborg Commander's force field: points left and the full charge. Everyone who sees him sees it. */
+  field?: { hp: number; max: number };
+  /**
+   * Cyborg Commander's laser now cutting. A sweep runs from a0 to a1 (world radians);
+   * `u` is the share already cut and `dur` the whole sweep in seconds. `lens` is the
+   * beam length, world px, at evenly spaced points from a0 to a1. A line holds one angle.
+   */
+  laser?: { a0: number; a1: number; u: number; dur: number; lens: number[]; line?: true };
   /** Allied ammo rack. Omitted for enemies and unarmed types. */
   ammo?: Partial<Record<ShellType, number>>;
   /** Loaded shell. Allied guns only. */
@@ -438,6 +446,8 @@ export interface ImpactView {
   torpedo?: boolean;
   /** Rocket burst: the id of the rocket, as in its RocketLaunchView. */
   shot?: number;
+  /** Cyborg Commander's laser landed here: a searing burn, not a bullet strike. */
+  laser?: boolean;
 }
 
 /**

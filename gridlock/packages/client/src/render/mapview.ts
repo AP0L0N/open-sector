@@ -9,6 +9,7 @@ import {
   rectWorld,
   turnedBox,
   catalog,
+  isCyborg,
   FW190_WING_GUN_OFFSET,
   clampIsoCamera,
   cloudScale,
@@ -211,6 +212,11 @@ import {
   CYBORG_DIE_SPRITE,
   CYBORG_FIRE_SPRITE,
   CYBORG_SPRITE,
+  CYBORGCOMMANDER_CRAWL_FIRE_SPRITE,
+  CYBORGCOMMANDER_CRAWL_SPRITE,
+  CYBORGCOMMANDER_DIE_SPRITE,
+  CYBORGCOMMANDER_FIRE_SPRITE,
+  CYBORGCOMMANDER_SPRITE,
   TITAN_BRACED_SPRITE,
   TITAN_SPRITE,
   TITAN_WADE_SPRITE,
@@ -314,6 +320,8 @@ import { ROOF_CIWS_LIFT } from "./roof-ciws.js";
 /** Gatling barrels above the ground point, as a share of the drawn cell. The Walker matches gatling-flash ARM_LIFT. */
 const WALKER_ARM_LIFT = 0.45;
 const CYBORG_ARM_LIFT = 0.3;
+/** The Cyborg Commander's force-field bar, over his health bar. */
+const FIELD_BAR_FILL = "#7cc8ff";
 import { INTERCEPT_BURST_SIZE, RAM_MISS_BURST_SIZE, interceptorTrail } from "./ram.js";
 import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
@@ -376,6 +384,8 @@ import {
   type WallSection,
 } from "./wall.js";
 import { pyroNozzleScreen } from "./pyro-nozzle.js";
+import { cyborgCommanderLens } from "./cyborgcommander-muzzle.js";
+import { beamEnd, beamShare, drawForceField, drawLaserBeam } from "./laser-beam.js";
 import { inScreenRect, unitGroundSink, unitPickRect, type ScreenRect } from "./unit-hit.js";
 import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
@@ -526,6 +536,7 @@ const EXTRUDE: Record<EntityType, number> = {
   engineer: 26,
   medic: 26,
   cyborg: 26,
+  cyborgcommander: 26,
   sandbags: 12,
   wall: 18,
   greatwall: 34,
@@ -709,6 +720,10 @@ export class MapView {
   /** Last plain click on one of your units, for double-click select-by-type. */
   private lastClick: ClickMark | null = null;
   private damagedUntil = new Map<number, number>();
+  /** Cyborg Commander beams: when each was first seen, and the share it had then, so the sweep runs smoothly between snapshots. */
+  private beamSeen = new Map<number, { a0: number; at: number; u: number }>();
+  /** Cyborg Commander force fields: last points seen, and when one last soaked a hit. */
+  private fieldSeen = new Map<number, { hp: number; hitAt: number }>();
   private lastHp = new Map<number, number>();
   private lastScoutHp = new Map<number, number>();
   private explored: Uint8Array | null = null;
@@ -1104,6 +1119,16 @@ export class MapView {
       live.add(e.id);
       const prev = this.lastHp.get(e.id);
       if (prev !== undefined && e.hp < prev) this.damagedUntil.set(e.id, now + 2000);
+      if (e.field) {
+        const was = this.fieldSeen.get(e.id);
+        const hit = was != null && e.field.hp < was.hp;
+        if (hit) this.damagedUntil.set(e.id, now + 2000);
+        this.fieldSeen.set(e.id, { hp: e.field.hp, hitAt: hit ? now : (was?.hitAt ?? -Infinity) });
+      }
+      if (e.laser) {
+        const was = this.beamSeen.get(e.id);
+        if (!was || was.a0 !== e.laser.a0 || e.laser.u < was.u) this.beamSeen.set(e.id, { a0: e.laser.a0, at: now, u: e.laser.u });
+      } else this.beamSeen.delete(e.id);
       this.lastHp.set(e.id, e.hp);
       const scoutHp = e.scout?.hp;
       if (scoutHp !== undefined) {
@@ -1114,6 +1139,9 @@ export class MapView {
     }
     for (const id of this.lastHp.keys()) {
       if (!live.has(id)) this.lastHp.delete(id);
+    }
+    for (const id of this.fieldSeen.keys()) {
+      if (!live.has(id)) this.fieldSeen.delete(id);
     }
     for (const id of this.lastScoutHp.keys()) {
       if (!live.has(id)) this.lastScoutHp.delete(id);
@@ -3598,6 +3626,7 @@ export class MapView {
     this.drawChargeSmoke();
     this.drawRockets();
     this.drawFlames();
+    this.drawLasers();
     this.drawFallingBombs();
     this.drawTreeFalls();
     this.drawSmokeClouds();
@@ -5671,6 +5700,16 @@ export class MapView {
       if (sheet === "swim") return spriteFor("cyborg", "stand", true);
       return CYBORG_SPRITE;
     }
+    if (e.type === "cyborgcommander") {
+      // He holds the firing pose while the beam is out.
+      const sheet = cyborgSheet({ swimming: e.swimming, wreck: e.wreck, stance: e.stance, shotAgeMs: e.laser ? 0 : null });
+      if (sheet === "die") return CYBORGCOMMANDER_DIE_SPRITE;
+      if (sheet === "fire") return CYBORGCOMMANDER_FIRE_SPRITE;
+      if (sheet === "crawl-fire") return CYBORGCOMMANDER_CRAWL_FIRE_SPRITE;
+      if (sheet === "crawl") return CYBORGCOMMANDER_CRAWL_SPRITE;
+      if (sheet === "swim") return spriteFor("cyborgcommander", "stand", true);
+      return CYBORGCOMMANDER_SPRITE;
+    }
     if (e.type === "engineer") {
       if (e.swimming) return spriteFor(e.type, e.stance, true);
       if (e.wreck) return ENGINEER_DIE_SPRITE;
@@ -5906,7 +5945,7 @@ export class MapView {
     // A hulk has its own burnt-out sheet on the same cell and contact; without one it greys the live art.
     const sheet = this.drawnSheet(e, def);
     let frameIndex: number | undefined;
-    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === CYBORGCOMMANDER_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
     else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE || def === ROCKETER_FIRE_SPRITE || def === PYRO_FIRE_SPRITE || def === JUMPJET_FIRE_SPRITE) {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
     } else if (def === JUMPJET_FLY_SPRITE) {
@@ -5976,11 +6015,27 @@ export class MapView {
       const t = this.toScreen(tip.x, tip.y);
       drawPilotLight(ctx, t.x, t.y - tip.h, performance.now(), e.id);
     }
+    if (drawn && !e.wreck && e.field && e.field.hp > 0) {
+      const now = performance.now();
+      const seen = this.fieldSeen.get(e.id);
+      const legless = e.stance === "crawl";
+      drawForceField(
+        ctx,
+        s.x,
+        s.y + unitGroundSink(size),
+        size * (legless ? 0.8 : 0.62),
+        size * (legless ? 0.42 : 0.78),
+        e.field.hp / Math.max(1, e.field.max),
+        seen ? now - seen.hitAt : null,
+        now,
+        e.id,
+      );
+    }
     if (drawn && !e.wreck && isInfantryType(e.type) && !e.swimming) {
       const heat = this.fireHeatAt(p.x, p.y);
       if (heat > 0) drawBodyFlames(ctx, s.x, s.y, size, heat, performance.now(), e.id);
     }
-    if (drawn && corpse && e.type === "cyborg") {
+    if (drawn && corpse && isCyborg(e.type)) {
       drawCyborgDeathSparks(ctx, s.x, s.y, size, dir.x, dir.y, this.corpseAge(e.id), e.id);
     }
     if (e.wreck && drawn && !corpse) this.drawWreckFires(e, s.x, s.y, size, dir.x, dir.y);
@@ -6211,7 +6266,7 @@ export class MapView {
         facing: body.facing,
       });
       // A dead cyborg bleeds (the stains under him) and his hips spit a few sparks.
-      if (body.type === "cyborg") {
+      if (isCyborg(body.type)) {
         drawCyborgDeathSparks(this.ctx, s.x, s.y, die.drawSize, dir.x, dir.y, ageMs, body.id);
       }
     }
@@ -6627,6 +6682,31 @@ export class MapView {
     const o = isoToWorld(0, 0, ts);
     const g = isoToWorld(tip.gx, tip.gy, ts);
     return { x: p.x + g.x - o.x, y: p.y + g.y - o.y, h: tip.h };
+  }
+
+  /**
+   * Cyborg Commander beams: from the lens on his drawn sheet to where the beam
+   * bites the ground, swinging across a sweep between snapshots.
+   */
+  private drawLasers(): void {
+    const ctx = this.ctx;
+    const now = performance.now();
+    const ts = this.ts();
+    for (const e of this.curr.entities) {
+      const beam = e.laser;
+      if (!beam || e.wreck) continue;
+      const seen = this.beamSeen.get(e.id);
+      const u = beamShare(beam, seen?.at ?? this.snapAt, now);
+      const p = this.lerpEnt(e);
+      const end = beamEnd(beam, p.x, p.y, u);
+      const s = this.toScreen(p.x, p.y);
+      const legless = e.stance === "crawl";
+      const size = spriteFor(e.type, e.stance)?.drawSize ?? 20;
+      const dir = facingToIso(p.facing, ts);
+      const lens = cyborgCommanderLens(engineRowFromScreen(dir.x, dir.y), legless, size);
+      const from = { x: s.x + lens.x, y: s.y + unitGroundSink(size) + lens.y };
+      drawLaserBeam(ctx, from, this.toScreen(end.x, end.y), now, e.id);
+    }
   }
 
   /** Hottest burning patch under a ground point, 0–1. */
@@ -7378,6 +7458,17 @@ export class MapView {
     const ctx = this.ctx;
     ctx.save();
     this.paintHpBar(bx, by, barW, barH, ratio, alpha, this.hostileOwner(e.ownerId), selected);
+    if (e.field) {
+      // The force field rides above the health bar, pale blue: it goes first.
+      const fy = by - barH - 1;
+      ctx.globalAlpha = Math.min(1, alpha + 0.12) * 0.85;
+      ctx.fillStyle = "rgba(8, 6, 4, 0.72)";
+      ctx.fillRect(bx, fy, barW, barH);
+      ctx.globalAlpha = Math.min(1, alpha + 0.12);
+      ctx.fillStyle = FIELD_BAR_FILL;
+      ctx.fillRect(bx, fy, barW * Math.max(0, Math.min(1, e.field.hp / Math.max(1, e.field.max))), barH);
+      ctx.globalAlpha = 1;
+    }
     this.paintAmmoBars(e, bx, by + barH + 1, barW, Math.min(1, alpha + 0.12), mount ? 2 : 1);
     if (outOfAmmo(e)) drawOutOfAmmo(ctx, bx - OUT_OF_AMMO_SIZE - 3, by + barH / 2 - OUT_OF_AMMO_SIZE / 2, Math.max(alpha, 0.85));
     ctx.restore();

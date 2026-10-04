@@ -19,6 +19,7 @@ import {
   gunStatsFor,
   hasAmmo,
   hasCrit,
+  hasForceField,
   infantryGunFor,
   isCyborg,
   isInfantryType,
@@ -93,6 +94,7 @@ export function cyborgShielded(e: { type: Entity["type"]; shieldUntilTick?: numb
  * goes through here so the cyborg's crawl rule holds whatever did the damage:
  * while shielded nothing lands, and the hit that tears his legs off (even one
  * that would have killed him) leaves at least 1 HP and starts the shield.
+ * The Cyborg Commander's force field soaks what it can before any of that.
  */
 export function takeDamage(e: Entity, damage: number, tick: number): number {
   if (damage <= 0 || e.hp <= 0) return 0;
@@ -101,6 +103,17 @@ export function takeDamage(e: Entity, damage: number, tick: number): number {
   const before = e.hp;
   if (isCyborg(e.type)) {
     if (cyborgShielded(e, tick)) return 0;
+    // The Commander's force field takes the hit first. Only what it cannot hold reaches the plating.
+    if (hasForceField(e.type)) {
+      e.fieldHitTick = tick;
+      const field = e.field ?? 0;
+      if (field > 0) {
+        const soak = Math.min(field, damage);
+        e.field = field - soak;
+        damage -= soak;
+        if (damage <= 0) return 0;
+      }
+    }
     const after = before - damage;
     if (!hasCrit(e, "leg") && after <= e.hpMax * CYBORG_LEGS_LOST_HP) {
       e.hp = Math.max(1, after);

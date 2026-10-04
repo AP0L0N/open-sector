@@ -177,3 +177,33 @@ describe("impactSound", () => {
     assert.equal(impactSound({ ...base, kind: "miss", caliber: 20, intercept: true }), "intercept");
   });
 });
+
+describe("SoundTracker: Cyborg Commander", () => {
+  const beam = (a0: number, u: number, line?: true) => ({ a0, a1: a0 + 0.4, u, dur: 0.6, lens: [100], line });
+
+  it("hears the laser once when a beam opens, with the line take for a hull, and not again where it lands", () => {
+    const t = new SoundTracker();
+    t.step(snap({ entities: [unit(1, "cyborgcommander")] }), 0);
+    const opened = t.step(snap({ entities: [unit(1, "cyborgcommander", ME, { laser: beam(0, 0.2) })] }), 100);
+    assert.deepEqual(kinds(opened, "fire"), [{ kind: "fire", id: 1, type: "cyborgcommander", weapon: "beam", x: 10, y: 5, line: undefined }]);
+    const burn = { id: 70, ownerId: ME, kind: "kill", x: 0, y: 0, vx: 1, vy: 0, fromId: 1, caliber: 20, laser: true };
+    const mid = t.step(snap({ entities: [unit(1, "cyborgcommander", ME, { laser: beam(0, 0.5) })], impacts: [burn] as never }), 200);
+    assert.equal(kinds(mid, "fire").length, 0, "the same sweep running on is not a new shot");
+    const line = t.step(snap({ entities: [unit(1, "cyborgcommander", ME, { laser: beam(1, 1, true) })] }), 300);
+    assert.equal((kinds(line, "fire")[0] as { line?: boolean }).line, true);
+  });
+
+  it("hears the force field soak a hit, collapse, and come back", () => {
+    const t = new SoundTracker();
+    const at = (hp: number) => [unit(1, "cyborgcommander", ME, { field: { hp, max: 200 } })];
+    t.step(snap({ entities: at(200) }), 0);
+    const cues = (evs: SoundEvent[]) => kinds(evs, "shield").map((e) => (e as { cue: string }).cue);
+    assert.deepEqual(cues(t.step(snap({ entities: at(150) }), 100)), ["hit"]);
+    assert.deepEqual(cues(t.step(snap({ entities: at(140) }), 150)), [], "a burst does not buzz every snapshot");
+    assert.deepEqual(cues(t.step(snap({ entities: at(0) }), 500)), ["down"]);
+    assert.deepEqual(cues(t.step(snap({ entities: at(0) }), 600)), []);
+    const back = t.step(snap({ entities: at(8) }), 9000);
+    assert.deepEqual(cues(back), ["up"]);
+    assert.equal((kinds(back, "shield")[0] as { own: boolean }).own, true);
+  });
+});

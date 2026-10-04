@@ -458,6 +458,14 @@ export interface Entity {
   selfHpSeen?: number;
   /** Cyborg only: sim tick until which nothing takes his HP. Set when the legs are torn off. */
   shieldUntilTick?: number;
+  /** Cyborg Commander only: force-field points left. Hits come off these before HP. */
+  field?: number;
+  /** Cyborg Commander only: tick of the last hit on him, field or body. The recharge waits on it. */
+  fieldHitTick?: number;
+  /** Cyborg Commander only: the laser beam he is cutting with now. */
+  laser?: LaserBeam;
+  /** Cyborg Commander only: which way the next sweep runs, so they alternate. */
+  laserFlip?: boolean;
   /**
    * Factory driver still at the wheel. Supply trucks spawn true.
    * False on every other type, and after that driver is killed.
@@ -625,6 +633,25 @@ export interface SmokeCloud {
  * Burning ground left by a flamethrower glob or a Pyro's tanks going up.
  * It burns every soldier standing in it until it goes out.
  */
+/**
+ * A Cyborg Commander's beam. A sweep runs from angle a0 to a1 over the ticks
+ * startTick..endTick; a line holds one angle. `lens` is the beam's length,
+ * world px, at evenly spaced points from a0 to a1, cut short where a building
+ * or concrete stops it.
+ */
+export interface LaserBeam {
+  a0: number;
+  a1: number;
+  startTick: number;
+  endTick: number;
+  lens: number[];
+  line?: boolean;
+  /** Share of the sweep already cut, 0–1. */
+  swept: number;
+  /** Units already burned by this sweep. */
+  hit: number[];
+}
+
 export interface GroundFire {
   id: number;
   /** Who lit it. Burns friend and foe alike. */

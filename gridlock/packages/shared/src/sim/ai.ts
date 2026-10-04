@@ -158,6 +158,7 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield", readon
     { unit: "apocalypse", want: 1 },
     { unit: "supply", want: 1 },
     { unit: "cyborg", want: 1 },
+    { unit: "cyborgcommander", want: 1 },
     { unit: "titan", want: 1 },
     { unit: "nebelwerfer", want: 1 },
   ],
@@ -205,7 +206,7 @@ const CREWED: readonly BuildingType[] = ["bunker", "tower"];
 /** Long guns: they walk two ranks back and fire over the line. */
 const BACK_RANK: ReadonlySet<string> = new Set(["sniper", "mortarman", "nebelwerfer", "jagdtiger", "artillery"]);
 /** Short reach and thick skin: the front rank beside the hulls. */
-const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "pyro"]);
+const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "pyro"]);
 
 type Rank = "front" | "mid" | "back";
 type SiteKind = "tower" | "bunker";

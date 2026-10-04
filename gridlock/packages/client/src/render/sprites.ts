@@ -175,6 +175,12 @@ import cyborgFireUrl from "../assets/units/cyborg-fire.png";
 import cyborgCrawlUrl from "../assets/units/cyborg-crawl.png";
 import cyborgCrawlFireUrl from "../assets/units/cyborg-crawl-fire.png";
 import cyborgDieUrl from "../assets/units/cyborg-die.png";
+import cyborgCommanderWalkUrl from "../assets/units/cyborgcommander-walk.png";
+import cyborgCommanderFireUrl from "../assets/units/cyborgcommander-fire.png";
+import cyborgCommanderCrawlUrl from "../assets/units/cyborgcommander-crawl.png";
+import cyborgCommanderCrawlFireUrl from "../assets/units/cyborgcommander-crawl-fire.png";
+import cyborgCommanderDieUrl from "../assets/units/cyborgcommander-die.png";
+import cyborgCommanderSwimUrl from "../assets/units/cyborgcommander-swim.png";
 import engineerWalkUrl from "../assets/units/engineer-walk.png";
 import engineerCrouchUrl from "../assets/units/engineer-crouch.png";
 import engineerCrawlUrl from "../assets/units/engineer-crawl.png";
@@ -934,6 +940,20 @@ export const CYBORG_DIE_SPRITE: UnitSpriteDef = {
   facingSpace: "world",
 };
 
+/**
+ * Cyborg Commander (render_cyborgcommander.py): the Cyborg's camera, cells, and
+ * contact points, a heavier frame with the laser on the arm. Only the sheet differs.
+ */
+export const CYBORGCOMMANDER_SPRITE: UnitSpriteDef = { ...CYBORG_SPRITE, image: loadSheet(cyborgCommanderWalkUrl) };
+/** Laser firing: the lens flares. The beam itself is drawn by the map. */
+export const CYBORGCOMMANDER_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(cyborgCommanderFireUrl) };
+export const CYBORGCOMMANDER_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(cyborgCommanderCrawlUrl) };
+export const CYBORGCOMMANDER_CRAWL_FIRE_SPRITE: UnitSpriteDef = {
+  ...CYBORG_CRAWL_FIRE_SPRITE,
+  image: loadSheet(cyborgCommanderCrawlFireUrl),
+};
+export const CYBORGCOMMANDER_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(cyborgCommanderDieUrl) };
+
 export const ENGINEER_SPRITE: UnitSpriteDef = {
   image: loadSheet(engineerWalkUrl),
   dirs: 16,
@@ -1042,6 +1062,7 @@ const SWIM_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   engineer: swimSprite(engineerSwimUrl),
   jumpjet: swimSprite(jumpjetSwimUrl),
   cyborg: swimSprite(cyborgSwimUrl),
+  cyborgcommander: swimSprite(cyborgCommanderSwimUrl),
 };
 
 /** 16-dir hatch head (helmet + face). Row 0 = 0001 = south, one frame. */
@@ -1558,6 +1579,7 @@ const INFANTRY_DIE: Partial<Record<EntityType, UnitSpriteDef>> = {
   droneop: DRONEOP_DIE_SPRITE,
   jumpjet: JUMPJET_DIE_SPRITE,
   cyborg: CYBORG_DIE_SPRITE,
+  cyborgcommander: CYBORGCOMMANDER_DIE_SPRITE,
 };
 
 /** The one-shot collapse sheet. Undefined for vehicles and buildings. */
@@ -1623,6 +1645,7 @@ export function spriteFor(type: EntityType, stance?: Stance, swimming = false): 
     return ENGINEER_SPRITE;
   }
   if (type === "cyborg") return stance === "crawl" ? CYBORG_CRAWL_SPRITE : CYBORG_SPRITE;
+  if (type === "cyborgcommander") return stance === "crawl" ? CYBORGCOMMANDER_CRAWL_SPRITE : CYBORGCOMMANDER_SPRITE;
   return UNIT_SPRITES[type];
 }
 

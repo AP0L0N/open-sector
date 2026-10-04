@@ -184,9 +184,16 @@ function landFlame(state: MatchState, p: Projectile): void {
 /**
  * Set the ground burning at a point. Fuel landing on a patch already burning
  * feeds it: it flares back up and spreads a little. Water, and the floor of a
- * building, do not burn.
+ * building, do not burn. `size` makes a fresh patch smaller or shorter-lived
+ * (the Cyborg Commander's laser cut).
  */
-export function igniteAt(state: MatchState, x: number, y: number, ownerId: string): GroundFire | null {
+export function igniteAt(
+  state: MatchState,
+  x: number,
+  y: number,
+  ownerId: string,
+  size?: { radius: number; life: number },
+): GroundFire | null {
   const tx = worldToTile(x, state.tileSize);
   const ty = worldToTile(y, state.tileSize);
   if (tx < 0 || ty < 0 || tx >= state.width || ty >= state.height) return null;
@@ -214,8 +221,8 @@ export function igniteAt(state: MatchState, x: number, y: number, ownerId: strin
     ownerId,
     x,
     y,
-    radius: FIRE_RADIUS * (0.85 + nextRand(state) * 0.3),
-    life: FIRE_SECONDS * (0.9 + nextRand(state) * 0.2),
+    radius: (size?.radius ?? FIRE_RADIUS) * (0.85 + nextRand(state) * 0.3),
+    life: (size?.life ?? FIRE_SECONDS) * (0.9 + nextRand(state) * 0.2),
     lifeMax: 0,
   };
   f.lifeMax = f.life;

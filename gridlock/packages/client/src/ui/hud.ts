@@ -2,6 +2,7 @@ import {
   BUILDING_TYPES,
   YARD_FIELD_TYPES,
   CRIT_LABEL,
+  isCyborg,
   DRONE_MODE_LABEL,
   SHELL_TYPES,
   STANCE_LABEL,
@@ -706,10 +707,11 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
           : "";
   const armor = armorLabel(e.type);
   const plates = armor ? `  ·  armor ${armor}` : "";
+  const field = e.field ? `  ·  field ${e.field.hp}/${e.field.max}${e.field.hp <= 0 ? " (down)" : ""}` : "";
   const wreck = e.wreck ? "  ·  WRECK" : "";
   const injuries =
     e.crits && e.crits.length > 0
-      ? `  ·  ${e.crits.map((c) => (e.type === "cyborg" && c === "leg" ? "legs torn off" : CRIT_LABEL[c])).join(", ")}${e.shielded ? " (plating holds — cannot be hurt yet)" : ""}`
+      ? `  ·  ${e.crits.map((c) => (isCyborg(e.type) && c === "leg" ? "legs torn off" : CRIT_LABEL[c])).join(", ")}${e.shielded ? " (plating holds — cannot be hurt yet)" : ""}`
       : "";
   const posture = e.swimming
     ? "  ·  swimming"
@@ -811,7 +813,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
           : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
   const depth = e.dive ? diveLine(e.dive, !!e.submerged) : "";
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}${depth}  ·  ${who}${q}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
+  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${field}${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}${depth}  ·  ${who}${q}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
 
@@ -1022,6 +1024,7 @@ const TYPE_ORDER: EntityType[] = [
   "jagdtiger",
   "walker",
   "cyborg",
+  "cyborgcommander",
   "titan",
   "mammoth",
   "nebelwerfer",
@@ -1418,6 +1421,8 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
                 ? "No weapon. He walks to a wounded soldier nearby and closes the wound. A long kneel sets a broken arm or leg. The bag does not run out."
               : focus.type === "cyborg"
                 ? "Stands under fire — no crouch, no prone. Near death the legs tear off and he drags himself on, still firing. A medic or an engineer brings the legs back. Only a supply truck refills the drum."
+              : focus.type === "cyborgcommander"
+                ? "Stands under fire — no crouch, no prone. The blue bar is his force field: it takes every hit first and comes back on after a while out of the fire. The laser always cuts to full reach: a sweep across soldiers burns every enemy it passes, one beam cuts a hull. Near death the legs tear off and he drags himself on, still firing."
               : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",
     );
   }
@@ -1812,7 +1817,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       });
     }
   }
-  const inf = units.filter((e) => isInfantryType(e.type) && e.type !== "engineer" && e.type !== "cyborg");
+  const inf = units.filter((e) => isInfantryType(e.type) && e.type !== "engineer" && !isCyborg(e.type));
   if (inf.length) {
     const ordered = new Set(inf.map((e) => e.stanceOrder ?? e.stance ?? "stand"));
     const legsBroken = inf.every((e) => e.crits?.includes("leg"));
