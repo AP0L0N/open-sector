@@ -1,0 +1,5 @@
+# Agent worktrees are extra checkouts of this repo, not project files.
+.claude/worktrees/
+
+# Turntable harvest frames. Finished sheets live in the client assets.
+tools/sprites/work/
