@@ -1,5 +1,5 @@
 import type { AirDrop, BuildingType, Crit, DroneMode, EntityType, FieldStructureType, InfantryWeaponId, ShellType, Stance, TrainType, YardFieldType } from "../catalog.js";
-import type { AiDifficulty, ClientMessage, CorpseView, EntityState, ImpactView, ShellHoleView } from "../protocol.js";
+import type { AiDifficulty, ClientMessage, CorpseView, EntityState, ImpactView, RocketLaunchView, ShellHoleView } from "../protocol.js";
 
 export interface Vec {
   x: number;
@@ -747,6 +747,8 @@ export interface MatchState {
   /** Supply crates from a transport. Empty until the first drop. */
   crates: SupplyCrate[];
   impacts: ImpactView[];
+  /** Rockets launched this tick (this wall-clock step after stepMatch). */
+  launches: RocketLaunchView[];
   rngState: number;
   winner?: { playerId: string; team: number };
   ended: boolean;

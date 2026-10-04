@@ -530,6 +530,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     impacts: state.impacts.filter(
       (i) => allies(state, youPlayerId, i.ownerId) || canSeeWorld(state, vis, i.x, i.y),
     ),
+    launches: state.launches.filter((l) => {
+      const from = state.entities.get(l.fromId);
+      return (from != null && allies(state, youPlayerId, from.ownerId)) || canSeeWorld(state, vis, l.x, l.y);
+    }),
     smoke: state.smokeClouds.map((c) => ({
       id: c.id,
       x: c.x,

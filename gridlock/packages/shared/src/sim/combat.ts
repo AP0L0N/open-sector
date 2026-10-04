@@ -1874,8 +1874,10 @@ function launchRocket(
   const flight = len / rack.speed;
   const zLand =
     aloft && target ? entityHeight(state, target) + airAlt(target) : worldTileHeight(state, land.x, land.y);
+  const id = state.nextId++;
+  state.launches.push({ id, fromId: e.id, x, y, z: z0, vx: dx / flight, vy: dy / flight });
   state.projectiles.push({
-    id: state.nextId++,
+    id,
     ownerId: e.ownerId,
     team: playerTeam(state, e.ownerId),
     x,
@@ -1969,9 +1971,61 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
     p.x = p.landX;
     p.y = p.landY;
   }
+  // Fused at the plane's height with no plane there: a RAM rocket flies on and comes down.
+  if (p.airBurst && !airBurstCatchesAny(state, p) && coastPastMiss(state, p)) return true;
   if (!p.airBurst) p.z = 0;
   detonateMortar(state, p, rand);
   return false;
+}
+
+/** True when an air burst here would catch a hostile plane or drone. */
+function airBurstCatchesAny(state: MatchState, p: Projectile): boolean {
+  const rack = p.heavy ? PENETRATOR_RACK : rocketRackOf(p.launcher ?? "titan");
+  const radius = rack.splashTiles * state.tileSize;
+  for (const e of state.entities.values()) {
+    if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null) continue;
+    if (e.drone ? !rocketCatchesDrone(state, p, e) : !isAirborne(e)) continue;
+    if (Math.hypot(e.x - p.x, e.y - p.y) > radius) continue;
+    if (e.ownerId !== "" && allies(state, p.ownerId, e.ownerId) && !p.harmAllies) continue;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * A missed rocket that coasts: it keeps its heading for the rack's
+ * missCoastTiles (short of the map edge), dropping ever more steeply, and bursts
+ * on the ground where it lands. False for a rack that bursts in the air regardless.
+ */
+function coastPastMiss(state: MatchState, p: Projectile): boolean {
+  const coast = (p.heavy ? undefined : rocketRackOf(p.launcher ?? "titan").missCoastTiles) ?? 0;
+  const speed = Math.hypot(p.vx, p.vy);
+  if (coast <= 0 || speed <= 0) return false;
+  const ux = p.vx / speed;
+  const uy = p.vy / speed;
+  const maxX = Math.max(1, state.width * state.tileSize - 1);
+  const maxY = Math.max(1, state.height * state.tileSize - 1);
+  let dist = coast * state.tileSize;
+  if (ux > 1e-6) dist = Math.min(dist, (maxX - p.x) / ux);
+  else if (ux < -1e-6) dist = Math.min(dist, -p.x / ux);
+  if (uy > 1e-6) dist = Math.min(dist, (maxY - p.y) / uy);
+  else if (uy < -1e-6) dist = Math.min(dist, -p.y / uy);
+  dist = Math.max(1, dist);
+  const flight = dist / speed;
+  const landX = Math.min(maxX, Math.max(0, p.x + ux * dist));
+  const landY = Math.min(maxY, Math.max(0, p.y + uy * dist));
+  const z0 = p.z ?? 0;
+  const zLand = worldTileHeight(state, landX, landY);
+  // z0 + (zLand - z0) u²: level at first, then a dive. The lob term carries the curve.
+  p.airBurst = undefined;
+  p.landX = landX;
+  p.landY = landY;
+  p.life = flight;
+  p.flightTime = flight;
+  p.launchZ = z0;
+  p.vz = (zLand - z0) / flight;
+  p.apex = Math.max(0, (z0 - zLand) / 4);
+  return true;
 }
 
 /** A rocket bursting near a low drone's height catches it in the splash. */
@@ -2777,6 +2831,7 @@ function pushImpact(
     mortar: p.flight === "mortar" ? true : undefined,
     bomb: p.flight === "mortar" && p.big ? true : undefined,
     rocket: p.flight === "rocket" ? true : undefined,
+    shot: p.flight === "rocket" ? p.id : undefined,
     z: p.airBurst ? (p.z ?? 0) : undefined,
     airZ: p.aloft ? (p.z ?? 0) : undefined,
   };
