@@ -6700,7 +6700,9 @@ export class MapView {
       const { w, h } = this.viewSize();
       if (this.mouseX <= w && this.mouseY <= h) {
         const hit = this.hit(this.mouseX, this.mouseY);
-        special = !!hit && this.canSpecial(hit);
+        // An armed order clicks through a unit with a ready special (a Titan's Deploy),
+        // so keep that order's crosshair instead of the gold pointer.
+        special = !aiming && !!hit && this.canSpecial(hit);
         if (!special && !aiming) {
           const you = this.curr.youPlayerId;
           const selected = this.curr.entities.filter(
