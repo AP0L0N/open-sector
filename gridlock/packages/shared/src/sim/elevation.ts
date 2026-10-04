@@ -37,7 +37,6 @@ import {
 } from "../catalog.js";
 import { TILE_BLOCKED, TILE_TREE } from "../maps.js";
 import { inBounds, tileIndex, worldToTile } from "./geo.js";
-import { nightReachMul } from "./night.js";
 import type { Entity, MatchState } from "./types.js";
 
 export function elevAt(elev: ArrayLike<number>, width: number, height: number, x: number, y: number): number {
@@ -226,7 +225,7 @@ export function weaponRangeWorld(state: MatchState, e: Entity): number {
   if (base <= 0) return 0;
   let tiles = rangeTilesOf(e.type, entityHeight(state, e), base);
   if (inHouse && !host.garrisonHide) tiles += garrisonReachBonusOf(host.type);
-  return tiles * state.tileSize * longReachMul(e) * nightReachMul(state.tick);
+  return tiles * state.tileSize * longReachMul(e);
 }
 
 /** A CIWS or RAM set to Max range reaches this many times farther. 1 for everything else. */

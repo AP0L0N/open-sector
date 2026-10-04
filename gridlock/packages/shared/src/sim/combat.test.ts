@@ -2342,10 +2342,7 @@ describe("force attack out of sight", () => {
           tileY: 30,
         });
         step(state, TICK_DT);
-        // At night a tank's eyes reach as far as its gun; the rocket truck still outranges its own.
-        if (!night || type === "nebelwerfer") {
-          assert.equal(canSeeEntity(state, "A", b), false, `${type}: the Smelter must be out of sight`);
-        }
+        assert.equal(canSeeEntity(state, "A", b), false, `${type}: the Smelter must be out of sight`);
         const hp0 = b.hp;
         const res = applyCommand(state, "A", { type: "cmd.forceattack", ids: [e.id], x: b.x, y: b.y, targetId: b.id });
         assert.equal(res.ok, true);
@@ -2354,6 +2351,25 @@ describe("force attack out of sight", () => {
       }
     });
   }
+
+  it("closes on a point past its reach in the dark, stops at its full daylight reach, and fires", () => {
+    for (const type of ["rifleman", "warden"] as const) {
+      const state = bareField(false);
+      const ts = state.tileSize;
+      const e = makeEntity(state, type, "A", tileCenter(10, ts), tileCenter(30, ts));
+      const reach = weaponRangeWorld(state, e);
+      state.tick = NIGHT_TICK;
+      assert.equal(weaponRangeWorld(state, e), reach, `${type}: the dark does not shorten the reach`);
+      const x = e.x + reach * 1.6;
+      const y = e.y;
+      const res = applyCommand(state, "A", { type: "cmd.forceattack", ids: [e.id], x, y });
+      assert.equal(res.ok, true, !res.ok ? res.message : "");
+      assert.equal(firesWithin(state, 1200), true, `${type} must walk up and fire`);
+      const d = Math.hypot(x - e.x, y - e.y);
+      assert.ok(d <= reach + 1e-6, `${type} fires from inside its reach (${d / ts} of ${reach / ts})`);
+      assert.ok(d > reach * 0.8, `${type} stops near its full reach, not the dark ring (${d / ts} of ${reach / ts})`);
+    }
+  });
 
   it("a remembered building that is gone becomes a ground aim", () => {
     const state = bareField(false);

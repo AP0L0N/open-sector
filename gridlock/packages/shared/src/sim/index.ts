@@ -121,7 +121,6 @@ export {
   matchClock,
   phaseStartText,
   clockMarkLine,
-  nightReachMul,
   nightSightMul,
   nightTiles,
   spotlightsOn,

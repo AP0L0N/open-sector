@@ -50,10 +50,7 @@ import {
   TICK_DT,
   burnVariant,
   DRONE_LEASH_TILES,
-  CIWS_AIR_REACH_MUL,
   HEIGHT_BASE,
-  HEIGHT_RANGE_BONUS,
-  RADAR_LONG_RANGE_MUL,
   PATROL_POINTS_MAX,
   connectPatrolPoints,
   garrisonWindowLift,
@@ -306,6 +303,7 @@ import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
 import { buildingShadowFootprint, convexHull, drawCastShadows, shadowOffset, treeShadowFootprint } from "./cast-shadow.js";
 import { buildingGroundElev, drawYardWear, WALL_SHARE, wallFootprint, yardWearFootprint } from "./building-ground.js";
+import { footprintPeak, radarReachTiles } from "./radar-reach.js";
 import {
   airBurstPuffs,
   backblastPuffs,
@@ -3834,8 +3832,9 @@ export class MapView {
   }
 
   /**
-   * Faint blue dashed ring of a selected CIWS or RAM's farthest reach: Max range
-   * when it is set, and for the CIWS its longer reach on a plane.
+   * Faint blue dashed ring of a selected CIWS or RAM's reach, the reach the sim
+   * fires to (radar-reach.ts): Max range when it is set. The CIWS reaches
+   * farther for a plane, so it shows that ring and a fainter one inside for the ground.
    */
   private drawRadarReach(): void {
     const you = this.curr.youPlayerId;
@@ -3845,16 +3844,8 @@ export class MapView {
     if (mounts.length === 0) return;
     const ts = this.ts();
     const ctx = this.ctx;
-    ctx.save();
-    ctx.setLineDash([5, 6]);
-    ctx.lineWidth = 1.25;
-    ctx.strokeStyle = "rgba(110, 170, 255, 0.45)";
-    for (const e of mounts) {
-      const def = catalog(e.type);
-      const elev = this.buildingElev(e);
-      const tiles = def.rangeTiles + Math.max(0, elev - HEIGHT_BASE) * HEIGHT_RANGE_BONUS;
-      const r =
-        tiles * ts * (e.longRange ? RADAR_LONG_RANGE_MUL : 1) * (e.type === "ciws" ? CIWS_AIR_REACH_MUL : 1);
+    const map = this.map();
+    const ring = (e: EntityView, r: number) => {
       ctx.beginPath();
       for (let i = 0; i <= 96; i++) {
         const a = (i / 96) * Math.PI * 2;
@@ -3863,6 +3854,19 @@ export class MapView {
         else ctx.lineTo(s.x, s.y);
       }
       ctx.stroke();
+    };
+    ctx.save();
+    ctx.setLineDash([5, 6]);
+    ctx.lineWidth = 1.25;
+    for (const e of mounts) {
+      const peak = footprintPeak(map.heights, map.width, map.height, e.tileX, e.tileY, e.tileW, e.tileH);
+      const reach = radarReachTiles(e.type, peak, !!e.longRange);
+      ctx.strokeStyle = "rgba(110, 170, 255, 0.45)";
+      ring(e, reach.air * ts);
+      if (reach.ground < reach.air) {
+        ctx.strokeStyle = "rgba(110, 170, 255, 0.25)";
+        ring(e, reach.ground * ts);
+      }
     }
     ctx.restore();
   }

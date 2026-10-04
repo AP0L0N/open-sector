@@ -10,7 +10,6 @@ import {
   MAMMOTH_LAMP_STEP_DEG,
   MAMMOTH_LAMP_SWING_DEG,
   NEUTRAL_OWNER,
-  NIGHT_REACH_MUL,
   NIGHT_SECONDS,
   NIGHT_SIGHT_MUL,
   SPOTLIGHT_REACH_TILES,
@@ -36,7 +35,6 @@ import {
   hullLamps,
   lampHeading,
   matchClock,
-  nightReachMul,
   nightSightMul,
   nightTiles,
   phaseStartText,
@@ -95,8 +93,6 @@ describe("day and night", () => {
     assert.ok(dusk > 0.4 && dusk < 0.6, `mid-dusk daylight ${dusk}`);
     assert.equal(daylightAt(NIGHT_TICK), 0);
     assert.equal(daylightAt(Math.round(DAY_CYCLE_SECONDS / TICK_DT) + 5), 1, "the next morning");
-    assert.equal(nightReachMul(0), 1);
-    assert.equal(nightReachMul(NIGHT_TICK), NIGHT_REACH_MUL);
     assert.equal(nightSightMul(0), 1);
     assert.equal(nightSightMul(NIGHT_TICK), NIGHT_SIGHT_MUL);
     assert.equal(spotlightsOn(0), false);
@@ -138,21 +134,22 @@ describe("day and night", () => {
     assert.ok(nextMorning.minute < 3, nextMorning.text);
   });
 
-  it("halves weapon reach in full dark", () => {
+  it("keeps every weapon's reach in full dark", () => {
     const { state, a } = emptyField();
     const rifle = trooper(state, "rifleman", a, 100, 100);
     const day = weaponRangeWorld(state, rifle);
+    state.tick = DUSK_MID_TICK;
+    assert.equal(weaponRangeWorld(state, rifle), day, "dusk");
     state.tick = NIGHT_TICK;
-    assert.ok(Math.abs(weaponRangeWorld(state, rifle) - day * NIGHT_REACH_MUL) < 1e-6);
+    assert.equal(weaponRangeWorld(state, rifle), day, "night");
   });
 
-  it("cuts a soldier's sight ring harder than its weapon reach in full dark", () => {
+  it("cuts a soldier's sight ring in full dark", () => {
     const { state, a } = emptyField();
     const rifle = trooper(state, "rifleman", a, 100, 128);
     const r = sightTilesForEntity(state, rifle);
     const dark = nightTiles(r, NIGHT_SIGHT_MUL);
     assert.equal(dark, Math.round(r * NIGHT_SIGHT_MUL));
-    assert.ok(dark < nightTiles(r, NIGHT_REACH_MUL), "sight shrinks more than reach");
     assert.equal(lit(state, a, 100 + r - 2, 128), true, "seen by day");
     state.tick = NIGHT_TICK;
     assert.equal(lit(state, a, 100 + r - 2, 128), false, "lost in the dark");

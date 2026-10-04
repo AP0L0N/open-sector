@@ -36,12 +36,24 @@ export function afloat(state: MatchState, e: Entity): boolean {
 
 /**
  * A torpedo boat cannot engage anything that is not in the water, nor another torpedo.
- * Submerged, it only finds another submarine that is down too: it surfaces to strike a hull.
+ * Submerged, it only finds another submarine that is down too. A hull the player named
+ * stays its target: it closes in below and surfaces to strike (surfaceToStrike).
  */
 export function torpedoCannotReach(state: MatchState, shooter: Entity, target: Entity): boolean {
   if (!torpedoesOf(shooter.type)) return false;
   if (isTorpedoBody(target.type) || !afloat(state, target)) return true;
-  return diving(shooter) && !diving(target);
+  return diving(shooter) && !diving(target) && !namedStrike(shooter, target);
+}
+
+/** The player ordered this boat to attack or force-attack this target. */
+function namedStrike(e: Entity, t: Entity): boolean {
+  const o = e.order;
+  return (o?.kind === "attack" || o?.kind === "forceattack") && !o.auto && o.targetId === t.id;
+}
+
+/** In range of a named hull on the surface, a submarine below comes up to fire. */
+export function surfaceToStrike(e: Entity, t: Entity): void {
+  if (diving(e) && !diving(t) && namedStrike(e, t)) setDive(e, false);
 }
 
 /** A submarine running below, seen by the enemy or not. */

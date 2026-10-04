@@ -1830,15 +1830,13 @@ export const GATE_SENSE_TILES = t(3);
 
 /**
  * Day and night. A match opens at morning and runs day, dusk, night, dawn,
- * then day again. In full dark every weapon reach is NIGHT_REACH_MUL of its
- * daylight value and every sight ring is NIGHT_SIGHT_MUL of it; dusk and dawn
- * slide between the two.
+ * then day again. In full dark every sight ring is NIGHT_SIGHT_MUL of its
+ * daylight value; dusk and dawn slide between the two. Weapon reach never
+ * changes: a gun reaches as far at night as by day.
  */
 export const DAY_SECONDS = 240;
 export const DUSK_SECONDS = 20;
 export const NIGHT_SECONDS = 150;
-/** Weapon reach in full dark, as a share of daylight. */
-export const NIGHT_REACH_MUL = 0.5;
 /** Sight in full dark, as a share of daylight. Spotlights and headlights do not shrink with it. */
 export const NIGHT_SIGHT_MUL = 0.35;
 /** Lamps come on, and spotlights light the ground, once daylight drops below this. */
@@ -2788,7 +2786,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shotsPerTick: CIWS_SHOTS_PER_TICK,
     belt: CIWS_BELT,
     radarLaid: true,
-    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, and reaches farther for a plane than for anything on the ground. Against a plane it lays one stream of rounds, a tracer in every few, that walks on and off the airframe: often enough to bring one down on a pass. A little under two seconds on the trigger overheats the barrels, and it falls silent while they cool. Max range reaches half as far again, but out there the fire scatters wide. It bursts about eight in ten incoming rockets in the air. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, and reaches farther for a plane than for anything on the ground. Its radar picks up anything inside that reach, in fog or in the dark, day or night. Against a plane it lays one stream of rounds, a tracer in every few, that walks on and off the airframe: often enough to bring one down on a pass. A little under two seconds on the trigger overheats the barrels, and it falls silent while they cool. Max range reaches half as far again, but out there the fire scatters wide. It bursts about eight in ten incoming rockets in the air. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
   },
   bunker: {
     type: "bunker",
@@ -2886,7 +2884,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: RAM_ROCKET_AMMO,
     rocketRack: RAM_ROCKET,
-    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, in barrages of ${RAM_SALVO} short, accurate rockets, and sends an interceptor at incoming rockets that bursts nine in ten of them in the air. Shorter reach than a Nebelwerfer, longer than a CIWS. Max range reaches half as far again, but out there the rockets scatter wide. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, in barrages of ${RAM_SALVO} short, accurate rockets, out to its full reach in fog or in the dark, and sends an interceptor at incoming rockets that bursts nine in ten of them in the air. Shorter reach than a Nebelwerfer, longer than a CIWS. Max range reaches half as far again, but out there the rockets scatter wide. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
   },
   sandbags: {
     type: "sandbags",
@@ -3785,7 +3783,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     leavesWreck: true,
     wreckHp: 40,
     belt: SUB_TORPEDOES,
-    blurb: `Coastal submarine. Water only. It leaves the slip surfaced; Dive and Surface set its depth. Submerged, the enemy sees it only within ${SUB_DETECT_TILES / TILE_SUBDIV} tiles of one of their units or buildings, or for ${SUB_REVEAL_SECONDS} seconds after it fires, and its torpedoes find only another submarine that is down too — it must surface to strike a boat, a swimmer, or a Marine Base. An order to attack one brings it up. It holds ${SUB_DIVE_SECONDS} seconds of air below; when that runs out it surfaces and stays up until its air is back. Its bow tubes fire slow torpedoes that run in plain sight at the waterline — any gun can shoot one apart before it arrives. A torpedo dies where the water ends. Turn the bow to aim. It carries ${SUB_TORPEDOES} torpedoes; beside a Marine Base it loads one every ${SUB_REARM_SECONDS} seconds. Sunk, it leaves a hulk on the bottom, in plain sight, that blocks the water until it is shot apart.`,
+    blurb: `Coastal submarine. Water only. It leaves the slip surfaced; Dive and Surface set its depth. Submerged, the enemy sees it only within ${SUB_DETECT_TILES / TILE_SUBDIV} tiles of one of their units or buildings, or for ${SUB_REVEAL_SECONDS} seconds after it fires, and its torpedoes find only another submarine that is down too — it must surface to strike a boat, a swimmer, or a Marine Base. Ordered to attack or force-attack one, it closes in below and surfaces once in range. It holds ${SUB_DIVE_SECONDS} seconds of air below; when that runs out it surfaces and stays up until its air is back. Its bow tubes fire slow torpedoes that run in plain sight at the waterline — any gun can shoot one apart before it arrives. A torpedo dies where the water ends. Turn the bow to aim. It carries ${SUB_TORPEDOES} torpedoes; beside a Marine Base it loads one every ${SUB_REARM_SECONDS} seconds. Sunk, it leaves a hulk on the bottom, in plain sight, that blocks the water until it is shot apart.`,
   },
   /** A running torpedo: the body guns can shoot. It rides with its warhead round. */
   torpedo: {

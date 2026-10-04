@@ -215,8 +215,8 @@ import { airTargetSpreadMul, isAirborne, isCrashing, reachesAircraft, stepBomb }
 import { stepCluster } from "./airdrop.js";
 import { projectileMeetsDrone, reachesDrone } from "./drone.js";
 import { reachesJet } from "./jet.js";
-import { nightReachMul, nightSightMul, nightTiles } from "./night.js";
-import { afloat, armTorpedo, diving, surface, torpedoCannotReach } from "./naval.js";
+import { nightSightMul, nightTiles } from "./night.js";
+import { afloat, armTorpedo, diving, hiddenSubmarine, surface, surfaceToStrike, torpedoCannotReach } from "./naval.js";
 import { shipHullT, shipKeelDist, shipMountPoint, turretBearing } from "./battleship.js";
 import type { Entity, MatchState, Order, Projectile, ShipCiws } from "./types.js";
 
@@ -463,9 +463,7 @@ function burstRockets(state: MatchState, e: Entity, downed: Set<number>, gun: Ro
 
 /** Roof mount reach: its own base, plus the height bonus every gun gets. */
 function roofCiwsRange(state: MatchState, e: Entity): number {
-  return (
-    rangeTilesOf(e.type, entityHeight(state, e), APOCALYPSE_CIWS_RANGE_TILES) * state.tileSize * nightReachMul(state.tick)
-  );
+  return rangeTilesOf(e.type, entityHeight(state, e), APOCALYPSE_CIWS_RANGE_TILES) * state.tileSize;
 }
 
 /** The 20mm can put damage on this unit from here. Soft targets and an open hatch always. */
@@ -580,9 +578,7 @@ function tickRoofCiws(state: MatchState, e: Entity, dt: number, downed: Set<numb
 
 /** A Battle Ship CIWS mount's reach: the roof mount's rule on its own base. */
 function shipCiwsRange(state: MatchState, e: Entity): number {
-  return (
-    rangeTilesOf(e.type, entityHeight(state, e), BATTLESHIP_CIWS_RANGE_TILES) * state.tileSize * nightReachMul(state.tick)
-  );
+  return rangeTilesOf(e.type, entityHeight(state, e), BATTLESHIP_CIWS_RANGE_TILES) * state.tileSize;
 }
 
 /** Marks a rocket one ship mount has tried. Apart from every entity id, and from the ship's other mount. */
@@ -1216,8 +1212,7 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
   const vy = target.y - e.y;
   if (gun.id === "ptrd") {
     const distTiles = Math.hypot(vx, vy) / state.tileSize;
-    // Penetration falls off over the daylight reach; the dark shortens the sight, not the round.
-    const rangeTiles = weaponRangeWorld(state, e) / nightReachMul(state.tick) / Math.max(1e-6, state.tileSize);
+    const rangeTiles = weaponRangeWorld(state, e) / Math.max(1e-6, state.tileSize);
     return ptrdHarmPossible({
       penetration: ptrdPenetration(distTiles, rangeTiles),
       distTiles,
@@ -1310,6 +1305,8 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     if (!holedUp) e.state = "attack";
     return;
   }
+  // A submarine closes on a named hull below and only comes up once it is in range.
+  if (target) surfaceToStrike(e, target);
   // A laid launcher's only weapon is its rockets (tickRocketPods). Here the frame just swings on.
   if (launcherOnlyOf(e.type)) {
     if (!holedUp) e.state = "attack";
@@ -1726,10 +1723,20 @@ function podValue(state: MatchState, e: Entity, o: Entity): number {
   return isArmored(catalog(o.type)) ? 3 : 2;
 }
 
-/** A target the pods can lay on from here: in reach, seen by the side, and not masked by the ground. */
+/**
+ * The gun picks this target up. A CIWS or RAM tracks on its own radar, so
+ * anything inside its reach counts, fog and dark included; only a submerged
+ * boat stays hidden. Every other gun needs its side to see the target.
+ */
+function gunSees(state: MatchState, e: Entity, o: Entity): boolean {
+  if (radarLaidOf(e.type)) return o.hp > 0 && !hiddenSubmarine(state, e.ownerId, o);
+  return canSeeEntity(state, e.ownerId, o);
+}
+
+/** A target the pods can lay on from here: in reach, seen by the side (or the mount's radar), and not masked by the ground. */
 function podCanReach(state: MatchState, e: Entity, o: Entity, range: number): boolean {
   if (Math.hypot(o.x - e.x, o.y - e.y) > range) return false;
-  if (!canSeeEntity(state, e.ownerId, o)) return false;
+  if (!gunSees(state, e, o)) return false;
   return isAirborne(o) || canAimWeapon(state, e, o.x, o.y, o);
 }
 
@@ -2454,7 +2461,7 @@ function fireRound(
   const aimDist = Math.hypot(aimX - x, aimY - y);
   const gunId = infantryGunFor(e)?.id;
   const distTiles = dist / state.tileSize;
-  const rangeTiles = range / nightReachMul(state.tick) / Math.max(1e-6, state.tileSize);
+  const rangeTiles = range / Math.max(1e-6, state.tileSize);
   const p: Projectile = {
     id: state.nextId++,
     ownerId: e.ownerId,
@@ -3029,7 +3036,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
       const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
       const air = isAirborne(o);
       if (d > (air ? bestAirD : bestD)) continue;
-      if (!canSeeEntity(state, e.ownerId, o)) continue;
+      if (!gunSees(state, e, o)) continue;
       if (!infantryRoundCanHarm(state, e, o)) continue;
       if (air) {
         bestAirD = d;
