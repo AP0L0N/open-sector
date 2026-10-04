@@ -8,8 +8,21 @@ import {
   submergesOf,
   torpedoesOf,
 } from "../catalog.js";
-import { allies, footprint, isWater, jetAloft, worldToTile } from "./geo.js";
-import type { DiveState, Entity, MatchState } from "./types.js";
+import { allies, footprint, isWater, jetAloft, makeEntity, worldToTile } from "./geo.js";
+import type { DiveState, Entity, MatchState, Projectile } from "./types.js";
+
+/**
+ * Make a round a torpedo: it runs at the waterline as its own body, which a gun can shoot
+ * before it arrives. `deep`: let go by a boat below, it meets only another boat that is down.
+ * The submarine's tube and the He 111's drop both go through here.
+ */
+export function armTorpedo(state: MatchState, p: Projectile, deep: boolean): void {
+  p.torpedo = true;
+  p.z = 0;
+  p.vz = 0;
+  p.deep = deep || undefined;
+  p.bodyId = makeEntity(state, "torpedo", p.ownerId, p.x, p.y, { facing: Math.atan2(p.vy, p.vx) }).id;
+}
 
 /**
  * Floats or stands in the water: a boat, a swimmer, a wading walker, or a building with

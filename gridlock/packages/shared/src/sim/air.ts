@@ -67,6 +67,14 @@ import {
   FW190_BARRAGE_TILES,
   FW190_CANNON,
   FW190_WING_GUN_OFFSET,
+  HE111_DROP_ALT,
+  HE111_DROP_ARC_DEG,
+  HE111_RUN_IN_TILES,
+  TORPEDO,
+  TORPEDO_RANGE_TILES,
+  TORPEDO_SPEED,
+  dropsTorpedo,
+  isTorpedoBody,
   radarLaidOf,
   STUKA_MG,
   STUKA_MG_PER_TICK,
@@ -95,9 +103,10 @@ import { aimAngle } from "./ballistics.js";
 import { takeDamage } from "./crits.js";
 import { coverStrike } from "./field.js";
 import { aimHeight, airAlt, entityHeight, weaponRangeWorld, worldTileHeight } from "./elevation.js";
-import { allies, buildingBounds, buildingContains, burnTreeAt, fellTreeAt, isTree, newAirState, playerTeam, tileCenter, worldToTile } from "./geo.js";
+import { allies, buildingBounds, buildingContains, burnTreeAt, fellTreeAt, isTree, isWater, newAirState, playerTeam, tileCenter, worldToTile } from "./geo.js";
 import { livingGarrison, woundGarrison } from "./garrison.js";
 import { mortarFalloff } from "./mortar.js";
+import { afloat, armTorpedo } from "./naval.js";
 import { stepTurn } from "./orders.js";
 import { distToRoute, patrolLegIndex, stepPatrolLeg } from "./patrol.js";
 import { powerOf, productionSpeed } from "./power.js";
@@ -703,6 +712,8 @@ function tickFly(state: MatchState, e: Entity, dt: number): void {
     } else if (o.x != null && o.y != null && Math.hypot(o.x - e.x, o.y - e.y) > orbitRadius(state, e)) {
       // Lost from sight. Fly to where it was last seen and look again.
       if (!turned) steerTo(state, e, o.x, o.y, dt);
+      // A torpedo bomber comes down onto the water on the way in, before it has the target in sight.
+      if (dropsTorpedo(e.type) && a.bombs > 0 && Math.hypot(o.x - e.x, o.y - e.y) < HE111_RUN_IN_TILES * state.tileSize) altGoal = HE111_DROP_ALT;
     } else {
       loiterHere(e);
     }
@@ -725,7 +736,7 @@ function tickFly(state: MatchState, e: Entity, dt: number): void {
       if (!turned) flyToOrOrbit(state, e, o.x, o.y, dt);
     } else {
       let t = e.attackTarget != null ? state.entities.get(e.attackTarget) : undefined;
-      if (t && (t.hp <= 0 || !canSeeEntity(state, e.ownerId, t) || !canHurt(e, t))) t = undefined;
+      if (t && (t.hp <= 0 || !canSeeEntity(state, e.ownerId, t) || !canHurt(state, e, t))) t = undefined;
       // A fighter clears the sky before it strafes.
       if (!t || (!isAirborne(t) && isFighterType(e.type))) t = acquireAir(state, e) ?? t;
       if (!t) t = acquireGround(state, e);
@@ -839,12 +850,14 @@ function patrolPlaneTarget(state: MatchState, e: Entity): Entity | undefined {
 function planePatrolContact(state: MatchState, e: Entity, o: Entity, route: readonly { x: number; y: number }[], range: number): boolean {
   if (o.kind !== "unit" || o.hp <= 0 || o.wreck || o.id === e.id || isCrashing(o)) return false;
   if (!o.ownerId || allies(state, e.ownerId, o.ownerId)) return false;
-  if (!canSeeEntity(state, e.ownerId, o) || !canHurt(e, o)) return false;
+  if (!canSeeEntity(state, e.ownerId, o) || !canHurt(state, e, o)) return false;
   return distToRoute(route, o.x, o.y, e.order?.loop === true) <= range;
 }
 
-function canHurt(e: Entity, t: Entity): boolean {
+function canHurt(state: MatchState, e: Entity, t: Entity): boolean {
   const a = e.air!;
+  // A torpedo only finds what is in the water.
+  if (dropsTorpedo(e.type)) return a.bombs > 0 && torpedoFinds(state, t);
   return (a.bombs > 0 && !isAirborne(t)) || (hasRounds(e) && gunsHurt(e, t));
 }
 
@@ -877,7 +890,7 @@ function acquireGround(state: MatchState, e: Entity): Entity | undefined {
     if (!o.ownerId || allies(state, e.ownerId, o.ownerId)) continue;
     if (isAirborne(o) || o.type === "sandbags" || o.type === "teeth") continue;
     if (o.kind === "building" && a.bombs <= 0) continue;
-    if (!canHurt(e, o)) continue;
+    if (!canHurt(state, e, o)) continue;
     const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
     if (d > bestD) continue;
     if (!canSeeEntity(state, e.ownerId, o)) continue;
@@ -902,6 +915,7 @@ function attackRun(
   turned: boolean,
   forced: boolean,
 ): number {
+  if (dropsTorpedo(e.type)) return torpedoRun(state, e, tx, ty, target, dt, turned, forced);
   const a = e.air!;
   const ts = state.tileSize;
   const d = Math.hypot(tx - e.x, ty - e.y);
@@ -937,6 +951,96 @@ function attackRun(
   }
   if (d < ts * 2 || (off > (100 * Math.PI) / 180 && d < turnRadius(state, e))) a.extend = true;
   return goal;
+}
+
+/** Something a torpedo can meet: afloat, on the surface or down, and not another torpedo. */
+function torpedoFinds(state: MatchState, t: Entity): boolean {
+  if (t.hp <= 0 || t.wreck || isCrashing(t) || isAirborne(t) || isTorpedoBody(t.type)) return false;
+  return afloat(state, t);
+}
+
+/**
+ * Torpedo bomber's pass: come down onto the water on the way in, line up, and
+ * let the torpedo go once the target is inside a submarine's reach, on the
+ * nose, with water under the plane. Then fly out straight and come round, or
+ * go home with the bay empty. Ordered at something on land it has nothing to
+ * give; forced, it drops at the point all the same. Returns the height the
+ * plane is trying to hold.
+ */
+function torpedoRun(
+  state: MatchState,
+  e: Entity,
+  tx: number,
+  ty: number,
+  target: Entity | undefined,
+  dt: number,
+  turned: boolean,
+  forced: boolean,
+): number {
+  const a = e.air!;
+  const ts = state.tileSize;
+  if (a.bombs <= 0) {
+    if (liveHome(state, e)) e.order = { kind: "land" };
+    else if (!a.guard) loiterHere(e);
+    return AIR_CRUISE_ALT;
+  }
+  if (!forced && target && !torpedoFinds(state, target)) {
+    loiterHere(e);
+    return AIR_CRUISE_ALT;
+  }
+  const d = Math.hypot(tx - e.x, ty - e.y);
+  if (a.extend) {
+    if (d > AIR_EXTEND_TILES * ts) a.extend = false;
+    return AIR_CRUISE_ALT;
+  }
+  if (!turned) steerTo(state, e, tx, ty, dt);
+  const off = Math.abs(angOff(Math.atan2(ty - e.y, tx - e.x), e.facing));
+  const runIn = d < HE111_RUN_IN_TILES * ts && off < (AIR_DIVE_CONE_DEG * Math.PI) / 180;
+  const reach = TORPEDO_RANGE_TILES * ts * nightReachMul(state.tick);
+  const overWater = isWater(state, worldToTile(e.x, ts), worldToTile(e.y, ts));
+  if (runIn && overWater && d <= reach && off <= (HE111_DROP_ARC_DEG * Math.PI) / 180 && a.alt <= HE111_DROP_ALT + 2) {
+    dropTorpedo(state, e, tx, ty, target, d);
+    a.extend = true;
+    return HE111_DROP_ALT;
+  }
+  if (d < ts * 2 || (off > (100 * Math.PI) / 180 && d < turnRadius(state, e))) a.extend = true;
+  return runIn ? HE111_DROP_ALT : AIR_CRUISE_ALT;
+}
+
+/**
+ * The torpedo leaves the belly at the waterline under the plane, laid on the
+ * target with the submarine's spread. It always runs the whole of a torpedo's
+ * run, whatever point it was laid on, and meets whatever floats across it.
+ */
+function dropTorpedo(state: MatchState, e: Entity, tx: number, ty: number, target: Entity | undefined, dist: number): void {
+  const a = e.air!;
+  const run = TORPEDO_RANGE_TILES * state.tileSize;
+  const moving = !!target && (target.waypoints.length > 0 || target.state === "move");
+  const ang = aimAngle(Math.atan2(ty - e.y, tx - e.x), TORPEDO.spreadDeg, dist, run, () => nextRand(state), moving);
+  const p: Projectile = {
+    id: state.nextId++,
+    ownerId: e.ownerId,
+    team: playerTeam(state, e.ownerId),
+    x: e.x,
+    y: e.y,
+    vx: Math.cos(ang) * TORPEDO_SPEED,
+    vy: Math.sin(ang) * TORPEDO_SPEED,
+    damage: TORPEDO.damage,
+    penetration: TORPEDO.penetration,
+    caliber: TORPEDO.caliber,
+    // The submarine's full run, with the same pad past it.
+    life: run / TORPEDO_SPEED + 0.05,
+    ignoreId: e.id,
+    fromId: e.id,
+    bounced: false,
+    shell: null,
+    z: 0,
+    vz: 0,
+  };
+  armTorpedo(state, p, false);
+  state.projectiles.push(p);
+  a.bombs -= 1;
+  a.bombed = true;
 }
 
 function fireWingGuns(state: MatchState, e: Entity, target: Entity, dist: number): void {
