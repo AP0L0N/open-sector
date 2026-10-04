@@ -1869,7 +1869,7 @@ export const CIWS_GUN = {
   /** A light tank's thin side. A Walker or a truck only sometimes takes a round. Not a tank's front. */
   penetration: 22,
   caliber: 20,
-  spreadDeg: 3,
+  spreadDeg: 4.3,
 } as const;
 /**
  * A gatling on a plane fires one stream, not a spray. The rounds of a burst
@@ -1893,8 +1893,8 @@ export const GATLING_STREAM_WANDER_HZ = 0.8;
 export const GATLING_GROUND_SPREAD_MUL = 1 / 1.3;
 /** The pad reaches this much farther for a plane in the air: the radar sees it coming. */
 export const CIWS_AIR_REACH_MUL = 1.4;
-/** Chance one burst connects on one rocket: nine in ten. Each CIWS tries an ordinary rocket once. A heavy round keeps drawing bursts until it comes apart. */
-export const CIWS_INTERCEPT_CHANCE = 0.9;
+/** Chance one burst connects on one rocket: about six in ten. Each CIWS tries an ordinary rocket once. A heavy round keeps drawing bursts until it comes apart. */
+export const CIWS_INTERCEPT_CHANCE = 0.63;
 /** Rounds one intercept burst spends. A short belt still tries, at a share of the chance. */
 export const CIWS_INTERCEPT_ROUNDS = 12;
 /** Rockets one CIWS can engage in one tick. A full Titan salvo takes two ticks. */
@@ -1995,7 +1995,7 @@ export const APOCALYPSE_CIWS_TURN_DEG_PER_SEC = 360;
 /**
  * Chance the roof mount bursts one missile. Most still get through.
  */
-export const APOCALYPSE_CIWS_INTERCEPT_CHANCE = 0.3;
+export const APOCALYPSE_CIWS_INTERCEPT_CHANCE = 0.21;
 /** Seconds between the two main-gun barrels. Six ticks. The long reload starts after the second. */
 export const APOCALYPSE_TWIN_GAP = 6 * TICK_DT;
 /**
@@ -2487,7 +2487,7 @@ export const BATTLESHIP_CIWS_RANGE_TILES = t(7);
 export const BATTLESHIP_CIWS_BELT = 500;
 export const BATTLESHIP_CIWS_SHOTS_PER_TICK = 2;
 export const BATTLESHIP_CIWS_TURN_DEG_PER_SEC = 360;
-export const BATTLESHIP_CIWS_INTERCEPT_CHANCE = 0.3;
+export const BATTLESHIP_CIWS_INTERCEPT_CHANCE = 0.21;
 /** Beside a friendly Marine Base (within this many tiles of it) the ship fills again: */
 export const BATTLESHIP_REARM_TILES = t(3);
 /** every this many seconds, one shell into each short barrel and this many rounds onto each short belt. */
@@ -2743,7 +2743,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shotsPerTick: CIWS_SHOTS_PER_TICK,
     belt: CIWS_BELT,
     radarLaid: true,
-    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, and reaches farther for a plane than for anything on the ground. Against a plane it lays one stream of rounds, a tracer in every few, that walks on and off the airframe: often enough to bring one down on a pass. A little under two seconds on the trigger overheats the barrels, and it falls silent while they cool. Max range reaches half as far again, but out there the fire scatters wide. It bursts nine in ten incoming rockets in the air. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, and reaches farther for a plane than for anything on the ground. Against a plane it lays one stream of rounds, a tracer in every few, that walks on and off the airframe: often enough to bring one down on a pass. A little under two seconds on the trigger overheats the barrels, and it falls silent while they cool. Max range reaches half as far again, but out there the fire scatters wide. It bursts about six in ten incoming rockets in the air. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
   },
   bunker: {
     type: "bunker",

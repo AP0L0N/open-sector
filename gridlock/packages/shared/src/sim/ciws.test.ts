@@ -248,9 +248,10 @@ describe("CIWS fire", () => {
     assert.ok(CIWS_AIR_Z_SCATTER < AIR_HIT_BAND * 2, "a round strays little off the stream");
   });
 
-  it("bursts nine rockets in ten, the same as a RAM", () => {
-    assert.equal(CIWS_INTERCEPT_CHANCE, 0.9);
+  it("bursts about six rockets in ten, fewer than a RAM", () => {
+    assert.equal(CIWS_INTERCEPT_CHANCE, 0.63);
     assert.equal(RAM_INTERCEPT_CHANCE, 0.9);
+    assert.ok(CIWS_INTERCEPT_CHANCE < RAM_INTERCEPT_CHANCE);
   });
 
   it("stops firing on an empty belt, and a supply truck fills it from the footprint's edge", () => {
