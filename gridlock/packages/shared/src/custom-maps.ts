@@ -1,6 +1,7 @@
 import { CIVILIAN_TYPES, HEIGHT_MAX, TILE_SIZE, TILE_SUBDIV, catalog, type CivilianType } from "./catalog.js";
 import {
   SPAWN_PAD_R,
+  TILE_DIAMOND_SCRAP,
   TILE_EMPTY,
   TILE_FENCE,
   TILE_ROAD,
@@ -49,6 +50,7 @@ export const CUSTOM_MAP_TILES: readonly number[] = [
   TILE_EMPTY,
   TILE_ROAD,
   TILE_SCRAP,
+  TILE_DIAMOND_SCRAP,
   TILE_WATER,
   TILE_TREE,
   TILE_FENCE,

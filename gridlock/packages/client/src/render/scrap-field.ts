@@ -163,6 +163,31 @@ export function scrapDressAt(field: ScrapField, tx: number, ty: number): ScrapDr
   return null;
 }
 
+export type DiamondGlint = {
+  /** Seat in tile units. */
+  fx: number;
+  fy: number;
+  /** Half-width of the stone in pixels. */
+  size: number;
+  /** A brighter stone that throws a small star of light. */
+  sparkle: boolean;
+};
+
+/**
+ * A stone showing through diamond scrap, or null. About one tile in three holds
+ * one, small and pale, so the field still reads as scrap at a glance.
+ */
+export function diamondGlintAt(tx: number, ty: number): DiamondGlint | null {
+  const h = hash2(tx, ty, 71);
+  if (h % 3 !== 0) return null;
+  return {
+    fx: tx + 0.15 + ((h >>> 5) % 71) / 100,
+    fy: ty + 0.15 + ((h >>> 12) % 71) / 100,
+    size: 1.5 + ((h >>> 20) % 3) * 0.5,
+    sparkle: (h >>> 24) % 5 === 0,
+  };
+}
+
 /** Material weight for the GL ground: blurred cover, held up on real scrap tiles. */
 export function scrapCoverByte(field: ScrapField, i: number): number {
   let c = field.cover[i] ?? 0;

@@ -14,6 +14,8 @@ import {
   HAULER_SMOKE_CHARGES,
   MAULER_CART_HP,
   SMELTER_SCRAP_PER_SEC,
+  smelterRateOn,
+  type ScrapCell,
   isEngineerBuilding,
   ammoOf,
   armorLabel,
@@ -498,13 +500,30 @@ export function flashNoScrap(cameo?: HTMLElement | null): void {
   }, 900);
 }
 
+const scrapYieldIndex = new WeakMap<readonly ScrapCell[], Map<string, number>>();
+
+/** Scrap yield by tile from a snapshot's scrap cells, built once per snapshot. */
+function scrapYieldLookup(cells: readonly ScrapCell[]): (x: number, y: number) => number {
+  let idx = scrapYieldIndex.get(cells);
+  if (!idx) {
+    idx = new Map(cells.map((c) => [`${c.x},${c.y}`, c.yield]));
+    scrapYieldIndex.set(cells, idx);
+  }
+  const found = idx;
+  return (x, y) => found.get(`${x},${y}`) ?? 0;
+}
+
 export function paintBattleHud(ctx: Ctx): void {
   const m = ctx.match;
   if (!m) return;
   const scrap = document.getElementById("hud-scrap");
   if (scrap) {
-    const smelters = m.entities.filter((e) => e.ownerId === m.youPlayerId && e.type === "smelter" && e.hp > 0 && !e.wreck).length;
-    const pour = Math.round(smelters * SMELTER_SCRAP_PER_SEC * productionSpeed(m.you.provided, m.you.used));
+    const yieldAt = scrapYieldLookup(m.scrap);
+    let rate = 0;
+    for (const e of m.entities) {
+      if (e.ownerId === m.youPlayerId && e.type === "smelter" && e.hp > 0 && !e.wreck) rate += smelterRateOn(yieldAt, e.tileX, e.tileY);
+    }
+    const pour = Math.round(rate * productionSpeed(m.you.provided, m.you.used));
     const next = `SCRAP <b>${m.you.scrap}</b>${pour > 0 ? ` <i class="pour">+${pour}/s</i>` : ""}`;
     if (scrap.innerHTML !== next) scrap.innerHTML = next;
   }

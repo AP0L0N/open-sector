@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { SCRAP_SOFT_REACH, scrapCoverAt, scrapCoverByte, scrapDressAt, scrapField, scrapGround } from "./scrap-field.js";
+import { SCRAP_SOFT_REACH, diamondGlintAt, scrapCoverAt, scrapCoverByte, scrapDressAt, scrapField, scrapGround } from "./scrap-field.js";
 
 const W = 40;
 const H = 40;
@@ -84,5 +84,26 @@ describe("scrap yard field", () => {
         assert.deepEqual(scrapDressAt(after, x, y), scrapDressAt(field, x, y), `${x},${y}`);
       }
     }
+  });
+});
+
+describe("diamond scrap glints", () => {
+  it("seats a small stone on about one tile in three, inside its own tile, the same every time", () => {
+    let n = 0;
+    let sparkles = 0;
+    for (let ty = 0; ty < 64; ty++) {
+      for (let tx = 0; tx < 64; tx++) {
+        const g = diamondGlintAt(tx, ty);
+        assert.deepEqual(g, diamondGlintAt(tx, ty));
+        if (!g) continue;
+        n++;
+        if (g.sparkle) sparkles++;
+        assert.ok(g.fx >= tx && g.fx < tx + 1 && g.fy >= ty && g.fy < ty + 1, `stone at ${tx},${ty} leaves its tile`);
+        assert.ok(g.size >= 1.5 && g.size <= 2.5, `stone size ${g.size}`);
+      }
+    }
+    const share = n / (64 * 64);
+    assert.ok(share > 0.25 && share < 0.42, `glint share ${share}`);
+    assert.ok(sparkles > 0 && sparkles < n / 2, `sparkles ${sparkles} of ${n}`);
   });
 });

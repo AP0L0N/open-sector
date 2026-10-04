@@ -56,6 +56,16 @@ export const TILE_FENCE = 6;
  * sight or a shot, so a hilltop still looks down across it.
  */
 export const TILE_ROCK = 7;
+/**
+ * Diamond scrap. A scrap field with stones glinting through the salvage. It plays
+ * like scrap in every way, except that a Smelter on it pours DIAMOND_SCRAP_MUL times as much.
+ */
+export const TILE_DIAMOND_SCRAP = 8;
+
+/** Scrap of either grade, plain or diamond. */
+export function isScrapTile(t: number | undefined): boolean {
+  return t === TILE_SCRAP || t === TILE_DIAMOND_SCRAP;
+}
 
 function idx(width: number, x: number, y: number): number {
   return y * width + x;
@@ -154,6 +164,42 @@ function paintYardScrap(
     const cy = Math.round(s.y + (dy / len) * HOME_SCRAP_CELLS);
     centers.push({ x: cx, y: cy });
     paintScrapBlob(tiles, width, height, cx, cy);
+  }
+}
+
+/**
+ * The scrap field nearest the map's middle turns to diamond scrap: the richest
+ * ground on the map, and as far from every start as a field gets.
+ */
+function promoteCentreScrap(tiles: number[], width: number, height: number): void {
+  const cx = (width - 1) / 2;
+  const cy = (height - 1) / 2;
+  let start = -1;
+  let best = Infinity;
+  for (let i = 0; i < tiles.length; i++) {
+    if (tiles[i] !== TILE_SCRAP) continue;
+    const d = Math.hypot((i % width) - cx, Math.floor(i / width) - cy);
+    if (d < best) {
+      best = d;
+      start = i;
+    }
+  }
+  if (start < 0) return;
+  tiles[start] = TILE_DIAMOND_SCRAP;
+  const stack = [start];
+  while (stack.length) {
+    const i = stack.pop()!;
+    const x = i % width;
+    const y = Math.floor(i / width);
+    for (const [dx, dy] of WATER_ORTHO) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+      const k = idx(width, nx, ny);
+      if (tiles[k] !== TILE_SCRAP) continue;
+      tiles[k] = TILE_DIAMOND_SCRAP;
+      stack.push(k);
+    }
   }
 }
 
@@ -1213,7 +1259,7 @@ function paintLane(
         if (inHouseBox(houses, xx, yy)) continue;
         const k = idx(width, xx, yy);
         const t = tiles[k];
-        if (t === TILE_WATER || t === TILE_SCRAP || t === TILE_BLOCKED || t === TILE_FENCE || t === TILE_ROCK) continue;
+        if (t === TILE_WATER || isScrapTile(t) || t === TILE_BLOCKED || t === TILE_FENCE || t === TILE_ROCK) continue;
         tiles[k] = TILE_ROAD;
       }
     }
@@ -1245,7 +1291,7 @@ function stampRoad(
       if (inHouseBox(houses, xx, yy)) continue;
       const k = idx(width, xx, yy);
       const t = tiles[k];
-      if (t === TILE_WATER || t === TILE_SCRAP || t === TILE_BLOCKED || t === TILE_FENCE || t === TILE_ROCK) continue;
+      if (t === TILE_WATER || isScrapTile(t) || t === TILE_BLOCKED || t === TILE_FENCE || t === TILE_ROCK) continue;
       tiles[k] = TILE_ROAD;
     }
   }
@@ -1619,7 +1665,7 @@ function paintYardRocks(
         let crowded = false;
         for (const [dx, dy] of WATER_ORTHO) {
           const t = tiles[idx(width, x + dx, y + dy)];
-          if (t === TILE_ROAD || t === TILE_SCRAP || t === TILE_WATER) crowded = true;
+          if (t === TILE_ROAD || isScrapTile(t) || t === TILE_WATER) crowded = true;
         }
         if (crowded) continue;
         patch.push(i);
@@ -1675,6 +1721,7 @@ export function makeYard64(): MapDef {
     { id: 8, x: 60, y: 31 },
   ];
   paintYardScrap(tiles, width, height, "yard-64-scrap", spawns);
+  promoteCentreScrap(tiles, width, height);
   const pads = spawns.map((s) => ({ x: s.x, y: s.y, r: 4 }));
   const sub = TILE_SUBDIV;
   // One village on the crossroads in the middle of the yard.
@@ -1746,7 +1793,7 @@ export function normalizeTerrain(
       for (let x = s.x - r; x <= s.x + r; x++) {
         if (x < 0 || y < 0 || x >= width || y >= height || Math.hypot(x - s.x, y - s.y) > r) continue;
         const i = idx(width, x, y);
-        if (WALK_BLOCKERS.has(tiles[i] ?? TILE_EMPTY) || tiles[i] === TILE_SCRAP) tiles[i] = TILE_EMPTY;
+        if (WALK_BLOCKERS.has(tiles[i] ?? TILE_EMPTY) || isScrapTile(tiles[i])) tiles[i] = TILE_EMPTY;
         heights[i] = z;
         locked[i] = 1;
       }

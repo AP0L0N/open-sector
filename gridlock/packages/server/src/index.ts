@@ -6,6 +6,7 @@ import { WebSocketServer } from "ws";
 import {
   HEIGHT_WORLD,
   TILE_BLOCKED,
+  TILE_DIAMOND_SCRAP,
   TILE_EMPTY,
   TILE_FENCE,
   TILE_ROCK,
@@ -88,6 +89,7 @@ export function mapLayout(id: string): Record<string, unknown> | null {
     tileEmpty: TILE_EMPTY,
     tileBlocked: TILE_BLOCKED,
     tileScrap: TILE_SCRAP,
+    tileDiamondScrap: TILE_DIAMOND_SCRAP,
     tileWater: TILE_WATER,
     tileTree: TILE_TREE,
     tileRoad: TILE_ROAD,

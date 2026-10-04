@@ -25,11 +25,13 @@ import {
   scoutHpMaxOf,
   SUPPLY_CARGO,
   SCRAP_TILE_YIELD,
+  DIAMOND_SCRAP_TILE_YIELD,
   UNIT_SPACE_PAD,
   type EntityType,
 } from "../catalog.js";
 import {
   TILE_BLOCKED,
+  TILE_DIAMOND_SCRAP,
   TILE_EMPTY,
   TILE_FENCE,
   TILE_ROCK,
@@ -279,6 +281,7 @@ export function initGrids(map: MapDef): {
     terrain[i] = t;
     if (t === TILE_BLOCKED || t === TILE_WATER || t === TILE_FENCE || t === TILE_ROCK) blocked[i] = 1;
     if (t === TILE_SCRAP) scrapYield[i] = SCRAP_TILE_YIELD;
+    else if (t === TILE_DIAMOND_SCRAP) scrapYield[i] = DIAMOND_SCRAP_TILE_YIELD;
     heights[i] = map.heights[i] ?? 0;
   }
   return { blocked, terrain, scrapYield, occupy, heights };

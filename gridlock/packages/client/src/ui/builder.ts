@@ -7,6 +7,8 @@ import {
   HEIGHT_BASE,
   HEIGHT_MAX,
   SPAWN_PAD_R,
+  DIAMOND_SCRAP_MUL,
+  TILE_DIAMOND_SCRAP,
   TILE_EMPTY,
   TILE_FENCE,
   TILE_ROAD,
@@ -59,6 +61,12 @@ const GROUND: readonly GroundKind[] = [
   { tile: TILE_EMPTY, name: "Grass", img: grassUrl, hint: "Open ground. Paints over anything." },
   { tile: TILE_ROAD, name: "Road", img: dirtUrl, hint: "Dirt lane. Same footing as grass." },
   { tile: TILE_SCRAP, name: "Scrap", img: scrapUrl, hint: "Scrap field. A Smelter built on it pours scrap for the whole match. Paint at least 3×3." },
+  {
+    tile: TILE_DIAMOND_SCRAP,
+    name: "Diamond Scrap",
+    img: scrapUrl,
+    hint: `Scrap field with diamonds in it. A Smelter on it pours ${DIAMOND_SCRAP_MUL}× as much. Paint at least 3×3.`,
+  },
   { tile: TILE_WATER, name: "Water", img: waterUrl, hint: "Pond. Sinks to the valley floor." },
   { tile: TILE_TREE, name: "Trees", img: treeUrl, hint: "Woods. Block sight and walking." },
   { tile: TILE_FENCE, name: "Fence", img: fenceUrl, hint: "Blocks walking. Shots pass over." },
@@ -213,6 +221,9 @@ function tileColor(s: M.Sheet, x: number, y: number): [number, number, number] {
       break;
     case TILE_SCRAP:
       c = (x * 7 + y * 13) % 5 === 0 ? [176, 132, 62] : mix([92, 64, 30], [150, 108, 50], u);
+      break;
+    case TILE_DIAMOND_SCRAP:
+      c = (x * 7 + y * 13) % 5 === 0 ? [196, 236, 248] : mix([92, 64, 30], [150, 108, 50], u);
       break;
     case TILE_TREE:
       c = (x * 3 + y * 5) % 4 === 0 ? [20, 44, 24] : mix([30, 60, 32], [54, 92, 50], u);
