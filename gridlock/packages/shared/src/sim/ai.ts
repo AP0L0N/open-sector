@@ -55,8 +55,15 @@ export const EASY_MICRO_EVERY_TICKS = 2 * TICK_HZ;
 /** A building with no legal spot in the base waits this long before the CPU tries it again. */
 export const EASY_NO_ROOM_RETRY_TICKS = 60 * TICK_HZ;
 export const EASY_MIN_FIGHTERS = 4;
-/** Smelters the CPU raises on scrap near its base. The second comes once the whole base stands. */
-export const EASY_WANT_SMELTERS = 2;
+/**
+ * Smelters the CPU keeps. The yard raises the second right after the Barracks; the rest go up
+ * once the base stands, from the yard while its scrap lasts and then by engineers on nearby fields.
+ */
+export const EASY_WANT_SMELTERS = 4;
+/** Smelters the CPU raises while it fortifies. */
+export const EASY_FORTIFY_SMELTERS = 2;
+/** An engineer raises a Smelter on a scrap field this far from the Core at most, in tiles. */
+export const EASY_EXPAND_TILES = 30 * 4;
 /** Enemies this far from the HQ, in tiles, pull the home guard. */
 export const EASY_DEFEND_TILES = DEFENCE_BUILD_RADIUS + 6 * 4;
 /** Fortify gives up waiting on its defences after this long and campaigns anyway. */
@@ -71,6 +78,8 @@ export const EASY_WAVE_MAX = 22;
 const EASY_PINCER_MUL = 1.6;
 /** Campaign towers, around the middle and then toward the enemy, start no faster than this. */
 export const EASY_TOWER_EVERY_TICKS = 40 * TICK_HZ;
+/** Each Smelter past the first shortens the wait between campaign towers, down to this. */
+export const EASY_TOWER_MIN_TICKS = 20 * TICK_HZ;
 /** Footprint gap the CPU keeps between its buildings, in tiles. 1 = touching; 5 leaves a vehicle lane. */
 const EASY_BUILD_LANE_TILES = 5;
 /** A wave this close to a seen enemy building, in tiles, turns on it. */
@@ -136,7 +145,7 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield", readon
     { unit: "medic", want: 2 },
     { unit: "sniper", want: 2 },
     { unit: "mortarman", want: 2 },
-    { unit: "engineer", want: 2 },
+    { unit: "engineer", want: 3 },
     { unit: "jumpjet", want: 2 },
     { unit: "droneop", want: 1 },
   ],
@@ -159,11 +168,21 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield", readon
 };
 
 /**
- * Base structures, one after another. Smelter second so its scrap funds the Barracks and the
- * first towers. The Machine Shop waits for a tower; Research, air, and the Radar Station wait
+ * Base structures, one after another, each until the side owns `n`. Smelter second so its scrap
+ * funds the Barracks and the first towers, and a second Smelter right behind the Barracks to pay
+ * for the army. The Machine Shop waits for a tower; Research, air, and the Radar Station wait
  * until the base is fortified. With all of that standing, more Smelters up to EASY_WANT_SMELTERS.
  */
-const BUILD_ORDER: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "research", "airfield", "radar"];
+const BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
+  { type: "dynamo", n: 1 },
+  { type: "smelter", n: 1 },
+  { type: "muster", n: 1 },
+  { type: "smelter", n: EASY_FORTIFY_SMELTERS },
+  { type: "armory", n: 1 },
+  { type: "research", n: 1 },
+  { type: "airfield", n: 1 },
+  { type: "radar", n: 1 },
+];
 /** Started as soon as scrap covers them. The rest wait for the first rifle wave. */
 const CORE_BUILDINGS: readonly BuildingType[] = ["dynamo", "smelter", "muster"];
 /** Troops train only once these stand, so scrap is held for them while they go up. */
@@ -279,14 +298,14 @@ function placeReadyBuilding(state: MatchState, p: SimPlayer, job: StructureJob |
 function nextBuilding(state: MatchState, p: SimPlayer): BuildingType | null {
   const pow = powerOf(state, p.playerId);
   const roomy = (t: BuildingType): boolean => (p.aiNoRoomUntil?.[t] ?? 0) <= state.tick;
-  for (const t of BUILD_ORDER) {
-    if (countType(state, p.playerId, t) > 0 || !roomy(t)) continue;
+  for (const { type: t, n } of BUILD_ORDER) {
+    if (countType(state, p.playerId, t) >= n || !roomy(t)) continue;
     const draw = Math.max(0, -catalog(t).power);
     if (t !== "dynamo" && pow.used + draw > pow.provided) return roomy("dynamo") ? "dynamo" : null;
     return t;
   }
   if (pow.used >= pow.provided && roomy("dynamo")) return "dynamo";
-  // The base is complete: a second Smelter on another scrap field doubles the pour.
+  // The base is complete: every further Smelter adds its own pour.
   if (countType(state, p.playerId, "smelter") < EASY_WANT_SMELTERS && roomy("smelter")) {
     const draw = Math.max(0, -catalog("smelter").power);
     if (pow.used + draw > pow.provided) return roomy("dynamo") ? "dynamo" : null;
@@ -306,7 +325,7 @@ function canStartBuilding(state: MatchState, p: SimPlayer, next: BuildingType): 
   const plan = aiPlanOf(p);
   if (plan.posture === "fortify") {
     // Walls and towers first: the Machine Shop waits for one tower, the extras for the whole ring.
-    if (AFTER_FORTIFY.includes(next) || (next === "smelter" && countType(state, p.playerId, "smelter") > 0)) return false;
+    if (AFTER_FORTIFY.includes(next) || (next === "smelter" && countType(state, p.playerId, "smelter") >= EASY_FORTIFY_SMELTERS)) return false;
     if (next === "armory" && countType(state, p.playerId, "tower") === 0) return false;
   }
   const troopers = countType(state, p.playerId, "rifleman");
@@ -656,10 +675,16 @@ function defenceLane(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan):
     }
     const started = applyCommand(state, p.playerId, { type: "cmd.build", building: next.type }).ok;
     if (started && next.site && !next.site.key.startsWith("base:")) {
-      plan.nextTowerTick = state.tick + EASY_TOWER_EVERY_TICKS;
+      plan.nextTowerTick = state.tick + towerEvery(state, p.playerId);
     }
     return;
   }
+}
+
+/** Wait between campaign towers: the more Smelters pour, the sooner the next goes up. */
+function towerEvery(state: MatchState, playerId: string): number {
+  const smelters = Math.max(1, countType(state, playerId, "smelter"));
+  return Math.max(EASY_TOWER_MIN_TICKS, Math.round((EASY_TOWER_EVERY_TICKS * 2) / (1 + smelters)));
 }
 
 function placeDefence(state: MatchState, p: SimPlayer, plan: AiPlan, job: StructureJob): void {
@@ -1313,32 +1338,88 @@ function microUnits(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): 
     }
     if (YARD_IDLERS.has(e.type) && !e.order && nearBuilding(state, e)) moveTo(state, p, e, stage());
   }
-  if (!smelterCrew) claimDiamond(state, p, plan);
+  if (!smelterCrew && !claimDiamond(state, p, plan)) expandSmelters(state, p, hq);
 }
 
 /**
  * Once a force stands on the middle, the nearest free engineer raises a Smelter on the
  * diamond scrap. It pours five times the plain rate and stretches the build range out there.
  */
-function claimDiamond(state: MatchState, p: SimPlayer, plan: AiPlan): void {
+function claimDiamond(state: MatchState, p: SimPlayer, plan: AiPlan): boolean {
   const there = plan.forces.some((f) => f.goal === "centre" && f.route.length === 0);
-  if (!there || ownsDiamondSmelter(state, p.playerId)) return;
-  if (p.scrap < catalog("smelter").cost) return;
-  const c = diamondCentre(state);
+  if (!there || ownsDiamondSmelter(state, p.playerId)) return false;
+  if (p.scrap < catalog("smelter").cost) return false;
+  const eng = freeEngineer(state, p.playerId, diamondCentre(state));
+  const spot = eng && findDiamondSmelterTile(state);
+  if (!eng || !spot) return false;
+  return applyCommand(state, p.playerId, { type: "cmd.construct", ids: [eng.id], building: "smelter", tx: spot.tx, ty: spot.ty }).ok;
+}
+
+/** The engineer nearest `at` that is idle or on work of his own choosing. */
+function freeEngineer(state: MatchState, playerId: string, at: Vec): Entity | undefined {
   let eng: Entity | undefined;
   let bestD = Infinity;
   for (const e of state.entities.values()) {
-    if (e.ownerId !== p.playerId || e.type !== "engineer" || e.hp <= 0 || e.garrisonedIn) continue;
+    if (e.ownerId !== playerId || e.type !== "engineer" || e.hp <= 0 || e.garrisonedIn) continue;
     if (e.order && !e.order.auto && e.order.kind !== "repair" && e.order.kind !== "move") continue;
-    const d = Math.hypot(e.x - c.x, e.y - c.y);
+    const d = Math.hypot(e.x - at.x, e.y - at.y);
     if (d < bestD) {
       eng = e;
       bestD = d;
     }
   }
-  if (!eng) return;
-  const spot = findDiamondSmelterTile(state);
-  if (spot) applyCommand(state, p.playerId, { type: "cmd.construct", ids: [eng.id], building: "smelter", tx: spot.tx, ty: spot.ty });
+  return eng;
+}
+
+/**
+ * The base stands and the yard has no scrap left in range: the nearest free engineer walks
+ * out and raises a Smelter on the nearest field on the CPU's own side of the map.
+ */
+function expandSmelters(state: MatchState, p: SimPlayer, hq: Entity): void {
+  if (aiPlanOf(p).posture !== "campaign") return;
+  if (countType(state, p.playerId, "smelter") >= EASY_WANT_SMELTERS) return;
+  if (p.scrap < catalog("smelter").cost || !powerFor(state, p.playerId, "smelter")) return;
+  if (findSmelterTile(state, p.playerId)) return;
+  const spot = findOutlyingSmelterTile(state, p.playerId, hq);
+  if (!spot) return;
+  const def = catalog("smelter");
+  const at = { x: (spot.tx + def.tileW / 2) * state.tileSize, y: (spot.ty + def.tileH / 2) * state.tileSize };
+  const eng = freeEngineer(state, p.playerId, at);
+  if (eng) applyCommand(state, p.playerId, { type: "cmd.construct", ids: [eng.id], building: "smelter", tx: spot.tx, ty: spot.ty });
+}
+
+/**
+ * Plain scrap within EASY_EXPAND_TILES of the Core and nearer it than any enemy base: the
+ * footprint nearest the Core. The diamond field is left to the force that takes the middle.
+ */
+export function findOutlyingSmelterTile(state: MatchState, playerId: string, hq: Entity): { tx: number; ty: number } | null {
+  const def = catalog("smelter");
+  const foes: Vec[] = [];
+  for (const q of state.players.values()) {
+    if (!q.alive || allies(state, playerId, q.playerId)) continue;
+    const foe = hqOf(state, q.playerId);
+    if (foe) foes.push({ x: foe.x / state.tileSize, y: foe.y / state.tileSize });
+  }
+  const ox = hq.x / state.tileSize;
+  const oy = hq.y / state.tileSize;
+  let best: { tx: number; ty: number } | null = null;
+  let bestD = Infinity;
+  for (let ty = 0; ty + def.tileH <= state.height; ty++) {
+    for (let tx = 0; tx + def.tileW <= state.width; tx++) {
+      // Cheap gate first: the middle of the footprint has to be plain scrap.
+      const mid = scrapAt(state, tx + (def.tileW >> 1), ty + (def.tileH >> 1));
+      if (mid <= 0 || mid >= DIAMOND_SCRAP_TILE_YIELD) continue;
+      const cx = tx + def.tileW / 2;
+      const cy = ty + def.tileH / 2;
+      const d = Math.hypot(cx - ox, cy - oy);
+      if (d > EASY_EXPAND_TILES || d >= bestD) continue;
+      if (foes.some((f) => Math.hypot(cx - f.x, cy - f.y) <= d)) continue;
+      if (!smelterSiteOk(state, tx, ty) || !keepsLanes(state, tx, ty, def.tileW, def.tileH)) continue;
+      best = { tx, ty };
+      bestD = d;
+    }
+  }
+  return best;
 }
 
 type Staging = () => { x: number; y: number };
@@ -1552,6 +1633,10 @@ export function findBuildTile(
   const maxR = radius + Math.max(def.tileW, def.tileH);
   const halfW = Math.floor(def.tileW / 2);
   const halfH = Math.floor(def.tileH / 2);
+  // Keep the next Smelter's ground: a building packed against the scrap shuts its lane, and the
+  // yard may have no other footprint on the field in range.
+  const smelter = catalog("smelter");
+  const keep = countType(state, playerId, "smelter") < EASY_WANT_SMELTERS ? findSmelterTile(state, playerId) : null;
   for (let r = 1; r <= maxR; r++) {
     const ring: { tx: number; ty: number; inward: number }[] = [];
     for (let dy = -r; dy <= r; dy++) {
@@ -1569,6 +1654,7 @@ export function findBuildTile(
       if (tilesBlockedOrScrap(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
       if (!inBuildRadius(state, playerId, spot.tx, spot.ty, def.tileW, def.tileH, radius)) continue;
       if (!keepsLanes(state, spot.tx, spot.ty, def.tileW, def.tileH)) continue;
+      if (keep && footprintGap(spot.tx, spot.ty, def.tileW, def.tileH, keep.tx, keep.ty, smelter.tileW, smelter.tileH) < EASY_BUILD_LANE_TILES) continue;
       return { tx: spot.tx, ty: spot.ty };
     }
   }
