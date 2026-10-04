@@ -1750,7 +1750,7 @@ export const CRATE_LIFE_SECONDS = 240;
  */
 export const BUNKER_GARRISON_CAP = 5;
 /** Occupant HP multiplier inside. A civilian house is 3×. */
-export const BUNKER_GARRISON_HP_MUL = 4;
+export const BUNKER_GARRISON_HP_MUL = 5;
 /** Share of each hit on the bunker that reaches the men inside. */
 export const BUNKER_WOUND_MUL = 0.35;
 /** Solid height of the roof slab, elevation units. A one-story house is STORY_COVER_HEIGHT. */
@@ -1763,7 +1763,7 @@ export const BUNKER_TYPES: readonly EntityType[] = ["rifleman", "gunner", "snipe
  * than a house, far less than a bunker. Open-topped, so a mortar works from it.
  */
 export const TRENCH_GARRISON_CAP = 1;
-/** Occupant HP multiplier inside. A house is 3×, a bunker 4×. */
+/** Occupant HP multiplier inside. A house is 3×, a bunker 5×. */
 export const TRENCH_GARRISON_HP_MUL = 2;
 /** Share of each hit on the trench that reaches the man in it. A bunker passes 35%. */
 export const TRENCH_WOUND_MUL = 0.6;
@@ -1818,7 +1818,7 @@ export const TOWER_EYE_HEIGHT = TOWER_FLOORS * STORY_COVER_HEIGHT * 0.6;
  * a cab wall.
  */
 export const LARGE_WALL_GARRISON_CAP = 2;
-/** Occupant HP multiplier inside. A tower is 3×, a bunker 4×. */
+/** Occupant HP multiplier inside. A tower is 3×, a bunker 5×. */
 export const LARGE_WALL_GARRISON_HP_MUL = 3;
 /** Share of each hit on the section that reaches the men behind the slits. Bunker 0.35, tower 0.6. */
 export const LARGE_WALL_WOUND_MUL = 0.5;
