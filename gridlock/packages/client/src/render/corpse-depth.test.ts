@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import { AIRFIELD_BACK_DEPTH, AIRFIELD_PADS, airfieldPadWorld, airfieldRunway, catalog, isoDepth } from "@gridlock/shared";
 import {
   axisFootprint,
+  BUSH_DRAW_LAYER,
   compareDrawOrder,
   CORPSE_DRAW_LAYER,
   type DrawKey,
@@ -131,5 +132,22 @@ describe("airfield draw order", () => {
 
   it("craters and shadows land on the strip, not under it", () => {
     assert.ok(compareDrawOrder({ layer: HOLE_DRAW_LAYER, z: -1e9 }, strip) > 0);
+  });
+});
+
+describe("bush draw order", () => {
+  it("paints a unit and a building over a bush further south-east", () => {
+    const bush = { layer: BUSH_DRAW_LAYER, z: isoDepth(400, 400), at: { x: 400, y: 400 } };
+    const tank = unitAt(80, 80);
+    const home = house();
+    const items = [bush, tank, home].sort(compareDrawOrder);
+    assert.equal(items[0], bush);
+  });
+
+  it("keeps a bush over craters and shadows but under bodies", () => {
+    const bush = { layer: BUSH_DRAW_LAYER, z: isoDepth(10, 10) };
+    const hole = { layer: HOLE_DRAW_LAYER, z: isoDepth(90, 90) };
+    const body = { layer: CORPSE_DRAW_LAYER, z: isoDepth(0, 0) };
+    assert.deepEqual([body, bush, hole].sort(compareDrawOrder), [hole, bush, body]);
   });
 });
