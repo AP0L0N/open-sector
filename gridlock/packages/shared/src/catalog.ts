@@ -1875,7 +1875,7 @@ export const CIWS_GUN = {
   /** A light tank's thin side. A Walker or a truck only sometimes takes a round. Not a tank's front. */
   penetration: 22,
   caliber: 20,
-  spreadDeg: 4.3,
+  spreadDeg: 3.3,
 } as const;
 /**
  * A gatling on a plane fires one stream, not a spray. The rounds of a burst
@@ -1899,8 +1899,8 @@ export const GATLING_STREAM_WANDER_HZ = 0.8;
 export const GATLING_GROUND_SPREAD_MUL = 1 / 1.3;
 /** The pad reaches this much farther for a plane in the air: the radar sees it coming. */
 export const CIWS_AIR_REACH_MUL = 1.4;
-/** Chance one burst connects on one rocket: about six in ten. Each CIWS tries an ordinary rocket once. A heavy round keeps drawing bursts until it comes apart. */
-export const CIWS_INTERCEPT_CHANCE = 0.63;
+/** Chance one burst connects on one rocket: about eight in ten. Each CIWS tries an ordinary rocket once. A heavy round keeps drawing bursts until it comes apart. */
+export const CIWS_INTERCEPT_CHANCE = 0.82;
 /** Rounds one intercept burst spends. A short belt still tries, at a share of the chance. */
 export const CIWS_INTERCEPT_ROUNDS = 12;
 /** Rockets one CIWS can engage in one tick. A full Titan salvo takes two ticks. */
@@ -2001,7 +2001,7 @@ export const APOCALYPSE_CIWS_TURN_DEG_PER_SEC = 360;
 /**
  * Chance the roof mount bursts one missile. Most still get through.
  */
-export const APOCALYPSE_CIWS_INTERCEPT_CHANCE = 0.21;
+export const APOCALYPSE_CIWS_INTERCEPT_CHANCE = 0.27;
 /** Seconds between the two main-gun barrels. Six ticks. The long reload starts after the second. */
 export const APOCALYPSE_TWIN_GAP = 6 * TICK_DT;
 /**
@@ -2455,11 +2455,11 @@ export const SUB_REARM_SECONDS = 6;
  * and fired on its own. A turret that bears lets its loaded barrels go one at a
  * time in a random order, a short random gap apart, and each barrel then
  * reloads on its own clock. The shell is the field gun's, fired flat and much
- * faster: no arc, so it reaches less far. Each barrel holds its own shells.
+ * faster: no arc, but the turrets reach as far as Artillery. Each barrel holds its own shells.
  * Two radar-laid 20mm mounts, one on the superstructure and one on the stern,
  * each lay, heat, and spend their own belt like the Apocalypse's roof mount.
  */
-export const BATTLESHIP_RANGE_TILES = t(19);
+export const BATTLESHIP_RANGE_TILES = ARTILLERY_RANGE_TILES;
 export const BATTLESHIP_MIN_RANGE_TILES = t(4);
 export const BATTLESHIP_SHELL: LobShellDef = {
   damage: 160,
@@ -2468,8 +2468,8 @@ export const BATTLESHIP_SHELL: LobShellDef = {
   splashTiles: t(3.2),
   scatterNearTiles: t(0.45),
   scatterFarTiles: t(1.3),
-  flightNear: 0.5,
-  flightFar: 1.15,
+  flightNear: 0.125,
+  flightFar: 0.356,
   apexNear: 0,
   apexFar: 0,
   armorChip: 0.2,
@@ -2498,7 +2498,7 @@ export const BATTLESHIP_CIWS_RANGE_TILES = t(7);
 export const BATTLESHIP_CIWS_BELT = 500;
 export const BATTLESHIP_CIWS_SHOTS_PER_TICK = 2;
 export const BATTLESHIP_CIWS_TURN_DEG_PER_SEC = 360;
-export const BATTLESHIP_CIWS_INTERCEPT_CHANCE = 0.21;
+export const BATTLESHIP_CIWS_INTERCEPT_CHANCE = 0.27;
 /** Beside a friendly Marine Base (within this many tiles of it) the ship fills again: */
 export const BATTLESHIP_REARM_TILES = t(3);
 /** every this many seconds, one shell into each short barrel and this many rounds onto each short belt. */
@@ -2754,7 +2754,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     shotsPerTick: CIWS_SHOTS_PER_TICK,
     belt: CIWS_BELT,
     radarLaid: true,
-    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, and reaches farther for a plane than for anything on the ground. Against a plane it lays one stream of rounds, a tracer in every few, that walks on and off the airframe: often enough to bring one down on a pass. A little under two seconds on the trigger overheats the barrels, and it falls silent while they cool. Max range reaches half as far again, but out there the fire scatters wide. It bursts about six in ten incoming rockets in the air. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
+    blurb: `Radar-laid 20mm gatling on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, and reaches farther for a plane than for anything on the ground. Against a plane it lays one stream of rounds, a tracer in every few, that walks on and off the airframe: often enough to bring one down on a pass. A little under two seconds on the trigger overheats the barrels, and it falls silent while they cool. Max range reaches half as far again, but out there the fire scatters wide. It bursts about eight in ten incoming rockets in the air. Leaves tanks and buildings alone. A Walker or a truck sometimes takes a round. The ${CIWS_BELT}-round belt does not refill by itself — bring a supply truck.`,
   },
   bunker: {
     type: "bunker",
@@ -3810,7 +3810,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     naval: true,
     leavesWreck: true,
     wreckHp: 100,
-    blurb: `Fast battleship, after the Iowa class. Water only. Two triple 16-inch turrets on the foredeck; every barrel loads and fires on its own, so a turret lets its guns go one by one in no set order. The shell is the field gun's, fired flat and fast: it lands almost as soon as it leaves, but reaches less far than Artillery, and it will not fire inside ${BATTLESHIP_MIN_RANGE_TILES / TILE_SUBDIV} tiles. The turrets cannot fire astern through the superstructure. Two radar-laid 20mm CIWS mounts, one on the superstructure and one on the stern, lay themselves apart from the main guns: incoming missiles first, then planes, infantry, and light vehicles. Order an attack or force-attack on an aircraft and the CIWS take it while the main guns hold; they reach farther for a plane than for anything on the water or ashore. Each barrel holds ${BATTLESHIP_BARREL_AMMO} shells and each CIWS a ${BATTLESHIP_CIWS_BELT}-round belt; they fill again slowly beside a Marine Base. It swings its bow onto the course before it makes way. A big searchlight on the bridge lights the water far out at night; Rotate light swings it, and it turns with the ship. Torpedoes and heavy shells are the danger. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
+    blurb: `Fast battleship, after the Iowa class. Water only. Two triple 16-inch turrets on the foredeck; every barrel loads and fires on its own, so a turret lets its guns go one by one in no set order. The shell is the field gun's, fired flat and fast: it lands almost as soon as it leaves and reaches as far as Artillery, but it will not fire inside ${BATTLESHIP_MIN_RANGE_TILES / TILE_SUBDIV} tiles. The turrets cannot fire astern through the superstructure. Two radar-laid 20mm CIWS mounts, one on the superstructure and one on the stern, lay themselves apart from the main guns: incoming missiles first, then planes, infantry, and light vehicles. Order an attack or force-attack on an aircraft and the CIWS take it while the main guns hold; they reach farther for a plane than for anything on the water or ashore. Each barrel holds ${BATTLESHIP_BARREL_AMMO} shells and each CIWS a ${BATTLESHIP_CIWS_BELT}-round belt; they fill again slowly beside a Marine Base. It swings its bow onto the course before it makes way. A big searchlight on the bridge lights the water far out at night; Rotate light swings it, and it turns with the ship. Torpedoes and heavy shells are the danger. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
   },
   /** Ju 87 B dive bomber. Lives on an Airfield pad. */
   stuka: {
