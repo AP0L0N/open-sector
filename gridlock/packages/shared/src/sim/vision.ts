@@ -25,6 +25,7 @@ import {
   observerEyeForEntity,
   levelSightExtra,
   liveSightExtra,
+  lowPowerSight,
   sightTilesForEntity,
   sightTilesOf,
   uphillSightForEntity,
@@ -75,7 +76,7 @@ export type SightSource = {
   wreck?: boolean;
   /** A lamp crit darkens every spotlight on this hull or tower. */
   crits?: readonly Crit[];
-  /** A tower whose owner is short on power has a dark lamp. */
+  /** A building whose owner is short on power has a dark lamp and shorter sight. */
   unpowered?: boolean;
 };
 
@@ -327,7 +328,7 @@ function sightParams(
     return {
       ox: e.tileX + Math.floor(e.tileW / 2),
       oy: e.tileY + Math.floor(e.tileH / 2),
-      radius: nightTiles(e.sightTiles ?? sightTilesOf(e.type, maxH), light.mul),
+      radius: nightTiles(e.sightTiles ?? lowPowerSight(sightTilesOf(e.type, maxH), e.unpowered), light.mul),
       eye,
       uphill,
       ignore,
@@ -631,9 +632,9 @@ function visionKey(state: MatchState, playerId: string): number {
     h = mix(h, e.scoutOut && e.scoutHp > 0 ? 1 : 0);
     h = mix(h, e.air ? Math.round(e.air.alt) : 0);
     h = mix(h, occupantSightTiles(state, e) ?? -1);
+    if (e.kind === "building") h = mix(h, e.unpowered ? 1 : 0);
     if (light.spots && hasSpotlight(e.type)) {
       h = mix(h, e.crits.includes("lamp") ? 0 : 1);
-      h = mix(h, e.unpowered ? 1 : 0);
       h = mix(h, Math.round(lampHeading(spotFacingOf(e)) * 4096));
     }
     if (light.spots && headlightLit(e)) {
@@ -1177,7 +1178,7 @@ function catalogSight(
   const ty = e.kind === "building" ? e.tileY + Math.floor(e.tileH / 2) : worldToTile(e.y, tileSize);
   const h = elev ? elevAtSafe(elev, width, height, tx, ty) : 0;
   if (e.scout?.out) return sightTilesOf("rifleman", h);
-  return sightTilesOf(e.type, h, liveSightExtra(e));
+  return lowPowerSight(sightTilesOf(e.type, h, liveSightExtra(e)), e.kind === "building" && e.unpowered);
 }
 
 function snapshotSightTiles(
@@ -1377,7 +1378,7 @@ function observerSeesTile(
     const ox = obs.tileX + Math.floor(obs.tileW / 2);
     const oy = obs.tileY + Math.floor(obs.tileH / 2);
     const light = sightLightAt(state.tick);
-    const radius = nightTiles(occupantSightTiles(state, obs) ?? sightTilesOf(obs.type, maxH), light.mul);
+    const radius = nightTiles(occupantSightTiles(state, obs) ?? lowPowerSight(sightTilesOf(obs.type, maxH), obs.unpowered), light.mul);
     const seen = tileInSight(
       tx,
       ty,

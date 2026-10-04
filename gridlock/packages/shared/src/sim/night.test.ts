@@ -5,6 +5,7 @@ import {
   DAY_SECONDS,
   DUSK_SECONDS,
   HEADLIGHT_HALF_DEG,
+  LOW_POWER_SIGHT_MUL,
   LAMP_HEADING_STEP_DEG,
   MAMMOTH_LAMP_PERIOD_SECONDS,
   MAMMOTH_LAMP_STEP_DEG,
@@ -249,6 +250,25 @@ describe("watch tower spotlight", () => {
     assert.equal(lit(state, a, ox + far, oy), true, "burns again");
     tickSpotlights(state, TICK_DT);
     assert.ok(tower.spotFacing! > 0, "and swings toward the Rotate it was given");
+  });
+
+  it("sees a fifth less far while its owner is short on power", () => {
+    const { state, a } = emptyField();
+    const tower = towerAt(state, a, 60, 128);
+    const ox = tower.tileX + Math.floor(tower.tileW / 2);
+    const oy = tower.tileY + Math.floor(tower.tileH / 2);
+    const day = sightTilesForEntity(state, tower);
+    const short = Math.round(day * LOW_POWER_SIGHT_MUL);
+    assert.ok(short < day - 1);
+    tickPower(state);
+    assert.equal(lit(state, a, ox + day - 1, oy), true, "full sight on power");
+
+    const gun = catalog("ciws");
+    makeEntity(state, "ciws", a, (20 + gun.tileW / 2) * state.tileSize, (20 + gun.tileH / 2) * state.tileSize, { tileX: 20, tileY: 20 });
+    tickPower(state);
+    assert.equal(sightTilesForEntity(state, tower), short);
+    assert.equal(lit(state, a, ox + short - 1, oy), true, "still sees near");
+    assert.equal(lit(state, a, ox + day - 1, oy), false, "lost the far edge");
   });
 });
 

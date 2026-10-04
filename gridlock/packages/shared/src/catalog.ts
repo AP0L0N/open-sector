@@ -47,6 +47,8 @@ export const DIAMOND_SCRAP_MUL = 5;
 /** Marks a diamond scrap tile. */
 export const DIAMOND_SCRAP_TILE_YIELD = SCRAP_TILE_YIELD * DIAMOND_SCRAP_MUL;
 export const LOW_POWER_MIN_SPEED = 0.25;
+/** A building whose owner is short on power sees this share of its usual distance. */
+export const LOW_POWER_SIGHT_MUL = 0.8;
 export const FACE_FIRE_DEG = 8;
 /**
  * A round that leaves along the barrel waits until the gun has finished its
@@ -2043,12 +2045,13 @@ export function gatlingHeatOf(type: EntityType): GatlingHeat | null {
  * CIWS_LAY. It widens the cone on every target and the height scatter on a
  * plane. A cheap gun (the Walker, the Cyborg) and a secondary mount (the
  * Apocalypse roof) are laid worse than the dedicated pad. The pad and the
- * roof then lay CIWS_LAY times tighter than these numbers.
+ * roof then lay CIWS_LAY times tighter than these numbers. The Walker and the
+ * Cyborg are laid 30% tighter than they first were.
  */
 export const GATLING_SPRAY: Partial<Record<EntityType, number>> = {
   ciws: 1,
-  walker: 1.6,
-  cyborg: 1.8,
+  walker: 1.6 / 1.3,
+  cyborg: 1.8 / 1.3,
   apocalypse: 1.5,
   battleship: 1.5,
 };

@@ -180,8 +180,8 @@ describe("gatling accuracy", () => {
   it("the pad and the roof lay half again as tight; the other gatlings do not", () => {
     assert.ok(Math.abs(gatlingSprayOf("ciws") * CIWS_LAY - 1) < 1e-9);
     assert.ok(Math.abs(gatlingSprayOf("apocalypse") * CIWS_LAY - 1.5) < 1e-9);
-    assert.equal(gatlingSprayOf("walker"), 1.6);
-    assert.equal(gatlingSprayOf("cyborg"), 1.8);
+    assert.equal(gatlingSprayOf("walker"), 1.6 / 1.3);
+    assert.equal(gatlingSprayOf("cyborg"), 1.8 / 1.3);
   });
 
   it("a Walker's rounds at a plane end in the sky, not in the dirt", () => {

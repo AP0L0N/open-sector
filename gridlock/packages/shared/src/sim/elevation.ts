@@ -35,6 +35,7 @@ import {
   isNavalType,
   radarLaidOf,
   launcherOnlyOf,
+  LOW_POWER_SIGHT_MUL,
   sightBonusTilesOf,
   submergesOf,
   type EntityType,
@@ -235,7 +236,13 @@ export function sightTilesForEntity(state: MatchState, e: Entity): number {
     }
   }
   if (entityIsScouting(e)) return sightTilesOf("rifleman", entityHeight(state, e));
-  return sightTilesOf(e.type, entityHeight(state, e), liveSightExtra(e));
+  return lowPowerSight(sightTilesOf(e.type, entityHeight(state, e), liveSightExtra(e)), e.kind === "building" && e.unpowered);
+}
+
+/** A building short on power sees a fifth less far, as its lamps go dark. */
+export function lowPowerSight(tiles: number, unpowered: boolean | undefined): number {
+  if (!unpowered || tiles <= 0) return tiles;
+  return Math.max(1, Math.round(tiles * LOW_POWER_SIGHT_MUL));
 }
 
 export function weaponRangeWorld(state: MatchState, e: Entity): number {
