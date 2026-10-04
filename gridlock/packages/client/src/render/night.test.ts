@@ -17,6 +17,7 @@ import {
   nightShade,
   stackedLight,
   workLightBearings,
+  wreckNightAlpha,
 } from "./night.js";
 
 describe("night render", () => {
@@ -49,6 +50,15 @@ describe("night render", () => {
     assert.equal(day.alpha, 0.5);
     assert.deepEqual(day.rgb, [40, 40, 40]);
     assert.equal(nightFog(0, 0.5, [40, 40, 40]).alpha, NIGHT_FOG_ALPHA);
+  });
+
+  it("loses a wreck out of sight in the night fog", () => {
+    assert.equal(wreckNightAlpha(0, 0), 0, "full dark, out of sight");
+    assert.equal(wreckNightAlpha(0, 1), 1, "full dark, in sight");
+    assert.equal(wreckNightAlpha(1, 0), 1, "by day the hulk stays on the map");
+    const dusk = wreckNightAlpha(0.5, 0);
+    assert.ok(dusk > 0 && dusk < 1, "fades out as the light fails");
+    assert.ok(wreckNightAlpha(0, 0.5) > 0 && wreckNightAlpha(0, 0.5) < 1, "soft at the fog edge");
   });
 
   it("sweeps the beam toward the new heading the short way, a step at a time", () => {

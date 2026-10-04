@@ -57,6 +57,7 @@ import {
   producerType,
   productionSpeed,
   shellsFor,
+  engineerBuildSeconds,
   specialLabel,
   specialOf,
   specialReady,
@@ -86,6 +87,7 @@ import {
 import { buzzDeny } from "./audio.js";
 import { announce, selectionVoice } from "./game-audio.js";
 import { el } from "./dom.js";
+import { renderOptionsPane } from "./pause.js";
 import { garrisonRoster, type GarrisonSeat } from "./garrison-roster.js";
 import {
   SIDEBAR_GROUPS,
@@ -218,8 +220,11 @@ export function mountBattlefield(
   view.onCommand = (msg) => ctx.net.send(msg);
   view.onPlaceMode = () => paintBattleHud(ctx);
   view.onAttackMoveMode = () => paintQuickActions(ctx, view);
+  let lastSelected = new Set<number>();
   view.onSelect = (ids) => {
-    selectionVoice(ids, ctx.match);
+    // Units joining the selection answer; reselecting the same group stays quiet.
+    selectionVoice(ids.filter((id) => !lastSelected.has(id)), ctx.match);
+    lastSelected = new Set(ids);
     ctx.inspect = ids[0] ?? null;
     paintInspect(ctx, view);
     paintConfig(ctx, view);
@@ -1801,8 +1806,8 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
         label: def.name,
         title:
           building === "dock"
-            ? `Raise a ${def.name} on open water, any distance from the yard, for ${def.cost} scrap. Every tile under it must be water; he swims out to the site. He pays when he starts and works ${def.buildSeconds}s. It trains boats there and pushes your build range out to it.`
-            : `Raise a ${def.name} on a scrap field, any distance from the yard, for ${def.cost} scrap. Click the field with at least half the footprint on scrap. He pays when he starts and works ${def.buildSeconds}s. It pours ${SMELTER_SCRAP_PER_SEC} scrap a second and pushes your build range out to it.`,
+            ? `Raise a ${def.name} on open water, any distance from the yard, for ${def.cost} scrap. Every tile under it must be water; he swims out to the site. He pays when he starts and works ${Math.round(engineerBuildSeconds(building))}s. It trains boats there and pushes your build range out to it.`
+            : `Raise a ${def.name} on a scrap field, any distance from the yard, for ${def.cost} scrap. Click the field with at least half the footprint on scrap. He pays when he starts and works ${Math.round(engineerBuildSeconds(building))}s. It pours ${SMELTER_SCRAP_PER_SEC} scrap a second and pushes your build range out to it.`,
         on: view?.constructPlace === building,
       });
     }
@@ -2290,11 +2295,23 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
 export function renderLeaveModal(root: HTMLElement, ctx: Ctx): void {
   const back = el("div", { class: "modal-back" });
   const modal = el("div", { class: "panel modal" });
+  if (ctx.pausePane === "options") {
+    // A network match never holds, so the fight keeps running behind the settings.
+    renderOptionsPane(modal, ctx);
+    back.append(modal);
+    root.append(back);
+    return;
+  }
   modal.append(el("h2", { text: "Leave match?" }));
   modal.append(el("p", { class: "tiny", text: "Host leave ends the match for everyone." }));
   const row = el("div", { class: "btn-row" });
   const stay = el("button", { class: "btn", text: "Stay", attrs: { type: "button" } });
   const go = el("button", { class: "btn btn-primary", text: "Leave", attrs: { type: "button" } });
+  const options = el("button", { class: "btn", text: "Options", attrs: { type: "button" } });
+  options.addEventListener("click", () => {
+    ctx.pausePane = "options";
+    ctx.render();
+  });
   stay.addEventListener("click", () => {
     ctx.leaveOpen = false;
     ctx.render();
@@ -2307,7 +2324,7 @@ export function renderLeaveModal(root: HTMLElement, ctx: Ctx): void {
     ctx.winner = null;
     ctx.goto("menu");
   });
-  row.append(stay, go);
+  row.append(stay, options, go);
   modal.append(row);
   back.append(modal);
   root.append(back);

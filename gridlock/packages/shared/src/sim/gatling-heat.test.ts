@@ -52,9 +52,19 @@ function ticks(state: MatchState, n: number): void {
   for (let i = 0; i < n && !state.ended; i++) step(state, TICK_DT);
 }
 
+/** A Dynamo in the far corner, once per owner, so a radar-laid gun is not dark for want of power. */
+function powered(state: MatchState, owner: string): void {
+  if ([...state.entities.values()].some((e) => e.type === "dynamo" && e.ownerId === owner)) return;
+  const ts = state.tileSize;
+  const def = catalog("dynamo");
+  const tx = owner === "A" ? 2 : 4 + def.tileW;
+  makeEntity(state, "dynamo", owner, (tx + def.tileW / 2) * ts, (2 + def.tileH / 2) * ts, { tileX: tx, tileY: 2 });
+}
+
 function seedCiws(state: MatchState, owner = "A"): Entity {
   const ts = state.tileSize;
   const def = catalog("ciws");
+  powered(state, owner);
   return makeEntity(state, "ciws", owner, (120 + def.tileW / 2) * ts, (120 + def.tileH / 2) * ts, { tileX: 120, tileY: 120 });
 }
 
@@ -271,6 +281,7 @@ describe("CIWS and RAM reach", () => {
     const state = match();
     const ts = state.tileSize;
     const def = catalog("ram");
+    powered(state, "A");
     const ram = makeEntity(state, "ram", "A", (120 + def.tileW / 2) * ts, (120 + def.tileH / 2) * ts, { tileX: 120, tileY: 120 });
     const out = def.rangeTiles * ts * (1 + RADAR_LONG_RANGE_MUL) * 0.5;
     const s = dummy(state, ram.x + out, ram.y);

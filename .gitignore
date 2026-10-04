@@ -1,3 +1,6 @@
+# Environment 
+.env
+
 # Agent worktrees are extra checkouts of this repo, not project files.
 .claude/worktrees/
 

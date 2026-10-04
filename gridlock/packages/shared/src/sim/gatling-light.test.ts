@@ -41,11 +41,21 @@ function ticks(state: MatchState, n: number): void {
   for (let i = 0; i < n && !state.ended; i++) step(state, TICK_DT);
 }
 
+/** A Dynamo in the far corner, once per owner, so a radar-laid gun is not dark for want of power. */
+function powered(state: MatchState, owner: string): void {
+  if ([...state.entities.values()].some((e) => e.type === "dynamo" && e.ownerId === owner)) return;
+  const ts = state.tileSize;
+  const def = catalog("dynamo");
+  const tx = owner === "A" ? 2 : 4 + def.tileW;
+  makeEntity(state, "dynamo", owner, (tx + def.tileW / 2) * ts, (2 + def.tileH / 2) * ts, { tileX: tx, tileY: 2 });
+}
+
 function seedCiws(state: MatchState): Entity {
   const ts = state.tileSize;
   const def = catalog("ciws");
   const tx = 120;
   const ty = 120;
+  powered(state, "A");
   return makeEntity(state, "ciws", "A", (tx + def.tileW / 2) * ts, (ty + def.tileH / 2) * ts, {
     tileX: tx,
     tileY: ty,

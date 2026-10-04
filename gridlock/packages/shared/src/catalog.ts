@@ -593,6 +593,19 @@ export const ENGINEER_BUILDINGS: readonly BuildingType[] = ["smelter", "dock"];
 export function isEngineerBuilding(type: string): type is BuildingType {
   return (ENGINEER_BUILDINGS as readonly string[]).includes(type);
 }
+/** The yard raises an engineer building this much faster than its catalog `buildSeconds`. */
+export const YARD_ENGINEER_BUILDING_SPEED = 1.5;
+/** An engineer in the field works at this fraction of the catalog pace. */
+export const ENGINEER_BUILD_SPEED = 0.8;
+/** Seconds the yard spends on a base building. */
+export function yardBuildSeconds(type: BuildingType): number {
+  const s = catalog(type).buildSeconds;
+  return isEngineerBuilding(type) ? s / YARD_ENGINEER_BUILDING_SPEED : s;
+}
+/** Seconds an engineer works to raise `type` in the field. */
+export function engineerBuildSeconds(type: BuildingType): number {
+  return catalog(type).buildSeconds / ENGINEER_BUILD_SPEED;
+}
 /**
  * Base buildings the player turns before placing them, like a wall or sandbags: one
  * BUILDING_TURN_STEP per wheel notch. The footprint turns with the building.
@@ -1094,7 +1107,7 @@ export const PTRD_DMG_LIGHT = 0.32;
 export const PTRD_DMG_SIDE = 0.09;
 export const PTRD_DMG_REAR = 0.15;
 /** Side penetration chance to throw a track. A shell's side hit is 0.2. */
-export const PTRD_TRACK_CHANCE = 0.5;
+export const PTRD_TRACK_CHANCE = 0.7;
 
 /** 40 mm at the muzzle, 35 mm at the close-range edge, 22 mm at max range. */
 export function ptrdPenetration(distTiles: number, maxRangeTiles: number): number {
@@ -1111,7 +1124,7 @@ export function ptrdPenetration(distTiles: number, maxRangeTiles: number): numbe
 export const PTRD = {
   id: "ptrd" as const,
   name: "PTRD-41",
-  blurb: "Anti-tank rifle. A soldier takes the same hit as from the scoped rifle. Up close it punches tank side and rear, often a track, and it goes through light armor. The front plate holds.",
+  blurb: "Anti-tank rifle. A soldier takes the same hit as from the scoped rifle. Up close it punches tank side and rear, usually a track, and it goes through light armor. The front plate holds.",
   damage: SCOPED.damage,
   penetration: PTRD_PEN_MUZZLE,
   caliber: PTRD_CALIBER,
@@ -3151,7 +3164,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: PTRD.penetration,
     caliber: PTRD.caliber,
     spreadDeg: PTRD.spreadDeg,
-    blurb: "PTRD-41. Reaches nearly as far as the scoped rifle. Up close it punches tank side and rear, often a track, and it goes through light armor. The front plate holds.",
+    blurb: "PTRD-41. Reaches nearly as far as the scoped rifle. Up close it punches tank side and rear, usually a track, and it goes through light armor. The front plate holds.",
   },
   rocketer: {
     type: "rocketer",

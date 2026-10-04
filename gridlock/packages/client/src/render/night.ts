@@ -39,6 +39,17 @@ export function nightFog(
 }
 
 /**
+ * How much of a wreck shows for this much daylight and sight (0..1) at its
+ * hull. By day it stays on the map; at night a hulk out of sight is lost in
+ * the dark fog with the ground under it.
+ */
+export function wreckNightAlpha(daylight: number, sight: number): number {
+  const dark = 1 - Math.min(1, Math.max(0, daylight));
+  const hidden = 1 - Math.min(1, Math.max(0, sight));
+  return 1 - dark * hidden;
+}
+
+/**
  * Shown lamp heading, eased toward the sim's so the beam sweeps between
  * snapshots instead of stepping. `maxStep` is radians allowed this frame.
  */
