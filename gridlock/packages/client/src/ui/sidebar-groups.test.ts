@@ -37,9 +37,9 @@ describe("sidebarGroupOf", () => {
     assert.equal(sidebarGroupOf("bv222"), "aircraft");
   });
 
-  it("lists defences, infantry, and aircraft cheapest first", () => {
+  it("lists defences, infantry, tanks, and aircraft cheapest first", () => {
     const g = groupEntries();
-    for (const id of ["defences", "infantry", "aircraft"] as const) {
+    for (const id of ["defences", "infantry", "tanks", "aircraft"] as const) {
       const costs = g[id].map((e) => catalog(e.type).cost);
       assert.deepEqual(costs, [...costs].sort((a, b) => a - b), id);
     }

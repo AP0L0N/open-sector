@@ -40,7 +40,7 @@ export interface GroupEntry {
 }
 
 /** Groups whose cameos run cheapest first; ties keep catalog order. */
-const PRICE_SORTED_GROUPS: readonly SidebarGroup[] = ["defences", "infantry", "aircraft"];
+const PRICE_SORTED_GROUPS: readonly SidebarGroup[] = ["defences", "infantry", "tanks", "aircraft"];
 
 /** Cameos in each group, in catalog order (price order for `PRICE_SORTED_GROUPS`). */
 export function groupEntries(): Record<SidebarGroup, GroupEntry[]> {
