@@ -2577,7 +2577,8 @@ export class MapView {
     });
     if (!this.keepModeForQueue()) this.setForceAttackMode(false);
     if (ids.length === 0) return;
-    const hit = this.hit(px, py);
+    // A building drawn from memory in the fog is still a target in reach.
+    const hit = this.hit(px, py) ?? this.hitGhost(px, py);
     if (hit && hit.hp > 0 && ids.some((id) => id !== hit.id)) {
       this.command({ type: "cmd.forceattack", ids, x: hit.x, y: hit.y, targetId: hit.id });
       return;
@@ -3009,6 +3010,34 @@ export class MapView {
       ) {
         return e;
       }
+    }
+    return null;
+  }
+
+  /** A building remembered in the fog under the cursor. Not in the snapshot, so `hit` never sees it. */
+  private hitGhost(px: number, py: number): EntityView | null {
+    const ts = this.ts();
+    const ix = px + this.camX;
+    const iy = py + this.camY;
+    const liveIds = new Set(this.curr.entities.map((e) => e.id));
+    const ghosts = [...this.ghosts.values()].filter((g) => !liveIds.has(g.id) && !g.wreck && !isFieldStructure(g.type));
+    const keys = new Map(ghosts.map((e) => [e, this.drawKey(e)]));
+    ghosts.sort((a, b) => compareDrawOrder(keys.get(b)!, keys.get(a)!));
+    for (const e of ghosts) {
+      const inside = isTurnedBuilding(e)
+        ? pointInIsoPrism(ix, iy, this.turnedCorners(e), this.extrude(e.type), ts, isoLift(this.buildingElev(e)))
+        : pointInIsoBox(
+            ix,
+            iy,
+            e.tileX * ts,
+            e.tileY * ts,
+            e.tileW * ts,
+            e.tileH * ts,
+            this.extrude(e.type),
+            ts,
+            isoLift(this.buildingElev(e)),
+          );
+      if (inside) return e;
     }
     return null;
   }

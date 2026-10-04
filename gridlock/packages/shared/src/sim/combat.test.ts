@@ -3,20 +3,26 @@ import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   ALLY_LINE_PATIENCE_SECONDS,
+  DAY_SECONDS,
+  DUSK_SECONDS,
   FIRE_LAID_DEG,
   GAME_SPEED_MAX,
   HANDGUN,
   HEIGHT_BASE,
   HULL_EYE_HEIGHT,
   MG42,
+  NIGHT_SECONDS,
   PTRD_CLOSE_TILES,
   SHELLS,
   TANK_MG,
   TICK_DT,
+  TRAIN_TYPES,
   addCrit,
   catalog,
   coverHeightOf,
+  fires,
   isCivilianType,
+  isNavalType,
 } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
@@ -28,7 +34,7 @@ import { buildingBounds, buildingCenter, destroyEntity, makeEntity, tileCenter }
 import { inSmokeCloud } from "./smoke.js";
 import { createMatch, step } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
-import { canSeeEntity } from "./vision.js";
+import { canSeeEntity, visionMask } from "./vision.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
@@ -2242,5 +2248,93 @@ describe("infantry auto-attack on armor", () => {
     walker.facing = 0;
     tickCombat(state, TICK_DT);
     assert.equal(at.attackTarget, walker.id, "light armor stays in reach past close range");
+  });
+});
+
+describe("force attack out of sight", () => {
+  const NIGHT_TICK = Math.round((DAY_SECONDS + DUSK_SECONDS + NIGHT_SECONDS / 2) / TICK_DT);
+  /** Armed ground units. Planes fly their own runs; ships need water. */
+  const GROUND_GUNS = TRAIN_TYPES.filter(
+    (t) => fires(t) && !isNavalType(t) && !["stuka", "fw190", "bv222", "droneop"].includes(t),
+  );
+
+  function bareField(night: boolean): MatchState {
+    const { state } = twoPlayerMatch();
+    for (const e of [...state.entities.values()]) state.entities.delete(e.id);
+    state.heights.fill(0);
+    state.blocked.fill(0);
+    state.occupy.fill(0);
+    state.terrain.fill(TILE_EMPTY);
+    if (night) state.tick = NIGHT_TICK;
+    return state;
+  }
+
+  function firesWithin(state: MatchState, ticks: number): boolean {
+    for (let i = 0; i < ticks; i++) {
+      step(state, TICK_DT);
+      if (state.projectiles.length > 0 || state.impacts.length > 0) return true;
+    }
+    return false;
+  }
+
+  for (const night of [false, true]) {
+    const when = night ? "night" : "day";
+
+    it(`every ground gun fires on a point in reach, seen or not (${when})`, () => {
+      let unseen = 0;
+      for (const type of GROUND_GUNS) {
+        const state = bareField(night);
+        const ts = state.tileSize;
+        const e = makeEntity(state, type, "A", tileCenter(10, ts), tileCenter(30, ts));
+        const x0 = e.x;
+        const y0 = e.y;
+        const x = x0 + weaponRangeWorld(state, e) * 0.9;
+        const lit = visionMask(state, "A")[Math.floor(y0 / ts) * state.width + Math.floor(x / ts)] === 1;
+        if (!lit) unseen++;
+        const res = applyCommand(state, "A", { type: "cmd.forceattack", ids: [e.id], x, y: y0 });
+        assert.equal(res.ok, true, `${type}: ${!res.ok ? res.message : ""}`);
+        assert.equal(firesWithin(state, 300), true, `${type} must fire at the point (seen ${lit})`);
+        assert.ok(Math.hypot(e.x - x0, e.y - y0) < ts, `${type} fires from where it stands`);
+      }
+      assert.ok(unseen >= 5, `the case must cover unseen points, got ${unseen}`);
+    });
+
+    it(`shells an enemy building it cannot see, by id (${when})`, () => {
+      for (const type of ["warden", "jagdtiger", "nebelwerfer"] as const) {
+        const state = bareField(night);
+        const ts = state.tileSize;
+        const e = makeEntity(state, type, "A", tileCenter(20, ts), tileCenter(30, ts));
+        const def = catalog("smelter");
+        const bx = 20 + Math.round((weaponRangeWorld(state, e) * 0.85) / ts);
+        const b = makeEntity(state, "smelter", "B", (bx + def.tileW / 2) * ts, (30 + def.tileH / 2) * ts, {
+          tileX: bx,
+          tileY: 30,
+        });
+        step(state, TICK_DT);
+        // At night a tank's eyes reach as far as its gun; the rocket truck still outranges its own.
+        if (!night || type === "nebelwerfer") {
+          assert.equal(canSeeEntity(state, "A", b), false, `${type}: the Smelter must be out of sight`);
+        }
+        const hp0 = b.hp;
+        const res = applyCommand(state, "A", { type: "cmd.forceattack", ids: [e.id], x: b.x, y: b.y, targetId: b.id });
+        assert.equal(res.ok, true);
+        for (let i = 0; i < 400; i++) step(state, TICK_DT);
+        assert.ok(b.hp < hp0, `${type} must hit the unseen Smelter`);
+      }
+    });
+  }
+
+  it("a remembered building that is gone becomes a ground aim", () => {
+    const state = bareField(false);
+    const ts = state.tileSize;
+    const tank = makeEntity(state, "warden", "A", tileCenter(20, ts), tileCenter(30, ts));
+    const x = tileCenter(60, ts);
+    const y = tileCenter(30, ts);
+    const res = applyCommand(state, "A", { type: "cmd.forceattack", ids: [tank.id], x, y, targetId: 99999 });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    assert.equal(tank.order?.kind, "forceattack");
+    assert.equal(tank.order?.targetId, undefined);
+    assert.equal(tank.order?.x, x);
+    assert.equal(firesWithin(state, 300), true);
   });
 });
