@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { BuildingAlphaMap } from "./building-hit.js";
 import {
+  alphaCellBox,
+  cellBoxToDest,
+  inScreenRect,
   snapToUnitHitMask,
+  unionCellBox,
+  unitPickRect,
   unitDestMaskFromSheets,
   unitGroundSink,
   unitSpriteDest,
@@ -24,6 +29,52 @@ describe("unitSpriteDest", () => {
     assert.equal(d.y, 160 + unitGroundSink(50));
     assert.equal(d.w, 50);
     assert.equal(d.h, 50);
+  });
+});
+
+describe("alphaCellBox", () => {
+  it("bounds the painted texels of one cell in a strip, ignoring its neighbour", () => {
+    // Two 8px cells side by side; only the second is read.
+    const a = new Uint8Array(16 * 8);
+    a[0] = 255;
+    for (let y = 5; y <= 6; y++) {
+      for (let x = 10; x <= 13; x++) a[y * 16 + x] = 255;
+    }
+    const box = alphaCellBox(a, 16, 8, 8);
+    assert.deepEqual(box, { x0: 2 / 8, y0: 5 / 8, x1: 6 / 8, y1: 7 / 8 });
+  });
+
+  it("skips the faint fringe and returns null for an empty cell", () => {
+    const a = new Uint8Array(8 * 8).fill(20);
+    assert.equal(alphaCellBox(a, 8, 0, 8), null);
+  });
+});
+
+describe("unit pick rect", () => {
+  it("unions boxes and maps them onto the drawn cell", () => {
+    const box = unionCellBox({ x0: 0.25, y0: 0.5, x1: 0.5, y1: 0.9 }, { x0: 0.4, y0: 0.3, x1: 0.75, y1: 0.6 });
+    assert.deepEqual(box, { x0: 0.25, y0: 0.3, x1: 0.75, y1: 0.9 });
+    const r = cellBoxToDest(box!, { x: 100, y: 200, w: 40, h: 40 });
+    assert.equal(r.x, 110);
+    assert.ok(Math.abs(r.y - 212) < 1e-9);
+    assert.equal(r.w, 20);
+    assert.ok(Math.abs(r.h - 24) < 1e-9);
+  });
+
+  it("leaves the empty top of a tall cell out of the click target", () => {
+    // A 100px cell whose art fills only its lower half.
+    const dest = { x: 0, y: 0, w: 100, h: 100 };
+    const pick = unitPickRect(cellBoxToDest({ x0: 0.3, y0: 0.5, x1: 0.7, y1: 0.95 }, dest));
+    assert.equal(inScreenRect(pick, 50, 20), false);
+    assert.equal(inScreenRect(pick, 50, 49), true);
+    assert.equal(inScreenRect(pick, 50, 80), true);
+  });
+
+  it("keeps a minimum target around a tiny sprite", () => {
+    const pick = unitPickRect({ x: 50, y: 50, w: 2, h: 2 }, 0, 12);
+    assert.equal(pick.w, 12);
+    assert.equal(pick.h, 12);
+    assert.equal(inScreenRect(pick, 45, 45), true);
   });
 });
 

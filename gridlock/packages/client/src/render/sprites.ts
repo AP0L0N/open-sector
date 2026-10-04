@@ -16,10 +16,15 @@ import {
   type BuildingAlphaMap,
 } from "./building-hit.js";
 import {
+  alphaCellBox,
+  cellBoxToDest,
   snapToUnitHitMask,
+  unionCellBox,
   unitDestMaskFromSheets,
   unitGroundSink,
   unitSpriteDest,
+  type CellBox,
+  type ScreenRect,
 } from "./unit-hit.js";
 import coreUrl from "../assets/buildings/core.png";
 import dynamoUrl from "../assets/buildings/dynamo.png";
@@ -1993,6 +1998,86 @@ export function snapHitToUnitSprite(
   const snap = snapToUnitHitMask(mask, hitX - dest.x, hitY - dest.y);
   if (!snap) return null;
   return { x: dest.x + snap.x, y: dest.y + snap.y };
+}
+
+/** Per sheet, per facing row: painted bounds over every frame of the row, or null for an empty row. */
+const paintBoxCache = new WeakMap<HTMLImageElement, (CellBox | null)[]>();
+
+/**
+ * Painted bounds of one facing row, unioned over its frames so a walking
+ * unit's bars and click target do not bob with the stride.
+ */
+function sheetRowPaintBox(img: HTMLImageElement, row: number, frames: number, frameSize: number): CellBox | null | undefined {
+  if (!img.complete || img.naturalWidth <= 0) return undefined;
+  let rows = paintBoxCache.get(img);
+  if (!rows) {
+    rows = [];
+    paintBoxCache.set(img, rows);
+  }
+  if (rows[row] !== undefined) return rows[row];
+  const cols = Math.max(1, Math.min(frames, Math.floor(img.naturalWidth / frameSize)));
+  const cell = frameSize;
+  const canvas = document.createElement("canvas");
+  canvas.width = cols * cell;
+  canvas.height = cell;
+  const g = canvas.getContext("2d", { willReadFrequently: true });
+  if (!g) return undefined;
+  g.drawImage(img, 0, row * frameSize, cols * frameSize, frameSize, 0, 0, cols * cell, cell);
+  let pix: Uint8ClampedArray;
+  try {
+    pix = g.getImageData(0, 0, cols * cell, cell).data;
+  } catch {
+    // A tainted sheet reads as empty, so callers fall back once instead of retrying every frame.
+    rows[row] = null;
+    return null;
+  }
+  const a = new Uint8Array(cols * cell * cell);
+  for (let i = 0, p = 3; i < a.length; i++, p += 4) a[i] = pix[p]!;
+  let box: CellBox | null = null;
+  for (let f = 0; f < cols; f++) box = unionCellBox(box, alphaCellBox(a, cols * cell, f * cell, cell));
+  rows[row] = box;
+  return box;
+}
+
+/**
+ * Screen rect of the painted hull, turret, gun, and roof mount of a unit drawn
+ * by `drawUnitSprite` at the same ground point and facings. Null until the
+ * sheet has loaded, so callers keep their old cell-sized fallback.
+ */
+export function unitSpritePaintRect(
+  def: UnitSpriteDef,
+  x: number,
+  y: number,
+  isoDx: number,
+  isoDy: number,
+  opts: {
+    facing?: number;
+    turretDx?: number;
+    turretDy?: number;
+    turretFacing?: number;
+    mountDx?: number;
+    mountDy?: number;
+    mountFacing?: number;
+  } = {},
+): ScreenRect | null {
+  if (!spriteReady(def) || def.drawSize <= 0 || def.frameSize <= 0) return null;
+  const dir = sheetDir(def, isoDx, isoDy, opts.facing);
+  const hull = sheetRowPaintBox(def.image, dir, def.frames, def.frameSize);
+  if (hull === undefined) return null;
+  let box = hull;
+  const tdx = opts.turretDx ?? isoDx;
+  const tdy = opts.turretDy ?? isoDy;
+  const gunFacing = opts.turretFacing ?? opts.facing;
+  const layer = (o: TurretSpriteDef | undefined, dx: number, dy: number, facing: number | undefined) => {
+    if (!o || !spriteReady(o)) return;
+    const row = sheetDir({ dirs: o.dirs, facingSpace: def.facingSpace }, dx, dy, facing);
+    box = unionCellBox(box, sheetRowPaintBox(o.image, row, o.frames, o.frameSize) ?? null);
+  };
+  layer(def.turret, tdx, tdy, gunFacing);
+  layer(def.gun, tdx, tdy, gunFacing);
+  layer(def.mount, opts.mountDx ?? tdx, opts.mountDy ?? tdy, opts.mountFacing ?? gunFacing);
+  if (!box) return null;
+  return cellBoxToDest(box, unitSpriteDest(x, y, def.drawSize, def.contactY));
 }
 
 const blendedPads = new WeakMap<BuildingSpriteDef, HTMLCanvasElement | null>();
