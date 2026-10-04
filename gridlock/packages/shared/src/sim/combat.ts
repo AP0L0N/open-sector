@@ -217,7 +217,7 @@ import { stepCluster } from "./airdrop.js";
 import { projectileMeetsDrone, reachesDrone } from "./drone.js";
 import { reachesJet } from "./jet.js";
 import { nightSightMul, nightTiles } from "./night.js";
-import { afloat, diving, hiddenSubmarine, surface, torpedoCannotReach } from "./naval.js";
+import { afloat, diving, hiddenSubmarine, surface, surfaceToStrike, torpedoCannotReach } from "./naval.js";
 import { shipHullT, shipKeelDist, shipMountPoint, turretBearing } from "./battleship.js";
 import type { Entity, MatchState, Order, Projectile, ShipCiws } from "./types.js";
 
@@ -1306,6 +1306,8 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     if (!holedUp) e.state = "attack";
     return;
   }
+  // A submarine closes on a named hull below and only comes up once it is in range.
+  if (target) surfaceToStrike(e, target);
   // A laid launcher's only weapon is its rockets (tickRocketPods). Here the frame just swings on.
   if (launcherOnlyOf(e.type)) {
     if (!holedUp) e.state = "attack";
