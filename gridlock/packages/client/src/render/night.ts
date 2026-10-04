@@ -99,6 +99,26 @@ export function beamBlobs(
 }
 
 /**
+ * Lamp light stacks, but not without end. Up to the knee (about one tower
+ * beam at its brightest) it adds as it falls; past it each extra lamp adds
+ * less, and the sum never passes the ceiling, so a column of hulls at night
+ * still shows the ground under it.
+ */
+export const LIGHT_STACK_KNEE = 0.4;
+export const LIGHT_STACK_MAX = 0.6;
+/** The light layer stores sums at this fraction, so stacks past 1 are still told apart. */
+export const LIGHT_HEADROOM = 3;
+/** The light layer is drawn at this fraction of the screen. It is all soft gradients. */
+export const LIGHT_LAYER_SCALE = 4;
+
+/** Warm light alpha shown for this much stacked lamp light. */
+export function stackedLight(sum: number): number {
+  if (sum <= LIGHT_STACK_KNEE) return Math.max(0, sum);
+  const room = LIGHT_STACK_MAX - LIGHT_STACK_KNEE;
+  return LIGHT_STACK_KNEE + room * (1 - Math.exp(-(sum - LIGHT_STACK_KNEE) / room));
+}
+
+/**
  * Near disc of a hull beam, against the old bulb size. The bright point that
  * used to sit on the lamp itself is not drawn. The beam past this disc is unchanged.
  */

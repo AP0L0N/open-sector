@@ -361,6 +361,8 @@ import { FogFlat, FogGl } from "./fog-gl.js";
 import {
   NIGHT_RGB,
   LAMP_BULB_SCALE,
+  LIGHT_HEADROOM,
+  LIGHT_LAYER_SCALE,
   beamBlobs,
   beamPolygon,
   easeSpot,
@@ -368,6 +370,7 @@ import {
   missileSpot,
   nightFog,
   nightShade,
+  stackedLight,
   workLightBearings,
   workLightCount,
 } from "./night.js";
@@ -659,6 +662,8 @@ export class MapView {
   private fogFlat: FogFlat | null = null;
   /** Night tint, drawn here with the lamp beams cut out, then laid over the field. */
   private nightLayer: HTMLCanvasElement | null = null;
+  /** Small layer the lamps' warm light is summed and capped on. */
+  private lightLayer: HTMLCanvasElement | null = null;
   /** Lamp heading on screen per tower, eased toward the snapshot. */
   private spotShown = new Map<number, number>();
   private spotFrameAt = 0;
@@ -3484,8 +3489,8 @@ export class MapView {
     }
     ctx.save();
     if (pools.length) {
+      this.drawLampLight(pools, glow, fillPool);
       ctx.globalCompositeOperation = "lighter";
-      for (const p of pools) fillPool(ctx, p, POOL_RGB[p.kind], POOL_WARM[p.kind] * p.a * glow);
       // The cab lamp. Hull headlights stay a beam only.
       for (const { e } of lamps) {
         const cab = this.toScreen(e.x, e.y, this.elevAt(e.x, e.y) + TOWER_EYE_HEIGHT);
@@ -3515,6 +3520,51 @@ export class MapView {
       }
       ctx.setLineDash([]);
     }
+    ctx.restore();
+  }
+
+  /**
+   * The lamps' warm light. The pools are summed on a small layer first, then
+   * each pixel's sum goes through stackedLight, so overlapping lamps brighten
+   * the ground a little more but never wash it out.
+   */
+  private drawLampLight(
+    pools: NightPool[],
+    glow: number,
+    fillPool: (c: CanvasRenderingContext2D, p: NightPool, rgb: string, a: number) => void,
+  ): void {
+    const ctx = this.ctx;
+    const S = LIGHT_LAYER_SCALE;
+    const lw = Math.max(1, Math.ceil(this.canvas.width / S));
+    const lh = Math.max(1, Math.ceil(this.canvas.height / S));
+    this.lightLayer ??= document.createElement("canvas");
+    const layer = this.lightLayer;
+    if (layer.width !== lw || layer.height !== lh) {
+      layer.width = lw;
+      layer.height = lh;
+    }
+    const l = layer.getContext("2d", { willReadFrequently: true });
+    if (!l) return;
+    l.setTransform(1, 0, 0, 1, 0, 0);
+    l.globalCompositeOperation = "source-over";
+    l.clearRect(0, 0, lw, lh);
+    const m = ctx.getTransform();
+    l.setTransform(m.a / S, m.b / S, m.c / S, m.d / S, m.e / S, m.f / S);
+    l.globalCompositeOperation = "lighter";
+    for (const p of pools) fillPool(l, p, POOL_RGB[p.kind], (POOL_WARM[p.kind] * p.a * glow) / LIGHT_HEADROOM);
+    const img = l.getImageData(0, 0, lw, lh);
+    const px = img.data;
+    for (let i = 3; i < px.length; i += 4) {
+      const a = px[i] ?? 0;
+      if (a === 0) continue;
+      px[i] = Math.round(stackedLight((a / 255) * LIGHT_HEADROOM) * 255);
+    }
+    l.putImageData(img, 0, 0);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = "lighter";
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(layer, 0, 0, lw * S, lh * S);
     ctx.restore();
   }
 

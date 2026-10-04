@@ -4,6 +4,9 @@ import {
   NIGHT_FOG_ALPHA,
   NIGHT_SHADE_MAX,
   LAMP_BULB_SCALE,
+  LIGHT_HEADROOM,
+  LIGHT_STACK_KNEE,
+  LIGHT_STACK_MAX,
   WORK_LIGHT_TURN,
   beamBlobs,
   beamPolygon,
@@ -12,10 +15,20 @@ import {
   missileSpot,
   nightFog,
   nightShade,
+  stackedLight,
   workLightBearings,
 } from "./night.js";
 
 describe("night render", () => {
+  it("leaves one lamp's light alone and caps a stack of them", () => {
+    assert.equal(stackedLight(0), 0);
+    assert.equal(stackedLight(0.3), 0.3);
+    assert.equal(stackedLight(LIGHT_STACK_KNEE), LIGHT_STACK_KNEE);
+    assert.ok(stackedLight(0.8) > stackedLight(0.5), "more lamps still read a little brighter");
+    assert.ok(stackedLight(LIGHT_HEADROOM) < LIGHT_STACK_MAX);
+    assert.ok(stackedLight(100) <= LIGHT_STACK_MAX);
+  });
+
   it("shades nothing by day and the most at full dark", () => {
     assert.equal(nightShade(1), 0);
     assert.equal(nightShade(0), NIGHT_SHADE_MAX);
