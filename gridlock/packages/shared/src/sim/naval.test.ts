@@ -12,8 +12,10 @@ import {
   TICK_DT,
   TORPEDO_RANGE_TILES,
   TORPEDO_SPEED,
+  TILE_SUBDIV,
   TRAIN_TYPES,
   catalog,
+  isEngineerBuilding,
   isNavalType,
   isTorpedoBody,
   leavesWreck,
@@ -35,7 +37,7 @@ import { hqOf, isWater, makeEntity, tileCenter, walkable, worldToTile } from "./
 import { createMatch, step } from "./match.js";
 import { afloat, diving, hiddenSubmarine } from "./naval.js";
 import { setPath } from "./path.js";
-import { previewSite } from "./preview.js";
+import { previewConstruct, previewSite } from "./preview.js";
 import { snapshotFor } from "./snapshot.js";
 import { producerType, startTrain } from "./train.js";
 import { scrapCap } from "./smelter.js";
@@ -164,6 +166,7 @@ describe("Marine Base placement", () => {
     assert.ok(site, "the shipped map has a pond a Marine Base fits in");
     const snap = snapshotFor(state, "A");
     assert.equal(previewSite(snap, "dock", site.tx, site.ty), true);
+    assert.equal(previewConstruct(snap, "dock", site.tx, site.ty), true, "an engineer's ghost is green there too");
     assert.equal(buildingSiteError(state, "dock", site.tx, site.ty), null);
     assert.equal(previewSite(snap, "dynamo", site.tx, site.ty), false, "a Power Plant ghost stays red on water");
     assert.notEqual(buildingSiteError(state, "dynamo", site.tx, site.ty), null);
@@ -171,6 +174,7 @@ describe("Marine Base placement", () => {
     let dry = site.tx;
     while (allWater(dry, site.ty)) dry--;
     assert.equal(previewSite(snap, "dock", dry, site.ty), false, "part of it ashore");
+    assert.equal(previewConstruct(snap, "dock", dry, site.ty), false, "and the engineer's ghost red");
     assert.match(buildingSiteError(state, "dock", dry, site.ty) ?? "", /water/);
   });
 
@@ -185,6 +189,46 @@ describe("Marine Base placement", () => {
     const dock = [...state.entities.values()].find((e) => e.type === "dock" && e.ownerId === "A");
     assert.ok(dock);
     assert.equal(afloat(state, dock), true);
+  });
+});
+
+describe("engineer raises a Marine Base", () => {
+  it("is 2.5 tiles a side, 30% past the old two", () => {
+    assert.equal(catalog("dock").tileW, 2.5 * TILE_SUBDIV);
+    assert.equal(catalog("dock").tileH, 2.5 * TILE_SUBDIV);
+  });
+
+  it("swims out, pays, works the build time, and the Marine Base floats where he was told", () => {
+    const { state, lx0, ly0 } = harbour();
+    assert.equal(isEngineerBuilding("dock"), true);
+    const def = catalog("dock");
+    const p = state.players.get("A")!;
+    p.scrap = def.cost + 50;
+    const eng = spawn(state, "engineer", "A", lx0 - 3, ly0 + 10);
+    const tx = lx0 + 12;
+    const ty = ly0 + 8;
+    const ashore = applyCommand(state, "A", { type: "cmd.construct", ids: [eng.id], building: "dock", tx: lx0 - def.tileW - 2, ty });
+    assert.equal(ashore.ok, false, "a Marine Base on dry ground is refused at once");
+    const res = applyCommand(state, "A", { type: "cmd.construct", ids: [eng.id], building: "dock", tx, ty });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    let paidAt = -1;
+    let builtAt = -1;
+    for (let i = 0; i < 2400 && builtAt < 0; i++) {
+      step(state, TICK_DT);
+      if (paidAt < 0 && p.scrap <= 50) paidAt = i;
+      if ([...state.entities.values()].some((e) => e.type === "dock" && e.ownerId === "A")) builtAt = i;
+    }
+    assert.ok(paidAt >= 0, "the cost was taken");
+    assert.ok(builtAt > paidAt, `Marine Base never rose (paid=${paidAt} built=${builtAt})`);
+    assert.ok(builtAt - paidAt >= def.buildSeconds / TICK_DT - 2, `worked ${(builtAt - paidAt) * TICK_DT}s, wants ${def.buildSeconds}s`);
+    const dock = [...state.entities.values()].find((e) => e.type === "dock" && e.ownerId === "A")!;
+    assert.equal(dock.tileX, tx);
+    assert.equal(dock.tileY, ty);
+    assert.equal(afloat(state, dock), true);
+    assert.equal(eng.order, null);
+    assert.ok(eng.hp > 0, "the engineer is pushed off the pier, not buried");
+    p.scrap = 10_000;
+    assert.equal(startTrain(state, "A", "gunboat"), null, "it trains boats at once");
   });
 });
 
