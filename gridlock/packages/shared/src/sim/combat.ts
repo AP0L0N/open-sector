@@ -335,7 +335,7 @@ export function tickCombat(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (!canFight(e) || !supplyRiderFights(state, e)) continue;
     tickWeaponClocks(e, dt);
-    if (waterSilences(state, e) || garrisonIsHiding(state, e)) continue;
+    if (waterSilences(state, e) || garrisonIsHiding(state, e) || powerSilences(e)) continue;
     resolveTarget(state, e);
   }
   tickStance(state);
@@ -343,7 +343,7 @@ export function tickCombat(state: MatchState, dt: number): void {
   // Missiles launched later in this tick (a Rocketer, a Titan pod) are born at or after this id.
   const bornAt = state.nextId;
   for (const e of state.entities.values()) {
-    if (!canFight(e) || !supplyRiderFights(state, e) || waterSilences(state, e) || garrisonIsHiding(state, e)) continue;
+    if (!canFight(e) || !supplyRiderFights(state, e) || waterSilences(state, e) || garrisonIsHiding(state, e) || powerSilences(e)) continue;
     if (roofCiwsOf(e.type)) tickRoofCiws(state, e, dt, downed);
     if (e.ship) tickShipCiws(state, e, dt, downed);
     if (interceptRockets(state, e, downed)) continue;
@@ -351,7 +351,7 @@ export function tickCombat(state: MatchState, dt: number): void {
   }
   // Rocket racks: their own clock, whatever the main gun is doing. Titan pods also pick their own target.
   for (const e of state.entities.values()) {
-    if (!rocketsOf(e.type) || !canFight(e)) continue;
+    if (!rocketsOf(e.type) || !canFight(e) || powerSilences(e)) continue;
     tickRocketPods(state, e);
   }
   // The roof mount's first look ran before those launches. Catch the new missiles before they fly.
@@ -866,6 +866,11 @@ function launchInterceptor(state: MatchState, e: Entity, downed: Set<number>): b
 /** Standing in water stops every gun except the Titan's shoulder rockets, which ride above it. */
 function waterSilences(state: MatchState, e: Entity): boolean {
   return unitInWater(state, e) && !rocketsOf(e.type);
+}
+
+/** A CIWS or RAM runs on its radar. Short on power, it neither lays nor fires. */
+function powerSilences(e: Entity): boolean {
+  return e.kind === "building" && !!e.unpowered && radarLaidOf(e.type);
 }
 
 function canFight(e: Entity): boolean {

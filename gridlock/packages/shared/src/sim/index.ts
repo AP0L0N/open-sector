@@ -50,7 +50,7 @@ export {
   LARGE_WALL_SLIT_LIFT_PX,
 } from "./garrison.js";
 export { wantsCapture, captureDurationSec } from "./capture.js";
-export { powerOf, productionSpeed } from "./power.js";
+export { powerOf, productionSpeed, tickPower } from "./power.js";
 export { radarContacts, radarOnline, radarStations } from "./radar.js";
 export { producerType } from "./train.js";
 export {
@@ -129,6 +129,7 @@ export {
   headlightLit,
   hullLamps,
   spotlightManned,
+  spotlightLit,
   spotFacingOf,
 } from "./night.js";
 export type { DayPhase, HullLamp, MatchClock } from "./night.js";

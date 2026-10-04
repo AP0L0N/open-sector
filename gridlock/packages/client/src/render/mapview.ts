@@ -420,7 +420,7 @@ const POOL_RGB: Record<NightPool["kind"], string> = {
 /** Built structures that keep work lights burning round the yard. Not bunkers, walls, or the tower, which has its own lamp. */
 function workLit(e: EntityView): boolean {
   if (e.kind !== "building" || e.hp <= 0 || e.wreck || e.ruined) return false;
-  if (!e.ownerId || e.ownerId === NEUTRAL_OWNER) return false;
+  if (!e.ownerId || e.ownerId === NEUTRAL_OWNER || e.unpowered) return false;
   if (e.type === "bunker" || e.type === "tower") return false;
   return e.type === "core" || (BUILDING_TYPES as readonly string[]).includes(e.type);
 }
@@ -3566,7 +3566,7 @@ export class MapView {
     const out: { e: EntityView; facing: number }[] = [];
     const live = new Set<number>();
     for (const e of this.curr.entities) {
-      if (e.spotFacing == null || !hasSpotlight(e.type) || e.hp <= 0 || e.crits?.includes("lamp")) continue;
+      if (e.spotFacing == null || !hasSpotlight(e.type) || e.hp <= 0 || e.crits?.includes("lamp") || e.unpowered) continue;
       live.add(e.id);
       const was = this.spotShown.get(e.id);
       const facing = was == null ? e.spotFacing : easeSpot(was, e.spotFacing, maxStep);
@@ -5235,12 +5235,12 @@ export class MapView {
   /**
    * The watch tower's roof searchlight, turned to the heading its beam shows
    * (eased like the beam, so lamp and light swing together). The lens burns
-   * while the beam is lit and goes dark when a crit smashes it.
+   * while the beam is lit and goes dark when a crit smashes it or power runs short.
    */
   private drawTowerLamp(e: EntityView, southX: number, southY: number, footprintW: number, ghost: boolean): void {
     const facing = this.spotShown.get(e.id) ?? e.spotFacing ?? Math.PI / 4;
     const broken = !!e.crits?.includes("lamp");
-    const burning = !ghost && e.spotFacing != null && e.hp > 0 && !broken;
+    const burning = !ghost && e.spotFacing != null && e.hp > 0 && !broken && !e.unpowered;
     const lit = burning ? lampGlow(daylightAt(this.curr.tick)) : 0;
     const pose = drawTowerSearchlight(this.ctx, southX, southY, footprintW, facing, { lit, broken });
     if (!ghost) this.lensAt.set(e.id, pose);

@@ -203,6 +203,11 @@ export function spotlightManned(e: {
   return hasSpotlight(e.type) && e.ownerId !== NEUTRAL_OWNER && e.hp > 0 && !e.ruined && !e.wreck;
 }
 
+/** A held lamp that burns: a tower's goes dark while its owner is short on power. */
+export function spotlightLit(e: Parameters<typeof spotlightManned>[0] & { unpowered?: boolean }): boolean {
+  return spotlightManned(e) && !e.unpowered;
+}
+
 /** Heading the lamp rests on before anyone turns it: the way the tower was placed. */
 export function spotFacingOf(e: Pick<Entity, "facing" | "spotFacing">): number {
   return e.spotFacing ?? e.facing;
@@ -251,7 +256,8 @@ export function aimSpotlightPatrol(e: Entity): void {
 export function tickSpotlights(state: MatchState, dt: number): void {
   const max = ((SPOTLIGHT_TURN_DEG_PER_SEC * Math.PI) / 180) * dt;
   for (const e of state.entities.values()) {
-    if (!spotlightManned(e)) continue;
+    // A dark tower lamp holds where it stood. A Rotate waits for the power to come back.
+    if (!spotlightLit(e)) continue;
     if (e.kind === "unit") {
       if (e.spotFacing != null) e.spotFacing = wrap(e.spotFacing + wrap(e.facing - (e.spotHull ?? e.facing)));
       e.spotHull = e.facing;

@@ -42,7 +42,7 @@ import {
   nightSightMul,
   nightTiles,
   spotFacingOf,
-  spotlightManned,
+  spotlightLit,
   spotlightsOn,
 } from "./night.js";
 import type { Entity, MatchState } from "./types.js";
@@ -75,6 +75,8 @@ export type SightSource = {
   wreck?: boolean;
   /** A lamp crit darkens every spotlight on this hull or tower. */
   crits?: readonly Crit[];
+  /** A tower whose owner is short on power has a dark lamp. */
+  unpowered?: boolean;
 };
 
 /** Light at the moment sight is painted: how far it carries, whether lamps are lit, and match seconds for lamps that sweep. */
@@ -272,7 +274,7 @@ function spotOf(e: SightSource, light: SightLight, daySight: number, eye: number
   if (!light.spots) return NO_SPOT;
   if (e.kind === "building" || hasSpotlight(e.type)) {
     if (!hasSpotlight(e.type)) return NO_SPOT;
-    if (!spotlightManned({ type: e.type, ownerId: e.ownerId, hp: e.hp ?? 1, ruined: e.ruined, wreck: e.wreck, crits: e.crits })) {
+    if (!spotlightLit({ type: e.type, ownerId: e.ownerId, hp: e.hp ?? 1, ruined: e.ruined, wreck: e.wreck, crits: e.crits, unpowered: e.unpowered })) {
       return NO_SPOT;
     }
     const a = lampHeading(spotFacingOf({ facing: e.facing ?? 0, spotFacing: e.spotFacing }));
@@ -631,6 +633,7 @@ function visionKey(state: MatchState, playerId: string): number {
     h = mix(h, occupantSightTiles(state, e) ?? -1);
     if (light.spots && hasSpotlight(e.type)) {
       h = mix(h, e.crits.includes("lamp") ? 0 : 1);
+      h = mix(h, e.unpowered ? 1 : 0);
       h = mix(h, Math.round(lampHeading(spotFacingOf(e)) * 4096));
     }
     if (light.spots && headlightLit(e)) {
