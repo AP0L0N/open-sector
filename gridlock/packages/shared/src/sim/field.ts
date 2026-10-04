@@ -21,7 +21,6 @@ import {
   WALL_RISE_MAX_SLABS,
   wallSlabHeight,
   WRECK_SCRAP_SECONDS,
-  wreckScrapOf,
   type ConcreteLineType,
   type EntityType,
   type FieldStructureType,
@@ -45,8 +44,8 @@ import {
 import { takeDamage } from "./crits.js";
 import { claimNeutral } from "./garrison.js";
 import { setPath } from "./path.js";
-import { earnScrap } from "./smelter.js";
 import type { Entity, MatchState } from "./types.js";
+import { isSunkWreck, salvageWreck } from "./wreck.js";
 
 /** Extra reach past the wall face where the engineer stands to build. */
 const STAND_PAD = 14;
@@ -454,8 +453,9 @@ function repairOwner(state: MatchState, playerId: string, ownerId: string): bool
   return allies(state, playerId, ownerId);
 }
 
+/** A hulk on land an engineer can cut up. A sunken ship is out of his reach. */
 export function canScrapWreck(target: Entity): boolean {
-  return target.wreck && target.hp > 0 && target.kind === "unit" && isArmoredType(target.type);
+  return target.wreck && target.hp > 0 && target.kind === "unit" && isArmoredType(target.type) && !isSunkWreck(target);
 }
 
 function hullDamaged(target: Entity): boolean {
@@ -763,11 +763,7 @@ function tickRepair(state: MatchState, e: Entity, dt: number): void {
   if (target.wreck) {
     e.work += dt;
     if (e.work < WRECK_SCRAP_SECONDS) return;
-    if (target.hp > 0) {
-      const player = state.players.get(e.ownerId);
-      if (player) earnScrap(state, player, wreckScrapOf(target.type));
-      target.hp = 0;
-    }
+    salvageWreck(state, e.ownerId, target);
     finishWork(e);
     return;
   }

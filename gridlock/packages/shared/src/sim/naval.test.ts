@@ -16,6 +16,8 @@ import {
   leavesWreck,
   secondsToTicks,
   trackCritAllowed,
+  wreckHpOf,
+  wreckScrapOf,
   type BuildingType,
 } from "../catalog.js";
 import { HEIGHT_BASE } from "../catalog.js";
@@ -24,6 +26,7 @@ import { canBoardPlane } from "./airdrop.js";
 import { buildingSiteError } from "./build.js";
 import { applyCommand } from "./commands.js";
 import { canAimWeapon } from "./elevation.js";
+import { canScrapWreck } from "./field.js";
 import { hqOf, isWater, makeEntity, tileCenter, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { afloat, diving, hiddenSubmarine } from "./naval.js";
@@ -31,7 +34,9 @@ import { setPath } from "./path.js";
 import { previewSite } from "./preview.js";
 import { snapshotFor } from "./snapshot.js";
 import { producerType, startTrain } from "./train.js";
+import { scrapCap } from "./smelter.js";
 import { canSeeEntity } from "./vision.js";
+import { isSunkWreck, salvageWreck } from "./wreck.js";
 import type { Entity, MatchState } from "./types.js";
 
 function twoPlayerMatch(): MatchState {
@@ -128,7 +133,7 @@ describe("naval catalog", () => {
       assert.ok(TRAIN_TYPES.includes(t), t);
       assert.equal(isNavalType(t), true, t);
       assert.equal(producerType(t), "dock", t);
-      assert.equal(leavesWreck(t), false, `${t} sinks`);
+      assert.equal(leavesWreck(t), true, `${t} settles as a hulk`);
       assert.equal(trackCritAllowed(t), false, `${t} has no tracks to throw`);
       assert.equal(catalog(t).wades, undefined, `${t} floats; it does not wade`);
     }
@@ -439,5 +444,61 @@ describe("boats turn before they move", () => {
       ticks(state, 200);
       assert.ok(boat.x < x0 - 5 * state.tileSize, `${type} got under way once round`);
     }
+  });
+});
+
+describe("sunken hulks", () => {
+  it("every ship settles where it went down and blocks the water there", () => {
+    for (const type of ["gunboat", "submarine", "battleship"] as const) {
+      const { state, lx0, ly0 } = harbour();
+      const ship = spawn(state, type, "B", lx0 + 12, ly0 + 12);
+      if (type === "submarine") ship.dive = { down: true, air: SUB_DIVE_SECONDS };
+      ship.hp = 0;
+      step(state, TICK_DT);
+      assert.equal(state.entities.has(ship.id), true, `${type} left a hulk`);
+      assert.equal(ship.wreck, true, type);
+      assert.equal(ship.hp, wreckHpOf(type), type);
+      assert.equal(isSunkWreck(ship), true, type);
+      assert.equal(diving(ship), false, `${type} hulk is never hidden`);
+      assert.equal(walkable(state, ship.tileX, ship.tileY, "gunboat"), false, `${type} hulk blocks a boat`);
+      assert.equal(walkable(state, ship.tileX, ship.tileY, "rifleman"), false, `${type} hulk blocks a swimmer`);
+      assert.equal(walkable(state, lx0 + 30, ly0 + 12, "gunboat"), true, "open water past it");
+    }
+  });
+
+  it("a force attack shoots the hulk apart and opens the water again", () => {
+    const { state, lx0, ly0 } = harbour();
+    const hulk = spawn(state, "gunboat", "B", lx0 + 20, ly0 + 12);
+    hulk.hp = 0;
+    step(state, TICK_DT);
+    assert.equal(hulk.wreck, true);
+    const boat = spawn(state, "gunboat", "A", lx0 + 12, ly0 + 12);
+    boat.facing = 0;
+    boat.turretFacing = 0;
+    ticks(state, 20);
+    assert.equal(hulk.hp, wreckHpOf("gunboat"), "nobody shoots a hulk on their own");
+    assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [boat.id], targetId: hulk.id, x: hulk.x, y: hulk.y }).ok, true);
+    for (let i = 0; i < 600 && state.entities.has(hulk.id); i++) step(state, TICK_DT);
+    assert.equal(state.entities.has(hulk.id), false, "the hulk was shot apart");
+    assert.equal(walkable(state, hulk.tileX, hulk.tileY, "gunboat"), true);
+  });
+
+  it("is out of an engineer's reach, and salvage pays its scrap", () => {
+    const { state, lx0, ly0 } = harbour();
+    const hulk = spawn(state, "battleship", "B", lx0 + 15, ly0 + 15);
+    hulk.hp = 0;
+    const tank = spawn(state, "warden", "B", lx0 - 3, ly0 + 15);
+    tank.hp = 0;
+    step(state, TICK_DT);
+    assert.equal(canScrapWreck(tank), true, "a hulk ashore is his");
+    assert.equal(canScrapWreck(hulk), false, "a sunken one is not");
+    spawn(state, "smelter", "A", lx0 - 4, ly0 + 2);
+    const p = state.players.get("A")!;
+    p.scrap = 0;
+    salvageWreck(state, "A", hulk);
+    assert.equal(p.scrap, Math.min(wreckScrapOf("battleship"), scrapCap(state, "A")));
+    assert.ok(p.scrap > 0);
+    step(state, TICK_DT);
+    assert.equal(state.entities.has(hulk.id), false, "salvage clears the hulk");
   });
 });

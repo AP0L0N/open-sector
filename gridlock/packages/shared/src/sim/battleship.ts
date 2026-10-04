@@ -84,7 +84,7 @@ function besideMarineBase(state: MatchState, e: Entity): boolean {
 export function tickShipRearm(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     const ship = e.ship;
-    if (!ship || !isBattleship(e.type) || e.hp <= 0) continue;
+    if (!ship || !isBattleship(e.type) || e.hp <= 0 || e.wreck) continue;
     const short =
       ship.turrets.some((t) => t.barrels.some((b) => b.ammo < BATTLESHIP_BARREL_AMMO)) ||
       ship.ciws.some((c) => c.ammo < BATTLESHIP_CIWS_BELT);

@@ -1,11 +1,15 @@
-import { WRECK_BLAST_MUL, wreckHpOf } from "../catalog.js";
+import { WRECK_BLAST_MUL, isNavalType, wreckHpOf, wreckScrapOf } from "../catalog.js";
 import { shoveFromWreck } from "./collision.js";
 import { occupyEntity, worldToTile } from "./geo.js";
 import { mortarFalloff } from "./mortar.js";
 import { hideScout } from "./scout.js";
+import { earnScrap } from "./smelter.js";
 import type { Entity, MatchState } from "./types.js";
 
-/** Convert a destroyed armored hull into an impassable wreck. An engineer can scrap it. */
+/**
+ * Convert a destroyed armored hull into an impassable wreck. An engineer can scrap it.
+ * A ship settles on the bottom where it went down, and its hulk blocks the water the same way.
+ */
 export function toWreck(state: MatchState, e: Entity): void {
   if (e.wreck) return;
   e.wreck = true;
@@ -21,11 +25,26 @@ export function toWreck(state: MatchState, e: Entity): void {
   e.mgCooldown = 0;
   e.mgOverheat = 0;
   e.queue = [];
+  // A submarine sinks in plain sight: its hulk is never hidden as a dive.
+  e.dive = undefined;
   hideScout(state, e);
   e.tileX = worldToTile(e.x, state.tileSize);
   e.tileY = worldToTile(e.y, state.tileSize);
   occupyEntity(state, e);
   shoveFromWreck(state, e);
+}
+
+/** A ship's hulk on the bottom. Engineers stay ashore: only a boat can salvage it. */
+export function isSunkWreck(e: Entity): boolean {
+  return e.wreck && e.hp > 0 && e.kind === "unit" && isNavalType(e.type);
+}
+
+/** Cut a hulk apart: its scrap goes to the salvager's commander, and the wreck clears on the next tick. */
+export function salvageWreck(state: MatchState, playerId: string, wreck: Entity): void {
+  if (!wreck.wreck || wreck.hp <= 0) return;
+  const player = state.players.get(playerId);
+  if (player) earnScrap(state, player, wreckScrapOf(wreck.type));
+  wreck.hp = 0;
 }
 
 /**

@@ -73,10 +73,10 @@ function lob(state: MatchState, owner: string, x: number, y: number, big = false
 describe("wrecks", () => {
   it("are light enough that one tank shell clears a medium hulk and two the heaviest", () => {
     const shell = catalog("warden").damage;
-    for (const t of ["warden", "ss3", "walker", "supply", "nebelwerfer", "hauler", "stuka", "fw190"] as const) {
+    for (const t of ["warden", "ss3", "walker", "supply", "nebelwerfer", "hauler", "stuka", "fw190", "gunboat", "submarine"] as const) {
       assert.ok(wreckHpOf(t) <= shell, `${t} wreck ${wreckHpOf(t)} vs shell ${shell}`);
     }
-    for (const t of ["apocalypse", "jagdtiger", "titan", "mammoth", "bv222"] as const) {
+    for (const t of ["apocalypse", "jagdtiger", "titan", "mammoth", "bv222", "battleship"] as const) {
       assert.ok(leavesWreck(t) || catalog(t).aircraft, t);
       assert.ok(wreckHpOf(t) <= shell * 2, `${t} wreck ${wreckHpOf(t)} vs two shells ${shell * 2}`);
       assert.ok(wreckHpOf(t) < catalog(t).hp * 0.4, `${t} wreck is a fraction of the hull`);

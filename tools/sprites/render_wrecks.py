@@ -379,6 +379,9 @@ class Spec:
     bites: int = 3
     soot: float = 0.5
     debris: int = 14
+    raw: bool = False  # layers stacked 1:1 on their own cell, never refit (the Battle Ship)
+    sink: float = 0.0  # engine px the hulk settles below the waterline
+    list_deg: float = 0.0  # roll toward the low side, screen degrees
 
 
 SPECS = [
@@ -396,10 +399,17 @@ SPECS = [
     Spec("stuka", 128, 0.8, "plane", src="stuka", layers=["hull"], padding=2, holes=3, bites=2, debris=14),
     Spec("fw190", 128, 0.8, "plane", src="fw190", layers=["hull"], padding=2, holes=3, bites=2, debris=12),
     Spec("bv222", 128, 0.8, "plane", src="bv222", layers=["hull"], padding=2, holes=5, bites=3, debris=18),
+    Spec("gunboat", 128, 0.74, "sunk", src="gunboat", layers=["hull"], padding=2, holes=3, bites=3, soot=0.55, debris=8, sink=6, list_deg=7),
+    Spec("submarine", 128, 0.74, "sunk", src="submarine", layers=["hull"], padding=2, holes=3, bites=2, soot=0.45, debris=6, sink=3.5, list_deg=-4),
+    Spec("battleship", 256, 0.56, "sunk", src="battleship", layers=["hull", "super", "turret", "ciws"], raw=True,
+         turn=3, holes=6, bites=4, soot=0.5, debris=14, sink=10, list_deg=-3),
 ]
 
 
 def load_layers(spec: Spec) -> dict[str, list[Image.Image]]:
+    if spec.raw:
+        size = spec.cell * K
+        return {n: [f.resize((size, size), Image.LANCZOS) for f in frames(UNITS / spec.src / n)] for n in spec.layers}
     if spec.src:
         raw = [frames(UNITS / spec.src / name) for name in spec.layers]
         composed = compose_aligned(raw, spec.cell * K, spec.contact_y, spec.padding * K)
@@ -599,7 +609,242 @@ def wreck_plane(spec: Spec, L, r: int, rng, side: int) -> Image.Image:
     return finish(spec, stack(size, parts), rng, skid=skid, scorch_strength=0.55)
 
 
+# ------------------------------------------------------------------ sunk ships
+
+WATER = np.array([34, 74, 82], np.float32) / 255
+FOAM = (168, 196, 194)
+OIL = (16, 18, 20)
+SHEEN = [(84, 52, 104), (44, 92, 70), (110, 92, 40)]
+
+# render_battleship.py's numbers, mirrored from client/src/render/battleship.ts.
+BS_HALF_LENGTH = 13.6
+BS_SCALE_FRAC = 0.0325
+BS_TURRET_AT = (0.6, 0.38)
+BS_TURRET_Z = (1.02, 1.6)
+BS_CIWS_AT = (-0.04, -0.8)
+BS_CIWS_Z = (2.58, 1.02)
+BS_SUPER_AT = -1.2
+SIN_CAM = math.sin(math.pi / 6)
+COS_CAM = math.cos(math.pi / 6)
+
+
+def ring_mask(im: Image.Image) -> np.ndarray:
+    """The live hull's waterline halo: the teal wash a boat sheet is cut over."""
+    a = arr(im)
+    r, g, b = a[..., 0], a[..., 1], a[..., 2]
+    return (a[..., 3] > 0.02) & (b > r + 0.08) & (b > g - 0.04)
+
+
+def strip_wake(im: Image.Image) -> Image.Image:
+    a = arr(im)
+    ring = ring_mask(im)
+    a[ring, 3] = 0
+    # The halo's own dark rim is left floating once the teal goes: drop dark pixels the hull no longer backs.
+    solid = a[..., 3] > 0.5
+    lum = a[..., :3] @ np.array([0.299, 0.587, 0.114], np.float32)
+    body = solid & (lum > 0.16)
+    near = morph(body, 3 + 2 * K, grow=True)
+    a[solid & ~near, 3] = 0
+    a[a[..., 3] < 0.6, 3] = 0
+    return img(a)
+
+
+def waterline_area(hull_raw: Image.Image) -> np.ndarray:
+    """Water the hull sat in: the halo and everything it encloses."""
+    ring = ring_mask(hull_raw)
+    solid = np.asarray(hull_raw)[..., 3] > 127
+    wall = Image.fromarray(((ring | solid) * 255).astype(np.uint8), "L")
+    wall = wall.filter(ImageFilter.MaxFilter(3))
+    canvas = Image.new("L", (wall.width + 2, wall.height + 2), 0)
+    canvas.paste(wall, (1, 1))
+    ImageDraw.floodfill(canvas, (0, 0), 128)
+    inside = np.asarray(canvas)[1:-1, 1:-1] != 128
+    if not ring.any():
+        return inside
+    # Superstructure above the ring's top is not water.
+    top = np.argwhere(ring)[:, 0].min()
+    inside[:top] = False
+    return inside
+
+
+def bottom_contour(mask: np.ndarray) -> np.ndarray:
+    """Lowest opaque row per column; columns off the hull take their nearest neighbour's."""
+    h, w = mask.shape
+    has = mask.any(axis=0)
+    low = np.where(has, h - 1 - np.argmax(mask[::-1], axis=0), -1).astype(np.float32)
+    cols = np.nonzero(has)[0]
+    if len(cols) == 0:
+        return np.full(w, -1, np.float32)
+    idx = np.clip(np.searchsorted(cols, np.arange(w)), 0, len(cols) - 1)
+    left = cols[np.clip(idx - 1, 0, len(cols) - 1)]
+    right = cols[idx]
+    pick = np.where(np.abs(np.arange(w) - left) < np.abs(right - np.arange(w)), left, right)
+    out = np.where(has, low, low[pick])
+    # Smooth the cut so it reads as a water surface, not a stair.
+    k = max(1, 2 * K)
+    pad = np.pad(out, k, mode="edge")
+    return np.convolve(pad, np.ones(2 * k + 1) / (2 * k + 1), mode="same")[k:-k]
+
+
+def settle(body: Image.Image, contour: np.ndarray, depth: float, list_deg: float, rng: np.random.Generator) -> Image.Image:
+    """Drop the hulk by `depth`, roll it, and drown everything under the old waterline."""
+    b = bbox(body) or (0, 0, body.width, body.height)
+    pivot = ((b[0] + b[2]) / 2, b[3])
+    moved = transform(body, list_deg, pivot, 0, depth)
+    a = arr(moved)
+    h, w = a.shape[:2]
+    yy = np.mgrid[0:h, 0:w][0].astype(np.float32)
+    jag = (noise(rng, h, w, 2 * K) - 0.5) * 1.2 * K
+    line = contour[None, :] + jag
+    under = yy > line
+    # Below the surface the drowned hull still shows as a dim green-grey ghost, fading with depth.
+    deep = smoothstep(0, 5.0 * K, yy - line)
+    a[under, :3] = a[under, :3] * 0.3 + WATER * 0.7
+    a[under, 3] *= (0.42 * (1 - deep[under] * 0.8))
+    # Just above the cut the plate shows through the shallows: tinted, half there.
+    band = 3.0 * K
+    f = smoothstep(0, band, line - yy)[..., None]
+    a[..., :3] = a[..., :3] * (0.45 + 0.55 * f) + WATER * (1 - f) * 0.55
+    a[..., 3] *= (0.5 + 0.5 * f[..., 0])
+    # Wash on the waterline where the hull breaks the surface.
+    lip = (a[..., 3] > 0.3) & (line - yy < 1.0 * K) & (line - yy >= 0)
+    a[lip, :3] = a[lip, :3] * 0.35 + np.array(FOAM, np.float32) / 255 * 0.65
+    return img(a)
+
+
+def water_dressing(size: int, area: np.ndarray, rng: np.random.Generator, n_debris: int) -> tuple[Image.Image, Image.Image]:
+    """Oil slick and a ripple ring under the hulk, floating junk around it. Returns (under, over)."""
+    margin = 5 * K
+    m = Image.fromarray((area * 255).astype(np.uint8), "L")
+    grow = int(6 * K) | 1
+    slick = m.filter(ImageFilter.MaxFilter(grow)).filter(ImageFilter.GaussianBlur(3 * K))
+    sl = np.asarray(slick, np.float32) / 255
+    h, w = sl.shape
+    blot = noise(rng, h, w, 7 * K)
+    sl = sl * smoothstep(0.25, 0.7, blot * 0.6 + sl * 0.7)
+    under = np.zeros((h, w, 4), np.float32)
+    under[..., :3] = np.array(OIL, np.float32) / 255
+    under[..., 3] = sl * 0.5
+    # Rainbow sheen streaks on the slick.
+    for i, col in enumerate(SHEEN):
+        streak = smoothstep(0.62, 0.8, noise(rng, h, w, 3 * K)) * sl
+        c = np.array(col, np.float32) / 255
+        mix = (streak * 0.6)[..., None]
+        under[..., :3] = under[..., :3] * (1 - mix) + c * mix
+        under[..., 3] = np.maximum(under[..., 3], streak * 0.35)
+    # A calm ring of disturbed water just off the hull.
+    outer = np.asarray(m.filter(ImageFilter.MaxFilter(int(3 * K) | 1)), np.float32) / 255 > 0.5
+    inner = np.asarray(m.filter(ImageFilter.MaxFilter(int(1.5 * K) | 1)), np.float32) / 255 > 0.5
+    ripple = outer & ~inner & (noise(rng, h, w, 4 * K) > 0.55)
+    under[ripple, :3] = np.array(FOAM, np.float32) / 255
+    under[ripple, 3] = 0.22
+    under_img = fade_edges(img(under), margin)
+
+    over = Image.new("RGBA", (size, size))
+    g = ImageDraw.Draw(over)
+    ys, xs = np.nonzero(area)
+    if len(xs) and n_debris > 0:
+        cx, cy = xs.mean(), ys.mean()
+        rx = max(4 * K, (xs.max() - xs.min()) / 2)
+        ry = max(3 * K, (ys.max() - ys.min()) / 2)
+        for _ in range(n_debris):
+            ang = rng.uniform(0, math.tau)
+            rad = rng.uniform(0.9, 1.5)
+            x = cx + math.cos(ang) * rx * rad
+            y = cy + math.sin(ang) * ry * rad
+            s = rng.uniform(1.0, 2.4) * K
+            rot = rng.uniform(0, math.pi)
+            # A plank or a scrap of plate, flat on the water, with a ring of ripple round it.
+            dx, dy = math.cos(rot) * s, math.sin(rot) * s * 0.5
+            g.ellipse((x - s * 1.4, y - s * 0.7, x + s * 1.4, y + s * 0.7), outline=FOAM + (90,))
+            col = DEBRIS[int(rng.integers(len(DEBRIS)))]
+            g.line((x - dx, y - dy, x + dx, y + dy), fill=col + (255,), width=max(1, int(K * 1.2)))
+    return under_img, fade_edges(over, margin)
+
+
+def bs_row_yaw(row: int) -> float:
+    phi = math.pi / 2 + row * math.pi / 8
+    return math.atan2(-math.sin(phi) / SIN_CAM, math.cos(phi))
+
+
+def bs_offset(row: int, x: float, z: float, size: int) -> tuple[float, float, float]:
+    yaw = bs_row_yaw(row)
+    k = BS_SCALE_FRAC * size
+    gx = x * math.cos(yaw)
+    gy = x * math.sin(yaw)
+    return gx * k, -(gy * SIN_CAM + z * COS_CAM) * k, gy
+
+
+def battleship_parts(L, r: int, turret_rows: tuple[int, int], ciws_rows: tuple[int | None, int | None]) -> list[tuple[str, int, float, float]]:
+    """battleshipLayers() in mapview order: (layer, row, dx, dy), back to front, over the hull."""
+    size = L["hull"][0].width
+    hl = BS_HALF_LENGTH
+    _, _, sfar = bs_offset(r, BS_SUPER_AT, 0, size)
+    items = [("super", r, 0.0, 0.0, sfar)]
+    turrets = []
+    for i, at in enumerate(BS_TURRET_AT):
+        dx, dy, far = bs_offset(r, at * hl, BS_TURRET_Z[i], size)
+        turrets.append(("turret", turret_rows[i], dx, dy, far))
+    items += turrets
+    if ciws_rows[1] is not None:
+        dx, dy, far = bs_offset(r, BS_CIWS_AT[1] * hl, BS_CIWS_Z[1], size)
+        items.append(("ciws", ciws_rows[1], dx, dy, far))
+    items.sort(key=lambda it: -it[4])
+    slots = [i for i, it in enumerate(items) if it[0] == "turret"]
+    for n, slot in enumerate(slots):
+        items[slot] = turrets[n]
+    if ciws_rows[0] is not None:
+        dx, dy, far = bs_offset(r, BS_CIWS_AT[0] * hl, BS_CIWS_Z[0], size)
+        items.append(("ciws", ciws_rows[0], dx, dy, far))
+    return [(n, row, dx, dy) for n, row, dx, dy, _ in items]
+
+
+def battleship_live(L, r: int) -> Image.Image:
+    size = L["hull"][0].width
+    out = Image.new("RGBA", (size, size))
+    out.alpha_composite(L["hull"][r])
+    for n, row, dx, dy in battleship_parts(L, r, (r, r), (r, (r + 8) % DIRS)):
+        place(out, L[n][row], round(dx), round(dy))
+    return out
+
+
+def wreck_sunk(spec: Spec, L, r: int, rng) -> Image.Image:
+    size = spec.cell * K
+    hull_raw = L["hull"][r]
+    area = waterline_area(hull_raw)
+    hull = strip_wake(hull_raw)
+    contour = bottom_contour(np.asarray(hull)[..., 3] > 127)
+    hull = hull_damage(spec, hull, rng)
+    if spec.raw:
+        # Battle Ship: the turrets are blown round on their rings, B's guns snapped,
+        # the island mount torn away; the stern mount hangs on at a slew.
+        body = hull.copy()
+        rows = ((r + spec.turn) % DIRS, (r - 2) % DIRS)
+        for n, row, dx, dy in battleship_parts(L, r, rows, (None, (r + 11) % DIRS)):
+            part = L[n][row]
+            pb = bbox(part)
+            if pb is None:
+                continue
+            piv = ((pb[0] + pb[2]) / 2, (pb[1] + pb[3]) / 2)
+            if n == "turret":
+                tilt = rng.uniform(4, 9) * (1 if row == rows[0] else -1)
+                part = transform(part, tilt, piv, 0, 0)
+                part = bite(part, rng, 2, 1.5 * K, 3 * K)
+            elif n == "super":
+                part = bite(part, rng, spec.bites, 2.5 * K, 5 * K)
+                part = punch_holes(part, rng, 3, 1.4 * K, 2.4 * K)
+            part = char(part, rng, soot=spec.soot + 0.1)
+            place(body, part, round(dx), round(dy))
+    else:
+        body = hull
+    depth = spec.sink * K
+    body = settle(body, contour, depth, spec.list_deg * (1 if r < 8 else -1), rng)
+    under, over = water_dressing(size, area, rng, spec.debris)
+    return stack(size, [under, body, over])
+
+
 RECIPES = {
+    "sunk": wreck_sunk,
     "turret": wreck_turret,
     "casemate": wreck_casemate,
     "launcher": wreck_launcher,
@@ -611,6 +856,8 @@ RECIPES = {
 
 def live_row(spec: Spec, L, r: int) -> Image.Image:
     size = spec.cell * K
+    if spec.recipe == "sunk" and spec.raw:
+        return battleship_live(L, r)
     if spec.recipe == "legs":
         order = [L.get("gun", [None] * DIRS)[r] if gun_behind(r) else None, L["legs"][r], L["torso"][r],
                  None if gun_behind(r) else L.get("gun", [None] * DIRS)[r]]
@@ -650,7 +897,7 @@ def render(spec: Spec) -> dict:
     out = OUT / f"{spec.type}.png"
     sheet.save(out, optimize=True)
     preview(spec, sheet, live_cells)
-    return {"type": spec.type, "out": str(out.relative_to(ROOT)), "cell": cell, "rows": DIRS, "frames": 1,
+    return {"type": spec.type, "out": out.relative_to(ROOT).as_posix(), "cell": cell, "rows": DIRS, "frames": 1,
             "contactY": spec.contact_y, "clipped_dirs": clipped}
 
 
@@ -659,7 +906,8 @@ LABELS = ["S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW", "N", "NNE", "NE", "E
 
 def preview(spec: Spec, sheet: Image.Image, live: list[Image.Image]) -> None:
     cell = spec.cell
-    grid = Image.new("RGBA", (cell * 8 + 16, cell * 4), (107, 83, 64, 255))
+    bg = (52, 96, 108, 255) if spec.recipe == "sunk" else (107, 83, 64, 255)
+    grid = Image.new("RGBA", (cell * 8 + 16, cell * 4), bg)
     g = ImageDraw.Draw(grid)
     for r in range(DIRS):
         gx = (r % 4) * cell

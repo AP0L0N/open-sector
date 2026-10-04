@@ -24,6 +24,7 @@ import {
   rocketAmmoOf,
   rocketsOf,
   isMotorVehicle,
+  MAX_BOAT_RADIUS,
   MAX_UNIT_RADIUS,
   rollReloadMul,
   scoutHpMaxOf,
@@ -341,8 +342,10 @@ export function fillHullCover(
   for (const e of entities) stampArmoredHull(out, width, height, tileSize, e);
 }
 
-function wreckPathRadius(e: Pick<Entity, "radius">): number {
-  return e.radius + MAX_UNIT_RADIUS + UNIT_SPACE_PAD;
+/** A sunken hulk keeps the largest boat clear as well as anything that swims or wades. */
+function wreckPathRadius(e: Pick<Entity, "radius" | "type">): number {
+  const reach = isNavalType(e.type) ? Math.max(MAX_UNIT_RADIUS, MAX_BOAT_RADIUS) : MAX_UNIT_RADIUS;
+  return e.radius + reach + UNIT_SPACE_PAD;
 }
 
 function restampWreckBlock(state: MatchState): void {
