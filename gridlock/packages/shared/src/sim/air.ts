@@ -103,7 +103,7 @@ import { noteImpactSurface } from "./remains.js";
 import { nextRand } from "./rng.js";
 import { hideScout } from "./scout.js";
 import { canSeeEntity } from "./vision.js";
-import { toWreck } from "./wreck.js";
+import { blastWrecks, toWreck } from "./wreck.js";
 import { nightReachMul } from "./night.js";
 import type { AirState, Entity, MatchState, Order, Projectile } from "./types.js";
 
@@ -1105,6 +1105,7 @@ function detonateBomb(state: MatchState, p: Projectile): void {
     else takeDamage(e, dmg, state.tick);
     if (e.hp <= 0) killed = true;
   }
+  blastWrecks(state, p.x, p.y, radius, BOMB_DAMAGE);
   const impact: ImpactView = {
     id: state.nextId++,
     ownerId: p.ownerId,

@@ -186,6 +186,20 @@ import engineerSwimUrl from "../assets/units/engineer-swim.png";
 import cyborgSwimUrl from "../assets/units/cyborg-swim.png";
 import haulerHullUrl from "../assets/units/hauler-hull.png";
 import haulerCartUrl from "../assets/units/hauler-cart.png";
+import wardenWreckUrl from "../assets/units/wrecks/warden.png";
+import apocalypseWreckUrl from "../assets/units/wrecks/apocalypse.png";
+import ss3WreckUrl from "../assets/units/wrecks/ss3.png";
+import jagdtigerWreckUrl from "../assets/units/wrecks/jagdtiger.png";
+import supplyWreckUrl from "../assets/units/wrecks/supply.png";
+import nebelwerferWreckUrl from "../assets/units/wrecks/nebelwerfer.png";
+import haulerWreckUrl from "../assets/units/wrecks/hauler.png";
+import haulerCartWreckUrl from "../assets/units/wrecks/hauler-cart.png";
+import walkerWreckUrl from "../assets/units/wrecks/walker.png";
+import titanWreckUrl from "../assets/units/wrecks/titan.png";
+import mammothWreckUrl from "../assets/units/wrecks/mammoth.png";
+import stukaWreckUrl from "../assets/units/wrecks/stuka.png";
+import fw190WreckUrl from "../assets/units/wrecks/fw190.png";
+import bv222WreckUrl from "../assets/units/wrecks/bv222.png";
 import walkerLegsUrl from "../assets/units/walker-legs.png";
 import walkerTorsoUrl from "../assets/units/walker-torso.png";
 import mammothWalkUrl from "../assets/units/mammoth-walk.png";
@@ -1358,6 +1372,48 @@ export const RIG_SPRITE: UnitSpriteDef = {
   contactY: 0.9,
   facingSpace: "world",
 };
+
+/**
+ * Burnt-out hulk on the live sheet's cell, scale, and contact line, so the wreck
+ * sits where the hull stood (tools/sprites/render_wrecks.py). One layer: the
+ * turret, gun, and launcher are baked in where the kill left them.
+ */
+function wreckSheet(src: string, live: UnitSpriteDef): UnitSpriteDef {
+  return {
+    image: loadSheet(src),
+    dirs: 16,
+    frames: 1,
+    frameSize: live.frameSize,
+    fps: 1,
+    drawSize: live.drawSize,
+    contactY: live.contactY,
+    facingSpace: "world",
+  };
+}
+
+const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
+  warden: wreckSheet(wardenWreckUrl, TIGER_SPRITE),
+  apocalypse: wreckSheet(apocalypseWreckUrl, APOCALYPSE_SPRITE),
+  ss3: wreckSheet(ss3WreckUrl, SS3_SPRITE),
+  jagdtiger: wreckSheet(jagdtigerWreckUrl, JAGDTIGER_SPRITE),
+  supply: wreckSheet(supplyWreckUrl, SUPPLY_SPRITE),
+  nebelwerfer: wreckSheet(nebelwerferWreckUrl, NEBELWERFER_SPRITE),
+  hauler: wreckSheet(haulerWreckUrl, HAULER_SPRITE),
+  walker: wreckSheet(walkerWreckUrl, WALKER_SPRITE),
+  titan: wreckSheet(titanWreckUrl, TITAN_SPRITE),
+  mammoth: wreckSheet(mammothWreckUrl, MAMMOTH_SPRITE),
+  stuka: wreckSheet(stukaWreckUrl, STUKA_SPRITE),
+  fw190: wreckSheet(fw190WreckUrl, FW190_SPRITE),
+  bv222: wreckSheet(bv222WreckUrl, BV222_SPRITE),
+};
+
+/** The Mauler's cart burns with the dozer. */
+export const HAULER_CART_WRECK_SPRITE = wreckSheet(haulerCartWreckUrl, HAULER_CART_SPRITE);
+
+/** The hulk a destroyed hull or downed plane leaves. Undefined for anything without wreck art. */
+export function wreckSpriteFor(type: EntityType): UnitSpriteDef | undefined {
+  return WRECK_SPRITES[type];
+}
 
 const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   rifleman: TROOPER_SPRITE,
