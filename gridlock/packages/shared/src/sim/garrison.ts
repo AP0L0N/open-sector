@@ -1,3 +1,4 @@
+import { buildingRect, buildingTilesOf, isTurnedBuilding, rectWorld } from "../building-rect.js";
 import {
   catalog,
   fieldSpan,
@@ -199,8 +200,23 @@ export function canGarrison(state: MatchState, unit: Entity, house: Entity): str
 export function approachTile(state: MatchState, house: Entity): { x: number; y: number } | null {
   if (house.kind === "unit") return besideHull(state, house);
   const ring: { x: number; y: number }[] = [];
+  // A turned building's door ring hugs its real walls, not the corners of its box.
+  const ground = isTurnedBuilding(house)
+    ? new Set(buildingTilesOf(house, state.tileSize).map((t) => t.y * state.width + t.x))
+    : null;
+  const besideGround = (x: number, y: number): boolean => {
+    if (!ground || ground.has(y * state.width + x)) return false;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) if (ground.has((y + dy) * state.width + (x + dx))) return true;
+    }
+    return false;
+  };
   for (let y = house.tileY - 1; y <= house.tileY + house.tileH; y++) {
     for (let x = house.tileX - 1; x <= house.tileX + house.tileW; x++) {
+      if (ground) {
+        if (inBounds(state, x, y) && besideGround(x, y)) ring.push({ x, y });
+        continue;
+      }
       const onEdge =
         x === house.tileX - 1 ||
         y === house.tileY - 1 ||
@@ -324,11 +340,38 @@ export type GarrisonFace = "n" | "e" | "s" | "w";
 export interface GarrisonMuzzle {
   x: number;
   y: number;
+  /** The nearest compass wall. A turned building's walls lie between them. */
   face: GarrisonFace;
+  /** Outward normal of the wall, when it is not the compass one of `face`. */
+  out?: { x: number; y: number };
+}
+
+/** The compass wall nearest an outward normal. */
+function faceOf(nx: number, ny: number): GarrisonFace {
+  if (Math.abs(nx) >= Math.abs(ny)) return nx >= 0 ? "e" : "w";
+  return ny >= 0 ? "s" : "n";
 }
 
 /** Firing openings on every wall. Iso only shows the south (left) and east (right) faces. */
 export function garrisonWindows(house: Entity, tileSize: number): GarrisonMuzzle[] {
+  if (isTurnedBuilding(house)) {
+    // The same openings on the turned walls: along u at ±v, and along v at ±u.
+    const r = buildingRect(house, tileSize);
+    const n = garrisonWindowsOf(house.type);
+    const pts: GarrisonMuzzle[] = [];
+    const add = (u: number, v: number, nx: number, ny: number) => {
+      const p = rectWorld(r, u, v);
+      pts.push({ x: p.x, y: p.y, face: faceOf(nx, ny), out: { x: nx, y: ny } });
+    };
+    for (let i = 0; i < n; i++) {
+      const t = (i + 1) / (n + 1) - 0.5;
+      add(t * 2 * r.halfU, r.halfV, r.vx, r.vy);
+      add(r.halfU, t * 2 * r.halfV, r.ux, r.uy);
+      add(t * 2 * r.halfU, -r.halfV, -r.vx, -r.vy);
+      add(-r.halfU, t * 2 * r.halfV, -r.ux, -r.uy);
+    }
+    return pts;
+  }
   const x0 = house.tileX * tileSize;
   const y0 = house.tileY * tileSize;
   const bw = house.tileW * tileSize;
@@ -402,7 +445,7 @@ export function garrisonMuzzleToward(
     return { x: slit.x, y: slit.y, house };
   }
   const w = pickGarrisonMuzzle(house, state.tileSize, ang, unit.id);
-  const out = FACE_OUT[w.face];
+  const out = w.out ?? FACE_OUT[w.face];
   return { x: w.x + out.x * 4, y: w.y + out.y * 4, house };
 }
 

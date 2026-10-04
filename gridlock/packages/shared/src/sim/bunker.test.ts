@@ -24,7 +24,7 @@ import { applyCommand } from "./commands.js";
 import { placedFacing, raiseBuilding, sellBuilding } from "./build.js";
 import { tickCombat } from "./combat.js";
 import { sightTilesForEntity, weaponRangeWorld } from "./elevation.js";
-import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
+import { destroyEntity, makeEntity, occupant, tileCenter } from "./geo.js";
 import { canGarrison, enterGarrison, livingGarrison, setGarrisonHide, woundGarrison } from "./garrison.js";
 import { createMatch, step } from "./match.js";
 import type { Entity, MatchState } from "./types.js";
@@ -374,17 +374,51 @@ describe("bunker", () => {
 });
 
 describe("placed facing", () => {
-  it("turns a Bunker or Watch Tower to the nearest quarter, and leaves other buildings facing east", () => {
-    assert.equal(placedFacing("bunker", Math.PI / 2 + 0.3), Math.PI / 2);
-    assert.equal(placedFacing("tower", -Math.PI / 2), (3 * Math.PI) / 2);
-    assert.equal(placedFacing("tower", Math.PI * 0.9), Math.PI);
-    assert.equal(placedFacing("bunker", 0.2), 0);
+  it("turns a Bunker, Watch Tower, or Airfield to the nearest 15° step, and leaves other buildings facing east", () => {
+    const step = Math.PI / 12;
+    assert.equal(placedFacing("bunker", Math.PI / 2 + 0.3), 7 * step);
+    assert.equal(placedFacing("tower", -Math.PI / 2), 18 * step);
+    assert.equal(placedFacing("airfield", step * 3.4), 3 * step);
+    assert.equal(placedFacing("bunker", 0.1), 0);
     assert.equal(placedFacing("dynamo", Math.PI), 0);
     const { state, a } = twoPlayerMatch();
     const tower = raiseBuilding(state, a, "tower", 120, 120, Math.PI);
-    assert.equal(tower.facing, Math.PI);
+    assert.equal(tower.facing, 12 * step);
     const dynamo = raiseBuilding(state, a, "dynamo", 110, 110, Math.PI);
     assert.equal(dynamo.facing, 0);
+  });
+
+  it("turns the footprint with the building", () => {
+    const { state, a } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const def = catalog("airfield");
+    // A quarter turn swaps the box and fills it exactly.
+    const quarter = raiseBuilding(state, a, "airfield", 20, 20, Math.PI / 2);
+    assert.equal(quarter.tileW, def.tileH);
+    assert.equal(quarter.tileH, def.tileW);
+    let mine = 0;
+    for (let y = 0; y < state.height; y++) {
+      for (let x = 0; x < state.width; x++) if (state.occupy[y * state.width + x] === quarter.id) mine++;
+    }
+    assert.equal(mine, def.tileW * def.tileH);
+    assert.equal(occupant(state, 20, 20 + def.tileW - 1), quarter.id, "the strip runs south now");
+    assert.equal(occupant(state, 20 + def.tileH, 20), 0, "and not east");
+    // 45°: a diamond in a bigger box. The box corners stay open ground.
+    const bunker = raiseBuilding(state, a, "bunker", 120, 60, Math.PI / 4);
+    assert.ok(bunker.tileW > catalog("bunker").tileW);
+    assert.equal(occupant(state, bunker.tileX, bunker.tileY), 0, "the box corner is not the bunker");
+    const cx = Math.floor(bunker.x / ts);
+    const cy = Math.floor(bunker.y / ts);
+    assert.equal(occupant(state, cx, cy), bunker.id);
+    let diamond = 0;
+    for (let y = bunker.tileY; y < bunker.tileY + bunker.tileH; y++) {
+      for (let x = bunker.tileX; x < bunker.tileX + bunker.tileW; x++) if (occupant(state, x, y) === bunker.id) diamond++;
+    }
+    const area = catalog("bunker").tileW * catalog("bunker").tileH;
+    assert.ok(Math.abs(diamond - area) <= area * 0.15, `about the bunker's own area (${diamond} vs ${area})`);
+    // Selling clears every tile it stood on.
+    sellBuilding(state, a, bunker.id);
+    assert.equal(occupant(state, cx, cy), 0);
   });
 
   it("stands a placed Bunker at the facing the player turned it to", () => {

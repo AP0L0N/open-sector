@@ -565,8 +565,15 @@ export const ENGINEER_BUILDINGS: readonly BuildingType[] = ["smelter"];
 export function isEngineerBuilding(type: string): type is BuildingType {
   return (ENGINEER_BUILDINGS as readonly string[]).includes(type);
 }
-/** Base buildings the player turns to a cardinal facing before placing them, like a wall or sandbags. */
-export const ROTATABLE_BUILDINGS: readonly BuildingType[] = ["bunker", "tower"];
+/**
+ * Base buildings the player turns before placing them, like a wall or sandbags: one
+ * BUILDING_TURN_STEP per wheel notch. The footprint turns with the building.
+ */
+export const ROTATABLE_BUILDINGS: readonly BuildingType[] = ["bunker", "tower", "airfield"];
+/** One turn step for a rotatable building, the wall's 15°. */
+export const BUILDING_TURN_STEP = Math.PI / 12;
+/** Facings a rotatable building can stand at; each has its own pre-rendered face. */
+export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }

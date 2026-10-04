@@ -107,7 +107,7 @@ export function garrisonMouthPoint(
   }
   if (host.type === "greatwall") return largeWallSlit({ x: host.x, y: host.y, facing: host.facing ?? 0 }, aimX, aimY, salt);
   const w = pickGarrisonMuzzle(host as never, tileSize, ang, salt);
-  const out = FACE_OUT[w.face];
+  const out = w.out ?? FACE_OUT[w.face];
   return { x: w.x + out.x * 4, y: w.y + out.y * 4 };
 }
 

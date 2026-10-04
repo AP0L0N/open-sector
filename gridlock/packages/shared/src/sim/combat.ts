@@ -147,7 +147,6 @@ import {
 } from "./elevation.js";
 import {
   allies,
-  buildingBounds,
   clearOrder,
   fellTreeAt,
   inBounds,
@@ -155,6 +154,7 @@ import {
   nearestWalkable,
   playerTeam,
   segmentAabbT,
+  segmentBuildingT,
   segmentCircleT,
   tileCenter,
   unitInWater,
@@ -2590,7 +2590,7 @@ function sweepAgainst(
   const reach = e.radius * (p.plunging ? 1 : stanceHitRadiusMul(e, unitInWater(state, e)));
   const t =
     e.kind === "building"
-      ? segmentAabbT(x0, y0, p.x, p.y, buildingBounds(e, state.tileSize))
+      ? segmentBuildingT(x0, y0, p.x, p.y, e, state.tileSize)
       : segmentCircleT(
           x0,
           y0,

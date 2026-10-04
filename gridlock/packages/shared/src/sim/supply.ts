@@ -1,3 +1,4 @@
+import { buildingRect, isTurnedBuilding, rectNearest } from "../building-rect.js";
 import {
   DRIVER_KILL_CHANCE,
   MINE_DISABLE_SECONDS,
@@ -124,6 +125,7 @@ export function needsSupply(e: Entity): boolean {
 
 /** Point of a building's footprint nearest to (x, y). */
 function footprintNearest(state: MatchState, b: Entity, x: number, y: number): { x: number; y: number } {
+  if (isTurnedBuilding(b)) return rectNearest(buildingRect(b, state.tileSize), x, y);
   const box = buildingBounds(b, state.tileSize);
   return { x: Math.min(box.x1, Math.max(box.x0, x)), y: Math.min(box.y1, Math.max(box.y0, y)) };
 }
