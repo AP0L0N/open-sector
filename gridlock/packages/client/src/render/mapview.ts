@@ -35,6 +35,7 @@ import {
   isCivilianType,
   isFieldStructure,
   isInfantryType,
+  PTRD_CALIBER,
   isNavalType,
   BATTLESHIP_HALF_LENGTH,
   isSupplyCarrier,
@@ -307,6 +308,7 @@ import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
 import { roofCiwsMuzzle } from "./roof-ciws.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { ciwsBurstTracers, ciwsTracers } from "./ciws-tracer.js";
+import { PTRD_MUZZLE_LIFT, ptrdTracers } from "./ptrd-tracer.js";
 import { ROOF_CIWS_LIFT } from "./roof-ciws.js";
 
 /** Gatling barrels above the ground point, as a share of the drawn cell. The Walker matches gatling-flash ARM_LIFT. */
@@ -434,7 +436,7 @@ const POOL_RGB: Record<NightPool["kind"], string> = {
 /** Built structures that keep work lights burning round the yard. Not bunkers, walls, or the tower, which has its own lamp. */
 function workLit(e: EntityView): boolean {
   if (e.kind !== "building" || e.hp <= 0 || e.wreck || e.ruined) return false;
-  if (!e.ownerId || e.ownerId === NEUTRAL_OWNER) return false;
+  if (!e.ownerId || e.ownerId === NEUTRAL_OWNER || e.unpowered) return false;
   if (e.type === "bunker" || e.type === "tower") return false;
   return e.type === "core" || (BUILDING_TYPES as readonly string[]).includes(e.type);
 }
@@ -1118,6 +1120,7 @@ export class MapView {
     }
     this.noteBarrages(match, now);
     this.noteGatlingFire(match, now);
+    this.notePtrdFire(match, now);
     // A fast rocket (a RAM's, at a plane overhead) can leave and burst between two
     // snapshots. Its launch still comes through, so it gets its flash and backblast.
     if (this.rocketLaunched.size > 400) this.rocketLaunched.clear();
@@ -1426,6 +1429,48 @@ export class MapView {
       this.ciwsBurstSeen.add(key);
       const reach = catalog(pad ? "ciws" : "apocalypse").rangeTiles * ts * (pad ? 0.6 : 0.5);
       this.tracers.push(...ciwsBurstTracers(muzzle, facing, reach, CIWS_INTERCEPT_LIFT / ISO_ELEVATION, now, e.id * 31 + match.tick, ts));
+    }
+  }
+
+  /**
+   * The AT soldier's PTRD round carries a tracer: a streak from his muzzle (or
+   * the window he fires from) to where each 14.5 mm round ended.
+   */
+  private notePtrdFire(match: MatchSnapshot, now: number): void {
+    const byShooter = new Map<number, NonNullable<MatchSnapshot["impacts"]>>();
+    for (const i of match.impacts ?? []) {
+      if (i.fromId == null || i.caliber !== PTRD_CALIBER || i.kind === "crush") continue;
+      if (this.fxIds.has(i.id) || this.barrageLandAt.has(i.id)) continue;
+      const list = byShooter.get(i.fromId);
+      if (list) list.push(i);
+      else byShooter.set(i.fromId, [i]);
+    }
+    if (byShooter.size === 0) return;
+    const ts = this.ts();
+    const ground = (x: number, y: number) => this.elevAt(x, y);
+    for (const [fromId, rounds] of byShooter) {
+      const e = match.entities.find((u) => u.id === fromId);
+      if (e?.type !== "atinfantry" || e.wreck) continue;
+      const house = e.garrisonedIn != null ? match.entities.find((b) => b.id === e.garrisonedIn) : undefined;
+      let muzzle: { x: number; y: number; z: number };
+      if (house) {
+        muzzle = { x: house.x, y: house.y, z: this.elevAt(house.x, house.y) + garrisonWindowLift(house.type, rounds[0]!.id) / ISO_ELEVATION };
+      } else {
+        const p = this.lerpEnt(e);
+        const size = this.spriteOf(e)?.drawSize ?? 48;
+        const r = catalog(e.type).radius;
+        const a = Math.atan2(rounds[0]!.y - p.y, rounds[0]!.x - p.x);
+        const lift = e.swimming ? 0.05 : PTRD_MUZZLE_LIFT[e.stance ?? "stand"];
+        muzzle = {
+          x: p.x + Math.cos(a) * r,
+          y: p.y + Math.sin(a) * r,
+          z: this.elevAt(p.x, p.y) + (lift * size) / ISO_ELEVATION,
+        };
+      }
+      for (const tr of ptrdTracers(muzzle, rounds, ground, now, ts)) {
+        this.tracers.push(tr);
+        this.barrageLandAt.set(tr.id, tracerLandsAt(tr));
+      }
     }
   }
 
@@ -3478,6 +3523,7 @@ export class MapView {
       }
     }
     this.collectFieldSites(items);
+    this.collectBuildSites(items);
     this.collectTrees(items, castShadows);
     this.collectDecor(items);
     this.collectTreeBurns(items);
@@ -3593,7 +3639,7 @@ export class MapView {
     const out: { e: EntityView; facing: number }[] = [];
     const live = new Set<number>();
     for (const e of this.curr.entities) {
-      if (e.spotFacing == null || !hasSpotlight(e.type) || e.hp <= 0 || e.crits?.includes("lamp")) continue;
+      if (e.spotFacing == null || !hasSpotlight(e.type) || e.hp <= 0 || e.crits?.includes("lamp") || e.unpowered) continue;
       live.add(e.id);
       const was = this.spotShown.get(e.id);
       const facing = was == null ? e.spotFacing : easeSpot(was, e.spotFacing, maxStep);
@@ -5333,12 +5379,12 @@ export class MapView {
   /**
    * The watch tower's roof searchlight, turned to the heading its beam shows
    * (eased like the beam, so lamp and light swing together). The lens burns
-   * while the beam is lit and goes dark when a crit smashes it.
+   * while the beam is lit and goes dark when a crit smashes it or power runs short.
    */
   private drawTowerLamp(e: EntityView, southX: number, southY: number, footprintW: number, ghost: boolean): void {
     const facing = this.spotShown.get(e.id) ?? e.spotFacing ?? Math.PI / 4;
     const broken = !!e.crits?.includes("lamp");
-    const burning = !ghost && e.spotFacing != null && e.hp > 0 && !broken;
+    const burning = !ghost && e.spotFacing != null && e.hp > 0 && !broken && !e.unpowered;
     const lit = burning ? lampGlow(daylightAt(this.curr.tick)) : 0;
     const pose = drawTowerSearchlight(this.ctx, southX, southY, footprintW, facing, { lit, broken });
     if (!ghost) this.lensAt.set(e.id, pose);
@@ -7520,6 +7566,52 @@ export class MapView {
           },
         });
       }
+    }
+  }
+
+  /**
+   * The Smelter or Marine Base an engineer is set to raise, drawn as a see-through building on its
+   * footprint like a Wall site, until the real one stands. Only his owner's snapshot carries it.
+   */
+  private collectBuildSites(items: DrawItem[]): void {
+    const ts = this.ts();
+    for (const e of this.curr.entities) {
+      const site = e.buildSite;
+      if (!site || e.garrisonedIn || e.ownerId !== this.curr.youPlayerId) continue;
+      const box = buildingSite(site.building, site.tileX, site.tileY, 0, ts);
+      const x = box.tileX * ts;
+      const y = box.tileY * ts;
+      const bw = box.tileW * ts;
+      const bh = box.tileH * ts;
+      const foot = axisFootprint(x, y, bw, bh);
+      items.push({
+        layer: STANDING_DRAW_LAYER,
+        z: isoDepth(foot.cx, foot.cy),
+        foot,
+        run: () => {
+          const elev = this.buildingElev(box);
+          const spr = buildingSpriteFor(site.building, box.facing);
+          const ctx = this.ctx;
+          ctx.save();
+          ctx.globalAlpha = FIELD_SITE_ALPHA;
+          if (spr && spriteReady(spr)) {
+            const south = this.toScreen(x + bw, y + bh, elev);
+            const east = this.toScreen(x + bw, y, elev);
+            const west = this.toScreen(x, y + bh, elev);
+            const ground = buildingGroundFor(site.building, box.facing);
+            if (ground && spriteReady(ground)) drawBuildingSprite(ctx, ground, south.x, south.y, east.x - west.x);
+            drawBuildingSprite(ctx, spr, south.x, south.y, east.x - west.x);
+          } else {
+            this.drawIsoBox(x, y, bw, bh, this.extrude(site.building), this.ownerColor(e), {
+              alpha: FIELD_SITE_ALPHA,
+              stroke: "#2a2018",
+              strokeW: 1.5,
+              elev,
+            });
+          }
+          ctx.restore();
+        },
+      });
     }
   }
 

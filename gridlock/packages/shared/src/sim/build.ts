@@ -11,6 +11,7 @@ import {
   SELL_REFUND,
   type BuildingType,
   type YardFieldType,
+  yardBuildSeconds,
 } from "../catalog.js";
 import {
   destroyEntity,
@@ -95,7 +96,7 @@ export function startBuild(state: MatchState, playerId: string, type: BuildingTy
   putJob(p, slot, {
     type,
     progressTicks: 0,
-    totalTicks: secondsToTicks(def.buildSeconds),
+    totalTicks: secondsToTicks(isYardField(type) ? def.buildSeconds : yardBuildSeconds(type)),
     ready: false,
     paused: false,
     paid: 0,

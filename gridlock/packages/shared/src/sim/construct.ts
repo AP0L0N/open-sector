@@ -2,11 +2,11 @@
  * An engineer raises a base building in the field: the Smelter, so a scrap field
  * far from the yard can be claimed, or the Marine Base, so distant water can float
  * a fleet. He walks (or swims) to the site,
- * pays the catalog cost when he starts, works `buildSeconds`, and the building
+ * pays the catalog cost when he starts, works `engineerBuildSeconds` (slower than the yard), and the building
  * appears. A site that is taken while he works refunds the cost.
  */
 
-import { catalog, isEngineerBuilding, type BuildingType } from "../catalog.js";
+import { catalog, engineerBuildSeconds, isEngineerBuilding, type BuildingType } from "../catalog.js";
 import { buildingSiteError, raiseBuilding } from "./build.js";
 import { clearOrder, hasCore, nearestWalkable, tileCenter } from "./geo.js";
 import { setPath } from "./path.js";
@@ -129,7 +129,7 @@ function tickConstruct(state: MatchState, e: Entity, dt: number): void {
   }
   e.work += dt;
   // 0.1 added ten times a second undershoots the duration by a rounding error.
-  if (e.work + 1e-6 < def.buildSeconds) return;
+  if (e.work + 1e-6 < engineerBuildSeconds(building)) return;
   if (buildingSiteError(state, building, o.tileX, o.tileY, e.ownerId)) {
     if (player) player.scrap += def.cost;
     finishWork(e);

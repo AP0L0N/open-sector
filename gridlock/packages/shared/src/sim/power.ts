@@ -13,6 +13,20 @@ export function powerOf(state: MatchState, playerId: string): { provided: number
   return { provided, used, lowPower: used > provided };
 }
 
+/** Mark every building of a player short on power. Their lamps go dark and their CIWS and RAM stop. */
+export function tickPower(state: MatchState): void {
+  const low = new Map<string, boolean>();
+  for (const e of state.entities.values()) {
+    if (e.kind !== "building") continue;
+    let short = low.get(e.ownerId);
+    if (short === undefined) {
+      short = state.players.has(e.ownerId) && powerOf(state, e.ownerId).lowPower;
+      low.set(e.ownerId, short);
+    }
+    e.unpowered = short || undefined;
+  }
+}
+
 /** 1 at surplus/even power; scales with provided/used when short, never 0. */
 export function productionSpeed(provided: number, used: number): number {
   if (used <= provided) return 1;
