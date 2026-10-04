@@ -36,6 +36,7 @@ import {
   isFieldStructure,
   isInfantryType,
   isNavalType,
+  BATTLESHIP_HALF_LENGTH,
   isSupplyCarrier,
   isTorpedoBody,
   isTransportType,
@@ -253,6 +254,16 @@ import {
   TRACK_KICK_SPACING,
   type TrackKickPuff,
 } from "./track-kick.js";
+import {
+  drawShipWake,
+  shipLeavesWake,
+  shipWakeOrigins,
+  shipWakePose,
+  shipWakeScale,
+  shipWakeSpacing,
+  spawnShipWake,
+  type ShipWakePatch,
+} from "./ship-wake.js";
 import { followCart, type CartPose } from "./mauler-cart.js";
 import { AMMO_PRIMARY_FILL, AMMO_SECONDARY_FILL, ammoBarRatios, outOfAmmo } from "./ammo-bars.js";
 import { OUT_OF_AMMO_SIZE, drawOutOfAmmo } from "./out-of-ammo.js";
@@ -820,6 +831,8 @@ export class MapView {
   private moveClicks: { x: number; y: number; at: number }[] = [];
   private trackKicks: TrackKickPuff[] = [];
   private trackKickLast = new Map<number, { x: number; y: number }>();
+  private shipWakes: ShipWakePatch[] = [];
+  private shipWakeLast = new Map<number, { x: number; y: number }>();
   /** Rig tread reach per snapped world face. The painted hull is longer than the collision radius. */
   private rigTread = new Map<number, { back: number; front: number }>();
   private maulerCarts = new Map<number, CartPose>();
@@ -3477,6 +3490,7 @@ export class MapView {
     this.collectMaulerCarts(items, w, h);
     this.collectGunCrews(items, w, h);
     this.collectTrackKicks(items);
+    this.collectShipWakes(items);
     this.collectMuzzleSmoke(items);
     this.collectFires(items, w, h);
     this.collectAirdrops(items, w, h);
@@ -4844,6 +4858,77 @@ export class MapView {
       });
     }
     this.trackKicks = keep;
+  }
+
+  /** Foam left astern by boats under way. A submarine running submerged leaves none. */
+  private collectShipWakes(items: DrawItem[]): void {
+    const now = performance.now();
+    const live = new Set<number>();
+    for (const e of this.curr.entities) {
+      if (e.kind !== "unit") continue;
+      live.add(e.id);
+      if (
+        !shipLeavesWake({
+          naval: isNavalType(e.type),
+          torpedo: isTorpedoBody(e.type),
+          wreck: e.wreck,
+          submerged: e.submerged,
+          garrisonedIn: e.garrisonedIn,
+        })
+      ) {
+        this.shipWakeLast.delete(e.id);
+        continue;
+      }
+      const p = this.lerpEnt(e);
+      const last = this.shipWakeLast.get(e.id);
+      if (!last) {
+        this.shipWakeLast.set(e.id, { x: p.x, y: p.y });
+        continue;
+      }
+      const half = e.type === "battleship" ? BATTLESHIP_HALF_LENGTH : catalog(e.type).radius * UNIT_VISUAL_SCALE;
+      const scale = shipWakeScale(half);
+      const spacing = shipWakeSpacing(scale);
+      const dx = p.x - last.x;
+      const dy = p.y - last.y;
+      const travel = trackKickTravel(dx, dy, p.facing);
+      if (!travel || travel.dist < spacing) continue;
+      const steps = Math.min(4, Math.floor(travel.dist / spacing));
+      const origins = shipWakeOrigins(p.x, p.y, p.facing, travel.reverse, half);
+      for (let s = 1; s <= steps; s++) {
+        const k = s / steps;
+        for (let i = 0; i < origins.length; i++) {
+          const o = origins[i]!;
+          this.shipWakes.push(
+            spawnShipWake(
+              { ...o, x: o.x + dx * (k - 1), y: o.y + dy * (k - 1) },
+              now,
+              (e.id * 2654435761 + Math.floor(now) + s * 13 + i * 29) >>> 0,
+              scale,
+            ),
+          );
+        }
+      }
+      this.shipWakeLast.set(e.id, { x: p.x, y: p.y });
+    }
+    for (const id of this.shipWakeLast.keys()) {
+      if (!live.has(id)) this.shipWakeLast.delete(id);
+    }
+    if (this.shipWakes.length > 600) this.shipWakes.splice(0, this.shipWakes.length - 600);
+
+    const keep: ShipWakePatch[] = [];
+    for (const patch of this.shipWakes) {
+      const pose = shipWakePose(patch, now);
+      if (!pose) continue;
+      keep.push(patch);
+      const screen = this.toScreen(pose.x, pose.y);
+      // Flat on the water, under every hull.
+      items.push({
+        layer: HOLE_DRAW_LAYER,
+        z: isoDepth(pose.x, pose.y),
+        run: () => drawShipWake(this.ctx, screen.x, screen.y, pose.t, patch.seed, patch.scale, patch.centre),
+      });
+    }
+    this.shipWakes = keep;
   }
 
   private collectMuzzleSmoke(items: DrawItem[]): void {
