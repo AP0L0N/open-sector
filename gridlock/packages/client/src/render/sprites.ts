@@ -1228,7 +1228,7 @@ bindBattleshipSheets({
 /**
  * Infantry battle platform on four legs. Columns are an 8-frame trot, rows the
  * 16 faces; the chin MG is part of the body and aims with it. Drawn at half the
- * old tracked hull's size.
+ * old tracked hull's size, then a fifth bigger.
  */
 export const MAMMOTH_SPRITE: UnitSpriteDef = {
   image: loadSheet(mammothWalkUrl),
@@ -1236,7 +1236,7 @@ export const MAMMOTH_SPRITE: UnitSpriteDef = {
   frames: 8,
   frameSize: 128,
   fps: 8,
-  drawSize: Math.round(42 * UNIT_VISUAL_SCALE),
+  drawSize: Math.round(42 * 1.2 * UNIT_VISUAL_SCALE),
   contactY: 0.92,
   facingSpace: "world",
 };
