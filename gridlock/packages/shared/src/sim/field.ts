@@ -44,6 +44,7 @@ import {
 import { takeDamage } from "./crits.js";
 import { claimNeutral } from "./garrison.js";
 import { setPath } from "./path.js";
+import { earnScrap } from "./smelter.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** Extra reach past the wall face where the engineer stands to build. */
@@ -752,7 +753,7 @@ function tickRepair(state: MatchState, e: Entity, dt: number): void {
     if (e.work < WRECK_SCRAP_SECONDS) return;
     if (target.hp > 0) {
       const player = state.players.get(e.ownerId);
-      if (player) player.scrap += wreckScrapOf(target.type);
+      if (player) earnScrap(state, player, wreckScrapOf(target.type));
       target.hp = 0;
     }
     finishWork(e);

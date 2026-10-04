@@ -527,6 +527,8 @@ describe("engineer field works", () => {
     const foe = makeEntity(state, "warden", "B", x, y);
     foe.hp = 0;
     toWreck(state, foe);
+    // A Smelter off scrap pours nothing but gives the salvage room under the scrap cap.
+    makeEntity(state, "smelter", "A", tileCenter(120, ts), tileCenter(4, ts), { tileX: 120, tileY: 4 });
     const before = state.players.get("A")!.scrap;
     const pay = wreckScrapOf("warden");
     const res = applyCommand(state, "A", { type: "cmd.repair", ids: [eng.id], targetId: foe.id });

@@ -8,6 +8,7 @@ import {
   DIAMOND_SCRAP_TILE_YIELD,
   SMELTER_SCRAP_COVER,
   SMELTER_SCRAP_PER_SEC,
+  SCRAP_CAP_PER_SMELTER,
   SCRAP_TILE_YIELD,
   TICK_DT,
   TILE_SUBDIV,
@@ -23,7 +24,8 @@ import { applyCommand } from "./commands.js";
 import { buildingCenter, footprintGap, hqOf, makeEntity, scrapAt, tileCenter, tilesBlockedOrScrap } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { previewConstruct, previewPlace } from "./preview.js";
-import { smelterIncome, smelterRateOn, smelterScrapNeeded, smelterSiteOk, tickSmelters } from "./smelter.js";
+import { refundPaid } from "./production.js";
+import { earnScrap, scrapCap, smelterIncome, smelterRateOn, smelterScrapNeeded, smelterSiteOk, tickSmelters } from "./smelter.js";
 import { snapshotFor } from "./snapshot.js";
 import type { MatchState } from "./types.js";
 
@@ -272,6 +274,42 @@ describe("Smelter on scrap", () => {
     clearGround(state, 90, 64, sm.tileW, sm.tileH);
     paintDiamond(state, 90, 64, sm.tileW, sm.tileH);
     assert.equal(smelterSiteOk(state, 90, 64), true);
+  });
+
+  it("holds at most SCRAP_CAP_PER_SMELTER scrap for each standing Smelter, but keeps refunds and what is already held", () => {
+    const { state } = twoPlayerMatch();
+    deploy(state, "A");
+    const p = state.players.get("A")!;
+    clearGround(state, 60, 60, 60, 30);
+    const place = (tx: number, ty: number) => {
+      paintScrap(state, tx, ty, sm.tileW, sm.tileH);
+      const c = buildingCenter(tx, ty, sm.tileW, sm.tileH, state.tileSize);
+      return makeEntity(state, "smelter", "A", c.x, c.y, { tileX: tx, tileY: ty });
+    };
+    assert.equal(SCRAP_CAP_PER_SMELTER, 40_000);
+    assert.equal(scrapCap(state, "A"), 0, "no Smelter, no store");
+    assert.equal(earnScrap(state, p, 100), 0, "salvage is lost with nowhere to keep it");
+    const first = place(64, 64);
+    assert.equal(scrapCap(state, "A"), SCRAP_CAP_PER_SMELTER);
+    // Just under the cap: the pour fills it and stops there.
+    p.scrap = SCRAP_CAP_PER_SMELTER - 5;
+    for (let i = 0; i < 100; i++) tickSmelters(state, TICK_DT);
+    assert.equal(p.scrap, SCRAP_CAP_PER_SMELTER, "the pour stops at the cap");
+    assert.equal(p.scrapCarry, 0, "nothing piles up behind the cap");
+    assert.equal(snapshotFor(state, "A").you.scrapCap, SCRAP_CAP_PER_SMELTER, "the HUD hears the cap");
+    // A second Smelter doubles the store and the pour resumes.
+    place(64 + sm.tileW + 2, 64);
+    assert.equal(scrapCap(state, "A"), 2 * SCRAP_CAP_PER_SMELTER);
+    for (let i = 0; i < 10; i++) tickSmelters(state, TICK_DT);
+    assert.ok(p.scrap > SCRAP_CAP_PER_SMELTER, "room again under the doubled cap");
+    // The first falls: the surplus is kept, but nothing more comes in.
+    first.hp = 0;
+    p.scrap = SCRAP_CAP_PER_SMELTER + 500;
+    for (let i = 0; i < 10; i++) tickSmelters(state, TICK_DT);
+    assert.equal(p.scrap, SCRAP_CAP_PER_SMELTER + 500, "over the cap: kept, not grown");
+    // Refunds hand back scrap already spent, cap or not.
+    refundPaid(p, { paid: 300 });
+    assert.equal(p.scrap, SCRAP_CAP_PER_SMELTER + 800);
   });
 });
 

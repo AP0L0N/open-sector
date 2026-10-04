@@ -521,8 +521,10 @@ export function paintBattleHud(ctx: Ctx): void {
     for (const e of m.entities) {
       if (e.ownerId === m.youPlayerId && e.type === "smelter" && e.hp > 0 && !e.wreck) rate += smelterRateOn(yieldAt, e.tileX, e.tileY);
     }
-    const pour = Math.round(rate * productionSpeed(m.you.provided, m.you.used));
-    const next = `SCRAP <b>${m.you.scrap}</b>${pour > 0 ? ` <i class="pour">+${pour}/s</i>` : ""}`;
+    // A full store pours nothing, so the rate would only mislead.
+    const full = m.you.scrap >= m.you.scrapCap;
+    const pour = full ? 0 : Math.round(rate * productionSpeed(m.you.provided, m.you.used));
+    const next = `SCRAP <b>${m.you.scrap} / ${m.you.scrapCap}</b>${pour > 0 ? ` <i class="pour">+${pour}/s</i>` : ""}`;
     if (scrap.innerHTML !== next) scrap.innerHTML = next;
   }
   const power = document.getElementById("hud-power");

@@ -428,6 +428,8 @@ describe("supply truck", () => {
     const mineId = state.nextId++;
     state.mines.push({ id: mineId, ownerId: a, x, y, arm: 0, life: 300 });
     const truck = makeEntity(state, "supply", a, x + 28, y);
+    // A Smelter off scrap pours nothing but gives the mine's scrap room under the scrap cap.
+    makeEntity(state, "smelter", a, tileCenter(120, ts), tileCenter(4, ts), { tileX: 120, tileY: 4 });
     const scrap = state.players.get(a)!.scrap;
     const hp = truck.hp;
     const denied = applyCommand(state, a, { type: "cmd.disable", ids: [truck.id], mineId: mineId + 9 });

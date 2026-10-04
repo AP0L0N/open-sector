@@ -39,6 +39,7 @@ import { detachGarrisoned, livingGarrison } from "./garrison.js";
 import { allies, buildingBounds, clearOrder, nearestWalkable, tileCenter, worldToTile } from "./geo.js";
 import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
+import { earnScrap } from "./smelter.js";
 import type { Entity, MatchState } from "./types.js";
 
 const BOARD_SLACK = 12;
@@ -473,7 +474,7 @@ function tickDisable(state: MatchState, truck: Entity, dt: number): void {
   if (i >= 0) {
     state.mines.splice(i, 1);
     const player = state.players.get(truck.ownerId);
-    if (player) player.scrap += MINE_SCRAP;
+    if (player) earnScrap(state, player, MINE_SCRAP);
   }
   truck.work = 0;
   stall(truck);
