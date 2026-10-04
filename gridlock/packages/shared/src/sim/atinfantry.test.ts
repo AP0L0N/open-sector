@@ -5,6 +5,7 @@ import {
   HEIGHT_BASE,
   INFANTRY_SIGHT_TILES,
   PTRD,
+  PTRD_CALIBER,
   PTRD_CLOSE_TILES,
   PTRD_DMG_LIGHT,
   PTRD_DMG_REAR,
@@ -224,6 +225,8 @@ describe("AT infantry", () => {
     const tank = makeEntity(state, "warden", a, tileCenter(20, ts), tileCenter(20, ts));
     const cold = makeEntity(state, "warden", a, tileCenter(24, ts), tileCenter(20, ts));
     assert.ok(PTRD_TRACK_CHANCE > CRIT_TRACKS_CHANCE);
+    // Most side penetrations throw a track.
+    assert.ok(PTRD_TRACK_CHANCE >= 0.7);
     rollCrits(tank, "side", "pen", 11, () => (CRIT_TRACKS_CHANCE + PTRD_TRACK_CHANCE) / 2);
     assert.deepEqual(tank.crits, []);
     rollCrits(tank, "side", "pen", 11, () => (CRIT_TRACKS_CHANCE + PTRD_TRACK_CHANCE) / 2, PTRD_TRACK_CHANCE);
@@ -290,6 +293,8 @@ describe("AT infantry", () => {
     assert.ok(guy.clip < clip);
     assert.equal(front.hp, frontHp);
     assert.ok(state.impacts.some((i) => i.kind === "ricochet"));
+    // The client draws the round's tracer from these: the 14.5 mm caliber and the shooter.
+    assert.ok(state.impacts.some((i) => i.caliber === PTRD_CALIBER && i.fromId === guy.id));
   });
 
   it("still punches a Walker past close range and sparks on a Tiger's side out there", () => {
