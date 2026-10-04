@@ -209,6 +209,7 @@ import mammothWreckUrl from "../assets/units/wrecks/mammoth.png";
 import stukaWreckUrl from "../assets/units/wrecks/stuka.png";
 import fw190WreckUrl from "../assets/units/wrecks/fw190.png";
 import bv222WreckUrl from "../assets/units/wrecks/bv222.png";
+import he111WreckUrl from "../assets/units/wrecks/he111.png";
 import gunboatWreckUrl from "../assets/units/wrecks/gunboat.png";
 import submarineWreckUrl from "../assets/units/wrecks/submarine.png";
 import battleshipWreckUrl from "../assets/units/wrecks/battleship.png";
@@ -232,6 +233,7 @@ import {
   bindDroneSheets,
   bindFighterSheets,
   bindTransportSheets,
+  bindTorpedoBomberSheets,
   bindSupplySheets,
   bindNavalSheets,
   bindBattleshipSheets,
@@ -1331,6 +1333,22 @@ export const BV222_SPRITE: UnitSpriteDef = {
 bindTransportSheets(BV222_SPRITE.image);
 
 /**
+ * He 111 torpedo bomber. Same camera and cell as the Stuka; its wingspan fills the cell,
+ * so it is drawn between the Stuka and the BV 222, as its span is.
+ */
+export const HE111_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(74 * UNIT_VISUAL_SCALE),
+  contactY: 0.8,
+  facingSpace: "world",
+};
+bindTorpedoBomberSheets(HE111_SPRITE.image);
+
+/**
  * Drone Op's quadcopter. Same camera and 128 cell as the Stuka; its rotor span reads about
  * twice a rifleman's width. The map lifts it by altitude over its own ground shadow.
  */
@@ -1487,6 +1505,7 @@ const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   stuka: wreckSheet(stukaWreckUrl, STUKA_SPRITE),
   fw190: wreckSheet(fw190WreckUrl, FW190_SPRITE),
   bv222: wreckSheet(bv222WreckUrl, BV222_SPRITE),
+  he111: wreckSheet(he111WreckUrl, HE111_SPRITE),
   // Ships settle on the bottom: the superstructure and turrets are baked into the hulk.
   gunboat: wreckSheet(gunboatWreckUrl, GUNBOAT_SPRITE),
   submarine: wreckSheet(submarineWreckUrl, SUBMARINE_SPRITE),
@@ -1521,6 +1540,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   stuka: STUKA_SPRITE,
   fw190: FW190_SPRITE,
   bv222: BV222_SPRITE,
+  he111: HE111_SPRITE,
   drone: DRONE_SPRITE,
   rig: RIG_SPRITE,
 };

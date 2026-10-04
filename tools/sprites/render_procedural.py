@@ -11,6 +11,8 @@ Blender path does, so the engine and compose tools treat them alike.
             gridlock/packages/client/src/assets/units/fw190/hull/0001.png … 0016.png
   bv222     the BV 222 transport flying boat, same camera and face order; its wingspan sets the scale.
             gridlock/packages/client/src/assets/units/bv222/hull/0001.png … 0016.png
+  he111     the He 111 torpedo bomber, same camera and face order; its wingspan sets the scale.
+            gridlock/packages/client/src/assets/units/he111/hull/0001.png … 0016.png
   drone     the Drone Op's quadcopter, same camera and face order.
             gridlock/packages/client/src/assets/units/drone/hull/0001.png … 0016.png
 
@@ -478,6 +480,110 @@ def build_bv222() -> Mesh:
     return m
 
 
+def build_he111() -> Mesh:
+    """He 111 H-6 torpedo bomber in meters. +x nose, +y left wing, +z up. Torpedo's belly lowest.
+
+    The fully glazed stepless nose, a long slim fuselage, the elliptical wing with
+    a Jumo 211 nacelle on each side (annular radiator ring round the engine face),
+    the ventral Bola gondola, the dorsal gun position, an elliptical tailplane and
+    single fin, and one LT F5b torpedo on a rack beside the gondola. The sheet
+    flies level, so no gear hangs down. Neutral band ahead of the tail, neutral
+    wingtip panels, and neutral spinners for the team tint.
+    """
+    m = Mesh()
+    zc = 1.75  # fuselage centerline over the torpedo's belly
+    stations = [
+        (8.25, 0.10, 0.10, 0.06),
+        (8.00, 0.52, 0.52, 0.05),
+        (7.40, 0.80, 0.82, 0.03),
+        (6.50, 0.88, 0.92, 0.00),
+        (5.50, 0.90, 0.95, 0.00),
+        (3.00, 0.88, 0.95, 0.00),
+        (0.00, 0.80, 0.90, 0.05),
+        (-3.00, 0.62, 0.72, 0.15),
+        (-4.40, 0.52, 0.62, 0.22),
+        (-5.10, 0.46, 0.56, 0.26),
+        (-7.20, 0.22, 0.32, 0.38),
+        (-8.20, 0.06, 0.12, 0.45),
+    ]
+    rings = [ellipse_ring(x, 0.0, zc + oz, hw, hh, 20) for x, hw, hh, oz in stations]
+    n_ring = len(rings[0])
+
+    def fus_mat(r: int, s: int) -> str:
+        if r <= 2:
+            # Stepless greenhouse: glass panes in a frame lattice, nose to cockpit.
+            return "frame" if s % 5 == 0 or (r == 2 and s % 5 == 2) else "glass"
+        if r == 8:
+            return "team"
+        if math.sin(2 * math.pi * (s + 0.5) / n_ring) < -0.45:
+            return "under"
+        return "camo"
+
+    m.loft(rings, fus_mat)
+    # Dorsal gun position: a low glazed hood behind the wing.
+    dors = [ellipse_ring(x, 0.0, zc + 0.78, hw, hh, 12) for x, hw, hh in ((-0.4, 0.10, 0.06), (-0.9, 0.36, 0.26), (-1.9, 0.34, 0.22), (-2.4, 0.08, 0.05))]
+    m.loft(dors, lambda r, s: "frame" if s % 4 == 0 else "glass")
+    # Ventral Bola gondola under the forward fuselage, glazed at its back.
+    bola = [
+        ellipse_ring(x, 0.0, zc - 0.82 + oz, hw, hh, 12)
+        for x, hw, hh, oz in ((3.2, 0.10, 0.08, 0.10), (2.8, 0.44, 0.34, 0.0), (0.6, 0.46, 0.36, 0.0), (-0.6, 0.30, 0.22, 0.08))
+    ]
+    m.loft(bola, lambda r, s: "glass" if r == 2 else "camo" if math.sin(2 * math.pi * (s + 0.5) / 12) > 0.3 else "under")
+    # Elliptical wing, a little dihedral: root, two outer panels, and a rounded tip.
+    wz = zc - 0.40
+    panels = [
+        (2.80, -2.50, 0.85, 0.00),
+        (2.30, -2.00, 4.40, 0.20),
+        (1.70, -1.55, 7.80, 0.42),
+        (0.95, -1.05, 10.30, 0.58),
+        (0.15, -0.45, 11.30, 0.64),
+    ]
+    thick = [0.70, 0.55, 0.38, 0.22, 0.10]
+    eng_y = 3.6
+    for side in (1, -1):
+        for i in range(len(panels) - 1):
+            (l0, t0, y0, z0), (l1, t1, y1, z1) = panels[i], panels[i + 1]
+            wing_panel(m, (l0, t0, y0 * side, wz + z0), (l1, t1, y1 * side, wz + z1), "camo", "under", thick[i], thick[i + 1])
+        wing_panel(m, (1.10, -1.15, 9.70 * side, wz + 0.56 + 0.03), (0.95, -1.05, 10.30 * side, wz + 0.58 + 0.03), "team", "under", 0.24, 0.22)
+        # Jumo 211 nacelle on the leading edge, running back past the trailing edge.
+        y = eng_y * side
+        ez = wz + 0.14 - 0.05
+        lead = 2.32
+        nac = [
+            ellipse_ring(x, y, ez, r, r * 1.08, 14)
+            for x, r in ((lead + 2.25, 0.50), (lead + 2.05, 0.66), (lead + 1.20, 0.70), (lead - 1.50, 0.62), (lead - 3.60, 0.40), (lead - 5.10, 0.10))
+        ]
+        m.loft(nac, lambda r, s: "metal" if r == 0 else "under" if math.sin(2 * math.pi * (s + 0.5) / 14) < -0.5 else "camo")
+        # Oil cooler scoop under the nacelle.
+        m.box((lead + 0.4, y - 0.22, ez - 0.92), (lead + 1.6, y + 0.22, ez - 0.55), "metal")
+        spin = [ellipse_ring(x, y, ez, r, r, 10) for x, r in ((lead + 2.25, 0.32), (lead + 2.60, 0.20), (lead + 2.85, 0.02))]
+        m.loft(spin, "team")
+        ctr = m.v((lead + 2.45, y, ez))
+        n = 28
+        rim = [m.v((lead + 2.45, y + 1.75 * math.cos(2 * math.pi * k / n), ez + 1.75 * math.sin(2 * math.pi * k / n))) for k in range(n)]
+        for k in range(n):
+            m.tri(ctr, rim[k], rim[(k + 1) % n], "prop")
+    # Elliptical tailplane on the tail cone, and the single rounded fin.
+    tz = zc + 0.32
+    for side in (1, -1):
+        wing_panel(m, (-6.10, -8.00, 0.25 * side, tz), (-6.55, -7.95, 2.60 * side, tz + 0.04), "camo", "under", 0.20, 0.14)
+        wing_panel(m, (-6.55, -7.95, 2.60 * side, tz + 0.04), (-7.20, -7.80, 4.10 * side, tz + 0.06), "camo", "under", 0.14, 0.06)
+    fin = [
+        [np.array([-6.30, -0.10, tz]), np.array([-8.25, -0.10, tz]), np.array([-8.25, 0.10, tz]), np.array([-6.30, 0.10, tz])],
+        [np.array([-7.00, -0.08, tz + 1.50]), np.array([-8.45, -0.08, tz + 1.50]), np.array([-8.45, 0.08, tz + 1.50]), np.array([-7.00, 0.08, tz + 1.50])],
+        [np.array([-7.60, -0.05, tz + 2.30]), np.array([-8.30, -0.05, tz + 2.30]), np.array([-8.30, 0.05, tz + 2.30]), np.array([-7.60, 0.05, tz + 2.30])],
+    ]
+    m.loft(fin, "camo")
+    # LT F5b torpedo on the rack to starboard of the gondola: blunt nose, long body, boxed tail.
+    ty_, tzc, tr = -1.02, zc - 1.05, 0.25
+    torp = [ellipse_ring(x, ty_, tzc, r, r, 12) for x, r in ((2.75, 0.04), (2.60, 0.18), (2.30, tr), (-1.70, tr), (-2.30, 0.12), (-2.45, 0.04))]
+    m.loft(torp, "bomb")
+    m.box((-2.55, ty_ - 0.34, tzc - 0.34), (-2.05, ty_ + 0.34, tzc + 0.34), "metal")  # tail box
+    for rx in (1.2, -0.8):
+        m.box((rx - 0.12, ty_ - 0.06, tzc + tr - 0.02), (rx + 0.12, ty_ + 0.30, zc - 0.55), "metal")  # rack crutch
+    return m
+
+
 def build_drone() -> Mesh:
     """Small X-frame quadcopter in decimeters. +x nose, +y left, +z up. Skids at z=0.
 
@@ -690,6 +796,12 @@ def render_bv222(out: Path, cell: int = 256, ss: int = 4) -> None:
     render_turntable(build_bv222(), out, "bv222_hull", "bv222-hull.json", 0.0195, 4.4, cell=cell, ss=ss)
 
 
+def render_he111(out: Path, cell: int = 256, ss: int = 4) -> None:
+    # A 22.6 m span: like the BV 222, the wingspan sets the scale and fills the cell
+    # the way the Stuka's does (span x scale ~ 0.86 of the cell).
+    render_turntable(build_he111(), out, "he111_hull", "he111-hull.json", 0.038, 1.6, cell=cell, ss=ss)
+
+
 def render_drone(out: Path, cell: int = 256, ss: int = 4) -> None:
     # Decimeters -> px. Rotor tip to rotor tip is ~6 dm across the diagonal; the widest yaw fits the cell.
     render_turntable(build_drone(), out, "drone_hull", "drone-hull.json", 0.115, 0.9, cy_frac=0.56, cell=cell, ss=ss, outline_px=2)
@@ -776,11 +888,13 @@ def render_turntable(
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["stuka", "fw190", "bv222", "drone"])
+    ap.add_argument("what", choices=["stuka", "fw190", "bv222", "he111", "drone"])
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     if args.what == "bv222":
         render_bv222(Path(args.out))
+    elif args.what == "he111":
+        render_he111(Path(args.out))
     elif args.what == "drone":
         render_drone(Path(args.out))
     elif args.what == "fw190":
