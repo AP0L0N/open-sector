@@ -27,7 +27,7 @@ import {
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { RICOCHET_SPARK_SPEED } from "./ballistics.js";
-import { tickCombat, tickProjectiles } from "./combat.js";
+import { concreteProof, tickCombat, tickProjectiles } from "./combat.js";
 import { enterGarrison } from "./garrison.js";
 import { canAimWeapon, entityHeight, rangeTilesOf, weaponRangeWorld } from "./elevation.js";
 import { buildingBounds, buildingCenter, destroyEntity, makeEntity, tileCenter } from "./geo.js";
@@ -2470,5 +2470,47 @@ describe("force attack out of sight", () => {
     assert.equal(tank.order?.targetId, undefined);
     assert.equal(tank.order?.x, x);
     assert.equal(firesWithin(state, 300), true);
+  });
+});
+
+describe("concrete a gun cannot dent", () => {
+  function wallAhead(state: MatchState, type: "wall" | "greatwall"): Entity {
+    const ts = state.tileSize;
+    const wall = makeEntity(state, type, "B", tileCenter(36, ts), tileCenter(32, ts), { facing: 0 });
+    wall.facing = 0;
+    return wall;
+  }
+
+  it("auto-fire leaves an empty wall to the guns whose shells chip it", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const wall = wallAhead(state, "wall");
+    const mg = makeEntity(state, "mammoth", "A", tileCenter(28, ts), tileCenter(32, ts));
+    const cyborg = makeEntity(state, "cyborg", "A", tileCenter(28, ts), tileCenter(30, ts));
+    const tank = makeEntity(state, "warden", "A", tileCenter(28, ts), tileCenter(34, ts));
+    assert.equal(concreteProof(state, mg, wall), true);
+    assert.equal(concreteProof(state, cyborg, wall), true);
+    assert.equal(concreteProof(state, tank, wall), false);
+    tickCombat(state, TICK_DT);
+    assert.equal(mg.attackTarget, null, "the MG does not lay on the concrete");
+    assert.equal(cyborg.attackTarget, null, "the gatling does not lay on the concrete");
+    assert.equal(tank.attackTarget, wall.id, "a tank shell still chips it");
+  });
+
+  it("drops an emptied Large wall, but keeps one the player named", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    const ts = state.tileSize;
+    const wall = wallAhead(state, "greatwall");
+    const cyborg = makeEntity(state, "cyborg", "A", tileCenter(30, ts), tileCenter(32, ts));
+    cyborg.order = { kind: "attack", targetId: wall.id, auto: true };
+    cyborg.attackTarget = wall.id;
+    tickCombat(state, TICK_DT);
+    assert.equal(cyborg.order, null, "no crew left at the slits: nothing to shoot");
+    applyCommand(state, "A", { type: "cmd.attack", ids: [cyborg.id], targetId: wall.id });
+    tickCombat(state, TICK_DT);
+    const orderOf = (e: Entity) => e.order;
+    assert.equal(orderOf(cyborg)?.targetId, wall.id, "a player order stands");
   });
 });

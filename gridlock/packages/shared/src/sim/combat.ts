@@ -1124,7 +1124,8 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       dropsEmptyGarrison(state, e, target) ||
       walkerSparesBuilding(state, e, target) ||
       dropsWreck(e, target) ||
-      dropsUnharmedArmor(state, e, target)
+      dropsUnharmedArmor(state, e, target) ||
+      dropsProofWall(state, e, target)
     ) {
       e.order = null;
       e.attackTarget = null;
@@ -1142,7 +1143,8 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       dropsEmptyGarrison(state, e, target) ||
       walkerSparesBuilding(state, e, target) ||
       dropsWreck(e, target) ||
-      dropsUnharmedArmor(state, e, target)
+      dropsUnharmedArmor(state, e, target) ||
+      dropsProofWall(state, e, target)
     ) {
       e.attackTarget = null;
       target = undefined;
@@ -1212,6 +1214,7 @@ function currentTarget(state: MatchState, e: Entity): Entity | undefined {
   if (walkerSparesBuilding(state, e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && dropsWreck(e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && dropsUnharmedArmor(state, e, t)) return undefined;
+  if (dropsProofWall(state, e, t)) return undefined;
   return t;
 }
 
@@ -1249,6 +1252,33 @@ function dropsUnharmedArmor(state: MatchState, e: Entity, target: Entity): boole
   if (e.order?.kind === "forceattack") return false;
   if (e.order?.kind === "attack" && !e.order.auto) return false;
   return !infantryRoundCanHarm(state, e, target);
+}
+
+/**
+ * Auto-fire and attack-move let go of concrete the gun cannot dent: an empty wall, or one whose
+ * crew just died. A target the player named is kept.
+ */
+function dropsProofWall(state: MatchState, e: Entity, target: Entity): boolean {
+  if (e.order?.kind === "forceattack") return false;
+  if (e.order?.kind === "attack" && !e.order.auto) return false;
+  return concreteProof(state, e, target);
+}
+
+/**
+ * A wall, Large wall, or gate this unit's rounds stop on harmlessly. A crew at the slits of
+ * a Large wall still takes them, so a manned one stays a target.
+ */
+export function concreteProof(state: MatchState, e: Entity, o: Entity): boolean {
+  if (!isConcreteLine(o.type)) return false;
+  if (garrisonIsHostile(state, e.ownerId, o) && garrisonLooksOccupied(state, e.ownerId, o)) return false;
+  return !chipsConcrete(e);
+}
+
+/** Tank shells and bursts chip concrete. Bullets, belts, and the flame stream stop on it. */
+export function chipsConcrete(e: Entity): boolean {
+  if (hasAmmo(e.type) || rocketsOf(e.type) || e.type === "artillery" || e.ship) return true;
+  const gun = infantryGunFor(e)?.id;
+  return gun === "mortar" || gun === "launcher" || gun === "penetrator";
 }
 
 /** The shot from here can put damage on that hull. Unarmored targets always can. Covers the CIWS gun too. */
@@ -3103,6 +3133,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn || isCrashing(o)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
+    if (concreteProof(state, e, o)) continue;
     if (outOfReachAloft(state, e, o)) continue;
     // The ship's CIWS mounts pick their own aircraft. The main battery looks only at the surface.
     if (e.ship && shipAirTarget(o)) continue;

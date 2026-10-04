@@ -1,18 +1,21 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { DIAMOND_SCRAP_MUL, SMELTER_SCRAP_PER_SEC, START_SCRAP, catalog } from "../catalog.js";
+import { BUILD_RADIUS, DIAMOND_SCRAP_MUL, SCRAP_TILE_YIELD, SMELTER_SCRAP_PER_SEC, START_SCRAP, catalog } from "../catalog.js";
 import { createRoom, hostSlot, startMatch, updateSelf } from "../lobby.js";
 import {
   EASY_ARMY,
+  EASY_EXPAND_TILES,
   EASY_FORTIFY_MAX_TICKS,
   EASY_WAVE_MIN,
   aiPlanOf,
   diamondCentre,
+  findBuildTile,
   findDiamondSmelterTile,
+  findSmelterTile,
   rankOf,
   tickAi,
 } from "./ai.js";
-import { hasCore, makeEntity, scrapAt } from "./geo.js";
+import { hasCore, inBuildRadius, makeEntity, scrapAt } from "./geo.js";
 import { createMatch, stepMatch } from "./match.js";
 import { smelterRateOn } from "./smelter.js";
 import { producerType } from "./train.js";
@@ -63,6 +66,12 @@ function withBase(state: MatchState, aiId: string, types: Entity["type"][]): voi
     const [dx, dy] = spots[i]!;
     makeEntity(state, type, aiId, hq.x + dx * 8, hq.y + dy * 8, { tileX: hq.tileX + dx, tileY: hq.tileY + dy });
   });
+}
+
+/** The second Smelter a standing base has, off to one side of the Core. */
+function secondSmelter(state: MatchState, aiId: string): void {
+  const hq = coreOf(state, aiId);
+  makeEntity(state, "smelter", aiId, hq.x + 16 * 8, hq.y - 14 * 8, { tileX: hq.tileX + 16, tileY: hq.tileY - 14 });
 }
 
 function troopers(state: MatchState, aiId: string, n: number): void {
@@ -142,6 +151,19 @@ describe("easy CPU", () => {
     assert.equal(cpu!.ai, "easy");
     assert.ok([...state.entities.values()].some((e) => e.ownerId === aiId && e.type === "rig"));
     assert.equal(state.initialHumans, 2);
+  });
+
+  it("leaves the home scrap field room for its Smelter when it places the Dynamo", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    assert.ok(findSmelterTile(state, aiId), "the yard starts with a Smelter site");
+    const spot = findBuildTile(state, aiId, "dynamo")!;
+    const def = catalog("dynamo");
+    makeEntity(state, "dynamo", aiId, (spot.tx + def.tileW / 2) * state.tileSize, (spot.ty + def.tileH / 2) * state.tileSize, {
+      tileX: spot.tx,
+      tileY: spot.ty,
+    });
+    assert.ok(findSmelterTile(state, aiId), "the Dynamo did not shut the Smelter's lane");
   });
 
   it("starts a Dynamo after the Core unpacks", () => {
@@ -401,6 +423,54 @@ describe("easy CPU", () => {
     assert.equal(rate, SMELTER_SCRAP_PER_SEC * DIAMOND_SCRAP_MUL, "the Smelter stands on diamond scrap");
   });
 
+  it("raises a second Smelter right behind the Barracks, before the Machine Shop", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "dynamo"]);
+    troopers(state, aiId, 4);
+    const cpu = state.players.get(aiId)!;
+    cpu.structure = null;
+    cpu.scrap = 5000;
+    tickAi(state);
+    assert.equal(state.players.get(aiId)!.structure?.type, "smelter", "the fortifying base adds a second pour");
+    cpu.structure = null;
+    secondSmelter(state, aiId);
+    tickAi(state);
+    assert.notEqual(state.players.get(aiId)!.structure?.type, "smelter", "no third Smelter while it fortifies");
+  });
+
+  it("sends an engineer to a scrap field on its own side once the yard's scrap is taken", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    campaign(state, aiId);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "dynamo", "dynamo"]);
+    secondSmelter(state, aiId);
+    const hq = coreOf(state, aiId);
+    // No scrap left anywhere: then one plain field out past the yard, toward the middle.
+    state.scrapYield.fill(0);
+    const def = catalog("smelter");
+    const toMid = unitVec(state.width / 2 - hq.tileX, state.height / 2 - hq.tileY);
+    const out = BUILD_RADIUS + 40;
+    const fx = Math.round(hq.tileX + toMid.x * out);
+    const fy = Math.round(hq.tileY + toMid.y * out);
+    for (let y = fy; y < fy + def.tileH * 2; y++) {
+      for (let x = fx; x < fx + def.tileW * 2; x++) {
+        state.scrapYield[y * state.width + x] = SCRAP_TILE_YIELD;
+        state.blocked[y * state.width + x] = 0;
+      }
+    }
+    const eng = fighters(state, aiId, "engineer", 1)[0]!;
+    state.players.get(aiId)!.scrap = 5000;
+    micro(state, aiId);
+    assert.equal(eng.order?.kind, "build");
+    assert.equal(eng.order?.building, "smelter");
+    const tx = eng.order!.tileX!;
+    const ty = eng.order!.tileY!;
+    assert.ok(smelterRateOn((x, y) => scrapAt(state, x, y), tx, ty) > 0, "the Smelter stands on the field");
+    assert.equal(inBuildRadius(state, aiId, tx, ty, def.tileW, def.tileH, BUILD_RADIUS), false, "out past the yard");
+    assert.ok(Math.hypot(tx - hq.tileX, ty - hq.tileY) <= EASY_EXPAND_TILES + def.tileW);
+  });
+
   it("raises towers round the middle once the diamond Smelter stands", () => {
     const { state, aiId } = humanVsEasy();
     waitCore(state, aiId);
@@ -503,6 +573,7 @@ describe("easy CPU", () => {
     for (let i = 0; i < 4; i++) {
       makeEntity(state, "rifleman", aiId, hq.x + 16 + i * 8, hq.y);
     }
+    secondSmelter(state, aiId);
     cpu.scrap = 5000;
     tickAi(state);
     const job = state.players.get(aiId)!.structure;
@@ -543,6 +614,7 @@ describe("easy CPU", () => {
     waitCore(state, aiId);
     campaign(state, aiId);
     withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "dynamo"]);
+    secondSmelter(state, aiId);
     troopers(state, aiId, 4);
     const cpu = state.players.get(aiId)!;
     cpu.structure = null;
@@ -568,6 +640,7 @@ describe("easy CPU", () => {
     waitCore(state, aiId);
     campaign(state, aiId);
     withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "airfield"]);
+    secondSmelter(state, aiId);
     const hq = coreOf(state, aiId);
     makeEntity(state, "dynamo", aiId, hq.x - 96, hq.y + 128, { tileX: hq.tileX - 12, tileY: hq.tileY + 16 });
     makeEntity(state, "dynamo", aiId, hq.x - 96, hq.y + 192, { tileX: hq.tileX - 12, tileY: hq.tileY + 24 });
@@ -596,6 +669,7 @@ describe("easy CPU", () => {
     waitCore(state, aiId);
     campaign(state, aiId);
     withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "dynamo"]);
+    secondSmelter(state, aiId);
     troopers(state, aiId, 8);
     const cpu = state.players.get(aiId)!;
     const cost = catalog("airfield").cost;
