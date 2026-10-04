@@ -61,11 +61,13 @@ def hexc(s: str) -> tuple[int, int, int]:
 
 # Flat ramps, dark → light. Olive armor, dark steel, team-tint gray, accents.
 RAMPS: dict[str, list[tuple[int, int, int]]] = {
-    # Locked to the Walker sheet (walker-move.png): brown-olive plate, dark steel.
-    "armor": [hexc(c) for c in ("#242418", "#3c3c24", "#545430", "#66613a", "#7a7249")],
-    "steel": [hexc(c) for c in ("#181818", "#2a2a28", "#3c3c3c", "#56564f")],
+    # The Walker's brown-olive plate, taken a step darker: a gunmetal war machine.
+    "armor": [hexc(c) for c in ("#1c1c14", "#2e2e1e", "#424228", "#565232", "#6a6440")],
+    "steel": [hexc(c) for c in ("#141414", "#242422", "#363634", "#4e4e48")],
     "team": [hexc(c) for c in ("#4a4a46", "#6e6e68", "#8a8a83")],
-    "visor": [hexc(c) for c in ("#8b3a2a", "#c45a12", "#e07a2a")],
+    # Eye slits glow: no dark tone, so they read lit from every facing.
+    "visor": [hexc(c) for c in ("#d42a12", "#ff4a22", "#ff7a3a")],
+    "rust": [hexc(c) for c in ("#4a1e14", "#6b2a1a", "#8b3a2a")],
     "hazard": [hexc(c) for c in ("#6b5212", "#a37c14", "#d4a017")],
     "tube": [hexc(c) for c in ("#0e0c0a", "#1a1410")],
     # Flat water, locked to the infantry swim pool (infantry-swim.png).
@@ -130,6 +132,22 @@ class Mesh:
         # ring order: along u = bottom/top
         self.hexa([c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]], mat)
 
+    def spike(self, a, b, half_w: float, half_d: float, mat: str, side=(0.0, 0.0, 1.0), tip: float = 0.12) -> None:
+        """Beam from a to b that tapers to a point at b (claws, horns, fins)."""
+        a = np.asarray(a, float)
+        b = np.asarray(b, float)
+        u = b - a
+        u /= np.linalg.norm(u)
+        s = np.asarray(side, float)
+        s = s - u * np.dot(s, u)
+        s /= np.linalg.norm(s)
+        w = np.cross(u, s)
+        c = []
+        for base, k in ((a, 1.0), (b, tip)):
+            for sx, wx in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+                c.append(base + (s * sx * half_w + w * wx * half_d) * k)
+        self.hexa(c, mat)
+
     def prism_x(self, x0, x1, cy, cz, r, mat: str, sides: int = 8) -> None:
         """Cylinder along +x."""
         ring = [(cy + r * math.cos(2 * math.pi * i / sides + math.pi / sides),
@@ -161,50 +179,76 @@ class Mesh:
 # Model axes: +x forward (nose), +y left, +z up. Ground contact at the origin.
 
 HIP_Z = 27.0
-THIGH = 15.0
-SHIN = 15.0
-ANKLE_Z = 4.0
-LEG_Y = 9.5
+THIGH = 13.5
+SHIN = 13.5
+ANKLE_Z = 2.6
+HOCK = np.array([-4.5, 0.0, 9.5])  # reverse joint: up and behind the ankle
+LEG_Y = 10.5
 STRIDE = 7.0
 LIFT = 4.5
 
 
-def knee_of(hip: np.ndarray, ankle: np.ndarray) -> np.ndarray:
-    d = ankle - hip
+def knee_of(hip: np.ndarray, hock: np.ndarray) -> np.ndarray:
+    """Two-bone IK, knee thrown forward (+x). With the hock behind it the leg reads bird-like."""
+    d = hock - hip
     dist = min(np.linalg.norm(d), THIGH + SHIN - 0.2)
     dn = d / np.linalg.norm(d)
     along = (THIGH ** 2 - SHIN ** 2 + dist ** 2) / (2 * dist)
     h = math.sqrt(max(0.0, THIGH ** 2 - along ** 2))
-    # perpendicular in the leg's x-z plane, toward +x (forward knee)
     perp = np.array([-dn[2], 0.0, dn[0]])
     if perp[0] < 0:
         perp = -perp
     return hip + dn * along + perp * h
 
 
+def add_foot(m: Mesh, ankle: np.ndarray, out: float) -> None:
+    """Three splayed talons and a rear spur around a heavy ankle pad."""
+    fx, fy = ankle[0], ankle[1]
+    fz = ankle[2] - ANKLE_Z
+    m.taper((fx - 3.2, fx + 3.4, fy - 3.4, fy + 3.4), (fx - 2.4, fx + 2.2, fy - 2.6, fy + 2.6), fz, fz + 2.8, "steel")
+    for ang in (-0.5, 0.0, 0.5):
+        d = np.array([math.cos(ang), math.sin(ang), 0.0])
+        base = np.array([fx, fy, fz + 1.3]) + d * 2.4
+        tip = np.array([fx, fy, fz]) + d * 9.0
+        m.spike(base, tip, 1.3, 1.5, "steel")
+        m.spike(tip - d * 2.2 + np.array([0, 0, 0.7]), tip + d * 0.9 + np.array([0, 0, -0.1]), 0.8, 0.9, "rust")  # claw tip
+    m.spike(np.array([fx - 1.5, fy, fz + 1.4]), np.array([fx - 6.5, fy + out * 0.6, fz]), 1.1, 1.2, "steel")
+
+
 def add_leg(m: Mesh, y: float, foot_x: float, lift: float, hip_z: float, foot_y: float | None = None) -> None:
     fy = y if foot_y is None else foot_y
+    out = 1.0 if y > 0 else -1.0
     hip = np.array([0.0, y, hip_z])
     ankle = np.array([foot_x, fy, ANKLE_Z + lift])
-    knee = knee_of(hip, ankle)
+    hock = ankle + HOCK
+    knee = knee_of(hip, hock)
     side = (0.0, 1.0, 0.0)
-    m.prism_x(-3.5, 3.5, y, hip_z, 4.0, "steel")  # hip actuator (along x reads as a drum)
-    m.beam(hip, knee, 3.4, 4.2, "armor", side)  # thigh
-    m.beam(knee + np.array([0.8, 0, 1.2]), knee - np.array([-0.8, 0, 1.6]), 3.8, 3.8, "steel", side)  # knee joint
-    m.beam(knee, ankle, 3.0, 3.6, "armor", side)  # shin
-    # shin guard, a plate on the front of the shin
-    mid = (knee + ankle) / 2
-    m.beam(knee + np.array([2.5, 0, -1.0]), mid + np.array([2.8, 0, 0]), 3.3, 1.3, "armor", side)
-    # foot: flat block with a sloped toe, heel spur
-    fx, fz = ankle[0], ankle[2] - ANKLE_Z
-    m.taper((fx - 5.5, fx + 6.5, fy - 4.5, fy + 4.5), (fx - 4.5, fx + 3.5, fy - 4.0, fy + 4.0), fz, fz + 3.6, "steel")
-    m.taper((fx + 6.5, fx + 9.0, fy - 4.0, fy + 4.0), (fx + 6.0, fx + 6.5, fy - 3.5, fy + 3.5), fz, fz + 2.0, "steel")
-    m.prism_x(fx - 2.0, fx + 2.0, fy, ankle[2], 2.4, "steel")  # ankle
+    m.prism_x(-3.2, 3.2, y, hip_z, 3.6, "steel")  # hip drum
+    m.box(-5.0, 5.0, y + out * 4.4 - 0.9, y + out * 4.4 + 0.9, hip_z - 3.5, hip_z + 3.0, "armor")  # hip guard
+    m.beam(hip, knee, 3.8, 4.6, "armor", side)  # thigh
+    m.beam(hip + (knee - hip) * 0.3 + np.array([0, out * 3.2, 0]), knee + np.array([0, out * 3.2, 0]) - (knee - hip) * 0.1,
+           1.0, 2.6, "armor", side)  # outer thigh plate
+    m.beam(knee + np.array([0, -4.0, 0]), knee + np.array([0, 4.0, 0]), 3.2, 3.2, "steel", side=(1.0, 0.0, 0.0))  # knee pin
+    m.spike(knee + np.array([-0.5, 0, 0.5]), knee + np.array([7.0, 0, 3.8]), 2.6, 2.2, "armor", side=(0.0, 1.0, 0.0))  # knee spur
+    m.beam(knee, hock, 2.9, 3.4, "armor", side)  # shin, running back to the hock
+    # hydraulic ram on the outside, thigh to shin
+    m.beam(hip + (knee - hip) * 0.45 + np.array([0, out * 4.6, 0]), knee + (hock - knee) * 0.65 + np.array([0, out * 3.8, 0]),
+           0.9, 0.9, "steel", side)
+    m.beam(hock + np.array([0, -3.2, 0]), hock + np.array([0, 3.2, 0]), 2.4, 2.4, "steel", side=(1.0, 0.0, 0.0))  # hock pin
+    m.spike(hock + np.array([0.5, 0, 0]), hock + np.array([-3.8, 0, 1.2]), 1.8, 1.8, "steel", side=(0.0, 1.0, 0.0))  # heel spur
+    m.beam(hock, ankle + np.array([0, 0, 0.6]), 2.0, 2.2, "steel", side)  # metatarsal
+    add_foot(m, ankle, out)
+
+
+def pelvis(m: Mesh, hz: float) -> None:
+    m.box(-8, 7, -8.5, 8.5, hz - 3.5, hz + 4, "steel")
+    m.taper((6, 9.5, -6, 6), (6, 8, -5, 5), hz - 6.5, hz + 3, "armor")  # groin plate
+    m.taper((-10, -7, -6, 6), (-8.5, -7, -5, 5), hz - 5.5, hz + 3, "armor")
 
 
 def legs_mesh(phase: float) -> Mesh:
     m = Mesh()
-    m.box(-7, 7, -8, 8, HIP_Z - 3, HIP_Z + 4, "steel")  # pelvis
+    pelvis(m, HIP_Z)
     for sign, ph in ((1, phase), (-1, phase + math.pi)):
         fx = STRIDE * math.sin(ph)
         lift = LIFT * max(0.0, math.cos(ph)) ** 1.5
@@ -216,18 +260,21 @@ BRACE_DROP = 8.0
 
 
 def braced_legs_mesh() -> Mesh:
+    """Deployed: crouched low, feet wide, four stabilizer claws driven into the ground."""
     m = Mesh()
     hz = HIP_Z - BRACE_DROP
-    m.box(-7, 7, -8, 8, hz - 3, hz + 4, "steel")
+    pelvis(m, hz)
     for sign in (1, -1):
-        add_leg(m, sign * LEG_Y, 2.5, 0.0, hz, foot_y=sign * 15.0)
-    # four outriggers, pelvis corners to planted pads
+        add_leg(m, sign * LEG_Y, 3.5, 0.0, hz, foot_y=sign * 15.0)
     for sx in (1, -1):
         for sy in (1, -1):
-            a = (sx * 6.0, sy * 6.5, hz)
-            b = (sx * 15.5, sy * 14.0, 1.6)
-            m.beam(a, b, 1.6, 1.6, "steel", side=(0.0, 0.0, 1.0))
-            m.box(b[0] - 2.4, b[0] + 2.4, b[1] - 2.4, b[1] + 2.4, 0.0, 1.8, "hazard")
+            a = np.array([sx * 6.0, sy * 6.5, hz])
+            b = np.array([sx * 14.5, sy * 13.0, 3.2])
+            m.beam(a, b, 1.8, 1.8, "steel", side=(0.0, 0.0, 1.0))
+            m.beam(a + (b - a) * 0.15 + np.array([0, 0, 1.6]), a + (b - a) * 0.75 + np.array([0, 0, 1.6]),
+                   0.7, 0.7, "steel", side=(0.0, 0.0, 1.0))  # ram along the strut
+            m.box(b[0] - 2.6, b[0] + 2.6, b[1] - 2.6, b[1] + 2.6, 0.0, 1.6, "hazard")  # pad
+            m.spike(b, b + np.array([sx * 1.6, sy * 1.6, -3.2]), 1.4, 1.4, "steel")  # spade biting in
     return m
 
 
@@ -265,49 +312,74 @@ def wade_legs_mesh(phase: float, frame: int) -> Mesh:
 
 
 def torso_mesh(dz: float = 0.0) -> Mesh:
+    """Hunched: the head sits low between the shoulders, pods ride above it."""
     m = Mesh()
     z = lambda v: v + dz  # noqa: E731
-    m.prism_z(0, 0, z(HIP_Z + 3), z(HIP_Z + 7), 7.0, "steel")  # waist ring
-    # hull: sloped glacis front, flat back
-    m.taper((-11, 12, -12, 12), (-11, 5, -10, 10), z(34), z(52), "armor")
-    m.taper((-11, 12, -12, 12), (-10, 11, -11.5, 11.5), z(HIP_Z + 6), z(34), "armor")
-    # cockpit + visor slit
-    m.taper((-3, 8, -6.5, 6.5), (-2, 5.5, -5.5, 5.5), z(52), z(58), "armor")
-    m.box(6.2, 7.6, -4.5, 4.5, z(54.2), z(55.8), "visor")
-    # mantlet on the chest (barrel lives on the gun sheet)
-    m.box(10.5, 16, -5.5, 5.5, z(36.5), z(45.5), "steel")
-    # shoulder pods with team panels on the outer face
+    m.prism_z(0, 0, z(HIP_Z + 3), z(HIP_Z + 7), 7.5, "steel")  # waist ring
+    m.taper((-9, 8, -9, 9), (-11, 11, -12, 12), z(HIP_Z + 6), z(37), "armor")  # abdomen flares up
+    m.taper((-11, 12.5, -12.5, 12.5), (-13, 7, -11, 11), z(37), z(50), "armor")  # chest, leaning forward
+    # ribbed vents on the lower chest
+    for k in range(3):
+        zz = 38.0 + k * 1.6
+        xf = 12.5 - (zz - 37) * 5.5 / 13
+        m.box(xf - 0.6, xf + 0.5, -10.0, -6.0, z(zz), z(zz + 0.8), "steel")
+        m.box(xf - 0.6, xf + 0.5, 6.0, 10.0, z(zz), z(zz + 0.8), "steel")
+    # head: low armored wedge, narrowing to the brow
+    m.taper((4, 15.5, -5, 5), (4, 12.5, -3.6, 3.6), z(44.5), z(50.5), "armor")
+    m.taper((7, 14, -5.2, 5.2), (8, 13.2, -5.0, 5.0), z(50.0), z(51.4), "armor")  # brow ridge
+    for yy in (-2.3, 2.3):  # two eye slits
+        m.box(13.2, 14.6, yy - 1.4, yy + 1.4, z(47.4), z(48.6), "visor")
+    m.box(14.2, 15.4, -1.0, 1.0, z(45.0), z(46.6), "visor")  # third, lower sensor
+    # mantlet (the barrel lives on the gun sheet)
+    m.taper((10.5, 18, -6.5, 6.5), (10.5, 16.5, -5.5, 5.5), z(35), z(45), "steel")
+    # pauldrons: heavy, with a horn swept back and out
     for sign in (1, -1):
-        y0, y1 = sorted((sign * 11.0, sign * 17.5))
-        m.taper((-8, 8, y0, y1), (-6, 5, y0 + (0.8 if sign < 0 else 0), y1 - (0.8 if sign > 0 else 0)), z(40), z(51), "armor")
-        py0, py1 = (sign * 17.5, sign * 18.2) if sign > 0 else (sign * 18.2, sign * 17.5)
-        m.box(-5, 4, py0, py1, z(42.5), z(48.5), "team")
-    # rocket pods on the shoulders: two tubes a side, mouths facing the nose
+        y0, y1 = sorted((sign * 11.0, sign * 20.0))
+        m.taper((-9, 9, y0, y1), (-7, 7, y0 + (1.0 if sign < 0 else 0), y1 - (1.0 if sign > 0 else 0)), z(39), z(52), "armor")
+        m.spike((1.0, sign * 18.0, z(50.5)), (-6.0, sign * 25.0, z(58.5)), 2.4, 2.0, "armor", side=(1.0, 0.0, 0.0))
+        m.box(6.5, 9.2, y0 + 0.5, y1 - 0.5, z(39.5), z(40.6), "rust")  # trim
+    # rocket pods: six tubes a side, red warheads in the mouths
     for sign in (1, -1):
-        y0, y1 = sorted((sign * 10.5, sign * 17.5))
-        m.taper((-6, 6, y0, y1), (-5, 5.5, y0 + 0.4, y1 - 0.4), z(51), z(57.5), "armor")
-        m.box(5.5, 6.6, y0 + 0.3, y1 - 0.3, z(51.3), z(57.2), "steel")  # front plate
-        for yy in (sign * 12.4, sign * 15.6):
-            m.prism_x(6.2, 7.4, yy, z(54.3), 1.35, "tube", sides=6)
-        m.box(-4.0, 3.0, y0 + 0.2, y1 - 0.2, z(57.5), z(57.9), "hazard")  # top stripe
-    # backpack power unit + exhaust stacks
-    m.box(-19.5, -10.5, -9, 9, z(35), z(50.5), "armor")
-    m.box(-20.2, -19.5, -6, 6, z(38), z(47), "steel")
-    for yy in (-5.0, 5.0):
-        m.prism_z(-16.0, yy, z(50.5), z(57.5), 1.9, "steel", sides=6)
+        y0, y1 = sorted((sign * 10.5, sign * 19.5))
+        m.box(-3.0, 3.0, y0 + 2.0, y1 - 2.0, z(51.5), z(53.0), "steel")  # pylon
+        m.taper((-8, 8, y0, y1), (-7, 7, y0 + 0.4, y1 - 0.4), z(53), z(61), "armor")
+        m.box(7.8, 8.9, y0 + 0.2, y1 - 0.2, z(53.2), z(60.8), "steel")  # face plate
+        for zz in (55.2, 58.8):
+            for yy in (sign * 12.6, sign * 15.0, sign * 17.4):
+                m.prism_x(8.6, 9.6, yy, z(zz), 1.1, "tube", sides=6)
+                m.prism_x(8.5, 9.2, yy, z(zz), 0.6, "rust", sides=6)
+        m.box(-6.0, 5.0, y0 + 1.2, y0 + 2.2, z(61), z(61.6), "steel")  # top rails
+        m.box(-6.0, 5.0, y1 - 2.2, y1 - 1.2, z(61), z(61.6), "steel")
+        py0, py1 = (sign * 19.5, sign * 20.2) if sign > 0 else (sign * 20.2, sign * 19.5)
+        m.box(-6, 6, py0, py1, z(55.6), z(58.4), "team")  # team panel, outer face
+    # reactor hump, dorsal fins, swept exhausts
+    m.taper((-21, -10, -9.5, 9.5), (-19.5, -11, -8, 8), z(35), z(52), "armor")
+    m.box(-21.8, -21.0, -6, 6, z(38), z(48), "steel")
+    for k, xx in enumerate((-11.5, -15.0, -18.5)):
+        m.spike((xx, 0.0, z(51.0)), (xx - 4.0, 0.0, z(58.5 - k * 1.2)), 0.7, 2.2, "armor", side=(0.0, 1.0, 0.0))
+    for yy in (-6.0, 6.0):
+        m.beam((-17.0, yy, z(50.0)), (-21.0, yy * 1.15, z(58.5)), 1.9, 1.9, "steel")
+        m.beam((-20.8, yy * 1.15, z(58.0)), (-21.2, yy * 1.15, z(59.0)), 1.4, 1.4, "tube")
     return m
 
 
 GUN_Z = 41.0
-MUZZLE_X = 43.0
+MUZZLE_X = 44.0
 
 
 def gun_mesh(dz: float = 0.0) -> Mesh:
     m = Mesh()
     zc = GUN_Z + dz
-    m.prism_x(15.5, 23.0, 0.0, zc, 2.8, "steel")  # recoil sleeve
-    m.prism_x(23.0, MUZZLE_X - 3.5, 0.0, zc, 1.8, "steel")  # long barrel
-    m.box(MUZZLE_X - 4.0, MUZZLE_X, -3.0, 3.0, zc - 2.2, zc + 2.2, "steel")  # muzzle brake
+    m.prism_x(16.0, 24.0, 0.0, zc, 3.6, "steel")  # recoil housing
+    for x0 in (17.0, 22.2):
+        m.prism_x(x0, x0 + 1.2, 0.0, zc, 4.1, "steel")  # collars
+    m.prism_x(24.0, MUZZLE_X - 5.0, 0.0, zc, 2.3, "steel")  # long barrel
+    m.prism_x(29.0, 34.0, 0.0, zc, 3.0, "steel")  # fume extractor
+    m.prism_x(29.6, 30.4, 0.0, zc, 3.2, "rust")  # band
+    # slotted brake: two baffles with the bore between
+    m.box(MUZZLE_X - 5.0, MUZZLE_X - 3.0, -3.4, 3.4, zc - 2.4, zc + 2.4, "steel")
+    m.prism_x(MUZZLE_X - 3.0, MUZZLE_X - 2.0, 0.0, zc, 2.0, "steel")
+    m.box(MUZZLE_X - 2.0, MUZZLE_X, -3.4, 3.4, zc - 2.4, zc + 2.4, "steel")
     return m
 
 
