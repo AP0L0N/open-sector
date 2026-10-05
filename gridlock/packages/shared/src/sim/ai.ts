@@ -4,7 +4,8 @@
  * takes the diamond scrap in the middle, and an engineer raises a Smelter there. From
  * the middle it keeps raising towers toward the enemy while larger and larger waves
  * swing round alternate flanks, in ranks: hulls in front, rifles behind them, long guns
- * at the back. Enemy planes bring up a CIWS, rocketmen, and fighters.
+ * at the back. Enemy planes bring up a CIWS, rocketmen, and fighters. Campaigning, it keeps a
+ * bigger army and a second Barracks and Machine Shop, paid for by Smelters that pour twice as fast.
  */
 
 import {
@@ -48,7 +49,7 @@ import type { AiForce, AiPlan, Entity, MatchState, SimPlayer, StructureJob, Vec 
 /** Earliest campaign wave. The fortify posture holds the army at home until then anyway. */
 export const EASY_ATTACK_FIRST_TICKS = 70 * TICK_HZ;
 /** Pause between task forces leaving. Waves come together, not one by one. */
-export const EASY_ATTACK_EVERY_TICKS = 45 * TICK_HZ;
+export const EASY_ATTACK_EVERY_TICKS = 25 * TICK_HZ;
 export const EASY_ATTACK_RETRY_TICKS = 8 * TICK_HZ;
 /** Strategy, support, shell, and defense upkeep runs this often, not every think. */
 export const EASY_MICRO_EVERY_TICKS = 2 * TICK_HZ;
@@ -67,13 +68,17 @@ export const EASY_EXPAND_TILES = 30 * 4;
 /** Enemies this far from the HQ, in tiles, pull the home guard. */
 export const EASY_DEFEND_TILES = DEFENCE_BUILD_RADIUS + 6 * 4;
 /** Fortify gives up waiting on its defences after this long and campaigns anyway. */
-export const EASY_FORTIFY_MAX_TICKS = 10 * 60 * TICK_HZ;
+export const EASY_FORTIFY_MAX_TICKS = 4 * 60 * TICK_HZ;
 /** Fighters the first force needs before it walks out for the middle. */
 export const EASY_CENTRE_FORCE = 6;
 /** Fighters the first wave at the enemy needs. Each later wave needs EASY_WAVE_GROWTH more. */
-export const EASY_WAVE_MIN = 10;
-export const EASY_WAVE_GROWTH = 2;
-export const EASY_WAVE_MAX = 22;
+export const EASY_WAVE_MIN = 8;
+export const EASY_WAVE_GROWTH = 1;
+export const EASY_WAVE_MAX = 16;
+/** Campaigning, the CPU keeps this many times each EASY_ARMY fighting rank. */
+export const EASY_CAMPAIGN_ARMY_MUL = 1.5;
+/** Campaigning, the CPU raises Barracks and Machine Shops up to this many of each. */
+export const EASY_CAMPAIGN_FACTORIES = 2;
 /** An army this many times the wave size splits and comes at the enemy from both flanks. */
 const EASY_PINCER_MUL = 1.6;
 /** Campaign towers, around the middle and then toward the enemy, start no faster than this. */
@@ -122,13 +127,13 @@ const ENGAGED_MAX_TICKS = 40 * TICK_HZ;
 /** No closer to the next route point for this long: the whole force moves on. Twice this: skip the point. */
 const STALL_TICKS = 45 * TICK_HZ;
 /** Soldiers the CPU will tie up in tower and bunker slits. Past this the campaign stops raising towers. */
-const CREW_BUDGET = 21;
+const CREW_BUDGET = 14;
 /** A force with fewer than this share of its fighters left falls back. */
 const FORCE_BREAK_SHARE = 0.35;
 const FORCE_MIN = 3;
 /** A fighter this far from the body of his force, in tiles, is left out of it. */
 const STRAGGLE_TILES = BOUND_TILES * 2.5;
-const FORCES_MAX = 3;
+const FORCES_MAX = 4;
 
 /**
  * Army the CPU keeps, listed under the factory that trains it. Each think, each factory
@@ -312,6 +317,15 @@ function nextBuilding(state: MatchState, p: SimPlayer): BuildingType | null {
     if (pow.used + draw > pow.provided) return roomy("dynamo") ? "dynamo" : null;
     return "smelter";
   }
+  // Campaigning, spare scrap goes into more factories so the waves come faster.
+  if (aiPlanOf(p).posture === "campaign") {
+    for (const t of ["muster", "armory"] as const) {
+      if (countType(state, p.playerId, t) >= EASY_CAMPAIGN_FACTORIES || !roomy(t)) continue;
+      const draw = Math.max(0, -catalog(t).power);
+      if (pow.used + draw > pow.provided) return roomy("dynamo") ? "dynamo" : null;
+      return t;
+    }
+  }
   return null;
 }
 
@@ -348,7 +362,7 @@ function trainEasy(state: MatchState, p: SimPlayer): void {
   const picks: { unit: TrainType; want: number; share: number }[] = [];
   for (const factory of ["armory", "muster", "airfield"] as const) {
     if (!ownsLive(state, p.playerId, factory)) continue;
-    if (queuedOn(state, p.playerId, factory) >= TRAIN_QUEUE_SOFT) continue;
+    if (queuedOn(state, p.playerId, factory) >= TRAIN_QUEUE_SOFT * countType(state, p.playerId, factory)) continue;
     const pick = neediest(state, p, EASY_ARMY[factory]);
     if (pick) picks.push(pick);
   }
@@ -378,8 +392,12 @@ function neediest(
   return best;
 }
 
-/** Riflemen to fill every empty slit; rocketmen and fighters once enemy planes are about. */
+/**
+ * Riflemen to fill every empty slit; rocketmen and fighters once enemy planes are about.
+ * Campaigning, every fighting rank is EASY_CAMPAIGN_ARMY_MUL times larger to feed the waves.
+ */
 function wantOf(state: MatchState, p: SimPlayer, unit: TrainType, base: number): number {
+  if (aiPlanOf(p).posture === "campaign" && fires(unit)) base = Math.ceil(base * EASY_CAMPAIGN_ARMY_MUL);
   if (unit === "rifleman") return base + Math.min(12, emptySlits(state, p.playerId));
   const air = aiPlanOf(p).airSeenTick != null;
   if (air && unit === "rocketer") return base + 2;
