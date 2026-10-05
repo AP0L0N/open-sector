@@ -230,17 +230,61 @@ describe("bunker", () => {
     assert.equal(r.hp, street);
   });
 
-  it("stays a target for enemy tanks while empty, unlike an empty house", () => {
+  it("is left alone by enemy tanks while empty, like an empty house", () => {
     const { state, a, b } = twoPlayerMatch();
     const ts = state.tileSize;
     const bunker = bunkerAt(state, a);
     const tank = makeEntity(state, "warden", b, bunker.x + ts * 14, bunker.y);
     tank.facing = Math.PI;
+    const hp0 = bunker.hp;
+    for (let i = 0; i < 60; i++) step(state, TICK_DT);
+    assert.notEqual(tank.attackTarget, bunker.id, "no auto target on the empty bunker");
+    assert.notEqual(tank.order?.targetId, bunker.id, "no auto order on the empty bunker");
+    assert.equal(bunker.hp, hp0);
+  });
+
+  it("draws enemy tank fire once its owner's men are inside", () => {
+    const { state, a, b } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const bunker = bunkerAt(state, a);
+    const rifle = trooper(state, "rifleman", a);
+    assert.equal(enterGarrison(state, rifle, bunker), true);
+    const tank = makeEntity(state, "warden", b, bunker.x + ts * 14, bunker.y);
+    tank.facing = Math.PI;
     for (let i = 0; i < 12; i++) step(state, TICK_DT);
     assert.ok(
       tank.attackTarget === bunker.id || tank.order?.targetId === bunker.id,
-      `tank should engage the empty bunker, order=${tank.order?.kind} target=${tank.attackTarget}`,
+      `tank should engage the manned bunker, order=${tank.order?.kind} target=${tank.attackTarget}`,
     );
+  });
+
+  it("stops drawing auto fire when the garrison is gone", () => {
+    const { state, a, b } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const bunker = bunkerAt(state, a);
+    const rifle = trooper(state, "rifleman", a);
+    assert.equal(enterGarrison(state, rifle, bunker), true);
+    const tank = makeEntity(state, "warden", b, bunker.x + ts * 14, bunker.y);
+    tank.facing = Math.PI;
+    for (let i = 0; i < 12; i++) step(state, TICK_DT);
+    assert.ok(tank.attackTarget === bunker.id || tank.order?.targetId === bunker.id);
+    destroyEntity(state, rifle);
+    for (let i = 0; i < 4; i++) step(state, TICK_DT);
+    assert.notEqual(tank.attackTarget, bunker.id);
+    assert.notEqual(tank.order?.targetId, bunker.id);
+  });
+
+  it("can still be shelled empty on a player order", () => {
+    const { state, a, b } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const bunker = bunkerAt(state, a);
+    const tank = makeEntity(state, "warden", b, bunker.x + ts * 14, bunker.y);
+    tank.facing = Math.PI;
+    tank.order = { kind: "attack", targetId: bunker.id };
+    const hp0 = bunker.hp;
+    for (let i = 0; i < 200 && bunker.hp === hp0; i++) step(state, TICK_DT);
+    assert.equal(tank.order?.targetId, bunker.id, "the player's order is kept");
+    assert.ok(bunker.hp < hp0, "the tank shells the empty bunker");
   });
 
   it("fires out of the slit facing the target, on every side, without hitting its own walls", () => {

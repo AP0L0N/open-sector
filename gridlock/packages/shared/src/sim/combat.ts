@@ -98,7 +98,6 @@ import {
   garrisonFullArmsOf,
   garrisonOpenTopOf,
   isCivilianType,
-  isFieldStructure,
   isGarrisonable,
   isInfantryType,
   isSmokeShell,
@@ -1349,11 +1348,18 @@ function walkerSparesBuilding(state: MatchState, e: Entity, target: Entity): boo
 }
 
 /**
- * Auto-fire and infantry stop once a civilian house is empty. Tanks may still demolish on a player order.
- * A player-built garrison (the Bunker) is an enemy structure whether or not anyone is inside.
+ * A building whose only threat is the garrison inside: a civilian house, a trench, a Bunker, a Watch Tower.
+ * A Large wall is still a wall, so guns keep breaching it empty or not.
+ */
+function emptiedDefence(o: Entity): boolean {
+  return o.kind === "building" && isGarrisonable(o.type) && !isConcreteLine(o.type);
+}
+
+/**
+ * Auto-fire and infantry stop once a house, Bunker, or Watch Tower is empty. Tanks may still demolish on a player order.
  */
 function dropsEmptyGarrison(state: MatchState, e: Entity, target: Entity): boolean {
-  if (!isGarrisonable(target.type) || !isCivilianType(target.type) || target.kind !== "building") return false;
+  if (!emptiedDefence(target)) return false;
   if (garrisonIsHostile(state, e.ownerId, target)) return false;
   if (e.order?.kind === "forceattack") return false;
   if (e.order?.kind === "attack" && !e.order.auto && !isInfantryType(e.type)) return false;
@@ -3169,11 +3175,10 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (isInfantryType(e.type) && o.kind === "building") {
       if (!garrisonIsHostile(state, e.ownerId, o) || !garrisonLooksOccupied(state, e.ownerId, o)) continue;
     } else if (
-      isGarrisonable(o.type) &&
-      (isCivilianType(o.type) || isFieldStructure(o.type)) &&
+      emptiedDefence(o) &&
       (!garrisonLooksOccupied(state, e.ownerId, o) || !garrisonIsHostile(state, e.ownerId, o))
     ) {
-      // An empty house, or an empty trench, is not worth a round.
+      // An empty house, trench, Bunker, or Watch Tower is not worth a round.
       continue;
     }
     const dx = o.x - e.x;
