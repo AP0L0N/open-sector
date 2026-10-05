@@ -26,21 +26,9 @@ import {
 import type { EntityView, SonarContactView } from "../protocol.js";
 import { besideMarineBase } from "./battleship.js";
 import { allies, destroyEntity, isWater, makeEntity, playerTeam, worldToTile } from "./geo.js";
-import { armTorpedo, diving } from "./naval.js";
+import { armTorpedo, diving, shipLive, sonarHears } from "./naval.js";
 import { stepTurn } from "./orders.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
-
-/** A Destroyer still afloat and fighting: its sonar listens and its deck works. */
-function shipLive(e: Entity | undefined): e is Entity {
-  return !!e && hasSonar(e.type) && !!e.asw && e.hp > 0 && !e.wreck;
-}
-
-/** A submarine this ship's sonar hears: an enemy boat, down or up, inside SONAR_RANGE_TILES. */
-export function sonarHears(state: MatchState, ship: Entity, sub: Entity): boolean {
-  if (!shipLive(ship) || !submergesOf(sub.type) || sub.hp <= 0 || sub.wreck) return false;
-  if (!sub.ownerId || allies(state, ship.ownerId, sub.ownerId)) return false;
-  return Math.hypot(sub.x - ship.x, sub.y - ship.y) <= SONAR_RANGE_TILES * state.tileSize;
-}
 
 /** Nearest submarine this ship hears, or null. */
 function nearestHeard(state: MatchState, ship: Entity): Entity | null {
@@ -59,8 +47,8 @@ function nearestHeard(state: MatchState, ship: Entity): Entity | null {
 
 /**
  * Every enemy submarine a Destroyer on `playerId`'s side hears, down or up, fog or not.
- * The client marks them and calls each new one. Hearing is not seeing: a gun still needs
- * the boat in sight (hiddenSubmarine).
+ * The client marks them and calls each new one. A boat the sonar hears below is in that
+ * side's sight too, fog or not (hiddenSubmarine).
  */
 export function sonarContacts(state: MatchState, playerId: string): SonarContactView[] {
   const ships: Entity[] = [];
