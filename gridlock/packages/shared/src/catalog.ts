@@ -741,6 +741,12 @@ export interface CatalogEntry {
   tracked?: boolean;
   /** Turn to face every move. No reverse hop, even when the dest is close behind. */
   noReverse?: boolean;
+  /**
+   * Either end serves as the bow. Whenever the waypoint lies in the rear half the
+   * hull runs stern first at full speed, at any range, so it swings the end
+   * nearer the course.
+   */
+  doubleEnded?: boolean;
   /** Independent turret traverse. Omit for casemate guns / tank destroyers / infantry. */
   turretTurnDegPerSec?: number;
   /**
@@ -4173,7 +4179,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 48,
     moveTilesPerSec: paced(1.4375),
     turnDegPerSec: 16,
-    noReverse: true,
+    doubleEnded: true,
     turnInPlace: true,
     turretTurnDegPerSec: BATTLESHIP_TURRET_TURN_DEG_PER_SEC,
     rangeTiles: BATTLESHIP_RANGE_TILES,
@@ -4190,7 +4196,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     naval: true,
     leavesWreck: true,
     wreckHp: 100,
-    blurb: `Fast battleship, after the Iowa class. Water only. Two triple 16-inch turrets on the foredeck; every barrel loads and fires on its own, so a turret lets its guns go one by one in no set order. The shell is the field gun's, fired flat and fast: it lands almost as soon as it leaves and reaches as far as Artillery, but it will not fire inside ${BATTLESHIP_MIN_RANGE_TILES / TILE_SUBDIV} tiles. The turrets cannot fire astern through the superstructure. Two radar-laid 20mm CIWS mounts, one on the superstructure and one on the stern, lay themselves apart from the main guns: incoming missiles first, then planes, infantry, and light vehicles. Order an attack or force-attack on an aircraft and the CIWS take it while the main guns hold; they reach farther for a plane than for anything on the water or ashore. Each barrel holds ${BATTLESHIP_BARREL_AMMO} shells and each CIWS a ${BATTLESHIP_CIWS_BELT}-round belt; they fill again slowly beside a Marine Base. It swings its bow onto the course before it makes way. A big searchlight on the bridge lights the water far out at night; Rotate light swings it, and it turns with the ship. Torpedoes and heavy shells are the danger. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
+    blurb: `Fast battleship, after the Iowa class. Water only. Two triple 16-inch turrets on the foredeck; every barrel loads and fires on its own, so a turret lets its guns go one by one in no set order. The shell is the field gun's, fired flat and fast: it lands almost as soon as it leaves and reaches as far as Artillery, but it will not fire inside ${BATTLESHIP_MIN_RANGE_TILES / TILE_SUBDIV} tiles. The turrets cannot fire astern through the superstructure. Two radar-laid 20mm CIWS mounts, one on the superstructure and one on the stern, lay themselves apart from the main guns: incoming missiles first, then planes, infantry, and light vehicles. Order an attack or force-attack on an aircraft and the CIWS take it while the main guns hold; they reach farther for a plane than for anything on the water or ashore. Each barrel holds ${BATTLESHIP_BARREL_AMMO} shells and each CIWS a ${BATTLESHIP_CIWS_BELT}-round belt; they fill again slowly beside a Marine Base. Either end serves as the bow: it swings whichever end is nearer the course onto it and makes way ahead or astern at the same speed. A big searchlight on the bridge lights the water far out at night; Rotate light swings it, and it turns with the ship. Torpedoes and heavy shells are the danger. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
   },
   /** Destroyer: twin 40mm, hull sonar, an ASW helicopter, and a mine rail. Water only. */
   destroyer: {

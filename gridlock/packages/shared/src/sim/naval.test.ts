@@ -577,6 +577,8 @@ describe("boats turn before they move", () => {
     assert.deepEqual([...ships].sort(), ["battleship", "destroyer", "gunboat", "lst", "submarine", "supplyboat"]);
     for (const type of ships) {
       assert.equal(catalog(type).turnInPlace, true, `${type} turns before it moves`);
+      // Dead astern is ahead for a double-ended hull: battleship.test.ts covers it.
+      if (catalog(type).doubleEnded) continue;
       // The LST is as long as the Battle Ship is wide: it gets a lake of its own.
       const { state, lx0, ly0 } = type === "lst" ? harbour() : shared;
       const lane = type === "gunboat" ? 3 : type === "submarine" ? 7 : type === "supplyboat" ? 11 : type === "destroyer" ? 15 : 24;

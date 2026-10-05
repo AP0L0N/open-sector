@@ -32,6 +32,7 @@ import { applyCommand } from "./commands.js";
 import { weaponRangeWorld } from "./elevation.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
+import { reversing } from "./orders.js";
 import { snapshotFor } from "./snapshot.js";
 import { producerType } from "./train.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
@@ -74,6 +75,11 @@ function bay(): { state: MatchState; x0: number; y0: number } {
 
 function spawn(state: MatchState, type: Parameters<typeof makeEntity>[1], owner: string, tx: number, ty: number): Entity {
   return makeEntity(state, type, owner, tileCenter(tx, state.tileSize), tileCenter(ty, state.tileSize));
+}
+
+/** Signed a - b, wrapped to (-pi, pi]. */
+function angleDiff(a: number, b: number): number {
+  return Math.atan2(Math.sin(a - b), Math.cos(a - b));
 }
 
 function ticks(state: MatchState, n: number): void {
@@ -599,5 +605,57 @@ describe("Battle Ship force attack under way", () => {
     const { state, ship } = shoot(36);
     assert.equal(applyCommand(state, "A", { type: "cmd.move", ids: [ship.id], x: ship.x, y: ship.y - 200 }).ok, true);
     assert.equal(ship.order?.kind, "move");
+  });
+});
+
+describe("Battle Ship: either end is the bow", () => {
+  /** Bow east in open water mid-bay, guns cold so nothing but the course moves it. */
+  function afloat(): { state: MatchState; ship: Entity } {
+    const { state, x0, y0 } = bay();
+    const ship = spawn(state, "battleship", "A", x0 + 30, y0 + 10);
+    ship.facing = 0;
+    ship.turretFacing = 0;
+    ship.cooldown = 1e6;
+    return { state, ship };
+  }
+
+  it("runs astern to a point far behind it without swinging the hull", () => {
+    const { state, ship } = afloat();
+    const ts = state.tileSize;
+    const x0 = ship.x;
+    const destX = x0 - 18 * ts;
+    assert.equal(applyCommand(state, "A", { type: "cmd.move", ids: [ship.id], x: destX, y: ship.y }).ok, true);
+    assert.equal(reversing(ship), true);
+    ticks(state, 3);
+    assert.ok(ship.x < x0, `makes way astern at once x=${ship.x} from ${x0}`);
+    const span = (18 * ts) / (catalog("battleship").moveTilesPerSec * ts);
+    ticks(state, secondsToTicks(span) + 120);
+    assert.ok(Math.abs(ship.x - destX) < 2 * ts, `reached the point x=${ship.x} dest=${destX}`);
+    assert.ok(Math.abs(angleDiff(ship.facing, 0)) < 0.05, `bow still east facing=${ship.facing}`);
+  });
+
+  it("swings the stern, not the bow, onto a course in the rear half", () => {
+    const { state, ship } = afloat();
+    const ts = state.tileSize;
+    // 135 degrees off the bow: the stern is 45 degrees from it, the bow 135.
+    const d = 14 * ts;
+    const dest = { x: ship.x - d * Math.SQRT1_2, y: ship.y + d * Math.SQRT1_2 };
+    applyCommand(state, "A", { type: "cmd.move", ids: [ship.id], x: dest.x, y: dest.y });
+    const turnSec = 60 / catalog("battleship").turnDegPerSec;
+    ticks(state, secondsToTicks(turnSec));
+    const yaw = Math.abs(angleDiff(ship.facing, 0));
+    assert.ok(yaw > 0.4 && yaw < Math.PI / 2, `the short swing, about 45 degrees: yaw=${yaw}`);
+    ticks(state, secondsToTicks(20));
+    assert.ok(ship.x < dest.x + 2 * ts && ship.y > dest.y - 2 * ts, `got there stern first (${ship.x}, ${ship.y})`);
+  });
+
+  it("still goes bow first to a point ahead", () => {
+    const { state, ship } = afloat();
+    const ts = state.tileSize;
+    applyCommand(state, "A", { type: "cmd.move", ids: [ship.id], x: ship.x + 12 * ts, y: ship.y });
+    assert.equal(reversing(ship), false);
+    const x0 = ship.x;
+    ticks(state, 3);
+    assert.ok(ship.x > x0);
   });
 });

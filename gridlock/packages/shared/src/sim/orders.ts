@@ -71,10 +71,22 @@ export function reversing(e: Entity): boolean {
   // The crew walks ahead pulling the trail, so the barrel always trails.
   if (e.type === "artillery") return e.waypoints.length > 0 && e.towedBy == null;
   if (!catalog(e.type).turnInPlace || catalog(e.type).noReverse) return false;
+  if (catalog(e.type).doubleEnded) {
+    const wp = e.waypoints[0];
+    return !!wp && sternNearer(e, wp);
+  }
   const kind = e.order?.kind;
   if (kind !== "move" && kind !== "attackmove" && kind !== "patrol") return false;
   const wp = e.waypoints[0];
   return !!wp && closeRearWaypoint(e, wp);
+}
+
+/** Waypoint in the rear half: swinging the stern onto it is the shorter yaw. */
+function sternNearer(e: Entity, wp: { x: number; y: number }): boolean {
+  const dx = wp.x - e.x;
+  const dy = wp.y - e.y;
+  if (Math.hypot(dx, dy) < 1e-6) return false;
+  return dx * Math.cos(e.facing) + dy * Math.sin(e.facing) < 0;
 }
 
 /** Short hop already in the rear cone — spin would flash the rear plate. */
@@ -523,7 +535,8 @@ function hullAcrossSlop(e: Entity, wp: { x: number; y: number }): number {
 
 function hullSteerWant(e: Entity, wp: { x: number; y: number }): number {
   const back = reversing(e);
-  if (back && e.order?.facing != null) return hullWant(e, e.order.facing);
+  // A short tank hop keeps the dest face; a double-ended hull steers its stern down the course.
+  if (back && e.order?.facing != null && !catalog(e.type).doubleEnded) return hullWant(e, e.order.facing);
   const dx = wp.x - e.x;
   const dy = wp.y - e.y;
   // Heading of travel toward the waypoint; the hull points the other way when it backs up.

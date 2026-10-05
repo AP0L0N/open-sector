@@ -486,9 +486,9 @@ function shuffleSpot(
     if (Math.abs(vp) < 0.3) continue;
     const d = (clear - Math.sign(vp) * across0) / Math.abs(vp) + 1;
     if (d <= 0 || d > o.radius * SHUFFLE_MAX_RADII + clear) continue;
-    // A tank only backs up a short hop; farther it spins and drives.
+    // A tank only backs up a short hop; farther it spins and drives. A double-ended hull runs astern any distance.
     const backing = tracks && !trailFirst && angDiff(h, o.facing) > Math.PI / 2;
-    if (backing && d > REVERSE_TILES * TILE_SIZE) continue;
+    if (backing && !def.doubleEnded && d > REVERSE_TILES * TILE_SIZE) continue;
     const hull = tracks ? (trailFirst || backing ? h + Math.PI : h) : o.facing;
     const yaw = tracks ? (angDiff(hull, o.facing) * 180) / Math.PI : 0;
     let cost = d / speed + yaw / turn;
