@@ -47,7 +47,7 @@ let speakers: ReadonlySet<number> = new Set();
 /** One answer from a unit type. `special` falls back to `move` for units without one. Returns whether a line played. */
 export function unitVoice(
   type: string,
-  cue: UnitCue | "ready" | "shield_down" | "shield_up",
+  cue: UnitCue | "ready" | "load" | "shield_down" | "shield_up",
   opts: { withSfx?: boolean; ids?: readonly number[] } = {},
 ): boolean {
   const folder = unitFolder(type);

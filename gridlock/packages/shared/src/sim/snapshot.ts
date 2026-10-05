@@ -26,6 +26,7 @@ import {
   hasScout,
   hasTurret,
   isGarrisonable,
+  tankDeckOf,
   isInfantryType,
   isSupplyCarrier,
   isTransportType,
@@ -44,6 +45,7 @@ import { crateViews, mineViews, payloadOf, planeRiders } from "./airdrop.js";
 import { cyborgShielded } from "./crits.js";
 import { laserProgress } from "./laser.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
+import { deckLoad } from "./lst.js";
 import { allies, unitInWater } from "./geo.js";
 import { diving, hiddenSubmarine } from "./naval.js";
 import { medicTendView } from "./heal.js";
@@ -391,6 +393,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       reload: friendly && (isInfantryType(e.type) || beltOf(e.type)) && e.reload > 0 ? e.reload : undefined,
       bipod: plantRemaining(e, friendly),
       garrisonedIn: friendly && e.garrisonedIn ? e.garrisonedIn : undefined,
+      mountedGun: friendly && e.mountedGun != null ? e.mountedGun : undefined,
       plan: planView(state, e, e.ownerId === youPlayerId),
       garrison: isGarrisonable(e.type)
         ? (() => {
@@ -398,7 +401,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
             const occFriendly = allies(state, youPlayerId, occOwner);
             const conceal = e.garrisonHide && occBars.length > 0 && !occFriendly;
             return {
-              count: conceal ? 0 : occBars.length,
+              count: conceal ? 0 : tankDeckOf(e.type) ? deckLoad(state, e) : occBars.length,
               cap: garrisonCapOf(e.type),
               ownerId: conceal ? undefined : occOwner || undefined,
               bars: conceal || occBars.length === 0 ? undefined : occBars,

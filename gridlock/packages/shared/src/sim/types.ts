@@ -443,6 +443,13 @@ export interface Entity {
   mgCooldown: number;
   /** Unit is inside this building id. */
   garrisonedIn: number | null;
+  /**
+   * Manning a Transport LST deck tub: he fires DECK_MG in place of his own weapon.
+   * Index of the tub in LST_MG_AT. Set and cleared by syncLstCrew.
+   */
+  mountedGun?: number;
+  /** His own clip while he is on the tub, given back when he steps off it. */
+  ownClip?: number;
   /** Unit ids occupying a garrisonable building. */
   garrison: number[];
   /** Occupants shuttered: tiny sight, no fire, occupancy hidden from enemies. */

@@ -29,6 +29,7 @@ import { raiseWallCrest, restampForts, tickField } from "./field.js";
 import { syncTorpedoes, tickCombat, tickPatrol, tickProjectiles } from "./combat.js";
 import { tickSubmarines } from "./naval.js";
 import { tickDestroyers } from "./destroyer.js";
+import { groundLstBows } from "./lst.js";
 import { tickSmoke } from "./smoke.js";
 import { maybeCookOff, tickFires } from "./flame.js";
 import { tickBipod, tickStance } from "./stance.js";
@@ -179,6 +180,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickPlaneBoarding(state);
   tickOrderQueue(state);
   tickPatrol(state);
+  groundLstBows(state);
   tickMovement(state, dt);
   // After movement, before collision, so a charging walker detonates on
   // infantry he is overlapping instead of crushing them and walking on.
@@ -250,7 +252,8 @@ function reapDead(state: MatchState): void {
     if (!e.wreck && e.garrison.length && garrisonDiesWithHostOf(e.type)) {
       for (const u of killGarrison(state, e)) dead.push(u.id);
     }
-    if (!e.wreck && leavesWreck(e.type) && e.type !== "core" && e.type !== "rig") {
+    // A tank that goes down with its LST leaves no hulk of its own.
+    if (!e.wreck && leavesWreck(e.type) && e.type !== "core" && e.type !== "rig" && e.garrisonedIn == null) {
       toWreck(state, e);
       madeWreck = true;
       continue;

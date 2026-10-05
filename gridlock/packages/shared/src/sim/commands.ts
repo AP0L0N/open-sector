@@ -13,7 +13,9 @@ import {
   isEngineerBuilding,
   isFieldStructure,
   isYardField,
+  garrisonCandidate,
   isGarrisonable,
+  tankDeckOf,
   isInfantryType,
   isInfantryWeaponId,
   isShellType,
@@ -41,6 +43,7 @@ import { allies, clearOrder, hqOf, worldToTile } from "./geo.js";
 import { endWalkerCharge } from "./walker-charge.js";
 import { forceAimHolds, garrisonCanShoot, garrisonShotReaches, relayGarrisonForce } from "./combat.js";
 import { approachTile, canGarrison, exitGarrison, garrisonOwner, livingGarrison, setGarrisonHide } from "./garrison.js";
+import { rampAshore } from "./lst.js";
 import { setScoutOut } from "./scout.js";
 import { cancelStructure, pauseStructure, placeBaseField, placeBuilding, sellBuilding, startBuild } from "./build.js";
 import { orderFieldBuild, orderRepair, setGatesLocked } from "./field.js";
@@ -1164,14 +1167,14 @@ function dropGuard(e: Entity): void {
 function cmdGarrison(state: MatchState, playerId: string, ids: number[], buildingId: number): CmdResult {
   const house = state.entities.get(buildingId);
   if (!house || house.hp <= 0 || !isGarrisonable(house.type)) return fail("not_found", "No such building.");
-  const units = owned(state, playerId, ids).filter((e) => isInfantryType(e.type));
-  if (units.length === 0) return fail("not_yours", "Select infantry.");
+  const units = owned(state, playerId, ids).filter((e) => e.kind === "unit" && garrisonCandidate(house.type, e.type));
+  if (units.length === 0) return fail("not_yours", tankDeckOf(house.type) ? "Select units to load." : "Select infantry.");
   let n = 0;
   for (const e of units) {
     const err = canGarrison(state, e, house);
     if (err) continue;
     if (e.garrisonedIn === house.id) continue;
-    if (e.garrisonedIn) exitGarrison(state, e);
+    if (e.garrisonedIn && !exitGarrison(state, e)) continue;
     e.order = { kind: "garrison", targetId: house.id };
     e.attackTarget = null;
     e.guardFacing = null;
@@ -1237,6 +1240,7 @@ function cmdUngarrison(
   if (buildingId != null) {
     const house = state.entities.get(buildingId);
     if (!house) return fail("not_found", "No such building.");
+    if (tankDeckOf(house.type) && !rampAshore(state, house)) return fail("busy", "Put the bow on the shore to unload.");
     for (const u of livingGarrison(state, house)) {
       if (u.ownerId === playerId) units.push(u);
     }
@@ -1246,7 +1250,11 @@ function cmdUngarrison(
     }
   }
   if (units.length === 0) return fail("not_yours", "No garrisoned infantry.");
-  for (const e of units) exitGarrison(state, e, dest);
+  // Down the ramp one after another, each stepping clear of the last.
+  const taken: { x: number; y: number; r: number }[] = [];
+  let out = 0;
+  for (const e of units) if (exitGarrison(state, e, dest, taken)) out++;
+  if (out === 0) return fail("busy", "Put the bow on the shore to unload.");
   return ok();
 }
 

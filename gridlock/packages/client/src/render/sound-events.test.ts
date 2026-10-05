@@ -235,3 +235,32 @@ describe("SoundTracker: Cyborg Commander", () => {
     assert.equal((kinds(back, "shield")[0] as { own: boolean }).own, true);
   });
 });
+
+describe("Transport LST sounds", () => {
+  const ship = (extra: Partial<EntityView> = {}) => unit(5, "lst", ME, { x: 300, y: 40, ...extra });
+
+  it("a tub gunner's burst is the LST's deck gun, heard at the ship", () => {
+    const t = new SoundTracker();
+    const gunner = unit(6, "rifleman", ME, { garrisonedIn: 5, mountedGun: 0 });
+    t.step(snap({ entities: [ship(), gunner] }), 0);
+    const shot = { id: 900, fromId: 6, x: 0, y: 0, vx: 1, vy: 0, caliber: 12 };
+    const evs = t.step(snap({ entities: [ship(), gunner], projectiles: [shot] as never }), 100);
+    const fire = kinds(evs, "fire") as Extract<SoundEvent, { kind: "fire" }>[];
+    assert.equal(fire.length, 1);
+    assert.equal(fire[0]!.type, "lst");
+    assert.equal(fire[0]!.x, 300);
+  });
+
+  it("calls the boarding once for a column, and lowers the ramp when they land", () => {
+    const t = new SoundTracker();
+    const a = unit(6, "rifleman");
+    const b = unit(7, "warden");
+    t.step(snap({ entities: [ship(), a, b] }), 0);
+    const boarded = t.step(snap({ entities: [ship(), { ...a, garrisonedIn: 5 }, { ...b, garrisonedIn: 5 }] }), 100);
+    const loads = kinds(boarded, "voice").filter((e) => (e as { event: string }).event === "load");
+    assert.equal(loads.length, 1);
+    const landed = t.step(snap({ entities: [ship(), a, b] }), 200);
+    assert.equal(kinds(landed, "unitsfx").length, 1, "the ramp clangs once");
+    assert.equal(kinds(landed, "voice").filter((e) => (e as { event: string }).event === "special").length, 1);
+  });
+});

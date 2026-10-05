@@ -44,7 +44,9 @@ import {
   infantryLoadout,
   isCivilianType,
   isDefenceStructure,
+  garrisonCandidate,
   isGarrisonable,
+  tankDeckOf,
   isHiddenField,
   hasSpotlight,
   isInfantryType,
@@ -780,10 +782,14 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
       : "";
   const garrison =
     e.garrison && !isTransportType(e.type) && e.type !== "supply"
-      ? `  ·  garrison ${e.garrison.count}/${e.garrison.cap}${e.garrison.hide ? " hide" : e.garrison.count ? " watch" : ""}`
-      : e.garrisonedIn
-        ? "  ·  inside"
-        : "";
+      ? tankDeckOf(e.type)
+        ? `  ·  deck ${e.garrison.count}/${e.garrison.cap}`
+        : `  ·  garrison ${e.garrison.count}/${e.garrison.cap}${e.garrison.hide ? " hide" : e.garrison.count ? " watch" : ""}`
+      : e.mountedGun != null
+        ? "  ·  on the deck MG"
+        : e.garrisonedIn
+          ? "  ·  inside"
+          : "";
   const capturing =
     e.capture && e.capture.progress > 0 ? `  ·  capturing ${Math.round(e.capture.progress * 100)}%` : "";
   const holding = e.patrol?.length
@@ -1072,6 +1078,7 @@ const TYPE_ORDER: EntityType[] = [
   "submarine",
   "battleship",
   "destroyer",
+  "lst",
   "rifleman",
   "gunner",
   "sniper",
@@ -2033,12 +2040,15 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   if (buildings.some((e) => e.type !== "core" && !isCivilianType(e.type))) {
     out.push({ slot: "sell", act: "sell", label: "Sell", title: "Sell selected structures" });
   }
-  if (houses.length && units.some((e) => isInfantryType(e.type))) {
+  const deck = houses.find((e) => tankDeckOf(e.type));
+  if (houses.some((h) => units.some((e) => e.id !== h.id && garrisonCandidate(h.type, e.type)))) {
     out.push({
       slot: "garrison",
       act: "garrison",
-      label: "Enter",
-      title: `Garrison infantry (${GARRISON_HOTKEY.toUpperCase()})`,
+      label: deck ? "Board" : "Enter",
+      title: deck
+        ? `Up the bow ramp: infantry and vehicles, by the room they take (${GARRISON_HOTKEY.toUpperCase()})`
+        : `Garrison infantry (${GARRISON_HOTKEY.toUpperCase()})`,
     });
   }
   if (
@@ -2048,8 +2058,10 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
     out.push({
       slot: "ungarrison",
       act: "ungarrison",
-      label: "Exit",
-      title: `Leave the building (${GARRISON_HOTKEY.toUpperCase()})`,
+      label: deck ? "Unload" : "Exit",
+      title: deck
+        ? `Bow doors open, ramp down: everyone aboard goes ashore. The bow must be on the beach (${GARRISON_HOTKEY.toUpperCase()})`
+        : `Leave the building (${GARRISON_HOTKEY.toUpperCase()})`,
     });
   }
   const tanks = units.filter((e) => hasScout(e.type) && (e.scout?.hpMax ?? 0) > 0);
@@ -2318,7 +2330,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   }
   if (act === "garrison") {
     const house = selected.find((e) => isGarrisonable(e.type) && e.hp > 0);
-    const inf = units.filter((e) => isInfantryType(e.type));
+    const inf = house ? units.filter((e) => e.id !== house.id && garrisonCandidate(house.type, e.type)) : [];
     if (house && inf.length) ctx.net.send({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: house.id });
     return;
   }

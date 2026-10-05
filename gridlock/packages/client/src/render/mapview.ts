@@ -58,6 +58,7 @@ import {
   connectPatrolPoints,
   garrisonWindowLift,
   hasScout,
+  garrisonCandidate,
   isGarrisonable,
   immobilized,
   heightAt,
@@ -555,6 +556,7 @@ const EXTRUDE: Record<EntityType, number> = {
   submarine: 7,
   battleship: 20,
   destroyer: 14,
+  lst: 16,
   aswheli: 8,
   torpedo: 2,
   cottage: 28,
@@ -597,7 +599,7 @@ function ownerAllied(match: MatchSnapshot, ownerId: string | undefined): boolean
 /** How much of a submerged submarine its owner still sees through the water. */
 const SUBMERGED_ALPHA = 0.5;
 /** Hull fires on a sunk ship sit this share of the usual height: the hulk rides low in the water. */
-const WRECK_FIRE_LIFT: Partial<Record<EntityType, number>> = { gunboat: 0.75, destroyer: 0.5, battleship: 0.3 };
+const WRECK_FIRE_LIFT: Partial<Record<EntityType, number>> = { gunboat: 0.75, destroyer: 0.5, lst: 0.45, battleship: 0.3 };
 /** Half a torpedo's drawn length, world px, and how far behind it its wake trails, in body halves. */
 const TORPEDO_BODY_HALF = 7;
 /** A Battle Ship shell's smoke trail is this many times a mortar bomb's. */
@@ -2557,8 +2559,8 @@ export class MapView {
   private garrisonHotkey(): void {
     const you = this.curr.youPlayerId;
     const own = this.curr.entities.filter((e) => this.selected.has(e.id) && e.ownerId === you && !e.wreck);
-    const inf = own.filter((e) => e.kind === "unit" && isInfantryType(e.type));
     const house = this.curr.entities.find((e) => this.selected.has(e.id) && isGarrisonable(e.type) && e.hp > 0);
+    const inf = house ? own.filter((e) => e.kind === "unit" && e.id !== house.id && garrisonCandidate(house.type, e.type)) : [];
     if (house && inf.length) {
       this.command({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: house.id });
       return;
@@ -3292,7 +3294,7 @@ export class MapView {
       return;
     }
     if (action === "garrison" && hit) {
-      const inf = own.filter((e) => e.kind === "unit" && isInfantryType(e.type) && e.garrisonedIn !== hit.id);
+      const inf = own.filter((e) => e.kind === "unit" && garrisonCandidate(hit.type, e.type) && e.garrisonedIn !== hit.id);
       if (inf.length) this.command({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: hit.id });
       return;
     }

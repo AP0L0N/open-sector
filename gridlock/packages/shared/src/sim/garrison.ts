@@ -1,9 +1,10 @@
 import { buildingRect, buildingTilesOf, isTurnedBuilding, rectWorld } from "../building-rect.js";
 import {
+  bayLoadOf,
   catalog,
   fieldSpan,
   GARRISON_STRUCTURAL_CALIBER,
-  garrisonAdmits,
+  garrisonCandidate,
   garrisonCapOf,
   garrisonFloorsOf,
   garrisonHpMulOf,
@@ -13,12 +14,14 @@ import {
   isCivilianType,
   isGarrisonable,
   isInfantryType,
+  LST_TUB_EXPOSURE,
   NEUTRAL_OWNER,
 } from "../catalog.js";
 import { sightTilesForEntity } from "./elevation.js";
 import { takeDamage } from "./crits.js";
 import { nextRand } from "./rng.js";
 import { adjacentToBuilding, allies, inBounds, nearestWalkable, tileCenter, walkable, worldToTile } from "./geo.js";
+import { atRamp, deckGunners, isTankDeck, rampExitTile, rampLandings, rampPoint, tubPoint } from "./lst.js";
 import { astar, setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -111,6 +114,8 @@ function vacateIfEmpty(state: MatchState, house: Entity): void {
 }
 
 function scaleGarrisonHp(unit: Entity, house: Entity): void {
+  // A tank on an LST's deck is still a tank: only soldiers get the cover.
+  if (!isInfantryType(unit.type)) return;
   const mul = garrisonHpMulOf(house.type);
   const base = catalog(unit.type).hp;
   const ratio = unit.hpMax > 0 ? unit.hp / unit.hpMax : 1;
@@ -165,6 +170,18 @@ export function woundGarrison(state: MatchState, house: Entity, incoming: number
   }
 }
 
+/**
+ * A hit on an LST's hull. Most rounds find only plate, but some reach a manned tub;
+ * its shield takes most of that (garrisonWoundMul), the way a Bunker's slit does.
+ */
+export function woundDeckGunners(state: MatchState, ship: Entity, incoming: number): void {
+  if (!isTankDeck(ship) || ship.hp <= 0 || incoming <= 0) return;
+  const crew = deckGunners(state, ship);
+  if (crew.length === 0 || nextRand(state) >= LST_TUB_EXPOSURE) return;
+  const u = crew[Math.floor(nextRand(state) * crew.length)]!;
+  woundOccupant(u, incoming * garrisonWoundMulOf(ship.type) * (0.4 + nextRand(state) * 0.7), state.tick);
+}
+
 function woundOccupant(unit: Entity, raw: number, tick: number): void {
   const dmg = Math.max(1, Math.round(raw));
   takeDamage(unit, dmg, tick);
@@ -175,14 +192,32 @@ function woundOccupant(unit: Entity, raw: number, tick: number): void {
   unit.attackTarget = null;
 }
 
+/** Room left inside. A tank deck counts each body's load (bayLoadOf); everything else counts heads. */
 export function garrisonSpace(state: MatchState, house: Entity): number {
-  return Math.max(0, garrisonCapOf(house.type) - livingGarrison(state, house).length);
+  let used = 0;
+  for (const u of livingGarrison(state, house)) used += bayLoadOf(house.type, u.type);
+  return Math.max(0, garrisonCapOf(house.type) - used);
+}
+
+/** Why this vehicle cannot drive up a tank deck's ramp now, or null. */
+function deckVehicleBusy(unit: Entity): string | null {
+  if (unit.braced || unit.state === "deploy" || unit.state === "undeploy") return "Pack up to move.";
+  if (unit.towing != null) return "Unhitch the gun first.";
+  if (unit.towedBy != null) return "The gun is on a tow.";
+  return null;
 }
 
 export function canGarrison(state: MatchState, unit: Entity, house: Entity): string | null {
-  if (!isInfantryType(unit.type) || unit.kind !== "unit" || unit.wreck) return "Only infantry can garrison.";
+  if (unit.kind !== "unit" || unit.wreck) return "Only infantry can garrison.";
   if (!isGarrisonable(house.type) || house.hp <= 0 || house.wreck) return "Cannot enter that.";
-  if (!garrisonAdmits(house.type, unit.type)) return `${catalog(unit.type).name} cannot enter the ${catalog(house.type).name}.`;
+  if (!isInfantryType(unit.type) && !garrisonCandidate(house.type, unit.type)) {
+    return isTankDeck(house) ? `The ${catalog(unit.type).name} cannot board.` : "Only infantry can garrison.";
+  }
+  if (!garrisonCandidate(house.type, unit.type)) return `${catalog(unit.type).name} cannot enter the ${catalog(house.type).name}.`;
+  if (!isInfantryType(unit.type)) {
+    const busy = deckVehicleBusy(unit);
+    if (busy) return busy;
+  }
   const occ = garrisonOwner(state, house);
   if (occ && occ !== NEUTRAL_OWNER && !allies(state, unit.ownerId, occ)) return "Held by the enemy.";
   if (
@@ -193,7 +228,11 @@ export function canGarrison(state: MatchState, unit: Entity, house: Entity): str
   ) {
     return "Held by the enemy.";
   }
-  if (garrisonSpace(state, house) <= 0) return house.kind === "unit" ? `The ${catalog(house.type).name} is full.` : "Building is full.";
+  const room = garrisonSpace(state, house);
+  if (isTankDeck(house) && unit.garrisonedIn !== house.id && room < bayLoadOf(house.type, unit.type)) {
+    return room <= 0 ? `The ${catalog(house.type).name} is full.` : `No room for a ${catalog(unit.type).name} on the deck.`;
+  }
+  if (room <= 0) return house.kind === "unit" ? `The ${catalog(house.type).name} is full.` : "Building is full.";
   return null;
 }
 
@@ -210,6 +249,7 @@ export function approachTile(
   house: Entity,
   from?: Entity,
 ): { x: number; y: number } | null {
+  if (house.kind === "unit" && isTankDeck(house)) return beachTile(state, house, from);
   if (house.kind === "unit") return besideHull(state, house);
   const type = from?.type ?? "rifleman";
   const ring: { x: number; y: number }[] = [];
@@ -275,6 +315,21 @@ function besideHull(state: MatchState, hull: Entity): { x: number; y: number } |
   return nearestWalkable(state, worldToTile(hull.x, ts), worldToTile(hull.y, ts), "rifleman");
 }
 
+/**
+ * Where a unit stands to walk up an LST's ramp: the dry tile nearest the ramp foot,
+ * or failing that (the bow is out at sea) the ground nearest it, to wait there.
+ */
+function beachTile(state: MatchState, ship: Entity, from?: Entity): { x: number; y: number } | null {
+  const type = from?.type ?? "rifleman";
+  const dry = rampLandings(state, ship, type)[0];
+  if (dry) return dry;
+  const foot = rampPoint(ship);
+  const ts = state.tileSize;
+  const fx = Math.max(0, Math.min(state.width - 1, worldToTile(foot.x, ts)));
+  const fy = Math.max(0, Math.min(state.height - 1, worldToTile(foot.y, ts)));
+  return nearestWalkable(state, fx, fy, type);
+}
+
 export function enterGarrison(state: MatchState, unit: Entity, house: Entity): boolean {
   if (canGarrison(state, unit, house)) return false;
   unit.garrisonedIn = house.id;
@@ -286,6 +341,7 @@ export function enterGarrison(state: MatchState, unit: Entity, house: Entity): b
   unit.waypoints = [];
   unit.order = null;
   unit.attackTarget = null;
+  unit.orderQueue = undefined;
   unit.state = "garrison";
   if (isCivilianType(house.type)) {
     house.ownerId = NEUTRAL_OWNER;
@@ -312,12 +368,21 @@ export function claimNeutral(state: MatchState, building: Entity, ownerId: strin
   if (p) state.pendingComms.push(`${p.name} took a ${catalog(building.type).name}.`);
 }
 
+/**
+ * Out of the house, hull, or ship, onto the ground beside it, and on to `dest`.
+ * False when the unit has to stay put: an LST whose bow ramp is not on dry ground.
+ */
 export function exitGarrison(
   state: MatchState,
   unit: Entity,
   dest?: { x: number; y: number },
-): void {
+  taken?: { x: number; y: number; r: number }[],
+): boolean {
   const house = unit.garrisonedIn != null ? state.entities.get(unit.garrisonedIn) : undefined;
+  const beach = house && isTankDeck(house) ? rampExitTile(state, house, unit, taken) : undefined;
+  if (beach === null) return false;
+  // Riders of a truck parked on a deck stay in the truck until it rolls off.
+  if (house?.garrisonedIn != null) return false;
   unscaleGarrisonHp(unit);
   unit.garrisonedIn = null;
   unit.state = "idle";
@@ -325,20 +390,24 @@ export function exitGarrison(
     house.garrison = house.garrison.filter((id) => id !== unit.id);
     vacateIfEmpty(state, house);
   }
-  const near = house
-    ? approachTile(state, house)
-    : nearestWalkable(state, worldToTile(unit.x, state.tileSize), worldToTile(unit.y, state.tileSize), unit.type);
+  const near =
+    beach ??
+    (house
+      ? approachTile(state, house)
+      : nearestWalkable(state, worldToTile(unit.x, state.tileSize), worldToTile(unit.y, state.tileSize), unit.type));
   if (near) {
     unit.x = tileCenter(near.x, state.tileSize);
     unit.y = tileCenter(near.y, state.tileSize);
     unit.tileX = near.x;
     unit.tileY = near.y;
   }
+  if (beach) taken?.push({ x: unit.x, y: unit.y, r: unit.radius });
   if (dest) {
     unit.order = { kind: "move", x: dest.x, y: dest.y };
     unit.state = "move";
     setPath(state, unit, dest.x, dest.y);
   }
+  return true;
 }
 
 /** House destroyed: occupants take 0–100% of max HP, then spill onto the street. */
@@ -469,6 +538,11 @@ export function garrisonMuzzleToward(
   const house = state.entities.get(unit.garrisonedIn);
   if (!house) return null;
   const ang = Math.atan2(aimY - house.y, aimX - house.x);
+  if (house.kind === "unit" && isTankDeck(house)) {
+    // The round leaves the gunner's tub, a hair past its shield toward the aim.
+    const tub = tubPoint(house, unit.mountedGun ?? 0);
+    return { x: tub.x + Math.cos(ang) * 6, y: tub.y + Math.sin(ang) * 6, house };
+  }
   if (house.kind === "unit") {
     // A hull's slits ring its deck: the round leaves just past the plate on the side that faces the aim.
     const out = house.radius + 4;
@@ -532,6 +606,10 @@ export function tickGarrison(state: MatchState): void {
       e.state = "idle";
       continue;
     }
+    if (house.kind === "unit" && isTankDeck(house)) {
+      boardLst(state, e, house);
+      continue;
+    }
     if (house.kind === "unit") {
       boardHull(state, e, house);
       continue;
@@ -565,6 +643,27 @@ function boardHull(state: MatchState, e: Entity, hull: Entity): void {
 
 const HULL_BOARD_SLACK = 10;
 
+/**
+ * Up the bow ramp once the unit stands at its foot. Until then it makes for the beach
+ * by the ramp; with the bow still out at sea it waits on the nearest ground.
+ */
+function boardLst(state: MatchState, e: Entity, ship: Entity): void {
+  if (atRamp(state, e, ship)) {
+    enterGarrison(state, e, ship);
+    return;
+  }
+  e.state = "move";
+  if (e.waypoints.length > 0 && state.tick % 8 !== 0) return;
+  const t = beachTile(state, ship, e);
+  if (!t) return;
+  const ts = state.tileSize;
+  if (worldToTile(e.x, ts) === t.x && worldToTile(e.y, ts) === t.y) {
+    e.waypoints = [];
+    return;
+  }
+  setPath(state, e, tileCenter(t.x, ts), tileCenter(t.y, ts));
+}
+
 /** Soldiers inside a hull ride on it: sight and shots leave from where it is now. */
 export function syncHullGarrisons(state: MatchState): void {
   for (const hull of state.entities.values()) {
@@ -584,6 +683,8 @@ export function syncHullGarrisons(state: MatchState): void {
  */
 export function killGarrison(state: MatchState, hull: Entity): Entity[] {
   const units = livingGarrison(state, hull);
+  // A truck or a Mammoth on an LST's deck takes its own riders down with it.
+  for (const u of [...units]) if (u.garrison.length) units.push(...killGarrison(state, u));
   for (const u of units) {
     u.hp = 0;
     u.state = "dead";

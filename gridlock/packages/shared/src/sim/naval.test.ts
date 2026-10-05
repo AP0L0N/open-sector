@@ -572,11 +572,13 @@ describe("Submarine runs submerged", () => {
 
 describe("boats turn before they move", () => {
   it("swings the bow onto the course before it makes way", () => {
-    const { state, lx0, ly0 } = harbour();
+    const shared = harbour();
     const ships = TRAIN_TYPES.filter((t) => isNavalType(t));
-    assert.deepEqual([...ships].sort(), ["battleship", "destroyer", "gunboat", "submarine", "supplyboat"]);
+    assert.deepEqual([...ships].sort(), ["battleship", "destroyer", "gunboat", "lst", "submarine", "supplyboat"]);
     for (const type of ships) {
       assert.equal(catalog(type).turnInPlace, true, `${type} turns before it moves`);
+      // The LST is as long as the Battle Ship is wide: it gets a lake of its own.
+      const { state, lx0, ly0 } = type === "lst" ? harbour() : shared;
       const lane = type === "gunboat" ? 3 : type === "submarine" ? 7 : type === "supplyboat" ? 11 : type === "destroyer" ? 15 : 24;
       const boat = spawn(state, type, "A", lx0 + 25, ly0 + lane);
       boat.facing = 0;

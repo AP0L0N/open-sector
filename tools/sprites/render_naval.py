@@ -15,6 +15,11 @@ splinter camo, and outline as render_procedural.py and render_mammoth.py.
              aft under a gray team-tint roof, an open well forward stacked
              with banded ammunition crates and drums, a small derrick, and
              fenders along the topsides. Same waterline cut.
+  lst        the Transport LST: a long slab-sided landing ship in Western
+             Approaches dazzle, bow doors, a flat weather deck with a gray
+             team-tint hatch, the bridge aft under a team-tint roof, a single
+             funnel, two MG tubs (LST_BOW_TUB_AT / LST_AFT_TUB_AT), and LCVPs
+             in davits. Same waterline cut.
 
 Row 0 = bow screen-south, then clockwise 22.5° through row 15. No insignia.
 
@@ -26,6 +31,8 @@ Row 0 = bow screen-south, then clockwise 22.5° through row 15. No insignia.
       --out gridlock/packages/client/src/assets/units/supplyboat/hull
   python tools/sprites/render_naval.py destroyer \\
       --out gridlock/packages/client/src/assets/units/destroyer/hull
+  python tools/sprites/render_naval.py lst \\
+      --out gridlock/packages/client/src/assets/units/lst/hull
 """
 
 from __future__ import annotations
@@ -37,7 +44,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from render_procedural import Mesh, ellipse_ring, render_turntable
+from render_procedural import MAT, Mesh, ellipse_ring, hex_rgb, render_turntable
 
 
 def cyl(m: Mesh, c: tuple[float, float, float], axis: int, r: float, h: float, mat: str, n: int = 12) -> None:
@@ -338,6 +345,203 @@ def render_destroyer(out: Path, cell: int = 256, ss: int = 4) -> None:
     write_cameo(out, out.parent.parent / "destroyer-cameo.png")
 
 
+# Transport LST palette: Western Approaches, a pale grey hull broken by pale
+# blue and sea-green dazzle panels, a dark steel deck. Own keys, so no other
+# hull changes colour.
+MAT.update(
+    {
+        "lstpale": (hex_rgb("#c6d0cd"), 0.08, 1.0),
+        "lstblue": (hex_rgb("#86a3b2"), 0.08, 1.0),
+        "lstgreen": (hex_rgb("#8fb4a5"), 0.08, 1.0),
+        "lstdeck": (hex_rgb("#6c7371"), 0.04, 1.0),
+        "lstdoor": (hex_rgb("#949f9e"), 0.10, 1.0),
+        "lstboat": (hex_rgb("#7d8a74"), 0.06, 1.0),
+    }
+)
+
+# Transport LST half-length (model meters). The sim radius is 30 against the
+# Destroyer's 22, so the hull is the Destroyer's half-length (13.9 m) x 30/22.
+LST_HALF_LENGTH = 19.0
+# MG tubs as a share of LST_HALF_LENGTH forward of amidships (+ = forward, bow = +1.0):
+# the client puts the muzzle flashes here. Both sit on the keel line (y = 0).
+LST_BOW_TUB_AT = 0.72  # forecastle tub, just aft of the bow doors
+LST_AFT_TUB_AT = -0.45  # tub on the bridge front, between the bridge wings
+
+
+def lst_ring(x: float, hb: float, dz: float, keel: float) -> list[np.ndarray]:
+    """Slab-sided, flat-bottomed section, port deck edge round to starboard and back under the keel.
+
+    Each topside is split at half freeboard so the dazzle can step between an upper and a lower band.
+    Segments: 0-1 deck, 2 starboard upper, 3 starboard lower, 4-6 bottom, 7 port lower, 8 port upper.
+    """
+    mid = dz * 0.5
+    return [
+        np.array([x, hb, dz]),
+        np.array([x, 0.0, dz + 0.04]),
+        np.array([x, -hb, dz]),
+        np.array([x, -hb, mid]),
+        np.array([x, -hb, keel + 0.35]),
+        np.array([x, -hb * 0.82, keel]),
+        np.array([x, hb * 0.82, keel]),
+        np.array([x, hb, keel + 0.35]),
+        np.array([x, hb, mid]),
+    ]
+
+
+def lst_dazzle(x: float, band: int, side: int) -> str:
+    """Western Approaches dazzle: long panels, different on each side, stepped between bands."""
+    k = math.floor(x * 0.21 + band * 0.55 + (0.9 if side > 0 else 0.0))
+    return ("lstpale", "lstblue", "lstpale", "lstgreen")[k % 4]
+
+
+def lcvp(m: Mesh, cx: float, cy: float, z: float) -> None:
+    """LCVP landing craft hung in its davits: a blunt box hull, an open well, a ramp bow."""
+    m.box((cx - 1.75, cy - 0.58, z), (cx + 1.6, cy + 0.58, z + 0.7), "lstboat", top_mat="metal")
+    m.box((cx - 1.75, cy - 0.58, z + 0.55), (cx - 0.9, cy + 0.58, z + 0.85), "lstboat")  # coxswain's flat aft
+    m.box((cx + 1.55, cy - 0.55, z + 0.05), (cx + 1.8, cy + 0.55, z + 0.78), "metal")  # bow ramp
+
+
+def build_lst() -> Mesh:
+    """Transport LST in meters, about 6:1 length to beam. +x bow, +y port, +z up. Waterline at z=0.
+
+    A long, slab-sided, flat-bottomed hull with a high freeboard, painted in a
+    Western Approaches dazzle; a blunt bow closed by two bow doors over the
+    ramp, and a raised forecastle carrying an open MG tub. The long flat weather
+    deck over the tank deck has the big loading hatch (gray team-tint cover)
+    and the vehicle-lift plate. Aft, the stepped superstructure: a bridge with
+    glazing and its own team-tint roof, bridge wings, a second MG tub on the
+    bridge front, a pole mast with struts and a yard, and a single raked funnel.
+    Two LCVPs hang in davits down each side ahead of the superstructure.
+    """
+    m = Mesh()
+    H = LST_HALF_LENGTH
+    hb = 3.15
+    keel = -1.0
+    deck = 2.0
+    fc = 2.38  # forecastle deck
+    stations = [
+        (19.2, 1.05, fc + 0.05),
+        (18.7, 2.2, fc + 0.02),
+        (17.6, 2.9, fc),
+        (16.0, hb, fc),
+        (12.45, hb, fc),
+        (12.3, hb, deck),
+        (9.0, hb, deck),
+        (5.0, hb, deck),
+        (1.0, hb, deck),
+        (-3.0, hb, deck),
+        (-7.0, hb, deck),
+        (-11.0, hb, deck),
+        (-14.5, hb, deck),
+        (-16.8, 3.08, deck),
+        (-18.4, 2.85, deck),
+        (-19.0, 2.55, deck),
+    ]
+    rings = [lst_ring(x, b, dz, keel) for x, b, dz in stations]
+    xs = [x for x, _, _ in stations]
+
+    def hull_mat(r: int, s: int) -> str:
+        if s in (0, 1):
+            return "lstdeck"
+        xm = (xs[r] + xs[r + 1]) / 2
+        if s == 2:
+            return lst_dazzle(xm, 0, -1)
+        if s == 3:
+            return lst_dazzle(xm, 1, -1)
+        if s == 8:
+            return lst_dazzle(xm, 0, 1)
+        if s == 7:
+            return lst_dazzle(xm, 1, 1)
+        return "lstpale"
+
+    m.loft(rings, hull_mat, cap0=False, cap1=False)
+    # Bow doors over the ramp: the blunt bow face, split down the middle by a dark seam.
+    bow = [m.v(p) for p in rings[0]]
+    ctr = m.v(np.mean(rings[0], axis=0))
+    for s in range(len(bow)):
+        m.tri(ctr, bow[s], bow[(s + 1) % len(bow)], "lstdoor")
+    m.box((19.18, -0.05, 0.0), (19.3, 0.05, fc + 0.05), "tire")
+    m.box((19.0, -1.1, fc - 0.05), (19.32, 1.1, fc + 0.12), "metal")  # door hinge beam
+    # Square stern.
+    stern = [m.v(p) for p in rings[-1]]
+    ctr = m.v(np.mean(rings[-1], axis=0))
+    for s in range(len(stern)):
+        m.tri(ctr, stern[s], stern[(s + 1) % len(stern)], "lstpale")
+    # Low bulwark round the forecastle.
+    for oy in (-1, 1):
+        m.box((12.45, oy * hb - 0.06, fc), (17.4, oy * hb + 0.06, fc + 0.3), "lstpale")
+    # Bow MG tub on the forecastle: an open round tub, a dark well, the gun pointing forward.
+    bx = LST_BOW_TUB_AT * H
+    cyl(m, (bx, 0.0, fc + 0.3), 2, 0.85, 0.6, "lstpale", 16)
+    ellipse(m, fc + 0.61, bx, 0.0, 0.68, 0.68, "tire", 16)
+    cyl(m, (bx, 0.0, fc + 0.7), 2, 0.22, 0.3, "metal", 8)
+    cyl(m, (bx + 1.0, 0.0, fc + 0.85), 0, 0.07, 1.6, "metal", 6)
+    # Weather deck over the tank deck: the big loading hatch (team cover) and the vehicle-lift plate.
+    m.box((2.5, -1.75, deck), (9.5, 1.75, deck + 0.3), "metal")
+    m.box((2.65, -1.6, deck + 0.3), (9.35, 1.6, deck + 0.36), "team")
+    for hx in (4.3, 6.0, 7.7):
+        m.box((hx - 0.05, -1.6, deck + 0.36), (hx + 0.05, 1.6, deck + 0.4), "metal")  # cover battens
+    m.box((-3.8, -1.35, deck), (0.6, 1.35, deck + 0.08), "metal")
+    m.box((-3.8, -1.35, deck + 0.08), (-3.55, 1.35, deck + 0.1), "hazard")
+    m.box((0.35, -1.35, deck + 0.08), (0.6, 1.35, deck + 0.1), "hazard")
+    for vx, vy in ((10.6, 2.1), (10.6, -2.1), (-5.5, 1.0), (-5.5, -1.0)):  # ventilators
+        cyl(m, (vx, vy, deck + 0.35), 2, 0.22, 0.7, "lstpale", 8)
+        ellipse(m, deck + 0.71, vx, vy, 0.16, 0.16, "tire", 8)
+    # Davits and their LCVPs, two down each side ahead of the superstructure.
+    for oy in (-1, 1):
+        for bx_ in (-1.4, -5.3):
+            for dx in (-1.25, 1.25):
+                m.box((bx_ + dx - 0.08, oy * hb - 0.08, deck), (bx_ + dx + 0.08, oy * hb + 0.08, deck + 1.25), "metal")
+                y0, y1 = sorted((oy * hb, oy * (hb + 0.85)))
+                m.box((bx_ + dx - 0.08, y0, deck + 1.15), (bx_ + dx + 0.08, y1, deck + 1.3), "metal")
+            lcvp(m, bx_, oy * (hb + 0.75), deck - 0.35)
+    # Superstructure aft: a long deckhouse, then the bridge with its glazing and team roof.
+    s0, s1 = -17.6, -7.8
+    m.box((s0, -2.9, deck), (s1, 2.9, deck + 1.4), "lstblue", top_mat="lstdeck")
+    m.box((s0 + 0.2, -2.95, deck + 0.95), (s1 + 0.2, 2.95, deck + 1.4), "lstpale", top_mat="lstdeck")
+    b0, b1 = -12.6, -8.2
+    m.box((b0, -2.2, deck + 1.4), (b1, 2.2, deck + 2.8), "lstpale")
+    m.box((b1 - 0.02, -2.0, deck + 2.1), (b1 + 0.05, 2.0, deck + 2.55), "glass")
+    m.box((b0 - 0.1, -2.3, deck + 2.8), (b1 + 0.1, 2.3, deck + 2.94), "team")
+    # Bridge wings, out to the ship's side.
+    m.box((b1 - 0.9, -3.25, deck + 2.6), (b1 + 0.1, 3.25, deck + 2.75), "lstpale")
+    # Aft MG tub on the bridge front, between the wings.
+    ax = LST_AFT_TUB_AT * H
+    cyl(m, (ax, 0.0, deck + 3.2), 2, 0.7, 0.55, "lstpale", 16)
+    ellipse(m, deck + 3.48, ax, 0.0, 0.55, 0.55, "tire", 16)
+    cyl(m, (ax, 0.0, deck + 3.55), 2, 0.2, 0.25, "metal", 8)
+    cyl(m, (ax + 0.95, 0.0, deck + 3.7), 0, 0.06, 1.4, "metal", 6)
+    # Pole mast with two struts, a yard, and a crow's nest.
+    mx = -10.9
+    cyl(m, (mx, 0.0, deck + 5.0), 2, 0.09, 4.4, "metal", 6)
+    for oy in (-0.9, 0.9):
+        steps = 5
+        for k in range(steps):
+            t = (k + 0.5) / steps
+            cyl(m, (mx - 0.8 * (1 - t), oy * (1 - t), deck + 2.94 + t * 2.6), 2, 0.05, 2.6 / steps + 0.05, "metal", 5)
+    m.box((mx - 0.06, -1.3, deck + 6.3), (mx + 0.06, 1.3, deck + 6.4), "metal")
+    cyl(m, (mx, 0.0, deck + 5.6), 2, 0.3, 0.3, "lstpale", 10)
+    # Single raked funnel aft of the bridge, a dark cap.
+    fx = -14.6
+    stack = [flat_ring(fx - dz * 0.22, 0.0, deck + 1.4 + dz, 1.15, 0.9, 14) for dz in (0.0, 2.9, 3.5)]
+    m.loft(stack, lambda r, s: "tire" if r == 1 else "lstpale")
+    ellipse(m, deck + 4.92, fx - 3.5 * 0.22, 0.0, 1.0, 0.78, "tire", 14)  # open funnel top
+    # A pair of liferafts on the deckhouse roof aft.
+    for oy in (-1.6, 1.6):
+        m.box((-17.2, oy - 0.4, deck + 1.4), (-16.0, oy + 0.4, deck + 1.65), "hazard")
+    return m
+
+
+def render_lst(out: Path, cell: int = 384, ss: int = 4) -> None:
+    # The Destroyer's meters -> px (NAVAL_SCALE * 0.55 on a 256 cell), on a 384 cell so the
+    # longer hull fits; the client fits the sheet to its own draw size, so only the cell grows.
+    render_turntable(
+        build_lst(), out, "lst_hull", "lst-hull.json", NAVAL_SCALE * 0.55 * 256 / cell, NAVAL_Z_MID,
+        cy_frac=0.56, cell=cell, ss=ss, clip_z=0.0, underlay=build_wake(20.9, 4.6),
+    )
+    write_cameo(out, out.parent.parent / "lst-cameo.png")
+
+
 def write_cameo(faces: Path, path: Path) -> None:
     """72x72 cameo from the south-east face."""
     face = Image.open(faces / "0015.png").convert("RGBA")
@@ -352,7 +556,7 @@ def write_cameo(faces: Path, path: Path) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["gunboat", "submarine", "supplyboat", "destroyer"])
+    ap.add_argument("what", choices=["gunboat", "submarine", "supplyboat", "destroyer", "lst"])
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     if args.what == "gunboat":
@@ -361,6 +565,8 @@ def main() -> None:
         render_supplyboat(Path(args.out))
     elif args.what == "destroyer":
         render_destroyer(Path(args.out))
+    elif args.what == "lst":
+        render_lst(Path(args.out))
     else:
         render_submarine(Path(args.out))
 

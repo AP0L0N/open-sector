@@ -397,3 +397,22 @@ describe("resolveHoverAction field gun", () => {
     assert.equal(act({ selected: [rifle], hit: gun({ ownerId: FOE }) }), "attack");
   });
 });
+
+describe("Transport LST boarding cursor", () => {
+  const lst = unit({ id: 50, type: "lst", hp: 700, garrison: { count: 0, cap: 40 } });
+
+  it("offers a tank or a soldier your LST's ramp", () => {
+    assert.equal(act({ selected: [unit({ id: 1, type: "warden", hp: 120 })], hit: lst }), "garrison");
+    assert.equal(act({ selected: [unit({ id: 2, type: "rifleman" })], hit: lst }), "garrison");
+  });
+
+  it("still keeps a tank out of a Bunker", () => {
+    const bunker = building({ id: 60, type: "bunker", garrison: { count: 0, cap: 5 } });
+    assert.notEqual(act({ selected: [unit({ id: 1, type: "warden", hp: 120 })], hit: bunker }), "garrison");
+  });
+
+  it("does not offer a boat or the LST itself a ride", () => {
+    assert.notEqual(act({ selected: [unit({ id: 3, type: "gunboat", hp: 70 })], hit: lst }), "garrison");
+    assert.notEqual(act({ selected: [lst], hit: lst }), "garrison");
+  });
+});
