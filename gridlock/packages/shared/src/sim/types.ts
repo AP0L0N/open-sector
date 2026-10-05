@@ -447,6 +447,13 @@ export interface Entity {
   mgCooldown: number;
   /** Unit is inside this building id. */
   garrisonedIn: number | null;
+  /**
+   * Manning a Transport LST deck tub: he fires DECK_MG in place of his own weapon.
+   * Index of the tub in LST_MG_AT. Set and cleared by syncLstCrew.
+   */
+  mountedGun?: number;
+  /** His own clip while he is on the tub, given back when he steps off it. */
+  ownClip?: number;
   /** Unit ids occupying a garrisonable building. */
   garrison: number[];
   /** Occupants shuttered: tiny sight, no fire, occupancy hidden from enemies. */
@@ -864,4 +871,10 @@ export interface MatchState {
   bodies: CorpseView[];
   /** Heavy-shell craters. Not entities. */
   holes: ShellHoleView[];
+  /** Blast points each tile has soaked toward its next dig, by tile index. See BLAST_DIG_PER_LEVEL. */
+  blast: Map<number, number>;
+  /** Tiles a blast has sunk, by tile index: the height `heights` now holds there. */
+  dug: Map<number, number>;
+  /** Bumps on every dig, so cached sight rebuilds over the new ground. */
+  digRev: number;
 }

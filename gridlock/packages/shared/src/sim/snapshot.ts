@@ -28,6 +28,7 @@ import {
   hasScout,
   hasTurret,
   isGarrisonable,
+  tankDeckOf,
   isInfantryType,
   isSupplyCarrier,
   isTransportType,
@@ -47,6 +48,7 @@ import { crateViews, mineViews, payloadOf, planeRiders } from "./airdrop.js";
 import { cyborgShielded } from "./crits.js";
 import { laserProgress } from "./laser.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
+import { deckLoad } from "./lst.js";
 import { allies, unitInWater } from "./geo.js";
 import { diving, hiddenSubmarine } from "./naval.js";
 import { medicTendView } from "./heal.js";
@@ -67,6 +69,13 @@ import type {
   ScrapCell,
   StructureQueueView,
 } from "../protocol.js";
+
+/** Sunk tiles as flat (index, height) pairs for the wire. */
+function dugCells(state: MatchState): number[] {
+  const out: number[] = [];
+  for (const [i, h] of state.dug) out.push(i, h);
+  return out;
+}
 
 function plantRemaining(e: Entity, friendly: boolean): number | undefined {
   if (!friendly) return undefined;
@@ -408,6 +417,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       reload: friendly && (isInfantryType(e.type) || beltOf(e.type)) && e.reload > 0 ? e.reload : undefined,
       bipod: plantRemaining(e, friendly),
       garrisonedIn: friendly && e.garrisonedIn ? e.garrisonedIn : undefined,
+      mountedGun: friendly && e.mountedGun != null ? e.mountedGun : undefined,
       plan: planView(state, e, e.ownerId === youPlayerId),
       garrison: isGarrisonable(e.type)
         ? (() => {
@@ -415,7 +425,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
             const occFriendly = allies(state, youPlayerId, occOwner);
             const conceal = e.garrisonHide && occBars.length > 0 && !occFriendly;
             return {
-              count: conceal ? 0 : occBars.length,
+              count: conceal ? 0 : tankDeckOf(e.type) ? deckLoad(state, e) : occBars.length,
               cap: garrisonCapOf(e.type),
               ownerId: conceal ? undefined : occOwner || undefined,
               bars: conceal || occBars.length === 0 ? undefined : occBars,
@@ -591,6 +601,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     clearedTrees: state.clearedTrees.map((t) => (t.burn ? { x: t.x, y: t.y, burn: true as const } : { x: t.x, y: t.y })),
     bodies: visibleBodies(state, youPlayerId, vis),
     holes: state.holes.map((h) => ({ ...h })),
+    ...(state.dug.size > 0 ? { dug: dugCells(state) } : {}),
     vision: you ? visionRuns(vis) : undefined,
     radar: radar ? radarContacts(state, youPlayerId, vis) : undefined,
     sonar: you ? nonEmpty(sonarContacts(state, youPlayerId)) : undefined,

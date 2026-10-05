@@ -3,7 +3,7 @@
  * deaths, new units, and base alerts are found by comparing one snapshot with the
  * one before. Pure: no audio, no DOM. `game-audio.ts` plays what this returns.
  */
-import { isBuildingType, isInfantryType, type EntityView, type MatchSnapshot } from "@gridlock/shared";
+import { isBuildingType, isInfantryType, tankDeckOf, type EntityView, type MatchSnapshot } from "@gridlock/shared";
 import { movers, type Mover } from "./ambient.js";
 
 export type ImpactSound =
@@ -49,8 +49,11 @@ export type SoundEvent =
   | { kind: "impact"; sound: ImpactSound; x: number; y: number }
   /** An infantryman fell (voice) or a machine was destroyed (sfx). */
   | { kind: "death"; type: string; infantry: boolean; x: number; y: number }
-  /** One of your units speaks without being clicked: it just left the factory, or (special) did its work on its own. */
-  | { kind: "voice"; type: string; event: "ready" | "special" }
+  /**
+   * One of your units speaks without being clicked: it just left the factory, (special) did its work
+   * on its own, or (load) took someone aboard.
+   */
+  | { kind: "voice"; type: string; event: "ready" | "special" | "load" }
   /** A unit's own effect at a point, played without an order: the ASW helicopter settling back on its deck. */
   | { kind: "unitsfx"; type: string; cue: "special"; x: number; y: number }
   | { kind: "announce"; event: AnnounceEvent };
@@ -66,6 +69,7 @@ const FIRE_GAP_MS: Record<string, number> = {
   jumpjet: 260,
   gunboat: 320,
   destroyer: 280,
+  lst: 260,
   fw190: 1500,
   stuka: 500,
   nebelwerfer: 1600,
@@ -78,6 +82,8 @@ const FIRE_GAP_MS: Record<string, number> = {
   tower: 140,
 };
 const DEFAULT_FIRE_GAP_MS = 140;
+/** An LST loading a column calls it once, not once a soldier. */
+const LOAD_LINE_GAP_MS = 6000;
 /**
  * Shells: each is its own report, except where one sample already holds several
  * barrels (the Apocalypse's pair, a battleship broadside, a Stuka's bomb run).
@@ -122,6 +128,7 @@ export class SoundTracker {
   private lastRocket = new Map<number, number>();
   private lastShellFire = new Map<number, number>();
   private lastShieldHit = new Map<number, number>();
+  private lastLoadLine = new Map<number, number>();
   /** Share of health left, not raw hp: bracing or packing up rescales both hp and hpMax. */
   private lastHp = new Map<number, number>();
   private lowPower = false;
@@ -160,7 +167,10 @@ export class SoundTracker {
     }
 
     const fire = (shooterId: number, kind: Weapon) => {
-      const s = byId.get(shooterId);
+      const gunner = byId.get(shooterId);
+      // A soldier on an LST deck tub fires the ship's mount: the ship's gun is what you hear.
+      const deck = gunner?.mountedGun != null && gunner.garrisonedIn != null ? byId.get(gunner.garrisonedIn) : undefined;
+      const s = deck ?? gunner;
       if (!s || s.wreck) return;
       const gap =
         kind === "small"
@@ -176,6 +186,32 @@ export class SoundTracker {
       // Nobody orders the ASW helicopter: its pilot calls the drop himself.
       if (s.type === "aswheli" && s.ownerId === me) out.push({ kind: "voice", type: s.type, event: "special" });
     };
+
+    // Your LST took someone up its ramp, or put them down it onto the beach.
+    const loaded = new Set<number>();
+    const landed = new Set<number>();
+    for (const e of match.entities) {
+      if (e.ownerId !== me || e.kind !== "unit") continue;
+      const prev = this.prevById.get(e.id);
+      if (!prev || prev.garrisonedIn === e.garrisonedIn) continue;
+      const into = e.garrisonedIn != null ? byId.get(e.garrisonedIn) : undefined;
+      const outOf = prev.garrisonedIn != null ? byId.get(prev.garrisonedIn) : undefined;
+      if (into && tankDeckOf(into.type)) loaded.add(into.id);
+      if (outOf && tankDeckOf(outOf.type) && e.garrisonedIn == null) landed.add(outOf.id);
+    }
+    for (const id of landed) {
+      const ship = byId.get(id)!;
+      out.push({ kind: "unitsfx", type: ship.type, cue: "special", x: ship.x, y: ship.y });
+      if (ship.ownerId === me) out.push({ kind: "voice", type: ship.type, event: "special" });
+    }
+    for (const id of loaded) {
+      if (landed.has(id)) continue;
+      const ship = byId.get(id)!;
+      if (ship.ownerId === me && now - (this.lastLoadLine.get(id) ?? -Infinity) >= LOAD_LINE_GAP_MS) {
+        this.lastLoadLine.set(id, now);
+        out.push({ kind: "voice", type: ship.type, event: "load" });
+      }
+    }
 
     // Shots that made a snapshot in flight.
     for (const p of match.projectiles) {

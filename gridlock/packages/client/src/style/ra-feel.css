@@ -902,6 +902,7 @@ input[type="range"] { padding: 0; }
 #train-submarine,
 #train-battleship,
 #train-destroyer,
+#train-lst,
 #train-stuka,
 #train-fw190,
 #train-bv222,
@@ -1463,6 +1464,15 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="battleship"],
 .prod-job[data-type="battleship"] {
   background-image: url("../assets/units/battleship-cameo.png");
+}
+#train-lst {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    var(--lst-cameo, url("../assets/units/lst-cameo.png"));
+}
+.config-type[data-type="lst"],
+.prod-job[data-type="lst"] {
+  background-image: var(--lst-cameo, url("../assets/units/lst-cameo.png"));
 }
 .config-type[data-type="destroyer"],
 .prod-job[data-type="destroyer"] {

@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 98;
+export const PROTOCOL_VERSION = 100;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -178,6 +178,8 @@ export interface EntityView {
   bipod?: number;
   /** Unit is inside this building. Friendly snapshots only. */
   garrisonedIn?: number;
+  /** On a Transport LST deck MG tub: which one (0 bow, 1 bridge wing). Friendly snapshots only. */
+  mountedGun?: number;
   /**
    * Own unit's Shift-queued route: the current order's point, then each queued
    * order's point, in run order. Omitted when nothing is queued.
@@ -185,6 +187,7 @@ export interface EntityView {
   plan?: PlanPointView[];
   /**
    * Soldiers inside a house, a hull, a supply truck, or a transport.
+   * On a tank deck (the Transport LST) count is the deck room taken, not heads.
    * count/bars/ownerId are hidden from enemies while hide is set.
    * hide itself is friendly-only. A truck and a transport never hide.
    */
@@ -625,6 +628,11 @@ export interface MatchSnapshot {
   bodies: CorpseView[];
   /** Heavy-shell craters on dirt. Empty until the first ground strike. */
   holes: ShellHoleView[];
+  /**
+   * Ground repeated heavy blasts have sunk, as flat pairs: tile index, then
+   * that tile's height now. Omitted until the first dig. See BLAST_DIG_ENABLED.
+   */
+  dug?: number[];
   /**
    * The server's fog mask for `youPlayerId`, row-major, as run lengths that
    * alternate hidden / lit starting with hidden. See `decodeVisionRuns`.

@@ -69,6 +69,7 @@ import {
   connectPatrolPoints,
   garrisonWindowLift,
   hasScout,
+  garrisonCandidate,
   isGarrisonable,
   immobilized,
   heightAt,
@@ -488,6 +489,7 @@ import {
   type MiniBake,
   type TerrainBake,
 } from "./terrain.js";
+import { heightsChanged } from "./height-mesh.js";
 
 /** Special-action key. D pans with W and the arrow keys; A/S are orders. */
 export const SPECIAL_HOTKEY = "e";
@@ -579,6 +581,7 @@ const EXTRUDE: Record<EntityType, number> = {
   submarine: 7,
   battleship: 20,
   destroyer: 14,
+  lst: 16,
   aswheli: 8,
   torpedo: 2,
   cottage: 28,
@@ -621,7 +624,7 @@ function ownerAllied(match: MatchSnapshot, ownerId: string | undefined): boolean
 /** How much of a submerged submarine its owner still sees through the water. */
 const SUBMERGED_ALPHA = 0.5;
 /** Hull fires on a sunk ship sit this share of the usual height: the hulk rides low in the water. */
-const WRECK_FIRE_LIFT: Partial<Record<EntityType, number>> = { gunboat: 0.75, destroyer: 0.5, battleship: 0.3 };
+const WRECK_FIRE_LIFT: Partial<Record<EntityType, number>> = { gunboat: 0.75, destroyer: 0.5, lst: 0.45, battleship: 0.3 };
 /** Half a torpedo's drawn length, world px, and how far behind it its wake trails, in body halves. */
 const TORPEDO_BODY_HALF = 7;
 /** A Battle Ship shell's smoke trail is this many times a mortar bomb's. */
@@ -1410,6 +1413,43 @@ export class MapView {
     if (!this.miniTerrain) this.miniTerrain = bakeMini(map, this.curr.scrap);
     else updateMiniScrap(this.miniTerrain, map, this.curr.scrap);
     this.applyClearedTrees();
+    this.applyDug();
+  }
+
+  /** Lay ground that blasts sank (snapshot `dug`) onto the live map and repaint around it. */
+  private applyDug(): void {
+    const dug = this.curr.dug;
+    if (!dug || dug.length === 0) return;
+    const map = this.map();
+    const w = map.width;
+    const n = w * map.height;
+    const changed: number[] = [];
+    for (let k = 0; k + 1 < dug.length; k += 2) {
+      const i = dug[k]!;
+      const h = dug[k + 1]!;
+      if (i < 0 || i >= n || map.heights[i] === h) continue;
+      map.heights[i] = h;
+      changed.push(i);
+    }
+    if (changed.length === 0) return;
+    heightsChanged(map.heights);
+    // A tile's corners average its neighbours, so the ring around a sunk tile tilts too.
+    const dirty = new Set<number>();
+    for (const i of changed) {
+      const x = i % w;
+      const y = (i / w) | 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx >= 0 && ny >= 0 && nx < w && ny < map.height) dirty.add(ny * w + nx);
+        }
+      }
+    }
+    const list = [...dirty];
+    this.treeStems = null;
+    if (this.terrain) restampTiles(this.terrain, map, list, this.curr.scrap);
+    if (this.miniTerrain) restampMini(this.miniTerrain, map, list, this.curr.scrap);
   }
 
   /**
@@ -2126,7 +2166,7 @@ export class MapView {
     const m = getMap(this.curr.mapId);
     if (!m) throw new Error("missing map");
     if (!this.liveMap || this.liveMap.id !== m.id) {
-      this.liveMap = { ...m, tiles: m.tiles.slice() };
+      this.liveMap = { ...m, tiles: m.tiles.slice(), heights: m.heights.slice() };
       this.treeStems = null;
       this.clearedApplied = 0;
     }
@@ -2645,8 +2685,8 @@ export class MapView {
   private garrisonHotkey(): void {
     const you = this.curr.youPlayerId;
     const own = this.curr.entities.filter((e) => this.selected.has(e.id) && e.ownerId === you && !e.wreck);
-    const inf = own.filter((e) => e.kind === "unit" && isInfantryType(e.type));
     const house = this.curr.entities.find((e) => this.selected.has(e.id) && isGarrisonable(e.type) && e.hp > 0);
+    const inf = house ? own.filter((e) => e.kind === "unit" && e.id !== house.id && garrisonCandidate(house.type, e.type)) : [];
     if (house && inf.length) {
       this.command({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: house.id });
       return;
@@ -3459,7 +3499,7 @@ export class MapView {
       return;
     }
     if (action === "garrison" && hit) {
-      const inf = own.filter((e) => e.kind === "unit" && isInfantryType(e.type) && e.garrisonedIn !== hit.id);
+      const inf = own.filter((e) => e.kind === "unit" && garrisonCandidate(hit.type, e.type) && e.garrisonedIn !== hit.id);
       if (inf.length) this.command({ type: "cmd.garrison", ids: inf.map((e) => e.id), buildingId: hit.id });
       return;
     }

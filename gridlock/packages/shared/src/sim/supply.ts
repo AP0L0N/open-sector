@@ -29,6 +29,7 @@ import {
   isSupplyCarrier,
   isTransportType,
   shipShortOf,
+  tankDeckOf,
   supplyDepotOf,
   supplyDrumOf,
   supplyShortOf,
@@ -87,7 +88,10 @@ export function supplyShooter(state: MatchState, truck: Entity): Entity | null {
   return riders.length >= 2 ? (riders[1] ?? null) : null;
 }
 
-/** True when this unit, or the hull it is inside, is sitting in a transport's bay. */
+/**
+ * True when this unit, or the hull it is inside, is sitting in a transport's bay or
+ * on an LST's tank deck. The two soldiers on the LST's deck MG tubs are not stowed.
+ */
 export function stowedInTransport(state: MatchState, e: Entity): boolean {
   let id = e.garrisonedIn;
   const seen = new Set<number>();
@@ -96,6 +100,7 @@ export function stowedInTransport(state: MatchState, e: Entity): boolean {
     const host = state.entities.get(id);
     if (!host) return false;
     if (isTransportType(host.type)) return true;
+    if (tankDeckOf(host.type)) return !(host.id === e.garrisonedIn && e.mountedGun != null);
     id = host.garrisonedIn;
   }
   return false;

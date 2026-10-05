@@ -138,11 +138,17 @@ const destroyerHullGlob = import.meta.glob("../assets/units/destroyer/hull/*.png
   import: "default",
 }) as Record<string, string>;
 
+const lstHullGlob = import.meta.glob("../assets/units/lst/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 const navalHullGlobs = {
   gunboat: gunboatHullGlob,
   submarine: submarineHullGlob,
   supplyboat: supplyboatHullGlob,
   destroyer: destroyerHullGlob,
+  lst: lstHullGlob,
 } as const;
 
 const aswheliHullGlob = import.meta.glob("../assets/units/aswheli/hull/*.png", {

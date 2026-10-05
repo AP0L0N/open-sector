@@ -502,6 +502,7 @@ export type EntityType =
   | "submarine"
   | "battleship"
   | "destroyer"
+  | "lst"
   | "core"
   | "dynamo"
   | "smelter"
@@ -611,7 +612,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "cyborgcommander" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "stuka" | "fw190" | "bv222" | "he111" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "cyborgcommander" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -668,7 +669,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "cyborgcommander", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "stuka", "fw190", "bv222", "he111", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "cyborgcommander", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "droneop", "jumpjet"];
 
 /**
  * A player fields only one of each of these at a time. While it lives, another
@@ -861,6 +862,12 @@ export interface CatalogEntry {
   sonar?: boolean;
   /** The Destroyer's ASW helicopter. Nobody commands it: it flies from its ship and back. */
   aswHeli?: boolean;
+  /**
+   * A tank deck (the Transport LST): vehicles board as well as infantry, each taking
+   * LST_BAY_LOAD room out of garrisonCap, over a bow ramp that must touch land. Only the
+   * first two soldiers aboard who can shoot fire, from the deck MG tubs (DECK_MG).
+   */
+  tankDeck?: boolean;
 }
 
 export interface ShellDef {
@@ -875,8 +882,8 @@ export interface ShellDef {
 }
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
-export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator" | "laser";
-export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator", "laser"];
+export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator" | "laser" | "deckmg";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator", "laser", "deckmg"];
 export interface InfantryGun {
   id: InfantryWeaponId;
   name: string;
@@ -1740,6 +1747,20 @@ export const BOMB_BUILDING_DAMAGE = 240;
 export const BOMB_CALIBER = 250;
 /** Dirt scar relative to a shell of this caliber. The SC 250 leaves half that hole. */
 export const BOMB_HOLE_SCALE = 0.5;
+/**
+ * Experimental: repeated heavy blasts on one tile sink the ground there.
+ * Set false to turn it off; the map then keeps its authored heights all match.
+ */
+export const BLAST_DIG_ENABLED = true;
+/** Smallest caliber whose ground strike counts toward digging. Mortars and tank guns below this only scar. */
+export const BLAST_DIG_CALIBER = 105;
+/**
+ * Caliber points one tile soaks up before it drops one elevation step.
+ * About three 105mm strikes, two 150mm, or one Battle Ship shell.
+ */
+export const BLAST_DIG_PER_LEVEL = 300;
+/** Lowest elevation a blast can dig to. 0 is the valley floor. */
+export const BLAST_DIG_FLOOR = 0;
 /** Seconds from release to the ground. */
 export const BOMB_FALL_SECONDS = 0.7;
 /** Release this far short of the target so the bomb carries onto it. */
@@ -2310,6 +2331,27 @@ export const JET_CLIMB_PER_SEC = 9;
 /** Air speed. Faster than he runs. Same UNIT_PACE cut as the walk. */
 export const JET_FLY_TILES_PER_SEC = paced(4);
 
+/**
+ * Transport LST deck mount: a heavy machine gun in a shielded tub. Nobody carries it.
+ * The first two soldiers aboard who can shoot man the two tubs and fire this instead
+ * of their own weapon, from where the tub stands on the hull.
+ */
+export const DECK_MG: InfantryGun = {
+  id: "deckmg",
+  name: "Deck MG",
+  blurb: "Heavy machine gun in a shielded tub on the LST's deck. Long belts, reaches past a rifle, chews through light plate, and tracks aircraft.",
+  damage: 11,
+  penetration: 14,
+  caliber: 12,
+  spreadDeg: 3.5,
+  cooldown: 0.1,
+  clip: 100,
+  reload: 5,
+  rangeTiles: t(10),
+  bulky: true,
+  antiAir: true,
+};
+
 export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   rifle: RIFLE,
   assault: ASSAULT,
@@ -2323,6 +2365,7 @@ export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   penetrator: PENETRATOR,
   flamer: FLAMER,
   laser: LASER,
+  deckmg: DECK_MG,
 };
 
 /**
@@ -2666,6 +2709,44 @@ export const WATER_MINE_LIFE_SECONDS = 900;
 /** A hull, a swimmer, or a submarine down within this of a live water mine touches a horn. */
 export const WATER_MINE_TRIGGER_TILES = t(0.5);
 export const WATER_MINE_SPLASH_TILES = t(1.2);
+
+/**
+ * Transport LST, after the Royal Canadian Navy's tank landing ships. A slab-sided,
+ * heavily plated hull with a tank deck: it carries infantry and vehicles over the
+ * water by load, not by head count, and puts them ashore over a bow ramp.
+ */
+export const LST_BAY_SLOTS = 40;
+/**
+ * Stem to amidships of the hull as drawn, world units. The sprite is far longer than the
+ * collision radius (like every ship's): the bow ramp, the MG tubs, and where the bow runs
+ * up the beach all go by this.
+ */
+export const LST_HALF_LENGTH = 58;
+/** The ramp reaches land this far past the bow. Boarding and unloading happen here. */
+export const LST_RAMP_TILES = t(1.6);
+/** Deck MG tubs, as a share of the half-length forward of amidships: the bow tub, then the bridge wing. */
+export const LST_MG_AT: readonly number[] = [0.72, -0.45];
+/** Share of each hit on the hull that also finds a manned tub. The tub shield stops most of it (BUNKER_WOUND_MUL). */
+export const LST_TUB_EXPOSURE = 0.3;
+/**
+ * Room each body takes on the tank deck, out of LST_BAY_SLOTS. Bigger hulls take more.
+ * Types not named here: infantry 1, a vehicle by its footprint (bayLoadOf).
+ */
+export const LST_BAY_LOAD: Partial<Record<EntityType, number>> = {
+  cyborg: 2,
+  cyborgcommander: 2,
+  walker: 3,
+  artillery: 4,
+  supply: 4,
+  hauler: 5,
+  ss3: 6,
+  nebelwerfer: 6,
+  warden: 8,
+  jagdtiger: 10,
+  titan: 10,
+  apocalypse: 12,
+  mammoth: 16,
+};
 /** Hit points the blast takes from a hull right on top of it. Enough to sink a boat or a submarine; a big ship takes it. */
 export const WATER_MINE_DAMAGE = 160;
 export const WATER_MINE_CALIBER = 300;
@@ -4144,6 +4225,48 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 40,
     blurb: `Destroyer. Water only. A twin 40mm on the foredeck fires fast but reaches only ${DESTROYER_RANGE_TILES / TILE_SUBDIV} tiles. Its hull sonar hears every enemy submarine within ${SONAR_RANGE_TILES / TILE_SUBDIV} tiles, submerged or surfaced, and calls each new contact; the contact shows on the map, but a gun still lays only on a submarine that is seen. On a contact its ASW helicopter takes off by itself, flies at the heard position, and drops ${ASW_TORPEDOES} torpedoes in a fan toward it from up to ${ASW_DROP_TILES / TILE_SUBDIV} tiles out; each runs its full length, like the He 111's, and finds a submarine down or up. The helicopter then flies home, lands on the fantail, and takes ${ASW_REARM_SECONDS} seconds to load again. Rifles, machine guns, and anti-air reach it in the air; lost, the ship gets a new one after ${ASW_REPLACE_SECONDS} seconds. Lay Mine puts one of its ${WATER_MINES} contact mines over the stern: it lives after ${WATER_MINE_ARM_SECONDS} seconds and goes off under any hull, swimmer, or submarine that meets it, yours too. You and your allies see your mines; the enemy does not. Beside a Marine Base the rail fills again, one mine every ${WATER_MINE_REARM_SECONDS} seconds. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
   },
+  /** Tank landing ship after the RCN's LST(2)s: a bow ramp and a tank deck for 40 slots. Water only. */
+  lst: {
+    type: "lst",
+    kind: "unit",
+    name: "Transport LST",
+    letter: "L",
+    cost: 2200,
+    buildSeconds: 26,
+    hp: 700,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 30,
+    moveTilesPerSec: paced(1.5),
+    turnDegPerSec: 26,
+    noReverse: true,
+    turnInPlace: true,
+    rangeTiles: 0,
+    sightTiles: t(9),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    armorFront: 90,
+    armorSide: 80,
+    armorRear: 70,
+    penetration: 0,
+    caliber: 0,
+    spreadDeg: 0,
+    naval: true,
+    leavesWreck: true,
+    wreckHp: 80,
+    tankDeck: true,
+    garrisonCap: LST_BAY_SLOTS,
+    garrisonHpMul: BUNKER_GARRISON_HP_MUL,
+    garrisonWoundMul: BUNKER_WOUND_MUL,
+    garrisonWindows: 2,
+    garrisonFloors: 1,
+    garrisonSightBonus: 0,
+    garrisonFullArms: true,
+    garrisonDiesWithHost: true,
+    blurb: `Tank landing ship, after the Royal Canadian Navy's LSTs. Water only, slow, and plated like a fortress. Its tank deck holds ${LST_BAY_SLOTS} slots of infantry and vehicles: a soldier takes one, a Cyborg two, a Walker three, a field gun or a supply truck four, a StuG six, a Tiger eight, a Jagdtiger or a Titan ten, an Apocalypse twelve, and a Mammoth sixteen. Put the bow on the shore: units board up the bow ramp, and Unload sends them all down it onto the beach. Two deck machine guns in shielded tubs, one on the forecastle and one on the bridge wing, are manned by the first two soldiers aboard who can shoot; nobody else aboard fires. The tubs guard their gunners like a Bunker's slits — they are far harder to kill there — and when one falls the next soldier aboard takes the gun. Everything else aboard is out of reach while the hull holds; if it is sunk, everyone aboard goes down with it. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
+  },
   /** Ju 87 B dive bomber. Lives on an Airfield pad. */
   stuka: {
     type: "stuka",
@@ -4708,8 +4831,11 @@ export function infantryGunFor(e: {
   type: EntityType;
   crits?: readonly Crit[];
   weapon?: InfantryWeaponId | null;
+  mountedGun?: number | null;
 }): InfantryGun | null {
   if (!isInfantryType(e.type)) return null;
+  // Manning an LST deck tub: the mount's gun, whatever he carries and however he is hurt.
+  if (e.mountedGun != null) return DECK_MG;
   if (hasCrit({ crits: e.crits ?? [] }, "arm")) {
     return infantryLoadout(e.type).find((g) => g.id === "handgun") ?? null;
   }
@@ -4778,6 +4904,45 @@ export function isCivilianType(type: string): type is CivilianType {
 
 export function isGarrisonable(type: EntityType): boolean {
   return (catalog(type).garrisonCap ?? 0) > 0;
+}
+
+/** A tank deck: vehicles board by load (the Transport LST). */
+export function tankDeckOf(type: EntityType): boolean {
+  return catalog(type).tankDeck === true;
+}
+
+/**
+ * Room a body takes aboard this host. On a tank deck: LST_BAY_LOAD, else infantry 1
+ * and a vehicle by its footprint. Every other host counts heads.
+ */
+export function bayLoadOf(host: EntityType, unit: EntityType): number {
+  if (!tankDeckOf(host)) return 1;
+  const named = LST_BAY_LOAD[unit];
+  if (named != null) return named;
+  if (isInfantryType(unit)) return 1;
+  const r = catalog(unit).radius;
+  return Math.max(2, Math.round((r / 4.5) ** 2 / 1.1));
+}
+
+/** A ground vehicle a tank deck takes. Boats, aircraft, drones, and torpedoes stay off. */
+export function deckVehicle(type: EntityType): boolean {
+  const def = catalog(type);
+  return (
+    def.kind === "unit" &&
+    !isInfantryType(type) &&
+    !def.naval &&
+    !def.aircraft &&
+    !def.drone &&
+    !def.aswHeli &&
+    !def.torpedoBody
+  );
+}
+
+/** This unit type may ride in this host: infantry by garrisonAdmits, a vehicle only on a tank deck. */
+export function garrisonCandidate(host: EntityType, unit: EntityType): boolean {
+  if (!isGarrisonable(host)) return false;
+  if (isInfantryType(unit)) return garrisonAdmits(host, unit);
+  return tankDeckOf(host) && deckVehicle(unit);
 }
 
 export function garrisonCapOf(type: EntityType): number {

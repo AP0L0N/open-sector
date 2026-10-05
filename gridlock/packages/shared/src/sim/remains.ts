@@ -1,13 +1,19 @@
 import {
+  BLAST_DIG_CALIBER,
+  BLAST_DIG_ENABLED,
+  BLAST_DIG_FLOOR,
+  BLAST_DIG_PER_LEVEL,
   BOMB_CALIBER,
   BOMB_HOLE_SCALE,
   GARRISON_STRUCTURAL_CALIBER,
+  HEIGHT_STEP_MAX,
   isInfantryType,
   isSmokeShell,
   type ShellType,
 } from "../catalog.js";
+import { TILE_BLOCKED, TILE_WATER } from "../maps.js";
 import type { BloodStainView, ImpactKind, ImpactView } from "../protocol.js";
-import { fellTreesInDisk, inBounds, isWall, isWater, occupant, worldToTile } from "./geo.js";
+import { fellTreesInDisk, inBounds, isWall, isWater, occupant, tileIndex, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** Drop the oldest crater after this many so a long barrage stays bounded. */
@@ -121,4 +127,70 @@ export function noteImpactSurface(
   });
   fellTreesInDisk(state, impact.x, impact.y, radius);
   if (state.holes.length > MAX_SHELL_HOLES) state.holes.shift();
+  soakBlast(state, tx, ty, p.caliber);
+}
+
+/** Ground a blast may sink: not water, a wall, a fortification, or under a building. */
+function sinkable(state: MatchState, i: number): boolean {
+  const kind = state.terrain[i];
+  if (kind === TILE_WATER || kind === TILE_BLOCKED) return false;
+  if ((state.fortBlock[i] ?? 0) !== 0) return false;
+  const occ = state.occupy[i] ?? 0;
+  return occ === 0 || state.entities.get(occ)?.kind !== "building";
+}
+
+function setDugHeight(state: MatchState, i: number, h: number): void {
+  state.heights[i] = h;
+  state.dug.set(i, h);
+}
+
+/**
+ * Drop one tile a step, then lower every neighbour left more than
+ * HEIGHT_STEP_MAX above it, outward, so the ground stays walkable and
+ * repeated digs widen into a valley instead of a pit.
+ */
+function sinkTile(state: MatchState, start: number): void {
+  const { width, height, heights } = state;
+  setDugHeight(state, start, (heights[start] ?? 0) - 1);
+  const queue = [start];
+  while (queue.length > 0) {
+    const c = queue.pop()!;
+    const ch = heights[c] ?? 0;
+    const cx = c % width;
+    const cy = (c / width) | 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const n = ny * width + nx;
+        if ((heights[n] ?? 0) - ch <= HEIGHT_STEP_MAX || !sinkable(state, n)) continue;
+        setDugHeight(state, n, ch + HEIGHT_STEP_MAX);
+        queue.push(n);
+      }
+    }
+  }
+}
+
+/**
+ * Credit a heavy ground blast to its tile. Each BLAST_DIG_PER_LEVEL points
+ * sink the tile one step, down to BLAST_DIG_FLOOR. Off with BLAST_DIG_ENABLED.
+ * Returns whether the ground moved.
+ */
+export function soakBlast(state: MatchState, tx: number, ty: number, caliber: number): boolean {
+  if (!BLAST_DIG_ENABLED || caliber < BLAST_DIG_CALIBER || !inBounds(state, tx, ty)) return false;
+  const i = tileIndex(state, tx, ty);
+  if (!sinkable(state, i)) return false;
+  let points = (state.blast.get(i) ?? 0) + caliber;
+  let sunk = false;
+  while (points >= BLAST_DIG_PER_LEVEL && (state.heights[i] ?? 0) > BLAST_DIG_FLOOR) {
+    sinkTile(state, i);
+    points -= BLAST_DIG_PER_LEVEL;
+    sunk = true;
+  }
+  if ((state.heights[i] ?? 0) <= BLAST_DIG_FLOOR) state.blast.delete(i);
+  else state.blast.set(i, points);
+  if (sunk) state.digRev++;
+  return sunk;
 }

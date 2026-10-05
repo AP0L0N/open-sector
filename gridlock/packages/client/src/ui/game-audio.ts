@@ -47,7 +47,7 @@ let speakers: ReadonlySet<number> = new Set();
 /** One answer from a unit type. `special` falls back to `move` for units without one. Returns whether a line played. */
 export function unitVoice(
   type: string,
-  cue: UnitCue | "ready" | "shield_down" | "shield_up",
+  cue: UnitCue | "ready" | "load" | "shield_down" | "shield_up",
   opts: { withSfx?: boolean; ids?: readonly number[] } = {},
 ): boolean {
   const folder = unitFolder(type);
@@ -267,7 +267,8 @@ export function acknowledgeOrder(msg: ClientMessage, match: MatchSnapshot | null
   if (!match) return;
   const cue = orderCue(msg, match.entities, match.youPlayerId);
   if (!cue) return;
-  if (cue.kind === "unit") unitVoice(cue.type, cue.cue, { withSfx: true, ids: "ids" in msg && Array.isArray(msg.ids) ? msg.ids : [] });
+  if (cue.kind === "unit")
+    unitVoice(cue.type, cue.cue, { withSfx: !cue.noSfx, ids: "ids" in msg && Array.isArray(msg.ids) ? msg.ids : [] });
   else if (cue.kind === "announce") announce(cue.event);
   else uiSound(cue.sound);
 }

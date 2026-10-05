@@ -5,6 +5,7 @@ import { TILE_TREE } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { fellTreeAt } from "./geo.js";
 import { createMatch, step, stepMatch } from "./match.js";
+import { soakBlast } from "./remains.js";
 import { exportSave, restoreMatch } from "./save.js";
 import type { MatchState } from "./types.js";
 import type { RoomState } from "../protocol.js";
@@ -45,6 +46,9 @@ function finger(state: MatchState): string {
     cleared: state.clearedTrees,
     bodies: state.bodies,
     holes: state.holes,
+    heights: Array.from(state.heights),
+    dug: [...state.dug],
+    blast: [...state.blast],
   });
 }
 
@@ -71,6 +75,12 @@ describe("skirmish save", () => {
       break;
     }
     assert.ok(scraped >= 0);
+    let sunk = false;
+    for (let i = 0; i < state.terrain.length && !sunk; i++) {
+      if (state.terrain[i] !== 0 || state.occupy[i] !== 0 || (state.heights[i] ?? 0) < 2) continue;
+      sunk = soakBlast(state, i % state.width, Math.floor(i / state.width), 400);
+    }
+    assert.equal(sunk, true);
     const saved = exportSave(state, room, 1_700_000_000_000);
     const back = restoreMatch(saved, { roomId: "SV", humanPlayerId: "A" });
     assert.equal(back.ok, true);

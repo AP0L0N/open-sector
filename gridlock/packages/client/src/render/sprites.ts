@@ -218,6 +218,7 @@ import bv222WreckUrl from "../assets/units/wrecks/bv222.png";
 import he111WreckUrl from "../assets/units/wrecks/he111.png";
 import gunboatWreckUrl from "../assets/units/wrecks/gunboat.png";
 import destroyerWreckUrl from "../assets/units/wrecks/destroyer.png";
+import lstWreckUrl from "../assets/units/wrecks/lst.png";
 import aswheliWreckUrl from "../assets/units/wrecks/aswheli.png";
 import submarineWreckUrl from "../assets/units/wrecks/submarine.png";
 import battleshipWreckUrl from "../assets/units/wrecks/battleship.png";
@@ -1234,6 +1235,19 @@ export const DESTROYER_SPRITE: UnitSpriteDef = {
 };
 bindNavalSheets("destroyer", DESTROYER_SPRITE.image);
 
+/** Transport LST: a slab-sided landing ship, longer than the Destroyer at the same pixels per meter. */
+export const LST_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(137 * UNIT_VISUAL_SCALE),
+  contactY: 0.74,
+  facingSpace: "world",
+};
+bindNavalSheets("lst", LST_SPRITE.image);
+
 /** Cell of every Battle Ship sheet (render_battleship.py CELL), the hulk's included. */
 const BATTLESHIP_CELL = 384;
 function shipLayer(): TurretSpriteDef {
@@ -1562,6 +1576,7 @@ const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   // Ships settle on the bottom: the superstructure and turrets are baked into the hulk.
   gunboat: wreckSheet(gunboatWreckUrl, GUNBOAT_SPRITE),
   destroyer: wreckSheet(destroyerWreckUrl, DESTROYER_SPRITE),
+  lst: wreckSheet(lstWreckUrl, LST_SPRITE),
   aswheli: wreckSheet(aswheliWreckUrl, ASWHELI_SPRITE),
   submarine: wreckSheet(submarineWreckUrl, SUBMARINE_SPRITE),
   battleship: wreckSheet(battleshipWreckUrl, BATTLESHIP_SPRITE),
@@ -1590,6 +1605,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   submarine: SUBMARINE_SPRITE,
   battleship: BATTLESHIP_SPRITE,
   destroyer: DESTROYER_SPRITE,
+  lst: LST_SPRITE,
   mammoth: MAMMOTH_SPRITE,
   nebelwerfer: NEBELWERFER_SPRITE,
   artillery: ARTILLERY_SPRITE,

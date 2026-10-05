@@ -186,6 +186,7 @@ import {
   garrisonLooksOccupied,
   livingGarrison,
   garrisonMuzzleToward,
+  woundDeckGunners,
   syncHullGarrisons,
   wallsShieldGarrison,
   woundGarrison,
@@ -220,6 +221,7 @@ import { reachesJet } from "./jet.js";
 import { nightSightMul, nightTiles } from "./night.js";
 import { afloat, armTorpedo, diving, hiddenSubmarine, surface, surfaceToStrike, torpedoCannotReach } from "./naval.js";
 import { shipHullT, shipKeelDist, shipMountPoint, turretBearing } from "./battleship.js";
+import { syncLstCrew } from "./lst.js";
 import type { Entity, MatchState, Order, Projectile, ShipCiws } from "./types.js";
 
 /** A twin mount's barrels sit this share of the hull radius either side of the bore line. */
@@ -234,6 +236,8 @@ export function garrisonCanShoot(state: MatchState, unit: Entity, host: Entity):
   if (unit.hp <= 0 || unit.wreck || unit.garrisonedIn !== host.id) return false;
   if (!fires(unit.type) || !supplyRiderFights(state, unit)) return false;
   if (host.garrisonHide || isTransportType(host.type)) return false;
+  // On an LST's deck tub he fires the mount, whatever he carries.
+  if (unit.mountedGun != null) return true;
   if (unit.type === "gunner") {
     // The truck bed is a ledge for the bipod, the same as a bunker slit.
     const ledge = host.type === "supply" || garrisonFullArmsOf(host.type);
@@ -333,6 +337,7 @@ function releaseRelayedForce(state: MatchState, host: Entity): void {
 export function tickCombat(state: MatchState, dt: number): void {
   syncSupplyRiders(state);
   syncHullGarrisons(state);
+  syncLstCrew(state);
   relayGarrisonForce(state);
   for (const e of state.entities.values()) {
     if (!canFight(e) || !supplyRiderFights(state, e)) continue;
@@ -2262,6 +2267,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
       hideScout(state, e);
     }
     if (occupied) woundGarrison(state, e, res.damage, p.caliber, !!p.plunging);
+    else woundDeckGunners(state, e, scaled);
     if (e.type === "supply" && !e.wreck && e.hp > 0) {
       noteSupplyHit(state, e, res.face, false, chipWalls ? res.damage : 0);
     }
@@ -2892,6 +2898,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       hideScout(state, e);
     }
     if (occupied) woundGarrison(state, e, res.damage, p.caliber, !!p.plunging);
+    else woundDeckGunners(state, e, p.damage);
     // A bullet that meets the body can smash the lamps, even when it only sparks.
     if (e.hp > 0 && !e.wreck) rollLamp(e, lampShotOf(p), rand);
     if (e.type === "supply" && !e.wreck && e.hp > 0) {

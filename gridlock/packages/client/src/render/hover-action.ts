@@ -8,7 +8,7 @@ import {
   isArmoredType,
   isCapturable,
   isCivilianType,
-  garrisonAdmits,
+  garrisonCandidate,
   isFieldStructure,
   isBridge,
   isGarrisonable,
@@ -119,7 +119,8 @@ export function resolveHoverAction(args: {
     const builder = !isCivilianType(hit.type) && hit.ownerId ? hit.ownerId : undefined;
     const yours = (!occ || occ === you) && (!builder || builder === you || args.allied(builder));
     const full = (hit.garrison?.count ?? 0) >= (hit.garrison?.cap ?? 1);
-    const freeInf = inf.filter((e) => e.garrisonedIn !== hit.id && garrisonAdmits(hit.type, e.type));
+    // A tank deck (the LST) takes vehicles too; every other garrison only the infantry it admits.
+    const freeInf = ownUnits.filter((e) => e.garrisonedIn !== hit.id && garrisonCandidate(hit.type, e.type));
     if (yours && !full && freeInf.length > 0) return "garrison";
     const occupying = occ === you && (hit.garrison?.count ?? 0) > 0;
     const selectedHere = live.some((e) => e.id === hit.id || e.garrisonedIn === hit.id);

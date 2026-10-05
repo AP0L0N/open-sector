@@ -1,14 +1,23 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { TICK_DT, catalog, isCivilianType } from "../catalog.js";
+import {
+  BLAST_DIG_CALIBER,
+  BLAST_DIG_FLOOR,
+  BLAST_DIG_PER_LEVEL,
+  HEIGHT_BASE,
+  HEIGHT_STEP_MAX,
+  TICK_DT,
+  catalog,
+  isCivilianType,
+} from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE, TILE_WATER } from "../maps.js";
 import { tickProjectiles } from "./combat.js";
 import { enterGarrison, spillGarrison } from "./garrison.js";
 import { makeEntity, occupant, tileCenter, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { tickCollision } from "./collision.js";
-import { MAX_SHELL_HOLES, burnVariant, shellHoleRadius } from "./remains.js";
+import { MAX_SHELL_HOLES, burnVariant, shellHoleRadius, soakBlast } from "./remains.js";
 import { snapshotFor } from "./snapshot.js";
 import { canSeeEntity } from "./vision.js";
 import type { MatchState, Projectile } from "./types.js";
@@ -337,5 +346,94 @@ describe("shell holes and water splashes", () => {
     assert.equal(state.bodies[0]!.id, bodyId);
     step(state);
     assert.equal(state.bodies[0]!.id, bodyId);
+  });
+});
+
+describe("blasts sink the ground", () => {
+  function flatMatch(): MatchState {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    for (let i = 0; i < state.terrain.length; i++) if (state.terrain[i] === TILE_WATER) state.terrain[i] = TILE_EMPTY;
+    state.fortBlock.fill(0);
+    state.heights.fill(HEIGHT_BASE);
+    return state;
+  }
+
+  function steepestStep(state: MatchState): number {
+    let worst = 0;
+    for (let y = 0; y < state.height; y++) {
+      for (let x = 0; x + 1 < state.width; x++) {
+        for (const [nx, ny] of [[x + 1, y], [x, y + 1], [x + 1, y + 1]] as const) {
+          if (ny >= state.height) continue;
+          const d = Math.abs(state.heights[y * state.width + x]! - state.heights[ny * state.width + nx]!);
+          if (d > worst) worst = d;
+        }
+      }
+    }
+    return worst;
+  }
+
+  it("drops a tile one step once enough heavy strikes land on it", () => {
+    const state = flatMatch();
+    const tile = landTile(state);
+    const i = tile.y * state.width + tile.x;
+    const x = tileCenter(tile.x, state.tileSize);
+    const y = tileCenter(tile.y, state.tileSize);
+    const hits = Math.ceil(BLAST_DIG_PER_LEVEL / BLAST_DIG_CALIBER);
+    for (let n = 0; n < hits - 1; n++) dropRound(state, x, y, BLAST_DIG_CALIBER, "he");
+    assert.equal(state.heights[i], HEIGHT_BASE);
+    assert.equal(state.dug.size, 0);
+    dropRound(state, x, y, BLAST_DIG_CALIBER, "he");
+    assert.equal(state.heights[i], HEIGHT_BASE - 1);
+    assert.equal(state.dug.get(i), HEIGHT_BASE - 1);
+    assert.equal(state.digRev, 1);
+    assert.ok(steepestStep(state) <= HEIGHT_STEP_MAX);
+    const snap = snapshotFor(state, "A");
+    assert.deepEqual(snap.dug, [i, HEIGHT_BASE - 1]);
+  });
+
+  it("never digs with light shells", () => {
+    const state = flatMatch();
+    const tile = landTile(state);
+    for (let n = 0; n < 40; n++) {
+      dropRound(state, tileCenter(tile.x, state.tileSize), tileCenter(tile.y, state.tileSize), 75, "he");
+    }
+    assert.equal(state.dug.size, 0);
+    assert.equal(snapshotFor(state, "A").dug, undefined);
+  });
+
+  it("widens a pounded spot into a walkable valley that stops at the floor", () => {
+    const state = flatMatch();
+    const tile = landTile(state);
+    const i = tile.y * state.width + tile.x;
+    for (let n = 0; n < 200; n++) soakBlast(state, tile.x, tile.y, BLAST_DIG_PER_LEVEL);
+    assert.equal(state.heights[i], BLAST_DIG_FLOOR);
+    assert.ok(steepestStep(state) <= HEIGHT_STEP_MAX);
+    // The slope climbs one step per ring back to the old ground.
+    const ring = HEIGHT_BASE - BLAST_DIG_FLOOR;
+    assert.equal(state.heights[i + ring], HEIGHT_BASE);
+    assert.equal(state.heights[i + ring - 1], HEIGHT_BASE - 1);
+    let min = Infinity;
+    for (const h of state.heights) min = Math.min(min, h);
+    assert.equal(min, BLAST_DIG_FLOOR);
+    assert.equal(soakBlast(state, tile.x, tile.y, BLAST_DIG_PER_LEVEL), false);
+  });
+
+  it("leaves water, walls, and building ground where they are", () => {
+    const state = flatMatch();
+    const tile = landTile(state);
+    const w = state.width;
+    const i = tile.y * w + tile.x;
+    state.terrain[i + 1] = TILE_WATER;
+    state.terrain[i - 1] = TILE_BLOCKED;
+    for (let n = 0; n < 3; n++) soakBlast(state, tile.x, tile.y, BLAST_DIG_PER_LEVEL);
+    assert.equal(state.heights[i], HEIGHT_BASE - 3);
+    assert.equal(state.heights[i + 1], HEIGHT_BASE);
+    assert.equal(state.heights[i - 1], HEIGHT_BASE);
+    assert.equal(soakBlast(state, tile.x + 1, tile.y, BLAST_DIG_PER_LEVEL * 4), false);
+    const ts = state.tileSize;
+    const pad = landTile(state);
+    makeEntity(state, "cottage", "", pad.x * ts, pad.y * ts, { tileX: pad.x, tileY: pad.y });
+    assert.equal(soakBlast(state, pad.x, pad.y, BLAST_DIG_PER_LEVEL * 4), false);
   });
 });
