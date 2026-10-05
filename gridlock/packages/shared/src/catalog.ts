@@ -1055,10 +1055,11 @@ export const FORCE_FIELD_REGEN_PER_SEC = 40;
 /**
  * The laser on a soldier: it always cuts out to full reach and sweeps across
  * the target from one side to the other, LASER_SWEEP_HALF_DEG either side of
- * him, in LASER_SWEEP_SECONDS. Every enemy soldier the beam passes is burned
- * down where he stands; a Cyborg's plating takes LASER_SWEEP_CYBORG_DAMAGE
+ * him, in LASER_SWEEP_SECONDS. Every soldier the beam passes, friend or foe,
+ * is burned down where he stands; a Cyborg's plating takes LASER_SWEEP_CYBORG_DAMAGE
  * instead. Where the tip cuts the ground at full reach, a thin line of small
- * fires is left burning. Buildings and concrete stop the beam.
+ * fires is left burning. Every tree the beam crosses burns down; trees do not
+ * stop it. Buildings and concrete do.
  */
 export const LASER_SWEEP_HALF_DEG = 14;
 export const LASER_SWEEP_SECONDS = 0.6;
@@ -1068,7 +1069,8 @@ export const LASER_BEAM_HALF_WIDTH = 2;
 /**
  * The laser on anything else (a hull, a building, a wreck): one straight beam
  * onto the target for LASER_LINE_SECONDS. It cuts through any plate from any
- * face, for a moderate LASER_LINE_DAMAGE. A small fire is left where it lands.
+ * face, for a moderate LASER_LINE_DAMAGE. A small fire is left where it lands,
+ * and the trees and soldiers (his own too) between him and the target burn.
  */
 export const LASER_LINE_SECONDS = 0.35;
 export const LASER_LINE_DAMAGE = 30;
@@ -1082,7 +1084,7 @@ export const LASER_FIRE_SPACING = LASER_FIRE_RADIUS * 1.25;
 export const LASER = {
   id: "laser" as const,
   name: "Cutting laser",
-  blurb: "Always cuts out to full reach. On soldiers it sweeps across them and burns down every enemy the beam passes, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Recharges between shots; never needs a truck.",
+  blurb: "Always cuts out to full reach. On soldiers it sweeps across them and burns down every soldier the beam passes, his own too, leaving a line of fire on the ground. Trees in its path burn down. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Recharges between shots; never needs a truck.",
   damage: LASER_LINE_DAMAGE,
   penetration: 999,
   caliber: 20,
@@ -3590,7 +3592,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Cyborg Commander",
     letter: "Q",
-    cost: 1600,
+    cost: 3000,
     buildSeconds: 18,
     hp: 300,
     power: 0,
@@ -3608,7 +3610,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LASER.penetration,
     caliber: LASER.caliber,
     spreadDeg: LASER.spreadDeg,
-    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every enemy the red beam passes, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him.",
+    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him.",
   },
   titan: {
     type: "titan",

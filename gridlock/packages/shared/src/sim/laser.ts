@@ -25,7 +25,7 @@ import { takeDamage } from "./crits.js";
 import { coverStrike, wallSweep } from "./field.js";
 import { igniteAt } from "./flame.js";
 import { garrisonIsHostile, livingGarrison, woundGarrison } from "./garrison.js";
-import { allies, occupant, worldToTile } from "./geo.js";
+import { burnTreeAt, occupant, tileCenter, worldToTile } from "./geo.js";
 import type { Entity, LaserBeam, MatchState } from "./types.js";
 
 /** Points along a sweep where the beam's length is measured. */
@@ -93,6 +93,8 @@ export function fireLaser(
       swept: 1,
       hit: [target.id],
     };
+    burnTreesAlong(state, e, bearing, dist);
+    burnSoldiersAlong(state, e, bearing, dist, target.id);
     strikeLine(state, e, target, bearing);
     return;
   }
@@ -158,7 +160,8 @@ function cutSweep(state: MatchState, e: Entity, beam: LaserBeam, u0: number, u1:
   for (const o of state.entities.values()) {
     if (o.id === e.id || o.kind !== "unit" || o.hp <= 0 || o.wreck || o.garrisonedIn != null) continue;
     if (!isInfantryType(o.type) || o.drone || isAirborne(o)) continue;
-    if (allies(state, e.ownerId, o.ownerId) || beam.hit.includes(o.id)) continue;
+    // The beam does not know whose men it passes: friend or foe, they burn.
+    if (beam.hit.includes(o.id)) continue;
     const dx = o.x - e.x;
     const dy = o.y - e.y;
     const d = Math.hypot(dx, dy);
@@ -171,6 +174,12 @@ function cutSweep(state: MatchState, e: Entity, beam: LaserBeam, u0: number, u1:
     burnSoldier(state, e, o, dx / d, dy / d);
   }
   const reach = Math.max(...beam.lens);
+  // Every tree the beam swings across this slice goes up. Rays close enough at the far end that none slips between.
+  const rays = Math.max(1, Math.ceil((absSpan * (u1 - u0) * reach) / (state.tileSize * 0.5)));
+  for (let k = 0; k <= rays; k++) {
+    const u = u0 + ((u1 - u0) * k) / rays;
+    burnTreesAlong(state, e, beam.a0 + span * u, laserLenAt(beam.lens, u));
+  }
   const n = Math.max(2, Math.ceil((absSpan * reach) / LASER_FIRE_SPACING) + 1);
   for (let k = 0; k < n; k++) {
     const uk = k / (n - 1);
@@ -181,6 +190,38 @@ function cutSweep(state: MatchState, e: Entity, beam: LaserBeam, u0: number, u1:
       radius: LASER_FIRE_RADIUS,
       life: LASER_FIRE_SECONDS,
     });
+  }
+}
+
+/**
+ * The beam burns down every tree along it out to `len`, and each one leaves a
+ * small fire where it stood. Trees do not stop the beam.
+ */
+function burnTreesAlong(state: MatchState, e: Entity, angle: number, len: number): void {
+  const ts = state.tileSize;
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  for (let d = e.radius; d <= len; d += ts * 0.5) {
+    const tx = worldToTile(e.x + dx * d, ts);
+    const ty = worldToTile(e.y + dy * d, ts);
+    if (!burnTreeAt(state, tx, ty)) continue;
+    igniteAt(state, tileCenter(tx, ts), tileCenter(ty, ts), e.ownerId, { radius: LASER_FIRE_RADIUS, life: LASER_FIRE_SECONDS });
+  }
+}
+
+/** Soldiers standing on a straight beam between him and its target burn, friend or foe. */
+function burnSoldiersAlong(state: MatchState, e: Entity, angle: number, len: number, targetId: number): void {
+  const ux = Math.cos(angle);
+  const uy = Math.sin(angle);
+  for (const o of state.entities.values()) {
+    if (o.id === e.id || o.id === targetId || o.kind !== "unit" || o.hp <= 0 || o.wreck || o.garrisonedIn != null) continue;
+    if (!isInfantryType(o.type) || o.drone || isAirborne(o)) continue;
+    const dx = o.x - e.x;
+    const dy = o.y - e.y;
+    const along = dx * ux + dy * uy;
+    if (along < 0 || along > len) continue;
+    if (Math.abs(dx * uy - dy * ux) > o.radius + LASER_BEAM_HALF_WIDTH) continue;
+    burnSoldier(state, e, o, ux, uy);
   }
 }
 

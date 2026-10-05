@@ -30,7 +30,7 @@ import { applyCommand } from "./commands.js";
 import { tickCombat } from "./combat.js";
 import { takeDamage } from "./crits.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
-import { beamLength, tickForceFields, tickLasers } from "./laser.js";
+import { beamLength, fireLaser, tickForceFields, tickLasers } from "./laser.js";
 import { createMatch } from "./match.js";
 import { snapshotFor } from "./snapshot.js";
 import { producerType } from "./train.js";
@@ -77,6 +77,7 @@ describe("cyborg commander", () => {
   it("is a research-gated Armory cyborg with a force field and a cutting laser", () => {
     const def = catalog("cyborgcommander");
     assert.equal(def.name, "Cyborg Commander");
+    assert.equal(def.cost, 3000);
     assert.ok(TRAIN_TYPES.includes("cyborgcommander"));
     assert.equal(producerType("cyborgcommander"), "armory");
     assert.equal(TECH_REQUIRES.cyborgcommander, "research");
@@ -136,7 +137,7 @@ describe("cyborg commander", () => {
     assert.equal(applyCommand(state, a, { type: "cmd.stance", ids: [cmd.id], stance: "crouch" }).ok, false);
   });
 
-  it("sweeps soldiers at full reach: burns every enemy the beam passes, spares friends and the flanks, and leaves a line of fire", () => {
+  it("sweeps soldiers at full reach: burns every soldier the beam passes, friend or foe, spares the flanks, and leaves a line of fire", () => {
     const { state, a, b } = match();
     const ts = state.tileSize;
     const x = tileCenter(20, ts);
@@ -162,11 +163,11 @@ describe("cyborg commander", () => {
     const fires0 = state.fires.length;
     runBeam(state, cmd);
     assert.equal(cmd.laser, undefined, "the beam went out");
-    for (const dead of [target, inArc, nearArc]) {
-      assert.equal(dead.hp, 0, `${dead.type} burned`);
+    for (const dead of [target, inArc, nearArc, friend]) {
+      assert.equal(dead.hp, 0, `${dead.type} of ${dead.ownerId} burned`);
       assert.equal(dead.fireDeath, true);
     }
-    for (const alive of [flank, beyond, friend]) assert.equal(alive.hp, alive.hpMax, `${alive.type} spared`);
+    for (const alive of [flank, beyond]) assert.equal(alive.hp, alive.hpMax, `${alive.type} spared`);
     assert.equal(borg.hp, borg.hpMax - LASER_SWEEP_CYBORG_DAMAGE, "a cyborg's plating takes a heavy cut");
     assert.ok(state.impacts.some((i) => i.laser && i.kind === "kill"));
 
@@ -217,6 +218,28 @@ describe("cyborg commander", () => {
     assert.equal(bystander.hp, bystander.hpMax, "the line does not sweep");
   });
 
+  it("burns the soldiers standing on a straight beam, his own too", () => {
+    const { state, a, b } = match();
+    const ts = state.tileSize;
+    const x = tileCenter(20, ts);
+    const y = tileCenter(60, ts);
+    const range = COMMANDER_RANGE_TILES * ts;
+    const cmd = makeEntity(state, "cyborgcommander", a, x, y);
+    const tank = at(state, "ss3", b, x, y, 0, range * 0.7);
+    const ownMan = at(state, "rifleman", a, x, y, 0, range * 0.3);
+    const foeMan = at(state, "gunner", b, x, y, 0, range * 0.5);
+    const ownBorg = at(state, "cyborg", a, x, y, 0, range * 0.4);
+    const aside = at(state, "rifleman", a, x, y, 20, range * 0.4);
+    const behind = at(state, "rifleman", a, x, y, 0, range * 0.85);
+    fireLaser(state, cmd, tank.x, tank.y, range, tank);
+    assert.ok(cmd.laser?.line);
+    for (const dead of [ownMan, foeMan]) assert.equal(dead.hp, 0, `${dead.type} of ${dead.ownerId} burned`);
+    assert.equal(ownBorg.hp, ownBorg.hpMax - LASER_SWEEP_CYBORG_DAMAGE, "his own Cyborg takes the heavy cut");
+    assert.equal(aside.hp, aside.hpMax, "off the line");
+    assert.equal(behind.hp, behind.hpMax, "past the target the beam has stopped");
+    assert.equal(tank.hp, tank.hpMax - LASER_LINE_DAMAGE);
+  });
+
   it("is stopped by a building in the way", () => {
     const { state, a, b } = match();
     const ts = state.tileSize;
@@ -232,5 +255,48 @@ describe("cyborg commander", () => {
     const len = beamLength(state, cmd, 0, range);
     assert.ok(len < range * 0.55, `stopped at ${len} of ${range}`);
     assert.equal(beamLength(state, cmd, Math.PI, range), range, "open the other way");
+  });
+
+  it("burns down every tree the beam crosses, sweep or line, and leaves the rest standing", () => {
+    const { state, a, b } = match();
+    const ts = state.tileSize;
+    const x = tileCenter(20, ts);
+    const y = tileCenter(60, ts);
+    const range = COMMANDER_RANGE_TILES * ts;
+    const plant = (deg: number, dist: number): { tx: number; ty: number } => {
+      const r = (deg * Math.PI) / 180;
+      const tx = Math.floor((x + Math.cos(r) * dist) / ts);
+      const ty = Math.floor((y + Math.sin(r) * dist) / ts);
+      state.terrain[ty * state.width + tx] = TILE_TREE;
+      return { tx, ty };
+    };
+    const standing = (t: { tx: number; ty: number }) => state.terrain[t.ty * state.width + t.tx] === TILE_TREE;
+    const inSweep = [plant(LASER_SWEEP_HALF_DEG * 0.8, range * 0.3), plant(-LASER_SWEEP_HALF_DEG * 0.5, range * 0.9), plant(4, range * 0.6)];
+    const flank = plant(LASER_SWEEP_HALF_DEG * 2.5, range * 0.5);
+    const pastReach = plant(0, range * 1.2);
+    const cmd = makeEntity(state, "cyborgcommander", a, x, y);
+    cmd.facing = 0;
+    const target = at(state, "rifleman", b, x, y, 0, range * 0.45);
+    cmd.order = { kind: "attack", targetId: target.id };
+    const fires0 = state.fires.length;
+    tickCombat(state, TICK_DT);
+    runBeam(state, cmd);
+    for (const t of inSweep) assert.equal(standing(t), false, `tree at ${t.tx},${t.ty} burned`);
+    assert.equal(standing(flank), true, "a tree off the arc stands");
+    assert.equal(standing(pastReach), true, "a tree past full reach stands");
+    assert.ok(state.clearedTrees.filter((c) => c.burn).length >= inSweep.length);
+    assert.ok(state.fires.length > fires0);
+
+    // The line on a hull: trees between him and it go up too.
+    const tank = at(state, "ss3", b, x, y, 180, range * 0.7);
+    const between = plant(180, range * 0.35);
+    cmd.order = { kind: "attack", targetId: tank.id };
+    cmd.reload = 0;
+    cmd.clip = 1;
+    cmd.cooldown = 0;
+    cmd.facing = Math.PI;
+    tickCombat(state, TICK_DT);
+    assert.ok(cmd.laser?.line, "a line on the hull");
+    assert.equal(standing(between), false, "the tree on the line burned");
   });
 });

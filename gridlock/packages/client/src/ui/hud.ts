@@ -1422,7 +1422,7 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
               : focus.type === "cyborg"
                 ? "Stands under fire — no crouch, no prone. Near death the legs tear off and he drags himself on, still firing. A medic or an engineer brings the legs back. Only a supply truck refills the drum."
               : focus.type === "cyborgcommander"
-                ? "Stands under fire — no crouch, no prone. The blue bar is his force field: it takes every hit first and comes back on after a while out of the fire. The laser always cuts to full reach: a sweep across soldiers burns every enemy it passes, one beam cuts a hull. Near death the legs tear off and he drags himself on, still firing."
+                ? "Stands under fire — no crouch, no prone. The blue bar is his force field: it takes every hit first and comes back on after a while out of the fire. The laser always cuts to full reach: a sweep across soldiers burns every man it passes, yours too, and one beam cuts a hull and anyone in front of it. Trees in the path burn down. Near death the legs tear off and he drags himself on, still firing."
               : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",
     );
   }
