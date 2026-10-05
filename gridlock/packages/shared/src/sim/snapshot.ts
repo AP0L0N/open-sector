@@ -1,4 +1,6 @@
 import {
+  bridgeBuildSeconds,
+  isBridge,
   AIR_FUEL_SECONDS,
   ARTILLERY_CREW,
   ARTILLERY_CREW_HP,
@@ -39,6 +41,7 @@ import {
   TICK_DT,
 } from "../catalog.js";
 import { padsTaken } from "./air.js";
+import { bridgeOrderSpan } from "./bridge.js";
 import { artilleryCanLay, gunCrewOf } from "./artillery.js";
 import { crateViews, mineViews, payloadOf, planeRiders } from "./airdrop.js";
 import { cyborgShielded } from "./crits.js";
@@ -162,6 +165,17 @@ function buildSiteView(e: Entity, friendly: boolean): EntityView["buildSite"] {
   return { building: o.building, tileX: o.tileX, tileY: o.tileY, progress };
 }
 
+function bridgeSiteView(e: Entity, friendly: boolean): EntityView["bridgeSite"] {
+  if (!friendly) return undefined;
+  const job = bridgeOrderSpan(e);
+  if (!job) return undefined;
+  const total = bridgeBuildSeconds(job.type, job.span.length);
+  const working = e.state === "build" && e.work > 0;
+  const progress = working ? Math.min(1, e.work / Math.max(1e-6, total)) : undefined;
+  const { x, y, facing, length } = job.span;
+  return { bridge: job.type, x, y, facing, span: length, progress };
+}
+
 function structureQueueView(job: StructureJob | null | undefined): StructureQueueView | null {
   if (!job) return null;
   return {
@@ -259,6 +273,7 @@ function sceneryView(e: Entity): EntityView {
     tileX: e.tileX,
     tileY: e.tileY,
     ruined: e.ruined || undefined,
+    span: isBridge(e.type) ? e.span : undefined,
     garrison: isGarrisonable(e.type) ? { count: 0, cap: garrisonCapOf(e.type) } : undefined,
   };
 }
@@ -350,10 +365,12 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
         friendly && e.order?.kind === "guard" && e.order.targetId != null ? e.order.targetId : undefined,
       tend: medicTendView(state, e),
       ruined: e.ruined || undefined,
+      span: isBridge(e.type) ? e.span : undefined,
       gate: e.gate ? { locked: e.gate.locked, open: Math.round(e.gate.open * 100) / 100 } : undefined,
       wallCrest: isConcreteLine(e.type) && e.wallCrest != null ? e.wallCrest : undefined,
       fieldSites: e.type === "engineer" ? fieldSitesView(e, friendly) : undefined,
       buildSite: e.type === "engineer" ? buildSiteView(e, friendly) : undefined,
+      bridgeSite: e.type === "engineer" ? bridgeSiteView(e, friendly) : undefined,
       scout: scoutView(e, friendly),
       supply: friendly && isSupplyCarrier(e.type) && !e.wreck ? e.supply : undefined,
       gun:

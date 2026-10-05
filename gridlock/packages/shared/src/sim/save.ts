@@ -2,6 +2,7 @@ import { clampGameSpeed } from "../catalog.js";
 import { getMap, TILE_EMPTY } from "../maps.js";
 import { MAX_SLOTS, MIN_SLOTS, SLOT_COUNT, type AiDifficulty, type SlotStatus } from "../protocol.js";
 import { restampForts } from "./field.js";
+import { restampBridges } from "./bridge.js";
 import { initGrids, occupyEntity } from "./geo.js";
 import type {
   Entity,
@@ -208,6 +209,7 @@ export function restoreMatch(
     occupy: grids.occupy,
     wreckBlock: new Uint8Array(n),
     fortBlock: new Uint8Array(n),
+    bridgeDeck: new Uint8Array(n),
     fortOwner: new Map(),
     players,
     entities,
@@ -238,6 +240,7 @@ export function restoreMatch(
   };
   for (const e of entities.values()) occupyEntity(state, e);
   restampForts(state);
+  restampBridges(state);
   return { ok: true, value: { state, save } };
 }
 

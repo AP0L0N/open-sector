@@ -12,6 +12,7 @@ import {
   UNIT_SPACE_PAD,
   isAircraftType,
   isArmoredType,
+  isBridge,
   isCyborg,
   isFieldStructure,
   isInfantryType,
@@ -46,6 +47,7 @@ import { claimNeutral } from "./garrison.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
 import { isSunkWreck, salvageWreck } from "./wreck.js";
+import { bridgeRepairSpot, canRebuildBridge, nearBridge, rebuildBridge, rebuildSecondsOf } from "./bridge.js";
 
 /** Extra reach past the wall face where the engineer stands to build. */
 const STAND_PAD = 14;
@@ -487,6 +489,8 @@ function fieldFootprintBusy(state: MatchState, target: Entity): boolean {
 
 export function canRepairTarget(state: MatchState, playerId: string, target: Entity): boolean {
   if (canScrapWreck(target)) return true;
+  // Bridges belong to no one: any engineer rebuilds the wreckage or patches the deck.
+  if (isBridge(target.type) && target.ruined) return canRebuildBridge(state, target);
   if (target.type === "sandbags" && target.ruined) {
     return repairOwner(state, playerId, target.ownerId) && canRestackSandbags(state, target);
   }
@@ -504,6 +508,7 @@ function scrapReach(target: Entity): number {
 }
 
 function repairSpot(eng: Entity, target: Entity, tileSize: number): { x: number; y: number } {
+  if (isBridge(target.type)) return bridgeRepairSpot(eng, target);
   if (target.kind === "unit") {
     const dx = eng.x - target.x;
     const dy = eng.y - target.y;
@@ -544,6 +549,7 @@ function repairSpot(eng: Entity, target: Entity, tileSize: number): { x: number;
 }
 
 function nearRepair(eng: Entity, target: Entity, tileSize: number): boolean {
+  if (isBridge(target.type)) return nearBridge(eng, target);
   if (target.kind === "unit") {
     const reach = target.wreck ? scrapReach(target) + 6 : target.radius + REPAIR_REACH;
     return Math.hypot(eng.x - target.x, eng.y - target.y) <= reach;
@@ -764,6 +770,13 @@ function tickRepair(state: MatchState, e: Entity, dt: number): void {
     e.work += dt;
     if (e.work < WRECK_SCRAP_SECONDS) return;
     salvageWreck(state, e.ownerId, target);
+    finishWork(e);
+    return;
+  }
+  if (isBridge(target.type) && target.ruined) {
+    e.work += dt;
+    if (e.work + 1e-6 < rebuildSecondsOf(target)) return;
+    rebuildBridge(state, target);
     finishWork(e);
     return;
   }

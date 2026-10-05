@@ -536,7 +536,9 @@ export type EntityType =
   | "greatwall"
   | "gate"
   | "teeth"
-  | "trench";
+  | "trench"
+  | "bridge"
+  | "bigbridge";
 export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "dock" | "ciws" | "ram" | "bunker" | "tower" | "research" | "radar";
 /** Placed by an engineer. Sandbags and walls can also be queued from the Defences tab. The gate comes only from there. */
 export type FieldStructureType = "sandbags" | "wall" | "greatwall" | "gate" | "teeth" | "trench";
@@ -558,6 +560,47 @@ export type ConcreteLineType = "wall" | "greatwall" | "gate";
 export function isConcreteLine(type: string): type is ConcreteLineType {
   return type === "wall" || type === "greatwall" || type === "gate";
 }
+/**
+ * Engineer bridges over water. One structure from shore to shore, built all at once.
+ * `bridge` is the narrow wooden one (one tank wide), `bigbridge` the concrete one (two abreast).
+ * Only a force-attack aims at one. At 0 HP it falls into wreckage that cannot be destroyed;
+ * an engineer rebuilds it.
+ */
+export type BridgeType = "bridge" | "bigbridge";
+export const BRIDGE_TYPES: readonly BridgeType[] = ["bridge", "bigbridge"];
+export function isBridge(type: string): type is BridgeType {
+  return type === "bridge" || type === "bigbridge";
+}
+/** Deck width, world px: what a vehicle can drive on. Rails sit just outside it. */
+export function bridgeWidth(type: BridgeType): number {
+  return type === "bigbridge" ? 44 : 20;
+}
+/** Scrap per gameplay tile of deck length. */
+export function bridgeCostPerTile(type: BridgeType): number {
+  return type === "bigbridge" ? 24 : 9;
+}
+/** Engineer seconds per gameplay tile of deck length. A wreck takes the same to rebuild. */
+export function bridgeSecondsPerTile(type: BridgeType): number {
+  return type === "bigbridge" ? 1.1 : 0.45;
+}
+/** Whole bridge price for a deck `length` world px long. */
+export function bridgeCost(type: BridgeType, length: number): number {
+  return Math.max(1, Math.round((length / TILE_SIZE) * bridgeCostPerTile(type)));
+}
+export function bridgeBuildSeconds(type: BridgeType, length: number): number {
+  return (length / TILE_SIZE) * bridgeSecondsPerTile(type);
+}
+/** Deck runs this far onto dry land past the last water at each end, world px. */
+export const BRIDGE_ABUTMENT = TILE_SIZE * 1.5;
+/** Longest deck, gameplay tiles. */
+export const BRIDGE_MAX_TILES = t(10);
+/**
+ * Damage a round aimed at a bridge does to it, as a share of the round's own damage.
+ * Rifle and MG fire does nothing. Bombs use BOMB_BUILDING_DAMAGE.
+ */
+export const BRIDGE_ROUND_MUL = { ap: 0.5, heat: 0.75, he: 1.5, mortar: 1, artillery: 2, rocket: 1 } as const;
+/** How far past the deck edge a burst still counts against it, world px. */
+export const BRIDGE_SPLASH_PAD = 6;
 export type CivilianType = "cottage" | "house" | "manor" | "shack" | "barn" | "inn" | "chapel";
 export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "cottage",
@@ -3194,6 +3237,53 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     coverHeight: TRENCH_COVER_HEIGHT,
     blurb: "A one-man fighting trench with an earth parapet. Holds one rifleman, gunner, sniper, AT soldier, rocketman, pyro, mortarman, medic, or engineer. Moderate cover: he has double health and the earth soaks up part of every hit. Every weapon works from it, the Gunner's MG and the mortar included. Infantry and vehicles cross it freely.",
   },
+  bridge: {
+    type: "bridge",
+    kind: "building",
+    name: "Wooden bridge",
+    letter: "u",
+    // Per tile of deck: the whole price is bridgeCost().
+    cost: 9,
+    buildSeconds: 0.45,
+    hp: 240,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: 0,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    capturable: false,
+    blurb: "Timber trestle bridge, one tank wide. Drag from one shore to the other: it spans the water and the engineer raises it in one go. Anyone can cross. Only a force-attack aims at it, and a few shells drop it into the water; the wreckage stays and an engineer can rebuild it.",
+  },
+  bigbridge: {
+    type: "bigbridge",
+    kind: "building",
+    name: "Concrete bridge",
+    letter: "x",
+    cost: 24,
+    buildSeconds: 1.1,
+    hp: 1700,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: 0,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    capturable: false,
+    blurb: "Concrete span on piers, two tanks wide. Drag from one shore to the other: it spans the water and the engineer raises it in one go. Anyone can cross. Only a force-attack aims at it, and it takes a long shelling to bring down; the wreckage stays and an engineer can rebuild it.",
+  },
   rifleman: {
     type: "rifleman",
     kind: "unit",
@@ -3391,7 +3481,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "No gun. Builds sandbags, concrete walls, tank obstacles, and one-man trenches, repairs armor, buildings, and spotlights, and cuts wrecks into scrap.",
+    blurb: "No gun. Builds sandbags, concrete walls, tank obstacles, one-man trenches, and bridges over water, repairs armor, buildings, and spotlights, and cuts wrecks into scrap.",
   },
   medic: {
     type: "medic",
@@ -4027,7 +4117,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     letter: "D",
     cost: 1800,
     buildSeconds: 22,
-    hp: 260,
+    hp: 240,
     power: 0,
     tileW: 1,
     tileH: 1,

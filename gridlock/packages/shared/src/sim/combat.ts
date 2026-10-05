@@ -1,4 +1,5 @@
 import {
+  isBridge,
   isConcreteLine,
   AIR_HIT_BAND,
   APOCALYPSE_CIWS_INTERCEPT_CHANCE,
@@ -117,6 +118,7 @@ import {
   torpedoesOf,
   isTorpedoBody,
 } from "../catalog.js";
+import { aimableBridge, bridgeSweep, strikeBridge, tagBridgeRounds } from "./bridge.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
 import {
   WALL_COVER_DR,
@@ -1208,6 +1210,8 @@ function currentTarget(state: MatchState, e: Entity): Entity | undefined {
   if (id == null) return undefined;
   const t = state.entities.get(id);
   if (!t || t.hp <= 0 || t.id === e.id || isCrashing(t)) return undefined;
+  // A bridge is held only by a force-attack, and only until it falls.
+  if (isBridge(t.type) && (e.order?.kind !== "forceattack" || !aimableBridge(t))) return undefined;
   if (outOfReachAloft(state, e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && skipsFriendly(state, e, t)) return undefined;
   if (e.order?.kind !== "forceattack" && dropsEmptyGarrison(state, e, t)) return undefined;
@@ -2326,7 +2330,7 @@ function walkerSecondTarget(state: MatchState, e: Entity, primary: Entity): Enti
   let best: Entity | undefined;
   let bestD = range * range;
   for (const o of state.entities.values()) {
-    if (o.id === primary.id || o.id === e.id || o.hp <= 0 || o.wreck || o.garrisonedIn) continue;
+    if (o.id === primary.id || o.id === e.id || o.hp <= 0 || o.wreck || o.garrisonedIn || isBridge(o.type)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     // A map defence nobody has taken yet is no one's enemy.
     if (o.kind === "building" && !o.ownerId && !isCivilianType(o.type)) continue;
@@ -2669,6 +2673,8 @@ function wreckHitDef(e: Entity, caliber: number): CatalogEntry {
 export function tickProjectiles(state: MatchState, dt: number): void {
   const keep: Projectile[] = [];
   const rand = () => nextRand(state);
+  tagBridgeRounds(state);
+  const flying = state.projectiles;
   for (const p of state.projectiles) {
     if (p.flight === "bomb") {
       if (stepBomb(state, p, dt)) keep.push(p);
@@ -2752,6 +2758,11 @@ export function tickProjectiles(state: MatchState, dt: number): void {
         continue;
       }
       keep.push(p);
+      continue;
+    }
+    if (struck && isBridge(struck.e.type)) {
+      strikeBridge(state, p, struck.x, struck.y);
+      pushImpact(state, p, "hit", struck.x, struck.y);
       continue;
     }
     if (!struck) {
@@ -2922,6 +2933,11 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     keep.push(p);
   }
   state.projectiles = keep;
+  // A round aimed at a bridge that came down on its deck counts against it.
+  if (flying.length !== keep.length) {
+    const kept = new Set(keep);
+    for (const p of flying) if (p.bridgeId != null && !kept.has(p)) strikeBridge(state, p, p.x, p.y);
+  }
 }
 
 function impactPoint(
@@ -3073,6 +3089,12 @@ function nearestSweepHit(
     if (e.garrisonedIn != null) continue;
     // A torpedo meets what is in the water, never another torpedo. One running deep meets only a boat that is down.
     if (p.torpedo && (!afloat(state, e) || isTorpedoBody(e.type) || (p.deep && !diving(e)))) continue;
+    // A bridge only stops a round fired at it. Everything else flies over or under.
+    if (isBridge(e.type)) {
+      const deck = p.torpedo ? null : bridgeSweep(p, e, x0, y0);
+      if (deck && (!best || deck.t < best.t)) best = { e, t: deck.t, x: deck.x, y: deck.y };
+      continue;
+    }
     const hit = sweepAgainst(state, x0, y0, p, e);
     if (!hit) continue;
     // Plunging fire is still high over everything short of its line; it only strikes near where it lands.
@@ -3150,6 +3172,8 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   const near: { o: Entity; d: number; i: number }[] = [];
   for (const o of state.entities.values()) {
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn || isCrashing(o)) continue;
+    // Only a force-attack aims at a bridge.
+    if (isBridge(o.type)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
     if (concreteProof(state, e, o)) continue;

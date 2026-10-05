@@ -10,6 +10,7 @@ import {
   infantryLoadout,
   isBuildingType,
   isCyborg,
+  isBridge,
   isEngineerBuilding,
   isFieldStructure,
   isYardField,
@@ -45,6 +46,7 @@ import { setScoutOut } from "./scout.js";
 import { cancelStructure, pauseStructure, placeBaseField, placeBuilding, sellBuilding, startBuild } from "./build.js";
 import { orderFieldBuild, orderRepair, setGatesLocked } from "./field.js";
 import { orderConstruct } from "./construct.js";
+import { orderBridge } from "./bridge.js";
 import { deployId } from "./deploy.js";
 import { cancelTrain, pauseTrain, setRally, startTrain } from "./train.js";
 import { groupMovePace, groupMoveTargets } from "./formation.js";
@@ -234,6 +236,13 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
         orderConstruct(state, playerId, owned(state, playerId, msg.ids), msg.building, msg.tx, msg.ty),
         "invalid_place",
       );
+    case "cmd.bridge":
+      if (!isBridge(msg.bridge)) return fail("bad_payload", "An engineer cannot build that.");
+      if (!Array.isArray(msg.ids) || msg.ids.length === 0) return fail("not_yours", "Select an engineer.");
+      return wrap(
+        orderBridge(state, playerId, owned(state, playerId, msg.ids), msg.bridge, msg.x, msg.y, msg.x2, msg.y2),
+        "invalid_place",
+      );
     case "cmd.repair":
       return wrap(orderRepair(state, playerId, owned(state, playerId, msg.ids), msg.targetId), "not_found");
     case "cmd.board": {
@@ -303,6 +312,7 @@ const DROPS_QUEUE = new Set<string>([
   "cmd.hold",
   "cmd.field",
   "cmd.construct",
+  "cmd.bridge",
   "cmd.ungarrison",
   "cmd.unboard",
   "cmd.tow",
@@ -463,7 +473,7 @@ function routeDrones(state: MatchState, playerId: string, msg: ClientMessage): C
       case "cmd.attack":
       case "cmd.forceattack": {
         const t = msg.targetId != null ? state.entities.get(msg.targetId) : undefined;
-        if (t && t.hp > 0 && t.id !== d.id && !allies(state, playerId, t.ownerId)) {
+        if (t && t.hp > 0 && t.id !== d.id && !isBridge(t.type) && !allies(state, playerId, t.ownerId)) {
           orderDrone(state, d, { kind: "attack", targetId: t.id });
         } else if (x != null && y != null) {
           orderDrone(state, d, { kind: "move", x, y });
@@ -607,7 +617,7 @@ function routeAircraft(state: MatchState, playerId: string, msg: ClientMessage):
         const t = state.entities.get(msg.targetId);
         if (!t || t.hp <= 0 || t.id === e.id) break;
         if (t.type === "airfield" && t.ownerId === playerId) orderAircraft(state, e, { kind: "land" });
-        else if (!allies(state, playerId, t.ownerId)) {
+        else if (!allies(state, playerId, t.ownerId) && !isBridge(t.type)) {
           orderAircraft(state, e, { kind: "attack", targetId: t.id, x: t.x, y: t.y });
         }
         break;
@@ -882,6 +892,8 @@ function cmdForceAttack(
       if (!Number.isFinite(x) || !Number.isFinite(y)) return fail("not_found", "No such target.");
       t = undefined;
     } else if (t.garrisonedIn) t = state.entities.get(t.garrisonedIn) ?? t;
+    // Wreckage cannot be hurt any more: fire on the spot instead.
+    else if (isBridge(t.type) && t.ruined) t = undefined;
   }
   const units = owned(state, playerId, ids);
   const mounts = ownedMounts(state, playerId, ids);
@@ -977,6 +989,7 @@ function forceHosts(state: MatchState, playerId: string, ids: number[]): Entity[
 function cmdAttack(state: MatchState, playerId: string, ids: number[], targetId: number): CmdResult {
   let t = state.entities.get(targetId);
   if (!t || t.hp <= 0) return fail("not_found", "No such target.");
+  if (isBridge(t.type)) return fail("bad_payload", "Force-attack to fire on a bridge.");
   if (t.garrisonedIn) t = state.entities.get(t.garrisonedIn) ?? t;
   const units = owned(state, playerId, ids);
   if (units.length === 0) return fail("not_yours", "No owned units.");

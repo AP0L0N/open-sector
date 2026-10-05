@@ -1,4 +1,4 @@
-import type { AirDrop, BuildingType, Crit, DroneMode, EntityType, FieldStructureType, InfantryWeaponId, ShellType, Stance, TrainType, YardFieldType } from "../catalog.js";
+import type { AirDrop, BridgeType, BuildingType, Crit, DroneMode, EntityType, FieldStructureType, InfantryWeaponId, ShellType, Stance, TrainType, YardFieldType } from "../catalog.js";
 import type { AiDifficulty, ClientMessage, CorpseView, EntityState, ImpactView, RocketLaunchView, ShellHoleView } from "../protocol.js";
 
 export interface Vec {
@@ -77,6 +77,10 @@ export interface Order {
   structure?: FieldStructureType;
   /** Base building an engineer is raising at `tileX`, `tileY`. The Smelter on distant scrap. */
   building?: BuildingType;
+  /** Bridge an engineer is raising. Its deck is `x`, `y`, `facing`, `span`. */
+  bridge?: BridgeType;
+  /** Bridge deck length, world px. */
+  span?: number;
   /** Panic retreat: after this order, the Mauler returns to HQ and holds. */
   returnToBase?: boolean;
   /**
@@ -478,6 +482,8 @@ export interface Entity {
   coverBonus: number;
   /** Part of `coverBonus` granted by a concrete wall. Overhead hits ignore it. */
   wallCover: number;
+  /** Bridge only: deck length, world px. `facing` runs along the deck. */
+  span?: number;
   /** Set on a Wall section converted into a lifting gate. */
   gate?: GateState;
   /** Seconds spent on the current build or repair. */
@@ -656,6 +662,10 @@ export interface Projectile {
    * parapet soaks none of it.
    */
   plunging?: boolean;
+  /** A force-attack round at this bridge. Only these hurt a bridge. Not on the wire. */
+  bridgeId?: number;
+  /** Already looked at for `bridgeId`. Not on the wire. */
+  bridgeTagged?: true;
 }
 
 /** Lasting smoke screen from a 75mm smoke shell. */
@@ -813,6 +823,10 @@ export interface MatchState {
   fortBlock: Uint8Array;
   /** Owner of the gate on each fortBlock 3 tile, by tile index. */
   fortOwner: Map<number, string>;
+  /** 1 = water under an intact bridge deck: dry ground for everything that crosses. Rebuilt from the bridges. */
+  bridgeDeck: Uint8Array;
+  /** Damage aimed rounds dealt bridges this step, by bridge id. Applied and cleared each step. Not saved. */
+  bridgeHits?: Map<number, number>;
   players: Map<string, SimPlayer>;
   entities: Map<number, Entity>;
   projectiles: Projectile[];

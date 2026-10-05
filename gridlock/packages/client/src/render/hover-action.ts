@@ -10,6 +10,7 @@ import {
   isCivilianType,
   garrisonAdmits,
   isFieldStructure,
+  isBridge,
   isGarrisonable,
   isInfantryType,
   isNavalType,
@@ -225,6 +226,8 @@ function canRepairHit(
   you: string,
   allied: (ownerId: string | undefined) => boolean,
 ): boolean {
+  // A bridge is no one's: any engineer rebuilds the wreckage or patches the deck.
+  if (isBridge(hit.type)) return hit.hp > 0 && (!!hit.ruined || (hit.hpMax != null && hit.hp < hit.hpMax));
   if (hit.type === "sandbags" && hit.ruined && hit.hp > 0) {
     return !hit.ownerId || hit.ownerId === you || allied(hit.ownerId);
   }

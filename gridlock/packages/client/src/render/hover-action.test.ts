@@ -49,6 +49,25 @@ function act(opts: {
   });
 }
 
+describe("bridge cursor", () => {
+  const eng = unit({ id: 60, type: "engineer" });
+  const tank = unit({ id: 61, type: "warden", hp: 100, hpMax: 100 });
+
+  it("an engineer offers repair on wreckage and on a hurt deck, not on a whole one", () => {
+    const wreck = building({ id: 62, type: "bridge", ownerId: "", hp: 1, hpMax: 240, ruined: true });
+    const hurt = building({ id: 63, type: "bigbridge", ownerId: "", hp: 900, hpMax: 1700 });
+    const whole = building({ id: 64, type: "bridge", ownerId: "", hp: 240, hpMax: 240 });
+    assert.equal(act({ selected: [eng], hit: wreck }), "repair");
+    assert.equal(act({ selected: [eng], hit: hurt }), "repair");
+    assert.equal(act({ selected: [eng], hit: whole }), null);
+  });
+
+  it("guns never offer attack on a bridge: a right-click is a move onto it", () => {
+    const whole = building({ id: 65, type: "bridge", ownerId: "", hp: 240, hpMax: 240 });
+    assert.equal(act({ selected: [tank], hit: whole }), null);
+  });
+});
+
 describe("engineer repair cursor", () => {
   const eng = unit({ id: 50, type: "engineer" });
 

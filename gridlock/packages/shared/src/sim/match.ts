@@ -36,6 +36,7 @@ import { tickCollision } from "./collision.js";
 import { tickDeploy } from "./deploy.js";
 import { tickSmelters } from "./smelter.js";
 import { tickConstructs } from "./construct.js";
+import { guardBridges, restampBridges, settleBridges, tickBridges } from "./bridge.js";
 import { tickHeal } from "./heal.js";
 import { tickForceFields, tickLasers } from "./laser.js";
 import { tickSupply } from "./supply.js";
@@ -76,6 +77,7 @@ export function createMatch(
     wreckBlock: new Uint8Array(map.width * map.height),
     fortBlock: new Uint8Array(map.width * map.height),
     fortOwner: new Map(),
+    bridgeDeck: new Uint8Array(map.width * map.height),
     players,
     entities: new Map(),
     projectiles: [],
@@ -163,6 +165,9 @@ export function step(state: MatchState, dt = TICK_DT): void {
   state.impacts = [];
   state.launches = [];
   restampForts(state);
+  restampBridges(state);
+  // Only rounds aimed at a bridge hurt it; every other knock this step is undone below.
+  const bridgeHp = guardBridges(state);
   tickPower(state);
   tickSmoke(state, dt);
   tickSpotlights(state, dt);
@@ -196,6 +201,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickCrates(state, dt);
   tickField(state, dt);
   tickConstructs(state, dt);
+  tickBridges(state, dt);
   tickSmelters(state, dt);
   tickBuild(state, dt);
   tickTrain(state, dt);
@@ -205,6 +211,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   syncTorpedoes(state);
   tickFires(state, dt);
   tickCapture(state, dt);
+  settleBridges(state, bridgeHp);
   reapDead(state);
   reapLostHqs(state);
   checkWin(state);

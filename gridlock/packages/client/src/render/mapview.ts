@@ -35,6 +35,17 @@ import {
   GUARD_CONE_DEG,
   isCivilianType,
   isFieldStructure,
+  isBridge,
+  bridgeAlong,
+  bridgeCost,
+  bridgeEnds,
+  bridgeTiles,
+  bridgeWidth,
+  inBridge,
+  previewBridge,
+  BRIDGE_ABUTMENT,
+  type BridgeSpan,
+  type BridgeType,
   isInfantryType,
   PTRD_CALIBER,
   isNavalType,
@@ -390,6 +401,17 @@ import { beamEnd, beamShare, drawForceField, drawLaserBeam } from "./laser-beam.
 import { inScreenRect, unitGroundSink, unitPickRect, type ScreenRect } from "./unit-hit.js";
 import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
+import { bridgeDeckElev, drawBridge, type BridgeHeights } from "./bridge.js";
+
+/** Bridges lie on the water: over ground decals, under shadows, corpses, and everything standing. */
+const BRIDGE_DRAW_LAYER = -1.5;
+
+interface BridgeLook {
+  span: BridgeSpan;
+  width: number;
+  heights: BridgeHeights;
+  ramp: number;
+}
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
 import { strideFrame, strideHop, unitStepping, WALKER_STRIDE_WORLD } from "./stepping.js";
@@ -544,6 +566,8 @@ const EXTRUDE: Record<EntityType, number> = {
   gate: 18,
   teeth: 16,
   trench: 6,
+  bridge: 4,
+  bigbridge: 6,
   walker: 30,
   titan: 40,
   mammoth: 15,
@@ -902,6 +926,12 @@ export class MapView {
   fieldPlace: FieldStructureType | null = null;
   /** Base building the selected engineers will raise where the player clicks. The Smelter on scrap. */
   constructPlace: BuildingType | null = null;
+  /** Bridge the selected engineers will raise. A press on one shore, a release (or a second click) on the other. */
+  bridgePlace: BridgeType | null = null;
+  /** Where the bridge drag started, world px. Null until the first press. */
+  private bridgeStart: { x: number; y: number } | null = null;
+  /** Water tiles under an intact deck, by tile index, for this snapshot. Units there stand on the deck. */
+  private bridgeDeckCache: { snap: unknown; tiles: Map<number, BridgeLook> } | null = null;
   /** Corners pinned so far, start first. Empty until the first release. */
   private fieldPath: { x: number; y: number }[] = [];
   /** Connected runs of same-type field structures in the current snapshot, by section key. */
@@ -959,6 +989,8 @@ export class MapView {
       this.rotateMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
+      this.bridgePlace = null;
+      this.bridgeStart = null;
       this.setGuardMode(false);
       this.setPatrolMode(false);
     }
@@ -984,6 +1016,8 @@ export class MapView {
       this.rotateMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
+      this.bridgePlace = null;
+      this.bridgeStart = null;
       this.setGuardMode(false);
     }
     this.onAttackMoveMode();
@@ -999,6 +1033,8 @@ export class MapView {
       this.rotateMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
+      this.bridgePlace = null;
+      this.bridgeStart = null;
       this.setGuardMode(false);
       this.setPatrolMode(false);
     }
@@ -1016,6 +1052,8 @@ export class MapView {
       this.forceAttackMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
+      this.bridgePlace = null;
+      this.bridgeStart = null;
       this.setGuardMode(false);
       this.setPatrolMode(false);
     }
@@ -1033,6 +1071,8 @@ export class MapView {
       this.rotateMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
+      this.bridgePlace = null;
+      this.bridgeStart = null;
       this.setPatrolMode(false);
       this.guardFacing = this.meanSelectedFacing();
     } else {
@@ -1065,10 +1105,33 @@ export class MapView {
     this.onPlaceMode();
   }
 
+  /** Arm or disarm the engineer's bridge tool. Clicking the same button again puts it down. */
+  setBridgePlace(type: BridgeType | null): void {
+    const next = this.bridgePlace === type ? null : type;
+    this.setConstructPlace(null);
+    this.bridgePlace = next;
+    this.bridgeStart = null;
+    if (next) {
+      this.placeMode = false;
+      this.placePick = null;
+      this.yardArm = null;
+      this.attackMoveMode = false;
+      this.forceAttackMode = false;
+      this.rotateMode = false;
+      this.guardMode = false;
+      this.setPatrolMode(false);
+      this.guardDragging = false;
+    }
+    this.onAttackMoveMode();
+    this.onPlaceMode();
+  }
+
   setFieldPlace(structure: FieldStructureType | null): void {
     const next = this.fieldPlace === structure ? null : structure;
     this.fieldPlace = next;
     this.constructPlace = null;
+    this.bridgePlace = null;
+    this.bridgeStart = null;
     this.fieldDrag = null;
     this.fieldPath = [];
     if (next) {
@@ -1313,9 +1376,11 @@ export class MapView {
       this.setRotateMode(false);
     }
     if (this.guardMode && this.ownSelectedIds().length === 0) this.setGuardMode(false);
-    if ((this.fieldPlace || this.constructPlace) && !this.curr.entities.some((e) => this.selected.has(e.id) && e.type === "engineer" && e.ownerId === this.curr.youPlayerId)) {
+    if ((this.fieldPlace || this.constructPlace || this.bridgePlace) && !this.curr.entities.some((e) => this.selected.has(e.id) && e.type === "engineer" && e.ownerId === this.curr.youPlayerId)) {
       this.fieldPlace = null;
       this.constructPlace = null;
+      this.bridgePlace = null;
+      this.bridgeStart = null;
       this.fieldPath = [];
       this.fieldDrag = null;
       this.onPlaceMode();
@@ -2013,6 +2078,8 @@ export class MapView {
     this.yardArm = null;
     this.fieldPlace = null;
     this.constructPlace = null;
+    this.bridgePlace = null;
+    this.bridgeStart = null;
     this.fieldDrag = null;
     this.placeMode = true;
     this.attackMoveMode = false;
@@ -2039,6 +2106,8 @@ export class MapView {
   armYardField(type: YardFieldType): void {
     this.fieldPlace = null;
     this.constructPlace = null;
+    this.bridgePlace = null;
+    this.bridgeStart = null;
     this.fieldDrag = null;
     this.fieldPath = [];
     this.placePick = null;
@@ -2093,13 +2162,20 @@ export class MapView {
           this.onPlaceMode();
           return;
         }
-        if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode || this.fieldPlace || this.constructPlace) {
+        if (this.bridgePlace && this.bridgeStart) {
+          this.bridgeStart = null;
+          this.onPlaceMode();
+          return;
+        }
+        if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode || this.fieldPlace || this.constructPlace || this.bridgePlace) {
           this.setAttackMoveMode(false);
           this.setForceAttackMode(false);
           this.setRotateMode(false);
           this.setGuardMode(false);
           this.fieldPlace = null;
           this.constructPlace = null;
+          this.bridgePlace = null;
+          this.bridgeStart = null;
           this.fieldDrag = null;
           this.fieldPath = [];
           this.onPlaceMode();
@@ -2123,6 +2199,12 @@ export class MapView {
         }
         if (this.constructPlace) {
           this.commitConstruct(mx, my);
+          return;
+        }
+        if (this.bridgePlace) {
+          const w = this.screenToWorld(mx, my);
+          if (this.bridgeStart) this.commitBridge(w);
+          else this.bridgeStart = { x: w.x, y: w.y };
           return;
         }
         if (!this.fieldPlace && this.readyYardField() === "gate") {
@@ -2199,6 +2281,12 @@ export class MapView {
     }
     if (e.button === 0 && this.guardDragging) {
       this.commitGuard(this.mouseX, this.mouseY);
+      return;
+    }
+    // A drag from one shore to the other places the bridge; a click leaves the start pinned for a second click.
+    if (e.button === 0 && this.bridgePlace && this.bridgeStart) {
+      const w = this.screenToWorld(this.mouseX, this.mouseY);
+      if (Math.hypot(w.x - this.bridgeStart.x, w.y - this.bridgeStart.y) > this.ts() * 3) this.commitBridge(w);
       return;
     }
     if (e.button === 0 && this.fieldDrag && (this.fieldPlace || this.readyYardField())) {
@@ -2799,6 +2887,8 @@ export class MapView {
     this.fieldDrag = null;
     this.fieldPlace = null;
     this.constructPlace = null;
+    this.bridgePlace = null;
+    this.bridgeStart = null;
     this.yardArm = null;
     this.placeMode = false;
     this.onPlaceMode();
@@ -2826,16 +2916,40 @@ export class MapView {
     this.command({ type: "cmd.construct", ids, building, tx: tile.x, ty: tile.y });
     // The site is given: the tool is put down, like a building after it lands.
     this.constructPlace = null;
+    this.bridgePlace = null;
+    this.bridgeStart = null;
+    this.onPlaceMode();
+  }
+
+  /** The nearest selected engineer bridges the water between the drag start and `end`. */
+  private commitBridge(end: { x: number; y: number }): void {
+    const bridge = this.bridgePlace;
+    const start = this.bridgeStart;
+    if (!bridge || !start) return;
+    const ids = this.curr.entities
+      .filter((e) => this.selected.has(e.id) && e.ownerId === this.curr.youPlayerId && e.type === "engineer" && !e.wreck && e.hp > 0)
+      .map((e) => e.id);
+    if (ids.length === 0) return;
+    if (!previewBridge(this.curr, bridge, start.x, start.y, end.x, end.y).ok) {
+      // A bad crossing keeps the tool and starts the drag again.
+      this.bridgeStart = null;
+      return;
+    }
+    this.command({ type: "cmd.bridge", ids, bridge, x: start.x, y: start.y, x2: end.x, y2: end.y });
+    this.bridgePlace = null;
+    this.bridgeStart = null;
     this.onPlaceMode();
   }
 
   /** Drop the line being drawn and the placing mode with it. True when there was one. */
   cancelFieldPlacing(): boolean {
-    if (!this.fieldPlace && !this.readyYardField() && !this.constructPlace) return false;
+    if (!this.fieldPlace && !this.readyYardField() && !this.constructPlace && !this.bridgePlace) return false;
     this.fieldPath = [];
     this.fieldDrag = null;
     this.fieldPlace = null;
     this.constructPlace = null;
+    this.bridgePlace = null;
+    this.bridgeStart = null;
     this.yardArm = null;
     this.placeMode = false;
     this.onPlaceMode();
@@ -2931,7 +3045,44 @@ export class MapView {
 
   private elevAt(wx: number, wy: number): number {
     const map = this.map();
+    const tx = worldToTile(wx, map.tileSize);
+    const ty = worldToTile(wy, map.tileSize);
+    const deck = this.bridgeDecks().get(ty * map.width + tx);
+    if (deck) return bridgeDeckElev(deck.heights, bridgeAlong(deck.span, wx, wy), deck.ramp);
+    return heightAt(map, tx, ty);
+  }
+
+  /** Terrain height alone, deck or no deck. */
+  private groundAt(wx: number, wy: number): number {
+    const map = this.map();
     return heightAt(map, worldToTile(wx, map.tileSize), worldToTile(wy, map.tileSize));
+  }
+
+  private bridgeLook(e: { type: string; x: number; y: number; facing: number; span?: number }): BridgeLook | null {
+    if (!isBridge(e.type) || !e.span) return null;
+    const span: BridgeSpan = { x: e.x, y: e.y, facing: e.facing, length: e.span };
+    const { ax, ay, bx, by } = bridgeEnds(span);
+    const heights = { a: this.groundAt(ax, ay), b: this.groundAt(bx, by) };
+    const ramp = Math.min(0.35, (BRIDGE_ABUTMENT * 2.5) / Math.max(1, span.length));
+    return { span, width: bridgeWidth(e.type), heights, ramp };
+  }
+
+  private bridgeDecks(): Map<number, BridgeLook> {
+    const snap = this.curr;
+    if (this.bridgeDeckCache?.snap === snap) return this.bridgeDeckCache.tiles;
+    const tiles = new Map<number, BridgeLook>();
+    const map = this.map();
+    for (const e of snap?.entities ?? []) {
+      if (!isBridge(e.type) || e.ruined || e.hp <= 0) continue;
+      const look = this.bridgeLook(e);
+      if (!look) continue;
+      for (const t of bridgeTiles(map, look.span, look.width)) {
+        const i = t.y * map.width + t.x;
+        if (map.tiles[i] === TILE_WATER) tiles.set(i, look);
+      }
+    }
+    this.bridgeDeckCache = { snap, tiles };
+    return tiles;
   }
 
   /** Height a building sits at: its lowest visible corner, so a slope never shows air under it. */
@@ -3020,6 +3171,7 @@ export class MapView {
    */
   private drawKey(e: EntityView): DrawKey {
     const ts = this.ts();
+    if (isBridge(e.type)) return { layer: BRIDGE_DRAW_LAYER, z: isoDepth(e.x, e.y) };
     const span = fieldSpan(e.type);
     if (span) {
       const tx = -Math.sin(e.facing);
@@ -3056,6 +3208,14 @@ export class MapView {
     const keys = new Map(this.curr.entities.map((e) => [e, this.drawKey(e)]));
     const list = [...this.curr.entities].sort((a, b) => compareDrawOrder(keys.get(b)!, keys.get(a)!));
     for (const e of list) {
+      if (isBridge(e.type)) {
+        const look = this.bridgeLook(e);
+        if (!look) continue;
+        const h = (look.heights.a + look.heights.b) / 2 + (e.ruined ? 0 : 1);
+        const w = isoToWorld(ix, iy + isoLift(h), ts);
+        if (inBridge(look.span, look.width, w.x, w.y, 3)) return e;
+        continue;
+      }
       if (isFieldStructure(e.type)) {
         const p = this.toScreen(e.x, e.y);
         const span = fieldSpan(e.type);
@@ -3226,7 +3386,12 @@ export class MapView {
   }
 
   private onRight(px: number, py: number): void {
-    if (this.placeMode || this.fieldPlace || this.yardArm || this.constructPlace) {
+    if (this.placeMode || this.fieldPlace || this.yardArm || this.constructPlace || this.bridgePlace) {
+      if (this.bridgePlace && this.bridgeStart) {
+        this.bridgeStart = null;
+        this.onPlaceMode();
+        return;
+      }
       if (this.fieldPath.length > 0 && (this.fieldPlace || this.readyYardField())) {
         this.fieldPath = undoFieldPoint(this.fieldPath);
         this.fieldDrag = null;
@@ -3237,6 +3402,8 @@ export class MapView {
       this.yardArm = null;
       this.fieldPlace = null;
       this.constructPlace = null;
+      this.bridgePlace = null;
+      this.bridgeStart = null;
       this.fieldDrag = null;
       this.fieldPath = [];
       this.onPlaceMode();
@@ -3536,7 +3703,7 @@ export class MapView {
     for (const e of drawList) {
       const ghost = !liveIds.has(e.id);
       // The Airfield is flat ground; its decal would sit in its own shadow.
-      if (e.kind === "building" && !isFieldStructure(e.type) && !buildingGroundFor(e.type)) {
+      if (e.kind === "building" && !isFieldStructure(e.type) && !isBridge(e.type) && !buildingGroundFor(e.type)) {
         this.pushCastShadow(castShadows, this.buildingShadow(e), w, h);
         this.pushYardWear(yardWear, e, w, h);
       }
@@ -3546,7 +3713,8 @@ export class MapView {
       items.push({
         ...this.drawKey(e),
         run: () => {
-          if (isFieldStructure(e.type)) this.drawField(e, ghost);
+          if (isBridge(e.type)) this.drawBridgeEnt(e, ghost);
+          else if (isFieldStructure(e.type)) this.drawField(e, ghost);
           else if (e.kind === "building") this.drawBuilding(e, ghost);
           else if (!ghost && !e.garrisonedIn && this.unitNearView(e, w, h)) {
             const fade = this.sightFade(e, now) * this.wreckFade(e, now);
@@ -3571,6 +3739,7 @@ export class MapView {
     }
     this.collectFieldSites(items);
     this.collectBuildSites(items);
+    this.collectBridgeSites(items);
     this.collectTrees(items, castShadows);
     this.collectDecor(items);
     this.collectTreeBurns(items);
@@ -3646,6 +3815,8 @@ export class MapView {
       this.drawGhost(toPlace);
     } else if (this.constructPlace && this.mouseX >= 0) {
       this.drawGhost(this.constructPlace, previewConstruct);
+    } else if (this.bridgePlace && this.mouseX >= 0) {
+      this.drawBridgeGhost(this.bridgePlace);
     }
     this.drawYardBuild();
     if (this.fieldPlace && this.mouseX >= 0) this.drawFieldGhost(this.fieldPlace, false);
@@ -7638,6 +7809,122 @@ export class MapView {
     const y0 = Math.min(...sy) - 40;
     const bounds = { x: x0, y: y0, w: Math.max(...sx) + 8 - x0, h: Math.max(...sy) + 8 - y0 };
     this.drawVeiled(foot, elev, 24, bounds, draw);
+  }
+
+  private paintBridge(
+    type: BridgeType,
+    look: BridgeLook,
+    opts: { ruined?: boolean; hurt?: number; alpha?: number; ghost?: boolean; bad?: boolean; seed: number },
+  ): void {
+    const map = this.map();
+    drawBridge(this.ctx, {
+      type,
+      span: look.span,
+      width: look.width,
+      heights: look.heights,
+      ramp: look.ramp,
+      project: (wx, wy, elev) => this.toScreen(wx, wy, elev),
+      ground: (wx, wy) => this.groundAt(wx, wy),
+      wet: (wx, wy) => map.tiles[worldToTile(wy, map.tileSize) * map.width + worldToTile(wx, map.tileSize)] === TILE_WATER,
+      ...opts,
+    });
+  }
+
+  private drawBridgeEnt(e: EntityView, ghost: boolean): void {
+    const look = this.bridgeLook(e);
+    if (!look || !isBridge(e.type)) return;
+    const hurt = e.hpMax > 0 ? Math.max(0, 1 - e.hp / e.hpMax) : 0;
+    this.paintBridge(e.type, look, { ruined: e.ruined, hurt, alpha: ghost ? 0.7 : 1, seed: e.id });
+    if (ghost) return;
+    const mid = this.toScreen(e.x, e.y, bridgeDeckElev(look.heights, 0.5, look.ramp));
+    if (this.selected.has(e.id)) {
+      const elev = bridgeDeckElev(look.heights, 0.5, look.ramp);
+      const pts = fieldFrameCorners(e.x, e.y, e.facing + Math.PI / 2, look.span.length, look.width, 4).map((p) =>
+        this.toScreen(p.x, p.y, elev),
+      );
+      drawSelectFrame(this.ctx, pts, { hostile: false, now: performance.now() });
+    }
+    if (!e.ruined) this.maybeHp(e, mid.x - 20, mid.y - 10, 40);
+  }
+
+  /** The bridge your engineer is on his way to raise, or raising, as a ghost with its progress. */
+  private collectBridgeSites(items: DrawItem[]): void {
+    for (const e of this.curr.entities) {
+      const site = e.bridgeSite;
+      if (!site || e.garrisonedIn || e.ownerId !== this.curr.youPlayerId) continue;
+      const look = this.bridgeLook({ type: site.bridge, x: site.x, y: site.y, facing: site.facing, span: site.span });
+      if (!look) continue;
+      items.push({
+        layer: BRIDGE_DRAW_LAYER,
+        z: isoDepth(site.x, site.y),
+        run: () => {
+          this.paintBridge(site.bridge, look, { ghost: true, alpha: 0.6, seed: e.id });
+          if (site.progress == null) return;
+          const c = this.toScreen(site.x, site.y, bridgeDeckElev(look.heights, 0.5, look.ramp));
+          const ctx = this.ctx;
+          ctx.fillStyle = "rgba(12,16,8,0.75)";
+          ctx.fillRect(c.x - 21, c.y - 15, 42, 5);
+          ctx.fillStyle = "#e8b84a";
+          ctx.fillRect(c.x - 20, c.y - 14, 40 * site.progress, 3);
+        },
+      });
+    }
+  }
+
+  /** The deck the drag would get, green or red, with its price; before the press, a mark under the cursor. */
+  private drawBridgeGhost(type: BridgeType): void {
+    const ctx = this.ctx;
+    const w = this.screenToWorld(this.mouseX, this.mouseY);
+    const start = this.bridgeStart;
+    if (!start) {
+      const p = this.toScreen(w.x, w.y);
+      ctx.strokeStyle = "#e8b84a";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, 7, 3.5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      this.ghostLabel(p.x, p.y + 16, "Drag across the water", "#e8b84a");
+      return;
+    }
+    const a = this.toScreen(start.x, start.y);
+    const b = this.toScreen(w.x, w.y);
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = "rgba(232,184,74,0.7)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.restore();
+    const plan = previewBridge(this.curr, type, start.x, start.y, w.x, w.y);
+    const span = plan.span;
+    if (span) {
+      const look = this.bridgeLook({ type, x: span.x, y: span.y, facing: span.facing, span: span.length });
+      if (look) this.paintBridge(type, look, { ghost: true, bad: !plan.ok, alpha: 0.85, seed: 1 });
+    }
+    const at = span ? this.toScreen(span.x, span.y) : b;
+    if (plan.ok) {
+      const cost = bridgeCost(type, plan.span.length);
+      const afford = (this.curr.you?.scrap ?? 0) >= cost;
+      this.ghostLabel(at.x, at.y + 18, `${catalog(type).name} · ${cost}`, afford ? "#e8b84a" : "#ff5a4a");
+    } else {
+      this.ghostLabel(at.x, at.y + 18, plan.reason, "#ff5a4a");
+    }
+  }
+
+  private ghostLabel(x: number, y: number, text: string, color: string): void {
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.font = "bold 10px system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(8,10,6,0.85)";
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, y);
+    ctx.restore();
   }
 
   private drawField(e: EntityView, ghost: boolean): void {

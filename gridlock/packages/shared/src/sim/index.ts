@@ -10,7 +10,7 @@ export { commandedStance, effectiveStance, tickStance } from "./stance.js";
 export { applyCommand } from "./commands.js";
 export { snapshotFor } from "./snapshot.js";
 export { burnVariant } from "./remains.js";
-export { previewConstruct, previewField, previewPlace, previewSite, previewYardField } from "./preview.js";
+export { previewBridge, previewConstruct, previewField, previewPlace, previewSite, previewYardField } from "./preview.js";
 export { earnScrap, scrapCap, smelterCount, smelterIncome, smelterOnScrap, smelterRateOn, smelterScrapNeeded, smelterSiteOk } from "./smelter.js";
 export { pathToWorld, astar } from "./path.js";
 export { PATROL_POINTS_MAX, connectPatrolPoints } from "./patrol.js";
@@ -147,4 +147,5 @@ export {
   wallRiseLimit,
   wallRunTops,
 } from "./field.js";
+export { bridgeSpanOf, bridgeTilesOf, planBridgeFor, restampBridges } from "./bridge.js";
 export type { GateSite, WallTopSample } from "./field.js";

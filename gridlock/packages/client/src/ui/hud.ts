@@ -13,6 +13,11 @@ import {
   TICK_DT,
   WALKER_ONE_BURST,
   ENGINEER_BUILDINGS,
+  BRIDGE_MAX_TILES,
+  BRIDGE_TYPES,
+  TILE_SUBDIV,
+  bridgeCostPerTile,
+  isBridge,
   HAULER_SMOKE_CHARGES,
   MAULER_CART_HP,
   SMELTER_SCRAP_PER_SEC,
@@ -1853,6 +1858,17 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
         on: view?.constructPlace === building,
       });
     }
+    for (const bridge of BRIDGE_TYPES) {
+      const def = catalog(bridge);
+      const wide = bridge === "bigbridge" ? "two tanks" : "one tank";
+      out.push({
+        slot: "bridge-" + bridge,
+        act: "bridge-" + bridge,
+        label: def.name,
+        title: `Bridge water ${wide} wide. Drag from one shore to the other; it spans the crossing, up to ${BRIDGE_MAX_TILES / TILE_SUBDIV} cells. ${bridgeCostPerTile(bridge) * TILE_SUBDIV} scrap a cell, paid when he starts; it appears whole when he finishes. Anyone can cross it. Only a force-attack fires on it; the wreckage stays and an engineer rebuilds it.`,
+        on: view?.bridgePlace === bridge,
+      });
+    }
   }
   const inf = units.filter((e) => isInfantryType(e.type) && e.type !== "engineer" && !isCyborg(e.type));
   if (inf.length) {
@@ -2293,6 +2309,11 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
         ctx.net.send({ type: "cmd.deploy", id: e.id });
       }
     }
+    return;
+  }
+  if (act.startsWith("bridge-")) {
+    const bridge = act.slice("bridge-".length);
+    if (isBridge(bridge)) view.setBridgePlace(bridge);
     return;
   }
   if (act.startsWith("construct-")) {

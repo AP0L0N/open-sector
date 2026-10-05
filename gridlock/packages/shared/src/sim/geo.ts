@@ -19,6 +19,7 @@ import {
   infantryGunFor,
   primaryInfantryGun,
   isArmoredType,
+  isBridge,
   isFieldStructure,
   isInfantryType,
   isNavalType,
@@ -122,9 +123,11 @@ export function isWall(state: MatchState, x: number, y: number): boolean {
   return state.terrain[tileIndex(state, x, y)] === TILE_BLOCKED;
 }
 
+/** Open water. Water under an intact bridge deck is dry ground (`bridgeDeck`). */
 export function isWater(state: MatchState, x: number, y: number): boolean {
   if (!inBounds(state, x, y)) return false;
-  return state.terrain[tileIndex(state, x, y)] === TILE_WATER;
+  const i = tileIndex(state, x, y);
+  return state.terrain[i] === TILE_WATER && state.bridgeDeck?.[i] !== 1;
 }
 
 export function isTree(state: MatchState, x: number, y: number): boolean {
@@ -383,7 +386,7 @@ function restampWreckBlock(state: MatchState): void {
 }
 
 export function occupyEntity(state: MatchState, e: Entity): void {
-  if (isFieldStructure(e.type)) return;
+  if (isFieldStructure(e.type) || isBridge(e.type)) return;
   if (e.kind !== "building" && !e.wreck) return;
   for (const t of buildingTilesOf(e, state.tileSize)) {
     if (!inBounds(state, t.x, t.y)) continue;
@@ -396,7 +399,7 @@ export function occupyEntity(state: MatchState, e: Entity): void {
 }
 
 export function vacateEntity(state: MatchState, e: Entity): void {
-  if (isFieldStructure(e.type)) return;
+  if (isFieldStructure(e.type) || isBridge(e.type)) return;
   if (e.kind !== "building" && !e.wreck) return;
   for (const t of buildingTilesOf(e, state.tileSize)) {
     if (!inBounds(state, t.x, t.y)) continue;

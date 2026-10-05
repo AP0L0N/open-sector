@@ -2,6 +2,7 @@
 
 import type {
   AirDrop,
+  BridgeType,
   BuildingType,
   Crit,
   DroneMode,
@@ -17,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 97;
+export const PROTOCOL_VERSION = 98;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -241,8 +242,15 @@ export interface EntityView {
   patrolLoop?: boolean;
   /** Infantry this medic is bandaging. Omitted while he is only walking over. */
   tend?: number;
-  /** Sandbags wrecked by a tank shell. The rubble stays. */
+  /** Sandbags wrecked by a tank shell, or a fallen bridge. The rubble stays. */
   ruined?: boolean;
+  /** Bridge deck length, world px. `facing` runs along the deck. Omitted on everything else. */
+  span?: number;
+  /**
+   * Bridge this engineer is on his way to raise or is raising. `progress` is 0–1 once he works.
+   * Only his own side gets it.
+   */
+  bridgeSite?: { bridge: BridgeType; x: number; y: number; facing: number; span: number; progress?: number };
   /** A gate: boom lift 0–1, and whether it is locked. */
   gate?: { locked: boolean; open: number };
   /**
@@ -756,6 +764,11 @@ export type ClientMessage =
     }
   /** Selected engineers walk to the tile and raise this base building there. A Smelter on distant scrap. */
   | { type: "cmd.construct"; ids: number[]; building: BuildingType; tx: number; ty: number }
+  /**
+   * The nearest selected engineer bridges the water a drag from (x, y) to (x2, y2) crosses.
+   * The sim snaps the deck from shore to shore (`planBridge`).
+   */
+  | { type: "cmd.bridge"; ids: number[]; bridge: BridgeType; x: number; y: number; x2: number; y2: number }
   | { type: "cmd.repair"; ids: number[]; targetId: number; queue?: boolean }
   | { type: "cmd.board"; ids: number[]; truckId: number; queue?: boolean }
   | { type: "cmd.unboard"; ids?: number[]; truckId?: number }
