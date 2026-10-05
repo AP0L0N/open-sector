@@ -15,6 +15,7 @@ import {
   ENGINEER_BUILDINGS,
   BRIDGE_MAX_TILES,
   BRIDGE_TYPES,
+  BRIDGES_HIDDEN,
   TILE_SUBDIV,
   bridgeCostPerTile,
   isBridge,
@@ -1865,7 +1866,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
         on: view?.constructPlace === building,
       });
     }
-    for (const bridge of BRIDGE_TYPES) {
+    for (const bridge of BRIDGES_HIDDEN ? [] : BRIDGE_TYPES) {
       const def = catalog(bridge);
       const wide = bridge === "bigbridge" ? "two tanks" : "one tank";
       out.push({

@@ -569,6 +569,8 @@ export function isConcreteLine(type: string): type is ConcreteLineType {
  */
 export type BridgeType = "bridge" | "bigbridge";
 export const BRIDGE_TYPES: readonly BridgeType[] = ["bridge", "bigbridge"];
+/** Bridges stay in the sim but are off the engineer's command bar for now. */
+export const BRIDGES_HIDDEN = true;
 export function isBridge(type: string): type is BridgeType {
   return type === "bridge" || type === "bigbridge";
 }
@@ -3562,7 +3564,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "No gun. Builds sandbags, concrete walls, tank obstacles, one-man trenches, and bridges over water, repairs armor, buildings, and spotlights, and cuts wrecks into scrap.",
+    blurb: "No gun. Builds sandbags, concrete walls, tank obstacles, and one-man trenches, repairs armor, buildings, and spotlights, and cuts wrecks into scrap.",
   },
   medic: {
     type: "medic",
