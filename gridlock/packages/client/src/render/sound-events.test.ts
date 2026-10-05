@@ -42,6 +42,34 @@ describe("SoundTracker", () => {
     assert.deepEqual(t.step(snap({ entities: [unit(1, "rifleman")] }), 100), []);
   });
 
+  it("calls a sonar contact once when a new submarine is heard, not while it stays heard", () => {
+    const t = new SoundTracker();
+    const sonar = (ids: number[]) => ids.map((id) => ({ id, x: 0, y: 0, down: true }));
+    t.step(snap({ sonar: sonar([7]) } as never), 0);
+    const announced = (evs: SoundEvent[]) => kinds(evs, "announce").filter((e) => (e as { event: string }).event === "sonarcontact").length;
+    assert.equal(announced(t.step(snap({ sonar: sonar([7]) } as never), 100)), 0, "already heard at the start");
+    assert.equal(announced(t.step(snap({ sonar: sonar([7, 8]) } as never), 200)), 1, "a new boat");
+    assert.equal(announced(t.step(snap({ sonar: sonar([7, 8]) } as never), 300)), 0);
+    assert.equal(announced(t.step(snap({}), 400)), 0, "lost contact is quiet");
+    assert.equal(announced(t.step(snap({ sonar: sonar([8]) } as never), 500)), 1, "heard again");
+  });
+
+  it("an ASW helicopter's sortie: pilot answers on take-off without the announcer, calls the drop, and lands with its deck sound", () => {
+    const t = new SoundTracker();
+    t.step(snap({ entities: [unit(1, "destroyer")] }), 0);
+    const heli = unit(2, "aswheli", ME, { air: { alt: 4 } } as never);
+    const off = t.step(snap({ entities: [unit(1, "destroyer"), heli] }), 100);
+    assert.deepEqual(kinds(off, "voice"), [{ kind: "voice", type: "aswheli", event: "ready" }]);
+    assert.equal(kinds(off, "announce").length, 0, "a sortie is not a new unit");
+    const torp = { id: 70, fromId: 2, x: 0, y: 0, vx: 1, vy: 0, caliber: 533, bounced: false };
+    const drop = t.step(snap({ entities: [unit(1, "destroyer"), heli, unit(3, "torpedo")], projectiles: [torp] as never }), 200);
+    assert.ok(kinds(drop, "voice").some((e) => (e as { event: string }).event === "special"), "Fish away");
+    assert.equal(kinds(drop, "announce").length, 0, "a torpedo is no unit ready");
+    const home = t.step(snap({ entities: [unit(1, "destroyer")] }), 300);
+    assert.deepEqual(kinds(home, "unitsfx"), [{ kind: "unitsfx", type: "aswheli", cue: "special", x: 20, y: 5 }]);
+    assert.equal(kinds(home, "death").length, 0);
+  });
+
   it("hears a new projectile as its shooter firing, once per shot", () => {
     const t = new SoundTracker();
     const ents = [unit(1, "ss3"), unit(2, "rifleman", "p2")];

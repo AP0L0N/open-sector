@@ -901,6 +901,7 @@ input[type="range"] { padding: 0; }
 #train-supplyboat,
 #train-submarine,
 #train-battleship,
+#train-destroyer,
 #train-stuka,
 #train-fw190,
 #train-bv222,
@@ -1206,6 +1207,11 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/battleship-cameo.png");
 }
+#train-destroyer {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    var(--destroyer-cameo, url("../assets/units/destroyer-cameo.png"));
+}
 #build-dock {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
@@ -1457,6 +1463,14 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="battleship"],
 .prod-job[data-type="battleship"] {
   background-image: url("../assets/units/battleship-cameo.png");
+}
+.config-type[data-type="destroyer"],
+.prod-job[data-type="destroyer"] {
+  background-image: var(--destroyer-cameo, url("../assets/units/destroyer-cameo.png"));
+}
+.config-type[data-type="aswheli"],
+.prod-job[data-type="aswheli"] {
+  background-image: var(--aswheli-cameo, url("../assets/units/aswheli-cameo.png"));
 }
 .config-type[data-type="dock"],
 .prod-job[data-type="dock"] { background-image: url("../assets/buildings/dock-cameo.png"); }

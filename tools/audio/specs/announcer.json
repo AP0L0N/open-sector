@@ -33,6 +33,7 @@
     "selecttarget": ["Select target."],
     "cannotdeploy": ["Cannot deploy here."],
     "reinforcements": ["Reinforcements have arrived."],
-    "newconstruction": ["New construction options."]
+    "newconstruction": ["New construction options."],
+    "sonarcontact": ["Sonar contact. Submarine detected.", "Sonar contact."]
   }
 }

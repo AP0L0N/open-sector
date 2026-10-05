@@ -28,6 +28,7 @@ import { tickBuild } from "./build.js";
 import { raiseWallCrest, restampForts, tickField } from "./field.js";
 import { syncTorpedoes, tickCombat, tickPatrol, tickProjectiles } from "./combat.js";
 import { tickSubmarines } from "./naval.js";
+import { tickDestroyers } from "./destroyer.js";
 import { tickSmoke } from "./smoke.js";
 import { maybeCookOff, tickFires } from "./flame.js";
 import { tickBipod, tickStance } from "./stance.js";
@@ -187,6 +188,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickChutes(state, dt);
   tickDrones(state, dt);
   tickSubmarines(state, dt);
+  tickDestroyers(state, dt);
   tickJets(state, dt);
   tickCollision(state, dt);
   syncTowedGuns(state);

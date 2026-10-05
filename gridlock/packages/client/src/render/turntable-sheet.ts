@@ -133,11 +133,22 @@ const supplyboatHullGlob = import.meta.glob("../assets/units/supplyboat/hull/*.p
   import: "default",
 }) as Record<string, string>;
 
+const destroyerHullGlob = import.meta.glob("../assets/units/destroyer/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 const navalHullGlobs = {
   gunboat: gunboatHullGlob,
   submarine: submarineHullGlob,
   supplyboat: supplyboatHullGlob,
+  destroyer: destroyerHullGlob,
 } as const;
+
+const aswheliHullGlob = import.meta.glob("../assets/units/aswheli/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
 
 const battleshipGlobs = {
   hull: import.meta.glob("../assets/units/battleship/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
@@ -519,7 +530,7 @@ export function bindArtillerySheets(hullImage: HTMLImageElement): void {
 
 const navalPrevious = new Map<string, ComposedTurntable>();
 
-/** Hull-only boat drop-ins (Attack Boat, Submarine, Supply Boat): one sheet and a cameo each. */
+/** Hull-only boat drop-ins (Attack Boat, Submarine, Supply Boat, Destroyer): one sheet and a cameo each. */
 export function bindNavalSheets(kind: keyof typeof navalHullGlobs, hullImage: HTMLImageElement): void {
   let hullUrls: string[];
   try {
@@ -698,6 +709,30 @@ export function bindDroneSheets(hullImage: HTMLImageElement): void {
     })
     .catch((err) => {
       console.error("drone turntable", err);
+    });
+}
+
+let aswheliPrevious: ComposedTurntable | null = null;
+
+/** The Destroyer's ASW helicopter: the drone's aircraft fit, its rotor disc fills the cell. */
+export function bindAswHeliSheets(hullImage: HTMLImageElement): void {
+  let hullUrls: string[];
+  try {
+    hullUrls = pickTurntableUrls(aswheliHullGlob);
+  } catch (err) {
+    console.error("aswheli turntable", err);
+    return;
+  }
+  void Promise.all(hullUrls.map(loadImage))
+    .then((hullImgs) => composeAligned([hullImgs], DRONE_OPTS))
+    .then((next) => {
+      revoke(aswheliPrevious);
+      aswheliPrevious = next;
+      hullImage.src = next.sheetUrls[0] ?? "";
+      applyCameo(next.cameoUrl, "--aswheli-cameo");
+    })
+    .catch((err) => {
+      console.error("aswheli turntable", err);
     });
 }
 

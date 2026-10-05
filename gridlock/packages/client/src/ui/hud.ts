@@ -3,6 +3,7 @@ import {
   YARD_FIELD_TYPES,
   CRIT_LABEL,
   isCyborg,
+  isOneAtATime,
   DRONE_MODE_LABEL,
   SHELL_TYPES,
   STANCE_LABEL,
@@ -434,10 +435,22 @@ function jobsOfType(m: MatchSnapshot | null | undefined, unit: TrainType): JobRe
 }
 
 function canQueueMore(m: MatchSnapshot, unit: TrainType): boolean {
+  if (oneAtATimeHeld(m, unit)) return false;
   const want = producerType(unit);
   const producers = m.entities.filter((e) => e.ownerId === m.youPlayerId && e.type === want && e.hp > 0);
   if (producers.length === 0) return false;
   return producers.some((e) => (e.trainQueue?.length ?? 0) < TRAIN_QUEUE_CAP && padFree(e));
+}
+
+/**
+ * A one-at-a-time unit (Titan, Cyborg Commander) you already have: "alive" while one
+ * stands, "queued" while one is in a queue. The sim refuses another either way.
+ */
+function oneAtATimeHeld(m: MatchSnapshot, unit: TrainType): "alive" | "queued" | null {
+  if (!isOneAtATime(unit)) return null;
+  const mine = m.entities.filter((e) => e.ownerId === m.youPlayerId);
+  if (mine.some((e) => e.type === unit && e.hp > 0 && !e.wreck)) return "alive";
+  return mine.some((e) => e.trainQueue?.some((j) => j.type === unit)) ? "queued" : null;
 }
 
 /** An Airfield with a hardstand left for one more plane (parked, flying, or queued). Other producers always pass. */
@@ -598,14 +611,21 @@ export function paintBattleHud(ctx: Ctx): void {
     const tech = TECH_REQUIRES[unit];
     const techMissing =
       !!tech && !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === tech && e.hp > 0 && !e.wreck);
-    btn.disabled = !hasProducer || !m.you.alive || padsFull || techMissing;
+    // One at a time: greyed out while yours stands. While one is queued the cameo stays live to pause or cancel it.
+    const held = oneAtATimeHeld(m, unit);
+    btn.disabled = !hasProducer || !m.you.alive || padsFull || techMissing || held === "alive";
     btn.classList.toggle("needs-tech", techMissing);
+    btn.classList.toggle("one-held", held != null);
     btn.dataset.baseTitle ??= btn.title;
     btn.title = padsFull
       ? `${catalog(unit).name} — every hardstand is taken. Build another Airfield.`
       : techMissing
         ? `${catalog(unit).name} — needs a ${catalog(tech!).name}.`
-        : btn.dataset.baseTitle;
+        : held === "alive"
+          ? `${catalog(unit).name} — only one at a time. Yours is still in the field.`
+          : held === "queued"
+            ? `${catalog(unit).name} — only one at a time. One is already in the queue.`
+            : btn.dataset.baseTitle;
     btn.classList.toggle("unaffordable", training && m.you.scrap <= 0);
     btn.classList.toggle("slow-power", m.you.lowPower && training);
     btn.classList.toggle("is-training", unitJobs.length > 0);
@@ -808,11 +828,13 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
       ? droneLinkLine(e.droneLink)
       : e.jet
         ? jetLine(e.jet)
-        : e.air
-          ? airLine(e.air, e.type)
-          : "";
+        : e.type === "aswheli"
+          ? "  ·  on the hunt"
+          : e.air
+            ? airLine(e.air, e.type)
+            : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
-  const depth = e.dive ? diveLine(e.dive, !!e.submerged) : "";
+  const depth = e.dive ? diveLine(e.dive, !!e.submerged) : e.asw ? aswLine(e.asw) : "";
   box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${field}${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}${depth}  ·  ${who}${q}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
@@ -847,6 +869,19 @@ function airLine(air: NonNullable<EntityView["air"]>, type: EntityType): string 
 function diveLine(d: NonNullable<EntityView["dive"]>, down: boolean): string {
   const air = `air ${Math.round((d.air / Math.max(1, d.airMax)) * 100)}%`;
   return `  ·  ${down ? "submerged" : "surfaced"}  ·  ${air}${d.winded ? " — recovering" : ""}`;
+}
+
+/** Your own Destroyer: the helicopter on the fantail and the mines on the rail. */
+function aswLine(a: NonNullable<EntityView["asw"]>): string {
+  const heli =
+    a.heli === "up"
+      ? "helicopter out"
+      : a.heli === "lost"
+        ? `new helicopter in ${Math.ceil(a.replace ?? 0)}s`
+        : a.heli === "rearm"
+          ? `helicopter loading${a.rearm != null ? ` ${Math.ceil(a.rearm)}s` : ""}`
+          : "helicopter ready";
+  return `  ·  ${heli}  ·  mines ${a.mines}/${a.minesMax}`;
 }
 
 /** Mode, and for your own drone the battery and a recall. */
@@ -1018,6 +1053,7 @@ const TYPE_ORDER: EntityType[] = [
   "he111",
   "stuka",
   "drone",
+  "aswheli",
   "warden",
   "apocalypse",
   "ss3",
@@ -1035,6 +1071,7 @@ const TYPE_ORDER: EntityType[] = [
   "supplyboat",
   "submarine",
   "battleship",
+  "destroyer",
   "rifleman",
   "gunner",
   "sniper",
@@ -1939,7 +1976,22 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       disabled: winded,
     });
   }
-  if (units.some((e) => e.air && !e.drone && e.air.phase !== "parked")) {
+  const ships = units.filter((e) => e.asw);
+  if (ships.length > 0) {
+    const mines = ships.reduce((n, e) => n + e.asw!.mines, 0);
+    const clearing = ships.every((e) => e.asw!.mines <= 0 || e.asw!.mineGap != null);
+    out.push({
+      slot: "lay-mine",
+      act: "lay-mine",
+      label: `Lay Mine (${mines})`,
+      title:
+        mines <= 0
+          ? "The mine rail is empty. Beside a Marine Base it fills again, one mine at a time."
+          : "Put one contact mine over the stern. It lives a few seconds later and goes off under any hull, swimmer, or submarine that meets it — yours too. The enemy is not shown it.",
+      disabled: mines <= 0 || clearing,
+    });
+  }
+  if (units.some((e) => e.air && !e.drone && e.type !== "aswheli" && e.air.phase !== "parked")) {
     out.push({
       slot: "land",
       act: "land",
@@ -2173,6 +2225,11 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   if (act === "jet-up" || act === "jet-land") {
     const ids = units.filter((e) => e.jet).map((e) => e.id);
     if (ids.length) ctx.net.send({ type: "cmd.jet", ids, action: act === "jet-up" ? "up" : "land" });
+    return;
+  }
+  if (act === "lay-mine") {
+    const ids = units.filter((e) => e.asw).map((e) => e.id);
+    if (ids.length) ctx.net.send({ type: "cmd.laymine", ids });
     return;
   }
   if (act === "sub-dive" || act === "sub-surface") {

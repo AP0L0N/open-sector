@@ -217,6 +217,8 @@ import fw190WreckUrl from "../assets/units/wrecks/fw190.png";
 import bv222WreckUrl from "../assets/units/wrecks/bv222.png";
 import he111WreckUrl from "../assets/units/wrecks/he111.png";
 import gunboatWreckUrl from "../assets/units/wrecks/gunboat.png";
+import destroyerWreckUrl from "../assets/units/wrecks/destroyer.png";
+import aswheliWreckUrl from "../assets/units/wrecks/aswheli.png";
 import submarineWreckUrl from "../assets/units/wrecks/submarine.png";
 import battleshipWreckUrl from "../assets/units/wrecks/battleship.png";
 import walkerLegsUrl from "../assets/units/walker-legs.png";
@@ -237,6 +239,7 @@ import {
   bindCasemateSheets,
   bindJagdtigerSheets,
   bindDroneSheets,
+  bindAswHeliSheets,
   bindFighterSheets,
   bindTransportSheets,
   bindTorpedoBomberSheets,
@@ -1218,6 +1221,19 @@ export const SUPPLYBOAT_SPRITE: UnitSpriteDef = {
 };
 bindNavalSheets("supplyboat", SUPPLYBOAT_SPRITE.image);
 
+/** Destroyer: the long hull, twice the Attack Boat's length and more, same waterline cut. */
+export const DESTROYER_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(100 * UNIT_VISUAL_SCALE),
+  contactY: 0.74,
+  facingSpace: "world",
+};
+bindNavalSheets("destroyer", DESTROYER_SPRITE.image);
+
 /** Cell of every Battle Ship sheet (render_battleship.py CELL), the hulk's included. */
 const BATTLESHIP_CELL = 384;
 function shipLayer(): TurretSpriteDef {
@@ -1386,6 +1402,22 @@ export const DRONE_SPRITE: UnitSpriteDef = {
 bindDroneSheets(DRONE_SPRITE.image);
 
 /**
+ * The Destroyer's ASW helicopter. Same camera and 128 cell as the drone; its rotor disc
+ * spans about the Attack Boat's length. The map lifts it by altitude over its ground shadow.
+ */
+export const ASWHELI_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(46 * UNIT_VISUAL_SCALE),
+  contactY: 0.8,
+  facingSpace: "world",
+};
+bindAswHeliSheets(ASWHELI_SPRITE.image);
+
+/**
  * Walker: legs are the hull, the torso and both gatlings traverse on the hips.
  * Both sheets are cut from one walk cycle (tools/sprites/split_walker_torso.py),
  * same cell and origin; the torso keeps its stride frames so the bob stays in step.
@@ -1529,6 +1561,8 @@ const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   he111: wreckSheet(he111WreckUrl, HE111_SPRITE),
   // Ships settle on the bottom: the superstructure and turrets are baked into the hulk.
   gunboat: wreckSheet(gunboatWreckUrl, GUNBOAT_SPRITE),
+  destroyer: wreckSheet(destroyerWreckUrl, DESTROYER_SPRITE),
+  aswheli: wreckSheet(aswheliWreckUrl, ASWHELI_SPRITE),
   submarine: wreckSheet(submarineWreckUrl, SUBMARINE_SPRITE),
   battleship: wreckSheet(battleshipWreckUrl, BATTLESHIP_SPRITE),
 };
@@ -1555,6 +1589,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   supplyboat: SUPPLYBOAT_SPRITE,
   submarine: SUBMARINE_SPRITE,
   battleship: BATTLESHIP_SPRITE,
+  destroyer: DESTROYER_SPRITE,
   mammoth: MAMMOTH_SPRITE,
   nebelwerfer: NEBELWERFER_SPRITE,
   artillery: ARTILLERY_SPRITE,
@@ -1563,6 +1598,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   bv222: BV222_SPRITE,
   he111: HE111_SPRITE,
   drone: DRONE_SPRITE,
+  aswheli: ASWHELI_SPRITE,
   rig: RIG_SPRITE,
 };
 

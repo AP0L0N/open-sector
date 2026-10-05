@@ -97,7 +97,7 @@ export function shipShells(ship: ShipState): number {
   return n;
 }
 
-function besideMarineBase(state: MatchState, e: Entity): boolean {
+export function besideMarineBase(state: MatchState, e: Entity): boolean {
   const ts = state.tileSize;
   const reach = BATTLESHIP_REARM_TILES * ts + e.radius;
   for (const b of state.entities.values()) {

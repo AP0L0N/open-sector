@@ -1,0 +1,72 @@
+{
+  "key": "aswheli",
+  "out": "units/aswheli",
+  "voice": {
+    "name": "Open Sector - ASW Helicopter",
+    "description": "Young male navy helicopter pilot in his late twenties on a crackly headset over a loud rotor, upbeat and cocky but sharp and professional, quick energetic speech with a bright mid tenor and a light American accent, a hotshot who loves the low fast run over the waves.",
+    "sample": "Fantail, this is Seahawk, rotor's turning and we're light on the skids. Three fish under the belly, heading for the contact. Dropping low over the water... marking the plot now. Fish away, all three. Coming home for a reload.",
+    "stability": 0.5,
+    "similarity": 0.8,
+    "style": 0.4
+  },
+  "lines": {
+    "select": [
+      "Seahawk here.",
+      "Rotor's turning.",
+      "On the hunt.",
+      "Eyes on the water."
+    ],
+    "move": [
+      "Heading for the plot.",
+      "Going low.",
+      "Copy, on my way."
+    ],
+    "attack": [
+      "Marking the contact.",
+      "Dropping on the plot."
+    ],
+    "ready": [
+      "Lifting off! Heading for the contact.",
+      "Off the deck. Three fish aboard."
+    ],
+    "hit": [
+      "Taking fire!",
+      "[gasps] We're hit, we're hit!"
+    ],
+    "die": [
+      "[shouting] Mayday, mayday, going in!",
+      "Lost the tail rotor!"
+    ],
+    "special": [
+      "Fish away, all three!",
+      "Torpedoes in the water!",
+      "Returning to the ship."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Three light aerial torpedoes released from a hovering helicopter with mechanical clunks, splashing into the sea one after another and motors whirring off underwater, rotor wash in the background, no music, no voice",
+      "duration": 2.5,
+      "variants": 2,
+      "influence": 0.6
+    },
+    "move": {
+      "prompt": "Small piston-engine helicopter lifting off, rotor blades thumping faster and a buzzing engine rising in pitch, close, outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.55
+    },
+    "die": {
+      "prompt": "Helicopter shot down, engine sputtering and rotor blades chopping unevenly, spinning down and crashing into the sea with a metal crunch and a big splash, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.55
+    },
+    "special": {
+      "prompt": "Helicopter settling onto a ship's steel deck, rotor blades slowing down with a fading whine and the skids clanking on the deck plates, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.55
+    }
+  }
+}

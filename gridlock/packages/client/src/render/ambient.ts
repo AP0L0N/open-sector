@@ -6,8 +6,8 @@
 import { isAircraftType, isInfantryType, isNavalType, type EntityView } from "@gridlock/shared";
 import type { SpatialMix } from "../ui/spatial-sfx.js";
 
-export type AmbientKind = "air" | "naval" | "armor" | "wheeled" | "mech";
-export const AMBIENT_KINDS: readonly AmbientKind[] = ["air", "naval", "armor", "wheeled", "mech"];
+export type AmbientKind = "air" | "naval" | "armor" | "wheeled" | "mech" | "rotor" | "sonar";
+export const AMBIENT_KINDS: readonly AmbientKind[] = ["air", "naval", "armor", "wheeled", "mech", "rotor", "sonar"];
 
 const MECH = new Set(["walker", "titan", "mammoth"]);
 const WHEELED = new Set(["supply", "nebelwerfer", "artillery", "rig", "hauler"]);
@@ -16,6 +16,7 @@ const NO_BED = new Set(["drone", "torpedo"]);
 
 export function ambientKind(type: string): AmbientKind | null {
   if (NO_BED.has(type) || isInfantryType(type as EntityView["type"])) return null;
+  if (type === "aswheli") return "rotor";
   if (isAircraftType(type as EntityView["type"])) return "air";
   if (isNavalType(type as EntityView["type"])) return "naval";
   if (MECH.has(type)) return "mech";
@@ -32,10 +33,23 @@ export interface Mover {
 /** A unit counts as moving when it shifted at all since the last snapshot. */
 const MOVE_EPS = 1e-3;
 
-export function movers(prevById: ReadonlyMap<number, EntityView>, entities: readonly EntityView[]): Mover[] {
+/**
+ * Beds that play whether or not the unit moved: a helicopter's rotor while it is in the
+ * air (it hovers), and the sonar of your own Destroyers, pinging as long as they float.
+ */
+function standingBed(e: EntityView, me: string | undefined): AmbientKind | null {
+  if (e.type === "aswheli" && (e.air?.alt ?? 0) > 0.5) return "rotor";
+  if (e.asw && me != null && e.ownerId === me && e.hp > 0) return "sonar";
+  return null;
+}
+
+export function movers(prevById: ReadonlyMap<number, EntityView>, entities: readonly EntityView[], me?: string): Mover[] {
   const out: Mover[] = [];
   for (const e of entities) {
     if (e.kind !== "unit" || e.wreck || e.garrisonedIn) continue;
+    const standing = standingBed(e, me);
+    if (standing) out.push({ kind: standing, x: e.x, y: e.y });
+    if (standing === "rotor") continue;
     const kind = ambientKind(e.type);
     if (!kind) continue;
     const p = prevById.get(e.id);
@@ -52,6 +66,8 @@ export const AMBIENT_LEVEL: Record<AmbientKind, number> = {
   armor: 0.14,
   wheeled: 0.1,
   mech: 0.14,
+  rotor: 0.17,
+  sonar: 0.1,
 };
 
 export interface BedMix {

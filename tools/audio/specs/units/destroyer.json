@@ -1,0 +1,76 @@
+{
+  "key": "destroyer",
+  "out": "units/destroyer",
+  "voice": {
+    "name": "Open Sector - Destroyer",
+    "description": "Male destroyer captain in his late thirties on an open bridge in wind and spray, raising his voice over the sea, brisk and alert, a confident clear baritone with a crisp naval cadence and a light British accent, quick decisive orders, a sub hunter who enjoys the chase.",
+    "sample": "Bridge, captain here. Sonar reports a contact bearing two-seven-zero, range three thousand. Bring her round, full ahead both. Get the helicopter warmed up and stand by the mine rails. Nobody slips past this ship tonight.",
+    "stability": 0.55,
+    "similarity": 0.8,
+    "style": 0.35
+  },
+  "lines": {
+    "select": [
+      "Bridge here.",
+      "Captain on the bridge.",
+      "Sonar is listening.",
+      "Destroyer standing by.",
+      "Ready on all guns."
+    ],
+    "move": [
+      "Full ahead, both engines.",
+      "Bring her round.",
+      "Helm, new heading.",
+      "Making way.",
+      "Aye, steady on course."
+    ],
+    "attack": [
+      "Bofors, open fire!",
+      "Engage, engage!",
+      "Rake her, gunners!",
+      "Guns free!"
+    ],
+    "ready": [
+      "Destroyer commissioned. Sonar and helicopter ready."
+    ],
+    "hit": [
+      "We're hit! Damage control!",
+      "[shouting] Fire on the fantail!"
+    ],
+    "die": [
+      "[shouting] Abandon ship!",
+      "She's going down... all hands!"
+    ],
+    "special": [
+      "Mine over the stern!",
+      "Mine away.",
+      "Lay the mine, now."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Twin 40mm Bofors anti-aircraft autocannon on a World War 2 destroyer firing a rapid burst, heavy thumping pom-pom-pom reports with metallic clatter of shell casings on a steel deck, outdoors at sea, no music, no voice",
+      "duration": 1.5,
+      "variants": 3,
+      "influence": 0.6
+    },
+    "move": {
+      "prompt": "World War 2 destroyer steam turbines spinning up with a rising whine, twin propellers churning the sea and a bow wave hissing along the steel hull, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.55
+    },
+    "die": {
+      "prompt": "A warship torn by a huge explosion at sea, steel hull groaning and breaking apart, secondary blasts, hissing steam and water rushing in as it sinks, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.55
+    },
+    "special": {
+      "prompt": "Heavy spiked naval contact mine rolling off a steel rail on the stern of a ship with a metallic clank and dropping into the sea with a deep splash, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

@@ -402,6 +402,8 @@ SPECS = [
     Spec("he111", 128, 0.8, "plane", src="he111", layers=["hull"], padding=2, holes=4, bites=3, debris=16),
     Spec("gunboat", 128, 0.74, "sunk", src="gunboat", layers=["hull"], padding=2, holes=3, bites=3, soot=0.55, debris=8, sink=6, list_deg=7),
     Spec("submarine", 128, 0.74, "sunk", src="submarine", layers=["hull"], padding=2, holes=3, bites=2, soot=0.45, debris=6, sink=3.5, list_deg=-4),
+    Spec("destroyer", 128, 0.74, "sunk", src="destroyer", layers=["hull"], padding=2, holes=4, bites=3, soot=0.55, debris=10, sink=5, list_deg=6),
+    Spec("aswheli", 128, 0.8, "plane", src="aswheli", layers=["hull"], padding=2, holes=2, bites=2, debris=10),
     # Same cell as render_battleship.py's CELL: the client reads the hulk on the live sheet's cell.
     Spec("battleship", 384, 0.56, "sunk", src="battleship", layers=["hull", "super", "turret", "ciws"], raw=True,
          turn=3, holes=6, bites=4, soot=0.5, debris=14, sink=15, list_deg=-3),

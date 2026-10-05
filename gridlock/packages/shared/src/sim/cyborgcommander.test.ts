@@ -77,7 +77,7 @@ describe("cyborg commander", () => {
   it("is a research-gated Armory cyborg with a force field and a cutting laser", () => {
     const def = catalog("cyborgcommander");
     assert.equal(def.name, "Cyborg Commander");
-    assert.equal(def.cost, 3000);
+    assert.equal(def.cost, 5000);
     assert.ok(TRAIN_TYPES.includes("cyborgcommander"));
     assert.equal(producerType("cyborgcommander"), "armory");
     assert.equal(TECH_REQUIRES.cyborgcommander, "research");

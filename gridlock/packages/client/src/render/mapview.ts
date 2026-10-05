@@ -250,6 +250,7 @@ import { drawBuildingAnim } from "./building-fx.js";
 import { drawSearchlightAt, drawTowerSearchlight, type SearchlightPose } from "./searchlight.js";
 import { drawTorpedoBody } from "./torpedo-draw.js";
 import { drawRadarContact, drawRadarOffline, radarContactLit } from "./radar-panel.js";
+import { drawSonarContact, drawWaterMine } from "./sonar-fx.js";
 import {
   drawTrackKick,
   spawnTrackKickPuffs,
@@ -553,6 +554,8 @@ const EXTRUDE: Record<EntityType, number> = {
   supplyboat: 9,
   submarine: 7,
   battleship: 20,
+  destroyer: 14,
+  aswheli: 8,
   torpedo: 2,
   cottage: 28,
   shack: 24,
@@ -594,7 +597,7 @@ function ownerAllied(match: MatchSnapshot, ownerId: string | undefined): boolean
 /** How much of a submerged submarine its owner still sees through the water. */
 const SUBMERGED_ALPHA = 0.5;
 /** Hull fires on a sunk ship sit this share of the usual height: the hulk rides low in the water. */
-const WRECK_FIRE_LIFT: Partial<Record<EntityType, number>> = { gunboat: 0.75, battleship: 0.3 };
+const WRECK_FIRE_LIFT: Partial<Record<EntityType, number>> = { gunboat: 0.75, destroyer: 0.5, battleship: 0.3 };
 /** Half a torpedo's drawn length, world px, and how far behind it its wake trails, in body halves. */
 const TORPEDO_BODY_HALF = 7;
 /** A Battle Ship shell's smoke trail is this many times a mortar bomb's. */
@@ -3672,6 +3675,22 @@ export class MapView {
     this.drawPlanOverlay();
     this.drawDroneLeash();
     this.drawRadarReach();
+    this.drawSonarContacts();
+  }
+
+  /** Submarines your Destroyers hear: a ping on the water over the fog, seen or not. */
+  private drawSonarContacts(): void {
+    const contacts = this.curr.sonar;
+    if (!contacts?.length) return;
+    const now = performance.now();
+    const unit = this.ts() * 2;
+    // Eased between snapshots like the hulls, so the ping stays on a boat under way.
+    const t = Math.min(1, (now - this.snapAt) / 100);
+    for (const c of contacts) {
+      const prev = this.prev?.sonar?.find((q) => q.id === c.id);
+      const s = this.toScreen(prev ? prev.x + (c.x - prev.x) * t : c.x, prev ? prev.y + (c.y - prev.y) * t : c.y);
+      drawSonarContact(this.ctx, s.x, s.y, { nowMs: now, id: c.id, down: !!c.down, unit });
+    }
   }
 
   /** Towers with a lit lamp, each with the heading its beam shows this frame. */
@@ -6773,6 +6792,16 @@ export class MapView {
     for (const m of this.curr.mines ?? []) {
       const s = this.toScreen(m.x, m.y);
       if (s.x < -12 || s.y < -12 || s.x > w + 12 || s.y > h + 12) continue;
+      if (m.water) {
+        // A Destroyer's contact mine rides at the waterline: it stands, a bomblet lies.
+        items.push({
+          layer: STANDING_DRAW_LAYER,
+          z: isoDepth(m.x, m.y),
+          run: () =>
+            drawWaterMine(this.ctx, s.x, s.y, { seed: m.id, arming: m.armed === false, nowMs: now, size: this.ts() * 0.55 }),
+        });
+        continue;
+      }
       items.push({
         layer: GROUND_DECAL_DRAW_LAYER,
         z: isoDepth(m.x, m.y),
@@ -8374,6 +8403,14 @@ export class MapView {
     for (const c of this.curr.radar ?? []) {
       if (!radarContactLit(now, c.id)) continue;
       drawRadarContact(ctx, (c.x / ts) * scale, (c.y / ts) * scale);
+    }
+    // Submarines the sonar hears: a green contact on the same blink.
+    for (const c of this.curr.sonar ?? []) {
+      if (!radarContactLit(now, c.id)) continue;
+      ctx.fillStyle = "rgba(110, 230, 190, 0.3)";
+      ctx.fillRect((c.x / ts) * scale - 4, (c.y / ts) * scale - 4, 8, 8);
+      ctx.fillStyle = "#6ee6be";
+      ctx.fillRect((c.x / ts) * scale - 2, (c.y / ts) * scale - 2, 4, 4);
     }
   }
 }
