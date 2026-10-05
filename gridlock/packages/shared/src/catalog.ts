@@ -1135,7 +1135,7 @@ export const FORCE_FIELD_REGEN_PER_SEC = 40;
  * stop it. Buildings and concrete do.
  */
 export const LASER_SWEEP_HALF_DEG = 14;
-export const LASER_SWEEP_SECONDS = 0.6;
+export const LASER_SWEEP_SECONDS = 1.2;
 export const LASER_SWEEP_CYBORG_DAMAGE = 90;
 /** World px either side of the beam that still counts as passed through. */
 export const LASER_BEAM_HALF_WIDTH = 2;
