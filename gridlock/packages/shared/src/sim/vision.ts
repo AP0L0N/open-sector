@@ -33,7 +33,7 @@ import {
   type CoverField,
 } from "./elevation.js";
 import { allies, fillHullCover, footprint, inBounds, worldToTile } from "./geo.js";
-import { hiddenSubmarine } from "./naval.js";
+import { hiddenSubmarine, sonarSpotted } from "./naval.js";
 import { occupantEye, occupantSightTiles } from "./garrison.js";
 import { fillSmokeMask, smokeCloudTileBounds } from "./smoke.js";
 import {
@@ -1284,6 +1284,7 @@ export function canSeeEntity(state: MatchState, playerId: string, e: Entity, mas
   if (e.hp <= 0) return false;
   if (allies(state, playerId, e.ownerId)) return true;
   if (hiddenSubmarine(state, playerId, e)) return false;
+  if (sonarSpotted(state, playerId, e)) return true;
   if (mask) return entityOnMask(e, mask, state.width, state.height, state.tileSize);
   return entityVisibleToPlayer(state, playerId, e);
 }

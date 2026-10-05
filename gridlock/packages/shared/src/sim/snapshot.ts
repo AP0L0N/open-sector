@@ -50,7 +50,7 @@ import { laserProgress } from "./laser.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { deckLoad } from "./lst.js";
 import { allies, unitInWater } from "./geo.js";
-import { diving, hiddenSubmarine } from "./naval.js";
+import { diving, hiddenSubmarine, sonarSpotted } from "./naval.js";
 import { medicTendView } from "./heal.js";
 import { supplyHasDriver, supplyRiders } from "./supply.js";
 import { powerOf } from "./power.js";
@@ -296,9 +296,9 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     if (e.hp <= 0) continue;
     const friendly = allies(state, youPlayerId, e.ownerId);
     if (e.garrisonedIn && !friendly) continue;
-    // A submerged boat shows only to an enemy who has something close by it.
+    // A submerged boat shows only to an enemy whose Destroyer sonar hears it, fog or not.
     if (!friendly && hiddenSubmarine(state, youPlayerId, e)) continue;
-    if (!friendly && !entityOnMask(e, vis, state.width, state.height, state.tileSize)) {
+    if (!friendly && !sonarSpotted(state, youPlayerId, e) && !entityOnMask(e, vis, state.width, state.height, state.tileSize)) {
       // Houses and untaken map defences are part of the ground: their shape shows through the fog.
       if (e.kind === "building" && (isCivilianType(e.type) || e.ownerId === NEUTRAL_OWNER)) entities.push(sceneryView(e));
       continue;
