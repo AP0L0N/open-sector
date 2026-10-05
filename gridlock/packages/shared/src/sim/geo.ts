@@ -4,7 +4,7 @@ import {
   hasSonar,
   WATER_MINES,
   ARTILLERY_CREW_HP,
-  DEFENCE_BUILD_RADIUS,
+  LINE_BUILD_RADIUS,
   AIR_FUEL_SECONDS,
   DRONE_BATTERY_SECONDS,
   FORCE_FIELD_HP,
@@ -456,7 +456,7 @@ export function inBuildRadius(state: MatchState, ownerId: string, tx: number, ty
 }
 
 /**
- * A 1×1 tile within DEFENCE_BUILD_RADIUS of the owner's own base buildings: where a Defences-tab line may go.
+ * A 1×1 tile within LINE_BUILD_RADIUS of the owner's own base buildings: where a Defences-tab line may go.
  * Field structures and guns are not anchors, so a wall or a tower in the field cannot extend the yard.
  */
 export function tileNearOwnBuildings(
@@ -477,7 +477,7 @@ export function tileNearOwnBuildings(
   for (const e of buildings) {
     if (e.kind !== "building" || e.ownerId !== ownerId || e.hp <= 0) continue;
     if (!anchorsBuildRange(e.type)) continue;
-    if (footprintGap(tx, ty, 1, 1, e.tileX, e.tileY, e.tileW, e.tileH) <= DEFENCE_BUILD_RADIUS) return true;
+    if (footprintGap(tx, ty, 1, 1, e.tileX, e.tileY, e.tileW, e.tileH) <= LINE_BUILD_RADIUS) return true;
   }
   return false;
 }
