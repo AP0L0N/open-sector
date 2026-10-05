@@ -767,6 +767,19 @@ export interface AiPlan {
   airSeenTick?: number;
   /** Campaign towers go up no faster than this. */
   nextTowerTick: number;
+  /** The warships out on a sortie from the Marine Base. Absent while the fleet lies at home. */
+  fleet?: AiFleet;
+}
+
+/** Easy CPU's fleet at sea: the warships that sailed, bound for one stretch of water. */
+export interface AiFleet {
+  ids: number[];
+  /** Water the fleet strikes from, world pixels. */
+  to: Vec;
+  /** Warships it sailed with. It comes home once too few are left. */
+  size0: number;
+  /** Tick of the last order to the whole fleet. */
+  orderTick: number;
 }
 
 export interface SimPlayer {

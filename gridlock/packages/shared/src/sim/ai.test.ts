@@ -1,21 +1,25 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BUILD_RADIUS, DIAMOND_SCRAP_MUL, SCRAP_TILE_YIELD, SMELTER_SCRAP_PER_SEC, START_SCRAP, catalog } from "../catalog.js";
+import { BUILD_RADIUS, DIAMOND_SCRAP_MUL, SCRAP_TILE_YIELD, SMELTER_SCRAP_PER_SEC, START_SCRAP, SUPPLY_CARGO, catalog } from "../catalog.js";
 import { createRoom, hostSlot, startMatch, updateSelf } from "../lobby.js";
 import {
   EASY_ARMY,
   EASY_EXPAND_TILES,
+  EASY_FLEET_MIN,
   EASY_FORTIFY_MAX_TICKS,
+  EASY_SEA_REACH_TILES,
   EASY_WAVE_MIN,
   aiPlanOf,
   diamondCentre,
   findBuildTile,
   findDiamondSmelterTile,
+  findDockTile,
   findSmelterTile,
   rankOf,
   tickAi,
 } from "./ai.js";
-import { hasCore, inBuildRadius, makeEntity, scrapAt } from "./geo.js";
+import { TILE_WATER } from "../maps.js";
+import { hasCore, inBuildRadius, isWater, makeEntity, scrapAt } from "./geo.js";
 import { createMatch, stepMatch } from "./match.js";
 import { smelterRateOn } from "./smelter.js";
 import { producerType } from "./train.js";
@@ -917,5 +921,326 @@ describe("easy CPU", () => {
     const order = state.entities.get(guard.id)!.order;
     assert.equal(order?.kind, "attackmove");
     assert.ok(Math.hypot(order!.x! - foe.x, order!.y! - foe.y) < 64, "defends toward the intruder");
+  });
+});
+
+/**
+ * Open water from the edge of the CPU's yard toward the enemy Core, ending `short` tiles from it:
+ * a channel `half` tiles either side of the line between the two. Ground under a building stays dry.
+ */
+function channel(state: MatchState, aiId: string, half = 8, short = 20): void {
+  const ts = state.tileSize;
+  const hq = coreOf(state, aiId);
+  const foe = foeCore(state, aiId);
+  const a = { x: hq.x / ts, y: hq.y / ts };
+  const b = { x: foe.x / ts, y: foe.y / ts };
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  const dir = { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
+  const from = 30;
+  const to = len - short;
+  const buildings = [...state.entities.values()].filter((e) => e.kind === "building");
+  const dry = (x: number, y: number): boolean =>
+    buildings.some((e) => x >= e.tileX - 1 && x <= e.tileX + e.tileW && y >= e.tileY - 1 && y <= e.tileY + e.tileH);
+  for (let y = 0; y < state.height; y++) {
+    for (let x = 0; x < state.width; x++) {
+      const along = (x + 0.5 - a.x) * dir.x + (y + 0.5 - a.y) * dir.y;
+      const off = Math.abs((x + 0.5 - a.x) * -dir.y + (y + 0.5 - a.y) * dir.x);
+      if (along < from || along > to || off > half || dry(x, y)) continue;
+      const i = y * state.width + x;
+      state.terrain[i] = TILE_WATER;
+      state.blocked[i] = 1;
+      state.heights[i] = 0;
+      state.scrapYield[i] = 0;
+    }
+  }
+  state.visionTick = -1;
+}
+
+/** Centre of the water tile nearest a point, world pixels. */
+function waterBy(state: MatchState, at: Vec): Vec {
+  const ts = state.tileSize;
+  let best: Vec | undefined;
+  let bestD = Infinity;
+  for (let y = 0; y < state.height; y++) {
+    for (let x = 0; x < state.width; x++) {
+      if (!isWater(state, x, y)) continue;
+      const p = { x: (x + 0.5) * ts, y: (y + 0.5) * ts };
+      const d = Math.hypot(p.x - at.x, p.y - at.y);
+      if (d < bestD) {
+        best = p;
+        bestD = d;
+      }
+    }
+  }
+  return best!;
+}
+
+function foeCore(state: MatchState, aiId: string): Entity {
+  return [...state.entities.values()].find((e) => (e.type === "core" || e.type === "rig") && e.ownerId !== aiId)!;
+}
+
+/** A CPU Marine Base standing on the channel at its yard end. */
+function harbour(state: MatchState, aiId: string): Entity {
+  const spot = findDockTile(state, aiId, true);
+  assert.ok(spot, "the channel has a Marine Base site in the yard");
+  const def = catalog("dock");
+  const ts = state.tileSize;
+  return makeEntity(state, "dock", aiId, (spot.tx + def.tileW / 2) * ts, (spot.ty + def.tileH / 2) * ts, { tileX: spot.tx, tileY: spot.ty });
+}
+
+/** Boats of one type on the water beside a point, strung out toward the enemy. */
+function boats(state: MatchState, aiId: string, type: Entity["type"], n: number, near: Vec): Entity[] {
+  const out: Entity[] = [];
+  const foe = foeCore(state, aiId);
+  const dir = unitVec(foe.x - near.x, foe.y - near.y);
+  for (let i = 0; i < n; i++) {
+    const at = waterBy(state, { x: near.x + dir.x * (60 + i * 30), y: near.y + dir.y * (60 + i * 30) });
+    out.push(makeEntity(state, type, aiId, at.x, at.y));
+  }
+  return out;
+}
+
+/** A standing base past every BUILD_ORDER step, with the Smelters it wants put off. */
+function fullBase(state: MatchState, aiId: string): void {
+  withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "airfield"]);
+  secondSmelter(state, aiId);
+  const hq = coreOf(state, aiId);
+  for (const [dx, dy] of [
+    [-12, 28],
+    [-12, 36],
+    [-20, 28],
+    [-20, 36],
+  ] as const) {
+    makeEntity(state, "dynamo", aiId, hq.x + dx * 8, hq.y + dy * 8, { tileX: hq.tileX + dx, tileY: hq.tileY + dy });
+  }
+  makeEntity(state, "radar", aiId, hq.x - 24 * 8, hq.y, { tileX: hq.tileX - 24, tileY: hq.tileY });
+  troopers(state, aiId, 4);
+  const cpu = state.players.get(aiId)!;
+  cpu.aiNoRoomUntil = { smelter: Number.MAX_SAFE_INTEGER };
+  cpu.structure = null;
+  cpu.scrap = 20000;
+}
+
+describe("easy CPU at sea", () => {
+  it("finds a Marine Base site on water in its yard that reaches the enemy", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    channel(state, aiId);
+    const spot = findDockTile(state, aiId, true);
+    assert.ok(spot);
+    const def = catalog("dock");
+    for (let y = spot.ty; y < spot.ty + def.tileH; y++) {
+      for (let x: number = spot.tx; x < spot.tx + def.tileW; x++) assert.equal(isWater(state, x, y), true, `water at ${x},${y}`);
+    }
+    assert.equal(inBuildRadius(state, aiId, spot.tx, spot.ty, def.tileW, def.tileH, BUILD_RADIUS), true);
+  });
+
+  it("raises no Marine Base on a pond too small to float a fleet", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    channel(state, aiId);
+    // Dry the channel out past a few tiles: what is left by the yard is a pond.
+    const hq = coreOf(state, aiId);
+    const foe = foeCore(state, aiId);
+    const dir = unitVec(foe.x - hq.x, foe.y - hq.y);
+    const ts = state.tileSize;
+    for (let y = 0; y < state.height; y++) {
+      for (let x = 0; x < state.width; x++) {
+        const along = (x + 0.5 - hq.x / ts) * dir.x + (y + 0.5 - hq.y / ts) * dir.y;
+        if (along > 52 && isWater(state, x, y)) state.terrain[y * state.width + x] = 0;
+      }
+    }
+    assert.equal(findDockTile(state, aiId, true), null);
+  });
+
+  it("starts a Marine Base once it campaigns with water that reaches the enemy, and places it on the water", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    fullBase(state, aiId);
+    campaign(state, aiId);
+    channel(state, aiId);
+    tickAi(state);
+    const cpu = state.players.get(aiId)!;
+    assert.equal(cpu.structure?.type, "dock");
+    cpu.structure!.ready = true;
+    tickAi(state);
+    const dock = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "dock");
+    assert.ok(dock, "the Marine Base stands");
+    assert.equal(isWater(state, dock.tileX, dock.tileY), true);
+  });
+
+  it("raises the Marine Base right behind the Machine Shop, before Research", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    campaign(state, aiId);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "dynamo", "dynamo"]);
+    secondSmelter(state, aiId);
+    troopers(state, aiId, 4);
+    channel(state, aiId);
+    const cpu = state.players.get(aiId)!;
+    cpu.structure = null;
+    cpu.scrap = 20000;
+    tickAi(state);
+    assert.equal(state.players.get(aiId)!.structure?.type, "dock");
+  });
+
+  it("goes straight to Research when there is no water", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    campaign(state, aiId);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "dynamo", "dynamo"]);
+    secondSmelter(state, aiId);
+    troopers(state, aiId, 4);
+    const cpu = state.players.get(aiId)!;
+    cpu.structure = null;
+    cpu.scrap = 20000;
+    tickAi(state);
+    assert.equal(state.players.get(aiId)!.structure?.type, "research");
+  });
+
+  it("builds a second Barracks instead when there is no water", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    fullBase(state, aiId);
+    campaign(state, aiId);
+    tickAi(state);
+    assert.equal(state.players.get(aiId)!.structure?.type, "muster");
+  });
+
+  it("trains the fleet at its Marine Base", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    channel(state, aiId);
+    const dock = harbour(state, aiId);
+    troopers(state, aiId, 4);
+    state.players.get(aiId)!.scrap = 20000;
+    tickAi(state);
+    assert.equal(dock.queue[0]?.type, "gunboat");
+  });
+
+  it("sails the warships out together for the water by the enemy Core", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    campaign(state, aiId);
+    channel(state, aiId);
+    const dock = harbour(state, aiId);
+    const fleet = [...boats(state, aiId, "gunboat", 2, dock), ...boats(state, aiId, "destroyer", 1, dock)];
+    wavePass(state, aiId);
+    const foe = foeCore(state, aiId);
+    for (const e of fleet) {
+      assert.equal(e.order?.kind, "attackmove", e.type);
+      const d = Math.hypot(e.order!.x! - foe.x, e.order!.y! - foe.y) / state.tileSize;
+      assert.ok(d <= EASY_SEA_REACH_TILES + 12, `sails to the water by the Core, ${d.toFixed(0)} tiles off`);
+    }
+    assert.deepEqual(planOf(state, aiId).fleet?.ids.slice().sort(), fleet.map((e) => e.id).sort());
+    for (const f of planOf(state, aiId).forces) for (const e of fleet) assert.ok(!f.ids.includes(e.id), "ships stay out of the land waves");
+  });
+
+  it("sails for an enemy Marine Base on its water when the water stops short of the enemy Core", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    campaign(state, aiId);
+    channel(state, aiId, 8, 90);
+    const foe = foeCore(state, aiId);
+    // The far end of the channel, where the enemy has its harbour.
+    const end = waterBy(state, foe);
+    const def = catalog("dock");
+    const ts = state.tileSize;
+    const tx = Math.floor(end.x / ts) - (def.tileW >> 1);
+    const ty = Math.floor(end.y / ts) - (def.tileH >> 1);
+    const theirs = makeEntity(state, "dock", "A", (tx + def.tileW / 2) * ts, (ty + def.tileH / 2) * ts, { tileX: tx, tileY: ty });
+    const dock = harbour(state, aiId);
+    const fleet = boats(state, aiId, "gunboat", EASY_FLEET_MIN, dock);
+    wavePass(state, aiId);
+    const to = planOf(state, aiId).fleet?.to;
+    assert.ok(to, "the fleet sails");
+    assert.ok(Math.hypot(to.x - theirs.x, to.y - theirs.y) / ts <= EASY_SEA_REACH_TILES, "bound for the enemy harbour");
+    for (const e of fleet) assert.equal(e.order?.kind, "attackmove");
+  });
+
+  it("keeps too small a fleet at home", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    campaign(state, aiId);
+    channel(state, aiId);
+    const dock = harbour(state, aiId);
+    const few = boats(state, aiId, "gunboat", EASY_FLEET_MIN - 1, dock);
+    wavePass(state, aiId);
+    for (const e of few) assert.notEqual(e.order?.kind, "attackmove");
+    assert.equal(planOf(state, aiId).fleet, undefined);
+  });
+
+  it("sends a Battle Ship out of shells home to the Marine Base", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    campaign(state, aiId);
+    channel(state, aiId);
+    const dock = harbour(state, aiId);
+    const foe = foeCore(state, aiId);
+    const [ship] = boats(state, aiId, "battleship", 1, { x: (dock.x + foe.x) / 2, y: (dock.y + foe.y) / 2 });
+    const to = waterBy(state, foe);
+    const escorts = boats(state, aiId, "gunboat", 2, { x: (to.x + ship!.x) / 2, y: (to.y + ship!.y) / 2 });
+    planOf(state, aiId).fleet = { ids: [ship!.id, ...escorts.map((e) => e.id)], to, size0: 3, orderTick: state.tick };
+    for (const t of ship!.ship!.turrets) for (const b of t.barrels) b.ammo = 0;
+    micro(state, aiId);
+    assert.equal(ship!.order?.kind, "move");
+    assert.ok(Math.hypot(ship!.order!.x! - dock.x, ship!.order!.y! - dock.y) < Math.hypot(ship!.x - dock.x, ship!.y - dock.y), "heads home");
+    assert.ok(!planOf(state, aiId).fleet!.ids.includes(ship!.id));
+  });
+
+  it("turns the warships at home on an enemy boat by the Marine Base", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    channel(state, aiId);
+    const dock = harbour(state, aiId);
+    const [guard] = boats(state, aiId, "gunboat", 1, dock);
+    const raider = boats(state, "A", "gunboat", 1, { x: guard!.x, y: guard!.y })[0]!;
+    stepMatch(state);
+    guard!.order = null;
+    micro(state, aiId);
+    const order = state.entities.get(guard!.id)!.order;
+    assert.equal(order?.kind, "attackmove");
+    assert.ok(Math.hypot(order!.x! - raider.x, order!.y! - raider.y) < 64);
+  });
+
+  it("refills the supply boat at the Marine Base, and it serves only ships", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    channel(state, aiId);
+    const dock = harbour(state, aiId);
+    const [boat] = boats(state, aiId, "supplyboat", 1, dock);
+    boat!.supply = 0;
+    micro(state, aiId);
+    assert.equal(boat!.order?.kind, "supply");
+    assert.equal(boat!.order?.targetId, dock.id);
+
+    const [ship] = boats(state, aiId, "battleship", 1, boat!);
+    ship!.ship!.turrets[0]!.barrels[0]!.ammo = 0;
+    const hq = coreOf(state, aiId);
+    const truck = makeEntity(state, "supply", aiId, hq.x + 24, hq.y + 24);
+    boat!.supply = SUPPLY_CARGO;
+    boat!.order = null;
+    micro(state, aiId);
+    const order = state.entities.get(boat!.id)!.order;
+    assert.equal(order?.kind, "supply");
+    assert.equal(order?.targetId, ship!.id);
+    assert.notEqual(truck.order?.targetId, ship!.id, "the truck leaves ships to the boat");
+  });
+
+  it("meets an enemy boat by the base from the bank, not by swimming out", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    channel(state, aiId);
+    const hq = coreOf(state, aiId);
+    const at = waterBy(state, hq);
+    const raider = makeEntity(state, "gunboat", "A", at.x, at.y);
+    const guard = makeEntity(state, "rifleman", aiId, hq.x + (at.x - hq.x) * 0.4, hq.y + (at.y - hq.y) * 0.4);
+    stepMatch(state);
+    guard.order = null;
+    micro(state, aiId);
+    const order = state.entities.get(guard.id)!.order;
+    assert.equal(order?.kind, "attackmove");
+    assert.equal(isWater(state, Math.floor(order!.x! / state.tileSize), Math.floor(order!.y! / state.tileSize)), false);
+    assert.ok(Math.hypot(order!.x! - raider.x, order!.y! - raider.y) < 20 * state.tileSize, "goes to the bank by the boat");
   });
 });

@@ -6,9 +6,12 @@
  * swing round alternate flanks, in ranks: hulls in front, rifles behind them, long guns
  * at the back. Enemy planes bring up a CIWS, rocketmen, and fighters. Campaigning, it keeps a
  * bigger army and a second Barracks and Machine Shop, paid for by Smelters that pour twice as fast.
+ * Where open water near its base reaches the enemy Core or the middle, it raises a Marine Base,
+ * keeps a small fleet, and sends the warships out together to shell what stands near that water.
  */
 
 import {
+  BATTLESHIP_BARREL_AMMO,
   BUILD_RADIUS,
   DEFENCE_BUILD_RADIUS,
   DIAMOND_SCRAP_MUL,
@@ -21,6 +24,8 @@ import {
   TECH_REQUIRES,
   TICK_HZ,
   UNIT_CAP,
+  anchorsBuildRange,
+  beltOf,
   buildRadiusOf,
   catalog,
   fieldSpan,
@@ -31,7 +36,11 @@ import {
   isBuildingType,
   isFieldStructure,
   isInfantryType,
+  isNavalType,
   isTorpedoBody,
+  onWaterBuilding,
+  supplyDepotOf,
+  torpedoesOf,
   type BuildingType,
   type TrainType,
 } from "../catalog.js";
@@ -39,12 +48,12 @@ import { isAirborne } from "./air.js";
 import { buildingSiteError } from "./build.js";
 import { applyCommand } from "./commands.js";
 import { canRepairTarget, canScrapWreck, gateSiteAt } from "./field.js";
-import { allies, footprintGap, hasCore, hqOf, inBuildRadius, nearestWalkable, scrapAt, tilesBlockedOrScrap, walkable } from "./geo.js";
+import { allies, footprintGap, hasCore, hqOf, inBuildRadius, isWater, nearestWalkable, scrapAt, tilesBlockedOrScrap, walkable } from "./geo.js";
 import { smelterRateOn, smelterSiteOk } from "./smelter.js";
 import { powerOf } from "./power.js";
 import { needsSupply } from "./supply.js";
 import { canSeeEntity } from "./vision.js";
-import type { AiForce, AiPlan, Entity, MatchState, SimPlayer, StructureJob, Vec } from "./types.js";
+import type { AiFleet, AiForce, AiPlan, Entity, MatchState, SimPlayer, StructureJob, Vec } from "./types.js";
 
 /** Earliest campaign wave. The fortify posture holds the army at home until then anyway. */
 export const EASY_ATTACK_FIRST_TICKS = 70 * TICK_HZ;
@@ -134,13 +143,23 @@ const FORCE_MIN = 3;
 /** A fighter this far from the body of his force, in tiles, is left out of it. */
 const STRAGGLE_TILES = BOUND_TILES * 2.5;
 const FORCES_MAX = 4;
+/** Open water smaller than this, in tiles, floats no fleet: the CPU raises no Marine Base on it. */
+export const EASY_SEA_MIN_TILES = 300;
+/** Water this close to the enemy Core or the diamond field's middle, in tiles, is worth a fleet. */
+export const EASY_SEA_REACH_TILES = 40;
+/** Warships lying at home, armed, before the fleet sails. */
+export const EASY_FLEET_MIN = 3;
+/** Enemies this close to a Marine Base, in tiles, pull the warships at home. */
+const EASY_HARBOUR_DEFEND_TILES = 30;
+/** A warship this close to the fleet's water, in tiles, is on station. */
+const STATION_TILES = 12;
 
 /**
  * Army the CPU keeps, listed under the factory that trains it. Each think, each factory
  * offers its row furthest below its share, neediest first, so the ranks fill evenly.
  * Order breaks ties. Riflemen and rocketmen rise with empty slits and enemy planes.
  */
-export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield", readonly { unit: TrainType; want: number }[]>> = {
+export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield" | "dock", readonly { unit: TrainType; want: number }[]>> = {
   muster: [
     { unit: "rifleman", want: 8 },
     { unit: "gunner", want: 3 },
@@ -171,13 +190,22 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield", readon
     { unit: "stuka", want: 2 },
     { unit: "fw190", want: 1 },
   ],
+  // The fleet: boats to screen, a Destroyer to hear submarines, a Battle Ship to shell the shore.
+  // No Transport LST: the Easy CPU makes no landings.
+  dock: [
+    { unit: "gunboat", want: 2 },
+    { unit: "destroyer", want: 1 },
+    { unit: "submarine", want: 1 },
+    { unit: "battleship", want: 1 },
+    { unit: "supplyboat", want: 1 },
+  ],
 };
 
 /**
  * Base structures, one after another, each until the side owns `n`. Smelter second so its scrap
  * funds the Barracks and the first towers, and a second Smelter right behind the Barracks to pay
- * for the army. The Machine Shop waits for a tower; Research, air, and the Radar Station wait
- * until the base is fortified. With all of that standing, more Smelters up to EASY_WANT_SMELTERS.
+ * for the army. The Machine Shop waits for a tower; the Marine Base, Research, air, and the Radar
+ * Station wait until the base is fortified. With all of that standing, more Smelters up to EASY_WANT_SMELTERS.
  */
 const BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   { type: "dynamo", n: 1 },
@@ -185,6 +213,8 @@ const BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   { type: "muster", n: 1 },
   { type: "smelter", n: EASY_FORTIFY_SMELTERS },
   { type: "armory", n: 1 },
+  // Only with water in the yard that reaches the enemy or the middle (wantDock).
+  { type: "dock", n: 1 },
   { type: "research", n: 1 },
   { type: "airfield", n: 1 },
   { type: "radar", n: 1 },
@@ -194,7 +224,7 @@ const CORE_BUILDINGS: readonly BuildingType[] = ["dynamo", "smelter", "muster"];
 /** Troops train only once these stand, so scrap is held for them while they go up. */
 const FACTORIES: readonly BuildingType[] = [...CORE_BUILDINGS, "armory"];
 /** Extras that wait for a fortified base. */
-const AFTER_FORTIFY: readonly BuildingType[] = ["research", "airfield", "radar"];
+const AFTER_FORTIFY: readonly BuildingType[] = ["dock", "research", "airfield", "radar"];
 
 /** Unarmed units that walk out with a wave beside a fighter. */
 const ESCORTS: ReadonlySet<string> = new Set(["medic", "supply", "droneop"]);
@@ -282,6 +312,7 @@ function thinkEasy(state: MatchState, p: SimPlayer): void {
     crewBunkers(state, p, plan);
     rallyFactories(state, p, hq);
     campaign(state, p, hq, plan);
+    seaWork(state, p, hq, plan);
     microUnits(state, p, hq, plan);
   }
 }
@@ -305,6 +336,7 @@ function nextBuilding(state: MatchState, p: SimPlayer): BuildingType | null {
   const pow = powerOf(state, p.playerId);
   const roomy = (t: BuildingType): boolean => (p.aiNoRoomUntil?.[t] ?? 0) <= state.tick;
   for (const { type: t, n } of BUILD_ORDER) {
+    if (t === "dock" && !wantDock(state, p)) continue;
     if (countType(state, p.playerId, t) >= n || !roomy(t)) continue;
     const draw = Math.max(0, -catalog(t).power);
     if (t !== "dynamo" && pow.used + draw > pow.provided) return roomy("dynamo") ? "dynamo" : null;
@@ -360,7 +392,7 @@ function trainEasy(state: MatchState, p: SimPlayer): void {
   // One job per factory, neediest rank first. Stop at the first pick scrap cannot cover and save
   // for it, so a trickle of income does not all go to cheap riflemen ahead of a Titan or a Stuka.
   const picks: { unit: TrainType; want: number; share: number }[] = [];
-  for (const factory of ["armory", "muster", "airfield"] as const) {
+  for (const factory of ["armory", "muster", "airfield", "dock"] as const) {
     if (!ownsLive(state, p.playerId, factory)) continue;
     if (queuedOn(state, p.playerId, factory) >= TRAIN_QUEUE_SOFT * countType(state, p.playerId, factory)) continue;
     const pick = neediest(state, p, EASY_ARMY[factory]);
@@ -397,7 +429,8 @@ function neediest(
  * Campaigning, every fighting rank is EASY_CAMPAIGN_ARMY_MUL times larger to feed the waves.
  */
 function wantOf(state: MatchState, p: SimPlayer, unit: TrainType, base: number): number {
-  if (aiPlanOf(p).posture === "campaign" && fires(unit)) base = Math.ceil(base * EASY_CAMPAIGN_ARMY_MUL);
+  // The fleet stays the size it is: the waves are fed ashore.
+  if (aiPlanOf(p).posture === "campaign" && fires(unit) && !isNavalType(unit)) base = Math.ceil(base * EASY_CAMPAIGN_ARMY_MUL);
   if (unit === "rifleman") return base + Math.min(12, emptySlits(state, p.playerId));
   const air = aiPlanOf(p).airSeenTick != null;
   if (air && unit === "rocketer") return base + 2;
@@ -991,7 +1024,7 @@ function defendPoint(
   let intruder: Entity | undefined;
   let bestD = Infinity;
   for (const e of state.entities.values()) {
-    if (e.kind !== "unit" || e.hp <= 0 || e.wreck || !e.ownerId || e.air) continue;
+    if (e.kind !== "unit" || e.hp <= 0 || e.wreck || !e.ownerId || e.air || isTorpedoBody(e.type)) continue;
     if (allies(state, p.playerId, e.ownerId)) continue;
     const d = Math.hypot(e.x - at.x, e.y - at.y);
     if (d > reach || d >= bestD) continue;
@@ -1011,7 +1044,9 @@ function defendPoint(
     ids.push(e.id);
   }
   if (ids.length > 0) {
-    applyCommand(state, p.playerId, { type: "cmd.attackmove", ids, x: intruder.x, y: intruder.y });
+    // A boat or a swimmer is met from the bank, not by swimming out to it.
+    const to = onWater(state, intruder) ? groundNear(state, intruder) : intruder;
+    applyCommand(state, p.playerId, { type: "cmd.attackmove", ids, x: to.x, y: to.y });
   }
   if (planes) sortie(state, p, intruder.x, intruder.y);
 }
@@ -1133,10 +1168,11 @@ function freeArmy(state: MatchState, p: SimPlayer, plan: AiPlan): Entity[] {
   return out;
 }
 
+/** A fighter for the land army. Warships keep to the fleet (seaWork). */
 function freeFighter(e: Entity, playerId: string): boolean {
   if (e.ownerId !== playerId || e.hp <= 0 || e.wreck || e.garrisonedIn) return false;
   if (e.kind !== "unit" || !fires(e.type)) return false;
-  if (isAircraftType(e.type) || isDroneType(e.type) || e.braced) return false;
+  if (isAircraftType(e.type) || isDroneType(e.type) || isNavalType(e.type) || e.braced) return false;
   return e.state !== "deploy" && e.state !== "undeploy";
 }
 
@@ -1322,6 +1358,449 @@ function escortPick(state: MatchState, e: Entity, fighters: number[], turn: numb
   return from[turn % from.length] ?? null;
 }
 
+// ---------------------------------------------------------------- sea
+
+/**
+ * Bodies of water a boat can sail, 4-connected. Worked out again each strategy pass, so a new
+ * bridge, a sunk hulk, or a Marine Base across a channel splits it the way the pathfinder sees it.
+ */
+interface Sea {
+  tick: number;
+  /** Body id per tile, from 1. 0 on land. */
+  body: Int32Array;
+  /** Tiles in each body, by id. */
+  size: number[];
+  /** Tiles from each water tile to the nearest bank or map edge (1 beside it). 0 on land. */
+  depth: Int16Array;
+  /** Deepest tile in each body, by id. */
+  deepest: number[];
+  /** Where each side's fleet strikes from on each body, or null when the body reaches nothing. */
+  strike: Map<string, Map<number, Vec | null>>;
+  /** Each side's Marine Base footprint in its yard, or null. */
+  dock: Map<string, { tx: number; ty: number } | null>;
+}
+
+const seaCache = new WeakMap<MatchState, Sea>();
+
+function seaOf(state: MatchState): Sea {
+  const old = seaCache.get(state);
+  if (old && state.tick >= old.tick && state.tick - old.tick < EASY_MICRO_EVERY_TICKS) return old;
+  const w = state.width;
+  const h = state.height;
+  const body = new Int32Array(w * h);
+  const size = [0];
+  const stack: number[] = [];
+  for (let i = 0; i < w * h; i++) {
+    if (body[i] || !walkable(state, i % w, Math.floor(i / w), "gunboat")) continue;
+    const id = size.length;
+    let n = 0;
+    body[i] = id;
+    stack.push(i);
+    while (stack.length > 0) {
+      const j = stack.pop()!;
+      n++;
+      const x = j % w;
+      const y = Math.floor(j / w);
+      for (const [nx, ny] of [
+        [x + 1, y],
+        [x - 1, y],
+        [x, y + 1],
+        [x, y - 1],
+      ] as const) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const k = ny * w + nx;
+        if (body[k] || !walkable(state, nx, ny, "gunboat")) continue;
+        body[k] = id;
+        stack.push(k);
+      }
+    }
+    size.push(n);
+  }
+  // Depth: rings out from the banks, 8-neighbour, so a hull is kept off the shore on every side.
+  const depth = new Int16Array(w * h);
+  const deepest = size.map(() => 0);
+  let ring: number[] = [];
+  for (let i = 0; i < w * h; i++) {
+    if (!body[i]) continue;
+    const x = i % w;
+    const y = Math.floor(i / w);
+    let bank = false;
+    for (let dy = -1; dy <= 1 && !bank; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h || !body[ny * w + nx]) bank = true;
+      }
+    }
+    if (!bank) continue;
+    depth[i] = 1;
+    ring.push(i);
+  }
+  for (let d = 1; ring.length > 0; d++) {
+    const next: number[] = [];
+    for (const i of ring) {
+      const id = body[i]!;
+      if (d > deepest[id]!) deepest[id] = d;
+      const x = i % w;
+      const y = Math.floor(i / w);
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+          const k = ny * w + nx;
+          if (!body[k] || depth[k]) continue;
+          depth[k] = d + 1;
+          next.push(k);
+        }
+      }
+    }
+    ring = next;
+  }
+  const sea: Sea = { tick: state.tick, body, size, depth, deepest, strike: new Map(), dock: new Map() };
+  seaCache.set(state, sea);
+  return sea;
+}
+
+/** Body of water under a world point, or 0 ashore. */
+function bodyAt(state: MatchState, at: Vec): number {
+  const tx = Math.floor(at.x / state.tileSize);
+  const ty = Math.floor(at.y / state.tileSize);
+  if (tx < 0 || ty < 0 || tx >= state.width || ty >= state.height) return 0;
+  return seaOf(state).body[ty * state.width + tx] ?? 0;
+}
+
+function onWater(state: MatchState, e: Vec): boolean {
+  return isWater(state, Math.floor(e.x / state.tileSize), Math.floor(e.y / state.tileSize));
+}
+
+/** Open water a boat can lie on nearest a point, world pixels. */
+function waterNear(state: MatchState, at: Vec): Vec | null {
+  const ts = state.tileSize;
+  const c = clampToMap(state, at);
+  const t = nearestWalkable(state, Math.floor(c.x / ts), Math.floor(c.y / ts), "gunboat");
+  return t ? { x: (t.x + 0.5) * ts, y: (t.y + 0.5) * ts } : null;
+}
+
+/**
+ * Open water on this body nearest a point: as far off every bank as a Battle Ship's beam needs,
+ * or the deepest the body has. A station on the bank leaves the big hulls grinding along the shore.
+ */
+function openWaterNear(state: MatchState, id: number, at: Vec): Vec | null {
+  const sea = seaOf(state);
+  const ts = state.tileSize;
+  const need = Math.min(Math.ceil(catalog("battleship").radius / ts) + 1, sea.deepest[id] ?? 0);
+  const gx = at.x / ts;
+  const gy = at.y / ts;
+  let best = -1;
+  let bestD = Infinity;
+  for (let i = 0; i < sea.body.length; i++) {
+    if (sea.body[i] !== id || sea.depth[i]! < need) continue;
+    const x = i % state.width;
+    const y = Math.floor(i / state.width);
+    const d = Math.hypot(x + 0.5 - gx, y + 0.5 - gy);
+    if (d >= bestD || !walkable(state, x, y, "gunboat")) continue;
+    best = i;
+    bestD = d;
+  }
+  return best < 0 ? null : { x: ((best % state.width) + 0.5) * ts, y: (Math.floor(best / state.width) + 0.5) * ts };
+}
+
+/**
+ * Open water on this body near the enemy Core, else near an enemy Marine Base, else near the
+ * diamond field's middle: the first the body comes within EASY_SEA_REACH_TILES of. Null for a pond
+ * too small or too far to matter.
+ */
+function strikeWater(state: MatchState, playerId: string, id: number): Vec | null {
+  const sea = seaOf(state);
+  let mine = sea.strike.get(playerId);
+  if (!mine) sea.strike.set(playerId, (mine = new Map()));
+  if (mine.has(id)) return mine.get(id) ?? null;
+  let found: Vec | null = null;
+  if ((sea.size[id] ?? 0) >= EASY_SEA_MIN_TILES) {
+    const ts = state.tileSize;
+    const foe = enemyHq(state, playerId);
+    const goals: { at: Vec; slack: number }[] = [];
+    if (foe) goals.push({ at: foe, slack: Math.max(foe.tileW, foe.tileH) / 2 });
+    // An enemy Marine Base on the same water: its fleet's home, and a target the guns and torpedoes can reach.
+    const me = hqOf(state, playerId);
+    const harbours = [...state.entities.values()].filter(
+      (b) => b.type === "dock" && b.hp > 0 && !!b.ownerId && !allies(state, playerId, b.ownerId),
+    );
+    if (me) harbours.sort((a, b) => Math.hypot(a.x - me.x, a.y - me.y) - Math.hypot(b.x - me.x, b.y - me.y));
+    for (const b of harbours) goals.push({ at: b, slack: Math.max(b.tileW, b.tileH) / 2 });
+    goals.push({ at: diamondCentre(state), slack: 0 });
+    for (const g of goals) {
+      const gx = g.at.x / ts;
+      const gy = g.at.y / ts;
+      let best = -1;
+      let bestD = Infinity;
+      for (let i = 0; i < sea.body.length; i++) {
+        if (sea.body[i] !== id) continue;
+        const d = Math.hypot((i % state.width) + 0.5 - gx, Math.floor(i / state.width) + 0.5 - gy);
+        if (d < bestD) {
+          best = i;
+          bestD = d;
+        }
+      }
+      if (best < 0 || bestD > EASY_SEA_REACH_TILES + g.slack) continue;
+      found = openWaterNear(state, id, g.at);
+      if (found) break;
+    }
+  }
+  mine.set(id, found);
+  return found;
+}
+
+/**
+ * A Marine Base footprint on water worth a fleet, nearest the Core. `yard`: inside the build
+ * range, for the yard to place. Otherwise within EASY_EXPAND_TILES of the Core and nearer it than
+ * any enemy base, for an engineer to swim out and raise.
+ */
+export function findDockTile(state: MatchState, playerId: string, yard: boolean): { tx: number; ty: number } | null {
+  const hq = hqOf(state, playerId);
+  if (!hq) return null;
+  const def = catalog("dock");
+  const sea = seaOf(state);
+  const anchors: Entity[] = [];
+  const foes: Vec[] = [];
+  for (const e of state.entities.values()) {
+    if (yard && e.kind === "building" && e.ownerId === playerId && e.hp > 0 && anchorsBuildRange(e.type)) anchors.push(e);
+  }
+  if (!yard) {
+    for (const q of state.players.values()) {
+      if (!q.alive || allies(state, playerId, q.playerId)) continue;
+      const foe = hqOf(state, q.playerId);
+      if (foe) foes.push({ x: foe.x / state.tileSize, y: foe.y / state.tileSize });
+    }
+  }
+  const ox = hq.tileX + hq.tileW / 2;
+  const oy = hq.tileY + hq.tileH / 2;
+  let best: { tx: number; ty: number } | null = null;
+  let bestD = Infinity;
+  for (let ty = 0; ty + def.tileH <= state.height; ty++) {
+    for (let tx = 0; tx + def.tileW <= state.width; tx++) {
+      const id = sea.body[ty * state.width + tx]!;
+      if (!id) continue;
+      const cx = tx + def.tileW / 2;
+      const cy = ty + def.tileH / 2;
+      const d = Math.hypot(cx - ox, cy - oy);
+      if (d >= bestD || (!yard && d > EASY_EXPAND_TILES)) continue;
+      if (!strikeWater(state, playerId, id)) continue;
+      if (yard && !anchors.some((b) => footprintGap(tx, ty, def.tileW, def.tileH, b.tileX, b.tileY, b.tileW, b.tileH) <= BUILD_RADIUS)) continue;
+      if (!yard && foes.some((f) => Math.hypot(cx - f.x, cy - f.y) <= d)) continue;
+      if (buildingSiteError(state, "dock", tx, ty)) continue;
+      best = { tx, ty };
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+/** The yard's Marine Base footprint, worked out once a strategy pass. */
+function dockSite(state: MatchState, playerId: string): { tx: number; ty: number } | null {
+  const sea = seaOf(state);
+  if (!sea.dock.has(playerId)) sea.dock.set(playerId, findDockTile(state, playerId, true));
+  return sea.dock.get(playerId) ?? null;
+}
+
+/** Campaigning, with water in the yard worth a fleet and no Marine Base on its way already. */
+function wantDock(state: MatchState, p: SimPlayer): boolean {
+  if (aiPlanOf(p).posture !== "campaign" || countType(state, p.playerId, "dock") > 0) return false;
+  return !dockUnderWay(state, p.playerId) && dockSite(state, p.playerId) != null;
+}
+
+/** A Marine Base on its way: in the yard, or an engineer out to raise one. */
+function dockUnderWay(state: MatchState, playerId: string): boolean {
+  if (state.players.get(playerId)?.structure?.type === "dock") return true;
+  for (const e of state.entities.values()) {
+    if (e.ownerId === playerId && e.type === "engineer" && e.hp > 0 && e.order?.kind === "build" && e.order.building === "dock") return true;
+  }
+  return false;
+}
+
+/** No water in the yard worth a fleet, but some within reach: an engineer swims out and raises the Marine Base. */
+function raiseDock(state: MatchState, p: SimPlayer, hq: Entity): void {
+  if (aiPlanOf(p).posture !== "campaign") return;
+  if (countType(state, p.playerId, "dock") > 0 || dockUnderWay(state, p.playerId)) return;
+  if (p.scrap < catalog("dock").cost || !powerFor(state, p.playerId, "dock")) return;
+  if (dockSite(state, p.playerId)) return;
+  const spot = findDockTile(state, p.playerId, false);
+  if (!spot) return;
+  const def = catalog("dock");
+  const at = { x: (spot.tx + def.tileW / 2) * state.tileSize, y: (spot.ty + def.tileH / 2) * state.tileSize };
+  const eng = freeEngineer(state, p.playerId, at);
+  if (eng) applyCommand(state, p.playerId, { type: "cmd.construct", ids: [eng.id], building: "dock", tx: spot.tx, ty: spot.ty });
+}
+
+/** Half its shells or torpedoes still aboard, or a gun that never runs dry. */
+function shipArmed(e: Entity): boolean {
+  if (e.ship) {
+    const barrels = e.ship.turrets.flatMap((t) => t.barrels);
+    const left = barrels.reduce((s, b) => s + b.ammo, 0);
+    return left * 2 >= barrels.length * BATTLESHIP_BARREL_AMMO;
+  }
+  const belt = beltOf(e.type);
+  if (belt && !belt.reload) return e.clip * 2 >= belt.clip;
+  return true;
+}
+
+function warshipsOf(state: MatchState, playerId: string): Entity[] {
+  const out: Entity[] = [];
+  for (const e of state.entities.values()) {
+    if (e.ownerId !== playerId || e.kind !== "unit" || e.hp <= 0 || e.wreck || e.garrisonedIn) continue;
+    if (!isNavalType(e.type) || isTorpedoBody(e.type) || !fires(e.type)) continue;
+    out.push(e);
+  }
+  return out;
+}
+
+/**
+ * The fleet. At home the warships guard the Marine Base. Campaigning, once EASY_FLEET_MIN of them
+ * lie armed on one body of water, they sail together for the water nearest the enemy Core (or the
+ * middle) and shell what they find there. A ship low on shells or torpedoes sails home to rearm.
+ */
+function seaWork(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): void {
+  const warships = warshipsOf(state, p.playerId);
+  if (plan.fleet && !stepFleet(state, p, plan.fleet)) delete plan.fleet;
+  const out = new Set(plan.fleet?.ids ?? []);
+  const home = warships.filter((e) => !out.has(e.id));
+  if (home.length === 0 || guardHarbour(state, p, home)) return;
+  if (plan.posture !== "campaign" || plan.fleet) return;
+  // The biggest group of armed, idle warships on one body of water.
+  const groups = new Map<number, Entity[]>();
+  for (const e of home) {
+    if (!shipArmed(e) || (e.order && !e.order.auto && e.order.kind !== "move")) continue;
+    const id = bodyAt(state, e);
+    if (!id) continue;
+    groups.set(id, [...(groups.get(id) ?? []), e]);
+  }
+  let pick: { id: number; ships: Entity[] } | undefined;
+  for (const [id, ships] of groups) if (ships.length > (pick?.ships.length ?? 0)) pick = { id, ships };
+  if (!pick || pick.ships.length < EASY_FLEET_MIN) return;
+  const to = strikeWater(state, p.playerId, pick.id);
+  if (!to) return;
+  const ids = pick.ships.map((e) => e.id);
+  applyCommand(state, p.playerId, { type: "cmd.attackmove", ids, x: to.x, y: to.y });
+  plan.fleet = { ids, to, size0: ids.length, orderTick: state.tick };
+}
+
+/** One pass of the fleet out at sea. Returns false once it is spent and the rest sail home. */
+function stepFleet(state: MatchState, p: SimPlayer, f: AiFleet): boolean {
+  const ships: Entity[] = [];
+  for (const id of f.ids) {
+    const e = state.entities.get(id);
+    if (!e || e.ownerId !== p.playerId || e.hp <= 0 || e.wreck) continue;
+    // Low on shells or torpedoes: home to the Marine Base to load again.
+    if (!shipArmed(e)) {
+      sailHome(state, p, [e]);
+      continue;
+    }
+    ships.push(e);
+  }
+  f.ids = ships.map((e) => e.id);
+  if (ships.length < Math.max(1, Math.ceil(f.size0 * FORCE_BREAK_SHARE))) {
+    sailHome(state, p, ships);
+    return false;
+  }
+  const sites = enemySites(state, p.playerId);
+  const station = STATION_TILES * state.tileSize;
+  const refresh = state.tick >= f.orderTick + ENGAGED_MAX_TICKS;
+  for (const e of ships) {
+    if (inFight(state, e) || shellShore(state, p, e, sites)) continue;
+    const far = Math.hypot(e.x - f.to.x, e.y - f.to.y) > station;
+    const idle = !e.order || e.order.auto;
+    if (far && (idle || refresh)) applyCommand(state, p.playerId, { type: "cmd.attackmove", ids: [e.id], x: f.to.x, y: f.to.y });
+  }
+  if (refresh) f.orderTick = state.tick;
+  return true;
+}
+
+/** Back to lie beside the nearest Marine Base on the same water. */
+function sailHome(state: MatchState, p: SimPlayer, ships: Entity[]): void {
+  for (const e of ships) {
+    let dock: Entity | undefined;
+    let bestD = Infinity;
+    for (const b of state.entities.values()) {
+      if (b.ownerId !== p.playerId || b.type !== "dock" || b.hp <= 0) continue;
+      const d = Math.hypot(b.x - e.x, b.y - e.y);
+      if (d < bestD) {
+        dock = b;
+        bestD = d;
+      }
+    }
+    const at = dock && openWaterNear(state, bodyAt(state, e), dock);
+    if (at) applyCommand(state, p.playerId, { type: "cmd.move", ids: [e.id], x: at.x, y: at.y });
+  }
+}
+
+/**
+ * On station with nothing to shoot, a warship with a gun heavy enough for walls shells the
+ * nearest enemy building it can reach from where it lies. Torpedoes are no use on dry land:
+ * a submarine goes only for a Marine Base, which stands in the water.
+ */
+function shellShore(state: MatchState, p: SimPlayer, e: Entity, sites: Entity[]): boolean {
+  const torpedoes = torpedoesOf(e.type);
+  if (torpedoes) sites = sites.filter((b) => onWaterBuilding(b.type));
+  else if (catalog(e.type).caliber < GARRISON_STRUCTURAL_CALIBER) return false;
+  const held = e.order?.kind === "attack" && e.order.targetId != null ? state.entities.get(e.order.targetId) : undefined;
+  if (held && held.hp > 0) return true;
+  const ts = state.tileSize;
+  const range = catalog(e.type).rangeTiles * ts;
+  let best: Entity | undefined;
+  let bestD = Infinity;
+  for (const b of sites) {
+    const d = Math.hypot(b.x - e.x, b.y - e.y) - (Math.max(b.tileW, b.tileH) / 2) * ts;
+    if (d > range || d >= bestD) continue;
+    best = b;
+    bestD = d;
+  }
+  if (!best) return false;
+  return applyCommand(state, p.playerId, { type: "cmd.attack", ids: [e.id], targetId: best.id }).ok;
+}
+
+/** A seen enemy near a Marine Base pulls the warships lying at home on the same water. */
+function guardHarbour(state: MatchState, p: SimPlayer, home: Entity[]): boolean {
+  const reach = EASY_HARBOUR_DEFEND_TILES * state.tileSize;
+  const docks = [...state.entities.values()].filter((b) => b.ownerId === p.playerId && b.type === "dock" && b.hp > 0);
+  if (docks.length === 0) return false;
+  let intruder: Entity | undefined;
+  let bestD = Infinity;
+  for (const e of state.entities.values()) {
+    if (e.kind !== "unit" || e.hp <= 0 || e.wreck || !e.ownerId || e.air || isTorpedoBody(e.type)) continue;
+    if (allies(state, p.playerId, e.ownerId)) continue;
+    const d = Math.min(...docks.map((b) => Math.hypot(e.x - b.x, e.y - b.y)));
+    if (d > reach || d >= bestD || !canSeeEntity(state, p.playerId, e)) continue;
+    intruder = e;
+    bestD = d;
+  }
+  const at = intruder && waterNear(state, intruder);
+  if (!at) return false;
+  const id = bodyAt(state, at);
+  const ids = home.filter((e) => bodyAt(state, e) === id && (!e.order || e.order.auto || e.order.kind === "move")).map((e) => e.id);
+  if (ids.length === 0) return false;
+  applyCommand(state, p.playerId, { type: "cmd.attackmove", ids, x: at.x, y: at.y });
+  return true;
+}
+
+/** An idle supply boat keeps beside a warship out with the fleet. */
+function followFleet(state: MatchState, p: SimPlayer, e: Entity): void {
+  const fleet = aiPlanOf(p).fleet;
+  if (!fleet) return;
+  let best: Entity | undefined;
+  let bestD = Infinity;
+  for (const id of fleet.ids) {
+    const o = state.entities.get(id);
+    if (!o || o.hp <= 0 || o.wreck) continue;
+    const d = Math.hypot(o.x - e.x, o.y - e.y);
+    if (d < bestD) {
+      best = o;
+      bestD = d;
+    }
+  }
+  if (best) applyCommand(state, p.playerId, { type: "cmd.guard", ids: [e.id], targetId: best.id });
+}
+
 // ---------------------------------------------------------------- unit upkeep
 
 function microUnits(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): void {
@@ -1349,6 +1828,7 @@ function microUnits(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): 
         else engineerWork(state, p, e, hq);
         break;
       case "supply":
+      case "supplyboat":
         truckWork(state, p, e, hq, stage);
         break;
       case "droneop":
@@ -1358,6 +1838,7 @@ function microUnits(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): 
     if (YARD_IDLERS.has(e.type) && !e.order && nearBuilding(state, e)) moveTo(state, p, e, stage());
   }
   if (!smelterCrew && !claimDiamond(state, p, plan)) expandSmelters(state, p, hq);
+  if (!smelterCrew) raiseDock(state, p, hq);
 }
 
 /**
@@ -1561,19 +2042,23 @@ function engineerWork(state: MatchState, p: SimPlayer, e: Entity, hq: Entity): v
   if (target) applyCommand(state, p.playerId, { type: "cmd.repair", ids: [e.id], targetId: target.id });
 }
 
-/** Top up anyone short nearby, refill at the Armory when the bed runs low, else rejoin the army. */
+/**
+ * Top up anyone short nearby, refill at the depot (Armory, or Marine Base for the boat) when the
+ * bed runs low, else rejoin the army. The truck serves what stands ashore, the boat what floats.
+ */
 function truckWork(state: MatchState, p: SimPlayer, e: Entity, hq: Entity, stage: Staging): void {
   if (e.order?.kind === "supply" || e.order?.kind === "disable") return;
+  const afloat = isNavalType(e.type);
   if (e.supply < SUPPLY_CARGO / 3) {
-    const armory = nearestOwned(state, p.playerId, "armory", e);
-    if (armory) applyCommand(state, p.playerId, { type: "cmd.supply", ids: [e.id], targetId: armory.id });
+    const depot = nearestOwned(state, p.playerId, supplyDepotOf(e.type), e);
+    if (depot) applyCommand(state, p.playerId, { type: "cmd.supply", ids: [e.id], targetId: depot.id });
     return;
   }
   const reach = EASY_WORK_TILES * state.tileSize;
   let best: Entity | undefined;
   let bestD = Infinity;
   for (const o of state.entities.values()) {
-    if (o.ownerId !== p.playerId || o.id === e.id || !needsSupply(o)) continue;
+    if (o.ownerId !== p.playerId || o.id === e.id || isNavalType(o.type) !== afloat || !needsSupply(o)) continue;
     const d = Math.hypot(o.x - e.x, o.y - e.y);
     if (d > reach || d >= bestD) continue;
     best = o;
@@ -1583,7 +2068,9 @@ function truckWork(state: MatchState, p: SimPlayer, e: Entity, hq: Entity, stage
     applyCommand(state, p.playerId, { type: "cmd.supply", ids: [e.id], targetId: best.id });
     return;
   }
-  if (!e.order) rejoin(state, p, e, hq, stage);
+  if (e.order) return;
+  if (afloat) followFleet(state, p, e);
+  else rejoin(state, p, e, hq, stage);
 }
 
 /** Out with the army: fly the drone in strike mode. Idle away from home: rejoin a fighter. */
@@ -1641,6 +2128,7 @@ export function findBuildTile(
   type: BuildingType,
 ): { tx: number; ty: number } | null {
   if (type === "smelter") return findSmelterTile(state, playerId);
+  if (type === "dock") return findDockTile(state, playerId, true);
   const def = catalog(type);
   const hq = hqOf(state, playerId);
   if (!hq) return null;
