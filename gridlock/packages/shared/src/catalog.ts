@@ -23,6 +23,8 @@ const t = (n: number): number => n * TILE_SUBDIV;
 export const BUILD_RADIUS = t(8);
 /** The same gap for the Defences tab: guns, garrisons, and lines ring the base a little past its buildings. */
 export const DEFENCE_BUILD_RADIUS = t(10);
+/** The same gap for sandbag, wall, and gate lines: twice the base reach, so a line can wall off ground well out from the yard. */
+export const LINE_BUILD_RADIUS = 2 * BUILD_RADIUS;
 export const UNIT_CAP = 60;
 /** Max train jobs waiting or in progress on one producer. */
 export const TRAIN_QUEUE_CAP = 9;
@@ -4602,6 +4604,7 @@ export function isDefenceStructure(type: string): boolean {
 
 /** How far from the base the yard may place this type. */
 export function buildRadiusOf(type: string): number {
+  if (isYardField(type)) return LINE_BUILD_RADIUS;
   return isDefenceStructure(type) ? DEFENCE_BUILD_RADIUS : BUILD_RADIUS;
 }
 
