@@ -2174,7 +2174,7 @@ export class MapView {
     window.addEventListener("mousemove", this.onMove);
     this.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
     this.mini.addEventListener("mousedown", (e) => {
-      // A dark panel is not a map: nothing to click until a Radar Station stands.
+      // A dark panel is not a map: nothing to click until a powered Radar Station stands.
       if (!this.curr.you.radar) return;
       const map = this.map();
       const rect = this.mini.getBoundingClientRect();

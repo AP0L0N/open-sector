@@ -6,6 +6,7 @@ import { TILE_EMPTY } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { makeEntity, newAirState, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
+import { tickPower } from "./power.js";
 import { radarContacts, radarOnline } from "./radar.js";
 import { snapshotFor } from "./snapshot.js";
 import { visionMask } from "./vision.js";
@@ -86,6 +87,51 @@ describe("radar panel", () => {
     step(state);
     assert.equal(state.entities.has(station.id), false);
     assert.equal(snapshotFor(state, a).you.radar, false);
+  });
+
+  it("goes dark on low power, with no map and no aircraft contacts, and lights when power returns", () => {
+    const { state, a, b } = emptyField();
+    structureAt(state, "core", a, 40, 40);
+    structureAt(state, "radar", a, 50, 40);
+    planeOver(state, b, 140, 41);
+    step(state);
+    let snap = snapshotFor(state, a);
+    assert.equal(snap.you.lowPower, false);
+    assert.equal(snap.you.radar, true);
+    assert.equal(snap.radar?.length, 1);
+
+    // A second station draws more than the Core supplies: the side is short and every dish goes dark.
+    structureAt(state, "radar", a, 50, 50);
+    step(state);
+    snap = snapshotFor(state, a);
+    assert.equal(snap.you.lowPower, true);
+    assert.equal(radarOnline(state, a), false);
+    assert.equal(snap.you.radar, false);
+    assert.equal(snap.radar, undefined);
+    assert.deepEqual(radarContacts(state, a, visionMask(state, a)), []);
+
+    structureAt(state, "dynamo", a, 30, 40);
+    step(state);
+    snap = snapshotFor(state, a);
+    assert.equal(snap.you.lowPower, false);
+    assert.equal(snap.you.radar, true);
+    assert.ok(Array.isArray(snap.radar));
+  });
+
+  it("goes dark for an ally when the station's owner is short on power", () => {
+    const { state, a, b } = emptyField();
+    structureAt(state, "core", a, 40, 40);
+    structureAt(state, "core", b, 100, 120);
+    structureAt(state, "radar", b, 120, 120);
+    structureAt(state, "radar", b, 120, 110);
+    state.players.get(a)!.team = 1;
+    state.players.get(b)!.team = 1;
+    // One team is a won match, so step() would stop; run the power pass alone.
+    tickPower(state);
+    assert.equal(radarOnline(state, a), false, "two stations on one Core run the ally short");
+    structureAt(state, "dynamo", b, 110, 120);
+    tickPower(state);
+    assert.equal(radarOnline(state, a), true);
   });
 
   it("reads an ally's station but not an enemy's", () => {

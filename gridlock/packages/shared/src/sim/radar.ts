@@ -5,9 +5,9 @@ import { allies } from "./geo.js";
 import { entityOnMask } from "./vision.js";
 import type { Entity, MatchState } from "./types.js";
 
-/** A Radar Station this side reads: allied, standing, not a wreck. */
+/** A Radar Station this side reads: allied, standing, not a wreck, and powered. A station short on power is dark. */
 function radarStands(state: MatchState, playerId: string, e: Entity): boolean {
-  return e.type === "radar" && e.kind === "building" && e.hp > 0 && !e.wreck && allies(state, playerId, e.ownerId);
+  return e.type === "radar" && e.kind === "building" && e.hp > 0 && !e.wreck && !e.unpowered && allies(state, playerId, e.ownerId);
 }
 
 /** Radar Stations whose sweep this side reads. */
@@ -17,7 +17,7 @@ export function radarStations(state: MatchState, playerId: string): Entity[] {
   return out;
 }
 
-/** True while a Radar Station stands on this side. The command bar's radar panel paints only then. */
+/** True while a powered Radar Station stands on this side. The command bar's radar panel paints only then. */
 export function radarOnline(state: MatchState, playerId: string): boolean {
   for (const e of state.entities.values()) if (radarStands(state, playerId, e)) return true;
   return false;

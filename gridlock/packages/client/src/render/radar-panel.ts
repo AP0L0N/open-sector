@@ -1,5 +1,5 @@
 /**
- * The command bar's radar panel. Without a standing Radar Station it is a
+ * The command bar's radar panel. Without a standing, powered Radar Station it is a
  * dark scope with a faint sweep and a legend; with one it paints the map
  * (mapview.drawMini), and blinks the contacts the dish hears but nobody sees.
  * Nothing here changes the field.
