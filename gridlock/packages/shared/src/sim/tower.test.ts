@@ -206,6 +206,26 @@ describe("garrison approach", () => {
     });
   }
 
+  it("is left alone by enemy tanks while empty, and drawn on once manned", () => {
+    const { state, a, b } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const tower = structureAt(state, "tower", a);
+    const tank = makeEntity(state, "warden", b, tower.x + ts * 14, tower.y);
+    tank.facing = Math.PI;
+    const hp0 = tower.hp;
+    for (let i = 0; i < 60; i++) step(state, TICK_DT);
+    assert.notEqual(tank.attackTarget, tower.id);
+    assert.notEqual(tank.order?.targetId, tower.id);
+    assert.equal(tower.hp, hp0);
+    const rifle = trooper(state, "rifleman", a);
+    assert.equal(enterGarrison(state, rifle, tower), true);
+    for (let i = 0; i < 12; i++) step(state, TICK_DT);
+    assert.ok(
+      tank.attackTarget === tower.id || tank.order?.targetId === tower.id,
+      `tank should engage the manned tower, order=${tank.order?.kind} target=${tank.attackTarget}`,
+    );
+  });
+
   it("heads for the side it is standing on", () => {
     const { state, a } = twoPlayerMatch();
     const tower = structureAt(state, "tower", a);
