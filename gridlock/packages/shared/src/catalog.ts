@@ -200,6 +200,8 @@ export const HEIGHT_MAX = t(8);
 export const HEIGHT_STEP_MAX = 1;
 /** Move-speed multiplier per adjacent-tile climb. TILE_SUBDIV steps ≈ one old terrace. */
 export const HEIGHT_UPHILL_SPEED = 0.55 ** (1 / TILE_SUBDIV);
+/** Every unit climbs this much faster than HEIGHT_UPHILL_SPEED alone, never faster than on level ground. */
+export const HEIGHT_UPHILL_BOOST = 1.3;
 /** Move-speed multiplier per adjacent-tile descent. */
 export const HEIGHT_DOWNHILL_SPEED = 1.12 ** (1 / TILE_SUBDIV);
 /** A* step-cost multiplier per adjacent-tile climb. */

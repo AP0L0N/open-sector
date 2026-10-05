@@ -12,6 +12,7 @@ import {
   HEIGHT_SIGHT_BONUS,
   HEIGHT_STEP_MAX,
   HEIGHT_UPHILL_COST,
+  HEIGHT_UPHILL_BOOST,
   HEIGHT_UPHILL_SPEED,
   HEIGHT_WORLD,
   HULL_EYE_HEIGHT,
@@ -155,7 +156,7 @@ export function climbableDelta(dh: number): boolean {
 }
 
 export function slopeSpeedMul(dh: number): number {
-  if (dh > 0) return HEIGHT_UPHILL_SPEED ** dh;
+  if (dh > 0) return Math.min(1, HEIGHT_UPHILL_BOOST * HEIGHT_UPHILL_SPEED ** dh);
   if (dh < 0) return HEIGHT_DOWNHILL_SPEED ** -dh;
   return 1;
 }
