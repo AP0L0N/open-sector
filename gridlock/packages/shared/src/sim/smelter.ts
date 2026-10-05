@@ -14,7 +14,11 @@ import {
 } from "../catalog.js";
 import { scrapAt, scrapTilesUnder, tilesBlocked } from "./geo.js";
 import { powerOf, productionSpeed } from "./power.js";
+import type { AiDifficulty } from "../protocol.js";
 import type { Entity, MatchState, SimPlayer } from "./types.js";
+
+/** The CPU's head start: its Smelters pour this many times the normal rate. */
+export const AI_SMELTER_MUL: Readonly<Record<AiDifficulty, number>> = { easy: 2 };
 
 /** Scrap tiles a Smelter footprint needs under it. */
 export function smelterScrapNeeded(): number {
@@ -60,7 +64,7 @@ export function smelterYields(state: MatchState, e: Entity): boolean {
   return e.kind === "building" && e.type === "smelter" && e.hp > 0 && !e.wreck && smelterOnScrap(state, e.tileX, e.tileY);
 }
 
-/** Scrap a second this commander's Smelters earn at full power. */
+/** Scrap a second this commander's Smelters earn at full power, the CPU's head start included. */
 export function smelterIncome(state: MatchState, playerId: string): number {
   let n = 0;
   for (const e of state.entities.values()) {
@@ -68,7 +72,8 @@ export function smelterIncome(state: MatchState, playerId: string): number {
       n += smelterRateOn((x, y) => scrapAt(state, x, y), e.tileX, e.tileY);
     }
   }
-  return n;
+  const ai = state.players.get(playerId)?.ai;
+  return ai ? n * AI_SMELTER_MUL[ai] : n;
 }
 
 /** Smelters this commander has standing, finished or not on scrap. */
