@@ -1,7 +1,7 @@
 import { ISO_TILE_H, ISO_TILE_W, type MapDef } from "@gridlock/shared";
 import { FOG_RGB, FOG_VEIL_ALPHA, fieldBytes, type FogField } from "./fog-field.js";
 import { compileProgram, dataTexture, freeVao, glContext, meshVao, noiseTexture, type MeshVao } from "./gl.js";
-import { heightMesh } from "./height-mesh.js";
+import { heightMesh, heightsKey } from "./height-mesh.js";
 
 const VS = `#version 300 es
 in vec2 aPos;
@@ -87,7 +87,7 @@ export class FogGl {
   }
 
   setMap(map: MapDef): void {
-    const key = `${map.id}:${map.width}x${map.height}`;
+    const key = `${map.id}:${map.width}x${map.height}:${heightsKey(map.heights)}`;
     if (key === this.mapKey) return;
     freeVao(this.gl, this.mesh);
     this.mesh = meshVao(this.gl, this.prog, heightMesh(map));

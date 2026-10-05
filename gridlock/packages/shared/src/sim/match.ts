@@ -100,6 +100,9 @@ export function createMatch(
     clearedTrees: [],
     bodies: [],
     holes: [],
+    blast: new Map(),
+    dug: new Map(),
+    digRev: 0,
   };
 
   for (const slot of commanders(room)) {

@@ -65,6 +65,13 @@ import type {
   StructureQueueView,
 } from "../protocol.js";
 
+/** Sunk tiles as flat (index, height) pairs for the wire. */
+function dugCells(state: MatchState): number[] {
+  const out: number[] = [];
+  for (const [i, h] of state.dug) out.push(i, h);
+  return out;
+}
+
 function plantRemaining(e: Entity, friendly: boolean): number | undefined {
   if (!friendly) return undefined;
   const limit =
@@ -574,6 +581,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     clearedTrees: state.clearedTrees.map((t) => (t.burn ? { x: t.x, y: t.y, burn: true as const } : { x: t.x, y: t.y })),
     bodies: visibleBodies(state, youPlayerId, vis),
     holes: state.holes.map((h) => ({ ...h })),
+    ...(state.dug.size > 0 ? { dug: dugCells(state) } : {}),
     vision: you ? visionRuns(vis) : undefined,
     radar: radar ? radarContacts(state, youPlayerId, vis) : undefined,
     sonar: you ? nonEmpty(sonarContacts(state, youPlayerId)) : undefined,

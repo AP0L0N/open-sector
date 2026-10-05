@@ -22,6 +22,7 @@ import {
   fillLosFlags,
   hasFullLos,
   hasFullLosFlagged,
+  heightsWithDug,
   observerEyeForEntity,
   levelSightExtra,
   liveSightExtra,
@@ -607,6 +608,7 @@ function mix(h: number, v: number): number {
 function visionKey(state: MatchState, playerId: string): number {
   let h = 2166136261;
   h = mix(h, state.clearedTrees.length);
+  h = mix(h, state.digRev);
   const light = sightLightAt(state.tick);
   h = mix(h, Math.round(light.mul * 4096));
   h = mix(h, light.spots ? 1 : 0);
@@ -1100,7 +1102,7 @@ export function visionMaskFromSnapshot(
   const you = snap.youPlayerId;
   const team = snap.players.find((p) => p.playerId === you)?.team ?? 0;
   const map = getMap(snap.mapId);
-  const elev = map?.heights;
+  const elev = map ? heightsWithDug(map.heights, snap.dug) : undefined;
   const occupy = new Int32Array(width * height);
   const hull = new Int32Array(width * height);
   if (map) {

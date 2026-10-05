@@ -466,6 +466,7 @@ import {
   type MiniBake,
   type TerrainBake,
 } from "./terrain.js";
+import { heightsChanged } from "./height-mesh.js";
 
 /** Special-action key. D pans with W and the arrow keys; A/S are orders. */
 export const SPECIAL_HOTKEY = "e";
@@ -1345,6 +1346,43 @@ export class MapView {
     if (!this.miniTerrain) this.miniTerrain = bakeMini(map, this.curr.scrap);
     else updateMiniScrap(this.miniTerrain, map, this.curr.scrap);
     this.applyClearedTrees();
+    this.applyDug();
+  }
+
+  /** Lay ground that blasts sank (snapshot `dug`) onto the live map and repaint around it. */
+  private applyDug(): void {
+    const dug = this.curr.dug;
+    if (!dug || dug.length === 0) return;
+    const map = this.map();
+    const w = map.width;
+    const n = w * map.height;
+    const changed: number[] = [];
+    for (let k = 0; k + 1 < dug.length; k += 2) {
+      const i = dug[k]!;
+      const h = dug[k + 1]!;
+      if (i < 0 || i >= n || map.heights[i] === h) continue;
+      map.heights[i] = h;
+      changed.push(i);
+    }
+    if (changed.length === 0) return;
+    heightsChanged(map.heights);
+    // A tile's corners average its neighbours, so the ring around a sunk tile tilts too.
+    const dirty = new Set<number>();
+    for (const i of changed) {
+      const x = i % w;
+      const y = (i / w) | 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx >= 0 && ny >= 0 && nx < w && ny < map.height) dirty.add(ny * w + nx);
+        }
+      }
+    }
+    const list = [...dirty];
+    this.treeStems = null;
+    if (this.terrain) restampTiles(this.terrain, map, list, this.curr.scrap);
+    if (this.miniTerrain) restampMini(this.miniTerrain, map, list, this.curr.scrap);
   }
 
   /**
@@ -2057,7 +2095,7 @@ export class MapView {
     const m = getMap(this.curr.mapId);
     if (!m) throw new Error("missing map");
     if (!this.liveMap || this.liveMap.id !== m.id) {
-      this.liveMap = { ...m, tiles: m.tiles.slice() };
+      this.liveMap = { ...m, tiles: m.tiles.slice(), heights: m.heights.slice() };
       this.treeStems = null;
       this.clearedApplied = 0;
     }

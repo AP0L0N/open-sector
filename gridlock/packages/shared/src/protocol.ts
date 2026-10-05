@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 97;
+export const PROTOCOL_VERSION = 98;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -617,6 +617,11 @@ export interface MatchSnapshot {
   bodies: CorpseView[];
   /** Heavy-shell craters on dirt. Empty until the first ground strike. */
   holes: ShellHoleView[];
+  /**
+   * Ground repeated heavy blasts have sunk, as flat pairs: tile index, then
+   * that tile's height now. Omitted until the first dig. See BLAST_DIG_ENABLED.
+   */
+  dug?: number[];
   /**
    * The server's fog mask for `youPlayerId`, row-major, as run lengths that
    * alternate hidden / lit starting with hidden. See `decodeVisionRuns`.

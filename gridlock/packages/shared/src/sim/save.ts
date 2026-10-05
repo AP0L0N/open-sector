@@ -72,6 +72,10 @@ export interface SaveGame {
   pendingComms: string[];
   /** Tile index and remaining scrap, only where the map's starting yield differs. */
   scrap: [number, number][];
+  /** Tile index and height, where a blast sank the ground. Older saves leave it out. */
+  dug?: [number, number][];
+  /** Tile index and blast points soaked toward the next dig. Older saves leave it out. */
+  blast?: [number, number][];
   seats: SaveSeat[];
 }
 
@@ -122,6 +126,8 @@ export function exportSave(state: MatchState, room: RoomState, now = Date.now())
     holes: state.holes,
     pendingComms: state.pendingComms,
     scrap,
+    dug: [...state.dug],
+    blast: [...state.blast],
     seats: room.slots.map((s) => ({
       index: s.index,
       status: s.status,
@@ -162,6 +168,17 @@ export function restoreMatch(
     if (tree.x < 0 || tree.y < 0 || tree.x >= map.width || tree.y >= map.height) continue;
     grids.terrain[tree.y * map.width + tree.x] = TILE_EMPTY;
     cleared.push(tree.burn ? { x: tree.x, y: tree.y, burn: true } : { x: tree.x, y: tree.y });
+  }
+  const dug = new Map<number, number>();
+  for (const [index, h] of save.dug ?? []) {
+    if (!Number.isInteger(index) || index < 0 || index >= n) return fail("That save's ground is out of range.");
+    if (!Number.isInteger(h) || h < 0 || h > 255) return fail("That save's ground is unreadable.");
+    grids.heights[index] = h;
+    dug.set(index, h);
+  }
+  const blast = new Map<number, number>();
+  for (const [index, points] of save.blast ?? []) {
+    if (Number.isInteger(index) && index >= 0 && index < n && num(points)) blast.set(index, points);
   }
 
   const mapOwner = (id: string): string => (id === save.humanId ? opts.humanPlayerId : id);
@@ -234,6 +251,9 @@ export function restoreMatch(
     clearedTrees: cleared,
     bodies: save.bodies.map((b) => ({ ...b })),
     holes: save.holes.map((h) => ({ ...h })),
+    blast,
+    dug,
+    digRev: 0,
     paused: false,
   };
   for (const e of entities.values()) occupyEntity(state, e);
@@ -311,6 +331,13 @@ function parseSave(raw: unknown): SaveResult<SaveGame> {
   if (!Array.isArray(s.scrap) || s.scrap.length > MAX_SCRAP) return fail("That save cannot be read.");
   for (const cell of s.scrap) {
     if (!Array.isArray(cell) || cell.length !== 2 || !num(cell[0]) || !num(cell[1])) return fail("That save cannot be read.");
+  }
+  for (const list of [s.dug, s.blast]) {
+    if (list === undefined) continue;
+    if (!Array.isArray(list) || list.length > MAX_SCRAP) return fail("That save cannot be read.");
+    for (const cell of list) {
+      if (!Array.isArray(cell) || cell.length !== 2 || !num(cell[0]) || !num(cell[1])) return fail("That save cannot be read.");
+    }
   }
   if (!Array.isArray(s.seats) || s.seats.length !== SLOT_COUNT) return fail("That save cannot be read.");
   const seen = new Set<number>();

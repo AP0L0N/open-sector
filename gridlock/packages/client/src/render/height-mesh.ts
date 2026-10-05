@@ -12,6 +12,24 @@ export type HeightMesh = {
   index: Uint32Array;
 };
 
+const heightSerials = new WeakMap<object, number>();
+let heightSerial = 0;
+
+/** Stable key for a heights array until `heightsChanged` marks it edited. Cache keys for meshes use it. */
+export function heightsKey(heights: object): number {
+  let k = heightSerials.get(heights);
+  if (k == null) {
+    k = ++heightSerial;
+    heightSerials.set(heights, k);
+  }
+  return k;
+}
+
+/** The ground under `heights` moved (a blast sank it). Every mesh built from it is stale. */
+export function heightsChanged(heights: object): void {
+  heightSerials.set(heights, ++heightSerial);
+}
+
 export function heightMesh(map: Pick<MapDef, "width" | "height" | "heights">): HeightMesh {
   const cols = map.width + 1;
   const rows = map.height + 1;

@@ -1697,6 +1697,20 @@ export const BOMB_BUILDING_DAMAGE = 240;
 export const BOMB_CALIBER = 250;
 /** Dirt scar relative to a shell of this caliber. The SC 250 leaves half that hole. */
 export const BOMB_HOLE_SCALE = 0.5;
+/**
+ * Experimental: repeated heavy blasts on one tile sink the ground there.
+ * Set false to turn it off; the map then keeps its authored heights all match.
+ */
+export const BLAST_DIG_ENABLED = true;
+/** Smallest caliber whose ground strike counts toward digging. Mortars and tank guns below this only scar. */
+export const BLAST_DIG_CALIBER = 105;
+/**
+ * Caliber points one tile soaks up before it drops one elevation step.
+ * About three 105mm strikes, two 150mm, or one Battle Ship shell.
+ */
+export const BLAST_DIG_PER_LEVEL = 300;
+/** Lowest elevation a blast can dig to. 0 is the valley floor. */
+export const BLAST_DIG_FLOOR = 0;
 /** Seconds from release to the ground. */
 export const BOMB_FALL_SECONDS = 0.7;
 /** Release this far short of the target so the bomb carries onto it. */
