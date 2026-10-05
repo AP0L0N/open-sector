@@ -623,6 +623,16 @@ export function isRotatableBuilding(type: string): type is BuildingType {
 }
 export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "cyborgcommander", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "stuka", "fw190", "bv222", "he111", "droneop", "jumpjet"];
 
+/**
+ * A player fields only one of each of these at a time. While it lives, another
+ * cannot be queued; only one can sit in the queues at once. Destroyed, it can be
+ * trained again.
+ */
+export const ONE_AT_A_TIME: readonly TrainType[] = ["titan", "cyborgcommander"];
+export function isOneAtATime(type: string): boolean {
+  return (ONE_AT_A_TIME as readonly string[]).includes(type);
+}
+
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
   warden: "research",
@@ -3592,7 +3602,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Cyborg Commander",
     letter: "Q",
-    cost: 3000,
+    cost: 5000,
     buildSeconds: 18,
     hp: 300,
     power: 0,
@@ -3610,7 +3620,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LASER.penetration,
     caliber: LASER.caliber,
     spreadDeg: LASER.spreadDeg,
-    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him.",
+    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
   titan: {
     type: "titan",
@@ -3650,7 +3660,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: TITAN_ROCKET_AMMO,
     bracedHpMul: TITAN_BRACED_HP_MUL,
-    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up.",
+    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
   mammoth: {
     type: "mammoth",

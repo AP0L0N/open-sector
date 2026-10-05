@@ -3,6 +3,7 @@ import {
   YARD_FIELD_TYPES,
   CRIT_LABEL,
   isCyborg,
+  isOneAtATime,
   DRONE_MODE_LABEL,
   SHELL_TYPES,
   STANCE_LABEL,
@@ -434,10 +435,22 @@ function jobsOfType(m: MatchSnapshot | null | undefined, unit: TrainType): JobRe
 }
 
 function canQueueMore(m: MatchSnapshot, unit: TrainType): boolean {
+  if (oneAtATimeHeld(m, unit)) return false;
   const want = producerType(unit);
   const producers = m.entities.filter((e) => e.ownerId === m.youPlayerId && e.type === want && e.hp > 0);
   if (producers.length === 0) return false;
   return producers.some((e) => (e.trainQueue?.length ?? 0) < TRAIN_QUEUE_CAP && padFree(e));
+}
+
+/**
+ * A one-at-a-time unit (Titan, Cyborg Commander) you already have: "alive" while one
+ * stands, "queued" while one is in a queue. The sim refuses another either way.
+ */
+function oneAtATimeHeld(m: MatchSnapshot, unit: TrainType): "alive" | "queued" | null {
+  if (!isOneAtATime(unit)) return null;
+  const mine = m.entities.filter((e) => e.ownerId === m.youPlayerId);
+  if (mine.some((e) => e.type === unit && e.hp > 0 && !e.wreck)) return "alive";
+  return mine.some((e) => e.trainQueue?.some((j) => j.type === unit)) ? "queued" : null;
 }
 
 /** An Airfield with a hardstand left for one more plane (parked, flying, or queued). Other producers always pass. */
@@ -598,14 +611,21 @@ export function paintBattleHud(ctx: Ctx): void {
     const tech = TECH_REQUIRES[unit];
     const techMissing =
       !!tech && !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === tech && e.hp > 0 && !e.wreck);
-    btn.disabled = !hasProducer || !m.you.alive || padsFull || techMissing;
+    // One at a time: greyed out while yours stands. While one is queued the cameo stays live to pause or cancel it.
+    const held = oneAtATimeHeld(m, unit);
+    btn.disabled = !hasProducer || !m.you.alive || padsFull || techMissing || held === "alive";
     btn.classList.toggle("needs-tech", techMissing);
+    btn.classList.toggle("one-held", held != null);
     btn.dataset.baseTitle ??= btn.title;
     btn.title = padsFull
       ? `${catalog(unit).name} — every hardstand is taken. Build another Airfield.`
       : techMissing
         ? `${catalog(unit).name} — needs a ${catalog(tech!).name}.`
-        : btn.dataset.baseTitle;
+        : held === "alive"
+          ? `${catalog(unit).name} — only one at a time. Yours is still in the field.`
+          : held === "queued"
+            ? `${catalog(unit).name} — only one at a time. One is already in the queue.`
+            : btn.dataset.baseTitle;
     btn.classList.toggle("unaffordable", training && m.you.scrap <= 0);
     btn.classList.toggle("slow-power", m.you.lowPower && training);
     btn.classList.toggle("is-training", unitJobs.length > 0);

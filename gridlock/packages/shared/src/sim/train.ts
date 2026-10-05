@@ -1,4 +1,4 @@
-import { AIRFIELD_PADS, catalog, isAircraftType, isNavalType, secondsToTicks, TECH_REQUIRES, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
+import { AIRFIELD_PADS, catalog, isAircraftType, isNavalType, isOneAtATime, secondsToTicks, TECH_REQUIRES, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, parkHeading } from "./air.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear, packRadius, packSlots } from "./formation.js";
@@ -24,6 +24,22 @@ export function techMissing(state: MatchState, playerId: string, unit: TrainType
   return need;
 }
 
+/**
+ * A one-at-a-time unit (ONE_AT_A_TIME: the Titan, the Cyborg Commander) the player
+ * already has: "alive" while one stands (a wreck does not count), "queued" while one
+ * sits in any of his production queues. Null when he may queue one, and for every other type.
+ */
+export function oneAtATimeTaken(state: MatchState, playerId: string, unit: TrainType): "alive" | "queued" | null {
+  if (!isOneAtATime(unit)) return null;
+  let queued = false;
+  for (const e of state.entities.values()) {
+    if (e.ownerId !== playerId) continue;
+    if (e.type === unit && e.hp > 0 && !e.wreck) return "alive";
+    if (e.queue.some((j) => j.type === unit)) queued = true;
+  }
+  return queued ? "queued" : null;
+}
+
 function queuedCount(state: MatchState, playerId: string): number {
   let n = 0;
   for (const e of state.entities.values()) {
@@ -36,6 +52,9 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
   const def = catalog(unit);
+  const taken = oneAtATimeTaken(state, playerId, unit);
+  if (taken === "alive") return `Only one ${def.name} at a time. Yours is still in the field.`;
+  if (taken === "queued") return `Only one ${def.name} at a time. One is already in the queue.`;
   if (ownedUnits(state, playerId) + queuedCount(state, playerId) >= UNIT_CAP) return "Unit cap reached.";
   const want = producerType(unit);
   let best: Entity | null = null;
