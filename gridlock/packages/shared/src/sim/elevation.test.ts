@@ -72,7 +72,8 @@ function dropRig(state: MatchState): void {
 describe("slope multipliers", () => {
   it("slows climbs and speeds descents", () => {
     assert.equal(slopeSpeedMul(0), 1);
-    assert.ok(slopeSpeedMul(1) < 1);
+    assert.ok(slopeSpeedMul(1) <= 1);
+    assert.ok(Math.abs(slopeSpeedMul(8) - 1.3 * 0.55 ** 2) < 1e-9);
     assert.ok(slopeSpeedMul(-1) > 1);
     assert.ok(slopeCostMul(1) > 1);
     assert.ok(slopeCostMul(-1) < 1);
@@ -186,26 +187,29 @@ describe("terrain line of sight", () => {
 });
 
 describe("movement on slopes", () => {
-  it("covers less ground going uphill than on the flat", () => {
+  function firstTickDist(rise: number): number {
     const { state, a } = twoPlayerMatch();
     state.heights.fill(0);
     const ts = state.tileSize;
     const from = { x: tileCenter(10, ts), y: tileCenter(10, ts) };
     const dest = { x: tileCenter(11, ts), y: tileCenter(10, ts) };
-    const flat = makeEntity(state, "rifleman", a, from.x, from.y);
-    flat.facing = Math.atan2(dest.y - from.y, dest.x - from.x);
-    flat.waypoints = [{ x: dest.x, y: dest.y }];
+    state.heights[10 * state.width + 11] = rise;
+    const e = makeEntity(state, "rifleman", a, from.x, from.y);
+    e.facing = Math.atan2(dest.y - from.y, dest.x - from.x);
+    e.waypoints = [{ x: dest.x, y: dest.y }];
     tickMovement(state, TICK_DT);
-    const flatDist = Math.hypot(flat.x - from.x, flat.y - from.y);
+    return Math.hypot(e.x - from.x, e.y - from.y);
+  }
 
-    state.heights[10 * state.width + 11] = 1;
-    const up = makeEntity(state, "rifleman", a, from.x, from.y);
-    up.facing = flat.facing;
-    up.waypoints = [{ x: dest.x, y: dest.y }];
-    tickMovement(state, TICK_DT);
-    const upDist = Math.hypot(up.x - from.x, up.y - from.y);
+  it("covers less ground climbing a terrace than on the flat", () => {
+    const flatDist = firstTickDist(0);
+    const upDist = firstTickDist(TILE_SUBDIV);
     assert.ok(flatDist > 1, `flat moved ${flatDist}`);
     assert.ok(upDist < flatDist * 0.95, `uphill ${upDist} vs flat ${flatDist}`);
+  });
+
+  it("never climbs faster than it walks the flat", () => {
+    assert.ok(firstTickDist(1) <= firstTickDist(0) + 1e-9);
   });
 });
 

@@ -392,7 +392,7 @@ import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.j
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
 import { drawActionCursor } from "./cursor.js";
-import { unitStepping } from "./stepping.js";
+import { strideFrame, strideHop, unitStepping, WALKER_STRIDE_WORLD } from "./stepping.js";
 import { atInfantrySheet, cyborgSheet, gunnerSheet, heldFrame, jumpJetSheet, medicSheet, mortarmanSheet, pyroSheet, rocketerSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
 import {
   axisFootprint,
@@ -700,6 +700,8 @@ export class MapView {
   private curr: MatchSnapshot;
   private prev: MatchSnapshot | null = null;
   private prevById = new Map<number, EntityView>();
+  /** Walker legs: ground walked so far and where the hull was last frame. */
+  private walkerOdo = new Map<number, { x: number; y: number; d: number }>();
   private snapAt = 0;
   /** Top-left of the viewport in isometric space. */
   private camX = 0;
@@ -1142,6 +1144,9 @@ export class MapView {
     }
     for (const id of this.lastHp.keys()) {
       if (!live.has(id)) this.lastHp.delete(id);
+    }
+    for (const id of this.walkerOdo.keys()) {
+      if (!live.has(id)) this.walkerOdo.delete(id);
     }
     for (const id of this.fieldSeen.keys()) {
       if (!live.has(id)) this.fieldSeen.delete(id);
@@ -5983,6 +5988,12 @@ export class MapView {
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
     if (e.ship || def === BATTLESHIP_SPRITE) hullShiftY -= unitGroundSink(size);
     const stepping = unitStepping({ type: e.type, state: e.state, swimming: e.swimming, prev: this.prevById.get(e.id), curr: e });
+    if (e.type === "walker" && frameIndex == null) {
+      const odo = this.walkerOdo.get(e.id);
+      const d = (odo?.d ?? 0) + strideHop(odo, p);
+      this.walkerOdo.set(e.id, { x: p.x, y: p.y, d });
+      if (stepping && !e.wreck && !immobilized(e)) frameIndex = strideFrame(d, WALKER_STRIDE_WORLD, sheet.frames, e.id);
+    }
     const drawn = drawUnitSprite(ctx, sheet, s.x, s.y, dir.x, dir.y, {
       moving: !e.wreck && !immobilized(e) && stepping,
       id: e.id,
