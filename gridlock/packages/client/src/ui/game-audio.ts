@@ -85,6 +85,7 @@ const ANNOUNCE_GAP_MS: Record<string, number> = {
   onhold: 900,
   cancelled: 900,
   lowpower: 15_000,
+  sonarcontact: 8000,
 };
 const lastAnnounce = new Map<string, number>();
 const queue: string[] = [];
@@ -221,6 +222,12 @@ export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number
       case "voice":
         if (!unitTalking()) unitVoice(ev.type, ev.event);
         break;
+      case "unitsfx": {
+        const url = pick(unitFolder(ev.type), `sfx-${ev.cue}`);
+        const mix = url ? mixAt(ev.x, ev.y) : null;
+        if (url && mix) playSample(url, mix, { volume: 0.6, maxVoices: 2 });
+        break;
+      }
       case "announce":
         announce(ev.event);
         break;

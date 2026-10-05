@@ -34,6 +34,11 @@ import {
   isNavalType,
   isInfantryType,
   isTransportType,
+  isTorpedoBody,
+  WATER_MINE_CALIBER,
+  WATER_MINE_DAMAGE,
+  WATER_MINE_SPLASH_TILES,
+  WATER_MINE_TRIGGER_TILES,
   type AirDrop,
 } from "../catalog.js";
 import type { CrateView, ImpactView, MineView } from "../protocol.js";
@@ -58,7 +63,8 @@ import { noteImpactSurface } from "./remains.js";
 import { nextRand } from "./rng.js";
 import { needsSupply, transferOnce } from "./supply.js";
 import { canSeeWorld } from "./vision.js";
-import type { Entity, MatchState, Projectile } from "./types.js";
+import { afloat } from "./naval.js";
+import type { Entity, MatchState, Mine, Projectile } from "./types.js";
 
 const BOARD_SLACK = 14;
 
@@ -473,6 +479,14 @@ function defusing(e: Entity, mineId: number): boolean {
   return e.type === "supply" && e.order?.kind === "disable" && e.order.targetId === mineId;
 }
 
+/**
+ * In the water and meets a water mine's horns: a hull, a swimmer, a submarine down or up.
+ * A running torpedo passes over it; a plane or a drone is not in the water.
+ */
+function inWaterForMine(state: MatchState, e: Entity): boolean {
+  return e.kind === "unit" && e.hp > 0 && !e.wreck && !!e.ownerId && !isTorpedoBody(e.type) && afloat(state, e);
+}
+
 /** Live mines go off under anyone's feet or tracks. A supply truck defusing one is spared that mine. Old ones pop by themselves. */
 export function tickMines(state: MatchState, dt: number): void {
   if (state.mines.length === 0) return;
@@ -483,6 +497,11 @@ export function tickMines(state: MatchState, dt: number): void {
     m.arm -= dt;
     m.life -= dt;
     if (m.life <= 0) continue;
+    if (m.water) {
+      tickWaterMine(state, m);
+      if (m.life > 0) keep.push(m);
+      continue;
+    }
     if (m.arm > 0) {
       keep.push(m);
       continue;
@@ -499,6 +518,53 @@ export function tickMines(state: MatchState, dt: number): void {
     else keep.push(m);
   }
   state.mines = keep;
+}
+
+/** A water mine: lets its own ship clear, then goes off under whatever in the water meets it. Spent, its life is zeroed. */
+function tickWaterMine(state: MatchState, m: Mine): void {
+  const ts = state.tileSize;
+  const trigger = WATER_MINE_TRIGGER_TILES * ts;
+  if (m.layerId != null) {
+    const ship = state.entities.get(m.layerId);
+    if (!ship || ship.hp <= 0 || Math.hypot(ship.x - m.x, ship.y - m.y) > trigger + ship.radius) m.layerId = undefined;
+  }
+  if (m.arm > 0) return;
+  for (const e of state.entities.values()) {
+    if (e.id === m.layerId || !inWaterForMine(state, e)) continue;
+    if (Math.hypot(e.x - m.x, e.y - m.y) > trigger + e.radius) continue;
+    detonateWaterMine(state, m);
+    m.life = 0;
+    return;
+  }
+}
+
+/** The charge goes off under the hull: heavy damage to everything in the water close by. */
+function detonateWaterMine(state: MatchState, m: Mine): void {
+  const reach = WATER_MINE_SPLASH_TILES * state.tileSize;
+  let killed = false;
+  for (const e of [...state.entities.values()]) {
+    if (!inWaterForMine(state, e)) continue;
+    const d = Math.hypot(e.x - m.x, e.y - m.y);
+    if (d > reach + e.radius) continue;
+    const fall = mortarFalloff(Math.max(0, d - e.radius), reach);
+    const dmg = WATER_MINE_DAMAGE * fall;
+    coverStrike(e, Math.max(1, Math.round(dmg)), state.tick, false);
+    if (e.hp <= 0) killed = true;
+  }
+  const impact: ImpactView = {
+    id: state.nextId++,
+    ownerId: m.ownerId,
+    kind: killed ? "kill" : "miss",
+    x: m.x,
+    y: m.y,
+    vx: 0,
+    vy: 0,
+    caliber: WATER_MINE_CALIBER,
+    blast: true,
+    mortar: true,
+  };
+  noteImpactSurface(state, impact, { caliber: WATER_MINE_CALIBER, shell: null, vx: 0, vy: 0 }, "miss");
+  state.impacts.push(impact);
 }
 
 function detonateMine(state: MatchState, ownerId: string, x: number, y: number): void {
@@ -628,6 +694,7 @@ export function mineViews(state: MatchState, youPlayerId: string): MineView[] {
       ownerId: m.ownerId,
       x: m.x,
       y: m.y,
+      water: m.water,
       armed: m.arm <= 0 ? undefined : false,
       disarm: progress != null && progress > 0 ? Math.round(progress * 100) / 100 : undefined,
     });

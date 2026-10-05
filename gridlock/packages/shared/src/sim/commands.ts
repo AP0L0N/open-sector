@@ -58,6 +58,7 @@ import { orderBoardPlane, setPayload, unloadPlane } from "./airdrop.js";
 import { droneOf, guardDrone, launchDrone, orderDrone, recallDrone, setDroneMode, stopDrone } from "./drone.js";
 import { landJet, takeOff } from "./jet.js";
 import { setDive } from "./naval.js";
+import { layMine } from "./destroyer.js";
 import { aimSpotlightPatrol, hasSpotlight, spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, MatchState, QueueableCommand, Vec } from "./types.js";
 
@@ -272,6 +273,9 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.dive":
       if (!Array.isArray(msg.ids) || typeof msg.down !== "boolean") return fail("bad_payload", "Bad dive order.");
       return cmdDive(state, playerId, msg.ids, msg.down);
+    case "cmd.laymine":
+      if (!Array.isArray(msg.ids)) return fail("bad_payload", "Bad mine order.");
+      return cmdLayMine(state, playerId, msg.ids);
     default:
       return fail("bad_payload", "Unknown command.");
   }
@@ -508,6 +512,21 @@ function cmdDive(state: MatchState, playerId: string, ids: number[], down: boole
   return wrap(err ?? "Cannot dive.", "busy");
 }
 
+/** Each Destroyer in the selection lays one water mine over the stern. */
+function cmdLayMine(state: MatchState, playerId: string, ids: number[]): CmdResult {
+  const ships = owned(state, playerId, ids).filter((e) => e.asw);
+  if (ships.length === 0) return fail("not_yours", "Select a Destroyer.");
+  let err: string | null = null;
+  let done = 0;
+  for (const e of ships) {
+    const why = layMine(state, e);
+    if (why) err = why;
+    else done++;
+  }
+  if (done > 0) return ok();
+  return wrap(err ?? "Cannot lay a mine.", "busy");
+}
+
 function cmdJet(state: MatchState, playerId: string, ids: number[], action: "up" | "land"): CmdResult {
   const jets = owned(state, playerId, ids).filter((e) => e.jet && e.hp > 0);
   if (jets.length === 0) return fail("not_yours", "Select a Jump Jet.");
@@ -564,10 +583,12 @@ function cmdDrone(
  */
 function routeAircraft(state: MatchState, playerId: string, msg: ClientMessage): CmdResult | null {
   if (!AIR_ROUTED.has(msg.type) || !("ids" in msg) || !Array.isArray(msg.ids)) return null;
-  const planes = owned(state, playerId, msg.ids).filter((e) => e.air);
+  const flying = owned(state, playerId, msg.ids).filter((e) => e.air);
+  // An ASW helicopter flies on its ship's sonar alone: it takes no orders.
+  const planes = flying.filter((e) => !e.heli);
   if (msg.type === "cmd.land" && planes.length === 0) return fail("not_yours", "Select an aircraft.");
-  if (planes.length === 0) return null;
-  const planeIds = new Set(planes.map((e) => e.id));
+  if (flying.length === 0) return null;
+  const planeIds = new Set(flying.map((e) => e.id));
   planes.forEach((e, i) => {
     // Spread a flight over a small ring so the planes do not stack.
     const ang = (i / Math.max(1, planes.length)) * Math.PI * 2;

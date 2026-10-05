@@ -15,6 +15,8 @@ Blender path does, so the engine and compose tools treat them alike.
             gridlock/packages/client/src/assets/units/he111/hull/0001.png … 0016.png
   drone     the Drone Op's quadcopter, same camera and face order.
             gridlock/packages/client/src/assets/units/drone/hull/0001.png … 0016.png
+  aswheli   the Destroyer's ASW helicopter, same camera and face order.
+            gridlock/packages/client/src/assets/units/aswheli/hull/0001.png … 0016.png
 
 The Airfield building lives in render_airfield.py.
 
@@ -31,6 +33,8 @@ so the game can tint them.
       --out gridlock/packages/client/src/assets/units/fw190/hull
   python tools/sprites/render_procedural.py drone \\
       --out gridlock/packages/client/src/assets/units/drone/hull
+  python tools/sprites/render_procedural.py aswheli \\
+      --out gridlock/packages/client/src/assets/units/aswheli/hull
 """
 
 from __future__ import annotations
@@ -584,6 +588,78 @@ def build_he111() -> Mesh:
     return m
 
 
+def build_aswheli() -> Mesh:
+    """The Destroyer's ASW helicopter in meters. +x nose, +y left, +z up. Skids at z=0.
+
+    A small single-rotor machine: a glazed bubble cabin, an engine hump with a
+    gray team-tint cowling, a slim tail boom with a team band, a fin and a
+    blurred tail-rotor disc, twin skids, a blurred main-rotor disc with three
+    blades over it, and three torpedoes slung under the cabin (one on the belly,
+    one on each side pylon) with hazard noses.
+    """
+    m = Mesh()
+    zc = 1.45
+    # Cabin: glazed nose bubble running back into the body.
+    cabin = [
+        (2.35, 0.08, 0.08, "glass"),
+        (2.05, 0.62, 0.62, "glass"),
+        (1.35, 0.85, 0.82, "glass"),
+        (0.4, 0.9, 0.85, "camo"),
+        (-0.9, 0.78, 0.74, "camo"),
+        (-1.6, 0.42, 0.45, "camo"),
+    ]
+    rings = [ellipse_ring(x, 0.0, zc, hw, hh, 16) for x, hw, hh, _ in cabin]
+    mats = [mat for *_, mat in cabin]
+    m.loft(rings, lambda r, s_: mats[min(r, len(mats) - 1)])
+    # Engine hump behind the rotor mast, gray team-tint cowling.
+    m.box((-1.2, -0.5, zc + 0.55), (0.5, 0.5, zc + 1.05), "team")
+    # Tail boom, rising slightly, with a team band.
+    boom = [ellipse_ring(x, 0.0, z, r, r, 10) for x, z, r in ((-1.5, zc + 0.15, 0.36), (-3.5, zc + 0.3, 0.22), (-6.4, zc + 0.5, 0.13))]
+    m.loft(boom, lambda r, s_: "team" if r == 0 else "camo")
+    # Fin and the tail-rotor disc on its right side.
+    m.box((-6.8, -0.05, zc + 0.4), (-6.1, 0.05, zc + 1.4), "camo")
+    n = 20
+    ctr = m.v((-6.5, -0.22, zc + 0.85))
+    rim = [m.v((-6.5 + 0.75 * math.cos(2 * math.pi * k / n), -0.22, zc + 0.85 + 0.75 * math.sin(2 * math.pi * k / n))) for k in range(n)]
+    for k in range(n):
+        m.tri(ctr, rim[k], rim[(k + 1) % n], "rotor")
+    # Twin skids on struts.
+    for oy in (-0.95, 0.95):
+        rails = [ellipse_ring(x, oy, z, 0.07, 0.07, 6) for x, z in ((2.0, 0.22), (1.6, 0.08), (-1.6, 0.08))]
+        m.loft(rails, "metal")
+        for sx in (1.0, -1.0):
+            m.box((sx - 0.05, oy * 0.55 - 0.05, 0.08), (sx + 0.05, oy + 0.05, zc - 0.5), "metal")
+    # Three torpedoes: one under the belly, one on each side pylon.
+    for oy, z in ((0.0, zc - 0.95), (-1.25, zc - 0.55), (1.25, zc - 0.55)):
+        body = [ellipse_ring(x, oy, z, r, r, 10) for x, r in ((1.55, 0.05), (1.35, 0.18), (-1.0, 0.18), (-1.25, 0.1))]
+        m.loft(body, "bomb")
+        nose = [ellipse_ring(x, oy, z, r, r, 10) for x, r in ((1.56, 0.06), (1.3, 0.19))]
+        m.loft(nose, "hazard")
+        if oy:
+            m.box((-0.1, min(oy, oy * 0.6), z + 0.1), (0.3, max(oy, oy * 0.6), zc - 0.35), "metal")
+    # Rotor mast, hub, a blurred disc, and three blades over it.
+    zr = zc + 1.55
+    m.box((-0.12, -0.12, zc + 1.0), (0.12, 0.12, zr), "metal")
+    rr = 5.2
+    n = 40
+    ctr = m.v((0.0, 0.0, zr))
+    rim = [m.v((rr * math.cos(2 * math.pi * k / n), rr * math.sin(2 * math.pi * k / n), zr)) for k in range(n)]
+    for k in range(n):
+        m.tri(ctr, rim[k], rim[(k + 1) % n], "rotor")
+    for k in range(3):
+        a = 2 * math.pi * k / 3 + 0.3
+        ca, sa = math.cos(a), math.sin(a)
+        w = 0.14
+        p = [
+            m.v((-sa * w, ca * w, zr + 0.03)),
+            m.v((rr * ca - sa * w, rr * sa + ca * w, zr + 0.03)),
+            m.v((rr * ca + sa * w, rr * sa - ca * w, zr + 0.03)),
+            m.v((sa * w, -ca * w, zr + 0.03)),
+        ]
+        m.quad(p[0], p[1], p[2], p[3], "metal")
+    return m
+
+
 def build_drone() -> Mesh:
     """Small X-frame quadcopter in decimeters. +x nose, +y left, +z up. Skids at z=0.
 
@@ -816,6 +892,22 @@ def render_drone(out: Path, cell: int = 256, ss: int = 4) -> None:
     print("wrote", out.parent.parent / "drone-cameo.png")
 
 
+def render_aswheli(out: Path, cell: int = 256, ss: int = 4) -> None:
+    # Meters -> px. The main-rotor disc (10.4 m) sets the scale, like a wingspan does for a plane.
+    # The tail boom is long behind the mast: slide the model forward so the yawing boom stays in the cell.
+    mesh = build_aswheli()
+    mesh.verts = [v + np.array([1.0, 0.0, 0.0]) for v in mesh.verts]
+    render_turntable(mesh, out, "aswheli_hull", "aswheli-hull.json", 0.068, 1.4, cy_frac=0.58, cell=cell, ss=ss)
+    east = Image.open(out / "0015.png").convert("RGBA")
+    crop = east.crop(east.getbbox())
+    fit = min(66 / crop.width, 66 / crop.height)
+    small = crop.resize((max(1, round(crop.width * fit)), max(1, round(crop.height * fit))), Image.Resampling.LANCZOS)
+    cameo = Image.new("RGBA", (72, 72), (0, 0, 0, 0))
+    cameo.alpha_composite(small, ((72 - small.width) // 2, (72 - small.height) // 2))
+    cameo.save(out.parent.parent / "aswheli-cameo.png")
+    print("wrote", out.parent.parent / "aswheli-cameo.png")
+
+
 def paint_over(base: Frame, top: Frame) -> Frame:
     """`top` covers `base`. A clipped hull painted over a pool keeps the pool in the hole."""
     a = top.alpha[..., None]
@@ -888,7 +980,7 @@ def render_turntable(
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["stuka", "fw190", "bv222", "he111", "drone"])
+    ap.add_argument("what", choices=["stuka", "fw190", "bv222", "he111", "drone", "aswheli"])
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     if args.what == "bv222":
@@ -897,6 +989,8 @@ def main() -> None:
         render_he111(Path(args.out))
     elif args.what == "drone":
         render_drone(Path(args.out))
+    elif args.what == "aswheli":
+        render_aswheli(Path(args.out))
     elif args.what == "fw190":
         render_fw190(Path(args.out))
     else:

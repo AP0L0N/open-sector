@@ -30,6 +30,7 @@ export type AnnounceEvent =
   | "buildinglost"
   | "captured"
   | "buildingcaptured"
+  | "sonarcontact"
   | "victory"
   | "defeat";
 
@@ -43,8 +44,10 @@ export type SoundEvent =
   | { kind: "impact"; sound: ImpactSound; x: number; y: number }
   /** An infantryman fell (voice) or a machine was destroyed (sfx). */
   | { kind: "death"; type: string; infantry: boolean; x: number; y: number }
-  /** One of your units speaks without being clicked: it just left the factory. */
-  | { kind: "voice"; type: string; event: "ready" }
+  /** One of your units speaks without being clicked: it just left the factory, or (special) did its work on its own. */
+  | { kind: "voice"; type: string; event: "ready" | "special" }
+  /** A unit's own effect at a point, played without an order: the ASW helicopter settling back on its deck. */
+  | { kind: "unitsfx"; type: string; cue: "special"; x: number; y: number }
   | { kind: "announce"; event: AnnounceEvent };
 
 /** Least time between two fire sounds from one shooter, by type. A burst sample covers the rest. */
@@ -57,6 +60,7 @@ const FIRE_GAP_MS: Record<string, number> = {
   pyro: 1400,
   jumpjet: 260,
   gunboat: 320,
+  destroyer: 280,
   fw190: 1500,
   stuka: 500,
   nebelwerfer: 1600,
@@ -113,6 +117,8 @@ export class SoundTracker {
   /** Share of health left, not raw hp: bracing or packing up rescales both hp and hpMax. */
   private lastHp = new Map<number, number>();
   private lowPower = false;
+  /** Submarines your sonar heard in the last snapshot. One that was not there is a new contact. */
+  private sonarHeard = new Set<number>();
   private queueReady = new Map<string, boolean>();
   private queueType = new Map<string, string | null>();
   private underAttackAt = -Infinity;
@@ -138,6 +144,7 @@ export class SoundTracker {
       for (const i of match.impacts ?? []) this.seenImpacts.add(i.id);
       for (const b of match.bodies ?? []) this.seenBodies.add(b.id);
       this.lowPower = match.you.lowPower;
+      this.sonarHeard = new Set((match.sonar ?? []).map((c) => c.id));
       this.noteQueues(match, out, true);
       this.prevById = byId;
       out.push({ kind: "announce", event: "start" });
@@ -158,6 +165,8 @@ export class SoundTracker {
       track.set(shooterId, now);
       if (kind === "shell") this.lastShellFire.set(shooterId, now);
       out.push({ kind: "fire", id: s.id, type: s.type, weapon: kind, x: s.x, y: s.y });
+      // Nobody orders the ASW helicopter: its pilot calls the drop himself.
+      if (s.type === "aswheli" && s.ownerId === me) out.push({ kind: "voice", type: s.type, event: "special" });
     };
 
     // Shots that made a snapshot in flight.
@@ -202,9 +211,10 @@ export class SoundTracker {
       const prev = this.prevById.get(e.id);
       if (!this.everSeen.has(e.id)) {
         this.everSeen.add(e.id);
-        if (e.ownerId === me && e.kind === "unit" && !e.wreck) {
+        if (e.ownerId === me && e.kind === "unit" && !e.wreck && e.type !== "torpedo") {
           out.push({ kind: "voice", type: e.type, event: "ready" });
-          out.push({ kind: "announce", event: "ready" });
+          // A helicopter off its ship's deck is a sortie, not a new unit: its pilot answers, the announcer does not.
+          if (e.type !== "aswheli") out.push({ kind: "announce", event: "ready" });
         }
       }
       if (prev && !prev.wreck && e.wreck) {
@@ -228,6 +238,11 @@ export class SoundTracker {
       if (byId.has(id)) continue;
       this.lastHp.delete(id);
       if (prev.wreck) continue;
+      if (prev.type === "aswheli" && prev.hp > prev.hpMax * LOST_HP_SHARE) {
+        // Gone whole: it came down on its ship's deck and was stowed.
+        out.push({ kind: "unitsfx", type: prev.type, cue: "special", x: prev.x, y: prev.y });
+        continue;
+      }
       if (isBuildingType(prev.type) && prev.hp <= prev.hpMax * LOST_HP_SHARE) {
         out.push({ kind: "impact", sound: "explosion_building", x: prev.x, y: prev.y });
         if (prev.ownerId === me) out.push({ kind: "announce", event: "buildinglost" });
@@ -251,6 +266,10 @@ export class SoundTracker {
     }
     this.noteQueues(match, out, false);
 
+    const heard = new Set((match.sonar ?? []).map((c) => c.id));
+    if ([...heard].some((id) => !this.sonarHeard.has(id))) out.push({ kind: "announce", event: "sonarcontact" });
+    this.sonarHeard = heard;
+
     if (match.winner && !this.ended) {
       this.ended = true;
       const mine = match.players.find((p) => p.playerId === me);
@@ -258,7 +277,7 @@ export class SoundTracker {
       out.push({ kind: "announce", event: won ? "victory" : "defeat" });
     }
 
-    this.moving = movers(this.prevById, match.entities);
+    this.moving = movers(this.prevById, match.entities, me);
     this.prevById = byId;
     if (this.seenShots.size > 2000) this.seenShots = new Set([...this.seenShots].slice(-500));
     if (this.seenImpacts.size > 4000) this.seenImpacts = new Set([...this.seenImpacts].slice(-1000));

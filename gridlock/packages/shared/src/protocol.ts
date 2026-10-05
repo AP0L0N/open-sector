@@ -17,7 +17,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 95;
+export const PROTOCOL_VERSION = 96;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -309,6 +309,19 @@ export interface EntityView {
    * the ground). Fuel, whether he is lit, and the refill are friendly-only.
    */
   jet?: { alt: number; up?: boolean; fuel?: number; fuelMax?: number; takeoffMin?: number; refuel?: number };
+  /**
+   * Destroyer's deck. Friendly-only. `heli`: on deck and loaded, loading (`rearm` seconds left),
+   * in the air, or lost (`replace` seconds until a new one). `mines` on the rail out of `minesMax`.
+   */
+  asw?: {
+    heli: "ready" | "rearm" | "up" | "lost";
+    rearm?: number;
+    replace?: number;
+    mines: number;
+    minesMax: number;
+    /** Seconds until the rail can lay the next mine. Omitted when clear. */
+    mineGap?: number;
+  };
 }
 
 export interface PlayerPublic {
@@ -347,6 +360,17 @@ export interface RadarContactView {
   id: number;
   x: number;
   y: number;
+}
+
+/**
+ * An enemy submarine a Destroyer on your side hears on its sonar, submerged or surfaced,
+ * in fog or not. World pixels. `down` while it runs submerged.
+ */
+export interface SonarContactView {
+  id: number;
+  x: number;
+  y: number;
+  down?: boolean;
 }
 
 export interface ScrapCell {
@@ -530,6 +554,8 @@ export interface MineView {
   ownerId: string;
   x: number;
   y: number;
+  /** A Destroyer's contact mine in the water. Omitted for a bomblet on land. */
+  water?: true;
   /** False while it is still arming. Omitted once live. */
   armed?: false;
   /** 0–1 while a supply truck is disabling it. Omitted otherwise. */
@@ -588,6 +614,8 @@ export interface MatchSnapshot {
   vision?: number[];
   /** Radar contacts for `youPlayerId`. Omitted while no Radar Station stands on your side. */
   radar?: RadarContactView[];
+  /** Sonar contacts for `youPlayerId`. Omitted while none of your Destroyers hears a submarine. */
+  sonar?: SonarContactView[];
   winner?: { playerId: string; team: number };
 }
 
@@ -740,6 +768,8 @@ export type ClientMessage =
   | { type: "cmd.jet"; ids: number[]; action: "up" | "land" }
   /** Submarine: take it down (`down: true`) or bring it up. */
   | { type: "cmd.dive"; ids: number[]; down: boolean }
+  /** Destroyers lay one water mine each over the stern. */
+  | { type: "cmd.laymine"; ids: number[] }
   | { type: "cmd.speed"; delta: number }
   /** Skirmish only. Holds the sim without changing game speed. */
   | { type: "match.pause"; paused: boolean }

@@ -498,6 +498,7 @@ export type EntityType =
   | "supplyboat"
   | "submarine"
   | "battleship"
+  | "destroyer"
   | "core"
   | "dynamo"
   | "smelter"
@@ -517,6 +518,7 @@ export type EntityType =
   | "he111"
   | "droneop"
   | "drone"
+  | "aswheli"
   | "torpedo"
   | "jumpjet"
   | "cottage"
@@ -563,7 +565,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "stuka" | "fw190" | "bv222" | "he111" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "stuka" | "fw190" | "bv222" | "he111" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -620,7 +622,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "stuka", "fw190", "bv222", "he111", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "stuka", "fw190", "bv222", "he111", "droneop", "jumpjet"];
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
@@ -795,6 +797,13 @@ export interface CatalogEntry {
    * only over water, and the torpedo always runs its full length.
    */
   airTorpedo?: boolean;
+  /**
+   * Hull sonar (the Destroyer): it hears every enemy submarine within SONAR_RANGE_TILES, down or up,
+   * and carries an ASW helicopter that goes out after what it hears, and lays water mines.
+   */
+  sonar?: boolean;
+  /** The Destroyer's ASW helicopter. Nobody commands it: it flies from its ship and back. */
+  aswHeli?: boolean;
 }
 
 export interface ShellDef {
@@ -2501,6 +2510,51 @@ export const SUB_TORPEDOES = 8;
 export const SUB_REARM_SECONDS = 6;
 
 /**
+ * Destroyer. A twin 40mm on the foredeck that fires fast and not far, a hull
+ * sonar that hears every enemy submarine in a wide ring round the ship, down
+ * or up, an ASW helicopter on the fantail, and a rail of water mines on the stern.
+ */
+export const DESTROYER_RANGE_TILES = t(7);
+/** The sonar hears a submarine, submerged or surfaced, this far from the hull. */
+export const SONAR_RANGE_TILES = t(16);
+/** Torpedoes the helicopter carries on one sortie. All go at once. */
+export const ASW_TORPEDOES = 3;
+/** Fan between two of the helicopter's torpedoes, degrees. */
+export const ASW_TORPEDO_FAN_DEG = 7;
+/** It lets go once the heard position is this close and there is water under it. */
+export const ASW_DROP_TILES = t(4);
+/** It flies at least this far out from its own ship before the drop, unless it is already over the plot. */
+export const ASW_STANDOFF_TILES = t(2);
+/** Height the helicopter cruises at, elevation units. Low: rifles and machine guns reach it. */
+export const ASW_CRUISE_ALT = 14;
+/** Height of the drop. */
+export const ASW_DROP_ALT = 5;
+/** Climb and sink, elevation units a second. */
+export const ASW_CLIMB_PER_SEC = 8;
+/** Landed back on its ship, it takes this long to load three torpedoes and refuel, seconds. */
+export const ASW_REARM_SECONDS = 25;
+/** Lost, the ship gets a new helicopter after this long, seconds. */
+export const ASW_REPLACE_SECONDS = 90;
+/** Lands on the deck once this close to its ship. */
+export const ASW_RECOVER_TILES = t(0.8);
+/** Water mines on the stern rail. */
+export const WATER_MINES = 3;
+/** Seconds between two mines going over the stern. */
+export const WATER_MINE_GAP_SECONDS = 3;
+/** Beside a friendly Marine Base the rail takes on one mine this often, seconds. */
+export const WATER_MINE_REARM_SECONDS = 10;
+/** Seconds from going over the side until a water mine is live. Time for the ship to steam clear. */
+export const WATER_MINE_ARM_SECONDS = 4;
+/** A moored contact mine lies until something meets it, seconds. Far longer than a bomblet. */
+export const WATER_MINE_LIFE_SECONDS = 900;
+/** A hull, a swimmer, or a submarine down within this of a live water mine touches a horn. */
+export const WATER_MINE_TRIGGER_TILES = t(0.5);
+export const WATER_MINE_SPLASH_TILES = t(1.2);
+/** Hit points the blast takes from a hull right on top of it. Enough to sink a boat or a submarine; a big ship takes it. */
+export const WATER_MINE_DAMAGE = 160;
+export const WATER_MINE_CALIBER = 300;
+
+/**
  * Battle Ship. Two triple 16-inch turrets on the foredeck, each barrel loaded
  * and fired on its own. A turret that bears lets its loaded barrels go one at a
  * time in a random order, a short random gap apart, and each barrel then
@@ -3867,6 +3921,41 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 100,
     blurb: `Fast battleship, after the Iowa class. Water only. Two triple 16-inch turrets on the foredeck; every barrel loads and fires on its own, so a turret lets its guns go one by one in no set order. The shell is the field gun's, fired flat and fast: it lands almost as soon as it leaves and reaches as far as Artillery, but it will not fire inside ${BATTLESHIP_MIN_RANGE_TILES / TILE_SUBDIV} tiles. The turrets cannot fire astern through the superstructure. Two radar-laid 20mm CIWS mounts, one on the superstructure and one on the stern, lay themselves apart from the main guns: incoming missiles first, then planes, infantry, and light vehicles. Order an attack or force-attack on an aircraft and the CIWS take it while the main guns hold; they reach farther for a plane than for anything on the water or ashore. Each barrel holds ${BATTLESHIP_BARREL_AMMO} shells and each CIWS a ${BATTLESHIP_CIWS_BELT}-round belt; they fill again slowly beside a Marine Base. It swings its bow onto the course before it makes way. A big searchlight on the bridge lights the water far out at night; Rotate light swings it, and it turns with the ship. Torpedoes and heavy shells are the danger. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
   },
+  /** Destroyer: twin 40mm, hull sonar, an ASW helicopter, and a mine rail. Water only. */
+  destroyer: {
+    type: "destroyer",
+    kind: "unit",
+    name: "Destroyer",
+    letter: "D",
+    cost: 1800,
+    buildSeconds: 22,
+    hp: 260,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 22,
+    moveTilesPerSec: paced(2.3),
+    turnDegPerSec: 55,
+    noReverse: true,
+    turnInPlace: true,
+    turretTurnDegPerSec: 200,
+    rangeTiles: DESTROYER_RANGE_TILES,
+    sightTiles: t(10),
+    cooldown: 0.28,
+    damage: 15,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    armorFront: 26,
+    armorSide: 20,
+    armorRear: 16,
+    penetration: 40,
+    caliber: 40,
+    spreadDeg: 2.5,
+    naval: true,
+    sonar: true,
+    leavesWreck: true,
+    wreckHp: 40,
+    blurb: `Destroyer. Water only. A twin 40mm on the foredeck fires fast but reaches only ${DESTROYER_RANGE_TILES / TILE_SUBDIV} tiles. Its hull sonar hears every enemy submarine within ${SONAR_RANGE_TILES / TILE_SUBDIV} tiles, submerged or surfaced, and calls each new contact; the contact shows on the map, but a gun still lays only on a submarine that is seen. On a contact its ASW helicopter takes off by itself, flies at the heard position, and drops ${ASW_TORPEDOES} torpedoes in a fan toward it from up to ${ASW_DROP_TILES / TILE_SUBDIV} tiles out; each runs its full length, like the He 111's, and finds a submarine down or up. The helicopter then flies home, lands on the fantail, and takes ${ASW_REARM_SECONDS} seconds to load again. Rifles, machine guns, and anti-air reach it in the air; lost, the ship gets a new one after ${ASW_REPLACE_SECONDS} seconds. Lay Mine puts one of its ${WATER_MINES} contact mines over the stern: it lives after ${WATER_MINE_ARM_SECONDS} seconds and goes off under any hull, swimmer, or submarine that meets it, yours too. You and your allies see your mines; the enemy does not. Beside a Marine Base the rail fills again, one mine every ${WATER_MINE_REARM_SECONDS} seconds. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
+  },
   /** Ju 87 B dive bomber. Lives on an Airfield pad. */
   stuka: {
     type: "stuka",
@@ -4046,6 +4135,32 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     drone: true,
     blurb: "Quadcopter on its operator's link. Surveillance: high, wide sight, only anti-air guns reach it. Search & Destroy: low, dives on a target and bursts; rifles, machine guns, and rockets reach it. Tank shells and mortars never do. Guard sets it circling a spot or a friendly unit; in Search & Destroy it dives on the first enemy it sees.",
+  },
+  /** The Destroyer's ASW helicopter. Flies from its ship on a sonar contact and back. */
+  aswheli: {
+    type: "aswheli",
+    kind: "unit",
+    name: "ASW Helicopter",
+    letter: "h",
+    cost: 0,
+    buildSeconds: 0,
+    hp: 60,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 10,
+    moveTilesPerSec: paced(4),
+    turnDegPerSec: 200,
+    rangeTiles: TORPEDO_RANGE_TILES,
+    sightTiles: t(8),
+    cooldown: 0,
+    damage: TORPEDO.damage,
+    projectileSpeed: TORPEDO_SPEED,
+    ...UNARMED,
+    aircraft: true,
+    aswHeli: true,
+    wreckHp: 12,
+    blurb: `Anti-submarine helicopter off a Destroyer. Nobody flies it: on a sonar contact it goes out by itself, drops ${ASW_TORPEDOES} torpedoes toward the heard position, and comes home to load again. Rifles, machine guns, and anti-air reach it in the air.`,
   },
   cottage: {
     type: "cottage",
@@ -4259,6 +4374,16 @@ export function torpedoesOf(type: EntityType): boolean {
 /** Can dive, and down it stays out of enemy sight unless spotted close or just fired. */
 export function submergesOf(type: EntityType): boolean {
   return catalog(type).submerges === true;
+}
+
+/** Hull sonar, an ASW helicopter on the fantail, and a mine rail: the Destroyer. */
+export function hasSonar(type: EntityType): boolean {
+  return catalog(type).sonar === true;
+}
+
+/** The Destroyer's helicopter, which flies only on its ship's sonar. */
+export function isAswHeli(type: EntityType): boolean {
+  return catalog(type).aswHeli === true;
 }
 
 /** A running torpedo's body. Not a unit anyone commands. */

@@ -30,6 +30,20 @@
       "influence": 0.6,
       "loop": true
     },
+    "rotor": {
+      "prompt": "Steady thumping of a small helicopter's rotor blades and buzzing piston engine hovering at medium distance, continuous wop-wop-wop, seamless loop, no music, no voice",
+      "duration": 10.0,
+      "variants": 1,
+      "influence": 0.6,
+      "loop": true
+    },
+    "sonar": {
+      "prompt": "World War 2 ship sonar ASDIC active ping, a single clear high-pitched metallic ping with a long underwater echo tail fading into quiet deep sea ambience, then silence before the next ping, seamless loop, no music, no voice",
+      "duration": 8.0,
+      "variants": 1,
+      "influence": 0.65,
+      "loop": true
+    },
     "mech": {
       "prompt": "Steady rhythmic heavy footsteps of a giant walking war machine, deep metal thuds with hydraulic hiss and servo whine, continuous, medium distance, seamless loop, no music, no voice",
       "duration": 10.0,

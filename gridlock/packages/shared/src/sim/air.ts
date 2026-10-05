@@ -544,8 +544,8 @@ export function stopAircraft(e: Entity): void {
 export function tickAir(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     const a = e.air;
-    // Drones fly in tickDrones. A wreck is a hulk on the ground.
-    if (!a || e.drone || e.wreck) continue;
+    // Drones fly in tickDrones, ASW helicopters in tickDestroyers. A wreck is a hulk on the ground.
+    if (!a || e.drone || e.heli || e.wreck) continue;
     if (a.phase === "crash") {
       tickCrash(state, e, dt);
       continue;

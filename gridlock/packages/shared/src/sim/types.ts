@@ -195,6 +195,10 @@ export interface Mine {
   arm: number;
   /** Seconds until the fuze gives out. */
   life: number;
+  /** A Destroyer's contact mine, moored in the water. Only what floats or swims sets it off. */
+  water?: true;
+  /** Water mine: the hull that laid it, spared until it has once steamed clear. */
+  layerId?: number;
 }
 
 /** A supply crate dropped by parachute. Allied units standing at it draw ammo and patch up. */
@@ -261,6 +265,40 @@ export interface DroneState {
   recall: boolean;
   /** Guard post it circles: a point, or a friendly unit it stays over. */
   guard?: { x: number; y: number; targetId?: number } | null;
+}
+
+/**
+ * Destroyer only: the helicopter on the fantail and the mine rail on the stern.
+ * The helicopter is an entity only while it is in the air.
+ */
+export interface AswDeck {
+  /** The helicopter while it flies. Null while it sits on the deck, or is lost. */
+  heliId: number | null;
+  /** Torpedoes loaded in the helicopter on deck. */
+  torpedoes: number;
+  /** Seconds of loading still to go on deck. */
+  rearm: number;
+  /** Seconds until a lost helicopter is replaced. 0 while it has one. */
+  replace: number;
+  /** Mines on the rail. */
+  mines: number;
+  /** Seconds until the next mine can go over the side. */
+  mineGap: number;
+  /** Seconds banked toward the next mine loaded beside a Marine Base. */
+  mineRearm: number;
+}
+
+/** ASW helicopter only. Its height lives on `air.alt`. */
+export interface HeliState {
+  /** The Destroyer it flies from. */
+  shipId: number;
+  /** The submarine its sonar heard, followed while the sonar still hears it. */
+  contactId: number | null;
+  /** Where it is going to drop: the last heard position. */
+  x: number;
+  y: number;
+  /** Torpedoes still aboard. Zero: it flies home. */
+  torpedoes: number;
 }
 
 /** A Wall section turned into a lifting gate. */
@@ -477,6 +515,10 @@ export interface Entity {
   droneLink?: DroneLink;
   /** Drone only. */
   drone?: DroneState;
+  /** Destroyer only. */
+  asw?: AswDeck;
+  /** ASW helicopter only. */
+  heli?: HeliState;
   /** Paratrooper on the way down. No orders, no fire; small arms can reach him. */
   chute?: Chute;
   /** Jump Jet only. */

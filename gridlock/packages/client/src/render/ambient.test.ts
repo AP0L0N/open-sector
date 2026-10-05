@@ -61,3 +61,24 @@ describe("ambientMix", () => {
     for (const level of Object.values(AMBIENT_LEVEL)) assert.ok(level <= 0.2);
   });
 });
+
+describe("standing beds", () => {
+  it("a helicopter in the air keeps its rotor bed while it hovers; on deck it has none", () => {
+    const prev = new Map([[1, unit(1, "aswheli", 5, 5, { air: { alt: 6 } } as never)]]);
+    assert.deepEqual(movers(prev, [unit(1, "aswheli", 5, 5, { air: { alt: 6 } } as never)]), [{ kind: "rotor", x: 5, y: 5 }]);
+    assert.deepEqual(movers(prev, [unit(1, "aswheli", 5, 5, { air: { alt: 0 } } as never)]), []);
+    assert.equal(ambientKind("aswheli"), "rotor");
+  });
+
+  it("your own Destroyer pings on its sonar standing still, and still makes way on the naval bed", () => {
+    const deck = { asw: { heli: "ready", mines: 3, minesMax: 3 } } as never;
+    const prev = new Map([[1, unit(1, "destroyer", 0, 0, deck)]]);
+    assert.deepEqual(movers(prev, [unit(1, "destroyer", 0, 0, deck)], "p"), [{ kind: "sonar", x: 0, y: 0 }]);
+    assert.deepEqual(movers(prev, [unit(1, "destroyer", 2, 0, deck)], "p"), [
+      { kind: "sonar", x: 2, y: 0 },
+      { kind: "naval", x: 2, y: 0 },
+    ]);
+    assert.deepEqual(movers(prev, [unit(1, "destroyer", 0, 0, deck)], "someone else"), []);
+    assert.ok(AMBIENT_LEVEL.sonar < AMBIENT_LEVEL.naval, "the ping sits under the engines");
+  });
+});

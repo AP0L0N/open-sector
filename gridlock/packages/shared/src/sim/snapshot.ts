@@ -46,6 +46,7 @@ import { medicTendView } from "./heal.js";
 import { supplyHasDriver, supplyRiders } from "./supply.js";
 import { powerOf } from "./power.js";
 import { radarContacts, radarOnline } from "./radar.js";
+import { aswDeckView, sonarContacts } from "./destroyer.js";
 import { scrapCap } from "./smelter.js";
 import { canSeeWorld, encodeVisionRuns, entityOnMask, visionMask } from "./vision.js";
 import { spotFacingOf, spotlightManned } from "./night.js";
@@ -453,6 +454,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
               launchMin: DRONE_LAUNCH_MIN_SECONDS,
             }
           : undefined,
+      asw: friendly && e.asw && !e.wreck ? aswDeckView(e) : undefined,
       jet: e.jet
         ? {
             alt: e.jet.alt,
@@ -568,8 +570,13 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     holes: state.holes.map((h) => ({ ...h })),
     vision: you ? visionRuns(vis) : undefined,
     radar: radar ? radarContacts(state, youPlayerId, vis) : undefined,
+    sonar: you ? nonEmpty(sonarContacts(state, youPlayerId)) : undefined,
     winner: state.winner,
   };
+}
+
+function nonEmpty<T>(xs: T[]): T[] | undefined {
+  return xs.length > 0 ? xs : undefined;
 }
 
 const runsByMask = new WeakMap<Uint8Array, number[]>();

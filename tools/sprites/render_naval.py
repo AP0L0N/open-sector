@@ -24,6 +24,8 @@ Row 0 = bow screen-south, then clockwise 22.5° through row 15. No insignia.
       --out gridlock/packages/client/src/assets/units/submarine/hull
   python tools/sprites/render_naval.py supplyboat \\
       --out gridlock/packages/client/src/assets/units/supplyboat/hull
+  python tools/sprites/render_naval.py destroyer \\
+      --out gridlock/packages/client/src/assets/units/destroyer/hull
 """
 
 from __future__ import annotations
@@ -67,6 +69,11 @@ def ring(m: Mesh, z: float, cx: float, cy: float, rx0: float, ry0: float, rx1: f
     for k in range(n):
         j = (k + 1) % n
         m.quad(inner[k], outer[k], outer[j], inner[j], mat)
+
+
+def flat_ring(cx: float, cy: float, z: float, rx: float, ry: float, n: int = 14) -> list[np.ndarray]:
+    """Horizontal ellipse at height z: one level of a funnel or a ball stacked up the z axis."""
+    return [np.array([cx + rx * math.cos(2 * math.pi * k / n), cy + ry * math.sin(2 * math.pi * k / n), z]) for k in range(n)]
 
 
 def hull_ring(x: float, half_beam: float, deck_z: float, keel_z: float, chine: float = 0.55) -> list[np.ndarray]:
@@ -229,6 +236,68 @@ def build_submarine() -> Mesh:
     cyl(m, (5.25, 0.0, 1.5), 0, 0.07, 1.5, "metal", 8)
     return m
 
+def build_destroyer() -> Mesh:
+    """Destroyer in meters, about twice the submarine's beam and longer. +x bow, +y port, +z up. Waterline at z=0.
+
+    A long flush-decked hull with a raised, flared bow; a twin 40mm under a gray
+    team-tint shield on the foredeck; the bridge block with its own team-tint
+    roof and a pole mast; two raked funnels; a hangar box and a flat helicopter
+    deck aft with a pale landing ring; and a rail of spiked contact mines down
+    each quarter beside the pad.
+    """
+    m = Mesh()
+    keel = -0.9
+    stations = [
+        (14.2, 0.06, 2.05, keel + 1.6),
+        (13.2, 0.75, 1.9, keel + 0.7),
+        (11.0, 1.35, 1.65, keel + 0.15),
+        (7.0, 1.7, 1.4, keel),
+        (-4.0, 1.75, 1.25, keel),
+        (-10.5, 1.6, 1.2, keel + 0.05),
+        (-13.6, 1.25, 1.2, keel + 0.25),
+    ]
+    rings = [hull_ring(x, hb, dz, kz, chine=0.6) for x, hb, dz, kz in stations]
+
+    def hull_mat(r: int, s: int) -> str:
+        return "frame" if s in (0, 1) else "camo"
+
+    m.loft(rings, hull_mat)
+    deck = 1.3
+    # Twin 40mm on the foredeck: a round base, a boxy shield with a team-tint roof, two barrels.
+    gx = 8.6
+    cyl(m, (gx, 0.0, deck + 0.2), 2, 0.75, 0.4, "metal", 14)
+    m.box((gx - 0.6, -0.65, deck + 0.35), (gx + 0.45, 0.65, deck + 1.0), "camo")
+    m.box((gx - 0.65, -0.7, deck + 1.0), (gx + 0.5, 0.7, deck + 1.1), "team")
+    for oy in (-0.28, 0.28):
+        cyl(m, (gx + 1.4, oy, deck + 0.72), 0, 0.08, 2.0, "metal", 8)
+    # Bridge block, stepped, with glazing forward and a team-tint roof.
+    m.box((2.6, -1.25, deck), (6.2, 1.25, deck + 1.3), "camo")
+    m.box((3.4, -1.0, deck + 1.3), (6.0, 1.0, deck + 2.3), "camo")
+    m.box((5.98, -0.92, deck + 1.75), (6.06, 0.92, deck + 2.15), "glass")
+    m.box((3.3, -1.08, deck + 2.3), (6.1, 1.08, deck + 2.44), "team")
+    cyl(m, (3.9, 0.0, deck + 3.6), 2, 0.07, 2.4, "metal", 6)  # mast
+    m.box((3.85, -0.75, deck + 4.2), (3.95, 0.75, deck + 4.28), "metal")  # yard
+    # Two raked funnels amidships, dark caps.
+    for fx in (0.6, -2.4):
+        stack = [flat_ring(fx - dz * 0.25, 0.0, deck + dz, 0.75, 0.55) for dz in (0.0, 1.6, 2.2)]
+        m.loft(stack, lambda r, s: "tire" if r == 2 else "camo")
+    # Hangar box forward of the pad.
+    m.box((-7.6, -1.15, deck), (-4.4, 1.15, deck + 1.35), "camo")
+    m.box((-7.65, -1.2, deck + 1.35), (-4.35, 1.2, deck + 1.45), "frame")
+    # Helicopter deck: flat pad over the stern, a pale landing ring and a centre bar.
+    m.box((-13.3, -1.2, deck), (-7.6, 1.2, deck + 0.08), "frame")
+    ring(m, deck + 0.1, -10.4, 0.0, 0.85, 0.85, 1.05, 1.05, "white", 28)
+    m.box((-10.5, -0.5, deck + 0.1), (-10.3, 0.5, deck + 0.11), "white")
+    # Mine rails down each quarter: dark spiked spheres on a low rail.
+    for oy in (-1.42, 1.42):
+        m.box((-13.4, oy - 0.1, deck), (-8.0, oy + 0.1, deck + 0.12), "metal")
+        for k in range(3):
+            mx = -12.6 + k * 1.6
+            sphere = [flat_ring(mx, oy, deck + 0.35 + dz, rr, rr, 10) for dz, rr in ((-0.25, 0.12), (-0.12, 0.27), (0.08, 0.29), (0.25, 0.14))]
+            m.loft(sphere, "bomb")
+            cyl(m, (mx, oy, deck + 0.68), 2, 0.04, 0.16, "metal", 5)  # horn
+    return m
+
 
 # One meters -> px rule for both hulls, so the boat and the sub keep their relative size.
 NAVAL_SCALE = 0.054
@@ -259,6 +328,16 @@ def render_submarine(out: Path, cell: int = 256, ss: int = 4) -> None:
     write_cameo(out, out.parent.parent / "submarine-cameo.png")
 
 
+def render_destroyer(out: Path, cell: int = 256, ss: int = 4) -> None:
+    # Half the small boats' scale so the long hull fits the same cell; the client fits every
+    # sheet to its own draw size, so only the cell fit changes, not the look.
+    render_turntable(
+        build_destroyer(), out, "destroyer_hull", "destroyer-hull.json", NAVAL_SCALE * 0.55, NAVAL_Z_MID,
+        cy_frac=0.56, cell=cell, ss=ss, clip_z=0.0, underlay=build_wake(15.2, 2.4),
+    )
+    write_cameo(out, out.parent.parent / "destroyer-cameo.png")
+
+
 def write_cameo(faces: Path, path: Path) -> None:
     """72x72 cameo from the south-east face."""
     face = Image.open(faces / "0015.png").convert("RGBA")
@@ -273,13 +352,15 @@ def write_cameo(faces: Path, path: Path) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["gunboat", "submarine", "supplyboat"])
+    ap.add_argument("what", choices=["gunboat", "submarine", "supplyboat", "destroyer"])
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     if args.what == "gunboat":
         render_gunboat(Path(args.out))
     elif args.what == "supplyboat":
         render_supplyboat(Path(args.out))
+    elif args.what == "destroyer":
+        render_destroyer(Path(args.out))
     else:
         render_submarine(Path(args.out))
 

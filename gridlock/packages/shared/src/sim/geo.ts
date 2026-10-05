@@ -1,5 +1,8 @@
 import {
   ARTILLERY_CREW,
+  ASW_TORPEDOES,
+  hasSonar,
+  WATER_MINES,
   ARTILLERY_CREW_HP,
   DEFENCE_BUILD_RADIUS,
   AIR_FUEL_SECONDS,
@@ -48,7 +51,7 @@ import {
 } from "../maps.js";
 import { nextRand } from "./rng.js";
 import { newShipState } from "./battleship.js";
-import type { AirState, DroneLink, Entity, JetState, MatchState } from "./types.js";
+import type { AirState, AswDeck, DroneLink, Entity, JetState, MatchState } from "./types.js";
 
 /** Fresh flight state: fuelled, armed, parked on `pad` of Airfield `homeId`. */
 export function newAirState(homeId: number | null, pad: number, type: EntityType = "stuka"): AirState {
@@ -85,6 +88,11 @@ export function jetAloft(e: { jet?: JetState }): boolean {
 /** Drone Op's link: one charged drone in hand, Surveillance by default. */
 export function newDroneLink(): DroneLink {
   return { droneId: null, mode: "surveil", charge: DRONE_BATTERY_SECONDS, rebuild: 0 };
+}
+
+/** A Destroyer's deck as it leaves the slip: the helicopter loaded, the mine rail full. */
+export function newAswDeck(): AswDeck {
+  return { heliId: null, torpedoes: ASW_TORPEDOES, rearm: 0, replace: 0, mines: WATER_MINES, mineGap: 0, mineRearm: 0 };
 }
 
 export function tileIndex(state: MatchState, x: number, y: number): number {
@@ -657,6 +665,7 @@ export function makeEntity(
   if (type === "artillery") e.gunCrew = Array.from({ length: ARTILLERY_CREW }, () => ARTILLERY_CREW_HP);
   if (type === "battleship") e.ship = newShipState(facing);
   if (type === "droneop") e.droneLink = newDroneLink();
+  if (hasSonar(type)) e.asw = newAswDeck();
   if (type === "jumpjet") e.jet = newJetState();
   state.entities.set(id, e);
   occupyEntity(state, e);

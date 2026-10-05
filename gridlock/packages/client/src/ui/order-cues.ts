@@ -29,6 +29,7 @@ const UNIT_CUES: Partial<Record<ClientMessage["type"], UnitCue>> = {
   "cmd.drone": "special",
   "cmd.jet": "special",
   "cmd.dive": "special",
+  "cmd.laymine": "special",
 };
 
 /** The type that answers for a group: the most common one among your units, first picked on a tie. */

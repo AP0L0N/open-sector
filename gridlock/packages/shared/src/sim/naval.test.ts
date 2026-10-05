@@ -574,10 +574,10 @@ describe("boats turn before they move", () => {
   it("swings the bow onto the course before it makes way", () => {
     const { state, lx0, ly0 } = harbour();
     const ships = TRAIN_TYPES.filter((t) => isNavalType(t));
-    assert.deepEqual([...ships].sort(), ["battleship", "gunboat", "submarine", "supplyboat"]);
+    assert.deepEqual([...ships].sort(), ["battleship", "destroyer", "gunboat", "submarine", "supplyboat"]);
     for (const type of ships) {
       assert.equal(catalog(type).turnInPlace, true, `${type} turns before it moves`);
-      const lane = type === "gunboat" ? 4 : type === "submarine" ? 10 : type === "supplyboat" ? 16 : 24;
+      const lane = type === "gunboat" ? 3 : type === "submarine" ? 7 : type === "supplyboat" ? 11 : type === "destroyer" ? 15 : 24;
       const boat = spawn(state, type, "A", lx0 + 25, ly0 + lane);
       boat.facing = 0;
       boat.cooldown = 1e6;
