@@ -857,4 +857,10 @@ export interface MatchState {
   bodies: CorpseView[];
   /** Heavy-shell craters. Not entities. */
   holes: ShellHoleView[];
+  /** Blast points each tile has soaked toward its next dig, by tile index. See BLAST_DIG_PER_LEVEL. */
+  blast: Map<number, number>;
+  /** Tiles a blast has sunk, by tile index: the height `heights` now holds there. */
+  dug: Map<number, number>;
+  /** Bumps on every dig, so cached sight rebuilds over the new ground. */
+  digRev: number;
 }

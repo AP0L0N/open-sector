@@ -45,6 +45,20 @@ import { TILE_BLOCKED, TILE_TREE } from "../maps.js";
 import { inBounds, tileIndex, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
+/**
+ * The map's heights with a snapshot's sunk tiles laid over them. Returns
+ * `base` itself while nothing has been dug.
+ */
+export function heightsWithDug(base: ArrayLike<number>, dug: readonly number[] | undefined): ArrayLike<number> {
+  if (!dug || dug.length === 0) return base;
+  const out = Array.from(base);
+  for (let k = 0; k + 1 < dug.length; k += 2) {
+    const i = dug[k]!;
+    if (i >= 0 && i < out.length) out[i] = dug[k + 1]!;
+  }
+  return out;
+}
+
 export function elevAt(elev: ArrayLike<number>, width: number, height: number, x: number, y: number): number {
   if (x < 0 || y < 0 || x >= width || y >= height) return 0;
   return elev[y * width + x] ?? 0;

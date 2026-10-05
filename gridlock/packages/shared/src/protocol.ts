@@ -621,6 +621,11 @@ export interface MatchSnapshot {
   /** Heavy-shell craters on dirt. Empty until the first ground strike. */
   holes: ShellHoleView[];
   /**
+   * Ground repeated heavy blasts have sunk, as flat pairs: tile index, then
+   * that tile's height now. Omitted until the first dig. See BLAST_DIG_ENABLED.
+   */
+  dug?: number[];
+  /**
    * The server's fog mask for `youPlayerId`, row-major, as run lengths that
    * alternate hidden / lit starting with hidden. See `decodeVisionRuns`.
    */

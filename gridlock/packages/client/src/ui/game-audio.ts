@@ -267,7 +267,8 @@ export function acknowledgeOrder(msg: ClientMessage, match: MatchSnapshot | null
   if (!match) return;
   const cue = orderCue(msg, match.entities, match.youPlayerId);
   if (!cue) return;
-  if (cue.kind === "unit") unitVoice(cue.type, cue.cue, { withSfx: true, ids: "ids" in msg && Array.isArray(msg.ids) ? msg.ids : [] });
+  if (cue.kind === "unit")
+    unitVoice(cue.type, cue.cue, { withSfx: !cue.noSfx, ids: "ids" in msg && Array.isArray(msg.ids) ? msg.ids : [] });
   else if (cue.kind === "announce") announce(cue.event);
   else uiSound(cue.sound);
 }

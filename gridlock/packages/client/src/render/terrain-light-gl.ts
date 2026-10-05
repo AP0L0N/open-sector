@@ -1,6 +1,6 @@
 import type { MapDef } from "@gridlock/shared";
 import { compileProgram, dataTexture, freeVao, glContext, meshVao, noiseTexture, type MeshVao } from "./gl.js";
-import { heightMesh } from "./height-mesh.js";
+import { heightMesh, heightsKey } from "./height-mesh.js";
 import { DIRT_TEX, GRASS_TEXS, ROCK_TEX } from "./sprites.js";
 import { materialBytes, vertexTones } from "./terrain-light.js";
 
@@ -163,7 +163,7 @@ function imageTexture(s: State, img: HTMLImageElement, fallback: [number, number
 }
 
 function ensureMesh(s: State, map: MapDef): void {
-  const key = `${map.id}:${map.width}x${map.height}`;
+  const key = `${map.id}:${map.width}x${map.height}:${heightsKey(map.heights)}`;
   if (s.meshKey === key && s.mesh) return;
   freeVao(s.gl, s.mesh);
   s.mesh = meshVao(s.gl, s.prog, heightMesh(map), vertexTones(map));
