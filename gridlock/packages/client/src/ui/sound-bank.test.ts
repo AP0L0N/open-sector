@@ -78,6 +78,18 @@ describe("order cues", () => {
     assert.deepEqual(cue({ type: "cmd.place", building: "dynamo", tx: 1, ty: 1 }), { kind: "ui", sound: "place" });
   });
 
+  it("plays a plane's takeoff sound only while one of the ordered planes is on the pad", () => {
+    const planes = [
+      { id: 10, kind: "unit", type: "he111", ownerId: "me", air: { phase: "parked", alt: 0 } },
+      { id: 11, kind: "unit", type: "he111", ownerId: "me", air: { phase: "fly", alt: 6 } },
+      { id: 12, kind: "unit", type: "he111", ownerId: "me", air: { phase: "takeoff", alt: 2 } },
+    ] as EntityView[];
+    const cue = (ids: number[]) => orderCue({ type: "cmd.move", ids, x: 0, y: 0 } as ClientMessage, planes, "me");
+    assert.deepEqual(cue([10]), { kind: "unit", type: "he111", cue: "move" });
+    assert.deepEqual(cue([10, 11]), { kind: "unit", type: "he111", cue: "move" });
+    assert.deepEqual(cue([11, 12]), { kind: "unit", type: "he111", cue: "move", noSfx: true });
+  });
+
   it("stays quiet for queued orders and toggles", () => {
     const cue = (m: unknown) => orderCue(m as ClientMessage, ents, "me");
     assert.equal(cue({ type: "cmd.move", ids: [1], x: 0, y: 0, queue: true }), null);

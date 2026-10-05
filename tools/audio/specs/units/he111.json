@@ -55,7 +55,7 @@
       "influence": 0.6
     },
     "move": {
-      "prompt": "WWII twin-engine bomber flying overhead, deep throbbing unsynchronized propeller engine drone with doppler fly-by, outdoors, no music, no voice",
+      "prompt": "WWII twin-engine propeller airplane taking off, smooth steady piston engine roar and spinning propellers rising in pitch as it accelerates down the runway and climbs away, close, outdoors, no music, no voice",
       "duration": 2.5,
       "variants": 1,
       "influence": 0.55

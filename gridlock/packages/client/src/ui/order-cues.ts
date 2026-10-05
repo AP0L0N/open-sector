@@ -47,8 +47,24 @@ export function leadType(ids: readonly number[], entities: readonly EntityView[]
   return best;
 }
 
+/**
+ * Planes whose move sound is a takeoff: once every one of them is off the pad, an order
+ * gets the answer but not the engine, until one of them lands and takes off again.
+ */
+function airborne(ids: readonly number[], type: string, entities: readonly EntityView[]): boolean {
+  const byId = new Map(entities.map((e) => [e.id, e]));
+  let planes = 0;
+  for (const id of ids) {
+    const e = byId.get(id);
+    if (!e || e.type !== type || !e.air) continue;
+    if (e.air.phase === "parked") return false;
+    planes++;
+  }
+  return planes > 0;
+}
+
 export type OrderCue =
-  | { kind: "unit"; type: string; cue: UnitCue }
+  | { kind: "unit"; type: string; cue: UnitCue; noSfx?: true }
   | { kind: "announce"; event: OrderAnnounce }
   | { kind: "ui"; sound: "place" | "sell" };
 
@@ -66,7 +82,8 @@ export function orderCue(msg: ClientMessage, entities: readonly EntityView[], me
           ? [msg.id]
           : [];
     const type = leadType(ids, entities, me);
-    return type ? { kind: "unit", type, cue } : null;
+    if (!type) return null;
+    return airborne(ids, type, entities) ? { kind: "unit", type, cue, noSfx: true } : { kind: "unit", type, cue };
   }
   switch (msg.type) {
     case "cmd.train":
