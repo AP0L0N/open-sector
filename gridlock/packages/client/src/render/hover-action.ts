@@ -157,7 +157,7 @@ function canCrewGunHit(
 ): boolean {
   if (hit.type !== "artillery" || hit.hp <= 0 || hit.wreck || !hit.gun) return false;
   if (hit.gun.crew >= hit.gun.cap) return false;
-  if (!inf.some((e) => !e.garrisonedIn && e.type !== "cyborg")) return false;
+  if (!inf.some((e) => !e.garrisonedIn && e.type !== "cyborg" && e.type !== "cyborgcommander")) return false;
   return hit.gun.crew === 0 || hit.ownerId === you || allied(hit.ownerId);
 }
 

@@ -489,6 +489,7 @@ export type EntityType =
   | "jagdtiger"
   | "walker"
   | "cyborg"
+  | "cyborgcommander"
   | "titan"
   | "mammoth"
   | "nebelwerfer"
@@ -565,7 +566,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "inn",
   "chapel",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "stuka" | "fw190" | "bv222" | "he111" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "cyborgcommander" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "stuka" | "fw190" | "bv222" | "he111" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -622,7 +623,17 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "stuka", "fw190", "bv222", "he111", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "walker", "cyborg", "cyborgcommander", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "stuka", "fw190", "bv222", "he111", "droneop", "jumpjet"];
+
+/**
+ * A player fields only one of each of these at a time. While it lives, another
+ * cannot be queued; only one can sit in the queues at once. Destroyed, it can be
+ * trained again.
+ */
+export const ONE_AT_A_TIME: readonly TrainType[] = ["titan", "cyborgcommander"];
+export function isOneAtATime(type: string): boolean {
+  return (ONE_AT_A_TIME as readonly string[]).includes(type);
+}
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
@@ -630,6 +641,7 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
   apocalypse: "research",
   jagdtiger: "research",
   cyborg: "research",
+  cyborgcommander: "research",
   titan: "research",
   mammoth: "research",
   nebelwerfer: "research",
@@ -818,8 +830,8 @@ export interface ShellDef {
 }
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
-export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator";
-export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator"];
+export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator" | "laser";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator", "laser"];
 export interface InfantryGun {
   id: InfantryWeaponId;
   name: string;
@@ -1043,6 +1055,64 @@ export const GATLING = {
   rangeTiles: CYBORG_RANGE_TILES,
   bulky: true,
   antiAir: true,
+} as const satisfies InfantryGun;
+
+/**
+ * Cyborg Commander. An officer-grade cyborg: the Cyborg's frame and crawl rule,
+ * a force field that takes every hit before the plating does, and a cutting
+ * laser in place of the gatling.
+ */
+export const COMMANDER_RANGE_TILES = t(11);
+/** Force-field points. Every hit comes off these first; only what is left reaches his HP. */
+export const FORCE_FIELD_HP = 200;
+/** Seconds without a hit before a field that still holds starts to recharge. */
+export const FORCE_FIELD_DELAY = 7;
+/** Seconds without a hit before a field that was knocked down comes back. */
+export const FORCE_FIELD_DOWN_DELAY = 12;
+/** Field points a second while it recharges. Empty to full in five seconds. */
+export const FORCE_FIELD_REGEN_PER_SEC = 40;
+/**
+ * The laser on a soldier: it always cuts out to full reach and sweeps across
+ * the target from one side to the other, LASER_SWEEP_HALF_DEG either side of
+ * him, in LASER_SWEEP_SECONDS. Every soldier the beam passes, friend or foe,
+ * is burned down where he stands; a Cyborg's plating takes LASER_SWEEP_CYBORG_DAMAGE
+ * instead. Where the tip cuts the ground at full reach, a thin line of small
+ * fires is left burning. Every tree the beam crosses burns down; trees do not
+ * stop it. Buildings and concrete do.
+ */
+export const LASER_SWEEP_HALF_DEG = 14;
+export const LASER_SWEEP_SECONDS = 0.6;
+export const LASER_SWEEP_CYBORG_DAMAGE = 90;
+/** World px either side of the beam that still counts as passed through. */
+export const LASER_BEAM_HALF_WIDTH = 2;
+/**
+ * The laser on anything else (a hull, a building, a wreck): one straight beam
+ * onto the target for LASER_LINE_SECONDS. It cuts through any plate from any
+ * face, for a moderate LASER_LINE_DAMAGE. A small fire is left where it lands,
+ * and the trees and soldiers (his own too) between him and the target burn.
+ */
+export const LASER_LINE_SECONDS = 0.35;
+export const LASER_LINE_DAMAGE = 30;
+/** Seconds the emitter recharges between shots. */
+export const LASER_RECHARGE = 4;
+/** The beam's fires: smaller and shorter-lived than a flamethrower's patch. */
+export const LASER_FIRE_RADIUS = t(0.2) * TILE_SIZE;
+export const LASER_FIRE_SECONDS = 6;
+/** World px between fires along the cut. Far enough apart that they do not merge. */
+export const LASER_FIRE_SPACING = LASER_FIRE_RADIUS * 1.25;
+export const LASER = {
+  id: "laser" as const,
+  name: "Cutting laser",
+  blurb: "Always cuts out to full reach. On soldiers it sweeps across them and burns down every soldier the beam passes, his own too, leaving a line of fire on the ground. Trees in its path burn down. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Recharges between shots; never needs a truck.",
+  damage: LASER_LINE_DAMAGE,
+  penetration: 999,
+  caliber: 20,
+  spreadDeg: 0,
+  cooldown: 0.5,
+  clip: 1,
+  reload: LASER_RECHARGE,
+  rangeTiles: COMMANDER_RANGE_TILES,
+  bulky: true,
 } as const satisfies InfantryGun;
 
 /**
@@ -2207,6 +2277,7 @@ export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   launcher: LAUNCHER,
   penetrator: PENETRATOR,
   flamer: FLAMER,
+  laser: LASER,
 };
 
 /**
@@ -2810,7 +2881,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Titan, Nebelwerfer, and Drone Op.",
+    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Cyborg Commander, Titan, Nebelwerfer, and Drone Op.",
   },
   radar: {
     type: "radar",
@@ -3580,6 +3651,31 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: GATLING.spreadDeg,
     blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. It fires with tracers and overheats after under two seconds on the trigger. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back.",
   },
+  cyborgcommander: {
+    type: "cyborgcommander",
+    kind: "unit",
+    name: "Cyborg Commander",
+    letter: "Q",
+    cost: 5000,
+    buildSeconds: 18,
+    hp: 300,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(1.5 * INFANTRY_PACE),
+    turnDegPerSec: 900,
+    rangeTiles: COMMANDER_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: LASER.cooldown,
+    damage: LASER.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: LASER.penetration,
+    caliber: LASER.caliber,
+    spreadDeg: LASER.spreadDeg,
+    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
+  },
   titan: {
     type: "titan",
     kind: "unit",
@@ -3618,7 +3714,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: TITAN_ROCKET_AMMO,
     bracedHpMul: TITAN_BRACED_HP_MUL,
-    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up.",
+    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
   mammoth: {
     type: "mammoth",
@@ -4397,7 +4493,7 @@ export function armorLabel(type: EntityType): string | null {
   return `F${d.armorFront} / S${d.armorSide} / R${d.armorRear}`;
 }
 
-const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "droneop", "jumpjet"];
+const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "cyborgcommander", "droneop", "jumpjet"];
 
 /** Soldier with a jet pack: the Jump Jet. */
 export function isJumpJetType(type: EntityType): boolean {
@@ -4447,9 +4543,17 @@ export function isInfantryType(type: EntityType): boolean {
   return (INFANTRY_TYPES as readonly string[]).includes(type);
 }
 
-/** Infantry with a machine half. No stance orders, no random limb hits, legs tied to HP. */
+/**
+ * Infantry with a machine half: the Cyborg and the Cyborg Commander. No stance orders,
+ * no random limb hits, legs tied to HP.
+ */
 export function isCyborg(type: EntityType): boolean {
-  return type === "cyborg";
+  return type === "cyborg" || type === "cyborgcommander";
+}
+
+/** Carries a force field that takes hits before his HP does. The Cyborg Commander. */
+export function hasForceField(type: EntityType): boolean {
+  return type === "cyborgcommander";
 }
 
 /** An engineer can patch this unit: armored hulls and the cyborg's plating. */
@@ -4479,6 +4583,7 @@ export function primaryInfantryGun(type: EntityType): InfantryGun | null {
   if (type === "pyro") return FLAMER;
   if (type === "mortarman") return MORTAR;
   if (type === "cyborg") return GATLING;
+  if (type === "cyborgcommander") return LASER;
   if (type === "jumpjet") return ASSAULT;
   return null;
 }
@@ -4493,6 +4598,7 @@ export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
   if (type === "pyro") return [FLAMER];
   if (type === "mortarman") return [MORTAR];
   if (type === "cyborg") return [GATLING];
+  if (type === "cyborgcommander") return [LASER];
   if (type === "jumpjet") return [ASSAULT, HANDGUN];
   return [];
 }

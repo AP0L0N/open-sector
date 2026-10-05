@@ -37,6 +37,7 @@ import { tickDeploy } from "./deploy.js";
 import { tickSmelters } from "./smelter.js";
 import { tickConstructs } from "./construct.js";
 import { tickHeal } from "./heal.js";
+import { tickForceFields, tickLasers } from "./laser.js";
 import { tickSupply } from "./supply.js";
 import { syncTowedGuns, tickArtillery } from "./artillery.js";
 import { tickShipRearm } from "./battleship.js";
@@ -170,6 +171,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickDeploy(state, dt);
   tickGarrison(state);
   tickHeal(state, dt);
+  tickForceFields(state, dt);
   tickGarrisonCare(state, dt);
   tickSupply(state, dt);
   tickShipRearm(state, dt);
@@ -198,6 +200,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickBuild(state, dt);
   tickTrain(state, dt);
   tickCombat(state, dt);
+  tickLasers(state);
   tickProjectiles(state, dt);
   syncTorpedoes(state);
   tickFires(state, dt);

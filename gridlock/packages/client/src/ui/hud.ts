@@ -2,6 +2,8 @@ import {
   BUILDING_TYPES,
   YARD_FIELD_TYPES,
   CRIT_LABEL,
+  isCyborg,
+  isOneAtATime,
   DRONE_MODE_LABEL,
   SHELL_TYPES,
   STANCE_LABEL,
@@ -433,10 +435,22 @@ function jobsOfType(m: MatchSnapshot | null | undefined, unit: TrainType): JobRe
 }
 
 function canQueueMore(m: MatchSnapshot, unit: TrainType): boolean {
+  if (oneAtATimeHeld(m, unit)) return false;
   const want = producerType(unit);
   const producers = m.entities.filter((e) => e.ownerId === m.youPlayerId && e.type === want && e.hp > 0);
   if (producers.length === 0) return false;
   return producers.some((e) => (e.trainQueue?.length ?? 0) < TRAIN_QUEUE_CAP && padFree(e));
+}
+
+/**
+ * A one-at-a-time unit (Titan, Cyborg Commander) you already have: "alive" while one
+ * stands, "queued" while one is in a queue. The sim refuses another either way.
+ */
+function oneAtATimeHeld(m: MatchSnapshot, unit: TrainType): "alive" | "queued" | null {
+  if (!isOneAtATime(unit)) return null;
+  const mine = m.entities.filter((e) => e.ownerId === m.youPlayerId);
+  if (mine.some((e) => e.type === unit && e.hp > 0 && !e.wreck)) return "alive";
+  return mine.some((e) => e.trainQueue?.some((j) => j.type === unit)) ? "queued" : null;
 }
 
 /** An Airfield with a hardstand left for one more plane (parked, flying, or queued). Other producers always pass. */
@@ -597,14 +611,21 @@ export function paintBattleHud(ctx: Ctx): void {
     const tech = TECH_REQUIRES[unit];
     const techMissing =
       !!tech && !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === tech && e.hp > 0 && !e.wreck);
-    btn.disabled = !hasProducer || !m.you.alive || padsFull || techMissing;
+    // One at a time: greyed out while yours stands. While one is queued the cameo stays live to pause or cancel it.
+    const held = oneAtATimeHeld(m, unit);
+    btn.disabled = !hasProducer || !m.you.alive || padsFull || techMissing || held === "alive";
     btn.classList.toggle("needs-tech", techMissing);
+    btn.classList.toggle("one-held", held != null);
     btn.dataset.baseTitle ??= btn.title;
     btn.title = padsFull
       ? `${catalog(unit).name} — every hardstand is taken. Build another Airfield.`
       : techMissing
         ? `${catalog(unit).name} — needs a ${catalog(tech!).name}.`
-        : btn.dataset.baseTitle;
+        : held === "alive"
+          ? `${catalog(unit).name} — only one at a time. Yours is still in the field.`
+          : held === "queued"
+            ? `${catalog(unit).name} — only one at a time. One is already in the queue.`
+            : btn.dataset.baseTitle;
     btn.classList.toggle("unaffordable", training && m.you.scrap <= 0);
     btn.classList.toggle("slow-power", m.you.lowPower && training);
     btn.classList.toggle("is-training", unitJobs.length > 0);
@@ -706,10 +727,11 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
           : "";
   const armor = armorLabel(e.type);
   const plates = armor ? `  ·  armor ${armor}` : "";
+  const field = e.field ? `  ·  field ${e.field.hp}/${e.field.max}${e.field.hp <= 0 ? " (down)" : ""}` : "";
   const wreck = e.wreck ? "  ·  WRECK" : "";
   const injuries =
     e.crits && e.crits.length > 0
-      ? `  ·  ${e.crits.map((c) => (e.type === "cyborg" && c === "leg" ? "legs torn off" : CRIT_LABEL[c])).join(", ")}${e.shielded ? " (plating holds — cannot be hurt yet)" : ""}`
+      ? `  ·  ${e.crits.map((c) => (isCyborg(e.type) && c === "leg" ? "legs torn off" : CRIT_LABEL[c])).join(", ")}${e.shielded ? " (plating holds — cannot be hurt yet)" : ""}`
       : "";
   const posture = e.swimming
     ? "  ·  swimming"
@@ -813,7 +835,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
             : "";
   const pads = e.pads ? `  ·  planes ${e.pads.used}/${e.pads.cap}` : "";
   const depth = e.dive ? diveLine(e.dive, !!e.submerged) : e.asw ? aswLine(e.asw) : "";
-  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}${depth}  ·  ${who}${q}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
+  box.textContent = `${def.name}${wreck}  ·  ${e.hp}/${e.hpMax} HP${field}${plates}${injuries}${posture}${mag}${rack}${rockets}${mg}${flight}${depth}  ·  ${who}${q}${cart}${smoke}${dep}${special}${garrison}${scout}${bed}${pads}${capturing}${holding}${selfDestroy}${tending}`;
   box.style.borderColor = occ ? colorHex(occ.colorId) : "#b08968";
 }
 
@@ -1038,6 +1060,7 @@ const TYPE_ORDER: EntityType[] = [
   "jagdtiger",
   "walker",
   "cyborg",
+  "cyborgcommander",
   "titan",
   "mammoth",
   "nebelwerfer",
@@ -1435,6 +1458,8 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
                 ? "No weapon. He walks to a wounded soldier nearby and closes the wound. A long kneel sets a broken arm or leg. The bag does not run out."
               : focus.type === "cyborg"
                 ? "Stands under fire — no crouch, no prone. Near death the legs tear off and he drags himself on, still firing. A medic or an engineer brings the legs back. Only a supply truck refills the drum."
+              : focus.type === "cyborgcommander"
+                ? "Stands under fire — no crouch, no prone. The blue bar is his force field: it takes every hit first and comes back on after a while out of the fire. The laser always cuts to full reach: a sweep across soldiers burns every man it passes, yours too, and one beam cuts a hull and anyone in front of it. Trees in the path burn down. Near death the legs tear off and he drags himself on, still firing."
               : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",
     );
   }
@@ -1829,7 +1854,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       });
     }
   }
-  const inf = units.filter((e) => isInfantryType(e.type) && e.type !== "engineer" && e.type !== "cyborg");
+  const inf = units.filter((e) => isInfantryType(e.type) && e.type !== "engineer" && !isCyborg(e.type));
   if (inf.length) {
     const ordered = new Set(inf.map((e) => e.stanceOrder ?? e.stance ?? "stand"));
     const legsBroken = inf.every((e) => e.crits?.includes("leg"));

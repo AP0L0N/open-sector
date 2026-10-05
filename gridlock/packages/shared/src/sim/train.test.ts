@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { TECH_REQUIRES, TRAIN_QUEUE_CAP, catalog, secondsToTicks, TICK_DT, type TrainType } from "../catalog.js";
+import { ONE_AT_A_TIME, TECH_REQUIRES, TRAIN_QUEUE_CAP, catalog, secondsToTicks, TICK_DT, type TrainType } from "../catalog.js";
 import { applyCommand } from "./commands.js";
 import { createMatch, step } from "./match.js";
 import { paidForProgress } from "./production.js";
 import { snapshotFor } from "./snapshot.js";
 import { makeEntity, tileCenter } from "./geo.js";
-import { techMissing } from "./train.js";
+import { oneAtATimeTaken, techMissing } from "./train.js";
 import type { MatchState } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
@@ -388,7 +388,7 @@ describe("research gate", () => {
     makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 });
     seedMuster(state, 20, 10);
     const gated = Object.keys(TECH_REQUIRES) as TrainType[];
-    assert.deepEqual([...gated].sort(), ["apocalypse", "cyborg", "droneop", "jagdtiger", "jumpjet", "mammoth", "nebelwerfer", "titan", "warden"]);
+    assert.deepEqual([...gated].sort(), ["apocalypse", "cyborg", "cyborgcommander", "droneop", "jagdtiger", "jumpjet", "mammoth", "nebelwerfer", "titan", "warden"]);
     for (const unit of gated) {
       const r = applyCommand(state, "A", { type: "cmd.train", unit });
       assert.equal(r.ok, false, unit);
@@ -413,5 +413,61 @@ describe("research gate", () => {
     makeEntity(state, "research", "B", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
     assert.equal(techMissing(state, "A", "cyborg"), "research");
     assert.equal(techMissing(state, "B", "cyborg"), null);
+  });
+});
+
+describe("one at a time", () => {
+  function armed(): { state: MatchState; shops: ReturnType<typeof makeEntity>[] } {
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    const ts = state.tileSize;
+    const shops = [
+      makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 }),
+      makeEntity(state, "armory", "A", tileCenter(30, ts), tileCenter(4, ts), { tileX: 30, tileY: 4 }),
+    ];
+    makeEntity(state, "research", "A", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
+    return { state, shops };
+  }
+
+  for (const unit of ["titan", "cyborgcommander"] as const) {
+    it(`queues only one ${unit}, across every Machine Shop`, () => {
+      const { state, shops } = armed();
+      assert.ok(ONE_AT_A_TIME.includes(unit));
+      assert.equal(applyCommand(state, "A", { type: "cmd.train", unit }).ok, true);
+      assert.equal(oneAtATimeTaken(state, "A", unit), "queued");
+      const again = applyCommand(state, "A", { type: "cmd.train", unit });
+      assert.equal(again.ok, false);
+      if (!again.ok) assert.match(again.message, /already in the queue/);
+      const jobs = shops.reduce((n, s) => n + s.queue.filter((j) => j.type === unit).length, 0);
+      assert.equal(jobs, 1, "the second Machine Shop did not take one either");
+      // Other units still queue beside it.
+      assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "ss3" }).ok, true);
+      // Cancelled, the slot opens again.
+      assert.equal(applyCommand(state, "A", { type: "cmd.cancel", what: "train", unit }).ok, true);
+      assert.equal(oneAtATimeTaken(state, "A", unit), null);
+      assert.equal(applyCommand(state, "A", { type: "cmd.train", unit }).ok, true);
+    });
+
+    it(`refuses a second ${unit} while the first lives, and allows one once it is destroyed`, () => {
+      const { state } = armed();
+      const ts = state.tileSize;
+      const first = makeEntity(state, unit, "A", tileCenter(40, ts), tileCenter(40, ts));
+      assert.equal(oneAtATimeTaken(state, "A", unit), "alive");
+      const r = applyCommand(state, "A", { type: "cmd.train", unit });
+      assert.equal(r.ok, false);
+      if (!r.ok) assert.match(r.message, /still in the field/);
+      // Another player's does not count against you.
+      assert.equal(oneAtATimeTaken(state, "B", unit), null);
+      first.hp = 0;
+      if (unit === "titan") first.wreck = true;
+      assert.equal(oneAtATimeTaken(state, "A", unit), null, "a dead one, or a wreck, frees the slot");
+      assert.equal(applyCommand(state, "A", { type: "cmd.train", unit }).ok, true);
+    });
+  }
+
+  it("leaves every other type alone", () => {
+    const { state } = armed();
+    for (let i = 0; i < 3; i++) assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "cyborg" }).ok, true);
+    assert.equal(oneAtATimeTaken(state, "A", "cyborg"), null);
   });
 });

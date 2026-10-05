@@ -10,7 +10,7 @@ import type { SpatialMix } from "./spatial-sfx.js";
 import { playClip, playLoop, playSample, preloadSample, type Clip, type Loop } from "./audio.js";
 import { AMBIENT_KINDS, ambientMix, type AmbientKind, type Mover } from "../render/ambient.js";
 import { buildBank, LineDeck } from "./sound-bank.js";
-import type { SoundEvent, Weapon } from "../render/sound-events.js";
+import type { ShieldCue, SoundEvent, Weapon } from "../render/sound-events.js";
 import { leadType, orderCue, type UnitCue } from "./order-cues.js";
 import type { ClientMessage, MatchSnapshot } from "@gridlock/shared";
 
@@ -47,7 +47,7 @@ let speakers: ReadonlySet<number> = new Set();
 /** One answer from a unit type. `special` falls back to `move` for units without one. Returns whether a line played. */
 export function unitVoice(
   type: string,
-  cue: UnitCue | "ready",
+  cue: UnitCue | "ready" | "shield_down" | "shield_up",
   opts: { withSfx?: boolean; ids?: readonly number[] } = {},
 ): boolean {
   const folder = unitFolder(type);
@@ -126,7 +126,9 @@ export function warmUnit(type: string): void {
   if (warmed.has(type)) return;
   warmed.add(type);
   const folder = unitFolder(type);
-  for (const cue of ["sfx-fire", "sfx-rockets", "sfx-die", "voice-die"]) for (const url of bank.get(folder, cue)) preloadSample(url);
+  for (const cue of ["sfx-fire", "sfx-fire_line", "sfx-rockets", "sfx-die", "voice-die", "sfx-shield_hit"]) {
+    for (const url of bank.get(folder, cue)) preloadSample(url);
+  }
 }
 
 export function warmBattle(): void {
@@ -166,10 +168,17 @@ const IMPACT_VOLUME: Record<string, number> = {
   intercept: 0.5,
 };
 
-/** Which take a shot plays: rockets use the unit's salvo when it has one (the Titan's pod). */
-function fireUrl(type: string, weapon: Weapon): string | null {
+/** Force-field cues: the shimmer is quick and light, the collapse and the recharge carry. */
+const SHIELD_VOLUME: Record<ShieldCue, number> = { hit: 0.4, down: 0.75, up: 0.6 };
+
+/**
+ * Which take a shot plays: rockets use the unit's salvo when it has one (the Titan's pod).
+ * The Cyborg Commander's single beam on a hull has its own take beside the sweep.
+ */
+function fireUrl(type: string, weapon: Weapon, line?: boolean): string | null {
   if (weapon === "small" && BIG_GUN_ONLY.has(type)) return null;
   const folder = unitFolder(type);
+  if (weapon === "beam" && line) return pick(folder, "sfx-fire_line") ?? pick(folder, "sfx-fire");
   if (weapon === "rocket") return pick(folder, "sfx-rockets") ?? pick(folder, "sfx-fire");
   return pick(folder, "sfx-fire");
 }
@@ -192,7 +201,7 @@ export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number
           speakers = new Set();
         }
         warmUnit(ev.type);
-        const url = fireUrl(ev.type, ev.weapon);
+        const url = fireUrl(ev.type, ev.weapon, ev.line);
         const mix = url ? mixAt(ev.x, ev.y) : null;
         if (url && mix) {
           const heavy = HEAVY_FIRE.has(ev.type);
@@ -217,6 +226,15 @@ export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number
           : (pick(folder, "sfx-die") ?? pick("sfx/battle", "sfx-explosion_large"));
         const mix = url ? mixAt(ev.x, ev.y) : null;
         if (url && mix) playSample(url, mix, { volume: ev.infantry ? 0.6 : 0.8, maxVoices: 2, jitter: 0.03 });
+        break;
+      }
+      case "shield": {
+        const folder = unitFolder(ev.type);
+        const url = pick(folder, `sfx-shield_${ev.cue}`);
+        const mix = url ? mixAt(ev.x, ev.y) : null;
+        if (url && mix) playSample(url, mix, { volume: SHIELD_VOLUME[ev.cue], maxVoices: 2, jitter: 0.04 });
+        // Your own Commander reports his field going down and coming back.
+        if (ev.own && ev.cue !== "hit" && !unitTalking()) unitVoice(ev.type, `shield_${ev.cue}`);
         break;
       }
       case "voice":

@@ -1,0 +1,96 @@
+{
+  "key": "cyborgcommander",
+  "out": "units/cyborgcommander",
+  "voice": {
+    "name": "Open Sector - Cyborg Commander",
+    "description": "Very deep, resonant male voice of a cybernetic officer who commands machines, heavily processed and metallic with a cold synthetic ring and a low electronic hum under every word, slow, deliberate and imperious, speaks with absolute authority and contempt, measured pauses, never raises his voice, chilling and regal.",
+    "sample": "Cyborg Commander online. Shield matrix charged. You will kneel, or you will burn. My beam does not miss, and my orders are not questioned.",
+    "stability": 0.65,
+    "similarity": 0.8,
+    "style": 0.4
+  },
+  "lines": {
+    "select": [
+      "Commander online.",
+      "State your directive.",
+      "I am listening.",
+      "Shield matrix stable.",
+      "Command me."
+    ],
+    "move": [
+      "Proceeding.",
+      "As ordered.",
+      "The field moves with me.",
+      "Vector confirmed.",
+      "Advance."
+    ],
+    "attack": [
+      "Burn them.",
+      "Beam charged.",
+      "Cut them down.",
+      "Erase the target."
+    ],
+    "ready": [
+      "Cyborg Commander, assuming command."
+    ],
+    "hit": [
+      "Shield absorbing.",
+      "Insolent."
+    ],
+    "die": [
+      "Command... terminated...",
+      "This... is not... the end..."
+    ],
+    "shield_down": [
+      "Shield down.",
+      "Shield matrix failing."
+    ],
+    "shield_up": [
+      "Shield restored."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Sci-fi cutting laser weapon firing: short electric charge-up crackle, then a sustained searing high-energy beam hum and sizzle sweeping sideways, burning hiss of scorched ground, close, outdoors battlefield, no music, no voice",
+      "duration": 1.5,
+      "variants": 3,
+      "influence": 0.7
+    },
+    "fire_line": {
+      "prompt": "Short powerful sci-fi laser beam burst hitting a steel tank, intense electric zap and molten metal cutting sizzle, close, outdoors, no music, no voice",
+      "duration": 1.0,
+      "variants": 2,
+      "influence": 0.7
+    },
+    "shield_hit": {
+      "prompt": "Energy force field shield absorbing a bullet impact, short bright electric shimmer and zap, sci-fi, close, no music, no voice",
+      "duration": 0.5,
+      "variants": 3,
+      "influence": 0.7
+    },
+    "shield_down": {
+      "prompt": "Sci-fi energy force field shield collapsing: descending electric whine, crackling sparks and a fading power-down hum, close, no music, no voice",
+      "duration": 1.3,
+      "variants": 1,
+      "influence": 0.7
+    },
+    "shield_up": {
+      "prompt": "Sci-fi energy force field shield recharging and switching back on: rising electric hum ending in a soft resonant shimmer, close, no music, no voice",
+      "duration": 1.3,
+      "variants": 1,
+      "influence": 0.7
+    },
+    "move": {
+      "prompt": "Heavy armored cyborg walking: deep servo motor whine, hydraulic hiss and very heavy metallic footsteps thudding on dirt, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Large cyborg destroyed: energy shield emitter shorting out with a loud electric crackle and buzz, sparks, servos powering down, heavy metal body crashing onto the ground, close, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

@@ -206,6 +206,7 @@ import { nextRand } from "./rng.js";
 import { isSupplyBullet, noteSupplyHit, stowedInTransport, supplyRiderFights, syncSupplyRiders } from "./supply.js";
 import { spawnSmokeCloud } from "./smoke.js";
 import { heGroundFire, stepFlame, throwFlame } from "./flame.js";
+import { fireLaser } from "./laser.js";
 import { distToRoute } from "./patrol.js";
 import { canSeeEntity } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
@@ -1278,7 +1279,7 @@ export function concreteProof(state: MatchState, e: Entity, o: Entity): boolean 
 export function chipsConcrete(e: Entity): boolean {
   if (hasAmmo(e.type) || rocketsOf(e.type) || e.type === "artillery" || e.ship) return true;
   const gun = infantryGunFor(e)?.id;
-  return gun === "mortar" || gun === "launcher" || gun === "penetrator";
+  return gun === "mortar" || gun === "launcher" || gun === "penetrator" || gun === "laser";
 }
 
 /** The shot from here can put damage on that hull. Unarmored targets always can. Covers the CIWS gun too. */
@@ -1309,6 +1310,8 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
   if (gun.id === "mortar" || gun.id === "launcher") return true;
   // The Cyborg's gatling sometimes bites a Walker or a truck, so he engages them.
   if (gun.id === "gatling" && isLightHull(def)) return true;
+  // The Commander's laser cuts any plate.
+  if (gun.id === "laser") return true;
   if (entityIsScouting(target) && gun.caliber < GARRISON_STRUCTURAL_CALIBER) return true;
   const vx = target.x - e.x;
   const vy = target.y - e.y;
@@ -1548,6 +1551,16 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if ((infantryGun || belt) && e.clip <= 0) {
     const reloadSec = infantryGun?.reload ?? belt?.reload ?? 0;
     if (reloadSec > 0) beginReload(e, infantryGun ?? { reload: reloadSec });
+    return;
+  }
+  // The Commander's laser: a sweep on soldiers or the ground, one beam on anything else. Then it recharges.
+  if (infantryGun?.id === "laser") {
+    if (e.laser) return;
+    fireLaser(state, e, aimX, aimY, range, target);
+    e.clip = Math.max(0, e.clip - 1);
+    e.cooldown = infantryGun.cooldown;
+    if (e.clip <= 0) beginReload(e, infantryGun);
+    if (e.order?.once) clearOrder(e);
     return;
   }
   const shell = hasAmmo(e.type) ? pickLoadedShell(e.ammo, e.shell) : null;

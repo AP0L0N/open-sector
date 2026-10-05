@@ -2391,6 +2391,8 @@ describe("force attack out of sight", () => {
     for (let i = 0; i < ticks; i++) {
       step(state, TICK_DT);
       if (state.projectiles.length > 0 || state.impacts.length > 0) return true;
+      // The Cyborg Commander's laser is a beam, not a round.
+      if ([...state.entities.values()].some((e) => e.laser)) return true;
     }
     return false;
   }

@@ -34,12 +34,17 @@ export type AnnounceEvent =
   | "victory"
   | "defeat";
 
-/** What went off: bullets (and autocannon), a shell or bomb, or a rocket. */
-export type Weapon = "small" | "shell" | "rocket";
+/** What went off: bullets (and autocannon), a shell or bomb, a rocket, or the Cyborg Commander's laser. */
+export type Weapon = "small" | "shell" | "rocket" | "beam";
+
+/** The Cyborg Commander's force field: it soaked a hit, it went down, or it came back on. */
+export type ShieldCue = "hit" | "down" | "up";
 
 export type SoundEvent =
   /** A unit fired. Positioned at the shooter. */
-  | { kind: "fire"; id: number; type: string; weapon: Weapon; x: number; y: number }
+  | { kind: "fire"; id: number; type: string; weapon: Weapon; x: number; y: number; line?: boolean }
+  /** A force field soaked a hit, collapsed, or came back. `own`: one of your units. */
+  | { kind: "shield"; id: number; type: string; cue: ShieldCue; own: boolean; x: number; y: number }
   /** A battlefield sound at a point. */
   | { kind: "impact"; sound: ImpactSound; x: number; y: number }
   /** An infantryman fell (voice) or a machine was destroyed (sfx). */
@@ -88,6 +93,8 @@ const ROCKET_GAP_MS: Record<string, number> = {
   titan: 2500,
 };
 const DEFAULT_ROCKET_GAP_MS = 600;
+/** Least time between two force-field shimmers from one unit. A gatling would otherwise buzz every tick. */
+const SHIELD_HIT_GAP_MS = 220;
 /** A shell's impact after its own projectile was already heard is not a second shot. */
 const SHELL_ECHO_MS = 2500;
 
@@ -114,6 +121,7 @@ export class SoundTracker {
   private lastFire = new Map<number, number>();
   private lastRocket = new Map<number, number>();
   private lastShellFire = new Map<number, number>();
+  private lastShieldHit = new Map<number, number>();
   /** Share of health left, not raw hp: bracing or packing up rescales both hp and hpMax. */
   private lastHp = new Map<number, number>();
   private lowPower = false;
@@ -185,6 +193,8 @@ export class SoundTracker {
       if (this.seenImpacts.has(i.id)) continue;
       this.seenImpacts.add(i.id);
       if (i.kind === "crush") continue;
+      // The laser's burn is heard when the beam opens (below), not again where it lands.
+      if (i.laser) continue;
       // Hitscan rounds and shells too quick for a snapshot are only seen landing.
       if (i.fromId != null && !i.intercept && !i.cookoff && !i.blast && !i.rocket && !i.torpedo && !i.bomb) {
         if (!isShell(i.caliber)) {
@@ -224,6 +234,23 @@ export class SoundTracker {
       if (prev && prev.ownerId !== e.ownerId && isBuildingType(e.type)) {
         if (e.ownerId === me) out.push({ kind: "announce", event: "captured" });
         else if (prev.ownerId === me) out.push({ kind: "announce", event: "buildingcaptured" });
+      }
+      if (e.laser && !e.wreck) {
+        const was = prev?.laser;
+        if (!was || was.a0 !== e.laser.a0 || e.laser.u < was.u) {
+          out.push({ kind: "fire", id: e.id, type: e.type, weapon: "beam", x: e.x, y: e.y, line: e.laser.line });
+        }
+      }
+      if (e.field && prev?.field && !e.wreck) {
+        const own = e.ownerId === me;
+        if (e.field.hp <= 0 && prev.field.hp > 0) {
+          out.push({ kind: "shield", id: e.id, type: e.type, cue: "down", own, x: e.x, y: e.y });
+        } else if (e.field.hp > 0 && prev.field.hp <= 0) {
+          out.push({ kind: "shield", id: e.id, type: e.type, cue: "up", own, x: e.x, y: e.y });
+        } else if (e.field.hp < prev.field.hp && now - (this.lastShieldHit.get(e.id) ?? -Infinity) >= SHIELD_HIT_GAP_MS) {
+          this.lastShieldHit.set(e.id, now);
+          out.push({ kind: "shield", id: e.id, type: e.type, cue: "hit", own, x: e.x, y: e.y });
+        }
       }
       const share = this.lastHp.get(e.id);
       if (share !== undefined && hpShare(e) < share - 1e-6 && e.ownerId === me && !e.wreck) {
@@ -283,6 +310,7 @@ export class SoundTracker {
     if (this.seenImpacts.size > 4000) this.seenImpacts = new Set([...this.seenImpacts].slice(-1000));
     if (this.lastFire.size > 500) this.lastFire.clear();
     if (this.lastRocket.size > 500) this.lastRocket.clear();
+    if (this.lastShieldHit.size > 500) this.lastShieldHit.clear();
     return out;
   }
 
