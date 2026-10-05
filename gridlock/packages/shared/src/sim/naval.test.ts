@@ -4,7 +4,6 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   BUILDING_TYPES,
   SUB_AIR_RECOVER_MUL,
-  SUB_DETECT_TILES,
   SUB_DIVE_SECONDS,
   SUB_REARM_SECONDS,
   SUB_REVEAL_SECONDS,
@@ -439,11 +438,11 @@ describe("Submarine torpedo load", () => {
 });
 
 describe("Submarine runs submerged", () => {
-  it("is seen only close by, or for a while after it fires", () => {
+  it("is found below only by a Destroyer's sonar, or for a while after it fires", () => {
     const { state, lx0, ly0 } = harbour();
     const sub = spawn(state, "submarine", "B", lx0 + 30, ly0 + 20);
     sub.cooldown = 1e6; // keep the tube quiet: a shot would give it away
-    const watcher = spawn(state, "gunboat", "A", lx0 + 30 - (SUB_DETECT_TILES + 6), ly0 + 20);
+    const watcher = spawn(state, "gunboat", "A", lx0 + 30 - 6, ly0 + 20);
     watcher.holdPosition = true;
     watcher.cooldown = 1e6; // and hold its gun, or it sinks the sub the moment it shows
     step(state, TICK_DT);
@@ -461,11 +460,17 @@ describe("Submarine runs submerged", () => {
     ticks(state, secondsToTicks(SUB_REVEAL_SECONDS) + 2);
     assert.equal(canSeeEntity(state, "A", sub), false, "and it slips under again");
 
-    const close = at(state, lx0 + 30 - (SUB_DETECT_TILES - 2), ly0 + 20);
+    const close = at(state, lx0 + 30, ly0 + 22);
     watcher.x = close.x;
     watcher.y = close.y;
-    assert.equal(hiddenSubmarine(state, "A", sub), false);
-    assert.equal(canSeeEntity(state, "A", sub), true, "close by, it is spotted");
+    assert.equal(hiddenSubmarine(state, "A", sub), true, "a boat right over it still sees nothing");
+    assert.equal(canSeeEntity(state, "A", sub), false);
+
+    const dd = spawn(state, "destroyer", "A", lx0 + 10, ly0 + 20);
+    dd.asw!.torpedoes = 0;
+    dd.cooldown = 1e6;
+    assert.equal(hiddenSubmarine(state, "A", sub), false, "the sonar hears it");
+    assert.equal(canSeeEntity(state, "A", sub), true, "and what the sonar hears is seen");
   });
 
   it("spawns surfaced with full air, spends it below, and comes up when it runs out", () => {
@@ -577,6 +582,8 @@ describe("boats turn before they move", () => {
     assert.deepEqual([...ships].sort(), ["battleship", "destroyer", "gunboat", "lst", "submarine", "supplyboat"]);
     for (const type of ships) {
       assert.equal(catalog(type).turnInPlace, true, `${type} turns before it moves`);
+      // Dead astern is ahead for a double-ended hull: battleship.test.ts covers it.
+      if (catalog(type).doubleEnded) continue;
       // The LST is as long as the Battle Ship is wide: it gets a lake of its own.
       const { state, lx0, ly0 } = type === "lst" ? harbour() : shared;
       const lane = type === "gunboat" ? 3 : type === "submarine" ? 7 : type === "supplyboat" ? 11 : type === "destroyer" ? 15 : 24;
@@ -594,6 +601,36 @@ describe("boats turn before they move", () => {
       assert.notEqual(boat.facing, 0, `${type} is turning`);
       ticks(state, secondsToTicks(180 / catalog(type).turnDegPerSec) + 200);
       assert.ok(boat.x < x0 - 5 * state.tileSize, `${type} got under way once round`);
+    }
+  });
+});
+
+describe("submarine below", () => {
+  it("runs under a surface boat, friend or foe, and the boat never gives way", () => {
+    for (const owner of ["A", "B"]) {
+      const { state, lx0, ly0 } = harbour();
+      const sub = spawn(state, "submarine", "A", lx0 + 4, ly0 + 10);
+      sub.facing = 0;
+      sub.cooldown = 1e6;
+      const boat = spawn(state, "gunboat", owner, lx0 + 12, ly0 + 10);
+      boat.facing = Math.PI / 2;
+      boat.cooldown = 1e6;
+      const x0 = boat.x;
+      const y0 = boat.y;
+      assert.equal(applyCommand(state, "A", { type: "cmd.dive", ids: [sub.id], down: true }).ok, true);
+      const goal = at(state, lx0 + 20, ly0 + 10);
+      applyCommand(state, "A", { type: "cmd.move", ids: [sub.id], x: goal.x, y: goal.y });
+      let closest = Infinity;
+      for (let i = 0; i < secondsToTicks(40); i++) {
+        step(state, TICK_DT);
+        closest = Math.min(closest, Math.hypot(sub.x - boat.x, sub.y - boat.y));
+      }
+      assert.equal(diving(sub), true);
+      assert.ok(closest < boat.radius, `${owner}: it went right under the hull`);
+      assert.ok(Math.hypot(sub.x - goal.x, sub.y - goal.y) < state.tileSize * 2, `${owner}: it got there`);
+      assert.equal(boat.x, x0, `${owner}: the boat above stayed put`);
+      assert.equal(boat.y, y0, `${owner}: the boat above stayed put`);
+      assert.equal(boat.waypoints.length, 0, `${owner}: nobody asked it to roll aside`);
     }
   });
 });

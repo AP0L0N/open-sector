@@ -1,8 +1,9 @@
 import {
+  hasSonar,
   isTorpedoBody,
   secondsToTicks,
+  SONAR_RANGE_TILES,
   SUB_AIR_RECOVER_MUL,
-  SUB_DETECT_TILES,
   SUB_DIVE_SECONDS,
   SUB_REVEAL_SECONDS,
   submergesOf,
@@ -105,25 +106,31 @@ export function tickSubmarines(state: MatchState, dt: number): void {
   }
 }
 
+/** A Destroyer still afloat and fighting: its sonar listens and its deck works. */
+export function shipLive(e: Entity | undefined): e is Entity {
+  return !!e && hasSonar(e.type) && !!e.asw && e.hp > 0 && !e.wreck;
+}
+
+/** A submarine this ship's sonar hears: an enemy boat, down or up, inside SONAR_RANGE_TILES. */
+export function sonarHears(state: MatchState, ship: Entity, sub: Entity): boolean {
+  if (!shipLive(ship) || !submergesOf(sub.type) || sub.hp <= 0 || sub.wreck) return false;
+  if (!sub.ownerId || allies(state, ship.ownerId, sub.ownerId)) return false;
+  return Math.hypot(sub.x - ship.x, sub.y - ship.y) <= SONAR_RANGE_TILES * state.tileSize;
+}
+
 /**
- * A submerged boat stays out of `playerId`'s sight unless one of that side's units or
- * buildings is within SUB_DETECT_TILES of it. Fog still applies on top of this.
+ * A submerged boat stays out of `playerId`'s sight unless a Destroyer on that side hears
+ * it. Nothing else finds it below: not a lookout close by, not a radar.
  */
 export function hiddenSubmarine(state: MatchState, playerId: string, e: Entity): boolean {
   if (!submerged(state, e) || allies(state, playerId, e.ownerId)) return false;
-  const ts = state.tileSize;
-  const reach = SUB_DETECT_TILES * ts;
   for (const o of state.entities.values()) {
-    if (o.hp <= 0 || o.wreck || !o.ownerId || !allies(state, playerId, o.ownerId)) continue;
-    // A torpedo's body is no lookout.
-    if (isTorpedoBody(o.type)) continue;
-    if (o.kind === "building") {
-      const nx = Math.max(o.tileX * ts, Math.min(e.x, (o.tileX + o.tileW) * ts));
-      const ny = Math.max(o.tileY * ts, Math.min(e.y, (o.tileY + o.tileH) * ts));
-      if (Math.hypot(e.x - nx, e.y - ny) <= reach) return false;
-      continue;
-    }
-    if (Math.hypot(e.x - o.x, e.y - o.y) <= reach) return false;
+    if (allies(state, playerId, o.ownerId) && sonarHears(state, o, e)) return false;
   }
   return true;
+}
+
+/** A submerged enemy boat `playerId`'s sonar hears: in sight wherever it is, fog or not. */
+export function sonarSpotted(state: MatchState, playerId: string, e: Entity): boolean {
+  return submerged(state, e) && !allies(state, playerId, e.ownerId) && !hiddenSubmarine(state, playerId, e);
 }

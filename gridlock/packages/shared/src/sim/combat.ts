@@ -785,7 +785,7 @@ function fireShip(state: MatchState, e: Entity, dt: number): void {
     e.state = "attack";
     return;
   }
-  if (e.waypoints.length > 0 && !travelFights(e) && !reversing(e)) return;
+  if (e.waypoints.length > 0 && !travelFights(e) && !backingHop(e)) return;
   e.state = "attack";
   let fired = false;
   ship.turrets.forEach((t, i) => {
@@ -901,6 +901,11 @@ function outOfReachAloft(state: MatchState, e: Entity, target: Entity): boolean 
 }
 
 /** Move, attack-move, patrol, and unit-escort all engage in-range enemies. Attack-move halts; the others keep walking. */
+/** A tank backing a short hop keeps fighting. A double-ended hull running astern is just under way. */
+function backingHop(e: Entity): boolean {
+  return reversing(e) && !catalog(e.type).doubleEnded;
+}
+
 function travelFights(e: Entity): boolean {
   const k = e.order?.kind;
   return k === "attackmove" || k === "move" || k === "patrol" || escorting(e) || forceUnderway(e);
@@ -1460,7 +1465,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     }
     return;
   }
-  if (e.waypoints.length > 0 && !travelFights(e) && !reversing(e) && !holedUp) return;
+  if (e.waypoints.length > 0 && !travelFights(e) && !backingHop(e) && !holedUp) return;
 
   if (!holedUp) e.state = "attack";
   // A hull gun under way keeps the course: the hull does not swing to the aim, it

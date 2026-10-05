@@ -6,7 +6,6 @@ import {
   ASW_REPLACE_SECONDS,
   ASW_TORPEDOES,
   SONAR_RANGE_TILES,
-  SUB_DETECT_TILES,
   SUB_DIVE_SECONDS,
   TICK_DT,
   TILE_SUBDIV,
@@ -33,6 +32,7 @@ import { createMatch, step } from "./match.js";
 import { hiddenSubmarine } from "./naval.js";
 import { snapshotFor } from "./snapshot.js";
 import { producerType } from "./train.js";
+import { canSeeEntity } from "./vision.js";
 import type { Entity, MatchState } from "./types.js";
 
 const T = TILE_SUBDIV;
@@ -133,19 +133,25 @@ describe("Destroyer sonar", () => {
     assert.deepEqual(sonarContacts(state, "B"), [], "the other side hears nothing");
   });
 
-  it("goes out on the owner's snapshot only, and hearing is not seeing", () => {
+  it("goes out on the owner's snapshot only, and a boat it hears below is in sight past the fog", () => {
     const state = sea();
     const d = spawn(state, "destroyer", "A", 60, 120);
     d.asw!.torpedoes = 0; // keep the helicopter home for this one
     d.asw!.rearm = 1e6;
-    const s = sub(state, "B", 60 + 10 * T, 120);
-    assert.ok(10 * T > SUB_DETECT_TILES);
+    d.cooldown = 1e6;
+    const gap = catalog("destroyer").sightTiles + 3 * T;
+    assert.ok(gap < SONAR_RANGE_TILES, "past the ship's own sight, inside the ring");
+    const s = sub(state, "B", 60 + gap, 120);
     step(state, TICK_DT);
     const mine = snapshotFor(state, "A");
     assert.deepEqual(mine.sonar?.map((c) => c.id), [s.id]);
     assert.equal(snapshotFor(state, "B").sonar, undefined);
-    assert.equal(hiddenSubmarine(state, "A", s), true, "a gun still cannot lay on it");
-    assert.equal(mine.entities.some((e) => e.id === s.id), false);
+    assert.equal(hiddenSubmarine(state, "A", s), false, "a gun can lay on it");
+    assert.equal(canSeeEntity(state, "A", s), true);
+    assert.equal(mine.entities.some((e) => e.id === s.id), true, "it shows through the fog");
+    s.x = tileCenter(60 + SONAR_RANGE_TILES + 4 * T, state.tileSize);
+    assert.equal(hiddenSubmarine(state, "A", s), true, "out of the ring it is gone again");
+    assert.equal(snapshotFor(state, "A").entities.some((e) => e.id === s.id), false);
     const own = mine.entities.find((e) => e.id === d.id);
     assert.equal(own?.asw?.heli, "rearm");
     assert.equal(own?.asw?.mines, WATER_MINES);

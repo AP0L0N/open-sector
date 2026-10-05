@@ -23,6 +23,8 @@ const t = (n: number): number => n * TILE_SUBDIV;
 export const BUILD_RADIUS = t(8);
 /** The same gap for the Defences tab: guns, garrisons, and lines ring the base a little past its buildings. */
 export const DEFENCE_BUILD_RADIUS = t(10);
+/** The same gap for sandbag, wall, and gate lines: twice the base reach, so a line can wall off ground well out from the yard. */
+export const LINE_BUILD_RADIUS = 2 * BUILD_RADIUS;
 export const UNIT_CAP = 60;
 /** Max train jobs waiting or in progress on one producer. */
 export const TRAIN_QUEUE_CAP = 9;
@@ -741,6 +743,12 @@ export interface CatalogEntry {
   tracked?: boolean;
   /** Turn to face every move. No reverse hop, even when the dest is close behind. */
   noReverse?: boolean;
+  /**
+   * Either end serves as the bow. Whenever the waypoint lies in the rear half the
+   * hull runs stern first at full speed, at any range, so it swings the end
+   * nearer the course.
+   */
+  doubleEnded?: boolean;
   /** Independent turret traverse. Omit for casemate guns / tank destroyers / infantry. */
   turretTurnDegPerSec?: number;
   /**
@@ -2653,8 +2661,6 @@ export const TORPEDO_SPEED = t(3) * TILE_SIZE;
 export const TORPEDO = { damage: 140, penetration: 160, caliber: 533, spreadDeg: 1.5 } as const;
 /** A running torpedo's hit points. A few 20mm rounds or one rifle clip finish it. */
 export const TORPEDO_HP = 30;
-/** A submerged boat is seen by any enemy unit or building within this many tiles. */
-export const SUB_DETECT_TILES = t(4);
 /** After it fires, a submarine stays in sight this long. */
 export const SUB_REVEAL_SECONDS = 4;
 /** Sight of a submarine running below: the periscope only. Surfaced it has its catalog sight. */
@@ -4131,7 +4137,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     leavesWreck: true,
     wreckHp: 40,
     belt: SUB_TORPEDOES,
-    blurb: `Coastal submarine. Water only. It leaves the slip surfaced; Dive and Surface set its depth. Submerged, the enemy sees it only within ${SUB_DETECT_TILES / TILE_SUBDIV} tiles of one of their units or buildings, or for ${SUB_REVEAL_SECONDS} seconds after it fires. Below, it sees only ${SUB_SUBMERGED_SIGHT_TILES / TILE_SUBDIV} tiles through its periscope, and its torpedoes find only another submarine that is down too — it must surface to strike a boat, a swimmer, or a Marine Base. Ordered to attack or force-attack one, it closes in below and surfaces once in range. It holds ${SUB_DIVE_SECONDS} seconds of air below; when that runs out it surfaces and stays up until its air is back. Its bow tubes fire slow torpedoes that run in plain sight at the waterline — any gun can shoot one apart before it arrives. A torpedo dies where the water ends. Turn the bow to aim. It carries ${SUB_TORPEDOES} torpedoes; beside a Marine Base it loads one every ${SUB_REARM_SECONDS} seconds. Sunk, it leaves a hulk on the bottom, in plain sight, that blocks the water until it is shot apart.`,
+    blurb: `Coastal submarine. Water only. It leaves the slip surfaced; Dive and Surface set its depth. Submerged, the enemy sees it only while one of their Destroyers hears it on sonar, or for ${SUB_REVEAL_SECONDS} seconds after it fires. Below, it runs under boats on the surface; neither gives way. Below, it sees only ${SUB_SUBMERGED_SIGHT_TILES / TILE_SUBDIV} tiles through its periscope, and its torpedoes find only another submarine that is down too — it must surface to strike a boat, a swimmer, or a Marine Base. Ordered to attack or force-attack one, it closes in below and surfaces once in range. It holds ${SUB_DIVE_SECONDS} seconds of air below; when that runs out it surfaces and stays up until its air is back. Its bow tubes fire slow torpedoes that run in plain sight at the waterline — any gun can shoot one apart before it arrives. A torpedo dies where the water ends. Turn the bow to aim. It carries ${SUB_TORPEDOES} torpedoes; beside a Marine Base it loads one every ${SUB_REARM_SECONDS} seconds. Sunk, it leaves a hulk on the bottom, in plain sight, that blocks the water until it is shot apart.`,
   },
   /** A running torpedo: the body guns can shoot. It rides with its warhead round. */
   torpedo: {
@@ -4173,7 +4179,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     radius: 48,
     moveTilesPerSec: paced(1.4375),
     turnDegPerSec: 16,
-    noReverse: true,
+    doubleEnded: true,
     turnInPlace: true,
     turretTurnDegPerSec: BATTLESHIP_TURRET_TURN_DEG_PER_SEC,
     rangeTiles: BATTLESHIP_RANGE_TILES,
@@ -4190,7 +4196,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     naval: true,
     leavesWreck: true,
     wreckHp: 100,
-    blurb: `Fast battleship, after the Iowa class. Water only. Two triple 16-inch turrets on the foredeck; every barrel loads and fires on its own, so a turret lets its guns go one by one in no set order. The shell is the field gun's, fired flat and fast: it lands almost as soon as it leaves and reaches as far as Artillery, but it will not fire inside ${BATTLESHIP_MIN_RANGE_TILES / TILE_SUBDIV} tiles. The turrets cannot fire astern through the superstructure. Two radar-laid 20mm CIWS mounts, one on the superstructure and one on the stern, lay themselves apart from the main guns: incoming missiles first, then planes, infantry, and light vehicles. Order an attack or force-attack on an aircraft and the CIWS take it while the main guns hold; they reach farther for a plane than for anything on the water or ashore. Each barrel holds ${BATTLESHIP_BARREL_AMMO} shells and each CIWS a ${BATTLESHIP_CIWS_BELT}-round belt; they fill again slowly beside a Marine Base. It swings its bow onto the course before it makes way. A big searchlight on the bridge lights the water far out at night; Rotate light swings it, and it turns with the ship. Torpedoes and heavy shells are the danger. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
+    blurb: `Fast battleship, after the Iowa class. Water only. Two triple 16-inch turrets on the foredeck; every barrel loads and fires on its own, so a turret lets its guns go one by one in no set order. The shell is the field gun's, fired flat and fast: it lands almost as soon as it leaves and reaches as far as Artillery, but it will not fire inside ${BATTLESHIP_MIN_RANGE_TILES / TILE_SUBDIV} tiles. The turrets cannot fire astern through the superstructure. Two radar-laid 20mm CIWS mounts, one on the superstructure and one on the stern, lay themselves apart from the main guns: incoming missiles first, then planes, infantry, and light vehicles. Order an attack or force-attack on an aircraft and the CIWS take it while the main guns hold; they reach farther for a plane than for anything on the water or ashore. Each barrel holds ${BATTLESHIP_BARREL_AMMO} shells and each CIWS a ${BATTLESHIP_CIWS_BELT}-round belt; they fill again slowly beside a Marine Base. Either end serves as the bow: it swings whichever end is nearer the course onto it and makes way ahead or astern at the same speed. A big searchlight on the bridge lights the water far out at night; Rotate light swings it, and it turns with the ship. Torpedoes and heavy shells are the danger. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
   },
   /** Destroyer: twin 40mm, hull sonar, an ASW helicopter, and a mine rail. Water only. */
   destroyer: {
@@ -4225,7 +4231,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     sonar: true,
     leavesWreck: true,
     wreckHp: 40,
-    blurb: `Destroyer. Water only. A twin 40mm on the foredeck fires fast but reaches only ${DESTROYER_RANGE_TILES / TILE_SUBDIV} tiles. Its hull sonar hears every enemy submarine within ${SONAR_RANGE_TILES / TILE_SUBDIV} tiles, submerged or surfaced, and calls each new contact; the contact shows on the map, but a gun still lays only on a submarine that is seen. On a contact its ASW helicopter takes off by itself, flies at the heard position, and drops ${ASW_TORPEDOES} torpedoes in a fan toward it from up to ${ASW_DROP_TILES / TILE_SUBDIV} tiles out; each runs its full length, like the He 111's, and finds a submarine down or up. The helicopter then flies home, lands on the fantail, and takes ${ASW_REARM_SECONDS} seconds to load again. Rifles, machine guns, and anti-air reach it in the air; lost, the ship gets a new one after ${ASW_REPLACE_SECONDS} seconds. Lay Mine puts one of its ${WATER_MINES} contact mines over the stern: it lives after ${WATER_MINE_ARM_SECONDS} seconds and goes off under any hull, swimmer, or submarine that meets it, yours too. You and your allies see your mines; the enemy does not. Beside a Marine Base the rail fills again, one mine every ${WATER_MINE_REARM_SECONDS} seconds. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
+    blurb: `Destroyer. Water only. A twin 40mm on the foredeck fires fast but reaches only ${DESTROYER_RANGE_TILES / TILE_SUBDIV} tiles. Its hull sonar hears every enemy submarine within ${SONAR_RANGE_TILES / TILE_SUBDIV} tiles, submerged or surfaced, and calls each new contact. It is the only thing that finds a submarine below: a boat it hears is in your sight, fog or not, and any gun that reaches it can lay on it. On a contact its ASW helicopter takes off by itself, flies at the heard position, and drops ${ASW_TORPEDOES} torpedoes in a fan toward it from up to ${ASW_DROP_TILES / TILE_SUBDIV} tiles out; each runs its full length, like the He 111's, and finds a submarine down or up. The helicopter then flies home, lands on the fantail, and takes ${ASW_REARM_SECONDS} seconds to load again. Rifles, machine guns, and anti-air reach it in the air; lost, the ship gets a new one after ${ASW_REPLACE_SECONDS} seconds. Lay Mine puts one of its ${WATER_MINES} contact mines over the stern: it lives after ${WATER_MINE_ARM_SECONDS} seconds and goes off under any hull, swimmer, or submarine that meets it, yours too. You and your allies see your mines; the enemy does not. Beside a Marine Base the rail fills again, one mine every ${WATER_MINE_REARM_SECONDS} seconds. Sunk, it leaves a hulk on the bottom that blocks the water until it is shot apart.`,
   },
   /** Tank landing ship after the RCN's LST(2)s: a bow ramp and a tank deck for 40 slots. Water only. */
   lst: {
@@ -4602,6 +4608,7 @@ export function isDefenceStructure(type: string): boolean {
 
 /** How far from the base the yard may place this type. */
 export function buildRadiusOf(type: string): number {
+  if (isYardField(type)) return LINE_BUILD_RADIUS;
   return isDefenceStructure(type) ? DEFENCE_BUILD_RADIUS : BUILD_RADIUS;
 }
 
