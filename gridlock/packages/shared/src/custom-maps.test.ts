@@ -17,7 +17,9 @@ import {
   GROUND_SAND,
   GROUND_SWAMP,
   SPAWN_PAD_R,
+  TILE_CACTUS,
   TILE_EMPTY,
+  TILE_PALM,
   TILE_ROCK,
   TILE_TREE,
   TILE_WATER,
@@ -149,6 +151,21 @@ describe("custom map validation", () => {
     assert.equal(validateCustomMap(sheet({ id: "yard-64" })).ok, false);
     const n = SIDE * SIDE;
     assert.equal(validateCustomMap(sheet({ tiles: encodeRuns(new Array(n).fill(99)) })).ok, false);
+  });
+
+  it("keeps palms and cacti, and clears a palm off a start pad", () => {
+    const n = SIDE * SIDE;
+    const tiles = new Array(n).fill(TILE_EMPTY);
+    tiles[10] = TILE_PALM;
+    tiles[11] = TILE_CACTUS;
+    tiles[30 * SIDE + 30] = TILE_PALM;
+    const spec = sheet({ tiles: encodeRuns(tiles) });
+    const r = validateCustomMap(spec);
+    assert.equal(r.ok, true, r.ok ? "" : r.message);
+    const map = buildCustomMap(spec);
+    assert.equal(tileAt(map, 10, 0), TILE_PALM);
+    assert.equal(tileAt(map, 11, 0), TILE_CACTUS);
+    assert.equal(tileAt(map, 30, 30), TILE_EMPTY);
   });
 
   it("copies Scrap Yard into a sheet that saves", () => {

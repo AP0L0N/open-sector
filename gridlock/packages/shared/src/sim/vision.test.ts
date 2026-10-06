@@ -10,13 +10,15 @@ import {
 } from "../catalog.js";
 import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { destroyEntity, fillHullCover, makeEntity, tileCenter } from "./geo.js";
+import { destroyEntity, fillHullCover, fillSightOccupy, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
-import { sightTilesOf } from "./elevation.js";
+import { armLosFastPath, clearLosFastPath, fillLosFlags, hasFullLosFlagged, observerEyeForEntity, sightTilesOf } from "./elevation.js";
 import { fillSmokeMask, spawnSmokeCloud } from "./smoke.js";
 import { snapshotFor } from "./snapshot.js";
 import {
+  armSightBlocks,
   canSeeEntity,
+  clearSightBlocks,
   decodeVisionRuns,
   encodeVisionRuns,
   paintEntitySight,
@@ -761,5 +763,94 @@ describe("FOV islands", () => {
     const mask = litMask(w, h, [[2, 2]]);
     sealFovIslands(mask, w, h, 0);
     assert.equal(tileOnMask(mask, w, 2, 2), true);
+  });
+});
+
+describe("sight ray fast path", () => {
+  it("matches the walked ray on hills, trees, and a flat pad", () => {
+    const { state, a } = twoPlayerMatch();
+    const w = state.width;
+    const h = state.height;
+    const ts = state.tileSize;
+    const rifle = makeEntity(state, "rifleman", a, tileCenter(80, ts), tileCenter(80, ts));
+    for (let y = 100; y <= 130; y++) {
+      for (let x = 100; x <= 130; x++) {
+        const i = y * w + x;
+        state.heights[i] = 0;
+        state.terrain[i] = TILE_EMPTY;
+      }
+    }
+    state.terrain[112 * w + 118] = TILE_TREE;
+    state.heights[90 * w + 80] = 8;
+    if (state.hullMask.length !== w * h) state.hullMask = new Int32Array(w * h);
+    fillHullCover(state.entities.values(), ts, w, h, state.hullMask);
+    const occupy = fillSightOccupy(state);
+    const smoke = new Uint8Array(w * h);
+    const cover = { terrain: state.terrain, occupy, hull: state.hullMask, smoke };
+    const flags = new Uint8Array(w * h);
+    fillLosFlags(cover, flags);
+    const eye = observerEyeForEntity(rifle);
+    const origins = [
+      [rifle.tileX, rifle.tileY],
+      [120, 115],
+    ] as const;
+    const radius = 48;
+    const slow: boolean[] = [];
+    const sample = (into: boolean[]): void => {
+      for (const [ox, oy] of origins) {
+        for (let y = oy - radius; y <= oy + radius; y++) {
+          for (let x = ox - radius; x <= ox + radius; x++) {
+            if (x < 0 || y < 0 || x >= w || y >= h) continue;
+            into.push(hasFullLosFlagged(state.heights, flags, cover, w, ox, oy, x, y, eye));
+          }
+        }
+      }
+    };
+    clearLosFastPath();
+    sample(slow);
+    armLosFastPath(state.heights, flags, w, h);
+    const fast: boolean[] = [];
+    sample(fast);
+    clearLosFastPath();
+    assert.equal(fast.length, slow.length);
+    let blocked = 0;
+    for (let i = 0; i < slow.length; i++) {
+      if (!slow[i]) blocked++;
+      assert.equal(fast[i], slow[i], `tile sample ${i}`);
+    }
+    assert.ok(blocked > 0, "the yard sample includes blocked tiles");
+  });
+});
+
+describe("sight block cull", () => {
+  it("matches a full scan, including a rise past catalog sight", () => {
+    const { state, a } = twoPlayerMatch();
+    const w = state.width;
+    const h = state.height;
+    const ts = state.tileSize;
+    const rifle = makeEntity(state, "rifleman", a, tileCenter(80, ts), tileCenter(90, ts));
+    for (let x = 80; x <= 140; x++) {
+      const i = 90 * w + x;
+      state.heights[i] = 0;
+      state.terrain[i] = TILE_EMPTY;
+    }
+    state.heights[90 * w + 135] = 10;
+    if (state.hullMask.length !== w * h) state.hullMask = new Int32Array(w * h);
+    fillHullCover(state.entities.values(), ts, w, h, state.hullMask);
+    const occupy = fillSightOccupy(state);
+    const smoke = new Uint8Array(w * h);
+    const cover = { terrain: state.terrain, occupy, hull: state.hullMask, smoke, losFlags: new Uint8Array(w * h) };
+    fillLosFlags(cover, cover.losFlags);
+    const slow = new Uint8Array(w * h);
+    paintEntitySight(slow, w, h, ts, rifle, state.heights, cover);
+    armSightBlocks(state.heights, w, h);
+    const fast = new Uint8Array(w * h);
+    paintEntitySight(fast, w, h, ts, rifle, state.heights, cover);
+    clearSightBlocks();
+    let diff = 0;
+    for (let i = 0; i < slow.length; i++) if (slow[i] !== fast[i]) diff++;
+    assert.equal(diff, 0);
+    assert.equal(tileOnMask(slow, w, 135, 90), true);
+    assert.equal(tileOnMask(fast, w, 135, 90), true);
   });
 });

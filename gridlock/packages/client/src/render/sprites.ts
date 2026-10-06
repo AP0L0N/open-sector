@@ -6,6 +6,8 @@ import {
   TANK_FACE_DIRS,
   TILE_SIZE,
   isInfantryType,
+  TILE_CACTUS,
+  TILE_PALM,
   type CivilianType,
   type Crit,
   type EntityType,
@@ -113,6 +115,10 @@ import oak3Url from "../assets/terrain/tree-oak-3.png";
 import pine1Url from "../assets/terrain/tree-pine-1.png";
 import pine2Url from "../assets/terrain/tree-pine-2.png";
 import pine3Url from "../assets/terrain/tree-pine-3.png";
+import palm1Url from "../assets/terrain/palm-1.png";
+import palm2Url from "../assets/terrain/palm-2.png";
+import cactus1Url from "../assets/terrain/cactus-1.png";
+import cactus2Url from "../assets/terrain/cactus-2.png";
 import scrapHeap1Url from "../assets/terrain/scrap-heap-1.png";
 import scrapHeap2Url from "../assets/terrain/scrap-heap-2.png";
 import scrapHeap3Url from "../assets/terrain/scrap-heap-3.png";
@@ -2103,6 +2109,23 @@ export const PINE_FACES: PropSprite[] = [
   prop(pine2Url, 278, 756),
   prop(pine3Url, 186, 756),
 ];
+/** Trunk contact, measured on the keyed sheet. Two designs, hashed per tile. */
+export const PALM_FACES: PropSprite[] = [
+  prop(palm1Url, 257, 1148),
+  prop(palm2Url, 383, 1028),
+];
+export const CACTUS_FACES: PropSprite[] = [
+  prop(cactus1Url, 247, 1066),
+  // The lowest pixel is a dangling pad; the contact is the base of the cluster.
+  prop(cactus2Url, 562, 743),
+];
+
+/** Faces for a grove tile. Woods keep the oak/pine split; palms and cacti have two designs each. */
+export function groveFaces(tile: number, pine: boolean): PropSprite[] {
+  if (tile === TILE_PALM) return PALM_FACES;
+  if (tile === TILE_CACTUS) return CACTUS_FACES;
+  return pine ? PINE_FACES : OAK_FACES;
+}
 export const BUSH_FACES: PropSprite[] = [
   prop(bush1Url, 221, 278),
   prop(bush2Url, 235, 314),
@@ -2234,6 +2257,8 @@ export const SWAMP_TEX = loadSheet(swampUrl);
 export const PROP_IMAGES: HTMLImageElement[] = [
   ...OAK_FACES.map((f) => f.image),
   ...PINE_FACES.map((f) => f.image),
+  ...PALM_FACES.map((f) => f.image),
+  ...CACTUS_FACES.map((f) => f.image),
   ...BUSH_FACES.map((f) => f.image),
   ...TUFT_FACES.map((f) => f.image),
   ...SCRAP_HEAP_FACES.map((f) => f.image),

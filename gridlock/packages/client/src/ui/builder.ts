@@ -26,6 +26,8 @@ import {
   TILE_MOUNTAIN,
   TILE_ROAD,
   TILE_ROCK,
+  TILE_CACTUS,
+  TILE_PALM,
   TILE_SCRAP,
   TILE_SIZE,
   TILE_SUBDIV,
@@ -87,6 +89,8 @@ import swampUrl from "../assets/terrain/ground-swamp.png";
 import scrapUrl from "../assets/terrain/scrap-heap-1.png";
 import waterUrl from "../assets/terrain/water.png";
 import treeUrl from "../assets/terrain/tree-oak-1.png";
+import palmUrl from "../assets/terrain/palm-1.png";
+import cactusUrl from "../assets/terrain/cactus-1.png";
 import rockUrl from "../assets/terrain/ground-rock.png";
 import { drawBrick, layoutBridges } from "../render/bridge.js";
 import { el } from "./dom.js";
@@ -134,7 +138,6 @@ interface GroundKind {
 }
 
 const GROUND: readonly GroundKind[] = [
-  { tile: TILE_EMPTY, name: "Grass", img: grassUrl, hint: "Open ground. Paints over anything." },
   { tile: TILE_SCRAP, name: "Scrap", img: scrapUrl, hint: "Scrap field. A Smelter built on it pours scrap for the whole match. Paint at least 3×3." },
   {
     tile: TILE_DIAMOND_SCRAP,
@@ -142,8 +145,15 @@ const GROUND: readonly GroundKind[] = [
     img: scrapUrl,
     hint: `Scrap field with diamonds in it. A Smelter on it pours ${DIAMOND_SCRAP_MUL}× as much. Paint at least 3×3.`,
   },
+  { tile: TILE_TREE, name: "Trees", img: treeUrl, hint: "Woods. Block walking. Sight closes after one cell of them." },
+  { tile: TILE_PALM, name: "Palms", img: palmUrl, hint: "Palms. Block walking like woods. Sight reaches twice as far through them." },
+  { tile: TILE_CACTUS, name: "Cacti", img: cactusUrl, hint: "Cacti. Block walking like woods. Sight closes in half the depth." },
+];
+
+/** Tile brushes shown with the surfaces. These still change how the ground plays. */
+const SURFACE_GROUND: readonly GroundKind[] = [
+  { tile: TILE_EMPTY, name: "Grass", img: grassUrl, hint: "Open ground. Paints over anything." },
   { tile: TILE_WATER, name: "Water", img: waterUrl, hint: "Pond. Sinks to the valley floor." },
-  { tile: TILE_TREE, name: "Trees", img: treeUrl, hint: "Woods. Block sight and walking." },
   { tile: TILE_ROCK, name: "Rock", img: rockUrl, hint: "Rocky slope. Blocks walking, not sight." },
 ];
 
@@ -455,6 +465,12 @@ function tileColor(s: M.Sheet, x: number, y: number): [number, number, number] {
       break;
     case TILE_TREE:
       c = (x * 3 + y * 5) % 4 === 0 ? [20, 44, 24] : mix([30, 60, 32], [54, 92, 50], u);
+      break;
+    case TILE_PALM:
+      c = (x * 3 + y * 5) % 4 === 0 ? [36, 58, 22] : mix([48, 72, 28], [86, 118, 48], u);
+      break;
+    case TILE_CACTUS:
+      c = (x * 3 + y * 5) % 4 === 0 ? [18, 52, 32] : mix([28, 70, 42], [52, 108, 64], u);
       break;
     case TILE_FENCE:
       c = [128, 98, 58];
@@ -1680,6 +1696,8 @@ function onDown(e: PointerEvent): void {
     }
     say("");
     paintSelection();
+    // Which patrol is bright follows the selection, including a click that does not move the piece.
+    queueDraw();
     return;
   }
   if (lineTool()) {
@@ -1889,7 +1907,7 @@ function onWheel(e: WheelEvent): void {
 function groundName(t: number, cover = GROUND_GRASS): string {
   if (t === TILE_MOUNTAIN) return "mountain";
   if (t === TILE_EMPTY && cover !== GROUND_GRASS) return COVER.find((c) => c.cover === cover)?.name.toLowerCase() ?? "grass";
-  return (GROUND.find((g) => g.tile === t) ?? LAID_GROUND.find((g) => g.tile === t))?.name.toLowerCase() ?? "blocked";
+  return (GROUND.find((g) => g.tile === t) ?? SURFACE_GROUND.find((g) => g.tile === t) ?? LAID_GROUND.find((g) => g.tile === t))?.name.toLowerCase() ?? "blocked";
 }
 
 // --- preview & checks ----------------------------------------------------------
@@ -2427,6 +2445,10 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     const img = el("img", { attrs: { src: c.img, alt: "" } });
     coverPal.append(asset(c.name, "", tool.id === "cover" && tool.cover === c.cover, img, c.hint, () => setTool(ctx, { id: "cover", cover: c.cover })));
   }
+  for (const g of SURFACE_GROUND) {
+    const img = el("img", { attrs: { src: g.img, alt: "" } });
+    coverPal.append(asset(g.name, "", tool.id === "ground" && tool.tile === g.tile, img, g.hint, () => setTool(ctx, { id: "ground", tile: g.tile })));
+  }
 
   const brushRow = el("div", { class: "bld-row" });
   const brushIn = el("input", { attrs: { type: "range", min: "0", max: "24", step: "1" } });
@@ -2457,7 +2479,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       brushRow,
       el("p", {
         class: "bld-hint",
-        text: "The brush paints ground, lays a surface over open ground, shapes elevation, and stamps mountains. [ and ] change the size. A surface is looks only: it never changes how a tile plays. A mountain's rock opens where the ground beside it matches its height.",
+        text: "The brush paints ground, lays a surface over open ground, shapes elevation, and stamps mountains. [ and ] change the size. Meadow, dirt, sand, and stones are looks only. Grass, water, and rock change the ground. A mountain's rock opens where the ground beside it matches its height.",
       }),
     ),
   );

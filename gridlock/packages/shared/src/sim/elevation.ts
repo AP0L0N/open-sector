@@ -26,7 +26,7 @@ import {
   AIRCRAFT_FLYING_SIGHT_BONUS,
   TANK_GUN_CLIMB,
   TANK_GUN_ELEV_DEG,
-  TREE_LOS_THROUGH,
+  GROVE_SIGHT_BUDGET,
   catalog,
   coverHeightOf,
   entityIsScouting,
@@ -42,7 +42,7 @@ import {
   submergesOf,
   type EntityType,
 } from "../catalog.js";
-import { TILE_BLOCKED, TILE_MOUNTAIN, TILE_TREE } from "../maps.js";
+import { TILE_BLOCKED, TILE_MOUNTAIN, groveSightCost, isGroveTile } from "../maps.js";
 import { inBounds, tileIndex, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -493,7 +493,7 @@ export function hasFullLos(
   let err = dx - dy;
   let x = x0;
   let y = y0;
-  let trees = 0;
+  let sight = 0;
   const cap = dx + dy + 2;
   for (let n = 0; n < cap; n++) {
     if (x === x1 && y === y1) return true;
@@ -517,9 +517,10 @@ export function hasFullLos(
     }
     if (losTileBlocks(elev, terrain, occupy, hull, smoke, smokeAt, width, height, x, y, x0, y0, x1, y1, spanX, spanY, len2, h0, dh, prevH, ignore, destHull)) return false;
     if (!terrain || (x === x1 && y === y1)) continue;
-    if (terrain[y * width + x] === TILE_TREE) {
-      trees += 1;
-      if (trees > TREE_LOS_THROUGH) return false;
+    const cost = groveSightCost(terrain[y * width + x] ?? 0);
+    if (cost > 0) {
+      sight += cost;
+      if (sight > GROVE_SIGHT_BUDGET) return false;
     }
   }
   return true;
@@ -527,7 +528,7 @@ export function hasFullLos(
 
 /** `fillLosFlags` bit: something on the tile may stop a ray. */
 const LOS_FLAG_COVER = 1;
-/** `fillLosFlags` bit: a tree that spends the see-through budget. */
+/** `fillLosFlags` bit: a grove tile that spends the see-through budget. */
 const LOS_FLAG_TREE = 2;
 
 /** Per-tile blockers for `hasFullLosFlagged`. Rebuild whenever cover changes. */
@@ -535,7 +536,7 @@ export function fillLosFlags(cover: CoverField, out: Uint8Array): void {
   const { terrain, occupy, hull, smoke } = cover;
   for (let i = 0; i < out.length; i++) {
     const tile = terrain[i];
-    let f = tile === TILE_TREE ? LOS_FLAG_TREE : 0;
+    let f = isGroveTile(tile ?? 0) ? LOS_FLAG_TREE : 0;
     if (
       tile === TILE_BLOCKED ||
       (occupy[i] ?? 0) !== 0 ||
@@ -546,6 +547,163 @@ export function fillLosFlags(cover: CoverField, out: Uint8Array): void {
     }
     out[i] = f;
   }
+}
+
+/** Tiles per fast-path block. A clear block skips the ray; a marked one falls through to it. */
+const LOS_BLOCK = 16;
+
+let losBlockFlags = new Uint8Array(0);
+let losBlockMax = new Uint8Array(0);
+let losBlockCols = 0;
+let losBlockRows = 0;
+let losFast = false;
+
+/**
+ * Summarise cover and height so a ray across empty flat ground can return
+ * without walking. Only `hasFullLosFlagged` consults it, and only while armed.
+ */
+export function armLosFastPath(elev: Uint8Array, flags: Uint8Array, width: number, height: number): void {
+  const cols = Math.ceil(width / LOS_BLOCK);
+  const rows = Math.ceil(height / LOS_BLOCK);
+  const n = cols * rows;
+  if (losBlockFlags.length !== n) {
+    losBlockFlags = new Uint8Array(n);
+    losBlockMax = new Uint8Array(n);
+  }
+  for (let by = 0; by < rows; by++) {
+    const y0 = by * LOS_BLOCK;
+    const y1 = Math.min(height, y0 + LOS_BLOCK);
+    for (let bx = 0; bx < cols; bx++) {
+      const x0 = bx * LOS_BLOCK;
+      const x1 = Math.min(width, x0 + LOS_BLOCK);
+      let f = 0;
+      let maxH = 0;
+      for (let y = y0; y < y1; y++) {
+        const row = y * width;
+        for (let x = x0; x < x1; x++) {
+          f |= flags[row + x]!;
+          const h = elev[row + x]!;
+          if (h > maxH) maxH = h;
+        }
+      }
+      const i = by * cols + bx;
+      losBlockFlags[i] = f;
+      losBlockMax[i] = maxH;
+    }
+  }
+  losBlockCols = cols;
+  losBlockRows = rows;
+  losFast = true;
+}
+
+export function clearLosFastPath(): void {
+  losFast = false;
+}
+
+/**
+ * A rising tile blocks only when it pokes through the eye-to-ground line.
+ * Ground at or below both ends, plus the terrain slack, cannot.
+ */
+function losHeightLimit(h0: number, destH: number): number {
+  return (h0 < destH ? h0 : destH) + LOS_TERRAIN_SLACK;
+}
+
+/** Off-map blocks hold no tiles. A flagged or taller block can hide the ray. */
+function losBlockOpen(bx: number, by: number, limit: number): boolean {
+  if (bx < 0 || by < 0 || bx >= losBlockCols || by >= losBlockRows) return true;
+  const i = by * losBlockCols + bx;
+  return losBlockFlags[i] === 0 && losBlockMax[i]! <= limit;
+}
+
+/**
+ * Bresenham also tests the two side tiles of a diagonal step. Those stay in
+ * this block unless the center line runs along its edge. A neighbor is then
+ * required clear too, or the shortcut refuses and the ray is walked.
+ */
+function losHaloOpen(bx: number, by: number, xA: number, yA: number, dx: number, dy: number, limit: number): boolean {
+  const B = LOS_BLOCK;
+  const left = bx * B;
+  const right = left + B;
+  const top = by * B;
+  const bottom = top + B;
+  let t0 = 0;
+  let t1 = 1;
+  const clip = (p: number, q: number): boolean => {
+    if (p === 0) return q >= 0;
+    const r = q / p;
+    if (p < 0) {
+      if (r > t1) return false;
+      if (r > t0) t0 = r;
+    } else {
+      if (r < t0) return false;
+      if (r < t1) t1 = r;
+    }
+    return true;
+  };
+  if (!clip(-dx, xA - left) || !clip(dx, right - xA) || !clip(-dy, yA - top) || !clip(dy, bottom - yA)) return true;
+  if (t1 < t0) return true;
+  const y0s = yA + dy * t0;
+  const y1s = yA + dy * t1;
+  const x0s = xA + dx * t0;
+  const x1s = xA + dx * t1;
+  const loX = x0s < x1s ? x0s : x1s;
+  const hiX = x0s < x1s ? x1s : x0s;
+  const loY = y0s < y1s ? y0s : y1s;
+  const hiY = y0s < y1s ? y1s : y0s;
+  // Two tiles covers the side cell of a diagonal step, not the whole neighbor row.
+  const halo = 2;
+  if (loX < left + halo && !losBlockOpen(bx - 1, by, limit)) return false;
+  if (hiX > right - halo && !losBlockOpen(bx + 1, by, limit)) return false;
+  if (loY < top + halo && !losBlockOpen(bx, by - 1, limit)) return false;
+  if (hiY > bottom - halo && !losBlockOpen(bx, by + 1, limit)) return false;
+  return true;
+}
+
+/**
+ * True when every block the sight line crosses is empty and no taller than
+ * the lower end of the eye line. A tree beside the line does not count.
+ * Anything uncertain falls through to the walked ray.
+ */
+function losFastClear(x0: number, y0: number, x1: number, y1: number, h0: number, destH: number): boolean {
+  const limit = losHeightLimit(h0, destH);
+  const B = LOS_BLOCK;
+  const xA = x0 + 0.5;
+  const yA = y0 + 0.5;
+  const dx = x1 - x0;
+  const dy = y1 - y0;
+  let cx = (x0 / B) | 0;
+  let cy = (y0 / B) | 0;
+  const ex = (x1 / B) | 0;
+  const ey = (y1 / B) | 0;
+  if (!losBlockOpen(cx, cy, limit) || !losHaloOpen(cx, cy, xA, yA, dx, dy, limit)) return false;
+  if (cx === ex && cy === ey) return true;
+  const stepX = dx >= 0 ? 1 : -1;
+  const stepY = dy >= 0 ? 1 : -1;
+  const invX = dx === 0 ? 0 : 1 / dx;
+  const invY = dy === 0 ? 0 : 1 / dy;
+  let tMaxX = dx === 0 ? Infinity : ((cx + (stepX > 0 ? 1 : 0)) * B - xA) * invX;
+  let tMaxY = dy === 0 ? Infinity : ((cy + (stepY > 0 ? 1 : 0)) * B - yA) * invY;
+  const tDeltaX = dx === 0 ? Infinity : Math.abs(B * invX);
+  const tDeltaY = dy === 0 ? Infinity : Math.abs(B * invY);
+  const guard = losBlockCols + losBlockRows + 2;
+  for (let n = 0; n < guard && (cx !== ex || cy !== ey); n++) {
+    if (tMaxX < tMaxY) {
+      cx += stepX;
+      tMaxX += tDeltaX;
+    } else if (tMaxY < tMaxX) {
+      cy += stepY;
+      tMaxY += tDeltaY;
+    } else {
+      if (!losBlockOpen(cx + stepX, cy, limit) || !losBlockOpen(cx, cy + stepY, limit)) return false;
+      cx += stepX;
+      cy += stepY;
+      tMaxX += tDeltaX;
+      tMaxY += tDeltaY;
+    }
+    if (cx < 0 || cy < 0 || cx >= losBlockCols || cy >= losBlockRows) return false;
+    if (!losBlockOpen(cx, cy, limit) || !losHaloOpen(cx, cy, xA, yA, dx, dy, limit)) return false;
+  }
+  return cx === ex && cy === ey;
 }
 
 /**
@@ -574,6 +732,8 @@ export function hasFullLosFlagged(
   let prevH = elev[iStart]!;
   const h0 = prevH + Math.max(0, observerEye);
   const dh = elev[iEnd]! - h0;
+  // Ground at or below both ends of the line cannot poke through it, and an empty block has no cover.
+  if (losFast && losFastClear(x0, y0, x1, y1, h0, elev[iEnd]!)) return true;
   const destHull = hull ? (hull[iEnd] ?? 0) : 0;
   const spanX = x1 - x0;
   const spanY = y1 - y0;
@@ -585,7 +745,7 @@ export function hasFullLosFlagged(
   let err = dx - dy;
   let x = x0;
   let y = y0;
-  let trees = 0;
+  let sight = 0;
   const cap = dx + dy + 2;
   for (let n = 0; n < cap; n++) {
     if (x === x1 && y === y1) return true;
@@ -624,7 +784,10 @@ export function hasFullLosFlagged(
     if (h > prevH && losRises(x, y, h, x0, y0, spanX, spanY, len2, h0, dh)) return false;
     const f = flags[i]!;
     if (f & LOS_FLAG_COVER && losCoverStops(terrain, occupy, hull, smoke, i, ignore, destHull)) return false;
-    if (f & LOS_FLAG_TREE && ++trees > TREE_LOS_THROUGH) return false;
+    if (f & LOS_FLAG_TREE) {
+      sight += groveSightCost(terrain[i] ?? 0);
+      if (sight > GROVE_SIGHT_BUDGET) return false;
+    }
     prevH = h;
   }
   return true;

@@ -11,8 +11,8 @@ import {
   TILE_ROAD,
   TILE_MOUNTAIN,
   TILE_ROCK,
+  isGroveTile,
   isMountainCliff,
-  TILE_TREE,
   TILE_WATER,
   vertexElev,
   type MapDef,
@@ -166,7 +166,7 @@ export function materialBytes(
       a[o] = 255;
       continue;
     }
-    if (kind === TILE_TREE) b[o] = 255;
+    if (isGroveTile(kind)) b[o] = 255;
     const g = cover ? (cover[i] ?? GROUND_GRASS) : GROUND_GRASS;
     if (g === GROUND_DIRT) a[o] = 255;
     else if (g === GROUND_SAND) c[o] = 255;

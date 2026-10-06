@@ -28,6 +28,7 @@ import {
   type ShellType,
 } from "../catalog.js";
 import { ISO_ELEVATION, isoScale } from "../iso.js";
+import { groveConceal } from "../maps.js";
 import {
   allies,
   clearOrder,
@@ -893,7 +894,8 @@ function aloft(e: Entity): boolean {
 /**
  * Extra hit points for infantry among trees. Each tree in his tile and the
  * eight around it adds 20% of his catalog HP, and the fifth tree fills the bonus.
- * A man inside a building, or a Jump Jet in the air, is not among the trunks.
+ * A palm counts as half a tree and a cactus as two. A man inside a building,
+ * or a Jump Jet in the air, is not among the trunks.
  */
 export function treeCoverBonus(state: MatchState, e: Entity): number {
   if (e.hp <= 0 || e.garrisonedIn != null || !isInfantryType(e.type) || aloft(e)) return 0;
@@ -903,7 +905,10 @@ export function treeCoverBonus(state: MatchState, e: Entity): number {
   let trees = 0;
   for (let dy = -TREE_COVER_RADIUS; dy <= TREE_COVER_RADIUS; dy++) {
     for (let dx = -TREE_COVER_RADIUS; dx <= TREE_COVER_RADIUS; dx++) {
-      if (isTree(state, tx + dx, ty + dy)) trees++;
+      const x = tx + dx;
+      const y = ty + dy;
+      if (!inBounds(state, x, y)) continue;
+      trees += groveConceal(state.terrain[tileIndex(state, x, y)] ?? 0);
     }
   }
   if (trees <= 0) return 0;

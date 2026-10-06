@@ -390,6 +390,16 @@ export const TILE_DIAMOND_SCRAP = 8;
  */
 export const TILE_MOUNTAIN = 9;
 /**
+ * Palm stand. Walks, crushes, and falls like woods. A sight ray passes twice
+ * as many of them, and one palm conceals half as much as one tree.
+ */
+export const TILE_PALM = 10;
+/**
+ * Cactus stand. Walks, crushes, and falls like woods. Sight closes in half
+ * the depth of a wood, and one cactus conceals as much as two trees.
+ */
+export const TILE_CACTUS = 11;
+/**
  * Lowest cap the Mountain brush may stamp, on the same scale as the level slider.
  * 12 is one terrace above the plain (HEIGHT_BASE is 8).
  */
@@ -429,6 +439,31 @@ export function groundAt(map: Pick<MapDef, "ground">, i: number): number {
 /** Scrap of either grade, plain or diamond. */
 export function isScrapTile(t: number | undefined): boolean {
   return t === TILE_SCRAP || t === TILE_DIAMOND_SCRAP;
+}
+
+/** Woods, palms, or cacti: the same obstacle, with different sight and concealment. */
+export function isGroveTile(tile: number): boolean {
+  return tile === TILE_TREE || tile === TILE_PALM || tile === TILE_CACTUS;
+}
+
+/**
+ * How much of the grove sight budget one tile spends. A tree spends 2, so
+ * TREE_LOS_THROUGH trees still pass and the next one closes. A palm spends 1
+ * and a cactus spends 4.
+ */
+export function groveSightCost(tile: number): number {
+  if (tile === TILE_PALM) return 1;
+  if (tile === TILE_CACTUS) return 4;
+  if (tile === TILE_TREE) return 2;
+  return 0;
+}
+
+/** Concealment beside infantry. A tree counts as 1, a palm as half, a cactus as two. */
+export function groveConceal(tile: number): number {
+  if (tile === TILE_PALM) return 0.5;
+  if (tile === TILE_CACTUS) return 2;
+  if (tile === TILE_TREE) return 1;
+  return 0;
 }
 
 function idx(width: number, x: number, y: number): number {
@@ -2300,7 +2335,15 @@ export function scatterClutter(
 /** Radius of the clear, level pad the Map Builder keeps around every start, in fine tiles. */
 export const SPAWN_PAD_R = 4 * TILE_SUBDIV;
 
-const WALK_BLOCKERS: ReadonlySet<number> = new Set([TILE_BLOCKED, TILE_WATER, TILE_TREE, TILE_FENCE, TILE_ROCK]);
+const WALK_BLOCKERS: ReadonlySet<number> = new Set([
+  TILE_BLOCKED,
+  TILE_WATER,
+  TILE_TREE,
+  TILE_PALM,
+  TILE_CACTUS,
+  TILE_FENCE,
+  TILE_ROCK,
+]);
 
 const CLIFF_NEIGHBORS: readonly [number, number][] = [
   [1, 0],

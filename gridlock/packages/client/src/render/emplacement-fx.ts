@@ -1,21 +1,22 @@
 /**
  * How a crewed gun's shot looks on the field. Client-only: none of it changes who wins.
- * The Paks and the Flak throw the field gun's blast cloud back round the pit and puff smoke
- * at the muzzle; the 88mm does all of it far bigger, and its shell strikes bigger too.
+ * The Paks throw the field gun's blast cloud back round the pit and puff smoke at the muzzle.
+ * The Flak keeps that back blast and the muzzle spark, and skips the front smoke.
+ * The 88mm does all of it far bigger, and its shell strikes bigger too.
  */
 import type { EntityType } from "@gridlock/shared";
 
 export interface EmplacementShotLook {
   /** Radius handed to spawnFieldGunSmoke, world px: the blast cloud thrown back round the pit. */
   smoke: number;
-  /** spawnMuzzleSmoke scale at the muzzle. */
+  /** spawnMuzzleSmoke scale at the muzzle. Zero skips that front puff; the spark still fires. */
   muzzle: number;
 }
 
 export const EMPLACEMENT_SHOT_FX: Partial<Record<EntityType, EmplacementShotLook>> = {
   pak36: { smoke: 7, muzzle: 1.1 },
   pak43: { smoke: 17, muzzle: 2.4 },
-  flak: { smoke: 8, muzzle: 1.2 },
+  flak: { smoke: 8, muzzle: 0 },
 };
 
 /**

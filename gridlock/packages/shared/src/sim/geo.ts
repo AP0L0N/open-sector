@@ -50,8 +50,8 @@ import {
   TILE_FENCE,
   TILE_ROCK,
   TILE_SCRAP,
-  TILE_TREE,
   TILE_WATER,
+  isGroveTile,
   isMountainCliff,
   type MapDef,
 } from "../maps.js";
@@ -153,10 +153,10 @@ export function underDeck(state: MatchState, e: { type: EntityType; x: number; y
 
 export function isTree(state: MatchState, x: number, y: number): boolean {
   if (!inBounds(state, x, y)) return false;
-  return state.terrain[tileIndex(state, x, y)] === TILE_TREE;
+  return isGroveTile(state.terrain[tileIndex(state, x, y)] ?? 0);
 }
 
-/** Isolated tree: no 8-neighbor trees. Vehicles may crush these. */
+/** Isolated grove tile: no woods, palm, or cactus on the eight neighbours. Vehicles may crush these. */
 export function isSingleTree(state: MatchState, x: number, y: number): boolean {
   if (!isTree(state, x, y)) return false;
   for (let dy = -1; dy <= 1; dy++) {
