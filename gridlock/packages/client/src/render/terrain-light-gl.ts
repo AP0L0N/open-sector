@@ -86,7 +86,7 @@ void main() {
 
   float t = vTone;
   if (t < 1.0) col = mix(col, rgb(10.0, 12.0, 8.0), min(0.55, (1.0 - t) * 0.9));
-  else col = mix(col, rgb(250.0, 232.0, 170.0), min(0.28, (t - 1.0) * 0.45));
+  else col = mix(col, rgb(250.0, 232.0, 170.0), min(0.4, (t - 1.0) * 0.75));
 
   float land = clamp(1.0 - water, 0.0, 1.0);
   o = vec4(col * land, land);

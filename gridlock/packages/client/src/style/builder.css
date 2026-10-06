@@ -40,6 +40,14 @@
 
 .bld-head .spacer { flex: 1 1 0; }
 
+.bld-head .bld-auto {
+  margin: 0;
+  padding-bottom: 9px;
+  font-size: 0.85rem;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
 .bld-tools,
 .bld-side {
   overflow: auto;
