@@ -8,11 +8,12 @@ import {
   DIAMOND_SCRAP_MUL,
   DIAMOND_SCRAP_TILE_YIELD,
   SCRAP_CAP_PER_SMELTER,
+  SMELTER_CLEARANCE,
   SMELTER_SCRAP_COVER,
   SMELTER_SCRAP_PER_SEC,
   catalog,
 } from "../catalog.js";
-import { scrapAt, scrapTilesUnder, tilesBlocked } from "./geo.js";
+import { footprintGap, scrapAt, scrapTilesUnder, tilesBlocked } from "./geo.js";
 import { powerOf, productionSpeed } from "./power.js";
 import type { AiDifficulty } from "../protocol.js";
 import type { Entity, MatchState, SimPlayer } from "./types.js";
@@ -32,10 +33,25 @@ export function smelterOnScrap(state: MatchState, tx: number, ty: number): boole
   return scrapTilesUnder(state, tx, ty, def.tileW, def.tileH) >= smelterScrapNeeded();
 }
 
-/** Clear ground with enough scrap under it: where a Smelter may be placed. */
+/** A Smelter footprint at (tx, ty) would come within SMELTER_CLEARANCE tiles of a standing one, anyone's. */
+export function smelterCrowded(
+  entities: Iterable<Pick<Entity, "kind" | "type" | "hp" | "tileX" | "tileY" | "tileW" | "tileH"> & { wreck?: boolean }>,
+  tx: number,
+  ty: number,
+): boolean {
+  const def = catalog("smelter");
+  for (const e of entities) {
+    if (e.kind !== "building" || e.type !== "smelter" || e.hp <= 0 || e.wreck) continue;
+    if (footprintGap(tx, ty, def.tileW, def.tileH, e.tileX, e.tileY, e.tileW, e.tileH) <= SMELTER_CLEARANCE) return true;
+  }
+  return false;
+}
+
+/** Clear ground with enough scrap under it, clear of other Smelters: where a Smelter may be placed. */
 export function smelterSiteOk(state: MatchState, tx: number, ty: number): boolean {
   const def = catalog("smelter");
   if (tilesBlocked(state, tx, ty, def.tileW, def.tileH)) return false;
+  if (smelterCrowded(state.entities.values(), tx, ty)) return false;
   return smelterOnScrap(state, tx, ty);
 }
 
