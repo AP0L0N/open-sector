@@ -1783,7 +1783,8 @@ function building(
 const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   core: building(coreUrl, 383, 192.5, 390, 140, 50),
   dynamo: building(dynamoUrl, 384, 194, 291, 98, 30),
-  armory: building(armoryUrl, 384, 194.5, 310, 120, 48),
+  // Assembly hall, gantry, stack. Metrics from tools/sprites/render_armory.py (armory.json).
+  armory: building(armoryUrl, 576, 306, 414, 360, 105),
   muster: building(musterUrl, 385, 194.5, 333, 278, 52),
   smelter: building(smelterUrl, 384, 194, 393, 138, 90),
   // Hangar, tower, dump, tents. Metrics from tools/sprites/render_airfield.py (airfield.json).
