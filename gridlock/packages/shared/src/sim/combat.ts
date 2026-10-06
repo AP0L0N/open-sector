@@ -3196,6 +3196,11 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   const near: { o: Entity; d: number; i: number }[] = [];
   for (const o of state.entities.values()) {
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn || isCrashing(o)) continue;
+    // Reach first: most of the field is too far to be worth the checks below.
+    const dx = o.x - e.x;
+    const dy = o.y - e.y;
+    const d = dx * dx + dy * dy;
+    if (d > (radar ? Math.max(bestAirD, bestD) : bestD)) continue;
     // Only a force-attack aims at a bridge.
     if (isBridge(o.type)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
@@ -3206,7 +3211,6 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (e.ship && shipAirTarget(o)) continue;
     if (radar) {
       if (o.kind !== "unit") continue;
-      const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
       const air = isAirborne(o);
       if (d > (air ? bestAirD : bestD)) continue;
       if (!gunSees(state, e, o)) continue;
@@ -3229,9 +3233,6 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
       // An empty house, trench, Bunker, or Watch Tower is not worth a round.
       continue;
     }
-    const dx = o.x - e.x;
-    const dy = o.y - e.y;
-    const d = dx * dx + dy * dy;
     if (d > bestD) continue;
     if (launcherOnlyOf(e.type) && !inLauncherBand(state, e, o.x, o.y)) continue;
     if (e.type === "artillery" && d < (ARTILLERY_MIN_RANGE_TILES * state.tileSize) ** 2) continue;

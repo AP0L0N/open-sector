@@ -185,7 +185,7 @@ export function tickMovement(state: MatchState, dt: number): void {
             e.waypoints = [];
             continue;
           }
-          if (e.waypoints.length === 0 || state.tick % 5 === 0) pathToCapture(state, e, t);
+          if (e.waypoints.length === 0 || (state.tick + e.id) % 5 === 0) pathToCapture(state, e, t);
         } else {
           const range = weaponRangeWorld(state, e);
           const dist = Math.hypot(t.x - e.x, t.y - e.y);
@@ -193,7 +193,7 @@ export function tickMovement(state: MatchState, dt: number): void {
             e.waypoints = [];
             continue;
           }
-          if (e.waypoints.length === 0 || state.tick % 5 === 0) {
+          if (e.waypoints.length === 0 || (state.tick + e.id) % 5 === 0) {
             setPath(state, e, t.x, t.y);
           }
         }
@@ -215,7 +215,7 @@ export function tickMovement(state: MatchState, dt: number): void {
         e.tileY = worldToTile(e.y, state.tileSize);
         continue;
       }
-      if (e.waypoints.length === 0 || state.tick % 5 === 0) {
+      if (e.waypoints.length === 0 || (state.tick + e.id) % 5 === 0) {
         setPath(state, e, e.order.x, e.order.y);
       }
     }
@@ -358,7 +358,7 @@ function steerPatrol(state: MatchState, e: Entity): boolean {
       // A unit told to hold its ground keeps walking the route and lets the target come to it.
       if (!e.holdPosition && !(unitInWater(state, e) && dist <= range)) {
         const goal = e.waypoints[e.waypoints.length - 1];
-        if (!goal || Math.hypot(goal.x - t.x, goal.y - t.y) > state.tileSize || state.tick % 5 === 0) {
+        if (!goal || Math.hypot(goal.x - t.x, goal.y - t.y) > state.tileSize || (state.tick + e.id) % 5 === 0) {
           setPath(state, e, t.x, t.y);
         }
         return false;
@@ -590,7 +590,7 @@ function tickEscort(state: MatchState, e: Entity): boolean {
     e.waypoints = [];
     return true;
   }
-  if (e.waypoints.length === 0 || state.tick % 5 === 0) {
+  if (e.waypoints.length === 0 || (state.tick + e.id) % 5 === 0) {
     const dest = escortAnchor(e, t);
     setPath(state, e, dest.x, dest.y);
   }

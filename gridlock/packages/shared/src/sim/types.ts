@@ -338,6 +338,10 @@ export interface Entity {
   radius: number;
   order: Order | null;
   waypoints: Vec[];
+  /** The goal tile the last path search could not reach, and when. Cleared by the next path found. */
+  pathFail?: { tx: number; ty: number; tick: number };
+  /** What a charging Walker is running at. Looked over again every few ticks. */
+  chargeTargetId?: number;
   cooldown: number;
   /** Rounds left in the current infantry magazine. 0 on vehicles. */
   clip: number;

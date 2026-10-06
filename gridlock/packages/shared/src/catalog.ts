@@ -469,6 +469,12 @@ export const NEBELWERFER_ROCKET: RocketRackDef = {
  * of this many tiles or fewer. Walks FOV borders only. Set to 0 to disable.
  */
 export const FOV_ISLAND_LIMIT = 12;
+/**
+ * A unit whose path search came up empty does not search for the same goal
+ * tile again for this many ticks. A failed search floods the whole reachable
+ * map, and a chase with no path asks every tick.
+ */
+export const PATH_RETRY_TICKS = 30;
 /** Tree tiles a sight ray may pass before the grove closes. One authoring cell. */
 export const TREE_LOS_THROUGH = TILE_SUBDIV;
 /**
