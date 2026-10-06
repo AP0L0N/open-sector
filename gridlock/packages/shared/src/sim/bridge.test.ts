@@ -121,6 +121,34 @@ describe("bridge plan", () => {
     for (let i = 1; i < bent.length; i++) assert.equal(bricksConflict(bent[i - 1]!, 44, bent[i]!, 44), false);
   });
 
+  it("the two bricks of a corner share the mitre, not a clash: every brick of a bent line goes down", () => {
+    const g = ground(() => false);
+    for (const type of ["bridge", "bigbridge"] as const) {
+      const len = bridgeBrickLength(type);
+      for (const deg of [15, 30, 45, 60, 75, 90]) {
+        const a = (deg * Math.PI) / 180;
+        const line = planBridgeLine(g, type, [
+          { x: 400, y: 400 },
+          { x: 400 + len * 4, y: 400 },
+          { x: 400 + len * 4 + Math.cos(a) * len * 4, y: 400 + Math.sin(a) * len * 4 },
+        ]);
+        assert.ok(line.length >= 7, `${type} ${deg}°: ${line.length} bricks`);
+        assert.ok(line.every((b) => b.problem === null), `${type} ${deg}°: ${line.map((b) => b.problem ?? "ok").join(",")}`);
+      }
+    }
+    // A brick lying across another is still in the way, at any angle.
+    const w = bridgeWidth("bigbridge");
+    const span: BridgeSpan = { x: 400, y: 400, facing: 0, length: 32 };
+    for (const deg of [20, 45, 90]) {
+      const across: BridgeSpan = { x: 400, y: 400, facing: (deg * Math.PI) / 180, length: 32 };
+      assert.equal(bricksConflict(span, w, across, w), true, `${deg}° crossing`);
+    }
+    // So is one that runs alongside, touching, and so is one over the same ground.
+    assert.equal(bricksConflict(span, w, { ...span, y: 400 + w - 6 }, w), true);
+    assert.equal(bricksConflict(span, w, { ...span, x: 410 }, w), true);
+    assert.equal(bricksConflict(span, w, { ...span, y: 400 + w }, w), false, "side by side, just touching");
+  });
+
   it("any width of water: a brick stands on water or open land, never on ground with no footing", () => {
     const g = ground((x) => x >= 20 && x < 300);
     const line = planBridgeLine(g, "bridge", [

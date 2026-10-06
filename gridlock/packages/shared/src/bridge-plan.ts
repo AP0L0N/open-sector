@@ -107,7 +107,14 @@ export function bridgeTiles(
   return out;
 }
 
-/** True when two bricks overlap by more than a touch. Bricks of one line meet end to end and at mitred corners. */
+/**
+ * True when two bricks overlap by more than a touch. Bricks of one line meet end to
+ * end, and at a corner they meet in a mitre: the next leg starts `(w / 2) · tan(turn / 2)`
+ * into the turn (`bridgePath`), so the two corner bricks share a wedge about
+ * `(w / 2) · sin(turn)` deep. That wedge is the joint, not a clash (the client draws
+ * both bricks bent onto one curve there), so two bricks whose ends meet that closely,
+ * at that angle, never conflict. Anything else that overlaps by more than `slack` does.
+ */
 export function bricksConflict(a: BridgeSpan, aWidth: number, b: BridgeSpan, bWidth: number, slack = BRICK_SLACK): boolean {
   const pa = bridgeAxes(a.facing);
   const pb = bridgeAxes(b.facing);
@@ -115,6 +122,7 @@ export function bricksConflict(a: BridgeSpan, aWidth: number, b: BridgeSpan, bWi
     Math.abs(ax.ux * nx + ax.uy * ny) * (s.length / 2) + Math.abs(ax.vx * nx + ax.vy * ny) * (w / 2);
   const dx = b.x - a.x;
   const dy = b.y - a.y;
+  let depth = Infinity;
   for (const [nx, ny] of [
     [pa.ux, pa.uy],
     [pa.vx, pa.vy],
@@ -123,8 +131,43 @@ export function bricksConflict(a: BridgeSpan, aWidth: number, b: BridgeSpan, bWi
   ] as const) {
     const overlap = half(a, aWidth, pa, nx, ny) + half(b, bWidth, pb, nx, ny) - Math.abs(dx * nx + dy * ny);
     if (overlap <= slack) return false;
+    depth = Math.min(depth, overlap);
   }
-  return true;
+  return !mitreJoint(a, aWidth, b, bWidth, depth, slack);
+}
+
+/**
+ * Two bricks meet in a corner's mitre: their decks cross at a turn up to a right
+ * angle, an end of one lies within the mitre's offset of an end of the other, and
+ * they overlap no deeper than that mitre's wedge. Parallel decks have no wedge, so
+ * a brick laid over another, or alongside it, is never a joint; nor is one lying
+ * across another, which cuts far deeper than any wedge.
+ */
+function mitreJoint(a: BridgeSpan, aWidth: number, b: BridgeSpan, bWidth: number, depth: number, slack: number): boolean {
+  const pa = bridgeAxes(a.facing);
+  const pb = bridgeAxes(b.facing);
+  // The decks' angle, as lines: a leg laid the other way round is the same corner.
+  const turn = Math.acos(Math.min(1, Math.abs(pa.ux * pb.ux + pa.uy * pb.uy)));
+  const w = Math.max(aWidth, bWidth);
+  const off = (w / 2) * Math.tan(turn / 2);
+  // How far the ideal mitre's wedge cuts in, measured as the overlap test measures it.
+  const wedge = Math.max(0, Math.min((w / 2) * Math.sin(turn) + off * (1 - Math.cos(turn)), w * Math.cos(turn)));
+  if (depth > wedge + slack) return false;
+  const reach = off * 2 * Math.sin(turn / 2) + slack * 2;
+  const ea = bridgeEnds(a);
+  const eb = bridgeEnds(b);
+  for (const [x0, y0] of [
+    [ea.ax, ea.ay],
+    [ea.bx, ea.by],
+  ]) {
+    for (const [x1, y1] of [
+      [eb.ax, eb.ay],
+      [eb.bx, eb.by],
+    ]) {
+      if (Math.hypot(x0! - x1!, y0! - y1!) <= reach) return true;
+    }
+  }
+  return false;
 }
 
 /** Deflection between two unit directions: 0 straight on, π folded back. */

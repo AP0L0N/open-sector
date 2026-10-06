@@ -327,6 +327,21 @@ describe("builder select and defences", () => {
     assert.ok(paintDisk(s, 50, 70, 2, TILE_WATER) > 0, "water paints under a bridge brick");
   });
 
+  it("a stone bridge turns a corner without dropping the brick at the bend, and the saved map takes it", () => {
+    const s = fresh();
+    s.spawns.push({ id: 1, x: 30, y: 30 }, { id: 2, x: 160, y: 160 });
+    // East, then a corner drawn about 40° down-right: it snaps to 45°, the sharpest common bend.
+    const pts = [tileWorld(60, 60), tileWorld(84, 60), tileWorld(102, 76)];
+    const bricks = bridgeLine("bigbridge", pts, 0, deckAt(s, pts[0]!));
+    const turns = new Set(bricks.map((b) => b.turn));
+    assert.equal(turns.size, 2, `two legs, got turns ${[...turns].join(",")}`);
+    assert.deepEqual(laySections(s, bricks), { laid: bricks.length, refused: 0 }, "the corner brick is laid too");
+    assert.equal(sheetProblem(s), null);
+    const back = validateCustomMap(sheetToSpec(s));
+    assert.equal(back.ok, true, back.ok ? "" : back.message);
+    if (back.ok) assert.equal(back.spec.features.length, bricks.length);
+  });
+
   it("keeps bridge bricks off woods; a lone click is one brick on the wheel's heading", () => {
     const s = fresh();
     for (let y = 60; y < 70; y++) for (let x = 60; x < 70; x++) s.tiles[y * s.width + x] = TILE_TREE;

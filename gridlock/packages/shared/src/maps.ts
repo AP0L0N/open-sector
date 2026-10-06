@@ -1,3 +1,4 @@
+import { bricksConflict, type BridgeSpan } from "./bridge-plan.js";
 import { turnedBox } from "./building-rect.js";
 import {
   BUILDING_FACINGS,
@@ -301,8 +302,17 @@ export function featureContains(f: MapFeature, px: number, py: number, pad = 0):
   return Math.abs(dx * r.ux + dy * r.uy) <= r.halfU + pad && Math.abs(dx * r.vx + dy * r.vy) <= r.halfV + pad;
 }
 
+/** A bridge brick's deck as the sim's plan reads it, world px. */
+function brickSpanOf(f: MapFeature): BridgeSpan {
+  return { x: (f.x + 0.5) * TILE_SIZE, y: (f.y + 0.5) * TILE_SIZE, facing: featureAngle(f), length: bridgeBrickLength(f.type as BridgeType) };
+}
+
 /** True when two features' ground overlaps. Sections may meet in a corner without counting. */
 export function featureRectsOverlap(a: MapFeature, b: MapFeature): boolean {
+  // Two bridge bricks go by the sim's own rule, so the editor lays what an engineer would.
+  if (isMapBridge(a.type) && isMapBridge(b.type)) {
+    return bricksConflict(brickSpanOf(a), bridgeWidth(a.type), brickSpanOf(b), bridgeWidth(b.type));
+  }
   const slack = isMapLine(a.type) && isMapLine(b.type) ? SECTION_SLACK : 0;
   const p = featureRect(a);
   const q = featureRect(b);
