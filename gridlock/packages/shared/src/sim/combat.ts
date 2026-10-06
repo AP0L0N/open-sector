@@ -211,6 +211,7 @@ import {
   rocketScatterRadius,
 } from "./mortar.js";
 import { blastWrecks } from "./wreck.js";
+import { blastClutter, hitClutter } from "./clutter.js";
 import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
 import { isSupplyBullet, noteSupplyHit, stowedInTransport, supplyRiderFights, syncSupplyRiders } from "./supply.js";
@@ -2212,6 +2213,8 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
   const rack = p.heavy ? PENETRATOR_RACK : rocketRackOf(p.launcher ?? "titan");
   const lob = p.shipBarrel != null ? BATTLESHIP_SHELL : p.big ? ARTILLERY_SHELL : MORTAR_LOB;
   const radius = (rocket ? rack.splashTiles : p.big ? lob.splashTiles : MORTAR_SPLASH_TILES) * state.tileSize;
+  // A barrage laid on a bridge brick counts wherever its blast reaches the deck.
+  if (!inAir) strikeBridge(state, p, p.x, p.y, radius);
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null) continue;
     // A ground burst never reaches a plane; an air burst only catches planes.
@@ -2291,7 +2294,10 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
     }
     if (e.type === "artillery") blastOnGun(state, e, res.damage);
   }
-  if (!inAir) blastWrecks(state, p.x, p.y, radius, p.damage);
+  if (!inAir) {
+    blastWrecks(state, p.x, p.y, radius, p.damage);
+    blastClutter(state, p.x, p.y, radius);
+  }
   pushImpact(state, p, "miss", p.x, p.y);
 }
 
@@ -3067,7 +3073,11 @@ function pushImpact(
     torpedo: p.torpedo || undefined,
   };
   // An air burst leaves no crater and no splash under the plane. Nor does a round lost in the sky.
-  if (!p.airBurst && !p.aloft) noteImpactSurface(state, impact, p, kind);
+  if (!p.airBurst && !p.aloft) {
+    noteImpactSurface(state, impact, p, kind);
+    // A round that came down in the dirt hits whatever junk stands there.
+    if (kind === "miss" || kind === "puff") hitClutter(state, x, y, p.caliber, p.damage);
+  }
   if (heBursts(p)) {
     impact.heBurst = true;
     heGroundFire(state, x, y, p.ownerId);
@@ -3143,6 +3153,7 @@ function cannonSplash(state: MatchState, p: Projectile): void {
     const dealt = coverStrike(e, dmg, state.tick, true);
     if (e.hp > 0) rollCrits(e, "none", "hit", dealt, () => nextRand(state));
   }
+  blastClutter(state, p.x, p.y, radius);
 }
 
 /** A small-arms round. The scoped rifle is the sniper's shot; every other bullet is ordinary. */

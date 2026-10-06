@@ -415,6 +415,8 @@ export interface Entity {
   ship?: ShipState;
   /** Submarine: depth and air. Missing means surfaced with full air. */
   dive?: DiveState;
+  /** CPU or neutral submarine: sim tick it may come up again after its last enemy contact. */
+  aiDiveUntil?: number;
   /** Submarine: seconds banked toward the next torpedo loaded beside a Marine Base. */
   torpedoRearm?: number;
   /**
@@ -497,8 +499,10 @@ export interface Entity {
   work: number;
   /** Shift-queued orders, run one after another once the current order ends. Cleared by any unqueued order. */
   orderQueue?: QueuedOrder[];
-  /** Engineer wall pieces still to lay after the current build order. Cleared by any new order. */
+  /** Engineer wall pieces, or bridge bricks, still to lay after the current build order. Cleared by any new order. */
   fieldQueue?: { x: number; y: number; facing: number }[];
+  /** Ticks an engineer laying a bridge has had no way nearer his brick. Not on the wire. */
+  bridgeStuck?: number;
   /** Wounded infantry this medic is walking to or bandaging. */
   tendId?: number;
   /** Seconds of contact toward clearing one crit. */
@@ -877,9 +881,13 @@ export interface MatchState {
   hullMask: Int32Array;
   /** Tick whose per-player entity-visibility cache is in `seeByPlayer`. */
   seeTick: number;
+  /** Sim tick for the next pass over the map's neutral crews: submarine depth and drone sorties. */
+  neutralNextMicroTick?: number;
   seeByPlayer: Map<string, Map<number, boolean>>;
   /** Tree tiles removed this match. `burn` is a flamethrower force-attack. */
   clearedTrees: { x: number; y: number; burn?: true }[];
+  /** Rounds left in each piece of the map's `clutter`, by its index there. 0 = smashed. */
+  clutterHp: number[];
   /** Infantry who died in the open. Not entities: passable and indestructible. */
   bodies: CorpseView[];
   /** Heavy-shell craters. Not entities. */

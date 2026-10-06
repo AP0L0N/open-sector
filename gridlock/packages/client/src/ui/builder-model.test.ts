@@ -18,6 +18,7 @@ import {
   houseAt,
   houseProblem,
   laySections,
+  bridgeLine,
   moveFeature,
   QUARTER_TURN,
   sectionLine,
@@ -48,11 +49,16 @@ import {
   nextSpawnId,
   paintDisk,
   placeLamp,
+  clutterIndexAt,
+  placeClutter,
+  scatterSheetClutter,
   restoreSheet,
   setMaxPlayers,
   settle,
   sheetFromSpec,
+  playtestSpec,
   sheetProblem,
+  sheetToMap,
   sheetToSpec,
   spawnProblem,
   type Sheet,
@@ -268,6 +274,34 @@ describe("builder select and defences", () => {
     assert.deepEqual(laySections(s, pieces), { laid: 0, refused: pieces.length });
   });
 
+  it("lays a bridge brick by brick like a wall, across any width of water, and saves it", () => {
+    const s = fresh();
+    s.spawns.push({ id: 1, x: 30, y: 30 }, { id: 2, x: 160, y: 160 });
+    // A river 60 tiles wide.
+    for (let y = 40; y < 100; y++) for (let x = 60; x < 120; x++) s.tiles[y * s.width + x] = TILE_WATER;
+    const pts = [tileWorld(55, 70), tileWorld(125, 71)];
+    const bricks = bridgeLine("bigbridge", pts, 0);
+    assert.ok(bricks.length >= 17, `${bricks.length} bricks`);
+    assert.ok(bricks.every((b) => b.turn === 0), "the leg snaps to due east");
+    assert.deepEqual(laySections(s, bricks), { laid: bricks.length, refused: 0 }, "end to end, no brick blocks the next");
+    assert.equal(defenceCount(s), 0, "bridges are not defences");
+    assert.equal(sheetProblem(s), null);
+    const back = validateCustomMap(sheetToSpec(s));
+    assert.equal(back.ok, true, back.ok ? "" : back.message);
+    if (back.ok) assert.deepEqual(back.spec.features, s.features);
+    assert.deepEqual(laySections(s, bricks), { laid: 0, refused: bricks.length }, "laid twice, every brick overlaps");
+  });
+
+  it("keeps bridge bricks off woods; a lone click is one brick on the wheel's heading", () => {
+    const s = fresh();
+    for (let y = 60; y < 70; y++) for (let x = 60; x < 70; x++) s.tiles[y * s.width + x] = TILE_TREE;
+    const [one] = bridgeLine("bridge", [tileWorld(64, 64)], QUARTER_TURN);
+    assert.equal(one!.turn, QUARTER_TURN);
+    assert.match(houseProblem(s, one!) ?? "", /footing/);
+    const [open] = bridgeLine("bridge", [tileWorld(120, 120)], 0);
+    assert.equal(houseProblem(s, open!), null);
+  });
+
   it("lays a lone section on the cursor at the wheel's heading", () => {
     const one = sectionLine("sandbags", [tileWorld(50, 50)], 2);
     assert.deepEqual(one, [{ type: "sandbags", x: 50, y: 50, facing: 0, turn: 2 }]);
@@ -345,6 +379,38 @@ describe("builder lamps", () => {
   });
 });
 
+describe("builder clutter", () => {
+  it("stands a piece on open ground and refuses water, a lot, and a taken tile", () => {
+    const s = fresh();
+    assert.equal(placeClutter(s, "crates", 60, 60), null);
+    assert.match(placeClutter(s, "bins", 60, 60) ?? "", /already/);
+    assert.equal(placeClutter(s, "bins", 61, 60), null);
+    s.tiles[70 * s.width + 70] = TILE_WATER;
+    assert.match(placeClutter(s, "cart", 70, 70) ?? "", /dry ground/);
+    s.features.push(houseAt("factory", 100, 100, 0));
+    assert.match(placeClutter(s, "cart", 100, 100) ?? "", /lot/);
+    assert.equal(clutterIndexAt(s, 62, 60), 1);
+    assert.equal(clutterIndexAt(s, 64, 64), -1);
+  });
+
+  it("saves what a building or water does not cover, and scatters more by the houses", () => {
+    const s = fresh();
+    placeClutter(s, "woodpile", 40, 40);
+    placeClutter(s, "haybale", 90, 90);
+    placeClutter(s, "tires", 120, 120);
+    s.features.push(houseAt("warehouse", 90, 90, 0));
+    s.tiles[120 * s.width + 120] = TILE_WATER;
+    assert.deepEqual(sheetToSpec(s).clutter, [{ type: "woodpile", x: 40, y: 40 }]);
+    assert.deepEqual(sheetFromSpec(sheetToSpec(s)).clutter, sheetToSpec(s).clutter);
+    const before = s.clutter.length;
+    const added = scatterSheetClutter(s, "seed");
+    assert.ok(added > 0);
+    assert.equal(s.clutter.length, before + added);
+    const near = s.clutter.slice(before).filter((c) => c.x >= 84 && c.x < 112 && c.y >= 84 && c.y < 112);
+    assert.ok(near.length > 0, "nothing by the warehouse");
+  });
+});
+
 describe("builder neutral units", () => {
   it("stands a unit on open ground and refuses water, a lot, and a crowd", () => {
     const s = fresh();
@@ -404,5 +470,26 @@ describe("builder neutral units", () => {
     const back = sheetFromSpec(sheetToSpec(s));
     assert.deepEqual(back.units, s.units);
     assert.equal(degreesToward(0, 0, 0, 5), 90, "south");
+  });
+});
+
+describe("builder complete fog of war", () => {
+  it("starts off and leaves the spec field out", () => {
+    const s = fresh();
+    assert.equal(s.shroud, false);
+    assert.equal("shroud" in sheetToSpec(s), false);
+    assert.equal(sheetToMap(s).shroud, undefined);
+  });
+
+  it("carries the flag through save, reopen, play test, and undo", () => {
+    const s = fresh();
+    const before = markSheet(s);
+    s.shroud = true;
+    assert.equal(sheetToSpec(s).shroud, true);
+    assert.equal(sheetFromSpec(sheetToSpec(s)).shroud, true);
+    assert.equal(playtestSpec(s, "p-check").shroud, true);
+    assert.equal(sheetToMap(s).shroud, true);
+    restoreSheet(s, before);
+    assert.equal(s.shroud, false);
   });
 });

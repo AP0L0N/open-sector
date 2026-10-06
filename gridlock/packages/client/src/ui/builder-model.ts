@@ -2,6 +2,7 @@ import {
   BUILD_RADIUS,
   BUILDING_FACINGS,
   BUILDING_TURN_STEP,
+  CUSTOM_MAP_MAX_CLUTTER,
   CUSTOM_MAP_MAX_LAMPS,
   CUSTOM_MAP_MAX_UNITS,
   copyMapUnit,
@@ -20,6 +21,7 @@ import {
   TILE_SIZE,
   TILE_SUBDIV,
   TILE_WATER,
+  bridgeBrickLength,
   catalog,
   decodeRuns,
   encodeRuns,
@@ -31,9 +33,18 @@ import {
   fieldPath,
   fieldSpan,
   fieldTurn,
+  bridgeBrickProblem,
+  bridgePath,
+  isMapBridge,
+  isMapLine,
   isMapSection,
+  TILE_BLOCKED,
+  TILE_FENCE,
+  TILE_ROCK,
+  TILE_TREE,
   isScrapTile,
   lampBlocked,
+  scatterClutter,
   MAP_DEFENCE_TYPES,
   normalizeTerrain,
   peakHeight,
@@ -45,11 +56,14 @@ import {
   type MapDef,
   type MapFeature,
   type MapFeatureType,
+  type ClutterType,
   type LampType,
+  type MapClutter,
   type MapLamp,
   type MapUnit,
   type TrainType,
   type MapSectionType,
+  type MapBridgeType,
 } from "@gridlock/shared";
 
 /** The map being edited. Grids are plain fine-tile arrays, already playable after `settle`. */
@@ -65,8 +79,12 @@ export interface Sheet {
   spawns: { id: number; x: number; y: number }[];
   features: MapFeature[];
   lamps: MapLamp[];
+  /** Breakable clutter: crates, drums, a cart. */
+  clutter: MapClutter[];
   /** Neutral units standing on the field at the start. */
   units: MapUnit[];
+  /** Complete fog of war: ground nobody has seen yet plays black. */
+  shroud: boolean;
 }
 
 /** Ground a start pad clears. Roads may run through it. */
@@ -95,7 +113,9 @@ export function newSheet(opts: {
     spawns: [],
     features: [],
     lamps: [],
+    clutter: [],
     units: [],
+    shroud: false,
   };
   settle(sheet);
   return sheet;
@@ -115,7 +135,9 @@ export function sheetFromSpec(spec: CustomMapSpec): Sheet {
     spawns: spec.spawns.map((s) => ({ ...s })),
     features: spec.features.map((f) => ({ ...f })),
     lamps: (spec.lamps ?? []).map((l) => ({ ...l })),
+    clutter: (spec.clutter ?? []).map((c) => ({ ...c })),
     units: (spec.units ?? []).map(copyMapUnit),
+    shroud: spec.shroud === true,
   };
   settle(sheet);
   return sheet;
@@ -134,7 +156,9 @@ export function sheetToSpec(s: Sheet): CustomMapSpec {
     spawns: s.spawns.map((sp) => ({ ...sp })).sort((a, b) => a.id - b.id),
     features: s.features.map((f) => ({ ...f })),
     ...(s.lamps.length > 0 ? { lamps: liveLamps(s) } : {}),
+    ...(s.clutter.length > 0 ? { clutter: liveClutter(s) } : {}),
     ...(s.units.length > 0 ? { units: liveUnits(s) } : {}),
+    ...(s.shroud ? { shroud: true as const } : {}),
     updatedAt: 0,
   };
 }
@@ -153,7 +177,9 @@ export function sheetToMap(s: Sheet, id = "__builder__"): MapDef {
     spawns: s.spawns.map((sp) => ({ ...sp })),
     features: s.features.map((f) => ({ ...f })),
     lamps: liveLamps(s),
+    clutter: liveClutter(s),
     units: liveUnits(s),
+    ...(s.shroud ? { shroud: true } : {}),
   };
 }
 
@@ -192,6 +218,52 @@ export function placeLamp(s: Sheet, type: LampType, x: number, y: number): strin
   if (problem) return problem;
   s.lamps.push({ type, x, y });
   return null;
+}
+
+/** Clutter still standing: a building set down over it, or water painted under it, hides it and the save leaves it out. */
+export function liveClutter(s: Sheet): MapClutter[] {
+  return s.clutter.filter((c) => !lampBlocked(s.features, c.x, c.y) && s.tiles[c.y * s.width + c.x] !== TILE_WATER).map((c) => ({ ...c }));
+}
+
+/** Index of the piece of clutter within `reach` fine tiles of the cursor, nearest first, or -1. */
+export function clutterIndexAt(s: Sheet, tx: number, ty: number, reach = 1): number {
+  let best = -1;
+  let bestD = reach + 0.01;
+  s.clutter.forEach((c, i) => {
+    const d = Math.max(Math.abs(c.x - tx), Math.abs(c.y - ty));
+    if (d < bestD) {
+      best = i;
+      bestD = d;
+    }
+  });
+  return best;
+}
+
+/** Why clutter cannot stand on this fine tile, or null. */
+export function clutterProblem(s: Sheet, x: number, y: number): string | null {
+  if (x < 0 || y < 0 || x >= s.width || y >= s.height) return "Off the map.";
+  if (s.tiles[y * s.width + x] === TILE_WATER) return "Clutter stands on dry ground.";
+  if (lampBlocked(s.features, x, y)) return "Inside a building lot.";
+  if (s.clutter.some((c) => c.x === x && c.y === y)) return "Something already stands here.";
+  if (s.clutter.length >= CUSTOM_MAP_MAX_CLUTTER) return `At most ${CUSTOM_MAP_MAX_CLUTTER} pieces of clutter.`;
+  return null;
+}
+
+/** Stand a piece of `type` on the tile. Null when placed, else the reason. */
+export function placeClutter(s: Sheet, type: ClutterType, x: number, y: number): string | null {
+  const problem = clutterProblem(s, x, y);
+  if (problem) return problem;
+  s.clutter.push({ type, x, y });
+  return null;
+}
+
+/** Strew clutter by the houses, along the roads, and here and there in the open. Returns how many went down. */
+export function scatterSheetClutter(s: Sheet, seed: string): number {
+  const room = CUSTOM_MAP_MAX_CLUTTER - s.clutter.length;
+  if (room <= 0) return 0;
+  const add = scatterClutter(s.tiles, s.width, s.height, s.features, s.spawns, seed, 1, s.clutter).slice(0, room);
+  s.clutter.push(...add);
+  return add.length;
 }
 
 /**
@@ -490,9 +562,9 @@ export function wrapTurn(turn: number): number {
   return ((Math.round(turn) % n) + n) % n;
 }
 
-/** True for the features that turn in 15° steps: bunkers, towers, sandbags, walls. */
+/** True for the features that turn in 15° steps: bunkers, towers, sandbags, walls, bridge bricks. */
 export function turnsFine(type: MapFeatureType): boolean {
-  return (MAP_DEFENCE_TYPES as readonly string[]).includes(type);
+  return (MAP_DEFENCE_TYPES as readonly string[]).includes(type) || isMapBridge(type);
 }
 
 /**
@@ -502,7 +574,7 @@ export function turnsFine(type: MapFeatureType): boolean {
  */
 export function houseAt(type: MapFeatureType, tx: number, ty: number, facing: number, turn?: number): MapFeature {
   const f: MapFeature = { type, x: tx, y: ty, facing: facing & 3 };
-  if (!isMapSection(type)) {
+  if (!isMapLine(type)) {
     const def = catalog(type);
     const snap = (v: number, span: number): number => Math.round((v - span / 2) / TILE_SUBDIV) * TILE_SUBDIV;
     f.x = snap(tx, def.tileW);
@@ -577,6 +649,37 @@ export function sectionLine(type: MapSectionType, points: readonly { x: number; 
     const t = wrapTurn(p.facing / BUILDING_TURN_STEP);
     return { type, x: at(p.x), y: at(p.y), facing: turnQuarter(t), turn: t };
   });
+}
+
+/**
+ * The bridge bricks a line through these world points lays, as map features: end to end
+ * like a wall's sections, every leg turned to the nearest 15°. A lone point is one brick
+ * along `turn`. A brick's turn runs along its deck.
+ */
+export function bridgeLine(type: MapBridgeType, points: readonly { x: number; y: number }[], turn: number): MapFeature[] {
+  const at = (v: number): number => Math.round((v / TILE_SIZE - 0.5) * TILE_SIZE) / TILE_SIZE;
+  return bridgePath(type, points, wrapTurn(turn) * BUILDING_TURN_STEP, BUILDING_TURN_STEP).map((b) => {
+    const t = wrapTurn(b.facing / BUILDING_TURN_STEP);
+    return { type, x: at(b.x), y: at(b.y), facing: turnQuarter(t), turn: t };
+  });
+}
+
+/** Ground a bridge brick may not stand on: rock, woods, fences, and blocked ground. Water and open land take one. */
+function bridgeFooting(s: Sheet, f: MapFeature): string | null {
+  if (!isMapBridge(f.type)) return null;
+  const a = (f.turn ?? f.facing * QUARTER_TURN) * BUILDING_TURN_STEP;
+  const span = { x: (f.x + 0.5) * TILE_SIZE, y: (f.y + 0.5) * TILE_SIZE, facing: a, length: bridgeBrickLength(f.type) };
+  const ground = {
+    width: s.width,
+    height: s.height,
+    tileSize: TILE_SIZE,
+    water: (x: number, y: number) => s.tiles[y * s.width + x] === TILE_WATER,
+    footing: (x: number, y: number) => {
+      const t = s.tiles[y * s.width + x];
+      return t !== TILE_ROCK && t !== TILE_TREE && t !== TILE_FENCE && t !== TILE_BLOCKED;
+    },
+  };
+  return bridgeBrickProblem(ground, f.type, span);
 }
 
 /** Set down every section of a line that fits. Returns how many went down and how many were refused. */
@@ -703,7 +806,7 @@ export function houseProblem(s: Sheet, f: MapFeature, ignore = -1): string | nul
   if (b.x0 < 0 || b.y0 < 0 || b.x1 > s.width || b.y1 > s.height) return "Off the map.";
   if (s.features.some((o, i) => i !== ignore && featuresOverlap(o, f))) return "Overlaps another building.";
   if (featureOnPad(f, s.spawns)) return "Too close to a start position.";
-  return null;
+  return bridgeFooting(s, f);
 }
 
 /**
@@ -712,7 +815,7 @@ export function houseProblem(s: Sheet, f: MapFeature, ignore = -1): string | nul
  */
 export function moveFeature(s: Sheet, index: number, from: MapFeature, dx: number, dy: number): string | null {
   if (!s.features[index]) return "Nothing selected.";
-  const step = isMapSection(from.type) ? 1 : TILE_SUBDIV;
+  const step = isMapLine(from.type) ? 1 : TILE_SUBDIV;
   const next = { ...from, x: from.x + Math.round(dx / step) * step, y: from.y + Math.round(dy / step) * step };
   const problem = houseProblem(s, next, index);
   if (problem) return problem;
@@ -745,7 +848,7 @@ export function defenceCount(s: Sheet): number {
 
 export function featureIndexAt(s: Sheet, tx: number, ty: number): number {
   // A thin or slanted section is hit within half a tile of it.
-  return s.features.findIndex((f) => featureContains(f, tx + 0.5, ty + 0.5, isMapSection(f.type) ? 0.5 : 0));
+  return s.features.findIndex((f) => featureContains(f, tx + 0.5, ty + 0.5, isMapLine(f.type) ? 0.5 : 0));
 }
 
 export function spawnIndexAt(s: Sheet, tx: number, ty: number, reach = 2 * TILE_SUBDIV): number {
@@ -844,8 +947,10 @@ export interface SheetMark {
   spawns: Sheet["spawns"];
   features: MapFeature[];
   lamps: MapLamp[];
+  clutter: MapClutter[];
   units: MapUnit[];
   maxPlayers: number;
+  shroud: boolean;
 }
 
 export function markSheet(s: Sheet): SheetMark {
@@ -855,8 +960,10 @@ export function markSheet(s: Sheet): SheetMark {
     spawns: s.spawns.map((sp) => ({ ...sp })),
     features: s.features.map((f) => ({ ...f })),
     lamps: s.lamps.map((l) => ({ ...l })),
+    clutter: s.clutter.map((c) => ({ ...c })),
     units: s.units.map(copyMapUnit),
     maxPlayers: s.maxPlayers,
+    shroud: s.shroud,
   };
 }
 
@@ -866,6 +973,8 @@ export function restoreSheet(s: Sheet, m: SheetMark): void {
   s.spawns = m.spawns.map((sp) => ({ ...sp }));
   s.features = m.features.map((f) => ({ ...f }));
   s.lamps = m.lamps.map((l) => ({ ...l }));
+  s.clutter = m.clutter.map((c) => ({ ...c }));
   s.units = m.units.map(copyMapUnit);
   s.maxPlayers = m.maxPlayers;
+  s.shroud = m.shroud;
 }

@@ -7,7 +7,11 @@ import {
   HEIGHT_STEP_MAX,
   TILE_SIZE,
   TILE_SUBDIV,
+  bridgeBrickLength,
+  bridgeWidth,
   catalog,
+  isBridge,
+  type BridgeType,
   type CivilianType,
   type TrainType,
 } from "./catalog.js";
@@ -36,8 +40,15 @@ export interface MapDef {
   features: MapFeature[];
   /** Street lamps. Dress only: the sim never reads them; the client draws them and their light at night. */
   lamps?: MapLamp[];
+  /** Breakable clutter. The sim keeps which pieces still stand; see `ClutterType`. */
+  clutter?: MapClutter[];
   /** Neutral units the map stands on the field. Grey, hostile to every commander, they hold their ground. */
   units?: MapUnit[];
+  /**
+   * Complete fog of war: ground a commander has never seen is black, not dimmed.
+   * Drawing only: sight and the sim are the same either way.
+   */
+  shroud?: boolean;
   /** Set on maps made in the Map Builder. Built-in maps leave it out and cannot be edited. */
   custom?: { author: string; updatedAt: number };
 }
@@ -73,7 +84,13 @@ export const MAP_DEFENCE_TYPES: readonly MapDefenceType[] = [
 ];
 /** Map defences laid as a line section rather than on a building lot. */
 export type MapSectionType = "sandbags" | "wall";
-export type MapFeatureType = CivilianType | MapDefenceType;
+/**
+ * Bridge bricks a map lays over its water, the same pieces an engineer lays. They stand
+ * for no one and are drawn as a line, like a wall. A brick's `turn` runs along its deck.
+ */
+export type MapBridgeType = BridgeType;
+export const MAP_BRIDGE_TYPES: readonly MapBridgeType[] = ["bridge", "bigbridge"];
+export type MapFeatureType = CivilianType | MapDefenceType | MapBridgeType;
 
 export interface MapFeature {
   type: MapFeatureType;
@@ -89,6 +106,12 @@ export interface MapFeature {
    * A section's x, y may then be fractional (whole world px), so a slanted line lies end to end.
    */
   turn?: number;
+  /** Watch Tower only: where its spotlight points, whole degrees, 0 = east, 90 = south. Left out, it looks the way the tower faces. */
+  spot?: number;
+  /** Watch Tower only: fine tiles the spotlight sweeps between, from the tower, as a held tower's Patrol sweeps them. */
+  patrol?: { x: number; y: number }[];
+  /** The sweep closes into a loop instead of running out and back. */
+  loop?: boolean;
 }
 
 /** Street lamps a map can stand on its ground. Drawing only: they light the night, they do not block or reveal. */
@@ -128,6 +151,38 @@ export interface MapUnit {
    * at the lot's centre tile. They hold it for no one and shoot from its windows.
    */
   inside?: boolean;
+  /** Battle Ship only: where its searchlight points, whole degrees, 0 = east, 90 = south. Left out, it looks down the bow. */
+  spot?: number;
+}
+
+/**
+ * Breakable odds and ends a map leaves on its ground: crates, drums, a cart.
+ * They neither block nor hide anyone. A motor vehicle rolling over one, a shell
+ * landing on it, or enough rounds into it leaves it smashed flat for the match.
+ */
+export type ClutterType = "crates" | "barrels" | "haybale" | "cart" | "bench" | "woodpile" | "tires" | "bins";
+export const CLUTTER_TYPES: readonly ClutterType[] = ["crates", "barrels", "haybale", "cart", "bench", "woodpile", "tires", "bins"];
+
+export const CLUTTER_NAMES: Record<ClutterType, string> = {
+  crates: "Crates",
+  barrels: "Oil Drums",
+  haybale: "Hay Bales",
+  cart: "Hand Cart",
+  bench: "Bench",
+  woodpile: "Woodpile",
+  tires: "Tyre Stack",
+  bins: "Dustbins",
+};
+
+export interface MapClutter {
+  type: ClutterType;
+  /** Fine tile it stands on. */
+  x: number;
+  y: number;
+}
+
+export function isClutterType(type: unknown): type is ClutterType {
+  return typeof type === "string" && (CLUTTER_TYPES as readonly string[]).includes(type);
 }
 
 export function isLampType(type: unknown): type is LampType {
@@ -136,6 +191,15 @@ export function isLampType(type: unknown): type is LampType {
 
 export function isMapSection(type: string): type is MapSectionType {
   return type === "sandbags" || type === "wall";
+}
+
+export function isMapBridge(type: string): type is MapBridgeType {
+  return isBridge(type);
+}
+
+/** Features laid along a drawn line on whole world pixels: sandbag and wall sections, bridge bricks. */
+export function isMapLine(type: string): type is MapSectionType | MapBridgeType {
+  return isMapSection(type) || isMapBridge(type);
 }
 
 /** Fine tiles a map section covers along its run, centred on its own tile. */
@@ -187,6 +251,15 @@ export interface FeatureRect {
 }
 
 export function featureRect(f: MapFeature): FeatureRect {
+  if (isMapBridge(f.type)) {
+    // u runs along the deck, v across it.
+    const a = featureAngle(f);
+    const ux = Math.cos(a);
+    const uy = Math.sin(a);
+    const halfU = bridgeBrickLength(f.type) / TILE_SIZE / 2;
+    const halfV = bridgeWidth(f.type) / TILE_SIZE / 2;
+    return { cx: f.x + 0.5, cy: f.y + 0.5, ux, uy, vx: -uy, vy: ux, halfU, halfV };
+  }
   if (isMapSection(f.type)) {
     const a = featureAngle(f);
     const ux = Math.cos(a);
@@ -212,7 +285,7 @@ export function featureContains(f: MapFeature, px: number, py: number, pad = 0):
 
 /** True when two features' ground overlaps. Sections may meet in a corner without counting. */
 export function featureRectsOverlap(a: MapFeature, b: MapFeature): boolean {
-  const slack = isMapSection(a.type) && isMapSection(b.type) ? SECTION_SLACK : 0;
+  const slack = isMapLine(a.type) && isMapLine(b.type) ? SECTION_SLACK : 0;
   const p = featureRect(a);
   const q = featureRect(b);
   const pu = p.halfU - slack;
@@ -238,7 +311,7 @@ export function featureRectsOverlap(a: MapFeature, b: MapFeature): boolean {
 
 /** Fine-tile box of a feature, end exclusive. A lot's origin is its top-left; a section's is its centre. */
 export function featureBox(f: MapFeature): { x0: number; y0: number; x1: number; y1: number } {
-  if (isMapSection(f.type)) {
+  if (isMapLine(f.type)) {
     const r = featureRect(f);
     const ex = r.halfU * Math.abs(r.ux) + r.halfV * Math.abs(r.vx);
     const ey = r.halfU * Math.abs(r.uy) + r.halfV * Math.abs(r.vy);
@@ -255,7 +328,7 @@ export function featureBox(f: MapFeature): { x0: number; y0: number; x1: number;
 
 /** Houses, bunkers, and towers: the features that stand on a levelled lot. */
 export function lotFeatures(features: readonly MapFeature[]): MapFeature[] {
-  return features.filter((f) => !isMapSection(f.type));
+  return features.filter((f) => !isMapLine(f.type));
 }
 
 export const TILE_EMPTY = 0;
@@ -1956,6 +2029,8 @@ export function makeYard64(): MapDef {
   levelHouseLots(heights, fineTiles, fineW, fineH, features, locked);
   flattenTerrain(heights, fineTiles, fineW, fineH, TILE_WATER, locked);
   paintYardRocks(fineTiles, heights, fineW, fineH, "yard-64-rocks", fineSpawnPads, houseBoxes(features, sub));
+  const fineFeatures = scaleFeatures(features, sub);
+  const clutter = scatterClutter(fineTiles, fineW, fineH, fineFeatures, fineSpawns, "yard-64-clutter");
 
   return {
     id: "yard-64",
@@ -1967,8 +2042,96 @@ export function makeYard64(): MapDef {
     heights,
     maxHeight: peakHeight(heights),
     spawns: fineSpawns,
-    features: scaleFeatures(features, sub),
+    features: fineFeatures,
+    clutter,
   };
+}
+
+/** What lies about each kind of building's yard, most likely first. */
+const YARD_CLUTTER: Record<string, readonly ClutterType[]> = {
+  barn: ["haybale", "haybale", "cart", "woodpile", "barrels"],
+  granary: ["haybale", "crates", "cart", "haybale"],
+  factory: ["barrels", "tires", "crates", "barrels", "bins"],
+  foundry: ["barrels", "tires", "crates", "woodpile"],
+  warehouse: ["crates", "crates", "barrels", "cart"],
+  inn: ["barrels", "bench", "crates", "bins"],
+  chapel: ["bench", "bench", "bins"],
+};
+const HOME_CLUTTER: readonly ClutterType[] = ["woodpile", "bins", "crates", "bench", "cart", "barrels"];
+const ROAD_CLUTTER: readonly ClutterType[] = ["bench", "bins", "crates", "barrels", "cart", "tires"];
+const FIELD_CLUTTER: readonly ClutterType[] = ["haybale", "woodpile", "tires", "barrels"];
+
+/**
+ * Breakable junk about a finished fine-tile map: by house and barn doors,
+ * along the roads, and the odd piece out in the open. Same layout for the same
+ * seed. Keeps off start pads, building lots, water, trees, and rock, and leaves
+ * room between pieces. `density` scales how many go down; 1 is a lived-in look.
+ */
+export function scatterClutter(
+  tiles: readonly number[],
+  width: number,
+  height: number,
+  features: readonly MapFeature[],
+  spawns: readonly { x: number; y: number }[],
+  seed: string,
+  density = 1,
+  taken: readonly { x: number; y: number }[] = [],
+): MapClutter[] {
+  const rand = { n: hash32(seed) };
+  const lot = new Int16Array(width * height).fill(-1);
+  features.forEach((f, i) => {
+    if (isMapSection(f.type)) return;
+    const b = featureBox(f);
+    for (let y = Math.max(0, b.y0); y < Math.min(height, b.y1); y++) {
+      for (let x = Math.max(0, b.x0); x < Math.min(width, b.x1); x++) lot[y * width + x] = i;
+    }
+  });
+  const near = (x: number, y: number, r: number, hit: (i: number) => boolean): number => {
+    for (let d = 1; d <= r; d++) {
+      for (let dy = -d; dy <= d; dy++) {
+        for (let dx = -d; dx <= d; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dy)) !== d) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+          if (hit(ny * width + nx)) return ny * width + nx;
+        }
+      }
+    }
+    return -1;
+  };
+  const out: MapClutter[] = [];
+  const placed = taken.map((p) => ({ x: p.x, y: p.y }));
+  const padR = SPAWN_PAD_R + 2;
+  const pick = (list: readonly ClutterType[]): ClutterType => list[Math.floor(nextRand(rand) * list.length)] ?? list[0]!;
+  for (let y = 2; y < height - 2; y++) {
+    for (let x = 2; x < width - 2; x++) {
+      const i = y * width + x;
+      if (tiles[i] !== TILE_EMPTY || lot[i]! >= 0) continue;
+      const r = nextRand(rand);
+      let chance = 0;
+      let list = FIELD_CLUTTER;
+      const house = near(x, y, 2, (j) => lot[j]! >= 0);
+      if (house >= 0) {
+        const f = features[lot[house]!]!;
+        if ((MAP_DEFENCE_TYPES as readonly string[]).includes(f.type)) continue;
+        list = YARD_CLUTTER[f.type] ?? HOME_CLUTTER;
+        chance = 0.05;
+      } else if (near(x, y, 1, (j) => tiles[j] === TILE_ROAD) >= 0) {
+        list = ROAD_CLUTTER;
+        chance = 0.012;
+      } else {
+        chance = 0.0006;
+      }
+      if (r >= chance * density) continue;
+      if (spawns.some((s) => Math.hypot(s.x - x, s.y - y) < padR)) continue;
+      if (placed.some((p) => Math.max(Math.abs(p.x - x), Math.abs(p.y - y)) < 3)) continue;
+      const piece: MapClutter = { type: pick(list), x, y };
+      out.push(piece);
+      placed.push(piece);
+    }
+  }
+  return out;
 }
 
 /** Radius of the clear, level pad the Map Builder keeps around every start, in fine tiles. */

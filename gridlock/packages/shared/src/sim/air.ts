@@ -117,6 +117,7 @@ import { nextRand } from "./rng.js";
 import { hideScout } from "./scout.js";
 import { canSeeEntity } from "./vision.js";
 import { blastWrecks, toWreck } from "./wreck.js";
+import { blastClutter } from "./clutter.js";
 import type { AirState, Entity, MatchState, Order, Projectile } from "./types.js";
 
 /** Runway heading of an unturned Airfield, world radians: the strip runs east–west. A turned one adds its facing. */
@@ -1272,6 +1273,7 @@ function detonateBomb(state: MatchState, p: Projectile): void {
     if (e.hp <= 0) killed = true;
   }
   blastWrecks(state, p.x, p.y, radius, BOMB_DAMAGE);
+  blastClutter(state, p.x, p.y, radius);
   const impact: ImpactView = {
     id: state.nextId++,
     ownerId: p.ownerId,

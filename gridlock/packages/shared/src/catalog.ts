@@ -36,6 +36,23 @@ export const WRECK_SCRAP_MUL = 0.2;
 export const WRECK_SCRAP_SECONDS = 5;
 /** Share of a ground burst's soft damage a burnt-out hulk inside it takes. */
 export const WRECK_BLAST_MUL = 0.5;
+/**
+ * Map clutter: rounds a piece soaks before it breaks, by `ClutterType`. A shell
+ * of GARRISON_STRUCTURAL_CALIBER or more, any ground burst over it, or a motor
+ * vehicle rolling across it breaks it outright.
+ */
+export const CLUTTER_HP: Record<"crates" | "barrels" | "haybale" | "cart" | "bench" | "woodpile" | "tires" | "bins", number> = {
+  crates: 40,
+  barrels: 50,
+  haybale: 30,
+  cart: 40,
+  bench: 30,
+  woodpile: 60,
+  tires: 70,
+  bins: 25,
+};
+/** World px round a piece of clutter a round landing still hits. */
+export const CLUTTER_HIT_REACH = TILE_SIZE * 0.7;
 /** Marks a scrap tile. Scrap is never used up: a Smelter standing on it draws from it for the whole match. */
 export const SCRAP_TILE_YIELD = 800;
 /** Scrap a Smelter on a scrap field earns its owner each second at full power. Low power slows it like production. */
@@ -598,10 +615,11 @@ export function isConcreteLine(type: string): type is ConcreteLineType {
   return type === "wall" || type === "greatwall" || type === "gate";
 }
 /**
- * Engineer bridges over water. One structure from shore to shore, built all at once.
+ * Engineer and map bridges over water, laid brick by brick along a drawn line like a wall.
+ * Each brick is its own structure: one deck length (`bridgeBrickLength`) of the span.
  * `bridge` is the narrow wooden one (one tank wide), `bigbridge` the concrete one (two abreast).
- * Only a force-attack aims at one. At 0 HP it falls into wreckage that cannot be destroyed;
- * an engineer rebuilds it.
+ * Only a force-attack aims at a brick. At 0 HP it falls into wreckage that cannot be destroyed;
+ * an engineer rebuilds it. The bricks either side of it stand.
  */
 export type BridgeType = "bridge" | "bigbridge";
 export const BRIDGE_TYPES: readonly BridgeType[] = ["bridge", "bigbridge"];
@@ -614,6 +632,10 @@ export function isBridge(type: string): type is BridgeType {
 export function bridgeWidth(type: BridgeType): number {
   return type === "bigbridge" ? 44 : 20;
 }
+/** One brick of deck, world px along the span: a timber bay, or a concrete slab between piers. */
+export function bridgeBrickLength(type: BridgeType): number {
+  return type === "bigbridge" ? 32 : 24;
+}
 /** Scrap per gameplay tile of deck length. */
 export function bridgeCostPerTile(type: BridgeType): number {
   return type === "bigbridge" ? 24 : 9;
@@ -622,23 +644,23 @@ export function bridgeCostPerTile(type: BridgeType): number {
 export function bridgeSecondsPerTile(type: BridgeType): number {
   return type === "bigbridge" ? 1.1 : 0.45;
 }
-/** Whole bridge price for a deck `length` world px long. */
-export function bridgeCost(type: BridgeType, length: number): number {
+/** Price of a deck `length` world px long. One brick by default. */
+export function bridgeCost(type: BridgeType, length = bridgeBrickLength(type)): number {
   return Math.max(1, Math.round((length / TILE_SIZE) * bridgeCostPerTile(type)));
 }
-export function bridgeBuildSeconds(type: BridgeType, length: number): number {
+/** Engineer seconds for a deck `length` world px long. One brick by default. */
+export function bridgeBuildSeconds(type: BridgeType, length = bridgeBrickLength(type)): number {
   return (length / TILE_SIZE) * bridgeSecondsPerTile(type);
 }
-/** Deck runs this far onto dry land past the last water at each end, world px. */
-export const BRIDGE_ABUTMENT = TILE_SIZE * 1.5;
-/** Longest deck, gameplay tiles. */
-export const BRIDGE_MAX_TILES = t(10);
 /**
  * Damage a round aimed at a bridge does to it, as a share of the round's own damage.
  * Rifle and MG fire does nothing. Bombs use BOMB_BUILDING_DAMAGE.
  */
 export const BRIDGE_ROUND_MUL = { ap: 0.5, heat: 0.75, he: 1.5, mortar: 1, artillery: 2, rocket: 1 } as const;
-/** How far past the deck edge a burst still counts against it, world px. */
+/**
+ * How far past the deck edge a shell's burst still counts against it, world px.
+ * A mortar bomb, field-gun shell, rocket, or bomb counts anywhere its blast reaches the brick.
+ */
 export const BRIDGE_SPLASH_PAD = 6;
 export type CivilianType =
   | "cottage"
@@ -3826,7 +3848,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "building",
     name: "Wooden bridge",
     letter: "u",
-    // Per tile of deck: the whole price is bridgeCost().
+    // Per tile of deck: a brick's price is bridgeCost().
     cost: 9,
     buildSeconds: 0.45,
     hp: 240,
@@ -3843,7 +3865,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     capturable: false,
-    blurb: "Timber trestle bridge, one tank wide. Drag from one shore to the other: it spans the water and the engineer raises it in one go. Anyone can cross. Only a force-attack aims at it, and a few shells drop it into the water; the wreckage stays and an engineer can rebuild it.",
+    blurb: "Timber trestle bridge, one tank wide. Draw it like a wall, from one shore across the water: the engineer lays it bay by bay. Anyone can cross. Only a force-attack aims at it; a few shells drop one bay into the water while the rest stands. The wreckage stays and an engineer can rebuild it.",
   },
   bigbridge: {
     type: "bigbridge",
@@ -3866,7 +3888,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     capturable: false,
-    blurb: "Concrete span on piers, two tanks wide. Drag from one shore to the other: it spans the water and the engineer raises it in one go. Anyone can cross. Only a force-attack aims at it, and it takes a long shelling to bring down; the wreckage stays and an engineer can rebuild it.",
+    blurb: "Concrete arch bridge on piers, two tanks wide. Draw it like a wall, from one shore across the water: the engineer pours it span by span. Anyone can cross. Only a force-attack aims at it, and it takes a long shelling to drop one span into the water while the rest stands. The wreckage stays and an engineer can rebuild it.",
   },
   rifleman: {
     type: "rifleman",

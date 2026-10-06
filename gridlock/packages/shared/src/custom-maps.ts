@@ -14,6 +14,7 @@ import {
 } from "./catalog.js";
 import { PATROL_POINTS_MAX } from "./sim/patrol.js";
 import {
+  MAP_BRIDGE_TYPES,
   MAP_DEFENCE_TYPES,
   PLAYTEST_MAP_PREFIX,
   SPAWN_PAD_R,
@@ -31,7 +32,10 @@ import {
   featureRectsOverlap,
   getMap,
   isBuiltinMap,
+  isClutterType,
   isLampType,
+  isMapBridge,
+  isMapLine,
   isMapSection,
   isPlaytestMapId,
   normalizeTerrain,
@@ -41,6 +45,7 @@ import {
   type MapDef,
   type MapFeature,
   type MapFeatureType,
+  type MapClutter,
   type MapLamp,
   type MapUnit,
 } from "./maps.js";
@@ -63,8 +68,12 @@ export interface CustomMapSpec {
   features: MapFeature[];
   /** Street lamps. Left out by maps saved before lamps existed. */
   lamps?: MapLamp[];
+  /** Breakable clutter. Left out by maps saved before clutter existed. */
+  clutter?: MapClutter[];
   /** Neutral units. Left out by maps saved before units existed. */
   units?: MapUnit[];
+  /** Complete fog of war. Left out when off. */
+  shroud?: true;
   updatedAt: number;
 }
 
@@ -95,6 +104,7 @@ export const CUSTOM_MAP_MAX_PLAYERS = 8;
 export const CUSTOM_MAP_MAX_FEATURES = 400;
 export const CUSTOM_MAP_NAME_MAX = 32;
 export const CUSTOM_MAP_MAX_LAMPS = 300;
+export const CUSTOM_MAP_MAX_CLUTTER = 600;
 export const CUSTOM_MAP_MAX_UNITS = 200;
 
 /** Units a map may stand on the field: everything trained on the ground or the water. Aircraft need an airfield to live. */
@@ -176,6 +186,12 @@ export function mapUnitProblem(
   return null;
 }
 
+/** A spotlight heading in whole degrees, 0–359, or null when there is none. */
+function cleanSpot(raw: unknown): number | null {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return null;
+  return ((Math.round(raw) % 360) + 360) % 360;
+}
+
 /** A clean patrol route on the sheet, or null when there is none. */
 function cleanPatrol(raw: unknown, width: number, height: number): { x: number; y: number }[] | null {
   if (!Array.isArray(raw)) return null;
@@ -240,7 +256,7 @@ function cleanText(raw: unknown, max: number): string {
 }
 
 /** Everything a builder map may stand on the field: houses, then the neutral defences. */
-export const MAP_FEATURE_TYPES: readonly MapFeatureType[] = [...CIVILIAN_TYPES, ...MAP_DEFENCE_TYPES];
+export const MAP_FEATURE_TYPES: readonly MapFeatureType[] = [...CIVILIAN_TYPES, ...MAP_DEFENCE_TYPES, ...MAP_BRIDGE_TYPES];
 
 export function newPlaytestMapId(rng: () => number = Math.random): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -262,7 +278,7 @@ export function featureOnPad(f: MapFeature, spawns: readonly { x: number; y: num
 /** True when a lamp post on this fine tile would stand inside a building lot. Sections do not count. */
 export function lampBlocked(features: readonly MapFeature[], x: number, y: number): boolean {
   return features.some((f) => {
-    if (isMapSection(f.type)) return false;
+    if (isMapLine(f.type)) return false;
     const b = featureBox(f);
     return x >= b.x0 && x < b.x1 && y >= b.y0 && y < b.y1;
   });
@@ -351,12 +367,12 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     const turn = o.turn;
     if (!Number.isInteger(facing)) return bad("Bad building.");
     if (turn != null) {
-      // Only defences turn finer than a quarter, in the match's own steps.
-      if (!(MAP_DEFENCE_TYPES as readonly string[]).includes(type)) return bad("Bad building.");
+      // Only defences and bridges turn finer than a quarter, in the match's own steps.
+      if (!(MAP_DEFENCE_TYPES as readonly string[]).includes(type) && !isMapBridge(type)) return bad("Bad building.");
       if (!Number.isInteger(turn) || (turn as number) < 0 || (turn as number) >= BUILDING_FACINGS) return bad("Bad building.");
     }
     // A turned section may sit between tiles, on whole world pixels.
-    const free = turn != null && isMapSection(type);
+    const free = turn != null && isMapLine(type);
     const coord = (v: unknown): number | null => {
       if (typeof v !== "number" || !Number.isFinite(v)) return null;
       if (free) return Math.round(v * TILE_SIZE) / TILE_SIZE;
@@ -370,9 +386,16 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
       feat.turn = turn as number;
       feat.facing = turnQuarter(feat.turn);
     }
+    const spot = type === "tower" ? cleanSpot(o.spot) : null;
+    if (spot != null) feat.spot = spot;
+    const sweep = type === "tower" ? cleanPatrol(o.patrol, width, height) : null;
+    if (sweep) {
+      feat.patrol = sweep;
+      if (o.loop === true && sweep.length >= 2) feat.loop = true;
+    }
     const b = featureBox(feat);
     // Sandbags and walls sit on any fine tile; lots keep to the cell grid.
-    if (!isMapSection(feat.type) && (feat.x % TILE_SUBDIV !== 0 || feat.y % TILE_SUBDIV !== 0)) {
+    if (!isMapLine(feat.type) && (feat.x % TILE_SUBDIV !== 0 || feat.y % TILE_SUBDIV !== 0)) {
       return bad("Buildings sit on the cell grid.");
     }
     if (b.x0 < 0 || b.y0 < 0 || b.x1 > width || b.y1 > height) return bad("A building is off the map.");
@@ -399,6 +422,22 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     lamps.push({ type: o.type, x, y });
   }
 
+  const rawClutter = m.clutter ?? [];
+  if (!Array.isArray(rawClutter) || rawClutter.length > CUSTOM_MAP_MAX_CLUTTER) return bad(`At most ${CUSTOM_MAP_MAX_CLUTTER} pieces of clutter.`);
+  const clutter: MapClutter[] = [];
+  const clutterAt = new Set<number>();
+  for (const c of rawClutter as unknown[]) {
+    const o = (c ?? {}) as Record<string, unknown>;
+    if (!isClutterType(o.type) || !Number.isInteger(o.x) || !Number.isInteger(o.y)) return bad("Bad clutter.");
+    const x = o.x as number;
+    const y = o.y as number;
+    if (x < 0 || y < 0 || x >= width || y >= height) return bad("Clutter is off the map.");
+    // Two pieces on one tile, a piece in a lot, or one the water has taken is dropped rather than refused.
+    if (clutterAt.has(y * width + x) || lampBlocked(features, x, y) || tiles[y * width + x] === TILE_WATER) continue;
+    clutterAt.add(y * width + x);
+    clutter.push({ type: o.type, x, y });
+  }
+
   const rawUnits = m.units ?? [];
   if (!Array.isArray(rawUnits) || rawUnits.length > CUSTOM_MAP_MAX_UNITS) return bad(`At most ${CUSTOM_MAP_MAX_UNITS} units.`);
   const units: MapUnit[] = [];
@@ -412,6 +451,8 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     const inside = o.inside === true;
     if (mapUnitProblem(ground, o.type, o.x as number, o.y as number, -1, inside)) continue;
     const unit: MapUnit = { type: o.type, x: o.x as number, y: o.y as number, facing: ((Math.round(facing) % 360) + 360) % 360 };
+    const spot = o.type === "battleship" ? cleanSpot(o.spot) : null;
+    if (spot != null) unit.spot = spot;
     if (inside) {
       unit.inside = true;
       units.push(unit);
@@ -440,7 +481,9 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
       spawns,
       features,
       ...(lamps.length > 0 ? { lamps } : {}),
+      ...(clutter.length > 0 ? { clutter } : {}),
       ...(units.length > 0 ? { units } : {}),
+      ...(m.shroud === true ? { shroud: true as const } : {}),
       updatedAt,
     },
   };
@@ -465,7 +508,9 @@ export function buildCustomMap(spec: CustomMapSpec): MapDef {
     spawns: spec.spawns.map((s) => ({ id: s.id, x: s.x, y: s.y })),
     features,
     ...(spec.lamps?.length ? { lamps: spec.lamps.map((l) => ({ ...l })) } : {}),
+    ...(spec.clutter?.length ? { clutter: spec.clutter.map((c) => ({ ...c })) } : {}),
     ...(spec.units?.length ? { units: spec.units.map(copyMapUnit) } : {}),
+    ...(spec.shroud ? { shroud: true } : {}),
     custom: { author: spec.author, updatedAt: spec.updatedAt },
   };
 }
@@ -501,7 +546,9 @@ export function specFromMap(id: string, copy: { id: string; name: string; author
     spawns,
     features: map.features.map((f) => ({ ...f })),
     ...(map.lamps?.length ? { lamps: map.lamps.map((l) => ({ ...l })) } : {}),
+    ...(map.clutter?.length ? { clutter: map.clutter.map((c) => ({ ...c })) } : {}),
     ...(map.units?.length ? { units: map.units.map(copyMapUnit) } : {}),
+    ...(map.shroud ? { shroud: true as const } : {}),
     updatedAt: 0,
   };
 }
@@ -512,5 +559,6 @@ export function copyMapUnit(u: MapUnit): MapUnit {
   if (u.patrol) out.patrol = u.patrol.map((p) => ({ x: p.x, y: p.y }));
   if (u.loop) out.loop = true;
   if (u.inside) out.inside = true;
+  if (u.spot != null) out.spot = u.spot;
   return out;
 }

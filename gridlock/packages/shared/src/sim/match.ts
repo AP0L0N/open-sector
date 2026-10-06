@@ -1,4 +1,5 @@
 import {
+  bridgeBrickLength,
   catalog,
   clampGameSpeed,
   GAME_SPEED_DEFAULT,
@@ -12,7 +13,7 @@ import {
   START_SCRAP,
   TICK_DT,
 } from "../catalog.js";
-import { featureAngle, featureLotSite, getMap, isMapSection, type MapDef } from "../maps.js";
+import { featureAngle, featureLotSite, getMap, isMapBridge, isMapSection, type MapDef } from "../maps.js";
 import { mapUnitHostAt } from "../custom-maps.js";
 import { commanders } from "../lobby.js";
 import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
@@ -40,7 +41,7 @@ import { tickCollision } from "./collision.js";
 import { tickDeploy } from "./deploy.js";
 import { tickSmelters } from "./smelter.js";
 import { tickConstructs } from "./construct.js";
-import { guardBridges, restampBridges, settleBridges, tickBridges } from "./bridge.js";
+import { guardBridges, placeBrick, restampBridges, settleBridges, tickBridges } from "./bridge.js";
 import { tickHeal } from "./heal.js";
 import { tickForceFields, tickLasers } from "./laser.js";
 import { tickSupply } from "./supply.js";
@@ -50,10 +51,11 @@ import { tickMovement, repathIfBlocked } from "./orders.js";
 import { tickWalkerCharge } from "./walker-charge.js";
 import { tickOrderQueue } from "./commands.js";
 import { tickTrain } from "./train.js";
-import { tickSpotlights } from "./night.js";
+import { aimSpotlightPatrol, hasSpotlight, tickSpotlights } from "./night.js";
 import type { Entity, MatchState, SimPlayer } from "./types.js";
 import { leaveCorpse } from "./remains.js";
 import { toWreck } from "./wreck.js";
+import { freshClutterHp } from "./clutter.js";
 import { tickPower } from "./power.js";
 
 export function createMatch(
@@ -104,6 +106,7 @@ export function createMatch(
     seeTick: -1,
     seeByPlayer: new Map(),
     clearedTrees: [],
+    clutterHp: freshClutterHp(map),
     bodies: [],
     holes: [],
     blast: new Map(),
@@ -144,8 +147,19 @@ export function createMatch(
   const sections: Entity[] = [];
   /** The building each map feature raised, by feature index, for the troops a map puts inside. */
   const raised = new Map<number, Entity>();
+  let bricks = 0;
   (map.features ?? []).forEach((f, fi) => {
     const facing = featureAngle({ ...f, facing: f.facing ?? 0 });
+    if (isMapBridge(f.type)) {
+      placeBrick(state, f.type, {
+        x: tileCenter(f.x, map.tileSize),
+        y: tileCenter(f.y, map.tileSize),
+        facing,
+        length: bridgeBrickLength(f.type),
+      });
+      bricks++;
+      return;
+    }
     if (isMapSection(f.type)) {
       const s = makeEntity(state, f.type, NEUTRAL_OWNER, tileCenter(f.x, map.tileSize), tileCenter(f.y, map.tileSize), { facing });
       s.turretFacing = facing;
@@ -162,12 +176,21 @@ export function createMatch(
       tileH: site.h,
       facing,
     });
+    // The tower's lamp rests where the map pointed it, and lights that way once someone holds it.
+    if (f.spot != null) b.spotFacing = (f.spot * Math.PI) / 180;
+    if (f.patrol?.length && hasSpotlight(f.type)) {
+      const loop = f.loop === true;
+      const points = f.patrol.map((p) => ({ x: tileCenter(p.x, map.tileSize), y: tileCenter(p.y, map.tileSize) }));
+      b.order = { kind: "patrol", route: buildPatrolRoute(state, b, points, 0, 0, loop), leg: loop ? 0 : 1, dir: 1, ...(loop ? { loop: true } : {}) };
+      aimSpotlightPatrol(b);
+    }
     raised.set(fi, b);
   });
   if (sections.length > 0) {
     raiseWallCrest(state, sections);
     restampForts(state);
   }
+  if (bricks > 0) restampBridges(state);
   standMapUnits(state, map, raised);
   // A map's gun is crewed like one the player raises: neutral riflemen in every place the map left empty.
   for (const b of raised.values()) manGun(state, b, NEUTRAL_OWNER);
@@ -196,6 +219,11 @@ function standMapUnits(state: MatchState, map: MapDef, raised: ReadonlyMap<numbe
     const e = makeEntity(state, mu.type, NEUTRAL_OWNER, x, y, { facing });
     // Never chases: a target out of reach is left to come closer.
     e.holdPosition = true;
+    // A Battle Ship's searchlight starts where the map pointed it, and turns with the hull from there.
+    if (mu.spot != null && hasSpotlight(mu.type)) {
+      e.spotFacing = (mu.spot * Math.PI) / 180;
+      e.spotHull = facing;
+    }
     if (mu.patrol?.length) {
       const loop = mu.loop === true;
       const points = mu.patrol.map((p) => ({ x: tileCenter(p.x, ts), y: tileCenter(p.y, ts) }));

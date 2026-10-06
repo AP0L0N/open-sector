@@ -17,7 +17,12 @@ import {
   featureRect,
   fieldSpan,
   hasSpotlight,
+  bridgeBrickLength,
+  bridgeWidth,
+  isMapBridge,
+  isMapLine,
   isMapSection,
+  TILE_WATER,
   isScrapTile,
   isoDepth,
   isoLift,
@@ -25,6 +30,7 @@ import {
   peakHeight,
   worldToIso,
   type IsoPt,
+  type ClutterType,
   type LampType,
   type MapDef,
   type MapFeature,
@@ -33,12 +39,14 @@ import {
 } from "@gridlock/shared";
 import { buildingGroundElev } from "../render/building-ground.js";
 import { decorFor } from "../render/decor.js";
-import { NIGHT_SHADE_MAX, STREET_LAMPS, spotBeamGround } from "../render/night.js";
+import { NIGHT_SHADE_MAX, STREET_LAMPS, beamPolygon, spotBeamGround } from "../render/night.js";
 import { paintNight, type NightHalo, type NightLayers, type NightLightPool } from "../render/night-paint.js";
 import { drawSandbags } from "../render/sandbags.js";
 import { drawGunRow } from "../render/ciws.js";
+import { brickDeckElev, drawBrick, layoutBridges, type BrickIn, type BrickLayout } from "../render/bridge.js";
 import {
   BUSH_FACES,
+  CLUTTER_SPRITES,
   LAMP_SPRITES,
   OAK_FACES,
   PINE_FACES,
@@ -68,7 +76,7 @@ import { SCRAP_SOFT_REACH } from "../render/scrap-field.js";
 import { treeStamp } from "../render/tree-burn.js";
 import { WALL_STYLE, drawWall, wallJoins, wallTopElev, type WallSection } from "../render/wall.js";
 import type { IsoCam } from "./builder-iso-cam.js";
-import { liveLamps, type Dirty, type Sheet } from "./builder-model.js";
+import { liveClutter, liveLamps, type Dirty, type Sheet } from "./builder-model.js";
 
 /**
  * The Map Builder's "In-game view": the sheet drawn the way a match draws it
@@ -93,6 +101,8 @@ export interface IsoOverlay {
   brush: { x: number; y: number; r: number } | null;
   /** Where the Street lamps tool would stand a post. */
   lampGhost?: { x: number; y: number; type: LampType; bad: boolean } | null;
+  /** Where the Clutter tool would stand a piece. */
+  clutterGhost?: { x: number; y: number; type: ClutterType; bad: boolean } | null;
   /** Draw the field at full dark: lamps burning, tower spotlights on. */
   night?: boolean;
   /** The sheet's neutral units and what the Units tools show about them. */
@@ -122,6 +132,33 @@ export interface UnitOverlay {
   garrisons: ReadonlyMap<number, { count: number; cap: number }>;
   /** A rotate order's aim: the selected unit turns toward this tile. */
   aim: { x: number; y: number } | null;
+  /** Spotlight beams to outline: a Watch Tower's or a Battle Ship's, from world point (x, y), heading in radians. */
+  beams: readonly SpotBeam[];
+}
+
+export interface SpotBeam {
+  x: number;
+  y: number;
+  facing: number;
+  /** The selected lamp, or the one being aimed: drawn bright. */
+  strong: boolean;
+}
+
+/** A spotlight's reach on the ground, outlined as the match outlines a tower's beam while you turn it. */
+function drawBeam(c: CanvasRenderingContext2D, s: Sheet, b: SpotBeam, zoom: number): void {
+  const reach = SPOTLIGHT_REACH_TILES * TILE_SIZE;
+  const half = (SPOTLIGHT_HALF_DEG * Math.PI) / 180;
+  const pts = beamPolygon(b.x, b.y, b.facing, reach, half, 16).map((p) => at(p.x, p.y, groundAt(s, p.x, p.y)));
+  c.save();
+  c.globalAlpha = b.strong ? 1 : 0.5;
+  quadPath(c, pts);
+  c.fillStyle = "rgba(255, 226, 150, 0.16)";
+  c.fill();
+  c.setLineDash([5 / zoom, 6 / zoom]);
+  c.lineWidth = 1.5 / zoom;
+  c.strokeStyle = "rgba(255, 226, 150, 0.85)";
+  c.stroke();
+  c.restore();
 }
 
 /** Draw one neutral unit as the battlefield draws it, greyed. False while its art loads. */
@@ -324,11 +361,51 @@ function lotElev(s: Sheet, f: MapFeature): number {
   return buildingGroundElev(s.heights, s.width, s.height, site.tx, site.ty, site.w, site.h);
 }
 
+/** A map bridge brick as the layout reads it. */
+function brickOf(f: MapFeature): BrickIn | null {
+  if (!isMapBridge(f.type)) return null;
+  const span = { x: (f.x + 0.5) * TILE_SIZE, y: (f.y + 0.5) * TILE_SIZE, facing: featureAngle(f), length: bridgeBrickLength(f.type) };
+  return { type: f.type, span, width: bridgeWidth(f.type) };
+}
+
+function wetAt(s: Sheet, wx: number, wy: number): boolean {
+  return s.tiles[Math.floor(wy / TILE_SIZE) * s.width + Math.floor(wx / TILE_SIZE)] === TILE_WATER;
+}
+
+/** Every bridge brick among `list`, laid out together so each meets its neighbours. */
+function bridgeLayouts(s: Sheet, list: readonly MapFeature[]): Map<MapFeature, { brick: BrickIn; layout: BrickLayout }> {
+  const feats: MapFeature[] = [];
+  const bricks: BrickIn[] = [];
+  for (const f of list) {
+    const b = brickOf(f);
+    if (!b) continue;
+    feats.push(f);
+    bricks.push(b);
+  }
+  const layout = layoutBridges(bricks, (x, y) => groundAt(s, x, y), (x, y) => wetAt(s, x, y));
+  const out = new Map<MapFeature, { brick: BrickIn; layout: BrickLayout }>();
+  feats.forEach((f, i) => out.set(f, { brick: bricks[i]!, layout: layout[i]! }));
+  return out;
+}
+
+function paintBrick(c: CanvasRenderingContext2D, s: Sheet, look: { brick: BrickIn; layout: BrickLayout }, seed: number): void {
+  drawBrick(c, {
+    ...look.layout,
+    type: look.brick.type,
+    span: look.brick.span,
+    width: look.brick.width,
+    project: (wx, wy, e) => at(wx, wy, e),
+    ground: (wx, wy) => groundAt(s, wx, wy),
+    wet: (wx, wy) => wetAt(s, wx, wy),
+    seed,
+  });
+}
+
 /** The feature's real ground, turned as it stands, `pad` world px out from its edge. */
-function boxCorners(s: Sheet, f: MapFeature, pad = 0): { pts: IsoPt[]; elev: number } {
+function boxCorners(s: Sheet, f: MapFeature, pad = 0, bridge?: BrickLayout): { pts: IsoPt[]; elev: number } {
   const ts = TILE_SIZE;
   const r = featureRect(f);
-  const elev = isMapSection(f.type) ? groundAt(s, r.cx * ts, r.cy * ts) : lotElev(s, f);
+  const elev = bridge ? brickDeckElev(bridge, 0.5) : isMapLine(f.type) ? groundAt(s, r.cx * ts, r.cy * ts) : lotElev(s, f);
   const hu = r.halfU * ts + pad;
   const hv = r.halfV * ts + pad;
   const pts = ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([a, b]) =>
@@ -425,8 +502,8 @@ function drawFeature(c: CanvasRenderingContext2D, s: Sheet, f: MapFeature, secti
   return false;
 }
 
-function frame(c: CanvasRenderingContext2D, s: Sheet, f: MapFeature, color: string, zoom: number): void {
-  const { pts } = boxCorners(s, f, 3);
+function frame(c: CanvasRenderingContext2D, s: Sheet, f: MapFeature, color: string, zoom: number, bridge?: BrickLayout): void {
+  const { pts } = boxCorners(s, f, 3, bridge);
   c.setLineDash([6 / zoom, 4 / zoom]);
   c.strokeStyle = color;
   c.lineWidth = 2 / zoom;
@@ -485,8 +562,9 @@ function drawRoute(c: CanvasRenderingContext2D, s: Sheet, r: RouteDraw, zoom: nu
  */
 /**
  * Every light burning on the sheet at full dark, in iso coordinates: each
- * street lamp's pool and bulb, and each tower's spotlight thrown the way the
- * tower faces, as a manned tower would light it.
+ * street lamp's pool and bulb, each tower's spotlight thrown where the map
+ * points it (else the way the tower faces), as a manned tower would light it,
+ * and each Battle Ship's searchlight.
  */
 export function isoNightLights(s: Sheet): { pools: NightLightPool[]; halos: NightHalo[] } {
   const ts = TILE_SIZE;
@@ -513,12 +591,22 @@ export function isoNightLights(s: Sheet): { pools: NightLightPool[]; halos: Nigh
     const r = featureRect(f);
     const cx = r.cx * ts;
     const cy = r.cy * ts;
-    for (const b of spotBeamGround(cx, cy, featureAngle(f), reach, half)) {
+    const heading = f.spot != null ? (f.spot * Math.PI) / 180 : featureAngle(f);
+    for (const b of spotBeamGround(cx, cy, heading, reach, half)) {
       const p = at(b.x, b.y, groundAt(s, b.x, b.y));
       pools.push({ x: p.x, y: p.y, rx: b.r * k, a: b.a, rgb: TOWER_BEAM.rgb, cut: TOWER_BEAM.cut, warm: TOWER_BEAM.warm });
     }
     const lens = at(cx, cy, lotElev(s, f) + TOWER_EYE_HEIGHT);
     halos.push({ x: lens.x, y: lens.y, r: 11, rgb: TOWER_BEAM.rgb, a: 0.75 });
+  }
+  for (const u of s.units) {
+    if (u.inside || !hasSpotlight(u.type)) continue;
+    const cx = (u.x + 0.5) * ts;
+    const cy = (u.y + 0.5) * ts;
+    for (const b of spotBeamGround(cx, cy, ((u.spot ?? u.facing) * Math.PI) / 180, reach, half)) {
+      const p = at(b.x, b.y, groundAt(s, b.x, b.y));
+      pools.push({ x: p.x, y: p.y, rx: b.r * k, a: b.a, rgb: TOWER_BEAM.rgb, cut: TOWER_BEAM.cut, warm: TOWER_BEAM.warm });
+    }
   }
   return { pools, halos };
 }
@@ -562,7 +650,7 @@ export function isoDraw(
 
   const built = new Set<number>();
   for (const f of s.features) {
-    if (isMapSection(f.type)) continue;
+    if (isMapLine(f.type)) continue;
     const b = featureBox(f);
     for (let y = b.y0; y < b.y1; y++) for (let x = b.x0; x < b.x1; x++) built.add(y * s.width + x);
   }
@@ -610,7 +698,21 @@ export function isoDraw(
         };
       });
   const sections = sectionsOf(s.features);
+  const bridges = bridgeLayouts(s, s.features);
   s.features.forEach((f, i) => {
+    const look = bridges.get(f);
+    if (look) {
+      // A bridge lies on the water, under everything that stands.
+      items.push({
+        z: isoDepth(look.brick.span.x, look.brick.span.y) - 1e7,
+        run: () => {
+          paintBrick(c, s, look, i + 1);
+          if (i === o.selectedFeature) frame(c, s, f, "#e8b84a", z, look.layout);
+          else if (i === o.hoverFeature) frame(c, s, f, "rgba(255,244,220,0.7)", z, look.layout);
+        },
+      });
+      return;
+    }
     const b = featureBox(f);
     const zKey = isoDepth(((b.x0 + b.x1) / 2) * TILE_SIZE, ((b.y0 + b.y1) / 2) * TILE_SIZE);
     const same = sections.filter((o) => o.type === f.type);
@@ -631,6 +733,15 @@ export function isoDraw(
     if (!onScreen(p, 96)) continue;
     const spr = LAMP_SPRITES[l.type];
     items.push({ z: isoDepth(wx, wy), run: () => void (drawPropSprite(c, spr, p.x, p.y, STREET_LAMPS[l.type].drawH) || (loading = true)) });
+  }
+  for (const k of liveClutter(s)) {
+    const wx = (k.x + 0.5) * TILE_SIZE;
+    const wy = (k.y + 0.5) * TILE_SIZE;
+    const p = at(wx, wy, heightOf(s, k.x, k.y));
+    if (!onScreen(p, 48)) continue;
+    const spr = CLUTTER_SPRITES[k.type].whole;
+    const flip = ((k.x * 73856093) ^ (k.y * 19349663)) % 2 === 0;
+    items.push({ z: isoDepth(wx, wy), run: () => void (drawPropSprite(c, spr, p.x, p.y, spr.drawH, flip) || (loading = true)) });
   }
   const uo = o.units;
   if (uo) {
@@ -659,6 +770,7 @@ export function isoDraw(
   }
 
   if (uo) {
+    for (const beam of uo.beams) drawBeam(c, s, beam, z);
     for (const route of uo.routes) drawRoute(c, s, route, z);
     if (uo.aim && uo.selected >= 0) {
       const u = uo.list[uo.selected];
@@ -702,6 +814,20 @@ export function isoDraw(
       unitRing(c, s, g.x, g.y, g.bad ? "#ff5a4a" : "#7dff6a", z);
       if (!drawMapUnit(c, s, g, 0.6)) loading = true;
     }
+  }
+
+  if (o.clutterGhost) {
+    const g = o.clutterGhost;
+    const p = at((g.x + 0.5) * TILE_SIZE, (g.y + 0.5) * TILE_SIZE, heightOf(s, g.x, g.y));
+    const spr = CLUTTER_SPRITES[g.type].whole;
+    c.save();
+    c.globalAlpha = 0.65;
+    if (!drawPropSprite(c, spr, p.x, p.y, spr.drawH)) loading = true;
+    c.restore();
+    c.strokeStyle = g.bad ? "#ff5a4a" : "#7dff6a";
+    c.lineWidth = 1.5 / z;
+    quadPath(c, groundRing(s, g.x, g.y, 0.5));
+    c.stroke();
   }
 
   if (o.lampGhost) {
@@ -755,17 +881,21 @@ export function isoDraw(
 
   // Ghosts as the match shows a placement: tinted ground, faded art. A drawn line's pieces join each other.
   const ghostSections = sectionsOf(o.ghosts.map((g) => g.f));
+  // A ghost bridge meets the bricks already laid, so its ends arch or join as they will.
+  const ghostBridges = bridgeLayouts(s, [...o.ghosts.map((g) => g.f), ...s.features]);
   const ghostOrder = [...o.ghosts].sort((a, b) => isoDepth(a.f.x, a.f.y) - isoDepth(b.f.x, b.f.y));
   for (const { f, bad } of ghostOrder) {
     const tint = bad ? "#ff5a4a" : "#7dff6a";
-    const { pts } = boxCorners(s, f);
+    const look = ghostBridges.get(f);
+    const { pts } = boxCorners(s, f, 0, look?.layout);
     c.save();
     c.globalAlpha = 0.28;
     c.fillStyle = tint;
     quadPath(c, pts);
     c.fill();
     c.globalAlpha = 0.55;
-    if (!drawFeature(c, s, f, ghostSections.filter((x) => x.type === f.type))) loading = true;
+    if (look) paintBrick(c, s, look, 1);
+    else if (!drawFeature(c, s, f, ghostSections.filter((x) => x.type === f.type))) loading = true;
     c.restore();
     c.strokeStyle = tint;
     c.lineWidth = 2 / z;

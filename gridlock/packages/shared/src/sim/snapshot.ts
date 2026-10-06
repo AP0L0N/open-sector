@@ -50,6 +50,7 @@ import { laserProgress } from "./laser.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { deckLoad } from "./lst.js";
 import { allies, unitInWater } from "./geo.js";
+import { brokenClutter } from "./clutter.js";
 import { diving, hiddenSubmarine, sonarSpotted } from "./naval.js";
 import { medicTendView } from "./heal.js";
 import { supplyHasDriver, supplyRiders } from "./supply.js";
@@ -182,7 +183,8 @@ function bridgeSiteView(e: Entity, friendly: boolean): EntityView["bridgeSite"] 
   const working = e.state === "build" && e.work > 0;
   const progress = working ? Math.min(1, e.work / Math.max(1e-6, total)) : undefined;
   const { x, y, facing, length } = job.span;
-  return { bridge: job.type, x, y, facing, span: length, progress };
+  const queue = e.fieldQueue?.length ? e.fieldQueue.map((q) => ({ x: q.x, y: q.y, facing: q.facing })) : undefined;
+  return { bridge: job.type, x, y, facing, span: length, progress, queue };
 }
 
 function structureQueueView(job: StructureJob | null | undefined): StructureQueueView | null {
@@ -602,6 +604,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     clearedTrees: state.clearedTrees.map((t) => (t.burn ? { x: t.x, y: t.y, burn: true as const } : { x: t.x, y: t.y })),
     bodies: visibleBodies(state, youPlayerId, vis),
     holes: state.holes.map((h) => ({ ...h })),
+    ...(state.clutterHp.some((hp) => hp <= 0) ? { brokenClutter: brokenClutter(state) } : {}),
     ...(state.dug.size > 0 ? { dug: dugCells(state) } : {}),
     vision: you ? visionRuns(vis) : undefined,
     radar: radar ? radarContacts(state, youPlayerId, vis) : undefined,

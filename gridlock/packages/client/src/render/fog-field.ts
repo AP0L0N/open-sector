@@ -2,6 +2,9 @@
 export const FOG_RGB: readonly [number, number, number] = [14, 16, 20];
 /** Veil opacity where a tile is fully out of sight. */
 export const FOG_VEIL_ALPHA = 0.52;
+/** Complete fog of war: never-seen ground. Alpha above 1 so the veil noise cannot thin it. */
+export const SHROUD_RGB: readonly [number, number, number] = [0, 0, 0];
+export const SHROUD_ALPHA = 1.3;
 /** Box-blur radius in tiles; two passes round the edge into a soft falloff. */
 export const FOG_BLUR_TILES = 2;
 export const FOG_FADE_MS = 300;
