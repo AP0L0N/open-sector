@@ -8,7 +8,7 @@ import {
   SPOTLIGHT_REACH_TILES,
   TOWER_EYE_HEIGHT,
   TILE_SIZE,
-  TILE_TREE,
+  isGroveTile,
   catalog,
   featureAngle,
   facingToIso,
@@ -49,8 +49,7 @@ import {
   BUSH_FACES,
   CLUTTER_SPRITES,
   LAMP_SPRITES,
-  OAK_FACES,
-  PINE_FACES,
+  groveFaces,
   SIGN_FACES,
   STUMP_FACES,
   TEETH_SPRITE,
@@ -756,15 +755,17 @@ export function isoDraw(
 
   for (let ty = ty0; ty <= ty1; ty++) {
     for (let tx = tx0; tx <= tx1; tx++) {
-      if (s.tiles[ty * s.width + tx] !== TILE_TREE) continue;
+      const tile = s.tiles[ty * s.width + tx] ?? 0;
+      if (!isGroveTile(tile)) continue;
       const kind = treePropKind(map, tx, ty);
       if (!kind) continue;
       const wx = (tx + 0.5) * TILE_SIZE;
       const wy = (ty + 0.55) * TILE_SIZE;
       const p = at(wx, wy, heightOf(s, tx, ty));
       if (!onScreen(p, 96)) continue;
-      const stamp = treeStamp(tx, ty, kind);
-      const spr = (stamp.pine ? PINE_FACES : OAK_FACES)[stamp.face % 3];
+      const stamp = treeStamp(tx, ty, kind, tile);
+      const faces = groveFaces(tile, stamp.pine);
+      const spr = faces[stamp.face % faces.length];
       if (!spr) continue;
       items.push({ z: isoDepth(wx, wy), run: () => void (drawPropSprite(c, spr, p.x, p.y, stamp.drawH) || (loading = true)) });
     }

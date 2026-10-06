@@ -12,7 +12,7 @@ import {
   catalog,
   isCivilianType,
 } from "../catalog.js";
-import { TILE_EMPTY, TILE_TREE, getMap } from "../maps.js";
+import { TILE_CACTUS, TILE_EMPTY, TILE_PALM, TILE_TREE, getMap } from "../maps.js";
 import { buildingTilesOf } from "../building-rect.js";
 import { buildingSiteError } from "./build.js";
 import { previewSite } from "./preview.js";
@@ -32,7 +32,7 @@ import type { Projectile } from "./types.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { createMatch, step } from "./match.js";
 import { astar } from "./path.js";
-import { hasFullLos } from "./elevation.js";
+import { fillLosFlags, hasFullLos, hasFullLosFlagged } from "./elevation.js";
 import { snapshotFor } from "./snapshot.js";
 import { coverTerrainFromSnapshot, tileOnMask, visionMask } from "./vision.js";
 import type { MatchState } from "./types.js";
@@ -198,6 +198,61 @@ describe("trees", () => {
     assert.equal(out[1], TILE_EMPTY);
     assert.equal(tiles[1], TILE_TREE);
     assert.equal(hasFullLos(elev, width, 1, 0, 0, width - 1, 0, { terrain: out, occupy }), true);
+  });
+
+  it("lets a sight line through twice as many palms and half as many cacti", () => {
+    const width = 16;
+    const elev = new Uint8Array(width);
+    const occupy = new Int32Array(width);
+    const see = (tile: number, n: number): boolean => {
+      const terrain = new Uint8Array(width);
+      for (let i = 1; i <= n; i++) terrain[i] = tile;
+      const cover = { terrain, occupy };
+      const open = hasFullLos(elev, width, 1, 0, 0, width - 1, 0, cover);
+      const flags = new Uint8Array(width);
+      fillLosFlags(cover, flags);
+      assert.equal(hasFullLosFlagged(elev, flags, cover, width, 0, 0, width - 1, 0, 0), open);
+      return open;
+    };
+    assert.equal(see(TILE_TREE, TREE_LOS_THROUGH), true);
+    assert.equal(see(TILE_TREE, TREE_LOS_THROUGH + 1), false);
+    assert.equal(see(TILE_PALM, TREE_LOS_THROUGH * 2), true);
+    assert.equal(see(TILE_PALM, TREE_LOS_THROUGH * 2 + 1), false);
+    assert.equal(see(TILE_CACTUS, TREE_LOS_THROUGH / 2), true);
+    assert.equal(see(TILE_CACTUS, TREE_LOS_THROUGH / 2 + 1), false);
+  });
+
+  it("walks and crushes a palm or a cactus the way it does a tree", () => {
+    const { state } = twoPlayerMatch();
+    const y = 60;
+    clearPad(state, 70, y - 4, 110, y + 4);
+    const lay = (x: number, tile: number): void => {
+      state.terrain[y * state.width + x] = tile;
+      state.blocked[y * state.width + x] = 0;
+    };
+    lay(80, TILE_PALM);
+    assert.equal(isTree(state, 80, y), true);
+    assert.equal(isSingleTree(state, 80, y), true);
+    assert.equal(walkable(state, 80, y, "rifleman"), true);
+    assert.equal(walkable(state, 80, y, "warden"), true);
+    assert.equal(crushTreeAt(state, 80, y), true);
+    assert.equal(state.terrain[y * state.width + 80], TILE_EMPTY);
+
+    for (let x = 90; x <= 92; x++) lay(x, TILE_CACTUS);
+    assert.equal(isSingleTree(state, 91, y), false);
+    assert.equal(walkable(state, 91, y, "rifleman"), true);
+    assert.equal(walkable(state, 91, y, "warden"), false);
+    assert.equal(crushTreeAt(state, 91, y), false);
+    assert.equal(state.terrain[y * state.width + 91], TILE_CACTUS);
+  });
+
+  it("blanks a felled palm in snapshot cover", () => {
+    const width = 8;
+    const tiles = new Uint8Array(width);
+    tiles[1] = TILE_PALM;
+    const out = coverTerrainFromSnapshot(tiles, width, 1, [{ x: 1, y: 0 }]);
+    assert.equal(out[1], TILE_EMPTY);
+    assert.equal(tiles[1], TILE_PALM);
   });
 
   it("lets one AP, HE, or HEAT shell that strikes a tree fell it instantly", () => {

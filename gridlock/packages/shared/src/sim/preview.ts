@@ -1,5 +1,5 @@
 import { SMELTER_SCRAP_COVER, anchorsBuildRange, bridgeBrickLength, buildRadiusOf, catalog, isBridge, isEngineerBuilding, isFieldStructure, isYardField, onWaterBuilding, type BridgeType, type BuildingType, type FieldStructureType, type YardFieldType } from "../catalog.js";
-import { TILE_BLOCKED, TILE_FENCE, TILE_ROCK, TILE_TREE, TILE_WATER, getMap, isMountainCliff } from "../maps.js";
+import { TILE_BLOCKED, TILE_FENCE, TILE_ROCK, TILE_WATER, getMap, isGroveTile, isMountainCliff } from "../maps.js";
 import type { MatchSnapshot } from "../protocol.js";
 import { planBridgeLine, type BridgeBrick, type BridgeGround, type BridgeSpan } from "../bridge-plan.js";
 import { fieldTilesOn, overlapsFieldIn, overlapsSitedLine, sitedLineTiles } from "./field.js";
@@ -37,7 +37,7 @@ export function previewField(
     const kind = map.tiles[i] ?? TILE_BLOCKED;
     if (kind === TILE_BLOCKED || kind === TILE_WATER || kind === TILE_FENCE || kind === TILE_ROCK) return false;
     if (isMountainCliff(map.tiles, map.heights, map.width, map.height, t.x, t.y)) return false;
-    if (kind === TILE_TREE && !cleared.has(i)) return false;
+    if (isGroveTile(kind) && !cleared.has(i)) return false;
     if (snap.scrap.some((s) => s.x === t.x && s.y === t.y && s.yield > 0)) return false;
     if (built.has(i)) return false;
   }
@@ -150,7 +150,7 @@ export function previewBridge(
       const kind = map.tiles[i] ?? TILE_BLOCKED;
       if (kind === TILE_BLOCKED || kind === TILE_FENCE || kind === TILE_ROCK) return false;
       if (isMountainCliff(map.tiles, map.heights, map.width, map.height, tx, ty)) return false;
-      if (kind === TILE_TREE && !cleared.has(i)) return false;
+      if (isGroveTile(kind) && !cleared.has(i)) return false;
       return !built.has(i);
     },
     bricks,

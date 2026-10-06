@@ -1,3 +1,5 @@
+import { TILE_CACTUS, TILE_PALM, TILE_TREE } from "@gridlock/shared";
+
 /**
  * A tree a flamethrower force-attack set alight. The trunk chars, flames
  * climb it, then it slumps. Wall-clock, same reason as the burned soldier:
@@ -10,16 +12,22 @@ export const TREE_DRAW_SCALE = 1.3;
 
 export interface TreeStamp {
   pine: boolean;
+  /** Grove tile this stamp was chosen for. Woods keep the oak/pine hash. */
+  tile: number;
   drawH: number;
   face: number;
 }
 
 /** Same choice `collectTrees` uses, so the burning trunk is the one that stood there. */
-export function treeStamp(tx: number, ty: number, kind: "lone" | "grove"): TreeStamp {
+export function treeStamp(tx: number, ty: number, kind: "lone" | "grove", tile = TILE_TREE): TreeStamp {
   const h = Math.imul(tx * 374761393 + ty * 668265263 + 9, 1103515245) >>> 0;
-  const pine = kind === "lone" ? h % 3 !== 1 : h % 5 === 0;
-  const drawH = TREE_DRAW_SCALE * (kind === "lone" ? (pine ? 54 : 46) + (h % 5) * 2 : (pine ? 40 : 34) + (h % 4));
-  return { pine, drawH, face: h % 3 };
+  const pine = tile === TILE_TREE && (kind === "lone" ? h % 3 !== 1 : h % 5 === 0);
+  const faces = tile === TILE_TREE ? 3 : 2;
+  let base: number;
+  if (tile === TILE_PALM) base = kind === "lone" ? 58 + (h % 5) * 2 : 42 + (h % 4);
+  else if (tile === TILE_CACTUS) base = kind === "lone" ? 38 + (h % 4) * 2 : 30 + (h % 3);
+  else base = kind === "lone" ? (pine ? 54 : 46) + (h % 5) * 2 : (pine ? 40 : 34) + (h % 4);
+  return { pine, tile, drawH: TREE_DRAW_SCALE * base, face: h % faces };
 }
 
 export interface TreeBurnPose {

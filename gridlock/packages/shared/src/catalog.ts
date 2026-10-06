@@ -480,6 +480,12 @@ export const PATH_RETRY_TICKS = 30;
 /** Tree tiles a sight ray may pass before the grove closes. One authoring cell. */
 export const TREE_LOS_THROUGH = TILE_SUBDIV;
 /**
+ * Grove sight budget in `groveSightCost` units. A tree costs 2, so this is
+ * twice TREE_LOS_THROUGH and the old tree depth is unchanged. Palms cost 1
+ * and cacti cost 4.
+ */
+export const GROVE_SIGHT_BUDGET = TREE_LOS_THROUGH * 2;
+/**
  * Chance a round that actually meets a tree (height included) stops on that
  * tile. Rolled once per tree along the path; later trees still get a roll.
  */
@@ -2255,11 +2261,14 @@ export const FLAK_BURST_RADIUS = 26;
 export const FLAK_BURST_DEPTH = 9;
 /** Damage at the heart of a burst. A Stuka takes about five close ones; most bursts land off its heart. */
 export const FLAK_BURST_DAMAGE = 26;
-/** Scatter of the burst off the predicted point, world px, at point blank and at full reach. */
-export const FLAK_SCATTER_NEAR = 12;
-export const FLAK_SCATTER_FAR = 34;
-/** Fuse scatter in height, elevation units. */
-export const FLAK_FUSE_SCATTER_Z = 4;
+/**
+ * Scatter of the burst off the predicted point, world px, at point blank and at full reach.
+ * Thirty percent wider than the first lay (12 and 34).
+ */
+export const FLAK_SCATTER_NEAR = 15.6;
+export const FLAK_SCATTER_FAR = 44.2;
+/** Fuse scatter in height, elevation units. Thirty percent wider than the first lay (4). */
+export const FLAK_FUSE_SCATTER_Z = 5.2;
 /** Shell speed, world px a second: slow enough that the gun must lead a plane. */
 export const FLAK_SHELL_SPEED = 900;
 

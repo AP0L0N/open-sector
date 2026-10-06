@@ -1,7 +1,7 @@
 import { burnDeathPose, burnFallAgeMs } from "./burn-death.js";
 import { drawBodyFlames, drawEmbers } from "./flame-fx.js";
 import { heldFrame } from "./infantry-visual.js";
-import { drawPropSprite, drawUnitSprite, OAK_FACES, PINE_FACES, type UnitSpriteDef } from "./sprites.js";
+import { drawPropSprite, drawUnitSprite, groveFaces, type UnitSpriteDef } from "./sprites.js";
 import { treeBurnPose, type TreeStamp } from "./tree-burn.js";
 
 /** Blackened soldier in the flames, then one of the three collapses, then a dark body. */
@@ -60,7 +60,7 @@ export function drawBurningTree(
   ctx.translate(0, pose.drop);
   ctx.globalAlpha = Math.max(0, pose.alpha);
   if (stamp) {
-    const faces = stamp.pine ? PINE_FACES : OAK_FACES;
+    const faces = groveFaces(stamp.tile, stamp.pine);
     const spr = faces[stamp.face % faces.length];
     ctx.filter = `brightness(${pose.brightness}) sepia(${pose.sepia}) saturate(0.55)`;
     if (spr) drawPropSprite(ctx, spr, 0, 0, stamp.drawH, false);

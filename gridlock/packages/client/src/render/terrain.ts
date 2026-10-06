@@ -14,11 +14,14 @@ import {
   TILE_MOUNTAIN,
   TILE_ROAD,
   TILE_ROCK,
+  TILE_CACTUS,
+  TILE_PALM,
   TILE_SUBDIV,
   TILE_TREE,
   TILE_WATER,
   groundAt,
   heightAt,
+  isGroveTile,
   isMountainCliff,
   isScrapTile,
   isoBoxSilhouette,
@@ -224,7 +227,7 @@ function groundFill(map: MapDef, tx: number, ty: number, kind: number, scrap: bo
   const bare = kind === TILE_ROAD || scrap || cover === GROUND_DIRT;
   const fill = bare
     ? "#4a3b2b"
-    : kind === TILE_TREE
+    : isGroveTile(kind)
       ? "#263622"
       : cover === GROUND_SAND
         ? "#786a4f"
@@ -265,7 +268,7 @@ function surfaceImage(kind: number, scrap: boolean, cover: number): HTMLImageEle
   if (kind === TILE_BLOCKED || kind === TILE_WATER) return null;
   if (kind === TILE_ROCK) return ROCK_TEX;
   if (kind === TILE_ROAD || scrap || cover === GROUND_DIRT) return DIRT_TEX;
-  if (kind === TILE_TREE) return GRASS_TEXS[2] ?? GRASS_TEXS[0] ?? null;
+  if (isGroveTile(kind)) return GRASS_TEXS[2] ?? GRASS_TEXS[0] ?? null;
   if (cover === GROUND_SAND) return SAND_TEX;
   if (cover === GROUND_TALL_GRASS) return TALL_GRASS_TEX;
   if (cover === GROUND_STONES) return STONES_TEX;
@@ -459,22 +462,23 @@ function isoBox(
   fillQuad(ctx, n2, e2, s2, w2);
 }
 
-/** Stem of a grove, or a lone tree. Null if this cell is only canopy cover. */
+/** Stem of a grove, or a lone tree. Null if this cell is only canopy cover. Palms cluster with palms, cacti with cacti. */
 export function treePropKind(map: MapDef, tx: number, ty: number): "lone" | "grove" | null {
-  if ((map.tiles[ty * map.width + tx] ?? 0) !== TILE_TREE) return null;
-  const batch = treeNeighbor(map, tx, ty);
+  const tile = map.tiles[ty * map.width + tx] ?? 0;
+  if (!isGroveTile(tile)) return null;
+  const batch = treeNeighbor(map, tx, ty, tile);
   if (batch && !treeStem(tx, ty)) return null;
   return batch ? "grove" : "lone";
 }
 
-export function treeNeighbor(map: MapDef, tx: number, ty: number): boolean {
+export function treeNeighbor(map: MapDef, tx: number, ty: number, tile = TILE_TREE): boolean {
   for (let dy = -1; dy <= 1; dy++) {
     for (let dx = -1; dx <= 1; dx++) {
       if (dx === 0 && dy === 0) continue;
       const x = tx + dx;
       const y = ty + dy;
       if (x < 0 || y < 0 || x >= map.width || y >= map.height) continue;
-      if (map.tiles[y * map.width + x] === TILE_TREE) return true;
+      if (map.tiles[y * map.width + x] === tile) return true;
     }
   }
   return false;
@@ -513,7 +517,7 @@ function paintTileProps(
     isoBox(ctx, tx * ts, ty * ts, ts, ts, WALL_H, fillOverride ?? "#3a2a22", elev, ts, originX, originY);
     return;
   }
-  if (kind === TILE_TREE) return;
+  if (isGroveTile(kind)) return;
   if (kind === TILE_EMPTY) {
     paintDecor(ctx, map, tx, ty, originX, originY);
     paintFlatDecor(ctx, map, tx, ty, originX, originY);
@@ -1287,6 +1291,8 @@ function miniFill(map: MapDef, tx: number, ty: number, scrap: boolean): string {
   const kind = drawKind(map, tx, ty);
   if (kind === TILE_WATER) return "#1d4a5c";
   if (kind === TILE_TREE) return "#2a4a30";
+  if (kind === TILE_PALM) return "#3d5a28";
+  if (kind === TILE_CACTUS) return "#2f5a3a";
   if (kind === TILE_ROAD) return "#8a7348";
   if (kind === TILE_FENCE) return "#6e5c3c";
   if (kind === TILE_BLOCKED) return "#3a2a22";

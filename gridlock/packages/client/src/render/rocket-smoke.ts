@@ -187,12 +187,12 @@ export function airBurstPuffs(x: number, y: number, z: number, now: number, seed
   return out;
 }
 
-/** How long a flak burst's cloud hangs, ms. Longer than a rocket's: the black knots linger over the guns. */
-export const FLAK_CLOUD_MS = 5200;
+/** How long a flak burst's cloud lasts, ms. It blooms and is gone inside a second. */
+export const FLAK_CLOUD_MS = 780;
 
 /**
- * A Flak 37 shell's burst: a wide black cloud at the fuse height. It spreads and hangs.
- * No bright core — the flash lives on rocket air bursts (`drawAirBurst`), not here.
+ * A Flak 37 shell's burst: a black cloud at the fuse height, a fifth smaller than the
+ * wide one, gone almost at once. No bright core — that flash is the rocket's (`drawAirBurst`).
  * `shade` above 1 runs from dark brown toward black (`drawRocketPuff`).
  */
 export function flakCloudPuffs(x: number, y: number, z: number, now: number, seed: number): RocketPuff[] {
@@ -200,18 +200,19 @@ export function flakCloudPuffs(x: number, y: number, z: number, now: number, see
   const out: RocketPuff[] = [];
   for (let i = 0; i < 22; i++) {
     const a = rnd() * Math.PI * 2;
-    const reach = 32 + rnd() * 48;
+    // 0.8 of the wide cloud (reach 32–80, radius 22–124).
+    const reach = 26 + rnd() * 38;
     out.push({
-      x: x + Math.cos(a) * (4 + rnd() * 14),
-      y: y + Math.sin(a) * (4 + rnd() * 14),
+      x: x + Math.cos(a) * (3 + rnd() * 11),
+      y: y + Math.sin(a) * (3 + rnd() * 11),
       z: z + (rnd() - 0.5) * 2.4,
       dx: Math.cos(a) * reach,
       dy: Math.sin(a) * reach,
-      rise: 4 + rnd() * 8,
-      at: now + i * 14,
-      life: FLAK_CLOUD_MS * (0.75 + rnd() * 0.4),
-      r0: 22 + rnd() * 14,
-      r1: 78 + rnd() * 46,
+      rise: 3 + rnd() * 6,
+      at: now + i * 8,
+      life: FLAK_CLOUD_MS * (0.72 + rnd() * 0.28),
+      r0: 18 + rnd() * 11,
+      r1: 62 + rnd() * 37,
       alpha: 0.86 + rnd() * 0.12,
       shade: 1.96 + rnd() * 0.04,
       seed: (seed + i * 17) >>> 0,

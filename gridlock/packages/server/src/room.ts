@@ -476,12 +476,33 @@ export class Hub {
   private tickRoom(roomId: string): void {
     const match = this.matches.get(roomId);
     if (!match) return;
+    const t0 = Date.now();
     stepMatch(match);
+    const simMs = Date.now() - t0;
     for (const line of match.pendingComms) {
       this.broadcast(roomId, { type: "chat", from: "sys", name: "HQ", text: line, at: Date.now() });
     }
     match.pendingComms = [];
+    const t1 = Date.now();
     this.broadcastSnapshots(roomId);
+    const snapMs = Date.now() - t1;
+    const ms = simMs + snapMs;
+    if (ms >= 50) {
+      const members = this.members.get(roomId) ?? [];
+      const watcher = members[0];
+      const bytes = watcher
+        ? Buffer.byteLength(JSON.stringify({ type: "match.snapshot", match: snapshotFor(match, watcher) }))
+        : 0;
+      log("room.slow", {
+        room: roomId,
+        ms,
+        simMs,
+        snapMs,
+        entities: match.entities.size,
+        bytes,
+        players: members.length,
+      });
+    }
     if (match.ended) {
       const w = match.winner;
       this.broadcast(roomId, {

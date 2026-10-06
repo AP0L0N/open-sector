@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { TILE_EMPTY, TILE_TREE } from "../maps.js";
+import { TILE_CACTUS, TILE_EMPTY, TILE_PALM, TILE_TREE } from "../maps.js";
 import {
   catalog,
   ENGINEER_SEEK_TILES,
@@ -362,6 +362,28 @@ describe("engineer field works", () => {
     assert.equal(man.hpMax, base);
     assert.equal(man.hp, base);
     assert.equal(man.coverBonus, 0);
+  });
+
+  it("counts a palm as half a tree and a cactus as two", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 28, 26, 18, 14);
+    const ts = state.tileSize;
+    const tx = 36;
+    const ty = 32;
+    const man = makeEntity(state, "rifleman", "A", tileCenter(tx, ts), tileCenter(ty, ts));
+    const base = catalog("rifleman").hp;
+    step(state, TICK_DT);
+    state.terrain[tileIndex(state, tx + 1, ty)] = TILE_PALM;
+    step(state, TICK_DT);
+    const palm = Math.max(1, Math.round(base * Math.min(TREE_COVER_MAX, 0.5 * TREE_COVER_PER)));
+    assert.equal(man.hpMax, base + palm);
+    assert.equal(treeCoverBonus(state, man), palm);
+
+    state.terrain[tileIndex(state, tx + 1, ty)] = TILE_CACTUS;
+    step(state, TICK_DT);
+    const cactus = Math.max(1, Math.round(base * Math.min(TREE_COVER_MAX, 2 * TREE_COVER_PER)));
+    assert.equal(man.hpMax, base + cactus);
+    assert.equal(treeCoverBonus(state, man), cactus);
   });
 
   it("lets one tank shell wreck the bags and still wound the men behind them", () => {

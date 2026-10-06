@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { TILE_CACTUS, TILE_PALM, TILE_TREE } from "@gridlock/shared";
 import { TREE_BURN_MS, treeBurnPose, treeStamp } from "./tree-burn.js";
 
 describe("burning tree", () => {
@@ -26,7 +27,15 @@ describe("burning tree", () => {
     const a = treeStamp(12, 40, "lone");
     const b = treeStamp(12, 40, "lone");
     assert.deepEqual(a, b);
+    assert.equal(a.tile, TILE_TREE);
     assert.ok(a.drawH > 40);
     assert.ok(a.face >= 0 && a.face < 3);
+    const palm = treeStamp(3, 9, "grove", TILE_PALM);
+    assert.deepEqual(palm, treeStamp(3, 9, "grove", TILE_PALM));
+    assert.equal(palm.pine, false);
+    assert.ok(palm.face >= 0 && palm.face < 2);
+    const cactus = treeStamp(3, 9, "lone", TILE_CACTUS);
+    assert.equal(cactus.tile, TILE_CACTUS);
+    assert.ok(cactus.face >= 0 && cactus.face < 2);
   });
 });

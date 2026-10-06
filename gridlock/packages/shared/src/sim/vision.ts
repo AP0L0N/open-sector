@@ -17,9 +17,11 @@ import {
   type Crit,
 } from "../catalog.js";
 import type { EntityView, MatchSnapshot } from "../protocol.js";
-import { featureLotSite, getMap, isMapLine, TILE_EMPTY, TILE_TREE } from "../maps.js";
+import { featureLotSite, getMap, isGroveTile, isMapLine, TILE_EMPTY } from "../maps.js";
 import {
   coverSmokeAt,
+  armLosFastPath,
+  clearLosFastPath,
   fillLosFlags,
   hasFullLos,
   hasFullLosFlagged,
@@ -571,6 +573,86 @@ function paintSight(
   }
 }
 
+/** Tiles per reach block. A block outside the ring is not scanned tile by tile. */
+const SIGHT_BLOCK = 16;
+
+let sightBlockMin = new Uint8Array(0);
+let sightBlockMax = new Uint8Array(0);
+let sightBlockCols = 0;
+let sightBlocksReady = false;
+
+/** Min and max ground in each block, so a flat ring past catalog sight is skipped. */
+export function armSightBlocks(elev: Uint8Array, width: number, height: number): void {
+  const cols = Math.ceil(width / SIGHT_BLOCK);
+  const rows = Math.ceil(height / SIGHT_BLOCK);
+  const n = cols * rows;
+  if (sightBlockMin.length !== n) {
+    sightBlockMin = new Uint8Array(n);
+    sightBlockMax = new Uint8Array(n);
+  }
+  for (let by = 0; by < rows; by++) {
+    const y0 = by * SIGHT_BLOCK;
+    const y1 = Math.min(height, y0 + SIGHT_BLOCK);
+    for (let bx = 0; bx < cols; bx++) {
+      const x0 = bx * SIGHT_BLOCK;
+      const x1 = Math.min(width, x0 + SIGHT_BLOCK);
+      let lo = 255;
+      let hi = 0;
+      for (let y = y0; y < y1; y++) {
+        const row = y * width;
+        for (let x = x0; x < x1; x++) {
+          const h = elev[row + x]!;
+          if (h < lo) lo = h;
+          if (h > hi) hi = h;
+        }
+      }
+      const i = by * cols + bx;
+      sightBlockMin[i] = lo;
+      sightBlockMax[i] = hi;
+    }
+  }
+  sightBlockCols = cols;
+  sightBlocksReady = true;
+}
+
+export function clearSightBlocks(): void {
+  sightBlocksReady = false;
+}
+
+/**
+ * False only when every tile in the rect is outside the sight ring.
+ * `minH` / `maxH` may cover a taller tile than the rect holds; that scans more, never less.
+ */
+function rectInReach(
+  ox: number,
+  oy: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  minD: number,
+  boxR: number,
+  catalogR: number,
+  h0: number,
+  uphill: number,
+  minH: number,
+  maxH: number,
+): boolean {
+  const cx = ox < x0 ? x0 : ox > x1 ? x1 : ox;
+  const cy = oy < y0 ? y0 : oy > y1 ? y1 : oy;
+  const near = sightDist(cx, cy, ox, oy);
+  if (near > boxR) return false;
+  const far = Math.max(
+    sightDist(x0, y0, ox, oy),
+    sightDist(x1, y0, ox, oy),
+    sightDist(x0, y1, ox, oy),
+    sightDist(x1, y1, ox, oy),
+  );
+  if (far < minD) return false;
+  const maxExtra = uphill > 0 ? Math.max(Math.abs(minH - h0), Math.abs(maxH - h0)) * uphill : 0;
+  return near <= catalogR + maxExtra;
+}
+
 function paintSightBox(
   mask: Uint8Array,
   width: number,
@@ -600,6 +682,69 @@ function paintSightBox(
     oy >= 0 &&
     ox < width &&
     oy < height;
+  if (sightBlocksReady && elev instanceof Uint8Array) {
+    const bx0 = (x0 / SIGHT_BLOCK) | 0;
+    const bx1 = (x1 / SIGHT_BLOCK) | 0;
+    const by0 = (y0 / SIGHT_BLOCK) | 0;
+    const by1 = (y1 / SIGHT_BLOCK) | 0;
+    for (let by = by0; by <= by1; by++) {
+      const brow = by * sightBlockCols;
+      const ty0 = by * SIGHT_BLOCK;
+      for (let bx = bx0; bx <= bx1; bx++) {
+        const tx0 = bx * SIGHT_BLOCK;
+        const ix0 = tx0 > x0 ? tx0 : x0;
+        const iy0 = ty0 > y0 ? ty0 : y0;
+        const ix1 = Math.min(tx0 + SIGHT_BLOCK - 1, x1);
+        const iy1 = Math.min(ty0 + SIGHT_BLOCK - 1, y1);
+        const bi = brow + bx;
+        if (
+          !rectInReach(
+            ox,
+            oy,
+            ix0,
+            iy0,
+            ix1,
+            iy1,
+            minD,
+            boxR,
+            catalogR,
+            h0,
+            uphillBonus,
+            sightBlockMin[bi]!,
+            sightBlockMax[bi]!,
+          )
+        ) {
+          continue;
+        }
+        paintSightRect(mask, width, height, ox, oy, ix0, iy0, ix1, iy1, minD, boxR, catalogR, elev, cover, observerEye, uphillBonus, h0, flags, flagged);
+      }
+    }
+    return;
+  }
+  paintSightRect(mask, width, height, ox, oy, x0, y0, x1, y1, minD, boxR, catalogR, elev, cover, observerEye, uphillBonus, h0, flags, flagged);
+}
+
+function paintSightRect(
+  mask: Uint8Array,
+  width: number,
+  height: number,
+  ox: number,
+  oy: number,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  minD: number,
+  boxR: number,
+  catalogR: number,
+  elev: ArrayLike<number>,
+  cover: CoverField | undefined,
+  observerEye: number,
+  uphillBonus: number,
+  h0: number,
+  flags: Uint8Array | undefined,
+  flagged: boolean,
+): void {
   for (let y = y0; y <= y1; y++) {
     const row = y * width;
     for (let x = x0; x <= x1; x++) {
@@ -738,7 +883,7 @@ export function coverTerrainFromSnapshot(
   for (const t of clearedTrees) {
     if (t.x < 0 || t.y < 0 || t.x >= width || t.y >= height) continue;
     const i = t.y * width + t.x;
-    if (terrain[i] === TILE_TREE) terrain[i] = TILE_EMPTY;
+    if (isGroveTile(terrain[i] ?? 0)) terrain[i] = TILE_EMPTY;
   }
   return terrain;
 }
@@ -754,9 +899,6 @@ type SightMemo = {
   calls: number;
   tiles: Int32Array | null;
 };
-
-/** A unit must hold its tile this many rebuilds before its sight is stored. */
-const SIGHT_SETTLE_CALLS = 1;
 
 const sightMemos = new WeakMap<MatchState, Map<number, SightMemo>>();
 
@@ -843,32 +985,7 @@ function localCoverKey(env: SightEnv, p: SightParams, width: number, height: num
   return h;
 }
 
-let sightScratch = new Uint8Array(0);
 let losFlagScratch = new Uint8Array(0);
-
-/** Every tile one observer lights, with nothing skipped. */
-function fullSightTiles(state: MatchState, p: SightParams, cover: CoverField): Int32Array {
-  const width = state.width;
-  const height = state.height;
-  if (sightScratch.length < width * height) sightScratch = new Uint8Array(width * height);
-  const scratch = sightScratch;
-  paintSightParams(scratch, width, height, p, state.heights, cover);
-  const r = sightBoxRadius(p, true);
-  const x0 = Math.max(0, Math.min(p.ox - r, p.fw > 0 ? p.fx : p.ox));
-  const x1 = Math.min(width - 1, Math.max(p.ox + r, p.fx + p.fw - 1));
-  const y0 = Math.max(0, Math.min(p.oy - r, p.fh > 0 ? p.fy : p.oy));
-  const y1 = Math.min(height - 1, Math.max(p.oy + r, p.fy + p.fh - 1));
-  const out: number[] = [];
-  for (let y = y0; y <= y1; y++) {
-    const row = y * width;
-    for (let x = x0; x <= x1; x++) {
-      if (!scratch[row + x]) continue;
-      out.push(row + x);
-      scratch[row + x] = 0;
-    }
-  }
-  return Int32Array.from(out);
-}
 
 /** Allied observers, widest sight first, with the sight they paint. */
 function alliedSight(state: MatchState, playerId: string): { e: Entity; p: SightParams }[] {
@@ -1173,17 +1290,13 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
   if (losFlagScratch.length !== width * height) losFlagScratch = new Uint8Array(width * height);
   fillLosFlags(cover, losFlagScratch);
   cover.losFlags = losFlagScratch;
-  const tObservers = process.env.PROFILE === "1" ? performance.now() : 0;
   const observers = alliedSight(state, playerId);
   const memo = sightMemoOf(state);
   const env = sightEnvOf(state, cover);
-  const tEnv = process.env.PROFILE === "1" ? performance.now() : 0;
   const movers: SightParams[] = [];
-  let same = 0;
   for (const { e, p } of observers) {
     const local = localCoverKey(env, p, width, height);
     const m = memo.get(e.id);
-    if (m && m.local === local && sameSightParams(m.p, p)) same++;
     if (m && m.tiles && m.local === local && sameSightParams(m.p, p)) {
       const tiles = m.tiles;
       for (let i = 0; i < tiles.length; i++) mask[tiles[i]!] = 1;
@@ -1195,20 +1308,15 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
     movers.push(p);
   }
   // Tiles an earlier observer lit are skipped, so movers only pay for new ground.
-  // A private repaint to cache each disk cost more than painting them together,
-  // and a moving fight invalidated that cache on the next tick.
-  const tPaint0 = process.env.PROFILE === "1" ? performance.now() : 0;
-  for (const p of movers) paintSightParams(mask, width, height, p, state.heights, cover);
-  const tPaint1 = process.env.PROFILE === "1" ? performance.now() : 0;
-  for (const id of memo.keys()) if (!state.entities.has(id)) memo.delete(id);
-  sealFovIslands(mask, width, height);
-  if (process.env.PROFILE === "1") {
-    const tEnd = performance.now();
-    console.log(
-      `vision ${playerId || "-"} obs ${observers.length} same ${same} movers ${movers.length} ` +
-        `env ${(tEnv - tObservers).toFixed(1)} keys ${(tPaint0 - tEnv).toFixed(1)} ` +
-        `paint ${(tPaint1 - tPaint0).toFixed(1)} seal ${(tEnd - tPaint1).toFixed(1)}`,
-    );
+  armLosFastPath(state.heights, losFlagScratch, width, height);
+  armSightBlocks(state.heights, width, height);
+  try {
+    for (const p of movers) paintSightParams(mask, width, height, p, state.heights, cover);
+    for (const id of memo.keys()) if (!state.entities.has(id)) memo.delete(id);
+    sealFovIslands(mask, width, height);
+  } finally {
+    clearLosFastPath();
+    clearSightBlocks();
   }
   state.visionByPlayer.set(playerId, mask);
   state.visionKeyByPlayer.set(playerId, key);

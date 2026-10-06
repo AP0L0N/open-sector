@@ -62,8 +62,8 @@ import {
   facingToIso,
   getMap,
   TILE_EMPTY,
-  TILE_TREE,
   TILE_WATER,
+  isGroveTile,
   TICK_DT,
   burnVariant,
   DRONE_LEASH_TILES,
@@ -181,8 +181,7 @@ import { aimMoveFace, moveFaceArmed, moveFaceCommand } from "./move-face.js";
 import {
   UNIT_VISUAL_SCALE,
   INFANTRY_VISUAL_SCALE,
-  OAK_FACES,
-  PINE_FACES,
+  groveFaces,
   BUSH_FACES,
   SIGN_FACES,
   CLUTTER_SPRITES,
@@ -1861,8 +1860,9 @@ export class MapView {
   }
 
   /**
-   * A Pak or the Flak fired: a flash and a smoke puff at its muzzle, and the field gun's blast
-   * cloud thrown back round the pit. The Pak 43's 88mm throws a far bigger one.
+   * A Pak or the Flak fired: a flash at the muzzle, and the field gun's blast cloud thrown
+   * back round the pit. A Pak also puffs smoke out of the muzzle. The Flak does not —
+   * the spark is enough, and the back blast stays. The Pak 43's 88mm throws a far bigger one.
    */
   private noteEmplacementShot(shooter: EntityView, shotId: number, caliber: number, now: number): void {
     const gun = gunLayerFor(shooter.type);
@@ -1881,17 +1881,19 @@ export class MapView {
       this.toScreen(shooter.x - (def.tileW * ts) / 2, shooter.y + (def.tileH * ts) / 2, elev).x;
     // The art's muzzle height is in its own world px at CIWS_SOURCE_ZOOM source px each, laid on the pad's width.
     const lift = gun.muzzleZ * CIWS_SOURCE_ZOOM * (padW / gun.pad.padWidth);
-    this.muzzleSmokes.push(
-      ...spawnMuzzleSmoke({
-        x,
-        y,
-        dirX,
-        dirY,
-        now,
-        seed: (shotId * 2654435761 + Math.floor(now)) >>> 0,
-        scale: look.muzzle,
-      }),
-    );
+    if (look.muzzle > 0) {
+      this.muzzleSmokes.push(
+        ...spawnMuzzleSmoke({
+          x,
+          y,
+          dirX,
+          dirY,
+          now,
+          seed: (shotId * 2654435761 + Math.floor(now)) >>> 0,
+          scale: look.muzzle,
+        }),
+      );
+    }
     this.gunRecoil.set(shooter.id, { at: now });
     this.fieldGunSmokes.push(
       ...spawnFieldGunSmoke({
@@ -2136,7 +2138,8 @@ export class MapView {
       const t = list[n]!;
       if (t.x < 0 || t.y < 0 || t.x >= w || t.y >= map.height) continue;
       const i = t.y * w + t.x;
-      if (map.tiles[i] !== TILE_TREE) continue;
+      const tile = map.tiles[i] ?? 0;
+      if (!isGroveTile(tile)) continue;
       const kind = treePropKind(map, t.x, t.y);
       map.tiles[i] = TILE_EMPTY;
       dirty.push(i);
@@ -2146,7 +2149,7 @@ export class MapView {
         const y = (t.y + 0.55) * ts;
         const seed = (t.x * 131 + t.y * 977 + n * 17) >>> 0;
         if (t.burn) {
-          this.treeBurns.push({ x, y, at: now, seed, stamp: kind ? treeStamp(t.x, t.y, kind) : null });
+          this.treeBurns.push({ x, y, at: now, seed, stamp: kind ? treeStamp(t.x, t.y, kind, tile) : null });
         } else {
           this.treeFalls.push({ x, y, at: now, seed });
         }
@@ -5815,7 +5818,8 @@ export class MapView {
     const { w: vw, h: vh } = this.viewSize();
     const now = performance.now();
     for (const { tx, ty } of this.stemsOf(map)) {
-      if (map.tiles[ty * w + tx] !== TILE_TREE || !this.known(tx, ty)) continue;
+      const tile = map.tiles[ty * w + tx] ?? 0;
+      if (!isGroveTile(tile) || !this.known(tx, ty)) continue;
       const kind = treePropKind(map, tx, ty);
       if (!kind) continue;
       const wx = (tx + 0.5) * ts;
@@ -5824,8 +5828,8 @@ export class MapView {
       // Iso AABB of the viewport covers most of the map; skip sprites that
       // actually sit off-screen. Source art is ~800–1200px tall.
       if (p.x < -96 || p.y < -96 || p.x > vw + 96 || p.y > vh + 48) continue;
-      const stamp = treeStamp(tx, ty, kind);
-      const faces = stamp.pine ? PINE_FACES : OAK_FACES;
+      const stamp = treeStamp(tx, ty, kind, tile);
+      const faces = groveFaces(tile, stamp.pine);
       const spr = faces[stamp.face % faces.length];
       const drawH = stamp.drawH;
       const veil = this.fogField?.veil(tx + 0.5, ty + 0.55, now) ?? 0;

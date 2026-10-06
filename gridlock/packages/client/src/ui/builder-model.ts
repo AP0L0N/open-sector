@@ -46,7 +46,7 @@ import {
   TILE_FENCE,
   TILE_MOUNTAIN,
   TILE_ROCK,
-  TILE_TREE,
+  isGroveTile,
   isScrapTile,
   lampBlocked,
   scatterClutter,
@@ -784,7 +784,7 @@ function bridgeFooting(s: Sheet, f: MapFeature): string | null {
       const t = s.tiles[y * s.width + x];
       return (
         t !== TILE_ROCK &&
-        t !== TILE_TREE &&
+        !isGroveTile(t ?? 0) &&
         t !== TILE_FENCE &&
         t !== TILE_BLOCKED &&
         !isMountainCliff(s.tiles, s.heights, s.width, s.height, x, y)

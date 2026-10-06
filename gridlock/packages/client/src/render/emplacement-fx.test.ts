@@ -12,10 +12,12 @@ describe("crewed gun shot look", () => {
     assert.ok(big.smoke >= small.smoke * 2, "a much larger blast cloud");
     assert.ok(big.muzzle > small.muzzle);
     assert.ok(PAK43_FX_CALIBER_MUL > 1.5);
-    assert.ok(emplacementShotLook("flak").smoke > 0, "the Flak smokes too");
+    const flakLook = emplacementShotLook("flak");
+    assert.ok(flakLook.smoke > 0, "the blast behind the Flak stays");
+    assert.equal(flakLook.muzzle, 0, "no front smoke; the spark is enough");
   });
 
-  it("a flak burst leaves a black cloud that hangs longer than a rocket's air burst", () => {
+  it("a flak burst is a black cloud that is gone inside a second", () => {
     const flak = flakCloudPuffs(100, 100, 24, 0, 7);
     const rocket = airBurstPuffs(100, 100, 24, 0, 7);
     assert.ok(flak.length > rocket.length);
@@ -23,11 +25,11 @@ describe("crewed gun shot look", () => {
     assert.ok(flak.every((p) => Math.abs(p.z - 24) < 3), "at the fuse height");
     const longest = (ps: { life: number }[]) => Math.max(...ps.map((p) => p.life));
     const widest = (ps: { r1: number }[]) => Math.max(...ps.map((p) => p.r1));
-    const reach = (ps: { dx: number; dy: number }[]) => Math.max(...ps.map((p) => Math.hypot(p.dx, p.dy)));
-    assert.ok(longest(flak) > longest(rocket));
-    assert.ok(longest(flak) <= FLAK_CLOUD_MS * 1.2);
-    assert.ok(widest(flak) > widest(rocket) * 2, "a much larger cloud");
-    assert.ok(reach(flak) > reach(rocket) * 2, "it spreads much wider");
+    assert.ok(longest(flak) < longest(rocket) / 2, "gone well before a rocket's smoke");
+    assert.ok(longest(flak) <= FLAK_CLOUD_MS);
+    assert.ok(longest(flak) < 1000);
+    assert.ok(widest(flak) > widest(rocket) * 2, "still a wide cloud");
+    assert.ok(widest(flak) < 110, "a fifth under the wide cloud's biggest puff");
   });
 });
 

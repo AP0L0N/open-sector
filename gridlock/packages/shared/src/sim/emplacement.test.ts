@@ -4,7 +4,10 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   AIR_CRUISE_ALT,
   BUNKER_GARRISON_CAP,
+  FLAK_FUSE_SCATTER_Z,
   FLAK_RACK,
+  FLAK_SCATTER_FAR,
+  FLAK_SCATTER_NEAR,
   MGNEST_BELT,
   PAK36_RACK,
   PAK43_RACK,
@@ -298,6 +301,12 @@ describe("crewed gun ammunition", () => {
     assert.equal(nest.clip, 0, "no belt change refills it");
     assert.equal(nest.reload, 0);
     assert.equal(needsSupply(nest), true);
+  });
+
+  it("the Flak's burst scatters about 30% wider than its first lay", () => {
+    assert.ok(Math.abs(FLAK_SCATTER_NEAR / 12 - 1.3) < 0.02);
+    assert.ok(Math.abs(FLAK_SCATTER_FAR / 34 - 1.3) < 0.02);
+    assert.ok(Math.abs(FLAK_FUSE_SCATTER_Z / 4 - 1.3) < 0.02);
   });
 
   it("the Flak leaves the ground alone and fires flak shells at a plane", () => {
