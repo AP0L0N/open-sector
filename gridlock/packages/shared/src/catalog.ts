@@ -1012,6 +1012,8 @@ export interface CatalogEntry {
   airFirst?: boolean;
   /** Reach on a plane in the air, as a share of the ground reach. Default 1. */
   airReachMul?: number;
+  /** Lays only on what is in the air (the Flak). A forced aim at the ground puts a barrage up over it. */
+  airOnly?: boolean;
   /** Picks armored hulls before soft targets in its reach. */
   armorFirst?: boolean;
   /** Main-gun barrels. A twin mount fires them one after another. Default 1. */
@@ -2209,8 +2211,8 @@ export const GUN_CREW_TYPE: EntityType = "rifleman";
  * tighter and farther than the Gunner's bipod, and the belts are long. One man.
  */
 export const MGNEST_RANGE_TILES = t(13);
-export const MGNEST_BELT = 250;
-export const MGNEST_BELT_RELOAD = 7;
+/** Rounds in the boxes beside the gun. They do not refill by themselves: a supply truck brings more. */
+export const MGNEST_BELT = 1000;
 export const MGNEST_ARC_DEG = 60;
 export const MGNEST_WOUND_MUL = 0.5;
 /**
@@ -2220,22 +2222,38 @@ export const MGNEST_WOUND_MUL = 0.5;
 export const PAK36_RANGE_TILES = t(12);
 export const PAK36_ARC_DEG = 30;
 export const PAK36_WOUND_MUL = 0.45;
+/** Shells stacked by the gun. A supply truck refills them, as it does a tank's rack. */
+export const PAK36_RACK = 30;
 /**
  * Pak 43. The 88mm on its cruciform platform: the longest straight reach on the field, through
  * any front plate, all the way round, but it swings slowly. Two men; one alone loads at half pace.
  */
 export const PAK43_RANGE_TILES = t(18);
 export const PAK43_WOUND_MUL = 0.4;
+export const PAK43_RACK = 16;
 /**
- * Flak 37. A 37mm anti-aircraft gun fed in eight-round clips. Planes first, at a longer reach
- * than anything on the ground. On the ground it chews up soft targets and dents light plate.
- * Two men.
+ * Flak 37. A 37mm anti-aircraft gun that lays only on what is in the air. Its time-fused shells
+ * burst at the target's height and leave a black cloud: anything flying inside the burst is hurt,
+ * so one shell can catch two planes in formation. Laid moderately well: it leads a plane on its
+ * heading, but the fuse and the aim scatter. Two men.
  */
-export const FLAK_RANGE_TILES = t(10);
-export const FLAK_AIR_REACH_MUL = 1.4;
-export const FLAK_CLIP = 8;
-export const FLAK_CLIP_RELOAD = 2.4;
+export const FLAK_RANGE_TILES = t(14);
 export const FLAK_WOUND_MUL = 0.5;
+/** Flak shells in the ready racks. A supply truck refills them. */
+export const FLAK_RACK = 64;
+/** World px from the burst at which a flying body still takes something. Full damage inside a third of it. */
+export const FLAK_BURST_RADIUS = 26;
+/** Elevation units above or below the burst that still count. Planes cruise at AIR_CRUISE_ALT. */
+export const FLAK_BURST_DEPTH = 9;
+/** Damage at the heart of a burst. A Stuka takes about five close ones; most bursts land off its heart. */
+export const FLAK_BURST_DAMAGE = 26;
+/** Scatter of the burst off the predicted point, world px, at point blank and at full reach. */
+export const FLAK_SCATTER_NEAR = 12;
+export const FLAK_SCATTER_FAR = 34;
+/** Fuse scatter in height, elevation units. */
+export const FLAK_FUSE_SCATTER_Z = 4;
+/** Shell speed, world px a second: slow enough that the gun must lead a plane. */
+export const FLAK_SHELL_SPEED = 900;
 
 /**
  * Large wall. A tall concrete wall section with firing slits down both faces,
@@ -2803,6 +2821,54 @@ export const STUG_SHELLS: Record<ShellType, ShellDef> = {
     caliber: 75,
     spreadDeg: 6,
   },
+};
+
+/** Pak 36 rack. The 37mm Pzgr. 39 is all it carries. */
+export const PAK36_SHELLS: Record<ShellType, ShellDef> = {
+  ap: {
+    id: "ap",
+    name: "AP",
+    blurb: "3.7cm Pzgr. 39. Holes light hulls anywhere and a Tiger's side or rear. Glances off any heavy front.",
+    damage: 40,
+    penetration: 48,
+    caliber: 37,
+    spreadDeg: 1.8,
+  },
+  he: { id: "he", name: "HE", blurb: "Not carried.", damage: 30, penetration: 6, caliber: 37, spreadDeg: 3 },
+  heat: { id: "heat", name: "HEAT", blurb: "Not carried.", damage: 30, penetration: 40, caliber: 37, spreadDeg: 3 },
+  smoke: { id: "smoke", name: "Smoke", blurb: "Not carried.", damage: 0, penetration: 0, caliber: 37, spreadDeg: 6 },
+};
+
+/** Pak 43 rack. The 88mm Pzgr. 39/43 goes through every front plate on the field. */
+export const PAK43_SHELLS: Record<ShellType, ShellDef> = {
+  ap: {
+    id: "ap",
+    name: "AP",
+    blurb: "8.8cm Pzgr. 39/43. Goes through any front plate on the field and usually kills what it hits.",
+    damage: 85,
+    penetration: 190,
+    caliber: 88,
+    spreadDeg: 1.6,
+  },
+  he: { id: "he", name: "HE", blurb: "Not carried.", damage: 80, penetration: 14, caliber: 88, spreadDeg: 4 },
+  heat: { id: "heat", name: "HEAT", blurb: "Not carried.", damage: 70, penetration: 110, caliber: 88, spreadDeg: 3 },
+  smoke: { id: "smoke", name: "Smoke", blurb: "Not carried.", damage: 0, penetration: 0, caliber: 88, spreadDeg: 6 },
+};
+
+/** Flak 37 rack: time-fused 37mm that bursts in the air (CatalogEntry.airOnly). */
+export const FLAK_SHELLS: Record<ShellType, ShellDef> = {
+  ap: { id: "ap", name: "AP", blurb: "Not carried.", damage: 20, penetration: 30, caliber: 37, spreadDeg: 2 },
+  he: {
+    id: "he",
+    name: "Flak",
+    blurb: "3.7cm Sprgr. with a time fuse. Bursts at the target's height in a black cloud and hurts everything flying inside it.",
+    damage: FLAK_BURST_DAMAGE,
+    penetration: 10,
+    caliber: 37,
+    spreadDeg: 2.4,
+  },
+  heat: { id: "heat", name: "HEAT", blurb: "Not carried.", damage: 20, penetration: 30, caliber: 37, spreadDeg: 2 },
+  smoke: { id: "smoke", name: "Smoke", blurb: "Not carried.", damage: 0, penetration: 0, caliber: 37, spreadDeg: 6 },
 };
 
 /**
@@ -3600,7 +3666,6 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: 3,
     shotsPerTick: MG42.shotsPerTick,
     belt: MGNEST_BELT,
-    beltReload: MGNEST_BELT_RELOAD,
     crewGun: true,
     mountArcDeg: MGNEST_ARC_DEG,
     antiAir: true,
@@ -3612,7 +3677,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonSightBonus: 0,
     garrisonTypes: BUNKER_TYPES,
     capturable: false,
-    blurb: `An MG42 on its tripod behind a ring of sandbags, worked by one man, who comes with it. Laid tighter and farther than the Gunner's bipod, ${MGNEST_BELT}-round belts. Sweeps ${MGNEST_ARC_DEG}° either side of the way it was turned, and nothing behind that. Reaches a plane or a drone. Rifle fire on it finds the gunner, not the gun: with nobody at it, it falls silent until another soldier takes his place. Cannot move.`,
+    blurb: `An MG42 on its tripod behind a ring of sandbags, worked by one man, who comes with it. Laid tighter and farther than the Gunner's bipod. ${MGNEST_BELT} rounds in the boxes; they do not refill by themselves — bring a supply truck. Sweeps ${MGNEST_ARC_DEG}° either side of the way it was turned, and nothing behind that. Reaches a plane or a drone. Rifle fire on it finds the gunner, not the gun: with nobody at it, it falls silent until another soldier takes his place. Cannot move.`,
   },
   pak36: {
     type: "pak36",
@@ -3632,14 +3697,17 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rangeTiles: PAK36_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
     cooldown: 2.4,
-    damage: 40,
+    damage: PAK36_SHELLS.ap.damage,
     projectileSpeed: TANK_SHELL_SPEED,
     armorFront: 0,
     armorSide: 0,
     armorRear: 0,
-    penetration: 48,
-    caliber: 37,
-    spreadDeg: 1.8,
+    penetration: PAK36_SHELLS.ap.penetration,
+    caliber: PAK36_SHELLS.ap.caliber,
+    spreadDeg: PAK36_SHELLS.ap.spreadDeg,
+    ammo: { ap: PAK36_RACK },
+    defaultShell: "ap",
+    shells: PAK36_SHELLS,
     crewGun: true,
     mountArcDeg: PAK36_ARC_DEG,
     armorFirst: true,
@@ -3651,7 +3719,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonSightBonus: 0,
     garrisonTypes: BUNKER_TYPES,
     capturable: false,
-    blurb: `Light 37mm anti-tank gun behind a low shield, worked by one man, who comes with it. Holes a light hull anywhere and a Tiger in the side or rear, never its front. Tanks first. Traverses only ${PAK36_ARC_DEG}° either side of the way it was turned — set it facing the road. Rifle fire on it finds the gunner: with nobody at it, it falls silent until another soldier takes his place. Cannot move.`,
+    blurb: `Light 37mm anti-tank gun behind a low shield, worked by one man, who comes with it. Fires armor-piercing shells like a StuG's: holes a light hull anywhere and a Tiger in the side or rear, never its front. Tanks first. Traverses only ${PAK36_ARC_DEG}° either side of the way it was turned — set it facing the road. ${PAK36_RACK} shells by the gun; a supply truck brings more. Rifle fire on it finds the gunner: with nobody at it, it falls silent until another soldier takes his place. Cannot move.`,
   },
   pak43: {
     type: "pak43",
@@ -3671,14 +3739,17 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rangeTiles: PAK43_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
     cooldown: 7,
-    damage: 85,
+    damage: PAK43_SHELLS.ap.damage,
     projectileSpeed: TANK_SHELL_SPEED,
     armorFront: 0,
     armorSide: 0,
     armorRear: 0,
-    penetration: 190,
-    caliber: 88,
-    spreadDeg: 1.6,
+    penetration: PAK43_SHELLS.ap.penetration,
+    caliber: PAK43_SHELLS.ap.caliber,
+    spreadDeg: PAK43_SHELLS.ap.spreadDeg,
+    ammo: { ap: PAK43_RACK },
+    defaultShell: "ap",
+    shells: PAK43_SHELLS,
     crewGun: true,
     armorFirst: true,
     garrisonCap: 2,
@@ -3689,7 +3760,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonSightBonus: 0,
     garrisonTypes: BUNKER_TYPES,
     capturable: false,
-    blurb: `The 88mm on its cross platform, worked by two men, who come with it. The longest straight reach on the field, through any front plate. It turns all the way round, but slowly — a tank that gets on its flank has time. Tanks first. With one man left it loads at half pace; with none it is silent until soldiers take their places. Rifle fire on it finds the crew. Cannot move.`,
+    blurb: `The 88mm on its cross platform, worked by two men, who come with it. The longest straight reach on the field, and its armor-piercing shell goes through any front plate. It turns all the way round, but slowly — a tank that gets on its flank has time. Tanks first. ${PAK43_RACK} shells by the gun; a supply truck brings more. With one man left it loads at half pace; with none it is silent until soldiers take their places. Rifle fire on it finds the crew. Cannot move.`,
   },
   flak: {
     type: "flak",
@@ -3708,21 +3779,22 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     turretTurnDegPerSec: 120,
     rangeTiles: FLAK_RANGE_TILES,
     sightTiles: INFANTRY_SIGHT_TILES,
-    cooldown: 0.24,
-    damage: 16,
-    projectileSpeed: SMALL_ARMS_SPEED,
+    cooldown: 0.4,
+    damage: FLAK_BURST_DAMAGE,
+    projectileSpeed: FLAK_SHELL_SPEED,
     armorFront: 0,
     armorSide: 0,
     armorRear: 0,
-    penetration: 30,
-    caliber: 37,
-    spreadDeg: 2.4,
-    belt: FLAK_CLIP,
-    beltReload: FLAK_CLIP_RELOAD,
+    penetration: FLAK_SHELLS.he.penetration,
+    caliber: FLAK_SHELLS.he.caliber,
+    spreadDeg: FLAK_SHELLS.he.spreadDeg,
+    ammo: { he: FLAK_RACK },
+    defaultShell: "he",
+    shells: FLAK_SHELLS,
     crewGun: true,
     antiAir: true,
     airFirst: true,
-    airReachMul: FLAK_AIR_REACH_MUL,
+    airOnly: true,
     garrisonCap: 2,
     garrisonHpMul: 2,
     garrisonWoundMul: FLAK_WOUND_MUL,
@@ -3731,7 +3803,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonSightBonus: 0,
     garrisonTypes: BUNKER_TYPES,
     capturable: false,
-    blurb: `A 37mm anti-aircraft gun in a sandbagged ring, worked by two men, who come with it. Planes, Jump Jets, and drones first, out to half again its ground reach, in ${FLAK_CLIP}-round clips. On the ground it chews up infantry and trucks and dents light plate. Turns all the way round. With one man left it fires at half pace; with none it is silent until soldiers take their places. Rifle fire on it finds the crew. Cannot move.`,
+    blurb: `A 37mm anti-aircraft gun in a sandbagged ring, worked by two men, who come with it. It lays only on what is in the air: planes, Jump Jets, drones, and men under canopies. Its time-fused shells burst at the target's height in a black cloud, and everything flying inside the burst is hurt, so one shell can catch two planes at once. It leads a plane on its heading, but the fuse scatters: moderately accurate. Force attack on the ground puts a barrage up over that point. ${FLAK_RACK} shells in the racks; a supply truck brings more. Turns all the way round. With one man left it fires at half pace; with none it is silent until soldiers take their places. Rifle fire on it finds the crew. Cannot move.`,
   },
   sandbags: {
     type: "sandbags",
@@ -5982,6 +6054,11 @@ export function antiAirGunOf(type: EntityType): boolean {
 /** Looks for a plane first and lays on it with the CIWS's cone: the Flak. */
 export function airFirstOf(type: EntityType): boolean {
   return catalog(type).airFirst === true;
+}
+
+/** Lays only on what flies: the Flak. See CatalogEntry.airOnly. */
+export function airOnlyOf(type: EntityType): boolean {
+  return catalog(type).airOnly === true;
 }
 
 /** Picks armored hulls first: the Paks. */

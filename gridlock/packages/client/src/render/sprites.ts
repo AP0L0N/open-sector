@@ -1834,6 +1834,8 @@ interface PadInfo {
   /** World px from the pivot to the muzzle, and the height of the bore. */
   muzzleReach?: number;
   gunZ?: number;
+  /** Height of the muzzle itself when the barrel is cranked up (the Flak). Default gunZ. */
+  muzzleZ?: number;
 }
 
 const padManifests = import.meta.glob("../assets/buildings/*.json", { eager: true, import: "default" }) as Record<string, PadInfo>;
@@ -1859,6 +1861,8 @@ export interface GunLayer {
   cols: number;
   muzzleReach: number;
   gunZ: number;
+  /** Height of the muzzle, world px of the art: the Flak's barrel points steeply up. */
+  muzzleZ: number;
 }
 
 const GUN_LAYERS: Partial<Record<EntityType, GunLayer>> = {};
@@ -1874,6 +1878,7 @@ for (const type of FORT_TYPES) {
     cols: info.crewCols ?? 1,
     muzzleReach: info.muzzleReach ?? 12,
     gunZ: info.gunZ ?? 6,
+    muzzleZ: info.muzzleZ ?? info.gunZ ?? 6,
   };
 }
 
