@@ -1,0 +1,35 @@
+{
+  "gaslamp": {
+    "file": "lamp-gaslamp.png",
+    "size": [
+      146,
+      160
+    ],
+    "contactX": 20.0,
+    "contactY": 144.7,
+    "bulbX": 20.0,
+    "bulbY": 27.7
+  },
+  "streetlamp": {
+    "file": "lamp-streetlamp.png",
+    "size": [
+      116,
+      190
+    ],
+    "contactX": 18.0,
+    "contactY": 159.6,
+    "bulbX": 51.6,
+    "bulbY": 51.1
+  },
+  "floodlight": {
+    "file": "lamp-floodlight.png",
+    "size": [
+      109,
+      200
+    ],
+    "contactX": 25.0,
+    "contactY": 179.5,
+    "bulbX": 35.8,
+    "bulbY": 25.9
+  }
+}

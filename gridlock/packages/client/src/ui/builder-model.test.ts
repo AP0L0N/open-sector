@@ -30,12 +30,14 @@ import {
   wrapTurn,
   playtestProblem,
   turnFeature,
+  lampIndexAt,
   levelDisk,
   liftDisk,
   markSheet,
   newSheet,
   nextSpawnId,
   paintDisk,
+  placeLamp,
   restoreSheet,
   setMaxPlayers,
   settle,
@@ -303,5 +305,32 @@ describe("builder select and defences", () => {
     s.spawns.push({ id: 1, x: 30, y: 30 });
     assert.equal(playtestProblem(s), null);
     assert.notEqual(sheetProblem(s), null, "saving still wants every start");
+  });
+});
+
+describe("builder lamps", () => {
+  it("stands a lamp on open ground and refuses water, a lot, and a crowded post", () => {
+    const s = fresh();
+    assert.equal(placeLamp(s, "streetlamp", 60, 60), null);
+    assert.match(placeLamp(s, "gaslamp", 61, 60) ?? "", /another lamp/);
+    s.tiles[70 * s.width + 70] = TILE_WATER;
+    assert.match(placeLamp(s, "gaslamp", 70, 70) ?? "", /dry ground/);
+    s.features.push(houseAt("factory", 100, 100, 0));
+    assert.match(placeLamp(s, "gaslamp", 100, 100) ?? "", /lot/);
+    assert.equal(lampIndexAt(s, 60, 61), 0);
+    assert.equal(lampIndexAt(s, 64, 64), -1);
+  });
+
+  it("saves the lamps a building does not cover, and undo brings them back", () => {
+    const s = fresh();
+    placeLamp(s, "floodlight", 40, 40);
+    placeLamp(s, "gaslamp", 90, 90);
+    const mark = markSheet(s);
+    s.features.push(houseAt("warehouse", 90, 90, 0));
+    assert.deepEqual(sheetToSpec(s).lamps, [{ type: "floodlight", x: 40, y: 40 }]);
+    s.lamps = [];
+    restoreSheet(s, mark);
+    assert.equal(s.lamps.length, 2);
+    assert.deepEqual(sheetFromSpec(sheetToSpec(s)).lamps, sheetToSpec(s).lamps);
   });
 });

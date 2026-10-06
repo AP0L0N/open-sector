@@ -8,8 +8,10 @@ import {
   LIGHT_STACK_KNEE,
   LIGHT_STACK_MAX,
   WORK_LIGHT_TURN,
+  STREET_LAMPS,
   beamBlobs,
   beamPolygon,
+  streetLampFlicker,
   easeSpot,
   lampGlow,
   missileSpot,
@@ -102,5 +104,21 @@ describe("night render", () => {
     for (let i = 0; i < a.length; i++) assert.ok(Math.abs(b[i]! - a[i]!) < WORK_LIGHT_TURN * 2, "a few degrees a second at most");
     assert.notEqual(a[0], a[1]);
     assert.notDeepEqual(workLightBearings(8, 2, 100), a, "neighbours out of step");
+  });
+});
+
+describe("street lamps", () => {
+  it("lights a floodlight farther than a street lamp, and that farther than a gas lamp", () => {
+    assert.ok(STREET_LAMPS.floodlight.reachTiles > STREET_LAMPS.streetlamp.reachTiles);
+    assert.ok(STREET_LAMPS.streetlamp.reachTiles > STREET_LAMPS.gaslamp.reachTiles);
+  });
+
+  it("lets a gas mantle breathe a little while electric lamps hold steady", () => {
+    for (let t = 0; t < 20; t += 0.37) {
+      const g = streetLampFlicker("gaslamp", 12, 30, t);
+      assert.ok(g >= 0.8 && g <= 1, `gas ${g}`);
+      assert.equal(streetLampFlicker("streetlamp", 12, 30, t), 1);
+    }
+    assert.notEqual(streetLampFlicker("gaslamp", 12, 30, 3), streetLampFlicker("gaslamp", 40, 2, 3), "posts on their own beat");
   });
 });

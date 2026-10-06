@@ -1,0 +1,202 @@
+{
+  "factory": [
+    {
+      "file": "factory.png",
+      "size": [
+        996,
+        748
+      ],
+      "padWidth": 960.0,
+      "padSouthX": 498.0,
+      "padSouthY": 729.7,
+      "stackX": 498.0,
+      "stackY": 21.7
+    },
+    {
+      "file": "factory-s.png",
+      "size": [
+        996,
+        616
+      ],
+      "padWidth": 960.0,
+      "padSouthX": 498.0,
+      "padSouthY": 597.7,
+      "stackX": 498.0,
+      "stackY": 21.7
+    },
+    {
+      "file": "factory-w.png",
+      "size": [
+        996,
+        564
+      ],
+      "padWidth": 960.0,
+      "padSouthX": 498.0,
+      "padSouthY": 546.0,
+      "stackX": 498.0,
+      "stackY": 120.0
+    },
+    {
+      "file": "factory-n.png",
+      "size": [
+        996,
+        598
+      ],
+      "padWidth": 960.0,
+      "padSouthX": 498.0,
+      "padSouthY": 579.7,
+      "stackX": 498.0,
+      "stackY": 21.7
+    }
+  ],
+  "warehouse": [
+    {
+      "file": "warehouse.png",
+      "size": [
+        804,
+        433
+      ],
+      "padWidth": 768.0,
+      "padSouthX": 402.0,
+      "padSouthY": 414.3,
+      "stackX": 402.0,
+      "stackY": 79.8
+    },
+    {
+      "file": "warehouse-s.png",
+      "size": [
+        804,
+        422
+      ],
+      "padWidth": 768.0,
+      "padSouthX": 402.0,
+      "padSouthY": 403.2,
+      "stackX": 402.0,
+      "stackY": 101.7
+    },
+    {
+      "file": "warehouse-w.png",
+      "size": [
+        804,
+        422
+      ],
+      "padWidth": 768.0,
+      "padSouthX": 402.0,
+      "padSouthY": 403.2,
+      "stackX": 402.0,
+      "stackY": 113.7
+    },
+    {
+      "file": "warehouse-n.png",
+      "size": [
+        804,
+        422
+      ],
+      "padWidth": 768.0,
+      "padSouthX": 402.0,
+      "padSouthY": 403.2,
+      "stackX": 402.0,
+      "stackY": 80.7
+    }
+  ],
+  "foundry": [
+    {
+      "file": "foundry.png",
+      "size": [
+        996,
+        639
+      ],
+      "padWidth": 960.0,
+      "padSouthX": 498.0,
+      "padSouthY": 620.6,
+      "stackX": 498.0,
+      "stackY": 20.0
+    },
+    {
+      "file": "foundry-s.png",
+      "size": [
+        996,
+        609
+      ],
+      "padWidth": 960.0,
+      "padSouthX": 498.0,
+      "padSouthY": 590.6,
+      "stackX": 498.0,
+      "stackY": 20.0
+    },
+    {
+      "file": "foundry-w.png",
+      "size": [
+        996,
+        528
+      ],
+      "padWidth": 960.0,
+      "padSouthX": 498.0,
+      "padSouthY": 509.6,
+      "stackX": 498.0,
+      "stackY": 35.0
+    },
+    {
+      "file": "foundry-n.png",
+      "size": [
+        996,
+        558
+      ],
+      "padWidth": 960.0,
+      "padSouthX": 498.0,
+      "padSouthY": 539.6,
+      "stackX": 498.0,
+      "stackY": 35.0
+    }
+  ],
+  "granary": [
+    {
+      "file": "granary.png",
+      "size": [
+        804,
+        568
+      ],
+      "padWidth": 768.0,
+      "padSouthX": 402.0,
+      "padSouthY": 549.9,
+      "stackX": 402.0,
+      "stackY": 33.9
+    },
+    {
+      "file": "granary-s.png",
+      "size": [
+        804,
+        526
+      ],
+      "padWidth": 768.0,
+      "padSouthX": 402.0,
+      "padSouthY": 507.9,
+      "stackX": 402.0,
+      "stackY": 33.9
+    },
+    {
+      "file": "granary-w.png",
+      "size": [
+        804,
+        468
+      ],
+      "padWidth": 768.0,
+      "padSouthX": 402.0,
+      "padSouthY": 449.2,
+      "stackX": 402.0,
+      "stackY": 65.2
+    },
+    {
+      "file": "granary-n.png",
+      "size": [
+        804,
+        510
+      ],
+      "padWidth": 768.0,
+      "padSouthX": 402.0,
+      "padSouthY": 491.2,
+      "stackX": 402.0,
+      "stackY": 65.2
+    }
+  ]
+}
