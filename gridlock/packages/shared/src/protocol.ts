@@ -451,6 +451,8 @@ export interface ProjectileView {
    * lance, 1 where it lands. `fromId` is the Pyro, so the jet can be drawn from his nozzle.
    */
   flame?: boolean;
+  /** A Flak 37 shell climbing to its fuse point. `z` is its height. */
+  flak?: boolean;
 }
 
 export type ImpactKind = "miss" | "puff" | "crush" | "ricochet" | "glance" | "hit" | "pen" | "kill";
@@ -500,6 +502,8 @@ export interface ImpactView {
   shot?: number;
   /** Cyborg Commander's laser landed here: a searing burn, not a bullet strike. */
   laser?: boolean;
+  /** A Flak 37 shell burst in the air at `z`: a flash and a lingering black cloud. Nothing on the ground is touched. */
+  flak?: boolean;
 }
 
 /**

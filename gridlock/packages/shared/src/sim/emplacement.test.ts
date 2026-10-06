@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
+  AIR_CRUISE_ALT,
   BUNKER_GARRISON_CAP,
+  FLAK_RACK,
+  MGNEST_BELT,
+  PAK36_RACK,
+  PAK43_RACK,
   CREWED_GUNS,
   GUN_CREW_TYPE,
   NEUTRAL_OWNER,
@@ -20,7 +25,8 @@ import {
 import { TILE_EMPTY, MAP_DEFENCE_TYPES, getMap, registerMap, type MapFeature } from "../maps.js";
 import { raiseBuilding } from "./build.js";
 import { applyCommand } from "./commands.js";
-import { garrisonCanShoot, inMountArc } from "./combat.js";
+import { garrisonCanShoot, inMountArc, tickProjectiles } from "./combat.js";
+import { needsSupply } from "./supply.js";
 import { reachesAircraft } from "./air.js";
 import { destroyEntity, makeEntity } from "./geo.js";
 import { enterGarrison, exitGarrison, livingGarrison } from "./garrison.js";
@@ -206,8 +212,8 @@ describe("crewed gun orders", () => {
     assert.equal(nest.order, null);
   });
 
-  it("Force attack lays every gun on a named target, the Pak 36 and Flak included", () => {
-    for (const type of ["pak36", "flak", "pak43"] as BuildingType[]) {
+  it("Force attack lays every ground gun on a named target, the Pak 36 included", () => {
+    for (const type of ["pak36", "pak43"] as BuildingType[]) {
       const state = match();
       const g = gun(state, type);
       const tank = foe(state, "ss3", g, 10, 0);
@@ -240,6 +246,138 @@ describe("crewed gun orders", () => {
     applyCommand(state, "A", { type: "cmd.rotate", ids: [ciws.id], x: ciws.x - 100, y: ciws.y });
     assert.equal(ciws.facing, before);
     assert.ok(Math.abs(Math.abs(ciws.gunRest!) - Math.PI) < 1e-6);
+  });
+});
+
+/** A Stuka flying over (x, y) at cruise height, held on that spot. */
+function planeOver(state: MatchState, owner: string, x: number, y: number): Entity {
+  const plane = makeEntity(state, "stuka", owner, x, y);
+  plane.air!.phase = "fly";
+  plane.air!.alt = AIR_CRUISE_ALT;
+  plane.air!.speed = 1;
+  plane.order = { kind: "move", x, y };
+  return plane;
+}
+
+describe("crewed gun ammunition", () => {
+  it("the Paks fire armor-piercing shells from a finite rack, as a StuG does", () => {
+    for (const [type, rack] of [
+      ["pak36", PAK36_RACK],
+      ["pak43", PAK43_RACK],
+    ] as [BuildingType, number][]) {
+      const state = match();
+      const g = gun(state, type);
+      assert.equal(g.ammo.ap, rack, `${type} comes with a full rack`);
+      assert.equal(catalog(type).defaultShell, "ap");
+      foe(state, "ss3", g, 8, 0);
+      assert.ok(until(state, 200, () => (g.ammo.ap ?? 0) < rack), `${type} spends a shell`);
+      assert.equal(needsSupply(g), true, `${type} short of a full rack wants a truck`);
+      g.ammo.ap = 0;
+      const cd = g.cooldown;
+      for (let i = 0; i < 40; i++) step(state, TICK_DT);
+      assert.equal(g.ammo.ap, 0, `${type}: an empty rack stays empty`);
+      assert.ok(g.cooldown <= cd);
+    }
+  });
+
+  it("the MG nest's boxes run dry and stay dry until a truck comes, and it flashes as it fires", () => {
+    const state = match();
+    const nest = gun(state, "mgnest");
+    assert.equal(nest.clip, MGNEST_BELT);
+    foe(state, "rifleman", nest, 8, 0);
+    let flashed = false;
+    assert.ok(
+      until(state, 80, () => {
+        flashed ||= nest.gatlingFire?.tick === state.tick;
+        return nest.clip < MGNEST_BELT;
+      }),
+    );
+    assert.ok(flashed || nest.gatlingFire != null, "the muzzle flash is raised");
+    nest.clip = 0;
+    for (let i = 0; i < 120; i++) step(state, TICK_DT);
+    assert.equal(nest.clip, 0, "no belt change refills it");
+    assert.equal(nest.reload, 0);
+    assert.equal(needsSupply(nest), true);
+  });
+
+  it("the Flak leaves the ground alone and fires flak shells at a plane", () => {
+    const state = match();
+    const flak = gun(state, "flak");
+    assert.equal(flak.ammo.he, FLAK_RACK);
+    foe(state, "rifleman", flak, 6, 0);
+    foe(state, "ss3", flak, 8, 2);
+    for (let i = 0; i < 60; i++) step(state, TICK_DT);
+    assert.equal(flak.ammo.he, FLAK_RACK, "no shell at soldiers or tanks");
+    const plane = planeOver(state, "B", flak.x + 30 * state.tileSize, flak.y);
+    let shell = false;
+    assert.ok(
+      until(state, 120, () => {
+        shell ||= state.projectiles.some((p) => p.fromId === flak.id && p.flight === "flak");
+        return (flak.ammo.he ?? 0) < FLAK_RACK && shell;
+      }),
+      "it puts a shell up",
+    );
+    const up = state.projectiles.find((p) => p.fromId === flak.id && p.flight === "flak");
+    assert.ok(!up || Math.abs(Math.atan2(up.vy, up.vx) - Math.atan2(plane.y - flak.y, plane.x - flak.x)) < 0.6, "laid toward the plane");
+  });
+
+  it("a flak burst hurts every plane inside it, not a soldier under it", () => {
+    const state = match();
+    const flak = gun(state, "flak");
+    const ts = state.tileSize;
+    const x = flak.x + 20 * ts;
+    const y = flak.y;
+    const a = planeOver(state, "B", x, y);
+    const b = planeOver(state, "B", x + 14, y + 6);
+    const far = planeOver(state, "B", x + 200, y);
+    const man = makeEntity(state, "rifleman", "B", x, y);
+    const hp = [a.hp, b.hp, far.hp, man.hp];
+    state.projectiles = [
+      {
+        id: state.nextId++,
+        ownerId: "A",
+        team: 0,
+        x,
+        y,
+        vx: 0,
+        vy: 0,
+        damage: catalog("flak").damage,
+        penetration: 10,
+        caliber: 37,
+        life: 0.001,
+        ignoreId: flak.id,
+        fromId: flak.id,
+        bounced: false,
+        shell: "he",
+        flight: "flak",
+        z: AIR_CRUISE_ALT,
+        vz: 0,
+      },
+    ];
+    state.impacts = [];
+    tickProjectiles(state, TICK_DT);
+    assert.ok(a.hp < hp[0]!, "the plane in the burst is hit");
+    assert.ok(b.hp < hp[1]!, "so is its wingman");
+    assert.equal(far.hp, hp[2], "a plane well clear is not");
+    assert.equal(man.hp, hp[3], "nothing on the ground is touched");
+    const burst = state.impacts.find((i) => i.flak);
+    assert.ok(burst && burst.z === AIR_CRUISE_ALT, "the client gets a burst at the plane's height");
+    assert.equal(state.projectiles.length, 0);
+  });
+
+  it("a forced aim at the ground puts a barrage up over that point", () => {
+    const state = match();
+    const flak = gun(state, "flak");
+    const ts = state.tileSize;
+    applyCommand(state, "A", { type: "cmd.forceattack", ids: [flak.id], x: flak.x + 20 * ts, y: flak.y });
+    let up: number | undefined;
+    until(state, 60, () => {
+      const p = state.projectiles.find((q) => q.fromId === flak.id && q.flight === "flak");
+      if (p && (p.vz ?? 0) > 0) up = p.vz;
+      return up != null;
+    });
+    assert.ok(up != null && up > 0, "the shell climbs");
+    assert.ok((flak.ammo.he ?? 0) < FLAK_RACK);
   });
 });
 

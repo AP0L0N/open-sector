@@ -49,6 +49,15 @@ import {
   RAM_ROCKET,
   radarLaidOf,
   airFirstOf,
+  airOnlyOf,
+  shellsFor,
+  AIR_CRUISE_ALT,
+  FLAK_BURST_DEPTH,
+  FLAK_BURST_RADIUS,
+  FLAK_FUSE_SCATTER_Z,
+  FLAK_SCATTER_FAR,
+  FLAK_SCATTER_NEAR,
+  FLAK_SHELL_SPEED,
   antiAirGunOf,
   armorFirstOf,
   crewGunOf,
@@ -907,6 +916,8 @@ function canFight(e: Entity): boolean {
  * A drone has its own rule: high, only anti-air guns; low, bullets and rockets.
  */
 function outOfReachAloft(state: MatchState, e: Entity, target: Entity): boolean {
+  // The Flak lays only on what flies: a plane, a Jump Jet aloft, a drone, a man under a canopy.
+  if (airOnlyOf(e.type) && !isAirborne(target) && !target.drone) return true;
   // A torpedo only finds what is in the water.
   if (torpedoCannotReach(state, e, target)) return true;
   if (target.drone) return !reachesDrone(e, target);
@@ -1585,6 +1596,12 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (!laid) return;
   if (e.reload > 0) return;
   if (e.cooldown > 0) return;
+  // The Flak's time-fused shell bursts in the air: its own flight, not a direct-fire round.
+  if (airOnlyOf(e.type)) {
+    fireFlak(state, e, aimX, aimY, range, ground ? undefined : target);
+    if (e.order?.once) clearOrder(e);
+    return;
+  }
   const infantryGun = infantryGunFor(e);
   // The heavy missile is not the tube. An empty tube, or a tube still reloading, does not block it.
   // He spends the one round only on a shot the player ordered.
@@ -1694,7 +1711,108 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
       e.cooldown = gun.cooldown * crewPace(e);
     }
   }
+  // The MG nest's tripod gun flashes like a gatling while it works the belt.
+  if (fired > 0 && crewGunOf(e.type) && belt) e.gatlingFire = { tick: state.tick, arms: 1 };
   if (fired > 0 && e.order?.once) clearOrder(e);
+}
+
+/** World px a second the flying body is making good, for the Flak to lead it. Zero when it hangs still. */
+function flightVelocity(state: MatchState, o: Entity): { x: number; y: number } {
+  const def = catalog(o.type);
+  let v = 0;
+  if (o.air) v = def.moveTilesPerSec * state.tileSize * o.air.speed;
+  else if (o.waypoints.length > 0) v = def.moveTilesPerSec * state.tileSize;
+  return { x: Math.cos(o.facing) * v, y: Math.sin(o.facing) * v };
+}
+
+/**
+ * The Flak lays one time-fused shell. On a target it leads the body along its course and sets
+ * the fuse for its height; a forced aim at the ground puts the burst up at a plane's height over
+ * that point. The burst point then scatters, wider the farther it is, and the fuse in height.
+ */
+function fireFlak(state: MatchState, e: Entity, aimX: number, aimY: number, range: number, target?: Entity): void {
+  const shell = pickLoadedShell(e.ammo, e.shell);
+  if (!shell) return;
+  const rand = () => nextRand(state);
+  let px = aimX;
+  let py = aimY;
+  let pz: number;
+  if (target) {
+    const lead = Math.hypot(px - e.x, py - e.y) / FLAK_SHELL_SPEED;
+    const v = flightVelocity(state, target);
+    px += v.x * lead;
+    py += v.y * lead;
+    pz = entityHeight(state, target) + airAlt(target);
+  } else {
+    pz = worldTileHeight(state, aimX, aimY) + AIR_CRUISE_ALT;
+  }
+  const far = Math.max(0, Math.min(1, Math.hypot(px - e.x, py - e.y) / Math.max(1, range)));
+  const scatter = FLAK_SCATTER_NEAR + (FLAK_SCATTER_FAR - FLAK_SCATTER_NEAR) * far;
+  const a = rand() * Math.PI * 2;
+  const r = scatter * Math.sqrt(rand());
+  px += Math.cos(a) * r;
+  py += Math.sin(a) * r;
+  pz = Math.max(1, pz + (rand() * 2 - 1) * FLAK_FUSE_SCATTER_Z);
+  const z0 = muzzleHeight(state, e);
+  const flight = Math.max(0.05, Math.hypot(px - e.x, py - e.y) / FLAK_SHELL_SPEED);
+  const def = shellsFor(e.type)[shell];
+  state.projectiles.push({
+    id: state.nextId++,
+    ownerId: e.ownerId,
+    team: playerTeam(state, e.ownerId),
+    x: e.x,
+    y: e.y,
+    vx: (px - e.x) / flight,
+    vy: (py - e.y) / flight,
+    damage: def.damage,
+    penetration: def.penetration,
+    caliber: def.caliber,
+    life: flight,
+    ignoreId: e.id,
+    fromId: e.id,
+    bounced: false,
+    shell,
+    antiAir: true,
+    flight: "flak",
+    z: z0,
+    vz: (pz - z0) / flight,
+  });
+  e.shell = shell;
+  e.ammo[shell] = Math.max(0, (e.ammo[shell] ?? 0) - 1);
+  e.cooldown = catalog(e.type).cooldown * crewPace(e);
+}
+
+/**
+ * A flak shell bursts where its fuse ran out: everything flying inside the burst is hurt, the
+ * heart of it hardest, so one shell can catch two planes. What stands on the ground is safe.
+ */
+function burstFlak(state: MatchState, p: Projectile): void {
+  const z = p.z ?? 0;
+  const inner = FLAK_BURST_RADIUS / 3;
+  for (const o of state.entities.values()) {
+    if (o.hp <= 0 || o.wreck || o.garrisonedIn != null || isCrashing(o)) continue;
+    if (!isAirborne(o) && !o.drone) continue;
+    if (o.ownerId !== "" && allies(state, p.ownerId, o.ownerId)) continue;
+    if (Math.abs(entityHeight(state, o) + airAlt(o) - z) > FLAK_BURST_DEPTH) continue;
+    const d = Math.max(0, Math.hypot(o.x - p.x, o.y - p.y) - o.radius);
+    if (d > FLAK_BURST_RADIUS) continue;
+    const falloff = d <= inner ? 1 : 1 - (d - inner) / (FLAK_BURST_RADIUS - inner);
+    const dmg = Math.max(1, Math.round(p.damage * falloff * (0.85 + nextRand(state) * 0.3)));
+    o.hp = Math.max(0, o.hp - dmg);
+  }
+  state.impacts.push({
+    id: state.nextId++,
+    ownerId: p.ownerId,
+    kind: "puff",
+    x: p.x,
+    y: p.y,
+    vx: 0,
+    vy: 0,
+    caliber: p.caliber,
+    fromId: p.fromId,
+    z,
+    flak: true,
+  });
 }
 
 function mortarReady(state: MatchState, e: Entity): boolean {
@@ -2792,6 +2910,17 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     }
     if (p.flight === "flame") {
       if (stepFlame(state, p, dt)) keep.push(p);
+      continue;
+    }
+    if (p.flight === "flak") {
+      // Straight up to its fuse point; nothing it passes stops it. There it bursts.
+      const stepDt = p.life > 0 ? Math.min(dt, p.life) : 0;
+      p.x += p.vx * stepDt;
+      p.y += p.vy * stepDt;
+      p.z = (p.z ?? 0) + (p.vz ?? 0) * stepDt;
+      p.life -= dt;
+      if (p.life > 0) keep.push(p);
+      else burstFlak(state, p);
       continue;
     }
     if (p.flight === "mortar") {
