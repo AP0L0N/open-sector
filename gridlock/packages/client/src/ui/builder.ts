@@ -73,6 +73,7 @@ const MINE_STORE = "gridlock.myMaps";
 const AUTO_STORE = "gridlock.builderAutoSave";
 const AUTO_SAVE_MS = 30_000;
 const GAME_VIEW_STORE = "gridlock.builderGameView";
+const NIGHT_VIEW_STORE = "gridlock.builderNightView";
 const PREVIEW_ID = "__builder__";
 const UNDO_DEPTH = 40;
 /** Raise / Lower apply one step this often while the button is held. */
@@ -195,6 +196,10 @@ let wheelCarry = 0;
 const view = { zoom: 0, px: 0, py: 0 };
 /** The stage draws the map as a match does, and picks on its raised ground. */
 let gameView = store()?.getItem(GAME_VIEW_STORE) === "1";
+/** In-game view drawn at full dark. Only shown, and only applied, with the In-game view. */
+let nightView = store()?.getItem(NIGHT_VIEW_STORE) === "1";
+/** The Night time checkbox, hidden while the plan view is up. */
+let nightToggle: HTMLElement | null = null;
 const isoCam: IsoCam = { zoom: 0, camX: 0, camY: 0 };
 let hover: { x: number; y: number; inside: boolean } = { x: 0, y: 0, inside: false };
 /** The pointer is over the stage canvas (or captured by it mid-stroke). */
@@ -889,6 +894,11 @@ function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
     spawnGhost,
     brush: pointerOver && isBrush(tool.id) && brushReaches(hover.x, hover.y) ? { x: hover.x, y: hover.y, r: tool.brush } : null,
     units: unitOverlay(s),
+    lampGhost:
+      tool.id === "lamp" && hover.inside && !drag
+        ? { x: hover.x, y: hover.y, type: tool.lamp, bad: M.lampProblem(s, hover.x, hover.y) !== null }
+        : null,
+    night: nightView,
   }, queueDraw);
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (pointerOver && hover.inside && turningTool()) {
@@ -912,6 +922,33 @@ function unitOverlay(s: M.Sheet): UnitOverlay {
   };
 }
 
+/** The stage's view checkboxes: In-game view, and Night time beside it while the In-game view is up. */
+function viewToggles(): HTMLElement {
+  const row = el("div", { class: "bld-view-toggles" });
+  const night = el("label", {
+    class: "bld-toggle",
+    attrs: { title: "Draw the In-game view at full dark: street lamps burning, tower spotlights on." },
+  });
+  const box = el("input", { attrs: { type: "checkbox" } });
+  box.checked = nightView;
+  box.addEventListener("change", () => setNightView(box.checked));
+  night.append(box, el("span", { text: "Night time" }));
+  night.hidden = !gameView;
+  nightToggle = night;
+  row.append(night, gameViewToggle());
+  return row;
+}
+
+function setNightView(on: boolean): void {
+  nightView = on;
+  try {
+    store()?.setItem(NIGHT_VIEW_STORE, on ? "1" : "0");
+  } catch {
+    // Private window: the choice lasts this visit.
+  }
+  queueDraw();
+}
+
 /** The stage's "In-game view" checkbox. */
 function gameViewToggle(): HTMLElement {
   const toggle = el("label", {
@@ -927,6 +964,7 @@ function gameViewToggle(): HTMLElement {
 
 function setGameView(on: boolean): void {
   gameView = on;
+  if (nightToggle) nightToggle.hidden = !on;
   // Unit orders and garrisons are given in the In-game view only.
   if (!on) unitMode = null;
   paintSelection();
@@ -2456,7 +2494,7 @@ export function renderBuilder(root: HTMLElement, ctx: Ctx): void {
   const stageBox = el("div", { class: "bld-stage panel" });
   stageBox.append(canvas, status);
   if (!sheet || newOpen) stageBox.append(newForm(ctx));
-  else stageBox.append(gameViewToggle());
+  else stageBox.append(viewToggles());
   wrap.append(tools, stageBox, sidePanel(ctx));
   screen.append(wrap);
   root.append(screen);
