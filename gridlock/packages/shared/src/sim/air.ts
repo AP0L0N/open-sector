@@ -76,6 +76,8 @@ import {
   dropsTorpedo,
   isTorpedoBody,
   radarLaidOf,
+  airFirstOf,
+  antiAirGunOf,
   STUKA_MG,
   STUKA_MG_PER_TICK,
   STUKA_MG_ROUNDS,
@@ -141,7 +143,7 @@ export function isCrashing(e: { air?: { phase?: string } | null }): boolean {
  */
 export function reachesAircraft(e: Entity): boolean {
   // The Battle Ship reaches a plane with its CIWS mounts, not its main guns.
-  if (e.type === "walker" || radarLaidOf(e.type) || isBattleship(e.type)) return true;
+  if (e.type === "walker" || radarLaidOf(e.type) || isBattleship(e.type) || antiAirGunOf(e.type)) return true;
   const gun = infantryGunFor(e);
   return !!gun && gun.id !== "mortar";
 }
@@ -149,7 +151,7 @@ export function reachesAircraft(e: Entity): boolean {
 /** Extra spread on a shot at this target. 1 for anything on the ground. A radar-laid gun opens less. */
 export function airTargetSpreadMul(target: Entity, shooter?: Entity): number {
   if (!isAirborne(target)) return 1;
-  return shooter && radarLaidOf(shooter.type) ? CIWS_AIR_SPREAD : AIR_TARGET_SPREAD;
+  return shooter && (radarLaidOf(shooter.type) || airFirstOf(shooter.type)) ? CIWS_AIR_SPREAD : AIR_TARGET_SPREAD;
 }
 
 type FieldRect = Pick<Entity, "type" | "facing" | "tileX" | "tileY" | "tileW" | "tileH">;

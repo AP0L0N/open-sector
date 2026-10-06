@@ -760,7 +760,17 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
       ? {
           name:
             walkerMode?.name ??
-            (e.type === "ciws" ? "20mm belt" : e.type === "mammoth" ? "Bow MG" : e.type === "submarine" ? "Torpedoes" : "Gatlings"),
+            (e.type === "ciws"
+              ? "20mm belt"
+              : e.type === "mammoth"
+                ? "Bow MG"
+                : e.type === "submarine"
+                  ? "Torpedoes"
+                  : e.type === "mgnest"
+                    ? "MG42 belt"
+                    : e.type === "flak"
+                      ? "37mm clip"
+                      : "Gatlings"),
           clip: belt.clip,
         }
       : null;
@@ -1114,7 +1124,15 @@ const TYPE_ORDER: EntityType[] = [
   "research",
   "radar",
   "bunker",
+  "tobruk",
+  "casemate",
   "tower",
+  "hochstand",
+  "leitturm",
+  "mgnest",
+  "pak36",
+  "pak43",
+  "flak",
   "ram",
   "cottage",
   "shack",

@@ -23,7 +23,7 @@ import { ejectParatroopers, loseRiders, syncPlaneRiders, tickChutes, tickCrates,
 import { tickDrones } from "./drone.js";
 import { tickJets } from "./jet.js";
 import { tickCapture } from "./capture.js";
-import { detachGarrisoned, enterGarrison, killGarrison, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
+import { detachGarrisoned, enterGarrison, killGarrison, manGun, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
 import { buildPatrolRoute } from "./patrol.js";
 import { setPath } from "./path.js";
 import { seedRng } from "./rng.js";
@@ -169,6 +169,8 @@ export function createMatch(
     restampForts(state);
   }
   standMapUnits(state, map, raised);
+  // A map's gun is crewed like one the player raises: neutral riflemen in every place the map left empty.
+  for (const b of raised.values()) manGun(state, b, NEUTRAL_OWNER);
 
   return state;
 }

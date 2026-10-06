@@ -10,6 +10,7 @@ import {
   hasCrit,
   infantryGunFor,
   radarLaidOf,
+  antiAirGunOf,
   rocketRackOf,
   rocketsOf,
   isBattleship,
@@ -26,7 +27,7 @@ export { jetAloft };
  * rack (the Titan's pods). Rifles, pistols, tank guns, and mortars cannot.
  */
 export function reachesJet(shooter: Entity): boolean {
-  if (shooter.type === "walker" || radarLaidOf(shooter.type) || isBattleship(shooter.type)) return true;
+  if (shooter.type === "walker" || radarLaidOf(shooter.type) || isBattleship(shooter.type) || antiAirGunOf(shooter.type)) return true;
   if (rocketsOf(shooter.type) && rocketRackOf(shooter.type).antiAir) return true;
   return !!infantryGunFor(shooter)?.antiAir;
 }

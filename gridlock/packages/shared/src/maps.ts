@@ -43,8 +43,34 @@ export interface MapDef {
 }
 
 /** Defences a map stands on the field, neutral until someone takes them. */
-export type MapDefenceType = "bunker" | "tower" | "sandbags" | "wall";
-export const MAP_DEFENCE_TYPES: readonly MapDefenceType[] = ["bunker", "tower", "sandbags", "wall"];
+export type MapDefenceType =
+  | "bunker"
+  | "tobruk"
+  | "casemate"
+  | "tower"
+  | "hochstand"
+  | "leitturm"
+  | "mgnest"
+  | "pak36"
+  | "pak43"
+  | "flak"
+  | "sandbags"
+  | "wall";
+/** Every one but the sections stands on a lot and turns in BUILDING_TURN_STEPs. The guns come crewed. */
+export const MAP_DEFENCE_TYPES: readonly MapDefenceType[] = [
+  "bunker",
+  "tobruk",
+  "casemate",
+  "tower",
+  "hochstand",
+  "leitturm",
+  "mgnest",
+  "pak36",
+  "pak43",
+  "flak",
+  "sandbags",
+  "wall",
+];
 /** Map defences laid as a line section rather than on a building lot. */
 export type MapSectionType = "sandbags" | "wall";
 export type MapFeatureType = CivilianType | MapDefenceType;

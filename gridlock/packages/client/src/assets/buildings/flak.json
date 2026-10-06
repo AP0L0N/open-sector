@@ -1,0 +1,37 @@
+{
+  "padWidth": 384.0,
+  "padSouthX": 222.0,
+  "padSouthY": 258.0,
+  "stackX": 222.0,
+  "stackY": 108.5,
+  "cell": [
+    444,
+    288
+  ],
+  "pivotX": 222.0,
+  "pivotY": 162.0,
+  "rows": 16,
+  "crewCols": 3,
+  "order": [
+    "S",
+    "SSW",
+    "SW",
+    "WSW",
+    "W",
+    "WNW",
+    "NW",
+    "NNW",
+    "N",
+    "NNE",
+    "NE",
+    "ENE",
+    "E",
+    "ESE",
+    "SE",
+    "SSE"
+  ],
+  "gunZ": 7.83,
+  "muzzleReach": 12.32,
+  "muzzleZ": 26.8,
+  "elevationDeg": 57
+}

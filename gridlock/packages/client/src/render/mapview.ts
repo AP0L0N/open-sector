@@ -16,6 +16,7 @@ import {
   smokeCloudPuffs,
   fires,
   radarLaidOf,
+  mountArcDegOf,
   hasSpotlight,
   headlightLit,
   hullLamps,
@@ -186,6 +187,8 @@ import {
   CRATER_FACES,
   CIWS_TURRET_SHEET,
   RAM_TURRET_SHEET,
+  gunLayerFor,
+  unturnedBuildingSprite,
   buildingGroundFor,
   buildingOccludeEz,
   buildingSpriteFor,
@@ -493,11 +496,11 @@ const POOL_RGB: Record<NightPool["kind"], string> = {
   floodlight: STREET_LAMPS.floodlight.rgb,
 };
 
-/** Built structures that keep work lights burning round the yard. Not bunkers, walls, or the tower, which has its own lamp. */
+/** Built structures that keep work lights burning round the yard. Not bunkers, guns, walls, or the towers, which have their own lamps. */
 function workLit(e: EntityView): boolean {
   if (e.kind !== "building" || e.hp <= 0 || e.wreck || e.ruined) return false;
   if (!e.ownerId || e.ownerId === NEUTRAL_OWNER || e.unpowered) return false;
-  if (e.type === "bunker" || e.type === "tower") return false;
+  if (isGarrisonable(e.type)) return false;
   return e.type === "core" || (BUILDING_TYPES as readonly string[]).includes(e.type);
 }
 import {
@@ -563,6 +566,14 @@ const EXTRUDE: Record<EntityType, number> = {
   bunker: 18,
   tower: 66,
   ram: 26,
+  tobruk: 6,
+  casemate: 24,
+  hochstand: 72,
+  leitturm: 86,
+  mgnest: 10,
+  pak36: 12,
+  pak43: 14,
+  flak: 18,
   stuka: 14,
   fw190: 12,
   bv222: 22,
@@ -5710,10 +5721,22 @@ export class MapView {
       this.drawVeiled(e, elev, rise, bounds, () => {
         const c = this.ctx;
         drawBuildingSprite(c, spr, south.x, south.y, footprintW);
-        if (e.type === "ciws") {
-          this.drawCiwsGun(spr, south.x, south.y, footprintW, 1, e.turretFacing ?? e.facing, ghost ? undefined : e);
-        } else if (e.type === "ram") {
-          this.drawCiwsGun(spr, south.x, south.y, footprintW, 1, e.turretFacing ?? e.facing, undefined, RAM_TURRET_SHEET);
+        const gun = gunLayerFor(e.type);
+        if (e.type === "ciws" || e.type === "ram" || gun) {
+          // The gun sheet shares the unturned pad's canvas: a turned pad still lays it out on that.
+          const pad = this.unturnedPad(e, elev) ?? { x: south.x, y: south.y, w: footprintW };
+          const base = unturnedBuildingSprite(e.type) ?? spr;
+          const aim = e.turretFacing ?? e.facing;
+          if (e.type === "ciws") this.drawCiwsGun(base, pad.x, pad.y, pad.w, 1, aim, ghost ? undefined : e);
+          else if (e.type === "ram") this.drawCiwsGun(base, pad.x, pad.y, pad.w, 1, aim, undefined, RAM_TURRET_SHEET);
+          else if (gun) {
+            // One column per man at the gun: an empty gun shows nobody behind the shield.
+            const crew = ghost ? gun.cols - 1 : Math.min(gun.cols - 1, e.garrison?.count ?? 0);
+            this.drawCiwsGun(base, pad.x, pad.y, pad.w, 1, aim, undefined, gun.sheet, crew, gun.cols);
+          }
+          if (!ghost && this.selected.has(e.id) && mountArcDegOf(e.type) != null) {
+            this.drawMountArc(e.type, e.x, e.y, e.facing, elev, 0.5);
+          }
         } else if (hasSpotlight(e.type)) {
           const pad = this.unturnedPad(e, elev) ?? { x: south.x, y: south.y, w: footprintW };
           this.drawTowerLamp(e, pad.x, pad.y, pad.w, ghost);
@@ -5802,11 +5825,16 @@ export class MapView {
     e?: EntityView,
     /** The RAM passes its launcher sheet; its rockets carry their own flash. */
     sheet: HTMLImageElement = CIWS_TURRET_SHEET,
+    /** A crewed gun's sheet has a column per man at it: draw column `col` of `cols`. */
+    col = 0,
+    cols = 1,
   ): void {
     if (!sheet.complete || sheet.naturalWidth <= 0) return;
     const ctx = this.ctx;
     const ts = this.ts();
-    const cell = ciwsTurretCell(sheet.naturalWidth, sheet.naturalHeight, ciwsTurretRow(facing, ts));
+    const row = ciwsTurretCell(sheet.naturalWidth, sheet.naturalHeight, ciwsTurretRow(facing, ts));
+    const cw = row.sw / Math.max(1, cols);
+    const cell = { sx: cw * Math.max(0, Math.min(cols - 1, col)), sy: row.sy, sw: cw, sh: row.sh };
     const scale = footprintW / spr.padWidth;
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -5840,6 +5868,39 @@ export class MapView {
       performance.now(),
       e.id,
     );
+  }
+
+  /**
+   * The ground an emplacement can lay on: a fan out to its reach, either side of the way it
+   * was set. Drawn on the placement ghost and on a selected gun, so the turn is chosen by eye.
+   */
+  private drawMountArc(type: EntityType, x: number, y: number, facing: number, elev: number, alpha: number): void {
+    const arc = mountArcDegOf(type);
+    if (arc == null) return;
+    const ts = this.ts();
+    const reach = catalog(type).rangeTiles * ts;
+    const half = (arc * Math.PI) / 180;
+    const steps = Math.max(8, Math.round(arc / 5));
+    const ctx = this.ctx;
+    const c = this.toScreen(x, y, elev);
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(c.x, c.y);
+    for (let i = 0; i <= steps; i++) {
+      const a = facing - half + (2 * half * i) / steps;
+      const p = this.toScreen(x + Math.cos(a) * reach, y + Math.sin(a) * reach, elev);
+      ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+    ctx.globalAlpha = alpha * 0.22;
+    ctx.fillStyle = "#ffd27a";
+    ctx.fill();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = "#ffd27a";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private strokeGroundRect(x: number, y: number, w: number, h: number, elev?: number): void {
@@ -7908,9 +7969,16 @@ export class MapView {
         drawTowerSearchlight(ctx, pad.x, pad.y, pad.w, facing, { lit: 0, broken: false });
       }
       ctx.restore();
-      // The ghost lays its gun toward the viewer.
-      if (type === "ciws") this.drawCiwsGun(spr, south.x, south.y, east.x - west.x, 0.55, Math.PI / 4);
-      if (type === "ram") this.drawCiwsGun(spr, south.x, south.y, east.x - west.x, 0.55, Math.PI / 4, undefined, RAM_TURRET_SHEET);
+      // The ghost lays its gun the way the site is turned, on the unturned pad its sheet shares.
+      const gun = gunLayerFor(type);
+      if (type === "ciws" || type === "ram" || gun) {
+        const pad = this.unturnedPad(site, elev) ?? { x: south.x, y: south.y, w: east.x - west.x };
+        const base = unturnedBuildingSprite(type) ?? spr;
+        if (type === "ciws") this.drawCiwsGun(base, pad.x, pad.y, pad.w, 0.55, facing);
+        else if (type === "ram") this.drawCiwsGun(base, pad.x, pad.y, pad.w, 0.55, facing, undefined, RAM_TURRET_SHEET);
+        else if (gun) this.drawCiwsGun(base, pad.x, pad.y, pad.w, 0.55, facing, undefined, gun.sheet, gun.cols - 1, gun.cols);
+        this.drawMountArc(type, site.x, site.y, facing, elev, 0.8);
+      }
       ctx.strokeStyle = top;
       ctx.lineWidth = 2;
       if (corners) {

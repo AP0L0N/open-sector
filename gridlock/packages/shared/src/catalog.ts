@@ -518,6 +518,14 @@ export type EntityType =
   | "bunker"
   | "tower"
   | "ram"
+  | "tobruk"
+  | "casemate"
+  | "hochstand"
+  | "leitturm"
+  | "mgnest"
+  | "pak36"
+  | "pak43"
+  | "flak"
   | "research"
   | "radar"
   | "stuka"
@@ -548,7 +556,27 @@ export type EntityType =
   | "trench"
   | "bridge"
   | "bigbridge";
-export type BuildingType = "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "dock" | "ciws" | "ram" | "bunker" | "tower" | "research" | "radar";
+export type BuildingType =
+  | "dynamo"
+  | "smelter"
+  | "muster"
+  | "armory"
+  | "airfield"
+  | "dock"
+  | "ciws"
+  | "ram"
+  | "bunker"
+  | "tower"
+  | "tobruk"
+  | "casemate"
+  | "hochstand"
+  | "leitturm"
+  | "mgnest"
+  | "pak36"
+  | "pak43"
+  | "flak"
+  | "research"
+  | "radar";
 /** Placed by an engineer. Sandbags and walls can also be queued from the Defences tab. The gate comes only from there. */
 export type FieldStructureType = "sandbags" | "wall" | "greatwall" | "gate" | "teeth" | "trench";
 export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "wall", "greatwall", "gate", "teeth", "trench"];
@@ -660,7 +688,34 @@ export const SPECIAL_COOLDOWN: Record<SpecialAction, number> = {
   deploy: 2,
 };
 
-export const BUILDING_TYPES: readonly BuildingType[] = ["dynamo", "smelter", "muster", "armory", "airfield", "dock", "ciws", "ram", "bunker", "tower", "research", "radar"];
+export const BUILDING_TYPES: readonly BuildingType[] = [
+  "dynamo",
+  "smelter",
+  "muster",
+  "armory",
+  "airfield",
+  "dock",
+  "ciws",
+  "ram",
+  "bunker",
+  "tower",
+  "tobruk",
+  "casemate",
+  "hochstand",
+  "leitturm",
+  "mgnest",
+  "pak36",
+  "pak43",
+  "flak",
+  "research",
+  "radar",
+];
+/**
+ * Emplaced guns: the building is the gun, and its garrison is the crew. It fires only while
+ * someone living is at it; the crew's own weapons stay slung. Raised with its crew already in
+ * place (CatalogEntry.crewGun).
+ */
+export const CREWED_GUNS: readonly BuildingType[] = ["mgnest", "pak36", "pak43", "flak"];
 /**
  * Base buildings an engineer can raise in the field, away from the yard. The Smelter, so distant
  * scrap can be claimed; the Marine Base, so water far from the base can still float a fleet.
@@ -686,7 +741,21 @@ export function engineerBuildSeconds(type: BuildingType): number {
  * Base buildings the player turns before placing them, like a wall or sandbags: one
  * BUILDING_TURN_STEP per wheel notch. The footprint turns with the building.
  */
-export const ROTATABLE_BUILDINGS: readonly BuildingType[] = ["bunker", "tower", "airfield"];
+export const ROTATABLE_BUILDINGS: readonly BuildingType[] = [
+  "bunker",
+  "tower",
+  "airfield",
+  "ciws",
+  "ram",
+  "tobruk",
+  "casemate",
+  "hochstand",
+  "leitturm",
+  "mgnest",
+  "pak36",
+  "pak43",
+  "flak",
+];
 /** One turn step for a rotatable building, the wall's 15°. */
 export const BUILDING_TURN_STEP = Math.PI / 12;
 /** Facings a rotatable building can stand at; each has its own pre-rendered face. */
@@ -857,6 +926,25 @@ export interface CatalogEntry {
    * coaxial MG's place: its belt is mgAmmo.
    */
   roofCiws?: boolean;
+  /**
+   * An emplaced gun worked by its garrison (CREWED_GUNS). It fires only with a living crew
+   * inside; short-handed, each shot and belt change takes garrisonCap / crew times as long.
+   * Raised with garrisonCap riflemen already at it.
+   */
+  crewGun?: boolean;
+  /**
+   * Traverse each side of the way the emplacement was turned, degrees. The gun never lays
+   * outside it: what stands behind the arc is left alone. Omit for all round.
+   */
+  mountArcDeg?: number;
+  /** Rounds reach a plane, a Jump Jet aloft, and a high drone, like the MG42. */
+  antiAir?: boolean;
+  /** Looks for a plane before anything on the ground, and lays on it with the CIWS's tight cone. */
+  airFirst?: boolean;
+  /** Reach on a plane in the air, as a share of the ground reach. Default 1. */
+  airReachMul?: number;
+  /** Picks armored hulls before soft targets in its reach. */
+  armorFirst?: boolean;
   /** Main-gun barrels. A twin mount fires them one after another. Default 1. */
   twinGuns?: boolean;
   /** Quadcopter flown by a Drone Op. Hovers, ignores ground collision and paths. */
@@ -1987,6 +2075,98 @@ export const TOWER_REACH_BONUS = t(2);
 export const TOWER_FLOORS = 3;
 /** Eye in the cab, elevation units: the muzzle lift of a garrison, well over the treetops. */
 export const TOWER_EYE_HEIGHT = TOWER_FLOORS * STORY_COVER_HEIGHT * 0.6;
+
+/**
+ * Tobruk pit. A concrete ring-stand sunk almost flush with the ground: two men
+ * stand in the open hatch. Cheap and quick to pour, hard to hit, but the hole
+ * is open to the sky, so a mortar bomb that drops in finds them. The mortarman
+ * fits, and works his tube from it.
+ */
+export const TOBRUK_GARRISON_CAP = 2;
+export const TOBRUK_GARRISON_HP_MUL = 3;
+/** A trench passes 0.6, a bunker 0.35. */
+export const TOBRUK_WOUND_MUL = 0.45;
+/** Barely proud of the ground: lower than a trench parapet's top. */
+export const TOBRUK_COVER_HEIGHT = 1.5;
+
+/**
+ * Heavy casemate (Regelbau). Atlantic-wall concrete two metres thick with a steel
+ * observation cupola on the roof: the strongest place on the field to hold, and
+ * the cupola lets the men inside see a little farther. Slow and dear to pour.
+ */
+export const CASEMATE_GARRISON_CAP = 8;
+/** Bunker 5×. */
+export const CASEMATE_GARRISON_HP_MUL = 6;
+/** Bunker 0.35. */
+export const CASEMATE_WOUND_MUL = 0.22;
+export const CASEMATE_SIGHT_BONUS = t(3);
+export const CASEMATE_COVER_HEIGHT = 5;
+export const CASEMATE_MEDIC_REGEN_FRAC = 0.006;
+export const CASEMATE_ENGINEER_REPAIR_PER_SEC = 3;
+
+/**
+ * Timber lookout (Holzturm). Four splayed logs and a plank platform high over the
+ * treetops: the farthest eyes a garrison can have, and the rifles carry a bit
+ * farther from up there. Planks stop very little, and it burns down fast.
+ */
+export const HOCHSTAND_GARRISON_CAP = 2;
+export const HOCHSTAND_GARRISON_HP_MUL = 2;
+export const HOCHSTAND_WOUND_MUL = 0.85;
+/** The concrete tower is t(8). */
+export const HOCHSTAND_SIGHT_BONUS = t(11);
+export const HOCHSTAND_REACH_BONUS = t(3);
+export const HOCHSTAND_FLOORS = 4;
+export const HOCHSTAND_EYE_HEIGHT = HOCHSTAND_FLOORS * STORY_COVER_HEIGHT * 0.6;
+
+/**
+ * Fire-control tower (Leitturm). A flak-tower block of concrete, four floors of
+ * slits and a rangefinder on the roof. Six men, walls almost as good as a bunker's,
+ * and from the galleries their weapons reach well past the ground. It carries the
+ * watch tower's spotlight.
+ */
+export const LEITTURM_GARRISON_CAP = 6;
+export const LEITTURM_GARRISON_HP_MUL = 4;
+export const LEITTURM_WOUND_MUL = 0.4;
+export const LEITTURM_SIGHT_BONUS = t(9);
+export const LEITTURM_REACH_BONUS = t(4);
+export const LEITTURM_FLOORS = 4;
+export const LEITTURM_EYE_HEIGHT = LEITTURM_FLOORS * STORY_COVER_HEIGHT * 0.6;
+
+/** Riflemen put at a crewed gun when it is raised. Anyone a bunker takes may replace them. */
+export const GUN_CREW_TYPE: EntityType = "rifleman";
+
+/**
+ * MG nest. An MG42 on its tripod behind a ring of sandbags. The tripod lays it
+ * tighter and farther than the Gunner's bipod, and the belts are long. One man.
+ */
+export const MGNEST_RANGE_TILES = t(13);
+export const MGNEST_BELT = 250;
+export const MGNEST_BELT_RELOAD = 7;
+export const MGNEST_ARC_DEG = 60;
+export const MGNEST_WOUND_MUL = 0.5;
+/**
+ * Pak 36. Light 37mm anti-tank gun behind a low shield. Holes a Tiger's side or rear, not
+ * its front. It traverses only a little either side of the way it was set. One man.
+ */
+export const PAK36_RANGE_TILES = t(12);
+export const PAK36_ARC_DEG = 30;
+export const PAK36_WOUND_MUL = 0.45;
+/**
+ * Pak 43. The 88mm on its cruciform platform: the longest straight reach on the field, through
+ * any front plate, all the way round, but it swings slowly. Two men; one alone loads at half pace.
+ */
+export const PAK43_RANGE_TILES = t(18);
+export const PAK43_WOUND_MUL = 0.4;
+/**
+ * Flak 37. A 37mm anti-aircraft gun fed in eight-round clips. Planes first, at a longer reach
+ * than anything on the ground. On the ground it chews up soft targets and dents light plate.
+ * Two men.
+ */
+export const FLAK_RANGE_TILES = t(10);
+export const FLAK_AIR_REACH_MUL = 1.4;
+export const FLAK_CLIP = 8;
+export const FLAK_CLIP_RELOAD = 2.4;
+export const FLAK_WOUND_MUL = 0.5;
 
 /**
  * Large wall. A tall concrete wall section with firing slits down both faces,
@@ -3188,6 +3368,300 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rocketAmmo: RAM_ROCKET_AMMO,
     rocketRack: RAM_ROCKET,
     blurb: `Radar-laid rocket launcher on a concrete pad. Fires on its own at any enemy unit it can hurt, planes and paratroopers under canopies first, in barrages of ${RAM_SALVO} short, accurate rockets, out to its full reach in fog or in the dark, and sends an interceptor at incoming rockets that bursts nine in ten of them in the air. Shorter reach than a Nebelwerfer, longer than a CIWS. Max range reaches half as far again, but out there the rockets scatter wide. Leaves tanks and buildings alone. The ${RAM_ROCKET_AMMO}-rocket rack does not refill by itself — bring a supply truck.`,
+  },
+  tobruk: {
+    type: "tobruk",
+    kind: "building",
+    name: "Tobruk Pit",
+    letter: "k",
+    cost: 300,
+    buildSeconds: 8,
+    hp: 1400,
+    power: 0,
+    tileW: t(1),
+    tileH: t(1),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    garrisonCap: TOBRUK_GARRISON_CAP,
+    garrisonHpMul: TOBRUK_GARRISON_HP_MUL,
+    garrisonWoundMul: TOBRUK_WOUND_MUL,
+    garrisonWindows: 1,
+    garrisonFloors: 1,
+    garrisonSightBonus: 0,
+    garrisonFullArms: true,
+    garrisonOpenTop: true,
+    garrisonTypes: TRENCH_TYPES,
+    capturable: false,
+    coverHeight: TOBRUK_COVER_HEIGHT,
+    blurb: `Concrete ring-stand sunk almost flush with the ground, for ${TOBRUK_GARRISON_CAP} infantry — the bunker's troops or a mortarman, who works his tube from the open hatch. Cheap, quick, and hard to hit, but open to the sky: a mortar bomb that drops in finds the men. Adds no sight or reach. Enemy infantry cannot capture it.`,
+  },
+  casemate: {
+    type: "casemate",
+    kind: "building",
+    name: "Heavy Casemate",
+    letter: "H",
+    cost: 1600,
+    buildSeconds: 28,
+    hp: 6000,
+    power: 0,
+    tileW: t(3),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    garrisonCap: CASEMATE_GARRISON_CAP,
+    garrisonHpMul: CASEMATE_GARRISON_HP_MUL,
+    garrisonWoundMul: CASEMATE_WOUND_MUL,
+    garrisonWindows: 3,
+    garrisonFloors: 1,
+    garrisonSightBonus: CASEMATE_SIGHT_BONUS,
+    garrisonReachBonus: 0,
+    garrisonFullArms: true,
+    garrisonTypes: BUNKER_TYPES,
+    capturable: false,
+    garrisonMedicRegen: CASEMATE_MEDIC_REGEN_FRAC,
+    garrisonEngineerRepair: CASEMATE_ENGINEER_REPAIR_PER_SEC,
+    coverHeight: CASEMATE_COVER_HEIGHT,
+    blurb: `Atlantic-wall casemate for ${CASEMATE_GARRISON_CAP} infantry, the troops a bunker takes. Two metres of concrete: twice the bunker's hit points, and even less of each hit reaches the men. A steel cupola on the roof lets them see a little farther; their weapons reach no farther. A medic inside patches everyone faster than in a bunker, and an engineer patches the concrete faster. Dear and slow to pour. Enemy infantry cannot capture it.`,
+  },
+  hochstand: {
+    type: "hochstand",
+    kind: "building",
+    name: "Timber Lookout",
+    letter: "j",
+    cost: 450,
+    buildSeconds: 7,
+    hp: 650,
+    power: 0,
+    tileW: t(1),
+    tileH: t(1),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    garrisonCap: HOCHSTAND_GARRISON_CAP,
+    garrisonHpMul: HOCHSTAND_GARRISON_HP_MUL,
+    garrisonWoundMul: HOCHSTAND_WOUND_MUL,
+    garrisonWindows: 1,
+    garrisonFloors: HOCHSTAND_FLOORS,
+    garrisonSightBonus: HOCHSTAND_SIGHT_BONUS,
+    garrisonReachBonus: HOCHSTAND_REACH_BONUS,
+    garrisonEye: HOCHSTAND_EYE_HEIGHT,
+    garrisonFullArms: true,
+    garrisonTypes: BUNKER_TYPES,
+    blurb: `Log legs and a plank platform high over the trees, for ${HOCHSTAND_GARRISON_CAP} infantry. The farthest eyes on the field, farther than the concrete Watch Tower, and rifles carry a bit farther from up there. The planks stop very little, and it comes down fast under fire. Cheap and quick to put up.`,
+  },
+  leitturm: {
+    type: "leitturm",
+    kind: "building",
+    name: "Fire-Control Tower",
+    letter: "L",
+    cost: 2200,
+    buildSeconds: 24,
+    hp: 4200,
+    power: 0,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    garrisonCap: LEITTURM_GARRISON_CAP,
+    garrisonHpMul: LEITTURM_GARRISON_HP_MUL,
+    garrisonWoundMul: LEITTURM_WOUND_MUL,
+    garrisonWindows: 4,
+    garrisonFloors: LEITTURM_FLOORS,
+    garrisonSightBonus: LEITTURM_SIGHT_BONUS,
+    garrisonReachBonus: LEITTURM_REACH_BONUS,
+    garrisonEye: LEITTURM_EYE_HEIGHT,
+    garrisonFullArms: true,
+    garrisonTypes: BUNKER_TYPES,
+    capturable: false,
+    blurb: `Flak-tower block of concrete for ${LEITTURM_GARRISON_CAP} infantry, the troops a bunker takes. From the galleries they see far across the field, and their weapons reach farther than from any other post. Walls almost as good as a bunker's. A spotlight on the roof lights the ground at night. Dear and slow to pour. Enemy infantry cannot capture it.`,
+  },
+  mgnest: {
+    type: "mgnest",
+    kind: "building",
+    name: "MG Nest",
+    letter: "n",
+    cost: 400,
+    buildSeconds: 8,
+    hp: 350,
+    power: 0,
+    tileW: t(1),
+    tileH: t(1),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    turretTurnDegPerSec: 90,
+    rangeTiles: MGNEST_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: TICK_DT,
+    damage: MG42.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    armorFront: 0,
+    armorSide: 0,
+    armorRear: 0,
+    penetration: MG42.penetration,
+    caliber: MG42.caliber,
+    spreadDeg: 3,
+    shotsPerTick: MG42.shotsPerTick,
+    belt: MGNEST_BELT,
+    beltReload: MGNEST_BELT_RELOAD,
+    crewGun: true,
+    mountArcDeg: MGNEST_ARC_DEG,
+    antiAir: true,
+    garrisonCap: 1,
+    garrisonHpMul: 2,
+    garrisonWoundMul: MGNEST_WOUND_MUL,
+    garrisonWindows: 1,
+    garrisonFloors: 1,
+    garrisonSightBonus: 0,
+    garrisonTypes: BUNKER_TYPES,
+    capturable: false,
+    blurb: `An MG42 on its tripod behind a ring of sandbags, worked by one man, who comes with it. Laid tighter and farther than the Gunner's bipod, ${MGNEST_BELT}-round belts. Sweeps ${MGNEST_ARC_DEG}° either side of the way it was turned, and nothing behind that. Reaches a plane or a drone. Rifle fire on it finds the gunner, not the gun: with nobody at it, it falls silent until another soldier takes his place. Cannot move.`,
+  },
+  pak36: {
+    type: "pak36",
+    kind: "building",
+    name: "Pak 36",
+    letter: "p",
+    cost: 700,
+    buildSeconds: 10,
+    hp: 450,
+    power: 0,
+    tileW: t(1),
+    tileH: t(1),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    turretTurnDegPerSec: 40,
+    rangeTiles: PAK36_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 2.4,
+    damage: 40,
+    projectileSpeed: TANK_SHELL_SPEED,
+    armorFront: 0,
+    armorSide: 0,
+    armorRear: 0,
+    penetration: 48,
+    caliber: 37,
+    spreadDeg: 1.8,
+    crewGun: true,
+    mountArcDeg: PAK36_ARC_DEG,
+    armorFirst: true,
+    garrisonCap: 1,
+    garrisonHpMul: 2,
+    garrisonWoundMul: PAK36_WOUND_MUL,
+    garrisonWindows: 1,
+    garrisonFloors: 1,
+    garrisonSightBonus: 0,
+    garrisonTypes: BUNKER_TYPES,
+    capturable: false,
+    blurb: `Light 37mm anti-tank gun behind a low shield, worked by one man, who comes with it. Holes a light hull anywhere and a Tiger in the side or rear, never its front. Tanks first. Traverses only ${PAK36_ARC_DEG}° either side of the way it was turned — set it facing the road. Rifle fire on it finds the gunner: with nobody at it, it falls silent until another soldier takes his place. Cannot move.`,
+  },
+  pak43: {
+    type: "pak43",
+    kind: "building",
+    name: "Pak 43",
+    letter: "P",
+    cost: 2000,
+    buildSeconds: 20,
+    hp: 900,
+    power: 0,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    turretTurnDegPerSec: 20,
+    rangeTiles: PAK43_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 7,
+    damage: 85,
+    projectileSpeed: TANK_SHELL_SPEED,
+    armorFront: 0,
+    armorSide: 0,
+    armorRear: 0,
+    penetration: 190,
+    caliber: 88,
+    spreadDeg: 1.6,
+    crewGun: true,
+    armorFirst: true,
+    garrisonCap: 2,
+    garrisonHpMul: 2,
+    garrisonWoundMul: PAK43_WOUND_MUL,
+    garrisonWindows: 2,
+    garrisonFloors: 1,
+    garrisonSightBonus: 0,
+    garrisonTypes: BUNKER_TYPES,
+    capturable: false,
+    blurb: `The 88mm on its cross platform, worked by two men, who come with it. The longest straight reach on the field, through any front plate. It turns all the way round, but slowly — a tank that gets on its flank has time. Tanks first. With one man left it loads at half pace; with none it is silent until soldiers take their places. Rifle fire on it finds the crew. Cannot move.`,
+  },
+  flak: {
+    type: "flak",
+    kind: "building",
+    name: "Flak 37",
+    letter: "f",
+    cost: 1600,
+    buildSeconds: 16,
+    hp: 700,
+    power: 0,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    turretTurnDegPerSec: 120,
+    rangeTiles: FLAK_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0.24,
+    damage: 16,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    armorFront: 0,
+    armorSide: 0,
+    armorRear: 0,
+    penetration: 30,
+    caliber: 37,
+    spreadDeg: 2.4,
+    belt: FLAK_CLIP,
+    beltReload: FLAK_CLIP_RELOAD,
+    crewGun: true,
+    antiAir: true,
+    airFirst: true,
+    airReachMul: FLAK_AIR_REACH_MUL,
+    garrisonCap: 2,
+    garrisonHpMul: 2,
+    garrisonWoundMul: FLAK_WOUND_MUL,
+    garrisonWindows: 2,
+    garrisonFloors: 1,
+    garrisonSightBonus: 0,
+    garrisonTypes: BUNKER_TYPES,
+    capturable: false,
+    blurb: `A 37mm anti-aircraft gun in a sandbagged ring, worked by two men, who come with it. Planes, Jump Jets, and drones first, out to half again its ground reach, in ${FLAK_CLIP}-round clips. On the ground it chews up infantry and trucks and dents light plate. Turns all the way round. With one man left it fires at half pace; with none it is silent until soldiers take their places. Rifle fire on it finds the crew. Cannot move.`,
   },
   sandbags: {
     type: "sandbags",
@@ -5313,6 +5787,31 @@ export function wadesOf(type: EntityType): boolean {
 /** Share of dry-ground speed while wading. A wader that omits wadeSpeed keeps the Titan's pace. */
 export function wadeSpeedOf(type: EntityType): number {
   return catalog(type).wadeSpeed ?? TITAN_WADE_SPEED;
+}
+
+/** An emplaced gun worked by its garrison: the MG Nest, the Paks, the Flak. See CatalogEntry.crewGun. */
+export function crewGunOf(type: EntityType): boolean {
+  return catalog(type).crewGun === true;
+}
+
+/** Traverse each side of an emplacement's set facing, degrees, or null when it turns all round. */
+export function mountArcDegOf(type: EntityType): number | null {
+  return catalog(type).mountArcDeg ?? null;
+}
+
+/** A building gun whose rounds reach aircraft, a Jump Jet, and a high drone: the MG Nest, the Flak. */
+export function antiAirGunOf(type: EntityType): boolean {
+  return catalog(type).antiAir === true;
+}
+
+/** Looks for a plane first and lays on it with the CIWS's cone: the Flak. */
+export function airFirstOf(type: EntityType): boolean {
+  return catalog(type).airFirst === true;
+}
+
+/** Picks armored hulls first: the Paks. */
+export function armorFirstOf(type: EntityType): boolean {
+  return catalog(type).armorFirst === true;
 }
 
 /** A radar-laid mount: the CIWS or the RAM. See CatalogEntry.radarLaid. */

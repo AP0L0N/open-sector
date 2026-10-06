@@ -1787,6 +1787,72 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   ram: building(ramUrl, 192, 126, 186, 126, 82.8),
 };
 
+/** Pad metrics as the building render scripts write them beside each image (<type>.json). */
+interface PadInfo {
+  padWidth: number;
+  padSouthX: number;
+  padSouthY: number;
+  stackX: number;
+  stackY: number;
+  /** Gun sheets: rows of traverse, and columns by crew at the gun (0 = nobody). */
+  rows?: number;
+  crewCols?: number;
+  /** World px from the pivot to the muzzle, and the height of the bore. */
+  muzzleReach?: number;
+  gunZ?: number;
+}
+
+const padManifests = import.meta.glob("../assets/buildings/*.json", { eager: true, import: "default" }) as Record<string, PadInfo>;
+const buildingUrls = import.meta.glob("../assets/buildings/*.png", { eager: true, import: "default" }) as Record<string, string>;
+
+/**
+ * The WW2 forts and crewed guns (tools/sprites/render_ww2_*.py): each <type>.png with its pad
+ * metrics in <type>.json beside it, picked up by name.
+ */
+const FORT_TYPES: readonly EntityType[] = ["tobruk", "casemate", "hochstand", "leitturm", "mgnest", "pak36", "pak43", "flak"];
+for (const type of FORT_TYPES) {
+  const info = padManifests[`../assets/buildings/${type}.json`];
+  const url = buildingUrls[`../assets/buildings/${type}.png`];
+  if (info && url) BUILDING_SPRITES[type] = building(url, info.padWidth, info.padSouthX, info.padSouthY, info.stackX, info.stackY);
+}
+
+/** A gun drawn over its pad: rows of traverse on the unturned pad's canvas, one column per crew count. */
+export interface GunLayer {
+  sheet: HTMLImageElement;
+  /** The unturned pad the sheet shares its canvas and anchor with. */
+  pad: BuildingSpriteDef;
+  rows: number;
+  cols: number;
+  muzzleReach: number;
+  gunZ: number;
+}
+
+const GUN_LAYERS: Partial<Record<EntityType, GunLayer>> = {};
+for (const type of FORT_TYPES) {
+  const info = padManifests[`../assets/buildings/${type}.json`];
+  const url = buildingUrls[`../assets/buildings/${type}-gun.png`];
+  const pad = BUILDING_SPRITES[type];
+  if (!info || !url || !pad) continue;
+  GUN_LAYERS[type] = {
+    sheet: loadSheet(url),
+    pad,
+    rows: info.rows ?? 16,
+    cols: info.crewCols ?? 1,
+    muzzleReach: info.muzzleReach ?? 12,
+    gunZ: info.gunZ ?? 6,
+  };
+}
+
+/** The crewed guns' traversing layer. The CIWS and RAM keep their own sheets (CIWS_TURRET_SHEET, RAM_TURRET_SHEET). */
+export function gunLayerFor(type: EntityType): GunLayer | undefined {
+  return GUN_LAYERS[type];
+}
+
+/** The building's own unturned image: what a gun or roof lamp drawn over a turned face is laid out on. */
+export function unturnedBuildingSprite(type: EntityType): BuildingSpriteDef | undefined {
+  return BUILDING_SPRITES[type];
+}
+
 /** One turned face as tools/sprites/turn_faces.py writes it: pad metrics in its own cropped pixels. */
 interface TurnedFaceInfo {
   file: string;

@@ -52,7 +52,8 @@ import {
 } from "@gridlock/shared";
 import type { Ctx } from "../ctx.js";
 import { forgetTerrain } from "../render/terrain.js";
-import { buildingSpriteFor, LAMP_SPRITES } from "../render/sprites.js";
+import { buildingSpriteFor, gunLayerFor, LAMP_SPRITES } from "../render/sprites.js";
+import { drawGunRow } from "../render/ciws.js";
 import { fieldPointsWithCursor, pinFieldPoint, undoFieldPoint, type Pt } from "../render/field-place.js";
 import { STREET_LAMPS } from "../render/night.js";
 import grassUrl from "../assets/terrain/grass-meadow.png";
@@ -1781,22 +1782,31 @@ function asset(label: string, sub: string, on: boolean, art: Node, title: string
   return b;
 }
 
-/** A building's art at `angle` world radians: a house's quarter, a bunker or tower's 15° step. */
-function houseThumb(type: CivilianType | "bunker" | "tower", angle: number): HTMLCanvasElement {
+/**
+ * A building's art at `angle` world radians: a house's quarter, a defence's 15° step. A crewed
+ * gun shows its unturned pit with the barrel laid along `angle`, its crew at it.
+ */
+function houseThumb(type: CivilianType | Exclude<MapDefenceType, "sandbags" | "wall">, angle: number): HTMLCanvasElement {
   const cv = el("canvas");
   cv.width = 96;
   cv.height = 76;
-  const def = buildingSpriteFor(type, angle);
+  const gun = gunLayerFor(type);
+  const def = gun ? gun.pad : buildingSpriteFor(type, angle);
   const paint = (): void => {
     const g = cv.getContext("2d");
     if (!g || !def) return;
     const img = def.image;
     const k = Math.min(cv.width / img.naturalWidth, cv.height / img.naturalHeight);
+    const x0 = (cv.width - img.naturalWidth * k) / 2;
+    const y0 = (cv.height - img.naturalHeight * k) / 2;
     g.clearRect(0, 0, cv.width, cv.height);
-    g.drawImage(img, (cv.width - img.naturalWidth * k) / 2, (cv.height - img.naturalHeight * k) / 2, img.naturalWidth * k, img.naturalHeight * k);
+    g.drawImage(img, x0, y0, img.naturalWidth * k, img.naturalHeight * k);
+    if (gun) drawGunRow(g, gun.sheet, def, x0 + def.padSouthX * k, y0 + def.padSouthY * k, def.padWidth * k, angle, TILE_SIZE, gun.cols - 1, gun.cols);
   };
-  if (def?.image.complete && def.image.naturalWidth > 0) paint();
-  else def?.image.addEventListener("load", paint, { once: true });
+  const ready = (im: HTMLImageElement): boolean => im.complete && im.naturalWidth > 0;
+  const wait = [def?.image, gun?.sheet].filter((im): im is HTMLImageElement => !!im && !ready(im));
+  if (wait.length === 0) paint();
+  for (const im of wait) im.addEventListener("load", paint, { once: true });
   return cv;
 }
 
@@ -2060,7 +2070,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       defFaceRow,
       el("p", {
         class: "bld-hint",
-        text: "Neutral until taken. Infantry that walk into a bunker or tower take it; a tower's lamp stays dark until someone holds it. Men who take cover at sandbags or a wall claim the section. Scroll turns a defence 15° (Ctrl+scroll zooms). A sandbag or wall line goes down as in a match: click its start, click each corner, Enter lays it, right-click takes a corner back. Esc cancels and picks up Select.",
+        text: "Neutral until taken. Infantry that walk into a bunker or tower take it; a tower's lamp stays dark until someone holds it. The guns stand with neutral crews at them; once a crew falls, the first soldier to man the gun takes it. Men who take cover at sandbags or a wall claim the section. Scroll turns a defence 15° (Ctrl+scroll zooms). A sandbag or wall line goes down as in a match: click its start, click each corner, Enter lays it, right-click takes a corner back. Esc cancels and picks up Select.",
       }),
     ),
   );

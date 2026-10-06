@@ -9,6 +9,7 @@ import {
   TOWER_EYE_HEIGHT,
   TILE_SIZE,
   TILE_TREE,
+  catalog,
   featureAngle,
   facingToIso,
   featureBox,
@@ -35,6 +36,7 @@ import { decorFor } from "../render/decor.js";
 import { NIGHT_SHADE_MAX, STREET_LAMPS, spotBeamGround } from "../render/night.js";
 import { paintNight, type NightHalo, type NightLayers, type NightLightPool } from "../render/night-paint.js";
 import { drawSandbags } from "../render/sandbags.js";
+import { drawGunRow } from "../render/ciws.js";
 import {
   BUSH_FACES,
   LAMP_SPRITES,
@@ -47,6 +49,7 @@ import {
   drawBuildingSprite,
   drawPropSprite,
   drawUnitSprite,
+  gunLayerFor,
   NEUTRAL_UNIT_FILTER,
   spriteFor,
   spriteReady,
@@ -398,7 +401,22 @@ function drawFeature(c: CanvasRenderingContext2D, s: Sheet, f: MapFeature, secti
   const ground = buildingGroundFor(f.type, facing);
   if (ground && spriteReady(ground)) drawBuildingSprite(c, ground, south.x, south.y, east.x - west.x);
   const spr = buildingSpriteFor(f.type, facing);
-  if (spr && drawBuildingSprite(c, spr, south.x, south.y, east.x - west.x)) return true;
+  if (spr && drawBuildingSprite(c, spr, south.x, south.y, east.x - west.x)) {
+    // A crewed gun: the barrel laid the way it is turned, its full crew at it, on the unturned pad.
+    const gun = gunLayerFor(f.type);
+    if (gun) {
+      const def = catalog(f.type);
+      const cx = (site.tx + site.w / 2) * ts;
+      const cy = (site.ty + site.h / 2) * ts;
+      const hw = (def.tileW * ts) / 2;
+      const hh = (def.tileH * ts) / 2;
+      const ps = at(cx + hw, cy + hh, elev);
+      const pe = at(cx + hw, cy - hh, elev);
+      const pw = at(cx - hw, cy + hh, elev);
+      drawGunRow(c, gun.sheet, gun.pad, ps.x, ps.y, pe.x - pw.x, facing, ts, gun.cols - 1, gun.cols);
+    }
+    return true;
+  }
   // Art still loading: a plain lot so the spot reads.
   const { pts } = boxCorners(s, f);
   c.fillStyle = "rgba(201,162,122,0.8)";
