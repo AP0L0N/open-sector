@@ -1362,7 +1362,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       defFaceRow,
       el("p", {
         class: "bld-hint",
-        text: "Neutral until taken. Infantry that walk into a bunker or tower take it; a tower's lamp stays dark until someone holds it. Men who take cover at sandbags or a wall claim the section. Scroll turns a defence 15° (Ctrl+scroll zooms). A sandbag or wall line goes down as in a match: click its start, click each corner, Enter lays it, right-click takes a corner back, Esc drops it.",
+        text: "Neutral until taken. Infantry that walk into a bunker or tower take it; a tower's lamp stays dark until someone holds it. Men who take cover at sandbags or a wall claim the section. Scroll turns a defence 15° (Ctrl+scroll zooms). A sandbag or wall line goes down as in a match: click its start, click each corner, Enter lays it, right-click takes a corner back. Esc cancels and picks up Select.",
       }),
     ),
   );
@@ -1579,10 +1579,12 @@ function bindKeys(): void {
     } else if (e.key === "Enter" && lineTool() && line.points.length > 0) {
       e.preventDefault();
       commitLine();
-    } else if (e.key === "Escape" && linePending()) {
+    } else if (e.key === "Escape" && tool.id !== "select") {
+      // Esc puts down whatever was being placed or painted, line and all, and picks up Select.
+      if (drag?.kind === "line") drag = null;
       dropLine();
-      say("Line dropped.");
-      queueDraw();
+      say("");
+      setTool(ctx, { id: "select" });
     } else if ((e.key === "Delete" || e.key === "Backspace") && selected) {
       e.preventDefault();
       deleteSelected();
@@ -1630,7 +1632,7 @@ export function renderBuilder(root: HTMLElement, ctx: Ctx): void {
   const screen = el("div", { class: "screen", attrs: { id: "builder-root" } });
   const wrap = el("div", { class: "builder" });
   const canvas = el("canvas");
-  const status = el("div", { class: "bld-status", text: "Wheel zooms · right-drag pans · Ctrl+Z undoes · V selects" });
+  const status = el("div", { class: "bld-status", text: "Wheel zooms · right-drag pans · Ctrl+Z undoes · V or Esc selects" });
   stage = { root: screen, canvas, status, preview: null, msg: el("div"), checks: null, maps: null, sel: null, turnLabel: null };
   wrap.append(header(ctx));
   const tools = toolsPanel(ctx);
