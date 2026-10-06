@@ -5861,6 +5861,14 @@ export function crewGunOf(type: EntityType): boolean {
   return catalog(type).crewGun === true;
 }
 
+/**
+ * A structure that lays its own gun: the CIWS, the RAM, and the crewed guns. Like a unit it
+ * takes Stop, Rotate (where the gun rests between targets), and Force attack.
+ */
+export function aimsOwnGun(type: EntityType): boolean {
+  return radarLaidOf(type) || crewGunOf(type);
+}
+
 /** Traverse each side of an emplacement's set facing, degrees, or null when it turns all round. */
 export function mountArcDegOf(type: EntityType): number | null {
   return catalog(type).mountArcDeg ?? null;
