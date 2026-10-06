@@ -38,6 +38,11 @@ export interface MapDef {
   lamps?: MapLamp[];
   /** Neutral units the map stands on the field. Grey, hostile to every commander, they hold their ground. */
   units?: MapUnit[];
+  /**
+   * Complete fog of war: ground a commander has never seen is black, not dimmed.
+   * Drawing only: sight and the sim are the same either way.
+   */
+  shroud?: boolean;
   /** Set on maps made in the Map Builder. Built-in maps leave it out and cannot be edited. */
   custom?: { author: string; updatedAt: number };
 }

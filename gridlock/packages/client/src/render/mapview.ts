@@ -441,7 +441,7 @@ import { canGuardUnit, planeBoardCandidate, resolveHoverAction, type HoverAction
 import { planColor, withQueue } from "./order-queue.js";
 import { guardHeightTag, guardReach, type GuardUnit } from "./guard-reach.js";
 import { BuildingVeil, columnPolygon, uniformVeil, veilCells } from "./building-fog.js";
-import { FOG_RGB, FOG_VEIL_ALPHA, FogField } from "./fog-field.js";
+import { FOG_RGB, FOG_VEIL_ALPHA, FogField, SHROUD_ALPHA, SHROUD_RGB } from "./fog-field.js";
 import { FogFlat, FogGl } from "./fog-gl.js";
 import {
   NIGHT_RGB,
@@ -813,8 +813,12 @@ export class MapView {
   private spotFrameAt = 0;
   /** Where each tower's searchlight lens landed this frame, for its glow at night. */
   private lensAt = new Map<number, SearchlightPose>();
-  /** Every tile counts as known ground: the map is never shrouded. */
+  /** Every tile counts as known ground on a map without complete fog of war. */
   private knownGround: Uint8Array | null = null;
+  /** Complete fog of war: explored ground softened like sight. Null on maps without it. */
+  private shroudField: FogField | null = null;
+  private shroudGl: FogGl | null | undefined = undefined;
+  private shroudFlat: FogFlat | null = null;
   private miniFog: HTMLCanvasElement | null = null;
   private miniFogCtx: CanvasRenderingContext2D | null = null;
   private miniFogData: ImageData | null = null;
@@ -2018,8 +2022,9 @@ export class MapView {
     if (this.miniTerrain) restampMini(this.miniTerrain, map, dirty, this.curr.scrap);
   }
 
-  private resetFog(map: { id: string; width: number; height: number }): void {
+  private resetFog(map: { id: string; width: number; height: number; shroud?: boolean }): void {
     this.fogField = new FogField(map.width, map.height);
+    this.shroudField = map.shroud ? new FogField(map.width, map.height) : null;
     this.knownGround = new Uint8Array(map.width * map.height).fill(1);
     const mini = document.createElement("canvas");
     mini.width = Math.max(1, map.width);
@@ -2068,9 +2073,14 @@ export class MapView {
     const first = this.vis == null;
     this.fogField?.set(vis, performance.now(), first);
     this.vis = vis;
+    let grew = false;
     for (let i = 0; i < n; i++) {
-      if (vis[i]) this.explored[i] = 1;
+      if (vis[i] && !this.explored[i]) {
+        this.explored[i] = 1;
+        grew = true;
+      }
     }
+    if (this.shroudField && grew) this.shroudField.set(this.explored, performance.now(), first);
     this.rebuildMiniFog(map, n);
     this.syncGhosts(match, vis);
   }
@@ -2092,12 +2102,14 @@ export class MapView {
     if (!ctx || !data || data.width !== map.width || data.height !== map.height) return;
     const pix = data.data;
     const sight = this.fogField?.next;
+    const shroud = this.shroudField ? this.explored : null;
     for (let i = 0; i < n; i++) {
       const o = i * 4;
-      pix[o] = FOG_RGB[0];
-      pix[o + 1] = FOG_RGB[1];
-      pix[o + 2] = FOG_RGB[2];
-      pix[o + 3] = Math.round(150 * (1 - (sight?.[i] ?? 0)));
+      const black = shroud != null && !shroud[i];
+      pix[o] = black ? 0 : FOG_RGB[0];
+      pix[o + 1] = black ? 0 : FOG_RGB[1];
+      pix[o + 2] = black ? 0 : FOG_RGB[2];
+      pix[o + 3] = black ? 255 : Math.round(150 * (1 - (sight?.[i] ?? 0)));
     }
     ctx.putImageData(data, 0, 0);
   }
@@ -2106,6 +2118,24 @@ export class MapView {
     const map = this.map();
     if (!this.vis) return true;
     return tileOnMask(this.vis, map.width, tx, ty);
+  }
+
+  /** False only under complete fog of war, on ground you have never seen. */
+  private known(tx: number, ty: number): boolean {
+    if (!this.shroudField) return true;
+    const w = this.map().width;
+    return this.explored?.[ty * w + tx] === 1;
+  }
+
+  /** Any tile of a footprint known. Yours always is. */
+  private knownRect(e: Pick<EntityView, "ownerId" | "tileX" | "tileY" | "tileW" | "tileH">): boolean {
+    if (!this.shroudField || e.ownerId === this.curr.youPlayerId) return true;
+    for (let y = e.tileY; y < e.tileY + Math.max(1, e.tileH); y++) {
+      for (let x = e.tileX; x < e.tileX + Math.max(1, e.tileW); x++) {
+        if (this.known(x, y)) return true;
+      }
+    }
+    return false;
   }
 
   /** @deprecated */
@@ -3359,7 +3389,9 @@ export class MapView {
     const ix = px + this.camX;
     const iy = py + this.camY;
     const liveIds = new Set(this.curr.entities.map((e) => e.id));
-    const ghosts = [...this.ghosts.values()].filter((g) => !liveIds.has(g.id) && !g.wreck && !isFieldStructure(g.type));
+    const ghosts = [...this.ghosts.values()].filter(
+      (g) => !liveIds.has(g.id) && !g.wreck && !isFieldStructure(g.type) && this.knownRect(g),
+    );
     const keys = new Map(ghosts.map((e) => [e, this.drawKey(e)]));
     ghosts.sort((a, b) => compareDrawOrder(keys.get(b)!, keys.get(a)!));
     for (const e of ghosts) {
@@ -3745,6 +3777,41 @@ export class MapView {
     this.fogFlat.draw(this.ctx, field, this.camX, this.camY, now, look);
   }
 
+  /**
+   * Complete fog of war: ground you have never seen is black, with a soft edge
+   * where exploring has reached. Laid over the sight veil, under everything standing.
+   */
+  private drawShroud(): void {
+    const field = this.shroudField;
+    if (!field) return;
+    const now = performance.now();
+    // Above 1 so the veil's noise never lets the ground show through where nothing is known.
+    const look = { alpha: SHROUD_ALPHA, rgb: SHROUD_RGB };
+    if (this.shroudGl === undefined) this.shroudGl = FogGl.create();
+    const gl = this.shroudGl;
+    if (gl) {
+      const dpr = Math.min(devicePixelRatio || 1, 1.5);
+      gl.setMap(this.map());
+      gl.render(field, {
+        camX: this.camX,
+        camY: this.camY,
+        scale: dpr * this.zoom,
+        width: this.canvas.width,
+        height: this.canvas.height,
+        now,
+        ...look,
+      });
+      const ctx = this.ctx;
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(gl.canvas, 0, 0);
+      ctx.restore();
+      return;
+    }
+    this.shroudFlat ??= new FogFlat();
+    this.shroudFlat.draw(this.ctx, field, this.camX, this.camY, now, { alpha: 1, rgb: SHROUD_RGB });
+  }
+
   private draw(): void {
     const ctx = this.ctx;
     const { w, h } = this.viewSize();
@@ -3756,6 +3823,7 @@ export class MapView {
     if (bake) {
       blitTerrain(ctx, bake, this.camX, this.camY, w, h);
       this.drawGroundFog();
+      this.drawShroud();
     }
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "low";
@@ -3772,6 +3840,8 @@ export class MapView {
     const castShadows: IsoPt[][] = [];
     const yardWear: IsoPt[][] = [];
     for (const e of drawList) {
+      // Houses and map defences on ground you have never seen stay under the black.
+      if (e.kind === "building" && !this.knownRect(e)) continue;
       const ghost = !liveIds.has(e.id);
       // The Airfield is flat ground; its decal would sit in its own shadow.
       if (e.kind === "building" && !isFieldStructure(e.type) && !isBridge(e.type) && !buildingGroundFor(e.type)) {
@@ -4053,7 +4123,7 @@ export class MapView {
       e.kind === "building" && lamp.x >= e.tileX && lamp.x < e.tileX + e.tileW && lamp.y >= e.tileY && lamp.y < e.tileY + e.tileH;
     const out: { lamp: MapLamp; wx: number; wy: number }[] = [];
     for (const lamp of lamps) {
-      if (this.curr.entities.some((e) => over(lamp, e))) continue;
+      if (this.curr.entities.some((e) => over(lamp, e)) || !this.known(lamp.x, lamp.y)) continue;
       out.push({ lamp, wx: (lamp.x + 0.5) * ts, wy: (lamp.y + 0.5) * ts });
     }
     return out;
@@ -4587,7 +4657,7 @@ export class MapView {
     const facing = this.guardFacing;
     const half = (GUARD_CONE_DEG * Math.PI) / 360;
     const arcSteps = 24;
-    const reach = guardReach(this.map(), this.knownGround, this.selectedGuardUnits(), origin.x, origin.y, facing, half, arcSteps);
+    const reach = guardReach(this.map(), this.shroudField ? this.explored : this.knownGround, this.selectedGuardUnits(), origin.x, origin.y, facing, half, arcSteps);
     const range = reach.rangeWorld;
     const elev = reach.elev;
     const ctx = this.ctx;
@@ -5492,7 +5562,7 @@ export class MapView {
     const { w: vw, h: vh } = this.viewSize();
     const now = performance.now();
     for (const { tx, ty } of this.stemsOf(map)) {
-      if (map.tiles[ty * w + tx] !== TILE_TREE) continue;
+      if (map.tiles[ty * w + tx] !== TILE_TREE || !this.known(tx, ty)) continue;
       const kind = treePropKind(map, tx, ty);
       if (!kind) continue;
       const wx = (tx + 0.5) * ts;
@@ -5546,7 +5616,7 @@ export class MapView {
     for (const e of this.curr.entities) cover(e);
     for (const e of this.ghosts.values()) cover(e);
     for (const it of decorFor(map).standing) {
-      if (built.has(it.ty * w + it.tx)) continue;
+      if (built.has(it.ty * w + it.tx) || !this.known(it.tx, it.ty)) continue;
       const wx = (it.tx + it.ox) * ts;
       const wy = (it.ty + it.oy) * ts;
       const p = this.toScreen(wx, wy);
@@ -8833,7 +8903,7 @@ export class MapView {
     ctx.closePath();
     ctx.stroke();
     for (const e of this.curr.entities) {
-      if (e.garrisonedIn) continue;
+      if (e.garrisonedIn || (e.kind === "building" && !this.knownRect(e))) continue;
       ctx.fillStyle = e.wreck ? "#6a6860" : this.ownerColor(e);
       const tx = e.kind === "building" ? e.tileX + e.tileW / 2 : e.x / ts;
       const ty = e.kind === "building" ? e.tileY + e.tileH / 2 : e.y / ts;

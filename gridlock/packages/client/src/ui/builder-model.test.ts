@@ -52,7 +52,9 @@ import {
   setMaxPlayers,
   settle,
   sheetFromSpec,
+  playtestSpec,
   sheetProblem,
+  sheetToMap,
   sheetToSpec,
   spawnProblem,
   type Sheet,
@@ -404,5 +406,26 @@ describe("builder neutral units", () => {
     const back = sheetFromSpec(sheetToSpec(s));
     assert.deepEqual(back.units, s.units);
     assert.equal(degreesToward(0, 0, 0, 5), 90, "south");
+  });
+});
+
+describe("builder complete fog of war", () => {
+  it("starts off and leaves the spec field out", () => {
+    const s = fresh();
+    assert.equal(s.shroud, false);
+    assert.equal("shroud" in sheetToSpec(s), false);
+    assert.equal(sheetToMap(s).shroud, undefined);
+  });
+
+  it("carries the flag through save, reopen, play test, and undo", () => {
+    const s = fresh();
+    const before = markSheet(s);
+    s.shroud = true;
+    assert.equal(sheetToSpec(s).shroud, true);
+    assert.equal(sheetFromSpec(sheetToSpec(s)).shroud, true);
+    assert.equal(playtestSpec(s, "p-check").shroud, true);
+    assert.equal(sheetToMap(s).shroud, true);
+    restoreSheet(s, before);
+    assert.equal(s.shroud, false);
   });
 });

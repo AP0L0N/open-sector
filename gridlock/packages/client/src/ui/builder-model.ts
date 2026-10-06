@@ -67,6 +67,8 @@ export interface Sheet {
   lamps: MapLamp[];
   /** Neutral units standing on the field at the start. */
   units: MapUnit[];
+  /** Complete fog of war: ground nobody has seen yet plays black. */
+  shroud: boolean;
 }
 
 /** Ground a start pad clears. Roads may run through it. */
@@ -96,6 +98,7 @@ export function newSheet(opts: {
     features: [],
     lamps: [],
     units: [],
+    shroud: false,
   };
   settle(sheet);
   return sheet;
@@ -116,6 +119,7 @@ export function sheetFromSpec(spec: CustomMapSpec): Sheet {
     features: spec.features.map((f) => ({ ...f })),
     lamps: (spec.lamps ?? []).map((l) => ({ ...l })),
     units: (spec.units ?? []).map(copyMapUnit),
+    shroud: spec.shroud === true,
   };
   settle(sheet);
   return sheet;
@@ -135,6 +139,7 @@ export function sheetToSpec(s: Sheet): CustomMapSpec {
     features: s.features.map((f) => ({ ...f })),
     ...(s.lamps.length > 0 ? { lamps: liveLamps(s) } : {}),
     ...(s.units.length > 0 ? { units: liveUnits(s) } : {}),
+    ...(s.shroud ? { shroud: true as const } : {}),
     updatedAt: 0,
   };
 }
@@ -154,6 +159,7 @@ export function sheetToMap(s: Sheet, id = "__builder__"): MapDef {
     features: s.features.map((f) => ({ ...f })),
     lamps: liveLamps(s),
     units: liveUnits(s),
+    ...(s.shroud ? { shroud: true } : {}),
   };
 }
 
@@ -846,6 +852,7 @@ export interface SheetMark {
   lamps: MapLamp[];
   units: MapUnit[];
   maxPlayers: number;
+  shroud: boolean;
 }
 
 export function markSheet(s: Sheet): SheetMark {
@@ -857,6 +864,7 @@ export function markSheet(s: Sheet): SheetMark {
     lamps: s.lamps.map((l) => ({ ...l })),
     units: s.units.map(copyMapUnit),
     maxPlayers: s.maxPlayers,
+    shroud: s.shroud,
   };
 }
 
@@ -868,4 +876,5 @@ export function restoreSheet(s: Sheet, m: SheetMark): void {
   s.lamps = m.lamps.map((l) => ({ ...l }));
   s.units = m.units.map(copyMapUnit);
   s.maxPlayers = m.maxPlayers;
+  s.shroud = m.shroud;
 }

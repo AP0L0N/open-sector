@@ -2317,9 +2317,24 @@ function header(ctx: Ctx): HTMLElement {
       mountOrRefresh(ctx);
     });
     playersField.append(el("label", { text: "Max players" }), players);
+    const shroud = el("input", { attrs: { type: "checkbox" } });
+    shroud.checked = s.shroud;
+    shroud.addEventListener("change", () => {
+      pushUndo();
+      s.shroud = shroud.checked;
+      finishStroke();
+      say(s.shroud ? "Complete fog of war: unexplored ground starts black." : "Complete fog of war off: the map is known from the start.");
+      mountOrRefresh(ctx);
+    });
+    const shroudLabel = el("label", {
+      class: "check bld-auto",
+      text: "Complete fog of war",
+      attrs: { title: "Players see nothing of the map until their units have explored it" },
+    });
+    shroudLabel.prepend(shroud);
     const cells = s.width / TILE_SUBDIV;
     const label = CUSTOM_MAP_SIZES.find((z) => z.cells === cells)?.label ?? "";
-    head.append(nameField, playersField, el("div", { class: "bld-size", text: `${label} · ${cells}×${cells} cells` }));
+    head.append(nameField, playersField, shroudLabel, el("div", { class: "bld-size", text: `${label} · ${cells}×${cells} cells` }));
   }
   const note = el("div", { class: `bld-msg ${msg.tone}`, text: msg.text });
   note.hidden = !msg.text;

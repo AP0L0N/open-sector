@@ -546,3 +546,30 @@ describe("custom map lamps", () => {
     assert.equal(box.x1 - box.x0, 5 * TILE_SUBDIV, "a factory takes five cells");
   });
 });
+
+describe("custom map complete fog of war", () => {
+  it("keeps the shroud flag through validate, build, and copy", () => {
+    const r = validateCustomMap(sheet({ id: "c-shroud0001", shroud: true }));
+    assert.ok(r.ok);
+    assert.equal(r.spec.shroud, true);
+    const loaded = loadCustomMap(r.spec);
+    assert.ok(loaded.ok);
+    try {
+      assert.equal(loaded.map.shroud, true);
+      const copy = specFromMap("c-shroud0001", { id: "c-shroud0002", name: "Copy", author: "T" });
+      assert.equal(copy?.shroud, true);
+    } finally {
+      unregisterMap("c-shroud0001");
+    }
+  });
+
+  it("leaves the flag out when off or not exactly true", () => {
+    for (const shroud of [undefined, false as never, "yes" as never, 1 as never]) {
+      const r = validateCustomMap(sheet({ shroud }));
+      assert.ok(r.ok);
+      assert.equal("shroud" in r.spec, false);
+      assert.equal(buildCustomMap(r.spec).shroud, undefined);
+    }
+    assert.equal(specFromMap("yard-64", { id: "c-yardcopy2", name: "Y", author: "T" })?.shroud, undefined);
+  });
+});

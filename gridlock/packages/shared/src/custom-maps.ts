@@ -65,6 +65,8 @@ export interface CustomMapSpec {
   lamps?: MapLamp[];
   /** Neutral units. Left out by maps saved before units existed. */
   units?: MapUnit[];
+  /** Complete fog of war. Left out when off. */
+  shroud?: true;
   updatedAt: number;
 }
 
@@ -441,6 +443,7 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
       features,
       ...(lamps.length > 0 ? { lamps } : {}),
       ...(units.length > 0 ? { units } : {}),
+      ...(m.shroud === true ? { shroud: true as const } : {}),
       updatedAt,
     },
   };
@@ -466,6 +469,7 @@ export function buildCustomMap(spec: CustomMapSpec): MapDef {
     features,
     ...(spec.lamps?.length ? { lamps: spec.lamps.map((l) => ({ ...l })) } : {}),
     ...(spec.units?.length ? { units: spec.units.map(copyMapUnit) } : {}),
+    ...(spec.shroud ? { shroud: true } : {}),
     custom: { author: spec.author, updatedAt: spec.updatedAt },
   };
 }
@@ -502,6 +506,7 @@ export function specFromMap(id: string, copy: { id: string; name: string; author
     features: map.features.map((f) => ({ ...f })),
     ...(map.lamps?.length ? { lamps: map.lamps.map((l) => ({ ...l })) } : {}),
     ...(map.units?.length ? { units: map.units.map(copyMapUnit) } : {}),
+    ...(map.shroud ? { shroud: true as const } : {}),
     updatedAt: 0,
   };
 }
