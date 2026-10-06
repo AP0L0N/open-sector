@@ -571,6 +571,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
         rocket: p.flight === "rocket" ? true : undefined,
         heavy: p.heavy ? true : undefined,
         ...(p.flight === "bomb" || p.flight === "rocket" || p.flight === "cluster" ? { z: p.z ?? 0 } : {}),
+        ...(p.flight === "flak" ? { flak: true, z: p.z ?? 0 } : {}),
         ...(p.flight === "flame"
           ? {
               flame: true,

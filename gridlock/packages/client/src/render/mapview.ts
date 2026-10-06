@@ -193,6 +193,7 @@ import {
   RAM_TURRET_SHEET,
   gunLayerFor,
   unturnedBuildingSprite,
+  type GunLayer,
   buildingGroundFor,
   buildingOccludeEz,
   buildingSpriteFor,
@@ -318,6 +319,7 @@ import {
   type GunRecoil,
 } from "./gun-recoil.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
+import { emplacementShotLook, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
 import {
   BATTLESHIP_WORLD_PER_UNIT,
   battleshipLayers,
@@ -336,7 +338,7 @@ import { playSoundEvents, updateAmbient, warmBattle } from "../ui/game-audio.js"
 import { SoundTracker } from "./sound-events.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
 import { roofCiwsMuzzle } from "./roof-ciws.js";
-import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
+import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, CIWS_SOURCE_ZOOM, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { ciwsBurstTracers, ciwsTracers } from "./ciws-tracer.js";
 import { PTRD_MUZZLE_LIFT, ptrdTracers } from "./ptrd-tracer.js";
 import { ROOF_CIWS_LIFT } from "./roof-ciws.js";
@@ -354,6 +356,7 @@ import { buildingGroundElev, drawYardWear, WALL_SHARE, wallFootprint, yardWearFo
 import { footprintPeak, radarReachTiles } from "./radar-reach.js";
 import {
   airBurstPuffs,
+  flakCloudPuffs,
   backblastPuffs,
   drawRocketPuff,
   ROCKET_PUFF_CAP,
@@ -891,6 +894,8 @@ export class MapView {
     death?: DeathBlastSpec;
     /** Submarine torpedo: a hull strike keeps its water column under the blast. */
     torpedo?: boolean;
+    /** A Flak 37 shell burst in the air at `z`: the air flash, no ground puff. */
+    flak?: boolean;
   }[] = [];
   private fxIds = new Set<number>();
   /** When each crater was struck, for its smoulder. Holes already there on first sight never smoke. */
@@ -1334,7 +1339,15 @@ export class MapView {
       if (i.rocket && i.z != null && !this.fxIds.has(i.id)) {
         this.rocketPuffs.push(...airBurstPuffs(i.x, i.y, i.z, now, i.id));
       }
+      // A Flak 37 shell burst: a black knot of smoke that hangs at the fuse height.
+      if (i.flak && i.z != null && !this.fxIds.has(i.id)) {
+        this.rocketPuffs.push(...flakCloudPuffs(i.x, i.y, i.z, now, i.id));
+      }
       const fx: MapView["fx"][number] = { ...i, at: this.barrageLandAt.get(i.id) ?? now };
+      // The 88mm's shell strikes much harder than a tank's 75: its spark, fireball, and dirt are drawn bigger.
+      if (i.caliber != null && !i.flak && i.fromId != null && match.entities.find((x) => x.id === i.fromId)?.type === "pak43") {
+        fx.caliber = i.caliber * PAK43_FX_CALIBER_MUL;
+      }
       // A rocket burst in the air by a CIWS stays where it was: no hull to snap to, no ground smoke.
       if (i.intercept) {
         // A RAM's interceptor leaves a smoke line from the cells to the burst.
@@ -1374,6 +1387,10 @@ export class MapView {
       }
       if (p.rocket) {
         this.noteRocketLaunch(shooter, p, now);
+        continue;
+      }
+      if (p.flak) {
+        if (shooter && !shooter.wreck) this.noteEmplacementShot(shooter, p.id, p.caliber, now);
         continue;
       }
       const fromGarrison =
@@ -1792,6 +1809,11 @@ export class MapView {
     now: number,
   ): void {
     if (!shooter || !isShellCaliber(shot.caliber)) return;
+    // A Pak on its pad: a field gun's blast, not a tank's.
+    if (gunLayerFor(shooter.type)) {
+      this.noteEmplacementShot(shooter, shot.id, shot.caliber, now);
+      return;
+    }
     const spr = spriteFor(shooter.type, shooter.stance, shooter.swimming);
     if (
       !tankGunRecoils({
@@ -1824,6 +1846,62 @@ export class MapView {
       at: now,
       caliber: shot.caliber,
       lift: Math.round((spr?.drawSize ?? 48) * 0.38),
+    });
+  }
+
+  /**
+   * A Pak or the Flak fired: a flash and a smoke puff at its muzzle, and the field gun's blast
+   * cloud thrown back round the pit. The Pak 43's 88mm throws a far bigger one.
+   */
+  private noteEmplacementShot(shooter: EntityView, shotId: number, caliber: number, now: number): void {
+    const gun = gunLayerFor(shooter.type);
+    if (!gun || shooter.wreck) return;
+    const look = emplacementShotLook(shooter.type);
+    const facing = shooter.turretFacing ?? shooter.facing;
+    const dirX = Math.cos(facing);
+    const dirY = Math.sin(facing);
+    const x = shooter.x + dirX * gun.muzzleReach;
+    const y = shooter.y + dirY * gun.muzzleReach;
+    const ts = this.ts();
+    const def = catalog(shooter.type);
+    const elev = this.elevAt(shooter.x, shooter.y);
+    const padW =
+      this.toScreen(shooter.x + (def.tileW * ts) / 2, shooter.y - (def.tileH * ts) / 2, elev).x -
+      this.toScreen(shooter.x - (def.tileW * ts) / 2, shooter.y + (def.tileH * ts) / 2, elev).x;
+    // The art's muzzle height is in its own world px at CIWS_SOURCE_ZOOM source px each, laid on the pad's width.
+    const lift = gun.muzzleZ * CIWS_SOURCE_ZOOM * (padW / gun.pad.padWidth);
+    this.muzzleSmokes.push(
+      ...spawnMuzzleSmoke({
+        x,
+        y,
+        dirX,
+        dirY,
+        now,
+        seed: (shotId * 2654435761 + Math.floor(now)) >>> 0,
+        scale: look.muzzle,
+      }),
+    );
+    this.gunRecoil.set(shooter.id, { at: now });
+    this.fieldGunSmokes.push(
+      ...spawnFieldGunSmoke({
+        x: shooter.x,
+        y: shooter.y,
+        facing,
+        radius: look.smoke,
+        now,
+        seed: (shotId * 2246822519 + Math.floor(now)) >>> 0,
+      }),
+    );
+    this.addFx({
+      id: shotId + 8_000_000,
+      kind: "muzzle",
+      x,
+      y,
+      vx: dirX,
+      vy: dirY,
+      at: now,
+      caliber: caliber * (shooter.type === "pak43" ? PAK43_FX_CALIBER_MUL : 1),
+      lift: Math.round(lift),
     });
   }
 
@@ -4047,6 +4125,7 @@ export class MapView {
     this.drawCrashSmoke();
     this.drawChargeSmoke();
     this.drawRockets();
+    this.drawFlakShells();
     this.drawFlames();
     this.drawLasers();
     this.drawFallingBombs();
@@ -5979,7 +6058,8 @@ export class MapView {
           else if (gun) {
             // One column per man at the gun: an empty gun shows nobody behind the shield.
             const crew = ghost ? gun.cols - 1 : Math.min(gun.cols - 1, e.garrison?.count ?? 0);
-            this.drawCiwsGun(base, pad.x, pad.y, pad.w, 1, aim, undefined, gun.sheet, crew, gun.cols);
+            // The MG nest flashes at its muzzle while it fires, like a gatling.
+            this.drawCiwsGun(base, pad.x, pad.y, pad.w, 1, aim, ghost ? undefined : e, gun.sheet, crew, gun.cols, gun);
           }
           if (!ghost && this.selected.has(e.id) && mountArcDegOf(e.type) != null) {
             this.drawMountArc(e.type, e.x, e.y, e.facing, elev, 0.5);
@@ -6060,6 +6140,37 @@ export class MapView {
     if (!ghost) this.lensAt.set(e.id, pose);
   }
 
+  /** Flak 37 shells climbing to their fuse points: a short glowing tracer at the shell's height. */
+  private drawFlakShells(): void {
+    const blend = Math.min(1, (performance.now() - this.snapAt) / 100);
+    const ctx = this.ctx;
+    for (const p of this.curr.projectiles) {
+      if (!p.flak) continue;
+      const prev = this.prev?.projectiles.find((q) => q.id === p.id);
+      const wx = prev ? prev.x + (p.x - prev.x) * blend : p.x;
+      const wy = prev ? prev.y + (p.y - prev.y) * blend : p.y;
+      const wz = prev?.z != null && p.z != null ? prev.z + (p.z - prev.z) * blend : (p.z ?? 0);
+      if (!this.lit(worldToTile(wx, this.ts()), worldToTile(wy, this.ts()))) continue;
+      const head = this.toScreen(wx, wy, wz);
+      const sp = Math.hypot(p.vx, p.vy) || 1;
+      const back = 10 / sp;
+      const climb = prev?.z != null && p.z != null ? (p.z - prev.z) * 10 : 2;
+      const tail = this.toScreen(wx - p.vx * back * 0.012, wy - p.vy * back * 0.012, wz - climb * 0.12);
+      ctx.save();
+      ctx.strokeStyle = "rgba(255, 214, 140, 0.85)";
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(tail.x, tail.y);
+      ctx.lineTo(head.x, head.y);
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255, 244, 210, 0.95)";
+      ctx.beginPath();
+      ctx.arc(head.x, head.y, 1.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
   /** CIWS gun (or RAM launcher) row over its pad, laid on `turretFacing`, and the CIWS barrel flash while it fires. */
   private drawCiwsGun(
     spr: BuildingSpriteDef,
@@ -6075,6 +6186,8 @@ export class MapView {
     /** A crewed gun's sheet has a column per man at it: draw column `col` of `cols`. */
     col = 0,
     cols = 1,
+    /** A crewed gun: its own muzzle reach and bore height for the flash. Omitted for the CIWS. */
+    layer?: GunLayer,
   ): void {
     if (!sheet.complete || sheet.naturalWidth <= 0) return;
     const ctx = this.ctx;
@@ -6101,17 +6214,15 @@ export class MapView {
     ctx.restore();
     if (!e?.gatling || e.wreck) return;
     const elev = this.buildingElev(e);
-    const tip = this.toScreen(
-      e.x + Math.cos(facing) * CIWS_MUZZLE_REACH,
-      e.y + Math.sin(facing) * CIWS_MUZZLE_REACH,
-      elev,
-    );
+    const reach = layer ? layer.muzzleReach : CIWS_MUZZLE_REACH;
+    const tip = this.toScreen(e.x + Math.cos(facing) * reach, e.y + Math.sin(facing) * reach, elev);
     const dir = facingToIso(facing, ts);
     const len = Math.hypot(dir.x, dir.y) || 1;
+    const lift = layer ? layer.muzzleZ * CIWS_SOURCE_ZOOM * scale : ciwsMuzzleLift(scale);
     drawGatlingFlash(
       ctx,
-      { x: tip.x, y: tip.y - ciwsMuzzleLift(scale), dirX: dir.x / len, dirY: dir.y / len },
-      footprintW * 0.9,
+      { x: tip.x, y: tip.y - lift, dirX: dir.x / len, dirY: dir.y / len },
+      footprintW * (layer ? 0.55 : 0.9),
       performance.now(),
       e.id,
     );
@@ -7745,7 +7856,7 @@ export class MapView {
           ? burstLifeMs(burst)
           : wet
             ? waterBurstLifeMs(wet)
-            : f.mortar || f.rocket
+            : f.mortar || f.rocket || f.flak
               ? MORTAR_BURST_MS
               : fxLifeMs(f.kind, f.blast);
       const age = now - f.at;
@@ -7764,7 +7875,7 @@ export class MapView {
       const tip = this.toScreen(f.x + f.vx * 0.08, f.y + f.vy * 0.08);
       const dirX = tip.x - s.x;
       const dirY = tip.y - s.y;
-      if (f.rocket && f.z != null) {
+      if ((f.rocket || f.flak) && f.z != null) {
         const air = this.toScreen(f.x, f.y, f.z);
         drawAirBurst(ctx, air.x, air.y, t, f.id);
       } else if (burst) {
@@ -7808,7 +7919,7 @@ export class MapView {
       } else if (f.kind === "smoke") {
         const frame = fxFrameAt(age, 700, FX_SMOKE.frames, true);
         drawFxFrame(ctx, FX_SMOKE, frame, x, y - 8 - t * 10, 34 + t * 10, 0.85 - t * 0.7);
-      } else if (f.kind === "puff" && !f.splash) {
+      } else if (f.kind === "puff" && !f.splash && !f.flak) {
         const frame = fxFrameAt(age, life, FX_SMOKE.frames, false);
         const smokeBurst = f.shell === "smoke";
         const tiny = smokeBurst ? 52 : isShellCaliber(f.caliber) ? 16 : 11;
@@ -8103,7 +8214,8 @@ export class MapView {
     const damaged = (this.damagedUntil.get(e.id) ?? 0) > now;
     const unit = e.kind === "unit";
     // A CIWS or RAM always shows its bars, like a unit, wider and thicker: the belt is what it lives on.
-    const mount = radarLaidOf(e.type);
+    // A CIWS, a RAM, or a crewed gun always shows its bars, like a unit: the ammo is what it lives on.
+    const mount = aimsOwnGun(e.type);
     const capturing = (e.capture?.progress ?? 0) > 0;
     if (!(unit || mount || selected || damaged || capturing)) return;
     const ratio = Math.max(0, Math.min(1, e.hp / e.hpMax));

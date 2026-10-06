@@ -652,7 +652,7 @@ export interface Projectile {
    * and fast, bursts at its fused point or on whatever it meets first).
    * Omitted for rifles, machine guns, and tank shells.
    */
-  flight?: "mortar" | "bomb" | "rocket" | "flame" | "cluster";
+  flight?: "mortar" | "bomb" | "rocket" | "flame" | "cluster" | "flak";
   /** Fused landing point for a mortar bomb or a rocket. A plane's barrage round: its point on the line. */
   landX?: number;
   landY?: number;

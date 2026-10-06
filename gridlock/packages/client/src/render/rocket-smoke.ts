@@ -187,6 +187,38 @@ export function airBurstPuffs(x: number, y: number, z: number, now: number, seed
   return out;
 }
 
+/** How long a flak burst's cloud hangs, ms. Longer than a rocket's: the black knots linger over the guns. */
+export const FLAK_CLOUD_MS = 5200;
+
+/**
+ * A Flak 37 shell's burst: a tight knot of black smoke at the fuse height that spreads a
+ * little and hangs. `shade` above 1 runs from dark brown toward black (drawRocketPuff).
+ */
+export function flakCloudPuffs(x: number, y: number, z: number, now: number, seed: number): RocketPuff[] {
+  const rnd = rng(seed ^ 0xf1a);
+  const out: RocketPuff[] = [];
+  for (let i = 0; i < 11; i++) {
+    const a = rnd() * Math.PI * 2;
+    const reach = 2 + rnd() * 6;
+    out.push({
+      x: x + Math.cos(a) * 1.5,
+      y: y + Math.sin(a) * 1.5,
+      z: z + (rnd() - 0.5) * 2.5,
+      dx: Math.cos(a) * reach + 3,
+      dy: Math.sin(a) * reach,
+      rise: 1 + rnd() * 2.5,
+      at: now + i * 8,
+      life: FLAK_CLOUD_MS * (0.75 + rnd() * 0.4),
+      r0: 4 + rnd() * 2,
+      r1: 10 + rnd() * 5,
+      alpha: 0.75 + rnd() * 0.2,
+      shade: 1.75 + rnd() * 0.2,
+      seed: (seed + i * 17) >>> 0,
+    });
+  }
+  return out;
+}
+
 let puffSprites: HTMLCanvasElement[] | null = null;
 
 /** Soft round puff, pale and dark, drawn once and stamped. */
@@ -195,6 +227,7 @@ function sprites(): HTMLCanvasElement[] {
   puffSprites = [
     [214, 208, 196],
     [150, 140, 124],
+    [34, 32, 30],
   ].map(([r, g, b]) => {
     const c = document.createElement("canvas");
     c.width = c.height = 64;
@@ -220,7 +253,16 @@ export function drawRocketPuff(
   shade: number,
 ): void {
   if (alpha <= 0.01 || r <= 0.3) return;
-  const [pale, dark] = sprites();
+  const [pale, dark, black] = sprites();
+  if (shade > 1) {
+    // Flak smoke: dark brown running to black.
+    const k = Math.min(1, shade - 1);
+    ctx.globalAlpha = alpha * (1 - k);
+    ctx.drawImage(dark!, x - r, y - r * 0.8, r * 2, r * 1.6);
+    ctx.globalAlpha = alpha * k;
+    ctx.drawImage(black!, x - r, y - r * 0.8, r * 2, r * 1.6);
+    return;
+  }
   ctx.globalAlpha = alpha * (1 - shade);
   ctx.drawImage(pale!, x - r, y - r * 0.8, r * 2, r * 1.6);
   if (shade > 0.02) {
