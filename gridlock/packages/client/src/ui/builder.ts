@@ -102,6 +102,7 @@ const AUTO_STORE = "gridlock.builderAutoSave";
 const AUTO_SAVE_MS = 30_000;
 const GAME_VIEW_STORE = "gridlock.builderGameView";
 const NIGHT_VIEW_STORE = "gridlock.builderNightView";
+const PATROL_ALWAYS_STORE = "gridlock.builderPatrolAlways";
 const PREVIEW_ID = "__builder__";
 const UNDO_DEPTH = 40;
 /** Raise / Lower apply one step this often while the button is held. */
@@ -151,16 +152,24 @@ interface CoverKind {
   name: string;
   img: string;
   hint: string;
+  /** Off the Surface palette until the art is worth offering. Existing paint still names and colours. */
+  hidden?: boolean;
 }
 
 /** Surface the Cover brush lays over open ground. Looks only: nothing here changes how a tile plays. */
 const COVER: readonly CoverKind[] = [
   { cover: GROUND_GRASS, name: "Meadow", img: grassUrl, hint: "Back to plain grass." },
-  { cover: GROUND_TALL_GRASS, name: "Tall Grass", img: tallGrassUrl, hint: "Uncut meadow gone to seed, thick with tufts. Looks only." },
+  {
+    cover: GROUND_TALL_GRASS,
+    name: "Tall Grass",
+    img: tallGrassUrl,
+    hint: "Uncut meadow gone to seed, thick with tufts. Looks only.",
+    hidden: true,
+  },
   { cover: GROUND_DIRT, name: "Dirt", img: dirtUrl, hint: "Bare trodden earth. Looks only." },
   { cover: GROUND_SAND, name: "Sand", img: sandUrl, hint: "Pale dry sand: a shore or a blown-out field. Looks only." },
   { cover: GROUND_STONES, name: "Stones", img: stonesUrl, hint: "Gravel and loose stones in packed earth. Looks only." },
-  { cover: GROUND_SWAMP, name: "Swamp", img: swampUrl, hint: "Black mud, standing water, and reeds. Looks only." },
+  { cover: GROUND_SWAMP, name: "Swamp", img: swampUrl, hint: "Black mud, standing water, and reeds. Looks only.", hidden: true },
 ];
 
 /** Ground laid by the Decorations tools rather than brushed, named for the status line. Fence waits to be remade. */
@@ -233,7 +242,7 @@ const redo: M.SheetMark[] = [];
 const tool: Tool = {
   id: "raise",
   tile: TILE_WATER,
-  cover: GROUND_TALL_GRASS,
+  cover: GROUND_DIRT,
   house: "cottage",
   defence: "bunker",
   lamp: "streetlamp",
@@ -272,6 +281,8 @@ const view = { zoom: 0, px: 0, py: 0 };
 let gameView = store()?.getItem(GAME_VIEW_STORE) === "1";
 /** In-game view drawn at full dark. Only shown, and only applied, with the In-game view. */
 let nightView = store()?.getItem(NIGHT_VIEW_STORE) === "1";
+/** Every patrol stays on the sheet. Off, only the selected unit or tower shows its route. */
+let patrolAlways = store()?.getItem(PATROL_ALWAYS_STORE) === "1";
 /** The Night time checkbox, hidden while the plan view is up. */
 let nightToggle: HTMLElement | null = null;
 const isoCam: IsoCam = { zoom: 0, camX: 0, camY: 0 };
@@ -941,7 +952,7 @@ function garrisonCounts(s: M.Sheet): Map<number, { count: number; cap: number }>
   return out;
 }
 
-/** Patrol routes to draw: every unit's own and every tower's sweep, and the one being drawn for the selection. */
+/** Patrol routes to draw: every unit's own and every tower's sweep, and the one being drawn for the selection. Unselected routes stay off unless Always visible patrol is on. */
 function unitRoutes(s: M.Sheet): RouteDraw[] {
   const sel = selected?.kind === "unit" ? selected.index : -1;
   const selTower = selected?.kind === "feature" ? selected.index : -1;
@@ -975,7 +986,7 @@ function unitRoutes(s: M.Sheet): RouteDraw[] {
     }
     if (u.patrol?.length) out.push({ from: u, points: u.patrol, loop: !!u.loop, strong: i === sel });
   });
-  return out;
+  return M.routesToShow(out, patrolAlways);
 }
 
 /** The unit the Units tool would set down under the cursor; inside a building it shows nothing. */
@@ -1115,7 +1126,7 @@ function spotBeams(): SpotBeam[] {
   return out;
 }
 
-/** The stage's view checkboxes: In-game view, and Night time beside it while the In-game view is up. */
+/** The stage's view checkboxes: Always visible patrol, Night time (while the In-game view is up), and In-game view. */
 function viewToggles(): HTMLElement {
   const row = el("div", { class: "bld-view-toggles" });
   const night = el("label", {
@@ -1128,8 +1139,31 @@ function viewToggles(): HTMLElement {
   night.append(box, el("span", { text: "Night time" }));
   night.hidden = !gameView;
   nightToggle = night;
-  row.append(night, gameViewToggle());
+  row.append(patrolAlwaysToggle(), night, gameViewToggle());
   return row;
+}
+
+/** The stage's "Always visible patrol" checkbox. Off, only the selected unit or tower shows its route. */
+function patrolAlwaysToggle(): HTMLElement {
+  const toggle = el("label", {
+    class: "bld-toggle",
+    attrs: { title: "Draw every unit and tower patrol. Off, only the selected one shows its route." },
+  });
+  const box = el("input", { attrs: { type: "checkbox" } });
+  box.checked = patrolAlways;
+  box.addEventListener("change", () => setPatrolAlways(box.checked));
+  toggle.append(box, el("span", { text: "Always visible patrol" }));
+  return toggle;
+}
+
+function setPatrolAlways(on: boolean): void {
+  patrolAlways = on;
+  try {
+    store()?.setItem(PATROL_ALWAYS_STORE, on ? "1" : "0");
+  } catch {
+    // Private window: the choice lasts this visit.
+  }
+  queueDraw();
 }
 
 function setNightView(on: boolean): void {
@@ -2389,6 +2423,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
   }
   const coverPal = el("div", { class: "bld-palette" });
   for (const c of COVER) {
+    if (c.hidden) continue;
     const img = el("img", { attrs: { src: c.img, alt: "" } });
     coverPal.append(asset(c.name, "", tool.id === "cover" && tool.cover === c.cover, img, c.hint, () => setTool(ctx, { id: "cover", cover: c.cover })));
   }

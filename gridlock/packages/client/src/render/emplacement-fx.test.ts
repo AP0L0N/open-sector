@@ -18,12 +18,16 @@ describe("crewed gun shot look", () => {
   it("a flak burst leaves a black cloud that hangs longer than a rocket's air burst", () => {
     const flak = flakCloudPuffs(100, 100, 24, 0, 7);
     const rocket = airBurstPuffs(100, 100, 24, 0, 7);
-    assert.ok(flak.length > 0);
-    assert.ok(flak.every((p) => p.shade > 1), "black, not the rocket's brown");
+    assert.ok(flak.length > rocket.length);
+    assert.ok(flak.every((p) => p.shade > 1.9), "black, not the rocket's brown");
     assert.ok(flak.every((p) => Math.abs(p.z - 24) < 3), "at the fuse height");
     const longest = (ps: { life: number }[]) => Math.max(...ps.map((p) => p.life));
+    const widest = (ps: { r1: number }[]) => Math.max(...ps.map((p) => p.r1));
+    const reach = (ps: { dx: number; dy: number }[]) => Math.max(...ps.map((p) => Math.hypot(p.dx, p.dy)));
     assert.ok(longest(flak) > longest(rocket));
     assert.ok(longest(flak) <= FLAK_CLOUD_MS * 1.2);
+    assert.ok(widest(flak) > widest(rocket) * 2, "a much larger cloud");
+    assert.ok(reach(flak) > reach(rocket) * 2, "it spreads much wider");
   });
 });
 

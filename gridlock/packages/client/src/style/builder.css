@@ -66,13 +66,16 @@
 
 .bld-toggle input { margin: 0; width: auto; accent-color: var(--amber); }
 
-/* In-game view and Night time, side by side in the stage's corner. */
+/* Always visible patrol, Night time, and In-game view, side by side in the stage's corner. */
 .bld-view-toggles {
   position: absolute;
   top: 8px;
   right: 8px;
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
+  max-width: calc(100% - 16px);
 }
 
 .bld-view-toggles .bld-toggle { position: static; }

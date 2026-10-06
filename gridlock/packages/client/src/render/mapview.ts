@@ -1341,7 +1341,7 @@ export class MapView {
       if (i.rocket && i.z != null && !this.fxIds.has(i.id)) {
         this.rocketPuffs.push(...airBurstPuffs(i.x, i.y, i.z, now, i.id));
       }
-      // A Flak 37 shell burst: a black knot of smoke that hangs at the fuse height.
+      // A Flak 37 shell burst: a wide black cloud that hangs at the fuse height. No tracer on the way up.
       if (i.flak && i.z != null && !this.fxIds.has(i.id)) {
         this.rocketPuffs.push(...flakCloudPuffs(i.x, i.y, i.z, now, i.id));
       }
@@ -4127,7 +4127,6 @@ export class MapView {
     this.drawCrashSmoke();
     this.drawChargeSmoke();
     this.drawRockets();
-    this.drawFlakShells();
     this.drawFlames();
     this.drawLasers();
     this.drawFallingBombs();
@@ -6142,37 +6141,6 @@ export class MapView {
     if (!ghost) this.lensAt.set(e.id, pose);
   }
 
-  /** Flak 37 shells climbing to their fuse points: a short glowing tracer at the shell's height. */
-  private drawFlakShells(): void {
-    const blend = Math.min(1, (performance.now() - this.snapAt) / 100);
-    const ctx = this.ctx;
-    for (const p of this.curr.projectiles) {
-      if (!p.flak) continue;
-      const prev = this.prev?.projectiles.find((q) => q.id === p.id);
-      const wx = prev ? prev.x + (p.x - prev.x) * blend : p.x;
-      const wy = prev ? prev.y + (p.y - prev.y) * blend : p.y;
-      const wz = prev?.z != null && p.z != null ? prev.z + (p.z - prev.z) * blend : (p.z ?? 0);
-      if (!this.lit(worldToTile(wx, this.ts()), worldToTile(wy, this.ts()))) continue;
-      const head = this.toScreen(wx, wy, wz);
-      const sp = Math.hypot(p.vx, p.vy) || 1;
-      const back = 10 / sp;
-      const climb = prev?.z != null && p.z != null ? (p.z - prev.z) * 10 : 2;
-      const tail = this.toScreen(wx - p.vx * back * 0.012, wy - p.vy * back * 0.012, wz - climb * 0.12);
-      ctx.save();
-      ctx.strokeStyle = "rgba(255, 214, 140, 0.85)";
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.moveTo(tail.x, tail.y);
-      ctx.lineTo(head.x, head.y);
-      ctx.stroke();
-      ctx.fillStyle = "rgba(255, 244, 210, 0.95)";
-      ctx.beginPath();
-      ctx.arc(head.x, head.y, 1.3, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
-  }
-
   /** CIWS gun (or RAM launcher) row over its pad, laid on `turretFacing`, and the CIWS barrel flash while it fires. */
   private drawCiwsGun(
     spr: BuildingSpriteDef,
@@ -7878,8 +7846,11 @@ export class MapView {
       const dirX = tip.x - s.x;
       const dirY = tip.y - s.y;
       if ((f.rocket || f.flak) && f.z != null) {
-        const air = this.toScreen(f.x, f.y, f.z);
-        drawAirBurst(ctx, air.x, air.y, t, f.id);
+        // A rocket still flashes. A flak burst is only the black cloud laid in with the puffs.
+        if (f.rocket) {
+          const air = this.toScreen(f.x, f.y, f.z);
+          drawAirBurst(ctx, air.x, air.y, t, f.id);
+        }
       } else if (burst) {
         drawExplosion(ctx, s.x, s.y, age, f.id, burst, dirX, dirY);
       } else if (wet) {

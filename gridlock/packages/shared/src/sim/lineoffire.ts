@@ -28,6 +28,7 @@ import {
 } from "./geo.js";
 import { garrisonMuzzleToward, livingGarrison } from "./garrison.js";
 import { setPath } from "./path.js";
+import { buildSpatial, querySegment, spatialGrid } from "./spatial.js";
 import { stanceHitRadiusMul } from "./stance.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -54,7 +55,8 @@ export function allyInLine(
   const z1 = aimHeight(state, target);
   let best: Entity | undefined;
   let bestT = Infinity;
-  for (const o of state.entities.values()) {
+  const grid = spatialGrid() ?? buildSpatial(state);
+  for (const o of querySegment(grid, x0, y0, x1, y1)) {
     if (o.id === e.id || o.id === target.id || o.id === e.garrisonedIn) continue;
     if (o.hp <= 0 || o.wreck || o.garrisonedIn != null || isCrashing(o) || o.drone || isAirborne(o)) continue;
     if (ownerless(o) || !allies(state, e.ownerId, o.ownerId)) continue;

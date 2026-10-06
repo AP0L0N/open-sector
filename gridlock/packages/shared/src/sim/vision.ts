@@ -1173,39 +1173,43 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
   if (losFlagScratch.length !== width * height) losFlagScratch = new Uint8Array(width * height);
   fillLosFlags(cover, losFlagScratch);
   cover.losFlags = losFlagScratch;
+  const tObservers = process.env.PROFILE === "1" ? performance.now() : 0;
   const observers = alliedSight(state, playerId);
   const memo = sightMemoOf(state);
   const env = sightEnvOf(state, cover);
-  const settle: SightMemo[] = [];
+  const tEnv = process.env.PROFILE === "1" ? performance.now() : 0;
   const movers: SightParams[] = [];
+  let same = 0;
   for (const { e, p } of observers) {
     const local = localCoverKey(env, p, width, height);
     const m = memo.get(e.id);
-    if (m && m.local === local && sameSightParams(m.p, p)) {
-      if (m.tiles) {
-        const tiles = m.tiles;
-        for (let i = 0; i < tiles.length; i++) mask[tiles[i]!] = 1;
-        continue;
-      }
-      m.calls += 1;
-      if (m.calls >= SIGHT_SETTLE_CALLS) {
-        settle.push(m);
-        continue;
-      }
-    } else {
+    if (m && m.local === local && sameSightParams(m.p, p)) same++;
+    if (m && m.tiles && m.local === local && sameSightParams(m.p, p)) {
+      const tiles = m.tiles;
+      for (let i = 0; i < tiles.length; i++) mask[tiles[i]!] = 1;
+      continue;
+    }
+    if (!m || m.local !== local || !sameSightParams(m.p, p)) {
       memo.set(e.id, { p, local, calls: 0, tiles: null });
     }
     movers.push(p);
   }
-  for (const m of settle) {
-    m.tiles = fullSightTiles(state, m.p, cover);
-    const tiles = m.tiles;
-    for (let i = 0; i < tiles.length; i++) mask[tiles[i]!] = 1;
-  }
   // Tiles an earlier observer lit are skipped, so movers only pay for new ground.
+  // A private repaint to cache each disk cost more than painting them together,
+  // and a moving fight invalidated that cache on the next tick.
+  const tPaint0 = process.env.PROFILE === "1" ? performance.now() : 0;
   for (const p of movers) paintSightParams(mask, width, height, p, state.heights, cover);
+  const tPaint1 = process.env.PROFILE === "1" ? performance.now() : 0;
   for (const id of memo.keys()) if (!state.entities.has(id)) memo.delete(id);
   sealFovIslands(mask, width, height);
+  if (process.env.PROFILE === "1") {
+    const tEnd = performance.now();
+    console.log(
+      `vision ${playerId || "-"} obs ${observers.length} same ${same} movers ${movers.length} ` +
+        `env ${(tEnv - tObservers).toFixed(1)} keys ${(tPaint0 - tEnv).toFixed(1)} ` +
+        `paint ${(tPaint1 - tPaint0).toFixed(1)} seal ${(tEnd - tPaint1).toFixed(1)}`,
+    );
+  }
   state.visionByPlayer.set(playerId, mask);
   state.visionKeyByPlayer.set(playerId, key);
   state.visionTick = state.tick;

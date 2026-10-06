@@ -423,6 +423,16 @@ export function moveUnit(s: Sheet, index: number, from: MapUnit, dx: number, dy:
   return null;
 }
 
+/**
+ * Patrol lines the Map Builder paints. The corner box starts off, so only a
+ * selected unit or tower — and the route being drawn, which is marked strong —
+ * keeps its path. With the box on, every set route stays.
+ */
+export function routesToShow<T extends { strong: boolean }>(routes: readonly T[], alwaysVisible: boolean): T[] {
+  if (alwaysVisible) return [...routes];
+  return routes.filter((r) => r.strong);
+}
+
 /** Whole degrees 0..359. */
 export function wrapDegrees(deg: number): number {
   return ((Math.round(deg) % 360) + 360) % 360;

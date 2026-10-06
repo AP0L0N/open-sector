@@ -230,7 +230,8 @@ import { spawnSmokeCloud } from "./smoke.js";
 import { heGroundFire, stepFlame, throwFlame } from "./flame.js";
 import { fireLaser } from "./laser.js";
 import { distToRoute } from "./patrol.js";
-import { canSeeEntity } from "./vision.js";
+import { activateSpatial, clearSpatial, queryCapsules, queryCircle, querySegment, spatialGrid, type SpatialGrid } from "./spatial.js";
+import { canSeeEntity, visionMask } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
 import { escorting, reversing, stepTurn, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
 import { allyInLine, holdForAlly, needsClearLine } from "./lineoffire.js";
@@ -357,6 +358,8 @@ function releaseRelayedForce(state: MatchState, host: Entity): void {
 }
 
 export function tickCombat(state: MatchState, dt: number): void {
+  warmSight(state);
+  activateSpatial(state);
   syncSupplyRiders(state);
   syncHullGarrisons(state);
   syncLstCrew(state);
@@ -395,6 +398,7 @@ export function tickCombat(state: MatchState, dt: number): void {
     if (roofRocketSweep(state, e, downed, bornAt)) e.ciwsTarget = null;
   }
   if (downed.size > 0) state.projectiles = state.projectiles.filter((p) => !downed.has(p.id));
+  clearSpatial();
 }
 
 /**
@@ -528,7 +532,9 @@ function roofCiwsTarget(
   let bestD = range * range;
   let bestAir: Entity | undefined;
   let bestAirD = airRange * airRange;
-  for (const o of state.entities.values()) {
+  const grid = spatialGrid();
+  const pool = grid ? queryCircle(grid, from.x, from.y, Math.max(range, airRange)) : state.entities.values();
+  for (const o of pool) {
     if (o.kind !== "unit" || o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn != null) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     const air = isAirborne(o) || !!o.drone;
@@ -1013,7 +1019,37 @@ function releaseForceUnderway(e: Entity): void {
  * Patrol contact. Runs before movement so a unit peels off the same tick an
  * enemy comes within weapon range of its route. The order stays a patrol.
  */
+/** One fog mask per owner, so target checks read a tile instead of casting a ray each time. */
+function warmSight(state: MatchState): void {
+  const owners = new Set<string>();
+  for (const e of state.entities.values()) {
+    if (e.hp <= 0 || e.wreck || owners.has(e.ownerId)) continue;
+    owners.add(e.ownerId);
+    visionMask(state, e.ownerId);
+  }
+}
+
+/**
+ * Bodies that can meet this circle. A copy, so a nested query cannot wipe the
+ * list. `pad` covers a target's own radius. The grid's splash pad covers a
+ * building center and a ship's bow. With no grid active, the whole roster.
+ */
+function poolCircle(state: MatchState, x: number, y: number, radius: number, pad = 0): readonly Entity[] {
+  const grid = spatialGrid();
+  if (!grid) return [...state.entities.values()];
+  return queryCircle(grid, x, y, radius + pad + grid.splashPad).slice();
+}
+
+/** Bodies whose cells the segment touches. Same fallback and copy as `poolCircle`. */
+function poolSegment(state: MatchState, x0: number, y0: number, x1: number, y1: number): readonly Entity[] {
+  const grid = spatialGrid();
+  if (!grid) return [...state.entities.values()];
+  return querySegment(grid, x0, y0, x1, y1).slice();
+}
+
 export function tickPatrol(state: MatchState): void {
+  warmSight(state);
+  const grid = activateSpatial(state);
   const groups = new Map<number, Entity[]>();
   const solo: Entity[] = [];
   for (const e of state.entities.values()) {
@@ -1028,8 +1064,9 @@ export function tickPatrol(state: MatchState): void {
       else groups.set(g, [e]);
     }
   }
-  for (const members of groups.values()) focusPatrolGroup(state, members);
-  for (const e of solo) focusPatrolGroup(state, [e]);
+  for (const members of groups.values()) focusPatrolGroup(state, members, grid);
+  for (const e of solo) focusPatrolGroup(state, [e], grid);
+  clearSpatial();
 }
 
 /** A patrol member who can actually shoot. Haulers, medics, and a dry pyro keep walking. */
@@ -1061,13 +1098,15 @@ function patrolContact(state: MatchState, e: Entity, o: Entity): boolean {
  * already had, then the one closest to the path. A fighter who cannot reach
  * that one takes his own nearest contact.
  */
-function focusPatrolGroup(state: MatchState, members: Entity[]): void {
+function focusPatrolGroup(state: MatchState, members: Entity[], grid: SpatialGrid): void {
   const fighters = members.filter(patrolCanFight);
   const rows = new Map<number, { enemy: Entity; who: Entity[]; dist: number }>();
   for (const e of fighters) {
     const route = e.order!.route!;
     const loop = e.order?.loop === true;
-    for (const o of state.entities.values()) {
+    const range = weaponRangeWorld(state, e);
+    const pool = range > 0 ? queryCapsules(grid, route, range + e.radius, loop) : [];
+    for (const o of pool) {
       if (!patrolContact(state, e, o)) continue;
       let row = rows.get(o.id);
       if (!row) {
@@ -1789,7 +1828,8 @@ function fireFlak(state: MatchState, e: Entity, aimX: number, aimY: number, rang
 function burstFlak(state: MatchState, p: Projectile): void {
   const z = p.z ?? 0;
   const inner = FLAK_BURST_RADIUS / 3;
-  for (const o of state.entities.values()) {
+  const grid = spatialGrid();
+  for (const o of poolCircle(state, p.x, p.y, FLAK_BURST_RADIUS, grid?.maxRadius ?? 0)) {
     if (o.hp <= 0 || o.wreck || o.garrisonedIn != null || isCrashing(o)) continue;
     if (!isAirborne(o) && !o.drone) continue;
     if (o.ownerId !== "" && allies(state, p.ownerId, o.ownerId)) continue;
@@ -2050,7 +2090,7 @@ function podAim(state: MatchState, e: Entity): { x: number; y: number; target?: 
   const main = mainTargetId(e);
   let best: Entity | undefined;
   let bestScore = -Infinity;
-  for (const c of state.entities.values()) {
+  for (const c of poolCircle(state, e.x, e.y, range)) {
     const value = podValue(state, e, c);
     if (value <= 0 || !podCanReach(state, e, c, range)) continue;
     // Tier first, then nearest. The main gun's target drops half a tier, so an
@@ -2280,7 +2320,7 @@ function stepRocket(state: MatchState, p: Projectile, dt: number, rand: () => nu
 function airBurstCatchesAny(state: MatchState, p: Projectile): boolean {
   const rack = p.heavy ? PENETRATOR_RACK : rocketRackOf(p.launcher ?? "titan");
   const radius = rack.splashTiles * state.tileSize;
-  for (const e of state.entities.values()) {
+  for (const e of poolCircle(state, p.x, p.y, radius)) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null) continue;
     if (e.drone ? !rocketCatchesDrone(state, p, e) : !isAirborne(e)) continue;
     if (Math.hypot(e.x - p.x, e.y - p.y) > radius) continue;
@@ -2348,7 +2388,16 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
   const radius = (rocket ? rack.splashTiles : p.big ? lob.splashTiles : MORTAR_SPLASH_TILES) * state.tileSize;
   // A barrage laid on a bridge brick counts wherever its blast reaches the deck.
   if (!inAir) strikeBridge(state, p, p.x, p.y, radius);
-  for (const e of [...state.entities.values()]) {
+  let blast = poolCircle(state, p.x, p.y, radius);
+  // The hull the rocket met takes the center of the burst even when the disk is smaller than its keel.
+  if (direct && !blast.some((e) => e.id === direct.id)) {
+    const merged = blast.slice();
+    const at = merged.findIndex((e) => e.id > direct.id);
+    if (at < 0) merged.push(direct);
+    else merged.splice(at, 0, direct);
+    blast = merged;
+  }
+  for (const e of blast) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null || isRubble(e)) continue;
     // A ground burst never reaches a plane; an air burst only catches planes.
     // A drone is caught by a burst near its height, air or ground, or when the rocket meets it.
@@ -2492,7 +2541,7 @@ function walkerSecondTarget(state: MatchState, e: Entity, primary: Entity): Enti
   const arc = gunArcDegOf(e.type);
   let best: Entity | undefined;
   let bestD = range * range;
-  for (const o of state.entities.values()) {
+  for (const o of poolCircle(state, e.x, e.y, range)) {
     if (o.id === primary.id || o.id === e.id || o.hp <= 0 || o.wreck || o.garrisonedIn || isBridge(o.type) || isRubble(o)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     // A map defence nobody has taken yet is no one's enemy.
@@ -2891,6 +2940,7 @@ function wreckHitDef(e: Entity, caliber: number): CatalogEntry {
 }
 
 export function tickProjectiles(state: MatchState, dt: number): void {
+  activateSpatial(state);
   const keep: Projectile[] = [];
   const rand = () => nextRand(state);
   tagBridgeRounds(state);
@@ -3165,6 +3215,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     keep.push(p);
   }
   state.projectiles = keep;
+  clearSpatial();
   // A round aimed at a bridge that came down on its deck counts against it.
   if (flying.length !== keep.length) {
     const kept = new Set(keep);
@@ -3288,7 +3339,8 @@ function nearestTreeSweep(
 /** A plane's 30 mm round bursting in the dirt: soldiers and soft units close by take the splash. */
 function cannonSplash(state: MatchState, p: Projectile): void {
   const radius = FW190_SPLASH_TILES * state.tileSize;
-  for (const e of state.entities.values()) {
+  const grid = spatialGrid();
+  for (const e of poolCircle(state, p.x, p.y, radius, grid?.maxRadius ?? 0)) {
     if (e.hp <= 0 || e.wreck || e.kind !== "unit" || e.garrisonedIn != null || isAirborne(e)) continue;
     if (!p.harmAllies && e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
     if (isArmored(catalog(e.type))) continue;
@@ -3318,7 +3370,7 @@ function nearestSweepHit(
 ): { e: Entity; t: number; x: number; y: number } | null {
   let best: { e: Entity; t: number; x: number; y: number } | null = null;
   let parked: { e: Entity; t: number; x: number; y: number } | null = null;
-  for (const e of state.entities.values()) {
+  for (const e of poolSegment(state, x0, y0, p.x, p.y)) {
     if (e.hp <= 0 || isCrashing(e)) continue;
     if (e.id === p.ignoreId) continue;
     // A rubble heap is too low to catch a round: everything flies over it.
@@ -3410,7 +3462,9 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   let bestAirD = (range * airReachOf(e)) ** 2;
   const airRange2 = bestAirD;
   const near: { o: Entity; d: number; i: number }[] = [];
-  for (const o of state.entities.values()) {
+  const grid = spatialGrid();
+  const pool = grid ? queryCircle(grid, e.x, e.y, Math.max(range, range * airReachOf(e))) : state.entities.values();
+  for (const o of pool) {
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn || isCrashing(o)) continue;
     // Reach first: most of the field is too far to be worth the checks below.
     const dx = o.x - e.x;

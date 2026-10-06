@@ -43,6 +43,7 @@ import {
   garrisonUnit,
   liveUnits,
   moveUnit,
+  routesToShow,
   placeUnit,
   reseatGarrison,
   unitsInside,
@@ -568,6 +569,22 @@ describe("builder neutral units", () => {
     const back = sheetFromSpec(sheetToSpec(s));
     assert.deepEqual(back.units, s.units);
     assert.equal(degreesToward(0, 0, 0, 5), 90, "south");
+  });
+
+  it("paints only the selected patrol until Always visible patrol is on", () => {
+    const routes = [
+      { id: "selected", strong: true },
+      { id: "other", strong: false },
+      { id: "draft", strong: true },
+    ];
+    assert.deepEqual(
+      routesToShow(routes, false).map((r) => r.id),
+      ["selected", "draft"],
+    );
+    assert.deepEqual(
+      routesToShow(routes, true).map((r) => r.id),
+      ["selected", "other", "draft"],
+    );
   });
 });
 

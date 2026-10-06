@@ -191,28 +191,29 @@ export function airBurstPuffs(x: number, y: number, z: number, now: number, seed
 export const FLAK_CLOUD_MS = 5200;
 
 /**
- * A Flak 37 shell's burst: a tight knot of black smoke at the fuse height that spreads a
- * little and hangs. `shade` above 1 runs from dark brown toward black (drawRocketPuff).
+ * A Flak 37 shell's burst: a wide black cloud at the fuse height. It spreads and hangs.
+ * No bright core — the flash lives on rocket air bursts (`drawAirBurst`), not here.
+ * `shade` above 1 runs from dark brown toward black (`drawRocketPuff`).
  */
 export function flakCloudPuffs(x: number, y: number, z: number, now: number, seed: number): RocketPuff[] {
   const rnd = rng(seed ^ 0xf1a);
   const out: RocketPuff[] = [];
-  for (let i = 0; i < 11; i++) {
+  for (let i = 0; i < 22; i++) {
     const a = rnd() * Math.PI * 2;
-    const reach = 2 + rnd() * 6;
+    const reach = 32 + rnd() * 48;
     out.push({
-      x: x + Math.cos(a) * 1.5,
-      y: y + Math.sin(a) * 1.5,
-      z: z + (rnd() - 0.5) * 2.5,
-      dx: Math.cos(a) * reach + 3,
+      x: x + Math.cos(a) * (4 + rnd() * 14),
+      y: y + Math.sin(a) * (4 + rnd() * 14),
+      z: z + (rnd() - 0.5) * 2.4,
+      dx: Math.cos(a) * reach,
       dy: Math.sin(a) * reach,
-      rise: 1 + rnd() * 2.5,
-      at: now + i * 8,
+      rise: 4 + rnd() * 8,
+      at: now + i * 14,
       life: FLAK_CLOUD_MS * (0.75 + rnd() * 0.4),
-      r0: 4 + rnd() * 2,
-      r1: 10 + rnd() * 5,
-      alpha: 0.75 + rnd() * 0.2,
-      shade: 1.75 + rnd() * 0.2,
+      r0: 22 + rnd() * 14,
+      r1: 78 + rnd() * 46,
+      alpha: 0.86 + rnd() * 0.12,
+      shade: 1.96 + rnd() * 0.04,
       seed: (seed + i * 17) >>> 0,
     });
   }
