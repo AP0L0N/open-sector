@@ -375,6 +375,113 @@ export function laySections(s: Sheet, pieces: readonly MapFeature[]): { laid: nu
   return { laid, refused: pieces.length - laid };
 }
 
+/** A road's width in fine tiles: the default and the range the Decorations slider allows. */
+export const ROAD_WIDTH = 6;
+export const ROAD_WIDTH_MIN = 2;
+export const ROAD_WIDTH_MAX = 16;
+/** Fine tiles of road a lone start lays: the stub the wheel turns before the first leg is drawn. */
+export const ROAD_STUB = 16;
+
+/**
+ * The centreline of a drawn road, in world points. A lone point is a stub
+ * centred on it along `turn` (15° steps from east); otherwise every leg turns
+ * to the nearest 15° and runs its drawn length from where the last one ended,
+ * as a wall line's legs do. A leg shorter than a fine tile is skipped.
+ */
+export function roadLegs(points: readonly { x: number; y: number }[], turn: number): { x: number; y: number }[] {
+  const first = points[0];
+  if (!first) return [];
+  if (points.length === 1) {
+    const a = wrapTurn(turn) * BUILDING_TURN_STEP;
+    const half = (ROAD_STUB * TILE_SIZE) / 2;
+    return [
+      { x: first.x - Math.cos(a) * half, y: first.y - Math.sin(a) * half },
+      { x: first.x + Math.cos(a) * half, y: first.y + Math.sin(a) * half },
+    ];
+  }
+  const out = [{ ...first }];
+  for (let i = 1; i < points.length; i++) {
+    const from = out[out.length - 1]!;
+    const p = points[i]!;
+    const dist = Math.hypot(p.x - from.x, p.y - from.y);
+    if (dist < TILE_SIZE) continue;
+    const a = Math.round(Math.atan2(p.y - from.y, p.x - from.x) / BUILDING_TURN_STEP) * BUILDING_TURN_STEP;
+    out.push({ x: from.x + Math.cos(a) * dist, y: from.y + Math.sin(a) * dist });
+  }
+  return out.length > 1 ? out : [];
+}
+
+/** One world-space rectangle per leg of a road `width` fine tiles across, corners in order round it. */
+export function roadQuads(legs: readonly { x: number; y: number }[], width: number): { x: number; y: number }[][] {
+  const half = (width * TILE_SIZE) / 2;
+  const out: { x: number; y: number }[][] = [];
+  for (let i = 1; i < legs.length; i++) {
+    const a = legs[i - 1]!;
+    const b = legs[i]!;
+    const len = Math.hypot(b.x - a.x, b.y - a.y);
+    if (len === 0) continue;
+    // Each leg runs half a width past both ends, so corners close.
+    const ux = (b.x - a.x) / len;
+    const uy = (b.y - a.y) / len;
+    const nx = -uy * half;
+    const ny = ux * half;
+    const ax = a.x - ux * half;
+    const ay = a.y - uy * half;
+    const bx = b.x + ux * half;
+    const by = b.y + uy * half;
+    out.push([
+      { x: ax + nx, y: ay + ny },
+      { x: bx + nx, y: by + ny },
+      { x: bx - nx, y: by - ny },
+      { x: ax - nx, y: ay - ny },
+    ]);
+  }
+  return out;
+}
+
+/** Fine-tile indices under a road `width` fine tiles across along `legs`: tile centres within half a width of a leg. */
+export function roadCells(s: Sheet, legs: readonly { x: number; y: number }[], width: number): number[] {
+  const half = (width * TILE_SIZE) / 2;
+  const cells = new Set<number>();
+  for (let i = 1; i < legs.length; i++) {
+    const a = legs[i - 1]!;
+    const b = legs[i]!;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    const x0 = Math.max(0, Math.floor((Math.min(a.x, b.x) - half) / TILE_SIZE));
+    const x1 = Math.min(s.width - 1, Math.floor((Math.max(a.x, b.x) + half) / TILE_SIZE));
+    const y0 = Math.max(0, Math.floor((Math.min(a.y, b.y) - half) / TILE_SIZE));
+    const y1 = Math.min(s.height - 1, Math.floor((Math.max(a.y, b.y) + half) / TILE_SIZE));
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const cx = (x + 0.5) * TILE_SIZE;
+        const cy = (y + 0.5) * TILE_SIZE;
+        const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((cx - a.x) * dx + (cy - a.y) * dy) / len2));
+        if (Math.hypot(cx - (a.x + dx * t), cy - (a.y + dy * t)) <= half) cells.add(y * s.width + x);
+      }
+    }
+  }
+  return [...cells];
+}
+
+/** Lay road along `legs`. Houses keep their lots and ponds stay water. Returns changed cells. */
+export function paintRoad(s: Sheet, legs: readonly { x: number; y: number }[], width: number, dirty?: Dirty): number {
+  const lots = s.features.map((f) => featureBox(f));
+  let changed = 0;
+  for (const i of roadCells(s, legs, width)) {
+    const t = s.tiles[i];
+    if (t === TILE_ROAD || t === TILE_WATER) continue;
+    const x = i % s.width;
+    const y = (i / s.width) | 0;
+    if (lots.some((b) => x >= b.x0 && x < b.x1 && y >= b.y0 && y < b.y1)) continue;
+    s.tiles[i] = TILE_ROAD;
+    touch(dirty, x, y);
+    changed++;
+  }
+  return changed;
+}
+
 /** Why `f` cannot stand where it is. `ignore` is the index of a feature being moved, which does not block itself. */
 export function houseProblem(s: Sheet, f: MapFeature, ignore = -1): string | null {
   const b = featureBox(f);

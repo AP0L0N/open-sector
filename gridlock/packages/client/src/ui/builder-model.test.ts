@@ -21,6 +21,11 @@ import {
   moveFeature,
   QUARTER_TURN,
   sectionLine,
+  paintRoad,
+  roadLegs,
+  roadQuads,
+  ROAD_STUB,
+  ROAD_WIDTH,
   tileWorld,
   wrapTurn,
   playtestProblem,
@@ -254,6 +259,34 @@ describe("builder select and defences", () => {
   it("lays a lone section on the cursor at the wheel's heading", () => {
     const one = sectionLine("sandbags", [tileWorld(50, 50)], 2);
     assert.deepEqual(one, [{ type: "sandbags", x: 50, y: 50, facing: 0, turn: 2 }]);
+  });
+
+  it("draws a road like a wall line: legs snapped to 15°, a lone start a stub on the wheel's heading", () => {
+    // East 12 tiles, then a corner drawn about 40° down-right: it snaps to 45°.
+    const legs = roadLegs([tileWorld(70, 60), tileWorld(82, 60), tileWorld(91, 68)], 0);
+    assert.equal(legs.length, 3);
+    assert.deepEqual(legs[1], tileWorld(82, 60));
+    const a = Math.atan2(legs[2]!.y - legs[1]!.y, legs[2]!.x - legs[1]!.x);
+    assert.ok(Math.abs(a - Math.PI / 4) < 1e-9, `corner leg at ${a}`);
+    const stub = roadLegs([tileWorld(50, 50)], QUARTER_TURN);
+    assert.equal(stub.length, 2);
+    assert.ok(Math.abs(stub[0]!.x - stub[1]!.x) < 1e-9, "a quarter turn runs the stub north-south");
+    assert.ok(Math.abs(stub[1]!.y - stub[0]!.y - ROAD_STUB * TILE_SIZE) < 1e-9);
+    assert.equal(roadQuads(stub, ROAD_WIDTH).length, 1);
+  });
+
+  it("lays a road lane around houses and ponds", () => {
+    const s = fresh();
+    const legs = roadLegs([tileWorld(40, 60), tileWorld(100, 60)], 0);
+    s.features.push(houseAt("cottage", 80, 60, 0));
+    s.tiles[60 * s.width + 50] = TILE_WATER;
+    const changed = paintRoad(s, legs, 4);
+    assert.ok(changed > 200, `${changed} cells`);
+    assert.equal(s.tiles[59 * s.width + 45], TILE_ROAD, "the lane is four tiles across");
+    assert.equal(s.tiles[57 * s.width + 45], TILE_EMPTY);
+    assert.equal(s.tiles[60 * s.width + 50], TILE_WATER, "ponds stay water");
+    assert.notEqual(s.tiles[60 * s.width + 80], TILE_ROAD, "houses keep their lots");
+    assert.equal(paintRoad(s, legs, 4), 0, "laid twice, nothing changes");
   });
 
   it("counts defences apart from houses and saves them", () => {

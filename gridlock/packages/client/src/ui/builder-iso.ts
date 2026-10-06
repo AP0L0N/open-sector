@@ -67,6 +67,8 @@ export interface IsoOverlay {
   selectedSpawn: number;
   /** What the placing tools would set down: one building, or the pieces of a drawn line. */
   ghosts: { f: MapFeature; bad: boolean }[];
+  /** World-space lanes of a road being drawn, one quad per leg. */
+  road?: { x: number; y: number }[][];
   /** World point a drawn line starts from. */
   lineStart: { x: number; y: number } | null;
   spawnGhost: { x: number; y: number; bad: boolean } | null;
@@ -502,6 +504,19 @@ export function isoDraw(
     if (!drawFeature(c, s, f, ghostSections.filter((x) => x.type === f.type))) loading = true;
     c.restore();
     c.strokeStyle = tint;
+    c.lineWidth = 2 / z;
+    quadPath(c, pts);
+    c.stroke();
+  }
+  for (const quad of o.road ?? []) {
+    const pts = quad.map((p) => at(p.x, p.y, groundAt(s, p.x, p.y)));
+    c.save();
+    c.globalAlpha = 0.45;
+    c.fillStyle = "#c4a068";
+    quadPath(c, pts);
+    c.fill();
+    c.restore();
+    c.strokeStyle = "#7dff6a";
     c.lineWidth = 2 / z;
     quadPath(c, pts);
     c.stroke();

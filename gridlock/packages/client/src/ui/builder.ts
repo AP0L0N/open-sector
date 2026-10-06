@@ -48,7 +48,6 @@ import dirtUrl from "../assets/terrain/ground-dirt.png";
 import scrapUrl from "../assets/terrain/scrap-heap-1.png";
 import waterUrl from "../assets/terrain/water.png";
 import treeUrl from "../assets/terrain/tree-oak-1.png";
-import fenceUrl from "../assets/terrain/fence-x.png";
 import rockUrl from "../assets/terrain/ground-rock.png";
 import { el } from "./dom.js";
 import { drawMapPreview } from "./map-preview.js";
@@ -66,7 +65,7 @@ const UNDO_DEPTH = 40;
 /** Raise / Lower apply one step this often while the button is held. */
 const LIFT_EVERY_MS = 70;
 
-type ToolId = "select" | "raise" | "lower" | "level" | "ground" | "house" | "defence" | "spawn" | "erase";
+type ToolId = "select" | "raise" | "lower" | "level" | "ground" | "house" | "defence" | "road" | "spawn" | "erase";
 
 interface GroundKind {
   tile: number;
@@ -77,7 +76,6 @@ interface GroundKind {
 
 const GROUND: readonly GroundKind[] = [
   { tile: TILE_EMPTY, name: "Grass", img: grassUrl, hint: "Open ground. Paints over anything." },
-  { tile: TILE_ROAD, name: "Road", img: dirtUrl, hint: "Dirt lane. Same footing as grass." },
   { tile: TILE_SCRAP, name: "Scrap", img: scrapUrl, hint: "Scrap field. A Smelter built on it pours scrap for the whole match. Paint at least 3×3." },
   {
     tile: TILE_DIAMOND_SCRAP,
@@ -87,8 +85,13 @@ const GROUND: readonly GroundKind[] = [
   },
   { tile: TILE_WATER, name: "Water", img: waterUrl, hint: "Pond. Sinks to the valley floor." },
   { tile: TILE_TREE, name: "Trees", img: treeUrl, hint: "Woods. Block sight and walking." },
-  { tile: TILE_FENCE, name: "Fence", img: fenceUrl, hint: "Blocks walking. Shots pass over." },
   { tile: TILE_ROCK, name: "Rock", img: rockUrl, hint: "Rocky slope. Blocks walking, not sight." },
+];
+
+/** Ground laid by the Decorations tools rather than brushed, named for the status line. Fence waits to be remade. */
+const LAID_GROUND: readonly { tile: number; name: string }[] = [
+  { tile: TILE_ROAD, name: "Road" },
+  { tile: TILE_FENCE, name: "Fence" },
 ];
 
 interface Tool {
@@ -102,6 +105,8 @@ interface Tool {
   turn: number;
   brush: number;
   level: number;
+  /** A road's width in fine tiles. */
+  roadWidth: number;
 }
 
 /** What the Select tool holds: a placed building or defence by index, or a start by number. */
@@ -135,10 +140,10 @@ let autoSave = store()?.getItem(AUTO_STORE) !== "0";
 let autoTimer: ReturnType<typeof setInterval> | null = null;
 const undo: M.SheetMark[] = [];
 const redo: M.SheetMark[] = [];
-const tool: Tool = { id: "raise", tile: TILE_WATER, house: "cottage", defence: "bunker", facing: 1, turn: M.QUARTER_TURN, brush: 6, level: HEIGHT_BASE };
+const tool: Tool = { id: "raise", tile: TILE_WATER, house: "cottage", defence: "bunker", facing: 1, turn: M.QUARTER_TURN, brush: 6, level: HEIGHT_BASE, roadWidth: M.ROAD_WIDTH };
 let selected: Selection | null = null;
 /**
- * A sandbag or wall line being drawn, as in a match: the press sets its start, each
+ * A sandbag, wall, or road line being drawn, as in a match: the press sets its start, each
  * click pins a corner, Enter lays it. World points on fine-tile centres.
  */
 const line: { points: Pt[]; press: Pt | null } = { points: [], press: null };
@@ -400,14 +405,14 @@ function placingType(): MapFeatureType | null {
   return null;
 }
 
-/** The Defences tool is armed with a bunker, tower, sandbags, or wall: the wheel turns it. */
+/** A defence or the Road is armed: the wheel turns it. */
 function turningTool(): boolean {
-  return tool.id === "defence";
+  return tool.id === "defence" || tool.id === "road";
 }
 
-/** The Defences tool draws a sandbag or wall line. */
+/** The armed tool draws a line: sandbags, a wall, or a road. */
 function lineTool(): boolean {
-  return tool.id === "defence" && isMapSection(tool.defence);
+  return tool.id === "road" || (tool.id === "defence" && isMapSection(tool.defence));
 }
 
 function linePending(): boolean {
@@ -432,10 +437,17 @@ function houseGhost(): MapFeature | null {
 
 /** The sections the drawn line would lay, its live leg running to the cursor. */
 function lineGhost(): MapFeature[] {
-  if (!lineTool() || !isMapSection(tool.defence)) return [];
+  if (tool.id !== "defence" || !isMapSection(tool.defence)) return [];
   if (!hover.inside && line.points.length === 0 && !line.press) return [];
   const pts = fieldPointsWithCursor(line.points, line.press, M.tileWorld(hover.x, hover.y));
   return M.sectionLine(tool.defence, pts, tool.turn);
+}
+
+/** The centreline the drawn road would lay, its live leg running to the cursor. */
+function roadGhost(): Pt[] {
+  if (tool.id !== "road") return [];
+  if (!hover.inside && line.points.length === 0 && !line.press) return [];
+  return M.roadLegs(fieldPointsWithCursor(line.points, line.press, M.tileWorld(hover.x, hover.y)), tool.turn);
 }
 
 function selectedFeature(): MapFeature | null {
@@ -593,7 +605,18 @@ function drawStage(): void {
     }
   }
   const pieces = lineGhost();
-  if (pieces.length > 0) {
+  const road = roadGhost();
+  for (const quad of M.roadQuads(road, tool.roadWidth)) {
+    c.beginPath();
+    for (const p of quad) c.lineTo(sx(p.x / TILE_SIZE), sy(p.y / TILE_SIZE));
+    c.closePath();
+    c.fillStyle = "rgba(196,160,104,0.5)";
+    c.fill();
+    c.strokeStyle = "#7dff6a";
+    c.lineWidth = 1.5;
+    c.stroke();
+  }
+  if (pieces.length > 0 || road.length > 0) {
     for (const f of pieces) {
       const bad = M.houseProblem(s, f) !== null;
       drawHouse(f, bad ? "rgba(255,90,74,0.45)" : "rgba(125,255,106,0.45)", bad ? "#ff5a4a" : "#7dff6a");
@@ -614,7 +637,7 @@ function drawStage(): void {
       c.stroke();
     }
   }
-  if (pointerOver && hover.inside && turningTool()) drawTurnHint(c, sx(hover.x + 0.5), sy(hover.y + 0.5), pieces.length);
+  if (pointerOver && hover.inside && turningTool()) drawTurnHint(c, sx(hover.x + 0.5), sy(hover.y + 0.5), pieces.length, road);
   if (pointerOver && isBrush(tool.id) && brushReaches(hover.x, hover.y)) {
     c.strokeStyle = "#fff4dc";
     c.lineWidth = 1.5;
@@ -625,9 +648,15 @@ function drawStage(): void {
 }
 
 /** The rotate and line hint beside the cursor, at screen point (ax, ay). */
-function drawTurnHint(c: CanvasRenderingContext2D, ax: number, ay: number, sections: number): void {
+function drawTurnHint(c: CanvasRenderingContext2D, ax: number, ay: number, sections: number, road: readonly Pt[]): void {
   const lines = [`Scroll to rotate · ${turnDegrees(tool.turn)}°`];
-  if (line.points.length > 0) lines.push(`${sections} section${sections === 1 ? "" : "s"} · Enter places · click adds a leg · right-click takes one back`);
+  if (tool.id === "road") {
+    let len = 0;
+    for (let i = 1; i < road.length; i++) len += Math.hypot(road[i]!.x - road[i - 1]!.x, road[i]!.y - road[i - 1]!.y);
+    const cells = Math.round((len / TILE_SIZE / TILE_SUBDIV) * 2) / 2;
+    if (line.points.length > 0) lines.push(`${cells} cells of road · Enter lays it · click adds a leg · right-click takes one back`);
+    else lines.push("Click to start a road · Enter lays one stub");
+  } else if (line.points.length > 0) lines.push(`${sections} section${sections === 1 ? "" : "s"} · Enter places · click adds a leg · right-click takes one back`);
   else if (lineTool()) lines.push("Click to start a line · Enter places one section");
   c.font = "11px 'Share Tech Mono', monospace";
   c.textAlign = "left";
@@ -656,6 +685,7 @@ function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
   if (isoCam.zoom === 0) isoFit(isoCam, s, w, h);
   const ghost = hover.inside ? houseGhost() : null;
   const pieces = lineGhost();
+  const road = roadGhost();
   const ghosts = (ghost ? [ghost] : pieces).map((f) => ({ f, bad: M.houseProblem(s, f) !== null }));
   let spawnGhost: { x: number; y: number; bad: boolean } | null = null;
   if (hover.inside && tool.id === "spawn" && drag?.kind !== "spawn" && M.nextSpawnId(s) !== null && M.spawnIndexAt(s, hover.x, hover.y) < 0) {
@@ -666,14 +696,15 @@ function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
     hoverFeature: tool.id === "select" && hover.inside && !drag ? M.featureIndexAt(s, hover.x, hover.y) : -1,
     selectedSpawn: selected?.kind === "spawn" ? selected.id : 0,
     ghosts,
-    lineStart: pieces.length > 0 ? (line.points[0] ?? line.press) : null,
+    lineStart: pieces.length > 0 || road.length > 0 ? (line.points[0] ?? line.press) : null,
+    road: M.roadQuads(road, tool.roadWidth),
     spawnGhost,
     brush: pointerOver && isBrush(tool.id) && brushReaches(hover.x, hover.y) ? { x: hover.x, y: hover.y, r: tool.brush } : null,
   }, queueDraw);
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (pointerOver && hover.inside && turningTool()) {
     const p = isoScreenOf(s, isoCam, hover.x, hover.y);
-    drawTurnHint(c, p.x, p.y, pieces.length);
+    drawTurnHint(c, p.x, p.y, pieces.length, road);
   }
   // Sprites still loading: look again shortly.
   if (loading) setTimeout(queueDraw, 200);
@@ -828,9 +859,29 @@ function placeAt(x: number, y: number, quiet: boolean): boolean {
   return true;
 }
 
+/** Lay the drawn road: every leg's lane turns to road, around houses and ponds. */
+function commitRoad(): void {
+  const s = sheet;
+  if (!s || tool.id !== "road" || line.points.length === 0) return;
+  const legs = M.roadLegs(line.points, tool.turn);
+  dropLine();
+  pushUndo();
+  const box = M.emptyDirty();
+  if (M.paintRoad(s, legs, tool.roadWidth, box) === 0) {
+    undo.pop();
+    say("Nothing laid: the road is already there, or only crosses houses and water.", "bad");
+    queueDraw();
+    return;
+  }
+  markGround(box);
+  say("Road laid.");
+  finishStroke();
+}
+
 /** Lay the drawn sandbag or wall line, the way Enter confirms one in a match. */
 function commitLine(): void {
   const s = sheet;
+  if (tool.id === "road") return commitRoad();
   if (!s || !lineTool() || !isMapSection(tool.defence) || line.points.length === 0) return;
   const pieces = M.sectionLine(tool.defence, line.points, tool.turn);
   dropLine();
@@ -1033,8 +1084,8 @@ function onUp(): void {
   } else if (d.kind === "line") {
     const press = line.press;
     line.press = null;
-    if (!press || !lineTool() || !isMapSection(tool.defence)) return;
-    const len = fieldSpan(tool.defence)?.length ?? 24;
+    if (!press || !lineTool()) return;
+    const len = tool.id === "road" ? TILE_SIZE * 2 : ((isMapSection(tool.defence) && fieldSpan(tool.defence)?.length) || 24);
     line.points = pinFieldPoint(line.points, press, M.tileWorld(hover.x, hover.y), len * 0.5);
     queueDraw();
   } else if (d.kind === "pan") {
@@ -1087,7 +1138,7 @@ function onWheel(e: WheelEvent): void {
 }
 
 function groundName(t: number): string {
-  return GROUND.find((g) => g.tile === t)?.name.toLowerCase() ?? "blocked";
+  return (GROUND.find((g) => g.tile === t) ?? LAID_GROUND.find((g) => g.tile === t))?.name.toLowerCase() ?? "blocked";
 }
 
 // --- preview & checks ----------------------------------------------------------
@@ -1452,6 +1503,41 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     ),
   );
 
+  const decor = el("div", { class: "bld-palette" });
+  decor.append(
+    asset("Road", "drawn line", tool.id === "road", el("img", { attrs: { src: dirtUrl, alt: "" } }), "Dirt lane. Same footing as grass.", () =>
+      setTool(ctx, { id: "road" }),
+    ),
+  );
+  const roadRow = el("div", { class: "bld-row" });
+  const roadIn = el("input", { attrs: { type: "range", min: String(M.ROAD_WIDTH_MIN), max: String(M.ROAD_WIDTH_MAX), step: "1" } });
+  roadIn.value = String(tool.roadWidth);
+  const roadVal = el("span", { class: "bld-val", text: `${tool.roadWidth} tiles` });
+  roadIn.addEventListener("input", () => {
+    tool.roadWidth = Number(roadIn.value);
+    roadVal.textContent = `${tool.roadWidth} tiles`;
+    if (tool.id !== "road") setTool(ctx, { id: "road" });
+    else queueDraw();
+  });
+  roadRow.append(roadIn, roadVal);
+  const roadFaceRow = el("div", { class: "bld-row" });
+  const roadTurnLabel = el("span", { class: "bld-val", text: `Faces ${turnDegrees(tool.turn)}°` });
+  if (stage && tool.id === "road") stage.turnLabel = roadTurnLabel;
+  roadFaceRow.append(turnBy(-1, "⟲ 15°", "Turn 15° counter-clockwise"), roadTurnLabel, turnBy(1, "15° ⟳", "Turn 15° clockwise"));
+  panel.append(
+    section(
+      "Decorations",
+      decor,
+      el("label", { text: "Road width" }),
+      roadRow,
+      roadFaceRow,
+      el("p", {
+        class: "bld-hint",
+        text: "A road goes down like a wall: click its start, click each corner, Enter lays it, right-click takes a corner back, Esc drops it. Scroll turns a lone stub 15° (Ctrl+scroll zooms); [ and ] change the width.",
+      }),
+    ),
+  );
+
   const starts = el("div", { class: "bld-palette" });
   const next = sheet ? M.nextSpawnId(sheet) : 1;
   starts.append(
@@ -1685,6 +1771,12 @@ function bindKeys(): void {
       setTool(ctx, { turn: M.wrapTurn(tool.turn + M.QUARTER_TURN) });
     } else if (e.key === "r" || e.key === "R") {
       setTool(ctx, { facing: (tool.facing + 1) & 3 });
+    } else if (e.key === "[" && tool.id === "road") {
+      tool.roadWidth = Math.max(M.ROAD_WIDTH_MIN, tool.roadWidth - 1);
+      mountOrRefresh(ctx);
+    } else if (e.key === "]" && tool.id === "road") {
+      tool.roadWidth = Math.min(M.ROAD_WIDTH_MAX, tool.roadWidth + 1);
+      mountOrRefresh(ctx);
     } else if (e.key === "[") {
       tool.brush = Math.max(0, tool.brush - 1);
       mountOrRefresh(ctx);
