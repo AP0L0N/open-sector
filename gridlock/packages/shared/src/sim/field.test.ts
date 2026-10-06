@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { TILE_EMPTY } from "../maps.js";
+import { TILE_EMPTY, TILE_TREE } from "../maps.js";
 import {
   catalog,
   ENGINEER_SEEK_TILES,
@@ -23,6 +23,8 @@ import { applyCommand } from "./commands.js";
 import { tickCombat, tickProjectiles } from "./combat.js";
 import {
   HULL_FIX_SECONDS,
+  TREE_COVER_MAX,
+  TREE_COVER_PER,
   WALL_COVER_BONUS,
   WALL_COVER_DR,
   coverStrike,
@@ -39,6 +41,7 @@ import {
   overlapsFieldIn,
   restampForts,
   sandbagCoverBonus,
+  treeCoverBonus,
   wallRiseLimit,
   wallRunTops,
 } from "./field.js";
@@ -299,6 +302,66 @@ describe("engineer field works", () => {
     step(state, TICK_DT);
     assert.equal(man.hpMax, base);
     assert.equal(man.hp, base);
+  });
+
+  it("gives infantry extra health for each tree nearby", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 28, 26, 18, 14);
+    const ts = state.tileSize;
+    const tx = 36;
+    const ty = 32;
+    const x = tileCenter(tx, ts);
+    const y = tileCenter(ty, ts);
+    const man = makeEntity(state, "rifleman", "A", x, y);
+    const tank = makeEntity(state, "warden", "A", tileCenter(tx, ts), tileCenter(ty + 4, ts));
+    const base = catalog("rifleman").hp;
+    const tankBase = catalog("warden").hp;
+    step(state, TICK_DT);
+    assert.equal(man.hpMax, base, "open ground");
+    assert.equal(tank.hpMax, tankBase);
+
+    state.terrain[tileIndex(state, tx + 1, ty)] = TILE_TREE;
+    step(state, TICK_DT);
+    const one = Math.round(base * TREE_COVER_PER);
+    assert.equal(man.hpMax, base + one);
+    assert.equal(man.hp, base + one);
+    assert.equal(man.coverBonus, one);
+    assert.equal(tank.hpMax, tankBase, "a hull takes nothing from the canopy");
+
+    man.x = tileCenter(tx + 3, ts);
+    step(state, TICK_DT);
+    assert.equal(man.hpMax, base, "two tiles off is not nearby");
+    assert.equal(man.hp, base);
+
+    man.x = x;
+    man.hp = base - 5;
+    const spots: [number, number][] = [
+      [0, 0],
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+      [1, 1],
+    ];
+    for (const [dx, dy] of spots) state.terrain[tileIndex(state, tx + dx, ty + dy)] = TILE_TREE;
+    step(state, TICK_DT);
+    const full = Math.round(base * TREE_COVER_MAX);
+    assert.equal(treeCoverBonus(state, man), full, "a sixth tree does not add more");
+    assert.equal(man.hpMax, base + full);
+    assert.equal(man.hp, base - 5 + full);
+
+    man.garrisonedIn = 1;
+    assert.equal(treeCoverBonus(state, man), 0, "a man inside is not among the trunks");
+    man.garrisonedIn = null;
+    const jet = makeEntity(state, "jumpjet", "A", x, y);
+    jet.jet = { alt: 3, up: true, fuel: 14, refuel: 0 };
+    assert.equal(treeCoverBonus(state, jet), 0, "a Jump Jet overhead is not among the trunks");
+
+    man.x = tileCenter(tx + 4, ts);
+    step(state, TICK_DT);
+    assert.equal(man.hpMax, base);
+    assert.equal(man.hp, base);
+    assert.equal(man.coverBonus, 0);
   });
 
   it("lets one tank shell wreck the bags and still wound the men behind them", () => {

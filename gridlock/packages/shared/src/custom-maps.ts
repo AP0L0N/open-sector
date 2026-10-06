@@ -22,6 +22,7 @@ import {
   TILE_EMPTY,
   TILE_FENCE,
   TILE_ROAD,
+  TILE_MOUNTAIN,
   TILE_ROCK,
   TILE_SCRAP,
   TILE_TREE,
@@ -97,6 +98,7 @@ export const CUSTOM_MAP_TILES: readonly number[] = [
   TILE_TREE,
   TILE_FENCE,
   TILE_ROCK,
+  TILE_MOUNTAIN,
 ];
 
 export const CUSTOM_MAP_MIN_PLAYERS = 2;
@@ -117,7 +119,7 @@ export function isMapUnitType(type: unknown): type is TrainType {
 /** Ground a map unit may stand on: boats on water, everyone else on open land. */
 export function mapUnitGroundOk(type: TrainType, tile: number | undefined): boolean {
   if (isNavalType(type)) return tile === TILE_WATER;
-  return tile === TILE_EMPTY || tile === TILE_ROAD || tile === TILE_SCRAP || tile === TILE_DIAMOND_SCRAP;
+  return tile === TILE_EMPTY || tile === TILE_ROAD || tile === TILE_SCRAP || tile === TILE_DIAMOND_SCRAP || tile === TILE_MOUNTAIN;
 }
 
 /** World px two units must keep between their centres. */
@@ -385,6 +387,10 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     if (turn != null) {
       feat.turn = turn as number;
       feat.facing = turnQuarter(feat.turn);
+    }
+    if (o.deck != null) {
+      if (!isMapBridge(type) || typeof o.deck !== "number" || !Number.isFinite(o.deck)) return bad("Bad building.");
+      feat.deck = Math.max(0, Math.min(HEIGHT_MAX, Math.round(o.deck)));
     }
     const spot = type === "tower" ? cleanSpot(o.spot) : null;
     if (spot != null) feat.spot = spot;

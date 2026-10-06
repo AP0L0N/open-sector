@@ -607,6 +607,28 @@ describe("custom map lamps", () => {
     const box = featureBox(features[0]!);
     assert.equal(box.x1 - box.x0, 5 * TILE_SUBDIV, "a factory takes five cells");
   });
+
+  it("stands the long lots on the field with their own width and depth", () => {
+    const features = [
+      { type: "hall" as const, x: 60, y: 60, facing: 0 },
+      { type: "works" as const, x: 60, y: 100, facing: 1 },
+      { type: "shed" as const, x: 100, y: 140, facing: 2 },
+      { type: "boiler" as const, x: 100, y: 60, facing: 3 },
+    ];
+    const r = validateCustomMap(sheet({ features }));
+    assert.ok(r.ok, r.ok ? "" : r.message);
+    const hall = featureBox(features[0]!);
+    assert.equal(hall.x1 - hall.x0, 8 * TILE_SUBDIV, "a hall is eight cells long");
+    assert.equal(hall.y1 - hall.y0, 3 * TILE_SUBDIV, "and three deep");
+    // A house never turns its ground: a turned long lot keeps its box.
+    const works = featureBox(features[1]!);
+    assert.equal(works.x1 - works.x0, 6 * TILE_SUBDIV);
+    assert.equal(works.y1 - works.y0, 5 * TILE_SUBDIV);
+    const boiler = featureBox(features[3]!);
+    assert.equal(boiler.x1 - boiler.x0, 3 * TILE_SUBDIV);
+    assert.equal(boiler.y1 - boiler.y0, 6 * TILE_SUBDIV);
+    assert.ok(!featureRectsOverlap(features[0]!, features[3]!), "the hall and the boiler house stand clear of each other");
+  });
 });
 
 describe("custom map complete fog of war", () => {

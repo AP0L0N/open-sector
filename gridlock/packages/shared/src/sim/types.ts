@@ -81,6 +81,8 @@ export interface Order {
   bridge?: BridgeType;
   /** Bridge deck length, world px. */
   span?: number;
+  /** Deck level of the bridge line being laid, map height units: the ground where it was started. */
+  deck?: number;
   /** Panic retreat: after this order, the Mauler returns to HQ and holds. */
   returnToBase?: boolean;
   /**
@@ -338,6 +340,10 @@ export interface Entity {
   radius: number;
   order: Order | null;
   waypoints: Vec[];
+  /** The goal tile the last path search could not reach, and when. Cleared by the next path found. */
+  pathFail?: { tx: number; ty: number; tick: number };
+  /** What a charging Walker is running at. Looked over again every few ticks. */
+  chargeTargetId?: number;
   cooldown: number;
   /** Rounds left in the current infantry magazine. 0 on vehicles. */
   clip: number;
@@ -393,6 +399,11 @@ export interface Entity {
   longRange?: boolean;
   /** Building whose owner uses more power than they provide: its lamps are dark and a CIWS or RAM is silent. Set each tick. */
   unpowered?: boolean;
+  /**
+   * A gun structure's resting heading between targets, set by Rotate. Missing: the way it was
+   * placed (`facing`, which also turns its pad and traverse arc and never changes).
+   */
+  gunRest?: number;
   /** Watch tower spotlight heading, radians. Missing until the tower is first held. */
   spotFacing?: number;
   /** Heading Rotate asked the spotlight for. It swings there at SPOTLIGHT_TURN_DEG_PER_SEC. */
@@ -490,7 +501,7 @@ export interface Entity {
    * The drawn top stays here after a higher section is destroyed.
    */
   wallCrest?: number;
-  /** Extra hit points currently granted by sandbags and walls. Removed when the soldier leaves. */
+  /** Extra hit points currently granted by sandbags, walls, and nearby trees. Removed when the soldier leaves. */
   coverBonus: number;
   /** Part of `coverBonus` granted by a concrete wall. Overhead hits ignore it. */
   wallCover: number;
@@ -504,6 +515,8 @@ export interface Entity {
   orderQueue?: QueuedOrder[];
   /** Engineer wall pieces, or bridge bricks, still to lay after the current build order. Cleared by any new order. */
   fieldQueue?: { x: number; y: number; facing: number }[];
+  /** A bridge brick's deck level, map height units. Every brick of one line shares it. */
+  deckLevel?: number;
   /** Ticks an engineer laying a bridge has had no way nearer his brick. Not on the wire. */
   bridgeStuck?: number;
   /** Wounded infantry this medic is walking to or bandaging. */
@@ -764,6 +777,8 @@ export interface AiPlan {
   flank: -1 | 1;
   /** Ground the defence under way is meant for, world pixels. */
   site?: Vec;
+  /** Facing that ground was checked at. A turned fort falls back to east when the arc will not fit. */
+  face?: number;
   /** Tick before which a site that found no room is skipped, by site key. */
   siteRetry: Record<string, number>;
   /** Towers already given a wall line, or found no room for one. */
@@ -858,6 +873,11 @@ export interface MatchState {
   fortOwner: Map<number, string>;
   /** 1 = water under an intact bridge deck: dry ground for everything that crosses. Rebuilt from the bridges. */
   bridgeDeck: Uint8Array;
+  /**
+   * 1 = water under an intact deck that stands BRIDGE_SHIP_CLEARANCE over it: a boat
+   * sails under (all but the LST and the Battle Ship). Rebuilt with `bridgeDeck`.
+   */
+  bridgeClear?: Uint8Array;
   /** Damage aimed rounds dealt bridges this step, by bridge id. Applied and cleared each step. Not saved. */
   bridgeHits?: Map<number, number>;
   players: Map<string, SimPlayer>;

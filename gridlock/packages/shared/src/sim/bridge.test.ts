@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { TICK_DT, bridgeBrickLength, bridgeBuildSeconds, bridgeCost, bridgeWidth, catalog, secondsToTicks } from "../catalog.js";
 import { bridgeBrickProblem, bridgePath, bridgeTiles, bricksConflict, planBridgeLine, type BridgeGround, type BridgeSpan } from "../bridge-plan.js";
-import { TILE_EMPTY, TILE_WATER, getMap, registerMap, type MapFeature } from "../maps.js";
+import { TILE_EMPTY, TILE_WATER, getMap, normalizeTerrain, registerMap, type MapFeature } from "../maps.js";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import { applyCommand } from "./commands.js";
 import { hqOf, isWater, makeEntity, tileCenter, unitInWater, walkable } from "./geo.js";
@@ -399,5 +399,86 @@ describe("map bridges", () => {
     assert.ok(bricks.every((b) => b.ownerId === "" && b.span === bridgeBrickLength("bigbridge")));
     assert.equal(walkable(state, 126, 70, "apocalypse"), true);
     assert.equal(walkable(state, 126, 75, "apocalypse"), false);
+  });
+});
+
+describe("bridge deck level", () => {
+  /** The river with its west bank raised to `west` and its east bank at `east`. */
+  function banks(state: MatchState, west: number, east: number): void {
+    river(state);
+    for (let y = Y0; y <= Y1; y++) {
+      for (let x = X0; x <= X1; x++) {
+        if (x < RIVER_X) state.heights[y * state.width + x] = west;
+        else if (x >= RIVER_X + RIVER_W) state.heights[y * state.width + x] = east;
+      }
+    }
+  }
+
+  it("keeps the level of the ground the line was started from, all the way across", () => {
+    const { state, a } = twoPlayerMatch();
+    deploy(state, a);
+    banks(state, 3, 1);
+    const eng = makeEntity(state, "engineer", a, w(RIVER_X + RIVER_W + 6, state), w(ROW, state));
+    state.players.get(a)!.scrap = 99999;
+    const cmd = applyCommand(state, a, {
+      type: "cmd.bridge",
+      ids: [eng.id],
+      bridge: "bigbridge",
+      x: w(RIVER_X - 3, state),
+      y: w(ROW, state),
+      x2: w(RIVER_X + RIVER_W + 3, state),
+      y2: w(ROW, state),
+    });
+    assert.equal(cmd.ok, true, cmd.ok ? "" : cmd.message);
+    assert.equal(eng.order?.deck, 3, "started on the west bank");
+    ticks(state, secondsToTicks(bridgeBuildSeconds("bigbridge") * 8) + 1500);
+    const bricks = [...state.entities.values()].filter((e) => e.type === "bigbridge");
+    assert.ok(bricks.length >= 2);
+    assert.ok(bricks.every((b) => b.deckLevel === 3), bricks.map((b) => b.deckLevel).join(","));
+    assert.equal(snapshotFor(state, a).entities.find((e) => e.id === bricks[0]!.id)?.deck, 3);
+  });
+
+  it("a high deck lets small boats sail under it, never the LST or the Battle Ship", () => {
+    const { state, a } = twoPlayerMatch();
+    banks(state, 3, 3);
+    const pts = [
+      { x: w(RIVER_X - 3, state), y: w(ROW, state) },
+      { x: w(RIVER_X + RIVER_W + 3, state), y: w(ROW, state) },
+    ];
+    for (const span of bridgePath("bridge", pts)) raiseBridge(state, "bridge", span, 3);
+    const mid = RIVER_X + RIVER_W / 2;
+    assert.equal(walkable(state, mid, ROW, "apocalypse"), true, "tanks still drive the deck");
+    assert.equal(walkable(state, mid, ROW, "gunboat"), true, "a gunboat sails under");
+    assert.equal(walkable(state, mid, ROW, "submarine"), true);
+    assert.equal(walkable(state, mid, ROW, "lst"), false);
+    assert.equal(walkable(state, mid, ROW, "battleship"), false);
+    // A boat sails right under it from one side to the other, past a tank on the deck.
+    const boat = makeEntity(state, "gunboat", a, w(mid, state), w(ROW - 10, state));
+    const tank = makeEntity(state, "apocalypse", a, w(mid, state), w(ROW, state));
+    tank.holdPosition = true;
+    assert.equal(applyCommand(state, a, { type: "cmd.move", ids: [boat.id], x: w(mid, state), y: w(ROW + 10, state) }).ok, true);
+    let crossed = false;
+    for (let i = 0; i < 1200 && !crossed; i++) {
+      step(state, TICK_DT);
+      crossed = boat.y > w(ROW + 6, state);
+    }
+    assert.ok(crossed, `boat stuck at ${boat.x / state.tileSize}, ${boat.y / state.tileSize}`);
+  });
+
+  it("a deck low over the water closes it to every boat", () => {
+    const { state } = twoPlayerMatch();
+    river(state);
+    standBridge(state);
+    assert.equal(walkable(state, RIVER_X + 5, ROW, "gunboat"), false);
+  });
+
+  it("a map keeps the water under its bridges when the ground is settled", () => {
+    const side = 40;
+    const tiles = new Array<number>(side * side).fill(TILE_EMPTY);
+    const heights = new Array<number>(side * side).fill(2);
+    for (let y = 0; y < side; y++) for (let x = 15; x < 25; x++) tiles[y * side + x] = TILE_WATER;
+    const features: MapFeature[] = [{ type: "bigbridge", x: 19.5, y: 20, facing: 0, turn: 0, deck: 2 }];
+    normalizeTerrain(tiles, heights, side, side, [], features);
+    assert.equal(tiles[20 * side + 20], TILE_WATER, "water stays under the bridge");
   });
 });

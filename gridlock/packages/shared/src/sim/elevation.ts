@@ -13,6 +13,7 @@ import {
   HEIGHT_STEP_MAX,
   HEIGHT_UPHILL_COST,
   HEIGHT_UPHILL_BOOST,
+  HEIGHT_UPHILL_PACE,
   HEIGHT_UPHILL_SPEED,
   HEIGHT_WORLD,
   HULL_EYE_HEIGHT,
@@ -41,7 +42,7 @@ import {
   submergesOf,
   type EntityType,
 } from "../catalog.js";
-import { TILE_BLOCKED, TILE_TREE } from "../maps.js";
+import { TILE_BLOCKED, TILE_MOUNTAIN, TILE_TREE } from "../maps.js";
 import { inBounds, tileIndex, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -64,25 +65,51 @@ export function elevAt(elev: ArrayLike<number>, width: number, height: number, x
   return elev[y * width + x] ?? 0;
 }
 
-/** Height at a tile vertex (vx, vy) in 0..width / 0..height, averaged from adjacent cells. */
+/**
+ * Height at a tile vertex (vx, vy) in 0..width / 0..height, averaged from adjacent cells.
+ * When `tiles` is passed, a vertex on the lip of a mountain cap stays at the cap so the
+ * flat top does not sag and the drop falls across the rock skirt.
+ */
 export function vertexElev(
   elev: ArrayLike<number>,
   width: number,
   height: number,
   vx: number,
   vy: number,
+  tiles?: ArrayLike<number>,
 ): number {
   let sum = 0;
   let n = 0;
+  let cap = -1;
+  let off = false;
   for (let dy = -1; dy <= 0; dy++) {
     for (let dx = -1; dx <= 0; dx++) {
       const x = vx + dx;
       const y = vy + dy;
       if (x < 0 || y < 0 || x >= width || y >= height) continue;
-      sum += elev[y * width + x] ?? 0;
+      const i = y * width + x;
+      const h = elev[i] ?? 0;
+      sum += h;
       n++;
+      if (!tiles) continue;
+      if (tiles[i] === TILE_MOUNTAIN) {
+        if (h > cap) cap = h;
+      }
     }
   }
+  if (tiles && cap >= 0) {
+    for (let dy = -1; dy <= 0; dy++) {
+      for (let dx = -1; dx <= 0; dx++) {
+        const x = vx + dx;
+        const y = vy + dy;
+        if (x < 0 || y < 0 || x >= width || y >= height) continue;
+        const i = y * width + x;
+        if (tiles[i] === TILE_MOUNTAIN) continue;
+        if ((elev[i] ?? 0) !== cap) off = true;
+      }
+    }
+  }
+  if (off && cap >= 0) return cap;
   return n ? sum / n : 0;
 }
 
@@ -170,7 +197,7 @@ export function climbableDelta(dh: number): boolean {
 }
 
 export function slopeSpeedMul(dh: number): number {
-  if (dh > 0) return Math.min(1, HEIGHT_UPHILL_BOOST * HEIGHT_UPHILL_SPEED ** dh);
+  if (dh > 0) return HEIGHT_UPHILL_PACE * Math.min(1, HEIGHT_UPHILL_BOOST * HEIGHT_UPHILL_SPEED ** dh);
   if (dh < 0) return HEIGHT_DOWNHILL_SPEED ** -dh;
   return 1;
 }

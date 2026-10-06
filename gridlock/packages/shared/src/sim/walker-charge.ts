@@ -51,7 +51,13 @@ export function tickWalkerCharge(state: MatchState): void {
     e.orderQueue = undefined;
     e.doorGroup = undefined;
     e.returnToBase = false;
-    const target = chargeTarget(state, e);
+    // The nearest enemy in sight is picked again every REPATH_EVERY ticks; between those he keeps running at the last one.
+    const held = e.chargeTargetId != null ? state.entities.get(e.chargeTargetId) : undefined;
+    const target =
+      held && (state.tick + e.id) % REPATH_EVERY !== 0 && hostile(state, e, held) && canSeeEntity(state, e.ownerId, held)
+        ? held
+        : chargeTarget(state, e);
+    e.chargeTargetId = target?.id;
     if (!target) {
       clearOrder(e);
       e.charging = true;
@@ -69,7 +75,7 @@ export function tickWalkerCharge(state: MatchState): void {
     e.attackTarget = target.kind === "unit" ? target.id : null;
     e.state = "move";
     e.guardFacing = null;
-    if (e.waypoints.length === 0 || state.tick % REPATH_EVERY === 0) setPath(state, e, goal.x, goal.y);
+    if (e.waypoints.length === 0 || (state.tick + e.id) % REPATH_EVERY === 0) setPath(state, e, goal.x, goal.y);
   }
 }
 
@@ -86,6 +92,7 @@ export function endWalkerCharge(e: Entity): void {
   }
   if (e.charging) {
     e.charging = undefined;
+    e.chargeTargetId = undefined;
     clearOrder(e);
   }
 }
@@ -106,21 +113,19 @@ function chargeTarget(state: MatchState, walker: Entity): Entity | undefined {
   let bestUnitD = Infinity;
   let bestBuilding: Entity | undefined;
   let bestBuildingD = Infinity;
+  // Distance first: the fog is only asked about something nearer than the best so far.
   for (const o of state.entities.values()) {
     if (!hostile(state, walker, o)) continue;
-    if (!canSeeEntity(state, walker.ownerId, o)) continue;
     if (o.kind === "unit") {
       const d = (o.x - walker.x) ** 2 + (o.y - walker.y) ** 2;
-      if (d < bestUnitD) {
-        bestUnitD = d;
-        bestUnit = o;
-      }
+      if (d >= bestUnitD || !canSeeEntity(state, walker.ownerId, o)) continue;
+      bestUnitD = d;
+      bestUnit = o;
     } else if (o.kind === "building" && !isFieldStructure(o.type)) {
       const d = distTo(state, walker, o);
-      if (d < bestBuildingD) {
-        bestBuildingD = d;
-        bestBuilding = o;
-      }
+      if (d >= bestBuildingD || !canSeeEntity(state, walker.ownerId, o)) continue;
+      bestBuildingD = d;
+      bestBuilding = o;
     }
   }
   return bestUnit ?? bestBuilding;

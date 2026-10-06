@@ -11,7 +11,7 @@ import {
   isSmokeShell,
   type ShellType,
 } from "../catalog.js";
-import { TILE_BLOCKED, TILE_WATER } from "../maps.js";
+import { TILE_BLOCKED, TILE_MOUNTAIN, TILE_WATER } from "../maps.js";
 import type { BloodStainView, ImpactKind, ImpactView } from "../protocol.js";
 import { fellTreesInDisk, inBounds, isWall, isWater, occupant, tileIndex, worldToTile } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
@@ -133,7 +133,7 @@ export function noteImpactSurface(
 /** Ground a blast may sink: not water, a wall, a fortification, or under a building. */
 function sinkable(state: MatchState, i: number): boolean {
   const kind = state.terrain[i];
-  if (kind === TILE_WATER || kind === TILE_BLOCKED) return false;
+  if (kind === TILE_WATER || kind === TILE_BLOCKED || kind === TILE_MOUNTAIN) return false;
   if ((state.fortBlock[i] ?? 0) !== 0) return false;
   const occ = state.occupy[i] ?? 0;
   return occ === 0 || state.entities.get(occ)?.kind !== "building";

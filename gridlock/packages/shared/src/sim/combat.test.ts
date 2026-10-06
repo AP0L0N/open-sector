@@ -24,7 +24,7 @@ import {
   isCivilianType,
   isNavalType,
 } from "../catalog.js";
-import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE } from "../maps.js";
+import { TILE_BLOCKED, TILE_EMPTY, TILE_TREE, TILE_WATER } from "../maps.js";
 import { applyCommand } from "./commands.js";
 import { RICOCHET_SPARK_SPEED } from "./ballistics.js";
 import { concreteProof, tickCombat, tickProjectiles } from "./combat.js";
@@ -2000,6 +2000,123 @@ describe("ss3 casemate", () => {
     }
     assert.equal(fired, true, "should fire once the hull faces the target");
     assert.ok(Math.abs(gun.facing) < 0.2, `facing=${gun.facing}`);
+  });
+});
+
+describe("hull gun on a move", () => {
+  /**
+   * Engaged, then ordered to drive off the line to the target. The nose has to
+   * finish its yaw before the tracks roll, so a gun that keeps steering onto
+   * the enemy never leaves.
+   */
+  it("a move order pulls a hull gun off an engagement", () => {
+    const cases: { type: Entity["type"]; foe: Entity["type"]; gap: number; water?: boolean }[] = [
+      { type: "ss3", foe: "rifleman", gap: 8 },
+      { type: "jagdtiger", foe: "rifleman", gap: 8 },
+      { type: "mammoth", foe: "rifleman", gap: 8 },
+      { type: "artillery", foe: "rifleman", gap: 40 },
+      { type: "submarine", foe: "gunboat", gap: 8, water: true },
+      { type: "warden", foe: "rifleman", gap: 8 },
+      { type: "nebelwerfer", foe: "rifleman", gap: 20 },
+    ];
+    for (const c of cases) {
+      const { state } = twoPlayerMatch();
+      clearCover(state);
+      stripOwner(state, "A");
+      stripOwner(state, "B");
+      for (const e of [...state.entities.values()]) {
+        if (e.kind === "unit" || (e.tileX >= 28 && e.tileX <= 100 && e.tileY >= 8 && e.tileY <= 56)) {
+          destroyEntity(state, e);
+        }
+      }
+      for (let y = 8; y <= 56; y++) {
+        for (let x = 28; x <= 100; x++) {
+          const i = y * state.width + x;
+          state.terrain[i] = c.water ? TILE_WATER : TILE_EMPTY;
+          state.blocked[i] = c.water ? 1 : 0;
+          state.heights[i] = 0;
+          state.occupy[i] = 0;
+        }
+      }
+      const ts = state.tileSize;
+      const gun = makeEntity(state, c.type, "A", tileCenter(40, ts), tileCenter(40, ts));
+      const foe = makeEntity(state, c.foe, "B", tileCenter(40 + c.gap, ts), tileCenter(40, ts));
+      foe.holdPosition = true;
+      // The field gun's own eyes stop short of the range where it is allowed to fire.
+      if (c.type === "artillery") {
+        const spot = makeEntity(state, "rifleman", "A", tileCenter(40 + c.gap, ts), tileCenter(43, ts));
+        spot.holdPosition = true;
+        spot.cooldown = 99;
+      }
+      gun.facing = 0;
+      gun.turretFacing = 0;
+      gun.cooldown = 99;
+      foe.cooldown = 99;
+      for (let i = 0; i < 40 && gun.attackTarget !== foe.id; i++) {
+        gun.cooldown = 99;
+        foe.hp = foe.hpMax;
+        foe.cooldown = 99;
+        step(state, TICK_DT);
+      }
+      assert.equal(gun.attackTarget, foe.id, `${c.type} should engage`);
+      const y0 = gun.y;
+      const destY = tileCenter(16, ts);
+      assert.equal(
+        applyCommand(state, "A", { type: "cmd.move", ids: [gun.id], x: gun.x, y: destY }).ok,
+        true,
+        c.type,
+      );
+      for (let i = 0; i < 80; i++) {
+        gun.cooldown = 99;
+        foe.hp = foe.hpMax;
+        foe.cooldown = 99;
+        step(state, TICK_DT);
+      }
+      const dy = Math.abs(gun.y - y0);
+      const arrived = Math.abs(gun.y - destY) < ts * 2;
+      assert.ok(dy > ts * 2 || arrived, `${c.type} should drive off, dy=${dy.toFixed(1)}`);
+      if (!arrived) assert.equal(gun.order?.kind, "move", c.type);
+    }
+  });
+
+  it("attack-move still holds a casemate so the hull can lay on the target", () => {
+    const { state } = twoPlayerMatch();
+    clearCover(state);
+    stripOwner(state, "A");
+    stripOwner(state, "B");
+    for (const e of [...state.entities.values()]) {
+      if (e.kind === "unit" || (e.tileX >= 28 && e.tileX <= 60 && e.tileY >= 8 && e.tileY <= 56)) destroyEntity(state, e);
+    }
+    for (let y = 8; y <= 56; y++) {
+      for (let x = 28; x <= 60; x++) {
+        const i = y * state.width + x;
+        state.terrain[i] = TILE_EMPTY;
+        state.blocked[i] = 0;
+        state.heights[i] = 0;
+        state.occupy[i] = 0;
+      }
+    }
+    const ts = state.tileSize;
+    const gun = makeEntity(state, "ss3", "A", tileCenter(40, ts), tileCenter(40, ts));
+    const foe = makeEntity(state, "rifleman", "B", tileCenter(48, ts), tileCenter(40, ts));
+    foe.holdPosition = true;
+    foe.cooldown = 99;
+    gun.facing = Math.PI / 2;
+    gun.turretFacing = Math.PI / 2;
+    const y0 = gun.y;
+    assert.equal(
+      applyCommand(state, "A", { type: "cmd.attackmove", ids: [gun.id], x: gun.x, y: tileCenter(16, ts) }).ok,
+      true,
+    );
+    for (let i = 0; i < 40; i++) {
+      gun.cooldown = 99;
+      foe.hp = foe.hpMax;
+      foe.cooldown = 99;
+      step(state, TICK_DT);
+    }
+    assert.ok(Math.abs(gun.y - y0) < ts * 2, `attack-move should hold, dy=${gun.y - y0}`);
+    const toFoe = Math.atan2(foe.y - gun.y, foe.x - gun.x);
+    assert.ok(angAbs(gun.facing, toFoe) < 0.35, `hull should lay on the target, facing=${gun.facing}`);
   });
 });
 

@@ -184,7 +184,7 @@ function bridgeSiteView(e: Entity, friendly: boolean): EntityView["bridgeSite"] 
   const progress = working ? Math.min(1, e.work / Math.max(1e-6, total)) : undefined;
   const { x, y, facing, length } = job.span;
   const queue = e.fieldQueue?.length ? e.fieldQueue.map((q) => ({ x: q.x, y: q.y, facing: q.facing })) : undefined;
-  return { bridge: job.type, x, y, facing, span: length, progress, queue };
+  return { bridge: job.type, x, y, facing, span: length, progress, deck: job.deck, queue };
 }
 
 function structureQueueView(job: StructureJob | null | undefined): StructureQueueView | null {
@@ -285,6 +285,7 @@ function sceneryView(e: Entity): EntityView {
     tileY: e.tileY,
     ruined: e.ruined || undefined,
     span: isBridge(e.type) ? e.span : undefined,
+    deck: isBridge(e.type) ? e.deckLevel : undefined,
     garrison: isGarrisonable(e.type) ? { count: 0, cap: garrisonCapOf(e.type) } : undefined,
   };
 }
@@ -377,6 +378,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       tend: medicTendView(state, e),
       ruined: e.ruined || undefined,
       span: isBridge(e.type) ? e.span : undefined,
+      deck: isBridge(e.type) ? e.deckLevel : undefined,
       gate: e.gate ? { locked: e.gate.locked, open: Math.round(e.gate.open * 100) / 100 } : undefined,
       wallCrest: isConcreteLine(e.type) && e.wallCrest != null ? e.wallCrest : undefined,
       fieldSites: e.type === "engineer" ? fieldSitesView(e, friendly) : undefined,

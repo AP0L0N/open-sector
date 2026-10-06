@@ -7,18 +7,25 @@ import {
   type MapFeature,
   TILE_BLOCKED,
   TILE_DIAMOND_SCRAP,
+  TILE_EMPTY,
   TILE_FENCE,
+  TILE_MOUNTAIN,
   TILE_ROAD,
   TILE_ROCK,
   TILE_SCRAP,
   TILE_TREE,
   TILE_WATER,
   YARD_HILL_CEIL,
+  MOUNTAIN_MIN_HEIGHT,
   heightAt,
+  isMountainCliff,
   isScrapTile,
   maxHeightOf,
+  normalizeTerrain,
   tileAt,
 } from "./maps.js";
+import { vertexElev } from "./sim/elevation.js";
+import { initGrids } from "./sim/geo.js";
 
 describe("maps", () => {
   it("ships Scrap Yard with 8 spawns", () => {
@@ -500,5 +507,45 @@ describe("villages", () => {
         }
       }
     }
+  });
+});
+
+describe("mountains", () => {
+  it("holds a flat cap and rings it with rock that opens onto ground of the same height", () => {
+    const w = 7;
+    const h = 7;
+    const tiles = new Array<number>(w * h).fill(TILE_EMPTY);
+    const heights = new Array<number>(w * h).fill(HEIGHT_BASE);
+    tiles[3 * w + 3] = TILE_MOUNTAIN;
+    heights[3 * w + 3] = 16;
+    assert.equal(isMountainCliff(tiles, heights, w, h, 4, 3), true, "east skirt");
+    assert.equal(isMountainCliff(tiles, heights, w, h, 4, 4), true, "corner skirt");
+    assert.equal(isMountainCliff(tiles, heights, w, h, 5, 3), false);
+    assert.equal(isMountainCliff(tiles, heights, w, h, 3, 3), false, "the cap is open ground");
+    assert.equal(vertexElev(heights, w, h, 3, 3, tiles), 16, "the lip stays at the cap");
+    heights[3 * w + 4] = 16;
+    assert.equal(isMountainCliff(tiles, heights, w, h, 4, 3), false, "same height opens the rock");
+    assert.equal(isMountainCliff(tiles, heights, w, h, 4, 4), true, "the other sides stay rock");
+    const grids = initGrids({
+      id: "mtn",
+      name: "mtn",
+      width: w,
+      height: h,
+      tileSize: 8,
+      tiles,
+      heights,
+      maxHeight: 16,
+      spawns: [],
+      features: [],
+    });
+    assert.equal(grids.blocked[3 * w + 3], 0);
+    assert.equal(grids.blocked[3 * w + 4], 0);
+    assert.equal(grids.blocked[3 * w + 2], 1);
+    heights[3 * w + 4] = HEIGHT_BASE;
+    normalizeTerrain(tiles, heights, w, h, [], []);
+    assert.equal(heights[3 * w + 3], 16);
+    assert.equal(heights[3 * w + 2], HEIGHT_BASE, "the cliff does not drag a ramp");
+    assert.equal(isMountainCliff(tiles, heights, w, h, 2, 3), true);
+    assert.ok(MOUNTAIN_MIN_HEIGHT >= 12);
   });
 });

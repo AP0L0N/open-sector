@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   HEIGHT_BASE,
+  HEIGHT_UPHILL_BOOST,
+  HEIGHT_UPHILL_PACE,
   HEIGHT_SIGHT_BONUS,
   HEIGHT_MAX,
   HEIGHT_WORLD,
@@ -70,10 +72,13 @@ function dropRig(state: MatchState): void {
 }
 
 describe("slope multipliers", () => {
-  it("slows climbs and speeds descents", () => {
+  it("speeds climbs by 200% and speeds descents", () => {
     assert.equal(slopeSpeedMul(0), 1);
-    assert.ok(slopeSpeedMul(1) <= 1);
-    assert.ok(Math.abs(slopeSpeedMul(8) - 1.3 * 0.55 ** 2) < 1e-9);
+    const climb = (dh: number) => HEIGHT_UPHILL_PACE * Math.min(1, HEIGHT_UPHILL_BOOST * 0.55 ** (dh / TILE_SUBDIV));
+    assert.equal(HEIGHT_UPHILL_PACE, 3);
+    assert.ok(Math.abs(slopeSpeedMul(1) - climb(1)) < 1e-9);
+    assert.ok(Math.abs(slopeSpeedMul(8) - climb(8)) < 1e-9);
+    assert.ok(slopeSpeedMul(1) > 1);
     assert.ok(slopeSpeedMul(-1) > 1);
     assert.ok(slopeCostMul(1) > 1);
     assert.ok(slopeCostMul(-1) < 1);
@@ -201,15 +206,19 @@ describe("movement on slopes", () => {
     return Math.hypot(e.x - from.x, e.y - from.y);
   }
 
-  it("covers less ground climbing a terrace than on the flat", () => {
+  it("climbs a terrace at three times the old uphill pace", () => {
     const flatDist = firstTickDist(0);
     const upDist = firstTickDist(TILE_SUBDIV);
+    const pace = HEIGHT_UPHILL_PACE * HEIGHT_UPHILL_BOOST * 0.55;
     assert.ok(flatDist > 1, `flat moved ${flatDist}`);
-    assert.ok(upDist < flatDist * 0.95, `uphill ${upDist} vs flat ${flatDist}`);
+    assert.ok(Math.abs(upDist / flatDist - pace) < 0.02, `uphill ${upDist} vs flat ${flatDist}`);
   });
 
-  it("never climbs faster than it walks the flat", () => {
-    assert.ok(firstTickDist(1) <= firstTickDist(0) + 1e-9);
+  it("crosses a single uphill step in one tick", () => {
+    const flatDist = firstTickDist(0);
+    const upDist = firstTickDist(1);
+    assert.ok(flatDist < TILE_SIZE, `flat still short of the tile ${flatDist}`);
+    assert.ok(Math.abs(upDist - TILE_SIZE) < 1e-6, `step ${upDist}`);
   });
 });
 

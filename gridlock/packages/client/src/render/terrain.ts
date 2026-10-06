@@ -5,12 +5,14 @@ import {
   TILE_DIAMOND_SCRAP,
   TILE_EMPTY,
   TILE_FENCE,
+  TILE_MOUNTAIN,
   TILE_ROAD,
   TILE_ROCK,
   TILE_SUBDIV,
   TILE_TREE,
   TILE_WATER,
   heightAt,
+  isMountainCliff,
   isScrapTile,
   isoBoxSilhouette,
   isoLift,
@@ -150,6 +152,19 @@ function bakePt(p: IsoPt, originX: number, originY: number): IsoPt {
   return { x: p.x - originX, y: p.y - originY };
 }
 
+/** Vertex height, with a mountain lip held at the cap so the skirt takes the drop. */
+function cornerZ(map: Pick<MapDef, "width" | "height" | "heights" | "tiles">, vx: number, vy: number): number {
+  return vertexElev(map.heights, map.width, map.height, vx, vy, map.tiles);
+}
+
+/** Rock skirt drawn as rock; the cap stays its own ground. */
+function drawKind(map: MapDef, tx: number, ty: number): number {
+  const kind = map.tiles[ty * map.width + tx] ?? 0;
+  if (kind === TILE_MOUNTAIN || kind === TILE_WATER) return kind;
+  if (isMountainCliff(map.tiles, map.heights, map.width, map.height, tx, ty)) return TILE_ROCK;
+  return kind;
+}
+
 /**
  * Per-tile height cue for the no-WebGL fallback: altitude tone and sun-side
  * hillshade. The GL ground does the same light smoothly per vertex.
@@ -164,10 +179,10 @@ function paintRelief(
 ): void {
   const elev = map.heights;
   const hs: [number, number, number, number] = [
-    vertexElev(elev, map.width, map.height, tx, ty),
-    vertexElev(elev, map.width, map.height, tx + 1, ty),
-    vertexElev(elev, map.width, map.height, tx + 1, ty + 1),
-    vertexElev(elev, map.width, map.height, tx, ty + 1),
+    cornerZ(map, tx, ty),
+    cornerZ(map, tx + 1, ty),
+    cornerZ(map, tx + 1, ty + 1),
+    cornerZ(map, tx, ty + 1),
   ];
   const d = tileDiamond(tx, ty, map.tileSize);
   const up = (p: IsoPt, z: number): IsoPt => {
@@ -188,6 +203,7 @@ function paintRelief(
 function groundFill(map: MapDef, tx: number, ty: number, kind: number, scrap: boolean): string {
   if (kind === TILE_WATER) return "#1a4554";
   if (kind === TILE_BLOCKED) return "#3a3228";
+  if (kind === TILE_MOUNTAIN) return shade("#8a8474", elevShadeFactor(heightAt(map, tx, ty), map.maxHeight));
   if (kind === TILE_ROCK) {
     const rock = hash2(tx, ty, 41) % 5;
     const base = rock === 0 ? "#6e675c" : rock === 1 ? "#5a534a" : rock === 2 ? "#7a7264" : rock === 3 ? "#4e4942" : "#655e54";
@@ -269,10 +285,10 @@ function paintWaterOverlay(
     const q = bakePt(p, originX, originY);
     return { x: q.x, y: q.y - z };
   };
-  const n = up(d.n, isoLift(vertexElev(elev, map.width, map.height, tx, ty)));
-  const e = up(d.e, isoLift(vertexElev(elev, map.width, map.height, tx + 1, ty)));
-  const s = up(d.s, isoLift(vertexElev(elev, map.width, map.height, tx + 1, ty + 1)));
-  const w = up(d.w, isoLift(vertexElev(elev, map.width, map.height, tx, ty + 1)));
+  const n = up(d.n, isoLift(cornerZ(map, tx, ty)));
+  const e = up(d.e, isoLift(cornerZ(map, tx + 1, ty)));
+  const s = up(d.s, isoLift(cornerZ(map, tx + 1, ty + 1)));
+  const w = up(d.w, isoLift(cornerZ(map, tx, ty + 1)));
   const pat = waterPattern(ctx, 0);
   if (pat) fillPatternInQuad(ctx, ...expandQuad(n, e, s, w, 1.25), pat, 1);
 }
@@ -297,10 +313,10 @@ function paintSurface(
     const q = bakePt(p, originX, originY);
     return { x: q.x, y: q.y - z };
   };
-  const n = up(d.n, isoLift(vertexElev(elev, map.width, map.height, tx, ty)));
-  const e = up(d.e, isoLift(vertexElev(elev, map.width, map.height, tx + 1, ty)));
-  const s = up(d.s, isoLift(vertexElev(elev, map.width, map.height, tx + 1, ty + 1)));
-  const w = up(d.w, isoLift(vertexElev(elev, map.width, map.height, tx, ty + 1)));
+  const n = up(d.n, isoLift(cornerZ(map, tx, ty)));
+  const e = up(d.e, isoLift(cornerZ(map, tx + 1, ty)));
+  const s = up(d.s, isoLift(cornerZ(map, tx + 1, ty + 1)));
+  const w = up(d.w, isoLift(cornerZ(map, tx, ty + 1)));
   const alpha = kind === TILE_ROAD || scrap ? 0.92 : 0.84;
   fillPatternInQuad(ctx, ...expandQuad(n, e, s, w, TILE_OVERLAP_PX), pat, alpha);
 }
@@ -337,10 +353,10 @@ export function fillElevatedTile(
     const q = bakePt(p, originX, originY);
     return { x: q.x, y: q.y - z };
   };
-  const nH = vertexElev(elev, map.width, map.height, tx, ty);
-  const eH = vertexElev(elev, map.width, map.height, tx + 1, ty);
-  const sH = vertexElev(elev, map.width, map.height, tx + 1, ty + 1);
-  const wH = vertexElev(elev, map.width, map.height, tx, ty + 1);
+  const nH = cornerZ(map, tx, ty);
+  const eH = cornerZ(map, tx + 1, ty);
+  const sH = cornerZ(map, tx + 1, ty + 1);
+  const wH = cornerZ(map, tx, ty + 1);
   const n = up(d.n, isoLift(nH));
   const e = up(d.e, isoLift(eH));
   const s = up(d.s, isoLift(sH));
@@ -460,7 +476,7 @@ function paintTileProps(
   originY: number,
   fillOverride?: string,
 ): void {
-  const kind = map.tiles[ty * map.width + tx] ?? 0;
+  const kind = drawKind(map, tx, ty);
   const ts = map.tileSize;
   const elev = heightAt(map, tx, ty);
   if (kind === TILE_BLOCKED) {
@@ -634,7 +650,7 @@ function paintGround(
   /** Land surface and light come from the GL pass; only the backing fill and edge skirts paint here. */
   glLand = false,
 ): void {
-  const kind = map.tiles[ty * map.width + tx] ?? 0;
+  const kind = drawKind(map, tx, ty);
   const water = kind === TILE_WATER;
   fillElevatedTile(ctx, map, tx, ty, groundFill(map, tx, ty, kind, scrap), originX, originY, !water && !glLand);
   if (water) paintWaterOverlay(ctx, map, tx, ty, originX, originY);
@@ -663,7 +679,7 @@ function stampedGround(
     const d = tileDiamond(tx, ty, map.tileSize);
     const up = (p: IsoPt, vx: number, vy: number): IsoPt => {
       const q = bakePt(p, originX, originY);
-      return { x: q.x, y: q.y - isoLift(vertexElev(map.heights, map.width, map.height, vx, vy)) };
+      return { x: q.x, y: q.y - isoLift(cornerZ(map, vx, vy)) };
     };
     const quad = expandQuad(up(d.n, tx, ty), up(d.e, tx + 1, ty), up(d.s, tx + 1, ty + 1), up(d.w, tx, ty + 1), 1.5);
     path.moveTo(quad[0].x, quad[0].y);
@@ -777,10 +793,10 @@ function paintSmoothShores(
       const d = tileDiamond(tx, ty, map.tileSize);
       const lift = isoLift(
         Math.max(
-          vertexElev(elev, mw, mh, tx, ty),
-          vertexElev(elev, mw, mh, tx + 1, ty),
-          vertexElev(elev, mw, mh, tx + 1, ty + 1),
-          vertexElev(elev, mw, mh, tx, ty + 1),
+          cornerZ(map, tx, ty),
+          cornerZ(map, tx + 1, ty),
+          cornerZ(map, tx + 1, ty + 1),
+          cornerZ(map, tx, ty + 1),
         ),
       );
       for (const p of [d.n, d.e, d.s, d.w]) {
@@ -998,7 +1014,7 @@ function tileStampBounds(map: MapDef, tx: number, ty: number, originX: number, o
 /** Lifted diamond of a tile grown by how far its baked props can reach, in atlas px. */
 function tileReachBox(map: MapDef, tx: number, ty: number, originX: number, originY: number): Rect {
   const d = tileDiamond(tx, ty, map.tileSize);
-  const v = (vx: number, vy: number): number => isoLift(vertexElev(map.heights, map.width, map.height, vx, vy));
+  const v = (vx: number, vy: number): number => isoLift(cornerZ(map, vx, vy));
   const top = d.n.y - Math.max(v(tx, ty), v(tx + 1, ty), v(tx, ty + 1)) - originY;
   const bottom = d.s.y - Math.min(v(tx + 1, ty + 1), v(tx + 1, ty), v(tx, ty + 1)) - originY;
   return {
@@ -1234,7 +1250,7 @@ function parseRgb(hex: string): [number, number, number] {
 }
 
 function miniFill(map: MapDef, tx: number, ty: number, scrap: boolean): string {
-  const kind = map.tiles[ty * map.width + tx] ?? 0;
+  const kind = drawKind(map, tx, ty);
   if (kind === TILE_WATER) return "#1d4a5c";
   if (kind === TILE_TREE) return "#2a4a30";
   if (kind === TILE_ROAD) return "#8a7348";
@@ -1242,6 +1258,7 @@ function miniFill(map: MapDef, tx: number, ty: number, scrap: boolean): string {
   if (kind === TILE_BLOCKED) return "#3a2a22";
   const span = Math.max(1, map.maxHeight - HEIGHT_BASE);
   const u = (heightAt(map, tx, ty) - HEIGHT_BASE) / span;
+  if (kind === TILE_MOUNTAIN) return "#8a8470";
   if (kind === TILE_ROCK) {
     if (u > 0.45) return "#8a8174";
     if (u > 0.15) return "#6e675c";

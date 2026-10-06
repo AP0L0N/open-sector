@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 108;
+export const PROTOCOL_VERSION = 110;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -254,6 +254,8 @@ export interface EntityView {
   ruined?: boolean;
   /** Bridge brick length, world px. `facing` runs along the deck. Omitted on everything else. */
   span?: number;
+  /** Bridge brick deck level, map height units. Omitted on everything else. */
+  deck?: number;
   /**
    * Bridge brick this engineer is on his way to lay or is laying. `progress` is 0–1 once he works.
    * `queue` holds the bricks after it, in order. Only his own side gets it.
@@ -265,6 +267,8 @@ export interface EntityView {
     facing: number;
     span: number;
     progress?: number;
+    /** Deck level the whole line keeps, map height units. */
+    deck?: number;
     queue?: { x: number; y: number; facing: number }[];
   };
   /** A gate: boom lift 0–1, and whether it is locked. */

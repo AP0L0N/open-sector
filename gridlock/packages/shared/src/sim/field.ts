@@ -67,6 +67,12 @@ export const WALL_COVER_DEPTH = 26;
 export const WALL_COVER_BONUS = 0.25;
 /** Ground hits beside a wall deal this share. Overhead attacks ignore the wall. */
 export const WALL_COVER_DR = 0.7;
+/** Extra hit points per tree in the soldier's own tile and the eight around it, as a share of catalog HP. */
+export const TREE_COVER_PER = 0.2;
+/** Tree cover stops at this share of catalog HP. Five nearby trees. */
+export const TREE_COVER_MAX = 1;
+/** Chebyshev tiles from the soldier that still count as beside a tree. His own tile counts. */
+export const TREE_COVER_RADIUS = 1;
 /** Overlap below this still counts as adjacent, so two structures can touch. */
 const PLACE_SLACK = 3;
 
@@ -884,6 +890,27 @@ function aloft(e: Entity): boolean {
   return (e.chute?.alt ?? 0) > 0.5;
 }
 
+/**
+ * Extra hit points for infantry among trees. Each tree in his tile and the
+ * eight around it adds 20% of his catalog HP, and the fifth tree fills the bonus.
+ * A man inside a building, or a Jump Jet in the air, is not among the trunks.
+ */
+export function treeCoverBonus(state: MatchState, e: Entity): number {
+  if (e.hp <= 0 || e.garrisonedIn != null || !isInfantryType(e.type) || aloft(e)) return 0;
+  const ts = state.tileSize;
+  const tx = worldToTile(e.x, ts);
+  const ty = worldToTile(e.y, ts);
+  let trees = 0;
+  for (let dy = -TREE_COVER_RADIUS; dy <= TREE_COVER_RADIUS; dy++) {
+    for (let dx = -TREE_COVER_RADIUS; dx <= TREE_COVER_RADIUS; dx++) {
+      if (isTree(state, tx + dx, ty + dy)) trees++;
+    }
+  }
+  if (trees <= 0) return 0;
+  const share = Math.min(TREE_COVER_MAX, trees * TREE_COVER_PER);
+  return Math.max(1, Math.round(catalog(e.type).hp * share));
+}
+
 /** Any ground unit pressed against an intact concrete wall, either side. */
 export function wallCoverBonus(state: MatchState, e: Entity): number {
   if (e.hp <= 0 || e.wreck || e.kind !== "unit" || e.garrisonedIn != null || aloft(e)) return 0;
@@ -924,9 +951,16 @@ export function coverStrike(e: Entity, damage: number, tick: number, overhead: b
 function applyCoverHp(state: MatchState): void {
   for (const e of state.entities.values()) {
     if (e.kind !== "unit") continue;
+    // A garrison or a truck bed replaces hit points with its own pool.
+    if (e.garrisonedIn != null) {
+      e.coverBonus = 0;
+      e.wallCover = 0;
+      continue;
+    }
     const sand = e.hp <= 0 ? 0 : sandbagCoverBonus(state, e);
     const wall = e.hp <= 0 ? 0 : wallCoverBonus(state, e);
-    const next = sand + wall;
+    const trees = e.hp <= 0 ? 0 : treeCoverBonus(state, e);
+    const next = sand + wall + trees;
     const prev = e.coverBonus;
     e.wallCover = wall;
     if (next === prev) continue;

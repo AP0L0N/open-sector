@@ -251,12 +251,14 @@ export function buildingSiteError(
   if (onWaterBuilding(type)) return waterSiteError(state, tx, ty, def.tileW, def.tileH);
   if (type === "smelter") {
     if (!smelterSiteOk(state, tx, ty)) {
-      if (!tilesBlocked(state, tx, ty, def.tileW, def.tileH) && smelterCrowded(state.entities.values(), tx, ty)) {
+      // Trees under it are no bar: raiseBuilding fells them.
+      const blocked = tilesBlocked(state, tx, ty, def.tileW, def.tileH, false);
+      if (!blocked && smelterCrowded(state.entities.values(), tx, ty)) {
         return "Too close to another Smelter.";
       }
-      return tilesBlockedOrScrap(state, tx, ty, def.tileW, def.tileH) && !tilesBlocked(state, tx, ty, def.tileW, def.tileH)
+      return tilesBlockedOrScrap(state, tx, ty, def.tileW, def.tileH, false) && !blocked
         ? "Not enough scrap under the Smelter."
-        : tilesBlocked(state, tx, ty, def.tileW, def.tileH)
+        : blocked
           ? "Cannot place there."
           : "A Smelter has to stand on scrap.";
     }

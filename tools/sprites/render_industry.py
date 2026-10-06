@@ -9,6 +9,16 @@ south, west, north, the order `CIV_FACES` reads them):
   foundry    t(5)  corrugated casting shed with a monitor roof, cupola furnace, two stacks, ore heap
   granary    t(4)  three concrete silos, an elevator head house, conveyor gallery, brick shed
 
+and four long lots that are not squares. A long lot keeps its tile box when the
+builder turns it (a house never turns its ground), so its four faces are the
+east-door lot, that lot mirrored across its long axis, the west-door lot, and that
+one mirrored: every face fills the same W x H box.
+
+  hall       t(8) x t(3)  aircraft assembly hall: long clerestory roof, rail doors on the gable, office annex
+  works      t(6) x t(5)  L-shaped machine works: two wings round a concrete apron, water tower, stack
+  shed       t(7) x t(2)  engine shed: two tracks run the length of it, a smoke-stained roof, a water crane
+  boiler     t(3) x t(6)  boiler house: coal bunker, conveyor, boiler hall, tall stack
+
 and three street lamps, one image each (props, no facings):
 
   gaslamp     short cast-iron post with a glazed lantern
@@ -207,18 +217,33 @@ ra.tex = tex
 
 
 class Turned:
-    """A mesh built facing east and turned `face` quarter turns clockwise about the lot centre."""
+    """A mesh built facing east and turned `face` quarter turns clockwise about the lot centre.
 
-    def __init__(self, size: float, face: int) -> None:
+    A long lot (w != h) cannot turn a quarter and keep its box, so its faces are the four
+    box-keeping transforms instead: east, east mirrored across x, west (a half turn), and
+    west mirrored. The doors land east, east, west, west; the yards differ on every face.
+    """
+
+    def __init__(self, size: float | tuple[float, float], face: int) -> None:
         self.m = ra.Mesh()
-        self.c = size / 2
+        w, h = (size, size) if isinstance(size, (int, float)) else size
+        self.w, self.h = float(w), float(h)
+        self.c = self.w / 2
+        self.cy = self.h / 2
+        self.long = self.w != self.h
         self.face = face & 3
 
     def p(self, x: float, y: float, z: float) -> tuple[float, float, float]:
-        dx, dy = x - self.c, y - self.c
+        dx, dy = x - self.c, y - self.cy
+        if self.long:
+            if self.face in (1, 3):
+                dy = -dy
+            if self.face in (2, 3):
+                dx, dy = -dx, -dy
+            return (self.c + dx, self.cy + dy, z)
         for _ in range(self.face):
             dx, dy = -dy, dx  # east (1, 0) -> south (0, 1)
-        return (self.c + dx, self.c + dy, z)
+        return (self.c + dx, self.cy + dy, z)
 
     def new_part(self) -> int:
         return self.m.new_part()
@@ -506,12 +531,211 @@ def granary(t: Turned, S: float) -> dict:
     return {"top": (sx, 50.0, top + 18.0)}
 
 
+# ---------------------------------------------------------------- long lots
+
+
+def apron(t: Turned, W: float, H: float) -> None:
+    t.box((0.6, 0.6, 0), (W - 0.6, H - 0.6, 1.0), "yard")
+
+
+def clerestory(t: Turned, x0: float, x1: float, ym: float, z: float, half: float, rise: float) -> None:
+    """A glazed monitor along a ridge: two glass walls and a low shed roof over them."""
+    t.new_part()
+    t.box((x0, ym - half, z - 1.0), (x1, ym + half, z + rise), "glazing", top="shed")
+    t.box((x0 - 0.8, ym - half - 1.0, z + rise), (x1 + 0.8, ym + half + 1.0, z + rise + 1.2), "iron", top="shed")
+
+
+def stack(t: Turned, cx: float, cy: float, base_top: float, top: float, r: float = 5.2) -> None:
+    t.box((cx - r - 1.6, cy - r - 1.6, 1.0), (cx + r + 1.6, cy + r + 1.6, base_top), "brick_dark", top="tar")
+    t.cyl((cx, cy, base_top), (cx, cy, top), r, r * 0.68, "brick", n=18)
+    for k in (0.45, 0.78):
+        z = base_top + (top - base_top) * k
+        rr = r - (r - r * 0.68) * k + 0.5
+        t.cyl((cx, cy, z), (cx, cy, z + 1.2), rr, rr, "iron", n=18)
+    t.cyl((cx, cy, top), (cx, cy, top + 3.0), r * 0.8, r * 0.8, "soot", n=18)
+
+
+def hall(t: Turned, W: float, H: float) -> dict:
+    """Aircraft assembly hall, t(8) x t(3): one long bay, a clerestory ridge, rail doors east."""
+    apron(t, W, H)
+    x0, y0, x1, y1 = 12.0, 12.0, 200.0, 80.0
+    eave, ridge = 26.0, 38.0
+    ym = (y0 + y1) / 2
+    t.box((x0 - 0.6, y0 - 0.6, 1.0), (x1 + 0.6, y1 + 0.6, 3.4), "brick_dark")
+    gable(t, x0, y0, x1, y1, eave, ridge, "brick", "slate", ridge_along_x=True, over=1.0)
+    clerestory(t, x0 + 10, x1 - 10, ym, ridge, 7.0, 7.0)
+    # Pilasters and tall windows down both long walls.
+    for k in range(13):
+        x = x0 + 6 + k * 14.5
+        t.box((x, y1, 3.4), (x + 2.0, y1 + 0.9, eave), "brick_dark")
+        t.box((x, y0 - 0.9, 3.4), (x + 2.0, y0, eave), "brick_dark")
+    xs = [x0 + 13.5 + k * 14.5 for k in range(12)]
+    windows_y(t, y1, xs, 9.0, 21.0, 6.0, 1)
+    windows_y(t, y0, xs, 9.0, 21.0, 6.0, -1)
+    # East gable: full-height sliding doors on a rail, a canopy, the works board.
+    t.box((x1, ym - 22, 3.4), (x1 + 0.6, ym + 22, 24.0), "door_steel")
+    t.box((x1 + 0.6, ym - 1.0, 3.4), (x1 + 1.0, ym + 1.0, 24.0), "iron", part=False)
+    t.box((x1, ym - 25, 24.0), (x1 + 7.0, ym + 25, 25.4), "iron")
+    t.box((x1 + 0.2, ym - 14, 27.0), (x1 + 0.8, ym + 14, 30.0), "sign")
+    windows_x(t, x0, [y0 + 12, y0 + 24, y1 - 24, y1 - 12], 9.0, 21.0, 6.0, -1)
+    # Rail spur out of the doors to the lot edge, a flat wagon on it.
+    rail_spur(t, x1 + 1.0, W - 2.0, ym)
+    t.box((x1 + 14, ym - 3.6, 2.6), (x1 + 44, ym + 3.6, 4.2), "iron")
+    t.box((x1 + 14.5, ym - 3.2, 4.2), (x1 + 43.5, ym + 3.2, 5.0), "wood")
+    crates(t, x1 + 20, ym - 2.5, 2)
+    # Single-storey drawing office along the south wall at the west end, flat tar roof.
+    ox0, ox1 = 30.0, 96.0
+    t.box((ox0, y1 + 0.9, 1.0), (ox1, H - 6.0, 13.0), "brick", top="tar")
+    t.box((ox0 - 0.6, y1 + 0.3, 13.0), (ox1 + 0.6, H - 5.4, 14.2), "brick_dark", top="tar")
+    windows_y(t, H - 6.0, [ox0 + 7 + k * 9 for k in range(7)], 5.0, 11.0, 5.0, 1)
+    t.box((ox1 - 10, H - 6.0, 1.0), (ox1 - 5, H - 5.4, 10.0), "door_wood")
+    # Boiler stack at the north-west corner, a transformer yard and pallets on the apron.
+    stack(t, 22.0, 22.0, eave + 6.0, 88.0)
+    drums(t, W - 30, 6.0, 3, 2)
+    for k in range(3):
+        t.box((110.0 + k * 9, H - 14, 1.0), (117.0 + k * 9, H - 6, 2.0), "pallet")
+        t.box((110.4 + k * 9, H - 13.6, 2.0), (116.6 + k * 9, H - 6.4, 5.0 + (k % 2) * 2.0), "crate")
+    return {"top": (22.0, 22.0, 91.0)}
+
+
+def works(t: Turned, W: float, H: float) -> dict:
+    """L-shaped machine works, t(6) x t(5): a long shop along the north, a wing down the west, an apron in the angle."""
+    apron(t, W, H)
+    t.box((76.0, 72.0, 1.0), (W - 2.0, H - 2.0, 1.08), "cobble", part=False)
+    # North shop: ridge along x, doors on the east end.
+    ax0, ay0, ax1, ay1 = 10.0, 10.0, 182.0, 68.0
+    eave, ridge = 24.0, 36.0
+    aym = (ay0 + ay1) / 2
+    t.box((ax0 - 0.6, ay0 - 0.6, 1.0), (ax1 + 0.6, ay1 + 0.6, 3.2), "brick_dark")
+    gable(t, ax0, ay0, ax1, ay1, eave, ridge, "brick", "slate", ridge_along_x=True)
+    clerestory(t, ax0 + 60, ax1 - 10, aym, ridge, 5.0, 5.0)
+    xs = [ax0 + 12 + k * 13 for k in range(12)]
+    windows_y(t, ay1, xs[4:], 8.0, 19.0, 6.0, 1)
+    windows_y(t, ay0, xs, 8.0, 19.0, 6.0, -1)
+    t.box((ax1, aym - 11, 3.2), (ax1 + 0.6, aym + 11, 18.0), "door_steel")
+    t.box((ax1, aym - 13, 18.0), (ax1 + 5.0, aym + 13, 19.2), "iron")
+    t.box((ax1 + 0.2, aym - 9, 21.0), (ax1 + 0.8, aym + 9, 24.0), "sign")
+    # West wing: ridge along y, joins the shop's south wall, a door onto the apron.
+    bx0, by0, bx1, by1 = 10.0, ay1, 70.0, 150.0
+    t.box((bx0 - 0.6, by0, 1.0), (bx1 + 0.6, by1 + 0.6, 3.2), "brick_dark")
+    gable(t, bx0, by0 + 0.4, bx1, by1, eave - 2.0, ridge - 4.0, "brick", "slate", ridge_along_x=False)
+    ys = [by0 + 12 + k * 13 for k in range(6)]
+    windows_x(t, bx1, ys[:2] + ys[3:], 8.0, 18.0, 6.0, 1)
+    windows_x(t, bx0, ys, 8.0, 18.0, 6.0, -1)
+    windows_y(t, by1, [bx0 + 10, bx0 + 22, bx0 + 38, bx0 + 50], 8.0, 18.0, 6.0, 1)
+    t.box((bx1, by0 + 34, 3.2), (bx1 + 0.6, by0 + 50, 15.0), "door_steel")
+    t.box((bx1, by0 + 32, 15.0), (bx1 + 4.0, by0 + 52, 16.2), "iron")
+    # Stack on the shop, water tower on the apron, a scrap heap and drums by the wing.
+    stack(t, 40.0, 24.0, eave + 6.0, 92.0, r=5.6)
+    tx, ty = 150.0, 118.0
+    for dx in (-7.0, 7.0):
+        for dy in (-7.0, 7.0):
+            t.box((tx + dx - 0.7, ty + dy - 0.7, 1.0), (tx + dx + 0.7, ty + dy + 0.7, 44.0), "iron", part=False)
+    t.new_part()
+    for z in (14.0, 28.0):
+        t.box((tx - 7.7, ty - 0.5, z), (tx + 7.7, ty + 0.5, z + 1.0), "iron", part=False)
+        t.box((tx - 0.5, ty - 7.7, z), (tx + 0.5, ty + 7.7, z + 1.0), "iron", part=False)
+    t.box((tx - 8.5, ty - 8.5, 44.0), (tx + 8.5, ty + 8.5, 45.4), "iron")
+    t.cyl((tx, ty, 45.4), (tx, ty, 62.0), 8.6, 8.6, "rust", n=20)
+    t.cyl((tx, ty, 62.0), (tx, ty, 66.0), 8.8, 1.2, "iron", n=20)
+    t.box((tx - 0.5, ty + 8.6, 1.0), (tx + 0.5, ty + 9.6, 50.0), "galv", part=False)
+    heap(t, 110.0, 136.0, 10.0, 9.0, "ore")
+    for k in range(4):
+        t.box((W - 22 + k * 1.5, 80.0 + k * 0.6, 1.0 + k * 1.1), (W - 8 - k * 1.5, 86.0 - k * 0.6, 2.1 + k * 1.1), "iron", part=k == 0)
+    drums(t, bx1 + 8, by1 - 8, 4, 2)
+    crates(t, W - 24, H - 24, 4)
+    return {"top": (40.0, 24.0, 95.0)}
+
+
+def shed(t: Turned, W: float, H: float) -> dict:
+    """Engine shed, t(7) x t(2): two roads run the length of it and out the east doors."""
+    apron(t, W, H)
+    x0, y0, x1, y1 = 6.0, 6.0, 168.0, 58.0
+    eave, ridge = 20.0, 31.0
+    t.box((x0 - 0.6, y0 - 0.6, 1.0), (x1 + 0.6, y1 + 0.6, 3.2), "brick_dark")
+    gable(t, x0, y0, x1, y1, eave, ridge, "brick", "slate", ridge_along_x=True, over=1.0)
+    # Smoke louvres along the ridge, blackened.
+    for k in range(5):
+        lx = x0 + 18 + k * 30
+        t.box((lx, (y0 + y1) / 2 - 3.0, ridge - 1.0), (lx + 16, (y0 + y1) / 2 + 3.0, ridge + 3.2), "soot", top="iron")
+    xs = [x0 + 11 + k * 14 for k in range(11)]
+    windows_y(t, y1, xs, 8.0, 16.0, 6.0, 1)
+    windows_y(t, y0, xs, 8.0, 16.0, 6.0, -1)
+    # Two roads: sleepers and rails the whole lot, through arched doors in the east gable.
+    for ry in (22.0, 42.0):
+        rail_spur(t, 1.0, W - 1.0, ry)
+        t.box((x1, ry - 6.5, 3.2), (x1 + 0.6, ry + 6.5, 16.0), "interior")
+        t.box((x1 + 0.6, ry - 7.2, 3.2), (x1 + 1.6, ry - 5.4, 16.0), "door_wood")
+        t.box((x1 + 0.6, ry + 5.4, 3.2), (x1 + 1.6, ry + 7.2, 16.0), "door_wood")
+        t.box((x1, ry - 7.6, 16.0), (x1 + 0.9, ry + 7.6, 17.6), "brick_dark")
+    # A water crane and a coal stage east of the doors.
+    cx, cy = 198.0, 8.0
+    t.cyl((cx, cy, 1.0), (cx, cy, 22.0), 1.6, 1.4, "iron", n=10)
+    t.cyl((cx, cy, 22.0), (cx, cy + 9.0, 22.0), 1.1, 1.0, "iron", n=8)
+    t.cyl((cx, cy + 9.0, 22.0), (cx, cy + 9.0, 17.0), 0.9, 0.9, "iron", n=8)
+    t.box((W - 26, H - 16, 1.0), (W - 4, H - 2, 6.0), "concrete_wall", top="concrete")
+    heap(t, W - 15, H - 9, 6.5, 6.0, "coal")
+    t.box((x0 + 4, y1 + 1.0, 1.0), (x0 + 24, y1 + 4.4, 2.0), "pallet")
+    drums(t, 10.0, 2.0, 2, 1)
+    return {"top": (x0 + 26, (y0 + y1) / 2, ridge + 3.2)}
+
+
+def boiler(t: Turned, W: float, H: float) -> dict:
+    """Boiler house, t(3) x t(6): a coal bunker at the north end feeds a long hall; one tall stack."""
+    apron(t, W, H)
+    # Coal bunker: concrete walls open to the sky, a heap inside.
+    kx0, ky0, kx1, ky1 = 14.0, 8.0, 82.0, 44.0
+    for (a, b, c, d) in ((kx0, ky0, kx1, ky0 + 2.4), (kx0, ky1 - 2.4, kx1, ky1), (kx0, ky0, kx0 + 2.4, ky1)):
+        t.box((a, b, 1.0), (c, d, 11.0), "concrete_wall", top="concrete")
+    t.box((kx1 - 2.4, ky0, 1.0), (kx1, ky0 + 12.0, 11.0), "concrete_wall", top="concrete")
+    t.box((kx1 - 2.4, ky1 - 12.0, 1.0), (kx1, ky1, 11.0), "concrete_wall", top="concrete")
+    heap(t, 44.0, 26.0, 16.0, 9.0, "coal")
+    heap(t, 62.0, 30.0, 9.0, 6.0, "coal")
+    # Boiler hall: ridge along y, a clerestory, windows down both long walls, doors east.
+    x0, y0, x1, y1 = 10.0, 62.0, 86.0, 182.0
+    eave, ridge = 28.0, 42.0
+    xm = (x0 + x1) / 2
+    t.box((x0 - 0.6, y0 - 0.6, 1.0), (x1 + 0.6, y1 + 0.6, 3.4), "brick_dark")
+    gable(t, x0, y0, x1, y1, eave, ridge, "brick", "slate", ridge_along_x=False)
+    t.new_part()
+    t.box((xm - 6.0, y0 + 12, ridge - 1.0), (xm + 6.0, y1 - 12, ridge + 6.0), "glazing", top="shed")
+    t.box((xm - 7.0, y0 + 11, ridge + 6.0), (xm + 7.0, y1 - 11, ridge + 7.2), "iron", top="shed")
+    ys = [y0 + 12 + k * 14 for k in range(8)]
+    windows_x(t, x1, ys[:3] + ys[5:], 9.0, 22.0, 6.0, 1)
+    windows_x(t, x0, ys, 9.0, 22.0, 6.0, -1)
+    windows_y(t, y1, [x0 + 12, x0 + 24, x1 - 24, x1 - 12], 9.0, 22.0, 6.0, 1)
+    t.box((x1, y0 + 54, 3.4), (x1 + 0.6, y0 + 72, 18.0), "door_steel")
+    t.box((x1, y0 + 52, 18.0), (x1 + 5.0, y0 + 74, 19.2), "iron")
+    t.box((x1 + 0.2, y0 + 56, 21.0), (x1 + 0.8, y0 + 70, 24.0), "sign")
+    # Inclined conveyor from the bunker up through the hall's north gable.
+    t.new_part()
+    for side in (-3.0, 3.0):
+        t.quad((48.0 + side - 0.6, ky1 - 6.0, 4.0), (48.0 + side + 0.6, ky1 - 6.0, 4.0), (48.0 + side + 0.6, y0 + 2.0, eave + 4.0), (48.0 + side - 0.6, y0 + 2.0, eave + 4.0), "galv")
+    t.quad((44.4, ky1 - 6.0, 4.0), (51.6, ky1 - 6.0, 4.0), (51.6, y0 + 2.0, eave + 4.0), (44.4, y0 + 2.0, eave + 4.0), "shed")
+    for gy in (50.0, 58.0):
+        z = 4.0 + (gy - (ky1 - 6.0)) / (y0 + 2.0 - (ky1 - 6.0)) * eave
+        t.box((47.4, gy - 0.6, 1.0), (48.6, gy + 0.6, z), "iron", part=False)
+    # The stack: square base against the hall's east wall, tall brick shaft.
+    stack(t, 74.0, 150.0, eave + 10.0, 118.0, r=6.4)
+    # Ash skips on a short road, a transformer, drums.
+    rail_spur(t, x1 + 2.0, W - 1.0, 170.0)
+    t.box((x1 + 3.0, 166.6, 2.4), (x1 + 8.5, 173.4, 6.5), "rust")
+    t.box((4.0, H - 18.0, 1.0), (12.0, H - 8.0, 8.0), "iron", top="galv")
+    drums(t, kx1 + 3.0, 10.0, 2, 3)
+    crates(t, 2.0, 48.0, 2)
+    return {"top": (74.0, 150.0, 121.0)}
+
+
 BUILDINGS = {
-    # type: (footprint world px, builder)
+    # type: (footprint world px, or (w, h) for a long lot; builder)
     "factory": (160.0, factory),
     "warehouse": (128.0, warehouse),
     "foundry": (160.0, foundry),
     "granary": (128.0, granary),
+    "hall": ((256.0, 96.0), hall),
+    "works": ((192.0, 160.0), works),
+    "shed": ((224.0, 64.0), shed),
+    "boiler": ((96.0, 192.0), boiler),
 }
 ZOOM_BUILDING = 3.0
 
@@ -620,31 +844,32 @@ def shade_frame(mesh: ra.Mesh, props: ra.Mesh | None, cv: ra.Canvas, near) -> Im
 
 
 def render_building(name: str, out_dir: Path) -> list[dict]:
-    S, build = BUILDINGS[name]
+    size, build = BUILDINGS[name]
+    W, H = (size, size) if isinstance(size, (int, float)) else size
     ra.ZOOM = ZOOM_BUILDING
     faces = []
     for face, suffix in enumerate(FACES):
-        full = Turned(S, face)
-        info = build(full, S)
+        full = Turned(size, face)
+        info = build(full, W, H) if W != H else build(full, W)
         # Props only (no apron) cast the shadow, so the slab does not darken itself.
-        bare = Turned(S, face)
-        build(bare, S)
+        bare = Turned(size, face)
+        build(bare, W, H) if W != H else build(bare, W)
         bare.m.tris = [tr for tr in bare.m.tris if tr[3] not in ("yard",)]
-        cv = canvas_for(full.m, [(0, 0), (S, 0), (0, S), (S, S)])
-        img = shade_frame(full.m, bare.m, cv, lambda gx, gy: (gx > -3) & (gx < S + 3) & (gy > -3) & (gy < S + 3))
+        cv = canvas_for(full.m, [(0, 0), (W, 0), (0, H), (W, H)])
+        img = shade_frame(full.m, bare.m, cv, lambda gx, gy: (gx > -3) & (gx < W + 3) & (gy > -3) & (gy < H + 3))
         file = f"{name}{suffix}.png"
         img.save(out_dir / file, optimize=True)
-        south = screen(cv, S, S, 0.0)
+        south = screen(cv, W, H, 0.0)
         top = full.p(*info["top"])
         stack = screen(cv, *top)
         faces.append(
             {
                 "file": file,
                 "size": list(img.size),
-                "padWidth": round(2 * S * ra.ZOOM, 1),
+                "padWidth": round((W + H) * ra.ZOOM, 1),
                 "padSouthX": south[0],
                 "padSouthY": south[1],
-                "stackX": round(screen(cv, S / 2, S / 2, 0)[0], 1),
+                "stackX": round(screen(cv, W / 2, H / 2, 0)[0], 1),
                 "stackY": round(max(4.0, stack[1] - 6), 1),
             }
         )

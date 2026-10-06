@@ -54,7 +54,7 @@ describe("infantry capture", () => {
     const { state, b } = twoPlayerMatch();
     const ts = state.tileSize;
     const dyn = makeEntity(state, "dynamo", b, tileCenter(40, ts), tileCenter(24, ts), { tileX: 40, tileY: 24 });
-    assert.equal(captureDurationSec(dyn), 10);
+    assert.equal(captureDurationSec(dyn), 20);
     assert.ok(captureDurationSec(dyn) >= CAPTURE_SECONDS_MIN);
     const core = makeEntity(state, "core", b, tileCenter(10, ts), tileCenter(10, ts), { tileX: 8, tileY: 8 });
     assert.ok(captureDurationSec(core) > captureDurationSec(dyn));

@@ -221,8 +221,10 @@ export const HEIGHT_MAX = t(8);
 export const HEIGHT_STEP_MAX = 1;
 /** Move-speed multiplier per adjacent-tile climb. TILE_SUBDIV steps ≈ one old terrace. */
 export const HEIGHT_UPHILL_SPEED = 0.55 ** (1 / TILE_SUBDIV);
-/** Every unit climbs this much faster than HEIGHT_UPHILL_SPEED alone, never faster than on level ground. */
+/** Every unit climbs this much faster than HEIGHT_UPHILL_SPEED alone, before HEIGHT_UPHILL_PACE. */
 export const HEIGHT_UPHILL_BOOST = 1.3;
+/** Uphill speed is this multiple of the boosted climb pace. 3 is a 200% increase. */
+export const HEIGHT_UPHILL_PACE = 3;
 /** Move-speed multiplier per adjacent-tile descent. */
 export const HEIGHT_DOWNHILL_SPEED = 1.12 ** (1 / TILE_SUBDIV);
 /** A* step-cost multiplier per adjacent-tile climb. */
@@ -469,6 +471,12 @@ export const NEBELWERFER_ROCKET: RocketRackDef = {
  * of this many tiles or fewer. Walks FOV borders only. Set to 0 to disable.
  */
 export const FOV_ISLAND_LIMIT = 12;
+/**
+ * A unit whose path search came up empty does not search for the same goal
+ * tile again for this many ticks. A failed search floods the whole reachable
+ * map, and a chase with no path asks every tick.
+ */
+export const PATH_RETRY_TICKS = 30;
 /** Tree tiles a sight ray may pass before the grove closes. One authoring cell. */
 export const TREE_LOS_THROUGH = TILE_SUBDIV;
 /**
@@ -486,11 +494,11 @@ export const STORY_COVER_HEIGHT = t(1.5);
 /** Civilian / unowned map buildings. */
 export const NEUTRAL_OWNER = "";
 /** One trooper vs a Dynamo (750 HP). Larger buildings take longer. */
-export const CAPTURE_SECONDS = 10;
+export const CAPTURE_SECONDS = 20;
 /** HP used as the 1× capture-time reference. */
 export const CAPTURE_HP_REF = 750;
 /** Floor so a cottage is not instant. */
-export const CAPTURE_SECONDS_MIN = 6;
+export const CAPTURE_SECONDS_MIN = 12;
 /** Progress lost per second after capturers leave or die. */
 export const CAPTURE_DECAY_PER_SEC = 0.25;
 
@@ -565,6 +573,10 @@ export type EntityType =
   | "warehouse"
   | "foundry"
   | "granary"
+  | "hall"
+  | "works"
+  | "shed"
+  | "boiler"
   | "sandbags"
   | "barbwire"
   | "wall"
@@ -628,7 +640,9 @@ export function isLowFieldWork(type: string): type is "sandbags" | "teeth" | "ba
 /**
  * Engineer and map bridges over water, laid brick by brick along a drawn line like a wall.
  * Each brick is its own structure: one deck length (`bridgeBrickLength`) of the span.
- * `bridge` is the narrow wooden one (one tank wide), `bigbridge` the concrete one (two abreast).
+ * `bridge` is the narrow wooden one (one tank wide), `bigbridge` the stone one (two abreast).
+ * Every brick of a line keeps one deck level, the ground's height where the line was started;
+ * its piles or piers reach down to whatever lies under it, as a wall's base follows the ground.
  * Only a force-attack aims at a brick. At 0 HP it falls into wreckage that cannot be destroyed;
  * an engineer rebuilds it. The bricks either side of it stand.
  */
@@ -643,9 +657,9 @@ export function isBridge(type: string): type is BridgeType {
 export function bridgeWidth(type: BridgeType): number {
   return type === "bigbridge" ? 44 : 20;
 }
-/** One brick of deck, world px along the span: a timber bay, or a concrete slab between piers. */
+/** One brick of deck, world px along the span: a timber bay, or a wide stone arch between piers. */
 export function bridgeBrickLength(type: BridgeType): number {
-  return type === "bigbridge" ? 32 : 24;
+  return type === "bigbridge" ? 64 : 24;
 }
 /** Scrap per gameplay tile of deck length. */
 export function bridgeCostPerTile(type: BridgeType): number {
@@ -667,6 +681,15 @@ export function bridgeBuildSeconds(type: BridgeType, length = bridgeBrickLength(
  * Damage a round aimed at a bridge does to it, as a share of the round's own damage.
  * Rifle and MG fire does nothing. Bombs use BOMB_BUILDING_DAMAGE.
  */
+/**
+ * Height units a deck must stand over the water for a boat to sail under it. Lower, the
+ * deck closes the water to every boat.
+ */
+export const BRIDGE_SHIP_CLEARANCE = 2;
+/** Boats too big to pass under any bridge. */
+export function tooTallForBridge(type: EntityType): boolean {
+  return type === "lst" || type === "battleship";
+}
 export const BRIDGE_ROUND_MUL = { ap: 0.5, heat: 0.75, he: 1.5, mortar: 1, artillery: 2, rocket: 1 } as const;
 /**
  * How far past the deck edge a shell's burst still counts against it, world px.
@@ -684,7 +707,11 @@ export type CivilianType =
   | "factory"
   | "warehouse"
   | "foundry"
-  | "granary";
+  | "granary"
+  | "hall"
+  | "works"
+  | "shed"
+  | "boiler";
 export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "cottage",
   "house",
@@ -697,6 +724,10 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "warehouse",
   "foundry",
   "granary",
+  "hall",
+  "works",
+  "shed",
+  "boiler",
 ];
 export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "cyborgcommander" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
@@ -3904,12 +3935,12 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     capturable: false,
-    blurb: "Timber trestle bridge, one tank wide. Draw it like a wall, from one shore across the water: the engineer lays it bay by bay. Anyone can cross. Only a force-attack aims at it; a few shells drop one bay into the water while the rest stands. The wreckage stays and an engineer can rebuild it.",
+    blurb: "Timber trestle bridge, one tank wide. Draw it like a wall, from where it should start: the deck keeps that ground's level all the way across, over water or dry ground, and the engineer lays it bay by bay. Built high off a bank, small boats sail under it; the Transport LST and the Battle Ship never do. Anyone can cross. Only a force-attack aims at it; a few shells drop one bay into the water while the rest stands. The wreckage stays and an engineer can rebuild it.",
   },
   bigbridge: {
     type: "bigbridge",
     kind: "building",
-    name: "Concrete bridge",
+    name: "Stone bridge",
     letter: "x",
     cost: 24,
     buildSeconds: 1.1,
@@ -3927,7 +3958,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     capturable: false,
-    blurb: "Concrete arch bridge on piers, two tanks wide. Draw it like a wall, from one shore across the water: the engineer pours it span by span. Anyone can cross. Only a force-attack aims at it, and it takes a long shelling to drop one span into the water while the rest stands. The wreckage stays and an engineer can rebuild it.",
+    blurb: "Masonry arch bridge on stone piers, two tanks wide. Draw it like a wall, from where it should start: the deck keeps that ground's level all the way across, over water or dry ground, and the engineer raises it span by span. Built high off a bank, small boats sail under it; the Transport LST and the Battle Ship never do. Anyone can cross. Only a force-attack aims at it, and it takes a long shelling to drop one span into the water while the rest stands. The wreckage stays and an engineer can rebuild it.",
   },
   rifleman: {
     type: "rifleman",
@@ -5173,6 +5204,58 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonFloors: 2,
     blurb: "Casting shed on a brick plinth, a cupola furnace, two stacks, and ore heaps on the yard.",
   },
+  hall: {
+    type: "hall",
+    name: "Assembly Hall",
+    letter: "A",
+    hp: 2400,
+    tileW: t(8),
+    tileH: t(3),
+    ...CIV_BUILDING,
+    garrisonCap: 18,
+    garrisonWindows: 6,
+    garrisonFloors: 2,
+    blurb: "One long brick bay under a clerestory roof, with rail doors on the gable and a drawing office along the south wall. Eight cells long, three deep: it turns end for end, never a quarter.",
+  },
+  works: {
+    type: "works",
+    name: "Machine Works",
+    letter: "O",
+    hp: 2600,
+    tileW: t(6),
+    tileH: t(5),
+    ...CIV_BUILDING,
+    garrisonCap: 16,
+    garrisonWindows: 5,
+    garrisonFloors: 2,
+    blurb: "Two brick wings round a cobbled apron: a long machine shop along the north and a wing down the west, with a water tower in the angle. The whole lot is blocked, apron and all.",
+  },
+  shed: {
+    type: "shed",
+    name: "Engine Shed",
+    letter: "G",
+    hp: 1500,
+    tileW: t(7),
+    tileH: t(2),
+    ...CIV_BUILDING,
+    garrisonCap: 10,
+    garrisonWindows: 4,
+    garrisonFloors: 1,
+    blurb: "A narrow brick running shed with two roads through it and smoke louvres along the ridge. Seven cells long and only two deep: a wall of a building.",
+  },
+  boiler: {
+    type: "boiler",
+    name: "Boiler House",
+    letter: "J",
+    hp: 2200,
+    tileW: t(3),
+    tileH: t(6),
+    ...CIV_BUILDING,
+    garrisonCap: 12,
+    garrisonWindows: 4,
+    garrisonFloors: 2,
+    blurb: "A coal bunker feeds a long boiler hall by conveyor; one tall stack over it all. Three cells wide and six long, it runs north to south.",
+  },
 };
 
 export function catalog(type: EntityType): CatalogEntry {
@@ -5876,6 +5959,14 @@ export function wadeSpeedOf(type: EntityType): number {
 /** An emplaced gun worked by its garrison: the MG Nest, the Paks, the Flak. See CatalogEntry.crewGun. */
 export function crewGunOf(type: EntityType): boolean {
   return catalog(type).crewGun === true;
+}
+
+/**
+ * A structure that lays its own gun: the CIWS, the RAM, and the crewed guns. Like a unit it
+ * takes Stop, Rotate (where the gun rests between targets), and Force attack.
+ */
+export function aimsOwnGun(type: EntityType): boolean {
+  return radarLaidOf(type) || crewGunOf(type);
 }
 
 /** Traverse each side of an emplacement's set facing, degrees, or null when it turns all round. */

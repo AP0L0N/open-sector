@@ -6,7 +6,12 @@
  * each brick as he starts it, and the brick appears when he finishes it; he works
  * the next one from the deck he just laid. The water under an intact brick is dry
  * ground for everyone (`bridgeDeck`, read by `isWater`): tanks drive over, infantry
- * walk instead of swimming, and boats stop at it.
+ * walk instead of swimming, and boats stop at it, unless the deck stands at least
+ * BRIDGE_SHIP_CLEARANCE over the water: then a boat sails under it (`bridgeClear`),
+ * all but the Transport LST and the Battle Ship.
+ *
+ * Every brick of one line keeps one deck level (`deckLevel`), the ground's height at
+ * the point the line was started from, the way a wall keeps its crest.
  *
  * A brick belongs to no side. Nothing aims at it on its own: only a round fired by
  * a force-attack at it hurts it (`bridgeId`). Every other knock is undone at the
@@ -19,6 +24,7 @@ import {
   BOMB_BUILDING_DAMAGE,
   BOMB_SPLASH_TILES,
   BRIDGE_ROUND_MUL,
+  BRIDGE_SHIP_CLEARANCE,
   BRIDGE_SPLASH_PAD,
   NEUTRAL_OWNER,
   bridgeBrickLength,
@@ -29,6 +35,7 @@ import {
   isBridge,
   isInfantryType,
   isNavalType,
+  tooTallForBridge,
   wadesOf,
   type BridgeType,
 } from "../catalog.js";
@@ -56,6 +63,7 @@ import {
   tileIndex,
   worldToTile,
 } from "./geo.js";
+import { tileHeight as heightAt } from "./elevation.js";
 import { repathIfBlocked } from "./orders.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
@@ -119,28 +127,52 @@ export function bridgeBrickProblemFor(state: MatchState, type: BridgeType, span:
  */
 export function restampBridges(state: MatchState): void {
   const deck = state.bridgeDeck;
+  const clear = (state.bridgeClear ??= new Uint8Array(deck.length));
   for (let i = 0; i < deck.length; i++) {
+    clear[i] = 0;
     if (deck[i] !== 1) continue;
     deck[i] = 0;
     if (state.terrain[i] === TILE_WATER) state.blocked[i] = 1;
   }
   for (const e of state.entities.values()) {
     if (!isBridge(e.type) || e.hp <= 0 || e.ruined) continue;
+    const level = deckLevelOf(state, e);
     for (const t of bridgeTilesOf(state, e)) {
       const i = tileIndex(state, t.x, t.y);
       if (state.terrain[i] !== TILE_WATER) continue;
       deck[i] = 1;
       state.blocked[i] = 0;
+      if (level - (state.heights[i] ?? 0) >= BRIDGE_SHIP_CLEARANCE) clear[i] = 1;
     }
   }
 }
 
-/** A boat in the way of the brick, or a hulk sunk under it. The engineer waits. */
-function deckBusy(state: MatchState, span: BridgeSpan, width: number): boolean {
+/** Deck level a line started at (x, y) keeps: the ground's height there. */
+export function deckLevelAt(state: MatchState, x: number, y: number): number {
+  const ts = state.tileSize;
+  return heightAt(state, worldToTile(x, ts), worldToTile(y, ts));
+}
+
+/** A brick's deck level. One from before levels were kept rests on its higher end. */
+export function deckLevelOf(state: MatchState, e: Entity): number {
+  if (e.deckLevel != null) return e.deckLevel;
+  const { ax, ay, bx, by } = bridgeEnds(bridgeSpanOf(e));
+  return Math.max(deckLevelAt(state, ax, ay), deckLevelAt(state, bx, by));
+}
+
+
+/**
+ * A boat in the way of the brick, or a hulk sunk under it. The engineer waits. A deck
+ * at `level` high enough over the water leaves room for a small boat or a hulk under it.
+ */
+function deckBusy(state: MatchState, span: BridgeSpan, width: number, level = 0): boolean {
   for (const u of state.entities.values()) {
     if (u.kind !== "unit" || u.hp <= 0 || u.garrisonedIn != null) continue;
     if (!isNavalType(u.type) && !u.wreck) continue;
-    if (!rawWater(state, worldToTile(u.x, state.tileSize), worldToTile(u.y, state.tileSize))) continue;
+    const tx = worldToTile(u.x, state.tileSize);
+    const ty = worldToTile(u.y, state.tileSize);
+    if (!rawWater(state, tx, ty)) continue;
+    if (level - heightAt(state, tx, ty) >= BRIDGE_SHIP_CLEARANCE && !tooTallForBridge(u.type)) continue;
     if (inBridge(span, width, u.x, u.y, u.radius)) return true;
   }
   return false;
@@ -168,8 +200,8 @@ function atDeck(eng: Entity, span: BridgeSpan, width: number): boolean {
   return bridgeDist(span, width, eng.x, eng.y) <= BRIDGE_WORK_REACH + eng.radius;
 }
 
-function startBrick(state: MatchState, eng: Entity, type: BridgeType, span: BridgeSpan): void {
-  eng.order = { kind: "build", bridge: type, x: span.x, y: span.y, facing: span.facing, span: span.length };
+function startBrick(state: MatchState, eng: Entity, type: BridgeType, span: BridgeSpan, deck: number): void {
+  eng.order = { kind: "build", bridge: type, x: span.x, y: span.y, facing: span.facing, span: span.length, deck };
   eng.work = 0;
   eng.state = "move";
   eng.bridgeStuck = 0;
@@ -209,6 +241,8 @@ export function orderBridge(
     ? opts.path.filter((q) => Number.isFinite(q.x) && Number.isFinite(q.y))
     : [{ x, y }, ...(opts.x2 != null && opts.y2 != null ? [{ x: opts.x2, y: opts.y2 }] : [])];
   if (points.length === 0 || !points.every((q) => Number.isFinite(q.x) && Number.isFinite(q.y))) return "Cannot place there.";
+  // The whole line keeps the level of the ground it was started from.
+  const deck = deckLevelAt(state, points[0]!.x, points[0]!.y);
   const facing = opts.facing != null && Number.isFinite(opts.facing) ? opts.facing : 0;
   const ground = bridgeGround(state);
   const laid: BridgeBrick[] = [];
@@ -232,15 +266,15 @@ export function orderBridge(
   if (bridgeDist(last, 0, eng.x, eng.y) < bridgeDist(first, 0, eng.x, eng.y)) bricks.reverse();
   clearOrder(eng);
   eng.fieldQueue = bricks.slice(1).map((b) => ({ x: b.x, y: b.y, facing: b.facing }));
-  startBrick(state, eng, type, bricks[0]!);
+  startBrick(state, eng, type, bricks[0]!, deck);
   return null;
 }
 
 /** The brick an engineer's bridge order is for. */
-export function bridgeOrderSpan(e: Entity): { type: BridgeType; span: BridgeSpan } | null {
+export function bridgeOrderSpan(e: Entity): { type: BridgeType; span: BridgeSpan; deck: number } | null {
   const o = e.order;
   if (!o || o.kind !== "build" || o.bridge == null || o.x == null || o.y == null || o.span == null) return null;
-  return { type: o.bridge, span: { x: o.x, y: o.y, facing: o.facing ?? 0, length: o.span } };
+  return { type: o.bridge, span: { x: o.x, y: o.y, facing: o.facing ?? 0, length: o.span }, deck: o.deck ?? 0 };
 }
 
 function finishWork(e: Entity): void {
@@ -251,7 +285,7 @@ function finishWork(e: Entity): void {
 }
 
 /** On to the next queued brick the ground still takes, or idle when the line is done. */
-function nextBrick(state: MatchState, e: Entity, type: BridgeType): void {
+function nextBrick(state: MatchState, e: Entity, type: BridgeType, deck: number): void {
   const queue = e.fieldQueue ?? [];
   finishWork(e);
   const length = bridgeBrickLength(type);
@@ -260,7 +294,7 @@ function nextBrick(state: MatchState, e: Entity, type: BridgeType): void {
     const span = { x: q.x, y: q.y, facing: q.facing, length };
     if (bridgeBrickProblemFor(state, type, span)) continue;
     e.fieldQueue = queue;
-    startBrick(state, e, type, span);
+    startBrick(state, e, type, span, deck);
     return;
   }
 }
@@ -286,7 +320,7 @@ function tickBridgeBuild(state: MatchState, e: Entity, dt: number): void {
     finishWork(e);
     return;
   }
-  const { type, span } = job;
+  const { type, span, deck } = job;
   const width = bridgeWidth(type);
   const player = state.players.get(e.ownerId);
   if (!atDeck(e, span, width)) {
@@ -309,7 +343,7 @@ function tickBridgeBuild(state: MatchState, e: Entity, dt: number): void {
   const cost = bridgeCost(type);
   if (e.work <= 0) {
     if (bridgeBrickProblemFor(state, type, span)) {
-      nextBrick(state, e, type);
+      nextBrick(state, e, type, deck);
       return;
     }
     if (!player || player.scrap < cost) {
@@ -328,19 +362,19 @@ function tickBridgeBuild(state: MatchState, e: Entity, dt: number): void {
     e.work = Math.min(total, e.work + dt);
     return;
   }
-  if (deckBusy(state, span, width)) return;
+  if (deckBusy(state, span, width, deck)) return;
   if (bridgeBrickProblemFor(state, type, span)) {
     if (player) player.scrap += cost;
-    nextBrick(state, e, type);
+    nextBrick(state, e, type, deck);
     return;
   }
-  raiseBridge(state, type, span);
-  nextBrick(state, e, type);
+  raiseBridge(state, type, span, deck);
+  nextBrick(state, e, type, deck);
 }
 
 /** A finished brick, neutral, its deck laid at once. */
-export function raiseBridge(state: MatchState, type: BridgeType, span: BridgeSpan): Entity {
-  const b = placeBrick(state, type, span);
+export function raiseBridge(state: MatchState, type: BridgeType, span: BridgeSpan, deck?: number): Entity {
+  const b = placeBrick(state, type, span, deck);
   restampBridges(state);
   for (const u of state.entities.values()) {
     if (u.kind === "unit" && u.hp > 0 && !u.wreck) repathIfBlocked(state, u);
@@ -349,7 +383,7 @@ export function raiseBridge(state: MatchState, type: BridgeType, span: BridgeSpa
 }
 
 /** Stand a brick without laying the deck grid. The caller restamps once for many. */
-export function placeBrick(state: MatchState, type: BridgeType, span: BridgeSpan): Entity {
+export function placeBrick(state: MatchState, type: BridgeType, span: BridgeSpan, deck?: number): Entity {
   const ts = state.tileSize;
   const b = makeEntity(state, type, NEUTRAL_OWNER, span.x, span.y, {
     facing: span.facing,
@@ -359,13 +393,14 @@ export function placeBrick(state: MatchState, type: BridgeType, span: BridgeSpan
   b.facing = span.facing;
   b.turretFacing = span.facing;
   b.span = span.length;
+  b.deckLevel = deck ?? deckLevelAt(state, span.x, span.y);
   return b;
 }
 
 /** Wreckage an engineer can put back up: no boat under it. */
 export function canRebuildBridge(state: MatchState, e: Entity): boolean {
   if (!isBridge(e.type) || !e.ruined || e.hp <= 0) return false;
-  return !deckBusy(state, bridgeSpanOf(e), bridgeWidth(e.type));
+  return !deckBusy(state, bridgeSpanOf(e), bridgeWidth(e.type), deckLevelOf(state, e));
 }
 
 export function rebuildSecondsOf(e: Entity): number {

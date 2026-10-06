@@ -21,11 +21,11 @@ import {
   yardBuildSeconds,
   type BuildingType,
 } from "../catalog.js";
-import { TILE_DIAMOND_SCRAP, TILE_EMPTY, TILE_ROAD, TILE_SCRAP, getMap } from "../maps.js";
+import { TILE_DIAMOND_SCRAP, TILE_EMPTY, TILE_ROAD, TILE_SCRAP, TILE_TREE, getMap } from "../maps.js";
 import { findSmelterTile } from "./ai.js";
 import { raiseBuilding } from "./build.js";
 import { applyCommand } from "./commands.js";
-import { buildingCenter, footprintGap, hqOf, makeEntity, scrapAt, tileCenter, tilesBlockedOrScrap } from "./geo.js";
+import { buildingCenter, footprintGap, hqOf, isTree, makeEntity, scrapAt, tileCenter, tilesBlockedOrScrap } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { previewConstruct, previewPlace, previewSite } from "./preview.js";
 import { refundPaid } from "./production.js";
@@ -70,6 +70,11 @@ function paintScrap(state: MatchState, tx: number, ty: number, w: number, h: num
       state.blocked[i] = 0;
     }
   }
+}
+
+function plant(state: MatchState, x: number, y: number): void {
+  state.terrain[y * state.width + x] = TILE_TREE;
+  state.blocked[y * state.width + x] = 0;
 }
 
 /** Paint a square diamond scrap field whose top-left tile is (tx, ty). */
@@ -207,6 +212,46 @@ describe("Smelter on scrap", () => {
     paintScrap(state, tx + sm.tileW + 2, ty, 8, 8);
     res = applyCommand(state, "A", { type: "cmd.place", building: "dynamo", tx: tx + sm.tileW + 2, ty });
     assert.equal(res.ok, false, "a Dynamo does not go on scrap");
+  });
+
+  it("stands on a scrap field ringed with trees and fells the ones under it", () => {
+    const { state } = twoPlayerMatch();
+    deploy(state, "A");
+    const hq = hqOf(state, "A")!;
+    const p = state.players.get("A")!;
+    const reach = { x1: hq.tileX + hq.tileW + BUILD_RADIUS, y1: hq.tileY + hq.tileH + BUILD_RADIUS };
+    const patch = openPatch(state, hq.tileX + hq.tileW + 4, hq.tileY, sm.tileW + 1, sm.tileH, reach);
+    clearGround(state, patch.x, patch.y, sm.tileW + 1, sm.tileH);
+    const tx = patch.x;
+    const ty = patch.y;
+    // Half the footprint is scrap. The rest is a grove, plus one tree just outside.
+    const scrapW = Math.ceil(sm.tileW / 2);
+    paintScrap(state, tx, ty, scrapW, sm.tileH);
+    for (let y = ty; y < ty + sm.tileH; y++) {
+      for (let x = tx + scrapW; x < tx + sm.tileW; x++) plant(state, x, y);
+    }
+    plant(state, tx + sm.tileW, ty);
+    assert.equal(smelterSiteOk(state, tx, ty), true, "trees on the field do not bar the site");
+    const snap = snapshotFor(state, "A");
+    assert.equal(previewPlace(snap, "smelter", tx, ty), true, "client ghost agrees");
+    p.scrap = 10_000;
+    p.structure = { type: "smelter", progressTicks: 1, totalTicks: 1, ready: true, paused: false, paid: sm.cost };
+    const res = applyCommand(state, "A", { type: "cmd.place", building: "smelter", tx, ty });
+    assert.equal(res.ok, true, res.ok ? "" : res.message);
+    for (let y = ty; y < ty + sm.tileH; y++) {
+      for (let x = tx; x < tx + sm.tileW; x++) {
+        assert.equal(isTree(state, x, y), false, `tree at ${x},${y} is felled`);
+        if (x >= tx + scrapW) assert.ok(state.clearedTrees.some((c) => c.x === x && c.y === y), "the client is told to fell it");
+      }
+    }
+    assert.equal(isTree(state, tx + sm.tileW, ty), true, "the tree beside it stays");
+    assert.ok(scrapAt(state, tx, ty) > 0, "the scrap under it stays");
+    // A rock still refuses the site.
+    const beside = tx + sm.tileW + SMELTER_CLEARANCE + 1;
+    clearGround(state, beside, ty, sm.tileW, sm.tileH);
+    paintScrap(state, beside, ty, sm.tileW, sm.tileH);
+    state.blocked[ty * state.width + beside] = 1;
+    assert.equal(smelterSiteOk(state, beside, ty), false, "a rock still blocks");
   });
 
   it("pours scrap every second for each Smelter on scrap, slower on short power, and never drains the field", () => {

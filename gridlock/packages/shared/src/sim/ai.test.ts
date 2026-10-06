@@ -108,10 +108,24 @@ function campaign(state: MatchState, aiId: string): void {
   planOf(state, aiId).posture = "campaign";
 }
 
-/** Every base tower and bunker site counts as tried, so the defence lane moves past them. */
-function baseSitesTried(state: MatchState, aiId: string): void {
+/** Tower ring only, so the defence lane moves on to the nest, Pak, pit, and lookout. */
+function ringTried(state: MatchState, aiId: string): void {
   const plan = planOf(state, aiId);
   for (const k of ["front", "left", "right", "bunker", "rear"]) plan.siteRetry[`base:${k}`] = Number.MAX_SAFE_INTEGER;
+}
+
+/** Every yard defence site counts as tried, so the defence lane moves on to the middle. */
+function baseSitesTried(state: MatchState, aiId: string): void {
+  ringTried(state, aiId);
+  const plan = planOf(state, aiId);
+  for (const k of ["mg", "pak", "pit", "look", "flak", "pak43", "case"]) plan.siteRetry[`base:${k}`] = Number.MAX_SAFE_INTEGER;
+}
+
+/** The building's front points at the human Core, within the 15° place step. */
+function facesEnemy(state: MatchState, e: Entity): boolean {
+  const foe = [...state.entities.values()].find((x) => x.ownerId === "A" && (x.type === "rig" || x.type === "core"))!;
+  const dir = unitVec(foe.x - e.x, foe.y - e.y);
+  return Math.cos(e.facing) * dir.x + Math.sin(e.facing) * dir.y > 0.75;
 }
 
 /** A crewed CPU tower on the middle: the diamond field is held. */
@@ -342,6 +356,54 @@ describe("easy CPU", () => {
     assert.ok(out > 16 * state.tileSize, `tower ${out.toFixed(0)} px toward the enemy`);
   });
 
+  it("turns an MG nest and a Pak 36 toward the enemy, then a Tobruk and a lookout", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "dynamo"]);
+    troopers(state, aiId, 4);
+    ringTried(state, aiId);
+    const cpu = state.players.get(aiId)!;
+    cpu.structure = null;
+    cpu.scrap = 50000;
+    micro(state, aiId);
+    assert.equal(cpu.defence?.type, "mgnest");
+    cpu.defence!.ready = true;
+    cpu.defence!.paid = catalog("mgnest").cost;
+    micro(state, aiId);
+    const nest = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "mgnest");
+    assert.ok(nest, "the nest was placed");
+    assert.ok(facesEnemy(state, nest!), "the nest faces the enemy");
+    assert.equal(nest!.garrison.length, catalog("mgnest").garrisonCap, "the nest comes with its crew");
+    micro(state, aiId);
+    assert.equal(cpu.defence?.type, "pak36");
+    cpu.defence!.ready = true;
+    cpu.defence!.paid = catalog("pak36").cost;
+    micro(state, aiId);
+    const pak = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "pak36");
+    assert.ok(pak, "the Pak was placed");
+    assert.ok(facesEnemy(state, pak!), "the Pak faces the enemy");
+    micro(state, aiId);
+    assert.equal(cpu.defence?.type, "tobruk");
+    cpu.defence = null;
+    planOf(state, aiId).siteRetry["base:pit"] = Number.MAX_SAFE_INTEGER;
+    micro(state, aiId);
+    assert.equal(state.players.get(aiId)!.defence?.type, "hochstand");
+  });
+
+  it("puts a mortarman in a Tobruk pit ahead of a rifleman", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    const hq = coreOf(state, aiId);
+    const pit = makeEntity(state, "tobruk", aiId, hq.x + 48, hq.y, { tileX: hq.tileX + 6, tileY: hq.tileY });
+    fighters(state, aiId, "rifleman", 2);
+    const mortar = fighters(state, aiId, "mortarman", 1, 24)[0]!;
+    micro(state, aiId);
+    const inbound = [...state.entities.values()].filter(
+      (e) => e.ownerId === aiId && e.order?.kind === "garrison" && e.order.targetId === pit.id,
+    );
+    assert.ok(inbound.some((e) => e.id === mortar.id), "the mortarman takes the pit");
+  });
+
   it("lays a gated wall line across the front of its main tower", () => {
     const { state, aiId } = humanVsEasy();
     waitCore(state, aiId);
@@ -451,10 +513,12 @@ describe("easy CPU", () => {
     secondSmelter(state, aiId);
     const hq = coreOf(state, aiId);
     // No scrap left anywhere: then one plain field out past the yard, toward the middle.
+    // A Smelter fells trees, so a footprint can hang off this field onto the grove. The
+    // field has to sit far enough that even that overhang stays outside the build radius.
     state.scrapYield.fill(0);
     const def = catalog("smelter");
     const toMid = unitVec(state.width / 2 - hq.tileX, state.height / 2 - hq.tileY);
-    const out = BUILD_RADIUS + 40;
+    const out = BUILD_RADIUS + def.tileH + 70;
     const fx = Math.round(hq.tileX + toMid.x * out);
     const fy = Math.round(hq.tileY + toMid.y * out);
     for (let y = fy; y < fy + def.tileH * 2; y++) {
@@ -475,7 +539,7 @@ describe("easy CPU", () => {
     assert.ok(Math.hypot(tx - hq.tileX, ty - hq.tileY) <= EASY_EXPAND_TILES + def.tileW);
   });
 
-  it("raises towers round the middle once the diamond Smelter stands", () => {
+  it("raises a fire-control tower on the middle, then watch towers, once the diamond Smelter stands", () => {
     const { state, aiId } = humanVsEasy();
     waitCore(state, aiId);
     campaign(state, aiId);
@@ -489,13 +553,44 @@ describe("easy CPU", () => {
       tileX: spot.tx,
       tileY: spot.ty,
     });
-    state.players.get(aiId)!.scrap = 10000;
-    micro(state, aiId);
     const cpu = state.players.get(aiId)!;
-    assert.equal(cpu.defence?.type, "tower");
+    cpu.scrap = 10000;
+    micro(state, aiId);
+    assert.equal(cpu.defence?.type, "leitturm");
     const site = planOf(state, aiId).site!;
     const c = diamondCentre(state);
     assert.ok(Math.hypot(site.x - c.x, site.y - c.y) < 30 * state.tileSize, "the tower is for the middle");
+    planOf(state, aiId).siteRetry["mid:leit"] = Number.MAX_SAFE_INTEGER;
+    cpu.defence = null;
+    micro(state, aiId);
+    assert.equal(state.players.get(aiId)!.defence?.type, "tower");
+  });
+
+  it("raises a Flak gun, a Pak 43, and a heavy casemate once it campaigns", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    campaign(state, aiId);
+    ringTried(state, aiId);
+    const plan = planOf(state, aiId);
+    for (const k of ["mg", "pak", "pit", "look"]) plan.siteRetry[`base:${k}`] = Number.MAX_SAFE_INTEGER;
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "dynamo"]);
+    troopers(state, aiId, 4);
+    const hq = coreOf(state, aiId);
+    makeEntity(state, "ciws", aiId, hq.x - 80, hq.y, { tileX: hq.tileX - 12, tileY: hq.tileY });
+    plan.airSeenTick = state.tick;
+    const cpu = state.players.get(aiId)!;
+    cpu.structure = null;
+    cpu.scrap = 50000;
+    micro(state, aiId);
+    assert.equal(cpu.defence?.type, "flak");
+    cpu.defence = null;
+    plan.siteRetry["base:flak"] = Number.MAX_SAFE_INTEGER;
+    micro(state, aiId);
+    assert.equal(state.players.get(aiId)!.defence?.type, "pak43");
+    state.players.get(aiId)!.defence = null;
+    plan.siteRetry["base:pak43"] = Number.MAX_SAFE_INTEGER;
+    micro(state, aiId);
+    assert.equal(state.players.get(aiId)!.defence?.type, "casemate");
   });
 
   it("builds a CIWS and trains more rocketmen once it sees enemy planes", () => {
@@ -523,7 +618,8 @@ describe("easy CPU", () => {
     const cpu = state.players.get(aiId)!;
     cpu.structure = null;
     cpu.scrap = 10000;
-    planOf(state, aiId).siteRetry = { "base:front": 1e9, "base:left": 1e9, "base:right": 1e9, "base:bunker": 1e9, "base:rear": 1e9 };
+    ringTried(state, aiId);
+    for (const k of ["mg", "pak", "pit", "look"]) planOf(state, aiId).siteRetry[`base:${k}`] = 1e9;
     micro(state, aiId);
     assert.ok(!muster.queue.some((j) => j.type === "rocketer"), "no extra rocketmen without planes");
     planOf(state, aiId).airSeenTick = state.tick;

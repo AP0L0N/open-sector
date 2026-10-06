@@ -1,4 +1,4 @@
-import { isNavalType, WATER_PATH_COST, type EntityType } from "../catalog.js";
+import { isNavalType, PATH_RETRY_TICKS, WATER_PATH_COST, type EntityType } from "../catalog.js";
 import { inBounds, isWater, nearestWalkable, tileCenter, walkable, worldToTile } from "./geo.js";
 import { climbableDelta, minSlopeCostMul, slopeCostMul, tileHeight } from "./elevation.js";
 import type { Entity, MatchState, Vec } from "./types.js";
@@ -86,9 +86,22 @@ export function pathToWorld(
 }
 
 export function setPath(state: MatchState, e: Entity, toX: number, toY: number): boolean {
+  const tx = worldToTile(toX, state.tileSize);
+  const ty = worldToTile(toY, state.tileSize);
+  // Asked again for a goal that had no path moments ago: the answer stands until the retry.
+  const fail = e.pathFail;
+  if (fail && fail.tx === tx && fail.ty === ty && state.tick - fail.tick < PATH_RETRY_TICKS) {
+    e.waypoints = [];
+    return false;
+  }
   const pts = pathToWorld(state, e.x, e.y, toX, toY, e.type);
   e.waypoints = pts;
-  return pts.length > 0;
+  if (pts.length > 0) {
+    e.pathFail = undefined;
+    return true;
+  }
+  e.pathFail = { tx, ty, tick: state.tick };
+  return false;
 }
 
 export function astar(
