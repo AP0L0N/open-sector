@@ -125,9 +125,9 @@ export function spotlightsOn(tick: number): boolean {
   return daylightAt(tick) < SPOTLIGHT_ON_DAYLIGHT;
 }
 
-/** The Watch Tower's cab lamp, and the Battle Ship's searchlight on the bridge. */
+/** The Watch Tower's cab lamp, the Fire-Control Tower's roof lamp, and the Battle Ship's searchlight on the bridge. */
 export function hasSpotlight(type: EntityType): boolean {
-  return type === "tower" || type === "battleship";
+  return type === "tower" || type === "leitturm" || type === "battleship";
 }
 
 /**

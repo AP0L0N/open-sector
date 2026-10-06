@@ -243,7 +243,12 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       if (!isBridge(msg.bridge)) return fail("bad_payload", "An engineer cannot build that.");
       if (!Array.isArray(msg.ids) || msg.ids.length === 0) return fail("not_yours", "Select an engineer.");
       return wrap(
-        orderBridge(state, playerId, owned(state, playerId, msg.ids), msg.bridge, msg.x, msg.y, msg.x2, msg.y2),
+        orderBridge(state, playerId, owned(state, playerId, msg.ids), msg.bridge, msg.x, msg.y, {
+          x2: msg.x2,
+          y2: msg.y2,
+          facing: msg.facing,
+          path: Array.isArray(msg.path) ? msg.path.slice(0, 64) : undefined,
+        }),
         "invalid_place",
       );
     case "cmd.repair":
