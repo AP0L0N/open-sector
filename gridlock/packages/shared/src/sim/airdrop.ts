@@ -46,6 +46,7 @@ import { coverStrike } from "./field.js";
 import { airAlt } from "./elevation.js";
 import { detachGarrisoned, livingGarrison } from "./garrison.js";
 import {
+  ownerless,
   adjacentToBuilding,
   allies,
   clearOrder,
@@ -484,7 +485,7 @@ function defusing(e: Entity, mineId: number): boolean {
  * A running torpedo passes over it; a plane or a drone is not in the water.
  */
 function inWaterForMine(state: MatchState, e: Entity): boolean {
-  return e.kind === "unit" && e.hp > 0 && !e.wreck && !!e.ownerId && !isTorpedoBody(e.type) && afloat(state, e);
+  return e.kind === "unit" && e.hp > 0 && !e.wreck && !ownerless(e) && !isTorpedoBody(e.type) && afloat(state, e);
 }
 
 /** Live mines go off under anyone's feet or tracks. A supply truck defusing one is spared that mine. Old ones pop by themselves. */
@@ -508,7 +509,7 @@ export function tickMines(state: MatchState, dt: number): void {
     }
     let hit = false;
     for (const e of state.entities.values()) {
-      if (!onGround(e) || !e.ownerId || defusing(e, m.id)) continue;
+      if (!onGround(e) || ownerless(e) || defusing(e, m.id)) continue;
       if (Math.hypot(e.x - m.x, e.y - m.y) <= trigger + e.radius) {
         hit = true;
         break;
@@ -571,7 +572,7 @@ function detonateMine(state: MatchState, ownerId: string, x: number, y: number):
   const reach = MINE_SPLASH_TILES * state.tileSize;
   let killed = false;
   for (const e of [...state.entities.values()]) {
-    if (!onGround(e) || !e.ownerId) continue;
+    if (!onGround(e) || ownerless(e)) continue;
     const d = Math.hypot(e.x - x, e.y - y);
     if (d > reach + e.radius) continue;
     const fall = mortarFalloff(Math.max(0, d - e.radius), reach);

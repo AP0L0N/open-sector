@@ -219,7 +219,9 @@ export function canGarrison(state: MatchState, unit: Entity, house: Entity): str
     if (busy) return busy;
   }
   const occ = garrisonOwner(state, house);
-  if (occ && occ !== NEUTRAL_OWNER && !allies(state, unit.ownerId, occ)) return "Held by the enemy.";
+  // Neutral map troops hold a house for no one, against everyone.
+  const held = occ !== NEUTRAL_OWNER || livingGarrison(state, house).some((u) => u.id !== unit.id);
+  if (held && !allies(state, unit.ownerId, occ)) return "Held by the enemy.";
   if (
     !isCivilianType(house.type) &&
     house.ownerId &&

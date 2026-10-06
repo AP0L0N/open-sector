@@ -17,6 +17,7 @@ import {
   allies,
   buildingContains,
   jetAloft,
+  ownerless,
   segmentBuildingT,
   segmentCircleT,
   unitInWater,
@@ -54,7 +55,7 @@ export function allyInLine(
   for (const o of state.entities.values()) {
     if (o.id === e.id || o.id === target.id || o.id === e.garrisonedIn) continue;
     if (o.hp <= 0 || o.wreck || o.garrisonedIn != null || isCrashing(o) || o.drone || isAirborne(o)) continue;
-    if (!o.ownerId || !allies(state, e.ownerId, o.ownerId)) continue;
+    if (ownerless(o) || !allies(state, e.ownerId, o.ownerId)) continue;
     if (o.type === "sandbags" || o.type === "teeth" || o.type === "wall" || o.type === "greatwall" || o.type === "gate") continue;
     if (o.type === "trench" && livingGarrison(state, o).length === 0) continue;
     let t: number | null;

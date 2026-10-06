@@ -84,6 +84,57 @@
   margin-top: 16px;
 }
 
+/* A folding section: the title is the switch. */
+.bld-sec-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  margin: 0 0 8px;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.bld-sec-head h2 { margin: 0; }
+.bld-sec-head:hover h2 { color: var(--amber); }
+.bld-sec-caret {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--muted);
+  transition: transform 0.12s ease;
+}
+.bld-sec.is-collapsed .bld-sec-caret { transform: rotate(-90deg); }
+.bld-sec.is-collapsed .bld-sec-head { margin-bottom: 0; }
+.bld-sec.is-collapsed .bld-sec-body { display: none; }
+
+.bld-sub {
+  margin: 10px 0 6px;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.bld-sec-body > .bld-sub:first-child { margin-top: 0; }
+
+/* Units: tabs as the match's sidebar groups them, cameos as its build buttons draw them. */
+.bld-unit-tabs { display: flex; gap: 4px; margin-bottom: 6px; }
+.bld-unit-tabs .group-tab { flex: 1; }
+.bld-asset .prod-job.bld-unit-art {
+  display: block;
+  width: 100%;
+  height: 38px;
+  border: 0;
+  box-shadow: none;
+  pointer-events: none;
+  filter: grayscale(0.85);
+}
+.bld-asset.is-on .prod-job.bld-unit-art { filter: none; }
+
 .bld-palette {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

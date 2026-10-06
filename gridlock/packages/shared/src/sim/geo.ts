@@ -546,6 +546,14 @@ export function allies(state: MatchState, aOwner: string, bOwner: string): boole
   return a.team === b.team;
 }
 
+/**
+ * Belongs to no one and fights for no one: a map's house, defence, or section
+ * nobody has taken. A neutral map unit is not ownerless; it is everyone's enemy.
+ */
+export function ownerless(e: Entity): boolean {
+  return !e.ownerId && e.kind !== "unit";
+}
+
 export function playerTeam(state: MatchState, playerId: string): number {
   return state.players.get(playerId)?.team ?? 0;
 }

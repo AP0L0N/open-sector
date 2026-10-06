@@ -6,6 +6,7 @@ import {
   TILE_SIZE,
   TILE_TREE,
   featureAngle,
+  facingToIso,
   featureBox,
   featureLotSite,
   featureRect,
@@ -20,6 +21,8 @@ import {
   type IsoPt,
   type MapDef,
   type MapFeature,
+  type MapUnit,
+  type TrainType,
 } from "@gridlock/shared";
 import { buildingGroundElev } from "../render/building-ground.js";
 import { decorFor } from "../render/decor.js";
@@ -34,6 +37,9 @@ import {
   buildingSpriteFor,
   drawBuildingSprite,
   drawPropSprite,
+  drawUnitSprite,
+  NEUTRAL_UNIT_FILTER,
+  spriteFor,
   spriteReady,
   type PropSprite,
 } from "../render/sprites.js";
@@ -73,6 +79,64 @@ export interface IsoOverlay {
   lineStart: { x: number; y: number } | null;
   spawnGhost: { x: number; y: number; bad: boolean } | null;
   brush: { x: number; y: number; r: number } | null;
+  /** The sheet's neutral units and what the Units tools show about them. */
+  units?: UnitOverlay;
+}
+
+/** Fine-tile points of a patrol route, as the builder holds them. */
+export interface RouteDraw {
+  /** Where the walk starts: the unit's own tile. Left out of a loop's ring. */
+  from: { x: number; y: number };
+  points: readonly { x: number; y: number }[];
+  loop: boolean;
+  /** The live leg runs to this tile while a route is being drawn. */
+  cursor?: { x: number; y: number } | null;
+  /** Drawn bright: the selected unit's route, or the one being drawn. */
+  strong: boolean;
+}
+
+export interface UnitOverlay {
+  list: readonly MapUnit[];
+  selected: number;
+  hover: number;
+  /** The unit the Units tool would stand on the cursor tile. */
+  ghost: { type: TrainType; x: number; y: number; facing: number; bad: boolean } | null;
+  routes: readonly RouteDraw[];
+  /** Men inside a building, by feature index, for its badge. */
+  garrisons: ReadonlyMap<number, { count: number; cap: number }>;
+  /** A rotate order's aim: the selected unit turns toward this tile. */
+  aim: { x: number; y: number } | null;
+}
+
+/** Draw one neutral unit as the battlefield draws it, greyed. False while its art loads. */
+function drawMapUnit(c: CanvasRenderingContext2D, s: Sheet, u: { type: TrainType; x: number; y: number; facing: number }, alpha = 1): boolean {
+  const def = spriteFor(u.type);
+  const p = at((u.x + 0.5) * TILE_SIZE, (u.y + 0.5) * TILE_SIZE, heightOf(s, u.x, u.y));
+  const facing = (u.facing * Math.PI) / 180;
+  if (!def) {
+    c.fillStyle = "#8c8c88";
+    c.beginPath();
+    c.arc(p.x, p.y - 4, 4, 0, Math.PI * 2);
+    c.fill();
+    return true;
+  }
+  const dir = facingToIso(facing, TILE_SIZE);
+  c.save();
+  c.globalAlpha = alpha;
+  c.filter = NEUTRAL_UNIT_FILTER;
+  const drawn = drawUnitSprite(c, def, p.x, p.y, dir.x, dir.y, { moving: false, id: 0, now: 0, facing, turretFacing: facing });
+  c.restore();
+  return drawn;
+}
+
+/** A ring on the ground round a unit's tile. */
+function unitRing(c: CanvasRenderingContext2D, s: Sheet, x: number, y: number, color: string, zoom: number, dashed = false): void {
+  c.strokeStyle = color;
+  c.lineWidth = 2 / zoom;
+  if (dashed) c.setLineDash([4 / zoom, 3 / zoom]);
+  quadPath(c, groundRing(s, x, y, 1.6));
+  c.stroke();
+  c.setLineDash([]);
 }
 
 let terrain: TerrainBake | null = null;
@@ -348,6 +412,36 @@ function groundRing(s: Sheet, tx: number, ty: number, r: number): IsoPt[] {
   return out;
 }
 
+/** A patrol route on the ground: the walk out from the unit, the clicks, and a ring closed when it loops. */
+function drawRoute(c: CanvasRenderingContext2D, s: Sheet, r: RouteDraw, zoom: number): void {
+  const pt = (q: { x: number; y: number }): IsoPt => at((q.x + 0.5) * TILE_SIZE, (q.y + 0.5) * TILE_SIZE, heightOf(s, q.x, q.y));
+  const path = [r.from, ...r.points];
+  if (r.cursor) path.push(r.cursor);
+  else if (r.loop && r.points.length > 1) path.push(r.points[0]!);
+  if (path.length < 2) return;
+  c.save();
+  c.globalAlpha = r.strong ? 1 : 0.45;
+  c.strokeStyle = "#e8b84a";
+  c.lineWidth = (r.strong ? 1.8 : 1.2) / zoom;
+  c.setLineDash([6 / zoom, 4 / zoom]);
+  c.beginPath();
+  path.forEach((q, i) => {
+    const p = pt(q);
+    if (i === 0) c.moveTo(p.x, p.y);
+    else c.lineTo(p.x, p.y);
+  });
+  c.stroke();
+  c.setLineDash([]);
+  c.fillStyle = "#e8b84a";
+  r.points.forEach((q, i) => {
+    const p = pt(q);
+    c.beginPath();
+    c.arc(p.x, p.y, (i === 0 && r.loop ? 4.5 : 3) / zoom, 0, Math.PI * 2);
+    c.fill();
+  });
+  c.restore();
+}
+
 /**
  * One frame of the in-game view. `c` is already cleared and scaled for the
  * device pixel ratio; `w` × `h` is the stage in CSS pixels. True when some art
@@ -454,8 +548,72 @@ export function isoDraw(
     });
   });
 
+  const uo = o.units;
+  if (uo) {
+    uo.list.forEach((u, i) => {
+      if (u.inside) return;
+      const wx = (u.x + 0.5) * TILE_SIZE;
+      const wy = (u.y + 0.5) * TILE_SIZE;
+      if (!onScreen(at(wx, wy, heightOf(s, u.x, u.y)), 96)) return;
+      items.push({
+        z: isoDepth(wx, wy),
+        run: () => {
+          if (i === uo.selected) unitRing(c, s, u.x, u.y, "#e8b84a", z);
+          else if (i === uo.hover) unitRing(c, s, u.x, u.y, "rgba(255,244,220,0.7)", z, true);
+          if (!drawMapUnit(c, s, u)) loading = true;
+        },
+      });
+    });
+  }
+
   items.sort((a, b) => a.z - b.z);
   for (const it of items) it.run();
+
+  if (uo) {
+    for (const route of uo.routes) drawRoute(c, s, route, z);
+    if (uo.aim && uo.selected >= 0) {
+      const u = uo.list[uo.selected];
+      if (u) {
+        const a = at((u.x + 0.5) * TILE_SIZE, (u.y + 0.5) * TILE_SIZE, heightOf(s, u.x, u.y));
+        const b = at((uo.aim.x + 0.5) * TILE_SIZE, (uo.aim.y + 0.5) * TILE_SIZE, heightOf(s, uo.aim.x, uo.aim.y));
+        c.strokeStyle = "#e8b84a";
+        c.lineWidth = 1.5 / z;
+        c.setLineDash([5 / z, 4 / z]);
+        c.beginPath();
+        c.moveTo(a.x, a.y);
+        c.lineTo(b.x, b.y);
+        c.stroke();
+        c.setLineDash([]);
+      }
+    }
+    // Men inside a building: a count over its roof, as the match's garrison pips read.
+    c.textAlign = "center";
+    c.textBaseline = "middle";
+    for (const [fi, g] of uo.garrisons) {
+      const f = s.features[fi];
+      if (!f) continue;
+      const r = featureRect(f);
+      const p = at(r.cx * TILE_SIZE, r.cy * TILE_SIZE, lotElev(s, f));
+      const label = `${g.count}/${g.cap}`;
+      c.font = `700 ${11 / z}px "Share Tech Mono", monospace`;
+      const w = c.measureText(label).width + 10 / z;
+      const y = p.y - 42 / z;
+      c.fillStyle = "rgba(20,14,10,0.88)";
+      c.strokeStyle = "#8c8c88";
+      c.lineWidth = 1.5 / z;
+      c.beginPath();
+      c.roundRect(p.x - w / 2, y - 8 / z, w, 16 / z, 3 / z);
+      c.fill();
+      c.stroke();
+      c.fillStyle = "#e8dcc4";
+      c.fillText(label, p.x, y + 0.5 / z);
+    }
+    if (uo.ghost) {
+      const g = uo.ghost;
+      unitRing(c, s, g.x, g.y, g.bad ? "#ff5a4a" : "#7dff6a", z);
+      if (!drawMapUnit(c, s, g, 0.6)) loading = true;
+    }
+  }
 
   // Starts: the Rig's pad and a numbered marker, as the lobby preview marks them.
   const r = Math.max(8, Math.min(16, 12)) / Math.max(0.6, z);

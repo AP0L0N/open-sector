@@ -1,4 +1,18 @@
-import { BUILDING_FACINGS, CIVILIAN_TYPES, HEIGHT_MAX, TILE_SIZE, TILE_SUBDIV } from "./catalog.js";
+import {
+  BUILDING_FACINGS,
+  CIVILIAN_TYPES,
+  HEIGHT_MAX,
+  TILE_SIZE,
+  TILE_SUBDIV,
+  TRAIN_TYPES,
+  catalog,
+  garrisonCandidate,
+  garrisonCapOf,
+  isAircraftType,
+  isNavalType,
+  type TrainType,
+} from "./catalog.js";
+import { PATROL_POINTS_MAX } from "./sim/patrol.js";
 import {
   MAP_DEFENCE_TYPES,
   PLAYTEST_MAP_PREFIX,
@@ -12,6 +26,8 @@ import {
   TILE_TREE,
   TILE_WATER,
   featureBox,
+  featureContains,
+  featureRect,
   featureRectsOverlap,
   getMap,
   isBuiltinMap,
@@ -26,6 +42,7 @@ import {
   type MapFeature,
   type MapFeatureType,
   type MapLamp,
+  type MapUnit,
 } from "./maps.js";
 
 /**
@@ -46,6 +63,8 @@ export interface CustomMapSpec {
   features: MapFeature[];
   /** Street lamps. Left out by maps saved before lamps existed. */
   lamps?: MapLamp[];
+  /** Neutral units. Left out by maps saved before units existed. */
+  units?: MapUnit[];
   updatedAt: number;
 }
 
@@ -76,6 +95,100 @@ export const CUSTOM_MAP_MAX_PLAYERS = 8;
 export const CUSTOM_MAP_MAX_FEATURES = 400;
 export const CUSTOM_MAP_NAME_MAX = 32;
 export const CUSTOM_MAP_MAX_LAMPS = 300;
+export const CUSTOM_MAP_MAX_UNITS = 200;
+
+/** Units a map may stand on the field: everything trained on the ground or the water. Aircraft need an airfield to live. */
+export const MAP_UNIT_TYPES: readonly TrainType[] = TRAIN_TYPES.filter((t) => !isAircraftType(t));
+
+export function isMapUnitType(type: unknown): type is TrainType {
+  return typeof type === "string" && (MAP_UNIT_TYPES as readonly string[]).includes(type);
+}
+
+/** Ground a map unit may stand on: boats on water, everyone else on open land. */
+export function mapUnitGroundOk(type: TrainType, tile: number | undefined): boolean {
+  if (isNavalType(type)) return tile === TILE_WATER;
+  return tile === TILE_EMPTY || tile === TILE_ROAD || tile === TILE_SCRAP || tile === TILE_DIAMOND_SCRAP;
+}
+
+/** World px two units must keep between their centres. */
+function unitGap(a: TrainType, b: TrainType): number {
+  return Math.max(TILE_SIZE, catalog(a).radius + catalog(b).radius);
+}
+
+type UnitGround = {
+  width: number;
+  height: number;
+  tiles: readonly number[];
+  features: readonly MapFeature[];
+  spawns: readonly { x: number; y: number }[];
+  units: readonly MapUnit[];
+};
+
+/** The fine tile a garrisoned map unit sits on: the middle of the lot. */
+export function featureSeat(f: MapFeature): { x: number; y: number } {
+  const r = featureRect(f);
+  return { x: Math.floor(r.cx), y: Math.floor(r.cy) };
+}
+
+/** The building a map unit on (x, y) would garrison, or -1. */
+export function mapUnitHostAt(features: readonly MapFeature[], x: number, y: number): number {
+  return features.findIndex((f) => featureContains(f, x + 0.5, y + 0.5));
+}
+
+/** Map units already inside `features[host]`. */
+export function mapUnitsInside(sheet: UnitGround, host: number, ignore = -1): number {
+  const f = sheet.features[host];
+  if (!f) return 0;
+  return sheet.units.filter((u, i) => i !== ignore && u.inside && featureContains(f, u.x + 0.5, u.y + 0.5)).length;
+}
+
+/**
+ * Why a neutral `type` cannot stand on fine tile (x, y), or null. With `inside`,
+ * why it cannot garrison the building there. `ignore` is the index in `units` of
+ * the unit being moved, which does not block itself.
+ */
+export function mapUnitProblem(
+  sheet: UnitGround,
+  type: TrainType,
+  x: number,
+  y: number,
+  ignore = -1,
+  inside = false,
+): string | null {
+  if (x < 0 || y < 0 || x >= sheet.width || y >= sheet.height) return "Off the map.";
+  if (inside) {
+    const host = mapUnitHostAt(sheet.features, x, y);
+    const f = sheet.features[host];
+    if (!f) return "Not inside a building.";
+    if (!garrisonCandidate(f.type, type)) return `A ${catalog(type).name} cannot garrison the ${catalog(f.type).name}.`;
+    if (mapUnitsInside(sheet, host, ignore) >= garrisonCapOf(f.type)) return `The ${catalog(f.type).name} is full.`;
+    return null;
+  }
+  if (!mapUnitGroundOk(type, sheet.tiles[y * sheet.width + x])) {
+    return isNavalType(type) ? "Boats stand on water." : "Units stand on open ground.";
+  }
+  if (mapUnitHostAt(sheet.features, x, y) >= 0) return "Inside a building.";
+  if (sheet.spawns.some((s) => Math.hypot(s.x - x, s.y - y) <= SPAWN_PAD_R)) return "Too close to a start position.";
+  const near = sheet.units.some(
+    (u, i) => i !== ignore && !u.inside && Math.hypot(u.x - x, u.y - y) * TILE_SIZE < unitGap(u.type, type),
+  );
+  if (near) return "Too close to another unit.";
+  return null;
+}
+
+/** A clean patrol route on the sheet, or null when there is none. */
+function cleanPatrol(raw: unknown, width: number, height: number): { x: number; y: number }[] | null {
+  if (!Array.isArray(raw)) return null;
+  const out: { x: number; y: number }[] = [];
+  for (const p of raw.slice(0, PATROL_POINTS_MAX) as unknown[]) {
+    const o = (p ?? {}) as Record<string, unknown>;
+    if (!Number.isInteger(o.x) || !Number.isInteger(o.y)) return null;
+    const x = Math.max(0, Math.min(width - 1, o.x as number));
+    const y = Math.max(0, Math.min(height - 1, o.y as number));
+    out.push({ x, y });
+  }
+  return out.length > 0 ? out : null;
+}
 /** Starts closer than this would share a pad. */
 export const SPAWN_MIN_GAP = 2 * SPAWN_PAD_R + 2 * TILE_SUBDIV;
 /** How close to the map edge a start may sit, in fine tiles. */
@@ -286,6 +399,32 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     lamps.push({ type: o.type, x, y });
   }
 
+  const rawUnits = m.units ?? [];
+  if (!Array.isArray(rawUnits) || rawUnits.length > CUSTOM_MAP_MAX_UNITS) return bad(`At most ${CUSTOM_MAP_MAX_UNITS} units.`);
+  const units: MapUnit[] = [];
+  const ground = { width, height, tiles, features, spawns, units };
+  for (const u of rawUnits as unknown[]) {
+    const o = (u ?? {}) as Record<string, unknown>;
+    if (!isMapUnitType(o.type) || !Number.isInteger(o.x) || !Number.isInteger(o.y)) return bad("Bad unit.");
+    const facing = o.facing ?? 0;
+    if (typeof facing !== "number" || !Number.isFinite(facing)) return bad("Bad unit.");
+    // A unit the ground or a building has since taken from under it is dropped rather than refused.
+    const inside = o.inside === true;
+    if (mapUnitProblem(ground, o.type, o.x as number, o.y as number, -1, inside)) continue;
+    const unit: MapUnit = { type: o.type, x: o.x as number, y: o.y as number, facing: ((Math.round(facing) % 360) + 360) % 360 };
+    if (inside) {
+      unit.inside = true;
+      units.push(unit);
+      continue;
+    }
+    const patrol = cleanPatrol(o.patrol, width, height);
+    if (patrol) {
+      unit.patrol = patrol;
+      if (o.loop === true && patrol.length >= 2) unit.loop = true;
+    }
+    units.push(unit);
+  }
+
   const updatedAt = typeof m.updatedAt === "number" && Number.isFinite(m.updatedAt) ? m.updatedAt : 0;
   return {
     ok: true,
@@ -301,6 +440,7 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
       spawns,
       features,
       ...(lamps.length > 0 ? { lamps } : {}),
+      ...(units.length > 0 ? { units } : {}),
       updatedAt,
     },
   };
@@ -325,6 +465,7 @@ export function buildCustomMap(spec: CustomMapSpec): MapDef {
     spawns: spec.spawns.map((s) => ({ id: s.id, x: s.x, y: s.y })),
     features,
     ...(spec.lamps?.length ? { lamps: spec.lamps.map((l) => ({ ...l })) } : {}),
+    ...(spec.units?.length ? { units: spec.units.map(copyMapUnit) } : {}),
     custom: { author: spec.author, updatedAt: spec.updatedAt },
   };
 }
@@ -360,6 +501,16 @@ export function specFromMap(id: string, copy: { id: string; name: string; author
     spawns,
     features: map.features.map((f) => ({ ...f })),
     ...(map.lamps?.length ? { lamps: map.lamps.map((l) => ({ ...l })) } : {}),
+    ...(map.units?.length ? { units: map.units.map(copyMapUnit) } : {}),
     updatedAt: 0,
   };
+}
+
+/** A deep copy of a map unit, route and all. */
+export function copyMapUnit(u: MapUnit): MapUnit {
+  const out: MapUnit = { type: u.type, x: u.x, y: u.y, facing: u.facing };
+  if (u.patrol) out.patrol = u.patrol.map((p) => ({ x: p.x, y: p.y }));
+  if (u.loop) out.loop = true;
+  if (u.inside) out.inside = true;
+  return out;
 }

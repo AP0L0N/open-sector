@@ -355,7 +355,8 @@ function steerPatrol(state: MatchState, e: Entity): boolean {
         return true;
       }
       // In the water the gun is silent. Stay on the route instead of wading closer.
-      if (!(unitInWater(state, e) && dist <= range)) {
+      // A unit told to hold its ground keeps walking the route and lets the target come to it.
+      if (!e.holdPosition && !(unitInWater(state, e) && dist <= range)) {
         const goal = e.waypoints[e.waypoints.length - 1];
         if (!goal || Math.hypot(goal.x - t.x, goal.y - t.y) > state.tileSize || state.tick % 5 === 0) {
           setPath(state, e, t.x, t.y);

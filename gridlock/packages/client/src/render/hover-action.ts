@@ -117,7 +117,8 @@ export function resolveHoverAction(args: {
     const occ = hit.garrison?.ownerId;
     // A player-built garrison (the Bunker) stays its builder's side's, empty or not.
     const builder = !isCivilianType(hit.type) && hit.ownerId ? hit.ownerId : undefined;
-    const yours = (!occ || occ === you) && (!builder || builder === you || args.allied(builder));
+    // Neutral map troops inside hold it against everyone.
+    const yours = !hit.garrison?.neutral && (!occ || occ === you) && (!builder || builder === you || args.allied(builder));
     const full = (hit.garrison?.count ?? 0) >= (hit.garrison?.cap ?? 1);
     // A tank deck (the LST) takes vehicles too; every other garrison only the infantry it admits.
     const freeInf = ownUnits.filter((e) => e.garrisonedIn !== hit.id && garrisonCandidate(hit.type, e.type));
@@ -132,7 +133,7 @@ export function resolveHoverAction(args: {
     // A walker-only selection cannot demolish walls. A hostile garrison is still a target.
     if (hit.kind === "building" && ownUnits.every((e) => e.type === "walker")) {
       const occ = hit.garrison?.ownerId;
-      const hostileGarrison = !!occ && occ !== you && !args.allied(occ);
+      const hostileGarrison = !!hit.garrison?.neutral || (!!occ && occ !== you && !args.allied(occ));
       if (!hostileGarrison) return null;
     }
     return "attack";
@@ -264,6 +265,8 @@ function isAttackTarget(
   // A wreck is only shot at on a force-attack order.
   if (hit.wreck) return false;
   const occ = hit.garrison?.ownerId;
+  // A map's neutral troops inside: hostile to every commander.
+  if (hit.garrison?.neutral && (hit.garrison.count ?? 0) > 0) return true;
   if (isGarrisonable(hit.type) && isCivilianType(hit.type)) {
     return !!occ && occ !== you && !allied(occ);
   }

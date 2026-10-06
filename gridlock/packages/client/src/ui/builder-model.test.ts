@@ -29,6 +29,16 @@ import {
   tileWorld,
   wrapTurn,
   playtestProblem,
+  degreesToward,
+  dropGarrison,
+  garrisonHostAt,
+  garrisonUnit,
+  liveUnits,
+  moveUnit,
+  placeUnit,
+  reseatGarrison,
+  unitsInside,
+  unloadGarrison,
   turnFeature,
   lampIndexAt,
   levelDisk,
@@ -332,5 +342,67 @@ describe("builder lamps", () => {
     restoreSheet(s, mark);
     assert.equal(s.lamps.length, 2);
     assert.deepEqual(sheetFromSpec(sheetToSpec(s)).lamps, sheetToSpec(s).lamps);
+  });
+});
+
+describe("builder neutral units", () => {
+  it("stands a unit on open ground and refuses water, a lot, and a crowd", () => {
+    const s = fresh();
+    assert.equal(placeUnit(s, "rifleman", 90, 90, 45), null);
+    assert.deepEqual(s.units[0], { type: "rifleman", x: 90, y: 90, facing: 45 });
+    assert.equal(placeUnit(s, "rifleman", 90, 90, 0), "Too close to another unit.");
+    s.features.push(houseAt("bunker", 120, 120, 0));
+    settle(s);
+    assert.equal(placeUnit(s, "rifleman", 120, 120, 0), "Inside a building.");
+    paintDisk(s, 60, 150, 3, TILE_WATER);
+    assert.equal(placeUnit(s, "ss3", 60, 150, 0), "Units stand on open ground.");
+    assert.equal(placeUnit(s, "gunboat", 60, 150, 0), null, "a boat floats");
+  });
+
+  it("garrisons infantry up to the building's room, and carries them when it moves", () => {
+    const s = fresh();
+    s.features.push(houseAt("bunker", 120, 120, 0));
+    settle(s);
+    const host = garrisonHostAt(s, "rifleman", 120, 120);
+    assert.equal(host, 0);
+    assert.equal(garrisonHostAt(s, "ss3", 120, 120), -1, "a tank does not garrison");
+    let placed = 0;
+    while (garrisonUnit(s, "rifleman", host, 0) === null) placed++;
+    assert.ok(placed > 0);
+    assert.equal(unitsInside(s, host).length, placed);
+    assert.equal(liveUnits(s).length, placed);
+    const before = { ...s.features[0]! };
+    assert.equal(moveFeature(s, 0, before, 16, 0), null);
+    reseatGarrison(s, before, s.features[0]!);
+    assert.equal(unitsInside(s, 0).length, placed, "they moved with it");
+    const out = unloadGarrison(s, 0);
+    assert.equal(out, placed);
+    assert.equal(unitsInside(s, 0).length, 0);
+    assert.ok(s.units.every((u) => !u.inside && garrisonHostAt(s, u.type, u.x, u.y) < 0), "they stand outside");
+    assert.equal(liveUnits(s).length, placed, "every man found ground");
+  });
+
+  it("drops a building's garrison with it", () => {
+    const s = fresh();
+    s.features.push(houseAt("bunker", 120, 120, 0));
+    garrisonUnit(s, "rifleman", 0, 0);
+    assert.equal(dropGarrison(s, s.features[0]!), 1);
+    assert.equal(s.units.length, 0);
+  });
+
+  it("moves a unit with its route, and keeps it through save, load, and undo", () => {
+    const s = fresh();
+    placeUnit(s, "rifleman", 90, 90, 0);
+    s.units[0]!.patrol = [{ x: 100, y: 90 }];
+    const from = { ...s.units[0]!, patrol: [{ x: 100, y: 90 }] };
+    assert.equal(moveUnit(s, 0, from, 4, 2), null);
+    assert.deepEqual(s.units[0]!.patrol, [{ x: 104, y: 92 }]);
+    const mark = markSheet(s);
+    s.units = [];
+    restoreSheet(s, mark);
+    assert.equal(s.units.length, 1);
+    const back = sheetFromSpec(sheetToSpec(s));
+    assert.deepEqual(back.units, s.units);
+    assert.equal(degreesToward(0, 0, 0, 5), 90, "south");
   });
 });

@@ -285,6 +285,9 @@ import { blendPadInPlace } from "./pad-blend.js";
 import { MAULER_SCALE } from "./mauler-cart.js";
 
 /** Extra on-map scale for every unit (sprites and box fallbacks). */
+/** A map's neutral unit art: the colour drained, kept bright enough to tell from a hulk. */
+export const NEUTRAL_UNIT_FILTER = "grayscale(0.92) brightness(1.06)";
+
 export const UNIT_VISUAL_SCALE = 1.25;
 /** Infantry draw smaller than vehicles so tanks read larger, then another 15%. */
 export const INFANTRY_VISUAL_SCALE = UNIT_VISUAL_SCALE * 0.85 * 0.85;

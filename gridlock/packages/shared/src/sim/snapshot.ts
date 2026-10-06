@@ -430,6 +430,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
               ownerId: conceal ? undefined : occOwner || undefined,
               bars: conceal || occBars.length === 0 ? undefined : occBars,
               hide: occFriendly && occBars.length > 0 && e.garrisonHide ? true : undefined,
+              neutral: !conceal && occBars.length > 0 && !occOwner ? true : undefined,
             };
           })()
         : transport && occBars.length > 0

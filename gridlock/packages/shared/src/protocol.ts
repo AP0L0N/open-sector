@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 101;
+export const PROTOCOL_VERSION = 102;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -197,6 +197,8 @@ export interface EntityView {
     ownerId?: string;
     bars?: { hp: number; hpMax: number }[];
     hide?: boolean;
+    /** Held by a map's neutral troops: no one's, and hostile to every commander. */
+    neutral?: boolean;
   };
   /** Infantry taking this building. Omitted when idle. */
   capture?: { ownerId: string; progress: number };

@@ -9,7 +9,7 @@ import {
   submergesOf,
   torpedoesOf,
 } from "../catalog.js";
-import { allies, footprint, isWater, jetAloft, makeEntity, worldToTile } from "./geo.js";
+import { allies, ownerless, footprint, isWater, jetAloft, makeEntity, worldToTile } from "./geo.js";
 import type { DiveState, Entity, MatchState, Projectile } from "./types.js";
 
 /**
@@ -114,7 +114,7 @@ export function shipLive(e: Entity | undefined): e is Entity {
 /** A submarine this ship's sonar hears: an enemy boat, down or up, inside SONAR_RANGE_TILES. */
 export function sonarHears(state: MatchState, ship: Entity, sub: Entity): boolean {
   if (!shipLive(ship) || !submergesOf(sub.type) || sub.hp <= 0 || sub.wreck) return false;
-  if (!sub.ownerId || allies(state, ship.ownerId, sub.ownerId)) return false;
+  if (ownerless(sub) || allies(state, ship.ownerId, sub.ownerId)) return false;
   return Math.hypot(sub.x - ship.x, sub.y - ship.y) <= SONAR_RANGE_TILES * state.tileSize;
 }
 

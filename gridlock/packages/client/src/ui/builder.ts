@@ -22,7 +22,13 @@ import {
   TILE_TREE,
   TILE_WATER,
   MAP_DEFENCE_TYPES,
+  MAP_UNIT_TYPES,
+  PATROL_POINTS_MAX,
   catalog,
+  connectPatrolPoints,
+  copyMapUnit,
+  garrisonCapOf,
+  isInfantryType,
   featureAngle,
   featureBox,
   featureRect,
@@ -41,6 +47,8 @@ import {
   type MapDefenceType,
   type MapFeature,
   type MapFeatureType,
+  type MapUnit,
+  type TrainType,
 } from "@gridlock/shared";
 import type { Ctx } from "../ctx.js";
 import { forgetTerrain } from "../render/terrain.js";
@@ -56,7 +64,8 @@ import rockUrl from "../assets/terrain/ground-rock.png";
 import { el } from "./dom.js";
 import { drawMapPreview } from "./map-preview.js";
 import * as M from "./builder-model.js";
-import { isoChanged, isoDraw, isoRestamp } from "./builder-iso.js";
+import { isoChanged, isoDraw, isoRestamp, type RouteDraw, type UnitOverlay } from "./builder-iso.js";
+import { SIDEBAR_GROUPS, sidebarGroupOf, type SidebarGroup } from "./sidebar-groups.js";
 import { isoFit, isoPick, isoScreenOf, isoZoomAt, type IsoCam } from "./builder-iso-cam.js";
 
 const KEY_STORE = "gridlock.mapKey";
@@ -69,7 +78,7 @@ const UNDO_DEPTH = 40;
 /** Raise / Lower apply one step this often while the button is held. */
 const LIFT_EVERY_MS = 70;
 
-type ToolId = "select" | "raise" | "lower" | "level" | "ground" | "house" | "defence" | "lamp" | "road" | "spawn" | "erase";
+type ToolId = "select" | "raise" | "lower" | "level" | "ground" | "house" | "defence" | "lamp" | "road" | "unit" | "spawn" | "erase";
 
 interface GroundKind {
   tile: number;
@@ -104,6 +113,8 @@ interface Tool {
   house: CivilianType;
   defence: MapDefenceType;
   lamp: LampType;
+  /** The neutral unit the Units tool stands on the map. */
+  unit: TrainType;
   /** A house's door side, a quarter at a time. */
   facing: number;
   /** A defence's heading in 15° steps from east, as the wheel turns it in a match. */
@@ -115,7 +126,11 @@ interface Tool {
 }
 
 /** What the Select tool holds: a placed building or defence by index, or a start by number. */
-type Selection = { kind: "feature"; index: number } | { kind: "spawn"; id: number };
+type Selection = { kind: "feature"; index: number } | { kind: "spawn"; id: number } | { kind: "unit"; index: number };
+
+/** Unit tabs, as the match's sidebar groups them. Aircraft are not map units. */
+const UNIT_TABS: readonly SidebarGroup[] = ["infantry", "tanks", "naval"];
+const COLLAPSE_STORE = "gridlock.builderCollapsed";
 
 interface Stage {
   root: HTMLElement;
@@ -151,6 +166,7 @@ const tool: Tool = {
   house: "cottage",
   defence: "bunker",
   lamp: "streetlamp",
+  unit: "rifleman",
   facing: 1,
   turn: M.QUARTER_TURN,
   brush: 6,
@@ -158,6 +174,17 @@ const tool: Tool = {
   roadWidth: M.ROAD_WIDTH,
 };
 let selected: Selection | null = null;
+/** The Units tab on show. */
+let unitTab: SidebarGroup = "infantry";
+/**
+ * An order being given to the selected unit, as in a match, in the In-game view only:
+ * Rotate (R) turns it toward the next click; Patrol (Y) takes clicks, a click on an
+ * earlier point closes a loop, and right-click or Enter sets the route.
+ */
+let unitMode: null | "rotate" | "patrol" = null;
+const patrolDraft: { points: { x: number; y: number }[]; loop: boolean } = { points: [], loop: false };
+/** Tool sections folded shut, by title. Kept across visits. */
+const collapsed = loadCollapsed();
 /**
  * A sandbag, wall, or road line being drawn, as in a match: the press sets its start, each
  * click pins a corner, Enter lays it. World points on fine-tile centres.
@@ -429,7 +456,7 @@ function placingType(): MapFeatureType | null {
 
 /** A defence or the Road is armed: the wheel turns it. */
 function turningTool(): boolean {
-  return tool.id === "defence" || tool.id === "road";
+  return tool.id === "defence" || tool.id === "road" || tool.id === "unit";
 }
 
 /** The armed tool draws a line: sandbags, a wall, or a road. */
@@ -591,6 +618,7 @@ function drawStage(): void {
     const bad = M.lampProblem(s, hover.x, hover.y) !== null;
     lampMark(hover.x, hover.y, tool.lamp, bad ? "#ff5a4a" : "#7dff6a");
   }
+  drawPlanUnits(c, s, sx, sy, z);
   const picked = selectedFeature();
   if (picked) frame(picked, "#e8b84a");
   if (tool.id === "select" && hover.inside && !drag) {
@@ -695,6 +723,113 @@ function drawStage(): void {
   }
 }
 
+/** Units on the plan: grey discs with a heading tick, routes dashed, a count on each held building. */
+function drawPlanUnits(c: CanvasRenderingContext2D, s: M.Sheet, sx: (x: number) => number, sy: (y: number) => number, z: number): void {
+  const routes = unitRoutes(s);
+  c.strokeStyle = "#e8b84a";
+  for (const rt of routes) {
+    const pts = [rt.from, ...rt.points];
+    if (rt.cursor) pts.push(rt.cursor);
+    else if (rt.loop && rt.points.length > 1) pts.push(rt.points[0]!);
+    c.globalAlpha = rt.strong ? 1 : 0.45;
+    c.lineWidth = rt.strong ? 1.8 : 1.2;
+    c.setLineDash([5, 4]);
+    c.beginPath();
+    pts.forEach((p, i) => (i === 0 ? c.moveTo(sx(p.x + 0.5), sy(p.y + 0.5)) : c.lineTo(sx(p.x + 0.5), sy(p.y + 0.5))));
+    c.stroke();
+    c.setLineDash([]);
+    c.fillStyle = "#e8b84a";
+    for (const p of rt.points) {
+      c.beginPath();
+      c.arc(sx(p.x + 0.5), sy(p.y + 0.5), 2.5, 0, Math.PI * 2);
+      c.fill();
+    }
+  }
+  c.globalAlpha = 1;
+  const disc = (u: { type: TrainType; x: number; y: number; facing: number }, ring: string | null, alpha = 1): void => {
+    const cx = sx(u.x + 0.5);
+    const cy = sy(u.y + 0.5);
+    const r = Math.max(3, Math.min(9, (catalog(u.type).radius / TILE_SIZE) * z));
+    const a = (u.facing * Math.PI) / 180;
+    c.globalAlpha = alpha;
+    c.fillStyle = "#8c8c88";
+    c.strokeStyle = ring ?? "#1d1c18";
+    c.lineWidth = ring ? 2 : 1.25;
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.fill();
+    c.stroke();
+    c.strokeStyle = "#1d1c18";
+    c.lineWidth = 1.5;
+    c.beginPath();
+    c.moveTo(cx, cy);
+    c.lineTo(cx + Math.cos(a) * (r + 3), cy + Math.sin(a) * (r + 3));
+    c.stroke();
+    c.globalAlpha = 1;
+  };
+  const sel = selected?.kind === "unit" ? selected.index : -1;
+  const hov = tool.id === "select" && hover.inside && !drag ? standingUnitAt(s, hover.x, hover.y) : -1;
+  s.units.forEach((u, i) => {
+    if (u.inside) return;
+    disc(u, i === sel ? "#e8b84a" : i === hov ? "rgba(255,244,220,0.8)" : null);
+  });
+  c.textAlign = "center";
+  c.textBaseline = "middle";
+  c.font = "700 11px 'Share Tech Mono', monospace";
+  for (const [fi, g] of garrisonCounts(s)) {
+    const f = s.features[fi];
+    if (!f) continue;
+    const rc = featureRect(f);
+    const label = `${g.count}/${g.cap}`;
+    const w = c.measureText(label).width + 8;
+    c.fillStyle = "rgba(20,14,10,0.88)";
+    c.fillRect(sx(rc.cx) - w / 2, sy(rc.cy) - 8, w, 16);
+    c.fillStyle = "#e8dcc4";
+    c.fillText(label, sx(rc.cx), sy(rc.cy) + 0.5);
+  }
+  const g = unitGhost(s);
+  if (g) disc(g, g.bad ? "#ff5a4a" : "#7dff6a", 0.7);
+}
+
+/** Men inside each building, by feature index. */
+function garrisonCounts(s: M.Sheet): Map<number, { count: number; cap: number }> {
+  const out = new Map<number, { count: number; cap: number }>();
+  s.features.forEach((f, i) => {
+    const n = M.unitsInside(s, i).length;
+    if (n > 0) out.set(i, { count: n, cap: garrisonCapOf(f.type) });
+  });
+  return out;
+}
+
+/** Patrol routes to draw: every unit's own, and the one being drawn for the selected unit. */
+function unitRoutes(s: M.Sheet): RouteDraw[] {
+  const sel = selected?.kind === "unit" ? selected.index : -1;
+  const out: RouteDraw[] = [];
+  s.units.forEach((u, i) => {
+    if (u.inside) return;
+    if (i === sel && unitMode === "patrol") {
+      out.push({
+        from: u,
+        points: patrolDraft.points,
+        loop: patrolDraft.loop,
+        cursor: !patrolDraft.loop && hover.inside ? { x: hover.x, y: hover.y } : null,
+        strong: true,
+      });
+      return;
+    }
+    if (u.patrol?.length) out.push({ from: u, points: u.patrol, loop: !!u.loop, strong: i === sel });
+  });
+  return out;
+}
+
+/** The unit the Units tool would set down under the cursor; inside a building it shows nothing. */
+function unitGhost(s: M.Sheet): (MapUnit & { bad: boolean }) | null {
+  if (tool.id !== "unit" || !hover.inside || drag) return null;
+  if (isInfantryType(tool.unit) && M.garrisonHostAt(s, tool.unit, hover.x, hover.y) >= 0) return null;
+  const facing = turnDegrees(tool.turn);
+  return { type: tool.unit, x: hover.x, y: hover.y, facing, bad: M.unitProblem(s, tool.unit, hover.x, hover.y) !== null };
+}
+
 /** The rotate and line hint beside the cursor, at screen point (ax, ay). */
 function drawTurnHint(c: CanvasRenderingContext2D, ax: number, ay: number, sections: number, road: readonly Pt[]): void {
   const lines = [`Scroll to rotate · ${turnDegrees(tool.turn)}°`];
@@ -741,13 +876,19 @@ function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
   }
   const loading = isoDraw(c, s, isoCam, w, h, dpr, {
     selectedFeature: selected?.kind === "feature" ? selected.index : -1,
-    hoverFeature: tool.id === "select" && hover.inside && !drag ? M.featureIndexAt(s, hover.x, hover.y) : -1,
+    hoverFeature:
+      tool.id === "select" && hover.inside && !drag
+        ? M.featureIndexAt(s, hover.x, hover.y)
+        : tool.id === "unit" && hover.inside && isInfantryType(tool.unit)
+          ? M.garrisonHostAt(s, tool.unit, hover.x, hover.y)
+          : -1,
     selectedSpawn: selected?.kind === "spawn" ? selected.id : 0,
     ghosts,
     lineStart: pieces.length > 0 || road.length > 0 ? (line.points[0] ?? line.press) : null,
     road: M.roadQuads(road, tool.roadWidth),
     spawnGhost,
     brush: pointerOver && isBrush(tool.id) && brushReaches(hover.x, hover.y) ? { x: hover.x, y: hover.y, r: tool.brush } : null,
+    units: unitOverlay(s),
   }, queueDraw);
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (pointerOver && hover.inside && turningTool()) {
@@ -756,6 +897,19 @@ function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
   }
   // Sprites still loading: look again shortly.
   if (loading) setTimeout(queueDraw, 200);
+}
+
+function unitOverlay(s: M.Sheet): UnitOverlay {
+  const g = unitGhost(s);
+  return {
+    list: s.units,
+    selected: selected?.kind === "unit" ? selected.index : -1,
+    hover: tool.id === "select" && hover.inside && !drag ? standingUnitAt(s, hover.x, hover.y) : -1,
+    ghost: g,
+    routes: unitRoutes(s),
+    garrisons: garrisonCounts(s),
+    aim: unitMode === "rotate" && hover.inside ? { x: hover.x, y: hover.y } : null,
+  };
 }
 
 /** The stage's "In-game view" checkbox. */
@@ -773,6 +927,9 @@ function gameViewToggle(): HTMLElement {
 
 function setGameView(on: boolean): void {
   gameView = on;
+  // Unit orders and garrisons are given in the In-game view only.
+  if (!on) unitMode = null;
+  paintSelection();
   isoChanged();
   try {
     store()?.setItem(GAME_VIEW_STORE, on ? "1" : "0");
@@ -795,6 +952,7 @@ type Drag =
   | { kind: "brush"; lastX: number; lastY: number; timer: ReturnType<typeof setInterval> | null }
   | { kind: "spawn"; id: number; moved: boolean }
   | { kind: "move"; index: number; from: MapFeature; startX: number; startY: number; moved: boolean }
+  | { kind: "unit"; index: number; from: MapUnit; startX: number; startY: number; moved: boolean }
   /** A press on a sandbag or wall line: the release pins its start or its next corner. */
   | { kind: "line" }
   /** Right or middle drag. A right click that never moved takes back a line corner. */
@@ -843,6 +1001,12 @@ function dabLine(x0: number, y0: number, x1: number, y1: number): void {
 function eraseAt(x: number, y: number): boolean {
   const s = sheet;
   if (!s) return false;
+  const ui = standingUnitAt(s, x, y);
+  if (ui >= 0) {
+    s.units.splice(ui, 1);
+    selected = null;
+    return true;
+  }
   const li = M.lampIndexAt(s, x, y);
   if (li >= 0) {
     s.lamps.splice(li, 1);
@@ -850,6 +1014,8 @@ function eraseAt(x: number, y: number): boolean {
   }
   const fi = M.featureIndexAt(s, x, y);
   if (fi >= 0) {
+    // The men inside go with the building.
+    M.dropGarrison(s, s.features[fi]!);
     s.features.splice(fi, 1);
     selected = null;
     return true;
@@ -870,14 +1036,20 @@ function deleteSelected(): void {
   pushUndo();
   if (selected.kind === "feature") {
     const f = s.features[selected.index];
+    const men = f ? M.dropGarrison(s, f) : 0;
     s.features.splice(selected.index, 1);
-    say(f ? `${catalog(f.type).name} removed.` : "");
+    say(f ? `${catalog(f.type).name} removed${men ? ` with ${men} inside` : ""}.` : "");
+  } else if (selected.kind === "unit") {
+    const u = s.units[selected.index];
+    s.units.splice(selected.index, 1);
+    say(u ? `${catalog(u.type).name} removed.` : "");
   } else {
     const id = selected.id;
     s.spawns = s.spawns.filter((sp) => sp.id !== id);
     say(`Start ${id} removed.`);
   }
   selected = null;
+  unitMode = null;
   finishStroke();
   paintSelection();
 }
@@ -887,14 +1059,151 @@ function turnSelected(steps?: number): void {
   const s = sheet;
   if (!s || selected?.kind !== "feature") return;
   pushUndo();
+  const before = { ...s.features[selected.index]! };
   const problem = M.turnFeature(s, selected.index, steps);
   if (problem) {
     undo.pop();
     say(`Cannot turn it here: ${problem.toLowerCase()}`, "bad");
     return;
   }
+  M.reseatGarrison(s, before, s.features[selected.index]!);
   say("");
   finishStroke();
+}
+
+/** A unit standing on the field near the cursor (not one inside a building), or -1. */
+function standingUnitAt(s: M.Sheet, x: number, y: number): number {
+  const i = M.unitIndexAt(s, x, y);
+  return i >= 0 && !s.units[i]!.inside ? i : -1;
+}
+
+function selectedUnit(): MapUnit | null {
+  if (!sheet || selected?.kind !== "unit") return null;
+  return sheet.units[selected.index] ?? null;
+}
+
+/**
+ * Stand the Units tool's unit on the tile, or, for infantry dropped on a house,
+ * bunker, or tower in the In-game view, put him inside it.
+ */
+function placeUnitAt(x: number, y: number): void {
+  const s = sheet;
+  if (!s) return;
+  const facing = turnDegrees(tool.turn);
+  const host = isInfantryType(tool.unit) ? M.garrisonHostAt(s, tool.unit, x, y) : -1;
+  pushUndo();
+  let problem: string | null;
+  if (host >= 0) {
+    if (!gameView) {
+      undo.pop();
+      return say("Garrisoning is set in the In-game view: tick it, then drop the man on the building.", "bad");
+    }
+    problem = M.garrisonUnit(s, tool.unit, host, facing);
+  } else {
+    problem = M.placeUnit(s, tool.unit, x, y, facing);
+  }
+  if (problem) {
+    undo.pop();
+    return say(problem, "bad");
+  }
+  const f = host >= 0 ? s.features[host] : undefined;
+  say(f ? `${catalog(tool.unit).name} garrisons the ${catalog(f.type).name}.` : "");
+  finishStroke();
+}
+
+/** Rotate (R) or Patrol (Y) for the selected unit, as the match gives those orders. In-game view only. */
+function setUnitMode(mode: null | "rotate" | "patrol"): void {
+  const u = selectedUnit();
+  if (mode && (!u || !gameView)) {
+    if (u && !gameView) say("Rotate and Patrol are given in the In-game view.", "bad");
+    return;
+  }
+  unitMode = unitMode === mode ? null : mode;
+  patrolDraft.points = [];
+  patrolDraft.loop = false;
+  if (unitMode === "rotate") say("Click where it should face. Esc cancels.");
+  else if (unitMode === "patrol")
+    say("Click the patrol points. Click an earlier point to close a loop. Right-click or Enter sets the route; Esc cancels.");
+  else say("");
+  paintSelection();
+  queueDraw();
+}
+
+/** Turn the selected unit toward the clicked tile. */
+function commitRotate(x: number, y: number): void {
+  const s = sheet;
+  const u = selectedUnit();
+  if (!s || !u) return;
+  pushUndo();
+  u.facing = M.degreesToward(u.x, u.y, x, y);
+  unitMode = null;
+  say(`Faces ${u.facing}°.`);
+  finishStroke();
+  paintSelection();
+}
+
+/** A patrol click: a new point, or one on an earlier point that closes the loop. */
+function addPatrolPoint(x: number, y: number): void {
+  if (patrolDraft.loop) return;
+  const pts = patrolDraft.points;
+  // An earlier point (not the pen itself) under the click closes a ring.
+  const hit = pts.findIndex((p, i) => i < pts.length - 1 && Math.hypot(p.x - x, p.y - y) <= 2);
+  if (hit >= 0 && pts.length >= 2) {
+    const ring = connectPatrolPoints(pts, hit);
+    if (ring) {
+      patrolDraft.points = ring;
+      patrolDraft.loop = true;
+      say("Loop closed. Right-click or Enter sets the route.");
+    }
+    queueDraw();
+    return;
+  }
+  if (pts.length >= PATROL_POINTS_MAX) return say(`A patrol takes at most ${PATROL_POINTS_MAX} points.`, "bad");
+  const prev = pts[pts.length - 1];
+  if (prev && prev.x === x && prev.y === y) return;
+  pts.push({ x, y });
+  queueDraw();
+}
+
+/** Set the drawn route on the selected unit. No points clears its patrol. */
+function commitPatrol(): void {
+  const s = sheet;
+  const u = selectedUnit();
+  unitMode = null;
+  if (!s || !u) return;
+  pushUndo();
+  if (patrolDraft.points.length === 0) {
+    delete u.patrol;
+    delete u.loop;
+    say("Patrol cleared: it stands guard.");
+  } else {
+    u.patrol = patrolDraft.points.map((p) => ({ ...p }));
+    if (patrolDraft.loop) u.loop = true;
+    else delete u.loop;
+    say(patrolDraft.loop ? "Patrol set: it circles the loop." : "Patrol set: it walks out and back.");
+  }
+  patrolDraft.points = [];
+  patrolDraft.loop = false;
+  finishStroke();
+  paintSelection();
+}
+
+/** Walk the selected building's garrison out onto the ground beside it. */
+function unloadSelected(): void {
+  const s = sheet;
+  if (!s || selected?.kind !== "feature") return;
+  if (!gameView) return say("Unload works in the In-game view.", "bad");
+  const inside = M.unitsInside(s, selected.index).length;
+  if (inside === 0) return;
+  pushUndo();
+  const out = M.unloadGarrison(s, selected.index);
+  if (out === 0) {
+    undo.pop();
+    return say("No room round the building to stand them.", "bad");
+  }
+  say(out < inside ? `${out} came out; ${inside - out} found no room and stay inside.` : `${out} came out.`);
+  finishStroke();
+  paintSelection();
 }
 
 /** Set down one building or defence from the placing tools. False when the spot is refused. */
@@ -987,6 +1296,12 @@ function onDown(e: PointerEvent): void {
   const s = sheet;
   if (!s || !stage) return;
   stage.canvas.setPointerCapture(e.pointerId);
+  // As in a match: right-click finishes a patrol (or drops a rotate).
+  if (e.button === 2 && unitMode) {
+    if (unitMode === "patrol" && patrolDraft.points.length > 0) commitPatrol();
+    else setUnitMode(null);
+    return;
+  }
   if (e.button === 1 || e.button === 2) {
     drag = { kind: "pan", x: e.clientX, y: e.clientY, px: view.px, py: view.py, button: e.button, moved: false, camX: isoCam.camX, camY: isoCam.camY };
     return;
@@ -998,6 +1313,8 @@ function onDown(e: PointerEvent): void {
   // A brush whose ring overlaps the sheet paints from past the edge; everything else needs a tile.
   const brushing = isBrush(tool.id) && !(tool.id === "level" && e.altKey);
   if (brushing ? !brushReaches(t.x, t.y) : !t.inside) return;
+  if (unitMode === "rotate") return commitRotate(t.x, t.y);
+  if (unitMode === "patrol") return addPatrolPoint(t.x, t.y);
   if (tool.id === "level" && e.altKey) {
     tool.level = s.heights[t.y * s.width + t.x]!;
     if (ctxRef) mountOrRefresh(ctxRef);
@@ -1006,7 +1323,7 @@ function onDown(e: PointerEvent): void {
   }
   if (
     tool.id === "erase" ||
-    (e.shiftKey && (tool.id === "house" || tool.id === "defence" || tool.id === "lamp" || tool.id === "spawn" || tool.id === "select"))
+    (e.shiftKey && (tool.id === "house" || tool.id === "defence" || tool.id === "lamp" || tool.id === "unit" || tool.id === "spawn" || tool.id === "select"))
   ) {
     pushUndo();
     if (eraseAt(t.x, t.y)) finishStroke();
@@ -1016,9 +1333,14 @@ function onDown(e: PointerEvent): void {
     return;
   }
   if (tool.id === "select") {
-    const fi = M.featureIndexAt(s, t.x, t.y);
-    const si = fi < 0 ? M.spawnIndexAt(s, t.x, t.y) : -1;
-    if (fi >= 0) {
+    const ui = standingUnitAt(s, t.x, t.y);
+    const fi = ui < 0 ? M.featureIndexAt(s, t.x, t.y) : -1;
+    const si = ui < 0 && fi < 0 ? M.spawnIndexAt(s, t.x, t.y) : -1;
+    if (ui >= 0) {
+      selected = { kind: "unit", index: ui };
+      pushUndo();
+      drag = { kind: "unit", index: ui, from: copyMapUnit(s.units[ui]!), startX: t.x, startY: t.y, moved: false };
+    } else if (fi >= 0) {
       selected = { kind: "feature", index: fi };
       pushUndo();
       drag = { kind: "move", index: fi, from: { ...s.features[fi]! }, startX: t.x, startY: t.y, moved: false };
@@ -1050,6 +1372,7 @@ function onDown(e: PointerEvent): void {
     finishStroke();
     return;
   }
+  if (tool.id === "unit") return placeUnitAt(t.x, t.y);
   if (tool.id === "lamp") {
     pushUndo();
     const problem = M.placeLamp(s, tool.lamp, t.x, t.y);
@@ -1124,10 +1447,17 @@ function onMove(e: PointerEvent): void {
   } else if (drag?.kind === "erase" && t.inside) {
     if (eraseAt(t.x, t.y)) finishStroke();
   } else if (drag?.kind === "move" && t.inside) {
-    // Holds the last spot that fit; a refused one leaves it where it was.
+    // Holds the last spot that fit; a refused one leaves it where it was. Its garrison rides along.
+    const before = { ...s.features[drag.index]! };
     if (!M.moveFeature(s, drag.index, drag.from, t.x - drag.startX, t.y - drag.startY)) {
       const f = s.features[drag.index]!;
+      M.reseatGarrison(s, before, f);
       drag.moved = f.x !== drag.from.x || f.y !== drag.from.y;
+    }
+  } else if (drag?.kind === "unit" && t.inside) {
+    if (!M.moveUnit(s, drag.index, drag.from, t.x - drag.startX, t.y - drag.startY)) {
+      const u = s.units[drag.index]!;
+      drag.moved = u.x !== drag.from.x || u.y !== drag.from.y;
     }
   } else if (drag?.kind === "spawn" && t.inside) {
     const moving = drag;
@@ -1161,6 +1491,14 @@ function onUp(): void {
     if (!d.moved) {
       undo.pop();
       say("Drag to move it. R turns it, Delete removes it.");
+      return;
+    }
+    say("");
+    finishStroke();
+  } else if (d.kind === "unit") {
+    if (!d.moved) {
+      undo.pop();
+      say(gameView ? "Drag to move it. R rotates it, Y gives it a patrol, Delete removes it." : "Drag to move it. Delete removes it. Rotate and Patrol are in the In-game view.");
       return;
     }
     say("");
@@ -1236,6 +1574,11 @@ function paintChecks(): void {
   if (far.length > 0) add("warn", `Starts with no scrap in yard range: ${far.join(", ")} (an engineer would have to walk out)`);
   const defences = M.defenceCount(s);
   add("ok", `Buildings: ${s.features.length - defences} · Neutral defences: ${defences} · Lamps: ${M.liveLamps(s).length}`);
+  const units = M.liveUnits(s);
+  const inside = units.filter((u) => u.inside).length;
+  if (units.length > 0) add("ok", `Neutral units: ${units.length}${inside ? ` (${inside} garrisoned)` : ""}`);
+  const lost = s.units.length - units.length;
+  if (lost > 0) add("warn", `${lost} unit(s) lost their footing (water, a building, or a start pad) and will not be saved`);
   add(s.spawns.length > 0 ? "ok" : "warn", s.spawns.length > 0 ? "Play test: ready" : "Play test: place a start first");
   const problem = M.sheetProblem(s);
   if (problem && !problem.startsWith("Place all")) add("bad", problem);
@@ -1359,9 +1702,36 @@ function remove(ctx: Ctx, id: string): void {
 
 // --- DOM -----------------------------------------------------------------------
 
+function loadCollapsed(): Set<string> {
+  try {
+    const raw = JSON.parse(store()?.getItem(COLLAPSE_STORE) ?? "[]") as unknown;
+    return new Set(Array.isArray(raw) ? raw.filter((v): v is string => typeof v === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+/** A titled block. Clicking the title folds it shut or open; the choice outlives the screen. */
 function section(title: string, ...kids: Node[]): HTMLElement {
-  const wrap = el("div", { class: "panel-sub" });
-  wrap.append(el("h2", { text: title }), ...kids);
+  const shut = collapsed.has(title);
+  const wrap = el("div", { class: `panel-sub bld-sec${shut ? " is-collapsed" : ""}` });
+  const head = el("button", { class: "bld-sec-head", attrs: { type: "button", "aria-expanded": String(!shut), title: "Fold or unfold" } });
+  head.append(el("h2", { text: title }), el("span", { class: "bld-sec-caret", attrs: { "aria-hidden": "true" } }));
+  const body = el("div", { class: "bld-sec-body" });
+  body.append(...kids);
+  head.addEventListener("click", () => {
+    const now = !collapsed.has(title);
+    if (now) collapsed.add(title);
+    else collapsed.delete(title);
+    wrap.classList.toggle("is-collapsed", now);
+    head.setAttribute("aria-expanded", String(!now));
+    try {
+      store()?.setItem(COLLAPSE_STORE, JSON.stringify([...collapsed]));
+    } catch {
+      // Private window: folds last this visit.
+    }
+  });
+  wrap.append(head, body);
   return wrap;
 }
 
@@ -1428,6 +1798,7 @@ function lampThumb(type: LampType): HTMLCanvasElement {
 
 function setTool(ctx: Ctx, patch: Partial<Tool>): void {
   Object.assign(tool, patch);
+  if (patch.id && patch.id !== "select") unitMode = null;
   if (!lineTool()) dropLine();
   mountOrRefresh(ctx);
 }
@@ -1439,33 +1810,70 @@ function paintSelection(): void {
   if (!box) return;
   box.innerHTML = "";
   const f = selectedFeature();
+  const u = selectedUnit();
   const startId = selected?.kind === "spawn" ? selected.id : 0;
   const start = startId ? s?.spawns.find((sp) => sp.id === startId) : undefined;
-  if (!f && !start) {
+  if (!f && !start && !u) {
     box.append(
       el("p", {
         class: "bld-hint",
-        text: tool.id === "select" ? "Click a building, defence, or start to pick it up. Drag to move it." : "Pick Select to move or remove what you placed.",
+        text:
+          tool.id === "select"
+            ? "Click a building, defence, unit, or start to pick it up. Drag to move it."
+            : "Pick Select to move or remove what you placed.",
       }),
     );
     return;
   }
-  const faces = ["east", "south", "west", "north"];
-  const heading = f ? (f.turn != null ? `${turnDegrees(f.turn)}°` : faces[f.facing & 3]) : "";
-  const label = f ? `${catalog(f.type).name} · faces ${heading}` : `Start ${start!.id}`;
-  box.append(el("div", { class: "bld-sel-name", text: label }));
+  const btn = (text: string, title: string, on: boolean, onClick: () => void, disabled = false): HTMLButtonElement => {
+    const b = el("button", { class: `btn ${on ? "" : "btn-ghost "}bld-mini`, text, attrs: { type: "button", title } });
+    b.disabled = disabled;
+    b.addEventListener("click", onClick);
+    return b;
+  };
   const row = el("div", { class: "btn-row" });
-  if (f) {
-    const turn = el("button", { class: "btn btn-ghost bld-mini", text: "Turn (R)", attrs: { type: "button" } });
-    turn.addEventListener("click", () => {
-      turnSelected();
-      paintSelection();
-    });
-    row.append(turn);
+  if (u && s) {
+    const route = u.patrol?.length ? ` · patrols ${u.patrol.length} point${u.patrol.length === 1 ? "" : "s"}${u.loop ? " in a loop" : ""}` : "";
+    box.append(el("div", { class: "bld-sel-name", text: `Neutral ${catalog(u.type).name} · faces ${u.facing}°${route}` }));
+    const iso = gameView;
+    const why = iso ? "" : "Tick In-game view to give orders.";
+    row.append(
+      btn("Rotate (R)", iso ? "Click where it should face." : why, unitMode === "rotate", () => setUnitMode("rotate"), !iso),
+      btn("Patrol (Y)", iso ? "Click points; an earlier point closes a loop; right-click sets it." : why, unitMode === "patrol", () => setUnitMode("patrol"), !iso),
+    );
+    if (u.patrol?.length) {
+      row.append(
+        btn("Stop patrol", "It stands guard where it is.", false, () => {
+          patrolDraft.points = [];
+          patrolDraft.loop = false;
+          commitPatrol();
+        }),
+      );
+    }
+    if (!iso) box.append(el("p", { class: "bld-hint", text: why }));
+  } else if (f && s) {
+    const faces = ["east", "south", "west", "north"];
+    const heading = f.turn != null ? `${turnDegrees(f.turn)}°` : faces[f.facing & 3];
+    box.append(el("div", { class: "bld-sel-name", text: `${catalog(f.type).name} · faces ${heading}` }));
+    row.append(
+      btn("Turn (R)", "Turn it", false, () => {
+        turnSelected();
+        paintSelection();
+      }),
+    );
+    const cap = garrisonCapOf(f.type);
+    const inside = selected?.kind === "feature" ? M.unitsInside(s, selected.index) : [];
+    if (cap > 0) {
+      const names = inside.map((i) => catalog(s.units[i]!.type).name).join(", ");
+      box.append(el("p", { class: "bld-hint", text: `Neutral garrison: ${inside.length} / ${cap}${names ? ` (${names})` : ""}` }));
+      if (inside.length > 0) {
+        row.append(btn("Unload", gameView ? "Walk them out beside it." : "Tick In-game view to unload.", false, () => unloadSelected(), !gameView));
+      }
+    }
+  } else {
+    box.append(el("div", { class: "bld-sel-name", text: `Start ${start!.id}` }));
   }
-  const del = el("button", { class: "btn btn-ghost bld-mini", text: "Delete (Del)", attrs: { type: "button" } });
-  del.addEventListener("click", () => deleteSelected());
-  row.append(del);
+  row.append(btn("Delete (Del)", "Remove it", false, () => deleteSelected()));
   box.append(row);
 }
 
@@ -1528,14 +1936,12 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     finishStroke();
   });
   terrainBtns.append(roll, flat);
-  panel.append(section("Elevation", relief, el("label", { text: "Level height" }), levelRow, terrainBtns));
 
   const groundPal = el("div", { class: "bld-palette" });
   for (const g of GROUND) {
     const img = el("img", { attrs: { src: g.img, alt: "" } });
     groundPal.append(asset(g.name, "", tool.id === "ground" && tool.tile === g.tile, img, g.hint, () => setTool(ctx, { id: "ground", tile: g.tile })));
   }
-  panel.append(section("Ground", groundPal));
 
   const brushRow = el("div", { class: "bld-row" });
   const brushIn = el("input", { attrs: { type: "range", min: "0", max: "24", step: "1" } });
@@ -1547,7 +1953,21 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     queueDraw();
   });
   brushRow.append(brushIn, brushVal);
-  panel.append(section("Brush", brushRow, el("p", { class: "bld-hint", text: "[ and ] change the size." })));
+  panel.append(
+    section(
+      "Terrain",
+      el("h3", { class: "bld-sub", text: "Elevation" }),
+      relief,
+      el("label", { text: "Level height" }),
+      levelRow,
+      terrainBtns,
+      el("h3", { class: "bld-sub", text: "Ground" }),
+      groundPal,
+      el("label", { text: "Brush" }),
+      brushRow,
+      el("p", { class: "bld-hint", text: "The brush paints ground and shapes elevation. [ and ] change the size." }),
+    ),
+  );
 
   const houses = el("div", { class: "bld-palette" });
   for (const type of CIVILIAN_TYPES) {
@@ -1658,6 +2078,46 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       el("p", {
         class: "bld-hint",
         text: "A road goes down like a wall: click its start, click each corner, Enter lays it, right-click takes a corner back. Esc cancels and picks up Select. Scroll turns a lone stub 15° (Ctrl+scroll zooms); [ and ] change the width.",
+      }),
+    ),
+  );
+
+  const tabs = el("div", { class: "bld-unit-tabs", attrs: { role: "tablist" } });
+  for (const g of SIDEBAR_GROUPS.filter((x) => UNIT_TABS.includes(x.id))) {
+    const tab = el("button", {
+      class: `group-tab${g.id === unitTab ? " is-active" : ""}`,
+      attrs: { type: "button", role: "tab", title: g.label, "data-group": g.id },
+      html: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${g.icon}"/></svg><span class="group-tab-label">${g.short}</span>`,
+    });
+    tab.addEventListener("click", () => {
+      unitTab = g.id;
+      mountOrRefresh(ctx);
+    });
+    tabs.append(tab);
+  }
+  const unitPal = el("div", { class: "bld-palette three" });
+  for (const type of MAP_UNIT_TYPES) {
+    if (sidebarGroupOf(type) !== unitTab) continue;
+    const def = catalog(type);
+    const art = el("span", { class: "prod-job bld-unit-art", attrs: { "data-type": type } });
+    unitPal.append(
+      asset(def.name, "", tool.id === "unit" && tool.unit === type, art, def.blurb ?? def.name, () => setTool(ctx, { id: "unit", unit: type })),
+    );
+  }
+  const unitFaceRow = el("div", { class: "bld-row" });
+  const unitTurnLabel = el("span", { class: "bld-val", text: `Faces ${turnDegrees(tool.turn)}°` });
+  if (stage && tool.id === "unit") stage.turnLabel = unitTurnLabel;
+  unitFaceRow.append(turnBy(-1, "⟲ 15°", "Turn 15° counter-clockwise"), unitTurnLabel, turnBy(1, "15° ⟳", "Turn 15° clockwise"));
+  panel.append(
+    section(
+      "Units",
+      tabs,
+      unitPal,
+      unitFaceRow,
+      el("p", {
+        class: "bld-hint",
+        text:
+          "Neutral: grey, no one's, and hostile to every commander. They fire on anyone who comes into sight and never leave their post. Scroll turns the next one 15°. In the In-game view, drop infantry on a house, bunker, or tower to garrison it; select a unit to Rotate (R) it or give it a Patrol (Y), and select a held building to Unload it. Shift+click removes.",
       }),
     ),
   );
@@ -1914,6 +2374,16 @@ function bindKeys(): void {
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
       e.preventDefault();
       step(redo, undo);
+    } else if (e.key === "Escape" && unitMode) {
+      setUnitMode(null);
+    } else if (e.key === "Enter" && unitMode === "patrol") {
+      e.preventDefault();
+      if (patrolDraft.points.length > 0) commitPatrol();
+      else setUnitMode(null);
+    } else if ((e.key === "r" || e.key === "R") && selected?.kind === "unit") {
+      setUnitMode("rotate");
+    } else if ((e.key === "y" || e.key === "Y") && selected?.kind === "unit") {
+      setUnitMode("patrol");
     } else if (e.key === "Enter" && lineTool() && line.points.length > 0) {
       e.preventDefault();
       commitLine();
@@ -1928,6 +2398,7 @@ function bindKeys(): void {
       deleteSelected();
     } else if (e.key === "Escape" && selected) {
       selected = null;
+      unitMode = null;
       say("");
       paintSelection();
       queueDraw();

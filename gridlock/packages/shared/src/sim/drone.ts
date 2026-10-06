@@ -32,7 +32,7 @@ import type { ImpactView } from "../protocol.js";
 import { takeDamage } from "./crits.js";
 import { coverStrike } from "./field.js";
 import { airAlt, droneSightExtra, weaponRangeWorld } from "./elevation.js";
-import { allies, destroyEntity, makeEntity, newAirState, newDroneLink, unitInWater, worldToTile } from "./geo.js";
+import { allies, ownerless, destroyEntity, makeEntity, newAirState, newDroneLink, unitInWater, worldToTile } from "./geo.js";
 import { livingGarrison, woundGarrison } from "./garrison.js";
 import { mortarFalloff } from "./mortar.js";
 import { stepTurn } from "./orders.js";
@@ -201,7 +201,7 @@ function inLeash(state: MatchState, op: Entity, x: number, y: number): { x: numb
 
 function validStrikeTarget(state: MatchState, d: Entity, op: Entity, t: Entity | undefined): t is Entity {
   if (!t || t.hp <= 0 || t.wreck || t.garrisonedIn != null || t.id === d.id) return false;
-  if (!t.ownerId || allies(state, d.ownerId, t.ownerId)) return false;
+  if (ownerless(t) || allies(state, d.ownerId, t.ownerId)) return false;
   if (t.air || airAlt(t) > 0 || t.type === "sandbags" || t.type === "teeth") return false;
   if (Math.hypot(t.x - op.x, t.y - op.y) > leash(state) + t.radius) return false;
   return true;

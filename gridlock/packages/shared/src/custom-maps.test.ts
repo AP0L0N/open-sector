@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { HEIGHT_BASE, HEIGHT_STEP_MAX, TILE_SUBDIV } from "./catalog.js";
+import { HEIGHT_BASE, HEIGHT_STEP_MAX, TILE_SUBDIV, garrisonCapOf } from "./catalog.js";
 import {
   buildCustomMap,
   decodeRuns,
@@ -445,6 +445,51 @@ describe("map defences and play tests", () => {
     } finally {
       unregisterMap(id);
     }
+  });
+});
+
+describe("custom map units", () => {
+  it("keeps neutral units, routes, and garrisons through validate and build", () => {
+    const units = [
+      { type: "rifleman" as const, x: 96, y: 60, facing: 90 },
+      { type: "ss3" as const, x: 110, y: 80, facing: 180, patrol: [{ x: 130, y: 80 }, { x: 130, y: 100 }], loop: true },
+      { type: "gunner" as const, x: 81, y: 101, facing: 0, inside: true },
+    ];
+    const r = validateCustomMap(sheet({ units, features: [{ type: "bunker", x: 80, y: 100, facing: 0 }] }));
+    assert.ok(r.ok);
+    assert.deepEqual(r.spec.units, units);
+    assert.deepEqual(buildCustomMap(r.spec).units, units);
+  });
+
+  it("leaves the field out when a map has no units", () => {
+    const r = validateCustomMap(sheet());
+    assert.ok(r.ok);
+    assert.equal("units" in r.spec, false);
+  });
+
+  it("refuses an aircraft or an unknown type, and drops a unit the ground no longer holds", () => {
+    assert.equal(validateCustomMap(sheet({ units: [{ type: "stuka", x: 96, y: 60, facing: 0 }] })).ok, false);
+    assert.equal(validateCustomMap(sheet({ units: [{ type: "ghost" as never, x: 96, y: 60, facing: 0 }] })).ok, false);
+    // A boat on dry land, a man on a start pad, and a man inside a house that is not there.
+    const r = validateCustomMap(
+      sheet({
+        units: [
+          { type: "gunboat", x: 96, y: 60, facing: 0 },
+          { type: "rifleman", x: 31, y: 30, facing: 0 },
+          { type: "rifleman", x: 96, y: 96, facing: 0, inside: true },
+        ],
+      }),
+    );
+    assert.ok(r.ok);
+    assert.equal(r.spec.units, undefined);
+  });
+
+  it("puts no more men in a building than it holds", () => {
+    const cap = garrisonCapOf("bunker");
+    const units = Array.from({ length: cap + 2 }, () => ({ type: "rifleman" as const, x: 81, y: 101, facing: 0, inside: true }));
+    const r = validateCustomMap(sheet({ units, features: [{ type: "bunker", x: 80, y: 100, facing: 0 }] }));
+    assert.ok(r.ok);
+    assert.equal(r.spec.units?.length, cap);
   });
 });
 

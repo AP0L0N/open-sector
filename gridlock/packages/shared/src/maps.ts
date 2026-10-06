@@ -9,6 +9,7 @@ import {
   TILE_SUBDIV,
   catalog,
   type CivilianType,
+  type TrainType,
 } from "./catalog.js";
 
 export interface SpawnDef {
@@ -35,6 +36,8 @@ export interface MapDef {
   features: MapFeature[];
   /** Street lamps. Dress only: the sim never reads them; the client draws them and their light at night. */
   lamps?: MapLamp[];
+  /** Neutral units the map stands on the field. Grey, hostile to every commander, they hold their ground. */
+  units?: MapUnit[];
   /** Set on maps made in the Map Builder. Built-in maps leave it out and cannot be edited. */
   custom?: { author: string; updatedAt: number };
 }
@@ -77,6 +80,28 @@ export interface MapLamp {
   /** Fine tile the post stands on. */
   x: number;
   y: number;
+}
+
+/**
+ * A neutral unit the map stands on the field at the start. It belongs to no one,
+ * fires on anyone in its sight, and never leaves its post except to walk `patrol`.
+ */
+export interface MapUnit {
+  type: TrainType;
+  /** Fine tile it stands on. */
+  x: number;
+  y: number;
+  /** Heading in whole degrees, 0 = east, 90 = south. */
+  facing: number;
+  /** Fine tiles of a patrol route, walked from where it stands. */
+  patrol?: { x: number; y: number }[];
+  /** The route closes into a loop instead of running out and back. */
+  loop?: boolean;
+  /**
+   * Infantry that start inside the house, bunker, or tower whose lot holds (x, y),
+   * at the lot's centre tile. They hold it for no one and shoot from its windows.
+   */
+  inside?: boolean;
 }
 
 export function isLampType(type: unknown): type is LampType {

@@ -252,6 +252,7 @@ import {
   ROCKETER_FIRE_SPRITE,
   PYRO_DIE_SPRITE,
   PYRO_FIRE_SPRITE,
+  NEUTRAL_UNIT_FILTER,
   SNIPER_DIE_SPRITE,
   SNIPER_FIRE_SPRITE,
   TROOPER_DIE_SPRITE,
@@ -622,6 +623,8 @@ const EXTRUDE: Record<EntityType, number> = {
 };
 
 const CIV_FILL = "#b08968";
+/** A map's neutral troops: no one's, against everyone. */
+const NEUTRAL_UNIT_FILL = "#8c8c88";
 const HP_FILL_OK = "#6aaa58";
 const HP_FILL_MID = "#b8923c";
 const HP_FILL_LOW = "#b45448";
@@ -5662,7 +5665,7 @@ export class MapView {
         this.toScreen(x + bw + pad, y + bh + pad, elev),
         this.toScreen(x - pad, y + bh + pad, elev),
       ];
-      drawSelectFrame(ctx, pts, { hostile: this.hostileOwner(e.ownerId), now: performance.now() });
+      drawSelectFrame(ctx, pts, { hostile: this.hostileEntity(e), now: performance.now() });
     }
   }
 
@@ -5692,7 +5695,7 @@ export class MapView {
         this.toScreen(x + bw + pad, y + bh + pad, elev),
         this.toScreen(x - pad, y + bh + pad, elev),
       ];
-      drawSelectFrame(ctx, pts, { hostile: this.hostileOwner(e.ownerId), now: performance.now() });
+      drawSelectFrame(ctx, pts, { hostile: this.hostileEntity(e), now: performance.now() });
     }
     if (spr && spriteReady(spr)) {
       const footprintW = east.x - west.x;
@@ -6298,6 +6301,8 @@ export class MapView {
       ctx.translate(-s.x, -s.y);
     }
     if (e.wreck && !corpse && sheet === def) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
+    // A map's neutral unit is grey: no one's colours, everyone's enemy.
+    else if (!e.wreck && !e.ownerId) ctx.filter = NEUTRAL_UNIT_FILTER;
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
     if (e.ship || def === BATTLESHIP_SPRITE) hullShiftY -= unitGroundSink(size);
     const stepping = unitStepping({ type: e.type, state: e.state, swimming: e.swimming, prev: this.prevById.get(e.id), curr: e });
@@ -7726,6 +7731,12 @@ export class MapView {
     return !!ownerId && !ownerAllied(this.curr, ownerId);
   }
 
+  /** An enemy's, or one of the map's neutral units, which fight every commander. */
+  private hostileEntity(e: EntityView): boolean {
+    if (e.kind === "unit" && !e.ownerId) return true;
+    return this.hostileOwner(e.ownerId);
+  }
+
   private paintHpBar(
     x: number,
     y: number,
@@ -7765,7 +7776,7 @@ export class MapView {
     const gap = 2;
     const pad = 2;
     const totalH = bars.length * (barH + gap) - gap;
-    const hostile = this.hostileOwner(e.garrison ? e.garrison.ownerId : e.ownerId);
+    const hostile = !!e.garrison?.neutral || this.hostileOwner(e.garrison ? e.garrison.ownerId : e.ownerId);
     const ctx = this.ctx;
     ctx.save();
     ctx.globalAlpha = 0.55;
@@ -7788,7 +7799,7 @@ export class MapView {
     const barW = selected ? 18 : 14;
     const barH = 2;
     this.ctx.save();
-    this.paintHpBar(Math.round(x), Math.round(y), barW, barH, ratio, selected ? 0.95 : 0.7, this.hostileOwner(e.ownerId), selected);
+    this.paintHpBar(Math.round(x), Math.round(y), barW, barH, ratio, selected ? 0.95 : 0.7, this.hostileEntity(e), selected);
     this.ctx.restore();
   }
 
@@ -7810,7 +7821,7 @@ export class MapView {
     const alpha = selected ? 1 : damaged ? 0.42 : mount ? 0.55 : 0.28;
     const ctx = this.ctx;
     ctx.save();
-    this.paintHpBar(bx, by, barW, barH, ratio, alpha, this.hostileOwner(e.ownerId), selected);
+    this.paintHpBar(bx, by, barW, barH, ratio, alpha, this.hostileEntity(e), selected);
     if (e.field) {
       // The force field rides above the health bar, pale blue: it goes first.
       const fy = by - barH - 1;
@@ -7849,8 +7860,10 @@ export class MapView {
         const holder = this.curr.players.find((pl) => pl.playerId === occ);
         if (holder) return colorHex(holder.colorId);
       }
-      return CIV_FILL;
+      return e.garrison?.neutral ? NEUTRAL_UNIT_FILL : CIV_FILL;
     }
+    // A map's neutral unit: grey.
+    if (!e.ownerId && e.kind === "unit") return NEUTRAL_UNIT_FILL;
     // A map defence nobody has taken yet.
     if (!e.ownerId) return CIV_FILL;
     const p = this.curr.players.find((pl) => pl.playerId === e.ownerId);
@@ -8074,7 +8087,7 @@ export class MapView {
     if (!ghost && span && this.selected.has(e.id)) {
       const elev = this.elevAt(e.x, e.y);
       const pts = fieldFrameCorners(e.x, e.y, e.facing, span.length, span.thick, 5).map((p) => this.toScreen(p.x, p.y, elev));
-      drawSelectFrame(this.ctx, pts, { hostile: this.hostileOwner(e.ownerId), now: performance.now() });
+      drawSelectFrame(this.ctx, pts, { hostile: this.hostileEntity(e), now: performance.now() });
     }
     const veiled = (draw: () => void): void => this.drawFieldVeiled(e, span, draw);
     if (isConcreteLine(e.type)) {

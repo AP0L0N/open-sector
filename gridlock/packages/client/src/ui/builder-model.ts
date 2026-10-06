@@ -3,6 +3,12 @@ import {
   BUILDING_FACINGS,
   BUILDING_TURN_STEP,
   CUSTOM_MAP_MAX_LAMPS,
+  CUSTOM_MAP_MAX_UNITS,
+  copyMapUnit,
+  featureSeat,
+  garrisonCandidate,
+  mapUnitHostAt,
+  mapUnitProblem,
   FIELD_TURN_MAX,
   HEIGHT_BASE,
   HEIGHT_MAX,
@@ -41,6 +47,8 @@ import {
   type MapFeatureType,
   type LampType,
   type MapLamp,
+  type MapUnit,
+  type TrainType,
   type MapSectionType,
 } from "@gridlock/shared";
 
@@ -57,6 +65,8 @@ export interface Sheet {
   spawns: { id: number; x: number; y: number }[];
   features: MapFeature[];
   lamps: MapLamp[];
+  /** Neutral units standing on the field at the start. */
+  units: MapUnit[];
 }
 
 /** Ground a start pad clears. Roads may run through it. */
@@ -85,6 +95,7 @@ export function newSheet(opts: {
     spawns: [],
     features: [],
     lamps: [],
+    units: [],
   };
   settle(sheet);
   return sheet;
@@ -104,6 +115,7 @@ export function sheetFromSpec(spec: CustomMapSpec): Sheet {
     spawns: spec.spawns.map((s) => ({ ...s })),
     features: spec.features.map((f) => ({ ...f })),
     lamps: (spec.lamps ?? []).map((l) => ({ ...l })),
+    units: (spec.units ?? []).map(copyMapUnit),
   };
   settle(sheet);
   return sheet;
@@ -122,6 +134,7 @@ export function sheetToSpec(s: Sheet): CustomMapSpec {
     spawns: s.spawns.map((sp) => ({ ...sp })).sort((a, b) => a.id - b.id),
     features: s.features.map((f) => ({ ...f })),
     ...(s.lamps.length > 0 ? { lamps: liveLamps(s) } : {}),
+    ...(s.units.length > 0 ? { units: liveUnits(s) } : {}),
     updatedAt: 0,
   };
 }
@@ -140,6 +153,7 @@ export function sheetToMap(s: Sheet, id = "__builder__"): MapDef {
     spawns: s.spawns.map((sp) => ({ ...sp })),
     features: s.features.map((f) => ({ ...f })),
     lamps: liveLamps(s),
+    units: liveUnits(s),
   };
 }
 
@@ -178,6 +192,161 @@ export function placeLamp(s: Sheet, type: LampType, x: number, y: number): strin
   if (problem) return problem;
   s.lamps.push({ type, x, y });
   return null;
+}
+
+/**
+ * Units still standing where they may: water painted under a tank, a house set
+ * down on a squad, or a start pad moved over one hides it, and the save leaves it out.
+ */
+export function liveUnits(s: Sheet): MapUnit[] {
+  const kept: MapUnit[] = [];
+  for (const u of s.units) {
+    if (!mapUnitProblem({ ...s, units: kept }, u.type, u.x, u.y, -1, u.inside)) kept.push(copyMapUnit(u));
+  }
+  return kept;
+}
+
+/** Index of the unit nearest the cursor within `reach` fine tiles, or -1. */
+export function unitIndexAt(s: Sheet, tx: number, ty: number, reach = 1.5): number {
+  let best = -1;
+  let bestD = reach + 0.01;
+  s.units.forEach((u, i) => {
+    const d = Math.hypot(u.x - tx, u.y - ty);
+    if (d < bestD) {
+      best = i;
+      bestD = d;
+    }
+  });
+  return best;
+}
+
+/** Why a unit cannot stand on this fine tile, or null. `ignore` is the unit being moved. */
+export function unitProblem(s: Sheet, type: TrainType, x: number, y: number, ignore = -1, inside = false): string | null {
+  if (ignore < 0 && s.units.length >= CUSTOM_MAP_MAX_UNITS) return `At most ${CUSTOM_MAP_MAX_UNITS} units.`;
+  return mapUnitProblem(s, type, x, y, ignore, inside);
+}
+
+/** The building a unit dropped on (x, y) would garrison, or -1: infantry over a house, bunker, or tower that takes it. */
+export function garrisonHostAt(s: Sheet, type: TrainType, x: number, y: number): number {
+  const host = mapUnitHostAt(s.features, x, y);
+  const f = s.features[host];
+  return f && garrisonCandidate(f.type, type) ? host : -1;
+}
+
+/** Put a neutral soldier inside `features[host]`, on its centre tile. Null when it went in, else the reason. */
+export function garrisonUnit(s: Sheet, type: TrainType, host: number, facing: number): string | null {
+  const f = s.features[host];
+  if (!f) return "Nothing to garrison.";
+  const seat = featureSeat(f);
+  const problem = unitProblem(s, type, seat.x, seat.y, -1, true);
+  if (problem) return problem;
+  s.units.push({ type, x: seat.x, y: seat.y, facing: wrapDegrees(facing), inside: true });
+  return null;
+}
+
+/** Indices of the map units garrisoned in `features[host]`. */
+export function unitsInside(s: Sheet, host: number): number[] {
+  const f = s.features[host];
+  if (!f) return [];
+  const out: number[] = [];
+  s.units.forEach((u, i) => {
+    if (u.inside && featureContains(f, u.x + 0.5, u.y + 0.5)) out.push(i);
+  });
+  return out;
+}
+
+/** After a building moved or turned from `before` to `after`, carry its garrison to the new centre. */
+export function reseatGarrison(s: Sheet, before: MapFeature, after: MapFeature): void {
+  const seat = featureSeat(after);
+  for (const u of s.units) {
+    if (u.inside && featureContains(before, u.x + 0.5, u.y + 0.5)) {
+      u.x = seat.x;
+      u.y = seat.y;
+    }
+  }
+}
+
+/** Drop the garrison of a building that is going away. Returns how many left with it. */
+export function dropGarrison(s: Sheet, f: MapFeature): number {
+  const before = s.units.length;
+  s.units = s.units.filter((u) => !(u.inside && featureContains(f, u.x + 0.5, u.y + 0.5)));
+  return before - s.units.length;
+}
+
+/**
+ * Walk the garrison of `features[host]` out onto free ground round the lot, the
+ * way an Unload order spills it in a match. Returns how many found a spot; the
+ * rest stay inside.
+ */
+export function unloadGarrison(s: Sheet, host: number): number {
+  const f = s.features[host];
+  if (!f) return 0;
+  const b = featureBox(f);
+  const cx = (b.x0 + b.x1) / 2;
+  const cy = (b.y0 + b.y1) / 2;
+  let out = 0;
+  for (const i of unitsInside(s, host)) {
+    const u = s.units[i]!;
+    let best: { x: number; y: number } | null = null;
+    let bestD = Infinity;
+    for (let ring = 1; ring <= 6 && !best; ring++) {
+      for (let y = b.y0 - ring; y < b.y1 + ring; y++) {
+        for (let x = b.x0 - ring; x < b.x1 + ring; x++) {
+          if (x > b.x0 - ring && x < b.x1 + ring - 1 && y > b.y0 - ring && y < b.y1 + ring - 1) continue;
+          if (unitProblem(s, u.type, x, y, i)) continue;
+          const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
+          if (d < bestD) {
+            bestD = d;
+            best = { x, y };
+          }
+        }
+      }
+    }
+    if (!best) continue;
+    u.x = best.x;
+    u.y = best.y;
+    delete u.inside;
+    out++;
+  }
+  return out;
+}
+
+/** Stand a neutral unit on the tile facing `facing` degrees. Null when placed, else the reason. */
+export function placeUnit(s: Sheet, type: TrainType, x: number, y: number, facing: number): string | null {
+  const problem = unitProblem(s, type, x, y);
+  if (problem) return problem;
+  s.units.push({ type, x, y, facing: wrapDegrees(facing) });
+  return null;
+}
+
+/** Move a placed unit `dx`, `dy` fine tiles from where it stood at `from`. Its route moves with it. Null when it moved. */
+export function moveUnit(s: Sheet, index: number, from: MapUnit, dx: number, dy: number): string | null {
+  if (!s.units[index]) return "Nothing selected.";
+  const x = from.x + dx;
+  const y = from.y + dy;
+  const problem = unitProblem(s, from.type, x, y, index);
+  if (problem) return problem;
+  const next = copyMapUnit(from);
+  next.x = x;
+  next.y = y;
+  if (next.patrol) {
+    next.patrol = next.patrol.map((p) => ({
+      x: Math.max(0, Math.min(s.width - 1, p.x + dx)),
+      y: Math.max(0, Math.min(s.height - 1, p.y + dy)),
+    }));
+  }
+  s.units[index] = next;
+  return null;
+}
+
+/** Whole degrees 0..359. */
+export function wrapDegrees(deg: number): number {
+  return ((Math.round(deg) % 360) + 360) % 360;
+}
+
+/** Degrees from fine tile (x0, y0) toward (x1, y1): 0 east, 90 south. */
+export function degreesToward(x0: number, y0: number, x1: number, y1: number): number {
+  return wrapDegrees((Math.atan2(y1 - y0, x1 - x0) * 180) / Math.PI);
 }
 
 /** Same pass a saved map gets: pads, house lots, water floor, one-step slopes. */
@@ -675,6 +844,7 @@ export interface SheetMark {
   spawns: Sheet["spawns"];
   features: MapFeature[];
   lamps: MapLamp[];
+  units: MapUnit[];
   maxPlayers: number;
 }
 
@@ -685,6 +855,7 @@ export function markSheet(s: Sheet): SheetMark {
     spawns: s.spawns.map((sp) => ({ ...sp })),
     features: s.features.map((f) => ({ ...f })),
     lamps: s.lamps.map((l) => ({ ...l })),
+    units: s.units.map(copyMapUnit),
     maxPlayers: s.maxPlayers,
   };
 }
@@ -695,5 +866,6 @@ export function restoreSheet(s: Sheet, m: SheetMark): void {
   s.spawns = m.spawns.map((sp) => ({ ...sp }));
   s.features = m.features.map((f) => ({ ...f }));
   s.lamps = m.lamps.map((l) => ({ ...l }));
+  s.units = m.units.map(copyMapUnit);
   s.maxPlayers = m.maxPlayers;
 }

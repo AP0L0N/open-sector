@@ -165,6 +165,7 @@ import {
   worldTileHeight,
 } from "./elevation.js";
 import {
+  ownerless,
   allies,
   clearOrder,
   fellTreeAt,
@@ -1006,8 +1007,9 @@ function patrolContact(state: MatchState, e: Entity, o: Entity): boolean {
   const route = e.order?.route;
   if (!route) return false;
   if (o.kind !== "unit" || o.hp <= 0 || o.wreck || o.id === e.id || o.garrisonedIn != null) return false;
-  if (isCrashing(o) || !o.ownerId || allies(state, e.ownerId, o.ownerId)) return false;
+  if (isCrashing(o) || ownerless(o) || allies(state, e.ownerId, o.ownerId)) return false;
   if (!canSeeEntity(state, e.ownerId, o) || outOfReachAloft(state, e, o)) return false;
+  if (!inNeutralSight(state, e, o)) return false;
   if (e.ship && shipAirTarget(o)) return false;
   if (dropsUnharmedArmor(state, e, o)) return false;
   const range = weaponRangeWorld(state, e);
@@ -2358,6 +2360,7 @@ function walkerSecondTarget(state: MatchState, e: Entity, primary: Entity): Enti
     const d = dx * dx + dy * dy;
     if (d > bestD) continue;
     if (!canSeeEntity(state, e.ownerId, o)) continue;
+    if (!inNeutralSight(state, e, o)) continue;
     if (!canAimWeapon(state, e, o.x, o.y, o)) continue;
     if (Math.abs(aimRemainingDeg(e, o.x, o.y)) > arc) continue;
     bestD = d;
@@ -3238,6 +3241,17 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (!needsClearLine(e, c.o) || !allyInLine(state, e, e.x, e.y, c.o)) return c.o;
   }
   return near[0]?.o ?? best;
+}
+
+/**
+ * A neutral map unit fires only on what its own eyes reach. Neutrals share one
+ * picture of the field, so without this a squad would open up on a target only
+ * a far-off bunker or another post can see.
+ */
+function inNeutralSight(state: MatchState, e: Entity, o: Entity): boolean {
+  if (e.ownerId) return true;
+  const reach = sightTilesForEntity(state, e) * state.tileSize + o.radius;
+  return (o.x - e.x) ** 2 + (o.y - e.y) ** 2 <= reach * reach;
 }
 
 export function inGuardCone(e: Entity, t: { x: number; y: number }): boolean {

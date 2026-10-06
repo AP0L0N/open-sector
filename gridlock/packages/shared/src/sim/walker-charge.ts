@@ -1,7 +1,6 @@
 /** Walker self-destroy. At a fifth of his health he rushes the nearest enemy and detonates. */
 
 import {
-  NEUTRAL_OWNER,
   PTRD_LIGHT_FRONT,
   WALKER_BLAST_HEAVY,
   WALKER_BLAST_SOFT,
@@ -14,6 +13,7 @@ import {
 import { isAirborne } from "./air.js";
 import { takeDamage } from "./crits.js";
 import {
+  ownerless,
   adjacentToBuilding,
   allies,
   buildingBounds,
@@ -35,7 +35,8 @@ const BLAST_CALIBER = 75;
 
 export function tickWalkerCharge(state: MatchState): void {
   const walkers = [...state.entities.values()].filter(
-    (e) => e.type === "walker" && !e.wreck && e.garrisonedIn == null && e.hp > 0,
+    // A neutral map walker holds its post; it never runs at anyone.
+    (e) => e.type === "walker" && !!e.ownerId && !e.wreck && e.garrisonedIn == null && e.hp > 0,
   );
   for (const e of walkers) {
     if (!state.entities.has(e.id) || e.hp <= 0 || e.wreck) continue;
@@ -126,7 +127,7 @@ function chargeTarget(state: MatchState, walker: Entity): Entity | undefined {
 }
 
 function hostile(state: MatchState, walker: Entity, o: Entity): boolean {
-  if (!o.ownerId || o.ownerId === NEUTRAL_OWNER) return false;
+  if (ownerless(o)) return false;
   if (o.id === walker.id || o.hp <= 0 || o.wreck || o.garrisonedIn != null) return false;
   if (isAirborne(o)) return false;
   return !allies(state, walker.ownerId, o.ownerId);

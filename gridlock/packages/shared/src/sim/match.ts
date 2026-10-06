@@ -12,7 +12,8 @@ import {
   START_SCRAP,
   TICK_DT,
 } from "../catalog.js";
-import { featureAngle, featureLotSite, getMap, isMapSection } from "../maps.js";
+import { featureAngle, featureLotSite, getMap, isMapSection, type MapDef } from "../maps.js";
+import { mapUnitHostAt } from "../custom-maps.js";
 import { commanders } from "../lobby.js";
 import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
 import type { ImpactView, RocketLaunchView, RoomState } from "../protocol.js";
@@ -22,7 +23,9 @@ import { ejectParatroopers, loseRiders, syncPlaneRiders, tickChutes, tickCrates,
 import { tickDrones } from "./drone.js";
 import { tickJets } from "./jet.js";
 import { tickCapture } from "./capture.js";
-import { detachGarrisoned, killGarrison, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
+import { detachGarrisoned, enterGarrison, killGarrison, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
+import { buildPatrolRoute } from "./patrol.js";
+import { setPath } from "./path.js";
 import { seedRng } from "./rng.js";
 import { tickBuild } from "./build.js";
 import { raiseWallCrest, restampForts, tickField } from "./field.js";
@@ -139,31 +142,72 @@ export function createMatch(
 
   // Houses and map defences stand neutral. A defence changes hands when someone takes it.
   const sections: Entity[] = [];
-  for (const f of map.features ?? []) {
+  /** The building each map feature raised, by feature index, for the troops a map puts inside. */
+  const raised = new Map<number, Entity>();
+  (map.features ?? []).forEach((f, fi) => {
     const facing = featureAngle({ ...f, facing: f.facing ?? 0 });
     if (isMapSection(f.type)) {
       const s = makeEntity(state, f.type, NEUTRAL_OWNER, tileCenter(f.x, map.tileSize), tileCenter(f.y, map.tileSize), { facing });
       s.turretFacing = facing;
       sections.push(s);
-      continue;
+      return;
     }
     // A turned bunker or tower stands on its turned site, like one the player placed.
     const site = featureLotSite({ ...f, facing: f.facing ?? 0 });
     const c = buildingCenter(site.tx, site.ty, site.w, site.h, map.tileSize);
-    makeEntity(state, f.type, NEUTRAL_OWNER, c.x, c.y, {
+    const b = makeEntity(state, f.type, NEUTRAL_OWNER, c.x, c.y, {
       tileX: site.tx,
       tileY: site.ty,
       tileW: site.w,
       tileH: site.h,
       facing,
     });
-  }
+    raised.set(fi, b);
+  });
   if (sections.length > 0) {
     raiseWallCrest(state, sections);
     restampForts(state);
   }
+  standMapUnits(state, map, raised);
 
   return state;
+}
+
+/**
+ * The map's neutral troops. Grey, no one's, they shoot at anyone their own eyes
+ * find and hold their post: each stands guard on its heading, walks its patrol
+ * route, or sits inside the house or bunker it was put in.
+ */
+function standMapUnits(state: MatchState, map: MapDef, raised: ReadonlyMap<number, Entity>): void {
+  const ts = map.tileSize;
+  for (const mu of map.units ?? []) {
+    const facing = (mu.facing * Math.PI) / 180;
+    const x = tileCenter(mu.x, ts);
+    const y = tileCenter(mu.y, ts);
+    if (mu.inside) {
+      const house = raised.get(mapUnitHostAt(map.features ?? [], mu.x, mu.y));
+      if (!house) continue;
+      const e = makeEntity(state, mu.type, NEUTRAL_OWNER, house.x, house.y, { facing });
+      if (!enterGarrison(state, e, house)) destroyEntity(state, e);
+      continue;
+    }
+    const e = makeEntity(state, mu.type, NEUTRAL_OWNER, x, y, { facing });
+    // Never chases: a target out of reach is left to come closer.
+    e.holdPosition = true;
+    if (mu.patrol?.length) {
+      const loop = mu.loop === true;
+      const points = mu.patrol.map((p) => ({ x: tileCenter(p.x, ts), y: tileCenter(p.y, ts) }));
+      const route = buildPatrolRoute(state, e, points, 0, 0, loop);
+      const leg = loop ? 0 : 1;
+      e.order = { kind: "patrol", route, leg, dir: 1, ...(loop ? { loop: true } : {}) };
+      e.state = "move";
+      const dest = route[leg]!;
+      setPath(state, e, dest.x, dest.y);
+      continue;
+    }
+    e.guardFacing = facing;
+    e.order = { kind: "guard", x, y, facing };
+  }
 }
 
 export function step(state: MatchState, dt = TICK_DT): void {
