@@ -23,6 +23,42 @@
       "source": "imports/steel-on-the-line.m4a",
       "song_id": "DS7tpFKSA68RgSPjpRbK",
       "note": "Made by the user on the ElevenLabs site (the take rated thumbs-up)."
+    },
+    "menu-tactical-underscore": {
+      "title": "Tactical Underscore",
+      "source": "imports/tactical-underscore.m4a",
+      "song_id": "nd8880dV8IV7LGKsen0h",
+      "note": "Made by the user on the ElevenLabs site, 2026-10-06, from a menu-music prompt (92 BPM, low choir hum). Alternate take: SVHILLnsZAThkTYJoeg8 'Tactical Briefing Room'."
+    },
+    "battle-iron-command": {
+      "title": "Iron Command",
+      "source": "imports/iron-command.m4a",
+      "song_id": "8vO9DvbHST1AQ4uxov0a",
+      "note": "Made by the user on the ElevenLabs site, 2026-10-06: their edited 150 s version built from take II3DgfuxIAc4DW2ahFGn. Alternate takes: KAEmEoXTKUAz2HyBxRA7 (same edit), 3Sl8xvMrt7J13IjLENfw 'Iron Command March'."
+    },
+    "battle-iron-marching-orders": {
+      "title": "Iron Marching Orders",
+      "source": "imports/iron-marching-orders.m4a",
+      "song_id": "DNjfvIxQtK4vM6araeIL",
+      "note": "Made by the user on the ElevenLabs site, 2026-10-06 (the take rated thumbs-up). Alternate take: 8zYsnP34ZxJDuXB2riCi 'Column Advance'."
+    },
+    "battle-treads-on-the-stone": {
+      "title": "Treads on the Stone",
+      "source": "imports/treads-on-the-stone.m4a",
+      "song_id": "qYWYhsJ9JhAEphIRwnUj",
+      "note": "Made by the user on the ElevenLabs site, 2026-10-06. Alternate take: fFtoYjE4hs62M7AZqgky."
+    },
+    "battle-rank-and-file": {
+      "title": "Rank and File March",
+      "source": "imports/rank-and-file.m4a",
+      "song_id": "6yszZdzSlftlbLtyFoLs",
+      "note": "Made by the user on the ElevenLabs site, 2026-10-06. Alternate take: hxPZZOAe3IBwRubMehYD 'Rank and File' (150 s)."
+    },
+    "battle-hold-what-you-can": {
+      "title": "Hold What You Can",
+      "source": "imports/hold-what-you-can.m4a",
+      "song_id": "3qhb6DUmFp4XuD5FapiZ",
+      "note": "Made by the user on the ElevenLabs site, 2026-10-06: slow losing-battle bed with whispered chant. Alternate take: zC11UvBAxGnI40IgLKgN 'Tactical Retreat'."
     }
   }
 }
