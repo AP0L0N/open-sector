@@ -30,7 +30,8 @@ import { enterGarrison } from "./sim/garrison.js";
 import { makeEntity, tileCenter } from "./sim/geo.js";
 import { spotlightManned } from "./sim/night.js";
 import { NEUTRAL_OWNER } from "./catalog.js";
-import { featureBox, isPlaytestMapId } from "./maps.js";
+import { featureBox, featureRectsOverlap, isPlaytestMapId } from "./maps.js";
+import { isTurnedBuilding, turnedBox } from "./building-rect.js";
 import { newPlaytestMapId } from "./custom-maps.js";
 
 const SIDE = 48 * TILE_SUBDIV;
@@ -311,6 +312,73 @@ describe("map defences and play tests", () => {
     );
     assert.equal(crossed.ok, false, "two sections crossing on one tile overlap");
     assert.equal(validateCustomMap(sheet({ features: [{ type: "dynamo" as never, x: 64, y: 64, facing: 0 }] })).ok, false);
+  });
+
+  it("takes defences turned in 15° steps, and sections between tiles", () => {
+    const turned = [
+      { type: "bunker" as const, x: 96, y: 64, facing: 0, turn: 3 },
+      { type: "wall" as const, x: 100.125, y: 120.5, facing: 0, turn: 9 },
+    ];
+    const r = validateCustomMap(sheet({ features: turned }));
+    assert.equal(r.ok, true, r.ok ? "" : r.message);
+    if (r.ok) {
+      assert.equal(r.spec.features[0]!.facing, 1, "facing keeps the nearest quarter");
+      assert.equal(r.spec.features[1]!.x, 100.125);
+    }
+    const bad = (f: object): boolean => validateCustomMap(sheet({ features: [f as never] })).ok;
+    assert.equal(bad({ type: "cottage", x: 96, y: 64, facing: 0, turn: 3 }), false, "a house turns by quarters only");
+    assert.equal(bad({ type: "bunker", x: 96, y: 64, facing: 0, turn: 24 }), false);
+    assert.equal(bad({ type: "bunker", x: 96, y: 64, facing: 0, turn: 1.5 }), false);
+    assert.equal(bad({ type: "wall", x: 100.5, y: 120, facing: 0 }), false, "an unturned section stays on a tile");
+  });
+
+  it("lets slanted sections meet end to end but not cross", () => {
+    // Two 45° sections, one length apart along their run.
+    const run = 3 / Math.SQRT2;
+    const a = { type: "wall" as const, x: 50, y: 50, facing: 0, turn: 3 };
+    const b = { ...a, x: 50 + run, y: 50 - run };
+    assert.equal(featureRectsOverlap(a, b), false);
+    assert.equal(featureRectsOverlap(a, { ...a, turn: 9 }), true, "crossed on one spot");
+    assert.equal(featureRectsOverlap(a, { type: "bunker", x: 48, y: 48, facing: 0 }), true);
+  });
+
+  it("stands a turned map bunker and a slanted wall the way a player would place them", () => {
+    const id = newPlaytestMapId();
+    const loaded = loadCustomMap(
+      sheet({
+        id,
+        maxPlayers: 4,
+        spawns: [{ id: 1, x: 30, y: 30 }],
+        features: [
+          { type: "bunker", x: 96, y: 64, facing: 0, turn: 3 },
+          { type: "wall", x: 100.5, y: 120.5, facing: 0, turn: 9 },
+        ],
+      }),
+      { playtest: true },
+    );
+    if (!loaded.ok) throw new Error(loaded.message);
+    try {
+      const made = createRoom({ id: "TEST", hostId: "A", hostName: "A", mapId: id, maxSlots: 8, mode: "skirmish" });
+      if (!made.ok) throw new Error(made.message);
+      const started = startMatch(made.value, "A");
+      if (!started.ok) throw new Error(started.message);
+      const state = createMatch(made.value, started.value);
+      const of = (type: string) => [...state.entities.values()].find((e) => e.type === type)!;
+      const bunker = of("bunker");
+      const wall = of("wall");
+      const step15 = Math.PI / 12;
+      assert.ok(Math.abs(bunker.facing - 3 * step15) < 1e-9);
+      assert.equal(isTurnedBuilding(bunker), true);
+      const box = turnedBox("bunker", bunker.facing);
+      assert.deepEqual([bunker.tileW, bunker.tileH], [box.w, box.h], "the turned box, like a placed one");
+      // The bunker turns about the middle of its 2×2-cell lot.
+      assert.ok(Math.hypot(bunker.x - 100 * state.tileSize, bunker.y - 68 * state.tileSize) <= state.tileSize);
+      assert.ok(Math.abs(wall.facing - 9 * step15) < 1e-9);
+      assert.equal(wall.x, 101 * state.tileSize);
+      assert.equal(wall.y, 121 * state.tileSize);
+    } finally {
+      unregisterMap(id);
+    }
   });
 
   it("gives a section a three-tile run across the way it faces", () => {

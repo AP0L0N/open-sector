@@ -5,6 +5,7 @@ import {
   HEIGHT_STEP_MAX,
   TILE_EMPTY,
   TILE_ROAD,
+  TILE_SIZE,
   TILE_SUBDIV,
   TILE_TREE,
   TILE_WATER,
@@ -16,7 +17,12 @@ import {
   emptyDirty,
   houseAt,
   houseProblem,
+  laySections,
   moveFeature,
+  QUARTER_TURN,
+  sectionLine,
+  tileWorld,
+  wrapTurn,
   playtestProblem,
   turnFeature,
   levelDisk,
@@ -203,10 +209,51 @@ describe("builder select and defences", () => {
   });
 
   it("sets a section on the cursor tile and a bunker on the cell grid", () => {
-    assert.deepEqual(houseAt("sandbags", 37, 41, 2), { type: "sandbags", x: 37, y: 41, facing: 2 });
+    assert.deepEqual(houseAt("sandbags", 37, 41, 2), { type: "sandbags", x: 37, y: 41, facing: 2, turn: 12 });
     const bunker = houseAt("bunker", 37, 41, 0);
     assert.equal(bunker.x % TILE_SUBDIV, 0);
     assert.equal(bunker.y % TILE_SUBDIV, 0);
+  });
+
+  it("turns a bunker or tower in 15° steps on its own lot, and a house only by quarters", () => {
+    const bunker = houseAt("bunker", 37, 41, 0, 3);
+    assert.equal(bunker.turn, 3);
+    assert.equal(bunker.facing, 1, "45° reads as the nearest quarter");
+    assert.deepEqual([bunker.x, bunker.y], [houseAt("bunker", 37, 41, 0).x, houseAt("bunker", 37, 41, 0).y], "the lot does not move as it turns");
+    assert.equal(houseAt("cottage", 37, 41, 1, 3).turn, undefined);
+    assert.equal(wrapTurn(-1), 23);
+    assert.equal(wrapTurn(25), 1);
+    const s = fresh();
+    s.features.push(bunker);
+    assert.equal(turnFeature(s, 0, 1), null);
+    assert.equal(s.features[0]!.turn, 4);
+  });
+
+  it("lays a wall line the way a match does: legs snapped to 15°, end to end, saved as drawn", () => {
+    const s = fresh();
+    s.spawns.push({ id: 1, x: 30, y: 30 }, { id: 2, x: 160, y: 160 });
+    // East 12 tiles, then a corner drawn about 40° down-right: it snaps to 45°.
+    const pts = [tileWorld(70, 60), tileWorld(82, 60), tileWorld(91, 68)];
+    const pieces = sectionLine("wall", pts, QUARTER_TURN);
+    assert.ok(pieces.length >= 6, `${pieces.length} pieces`);
+    const turns = new Set(pieces.map((p) => p.turn));
+    assert.deepEqual([...turns].sort((a, b) => a! - b!), [6, 9], "the first leg faces south, the corner leg south-west");
+    for (const p of pieces) {
+      assert.equal(Number.isInteger(p.x * TILE_SIZE), true, "on whole world pixels");
+      assert.equal(Number.isInteger(p.y * TILE_SIZE), true);
+    }
+    assert.deepEqual(laySections(s, pieces), { laid: pieces.length, refused: 0 }, "a line's own corners do not block it");
+    assert.equal(sheetProblem(s), null);
+    const back = validateCustomMap(sheetToSpec(s));
+    assert.equal(back.ok, true);
+    if (back.ok) assert.deepEqual(back.spec.features, s.features);
+    // Laid twice, every section lands on one already there.
+    assert.deepEqual(laySections(s, pieces), { laid: 0, refused: pieces.length });
+  });
+
+  it("lays a lone section on the cursor at the wheel's heading", () => {
+    const one = sectionLine("sandbags", [tileWorld(50, 50)], 2);
+    assert.deepEqual(one, [{ type: "sandbags", x: 50, y: 50, facing: 0, turn: 2 }]);
   });
 
   it("counts defences apart from houses and saves them", () => {

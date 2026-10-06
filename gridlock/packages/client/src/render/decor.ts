@@ -6,7 +6,7 @@ import {
   TILE_SUBDIV,
   TILE_TREE,
   TILE_WATER,
-  catalog,
+  featureBox,
   getMap,
   heightAt,
   type MapDef,
@@ -73,9 +73,9 @@ function keepOut(map: MapDef): Uint8Array {
   const h = map.height;
   const out = new Uint8Array(w * h);
   for (const f of map.features) {
-    const def = catalog(f.type);
-    for (let y = f.y - 2; y < f.y + def.tileH + 2; y++) {
-      for (let x = f.x - 2; x < f.x + def.tileW + 2; x++) {
+    const b = featureBox(f);
+    for (let y = b.y0 - 2; y < b.y1 + 2; y++) {
+      for (let x = b.x0 - 2; x < b.x1 + 2; x++) {
         if (x >= 0 && y >= 0 && x < w && y < h) out[y * w + x] = 1;
       }
     }

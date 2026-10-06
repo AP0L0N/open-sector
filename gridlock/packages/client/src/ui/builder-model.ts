@@ -1,5 +1,8 @@
 import {
   BUILD_RADIUS,
+  BUILDING_FACINGS,
+  BUILDING_TURN_STEP,
+  FIELD_TURN_MAX,
   HEIGHT_BASE,
   HEIGHT_MAX,
   SPAWN_EDGE_MARGIN,
@@ -14,8 +17,13 @@ import {
   decodeRuns,
   encodeRuns,
   featureBox,
+  featureContains,
   featureOnPad,
   featuresOverlap,
+  fieldCornerStart,
+  fieldPath,
+  fieldSpan,
+  fieldTurn,
   isMapSection,
   isScrapTile,
   MAP_DEFENCE_TYPES,
@@ -23,11 +31,13 @@ import {
   peakHeight,
   PLAYTEST_MAP_PREFIX,
   rollHeights,
+  turnQuarter,
   validateCustomMap,
   type CustomMapSpec,
   type MapDef,
   type MapFeature,
   type MapFeatureType,
+  type MapSectionType,
 } from "@gridlock/shared";
 
 /** The map being edited. Grids are plain fine-tile arrays, already playable after `settle`. */
@@ -256,15 +266,113 @@ export function levelDisk(s: Sheet, cx: number, cy: number, r: number, z: number
   return seeds.length;
 }
 
+/** Quarter turns in BUILDING_TURN_STEPs. */
+export const QUARTER_TURN = BUILDING_FACINGS / 4;
+
+/** A defence's turn wrapped into 0..BUILDING_FACINGS - 1. */
+export function wrapTurn(turn: number): number {
+  const n = BUILDING_FACINGS;
+  return ((Math.round(turn) % n) + n) % n;
+}
+
+/** True for the features that turn in 15° steps: bunkers, towers, sandbags, walls. */
+export function turnsFine(type: MapFeatureType): boolean {
+  return (MAP_DEFENCE_TYPES as readonly string[]).includes(type);
+}
+
 /**
  * A feature of `type` centred on the cursor tile. A house, bunker, or tower
  * snaps to the cell grid; a sandbag or wall section sits on the tile itself.
+ * A defence takes `turn` (15° steps from east); a house only `facing`.
  */
-export function houseAt(type: MapFeatureType, tx: number, ty: number, facing: number): MapFeature {
-  if (isMapSection(type)) return { type, x: tx, y: ty, facing: facing & 3 };
-  const def = catalog(type);
-  const snap = (v: number, span: number): number => Math.round((v - span / 2) / TILE_SUBDIV) * TILE_SUBDIV;
-  return { type, x: snap(tx, def.tileW), y: snap(ty, def.tileH), facing: facing & 3 };
+export function houseAt(type: MapFeatureType, tx: number, ty: number, facing: number, turn?: number): MapFeature {
+  const f: MapFeature = { type, x: tx, y: ty, facing: facing & 3 };
+  if (!isMapSection(type)) {
+    const def = catalog(type);
+    const snap = (v: number, span: number): number => Math.round((v - span / 2) / TILE_SUBDIV) * TILE_SUBDIV;
+    f.x = snap(tx, def.tileW);
+    f.y = snap(ty, def.tileH);
+  }
+  if (turnsFine(type)) {
+    f.turn = wrapTurn(turn ?? (facing & 3) * QUARTER_TURN);
+    f.facing = turnQuarter(f.turn);
+  }
+  return f;
+}
+
+/** World point of a fine tile's centre. A line is drawn between these, as the match lays one. */
+export function tileWorld(tx: number, ty: number): { x: number; y: number } {
+  return { x: (tx + 0.5) * TILE_SIZE, y: (ty + 0.5) * TILE_SIZE };
+}
+
+/**
+ * The corners of a line with every leg turned to the nearest 15°. Each leg is
+ * measured from where the last one really ends, the way `fieldPath` lays it,
+ * so every section of the line stands on a whole turn step.
+ */
+export function snapLegs(type: MapSectionType, points: readonly { x: number; y: number }[]): { x: number; y: number }[] {
+  const span = fieldSpan(type);
+  const first = points[0];
+  if (!span || !first) return [];
+  const out = [{ ...first }];
+  let sx = first.x;
+  let sy = first.y;
+  let ux: number | null = null;
+  let uy = 0;
+  for (let i = 1; i < points.length; i++) {
+    const p = points[i]!;
+    const dist = Math.hypot(p.x - sx, p.y - sy);
+    if (dist < span.length * 0.5) {
+      out.push({ ...p });
+      continue;
+    }
+    const a = Math.round(Math.atan2(p.y - sy, p.x - sx) / BUILDING_TURN_STEP) * BUILDING_TURN_STEP;
+    const vx = Math.cos(a);
+    const vy = Math.sin(a);
+    const target = { x: sx + vx * dist, y: sy + vy * dist };
+    out.push(target);
+    // Follow fieldPath to where this leg ends.
+    let x0 = sx;
+    let y0 = sy;
+    let run = dist;
+    if (ux != null) {
+      if (fieldTurn(ux, uy, vx, vy) > FIELD_TURN_MAX) continue;
+      const start = fieldCornerStart(span.thick, sx, sy, ux, uy, vx, vy);
+      x0 = start.x;
+      y0 = start.y;
+      run = (target.x - x0) * vx + (target.y - y0) * vy;
+      if (run < span.length * 0.5) continue;
+    }
+    const n = Math.max(1, Math.round(run / span.length));
+    sx = x0 + vx * span.length * n;
+    sy = y0 + vy * span.length * n;
+    ux = vx;
+    uy = vy;
+  }
+  return out;
+}
+
+/**
+ * The sections a line through these world points lays, as map features. `turn` faces a
+ * lone section and picks which flank of a longer line is its front, like the wheel in a match.
+ */
+export function sectionLine(type: MapSectionType, points: readonly { x: number; y: number }[], turn: number): MapFeature[] {
+  const at = (v: number): number => Math.round((v / TILE_SIZE - 0.5) * TILE_SIZE) / TILE_SIZE;
+  return fieldPath(type, snapLegs(type, points), wrapTurn(turn) * BUILDING_TURN_STEP).map((p) => {
+    const t = wrapTurn(p.facing / BUILDING_TURN_STEP);
+    return { type, x: at(p.x), y: at(p.y), facing: turnQuarter(t), turn: t };
+  });
+}
+
+/** Set down every section of a line that fits. Returns how many went down and how many were refused. */
+export function laySections(s: Sheet, pieces: readonly MapFeature[]): { laid: number; refused: number } {
+  let laid = 0;
+  for (const f of pieces) {
+    if (houseProblem(s, f)) continue;
+    s.features.push(f);
+    laid++;
+  }
+  return { laid, refused: pieces.length - laid };
 }
 
 /** Why `f` cannot stand where it is. `ignore` is the index of a feature being moved, which does not block itself. */
@@ -290,11 +398,18 @@ export function moveFeature(s: Sheet, index: number, from: MapFeature, dx: numbe
   return null;
 }
 
-/** Turn a placed feature a quarter in place. Null when the turned shape fits. */
-export function turnFeature(s: Sheet, index: number): string | null {
+/**
+ * Turn a placed feature in place: a house a quarter, a defence `steps` 15° steps
+ * (a quarter by default). Null when the turned shape fits.
+ */
+export function turnFeature(s: Sheet, index: number, steps = QUARTER_TURN): string | null {
   const f = s.features[index];
   if (!f) return "Nothing selected.";
-  const next = { ...f, facing: (f.facing + 1) & 3 };
+  const next: MapFeature = { ...f, facing: (f.facing + 1) & 3 };
+  if (turnsFine(f.type)) {
+    next.turn = wrapTurn((f.turn ?? f.facing * QUARTER_TURN) + steps);
+    next.facing = turnQuarter(next.turn);
+  }
   const problem = houseProblem(s, next, index);
   if (problem) return problem;
   s.features[index] = next;
@@ -307,10 +422,8 @@ export function defenceCount(s: Sheet): number {
 }
 
 export function featureIndexAt(s: Sheet, tx: number, ty: number): number {
-  return s.features.findIndex((f) => {
-    const b = featureBox(f);
-    return tx >= b.x0 && tx < b.x1 && ty >= b.y0 && ty < b.y1;
-  });
+  // A thin or slanted section is hit within half a tile of it.
+  return s.features.findIndex((f) => featureContains(f, tx + 0.5, ty + 0.5, isMapSection(f.type) ? 0.5 : 0));
 }
 
 export function spawnIndexAt(s: Sheet, tx: number, ty: number, reach = 2 * TILE_SUBDIV): number {

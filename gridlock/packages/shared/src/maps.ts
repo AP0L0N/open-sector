@@ -1,4 +1,7 @@
+import { turnedBox } from "./building-rect.js";
 import {
+  BUILDING_FACINGS,
+  BUILDING_TURN_STEP,
   HEIGHT_BASE,
   HEIGHT_MAX,
   HEIGHT_STEP_MAX,
@@ -47,6 +50,14 @@ export interface MapFeature {
   y: number;
   /** Cardinal face. 0 = east, then south, west, north. A section looks this way and runs across it. */
   facing: number;
+  /**
+   * A defence turned finer than a quarter, the way the player turns one in a match:
+   * BUILDING_TURN_STEPs (15°) clockwise from east, 0 to BUILDING_FACINGS - 1. When set it
+   * wins over `facing`, which then holds the nearest quarter. Houses leave it out.
+   * A turned bunker or tower keeps x, y as its unturned lot and turns about that lot.
+   * A section's x, y may then be fractional (whole world px), so a slanted line lies end to end.
+   */
+  turn?: number;
 }
 
 export function isMapSection(type: string): type is MapSectionType {
@@ -55,17 +66,117 @@ export function isMapSection(type: string): type is MapSectionType {
 
 /** Fine tiles a map section covers along its run, centred on its own tile. */
 export const MAP_SECTION_TILES = 3;
+/** Fine tiles a map section is thick, across its run. */
+const MAP_SECTION_THICK = 1;
+/**
+ * How far two sections may cut into each other before they count as overlapping, fine
+ * tiles off each half-size. The pieces of one line meet in mitred corners that touch.
+ */
+const SECTION_SLACK = 0.45;
+
+/** The quarter nearest to a turn, as `facing` stores it. */
+export function turnQuarter(turn: number): number {
+  return Math.round(turn / (BUILDING_FACINGS / 4)) & 3;
+}
+
+/** World radians the feature faces: 0 east, clockwise. */
+export function featureAngle(f: MapFeature): number {
+  return f.turn != null ? f.turn * BUILDING_TURN_STEP : ((f.facing & 3) * Math.PI) / 2;
+}
+
+/** A house, bunker, or tower's ground box in fine tiles, and the facing it stands at. Same as a placed building's site. */
+export function featureLotSite(f: MapFeature): { tx: number; ty: number; w: number; h: number; facing: number } {
+  const def = catalog(f.type);
+  if (f.turn == null) return { tx: f.x, ty: f.y, w: def.tileW, h: def.tileH, facing: featureAngle(f) };
+  const facing = featureAngle(f);
+  const box = turnedBox(f.type, facing);
+  // Centred on the unturned lot; an odd box sits half a tile toward the top-left.
+  return {
+    tx: f.x + Math.floor((def.tileW - box.w) / 2),
+    ty: f.y + Math.floor((def.tileH - box.h) / 2),
+    w: box.w,
+    h: box.h,
+    facing,
+  };
+}
+
+/** A feature's real ground in fine tiles: centre, the axis it faces (u), the axis across (v), and half sizes. */
+export interface FeatureRect {
+  cx: number;
+  cy: number;
+  ux: number;
+  uy: number;
+  vx: number;
+  vy: number;
+  halfU: number;
+  halfV: number;
+}
+
+export function featureRect(f: MapFeature): FeatureRect {
+  if (isMapSection(f.type)) {
+    const a = featureAngle(f);
+    const ux = Math.cos(a);
+    const uy = Math.sin(a);
+    return { cx: f.x + 0.5, cy: f.y + 0.5, ux, uy, vx: -uy, vy: ux, halfU: MAP_SECTION_THICK / 2, halfV: MAP_SECTION_TILES / 2 };
+  }
+  const def = catalog(f.type);
+  const s = featureLotSite(f);
+  // A house does not turn its ground; its door side is only art.
+  const a = f.turn != null ? s.facing : 0;
+  const ux = Math.cos(a);
+  const uy = Math.sin(a);
+  return { cx: s.tx + s.w / 2, cy: s.ty + s.h / 2, ux, uy, vx: -uy, vy: ux, halfU: def.tileW / 2, halfV: def.tileH / 2 };
+}
+
+/** True when the fine-tile point lies on the feature's ground, `pad` tiles out from its edge. */
+export function featureContains(f: MapFeature, px: number, py: number, pad = 0): boolean {
+  const r = featureRect(f);
+  const dx = px - r.cx;
+  const dy = py - r.cy;
+  return Math.abs(dx * r.ux + dy * r.uy) <= r.halfU + pad && Math.abs(dx * r.vx + dy * r.vy) <= r.halfV + pad;
+}
+
+/** True when two features' ground overlaps. Sections may meet in a corner without counting. */
+export function featureRectsOverlap(a: MapFeature, b: MapFeature): boolean {
+  const slack = isMapSection(a.type) && isMapSection(b.type) ? SECTION_SLACK : 0;
+  const p = featureRect(a);
+  const q = featureRect(b);
+  const pu = p.halfU - slack;
+  const pv = p.halfV - slack;
+  const qu = q.halfU - slack;
+  const qv = q.halfV - slack;
+  const dx = q.cx - p.cx;
+  const dy = q.cy - p.cy;
+  // Separating axes: both rectangles' edges.
+  for (const [nx, ny] of [
+    [p.ux, p.uy],
+    [p.vx, p.vy],
+    [q.ux, q.uy],
+    [q.vx, q.vy],
+  ] as const) {
+    const d = Math.abs(dx * nx + dy * ny);
+    const rp = pu * Math.abs(p.ux * nx + p.uy * ny) + pv * Math.abs(p.vx * nx + p.vy * ny);
+    const rq = qu * Math.abs(q.ux * nx + q.uy * ny) + qv * Math.abs(q.vx * nx + q.vy * ny);
+    if (d >= rp + rq - 1e-6) return false;
+  }
+  return true;
+}
 
 /** Fine-tile box of a feature, end exclusive. A lot's origin is its top-left; a section's is its centre. */
 export function featureBox(f: MapFeature): { x0: number; y0: number; x1: number; y1: number } {
   if (isMapSection(f.type)) {
-    const half = (MAP_SECTION_TILES - 1) / 2;
-    // Looking east or west, the section runs north-south.
-    if ((f.facing & 1) === 0) return { x0: f.x, y0: f.y - half, x1: f.x + 1, y1: f.y + half + 1 };
-    return { x0: f.x - half, y0: f.y, x1: f.x + half + 1, y1: f.y + 1 };
+    const r = featureRect(f);
+    const ex = r.halfU * Math.abs(r.ux) + r.halfV * Math.abs(r.vx);
+    const ey = r.halfU * Math.abs(r.uy) + r.halfV * Math.abs(r.vy);
+    return {
+      x0: Math.floor(r.cx - ex + 1e-6),
+      y0: Math.floor(r.cy - ey + 1e-6),
+      x1: Math.ceil(r.cx + ex - 1e-6),
+      y1: Math.ceil(r.cy + ey - 1e-6),
+    };
   }
-  const def = catalog(f.type);
-  return { x0: f.x, y0: f.y, x1: f.x + def.tileW, y1: f.y + def.tileH };
+  const s = featureLotSite(f);
+  return { x0: s.tx, y0: s.ty, x1: s.tx + s.w, y1: s.ty + s.h };
 }
 
 /** Houses, bunkers, and towers: the features that stand on a levelled lot. */

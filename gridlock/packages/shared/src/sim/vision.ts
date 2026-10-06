@@ -16,7 +16,7 @@ import {
   type Crit,
 } from "../catalog.js";
 import type { EntityView, MatchSnapshot } from "../protocol.js";
-import { getMap, isMapSection, TILE_EMPTY, TILE_TREE } from "../maps.js";
+import { featureLotSite, getMap, isMapSection, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import {
   coverSmokeAt,
   fillLosFlags,
@@ -1110,8 +1110,14 @@ export function visionMaskFromSnapshot(
     for (const f of map.features ?? []) {
       // A sandbag or wall section does not stand in the way of sight.
       if (isMapSection(f.type)) continue;
-      const def = catalog(f.type);
-      stampOccupy(occupy, width, height, featureId--, f.x, f.y, def.tileW, def.tileH);
+      const site = featureLotSite(f);
+      if (f.turn != null) {
+        const placed = { type: f.type, facing: site.facing, tileX: site.tx, tileY: site.ty, tileW: site.w, tileH: site.h, x: (site.tx + site.w / 2) * tileSize, y: (site.ty + site.h / 2) * tileSize };
+        const id = featureId--;
+        for (const t of buildingTilesOf(placed, tileSize)) {
+          if (t.x >= 0 && t.y >= 0 && t.x < width && t.y < height) occupy[t.y * width + t.x] = id;
+        }
+      } else stampOccupy(occupy, width, height, featureId--, site.tx, site.ty, site.w, site.h);
     }
     for (const e of snap.entities) {
       if (e.hp <= 0) continue;

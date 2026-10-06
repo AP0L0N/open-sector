@@ -12,7 +12,7 @@ import {
   START_SCRAP,
   TICK_DT,
 } from "../catalog.js";
-import { getMap, isMapSection } from "../maps.js";
+import { featureAngle, featureLotSite, getMap, isMapSection } from "../maps.js";
 import { commanders } from "../lobby.js";
 import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
 import type { ImpactView, RocketLaunchView, RoomState } from "../protocol.js";
@@ -140,18 +140,21 @@ export function createMatch(
   // Houses and map defences stand neutral. A defence changes hands when someone takes it.
   const sections: Entity[] = [];
   for (const f of map.features ?? []) {
-    const facing = ((f.facing ?? 0) * Math.PI) / 2;
+    const facing = featureAngle({ ...f, facing: f.facing ?? 0 });
     if (isMapSection(f.type)) {
       const s = makeEntity(state, f.type, NEUTRAL_OWNER, tileCenter(f.x, map.tileSize), tileCenter(f.y, map.tileSize), { facing });
       s.turretFacing = facing;
       sections.push(s);
       continue;
     }
-    const def = catalog(f.type);
-    const c = buildingCenter(f.x, f.y, def.tileW, def.tileH, map.tileSize);
+    // A turned bunker or tower stands on its turned site, like one the player placed.
+    const site = featureLotSite({ ...f, facing: f.facing ?? 0 });
+    const c = buildingCenter(site.tx, site.ty, site.w, site.h, map.tileSize);
     makeEntity(state, f.type, NEUTRAL_OWNER, c.x, c.y, {
-      tileX: f.x,
-      tileY: f.y,
+      tileX: site.tx,
+      tileY: site.ty,
+      tileW: site.w,
+      tileH: site.h,
       facing,
     });
   }

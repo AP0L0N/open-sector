@@ -1,4 +1,4 @@
-import { CIVILIAN_TYPES, HEIGHT_MAX, TILE_SIZE, TILE_SUBDIV } from "./catalog.js";
+import { BUILDING_FACINGS, CIVILIAN_TYPES, HEIGHT_MAX, TILE_SIZE, TILE_SUBDIV } from "./catalog.js";
 import {
   MAP_DEFENCE_TYPES,
   PLAYTEST_MAP_PREFIX,
@@ -12,6 +12,7 @@ import {
   TILE_TREE,
   TILE_WATER,
   featureBox,
+  featureRectsOverlap,
   getMap,
   isBuiltinMap,
   isMapSection,
@@ -19,6 +20,7 @@ import {
   normalizeTerrain,
   peakHeight,
   registerMap,
+  turnQuarter,
   type MapDef,
   type MapFeature,
   type MapFeatureType,
@@ -142,7 +144,8 @@ export function featureOnPad(f: MapFeature, spawns: readonly { x: number; y: num
 export function featuresOverlap(a: MapFeature, b: MapFeature): boolean {
   const p = featureBox(a);
   const q = featureBox(b);
-  return p.x0 < q.x1 && q.x0 < p.x1 && p.y0 < q.y1 && q.y0 < p.y1;
+  if (!(p.x0 < q.x1 && q.x0 < p.x1 && p.y0 < q.y1 && q.y0 < p.y1)) return false;
+  return featureRectsOverlap(a, b);
 }
 
 export type CustomMapCheck = { ok: true; spec: CustomMapSpec } | { ok: false; message: string };
@@ -217,11 +220,29 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     const o = (f ?? {}) as Record<string, unknown>;
     const type = o.type;
     if (typeof type !== "string" || !(MAP_FEATURE_TYPES as readonly string[]).includes(type)) return bad("Unknown building.");
-    const fx = o.x;
-    const fy = o.y;
     const facing = o.facing ?? 0;
-    if (!Number.isInteger(fx) || !Number.isInteger(fy) || !Number.isInteger(facing)) return bad("Bad building.");
-    const feat: MapFeature = { type: type as MapFeatureType, x: fx as number, y: fy as number, facing: (facing as number) & 3 };
+    const turn = o.turn;
+    if (!Number.isInteger(facing)) return bad("Bad building.");
+    if (turn != null) {
+      // Only defences turn finer than a quarter, in the match's own steps.
+      if (!(MAP_DEFENCE_TYPES as readonly string[]).includes(type)) return bad("Bad building.");
+      if (!Number.isInteger(turn) || (turn as number) < 0 || (turn as number) >= BUILDING_FACINGS) return bad("Bad building.");
+    }
+    // A turned section may sit between tiles, on whole world pixels.
+    const free = turn != null && isMapSection(type);
+    const coord = (v: unknown): number | null => {
+      if (typeof v !== "number" || !Number.isFinite(v)) return null;
+      if (free) return Math.round(v * TILE_SIZE) / TILE_SIZE;
+      return Number.isInteger(v) ? v : null;
+    };
+    const fx = coord(o.x);
+    const fy = coord(o.y);
+    if (fx === null || fy === null) return bad("Bad building.");
+    const feat: MapFeature = { type: type as MapFeatureType, x: fx, y: fy, facing: (facing as number) & 3 };
+    if (turn != null) {
+      feat.turn = turn as number;
+      feat.facing = turnQuarter(feat.turn);
+    }
     const b = featureBox(feat);
     // Sandbags and walls sit on any fine tile; lots keep to the cell grid.
     if (!isMapSection(feat.type) && (feat.x % TILE_SUBDIV !== 0 || feat.y % TILE_SUBDIV !== 0)) {
