@@ -13,6 +13,7 @@ import {
   type TrainType,
 } from "./catalog.js";
 import { PATROL_POINTS_MAX } from "./sim/patrol.js";
+import { hasSpotlight } from "./sim/night.js";
 import {
   GROUND_GRASS,
   GROUND_KINDS,
@@ -397,7 +398,8 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     const fx = coord(o.x);
     const fy = coord(o.y);
     if (fx === null || fy === null) return bad("Bad building.");
-    const feat: MapFeature = { type: type as MapFeatureType, x: fx, y: fy, facing: (facing as number) & 3 };
+    const kind = type as MapFeatureType;
+    const feat: MapFeature = { type: kind, x: fx, y: fy, facing: (facing as number) & 3 };
     if (turn != null) {
       feat.turn = turn as number;
       feat.facing = turnQuarter(feat.turn);
@@ -406,9 +408,10 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
       if (!isMapBridge(type) || typeof o.deck !== "number" || !Number.isFinite(o.deck)) return bad("Bad building.");
       feat.deck = Math.max(0, Math.min(HEIGHT_MAX, Math.round(o.deck)));
     }
-    const spot = type === "tower" ? cleanSpot(o.spot) : null;
+    // The Watch Tower and the Fire-Control Tower. A Battle Ship's searchlight is stored on the unit.
+    const spot = hasSpotlight(kind) ? cleanSpot(o.spot) : null;
     if (spot != null) feat.spot = spot;
-    const sweep = type === "tower" ? cleanPatrol(o.patrol, width, height) : null;
+    const sweep = hasSpotlight(kind) ? cleanPatrol(o.patrol, width, height) : null;
     if (sweep) {
       feat.patrol = sweep;
       if (o.loop === true && sweep.length >= 2) feat.loop = true;

@@ -127,9 +127,9 @@ export interface MapFeature {
    * started. Every brick of one line shares it. Left out, the brick rests on its higher end.
    */
   deck?: number;
-  /** Watch Tower only: where its spotlight points, whole degrees, 0 = east, 90 = south. Left out, it looks the way the tower faces. */
+  /** Watch Tower and Fire-Control Tower: where the spotlight points, whole degrees, 0 = east, 90 = south. Left out, it looks the way the building faces. */
   spot?: number;
-  /** Watch Tower only: fine tiles the spotlight sweeps between, from the tower, as a held tower's Patrol sweeps them. */
+  /** Watch Tower and Fire-Control Tower: fine tiles the spotlight sweeps between, as a held lamp's Patrol sweeps them. */
   patrol?: { x: number; y: number }[];
   /** The sweep closes into a loop instead of running out and back. */
   loop?: boolean;

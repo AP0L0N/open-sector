@@ -152,6 +152,17 @@ describe("map spotlights", () => {
     assert.ok(seen.size > 4, "the beam swings between the points");
   });
 
+  it("rest a Fire-Control Tower's lamp and sweep the same way", () => {
+    const { state } = neutralMatch([], [
+      { type: "leitturm", x: MID, y: MID, facing: 0, spot: 90, patrol: [{ x: MID + 40, y: MID }, { x: MID, y: MID + 40 }], loop: true },
+    ]);
+    const tower = lampOf(state, "leitturm");
+    assert.ok(near(tower.spotFacing!, Math.PI / 2), "points south");
+    assert.equal(tower.order?.kind, "patrol");
+    assert.equal(tower.order?.loop, true);
+    assert.equal(spotlightManned(tower), false);
+  });
+
   it("light a neutral Battle Ship's searchlight where the map points it", () => {
     const { state } = neutralMatch([{ type: "battleship", x: MID, y: MID, facing: 0, spot: 180 }]);
     const ship = lampOf(state, "battleship");

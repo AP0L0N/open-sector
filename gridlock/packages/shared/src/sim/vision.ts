@@ -23,6 +23,7 @@ import {
   armLosFastPath,
   clearLosFastPath,
   fillLosFlags,
+  takeLosFastCounts,
   hasFullLos,
   hasFullLosFlagged,
   heightsWithDug,
@@ -580,6 +581,10 @@ let sightBlockMin = new Uint8Array(0);
 let sightBlockMax = new Uint8Array(0);
 let sightBlockCols = 0;
 let sightBlocksReady = false;
+let sightTiles = 0;
+let sightLos = 0;
+let sightLosOuter = 0;
+let sightSkipped = 0;
 
 /** Min and max ground in each block, so a flat ring past catalog sight is skipped. */
 export function armSightBlocks(elev: Uint8Array, width: number, height: number): void {
@@ -714,6 +719,7 @@ function paintSightBox(
             sightBlockMax[bi]!,
           )
         ) {
+          sightSkipped += (ix1 - ix0 + 1) * (iy1 - iy0 + 1);
           continue;
         }
         paintSightRect(mask, width, height, ox, oy, ix0, iy0, ix1, iy1, minD, boxR, catalogR, elev, cover, observerEye, uphillBonus, h0, flags, flagged);
@@ -748,11 +754,14 @@ function paintSightRect(
   for (let y = y0; y <= y1; y++) {
     const row = y * width;
     for (let x = x0; x <= x1; x++) {
+      sightTiles++;
       if (mask[row + x]) continue;
       const d = sightDist(x, y, ox, oy);
       if (d > boxR || d < minD) continue;
       const extra = levelSightExtra(h0, elevAtSafe(elev, width, height, x, y), uphillBonus);
       if (d > catalogR + extra) continue;
+      sightLos++;
+      if (minD > 0) sightLosOuter++;
       const los = flagged
         ? hasFullLosFlagged(elev, flags, cover, width, ox, oy, x, y, observerEye)
         : hasFullLos(elev, width, height, ox, oy, x, y, cover, observerEye);
@@ -1321,6 +1330,16 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
   state.visionByPlayer.set(playerId, mask);
   state.visionKeyByPlayer.set(playerId, key);
   state.visionTick = state.tick;
+  if (process.env.FOG_PROFILE) {
+    const ray = takeLosFastCounts();
+    console.log(
+      `fog obs ${movers.length} tiles ${sightTiles} los ${sightLos} outer ${sightLosOuter} skipped ${sightSkipped} fast ${ray.hits} miss ${ray.misses} steps ${ray.steps}`,
+    );
+    sightTiles = 0;
+    sightLos = 0;
+    sightLosOuter = 0;
+    sightSkipped = 0;
+  }
   return mask;
 }
 

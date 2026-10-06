@@ -968,13 +968,13 @@ function garrisonCounts(s: M.Sheet): Map<number, { count: number; cap: number }>
   return out;
 }
 
-/** Patrol routes to draw: every unit's own and every tower's sweep, and the one being drawn for the selection. Unselected routes stay off unless Always visible patrol is on. */
+/** Patrol routes to draw: every unit's own and every spotlight building's sweep, and the one being drawn for the selection. Unselected routes stay off unless Always visible patrol is on. */
 function unitRoutes(s: M.Sheet): RouteDraw[] {
   const sel = selected?.kind === "unit" ? selected.index : -1;
   const selTower = selected?.kind === "feature" ? selected.index : -1;
   const out: RouteDraw[] = [];
   s.features.forEach((f, i) => {
-    if (f.type !== "tower") return;
+    if (!hasSpotlight(f.type)) return;
     const from = towerTile(f);
     if (i === selTower && unitMode === "patrol") {
       out.push({
@@ -1108,7 +1108,7 @@ function unitOverlay(s: M.Sheet): UnitOverlay {
   };
 }
 
-/** Fine tile a Watch Tower's lamp stands over: the middle of its lot. */
+/** Fine tile a Watch Tower's or Fire-Control Tower's lamp stands over: the middle of its lot. */
 function towerTile(f: MapFeature): { x: number; y: number } {
   const r = featureRect(f);
   return { x: Math.floor(r.cx), y: Math.floor(r.cy) };
@@ -1370,11 +1370,11 @@ function selectedUnit(): MapUnit | null {
   return sheet.units[selected.index] ?? null;
 }
 
-/** The selected Watch Tower, whose spotlight Rotate aims and Patrol sweeps. */
+/** The selected Watch Tower or Fire-Control Tower, whose spotlight Rotate aims and Patrol sweeps. */
 function selectedTower(): MapFeature | null {
   if (!sheet || selected?.kind !== "feature") return null;
   const f = sheet.features[selected.index];
-  return f?.type === "tower" ? f : null;
+  return f && hasSpotlight(f.type) ? f : null;
 }
 
 /**
@@ -1408,7 +1408,7 @@ function placeUnitAt(x: number, y: number): void {
 
 /**
  * Rotate (R) or Patrol (Y) for the selected unit, as the match gives those orders, or
- * for a Watch Tower's spotlight: Rotate aims it ("spot") and Patrol sets its sweep.
+ * for a Watch Tower's or Fire-Control Tower's spotlight: Rotate aims it ("spot") and Patrol sets its sweep.
  * A Battle Ship's searchlight is aimed with "spot" too. In-game view only.
  */
 function setUnitMode(mode: null | "rotate" | "patrol" | "spot"): void {
@@ -2253,7 +2253,7 @@ function paintSelection(): void {
   } else if (f && s) {
     const faces = ["east", "south", "west", "north"];
     const heading = f.turn != null ? `${turnDegrees(f.turn)}°` : faces[f.facing & 3];
-    if (f.type === "tower") {
+    if (hasSpotlight(f.type)) {
       const sweep = f.patrol?.length ? ` · sweeps ${f.patrol.length} point${f.patrol.length === 1 ? "" : "s"}${f.loop ? " in a loop" : ""}` : "";
       box.append(el("div", { class: "bld-sel-name", text: `${catalog(f.type).name} · faces ${heading} · light ${towerSpot(f)}°${sweep}` }));
       const why = gameView ? "" : "Tick In-game view to aim the spotlight.";
