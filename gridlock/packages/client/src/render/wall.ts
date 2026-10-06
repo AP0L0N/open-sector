@@ -227,6 +227,19 @@ export interface WallDraw {
   project: (wx: number, wy: number, elev: number) => { x: number; y: number };
   /** What each end meets. Open ends draw a cap. */
   joins?: WallJoins;
+  /**
+   * The section's own frame, bent round any corner it turns (`lineFrame`): a world point at
+   * `along` and `across`. A bent corner replaces the mitre run-out; without it the section is
+   * the plain rectangle.
+   */
+  frame?: (along: number, across: number) => Pt;
+  /**
+   * The line's slab top down this section, terrain levels, `along` world px from the centre:
+   * a smooth curve through the tops of the sections either side (`lineProfile`), so where one
+   * run stands higher than the next the top climbs or falls to it instead of stepping. The
+   * slab's own bounds (`wallSlabTop`) still hold. Without it the top is `topElev` throughout.
+   */
+  topAt?: (along: number) => number;
   style?: WallStyle;
   /** Men inside a Large wall: the slits glow. */
   manned?: boolean;
@@ -275,9 +288,17 @@ function mulberry(seed: number): () => number {
 interface Face {
   a: Pt;
   b: Pt;
+  /** Where `a` and `b` lie along the section, world units from its centre. */
+  aAlong: number;
+  bAlong: number;
   n: Pt;
-  /** Along the section, in world units from the centre, for slits and scruff. Null on a mitre extension. */
+  /** The flank this face runs down, for its streaks and slits. Null on a cap. */
   flank: 1 | -1 | null;
+}
+
+function unit(v: Pt): Pt {
+  const l = Math.hypot(v.x, v.y) || 1;
+  return { x: v.x / l, y: v.y / l };
 }
 
 export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
@@ -295,13 +316,18 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
   // The slab keeps its height whatever its damage: cracks only, so neighbours never step.
   const slab = style.slabH;
   const slabLevels = d.levelPx > 0 ? (slab * d.worldPx) / d.levelPx : 0;
+  const hl = d.length / 2;
+  const ht = d.thick / 2;
+  /** The section's own frame: straight, or bent round its corners. */
+  const frame = d.frame ?? world;
   /**
    * A world point lifted `up` world units: the bottom hangs on the terrain, the top is the
-   * run's flat level, bent only where that level would leave the slab short or towering.
+   * run's flat level (or the line's curve through the runs, at `along` world px from the
+   * centre), bent only where that level would leave the slab short or towering.
    */
-  const at = (w: Pt, up: number): Pt => {
+  const at = (w: Pt, up: number, along = 0): Pt => {
     const g = d.ground(w.x, w.y);
-    const top = wallSlabTop(d.topElev, g, slabLevels);
+    const top = wallSlabTop(d.topAt ? d.topAt(along) : d.topElev, g, slabLevels);
     let elev = g;
     if (up > 0 && slab > 0) {
       if (up >= slab) {
@@ -314,7 +340,7 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
     if (elev < g) elev = g;
     return d.project(w.x, w.y, elev);
   };
-  const atF = (along: number, across: number, up: number): Pt => at(world(along, across), up);
+  const atF = (along: number, across: number, up: number): Pt => at(frame(along, across), up, along);
   // The Tower's concrete: about (112,112,104) in the light, (72,72,64) in shade, (144,144,128) on top.
   const base = d.bad ? [176, 72, 58] : [108, 110, 100];
   const [br, bg, bb] = base as [number, number, number];
@@ -322,63 +348,41 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
   const o1 = d.project(d.x + 1, d.y, 0);
   const px = Math.hypot(o1.x - o0.x, o1.y - o0.y);
   const line = Math.max(0.6, Math.min(1.4, px * 0.45));
-  const hl = d.length / 2;
-  const ht = d.thick / 2;
   const joins = d.joins ?? { neg: null, pos: null };
 
-  // Corners: c0 (-along, -across), c1 (+along, -across), c2 (+along, +across), c3 (-along, +across).
-  const c0 = world(-hl, -ht);
-  const c1 = world(hl, -ht);
-  const c2 = world(hl, ht);
-  const c3 = world(-hl, ht);
+  // The flanks sampled down the section: a straight one in a few even pieces, a bent one finely
+  // enough to read as a curve. A joint of any kind (straight on or round a corner) hides the cap.
+  const steps = d.frame ? 12 : 4;
+  const alongs = Array.from({ length: steps + 1 }, (_, i) => -hl + (d.length * i) / steps);
+  const negPts = alongs.map((a) => frame(a, -ht));
+  const posPts = alongs.map((a) => frame(a, ht));
   const nNeg = { x: -fx, y: -fy };
   const nPos = { x: fx, y: fy };
   const faces: Face[] = [];
-  // Flank endpoints, trimmed or extended by the joins.
-  let neg0 = c0; // -across flank, neg end
-  let neg1 = c1; // -across flank, pos end
-  let pos1 = c2; // +across flank, pos end
-  let pos0 = c3; // +across flank, neg end
-  const pos = joins.pos;
-  const neg = joins.neg;
-  if (pos && pos.kind === "corner") {
-    if (pos.outerSide > 0) neg1 = pos.inner;
-    else pos1 = pos.inner;
+  /** Outward normal of a flank piece: square to it, away from the other flank. */
+  const flankNormal = (a: Pt, b: Pt, away: Pt): Pt => {
+    const n = unit({ x: -(b.y - a.y), y: b.x - a.x });
+    return n.x * away.x + n.y * away.y >= 0 ? n : { x: -n.x, y: -n.y };
+  };
+  for (let i = 0; i < steps; i++) {
+    const awayNeg = { x: negPts[i]!.x - posPts[i]!.x, y: negPts[i]!.y - posPts[i]!.y };
+    faces.push({ a: negPts[i]!, b: negPts[i + 1]!, aAlong: alongs[i]!, bAlong: alongs[i + 1]!, n: flankNormal(negPts[i]!, negPts[i + 1]!, awayNeg), flank: -1 });
+    const awayPos = { x: -awayNeg.x, y: -awayNeg.y };
+    faces.push({ a: posPts[i + 1]!, b: posPts[i]!, aAlong: alongs[i + 1]!, bAlong: alongs[i]!, n: flankNormal(posPts[i]!, posPts[i + 1]!, awayPos), flank: 1 });
   }
-  if (neg && neg.kind === "corner") {
-    if (neg.outerSide > 0) neg0 = neg.inner;
-    else pos0 = neg.inner;
+  if (!joins.pos) {
+    const n = unit({ x: frame(hl, 0).x - frame(hl - 1, 0).x, y: frame(hl, 0).y - frame(hl - 1, 0).y });
+    faces.push({ a: negPts[steps]!, b: posPts[steps]!, aAlong: hl, bAlong: hl, n, flank: null });
   }
-  faces.push({ a: neg0, b: neg1, n: nNeg, flank: -1 });
-  faces.push({ a: pos1, b: pos0, n: nPos, flank: 1 });
-  // Pos end: a cap, a flush joint, or the mitre run out to the next leg.
-  const topPos: Pt[] = [];
-  if (pos && pos.kind === "corner") {
-    if (pos.outerSide > 0) {
-      faces.push({ a: c2, b: pos.outer, n: pos.normal, flank: null });
-      topPos.push(neg1, pos.outer, c2);
-    } else {
-      faces.push({ a: c1, b: pos.outer, n: pos.normal, flank: null });
-      topPos.push(c1, pos.outer, pos1);
-    }
-  } else {
-    if (!pos) faces.push({ a: c1, b: c2, n: u, flank: null });
-    topPos.push(c1, c2);
+  if (!joins.neg) {
+    const n = unit({ x: frame(-hl, 0).x - frame(-hl + 1, 0).x, y: frame(-hl, 0).y - frame(-hl + 1, 0).y });
+    faces.push({ a: posPts[0]!, b: negPts[0]!, aAlong: -hl, bAlong: -hl, n, flank: null });
   }
-  const topNeg: Pt[] = [];
-  if (neg && neg.kind === "corner") {
-    if (neg.outerSide > 0) {
-      faces.push({ a: c3, b: neg.outer, n: neg.normal, flank: null });
-      topNeg.push(c3, neg.outer, neg0);
-    } else {
-      faces.push({ a: c0, b: neg.outer, n: neg.normal, flank: null });
-      topNeg.push(pos0, neg.outer, c0);
-    }
-  } else {
-    if (!neg) faces.push({ a: c3, b: c0, n: { x: -u.x, y: -u.y }, flank: null });
-    topNeg.push(c3, c0);
-  }
-  const topPoly: Pt[] = [...topPos, ...topNeg];
+  // The top: down the −across flank, back up the +across one.
+  const topPoly: { p: Pt; along: number }[] = [
+    ...negPts.map((p, i) => ({ p, along: alongs[i]! })),
+    ...posPts.map((p, i) => ({ p, along: alongs[i]! })).reverse(),
+  ];
 
   const light = (n: Pt) => 0.55 + 0.45 * Math.max(0, n.x * LIT.x + n.y * LIT.y);
   faces.sort((p, q) => p.a.x + p.a.y + p.b.x + p.b.y - (q.a.x + q.a.y + q.b.x + q.b.y));
@@ -457,14 +461,14 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
   const streak = `rgba(34, 32, 28, ${d.bad ? 0.08 : 0.12})`;
   for (const face of faces) {
     const k = light(face.n);
-    const lo0 = at(face.a, 0);
-    const lo1 = at(face.b, 0);
-    const hi0 = at(face.a, slab);
-    const hi1 = at(face.b, slab);
+    const lo0 = at(face.a, 0, face.aAlong);
+    const lo1 = at(face.b, 0, face.bAlong);
+    const hi0 = at(face.a, slab, face.aAlong);
+    const hi1 = at(face.b, slab, face.bAlong);
     paint([lo0, lo1, hi1, hi0], rgb(br, bg, bb, k));
     // Weather: a grime band at the foot and a couple of run-off streaks from the top.
-    const g0 = at(face.a, slab * 0.22);
-    const g1 = at(face.b, slab * 0.22);
+    const g0 = at(face.a, slab * 0.22, face.aAlong);
+    const g1 = at(face.b, slab * 0.22, face.bAlong);
     ctx.fillStyle = grime;
     ctx.beginPath();
     ctx.moveTo(lo0.x, lo0.y);
@@ -530,7 +534,7 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
       ctx.stroke();
     }
   }
-  const topPts = topPoly.map((p) => at(p, slab));
+  const topPts = topPoly.map((t) => at(t.p, slab, t.along));
   paint(topPts, rgb(br, bg, bb, 1.3));
   // Scruff on the top: chipped edges and a few spalls.
   const rand = mulberry(d.seed ^ 0x9e3779b9);
@@ -633,11 +637,9 @@ export function drawWall(ctx: CanvasRenderingContext2D, d: WallDraw): void {
     ctx.strokeStyle = rgb(br, bg, bb, 1.45);
     ctx.lineWidth = Math.max(0.8, line * 0.9);
     const negLit = nNeg.x * LIT.x + nNeg.y * LIT.y >= nPos.x * LIT.x + nPos.y * LIT.y;
-    const e0 = at(negLit ? neg0 : pos0, slab);
-    const e1 = at(negLit ? neg1 : pos1, slab);
+    const edge = (negLit ? negPts : posPts).map((p, i) => at(p, slab, alongs[i]!));
     ctx.beginPath();
-    ctx.moveTo(e0.x, e0.y);
-    ctx.lineTo(e1.x, e1.y);
+    edge.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
     ctx.stroke();
   }
 
@@ -651,9 +653,19 @@ export function wallShadowHeight(style: WallStyle): number {
 
 /**
  * The ground this section covers, with its mitre, for a cast shadow: the top
- * outline on the ground plane.
+ * outline on the ground plane. With a bent `frame` it follows the bend instead.
  */
-export function wallFootprintWorld(section: WallSection, joins?: WallJoins): Pt[] {
+export function wallFootprintWorld(section: WallSection, joins?: WallJoins, frame?: (along: number, across: number) => Pt): Pt[] {
+  if (frame) {
+    const hl = section.length / 2;
+    const ht = section.thick / 2;
+    const out: Pt[] = [];
+    for (let i = 0; i <= 8; i++) {
+      const a = -hl + (section.length * i) / 8;
+      out.push(frame(a, -ht), frame(a, ht));
+    }
+    return out;
+  }
   const u = alongAxis(section.facing);
   const f = { x: Math.cos(section.facing), y: Math.sin(section.facing) };
   const hl = section.length / 2;

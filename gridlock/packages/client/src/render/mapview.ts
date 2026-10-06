@@ -419,6 +419,7 @@ import { inScreenRect, unitGroundSink, unitPickRect, type ScreenRect } from "./u
 import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
 import { brickDeckElev, drawBrick, layoutBridges, type BrickIn, type BrickLayout } from "./bridge.js";
+import { lineFrame, lineProfile, lineShapes, type LineShape } from "./line-bend.js";
 
 /** Bridges lie on the water: over ground decals, under shadows, corpses, and everything standing. */
 const BRIDGE_DRAW_LAYER = -1.5;
@@ -755,6 +756,12 @@ const DECOR_FACES: Record<DecorKind, readonly PropSprite[]> = {
 };
 
 
+/** Where the section at (x, y) sits in its run. 0 when it is not found. */
+function fieldRunIndex(run: readonly WallSection[], x: number, y: number): number {
+  const i = run.findIndex((s) => Math.abs(s.x - x) < 0.5 && Math.abs(s.y - y) < 0.5);
+  return i < 0 ? 0 : i;
+}
+
 /** The sections reachable from `all[start]` through ends that meet, straight on or round a corner. */
 function connectedRun(all: readonly WallSection[], start: number): WallSection[] {
   const group: WallSection[] = [];
@@ -1011,6 +1018,8 @@ export class MapView {
   private fieldPath: { x: number; y: number }[] = [];
   /** Connected runs of same-type field structures in the current snapshot, by section key. */
   private fieldRunCache: { snap: unknown; byType: Map<string, Map<string, WallSection[]>> } | null = null;
+  /** Bends and height curves of each run, worked out once per run (runs are cached per snapshot). */
+  private fieldLineCache = new WeakMap<readonly WallSection[], { shapes: LineShape[]; levels?: ((along: number) => number)[] }>();
   private fieldFacing = Math.PI / 2;
   /** Eased ghost facing so the piece swings instead of snapping. */
   private fieldShown = Math.PI / 2;
@@ -8555,7 +8564,7 @@ export class MapView {
             } else if (site.structure === "trench") {
               this.drawTrenchPit(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
             } else if (site.structure === "barbwire") {
-              this.drawWireLine(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
+              this.drawWireLine(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 }, e.fieldSites);
             } else {
               this.drawSandbagWall(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 }, e.fieldSites);
             }
@@ -8657,15 +8666,31 @@ export class MapView {
     const style = type === "greatwall" ? LARGE_WALL_STYLE : WALL_STYLE;
     const section: WallSection = { x, y, facing, length: span.length, thick: span.thick, crest: opts.crest };
     const run = this.fieldRun(type, section, extras ?? []);
-    // run[0] is this section. The run is cut where its top would tower over the ground.
+    // The run is cut where its top would tower over the ground.
     const samples = run.map((seg) => {
       const g = this.wallGrounds(seg, span.thick);
       return { peak: Math.max(...g), low: Math.min(...g), crest: seg.crest };
     });
     const tops = wallRunTops(samples, (i, j) => wallSectionsConnect(run[i]!, run[j]!), wallRiseLimit(type));
-    const grounds = [tops[0] ?? 0];
+    const index = fieldRunIndex(run, x, y);
+    const own = tops[index] ?? tops[0] ?? 0;
+    const grounds = [own];
     const worldPx = this.groundSpan(x, y, 10) / 10;
     const slabLevels = ISO_ELEVATION > 0 ? (style.slabH * worldPx) / ISO_ELEVATION : 0;
+    // A gate stands straight. A wall section bends round its corners, and where the run beside it
+    // stands at another level its top climbs or falls to it on a smooth curve instead of stepping.
+    // Drawing only: the sim's sections stay put.
+    const line = opts.gate ? null : this.fieldLineOf(run, index, false);
+    const links = line?.shape ? [line.shape.neg, line.shape.pos] : [];
+    const stepped = links.some((l) => l && Math.abs((tops[l.piece] ?? own) - own) > 1e-6);
+    const topAt =
+      line && stepped
+        ? lineProfile(
+            run,
+            line.shapes,
+            run.map((_, i) => wallTopElev([tops[i] ?? own], slabLevels)),
+          )[index]
+        : undefined;
     drawWall(this.ctx, {
       x,
       y,
@@ -8682,6 +8707,8 @@ export class MapView {
       worldPx,
       project: (wx, wy, elev) => this.toScreen(wx, wy, elev),
       joins: wallJoins(section, run),
+      frame: line?.frame,
+      topAt,
       style,
       manned: opts.manned,
       bandColor: opts.bandColor,
@@ -8694,8 +8721,11 @@ export class MapView {
     const span = fieldSpan(e.type);
     if (!span) return [];
     const section: WallSection = { x: e.x, y: e.y, facing: e.facing, length: span.length, thick: span.thick };
-    const joins = isConcreteLine(e.type) || e.type === "sandbags" ? wallJoins(section, this.fieldRun(e.type, section, [])) : undefined;
-    const foot = wallFootprintWorld(section, joins);
+    const lined = (isConcreteLine(e.type) && e.type !== "gate") || e.type === "sandbags" || e.type === "barbwire";
+    const run = lined && !e.ruined ? this.fieldRun(e.type as FieldStructureType, section, []) : null;
+    const joins = run && e.type !== "barbwire" ? wallJoins(section, run) : undefined;
+    const frame = run ? this.fieldLineOf(run, fieldRunIndex(run, e.x, e.y), false).frame : undefined;
+    const foot = wallFootprintWorld(section, joins, frame);
     const height =
       e.type === "sandbags" ? courseHeight(span.thick) * 3.1 : wallShadowHeight(e.type === "greatwall" ? LARGE_WALL_STYLE : WALL_STYLE);
     const d = shadowOffset(height);
@@ -8798,9 +8828,13 @@ export class MapView {
     const elev = this.elevAt(x, y);
     const lift = this.groundSpan(x, y, 10) / 10;
     const section: WallSection = { x, y, facing, length: span.length, thick: span.thick };
-    const joins = opts.ruined ? undefined : wallJoins(section, this.fieldRun("sandbags", section, extras ?? []));
+    // A standing section bends round its corners and rides the line's height curve; a ruin lies where it fell.
+    const run = opts.ruined ? null : this.fieldRun("sandbags", section, extras ?? []);
+    const joins = run ? wallJoins(section, run) : undefined;
+    const line = run ? this.fieldLineOf(run, fieldRunIndex(run, x, y), true) : null;
     drawSandbags(this.ctx, {
       joins,
+      frame: line?.frame,
       x,
       y,
       facing,
@@ -8810,19 +8844,29 @@ export class MapView {
       seed: opts.seed >>> 0,
       alpha: opts.alpha,
       bad: opts.bad,
-      project: (wx, wy, up) => {
-        const p = this.toScreen(wx, wy, elev);
+      project: (wx, wy, up, along) => {
+        const p = this.toScreen(wx, wy, line?.level ? line.level(along ?? 0) : elev);
         return { x: p.x, y: p.y - up * lift };
       },
     });
   }
 
-  private drawWireLine(x: number, y: number, facing: number, opts: { ruined?: boolean; alpha: number; seed: number; bad?: boolean }): void {
+  private drawWireLine(
+    x: number,
+    y: number,
+    facing: number,
+    opts: { ruined?: boolean; alpha: number; seed: number; bad?: boolean },
+    extras?: readonly { x: number; y: number; facing: number }[],
+  ): void {
     const span = fieldSpan("barbwire");
     if (!span) return;
     const elev = this.elevAt(x, y);
     const lift = this.groundSpan(x, y, 10) / 10;
+    const section: WallSection = { x, y, facing, length: span.length, thick: span.thick };
+    const run = opts.ruined ? null : this.fieldRun("barbwire", section, extras ?? []);
+    const line = run ? this.fieldLineOf(run, fieldRunIndex(run, x, y), true) : null;
     drawBarbwire(this.ctx, {
+      frame: line?.frame,
       x,
       y,
       facing,
@@ -8832,11 +8876,44 @@ export class MapView {
       seed: opts.seed >>> 0,
       alpha: opts.alpha,
       bad: opts.bad,
-      project: (wx, wy, up) => {
-        const p = this.toScreen(wx, wy, elev);
+      project: (wx, wy, up, along) => {
+        const p = this.toScreen(wx, wy, line?.level ? line.level(along ?? 0) : elev);
         return { x: p.x, y: p.y - up * lift };
       },
     });
+  }
+
+  /**
+   * Section `index` of a run as the line drawing sees it: which ends meet, its frame bent round
+   * any corner (undefined when it runs straight), and, for bags and wire that lie on the ground,
+   * the height curve the line rides from one section's level to the next.
+   */
+  private fieldLineOf(
+    run: readonly WallSection[],
+    index: number,
+    profile: boolean,
+  ): {
+    shapes: LineShape[];
+    shape?: LineShape;
+    frame?: (along: number, across: number) => { x: number; y: number };
+    level?: (along: number) => number;
+  } {
+    let cached = this.fieldLineCache.get(run);
+    if (!cached) {
+      cached = { shapes: lineShapes(run) };
+      this.fieldLineCache.set(run, cached);
+    }
+    if (profile && !cached.levels) {
+      cached.levels = lineProfile(
+        run,
+        cached.shapes,
+        run.map((s) => this.elevAt(s.x, s.y)),
+      );
+    }
+    const shape = cached.shapes[index];
+    const piece = run[index];
+    const frame = shape && piece && (shape.bendNeg || shape.bendPos) ? lineFrame(piece, shape) : undefined;
+    return { shapes: cached.shapes, shape, frame, level: profile ? cached.levels?.[index] : undefined };
   }
 
   private drawTrenchPit(
@@ -9088,7 +9165,7 @@ export class MapView {
       } else if (type === "trench") {
         this.drawTrenchPit(p.x, p.y, p.facing, { alpha, seed: 7, bad: !ok });
       } else if (type === "barbwire") {
-        this.drawWireLine(p.x, p.y, p.facing, { alpha, seed: 7, bad: !ok });
+        this.drawWireLine(p.x, p.y, p.facing, { alpha, seed: 7, bad: !ok }, pieces);
       } else {
         this.drawSandbagWall(p.x, p.y, p.facing, { alpha, seed: 7, bad: !ok }, pieces);
       }

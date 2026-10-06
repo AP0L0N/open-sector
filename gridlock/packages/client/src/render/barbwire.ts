@@ -2,7 +2,9 @@
  * Barbwire section: a coil of wire strung between two posts, drawn in the section's own
  * frame so it matches the sim box at any facing. `along` runs down the line, `across` is
  * the look direction, `up` is world units above the ground. Flattened by a hull it lies
- * as a tangle with its posts knocked over.
+ * as a tangle with its posts knocked over. Round a corner the coil follows the bent frame
+ * (`frame`, from `lineFrame`), and `project` takes the place along the section too, so a
+ * line can rise or fall from one section's level to the next.
  */
 
 export interface BarbwireDraw {
@@ -16,8 +18,10 @@ export interface BarbwireDraw {
   alpha: number;
   /** Ghost on a spot the engineer cannot use. */
   bad?: boolean;
-  /** World point plus height to screen. */
-  project: (wx: number, wy: number, up: number) => { x: number; y: number };
+  /** World point plus height to screen. `along` is where it lies down the section, world px from the centre. */
+  project: (wx: number, wy: number, up: number, along?: number) => { x: number; y: number };
+  /** The section's frame bent round its corners (`lineFrame`). The coil follows the curve. */
+  frame?: (along: number, across: number) => Pt;
 }
 
 /** Post height, world units: about the three courses of a sandbag wall. */
@@ -73,8 +77,13 @@ export function drawBarbwire(ctx: CanvasRenderingContext2D, d: BarbwireDraw): vo
   const fy = Math.sin(d.facing);
   const tx = -fy;
   const ty = fx;
-  const at = (along: number, across: number, up: number): Pt =>
-    d.project(d.x + tx * along + fx * across, d.y + ty * along + fy * across, up);
+  const world =
+    d.frame ??
+    ((along: number, across: number): Pt => ({ x: d.x + tx * along + fx * across, y: d.y + ty * along + fy * across }));
+  const at = (along: number, across: number, up: number): Pt => {
+    const w = world(along, across);
+    return d.project(w.x, w.y, up, along);
+  };
   const o0 = d.project(d.x, d.y, 0);
   const o1 = d.project(d.x + 1, d.y, 0);
   const px = Math.hypot(o1.x - o0.x, o1.y - o0.y);
@@ -91,13 +100,14 @@ export function drawBarbwire(ctx: CanvasRenderingContext2D, d: BarbwireDraw): vo
   ctx.fillStyle = d.bad ? "rgba(150, 60, 48, 0.28)" : "rgba(40, 34, 22, 0.22)";
   ctx.beginPath();
   const ht = d.thick / 2;
-  for (const [a, c] of [
-    [-hl, -ht],
-    [hl, -ht],
-    [hl, ht],
-    [-hl, ht],
-  ] as const) {
-    const p = at(a, c, 0);
+  // Down one flank and back up the other, so a bent section's patch follows the curve.
+  const rim = d.frame ? 8 : 1;
+  for (let i = 0; i <= rim; i++) {
+    const p = at(-hl + (d.length * i) / rim, -ht, 0);
+    ctx.lineTo(p.x, p.y);
+  }
+  for (let i = rim; i >= 0; i--) {
+    const p = at(-hl + (d.length * i) / rim, ht, 0);
     ctx.lineTo(p.x, p.y);
   }
   ctx.closePath();

@@ -1,8 +1,10 @@
 /**
  * Sandbag wall, drawn bag by bag in the wall's own frame so it matches the sim box at any facing.
  * `along` runs down the wall, `across` is the look direction, `up` is world units above the ground.
- * Where a line turns, the section at the end of the old leg piles bags into the outer
- * angle of the corner so the two legs read as one wall.
+ * Where a line turns, both sections of the corner bend round one curve (`frame`, from
+ * `lineFrame`) and the bags follow it; without a frame the section at the end of the old
+ * leg piles bags into the outer angle instead. `project` takes the bag's place along the
+ * section too, so a line can rise or fall from one section's level to the next.
  */
 
 import type { WallJoins } from "./wall.js";
@@ -32,10 +34,12 @@ export interface SandbagDraw {
   alpha: number;
   /** Ghost on a spot the engineer cannot use. */
   bad?: boolean;
-  /** World point plus height to screen. */
-  project: (wx: number, wy: number, up: number) => { x: number; y: number };
+  /** World point plus height to screen. `along` is where it lies down the section, world px from the centre. */
+  project: (wx: number, wy: number, up: number, along?: number) => { x: number; y: number };
   /** What each end meets. A corner gets bags piled into its outer angle. */
   joins?: WallJoins;
+  /** The section's frame bent round its corners (`lineFrame`). The bags follow the curve. */
+  frame?: (along: number, across: number) => Pt;
 }
 
 /** Gap between bags as a share of wall thickness. */
@@ -227,14 +231,17 @@ export function drawSandbags(ctx: CanvasRenderingContext2D, d: SandbagDraw): voi
   const fy = Math.sin(d.facing);
   const tx = -fy;
   const ty = fx;
-  const world = (along: number, across: number) => ({
-    x: d.x + tx * along + fx * across,
-    y: d.y + ty * along + fy * across,
-  });
+  const world =
+    d.frame ??
+    ((along: number, across: number) => ({
+      x: d.x + tx * along + fx * across,
+      y: d.y + ty * along + fy * across,
+    }));
   const base = d.bad ? [196, 74, 58] : [142, 118, 78];
   const [br, bg, bb] = base as [number, number, number];
   const bags = sandbagLayout(d.length, d.thick, d.ruined, d.seed);
-  if (!d.ruined && d.joins) {
+  // A bent corner fills its own outer angle; only a plain one needs the extra pile.
+  if (!d.ruined && d.joins && !d.frame) {
     for (const sign of [1, -1] as const) {
       const end = sign > 0 ? d.joins.pos : d.joins.neg;
       if (!end || end.kind !== "corner") continue;
@@ -256,11 +263,12 @@ export function drawSandbags(ctx: CanvasRenderingContext2D, d: SandbagDraw): voi
     const rand = rng(d.seed ^ 0x9e3779b9);
     ctx.fillStyle = d.bad ? "rgba(170, 70, 50, 0.5)" : "rgba(120, 98, 62, 0.55)";
     for (let i = 0; i < 4; i++) {
-      const c = world((rand() - 0.5) * d.length * 0.9, (rand() - 0.5) * d.thick * 1.6);
+      const along = (rand() - 0.5) * d.length * 0.9;
+      const c = world(along, (rand() - 0.5) * d.thick * 1.6);
       const r = d.thick * (0.14 + rand() * 0.22);
       const pts = [0, 1, 2, 3, 4, 5].map((k) => {
         const a = (k / 6) * Math.PI * 2;
-        return d.project(c.x + Math.cos(a) * r * 1.4, c.y + Math.sin(a) * r, 0);
+        return d.project(c.x + Math.cos(a) * r * 1.4, c.y + Math.sin(a) * r, 0, along);
       });
       softPath(ctx, pts);
       ctx.fill();
@@ -282,8 +290,16 @@ export function drawSandbags(ctx: CanvasRenderingContext2D, d: SandbagDraw): voi
       const la = sa * b.halfAlong * cy - sc * b.halfAcross * sy;
       const lc = sa * b.halfAlong * sy + sc * b.halfAcross * cy;
       const w = world(b.along + la, b.across + lc);
-      return d.project(w.x, w.y, up);
+      return d.project(w.x, w.y, up, b.along + la);
     };
+    // The wall's own axes where this bag lies: a bent section turns them round the curve.
+    const p0 = world(b.along - 0.5, b.across);
+    const p1 = world(b.along + 0.5, b.across);
+    const tl = Math.hypot(p1.x - p0.x, p1.y - p0.y) || 1;
+    const ltx = (p1.x - p0.x) / tl;
+    const lty = (p1.y - p0.y) / tl;
+    const lfx = lty;
+    const lfy = -ltx;
     const signs: [number, number][] = [
       [-1, -1],
       [1, -1],
@@ -293,8 +309,8 @@ export function drawSandbags(ctx: CanvasRenderingContext2D, d: SandbagDraw): voi
     const lo = signs.map(([a, c]) => corner(a, c, b.z0));
     const hi = signs.map(([a, c]) => corner(a, c, b.z1));
     const sil = hull([...lo, ...hi]);
-    const bagT = { x: tx * cy + fx * sy, y: ty * cy + fy * sy };
-    const bagF = { x: -tx * sy + fx * cy, y: -ty * sy + fy * cy };
+    const bagT = { x: ltx * cy + lfx * sy, y: lty * cy + lfy * sy };
+    const bagF = { x: -ltx * sy + lfx * cy, y: -lty * sy + lfy * cy };
     const faces = [
       { n: { x: -bagF.x, y: -bagF.y }, i: [0, 1] },
       { n: bagT, i: [1, 2] },

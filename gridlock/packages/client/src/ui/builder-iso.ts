@@ -77,6 +77,7 @@ import {
 import { SCRAP_SOFT_REACH } from "../render/scrap-field.js";
 import { treeStamp } from "../render/tree-burn.js";
 import { WALL_STYLE, drawWall, wallJoins, wallTopElev, type WallSection } from "../render/wall.js";
+import { lineFrame, lineProfile, lineShapes, type LinePiece } from "../render/line-bend.js";
 import type { IsoCam } from "./builder-iso-cam.js";
 import { brickDeck, liveClutter, liveLamps, type Dirty, type Sheet } from "./builder-model.js";
 
@@ -422,8 +423,64 @@ function boxCorners(s: Sheet, f: MapFeature, pad = 0, bridge?: BrickLayout): { p
   return { pts, elev };
 }
 
+/** How a sandbag, wire, or wall section lies in its line: bent round a corner, and on the line's height curve. */
+interface LineLook {
+  frame?: (along: number, across: number) => { x: number; y: number };
+  /** Sandbags and wire: the ground level the line rides at, along the section. */
+  level?: (along: number) => number;
+  /** Walls: the line's slab top along the section, a smooth curve through the section tops either side. */
+  topAt?: (along: number) => number;
+}
+
+/** Screen pixels per world unit in the in-game view. */
+function worldPxOf(): number {
+  const step = worldToIso(10, 0, TILE_SIZE);
+  return Math.hypot(step.x, step.y) / 10;
+}
+
+/** A wall section's slab top, terrain levels: its highest ground down the centre line, plus the slab. */
+function wallTopOf(s: Sheet, p: LinePiece): number {
+  const tx = -Math.sin(p.facing);
+  const ty = Math.cos(p.facing);
+  const grounds = [-1, 0, 1].map((k) => groundAt(s, p.x + (tx * k * p.length) / 2, p.y + (ty * k * p.length) / 2));
+  return wallTopElev(grounds, (WALL_STYLE.slabH * worldPxOf()) / ISO_ELEVATION);
+}
+
+/**
+ * Bends and height curves for the sandbag, wire, and wall lines among `list`, worked out once
+ * per type for the whole sheet: drawing only, the map's sections stay where they were laid.
+ */
+function lineLooks(s: Sheet, list: readonly MapFeature[]): Map<MapFeature, LineLook> {
+  const out = new Map<MapFeature, LineLook>();
+  for (const type of ["sandbags", "barbwire", "wall"] as const) {
+    const feats = list.filter((f) => f.type === type);
+    if (feats.length === 0) continue;
+    const span = fieldSpan(type);
+    if (!span) continue;
+    const pieces: LinePiece[] = feats.map((f) => ({
+      x: (f.x + 0.5) * TILE_SIZE,
+      y: (f.y + 0.5) * TILE_SIZE,
+      facing: featureAngle(f),
+      length: span.length,
+      thick: span.thick,
+    }));
+    const shapes = lineShapes(pieces);
+    // Bags and wire ride a curve through the ground under each section; a wall's top, through each section's top.
+    const levels = lineProfile(pieces, shapes, type === "wall" ? pieces.map((q) => wallTopOf(s, q)) : pieces.map((q) => groundAt(s, q.x, q.y)));
+    feats.forEach((f, i) => {
+      const shape = shapes[i]!;
+      const look: LineLook = {};
+      if (shape.bendNeg || shape.bendPos) look.frame = lineFrame(pieces[i]!, shape);
+      if (type === "wall") look.topAt = levels[i];
+      else look.level = levels[i];
+      out.set(f, look);
+    });
+  }
+  return out;
+}
+
 /** A building or defence as the battlefield draws it. False when its art has not loaded. */
-function drawFeature(c: CanvasRenderingContext2D, s: Sheet, f: MapFeature, sections: readonly WallSection[]): boolean {
+function drawFeature(c: CanvasRenderingContext2D, s: Sheet, f: MapFeature, sections: readonly WallSection[], look?: LineLook): boolean {
   const ts = TILE_SIZE;
   const facing = featureAngle(f);
   if (isMapSection(f.type)) {
@@ -447,8 +504,9 @@ function drawFeature(c: CanvasRenderingContext2D, s: Sheet, f: MapFeature, secti
         seed: (f.x * 73856093) ^ (f.y * 19349663),
         alpha: 1,
         joins: wallJoins(section, kin),
-        project: (wx, wy, up) => {
-          const p = at(wx, wy, elev);
+        frame: look?.frame,
+        project: (wx, wy, up, along) => {
+          const p = at(wx, wy, look?.level ? look.level(along ?? 0) : elev);
           return { x: p.x, y: p.y - up * worldPx };
         },
       });
@@ -464,8 +522,9 @@ function drawFeature(c: CanvasRenderingContext2D, s: Sheet, f: MapFeature, secti
         ruined: false,
         seed: (f.x * 73856093) ^ (f.y * 19349663),
         alpha: 1,
-        project: (wx, wy, up) => {
-          const p = at(wx, wy, elev);
+        frame: look?.frame,
+        project: (wx, wy, up, along) => {
+          const p = at(wx, wy, look?.level ? look.level(along ?? 0) : elev);
           return { x: p.x, y: p.y - up * worldPx };
         },
       });
@@ -503,6 +562,8 @@ function drawFeature(c: CanvasRenderingContext2D, s: Sheet, f: MapFeature, secti
       worldPx,
       project: (wx, wy, e) => at(wx, wy, e),
       joins: wallJoins(section, kin),
+      frame: look?.frame,
+      topAt: look?.topAt,
       style: WALL_STYLE,
     });
     return true;
@@ -736,6 +797,7 @@ export function isoDraw(
         };
       });
   const sections = sectionsOf(s.features);
+  const looks = lineLooks(s, s.features);
   const bridges = bridgeLayouts(s, s.features);
   s.features.forEach((f, i) => {
     const look = bridges.get(f);
@@ -757,7 +819,7 @@ export function isoDraw(
     items.push({
       z: zKey,
       run: () => {
-        if (!drawFeature(c, s, f, same)) loading = true;
+        if (!drawFeature(c, s, f, same, looks.get(f))) loading = true;
         if (i === o.selectedFeature) frame(c, s, f, "#e8b84a", z);
         else if (i === o.hoverFeature) frame(c, s, f, "rgba(255,244,220,0.7)", z);
       },
@@ -919,6 +981,8 @@ export function isoDraw(
 
   // Ghosts as the match shows a placement: tinted ground, faded art. A drawn line's pieces join each other.
   const ghostSections = sectionsOf(o.ghosts.map((g) => g.f));
+  // A ghost line bends and slopes with the sections already laid, as it will once it is down.
+  const ghostLooks = lineLooks(s, [...o.ghosts.map((g) => g.f), ...s.features]);
   // A ghost bridge meets the bricks already laid, so its ends arch or join as they will.
   const ghostBridges = bridgeLayouts(s, [...o.ghosts.map((g) => g.f), ...s.features]);
   const ghostOrder = [...o.ghosts].sort((a, b) => isoDepth(a.f.x, a.f.y) - isoDepth(b.f.x, b.f.y));
@@ -933,7 +997,7 @@ export function isoDraw(
     c.fill();
     c.globalAlpha = 0.55;
     if (look) paintBrick(c, s, look, 1);
-    else if (!drawFeature(c, s, f, ghostSections.filter((x) => x.type === f.type))) loading = true;
+    else if (!drawFeature(c, s, f, ghostSections.filter((x) => x.type === f.type), ghostLooks.get(f))) loading = true;
     c.restore();
     c.strokeStyle = tint;
     c.lineWidth = 2 / z;
