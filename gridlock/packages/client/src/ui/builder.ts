@@ -51,6 +51,8 @@ import * as M from "./builder-model.js";
 
 const KEY_STORE = "gridlock.mapKey";
 const MINE_STORE = "gridlock.myMaps";
+const AUTO_STORE = "gridlock.builderAutoSave";
+const AUTO_SAVE_MS = 30_000;
 const PREVIEW_ID = "__builder__";
 const UNDO_DEPTH = 40;
 /** Raise / Lower apply one step this often while the button is held. */
@@ -111,6 +113,13 @@ let dirty = false;
 let newOpen = false;
 let msg = { text: "", tone: "" as "" | "bad" | "good" };
 let pendingSave: string | null = null;
+/** Edits made to the open sheet. A save ack clears `dirty` only if none landed while it was in flight. */
+let edits = 0;
+let savingEdits = 0;
+/** The save in flight was the auto save's: confirm it quietly, without rebuilding the screen. */
+let pendingAuto = false;
+let autoSave = store()?.getItem(AUTO_STORE) !== "0";
+let autoTimer: ReturnType<typeof setInterval> | null = null;
 const undo: M.SheetMark[] = [];
 const redo: M.SheetMark[] = [];
 const tool: Tool = { id: "raise", tile: TILE_WATER, house: "cottage", defence: "bunker", facing: 1, brush: 6, level: HEIGHT_BASE };
@@ -194,6 +203,7 @@ function pushUndo(): void {
 
 function changed(): void {
   dirty = true;
+  edits++;
   previewStale = true;
   pendingGround = M.emptyDirty();
   repaintGround();
@@ -906,12 +916,39 @@ function save(ctx: Ctx, opts: { copy?: boolean } = {}): void {
     s.id = newCustomMapId();
     if (!/ copy$/i.test(s.name)) s.name = `${s.name} copy`.slice(0, 32);
     dirty = true;
+    edits++;
   }
   const problem = M.sheetProblem(s);
   if (problem) return say(problem, "bad");
   pendingSave = s.id;
+  pendingAuto = false;
+  savingEdits = edits;
   say("Saving…");
   ctx.net.send({ type: "map.save", map: M.sheetToSpec(s), key: mapKey() });
+}
+
+/**
+ * Every AUTO_SAVE_MS, save the open map if it has changes. Stays quiet when
+ * there is nothing to save, the sheet is not saveable yet, or a stroke is down.
+ */
+function autoTick(): void {
+  const ctx = ctxRef;
+  const s = sheet;
+  if (!autoSave || !ctx || ctx.screen !== "builder" || !stage || !s || newOpen) return;
+  if (!dirty || pendingSave || drag || !ctx.net.connected || M.sheetProblem(s)) return;
+  pendingSave = s.id;
+  pendingAuto = true;
+  savingEdits = edits;
+  ctx.net.send({ type: "map.save", map: M.sheetToSpec(s), key: mapKey() });
+}
+
+function setAutoSave(on: boolean): void {
+  autoSave = on;
+  try {
+    store()?.setItem(AUTO_STORE, on ? "1" : "0");
+  } catch {
+    // Private mode: the choice lasts this visit only.
+  }
 }
 
 /**
@@ -940,7 +977,14 @@ export function builderMapSaved(ctx: Ctx, id: string): void {
   claimMap(id);
   if (pendingSave !== id) return;
   pendingSave = null;
-  if (sheet?.id === id) dirty = false;
+  if (sheet?.id === id && edits === savingEdits) dirty = false;
+  if (pendingAuto) {
+    pendingAuto = false;
+    const at = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    say(`Auto-saved at ${at}.`, "good");
+    paintChecks();
+    return;
+  }
   say(`Saved "${getMap(id)?.name ?? id}". It is in every lobby's map list now.`, "good");
   if (ctx.screen === "builder") mountOrRefresh(ctx);
 }
@@ -949,7 +993,9 @@ export function builderMapSaved(ctx: Ctx, id: string): void {
 export function builderError(ctx: Ctx, message: string): boolean {
   if (!stage || ctx.screen !== "builder") return false;
   pendingSave = null;
-  say(message, "bad");
+  const auto = pendingAuto;
+  pendingAuto = false;
+  say(auto ? `Auto save failed: ${message}` : message, "bad");
   return true;
 }
 
@@ -1318,6 +1364,7 @@ function header(ctx: Ctx): HTMLElement {
     name.addEventListener("input", () => {
       s.name = name.value;
       dirty = true;
+      edits++;
       paintChecks();
     });
     nameField.append(el("label", { text: "Name" }), name);
@@ -1356,6 +1403,12 @@ function header(ctx: Ctx): HTMLElement {
     mountOrRefresh(ctx);
   }, newOpen);
   btn("Undo", "btn-ghost", () => step(undo, redo), !editing || undo.length === 0);
+  const auto = el("input", { attrs: { type: "checkbox" } });
+  auto.checked = autoSave;
+  auto.addEventListener("change", () => setAutoSave(auto.checked));
+  const autoLabel = el("label", { class: "check bld-auto", text: "Auto save", attrs: { title: "Save changes every 30 seconds" } });
+  autoLabel.prepend(auto);
+  if (editing) head.append(autoLabel);
   btn("Save", "btn-primary", () => save(ctx), !editing);
   btn("Save copy", "", () => save(ctx, { copy: true }), !editing);
   btn("Play test", "", () => playtest(ctx), !editing);
@@ -1422,6 +1475,7 @@ export function refreshBuilder(ctx: Ctx): void {
 export function renderBuilder(root: HTMLElement, ctx: Ctx): void {
   ctxRef = ctx;
   bindKeys();
+  autoTimer ??= setInterval(autoTick, AUTO_SAVE_MS);
   if (!sheet) newOpen = true;
   const screen = el("div", { class: "screen", attrs: { id: "builder-root" } });
   const wrap = el("div", { class: "builder" });
