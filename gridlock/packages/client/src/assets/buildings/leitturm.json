@@ -1,0 +1,12 @@
+{
+  "padWidth": 384.0,
+  "padSouthX": 360.0,
+  "padSouthY": 384.0,
+  "stackX": 360.0,
+  "stackY": 108.0,
+  "cell": [
+    720,
+    552
+  ],
+  "roofZ": 50.0
+}

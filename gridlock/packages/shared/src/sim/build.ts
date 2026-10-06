@@ -30,7 +30,7 @@ import {
 } from "./geo.js";
 import { buildingSite, buildingTilesOf, snapBuildingFacing, turnedBox } from "../building-rect.js";
 import { ejectUnits } from "./deploy.js";
-import { spillGarrison } from "./garrison.js";
+import { manGun, spillGarrison } from "./garrison.js";
 import {
   fieldPiecesFor,
   fieldSiteClear,
@@ -301,6 +301,8 @@ export function raiseBuilding(
   for (const u of state.entities.values()) {
     if (u.kind === "unit") repathIfBlocked(state, u);
   }
+  // An emplaced gun goes up with its crew already at it.
+  manGun(state, b);
   return b;
 }
 
