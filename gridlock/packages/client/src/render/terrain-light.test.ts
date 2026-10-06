@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { HEIGHT_BASE, HEIGHT_MAX, TILE_EMPTY, TILE_ROAD, TILE_WATER } from "@gridlock/shared";
+import {
+  GROUND_DIRT,
+  GROUND_GRASS,
+  GROUND_SAND,
+  GROUND_STONES,
+  GROUND_SWAMP,
+  GROUND_TALL_GRASS,
+  HEIGHT_BASE,
+  HEIGHT_MAX,
+  TILE_EMPTY,
+  TILE_ROAD,
+  TILE_WATER,
+} from "@gridlock/shared";
 import { heightMesh } from "./height-mesh.js";
 import { elevShadeFactor, materialBytes, vertexTones } from "./terrain-light.js";
 
@@ -92,6 +104,29 @@ describe("terrain light", () => {
         if (a[i + 1] || a[i + 2]) assert.fail(`${size}-cell map: tile ${i / 4} is a dry or damp field`);
       }
     }
+  });
+
+  it("turns painted cover into its own channels and lets marsh and tall grass colour the meadow beside them", () => {
+    const tiles = new Array(5 * 3).fill(TILE_EMPTY);
+    tiles[7] = TILE_WATER;
+    const ground = new Array(5 * 3).fill(GROUND_GRASS);
+    ground[0] = GROUND_DIRT;
+    ground[1] = GROUND_SAND;
+    ground[2] = GROUND_TALL_GRASS;
+    ground[3] = GROUND_STONES;
+    ground[4] = GROUND_SWAMP;
+    const { a, b, c } = materialBytes({ width: 5, height: 3, tiles, ground }, new Set());
+    assert.equal(a[0], 255, "dirt cover is road dirt");
+    assert.equal(c[4 * 1], 255, "sand");
+    assert.equal(c[4 * 2 + 1], 255, "tall grass");
+    assert.equal(c[4 * 3 + 2], 255, "stones");
+    assert.equal(c[4 * 4 + 3], 255, "swamp");
+    assert.ok(a[4 * 4 + 2]! > 0, "a marsh is damp ground");
+    assert.ok(a[4 * 9 + 2]! > 0, "and dampens the meadow next to it");
+    assert.ok(a[4 * 6 + 1]! > 0, "tall grass dries the meadow around it");
+    assert.equal(a[4 * 7 + 2], 0, "water takes no cover");
+    assert.equal(b[4 * 7 + 1], 255);
+    assert.equal(c[4 * 10], 0, "plain meadow has no cover weight");
   });
 
   it("orders mesh triangles back to front", () => {

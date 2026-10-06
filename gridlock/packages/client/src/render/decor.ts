@@ -1,4 +1,7 @@
 import {
+  GROUND_SAND,
+  GROUND_STONES,
+  GROUND_SWAMP,
   TILE_EMPTY,
   TILE_ROAD,
   TILE_ROCK,
@@ -9,6 +12,7 @@ import {
   TILE_WATER,
   featureBox,
   getMap,
+  groundAt,
   heightAt,
   type MapDef,
 } from "@gridlock/shared";
@@ -304,6 +308,21 @@ export function placeDecor(map: MapDef): DecorItem[] {
         claim(tx, ty, 3);
         continue;
       }
+      // Stony cover carries loose stones and the odd boulder; marsh and sand stay bare.
+      const cover = groundAt(map, i);
+      if (cover === GROUND_STONES) {
+        if (spaced(s(53), tx, ty, 12, 2)) {
+          add("stones", tx, ty, 8 + (hv % 4), false, 53);
+          claim(tx, ty, 1);
+          continue;
+        }
+        if (spaced(s(59), tx, ty, 60, 4)) {
+          add("boulder", tx, ty, 5 + (hv % 3), false, 59);
+          claim(tx, ty, 2);
+          continue;
+        }
+      }
+      if (cover === GROUND_SWAMP || cover === GROUND_SAND) continue;
       if (spaced(s(43), tx, ty, 220, 6)) {
         add("stones", tx, ty, 8 + (hv % 4), false, 43);
         claim(tx, ty, 1);

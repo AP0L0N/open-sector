@@ -12,12 +12,17 @@ import {
 } from "./custom-maps.js";
 import { createRoom, hostSlot, joinRoom, setMap, startMatch, startPreconditions, updateSelf } from "./lobby.js";
 import {
+  GROUND_DIRT,
+  GROUND_GRASS,
+  GROUND_SAND,
+  GROUND_SWAMP,
   SPAWN_PAD_R,
   TILE_EMPTY,
   TILE_ROCK,
   TILE_TREE,
   TILE_WATER,
   getMap,
+  groundAt,
   heightAt,
   isBuiltinMap,
   listMaps,
@@ -655,5 +660,48 @@ describe("custom map complete fog of war", () => {
       assert.equal(buildCustomMap(r.spec).shroud, undefined);
     }
     assert.equal(specFromMap("yard-64", { id: "c-yardcopy2", name: "Y", author: "T" })?.shroud, undefined);
+  });
+});
+
+describe("custom map ground cover", () => {
+  it("keeps painted cover through validation, the built map, and a copy of it", () => {
+    const n = SIDE * SIDE;
+    const ground = new Array(n).fill(GROUND_GRASS);
+    for (let y = 80; y < 96; y++) for (let x = 80; x < 96; x++) ground[y * SIDE + x] = GROUND_SAND;
+    ground[100 * SIDE + 100] = GROUND_SWAMP;
+    const r = validateCustomMap(sheet({ ground: encodeRuns(ground) }));
+    assert.equal(r.ok, true);
+    if (!r.ok) return;
+    assert.deepEqual(decodeRuns(r.spec.ground, n), ground);
+    const map = buildCustomMap(r.spec);
+    assert.equal(map.ground?.length, n);
+    assert.equal(groundAt(map, 88 * SIDE + 88), GROUND_SAND);
+    assert.equal(groundAt(map, 100 * SIDE + 100), GROUND_SWAMP);
+    assert.equal(groundAt(map, 0), GROUND_GRASS);
+    registerMap(map);
+    const copy = specFromMap(map.id, { id: "c-covercopy1", name: "Copy", author: "Tester" });
+    assert.deepEqual(decodeRuns(copy?.ground, n), ground);
+    unregisterMap(map.id);
+  });
+
+  it("drops an all-meadow cover layer and leaves old saves without one alone", () => {
+    const n = SIDE * SIDE;
+    const r = validateCustomMap(sheet({ ground: encodeRuns(new Array(n).fill(GROUND_GRASS)) }));
+    assert.equal(r.ok, true);
+    if (r.ok) assert.equal(r.spec.ground, undefined);
+    const old = validateCustomMap(sheet());
+    assert.equal(old.ok, true);
+    if (old.ok) {
+      assert.equal(old.spec.ground, undefined);
+      assert.equal(buildCustomMap(old.spec).ground, undefined);
+    }
+  });
+
+  it("refuses cover it does not know or that does not fit the sheet", () => {
+    const n = SIDE * SIDE;
+    const odd = new Array(n).fill(GROUND_GRASS);
+    odd[5] = 99;
+    assert.equal(validateCustomMap(sheet({ ground: encodeRuns(odd) })).ok, false);
+    assert.equal(validateCustomMap(sheet({ ground: [GROUND_DIRT, 7] })).ok, false);
   });
 });

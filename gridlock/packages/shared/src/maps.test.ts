@@ -17,6 +17,14 @@ import {
   TILE_WATER,
   YARD_HILL_CEIL,
   MOUNTAIN_MIN_HEIGHT,
+  GROUND_GRASS,
+  GROUND_KINDS,
+  GROUND_SAND,
+  GROUND_STONES,
+  GROUND_SWAMP,
+  GROUND_TALL_GRASS,
+  dressGroundCover,
+  groundAt,
   heightAt,
   isMountainCliff,
   isScrapTile,
@@ -547,5 +555,40 @@ describe("mountains", () => {
     assert.equal(heights[3 * w + 2], HEIGHT_BASE, "the cliff does not drag a ramp");
     assert.equal(isMountainCliff(tiles, heights, w, h, 2, 3), true);
     assert.ok(MOUNTAIN_MIN_HEIGHT >= 12);
+  });
+});
+
+describe("ground cover", () => {
+  it("dresses the Scrap Yard with cover the sim never reads, one entry per tile", () => {
+    const yard = MAPS["yard-64"]!;
+    assert.ok(yard.ground, "the yard carries a cover layer");
+    assert.equal(yard.ground!.length, yard.tiles.length);
+    const counts = new Map<number, number>();
+    for (let i = 0; i < yard.ground!.length; i++) {
+      const g = yard.ground![i]!;
+      assert.ok(GROUND_KINDS.includes(g));
+      counts.set(g, (counts.get(g) ?? 0) + 1);
+      // Cover only dresses open ground; water, trees, rock, roads, and scrap keep their own look.
+      if (g !== GROUND_GRASS) assert.equal(yard.tiles[i], TILE_EMPTY);
+    }
+    assert.ok((counts.get(GROUND_TALL_GRASS) ?? 0) > 0, "tall grass stands somewhere");
+    assert.ok((counts.get(GROUND_SAND) ?? 0) + (counts.get(GROUND_SWAMP) ?? 0) > 0, "the ponds have banks");
+    assert.ok((counts.get(GROUND_STONES) ?? 0) > 0, "stony ground somewhere");
+    // Meadow stays the rule: most of the yard is plain grass.
+    assert.ok((counts.get(GROUND_GRASS) ?? 0) > yard.ground!.length / 2);
+  });
+
+  it("keeps start pads as meadow and is the same on every machine", () => {
+    const yard = MAPS["yard-64"]!;
+    for (const s of yard.spawns) {
+      for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) assert.equal(groundAt(yard, (s.y + dy) * yard.width + s.x + dx), GROUND_GRASS);
+    }
+    const again = dressGroundCover(yard.tiles, yard.heights, yard.width, yard.height, "yard-64-cover", yard.spawns.map((s) => ({ x: s.x, y: s.y, r: 16 })));
+    assert.deepEqual(again, yard.ground);
+  });
+
+  it("returns null for a sheet with nothing to dress", () => {
+    const tiles = new Array(16 * 16).fill(TILE_WATER);
+    assert.equal(dressGroundCover(tiles, new Array(256).fill(0), 16, 16, "none", []), null);
   });
 });

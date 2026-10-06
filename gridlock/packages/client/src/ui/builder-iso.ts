@@ -200,6 +200,7 @@ let bakedFor: Sheet | null = null;
 /** Ground the bake shows, so a settled edit repaints only what differs. */
 let seenTiles: Uint8Array | null = null;
 let seenHeights: Int16Array | null = null;
+let seenGround: Uint8Array | null = null;
 let seenPeak = 0;
 /** The sheet may differ from the bake; compare before the next frame. */
 let unsynced = true;
@@ -230,6 +231,7 @@ function liveMap(s: Sheet): MapDef {
     tiles: s.tiles,
     heights: s.heights,
     maxHeight: peakHeight(s.heights),
+    ground: s.ground,
     spawns: s.spawns,
     features: s.features,
   };
@@ -266,6 +268,7 @@ export function isoRestamp(s: Sheet, box: Dirty): void {
 function remember(s: Sheet): void {
   seenTiles = Uint8Array.from(s.tiles);
   seenHeights = Int16Array.from(s.heights);
+  seenGround = Uint8Array.from(s.ground);
   seenPeak = peakHeight(s.heights);
 }
 
@@ -275,7 +278,7 @@ function remember(s: Sheet): void {
  */
 function sync(s: Sheet): void {
   unsynced = false;
-  if (!seenTiles || !seenHeights || seenTiles.length !== s.tiles.length) {
+  if (!seenTiles || !seenHeights || !seenGround || seenTiles.length !== s.tiles.length) {
     rebakeAll = true;
     return;
   }
@@ -287,7 +290,7 @@ function sync(s: Sheet): void {
   let scrap = false;
   for (let i = 0; i < s.tiles.length; i++) {
     const t = s.tiles[i]!;
-    if (t === seenTiles[i] && s.heights[i] === seenHeights[i]) continue;
+    if (t === seenTiles[i] && s.heights[i] === seenHeights[i] && s.ground[i] === seenGround[i]) continue;
     if (isScrapTile(t) || isScrapTile(seenTiles[i])) scrap = true;
     const x = i % w;
     const y = (i / w) | 0;
