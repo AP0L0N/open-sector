@@ -106,6 +106,7 @@ import {
   garrisonFullArmsOf,
   garrisonOpenTopOf,
   isCivilianType,
+  isRubble,
   isGarrisonable,
   isInfantryType,
   isSmokeShell,
@@ -2216,7 +2217,7 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
   // A barrage laid on a bridge brick counts wherever its blast reaches the deck.
   if (!inAir) strikeBridge(state, p, p.x, p.y, radius);
   for (const e of [...state.entities.values()]) {
-    if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null) continue;
+    if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null || isRubble(e)) continue;
     // A ground burst never reaches a plane; an air burst only catches planes.
     // A drone is caught by a burst near its height, air or ground, or when the rocket meets it.
     if (e.drone ? e !== direct && !rocketCatchesDrone(state, p, e) : isAirborne(e) !== inAir) continue;
@@ -2360,7 +2361,7 @@ function walkerSecondTarget(state: MatchState, e: Entity, primary: Entity): Enti
   let best: Entity | undefined;
   let bestD = range * range;
   for (const o of state.entities.values()) {
-    if (o.id === primary.id || o.id === e.id || o.hp <= 0 || o.wreck || o.garrisonedIn || isBridge(o.type)) continue;
+    if (o.id === primary.id || o.id === e.id || o.hp <= 0 || o.wreck || o.garrisonedIn || isBridge(o.type) || isRubble(o)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     // A map defence nobody has taken yet is no one's enemy.
     if (o.kind === "building" && !o.ownerId && !isCivilianType(o.type)) continue;
@@ -3176,6 +3177,8 @@ function nearestSweepHit(
   for (const e of state.entities.values()) {
     if (e.hp <= 0 || isCrashing(e)) continue;
     if (e.id === p.ignoreId) continue;
+    // A rubble heap is too low to catch a round: everything flies over it.
+    if (isRubble(e)) continue;
     // A pilot strafes the enemy's line, not his own side's, unless he was told to (force-attack).
     if (p.fromAbove && !p.harmAllies && e.ownerId && allies(state, p.ownerId, e.ownerId)) continue;
     if (e.garrisonedIn != null) continue;
@@ -3265,8 +3268,8 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   const near: { o: Entity; d: number; i: number }[] = [];
   for (const o of state.entities.values()) {
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn || isCrashing(o)) continue;
-    // Only a force-attack aims at a bridge.
-    if (isBridge(o.type)) continue;
+    // Only a force-attack aims at a bridge. Nothing aims at a heap of rubble.
+    if (isBridge(o.type) || isRubble(o)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
     if (concreteProof(state, e, o)) continue;

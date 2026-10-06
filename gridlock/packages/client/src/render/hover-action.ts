@@ -113,7 +113,7 @@ export function resolveHoverAction(args: {
   if (hit && hit.type === "supply" && canBoardHit(hit, you, args.allied, inf)) return "board";
   if (hit && isTransportType(hit.type) && canBoardPlaneHit(hit, you, ownUnits)) return "board";
 
-  if (hit && isGarrisonable(hit.type) && hit.hp > 0 && !hit.wreck) {
+  if (hit && isGarrisonable(hit.type) && hit.hp > 0 && !hit.wreck && !hit.ruined) {
     const occ = hit.garrison?.ownerId;
     // A player-built garrison (the Bunker) stays its builder's side's, empty or not.
     const builder = !isCivilianType(hit.type) && hit.ownerId ? hit.ownerId : undefined;

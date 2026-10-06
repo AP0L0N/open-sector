@@ -40,7 +40,7 @@ export function toWreck(state: MatchState, e: Entity): void {
  * live hull is done once it wrecks; the guns do not go on to chew the wreck.
  * A player who wants the wreck gone orders a fresh attack on it.
  */
-function endOrdersOnKill(state: MatchState, wreck: Entity): void {
+export function endOrdersOnKill(state: MatchState, wreck: Entity): void {
   for (const o of state.entities.values()) {
     const order = o.order;
     if (!order || order.targetId !== wreck.id) continue;

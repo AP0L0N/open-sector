@@ -11,6 +11,7 @@ import {
   isBuildingType,
   isCyborg,
   isBridge,
+  isRubble,
   isEngineerBuilding,
   isFieldStructure,
   isYardField,
@@ -901,7 +902,7 @@ function cmdForceAttack(
       t = undefined;
     } else if (t.garrisonedIn) t = state.entities.get(t.garrisonedIn) ?? t;
     // Wreckage cannot be hurt any more: fire on the spot instead.
-    else if (isBridge(t.type) && t.ruined) t = undefined;
+    else if ((isBridge(t.type) && t.ruined) || isRubble(t)) t = undefined;
   }
   const units = owned(state, playerId, ids);
   const mounts = ownedMounts(state, playerId, ids);

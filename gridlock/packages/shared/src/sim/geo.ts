@@ -21,6 +21,7 @@ import {
   isArmoredType,
   isBridge,
   isFieldStructure,
+  isRubble,
   isInfantryType,
   isNavalType,
   isSupplyCarrier,
@@ -353,6 +354,26 @@ export function fillHullCover(
 ): void {
   out.fill(0);
   for (const e of entities) stampArmoredHull(out, width, height, tileSize, e);
+}
+
+/**
+ * `occupy` as a sight ray sees it: the same ids, except a rubble heap, which still
+ * holds the ground but is too low to stop a line of sight. Rebuilt from `occupy`
+ * into `state.sightOccupy` each cover query, so it never goes stale.
+ */
+export function fillSightOccupy(state: MatchState): Int32Array {
+  const n = state.width * state.height;
+  if (state.sightOccupy.length !== n) state.sightOccupy = new Int32Array(n);
+  state.sightOccupy.set(state.occupy);
+  for (const e of state.entities.values()) {
+    if (!isRubble(e)) continue;
+    for (const t of buildingTilesOf(e, state.tileSize)) {
+      if (!inBounds(state, t.x, t.y)) continue;
+      const i = tileIndex(state, t.x, t.y);
+      if (state.sightOccupy[i] === e.id) state.sightOccupy[i] = 0;
+    }
+  }
+  return state.sightOccupy;
 }
 
 /** A sunken hulk keeps the largest boat clear as well as anything that swims or wades. */

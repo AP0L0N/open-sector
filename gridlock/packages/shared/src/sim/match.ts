@@ -8,6 +8,7 @@ import {
   isAircraftType,
   isInfantryType,
   isTransportType,
+  leavesRubble,
   leavesWreck,
   NEUTRAL_OWNER,
   START_SCRAP,
@@ -54,6 +55,7 @@ import { tickTrain } from "./train.js";
 import { aimSpotlightPatrol, hasSpotlight, tickSpotlights } from "./night.js";
 import type { Entity, MatchState, SimPlayer } from "./types.js";
 import { leaveCorpse } from "./remains.js";
+import { keepRubbleStanding, toRubble } from "./rubble.js";
 import { toWreck } from "./wreck.js";
 import { freshClutterHp } from "./clutter.js";
 import { tickPower } from "./power.js";
@@ -80,6 +82,7 @@ export function createMatch(
     heights: grids.heights,
     scrapYield: grids.scrapYield,
     occupy: grids.occupy,
+    sightOccupy: new Int32Array(map.width * map.height),
     wreckBlock: new Uint8Array(map.width * map.height),
     fortBlock: new Uint8Array(map.width * map.height),
     fortOwner: new Map(),
@@ -328,6 +331,13 @@ function reapDead(state: MatchState): void {
     if (e.hp > 0) continue;
     if (e.air?.phase === "crash") {
       e.hp = 1;
+      continue;
+    }
+    // A heap of rubble is already as low as it goes.
+    if (keepRubbleStanding(e)) continue;
+    // A house comes down into rubble that still takes the ground. Whoever was inside spills out.
+    if (!e.ruined && leavesRubble(e.type)) {
+      toRubble(state, e);
       continue;
     }
     // The stick bails out before the airframe starts down or becomes a wreck.

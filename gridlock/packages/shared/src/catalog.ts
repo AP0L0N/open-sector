@@ -881,6 +881,11 @@ export interface CatalogEntry {
   /** Armored hulls leave an impassable wreck instead of vanishing. */
   leavesWreck?: boolean;
   wreckHp?: number;
+  /**
+   * Civilian houses fall into rubble instead of vanishing: a low heap that still
+   * blocks the ground but no longer blocks sight. Nothing clears it.
+   */
+  leavesRubble?: boolean;
   /** False: infantry cannot take this structure by standing the capture. Default true for player buildings. */
   capturable?: boolean;
   /** Infantry slots. 0 = cannot garrison. */
@@ -2869,6 +2874,7 @@ const CIV_BUILDING = {
   projectileSpeed: 0,
   ...UNARMED,
   garrisonHpMul: 3,
+  leavesRubble: true,
 };
 
 /** Attack Boat's 20mm: flat, fast, and far enough to rake the bank from the water. */
@@ -5737,6 +5743,19 @@ export function walkerGunsOf(e: { type: EntityType; gatlingGuns?: 1 | 2 }): 1 | 
 
 export function leavesWreck(type: EntityType): boolean {
   return catalog(type).leavesWreck === true;
+}
+
+/** A building that falls into rubble at 0 HP instead of vanishing. */
+export function leavesRubble(type: EntityType): boolean {
+  return catalog(type).leavesRubble === true;
+}
+
+/**
+ * A fallen house. The heap keeps its footprint off limits to every unit, but it is
+ * too low to hide anything: sight and fire pass over it. It cannot be hurt or entered.
+ */
+export function isRubble(e: { kind: EntityKind; type: EntityType; ruined?: boolean }): boolean {
+  return e.kind === "building" && e.ruined === true && leavesRubble(e.type);
 }
 
 /** Scrap paid to the engineer’s commander when a wreck is cut apart. */

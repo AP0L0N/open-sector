@@ -13,6 +13,7 @@ import {
   catalog,
   entityIsScouting,
   isArmoredType,
+  isRubble,
   type Crit,
 } from "../catalog.js";
 import type { EntityView, MatchSnapshot } from "../protocol.js";
@@ -32,7 +33,7 @@ import {
   uphillSightForEntity,
   type CoverField,
 } from "./elevation.js";
-import { allies, fillHullCover, footprint, inBounds, worldToTile } from "./geo.js";
+import { allies, fillHullCover, fillSightOccupy, footprint, inBounds, worldToTile } from "./geo.js";
 import { hiddenSubmarine, sonarSpotted } from "./naval.js";
 import { occupantEye, occupantSightTiles } from "./garrison.js";
 import { fillSmokeMask, smokeCloudTileBounds } from "./smoke.js";
@@ -583,7 +584,8 @@ function coverOf(state: MatchState): CoverField {
   fillHullCover(state.entities.values(), state.tileSize, state.width, state.height, state.hullMask);
   return {
     terrain: state.terrain,
-    occupy: state.occupy,
+    // Rubble heaps are left out: they hold the ground but a sight ray passes over them.
+    occupy: fillSightOccupy(state),
     hull: state.hullMask,
     smoke: ensureSmokeMask(state),
   };
@@ -736,7 +738,7 @@ type SightEnv = {
 function sightEnvOf(state: MatchState, cover: CoverField): SightEnv {
   let base = 2166136261;
   const terrain = state.terrain;
-  const occupy = state.occupy;
+  const occupy = cover.occupy;
   for (let i = 0; i < terrain.length; i++) base = mix(base, terrain[i]! * 31 + occupy[i]!);
   const ts = state.tileSize;
   const hulls: TileBox[] = [];
@@ -1122,11 +1124,13 @@ export function visionMaskFromSnapshot(
     for (const e of snap.entities) {
       if (e.hp <= 0) continue;
       if (e.kind === "building" || e.wreck) {
+        // A house down to its rubble lets sight through: its map feature's stamp comes off.
+        const id = isRubble(e) ? 0 : e.id;
         if (isTurnedBuilding(e)) {
           for (const t of buildingTilesOf(e, tileSize)) {
-            if (t.x >= 0 && t.y >= 0 && t.x < width && t.y < height) occupy[t.y * width + t.x] = e.id;
+            if (t.x >= 0 && t.y >= 0 && t.x < width && t.y < height) occupy[t.y * width + t.x] = id;
           }
-        } else stampOccupy(occupy, width, height, e.id, e.tileX, e.tileY, e.tileW, e.tileH);
+        } else stampOccupy(occupy, width, height, id, e.tileX, e.tileY, e.tileW, e.tileH);
       }
     }
     fillHullCover(snap.entities, tileSize, width, height, hull);

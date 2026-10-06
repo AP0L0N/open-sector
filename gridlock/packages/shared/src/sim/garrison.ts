@@ -221,7 +221,7 @@ function deckVehicleBusy(unit: Entity): string | null {
 
 export function canGarrison(state: MatchState, unit: Entity, house: Entity): string | null {
   if (unit.kind !== "unit" || unit.wreck) return "Only infantry can garrison.";
-  if (!isGarrisonable(house.type) || house.hp <= 0 || house.wreck) return "Cannot enter that.";
+  if (!isGarrisonable(house.type) || house.hp <= 0 || house.wreck || house.ruined) return "Cannot enter that.";
   if (!isInfantryType(unit.type) && !garrisonCandidate(house.type, unit.type)) {
     return isTankDeck(house) ? `The ${catalog(unit.type).name} cannot board.` : "Only infantry can garrison.";
   }

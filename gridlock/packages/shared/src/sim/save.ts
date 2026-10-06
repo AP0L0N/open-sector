@@ -234,6 +234,7 @@ export function restoreMatch(
     heights: grids.heights,
     scrapYield: grids.scrapYield,
     occupy: grids.occupy,
+    sightOccupy: new Int32Array(n),
     wreckBlock: new Uint8Array(n),
     fortBlock: new Uint8Array(n),
     bridgeDeck: new Uint8Array(n),

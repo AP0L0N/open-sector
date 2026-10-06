@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 106;
+export const PROTOCOL_VERSION = 107;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -247,7 +247,10 @@ export interface EntityView {
   patrolLoop?: boolean;
   /** Infantry this medic is bandaging. Omitted while he is only walking over. */
   tend?: number;
-  /** Sandbags wrecked by a tank shell, or a fallen bridge. The rubble stays. */
+  /**
+   * Sandbags wrecked by a tank shell, a fallen bridge, or a civilian house down to
+   * its rubble. The rubble stays: a house heap blocks the ground but not sight.
+   */
   ruined?: boolean;
   /** Bridge brick length, world px. `facing` runs along the deck. Omitted on everything else. */
   span?: number;

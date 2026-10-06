@@ -35,6 +35,7 @@ import {
   wallAxes,
   GUARD_CONE_DEG,
   isCivilianType,
+  isRubble,
   isFieldStructure,
   isBridge,
   bridgeAlong,
@@ -390,6 +391,7 @@ import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir,
 import { layCrashTrail, layChargeTrail, CRASH_PUFF_CAP, CHARGE_PUFF_CAP } from "./crash-smoke.js";
 import { canopySway, drawCanopy, drawCrate, drawMine, troopCanopySpan } from "./airdrop-fx.js";
 import { barrageTracers, tracerLandsAt, tracerSpan, type BarrageTracer } from "./barrage-tracer.js";
+import { RUBBLE_MAX_RISE, drawRubble } from "./rubble.js";
 import { courseHeight, drawSandbags } from "./sandbags.js";
 import { fieldPointsWithCursor, pinFieldPoint, undoFieldPoint } from "./field-place.js";
 import { drawTrench } from "./trench.js";
@@ -5904,6 +5906,30 @@ export class MapView {
         this.toScreen(x - pad, y + bh + pad, elev),
       ];
       drawSelectFrame(ctx, pts, { hostile: this.hostileEntity(e), now: performance.now() });
+    }
+    if (isRubble(e)) {
+      // A fallen house is a low heap: it keeps the lot, hides nothing, and carries no bars.
+      const north = this.toScreen(x, y, elev);
+      const rise = ts * RUBBLE_MAX_RISE;
+      const bounds = { x: west.x - 2, y: north.y - rise - 2, w: east.x - west.x + 4, h: south.y - north.y + rise + 4 };
+      const lift = this.groundSpan(x + bw / 2, y + bh / 2, 10) / 10;
+      this.drawVeiled(e, elev, rise, bounds, () => {
+        drawRubble(this.ctx, {
+          x,
+          y,
+          w: bw,
+          h: bh,
+          tileSize: ts,
+          type: e.type,
+          seed: e.id >>> 0,
+          alpha: 1,
+          project: (wx, wy, up) => {
+            const p = this.toScreen(wx, wy, elev);
+            return { x: p.x, y: p.y - up * lift };
+          },
+        });
+      });
+      return;
     }
     if (spr && spriteReady(spr)) {
       const footprintW = east.x - west.x;
