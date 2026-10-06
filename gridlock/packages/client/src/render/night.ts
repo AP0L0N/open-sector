@@ -1,3 +1,5 @@
+import type { LampType } from "@gridlock/shared";
+
 /**
  * Night over the field, and the lamps that cut it: tower spotlights, hull
  * headlights, and the slow work lights around a base. Drawing only: the sim
@@ -177,4 +179,34 @@ export function workLightBearings(id: number, count: number, nowSec: number): nu
     out.push(base + swing * Math.sin(nowSec * WORK_LIGHT_TURN * (1 + 0.15 * k) + phase));
   }
   return out;
+}
+
+/** A map's street lamp: how it draws, how far its pool reaches, and its light. */
+export interface StreetLampSpec {
+  /** Post height on screen at zoom 1, px. */
+  drawH: number;
+  /** Pool radius, fine tiles. */
+  reachTiles: number;
+  /** Light colour of the pool and the bulb. */
+  rgb: string;
+  /** Bulb halo radius on screen at zoom 1, px. */
+  halo: number;
+}
+
+export const STREET_LAMPS: Record<LampType, StreetLampSpec> = {
+  gaslamp: { drawH: 30, reachTiles: 5, rgb: "255, 184, 102", halo: 9 },
+  streetlamp: { drawH: 42, reachTiles: 7, rgb: "255, 206, 136", halo: 12 },
+  floodlight: { drawH: 50, reachTiles: 10, rgb: "222, 234, 255", halo: 15 },
+};
+
+/**
+ * How bright a street lamp burns this instant, 0..1 of full. A gas mantle
+ * breathes a little, each post on its own beat; electric lamps hold steady.
+ */
+export function streetLampFlicker(type: LampType, x: number, y: number, nowSec: number): number {
+  if (type !== "gaslamp") return 1;
+  const phase = (x * 12.9898 + y * 78.233) % (Math.PI * 2);
+  const slow = Math.sin(nowSec * 2.3 + phase);
+  const quick = Math.sin(nowSec * 7.1 + phase * 3.1);
+  return 0.9 + 0.06 * slow + 0.04 * quick;
 }

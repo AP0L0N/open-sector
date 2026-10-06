@@ -534,6 +534,10 @@ export type EntityType =
   | "barn"
   | "inn"
   | "chapel"
+  | "factory"
+  | "warehouse"
+  | "foundry"
+  | "granary"
   | "sandbags"
   | "wall"
   | "greatwall"
@@ -606,7 +610,18 @@ export const BRIDGE_MAX_TILES = t(10);
 export const BRIDGE_ROUND_MUL = { ap: 0.5, heat: 0.75, he: 1.5, mortar: 1, artillery: 2, rocket: 1 } as const;
 /** How far past the deck edge a burst still counts against it, world px. */
 export const BRIDGE_SPLASH_PAD = 6;
-export type CivilianType = "cottage" | "house" | "manor" | "shack" | "barn" | "inn" | "chapel";
+export type CivilianType =
+  | "cottage"
+  | "house"
+  | "manor"
+  | "shack"
+  | "barn"
+  | "inn"
+  | "chapel"
+  | "factory"
+  | "warehouse"
+  | "foundry"
+  | "granary";
 export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "cottage",
   "house",
@@ -615,6 +630,10 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "barn",
   "inn",
   "chapel",
+  "factory",
+  "warehouse",
+  "foundry",
+  "granary",
 ];
 export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "cyborgcommander" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
@@ -4564,6 +4583,58 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonCap: 12,
     garrisonWindows: 4,
     garrisonFloors: 3,
+  },
+  warehouse: {
+    type: "warehouse",
+    name: "Warehouse",
+    letter: "E",
+    hp: 1600,
+    tileW: t(4),
+    tileH: t(4),
+    ...CIV_BUILDING,
+    garrisonCap: 12,
+    garrisonWindows: 4,
+    garrisonFloors: 2,
+    blurb: "Long brick store on a concrete yard, with a loading dock and a rail spur. Thick walls, few windows.",
+  },
+  granary: {
+    type: "granary",
+    name: "Granary",
+    letter: "Y",
+    hp: 1700,
+    tileW: t(4),
+    tileH: t(4),
+    ...CIV_BUILDING,
+    garrisonCap: 10,
+    garrisonWindows: 3,
+    garrisonFloors: 4,
+    blurb: "Three concrete silos and a head house that looks over the whole field, beside a brick grain shed.",
+  },
+  factory: {
+    type: "factory",
+    name: "Factory",
+    letter: "Q",
+    hp: 2000,
+    tileW: t(5),
+    tileH: t(5),
+    ...CIV_BUILDING,
+    garrisonCap: 16,
+    garrisonWindows: 5,
+    garrisonFloors: 2,
+    blurb: "Brick works hall under a sawtooth roof, an office wing, and a tall stack. Room for a platoon.",
+  },
+  foundry: {
+    type: "foundry",
+    name: "Foundry",
+    letter: "U",
+    hp: 2200,
+    tileW: t(5),
+    tileH: t(5),
+    ...CIV_BUILDING,
+    garrisonCap: 14,
+    garrisonWindows: 4,
+    garrisonFloors: 2,
+    blurb: "Casting shed on a brick plinth, a cupola furnace, two stacks, and ore heaps on the yard.",
   },
 };
 

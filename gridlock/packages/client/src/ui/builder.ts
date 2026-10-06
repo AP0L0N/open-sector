@@ -7,6 +7,8 @@ import {
   CUSTOM_MAP_SIZES,
   HEIGHT_BASE,
   HEIGHT_MAX,
+  LAMP_NAMES,
+  LAMP_TYPES,
   SPAWN_PAD_R,
   DIAMOND_SCRAP_MUL,
   TILE_DIAMOND_SCRAP,
@@ -35,14 +37,16 @@ import {
   rollHeights,
   specFromMap,
   type CivilianType,
+  type LampType,
   type MapDefenceType,
   type MapFeature,
   type MapFeatureType,
 } from "@gridlock/shared";
 import type { Ctx } from "../ctx.js";
 import { forgetTerrain } from "../render/terrain.js";
-import { buildingSpriteFor } from "../render/sprites.js";
+import { buildingSpriteFor, LAMP_SPRITES } from "../render/sprites.js";
 import { fieldPointsWithCursor, pinFieldPoint, undoFieldPoint, type Pt } from "../render/field-place.js";
+import { STREET_LAMPS } from "../render/night.js";
 import grassUrl from "../assets/terrain/grass-meadow.png";
 import dirtUrl from "../assets/terrain/ground-dirt.png";
 import scrapUrl from "../assets/terrain/scrap-heap-1.png";
@@ -66,7 +70,7 @@ const UNDO_DEPTH = 40;
 /** Raise / Lower apply one step this often while the button is held. */
 const LIFT_EVERY_MS = 70;
 
-type ToolId = "select" | "raise" | "lower" | "level" | "ground" | "house" | "defence" | "spawn" | "erase";
+type ToolId = "select" | "raise" | "lower" | "level" | "ground" | "house" | "defence" | "lamp" | "spawn" | "erase";
 
 interface GroundKind {
   tile: number;
@@ -96,6 +100,7 @@ interface Tool {
   tile: number;
   house: CivilianType;
   defence: MapDefenceType;
+  lamp: LampType;
   /** A house's door side, a quarter at a time. */
   facing: number;
   /** A defence's heading in 15° steps from east, as the wheel turns it in a match. */
@@ -135,7 +140,17 @@ let autoSave = store()?.getItem(AUTO_STORE) !== "0";
 let autoTimer: ReturnType<typeof setInterval> | null = null;
 const undo: M.SheetMark[] = [];
 const redo: M.SheetMark[] = [];
-const tool: Tool = { id: "raise", tile: TILE_WATER, house: "cottage", defence: "bunker", facing: 1, turn: M.QUARTER_TURN, brush: 6, level: HEIGHT_BASE };
+const tool: Tool = {
+  id: "raise",
+  tile: TILE_WATER,
+  house: "cottage",
+  defence: "bunker",
+  lamp: "streetlamp",
+  facing: 1,
+  turn: M.QUARTER_TURN,
+  brush: 6,
+  level: HEIGHT_BASE,
+};
 let selected: Selection | null = null;
 /**
  * A sandbag or wall line being drawn, as in a match: the press sets its start, each
@@ -531,6 +546,32 @@ function drawStage(): void {
     c.setLineDash([]);
   };
   for (const f of s.features) drawHouse(f, ...featureColors(f.type));
+  const lampMark = (x: number, y: number, type: LampType, ring: string | null): void => {
+    const cx = sx(x + 0.5);
+    const cy = sy(y + 0.5);
+    const rgb = STREET_LAMPS[type].rgb;
+    const reach = STREET_LAMPS[type].reachTiles * z;
+    const glow = c.createRadialGradient(cx, cy, 0, cx, cy, reach);
+    glow.addColorStop(0, `rgba(${rgb}, 0.32)`);
+    glow.addColorStop(1, `rgba(${rgb}, 0)`);
+    c.fillStyle = glow;
+    c.beginPath();
+    c.arc(cx, cy, reach, 0, Math.PI * 2);
+    c.fill();
+    const r = Math.max(2.5, Math.min(6, z * 0.9));
+    c.fillStyle = `rgb(${rgb})`;
+    c.strokeStyle = ring ?? "#1d1c18";
+    c.lineWidth = ring ? 2 : 1.25;
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.fill();
+    c.stroke();
+  };
+  for (const l of M.liveLamps(s)) lampMark(l.x, l.y, l.type, null);
+  if (tool.id === "lamp" && hover.inside && !drag) {
+    const bad = M.lampProblem(s, hover.x, hover.y) !== null;
+    lampMark(hover.x, hover.y, tool.lamp, bad ? "#ff5a4a" : "#7dff6a");
+  }
   const picked = selectedFeature();
   if (picked) frame(picked, "#e8b84a");
   if (tool.id === "select" && hover.inside && !drag) {
@@ -764,6 +805,11 @@ function dabLine(x0: number, y0: number, x1: number, y1: number): void {
 function eraseAt(x: number, y: number): boolean {
   const s = sheet;
   if (!s) return false;
+  const li = M.lampIndexAt(s, x, y);
+  if (li >= 0) {
+    s.lamps.splice(li, 1);
+    return true;
+  }
   const fi = M.featureIndexAt(s, x, y);
   if (fi >= 0) {
     s.features.splice(fi, 1);
@@ -900,7 +946,10 @@ function onDown(e: PointerEvent): void {
     say(`Level set to ${tool.level}.`);
     return;
   }
-  if (tool.id === "erase" || (e.shiftKey && (tool.id === "house" || tool.id === "defence" || tool.id === "spawn" || tool.id === "select"))) {
+  if (
+    tool.id === "erase" ||
+    (e.shiftKey && (tool.id === "house" || tool.id === "defence" || tool.id === "lamp" || tool.id === "spawn" || tool.id === "select"))
+  ) {
     pushUndo();
     if (eraseAt(t.x, t.y)) finishStroke();
     else undo.pop();
@@ -938,6 +987,17 @@ function onDown(e: PointerEvent): void {
     if (!placeAt(t.x, t.y, false)) {
       undo.pop();
       return;
+    }
+    say("");
+    finishStroke();
+    return;
+  }
+  if (tool.id === "lamp") {
+    pushUndo();
+    const problem = M.placeLamp(s, tool.lamp, t.x, t.y);
+    if (problem) {
+      undo.pop();
+      return say(problem, "bad");
     }
     say("");
     finishStroke();
@@ -1117,7 +1177,7 @@ function paintChecks(): void {
   const far = M.startsFarFromScrap(s);
   if (far.length > 0) add("warn", `Starts with no scrap in yard range: ${far.join(", ")} (an engineer would have to walk out)`);
   const defences = M.defenceCount(s);
-  add("ok", `Buildings: ${s.features.length - defences} · Neutral defences: ${defences}`);
+  add("ok", `Buildings: ${s.features.length - defences} · Neutral defences: ${defences} · Lamps: ${M.liveLamps(s).length}`);
   add(s.spawns.length > 0 ? "ok" : "warn", s.spawns.length > 0 ? "Play test: ready" : "Play test: place a start first");
   const problem = M.sheetProblem(s);
   if (problem && !problem.startsWith("Place all")) add("bad", problem);
@@ -1274,6 +1334,40 @@ function houseThumb(type: CivilianType | "bunker" | "tower", angle: number): HTM
   return cv;
 }
 
+function lampThumb(type: LampType): HTMLCanvasElement {
+  const cv = el("canvas");
+  cv.width = 48;
+  cv.height = 76;
+  const spr = LAMP_SPRITES[type];
+  const paint = (): void => {
+    const g = cv.getContext("2d");
+    const img = spr.image;
+    if (!g || !img.naturalHeight) return;
+    // Scale by height and stand the post at the middle; the cast shadow runs off to the right.
+    const k = (cv.height - 6) / img.naturalHeight;
+    g.clearRect(0, 0, cv.width, cv.height);
+    const x0 = cv.width / 2 - spr.contactX * k;
+    const y0 = cv.height - 3 - spr.contactY * k;
+    g.drawImage(img, x0, y0, img.naturalWidth * k, img.naturalHeight * k);
+    // Lit, so the dark post reads on the dark panel and the colour of its light shows.
+    const bx = x0 + spr.bulbX * k;
+    const by = y0 + spr.bulbY * k;
+    const halo = g.createRadialGradient(bx, by, 0, bx, by, 14);
+    halo.addColorStop(0, "rgba(255, 250, 230, 0.95)");
+    halo.addColorStop(0.35, `rgba(${STREET_LAMPS[type].rgb}, 0.6)`);
+    halo.addColorStop(1, `rgba(${STREET_LAMPS[type].rgb}, 0)`);
+    g.globalCompositeOperation = "lighter";
+    g.fillStyle = halo;
+    g.beginPath();
+    g.arc(bx, by, 14, 0, Math.PI * 2);
+    g.fill();
+    g.globalCompositeOperation = "source-over";
+  };
+  if (spr.image.complete && spr.image.naturalWidth > 0) paint();
+  else spr.image.addEventListener("load", paint, { once: true });
+  return cv;
+}
+
 function setTool(ctx: Ctx, patch: Partial<Tool>): void {
   Object.assign(tool, patch);
   if (!lineTool()) dropLine();
@@ -1330,7 +1424,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     asset("Select", "move, turn, delete", tool.id === "select", el("span", { class: "bld-start-mark", text: "⬚" }), "Pick up a placed building, defence, or start. Drag to move it, R turns it, Delete removes it.", () =>
       setTool(ctx, { id: "select" }),
     ),
-    asset("Eraser", "houses, starts", tool.id === "erase", el("span", { class: "bld-start-mark", text: "✕" }), "Remove buildings, defences, and starts.", () =>
+    asset("Eraser", "buildings, lamps, starts", tool.id === "erase", el("span", { class: "bld-start-mark", text: "✕" }), "Remove buildings, defences, and starts.", () =>
       setTool(ctx, { id: "erase" }),
     ),
   );
@@ -1417,7 +1511,10 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       "Buildings",
       houses,
       faceRow,
-      el("p", { class: "bld-hint", text: "Civilian houses. Infantry garrison them; tanks shell them. R turns the door. Shift+click removes." }),
+      el("p", {
+        class: "bld-hint",
+        text: "Houses and industry. Infantry garrison them; tanks shell them. R turns the door. Shift+click removes.",
+      }),
     ),
   );
 
@@ -1448,6 +1545,26 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       el("p", {
         class: "bld-hint",
         text: "Neutral until taken. Infantry that walk into a bunker or tower take it; a tower's lamp stays dark until someone holds it. Men who take cover at sandbags or a wall claim the section. Scroll turns a defence 15° (Ctrl+scroll zooms). A sandbag or wall line goes down as in a match: click its start, click each corner, Enter lays it, right-click takes a corner back. Esc cancels and picks up Select.",
+      }),
+    ),
+  );
+
+  const lamps = el("div", { class: "bld-palette three" });
+  for (const type of LAMP_TYPES) {
+    const reach = `${(STREET_LAMPS[type].reachTiles * 2) / TILE_SUBDIV} cells lit`;
+    lamps.append(
+      asset(LAMP_NAMES[type], reach, tool.id === "lamp" && tool.lamp === type, lampThumb(type), `${LAMP_NAMES[type]}: lights the ground round it after dark.`, () =>
+        setTool(ctx, { id: "lamp", lamp: type }),
+      ),
+    );
+  }
+  panel.append(
+    section(
+      "Street lamps",
+      lamps,
+      el("p", {
+        class: "bld-hint",
+        text: "Light up after dusk. Dress only: they do not block a man or a shot, and a structure raised on one hides it. Shift+click removes.",
       }),
     ),
   );

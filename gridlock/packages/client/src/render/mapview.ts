@@ -111,6 +111,8 @@ import {
   type ClientMessage,
   type CorpseView,
   type EntityType,
+  type LampType,
+  type MapLamp,
   type FieldStructureType,
   type ConcreteLineType,
   type EntityView,
@@ -179,6 +181,7 @@ import {
   PINE_FACES,
   BUSH_FACES,
   SIGN_FACES,
+  LAMP_SPRITES,
   STUMP_FACES,
   CRATER_FACES,
   CIWS_TURRET_SHEET,
@@ -452,20 +455,41 @@ import {
   nightFog,
   nightShade,
   stackedLight,
+  STREET_LAMPS,
+  streetLampFlicker,
   workLightBearings,
   workLightCount,
   wreckNightAlpha,
 } from "./night.js";
 
-type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" | "missile" };
+type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" | "missile" | LampType };
 /** How much of the night tint each kind of pool lifts, per pool (they overlap), and how much it warms. */
-const POOL_CUT: Record<NightPool["kind"], number> = { tower: 0.7, head: 0.8, work: 0.75, missile: 0.4 };
-const POOL_WARM: Record<NightPool["kind"], number> = { tower: 0.2, head: 0.24, work: 0.2, missile: 0.14 };
+const POOL_CUT: Record<NightPool["kind"], number> = {
+  tower: 0.7,
+  head: 0.8,
+  work: 0.75,
+  missile: 0.4,
+  gaslamp: 0.72,
+  streetlamp: 0.78,
+  floodlight: 0.85,
+};
+const POOL_WARM: Record<NightPool["kind"], number> = {
+  tower: 0.2,
+  head: 0.24,
+  work: 0.2,
+  missile: 0.14,
+  gaslamp: 0.3,
+  streetlamp: 0.26,
+  floodlight: 0.18,
+};
 const POOL_RGB: Record<NightPool["kind"], string> = {
   tower: "255, 236, 180",
   head: "255, 242, 205",
   work: "255, 212, 140",
   missile: "255, 214, 150",
+  gaslamp: STREET_LAMPS.gaslamp.rgb,
+  streetlamp: STREET_LAMPS.streetlamp.rgb,
+  floodlight: STREET_LAMPS.floodlight.rgb,
 };
 
 /** Built structures that keep work lights burning round the yard. Not bunkers, walls, or the tower, which has its own lamp. */
@@ -591,6 +615,10 @@ const EXTRUDE: Record<EntityType, number> = {
   inn: 36,
   chapel: 42,
   manor: 48,
+  warehouse: 38,
+  granary: 70,
+  factory: 40,
+  foundry: 46,
 };
 
 const CIV_FILL = "#b08968";
@@ -3782,6 +3810,7 @@ export class MapView {
     this.collectBridgeSites(items);
     this.collectTrees(items, castShadows);
     this.collectDecor(items);
+    this.collectLamps(items);
     this.collectTreeBurns(items);
     // Worn yards merge into one patch, under the Airfield strip and every shadow.
     items.push({ layer: GROUND_DECAL_DRAW_LAYER, z: -Infinity, run: () => drawYardWear(this.ctx, yardWear) });
@@ -4003,7 +4032,79 @@ export class MapView {
         }
       }
     }
+    // The map's street lamps: a still pool round each post.
+    for (const { lamp, wx, wy } of this.standingLamps()) {
+      const spec = STREET_LAMPS[lamp.type];
+      lay(wx, wy, spec.reachTiles * ts, streetLampFlicker(lamp.type, lamp.x, lamp.y, nowSec), lamp.type);
+    }
     return out;
+  }
+
+  /** Street lamps on the map that no structure has been raised over, with their world foot. */
+  private standingLamps(): { lamp: MapLamp; wx: number; wy: number }[] {
+    const map = this.map();
+    const lamps = map.lamps;
+    if (!lamps?.length) return [];
+    const ts = map.tileSize;
+    const over = (lamp: MapLamp, e: EntityView): boolean =>
+      e.kind === "building" && lamp.x >= e.tileX && lamp.x < e.tileX + e.tileW && lamp.y >= e.tileY && lamp.y < e.tileY + e.tileH;
+    const out: { lamp: MapLamp; wx: number; wy: number }[] = [];
+    for (const lamp of lamps) {
+      if (this.curr.entities.some((e) => over(lamp, e))) continue;
+      out.push({ lamp, wx: (lamp.x + 0.5) * ts, wy: (lamp.y + 0.5) * ts });
+    }
+    return out;
+  }
+
+  /** Street lamp posts. They stand and sort with units like the signposts. */
+  private collectLamps(items: DrawItem[]): void {
+    const { w: vw, h: vh } = this.viewSize();
+    const now = performance.now();
+    const ts = this.ts();
+    for (const { lamp, wx, wy } of this.standingLamps()) {
+      const p = this.toScreen(wx, wy);
+      if (p.x < -64 || p.y < -16 || p.x > vw + 64 || p.y > vh + 96) continue;
+      const spr = LAMP_SPRITES[lamp.type];
+      const veil = this.fogField?.veil(wx / ts, wy / ts, now) ?? 0;
+      items.push({
+        layer: STANDING_DRAW_LAYER,
+        z: isoDepth(wx, wy),
+        at: { x: wx, y: wy },
+        run: () => {
+          drawPropSprite(this.ctx, spr, p.x, p.y, STREET_LAMPS[lamp.type].drawH, false, veil);
+        },
+      });
+    }
+  }
+
+  /** The lit bulb on each street lamp: a soft halo where the glass is. */
+  private drawLampBulbs(glow: number): void {
+    const lamps = this.standingLamps();
+    if (lamps.length === 0 || glow <= 0) return;
+    const ctx = this.ctx;
+    const nowSec = performance.now() / 1000;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (const { lamp, wx, wy } of lamps) {
+      const spr = LAMP_SPRITES[lamp.type];
+      const spec = STREET_LAMPS[lamp.type];
+      const h = spr.image.naturalHeight;
+      if (!h) continue;
+      const k = spec.drawH / h;
+      const foot = this.toScreen(wx, wy);
+      const x = foot.x + (spr.bulbX - spr.contactX) * k;
+      const y = foot.y + (spr.bulbY - spr.contactY) * k;
+      const a = glow * streetLampFlicker(lamp.type, lamp.x, lamp.y, nowSec);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, spec.halo);
+      g.addColorStop(0, `rgba(255, 250, 230, ${0.85 * a})`);
+      g.addColorStop(0.3, `rgba(${spec.rgb}, ${0.5 * a})`);
+      g.addColorStop(1, `rgba(${spec.rgb}, 0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, spec.halo, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   /**
@@ -4065,6 +4166,7 @@ export class MapView {
     ctx.save();
     if (pools.length) {
       this.drawLampLight(pools, glow, fillPool);
+      this.drawLampBulbs(glow);
       ctx.globalCompositeOperation = "lighter";
       // The roof searchlight's lens: brightest when it looks at the viewer. Hull headlights stay a beam only.
       for (const { e } of lamps) {

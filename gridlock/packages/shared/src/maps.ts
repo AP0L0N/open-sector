@@ -33,6 +33,8 @@ export interface MapDef {
   maxHeight: number;
   /** Civilian houses and neutral defences. See `featureBox` for where each sits. */
   features: MapFeature[];
+  /** Street lamps. Dress only: the sim never reads them; the client draws them and their light at night. */
+  lamps?: MapLamp[];
   /** Set on maps made in the Map Builder. Built-in maps leave it out and cannot be edited. */
   custom?: { author: string; updatedAt: number };
 }
@@ -58,6 +60,27 @@ export interface MapFeature {
    * A section's x, y may then be fractional (whole world px), so a slanted line lies end to end.
    */
   turn?: number;
+}
+
+/** Street lamps a map can stand on its ground. Drawing only: they light the night, they do not block or reveal. */
+export type LampType = "gaslamp" | "streetlamp" | "floodlight";
+export const LAMP_TYPES: readonly LampType[] = ["gaslamp", "streetlamp", "floodlight"];
+
+export const LAMP_NAMES: Record<LampType, string> = {
+  gaslamp: "Gas Lamp",
+  streetlamp: "Street Lamp",
+  floodlight: "Floodlight",
+};
+
+export interface MapLamp {
+  type: LampType;
+  /** Fine tile the post stands on. */
+  x: number;
+  y: number;
+}
+
+export function isLampType(type: unknown): type is LampType {
+  return typeof type === "string" && (LAMP_TYPES as readonly string[]).includes(type);
 }
 
 export function isMapSection(type: string): type is MapSectionType {

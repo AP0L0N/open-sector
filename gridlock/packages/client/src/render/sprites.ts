@@ -9,6 +9,7 @@ import {
   type CivilianType,
   type Crit,
   type EntityType,
+  type LampType,
   type Stance,
 } from "@gridlock/shared";
 import { veiledCopy } from "./building-fog.js";
@@ -57,6 +58,22 @@ import manorUrl from "../assets/buildings/manor.png";
 import manorSUrl from "../assets/buildings/manor-s.png";
 import manorWUrl from "../assets/buildings/manor-w.png";
 import manorNUrl from "../assets/buildings/manor-n.png";
+import factoryUrl from "../assets/buildings/factory.png";
+import factorySUrl from "../assets/buildings/factory-s.png";
+import factoryWUrl from "../assets/buildings/factory-w.png";
+import factoryNUrl from "../assets/buildings/factory-n.png";
+import warehouseUrl from "../assets/buildings/warehouse.png";
+import warehouseSUrl from "../assets/buildings/warehouse-s.png";
+import warehouseWUrl from "../assets/buildings/warehouse-w.png";
+import warehouseNUrl from "../assets/buildings/warehouse-n.png";
+import foundryUrl from "../assets/buildings/foundry.png";
+import foundrySUrl from "../assets/buildings/foundry-s.png";
+import foundryWUrl from "../assets/buildings/foundry-w.png";
+import foundryNUrl from "../assets/buildings/foundry-n.png";
+import granaryUrl from "../assets/buildings/granary.png";
+import granarySUrl from "../assets/buildings/granary-s.png";
+import granaryWUrl from "../assets/buildings/granary-w.png";
+import granaryNUrl from "../assets/buildings/granary-n.png";
 import shackUrl from "../assets/buildings/shack.png";
 import shackSUrl from "../assets/buildings/shack-s.png";
 import shackWUrl from "../assets/buildings/shack-w.png";
@@ -118,6 +135,9 @@ import stones2Url from "../assets/terrain/stones-2.png";
 import stump1Url from "../assets/terrain/stump-1.png";
 import stump2Url from "../assets/terrain/stump-2.png";
 import signpost1Url from "../assets/terrain/signpost-1.png";
+import lampGaslampUrl from "../assets/terrain/lamp-gaslamp.png";
+import lampStreetlampUrl from "../assets/terrain/lamp-streetlamp.png";
+import lampFloodlightUrl from "../assets/terrain/lamp-floodlight.png";
 import signpost2Url from "../assets/terrain/signpost-2.png";
 import trooperSheetUrl from "../assets/units/trooper-walk.png";
 import trooperCrouchUrl from "../assets/units/trooper-crouch.png";
@@ -1896,6 +1916,30 @@ const CIV_FACES: Record<CivilianType, BuildingSpriteDef[]> = {
     building(manorWUrl, 1055, 525, 975, 520, 12),
     building(manorNUrl, 1055, 527, 975, 535, 12),
   ],
+  factory: [
+    building(factoryUrl, 960, 498, 729.7, 498, 21.7),
+    building(factorySUrl, 960, 498, 597.7, 498, 21.7),
+    building(factoryWUrl, 960, 498, 546, 498, 120),
+    building(factoryNUrl, 960, 498, 579.7, 498, 21.7),
+  ],
+  warehouse: [
+    building(warehouseUrl, 768, 402, 414.3, 402, 79.8),
+    building(warehouseSUrl, 768, 402, 403.2, 402, 101.7),
+    building(warehouseWUrl, 768, 402, 403.2, 402, 113.7),
+    building(warehouseNUrl, 768, 402, 403.2, 402, 80.7),
+  ],
+  foundry: [
+    building(foundryUrl, 960, 498, 620.6, 498, 20),
+    building(foundrySUrl, 960, 498, 590.6, 498, 20),
+    building(foundryWUrl, 960, 498, 509.6, 498, 35),
+    building(foundryNUrl, 960, 498, 539.6, 498, 35),
+  ],
+  granary: [
+    building(granaryUrl, 768, 402, 549.9, 402, 33.9),
+    building(granarySUrl, 768, 402, 507.9, 402, 33.9),
+    building(granaryWUrl, 768, 402, 449.2, 402, 65.2),
+    building(granaryNUrl, 768, 402, 491.2, 402, 65.2),
+  ],
 };
 
 /** Grounded map prop. Contact is the source pixel that sits on the tile. */
@@ -1957,6 +2001,18 @@ export const STONE_FACES: PropSprite[] = [prop(stones1Url, 105, 95), prop(stones
 export const STUMP_FACES: PropSprite[] = [prop(stump1Url, 113, 125), prop(stump2Url, 100, 124)];
 /** Contact is the post foot; boards overhang to either side. */
 export const SIGN_FACES: PropSprite[] = [prop(signpost1Url, 171, 300), prop(signpost2Url, 25, 300)];
+
+/** Street lamp post. Contact is the foot; the bulb is the source pixel the night glow sits on. Metrics from tools/sprites/render_industry.py (lamps.json). */
+export interface LampSprite extends PropSprite {
+  bulbX: number;
+  bulbY: number;
+}
+
+export const LAMP_SPRITES: Record<LampType, LampSprite> = {
+  gaslamp: { ...prop(lampGaslampUrl, 20, 144.7), bulbX: 20, bulbY: 27.7 },
+  streetlamp: { ...prop(lampStreetlampUrl, 18, 159.6), bulbX: 51.6, bulbY: 51.1 },
+  floodlight: { ...prop(lampFloodlightUrl, 25, 179.5), bulbX: 35.8, bulbY: 25.9 },
+};
 
 /** Flat shell crater. Contact is the pit; `bowl` is that pit's width in source pixels. */
 export interface CraterSprite extends PropSprite {
