@@ -268,6 +268,7 @@ import { drawSearchlightAt, drawTowerSearchlight, type SearchlightPose } from ".
 import { drawTorpedoBody } from "./torpedo-draw.js";
 import { drawRadarContact, drawRadarOffline, radarContactLit } from "./radar-panel.js";
 import { drawSonarContact, drawWaterMine } from "./sonar-fx.js";
+import { drawDeployIcon } from "./deploy-icon.js";
 import {
   drawTrackKick,
   spawnTrackKickPuffs,
@@ -5920,6 +5921,7 @@ export class MapView {
       this.drawCrits(e, stack.x + layoutW / 2, stack.y - 18);
     }
     this.drawDeployProgress(e, bar.x - layoutW / 2, bar.y + 4, layoutW);
+    if (!ghost) this.drawDeployBadge(e, stack.x, stack.y - 36);
     if (!ghost) {
       this.drawCaptureProgress(e, stack.x - layoutW / 2, stack.y + 10, layoutW);
     }
@@ -6310,6 +6312,7 @@ export class MapView {
     this.maybeHp(e, s.x - r, s.y - ez - 10, r * 2);
     this.drawCrits(e, s.x + r, s.y - ez - 26);
     this.drawDeployProgress(e, s.x - r, s.y + 6, r * 2);
+    this.drawDeployBadge(e, s.x, s.y - ez - 42);
     if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
       const prog = e.deployProgress ?? 0;
       const size = this.ts() * (1 + 2 * prog);
@@ -6572,6 +6575,7 @@ export class MapView {
     this.drawScoutBar(e, s.x - size * 0.22, barBase - 6);
     this.drawCrits(e, right + 2, head - 18);
     this.drawDeployProgress(e, s.x - size * 0.45, s.y + 6, size * 0.9);
+    this.drawDeployBadge(e, s.x, head - 36);
     if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
       const prog = e.deployProgress ?? 0;
       const footprint = this.ts() * (1 + 2 * prog);
@@ -7755,6 +7759,17 @@ export class MapView {
     ctx.fillStyle = "#e8dcc4";
     const label = e.state === "undeploy" ? "PACK" : "DEPLOY";
     ctx.fillText(`${label} ${Math.round(p * 100)}%`, x + w / 2, y + 16);
+  }
+
+  /** The animated badge over a Rig unpacking into a Core, or a Core packing back into a Rig. */
+  private drawDeployBadge(e: EntityView, x: number, y: number): void {
+    if (e.type !== "rig" && e.type !== "core") return;
+    if (e.state !== "deploy" && e.state !== "undeploy") return;
+    drawDeployIcon(this.ctx, x, y, {
+      mode: e.state === "deploy" ? "deploy" : "pack",
+      progress: e.deployProgress ?? 0,
+      nowMs: performance.now(),
+    });
   }
 
   private drawCaptureProgress(e: EntityView, x: number, y: number, w: number): void {
