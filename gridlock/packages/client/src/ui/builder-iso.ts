@@ -133,7 +133,7 @@ export interface UnitOverlay {
   garrisons: ReadonlyMap<number, { count: number; cap: number }>;
   /** A rotate order's aim: the selected unit turns toward this tile. */
   aim: { x: number; y: number } | null;
-  /** Spotlight beams to outline: a Watch Tower's or a Battle Ship's, from world point (x, y), heading in radians. */
+  /** Spotlight beams to outline: a Watch Tower's, a Fire-Control Tower's, or a Battle Ship's, from world point (x, y), heading in radians. */
   beams: readonly SpotBeam[];
 }
 

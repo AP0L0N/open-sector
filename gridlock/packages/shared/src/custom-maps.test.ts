@@ -547,6 +547,7 @@ describe("custom map units", () => {
         tiles: encodeRuns(tiles),
         features: [
           { type: "tower", x: 96, y: 64, facing: 0, spot: 450, patrol: [{ x: 110, y: 64 }, { x: 96, y: 80 }], loop: true },
+          { type: "leitturm", x: 148, y: 48, facing: 0, spot: 200, patrol: [{ x: 160, y: 48 }, { x: 148, y: 70 }], loop: true },
           { type: "bunker", x: 96, y: 96, facing: 0, spot: 90, patrol: [{ x: 110, y: 96 }] } as never,
         ],
         units: [
@@ -556,11 +557,15 @@ describe("custom map units", () => {
       }),
     );
     assert.ok(r.ok, r.ok ? "" : r.message);
-    const [tower, bunker] = r.spec.features;
+    const [tower, leitturm, bunker] = r.spec.features;
     assert.equal(tower!.spot, 90, "wrapped to whole degrees");
     assert.deepEqual(tower!.patrol, [{ x: 110, y: 64 }, { x: 96, y: 80 }]);
     assert.equal(tower!.loop, true);
-    assert.equal(bunker!.spot, undefined, "only a Watch Tower carries a lamp");
+    assert.equal(leitturm!.spot, 200);
+    assert.deepEqual(leitturm!.patrol, [{ x: 160, y: 48 }, { x: 148, y: 70 }]);
+    assert.equal(leitturm!.loop, true);
+    assert.equal(buildCustomMap(r.spec).features.find((f) => f.type === "leitturm")?.spot, 200);
+    assert.equal(bunker!.spot, undefined, "a building without a lamp drops the heading");
     assert.equal(bunker!.patrol, undefined);
     const [ship, man] = r.spec.units!;
     assert.equal(ship!.spot, 270);
