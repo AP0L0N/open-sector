@@ -5,6 +5,7 @@ import { bridgeTiles, planBridge, type BridgeGround, type BridgePlan } from "../
 import { fieldTilesOn, overlapsFieldIn, overlapsSitedLine, sitedLineTiles } from "./field.js";
 import { buildingSite, buildingTilesOf, turnedBox } from "../building-rect.js";
 import { footprintGap, tileNearOwnBuildings } from "./geo.js";
+import { smelterCrowded } from "./smelter.js";
 
 /** Tiles under the snapshot's standing buildings, turned ones on their real ground. */
 function buildingCells(snap: MatchSnapshot, width: number, tileSize: number, liveOnly: boolean): Set<number> {
@@ -85,6 +86,7 @@ export function previewSite(snap: MatchSnapshot, type: BuildingType, tx: number,
     if (built.has(i)) return false;
   }
   if (type === "smelter" && scrapUnder < Math.ceil(def.tileW * def.tileH * SMELTER_SCRAP_COVER)) return false;
+  if (type === "smelter" && smelterCrowded(snap.entities, tx, ty)) return false;
   return true;
 }
 

@@ -11,7 +11,7 @@ export { applyCommand } from "./commands.js";
 export { snapshotFor } from "./snapshot.js";
 export { burnVariant } from "./remains.js";
 export { previewBridge, previewConstruct, previewField, previewPlace, previewSite, previewYardField } from "./preview.js";
-export { earnScrap, scrapCap, smelterCount, smelterIncome, smelterOnScrap, smelterRateOn, smelterScrapNeeded, smelterSiteOk } from "./smelter.js";
+export { earnScrap, scrapCap, smelterCount, smelterIncome, smelterOnScrap, smelterRateOn, smelterCrowded, smelterScrapNeeded, smelterSiteOk } from "./smelter.js";
 export { pathToWorld, astar } from "./path.js";
 export { PATROL_POINTS_MAX, connectPatrolPoints } from "./patrol.js";
 export type { MatchState } from "./types.js";

@@ -6,6 +6,7 @@ import {
   DEFENCE_BUILD_RADIUS,
   DIAMOND_SCRAP_MUL,
   DIAMOND_SCRAP_TILE_YIELD,
+  SMELTER_CLEARANCE,
   SMELTER_SCRAP_COVER,
   SMELTER_SCRAP_PER_SEC,
   SCRAP_CAP_PER_SMELTER,
@@ -26,7 +27,7 @@ import { raiseBuilding } from "./build.js";
 import { applyCommand } from "./commands.js";
 import { buildingCenter, footprintGap, hqOf, makeEntity, scrapAt, tileCenter, tilesBlockedOrScrap } from "./geo.js";
 import { createMatch, step } from "./match.js";
-import { previewConstruct, previewPlace } from "./preview.js";
+import { previewConstruct, previewPlace, previewSite } from "./preview.js";
 import { refundPaid } from "./production.js";
 import { earnScrap, scrapCap, smelterIncome, smelterRateOn, smelterScrapNeeded, smelterSiteOk, tickSmelters } from "./smelter.js";
 import { snapshotFor } from "./snapshot.js";
@@ -150,6 +151,23 @@ describe("Smelter on scrap", () => {
     assert.equal(smelterSiteOk(state, 70, 70), true, "half on scrap");
     // Shift the footprint off the field so only a third is covered.
     assert.equal(smelterSiteOk(state, 70 + sm.tileW / 2 + 2, 70), false, "too little scrap");
+  });
+
+  it("keeps SMELTER_CLEARANCE open tiles between two Smelters, whoever owns them", () => {
+    const { state } = twoPlayerMatch();
+    // Open map ground the ghost also sees as open, wide enough for two Smelters and the gap.
+    const w = 2 * sm.tileW + SMELTER_CLEARANCE + 1;
+    const { x, y } = openPatch(state, 0, 0, w, sm.tileH);
+    clearGround(state, x, y, w, sm.tileH);
+    paintScrap(state, x, y, w, sm.tileH);
+    raiseBuilding(state, "B", "smelter", x, y);
+    const near = x + sm.tileW + SMELTER_CLEARANCE - 1;
+    const far = near + 1;
+    assert.equal(smelterSiteOk(state, near, y), false, "one tile short of the clearance");
+    assert.equal(smelterSiteOk(state, far, y), true, "just clear of it");
+    const snap = snapshotFor(state, "A");
+    assert.equal(previewSite(snap, "smelter", near, y), false, "client ghost agrees: too close");
+    assert.equal(previewSite(snap, "smelter", far, y), true, "client ghost agrees: clear");
   });
 
   it("places from the yard only on scrap in build range, and other buildings never on scrap", () => {
