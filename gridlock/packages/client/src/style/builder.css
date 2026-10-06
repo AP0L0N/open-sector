@@ -66,6 +66,18 @@
 
 .bld-toggle input { margin: 0; width: auto; accent-color: var(--amber); }
 
+/* In-game view and Night time, side by side in the stage's corner. */
+.bld-view-toggles {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.bld-view-toggles .bld-toggle { position: static; }
+.bld-toggle[hidden] { display: none; }
+
 .bld-tools,
 .bld-side {
   overflow: auto;

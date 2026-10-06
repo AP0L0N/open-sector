@@ -2,7 +2,11 @@ import {
   HEIGHT_MAX,
   ISO_ELEVATION,
   ISO_TILE_H,
+  ISO_TILE_W,
   SPAWN_PAD_R,
+  SPOTLIGHT_HALF_DEG,
+  SPOTLIGHT_REACH_TILES,
+  TOWER_EYE_HEIGHT,
   TILE_SIZE,
   TILE_TREE,
   featureAngle,
@@ -10,6 +14,7 @@ import {
   featureLotSite,
   featureRect,
   fieldSpan,
+  hasSpotlight,
   isMapSection,
   isScrapTile,
   isoDepth,
@@ -18,14 +23,18 @@ import {
   peakHeight,
   worldToIso,
   type IsoPt,
+  type LampType,
   type MapDef,
   type MapFeature,
 } from "@gridlock/shared";
 import { buildingGroundElev } from "../render/building-ground.js";
 import { decorFor } from "../render/decor.js";
+import { NIGHT_SHADE_MAX, STREET_LAMPS, spotBeamGround } from "../render/night.js";
+import { paintNight, type NightHalo, type NightLayers, type NightLightPool } from "../render/night-paint.js";
 import { drawSandbags } from "../render/sandbags.js";
 import {
   BUSH_FACES,
+  LAMP_SPRITES,
   OAK_FACES,
   PINE_FACES,
   SIGN_FACES,
@@ -50,7 +59,7 @@ import { SCRAP_SOFT_REACH } from "../render/scrap-field.js";
 import { treeStamp } from "../render/tree-burn.js";
 import { WALL_STYLE, drawWall, wallJoins, wallTopElev, type WallSection } from "../render/wall.js";
 import type { IsoCam } from "./builder-iso-cam.js";
-import type { Dirty, Sheet } from "./builder-model.js";
+import { liveLamps, type Dirty, type Sheet } from "./builder-model.js";
 
 /**
  * The Map Builder's "In-game view": the sheet drawn the way a match draws it
@@ -73,6 +82,10 @@ export interface IsoOverlay {
   lineStart: { x: number; y: number } | null;
   spawnGhost: { x: number; y: number; bad: boolean } | null;
   brush: { x: number; y: number; r: number } | null;
+  /** Where the Street lamps tool would stand a post. */
+  lampGhost?: { x: number; y: number; type: LampType; bad: boolean } | null;
+  /** Draw the field at full dark: lamps burning, tower spotlights on. */
+  night?: boolean;
 }
 
 let terrain: TerrainBake | null = null;
@@ -88,6 +101,11 @@ let rebakeAll = true;
 let artHooked = false;
 /** A settled change over more of the sheet than this is baked whole instead of restamped. */
 const RESTAMP_SHARE = 0.3;
+
+/** Scratch canvases for the night pass. */
+const nightLayers: NightLayers = {};
+/** Tower beam colour and strength, as the battlefield lights a manned tower. */
+const TOWER_BEAM = { rgb: "255, 236, 180", cut: 0.7, warm: 0.2 };
 
 const DECOR_FACES: Record<string, readonly PropSprite[]> = {
   bush: BUSH_FACES,
@@ -353,6 +371,46 @@ function groundRing(s: Sheet, tx: number, ty: number, r: number): IsoPt[] {
  * device pixel ratio; `w` × `h` is the stage in CSS pixels. True when some art
  * was still loading and another frame should follow.
  */
+/**
+ * Every light burning on the sheet at full dark, in iso coordinates: each
+ * street lamp's pool and bulb, and each tower's spotlight thrown the way the
+ * tower faces, as a manned tower would light it.
+ */
+export function isoNightLights(s: Sheet): { pools: NightLightPool[]; halos: NightHalo[] } {
+  const ts = TILE_SIZE;
+  // World px of ground to iso px across, as the battlefield sizes its pools.
+  const k = (Math.SQRT2 * ISO_TILE_W) / 2 / ts;
+  const pools: NightLightPool[] = [];
+  const halos: NightHalo[] = [];
+  for (const l of liveLamps(s)) {
+    const spec = STREET_LAMPS[l.type];
+    const wx = (l.x + 0.5) * ts;
+    const wy = (l.y + 0.5) * ts;
+    const foot = at(wx, wy, heightOf(s, l.x, l.y));
+    pools.push({ x: foot.x, y: foot.y, rx: spec.reachTiles * ts * k, a: 1, rgb: spec.rgb, cut: spec.cut, warm: spec.warm });
+    const spr = LAMP_SPRITES[l.type];
+    const h = spr.image.naturalHeight;
+    if (!h) continue;
+    const q = spec.drawH / h;
+    halos.push({ x: foot.x + (spr.bulbX - spr.contactX) * q, y: foot.y + (spr.bulbY - spr.contactY) * q, r: spec.halo, rgb: spec.rgb, a: 1 });
+  }
+  const reach = SPOTLIGHT_REACH_TILES * ts;
+  const half = (SPOTLIGHT_HALF_DEG * Math.PI) / 180;
+  for (const f of s.features) {
+    if (!hasSpotlight(f.type)) continue;
+    const r = featureRect(f);
+    const cx = r.cx * ts;
+    const cy = r.cy * ts;
+    for (const b of spotBeamGround(cx, cy, featureAngle(f), reach, half)) {
+      const p = at(b.x, b.y, groundAt(s, b.x, b.y));
+      pools.push({ x: p.x, y: p.y, rx: b.r * k, a: b.a, rgb: TOWER_BEAM.rgb, cut: TOWER_BEAM.cut, warm: TOWER_BEAM.warm });
+    }
+    const lens = at(cx, cy, lotElev(s, f) + TOWER_EYE_HEIGHT);
+    halos.push({ x: lens.x, y: lens.y, r: 11, rgb: TOWER_BEAM.rgb, a: 0.75 });
+  }
+  return { pools, halos };
+}
+
 export function isoDraw(
   c: CanvasRenderingContext2D,
   s: Sheet,
@@ -454,8 +512,39 @@ export function isoDraw(
     });
   });
 
+  for (const l of liveLamps(s)) {
+    const wx = (l.x + 0.5) * TILE_SIZE;
+    const wy = (l.y + 0.5) * TILE_SIZE;
+    const p = at(wx, wy, heightOf(s, l.x, l.y));
+    if (!onScreen(p, 96)) continue;
+    const spr = LAMP_SPRITES[l.type];
+    items.push({ z: isoDepth(wx, wy), run: () => void (drawPropSprite(c, spr, p.x, p.y, STREET_LAMPS[l.type].drawH) || (loading = true)) });
+  }
+
   items.sort((a, b) => a.z - b.z);
   for (const it of items) it.run();
+
+  if (o.night) {
+    const lights = isoNightLights(s);
+    paintNight(c, nightLayers, NIGHT_SHADE_MAX, lights.pools, lights.halos);
+  }
+
+  if (o.lampGhost) {
+    const g = o.lampGhost;
+    const tint = g.bad ? "#ff5a4a" : "#7dff6a";
+    const p = at((g.x + 0.5) * TILE_SIZE, (g.y + 0.5) * TILE_SIZE, heightOf(s, g.x, g.y));
+    c.save();
+    c.globalAlpha = 0.6;
+    if (!drawPropSprite(c, LAMP_SPRITES[g.type], p.x, p.y, STREET_LAMPS[g.type].drawH)) loading = true;
+    c.restore();
+    // The ground it will light.
+    c.setLineDash([6 / z, 4 / z]);
+    c.strokeStyle = tint;
+    c.lineWidth = 1.5 / z;
+    quadPath(c, groundRing(s, g.x, g.y, STREET_LAMPS[g.type].reachTiles));
+    c.stroke();
+    c.setLineDash([]);
+  }
 
   // Starts: the Rig's pad and a numbered marker, as the lobby preview marks them.
   const r = Math.max(8, Math.min(16, 12)) / Math.max(0.6, z);
