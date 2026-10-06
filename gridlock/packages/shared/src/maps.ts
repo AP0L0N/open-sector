@@ -355,6 +355,16 @@ export const TILE_ROCK = 7;
  * like scrap in every way, except that a Smelter on it pours DIAMOND_SCRAP_MUL times as much.
  */
 export const TILE_DIAMOND_SCRAP = 8;
+/**
+ * Mountain cap. Walkable flat ground. Orthogonal neighbours at another height
+ * are impassable rock until that ground is raised to the cap (see isMountainCliff).
+ */
+export const TILE_MOUNTAIN = 9;
+/**
+ * Lowest cap the Mountain brush may stamp, on the same scale as the level slider.
+ * 12 is one terrace above the plain (HEIGHT_BASE is 8).
+ */
+export const MOUNTAIN_MIN_HEIGHT = 12;
 
 /** Scrap of either grade, plain or diamond. */
 export function isScrapTile(t: number | undefined): boolean {
@@ -602,15 +612,18 @@ function relaxSlopes(
   width: number,
   height: number,
   locked?: Uint8Array,
+  tiles?: ArrayLike<number>,
 ): void {
   const step = HEIGHT_STEP_MAX;
+  // A mountain cap keeps its cliff. It is not pulled down, and it does not drag a ramp up onto it.
+  const cap = (i: number): boolean => tiles?.[i] === TILE_MOUNTAIN;
   let changed = true;
   while (changed) {
     changed = false;
     for (let y = 0; y < height; y++) {
       for (let x = 0; x < width; x++) {
         const i = idx(width, x, y);
-        if (locked?.[i]) continue;
+        if (locked?.[i] || cap(i)) continue;
         let h = heights[i] ?? 0;
         for (let dy = -1; dy <= 1; dy++) {
           for (let dx = -1; dx <= 1; dx++) {
@@ -646,7 +659,7 @@ function relaxSlopes(
         const ny = y + dy;
         if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
         const ni = idx(width, nx, ny);
-        if (locked[ni]) continue;
+        if (locked[ni] || cap(ni)) continue;
         const need = h - step;
         if (need <= 0) continue;
         const n = heights[ni] ?? 0;
@@ -1189,7 +1202,7 @@ function flattenTerrain(
   for (let i = 0; i < tiles.length; i++) {
     if (tiles[i] === kind) heights[i] = 0;
   }
-  relaxSlopes(heights, width, height, locked);
+  relaxSlopes(heights, width, height, locked, tiles);
 }
 
 /**
@@ -1764,7 +1777,7 @@ function levelHouseLots(
   // Ground that was fixed before the houses (water, pads, hill skirts) bounds a
   // group's level: no more than one step per tile away from it, or a cliff.
   const prefixed = new Uint8Array(locked);
-  const fixed = (i: number): boolean => prefixed[i] === 1 || tiles[i] === TILE_WATER;
+  const fixed = (i: number): boolean => prefixed[i] === 1 || tiles[i] === TILE_WATER || tiles[i] === TILE_MOUNTAIN;
   const fixedZ = (i: number): number => (tiles[i] === TILE_WATER ? 0 : (heights[i] ?? 0));
   const bounds = new Map<number, { lo: number; hi: number }>();
   boxes.forEach((b, i) => {
@@ -1847,7 +1860,7 @@ function levelHouseLots(
   // Margins first, then the lots: a neighbour's margin never tilts a house that touches it.
   for (const b of lots) level(b.x0 - 1, b.y0 - 1, b.x1 + 1, b.y1 + 1, b.z);
   for (const b of lots) level(b.x0, b.y0, b.x1, b.y1, b.z);
-  relaxSlopes(heights, width, height, locked);
+  relaxSlopes(heights, width, height, locked, tiles);
 }
 
 /** Open-ground flood (4-neighbour) from `sx, sy`. Rock, water, fence, and blocks stop it. */
@@ -2144,11 +2157,59 @@ export const SPAWN_PAD_R = 4 * TILE_SUBDIV;
 
 const WALK_BLOCKERS: ReadonlySet<number> = new Set([TILE_BLOCKED, TILE_WATER, TILE_TREE, TILE_FENCE, TILE_ROCK]);
 
+const CLIFF_NEIGHBORS: readonly [number, number][] = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1],
+];
+
+/**
+ * Impassable rock skirt around a mountain cap. A cell that touches a cap at
+ * another height, unless an orthogonal neighbour cap is the same height — that
+ * side is the walk up onto the flat top, and the rock is gone there. Water stays
+ * water. The cap itself is open ground.
+ */
+export function isMountainCliff(
+  tiles: ArrayLike<number>,
+  heights: ArrayLike<number>,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+): boolean {
+  if (x < 0 || y < 0 || x >= width || y >= height) return false;
+  const i = y * width + x;
+  const self = tiles[i] ?? 0;
+  if (self === TILE_MOUNTAIN || self === TILE_WATER) return false;
+  const h = heights[i] ?? 0;
+  let drop = false;
+  let door = false;
+  for (let k = 0; k < CLIFF_NEIGHBORS.length; k++) {
+    const nx = x + CLIFF_NEIGHBORS[k]![0];
+    const ny = y + CLIFF_NEIGHBORS[k]![1];
+    if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+    const ni = ny * width + nx;
+    if ((tiles[ni] ?? 0) !== TILE_MOUNTAIN) continue;
+    if ((heights[ni] ?? 0) === h) {
+      if (k < 4) door = true;
+    } else {
+      drop = true;
+    }
+  }
+  return drop && !door;
+}
+
 /**
  * Make hand-painted ground playable, in place: every start gets a clear pad
  * level with its own tile, ground under a house is open, water sits at the
  * valley floor, house lots are levelled, and no two neighbours differ by more
- * than one step. `features` are fine-grid and on the coarse grid.
+ * than one step. A mountain cap keeps its height and does not grow a ramp.
+ * `features` are fine-grid and on the coarse grid.
  * `brushed` cells keep their height so slope relaxing ramps around them.
  */
 export function normalizeTerrain(
@@ -2179,7 +2240,7 @@ export function normalizeTerrain(
       for (let x = s.x - r; x <= s.x + r; x++) {
         if (x < 0 || y < 0 || x >= width || y >= height || Math.hypot(x - s.x, y - s.y) > r) continue;
         const i = idx(width, x, y);
-        if (WALK_BLOCKERS.has(tiles[i] ?? TILE_EMPTY) || isScrapTile(tiles[i])) tiles[i] = TILE_EMPTY;
+        if (WALK_BLOCKERS.has(tiles[i] ?? TILE_EMPTY) || isScrapTile(tiles[i]) || tiles[i] === TILE_MOUNTAIN) tiles[i] = TILE_EMPTY;
         heights[i] = z;
         locked[i] = 1;
       }
@@ -2195,7 +2256,7 @@ export function normalizeTerrain(
   }
   const coarse = lotFeatures(features).map((f) => ({ ...f, x: Math.floor(f.x / TILE_SUBDIV), y: Math.floor(f.y / TILE_SUBDIV) }));
   levelHouseLots(heights, tiles, width, height, coarse, locked);
-  relaxSlopes(heights, width, height, locked);
+  relaxSlopes(heights, width, height, locked, tiles);
 }
 
 /** Rolling hills and valleys for a fresh Map Builder sheet, starts kept flat. */

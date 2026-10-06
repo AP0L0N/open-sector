@@ -2,6 +2,7 @@ import {
   TILE_EMPTY,
   TILE_ROAD,
   TILE_ROCK,
+  isMountainCliff,
   TILE_SCRAP,
   TILE_SUBDIV,
   TILE_TREE,
@@ -231,7 +232,7 @@ export function placeDecor(map: MapDef): DecorItem[] {
   for (let ty = 1; ty < h - 1; ty++) {
     for (let tx = 1; tx < w - 1; tx++) {
       const i = ty * w + tx;
-      if (map.tiles[i] !== TILE_ROCK || out[i] || used[i]) continue;
+      if ((map.tiles[i] !== TILE_ROCK && !isMountainCliff(map.tiles, map.heights, w, h, tx, ty)) || out[i] || used[i]) continue;
       if (!spaced(s(11), tx, ty, 5, 2)) continue;
       add("boulder", tx, ty, 6 + (hash2(tx, ty, s(29)) % 4), false, 11);
       claim(tx, ty, 2);

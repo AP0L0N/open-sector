@@ -3,12 +3,15 @@ import { describe, it } from "node:test";
 import {
   HEIGHT_BASE,
   HEIGHT_STEP_MAX,
+  MOUNTAIN_MIN_HEIGHT,
   TILE_EMPTY,
+  TILE_MOUNTAIN,
   TILE_ROAD,
   TILE_SIZE,
   TILE_SUBDIV,
   TILE_TREE,
   TILE_WATER,
+  isMountainCliff,
   validateCustomMap,
 } from "@gridlock/shared";
 import {
@@ -45,6 +48,7 @@ import {
   lampIndexAt,
   levelDisk,
   liftDisk,
+  paintMountain,
   markSheet,
   newSheet,
   nextSpawnId,
@@ -101,6 +105,31 @@ describe("map builder sheet", () => {
     assert.ok(steepest(s) <= HEIGHT_STEP_MAX, `steepest ${steepest(s)}`);
     settle(s);
     assert.equal(s.heights[96 * s.width + 96], HEIGHT_BASE + 12);
+  });
+
+  it("stamps a flat mountain and opens the rock where ground meets its height", () => {
+    const s = fresh();
+    paintMountain(s, 40, 40, 2, 4);
+    const at = (x: number, y: number): number => s.heights[y * s.width + x]!;
+    assert.equal(at(40, 40), MOUNTAIN_MIN_HEIGHT);
+    assert.equal(s.tiles[40 * s.width + 42], TILE_MOUNTAIN);
+    assert.equal(at(43, 40), HEIGHT_BASE);
+    assert.equal(isMountainCliff(s.tiles, s.heights, s.width, s.height, 43, 40), true);
+    assert.equal(isMountainCliff(s.tiles, s.heights, s.width, s.height, 43, 42), true);
+    settle(s);
+    assert.equal(at(40, 40), MOUNTAIN_MIN_HEIGHT);
+    assert.equal(at(43, 40), HEIGHT_BASE);
+    levelDisk(s, 43, 40, 0, MOUNTAIN_MIN_HEIGHT);
+    assert.equal(isMountainCliff(s.tiles, s.heights, s.width, s.height, 43, 40), false);
+    assert.equal(isMountainCliff(s.tiles, s.heights, s.width, s.height, 40, 43), true);
+    assert.equal(at(40, 40), MOUNTAIN_MIN_HEIGHT);
+    liftDisk(s, 40, 40, 2, 1);
+    assert.equal(at(40, 40), MOUNTAIN_MIN_HEIGHT);
+    settle(s);
+    assert.equal(at(40, 40), MOUNTAIN_MIN_HEIGHT);
+    assert.equal(isMountainCliff(s.tiles, s.heights, s.width, s.height, 43, 40), false);
+    const check = validateCustomMap(sheetToSpec(s));
+    assert.notEqual(check.ok ? "" : check.message, "Bad ground data.");
   });
 
   it("cuts a valley and levels a plateau", () => {

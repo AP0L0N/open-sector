@@ -7,6 +7,7 @@ import {
   CUSTOM_MAP_SIZES,
   HEIGHT_BASE,
   HEIGHT_MAX,
+  MOUNTAIN_MIN_HEIGHT,
   CLUTTER_NAMES,
   CLUTTER_TYPES,
   LAMP_NAMES,
@@ -16,6 +17,7 @@ import {
   TILE_DIAMOND_SCRAP,
   TILE_EMPTY,
   TILE_FENCE,
+  TILE_MOUNTAIN,
   TILE_ROAD,
   TILE_ROCK,
   TILE_SCRAP,
@@ -40,6 +42,7 @@ import {
   isCivilianType,
   isMapSection,
   isMapBridge,
+  isMountainCliff,
   MAP_BRIDGE_TYPES,
   bridgeBrickLength,
   bridgePath,
@@ -63,6 +66,7 @@ import {
 } from "@gridlock/shared";
 import type { Ctx } from "../ctx.js";
 import { forgetTerrain } from "../render/terrain.js";
+import { heightsChanged } from "../render/height-mesh.js";
 import { buildingSpriteFor, CLUTTER_SPRITES, gunLayerFor, LAMP_SPRITES } from "../render/sprites.js";
 import { drawGunRow } from "../render/ciws.js";
 import { fieldPointsWithCursor, pinFieldPoint, undoFieldPoint, type Pt } from "../render/field-place.js";
@@ -92,7 +96,7 @@ const UNDO_DEPTH = 40;
 /** Raise / Lower apply one step this often while the button is held. */
 const LIFT_EVERY_MS = 70;
 
-type ToolId = "select" | "raise" | "lower" | "level" | "ground" | "house" | "defence" | "lamp" | "clutter" | "road" | "bridge" | "unit" | "spawn" | "erase";
+type ToolId = "select" | "raise" | "lower" | "level" | "mountain" | "ground" | "house" | "defence" | "lamp" | "clutter" | "road" | "bridge" | "unit" | "spawn" | "erase";
 
 interface GroundKind {
   tile: number;
@@ -139,6 +143,8 @@ interface Tool {
   turn: number;
   brush: number;
   level: number;
+  /** Flat cap height for the Mountain brush. Never below MOUNTAIN_MIN_HEIGHT. */
+  mountain: number;
   /** A road's width in fine tiles. */
   roadWidth: number;
 }
@@ -191,6 +197,7 @@ const tool: Tool = {
   turn: M.QUARTER_TURN,
   brush: 6,
   level: HEIGHT_BASE,
+  mountain: Math.max(MOUNTAIN_MIN_HEIGHT, 16),
   roadWidth: M.ROAD_WIDTH,
 };
 let selected: Selection | null = null;
@@ -307,6 +314,7 @@ function changed(): void {
   dirty = true;
   edits++;
   previewStale = true;
+  if (sheet) heightsChanged(sheet.heights);
   isoChanged();
   pendingGround = M.emptyDirty();
   repaintGround();
@@ -378,8 +386,14 @@ function tileColor(s: M.Sheet, x: number, y: number): [number, number, number] {
     case TILE_ROCK:
       c = mix(ROCK_LO, ROCK_HI, u);
       break;
+    case TILE_MOUNTAIN:
+      c = mix([112, 108, 86], [196, 186, 154], u);
+      break;
     default:
       c = mix(GRASS_LO, GRASS_HI, u);
+  }
+  if (t !== TILE_MOUNTAIN && t !== TILE_WATER && isMountainCliff(s.tiles, s.heights, s.width, s.height, x, y)) {
+    c = mix(ROCK_LO, ROCK_HI, u);
   }
   // Light from the north-west, and a contour every terrace.
   const nw = x > 0 && y > 0 ? s.heights[i - s.width - 1]! : h;
@@ -443,7 +457,12 @@ function flushGround(): void {
   const box = pendingGround;
   pendingGround = M.emptyDirty();
   repaintGround(box);
-  if (sheet && gameView) isoRestamp(sheet, box);
+  if (sheet && gameView) {
+    if (tool.id === "raise" || tool.id === "lower" || tool.id === "level" || tool.id === "mountain" || tool.id === "ground") {
+      heightsChanged(sheet.heights);
+    }
+    isoRestamp(sheet, box);
+  }
 }
 
 // --- stage drawing -------------------------------------------------------------
@@ -1116,7 +1135,7 @@ function toTile(e: PointerEvent | WheelEvent): { x: number; y: number; inside: b
 }
 
 function isBrush(id: ToolId): boolean {
-  return id === "ground" || id === "raise" || id === "lower" || id === "level";
+  return id === "ground" || id === "raise" || id === "lower" || id === "level" || id === "mountain";
 }
 
 /** The brush ring at (x, y) reaches the sheet, even when its centre is past the edge. */
@@ -1132,6 +1151,7 @@ function dab(x: number, y: number): void {
   else if (tool.id === "raise") M.liftDisk(s, x, y, tool.brush, 1, box);
   else if (tool.id === "lower") M.liftDisk(s, x, y, tool.brush, -1, box);
   else if (tool.id === "level") M.levelDisk(s, x, y, tool.brush, tool.level, box);
+  else if (tool.id === "mountain") M.paintMountain(s, x, y, tool.brush, tool.mountain, box);
   markGround(box);
 }
 
@@ -1648,7 +1668,8 @@ function onMove(e: PointerEvent): void {
   pointerOver = true;
   if (t.inside) {
     const i = t.y * s.width + t.x;
-    stage.status.textContent = `${t.x}, ${t.y} · height ${s.heights[i]} · ${groundName(s.tiles[i]!)}`;
+    const label = isMountainCliff(s.tiles, s.heights, s.width, s.height, t.x, t.y) ? "rock" : groundName(s.tiles[i]!);
+    stage.status.textContent = `${t.x}, ${t.y} · height ${s.heights[i]} · ${label}`;
   } else if (moved) {
     stage.status.textContent = "Off the map";
   }
@@ -1657,7 +1678,7 @@ function onMove(e: PointerEvent): void {
     // Follow the pointer's real path, off the sheet too: leaving and coming back
     // elsewhere must not draw a line across the map, and a ring that hangs over
     // the edge still paints the edge. Raise and Lower run on their timer.
-    if (tool.id === "ground" || tool.id === "level") dabLine(drag.lastX, drag.lastY, t.x, t.y);
+    if (tool.id === "ground" || tool.id === "level" || tool.id === "mountain") dabLine(drag.lastX, drag.lastY, t.x, t.y);
     drag.lastX = t.x;
     drag.lastY = t.y;
   } else if (drag?.kind === "erase" && t.inside) {
@@ -1764,6 +1785,7 @@ function onWheel(e: WheelEvent): void {
 }
 
 function groundName(t: number): string {
+  if (t === TILE_MOUNTAIN) return "mountain";
   return (GROUND.find((g) => g.tile === t) ?? LAID_GROUND.find((g) => g.tile === t))?.name.toLowerCase() ?? "blocked";
 }
 
@@ -2249,12 +2271,31 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     if (tool.id !== "level") setTool(ctx, { id: "level" });
   });
   levelRow.append(levelIn, levelVal);
+  const mountainBtn = reliefTool(
+    "mountain",
+    "Mountain",
+    "Λ",
+    "Stamp a flat cap at the mountain height. Rock rings it, and that rock opens where the ground beside it is raised to the same height.",
+  );
+  const mountainRow = el("div", { class: "bld-row" });
+  const mountainIn = el("input", {
+    attrs: { type: "range", min: String(MOUNTAIN_MIN_HEIGHT), max: String(HEIGHT_MAX), step: "1" },
+  });
+  mountainIn.value = String(tool.mountain);
+  const mountainVal = el("span", { class: "bld-val", text: `${tool.mountain}` });
+  mountainIn.addEventListener("input", () => {
+    tool.mountain = Math.max(MOUNTAIN_MIN_HEIGHT, Number(mountainIn.value));
+    mountainVal.textContent = `${tool.mountain}`;
+    if (tool.id !== "mountain") setTool(ctx, { id: "mountain" });
+  });
+  mountainRow.append(mountainIn, mountainVal);
   const terrainBtns = el("div", { class: "btn-row" });
   const roll = el("button", { class: "btn btn-ghost bld-mini", text: "Roll hills", attrs: { type: "button" } });
   roll.addEventListener("click", () => {
     const s = sheet;
     if (!s || !confirm("Replace all elevation with fresh rolling hills?")) return;
     pushUndo();
+    s.tiles = s.tiles.map((t) => (t === TILE_MOUNTAIN ? TILE_EMPTY : t));
     s.heights = rollHeights(s.width, s.height, `${s.id}:${Date.now()}`, s.spawns);
     finishStroke();
   });
@@ -2263,6 +2304,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     const s = sheet;
     if (!s || !confirm("Flatten the whole map to base height?")) return;
     pushUndo();
+    s.tiles = s.tiles.map((t) => (t === TILE_MOUNTAIN ? TILE_EMPTY : t));
     s.heights = s.heights.map(() => HEIGHT_BASE);
     finishStroke();
   });
@@ -2291,12 +2333,18 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       relief,
       el("label", { text: "Level height" }),
       levelRow,
+      mountainBtn,
+      el("label", { text: "Mountain height" }),
+      mountainRow,
       terrainBtns,
       el("h3", { class: "bld-sub", text: "Ground" }),
       groundPal,
       el("label", { text: "Brush" }),
       brushRow,
-      el("p", { class: "bld-hint", text: "The brush paints ground and shapes elevation. [ and ] change the size." }),
+      el("p", {
+        class: "bld-hint",
+        text: "The brush paints ground, shapes elevation, and stamps mountains. [ and ] change the size. A mountain's rock opens where the ground beside it matches its height.",
+      }),
     ),
   );
 

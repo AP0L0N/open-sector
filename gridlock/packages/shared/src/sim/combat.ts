@@ -920,6 +920,19 @@ function backingHop(e: Entity): boolean {
   return reversing(e) && !catalog(e.type).doubleEnded;
 }
 
+/**
+ * The hull keeps the travel heading instead of yawing onto a target.
+ * A forced aim on a Move already did this. A plain Move does too, and so
+ * does an escort still walking to its unit: a casemate that yaws back onto
+ * the enemy never finishes the turn it needs before the tracks roll.
+ * Infantry turn as they walk, so a plain Move still lets them face a target.
+ */
+function hullStaysOnCourse(e: Entity): boolean {
+  if (forceUnderway(e)) return true;
+  if (!catalog(e.type).turnInPlace) return false;
+  return e.order?.kind === "move" || escorting(e);
+}
+
 function travelFights(e: Entity): boolean {
   const k = e.order?.kind;
   return k === "attackmove" || k === "move" || k === "patrol" || escorting(e) || forceUnderway(e);
@@ -1485,7 +1498,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (!holedUp) e.state = "attack";
   // A hull gun under way keeps the course: the hull does not swing to the aim, it
   // fires when the aim sits in its arc of the way it is going.
-  const driving = !turreted && !holedUp && forceUnderway(e) && e.waypoints.length > 0;
+  const driving = !turreted && !holedUp && e.waypoints.length > 0 && hullStaysOnCourse(e);
   if (!turreted && !holedUp) {
     remainingDeg = turnToward(e, aimX, aimY, driving ? 0 : def.turnDegPerSec * hullTurnMul(e), dt);
   }

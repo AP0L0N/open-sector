@@ -777,6 +777,8 @@ export interface AiPlan {
   flank: -1 | 1;
   /** Ground the defence under way is meant for, world pixels. */
   site?: Vec;
+  /** Facing that ground was checked at. A turned fort falls back to east when the arc will not fit. */
+  face?: number;
   /** Tick before which a site that found no room is skipped, by site key. */
   siteRetry: Record<string, number>;
   /** Towers already given a wall line, or found no room for one. */

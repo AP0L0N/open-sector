@@ -30,7 +30,7 @@ export function heightsChanged(heights: object): void {
   heightSerials.set(heights, ++heightSerial);
 }
 
-export function heightMesh(map: Pick<MapDef, "width" | "height" | "heights">): HeightMesh {
+export function heightMesh(map: Pick<MapDef, "width" | "height" | "heights"> & { tiles?: ArrayLike<number> }): HeightMesh {
   const cols = map.width + 1;
   const rows = map.height + 1;
   const pos = new Float32Array(cols * rows * 2);
@@ -38,7 +38,7 @@ export function heightMesh(map: Pick<MapDef, "width" | "height" | "heights">): H
   for (let vy = 0; vy < rows; vy++) {
     for (let vx = 0; vx < cols; vx++) {
       const o = (vy * cols + vx) * 2;
-      const z = isoLift(vertexElev(map.heights, map.width, map.height, vx, vy));
+      const z = isoLift(vertexElev(map.heights, map.width, map.height, vx, vy, map.tiles));
       pos[o] = ((vx - vy) * ISO_TILE_W) / 2;
       pos[o + 1] = ((vx + vy) * ISO_TILE_H) / 2 - z;
       uv[o] = vx;

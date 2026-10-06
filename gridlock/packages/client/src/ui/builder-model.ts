@@ -13,6 +13,7 @@ import {
   FIELD_TURN_MAX,
   HEIGHT_BASE,
   HEIGHT_MAX,
+  MOUNTAIN_MIN_HEIGHT,
   SPAWN_EDGE_MARGIN,
   SPAWN_MIN_GAP,
   SPAWN_PAD_R,
@@ -37,9 +38,11 @@ import {
   bridgePath,
   isMapBridge,
   isMapLine,
+  isMountainCliff,
   isMapSection,
   TILE_BLOCKED,
   TILE_FENCE,
+  TILE_MOUNTAIN,
   TILE_ROCK,
   TILE_TREE,
   isScrapTile,
@@ -295,6 +298,7 @@ export function unitIndexAt(s: Sheet, tx: number, ty: number, reach = 1.5): numb
 /** Why a unit cannot stand on this fine tile, or null. `ignore` is the unit being moved. */
 export function unitProblem(s: Sheet, type: TrainType, x: number, y: number, ignore = -1, inside = false): string | null {
   if (ignore < 0 && s.units.length >= CUSTOM_MAP_MAX_UNITS) return `At most ${CUSTOM_MAP_MAX_UNITS} units.`;
+  if (!inside && isMountainCliff(s.tiles, s.heights, s.width, s.height, x, y)) return "That rock is impassable.";
   return mapUnitProblem(s, type, x, y, ignore, inside);
 }
 
@@ -516,7 +520,7 @@ function ripple(s: Sheet, seeds: readonly number[], dirty?: Dirty): void {
         const ny = y + dy;
         if (!inBounds(s, nx, ny)) continue;
         const ni = ny * s.width + nx;
-        if (held.has(ni) || s.tiles[ni] === TILE_WATER) continue;
+        if (held.has(ni) || s.tiles[ni] === TILE_WATER || s.tiles[ni] === TILE_MOUNTAIN) continue;
         const nh = s.heights[ni]!;
         if (nh > h + 1) s.heights[ni] = h + 1;
         else if (nh < h - 1) s.heights[ni] = h - 1;
@@ -531,7 +535,7 @@ function ripple(s: Sheet, seeds: readonly number[], dirty?: Dirty): void {
 export function liftDisk(s: Sheet, cx: number, cy: number, r: number, delta: 1 | -1, dirty?: Dirty): number {
   const seeds: number[] = [];
   for (const i of diskCells(s, cx, cy, r)) {
-    if (s.tiles[i] === TILE_WATER) continue;
+    if (s.tiles[i] === TILE_WATER || s.tiles[i] === TILE_MOUNTAIN) continue;
     const next = Math.max(0, Math.min(HEIGHT_MAX, s.heights[i]! + delta));
     if (next === s.heights[i]) continue;
     s.heights[i] = next;
@@ -541,17 +545,59 @@ export function liftDisk(s: Sheet, cx: number, cy: number, r: number, delta: 1 |
   return seeds.length;
 }
 
-/** Set a disk to elevation `z`, ramping the ground around it. */
+/** Set a disk to elevation `z`, ramping the ground around it. Mountain caps stay as they are. */
 export function levelDisk(s: Sheet, cx: number, cy: number, r: number, z: number, dirty?: Dirty): number {
   const level = Math.max(0, Math.min(HEIGHT_MAX, Math.round(z)));
   const seeds: number[] = [];
   for (const i of diskCells(s, cx, cy, r)) {
-    if (s.tiles[i] === TILE_WATER || s.heights[i] === level) continue;
+    if (s.tiles[i] === TILE_WATER || s.tiles[i] === TILE_MOUNTAIN || s.heights[i] === level) continue;
     s.heights[i] = level;
     seeds.push(i);
   }
   ripple(s, seeds, dirty);
   return seeds.length;
+}
+
+/**
+ * Stamp a flat mountain cap at `z` (never below MOUNTAIN_MIN_HEIGHT). The disk
+ * stays walkable. Rock around it is derived from the neighbouring ground, and
+ * opens where that ground is already this height. No ramp is pulled up the cliff.
+ */
+export function paintMountain(s: Sheet, cx: number, cy: number, r: number, z: number, dirty?: Dirty): number {
+  const level = Math.max(MOUNTAIN_MIN_HEIGHT, Math.min(HEIGHT_MAX, Math.round(z)));
+  const ri = Math.ceil(r);
+  const lots = s.features
+    .filter((f) => !isMapBridge(f.type))
+    .map((f) => featureBox(f))
+    .filter((b) => b.x1 > cx - ri && b.x0 <= cx + ri && b.y1 > cy - ri && b.y0 <= cy + ri);
+  const pads = s.spawns.filter((sp) => Math.hypot(sp.x - cx, sp.y - cy) <= SPAWN_PAD_R + ri + 1);
+  let changed = 0;
+  for (const i of diskCells(s, cx, cy, r)) {
+    const x = i % s.width;
+    const y = (i / s.width) | 0;
+    if (lots.some((b) => x >= b.x0 && x < b.x1 && y >= b.y0 && y < b.y1)) continue;
+    if (pads.some((sp) => Math.hypot(sp.x - x, sp.y - y) <= SPAWN_PAD_R)) continue;
+    const same = s.tiles[i] === TILE_MOUNTAIN && s.heights[i] === level;
+    s.tiles[i] = TILE_MOUNTAIN;
+    s.heights[i] = level;
+    touch(dirty, x, y);
+    for (const [dx, dy] of [
+      [1, 0],
+      [-1, 0],
+      [0, 1],
+      [0, -1],
+      [1, 1],
+      [1, -1],
+      [-1, 1],
+      [-1, -1],
+    ] as const) {
+      const nx = x + dx;
+      const ny = y + dy;
+      if (inBounds(s, nx, ny)) touch(dirty, nx, ny);
+    }
+    if (!same) changed++;
+  }
+  return changed;
 }
 
 /** Quarter turns in BUILDING_TURN_STEPs. */
@@ -697,7 +743,13 @@ function bridgeFooting(s: Sheet, f: MapFeature): string | null {
     water: (x: number, y: number) => s.tiles[y * s.width + x] === TILE_WATER,
     footing: (x: number, y: number) => {
       const t = s.tiles[y * s.width + x];
-      return t !== TILE_ROCK && t !== TILE_TREE && t !== TILE_FENCE && t !== TILE_BLOCKED;
+      return (
+        t !== TILE_ROCK &&
+        t !== TILE_TREE &&
+        t !== TILE_FENCE &&
+        t !== TILE_BLOCKED &&
+        !isMountainCliff(s.tiles, s.heights, s.width, s.height, x, y)
+      );
     },
   };
   return bridgeBrickProblem(ground, f.type, span);
@@ -825,6 +877,11 @@ export function paintRoad(s: Sheet, legs: readonly { x: number; y: number }[], w
 export function houseProblem(s: Sheet, f: MapFeature, ignore = -1): string | null {
   const b = featureBox(f);
   if (b.x0 < 0 || b.y0 < 0 || b.x1 > s.width || b.y1 > s.height) return "Off the map.";
+  for (let y = b.y0; y < b.y1; y++) {
+    for (let x = b.x0; x < b.x1; x++) {
+      if (isMountainCliff(s.tiles, s.heights, s.width, s.height, x, y)) return "Sits on the mountain rock.";
+    }
+  }
   if (s.features.some((o, i) => i !== ignore && featuresOverlap(o, f))) return "Overlaps another building.";
   if (featureOnPad(f, s.spawns)) return "Too close to a start position.";
   return bridgeFooting(s, f);

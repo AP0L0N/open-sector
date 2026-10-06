@@ -1,13 +1,16 @@
 /**
  * Easy CPU. It fortifies first: Watch Towers on the side facing the enemy, a Bunker,
+ * an MG nest and a Pak 36 turned toward that side, a Tobruk pit, a timber lookout,
  * wall lines with a gate, and soldiers in every slit. Then it campaigns: an army gathers,
  * takes the diamond scrap in the middle, and an engineer raises a Smelter there. From
- * the middle it keeps raising towers toward the enemy while larger and larger waves
- * swing round alternate flanks, in ranks: hulls in front, rifles behind them, long guns
- * at the back. Enemy planes bring up a CIWS, rocketmen, and fighters. Campaigning, it keeps a
- * bigger army and a second Barracks and Machine Shop, paid for by Smelters that pour twice as fast.
- * Where open water near its base reaches the enemy Core or the middle, it raises a Marine Base,
- * keeps a small fleet, and sends the warships out together to shell what stands near that water.
+ * the middle it raises a fire-control tower and keeps raising watch towers toward the enemy,
+ * while larger and larger waves swing round alternate flanks, in ranks: hulls in front,
+ * rifles behind them, long guns at the back. On the approach it pours a Pak 43 and a heavy
+ * casemate. Enemy planes bring up a CIWS, a Flak gun, rocketmen, and fighters. Campaigning,
+ * it keeps a bigger army and a second Barracks and Machine Shop, paid for by Smelters that
+ * pour twice as fast. Where open water near its base reaches the enemy Core or the middle,
+ * it raises a Marine Base, keeps a small fleet, and sends the warships out together to shell
+ * what stands near that water.
  */
 
 import {
@@ -27,6 +30,7 @@ import {
   beltOf,
   buildRadiusOf,
   catalog,
+  crewGunOf,
   fieldSpan,
   fires,
   isAircraftType,
@@ -46,6 +50,7 @@ import {
 import { droneCall, subDepthCall, tickNeutralCrews } from "./ai-crew.js";
 import { isAirborne } from "./air.js";
 import { droneOf } from "./drone.js";
+import { turnedBox } from "../building-rect.js";
 import { buildingSiteError } from "./build.js";
 import { applyCommand } from "./commands.js";
 import { canRepairTarget, canScrapWreck, gateSiteAt } from "./field.js";
@@ -136,8 +141,17 @@ const ENGAGED_SHARE = 0.25;
 const ENGAGED_MAX_TICKS = 40 * TICK_HZ;
 /** No closer to the next route point for this long: the whole force moves on. Twice this: skip the point. */
 const STALL_TICKS = 45 * TICK_HZ;
-/** Soldiers the CPU will tie up in tower and bunker slits. Past this the campaign stops raising towers. */
-const CREW_BUDGET = 14;
+/**
+ * Soldiers the CPU will tie up in garrisons. 14 covers the tower ring and the Bunker.
+ * The Tobruk, lookout, casemate, and fire-control tower add their own caps. Past this
+ * the campaign stops raising watch towers. Emplaced guns bring their own riflemen.
+ */
+const CREW_BUDGET =
+  14 +
+  (catalog("tobruk").garrisonCap ?? 0) +
+  (catalog("hochstand").garrisonCap ?? 0) +
+  (catalog("casemate").garrisonCap ?? 0) +
+  (catalog("leitturm").garrisonCap ?? 0);
 /** A force with fewer than this share of its fighters left falls back. */
 const FORCE_BREAK_SHARE = 0.35;
 const FORCE_MIN = 3;
@@ -232,22 +246,31 @@ const ESCORTS: ReadonlySet<string> = new Set(["medic", "supply", "droneop"]);
 /** Unarmed units that idle at home. Parked against a building they shut a base lane. */
 const YARD_IDLERS: ReadonlySet<string> = new Set([...ESCORTS, "engineer"]);
 /**
- * Soldiers the CPU leaves in its Bunkers and Watch Towers, in order of preference.
- * A slit takes the first kind not already inside, so a tower holds an MG, a rocket tube
+ * Soldiers the CPU leaves in a Bunker or casemate, in order of preference.
+ * A slit takes the first kind not already inside, so the post holds an MG, a rocket tube
  * for planes, and a rifle.
  */
 const BUNKER_CREW: readonly string[] = ["gunner", "rocketer", "rifleman", "atinfantry"];
-/** Defenses the CPU mans with BUNKER_CREW. */
-const CREWED: readonly BuildingType[] = ["bunker", "tower"];
+/** Lookouts want a rifle that reaches: a sniper, then the same mix as a tower. */
+const LOOKOUT_CREW: readonly string[] = ["sniper", "gunner", "rocketer", "rifleman"];
+/** A Tobruk is open to the sky, so a mortarman takes the first place. */
+const PIT_CREW: readonly string[] = ["mortarman", "gunner", "rifleman", "rocketer"];
+/** An emplaced gun comes with riflemen. Replacements are riflemen, then a gunner. */
+const GUN_CREW: readonly string[] = ["rifleman", "gunner"];
+/** Garrisons the army has to fill. Counted against CREW_BUDGET. */
+const GARRISONS: readonly BuildingType[] = ["bunker", "tower", "tobruk", "casemate", "hochstand", "leitturm"];
+/** Defences the CPU mans. Guns included, so a dead crew is replaced. */
+const CREWED: readonly BuildingType[] = [...GARRISONS, "mgnest", "pak36", "pak43", "flak"];
+/** Turned toward the enemy when placed. A narrow arc is useless facing the yard. */
+const FACES_ENEMY: ReadonlySet<string> = new Set(["mgnest", "pak36", "pak43", "flak", "tobruk", "casemate", "hochstand", "leitturm"]);
 /** Long guns: they walk two ranks back and fire over the line. */
 const BACK_RANK: ReadonlySet<string> = new Set(["sniper", "mortarman", "nebelwerfer", "jagdtiger", "artillery"]);
 /** Short reach and thick skin: the front rank beside the hulls. */
 const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "pyro"]);
 
 type Rank = "front" | "mid" | "back";
-type SiteKind = "tower" | "bunker";
 interface Site {
-  type: SiteKind;
+  type: BuildingType;
   at: Vec;
   key: string;
 }
@@ -433,21 +456,40 @@ function neediest(
 function wantOf(state: MatchState, p: SimPlayer, unit: TrainType, base: number): number {
   // The fleet stays the size it is: the waves are fed ashore.
   if (aiPlanOf(p).posture === "campaign" && fires(unit) && !isNavalType(unit)) base = Math.ceil(base * EASY_CAMPAIGN_ARMY_MUL);
-  if (unit === "rifleman") return base + Math.min(12, emptySlits(state, p.playerId));
+  // Riflemen seated at an emplaced gun came with it. Train their number again for the field.
+  if (unit === "rifleman") return base + Math.min(12, emptySlits(state, p.playerId)) + gunRiflemen(state, p.playerId);
   const air = aiPlanOf(p).airSeenTick != null;
   if (air && unit === "rocketer") return base + 2;
   if (air && unit === "fw190") return base + 1;
   return base;
 }
 
-/** Soldiers every standing Bunker and Watch Tower holds when full. */
+/** Soldiers every standing garrison holds when full. Emplaced guns are not counted: they bring their own. */
 function crewSlots(state: MatchState, playerId: string): number {
   let n = 0;
   for (const b of state.entities.values()) {
-    if (b.ownerId !== playerId || b.hp <= 0 || !(CREWED as readonly string[]).includes(b.type)) continue;
+    if (b.ownerId !== playerId || b.hp <= 0 || !(GARRISONS as readonly string[]).includes(b.type)) continue;
     n += catalog(b.type).garrisonCap ?? 0;
   }
   return n;
+}
+
+/** Riflemen already at an emplaced gun. */
+function gunRiflemen(state: MatchState, playerId: string): number {
+  let n = 0;
+  for (const e of state.entities.values()) {
+    if (e.ownerId !== playerId || e.type !== "rifleman" || e.hp <= 0 || e.garrisonedIn == null) continue;
+    const house = state.entities.get(e.garrisonedIn);
+    if (house && crewGunOf(house.type)) n++;
+  }
+  return n;
+}
+
+function crewOrder(type: Entity["type"]): readonly string[] {
+  if (type === "tobruk") return PIT_CREW;
+  if (type === "hochstand" || type === "leitturm") return LOOKOUT_CREW;
+  if (crewGunOf(type)) return GUN_CREW;
+  return BUNKER_CREW;
 }
 
 function emptySlits(state: MatchState, playerId: string): number {
@@ -476,7 +518,11 @@ function trainReserve(state: MatchState, p: SimPlayer): number {
     // Crews for the towers that stand come first, then the next tower.
     if (emptySlits(state, p.playerId) > 0) return 0;
     const hq = hqOf(state, p.playerId);
-    const site = hq ? fortifySites(state, p, hq).find((s) => !siteHeld(state, p.playerId, s) && !siteFailed(state, plan, s)) : undefined;
+    const site = hq
+      ? [...fortifySites(state, p, hq), ...batterySites(state, p, hq)].find(
+          (s) => !siteHeld(state, p.playerId, s) && !siteFailed(state, plan, s),
+        )
+      : undefined;
     if (site && !p.defence) return catalog(site.type).cost;
   }
   if (countType(state, p.playerId, "armory") === 0) return catalog("armory").cost;
@@ -505,6 +551,18 @@ function enemyAxis(state: MatchState, playerId: string, hq: Entity): Vec {
   const ts = state.tileSize;
   const to = foe ?? { x: (state.width * ts) / 2, y: (state.height * ts) / 2 };
   return unit(to.x - hq.x, to.y - hq.y);
+}
+
+/** Radians so a building's front points at the enemy Core. */
+function bearingToEnemy(state: MatchState, playerId: string, at: Vec): number {
+  const foe = enemyHq(state, playerId);
+  const hq = hqOf(state, playerId);
+  const dir = foe ? unit(foe.x - at.x, foe.y - at.y) : hq ? unit(at.x - hq.x, at.y - hq.y) : { x: 1, y: 0 };
+  return Math.atan2(dir.y, dir.x);
+}
+
+function placeFacing(state: MatchState, playerId: string, type: BuildingType, at: Vec | undefined): number {
+  return at && FACES_ENEMY.has(type) ? bearingToEnemy(state, playerId, at) : 0;
 }
 
 function unit(dx: number, dy: number): Vec {
@@ -620,22 +678,72 @@ export function findDiamondSmelterTile(state: MatchState): { tx: number; ty: num
 
 // ---------------------------------------------------------------- fortify
 
+/** Sites around the Core, degrees off the enemy axis. */
+function aroundHq(
+  state: MatchState,
+  p: SimPlayer,
+  hq: Entity,
+  rows: readonly (readonly [BuildingType, string, number, number])[],
+): Site[] {
+  const axis = enemyAxis(state, p.playerId, hq);
+  const ts = state.tileSize;
+  return rows.map(([type, name, deg, tiles]) => ({
+    type,
+    at: along(hq, rotate(axis, deg), tiles * ts),
+    key: `base:${name}`,
+  }));
+}
+
 /**
  * Towers and a Bunker on the side of the base that faces the enemy, one tower behind.
  * The first one is the main tower: its wall line gets a gate.
  */
 function fortifySites(state: MatchState, p: SimPlayer, hq: Entity): Site[] {
-  const axis = enemyAxis(state, p.playerId, hq);
+  return aroundHq(state, p, hq, [
+    ["tower", "front", 0, BASE_RING_TILES],
+    ["tower", "left", 60, BASE_RING_TILES],
+    ["tower", "right", -60, BASE_RING_TILES],
+    ["bunker", "bunker", 25, BASE_RING_TILES * 0.75],
+    ["tower", "rear", 180, BASE_RING_TILES * 0.8],
+  ]);
+}
+
+/**
+ * Inside the tower ring, once the towers and the Bunker are under way: an MG nest and a
+ * Pak 36 on the approach, a Tobruk on one flank, a timber lookout behind the Core.
+ */
+function batterySites(state: MatchState, p: SimPlayer, hq: Entity): Site[] {
+  return aroundHq(state, p, hq, [
+    ["mgnest", "mg", -30, 16],
+    ["pak36", "pak", 30, 16],
+    ["tobruk", "pit", 110, 22],
+    ["hochstand", "look", 200, 14],
+  ]);
+}
+
+/** Pak 43 and the heavy casemate on the approach, once the CPU is campaigning. */
+function heavySites(state: MatchState, p: SimPlayer, hq: Entity): Site[] {
+  return aroundHq(state, p, hq, [
+    ["pak43", "pak43", -15, 26],
+    // On the approach, just inside the front tower. A 3×2 pad will not fit in the inner yard once the ring is up.
+    ["casemate", "case", 0, 30],
+  ]);
+}
+
+/** Flak on the other flank, for when enemy planes are about. */
+function flakSite(state: MatchState, p: SimPlayer, hq: Entity): Site {
+  return aroundHq(state, p, hq, [["flak", "flak", -75, 26]])[0]!;
+}
+
+/** Fire-control tower on the near side of the diamond field. */
+function leitSite(state: MatchState, p: SimPlayer): Site {
+  const c = diamondCentre(state);
+  const foe = enemyHq(state, p.playerId);
   const ts = state.tileSize;
-  const at = (deg: number, tiles: number): Vec => along(hq, rotate(axis, deg), tiles * ts);
-  const mk = (type: SiteKind, name: string, deg: number, tiles: number): Site => ({ type, at: at(deg, tiles), key: `base:${name}` });
-  return [
-    mk("tower", "front", 0, BASE_RING_TILES),
-    mk("tower", "left", 60, BASE_RING_TILES),
-    mk("tower", "right", -60, BASE_RING_TILES),
-    mk("bunker", "bunker", 25, BASE_RING_TILES * 0.75),
-    mk("tower", "rear", 180, BASE_RING_TILES * 0.8),
-  ];
+  const toFoe = foe ? unit(foe.x - c.x, foe.y - c.y) : { x: 1, y: 0 };
+  // Past the diamond Smelter's lane. The watch-tower ring sits on that lane and would leave the tower no pad.
+  const out = CENTRE_RING_TILES + 10;
+  return { type: "leitturm", at: clampToMap(state, along(c, toFoe, out * ts)), key: "mid:leit" };
 }
 
 /** Towers round the diamond field, then a line of outposts reaching toward the enemy. */
@@ -714,21 +822,28 @@ function defenceLane(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan):
   for (const next of nextDefences(state, p, hq, plan)) {
     if (p.scrap < catalog(next.type).cost || tries-- <= 0) return;
     if (next.site) {
-      // Check the ground now, so the scrap is not sunk into a tower with nowhere to stand.
-      if (!findSiteNear(state, p.playerId, next.type, next.site.at)) {
-        plan.siteRetry[next.site.key] = state.tick + EASY_NO_ROOM_RETRY_TICKS;
-        continue;
+      // Check the ground now, so the scrap is not sunk into a gun with nowhere to stand.
+      // A turned pad is larger. When it will not fit, the fort still goes up facing east.
+      let facing = placeFacing(state, p.playerId, next.type, next.site.at);
+      if (!findSiteNear(state, p.playerId, next.type, next.site.at, facing)) {
+        if (facing === 0 || !findSiteNear(state, p.playerId, next.type, next.site.at, 0)) {
+          plan.siteRetry[next.site.key] = state.tick + EASY_NO_ROOM_RETRY_TICKS;
+          continue;
+        }
+        facing = 0;
       }
       plan.site = next.site.at;
+      plan.face = facing;
     } else {
       delete plan.site;
+      delete plan.face;
       if (!findBuildTile(state, p.playerId, next.type)) {
         noRoom(state, p, next.type);
         continue;
       }
     }
     const started = applyCommand(state, p.playerId, { type: "cmd.build", building: next.type }).ok;
-    if (started && next.site && !next.site.key.startsWith("base:")) {
+    if (started && next.type === "tower" && next.site && !next.site.key.startsWith("base:")) {
       plan.nextTowerTick = state.tick + towerEvery(state, p.playerId);
     }
     return;
@@ -744,20 +859,24 @@ function towerEvery(state: MatchState, playerId: string): number {
 function placeDefence(state: MatchState, p: SimPlayer, plan: AiPlan, job: StructureJob): void {
   if (!isBuildingType(job.type)) return;
   const type = job.type;
-  const spot = plan.site ? findSiteNear(state, p.playerId, type, plan.site) : findBuildTile(state, p.playerId, type);
+  const facing = plan.face ?? placeFacing(state, p.playerId, type, plan.site);
+  const spot = plan.site ? findSiteNear(state, p.playerId, type, plan.site, facing) : findBuildTile(state, p.playerId, type);
   if (spot) {
-    applyCommand(state, p.playerId, { type: "cmd.place", building: type, tx: spot.tx, ty: spot.ty });
+    applyCommand(state, p.playerId, { type: "cmd.place", building: type, tx: spot.tx, ty: spot.ty, facing });
   } else {
     applyCommand(state, p.playerId, { type: "cmd.cancel", what: "structure", building: type });
     noRoom(state, p, type);
   }
   delete plan.site;
+  delete plan.face;
 }
 
 /**
- * Base sites first, and again whenever one falls. A CIWS once enemy planes are about.
- * Then, campaigning, a tower every EASY_TOWER_EVERY_TICKS round the middle and out toward
- * the enemy, and a RAM for the rockets.
+ * Base sites first, and again whenever one falls: the tower ring, then the nest, Pak 36,
+ * Tobruk, and lookout. A CIWS once enemy planes are about. Campaigning, a Flak gun for
+ * those planes, a RAM for the rockets, a Pak 43 and a casemate on the approach, then a
+ * fire-control tower on the middle and a watch tower every EASY_TOWER_EVERY_TICKS out
+ * toward the enemy.
  */
 function* nextDefences(
   state: MatchState,
@@ -769,25 +888,39 @@ function* nextDefences(
   const air = plan.airSeenTick != null;
   // Towers need soldiers to crew them: wait for the Barracks and the first riflemen.
   const crews = ownsLive(state, p.playerId, "muster") && countType(state, p.playerId, "rifleman") >= FIRST_WAVE_TROOPERS;
+  const open = (site: Site): boolean => !siteHeld(state, p.playerId, site) && !siteFailed(state, plan, site);
   if (air && countType(state, p.playerId, "ciws") === 0 && roomy("ciws") && powerFor(state, p.playerId, "ciws")) {
     yield { type: "ciws" };
   }
   if (crews) {
-    for (const site of fortifySites(state, p, hq)) {
-      if (siteHeld(state, p.playerId, site) || siteFailed(state, plan, site)) continue;
+    for (const site of [...fortifySites(state, p, hq), ...batterySites(state, p, hq)]) {
+      if (!open(site)) continue;
       yield { type: site.type, site };
     }
   }
   if (plan.posture !== "campaign") return;
+  if (air && countType(state, p.playerId, "flak") === 0 && roomy("flak")) {
+    const site = flakSite(state, p, hq);
+    if (open(site)) yield { type: "flak", site };
+  }
   if (air && plan.waves >= 2 && countType(state, p.playerId, "ram") === 0 && roomy("ram") && powerFor(state, p.playerId, "ram")) {
     yield { type: "ram" };
   }
-  if (!crews || state.tick < plan.nextTowerTick || !centreHeld(state, p.playerId)) return;
+  if (crews) {
+    for (const site of heavySites(state, p, hq)) {
+      if (!open(site)) continue;
+      yield { type: site.type, site };
+    }
+  }
+  if (!crews || !centreHeld(state, p.playerId)) return;
+  const leit = leitSite(state, p);
+  if (open(leit)) yield { type: "leitturm", site: leit };
+  if (state.tick < plan.nextTowerTick) return;
   // Every slit is a soldier the waves do without.
   if (crewSlots(state, p.playerId) + (catalog("tower").garrisonCap ?? 0) > CREW_BUDGET) return;
   for (const site of campaignSites(state, p)) {
     // The middle sites come first, so an outpost only goes up once the ground behind it is held.
-    if (siteHeld(state, p.playerId, site) || siteFailed(state, plan, site)) continue;
+    if (!open(site)) continue;
     yield { type: site.type, site };
   }
 }
@@ -803,11 +936,12 @@ export function findSiteNear(
   playerId: string,
   type: BuildingType,
   want: Vec,
+  facing = 0,
 ): { tx: number; ty: number } | null {
-  const def = catalog(type);
+  const box = turnedBox(type, facing);
   const ts = state.tileSize;
-  const cx = Math.floor(want.x / ts) - Math.floor(def.tileW / 2);
-  const cy = Math.floor(want.y / ts) - Math.floor(def.tileH / 2);
+  const cx = Math.floor(want.x / ts) - Math.floor(box.w / 2);
+  const cy = Math.floor(want.y / ts) - Math.floor(box.h / 2);
   for (let r = 0; r <= SITE_SEARCH_TILES; r++) {
     let best: { tx: number; ty: number } | null = null;
     let bestD = Infinity;
@@ -818,10 +952,10 @@ export function findSiteNear(
         if (d >= bestD) continue;
         const tx = cx + dx;
         const ty = cy + dy;
-        if (tx < 0 || ty < 0 || tx + def.tileW > state.width || ty + def.tileH > state.height) continue;
-        if (buildingSiteError(state, type, tx, ty, playerId)) continue;
-        if (!inBuildRadius(state, playerId, tx, ty, def.tileW, def.tileH, buildRadiusOf(type))) continue;
-        if (!keepsLanes(state, tx, ty, def.tileW, def.tileH)) continue;
+        if (tx < 0 || ty < 0 || tx + box.w > state.width || ty + box.h > state.height) continue;
+        if (buildingSiteError(state, type, tx, ty, playerId, facing)) continue;
+        if (!inBuildRadius(state, playerId, tx, ty, box.w, box.h, buildRadiusOf(type))) continue;
+        if (!keepsLanes(state, tx, ty, box.w, box.h)) continue;
         best = { tx, ty };
         bestD = d;
       }
@@ -888,9 +1022,9 @@ function layWall(state: MatchState, p: SimPlayer, plan: AiPlan, tower: Entity, p
 }
 
 /**
- * Fill each Bunker and Watch Tower with soldiers who are idle, nearest first, a mix of
- * kinds per building. A force holding the middle crews the towers there. Waves never take
- * a garrisoned soldier.
+ * Fill each garrison and empty gun with soldiers who are idle, nearest first, a mix of
+ * kinds per building. A Tobruk takes a mortarman first; a lookout takes a sniper.
+ * A force holding the middle crews the posts there. Waves never take a garrisoned soldier.
  */
 function crewBunkers(state: MatchState, p: SimPlayer, plan: AiPlan): void {
   const inForce = forceMembers(plan);
@@ -898,6 +1032,7 @@ function crewBunkers(state: MatchState, p: SimPlayer, plan: AiPlan): void {
   for (const f of plan.forces) if (f.goal === "centre" && f.route.length === 0) for (const id of f.ids) holding.add(id);
   for (const b of state.entities.values()) {
     if (b.ownerId !== p.playerId || !(CREWED as readonly string[]).includes(b.type) || b.hp <= 0) continue;
+    const order = crewOrder(b.type);
     let room = (catalog(b.type).garrisonCap ?? 0) - b.garrison.length;
     if (room <= 0) continue;
     // Soldiers already walking in count toward the crew.
@@ -912,7 +1047,7 @@ function crewBunkers(state: MatchState, p: SimPlayer, plan: AiPlan): void {
     }
     const idle: Entity[] = [];
     for (const e of state.entities.values()) {
-      if (e.ownerId !== p.playerId || e.hp <= 0 || e.garrisonedIn || !BUNKER_CREW.includes(e.type)) continue;
+      if (e.ownerId !== p.playerId || e.hp <= 0 || e.garrisonedIn || !order.includes(e.type)) continue;
       if (inForce.has(e.id) && !holding.has(e.id)) continue;
       if (e.order && !e.order.auto && !holding.has(e.id)) continue;
       idle.push(e);
@@ -924,7 +1059,7 @@ function crewBunkers(state: MatchState, p: SimPlayer, plan: AiPlan): void {
       idle.forEach((e, i) => {
         // A kind already inside goes to the back of the line; then preference, then distance.
         const score =
-          (inside.has(e.type) ? 100 : 0) + BUNKER_CREW.indexOf(e.type) * 10 + Math.hypot(e.x - b.x, e.y - b.y) / 1e4;
+          (inside.has(e.type) ? 100 : 0) + order.indexOf(e.type) * 10 + Math.hypot(e.x - b.x, e.y - b.y) / 1e4;
         if (score < bestScore) {
           bestScore = score;
           bestI = i;

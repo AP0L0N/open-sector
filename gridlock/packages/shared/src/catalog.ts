@@ -492,11 +492,11 @@ export const STORY_COVER_HEIGHT = t(1.5);
 /** Civilian / unowned map buildings. */
 export const NEUTRAL_OWNER = "";
 /** One trooper vs a Dynamo (750 HP). Larger buildings take longer. */
-export const CAPTURE_SECONDS = 10;
+export const CAPTURE_SECONDS = 20;
 /** HP used as the 1× capture-time reference. */
 export const CAPTURE_HP_REF = 750;
 /** Floor so a cottage is not instant. */
-export const CAPTURE_SECONDS_MIN = 6;
+export const CAPTURE_SECONDS_MIN = 12;
 /** Progress lost per second after capturers leave or die. */
 export const CAPTURE_DECAY_PER_SEC = 0.25;
 
