@@ -559,7 +559,7 @@ export function setEdgeScroll(on: boolean): void {
 const EXTRUDE: Record<EntityType, number> = {
   core: 62,
   smelter: 50,
-  armory: 44,
+  armory: 54,
   muster: 38,
   dynamo: 30,
   airfield: 14,
