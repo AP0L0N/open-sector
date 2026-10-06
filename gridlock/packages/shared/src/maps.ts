@@ -63,6 +63,12 @@ export interface MapFeature {
    * A section's x, y may then be fractional (whole world px), so a slanted line lies end to end.
    */
   turn?: number;
+  /** Watch Tower only: where its spotlight points, whole degrees, 0 = east, 90 = south. Left out, it looks the way the tower faces. */
+  spot?: number;
+  /** Watch Tower only: fine tiles the spotlight sweeps between, from the tower, as a held tower's Patrol sweeps them. */
+  patrol?: { x: number; y: number }[];
+  /** The sweep closes into a loop instead of running out and back. */
+  loop?: boolean;
 }
 
 /** Street lamps a map can stand on its ground. Drawing only: they light the night, they do not block or reveal. */
@@ -102,6 +108,8 @@ export interface MapUnit {
    * at the lot's centre tile. They hold it for no one and shoot from its windows.
    */
   inside?: boolean;
+  /** Battle Ship only: where its searchlight points, whole degrees, 0 = east, 90 = south. Left out, it looks down the bow. */
+  spot?: number;
 }
 
 export function isLampType(type: unknown): type is LampType {

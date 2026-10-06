@@ -3,6 +3,8 @@ import {
   ISO_ELEVATION,
   ISO_TILE_H,
   SPAWN_PAD_R,
+  SPOTLIGHT_HALF_DEG,
+  SPOTLIGHT_REACH_TILES,
   TILE_SIZE,
   TILE_TREE,
   featureAngle,
@@ -26,6 +28,7 @@ import {
 } from "@gridlock/shared";
 import { buildingGroundElev } from "../render/building-ground.js";
 import { decorFor } from "../render/decor.js";
+import { beamPolygon } from "../render/night.js";
 import { drawSandbags } from "../render/sandbags.js";
 import {
   BUSH_FACES,
@@ -106,6 +109,33 @@ export interface UnitOverlay {
   garrisons: ReadonlyMap<number, { count: number; cap: number }>;
   /** A rotate order's aim: the selected unit turns toward this tile. */
   aim: { x: number; y: number } | null;
+  /** Spotlight beams to outline: a Watch Tower's or a Battle Ship's, from world point (x, y), heading in radians. */
+  beams: readonly SpotBeam[];
+}
+
+export interface SpotBeam {
+  x: number;
+  y: number;
+  facing: number;
+  /** The selected lamp, or the one being aimed: drawn bright. */
+  strong: boolean;
+}
+
+/** A spotlight's reach on the ground, outlined as the match outlines a tower's beam while you turn it. */
+function drawBeam(c: CanvasRenderingContext2D, s: Sheet, b: SpotBeam, zoom: number): void {
+  const reach = SPOTLIGHT_REACH_TILES * TILE_SIZE;
+  const half = (SPOTLIGHT_HALF_DEG * Math.PI) / 180;
+  const pts = beamPolygon(b.x, b.y, b.facing, reach, half, 16).map((p) => at(p.x, p.y, groundAt(s, p.x, p.y)));
+  c.save();
+  c.globalAlpha = b.strong ? 1 : 0.5;
+  quadPath(c, pts);
+  c.fillStyle = "rgba(255, 226, 150, 0.16)";
+  c.fill();
+  c.setLineDash([5 / zoom, 6 / zoom]);
+  c.lineWidth = 1.5 / zoom;
+  c.strokeStyle = "rgba(255, 226, 150, 0.85)";
+  c.stroke();
+  c.restore();
 }
 
 /** Draw one neutral unit as the battlefield draws it, greyed. False while its art loads. */
@@ -570,6 +600,7 @@ export function isoDraw(
   for (const it of items) it.run();
 
   if (uo) {
+    for (const beam of uo.beams) drawBeam(c, s, beam, z);
     for (const route of uo.routes) drawRoute(c, s, route, z);
     if (uo.aim && uo.selected >= 0) {
       const u = uo.list[uo.selected];

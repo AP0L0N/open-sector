@@ -176,6 +176,12 @@ export function mapUnitProblem(
   return null;
 }
 
+/** A spotlight heading in whole degrees, 0–359, or null when there is none. */
+function cleanSpot(raw: unknown): number | null {
+  if (typeof raw !== "number" || !Number.isFinite(raw)) return null;
+  return ((Math.round(raw) % 360) + 360) % 360;
+}
+
 /** A clean patrol route on the sheet, or null when there is none. */
 function cleanPatrol(raw: unknown, width: number, height: number): { x: number; y: number }[] | null {
   if (!Array.isArray(raw)) return null;
@@ -370,6 +376,13 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
       feat.turn = turn as number;
       feat.facing = turnQuarter(feat.turn);
     }
+    const spot = type === "tower" ? cleanSpot(o.spot) : null;
+    if (spot != null) feat.spot = spot;
+    const sweep = type === "tower" ? cleanPatrol(o.patrol, width, height) : null;
+    if (sweep) {
+      feat.patrol = sweep;
+      if (o.loop === true && sweep.length >= 2) feat.loop = true;
+    }
     const b = featureBox(feat);
     // Sandbags and walls sit on any fine tile; lots keep to the cell grid.
     if (!isMapSection(feat.type) && (feat.x % TILE_SUBDIV !== 0 || feat.y % TILE_SUBDIV !== 0)) {
@@ -412,6 +425,8 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     const inside = o.inside === true;
     if (mapUnitProblem(ground, o.type, o.x as number, o.y as number, -1, inside)) continue;
     const unit: MapUnit = { type: o.type, x: o.x as number, y: o.y as number, facing: ((Math.round(facing) % 360) + 360) % 360 };
+    const spot = o.type === "battleship" ? cleanSpot(o.spot) : null;
+    if (spot != null) unit.spot = spot;
     if (inside) {
       unit.inside = true;
       units.push(unit);
@@ -512,5 +527,6 @@ export function copyMapUnit(u: MapUnit): MapUnit {
   if (u.patrol) out.patrol = u.patrol.map((p) => ({ x: p.x, y: p.y }));
   if (u.loop) out.loop = true;
   if (u.inside) out.inside = true;
+  if (u.spot != null) out.spot = u.spot;
   return out;
 }

@@ -32,6 +32,7 @@ import {
   featureAngle,
   featureBox,
   featureRect,
+  hasSpotlight,
   fieldSpan,
   getMap,
   isCivilianType,
@@ -64,7 +65,7 @@ import rockUrl from "../assets/terrain/ground-rock.png";
 import { el } from "./dom.js";
 import { drawMapPreview } from "./map-preview.js";
 import * as M from "./builder-model.js";
-import { isoChanged, isoDraw, isoRestamp, type RouteDraw, type UnitOverlay } from "./builder-iso.js";
+import { isoChanged, isoDraw, isoRestamp, type RouteDraw, type SpotBeam, type UnitOverlay } from "./builder-iso.js";
 import { SIDEBAR_GROUPS, sidebarGroupOf, type SidebarGroup } from "./sidebar-groups.js";
 import { isoFit, isoPick, isoScreenOf, isoZoomAt, type IsoCam } from "./builder-iso-cam.js";
 
@@ -181,7 +182,8 @@ let unitTab: SidebarGroup = "infantry";
  * Rotate (R) turns it toward the next click; Patrol (Y) takes clicks, a click on an
  * earlier point closes a loop, and right-click or Enter sets the route.
  */
-let unitMode: null | "rotate" | "patrol" = null;
+/** Order being given in the In-game view: a unit's Rotate or Patrol, or a spotlight's aim ("spot") or sweep. */
+let unitMode: null | "rotate" | "patrol" | "spot" = null;
 const patrolDraft: { points: { x: number; y: number }[]; loop: boolean } = { points: [], loop: false };
 /** Tool sections folded shut, by title. Kept across visits. */
 const collapsed = loadCollapsed();
@@ -801,10 +803,26 @@ function garrisonCounts(s: M.Sheet): Map<number, { count: number; cap: number }>
   return out;
 }
 
-/** Patrol routes to draw: every unit's own, and the one being drawn for the selected unit. */
+/** Patrol routes to draw: every unit's own and every tower's sweep, and the one being drawn for the selection. */
 function unitRoutes(s: M.Sheet): RouteDraw[] {
   const sel = selected?.kind === "unit" ? selected.index : -1;
+  const selTower = selected?.kind === "feature" ? selected.index : -1;
   const out: RouteDraw[] = [];
+  s.features.forEach((f, i) => {
+    if (f.type !== "tower") return;
+    const from = towerTile(f);
+    if (i === selTower && unitMode === "patrol") {
+      out.push({
+        from,
+        points: patrolDraft.points,
+        loop: patrolDraft.loop,
+        cursor: !patrolDraft.loop && hover.inside ? { x: hover.x, y: hover.y } : null,
+        strong: true,
+      });
+      return;
+    }
+    if (f.patrol?.length) out.push({ from, points: f.patrol, loop: !!f.loop, strong: i === selTower });
+  });
   s.units.forEach((u, i) => {
     if (u.inside) return;
     if (i === sel && unitMode === "patrol") {
@@ -909,7 +927,42 @@ function unitOverlay(s: M.Sheet): UnitOverlay {
     routes: unitRoutes(s),
     garrisons: garrisonCounts(s),
     aim: unitMode === "rotate" && hover.inside ? { x: hover.x, y: hover.y } : null,
+    beams: spotBeams(),
   };
+}
+
+/** Fine tile a Watch Tower's lamp stands over: the middle of its lot. */
+function towerTile(f: MapFeature): { x: number; y: number } {
+  const r = featureRect(f);
+  return { x: Math.floor(r.cx), y: Math.floor(r.cy) };
+}
+
+/** Heading in degrees from a tile toward another, or `fallback` when the cursor is on the lamp itself. */
+function spotToward(from: { x: number; y: number }, x: number, y: number, fallback: number): number {
+  return from.x === x && from.y === y ? fallback : M.degreesToward(from.x, from.y, x, y);
+}
+
+/** The lamp's heading in degrees as the match will light it: where the map points it, else the way the tower faces. */
+function towerSpot(f: MapFeature): number {
+  return f.spot ?? ((Math.round((featureAngle(f) * 180) / Math.PI) % 360) + 360) % 360;
+}
+
+/** Beams to outline: the selected tower's or Battle Ship's, swung toward the cursor while it is being aimed. */
+function spotBeams(): SpotBeam[] {
+  const out: SpotBeam[] = [];
+  const aiming = unitMode === "spot" && hover.inside;
+  const f = selectedTower();
+  if (f) {
+    const deg = aiming ? spotToward(towerTile(f), hover.x, hover.y, towerSpot(f)) : towerSpot(f);
+    const r = featureRect(f);
+    out.push({ x: r.cx * TILE_SIZE, y: r.cy * TILE_SIZE, facing: (deg * Math.PI) / 180, strong: true });
+  }
+  const u = selectedUnit();
+  if (u && hasSpotlight(u.type)) {
+    const deg = aiming ? spotToward(u, hover.x, hover.y, u.spot ?? u.facing) : (u.spot ?? u.facing);
+    out.push({ x: (u.x + 0.5) * TILE_SIZE, y: (u.y + 0.5) * TILE_SIZE, facing: (deg * Math.PI) / 180, strong: true });
+  }
+  return out;
 }
 
 /** The stage's "In-game view" checkbox. */
@@ -1082,6 +1135,13 @@ function selectedUnit(): MapUnit | null {
   return sheet.units[selected.index] ?? null;
 }
 
+/** The selected Watch Tower, whose spotlight Rotate aims and Patrol sweeps. */
+function selectedTower(): MapFeature | null {
+  if (!sheet || selected?.kind !== "feature") return null;
+  const f = sheet.features[selected.index];
+  return f?.type === "tower" ? f : null;
+}
+
 /**
  * Stand the Units tool's unit on the tile, or, for infantry dropped on a house,
  * bunker, or tower in the In-game view, put him inside it.
@@ -1111,22 +1171,47 @@ function placeUnitAt(x: number, y: number): void {
   finishStroke();
 }
 
-/** Rotate (R) or Patrol (Y) for the selected unit, as the match gives those orders. In-game view only. */
-function setUnitMode(mode: null | "rotate" | "patrol"): void {
+/**
+ * Rotate (R) or Patrol (Y) for the selected unit, as the match gives those orders, or
+ * for a Watch Tower's spotlight: Rotate aims it ("spot") and Patrol sets its sweep.
+ * A Battle Ship's searchlight is aimed with "spot" too. In-game view only.
+ */
+function setUnitMode(mode: null | "rotate" | "patrol" | "spot"): void {
   const u = selectedUnit();
-  if (mode && (!u || !gameView)) {
-    if (u && !gameView) say("Rotate and Patrol are given in the In-game view.", "bad");
+  const tower = selectedTower();
+  if (mode && ((!u && !tower) || !gameView)) {
+    if ((u || tower) && !gameView) say("Rotate and Patrol are given in the In-game view.", "bad");
     return;
   }
+  if (mode === "rotate" && tower) mode = "spot";
+  if (mode === "spot" && u && !hasSpotlight(u.type)) return;
   unitMode = unitMode === mode ? null : mode;
   patrolDraft.points = [];
   patrolDraft.loop = false;
   if (unitMode === "rotate") say("Click where it should face. Esc cancels.");
+  else if (unitMode === "spot") say("Click where the spotlight should point. Esc cancels.");
+  else if (unitMode === "patrol" && tower)
+    say("Click the points the spotlight sweeps. Click an earlier point to close a loop. Right-click or Enter sets the sweep; Esc cancels.");
   else if (unitMode === "patrol")
     say("Click the patrol points. Click an earlier point to close a loop. Right-click or Enter sets the route; Esc cancels.");
   else say("");
   paintSelection();
   queueDraw();
+}
+
+/** Point the selected tower's or Battle Ship's spotlight at the clicked tile. */
+function commitSpot(x: number, y: number): void {
+  const tower = selectedTower();
+  const u = selectedUnit();
+  const ship = u && hasSpotlight(u.type) ? u : null;
+  if (!sheet || (!tower && !ship)) return;
+  pushUndo();
+  const spot = tower ? spotToward(towerTile(tower), x, y, towerSpot(tower)) : spotToward(ship!, x, y, ship!.spot ?? ship!.facing);
+  (tower ?? ship!).spot = spot;
+  unitMode = null;
+  say(`Spotlight points ${spot}°.`);
+  finishStroke();
+  paintSelection();
 }
 
 /** Turn the selected unit toward the clicked tile. */
@@ -1165,22 +1250,24 @@ function addPatrolPoint(x: number, y: number): void {
   queueDraw();
 }
 
-/** Set the drawn route on the selected unit. No points clears its patrol. */
+/** Set the drawn route on the selected unit, or the sweep on the selected tower. No points clears it. */
 function commitPatrol(): void {
   const s = sheet;
-  const u = selectedUnit();
+  const tower = selectedTower();
+  const u = tower ?? selectedUnit();
   unitMode = null;
   if (!s || !u) return;
   pushUndo();
   if (patrolDraft.points.length === 0) {
     delete u.patrol;
     delete u.loop;
-    say("Patrol cleared: it stands guard.");
+    say(tower ? "Sweep cleared: the spotlight holds its heading." : "Patrol cleared: it stands guard.");
   } else {
     u.patrol = patrolDraft.points.map((p) => ({ ...p }));
     if (patrolDraft.loop) u.loop = true;
     else delete u.loop;
-    say(patrolDraft.loop ? "Patrol set: it circles the loop." : "Patrol set: it walks out and back.");
+    if (tower) say(patrolDraft.loop ? "Sweep set: the spotlight circles the points." : "Sweep set: the spotlight swings out and back.");
+    else say(patrolDraft.loop ? "Patrol set: it circles the loop." : "Patrol set: it walks out and back.");
   }
   patrolDraft.points = [];
   patrolDraft.loop = false;
@@ -1314,6 +1401,7 @@ function onDown(e: PointerEvent): void {
   const brushing = isBrush(tool.id) && !(tool.id === "level" && e.altKey);
   if (brushing ? !brushReaches(t.x, t.y) : !t.inside) return;
   if (unitMode === "rotate") return commitRotate(t.x, t.y);
+  if (unitMode === "spot") return commitSpot(t.x, t.y);
   if (unitMode === "patrol") return addPatrolPoint(t.x, t.y);
   if (tool.id === "level" && e.altKey) {
     tool.level = s.heights[t.y * s.width + t.x]!;
@@ -1490,7 +1578,7 @@ function onUp(): void {
   } else if (d.kind === "move") {
     if (!d.moved) {
       undo.pop();
-      say("Drag to move it. R turns it, Delete removes it.");
+      say(selectedTower() ? "Drag to move it. R aims its spotlight, Y sets its sweep, Delete removes it." : "Drag to move it. R turns it, Delete removes it.");
       return;
     }
     say("");
@@ -1834,13 +1922,17 @@ function paintSelection(): void {
   const row = el("div", { class: "btn-row" });
   if (u && s) {
     const route = u.patrol?.length ? ` · patrols ${u.patrol.length} point${u.patrol.length === 1 ? "" : "s"}${u.loop ? " in a loop" : ""}` : "";
-    box.append(el("div", { class: "bld-sel-name", text: `Neutral ${catalog(u.type).name} · faces ${u.facing}°${route}` }));
+    const light = hasSpotlight(u.type) ? ` · light ${u.spot ?? u.facing}°` : "";
+    box.append(el("div", { class: "bld-sel-name", text: `Neutral ${catalog(u.type).name} · faces ${u.facing}°${light}${route}` }));
     const iso = gameView;
     const why = iso ? "" : "Tick In-game view to give orders.";
     row.append(
       btn("Rotate (R)", iso ? "Click where it should face." : why, unitMode === "rotate", () => setUnitMode("rotate"), !iso),
       btn("Patrol (Y)", iso ? "Click points; an earlier point closes a loop; right-click sets it." : why, unitMode === "patrol", () => setUnitMode("patrol"), !iso),
     );
+    if (hasSpotlight(u.type)) {
+      row.append(btn("Rotate spotlight", iso ? "Click where the searchlight should point." : why, unitMode === "spot", () => setUnitMode("spot"), !iso));
+    }
     if (u.patrol?.length) {
       row.append(
         btn("Stop patrol", "It stands guard where it is.", false, () => {
@@ -1854,13 +1946,33 @@ function paintSelection(): void {
   } else if (f && s) {
     const faces = ["east", "south", "west", "north"];
     const heading = f.turn != null ? `${turnDegrees(f.turn)}°` : faces[f.facing & 3];
-    box.append(el("div", { class: "bld-sel-name", text: `${catalog(f.type).name} · faces ${heading}` }));
-    row.append(
-      btn("Turn (R)", "Turn it", false, () => {
-        turnSelected();
-        paintSelection();
-      }),
-    );
+    if (f.type === "tower") {
+      const sweep = f.patrol?.length ? ` · sweeps ${f.patrol.length} point${f.patrol.length === 1 ? "" : "s"}${f.loop ? " in a loop" : ""}` : "";
+      box.append(el("div", { class: "bld-sel-name", text: `${catalog(f.type).name} · faces ${heading} · light ${towerSpot(f)}°${sweep}` }));
+      const why = gameView ? "" : "Tick In-game view to aim the spotlight.";
+      row.append(
+        btn("Rotate (R)", gameView ? "Click where the spotlight should point." : why, unitMode === "spot", () => setUnitMode("spot"), !gameView),
+        btn("Patrol (Y)", gameView ? "Click the points the spotlight sweeps; an earlier point closes a loop; right-click sets it." : why, unitMode === "patrol", () => setUnitMode("patrol"), !gameView),
+      );
+      if (f.patrol?.length) {
+        row.append(
+          btn("Stop sweep", "The spotlight holds its heading.", false, () => {
+            patrolDraft.points = [];
+            patrolDraft.loop = false;
+            commitPatrol();
+          }),
+        );
+      }
+      if (!gameView) box.append(el("p", { class: "bld-hint", text: why }));
+    } else {
+      box.append(el("div", { class: "bld-sel-name", text: `${catalog(f.type).name} · faces ${heading}` }));
+      row.append(
+        btn("Turn (R)", "Turn it", false, () => {
+          turnSelected();
+          paintSelection();
+        }),
+      );
+    }
     const cap = garrisonCapOf(f.type);
     const inside = selected?.kind === "feature" ? M.unitsInside(s, selected.index) : [];
     if (cap > 0) {
@@ -2380,9 +2492,9 @@ function bindKeys(): void {
       e.preventDefault();
       if (patrolDraft.points.length > 0) commitPatrol();
       else setUnitMode(null);
-    } else if ((e.key === "r" || e.key === "R") && selected?.kind === "unit") {
-      setUnitMode("rotate");
-    } else if ((e.key === "y" || e.key === "Y") && selected?.kind === "unit") {
+    } else if ((e.key === "r" || e.key === "R") && (selected?.kind === "unit" || selectedTower())) {
+      setUnitMode(selectedTower() ? "spot" : "rotate");
+    } else if ((e.key === "y" || e.key === "Y") && (selected?.kind === "unit" || selectedTower())) {
       setUnitMode("patrol");
     } else if (e.key === "Enter" && lineTool() && line.points.length > 0) {
       e.preventDefault();
