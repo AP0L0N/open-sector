@@ -16,6 +16,7 @@ import {
   smokeCloudPuffs,
   fires,
   radarLaidOf,
+  aimsOwnGun,
   mountArcDegOf,
   hasSpotlight,
   headlightLit,
@@ -2795,12 +2796,12 @@ export class MapView {
     });
   }
 
-  /** Own units plus own CIWS mounts: everything that takes Stop, Rotate, and Force attack. */
+  /** Own units plus own gun structures (CIWS, RAM, crewed guns): everything that takes Stop, Rotate, and Force attack. */
   private ownAimIds(): number[] {
     return [...this.selected].filter((id) => {
       const ent = this.curr.entities.find((x) => x.id === id);
       if (!ent || ent.ownerId !== this.curr.youPlayerId || ent.wreck) return false;
-      return ent.kind === "unit" || radarLaidOf(ent.type);
+      return ent.kind === "unit" || aimsOwnGun(ent.type);
     });
   }
 

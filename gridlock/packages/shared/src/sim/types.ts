@@ -393,6 +393,11 @@ export interface Entity {
   longRange?: boolean;
   /** Building whose owner uses more power than they provide: its lamps are dark and a CIWS or RAM is silent. Set each tick. */
   unpowered?: boolean;
+  /**
+   * A gun structure's resting heading between targets, set by Rotate. Missing: the way it was
+   * placed (`facing`, which also turns its pad and traverse arc and never changes).
+   */
+  gunRest?: number;
   /** Watch tower spotlight heading, radians. Missing until the tower is first held. */
   spotFacing?: number;
   /** Heading Rotate asked the spotlight for. It swings there at SPOTLIGHT_TURN_DEG_PER_SEC. */

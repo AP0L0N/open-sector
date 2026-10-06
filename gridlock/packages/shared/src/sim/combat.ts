@@ -2530,7 +2530,8 @@ function slewTurret(
   }
   const wp = e.waypoints[0];
   if (wp && !reversing(e)) return turnTurretToward(e, wp.x, wp.y, rate, dt);
-  return turnTurretTo(e, e.facing, rate, dt);
+  // A gun structure rests where Rotate left it; a turret comes back over the hull.
+  return turnTurretTo(e, e.gunRest ?? e.facing, rate, dt);
 }
 
 /** Signed radians from `from` to `to`, in (-PI, PI]. */
@@ -2567,7 +2568,7 @@ function slewInArc(
       : e.order?.kind === "rotate" && e.order.x != null && e.order.y != null
       ? { x: e.order.x, y: e.order.y }
       : null);
-  if (!aim) return turnTurretTo(e, e.facing, rate, dt);
+  if (!aim) return turnTurretTo(e, e.gunRest ?? e.facing, rate, dt);
   const bearing = Math.atan2(aim.y - e.y, aim.x - e.x);
   const half = (arcDeg * Math.PI) / 180;
   const off = Math.max(-half, Math.min(half, angleOff(e.facing, bearing)));
