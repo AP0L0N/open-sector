@@ -832,6 +832,11 @@ export interface SimPlayer {
   aiPlan?: AiPlan;
   /** Fraction of a scrap point the Smelters have earned but not yet paid. `scrap` stays whole. */
   scrapCarry: number;
+  /**
+   * Units this commander keeps training. Each of his producers for that unit
+   * holds one job until he turns it off. Absent when none.
+   */
+  continuous?: TrainType[];
 }
 
 export interface MatchState {

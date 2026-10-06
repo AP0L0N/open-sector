@@ -3,6 +3,7 @@ import {
   YARD_FIELD_TYPES,
   CRIT_LABEL,
   isCyborg,
+  canContinuousTrain,
   isOneAtATime,
   DRONE_MODE_LABEL,
   SHELL_TYPES,
@@ -320,11 +321,29 @@ export function mountBattlefield(
         return;
       }
       if (m && !canQueueMore(m, unit)) return;
+      const techNeed = TECH_REQUIRES[unit];
+      if (
+        techNeed &&
+        m &&
+        !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === techNeed && e.hp > 0 && !e.wreck)
+      ) {
+        return;
+      }
       ctx.net.send({ type: "cmd.train", unit });
     });
     btn?.addEventListener("contextmenu", (e) => {
       e.preventDefault();
-      if (jobsOfType(ctx.match, unit).length === 0) return;
+      const m = ctx.match;
+      if (!m) return;
+      if ((m.you.continuous ?? []).includes(unit)) {
+        ctx.net.send({ type: "cmd.continuous", unit, on: false });
+        return;
+      }
+      if (jobsOfType(m, unit).length === 0) {
+        if (!canContinuousTrain(unit) || !canQueueMore(m, unit)) return;
+        ctx.net.send({ type: "cmd.continuous", unit, on: true });
+        return;
+      }
       ctx.net.send({ type: "cmd.cancel", what: "train", unit });
     });
   }
@@ -378,9 +397,9 @@ function cameoButton(
   const powerTxt = power > 0 ? `+${power}` : power < 0 ? `${power}` : "";
   const ready = showReady ? `<span class="cameo-ready">READY</span>` : "";
   const hold = train || showReady
-    ? `<span class="cameo-hold hidden" title="Pause production"></span><span class="cameo-paused">PAUSED</span><span class="cameo-count hidden">0</span>`
+    ? `<span class="cameo-hold hidden" title="Pause production"></span><span class="cameo-paused">PAUSED</span><span class="cameo-count hidden">0</span>${train ? `<span class="cameo-loop">LOOP</span>` : ""}`
     : "";
-  if (train) b.title = "Left: train  ·  Pause icon: hold  ·  Right: cancel";
+  if (train) b.title = "Left: train  ·  Pause icon: hold  ·  Right: cancel one";
   if (showReady) b.title = "Left: build  ·  Right: pause, again to cancel";
   b.innerHTML = `<span class="cameo-name">${name}</span><span class="cameo-meta">${cost}${powerTxt ? " · " + powerTxt : ""}</span><span class="pip"></span><span class="cameo-deny">NO SCRAP</span>${ready}${hold}`;
   return b;
@@ -402,7 +421,7 @@ function paintGroupTabs(): void {
       return [{
         disabled: btn.disabled,
         ready: btn.classList.contains("is-ready"),
-        working: btn.classList.contains("is-training") || btn.classList.contains("is-building"),
+        working: btn.classList.contains("is-training") || btn.classList.contains("is-building") || btn.classList.contains("is-continuous"),
         paused: btn.classList.contains("is-paused"),
       }];
     });
@@ -622,19 +641,30 @@ export function paintBattleHud(ctx: Ctx): void {
       !!tech && !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === tech && e.hp > 0 && !e.wreck);
     // One at a time: greyed out while yours stands. While one is queued the cameo stays live to pause or cancel it.
     const held = oneAtATimeHeld(m, unit);
-    btn.disabled = !hasProducer || !m.you.alive || padsFull || techMissing || held === "alive";
+    const looping = (m.you.continuous ?? []).includes(unit);
+    const blocked = !hasProducer || padsFull || techMissing || held === "alive";
+    // A latched cameo stays clickable so a right-click can still cancel it after the factory is gone.
+    btn.disabled = !m.you.alive || (blocked && !looping);
+    btn.classList.toggle("is-disabled", m.you.alive && blocked && looping);
+    btn.setAttribute("aria-disabled", String(!m.you.alive || blocked));
     btn.classList.toggle("needs-tech", techMissing);
     btn.classList.toggle("one-held", held != null);
+    btn.classList.toggle("is-continuous", looping);
     btn.dataset.baseTitle ??= btn.title;
+    const name = catalog(unit).name;
     btn.title = padsFull
-      ? `${catalog(unit).name} — every hardstand is taken. Build another Airfield.`
+      ? `${name} — every hardstand is taken. Build another Airfield.`
       : techMissing
-        ? `${catalog(unit).name} — needs a ${catalog(tech!).name}.`
+        ? `${name} — needs a ${catalog(tech!).name}.`
         : held === "alive"
-          ? `${catalog(unit).name} — only one at a time. Yours is still in the field.`
+          ? `${name} — only one at a time. Yours is still in the field.`
           : held === "queued"
-            ? `${catalog(unit).name} — only one at a time. One is already in the queue.`
-            : btn.dataset.baseTitle;
+            ? `${name} — only one at a time. One is already in the queue.`
+            : looping
+              ? `${name} — building continuously. Right-click stops and cancels it.`
+              : canContinuousTrain(unit) && unitJobs.length === 0
+                ? `${name} — Left: train. Right: build continuously.`
+                : btn.dataset.baseTitle;
     btn.classList.toggle("unaffordable", training && m.you.scrap <= 0);
     btn.classList.toggle("slow-power", m.you.lowPower && training);
     btn.classList.toggle("is-training", unitJobs.length > 0);

@@ -1,4 +1,4 @@
-import { AIRFIELD_PADS, catalog, isAircraftType, isNavalType, isOneAtATime, secondsToTicks, TECH_REQUIRES, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
+import { AIRFIELD_PADS, canContinuousTrain, catalog, isAircraftType, isNavalType, isOneAtATime, secondsToTicks, TECH_REQUIRES, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, parkHeading } from "./air.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear, packRadius, packSlots } from "./formation.js";
@@ -82,7 +82,13 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
   }
   const tech = techMissing(state, playerId, unit);
   if (tech) return `Need a ${catalog(tech).name}.`;
-  best.queue.push({
+  pushTrainJob(state, best, unit);
+  return null;
+}
+
+function pushTrainJob(state: MatchState, building: Entity, unit: TrainType): void {
+  const def = catalog(unit);
+  building.queue.push({
     id: state.nextId++,
     type: unit,
     progressTicks: 0,
@@ -90,6 +96,101 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
     paused: false,
     paid: 0,
   });
+}
+
+function trainQueued(state: MatchState, playerId: string, unit: TrainType): boolean {
+  for (const e of state.entities.values()) {
+    if (e.ownerId === playerId && e.queue.some((j) => j.type === unit)) return true;
+  }
+  return false;
+}
+
+function producerNeeded(unit: TrainType): string {
+  const want = producerType(unit);
+  if (want === "airfield") return "Need an Airfield.";
+  if (want === "muster") return "Need a Barracks.";
+  if (want === "dock") return "Need a Marine Base.";
+  return "Need a Machine Shop.";
+}
+
+/** Put one job on this producer. Same gates as `startTrain`, aimed at one building. */
+function queueOn(state: MatchState, playerId: string, unit: TrainType, building: Entity): string | null {
+  const p = state.players.get(playerId);
+  if (!p || !p.alive) return "You are out of the fight.";
+  const def = catalog(unit);
+  const taken = oneAtATimeTaken(state, playerId, unit);
+  if (taken === "alive") return `Only one ${def.name} at a time. Yours is still in the field.`;
+  if (taken === "queued") return `Only one ${def.name} at a time. One is already in the queue.`;
+  if (ownedUnits(state, playerId) + queuedCount(state, playerId) >= UNIT_CAP) return "Unit cap reached.";
+  if (building.ownerId !== playerId || building.hp <= 0 || building.type !== producerType(unit)) return producerNeeded(unit);
+  if (building.queue.length >= TRAIN_QUEUE_CAP) return "Queue is full.";
+  if (building.type === "airfield" && padsSpoken(state, building) >= AIRFIELD_PADS) {
+    return `Airfield pads full (${AIRFIELD_PADS} planes). Build another Airfield.`;
+  }
+  const tech = techMissing(state, playerId, unit);
+  if (tech) return `Need a ${catalog(tech).name}.`;
+  pushTrainJob(state, building, unit);
+  return null;
+}
+
+/**
+ * One job of `unit` on every living producer that does not already have one.
+ * Null when at least one is in a queue, or when every open producer just took one.
+ * An error only when nothing is queued and nothing could be added.
+ */
+function fillContinuous(state: MatchState, playerId: string, unit: TrainType): string | null {
+  const want = producerType(unit);
+  const producers: Entity[] = [];
+  for (const e of state.entities.values()) {
+    if (e.ownerId === playerId && e.type === want && e.hp > 0) producers.push(e);
+  }
+  if (producers.length === 0) return producerNeeded(unit);
+  let placed = 0;
+  let blocked: string | null = null;
+  for (const e of producers) {
+    if (e.queue.some((j) => j.type === unit)) continue;
+    const err = queueOn(state, playerId, unit, e);
+    if (err) {
+      blocked = err;
+      if (err === "Unit cap reached." || err.startsWith("Only one ") || err.startsWith("You are out")) return placed > 0 ? null : err;
+      continue;
+    }
+    placed++;
+  }
+  if (placed > 0) return null;
+  if (producers.every((e) => e.queue.some((j) => j.type === unit))) return null;
+  return blocked ?? "Queue is full.";
+}
+
+function cancelTrainType(state: MatchState, playerId: string, unit: TrainType): void {
+  for (let n = 0; n < 1000; n++) {
+    if (cancelTrain(state, playerId, { unit })) return;
+  }
+}
+
+/**
+ * Latch or drop continuous production. Turning it on queues one of `unit` on
+ * each producer that has room. Turning it off refunds every queued job of that unit.
+ */
+export function setContinuous(state: MatchState, playerId: string, unit: TrainType, on: boolean): string | null {
+  if (!canContinuousTrain(unit)) return "That unit cannot be built continuously.";
+  const p = state.players.get(playerId);
+  if (!p || !p.alive) return "You are out of the fight.";
+  const list = p.continuous ?? [];
+  const has = list.includes(unit);
+  if (!on) {
+    if (!has) return null;
+    const next = list.filter((t) => t !== unit);
+    if (next.length === 0) delete p.continuous;
+    else p.continuous = next;
+    cancelTrainType(state, playerId, unit);
+    return null;
+  }
+  if (has) return null;
+  if (trainQueued(state, playerId, unit)) return "Already in the queue.";
+  const err = fillContinuous(state, playerId, unit);
+  if (err) return err;
+  p.continuous = [...list, unit];
   return null;
 }
 
@@ -197,6 +298,10 @@ export function tickTrain(state: MatchState, _dt: number): void {
       const spawned = spawnUnit(state, e.ownerId, job.type, e, false);
       if (spawned) e.queue.shift();
     }
+  }
+  for (const p of state.players.values()) {
+    if (!p.alive || !p.continuous?.length) continue;
+    for (const unit of p.continuous) fillContinuous(state, p.playerId, unit);
   }
 }
 

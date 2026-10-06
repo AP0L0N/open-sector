@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { ONE_AT_A_TIME, TECH_REQUIRES, TRAIN_QUEUE_CAP, catalog, secondsToTicks, TICK_DT, type TrainType } from "../catalog.js";
+import { ONE_AT_A_TIME, TECH_REQUIRES, TRAIN_QUEUE_CAP, canContinuousTrain, catalog, secondsToTicks, TICK_DT, type TrainType } from "../catalog.js";
 import { applyCommand } from "./commands.js";
 import { createMatch, step } from "./match.js";
 import { paidForProgress } from "./production.js";
@@ -204,7 +204,8 @@ describe("train queue", () => {
     );
   });
 
-  it("rejects a tenth job on the same building", () => {
+  it("rejects one job past the queue cap", () => {
+    assert.equal(TRAIN_QUEUE_CAP, 39);
     const { state } = twoPlayerMatch();
     seedCore(state);
     seedMuster(state, 20, 4);
@@ -226,6 +227,93 @@ describe("train queue", () => {
     assert.equal(you?.trainQueue?.length, 1);
     const them = snapshotFor(state, "B").entities.find((e) => e.id === muster.id);
     if (them) assert.equal(them.trainQueue, undefined);
+  });
+});
+
+describe("continuous training", () => {
+  it("keeps one job on each producer and starts the next when one finishes", () => {
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    const first = seedMuster(state, 20, 4);
+    const second = seedMuster(state, 40, 8);
+    state.players.get("A")!.scrap = 100_000;
+    const on = applyCommand(state, "A", { type: "cmd.continuous", unit: "rifleman", on: true });
+    assert.equal(on.ok, true, !on.ok ? on.message : "");
+    assert.deepEqual(state.players.get("A")!.continuous, ["rifleman"]);
+    assert.equal(first.queue.length, 1);
+    assert.equal(second.queue.length, 1);
+    ticks(state, 15);
+    assert.equal(first.queue.length, 1);
+    assert.equal(second.queue.length, 1);
+    const build = secondsToTicks(catalog("rifleman").buildSeconds);
+    ticks(state, build);
+    const men = () => [...state.entities.values()].filter((e) => e.type === "rifleman" && e.ownerId === "A");
+    assert.equal(men().length, 2);
+    assert.equal(first.queue.length, 1);
+    assert.equal(second.queue.length, 1);
+    assert.deepEqual(snapshotFor(state, "A").you.continuous, ["rifleman"]);
+    assert.equal(snapshotFor(state, "B").you.continuous, undefined);
+  });
+
+  it("cancels the line and refunds what was already paid", () => {
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    const muster = seedMuster(state, 20, 4);
+    const on = applyCommand(state, "A", { type: "cmd.continuous", unit: "rifleman", on: true });
+    assert.equal(on.ok, true, !on.ok ? on.message : "");
+    ticks(state, 10);
+    const job = muster.queue[0];
+    assert.ok(job && job.paid > 0);
+    const scrap = state.players.get("A")!.scrap;
+    const paid = job.paid;
+    const off = applyCommand(state, "A", { type: "cmd.continuous", unit: "rifleman", on: false });
+    assert.equal(off.ok, true, !off.ok ? off.message : "");
+    assert.equal(muster.queue.length, 0);
+    assert.equal(state.players.get("A")!.continuous, undefined);
+    assert.equal(state.players.get("A")!.scrap, scrap + paid);
+    ticks(state, secondsToTicks(catalog("rifleman").buildSeconds) + 20);
+    assert.equal([...state.entities.values()].some((e) => e.type === "rifleman" && e.ownerId === "A"), false);
+  });
+
+  it("refuses a unit already in the queue, a full queue, aircraft, and a one-at-a-time unit", () => {
+    assert.equal(canContinuousTrain("rifleman"), true);
+    assert.equal(canContinuousTrain("gunboat"), true);
+    assert.equal(canContinuousTrain("jumpjet"), true);
+    assert.equal(canContinuousTrain("stuka"), false);
+    assert.equal(canContinuousTrain("fw190"), false);
+    assert.equal(canContinuousTrain("he111"), false);
+    assert.equal(canContinuousTrain("bv222"), false);
+    assert.equal(canContinuousTrain("titan"), false);
+    assert.equal(canContinuousTrain("cyborgcommander"), false);
+
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    seedMuster(state, 20, 4);
+    const queued = applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" });
+    assert.equal(queued.ok, true, !queued.ok ? queued.message : "");
+    const busy = applyCommand(state, "A", { type: "cmd.continuous", unit: "rifleman", on: true });
+    assert.equal(busy.ok, false);
+    if (!busy.ok) assert.equal(busy.message, "Already in the queue.");
+    assert.equal(state.players.get("A")!.continuous, undefined);
+
+    const plane = applyCommand(state, "A", { type: "cmd.continuous", unit: "stuka", on: true });
+    assert.equal(plane.ok, false);
+    if (!plane.ok) assert.equal(plane.message, "That unit cannot be built continuously.");
+    const titan = applyCommand(state, "A", { type: "cmd.continuous", unit: "titan", on: true });
+    assert.equal(titan.ok, false);
+    if (!titan.ok) assert.equal(titan.message, "That unit cannot be built continuously.");
+
+    const { state: full } = twoPlayerMatch();
+    seedCore(full);
+    seedMuster(full, 20, 4);
+    for (let i = 0; i < TRAIN_QUEUE_CAP; i++) {
+      const r = applyCommand(full, "A", { type: "cmd.train", unit: "medic" });
+      assert.equal(r.ok, true, !r.ok ? r.message : "");
+    }
+    const capped = applyCommand(full, "A", { type: "cmd.continuous", unit: "rifleman", on: true });
+    assert.equal(capped.ok, false);
+    if (!capped.ok) assert.equal(capped.message, "Queue is full.");
+    assert.equal(full.players.get("A")!.continuous, undefined);
   });
 });
 

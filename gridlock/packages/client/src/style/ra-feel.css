@@ -487,8 +487,11 @@ input[type="range"] { padding: 0; }
   flex-wrap: wrap;
   gap: 5px;
   max-width: min(320px, calc(100% - 24px));
+  max-height: min(148px, 40vh);
+  overflow-y: auto;
+  scrollbar-width: thin;
   z-index: 6;
-  pointer-events: none;
+  pointer-events: auto;
 }
 .prod-queue:empty { display: none; }
 .prod-job {
@@ -1097,6 +1100,21 @@ input[type="range"] { padding: 0; }
   z-index: 1;
 }
 .cameo.is-paused .cameo-paused { display: flex; }
+.cameo-loop {
+  display: none;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  padding: 0 3px;
+  background: rgba(8, 6, 4, 0.82);
+  color: var(--amber);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  line-height: 1.3;
+  pointer-events: none;
+  z-index: 2;
+}
+.cameo.is-continuous .cameo-loop { display: block; }
 .cameo.is-paused .pip { background: var(--muted); }
 #build-dynamo {
   background-image:

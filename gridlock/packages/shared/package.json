@@ -17,7 +17,8 @@
     "build:watch": "tsc -p tsconfig.json --watch --preserveWatchOutput",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test src/**/*.test.ts src/*.test.ts",
-    "stress": "node --import tsx src/sim/stress.bench.ts"
+    "stress": "node --import tsx src/sim/stress.bench.ts",
+    "contact": "node --import tsx src/sim/contact.bench.ts"
   },
   "devDependencies": {
     "tsx": "^4.19.3",

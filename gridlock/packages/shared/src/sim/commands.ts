@@ -54,7 +54,7 @@ import { orderFieldBuild, orderRepair, setGatesLocked } from "./field.js";
 import { orderConstruct } from "./construct.js";
 import { orderBridge } from "./bridge.js";
 import { deployId } from "./deploy.js";
-import { cancelTrain, pauseTrain, setRally, startTrain } from "./train.js";
+import { cancelTrain, pauseTrain, setContinuous, setRally, startTrain } from "./train.js";
 import { groupMovePace, groupMoveTargets } from "./formation.js";
 import { escortAnchor } from "./orders.js";
 import { setPath } from "./path.js";
@@ -152,6 +152,10 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.train":
       if (!isTrainType(msg.unit)) return fail("bad_payload", "Unknown unit.");
       return wrap(startTrain(state, playerId, msg.unit), "busy");
+    case "cmd.continuous":
+      if (!isTrainType(msg.unit)) return fail("bad_payload", "Unknown unit.");
+      if (typeof msg.on !== "boolean") return fail("bad_payload", "Unknown continuous setting.");
+      return wrap(setContinuous(state, playerId, msg.unit, msg.on), "busy");
     case "cmd.pause":
       if (msg.what === "structure") {
         if (msg.building != null && !isBuildingType(msg.building) && !isYardField(msg.building)) {

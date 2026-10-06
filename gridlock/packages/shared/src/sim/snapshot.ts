@@ -533,6 +533,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
       alive: you?.alive ?? false,
       hqId: hq && hq.hp > 0 ? hq.id : (you?.hqId ?? null),
       radar,
+      ...(you?.continuous && you.continuous.length > 0 ? { continuous: [...you.continuous] } : {}),
     },
     players: [...state.players.values()].map((p) => ({
       playerId: p.playerId,

@@ -27,7 +27,7 @@ export const DEFENCE_BUILD_RADIUS = t(10);
 export const LINE_BUILD_RADIUS = 2 * BUILD_RADIUS;
 export const UNIT_CAP = 60;
 /** Max train jobs waiting or in progress on one producer. */
-export const TRAIN_QUEUE_CAP = 9;
+export const TRAIN_QUEUE_CAP = 39;
 export const DEPLOY_SECONDS = 3;
 export const SELL_REFUND = 0.5;
 /** Share of the hull's cost an engineer recovers by breaking up the wreck. */
@@ -837,6 +837,14 @@ export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper"
 export const ONE_AT_A_TIME: readonly TrainType[] = ["titan", "cyborgcommander"];
 export function isOneAtATime(type: string): boolean {
   return (ONE_AT_A_TIME as readonly string[]).includes(type);
+}
+
+/**
+ * Sidebar continuous production. A unit with a max of one, and every airplane,
+ * stays a single order.
+ */
+export function canContinuousTrain(type: string): type is TrainType {
+  return isTrainType(type) && !isOneAtATime(type) && !isAircraftType(type);
 }
 
 /** Advanced units: their producer also needs this building standing before a job can be queued. */

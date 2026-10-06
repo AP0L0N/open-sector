@@ -74,6 +74,8 @@ describe("order cues", () => {
     assert.deepEqual(cue({ type: "cmd.attack", ids: [2], targetId: 4 }), { kind: "unit", type: "gunner", cue: "attack" });
     assert.deepEqual(cue({ type: "cmd.deploy", id: 1 }), { kind: "unit", type: "rifleman", cue: "special" });
     assert.deepEqual(cue({ type: "cmd.train", unit: "rifleman" }), { kind: "announce", event: "training" });
+    assert.deepEqual(cue({ type: "cmd.continuous", unit: "rifleman", on: true }), { kind: "announce", event: "training" });
+    assert.deepEqual(cue({ type: "cmd.continuous", unit: "rifleman", on: false }), { kind: "announce", event: "cancelled" });
     assert.deepEqual(cue({ type: "cmd.pause", what: "train", paused: true }), { kind: "announce", event: "onhold" });
     assert.deepEqual(cue({ type: "cmd.place", building: "dynamo", tx: 1, ty: 1 }), { kind: "ui", sound: "place" });
   });

@@ -89,6 +89,8 @@ export function orderCue(msg: ClientMessage, entities: readonly EntityView[], me
   switch (msg.type) {
     case "cmd.train":
       return { kind: "announce", event: "training" };
+    case "cmd.continuous":
+      return msg.on ? { kind: "announce", event: "training" } : { kind: "announce", event: "cancelled" };
     case "cmd.pause":
       return msg.paused ? { kind: "announce", event: "onhold" } : null;
     case "cmd.cancel":

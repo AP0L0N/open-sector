@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 111;
+export const PROTOCOL_VERSION = 112;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -385,6 +385,11 @@ export interface YouState {
   hqId: number | null;
   /** A Radar Station stands on your side. False leaves the command bar's radar panel dark. */
   radar: boolean;
+  /**
+   * Units you keep training. Each producer of that unit holds one job until a
+   * right-click turns it off. Omitted when none.
+   */
+  continuous?: TrainType[];
 }
 
 /**
@@ -736,6 +741,12 @@ export type ClientMessage =
    */
   | { type: "cmd.place"; building: BuildingType; tx: number; ty: number; facing?: number }
   | { type: "cmd.train"; unit: TrainType }
+  /**
+   * Keep training `unit` until this is sent again with `on: false`, which
+   * drops the latch and cancels every queued job of that unit.
+   * One-at-a-time units and aircraft are refused.
+   */
+  | { type: "cmd.continuous"; unit: TrainType; on: boolean }
   | {
       type: "cmd.pause";
       what: "train" | "structure";

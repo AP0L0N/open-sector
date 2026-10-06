@@ -1,4 +1,4 @@
-import { clampGameSpeed } from "../catalog.js";
+import { canContinuousTrain, clampGameSpeed, type TrainType } from "../catalog.js";
 import { getMap, TILE_EMPTY } from "../maps.js";
 import { MAX_SLOTS, MIN_SLOTS, SLOT_COUNT, type AiDifficulty, type SlotStatus } from "../protocol.js";
 import { restampForts } from "./field.js";
@@ -196,7 +196,11 @@ export function restoreMatch(
   const players = new Map<string, SimPlayer>();
   for (const p of save.players) {
     const playerId = mapOwner(p.playerId);
-    players.set(playerId, { ...p, playerId });
+    const player = { ...p, playerId };
+    const continuous = cleanContinuous(p.continuous);
+    if (continuous) player.continuous = continuous;
+    else delete player.continuous;
+    players.set(playerId, player);
   }
   if (!players.has(opts.humanPlayerId)) return fail("That save has no commander to take.");
 
@@ -374,6 +378,16 @@ function num(v: unknown): v is number {
 
 function arrayOf<T>(v: unknown, max: number, ok: (item: unknown) => item is T): v is T[] {
   return Array.isArray(v) && v.length <= max && v.every(ok);
+}
+
+/** Drop a saved latch that names a unit continuous production refuses. Older saves omit it. */
+function cleanContinuous(v: unknown): TrainType[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const out: TrainType[] = [];
+  for (const item of v) {
+    if (typeof item === "string" && canContinuousTrain(item) && !out.includes(item)) out.push(item);
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 function playerOk(v: unknown): v is SimPlayer {
