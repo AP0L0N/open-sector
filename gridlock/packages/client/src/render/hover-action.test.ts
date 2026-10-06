@@ -183,6 +183,15 @@ describe("resolveHoverAction", () => {
     assert.equal(act({ selected: [warden], hit: foeCore }), "attack");
   });
 
+  it("does not capture with a Cyborg or a Cyborg Commander; they attack the building", () => {
+    const cyborg = unit({ id: 61, type: "cyborg" });
+    const commander = unit({ id: 62, type: "cyborgcommander" });
+    assert.equal(act({ selected: [cyborg], hit: foeCore }), "attack");
+    assert.equal(act({ selected: [commander], hit: foeCore }), "attack");
+    assert.equal(act({ selected: [cyborg, commander], hit: foeCore }), "attack");
+    assert.equal(act({ selected: [cyborg, trooper], hit: foeCore }), "capture");
+  });
+
   it("does not offer a walker an attack on walls, and still offers a garrison", () => {
     const walker = unit({ id: 5, type: "walker" });
     assert.equal(act({ selected: [walker], hit: foeCore }), null);

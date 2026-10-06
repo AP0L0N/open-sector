@@ -4693,9 +4693,9 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Battle Ship",
     letter: "s",
-    cost: 4000,
+    cost: 8000,
     buildSeconds: 32,
-    hp: 900,
+    hp: 9000,
     power: 0,
     tileW: 1,
     tileH: 1,
@@ -4729,7 +4729,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     letter: "D",
     cost: 1800,
     buildSeconds: 22,
-    hp: 240,
+    hp: 720,
     power: 0,
     tileW: 1,
     tileH: 1,
@@ -5348,6 +5348,15 @@ export function isInfantryType(type: EntityType): boolean {
  */
 export function isCyborg(type: EntityType): boolean {
   return type === "cyborg" || type === "cyborgcommander";
+}
+
+/**
+ * Infantry that can take a player structure by standing the capture at point-blank.
+ * The Engineer keeps to repairs and scrap; the Cyborg and the Cyborg Commander are
+ * gun platforms, not occupying troops — they shell a building instead.
+ */
+export function canCaptureType(type: EntityType): boolean {
+  return isInfantryType(type) && type !== "engineer" && !isCyborg(type);
 }
 
 /** Carries a force field that takes hits before his HP does. The Cyborg Commander. */

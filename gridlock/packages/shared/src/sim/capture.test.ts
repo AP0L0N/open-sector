@@ -41,7 +41,7 @@ function ticks(state: MatchState, n: number): void {
 
 function placeAdjacent(
   state: MatchState,
-  type: "rifleman" | "warden",
+  type: "rifleman" | "warden" | "cyborg" | "cyborgcommander",
   ownerId: string,
   building: { tileX: number; tileY: number },
 ): ReturnType<typeof makeEntity> {
@@ -90,6 +90,31 @@ describe("infantry capture", () => {
     assert.equal(dyn.ownerId, a);
     assert.equal(dyn.captureProgress, 0);
     assert.equal(dyn.captureOwnerId, "");
+  });
+
+  it("does not let a Cyborg or a Cyborg Commander stand a capture", () => {
+    for (const type of ["cyborg", "cyborgcommander"] as const) {
+      const { state, a, b } = twoPlayerMatch();
+      state.heights.fill(0);
+      state.blocked.fill(0);
+      clearCivilians(state);
+      const ts = state.tileSize;
+      const tileX = 40;
+      const tileY = 24;
+      const c = buildingCenter(tileX, tileY, catalog("dynamo").tileW, catalog("dynamo").tileH, ts);
+      const dyn = makeEntity(state, "dynamo", b, c.x, c.y, { tileX, tileY });
+      const cy = placeAdjacent(state, type, a, dyn);
+      const hp0 = dyn.hp;
+      const res = applyCommand(state, a, { type: "cmd.attack", ids: [cy.id], targetId: dyn.id });
+      assert.equal(res.ok, true, !res.ok ? res.message : "");
+      ticks(state, Math.ceil(captureDurationSec(dyn) / TICK_DT) + 4);
+      assert.equal(dyn.captureProgress, 0, `${type} must not stand a capture`);
+      assert.equal(dyn.captureOwnerId, "");
+      assert.equal(dyn.ownerId, b);
+      // Small arms never bite a structure: he faces it and holds, nothing more.
+      assert.equal(dyn.hp, hp0);
+      assert.ok(cy.hp > 0);
+    }
   });
 
   it("does not progress while the trooper is only in rifle range", () => {
