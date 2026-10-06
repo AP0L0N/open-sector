@@ -307,6 +307,19 @@ describe("builder select and defences", () => {
     assert.deepEqual(one, [{ type: "sandbags", x: 50, y: 50, facing: 0, turn: 2 }]);
   });
 
+  it("lays barbwire like sandbags, and teeth block by block along the line", () => {
+    const wire = sectionLine("barbwire", [tileWorld(50, 50)], 2);
+    assert.deepEqual(wire, [{ type: "barbwire", x: 50, y: 50, facing: 0, turn: 2 }]);
+    // Seven tiles east is 56 world px: four 14 px blocks of teeth, each on its own square.
+    const teeth = sectionLine("teeth", [tileWorld(50, 50), tileWorld(57, 50)], 0);
+    assert.ok(teeth.length >= 3 && teeth.length <= 5, `${teeth.length} blocks`);
+    assert.ok(teeth.every((t) => t.type === "teeth" && t.y === 50));
+    const gap = teeth[1]!.x - teeth[0]!.x;
+    assert.ok(Math.abs(gap - 14 / TILE_SIZE) < 1e-9, `blocks ${gap} tiles apart`);
+    const laid = laySections(fresh(), teeth);
+    assert.equal(laid.laid, teeth.length, "every block fits beside the last");
+  });
+
   it("draws a road like a wall line: legs snapped to 15°, a lone start a stub on the wheel's heading", () => {
     // East 12 tiles, then a corner drawn about 40° down-right: it snaps to 45°.
     const legs = roadLegs([tileWorld(70, 60), tileWorld(82, 60), tileWorld(91, 68)], 0);

@@ -42,6 +42,7 @@ import { decorFor } from "../render/decor.js";
 import { NIGHT_SHADE_MAX, STREET_LAMPS, beamPolygon, spotBeamGround } from "../render/night.js";
 import { paintNight, type NightHalo, type NightLayers, type NightLightPool } from "../render/night-paint.js";
 import { drawSandbags } from "../render/sandbags.js";
+import { drawBarbwire } from "../render/barbwire.js";
 import { drawGunRow } from "../render/ciws.js";
 import { brickDeckElev, drawBrick, layoutBridges, type BrickIn, type BrickLayout } from "../render/bridge.js";
 import {
@@ -52,6 +53,7 @@ import {
   PINE_FACES,
   SIGN_FACES,
   STUMP_FACES,
+  TEETH_SPRITE,
   buildingGroundFor,
   buildingSpriteFor,
   drawBuildingSprite,
@@ -80,7 +82,7 @@ import { liveClutter, liveLamps, type Dirty, type Sheet } from "./builder-model.
 
 /**
  * The Map Builder's "In-game view": the sheet drawn the way a match draws it
- * (baked 2:1 ground, trees, dress, building sprites, sandbag and wall lines),
+ * (baked 2:1 ground, trees, dress, building sprites, sandbag, wire, and wall lines, teeth),
  * with clicks picked on the raised ground the way the battlefield picks them.
  */
 
@@ -401,6 +403,9 @@ function paintBrick(c: CanvasRenderingContext2D, s: Sheet, look: { brick: BrickI
   });
 }
 
+/** World units a block of teeth is drawn across, the battlefield's size for it. */
+const TEETH_DRAW_WORLD = 56;
+
 /** The feature's real ground, turned as it stands, `pad` world px out from its edge. */
 function boxCorners(s: Sheet, f: MapFeature, pad = 0, bridge?: BrickLayout): { pts: IsoPt[]; elev: number } {
   const ts = TILE_SIZE;
@@ -443,6 +448,36 @@ function drawFeature(c: CanvasRenderingContext2D, s: Sheet, f: MapFeature, secti
           const p = at(wx, wy, elev);
           return { x: p.x, y: p.y - up * worldPx };
         },
+      });
+      return true;
+    }
+    if (f.type === "barbwire") {
+      drawBarbwire(c, {
+        x,
+        y,
+        facing,
+        length: span.length,
+        thick: span.thick,
+        ruined: false,
+        seed: (f.x * 73856093) ^ (f.y * 19349663),
+        alpha: 1,
+        project: (wx, wy, up) => {
+          const p = at(wx, wy, elev);
+          return { x: p.x, y: p.y - up * worldPx };
+        },
+      });
+      return true;
+    }
+    if (f.type === "teeth") {
+      // One pyramid on the spot, as the battlefield draws it.
+      if (!spriteReady(TEETH_SPRITE)) return false;
+      const p = at(x, y, elev);
+      const dir = facingToIso(facing, ts);
+      drawUnitSprite(c, { ...TEETH_SPRITE, drawSize: Math.max(28, worldPx * TEETH_DRAW_WORLD) }, p.x, p.y, dir.x, dir.y, {
+        moving: false,
+        id: 0,
+        now: 0,
+        facing,
       });
       return true;
     }

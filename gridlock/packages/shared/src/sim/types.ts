@@ -851,6 +851,7 @@ export interface MatchState {
   /**
    * 1 = sandbags and concrete block every unit. 2 = dragon's teeth block vehicles
    * only. 3 = an unlocked gate: its owner's side walks through, everyone else stops.
+   * 4 = barbwire: infantry stop, vehicles roll through and flatten it.
    */
   fortBlock: Uint8Array;
   /** Owner of the gate on each fortBlock 3 tile, by tile index. */

@@ -125,6 +125,7 @@ import {
   type ShellType,
   torpedoesOf,
   isTorpedoBody,
+  isLowFieldWork,
 } from "../catalog.js";
 import { aimableBridge, bridgeSweep, strikeBridge, tagBridgeRounds } from "./bridge.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
@@ -3232,7 +3233,7 @@ function sweepAgainst(
   p: Projectile,
   e: Entity,
 ): { t: number; x: number; y: number } | null {
-  if (e.type === "sandbags" || e.type === "teeth" || isConcreteLine(e.type)) return null;
+  if (isLowFieldWork(e.type) || isConcreteLine(e.type)) return null;
   // An empty trench is a hole in the ground. Rounds only find it with a man in it.
   if (e.type === "trench" && livingGarrison(state, e).length === 0) return null;
   const reach = e.radius * (p.plunging ? 1 : stanceHitRadiusMul(e, unitInWater(state, e)));

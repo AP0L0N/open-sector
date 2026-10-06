@@ -56,6 +56,7 @@ import {
   type ClutterType,
   type LampType,
   type MapDefenceType,
+  type MapSectionType,
   type MapFeature,
   type MapFeatureType,
   type MapUnit,
@@ -448,10 +449,12 @@ function flushGround(): void {
 
 // --- stage drawing -------------------------------------------------------------
 
-/** Fill and edge on the plan: houses in brick, concrete defences in grey, sandbags in burlap. */
+/** Fill and edge on the plan: houses in brick, concrete defences in grey, sandbags in burlap, wire in steel. */
 function featureColors(type: MapFeatureType): [string, string] {
   if (isCivilianType(type)) return ["#c9a27a", "#2a1810"];
   if (type === "sandbags") return ["#b9a06a", "#3a2c14"];
+  if (type === "barbwire") return ["#7f8a86", "#1c2220"];
+  if (type === "teeth") return ["#b4b2a8", "#2a2924"];
   if (type === "bridge") return ["#8b6b45", "#2f2114"];
   if (type === "bigbridge") return ["#a8a49a", "#3a3833"];
   return ["#9c9a90", "#1d1c18"];
@@ -486,7 +489,7 @@ function turningTool(): boolean {
   return tool.id === "defence" || tool.id === "road" || tool.id === "bridge" || tool.id === "unit";
 }
 
-/** The armed tool draws a line: sandbags, a wall, a road, or a bridge. */
+/** The armed tool draws a line: sandbags, barbwire, teeth, a wall, a road, or a bridge. */
 function lineTool(): boolean {
   return tool.id === "road" || tool.id === "bridge" || (tool.id === "defence" && isMapSection(tool.defence));
 }
@@ -518,7 +521,7 @@ function lineGhost(): MapFeature[] {
   if (!hover.inside && line.points.length === 0 && !line.press) return [];
   const pts = fieldPointsWithCursor(line.points, line.press, M.tileWorld(hover.x, hover.y));
   if (bridge) return M.bridgeLine(tool.bridge, pts, tool.turn);
-  return M.sectionLine(tool.defence as "sandbags" | "wall", pts, tool.turn);
+  return M.sectionLine(tool.defence as MapSectionType, pts, tool.turn);
 }
 
 /** The centreline the drawn road would lay, its live leg running to the cursor. */
@@ -1970,7 +1973,7 @@ function asset(label: string, sub: string, on: boolean, art: Node, title: string
  * A building's art at `angle` world radians: a house's quarter, a defence's 15° step. A crewed
  * gun shows its unturned pit with the barrel laid along `angle`, its crew at it.
  */
-function houseThumb(type: CivilianType | Exclude<MapDefenceType, "sandbags" | "wall">, angle: number): HTMLCanvasElement {
+function houseThumb(type: CivilianType | Exclude<MapDefenceType, MapSectionType>, angle: number): HTMLCanvasElement {
   const cv = el("canvas");
   cv.width = 96;
   cv.height = 76;
@@ -2207,10 +2210,13 @@ function bridgeThumb(type: BridgeType): HTMLCanvasElement {
   return cv;
 }
 
+/** Palette glyph for each line piece. */
+const SECTION_MARKS: Record<MapSectionType, string> = { sandbags: "▬", barbwire: "✕", teeth: "▲", wall: "▮" };
+
 function defenceThumb(type: MapDefenceType, turn: number): HTMLElement {
   if (!isMapSection(type)) return houseThumb(type, M.wrapTurn(turn) * BUILDING_TURN_STEP);
   // Sections are drawn by the battlefield, not from a sheet: a plain mark stands in.
-  return el("span", { class: `bld-start-mark bld-${type}`, text: type === "sandbags" ? "▬" : "▮" });
+  return el("span", { class: `bld-start-mark bld-${type}`, text: SECTION_MARKS[type] });
 }
 
 function toolsPanel(ctx: Ctx): HTMLElement {
@@ -2352,7 +2358,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       defFaceRow,
       el("p", {
         class: "bld-hint",
-        text: "Neutral until taken. Infantry that walk into a bunker or tower take it; a tower's lamp stays dark until someone holds it. The guns stand with neutral crews at them; once a crew falls, the first soldier to man the gun takes it. Men who take cover at sandbags or a wall claim the section. Scroll turns a defence 15° (Ctrl+scroll zooms). A sandbag or wall line goes down as in a match: click its start, click each corner, Enter lays it, right-click takes a corner back. Esc cancels and picks up Select.",
+        text: "Neutral until taken. Infantry that walk into a bunker or tower take it; a tower's lamp stays dark until someone holds it. The guns stand with neutral crews at them; once a crew falls, the first soldier to man the gun takes it. Men who take cover at sandbags or a wall claim the section. Barbwire stops infantry and any vehicle flattens it; teeth stop vehicles and infantry walk through. Scroll turns a defence 15° (Ctrl+scroll zooms). A sandbag, wire, teeth, or wall line goes down as in a match: click its start, click each corner, Enter lays it, right-click takes a corner back. Esc cancels and picks up Select.",
       }),
     ),
   );

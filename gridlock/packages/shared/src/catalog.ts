@@ -566,6 +566,7 @@ export type EntityType =
   | "foundry"
   | "granary"
   | "sandbags"
+  | "barbwire"
   | "wall"
   | "greatwall"
   | "gate"
@@ -594,14 +595,17 @@ export type BuildingType =
   | "flak"
   | "research"
   | "radar";
-/** Placed by an engineer. Sandbags and walls can also be queued from the Defences tab. The gate comes only from there. */
-export type FieldStructureType = "sandbags" | "wall" | "greatwall" | "gate" | "teeth" | "trench";
-export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "wall", "greatwall", "gate", "teeth", "trench"];
+/**
+ * Placed by an engineer. Sandbags and walls can also be queued from the Defences tab. The gate comes
+ * only from there. Barbwire is laid by maps for now: the Map Builder stands it like sandbags.
+ */
+export type FieldStructureType = "sandbags" | "barbwire" | "wall" | "greatwall" | "gate" | "teeth" | "trench";
+export const FIELD_STRUCTURES: readonly FieldStructureType[] = ["sandbags", "barbwire", "wall", "greatwall", "gate", "teeth", "trench"];
 /** Field works the construction yard can queue. An engineer can still place these anywhere, except the gate. */
 export type YardFieldType = "sandbags" | "wall" | "greatwall" | "gate";
 export const YARD_FIELD_TYPES: readonly YardFieldType[] = ["sandbags", "wall", "greatwall", "gate"];
 /** Kept in the sim but off the Defences tab and the engineer's command bar for now. */
-export const HIDDEN_FIELD_TYPES: readonly FieldStructureType[] = ["greatwall"];
+export const HIDDEN_FIELD_TYPES: readonly FieldStructureType[] = ["greatwall", "barbwire"];
 export function isHiddenField(type: string): boolean {
   return (HIDDEN_FIELD_TYPES as readonly string[]).includes(type);
 }
@@ -613,6 +617,13 @@ export function isHiddenField(type: string): boolean {
 export type ConcreteLineType = "wall" | "greatwall" | "gate";
 export function isConcreteLine(type: string): type is ConcreteLineType {
   return type === "wall" || type === "greatwall" || type === "gate";
+}
+/**
+ * Field works too low for a round to find or a gunner to aim at: sandbags, dragon's teeth,
+ * barbwire. Fire goes over them, bombs and strikes ignore them, and nothing targets them.
+ */
+export function isLowFieldWork(type: string): type is "sandbags" | "teeth" | "barbwire" {
+  return type === "sandbags" || type === "teeth" || type === "barbwire";
 }
 /**
  * Engineer and map bridges over water, laid brick by brick along a drawn line like a wall.
@@ -3713,6 +3724,28 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     ...UNARMED,
     blurb: "Two bags high. Crouched or crawling infantry behind it gain extra health. A crawling soldier cannot fire a gun over it. One tank shell wrecks it and still hits the men.",
   },
+  barbwire: {
+    type: "barbwire",
+    kind: "building",
+    name: "Barbwire",
+    letter: "x",
+    cost: 10,
+    buildSeconds: 2,
+    hp: 20,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: 0,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "Coils of barbed wire strung between posts. No soldier gets through it. It gives no cover and stops no round. Any vehicle rolls over it and leaves it flat, and the gap is open from then on.",
+  },
   wall: {
     type: "wall",
     kind: "building",
@@ -5198,6 +5231,7 @@ export function anchorsBuildRange(type: EntityType): boolean {
 /** World-pixel length along the wall and thickness across it. Null for other types. */
 export function fieldSpan(type: EntityType): { length: number; thick: number } | null {
   if (type === "sandbags") return { length: 24, thick: 7 };
+  if (type === "barbwire") return { length: 24, thick: 6 };
   if (type === "wall") return { length: 24, thick: 8 };
   if (type === "greatwall") return { length: 24, thick: 12 };
   if (type === "gate") return { length: 48, thick: 8 };

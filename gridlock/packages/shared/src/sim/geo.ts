@@ -233,6 +233,8 @@ export function walkable(state: MatchState, x: number, y: number, type?: EntityT
   const fort = state.fortBlock[i] ?? 0;
   if (fort === 1) return false;
   if (fort === 2 && !(type && isInfantryType(type))) return false;
+  // Barbwire holds a man; a hull rolls it flat.
+  if (fort === 4 && (!type || isInfantryType(type))) return false;
   // 3 is an unlocked gate: everyone plans through it; the boom stops the wrong side in collision.
   // A boat floats on open water and never comes ashore.
   if (type && isNavalType(type)) return isWater(state, x, y);

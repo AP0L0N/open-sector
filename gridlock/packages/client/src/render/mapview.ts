@@ -393,6 +393,7 @@ import { canopySway, drawCanopy, drawCrate, drawMine, troopCanopySpan } from "./
 import { barrageTracers, tracerLandsAt, tracerSpan, type BarrageTracer } from "./barrage-tracer.js";
 import { RUBBLE_MAX_RISE, drawRubble } from "./rubble.js";
 import { courseHeight, drawSandbags } from "./sandbags.js";
+import { drawBarbwire } from "./barbwire.js";
 import { fieldPointsWithCursor, pinFieldPoint, undoFieldPoint } from "./field-place.js";
 import { drawTrench } from "./trench.js";
 import {
@@ -605,6 +606,7 @@ const EXTRUDE: Record<EntityType, number> = {
   cyborg: 26,
   cyborgcommander: 26,
   sandbags: 12,
+  barbwire: 9,
   wall: 18,
   greatwall: 34,
   gate: 18,
@@ -8401,6 +8403,10 @@ export class MapView {
       }
       return;
     }
+    if (e.type === "barbwire") {
+      veiled(() => this.drawWireLine(e.x, e.y, e.facing, { ruined: !!e.ruined, alpha: ghost ? 0.45 : 1, seed: e.id * 2654435761 }));
+      return;
+    }
     veiled(() => this.drawSandbagWall(e.x, e.y, e.facing, { ruined: !!e.ruined, alpha: ghost ? 0.45 : 1, seed: e.id * 2654435761 }));
   }
 
@@ -8429,6 +8435,8 @@ export class MapView {
               this.drawConcrete(site.structure, site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 }, e.fieldSites);
             } else if (site.structure === "trench") {
               this.drawTrenchPit(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
+            } else if (site.structure === "barbwire") {
+              this.drawWireLine(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 });
             } else {
               this.drawSandbagWall(site.x, site.y, site.facing, { alpha: FIELD_SITE_ALPHA, seed: 7 }, e.fieldSites);
             }
@@ -8674,6 +8682,28 @@ export class MapView {
     const joins = opts.ruined ? undefined : wallJoins(section, this.fieldRun("sandbags", section, extras ?? []));
     drawSandbags(this.ctx, {
       joins,
+      x,
+      y,
+      facing,
+      length: span.length,
+      thick: span.thick,
+      ruined: !!opts.ruined,
+      seed: opts.seed >>> 0,
+      alpha: opts.alpha,
+      bad: opts.bad,
+      project: (wx, wy, up) => {
+        const p = this.toScreen(wx, wy, elev);
+        return { x: p.x, y: p.y - up * lift };
+      },
+    });
+  }
+
+  private drawWireLine(x: number, y: number, facing: number, opts: { ruined?: boolean; alpha: number; seed: number; bad?: boolean }): void {
+    const span = fieldSpan("barbwire");
+    if (!span) return;
+    const elev = this.elevAt(x, y);
+    const lift = this.groundSpan(x, y, 10) / 10;
+    drawBarbwire(this.ctx, {
       x,
       y,
       facing,
@@ -8938,6 +8968,8 @@ export class MapView {
         this.drawConcrete(type, p.x, p.y, p.facing, { alpha, seed: 7, bad: !ok }, pieces);
       } else if (type === "trench") {
         this.drawTrenchPit(p.x, p.y, p.facing, { alpha, seed: 7, bad: !ok });
+      } else if (type === "barbwire") {
+        this.drawWireLine(p.x, p.y, p.facing, { alpha, seed: 7, bad: !ok });
       } else {
         this.drawSandbagWall(p.x, p.y, p.facing, { alpha, seed: 7, bad: !ok }, pieces);
       }

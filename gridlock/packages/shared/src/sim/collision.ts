@@ -14,6 +14,7 @@ import {
   TRACK_ARRIVE_SLOP,
   UNIT_SPACE_PAD,
 } from "../catalog.js";
+import { crushWireUnder } from "./field.js";
 import { moveSpeedMul, takeDamage } from "./crits.js";
 import { diving } from "./naval.js";
 import { setPath } from "./path.js";
@@ -72,7 +73,7 @@ function tileFree(state: MatchState, e: Entity, x: number, y: number): boolean {
   const fort = state.fortBlock[idx] ?? 0;
   // An unlocked gate lifts for its owner's side; anyone else stops at the boom.
   const shutGate = fort === 3 && !allies(state, e.ownerId, state.fortOwner.get(idx) ?? "");
-  if (fort === 1 || (fort === 2 && !isInfantryType(e.type)) || shutGate) {
+  if (fort === 1 || (fort === 2 && !isInfantryType(e.type)) || (fort === 4 && isInfantryType(e.type)) || shutGate) {
     const cx = worldToTile(e.x, ts);
     const cy = worldToTile(e.y, ts);
     if (tx !== cx || ty !== cy) return false;
@@ -91,6 +92,7 @@ export function crushTreesUnder(state: MatchState, e: Entity): void {
   if (!isActiveUnit(e) || !isMotorVehicle(e.type)) return;
   if (!rolling(e)) return;
   crushClutterUnder(state, e);
+  crushWireUnder(state, e);
   const ts = state.tileSize;
   const r = e.radius + ts * 0.45;
   const x0 = worldToTile(e.x - r, ts);

@@ -10,6 +10,8 @@ import {
   coverHeightOf,
   infantryGunFor,
   launcherOnlyOf,
+  isConcreteLine,
+  isLowFieldWork,
 } from "../catalog.js";
 import { isAirborne, isCrashing } from "./air.js";
 import { aimHeight, canAimWeapon, entityHeight, muzzleHeight, shotClearsCover, worldTileHeight } from "./elevation.js";
@@ -56,7 +58,7 @@ export function allyInLine(
     if (o.id === e.id || o.id === target.id || o.id === e.garrisonedIn) continue;
     if (o.hp <= 0 || o.wreck || o.garrisonedIn != null || isCrashing(o) || o.drone || isAirborne(o)) continue;
     if (ownerless(o) || !allies(state, e.ownerId, o.ownerId)) continue;
-    if (o.type === "sandbags" || o.type === "teeth" || o.type === "wall" || o.type === "greatwall" || o.type === "gate") continue;
+    if (isLowFieldWork(o.type) || isConcreteLine(o.type)) continue;
     if (o.type === "trench" && livingGarrison(state, o).length === 0) continue;
     let t: number | null;
     if (o.kind === "building") {

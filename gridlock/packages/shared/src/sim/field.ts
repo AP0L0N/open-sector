@@ -985,6 +985,27 @@ export function ruinSandbags(state: MatchState, bag: Entity): void {
   applyCoverHp(state);
 }
 
+/** Flatten a wire section: it stops no one from then on and stays as a tangle on the ground. */
+export function ruinWire(state: MatchState, wire: Entity): void {
+  if (wire.type !== "barbwire" || wire.ruined) return;
+  wire.ruined = true;
+  restampForts(state);
+}
+
+/** How far past its own radius a rolling hull flattens wire, world px. */
+const WIRE_CRUSH_PAD = 2;
+
+/** A motor vehicle rolling onto barbwire leaves it flat. Called from the movement step for every rolling hull. */
+export function crushWireUnder(state: MatchState, e: Entity): void {
+  const span = fieldSpan("barbwire")!;
+  const pad = e.radius + WIRE_CRUSH_PAD;
+  for (const w of state.entities.values()) {
+    if (w.type !== "barbwire" || w.ruined || w.hp <= 0) continue;
+    if (Math.abs(w.x - e.x) > span.length + pad || Math.abs(w.y - e.y) > span.length + pad) continue;
+    if (inFieldRect(e.x, e.y, w.x, w.y, w.facing, span.length + pad * 2, span.thick + pad * 2)) ruinWire(state, w);
+  }
+}
+
 /** Men on the far side of the wall take the shell. The near side is in front of it. */
 export function woundBehindSandbags(state: MatchState, bag: Entity, fromX: number, fromY: number, damage: number): void {
   const span = fieldSpan("sandbags")!;
@@ -1234,7 +1255,8 @@ export function raiseWallCrest(state: MatchState, built: readonly Entity[]): voi
 
 /**
  * 1 = sandbags and both concrete walls (blocks everyone). 2 = dragon's teeth
- * (vehicles only; infantry walk through). A trench blocks no one.
+ * (vehicles only; infantry walk through). 4 = barbwire (infantry only; vehicles
+ * roll through). A trench blocks no one.
  */
 export function restampForts(state: MatchState): void {
   state.fortBlock.fill(0);
@@ -1243,7 +1265,7 @@ export function restampForts(state: MatchState): void {
     if (!isFieldStructure(e.type) || e.hp <= 0 || e.ruined) continue;
     if (e.type === "trench") continue;
     // An unlocked gate is 3: open to its owner's side. Locked, it is a wall again.
-    const code = e.type === "teeth" ? 2 : e.gate && !e.gate.locked ? 3 : 1;
+    const code = e.type === "teeth" ? 2 : e.type === "barbwire" ? 4 : e.gate && !e.gate.locked ? 3 : 1;
     for (const t of fieldTiles(state, e.type, e.x, e.y, e.facing, 0)) {
       const i = tileIndex(state, t.x, t.y);
       state.fortBlock[i] = code;

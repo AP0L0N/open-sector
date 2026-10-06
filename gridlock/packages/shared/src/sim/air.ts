@@ -98,6 +98,7 @@ import {
   isJumpJetType,
   isTransportType,
   isBattleship,
+  isLowFieldWork,
 } from "../catalog.js";
 import { hasCargo, loseRiders, payloadOf, planeRiders, releaseCanister, startJumping, tickDoor } from "./airdrop.js";
 import type { ImpactView } from "../protocol.js";
@@ -890,7 +891,7 @@ function acquireGround(state: MatchState, e: Entity): Entity | undefined {
   for (const o of state.entities.values()) {
     if (o.hp <= 0 || o.wreck || o.garrisonedIn != null || o.id === e.id) continue;
     if (ownerless(o) || allies(state, e.ownerId, o.ownerId)) continue;
-    if (isAirborne(o) || o.type === "sandbags" || o.type === "teeth") continue;
+    if (isAirborne(o) || isLowFieldWork(o.type)) continue;
     if (o.kind === "building" && a.bombs <= 0) continue;
     if (!canHurt(state, e, o)) continue;
     const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
@@ -1249,7 +1250,7 @@ function detonateBomb(state: MatchState, p: Projectile): void {
   let killed = false;
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.garrisonedIn != null) continue;
-    if (e.type === "sandbags" || e.type === "teeth") continue;
+    if (isLowFieldWork(e.type)) continue;
     if (isAirborne(e)) continue;
     const d = Math.hypot(e.x - p.x, e.y - p.y);
     const reach = e.kind === "building" ? radius + Math.min(e.tileW, e.tileH) * ts * 0.35 : radius;

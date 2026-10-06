@@ -5,6 +5,7 @@ import {
   catalog,
   ENGINEER_SEEK_TILES,
   fieldSpan,
+  isLowFieldWork,
   GATE_COST,
   LARGE_WALL_GARRISON_CAP,
   LARGE_WALL_GARRISON_HP_MUL,
@@ -25,6 +26,7 @@ import {
   WALL_COVER_BONUS,
   WALL_COVER_DR,
   coverStrike,
+  crushWireUnder,
   FIELD_TURN_MAX,
   fieldCornerStart,
   fieldLine,
@@ -1865,5 +1867,33 @@ describe("wall height", () => {
     assert.equal(built.length, 4);
     assert.equal(built[0]!.wallCrest, tall, "the knoll section stands on the knoll");
     for (const w of built.slice(1)) assert.equal(w.wallCrest, 0, "the flat sections start their own top");
+  });
+});
+
+describe("barbwire", () => {
+  it("holds infantry, lets a hull through, and lies flat once one rolls over it", () => {
+    const { state } = twoPlayerMatch();
+    clearPatch(state, 30, 28, 16, 12);
+    const ts = state.tileSize;
+    const x = tileCenter(36, ts);
+    const y = tileCenter(32, ts);
+    const wire = makeEntity(state, "barbwire", "A", x, y, { facing: 0 });
+    restampForts(state);
+    const i = tileIndex(state, 36, 32);
+    assert.equal(state.fortBlock[i], 4);
+    assert.equal(walkable(state, 36, 32, "rifleman"), false, "a man stops at the wire");
+    assert.equal(walkable(state, 36, 32, "ss3"), true, "a tank plans straight through");
+    assert.equal(walkable(state, 36, 32), false, "with no type it counts as blocked");
+    assert.equal(isLowFieldWork("barbwire"), true, "rounds pass over it and nothing targets it");
+
+    const far = makeEntity(state, "ss3", "A", x + 60, y);
+    crushWireUnder(state, far);
+    assert.equal(wire.ruined, false, "a hull well away leaves it standing");
+
+    const tank = makeEntity(state, "ss3", "A", x, y + 2);
+    crushWireUnder(state, tank);
+    assert.equal(wire.ruined, true, "the hull on it flattens it");
+    assert.equal(state.fortBlock[i], 0, "flat wire blocks no one");
+    assert.equal(walkable(state, 36, 32, "rifleman"), true);
   });
 });

@@ -27,7 +27,7 @@ import {
 } from "./maps.js";
 import { createMatch, step } from "./sim/match.js";
 import { enterGarrison } from "./sim/garrison.js";
-import { makeEntity, tileCenter } from "./sim/geo.js";
+import { makeEntity, tileCenter, tileIndex, walkable } from "./sim/geo.js";
 import { spotlightManned } from "./sim/night.js";
 import { NEUTRAL_OWNER } from "./catalog.js";
 import { featureBox, featureRectsOverlap, isPlaytestMapId } from "./maps.js";
@@ -384,6 +384,8 @@ describe("map defences and play tests", () => {
   it("gives a section a three-tile run across the way it faces", () => {
     assert.deepEqual(featureBox({ type: "sandbags", x: 10, y: 10, facing: 0 }), { x0: 10, y0: 9, x1: 11, y1: 12 });
     assert.deepEqual(featureBox({ type: "wall", x: 10, y: 10, facing: 3 }), { x0: 9, y0: 10, x1: 12, y1: 11 });
+    assert.deepEqual(featureBox({ type: "barbwire", x: 10, y: 10, facing: 0 }), { x0: 10, y0: 9, x1: 11, y1: 12 }, "wire runs like sandbags");
+    assert.deepEqual(featureBox({ type: "teeth", x: 10, y: 10, facing: 0 }), { x0: 9, y0: 9, x1: 12, y1: 12 }, "a block of teeth is square");
   });
 
   it("plays a test map with one start but never saves one", () => {
@@ -442,6 +444,36 @@ describe("map defences and play tests", () => {
       assert.equal(bags.ownerId, "A");
       assert.equal(wall.ownerId, NEUTRAL_OWNER, "nobody is at the wall");
       assert.equal(bunker.ownerId, NEUTRAL_OWNER);
+    } finally {
+      unregisterMap(id);
+    }
+  });
+
+  it("stands barbwire and teeth from the sheet: wire holds men, teeth hold hulls", () => {
+    const id = newPlaytestMapId();
+    const lines = [
+      { type: "barbwire" as const, x: 61, y: 111, facing: 0 },
+      { type: "teeth" as const, x: 101, y: 111, facing: 0, turn: 3 },
+    ];
+    const loaded = loadCustomMap(sheet({ id, maxPlayers: 4, spawns: [{ id: 1, x: 30, y: 30 }], features: lines }), { playtest: true });
+    if (!loaded.ok) throw new Error(loaded.message);
+    try {
+      const made = createRoom({ id: "TEST", hostId: "A", hostName: "A", mapId: id, maxSlots: 8, mode: "skirmish" });
+      if (!made.ok) throw new Error(made.message);
+      const started = startMatch(made.value, "A");
+      if (!started.ok) throw new Error(started.message);
+      const state = createMatch(made.value, started.value);
+      const of = (type: string) => [...state.entities.values()].find((e) => e.type === type)!;
+      const wire = of("barbwire");
+      const teeth = of("teeth");
+      assert.equal(wire.ownerId, NEUTRAL_OWNER);
+      assert.equal(teeth.ownerId, NEUTRAL_OWNER);
+      assert.equal(state.fortBlock[tileIndex(state, 61, 111)], 4, "wire stamps its own code");
+      assert.equal(state.fortBlock[tileIndex(state, 101, 111)], 2, "teeth stamp theirs");
+      assert.equal(walkable(state, 61, 111, "rifleman"), false);
+      assert.equal(walkable(state, 61, 111, "ss3"), true);
+      assert.equal(walkable(state, 101, 111, "rifleman"), true);
+      assert.equal(walkable(state, 101, 111, "ss3"), false);
     } finally {
       unregisterMap(id);
     }

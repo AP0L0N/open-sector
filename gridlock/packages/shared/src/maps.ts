@@ -10,6 +10,7 @@ import {
   bridgeBrickLength,
   bridgeWidth,
   catalog,
+  fieldSpan,
   isBridge,
   type BridgeType,
   type CivilianType,
@@ -66,6 +67,8 @@ export type MapDefenceType =
   | "pak43"
   | "flak"
   | "sandbags"
+  | "barbwire"
+  | "teeth"
   | "wall";
 /** Every one but the sections stands on a lot and turns in BUILDING_TURN_STEPs. The guns come crewed. */
 export const MAP_DEFENCE_TYPES: readonly MapDefenceType[] = [
@@ -80,10 +83,16 @@ export const MAP_DEFENCE_TYPES: readonly MapDefenceType[] = [
   "pak43",
   "flak",
   "sandbags",
+  "barbwire",
+  "teeth",
   "wall",
 ];
-/** Map defences laid as a line section rather than on a building lot. */
-export type MapSectionType = "sandbags" | "wall";
+/**
+ * Map defences laid as a line section rather than on a building lot: the same pieces an
+ * engineer lays, sized by `fieldSpan`. Dragon's teeth go down a block at a time along the line.
+ */
+export type MapSectionType = "sandbags" | "barbwire" | "teeth" | "wall";
+export const MAP_SECTION_TYPES: readonly MapSectionType[] = ["sandbags", "barbwire", "teeth", "wall"];
 /**
  * Bridge bricks a map lays over its water, the same pieces an engineer lays. They stand
  * for no one and are drawn as a line, like a wall. A brick's `turn` runs along its deck.
@@ -190,7 +199,7 @@ export function isLampType(type: unknown): type is LampType {
 }
 
 export function isMapSection(type: string): type is MapSectionType {
-  return type === "sandbags" || type === "wall";
+  return (MAP_SECTION_TYPES as readonly string[]).includes(type);
 }
 
 export function isMapBridge(type: string): type is MapBridgeType {
@@ -202,9 +211,9 @@ export function isMapLine(type: string): type is MapSectionType | MapBridgeType 
   return isMapSection(type) || isMapBridge(type);
 }
 
-/** Fine tiles a map section covers along its run, centred on its own tile. */
+/** Fine tiles a sandbag or wall section covers along its run, centred on its own tile. */
 export const MAP_SECTION_TILES = 3;
-/** Fine tiles a map section is thick, across its run. */
+/** Least fine tiles a map section is thick, across its run: a thin line still owns a whole tile. */
 const MAP_SECTION_THICK = 1;
 /**
  * How far two sections may cut into each other before they count as overlapping, fine
@@ -261,10 +270,14 @@ export function featureRect(f: MapFeature): FeatureRect {
     return { cx: f.x + 0.5, cy: f.y + 0.5, ux, uy, vx: -uy, vy: ux, halfU, halfV };
   }
   if (isMapSection(f.type)) {
+    // The engineer's own piece: a thin line owns a tile across, a block of teeth its whole square.
+    const span = fieldSpan(f.type) ?? { length: MAP_SECTION_TILES * TILE_SIZE, thick: MAP_SECTION_THICK * TILE_SIZE };
     const a = featureAngle(f);
     const ux = Math.cos(a);
     const uy = Math.sin(a);
-    return { cx: f.x + 0.5, cy: f.y + 0.5, ux, uy, vx: -uy, vy: ux, halfU: MAP_SECTION_THICK / 2, halfV: MAP_SECTION_TILES / 2 };
+    const halfU = Math.max(MAP_SECTION_THICK, span.thick / TILE_SIZE) / 2;
+    const halfV = span.length / TILE_SIZE / 2;
+    return { cx: f.x + 0.5, cy: f.y + 0.5, ux, uy, vx: -uy, vy: ux, halfU, halfV };
   }
   const def = catalog(f.type);
   const s = featureLotSite(f);

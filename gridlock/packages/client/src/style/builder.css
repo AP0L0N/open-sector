@@ -217,11 +217,15 @@
 }
 
 .bld-start-mark.bld-sandbags,
+.bld-start-mark.bld-barbwire,
+.bld-start-mark.bld-teeth,
 .bld-start-mark.bld-wall {
   border-radius: 6px;
 }
 
 .bld-start-mark.bld-sandbags { color: #b9a06a; border-color: #b9a06a; }
+.bld-start-mark.bld-barbwire { color: #9aa6a2; border-color: #9aa6a2; }
+.bld-start-mark.bld-teeth { color: #c9c6ba; border-color: #c9c6ba; }
 .bld-start-mark.bld-wall { color: #c4c2b8; border-color: #c4c2b8; }
 
 .bld-sel { margin-top: 6px; }
