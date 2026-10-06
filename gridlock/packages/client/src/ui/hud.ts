@@ -13,10 +13,10 @@ import {
   TICK_DT,
   WALKER_ONE_BURST,
   ENGINEER_BUILDINGS,
-  BRIDGE_MAX_TILES,
   BRIDGE_TYPES,
   BRIDGES_HIDDEN,
   TILE_SUBDIV,
+  bridgeCost,
   bridgeCostPerTile,
   isBridge,
   HAULER_SMOKE_CHARGES,
@@ -760,7 +760,17 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
       ? {
           name:
             walkerMode?.name ??
-            (e.type === "ciws" ? "20mm belt" : e.type === "mammoth" ? "Bow MG" : e.type === "submarine" ? "Torpedoes" : "Gatlings"),
+            (e.type === "ciws"
+              ? "20mm belt"
+              : e.type === "mammoth"
+                ? "Bow MG"
+                : e.type === "submarine"
+                  ? "Torpedoes"
+                  : e.type === "mgnest"
+                    ? "MG42 belt"
+                    : e.type === "flak"
+                      ? "37mm clip"
+                      : "Gatlings"),
           clip: belt.clip,
         }
       : null;
@@ -1114,7 +1124,15 @@ const TYPE_ORDER: EntityType[] = [
   "research",
   "radar",
   "bunker",
+  "tobruk",
+  "casemate",
   "tower",
+  "hochstand",
+  "leitturm",
+  "mgnest",
+  "pak36",
+  "pak43",
+  "flak",
   "ram",
   "cottage",
   "shack",
@@ -1474,9 +1492,9 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
               : focus.type === "medic"
                 ? "No weapon. He walks to a wounded soldier nearby and closes the wound. A long kneel sets a broken arm or leg. The bag does not run out."
               : focus.type === "cyborg"
-                ? "Stands under fire — no crouch, no prone. Near death the legs tear off and he drags himself on, still firing. A medic or an engineer brings the legs back. Only a supply truck refills the drum."
+                ? "Stands under fire — no crouch, no prone. Near death the legs tear off and he drags himself on, still firing. A medic or an engineer brings the legs back. Only a supply truck refills the drum. He shells a structure; he does not capture it."
               : focus.type === "cyborgcommander"
-                ? "Stands under fire — no crouch, no prone. The blue bar is his force field: it takes every hit first and comes back on after a while out of the fire. The laser always cuts to full reach: a sweep across soldiers burns every man it passes, yours too, and one beam cuts a hull and anyone in front of it. Trees in the path burn down. Near death the legs tear off and he drags himself on, still firing."
+                ? "Stands under fire — no crouch, no prone. The blue bar is his force field: it takes every hit first and comes back on after a while out of the fire. The laser always cuts to full reach: a sweep across soldiers burns every man it passes, yours too, and one beam cuts a hull and anyone in front of it. Trees in the path burn down. Near death the legs tear off and he drags himself on, still firing. He shells a structure; he does not capture it."
               : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",
     );
   }
@@ -1877,7 +1895,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
         slot: "bridge-" + bridge,
         act: "bridge-" + bridge,
         label: def.name,
-        title: `Bridge water ${wide} wide. Drag from one shore to the other; it spans the crossing, up to ${BRIDGE_MAX_TILES / TILE_SUBDIV} cells. ${bridgeCostPerTile(bridge) * TILE_SUBDIV} scrap a cell, paid when he starts; it appears whole when he finishes. Anyone can cross it. Only a force-attack fires on it; the wreckage stays and an engineer rebuilds it.`,
+        title: `Bridge water ${wide} wide. Draw it like a wall, from one shore across: click each corner, Enter lays it. He lays it brick by brick, ${bridgeCost(bridge)} scrap a brick (${bridgeCostPerTile(bridge) * TILE_SUBDIV} a cell), paid as he starts each one. Anyone can cross it. Only a force-attack fires on it; a brick shot down drops into the water and an engineer rebuilds it.`,
         on: view?.bridgePlace === bridge,
       });
     }

@@ -15,6 +15,7 @@ import {
 } from "../catalog.js";
 import {
   destroyEntity,
+  fellTreeAt,
   hasCore,
   inBounds,
   inBuildRadius,
@@ -30,7 +31,7 @@ import {
 } from "./geo.js";
 import { buildingSite, buildingTilesOf, snapBuildingFacing, turnedBox } from "../building-rect.js";
 import { ejectUnits } from "./deploy.js";
-import { spillGarrison } from "./garrison.js";
+import { manGun, spillGarrison } from "./garrison.js";
 import {
   fieldPiecesFor,
   fieldSiteClear,
@@ -261,7 +262,8 @@ export function buildingSiteError(
     }
     return null;
   }
-  if (tileListBlocked(state, tiles) || tiles.some((t) => scrapAt(state, t.x, t.y) > 0)) return "Cannot place there.";
+  // Trees under it are no bar: raiseBuilding fells them.
+  if (tileListBlocked(state, tiles, false) || tiles.some((t) => scrapAt(state, t.x, t.y) > 0)) return "Cannot place there.";
   return null;
 }
 
@@ -280,7 +282,7 @@ export function placedFacing(type: BuildingType, facing: number): number {
   return snapBuildingFacing(type, facing);
 }
 
-/** Stand the building up: occupy its tiles, push units off them, and make blocked walkers re-path. */
+/** Stand the building up: fell the trees under it, occupy its tiles, push units off them, and make blocked walkers re-path. */
 export function raiseBuilding(
   state: MatchState,
   playerId: string,
@@ -290,6 +292,7 @@ export function raiseBuilding(
   facing = 0,
 ): Entity {
   const site = buildingSite(type, tx, ty, facing, state.tileSize);
+  for (const t of buildingTilesOf(site, state.tileSize)) fellTreeAt(state, t.x, t.y);
   const b = makeEntity(state, type, playerId, site.x, site.y, {
     tileX: tx,
     tileY: ty,
@@ -301,6 +304,8 @@ export function raiseBuilding(
   for (const u of state.entities.values()) {
     if (u.kind === "unit") repathIfBlocked(state, u);
   }
+  // An emplaced gun goes up with its crew already at it.
+  manGun(state, b);
   return b;
 }
 

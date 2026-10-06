@@ -1,0 +1,293 @@
+{
+ "name": "casemate",
+ "faces": [
+  {
+   "padWidth": 480.0,
+   "padSouthX": 276.75,
+   "padSouthY": 253.38,
+   "stackX": 228.75,
+   "stackY": 53.88,
+   "file": "00.png",
+   "box": [
+    12,
+    8
+   ]
+  },
+  {
+   "padWidth": 600.0,
+   "padSouthX": 246.75,
+   "padSouthY": 286.38,
+   "stackX": 210.75,
+   "stackY": 56.88,
+   "file": "01.png",
+   "box": [
+    14,
+    11
+   ]
+  },
+  {
+   "padWidth": 648.0,
+   "padSouthX": 189.75,
+   "padSouthY": 295.38,
+   "stackX": 177.75,
+   "stackY": 53.88,
+   "file": "02.png",
+   "box": [
+    14,
+    13
+   ]
+  },
+  {
+   "padWidth": 672.0,
+   "padSouthX": 132.75,
+   "padSouthY": 293.38,
+   "stackX": 132.75,
+   "stackY": 45.88,
+   "file": "03.png",
+   "box": [
+    14,
+    14
+   ]
+  },
+  {
+   "padWidth": 648.0,
+   "padSouthX": 143.75,
+   "padSouthY": 295.38,
+   "stackX": 155.75,
+   "stackY": 53.88,
+   "file": "04.png",
+   "box": [
+    13,
+    14
+   ]
+  },
+  {
+   "padWidth": 600.0,
+   "padSouthX": 142.75,
+   "padSouthY": 286.38,
+   "stackX": 178.75,
+   "stackY": 56.88,
+   "file": "05.png",
+   "box": [
+    11,
+    14
+   ]
+  },
+  {
+   "padWidth": 480.0,
+   "padSouthX": 141.75,
+   "padSouthY": 253.38,
+   "stackX": 189.75,
+   "stackY": 53.88,
+   "file": "06.png",
+   "box": [
+    8,
+    12
+   ]
+  },
+  {
+   "padWidth": 600.0,
+   "padSouthX": 152.75,
+   "padSouthY": 274.38,
+   "stackX": 188.75,
+   "stackY": 44.88,
+   "file": "07.png",
+   "box": [
+    11,
+    14
+   ]
+  },
+  {
+   "padWidth": 648.0,
+   "padSouthX": 165.75,
+   "padSouthY": 273.38,
+   "stackX": 177.75,
+   "stackY": 31.88,
+   "file": "08.png",
+   "box": [
+    13,
+    14
+   ]
+  },
+  {
+   "padWidth": 672.0,
+   "padSouthX": 155.75,
+   "padSouthY": 261.38,
+   "stackX": 155.75,
+   "stackY": 13.88,
+   "file": "09.png",
+   "box": [
+    14,
+    14
+   ]
+  },
+  {
+   "padWidth": 648.0,
+   "padSouthX": 188.75,
+   "padSouthY": 266.38,
+   "stackX": 176.75,
+   "stackY": 24.88,
+   "file": "10.png",
+   "box": [
+    14,
+    13
+   ]
+  },
+  {
+   "padWidth": 600.0,
+   "padSouthX": 222.75,
+   "padSouthY": 262.38,
+   "stackX": 186.75,
+   "stackY": 32.88,
+   "file": "11.png",
+   "box": [
+    14,
+    11
+   ]
+  },
+  {
+   "padWidth": 480.0,
+   "padSouthX": 232.75,
+   "padSouthY": 235.38,
+   "stackX": 184.75,
+   "stackY": 35.88,
+   "file": "12.png",
+   "box": [
+    12,
+    8
+   ]
+  },
+  {
+   "padWidth": 600.0,
+   "padSouthX": 205.75,
+   "padSouthY": 264.38,
+   "stackX": 169.75,
+   "stackY": 34.88,
+   "file": "13.png",
+   "box": [
+    14,
+    11
+   ]
+  },
+  {
+   "padWidth": 648.0,
+   "padSouthX": 158.75,
+   "padSouthY": 271.38,
+   "stackX": 146.75,
+   "stackY": 29.88,
+   "file": "14.png",
+   "box": [
+    14,
+    13
+   ]
+  },
+  {
+   "padWidth": 672.0,
+   "padSouthX": 132.75,
+   "padSouthY": 267.38,
+   "stackX": 132.75,
+   "stackY": 19.88,
+   "file": "15.png",
+   "box": [
+    14,
+    14
+   ]
+  },
+  {
+   "padWidth": 648.0,
+   "padSouthX": 165.75,
+   "padSouthY": 271.38,
+   "stackX": 177.75,
+   "stackY": 29.88,
+   "file": "16.png",
+   "box": [
+    13,
+    14
+   ]
+  },
+  {
+   "padWidth": 600.0,
+   "padSouthX": 174.75,
+   "padSouthY": 264.38,
+   "stackX": 210.75,
+   "stackY": 34.88,
+   "file": "17.png",
+   "box": [
+    11,
+    14
+   ]
+  },
+  {
+   "padWidth": 480.0,
+   "padSouthX": 180.75,
+   "padSouthY": 235.38,
+   "stackX": 228.75,
+   "stackY": 35.88,
+   "file": "18.png",
+   "box": [
+    8,
+    12
+   ]
+  },
+  {
+   "padWidth": 600.0,
+   "padSouthX": 196.75,
+   "padSouthY": 262.38,
+   "stackX": 232.75,
+   "stackY": 32.88,
+   "file": "19.png",
+   "box": [
+    11,
+    14
+   ]
+  },
+  {
+   "padWidth": 648.0,
+   "padSouthX": 207.75,
+   "padSouthY": 266.38,
+   "stackX": 219.75,
+   "stackY": 24.88,
+   "file": "20.png",
+   "box": [
+    13,
+    14
+   ]
+  },
+  {
+   "padWidth": 672.0,
+   "padSouthX": 191.75,
+   "padSouthY": 261.38,
+   "stackX": 191.75,
+   "stackY": 13.88,
+   "file": "21.png",
+   "box": [
+    14,
+    14
+   ]
+  },
+  {
+   "padWidth": 648.0,
+   "padSouthX": 231.75,
+   "padSouthY": 273.38,
+   "stackX": 219.75,
+   "stackY": 31.88,
+   "file": "22.png",
+   "box": [
+    14,
+    13
+   ]
+  },
+  {
+   "padWidth": 600.0,
+   "padSouthX": 268.75,
+   "padSouthY": 274.38,
+   "stackX": 232.75,
+   "stackY": 44.88,
+   "file": "23.png",
+   "box": [
+    14,
+    11
+   ]
+  }
+ ]
+}

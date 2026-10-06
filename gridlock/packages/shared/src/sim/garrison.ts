@@ -2,6 +2,8 @@ import { buildingRect, buildingTilesOf, isTurnedBuilding, rectWorld } from "../b
 import {
   bayLoadOf,
   catalog,
+  crewGunOf,
+  GUN_CREW_TYPE,
   fieldSpan,
   GARRISON_STRUCTURAL_CALIBER,
   garrisonCandidate,
@@ -20,7 +22,17 @@ import {
 import { sightTilesForEntity } from "./elevation.js";
 import { takeDamage } from "./crits.js";
 import { nextRand } from "./rng.js";
-import { adjacentToBuilding, allies, inBounds, nearestWalkable, tileCenter, walkable, worldToTile } from "./geo.js";
+import {
+  adjacentToBuilding,
+  allies,
+  destroyEntity,
+  inBounds,
+  makeEntity,
+  nearestWalkable,
+  tileCenter,
+  walkable,
+  worldToTile,
+} from "./geo.js";
 import { atRamp, deckGunners, isTankDeck, rampExitTile, rampLandings, rampPoint, tubPoint } from "./lst.js";
 import { astar, setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
@@ -209,7 +221,7 @@ function deckVehicleBusy(unit: Entity): string | null {
 
 export function canGarrison(state: MatchState, unit: Entity, house: Entity): string | null {
   if (unit.kind !== "unit" || unit.wreck) return "Only infantry can garrison.";
-  if (!isGarrisonable(house.type) || house.hp <= 0 || house.wreck) return "Cannot enter that.";
+  if (!isGarrisonable(house.type) || house.hp <= 0 || house.wreck || house.ruined) return "Cannot enter that.";
   if (!isInfantryType(unit.type) && !garrisonCandidate(house.type, unit.type)) {
     return isTankDeck(house) ? `The ${catalog(unit.type).name} cannot board.` : "Only infantry can garrison.";
   }
@@ -354,6 +366,24 @@ export function enterGarrison(state: MatchState, unit: Entity, house: Entity): b
   }
   scaleGarrisonHp(unit, house);
   return true;
+}
+
+/**
+ * An emplaced gun comes with its crew: every empty place at it gets a rifleman of
+ * `ownerId` (the gun's owner by default). Later losses are made good by hand, like any garrison.
+ */
+export function manGun(state: MatchState, gun: Entity, ownerId: string = gun.ownerId): Entity[] {
+  const crew: Entity[] = [];
+  if (!crewGunOf(gun.type) || gun.hp <= 0) return crew;
+  while (garrisonSpace(state, gun) > 0) {
+    const u = makeEntity(state, GUN_CREW_TYPE, ownerId, gun.x, gun.y, { facing: gun.facing });
+    if (!enterGarrison(state, u, gun)) {
+      destroyEntity(state, u);
+      break;
+    }
+    crew.push(u);
+  }
+  return crew;
 }
 
 /**

@@ -137,12 +137,18 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
       { x: 294, y: 200, r: 4, color: "#ffe08a", period: 2200, phase: 0.5, mode: "blink" },
     ],
   },
+  // Spots from tools/sprites/render_armory.py (armory.json): the window bands, the open door, the stack lamp.
   armory: {
     lights: [
-      { x: 148, y: 175, r: 14, color: "#ffc44a", period: 800, phase: 0.15, mode: "pulse" },
-      { x: 187, y: 30, r: 5, color: "#ffe08a", period: 1100, phase: 0.0, mode: "blink" },
+      { x: 442, y: 203, r: 9, color: "#ffc44a", period: 2200, phase: 0.0, mode: "pulse" },
+      { x: 409, y: 220, r: 9, color: "#ffc44a", period: 2200, phase: 0.12, mode: "pulse" },
+      { x: 376, y: 236, r: 9, color: "#ffc44a", period: 2200, phase: 0.24, mode: "pulse" },
+      { x: 188, y: 194, r: 9, color: "#ffc44a", period: 2600, phase: 0.4, mode: "pulse" },
+      { x: 290, y: 245, r: 9, color: "#ffc44a", period: 2600, phase: 0.55, mode: "pulse" },
+      { x: 231, y: 227, r: 18, color: "#ffb04a", period: 800, phase: 0.15, mode: "pulse" },
+      { x: 323, y: 19, r: 5, color: "#ff5a4a", period: 1400, phase: 0.0, mode: "blink" },
     ],
-    sparks: [{ x: 150, y: 110 }],
+    sparks: [{ x: 225, y: 227 }],
   },
 };
 

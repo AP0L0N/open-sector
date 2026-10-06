@@ -483,7 +483,10 @@ export interface Entity {
   holdPosition: boolean;
   /** Commanded overwatch heading. Null when not guarding. */
   guardFacing: number | null;
-  /** Sandbags broken by a tank shell. The entity stays as rubble. */
+  /**
+   * Sandbags broken by a tank shell, a fallen bridge, or a house down to its rubble.
+   * The entity stays: a rubble heap blocks the ground but not sight (`isRubble`).
+   */
   ruined: boolean;
   /**
    * Highest terrain sample under this concrete run, in map height units.
@@ -503,8 +506,10 @@ export interface Entity {
   work: number;
   /** Shift-queued orders, run one after another once the current order ends. Cleared by any unqueued order. */
   orderQueue?: QueuedOrder[];
-  /** Engineer wall pieces still to lay after the current build order. Cleared by any new order. */
+  /** Engineer wall pieces, or bridge bricks, still to lay after the current build order. Cleared by any new order. */
   fieldQueue?: { x: number; y: number; facing: number }[];
+  /** Ticks an engineer laying a bridge has had no way nearer his brick. Not on the wire. */
+  bridgeStuck?: number;
   /** Wounded infantry this medic is walking to or bandaging. */
   tendId?: number;
   /** Seconds of contact toward clearing one crit. */
@@ -840,6 +845,11 @@ export interface MatchState {
   scrapYield: Uint16Array;
   /** Building or wreck id occupying a tile, or 0. */
   occupy: Int32Array;
+  /**
+   * `occupy` for sight rays: the same ids, except a rubble heap, which is too low to
+   * stop a line of sight. Scratch buffer; rebuilt from `occupy` each cover query.
+   */
+  sightOccupy: Int32Array;
   /** 1 = too close to a wreck for a unit to path through. */
   wreckBlock: Uint8Array;
   /**

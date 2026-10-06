@@ -32,6 +32,117 @@ export function drawActionCursor(
   ctx.restore();
 }
 
+export type DeployCursorMode = "deploy" | "pack";
+
+/** Seconds one bracket wave takes to cross the deploy cursor. */
+export const DEPLOY_CURSOR_CYCLE = 1.1;
+const DEPLOY_WAVES = 2;
+/** Half-width (screen px) of the 2:1 footprint at the inner and outer end of a wave's run. */
+const WAVE_NEAR = 8;
+const WAVE_FAR = 20;
+
+/**
+ * The deploy cursor's corner brackets: each wave's half-width and opacity at `t`
+ * seconds. Deploy waves run out from the hull to the Core's footprint, pack waves
+ * run back in; each fades at both ends so the loop has no seam.
+ */
+export function deployCursorWaves(mode: DeployCursorMode, t: number): { reach: number; alpha: number }[] {
+  const out: { reach: number; alpha: number }[] = [];
+  for (let i = 0; i < DEPLOY_WAVES; i++) {
+    const u = (((t / DEPLOY_CURSOR_CYCLE + i / DEPLOY_WAVES) % 1) + 1) % 1;
+    const run = mode === "deploy" ? u : 1 - u;
+    out.push({ reach: WAVE_NEAR + (WAVE_FAR - WAVE_NEAR) * run, alpha: Math.sin(Math.PI * u) });
+  }
+  return out;
+}
+
+/**
+ * Pointer over a unit whose click deploys or packs it (Rig, Core, Titan). A small
+ * hull sits in the middle; corner brackets of its 2:1 footprint stream outward to
+ * deploy and inward to pack.
+ */
+export function drawDeployCursor(
+  ctx: CanvasRenderingContext2D,
+  mode: DeployCursorMode,
+  x: number,
+  y: number,
+  t: number,
+): void {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+  for (const w of deployCursorWaves(mode, t)) {
+    if (w.alpha <= 0.02) continue;
+    ctx.globalAlpha = w.alpha;
+    ctx.beginPath();
+    footprintCorners(ctx, w.reach);
+    ctx.strokeStyle = INK;
+    ctx.lineWidth = 3.4;
+    ctx.stroke();
+    ctx.strokeStyle = AMBER;
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  hull(ctx, mode === "deploy" ? 1 + Math.sin(t * 5.4) * 0.06 : 1 - Math.abs(Math.sin(t * 5.4)) * 0.08);
+  label(ctx, mode === "deploy" ? "DEPLOY" : "PACK", AMBER);
+  ctx.restore();
+}
+
+/** The four corners of a 2:1 diamond of half-width `hw`, each arm a third of a side. */
+function footprintCorners(ctx: CanvasRenderingContext2D, hw: number): void {
+  const pts: [number, number][] = [
+    [0, -hw / 2],
+    [hw, 0],
+    [0, hw / 2],
+    [-hw, 0],
+  ];
+  for (let i = 0; i < 4; i++) {
+    const [vx, vy] = pts[i]!;
+    const [ax, ay] = pts[(i + 3) % 4]!;
+    const [bx, by] = pts[(i + 1) % 4]!;
+    ctx.moveTo(vx + (ax - vx) * 0.32, vy + (ay - vy) * 0.32);
+    ctx.lineTo(vx, vy);
+    ctx.lineTo(vx + (bx - vx) * 0.32, vy + (by - vy) * 0.32);
+  }
+}
+
+/** A small iso box: the hull that unpacks. */
+function hull(ctx: CanvasRenderingContext2D, scale: number): void {
+  const w = 4.6 * scale;
+  const h = 3.4 * scale;
+  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = INK;
+  ctx.beginPath();
+  ctx.moveTo(-w, 0);
+  ctx.lineTo(0, w / 2);
+  ctx.lineTo(0, w / 2 - h);
+  ctx.lineTo(-w, -h);
+  ctx.closePath();
+  ctx.fillStyle = "#a07a2c";
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(w, 0);
+  ctx.lineTo(0, w / 2);
+  ctx.lineTo(0, w / 2 - h);
+  ctx.lineTo(w, -h);
+  ctx.closePath();
+  ctx.fillStyle = "#c8962f";
+  ctx.fill();
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(0, -w / 2 - h);
+  ctx.lineTo(w, -h);
+  ctx.lineTo(0, w / 2 - h);
+  ctx.lineTo(-w, -h);
+  ctx.closePath();
+  ctx.fillStyle = AMBER;
+  ctx.fill();
+  ctx.stroke();
+}
+
 function paint(ctx: CanvasRenderingContext2D, fill: string, width = 2.1): void {
   ctx.fillStyle = fill;
   ctx.strokeStyle = INK;

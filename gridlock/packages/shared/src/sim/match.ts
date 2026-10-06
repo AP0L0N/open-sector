@@ -1,4 +1,5 @@
 import {
+  bridgeBrickLength,
   catalog,
   clampGameSpeed,
   GAME_SPEED_DEFAULT,
@@ -7,12 +8,13 @@ import {
   isAircraftType,
   isInfantryType,
   isTransportType,
+  leavesRubble,
   leavesWreck,
   NEUTRAL_OWNER,
   START_SCRAP,
   TICK_DT,
 } from "../catalog.js";
-import { featureAngle, featureLotSite, getMap, isMapSection, type MapDef } from "../maps.js";
+import { featureAngle, featureLotSite, getMap, isMapBridge, isMapSection, type MapDef } from "../maps.js";
 import { mapUnitHostAt } from "../custom-maps.js";
 import { commanders } from "../lobby.js";
 import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
@@ -23,7 +25,7 @@ import { ejectParatroopers, loseRiders, syncPlaneRiders, tickChutes, tickCrates,
 import { tickDrones } from "./drone.js";
 import { tickJets } from "./jet.js";
 import { tickCapture } from "./capture.js";
-import { detachGarrisoned, enterGarrison, killGarrison, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
+import { detachGarrisoned, enterGarrison, killGarrison, manGun, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
 import { buildPatrolRoute } from "./patrol.js";
 import { setPath } from "./path.js";
 import { seedRng } from "./rng.js";
@@ -40,7 +42,7 @@ import { tickCollision } from "./collision.js";
 import { tickDeploy } from "./deploy.js";
 import { tickSmelters } from "./smelter.js";
 import { tickConstructs } from "./construct.js";
-import { guardBridges, restampBridges, settleBridges, tickBridges } from "./bridge.js";
+import { guardBridges, placeBrick, restampBridges, settleBridges, tickBridges } from "./bridge.js";
 import { tickHeal } from "./heal.js";
 import { tickForceFields, tickLasers } from "./laser.js";
 import { tickSupply } from "./supply.js";
@@ -53,6 +55,7 @@ import { tickTrain } from "./train.js";
 import { aimSpotlightPatrol, hasSpotlight, tickSpotlights } from "./night.js";
 import type { Entity, MatchState, SimPlayer } from "./types.js";
 import { leaveCorpse } from "./remains.js";
+import { keepRubbleStanding, toRubble } from "./rubble.js";
 import { toWreck } from "./wreck.js";
 import { freshClutterHp } from "./clutter.js";
 import { tickPower } from "./power.js";
@@ -79,6 +82,7 @@ export function createMatch(
     heights: grids.heights,
     scrapYield: grids.scrapYield,
     occupy: grids.occupy,
+    sightOccupy: new Int32Array(map.width * map.height),
     wreckBlock: new Uint8Array(map.width * map.height),
     fortBlock: new Uint8Array(map.width * map.height),
     fortOwner: new Map(),
@@ -146,8 +150,19 @@ export function createMatch(
   const sections: Entity[] = [];
   /** The building each map feature raised, by feature index, for the troops a map puts inside. */
   const raised = new Map<number, Entity>();
+  let bricks = 0;
   (map.features ?? []).forEach((f, fi) => {
     const facing = featureAngle({ ...f, facing: f.facing ?? 0 });
+    if (isMapBridge(f.type)) {
+      placeBrick(state, f.type, {
+        x: tileCenter(f.x, map.tileSize),
+        y: tileCenter(f.y, map.tileSize),
+        facing,
+        length: bridgeBrickLength(f.type),
+      });
+      bricks++;
+      return;
+    }
     if (isMapSection(f.type)) {
       const s = makeEntity(state, f.type, NEUTRAL_OWNER, tileCenter(f.x, map.tileSize), tileCenter(f.y, map.tileSize), { facing });
       s.turretFacing = facing;
@@ -178,7 +193,10 @@ export function createMatch(
     raiseWallCrest(state, sections);
     restampForts(state);
   }
+  if (bricks > 0) restampBridges(state);
   standMapUnits(state, map, raised);
+  // A map's gun is crewed like one the player raises: neutral riflemen in every place the map left empty.
+  for (const b of raised.values()) manGun(state, b, NEUTRAL_OWNER);
 
   return state;
 }
@@ -313,6 +331,13 @@ function reapDead(state: MatchState): void {
     if (e.hp > 0) continue;
     if (e.air?.phase === "crash") {
       e.hp = 1;
+      continue;
+    }
+    // A heap of rubble is already as low as it goes.
+    if (keepRubbleStanding(e)) continue;
+    // A house comes down into rubble that still takes the ground. Whoever was inside spills out.
+    if (!e.ruined && leavesRubble(e.type)) {
+      toRubble(state, e);
       continue;
     }
     // The stick bails out before the airframe starts down or becomes a wreck.

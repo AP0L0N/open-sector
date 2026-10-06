@@ -34,3 +34,31 @@ export function ciwsTurretCell(
 export function ciwsMuzzleLift(scale: number): number {
   return CIWS_MUZZLE_Z * CIWS_SOURCE_ZOOM * scale;
 }
+
+/**
+ * One row of a traversing gun sheet over its pad, at world `facing`. The sheet shares the
+ * unturned pad's canvas and anchor (`pad`), and may hold one column per man at the gun.
+ */
+export function drawGunRow(
+  ctx: CanvasRenderingContext2D,
+  sheet: HTMLImageElement,
+  pad: { padWidth: number; padSouthX: number; padSouthY: number },
+  southX: number,
+  southY: number,
+  footprintW: number,
+  facing: number,
+  tileSize: number,
+  col = 0,
+  cols = 1,
+  alpha = 1,
+): void {
+  if (!sheet.complete || sheet.naturalWidth <= 0) return;
+  const row = ciwsTurretCell(sheet.naturalWidth, sheet.naturalHeight, ciwsTurretRow(facing, tileSize));
+  const cw = row.sw / Math.max(1, cols);
+  const c = Math.max(0, Math.min(cols - 1, col));
+  const scale = footprintW / pad.padWidth;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.drawImage(sheet, cw * c, row.sy, cw, row.sh, southX - pad.padSouthX * scale, southY - pad.padSouthY * scale, cw * scale, row.sh * scale);
+  ctx.restore();
+}

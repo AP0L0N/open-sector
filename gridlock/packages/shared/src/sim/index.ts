@@ -4,6 +4,7 @@ export type { RestoredMatch, SaveGame, SaveResult, SaveSeat } from "./save.js";
 export { tickAi, findBuildTile, findSmelterTile } from "./ai.js";
 export { tickCollision, moveWithCollision } from "./collision.js";
 export { toWreck } from "./wreck.js";
+export { toRubble } from "./rubble.js";
 export { shipMountPoint } from "./battleship.js";
 export { fireStats, hullTurnMul, immobilized, moveSpeedMul, rollCrits, rollLamp } from "./crits.js";
 export { commandedStance, effectiveStance, tickStance } from "./stance.js";
@@ -147,5 +148,5 @@ export {
   wallRiseLimit,
   wallRunTops,
 } from "./field.js";
-export { bridgeSpanOf, bridgeTilesOf, planBridgeFor, restampBridges } from "./bridge.js";
+export { bridgeBrickProblemFor, bridgeSpanOf, bridgeTilesOf, restampBridges } from "./bridge.js";
 export type { GateSite, WallTopSample } from "./field.js";

@@ -5,6 +5,7 @@ import {
   isTransportType,
   SUPPLY_CARGO,
   TRUCK_SEATS,
+  canCaptureType,
   isArmoredType,
   isCapturable,
   isCivilianType,
@@ -113,7 +114,7 @@ export function resolveHoverAction(args: {
   if (hit && hit.type === "supply" && canBoardHit(hit, you, args.allied, inf)) return "board";
   if (hit && isTransportType(hit.type) && canBoardPlaneHit(hit, you, ownUnits)) return "board";
 
-  if (hit && isGarrisonable(hit.type) && hit.hp > 0 && !hit.wreck) {
+  if (hit && isGarrisonable(hit.type) && hit.hp > 0 && !hit.wreck && !hit.ruined) {
     const occ = hit.garrison?.ownerId;
     // A player-built garrison (the Bunker) stays its builder's side's, empty or not.
     const builder = !isCivilianType(hit.type) && hit.ownerId ? hit.ownerId : undefined;
@@ -128,7 +129,8 @@ export function resolveHoverAction(args: {
     if (occupying && selectedHere && freeInf.length === 0) return "ungarrison";
   }
 
-  if (hit && inf.length > 0 && canCaptureTarget(hit, you, args.allied)) return "capture";
+  // Only troops that stand a capture offer one: no Engineer, no Cyborg, no Cyborg Commander.
+  if (hit && inf.some((e) => canCaptureType(e.type)) && canCaptureTarget(hit, you, args.allied)) return "capture";
   if (hit && ownUnits.length > 0 && isAttackTarget(hit, you, args.allied)) {
     // A walker-only selection cannot demolish walls. A hostile garrison is still a target.
     if (hit.kind === "building" && ownUnits.every((e) => e.type === "walker")) {

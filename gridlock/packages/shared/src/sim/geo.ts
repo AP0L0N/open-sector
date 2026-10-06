@@ -21,6 +21,7 @@ import {
   isArmoredType,
   isBridge,
   isFieldStructure,
+  isRubble,
   isInfantryType,
   isNavalType,
   isSupplyCarrier,
@@ -355,6 +356,26 @@ export function fillHullCover(
   for (const e of entities) stampArmoredHull(out, width, height, tileSize, e);
 }
 
+/**
+ * `occupy` as a sight ray sees it: the same ids, except a rubble heap, which still
+ * holds the ground but is too low to stop a line of sight. Rebuilt from `occupy`
+ * into `state.sightOccupy` each cover query, so it never goes stale.
+ */
+export function fillSightOccupy(state: MatchState): Int32Array {
+  const n = state.width * state.height;
+  if (state.sightOccupy.length !== n) state.sightOccupy = new Int32Array(n);
+  state.sightOccupy.set(state.occupy);
+  for (const e of state.entities.values()) {
+    if (!isRubble(e)) continue;
+    for (const t of buildingTilesOf(e, state.tileSize)) {
+      if (!inBounds(state, t.x, t.y)) continue;
+      const i = tileIndex(state, t.x, t.y);
+      if (state.sightOccupy[i] === e.id) state.sightOccupy[i] = 0;
+    }
+  }
+  return state.sightOccupy;
+}
+
 /** A sunken hulk keeps the largest boat clear as well as anything that swims or wades. */
 function wreckPathRadius(e: Pick<Entity, "radius" | "type">): number {
   const reach = isNavalType(e.type) ? Math.max(MAX_UNIT_RADIUS, MAX_BOAT_RADIUS) : MAX_UNIT_RADIUS;
@@ -427,12 +448,15 @@ export function tilesBlocked(state: MatchState, tx: number, ty: number, w: numbe
   return tileListBlocked(state, footprint(tx, ty, w, h));
 }
 
-/** tilesBlocked over any set of tiles, such as a turned building's ground. */
-export function tileListBlocked(state: MatchState, tiles: readonly { x: number; y: number }[]): boolean {
+/**
+ * tilesBlocked over any set of tiles, such as a turned building's ground.
+ * With `treesBlock` false a standing tree does not count: the building fells it when it goes up.
+ */
+export function tileListBlocked(state: MatchState, tiles: readonly { x: number; y: number }[], treesBlock = true): boolean {
   for (const t of tiles) {
     if (!inBounds(state, t.x, t.y)) return true;
     if (state.blocked[tileIndex(state, t.x, t.y)] === 1) return true;
-    if (isTree(state, t.x, t.y)) return true;
+    if (treesBlock && isTree(state, t.x, t.y)) return true;
     if (occupant(state, t.x, t.y) !== 0) return true;
   }
   return false;
