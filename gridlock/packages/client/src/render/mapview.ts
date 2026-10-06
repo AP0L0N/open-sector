@@ -98,6 +98,7 @@ import {
   previewYardField,
   fieldPath,
   gateSiteAt,
+  specialLabel,
   specialOf,
   specialReady,
   tileOnMask,
@@ -271,7 +272,6 @@ import { drawSearchlightAt, drawTowerSearchlight, type SearchlightPose } from ".
 import { drawTorpedoBody } from "./torpedo-draw.js";
 import { drawRadarContact, drawRadarOffline, radarContactLit } from "./radar-panel.js";
 import { drawSonarContact, drawWaterMine } from "./sonar-fx.js";
-import { drawDeployIcon } from "./deploy-icon.js";
 import {
   drawTrackKick,
   spawnTrackKickPuffs,
@@ -426,7 +426,7 @@ interface BridgeLook {
   ruined?: boolean;
 }
 import { mapZoomAfterWheel, zoomCamAt } from "./camera-zoom.js";
-import { drawActionCursor } from "./cursor.js";
+import { drawActionCursor, drawDeployCursor, type DeployCursorMode } from "./cursor.js";
 import { strideFrame, strideHop, unitStepping, WALKER_STRIDE_WORLD } from "./stepping.js";
 import { atInfantrySheet, cyborgSheet, gunnerSheet, heldFrame, jumpJetSheet, medicSheet, mortarmanSheet, pyroSheet, rocketerSheet, sniperSheet, trooperSheet } from "./infantry-visual.js";
 import {
@@ -6008,7 +6008,6 @@ export class MapView {
       this.drawCrits(e, stack.x + layoutW / 2, stack.y - 18);
     }
     this.drawDeployProgress(e, bar.x - layoutW / 2, bar.y + 4, layoutW);
-    if (!ghost) this.drawDeployBadge(e, stack.x, stack.y - 36);
     if (!ghost) {
       this.drawCaptureProgress(e, stack.x - layoutW / 2, stack.y + 10, layoutW);
     }
@@ -6437,7 +6436,6 @@ export class MapView {
     this.maybeHp(e, s.x - r, s.y - ez - 10, r * 2);
     this.drawCrits(e, s.x + r, s.y - ez - 26);
     this.drawDeployProgress(e, s.x - r, s.y + 6, r * 2);
-    this.drawDeployBadge(e, s.x, s.y - ez - 42);
     if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
       const prog = e.deployProgress ?? 0;
       const size = this.ts() * (1 + 2 * prog);
@@ -6700,7 +6698,6 @@ export class MapView {
     this.drawScoutBar(e, s.x - size * 0.22, barBase - 6);
     this.drawCrits(e, right + 2, head - 18);
     this.drawDeployProgress(e, s.x - size * 0.45, s.y + 6, size * 0.9);
-    this.drawDeployBadge(e, s.x, head - 36);
     if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
       const prog = e.deployProgress ?? 0;
       const footprint = this.ts() * (1 + 2 * prog);
@@ -7886,17 +7883,6 @@ export class MapView {
     ctx.fillText(`${label} ${Math.round(p * 100)}%`, x + w / 2, y + 16);
   }
 
-  /** The animated badge over a Rig unpacking into a Core, or a Core packing back into a Rig. */
-  private drawDeployBadge(e: EntityView, x: number, y: number): void {
-    if (e.type !== "rig" && e.type !== "core") return;
-    if (e.state !== "deploy" && e.state !== "undeploy") return;
-    drawDeployIcon(this.ctx, x, y, {
-      mode: e.state === "deploy" ? "deploy" : "pack",
-      progress: e.deployProgress ?? 0,
-      nowMs: performance.now(),
-    });
-  }
-
   private drawCaptureProgress(e: EntityView, x: number, y: number, w: number): void {
     const cap = e.capture;
     if (!cap || cap.progress <= 0) return;
@@ -7921,6 +7907,8 @@ export class MapView {
   }
 
   private hoverSpecial = false;
+  /** What a click on the hovered unit's special does: unpack (Rig, Titan) or pack up (Core, braced Titan). */
+  private hoverSpecialMode: DeployCursorMode = "deploy";
   private hoverAction: HoverAction | null = null;
 
   private syncCursor(): void {
@@ -7948,6 +7936,7 @@ export class MapView {
         // An armed order clicks through a unit with a ready special (a Titan's Deploy),
         // so keep that order's crosshair instead of the gold pointer.
         special = !aiming && !!hit && this.canSpecial(hit);
+        if (special) this.hoverSpecialMode = specialLabel(hit!.type, hit!.braced) === "Pack" ? "pack" : "deploy";
         if (!special && !aiming) {
           const you = this.curr.youPlayerId;
           const selected = this.curr.entities.filter(
@@ -7979,35 +7968,7 @@ export class MapView {
 
   private drawSpecialCursor(): void {
     if (!this.hoverSpecial) return;
-    const x = this.mouseX;
-    const y = this.mouseY;
-    const ctx = this.ctx;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-    ctx.fillStyle = "#e8b84a";
-    ctx.strokeStyle = "#140e0a";
-    ctx.lineWidth = 2.2;
-    ctx.beginPath();
-    ctx.moveTo(0.5, 0.5);
-    ctx.lineTo(0.5, 20);
-    ctx.lineTo(6.2, 14.8);
-    ctx.lineTo(10.5, 24);
-    ctx.lineTo(14.2, 22.2);
-    ctx.lineTo(9.4, 13.2);
-    ctx.lineTo(16.5, 13.2);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(17, 4);
-    ctx.lineTo(25, 4);
-    ctx.lineTo(21, 11);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-    ctx.restore();
+    drawDeployCursor(this.ctx, this.hoverSpecialMode, this.mouseX, this.mouseY, this.lastT / 1000);
   }
 
   private drawCrits(e: EntityView, rightX: number, y: number): void {
