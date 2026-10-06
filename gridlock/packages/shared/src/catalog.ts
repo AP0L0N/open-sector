@@ -1736,9 +1736,11 @@ export const FIRE_RADIUS = t(0.35) * TILE_SIZE;
 export const FIRE_RADIUS_MAX = t(0.6) * TILE_SIZE;
 /**
  * The Pyro's trail starts this far past his body, then one patch-width more,
- * so the first flames sit a little further out than he stands. World px.
+ * so the first flames sit a little further out than he stands. Wide enough
+ * that feeding the same trail across a full tank does not walk it back onto him.
+ * World px.
  */
-export const FLAMER_TRAIL_GAP = TILE_SIZE * 0.5;
+export const FLAMER_TRAIL_GAP = TILE_SIZE * 1.5;
 /** Patch centers along the jet. They overlap, so the path is one burn, and they do not merge into a single blob. */
 export const FLAMER_TRAIL_SPACING = FIRE_RADIUS * 1.2;
 /** A glob this close to a burning patch feeds it instead of starting a new one. Share of its radius. */

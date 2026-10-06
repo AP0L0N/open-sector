@@ -82,8 +82,12 @@ export function throwFlame(
   const odist = Math.hypot(odx, ody);
   const jx = odist > 1e-6 ? odx / odist : ux;
   const jy = odist > 1e-6 ? ody / odist : uy;
+  // Once a burst, not every glob: each extra pass feeds the same patches and
+  // would walk the flames back onto him. The globs still splash where they land.
   const opening = (FLAMER.clip - e.clip) % FLAMER_BURST === 0;
-  scorchJet(state, e, fromX, fromY, jx, jy, jetReach(state, e, fromX, fromY, jx, jy, Math.min(range, odist)), slit ? 0 : e.radius, opening);
+  if (opening) {
+    scorchJet(state, e, fromX, fromY, jx, jy, jetReach(state, e, fromX, fromY, jx, jy, Math.min(range, odist)), slit ? 0 : e.radius);
+  }
   const p: Projectile = {
     id: state.nextId++,
     ownerId: e.ownerId,
@@ -146,9 +150,9 @@ function jetReach(state: MatchState, e: Entity, ox: number, oy: number, ux: numb
 }
 
 /**
- * The jet along this line. `cut` is the first glob of a burst: soldiers on the
- * line burn down then, friend or foe, and a cyborg's plating takes one heavy
- * cut. Every glob lays the trail and burns the trees. Armor plate is left alone.
+ * The opening glob of a burst. Soldiers on the line burn down, friend or foe,
+ * and a cyborg's plating takes one heavy cut. The trail is laid and the trees
+ * go up. Armor plate is left alone. Later globs of the burst only splash.
  */
 function scorchJet(
   state: MatchState,
@@ -159,10 +163,9 @@ function scorchJet(
   uy: number,
   len: number,
   nose: number,
-  cut: boolean,
 ): void {
   if (len <= 0) return;
-  if (cut) burnJetSoldiers(state, e, ox, oy, ux, uy, len);
+  burnJetSoldiers(state, e, ox, oy, ux, uy, len);
   burnJetTrees(state, e, ox, oy, ux, uy, len);
   layJetFire(state, e.ownerId, ox, oy, ux, uy, len, nose + FLAMER_TRAIL_GAP + FIRE_RADIUS);
 }

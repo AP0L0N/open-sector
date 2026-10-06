@@ -155,6 +155,7 @@ describe("pyro", () => {
     assert.equal(seen.size, FLAMER.clip, "every glob in the tanks, no more");
     assert.equal(me.clip, 0);
     assert.equal(me.reload, 0);
+    assert.equal(me.hp, me.hpMax, "a full tank of trail stays off him");
     assert.equal(supplyShortOf("pyro", me.ammo, me.mgAmmo, me.clip), true);
     applyCommand(state, "A", { type: "cmd.stop", ids: [me.id] });
     watch(state, me, secs(2), seen);
@@ -163,10 +164,19 @@ describe("pyro", () => {
     const foe = dummy(state, "rifleman", tileCenter(80, ts), tileCenter(y, ts));
     const truck = makeEntity(state, "supply", "A", tileCenter(66, ts), tileCenter(y, ts));
     assert.equal(applyCommand(state, "A", { type: "cmd.supply", ids: [truck.id], targetId: me.id }).ok, true);
-    const glob0 = seen.size;
-    for (let i = 0; i < secs(3); i++) step(state, TICK_DT);
-    watch(state, me, secs(1), seen);
-    assert.ok(seen.size > glob0, "refilled, he goes straight back at the soldier in reach");
+    // He burns the man on the first glob, so the shots are during the fill, not after it.
+    let back = 0;
+    for (let i = 0; i < secs(3); i++) {
+      step(state, TICK_DT);
+      for (const p of state.projectiles) {
+        if (p.fromId === me.id && p.flight === "flame" && !seen.has(p.id)) {
+          seen.set(p.id, state.tick);
+          back++;
+        }
+      }
+    }
+    assert.ok(back > 0, "refilled, he goes straight back at the soldier in reach");
+    assert.equal(foe.hp, 0, "that jet burns him where he stands");
     state.entities.delete(foe.id);
     me.clip = 0;
     applyCommand(state, "A", { type: "cmd.supply", ids: [truck.id], targetId: me.id });
