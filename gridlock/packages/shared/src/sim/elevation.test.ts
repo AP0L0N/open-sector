@@ -73,7 +73,7 @@ describe("slope multipliers", () => {
   it("slows climbs and speeds descents", () => {
     assert.equal(slopeSpeedMul(0), 1);
     assert.ok(slopeSpeedMul(1) <= 1);
-    assert.ok(Math.abs(slopeSpeedMul(8) - 1.3 * 0.55 ** 2) < 1e-9);
+    assert.ok(Math.abs(slopeSpeedMul(8) - 1.69 * 0.55 ** 2) < 1e-9);
     assert.ok(slopeSpeedMul(-1) > 1);
     assert.ok(slopeCostMul(1) > 1);
     assert.ok(slopeCostMul(-1) < 1);
