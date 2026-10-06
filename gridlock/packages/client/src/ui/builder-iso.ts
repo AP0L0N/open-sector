@@ -677,6 +677,8 @@ export function isoDraw(
         run: () => {
           if (i === uo.selected) unitRing(c, s, u.x, u.y, "#e8b84a", z);
           else if (i === uo.hover) unitRing(c, s, u.x, u.y, "rgba(255,244,220,0.7)", z, true);
+          // A faint hint of where the unit is picked, since a ship's hull hides its tile.
+          else unitRing(c, s, u.x, u.y, "rgba(255,244,220,0.22)", z, true);
           if (!drawMapUnit(c, s, u)) loading = true;
         },
       });
