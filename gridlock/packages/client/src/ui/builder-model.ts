@@ -20,6 +20,7 @@ import {
   TILE_SIZE,
   TILE_SUBDIV,
   TILE_WATER,
+  bridgeBrickLength,
   catalog,
   decodeRuns,
   encodeRuns,
@@ -31,7 +32,15 @@ import {
   fieldPath,
   fieldSpan,
   fieldTurn,
+  bridgeBrickProblem,
+  bridgePath,
+  isMapBridge,
+  isMapLine,
   isMapSection,
+  TILE_BLOCKED,
+  TILE_FENCE,
+  TILE_ROCK,
+  TILE_TREE,
   isScrapTile,
   lampBlocked,
   MAP_DEFENCE_TYPES,
@@ -50,6 +59,7 @@ import {
   type MapUnit,
   type TrainType,
   type MapSectionType,
+  type MapBridgeType,
 } from "@gridlock/shared";
 
 /** The map being edited. Grids are plain fine-tile arrays, already playable after `settle`. */
@@ -490,9 +500,9 @@ export function wrapTurn(turn: number): number {
   return ((Math.round(turn) % n) + n) % n;
 }
 
-/** True for the features that turn in 15° steps: bunkers, towers, sandbags, walls. */
+/** True for the features that turn in 15° steps: bunkers, towers, sandbags, walls, bridge bricks. */
 export function turnsFine(type: MapFeatureType): boolean {
-  return (MAP_DEFENCE_TYPES as readonly string[]).includes(type);
+  return (MAP_DEFENCE_TYPES as readonly string[]).includes(type) || isMapBridge(type);
 }
 
 /**
@@ -502,7 +512,7 @@ export function turnsFine(type: MapFeatureType): boolean {
  */
 export function houseAt(type: MapFeatureType, tx: number, ty: number, facing: number, turn?: number): MapFeature {
   const f: MapFeature = { type, x: tx, y: ty, facing: facing & 3 };
-  if (!isMapSection(type)) {
+  if (!isMapLine(type)) {
     const def = catalog(type);
     const snap = (v: number, span: number): number => Math.round((v - span / 2) / TILE_SUBDIV) * TILE_SUBDIV;
     f.x = snap(tx, def.tileW);
@@ -577,6 +587,37 @@ export function sectionLine(type: MapSectionType, points: readonly { x: number; 
     const t = wrapTurn(p.facing / BUILDING_TURN_STEP);
     return { type, x: at(p.x), y: at(p.y), facing: turnQuarter(t), turn: t };
   });
+}
+
+/**
+ * The bridge bricks a line through these world points lays, as map features: end to end
+ * like a wall's sections, every leg turned to the nearest 15°. A lone point is one brick
+ * along `turn`. A brick's turn runs along its deck.
+ */
+export function bridgeLine(type: MapBridgeType, points: readonly { x: number; y: number }[], turn: number): MapFeature[] {
+  const at = (v: number): number => Math.round((v / TILE_SIZE - 0.5) * TILE_SIZE) / TILE_SIZE;
+  return bridgePath(type, points, wrapTurn(turn) * BUILDING_TURN_STEP, BUILDING_TURN_STEP).map((b) => {
+    const t = wrapTurn(b.facing / BUILDING_TURN_STEP);
+    return { type, x: at(b.x), y: at(b.y), facing: turnQuarter(t), turn: t };
+  });
+}
+
+/** Ground a bridge brick may not stand on: rock, woods, fences, and blocked ground. Water and open land take one. */
+function bridgeFooting(s: Sheet, f: MapFeature): string | null {
+  if (!isMapBridge(f.type)) return null;
+  const a = (f.turn ?? f.facing * QUARTER_TURN) * BUILDING_TURN_STEP;
+  const span = { x: (f.x + 0.5) * TILE_SIZE, y: (f.y + 0.5) * TILE_SIZE, facing: a, length: bridgeBrickLength(f.type) };
+  const ground = {
+    width: s.width,
+    height: s.height,
+    tileSize: TILE_SIZE,
+    water: (x: number, y: number) => s.tiles[y * s.width + x] === TILE_WATER,
+    footing: (x: number, y: number) => {
+      const t = s.tiles[y * s.width + x];
+      return t !== TILE_ROCK && t !== TILE_TREE && t !== TILE_FENCE && t !== TILE_BLOCKED;
+    },
+  };
+  return bridgeBrickProblem(ground, f.type, span);
 }
 
 /** Set down every section of a line that fits. Returns how many went down and how many were refused. */
@@ -703,7 +744,7 @@ export function houseProblem(s: Sheet, f: MapFeature, ignore = -1): string | nul
   if (b.x0 < 0 || b.y0 < 0 || b.x1 > s.width || b.y1 > s.height) return "Off the map.";
   if (s.features.some((o, i) => i !== ignore && featuresOverlap(o, f))) return "Overlaps another building.";
   if (featureOnPad(f, s.spawns)) return "Too close to a start position.";
-  return null;
+  return bridgeFooting(s, f);
 }
 
 /**
@@ -712,7 +753,7 @@ export function houseProblem(s: Sheet, f: MapFeature, ignore = -1): string | nul
  */
 export function moveFeature(s: Sheet, index: number, from: MapFeature, dx: number, dy: number): string | null {
   if (!s.features[index]) return "Nothing selected.";
-  const step = isMapSection(from.type) ? 1 : TILE_SUBDIV;
+  const step = isMapLine(from.type) ? 1 : TILE_SUBDIV;
   const next = { ...from, x: from.x + Math.round(dx / step) * step, y: from.y + Math.round(dy / step) * step };
   const problem = houseProblem(s, next, index);
   if (problem) return problem;
@@ -745,7 +786,7 @@ export function defenceCount(s: Sheet): number {
 
 export function featureIndexAt(s: Sheet, tx: number, ty: number): number {
   // A thin or slanted section is hit within half a tile of it.
-  return s.features.findIndex((f) => featureContains(f, tx + 0.5, ty + 0.5, isMapSection(f.type) ? 0.5 : 0));
+  return s.features.findIndex((f) => featureContains(f, tx + 0.5, ty + 0.5, isMapLine(f.type) ? 0.5 : 0));
 }
 
 export function spawnIndexAt(s: Sheet, tx: number, ty: number, reach = 2 * TILE_SUBDIV): number {

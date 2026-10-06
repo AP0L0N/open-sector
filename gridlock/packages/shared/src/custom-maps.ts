@@ -14,6 +14,7 @@ import {
 } from "./catalog.js";
 import { PATROL_POINTS_MAX } from "./sim/patrol.js";
 import {
+  MAP_BRIDGE_TYPES,
   MAP_DEFENCE_TYPES,
   PLAYTEST_MAP_PREFIX,
   SPAWN_PAD_R,
@@ -32,6 +33,8 @@ import {
   getMap,
   isBuiltinMap,
   isLampType,
+  isMapBridge,
+  isMapLine,
   isMapSection,
   isPlaytestMapId,
   normalizeTerrain,
@@ -240,7 +243,7 @@ function cleanText(raw: unknown, max: number): string {
 }
 
 /** Everything a builder map may stand on the field: houses, then the neutral defences. */
-export const MAP_FEATURE_TYPES: readonly MapFeatureType[] = [...CIVILIAN_TYPES, ...MAP_DEFENCE_TYPES];
+export const MAP_FEATURE_TYPES: readonly MapFeatureType[] = [...CIVILIAN_TYPES, ...MAP_DEFENCE_TYPES, ...MAP_BRIDGE_TYPES];
 
 export function newPlaytestMapId(rng: () => number = Math.random): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -262,7 +265,7 @@ export function featureOnPad(f: MapFeature, spawns: readonly { x: number; y: num
 /** True when a lamp post on this fine tile would stand inside a building lot. Sections do not count. */
 export function lampBlocked(features: readonly MapFeature[], x: number, y: number): boolean {
   return features.some((f) => {
-    if (isMapSection(f.type)) return false;
+    if (isMapLine(f.type)) return false;
     const b = featureBox(f);
     return x >= b.x0 && x < b.x1 && y >= b.y0 && y < b.y1;
   });
@@ -351,12 +354,12 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     const turn = o.turn;
     if (!Number.isInteger(facing)) return bad("Bad building.");
     if (turn != null) {
-      // Only defences turn finer than a quarter, in the match's own steps.
-      if (!(MAP_DEFENCE_TYPES as readonly string[]).includes(type)) return bad("Bad building.");
+      // Only defences and bridges turn finer than a quarter, in the match's own steps.
+      if (!(MAP_DEFENCE_TYPES as readonly string[]).includes(type) && !isMapBridge(type)) return bad("Bad building.");
       if (!Number.isInteger(turn) || (turn as number) < 0 || (turn as number) >= BUILDING_FACINGS) return bad("Bad building.");
     }
     // A turned section may sit between tiles, on whole world pixels.
-    const free = turn != null && isMapSection(type);
+    const free = turn != null && isMapLine(type);
     const coord = (v: unknown): number | null => {
       if (typeof v !== "number" || !Number.isFinite(v)) return null;
       if (free) return Math.round(v * TILE_SIZE) / TILE_SIZE;
@@ -372,7 +375,7 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     }
     const b = featureBox(feat);
     // Sandbags and walls sit on any fine tile; lots keep to the cell grid.
-    if (!isMapSection(feat.type) && (feat.x % TILE_SUBDIV !== 0 || feat.y % TILE_SUBDIV !== 0)) {
+    if (!isMapLine(feat.type) && (feat.x % TILE_SUBDIV !== 0 || feat.y % TILE_SUBDIV !== 0)) {
       return bad("Buildings sit on the cell grid.");
     }
     if (b.x0 < 0 || b.y0 < 0 || b.x1 > width || b.y1 > height) return bad("A building is off the map.");

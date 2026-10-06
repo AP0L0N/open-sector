@@ -18,6 +18,7 @@ import {
   houseAt,
   houseProblem,
   laySections,
+  bridgeLine,
   moveFeature,
   QUARTER_TURN,
   sectionLine,
@@ -266,6 +267,34 @@ describe("builder select and defences", () => {
     if (back.ok) assert.deepEqual(back.spec.features, s.features);
     // Laid twice, every section lands on one already there.
     assert.deepEqual(laySections(s, pieces), { laid: 0, refused: pieces.length });
+  });
+
+  it("lays a bridge brick by brick like a wall, across any width of water, and saves it", () => {
+    const s = fresh();
+    s.spawns.push({ id: 1, x: 30, y: 30 }, { id: 2, x: 160, y: 160 });
+    // A river 60 tiles wide.
+    for (let y = 40; y < 100; y++) for (let x = 60; x < 120; x++) s.tiles[y * s.width + x] = TILE_WATER;
+    const pts = [tileWorld(55, 70), tileWorld(125, 71)];
+    const bricks = bridgeLine("bigbridge", pts, 0);
+    assert.ok(bricks.length >= 17, `${bricks.length} bricks`);
+    assert.ok(bricks.every((b) => b.turn === 0), "the leg snaps to due east");
+    assert.deepEqual(laySections(s, bricks), { laid: bricks.length, refused: 0 }, "end to end, no brick blocks the next");
+    assert.equal(defenceCount(s), 0, "bridges are not defences");
+    assert.equal(sheetProblem(s), null);
+    const back = validateCustomMap(sheetToSpec(s));
+    assert.equal(back.ok, true, back.ok ? "" : back.message);
+    if (back.ok) assert.deepEqual(back.spec.features, s.features);
+    assert.deepEqual(laySections(s, bricks), { laid: 0, refused: bricks.length }, "laid twice, every brick overlaps");
+  });
+
+  it("keeps bridge bricks off woods; a lone click is one brick on the wheel's heading", () => {
+    const s = fresh();
+    for (let y = 60; y < 70; y++) for (let x = 60; x < 70; x++) s.tiles[y * s.width + x] = TILE_TREE;
+    const [one] = bridgeLine("bridge", [tileWorld(64, 64)], QUARTER_TURN);
+    assert.equal(one!.turn, QUARTER_TURN);
+    assert.match(houseProblem(s, one!) ?? "", /footing/);
+    const [open] = bridgeLine("bridge", [tileWorld(120, 120)], 0);
+    assert.equal(houseProblem(s, open!), null);
   });
 
   it("lays a lone section on the cursor at the wheel's heading", () => {

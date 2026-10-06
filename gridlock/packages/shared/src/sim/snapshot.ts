@@ -182,7 +182,8 @@ function bridgeSiteView(e: Entity, friendly: boolean): EntityView["bridgeSite"] 
   const working = e.state === "build" && e.work > 0;
   const progress = working ? Math.min(1, e.work / Math.max(1e-6, total)) : undefined;
   const { x, y, facing, length } = job.span;
-  return { bridge: job.type, x, y, facing, span: length, progress };
+  const queue = e.fieldQueue?.length ? e.fieldQueue.map((q) => ({ x: q.x, y: q.y, facing: q.facing })) : undefined;
+  return { bridge: job.type, x, y, facing, span: length, progress, queue };
 }
 
 function structureQueueView(job: StructureJob | null | undefined): StructureQueueView | null {

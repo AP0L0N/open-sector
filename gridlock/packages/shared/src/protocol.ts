@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 102;
+export const PROTOCOL_VERSION = 103;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -249,13 +249,21 @@ export interface EntityView {
   tend?: number;
   /** Sandbags wrecked by a tank shell, or a fallen bridge. The rubble stays. */
   ruined?: boolean;
-  /** Bridge deck length, world px. `facing` runs along the deck. Omitted on everything else. */
+  /** Bridge brick length, world px. `facing` runs along the deck. Omitted on everything else. */
   span?: number;
   /**
-   * Bridge this engineer is on his way to raise or is raising. `progress` is 0–1 once he works.
-   * Only his own side gets it.
+   * Bridge brick this engineer is on his way to lay or is laying. `progress` is 0–1 once he works.
+   * `queue` holds the bricks after it, in order. Only his own side gets it.
    */
-  bridgeSite?: { bridge: BridgeType; x: number; y: number; facing: number; span: number; progress?: number };
+  bridgeSite?: {
+    bridge: BridgeType;
+    x: number;
+    y: number;
+    facing: number;
+    span: number;
+    progress?: number;
+    queue?: { x: number; y: number; facing: number }[];
+  };
   /** A gate: boom lift 0–1, and whether it is locked. */
   gate?: { locked: boolean; open: number };
   /**
@@ -775,10 +783,22 @@ export type ClientMessage =
   /** Selected engineers walk to the tile and raise this base building there. A Smelter on distant scrap. */
   | { type: "cmd.construct"; ids: number[]; building: BuildingType; tx: number; ty: number }
   /**
-   * The nearest selected engineer bridges the water a drag from (x, y) to (x2, y2) crosses.
-   * The sim snaps the deck from shore to shore (`planBridge`).
+   * The nearest selected engineer lays a bridge brick by brick along a line, as a wall is
+   * laid (`bridgePath`): one brick at (x, y) along `facing`, a drag to (x2, y2), or `path`.
    */
-  | { type: "cmd.bridge"; ids: number[]; bridge: BridgeType; x: number; y: number; x2: number; y2: number }
+  | {
+      type: "cmd.bridge";
+      ids: number[];
+      bridge: BridgeType;
+      x: number;
+      y: number;
+      /** Along the deck, world radians. A lone brick only. */
+      facing?: number;
+      x2?: number;
+      y2?: number;
+      /** Corners of the line, start first. When set it replaces (x, y) and the drag end. */
+      path?: { x: number; y: number }[];
+    }
   | { type: "cmd.repair"; ids: number[]; targetId: number; queue?: boolean }
   | { type: "cmd.board"; ids: number[]; truckId: number; queue?: boolean }
   | { type: "cmd.unboard"; ids?: number[]; truckId?: number }

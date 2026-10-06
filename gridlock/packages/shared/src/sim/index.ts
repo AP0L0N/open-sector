@@ -147,5 +147,5 @@ export {
   wallRiseLimit,
   wallRunTops,
 } from "./field.js";
-export { bridgeSpanOf, bridgeTilesOf, planBridgeFor, restampBridges } from "./bridge.js";
+export { bridgeBrickProblemFor, bridgeSpanOf, bridgeTilesOf, restampBridges } from "./bridge.js";
 export type { GateSite, WallTopSample } from "./field.js";

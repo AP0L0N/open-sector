@@ -2201,6 +2201,8 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
   const rack = p.heavy ? PENETRATOR_RACK : rocketRackOf(p.launcher ?? "titan");
   const lob = p.shipBarrel != null ? BATTLESHIP_SHELL : p.big ? ARTILLERY_SHELL : MORTAR_LOB;
   const radius = (rocket ? rack.splashTiles : p.big ? lob.splashTiles : MORTAR_SPLASH_TILES) * state.tileSize;
+  // A barrage laid on a bridge brick counts wherever its blast reaches the deck.
+  if (!inAir) strikeBridge(state, p, p.x, p.y, radius);
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null) continue;
     // A ground burst never reaches a plane; an air burst only catches planes.

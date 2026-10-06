@@ -16,7 +16,7 @@ import {
   type Crit,
 } from "../catalog.js";
 import type { EntityView, MatchSnapshot } from "../protocol.js";
-import { featureLotSite, getMap, isMapSection, TILE_EMPTY, TILE_TREE } from "../maps.js";
+import { featureLotSite, getMap, isMapLine, TILE_EMPTY, TILE_TREE } from "../maps.js";
 import {
   coverSmokeAt,
   fillLosFlags,
@@ -1108,8 +1108,8 @@ export function visionMaskFromSnapshot(
   if (map) {
     let featureId = -1;
     for (const f of map.features ?? []) {
-      // A sandbag or wall section does not stand in the way of sight.
-      if (isMapSection(f.type)) continue;
+      // A sandbag or wall section, or a bridge brick, does not stand in the way of sight.
+      if (isMapLine(f.type)) continue;
       const site = featureLotSite(f);
       if (f.turn != null) {
         const placed = { type: f.type, facing: site.facing, tileX: site.tx, tileY: site.ty, tileW: site.w, tileH: site.h, x: (site.tx + site.w / 2) * tileSize, y: (site.ty + site.h / 2) * tileSize };

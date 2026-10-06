@@ -7,7 +7,11 @@ import {
   HEIGHT_STEP_MAX,
   TILE_SIZE,
   TILE_SUBDIV,
+  bridgeBrickLength,
+  bridgeWidth,
   catalog,
+  isBridge,
+  type BridgeType,
   type CivilianType,
   type TrainType,
 } from "./catalog.js";
@@ -47,7 +51,13 @@ export type MapDefenceType = "bunker" | "tower" | "sandbags" | "wall";
 export const MAP_DEFENCE_TYPES: readonly MapDefenceType[] = ["bunker", "tower", "sandbags", "wall"];
 /** Map defences laid as a line section rather than on a building lot. */
 export type MapSectionType = "sandbags" | "wall";
-export type MapFeatureType = CivilianType | MapDefenceType;
+/**
+ * Bridge bricks a map lays over its water, the same pieces an engineer lays. They stand
+ * for no one and are drawn as a line, like a wall. A brick's `turn` runs along its deck.
+ */
+export type MapBridgeType = BridgeType;
+export const MAP_BRIDGE_TYPES: readonly MapBridgeType[] = ["bridge", "bigbridge"];
+export type MapFeatureType = CivilianType | MapDefenceType | MapBridgeType;
 
 export interface MapFeature {
   type: MapFeatureType;
@@ -112,6 +122,15 @@ export function isMapSection(type: string): type is MapSectionType {
   return type === "sandbags" || type === "wall";
 }
 
+export function isMapBridge(type: string): type is MapBridgeType {
+  return isBridge(type);
+}
+
+/** Features laid along a drawn line on whole world pixels: sandbag and wall sections, bridge bricks. */
+export function isMapLine(type: string): type is MapSectionType | MapBridgeType {
+  return isMapSection(type) || isMapBridge(type);
+}
+
 /** Fine tiles a map section covers along its run, centred on its own tile. */
 export const MAP_SECTION_TILES = 3;
 /** Fine tiles a map section is thick, across its run. */
@@ -161,6 +180,15 @@ export interface FeatureRect {
 }
 
 export function featureRect(f: MapFeature): FeatureRect {
+  if (isMapBridge(f.type)) {
+    // u runs along the deck, v across it.
+    const a = featureAngle(f);
+    const ux = Math.cos(a);
+    const uy = Math.sin(a);
+    const halfU = bridgeBrickLength(f.type) / TILE_SIZE / 2;
+    const halfV = bridgeWidth(f.type) / TILE_SIZE / 2;
+    return { cx: f.x + 0.5, cy: f.y + 0.5, ux, uy, vx: -uy, vy: ux, halfU, halfV };
+  }
   if (isMapSection(f.type)) {
     const a = featureAngle(f);
     const ux = Math.cos(a);
@@ -186,7 +214,7 @@ export function featureContains(f: MapFeature, px: number, py: number, pad = 0):
 
 /** True when two features' ground overlaps. Sections may meet in a corner without counting. */
 export function featureRectsOverlap(a: MapFeature, b: MapFeature): boolean {
-  const slack = isMapSection(a.type) && isMapSection(b.type) ? SECTION_SLACK : 0;
+  const slack = isMapLine(a.type) && isMapLine(b.type) ? SECTION_SLACK : 0;
   const p = featureRect(a);
   const q = featureRect(b);
   const pu = p.halfU - slack;
@@ -212,7 +240,7 @@ export function featureRectsOverlap(a: MapFeature, b: MapFeature): boolean {
 
 /** Fine-tile box of a feature, end exclusive. A lot's origin is its top-left; a section's is its centre. */
 export function featureBox(f: MapFeature): { x0: number; y0: number; x1: number; y1: number } {
-  if (isMapSection(f.type)) {
+  if (isMapLine(f.type)) {
     const r = featureRect(f);
     const ex = r.halfU * Math.abs(r.ux) + r.halfV * Math.abs(r.vx);
     const ey = r.halfU * Math.abs(r.uy) + r.halfV * Math.abs(r.vy);
@@ -229,7 +257,7 @@ export function featureBox(f: MapFeature): { x0: number; y0: number; x1: number;
 
 /** Houses, bunkers, and towers: the features that stand on a levelled lot. */
 export function lotFeatures(features: readonly MapFeature[]): MapFeature[] {
-  return features.filter((f) => !isMapSection(f.type));
+  return features.filter((f) => !isMapLine(f.type));
 }
 
 export const TILE_EMPTY = 0;

@@ -1,16 +1,20 @@
 /**
- * Bridge geometry, shared by the sim and the client's placement ghost.
+ * Bridge geometry, shared by the sim, the Map Builder, and the client's placement ghost.
  *
- * A bridge is a rectangle: centre (x, y), `facing` along the deck (from one
- * shore to the other), `length` along it, and the type's width across it.
- * The player drags roughly from shore to shore; `planBridge` snaps that drag
- * to the water it crosses, with a short footing on dry land at each end.
+ * A bridge is a run of bricks laid end to end along a drawn line, the way a wall
+ * is laid in sections. Each brick is a rectangle: centre (x, y), `facing` along
+ * the deck, `length` along it (`bridgeBrickLength`), and the type's width across it.
+ * A brick stands on water or on open land; how long the crossing is does not matter.
  */
 
-import { BRIDGE_ABUTMENT, BRIDGE_MAX_TILES, bridgeWidth, type BridgeType } from "./catalog.js";
+import { bridgeBrickLength, bridgeWidth, type BridgeType } from "./catalog.js";
 
-/** Farthest an end walks on past the abutment to find dry land across the deck, tiles. */
-const BRIDGE_END_SEEK_TILES = 4;
+/** How far two bricks may cut into each other before they count as overlapping, world px. */
+const BRICK_SLACK = 3;
+/** Sharpest turn a bridge line takes at a corner, radians. Past this the leg folds back and is dropped. */
+export const BRIDGE_TURN_MAX = (3 * Math.PI) / 4;
+/** Most bricks one line lays. */
+export const BRIDGE_BRICKS_MAX = 256;
 
 export interface BridgeSpan {
   x: number;
@@ -21,17 +25,23 @@ export interface BridgeSpan {
   length: number;
 }
 
-/** What `planBridge` needs to know about the ground. */
+/** A brick already standing, or its wreckage. */
+export interface BridgeBrick {
+  type: BridgeType;
+  span: BridgeSpan;
+}
+
+/** What `bridgeBrickProblem` needs to know about the ground. */
 export interface BridgeGround {
   width: number;
   height: number;
   tileSize: number;
   /** Open water (no deck over it yet). */
   water(tx: number, ty: number): boolean;
-  /** Land a bridge end may rest on: not rock, wall, fence, a building, or a standing tree. */
+  /** Land a brick may rest on: not rock, wall, fence, a building, or a standing tree. */
   footing(tx: number, ty: number): boolean;
-  /** A tile already under some other bridge or its wreckage. */
-  bridged?(tx: number, ty: number): boolean;
+  /** Bricks already standing, and wreckage. A new brick may meet them end to end, not overlap. */
+  bricks?: readonly BridgeBrick[];
 }
 
 export function bridgeAxes(facing: number): { ux: number; uy: number; vx: number; vy: number } {
@@ -97,81 +107,139 @@ export function bridgeTiles(
   return out;
 }
 
-export type BridgePlan = { ok: true; span: BridgeSpan } | { ok: false; reason: string; span?: BridgeSpan };
+/** True when two bricks overlap by more than a touch. Bricks of one line meet end to end and at mitred corners. */
+export function bricksConflict(a: BridgeSpan, aWidth: number, b: BridgeSpan, bWidth: number, slack = BRICK_SLACK): boolean {
+  const pa = bridgeAxes(a.facing);
+  const pb = bridgeAxes(b.facing);
+  const half = (s: BridgeSpan, w: number, ax: { ux: number; uy: number; vx: number; vy: number }, nx: number, ny: number): number =>
+    Math.abs(ax.ux * nx + ax.uy * ny) * (s.length / 2) + Math.abs(ax.vx * nx + ax.vy * ny) * (w / 2);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  for (const [nx, ny] of [
+    [pa.ux, pa.uy],
+    [pa.vx, pa.vy],
+    [pb.ux, pb.uy],
+    [pb.vx, pb.vy],
+  ] as const) {
+    const overlap = half(a, aWidth, pa, nx, ny) + half(b, bWidth, pb, nx, ny) - Math.abs(dx * nx + dy * ny);
+    if (overlap <= slack) return false;
+  }
+  return true;
+}
+
+/** Deflection between two unit directions: 0 straight on, π folded back. */
+function turnBetween(ax: number, ay: number, bx: number, by: number): number {
+  return Math.acos(Math.max(-1, Math.min(1, ax * bx + ay * by)));
+}
 
 /**
- * Snap a drag from (x1, y1) to (x2, y2) to a bridge. The first and last water
- * met along the drag set the crossing; the deck goes on to the land past each
- * shore (searching a little beyond the drag ends, so a drag that stops short in
- * the shallows still lands) and rests `BRIDGE_ABUTMENT` on it. `span` comes back
- * with a refusal when there is a deck to show in red.
+ * Bricks along a polyline, laid end to end from the first point, as `fieldPath` lays
+ * a wall. Every leg is laid in whole bricks from its start, so it ends a little short
+ * of or past its point, and the next leg starts there, pushed into the mitre of the
+ * corner by half the deck width. A single point is one brick along `facing`. A leg
+ * shorter than half a brick, or one folded back past BRIDGE_TURN_MAX, is skipped.
+ * With `snap` (radians), every leg turns to the nearest multiple of it, measured from
+ * where the last leg really ended, as the Map Builder lays a wall line.
  */
-export function planBridge(ground: BridgeGround, type: BridgeType, x1: number, y1: number, x2: number, y2: number): BridgePlan {
-  const ts = ground.tileSize;
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const len = Math.hypot(dx, dy);
-  if (!Number.isFinite(len) || len < ts) return { ok: false, reason: "Drag across the water." };
-  const ux = dx / len;
-  const uy = dy / len;
-  const step = ts / 2;
-  const tileOf = (s: number): { x: number; y: number } => ({
-    x: Math.floor((x1 + ux * s) / ts),
-    y: Math.floor((y1 + uy * s) / ts),
-  });
-  const inside = (t: { x: number; y: number }): boolean => t.x >= 0 && t.y >= 0 && t.x < ground.width && t.y < ground.height;
-  const wet = (s: number): boolean => {
-    const t = tileOf(s);
-    return inside(t) && ground.water(t.x, t.y);
-  };
-  let first = -1;
-  let last = -1;
-  for (let s = 0; s <= len; s += step) {
-    if (!wet(s)) continue;
-    if (first < 0) first = s;
-    last = s;
-  }
-  if (first < 0) return { ok: false, reason: "A bridge has to cross water." };
-  const maxLen = BRIDGE_MAX_TILES * ts;
-  // Walk out of the water at each end to the first dry sample.
-  let shoreA = first;
-  while (shoreA > -maxLen && wet(shoreA - step)) shoreA -= step;
-  let shoreB = last;
-  while (shoreB < len + maxLen && wet(shoreB + step)) shoreB += step;
+export function bridgePath(
+  type: BridgeType,
+  points: readonly { x: number; y: number }[],
+  facing = 0,
+  snap?: number,
+): BridgeSpan[] {
+  const first = points[0];
+  if (!first) return [];
+  const length = bridgeBrickLength(type);
   const width = bridgeWidth(type);
-  const w = Math.max(width, ts);
-  const { vx, vy } = bridgeAxes(Math.atan2(uy, ux));
-  // An end rests on land across the whole deck width. On a curved shore it walks on a little.
-  const endDry = (s: number): boolean | null => {
-    for (const k of [-0.5, 0, 0.5]) {
-      const t = {
-        x: Math.floor((x1 + ux * s + vx * w * k * 0.9) / ts),
-        y: Math.floor((y1 + uy * s + vy * w * k * 0.9) / ts),
-      };
-      if (!inside(t)) return null;
-      if (ground.water(t.x, t.y)) return false;
+  const out: BridgeSpan[] = [];
+  let sx = first.x;
+  let sy = first.y;
+  let ux: number | null = null;
+  let uy = 0;
+  for (let i = 1; i < points.length && out.length < BRIDGE_BRICKS_MAX; i++) {
+    let target = points[i]!;
+    let dist = Math.hypot(target.x - sx, target.y - sy);
+    if (dist < length * 0.5) continue;
+    let vx = (target.x - sx) / dist;
+    let vy = (target.y - sy) / dist;
+    if (snap) {
+      const a = Math.round(Math.atan2(vy, vx) / snap) * snap;
+      vx = Math.cos(a);
+      vy = Math.sin(a);
+      target = { x: sx + vx * dist, y: sy + vy * dist };
     }
-    return true;
-  };
-  const reach = BRIDGE_END_SEEK_TILES * ts;
-  let sA = shoreA - step / 2 - BRIDGE_ABUTMENT;
-  let sB = shoreB + step / 2 + BRIDGE_ABUTMENT;
-  let endA = endDry(sA + step / 2);
-  for (let n = 0; endA === false && n * step < reach; n++) endA = endDry((sA -= step) + step / 2);
-  let endB = endDry(sB - step / 2);
-  for (let n = 0; endB === false && n * step < reach; n++) endB = endDry((sB += step) - step / 2);
-  const length = sB - sA;
-  const mid = (sA + sB) / 2;
-  const span: BridgeSpan = { x: x1 + ux * mid, y: y1 + uy * mid, facing: Math.atan2(uy, ux), length };
-  if (endA === null || endB === null) return { ok: false, reason: "Too close to the edge.", span };
-  if (!endA || !endB) return { ok: false, reason: "Both ends need dry land.", span };
-  if (length > maxLen) return { ok: false, reason: "Too long for a bridge.", span };
-  for (const t of bridgeTiles(ground, span, width)) {
-    if (ground.bridged?.(t.x, t.y)) return { ok: false, reason: "Another bridge is in the way.", span };
-    if (ground.water(t.x, t.y)) continue;
-    if (!ground.footing(t.x, t.y)) return { ok: false, reason: "No footing for the bridge there.", span };
+    let x0 = sx;
+    let y0 = sy;
+    if (ux != null) {
+      const turn = turnBetween(ux, uy, vx, vy);
+      if (turn > BRIDGE_TURN_MAX) continue;
+      const off = (width / 2) * Math.tan(turn / 2);
+      x0 = sx + off * (vx - ux);
+      y0 = sy + off * (vy - uy);
+      dist = (target.x - x0) * vx + (target.y - y0) * vy;
+      if (dist < length * 0.5) continue;
+    }
+    const n = Math.min(BRIDGE_BRICKS_MAX - out.length, Math.max(1, Math.round(dist / length)));
+    const along = Math.atan2(vy, vx);
+    for (let k = 0; k < n; k++) {
+      const s = length * (k + 0.5);
+      out.push({ x: x0 + vx * s, y: y0 + vy * s, facing: along, length });
+    }
+    sx = x0 + vx * length * n;
+    sy = y0 + vy * length * n;
+    ux = vx;
+    uy = vy;
   }
-  return { ok: true, span };
+  if (out.length === 0) return [{ x: first.x, y: first.y, facing, length }];
+  return out;
+}
+
+/**
+ * Why a brick of `type` cannot stand on `span`, or null. Every tile under it is
+ * water or open land, and it does not overlap another brick. `laid` are bricks of
+ * the same line set down before it, which count as standing.
+ */
+export function bridgeBrickProblem(
+  ground: BridgeGround,
+  type: BridgeType,
+  span: BridgeSpan,
+  laid: readonly BridgeBrick[] = [],
+): string | null {
+  const width = bridgeWidth(type);
+  const { ux, uy, vx, vy } = bridgeAxes(span.facing);
+  const ts = ground.tileSize;
+  for (const a of [-0.5, 0.5]) {
+    for (const k of [-0.5, 0.5]) {
+      const cx = span.x + ux * a * span.length + vx * k * width;
+      const cy = span.y + uy * a * span.length + vy * k * width;
+      if (cx < 0 || cy < 0 || cx >= ground.width * ts || cy >= ground.height * ts) return "Off the map.";
+    }
+  }
+  const tiles = bridgeTiles(ground, span, width);
+  if (tiles.length === 0) return "Off the map.";
+  for (const t of tiles) {
+    if (ground.water(t.x, t.y)) continue;
+    if (!ground.footing(t.x, t.y)) return "No footing for the bridge there.";
+  }
+  for (const b of [...(ground.bricks ?? []), ...laid]) {
+    if (bricksConflict(span, width, b.span, bridgeWidth(b.type))) return "Another bridge is in the way.";
+  }
+  return null;
+}
+
+/** Each brick a line would lay, with the reason it cannot stand, or null. Earlier good bricks count for later ones. */
+export function planBridgeLine(
+  ground: BridgeGround,
+  type: BridgeType,
+  points: readonly { x: number; y: number }[],
+  facing = 0,
+): { span: BridgeSpan; problem: string | null }[] {
+  const laid: BridgeBrick[] = [];
+  return bridgePath(type, points, facing).map((span) => {
+    const problem = bridgeBrickProblem(ground, type, span, laid);
+    if (!problem) laid.push({ type, span });
+    return { span, problem };
+  });
 }
 
 /** First share 0–1 along the segment where it meets the deck rectangle, or null. 0 when it starts on it. */

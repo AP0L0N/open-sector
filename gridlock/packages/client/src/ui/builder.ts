@@ -36,6 +36,13 @@ import {
   getMap,
   isCivilianType,
   isMapSection,
+  isMapBridge,
+  MAP_BRIDGE_TYPES,
+  bridgeBrickLength,
+  bridgePath,
+  bridgeWidth,
+  worldToIso,
+  type BridgeType,
   listMaps,
   loadCustomMap,
   newCustomMapId,
@@ -61,6 +68,7 @@ import scrapUrl from "../assets/terrain/scrap-heap-1.png";
 import waterUrl from "../assets/terrain/water.png";
 import treeUrl from "../assets/terrain/tree-oak-1.png";
 import rockUrl from "../assets/terrain/ground-rock.png";
+import { drawBrick, layoutBridges } from "../render/bridge.js";
 import { el } from "./dom.js";
 import { drawMapPreview } from "./map-preview.js";
 import * as M from "./builder-model.js";
@@ -79,7 +87,7 @@ const UNDO_DEPTH = 40;
 /** Raise / Lower apply one step this often while the button is held. */
 const LIFT_EVERY_MS = 70;
 
-type ToolId = "select" | "raise" | "lower" | "level" | "ground" | "house" | "defence" | "lamp" | "road" | "unit" | "spawn" | "erase";
+type ToolId = "select" | "raise" | "lower" | "level" | "ground" | "house" | "defence" | "lamp" | "road" | "bridge" | "unit" | "spawn" | "erase";
 
 interface GroundKind {
   tile: number;
@@ -114,6 +122,8 @@ interface Tool {
   house: CivilianType;
   defence: MapDefenceType;
   lamp: LampType;
+  /** The bridge the Bridge tool lays, brick by brick along a drawn line. */
+  bridge: BridgeType;
   /** The neutral unit the Units tool stands on the map. */
   unit: TrainType;
   /** A house's door side, a quarter at a time. */
@@ -167,6 +177,7 @@ const tool: Tool = {
   house: "cottage",
   defence: "bunker",
   lamp: "streetlamp",
+  bridge: "bridge",
   unit: "rifleman",
   facing: 1,
   turn: M.QUARTER_TURN,
@@ -432,6 +443,8 @@ function flushGround(): void {
 function featureColors(type: MapFeatureType): [string, string] {
   if (isCivilianType(type)) return ["#c9a27a", "#2a1810"];
   if (type === "sandbags") return ["#b9a06a", "#3a2c14"];
+  if (type === "bridge") return ["#8b6b45", "#2f2114"];
+  if (type === "bigbridge") return ["#a8a49a", "#3a3833"];
   return ["#9c9a90", "#1d1c18"];
 }
 
@@ -459,14 +472,14 @@ function placingType(): MapFeatureType | null {
   return null;
 }
 
-/** A defence or the Road is armed: the wheel turns it. */
+/** A defence, the Road, or a Bridge is armed: the wheel turns it. */
 function turningTool(): boolean {
-  return tool.id === "defence" || tool.id === "road" || tool.id === "unit";
+  return tool.id === "defence" || tool.id === "road" || tool.id === "bridge" || tool.id === "unit";
 }
 
-/** The armed tool draws a line: sandbags, a wall, or a road. */
+/** The armed tool draws a line: sandbags, a wall, a road, or a bridge. */
 function lineTool(): boolean {
-  return tool.id === "road" || (tool.id === "defence" && isMapSection(tool.defence));
+  return tool.id === "road" || tool.id === "bridge" || (tool.id === "defence" && isMapSection(tool.defence));
 }
 
 function linePending(): boolean {
@@ -489,12 +502,14 @@ function houseGhost(): MapFeature | null {
   return M.houseAt(type, hover.x, hover.y, tool.facing, tool.turn);
 }
 
-/** The sections the drawn line would lay, its live leg running to the cursor. */
+/** The sections or bridge bricks the drawn line would lay, its live leg running to the cursor. */
 function lineGhost(): MapFeature[] {
-  if (tool.id !== "defence" || !isMapSection(tool.defence)) return [];
+  const bridge = tool.id === "bridge";
+  if (!bridge && (tool.id !== "defence" || !isMapSection(tool.defence))) return [];
   if (!hover.inside && line.points.length === 0 && !line.press) return [];
   const pts = fieldPointsWithCursor(line.points, line.press, M.tileWorld(hover.x, hover.y));
-  return M.sectionLine(tool.defence, pts, tool.turn);
+  if (bridge) return M.bridgeLine(tool.bridge, pts, tool.turn);
+  return M.sectionLine(tool.defence as "sandbags" | "wall", pts, tool.turn);
 }
 
 /** The centreline the drawn road would lay, its live leg running to the cursor. */
@@ -571,6 +586,19 @@ function drawStage(): void {
     c.stroke();
     const bw = r.halfU * 2 * z;
     const bh = r.halfV * 2 * z;
+    if (isMapBridge(f.type)) {
+      // Planks or slab joints across the deck, so the two read apart.
+      c.strokeStyle = edge;
+      c.lineWidth = 0.75;
+      const gap = f.type === "bridge" ? 0.5 : 1;
+      c.beginPath();
+      for (let a = -1 + gap / r.halfU; a < 1; a += gap / r.halfU) {
+        c.moveTo(...corner(a, -1));
+        c.lineTo(...corner(a, 1));
+      }
+      c.stroke();
+      return;
+    }
     // Door or front side.
     const mx = sx(r.cx);
     const my = sy(r.cy);
@@ -844,6 +872,9 @@ function drawTurnHint(c: CanvasRenderingContext2D, ax: number, ay: number, secti
     const cells = Math.round((len / TILE_SIZE / TILE_SUBDIV) * 2) / 2;
     if (line.points.length > 0) lines.push(`${cells} cells of road · Enter lays it · click adds a leg · right-click takes one back`);
     else lines.push("Click to start a road · Enter lays one stub");
+  } else if (tool.id === "bridge") {
+    if (line.points.length > 0) lines.push(`${sections} brick${sections === 1 ? "" : "s"} · Enter lays the bridge · click adds a leg · right-click takes one back`);
+    else lines.push("Click on one shore to start · Enter lays one brick");
   } else if (line.points.length > 0) lines.push(`${sections} section${sections === 1 ? "" : "s"} · Enter places · click adds a leg · right-click takes one back`);
   else if (lineTool()) lines.push("Click to start a line · Enter places one section");
   c.font = "11px 'Share Tech Mono', monospace";
@@ -1278,10 +1309,30 @@ function commitRoad(): void {
   finishStroke();
 }
 
+/** Lay the drawn bridge brick by brick. Bricks on rock, woods, or another feature are left out. */
+function commitBridge(): void {
+  const s = sheet;
+  if (!s || line.points.length === 0) return;
+  const pieces = M.bridgeLine(tool.bridge, line.points, tool.turn);
+  dropLine();
+  pushUndo();
+  const { laid, refused } = M.laySections(s, pieces);
+  if (laid === 0) {
+    undo.pop();
+    say(refused > 0 ? "Nothing laid: every brick is blocked." : "", refused > 0 ? "bad" : "");
+    queueDraw();
+    return;
+  }
+  const name = catalog(tool.bridge).name;
+  say(refused > 0 ? `${name}: ${laid} brick(s) laid, ${refused} blocked.` : `${name}: ${laid} brick(s) laid.`);
+  finishStroke();
+}
+
 /** Lay the drawn sandbag or wall line, the way Enter confirms one in a match. */
 function commitLine(): void {
   const s = sheet;
   if (tool.id === "road") return commitRoad();
+  if (tool.id === "bridge") return commitBridge();
   if (!s || !lineTool() || !isMapSection(tool.defence) || line.points.length === 0) return;
   const pieces = M.sectionLine(tool.defence, line.points, tool.turn);
   dropLine();
@@ -1520,7 +1571,12 @@ function onUp(): void {
     const press = line.press;
     line.press = null;
     if (!press || !lineTool()) return;
-    const len = tool.id === "road" ? TILE_SIZE * 2 : ((isMapSection(tool.defence) && fieldSpan(tool.defence)?.length) || 24);
+    const len =
+      tool.id === "road"
+        ? TILE_SIZE * 2
+        : tool.id === "bridge"
+          ? bridgeBrickLength(tool.bridge)
+          : (isMapSection(tool.defence) && fieldSpan(tool.defence)?.length) || 24;
     line.points = pinFieldPoint(line.points, press, M.tileWorld(hover.x, hover.y), len * 0.5);
     queueDraw();
   } else if (d.kind === "pan") {
@@ -1611,7 +1667,9 @@ function paintChecks(): void {
   const far = M.startsFarFromScrap(s);
   if (far.length > 0) add("warn", `Starts with no scrap in yard range: ${far.join(", ")} (an engineer would have to walk out)`);
   const defences = M.defenceCount(s);
-  add("ok", `Buildings: ${s.features.length - defences} · Neutral defences: ${defences} · Lamps: ${M.liveLamps(s).length}`);
+  const bricks = s.features.filter((f) => isMapBridge(f.type)).length;
+  const bridged = bricks > 0 ? ` · Bridge bricks: ${bricks}` : "";
+  add("ok", `Buildings: ${s.features.length - defences - bricks} · Neutral defences: ${defences}${bridged} · Lamps: ${M.liveLamps(s).length}`);
   const units = M.liveUnits(s);
   const inside = units.filter((u) => u.inside).length;
   if (units.length > 0) add("ok", `Neutral units: ${units.length}${inside ? ` (${inside} garrisoned)` : ""}`);
@@ -1915,6 +1973,60 @@ function paintSelection(): void {
   box.append(row);
 }
 
+/** A short bridge over a strip of water, drawn the way the battlefield draws one. */
+function bridgeThumb(type: BridgeType): HTMLCanvasElement {
+  const cv = el("canvas");
+  cv.width = 64;
+  cv.height = 48;
+  const g = cv.getContext("2d");
+  if (!g) return cv;
+  const ts = TILE_SIZE;
+  const k = 0.5;
+  const wet = (x: number): boolean => Math.abs(x) < 26;
+  const ground = (x: number): number => (wet(x) ? 0 : 2);
+  const project = (wx: number, wy: number, h: number): { x: number; y: number } => {
+    const p = worldToIso(wx, wy, ts);
+    return { x: 32 + p.x * k, y: 30 + p.y * k - h * 4 * k };
+  };
+  // Water, and a bank either side.
+  const quad = (x0: number, x1: number, h: number, fill: string): void => {
+    const pts = [project(x0, -30, h), project(x1, -30, h), project(x1, 30, h), project(x0, 30, h)];
+    g.beginPath();
+    pts.forEach((p, i) => (i === 0 ? g.moveTo(p.x, p.y) : g.lineTo(p.x, p.y)));
+    g.closePath();
+    g.fillStyle = fill;
+    g.fill();
+  };
+  quad(-26, 26, 0, "#2f5560");
+  quad(-60, -26, 2, "#5b6b3a");
+  quad(26, 60, 2, "#5b6b3a");
+  const width = bridgeWidth(type);
+  const len = bridgeBrickLength(type);
+  const n = Math.max(3, Math.ceil(76 / len));
+  const spans = bridgePath(type, [
+    { x: (-len * n) / 2, y: 0 },
+    { x: (len * n) / 2, y: 0 },
+  ]);
+  const bricks = spans.map((span) => ({ type, span, width }));
+  const layout = layoutBridges(bricks, (x) => ground(x), (x) => wet(x));
+  g.save();
+  g.translate(0, 0);
+  bricks.forEach((b, i) => {
+    drawBrick(g, {
+      ...layout[i]!,
+      type,
+      span: b.span,
+      width,
+      project,
+      ground: (x) => ground(x),
+      wet: (x) => wet(x),
+      seed: i + 1,
+    });
+  });
+  g.restore();
+  return cv;
+}
+
 function defenceThumb(type: MapDefenceType, turn: number): HTMLElement {
   if (!isMapSection(type)) return houseThumb(type, M.wrapTurn(turn) * BUILDING_TURN_STEP);
   // Sections are drawn by the battlefield, not from a sheet: a plain mark stands in.
@@ -2116,6 +2228,32 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       el("p", {
         class: "bld-hint",
         text: "A road goes down like a wall: click its start, click each corner, Enter lays it, right-click takes a corner back. Esc cancels and picks up Select. Scroll turns a lone stub 15° (Ctrl+scroll zooms); [ and ] change the width.",
+      }),
+    ),
+  );
+
+  const bridges = el("div", { class: "bld-palette" });
+  for (const type of MAP_BRIDGE_TYPES) {
+    const def = catalog(type);
+    const wide = type === "bigbridge" ? "two tanks wide" : "one tank wide";
+    bridges.append(
+      asset(def.name, wide, tool.id === "bridge" && tool.bridge === type, bridgeThumb(type), def.blurb ?? def.name, () =>
+        setTool(ctx, { id: "bridge", bridge: type }),
+      ),
+    );
+  }
+  const bridgeFaceRow = el("div", { class: "bld-row" });
+  const bridgeTurnLabel = el("span", { class: "bld-val", text: `Faces ${turnDegrees(tool.turn)}°` });
+  if (stage && tool.id === "bridge") stage.turnLabel = bridgeTurnLabel;
+  bridgeFaceRow.append(turnBy(-1, "⟲ 15°", "Turn 15° counter-clockwise"), bridgeTurnLabel, turnBy(1, "15° ⟳", "Turn 15° clockwise"));
+  panel.append(
+    section(
+      "Bridges",
+      bridges,
+      bridgeFaceRow,
+      el("p", {
+        class: "bld-hint",
+        text: "Laid brick by brick, like a wall: click on one shore, click each corner, Enter lays it, right-click takes a corner back. Any width of water; the bricks at each end arch down onto the bank. Bricks stand on water or open ground, not on rock or woods. They belong to no one: anyone crosses, only a force-attack hurts one, and a brick shot down drops into the water while the rest stands.",
       }),
     ),
   );
