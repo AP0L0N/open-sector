@@ -157,6 +157,12 @@ let previewTimer: ReturnType<typeof setTimeout> | null = null;
 let previewStale = true;
 let keysBound = false;
 let ctxRef: Ctx | null = null;
+/** Screen px/s the arrow keys pan the stage, the same on-screen speed as a match. */
+const KEY_PAN_SPEED = 546;
+/** Arrow keys held down. */
+const panKeys = new Set<string>();
+let panRaf = 0;
+let panLastT = 0;
 
 // --- storage -----------------------------------------------------------------
 
@@ -1561,14 +1567,48 @@ function header(ctx: Ctx): HTMLElement {
   return head;
 }
 
+/** Slide the stage while arrow keys are held; stops itself when they are released. */
+function panFrame(t: number): void {
+  const dt = panLastT ? Math.min(0.05, (t - panLastT) / 1000) : 0;
+  panLastT = t;
+  if (!stage || !sheet || newOpen || ctxRef?.screen !== "builder") panKeys.clear();
+  if (panKeys.size === 0) {
+    panRaf = 0;
+    panLastT = 0;
+    return;
+  }
+  let vx = 0;
+  let vy = 0;
+  if (panKeys.has("ArrowUp")) vy -= 1;
+  if (panKeys.has("ArrowDown")) vy += 1;
+  if (panKeys.has("ArrowLeft")) vx -= 1;
+  if (panKeys.has("ArrowRight")) vx += 1;
+  if (vx || vy) {
+    const step = (KEY_PAN_SPEED * dt) / Math.hypot(vx, vy);
+    // The camera moves toward the arrow, so the map slides the other way.
+    view.px -= vx * step;
+    view.py -= vy * step;
+    queueDraw();
+  }
+  panRaf = requestAnimationFrame(panFrame);
+}
+
 function bindKeys(): void {
   if (keysBound) return;
   keysBound = true;
+  window.addEventListener("keyup", (e) => panKeys.delete(e.key));
+  window.addEventListener("blur", () => panKeys.clear());
   window.addEventListener("keydown", (e) => {
     const ctx = ctxRef;
     if (!stage || !sheet || newOpen || !ctx || ctx.screen !== "builder") return;
     const target = e.target as HTMLElement | null;
     if (target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA")) return;
+    if (e.key.startsWith("Arrow") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      panKeys.add(e.key);
+      if (!panRaf) panRaf = requestAnimationFrame(panFrame);
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
       e.preventDefault();
       if (e.shiftKey) step(redo, undo);
@@ -1630,7 +1670,7 @@ export function renderBuilder(root: HTMLElement, ctx: Ctx): void {
   const screen = el("div", { class: "screen", attrs: { id: "builder-root" } });
   const wrap = el("div", { class: "builder" });
   const canvas = el("canvas");
-  const status = el("div", { class: "bld-status", text: "Wheel zooms · right-drag pans · Ctrl+Z undoes · V selects" });
+  const status = el("div", { class: "bld-status", text: "Wheel zooms · arrows or right-drag pan · Ctrl+Z undoes · V selects" });
   stage = { root: screen, canvas, status, preview: null, msg: el("div"), checks: null, maps: null, sel: null, turnLabel: null };
   wrap.append(header(ctx));
   const tools = toolsPanel(ctx);
