@@ -1,0 +1,18 @@
+{
+  "key": "tobruk",
+  "out": "units/tobruk",
+  "sfx": {
+    "die": {
+      "prompt": "Small concrete fighting pit shattered by a direct hit, a heavy blast, concrete cracking and chunks thudding into the dirt, a dust cloud settling, medium distance outdoors, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Soldiers finishing a small concrete pit in the ground: wet concrete scraped smooth with a trowel, a heavy steel ring hatch dropped into place with a clang, shovels throwing dirt around it, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

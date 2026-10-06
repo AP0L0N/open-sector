@@ -1,0 +1,19 @@
+{
+  "key": "casemate",
+  "out": "units/casemate",
+  "sfx": {
+    "die": {
+      "prompt": "A massive World War 2 concrete coastal bunker breaking apart after heavy bombardment: a deep, earth-shaking blast, thick reinforced concrete cracking and groaning, huge slabs collapsing with a long rumbling crash and steel rebar screeching.",
+      "duration": 6.0,
+      "variants": 1,
+      "influence": 0.6,
+      "lufs": -9
+    },
+    "special": {
+      "prompt": "A heavy armored steel bunker door swung shut with a deep metallic boom and its locking bars thrown with heavy clanks, echoing inside thick concrete, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

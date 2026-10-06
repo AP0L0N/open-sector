@@ -88,6 +88,12 @@
       "variants": 3,
       "influence": 0.6
     },
+    "flak_burst": {
+      "prompt": "World War 2 flak shell bursting high in the sky: a hard, dry crump-bang overhead with steel fragments whistling and a faint rolling echo, heard from the ground, medium distance, no music, no voice",
+      "duration": 1.6,
+      "variants": 3,
+      "influence": 0.6
+    },
     "ciws": {
       "prompt": "20mm rotary gatling cannon close-in weapon system firing a short burst, extremely fast buzzing roar of gunfire, medium distance outdoors, no music, no voice",
       "duration": 1.5,

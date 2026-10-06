@@ -15,7 +15,8 @@ export type ImpactSound =
   | "splash"
   | "intercept"
   | "cookoff"
-  | "explosion_building";
+  | "explosion_building"
+  | "flak_burst";
 
 export type AnnounceEvent =
   | "start"
@@ -47,14 +48,20 @@ export type SoundEvent =
   | { kind: "shield"; id: number; type: string; cue: ShieldCue; own: boolean; x: number; y: number }
   /** A battlefield sound at a point. */
   | { kind: "impact"; sound: ImpactSound; x: number; y: number }
-  /** An infantryman fell (voice) or a machine was destroyed (sfx). */
-  | { kind: "death"; type: string; infantry: boolean; x: number; y: number }
+  /**
+   * An infantryman fell (voice) or a machine was destroyed (sfx). `building`: a structure went
+   * down; it plays its own collapse when it has one, else the shared one.
+   */
+  | { kind: "death"; type: string; infantry: boolean; x: number; y: number; building?: boolean }
   /**
    * One of your units speaks without being clicked: it just left the factory, (special) did its work
    * on its own, or (load) took someone aboard.
    */
   | { kind: "voice"; type: string; event: "ready" | "special" | "load" }
-  /** A unit's own effect at a point, played without an order: the ASW helicopter settling back on its deck. */
+  /**
+   * A unit's own effect at a point, played without an order: the ASW helicopter settling back on
+   * its deck, or one of your defences going up (sandbags thumped down, a gun set in its pit).
+   */
   | { kind: "unitsfx"; type: string; cue: "special"; x: number; y: number }
   | { kind: "announce"; event: AnnounceEvent };
 
@@ -80,6 +87,8 @@ const FIRE_GAP_MS: Record<string, number> = {
   ram: 600,
   bunker: 140,
   tower: 140,
+  mgnest: 450,
+  flak: 300,
 };
 const DEFAULT_FIRE_GAP_MS = 140;
 /** An LST loading a column calls it once, not once a soldier. */
@@ -232,7 +241,8 @@ export class SoundTracker {
       // The laser's burn is heard when the beam opens (below), not again where it lands.
       if (i.laser) continue;
       // Hitscan rounds and shells too quick for a snapshot are only seen landing.
-      if (i.fromId != null && !i.intercept && !i.cookoff && !i.blast && !i.rocket && !i.torpedo && !i.bomb) {
+      // A flak burst is heard where it bursts (flak_burst); its gun was heard when the shell left.
+      if (i.fromId != null && !i.intercept && !i.cookoff && !i.blast && !i.rocket && !i.torpedo && !i.bomb && !i.flak) {
         if (!isShell(i.caliber)) {
           if ((i.caliber ?? 0) > 0) fire(i.fromId, "small");
         } else if (now - (this.lastShellFire.get(i.fromId) ?? -Infinity) > SHELL_ECHO_MS && !this.seenShots.has(i.id)) {
@@ -261,6 +271,10 @@ export class SoundTracker {
           out.push({ kind: "voice", type: e.type, event: "ready" });
           // A helicopter off its ship's deck is a sortie, not a new unit: its pilot answers, the announcer does not.
           if (e.type !== "aswheli") out.push({ kind: "announce", event: "ready" });
+        }
+        // One of your structures just went up: its own setting-up sound, where it has one.
+        if (e.ownerId === me && e.kind === "building" && isBuildingType(e.type)) {
+          out.push({ kind: "unitsfx", type: e.type, cue: "special", x: e.x, y: e.y });
         }
       }
       if (prev && !prev.wreck && e.wreck) {
@@ -307,7 +321,7 @@ export class SoundTracker {
         continue;
       }
       if (isBuildingType(prev.type) && prev.hp <= prev.hpMax * LOST_HP_SHARE) {
-        out.push({ kind: "impact", sound: "explosion_building", x: prev.x, y: prev.y });
+        out.push({ kind: "death", type: prev.type, infantry: false, building: true, x: prev.x, y: prev.y });
         if (prev.ownerId === me) out.push({ kind: "announce", event: "buildinglost" });
       } else if (prev.kind === "unit" && !isInfantryType(prev.type) && prev.hp <= prev.hpMax * LOST_HP_SHARE && !prev.garrisonedIn) {
         out.push({ kind: "death", type: prev.type, infantry: false, x: prev.x, y: prev.y });
@@ -371,6 +385,7 @@ export class SoundTracker {
 }
 
 export function impactSound(i: MatchSnapshot["impacts"][number]): ImpactSound | null {
+  if (i.flak) return "flak_burst";
   if (i.intercept) return "intercept";
   if (i.cookoff) return "cookoff";
   if (i.splash || i.torpedo) return i.torpedo ? "explosion_large" : "splash";

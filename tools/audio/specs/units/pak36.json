@@ -1,0 +1,24 @@
+{
+  "key": "pak36",
+  "out": "units/pak36",
+  "sfx": {
+    "fire": {
+      "prompt": "A small World War 2 37mm anti-tank gun firing one sharp, cracking shot in an open field, a hard high-pitched bang with a short whip of echo and the clank of the breech, medium distance, no music, no voice",
+      "duration": 2.0,
+      "variants": 3,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Light anti-tank gun hit by a shell, its steel shield torn and the carriage flipped over, metal scraping and clattering down, medium distance outdoors, no music, no voice",
+      "duration": 2.8,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Small anti-tank gun pushed into position by hand, rubber wheels rolling on dirt, the split trail legs spread and dropped with a clank, the breech opened and a shell slid in with a click, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

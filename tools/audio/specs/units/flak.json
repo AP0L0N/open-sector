@@ -1,0 +1,24 @@
+{
+  "key": "flak",
+  "out": "units/flak",
+  "sfx": {
+    "fire": {
+      "prompt": "World War 2 37mm anti-aircraft gun firing one heavy, punchy thump-bang skyward, a deep pop with a short metallic clatter of the autoloader and a spent shell casing ringing on the ground, outdoors, medium distance, no music, no voice",
+      "duration": 1.2,
+      "variants": 3,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Anti-aircraft gun position hit by bombs, a blast, ready ammunition clips cooking off in a crackling string of pops, sandbags and steel debris falling, medium distance outdoors, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Anti-aircraft gun crew readying their gun: the pedestal mount cranked round with a ratcheting gear whine, a heavy clip of shells slammed into the loading tray, the cocking handle racked, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

@@ -132,7 +132,7 @@ export function warmUnit(type: string): void {
 }
 
 export function warmBattle(): void {
-  for (const cue of ["explosion_small", "explosion_large", "shell_impact", "ricochet", "penetrate", "splash", "intercept", "cookoff", "explosion_building", "mine_explode"]) {
+  for (const cue of ["explosion_small", "explosion_large", "shell_impact", "ricochet", "penetrate", "splash", "intercept", "cookoff", "explosion_building", "mine_explode", "flak_burst"]) {
     for (const url of bank.get("sfx/battle", `sfx-${cue}`)) preloadSample(url);
   }
 }
@@ -152,6 +152,7 @@ const HEAVY_FIRE = new Set([
   "nebelwerfer",
   "stuka",
   "fw190",
+  "pak43",
 ]);
 const HEAVY_FIRE_VOLUME = 1;
 /** Their `fire` is a cannon, a bomb or a broadside: their machine guns and CIWS must not set it off. */
@@ -166,6 +167,7 @@ const IMPACT_VOLUME: Record<string, number> = {
   penetrate: 0.85,
   splash: 0.45,
   intercept: 0.5,
+  flak_burst: 0.55,
 };
 
 /** Force-field cues: the shimmer is quick and light, the collapse and the recharge carry. */
@@ -221,6 +223,16 @@ export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number
       }
       case "death": {
         const folder = unitFolder(ev.type);
+        if (ev.building) {
+          // A structure's own collapse (a gun's ammunition going up, a tower toppling), else the shared one.
+          const url = pick(folder, "sfx-die") ?? pick("sfx/battle", "sfx-explosion_building");
+          const mix = url ? mixAt(ev.x, ev.y) : null;
+          if (url && mix) {
+            playSample(url, mix, { volume: 1, maxVoices: 3 });
+            duckVoices(mix.gain);
+          }
+          break;
+        }
         const url = ev.infantry
           ? (pick(folder, "voice-die") ?? pick("sfx/battle", "sfx-body_fall"))
           : (pick(folder, "sfx-die") ?? pick("sfx/battle", "sfx-explosion_large"));

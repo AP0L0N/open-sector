@@ -1,0 +1,25 @@
+{
+  "key": "pak43",
+  "out": "units/pak43",
+  "sfx": {
+    "fire": {
+      "prompt": "Distant, enormous boom of a World War 2 German 88mm anti-tank gun firing in an open field, a deep, violent crack that slams the air, the muzzle blast rolling across the fields and echoing off the hills for seconds.",
+      "duration": 5.0,
+      "variants": 3,
+      "influence": 0.6,
+      "lufs": -9
+    },
+    "die": {
+      "prompt": "Heavy anti-tank gun destroyed in its emplacement, a big explosion as its stacked shells go off, steel shield and long barrel crashing down, debris raining onto the dirt, medium distance outdoors, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Heavy anti-tank gun emplaced: a big cross-shaped steel platform lowered to the ground with a deep metal thud, jacks cranked with ratcheting clicks, a huge brass shell rammed into the breech and the breech block slamming shut, close, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

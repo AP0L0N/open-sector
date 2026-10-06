@@ -1,0 +1,19 @@
+{
+  "key": "leitturm",
+  "out": "units/leitturm",
+  "sfx": {
+    "die": {
+      "prompt": "A huge World War 2 concrete flak tower collapsing after heavy bombing: a thunderous blast, floor after floor of thick concrete cracking and giving way, a long, deep avalanche of falling masonry and a rolling rumble of rubble.",
+      "duration": 6.0,
+      "variants": 1,
+      "influence": 0.6,
+      "lufs": -9
+    },
+    "special": {
+      "prompt": "A large military searchlight on a concrete tower switched on with a heavy electric clunk and a rising arc-lamp hum, its iron mount swivelling with a grinding screech, wind blowing past, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

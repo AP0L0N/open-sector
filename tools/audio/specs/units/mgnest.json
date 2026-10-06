@@ -1,0 +1,24 @@
+{
+  "key": "mgnest",
+  "out": "units/mgnest",
+  "sfx": {
+    "fire": {
+      "prompt": "WWII MG42 machine gun on a heavy tripod mount firing a long ripping burst from a sandbagged nest, extremely high rate of fire like tearing cloth, empty brass casings tinkling onto sandbags, outdoors, close range, short echo, no music, no voice",
+      "duration": 1.8,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "die": {
+      "prompt": "Sandbagged machine gun nest blown apart by a shell, sandbags bursting, sand and dirt raining down, the gun and its ammunition box clattering away, medium distance outdoors, no music, no voice",
+      "duration": 2.8,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Machine gun crew setting up a nest: sandbags thumped down into place, a heavy tripod's legs locked with metal clicks, an ammunition box lid snapped open and a cartridge belt fed into the gun with a cocking clack, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

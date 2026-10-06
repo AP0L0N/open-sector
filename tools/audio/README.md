@@ -63,6 +63,12 @@ aircraft are the pilot; machines (Walker, Cyborg) may sound processed or robotic
 | `special` | Unit-specific (deploy outriggers, torpedo launch, dive klaxon...) | optional |
 | `reload` | Optional | |
 
+**Defences** (the crewed guns, the Tobruk Pit, Heavy Casemate, Timber Lookout, Fire-Control Tower)
+use the same `specs/units/<type>.json`, sound effects only: `fire` for a gun's shot, `die` for
+the structure going down (it replaces the shared `explosion_building` collapse), and `special`,
+heard when one of your own goes up (sandbags laid, a gun set in its pit, a searchlight switched on).
+The Flak's air burst is `flak_burst` in `specs/sfx/battle.json`.
+
 **Heavy guns and rockets.** Their `fire` is a 5 s, plainly worded WW2 scene ("Distant, powerful
 boom of a World War 2 StuG III assault gun firing its 75mm cannon in an open field, ...") with
 `"lufs": -9`: build compresses it and drives it into a -1.5 dBFS limiter until it reaches that

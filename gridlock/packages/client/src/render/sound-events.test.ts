@@ -169,7 +169,28 @@ describe("SoundTracker", () => {
     t.step(snap({ entities: [building(1, "dynamo", ME, { hp: 100 }), building(2, "smelter")] }), 0);
     const evs = t.step(snap(), 100);
     assert.deepEqual(kinds(evs, "announce"), [{ kind: "announce", event: "buildinglost" }]);
-    assert.deepEqual(kinds(evs, "impact"), [{ kind: "impact", sound: "explosion_building", x: 1, y: 1 }]);
+    // The building's own collapse plays where it has one; the shared one otherwise (game-audio).
+    assert.deepEqual(kinds(evs, "death"), [{ kind: "death", type: "dynamo", infantry: false, building: true, x: 1, y: 1 }]);
+  });
+
+  it("a flak shell is heard leaving the gun and bursting in the air, not as a second shot", () => {
+    const t = new SoundTracker();
+    const flak = building(4, "flak");
+    t.step(snap({ entities: [flak] }), 0);
+    const shell = { id: 80, fromId: 4, x: 4, y: 4, vx: 1, vy: 0, caliber: 37, bounced: false, flak: true, z: 3 };
+    const up = t.step(snap({ entities: [flak], projectiles: [shell] as never }), 100);
+    assert.equal(kinds(up, "fire").length, 1, "the gun fires");
+    const burst = { id: 81, kind: "puff", x: 40, y: 4, vx: 0, vy: 0, caliber: 37, fromId: 4, z: 24, flak: true, ownerId: ME };
+    const bang = t.step(snap({ entities: [flak], impacts: [burst] as never }), 600);
+    assert.deepEqual(kinds(bang, "impact"), [{ kind: "impact", sound: "flak_burst", x: 40, y: 4 }]);
+    assert.equal(kinds(bang, "fire").length, 0);
+  });
+
+  it("one of your new structures goes up with its own setting-up sound; an enemy's is quiet", () => {
+    const t = new SoundTracker();
+    t.step(snap(), 0);
+    const evs = t.step(snap({ entities: [building(5, "pak43"), building(6, "mgnest", "p2")] }), 100);
+    assert.deepEqual(kinds(evs, "unitsfx"), [{ kind: "unitsfx", type: "pak43", cue: "special", x: 5, y: 5 }]);
   });
 
   it("follows power and the construction lane", () => {

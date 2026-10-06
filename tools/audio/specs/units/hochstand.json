@@ -1,0 +1,18 @@
+{
+  "key": "hochstand",
+  "out": "units/hochstand",
+  "sfx": {
+    "die": {
+      "prompt": "A tall wooden watchtower shot apart and toppling over: timber legs snapping with loud cracks, planks splintering, the whole tower crashing down onto the ground with a heavy wooden thud, medium distance outdoors, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "special": {
+      "prompt": "Building a wooden lookout tower: hammers driving nails into planks, a few saw strokes, heavy timber creaking as it is raised, boots climbing a wooden ladder, close, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}
