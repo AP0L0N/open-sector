@@ -24,6 +24,7 @@ import {
   peakHeight,
   worldToIso,
   type IsoPt,
+  type ClutterType,
   type LampType,
   type MapDef,
   type MapFeature,
@@ -37,6 +38,7 @@ import { paintNight, type NightHalo, type NightLayers, type NightLightPool } fro
 import { drawSandbags } from "../render/sandbags.js";
 import {
   BUSH_FACES,
+  CLUTTER_SPRITES,
   LAMP_SPRITES,
   OAK_FACES,
   PINE_FACES,
@@ -65,7 +67,7 @@ import { SCRAP_SOFT_REACH } from "../render/scrap-field.js";
 import { treeStamp } from "../render/tree-burn.js";
 import { WALL_STYLE, drawWall, wallJoins, wallTopElev, type WallSection } from "../render/wall.js";
 import type { IsoCam } from "./builder-iso-cam.js";
-import { liveLamps, type Dirty, type Sheet } from "./builder-model.js";
+import { liveClutter, liveLamps, type Dirty, type Sheet } from "./builder-model.js";
 
 /**
  * The Map Builder's "In-game view": the sheet drawn the way a match draws it
@@ -90,6 +92,8 @@ export interface IsoOverlay {
   brush: { x: number; y: number; r: number } | null;
   /** Where the Street lamps tool would stand a post. */
   lampGhost?: { x: number; y: number; type: LampType; bad: boolean } | null;
+  /** Where the Clutter tool would stand a piece. */
+  clutterGhost?: { x: number; y: number; type: ClutterType; bad: boolean } | null;
   /** Draw the field at full dark: lamps burning, tower spotlights on. */
   night?: boolean;
   /** The sheet's neutral units and what the Units tools show about them. */
@@ -652,6 +656,15 @@ export function isoDraw(
     const spr = LAMP_SPRITES[l.type];
     items.push({ z: isoDepth(wx, wy), run: () => void (drawPropSprite(c, spr, p.x, p.y, STREET_LAMPS[l.type].drawH) || (loading = true)) });
   }
+  for (const k of liveClutter(s)) {
+    const wx = (k.x + 0.5) * TILE_SIZE;
+    const wy = (k.y + 0.5) * TILE_SIZE;
+    const p = at(wx, wy, heightOf(s, k.x, k.y));
+    if (!onScreen(p, 48)) continue;
+    const spr = CLUTTER_SPRITES[k.type].whole;
+    const flip = ((k.x * 73856093) ^ (k.y * 19349663)) % 2 === 0;
+    items.push({ z: isoDepth(wx, wy), run: () => void (drawPropSprite(c, spr, p.x, p.y, spr.drawH, flip) || (loading = true)) });
+  }
   const uo = o.units;
   if (uo) {
     uo.list.forEach((u, i) => {
@@ -723,6 +736,20 @@ export function isoDraw(
       unitRing(c, s, g.x, g.y, g.bad ? "#ff5a4a" : "#7dff6a", z);
       if (!drawMapUnit(c, s, g, 0.6)) loading = true;
     }
+  }
+
+  if (o.clutterGhost) {
+    const g = o.clutterGhost;
+    const p = at((g.x + 0.5) * TILE_SIZE, (g.y + 0.5) * TILE_SIZE, heightOf(s, g.x, g.y));
+    const spr = CLUTTER_SPRITES[g.type].whole;
+    c.save();
+    c.globalAlpha = 0.65;
+    if (!drawPropSprite(c, spr, p.x, p.y, spr.drawH)) loading = true;
+    c.restore();
+    c.strokeStyle = g.bad ? "#ff5a4a" : "#7dff6a";
+    c.lineWidth = 1.5 / z;
+    quadPath(c, groundRing(s, g.x, g.y, 0.5));
+    c.stroke();
   }
 
   if (o.lampGhost) {

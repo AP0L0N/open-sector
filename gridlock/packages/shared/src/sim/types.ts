@@ -884,6 +884,8 @@ export interface MatchState {
   seeByPlayer: Map<string, Map<number, boolean>>;
   /** Tree tiles removed this match. `burn` is a flamethrower force-attack. */
   clearedTrees: { x: number; y: number; burn?: true }[];
+  /** Rounds left in each piece of the map's `clutter`, by its index there. 0 = smashed. */
+  clutterHp: number[];
   /** Infantry who died in the open. Not entities: passable and indestructible. */
   bodies: CorpseView[];
   /** Heavy-shell craters. Not entities. */

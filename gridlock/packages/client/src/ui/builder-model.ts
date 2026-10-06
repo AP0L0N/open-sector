@@ -2,6 +2,7 @@ import {
   BUILD_RADIUS,
   BUILDING_FACINGS,
   BUILDING_TURN_STEP,
+  CUSTOM_MAP_MAX_CLUTTER,
   CUSTOM_MAP_MAX_LAMPS,
   CUSTOM_MAP_MAX_UNITS,
   copyMapUnit,
@@ -34,6 +35,7 @@ import {
   isMapSection,
   isScrapTile,
   lampBlocked,
+  scatterClutter,
   MAP_DEFENCE_TYPES,
   normalizeTerrain,
   peakHeight,
@@ -45,7 +47,9 @@ import {
   type MapDef,
   type MapFeature,
   type MapFeatureType,
+  type ClutterType,
   type LampType,
+  type MapClutter,
   type MapLamp,
   type MapUnit,
   type TrainType,
@@ -65,6 +69,8 @@ export interface Sheet {
   spawns: { id: number; x: number; y: number }[];
   features: MapFeature[];
   lamps: MapLamp[];
+  /** Breakable clutter: crates, drums, a cart. */
+  clutter: MapClutter[];
   /** Neutral units standing on the field at the start. */
   units: MapUnit[];
 }
@@ -95,6 +101,7 @@ export function newSheet(opts: {
     spawns: [],
     features: [],
     lamps: [],
+    clutter: [],
     units: [],
   };
   settle(sheet);
@@ -115,6 +122,7 @@ export function sheetFromSpec(spec: CustomMapSpec): Sheet {
     spawns: spec.spawns.map((s) => ({ ...s })),
     features: spec.features.map((f) => ({ ...f })),
     lamps: (spec.lamps ?? []).map((l) => ({ ...l })),
+    clutter: (spec.clutter ?? []).map((c) => ({ ...c })),
     units: (spec.units ?? []).map(copyMapUnit),
   };
   settle(sheet);
@@ -134,6 +142,7 @@ export function sheetToSpec(s: Sheet): CustomMapSpec {
     spawns: s.spawns.map((sp) => ({ ...sp })).sort((a, b) => a.id - b.id),
     features: s.features.map((f) => ({ ...f })),
     ...(s.lamps.length > 0 ? { lamps: liveLamps(s) } : {}),
+    ...(s.clutter.length > 0 ? { clutter: liveClutter(s) } : {}),
     ...(s.units.length > 0 ? { units: liveUnits(s) } : {}),
     updatedAt: 0,
   };
@@ -153,6 +162,7 @@ export function sheetToMap(s: Sheet, id = "__builder__"): MapDef {
     spawns: s.spawns.map((sp) => ({ ...sp })),
     features: s.features.map((f) => ({ ...f })),
     lamps: liveLamps(s),
+    clutter: liveClutter(s),
     units: liveUnits(s),
   };
 }
@@ -192,6 +202,52 @@ export function placeLamp(s: Sheet, type: LampType, x: number, y: number): strin
   if (problem) return problem;
   s.lamps.push({ type, x, y });
   return null;
+}
+
+/** Clutter still standing: a building set down over it, or water painted under it, hides it and the save leaves it out. */
+export function liveClutter(s: Sheet): MapClutter[] {
+  return s.clutter.filter((c) => !lampBlocked(s.features, c.x, c.y) && s.tiles[c.y * s.width + c.x] !== TILE_WATER).map((c) => ({ ...c }));
+}
+
+/** Index of the piece of clutter within `reach` fine tiles of the cursor, nearest first, or -1. */
+export function clutterIndexAt(s: Sheet, tx: number, ty: number, reach = 1): number {
+  let best = -1;
+  let bestD = reach + 0.01;
+  s.clutter.forEach((c, i) => {
+    const d = Math.max(Math.abs(c.x - tx), Math.abs(c.y - ty));
+    if (d < bestD) {
+      best = i;
+      bestD = d;
+    }
+  });
+  return best;
+}
+
+/** Why clutter cannot stand on this fine tile, or null. */
+export function clutterProblem(s: Sheet, x: number, y: number): string | null {
+  if (x < 0 || y < 0 || x >= s.width || y >= s.height) return "Off the map.";
+  if (s.tiles[y * s.width + x] === TILE_WATER) return "Clutter stands on dry ground.";
+  if (lampBlocked(s.features, x, y)) return "Inside a building lot.";
+  if (s.clutter.some((c) => c.x === x && c.y === y)) return "Something already stands here.";
+  if (s.clutter.length >= CUSTOM_MAP_MAX_CLUTTER) return `At most ${CUSTOM_MAP_MAX_CLUTTER} pieces of clutter.`;
+  return null;
+}
+
+/** Stand a piece of `type` on the tile. Null when placed, else the reason. */
+export function placeClutter(s: Sheet, type: ClutterType, x: number, y: number): string | null {
+  const problem = clutterProblem(s, x, y);
+  if (problem) return problem;
+  s.clutter.push({ type, x, y });
+  return null;
+}
+
+/** Strew clutter by the houses, along the roads, and here and there in the open. Returns how many went down. */
+export function scatterSheetClutter(s: Sheet, seed: string): number {
+  const room = CUSTOM_MAP_MAX_CLUTTER - s.clutter.length;
+  if (room <= 0) return 0;
+  const add = scatterClutter(s.tiles, s.width, s.height, s.features, s.spawns, seed, 1, s.clutter).slice(0, room);
+  s.clutter.push(...add);
+  return add.length;
 }
 
 /**
@@ -844,6 +900,7 @@ export interface SheetMark {
   spawns: Sheet["spawns"];
   features: MapFeature[];
   lamps: MapLamp[];
+  clutter: MapClutter[];
   units: MapUnit[];
   maxPlayers: number;
 }
@@ -855,6 +912,7 @@ export function markSheet(s: Sheet): SheetMark {
     spawns: s.spawns.map((sp) => ({ ...sp })),
     features: s.features.map((f) => ({ ...f })),
     lamps: s.lamps.map((l) => ({ ...l })),
+    clutter: s.clutter.map((c) => ({ ...c })),
     units: s.units.map(copyMapUnit),
     maxPlayers: s.maxPlayers,
   };
@@ -866,6 +924,7 @@ export function restoreSheet(s: Sheet, m: SheetMark): void {
   s.spawns = m.spawns.map((sp) => ({ ...sp }));
   s.features = m.features.map((f) => ({ ...f }));
   s.lamps = m.lamps.map((l) => ({ ...l }));
+  s.clutter = m.clutter.map((c) => ({ ...c }));
   s.units = m.units.map(copyMapUnit);
   s.maxPlayers = m.maxPlayers;
 }

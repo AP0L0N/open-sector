@@ -7,6 +7,8 @@ import {
   CUSTOM_MAP_SIZES,
   HEIGHT_BASE,
   HEIGHT_MAX,
+  CLUTTER_NAMES,
+  CLUTTER_TYPES,
   LAMP_NAMES,
   LAMP_TYPES,
   SPAWN_PAD_R,
@@ -44,6 +46,7 @@ import {
   rollHeights,
   specFromMap,
   type CivilianType,
+  type ClutterType,
   type LampType,
   type MapDefenceType,
   type MapFeature,
@@ -53,7 +56,7 @@ import {
 } from "@gridlock/shared";
 import type { Ctx } from "../ctx.js";
 import { forgetTerrain } from "../render/terrain.js";
-import { buildingSpriteFor, LAMP_SPRITES } from "../render/sprites.js";
+import { buildingSpriteFor, CLUTTER_SPRITES, LAMP_SPRITES } from "../render/sprites.js";
 import { fieldPointsWithCursor, pinFieldPoint, undoFieldPoint, type Pt } from "../render/field-place.js";
 import { STREET_LAMPS } from "../render/night.js";
 import grassUrl from "../assets/terrain/grass-meadow.png";
@@ -80,7 +83,7 @@ const UNDO_DEPTH = 40;
 /** Raise / Lower apply one step this often while the button is held. */
 const LIFT_EVERY_MS = 70;
 
-type ToolId = "select" | "raise" | "lower" | "level" | "ground" | "house" | "defence" | "lamp" | "road" | "unit" | "spawn" | "erase";
+type ToolId = "select" | "raise" | "lower" | "level" | "ground" | "house" | "defence" | "lamp" | "clutter" | "road" | "unit" | "spawn" | "erase";
 
 interface GroundKind {
   tile: number;
@@ -115,6 +118,8 @@ interface Tool {
   house: CivilianType;
   defence: MapDefenceType;
   lamp: LampType;
+  /** The piece the Clutter tool stands down. */
+  clutter: ClutterType;
   /** The neutral unit the Units tool stands on the map. */
   unit: TrainType;
   /** A house's door side, a quarter at a time. */
@@ -168,6 +173,7 @@ const tool: Tool = {
   house: "cottage",
   defence: "bunker",
   lamp: "streetlamp",
+  clutter: "crates",
   unit: "rifleman",
   facing: 1,
   turn: M.QUARTER_TURN,
@@ -621,6 +627,18 @@ function drawStage(): void {
     c.stroke();
   };
   for (const l of M.liveLamps(s)) lampMark(l.x, l.y, l.type, null);
+  const clutterMark = (x: number, y: number, ring: string | null): void => {
+    const r = Math.max(1.5, Math.min(4, z * 0.6));
+    c.fillStyle = "#b08850";
+    c.strokeStyle = ring ?? "#2a2016";
+    c.lineWidth = ring ? 2 : 1;
+    c.fillRect(sx(x + 0.5) - r, sy(y + 0.5) - r, r * 2, r * 2);
+    c.strokeRect(sx(x + 0.5) - r, sy(y + 0.5) - r, r * 2, r * 2);
+  };
+  for (const p of M.liveClutter(s)) clutterMark(p.x, p.y, null);
+  if (tool.id === "clutter" && hover.inside && !drag) {
+    clutterMark(hover.x, hover.y, M.clutterProblem(s, hover.x, hover.y) !== null ? "#ff5a4a" : "#7dff6a");
+  }
   if (tool.id === "lamp" && hover.inside && !drag) {
     const bad = M.lampProblem(s, hover.x, hover.y) !== null;
     lampMark(hover.x, hover.y, tool.lamp, bad ? "#ff5a4a" : "#7dff6a");
@@ -916,6 +934,10 @@ function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
       tool.id === "lamp" && hover.inside && !drag
         ? { x: hover.x, y: hover.y, type: tool.lamp, bad: M.lampProblem(s, hover.x, hover.y) !== null }
         : null,
+    clutterGhost:
+      tool.id === "clutter" && hover.inside && !drag
+        ? { x: hover.x, y: hover.y, type: tool.clutter, bad: M.clutterProblem(s, hover.x, hover.y) !== null }
+        : null,
     night: nightView,
   }, queueDraw);
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1101,6 +1123,11 @@ function eraseAt(x: number, y: number): boolean {
   const li = M.lampIndexAt(s, x, y);
   if (li >= 0) {
     s.lamps.splice(li, 1);
+    return true;
+  }
+  const ci = M.clutterIndexAt(s, x, y);
+  if (ci >= 0) {
+    s.clutter.splice(ci, 1);
     return true;
   }
   const fi = M.featureIndexAt(s, x, y);
@@ -1449,7 +1476,7 @@ function onDown(e: PointerEvent): void {
   }
   if (
     tool.id === "erase" ||
-    (e.shiftKey && (tool.id === "house" || tool.id === "defence" || tool.id === "lamp" || tool.id === "unit" || tool.id === "spawn" || tool.id === "select"))
+    (e.shiftKey && (tool.id === "house" || tool.id === "defence" || tool.id === "lamp" || tool.id === "clutter" || tool.id === "unit" || tool.id === "spawn" || tool.id === "select"))
   ) {
     pushUndo();
     if (eraseAt(t.x, t.y)) finishStroke();
@@ -1502,6 +1529,17 @@ function onDown(e: PointerEvent): void {
   if (tool.id === "lamp") {
     pushUndo();
     const problem = M.placeLamp(s, tool.lamp, t.x, t.y);
+    if (problem) {
+      undo.pop();
+      return say(problem, "bad");
+    }
+    say("");
+    finishStroke();
+    return;
+  }
+  if (tool.id === "clutter") {
+    pushUndo();
+    const problem = M.placeClutter(s, tool.clutter, t.x, t.y);
     if (problem) {
       undo.pop();
       return say(problem, "bad");
@@ -1699,7 +1737,7 @@ function paintChecks(): void {
   const far = M.startsFarFromScrap(s);
   if (far.length > 0) add("warn", `Starts with no scrap in yard range: ${far.join(", ")} (an engineer would have to walk out)`);
   const defences = M.defenceCount(s);
-  add("ok", `Buildings: ${s.features.length - defences} · Neutral defences: ${defences} · Lamps: ${M.liveLamps(s).length}`);
+  add("ok", `Buildings: ${s.features.length - defences} · Neutral defences: ${defences} · Lamps: ${M.liveLamps(s).length} · Clutter: ${M.liveClutter(s).length}`);
   const units = M.liveUnits(s);
   const inside = units.filter((u) => u.inside).length;
   if (units.length > 0) add("ok", `Neutral units: ${units.length}${inside ? ` (${inside} garrisoned)` : ""}`);
@@ -1888,6 +1926,26 @@ function houseThumb(type: CivilianType | "bunker" | "tower", angle: number): HTM
   return cv;
 }
 
+function clutterThumb(type: ClutterType): HTMLCanvasElement {
+  const cv = el("canvas");
+  cv.width = 48;
+  cv.height = 40;
+  const spr = CLUTTER_SPRITES[type].whole;
+  const paint = (): void => {
+    const g = cv.getContext("2d");
+    const img = spr.image;
+    if (!g || !img.naturalHeight) return;
+    const k = Math.min((cv.width - 4) / img.naturalWidth, (cv.height - 4) / img.naturalHeight);
+    g.clearRect(0, 0, cv.width, cv.height);
+    const w = img.naturalWidth * k;
+    const h = img.naturalHeight * k;
+    g.drawImage(img, (cv.width - w) / 2, (cv.height - h) / 2, w, h);
+  };
+  if (spr.image.complete && spr.image.naturalWidth > 0) paint();
+  else spr.image.addEventListener("load", paint, { once: true });
+  return cv;
+}
+
 function lampThumb(type: LampType): HTMLCanvasElement {
   const cv = el("canvas");
   cv.width = 48;
@@ -2040,7 +2098,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     asset("Select", "move, turn, delete", tool.id === "select", el("span", { class: "bld-start-mark", text: "⬚" }), "Pick up a placed building, defence, or start. Drag to move it, R turns it, Delete removes it.", () =>
       setTool(ctx, { id: "select" }),
     ),
-    asset("Eraser", "buildings, lamps, starts", tool.id === "erase", el("span", { class: "bld-start-mark", text: "✕" }), "Remove buildings, defences, and starts.", () =>
+    asset("Eraser", "buildings, lamps, clutter, starts", tool.id === "erase", el("span", { class: "bld-start-mark", text: "✕" }), "Remove buildings, defences, lamps, clutter, and starts.", () =>
       setTool(ctx, { id: "erase" }),
     ),
   );
@@ -2186,6 +2244,37 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       ),
     );
   }
+  const clutter = el("div", { class: "bld-palette four" });
+  for (const type of CLUTTER_TYPES) {
+    clutter.append(
+      asset(CLUTTER_NAMES[type], "breakable", tool.id === "clutter" && tool.clutter === type, clutterThumb(type), `${CLUTTER_NAMES[type]}: smashed flat by a tank or a shell.`, () =>
+        setTool(ctx, { id: "clutter", clutter: type }),
+      ),
+    );
+  }
+  const clutterBtns = el("div", { class: "btn-row" });
+  const strew = el("button", { class: "btn btn-ghost bld-mini", text: "Scatter", attrs: { type: "button", title: "Strew clutter by houses and roads. Each press adds more." } });
+  strew.addEventListener("click", () => {
+    const s = sheet;
+    if (!s) return;
+    pushUndo();
+    const n = M.scatterSheetClutter(s, `${s.id}:${Date.now()}`);
+    if (n === 0) {
+      undo.pop();
+      return say("No room for more clutter.", "bad");
+    }
+    say(`Scattered ${n} pieces of clutter.`, "good");
+    finishStroke();
+  });
+  const sweep = el("button", { class: "btn btn-ghost bld-mini", text: "Clear clutter", attrs: { type: "button" } });
+  sweep.addEventListener("click", () => {
+    const s = sheet;
+    if (!s || s.clutter.length === 0 || !confirm("Remove every piece of clutter from the map?")) return;
+    pushUndo();
+    s.clutter = [];
+    finishStroke();
+  });
+  clutterBtns.append(strew, sweep);
   const decor = el("div", { class: "bld-palette" });
   decor.append(
     asset("Road", "drawn line", tool.id === "road", el("img", { attrs: { src: dirtUrl, alt: "" } }), "Dirt lane. Same footing as grass.", () =>
@@ -2224,6 +2313,13 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       el("p", {
         class: "bld-hint",
         text: "Light up after dusk. Dress only: they do not block a man or a shot, and a structure raised on one hides it. Shift+click removes.",
+      }),
+      el("h3", { class: "bld-sub", text: "Clutter" }),
+      clutter,
+      clutterBtns,
+      el("p", {
+        class: "bld-hint",
+        text: "Odds and ends that make the ground look lived in. A tank or truck that rolls over one, a shell that lands on it, or a few bursts of fire smashes it flat for the match. They block no one and hide no one. Scatter strews them by the houses, along the roads, and here and there in the open. Shift+click removes.",
       }),
     ),
   );

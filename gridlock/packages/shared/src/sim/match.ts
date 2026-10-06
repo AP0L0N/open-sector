@@ -54,6 +54,7 @@ import { aimSpotlightPatrol, hasSpotlight, tickSpotlights } from "./night.js";
 import type { Entity, MatchState, SimPlayer } from "./types.js";
 import { leaveCorpse } from "./remains.js";
 import { toWreck } from "./wreck.js";
+import { freshClutterHp } from "./clutter.js";
 import { tickPower } from "./power.js";
 
 export function createMatch(
@@ -104,6 +105,7 @@ export function createMatch(
     seeTick: -1,
     seeByPlayer: new Map(),
     clearedTrees: [],
+    clutterHp: freshClutterHp(map),
     bodies: [],
     holes: [],
     blast: new Map(),

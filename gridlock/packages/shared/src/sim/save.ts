@@ -4,6 +4,7 @@ import { MAX_SLOTS, MIN_SLOTS, SLOT_COUNT, type AiDifficulty, type SlotStatus } 
 import { restampForts } from "./field.js";
 import { restampBridges } from "./bridge.js";
 import { initGrids, occupyEntity } from "./geo.js";
+import { freshClutterHp } from "./clutter.js";
 import type {
   Entity,
   GroundFire,
@@ -75,6 +76,8 @@ export interface SaveGame {
   scrap: [number, number][];
   /** Tile index and height, where a blast sank the ground. Older saves leave it out. */
   dug?: [number, number][];
+  /** Rounds left in each piece of map clutter. Left out by saves made before clutter. */
+  clutterHp?: number[];
   /** Tile index and blast points soaked toward the next dig. Older saves leave it out. */
   blast?: [number, number][];
   seats: SaveSeat[];
@@ -128,6 +131,7 @@ export function exportSave(state: MatchState, room: RoomState, now = Date.now())
     pendingComms: state.pendingComms,
     scrap,
     dug: [...state.dug],
+    clutterHp: state.clutterHp.slice(),
     blast: [...state.blast],
     seats: room.slots.map((s) => ({
       index: s.index,
@@ -176,6 +180,12 @@ export function restoreMatch(
     if (!Number.isInteger(h) || h < 0 || h > 255) return fail("That save's ground is unreadable.");
     grids.heights[index] = h;
     dug.set(index, h);
+  }
+  const clutterHp = freshClutterHp(map);
+  if (Array.isArray(save.clutterHp) && save.clutterHp.length === clutterHp.length) {
+    save.clutterHp.forEach((hp, i) => {
+      if (num(hp)) clutterHp[i] = Math.max(0, Math.min(clutterHp[i] ?? 0, hp));
+    });
   }
   const blast = new Map<number, number>();
   for (const [index, points] of save.blast ?? []) {
@@ -251,6 +261,7 @@ export function restoreMatch(
     seeTick: -1,
     seeByPlayer: new Map(),
     clearedTrees: cleared,
+    clutterHp,
     bodies: save.bodies.map((b) => ({ ...b })),
     holes: save.holes.map((h) => ({ ...h })),
     blast,

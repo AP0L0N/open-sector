@@ -181,6 +181,7 @@ import {
   PINE_FACES,
   BUSH_FACES,
   SIGN_FACES,
+  CLUTTER_SPRITES,
   LAMP_SPRITES,
   STUMP_FACES,
   CRATER_FACES,
@@ -431,6 +432,7 @@ import {
   HOLE_DRAW_LAYER,
   STANDING_DRAW_LAYER,
 } from "./corpse-depth.js";
+import { CLUTTER_BREAK_MS, drawClutterSplinters } from "./clutter-fx.js";
 import { drawTreeFall, TREE_FALL_MS } from "./tree-fall.js";
 import { drawBurnedCorpse, drawBurningTree } from "./burn-draw.js";
 import { burnAnimMs, burnDeathPose } from "./burn-death.js";
@@ -795,6 +797,10 @@ export class MapView {
   private visRuns: number[] | null = null;
   private exploredMapId = "";
   private clearedApplied = 0;
+  /** Map clutter smashed so far, by index into `map.clutter`, and when each broke on screen. */
+  private clutterBroken = new Set<number>();
+  private clutterBreaks = new Map<number, number>();
+  private clutterMapId = "";
   private maxElev = 0;
   private terrain: TerrainBake | null = null;
   private miniTerrain: MiniBake | null = null;
@@ -1445,6 +1451,26 @@ export class MapView {
     else updateMiniScrap(this.miniTerrain, map, this.curr.scrap);
     this.applyClearedTrees();
     this.applyDug();
+    this.applyClutter();
+  }
+
+  /** Note clutter the snapshot says broke since the last one, so it can fall apart on screen. */
+  private applyClutter(): void {
+    const mapId = this.curr.mapId;
+    const boot = this.clutterMapId !== mapId;
+    if (boot) {
+      this.clutterMapId = mapId;
+      this.clutterBroken.clear();
+      this.clutterBreaks.clear();
+    }
+    const list = this.curr.brokenClutter;
+    if (!list || list.length === this.clutterBroken.size) return;
+    const now = performance.now();
+    for (const i of list) {
+      if (this.clutterBroken.has(i)) continue;
+      this.clutterBroken.add(i);
+      if (!boot) this.clutterBreaks.set(i, now);
+    }
   }
 
   /** Lay ground that blasts sank (snapshot `dug`) onto the live map and repaint around it. */
@@ -3814,6 +3840,7 @@ export class MapView {
     this.collectTrees(items, castShadows);
     this.collectDecor(items);
     this.collectLamps(items);
+    this.collectClutter(items);
     this.collectTreeBurns(items);
     // Worn yards merge into one patch, under the Airfield strip and every shadow.
     items.push({ layer: GROUND_DECAL_DRAW_LAYER, z: -Infinity, run: () => drawYardWear(this.ctx, yardWear) });
@@ -4060,6 +4087,67 @@ export class MapView {
   }
 
   /** Street lamp posts. They stand and sort with units like the signposts. */
+  /**
+   * Breakable clutter. A standing piece sorts with units; a smashed one lies
+   * flat under them. For a moment after it breaks, the whole piece squashes
+   * down over its wreck and throws a few splinters.
+   */
+  private collectClutter(items: DrawItem[]): void {
+    const map = this.map();
+    const list = map.clutter;
+    if (!list?.length) return;
+    const { w: vw, h: vh } = this.viewSize();
+    const now = performance.now();
+    const ts = map.tileSize;
+    for (const [i, at] of this.clutterBreaks) {
+      if (now - at > CLUTTER_BREAK_MS) this.clutterBreaks.delete(i);
+    }
+    list.forEach((c, i) => {
+      if (this.curr.entities.some((e) => e.kind === "building" && c.x >= e.tileX && c.x < e.tileX + e.tileW && c.y >= e.tileY && c.y < e.tileY + e.tileH)) return;
+      const wx = (c.x + 0.5) * ts;
+      const wy = (c.y + 0.5) * ts;
+      const p = this.toScreen(wx, wy);
+      if (p.x < -48 || p.y < -48 || p.x > vw + 48 || p.y > vh + 48) return;
+      const spr = CLUTTER_SPRITES[c.type];
+      const flip = ((c.x * 73856093) ^ (c.y * 19349663)) % 2 === 0;
+      const veil = this.fogField?.veil(c.x + 0.5, c.y + 0.5, now) ?? 0;
+      const broken = this.clutterBroken.has(i);
+      const brokeAt = this.clutterBreaks.get(i);
+      const ctx = this.ctx;
+      if (!broken) {
+        items.push({
+          layer: STANDING_DRAW_LAYER,
+          z: isoDepth(wx, wy),
+          at: { x: wx, y: wy },
+          run: () => void drawPropSprite(ctx, spr.whole, p.x, p.y, spr.whole.drawH, flip, veil),
+        });
+        return;
+      }
+      items.push({
+        layer: CORPSE_DRAW_LAYER,
+        z: isoDepth(wx, wy),
+        run: () => void drawPropSprite(ctx, spr.broken, p.x, p.y, spr.broken.drawH, flip, veil),
+      });
+      if (brokeAt === undefined) return;
+      const k = Math.min(1, (now - brokeAt) / CLUTTER_BREAK_MS);
+      items.push({
+        layer: STANDING_DRAW_LAYER,
+        z: isoDepth(wx, wy),
+        at: { x: wx, y: wy },
+        run: () => {
+          ctx.save();
+          ctx.globalAlpha *= 1 - k;
+          ctx.translate(p.x, p.y);
+          ctx.scale(1 + 0.35 * k, Math.max(0.05, 1 - k));
+          ctx.translate(-p.x, -p.y);
+          drawPropSprite(ctx, spr.whole, p.x, p.y, spr.whole.drawH, flip, veil);
+          ctx.restore();
+          drawClutterSplinters(ctx, p.x, p.y, k, i);
+        },
+      });
+    });
+  }
+
   private collectLamps(items: DrawItem[]): void {
     const { w: vw, h: vh } = this.viewSize();
     const now = performance.now();

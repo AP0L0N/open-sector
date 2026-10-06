@@ -31,6 +31,7 @@ import {
   featureRectsOverlap,
   getMap,
   isBuiltinMap,
+  isClutterType,
   isLampType,
   isMapSection,
   isPlaytestMapId,
@@ -41,6 +42,7 @@ import {
   type MapDef,
   type MapFeature,
   type MapFeatureType,
+  type MapClutter,
   type MapLamp,
   type MapUnit,
 } from "./maps.js";
@@ -63,6 +65,8 @@ export interface CustomMapSpec {
   features: MapFeature[];
   /** Street lamps. Left out by maps saved before lamps existed. */
   lamps?: MapLamp[];
+  /** Breakable clutter. Left out by maps saved before clutter existed. */
+  clutter?: MapClutter[];
   /** Neutral units. Left out by maps saved before units existed. */
   units?: MapUnit[];
   updatedAt: number;
@@ -95,6 +99,7 @@ export const CUSTOM_MAP_MAX_PLAYERS = 8;
 export const CUSTOM_MAP_MAX_FEATURES = 400;
 export const CUSTOM_MAP_NAME_MAX = 32;
 export const CUSTOM_MAP_MAX_LAMPS = 300;
+export const CUSTOM_MAP_MAX_CLUTTER = 600;
 export const CUSTOM_MAP_MAX_UNITS = 200;
 
 /** Units a map may stand on the field: everything trained on the ground or the water. Aircraft need an airfield to live. */
@@ -412,6 +417,22 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     lamps.push({ type: o.type, x, y });
   }
 
+  const rawClutter = m.clutter ?? [];
+  if (!Array.isArray(rawClutter) || rawClutter.length > CUSTOM_MAP_MAX_CLUTTER) return bad(`At most ${CUSTOM_MAP_MAX_CLUTTER} pieces of clutter.`);
+  const clutter: MapClutter[] = [];
+  const clutterAt = new Set<number>();
+  for (const c of rawClutter as unknown[]) {
+    const o = (c ?? {}) as Record<string, unknown>;
+    if (!isClutterType(o.type) || !Number.isInteger(o.x) || !Number.isInteger(o.y)) return bad("Bad clutter.");
+    const x = o.x as number;
+    const y = o.y as number;
+    if (x < 0 || y < 0 || x >= width || y >= height) return bad("Clutter is off the map.");
+    // Two pieces on one tile, a piece in a lot, or one the water has taken is dropped rather than refused.
+    if (clutterAt.has(y * width + x) || lampBlocked(features, x, y) || tiles[y * width + x] === TILE_WATER) continue;
+    clutterAt.add(y * width + x);
+    clutter.push({ type: o.type, x, y });
+  }
+
   const rawUnits = m.units ?? [];
   if (!Array.isArray(rawUnits) || rawUnits.length > CUSTOM_MAP_MAX_UNITS) return bad(`At most ${CUSTOM_MAP_MAX_UNITS} units.`);
   const units: MapUnit[] = [];
@@ -455,6 +476,7 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
       spawns,
       features,
       ...(lamps.length > 0 ? { lamps } : {}),
+      ...(clutter.length > 0 ? { clutter } : {}),
       ...(units.length > 0 ? { units } : {}),
       updatedAt,
     },
@@ -480,6 +502,7 @@ export function buildCustomMap(spec: CustomMapSpec): MapDef {
     spawns: spec.spawns.map((s) => ({ id: s.id, x: s.x, y: s.y })),
     features,
     ...(spec.lamps?.length ? { lamps: spec.lamps.map((l) => ({ ...l })) } : {}),
+    ...(spec.clutter?.length ? { clutter: spec.clutter.map((c) => ({ ...c })) } : {}),
     ...(spec.units?.length ? { units: spec.units.map(copyMapUnit) } : {}),
     custom: { author: spec.author, updatedAt: spec.updatedAt },
   };
@@ -516,6 +539,7 @@ export function specFromMap(id: string, copy: { id: string; name: string; author
     spawns,
     features: map.features.map((f) => ({ ...f })),
     ...(map.lamps?.length ? { lamps: map.lamps.map((l) => ({ ...l })) } : {}),
+    ...(map.clutter?.length ? { clutter: map.clutter.map((c) => ({ ...c })) } : {}),
     ...(map.units?.length ? { units: map.units.map(copyMapUnit) } : {}),
     updatedAt: 0,
   };

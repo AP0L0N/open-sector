@@ -36,6 +36,23 @@ export const WRECK_SCRAP_MUL = 0.2;
 export const WRECK_SCRAP_SECONDS = 5;
 /** Share of a ground burst's soft damage a burnt-out hulk inside it takes. */
 export const WRECK_BLAST_MUL = 0.5;
+/**
+ * Map clutter: rounds a piece soaks before it breaks, by `ClutterType`. A shell
+ * of GARRISON_STRUCTURAL_CALIBER or more, any ground burst over it, or a motor
+ * vehicle rolling across it breaks it outright.
+ */
+export const CLUTTER_HP: Record<"crates" | "barrels" | "haybale" | "cart" | "bench" | "woodpile" | "tires" | "bins", number> = {
+  crates: 40,
+  barrels: 50,
+  haybale: 30,
+  cart: 40,
+  bench: 30,
+  woodpile: 60,
+  tires: 70,
+  bins: 25,
+};
+/** World px round a piece of clutter a round landing still hits. */
+export const CLUTTER_HIT_REACH = TILE_SIZE * 0.7;
 /** Marks a scrap tile. Scrap is never used up: a Smelter standing on it draws from it for the whole match. */
 export const SCRAP_TILE_YIELD = 800;
 /** Scrap a Smelter on a scrap field earns its owner each second at full power. Low power slows it like production. */
