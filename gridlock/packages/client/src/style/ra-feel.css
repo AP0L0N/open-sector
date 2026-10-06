@@ -1153,6 +1153,46 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/ram-cameo.png");
 }
+#build-tobruk {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/tobruk-cameo.png");
+}
+#build-casemate {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/casemate-cameo.png");
+}
+#build-hochstand {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/hochstand-cameo.png");
+}
+#build-leitturm {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/leitturm-cameo.png");
+}
+#build-mgnest {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/mgnest-cameo.png");
+}
+#build-pak36 {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/pak36-cameo.png");
+}
+#build-pak43 {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/pak43-cameo.png");
+}
+#build-flak {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/flak-cameo.png");
+}
 #build-sandbags {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
@@ -1433,6 +1473,14 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="bunker"] { background-image: url("../assets/buildings/bunker-cameo.png"); }
 .config-type[data-type="tower"] { background-image: url("../assets/buildings/tower-cameo.png"); }
 .config-type[data-type="ram"] { background-image: url("../assets/buildings/ram-cameo.png"); }
+.config-type[data-type="tobruk"] { background-image: url("../assets/buildings/tobruk-cameo.png"); }
+.config-type[data-type="casemate"] { background-image: url("../assets/buildings/casemate-cameo.png"); }
+.config-type[data-type="hochstand"] { background-image: url("../assets/buildings/hochstand-cameo.png"); }
+.config-type[data-type="leitturm"] { background-image: url("../assets/buildings/leitturm-cameo.png"); }
+.config-type[data-type="mgnest"] { background-image: url("../assets/buildings/mgnest-cameo.png"); }
+.config-type[data-type="pak36"] { background-image: url("../assets/buildings/pak36-cameo.png"); }
+.config-type[data-type="pak43"] { background-image: url("../assets/buildings/pak43-cameo.png"); }
+.config-type[data-type="flak"] { background-image: url("../assets/buildings/flak-cameo.png"); }
 .config-type[data-type="stuka"],
 .prod-job[data-type="stuka"] {
   background-image: var(--stuka-cameo, url("../assets/units/stuka/hull/0013.png"));

@@ -499,8 +499,10 @@ export interface Entity {
   work: number;
   /** Shift-queued orders, run one after another once the current order ends. Cleared by any unqueued order. */
   orderQueue?: QueuedOrder[];
-  /** Engineer wall pieces still to lay after the current build order. Cleared by any new order. */
+  /** Engineer wall pieces, or bridge bricks, still to lay after the current build order. Cleared by any new order. */
   fieldQueue?: { x: number; y: number; facing: number }[];
+  /** Ticks an engineer laying a bridge has had no way nearer his brick. Not on the wire. */
+  bridgeStuck?: number;
   /** Wounded infantry this medic is walking to or bandaging. */
   tendId?: number;
   /** Seconds of contact toward clearing one crit. */

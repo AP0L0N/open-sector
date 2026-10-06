@@ -1,7 +1,7 @@
-import { SMELTER_SCRAP_COVER, anchorsBuildRange, bridgeWidth, buildRadiusOf, catalog, isBridge, isEngineerBuilding, isFieldStructure, isYardField, onWaterBuilding, type BridgeType, type BuildingType, type FieldStructureType, type YardFieldType } from "../catalog.js";
+import { SMELTER_SCRAP_COVER, anchorsBuildRange, bridgeBrickLength, buildRadiusOf, catalog, isBridge, isEngineerBuilding, isFieldStructure, isYardField, onWaterBuilding, type BridgeType, type BuildingType, type FieldStructureType, type YardFieldType } from "../catalog.js";
 import { TILE_BLOCKED, TILE_FENCE, TILE_ROCK, TILE_TREE, TILE_WATER, getMap } from "../maps.js";
 import type { MatchSnapshot } from "../protocol.js";
-import { bridgeTiles, planBridge, type BridgeGround, type BridgePlan } from "../bridge-plan.js";
+import { planBridgeLine, type BridgeBrick, type BridgeGround, type BridgeSpan } from "../bridge-plan.js";
 import { fieldTilesOn, overlapsFieldIn, overlapsSitedLine, sitedLineTiles } from "./field.js";
 import { buildingSite, buildingTilesOf, turnedBox } from "../building-rect.js";
 import { footprintGap, tileNearOwnBuildings } from "./geo.js";
@@ -64,7 +64,6 @@ export function previewSite(snap: MatchSnapshot, type: BuildingType, tx: number,
   const def = catalog(type);
   const tiles = buildingTilesOf(buildingSite(type, tx, ty, facing, map.tileSize), map.tileSize);
   const built = buildingCells(snap, map.width, map.tileSize, false);
-  const cleared = new Set((snap.clearedTrees ?? []).map((c) => c.y * map.width + c.x));
   const scrapCells = new Set<number>();
   for (const s of snap.scrap) if (s.yield > 0) scrapCells.add(s.y * map.width + s.x);
   // Your sited wall or sandbag line counts as standing while the yard builds it.
@@ -77,8 +76,8 @@ export function previewSite(snap: MatchSnapshot, type: BuildingType, tx: number,
     if (sited.has(i)) return false;
     const kind = map.tiles[i] ?? TILE_BLOCKED;
     if (afloat !== (kind === TILE_WATER)) return false;
+    // A standing tree is no bar: the building fells it.
     if (kind === TILE_BLOCKED || kind === TILE_ROCK || kind === TILE_FENCE) return false;
-    if (kind === TILE_TREE && !cleared.has(i)) return false;
     if (scrapCells.has(i)) {
       if (type !== "smelter") return false;
       scrapUnder++;
@@ -110,22 +109,26 @@ export function previewPlace(snap: MatchSnapshot, type: BuildingType, tx: number
 }
 
 /**
- * Snapshot twin of the sim's bridge plan: the deck a drag would get, and whether
- * the ground takes it. Water is the map's; footing is open land with no building,
- * standing tree, or blocking field work on it.
+ * Snapshot twin of the sim's bridge plan: each brick a line would lay, and why the
+ * ground refuses it, or null. Water is the map's; footing is open land with no
+ * building, standing tree, or blocking field work on it.
  */
-export function previewBridge(snap: MatchSnapshot, type: BridgeType, x1: number, y1: number, x2: number, y2: number): BridgePlan {
+export function previewBridge(
+  snap: MatchSnapshot,
+  type: BridgeType,
+  points: readonly { x: number; y: number }[],
+  facing = 0,
+): { span: BridgeSpan; problem: string | null }[] {
   const map = getMap(snap.mapId);
-  if (!map) return { ok: false, reason: "Cannot place there." };
+  if (!map) return [];
   const w = map.width;
   const cleared = new Set((snap.clearedTrees ?? []).map((c) => c.y * w + c.x));
   const built = new Set<number>();
-  const bridged = new Set<number>();
+  const bricks: BridgeBrick[] = [];
   for (const e of snap.entities) {
     if (e.kind !== "building" || e.hp <= 0) continue;
     if (isBridge(e.type)) {
-      const span = { x: e.x, y: e.y, facing: e.facing, length: e.span ?? 0 };
-      for (const t of bridgeTiles(map, span, bridgeWidth(e.type))) bridged.add(t.y * w + t.x);
+      bricks.push({ type: e.type, span: { x: e.x, y: e.y, facing: e.facing, length: e.span ?? bridgeBrickLength(e.type) } });
       continue;
     }
     if (isFieldStructure(e.type)) {
@@ -147,7 +150,7 @@ export function previewBridge(snap: MatchSnapshot, type: BridgeType, x1: number,
       if (kind === TILE_TREE && !cleared.has(i)) return false;
       return !built.has(i);
     },
-    bridged: (tx, ty) => bridged.has(ty * w + tx),
+    bricks,
   };
-  return planBridge(ground, type, x1, y1, x2, y2);
+  return planBridgeLine(ground, type, points, facing);
 }

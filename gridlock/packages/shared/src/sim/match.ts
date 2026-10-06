@@ -1,4 +1,5 @@
 import {
+  bridgeBrickLength,
   catalog,
   clampGameSpeed,
   GAME_SPEED_DEFAULT,
@@ -12,7 +13,7 @@ import {
   START_SCRAP,
   TICK_DT,
 } from "../catalog.js";
-import { featureAngle, featureLotSite, getMap, isMapSection, type MapDef } from "../maps.js";
+import { featureAngle, featureLotSite, getMap, isMapBridge, isMapSection, type MapDef } from "../maps.js";
 import { mapUnitHostAt } from "../custom-maps.js";
 import { commanders } from "../lobby.js";
 import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
@@ -23,7 +24,7 @@ import { ejectParatroopers, loseRiders, syncPlaneRiders, tickChutes, tickCrates,
 import { tickDrones } from "./drone.js";
 import { tickJets } from "./jet.js";
 import { tickCapture } from "./capture.js";
-import { detachGarrisoned, enterGarrison, killGarrison, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
+import { detachGarrisoned, enterGarrison, killGarrison, manGun, spillGarrison, tickGarrison, tickGarrisonCare } from "./garrison.js";
 import { buildPatrolRoute } from "./patrol.js";
 import { setPath } from "./path.js";
 import { seedRng } from "./rng.js";
@@ -40,7 +41,7 @@ import { tickCollision } from "./collision.js";
 import { tickDeploy } from "./deploy.js";
 import { tickSmelters } from "./smelter.js";
 import { tickConstructs } from "./construct.js";
-import { guardBridges, restampBridges, settleBridges, tickBridges } from "./bridge.js";
+import { guardBridges, placeBrick, restampBridges, settleBridges, tickBridges } from "./bridge.js";
 import { tickHeal } from "./heal.js";
 import { tickForceFields, tickLasers } from "./laser.js";
 import { tickSupply } from "./supply.js";
@@ -146,8 +147,19 @@ export function createMatch(
   const sections: Entity[] = [];
   /** The building each map feature raised, by feature index, for the troops a map puts inside. */
   const raised = new Map<number, Entity>();
+  let bricks = 0;
   (map.features ?? []).forEach((f, fi) => {
     const facing = featureAngle({ ...f, facing: f.facing ?? 0 });
+    if (isMapBridge(f.type)) {
+      placeBrick(state, f.type, {
+        x: tileCenter(f.x, map.tileSize),
+        y: tileCenter(f.y, map.tileSize),
+        facing,
+        length: bridgeBrickLength(f.type),
+      });
+      bricks++;
+      return;
+    }
     if (isMapSection(f.type)) {
       const s = makeEntity(state, f.type, NEUTRAL_OWNER, tileCenter(f.x, map.tileSize), tileCenter(f.y, map.tileSize), { facing });
       s.turretFacing = facing;
@@ -178,7 +190,10 @@ export function createMatch(
     raiseWallCrest(state, sections);
     restampForts(state);
   }
+  if (bricks > 0) restampBridges(state);
   standMapUnits(state, map, raised);
+  // A map's gun is crewed like one the player raises: neutral riflemen in every place the map left empty.
+  for (const b of raised.values()) manGun(state, b, NEUTRAL_OWNER);
 
   return state;
 }

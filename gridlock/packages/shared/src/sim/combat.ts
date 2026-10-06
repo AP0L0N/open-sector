@@ -48,6 +48,13 @@ import {
   RAM_INTERCEPT_INTERVAL,
   RAM_ROCKET,
   radarLaidOf,
+  airFirstOf,
+  antiAirGunOf,
+  armorFirstOf,
+  crewGunOf,
+  garrisonCapOf,
+  isArmoredType,
+  mountArcDegOf,
   TICK_DT,
   MG42_BIPOD_SECONDS,
   MORTAR,
@@ -236,6 +243,8 @@ const TWIN_GUN_SIDE = 0.25;
  */
 export function garrisonCanShoot(state: MatchState, unit: Entity, host: Entity): boolean {
   if (unit.hp <= 0 || unit.wreck || unit.garrisonedIn !== host.id) return false;
+  // At an emplaced gun he works the gun; his own weapon stays slung.
+  if (crewGunOf(host.type)) return false;
   if (!fires(unit.type) || !supplyRiderFights(state, unit)) return false;
   if (host.garrisonHide || isTransportType(host.type)) return false;
   // On an LST's deck tub he fires the mount, whatever he carries.
@@ -886,6 +895,8 @@ function canFight(e: Entity): boolean {
   // Aircraft fire their own guns and bombs in tickAir.
   // A paratrooper under his canopy keeps his rifle slung until he is down.
   if (e.type === "artillery" && gunCrewOf(e) === 0) return false;
+  // An emplaced gun with nobody at it is silent, and so is one whose crew lies low.
+  if (crewGunOf(e.type) && (e.garrison.length === 0 || e.garrisonHide)) return false;
   return fires(e.type) && e.hp > 0 && !e.wreck && !e.air && !e.chute && e.state !== "deploy" && e.state !== "undeploy";
 }
 
@@ -1665,7 +1676,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
       e.cooldown = APOCALYPSE_TWIN_GAP;
     } else {
       e.twinUntil = undefined;
-      e.cooldown = gun.cooldown;
+      e.cooldown = gun.cooldown * crewPace(e);
     }
   }
   if (fired > 0 && e.order?.once) clearOrder(e);
@@ -2202,6 +2213,8 @@ function detonateMortar(state: MatchState, p: Projectile, rand: () => number, di
   const rack = p.heavy ? PENETRATOR_RACK : rocketRackOf(p.launcher ?? "titan");
   const lob = p.shipBarrel != null ? BATTLESHIP_SHELL : p.big ? ARTILLERY_SHELL : MORTAR_LOB;
   const radius = (rocket ? rack.splashTiles : p.big ? lob.splashTiles : MORTAR_SPLASH_TILES) * state.tileSize;
+  // A barrage laid on a bridge brick counts wherever its blast reaches the deck.
+  if (!inAir) strikeBridge(state, p, p.x, p.y, radius);
   for (const e of [...state.entities.values()]) {
     if (e.hp <= 0 || e.wreck || e.id === p.fromId || e.garrisonedIn != null) continue;
     // A ground burst never reaches a plane; an air burst only catches planes.
@@ -2390,7 +2403,7 @@ function gunnerReady(state: MatchState, e: Entity): boolean {
 
 function beginReload(e: Entity, gun: { reload: number }): void {
   if (e.reload > 0) return;
-  e.reload = reloadSecondsOf(gun, e.reloadMul);
+  e.reload = reloadSecondsOf(gun, e.reloadMul) * crewPace(e);
   e.cooldown = 0;
 }
 
@@ -2449,9 +2462,13 @@ export function streamWander(gunId: number, tick: number): { yaw: number; z: num
   };
 }
 
-/** The CIWS pad reaches farther for a plane in the air than for anything on the ground. */
+/** The CIWS pad and the Flak reach farther for a plane in the air than for anything on the ground. */
 function airReachMul(e: Entity, target: Entity | undefined): number {
-  return e.type === "ciws" && !!target && isAirborne(target) ? CIWS_AIR_REACH_MUL : 1;
+  return !!target && isAirborne(target) ? airReachOf(e) : 1;
+}
+
+function airReachOf(e: Entity): number {
+  return e.type === "ciws" ? CIWS_AIR_REACH_MUL : (catalog(e.type).airReachMul ?? 1);
 }
 
 /** The gatling is sitting out an overheat and cannot fire. */
@@ -2503,6 +2520,8 @@ function slewTurret(
 ): number {
   const def = catalog(e.type);
   const rate = def.turretTurnDegPerSec ?? def.turnDegPerSec;
+  const arc = mountArcDegOf(e.type);
+  if (arc != null) return slewInArc(e, target, ground, arc, rate, dt);
   if (ground) return turnTurretToward(e, ground.x, ground.y, rate, dt);
   if (target && target.hp > 0) return turnTurretToward(e, target.x, target.y, rate, dt);
   if (e.order?.kind === "rotate" && e.order.x != null && e.order.y != null) {
@@ -2511,6 +2530,54 @@ function slewTurret(
   const wp = e.waypoints[0];
   if (wp && !reversing(e)) return turnTurretToward(e, wp.x, wp.y, rate, dt);
   return turnTurretTo(e, e.facing, rate, dt);
+}
+
+/** Signed radians from `from` to `to`, in (-PI, PI]. */
+function angleOff(from: number, to: number): number {
+  let d = to - from;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d <= -Math.PI) d += Math.PI * 2;
+  return d;
+}
+
+/** The point lies inside the emplacement's traverse, off the way it was set. Always true for an all-round mount. */
+export function inMountArc(e: Pick<Entity, "type" | "x" | "y" | "facing">, x: number, y: number): boolean {
+  const arc = mountArcDegOf(e.type);
+  if (arc == null) return true;
+  return Math.abs(angleOff(e.facing, Math.atan2(y - e.y, x - e.x))) <= (arc * Math.PI) / 180 + 1e-6;
+}
+
+/**
+ * An emplacement's traverse: the gun swings toward the aim but stops at the edge of its arc.
+ * The degrees returned are still to the aim itself, so a target past the stop is never laid on.
+ */
+function slewInArc(
+  e: Entity,
+  target: Entity | undefined,
+  ground: { x: number; y: number } | null | undefined,
+  arcDeg: number,
+  rate: number,
+  dt: number,
+): number {
+  const aim =
+    ground ??
+    (target && target.hp > 0
+      ? { x: target.x, y: target.y }
+      : e.order?.kind === "rotate" && e.order.x != null && e.order.y != null
+      ? { x: e.order.x, y: e.order.y }
+      : null);
+  if (!aim) return turnTurretTo(e, e.facing, rate, dt);
+  const bearing = Math.atan2(aim.y - e.y, aim.x - e.x);
+  const half = (arcDeg * Math.PI) / 180;
+  const off = Math.max(-half, Math.min(half, angleOff(e.facing, bearing)));
+  turnTurretTo(e, e.facing + off, rate, dt);
+  return (angleOff(e.turretFacing, bearing) * 180) / Math.PI;
+}
+
+/** Short-handed crew: each shot and belt change takes garrisonCap / crew times as long. */
+function crewPace(e: Entity): number {
+  if (!crewGunOf(e.type)) return 1;
+  return garrisonCapOf(e.type) / Math.max(1, e.garrison.length);
 }
 
 function fireRound(
@@ -2626,7 +2693,8 @@ function fireRound(
     shell: opts?.shell ?? null,
     hpFraction: gunId === "scoped" || gunId === "ptrd" ? scopedHpFraction(dist, range) : undefined,
     antiAir:
-      opts?.radar || (!opts?.shell && (e.type === "walker" || radarLaidOf(e.type) || !!infantryGunFor(e)?.antiAir))
+      opts?.radar ||
+      (!opts?.shell && (e.type === "walker" || radarLaidOf(e.type) || antiAirGunOf(e.type) || !!infantryGunFor(e)?.antiAir))
         ? true
         : undefined,
     gatling: gatling || undefined,
@@ -3192,7 +3260,8 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   let best: Entity | undefined;
   let bestD = range * range;
   let bestAir: Entity | undefined;
-  let bestAirD = (range * (e.type === "ciws" ? CIWS_AIR_REACH_MUL : 1)) ** 2;
+  let bestAirD = (range * airReachOf(e)) ** 2;
+  const airRange2 = bestAirD;
   const near: { o: Entity; d: number; i: number }[] = [];
   for (const o of state.entities.values()) {
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn || isCrashing(o)) continue;
@@ -3202,6 +3271,8 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (walkerSparesBuilding(state, e, o)) continue;
     if (concreteProof(state, e, o)) continue;
     if (outOfReachAloft(state, e, o)) continue;
+    // An emplacement leaves alone what stands behind its traverse.
+    if (!inMountArc(e, o.x, o.y)) continue;
     // The ship's CIWS mounts pick their own aircraft. The main battery looks only at the surface.
     if (e.ship && shipAirTarget(o)) continue;
     if (radar) {
@@ -3232,7 +3303,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     const dx = o.x - e.x;
     const dy = o.y - e.y;
     const d = dx * dx + dy * dy;
-    if (d > bestD) continue;
+    if (d > (isAirborne(o) ? airRange2 : bestD)) continue;
     if (launcherOnlyOf(e.type) && !inLauncherBand(state, e, o.x, o.y)) continue;
     if (e.type === "artillery" && d < (ARTILLERY_MIN_RANGE_TILES * state.tileSize) ** 2) continue;
     if (isBattleship(e.type) && d < (BATTLESHIP_MIN_RANGE_TILES * state.tileSize) ** 2) continue;
@@ -3245,7 +3316,12 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   if (bestAir) return bestAir;
   // Nearest first. A target with a friend in the line goes behind one with a clear line.
   // Equal distance: the later one wins, as the plain nearest-first scan did.
-  near.sort((a, b) => a.d - b.d || b.i - a.i);
+  // The Flak looks for a plane first; the Paks for a tank.
+  const airFirst = airFirstOf(e.type);
+  const armorFirst = armorFirstOf(e.type);
+  const rank = (o: Entity): number =>
+    (airFirst && isAirborne(o)) || (armorFirst && isArmoredType(o.type) && !isAirborne(o)) ? 0 : 1;
+  near.sort((a, b) => rank(a.o) - rank(b.o) || a.d - b.d || b.i - a.i);
   for (const c of near) {
     if (!needsClearLine(e, c.o) || !allyInLine(state, e, e.x, e.y, c.o)) return c.o;
   }

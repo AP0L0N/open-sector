@@ -10,8 +10,12 @@ import {
   TREE_HIT_CHANCE,
   TREE_LOS_THROUGH,
   catalog,
+  isCivilianType,
 } from "../catalog.js";
-import { TILE_EMPTY, TILE_TREE } from "../maps.js";
+import { TILE_EMPTY, TILE_TREE, getMap } from "../maps.js";
+import { buildingTilesOf } from "../building-rect.js";
+import { buildingSiteError } from "./build.js";
+import { previewSite } from "./preview.js";
 import { applyCommand } from "./commands.js";
 import { tickProjectiles } from "./combat.js";
 import {
@@ -423,6 +427,61 @@ describe("trees", () => {
     ticks(state, 16);
     assert.equal(isTree(state, valley, y), true, "valley tree must survive hill-to-hill fire");
     assert.ok(dummy.hp < hp0, `dummy hp ${dummy.hp} vs ${hp0}`);
+  });
+
+  for (const type of ["dynamo", "bunker"] as const) {
+    it(`lets a ${type} stand over trees and fells every one under it`, () => {
+      const { state, a } = twoPlayerMatch();
+      const ts = state.tileSize;
+      state.players.get(a)!.scrap = 50_000;
+      for (const e of [...state.entities.values()]) if (isCivilianType(e.type)) destroyEntity(state, e);
+      clearPad(state, 100, 100, 170, 170);
+      const core = makeEntity(state, "core", a, tileCenter(120, ts), tileCenter(120, ts), { tileX: 118, tileY: 118 });
+      makeEntity(state, "dynamo", a, 0, 0, { tileX: 104, tileY: 104 });
+      const tx = core.tileX + core.tileW + 2;
+      const ty = core.tileY;
+      const def = catalog(type);
+      // A grove over the whole footprint and one tree just outside it.
+      for (let y = ty; y < ty + def.tileH; y++) for (let x = tx; x < tx + def.tileW; x++) plant(state, x, y);
+      plant(state, tx + def.tileW, ty);
+      assert.equal(buildingSiteError(state, type, tx, ty, a), null, "trees do not bar the site");
+      assert.equal(applyCommand(state, a, { type: "cmd.build", building: type }).ok, true);
+      const p = state.players.get(a)!;
+      let ready = false;
+      for (let i = 0; i < 6000 && !ready; i++) {
+        step(state, TICK_DT);
+        ready = (p.structure?.ready ?? false) || (p.defence?.ready ?? false);
+      }
+      assert.ok(ready, `the ${type} finishes building`);
+      const res = applyCommand(state, a, { type: "cmd.place", building: type, tx, ty });
+      assert.equal(res.ok, true, res.ok ? "" : res.message);
+      const placed = [...state.entities.values()].find((e) => e.type === type && e.tileX === tx && e.tileY === ty);
+      assert.ok(placed, "the building stands");
+      for (const t of buildingTilesOf(placed, ts)) {
+        assert.equal(isTree(state, t.x, t.y), false, `tree at ${t.x},${t.y} is felled`);
+        assert.ok(state.clearedTrees.some((c) => c.x === t.x && c.y === t.y), "the client is told to fell it");
+      }
+      assert.equal(isTree(state, tx + def.tileW, ty), true, "the tree beside it stays");
+    });
+  }
+
+  it("shows a green ghost over a shipped grove, and the yard agrees", () => {
+    const { state } = twoPlayerMatch();
+    const map = getMap("yard-64")!;
+    const def = catalog("dynamo");
+    const snap = snapshotFor(state, "A");
+    let site: { tx: number; ty: number } | null = null;
+    for (let ty = 0; ty + def.tileH <= map.height && !site; ty++) {
+      for (let tx = 0; tx + def.tileW <= map.width && !site; tx++) {
+        let trees = 0;
+        for (let y = ty; y < ty + def.tileH; y++) {
+          for (let x = tx; x < tx + def.tileW; x++) if (map.tiles[y * map.width + x] === TILE_TREE) trees++;
+        }
+        if (trees > 0 && previewSite(snap, "dynamo", tx, ty)) site = { tx, ty };
+      }
+    }
+    assert.ok(site, "some footprint over shipped trees takes a Power Plant");
+    assert.equal(buildingSiteError(state, "dynamo", site.tx, site.ty), null);
   });
 });
 
