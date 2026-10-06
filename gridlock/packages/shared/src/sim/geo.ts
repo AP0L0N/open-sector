@@ -52,6 +52,7 @@ import {
   TILE_SCRAP,
   TILE_TREE,
   TILE_WATER,
+  isMountainCliff,
   type MapDef,
 } from "../maps.js";
 import { nextRand } from "./rng.js";
@@ -321,7 +322,17 @@ export function initGrids(map: MapDef): {
   for (let i = 0; i < n; i++) {
     const t = map.tiles[i] ?? 0;
     terrain[i] = t;
-    if (t === TILE_BLOCKED || t === TILE_WATER || t === TILE_FENCE || t === TILE_ROCK) blocked[i] = 1;
+    const x = i % map.width;
+    const y = (i / map.width) | 0;
+    if (
+      t === TILE_BLOCKED ||
+      t === TILE_WATER ||
+      t === TILE_FENCE ||
+      t === TILE_ROCK ||
+      isMountainCliff(map.tiles, map.heights, map.width, map.height, x, y)
+    ) {
+      blocked[i] = 1;
+    }
     if (t === TILE_SCRAP) scrapYield[i] = SCRAP_TILE_YIELD;
     else if (t === TILE_DIAMOND_SCRAP) scrapYield[i] = DIAMOND_SCRAP_TILE_YIELD;
     heights[i] = map.heights[i] ?? 0;

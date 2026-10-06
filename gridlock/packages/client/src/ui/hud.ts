@@ -59,6 +59,7 @@ import {
   isInfantryWeaponId,
   isShellType,
   radarLaidOf,
+  aimsOwnGun,
   rocketsOf,
   rocketAmmoOf,
   launcherOnlyOf,
@@ -1722,8 +1723,8 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   const houses = selected.filter((e) => isGarrisonable(e.type) && e.hp > 0);
   const you = ctx.match.youPlayerId;
   const garrisonForce = garrisonForceHosts(you, houses);
-  // A CIWS aims its own gun: it takes Stop, Force attack, and Rotate like a unit.
-  const mounts = buildings.filter((e) => radarLaidOf(e.type));
+  // A CIWS, a RAM, or a crewed gun aims its own gun: it takes Stop, Force attack, and Rotate like a unit.
+  const mounts = buildings.filter((e) => aimsOwnGun(e.type));
   const lamps = buildings.filter((e) => hasSpotlight(e.type) && e.spotFacing != null);
   if (units.length === 0 && buildings.length === 0 && houses.length === 0) return out;
 
@@ -2251,7 +2252,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   const selected = selectedViews(ctx, view);
   const units = ownCommandable(ctx, selected.filter((e) => e.kind === "unit"));
   const buildings = ownCommandable(ctx, selected.filter((e) => e.kind === "building"));
-  const aimers = [...units, ...buildings.filter((e) => radarLaidOf(e.type))];
+  const aimers = [...units, ...buildings.filter((e) => aimsOwnGun(e.type))];
   const lamps = buildings.filter((e) => hasSpotlight(e.type) && e.spotFacing != null);
   const garrisonForce = garrisonForceHosts(match.youPlayerId, selected);
   if (act === "stop") {

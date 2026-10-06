@@ -3,7 +3,9 @@ import {
   HEIGHT_MAX,
   TILE_BLOCKED,
   TILE_ROAD,
+  TILE_MOUNTAIN,
   TILE_ROCK,
+  isMountainCliff,
   TILE_TREE,
   TILE_WATER,
   vertexElev,
@@ -90,12 +92,12 @@ export function terrainSunlight(h: Float32Array, cols: number, rows: number): Fl
  * every mesh vertex. The GPU blends it across each tile, so a slope shades as
  * one surface instead of facets.
  */
-export function vertexTones(map: Pick<MapDef, "width" | "height" | "heights">): Float32Array {
+export function vertexTones(map: Pick<MapDef, "width" | "height" | "heights"> & { tiles?: ArrayLike<number> }): Float32Array {
   const cols = map.width + 1;
   const rows = map.height + 1;
   const h = new Float32Array(cols * rows);
   for (let vy = 0; vy < rows; vy++) {
-    for (let vx = 0; vx < cols; vx++) h[vy * cols + vx] = vertexElev(map.heights, map.width, map.height, vx, vy);
+    for (let vx = 0; vx < cols; vx++) h[vy * cols + vx] = vertexElev(map.heights, map.width, map.height, vx, vy, map.tiles);
   }
   blurField(h, cols, rows, SHADE_BLUR);
   const sun = terrainSunlight(h, cols, rows);
@@ -124,7 +126,7 @@ export function vertexTones(map: Pick<MapDef, "width" | "height" | "heights">): 
  * Scrap is the blurred yard cover, so the stained ground has a rounded rim.
  */
 export function materialBytes(
-  map: Pick<MapDef, "width" | "height" | "tiles">,
+  map: Pick<MapDef, "width" | "height" | "tiles"> & { heights?: ArrayLike<number> },
   scrap: ReadonlySet<number>,
 ): { a: Uint8Array; b: Uint8Array } {
   const n = map.width * map.height;
@@ -143,8 +145,12 @@ export function materialBytes(
       b[o + 2] = 255;
       continue;
     }
-    if (kind === TILE_ROCK) {
+    if (kind === TILE_ROCK || (map.heights && isMountainCliff(map.tiles, map.heights, map.width, map.height, i % map.width, (i / map.width) | 0))) {
       a[o + 3] = 255;
+      continue;
+    }
+    if (kind === TILE_MOUNTAIN) {
+      a[o + 3] = 110;
       continue;
     }
     if (kind === TILE_ROAD) {

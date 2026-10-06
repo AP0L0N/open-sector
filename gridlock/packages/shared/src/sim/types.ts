@@ -340,6 +340,10 @@ export interface Entity {
   radius: number;
   order: Order | null;
   waypoints: Vec[];
+  /** The goal tile the last path search could not reach, and when. Cleared by the next path found. */
+  pathFail?: { tx: number; ty: number; tick: number };
+  /** What a charging Walker is running at. Looked over again every few ticks. */
+  chargeTargetId?: number;
   cooldown: number;
   /** Rounds left in the current infantry magazine. 0 on vehicles. */
   clip: number;
@@ -395,6 +399,11 @@ export interface Entity {
   longRange?: boolean;
   /** Building whose owner uses more power than they provide: its lamps are dark and a CIWS or RAM is silent. Set each tick. */
   unpowered?: boolean;
+  /**
+   * A gun structure's resting heading between targets, set by Rotate. Missing: the way it was
+   * placed (`facing`, which also turns its pad and traverse arc and never changes).
+   */
+  gunRest?: number;
   /** Watch tower spotlight heading, radians. Missing until the tower is first held. */
   spotFacing?: number;
   /** Heading Rotate asked the spotlight for. It swings there at SPOTLIGHT_TURN_DEG_PER_SEC. */
@@ -768,6 +777,8 @@ export interface AiPlan {
   flank: -1 | 1;
   /** Ground the defence under way is meant for, world pixels. */
   site?: Vec;
+  /** Facing that ground was checked at. A turned fort falls back to east when the arc will not fit. */
+  face?: number;
   /** Tick before which a site that found no room is skipped, by site key. */
   siteRetry: Record<string, number>;
   /** Towers already given a wall line, or found no room for one. */

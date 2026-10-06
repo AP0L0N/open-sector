@@ -469,6 +469,12 @@ export const NEBELWERFER_ROCKET: RocketRackDef = {
  * of this many tiles or fewer. Walks FOV borders only. Set to 0 to disable.
  */
 export const FOV_ISLAND_LIMIT = 12;
+/**
+ * A unit whose path search came up empty does not search for the same goal
+ * tile again for this many ticks. A failed search floods the whole reachable
+ * map, and a chase with no path asks every tick.
+ */
+export const PATH_RETRY_TICKS = 30;
 /** Tree tiles a sight ray may pass before the grove closes. One authoring cell. */
 export const TREE_LOS_THROUGH = TILE_SUBDIV;
 /**
@@ -486,11 +492,11 @@ export const STORY_COVER_HEIGHT = t(1.5);
 /** Civilian / unowned map buildings. */
 export const NEUTRAL_OWNER = "";
 /** One trooper vs a Dynamo (750 HP). Larger buildings take longer. */
-export const CAPTURE_SECONDS = 10;
+export const CAPTURE_SECONDS = 20;
 /** HP used as the 1× capture-time reference. */
 export const CAPTURE_HP_REF = 750;
 /** Floor so a cottage is not instant. */
-export const CAPTURE_SECONDS_MIN = 6;
+export const CAPTURE_SECONDS_MIN = 12;
 /** Progress lost per second after capturers leave or die. */
 export const CAPTURE_DECAY_PER_SEC = 0.25;
 
@@ -638,9 +644,9 @@ export function isBridge(type: string): type is BridgeType {
 export function bridgeWidth(type: BridgeType): number {
   return type === "bigbridge" ? 44 : 20;
 }
-/** One brick of deck, world px along the span: a timber bay, or a stone arch between piers. */
+/** One brick of deck, world px along the span: a timber bay, or a wide stone arch between piers. */
 export function bridgeBrickLength(type: BridgeType): number {
-  return type === "bigbridge" ? 32 : 24;
+  return type === "bigbridge" ? 64 : 24;
 }
 /** Scrap per gameplay tile of deck length. */
 export function bridgeCostPerTile(type: BridgeType): number {
@@ -5917,6 +5923,14 @@ export function wadeSpeedOf(type: EntityType): number {
 /** An emplaced gun worked by its garrison: the MG Nest, the Paks, the Flak. See CatalogEntry.crewGun. */
 export function crewGunOf(type: EntityType): boolean {
   return catalog(type).crewGun === true;
+}
+
+/**
+ * A structure that lays its own gun: the CIWS, the RAM, and the crewed guns. Like a unit it
+ * takes Stop, Rotate (where the gun rests between targets), and Force attack.
+ */
+export function aimsOwnGun(type: EntityType): boolean {
+  return radarLaidOf(type) || crewGunOf(type);
 }
 
 /** Traverse each side of an emplacement's set facing, degrees, or null when it turns all round. */

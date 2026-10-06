@@ -3,6 +3,8 @@ import {
   fires,
   hasAmmo,
   radarLaidOf,
+  aimsOwnGun,
+  mountArcDegOf,
   rocketsOf,
   hasCrit,
   hasScout,
@@ -699,14 +701,29 @@ function ownedLamps(state: MatchState, playerId: string, ids: number[], hulls = 
   return out;
 }
 
-/** Own CIWS mounts in the selection. A structure with its own gun: it takes Rotate, Force attack, and Stop. */
+/** Own gun structures in the selection (CIWS, RAM, crewed guns): they take Rotate, Force attack, and Stop. */
 function ownedMounts(state: MatchState, playerId: string, ids: number[]) {
   const out = [];
   for (const id of ids) {
     const e = state.entities.get(id);
-    if (e && e.ownerId === playerId && e.hp > 0 && e.kind === "building" && radarLaidOf(e.type)) out.push(e);
+    if (e && e.ownerId === playerId && e.hp > 0 && e.kind === "building" && aimsOwnGun(e.type)) out.push(e);
   }
   return out;
+}
+
+/**
+ * Where a gun structure rests its gun to look at (x, y). An emplacement with a narrow traverse
+ * stops at the edge of its arc; the placed `facing` itself never changes.
+ */
+function restHeading(e: { type: Entity["type"]; x: number; y: number; facing: number }, x: number, y: number): number {
+  const want = Math.atan2(y - e.y, x - e.x);
+  const arc = mountArcDegOf(e.type);
+  if (arc == null) return want;
+  let off = want - e.facing;
+  while (off > Math.PI) off -= Math.PI * 2;
+  while (off <= -Math.PI) off += Math.PI * 2;
+  const half = (arc * Math.PI) / 180;
+  return e.facing + Math.max(-half, Math.min(half, off));
 }
 
 function cmdMove(
@@ -1072,9 +1089,10 @@ function cmdRotate(
     e.spotFacing = spotFacingOf(e);
     e.spotAim = Math.atan2(y - e.y, x - e.x);
   }
-  // A CIWS rests its gun on this heading between targets, and drops a forced aim.
+  // A gun structure rests its gun on this heading between targets, and drops a forced aim.
+  // Its placed facing (pad, footprint, traverse arc) stays as it was built.
   for (const e of mounts) {
-    e.facing = Math.atan2(y - e.y, x - e.x);
+    e.gunRest = restHeading(e, x, y);
     e.order = null;
     e.attackTarget = null;
     e.state = "idle";
@@ -1356,7 +1374,7 @@ function cmdRockets(state: MatchState, playerId: string, ids: number[], on: bool
 }
 
 function cmdReach(state: MatchState, playerId: string, ids: number[], max: boolean): CmdResult {
-  const mounts = ownedMounts(state, playerId, ids);
+  const mounts = ownedMounts(state, playerId, ids).filter((e) => radarLaidOf(e.type));
   if (mounts.length === 0) return fail("not_yours", "Select a CIWS or a RAM.");
   for (const e of mounts) e.longRange = max ? true : undefined;
   return ok();

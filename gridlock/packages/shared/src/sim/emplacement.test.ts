@@ -19,6 +19,7 @@ import {
 } from "../catalog.js";
 import { TILE_EMPTY, MAP_DEFENCE_TYPES, getMap, registerMap, type MapFeature } from "../maps.js";
 import { raiseBuilding } from "./build.js";
+import { applyCommand } from "./commands.js";
 import { garrisonCanShoot, inMountArc } from "./combat.js";
 import { reachesAircraft } from "./air.js";
 import { destroyEntity, makeEntity } from "./geo.js";
@@ -188,6 +189,57 @@ describe("crewed guns", () => {
       const g = makeEntity(state, type, "A", 100, 100);
       assert.equal(reachesAircraft(g), aa, type);
     }
+  });
+});
+
+describe("crewed gun orders", () => {
+  it("Force attack holds a gun on a ground point in its arc, and Stop hands it back", () => {
+    const state = match();
+    const ts = state.tileSize;
+    const nest = gun(state, "mgnest");
+    const x = nest.x + 8 * ts;
+    const y = nest.y + 2 * ts;
+    assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [nest.id], x, y }).ok, true);
+    assert.equal(nest.order?.kind, "forceattack");
+    assert.ok(until(state, 60, () => shotsFrom(state, nest) > 0), "it fires on the empty ground");
+    assert.equal(applyCommand(state, "A", { type: "cmd.stop", ids: [nest.id] }).ok, true);
+    assert.equal(nest.order, null);
+  });
+
+  it("Force attack lays every gun on a named target, the Pak 36 and Flak included", () => {
+    for (const type of ["pak36", "flak", "pak43"] as BuildingType[]) {
+      const state = match();
+      const g = gun(state, type);
+      const tank = foe(state, "ss3", g, 10, 0);
+      assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [g.id], x: tank.x, y: tank.y, targetId: tank.id }).ok, true, type);
+      assert.equal(g.order?.targetId, tank.id, type);
+    }
+  });
+
+  it("Rotate rests the gun inside its arc and leaves the placed facing, pad, and arc alone", () => {
+    const state = match();
+    const nest = gun(state, "mgnest");
+    const half = (catalog("mgnest").mountArcDeg! * Math.PI) / 180;
+    // Straight behind: the gun stops at the edge of its traverse.
+    assert.equal(applyCommand(state, "A", { type: "cmd.rotate", ids: [nest.id], x: nest.x - 100, y: nest.y + 1 }).ok, true);
+    assert.equal(nest.facing, 0, "the emplacement does not turn");
+    assert.ok(Math.abs(Math.abs(nest.gunRest!) - half) < 1e-6, `rest ${nest.gunRest}`);
+    for (let i = 0; i < 80; i++) step(state, TICK_DT);
+    assert.ok(Math.abs(nest.turretFacing - nest.gunRest!) < 0.02, "the gun swings over and rests there");
+    // The Pak 43 turns all round: it rests right where it was told.
+    const pak = raiseBuilding(state, "A", "pak43", 100, 100, 0);
+    applyCommand(state, "A", { type: "cmd.rotate", ids: [pak.id], x: pak.x, y: pak.y - 100 });
+    assert.ok(Math.abs(pak.gunRest! + Math.PI / 2) < 1e-6);
+    assert.equal(pak.facing, 0);
+  });
+
+  it("the CIWS takes Rotate the same way: its turned pad stays put", () => {
+    const state = match();
+    const ciws = raiseBuilding(state, "A", "ciws", 128, 128, Math.PI / 4);
+    const before = ciws.facing;
+    applyCommand(state, "A", { type: "cmd.rotate", ids: [ciws.id], x: ciws.x - 100, y: ciws.y });
+    assert.equal(ciws.facing, before);
+    assert.ok(Math.abs(Math.abs(ciws.gunRest!) - Math.PI) < 1e-6);
   });
 });
 

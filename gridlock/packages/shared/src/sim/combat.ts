@@ -920,6 +920,19 @@ function backingHop(e: Entity): boolean {
   return reversing(e) && !catalog(e.type).doubleEnded;
 }
 
+/**
+ * The hull keeps the travel heading instead of yawing onto a target.
+ * A forced aim on a Move already did this. A plain Move does too, and so
+ * does an escort still walking to its unit: a casemate that yaws back onto
+ * the enemy never finishes the turn it needs before the tracks roll.
+ * Infantry turn as they walk, so a plain Move still lets them face a target.
+ */
+function hullStaysOnCourse(e: Entity): boolean {
+  if (forceUnderway(e)) return true;
+  if (!catalog(e.type).turnInPlace) return false;
+  return e.order?.kind === "move" || escorting(e);
+}
+
 function travelFights(e: Entity): boolean {
   const k = e.order?.kind;
   return k === "attackmove" || k === "move" || k === "patrol" || escorting(e) || forceUnderway(e);
@@ -1485,7 +1498,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (!holedUp) e.state = "attack";
   // A hull gun under way keeps the course: the hull does not swing to the aim, it
   // fires when the aim sits in its arc of the way it is going.
-  const driving = !turreted && !holedUp && forceUnderway(e) && e.waypoints.length > 0;
+  const driving = !turreted && !holedUp && e.waypoints.length > 0 && hullStaysOnCourse(e);
   if (!turreted && !holedUp) {
     remainingDeg = turnToward(e, aimX, aimY, driving ? 0 : def.turnDegPerSec * hullTurnMul(e), dt);
   }
@@ -2530,7 +2543,8 @@ function slewTurret(
   }
   const wp = e.waypoints[0];
   if (wp && !reversing(e)) return turnTurretToward(e, wp.x, wp.y, rate, dt);
-  return turnTurretTo(e, e.facing, rate, dt);
+  // A gun structure rests where Rotate left it; a turret comes back over the hull.
+  return turnTurretTo(e, e.gunRest ?? e.facing, rate, dt);
 }
 
 /** Signed radians from `from` to `to`, in (-PI, PI]. */
@@ -2567,7 +2581,7 @@ function slewInArc(
       : e.order?.kind === "rotate" && e.order.x != null && e.order.y != null
       ? { x: e.order.x, y: e.order.y }
       : null);
-  if (!aim) return turnTurretTo(e, e.facing, rate, dt);
+  if (!aim) return turnTurretTo(e, e.gunRest ?? e.facing, rate, dt);
   const bearing = Math.atan2(aim.y - e.y, aim.x - e.x);
   const half = (arcDeg * Math.PI) / 180;
   const off = Math.max(-half, Math.min(half, angleOff(e.facing, bearing)));
@@ -3268,6 +3282,11 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   const near: { o: Entity; d: number; i: number }[] = [];
   for (const o of state.entities.values()) {
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn || isCrashing(o)) continue;
+    // Reach first: most of the field is too far to be worth the checks below.
+    const dx = o.x - e.x;
+    const dy = o.y - e.y;
+    const d = dx * dx + dy * dy;
+    if (d > Math.max(airRange2, bestD)) continue;
     // Only a force-attack aims at a bridge. Nothing aims at a heap of rubble.
     if (isBridge(o.type) || isRubble(o)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
@@ -3280,7 +3299,6 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (e.ship && shipAirTarget(o)) continue;
     if (radar) {
       if (o.kind !== "unit") continue;
-      const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
       const air = isAirborne(o);
       if (d > (air ? bestAirD : bestD)) continue;
       if (!gunSees(state, e, o)) continue;
@@ -3303,9 +3321,6 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
       // An empty house, trench, Bunker, or Watch Tower is not worth a round.
       continue;
     }
-    const dx = o.x - e.x;
-    const dy = o.y - e.y;
-    const d = dx * dx + dy * dy;
     if (d > (isAirborne(o) ? airRange2 : bestD)) continue;
     if (launcherOnlyOf(e.type) && !inLauncherBand(state, e, o.x, o.y)) continue;
     if (e.type === "artillery" && d < (ARTILLERY_MIN_RANGE_TILES * state.tileSize) ** 2) continue;

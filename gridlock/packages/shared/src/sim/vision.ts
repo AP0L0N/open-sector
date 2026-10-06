@@ -131,9 +131,50 @@ export function sealFovIslands(
   if (limit <= 0) return;
   const tiles = width * height;
   ensureFovScratch(tiles, limit);
-  recolorSmallIslands(mask, width, height, tiles, 0, 1, limit);
-  recolorSmallIslands(mask, width, height, tiles, 1, 0, limit);
+  // Only ground at the edge of what is lit can change colour, so each pass walks the lit box and one tile around it.
+  const a = litBounds(mask, width, height);
+  if (!a) return;
+  recolorSmallIslands(mask, width, height, tiles, 0, 1, limit, a);
+  const b = litBounds(mask, width, height);
+  if (!b) return;
+  recolorSmallIslands(mask, width, height, tiles, 1, 0, limit, b);
 }
+
+type TileBounds = { x0: number; y0: number; x1: number; y1: number };
+
+/** The box around every lit tile, grown by one tile and clamped to the map. Null when nothing is lit. */
+function litBounds(mask: Uint8Array, width: number, height: number): TileBounds | null {
+  let y0 = -1;
+  let y1 = -1;
+  let x0 = width;
+  let x1 = -1;
+  for (let y = 0; y < height; y++) {
+    const row = y * width;
+    let lx = -1;
+    let rx = -1;
+    for (let x = 0; x < width; x++) {
+      if (!mask[row + x]) continue;
+      if (lx < 0) lx = x;
+      rx = x;
+    }
+    if (lx < 0) continue;
+    if (y0 < 0) y0 = y;
+    y1 = y;
+    if (lx < x0) x0 = lx;
+    if (rx > x1) x1 = rx;
+  }
+  if (y0 < 0) return null;
+  return {
+    x0: Math.max(0, x0 - 1),
+    y0: Math.max(0, y0 - 1),
+    x1: Math.min(width - 1, x1 + 1),
+    y1: Math.min(height - 1, y1 + 1),
+  };
+}
+
+/** `FOV_N8` as two flat arrays, for the loops that run over every tile. */
+const FOV_N8_DX = Int8Array.from(FOV_N8.map(([dx]) => dx));
+const FOV_N8_DY = Int8Array.from(FOV_N8.map(([, dy]) => dy));
 
 function touchesOther(
   mask: Uint8Array,
@@ -143,9 +184,9 @@ function touchesOther(
   y: number,
   from: number,
 ): boolean {
-  for (const [dx, dy] of FOV_N8) {
-    const nx = x + dx;
-    const ny = y + dy;
+  for (let k = 0; k < 8; k++) {
+    const nx = x + FOV_N8_DX[k]!;
+    const ny = y + FOV_N8_DY[k]!;
     if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
     if (mask[ny * width + nx] !== from) return true;
   }
@@ -160,13 +201,14 @@ function recolorSmallIslands(
   from: number,
   to: number,
   limit: number,
+  box: TileBounds,
 ): void {
   const seen = fovSeen;
   const stack = fovStack;
   const small = fovSmall;
   seen.fill(FOV_SEEN_CLEAR, 0, tiles);
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
+  for (let y = box.y0; y <= box.y1; y++) {
+    for (let x = box.x0; x <= box.x1; x++) {
       const start = y * width + x;
       if (seen[start] !== FOV_SEEN_CLEAR || mask[start] !== from) continue;
       if (!touchesOther(mask, width, height, x, y, from)) continue;
@@ -189,9 +231,9 @@ function recolorSmallIslands(
         }
         const cx = cur % width;
         const cy = (cur / width) | 0;
-        for (const [dx, dy] of FOV_N8) {
-          const nx = cx + dx;
-          const ny = cy + dy;
+        for (let k = 0; k < 8; k++) {
+          const nx = cx + FOV_N8_DX[k]!;
+          const ny = cy + FOV_N8_DY[k]!;
           if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
           const ni = ny * width + nx;
           if (mask[ni] !== from) continue;
@@ -216,7 +258,10 @@ function recolorSmallIslands(
 
 /** Sight reach in whole tiles, measured round so a sight ring is a circle, not a square. */
 export function sightDist(ax: number, ay: number, bx: number, by: number): number {
-  return Math.round(Math.hypot(ax - bx, ay - by));
+  // Same rounded value as Math.hypot on tile offsets, several times cheaper; this runs per tile per observer.
+  const dx = ax - bx;
+  const dy = ay - by;
+  return Math.round(Math.sqrt(dx * dx + dy * dy));
 }
 
 export function paintChebyshev(
@@ -436,7 +481,7 @@ function spotLightsTile(
   if (!inAnyLamp(p, x, y)) return false;
   if (!elev) return true;
   if (cover) cover.ignoreOccupyId = p.ignore;
-  if (!hasFullLos(elev, width, height, p.ox, p.oy, x, y, cover, p.seye)) return false;
+  if (!losClear(elev, width, height, p.ox, p.oy, x, y, cover, p.seye)) return false;
   if (cover && coverSmokeAt(cover, width, height, x, y) && sightDist(x, y, p.ox, p.oy) > SMOKE_PEEK_TILES) return false;
   return true;
 }
@@ -711,7 +756,7 @@ type SightMemo = {
 };
 
 /** A unit must hold its tile this many rebuilds before its sight is stored. */
-const SIGHT_SETTLE_CALLS = 2;
+const SIGHT_SETTLE_CALLS = 1;
 
 const sightMemos = new WeakMap<MatchState, Map<number, SightMemo>>();
 
@@ -833,7 +878,9 @@ function alliedSight(state: MatchState, playerId: string): { e: Entity; p: Sight
     if (!allies(state, playerId, e.ownerId)) continue;
     observers.push(e);
   }
-  observers.sort((a, b) => observerRadius(state, b) - observerRadius(state, a));
+  const radius = new Map<number, number>();
+  for (const e of observers) radius.set(e.id, observerRadius(state, e));
+  observers.sort((a, b) => radius.get(b.id)! - radius.get(a.id)!);
   const light = sightLightAt(state.tick);
   return observers.map((e) => {
     const sightTiles = occupantSightTiles(state, e) ?? (entityIsScouting(e) ? sightTilesForEntity(state, e) : undefined);
@@ -858,6 +905,10 @@ function alliedSight(state: MatchState, playerId: string): { e: Entity; p: Sight
 type LazyVision = {
   key: number;
   observers: SightParams[];
+  /** Observers whose reach touches each LAZY_CELL-tile square, so a tile asks only the eyes near it. */
+  buckets: SightParams[][];
+  /** Buckets per row. */
+  cols: number;
   cover: CoverField;
   /** -1 unknown, else the painted (pre-seal) value. */
   raw: Int8Array;
@@ -868,6 +919,8 @@ type LazyVision = {
 };
 
 const lazyVisions = new WeakMap<MatchState, Map<string, LazyVision>>();
+/** Side of one observer bucket, in tiles. */
+const LAZY_CELL = 8;
 
 function lazyVisionOf(state: MatchState, playerId: string, key: number): LazyVision {
   let byPlayer = lazyVisions.get(state);
@@ -879,15 +932,47 @@ function lazyVisionOf(state: MatchState, playerId: string, key: number): LazyVis
   if (hit && hit.key === key) return hit;
   const n = state.width * state.height;
   const live = coverOf(state);
+  const observers = alliedSight(state, playerId).map((o) => o.p);
+  const cols = Math.ceil(state.width / LAZY_CELL);
+  const rows = Math.ceil(state.height / LAZY_CELL);
+  const buckets: SightParams[][] = [];
+  for (let i = 0; i < cols * rows; i++) buckets.push([]);
+  for (const p of observers) {
+    const r = sightBoxRadius(p, true);
+    let x0 = p.ox - r;
+    let x1 = p.ox + r;
+    let y0 = p.oy - r;
+    let y1 = p.oy + r;
+    if (p.fw > 0) {
+      x0 = Math.min(x0, p.fx);
+      y0 = Math.min(y0, p.fy);
+      x1 = Math.max(x1, p.fx + p.fw - 1);
+      y1 = Math.max(y1, p.fy + p.fh - 1);
+    }
+    const cx0 = Math.max(0, Math.floor(x0 / LAZY_CELL));
+    const cx1 = Math.min(cols - 1, Math.floor(x1 / LAZY_CELL));
+    const cy0 = Math.max(0, Math.floor(y0 / LAZY_CELL));
+    const cy1 = Math.min(rows - 1, Math.floor(y1 / LAZY_CELL));
+    for (let cy = cy0; cy <= cy1; cy++) {
+      for (let cx = cx0; cx <= cx1; cx++) buckets[cy * cols + cx]!.push(p);
+    }
+  }
+  const cover: CoverField = {
+    terrain: live.terrain,
+    occupy: live.occupy,
+    hull: Int32Array.from(live.hull as Int32Array),
+    smoke: Uint8Array.from(live.smoke as Uint8Array),
+  };
+  // The same flags `visionMask` rays with, so each tile asked costs one fast ray per nearby eye.
+  const losFlags = hit?.cover.losFlags ?? new Uint8Array(n);
+  fillLosFlags(cover, losFlags);
+  cover.losFlags = losFlags;
   const lazy: LazyVision = {
     key,
-    observers: alliedSight(state, playerId).map((o) => o.p),
-    cover: {
-      terrain: live.terrain,
-      occupy: live.occupy,
-      hull: Int32Array.from(live.hull as Int32Array),
-      smoke: Uint8Array.from(live.smoke as Uint8Array),
-    },
+    observers,
+    buckets,
+    cols,
+    cover,
     raw: hit?.raw ?? new Int8Array(n),
     filled: hit?.filled ?? new Int8Array(n),
     sealed: hit?.sealed ?? new Int8Array(n),
@@ -931,9 +1016,41 @@ function eyeLightsTile(
     if (d > p.radius + levelSightExtra(h0, elevAtSafe(elev, width, height, x, y), p.uphill)) return false;
   }
   cover.ignoreOccupyId = p.ignore;
-  if (!hasFullLos(elev, width, height, p.ox, p.oy, x, y, cover, p.eye)) return false;
+  if (!losClear(elev, width, height, p.ox, p.oy, x, y, cover, p.eye)) return false;
   if (coverSmokeAt(cover, width, height, x, y) && d > SMOKE_PEEK_TILES) return false;
   return true;
+}
+
+/** One sight ray, on the flagged fast path when the cover carries `losFlags` (same test as `paintSightBox`). */
+function losClear(
+  elev: ArrayLike<number>,
+  width: number,
+  height: number,
+  ox: number,
+  oy: number,
+  x: number,
+  y: number,
+  cover: CoverField | undefined,
+  eye: number,
+): boolean {
+  const flags = cover?.losFlags;
+  if (
+    cover &&
+    flags &&
+    cover.smoke &&
+    elev instanceof Uint8Array &&
+    ox >= 0 &&
+    oy >= 0 &&
+    ox < width &&
+    oy < height &&
+    x >= 0 &&
+    y >= 0 &&
+    x < width &&
+    y < height
+  ) {
+    return hasFullLosFlagged(elev, flags, cover, width, ox, oy, x, y, eye);
+  }
+  return hasFullLos(elev, width, height, ox, oy, x, y, cover, eye);
 }
 
 function lazyRaw(state: MatchState, lazy: LazyVision, i: number): number {
@@ -943,7 +1060,8 @@ function lazyRaw(state: MatchState, lazy: LazyVision, i: number): number {
   const x = i % width;
   const y = (i / width) | 0;
   let lit = 0;
-  for (const p of lazy.observers) {
+  const near = lazy.buckets[((y / LAZY_CELL) | 0) * lazy.cols + ((x / LAZY_CELL) | 0)] ?? lazy.observers;
+  for (const p of near) {
     if (observerLightsTile(p, x, y, state.heights, width, state.height, lazy.cover)) {
       lit = 1;
       break;
