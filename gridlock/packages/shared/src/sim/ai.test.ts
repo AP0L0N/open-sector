@@ -854,7 +854,7 @@ describe("easy CPU", () => {
     assert.equal(truck.order?.targetId, tiger.id);
   });
 
-  it("launches a strike drone once the op walks out with the army", () => {
+  it("flies a surveillance drone over the op once he walks out with the army", () => {
     const { state, aiId } = humanVsEasy();
     waitCore(state, aiId);
     const hq = coreOf(state, aiId);
@@ -862,8 +862,34 @@ describe("easy CPU", () => {
     const op = makeEntity(state, "droneop", aiId, hq.x + 48, hq.y);
     op.order = { kind: "guard", targetId: fighter.id };
     micro(state, aiId);
-    assert.equal(op.droneLink?.mode, "strike");
-    assert.notEqual(op.droneLink?.droneId, null);
+    const d = op.droneLink?.droneId != null ? state.entities.get(op.droneLink.droneId) : undefined;
+    assert.ok(d, "the drone is up");
+    assert.equal(d.drone?.mode, "surveil");
+    assert.equal(d.drone?.guard?.targetId, op.id);
+  });
+
+  it("sends the drone in on an enemy the op sees", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    const hq = coreOf(state, aiId);
+    const op = makeEntity(state, "droneop", aiId, hq.x + 48, hq.y);
+    const foe = makeEntity(state, "rifleman", "A", hq.x + 48 + 6 * state.tileSize, hq.y);
+    foe.holdPosition = true;
+    micro(state, aiId);
+    const d = op.droneLink?.droneId != null ? state.entities.get(op.droneLink.droneId) : undefined;
+    assert.ok(d, "the drone is up");
+    assert.equal(d.drone?.mode, "strike");
+    assert.equal(d.order?.kind, "attack");
+    assert.equal(d.order?.targetId, foe.id);
+  });
+
+  it("takes a submarine down when it sees the enemy", () => {
+    const { state, aiId } = humanVsEasy();
+    waitCore(state, aiId);
+    const sub = makeEntity(state, "submarine", aiId, 150 * state.tileSize, 150 * state.tileSize);
+    makeEntity(state, "gunboat", "A", 160 * state.tileSize, 150 * state.tileSize);
+    micro(state, aiId);
+    assert.equal(sub.dive?.down, true);
   });
 
   it("turns a wave with nothing to shoot on the enemy buildings", () => {

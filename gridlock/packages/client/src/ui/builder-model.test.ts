@@ -48,6 +48,9 @@ import {
   nextSpawnId,
   paintDisk,
   placeLamp,
+  clutterIndexAt,
+  placeClutter,
+  scatterSheetClutter,
   restoreSheet,
   setMaxPlayers,
   settle,
@@ -344,6 +347,38 @@ describe("builder lamps", () => {
     restoreSheet(s, mark);
     assert.equal(s.lamps.length, 2);
     assert.deepEqual(sheetFromSpec(sheetToSpec(s)).lamps, sheetToSpec(s).lamps);
+  });
+});
+
+describe("builder clutter", () => {
+  it("stands a piece on open ground and refuses water, a lot, and a taken tile", () => {
+    const s = fresh();
+    assert.equal(placeClutter(s, "crates", 60, 60), null);
+    assert.match(placeClutter(s, "bins", 60, 60) ?? "", /already/);
+    assert.equal(placeClutter(s, "bins", 61, 60), null);
+    s.tiles[70 * s.width + 70] = TILE_WATER;
+    assert.match(placeClutter(s, "cart", 70, 70) ?? "", /dry ground/);
+    s.features.push(houseAt("factory", 100, 100, 0));
+    assert.match(placeClutter(s, "cart", 100, 100) ?? "", /lot/);
+    assert.equal(clutterIndexAt(s, 62, 60), 1);
+    assert.equal(clutterIndexAt(s, 64, 64), -1);
+  });
+
+  it("saves what a building or water does not cover, and scatters more by the houses", () => {
+    const s = fresh();
+    placeClutter(s, "woodpile", 40, 40);
+    placeClutter(s, "haybale", 90, 90);
+    placeClutter(s, "tires", 120, 120);
+    s.features.push(houseAt("warehouse", 90, 90, 0));
+    s.tiles[120 * s.width + 120] = TILE_WATER;
+    assert.deepEqual(sheetToSpec(s).clutter, [{ type: "woodpile", x: 40, y: 40 }]);
+    assert.deepEqual(sheetFromSpec(sheetToSpec(s)).clutter, sheetToSpec(s).clutter);
+    const before = s.clutter.length;
+    const added = scatterSheetClutter(s, "seed");
+    assert.ok(added > 0);
+    assert.equal(s.clutter.length, before + added);
+    const near = s.clutter.slice(before).filter((c) => c.x >= 84 && c.x < 112 && c.y >= 84 && c.y < 112);
+    assert.ok(near.length > 0, "nothing by the warehouse");
   });
 });
 
