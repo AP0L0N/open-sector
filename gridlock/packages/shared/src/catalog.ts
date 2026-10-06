@@ -1680,14 +1680,19 @@ export const PENETRATOR = {
  * Pyro's flamethrower. Two fuel tanks on his back and a lance with a pilot
  * flame. A trigger pull throws a short burst: FLAMER_BURST globs of burning
  * fuel, one a tick, that arc onto the ground around the aim point and splash
- * the soldiers they land among. Every glob that lands on dry ground leaves it
- * burning (GroundFire), and the fire keeps burning whoever stands in it. The
- * tanks hold only FLAMER_BURSTS bursts and never refill by themselves: bring a
- * supply truck. The jet goes over sandbags and in through a house's windows.
+ * the soldiers they land among. The jet itself burns every soldier it passes,
+ * friend or foe, the way the Cyborg Commander's beam does, and every tree on
+ * that line. It leaves the ground burning from a little past his body all the
+ * way to the target. A glob that lands on dry ground feeds that fire, and the
+ * fire keeps burning whoever stands in it. The tanks hold FLAMER_BURSTS bursts
+ * (four full ones and a short squeeze — half again the old three) and never
+ * refill by themselves: bring a supply truck. The jet goes over sandbags and
+ * in through a house's windows. A building or a concrete line stops it.
  * Burning fuel only scorches armor plate, so he leaves tanks alone.
  */
 export const FLAMER_BURST = 8;
-export const FLAMER_BURSTS = 3;
+/** Four full bursts and a half. 8 × 4.5 = 36 globs, half again the old 24. */
+export const FLAMER_BURSTS = 4.5;
 /** Seconds between the globs of one burst. */
 export const FLAMER_GLOB_INTERVAL = TICK_DT;
 /** Seconds from the end of one burst to the next trigger pull. */
@@ -1704,7 +1709,7 @@ export const FLAMER_SPLASH = t(0.3) * TILE_SIZE;
 export const FLAMER = {
   id: "flamer" as const,
   name: "Flamethrower",
-  blurb: "A short jet of burning fuel. It splashes the soldiers it lands among and sets the ground alight. Force-attack burns a tree down. Three bursts in the tanks; only a supply truck refills them.",
+  blurb: "A short jet of burning fuel. It burns every soldier in its path, his own too, and leaves the ground alight from just in front of him out to the target. Trees in the jet burn down. Four bursts and a short one in the tanks; only a supply truck refills them.",
   damage: 6,
   penetration: 0,
   caliber: 1,
@@ -1729,6 +1734,13 @@ export const FIRE_DIE_SHARE = 0.3;
 /** World-pixel radius of a fresh patch. Feeding it grows it to FIRE_RADIUS_MAX. */
 export const FIRE_RADIUS = t(0.35) * TILE_SIZE;
 export const FIRE_RADIUS_MAX = t(0.6) * TILE_SIZE;
+/**
+ * The Pyro's trail starts this far past his body, then one patch-width more,
+ * so the first flames sit a little further out than he stands. World px.
+ */
+export const FLAMER_TRAIL_GAP = TILE_SIZE * 0.5;
+/** Patch centers along the jet. They overlap, so the path is one burn, and they do not merge into a single blob. */
+export const FLAMER_TRAIL_SPACING = FIRE_RADIUS * 1.2;
 /** A glob this close to a burning patch feeds it instead of starting a new one. Share of its radius. */
 export const FIRE_MERGE_SHARE = 0.7;
 /** HP per second to an unarmored soldier standing in the flames. */
@@ -4199,7 +4211,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: FLAMER.penetration,
     caliber: FLAMER.caliber,
     spreadDeg: FLAMER.spreadDeg,
-    blurb: "Flamethrower with two fuel tanks on his back. Very short reach and only three bursts until a supply truck refills him, but the jet goes over sandbags and in through windows, and the ground it hits keeps burning, deadly to any soldier in it. Force-attack sets a tree alight. When he is killed there is a small chance the tanks go up.",
+    blurb: "Flamethrower with two fuel tanks on his back. Very short reach, and half again as much fuel: four bursts and a short one, refilled only by a supply truck. The jet burns every soldier it passes, his own too, and the ground from just in front of him out to the target stays alight. Trees in the way burn down. Over sandbags and in through windows. When he is killed there is a small chance the tanks go up.",
   },
   mortarman: {
     type: "mortarman",

@@ -129,7 +129,6 @@ import {
   type RocketRackDef,
   LAUNCHER_ROCKET_RACK,
   PENETRATOR_RACK,
-  FLAMER_BURST,
   type CatalogEntry,
   type ShellType,
   torpedoesOf,
@@ -1680,8 +1679,8 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   let fired = 0;
   if (infantryGun?.id === "flamer") {
     // throwFlame paces the burst itself: a glob a tick, then a pause.
-    throwFlame(state, e, aimX, aimY, range, e.order?.kind === "forceattack");
-    if (e.order?.once && e.clip % FLAMER_BURST === 0) clearOrder(e);
+    const burstEnded = throwFlame(state, e, aimX, aimY, range, e.order?.kind === "forceattack");
+    if (e.order?.once && burstEnded) clearOrder(e);
     return;
   }
   // The Cyborg's arm heats like every gatling. (The Apocalypse's heat is its roof mount, not this gun.)

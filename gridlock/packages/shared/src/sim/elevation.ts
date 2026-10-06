@@ -550,28 +550,13 @@ export function fillLosFlags(cover: CoverField, out: Uint8Array): void {
 }
 
 /** Tiles per fast-path block. A clear block skips the ray; a marked one falls through to it. */
-const LOS_BLOCK = 4;
-/** Side cells of a diagonal step sit in the neighbor when the line hugs the block edge. */
-const LOS_EDGE = 1;
+const LOS_BLOCK = 16;
 
 let losBlockFlags = new Uint8Array(0);
 let losBlockMax = new Uint8Array(0);
 let losBlockCols = 0;
 let losBlockRows = 0;
 let losFast = false;
-export let losFastHits = 0;
-export let losFastMisses = 0;
-export let losSteps = 0;
-
-export function takeLosFastCounts(): { hits: number; misses: number } {
-  const hits = losFastHits;
-  const misses = losFastMisses;
-  const steps = losSteps;
-  losFastHits = 0;
-  losFastMisses = 0;
-  losSteps = 0;
-  return { hits, misses, steps };
-}
 
 /**
  * Summarise cover and height so a ray across empty flat ground can return
@@ -630,40 +615,6 @@ function losBlockOpen(bx: number, by: number, limit: number): boolean {
   return losBlockFlags[i] === 0 && losBlockMax[i]! <= limit;
 }
 
-/** A diagonal side tile can leave this block only from the outer column. */
-function losEdgeOpen(
-  bx: number,
-  by: number,
-  xA: number,
-  yA: number,
-  dx: number,
-  dy: number,
-  t0: number,
-  t1: number,
-  limit: number,
-): boolean {
-  if (t0 < 0) t0 = 0;
-  if (t1 > 1) t1 = 1;
-  if (t1 < t0) return true;
-  const x0s = xA + dx * t0;
-  const x1s = xA + dx * t1;
-  const y0s = yA + dy * t0;
-  const y1s = yA + dy * t1;
-  const loX = x0s < x1s ? x0s : x1s;
-  const hiX = x0s < x1s ? x1s : x0s;
-  const loY = y0s < y1s ? y0s : y1s;
-  const hiY = y0s < y1s ? y1s : y0s;
-  const left = bx * LOS_BLOCK;
-  const top = by * LOS_BLOCK;
-  const right = left + LOS_BLOCK;
-  const bottom = top + LOS_BLOCK;
-  if (loX < left + LOS_EDGE && !losBlockOpen(bx - 1, by, limit)) return false;
-  if (hiX > right - LOS_EDGE && !losBlockOpen(bx + 1, by, limit)) return false;
-  if (loY < top + LOS_EDGE && !losBlockOpen(bx, by - 1, limit)) return false;
-  if (hiY > bottom - LOS_EDGE && !losBlockOpen(bx, by + 1, limit)) return false;
-  return true;
-}
-
 /**
  * True when every block the sight line crosses is empty and no taller than
  * the lower end of the eye line. A tree beside the line does not count.
@@ -680,8 +631,8 @@ function losFastClear(x0: number, y0: number, x1: number, y1: number, h0: number
   let cy = (y0 / B) | 0;
   const ex = (x1 / B) | 0;
   const ey = (y1 / B) | 0;
-  if (!losBlockOpen(cx, cy, limit) || !losBlockOpen(ex, ey, limit)) return false;
-  if (cx === ex && cy === ey) return losEdgeOpen(cx, cy, xA, yA, dx, dy, 0, 1, limit);
+  if (!losBlockOpen(cx, cy, limit)) return false;
+  if (cx === ex && cy === ey) return true;
   const stepX = dx >= 0 ? 1 : -1;
   const stepY = dy >= 0 ? 1 : -1;
   const invX = dx === 0 ? 0 : 1 / dx;
@@ -690,21 +641,15 @@ function losFastClear(x0: number, y0: number, x1: number, y1: number, h0: number
   let tMaxY = dy === 0 ? Infinity : ((cy + (stepY > 0 ? 1 : 0)) * B - yA) * invY;
   const tDeltaX = dx === 0 ? Infinity : Math.abs(B * invX);
   const tDeltaY = dy === 0 ? Infinity : Math.abs(B * invY);
-  let tEnter = 0;
-  if (!losEdgeOpen(cx, cy, xA, yA, dx, dy, tEnter, Math.min(tMaxX, tMaxY, 1), limit)) return false;
   const guard = losBlockCols + losBlockRows + 2;
   for (let n = 0; n < guard && (cx !== ex || cy !== ey); n++) {
-    let tExit: number;
     if (tMaxX < tMaxY) {
-      tExit = tMaxX;
       cx += stepX;
       tMaxX += tDeltaX;
     } else if (tMaxY < tMaxX) {
-      tExit = tMaxY;
       cy += stepY;
       tMaxY += tDeltaY;
     } else {
-      tExit = tMaxX;
       if (!losBlockOpen(cx + stepX, cy, limit) || !losBlockOpen(cx, cy + stepY, limit)) return false;
       cx += stepX;
       cy += stepY;
@@ -713,8 +658,6 @@ function losFastClear(x0: number, y0: number, x1: number, y1: number, h0: number
     }
     if (cx < 0 || cy < 0 || cx >= losBlockCols || cy >= losBlockRows) return false;
     if (!losBlockOpen(cx, cy, limit)) return false;
-    tEnter = tExit;
-    if (!losEdgeOpen(cx, cy, xA, yA, dx, dy, tEnter, Math.min(tMaxX, tMaxY, 1), limit)) return false;
   }
   return cx === ex && cy === ey;
 }
@@ -746,13 +689,7 @@ export function hasFullLosFlagged(
   const h0 = prevH + Math.max(0, observerEye);
   const dh = elev[iEnd]! - h0;
   // Ground at or below both ends of the line cannot poke through it, and an empty block has no cover.
-  if (losFast) {
-    if (losFastClear(x0, y0, x1, y1, h0, elev[iEnd]!)) {
-      losFastHits++;
-      return true;
-    }
-    losFastMisses++;
-  }
+  if (losFast && losFastClear(x0, y0, x1, y1, h0, elev[iEnd]!)) return true;
   const destHull = hull ? (hull[iEnd] ?? 0) : 0;
   const spanX = x1 - x0;
   const spanY = y1 - y0;
@@ -767,7 +704,6 @@ export function hasFullLosFlagged(
   let sight = 0;
   const cap = dx + dy + 2;
   for (let n = 0; n < cap; n++) {
-    losSteps++;
     if (x === x1 && y === y1) return true;
     const e2 = err * 2;
     let steppedX = false;

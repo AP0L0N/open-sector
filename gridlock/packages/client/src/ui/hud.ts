@@ -1521,7 +1521,7 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
               : focus.type === "rocketer"
               ? "The tube reloads off his back. Loose at full reach, tighter as the target closes. High penetration is one missile: faster, accurate at long range, and it wrecks armor. Fitting it takes a few seconds unless it is already loaded. He fires that round only when you order the shot. A supply truck brings another. A broken arm puts the tube down."
               : focus.type === "pyro"
-              ? "Flamethrower: a few strides of reach, three bursts in the tanks, and only a supply truck refills them. The ground he hits burns for a while and kills soldiers who stand in it, his own side too. Over sandbags and in through windows. A broken arm puts the lance down; if he is killed the tanks may go up."
+              ? "Flamethrower: a few strides of reach. The tanks hold four bursts and a short one, and only a supply truck refills them. The jet burns every soldier in its path, his own too, and the ground stays alight from just in front of him out to the target. Trees in the way burn down. Over sandbags and in through windows. A broken arm puts the lance down; if he is killed the tanks may go up."
               : focus.type === "mortarman"
               ? "Kneel and plant the tube. The bomb lobs past what he can see. Too close and it will not drop."
               : focus.type === "medic"

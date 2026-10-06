@@ -18,18 +18,23 @@ import {
   FLAMER_SCATTER_ACROSS,
   FLAMER_SCATTER_ALONG,
   FLAMER_SPLASH,
+  FLAMER_TRAIL_GAP,
+  FLAMER_TRAIL_SPACING,
   HE_FIRE_PATCHES,
   HE_FIRE_RADIUS,
   isArmoredType,
   isCyborg,
+  isFieldStructure,
   isInfantryType,
+  LASER_SWEEP_CYBORG_DAMAGE,
   PYRO_COOKOFF_CHANCE_DRY,
   PYRO_COOKOFF_CHANCE_FULL,
   PYRO_COOKOFF_DAMAGE,
   PYRO_COOKOFF_FIRES,
   PYRO_COOKOFF_RADIUS,
 } from "../catalog.js";
-import { coverStrike } from "./field.js";
+import { coverStrike, wallSweep } from "./field.js";
+import { takeDamage } from "./crits.js";
 import { allies, burnTreeAt, isWater, nearestWalkable, occupant, playerTeam, tileCenter, worldToTile } from "./geo.js";
 import { garrisonMuzzleToward, livingGarrison, woundGarrison } from "./garrison.js";
 import { mortarAirZ } from "./mortar.js";
@@ -42,6 +47,7 @@ import type { Entity, GroundFire, MatchState, Projectile } from "./types.js";
  * One glob of the Pyro's jet. It leaves the lance along his aim, arcs a
  * little, and comes down scattered around the aim point, never past his reach.
  * The burst is paced here: a glob a tick, then a pause once FLAMER_BURST are out.
+ * The jet burns the path as it leaves the lance. True when that glob ended a burst.
  */
 export function throwFlame(
   state: MatchState,
@@ -50,7 +56,7 @@ export function throwFlame(
   aimY: number,
   range: number,
   forced: boolean,
-): void {
+): boolean {
   const dx = aimX - e.x;
   const dy = aimY - e.y;
   const dist = Math.hypot(dx, dy);
@@ -68,6 +74,16 @@ export function throwFlame(
   const slit = garrisonMuzzleToward(state, e, aimX, aimY);
   const fromX = slit?.x ?? e.x;
   const fromY = slit?.y ?? e.y;
+  // The path is the aim, not the scatter: soldiers and trees on it burn, and the
+  // ground from a little past him out to the target catches. A building or a
+  // concrete line stops the jet. The glob still flies on to splash where it lands.
+  const odx = aimX - fromX;
+  const ody = aimY - fromY;
+  const odist = Math.hypot(odx, ody);
+  const jx = odist > 1e-6 ? odx / odist : ux;
+  const jy = odist > 1e-6 ? ody / odist : uy;
+  const opening = (FLAMER.clip - e.clip) % FLAMER_BURST === 0;
+  scorchJet(state, e, fromX, fromY, jx, jy, jetReach(state, e, fromX, fromY, jx, jy, Math.min(range, odist)), slit ? 0 : e.radius, opening);
   const p: Projectile = {
     id: state.nextId++,
     ownerId: e.ownerId,
@@ -96,7 +112,103 @@ export function throwFlame(
   state.projectiles.push(p);
   e.clip = Math.max(0, e.clip - 1);
   // The last glob of a burst: he lets go of the trigger for a moment.
-  e.cooldown = e.clip % FLAMER_BURST === 0 ? FLAMER_BURST_PAUSE : FLAMER_GLOB_INTERVAL;
+  // The tanks hold a half-burst past the last full one, so the pause is counted
+  // from a full load, and running dry ends the squeeze too.
+  const ended = flamerBurstEnded(e.clip);
+  e.cooldown = ended ? FLAMER_BURST_PAUSE : FLAMER_GLOB_INTERVAL;
+  return ended;
+}
+
+/** True when this glob finished a burst, or the tanks just ran dry. */
+export function flamerBurstEnded(clipAfter: number): boolean {
+  if (clipAfter <= 0) return true;
+  const spent = FLAMER.clip - clipAfter;
+  return spent > 0 && spent % FLAMER_BURST === 0;
+}
+
+/**
+ * How far the jet reaches before a building or a concrete line stops it.
+ * The house he is firing from does not count. Sandbags and trenches do not either.
+ */
+function jetReach(state: MatchState, e: Entity, ox: number, oy: number, ux: number, uy: number, max: number): number {
+  let len = Math.max(0, max);
+  const wall = wallSweep(state, ox, oy, ox + ux * len, oy + uy * len);
+  if (wall) len = Math.min(len, wall.t * len);
+  const step = state.tileSize * 0.25;
+  for (let d = step; d < len; d += step) {
+    const id = occupant(state, worldToTile(ox + ux * d, state.tileSize), worldToTile(oy + uy * d, state.tileSize));
+    if (!id || id === e.garrisonedIn) continue;
+    const o = state.entities.get(id);
+    if (!o || o.kind !== "building" || o.hp <= 0 || isFieldStructure(o.type)) continue;
+    return d;
+  }
+  return len;
+}
+
+/**
+ * The jet along this line. `cut` is the first glob of a burst: soldiers on the
+ * line burn down then, friend or foe, and a cyborg's plating takes one heavy
+ * cut. Every glob lays the trail and burns the trees. Armor plate is left alone.
+ */
+function scorchJet(
+  state: MatchState,
+  e: Entity,
+  ox: number,
+  oy: number,
+  ux: number,
+  uy: number,
+  len: number,
+  nose: number,
+  cut: boolean,
+): void {
+  if (len <= 0) return;
+  if (cut) burnJetSoldiers(state, e, ox, oy, ux, uy, len);
+  burnJetTrees(state, e, ox, oy, ux, uy, len);
+  layJetFire(state, e.ownerId, ox, oy, ux, uy, len, nose + FLAMER_TRAIL_GAP + FIRE_RADIUS);
+}
+
+/** Soldiers the jet passes burn where they stand. A cyborg's plating takes the commander's cut instead. */
+function burnJetSoldiers(state: MatchState, e: Entity, ox: number, oy: number, ux: number, uy: number, len: number): void {
+  for (const o of state.entities.values()) {
+    if (o.id === e.id || o.kind !== "unit" || o.hp <= 0 || o.wreck || o.garrisonedIn != null) continue;
+    if (!isInfantryType(o.type) || o.drone || isAirborne(o)) continue;
+    const dx = o.x - ox;
+    const dy = o.y - oy;
+    const along = dx * ux + dy * uy;
+    if (along < 0 || along > len) continue;
+    if (Math.abs(dx * uy - dy * ux) > o.radius + FLAMER_SPLASH) continue;
+    const before = o.hp;
+    takeDamage(o, isCyborg(o.type) ? LASER_SWEEP_CYBORG_DAMAGE : o.hp, state.tick);
+    markFireKill(o, before);
+  }
+}
+
+/** Every tree the jet crosses burns down. Trees do not stop it. */
+function burnJetTrees(state: MatchState, e: Entity, ox: number, oy: number, ux: number, uy: number, len: number): void {
+  const ts = state.tileSize;
+  for (let d = e.radius; d <= len; d += ts * 0.5) {
+    const tx = worldToTile(ox + ux * d, ts);
+    const ty = worldToTile(oy + uy * d, ts);
+    if (!burnTreeAt(state, tx, ty)) continue;
+    igniteAt(state, tileCenter(tx, ts), tileCenter(ty, ts), e.ownerId);
+  }
+}
+
+/** Burning ground from a little past him out to the end of the jet. */
+function layJetFire(
+  state: MatchState,
+  ownerId: string,
+  ox: number,
+  oy: number,
+  ux: number,
+  uy: number,
+  len: number,
+  start: number,
+): void {
+  if (len < start) return;
+  const spacing = Math.max(1, FLAMER_TRAIL_SPACING);
+  for (let d = start; d < len; d += spacing) igniteAt(state, ox + ux * d, oy + uy * d, ownerId);
+  igniteAt(state, ox + ux * len, oy + uy * len, ownerId);
 }
 
 /** Glob flight. True while it is still in the air. */

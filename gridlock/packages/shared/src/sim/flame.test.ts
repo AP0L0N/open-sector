@@ -4,10 +4,13 @@ import {
   carriesShell,
   catalog,
   FIRE_BURN_DPS,
+  FIRE_RADIUS,
   FIRE_SECONDS,
   FLAMER,
   FLAMER_BURST,
   FLAMER_BURSTS,
+  FLAMER_TRAIL_GAP,
+  LASER_SWEEP_CYBORG_DAMAGE,
   HE_FIRE_PATCHES,
   HE_FIRE_RADIUS,
   HANDGUN_RANGE_TILES,
@@ -103,27 +106,35 @@ describe("pyro", () => {
     assert.ok(isInfantryType("pyro"));
     assert.deepEqual(infantryLoadout("pyro"), [FLAMER]);
     assert.equal(FLAMER.clip, FLAMER_BURST * FLAMER_BURSTS);
+    assert.equal(FLAMER.clip, 36, "half again the old twenty-four charges");
     assert.equal(FLAMER.reload, 0, "the tanks never refill by themselves");
     assert.ok(FLAMER.rangeTiles > HANDGUN_RANGE_TILES && FLAMER.rangeTiles < RIFLE_RANGE_TILES / 2);
     assert.equal(catalog("pyro").rangeTiles, FLAMER.rangeTiles);
   });
 
-  it("throws one burst of globs, pauses, and sets the ground around the target alight", () => {
+  it("throws one burst of globs, pauses, and lays fire from just past him out to the aim", () => {
     const { state, y, ts } = range();
     const me = pyro(state, tileCenter(70, ts), tileCenter(y, ts));
-    const foe = dummy(state, "rifleman", tileCenter(80, ts), tileCenter(y, ts));
-    applyCommand(state, "A", { type: "cmd.attack", ids: [me.id], targetId: foe.id });
+    const aimX = tileCenter(80, ts);
+    const aimY = tileCenter(y, ts);
+    assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [me.id], x: aimX, y: aimY }).ok, true);
     const seen = watch(state, me, secs(1.2));
     assert.equal(seen.size, FLAMER_BURST, "one burst");
     assert.equal(me.clip, FLAMER.clip - FLAMER_BURST);
     watch(state, me, secs(0.5), seen);
     assert.equal(seen.size, FLAMER_BURST, "a pause after the burst");
-    assert.ok(foe.hp < foe.hpMax, "the jet burned the soldier");
-    assert.ok(state.fires.length > 0, "the ground burns");
+    const dist = Math.hypot(aimX - me.x, aimY - me.y);
+    const near = me.radius + FLAMER_TRAIL_GAP;
+    assert.ok(state.fires.length > 1, "a trail, not one patch");
+    let reached = false;
     for (const f of state.fires) {
-      assert.ok(Math.hypot(f.x - foe.x, f.y - foe.y) < 4 * ts, "fire lands around the target");
-      assert.ok(Math.hypot(f.x - me.x, f.y - me.y) <= catalog("pyro").rangeTiles * ts + 1, "never past his reach");
+      const along = f.x - me.x;
+      assert.ok(along > near, `fire at ${along.toFixed(1)} starts further out than he stands`);
+      assert.ok(along <= dist + FIRE_RADIUS, "not past the aim");
+      assert.ok(Math.abs(f.y - me.y) < FIRE_RADIUS * 2, "on the line");
+      if (dist - along < FIRE_RADIUS * 2) reached = true;
     }
+    assert.equal(reached, true, "the trail reaches the aim");
   });
 
   it("does not reach past his short range", () => {
@@ -137,9 +148,10 @@ describe("pyro", () => {
   it("runs dry after a few bursts, then stops looking for fights until a truck refills him", () => {
     const { state, y, ts } = range();
     const me = pyro(state, tileCenter(70, ts), tileCenter(y, ts));
-    const foe = dummy(state, "rifleman", tileCenter(80, ts), tileCenter(y, ts));
-    applyCommand(state, "A", { type: "cmd.attack", ids: [me.id], targetId: foe.id });
-    const seen = watch(state, me, secs(15));
+    const aimX = tileCenter(80, ts);
+    const aimY = tileCenter(y, ts);
+    assert.equal(applyCommand(state, "A", { type: "cmd.forceattack", ids: [me.id], x: aimX, y: aimY }).ok, true);
+    const seen = watch(state, me, secs(20));
     assert.equal(seen.size, FLAMER.clip, "every glob in the tanks, no more");
     assert.equal(me.clip, 0);
     assert.equal(me.reload, 0);
@@ -148,6 +160,7 @@ describe("pyro", () => {
     watch(state, me, secs(2), seen);
     assert.equal(me.attackTarget, null, "dry tanks: no auto-engage");
 
+    const foe = dummy(state, "rifleman", tileCenter(80, ts), tileCenter(y, ts));
     const truck = makeEntity(state, "supply", "A", tileCenter(66, ts), tileCenter(y, ts));
     assert.equal(applyCommand(state, "A", { type: "cmd.supply", ids: [truck.id], targetId: me.id }).ok, true);
     const glob0 = seen.size;
@@ -197,6 +210,60 @@ describe("pyro", () => {
     assert.ok(seen.size > 0, "he lays the jet on the house");
     assert.ok(inside.hp < inside.hpMax, "the occupant is burned");
     assert.equal(house.hp, hp0, "fuel does not bring walls down");
+  });
+
+  it("burns every soldier on the jet, friend or foe, and spares the flanks and anyone past the target", () => {
+    const { state, y, ts } = range();
+    const me = pyro(state, tileCenter(70, ts), tileCenter(y, ts));
+    const x = me.x;
+    const foe = makeEntity(state, "rifleman", "B", tileCenter(78, ts), tileCenter(y, ts));
+    const friend = makeEntity(state, "gunner", "A", tileCenter(74, ts), tileCenter(y, ts));
+    const borg = makeEntity(state, "cyborg", "B", tileCenter(76, ts), tileCenter(y, ts));
+    const flank = makeEntity(state, "rifleman", "B", tileCenter(76, ts), tileCenter(y + 3, ts));
+    const past = makeEntity(state, "rifleman", "B", tileCenter(82, ts), tileCenter(y, ts));
+    const tank = makeEntity(state, "warden", "B", tileCenter(77, ts), tileCenter(y, ts));
+    for (const u of [foe, friend, borg, flank, past, tank]) {
+      u.holdPosition = true;
+      u.cooldown = 1e9;
+      u.mgCooldown = 1e9;
+    }
+    const reach = catalog("pyro").rangeTiles * ts;
+    throwFlame(state, me, foe.x, foe.y, reach, false);
+    for (const dead of [foe, friend]) {
+      assert.equal(dead.hp, 0, `${dead.type} of ${dead.ownerId} burned`);
+      assert.equal(dead.fireDeath, true);
+    }
+    assert.equal(borg.hp, borg.hpMax - LASER_SWEEP_CYBORG_DAMAGE, "a cyborg's plating takes one heavy cut");
+    assert.equal(flank.hp, flank.hpMax, "off the jet");
+    assert.equal(past.hp, past.hpMax, "past the target");
+    assert.equal(tank.hp, tank.hpMax, "armor plate does not take the cut");
+    const hp = borg.hp;
+    throwFlame(state, me, foe.x, foe.y, reach, false);
+    assert.equal(borg.hp, hp, "the rest of the burst does not cut him again");
+    const dist = foe.x - x;
+    const near = me.radius + FLAMER_TRAIL_GAP;
+    assert.ok(state.fires.length > 1);
+    for (const f of state.fires) {
+      assert.ok(f.x - x > near, "the trail starts a little further out than he stands");
+      assert.ok(f.x <= foe.x + FIRE_RADIUS, "not past the target");
+    }
+    assert.ok(state.fires.some((f) => dist - (f.x - x) < FIRE_RADIUS * 2), "it reaches the target");
+  });
+
+  it("a building stops the jet: the man behind it is spared, the man in front burns", () => {
+    const { state, y, ts } = range();
+    // The cottage covers tiles 78–85. Both men are inside his reach; only the wall keeps the far one safe.
+    const house = makeEntity(state, "cottage", "", tileCenter(82, ts), tileCenter(y, ts), { tileX: 78, tileY: y - 4 });
+    const me = pyro(state, tileCenter(74, ts), tileCenter(y, ts));
+    const front = makeEntity(state, "rifleman", "B", tileCenter(76, ts), tileCenter(y, ts));
+    const behind = makeEntity(state, "rifleman", "B", tileCenter(87, ts), tileCenter(y, ts));
+    front.holdPosition = true;
+    behind.holdPosition = true;
+    throwFlame(state, me, behind.x, behind.y, catalog("pyro").rangeTiles * ts, false);
+    assert.equal(front.hp, 0, "in front of the house");
+    assert.equal(behind.hp, behind.hpMax, "the wall stops the jet");
+    assert.equal(house.hp, house.hpMax, "fuel does not bring the wall down");
+    assert.ok(state.fires.every((f) => f.x < house.x), "no fire past the house");
   });
 
   it("leaves tanks alone on his own", () => {
@@ -350,28 +417,21 @@ describe("pyro tanks", () => {
 });
 
 describe("pyro and trees", () => {
-  function land(state: MatchState): void {
-    for (let i = 0; i < 8 && state.projectiles.some((p) => p.flight === "flame"); i++) tickProjectiles(state, TICK_DT);
-  }
-
-  it("a forced jet burns the aimed tree, and an ordinary jet leaves it standing", () => {
+  it("burns every tree the jet crosses, and leaves a tree off the line standing", () => {
     const { state, y, ts } = range();
-    const tx = 73;
     const ty = y;
-    state.terrain[ty * state.width + tx] = TILE_TREE;
+    const on = 73;
+    const off = 73;
+    state.terrain[ty * state.width + on] = TILE_TREE;
+    state.terrain[(ty + 3) * state.width + off] = TILE_TREE;
     const me = pyro(state, tileCenter(70, ts), tileCenter(ty, ts));
-    const aimX = tileCenter(tx, ts);
-    const aimY = tileCenter(ty, ts);
     const reach = catalog("pyro").rangeTiles * ts;
-    throwFlame(state, me, aimX, aimY, reach, false);
-    land(state);
-    assert.equal(state.terrain[ty * state.width + tx], TILE_TREE, "a normal jet does not fell it");
-    throwFlame(state, me, aimX, aimY, reach, true);
-    land(state);
-    assert.equal(state.terrain[ty * state.width + tx], TILE_EMPTY);
-    const cleared = state.clearedTrees.find((t) => t.x === tx && t.y === ty);
+    throwFlame(state, me, tileCenter(78, ts), tileCenter(ty, ts), reach, false);
+    assert.equal(state.terrain[ty * state.width + on], TILE_EMPTY, "the trunk on the jet burns");
+    assert.equal(state.terrain[(ty + 3) * state.width + off], TILE_TREE, "a trunk off the line stands");
+    const cleared = state.clearedTrees.find((t) => t.x === on && t.y === ty);
     assert.equal(cleared?.burn, true);
-    assert.equal(snapshotFor(state, "A").clearedTrees.some((t) => t.x === tx && t.y === ty && t.burn), true);
+    assert.equal(snapshotFor(state, "A").clearedTrees.some((t) => t.x === on && t.y === ty && t.burn), true);
   });
 
   it("force-attack on a tree burns that trunk", () => {
