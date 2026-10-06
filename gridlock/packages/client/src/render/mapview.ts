@@ -470,18 +470,18 @@ const POOL_CUT: Record<NightPool["kind"], number> = {
   head: 0.8,
   work: 0.75,
   missile: 0.4,
-  gaslamp: 0.72,
-  streetlamp: 0.78,
-  floodlight: 0.85,
+  gaslamp: STREET_LAMPS.gaslamp.cut,
+  streetlamp: STREET_LAMPS.streetlamp.cut,
+  floodlight: STREET_LAMPS.floodlight.cut,
 };
 const POOL_WARM: Record<NightPool["kind"], number> = {
   tower: 0.2,
   head: 0.24,
   work: 0.2,
   missile: 0.14,
-  gaslamp: 0.3,
-  streetlamp: 0.26,
-  floodlight: 0.18,
+  gaslamp: STREET_LAMPS.gaslamp.warm,
+  streetlamp: STREET_LAMPS.streetlamp.warm,
+  floodlight: STREET_LAMPS.floodlight.warm,
 };
 const POOL_RGB: Record<NightPool["kind"], string> = {
   tower: "255, 236, 180",

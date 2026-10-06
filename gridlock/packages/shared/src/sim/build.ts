@@ -45,7 +45,7 @@ import {
 import { repathIfBlocked } from "./orders.js";
 import { powerOf, productionSpeed } from "./power.js";
 import { advancePaidJob, jobFullyPaid, refundPaid } from "./production.js";
-import { smelterSiteOk } from "./smelter.js";
+import { smelterCrowded, smelterSiteOk } from "./smelter.js";
 import type { Entity, MatchState, SimPlayer, StructureJob } from "./types.js";
 
 type BuildSlot = "structure" | "defence" | "line";
@@ -250,6 +250,9 @@ export function buildingSiteError(
   if (onWaterBuilding(type)) return waterSiteError(state, tx, ty, def.tileW, def.tileH);
   if (type === "smelter") {
     if (!smelterSiteOk(state, tx, ty)) {
+      if (!tilesBlocked(state, tx, ty, def.tileW, def.tileH) && smelterCrowded(state.entities.values(), tx, ty)) {
+        return "Too close to another Smelter.";
+      }
       return tilesBlockedOrScrap(state, tx, ty, def.tileW, def.tileH) && !tilesBlocked(state, tx, ty, def.tileW, def.tileH)
         ? "Not enough scrap under the Smelter."
         : tilesBlocked(state, tx, ty, def.tileW, def.tileH)

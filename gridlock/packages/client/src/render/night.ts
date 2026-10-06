@@ -191,12 +191,15 @@ export interface StreetLampSpec {
   rgb: string;
   /** Bulb halo radius on screen at zoom 1, px. */
   halo: number;
+  /** Share of the night tint its pool lifts, and how much it warms the ground. */
+  cut: number;
+  warm: number;
 }
 
 export const STREET_LAMPS: Record<LampType, StreetLampSpec> = {
-  gaslamp: { drawH: 30, reachTiles: 5, rgb: "255, 184, 102", halo: 9 },
-  streetlamp: { drawH: 42, reachTiles: 7, rgb: "255, 206, 136", halo: 12 },
-  floodlight: { drawH: 50, reachTiles: 10, rgb: "222, 234, 255", halo: 15 },
+  gaslamp: { drawH: 30, reachTiles: 5, rgb: "255, 184, 102", halo: 9, cut: 0.72, warm: 0.3 },
+  streetlamp: { drawH: 42, reachTiles: 7, rgb: "255, 206, 136", halo: 12, cut: 0.78, warm: 0.26 },
+  floodlight: { drawH: 50, reachTiles: 10, rgb: "222, 234, 255", halo: 15, cut: 0.85, warm: 0.18 },
 };
 
 /**
@@ -209,4 +212,20 @@ export function streetLampFlicker(type: LampType, x: number, y: number, nowSec: 
   const slow = Math.sin(nowSec * 2.3 + phase);
   const quick = Math.sin(nowSec * 7.1 + phase * 3.1);
   return 0.9 + 0.06 * slow + 0.04 * quick;
+}
+
+/**
+ * A tower spotlight's light on the ground in world px: soft blobs from the
+ * tower out along `facing`, as the battlefield lays a manned tower's beam.
+ */
+export function spotBeamGround(
+  x: number,
+  y: number,
+  facing: number,
+  reach: number,
+  halfRad: number,
+): { x: number; y: number; r: number; a: number }[] {
+  const c = Math.cos(facing);
+  const s = Math.sin(facing);
+  return beamBlobs(reach, halfRad, { count: 24, widen: 1.15 }).map((b) => ({ x: x + c * b.d, y: y + s * b.d, r: b.r, a: b.a }));
 }

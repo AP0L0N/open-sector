@@ -11,6 +11,7 @@ import {
   STREET_LAMPS,
   beamBlobs,
   beamPolygon,
+  spotBeamGround,
   streetLampFlicker,
   easeSpot,
   lampGlow,
@@ -120,5 +121,20 @@ describe("street lamps", () => {
       assert.equal(streetLampFlicker("streetlamp", 12, 30, t), 1);
     }
     assert.notEqual(streetLampFlicker("gaslamp", 12, 30, 3), streetLampFlicker("gaslamp", 40, 2, 3), "posts on their own beat");
+  });
+});
+
+describe("spot beam on the ground", () => {
+  it("throws the beam out the way the tower faces, widening and fading", () => {
+    const blobs = spotBeamGround(100, 200, Math.PI / 2, 120, (14 * Math.PI) / 180);
+    assert.ok(blobs.length > 4);
+    for (const b of blobs) {
+      assert.ok(Math.abs(b.x - 100) < 1e-9, "a south beam stays on the tower's x");
+      assert.ok(b.y > 200 && b.y <= 320, `blob y ${b.y}`);
+    }
+    const first = blobs[0]!;
+    const last = blobs[blobs.length - 1]!;
+    assert.ok(last.r > first.r, "wider far out");
+    assert.ok(last.a < 0.2, "faded at the end of its reach");
   });
 });
