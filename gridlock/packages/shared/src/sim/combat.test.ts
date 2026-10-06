@@ -2001,7 +2001,9 @@ describe("ss3 casemate", () => {
     assert.equal(fired, true, "should fire once the hull faces the target");
     assert.ok(Math.abs(gun.facing) < 0.2, `facing=${gun.facing}`);
   });
+});
 
+describe("hull gun on a move", () => {
   /**
    * Engaged, then ordered to drive off the line to the target. The nose has to
    * finish its yaw before the tracks roll, so a gun that keeps steering onto
@@ -2040,6 +2042,12 @@ describe("ss3 casemate", () => {
       const gun = makeEntity(state, c.type, "A", tileCenter(40, ts), tileCenter(40, ts));
       const foe = makeEntity(state, c.foe, "B", tileCenter(40 + c.gap, ts), tileCenter(40, ts));
       foe.holdPosition = true;
+      // The field gun's own eyes stop short of the range where it is allowed to fire.
+      if (c.type === "artillery") {
+        const spot = makeEntity(state, "rifleman", "A", tileCenter(40 + c.gap, ts), tileCenter(43, ts));
+        spot.holdPosition = true;
+        spot.cooldown = 99;
+      }
       gun.facing = 0;
       gun.turretFacing = 0;
       gun.cooldown = 99;
@@ -2052,19 +2060,22 @@ describe("ss3 casemate", () => {
       }
       assert.equal(gun.attackTarget, foe.id, `${c.type} should engage`);
       const y0 = gun.y;
+      const destY = tileCenter(16, ts);
       assert.equal(
-        applyCommand(state, "A", { type: "cmd.move", ids: [gun.id], x: gun.x, y: tileCenter(16, ts) }).ok,
+        applyCommand(state, "A", { type: "cmd.move", ids: [gun.id], x: gun.x, y: destY }).ok,
         true,
         c.type,
       );
-      for (let i = 0; i < 120; i++) {
+      for (let i = 0; i < 80; i++) {
         gun.cooldown = 99;
         foe.hp = foe.hpMax;
         foe.cooldown = 99;
         step(state, TICK_DT);
       }
-      assert.ok(Math.abs(gun.y - y0) > ts * 2, `${c.type} should drive off, dy=${(gun.y - y0).toFixed(1)}`);
-      assert.equal(gun.order?.kind, "move", c.type);
+      const dy = Math.abs(gun.y - y0);
+      const arrived = Math.abs(gun.y - destY) < ts * 2;
+      assert.ok(dy > ts * 2 || arrived, `${c.type} should drive off, dy=${dy.toFixed(1)}`);
+      if (!arrived) assert.equal(gun.order?.kind, "move", c.type);
     }
   });
 

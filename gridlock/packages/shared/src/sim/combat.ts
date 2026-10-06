@@ -914,7 +914,6 @@ function outOfReachAloft(state: MatchState, e: Entity, target: Entity): boolean 
   return isAirborne(target) && !reachesAircraft(e);
 }
 
-/** Move, attack-move, patrol, and unit-escort all engage in-range enemies. Attack-move halts; the others keep walking. */
 /** A tank backing a short hop keeps fighting. A double-ended hull running astern is just under way. */
 function backingHop(e: Entity): boolean {
   return reversing(e) && !catalog(e.type).doubleEnded;
@@ -933,6 +932,7 @@ function hullStaysOnCourse(e: Entity): boolean {
   return e.order?.kind === "move" || escorting(e);
 }
 
+/** Move, attack-move, patrol, and unit-escort all engage in-range enemies. Attack-move halts; the others keep walking. */
 function travelFights(e: Entity): boolean {
   const k = e.order?.kind;
   return k === "attackmove" || k === "move" || k === "patrol" || escorting(e) || forceUnderway(e);

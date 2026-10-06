@@ -465,17 +465,27 @@ export function destroyEntity(state: MatchState, e: Entity): void {
   state.entities.delete(e.id);
 }
 
-export function tilesBlockedOrScrap(state: MatchState, tx: number, ty: number, w: number, h: number): boolean {
-  if (tilesBlocked(state, tx, ty, w, h)) return true;
+export function tilesBlockedOrScrap(
+  state: MatchState,
+  tx: number,
+  ty: number,
+  w: number,
+  h: number,
+  treesBlock = true,
+): boolean {
+  if (tilesBlocked(state, tx, ty, w, h, treesBlock)) return true;
   for (const t of footprint(tx, ty, w, h)) {
     if (scrapAt(state, t.x, t.y) > 0) return true;
   }
   return false;
 }
 
-/** Ground, trees, buildings, and wrecks under a footprint. Scrap does not count: the Smelter stands on it. */
-export function tilesBlocked(state: MatchState, tx: number, ty: number, w: number, h: number): boolean {
-  return tileListBlocked(state, footprint(tx, ty, w, h));
+/**
+ * Ground, trees, buildings, and wrecks under a footprint. Scrap does not count: the Smelter stands on it.
+ * With `treesBlock` false a standing tree does not count: the building fells it when it goes up.
+ */
+export function tilesBlocked(state: MatchState, tx: number, ty: number, w: number, h: number, treesBlock = true): boolean {
+  return tileListBlocked(state, footprint(tx, ty, w, h), treesBlock);
 }
 
 /**

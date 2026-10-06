@@ -103,6 +103,7 @@ describe("Jump Jet", () => {
 
   it("flies a straight line to the goal, faster than he walks", () => {
     const state = twoPlayerMatch();
+    state.heights.fill(0);
     const walker = put(state, "jumpjet", "A", 10, 30);
     const flier = put(state, "jumpjet", "A", 10, 34);
     takeOff(state, flier);

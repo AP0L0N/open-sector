@@ -513,10 +513,12 @@ describe("easy CPU", () => {
     secondSmelter(state, aiId);
     const hq = coreOf(state, aiId);
     // No scrap left anywhere: then one plain field out past the yard, toward the middle.
+    // A Smelter fells trees, so a footprint can hang off this field onto the grove. The
+    // field has to sit far enough that even that overhang stays outside the build radius.
     state.scrapYield.fill(0);
     const def = catalog("smelter");
     const toMid = unitVec(state.width / 2 - hq.tileX, state.height / 2 - hq.tileY);
-    const out = BUILD_RADIUS + 40;
+    const out = BUILD_RADIUS + def.tileH + 70;
     const fx = Math.round(hq.tileX + toMid.x * out);
     const fy = Math.round(hq.tileY + toMid.y * out);
     for (let y = fy; y < fy + def.tileH * 2; y++) {

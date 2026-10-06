@@ -501,7 +501,7 @@ export interface Entity {
    * The drawn top stays here after a higher section is destroyed.
    */
   wallCrest?: number;
-  /** Extra hit points currently granted by sandbags and walls. Removed when the soldier leaves. */
+  /** Extra hit points currently granted by sandbags, walls, and nearby trees. Removed when the soldier leaves. */
   coverBonus: number;
   /** Part of `coverBonus` granted by a concrete wall. Overhead hits ignore it. */
   wallCover: number;
