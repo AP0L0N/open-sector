@@ -1,5 +1,6 @@
 import {
   BUILD_RADIUS,
+  CUSTOM_MAP_MAX_LAMPS,
   HEIGHT_BASE,
   HEIGHT_MAX,
   SPAWN_EDGE_MARGIN,
@@ -18,6 +19,7 @@ import {
   featuresOverlap,
   isMapSection,
   isScrapTile,
+  lampBlocked,
   MAP_DEFENCE_TYPES,
   normalizeTerrain,
   peakHeight,
@@ -28,6 +30,8 @@ import {
   type MapDef,
   type MapFeature,
   type MapFeatureType,
+  type LampType,
+  type MapLamp,
 } from "@gridlock/shared";
 
 /** The map being edited. Grids are plain fine-tile arrays, already playable after `settle`. */
@@ -42,6 +46,7 @@ export interface Sheet {
   heights: number[];
   spawns: { id: number; x: number; y: number }[];
   features: MapFeature[];
+  lamps: MapLamp[];
 }
 
 /** Ground a start pad clears. Roads may run through it. */
@@ -69,6 +74,7 @@ export function newSheet(opts: {
     heights: opts.hills ? rollHeights(side, side, opts.seed, []) : new Array<number>(n).fill(HEIGHT_BASE),
     spawns: [],
     features: [],
+    lamps: [],
   };
   settle(sheet);
   return sheet;
@@ -87,6 +93,7 @@ export function sheetFromSpec(spec: CustomMapSpec): Sheet {
     heights: decodeRuns(spec.heights, n) ?? new Array<number>(n).fill(HEIGHT_BASE),
     spawns: spec.spawns.map((s) => ({ ...s })),
     features: spec.features.map((f) => ({ ...f })),
+    lamps: (spec.lamps ?? []).map((l) => ({ ...l })),
   };
   settle(sheet);
   return sheet;
@@ -104,6 +111,7 @@ export function sheetToSpec(s: Sheet): CustomMapSpec {
     heights: encodeRuns(s.heights),
     spawns: s.spawns.map((sp) => ({ ...sp })).sort((a, b) => a.id - b.id),
     features: s.features.map((f) => ({ ...f })),
+    ...(s.lamps.length > 0 ? { lamps: liveLamps(s) } : {}),
     updatedAt: 0,
   };
 }
@@ -121,7 +129,45 @@ export function sheetToMap(s: Sheet, id = "__builder__"): MapDef {
     maxHeight: peakHeight(s.heights),
     spawns: s.spawns.map((sp) => ({ ...sp })),
     features: s.features.map((f) => ({ ...f })),
+    lamps: liveLamps(s),
   };
+}
+
+/** Lamps still standing: a building set down over a post hides it, and the save leaves it out. */
+export function liveLamps(s: Sheet): MapLamp[] {
+  return s.lamps.filter((l) => !lampBlocked(s.features, l.x, l.y)).map((l) => ({ ...l }));
+}
+
+/** Index of the lamp within `reach` fine tiles of the cursor, nearest first, or -1. */
+export function lampIndexAt(s: Sheet, tx: number, ty: number, reach = 1): number {
+  let best = -1;
+  let bestD = reach + 0.01;
+  s.lamps.forEach((l, i) => {
+    const d = Math.max(Math.abs(l.x - tx), Math.abs(l.y - ty));
+    if (d < bestD) {
+      best = i;
+      bestD = d;
+    }
+  });
+  return best;
+}
+
+/** Why a lamp cannot stand on this fine tile, or null. */
+export function lampProblem(s: Sheet, x: number, y: number): string | null {
+  if (x < 0 || y < 0 || x >= s.width || y >= s.height) return "Off the map.";
+  if (s.tiles[y * s.width + x] === TILE_WATER) return "Lamps stand on dry ground.";
+  if (lampBlocked(s.features, x, y)) return "Inside a building lot.";
+  if (s.lamps.some((l) => Math.max(Math.abs(l.x - x), Math.abs(l.y - y)) < 2)) return "Too close to another lamp.";
+  if (s.lamps.length >= CUSTOM_MAP_MAX_LAMPS) return `At most ${CUSTOM_MAP_MAX_LAMPS} lamps.`;
+  return null;
+}
+
+/** Stand a lamp of `type` on the tile. Null when placed, else the reason. */
+export function placeLamp(s: Sheet, type: LampType, x: number, y: number): string | null {
+  const problem = lampProblem(s, x, y);
+  if (problem) return problem;
+  s.lamps.push({ type, x, y });
+  return null;
 }
 
 /** Same pass a saved map gets: pads, house lots, water floor, one-step slopes. */
@@ -408,6 +454,7 @@ export interface SheetMark {
   heights: Uint8Array;
   spawns: Sheet["spawns"];
   features: MapFeature[];
+  lamps: MapLamp[];
   maxPlayers: number;
 }
 
@@ -417,6 +464,7 @@ export function markSheet(s: Sheet): SheetMark {
     heights: Uint8Array.from(s.heights),
     spawns: s.spawns.map((sp) => ({ ...sp })),
     features: s.features.map((f) => ({ ...f })),
+    lamps: s.lamps.map((l) => ({ ...l })),
     maxPlayers: s.maxPlayers,
   };
 }
@@ -426,5 +474,6 @@ export function restoreSheet(s: Sheet, m: SheetMark): void {
   s.heights = Array.from(m.heights);
   s.spawns = m.spawns.map((sp) => ({ ...sp }));
   s.features = m.features.map((f) => ({ ...f }));
+  s.lamps = m.lamps.map((l) => ({ ...l }));
   s.maxPlayers = m.maxPlayers;
 }

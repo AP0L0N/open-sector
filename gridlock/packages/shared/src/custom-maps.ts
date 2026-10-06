@@ -14,6 +14,7 @@ import {
   featureBox,
   getMap,
   isBuiltinMap,
+  isLampType,
   isMapSection,
   isPlaytestMapId,
   normalizeTerrain,
@@ -22,6 +23,7 @@ import {
   type MapDef,
   type MapFeature,
   type MapFeatureType,
+  type MapLamp,
 } from "./maps.js";
 
 /**
@@ -40,6 +42,8 @@ export interface CustomMapSpec {
   heights: number[];
   spawns: { id: number; x: number; y: number }[];
   features: MapFeature[];
+  /** Street lamps. Left out by maps saved before lamps existed. */
+  lamps?: MapLamp[];
   updatedAt: number;
 }
 
@@ -69,6 +73,7 @@ export const CUSTOM_MAP_MIN_PLAYERS = 2;
 export const CUSTOM_MAP_MAX_PLAYERS = 8;
 export const CUSTOM_MAP_MAX_FEATURES = 400;
 export const CUSTOM_MAP_NAME_MAX = 32;
+export const CUSTOM_MAP_MAX_LAMPS = 300;
 /** Starts closer than this would share a pad. */
 export const SPAWN_MIN_GAP = 2 * SPAWN_PAD_R + 2 * TILE_SUBDIV;
 /** How close to the map edge a start may sit, in fine tiles. */
@@ -136,6 +141,15 @@ export function featureOnPad(f: MapFeature, spawns: readonly { x: number; y: num
     const nx = Math.max(b.x0, Math.min(s.x, b.x1 - 1));
     const ny = Math.max(b.y0, Math.min(s.y, b.y1 - 1));
     return Math.hypot(nx - s.x, ny - s.y) <= SPAWN_PAD_R;
+  });
+}
+
+/** True when a lamp post on this fine tile would stand inside a building lot. Sections do not count. */
+export function lampBlocked(features: readonly MapFeature[], x: number, y: number): boolean {
+  return features.some((f) => {
+    if (isMapSection(f.type)) return false;
+    const b = featureBox(f);
+    return x >= b.x0 && x < b.x1 && y >= b.y0 && y < b.y1;
   });
 }
 
@@ -233,6 +247,24 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     features.push(feat);
   }
 
+  const rawLamps = m.lamps ?? [];
+  if (!Array.isArray(rawLamps) || rawLamps.length > CUSTOM_MAP_MAX_LAMPS) return bad(`At most ${CUSTOM_MAP_MAX_LAMPS} lamps.`);
+  const lamps: MapLamp[] = [];
+  const lampAt = new Set<number>();
+  for (const l of rawLamps as unknown[]) {
+    const o = (l ?? {}) as Record<string, unknown>;
+    const lx = o.x;
+    const ly = o.y;
+    if (!isLampType(o.type) || !Number.isInteger(lx) || !Number.isInteger(ly)) return bad("Bad lamp.");
+    const x = lx as number;
+    const y = ly as number;
+    if (x < 0 || y < 0 || x >= width || y >= height) return bad("A lamp is off the map.");
+    // Two posts on one tile, or a post inside a lot, is dropped rather than refused.
+    if (lampAt.has(y * width + x) || lampBlocked(features, x, y)) continue;
+    lampAt.add(y * width + x);
+    lamps.push({ type: o.type, x, y });
+  }
+
   const updatedAt = typeof m.updatedAt === "number" && Number.isFinite(m.updatedAt) ? m.updatedAt : 0;
   return {
     ok: true,
@@ -247,6 +279,7 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
       heights: encodeRuns(heights),
       spawns,
       features,
+      ...(lamps.length > 0 ? { lamps } : {}),
       updatedAt,
     },
   };
@@ -270,6 +303,7 @@ export function buildCustomMap(spec: CustomMapSpec): MapDef {
     maxHeight: peakHeight(heights),
     spawns: spec.spawns.map((s) => ({ id: s.id, x: s.x, y: s.y })),
     features,
+    ...(spec.lamps?.length ? { lamps: spec.lamps.map((l) => ({ ...l })) } : {}),
     custom: { author: spec.author, updatedAt: spec.updatedAt },
   };
 }
@@ -304,6 +338,7 @@ export function specFromMap(id: string, copy: { id: string; name: string; author
     heights: encodeRuns(map.heights),
     spawns,
     features: map.features.map((f) => ({ ...f })),
+    ...(map.lamps?.length ? { lamps: map.lamps.map((l) => ({ ...l })) } : {}),
     updatedAt: 0,
   };
 }

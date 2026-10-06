@@ -379,3 +379,57 @@ describe("map defences and play tests", () => {
     }
   });
 });
+
+describe("custom map lamps", () => {
+  it("keeps street lamps through validate, build, and copy", () => {
+    const lamps = [
+      { type: "gaslamp" as const, x: 60, y: 60 },
+      { type: "floodlight" as const, x: 70, y: 64 },
+    ];
+    const r = validateCustomMap(sheet({ lamps }));
+    assert.ok(r.ok);
+    assert.deepEqual(r.spec.lamps, lamps);
+    const map = buildCustomMap(r.spec);
+    assert.deepEqual(map.lamps, lamps);
+  });
+
+  it("leaves the field out when a map has no lamps, so old saves read the same", () => {
+    const r = validateCustomMap(sheet());
+    assert.ok(r.ok);
+    assert.equal("lamps" in r.spec, false);
+    assert.equal(buildCustomMap(r.spec).lamps, undefined);
+  });
+
+  it("refuses an unknown lamp or one off the map", () => {
+    assert.equal(validateCustomMap(sheet({ lamps: [{ type: "torch" as never, x: 60, y: 60 }] })).ok, false);
+    assert.equal(validateCustomMap(sheet({ lamps: [{ type: "gaslamp", x: SIDE, y: 60 }] })).ok, false);
+  });
+
+  it("drops a lamp inside a lot and a second post on the same tile", () => {
+    const r = validateCustomMap(
+      sheet({
+        features: [{ type: "warehouse", x: 80, y: 80, facing: 0 }],
+        lamps: [
+          { type: "streetlamp", x: 82, y: 82 },
+          { type: "streetlamp", x: 60, y: 60 },
+          { type: "gaslamp", x: 60, y: 60 },
+        ],
+      }),
+    );
+    assert.ok(r.ok);
+    assert.deepEqual(r.spec.lamps, [{ type: "streetlamp", x: 60, y: 60 }]);
+  });
+
+  it("stands the industrial buildings on the field", () => {
+    const features = [
+      { type: "factory" as const, x: 60, y: 60, facing: 0 },
+      { type: "foundry" as const, x: 100, y: 60, facing: 1 },
+      { type: "warehouse" as const, x: 60, y: 100, facing: 2 },
+      { type: "granary" as const, x: 100, y: 100, facing: 3 },
+    ];
+    const r = validateCustomMap(sheet({ features }));
+    assert.ok(r.ok, r.ok ? "" : r.message);
+    const box = featureBox(features[0]!);
+    assert.equal(box.x1 - box.x0, 5 * TILE_SUBDIV, "a factory takes five cells");
+  });
+});

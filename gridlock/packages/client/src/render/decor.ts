@@ -80,6 +80,14 @@ function keepOut(map: MapDef): Uint8Array {
       }
     }
   }
+  // A street lamp keeps its own tile and the ring round it clear of signposts and bushes.
+  for (const l of map.lamps ?? []) {
+    for (let y = l.y - 1; y <= l.y + 1; y++) {
+      for (let x = l.x - 1; x <= l.x + 1; x++) {
+        if (x >= 0 && y >= 0 && x < w && y < h) out[y * w + x] = 1;
+      }
+    }
+  }
   for (const s of map.spawns) {
     for (let y = s.y - PAD_R; y <= s.y + PAD_R; y++) {
       for (let x = s.x - PAD_R; x <= s.x + PAD_R; x++) {
