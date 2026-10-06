@@ -180,7 +180,7 @@ function paintRelief(
     ctx.fillStyle =
       tone < 1
         ? `rgba(10, 12, 8, ${Math.min(0.55, (1 - tone) * 0.9).toFixed(3)})`
-        : `rgba(250, 232, 170, ${Math.min(0.28, (tone - 1) * 0.45).toFixed(3)})`;
+        : `rgba(250, 232, 170, ${Math.min(0.4, (tone - 1) * 0.75).toFixed(3)})`;
     fillQuad(ctx, ...expandQuad(...quad, TILE_OVERLAP_PX));
   }
 }

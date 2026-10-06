@@ -1,5 +1,6 @@
 import "../style/builder.css";
 import {
+  BUILDING_TURN_STEP,
   CIVILIAN_TYPES,
   CUSTOM_MAP_MAX_PLAYERS,
   CUSTOM_MAP_MIN_PLAYERS,
@@ -14,13 +15,16 @@ import {
   TILE_ROAD,
   TILE_ROCK,
   TILE_SCRAP,
+  TILE_SIZE,
   TILE_SUBDIV,
   TILE_TREE,
   TILE_WATER,
   MAP_DEFENCE_TYPES,
-  MAP_SECTION_TILES,
   catalog,
+  featureAngle,
   featureBox,
+  featureRect,
+  fieldSpan,
   getMap,
   isCivilianType,
   isMapSection,
@@ -38,6 +42,7 @@ import {
 import type { Ctx } from "../ctx.js";
 import { forgetTerrain } from "../render/terrain.js";
 import { buildingSpriteFor } from "../render/sprites.js";
+import { fieldPointsWithCursor, pinFieldPoint, undoFieldPoint, type Pt } from "../render/field-place.js";
 import grassUrl from "../assets/terrain/grass-meadow.png";
 import dirtUrl from "../assets/terrain/ground-dirt.png";
 import scrapUrl from "../assets/terrain/scrap-heap-1.png";
@@ -49,10 +54,12 @@ import { el } from "./dom.js";
 import { drawMapPreview } from "./map-preview.js";
 import * as M from "./builder-model.js";
 import { isoChanged, isoDraw, isoRestamp } from "./builder-iso.js";
-import { isoFit, isoPick, isoZoomAt, type IsoCam } from "./builder-iso-cam.js";
+import { isoFit, isoPick, isoScreenOf, isoZoomAt, type IsoCam } from "./builder-iso-cam.js";
 
 const KEY_STORE = "gridlock.mapKey";
 const MINE_STORE = "gridlock.myMaps";
+const AUTO_STORE = "gridlock.builderAutoSave";
+const AUTO_SAVE_MS = 30_000;
 const GAME_VIEW_STORE = "gridlock.builderGameView";
 const PREVIEW_ID = "__builder__";
 const UNDO_DEPTH = 40;
@@ -89,7 +96,10 @@ interface Tool {
   tile: number;
   house: CivilianType;
   defence: MapDefenceType;
+  /** A house's door side, a quarter at a time. */
   facing: number;
+  /** A defence's heading in 15° steps from east, as the wheel turns it in a match. */
+  turn: number;
   brush: number;
   level: number;
 }
@@ -107,6 +117,8 @@ interface Stage {
   maps: HTMLElement | null;
   /** What the Select tool holds, and its Turn / Delete buttons. */
   sel: HTMLElement | null;
+  /** The Defences heading readout, kept current while the wheel turns. */
+  turnLabel: HTMLElement | null;
 }
 
 let sheet: M.Sheet | null = null;
@@ -114,10 +126,24 @@ let dirty = false;
 let newOpen = false;
 let msg = { text: "", tone: "" as "" | "bad" | "good" };
 let pendingSave: string | null = null;
+/** Edits made to the open sheet. A save ack clears `dirty` only if none landed while it was in flight. */
+let edits = 0;
+let savingEdits = 0;
+/** The save in flight was the auto save's: confirm it quietly, without rebuilding the screen. */
+let pendingAuto = false;
+let autoSave = store()?.getItem(AUTO_STORE) !== "0";
+let autoTimer: ReturnType<typeof setInterval> | null = null;
 const undo: M.SheetMark[] = [];
 const redo: M.SheetMark[] = [];
-const tool: Tool = { id: "raise", tile: TILE_WATER, house: "cottage", defence: "bunker", facing: 1, brush: 6, level: HEIGHT_BASE };
+const tool: Tool = { id: "raise", tile: TILE_WATER, house: "cottage", defence: "bunker", facing: 1, turn: M.QUARTER_TURN, brush: 6, level: HEIGHT_BASE };
 let selected: Selection | null = null;
+/**
+ * A sandbag or wall line being drawn, as in a match: the press sets its start, each
+ * click pins a corner, Enter lays it. World points on fine-tile centres.
+ */
+const line: { points: Pt[]; press: Pt | null } = { points: [], press: null };
+/** Trackpad wheel travel toward the next 15° notch. */
+let wheelCarry = 0;
 const view = { zoom: 0, px: 0, py: 0 };
 /** The stage draws the map as a match does, and picks on its raised ground. */
 let gameView = store()?.getItem(GAME_VIEW_STORE) === "1";
@@ -200,6 +226,7 @@ function pushUndo(): void {
 
 function changed(): void {
   dirty = true;
+  edits++;
   previewStale = true;
   isoChanged();
   pendingGround = M.emptyDirty();
@@ -373,10 +400,42 @@ function placingType(): MapFeatureType | null {
   return null;
 }
 
+/** The Defences tool is armed with a bunker, tower, sandbags, or wall: the wheel turns it. */
+function turningTool(): boolean {
+  return tool.id === "defence";
+}
+
+/** The Defences tool draws a sandbag or wall line. */
+function lineTool(): boolean {
+  return tool.id === "defence" && isMapSection(tool.defence);
+}
+
+function linePending(): boolean {
+  return lineTool() && (line.points.length > 0 || line.press !== null);
+}
+
+function dropLine(): void {
+  line.points = [];
+  line.press = null;
+}
+
+/** Degrees a 15° turn reads as: 0 east, 90 south. */
+function turnDegrees(turn: number): number {
+  return M.wrapTurn(turn) * Math.round((BUILDING_TURN_STEP * 180) / Math.PI);
+}
+
 function houseGhost(): MapFeature | null {
   const type = placingType();
-  if (!sheet || !type || !hover.inside) return null;
-  return M.houseAt(type, hover.x, hover.y, tool.facing);
+  if (!sheet || !type || !hover.inside || lineTool()) return null;
+  return M.houseAt(type, hover.x, hover.y, tool.facing, tool.turn);
+}
+
+/** The sections the drawn line would lay, its live leg running to the cursor. */
+function lineGhost(): MapFeature[] {
+  if (!lineTool() || !isMapSection(tool.defence)) return [];
+  if (!hover.inside && line.points.length === 0 && !line.press) return [];
+  const pts = fieldPointsWithCursor(line.points, line.press, M.tileWorld(hover.x, hover.y));
+  return M.sectionLine(tool.defence, pts, tool.turn);
 }
 
 function selectedFeature(): MapFeature | null {
@@ -430,24 +489,30 @@ function drawStage(): void {
   }
 
   const drawHouse = (f: MapFeature, fill: string, edge: string): void => {
-    const b = featureBox(f);
-    const x0 = sx(b.x0);
-    const y0 = sy(b.y0);
-    const bw = (b.x1 - b.x0) * z;
-    const bh = (b.y1 - b.y0) * z;
+    // The real ground: a turned bunker, tower, or slanted section is drawn turned.
+    const r = featureRect(f);
+    const corner = (a: number, b: number): [number, number] => [
+      sx(r.cx + a * r.halfU * r.ux + b * r.halfV * r.vx),
+      sy(r.cy + a * r.halfU * r.uy + b * r.halfV * r.vy),
+    ];
+    c.beginPath();
+    for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) c.lineTo(...corner(a, b));
+    c.closePath();
     c.fillStyle = fill;
-    c.fillRect(x0, y0, bw, bh);
+    c.fill();
     c.strokeStyle = edge;
     c.lineWidth = 1.5;
-    c.strokeRect(x0 + 0.5, y0 + 0.5, bw - 1, bh - 1);
-    // Door side: 0 east, 1 south, 2 west, 3 north.
-    const mx = x0 + bw / 2;
-    const my = y0 + bh / 2;
+    c.stroke();
+    const bw = r.halfU * 2 * z;
+    const bh = r.halfV * 2 * z;
+    // Door or front side.
+    const mx = sx(r.cx);
+    const my = sy(r.cy);
     const reach = Math.min(bw, bh) * 0.42;
-    const [dx, dy] = [[1, 0], [0, 1], [-1, 0], [0, -1]][f.facing & 3]!;
+    const a = featureAngle(f);
     c.fillStyle = edge;
     c.beginPath();
-    c.arc(mx + dx! * reach, my + dy! * reach, Math.max(1.5, z * 0.9), 0, Math.PI * 2);
+    c.arc(mx + Math.cos(a) * reach, my + Math.sin(a) * reach, Math.max(1.5, z * 0.9), 0, Math.PI * 2);
     c.fill();
     if (bw > 26 && bh > 26) {
       c.font = `600 ${Math.min(13, Math.max(9, bw / 5))}px Oswald, sans-serif`;
@@ -527,6 +592,29 @@ function drawStage(): void {
       }
     }
   }
+  const pieces = lineGhost();
+  if (pieces.length > 0) {
+    for (const f of pieces) {
+      const bad = M.houseProblem(s, f) !== null;
+      drawHouse(f, bad ? "rgba(255,90,74,0.45)" : "rgba(125,255,106,0.45)", bad ? "#ff5a4a" : "#7dff6a");
+    }
+    // The start of the line, as the match marks it.
+    const start = line.points[0] ?? line.press;
+    if (start) {
+      const x = sx(start.x / TILE_SIZE);
+      const y = sy(start.y / TILE_SIZE);
+      c.strokeStyle = "#e8b84a";
+      c.lineWidth = 1.5;
+      c.beginPath();
+      c.moveTo(x, y - 6);
+      c.lineTo(x + 6, y);
+      c.lineTo(x, y + 6);
+      c.lineTo(x - 6, y);
+      c.closePath();
+      c.stroke();
+    }
+  }
+  if (pointerOver && hover.inside && turningTool()) drawTurnHint(c, sx(hover.x + 0.5), sy(hover.y + 0.5), pieces.length);
   if (pointerOver && isBrush(tool.id) && brushReaches(hover.x, hover.y)) {
     c.strokeStyle = "#fff4dc";
     c.lineWidth = 1.5;
@@ -536,22 +624,57 @@ function drawStage(): void {
   }
 }
 
+/** The rotate and line hint beside the cursor, at screen point (ax, ay). */
+function drawTurnHint(c: CanvasRenderingContext2D, ax: number, ay: number, sections: number): void {
+  const lines = [`Scroll to rotate · ${turnDegrees(tool.turn)}°`];
+  if (line.points.length > 0) lines.push(`${sections} section${sections === 1 ? "" : "s"} · Enter places · click adds a leg · right-click takes one back`);
+  else if (lineTool()) lines.push("Click to start a line · Enter places one section");
+  c.font = "11px 'Share Tech Mono', monospace";
+  c.textAlign = "left";
+  c.textBaseline = "middle";
+  const w = Math.max(...lines.map((t) => c.measureText(t).width)) + 14;
+  const h = lines.length * 16 + 6;
+  let x = ax + 18;
+  let y = ay + 22;
+  if (x + w > c.canvas.clientWidth - 4) x -= w + 36;
+  if (y + h > c.canvas.clientHeight - 4) y -= h + 44;
+  c.fillStyle = "rgba(20, 14, 10, 0.86)";
+  c.strokeStyle = "#e8b84a";
+  c.lineWidth = 1;
+  c.beginPath();
+  c.roundRect(x + 0.5, y + 0.5, w, h, 4);
+  c.fill();
+  c.stroke();
+  lines.forEach((t, i) => {
+    c.fillStyle = i === 0 ? "#e8b84a" : "#e8dcc4";
+    c.fillText(t, x + 7, y + 11 + i * 16);
+  });
+}
+
 /** The stage as the battlefield draws it: same ground bake, props, and building art. */
 function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: number, dpr: number): void {
   if (isoCam.zoom === 0) isoFit(isoCam, s, w, h);
-  const ghost = houseGhost();
+  const ghost = hover.inside ? houseGhost() : null;
+  const pieces = lineGhost();
+  const ghosts = (ghost ? [ghost] : pieces).map((f) => ({ f, bad: M.houseProblem(s, f) !== null }));
   let spawnGhost: { x: number; y: number; bad: boolean } | null = null;
-  if (!ghost && hover.inside && tool.id === "spawn" && drag?.kind !== "spawn" && M.nextSpawnId(s) !== null && M.spawnIndexAt(s, hover.x, hover.y) < 0) {
+  if (hover.inside && tool.id === "spawn" && drag?.kind !== "spawn" && M.nextSpawnId(s) !== null && M.spawnIndexAt(s, hover.x, hover.y) < 0) {
     spawnGhost = { x: hover.x, y: hover.y, bad: M.spawnProblem(s, hover.x, hover.y) !== null };
   }
   const loading = isoDraw(c, s, isoCam, w, h, dpr, {
     selectedFeature: selected?.kind === "feature" ? selected.index : -1,
     hoverFeature: tool.id === "select" && hover.inside && !drag ? M.featureIndexAt(s, hover.x, hover.y) : -1,
     selectedSpawn: selected?.kind === "spawn" ? selected.id : 0,
-    ghost: ghost && hover.inside ? { f: ghost, bad: M.houseProblem(s, ghost) !== null } : null,
+    ghosts,
+    lineStart: pieces.length > 0 ? (line.points[0] ?? line.press) : null,
     spawnGhost,
     brush: pointerOver && isBrush(tool.id) && brushReaches(hover.x, hover.y) ? { x: hover.x, y: hover.y, r: tool.brush } : null,
   }, queueDraw);
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (pointerOver && hover.inside && turningTool()) {
+    const p = isoScreenOf(s, isoCam, hover.x, hover.y);
+    drawTurnHint(c, p.x, p.y, pieces.length);
+  }
   // Sprites still loading: look again shortly.
   if (loading) setTimeout(queueDraw, 200);
 }
@@ -593,9 +716,10 @@ type Drag =
   | { kind: "brush"; lastX: number; lastY: number; timer: ReturnType<typeof setInterval> | null }
   | { kind: "spawn"; id: number; moved: boolean }
   | { kind: "move"; index: number; from: MapFeature; startX: number; startY: number; moved: boolean }
-  /** A sandbag or wall line: sections end to end along the drag, `done` holds the steps laid. */
-  | { kind: "lay"; x0: number; y0: number; axis: "x" | "y" | null; first: number; done: Set<number> }
-  | { kind: "pan"; x: number; y: number; px: number; py: number; camX: number; camY: number }
+  /** A press on a sandbag or wall line: the release pins its start or its next corner. */
+  | { kind: "line" }
+  /** Right or middle drag. A right click that never moved takes back a line corner. */
+  | { kind: "pan"; x: number; y: number; px: number; py: number; button: number; moved: boolean; camX: number; camY: number }
   | { kind: "erase" };
 
 let drag: Drag | null = null;
@@ -674,12 +798,12 @@ function deleteSelected(): void {
   paintSelection();
 }
 
-/** Give the selected building or defence a quarter turn. */
-function turnSelected(): void {
+/** Give the selected building or defence a quarter turn; a defence `steps` 15° steps when given. */
+function turnSelected(steps?: number): void {
   const s = sheet;
   if (!s || selected?.kind !== "feature") return;
   pushUndo();
-  const problem = M.turnFeature(s, selected.index);
+  const problem = M.turnFeature(s, selected.index, steps);
   if (problem) {
     undo.pop();
     say(`Cannot turn it here: ${problem.toLowerCase()}`, "bad");
@@ -690,11 +814,11 @@ function turnSelected(): void {
 }
 
 /** Set down one building or defence from the placing tools. False when the spot is refused. */
-function placeAt(x: number, y: number, quiet: boolean, facing = tool.facing): boolean {
+function placeAt(x: number, y: number, quiet: boolean): boolean {
   const s = sheet;
   const type = placingType();
   if (!s || !type) return false;
-  const f = M.houseAt(type, x, y, facing);
+  const f = M.houseAt(type, x, y, tool.facing, tool.turn);
   const problem = M.houseProblem(s, f);
   if (problem) {
     if (!quiet) say(problem, "bad");
@@ -704,34 +828,49 @@ function placeAt(x: number, y: number, quiet: boolean, facing = tool.facing): bo
   return true;
 }
 
-/**
- * Grow a sandbag or wall line toward the cursor. The first move past two
- * tiles picks the axis; every section then runs along it, end to end from
- * the press point, looking to the side the tool faces.
- */
-function layLine(s: M.Sheet, d: Extract<Drag, { kind: "lay" }>, x: number, y: number): void {
-  const dx = x - d.x0;
-  const dy = y - d.y0;
-  if (!d.axis) {
-    if (Math.max(Math.abs(dx), Math.abs(dy)) < 2) return;
-    d.axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
+/** Lay the drawn sandbag or wall line, the way Enter confirms one in a match. */
+function commitLine(): void {
+  const s = sheet;
+  if (!s || !lineTool() || !isMapSection(tool.defence) || line.points.length === 0) return;
+  const pieces = M.sectionLine(tool.defence, line.points, tool.turn);
+  dropLine();
+  pushUndo();
+  const { laid, refused } = M.laySections(s, pieces);
+  if (laid === 0) {
+    undo.pop();
+    say(refused > 0 ? "Nothing laid: every section is blocked." : "", refused > 0 ? "bad" : "");
+    queueDraw();
+    return;
   }
-  // Running along x, a section looks north or south (odd facing); along y, east or west.
-  const odd = d.axis === "x" ? 1 : 0;
-  const facing = (tool.facing & 1) === odd ? tool.facing : (tool.facing + 1) & 3;
-  const first = s.features[d.first];
-  if (first && first.facing !== facing) {
-    const turned = { ...first, facing };
-    if (!M.houseProblem(s, turned, d.first)) s.features[d.first] = turned;
+  const name = catalog(tool.defence).name;
+  say(refused > 0 ? `${name}: ${laid} section(s) laid, ${refused} blocked.` : `${name}: ${laid} section(s) laid.`);
+  finishStroke();
+}
+
+/** Right-click on a drawn line: take back the last corner (the start goes with the first leg). */
+function undoLinePoint(): void {
+  line.points = undoFieldPoint(line.points);
+  line.press = null;
+  say(line.points.length > 0 ? "" : "Line cleared.");
+  queueDraw();
+}
+
+/** Turn the armed defence by wheel travel: one notch is 15°, trackpad pixels add up to a notch first. */
+function wheelTurn(e: WheelEvent): void {
+  wheelCarry += e.deltaMode === 1 ? e.deltaY / 3 : e.deltaMode === 2 ? e.deltaY : e.deltaY / 100;
+  let steps = 0;
+  while (wheelCarry >= 1) {
+    steps++;
+    wheelCarry -= 1;
   }
-  const k = Math.round((d.axis === "x" ? dx : dy) / MAP_SECTION_TILES);
-  const dir = Math.sign(k);
-  for (let j = dir; dir !== 0 && Math.abs(j) <= Math.abs(k); j += dir) {
-    if (d.done.has(j)) continue;
-    d.done.add(j);
-    const at = j * MAP_SECTION_TILES;
-    placeAt(d.axis === "x" ? d.x0 + at : d.x0, d.axis === "y" ? d.y0 + at : d.y0, true, facing);
+  while (wheelCarry <= -1) {
+    steps--;
+    wheelCarry += 1;
   }
+  if (steps === 0) return;
+  tool.turn = M.wrapTurn(tool.turn + steps);
+  if (stage?.turnLabel) stage.turnLabel.textContent = `Faces ${turnDegrees(tool.turn)}°`;
+  queueDraw();
 }
 
 function finishStroke(): void {
@@ -745,7 +884,7 @@ function onDown(e: PointerEvent): void {
   if (!s || !stage) return;
   stage.canvas.setPointerCapture(e.pointerId);
   if (e.button === 1 || e.button === 2) {
-    drag = { kind: "pan", x: e.clientX, y: e.clientY, px: view.px, py: view.py, camX: isoCam.camX, camY: isoCam.camY };
+    drag = { kind: "pan", x: e.clientX, y: e.clientY, px: view.px, py: view.py, button: e.button, moved: false, camX: isoCam.camX, camY: isoCam.camY };
     return;
   }
   if (e.button !== 0) return;
@@ -787,6 +926,13 @@ function onDown(e: PointerEvent): void {
     paintSelection();
     return;
   }
+  if (lineTool()) {
+    // As in a match: the press sets the start, each release pins a corner, Enter lays the line.
+    line.press = M.tileWorld(t.x, t.y);
+    drag = { kind: "line" };
+    queueDraw();
+    return;
+  }
   if (tool.id === "house" || tool.id === "defence") {
     pushUndo();
     if (!placeAt(t.x, t.y, false)) {
@@ -794,10 +940,7 @@ function onDown(e: PointerEvent): void {
       return;
     }
     say("");
-    // A sandbag or wall line keeps going while the button is held.
-    if (isMapSection(tool.defence) && tool.id === "defence") {
-      drag = { kind: "lay", x0: t.x, y0: t.y, axis: null, first: s.features.length - 1, done: new Set([0]) };
-    } else finishStroke();
+    finishStroke();
     return;
   }
   if (tool.id === "spawn") {
@@ -830,6 +973,7 @@ function onMove(e: PointerEvent): void {
   const s = sheet;
   if (!s || !stage) return;
   if (drag?.kind === "pan") {
+    if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 4) drag.moved = true;
     if (gameView) {
       isoCam.camX = drag.camX - (e.clientX - drag.x) / isoCam.zoom;
       isoCam.camY = drag.camY - (e.clientY - drag.y) / isoCam.zoom;
@@ -867,8 +1011,6 @@ function onMove(e: PointerEvent): void {
       const f = s.features[drag.index]!;
       drag.moved = f.x !== drag.from.x || f.y !== drag.from.y;
     }
-  } else if (drag?.kind === "lay" && t.inside) {
-    layLine(s, drag, t.x, t.y);
   } else if (drag?.kind === "spawn" && t.inside) {
     const moving = drag;
     const sp = s.spawns.find((o) => o.id === moving.id);
@@ -888,8 +1030,15 @@ function onUp(): void {
   if (d.kind === "brush") {
     if (d.timer) clearInterval(d.timer);
     finishStroke();
-  } else if (d.kind === "lay") {
-    finishStroke();
+  } else if (d.kind === "line") {
+    const press = line.press;
+    line.press = null;
+    if (!press || !lineTool() || !isMapSection(tool.defence)) return;
+    const len = fieldSpan(tool.defence)?.length ?? 24;
+    line.points = pinFieldPoint(line.points, press, M.tileWorld(hover.x, hover.y), len * 0.5);
+    queueDraw();
+  } else if (d.kind === "pan") {
+    if (d.button === 2 && !d.moved && linePending()) undoLinePoint();
   } else if (d.kind === "move") {
     if (!d.moved) {
       undo.pop();
@@ -917,6 +1066,11 @@ function onUp(): void {
 function onWheel(e: WheelEvent): void {
   if (!stage || !sheet) return;
   e.preventDefault();
+  // While a defence is armed the wheel turns it, as in a match; Ctrl+wheel (or a pinch) still zooms.
+  if (turningTool() && !e.ctrlKey) {
+    wheelTurn(e);
+    return;
+  }
   const rect = stage.canvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
@@ -980,12 +1134,39 @@ function save(ctx: Ctx, opts: { copy?: boolean } = {}): void {
     s.id = newCustomMapId();
     if (!/ copy$/i.test(s.name)) s.name = `${s.name} copy`.slice(0, 32);
     dirty = true;
+    edits++;
   }
   const problem = M.sheetProblem(s);
   if (problem) return say(problem, "bad");
   pendingSave = s.id;
+  pendingAuto = false;
+  savingEdits = edits;
   say("Saving…");
   ctx.net.send({ type: "map.save", map: M.sheetToSpec(s), key: mapKey() });
+}
+
+/**
+ * Every AUTO_SAVE_MS, save the open map if it has changes. Stays quiet when
+ * there is nothing to save, the sheet is not saveable yet, or a stroke is down.
+ */
+function autoTick(): void {
+  const ctx = ctxRef;
+  const s = sheet;
+  if (!autoSave || !ctx || ctx.screen !== "builder" || !stage || !s || newOpen) return;
+  if (!dirty || pendingSave || drag || !ctx.net.connected || M.sheetProblem(s)) return;
+  pendingSave = s.id;
+  pendingAuto = true;
+  savingEdits = edits;
+  ctx.net.send({ type: "map.save", map: M.sheetToSpec(s), key: mapKey() });
+}
+
+function setAutoSave(on: boolean): void {
+  autoSave = on;
+  try {
+    store()?.setItem(AUTO_STORE, on ? "1" : "0");
+  } catch {
+    // Private mode: the choice lasts this visit only.
+  }
 }
 
 /**
@@ -1014,7 +1195,14 @@ export function builderMapSaved(ctx: Ctx, id: string): void {
   claimMap(id);
   if (pendingSave !== id) return;
   pendingSave = null;
-  if (sheet?.id === id) dirty = false;
+  if (sheet?.id === id && edits === savingEdits) dirty = false;
+  if (pendingAuto) {
+    pendingAuto = false;
+    const at = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    say(`Auto-saved at ${at}.`, "good");
+    paintChecks();
+    return;
+  }
   say(`Saved "${getMap(id)?.name ?? id}". It is in every lobby's map list now.`, "good");
   if (ctx.screen === "builder") mountOrRefresh(ctx);
 }
@@ -1023,7 +1211,9 @@ export function builderMapSaved(ctx: Ctx, id: string): void {
 export function builderError(ctx: Ctx, message: string): boolean {
   if (!stage || ctx.screen !== "builder") return false;
   pendingSave = null;
-  say(message, "bad");
+  const auto = pendingAuto;
+  pendingAuto = false;
+  say(auto ? `Auto save failed: ${message}` : message, "bad");
   return true;
 }
 
@@ -1065,11 +1255,12 @@ function asset(label: string, sub: string, on: boolean, art: Node, title: string
   return b;
 }
 
-function houseThumb(type: CivilianType | "bunker" | "tower", facing: number): HTMLCanvasElement {
+/** A building's art at `angle` world radians: a house's quarter, a bunker or tower's 15° step. */
+function houseThumb(type: CivilianType | "bunker" | "tower", angle: number): HTMLCanvasElement {
   const cv = el("canvas");
   cv.width = 96;
   cv.height = 76;
-  const def = buildingSpriteFor(type, (facing * Math.PI) / 2);
+  const def = buildingSpriteFor(type, angle);
   const paint = (): void => {
     const g = cv.getContext("2d");
     if (!g || !def) return;
@@ -1085,6 +1276,7 @@ function houseThumb(type: CivilianType | "bunker" | "tower", facing: number): HT
 
 function setTool(ctx: Ctx, patch: Partial<Tool>): void {
   Object.assign(tool, patch);
+  if (!lineTool()) dropLine();
   mountOrRefresh(ctx);
 }
 
@@ -1107,7 +1299,8 @@ function paintSelection(): void {
     return;
   }
   const faces = ["east", "south", "west", "north"];
-  const label = f ? `${catalog(f.type).name} · faces ${faces[f.facing & 3]}` : `Start ${start!.id}`;
+  const heading = f ? (f.turn != null ? `${turnDegrees(f.turn)}°` : faces[f.facing & 3]) : "";
+  const label = f ? `${catalog(f.type).name} · faces ${heading}` : `Start ${start!.id}`;
   box.append(el("div", { class: "bld-sel-name", text: label }));
   const row = el("div", { class: "btn-row" });
   if (f) {
@@ -1124,8 +1317,8 @@ function paintSelection(): void {
   box.append(row);
 }
 
-function defenceThumb(type: MapDefenceType, facing: number): HTMLElement {
-  if (!isMapSection(type)) return houseThumb(type, facing);
+function defenceThumb(type: MapDefenceType, turn: number): HTMLElement {
+  if (!isMapSection(type)) return houseThumb(type, M.wrapTurn(turn) * BUILDING_TURN_STEP);
   // Sections are drawn by the battlefield, not from a sheet: a plain mark stands in.
   return el("span", { class: `bld-start-mark bld-${type}`, text: type === "sandbags" ? "▬" : "▮" });
 }
@@ -1209,7 +1402,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     const def = catalog(type);
     const size = `${def.tileW / TILE_SUBDIV}×${def.tileH / TILE_SUBDIV} cells`;
     houses.append(
-      asset(def.name, size, tool.id === "house" && tool.house === type, houseThumb(type, tool.facing), def.blurb ?? def.name, () =>
+      asset(def.name, size, tool.id === "house" && tool.house === type, houseThumb(type, (tool.facing * Math.PI) / 2), def.blurb ?? def.name, () =>
         setTool(ctx, { id: "house", house: type }),
       ),
     );
@@ -1233,15 +1426,20 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     const def = catalog(type);
     const size = isMapSection(type) ? "one section" : `${def.tileW / TILE_SUBDIV}×${def.tileH / TILE_SUBDIV} cells`;
     defences.append(
-      asset(def.name, size, tool.id === "defence" && tool.defence === type, defenceThumb(type, tool.facing), def.blurb ?? def.name, () =>
+      asset(def.name, size, tool.id === "defence" && tool.defence === type, defenceThumb(type, tool.turn), def.blurb ?? def.name, () =>
         setTool(ctx, { id: "defence", defence: type }),
       ),
     );
   }
   const defFaceRow = el("div", { class: "bld-row" });
-  const defTurn = el("button", { class: "btn btn-ghost bld-mini", text: `Faces: ${faces[tool.facing]}`, attrs: { type: "button" } });
-  defTurn.addEventListener("click", () => setTool(ctx, { facing: (tool.facing + 1) & 3 }));
-  defFaceRow.append(defTurn);
+  const turnBy = (steps: number, text: string, title: string): HTMLButtonElement => {
+    const b = el("button", { class: "btn btn-ghost bld-mini", text, attrs: { type: "button", title } });
+    b.addEventListener("click", () => setTool(ctx, { turn: M.wrapTurn(tool.turn + steps) }));
+    return b;
+  };
+  const turnLabel = el("span", { class: "bld-val", text: `Faces ${turnDegrees(tool.turn)}°` });
+  if (stage) stage.turnLabel = turnLabel;
+  defFaceRow.append(turnBy(-1, "⟲ 15°", "Turn 15° counter-clockwise"), turnLabel, turnBy(1, "15° ⟳", "Turn 15° clockwise"));
   panel.append(
     section(
       "Defences",
@@ -1249,7 +1447,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       defFaceRow,
       el("p", {
         class: "bld-hint",
-        text: "Neutral until taken. Infantry that walk into a bunker or tower take it; a tower's lamp stays dark until someone holds it. Men who take cover at sandbags or a wall claim the section. Drag to lay a sandbag or wall line.",
+        text: "Neutral until taken. Infantry that walk into a bunker or tower take it; a tower's lamp stays dark until someone holds it. Men who take cover at sandbags or a wall claim the section. Scroll turns a defence 15° (Ctrl+scroll zooms). A sandbag or wall line goes down as in a match: click its start, click each corner, Enter lays it, right-click takes a corner back, Esc drops it.",
       }),
     ),
   );
@@ -1392,6 +1590,7 @@ function header(ctx: Ctx): HTMLElement {
     name.addEventListener("input", () => {
       s.name = name.value;
       dirty = true;
+      edits++;
       paintChecks();
     });
     nameField.append(el("label", { text: "Name" }), name);
@@ -1430,6 +1629,12 @@ function header(ctx: Ctx): HTMLElement {
     mountOrRefresh(ctx);
   }, newOpen);
   btn("Undo", "btn-ghost", () => step(undo, redo), !editing || undo.length === 0);
+  const auto = el("input", { attrs: { type: "checkbox" } });
+  auto.checked = autoSave;
+  auto.addEventListener("change", () => setAutoSave(auto.checked));
+  const autoLabel = el("label", { class: "check bld-auto", text: "Auto save", attrs: { title: "Save changes every 30 seconds" } });
+  autoLabel.prepend(auto);
+  if (editing) head.append(autoLabel);
   btn("Save", "btn-primary", () => save(ctx), !editing);
   btn("Save copy", "", () => save(ctx, { copy: true }), !editing);
   btn("Play test", "", () => playtest(ctx), !editing);
@@ -1456,6 +1661,13 @@ function bindKeys(): void {
     } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "y") {
       e.preventDefault();
       step(redo, undo);
+    } else if (e.key === "Enter" && lineTool() && line.points.length > 0) {
+      e.preventDefault();
+      commitLine();
+    } else if (e.key === "Escape" && linePending()) {
+      dropLine();
+      say("Line dropped.");
+      queueDraw();
     } else if ((e.key === "Delete" || e.key === "Backspace") && selected) {
       e.preventDefault();
       deleteSelected();
@@ -1469,6 +1681,8 @@ function bindKeys(): void {
     } else if ((e.key === "r" || e.key === "R") && tool.id === "select") {
       turnSelected();
       paintSelection();
+    } else if ((e.key === "r" || e.key === "R") && turningTool()) {
+      setTool(ctx, { turn: M.wrapTurn(tool.turn + M.QUARTER_TURN) });
     } else if (e.key === "r" || e.key === "R") {
       setTool(ctx, { facing: (tool.facing + 1) & 3 });
     } else if (e.key === "[") {
@@ -1496,12 +1710,13 @@ export function refreshBuilder(ctx: Ctx): void {
 export function renderBuilder(root: HTMLElement, ctx: Ctx): void {
   ctxRef = ctx;
   bindKeys();
+  autoTimer ??= setInterval(autoTick, AUTO_SAVE_MS);
   if (!sheet) newOpen = true;
   const screen = el("div", { class: "screen", attrs: { id: "builder-root" } });
   const wrap = el("div", { class: "builder" });
   const canvas = el("canvas");
   const status = el("div", { class: "bld-status", text: statusHint() });
-  stage = { root: screen, canvas, status, preview: null, msg: el("div"), checks: null, maps: null, sel: null };
+  stage = { root: screen, canvas, status, preview: null, msg: el("div"), checks: null, maps: null, sel: null, turnLabel: null };
   wrap.append(header(ctx));
   const tools = toolsPanel(ctx);
   paintSelection();

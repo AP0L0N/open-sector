@@ -28,6 +28,15 @@ export function isoZoomAt(cam: IsoCam, mx: number, my: number, deltaY: number): 
   cam.zoom = next;
 }
 
+/** Screen point of a tile's centre on its own height. */
+export function isoScreenOf(s: Sheet, cam: IsoCam, tx: number, ty: number): { x: number; y: number } {
+  const p = worldToIso((tx + 0.5) * TILE_SIZE, (ty + 0.5) * TILE_SIZE, TILE_SIZE);
+  const cx = Math.max(0, Math.min(s.width - 1, tx));
+  const cy = Math.max(0, Math.min(s.height - 1, ty));
+  const z = isoLift(s.heights[cy * s.width + cx] ?? 0);
+  return { x: (p.x - cam.camX) * cam.zoom, y: (p.y - z - cam.camY) * cam.zoom };
+}
+
 /** Tile under a screen point, on the raised ground. Off it, the flat plane answers, past the edge too. */
 export function isoPick(s: Sheet, cam: IsoCam, px: number, py: number): { x: number; y: number; inside: boolean } {
   const ix = px / cam.zoom + cam.camX;

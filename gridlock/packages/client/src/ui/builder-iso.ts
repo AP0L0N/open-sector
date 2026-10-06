@@ -5,8 +5,10 @@ import {
   SPAWN_PAD_R,
   TILE_SIZE,
   TILE_TREE,
-  catalog,
+  featureAngle,
   featureBox,
+  featureLotSite,
+  featureRect,
   fieldSpan,
   isMapSection,
   isScrapTile,
@@ -63,7 +65,10 @@ export interface IsoOverlay {
   selectedFeature: number;
   hoverFeature: number;
   selectedSpawn: number;
-  ghost: { f: MapFeature; bad: boolean } | null;
+  /** What the placing tools would set down: one building, or the pieces of a drawn line. */
+  ghosts: { f: MapFeature; bad: boolean }[];
+  /** World point a drawn line starts from. */
+  lineStart: { x: number; y: number } | null;
   spawnGhost: { x: number; y: number; bad: boolean } | null;
   brush: { x: number; y: number; r: number } | null;
 }
@@ -226,23 +231,29 @@ function quadPath(c: CanvasRenderingContext2D, pts: readonly IsoPt[]): void {
   c.closePath();
 }
 
+/** Height a lot stands at: its lowest visible corner, as a placed building's. */
+function lotElev(s: Sheet, f: MapFeature): number {
+  const site = featureLotSite(f);
+  return buildingGroundElev(s.heights, s.width, s.height, site.tx, site.ty, site.w, site.h);
+}
+
+/** The feature's real ground, turned as it stands, `pad` world px out from its edge. */
 function boxCorners(s: Sheet, f: MapFeature, pad = 0): { pts: IsoPt[]; elev: number } {
-  const b = featureBox(f);
   const ts = TILE_SIZE;
-  const elev = isMapSection(f.type)
-    ? groundAt(s, (f.x + 0.5) * ts, (f.y + 0.5) * ts)
-    : buildingGroundElev(s.heights, s.width, s.height, b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
-  const x0 = b.x0 * ts - pad;
-  const y0 = b.y0 * ts - pad;
-  const x1 = b.x1 * ts + pad;
-  const y1 = b.y1 * ts + pad;
-  return { pts: [at(x0, y0, elev), at(x1, y0, elev), at(x1, y1, elev), at(x0, y1, elev)], elev };
+  const r = featureRect(f);
+  const elev = isMapSection(f.type) ? groundAt(s, r.cx * ts, r.cy * ts) : lotElev(s, f);
+  const hu = r.halfU * ts + pad;
+  const hv = r.halfV * ts + pad;
+  const pts = ([[-1, -1], [1, -1], [1, 1], [-1, 1]] as const).map(([a, b]) =>
+    at(r.cx * ts + a * hu * r.ux + b * hv * r.vx, r.cy * ts + a * hu * r.uy + b * hv * r.vy, elev),
+  );
+  return { pts, elev };
 }
 
 /** A building or defence as the battlefield draws it. False when its art has not loaded. */
 function drawFeature(c: CanvasRenderingContext2D, s: Sheet, f: MapFeature, sections: readonly WallSection[]): boolean {
   const ts = TILE_SIZE;
-  const facing = ((f.facing ?? 0) * Math.PI) / 2;
+  const facing = featureAngle(f);
   if (isMapSection(f.type)) {
     const span = fieldSpan(f.type);
     if (!span) return true;
@@ -294,11 +305,12 @@ function drawFeature(c: CanvasRenderingContext2D, s: Sheet, f: MapFeature, secti
     });
     return true;
   }
-  const b = featureBox(f);
-  const elev = buildingGroundElev(s.heights, s.width, s.height, b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0);
-  const south = at(b.x1 * ts, b.y1 * ts, elev);
-  const east = at(b.x1 * ts, b.y0 * ts, elev);
-  const west = at(b.x0 * ts, b.y1 * ts, elev);
+  // A turned bunker or tower stands on its turned site, as the match raises it.
+  const site = featureLotSite(f);
+  const elev = lotElev(s, f);
+  const south = at((site.tx + site.w) * ts, (site.ty + site.h) * ts, elev);
+  const east = at((site.tx + site.w) * ts, site.ty * ts, elev);
+  const west = at(site.tx * ts, (site.ty + site.h) * ts, elev);
   const ground = buildingGroundFor(f.type, facing);
   if (ground && spriteReady(ground)) drawBuildingSprite(c, ground, south.x, south.y, east.x - west.x);
   const spr = buildingSpriteFor(f.type, facing);
@@ -411,19 +423,21 @@ export function isoDraw(
     items.push({ z: it.kind === "bush" ? -Infinity : isoDepth(wx, wy), run: () => void drawPropSprite(c, spr, p.x, p.y, it.drawH, it.flip) });
   }
 
-  const sections = s.features
-    .filter((f) => isMapSection(f.type))
-    .map((f): WallSection & { type: string } => {
-      const span = fieldSpan(f.type)!;
-      return {
-        type: f.type,
-        x: (f.x + 0.5) * TILE_SIZE,
-        y: (f.y + 0.5) * TILE_SIZE,
-        facing: ((f.facing ?? 0) * Math.PI) / 2,
-        length: span.length,
-        thick: span.thick,
-      };
-    });
+  const sectionsOf = (list: readonly MapFeature[]) =>
+    list
+      .filter((f) => isMapSection(f.type))
+      .map((f): WallSection & { type: string } => {
+        const span = fieldSpan(f.type)!;
+        return {
+          type: f.type,
+          x: (f.x + 0.5) * TILE_SIZE,
+          y: (f.y + 0.5) * TILE_SIZE,
+          facing: featureAngle(f),
+          length: span.length,
+          thick: span.thick,
+        };
+      });
+  const sections = sectionsOf(s.features);
   s.features.forEach((f, i) => {
     const b = featureBox(f);
     const zKey = isoDepth(((b.x0 + b.x1) / 2) * TILE_SIZE, ((b.y0 + b.y1) / 2) * TILE_SIZE);
@@ -473,8 +487,10 @@ export function isoDraw(
     c.fillText(String(sp.id), p.x, p.y + 1 / z);
   }
 
-  if (o.ghost) {
-    const { f, bad } = o.ghost;
+  // Ghosts as the match shows a placement: tinted ground, faded art. A drawn line's pieces join each other.
+  const ghostSections = sectionsOf(o.ghosts.map((g) => g.f));
+  const ghostOrder = [...o.ghosts].sort((a, b) => isoDepth(a.f.x, a.f.y) - isoDepth(b.f.x, b.f.y));
+  for (const { f, bad } of ghostOrder) {
     const tint = bad ? "#ff5a4a" : "#7dff6a";
     const { pts } = boxCorners(s, f);
     c.save();
@@ -483,12 +499,25 @@ export function isoDraw(
     quadPath(c, pts);
     c.fill();
     c.globalAlpha = 0.55;
-    const same = sections.filter((x) => x.type === f.type);
-    if (!drawFeature(c, s, f, same)) loading = true;
+    if (!drawFeature(c, s, f, ghostSections.filter((x) => x.type === f.type))) loading = true;
     c.restore();
     c.strokeStyle = tint;
     c.lineWidth = 2 / z;
     quadPath(c, pts);
+    c.stroke();
+  }
+  if (o.lineStart) {
+    // The start of the line, as the match marks it.
+    const p = at(o.lineStart.x, o.lineStart.y, groundAt(s, o.lineStart.x, o.lineStart.y));
+    const k = 6 / z;
+    c.strokeStyle = "#e8b84a";
+    c.lineWidth = 1.5 / z;
+    quadPath(c, [
+      { x: p.x, y: p.y - k },
+      { x: p.x + k, y: p.y },
+      { x: p.x, y: p.y + k },
+      { x: p.x - k, y: p.y },
+    ]);
     c.stroke();
   }
   if (o.spawnGhost) {
@@ -504,14 +533,6 @@ export function isoDraw(
     c.lineWidth = 1.5 / z;
     quadPath(c, groundRing(s, o.brush.x, o.brush.y, Math.max(0.5, o.brush.r + 0.5)));
     c.stroke();
-  }
-  // Name the placing ghost so a house picked by thumbnail reads on the ground too.
-  if (o.ghost && z >= 0.6) {
-    const { pts } = boxCorners(s, o.ghost.f);
-    const top = pts.reduce((m, p) => (p.y < m.y ? p : m));
-    c.font = `600 ${12 / z}px Oswald, sans-serif`;
-    c.fillStyle = "#fff4dc";
-    c.fillText(catalog(o.ghost.f.type).name.toUpperCase(), top.x, top.y - 40 / z);
   }
   return loading;
 }
