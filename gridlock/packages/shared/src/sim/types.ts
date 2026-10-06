@@ -81,6 +81,8 @@ export interface Order {
   bridge?: BridgeType;
   /** Bridge deck length, world px. */
   span?: number;
+  /** Deck level of the bridge line being laid, map height units: the ground where it was started. */
+  deck?: number;
   /** Panic retreat: after this order, the Mauler returns to HQ and holds. */
   returnToBase?: boolean;
   /**
@@ -504,6 +506,8 @@ export interface Entity {
   orderQueue?: QueuedOrder[];
   /** Engineer wall pieces, or bridge bricks, still to lay after the current build order. Cleared by any new order. */
   fieldQueue?: { x: number; y: number; facing: number }[];
+  /** A bridge brick's deck level, map height units. Every brick of one line shares it. */
+  deckLevel?: number;
   /** Ticks an engineer laying a bridge has had no way nearer his brick. Not on the wire. */
   bridgeStuck?: number;
   /** Wounded infantry this medic is walking to or bandaging. */
@@ -857,6 +861,11 @@ export interface MatchState {
   fortOwner: Map<number, string>;
   /** 1 = water under an intact bridge deck: dry ground for everything that crosses. Rebuilt from the bridges. */
   bridgeDeck: Uint8Array;
+  /**
+   * 1 = water under an intact deck that stands BRIDGE_SHIP_CLEARANCE over it: a boat
+   * sails under (all but the LST and the Battle Ship). Rebuilt with `bridgeDeck`.
+   */
+  bridgeClear?: Uint8Array;
   /** Damage aimed rounds dealt bridges this step, by bridge id. Applied and cleared each step. Not saved. */
   bridgeHits?: Map<number, number>;
   players: Map<string, SimPlayer>;

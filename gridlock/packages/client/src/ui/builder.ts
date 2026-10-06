@@ -517,7 +517,7 @@ function lineGhost(): MapFeature[] {
   if (!bridge && (tool.id !== "defence" || !isMapSection(tool.defence))) return [];
   if (!hover.inside && line.points.length === 0 && !line.press) return [];
   const pts = fieldPointsWithCursor(line.points, line.press, M.tileWorld(hover.x, hover.y));
-  if (bridge) return M.bridgeLine(tool.bridge, pts, tool.turn);
+  if (bridge) return M.bridgeLine(tool.bridge, pts, tool.turn, M.deckAt(sheet!, pts[0]!));
   return M.sectionLine(tool.defence as "sandbags" | "wall", pts, tool.turn);
 }
 
@@ -1428,7 +1428,7 @@ function commitRoad(): void {
 function commitBridge(): void {
   const s = sheet;
   if (!s || line.points.length === 0) return;
-  const pieces = M.bridgeLine(tool.bridge, line.points, tool.turn);
+  const pieces = M.bridgeLine(tool.bridge, line.points, tool.turn, M.deckAt(s, line.points[0]!));
   dropLine();
   pushUndo();
   const { laid, refused } = M.laySections(s, pieces);
@@ -2187,8 +2187,9 @@ function bridgeThumb(type: BridgeType): HTMLCanvasElement {
     { x: (-len * n) / 2, y: 0 },
     { x: (len * n) / 2, y: 0 },
   ]);
-  const bricks = spans.map((span) => ({ type, span, width }));
-  const layout = layoutBridges(bricks, (x) => ground(x), (x) => wet(x));
+  // Started on the bank, it keeps the bank's level over the water.
+  const bricks = spans.map((span) => ({ type, span, width, deck: 2 }));
+  const layout = layoutBridges(bricks, (x) => wet(x));
   g.save();
   g.translate(0, 0);
   bricks.forEach((b, i) => {
@@ -2467,7 +2468,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       bridgeFaceRow,
       el("p", {
         class: "bld-hint",
-        text: "Laid brick by brick, like a wall: click on one shore, click each corner, Enter lays it, right-click takes a corner back. Any width of water; the bricks at each end arch down onto the bank. Bricks stand on water or open ground, not on rock or woods. They belong to no one: anyone crosses, only a force-attack hurts one, and a brick shot down drops into the water while the rest stands.",
+        text: "Laid brick by brick, like a wall: click where it starts, click each corner, Enter lays it, right-click takes a corner back. The deck keeps the level of the ground you start on; its piles or piers reach down to whatever is under it, and the water stays water. Start it high on a bank and small boats sail under it (never the LST or the Battle Ship). Bricks stand on water or open ground, not on rock or woods. They belong to no one: anyone crosses, only a force-attack hurts one, and a brick shot down drops into the water while the rest stands.",
       }),
     ),
   );

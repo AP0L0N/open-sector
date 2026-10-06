@@ -386,6 +386,10 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
       feat.turn = turn as number;
       feat.facing = turnQuarter(feat.turn);
     }
+    if (o.deck != null) {
+      if (!isMapBridge(type) || typeof o.deck !== "number" || !Number.isFinite(o.deck)) return bad("Bad building.");
+      feat.deck = Math.max(0, Math.min(HEIGHT_MAX, Math.round(o.deck)));
+    }
     const spot = type === "tower" ? cleanSpot(o.spot) : null;
     if (spot != null) feat.spot = spot;
     const sweep = type === "tower" ? cleanPatrol(o.patrol, width, height) : null;

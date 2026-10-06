@@ -19,6 +19,7 @@ import {
   houseProblem,
   laySections,
   bridgeLine,
+  deckAt,
   moveFeature,
   QUARTER_TURN,
   sectionLine,
@@ -280,8 +281,9 @@ describe("builder select and defences", () => {
     // A river 60 tiles wide.
     for (let y = 40; y < 100; y++) for (let x = 60; x < 120; x++) s.tiles[y * s.width + x] = TILE_WATER;
     const pts = [tileWorld(55, 70), tileWorld(125, 71)];
-    const bricks = bridgeLine("bigbridge", pts, 0);
+    const bricks = bridgeLine("bigbridge", pts, 0, deckAt(s, pts[0]!));
     assert.ok(bricks.length >= 17, `${bricks.length} bricks`);
+    assert.ok(bricks.every((b) => b.deck === s.heights[70 * s.width + 55]), "the deck keeps the level it started on");
     assert.ok(bricks.every((b) => b.turn === 0), "the leg snaps to due east");
     assert.deepEqual(laySections(s, bricks), { laid: bricks.length, refused: 0 }, "end to end, no brick blocks the next");
     assert.equal(defenceCount(s), 0, "bridges are not defences");
@@ -290,15 +292,19 @@ describe("builder select and defences", () => {
     assert.equal(back.ok, true, back.ok ? "" : back.message);
     if (back.ok) assert.deepEqual(back.spec.features, s.features);
     assert.deepEqual(laySections(s, bricks), { laid: 0, refused: bricks.length }, "laid twice, every brick overlaps");
+    // The water under it stays water once settled, and a river can still be painted under it.
+    settle(s);
+    assert.equal(s.tiles[70 * s.width + 90], TILE_WATER);
+    assert.ok(paintDisk(s, 50, 70, 2, TILE_WATER) > 0, "water paints under a bridge brick");
   });
 
   it("keeps bridge bricks off woods; a lone click is one brick on the wheel's heading", () => {
     const s = fresh();
     for (let y = 60; y < 70; y++) for (let x = 60; x < 70; x++) s.tiles[y * s.width + x] = TILE_TREE;
-    const [one] = bridgeLine("bridge", [tileWorld(64, 64)], QUARTER_TURN);
+    const [one] = bridgeLine("bridge", [tileWorld(64, 64)], QUARTER_TURN, 0);
     assert.equal(one!.turn, QUARTER_TURN);
     assert.match(houseProblem(s, one!) ?? "", /footing/);
-    const [open] = bridgeLine("bridge", [tileWorld(120, 120)], 0);
+    const [open] = bridgeLine("bridge", [tileWorld(120, 120)], 0, 0);
     assert.equal(houseProblem(s, open!), null);
   });
 

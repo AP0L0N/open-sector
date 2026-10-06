@@ -24,6 +24,7 @@ import {
   isRubble,
   isInfantryType,
   isNavalType,
+  tooTallForBridge,
   isSupplyCarrier,
   isTorpedoBody,
   isTransportType,
@@ -131,6 +132,24 @@ export function isWater(state: MatchState, x: number, y: number): boolean {
   return state.terrain[i] === TILE_WATER && state.bridgeDeck?.[i] !== 1;
 }
 
+/**
+ * Water a boat of `type` may sail: open water, or water under a bridge deck that stands
+ * BRIDGE_SHIP_CLEARANCE over it (`bridgeClear`), unless the boat is too tall for any bridge.
+ */
+export function sailable(state: MatchState, x: number, y: number, type: EntityType): boolean {
+  if (isWater(state, x, y)) return true;
+  if (!inBounds(state, x, y)) return false;
+  return state.bridgeClear?.[tileIndex(state, x, y)] === 1 && !tooTallForBridge(type);
+}
+
+/** A boat under a high bridge deck: it and what drives on the deck pass each other by. */
+export function underDeck(state: MatchState, e: { type: EntityType; x: number; y: number }): boolean {
+  if (!isNavalType(e.type)) return false;
+  const tx = worldToTile(e.x, state.tileSize);
+  const ty = worldToTile(e.y, state.tileSize);
+  return inBounds(state, tx, ty) && state.bridgeClear?.[tileIndex(state, tx, ty)] === 1;
+}
+
 export function isTree(state: MatchState, x: number, y: number): boolean {
   if (!inBounds(state, x, y)) return false;
   return state.terrain[tileIndex(state, x, y)] === TILE_TREE;
@@ -234,8 +253,8 @@ export function walkable(state: MatchState, x: number, y: number, type?: EntityT
   if (fort === 1) return false;
   if (fort === 2 && !(type && isInfantryType(type))) return false;
   // 3 is an unlocked gate: everyone plans through it; the boom stops the wrong side in collision.
-  // A boat floats on open water and never comes ashore.
-  if (type && isNavalType(type)) return isWater(state, x, y);
+  // A boat floats on open water and never comes ashore. It may sail under a high bridge deck.
+  if (type && isNavalType(type)) return sailable(state, x, y, type);
   if (isWater(state, x, y)) return !!type && (isInfantryType(type) || wadesOf(type));
   if (state.blocked[i] === 1) return false;
   if (isTree(state, x, y)) {

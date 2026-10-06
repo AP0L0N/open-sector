@@ -106,6 +106,11 @@ export interface MapFeature {
    * A section's x, y may then be fractional (whole world px), so a slanted line lies end to end.
    */
   turn?: number;
+  /**
+   * A bridge brick's deck level, map height units: the ground's height where its line was
+   * started. Every brick of one line shares it. Left out, the brick rests on its higher end.
+   */
+  deck?: number;
   /** Watch Tower only: where its spotlight points, whole degrees, 0 = east, 90 = south. Left out, it looks the way the tower faces. */
   spot?: number;
   /** Watch Tower only: fine tiles the spotlight sweeps between, from the tower, as a held tower's Patrol sweeps them. */
@@ -2160,6 +2165,8 @@ export function normalizeTerrain(
     heights[i] = Math.max(0, Math.min(HEIGHT_MAX, Math.round(heights[i] ?? HEIGHT_BASE)));
   }
   for (const f of features) {
+    // A bridge spans what is under it: the water stays water, for the boats and for when it falls.
+    if (isMapBridge(f.type)) continue;
     const b = featureBox(f);
     for (let y = Math.max(0, b.y0); y < Math.min(height, b.y1); y++) {
       for (let x = Math.max(0, b.x0); x < Math.min(width, b.x1); x++) tiles[idx(width, x, y)] = TILE_EMPTY;

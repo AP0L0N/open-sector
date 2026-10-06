@@ -475,6 +475,7 @@ export function paintDisk(s: Sheet, cx: number, cy: number, r: number, tile: num
   const ri = Math.ceil(r);
   // Only lots and pads near the brush can refuse a tile.
   const lots = s.features
+    .filter((f) => !isMapBridge(f.type))
     .map((f) => featureBox(f))
     .filter((b) => b.x1 > cx - ri && b.x0 <= cx + ri && b.y1 > cy - ri && b.y0 <= cy + ri);
   const pads = PAD_CLEARS(tile) ? s.spawns.filter((sp) => Math.hypot(sp.x - cx, sp.y - cy) <= SPAWN_PAD_R + ri + 1) : [];
@@ -656,12 +657,32 @@ export function sectionLine(type: MapSectionType, points: readonly { x: number; 
  * like a wall's sections, every leg turned to the nearest 15°. A lone point is one brick
  * along `turn`. A brick's turn runs along its deck.
  */
-export function bridgeLine(type: MapBridgeType, points: readonly { x: number; y: number }[], turn: number): MapFeature[] {
+export function bridgeLine(type: MapBridgeType, points: readonly { x: number; y: number }[], turn: number, deck: number): MapFeature[] {
   const at = (v: number): number => Math.round((v / TILE_SIZE - 0.5) * TILE_SIZE) / TILE_SIZE;
   return bridgePath(type, points, wrapTurn(turn) * BUILDING_TURN_STEP, BUILDING_TURN_STEP).map((b) => {
     const t = wrapTurn(b.facing / BUILDING_TURN_STEP);
-    return { type, x: at(b.x), y: at(b.y), facing: turnQuarter(t), turn: t };
+    return { type, x: at(b.x), y: at(b.y), facing: turnQuarter(t), turn: t, deck };
   });
+}
+
+/** Deck level a bridge line started at world point `p` keeps: the ground's height there. */
+export function deckAt(s: Sheet, p: { x: number; y: number }): number {
+  const x = Math.max(0, Math.min(s.width - 1, Math.floor(p.x / TILE_SIZE)));
+  const y = Math.max(0, Math.min(s.height - 1, Math.floor(p.y / TILE_SIZE)));
+  return s.heights[y * s.width + x] ?? 0;
+}
+
+/** A placed brick's deck level. One saved before levels were kept rests on its higher end. */
+export function brickDeck(s: Sheet, f: MapFeature): number {
+  if (f.deck != null) return f.deck;
+  const a = ((f.turn ?? f.facing * QUARTER_TURN) * BUILDING_TURN_STEP);
+  const half = (isMapBridge(f.type) ? bridgeBrickLength(f.type) : 0) / 2;
+  const cx = (f.x + 0.5) * TILE_SIZE;
+  const cy = (f.y + 0.5) * TILE_SIZE;
+  return Math.max(
+    deckAt(s, { x: cx - Math.cos(a) * half, y: cy - Math.sin(a) * half }),
+    deckAt(s, { x: cx + Math.cos(a) * half, y: cy + Math.sin(a) * half }),
+  );
 }
 
 /** Ground a bridge brick may not stand on: rock, woods, fences, and blocked ground. Water and open land take one. */
@@ -785,7 +806,7 @@ export function roadCells(s: Sheet, legs: readonly { x: number; y: number }[], w
 
 /** Lay road along `legs`. Houses keep their lots and ponds stay water. Returns changed cells. */
 export function paintRoad(s: Sheet, legs: readonly { x: number; y: number }[], width: number, dirty?: Dirty): number {
-  const lots = s.features.map((f) => featureBox(f));
+  const lots = s.features.filter((f) => !isMapBridge(f.type)).map((f) => featureBox(f));
   let changed = 0;
   for (const i of roadCells(s, legs, width)) {
     const t = s.tiles[i];

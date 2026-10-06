@@ -17,7 +17,7 @@ import {
 import { moveSpeedMul, takeDamage } from "./crits.js";
 import { diving } from "./naval.js";
 import { setPath } from "./path.js";
-import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, jetAloft, occupant, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
+import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, jetAloft, occupant, sailable, tileCenter, tileIndex, underDeck, walkable, worldToTile } from "./geo.js";
 import { crushClutterUnder } from "./clutter.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -53,9 +53,14 @@ export function makesWayFor(state: MatchState, walker: Entity, hull: Entity): bo
   return allies(state, walker.ownerId, hull.ownerId);
 }
 
-/** A diving submarine runs under anything on the surface: neither one blocks or shoves the other. */
-export function passesUnder(a: Entity, b: Entity): boolean {
-  return diving(a) !== diving(b);
+/**
+ * A diving submarine runs under anything on the surface, and a boat under a high bridge
+ * deck runs under what drives on it: neither one blocks or shoves the other.
+ */
+export function passesUnder(a: Entity, b: Entity, state?: MatchState): boolean {
+  if (diving(a) !== diving(b)) return true;
+  if (!state || isNavalType(a.type) === isNavalType(b.type)) return false;
+  return underDeck(state, a) || underDeck(state, b);
 }
 
 function tileFree(state: MatchState, e: Entity, x: number, y: number): boolean {
@@ -65,7 +70,7 @@ function tileFree(state: MatchState, e: Entity, x: number, y: number): boolean {
   if (!inBounds(state, tx, ty)) return false;
   if (isWall(state, tx, ty)) return false;
   if (isNavalType(e.type)) {
-    if (!isWater(state, tx, ty)) return false;
+    if (!sailable(state, tx, ty, e.type)) return false;
   } else if (isWater(state, tx, ty) && !isInfantryType(e.type) && !wadesOf(e.type)) return false;
   if (isTree(state, tx, ty) && !walkable(state, tx, ty, e.type)) return false;
   const idx = tileIndex(state, tx, ty);
@@ -141,7 +146,7 @@ function blockerAt(
   for (const o of state.entities.values()) {
     if (o.id === e.id || o.id === ignoreId || o.hp <= 0 || o.garrisonedIn) continue;
     if (passes?.(o)) continue;
-    if (o.kind === "building" || o.air || jetAloft(o) || passesUnder(e, o)) continue;
+    if (o.kind === "building" || o.air || jetAloft(o) || passesUnder(e, o, state)) continue;
     let need = r + o.radius;
     const dx = x - o.x;
     const dy = y - o.y;
@@ -547,7 +552,7 @@ export function tickShuffle(state: MatchState): void {
     const toGoal = Math.hypot(goal.x - mover.x, goal.y - mover.y);
     const reach = Math.min(mover.radius * 3, toGoal + mover.radius);
     for (const o of parked) {
-      if (passesUnder(o, mover) || makesWayFor(state, o, mover) || !canShuffle(state, o, mover)) continue;
+      if (passesUnder(o, mover, state) || makesWayFor(state, o, mover) || !canShuffle(state, o, mover)) continue;
       const clear = mover.radius + o.radius + UNIT_SPACE_PAD;
       const rx = o.x - mover.x;
       const ry = o.y - mover.y;
@@ -589,7 +594,7 @@ export function pathAroundParked(state: MatchState, e: Entity, toX: number, toY:
   const ey = worldToTile(e.y, ts);
   const stamped: number[] = [];
   for (const o of state.entities.values()) {
-    if (o.id === e.id || !isActiveUnit(o) || o.waypoints.length > 0 || passesUnder(e, o)) continue;
+    if (o.id === e.id || !isActiveUnit(o) || o.waypoints.length > 0 || passesUnder(e, o, state)) continue;
     if (Math.abs(o.x - e.x) > reach || Math.abs(o.y - e.y) > reach) continue;
     if (canCrush(state, e, o) || makesWayFor(state, o, e)) continue;
     const r = (o.radius + e.radius) * 0.9;
@@ -693,7 +698,7 @@ function separatePair(state: MatchState, a: Entity, b: Entity): void {
   let dy = b.y - a.y;
   let dist = Math.hypot(dx, dy);
   if (dist >= need) return;
-  if (passesUnder(a, b) || canCrush(state, a, b) || canCrush(state, b, a)) return;
+  if (passesUnder(a, b, state) || canCrush(state, a, b) || canCrush(state, b, a)) return;
   if (dist < 1e-4) {
     dx = 1;
     dy = 0;
