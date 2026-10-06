@@ -64,7 +64,6 @@ export function previewSite(snap: MatchSnapshot, type: BuildingType, tx: number,
   const def = catalog(type);
   const tiles = buildingTilesOf(buildingSite(type, tx, ty, facing, map.tileSize), map.tileSize);
   const built = buildingCells(snap, map.width, map.tileSize, false);
-  const cleared = new Set((snap.clearedTrees ?? []).map((c) => c.y * map.width + c.x));
   const scrapCells = new Set<number>();
   for (const s of snap.scrap) if (s.yield > 0) scrapCells.add(s.y * map.width + s.x);
   // Your sited wall or sandbag line counts as standing while the yard builds it.
@@ -77,8 +76,8 @@ export function previewSite(snap: MatchSnapshot, type: BuildingType, tx: number,
     if (sited.has(i)) return false;
     const kind = map.tiles[i] ?? TILE_BLOCKED;
     if (afloat !== (kind === TILE_WATER)) return false;
+    // A standing tree is no bar: the building fells it.
     if (kind === TILE_BLOCKED || kind === TILE_ROCK || kind === TILE_FENCE) return false;
-    if (kind === TILE_TREE && !cleared.has(i)) return false;
     if (scrapCells.has(i)) {
       if (type !== "smelter") return false;
       scrapUnder++;

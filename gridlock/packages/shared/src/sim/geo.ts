@@ -427,12 +427,15 @@ export function tilesBlocked(state: MatchState, tx: number, ty: number, w: numbe
   return tileListBlocked(state, footprint(tx, ty, w, h));
 }
 
-/** tilesBlocked over any set of tiles, such as a turned building's ground. */
-export function tileListBlocked(state: MatchState, tiles: readonly { x: number; y: number }[]): boolean {
+/**
+ * tilesBlocked over any set of tiles, such as a turned building's ground.
+ * With `treesBlock` false a standing tree does not count: the building fells it when it goes up.
+ */
+export function tileListBlocked(state: MatchState, tiles: readonly { x: number; y: number }[], treesBlock = true): boolean {
   for (const t of tiles) {
     if (!inBounds(state, t.x, t.y)) return true;
     if (state.blocked[tileIndex(state, t.x, t.y)] === 1) return true;
-    if (isTree(state, t.x, t.y)) return true;
+    if (treesBlock && isTree(state, t.x, t.y)) return true;
     if (occupant(state, t.x, t.y) !== 0) return true;
   }
   return false;
