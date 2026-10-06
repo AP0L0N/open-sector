@@ -75,6 +75,22 @@ import granaryUrl from "../assets/buildings/granary.png";
 import granarySUrl from "../assets/buildings/granary-s.png";
 import granaryWUrl from "../assets/buildings/granary-w.png";
 import granaryNUrl from "../assets/buildings/granary-n.png";
+import hallUrl from "../assets/buildings/hall.png";
+import hallSUrl from "../assets/buildings/hall-s.png";
+import hallWUrl from "../assets/buildings/hall-w.png";
+import hallNUrl from "../assets/buildings/hall-n.png";
+import worksUrl from "../assets/buildings/works.png";
+import worksSUrl from "../assets/buildings/works-s.png";
+import worksWUrl from "../assets/buildings/works-w.png";
+import worksNUrl from "../assets/buildings/works-n.png";
+import shedUrl from "../assets/buildings/shed.png";
+import shedSUrl from "../assets/buildings/shed-s.png";
+import shedWUrl from "../assets/buildings/shed-w.png";
+import shedNUrl from "../assets/buildings/shed-n.png";
+import boilerUrl from "../assets/buildings/boiler.png";
+import boilerSUrl from "../assets/buildings/boiler-s.png";
+import boilerWUrl from "../assets/buildings/boiler-w.png";
+import boilerNUrl from "../assets/buildings/boiler-n.png";
 import shackUrl from "../assets/buildings/shack.png";
 import shackSUrl from "../assets/buildings/shack-s.png";
 import shackWUrl from "../assets/buildings/shack-w.png";
@@ -2026,6 +2042,33 @@ const CIV_FACES: Record<CivilianType, BuildingSpriteDef[]> = {
     building(granarySUrl, 768, 402, 507.9, 402, 33.9),
     building(granaryWUrl, 768, 402, 449.2, 402, 65.2),
     building(granaryNUrl, 768, 402, 491.2, 402, 65.2),
+  ],
+  // Long lots keep their tile box when turned: east door, mirrored, west door, mirrored.
+  // Pads are W x H diamonds, not squares, so they keep a hard edge like the Airfield.
+  // Metrics from tools/sprites/render_industry.py (industry.json).
+  hall: [
+    building(hallUrl, 1056, 786, 761.8, 546, 20.8, false),
+    building(hallSUrl, 1056, 786, 683.8, 546, 20.8, false),
+    building(hallWUrl, 1056, 786, 547.2, 546, 202.2, false),
+    building(hallNUrl, 1056, 786, 547.2, 546, 124.2, false),
+  ],
+  works: [
+    building(worksUrl, 1056, 594, 744.5, 546, 21.5, false),
+    building(worksSUrl, 1056, 594, 584.4, 546, 29.4, false),
+    building(worksWUrl, 1056, 594, 624.4, 546, 237.4, false),
+    building(worksNUrl, 1056, 594, 594.3, 546, 39.3, false),
+  ],
+  shed: [
+    building(shedUrl, 864, 690, 493.7, 450, 49.1, false),
+    building(shedSUrl, 864, 690, 493.7, 450, 49.1, false),
+    building(shedWUrl, 864, 690, 459, 450, 254.4, false),
+    building(shedNUrl, 864, 690, 468.5, 450, 263.9, false),
+  ],
+  boiler: [
+    building(boilerUrl, 864, 306, 487.8, 450, 22.8, false),
+    building(boilerSUrl, 864, 306, 649.8, 450, 22.8, false),
+    building(boilerWUrl, 864, 306, 727.8, 450, 22.8, false),
+    building(boilerNUrl, 864, 306, 565.8, 450, 22.8, false),
   ],
 };
 

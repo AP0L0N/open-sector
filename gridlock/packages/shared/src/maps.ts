@@ -2059,6 +2059,10 @@ const YARD_CLUTTER: Record<string, readonly ClutterType[]> = {
   factory: ["barrels", "tires", "crates", "barrels", "bins"],
   foundry: ["barrels", "tires", "crates", "woodpile"],
   warehouse: ["crates", "crates", "barrels", "cart"],
+  hall: ["crates", "barrels", "tires", "crates"],
+  works: ["barrels", "crates", "tires", "bins"],
+  shed: ["barrels", "woodpile", "crates"],
+  boiler: ["barrels", "barrels", "bins", "woodpile"],
   inn: ["barrels", "bench", "crates", "bins"],
   chapel: ["bench", "bench", "bins"],
 };

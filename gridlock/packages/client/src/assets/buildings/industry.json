@@ -198,5 +198,205 @@
       "stackX": 402.0,
       "stackY": 65.2
     }
+  ],
+  "hall": [
+    {
+      "file": "hall.png",
+      "size": [
+        1092,
+        780
+      ],
+      "padWidth": 1056.0,
+      "padSouthX": 786.0,
+      "padSouthY": 761.8,
+      "stackX": 546.0,
+      "stackY": 20.8
+    },
+    {
+      "file": "hall-s.png",
+      "size": [
+        1092,
+        702
+      ],
+      "padWidth": 1056.0,
+      "padSouthX": 786.0,
+      "padSouthY": 683.8,
+      "stackX": 546.0,
+      "stackY": 20.8
+    },
+    {
+      "file": "hall-w.png",
+      "size": [
+        1092,
+        566
+      ],
+      "padWidth": 1056.0,
+      "padSouthX": 786.0,
+      "padSouthY": 547.2,
+      "stackX": 546.0,
+      "stackY": 202.2
+    },
+    {
+      "file": "hall-n.png",
+      "size": [
+        1092,
+        566
+      ],
+      "padWidth": 1056.0,
+      "padSouthX": 786.0,
+      "padSouthY": 547.2,
+      "stackX": 546.0,
+      "stackY": 124.2
+    }
+  ],
+  "works": [
+    {
+      "file": "works.png",
+      "size": [
+        1092,
+        763
+      ],
+      "padWidth": 1056.0,
+      "padSouthX": 594.0,
+      "padSouthY": 744.5,
+      "stackX": 546.0,
+      "stackY": 21.5
+    },
+    {
+      "file": "works-s.png",
+      "size": [
+        1092,
+        603
+      ],
+      "padWidth": 1056.0,
+      "padSouthX": 594.0,
+      "padSouthY": 584.4,
+      "stackX": 546.0,
+      "stackY": 29.4
+    },
+    {
+      "file": "works-w.png",
+      "size": [
+        1092,
+        643
+      ],
+      "padWidth": 1056.0,
+      "padSouthX": 594.0,
+      "padSouthY": 624.4,
+      "stackX": 546.0,
+      "stackY": 237.4
+    },
+    {
+      "file": "works-n.png",
+      "size": [
+        1092,
+        613
+      ],
+      "padWidth": 1056.0,
+      "padSouthX": 594.0,
+      "padSouthY": 594.3,
+      "stackX": 546.0,
+      "stackY": 39.3
+    }
+  ],
+  "shed": [
+    {
+      "file": "shed.png",
+      "size": [
+        900,
+        512
+      ],
+      "padWidth": 864.0,
+      "padSouthX": 690.0,
+      "padSouthY": 493.7,
+      "stackX": 450.0,
+      "stackY": 49.1
+    },
+    {
+      "file": "shed-s.png",
+      "size": [
+        900,
+        512
+      ],
+      "padWidth": 864.0,
+      "padSouthX": 690.0,
+      "padSouthY": 493.7,
+      "stackX": 450.0,
+      "stackY": 49.1
+    },
+    {
+      "file": "shed-w.png",
+      "size": [
+        900,
+        477
+      ],
+      "padWidth": 864.0,
+      "padSouthX": 690.0,
+      "padSouthY": 459.0,
+      "stackX": 450.0,
+      "stackY": 254.4
+    },
+    {
+      "file": "shed-n.png",
+      "size": [
+        900,
+        487
+      ],
+      "padWidth": 864.0,
+      "padSouthX": 690.0,
+      "padSouthY": 468.5,
+      "stackX": 450.0,
+      "stackY": 263.9
+    }
+  ],
+  "boiler": [
+    {
+      "file": "boiler.png",
+      "size": [
+        900,
+        506
+      ],
+      "padWidth": 864.0,
+      "padSouthX": 306.0,
+      "padSouthY": 487.8,
+      "stackX": 450.0,
+      "stackY": 22.8
+    },
+    {
+      "file": "boiler-s.png",
+      "size": [
+        900,
+        668
+      ],
+      "padWidth": 864.0,
+      "padSouthX": 306.0,
+      "padSouthY": 649.8,
+      "stackX": 450.0,
+      "stackY": 22.8
+    },
+    {
+      "file": "boiler-w.png",
+      "size": [
+        900,
+        746
+      ],
+      "padWidth": 864.0,
+      "padSouthX": 306.0,
+      "padSouthY": 727.8,
+      "stackX": 450.0,
+      "stackY": 22.8
+    },
+    {
+      "file": "boiler-n.png",
+      "size": [
+        900,
+        584
+      ],
+      "padWidth": 864.0,
+      "padSouthX": 306.0,
+      "padSouthY": 565.8,
+      "stackX": 450.0,
+      "stackY": 22.8
+    }
   ]
 }

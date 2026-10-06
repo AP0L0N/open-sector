@@ -62,6 +62,10 @@ export function rubblePalette(type: string): { wall: Rgb; accent: Rgb; dust: Rgb
     case "warehouse":
     case "foundry":
     case "granary":
+    case "hall":
+    case "works":
+    case "shed":
+    case "boiler":
       return { wall: [128, 104, 92], accent: [142, 78, 60], dust: [72, 66, 62] };
     default:
       return { wall: [172, 156, 134], accent: [142, 78, 60], dust: [84, 78, 70] };

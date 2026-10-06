@@ -1145,6 +1145,10 @@ const TYPE_ORDER: EntityType[] = [
   "granary",
   "factory",
   "foundry",
+  "hall",
+  "works",
+  "shed",
+  "boiler",
 ];
 
 function selectedViews(ctx: Ctx, view: MapView | null): EntityView[] {

@@ -638,6 +638,10 @@ const EXTRUDE: Record<EntityType, number> = {
   granary: 70,
   factory: 40,
   foundry: 46,
+  hall: 44,
+  works: 46,
+  shed: 34,
+  boiler: 60,
 };
 
 const CIV_FILL = "#b08968";

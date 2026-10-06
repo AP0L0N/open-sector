@@ -565,6 +565,10 @@ export type EntityType =
   | "warehouse"
   | "foundry"
   | "granary"
+  | "hall"
+  | "works"
+  | "shed"
+  | "boiler"
   | "sandbags"
   | "wall"
   | "greatwall"
@@ -684,7 +688,11 @@ export type CivilianType =
   | "factory"
   | "warehouse"
   | "foundry"
-  | "granary";
+  | "granary"
+  | "hall"
+  | "works"
+  | "shed"
+  | "boiler";
 export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "cottage",
   "house",
@@ -697,6 +705,10 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "warehouse",
   "foundry",
   "granary",
+  "hall",
+  "works",
+  "shed",
+  "boiler",
 ];
 export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "walker" | "cyborg" | "cyborgcommander" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
@@ -5150,6 +5162,58 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonWindows: 4,
     garrisonFloors: 2,
     blurb: "Casting shed on a brick plinth, a cupola furnace, two stacks, and ore heaps on the yard.",
+  },
+  hall: {
+    type: "hall",
+    name: "Assembly Hall",
+    letter: "A",
+    hp: 2400,
+    tileW: t(8),
+    tileH: t(3),
+    ...CIV_BUILDING,
+    garrisonCap: 18,
+    garrisonWindows: 6,
+    garrisonFloors: 2,
+    blurb: "One long brick bay under a clerestory roof, with rail doors on the gable and a drawing office along the south wall. Eight cells long, three deep: it turns end for end, never a quarter.",
+  },
+  works: {
+    type: "works",
+    name: "Machine Works",
+    letter: "O",
+    hp: 2600,
+    tileW: t(6),
+    tileH: t(5),
+    ...CIV_BUILDING,
+    garrisonCap: 16,
+    garrisonWindows: 5,
+    garrisonFloors: 2,
+    blurb: "Two brick wings round a cobbled apron: a long machine shop along the north and a wing down the west, with a water tower in the angle. The whole lot is blocked, apron and all.",
+  },
+  shed: {
+    type: "shed",
+    name: "Engine Shed",
+    letter: "G",
+    hp: 1500,
+    tileW: t(7),
+    tileH: t(2),
+    ...CIV_BUILDING,
+    garrisonCap: 10,
+    garrisonWindows: 4,
+    garrisonFloors: 1,
+    blurb: "A narrow brick running shed with two roads through it and smoke louvres along the ridge. Seven cells long and only two deep: a wall of a building.",
+  },
+  boiler: {
+    type: "boiler",
+    name: "Boiler House",
+    letter: "J",
+    hp: 2200,
+    tileW: t(3),
+    tileH: t(6),
+    ...CIV_BUILDING,
+    garrisonCap: 12,
+    garrisonWindows: 4,
+    garrisonFloors: 2,
+    blurb: "A coal bunker feeds a long boiler hall by conveyor; one tall stack over it all. Three cells wide and six long, it runs north to south.",
   },
 };
 
