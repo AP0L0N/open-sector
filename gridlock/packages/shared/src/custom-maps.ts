@@ -14,6 +14,8 @@ import {
 } from "./catalog.js";
 import { PATROL_POINTS_MAX } from "./sim/patrol.js";
 import {
+  GROUND_GRASS,
+  GROUND_KINDS,
   MAP_BRIDGE_TYPES,
   MAP_DEFENCE_TYPES,
   PLAYTEST_MAP_PREFIX,
@@ -65,6 +67,8 @@ export interface CustomMapSpec {
   maxPlayers: number;
   tiles: number[];
   heights: number[];
+  /** Ground cover (`GROUND_*`) per fine tile. Left out when the whole sheet is meadow, and by maps saved before cover existed. */
+  ground?: number[];
   spawns: { id: number; x: number; y: number }[];
   features: MapFeature[];
   /** Street lamps. Left out by maps saved before lamps existed. */
@@ -327,6 +331,12 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
   if (!tiles || tiles.some((t) => !CUSTOM_MAP_TILES.includes(t))) return bad("Bad ground data.");
   const heights = decodeRuns(m.heights, n);
   if (!heights || heights.some((h) => h < 0 || h > HEIGHT_MAX)) return bad("Bad elevation data.");
+  let cover: number[] | null = null;
+  if (m.ground != null) {
+    cover = decodeRuns(m.ground, n);
+    if (!cover || cover.some((g) => !GROUND_KINDS.includes(g))) return bad("Bad ground cover data.");
+    if (cover.every((g) => g === GROUND_GRASS)) cover = null;
+  }
 
   if (!Array.isArray(m.spawns)) return bad("Bad start positions.");
   const spawns: CustomMapSpec["spawns"] = [];
@@ -484,6 +494,7 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
       maxPlayers,
       tiles: encodeRuns(tiles),
       heights: encodeRuns(heights),
+      ...(cover ? { ground: encodeRuns(cover) } : {}),
       spawns,
       features,
       ...(lamps.length > 0 ? { lamps } : {}),
@@ -502,6 +513,7 @@ export function buildCustomMap(spec: CustomMapSpec): MapDef {
   const heights = decodeRuns(spec.heights, n) ?? new Array<number>(n).fill(0);
   const features = spec.features.map((f) => ({ ...f }));
   normalizeTerrain(tiles, heights, spec.width, spec.height, spec.spawns, features);
+  const ground = spec.ground ? decodeRuns(spec.ground, n) : null;
   return {
     id: spec.id,
     name: spec.name,
@@ -511,6 +523,7 @@ export function buildCustomMap(spec: CustomMapSpec): MapDef {
     tiles,
     heights,
     maxHeight: peakHeight(heights),
+    ...(ground ? { ground } : {}),
     spawns: spec.spawns.map((s) => ({ id: s.id, x: s.x, y: s.y })),
     features,
     ...(spec.lamps?.length ? { lamps: spec.lamps.map((l) => ({ ...l })) } : {}),
@@ -549,6 +562,7 @@ export function specFromMap(id: string, copy: { id: string; name: string; author
     maxPlayers: Math.max(CUSTOM_MAP_MIN_PLAYERS, spawns.length),
     tiles: encodeRuns(map.tiles.map((t) => (CUSTOM_MAP_TILES.includes(t) ? t : TILE_ROCK))),
     heights: encodeRuns(map.heights),
+    ...(map.ground?.some((g) => g !== GROUND_GRASS) ? { ground: encodeRuns(map.ground) } : {}),
     spawns,
     features: map.features.map((f) => ({ ...f })),
     ...(map.lamps?.length ? { lamps: map.lamps.map((l) => ({ ...l })) } : {}),

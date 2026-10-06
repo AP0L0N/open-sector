@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  GROUND_GRASS,
+  GROUND_SAND,
+  GROUND_SWAMP,
   HEIGHT_BASE,
   HEIGHT_STEP_MAX,
   MOUNTAIN_MIN_HEIGHT,
@@ -52,6 +55,7 @@ import {
   markSheet,
   newSheet,
   nextSpawnId,
+  paintCover,
   paintDisk,
   placeLamp,
   clutterIndexAt,
@@ -234,6 +238,37 @@ describe("map builder sheet", () => {
     restoreSheet(s, mark);
     assert.ok(s.heights.every((h) => h === HEIGHT_BASE));
     assert.equal(s.spawns.length, 0);
+  });
+});
+
+describe("builder ground cover", () => {
+  it("lays cover over open ground only, and the Grass brush takes it back", () => {
+    const s = fresh();
+    paintDisk(s, 60, 60, 2, TILE_WATER);
+    const box = emptyDirty();
+    const n = paintCover(s, 60, 60, 5, GROUND_SAND, box);
+    assert.ok(n > 0);
+    assert.equal(s.ground[60 * s.width + 60], GROUND_GRASS, "water keeps its own surface");
+    assert.equal(s.ground[60 * s.width + 64], GROUND_SAND);
+    assert.ok(box.x0 <= 55 && box.x1 >= 65, "the dirty box covers the stroke");
+    assert.equal(paintCover(s, 60, 60, 5, 42), 0, "unknown cover is refused");
+    paintDisk(s, 64, 60, 0, TILE_EMPTY);
+    assert.equal(s.ground[60 * s.width + 64], GROUND_GRASS);
+  });
+
+  it("saves cover only when some was painted, and reads it back", () => {
+    const s = fresh();
+    assert.equal(sheetToSpec(s).ground, undefined);
+    paintCover(s, 30, 30, 3, GROUND_SWAMP);
+    const spec = sheetToSpec(s);
+    assert.ok(spec.ground);
+    const back = sheetFromSpec(spec);
+    assert.deepEqual(back.ground, s.ground);
+    assert.equal(sheetToMap(s).ground?.[30 * s.width + 30], GROUND_SWAMP);
+    const mark = markSheet(s);
+    paintCover(s, 30, 30, 3, GROUND_GRASS);
+    restoreSheet(s, mark);
+    assert.equal(s.ground[30 * s.width + 30], GROUND_SWAMP);
   });
 });
 

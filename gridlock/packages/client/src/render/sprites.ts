@@ -142,8 +142,12 @@ import waterBUrl from "../assets/terrain/water-b.png";
 import grassMeadowUrl from "../assets/terrain/grass-meadow.png";
 import grassDryUrl from "../assets/terrain/grass-dry.png";
 import grassDampUrl from "../assets/terrain/grass-damp.png";
+import grassTallUrl from "../assets/terrain/grass-tall.png";
 import dirtUrl from "../assets/terrain/ground-dirt.png";
 import rockTexUrl from "../assets/terrain/ground-rock.png";
+import sandUrl from "../assets/terrain/ground-sand.png";
+import stonesTexUrl from "../assets/terrain/ground-stones.png";
+import swampUrl from "../assets/terrain/ground-swamp.png";
 import boulder1Url from "../assets/terrain/boulder-1.png";
 import boulder2Url from "../assets/terrain/boulder-2.png";
 import boulder3Url from "../assets/terrain/boulder-3.png";
@@ -2221,6 +2225,11 @@ export const GRASS_TEXS: HTMLImageElement[] = [
 ];
 export const DIRT_TEX = loadSheet(dirtUrl);
 export const ROCK_TEX = loadSheet(rockTexUrl);
+/** Ground cover a map paints over the meadow (`GROUND_*`), from tools/sprites/render_ground.py. */
+export const TALL_GRASS_TEX = loadSheet(grassTallUrl);
+export const SAND_TEX = loadSheet(sandUrl);
+export const STONES_TEX = loadSheet(stonesTexUrl);
+export const SWAMP_TEX = loadSheet(swampUrl);
 
 export const PROP_IMAGES: HTMLImageElement[] = [
   ...OAK_FACES.map((f) => f.image),
@@ -2243,6 +2252,10 @@ export const PROP_IMAGES: HTMLImageElement[] = [
   ...GRASS_TEXS,
   DIRT_TEX,
   ROCK_TEX,
+  TALL_GRASS_TEX,
+  SAND_TEX,
+  STONES_TEX,
+  SWAMP_TEX,
   ...Object.values(CIV_FACES).flatMap((faces) => faces.map((f) => f.image)),
 ];
 

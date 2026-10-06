@@ -11,6 +11,8 @@ import {
   mapUnitHostAt,
   mapUnitProblem,
   FIELD_TURN_MAX,
+  GROUND_GRASS,
+  GROUND_KINDS,
   HEIGHT_BASE,
   HEIGHT_MAX,
   MOUNTAIN_MIN_HEIGHT,
@@ -79,6 +81,8 @@ export interface Sheet {
   maxPlayers: number;
   tiles: number[];
   heights: number[];
+  /** Ground cover (`GROUND_*`) per fine tile. Dress the brush lays over open ground; the sim never reads it. */
+  ground: number[];
   spawns: { id: number; x: number; y: number }[];
   features: MapFeature[];
   lamps: MapLamp[];
@@ -113,6 +117,7 @@ export function newSheet(opts: {
     maxPlayers: opts.maxPlayers,
     tiles: new Array<number>(n).fill(TILE_EMPTY),
     heights: opts.hills ? rollHeights(side, side, opts.seed, []) : new Array<number>(n).fill(HEIGHT_BASE),
+    ground: new Array<number>(n).fill(GROUND_GRASS),
     spawns: [],
     features: [],
     lamps: [],
@@ -135,6 +140,7 @@ export function sheetFromSpec(spec: CustomMapSpec): Sheet {
     maxPlayers: spec.maxPlayers,
     tiles: decodeRuns(spec.tiles, n) ?? new Array<number>(n).fill(TILE_EMPTY),
     heights: decodeRuns(spec.heights, n) ?? new Array<number>(n).fill(HEIGHT_BASE),
+    ground: (spec.ground ? decodeRuns(spec.ground, n) : null) ?? new Array<number>(n).fill(GROUND_GRASS),
     spawns: spec.spawns.map((s) => ({ ...s })),
     features: spec.features.map((f) => ({ ...f })),
     lamps: (spec.lamps ?? []).map((l) => ({ ...l })),
@@ -156,6 +162,7 @@ export function sheetToSpec(s: Sheet): CustomMapSpec {
     maxPlayers: s.maxPlayers,
     tiles: encodeRuns(s.tiles),
     heights: encodeRuns(s.heights),
+    ...(s.ground.some((g) => g !== GROUND_GRASS) ? { ground: encodeRuns(s.ground) } : {}),
     spawns: s.spawns.map((sp) => ({ ...sp })).sort((a, b) => a.id - b.id),
     features: s.features.map((f) => ({ ...f })),
     ...(s.lamps.length > 0 ? { lamps: liveLamps(s) } : {}),
@@ -177,6 +184,7 @@ export function sheetToMap(s: Sheet, id = "__builder__"): MapDef {
     tiles: s.tiles.slice(),
     heights: s.heights.slice(),
     maxHeight: peakHeight(s.heights),
+    ground: s.ground.slice(),
     spawns: s.spawns.map((sp) => ({ ...sp })),
     features: s.features.map((f) => ({ ...f })),
     lamps: liveLamps(s),
@@ -487,12 +495,33 @@ export function paintDisk(s: Sheet, cx: number, cy: number, r: number, tile: num
   for (const i of diskCells(s, cx, cy, r)) {
     const x = i % s.width;
     const y = (i / s.width) | 0;
-    if (s.tiles[i] === tile) continue;
+    // Grass over grass still clears painted cover; anything else over itself is a no-op.
+    if (s.tiles[i] === tile && (tile !== TILE_EMPTY || s.ground[i] === GROUND_GRASS)) continue;
     if (lots.some((b) => x >= b.x0 && x < b.x1 && y >= b.y0 && y < b.y1)) continue;
     if (pads.some((sp) => Math.hypot(sp.x - x, sp.y - y) <= SPAWN_PAD_R)) continue;
     s.tiles[i] = tile;
     if (tile === TILE_WATER) s.heights[i] = 0;
+    // Grass means meadow: it takes the painted cover with it.
+    if (tile === TILE_EMPTY) s.ground[i] = GROUND_GRASS;
     touch(dirty, x, y);
+    changed++;
+  }
+  return changed;
+}
+
+/**
+ * Lay ground cover in a disk over open ground. Water, rock, trees, roads, and
+ * scrap keep their own surface, so the brush skips them. Returns changed cells.
+ */
+export function paintCover(s: Sheet, cx: number, cy: number, r: number, cover: number, dirty?: Dirty): number {
+  if (!GROUND_KINDS.includes(cover)) return 0;
+  let changed = 0;
+  for (const i of diskCells(s, cx, cy, r)) {
+    if (s.ground[i] === cover) continue;
+    const t = s.tiles[i];
+    if (t !== TILE_EMPTY && t !== TILE_MOUNTAIN) continue;
+    s.ground[i] = cover;
+    touch(dirty, i % s.width, (i / s.width) | 0);
     changed++;
   }
   return changed;
@@ -1022,6 +1051,7 @@ export function startsFarFromScrap(s: Sheet): number[] {
 export interface SheetMark {
   tiles: Uint8Array;
   heights: Uint8Array;
+  ground: Uint8Array;
   spawns: Sheet["spawns"];
   features: MapFeature[];
   lamps: MapLamp[];
@@ -1035,6 +1065,7 @@ export function markSheet(s: Sheet): SheetMark {
   return {
     tiles: Uint8Array.from(s.tiles),
     heights: Uint8Array.from(s.heights),
+    ground: Uint8Array.from(s.ground),
     spawns: s.spawns.map((sp) => ({ ...sp })),
     features: s.features.map((f) => ({ ...f })),
     lamps: s.lamps.map((l) => ({ ...l })),
@@ -1048,6 +1079,7 @@ export function markSheet(s: Sheet): SheetMark {
 export function restoreSheet(s: Sheet, m: SheetMark): void {
   s.tiles = Array.from(m.tiles);
   s.heights = Array.from(m.heights);
+  s.ground = Array.from(m.ground);
   s.spawns = m.spawns.map((sp) => ({ ...sp }));
   s.features = m.features.map((f) => ({ ...f }));
   s.lamps = m.lamps.map((l) => ({ ...l }));

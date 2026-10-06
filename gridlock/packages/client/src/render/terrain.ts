@@ -1,4 +1,10 @@
 import {
+  GROUND_DIRT,
+  GROUND_GRASS,
+  GROUND_SAND,
+  GROUND_STONES,
+  GROUND_SWAMP,
+  GROUND_TALL_GRASS,
   HEIGHT_BASE,
   ISO_TILE_H,
   TILE_BLOCKED,
@@ -11,6 +17,7 @@ import {
   TILE_SUBDIV,
   TILE_TREE,
   TILE_WATER,
+  groundAt,
   heightAt,
   isMountainCliff,
   isScrapTile,
@@ -31,10 +38,14 @@ import {
   DIRT_TEX,
   GRASS_TEXS,
   ROCK_TEX,
+  SAND_TEX,
   SCRAP_BIT_FACES,
   SCRAP_HEAP_FACES,
   SCRAP_PIECE_FACES,
   STONE_FACES,
+  STONES_TEX,
+  SWAMP_TEX,
+  TALL_GRASS_TEX,
   TUFT_FACES,
   WATER_TEX,
   WATER_TEX_B,
@@ -209,8 +220,21 @@ function groundFill(map: MapDef, tx: number, ty: number, kind: number, scrap: bo
     const base = rock === 0 ? "#6e675c" : rock === 1 ? "#5a534a" : rock === 2 ? "#7a7264" : rock === 3 ? "#4e4942" : "#655e54";
     return shade(base, elevShadeFactor(heightAt(map, tx, ty), map.maxHeight));
   }
-  const bare = kind === TILE_ROAD || scrap;
-  const fill = bare ? "#6b5840" : kind === TILE_TREE ? "#314628" : "#3e5232";
+  const cover = groundAt(map, ty * map.width + tx);
+  const bare = kind === TILE_ROAD || scrap || cover === GROUND_DIRT;
+  const fill = bare
+    ? "#4a3b2b"
+    : kind === TILE_TREE
+      ? "#263622"
+      : cover === GROUND_SAND
+        ? "#786a4f"
+        : cover === GROUND_TALL_GRASS
+          ? "#3f4a2b"
+          : cover === GROUND_STONES
+            ? "#40362a"
+            : cover === GROUND_SWAMP
+              ? "#2a3626"
+              : "#3b472c";
   return shade(fill, elevShadeFactor(heightAt(map, tx, ty), map.maxHeight));
 }
 
@@ -236,11 +260,16 @@ function texPattern(ctx: CanvasRenderingContext2D, img: HTMLImageElement): Canva
   return pat;
 }
 
-/** One meadow on every map, the same as the shaded ground. Fine tiles stay the same photo. */
-function surfaceImage(kind: number, scrap: boolean): HTMLImageElement | null {
+/** The 2D fallback's surface sheet: the tile kind's own, else the cover the map painted, else meadow. */
+function surfaceImage(kind: number, scrap: boolean, cover: number): HTMLImageElement | null {
   if (kind === TILE_BLOCKED || kind === TILE_WATER) return null;
   if (kind === TILE_ROCK) return ROCK_TEX;
-  if (kind === TILE_ROAD || scrap) return DIRT_TEX;
+  if (kind === TILE_ROAD || scrap || cover === GROUND_DIRT) return DIRT_TEX;
+  if (kind === TILE_TREE) return GRASS_TEXS[2] ?? GRASS_TEXS[0] ?? null;
+  if (cover === GROUND_SAND) return SAND_TEX;
+  if (cover === GROUND_TALL_GRASS) return TALL_GRASS_TEX;
+  if (cover === GROUND_STONES) return STONES_TEX;
+  if (cover === GROUND_SWAMP) return SWAMP_TEX;
   return GRASS_TEXS[0] ?? null;
 }
 
@@ -303,7 +332,8 @@ function paintSurface(
   originX: number,
   originY: number,
 ): void {
-  const img = surfaceImage(kind, scrap);
+  const cover = groundAt(map, ty * map.width + tx);
+  const img = surfaceImage(kind, scrap, cover);
   if (!img) return;
   const pat = texPattern(ctx, img);
   if (!pat) return;
@@ -317,7 +347,7 @@ function paintSurface(
   const e = up(d.e, isoLift(cornerZ(map, tx + 1, ty)));
   const s = up(d.s, isoLift(cornerZ(map, tx + 1, ty + 1)));
   const w = up(d.w, isoLift(cornerZ(map, tx, ty + 1)));
-  const alpha = kind === TILE_ROAD || scrap ? 0.92 : 0.84;
+  const alpha = kind === TILE_ROAD || scrap || cover !== GROUND_GRASS ? 0.92 : 0.84;
   fillPatternInQuad(ctx, ...expandQuad(n, e, s, w, TILE_OVERLAP_PX), pat, alpha);
 }
 
@@ -626,7 +656,11 @@ function paintDecor(
   originY: number,
 ): void {
   // Bush sheets stay in the client. Opening ground does not stamp them.
-  if (!spacedDecor(tx, ty, 17, 11, 2)) return;
+  const cover = groundAt(map, ty * map.width + tx);
+  // Tall grass is sown thick with tufts; sand and stones carry hardly any.
+  const tall = cover === GROUND_TALL_GRASS;
+  const sparse = cover === GROUND_SAND || cover === GROUND_STONES || cover === GROUND_DIRT;
+  if (!spacedDecor(tx, ty, tall ? 4 : sparse ? 90 : cover === GROUND_SWAMP ? 9 : 17, 11, tall ? 1 : 2)) return;
   const ts = map.tileSize;
   const elev = heightAt(map, tx, ty);
   const lift = isoLift(elev);
@@ -636,7 +670,7 @@ function paintDecor(
   const p = worldToIso((tx + 0.5 + jx) * ts, (ty + 0.62 + jy) * ts, ts);
   const spr = TUFT_FACES[h % TUFT_FACES.length];
   if (!spr) return;
-  drawPropSprite(ctx, spr, p.x - originX, p.y - originY - lift, 8 + (h % 6), false);
+  drawPropSprite(ctx, spr, p.x - originX, p.y - originY - lift, (tall ? 10 : 8) + (h % 6), false);
 }
 
 function paintGround(

@@ -1,4 +1,10 @@
 import {
+  GROUND_DIRT,
+  GROUND_GRASS,
+  GROUND_SAND,
+  GROUND_STONES,
+  GROUND_SWAMP,
+  GROUND_TALL_GRASS,
   HEIGHT_BASE,
   HEIGHT_MAX,
   TILE_BLOCKED,
@@ -120,19 +126,22 @@ export function vertexTones(map: Pick<MapDef, "width" | "height" | "heights"> & 
 
 /**
  * Per-tile material weights for the ground shader.
- * `a` = (dirt, dry meadow, damp meadow, rock); `b` = (tree floor, water, blocked, scrap yard).
- * Grass is one meadow on every map: the dry and damp channels stay empty, since 64-tile
- * fields read as stray green and yellow patches along the edges of a small map.
+ * `a` = (dirt, dry meadow, damp meadow, rock); `b` = (tree floor, water, blocked, scrap yard);
+ * `c` = (sand, tall grass, stones, swamp), the cover a map paints over the meadow.
+ * The dry and damp meadow channels come from the cover's neighbourhood: tall grass dries
+ * the ground around it a little, marsh dampens it, so a stand does not sit on a hard edge.
  * Scrap is the blurred yard cover, so the stained ground has a rounded rim.
  */
 export function materialBytes(
-  map: Pick<MapDef, "width" | "height" | "tiles"> & { heights?: ArrayLike<number> },
+  map: Pick<MapDef, "width" | "height" | "tiles"> & { heights?: ArrayLike<number>; ground?: ArrayLike<number> },
   scrap: ReadonlySet<number>,
-): { a: Uint8Array; b: Uint8Array } {
+): { a: Uint8Array; b: Uint8Array; c: Uint8Array } {
   const n = map.width * map.height;
   const a = new Uint8Array(n * 4);
   const b = new Uint8Array(n * 4);
+  const c = new Uint8Array(n * 4);
   const yard = scrap.size ? scrapField(scrap, map.width, map.height) : null;
+  const cover = map.ground;
   for (let i = 0; i < n; i++) {
     const kind = map.tiles[i] ?? 0;
     const o = i * 4;
@@ -158,6 +167,39 @@ export function materialBytes(
       continue;
     }
     if (kind === TILE_TREE) b[o] = 255;
+    const g = cover ? (cover[i] ?? GROUND_GRASS) : GROUND_GRASS;
+    if (g === GROUND_DIRT) a[o] = 255;
+    else if (g === GROUND_SAND) c[o] = 255;
+    else if (g === GROUND_TALL_GRASS) {
+      c[o + 1] = 255;
+      a[o + 1] = 150;
+    } else if (g === GROUND_STONES) c[o + 2] = 255;
+    else if (g === GROUND_SWAMP) {
+      c[o + 3] = 255;
+      a[o + 2] = 255;
+    }
   }
-  return { a, b };
+  if (cover) {
+    // Dampness spreads one tile past a marsh, dryness one tile past tall grass.
+    const w = map.width;
+    for (let i = 0; i < n; i++) {
+      const g = cover[i] ?? GROUND_GRASS;
+      if (g !== GROUND_SWAMP && g !== GROUND_TALL_GRASS) continue;
+      const x = i % w;
+      const y = (i / w) | 0;
+      const ch = g === GROUND_SWAMP ? 2 : 1;
+      const v = g === GROUND_SWAMP ? 140 : 80;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx < 0 || ny < 0 || nx >= w || ny >= map.height) continue;
+          const j = (ny * w + nx) * 4;
+          if (a[j + 3] || b[j + 1] || b[j + 2] || a[j]) continue;
+          if (a[j + ch]! < v) a[j + ch] = v;
+        }
+      }
+    }
+  }
+  return { a, b, c };
 }

@@ -38,6 +38,12 @@ export interface MapDef {
   heights: number[];
   /** Max of `heights`. Cached so render/pick do not scan the map. */
   maxHeight: number;
+  /**
+   * Ground cover per tile (`GROUND_*`), same length as `tiles`. Dress only: the
+   * sim never reads it; the client blends the surface it names over the tile.
+   * Left out when the whole map is meadow.
+   */
+  ground?: number[];
   /** Civilian houses and neutral defences. See `featureBox` for where each sits. */
   features: MapFeature[];
   /** Street lamps. Dress only: the sim never reads them; the client draws them and their light at night. */
@@ -388,6 +394,37 @@ export const TILE_MOUNTAIN = 9;
  * 12 is one terrace above the plain (HEIGHT_BASE is 8).
  */
 export const MOUNTAIN_MIN_HEIGHT = 12;
+
+/**
+ * Ground cover: what the surface of a walkable tile looks like. None of these
+ * change movement, sight, or cover; a tile kind (`TILE_*`) decides that. Water,
+ * rock, and cliffs ignore the cover under them.
+ */
+export const GROUND_GRASS = 0;
+/** Bare trodden earth. Roads and scrap yards are dirt whatever their cover says. */
+export const GROUND_DIRT = 1;
+/** Pale dry sand: a shore, a dried bed, a blown-out field. */
+export const GROUND_SAND = 2;
+/** Uncut meadow gone to seed. Stalks stand thick; the client sows more tufts here. */
+export const GROUND_TALL_GRASS = 3;
+/** Stony ground: gravel and fist-sized stones in packed earth. */
+export const GROUND_STONES = 4;
+/** Marsh: black mud, standing water, duckweed, and reeds. */
+export const GROUND_SWAMP = 5;
+/** Every ground cover a brush may lay, in palette order. */
+export const GROUND_KINDS: readonly number[] = [
+  GROUND_GRASS,
+  GROUND_DIRT,
+  GROUND_SAND,
+  GROUND_TALL_GRASS,
+  GROUND_STONES,
+  GROUND_SWAMP,
+];
+
+/** Cover under tile `i` of `map`: meadow unless the map says otherwise. */
+export function groundAt(map: Pick<MapDef, "ground">, i: number): number {
+  return map.ground?.[i] ?? GROUND_GRASS;
+}
 
 /** Scrap of either grade, plain or diamond. */
 export function isScrapTile(t: number | undefined): boolean {
@@ -2072,6 +2109,7 @@ export function makeYard64(): MapDef {
   paintYardRocks(fineTiles, heights, fineW, fineH, "yard-64-rocks", fineSpawnPads, houseBoxes(features, sub));
   const fineFeatures = scaleFeatures(features, sub);
   const clutter = scatterClutter(fineTiles, fineW, fineH, fineFeatures, fineSpawns, "yard-64-clutter");
+  const ground = dressGroundCover(fineTiles, heights, fineW, fineH, "yard-64-cover", fineSpawnPads);
 
   return {
     id: "yard-64",
@@ -2082,10 +2120,90 @@ export function makeYard64(): MapDef {
     tiles: fineTiles,
     heights,
     maxHeight: peakHeight(heights),
+    ...(ground ? { ground } : {}),
     spawns: fineSpawns,
     features: fineFeatures,
     clutter,
   };
+}
+
+/** Smooth 0..1 value noise over fine tiles: a hashed lattice every `cell` tiles, blended with smoothstep. */
+function valueNoise(x: number, y: number, cell: number, seed: number): number {
+  const gx = x / cell;
+  const gy = y / cell;
+  const x0 = Math.floor(gx);
+  const y0 = Math.floor(gy);
+  const sx = gx - x0;
+  const sy = gy - y0;
+  const ux = sx * sx * (3 - 2 * sx);
+  const uy = sy * sy * (3 - 2 * sy);
+  const at = (ix: number, iy: number): number => (Math.imul(ix * 374761393 + iy * 668265263 + seed, 1103515245) >>> 0) / 4294967296;
+  const top = at(x0, y0) + (at(x0 + 1, y0) - at(x0, y0)) * ux;
+  const bot = at(x0, y0 + 1) + (at(x0 + 1, y0 + 1) - at(x0, y0 + 1)) * ux;
+  return top + (bot - top) * uy;
+}
+
+/**
+ * Ground cover for a generated map: what the meadow turns into where the land
+ * suggests it. Shores go to sand or marsh, the foot of a rocky slope to stones,
+ * and the open field carries stands of tall grass, bare dirt, and the odd stony
+ * patch. Start pads and the yards stay meadow. Returns null when nothing changed.
+ */
+export function dressGroundCover(
+  tiles: readonly number[],
+  heights: readonly number[],
+  width: number,
+  height: number,
+  seed: string,
+  pads: readonly { x: number; y: number; r: number }[],
+): number[] | null {
+  const base = hash32(seed);
+  const ground = new Array<number>(width * height).fill(GROUND_GRASS);
+  const sub = TILE_SUBDIV;
+  const near = (x: number, y: number, r: number, test: (t: number, i: number) => boolean): boolean => {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
+        const i = ny * width + nx;
+        if (test(tiles[i]!, i)) return true;
+      }
+    }
+    return false;
+  };
+  let changed = false;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      const t = tiles[i]!;
+      if (t !== TILE_EMPTY) continue;
+      if (pads.some((p) => Math.hypot(p.x - x, p.y - y) <= p.r + 1)) continue;
+      if (near(x, y, 1, (k) => k === TILE_ROAD || isScrapTile(k))) continue;
+      const broad = valueNoise(x, y, 9 * sub, base ^ 0x1234);
+      const fine = valueNoise(x, y, 3 * sub, base ^ 0x5678);
+      const n = broad * 0.65 + fine * 0.35;
+      let cover = GROUND_GRASS;
+      if (near(x, y, 3, (k) => k === TILE_WATER)) {
+        // The bank: dry sand on one shore, reeds and black mud on another.
+        const marsh = valueNoise(x, y, 14 * sub, base ^ 0x9abc) > 0.58 && heights[i]! <= HEIGHT_BASE;
+        cover = marsh ? GROUND_SWAMP : n > 0.3 ? GROUND_SAND : GROUND_GRASS;
+      } else if (near(x, y, 2, (k, j) => k === TILE_ROCK || (k === TILE_MOUNTAIN && heights[j]! > heights[i]!))) {
+        if (n > 0.42) cover = GROUND_STONES;
+      } else if (n > 0.66 && !near(x, y, 1, (k) => k === TILE_TREE)) {
+        cover = GROUND_TALL_GRASS;
+      } else if (fine > 0.8 && broad < 0.42) {
+        cover = GROUND_DIRT;
+      } else if (fine > 0.86 && broad > 0.5) {
+        cover = GROUND_STONES;
+      }
+      if (cover !== GROUND_GRASS) {
+        ground[i] = cover;
+        changed = true;
+      }
+    }
+  }
+  return changed ? ground : null;
 }
 
 /** What lies about each kind of building's yard, most likely first. */

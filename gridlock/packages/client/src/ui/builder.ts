@@ -5,6 +5,12 @@ import {
   CUSTOM_MAP_MAX_PLAYERS,
   CUSTOM_MAP_MIN_PLAYERS,
   CUSTOM_MAP_SIZES,
+  GROUND_DIRT,
+  GROUND_GRASS,
+  GROUND_SAND,
+  GROUND_STONES,
+  GROUND_SWAMP,
+  GROUND_TALL_GRASS,
   HEIGHT_BASE,
   HEIGHT_MAX,
   MOUNTAIN_MIN_HEIGHT,
@@ -73,7 +79,11 @@ import { drawGunRow } from "../render/ciws.js";
 import { fieldPointsWithCursor, pinFieldPoint, undoFieldPoint, type Pt } from "../render/field-place.js";
 import { STREET_LAMPS } from "../render/night.js";
 import grassUrl from "../assets/terrain/grass-meadow.png";
+import tallGrassUrl from "../assets/terrain/grass-tall.png";
 import dirtUrl from "../assets/terrain/ground-dirt.png";
+import sandUrl from "../assets/terrain/ground-sand.png";
+import stonesUrl from "../assets/terrain/ground-stones.png";
+import swampUrl from "../assets/terrain/ground-swamp.png";
 import scrapUrl from "../assets/terrain/scrap-heap-1.png";
 import waterUrl from "../assets/terrain/water.png";
 import treeUrl from "../assets/terrain/tree-oak-1.png";
@@ -97,7 +107,23 @@ const UNDO_DEPTH = 40;
 /** Raise / Lower apply one step this often while the button is held. */
 const LIFT_EVERY_MS = 70;
 
-type ToolId = "select" | "raise" | "lower" | "level" | "mountain" | "ground" | "house" | "defence" | "lamp" | "clutter" | "road" | "bridge" | "unit" | "spawn" | "erase";
+type ToolId =
+  | "select"
+  | "raise"
+  | "lower"
+  | "level"
+  | "mountain"
+  | "ground"
+  | "cover"
+  | "house"
+  | "defence"
+  | "lamp"
+  | "clutter"
+  | "road"
+  | "bridge"
+  | "unit"
+  | "spawn"
+  | "erase";
 
 interface GroundKind {
   tile: number;
@@ -120,6 +146,23 @@ const GROUND: readonly GroundKind[] = [
   { tile: TILE_ROCK, name: "Rock", img: rockUrl, hint: "Rocky slope. Blocks walking, not sight." },
 ];
 
+interface CoverKind {
+  cover: number;
+  name: string;
+  img: string;
+  hint: string;
+}
+
+/** Surface the Cover brush lays over open ground. Looks only: nothing here changes how a tile plays. */
+const COVER: readonly CoverKind[] = [
+  { cover: GROUND_GRASS, name: "Meadow", img: grassUrl, hint: "Back to plain grass." },
+  { cover: GROUND_TALL_GRASS, name: "Tall Grass", img: tallGrassUrl, hint: "Uncut meadow gone to seed, thick with tufts. Looks only." },
+  { cover: GROUND_DIRT, name: "Dirt", img: dirtUrl, hint: "Bare trodden earth. Looks only." },
+  { cover: GROUND_SAND, name: "Sand", img: sandUrl, hint: "Pale dry sand: a shore or a blown-out field. Looks only." },
+  { cover: GROUND_STONES, name: "Stones", img: stonesUrl, hint: "Gravel and loose stones in packed earth. Looks only." },
+  { cover: GROUND_SWAMP, name: "Swamp", img: swampUrl, hint: "Black mud, standing water, and reeds. Looks only." },
+];
+
 /** Ground laid by the Decorations tools rather than brushed, named for the status line. Fence waits to be remade. */
 const LAID_GROUND: readonly { tile: number; name: string }[] = [
   { tile: TILE_ROAD, name: "Road" },
@@ -129,6 +172,8 @@ const LAID_GROUND: readonly { tile: number; name: string }[] = [
 interface Tool {
   id: ToolId;
   tile: number;
+  /** The surface the Cover brush lays. */
+  cover: number;
   house: CivilianType;
   defence: MapDefenceType;
   lamp: LampType;
@@ -188,6 +233,7 @@ const redo: M.SheetMark[] = [];
 const tool: Tool = {
   id: "raise",
   tile: TILE_WATER,
+  cover: GROUND_TALL_GRASS,
   house: "cottage",
   defence: "bunker",
   lamp: "streetlamp",
@@ -360,6 +406,24 @@ const GRASS_HI = [160, 166, 104];
 const ROCK_LO = [70, 66, 60];
 const ROCK_HI = [168, 160, 148];
 
+/** Plan colour of open ground by its painted surface, lightened with height `u`. */
+function coverColor(cover: number, u: number, x: number, y: number): [number, number, number] {
+  switch (cover) {
+    case GROUND_DIRT:
+      return mix([84, 66, 44], [150, 124, 88], u);
+    case GROUND_SAND:
+      return mix([130, 116, 84], [214, 198, 150], u);
+    case GROUND_TALL_GRASS:
+      return (x * 5 + y * 3) % 3 === 0 ? mix([70, 84, 38], [180, 186, 110], u) : mix([52, 68, 30], [150, 160, 90], u);
+    case GROUND_STONES:
+      return (x * 7 + y * 11) % 4 === 0 ? mix([120, 114, 104], [200, 192, 180], u) : mix([78, 66, 50], [140, 126, 100], u);
+    case GROUND_SWAMP:
+      return (x + y * 3) % 5 === 0 ? [36, 56, 54] : mix([38, 50, 30], [90, 104, 62], u);
+    default:
+      return mix(GRASS_LO, GRASS_HI, u);
+  }
+}
+
 function tileColor(s: M.Sheet, x: number, y: number): [number, number, number] {
   const i = y * s.width + x;
   const t = s.tiles[i]!;
@@ -391,7 +455,7 @@ function tileColor(s: M.Sheet, x: number, y: number): [number, number, number] {
       c = mix([112, 108, 86], [196, 186, 154], u);
       break;
     default:
-      c = mix(GRASS_LO, GRASS_HI, u);
+      c = coverColor(s.ground[i] ?? GROUND_GRASS, u, x, y);
   }
   if (t !== TILE_MOUNTAIN && t !== TILE_WATER && isMountainCliff(s.tiles, s.heights, s.width, s.height, x, y)) {
     c = mix(ROCK_LO, ROCK_HI, u);
@@ -1138,7 +1202,7 @@ function toTile(e: PointerEvent | WheelEvent): { x: number; y: number; inside: b
 }
 
 function isBrush(id: ToolId): boolean {
-  return id === "ground" || id === "raise" || id === "lower" || id === "level" || id === "mountain";
+  return id === "ground" || id === "cover" || id === "raise" || id === "lower" || id === "level" || id === "mountain";
 }
 
 /** The brush ring at (x, y) reaches the sheet, even when its centre is past the edge. */
@@ -1151,6 +1215,7 @@ function dab(x: number, y: number): void {
   if (!s || !brushReaches(x, y)) return;
   const box = M.emptyDirty();
   if (tool.id === "ground") M.paintDisk(s, x, y, tool.brush, tool.tile, box);
+  else if (tool.id === "cover") M.paintCover(s, x, y, tool.brush, tool.cover, box);
   else if (tool.id === "raise") M.liftDisk(s, x, y, tool.brush, 1, box);
   else if (tool.id === "lower") M.liftDisk(s, x, y, tool.brush, -1, box);
   else if (tool.id === "level") M.levelDisk(s, x, y, tool.brush, tool.level, box);
@@ -1671,7 +1736,7 @@ function onMove(e: PointerEvent): void {
   pointerOver = true;
   if (t.inside) {
     const i = t.y * s.width + t.x;
-    const label = isMountainCliff(s.tiles, s.heights, s.width, s.height, t.x, t.y) ? "rock" : groundName(s.tiles[i]!);
+    const label = isMountainCliff(s.tiles, s.heights, s.width, s.height, t.x, t.y) ? "rock" : groundName(s.tiles[i]!, s.ground[i]);
     stage.status.textContent = `${t.x}, ${t.y} · height ${s.heights[i]} · ${label}`;
   } else if (moved) {
     stage.status.textContent = "Off the map";
@@ -1681,7 +1746,7 @@ function onMove(e: PointerEvent): void {
     // Follow the pointer's real path, off the sheet too: leaving and coming back
     // elsewhere must not draw a line across the map, and a ring that hangs over
     // the edge still paints the edge. Raise and Lower run on their timer.
-    if (tool.id === "ground" || tool.id === "level" || tool.id === "mountain") dabLine(drag.lastX, drag.lastY, t.x, t.y);
+    if (tool.id === "ground" || tool.id === "cover" || tool.id === "level" || tool.id === "mountain") dabLine(drag.lastX, drag.lastY, t.x, t.y);
     drag.lastX = t.x;
     drag.lastY = t.y;
   } else if (drag?.kind === "erase" && t.inside) {
@@ -1787,8 +1852,9 @@ function onWheel(e: WheelEvent): void {
   queueDraw();
 }
 
-function groundName(t: number): string {
+function groundName(t: number, cover = GROUND_GRASS): string {
   if (t === TILE_MOUNTAIN) return "mountain";
+  if (t === TILE_EMPTY && cover !== GROUND_GRASS) return COVER.find((c) => c.cover === cover)?.name.toLowerCase() ?? "grass";
   return (GROUND.find((g) => g.tile === t) ?? LAID_GROUND.find((g) => g.tile === t))?.name.toLowerCase() ?? "blocked";
 }
 
@@ -2321,6 +2387,11 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     const img = el("img", { attrs: { src: g.img, alt: "" } });
     groundPal.append(asset(g.name, "", tool.id === "ground" && tool.tile === g.tile, img, g.hint, () => setTool(ctx, { id: "ground", tile: g.tile })));
   }
+  const coverPal = el("div", { class: "bld-palette" });
+  for (const c of COVER) {
+    const img = el("img", { attrs: { src: c.img, alt: "" } });
+    coverPal.append(asset(c.name, "", tool.id === "cover" && tool.cover === c.cover, img, c.hint, () => setTool(ctx, { id: "cover", cover: c.cover })));
+  }
 
   const brushRow = el("div", { class: "bld-row" });
   const brushIn = el("input", { attrs: { type: "range", min: "0", max: "24", step: "1" } });
@@ -2345,11 +2416,13 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       terrainBtns,
       el("h3", { class: "bld-sub", text: "Ground" }),
       groundPal,
+      el("h3", { class: "bld-sub", text: "Surface" }),
+      coverPal,
       el("label", { text: "Brush" }),
       brushRow,
       el("p", {
         class: "bld-hint",
-        text: "The brush paints ground, shapes elevation, and stamps mountains. [ and ] change the size. A mountain's rock opens where the ground beside it matches its height.",
+        text: "The brush paints ground, lays a surface over open ground, shapes elevation, and stamps mountains. [ and ] change the size. A surface is looks only: it never changes how a tile plays. A mountain's rock opens where the ground beside it matches its height.",
       }),
     ),
   );
