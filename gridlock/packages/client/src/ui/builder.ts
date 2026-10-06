@@ -2074,17 +2074,6 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       ),
     );
   }
-  panel.append(
-    section(
-      "Street lamps",
-      lamps,
-      el("p", {
-        class: "bld-hint",
-        text: "Light up after dusk. Dress only: they do not block a man or a shot, and a structure raised on one hides it. Shift+click removes.",
-      }),
-    ),
-  );
-
   const decor = el("div", { class: "bld-palette" });
   decor.append(
     asset("Road", "drawn line", tool.id === "road", el("img", { attrs: { src: dirtUrl, alt: "" } }), "Dirt lane. Same footing as grass.", () =>
@@ -2109,6 +2098,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
   panel.append(
     section(
       "Decorations",
+      el("h3", { class: "bld-sub", text: "Roads" }),
       decor,
       el("label", { text: "Road width" }),
       roadRow,
@@ -2116,6 +2106,12 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       el("p", {
         class: "bld-hint",
         text: "A road goes down like a wall: click its start, click each corner, Enter lays it, right-click takes a corner back. Esc cancels and picks up Select. Scroll turns a lone stub 15° (Ctrl+scroll zooms); [ and ] change the width.",
+      }),
+      el("h3", { class: "bld-sub", text: "Street lamps" }),
+      lamps,
+      el("p", {
+        class: "bld-hint",
+        text: "Light up after dusk. Dress only: they do not block a man or a shot, and a structure raised on one hides it. Shift+click removes.",
       }),
     ),
   );
