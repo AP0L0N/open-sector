@@ -4,8 +4,8 @@ import { TILE_SUBDIV, type IsoPt } from "@gridlock/shared";
 const SUN_X = -0.949;
 const SUN_Y = -0.316;
 /** Brightness per elevation unit of slope facing (or turned from) the sun. */
-const HILLSHADE_PER_UNIT = 0.14;
-const HILLSHADE_MAX = 0.34;
+const HILLSHADE_PER_UNIT = 0.32;
+const HILLSHADE_MAX = 0.45;
 
 /**
  * Directional light from the four vertex heights. Slopes rising away from the
