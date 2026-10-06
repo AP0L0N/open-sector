@@ -40,6 +40,24 @@
 
 .bld-head .spacer { flex: 1 1 0; }
 
+.bld-toggle {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 5px 10px;
+  background: #000c;
+  border: 1px solid #3a2418;
+  cursor: pointer;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.bld-toggle input { margin: 0; width: auto; accent-color: var(--amber); }
+
 .bld-tools,
 .bld-side {
   overflow: auto;

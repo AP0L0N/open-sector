@@ -48,9 +48,12 @@ import rockUrl from "../assets/terrain/ground-rock.png";
 import { el } from "./dom.js";
 import { drawMapPreview } from "./map-preview.js";
 import * as M from "./builder-model.js";
+import { isoChanged, isoDraw, isoRestamp } from "./builder-iso.js";
+import { isoFit, isoPick, isoZoomAt, type IsoCam } from "./builder-iso-cam.js";
 
 const KEY_STORE = "gridlock.mapKey";
 const MINE_STORE = "gridlock.myMaps";
+const GAME_VIEW_STORE = "gridlock.builderGameView";
 const PREVIEW_ID = "__builder__";
 const UNDO_DEPTH = 40;
 /** Raise / Lower apply one step this often while the button is held. */
@@ -116,6 +119,9 @@ const redo: M.SheetMark[] = [];
 const tool: Tool = { id: "raise", tile: TILE_WATER, house: "cottage", defence: "bunker", facing: 1, brush: 6, level: HEIGHT_BASE };
 let selected: Selection | null = null;
 const view = { zoom: 0, px: 0, py: 0 };
+/** The stage draws the map as a match does, and picks on its raised ground. */
+let gameView = store()?.getItem(GAME_VIEW_STORE) === "1";
+const isoCam: IsoCam = { zoom: 0, camX: 0, camY: 0 };
 let hover: { x: number; y: number; inside: boolean } = { x: 0, y: 0, inside: false };
 /** The pointer is over the stage canvas (or captured by it mid-stroke). */
 let pointerOver = false;
@@ -195,6 +201,7 @@ function pushUndo(): void {
 function changed(): void {
   dirty = true;
   previewStale = true;
+  isoChanged();
   pendingGround = M.emptyDirty();
   repaintGround();
   queueDraw();
@@ -210,6 +217,8 @@ function openSheet(next: M.Sheet, isDirty: boolean): void {
   newOpen = false;
   selected = null;
   view.zoom = 0;
+  isoCam.zoom = 0;
+  isoChanged();
   ground = null;
   previewStale = true;
 }
@@ -328,6 +337,7 @@ function flushGround(): void {
   const box = pendingGround;
   pendingGround = M.emptyDirty();
   repaintGround(box);
+  if (sheet && gameView) isoRestamp(sheet, box);
 }
 
 // --- stage drawing -------------------------------------------------------------
@@ -394,6 +404,7 @@ function drawStage(): void {
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
   c.fillStyle = "#070605";
   c.fillRect(0, 0, w, h);
+  if (gameView) return drawGameView(c, s, w, h, dpr);
   const z = view.zoom;
   const sx = (x: number): number => view.px + x * z;
   const sy = (y: number): number => view.py + y * z;
@@ -525,6 +536,57 @@ function drawStage(): void {
   }
 }
 
+/** The stage as the battlefield draws it: same ground bake, props, and building art. */
+function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: number, dpr: number): void {
+  if (isoCam.zoom === 0) isoFit(isoCam, s, w, h);
+  const ghost = houseGhost();
+  let spawnGhost: { x: number; y: number; bad: boolean } | null = null;
+  if (!ghost && hover.inside && tool.id === "spawn" && drag?.kind !== "spawn" && M.nextSpawnId(s) !== null && M.spawnIndexAt(s, hover.x, hover.y) < 0) {
+    spawnGhost = { x: hover.x, y: hover.y, bad: M.spawnProblem(s, hover.x, hover.y) !== null };
+  }
+  const loading = isoDraw(c, s, isoCam, w, h, dpr, {
+    selectedFeature: selected?.kind === "feature" ? selected.index : -1,
+    hoverFeature: tool.id === "select" && hover.inside && !drag ? M.featureIndexAt(s, hover.x, hover.y) : -1,
+    selectedSpawn: selected?.kind === "spawn" ? selected.id : 0,
+    ghost: ghost && hover.inside ? { f: ghost, bad: M.houseProblem(s, ghost) !== null } : null,
+    spawnGhost,
+    brush: pointerOver && isBrush(tool.id) && brushReaches(hover.x, hover.y) ? { x: hover.x, y: hover.y, r: tool.brush } : null,
+  }, queueDraw);
+  // Sprites still loading: look again shortly.
+  if (loading) setTimeout(queueDraw, 200);
+}
+
+/** The stage's "In-game view" checkbox. */
+function gameViewToggle(): HTMLElement {
+  const toggle = el("label", {
+    class: "bld-toggle",
+    attrs: { title: "See and edit the map as the battlefield draws it: real ground, trees, and buildings on raised terrain." },
+  });
+  const box = el("input", { attrs: { type: "checkbox" } });
+  box.checked = gameView;
+  box.addEventListener("change", () => setGameView(box.checked));
+  toggle.append(box, el("span", { text: "In-game view" }));
+  return toggle;
+}
+
+function setGameView(on: boolean): void {
+  gameView = on;
+  isoChanged();
+  try {
+    store()?.setItem(GAME_VIEW_STORE, on ? "1" : "0");
+  } catch {
+    // Private window: the choice lasts this visit.
+  }
+  if (stage) stage.status.textContent = statusHint();
+  queueDraw();
+}
+
+function statusHint(): string {
+  return gameView
+    ? "In-game view · wheel zooms · right-drag pans · Ctrl+Z undoes · V selects"
+    : "Wheel zooms · right-drag pans · Ctrl+Z undoes · V selects";
+}
+
 // --- painting --------------------------------------------------------------
 
 type Drag =
@@ -533,13 +595,14 @@ type Drag =
   | { kind: "move"; index: number; from: MapFeature; startX: number; startY: number; moved: boolean }
   /** A sandbag or wall line: sections end to end along the drag, `done` holds the steps laid. */
   | { kind: "lay"; x0: number; y0: number; axis: "x" | "y" | null; first: number; done: Set<number> }
-  | { kind: "pan"; x: number; y: number; px: number; py: number }
+  | { kind: "pan"; x: number; y: number; px: number; py: number; camX: number; camY: number }
   | { kind: "erase" };
 
 let drag: Drag | null = null;
 
 function toTile(e: PointerEvent | WheelEvent): { x: number; y: number; inside: boolean } {
   const rect = stage!.canvas.getBoundingClientRect();
+  if (gameView && sheet) return isoPick(sheet, isoCam, e.clientX - rect.left, e.clientY - rect.top);
   const x = Math.floor((e.clientX - rect.left - view.px) / view.zoom);
   const y = Math.floor((e.clientY - rect.top - view.py) / view.zoom);
   const inside = !!sheet && x >= 0 && y >= 0 && x < sheet.width && y < sheet.height;
@@ -682,7 +745,7 @@ function onDown(e: PointerEvent): void {
   if (!s || !stage) return;
   stage.canvas.setPointerCapture(e.pointerId);
   if (e.button === 1 || e.button === 2) {
-    drag = { kind: "pan", x: e.clientX, y: e.clientY, px: view.px, py: view.py };
+    drag = { kind: "pan", x: e.clientX, y: e.clientY, px: view.px, py: view.py, camX: isoCam.camX, camY: isoCam.camY };
     return;
   }
   if (e.button !== 0) return;
@@ -767,6 +830,12 @@ function onMove(e: PointerEvent): void {
   const s = sheet;
   if (!s || !stage) return;
   if (drag?.kind === "pan") {
+    if (gameView) {
+      isoCam.camX = drag.camX - (e.clientX - drag.x) / isoCam.zoom;
+      isoCam.camY = drag.camY - (e.clientY - drag.y) / isoCam.zoom;
+      queueDraw();
+      return;
+    }
     view.px = drag.px + (e.clientX - drag.x);
     view.py = drag.py + (e.clientY - drag.y);
     queueDraw();
@@ -851,6 +920,11 @@ function onWheel(e: WheelEvent): void {
   const rect = stage.canvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
+  if (gameView) {
+    if (isoCam.zoom > 0) isoZoomAt(isoCam, mx, my, e.deltaY);
+    queueDraw();
+    return;
+  }
   const next = Math.max(0.5, Math.min(24, view.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
   view.px = mx - ((mx - view.px) * next) / view.zoom;
   view.py = my - ((my - view.py) * next) / view.zoom;
@@ -1426,7 +1500,7 @@ export function renderBuilder(root: HTMLElement, ctx: Ctx): void {
   const screen = el("div", { class: "screen", attrs: { id: "builder-root" } });
   const wrap = el("div", { class: "builder" });
   const canvas = el("canvas");
-  const status = el("div", { class: "bld-status", text: "Wheel zooms · right-drag pans · Ctrl+Z undoes · V selects" });
+  const status = el("div", { class: "bld-status", text: statusHint() });
   stage = { root: screen, canvas, status, preview: null, msg: el("div"), checks: null, maps: null, sel: null };
   wrap.append(header(ctx));
   const tools = toolsPanel(ctx);
@@ -1435,6 +1509,7 @@ export function renderBuilder(root: HTMLElement, ctx: Ctx): void {
   const stageBox = el("div", { class: "bld-stage panel" });
   stageBox.append(canvas, status);
   if (!sheet || newOpen) stageBox.append(newForm(ctx));
+  else stageBox.append(gameViewToggle());
   wrap.append(tools, stageBox, sidePanel(ctx));
   screen.append(wrap);
   root.append(screen);
