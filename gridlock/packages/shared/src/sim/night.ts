@@ -190,9 +190,13 @@ export function lampHeading(a: number): number {
   return Math.round(a / step) * step;
 }
 
-/** A tower someone holds carries a working lamp. A neutral one stands dark. */
+/**
+ * A tower someone holds carries a working lamp. A neutral one stands dark.
+ * A ship is always crewed: a map's neutral Battle Ship burns its searchlight too.
+ */
 export function spotlightManned(e: {
   type: EntityType;
+  kind?: string;
   ownerId: string;
   hp: number;
   ruined?: boolean;
@@ -200,7 +204,7 @@ export function spotlightManned(e: {
   crits?: readonly Crit[];
 }): boolean {
   if (hasCrit({ crits: e.crits ?? [] }, "lamp")) return false;
-  return hasSpotlight(e.type) && e.ownerId !== NEUTRAL_OWNER && e.hp > 0 && !e.ruined && !e.wreck;
+  return hasSpotlight(e.type) && (e.ownerId !== NEUTRAL_OWNER || e.kind === "unit") && e.hp > 0 && !e.ruined && !e.wreck;
 }
 
 /** A held lamp that burns: a tower's goes dark while its owner is short on power. */

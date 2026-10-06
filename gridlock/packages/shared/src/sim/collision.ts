@@ -18,6 +18,7 @@ import { moveSpeedMul, takeDamage } from "./crits.js";
 import { diving } from "./naval.js";
 import { setPath } from "./path.js";
 import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, jetAloft, occupant, tileCenter, tileIndex, walkable, worldToTile } from "./geo.js";
+import { crushClutterUnder } from "./clutter.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** Ground unit that takes part in collision. Aircraft never do, parked or flying, nor a Jump Jet in the air. */
@@ -89,6 +90,7 @@ function tileFree(state: MatchState, e: Entity, x: number, y: number): boolean {
 export function crushTreesUnder(state: MatchState, e: Entity): void {
   if (!isActiveUnit(e) || !isMotorVehicle(e.type)) return;
   if (!rolling(e)) return;
+  crushClutterUnder(state, e);
   const ts = state.tileSize;
   const r = e.radius + ts * 0.45;
   const x0 = worldToTile(e.x - r, ts);

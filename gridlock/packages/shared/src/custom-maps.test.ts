@@ -484,6 +484,36 @@ describe("custom map units", () => {
     assert.equal(r.spec.units, undefined);
   });
 
+  it("keeps a tower's spotlight heading and sweep, and a Battle Ship's searchlight", () => {
+    const n = SIDE * SIDE;
+    const tiles = new Array<number>(n).fill(TILE_EMPTY);
+    for (let y = 40; y < 80; y++) for (let x = 40; x < 80; x++) tiles[y * SIDE + x] = TILE_WATER;
+    const r = validateCustomMap(
+      sheet({
+        tiles: encodeRuns(tiles),
+        features: [
+          { type: "tower", x: 96, y: 64, facing: 0, spot: 450, patrol: [{ x: 110, y: 64 }, { x: 96, y: 80 }], loop: true },
+          { type: "bunker", x: 96, y: 96, facing: 0, spot: 90, patrol: [{ x: 110, y: 96 }] } as never,
+        ],
+        units: [
+          { type: "battleship", x: 60, y: 60, facing: 0, spot: -90 },
+          { type: "rifleman", x: 120, y: 120, facing: 0, spot: 90 },
+        ],
+      }),
+    );
+    assert.ok(r.ok, r.ok ? "" : r.message);
+    const [tower, bunker] = r.spec.features;
+    assert.equal(tower!.spot, 90, "wrapped to whole degrees");
+    assert.deepEqual(tower!.patrol, [{ x: 110, y: 64 }, { x: 96, y: 80 }]);
+    assert.equal(tower!.loop, true);
+    assert.equal(bunker!.spot, undefined, "only a Watch Tower carries a lamp");
+    assert.equal(bunker!.patrol, undefined);
+    const [ship, man] = r.spec.units!;
+    assert.equal(ship!.spot, 270);
+    assert.equal(man!.spot, undefined);
+    assert.equal(buildCustomMap(r.spec).units?.[0]?.spot, 270, "the playable map keeps it");
+  });
+
   it("puts no more men in a building than it holds", () => {
     const cap = garrisonCapOf("bunker");
     const units = Array.from({ length: cap + 2 }, () => ({ type: "rifleman" as const, x: 81, y: 101, facing: 0, inside: true }));
@@ -544,5 +574,32 @@ describe("custom map lamps", () => {
     assert.ok(r.ok, r.ok ? "" : r.message);
     const box = featureBox(features[0]!);
     assert.equal(box.x1 - box.x0, 5 * TILE_SUBDIV, "a factory takes five cells");
+  });
+});
+
+describe("custom map complete fog of war", () => {
+  it("keeps the shroud flag through validate, build, and copy", () => {
+    const r = validateCustomMap(sheet({ id: "c-shroud0001", shroud: true }));
+    assert.ok(r.ok);
+    assert.equal(r.spec.shroud, true);
+    const loaded = loadCustomMap(r.spec);
+    assert.ok(loaded.ok);
+    try {
+      assert.equal(loaded.map.shroud, true);
+      const copy = specFromMap("c-shroud0001", { id: "c-shroud0002", name: "Copy", author: "T" });
+      assert.equal(copy?.shroud, true);
+    } finally {
+      unregisterMap("c-shroud0001");
+    }
+  });
+
+  it("leaves the flag out when off or not exactly true", () => {
+    for (const shroud of [undefined, false as never, "yes" as never, 1 as never]) {
+      const r = validateCustomMap(sheet({ shroud }));
+      assert.ok(r.ok);
+      assert.equal("shroud" in r.spec, false);
+      assert.equal(buildCustomMap(r.spec).shroud, undefined);
+    }
+    assert.equal(specFromMap("yard-64", { id: "c-yardcopy2", name: "Y", author: "T" })?.shroud, undefined);
   });
 });

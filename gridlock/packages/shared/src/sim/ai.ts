@@ -16,7 +16,6 @@ import {
   DEFENCE_BUILD_RADIUS,
   DIAMOND_SCRAP_MUL,
   DIAMOND_SCRAP_TILE_YIELD,
-  DRONE_LAUNCH_MIN_SECONDS,
   GARRISON_STRUCTURAL_CALIBER,
   SMELTER_SCRAP_PER_SEC,
   STUKA_BOMBS,
@@ -44,7 +43,9 @@ import {
   type BuildingType,
   type TrainType,
 } from "../catalog.js";
+import { droneCall, subDepthCall, tickNeutralCrews } from "./ai-crew.js";
 import { isAirborne } from "./air.js";
+import { droneOf } from "./drone.js";
 import { buildingSiteError } from "./build.js";
 import { applyCommand } from "./commands.js";
 import { canRepairTarget, canScrapWreck, gateSiteAt } from "./field.js";
@@ -253,6 +254,7 @@ interface Site {
 
 export function tickAi(state: MatchState): void {
   if (state.ended) return;
+  tickNeutralCrews(state);
   for (const p of state.players.values()) {
     if (!p.ai || !p.alive) continue;
     thinkEasy(state, p);
@@ -1810,6 +1812,7 @@ function microUnits(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): 
   for (const e of [...state.entities.values()]) {
     if (e.ownerId !== p.playerId || e.hp <= 0 || e.wreck || e.garrisonedIn || e.kind !== "unit") continue;
     siege(state, p, e, sites);
+    diveOnContact(state, p, e);
     switch (e.type) {
       case "warden":
       case "apocalypse":
@@ -2073,14 +2076,30 @@ function truckWork(state: MatchState, p: SimPlayer, e: Entity, hq: Entity, stage
   else rejoin(state, p, e, hq, stage);
 }
 
-/** Out with the army: fly the drone in strike mode. Idle away from home: rejoin a fighter. */
+/**
+ * An enemy in sight inside the leash: the drone goes up, or turns, in Search & Destroy and
+ * dives on it. Out with the army and nothing seen, it goes up in Surveillance over the op
+ * to look ahead. Idle away from home, the op rejoins a fighter.
+ */
 function flyDrone(state: MatchState, p: SimPlayer, e: Entity, hq: Entity, stage: Staging): void {
   if (!e.order) rejoin(state, p, e, hq, stage);
-  const link = e.droneLink;
-  if (!link || link.droneId != null || e.order?.kind !== "guard") return;
-  if (link.charge < DRONE_LAUNCH_MIN_SECONDS) return;
-  if (link.mode !== "strike") applyCommand(state, p.playerId, { type: "cmd.drone", ids: [e.id], action: "mode", mode: "strike" });
-  applyCommand(state, p.playerId, { type: "cmd.drone", ids: [e.id], action: "launch" });
+  const call = droneCall(state, e, e.order?.kind === "guard");
+  if (!call) return;
+  const link = e.droneLink!;
+  const up = droneOf(state, e);
+  const mode = up?.drone?.mode ?? link.mode;
+  if (call.mode && call.mode !== mode) applyCommand(state, p.playerId, { type: "cmd.drone", ids: [e.id], action: "mode", mode: call.mode });
+  if (call.launch && !applyCommand(state, p.playerId, { type: "cmd.drone", ids: [e.id], action: "launch" }).ok) return;
+  const d = droneOf(state, e);
+  if (!d) return;
+  if (call.attackId != null) applyCommand(state, p.playerId, { type: "cmd.attack", ids: [d.id], targetId: call.attackId });
+  else if (call.overOp) applyCommand(state, p.playerId, { type: "cmd.guard", ids: [d.id], targetId: e.id });
+}
+
+/** A submarine goes down when it sees the enemy, and comes up for air once it has been clear a while. */
+function diveOnContact(state: MatchState, p: SimPlayer, e: Entity): void {
+  const down = subDepthCall(state, e);
+  if (down != null) applyCommand(state, p.playerId, { type: "cmd.dive", ids: [e.id], down });
 }
 
 /** An escort whose fighter fell walks beside the nearest one still out. Near home it waits. */

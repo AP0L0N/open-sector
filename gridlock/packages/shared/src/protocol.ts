@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 103;
+export const PROTOCOL_VERSION = 105;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -638,6 +638,8 @@ export interface MatchSnapshot {
   bodies: CorpseView[];
   /** Heavy-shell craters on dirt. Empty until the first ground strike. */
   holes: ShellHoleView[];
+  /** Indices into the map's `clutter` of pieces smashed this match. Omitted until the first one breaks. */
+  brokenClutter?: number[];
   /**
    * Ground repeated heavy blasts have sunk, as flat pairs: tile index, then
    * that tile's height now. Omitted until the first dig. See BLAST_DIG_ENABLED.

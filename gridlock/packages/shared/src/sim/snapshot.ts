@@ -50,6 +50,7 @@ import { laserProgress } from "./laser.js";
 import { garrisonBars, garrisonOwner } from "./garrison.js";
 import { deckLoad } from "./lst.js";
 import { allies, unitInWater } from "./geo.js";
+import { brokenClutter } from "./clutter.js";
 import { diving, hiddenSubmarine, sonarSpotted } from "./naval.js";
 import { medicTendView } from "./heal.js";
 import { supplyHasDriver, supplyRiders } from "./supply.js";
@@ -603,6 +604,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     clearedTrees: state.clearedTrees.map((t) => (t.burn ? { x: t.x, y: t.y, burn: true as const } : { x: t.x, y: t.y })),
     bodies: visibleBodies(state, youPlayerId, vis),
     holes: state.holes.map((h) => ({ ...h })),
+    ...(state.clutterHp.some((hp) => hp <= 0) ? { brokenClutter: brokenClutter(state) } : {}),
     ...(state.dug.size > 0 ? { dug: dugCells(state) } : {}),
     vision: you ? visionRuns(vis) : undefined,
     radar: radar ? radarContacts(state, youPlayerId, vis) : undefined,

@@ -9,6 +9,7 @@ import {
   type CivilianType,
   type Crit,
   type EntityType,
+  type ClutterType,
   type LampType,
   type Stance,
 } from "@gridlock/shared";
@@ -135,6 +136,22 @@ import stones2Url from "../assets/terrain/stones-2.png";
 import stump1Url from "../assets/terrain/stump-1.png";
 import stump2Url from "../assets/terrain/stump-2.png";
 import signpost1Url from "../assets/terrain/signpost-1.png";
+import clutterCratesUrl from "../assets/terrain/clutter/crates.png";
+import clutterCratesBrokenUrl from "../assets/terrain/clutter/crates-broken.png";
+import clutterBarrelsUrl from "../assets/terrain/clutter/barrels.png";
+import clutterBarrelsBrokenUrl from "../assets/terrain/clutter/barrels-broken.png";
+import clutterHaybaleUrl from "../assets/terrain/clutter/haybale.png";
+import clutterHaybaleBrokenUrl from "../assets/terrain/clutter/haybale-broken.png";
+import clutterCartUrl from "../assets/terrain/clutter/cart.png";
+import clutterCartBrokenUrl from "../assets/terrain/clutter/cart-broken.png";
+import clutterBenchUrl from "../assets/terrain/clutter/bench.png";
+import clutterBenchBrokenUrl from "../assets/terrain/clutter/bench-broken.png";
+import clutterWoodpileUrl from "../assets/terrain/clutter/woodpile.png";
+import clutterWoodpileBrokenUrl from "../assets/terrain/clutter/woodpile-broken.png";
+import clutterTiresUrl from "../assets/terrain/clutter/tires.png";
+import clutterTiresBrokenUrl from "../assets/terrain/clutter/tires-broken.png";
+import clutterBinsUrl from "../assets/terrain/clutter/bins.png";
+import clutterBinsBrokenUrl from "../assets/terrain/clutter/bins-broken.png";
 import lampGaslampUrl from "../assets/terrain/lamp-gaslamp.png";
 import lampStreetlampUrl from "../assets/terrain/lamp-streetlamp.png";
 import lampFloodlightUrl from "../assets/terrain/lamp-floodlight.png";
@@ -2017,6 +2034,47 @@ export const LAMP_SPRITES: Record<LampType, LampSprite> = {
   floodlight: { ...prop(lampFloodlightUrl, 25, 179.5), bulbX: 35.8, bulbY: 25.9 },
 };
 
+/** A piece of map clutter standing, or the flat wreck it leaves. `drawH` is screen px at zoom 1. */
+export interface ClutterSprite extends PropSprite {
+  drawH: number;
+}
+
+/** From `tools/sprites/render_clutter.py`; contact is the middle of the footprint. */
+export const CLUTTER_SPRITES: Record<ClutterType, { whole: ClutterSprite; broken: ClutterSprite }> = {
+  crates: {
+    whole: { ...prop(clutterCratesUrl, 65, 88.2), drawH: 17.9 },
+    broken: { ...prop(clutterCratesBrokenUrl, 75, 46.2), drawH: 14.7 },
+  },
+  barrels: {
+    whole: { ...prop(clutterBarrelsUrl, 51, 62.2), drawH: 15.8 },
+    broken: { ...prop(clutterBarrelsBrokenUrl, 63, 43.2), drawH: 11.7 },
+  },
+  haybale: {
+    whole: { ...prop(clutterHaybaleUrl, 47, 69.2), drawH: 14.4 },
+    broken: { ...prop(clutterHaybaleBrokenUrl, 77, 44.2), drawH: 13.4 },
+  },
+  cart: {
+    whole: { ...prop(clutterCartUrl, 75, 84.2), drawH: 16.2 },
+    broken: { ...prop(clutterCartBrokenUrl, 75, 48.2), drawH: 13.8 },
+  },
+  bench: {
+    whole: { ...prop(clutterBenchUrl, 62, 48.2), drawH: 10.9 },
+    broken: { ...prop(clutterBenchBrokenUrl, 74, 45.2), drawH: 13.6 },
+  },
+  woodpile: {
+    whole: { ...prop(clutterWoodpileUrl, 64, 62.2), drawH: 14.7 },
+    broken: { ...prop(clutterWoodpileBrokenUrl, 69, 47.2), drawH: 12 },
+  },
+  tires: {
+    whole: { ...prop(clutterTiresUrl, 43, 79.2), drawH: 16.3 },
+    broken: { ...prop(clutterTiresBrokenUrl, 67, 36.2), drawH: 13.3 },
+  },
+  bins: {
+    whole: { ...prop(clutterBinsUrl, 54, 60.2), drawH: 17.4 },
+    broken: { ...prop(clutterBinsBrokenUrl, 63, 42.2), drawH: 12 },
+  },
+};
+
 /** Flat shell crater. Contact is the pit; `bowl` is that pit's width in source pixels. */
 export interface CraterSprite extends PropSprite {
   bowl: number;
@@ -2062,6 +2120,7 @@ export const PROP_IMAGES: HTMLImageElement[] = [
   ...STONE_FACES.map((f) => f.image),
   ...STUMP_FACES.map((f) => f.image),
   ...SIGN_FACES.map((f) => f.image),
+  ...Object.values(CLUTTER_SPRITES).flatMap((s) => [s.whole.image, s.broken.image]),
   FENCE_X.image,
   FENCE_Y.image,
   WATER_TEX,

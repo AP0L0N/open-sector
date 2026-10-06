@@ -118,13 +118,15 @@ export function tickCapture(state: MatchState, dt: number): void {
 
 function completeCapture(state: MatchState, building: Entity, ownerId: string, capturers: Entity[]): void {
   if (!isCapturable(building.type)) return;
+  const was = building.ownerId;
   building.ownerId = ownerId;
   building.captureOwnerId = "";
   building.captureProgress = 0;
   building.queue = [];
   delete building.rally;
   // The sweep belonged to the side that lost the tower. The beam stays where it is.
-  if (building.order?.kind === "patrol") {
+  // A sweep the map laid on an untaken tower goes to its first holder.
+  if (building.order?.kind === "patrol" && was && was !== NEUTRAL_OWNER) {
     building.order = null;
     building.spotAim = undefined;
   }
