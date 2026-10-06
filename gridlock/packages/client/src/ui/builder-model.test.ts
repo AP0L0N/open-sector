@@ -282,7 +282,7 @@ describe("builder select and defences", () => {
     for (let y = 40; y < 100; y++) for (let x = 60; x < 120; x++) s.tiles[y * s.width + x] = TILE_WATER;
     const pts = [tileWorld(55, 70), tileWorld(125, 71)];
     const bricks = bridgeLine("bigbridge", pts, 0, deckAt(s, pts[0]!));
-    assert.ok(bricks.length >= 17, `${bricks.length} bricks`);
+    assert.ok(bricks.length >= 8, `${bricks.length} bricks`);
     assert.ok(bricks.every((b) => b.deck === s.heights[70 * s.width + 55]), "the deck keeps the level it started on");
     assert.ok(bricks.every((b) => b.turn === 0), "the leg snaps to due east");
     assert.deepEqual(laySections(s, bricks), { laid: bricks.length, refused: 0 }, "end to end, no brick blocks the next");

@@ -640,9 +640,9 @@ export function isBridge(type: string): type is BridgeType {
 export function bridgeWidth(type: BridgeType): number {
   return type === "bigbridge" ? 44 : 20;
 }
-/** One brick of deck, world px along the span: a timber bay, or a stone arch between piers. */
+/** One brick of deck, world px along the span: a timber bay, or a wide stone arch between piers. */
 export function bridgeBrickLength(type: BridgeType): number {
-  return type === "bigbridge" ? 32 : 24;
+  return type === "bigbridge" ? 64 : 24;
 }
 /** Scrap per gameplay tile of deck length. */
 export function bridgeCostPerTile(type: BridgeType): number {

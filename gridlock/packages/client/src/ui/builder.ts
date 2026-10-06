@@ -2182,7 +2182,7 @@ function bridgeThumb(type: BridgeType): HTMLCanvasElement {
   quad(26, 60, 2, "#5b6b3a");
   const width = bridgeWidth(type);
   const len = bridgeBrickLength(type);
-  const n = Math.max(3, Math.ceil(76 / len));
+  const n = Math.max(2, Math.ceil(76 / len));
   const spans = bridgePath(type, [
     { x: (-len * n) / 2, y: 0 },
     { x: (len * n) / 2, y: 0 },

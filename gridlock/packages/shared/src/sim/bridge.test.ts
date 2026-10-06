@@ -433,7 +433,7 @@ describe("bridge deck level", () => {
     assert.equal(eng.order?.deck, 3, "started on the west bank");
     ticks(state, secondsToTicks(bridgeBuildSeconds("bigbridge") * 8) + 1500);
     const bricks = [...state.entities.values()].filter((e) => e.type === "bigbridge");
-    assert.ok(bricks.length >= 5);
+    assert.ok(bricks.length >= 2);
     assert.ok(bricks.every((b) => b.deckLevel === 3), bricks.map((b) => b.deckLevel).join(","));
     assert.equal(snapshotFor(state, a).entities.find((e) => e.id === bricks[0]!.id)?.deck, 3);
   });
