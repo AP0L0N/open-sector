@@ -41,6 +41,7 @@ import {
   bridgeAlong,
   bridgeBrickLength,
   bridgeCost,
+  bridgeEnds,
   bridgeTiles,
   bridgeWidth,
   inBridge,
@@ -987,6 +988,8 @@ export class MapView {
   constructPlace: BuildingType | null = null;
   /** Bridge the selected engineers will lay, drawn brick by brick along a line like a wall (`fieldPath`). */
   bridgePlace: BridgeType | null = null;
+  /** Set while a boat is drawn or picked: it floats on the water, under any bridge deck. */
+  private afloatDraw = false;
   /**
    * Every brick's look by id, and the water tiles under an intact deck by tile index, so
    * units there stand on the deck. Laid out again when a brick goes up, falls, or is rebuilt.
@@ -3174,7 +3177,7 @@ export class MapView {
     const map = this.map();
     const tx = worldToTile(wx, map.tileSize);
     const ty = worldToTile(wy, map.tileSize);
-    const deck = this.bridgeLayout().tiles.get(ty * map.width + tx);
+    const deck = this.afloatDraw ? undefined : this.bridgeLayout().tiles.get(ty * map.width + tx);
     if (deck) return brickDeckElev(deck.layout, bridgeAlong(deck.span, wx, wy));
     return heightAt(map, tx, ty);
   }
@@ -3191,16 +3194,18 @@ export class MapView {
     return map.tiles[worldToTile(wy, map.tileSize) * map.width + worldToTile(wx, map.tileSize)] === TILE_WATER;
   }
 
-  /** A brick as the layout reads it. */
-  private brickIn(e: { type: string; x: number; y: number; facing: number; span?: number; ruined?: boolean }): BrickIn | null {
+  /** A brick as the layout reads it. One without a deck level rests on its higher end, as the sim has it. */
+  private brickIn(e: { type: string; x: number; y: number; facing: number; span?: number; ruined?: boolean; deck?: number }): BrickIn | null {
     if (!isBridge(e.type)) return null;
     const span: BridgeSpan = { x: e.x, y: e.y, facing: e.facing, length: e.span ?? bridgeBrickLength(e.type) };
-    return { type: e.type, span, width: bridgeWidth(e.type), ruined: !!e.ruined };
+    const ends = bridgeEnds(span);
+    const deck = e.deck ?? Math.max(this.groundAt(ends.ax, ends.ay), this.groundAt(ends.bx, ends.by));
+    return { type: e.type, span, width: bridgeWidth(e.type), deck, ruined: !!e.ruined };
   }
 
   /** Looks for a set of bricks laid out together, so each meets its neighbours. */
   private layoutLooks(bricks: readonly BrickIn[]): BridgeLook[] {
-    const layout = layoutBridges(bricks, (x, y) => this.groundAt(x, y), (x, y) => this.wetAt(x, y));
+    const layout = layoutBridges(bricks, (x, y) => this.wetAt(x, y));
     return bricks.map((b, i) => ({ type: b.type, span: b.span, width: b.width, layout: layout[i]!, ruined: b.ruined }));
   }
 
@@ -3255,7 +3260,7 @@ export class MapView {
    * Looks for bricks not built yet (a ghost line or an engineer's site), laid out with
    * the bricks already standing so the new ones meet them.
    */
-  private ghostLooks(type: BridgeType, spans: readonly BridgeSpan[]): BridgeLook[] {
+  private ghostLooks(type: BridgeType, spans: readonly BridgeSpan[], deck: number): BridgeLook[] {
     const width = bridgeWidth(type);
     const standing: BrickIn[] = [];
     for (const e of this.curr.entities) {
@@ -3265,7 +3270,7 @@ export class MapView {
       // Only bricks near the new line take part.
       if (spans.some((s) => Math.hypot(s.x - b.span.x, s.y - b.span.y) < s.length + b.span.length + 8)) standing.push(b);
     }
-    const mine: BrickIn[] = spans.map((span) => ({ type, span, width }));
+    const mine: BrickIn[] = spans.map((span) => ({ type, span, width, deck }));
     return this.layoutLooks([...mine, ...standing]).slice(0, mine.length);
   }
 
@@ -3382,10 +3387,22 @@ export class MapView {
     }
     const p = this.lerpEnt(e);
     if (inAir(e)) return { layer: AIR_DRAW_LAYER, z: isoDepth(p.x, p.y) };
+    // A boat under a high bridge deck paints under the deck.
+    if (isNavalType(e.type) && this.bridgeLayout().tiles.has(worldToTile(p.y, ts) * this.map().width + worldToTile(p.x, ts))) {
+      return { layer: BRIDGE_DRAW_LAYER - 0.25, z: isoDepth(p.x, p.y) };
+    }
     return { layer: STANDING_DRAW_LAYER, z: isoDepth(p.x, p.y), at: { x: p.x, y: p.y } };
   }
 
   private hit(px: number, py: number): EntityView | null {
+    try {
+      return this.hitAt(px, py);
+    } finally {
+      this.afloatDraw = false;
+    }
+  }
+
+  private hitAt(px: number, py: number): EntityView | null {
     const ts = this.ts();
     const ix = px + this.camX;
     const iy = py + this.camY;
@@ -3401,6 +3418,7 @@ export class MapView {
         if (inBridge(look.span, look.width, w.x, w.y, 4)) return e;
         continue;
       }
+      this.afloatDraw = false;
       if (isFieldStructure(e.type)) {
         const p = this.toScreen(e.x, e.y);
         const span = fieldSpan(e.type);
@@ -3412,6 +3430,7 @@ export class MapView {
       }
       if (e.kind === "unit") {
         if (e.garrisonedIn) continue;
+        this.afloatDraw = isNavalType(e.type);
         const p = this.lerpEnt(e);
         const spr = this.spriteOf(e);
         if (spr) {
@@ -6388,6 +6407,16 @@ export class MapView {
   }
 
   private drawUnit(e: EntityView): void {
+    // A boat rides the water, under any bridge deck over it.
+    this.afloatDraw = isNavalType(e.type);
+    try {
+      this.drawUnitAt(e);
+    } finally {
+      this.afloatDraw = false;
+    }
+  }
+
+  private drawUnitAt(e: EntityView): void {
     if (isTorpedoBody(e.type)) {
       this.drawTorpedo(e);
       return;
@@ -8268,7 +8297,7 @@ export class MapView {
       const site = e.bridgeSite;
       if (!site || e.garrisonedIn || e.ownerId !== this.curr.youPlayerId) continue;
       const spans: BridgeSpan[] = [site, ...(site.queue ?? [])].map((q) => ({ x: q.x, y: q.y, facing: q.facing, length: site.span }));
-      const looks = this.ghostLooks(site.bridge, spans);
+      const looks = this.ghostLooks(site.bridge, spans, site.deck ?? this.groundAt(site.x, site.y));
       looks.forEach((look, i) => {
         if (i === 0) return;
         items.push({
@@ -8312,9 +8341,11 @@ export class MapView {
     const pts = fieldPointsWithCursor(this.fieldPath, this.fieldDrag, w);
     const plan = previewBridge(this.curr, type, pts, this.fieldShown);
     if (plan.length === 0) return;
+    // The line keeps the level of the ground it starts on.
     const looks = this.ghostLooks(
       type,
       plan.map((b) => b.span),
+      this.groundAt(pts[0]!.x, pts[0]!.y),
     );
     const order = looks.map((_, i) => i).sort((a, b) => isoDepth(looks[a]!.span.x, looks[a]!.span.y) - isoDepth(looks[b]!.span.x, looks[b]!.span.y));
     for (const i of order) this.paintBridge(looks[i]!, { ghost: true, bad: plan[i]!.problem !== null, alpha: 0.85, seed: i + 1 });

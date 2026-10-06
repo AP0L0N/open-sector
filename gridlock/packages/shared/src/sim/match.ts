@@ -154,12 +154,17 @@ export function createMatch(
   (map.features ?? []).forEach((f, fi) => {
     const facing = featureAngle({ ...f, facing: f.facing ?? 0 });
     if (isMapBridge(f.type)) {
-      placeBrick(state, f.type, {
-        x: tileCenter(f.x, map.tileSize),
-        y: tileCenter(f.y, map.tileSize),
-        facing,
-        length: bridgeBrickLength(f.type),
-      });
+      placeBrick(
+        state,
+        f.type,
+        {
+          x: tileCenter(f.x, map.tileSize),
+          y: tileCenter(f.y, map.tileSize),
+          facing,
+          length: bridgeBrickLength(f.type),
+        },
+        f.deck,
+      );
       bricks++;
       return;
     }

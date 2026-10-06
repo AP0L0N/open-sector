@@ -623,7 +623,9 @@ export function isConcreteLine(type: string): type is ConcreteLineType {
 /**
  * Engineer and map bridges over water, laid brick by brick along a drawn line like a wall.
  * Each brick is its own structure: one deck length (`bridgeBrickLength`) of the span.
- * `bridge` is the narrow wooden one (one tank wide), `bigbridge` the concrete one (two abreast).
+ * `bridge` is the narrow wooden one (one tank wide), `bigbridge` the stone one (two abreast).
+ * Every brick of a line keeps one deck level, the ground's height where the line was started;
+ * its piles or piers reach down to whatever lies under it, as a wall's base follows the ground.
  * Only a force-attack aims at a brick. At 0 HP it falls into wreckage that cannot be destroyed;
  * an engineer rebuilds it. The bricks either side of it stand.
  */
@@ -638,7 +640,7 @@ export function isBridge(type: string): type is BridgeType {
 export function bridgeWidth(type: BridgeType): number {
   return type === "bigbridge" ? 44 : 20;
 }
-/** One brick of deck, world px along the span: a timber bay, or a concrete slab between piers. */
+/** One brick of deck, world px along the span: a timber bay, or a stone arch between piers. */
 export function bridgeBrickLength(type: BridgeType): number {
   return type === "bigbridge" ? 32 : 24;
 }
@@ -662,6 +664,15 @@ export function bridgeBuildSeconds(type: BridgeType, length = bridgeBrickLength(
  * Damage a round aimed at a bridge does to it, as a share of the round's own damage.
  * Rifle and MG fire does nothing. Bombs use BOMB_BUILDING_DAMAGE.
  */
+/**
+ * Height units a deck must stand over the water for a boat to sail under it. Lower, the
+ * deck closes the water to every boat.
+ */
+export const BRIDGE_SHIP_CLEARANCE = 2;
+/** Boats too big to pass under any bridge. */
+export function tooTallForBridge(type: EntityType): boolean {
+  return type === "lst" || type === "battleship";
+}
 export const BRIDGE_ROUND_MUL = { ap: 0.5, heat: 0.75, he: 1.5, mortar: 1, artillery: 2, rocket: 1 } as const;
 /**
  * How far past the deck edge a shell's burst still counts against it, world px.
@@ -3877,12 +3888,12 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     capturable: false,
-    blurb: "Timber trestle bridge, one tank wide. Draw it like a wall, from one shore across the water: the engineer lays it bay by bay. Anyone can cross. Only a force-attack aims at it; a few shells drop one bay into the water while the rest stands. The wreckage stays and an engineer can rebuild it.",
+    blurb: "Timber trestle bridge, one tank wide. Draw it like a wall, from where it should start: the deck keeps that ground's level all the way across, over water or dry ground, and the engineer lays it bay by bay. Built high off a bank, small boats sail under it; the Transport LST and the Battle Ship never do. Anyone can cross. Only a force-attack aims at it; a few shells drop one bay into the water while the rest stands. The wreckage stays and an engineer can rebuild it.",
   },
   bigbridge: {
     type: "bigbridge",
     kind: "building",
-    name: "Concrete bridge",
+    name: "Stone bridge",
     letter: "x",
     cost: 24,
     buildSeconds: 1.1,
@@ -3900,7 +3911,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: 0,
     ...UNARMED,
     capturable: false,
-    blurb: "Concrete arch bridge on piers, two tanks wide. Draw it like a wall, from one shore across the water: the engineer pours it span by span. Anyone can cross. Only a force-attack aims at it, and it takes a long shelling to drop one span into the water while the rest stands. The wreckage stays and an engineer can rebuild it.",
+    blurb: "Masonry arch bridge on stone piers, two tanks wide. Draw it like a wall, from where it should start: the deck keeps that ground's level all the way across, over water or dry ground, and the engineer raises it span by span. Built high off a bank, small boats sail under it; the Transport LST and the Battle Ship never do. Anyone can cross. Only a force-attack aims at it, and it takes a long shelling to drop one span into the water while the rest stands. The wreckage stays and an engineer can rebuild it.",
   },
   rifleman: {
     type: "rifleman",

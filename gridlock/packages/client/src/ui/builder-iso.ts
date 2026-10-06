@@ -76,7 +76,7 @@ import { SCRAP_SOFT_REACH } from "../render/scrap-field.js";
 import { treeStamp } from "../render/tree-burn.js";
 import { WALL_STYLE, drawWall, wallJoins, wallTopElev, type WallSection } from "../render/wall.js";
 import type { IsoCam } from "./builder-iso-cam.js";
-import { liveClutter, liveLamps, type Dirty, type Sheet } from "./builder-model.js";
+import { brickDeck, liveClutter, liveLamps, type Dirty, type Sheet } from "./builder-model.js";
 
 /**
  * The Map Builder's "In-game view": the sheet drawn the way a match draws it
@@ -362,10 +362,10 @@ function lotElev(s: Sheet, f: MapFeature): number {
 }
 
 /** A map bridge brick as the layout reads it. */
-function brickOf(f: MapFeature): BrickIn | null {
+function brickOf(s: Sheet, f: MapFeature): BrickIn | null {
   if (!isMapBridge(f.type)) return null;
   const span = { x: (f.x + 0.5) * TILE_SIZE, y: (f.y + 0.5) * TILE_SIZE, facing: featureAngle(f), length: bridgeBrickLength(f.type) };
-  return { type: f.type, span, width: bridgeWidth(f.type) };
+  return { type: f.type, span, width: bridgeWidth(f.type), deck: brickDeck(s, f) };
 }
 
 function wetAt(s: Sheet, wx: number, wy: number): boolean {
@@ -377,12 +377,12 @@ function bridgeLayouts(s: Sheet, list: readonly MapFeature[]): Map<MapFeature, {
   const feats: MapFeature[] = [];
   const bricks: BrickIn[] = [];
   for (const f of list) {
-    const b = brickOf(f);
+    const b = brickOf(s, f);
     if (!b) continue;
     feats.push(f);
     bricks.push(b);
   }
-  const layout = layoutBridges(bricks, (x, y) => groundAt(s, x, y), (x, y) => wetAt(s, x, y));
+  const layout = layoutBridges(bricks, (x, y) => wetAt(s, x, y));
   const out = new Map<MapFeature, { brick: BrickIn; layout: BrickLayout }>();
   feats.forEach((f, i) => out.set(f, { brick: bricks[i]!, layout: layout[i]! }));
   return out;
