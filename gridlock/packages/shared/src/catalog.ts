@@ -4865,6 +4865,15 @@ export function isCyborg(type: EntityType): boolean {
   return type === "cyborg" || type === "cyborgcommander";
 }
 
+/**
+ * Infantry that can take a player structure by standing the capture at point-blank.
+ * The Engineer keeps to repairs and scrap; the Cyborg and the Cyborg Commander are
+ * gun platforms, not occupying troops — they shell a building instead.
+ */
+export function canCaptureType(type: EntityType): boolean {
+  return isInfantryType(type) && type !== "engineer" && !isCyborg(type);
+}
+
 /** Carries a force field that takes hits before his HP does. The Cyborg Commander. */
 export function hasForceField(type: EntityType): boolean {
   return type === "cyborgcommander";

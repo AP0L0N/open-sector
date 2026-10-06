@@ -5,8 +5,8 @@ import {
   CAPTURE_SECONDS_MIN,
   NEUTRAL_OWNER,
   catalog,
+  canCaptureType,
   isCapturable,
-  isInfantryType,
 } from "../catalog.js";
 import { adjacentToBuilding, allies, jetAloft, tileCenter } from "./geo.js";
 import { approachTile, spillGarrison } from "./garrison.js";
@@ -15,8 +15,7 @@ import type { Entity, MatchState } from "./types.js";
 
 export function wantsCapture(unit: Entity, target: Entity): boolean {
   return (
-    unit.type !== "engineer" &&
-    isInfantryType(unit.type) &&
+    canCaptureType(unit.type) &&
     unit.kind === "unit" &&
     !unit.wreck &&
     unit.garrisonedIn == null &&

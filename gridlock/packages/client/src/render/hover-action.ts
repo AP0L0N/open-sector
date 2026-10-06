@@ -5,6 +5,7 @@ import {
   isTransportType,
   SUPPLY_CARGO,
   TRUCK_SEATS,
+  canCaptureType,
   isArmoredType,
   isCapturable,
   isCivilianType,
@@ -128,7 +129,8 @@ export function resolveHoverAction(args: {
     if (occupying && selectedHere && freeInf.length === 0) return "ungarrison";
   }
 
-  if (hit && inf.length > 0 && canCaptureTarget(hit, you, args.allied)) return "capture";
+  // Only troops that stand a capture offer one: no Engineer, no Cyborg, no Cyborg Commander.
+  if (hit && inf.some((e) => canCaptureType(e.type)) && canCaptureTarget(hit, you, args.allied)) return "capture";
   if (hit && ownUnits.length > 0 && isAttackTarget(hit, you, args.allied)) {
     // A walker-only selection cannot demolish walls. A hostile garrison is still a target.
     if (hit.kind === "building" && ownUnits.every((e) => e.type === "walker")) {
