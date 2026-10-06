@@ -53,11 +53,14 @@ import rockUrl from "../assets/terrain/ground-rock.png";
 import { el } from "./dom.js";
 import { drawMapPreview } from "./map-preview.js";
 import * as M from "./builder-model.js";
+import { isoChanged, isoDraw, isoRestamp } from "./builder-iso.js";
+import { isoFit, isoPick, isoScreenOf, isoZoomAt, type IsoCam } from "./builder-iso-cam.js";
 
 const KEY_STORE = "gridlock.mapKey";
 const MINE_STORE = "gridlock.myMaps";
 const AUTO_STORE = "gridlock.builderAutoSave";
 const AUTO_SAVE_MS = 30_000;
+const GAME_VIEW_STORE = "gridlock.builderGameView";
 const PREVIEW_ID = "__builder__";
 const UNDO_DEPTH = 40;
 /** Raise / Lower apply one step this often while the button is held. */
@@ -142,6 +145,9 @@ const line: { points: Pt[]; press: Pt | null } = { points: [], press: null };
 /** Trackpad wheel travel toward the next 15° notch. */
 let wheelCarry = 0;
 const view = { zoom: 0, px: 0, py: 0 };
+/** The stage draws the map as a match does, and picks on its raised ground. */
+let gameView = store()?.getItem(GAME_VIEW_STORE) === "1";
+const isoCam: IsoCam = { zoom: 0, camX: 0, camY: 0 };
 let hover: { x: number; y: number; inside: boolean } = { x: 0, y: 0, inside: false };
 /** The pointer is over the stage canvas (or captured by it mid-stroke). */
 let pointerOver = false;
@@ -222,6 +228,7 @@ function changed(): void {
   dirty = true;
   edits++;
   previewStale = true;
+  isoChanged();
   pendingGround = M.emptyDirty();
   repaintGround();
   queueDraw();
@@ -237,6 +244,8 @@ function openSheet(next: M.Sheet, isDirty: boolean): void {
   newOpen = false;
   selected = null;
   view.zoom = 0;
+  isoCam.zoom = 0;
+  isoChanged();
   ground = null;
   previewStale = true;
 }
@@ -355,6 +364,7 @@ function flushGround(): void {
   const box = pendingGround;
   pendingGround = M.emptyDirty();
   repaintGround(box);
+  if (sheet && gameView) isoRestamp(sheet, box);
 }
 
 // --- stage drawing -------------------------------------------------------------
@@ -453,6 +463,7 @@ function drawStage(): void {
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
   c.fillStyle = "#070605";
   c.fillRect(0, 0, w, h);
+  if (gameView) return drawGameView(c, s, w, h, dpr);
   const z = view.zoom;
   const sx = (x: number): number => view.px + x * z;
   const sy = (y: number): number => view.py + y * z;
@@ -603,31 +614,7 @@ function drawStage(): void {
       c.stroke();
     }
   }
-  if (pointerOver && hover.inside && turningTool()) {
-    const lines = [`Scroll to rotate · ${turnDegrees(tool.turn)}°`];
-    if (line.points.length > 0) lines.push(`${pieces.length} section${pieces.length === 1 ? "" : "s"} · Enter places · click adds a leg · right-click takes one back`);
-    else if (lineTool()) lines.push("Click to start a line · Enter places one section");
-    c.font = "11px 'Share Tech Mono', monospace";
-    c.textAlign = "left";
-    c.textBaseline = "middle";
-    const w = Math.max(...lines.map((t) => c.measureText(t).width)) + 14;
-    const h = lines.length * 16 + 6;
-    let x = sx(hover.x + 0.5) + 18;
-    let y = sy(hover.y + 0.5) + 22;
-    if (x + w > canvas.clientWidth - 4) x -= w + 36;
-    if (y + h > canvas.clientHeight - 4) y -= h + 44;
-    c.fillStyle = "rgba(20, 14, 10, 0.86)";
-    c.strokeStyle = "#e8b84a";
-    c.lineWidth = 1;
-    c.beginPath();
-    c.roundRect(x + 0.5, y + 0.5, w, h, 4);
-    c.fill();
-    c.stroke();
-    lines.forEach((t, i) => {
-      c.fillStyle = i === 0 ? "#e8b84a" : "#e8dcc4";
-      c.fillText(t, x + 7, y + 11 + i * 16);
-    });
-  }
+  if (pointerOver && hover.inside && turningTool()) drawTurnHint(c, sx(hover.x + 0.5), sy(hover.y + 0.5), pieces.length);
   if (pointerOver && isBrush(tool.id) && brushReaches(hover.x, hover.y)) {
     c.strokeStyle = "#fff4dc";
     c.lineWidth = 1.5;
@@ -635,6 +622,92 @@ function drawStage(): void {
     c.arc(sx(hover.x + 0.5), sy(hover.y + 0.5), Math.max(2, (tool.brush + 0.5) * z), 0, Math.PI * 2);
     c.stroke();
   }
+}
+
+/** The rotate and line hint beside the cursor, at screen point (ax, ay). */
+function drawTurnHint(c: CanvasRenderingContext2D, ax: number, ay: number, sections: number): void {
+  const lines = [`Scroll to rotate · ${turnDegrees(tool.turn)}°`];
+  if (line.points.length > 0) lines.push(`${sections} section${sections === 1 ? "" : "s"} · Enter places · click adds a leg · right-click takes one back`);
+  else if (lineTool()) lines.push("Click to start a line · Enter places one section");
+  c.font = "11px 'Share Tech Mono', monospace";
+  c.textAlign = "left";
+  c.textBaseline = "middle";
+  const w = Math.max(...lines.map((t) => c.measureText(t).width)) + 14;
+  const h = lines.length * 16 + 6;
+  let x = ax + 18;
+  let y = ay + 22;
+  if (x + w > c.canvas.clientWidth - 4) x -= w + 36;
+  if (y + h > c.canvas.clientHeight - 4) y -= h + 44;
+  c.fillStyle = "rgba(20, 14, 10, 0.86)";
+  c.strokeStyle = "#e8b84a";
+  c.lineWidth = 1;
+  c.beginPath();
+  c.roundRect(x + 0.5, y + 0.5, w, h, 4);
+  c.fill();
+  c.stroke();
+  lines.forEach((t, i) => {
+    c.fillStyle = i === 0 ? "#e8b84a" : "#e8dcc4";
+    c.fillText(t, x + 7, y + 11 + i * 16);
+  });
+}
+
+/** The stage as the battlefield draws it: same ground bake, props, and building art. */
+function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: number, dpr: number): void {
+  if (isoCam.zoom === 0) isoFit(isoCam, s, w, h);
+  const ghost = hover.inside ? houseGhost() : null;
+  const pieces = lineGhost();
+  const ghosts = (ghost ? [ghost] : pieces).map((f) => ({ f, bad: M.houseProblem(s, f) !== null }));
+  let spawnGhost: { x: number; y: number; bad: boolean } | null = null;
+  if (hover.inside && tool.id === "spawn" && drag?.kind !== "spawn" && M.nextSpawnId(s) !== null && M.spawnIndexAt(s, hover.x, hover.y) < 0) {
+    spawnGhost = { x: hover.x, y: hover.y, bad: M.spawnProblem(s, hover.x, hover.y) !== null };
+  }
+  const loading = isoDraw(c, s, isoCam, w, h, dpr, {
+    selectedFeature: selected?.kind === "feature" ? selected.index : -1,
+    hoverFeature: tool.id === "select" && hover.inside && !drag ? M.featureIndexAt(s, hover.x, hover.y) : -1,
+    selectedSpawn: selected?.kind === "spawn" ? selected.id : 0,
+    ghosts,
+    lineStart: pieces.length > 0 ? (line.points[0] ?? line.press) : null,
+    spawnGhost,
+    brush: pointerOver && isBrush(tool.id) && brushReaches(hover.x, hover.y) ? { x: hover.x, y: hover.y, r: tool.brush } : null,
+  }, queueDraw);
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (pointerOver && hover.inside && turningTool()) {
+    const p = isoScreenOf(s, isoCam, hover.x, hover.y);
+    drawTurnHint(c, p.x, p.y, pieces.length);
+  }
+  // Sprites still loading: look again shortly.
+  if (loading) setTimeout(queueDraw, 200);
+}
+
+/** The stage's "In-game view" checkbox. */
+function gameViewToggle(): HTMLElement {
+  const toggle = el("label", {
+    class: "bld-toggle",
+    attrs: { title: "See and edit the map as the battlefield draws it: real ground, trees, and buildings on raised terrain." },
+  });
+  const box = el("input", { attrs: { type: "checkbox" } });
+  box.checked = gameView;
+  box.addEventListener("change", () => setGameView(box.checked));
+  toggle.append(box, el("span", { text: "In-game view" }));
+  return toggle;
+}
+
+function setGameView(on: boolean): void {
+  gameView = on;
+  isoChanged();
+  try {
+    store()?.setItem(GAME_VIEW_STORE, on ? "1" : "0");
+  } catch {
+    // Private window: the choice lasts this visit.
+  }
+  if (stage) stage.status.textContent = statusHint();
+  queueDraw();
+}
+
+function statusHint(): string {
+  return gameView
+    ? "In-game view · wheel zooms · right-drag pans · Ctrl+Z undoes · V or Esc selects"
+    : "Wheel zooms · right-drag pans · Ctrl+Z undoes · V or Esc selects";
 }
 
 // --- painting --------------------------------------------------------------
@@ -646,13 +719,14 @@ type Drag =
   /** A press on a sandbag or wall line: the release pins its start or its next corner. */
   | { kind: "line" }
   /** Right or middle drag. A right click that never moved takes back a line corner. */
-  | { kind: "pan"; x: number; y: number; px: number; py: number; button: number; moved: boolean }
+  | { kind: "pan"; x: number; y: number; px: number; py: number; button: number; moved: boolean; camX: number; camY: number }
   | { kind: "erase" };
 
 let drag: Drag | null = null;
 
 function toTile(e: PointerEvent | WheelEvent): { x: number; y: number; inside: boolean } {
   const rect = stage!.canvas.getBoundingClientRect();
+  if (gameView && sheet) return isoPick(sheet, isoCam, e.clientX - rect.left, e.clientY - rect.top);
   const x = Math.floor((e.clientX - rect.left - view.px) / view.zoom);
   const y = Math.floor((e.clientY - rect.top - view.py) / view.zoom);
   const inside = !!sheet && x >= 0 && y >= 0 && x < sheet.width && y < sheet.height;
@@ -810,7 +884,7 @@ function onDown(e: PointerEvent): void {
   if (!s || !stage) return;
   stage.canvas.setPointerCapture(e.pointerId);
   if (e.button === 1 || e.button === 2) {
-    drag = { kind: "pan", x: e.clientX, y: e.clientY, px: view.px, py: view.py, button: e.button, moved: false };
+    drag = { kind: "pan", x: e.clientX, y: e.clientY, px: view.px, py: view.py, button: e.button, moved: false, camX: isoCam.camX, camY: isoCam.camY };
     return;
   }
   if (e.button !== 0) return;
@@ -900,6 +974,12 @@ function onMove(e: PointerEvent): void {
   if (!s || !stage) return;
   if (drag?.kind === "pan") {
     if (Math.hypot(e.clientX - drag.x, e.clientY - drag.y) > 4) drag.moved = true;
+    if (gameView) {
+      isoCam.camX = drag.camX - (e.clientX - drag.x) / isoCam.zoom;
+      isoCam.camY = drag.camY - (e.clientY - drag.y) / isoCam.zoom;
+      queueDraw();
+      return;
+    }
     view.px = drag.px + (e.clientX - drag.x);
     view.py = drag.py + (e.clientY - drag.y);
     queueDraw();
@@ -994,6 +1074,11 @@ function onWheel(e: WheelEvent): void {
   const rect = stage.canvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
+  if (gameView) {
+    if (isoCam.zoom > 0) isoZoomAt(isoCam, mx, my, e.deltaY);
+    queueDraw();
+    return;
+  }
   const next = Math.max(0.5, Math.min(24, view.zoom * (e.deltaY < 0 ? 1.15 : 1 / 1.15)));
   view.px = mx - ((mx - view.px) * next) / view.zoom;
   view.py = my - ((my - view.py) * next) / view.zoom;
@@ -1632,7 +1717,7 @@ export function renderBuilder(root: HTMLElement, ctx: Ctx): void {
   const screen = el("div", { class: "screen", attrs: { id: "builder-root" } });
   const wrap = el("div", { class: "builder" });
   const canvas = el("canvas");
-  const status = el("div", { class: "bld-status", text: "Wheel zooms · right-drag pans · Ctrl+Z undoes · V or Esc selects" });
+  const status = el("div", { class: "bld-status", text: statusHint() });
   stage = { root: screen, canvas, status, preview: null, msg: el("div"), checks: null, maps: null, sel: null, turnLabel: null };
   wrap.append(header(ctx));
   const tools = toolsPanel(ctx);
@@ -1641,6 +1726,7 @@ export function renderBuilder(root: HTMLElement, ctx: Ctx): void {
   const stageBox = el("div", { class: "bld-stage panel" });
   stageBox.append(canvas, status);
   if (!sheet || newOpen) stageBox.append(newForm(ctx));
+  else stageBox.append(gameViewToggle());
   wrap.append(tools, stageBox, sidePanel(ctx));
   screen.append(wrap);
   root.append(screen);
