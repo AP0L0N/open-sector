@@ -3,10 +3,10 @@
   "out": "units/flak",
   "sfx": {
     "fire": {
-      "prompt": "World War 2 37mm anti-aircraft gun firing one heavy, punchy thump-bang skyward, a deep pop with a short metallic clatter of the autoloader and a spent shell casing ringing on the ground, outdoors, medium distance, no music, no voice",
-      "duration": 1.2,
+      "source": "imports/bofors-l60.opus",
       "variants": 3,
-      "influence": 0.6
+      "pitch": [1.0, 0.97, 1.03],
+      "lufs": -9
     },
     "die": {
       "prompt": "Anti-aircraft gun position hit by bombs, a blast, ready ammunition clips cooking off in a crackling string of pops, sandbags and steel debris falling, medium distance outdoors, no music, no voice",
