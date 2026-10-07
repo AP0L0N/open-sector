@@ -36,6 +36,8 @@ import {
   type CoverField,
 } from "./elevation.js";
 import { allies, fillHullCover, fillSightOccupy, footprint, inBounds, worldToTile } from "./geo.js";
+import { armSightBlocks, clearSightBlocks, litPush, sweepSight, type LitList } from "./sight-sweep.js";
+export { armSightBlocks, clearSightBlocks };
 import { hiddenSubmarine, sonarSpotted } from "./naval.js";
 import { occupantEye, occupantSightTiles } from "./garrison.js";
 import { fillSmokeMask, smokeCloudTileBounds } from "./smoke.js";
@@ -496,6 +498,7 @@ function paintSpot(
   p: SightParams,
   elev?: ArrayLike<number>,
   cover?: CoverField,
+  out?: LitList,
 ): void {
   if (p.sr <= 0) return;
   const x0 = Math.max(0, p.ox - p.sr);
@@ -505,12 +508,15 @@ function paintSpot(
   for (let y = y0; y <= y1; y++) {
     const row = y * width;
     for (let x = x0; x <= x1; x++) {
-      if (mask[row + x]) continue;
-      if (spotLightsTile(p, x, y, elev, width, height, cover)) mask[row + x] = 1;
+      if (!out && mask[row + x]) continue;
+      if (!spotLightsTile(p, x, y, elev, width, height, cover)) continue;
+      mask[row + x] = 1;
+      if (out) litPush(out, row + x);
     }
   }
 }
 
+/** Paint one eye. With `out`, every tile it lights is listed too, lit already or not, so the list can be re-stamped later. */
 function paintSightParams(
   mask: Uint8Array,
   width: number,
@@ -518,16 +524,18 @@ function paintSightParams(
   p: SightParams,
   elev?: ArrayLike<number>,
   cover?: CoverField,
+  out?: LitList,
 ): void {
   if (cover) cover.ignoreOccupyId = p.ignore;
   for (let y = p.fy; y < p.fy + p.fh; y++) {
     for (let x = p.fx; x < p.fx + p.fw; x++) {
       if (x < 0 || y < 0 || x >= width || y >= height) continue;
       mask[y * width + x] = 1;
+      if (out) litPush(out, y * width + x);
     }
   }
-  paintSight(mask, width, height, p.ox, p.oy, p.radius, elev, cover, p.eye, p.uphill);
-  paintSpot(mask, width, height, p, elev, cover);
+  paintSight(mask, width, height, p.ox, p.oy, p.radius, elev, cover, p.eye, p.uphill, out);
+  paintSpot(mask, width, height, p, elev, cover, out);
 }
 
 export function paintEntitySight(
@@ -559,210 +567,39 @@ function paintSight(
   cover?: CoverField,
   observerEye = 0,
   uphillBonus = 0,
+  out?: LitList,
 ): void {
   if (radius <= 0) return;
   if (!elev) {
-    paintChebyshev(mask, width, height, ox, oy, radius);
+    const x0 = Math.max(0, ox - radius);
+    const x1 = Math.min(width - 1, ox + radius);
+    const y0 = Math.max(0, oy - radius);
+    const y1 = Math.min(height - 1, oy + radius);
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        if (sightDist(x, y, ox, oy) > radius) continue;
+        mask[y * width + x] = 1;
+        if (out) litPush(out, y * width + x);
+      }
+    }
     return;
   }
-  const h0 = elevAtSafe(elev, width, height, ox, oy);
-  const maxR = radius + (uphillBonus > 0 ? HEIGHT_MAX * uphillBonus : 0);
-  paintSightBox(mask, width, height, ox, oy, radius, 0, radius, elev, cover, observerEye, 0, h0);
-  if (maxR > radius) {
-    paintSightBox(mask, width, height, ox, oy, maxR, radius, radius, elev, cover, observerEye, uphillBonus, h0);
-  }
-}
-
-/** Tiles per reach block. A block outside the ring is not scanned tile by tile. */
-const SIGHT_BLOCK = 16;
-
-let sightBlockMin = new Uint8Array(0);
-let sightBlockMax = new Uint8Array(0);
-let sightBlockCols = 0;
-let sightBlocksReady = false;
-
-/** Min and max ground in each block, so a flat ring past catalog sight is skipped. */
-export function armSightBlocks(elev: Uint8Array, width: number, height: number): void {
-  const cols = Math.ceil(width / SIGHT_BLOCK);
-  const rows = Math.ceil(height / SIGHT_BLOCK);
-  const n = cols * rows;
-  if (sightBlockMin.length !== n) {
-    sightBlockMin = new Uint8Array(n);
-    sightBlockMax = new Uint8Array(n);
-  }
-  for (let by = 0; by < rows; by++) {
-    const y0 = by * SIGHT_BLOCK;
-    const y1 = Math.min(height, y0 + SIGHT_BLOCK);
-    for (let bx = 0; bx < cols; bx++) {
-      const x0 = bx * SIGHT_BLOCK;
-      const x1 = Math.min(width, x0 + SIGHT_BLOCK);
-      let lo = 255;
-      let hi = 0;
-      for (let y = y0; y < y1; y++) {
-        const row = y * width;
-        for (let x = x0; x < x1; x++) {
-          const h = elev[row + x]!;
-          if (h < lo) lo = h;
-          if (h > hi) hi = h;
-        }
-      }
-      const i = by * cols + bx;
-      sightBlockMin[i] = lo;
-      sightBlockMax[i] = hi;
-    }
-  }
-  sightBlockCols = cols;
-  sightBlocksReady = true;
-}
-
-export function clearSightBlocks(): void {
-  sightBlocksReady = false;
-}
-
-/**
- * False only when every tile in the rect is outside the sight ring.
- * `minH` / `maxH` may cover a taller tile than the rect holds; that scans more, never less.
- */
-function rectInReach(
-  ox: number,
-  oy: number,
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-  minD: number,
-  boxR: number,
-  catalogR: number,
-  h0: number,
-  uphill: number,
-  minH: number,
-  maxH: number,
-): boolean {
-  const cx = ox < x0 ? x0 : ox > x1 ? x1 : ox;
-  const cy = oy < y0 ? y0 : oy > y1 ? y1 : oy;
-  const near = sightDist(cx, cy, ox, oy);
-  if (near > boxR) return false;
-  const far = Math.max(
-    sightDist(x0, y0, ox, oy),
-    sightDist(x1, y0, ox, oy),
-    sightDist(x0, y1, ox, oy),
-    sightDist(x1, y1, ox, oy),
+  const lit = out ?? sweepScratch;
+  const from = lit.n;
+  sweepSight(
+    { ox, oy, radius, eye: observerEye, uphill: uphillBonus, ignore: cover?.ignoreOccupyId ?? 0 },
+    width,
+    height,
+    elev,
+    cover,
+    lit,
   );
-  if (far < minD) return false;
-  const maxExtra = uphill > 0 ? Math.max(Math.abs(minH - h0), Math.abs(maxH - h0)) * uphill : 0;
-  return near <= catalogR + maxExtra;
+  for (let k = from; k < lit.n; k++) mask[lit.tiles[k]!] = 1;
+  if (!out) lit.n = 0;
 }
 
-function paintSightBox(
-  mask: Uint8Array,
-  width: number,
-  height: number,
-  ox: number,
-  oy: number,
-  boxR: number,
-  minD: number,
-  catalogR: number,
-  elev: ArrayLike<number>,
-  cover: CoverField | undefined,
-  observerEye: number,
-  uphillBonus: number,
-  h0: number,
-): void {
-  const x0 = Math.max(0, ox - boxR);
-  const x1 = Math.min(width - 1, ox + boxR);
-  const y0 = Math.max(0, oy - boxR);
-  const y1 = Math.min(height - 1, oy + boxR);
-  const flags = cover?.losFlags;
-  const flagged =
-    !!cover &&
-    !!flags &&
-    !!cover.smoke &&
-    elev instanceof Uint8Array &&
-    ox >= 0 &&
-    oy >= 0 &&
-    ox < width &&
-    oy < height;
-  if (sightBlocksReady && elev instanceof Uint8Array) {
-    const bx0 = (x0 / SIGHT_BLOCK) | 0;
-    const bx1 = (x1 / SIGHT_BLOCK) | 0;
-    const by0 = (y0 / SIGHT_BLOCK) | 0;
-    const by1 = (y1 / SIGHT_BLOCK) | 0;
-    for (let by = by0; by <= by1; by++) {
-      const brow = by * sightBlockCols;
-      const ty0 = by * SIGHT_BLOCK;
-      for (let bx = bx0; bx <= bx1; bx++) {
-        const tx0 = bx * SIGHT_BLOCK;
-        const ix0 = tx0 > x0 ? tx0 : x0;
-        const iy0 = ty0 > y0 ? ty0 : y0;
-        const ix1 = Math.min(tx0 + SIGHT_BLOCK - 1, x1);
-        const iy1 = Math.min(ty0 + SIGHT_BLOCK - 1, y1);
-        const bi = brow + bx;
-        if (
-          !rectInReach(
-            ox,
-            oy,
-            ix0,
-            iy0,
-            ix1,
-            iy1,
-            minD,
-            boxR,
-            catalogR,
-            h0,
-            uphillBonus,
-            sightBlockMin[bi]!,
-            sightBlockMax[bi]!,
-          )
-        ) {
-          continue;
-        }
-        paintSightRect(mask, width, height, ox, oy, ix0, iy0, ix1, iy1, minD, boxR, catalogR, elev, cover, observerEye, uphillBonus, h0, flags, flagged);
-      }
-    }
-    return;
-  }
-  paintSightRect(mask, width, height, ox, oy, x0, y0, x1, y1, minD, boxR, catalogR, elev, cover, observerEye, uphillBonus, h0, flags, flagged);
-}
-
-function paintSightRect(
-  mask: Uint8Array,
-  width: number,
-  height: number,
-  ox: number,
-  oy: number,
-  x0: number,
-  y0: number,
-  x1: number,
-  y1: number,
-  minD: number,
-  boxR: number,
-  catalogR: number,
-  elev: ArrayLike<number>,
-  cover: CoverField | undefined,
-  observerEye: number,
-  uphillBonus: number,
-  h0: number,
-  flags: Uint8Array | undefined,
-  flagged: boolean,
-): void {
-  for (let y = y0; y <= y1; y++) {
-    const row = y * width;
-    for (let x = x0; x <= x1; x++) {
-      if (mask[row + x]) continue;
-      const d = sightDist(x, y, ox, oy);
-      if (d > boxR || d < minD) continue;
-      const extra = levelSightExtra(h0, elevAtSafe(elev, width, height, x, y), uphillBonus);
-      if (d > catalogR + extra) continue;
-      // `flagged` is only set when the caller saw a Uint8Array height grid, cover, and its LOS flags.
-      const los = flagged
-        ? hasFullLosFlagged(elev as Uint8Array, flags!, cover!, width, ox, oy, x, y, observerEye)
-        : hasFullLos(elev, width, height, ox, oy, x, y, cover, observerEye);
-      if (!los) continue;
-      if (cover && coverSmokeAt(cover, width, height, x, y) && d > SMOKE_PEEK_TILES) continue;
-      mask[row + x] = 1;
-    }
-  }
-}
+/** Lit tiles of a sweep nobody asked to keep. */
+const sweepScratch: LitList = { tiles: new Int32Array(4096), n: 0 };
 
 function coverIgnoreId(e: { kind: string; id?: number; garrisonedIn?: number | null }): number {
   if (e.kind === "building") return e.id ?? 0;
@@ -890,16 +727,24 @@ export function coverTerrainFromSnapshot(
 }
 
 /**
- * One observer's lit tiles, kept while it holds still. `local` fingerprints
- * the static cover plus any hull or smoke inside its sight box.
+ * One observer's lit tiles, kept while it holds still. `hulls` fingerprints
+ * the static cover plus the armored hulls near the eye, `smoke` the static
+ * cover plus every cloud inside its sight box.
  */
 type SightMemo = {
   p: SightParams;
-  local: number;
-  /** Rebuilds seen with the same inputs. */
-  calls: number;
+  hulls: number;
+  smoke: number;
+  /** Tick of the sweep that made `tiles`. */
+  sweptTick: number;
   tiles: Int32Array | null;
 };
+
+/**
+ * Ticks an eye keeps its tiles after a hull near it moved. The hull's old
+ * shadow lingers that long; a fresh sweep comes sooner for any other change.
+ */
+export const HULL_STALE_TICKS = 5;
 
 const sightMemos = new WeakMap<MatchState, Map<number, SightMemo>>();
 
@@ -924,7 +769,7 @@ type SightEnv = {
 };
 
 function sightEnvOf(state: MatchState, cover: CoverField): SightEnv {
-  let base = 2166136261;
+  let base = mix(2166136261, state.digRev);
   const terrain = state.terrain;
   const occupy = cover.occupy;
   for (let i = 0; i < terrain.length; i++) base = mix(base, terrain[i]! * 31 + occupy[i]!);
@@ -955,38 +800,42 @@ function sightEnvOf(state: MatchState, cover: CoverField): SightEnv {
   };
 }
 
-/** Hash of every hull and smoke tile inside the observer's sight box. */
-function localCoverKey(env: SightEnv, p: SightParams, width: number, height: number): number {
-  const r = sightBoxRadius(p, true);
+/**
+ * A hull farther off than this throws a shadow too thin to re-sweep the eye
+ * over each time it moves; sealing takes such slivers out anyway.
+ */
+const HULL_MEMO_TILES = 12;
+
+/** Hash of the static cover and of every tile of `boxes` within `r` of the eye. */
+function coverKeyNear(env: SightEnv, boxes: TileBox[], grid: ArrayLike<number>, p: SightParams, r: number, width: number, height: number): number {
+  let h = env.base;
   const bx0 = Math.max(0, p.ox - r);
   const bx1 = Math.min(width - 1, p.ox + r);
   const by0 = Math.max(0, p.oy - r);
   const by1 = Math.min(height - 1, p.oy + r);
-  let h = env.base;
-  const hashBoxes = (boxes: TileBox[], grid: ArrayLike<number>): void => {
-    for (const b of boxes) {
-      const x0 = Math.max(bx0, b.x0);
-      const x1 = Math.min(bx1, b.x1);
-      const y0 = Math.max(by0, b.y0);
-      const y1 = Math.min(by1, b.y1);
-      if (x0 > x1 || y0 > y1) continue;
-      h = mix(h, b.id);
-      h = mix(h, x0);
-      h = mix(h, y0);
-      h = mix(h, x1);
-      h = mix(h, y1);
-      for (let y = y0; y <= y1; y++) {
-        for (let x = x0; x <= x1; x++) h = mix(h, grid[y * width + x]!);
-      }
+  for (const b of boxes) {
+    const x0 = Math.max(bx0, b.x0);
+    const x1 = Math.min(bx1, b.x1);
+    const y0 = Math.max(by0, b.y0);
+    const y1 = Math.min(by1, b.y1);
+    if (x0 > x1 || y0 > y1) continue;
+    h = mix(h, b.id);
+    h = mix(h, x0);
+    h = mix(h, y0);
+    h = mix(h, x1);
+    h = mix(h, y1);
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) h = mix(h, grid[y * width + x]!);
     }
-  };
-  hashBoxes(env.hulls, env.hull);
-  h = mix(h, -1);
-  hashBoxes(env.clouds, env.smoke);
+  }
   return h;
 }
 
 let losFlagScratch = new Uint8Array(0);
+/** Why memos were rebuilt, for benchmarks. */
+export const memoStats = { hit: 0, fresh: 0, smoke: 0, params: 0, hulls: 0 };
+/** The tiles of the eye being swept, kept in its memo. */
+const sweepKeep: LitList = { tiles: new Int32Array(8192), n: 0 };
 
 /** Allied observers, widest sight first, with the sight they paint. */
 function alliedSight(state: MatchState, playerId: string): { e: Entity; p: SightParams }[] {
@@ -1034,6 +883,8 @@ type LazyVision = {
   filled: Int8Array;
   /** After also hiding small seen islands. */
   sealed: Int8Array;
+  /** Each eye's swept disc, made the first time a tile near it is asked. */
+  discs: Map<SightParams, Set<number>>;
 };
 
 const lazyVisions = new WeakMap<MatchState, Map<string, LazyVision>>();
@@ -1085,12 +936,14 @@ function lazyVisionOf(state: MatchState, playerId: string, key: number): LazyVis
   const losFlags = hit?.cover.losFlags ?? new Uint8Array(n);
   fillLosFlags(cover, losFlags);
   cover.losFlags = losFlags;
+  armSightBlocks(state.heights, state.width, state.height, state.digRev);
   const lazy: LazyVision = {
     key,
     observers,
     buckets,
     cols,
     cover,
+    discs: new Map(),
     raw: hit?.raw ?? new Int8Array(n),
     filled: hit?.filled ?? new Int8Array(n),
     sealed: hit?.sealed ?? new Int8Array(n),
@@ -1102,8 +955,9 @@ function lazyVisionOf(state: MatchState, playerId: string, key: number): LazyVis
   return lazy;
 }
 
-/** Same test as `paintSight`, for one tile. */
+/** Same test as `paintSightParams`, for one tile. The eye's disc is swept once per picture and kept. */
 function observerLightsTile(
+  lazy: LazyVision,
   p: SightParams,
   x: number,
   y: number,
@@ -1113,30 +967,18 @@ function observerLightsTile(
   cover: CoverField,
 ): boolean {
   if (p.fw > 0 && x >= p.fx && x < p.fx + p.fw && y >= p.fy && y < p.fy + p.fh) return true;
-  if (eyeLightsTile(p, x, y, elev, width, height, cover)) return true;
-  return spotLightsTile(p, x, y, elev, width, height, cover);
-}
-
-function eyeLightsTile(
-  p: SightParams,
-  x: number,
-  y: number,
-  elev: ArrayLike<number>,
-  width: number,
-  height: number,
-  cover: CoverField,
-): boolean {
-  if (p.radius <= 0) return false;
-  const d = sightDist(x, y, p.ox, p.oy);
-  if (d > p.radius) {
-    if (p.uphill <= 0 || d > p.radius + HEIGHT_MAX * p.uphill) return false;
-    const h0 = elevAtSafe(elev, width, height, p.ox, p.oy);
-    if (d > p.radius + levelSightExtra(h0, elevAtSafe(elev, width, height, x, y), p.uphill)) return false;
+  if (p.radius > 0) {
+    let disc = lazy.discs.get(p);
+    if (!disc) {
+      cover.ignoreOccupyId = p.ignore;
+      const out: LitList = { tiles: new Int32Array(1024), n: 0 };
+      sweepSight(p, width, height, elev, cover, out);
+      disc = new Set(out.tiles.subarray(0, out.n));
+      lazy.discs.set(p, disc);
+    }
+    if (disc.has(y * width + x)) return true;
   }
-  cover.ignoreOccupyId = p.ignore;
-  if (!losClear(elev, width, height, p.ox, p.oy, x, y, cover, p.eye)) return false;
-  if (coverSmokeAt(cover, width, height, x, y) && d > SMOKE_PEEK_TILES) return false;
-  return true;
+  return spotLightsTile(p, x, y, elev, width, height, cover);
 }
 
 /** One sight ray, on the flagged fast path when the cover carries `losFlags` (same test as `paintSightBox`). */
@@ -1180,7 +1022,7 @@ function lazyRaw(state: MatchState, lazy: LazyVision, i: number): number {
   let lit = 0;
   const near = lazy.buckets[((y / LAZY_CELL) | 0) * lazy.cols + ((x / LAZY_CELL) | 0)] ?? lazy.observers;
   for (const p of near) {
-    if (observerLightsTile(p, x, y, state.heights, width, state.height, lazy.cover)) {
+    if (observerLightsTile(lazy, p, x, y, state.heights, width, state.height, lazy.cover)) {
       lit = 1;
       break;
     }
@@ -1294,30 +1136,45 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
   const observers = alliedSight(state, playerId);
   const memo = sightMemoOf(state);
   const env = sightEnvOf(state, cover);
-  const movers: SightParams[] = [];
+  const movers: { id: number; p: SightParams }[] = [];
   for (const { e, p } of observers) {
-    const local = localCoverKey(env, p, width, height);
+    const box = sightBoxRadius(p, true);
+    const hulls = coverKeyNear(env, env.hulls, env.hull, p, Math.min(box, HULL_MEMO_TILES), width, height);
+    const smoke = coverKeyNear(env, env.clouds, env.smoke, p, box, width, height);
     const m = memo.get(e.id);
-    if (m && m.tiles && m.local === local && sameSightParams(m.p, p)) {
+    if (
+      m &&
+      m.tiles &&
+      m.smoke === smoke &&
+      sameSightParams(m.p, p) &&
+      (m.hulls === hulls || state.tick - m.sweptTick < HULL_STALE_TICKS)
+    ) {
       const tiles = m.tiles;
       for (let i = 0; i < tiles.length; i++) mask[tiles[i]!] = 1;
+      memoStats.hit++;
       continue;
     }
-    if (!m || m.local !== local || !sameSightParams(m.p, p)) {
-      memo.set(e.id, { p, local, calls: 0, tiles: null });
-    }
-    movers.push(p);
+    if (!m || !m.tiles) memoStats.fresh++;
+    else if (m.smoke !== smoke) memoStats.smoke++;
+    else if (!sameSightParams(m.p, p)) memoStats.params++;
+    else memoStats.hulls++;
+    memo.set(e.id, { p, hulls, smoke, sweptTick: state.tick, tiles: null });
+    movers.push({ id: e.id, p });
   }
-  // Tiles an earlier observer lit are skipped, so movers only pay for new ground.
+  // An eye that held still re-stamped its kept tiles above; only the movers sweep, and keep theirs.
   armLosFastPath(state.heights, losFlagScratch, width, height);
-  armSightBlocks(state.heights, width, height);
+  armSightBlocks(state.heights, width, height, state.digRev);
   try {
-    for (const p of movers) paintSightParams(mask, width, height, p, state.heights, cover);
+    for (const { id, p } of movers) {
+      sweepKeep.n = 0;
+      paintSightParams(mask, width, height, p, state.heights, cover, sweepKeep);
+      const m = memo.get(id);
+      if (m) m.tiles = sweepKeep.tiles.slice(0, sweepKeep.n);
+    }
     for (const id of memo.keys()) if (!state.entities.has(id)) memo.delete(id);
     sealFovIslands(mask, width, height);
   } finally {
     clearLosFastPath();
-    clearSightBlocks();
   }
   state.visionByPlayer.set(playerId, mask);
   state.visionKeyByPlayer.set(playerId, key);
@@ -1392,6 +1249,7 @@ export function visionMaskFromSnapshot(
     (a, b) =>
       catalogSight(b, elev, width, height, tileSize) - catalogSight(a, elev, width, height, tileSize),
   );
+  if (elev) armSightBlocks(elev, width, height);
   for (const e of allied) {
     const sightTiles = snapshotSightTiles(snap, e, elev, width, height, tileSize);
     const observerEye = snapshotOccupantEye(snap, e);

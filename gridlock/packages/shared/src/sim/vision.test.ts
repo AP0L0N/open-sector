@@ -17,6 +17,7 @@ import { fillSmokeMask, spawnSmokeCloud } from "./smoke.js";
 import { snapshotFor } from "./snapshot.js";
 import {
   armSightBlocks,
+  HULL_STALE_TICKS,
   canSeeEntity,
   clearSightBlocks,
   decodeVisionRuns,
@@ -499,6 +500,8 @@ describe("armored hull cover", () => {
     const blocked = visionMask(state, a);
     assert.equal(tileOnMask(blocked, state.width, ox + 12, oy), false);
     tank.y = tileCenter(oy + 8, ts);
+    // The eye keeps the hull's old shadow a few ticks, then sweeps again.
+    state.tick += HULL_STALE_TICKS;
     const opened = visionMask(state, a);
     assert.notEqual(opened, blocked);
     assert.equal(tileOnMask(opened, state.width, ox + 12, oy), true);
@@ -636,7 +639,8 @@ describe("visionMask sight cache", () => {
     for (let t = 0; t < 8; t++) {
       for (const u of walkers) u.x += ts;
       if (t === 3) spawnSmokeCloud(state, tileCenter(55, ts), tileCenter(58, ts), 0, 1);
-      state.tick += 1;
+      // Hull shadows may lag HULL_STALE_TICKS; past that the picture must equal a fresh paint.
+      state.tick += HULL_STALE_TICKS;
       const got = visionMask(state, a);
       const want = freshMask(state, a);
       assert.deepEqual(got, want, `step ${t}`);
