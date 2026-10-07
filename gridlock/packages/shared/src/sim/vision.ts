@@ -944,7 +944,8 @@ function lazyVisionOf(state: MatchState, playerId: string, key: number): LazyVis
     byPlayer = new Map();
     lazyVisions.set(state, byPlayer);
   }
-  const hit = byPlayer.get(playerId);
+  const side = sightSideOf(state, playerId);
+  const hit = byPlayer.get(side);
   if (hit && hit.key === key) return hit;
   const n = state.width * state.height;
   const live = coverOf(state);
@@ -998,7 +999,7 @@ function lazyVisionOf(state: MatchState, playerId: string, key: number): LazyVis
   lazy.raw.fill(-1);
   lazy.filled.fill(-1);
   lazy.sealed.fill(-1);
-  byPlayer.set(playerId, lazy);
+  byPlayer.set(side, lazy);
   return lazy;
 }
 
@@ -1168,11 +1169,21 @@ function lazyEntityVisible(state: MatchState, playerId: string, key: number, e: 
   return lazyTileLit(state, lazy, worldToTile(e.x, state.tileSize), worldToTile(e.y, state.tileSize));
 }
 
+/**
+ * Whose picture a player reads: allies on a team see with the same eyes, so
+ * they share one mask, one key and one lazy picture.
+ */
+function sightSideOf(state: MatchState, playerId: string): string {
+  const p = state.players.get(playerId);
+  return p && p.team > 0 ? `team:${p.team}` : playerId;
+}
+
 export function visionMask(state: MatchState, playerId: string): Uint8Array {
   const key = visionKey(state, playerId);
-  const cached = state.visionByPlayer.get(playerId);
-  if (cached && state.visionKeyByPlayer.get(playerId) === key) return cached;
-  lazyVisions.get(state)?.delete(playerId);
+  const side = sightSideOf(state, playerId);
+  const cached = state.visionByPlayer.get(side);
+  if (cached && state.visionKeyByPlayer.get(side) === key) return cached;
+  lazyVisions.get(state)?.delete(side);
   const width = state.width;
   const height = state.height;
   const mask = new Uint8Array(width * height);
@@ -1220,8 +1231,8 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
   } finally {
     clearLosFastPath();
   }
-  state.visionByPlayer.set(playerId, mask);
-  state.visionKeyByPlayer.set(playerId, key);
+  state.visionByPlayer.set(side, mask);
+  state.visionKeyByPlayer.set(side, key);
   state.visionTick = state.tick;
   return mask;
 }
@@ -1435,8 +1446,9 @@ export function canSeeEntity(state: MatchState, playerId: string, e: Entity, mas
 function entityVisibleToPlayer(state: MatchState, playerId: string, e: Entity): boolean {
   if (FOV_ISLAND_LIMIT > 0) {
     const key = visionKey(state, playerId);
-    const cached = state.visionByPlayer.get(playerId);
-    if (cached && state.visionKeyByPlayer.get(playerId) === key) {
+    const side = sightSideOf(state, playerId);
+    const cached = state.visionByPlayer.get(side);
+    if (cached && state.visionKeyByPlayer.get(side) === key) {
       return entityOnMask(e, cached, state.width, state.height, state.tileSize);
     }
     return lazyEntityVisible(state, playerId, key, e);

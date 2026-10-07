@@ -379,6 +379,23 @@ describe("visionMask cache", () => {
     assert.notEqual(next, first);
     assert.equal(visionMask(state, a), next);
   });
+
+  it("allies on one team read one mask", () => {
+    const r = createRoom({ id: "TEAM", hostId: "A", hostName: "Alpha", mapId: "yard-64", maxSlots: 8 });
+    assert.ok(r.ok);
+    const room = r.value;
+    assert.equal(joinRoom(room, "B", "Bravo").ok, true);
+    updateSelf(room, "A", { ready: true, spawnId: 1, team: 1 });
+    updateSelf(room, "B", { ready: true, spawnId: 4, team: 1 });
+    const started = startMatch(room, "A", () => 0);
+    assert.ok(started.ok);
+    const state = createMatch(room, started.value);
+    const mask = visionMask(state, "A");
+    assert.equal(visionMask(state, "B"), mask, "the same picture, not a second build of it");
+    const rigB = [...state.entities.values()].find((e) => e.ownerId === "B" && e.kind === "unit");
+    assert.ok(rigB);
+    assert.equal(tileOnMask(mask, state.width, rigB.tileX, rigB.tileY), true, "A sees through B's eyes");
+  });
 });
 
 function clearCover(state: MatchState): void {
