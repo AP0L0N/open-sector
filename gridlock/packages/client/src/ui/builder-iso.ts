@@ -138,6 +138,8 @@ export interface UnitOverlay {
   garrisons: ReadonlyMap<number, { count: number; cap: number }>;
   /** A rotate order's aim: the selected unit turns toward this tile. */
   aim: { x: number; y: number } | null;
+  /** Tile the rotate line starts from, when that is not the picture's selected unit. */
+  aimFrom?: { x: number; y: number } | null;
   /** Spotlight beams to outline: a Watch Tower's, a Fire-Control Tower's, or a Battle Ship's, from world point (x, y), heading in radians. */
   beams: readonly SpotBeam[];
   /** Rings on tiles the last picture has not caught up with. */
@@ -893,20 +895,18 @@ export function isoDraw(
   if (uo) {
     for (const beam of uo.beams) drawBeam(c, s, beam, z);
     for (const route of uo.routes) drawRoute(c, s, route, z);
-    if (uo.aim && uo.selected >= 0) {
-      const u = uo.list[uo.selected];
-      if (u) {
-        const a = at((u.x + 0.5) * TILE_SIZE, (u.y + 0.5) * TILE_SIZE, heightOf(s, u.x, u.y));
-        const b = at((uo.aim.x + 0.5) * TILE_SIZE, (uo.aim.y + 0.5) * TILE_SIZE, heightOf(s, uo.aim.x, uo.aim.y));
-        c.strokeStyle = "#e8b84a";
-        c.lineWidth = 1.5 / z;
-        c.setLineDash([5 / z, 4 / z]);
-        c.beginPath();
-        c.moveTo(a.x, a.y);
-        c.lineTo(b.x, b.y);
-        c.stroke();
-        c.setLineDash([]);
-      }
+    const aimFrom = uo.aimFrom ?? (uo.selected >= 0 ? uo.list[uo.selected] : null);
+    if (uo.aim && aimFrom) {
+      const a = at((aimFrom.x + 0.5) * TILE_SIZE, (aimFrom.y + 0.5) * TILE_SIZE, heightOf(s, aimFrom.x, aimFrom.y));
+      const b = at((uo.aim.x + 0.5) * TILE_SIZE, (uo.aim.y + 0.5) * TILE_SIZE, heightOf(s, uo.aim.x, uo.aim.y));
+      c.strokeStyle = "#e8b84a";
+      c.lineWidth = 1.5 / z;
+      c.setLineDash([5 / z, 4 / z]);
+      c.beginPath();
+      c.moveTo(a.x, a.y);
+      c.lineTo(b.x, b.y);
+      c.stroke();
+      c.setLineDash([]);
     }
     // Men inside a building: a count over its roof, as the match's garrison pips read.
     c.textAlign = "center";

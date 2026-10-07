@@ -319,6 +319,8 @@ let renderPending = false;
 let rendering = false;
 /** Bumps on every edit so a build can see whether more landed while it ran. */
 let renderEpoch = 0;
+/** Bumps when another map is opened, so a build in flight does not publish over it. */
+let renderTicket = 0;
 let drawQueued = false;
 let previewTimer: ReturnType<typeof setTimeout> | null = null;
 /** The cached preview bake no longer matches the sheet. */
@@ -460,6 +462,7 @@ function paintRenderButton(): void {
   b.hidden = !open;
   b.disabled = !renderChangesEnabled(open, renderPending, rendering);
   b.title = rendering ? "Building" : renderPending ? "Build the map from the edits since the last render (Space)" : "No edits since the last render";
+  if (stage) stage.status.textContent = withRenderHint(stage.status.textContent ?? "");
 }
 
 function nextFrame(): Promise<void> {
@@ -500,11 +503,15 @@ async function renderChanges(): Promise<void> {
   await nextFrame();
   await nextFrame();
   const epoch = renderEpoch;
-  const next = cloneSheet(sheet);
+  const ticket = renderTicket;
+  const source = sheet;
+  const next = cloneSheet(source);
   isoHoldBake(true);
   let built = false;
   try {
     const painted = await paintGroundOf(next);
+    // The player opened another map while this one was building. Leave that picture alone.
+    if (ticket !== renderTicket || sheet !== source) return;
     isoHoldBake(false);
     const picture = shown && shown.width === next.width && shown.height === next.height ? shown : next;
     if (picture !== next) copyOnto(picture, next);
@@ -538,6 +545,7 @@ function openSheet(next: M.Sheet, isDirty: boolean): void {
   selected = null;
   view.zoom = 0;
   isoCam.zoom = 0;
+  renderTicket++;
   shown = null;
   adoptPicture(next);
   renderPending = false;
@@ -954,8 +962,9 @@ function drawStage(): void {
     c.font = `700 ${Math.round(r * 1.2)}px "Share Tech Mono", monospace`;
     c.fillText(String(sp.id), x, y + 1);
   }
-  if (renderPending && selected?.kind === "spawn") {
-    const moved = live.spawns.find((p) => p.id === selected.id);
+  const selSpawn = selected?.kind === "spawn" ? selected : null;
+  if (renderPending && selSpawn) {
+    const moved = live.spawns.find((p) => p.id === selSpawn.id);
     if (moved) {
       c.setLineDash([4, 3]);
       c.strokeStyle = "#e8b84a";
@@ -1031,9 +1040,22 @@ function drawStage(): void {
   if (drag?.kind === "move") {
     const moving = live.features[drag.index];
     if (moving) drawHouse(moving, "rgba(125,255,106,0.4)", "#7dff6a");
-  } else if (renderPending && picked) {
+  } else if (renderPending && picked && selected?.kind === "feature" && offPictureFeature(selected.index, picked)) {
+    // The last picture still shows it where it was. This is the spot the edits moved it to.
     drawHouse(picked, "rgba(232,184,74,0.28)", "#e8b84a");
   }
+}
+
+/** The live building is not the one the last picture drew at this index. */
+function offPictureFeature(index: number, f: MapFeature): boolean {
+  const old = shown?.features[index];
+  return !old || old.type !== f.type || old.x !== f.x || old.y !== f.y || old.facing !== f.facing || old.turn !== f.turn;
+}
+
+/** The live unit is not the one the last picture drew at this index. */
+function offPictureUnit(index: number, u: MapUnit): boolean {
+  const old = shown?.units[index];
+  return !old || old.type !== u.type || old.x !== u.x || old.y !== u.y || old.facing !== u.facing || !!old.inside !== !!u.inside;
 }
 
 /** Units on the plan: grey discs with a heading tick, routes dashed, a count on each held building. */
@@ -1089,7 +1111,19 @@ function drawPlanUnits(c: CanvasRenderingContext2D, s: M.Sheet, sx: (x: number) 
   });
   if (renderPending && selected?.kind === "unit") {
     const u = live.units[selected.index];
-    if (u && !u.inside) disc(u, "#e8b84a", 0.85);
+    if (u && !u.inside) {
+      if (offPictureUnit(selected.index, u)) disc(u, "#e8b84a", 0.85);
+      else {
+        const cx = sx(u.x + 0.5);
+        const cy = sy(u.y + 0.5);
+        const r = Math.max(3, Math.min(9, (catalog(u.type).radius / TILE_SIZE) * z));
+        c.strokeStyle = "#e8b84a";
+        c.lineWidth = 2;
+        c.beginPath();
+        c.arc(cx, cy, r + 3, 0, Math.PI * 2);
+        c.stroke();
+      }
+    }
   }
   if (renderPending && tool.id === "select" && hover.inside && !drag) {
     const hi = standingUnitAt(live, hover.x, hover.y);
@@ -1235,9 +1269,13 @@ function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
   const pieces = lineGhost();
   const road = roadGhost();
   const ghosts = (ghost ? [ghost] : pieces).map((f) => ({ f, bad: M.houseProblem(live, f) !== null }));
-  const held = drag?.kind === "move" ? live.features[drag.index] : renderPending && selected?.kind === "feature" ? live.features[selected.index] : undefined;
-  if (held) ghosts.push({ f: held, bad: false });
+  const moving = drag?.kind === "move" ? live.features[drag.index] : undefined;
+  const selectedF = selected?.kind === "feature" ? live.features[selected.index] : undefined;
+  const relocated = !!selectedF && selected?.kind === "feature" && offPictureFeature(selected.index, selectedF);
+  if (moving) ghosts.push({ f: moving, bad: false });
+  else if (renderPending && relocated && selectedF) ghosts.push({ f: selectedF, bad: false });
   const frames: { f: MapFeature; color: string }[] = [];
+  if (renderPending && selectedF && !relocated && !moving) frames.push({ f: selectedF, color: "#e8b84a" });
   if (renderPending && hover.inside && !drag) {
     const fi =
       tool.id === "select"
@@ -1246,7 +1284,7 @@ function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
           ? M.garrisonHostAt(live, tool.unit, hover.x, hover.y)
           : -1;
     const f = fi >= 0 ? live.features[fi] : undefined;
-    if (f && f !== held) frames.push({ f, color: "rgba(255,244,220,0.7)" });
+    if (f && f !== moving && f !== selectedF) frames.push({ f, color: "rgba(255,244,220,0.7)" });
   }
   let spawnGhost: { x: number; y: number; bad: boolean } | null = null;
   if (hover.inside && tool.id === "spawn" && drag?.kind !== "spawn" && M.nextSpawnId(live) !== null && M.spawnIndexAt(live, hover.x, hover.y) < 0) {
@@ -1296,10 +1334,12 @@ function unitOverlay(world: M.Sheet): UnitOverlay {
   const placing = unitGhost(live);
   const dragged = drag?.kind === "unit" ? live.units[drag.index] : undefined;
   const held = !dragged && renderPending && selected?.kind === "unit" ? live.units[selected.index] : undefined;
-  const stood = dragged ?? held;
+  const relocated = !!held && selected?.kind === "unit" && offPictureUnit(selected.index, held);
+  const stood = dragged ?? (relocated ? held : undefined);
   const ghost =
     placing ?? (stood && !stood.inside ? { type: stood.type, x: stood.x, y: stood.y, facing: stood.facing, bad: false } : null);
   const pins: { x: number; y: number; color: string; dashed?: boolean }[] = [];
+  if (held && !relocated && !held.inside) pins.push({ x: held.x, y: held.y, color: "#e8b84a" });
   if (renderPending && tool.id === "select" && hover.inside && !drag) {
     const hi = standingUnitAt(live, hover.x, hover.y);
     if (hi >= 0 && !(selected?.kind === "unit" && selected.index === hi)) {
@@ -1315,6 +1355,8 @@ function unitOverlay(world: M.Sheet): UnitOverlay {
     routes: pictureRoutes(world),
     garrisons: garrisonCounts(world),
     aim: unitMode === "rotate" && hover.inside ? { x: hover.x, y: hover.y } : null,
+    aimFrom:
+      renderPending && unitMode === "rotate" && selected?.kind === "unit" ? (live.units[selected.index] ?? null) : null,
     beams: spotBeams(),
     pins,
   };
@@ -1338,19 +1380,28 @@ function towerSpot(f: MapFeature): number {
 
 /** Beams to outline: the selected tower's or Battle Ship's, swung toward the cursor while it is being aimed. */
 function spotBeams(): SpotBeam[] {
-  if (renderPending && unitMode !== "spot") return [];
   const out: SpotBeam[] = [];
   const aiming = unitMode === "spot" && hover.inside;
-  const f = selectedTower();
-  if (f) {
-    const deg = aiming ? spotToward(towerTile(f), hover.x, hover.y, towerSpot(f)) : towerSpot(f);
-    const r = featureRect(f);
-    out.push({ x: r.cx * TILE_SIZE, y: r.cy * TILE_SIZE, facing: (deg * Math.PI) / 180, strong: true });
+  const tower = selectedTower();
+  if (tower && selected?.kind === "feature") {
+    const pictured = renderPending && !aiming ? shown?.features[selected.index] : tower;
+    const drawn = pictured && hasSpotlight(pictured.type) ? pictured : aiming ? tower : null;
+    if (drawn) {
+      const from = aiming ? tower : drawn;
+      const deg = aiming ? spotToward(towerTile(tower), hover.x, hover.y, towerSpot(tower)) : towerSpot(drawn);
+      const r = featureRect(from);
+      out.push({ x: r.cx * TILE_SIZE, y: r.cy * TILE_SIZE, facing: (deg * Math.PI) / 180, strong: true });
+    }
   }
   const u = selectedUnit();
-  if (u && hasSpotlight(u.type)) {
-    const deg = aiming ? spotToward(u, hover.x, hover.y, u.spot ?? u.facing) : (u.spot ?? u.facing);
-    out.push({ x: (u.x + 0.5) * TILE_SIZE, y: (u.y + 0.5) * TILE_SIZE, facing: (deg * Math.PI) / 180, strong: true });
+  if (u && hasSpotlight(u.type) && selected?.kind === "unit") {
+    const pictured = renderPending && !aiming ? shown?.units[selected.index] : u;
+    const drawn = pictured && hasSpotlight(pictured.type) ? pictured : aiming ? u : null;
+    if (drawn && !drawn.inside) {
+      const from = aiming ? u : drawn;
+      const deg = aiming ? spotToward(u, hover.x, hover.y, u.spot ?? u.facing) : (drawn.spot ?? drawn.facing);
+      out.push({ x: (from.x + 0.5) * TILE_SIZE, y: (from.y + 0.5) * TILE_SIZE, facing: (deg * Math.PI) / 180, strong: true });
+    }
   }
   return out;
 }
@@ -1433,11 +1484,18 @@ function setGameView(on: boolean): void {
   queueDraw();
 }
 
+const RENDER_HINT = " · Space renders changes";
+
+function withRenderHint(text: string): string {
+  const base = text.endsWith(RENDER_HINT) ? text.slice(0, -RENDER_HINT.length) : text;
+  return renderPending ? base + RENDER_HINT : base;
+}
+
 function statusHint(): string {
   const base = gameView
     ? "In-game view · wheel zooms · arrows or right-drag pan · Ctrl+Z undoes · V or Esc selects"
     : "Wheel zooms · arrows or right-drag pan · Ctrl+Z undoes · V or Esc selects";
-  return renderPending ? `${base} · Space renders changes` : base;
+  return withRenderHint(base);
 }
 
 // --- painting --------------------------------------------------------------
@@ -2002,9 +2060,9 @@ function onMove(e: PointerEvent): void {
   if (t.inside) {
     const i = t.y * s.width + t.x;
     const label = isMountainCliff(s.tiles, s.heights, s.width, s.height, t.x, t.y) ? "rock" : groundName(s.tiles[i]!, s.ground[i]);
-    stage.status.textContent = `${t.x}, ${t.y} · height ${s.heights[i]} · ${label}`;
+    stage.status.textContent = withRenderHint(`${t.x}, ${t.y} · height ${s.heights[i]} · ${label}`);
   } else if (moved) {
-    stage.status.textContent = "Off the map";
+    stage.status.textContent = withRenderHint("Off the map");
   }
   if (!moved) return;
   if (drag?.kind === "brush") {
@@ -3263,7 +3321,7 @@ export function renderBuilder(root: HTMLElement, ctx: Ctx): void {
   });
   renderBtn.addEventListener("click", () => void renderChanges());
   const veil = el("div", { class: "bld-veil" });
-  veil.hidden = true;
+  veil.hidden = !rendering;
   const building = el("div", { class: "bld-building", attrs: { role: "status", "aria-live": "polite" } });
   const dots = el("span", { class: "bld-building-dots", attrs: { "aria-hidden": "true" } });
   dots.append(el("i"), el("i"), el("i"));
