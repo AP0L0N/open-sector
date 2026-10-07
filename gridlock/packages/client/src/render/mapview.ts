@@ -124,6 +124,7 @@ import {
   type MapDef,
   type MatchSnapshot,
   type MineView,
+  type ProjectileView,
   type ShellHoleView,
   wallRiseLimit,
   wallRunTops,
@@ -792,6 +793,12 @@ export class MapView {
   private curr: MatchSnapshot;
   private prev: MatchSnapshot | null = null;
   private prevById = new Map<number, EntityView>();
+  /** The current snapshot's entities by id, built once per snapshot: lookups per impact, shot and frame stay cheap. */
+  private currById = new Map<number, EntityView>();
+  /** The previous snapshot's projectiles, sonar contacts and crates by id, for the between-snapshot blend. */
+  private prevProjById = new Map<number, ProjectileView>();
+  private prevSonarById = new Map<number, NonNullable<MatchSnapshot["sonar"]>[number]>();
+  private prevCrateById = new Map<number, MatchSnapshot["crates"][number]>();
   /** Walker legs: ground walked so far and where the hull was last frame. */
   private walkerOdo = new Map<number, { x: number; y: number; d: number }>();
   private snapAt = 0;
@@ -1243,6 +1250,7 @@ export class MapView {
     this.ctx = ctx;
     this.mctx = mctx;
     this.curr = match;
+    this.currById = new Map(match.entities.map((e) => [e.id, e]));
     this.snapAt = performance.now();
     warmBattle();
     this.syncAtlases();
@@ -1260,8 +1268,13 @@ export class MapView {
 
   setSnapshot(match: MatchSnapshot): void {
     this.prev = this.curr;
-    this.prevById = new Map(this.prev.entities.map((e) => [e.id, e]));
+    this.prevById = this.currById;
+    this.prevProjById = new Map(this.prev.projectiles.map((p) => [p.id, p]));
+    this.prevSonarById = new Map((this.prev.sonar ?? []).map((c) => [c.id, c]));
+    this.prevCrateById = new Map((this.prev.crates ?? []).map((c) => [c.id, c]));
     this.curr = match;
+    this.currById = new Map(match.entities.map((e) => [e.id, e]));
+    this.hoverHit = null;
     this.snapAt = performance.now();
     const now = this.snapAt;
     const live = new Set<number>();
@@ -1311,13 +1324,13 @@ export class MapView {
     for (const l of match.launches ?? []) {
       if (this.seenShots.has(l.id)) continue;
       this.seenShots.add(l.id);
-      const shooter = match.entities.find((e) => e.id === l.fromId);
+      const shooter = this.currById.get(l.fromId);
       this.noteRocketLaunch(shooter, l, now);
       this.rocketLaunched.set(l.id, this.rocketFrom.get(l.id) ?? { x: l.x, y: l.y, z: l.z });
     }
     for (const i of match.impacts ?? []) {
       if (i.fromId != null && (i.caliber ?? 0) > 0 && (i.caliber ?? 0) < 40 && i.kind !== "crush") {
-        const shooter = match.entities.find((e) => e.id === i.fromId);
+        const shooter = this.currById.get(i.fromId);
         if (shooter && isInfantryType(shooter.type) && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
       }
       if (i.kind === "crush") continue;
@@ -1332,7 +1345,9 @@ export class MapView {
         }
         continue;
       }
-      if (i.rocket && i.shot != null && !this.fxIds.has(i.id)) {
+      // An impact rides along in snapshots after its tick; once its fx is up, nothing below is new.
+      if (this.fxIds.has(i.id)) continue;
+      if (i.rocket && i.shot != null) {
         // Close the trail to the burst: from the last drawn head, or from the pod
         // when the rocket flew and burst between snapshots.
         const from = this.rocketLast.get(i.shot) ?? this.rocketLaunched.get(i.shot);
@@ -1346,22 +1361,22 @@ export class MapView {
           this.rocketHost.delete(i.shot);
         }
       }
-      if (i.rocket && i.z != null && !this.fxIds.has(i.id)) {
+      if (i.rocket && i.z != null) {
         this.rocketPuffs.push(...airBurstPuffs(i.x, i.y, i.z, now, i.id));
       }
       // A Flak 37 shell burst: a wide black cloud that hangs at the fuse height. No tracer on the way up.
-      if (i.flak && i.z != null && !this.fxIds.has(i.id)) {
+      if (i.flak && i.z != null) {
         this.rocketPuffs.push(...flakCloudPuffs(i.x, i.y, i.z, now, i.id));
       }
       const fx: MapView["fx"][number] = { ...i, at: this.barrageLandAt.get(i.id) ?? now };
       // The 88mm's shell strikes much harder than a tank's 75: its spark, fireball, and dirt are drawn bigger.
-      if (i.caliber != null && !i.flak && i.fromId != null && match.entities.find((x) => x.id === i.fromId)?.type === "pak43") {
+      if (i.caliber != null && !i.flak && i.fromId != null && this.currById.get(i.fromId)?.type === "pak43") {
         fx.caliber = i.caliber * PAK43_FX_CALIBER_MUL;
       }
       // A rocket burst in the air by a CIWS stays where it was: no hull to snap to, no ground smoke.
       if (i.intercept) {
         // A RAM's interceptor leaves a smoke line from the cells to the burst.
-        const mount = i.fromId != null && !this.fxIds.has(i.id) ? match.entities.find((e) => e.id === i.fromId) : undefined;
+        const mount = i.fromId != null ? this.currById.get(i.fromId) : undefined;
         if (mount?.type === "ram") {
           const line = interceptorTrail(mount, i, this.elevAt(mount.x, mount.y), this.elevAt(i.x, i.y));
           this.rocketPuffs.push(...trailPuffs(line.from, line.to, now, (i.id * 2654435761) >>> 0));
@@ -1370,7 +1385,7 @@ export class MapView {
         continue;
       }
       this.snapHullFx(fx);
-      if (i.kind === "kill" && i.blast) fx.death = this.deathBlastAt(i.x, i.y, i.caliber, match.entities);
+      if (i.kind === "kill" && i.blast) fx.death = this.deathBlastAt(i.x, i.y, i.caliber);
       else if (i.torpedo && torpedoStruckHull(i.kind)) fx.death = heBurstSpec();
       else if (i.heBurst && !i.splash) fx.death = heBurstSpec();
       this.addFx(fx);
@@ -1380,7 +1395,7 @@ export class MapView {
     for (const p of match.projectiles) {
       if (p.bounced || this.seenShots.has(p.id)) continue;
       this.seenShots.add(p.id);
-      const shooter = match.entities.find((e) => e.id === p.fromId);
+      const shooter = this.currById.get(p.fromId);
       if (p.flame) {
         // A new glob: the trigger is still held. The jet itself is drawn per frame from his nozzle.
         if (shooter?.type === "pyro" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
@@ -1407,7 +1422,7 @@ export class MapView {
         !!shooter?.garrisonedIn || (!shooter && !isShellCaliber(p.caliber) && !!this.houseAt(p.x, p.y));
       if (fromGarrison) {
         const house = this.houseAt(p.x, p.y) ?? (shooter?.garrisonedIn
-          ? match.entities.find((e) => e.id === shooter.garrisonedIn)
+          ? this.currById.get(shooter.garrisonedIn)
           : undefined);
         this.addFx({
           id: p.id + 8_000_000,
@@ -1430,7 +1445,7 @@ export class MapView {
       if (i.kind === "puff" && i.shell !== "smoke") continue;
       const rec = this.gunRecoil.get(i.fromId);
       if (rec && now - rec.at < 2000) continue;
-      const shooter = match.entities.find((e) => e.id === i.fromId);
+      const shooter = this.currById.get(i.fromId);
       if (!shooter || shooter.garrisonedIn) continue;
       const dx = i.x - shooter.x;
       const dy = i.y - shooter.y;
@@ -1575,7 +1590,7 @@ export class MapView {
       else byPlane.set(i.fromId, [i]);
     }
     for (const [fromId, hits] of byPlane) {
-      const plane = match.entities.find((e) => e.id === fromId);
+      const plane = this.currById.get(fromId);
       if (plane?.type !== "fw190" || !plane.air) continue;
       const gap = catalog("fw190").radius * FW190_WING_GUN_OFFSET;
       const z0 = this.elevAt(plane.x, plane.y) + plane.air.alt;
@@ -1710,9 +1725,9 @@ export class MapView {
     const ts = this.ts();
     const ground = (x: number, y: number) => this.elevAt(x, y);
     for (const [fromId, rounds] of byShooter) {
-      const e = match.entities.find((u) => u.id === fromId);
+      const e = this.currById.get(fromId);
       if (e?.type !== "atinfantry" || e.wreck) continue;
-      const house = e.garrisonedIn != null ? match.entities.find((b) => b.id === e.garrisonedIn) : undefined;
+      const house = e.garrisonedIn != null ? this.currById.get(e.garrisonedIn) : undefined;
       let muzzle: { x: number; y: number; z: number };
       if (house) {
         muzzle = { x: house.x, y: house.y, z: this.elevAt(house.x, house.y) + garrisonWindowLift(house.type, rounds[0]!.id) / ISO_ELEVATION };
@@ -2036,16 +2051,11 @@ export class MapView {
   }
 
   /** What went up at a kill blast: the structure's footprint or the hull's radius sizes the fireball. */
-  private deathBlastAt(
-    wx: number,
-    wy: number,
-    caliber: number | undefined,
-    entities: readonly EntityView[],
-  ): DeathBlastSpec {
+  private deathBlastAt(wx: number, wy: number, caliber: number | undefined): DeathBlastSpec {
     const ts = this.ts();
     let best: EntityView | undefined;
     let bestD = 24;
-    for (const e of [...entities, ...this.curr.entities]) {
+    for (const e of this.curr.entities) {
       if (e.garrisonedIn) continue;
       let d: number;
       if (e.kind === "building") {
@@ -2857,7 +2867,7 @@ export class MapView {
       }
       if (e.ownerId === you && e.garrisonedIn) {
         ids.push(e.id);
-        const house = this.curr.entities.find((x) => x.id === e.garrisonedIn);
+        const house = this.currById.get(e.garrisonedIn);
         if (house && !seen.has(house.id)) {
           seen.add(house.id);
           houses.push(house);
@@ -2890,7 +2900,7 @@ export class MapView {
 
   private ownSelectedIds(): number[] {
     return [...this.selected].filter((id) => {
-      const ent = this.curr.entities.find((x) => x.id === id);
+      const ent = this.currById.get(id);
       return !!ent && ent.ownerId === this.curr.youPlayerId && !ent.wreck && ent.kind === "unit";
     });
   }
@@ -2898,7 +2908,7 @@ export class MapView {
   /** Own units plus own gun structures (CIWS, RAM, crewed guns): everything that takes Stop, Rotate, and Force attack. */
   private ownAimIds(): number[] {
     return [...this.selected].filter((id) => {
-      const ent = this.curr.entities.find((x) => x.id === id);
+      const ent = this.currById.get(id);
       if (!ent || ent.ownerId !== this.curr.youPlayerId || ent.wreck) return false;
       return ent.kind === "unit" || aimsOwnGun(ent.type);
     });
@@ -2908,7 +2918,7 @@ export class MapView {
   private ownLampIds(): number[] {
     const out: number[] = [];
     for (const id of this.selected) {
-      const ent = this.curr.entities.find((x) => x.id === id);
+      const ent = this.currById.get(id);
       if (ent && ent.ownerId === this.curr.youPlayerId && ent.hp > 0 && ent.kind === "building" && ent.spotFacing != null && hasSpotlight(ent.type)) {
         out.push(id);
       }
@@ -2920,7 +2930,7 @@ export class MapView {
   private ownShipLampIds(): number[] {
     const out: number[] = [];
     for (const id of this.selected) {
-      const ent = this.curr.entities.find((x) => x.id === id);
+      const ent = this.currById.get(id);
       if (ent && ent.ownerId === this.curr.youPlayerId && ent.hp > 0 && ent.kind === "unit" && ent.spotFacing != null && hasSpotlight(ent.type)) {
         out.push(id);
       }
@@ -2942,7 +2952,7 @@ export class MapView {
   private ownRotateIds(): number[] {
     const out = this.ownAimIds();
     for (const id of this.selected) {
-      const ent = this.curr.entities.find((x) => x.id === id);
+      const ent = this.currById.get(id);
       if (ent && ent.ownerId === this.curr.youPlayerId && ent.kind === "building" && ent.spotFacing != null && hasSpotlight(ent.type)) {
         out.push(id);
       }
@@ -2960,7 +2970,7 @@ export class MapView {
     const you = this.curr.youPlayerId;
     for (const id of this.selected) {
       if (seen.has(id)) continue;
-      const ent = this.curr.entities.find((e) => e.id === id);
+      const ent = this.currById.get(id);
       if (!ent || !this.forceHost(ent, you)) continue;
       seen.add(id);
       ids.push(id);
@@ -2994,7 +3004,7 @@ export class MapView {
   private commitForceAttack(px: number, py: number): void {
     const you = this.curr.youPlayerId;
     const ids = this.ownForceIds().filter((id) => {
-      const ent = this.curr.entities.find((x) => x.id === id);
+      const ent = this.currById.get(id);
       // A transport has no gun: its force-attack is the drop.
       return !!ent && (fires(ent.type) || isTransportType(ent.type) || this.forceHost(ent, you));
     });
@@ -3025,7 +3035,7 @@ export class MapView {
     let sy = 0;
     let n = 0;
     for (const id of this.ownSelectedIds()) {
-      const e = this.curr.entities.find((x) => x.id === id);
+      const e = this.currById.get(id);
       if (!e) continue;
       sx += Math.cos(e.facing);
       sy += Math.sin(e.facing);
@@ -3038,7 +3048,7 @@ export class MapView {
   private selectedGuardUnits(): GuardUnit[] {
     const out: GuardUnit[] = [];
     for (const id of this.ownSelectedIds()) {
-      const e = this.curr.entities.find((x) => x.id === id);
+      const e = this.currById.get(id);
       if (e) out.push({ type: e.type, gunRangeTiles: infantryGunFor(e)?.rangeTiles });
     }
     return out;
@@ -3222,7 +3232,7 @@ export class MapView {
 
   private specialSelected(): void {
     for (const id of this.selected) {
-      const e = this.curr.entities.find((x) => x.id === id);
+      const e = this.currById.get(id);
       if (e) this.useSpecial(e);
     }
   }
@@ -3491,9 +3501,19 @@ export class MapView {
     return { layer: STANDING_DRAW_LAYER, z: isoDepth(p.x, p.y), at: { x: p.x, y: p.y } };
   }
 
+  /**
+   * The last pick, good while the pointer, the snapshot and the camera all stand still:
+   * `syncCursor` asks every frame, and the pick sorts the whole snapshot each time.
+   */
+  private hoverHit: { px: number; py: number; camX: number; camY: number; zoom: number; hit: EntityView | null } | null = null;
+
   private hit(px: number, py: number): EntityView | null {
+    const c = this.hoverHit;
+    if (c && c.px === px && c.py === py && c.camX === this.camX && c.camY === this.camY && c.zoom === this.zoom) return c.hit;
     try {
-      return this.hitAt(px, py);
+      const hit = this.hitAt(px, py);
+      this.hoverHit = { px, py, camX: this.camX, camY: this.camY, zoom: this.zoom, hit };
+      return hit;
     } finally {
       this.afloatDraw = false;
     }
@@ -3707,7 +3727,7 @@ export class MapView {
       return;
     }
     const selected = [...this.selected]
-      .map((id) => this.curr.entities.find((e) => e.id === id))
+      .map((id) => this.currById.get(id))
       .filter((e): e is EntityView => !!e && !e.wreck && e.hp > 0);
     const you = this.curr.youPlayerId;
     const own = selected.filter((e) => e.ownerId === you);
@@ -4112,7 +4132,7 @@ export class MapView {
       if (p.bounced !== true) continue;
       const shell = isShellCaliber(p.caliber);
       const t = Math.min(1, (performance.now() - this.snapAt) / 100);
-      const prevP = this.prev?.projectiles.find((q) => q.id === p.id);
+      const prevP = this.prevProjById.get(p.id);
       const wx = prevP ? prevP.x + (p.x - prevP.x) * t : p.x;
       const wy = prevP ? prevP.y + (p.y - prevP.y) * t : p.y;
       const a = this.toScreen(wx, wy);
@@ -4195,7 +4215,7 @@ export class MapView {
     // Eased between snapshots like the hulls, so the ping stays on a boat under way.
     const t = Math.min(1, (now - this.snapAt) / 100);
     for (const c of contacts) {
-      const prev = this.prev?.sonar?.find((q) => q.id === c.id);
+      const prev = this.prevSonarById.get(c.id);
       const s = this.toScreen(prev ? prev.x + (c.x - prev.x) * t : c.x, prev ? prev.y + (c.y - prev.y) * t : c.y);
       drawSonarContact(this.ctx, s.x, s.y, { nowMs: now, id: c.id, down: !!c.down, unit });
     }
@@ -4268,7 +4288,7 @@ export class MapView {
     const blend = Math.min(1, (performance.now() - this.snapAt) / 100);
     for (const p of this.curr.projectiles) {
       if (!p.rocket) continue;
-      const prev = this.prev?.projectiles.find((q) => q.id === p.id);
+      const prev = this.prevProjById.get(p.id);
       const wx = prev ? prev.x + (p.x - prev.x) * blend : p.x;
       const wy = prev ? prev.y + (p.y - prev.y) * blend : p.y;
       const spot = missileSpot(wx, wy, p.vx, p.vy, ts);
@@ -4595,7 +4615,7 @@ export class MapView {
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = "rgba(120, 200, 230, 0.55)";
     for (const id of ops) {
-      const op = this.curr.entities.find((e) => e.id === id);
+      const op = this.currById.get(id);
       if (!op) continue;
       const c = this.lerpEnt(op);
       ctx.beginPath();
@@ -4732,7 +4752,7 @@ export class MapView {
       ctx.stroke();
     }
     const onlyBuildings = ![...this.selected].some((id) => {
-      const e = this.curr.entities.find((x) => x.id === id);
+      const e = this.currById.get(id);
       return !!e && e.kind === "unit" && e.ownerId === this.curr.youPlayerId;
     });
     if (
@@ -4781,7 +4801,7 @@ export class MapView {
     const drop =
       ids.length > 0 &&
       ids.every((id) => {
-        const ent = this.curr.entities.find((u) => u.id === id);
+        const ent = this.currById.get(id);
         return !!ent && isTransportType(ent.type);
       });
     const word = drop ? "DROP" : "FIRE";
@@ -5134,7 +5154,7 @@ export class MapView {
       const ids = this.ownPatrolIds();
       const from: { x: number; y: number }[] = [];
       for (const id of ids) {
-        const e = this.curr.entities.find((u) => u.id === id);
+        const e = this.currById.get(id);
         if (e) from.push({ x: e.x, y: e.y });
       }
       const connectAt = this.overControl ? -1 : this.patrolConnectIndex(this.mouseX, this.mouseY);
@@ -6839,7 +6859,7 @@ export class MapView {
 
   /** Small plus over the soldier being bandaged. */
   private drawHealMark(medic: EntityView): void {
-    const patient = this.curr.entities.find((p) => p.id === medic.tend);
+    const patient = medic.tend != null ? this.currById.get(medic.tend) : undefined;
     const who = patient ?? medic;
     const p = this.lerpEnt(who);
     const s = this.toScreen(p.x, p.y);
@@ -7106,7 +7126,7 @@ export class MapView {
     const t = Math.min(1, (performance.now() - this.snapAt) / 100);
     for (const p of this.curr.projectiles) {
       if (!p.bomb) continue;
-      const prevP = this.prev?.projectiles.find((q) => q.id === p.id);
+      const prevP = this.prevProjById.get(p.id);
       const wx = prevP ? prevP.x + (p.x - prevP.x) * t : p.x;
       const wy = prevP ? prevP.y + (p.y - prevP.y) * t : p.y;
       const wz = prevP?.z != null && p.z != null ? prevP.z + (p.z - prevP.z) * t : (p.z ?? 0);
@@ -7218,7 +7238,7 @@ export class MapView {
   ): EntityView | undefined {
     if (shooter && shooter.garrisonedIn == null) return undefined;
     if (shooter?.garrisonedIn != null) {
-      const host = this.curr.entities.find((e) => e.id === shooter.garrisonedIn);
+      const host = this.currById.get(shooter.garrisonedIn);
       return host && host.hp > 0 && !host.wreck ? host : undefined;
     }
     const origin = p.flame ? flameLaunchPoint(p) : { x: p.x, y: p.y };
@@ -7331,7 +7351,7 @@ export class MapView {
   ): { x: number; y: number; z: number } {
     const rec = this.rocketHost.get(id);
     if (!rec) return sim;
-    const host = this.curr.entities.find((e) => e.id === rec.hostId);
+    const host = this.currById.get(rec.hostId);
     if (!host || host.hp <= 0 || host.wreck) return sim;
     const shape = shotHostFrom(host);
     const mouth = garrisonMouthPoint(shape, sim.x + vx, sim.y + vy, this.ts(), rec.salt);
@@ -7357,7 +7377,7 @@ export class MapView {
     if (shooter && !shooter.wreck && shooter.garrisonedIn == null && !shooter.swimming) return this.pyroNozzle(shooter);
     const hostId = shooter?.garrisonedIn ?? jet.hostId;
     if (hostId == null) return null;
-    const host = this.curr.entities.find((q) => q.id === hostId);
+    const host = this.currById.get(hostId);
     if (!host || host.wreck || host.hp <= 0) return null;
     return garrisonFlameNozzle(shotHostFrom(host), jet.land, this.ts(), id);
   }
@@ -7375,7 +7395,7 @@ export class MapView {
     for (const p of this.curr.projectiles) {
       if (!p.rocket) continue;
       live.add(p.id);
-      const prev = this.prev?.projectiles.find((q) => q.id === p.id);
+      const prev = this.prevProjById.get(p.id);
       const wx = prev ? prev.x + (p.x - prev.x) * blend : p.x;
       const wy = prev ? prev.y + (p.y - prev.y) * blend : p.y;
       const wz = prev?.z != null && p.z != null ? prev.z + (p.z - prev.z) * blend : (p.z ?? 0);
@@ -7546,7 +7566,7 @@ export class MapView {
     }
     const t = Math.min(1, (now - this.snapAt) / 100);
     for (const c of this.curr.crates ?? []) {
-      const prev = this.prev?.crates?.find((q) => q.id === c.id);
+      const prev = this.prevCrateById.get(c.id);
       const wx = prev ? prev.x + (c.x - prev.x) * t : c.x;
       const wy = prev ? prev.y + (c.y - prev.y) * t : c.y;
       const alt = prev?.alt != null ? prev.alt + ((c.alt ?? 0) - prev.alt) * t : (c.alt ?? 0);
@@ -7688,7 +7708,7 @@ export class MapView {
         continue;
       }
       if (now - jet.at > held) continue;
-      const e = this.curr.entities.find((q) => q.id === id);
+      const e = this.currById.get(id);
       const nozzle = this.flameNozzle(id, e, jet);
       if (!nozzle) continue;
       this.flameParticles.push(
@@ -7783,7 +7803,7 @@ export class MapView {
     for (const p of this.curr.projectiles) {
       if (!p.mortar || p.apex == null || p.hang == null || p.arc == null) continue;
       live.add(p.id);
-      const prev = this.prev?.projectiles.find((q) => q.id === p.id);
+      const prev = this.prevProjById.get(p.id);
       const wx = prev ? prev.x + (p.x - prev.x) * blend : p.x;
       const wy = prev ? prev.y + (p.y - prev.y) * blend : p.y;
       const arc = prev?.arc != null ? prev.arc + (p.arc - prev.arc) * blend : p.arc;

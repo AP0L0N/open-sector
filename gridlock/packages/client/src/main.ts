@@ -36,6 +36,8 @@ let mapView: MapView | null = null;
 /** How long the deploy splash shows before the battle screen. */
 const DEPLOY_SCREEN_MS = 500;
 let deployTimer: ReturnType<typeof setTimeout> | null = null;
+/** A frame already booked to apply the latest snapshot; a burst of ticks lands as one render. */
+let snapshotFrame = 0;
 
 const params = new URLSearchParams(location.search);
 const roomParam = params.get("room");
@@ -273,7 +275,13 @@ function onMessage(msg: ServerMessage): void {
       // The scrap grid only rides along when it changed; otherwise the last one stands.
       ctx.match = msg.match.scrap || !ctx.match ? msg.match : { ...msg.match, scrap: ctx.match.scrap };
       if (msg.match.winner) ctx.winner = msg.match.winner;
-      if (ctx.screen === "battle") ctx.render();
+      // Snapshots that pile up between two frames are applied once, from the latest `ctx.match`.
+      if (ctx.screen === "battle" && !snapshotFrame) {
+        snapshotFrame = requestAnimationFrame(() => {
+          snapshotFrame = 0;
+          if (ctx.screen === "battle") ctx.render();
+        });
+      }
       break;
     case "match.resume":
       ctx.room = msg.room;
