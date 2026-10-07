@@ -488,7 +488,7 @@ export class Hub {
     const snapMs = Date.now() - t1;
     const ms = simMs + snapMs;
     if (ms >= 50) {
-      const members = this.members.get(roomId) ?? [];
+      const members = [...(this.members.get(roomId) ?? [])];
       const watcher = members[0];
       const bytes = watcher
         ? Buffer.byteLength(JSON.stringify({ type: "match.snapshot", match: snapshotFor(match, watcher) }))

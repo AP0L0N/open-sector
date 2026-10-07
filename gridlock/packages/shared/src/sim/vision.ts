@@ -753,8 +753,9 @@ function paintSightRect(
       if (d > boxR || d < minD) continue;
       const extra = levelSightExtra(h0, elevAtSafe(elev, width, height, x, y), uphillBonus);
       if (d > catalogR + extra) continue;
+      // `flagged` is only set when the caller saw a Uint8Array height grid, cover, and its LOS flags.
       const los = flagged
-        ? hasFullLosFlagged(elev, flags, cover, width, ox, oy, x, y, observerEye)
+        ? hasFullLosFlagged(elev as Uint8Array, flags!, cover!, width, ox, oy, x, y, observerEye)
         : hasFullLos(elev, width, height, ox, oy, x, y, cover, observerEye);
       if (!los) continue;
       if (cover && coverSmokeAt(cover, width, height, x, y) && d > SMOKE_PEEK_TILES) continue;
