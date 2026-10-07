@@ -272,6 +272,7 @@ export function restoreMatch(
     blast,
     dug,
     digRev: 0,
+    scrapRev: 0,
     paused: false,
   };
   for (const e of entities.values()) occupyEntity(state, e);

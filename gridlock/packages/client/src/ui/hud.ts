@@ -566,7 +566,7 @@ export function paintBattleHud(ctx: Ctx): void {
   if (!m) return;
   const scrap = document.getElementById("hud-scrap");
   if (scrap) {
-    const yieldAt = scrapYieldLookup(m.scrap);
+    const yieldAt = scrapYieldLookup(m.scrap ?? []);
     let rate = 0;
     for (const e of m.entities) {
       if (e.ownerId === m.youPlayerId && e.type === "smelter" && e.hp > 0 && !e.wreck) rate += smelterRateOn(yieldAt, e.tileX, e.tileY);

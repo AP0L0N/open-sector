@@ -28,6 +28,7 @@ import {
   updateSelf,
   type ClientMessage,
   type ErrorCode,
+  type MatchSnapshot,
   type MatchState,
   type RoomMode,
   type RoomState,
@@ -40,6 +41,10 @@ export type SendFn = (msg: ServerMessage) => void;
 export class Session {
   roomId: string | null = null;
   dropTimer: ReturnType<typeof setTimeout> | null = null;
+  /** `scrapRev` of the last scrap grid this socket was sent; -1 before any. */
+  scrapRev = -1;
+  /** True while the socket still holds unsent bytes past the backlog limit. A tick snapshot is skipped then. */
+  backlogged: () => boolean = () => false;
   constructor(
     readonly playerId: string,
     public name: string,
@@ -189,8 +194,19 @@ export class Hub {
     const match = this.matches.get(roomId);
     if (!match) return;
     for (const id of this.members.get(roomId) ?? []) {
-      this.sessions.get(id)?.send({ type: "match.snapshot", match: snapshotFor(match, id) });
+      const session = this.sessions.get(id);
+      // A stale snapshot is worthless once the next one is due: let a slow socket drain instead of piling on.
+      if (!session || session.backlogged()) continue;
+      session.send({ type: "match.snapshot", match: this.snapshotView(session, match) });
     }
+  }
+
+  /** The player's view, with the scrap grid only when this socket has not seen the current one. `full` forces it. */
+  private snapshotView(session: Session, match: MatchState, full = false): MatchSnapshot {
+    const scrap = full || session.scrapRev !== match.scrapRev;
+    const view = snapshotFor(match, session.playerId, { scrap });
+    if (scrap) session.scrapRev = match.scrapRev;
+    return view;
   }
 
   private roomOf(session: Session): RoomState | undefined {
@@ -438,7 +454,8 @@ export class Hub {
     this.matches.set(room.id, match);
     log("room.start", { room: room.id, playerId: session.playerId, mapId: room.mapId });
     for (const id of this.members.get(room.id) ?? []) {
-      this.sessions.get(id)?.send({ type: "match.start", match: snapshotFor(match, id) });
+      const session = this.sessions.get(id);
+      if (session) session.send({ type: "match.start", match: this.snapshotView(session, match, true) });
     }
     this.startTicker(room.id);
   }
@@ -491,7 +508,7 @@ export class Hub {
       const members = [...(this.members.get(roomId) ?? [])];
       const watcher = members[0];
       const bytes = watcher
-        ? Buffer.byteLength(JSON.stringify({ type: "match.snapshot", match: snapshotFor(match, watcher) }))
+        ? Buffer.byteLength(JSON.stringify({ type: "match.snapshot", match: snapshotFor(match, watcher, { scrap: false }) }))
         : 0;
       log("room.slow", {
         room: roomId,
@@ -598,7 +615,8 @@ export class Hub {
     log("match.load", { room: room.id, mapId: match.mapId, tick: match.tick });
     if (!wasTicking && !match.ended) this.startTicker(room.id);
     for (const id of this.members.get(room.id) ?? []) {
-      this.sessions.get(id)?.send({ type: "match.resume", room, match: snapshotFor(match, id) });
+      const session = this.sessions.get(id);
+      if (session) session.send({ type: "match.resume", room, match: this.snapshotView(session, match, true) });
     }
   }
 

@@ -21,11 +21,18 @@ function parseClient(raw: RawData): ClientMessage | { error: true } {
   }
 }
 
+/**
+ * Unsent bytes a socket may hold before tick snapshots are skipped for it:
+ * about a second of snapshots. Orders and room traffic still go out.
+ */
+export const SNAPSHOT_BACKLOG_BYTES = 64 * 1024;
+
 export function attachSocket(hub: Hub, ws: WebSocket, _req: IncomingMessage): string {
   const playerId = randomUUID();
   const session = hub.connect(playerId, (msg) => {
     if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
   });
+  session.backlogged = () => ws.bufferedAmount > SNAPSHOT_BACKLOG_BYTES;
 
   ws.on("message", (raw) => {
     const parsed = parseClient(raw);

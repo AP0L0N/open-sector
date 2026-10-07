@@ -290,7 +290,12 @@ function sceneryView(e: Entity): EntityView {
   };
 }
 
-export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapshot {
+export interface SnapshotOptions {
+  /** Include the scrap fields. Off for a tick snapshot whose receiver already holds the current `scrapRev`. */
+  scrap?: boolean;
+}
+
+export function snapshotFor(state: MatchState, youPlayerId: string, opts: SnapshotOptions = {}): MatchSnapshot {
   const you = state.players.get(youPlayerId);
   const power = you ? powerOf(state, youPlayerId) : { provided: 0, used: 0, lowPower: false };
   const vis = you ? visionMask(state, youPlayerId) : new Uint8Array(state.width * state.height);
@@ -505,13 +510,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
         : undefined,
     });
   }
-  const scrap: ScrapCell[] = [];
-  for (let y = 0; y < state.height; y++) {
-    for (let x = 0; x < state.width; x++) {
-      const yld = state.scrapYield[y * state.width + x] ?? 0;
-      if (yld > 0) scrap.push({ x, y, yield: yld });
-    }
-  }
+  const scrap = opts.scrap === false ? undefined : scrapCells(state);
   const hq = you ? state.entities.get(you.hqId) : undefined;
   const radar = you ? radarOnline(state, youPlayerId) : false;
   return {
@@ -615,6 +614,18 @@ export function snapshotFor(state: MatchState, youPlayerId: string): MatchSnapsh
     sonar: you ? nonEmpty(sonarContacts(state, youPlayerId)) : undefined,
     winner: state.winner,
   };
+}
+
+/** Every tile with scrap left on it. The whole grid, so it goes out only when `scrapRev` moved. */
+function scrapCells(state: MatchState): ScrapCell[] {
+  const scrap: ScrapCell[] = [];
+  for (let y = 0; y < state.height; y++) {
+    for (let x = 0; x < state.width; x++) {
+      const yld = state.scrapYield[y * state.width + x] ?? 0;
+      if (yld > 0) scrap.push({ x, y, yield: yld });
+    }
+  }
+  return scrap;
 }
 
 function nonEmpty<T>(xs: T[]): T[] | undefined {

@@ -270,7 +270,8 @@ function onMessage(msg: ServerMessage): void {
       }, DEPLOY_SCREEN_MS);
       break;
     case "match.snapshot":
-      ctx.match = msg.match;
+      // The scrap grid only rides along when it changed; otherwise the last one stands.
+      ctx.match = msg.match.scrap || !ctx.match ? msg.match : { ...msg.match, scrap: ctx.match.scrap };
       if (msg.match.winner) ctx.winner = msg.match.winner;
       if (ctx.screen === "battle") ctx.render();
       break;

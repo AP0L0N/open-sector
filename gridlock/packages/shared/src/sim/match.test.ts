@@ -849,3 +849,11 @@ describe("maps scrap", () => {
     }
   });
 });
+
+describe("snapshotFor scrap option", () => {
+  it("leaves the scrap grid out when asked and includes it by default", () => {
+    const { state, a } = twoPlayerMatch();
+    assert.ok(Array.isArray(snapshotFor(state, a).scrap));
+    assert.equal(snapshotFor(state, a, { scrap: false }).scrap, undefined);
+  });
+});

@@ -336,7 +336,7 @@ describe("Smelter on scrap", () => {
     assert.equal(scrapAt(state, 65, 65), DIAMOND_SCRAP_TILE_YIELD, "the diamond field is not used up");
     // The snapshot carries the grade, so the HUD's pour matches the sim.
     const snap = snapshotFor(state, "A");
-    const yields = new Map(snap.scrap.map((s) => [`${s.x},${s.y}`, s.yield]));
+    const yields = new Map((snap.scrap ?? []).map((s) => [`${s.x},${s.y}`, s.yield]));
     assert.equal(
       smelterRateOn((x, y) => yields.get(`${x},${y}`) ?? 0, 64, 64),
       DIAMOND_SCRAP_MUL * SMELTER_SCRAP_PER_SEC,

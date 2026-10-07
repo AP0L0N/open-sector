@@ -1498,10 +1498,10 @@ export class MapView {
   private syncAtlases(): void {
     const map = this.map();
     this.maxElev = maxHeightOf(map);
-    if (!this.terrain) this.terrain = bakeTerrain(map, this.curr.scrap);
-    else updateScrap(this.terrain, map, this.curr.scrap);
-    if (!this.miniTerrain) this.miniTerrain = bakeMini(map, this.curr.scrap);
-    else updateMiniScrap(this.miniTerrain, map, this.curr.scrap);
+    if (!this.terrain) this.terrain = bakeTerrain(map, this.curr.scrap ?? []);
+    else updateScrap(this.terrain, map, this.curr.scrap ?? []);
+    if (!this.miniTerrain) this.miniTerrain = bakeMini(map, this.curr.scrap ?? []);
+    else updateMiniScrap(this.miniTerrain, map, this.curr.scrap ?? []);
     this.applyClearedTrees();
     this.applyDug();
     this.applyClutter();
@@ -1558,8 +1558,8 @@ export class MapView {
     }
     const list = [...dirty];
     this.treeStems = null;
-    if (this.terrain) restampTiles(this.terrain, map, list, this.curr.scrap);
-    if (this.miniTerrain) restampMini(this.miniTerrain, map, list, this.curr.scrap);
+    if (this.terrain) restampTiles(this.terrain, map, list, this.curr.scrap ?? []);
+    if (this.miniTerrain) restampMini(this.miniTerrain, map, list, this.curr.scrap ?? []);
   }
 
   /**
@@ -2158,8 +2158,8 @@ export class MapView {
     this.clearedApplied = list.length;
     if (dirty.length === 0) return;
     this.treeStems = null;
-    if (this.terrain) restampTiles(this.terrain, map, dirty, this.curr.scrap);
-    if (this.miniTerrain) restampMini(this.miniTerrain, map, dirty, this.curr.scrap);
+    if (this.terrain) restampTiles(this.terrain, map, dirty, this.curr.scrap ?? []);
+    if (this.miniTerrain) restampMini(this.miniTerrain, map, dirty, this.curr.scrap ?? []);
   }
 
   private resetFog(map: { id: string; width: number; height: number; shroud?: boolean }): void {

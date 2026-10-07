@@ -184,7 +184,11 @@ export function startServer(opts: ListenOpts = {}): Promise<{
     res.end("Gridlock server. Client is served by Vite in dev.");
   });
 
-  const wss = new WebSocketServer({ noServer: true });
+  // Snapshots are JSON with long repeated keys: deflate cuts them several times over at a cheap zlib level.
+  const wss = new WebSocketServer({
+    noServer: true,
+    perMessageDeflate: { threshold: 1024, zlibDeflateOptions: { level: 3 } },
+  });
   server.on("upgrade", (req, socket, head) => {
     const pathname = (req.url ?? "/").split("?")[0];
     if (pathname !== "/ws") {

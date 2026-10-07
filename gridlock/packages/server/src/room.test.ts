@@ -354,3 +354,54 @@ describe("hub map builder play test", () => {
     }
   });
 });
+
+describe("snapshot wire diet", () => {
+  function started(hub: Hub): { a: ReturnType<typeof client>; roomId: string } {
+    const a = client(hub, "A");
+    hub.handle("A", { type: "hello", name: "Alpha" });
+    hub.handle("A", { type: "room.create", mapId: "yard-64", maxSlots: 8 });
+    hub.handle("A", { type: "slot.update", ready: true });
+    hub.handle("A", { type: "room.start" });
+    return { a, roomId: hub.sessions.get("A")!.roomId! };
+  }
+
+  it("sends the scrap grid with match.start, then only after scrapRev moves", () => {
+    const hub = new Hub();
+    try {
+      const { a, roomId } = started(hub);
+      const start = a.of("match.start")[0];
+      assert.ok(start);
+      assert.ok(Array.isArray(start.match.scrap));
+      hub["tickRoom"](roomId);
+      const snap = a.of("match.snapshot").at(-1);
+      assert.ok(snap);
+      assert.equal(snap.match.scrap, undefined);
+      hub.matches.get(roomId)!.scrapRev++;
+      hub["tickRoom"](roomId);
+      assert.ok(Array.isArray(a.of("match.snapshot").at(-1)?.match.scrap));
+      hub["tickRoom"](roomId);
+      assert.equal(a.of("match.snapshot").at(-1)?.match.scrap, undefined);
+    } finally {
+      hub.shutdown();
+    }
+  });
+
+  it("skips tick snapshots for a backlogged socket and resumes once it drains", () => {
+    const hub = new Hub();
+    try {
+      const { a, roomId } = started(hub);
+      const session = hub.sessions.get("A")!;
+      hub["tickRoom"](roomId);
+      const before = a.of("match.snapshot").length;
+      session.backlogged = () => true;
+      hub["tickRoom"](roomId);
+      hub["tickRoom"](roomId);
+      assert.equal(a.of("match.snapshot").length, before);
+      session.backlogged = () => false;
+      hub["tickRoom"](roomId);
+      assert.equal(a.of("match.snapshot").length, before + 1);
+    } finally {
+      hub.shutdown();
+    }
+  });
+});

@@ -115,6 +115,7 @@ export function createMatch(
     blast: new Map(),
     dug: new Map(),
     digRev: 0,
+    scrapRev: 0,
   };
 
   for (const slot of commanders(room)) {

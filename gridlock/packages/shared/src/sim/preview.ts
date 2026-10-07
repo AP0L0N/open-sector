@@ -38,7 +38,7 @@ export function previewField(
     if (kind === TILE_BLOCKED || kind === TILE_WATER || kind === TILE_FENCE || kind === TILE_ROCK) return false;
     if (isMountainCliff(map.tiles, map.heights, map.width, map.height, t.x, t.y)) return false;
     if (isGroveTile(kind) && !cleared.has(i)) return false;
-    if (snap.scrap.some((s) => s.x === t.x && s.y === t.y && s.yield > 0)) return false;
+    if (snap.scrap?.some((s) => s.x === t.x && s.y === t.y && s.yield > 0)) return false;
     if (built.has(i)) return false;
   }
   return !overlapsFieldIn(snap.entities, type, x, y, facing);
@@ -66,7 +66,7 @@ export function previewSite(snap: MatchSnapshot, type: BuildingType, tx: number,
   const tiles = buildingTilesOf(buildingSite(type, tx, ty, facing, map.tileSize), map.tileSize);
   const built = buildingCells(snap, map.width, map.tileSize, false);
   const scrapCells = new Set<number>();
-  for (const s of snap.scrap) if (s.yield > 0) scrapCells.add(s.y * map.width + s.x);
+  for (const s of snap.scrap ?? []) if (s.yield > 0) scrapCells.add(s.y * map.width + s.x);
   // Your sited wall or sandbag line counts as standing while the yard builds it.
   const sited = sitedLineTiles(map, snap.you.lineQueue);
   let scrapUnder = 0;

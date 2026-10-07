@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 112;
+export const PROTOCOL_VERSION = 113;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -644,7 +644,12 @@ export interface MatchSnapshot {
   mines: MineView[];
   /** Supply crates you can see. Empty until the first crate drop. */
   crates: CrateView[];
-  scrap: ScrapCell[];
+  /**
+   * Scrap fields on the map. Sent with `match.start` and `match.resume`, then
+   * again only in a snapshot after the fields change. A snapshot without it
+   * keeps the last one received.
+   */
+  scrap?: ScrapCell[];
   /**
    * Tree tiles removed this match. Empty until the first one falls.
    * `burn` is a tree a flamethrower force-attack set alight.

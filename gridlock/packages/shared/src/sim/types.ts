@@ -932,4 +932,6 @@ export interface MatchState {
   dug: Map<number, number>;
   /** Bumps on every dig, so cached sight rebuilds over the new ground. */
   digRev: number;
+  /** Bumps whenever `scrapYield` changes, so a client is sent the fields again. */
+  scrapRev: number;
 }
