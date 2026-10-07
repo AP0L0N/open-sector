@@ -606,17 +606,56 @@ function coverIgnoreId(e: { kind: string; id?: number; garrisonedIn?: number | n
   return e.garrisonedIn ?? e.id ?? 0;
 }
 
+type CoverCache = { key: number; cover: CoverField; env: SightEnv | null };
+
+const coverCaches = new WeakMap<MatchState, CoverCache>();
+
+/** Everything the sight cover is built from, hashed, so the grids are rebuilt only once something in them moved. */
+function coverKey(state: MatchState): number {
+  let h = mix(2166136261, state.clearedTrees.length);
+  h = mix(h, state.digRev);
+  h = mix(h, state.width);
+  for (const c of state.smokeClouds) {
+    h = mix(h, c.id);
+    h = mix(h, Math.round(c.x));
+    h = mix(h, Math.round(c.y));
+    h = mix(h, Math.round(c.life * 64));
+  }
+  for (const e of state.entities.values()) {
+    if (e.kind === "building") {
+      h = mix(h, e.id);
+      h = mix(h, e.tileX);
+      h = mix(h, e.tileY);
+      h = mix(h, Math.round(e.hp));
+      h = mix(h, e.ruined ? 1 : 0);
+    } else if (isArmoredType(e.type)) {
+      h = mix(h, e.id);
+      h = mix(h, Math.round(e.x));
+      h = mix(h, Math.round(e.y));
+    }
+  }
+  return h;
+}
+
+/** The cover every eye of every side reads this tick, with its LOS flags. Rebuilt when `coverKey` moves. */
 function coverOf(state: MatchState): CoverField {
+  const key = coverKey(state);
+  const hit = coverCaches.get(state);
+  if (hit && hit.key === key) return hit.cover;
   const n = state.width * state.height;
   if (state.hullMask.length !== n) state.hullMask = new Int32Array(n);
   fillHullCover(state.entities.values(), state.tileSize, state.width, state.height, state.hullMask);
-  return {
+  const cover: CoverField = {
     terrain: state.terrain,
     // Rubble heaps are left out: they hold the ground but a sight ray passes over them.
     occupy: fillSightOccupy(state),
     hull: state.hullMask,
     smoke: ensureSmokeMask(state),
+    losFlags: hit?.cover.losFlags?.length === n ? hit.cover.losFlags : new Uint8Array(n),
   };
+  fillLosFlags(cover, cover.losFlags!);
+  coverCaches.set(state, { key, cover, env: null });
+  return cover;
 }
 
 function ensureSmokeMask(state: MatchState): Uint8Array {
@@ -768,7 +807,16 @@ type SightEnv = {
   clouds: TileBox[];
 };
 
+/** The cover's hull and cloud boxes with the static cover's hash, kept with the cover they describe. */
 function sightEnvOf(state: MatchState, cover: CoverField): SightEnv {
+  const hit = coverCaches.get(state);
+  if (hit && hit.cover === cover && hit.env) return hit.env;
+  const env = buildSightEnv(state, cover);
+  if (hit && hit.cover === cover) hit.env = env;
+  return env;
+}
+
+function buildSightEnv(state: MatchState, cover: CoverField): SightEnv {
   let base = mix(2166136261, state.digRev);
   const terrain = state.terrain;
   const occupy = cover.occupy;
@@ -831,7 +879,6 @@ function coverKeyNear(env: SightEnv, boxes: TileBox[], grid: ArrayLike<number>, 
   return h;
 }
 
-let losFlagScratch = new Uint8Array(0);
 /** Why memos were rebuilt, for benchmarks. */
 export const memoStats = { hit: 0, fresh: 0, smoke: 0, params: 0, hulls: 0 };
 /** The tiles of the eye being swept, kept in its memo. */
@@ -934,7 +981,7 @@ function lazyVisionOf(state: MatchState, playerId: string, key: number): LazyVis
   };
   // The same flags `visionMask` rays with, so each tile asked costs one fast ray per nearby eye.
   const losFlags = hit?.cover.losFlags ?? new Uint8Array(n);
-  fillLosFlags(cover, losFlags);
+  losFlags.set(live.losFlags!);
   cover.losFlags = losFlags;
   armSightBlocks(state.heights, state.width, state.height, state.digRev);
   const lazy: LazyVision = {
@@ -1130,9 +1177,6 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
   const height = state.height;
   const mask = new Uint8Array(width * height);
   const cover = coverOf(state);
-  if (losFlagScratch.length !== width * height) losFlagScratch = new Uint8Array(width * height);
-  fillLosFlags(cover, losFlagScratch);
-  cover.losFlags = losFlagScratch;
   const observers = alliedSight(state, playerId);
   const memo = sightMemoOf(state);
   const env = sightEnvOf(state, cover);
@@ -1162,7 +1206,7 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
     movers.push({ id: e.id, p });
   }
   // An eye that held still re-stamped its kept tiles above; only the movers sweep, and keep theirs.
-  armLosFastPath(state.heights, losFlagScratch, width, height);
+  armLosFastPath(state.heights, cover.losFlags!, width, height);
   armSightBlocks(state.heights, width, height, state.digRev);
   try {
     for (const { id, p } of movers) {
