@@ -13,8 +13,6 @@ import {
   GROUND_TALL_GRASS,
   HEIGHT_BASE,
   HEIGHT_MAX,
-  ISO_TILE_H,
-  ISO_TILE_W,
   MOUNTAIN_MIN_HEIGHT,
   CLUTTER_NAMES,
   CLUTTER_TYPES,
@@ -57,8 +55,6 @@ import {
   bridgeBrickLength,
   bridgePath,
   bridgeWidth,
-  isoLift,
-  isoToWorld,
   worldToIso,
   type BridgeType,
   listMaps,
@@ -100,8 +96,7 @@ import { drawBrick, layoutBridges } from "../render/bridge.js";
 import { el } from "./dom.js";
 import { drawMapPreview } from "./map-preview.js";
 import * as M from "./builder-model.js";
-import { isoChanged, isoCommit, isoDraw, isoHoldBake, type RouteDraw, type SpotBeam, type UnitOverlay } from "./builder-iso.js";
-import { diffByKey, renderChangesEnabled } from "./builder-render.js";
+import { isoChanged, isoDraw, isoRestamp, type RouteDraw, type SpotBeam, type UnitOverlay } from "./builder-iso.js";
 import { SIDEBAR_GROUPS, sidebarGroupOf, type SidebarGroup } from "./sidebar-groups.js";
 import { isoFit, isoPick, isoScreenOf, isoZoomAt, type IsoCam } from "./builder-iso-cam.js";
 
@@ -238,10 +233,6 @@ interface Stage {
   sel: HTMLElement | null;
   /** The Defences heading readout, kept current while the wheel turns. */
   turnLabel: HTMLElement | null;
-  /** Builds the picture from edits waiting since the last render. */
-  renderBtn: HTMLButtonElement | null;
-  /** Grey cover and the Building mark, up while that build runs. */
-  veil: HTMLElement | null;
 }
 
 let sheet: M.Sheet | null = null;
@@ -312,30 +303,8 @@ let stage: Stage | null = null;
 let ground: HTMLCanvasElement | null = null;
 /** Pixels behind `ground`, kept so a stroke rewrites only the tiles it touched. */
 let groundPx: ImageData | null = null;
-/**
- * The picture on the stage. Edits land on `sheet` at once and stay off this
- * copy until Render changes builds it again.
- */
-let shown: M.Sheet | null = null;
-/** Edits have landed since the picture was last built. */
-let renderPending = false;
-/** Render changes is baking the picture. */
-let rendering = false;
-/** Bumps on every edit so a build can see whether more landed while it ran. */
-let renderEpoch = 0;
-/** Bumps when a picture is published, so a sketch of the previous picture is not reused. */
-let pictureEpoch = 0;
-/** Plan pixels of edits since the last render. Transparent where the picture still matches. */
-let draft: HTMLCanvasElement | null = null;
-let draftPx: ImageData | null = null;
-/** 1 where the live tile, height, or cover differs from the picture. */
-let draftOn: Uint8Array | null = null;
-let draftCount = 0;
-let draftEpoch = -1;
-let draftPicture = -1;
-let pendingPieces: PendingPieces | null = null;
-/** Bumps when another map is opened, so a build in flight does not publish over it. */
-let renderTicket = 0;
+/** Tiles brushed since the last frame. */
+let pendingGround: M.Dirty = M.emptyDirty();
 let drawQueued = false;
 let previewTimer: ReturnType<typeof setTimeout> | null = null;
 /** The cached preview bake no longer matches the sheet. */
@@ -414,143 +383,12 @@ function changed(): void {
   edits++;
   previewStale = true;
   if (sheet) heightsChanged(sheet.heights);
-  noteRenderPending();
+  isoChanged();
+  pendingGround = M.emptyDirty();
+  repaintGround();
   queueDraw();
+  schedulePreview();
   paintChecks();
-}
-
-/** A copy the picture can keep. The next build swaps it in, so the bake can restamp the difference. */
-function cloneSheet(s: M.Sheet): M.Sheet {
-  const copy: M.Sheet = {
-    ...s,
-    tiles: [],
-    heights: [],
-    ground: [],
-    spawns: [],
-    features: [],
-    lamps: [],
-    clutter: [],
-    units: [],
-  };
-  M.restoreSheet(copy, M.markSheet(s));
-  copy.id = s.id;
-  copy.name = s.name;
-  copy.author = s.author;
-  copy.width = s.width;
-  copy.height = s.height;
-  return copy;
-}
-
-/** Write `src` onto `dst`, keeping `dst` itself so the in-game bake can restamp. */
-function copyOnto(dst: M.Sheet, src: M.Sheet): void {
-  dst.id = src.id;
-  dst.name = src.name;
-  dst.author = src.author;
-  dst.width = src.width;
-  dst.height = src.height;
-  dst.maxPlayers = src.maxPlayers;
-  dst.shroud = src.shroud;
-  M.restoreSheet(dst, M.markSheet(src));
-}
-
-/** The picture shown for `src`. A same-sized picture is reused so the next build restamps. */
-function adoptPicture(src: M.Sheet): M.Sheet {
-  if (!shown || shown.width !== src.width || shown.height !== src.height) {
-    shown = cloneSheet(src);
-    return shown;
-  }
-  copyOnto(shown, src);
-  return shown;
-}
-
-function noteRenderPending(): void {
-  renderEpoch++;
-  const was = renderPending;
-  renderPending = true;
-  if (!was && !rendering) paintRenderButton();
-}
-
-function paintRenderButton(): void {
-  const b = stage?.renderBtn;
-  if (!b) return;
-  const open = !!sheet && !newOpen;
-  b.hidden = !open;
-  b.disabled = !renderChangesEnabled(open, renderPending, rendering);
-  b.title = rendering ? "Building" : renderPending ? "Build the map from the edits since the last render (Space)" : "No edits since the last render";
-  if (stage) stage.status.textContent = withRenderHint(stage.status.textContent ?? "");
-}
-
-function nextFrame(): Promise<void> {
-  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
-}
-
-/** Fill a fresh plan image. Yields every few rows so the Building mark can keep moving. */
-async function paintGroundOf(src: M.Sheet): Promise<{ canvas: HTMLCanvasElement; px: ImageData } | null> {
-  const canvas = document.createElement("canvas");
-  canvas.width = src.width;
-  canvas.height = src.height;
-  const g = canvas.getContext("2d");
-  if (!g) return null;
-  const px = g.createImageData(src.width, src.height);
-  const d = px.data;
-  const rows = 32;
-  for (let y = 0; y < src.height; y++) {
-    for (let x = 0; x < src.width; x++) {
-      const [r, gg, b] = tileColor(src, x, y);
-      const k = (y * src.width + x) * 4;
-      d[k] = r;
-      d[k + 1] = gg;
-      d[k + 2] = b;
-      d[k + 3] = 255;
-    }
-    if (y % rows === rows - 1) await nextFrame();
-  }
-  g.putImageData(px, 0, 0);
-  return { canvas, px };
-}
-
-/** Build the picture from every edit since the last render. Space and the corner button. */
-async function renderChanges(): Promise<void> {
-  if (!sheet || rendering || !renderChangesEnabled(!!sheet && !newOpen, renderPending, rendering)) return;
-  rendering = true;
-  paintRenderButton();
-  if (stage?.veil) stage.veil.hidden = false;
-  await nextFrame();
-  await nextFrame();
-  const epoch = renderEpoch;
-  const ticket = renderTicket;
-  const source = sheet;
-  const next = cloneSheet(source);
-  isoHoldBake(true);
-  let built = false;
-  try {
-    const painted = await paintGroundOf(next);
-    // The player opened another map while this one was building. Leave that picture alone.
-    if (ticket !== renderTicket || sheet !== source) return;
-    isoHoldBake(false);
-    const picture = shown && shown.width === next.width && shown.height === next.height ? shown : next;
-    if (picture !== next) copyOnto(picture, next);
-    shown = picture;
-    isoCommit(picture, queueDraw);
-    if (painted) {
-      ground = painted.canvas;
-      groundPx = painted.px;
-    }
-    pictureEpoch++;
-    previewStale = true;
-    // The sketch drops once this picture includes every edit. Edits that landed while the bake ran stay sketched.
-    renderPending = renderEpoch !== epoch;
-    drawStage();
-    schedulePreview(0);
-    built = true;
-  } finally {
-    isoHoldBake(false);
-    if (!built) isoChanged();
-    rendering = false;
-    if (stage?.veil) stage.veil.hidden = true;
-    paintRenderButton();
-    queueDraw();
-  }
 }
 
 function openSheet(next: M.Sheet, isDirty: boolean): void {
@@ -562,15 +400,9 @@ function openSheet(next: M.Sheet, isDirty: boolean): void {
   selected = null;
   view.zoom = 0;
   isoCam.zoom = 0;
-  renderTicket++;
-  shown = null;
-  adoptPicture(next);
-  renderPending = false;
-  rendering = false;
+  isoChanged();
   ground = null;
   previewStale = true;
-  isoChanged();
-  paintRenderButton();
 }
 
 function step(from: M.SheetMark[], to: M.SheetMark[]): void {
@@ -666,11 +498,13 @@ function tileColor(s: M.Sheet, x: number, y: number): [number, number, number] {
 }
 
 /**
- * Recolour the plan image of `src`. With `box`, only those tiles (plus the
- * one-tile rim their shading reads) are redone.
+ * Recolour the plan image. With `box`, only those tiles (plus the one-tile
+ * rim their shading reads) are redone, so a brush stroke on a big sheet
+ * costs the brush, not the map.
  */
-function repaintGround(src: M.Sheet, box?: M.Dirty): void {
-  const s = src;
+function repaintGround(box?: M.Dirty): void {
+  const s = sheet;
+  if (!s) return;
   if (!ground || ground.width !== s.width || ground.height !== s.height || !groundPx) {
     ground = document.createElement("canvas");
     ground.width = s.width;
@@ -700,627 +534,27 @@ function repaintGround(src: M.Sheet, box?: M.Dirty): void {
   g.putImageData(groundPx, 0, 0, x0, y0, x1 - x0, y1 - y0);
 }
 
-/** The brush changed tiles. The picture waits for Render changes; the height mesh stays live so the next dab still hits. */
+/** Note brush damage; the next frame repaints it once, however many pointer moves fed it. */
 function markGround(box: M.Dirty): void {
   if (box.x1 <= box.x0) return;
-  if (sheet && (tool.id === "raise" || tool.id === "lower" || tool.id === "level" || tool.id === "mountain" || tool.id === "ground")) {
-    heightsChanged(sheet.heights);
-  }
-  noteRenderPending();
+  pendingGround.x0 = Math.min(pendingGround.x0, box.x0);
+  pendingGround.y0 = Math.min(pendingGround.y0, box.y0);
+  pendingGround.x1 = Math.max(pendingGround.x1, box.x1);
+  pendingGround.y1 = Math.max(pendingGround.y1, box.y1);
   queueDraw();
 }
 
-// --- sketch of edits waiting for Render changes --------------------------------
-
-type PieceDiff<T> = { added: T[]; removed: T[] };
-
-interface PendingPieces {
-  features: PieceDiff<MapFeature>;
-  featureBodies: PieceDiff<MapFeature>;
-  units: PieceDiff<MapUnit>;
-  unitBodies: PieceDiff<MapUnit>;
-  lamps: PieceDiff<M.Sheet["lamps"][number]>;
-  clutter: PieceDiff<M.Sheet["clutter"][number]>;
-  spawns: PieceDiff<M.Sheet["spawns"][number]>;
-}
-
-/** How many iso diamonds one frame will fill. Past this, a zoomed-out sketch steps by whole blocks. */
-const DRAFT_DIAMONDS = 6000;
-
-function pointKey(pts: readonly { x: number; y: number }[] | undefined): string {
-  if (!pts || pts.length === 0) return "";
-  let out = "";
-  for (const p of pts) out += `${p.x},${p.y};`;
-  return out;
-}
-
-function featureKey(f: MapFeature): string {
-  return `${f.type}|${f.x}|${f.y}|${f.facing}|${f.turn ?? ""}|${f.deck ?? ""}|${f.spot ?? ""}|${f.loop ? 1 : 0}|${pointKey(f.patrol)}`;
-}
-
-function featureBodyKey(f: MapFeature): string {
-  return `${f.type}|${f.x}|${f.y}|${f.facing}|${f.turn ?? ""}|${f.deck ?? ""}`;
-}
-
-function unitKey(u: MapUnit): string {
-  return `${u.type}|${u.x}|${u.y}|${u.facing}|${u.inside ? 1 : 0}|${u.spot ?? ""}|${u.loop ? 1 : 0}|${pointKey(u.patrol)}`;
-}
-
-function unitBodyKey(u: MapUnit): string {
-  return `${u.type}|${u.x}|${u.y}|${u.facing}|${u.inside ? 1 : 0}`;
-}
-
-function placeKey(p: { type: string; x: number; y: number }): string {
-  return `${p.type}|${p.x}|${p.y}`;
-}
-
-function spawnKey(p: { id: number; x: number; y: number }): string {
-  return `${p.id}|${p.x}|${p.y}`;
-}
-
-function clearDraft(): void {
-  draft = null;
-  draftPx = null;
-  draftOn = null;
-  draftCount = 0;
-  draftEpoch = -1;
-  draftPicture = -1;
-  pendingPieces = null;
-}
-
-/** Rebuild the sketch once per edit. Panning and hovering reuse it. */
-function syncDraft(live: M.Sheet): void {
-  const picture = shown;
-  if (!renderPending || !picture || picture.width !== live.width || picture.height !== live.height) {
-    if (draftEpoch !== -1 || pendingPieces) clearDraft();
-    return;
-  }
-  if (
-    draft &&
-    draftOn &&
-    draftPx &&
-    pendingPieces &&
-    draftEpoch === renderEpoch &&
-    draftPicture === pictureEpoch &&
-    draft.width === live.width &&
-    draft.height === live.height
-  ) {
-    return;
-  }
-  rebuildDraft(live, picture);
-}
-
-function tileDiffers(live: M.Sheet, picture: M.Sheet, i: number): boolean {
-  return live.tiles[i] !== picture.tiles[i]
-    || live.heights[i] !== picture.heights[i]
-    || (live.ground[i] ?? GROUND_GRASS) !== (picture.ground[i] ?? GROUND_GRASS);
-}
-
-function rebuildDraft(live: M.Sheet, picture: M.Sheet): void {
-  const w = live.width;
-  const h = live.height;
-  if (!draft || draft.width !== w || draft.height !== h) {
-    draft = document.createElement("canvas");
-    draft.width = w;
-    draft.height = h;
-    draftPx = null;
-    draftOn = null;
-  }
-  const g = draft.getContext("2d");
-  if (!g) return;
-  if (!draftPx || draftPx.width !== w || draftPx.height !== h) draftPx = g.createImageData(w, h);
-  else draftPx.data.fill(0);
-  const n = w * h;
-  if (!draftOn || draftOn.length !== n) draftOn = new Uint8Array(n);
-  else draftOn.fill(0);
-  const d = draftPx.data;
-  const on = draftOn;
-  let count = 0;
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = y * w + x;
-      if (!tileDiffers(live, picture, i)) continue;
-      const [r, gg, b] = tileColor(live, x, y);
-      const k = i * 4;
-      d[k] = r;
-      d[k + 1] = gg;
-      d[k + 2] = b;
-      d[k + 3] = 230;
-      on[i] = 1;
-      count++;
+function flushGround(): void {
+  if (pendingGround.x1 <= pendingGround.x0) return;
+  const box = pendingGround;
+  pendingGround = M.emptyDirty();
+  repaintGround(box);
+  if (sheet && gameView) {
+    if (tool.id === "raise" || tool.id === "lower" || tool.id === "level" || tool.id === "mountain" || tool.id === "ground") {
+      heightsChanged(sheet.heights);
     }
+    isoRestamp(sheet, box);
   }
-  g.putImageData(draftPx, 0, 0);
-  draftCount = count;
-  draftEpoch = renderEpoch;
-  draftPicture = pictureEpoch;
-  pendingPieces = {
-    features: diffByKey(picture.features, live.features, featureKey),
-    featureBodies: diffByKey(picture.features, live.features, featureBodyKey),
-    units: diffByKey(picture.units, live.units, unitKey),
-    unitBodies: diffByKey(picture.units, live.units, unitBodyKey),
-    lamps: diffByKey(picture.lamps, live.lamps, placeKey),
-    clutter: diffByKey(picture.clutter, live.clutter, placeKey),
-    spawns: diffByKey(picture.spawns, live.spawns, spawnKey),
-  };
-}
-
-/** The higher of the live ground and the picture, so a lowered tile still paints over the old stamp. */
-function previewElev(live: M.Sheet, picture: M.Sheet, tx: number, ty: number): number {
-  const x = Math.max(0, Math.min(live.width - 1, Math.floor(tx)));
-  const y = Math.max(0, Math.min(live.height - 1, Math.floor(ty)));
-  const i = y * live.width + x;
-  return Math.max(live.heights[i] ?? 0, picture.heights[i] ?? 0);
-}
-
-function isoAt(wx: number, wy: number, elev: number): { x: number; y: number } {
-  const p = worldToIso(wx, wy, TILE_SIZE);
-  return { x: p.x, y: p.y - isoLift(elev) };
-}
-
-function planCross(c: CanvasRenderingContext2D, x: number, y: number, arm: number): void {
-  c.strokeStyle = "#ff5a4a";
-  c.lineWidth = 1.5;
-  c.beginPath();
-  c.moveTo(x - arm, y - arm);
-  c.lineTo(x + arm, y + arm);
-  c.moveTo(x + arm, y - arm);
-  c.lineTo(x - arm, y + arm);
-  c.stroke();
-}
-
-function planRoute(
-  c: CanvasRenderingContext2D,
-  from: { x: number; y: number },
-  points: readonly { x: number; y: number }[],
-  loop: boolean,
-  sx: (x: number) => number,
-  sy: (y: number) => number,
-): void {
-  c.strokeStyle = "#e8b84a";
-  c.lineWidth = 1.8;
-  c.setLineDash([5, 4]);
-  c.beginPath();
-  c.moveTo(sx(from.x + 0.5), sy(from.y + 0.5));
-  for (const p of points) c.lineTo(sx(p.x + 0.5), sy(p.y + 0.5));
-  if (loop && points.length > 1) c.lineTo(sx(points[0]!.x + 0.5), sy(points[0]!.y + 0.5));
-  c.stroke();
-  c.setLineDash([]);
-  c.fillStyle = "#e8b84a";
-  for (const p of points) {
-    c.beginPath();
-    c.arc(sx(p.x + 0.5), sy(p.y + 0.5), 2.5, 0, Math.PI * 2);
-    c.fill();
-  }
-}
-
-function planAim(c: CanvasRenderingContext2D, x: number, y: number, deg: number, sx: (n: number) => number, sy: (n: number) => number): void {
-  const a = (deg * Math.PI) / 180;
-  c.strokeStyle = "#e8b84a";
-  c.lineWidth = 1.5;
-  c.beginPath();
-  c.moveTo(sx(x + 0.5), sy(y + 0.5));
-  c.lineTo(sx(x + 0.5 + Math.cos(a) * 4), sy(y + 0.5 + Math.sin(a) * 4));
-  c.stroke();
-}
-
-/** Houses, units, lamps, clutter, and starts that differ from the picture, on the plan. */
-function paintPlanEdits(
-  c: CanvasRenderingContext2D,
-  sx: (x: number) => number,
-  sy: (y: number) => number,
-  z: number,
-  drawHouse: (f: MapFeature, fill: string, edge: string) => void,
-): void {
-  const pieces = pendingPieces;
-  if (!renderPending || !pieces) return;
-  c.save();
-  for (const f of pieces.featureBodies.removed) {
-    drawHouse(f, "rgba(255,90,74,0.4)", "#ff5a4a");
-    const r = featureRect(f);
-    planCross(c, sx(r.cx), sy(r.cy), Math.max(4, Math.min(r.halfU, r.halfV) * z * 0.7));
-  }
-  for (const f of pieces.featureBodies.added) drawHouse(f, ...featureColors(f.type));
-  for (const f of pieces.features.added) {
-    if (f.patrol?.length) planRoute(c, towerTile(f), f.patrol, !!f.loop, sx, sy);
-    if (hasSpotlight(f.type)) planAim(c, towerTile(f).x, towerTile(f).y, towerSpot(f), sx, sy);
-  }
-  const lampR = Math.max(2.5, Math.min(6, z * 0.9));
-  for (const l of pieces.lamps.removed) {
-    c.strokeStyle = "#ff5a4a";
-    c.lineWidth = 2;
-    c.beginPath();
-    c.arc(sx(l.x + 0.5), sy(l.y + 0.5), lampR, 0, Math.PI * 2);
-    c.stroke();
-  }
-  for (const l of pieces.lamps.added) {
-    c.fillStyle = `rgb(${STREET_LAMPS[l.type].rgb})`;
-    c.strokeStyle = "#1d1c18";
-    c.lineWidth = 1.25;
-    c.beginPath();
-    c.arc(sx(l.x + 0.5), sy(l.y + 0.5), lampR, 0, Math.PI * 2);
-    c.fill();
-    c.stroke();
-  }
-  const box = Math.max(1.5, Math.min(4, z * 0.6));
-  for (const p of pieces.clutter.removed) {
-    c.strokeStyle = "#ff5a4a";
-    c.lineWidth = 2;
-    c.strokeRect(sx(p.x + 0.5) - box, sy(p.y + 0.5) - box, box * 2, box * 2);
-  }
-  for (const p of pieces.clutter.added) {
-    c.fillStyle = "#b08850";
-    c.strokeStyle = "#2a2016";
-    c.lineWidth = 1;
-    c.fillRect(sx(p.x + 0.5) - box, sy(p.y + 0.5) - box, box * 2, box * 2);
-    c.strokeRect(sx(p.x + 0.5) - box, sy(p.y + 0.5) - box, box * 2, box * 2);
-  }
-  const disc = (u: MapUnit, fill: string, edge: string, cross: boolean): void => {
-    if (u.inside) return;
-    const cx = sx(u.x + 0.5);
-    const cy = sy(u.y + 0.5);
-    const r = Math.max(3, Math.min(9, (catalog(u.type).radius / TILE_SIZE) * z));
-    c.fillStyle = fill;
-    c.strokeStyle = edge;
-    c.lineWidth = 2;
-    c.beginPath();
-    c.arc(cx, cy, r, 0, Math.PI * 2);
-    c.fill();
-    c.stroke();
-    if (cross) {
-      planCross(c, cx, cy, r);
-      return;
-    }
-    const a = (u.facing * Math.PI) / 180;
-    c.strokeStyle = "#1d1c18";
-    c.lineWidth = 1.5;
-    c.beginPath();
-    c.moveTo(cx, cy);
-    c.lineTo(cx + Math.cos(a) * (r + 3), cy + Math.sin(a) * (r + 3));
-    c.stroke();
-  };
-  for (const u of pieces.unitBodies.removed) disc(u, "rgba(255,90,74,0.45)", "#ff5a4a", true);
-  for (const u of pieces.unitBodies.added) disc(u, "#8c8c88", "#e8b84a", false);
-  for (const u of pieces.units.added) {
-    if (u.inside) continue;
-    if (u.patrol?.length) planRoute(c, u, u.patrol, !!u.loop, sx, sy);
-    if (hasSpotlight(u.type)) planAim(c, u.x, u.y, u.spot ?? u.facing, sx, sy);
-  }
-  const pad = Math.max(8, Math.min(16, z * 3));
-  c.textAlign = "center";
-  c.textBaseline = "middle";
-  c.font = `700 ${Math.round(pad * 1.1)}px "Share Tech Mono", monospace`;
-  for (const sp of pieces.spawns.removed) {
-    c.setLineDash([5, 4]);
-    c.strokeStyle = "#ff5a4a";
-    c.lineWidth = 1.5;
-    c.beginPath();
-    c.arc(sx(sp.x + 0.5), sy(sp.y + 0.5), SPAWN_PAD_R * z, 0, Math.PI * 2);
-    c.stroke();
-    c.setLineDash([]);
-    c.fillStyle = "#ff5a4a";
-    c.fillText(String(sp.id), sx(sp.x + 0.5), sy(sp.y + 0.5));
-  }
-  for (const sp of pieces.spawns.added) {
-    const x = sx(sp.x + 0.5);
-    const y = sy(sp.y + 0.5);
-    c.setLineDash([5, 4]);
-    c.strokeStyle = "#e8b84a";
-    c.lineWidth = 1.5;
-    c.beginPath();
-    c.arc(x, y, SPAWN_PAD_R * z, 0, Math.PI * 2);
-    c.stroke();
-    c.setLineDash([]);
-    c.fillStyle = "#e8b84a";
-    c.beginPath();
-    c.arc(x, y, pad, 0, Math.PI * 2);
-    c.fill();
-    c.fillStyle = "#140e0a";
-    c.fillText(String(sp.id), x, y + 1);
-  }
-  c.restore();
-}
-
-function viewTileBox(s: M.Sheet, w: number, h: number): { x0: number; y0: number; x1: number; y1: number } {
-  const zoom = Math.max(isoCam.zoom, 0.0001);
-  const x0 = isoCam.camX;
-  const y0 = isoCam.camY;
-  const x1 = x0 + w / zoom;
-  const y1 = y0 + h / zoom;
-  const corners = [isoToWorld(x0, y0, TILE_SIZE), isoToWorld(x1, y0, TILE_SIZE), isoToWorld(x0, y1, TILE_SIZE), isoToWorld(x1, y1, TILE_SIZE)];
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-  for (const p of corners) {
-    if (p.x < minX) minX = p.x;
-    if (p.y < minY) minY = p.y;
-    if (p.x > maxX) maxX = p.x;
-    if (p.y > maxY) maxY = p.y;
-  }
-  const lift = Math.ceil(isoLift(HEIGHT_MAX) / (ISO_TILE_H / 2)) + 4;
-  return {
-    x0: Math.max(0, Math.floor(minX / TILE_SIZE) - 2),
-    y0: Math.max(0, Math.floor(minY / TILE_SIZE) - 2),
-    x1: Math.min(s.width - 1, Math.ceil(maxX / TILE_SIZE) + lift),
-    y1: Math.min(s.height - 1, Math.ceil(maxY / TILE_SIZE) + lift),
-  };
-}
-
-function draftStride(box: { x0: number; y0: number; x1: number; y1: number }, mapTiles: number): number {
-  if (draftCount <= 0 || mapTiles <= 0) return 1;
-  const area = (box.x1 - box.x0 + 1) * (box.y1 - box.y0 + 1);
-  const expect = (draftCount / mapTiles) * area;
-  let stride = 1;
-  while (expect / (stride * stride) > DRAFT_DIAMONDS && stride < 8) stride *= 2;
-  return stride;
-}
-
-/** Changed ground as flat diamonds on the in-game view. The bake itself waits for Render changes. */
-function paintIsoGround(c: CanvasRenderingContext2D, live: M.Sheet, picture: M.Sheet, w: number, h: number): void {
-  const on = draftOn;
-  const px = draftPx;
-  if (!on || !px || draftCount === 0) return;
-  const box = viewTileBox(live, w, h);
-  const stride = draftStride(box, live.width * live.height);
-  const d = px.data;
-  c.globalAlpha = 0.9;
-  let drawn = 0;
-  for (let y = box.y0; y <= box.y1 && drawn < DRAFT_DIAMONDS; y += stride) {
-    for (let x = box.x0; x <= box.x1 && drawn < DRAFT_DIAMONDS; x += stride) {
-      const xEnd = Math.min(live.width, x + stride);
-      const yEnd = Math.min(live.height, y + stride);
-      let hit = -1;
-      for (let ty = y; ty < yEnd && hit < 0; ty++) {
-        const row = ty * live.width;
-        for (let tx = x; tx < xEnd; tx++) {
-          if (on[row + tx]) {
-            hit = row + tx;
-            break;
-          }
-        }
-      }
-      if (hit < 0) continue;
-      const elev = Math.max(live.heights[hit] ?? 0, picture.heights[hit] ?? 0);
-      const lift = isoLift(elev);
-      const x1 = xEnd;
-      const y1 = yEnd;
-      const ts = TILE_SIZE;
-      const corners: [number, number][] = [
-        [x * ts, y * ts],
-        [x1 * ts, y * ts],
-        [x1 * ts, y1 * ts],
-        [x * ts, y1 * ts],
-      ];
-      c.beginPath();
-      for (let i = 0; i < corners.length; i++) {
-        const p = worldToIso(corners[i]![0], corners[i]![1], ts);
-        if (i === 0) c.moveTo(p.x, p.y - lift);
-        else c.lineTo(p.x, p.y - lift);
-      }
-      c.closePath();
-      const k = hit * 4;
-      c.fillStyle = `rgb(${d[k]},${d[k + 1]},${d[k + 2]})`;
-      c.fill();
-      drawn++;
-    }
-  }
-  c.globalAlpha = 1;
-}
-
-function isoFeatureQuad(f: MapFeature, elev: number): { x: number; y: number }[] {
-  const r = featureRect(f);
-  const out: { x: number; y: number }[] = [];
-  for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
-    const tx = r.cx + a * r.halfU * r.ux + b * r.halfV * r.vx;
-    const ty = r.cy + a * r.halfU * r.uy + b * r.halfV * r.vy;
-    out.push(isoAt(tx * TILE_SIZE, ty * TILE_SIZE, elev));
-  }
-  return out;
-}
-
-function paintIsoQuad(c: CanvasRenderingContext2D, pts: readonly { x: number; y: number }[], fill: string, edge: string, zoom: number, cross: boolean): void {
-  c.beginPath();
-  for (let i = 0; i < pts.length; i++) {
-    const p = pts[i]!;
-    if (i === 0) c.moveTo(p.x, p.y);
-    else c.lineTo(p.x, p.y);
-  }
-  c.closePath();
-  c.globalAlpha = cross ? 0.45 : 0.88;
-  c.fillStyle = fill;
-  c.fill();
-  c.globalAlpha = 1;
-  c.strokeStyle = edge;
-  c.lineWidth = 1.5 / zoom;
-  c.stroke();
-  if (!cross || pts.length < 4) return;
-  c.beginPath();
-  c.moveTo(pts[0]!.x, pts[0]!.y);
-  c.lineTo(pts[2]!.x, pts[2]!.y);
-  c.moveTo(pts[1]!.x, pts[1]!.y);
-  c.lineTo(pts[3]!.x, pts[3]!.y);
-  c.stroke();
-}
-
-function paintIsoRoute(
-  c: CanvasRenderingContext2D,
-  live: M.Sheet,
-  picture: M.Sheet,
-  from: { x: number; y: number },
-  points: readonly { x: number; y: number }[],
-  loop: boolean,
-  zoom: number,
-): void {
-  const at = (p: { x: number; y: number }): { x: number; y: number } =>
-    isoAt((p.x + 0.5) * TILE_SIZE, (p.y + 0.5) * TILE_SIZE, previewElev(live, picture, p.x, p.y));
-  c.strokeStyle = "#e8b84a";
-  c.lineWidth = 1.8 / zoom;
-  c.setLineDash([6 / zoom, 4 / zoom]);
-  c.beginPath();
-  const a = at(from);
-  c.moveTo(a.x, a.y);
-  for (const p of points) {
-    const q = at(p);
-    c.lineTo(q.x, q.y);
-  }
-  if (loop && points.length > 1) {
-    const q = at(points[0]!);
-    c.lineTo(q.x, q.y);
-  }
-  c.stroke();
-  c.setLineDash([]);
-  c.fillStyle = "#e8b84a";
-  for (const p of points) {
-    const q = at(p);
-    c.beginPath();
-    c.arc(q.x, q.y, 3 / zoom, 0, Math.PI * 2);
-    c.fill();
-  }
-}
-
-function paintIsoAim(c: CanvasRenderingContext2D, live: M.Sheet, picture: M.Sheet, x: number, y: number, deg: number, zoom: number): void {
-  const elev = previewElev(live, picture, x, y);
-  const a = (deg * Math.PI) / 180;
-  const from = isoAt((x + 0.5) * TILE_SIZE, (y + 0.5) * TILE_SIZE, elev);
-  const to = isoAt((x + 0.5 + Math.cos(a) * 4) * TILE_SIZE, (y + 0.5 + Math.sin(a) * 4) * TILE_SIZE, elev);
-  c.strokeStyle = "#e8b84a";
-  c.lineWidth = 1.5 / zoom;
-  c.beginPath();
-  c.moveTo(from.x, from.y);
-  c.lineTo(to.x, to.y);
-  c.stroke();
-}
-
-function paintIsoUnit(c: CanvasRenderingContext2D, live: M.Sheet, picture: M.Sheet, u: MapUnit, fill: string, edge: string, cross: boolean, zoom: number): void {
-  if (u.inside) return;
-  const elev = previewElev(live, picture, u.x, u.y);
-  const wx = (u.x + 0.5) * TILE_SIZE;
-  const wy = (u.y + 0.5) * TILE_SIZE;
-  const p = isoAt(wx, wy, elev);
-  const r = Math.max(6, Math.min(12, (catalog(u.type).radius / TILE_SIZE) * (ISO_TILE_W / 2)));
-  c.globalAlpha = cross ? 0.55 : 0.9;
-  c.fillStyle = fill;
-  c.strokeStyle = edge;
-  c.lineWidth = 1.5 / zoom;
-  c.beginPath();
-  c.arc(p.x, p.y, r, 0, Math.PI * 2);
-  c.fill();
-  c.stroke();
-  c.globalAlpha = 1;
-  if (cross) {
-    c.beginPath();
-    c.moveTo(p.x - r, p.y - r);
-    c.lineTo(p.x + r, p.y + r);
-    c.moveTo(p.x + r, p.y - r);
-    c.lineTo(p.x - r, p.y + r);
-    c.stroke();
-    return;
-  }
-  const a = (u.facing * Math.PI) / 180;
-  const tip = isoAt(wx + Math.cos(a) * TILE_SIZE, wy + Math.sin(a) * TILE_SIZE, elev);
-  c.strokeStyle = "#1d1c18";
-  c.beginPath();
-  c.moveTo(p.x, p.y);
-  c.lineTo(tip.x, tip.y);
-  c.stroke();
-}
-
-/** The same sketch in the in-game view: diamonds for ground, footprints for everything else. */
-function paintIsoEdits(c: CanvasRenderingContext2D, live: M.Sheet, picture: M.Sheet, w: number, h: number): void {
-  const pieces = pendingPieces;
-  if (!renderPending || !pieces) return;
-  const zoom = Math.max(isoCam.zoom, 0.0001);
-  c.save();
-  paintIsoGround(c, live, picture, w, h);
-  for (const f of pieces.featureBodies.removed) {
-    paintIsoQuad(c, isoFeatureQuad(f, previewElev(live, picture, featureRect(f).cx, featureRect(f).cy)), "#ff5a4a", "#ff5a4a", zoom, true);
-  }
-  for (const f of pieces.featureBodies.added) {
-    const [fill, edge] = featureColors(f.type);
-    const rect = featureRect(f);
-    paintIsoQuad(c, isoFeatureQuad(f, previewElev(live, picture, rect.cx, rect.cy)), fill, edge, zoom, false);
-  }
-  for (const f of pieces.features.added) {
-    if (f.patrol?.length) paintIsoRoute(c, live, picture, towerTile(f), f.patrol, !!f.loop, zoom);
-    if (hasSpotlight(f.type)) {
-      const from = towerTile(f);
-      paintIsoAim(c, live, picture, from.x, from.y, towerSpot(f), zoom);
-    }
-  }
-  const dot = ISO_TILE_W * 0.28;
-  for (const l of pieces.lamps.removed) {
-    const p = isoAt((l.x + 0.5) * TILE_SIZE, (l.y + 0.5) * TILE_SIZE, previewElev(live, picture, l.x, l.y));
-    c.strokeStyle = "#ff5a4a";
-    c.lineWidth = 1.5 / zoom;
-    c.beginPath();
-    c.arc(p.x, p.y, dot, 0, Math.PI * 2);
-    c.stroke();
-  }
-  for (const l of pieces.lamps.added) {
-    const p = isoAt((l.x + 0.5) * TILE_SIZE, (l.y + 0.5) * TILE_SIZE, previewElev(live, picture, l.x, l.y));
-    c.fillStyle = `rgb(${STREET_LAMPS[l.type].rgb})`;
-    c.strokeStyle = "#1d1c18";
-    c.lineWidth = 1.25 / zoom;
-    c.beginPath();
-    c.arc(p.x, p.y, dot, 0, Math.PI * 2);
-    c.fill();
-    c.stroke();
-  }
-  for (const p of pieces.clutter.removed) {
-    const q = isoAt((p.x + 0.5) * TILE_SIZE, (p.y + 0.5) * TILE_SIZE, previewElev(live, picture, p.x, p.y));
-    c.strokeStyle = "#ff5a4a";
-    c.lineWidth = 1.5 / zoom;
-    c.strokeRect(q.x - dot, q.y - dot, dot * 2, dot * 2);
-  }
-  for (const p of pieces.clutter.added) {
-    const q = isoAt((p.x + 0.5) * TILE_SIZE, (p.y + 0.5) * TILE_SIZE, previewElev(live, picture, p.x, p.y));
-    c.fillStyle = "#b08850";
-    c.strokeStyle = "#2a2016";
-    c.lineWidth = 1 / zoom;
-    c.fillRect(q.x - dot, q.y - dot, dot * 2, dot * 2);
-    c.strokeRect(q.x - dot, q.y - dot, dot * 2, dot * 2);
-  }
-  for (const u of pieces.unitBodies.removed) paintIsoUnit(c, live, picture, u, "rgba(255,90,74,0.45)", "#ff5a4a", true, zoom);
-  for (const u of pieces.unitBodies.added) paintIsoUnit(c, live, picture, u, "#8c8c88", "#e8b84a", false, zoom);
-  for (const u of pieces.units.added) {
-    if (u.inside) continue;
-    if (u.patrol?.length) paintIsoRoute(c, live, picture, u, u.patrol, !!u.loop, zoom);
-    if (hasSpotlight(u.type)) paintIsoAim(c, live, picture, u.x, u.y, u.spot ?? u.facing, zoom);
-  }
-  c.font = `${11 / zoom}px "Share Tech Mono", monospace`;
-  c.textAlign = "center";
-  c.textBaseline = "middle";
-  const spawnRing = SPAWN_PAD_R * Math.hypot(ISO_TILE_W / 2, ISO_TILE_H / 2);
-  for (const sp of pieces.spawns.removed) {
-    const p = isoAt((sp.x + 0.5) * TILE_SIZE, (sp.y + 0.5) * TILE_SIZE, previewElev(live, picture, sp.x, sp.y));
-    c.setLineDash([6 / zoom, 4 / zoom]);
-    c.strokeStyle = "#ff5a4a";
-    c.lineWidth = 1.5 / zoom;
-    c.beginPath();
-    c.arc(p.x, p.y, spawnRing, 0, Math.PI * 2);
-    c.stroke();
-    c.setLineDash([]);
-    c.fillStyle = "#ff5a4a";
-    c.fillText(String(sp.id), p.x, p.y);
-  }
-  for (const sp of pieces.spawns.added) {
-    const p = isoAt((sp.x + 0.5) * TILE_SIZE, (sp.y + 0.5) * TILE_SIZE, previewElev(live, picture, sp.x, sp.y));
-    c.setLineDash([6 / zoom, 4 / zoom]);
-    c.strokeStyle = "#e8b84a";
-    c.lineWidth = 1.5 / zoom;
-    c.beginPath();
-    c.arc(p.x, p.y, spawnRing, 0, Math.PI * 2);
-    c.stroke();
-    c.setLineDash([]);
-    c.fillStyle = "#e8b84a";
-    c.beginPath();
-    c.arc(p.x, p.y, ISO_TILE_W * 0.45, 0, Math.PI * 2);
-    c.fill();
-    c.fillStyle = "#140e0a";
-    c.fillText(String(sp.id), p.x, p.y);
-  }
-  c.restore();
 }
 
 // --- stage drawing -------------------------------------------------------------
@@ -1413,9 +647,8 @@ function selectedFeature(): MapFeature | null {
 }
 
 function drawStage(): void {
-  const live = sheet;
-  const s = shown ?? live;
-  if (!stage || !s || !live) return;
+  const s = sheet;
+  if (!stage || !s) return;
   const canvas = stage.canvas;
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
@@ -1426,8 +659,8 @@ function drawStage(): void {
     canvas.height = Math.floor(h * dpr);
   }
   if (view.zoom === 0) fitView(canvas, s);
-  if (!ground || ground.width !== s.width || ground.height !== s.height) repaintGround(s);
-  syncDraft(live);
+  if (!ground) repaintGround();
+  else flushGround();
   const c = canvas.getContext("2d");
   if (!c || !ground) return;
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1439,9 +672,6 @@ function drawStage(): void {
   const sy = (y: number): number => view.py + y * z;
   c.imageSmoothingEnabled = false;
   c.drawImage(ground, view.px, view.py, s.width * z, s.height * z);
-  if (draft && renderPending && draft.width === s.width && draft.height === s.height) {
-    c.drawImage(draft, view.px, view.py, s.width * z, s.height * z);
-  }
   c.strokeStyle = "#8b2e1f";
   c.lineWidth = 2;
   c.strokeRect(view.px - 1, view.py - 1, s.width * z + 2, s.height * z + 2);
@@ -1549,18 +779,18 @@ function drawStage(): void {
   };
   for (const p of M.liveClutter(s)) clutterMark(p.x, p.y, null);
   if (tool.id === "clutter" && hover.inside && !drag) {
-    clutterMark(hover.x, hover.y, M.clutterProblem(live, hover.x, hover.y) !== null ? "#ff5a4a" : "#7dff6a");
+    clutterMark(hover.x, hover.y, M.clutterProblem(s, hover.x, hover.y) !== null ? "#ff5a4a" : "#7dff6a");
   }
   if (tool.id === "lamp" && hover.inside && !drag) {
-    const bad = M.lampProblem(live, hover.x, hover.y) !== null;
+    const bad = M.lampProblem(s, hover.x, hover.y) !== null;
     lampMark(hover.x, hover.y, tool.lamp, bad ? "#ff5a4a" : "#7dff6a");
   }
   drawPlanUnits(c, s, sx, sy, z);
   const picked = selectedFeature();
   if (picked) frame(picked, "#e8b84a");
   if (tool.id === "select" && hover.inside && !drag) {
-    const fi = M.featureIndexAt(live, hover.x, hover.y);
-    const f = fi >= 0 ? live.features[fi] : undefined;
+    const fi = M.featureIndexAt(s, hover.x, hover.y);
+    const f = fi >= 0 ? s.features[fi] : undefined;
     if (f && f !== picked) frame(f, "rgba(255,244,220,0.7)");
   }
 
@@ -1584,7 +814,7 @@ function drawStage(): void {
     c.strokeStyle = "#e8b84a";
     c.lineWidth = 2.5;
     c.stroke();
-    if (!renderPending && selected?.kind === "spawn" && selected.id === sp.id) {
+    if (selected?.kind === "spawn" && selected.id === sp.id) {
       c.setLineDash([4, 3]);
       c.lineWidth = 2;
       c.beginPath();
@@ -1596,31 +826,17 @@ function drawStage(): void {
     c.font = `700 ${Math.round(r * 1.2)}px "Share Tech Mono", monospace`;
     c.fillText(String(sp.id), x, y + 1);
   }
-  const selSpawn = selected?.kind === "spawn" ? selected : null;
-  if (renderPending && selSpawn) {
-    const moved = live.spawns.find((p) => p.id === selSpawn.id);
-    if (moved) {
-      c.setLineDash([4, 3]);
-      c.strokeStyle = "#e8b84a";
-      c.lineWidth = 2;
-      c.beginPath();
-      c.arc(sx(moved.x + 0.5), sy(moved.y + 0.5), r + 5, 0, Math.PI * 2);
-      c.stroke();
-      c.setLineDash([]);
-    }
-  }
-  paintPlanEdits(c, sx, sy, z, drawHouse);
 
   if (hover.inside) {
     const ghost = houseGhost();
     if (ghost) {
-      const bad = M.houseProblem(live, ghost) !== null;
+      const bad = M.houseProblem(s, ghost) !== null;
       drawHouse(ghost, bad ? "rgba(255,90,74,0.45)" : "rgba(125,255,106,0.4)", bad ? "#ff5a4a" : "#7dff6a");
     } else if (tool.id === "spawn") {
       const moving = drag?.kind === "spawn";
-      const next = M.nextSpawnId(live);
-      if (!moving && next !== null && M.spawnIndexAt(live, hover.x, hover.y) < 0) {
-        const bad = M.spawnProblem(live, hover.x, hover.y) !== null;
+      const next = M.nextSpawnId(s);
+      if (!moving && next !== null && M.spawnIndexAt(s, hover.x, hover.y) < 0) {
+        const bad = M.spawnProblem(s, hover.x, hover.y) !== null;
         c.setLineDash([5, 4]);
         c.strokeStyle = bad ? "#ff5a4a" : "#7dff6a";
         c.lineWidth = 1.5;
@@ -1645,7 +861,7 @@ function drawStage(): void {
   }
   if (pieces.length > 0 || road.length > 0) {
     for (const f of pieces) {
-      const bad = M.houseProblem(live, f) !== null;
+      const bad = M.houseProblem(s, f) !== null;
       drawHouse(f, bad ? "rgba(255,90,74,0.45)" : "rgba(125,255,106,0.45)", bad ? "#ff5a4a" : "#7dff6a");
     }
     // The start of the line, as the match marks it.
@@ -1672,31 +888,11 @@ function drawStage(): void {
     c.arc(sx(hover.x + 0.5), sy(hover.y + 0.5), Math.max(2, (tool.brush + 0.5) * z), 0, Math.PI * 2);
     c.stroke();
   }
-  if (drag?.kind === "move") {
-    const moving = live.features[drag.index];
-    if (moving) drawHouse(moving, "rgba(125,255,106,0.4)", "#7dff6a");
-  } else if (renderPending && picked && selected?.kind === "feature" && offPictureFeature(selected.index, picked)) {
-    // The last picture still shows it where it was. This is the spot the edits moved it to.
-    drawHouse(picked, "rgba(232,184,74,0.28)", "#e8b84a");
-  }
-}
-
-/** The live building is not the one the last picture drew at this index. */
-function offPictureFeature(index: number, f: MapFeature): boolean {
-  const old = shown?.features[index];
-  return !old || old.type !== f.type || old.x !== f.x || old.y !== f.y || old.facing !== f.facing || old.turn !== f.turn;
-}
-
-/** The live unit is not the one the last picture drew at this index. */
-function offPictureUnit(index: number, u: MapUnit): boolean {
-  const old = shown?.units[index];
-  return !old || old.type !== u.type || old.x !== u.x || old.y !== u.y || old.facing !== u.facing || !!old.inside !== !!u.inside;
 }
 
 /** Units on the plan: grey discs with a heading tick, routes dashed, a count on each held building. */
 function drawPlanUnits(c: CanvasRenderingContext2D, s: M.Sheet, sx: (x: number) => number, sy: (y: number) => number, z: number): void {
-  const live = sheet ?? s;
-  const routes = pictureRoutes(s);
+  const routes = unitRoutes(s);
   c.strokeStyle = "#e8b84a";
   for (const rt of routes) {
     const pts = [rt.from, ...rt.points];
@@ -1738,39 +934,12 @@ function drawPlanUnits(c: CanvasRenderingContext2D, s: M.Sheet, sx: (x: number) 
     c.stroke();
     c.globalAlpha = 1;
   };
-  const sel = renderPending ? -1 : selected?.kind === "unit" ? selected.index : -1;
-  const hov = renderPending || tool.id !== "select" || !hover.inside || drag ? -1 : standingUnitAt(s, hover.x, hover.y);
+  const sel = selected?.kind === "unit" ? selected.index : -1;
+  const hov = tool.id === "select" && hover.inside && !drag ? standingUnitAt(s, hover.x, hover.y) : -1;
   s.units.forEach((u, i) => {
     if (u.inside) return;
     disc(u, i === sel ? "#e8b84a" : i === hov ? "rgba(255,244,220,0.8)" : null);
   });
-  if (renderPending && selected?.kind === "unit") {
-    const u = live.units[selected.index];
-    if (u && !u.inside) {
-      if (offPictureUnit(selected.index, u)) disc(u, "#e8b84a", 0.85);
-      else {
-        const cx = sx(u.x + 0.5);
-        const cy = sy(u.y + 0.5);
-        const r = Math.max(3, Math.min(9, (catalog(u.type).radius / TILE_SIZE) * z));
-        c.strokeStyle = "#e8b84a";
-        c.lineWidth = 2;
-        c.beginPath();
-        c.arc(cx, cy, r + 3, 0, Math.PI * 2);
-        c.stroke();
-      }
-    }
-  }
-  if (renderPending && tool.id === "select" && hover.inside && !drag) {
-    const hi = standingUnitAt(live, hover.x, hover.y);
-    if (hi >= 0 && !(selected?.kind === "unit" && selected.index === hi)) {
-      const u = live.units[hi];
-      if (u && !u.inside) disc(u, "rgba(255,244,220,0.8)", 0.7);
-    }
-  }
-  if (drag?.kind === "unit") {
-    const u = live.units[drag.index];
-    if (u && !u.inside) disc(u, "#7dff6a", 0.75);
-  }
   c.textAlign = "center";
   c.textBaseline = "middle";
   c.font = "700 11px 'Share Tech Mono', monospace";
@@ -1785,7 +954,7 @@ function drawPlanUnits(c: CanvasRenderingContext2D, s: M.Sheet, sx: (x: number) 
     c.fillStyle = "#e8dcc4";
     c.fillText(label, sx(rc.cx), sy(rc.cy) + 0.5);
   }
-  const g = unitGhost(live);
+  const g = unitGhost(s);
   if (g) disc(g, g.bad ? "#ff5a4a" : "#7dff6a", 0.7);
 }
 
@@ -1800,9 +969,9 @@ function garrisonCounts(s: M.Sheet): Map<number, { count: number; cap: number }>
 }
 
 /** Patrol routes to draw: every unit's own and every spotlight building's sweep, and the one being drawn for the selection. Unselected routes stay off unless Always visible patrol is on. */
-function unitRoutes(s: M.Sheet, draft = true): RouteDraw[] {
-  const sel = draft && selected?.kind === "unit" ? selected.index : -1;
-  const selTower = draft && selected?.kind === "feature" ? selected.index : -1;
+function unitRoutes(s: M.Sheet): RouteDraw[] {
+  const sel = selected?.kind === "unit" ? selected.index : -1;
+  const selTower = selected?.kind === "feature" ? selected.index : -1;
   const out: RouteDraw[] = [];
   s.features.forEach((f, i) => {
     if (!hasSpotlight(f.type)) return;
@@ -1834,22 +1003,6 @@ function unitRoutes(s: M.Sheet, draft = true): RouteDraw[] {
     if (u.patrol?.length) out.push({ from: u, points: u.patrol, loop: !!u.loop, strong: i === sel });
   });
   return M.routesToShow(out, patrolAlways);
-}
-
-/** Routes on the picture, plus a patrol still being drawn on the live selection. */
-function pictureRoutes(world: M.Sheet): RouteDraw[] {
-  if (!renderPending) return unitRoutes(world);
-  const out = unitRoutes(world, false);
-  if (unitMode !== "patrol" || !sheet) return out;
-  const cursor = !patrolDraft.loop && hover.inside ? { x: hover.x, y: hover.y } : null;
-  if (selected?.kind === "feature") {
-    const f = sheet.features[selected.index];
-    if (f && hasSpotlight(f.type)) out.push({ from: towerTile(f), points: patrolDraft.points, loop: patrolDraft.loop, cursor, strong: true });
-  } else if (selected?.kind === "unit") {
-    const u = sheet.units[selected.index];
-    if (u && !u.inside) out.push({ from: u, points: patrolDraft.points, loop: patrolDraft.loop, cursor, strong: true });
-  }
-  return out;
 }
 
 /** The unit the Units tool would set down under the cursor; inside a building it shows nothing. */
@@ -1898,48 +1051,25 @@ function drawTurnHint(c: CanvasRenderingContext2D, ax: number, ay: number, secti
 
 /** The stage as the battlefield draws it: same ground bake, props, and building art. */
 function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: number, dpr: number): void {
-  const live = sheet ?? s;
   if (isoCam.zoom === 0) isoFit(isoCam, s, w, h);
   const ghost = hover.inside ? houseGhost() : null;
   const pieces = lineGhost();
   const road = roadGhost();
-  const ghosts = (ghost ? [ghost] : pieces).map((f) => ({ f, bad: M.houseProblem(live, f) !== null }));
-  const moving = drag?.kind === "move" ? live.features[drag.index] : undefined;
-  const selectedF = selected?.kind === "feature" ? live.features[selected.index] : undefined;
-  const relocated = !!selectedF && selected?.kind === "feature" && offPictureFeature(selected.index, selectedF);
-  if (moving) ghosts.push({ f: moving, bad: false });
-  else if (renderPending && relocated && selectedF) ghosts.push({ f: selectedF, bad: false });
-  const frames: { f: MapFeature; color: string }[] = [];
-  if (renderPending && selectedF && !relocated && !moving) frames.push({ f: selectedF, color: "#e8b84a" });
-  if (renderPending && hover.inside && !drag) {
-    const fi =
-      tool.id === "select"
-        ? M.featureIndexAt(live, hover.x, hover.y)
-        : tool.id === "unit" && isInfantryType(tool.unit)
-          ? M.garrisonHostAt(live, tool.unit, hover.x, hover.y)
-          : -1;
-    const f = fi >= 0 ? live.features[fi] : undefined;
-    if (f && f !== moving && f !== selectedF) frames.push({ f, color: "rgba(255,244,220,0.7)" });
-  }
+  const ghosts = (ghost ? [ghost] : pieces).map((f) => ({ f, bad: M.houseProblem(s, f) !== null }));
   let spawnGhost: { x: number; y: number; bad: boolean } | null = null;
-  if (hover.inside && tool.id === "spawn" && drag?.kind !== "spawn" && M.nextSpawnId(live) !== null && M.spawnIndexAt(live, hover.x, hover.y) < 0) {
-    spawnGhost = { x: hover.x, y: hover.y, bad: M.spawnProblem(live, hover.x, hover.y) !== null };
+  if (hover.inside && tool.id === "spawn" && drag?.kind !== "spawn" && M.nextSpawnId(s) !== null && M.spawnIndexAt(s, hover.x, hover.y) < 0) {
+    spawnGhost = { x: hover.x, y: hover.y, bad: M.spawnProblem(s, hover.x, hover.y) !== null };
   }
-  const sel = selected;
-  const spawnPin = renderPending && sel?.kind === "spawn" ? (live.spawns.find((p) => p.id === sel.id) ?? null) : null;
   const loading = isoDraw(c, s, isoCam, w, h, dpr, {
-    selectedFeature: renderPending ? -1 : selected?.kind === "feature" ? selected.index : -1,
-    hoverFeature: renderPending
-      ? -1
-      : tool.id === "select" && hover.inside && !drag
-        ? M.featureIndexAt(live, hover.x, hover.y)
+    selectedFeature: selected?.kind === "feature" ? selected.index : -1,
+    hoverFeature:
+      tool.id === "select" && hover.inside && !drag
+        ? M.featureIndexAt(s, hover.x, hover.y)
         : tool.id === "unit" && hover.inside && isInfantryType(tool.unit)
-          ? M.garrisonHostAt(live, tool.unit, hover.x, hover.y)
+          ? M.garrisonHostAt(s, tool.unit, hover.x, hover.y)
           : -1,
-    selectedSpawn: renderPending ? 0 : selected?.kind === "spawn" ? selected.id : 0,
+    selectedSpawn: selected?.kind === "spawn" ? selected.id : 0,
     ghosts,
-    frames,
-    spawnPin,
     lineStart: pieces.length > 0 || road.length > 0 ? (line.points[0] ?? line.press) : null,
     road: M.roadQuads(road, tool.roadWidth),
     spawnGhost,
@@ -1947,15 +1077,14 @@ function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
     units: unitOverlay(s),
     lampGhost:
       tool.id === "lamp" && hover.inside && !drag
-        ? { x: hover.x, y: hover.y, type: tool.lamp, bad: M.lampProblem(live, hover.x, hover.y) !== null }
+        ? { x: hover.x, y: hover.y, type: tool.lamp, bad: M.lampProblem(s, hover.x, hover.y) !== null }
         : null,
     clutterGhost:
       tool.id === "clutter" && hover.inside && !drag
-        ? { x: hover.x, y: hover.y, type: tool.clutter, bad: M.clutterProblem(live, hover.x, hover.y) !== null }
+        ? { x: hover.x, y: hover.y, type: tool.clutter, bad: M.clutterProblem(s, hover.x, hover.y) !== null }
         : null,
     night: nightView,
   }, queueDraw);
-  if (renderPending) paintIsoEdits(c, live, s, w, h);
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (pointerOver && hover.inside && turningTool()) {
     const p = isoScreenOf(s, isoCam, hover.x, hover.y);
@@ -1965,36 +1094,17 @@ function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
   if (loading) setTimeout(queueDraw, 200);
 }
 
-function unitOverlay(world: M.Sheet): UnitOverlay {
-  const live = sheet ?? world;
-  const placing = unitGhost(live);
-  const dragged = drag?.kind === "unit" ? live.units[drag.index] : undefined;
-  const held = !dragged && renderPending && selected?.kind === "unit" ? live.units[selected.index] : undefined;
-  const relocated = !!held && selected?.kind === "unit" && offPictureUnit(selected.index, held);
-  const stood = dragged ?? (relocated ? held : undefined);
-  const ghost =
-    placing ?? (stood && !stood.inside ? { type: stood.type, x: stood.x, y: stood.y, facing: stood.facing, bad: false } : null);
-  const pins: { x: number; y: number; color: string; dashed?: boolean }[] = [];
-  if (held && !relocated && !held.inside) pins.push({ x: held.x, y: held.y, color: "#e8b84a" });
-  if (renderPending && tool.id === "select" && hover.inside && !drag) {
-    const hi = standingUnitAt(live, hover.x, hover.y);
-    if (hi >= 0 && !(selected?.kind === "unit" && selected.index === hi)) {
-      const u = live.units[hi];
-      if (u && !u.inside) pins.push({ x: u.x, y: u.y, color: "rgba(255,244,220,0.7)", dashed: true });
-    }
-  }
+function unitOverlay(s: M.Sheet): UnitOverlay {
+  const g = unitGhost(s);
   return {
-    list: world.units,
-    selected: renderPending ? -1 : selected?.kind === "unit" ? selected.index : -1,
-    hover: renderPending || tool.id !== "select" || !hover.inside || drag ? -1 : standingUnitAt(world, hover.x, hover.y),
-    ghost,
-    routes: pictureRoutes(world),
-    garrisons: garrisonCounts(world),
+    list: s.units,
+    selected: selected?.kind === "unit" ? selected.index : -1,
+    hover: tool.id === "select" && hover.inside && !drag ? standingUnitAt(s, hover.x, hover.y) : -1,
+    ghost: g,
+    routes: unitRoutes(s),
+    garrisons: garrisonCounts(s),
     aim: unitMode === "rotate" && hover.inside ? { x: hover.x, y: hover.y } : null,
-    aimFrom:
-      renderPending && unitMode === "rotate" && selected?.kind === "unit" ? (live.units[selected.index] ?? null) : null,
     beams: spotBeams(),
-    pins,
   };
 }
 
@@ -2018,26 +1128,16 @@ function towerSpot(f: MapFeature): number {
 function spotBeams(): SpotBeam[] {
   const out: SpotBeam[] = [];
   const aiming = unitMode === "spot" && hover.inside;
-  const tower = selectedTower();
-  if (tower && selected?.kind === "feature") {
-    const pictured = renderPending && !aiming ? shown?.features[selected.index] : tower;
-    const drawn = pictured && hasSpotlight(pictured.type) ? pictured : aiming ? tower : null;
-    if (drawn) {
-      const from = aiming ? tower : drawn;
-      const deg = aiming ? spotToward(towerTile(tower), hover.x, hover.y, towerSpot(tower)) : towerSpot(drawn);
-      const r = featureRect(from);
-      out.push({ x: r.cx * TILE_SIZE, y: r.cy * TILE_SIZE, facing: (deg * Math.PI) / 180, strong: true });
-    }
+  const f = selectedTower();
+  if (f) {
+    const deg = aiming ? spotToward(towerTile(f), hover.x, hover.y, towerSpot(f)) : towerSpot(f);
+    const r = featureRect(f);
+    out.push({ x: r.cx * TILE_SIZE, y: r.cy * TILE_SIZE, facing: (deg * Math.PI) / 180, strong: true });
   }
   const u = selectedUnit();
-  if (u && hasSpotlight(u.type) && selected?.kind === "unit") {
-    const pictured = renderPending && !aiming ? shown?.units[selected.index] : u;
-    const drawn = pictured && hasSpotlight(pictured.type) ? pictured : aiming ? u : null;
-    if (drawn && !drawn.inside) {
-      const from = aiming ? u : drawn;
-      const deg = aiming ? spotToward(u, hover.x, hover.y, u.spot ?? u.facing) : (drawn.spot ?? drawn.facing);
-      out.push({ x: (from.x + 0.5) * TILE_SIZE, y: (from.y + 0.5) * TILE_SIZE, facing: (deg * Math.PI) / 180, strong: true });
-    }
+  if (u && hasSpotlight(u.type)) {
+    const deg = aiming ? spotToward(u, hover.x, hover.y, u.spot ?? u.facing) : (u.spot ?? u.facing);
+    out.push({ x: (u.x + 0.5) * TILE_SIZE, y: (u.y + 0.5) * TILE_SIZE, facing: (deg * Math.PI) / 180, strong: true });
   }
   return out;
 }
@@ -2111,6 +1211,7 @@ function setGameView(on: boolean): void {
   // Unit orders and garrisons are given in the In-game view only.
   if (!on) unitMode = null;
   paintSelection();
+  isoChanged();
   try {
     store()?.setItem(GAME_VIEW_STORE, on ? "1" : "0");
   } catch {
@@ -2120,18 +1221,10 @@ function setGameView(on: boolean): void {
   queueDraw();
 }
 
-const RENDER_HINT = " · Space renders changes";
-
-function withRenderHint(text: string): string {
-  const base = text.endsWith(RENDER_HINT) ? text.slice(0, -RENDER_HINT.length) : text;
-  return renderPending ? base + RENDER_HINT : base;
-}
-
 function statusHint(): string {
-  const base = gameView
+  return gameView
     ? "In-game view · wheel zooms · arrows or right-drag pan · Ctrl+Z undoes · V or Esc selects"
     : "Wheel zooms · arrows or right-drag pan · Ctrl+Z undoes · V or Esc selects";
-  return withRenderHint(base);
 }
 
 // --- painting --------------------------------------------------------------
@@ -2696,9 +1789,9 @@ function onMove(e: PointerEvent): void {
   if (t.inside) {
     const i = t.y * s.width + t.x;
     const label = isMountainCliff(s.tiles, s.heights, s.width, s.height, t.x, t.y) ? "rock" : groundName(s.tiles[i]!, s.ground[i]);
-    stage.status.textContent = withRenderHint(`${t.x}, ${t.y} · height ${s.heights[i]} · ${label}`);
+    stage.status.textContent = `${t.x}, ${t.y} · height ${s.heights[i]} · ${label}`;
   } else if (moved) {
-    stage.status.textContent = withRenderHint("Off the map");
+    stage.status.textContent = "Off the map";
   }
   if (!moved) return;
   if (drag?.kind === "brush") {
@@ -3858,11 +2951,6 @@ function bindKeys(): void {
     // A ticked checkbox (Auto save, In-game view) keeps focus but takes no typed keys.
     const checkbox = target instanceof HTMLInputElement && target.type === "checkbox";
     if (target && !checkbox && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA")) return;
-    if (e.key === " " || e.code === "Space") {
-      e.preventDefault();
-      if (!e.repeat) void renderChanges();
-      return;
-    }
     if (e.key.startsWith("Arrow") && !e.ctrlKey && !e.metaKey && !e.altKey) {
       e.preventDefault();
       panKeys.add(e.key);
@@ -3950,27 +3038,13 @@ export function renderBuilder(root: HTMLElement, ctx: Ctx): void {
   const wrap = el("div", { class: "builder" });
   const canvas = el("canvas");
   const status = el("div", { class: "bld-status", text: statusHint() });
-  const renderBtn = el("button", {
-    class: "btn bld-render",
-    text: "Render changes",
-    attrs: { type: "button" },
-  });
-  renderBtn.addEventListener("click", () => void renderChanges());
-  const veil = el("div", { class: "bld-veil" });
-  veil.hidden = !rendering;
-  const building = el("div", { class: "bld-building", attrs: { role: "status", "aria-live": "polite" } });
-  const dots = el("span", { class: "bld-building-dots", attrs: { "aria-hidden": "true" } });
-  dots.append(el("i"), el("i"), el("i"));
-  building.append(el("span", { class: "bld-building-word", text: "Building" }), dots);
-  veil.append(building);
-  stage = { root: screen, canvas, status, preview: null, msg: el("div"), checks: null, maps: null, sel: null, turnLabel: null, renderBtn, veil };
+  stage = { root: screen, canvas, status, preview: null, msg: el("div"), checks: null, maps: null, sel: null, turnLabel: null };
   wrap.append(header(ctx));
   const tools = toolsPanel(ctx);
   paintSelection();
   if (!sheet || newOpen) tools.style.visibility = "hidden";
   const stageBox = el("div", { class: "bld-stage panel" });
-  stageBox.append(canvas, status, renderBtn, veil);
-  paintRenderButton();
+  stageBox.append(canvas, status);
   if (!sheet || newOpen) stageBox.append(newForm(ctx));
   else stageBox.append(viewToggles());
   wrap.append(tools, stageBox, sidePanel(ctx));
