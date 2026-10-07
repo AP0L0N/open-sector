@@ -13,6 +13,8 @@ import {
   GROUND_TALL_GRASS,
   HEIGHT_BASE,
   HEIGHT_MAX,
+  ISO_TILE_H,
+  ISO_TILE_W,
   MOUNTAIN_MIN_HEIGHT,
   CLUTTER_NAMES,
   CLUTTER_TYPES,
@@ -55,6 +57,8 @@ import {
   bridgeBrickLength,
   bridgePath,
   bridgeWidth,
+  isoLift,
+  isoToWorld,
   worldToIso,
   type BridgeType,
   listMaps,
@@ -97,7 +101,7 @@ import { el } from "./dom.js";
 import { drawMapPreview } from "./map-preview.js";
 import * as M from "./builder-model.js";
 import { isoChanged, isoCommit, isoDraw, isoHoldBake, type RouteDraw, type SpotBeam, type UnitOverlay } from "./builder-iso.js";
-import { renderChangesEnabled } from "./builder-render.js";
+import { diffByKey, renderChangesEnabled } from "./builder-render.js";
 import { SIDEBAR_GROUPS, sidebarGroupOf, type SidebarGroup } from "./sidebar-groups.js";
 import { isoFit, isoPick, isoScreenOf, isoZoomAt, type IsoCam } from "./builder-iso-cam.js";
 
@@ -319,6 +323,17 @@ let renderPending = false;
 let rendering = false;
 /** Bumps on every edit so a build can see whether more landed while it ran. */
 let renderEpoch = 0;
+/** Bumps when a picture is published, so a sketch of the previous picture is not reused. */
+let pictureEpoch = 0;
+/** Plan pixels of edits since the last render. Transparent where the picture still matches. */
+let draft: HTMLCanvasElement | null = null;
+let draftPx: ImageData | null = null;
+/** 1 where the live tile, height, or cover differs from the picture. */
+let draftOn: Uint8Array | null = null;
+let draftCount = 0;
+let draftEpoch = -1;
+let draftPicture = -1;
+let pendingPieces: PendingPieces | null = null;
 /** Bumps when another map is opened, so a build in flight does not publish over it. */
 let renderTicket = 0;
 let drawQueued = false;
@@ -521,10 +536,12 @@ async function renderChanges(): Promise<void> {
       ground = painted.canvas;
       groundPx = painted.px;
     }
+    pictureEpoch++;
     previewStale = true;
+    // The sketch drops once this picture includes every edit. Edits that landed while the bake ran stay sketched.
+    renderPending = renderEpoch !== epoch;
     drawStage();
     schedulePreview(0);
-    renderPending = renderEpoch !== epoch;
     built = true;
   } finally {
     isoHoldBake(false);
@@ -693,6 +710,619 @@ function markGround(box: M.Dirty): void {
   queueDraw();
 }
 
+// --- sketch of edits waiting for Render changes --------------------------------
+
+type PieceDiff<T> = { added: T[]; removed: T[] };
+
+interface PendingPieces {
+  features: PieceDiff<MapFeature>;
+  featureBodies: PieceDiff<MapFeature>;
+  units: PieceDiff<MapUnit>;
+  unitBodies: PieceDiff<MapUnit>;
+  lamps: PieceDiff<M.Sheet["lamps"][number]>;
+  clutter: PieceDiff<M.Sheet["clutter"][number]>;
+  spawns: PieceDiff<M.Sheet["spawns"][number]>;
+}
+
+/** How many iso diamonds one frame will fill. Past this, a zoomed-out sketch steps by whole blocks. */
+const DRAFT_DIAMONDS = 6000;
+
+function pointKey(pts: readonly { x: number; y: number }[] | undefined): string {
+  if (!pts || pts.length === 0) return "";
+  let out = "";
+  for (const p of pts) out += `${p.x},${p.y};`;
+  return out;
+}
+
+function featureKey(f: MapFeature): string {
+  return `${f.type}|${f.x}|${f.y}|${f.facing}|${f.turn ?? ""}|${f.deck ?? ""}|${f.spot ?? ""}|${f.loop ? 1 : 0}|${pointKey(f.patrol)}`;
+}
+
+function featureBodyKey(f: MapFeature): string {
+  return `${f.type}|${f.x}|${f.y}|${f.facing}|${f.turn ?? ""}|${f.deck ?? ""}`;
+}
+
+function unitKey(u: MapUnit): string {
+  return `${u.type}|${u.x}|${u.y}|${u.facing}|${u.inside ? 1 : 0}|${u.spot ?? ""}|${u.loop ? 1 : 0}|${pointKey(u.patrol)}`;
+}
+
+function unitBodyKey(u: MapUnit): string {
+  return `${u.type}|${u.x}|${u.y}|${u.facing}|${u.inside ? 1 : 0}`;
+}
+
+function placeKey(p: { type: string; x: number; y: number }): string {
+  return `${p.type}|${p.x}|${p.y}`;
+}
+
+function spawnKey(p: { id: number; x: number; y: number }): string {
+  return `${p.id}|${p.x}|${p.y}`;
+}
+
+function clearDraft(): void {
+  draft = null;
+  draftPx = null;
+  draftOn = null;
+  draftCount = 0;
+  draftEpoch = -1;
+  draftPicture = -1;
+  pendingPieces = null;
+}
+
+/** Rebuild the sketch once per edit. Panning and hovering reuse it. */
+function syncDraft(live: M.Sheet): void {
+  const picture = shown;
+  if (!renderPending || !picture || picture.width !== live.width || picture.height !== live.height) {
+    if (draftEpoch !== -1 || pendingPieces) clearDraft();
+    return;
+  }
+  if (
+    draft &&
+    draftOn &&
+    draftPx &&
+    pendingPieces &&
+    draftEpoch === renderEpoch &&
+    draftPicture === pictureEpoch &&
+    draft.width === live.width &&
+    draft.height === live.height
+  ) {
+    return;
+  }
+  rebuildDraft(live, picture);
+}
+
+function tileDiffers(live: M.Sheet, picture: M.Sheet, i: number): boolean {
+  return live.tiles[i] !== picture.tiles[i]
+    || live.heights[i] !== picture.heights[i]
+    || (live.ground[i] ?? GROUND_GRASS) !== (picture.ground[i] ?? GROUND_GRASS);
+}
+
+function rebuildDraft(live: M.Sheet, picture: M.Sheet): void {
+  const w = live.width;
+  const h = live.height;
+  if (!draft || draft.width !== w || draft.height !== h) {
+    draft = document.createElement("canvas");
+    draft.width = w;
+    draft.height = h;
+    draftPx = null;
+    draftOn = null;
+  }
+  const g = draft.getContext("2d");
+  if (!g) return;
+  if (!draftPx || draftPx.width !== w || draftPx.height !== h) draftPx = g.createImageData(w, h);
+  else draftPx.data.fill(0);
+  const n = w * h;
+  if (!draftOn || draftOn.length !== n) draftOn = new Uint8Array(n);
+  else draftOn.fill(0);
+  const d = draftPx.data;
+  const on = draftOn;
+  let count = 0;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (!tileDiffers(live, picture, i)) continue;
+      const [r, gg, b] = tileColor(live, x, y);
+      const k = i * 4;
+      d[k] = r;
+      d[k + 1] = gg;
+      d[k + 2] = b;
+      d[k + 3] = 230;
+      on[i] = 1;
+      count++;
+    }
+  }
+  g.putImageData(draftPx, 0, 0);
+  draftCount = count;
+  draftEpoch = renderEpoch;
+  draftPicture = pictureEpoch;
+  pendingPieces = {
+    features: diffByKey(picture.features, live.features, featureKey),
+    featureBodies: diffByKey(picture.features, live.features, featureBodyKey),
+    units: diffByKey(picture.units, live.units, unitKey),
+    unitBodies: diffByKey(picture.units, live.units, unitBodyKey),
+    lamps: diffByKey(picture.lamps, live.lamps, placeKey),
+    clutter: diffByKey(picture.clutter, live.clutter, placeKey),
+    spawns: diffByKey(picture.spawns, live.spawns, spawnKey),
+  };
+}
+
+/** The higher of the live ground and the picture, so a lowered tile still paints over the old stamp. */
+function previewElev(live: M.Sheet, picture: M.Sheet, tx: number, ty: number): number {
+  const x = Math.max(0, Math.min(live.width - 1, Math.floor(tx)));
+  const y = Math.max(0, Math.min(live.height - 1, Math.floor(ty)));
+  const i = y * live.width + x;
+  return Math.max(live.heights[i] ?? 0, picture.heights[i] ?? 0);
+}
+
+function isoAt(wx: number, wy: number, elev: number): { x: number; y: number } {
+  const p = worldToIso(wx, wy, TILE_SIZE);
+  return { x: p.x, y: p.y - isoLift(elev) };
+}
+
+function planCross(c: CanvasRenderingContext2D, x: number, y: number, arm: number): void {
+  c.strokeStyle = "#ff5a4a";
+  c.lineWidth = 1.5;
+  c.beginPath();
+  c.moveTo(x - arm, y - arm);
+  c.lineTo(x + arm, y + arm);
+  c.moveTo(x + arm, y - arm);
+  c.lineTo(x - arm, y + arm);
+  c.stroke();
+}
+
+function planRoute(
+  c: CanvasRenderingContext2D,
+  from: { x: number; y: number },
+  points: readonly { x: number; y: number }[],
+  loop: boolean,
+  sx: (x: number) => number,
+  sy: (y: number) => number,
+): void {
+  c.strokeStyle = "#e8b84a";
+  c.lineWidth = 1.8;
+  c.setLineDash([5, 4]);
+  c.beginPath();
+  c.moveTo(sx(from.x + 0.5), sy(from.y + 0.5));
+  for (const p of points) c.lineTo(sx(p.x + 0.5), sy(p.y + 0.5));
+  if (loop && points.length > 1) c.lineTo(sx(points[0]!.x + 0.5), sy(points[0]!.y + 0.5));
+  c.stroke();
+  c.setLineDash([]);
+  c.fillStyle = "#e8b84a";
+  for (const p of points) {
+    c.beginPath();
+    c.arc(sx(p.x + 0.5), sy(p.y + 0.5), 2.5, 0, Math.PI * 2);
+    c.fill();
+  }
+}
+
+function planAim(c: CanvasRenderingContext2D, x: number, y: number, deg: number, sx: (n: number) => number, sy: (n: number) => number): void {
+  const a = (deg * Math.PI) / 180;
+  c.strokeStyle = "#e8b84a";
+  c.lineWidth = 1.5;
+  c.beginPath();
+  c.moveTo(sx(x + 0.5), sy(y + 0.5));
+  c.lineTo(sx(x + 0.5 + Math.cos(a) * 4), sy(y + 0.5 + Math.sin(a) * 4));
+  c.stroke();
+}
+
+/** Houses, units, lamps, clutter, and starts that differ from the picture, on the plan. */
+function paintPlanEdits(
+  c: CanvasRenderingContext2D,
+  sx: (x: number) => number,
+  sy: (y: number) => number,
+  z: number,
+  drawHouse: (f: MapFeature, fill: string, edge: string) => void,
+): void {
+  const pieces = pendingPieces;
+  if (!renderPending || !pieces) return;
+  c.save();
+  for (const f of pieces.featureBodies.removed) {
+    drawHouse(f, "rgba(255,90,74,0.4)", "#ff5a4a");
+    const r = featureRect(f);
+    planCross(c, sx(r.cx), sy(r.cy), Math.max(4, Math.min(r.halfU, r.halfV) * z * 0.7));
+  }
+  for (const f of pieces.featureBodies.added) drawHouse(f, ...featureColors(f.type));
+  for (const f of pieces.features.added) {
+    if (f.patrol?.length) planRoute(c, towerTile(f), f.patrol, !!f.loop, sx, sy);
+    if (hasSpotlight(f.type)) planAim(c, towerTile(f).x, towerTile(f).y, towerSpot(f), sx, sy);
+  }
+  const lampR = Math.max(2.5, Math.min(6, z * 0.9));
+  for (const l of pieces.lamps.removed) {
+    c.strokeStyle = "#ff5a4a";
+    c.lineWidth = 2;
+    c.beginPath();
+    c.arc(sx(l.x + 0.5), sy(l.y + 0.5), lampR, 0, Math.PI * 2);
+    c.stroke();
+  }
+  for (const l of pieces.lamps.added) {
+    c.fillStyle = `rgb(${STREET_LAMPS[l.type].rgb})`;
+    c.strokeStyle = "#1d1c18";
+    c.lineWidth = 1.25;
+    c.beginPath();
+    c.arc(sx(l.x + 0.5), sy(l.y + 0.5), lampR, 0, Math.PI * 2);
+    c.fill();
+    c.stroke();
+  }
+  const box = Math.max(1.5, Math.min(4, z * 0.6));
+  for (const p of pieces.clutter.removed) {
+    c.strokeStyle = "#ff5a4a";
+    c.lineWidth = 2;
+    c.strokeRect(sx(p.x + 0.5) - box, sy(p.y + 0.5) - box, box * 2, box * 2);
+  }
+  for (const p of pieces.clutter.added) {
+    c.fillStyle = "#b08850";
+    c.strokeStyle = "#2a2016";
+    c.lineWidth = 1;
+    c.fillRect(sx(p.x + 0.5) - box, sy(p.y + 0.5) - box, box * 2, box * 2);
+    c.strokeRect(sx(p.x + 0.5) - box, sy(p.y + 0.5) - box, box * 2, box * 2);
+  }
+  const disc = (u: MapUnit, fill: string, edge: string, cross: boolean): void => {
+    if (u.inside) return;
+    const cx = sx(u.x + 0.5);
+    const cy = sy(u.y + 0.5);
+    const r = Math.max(3, Math.min(9, (catalog(u.type).radius / TILE_SIZE) * z));
+    c.fillStyle = fill;
+    c.strokeStyle = edge;
+    c.lineWidth = 2;
+    c.beginPath();
+    c.arc(cx, cy, r, 0, Math.PI * 2);
+    c.fill();
+    c.stroke();
+    if (cross) {
+      planCross(c, cx, cy, r);
+      return;
+    }
+    const a = (u.facing * Math.PI) / 180;
+    c.strokeStyle = "#1d1c18";
+    c.lineWidth = 1.5;
+    c.beginPath();
+    c.moveTo(cx, cy);
+    c.lineTo(cx + Math.cos(a) * (r + 3), cy + Math.sin(a) * (r + 3));
+    c.stroke();
+  };
+  for (const u of pieces.unitBodies.removed) disc(u, "rgba(255,90,74,0.45)", "#ff5a4a", true);
+  for (const u of pieces.unitBodies.added) disc(u, "#8c8c88", "#e8b84a", false);
+  for (const u of pieces.units.added) {
+    if (u.inside) continue;
+    if (u.patrol?.length) planRoute(c, u, u.patrol, !!u.loop, sx, sy);
+    if (hasSpotlight(u.type)) planAim(c, u.x, u.y, u.spot ?? u.facing, sx, sy);
+  }
+  const pad = Math.max(8, Math.min(16, z * 3));
+  c.textAlign = "center";
+  c.textBaseline = "middle";
+  c.font = `700 ${Math.round(pad * 1.1)}px "Share Tech Mono", monospace`;
+  for (const sp of pieces.spawns.removed) {
+    c.setLineDash([5, 4]);
+    c.strokeStyle = "#ff5a4a";
+    c.lineWidth = 1.5;
+    c.beginPath();
+    c.arc(sx(sp.x + 0.5), sy(sp.y + 0.5), SPAWN_PAD_R * z, 0, Math.PI * 2);
+    c.stroke();
+    c.setLineDash([]);
+    c.fillStyle = "#ff5a4a";
+    c.fillText(String(sp.id), sx(sp.x + 0.5), sy(sp.y + 0.5));
+  }
+  for (const sp of pieces.spawns.added) {
+    const x = sx(sp.x + 0.5);
+    const y = sy(sp.y + 0.5);
+    c.setLineDash([5, 4]);
+    c.strokeStyle = "#e8b84a";
+    c.lineWidth = 1.5;
+    c.beginPath();
+    c.arc(x, y, SPAWN_PAD_R * z, 0, Math.PI * 2);
+    c.stroke();
+    c.setLineDash([]);
+    c.fillStyle = "#e8b84a";
+    c.beginPath();
+    c.arc(x, y, pad, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = "#140e0a";
+    c.fillText(String(sp.id), x, y + 1);
+  }
+  c.restore();
+}
+
+function viewTileBox(s: M.Sheet, w: number, h: number): { x0: number; y0: number; x1: number; y1: number } {
+  const zoom = Math.max(isoCam.zoom, 0.0001);
+  const x0 = isoCam.camX;
+  const y0 = isoCam.camY;
+  const x1 = x0 + w / zoom;
+  const y1 = y0 + h / zoom;
+  const corners = [isoToWorld(x0, y0, TILE_SIZE), isoToWorld(x1, y0, TILE_SIZE), isoToWorld(x0, y1, TILE_SIZE), isoToWorld(x1, y1, TILE_SIZE)];
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const p of corners) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  const lift = Math.ceil(isoLift(HEIGHT_MAX) / (ISO_TILE_H / 2)) + 4;
+  return {
+    x0: Math.max(0, Math.floor(minX / TILE_SIZE) - 2),
+    y0: Math.max(0, Math.floor(minY / TILE_SIZE) - 2),
+    x1: Math.min(s.width - 1, Math.ceil(maxX / TILE_SIZE) + lift),
+    y1: Math.min(s.height - 1, Math.ceil(maxY / TILE_SIZE) + lift),
+  };
+}
+
+function draftStride(box: { x0: number; y0: number; x1: number; y1: number }, mapTiles: number): number {
+  if (draftCount <= 0 || mapTiles <= 0) return 1;
+  const area = (box.x1 - box.x0 + 1) * (box.y1 - box.y0 + 1);
+  const expect = (draftCount / mapTiles) * area;
+  let stride = 1;
+  while (expect / (stride * stride) > DRAFT_DIAMONDS && stride < 8) stride *= 2;
+  return stride;
+}
+
+/** Changed ground as flat diamonds on the in-game view. The bake itself waits for Render changes. */
+function paintIsoGround(c: CanvasRenderingContext2D, live: M.Sheet, picture: M.Sheet, w: number, h: number): void {
+  const on = draftOn;
+  const px = draftPx;
+  if (!on || !px || draftCount === 0) return;
+  const box = viewTileBox(live, w, h);
+  const stride = draftStride(box, live.width * live.height);
+  const d = px.data;
+  c.globalAlpha = 0.9;
+  let drawn = 0;
+  for (let y = box.y0; y <= box.y1 && drawn < DRAFT_DIAMONDS; y += stride) {
+    for (let x = box.x0; x <= box.x1 && drawn < DRAFT_DIAMONDS; x += stride) {
+      const xEnd = Math.min(live.width, x + stride);
+      const yEnd = Math.min(live.height, y + stride);
+      let hit = -1;
+      for (let ty = y; ty < yEnd && hit < 0; ty++) {
+        const row = ty * live.width;
+        for (let tx = x; tx < xEnd; tx++) {
+          if (on[row + tx]) {
+            hit = row + tx;
+            break;
+          }
+        }
+      }
+      if (hit < 0) continue;
+      const elev = Math.max(live.heights[hit] ?? 0, picture.heights[hit] ?? 0);
+      const lift = isoLift(elev);
+      const x1 = xEnd;
+      const y1 = yEnd;
+      const ts = TILE_SIZE;
+      const corners: [number, number][] = [
+        [x * ts, y * ts],
+        [x1 * ts, y * ts],
+        [x1 * ts, y1 * ts],
+        [x * ts, y1 * ts],
+      ];
+      c.beginPath();
+      for (let i = 0; i < corners.length; i++) {
+        const p = worldToIso(corners[i]![0], corners[i]![1], ts);
+        if (i === 0) c.moveTo(p.x, p.y - lift);
+        else c.lineTo(p.x, p.y - lift);
+      }
+      c.closePath();
+      const k = hit * 4;
+      c.fillStyle = `rgb(${d[k]},${d[k + 1]},${d[k + 2]})`;
+      c.fill();
+      drawn++;
+    }
+  }
+  c.globalAlpha = 1;
+}
+
+function isoFeatureQuad(f: MapFeature, elev: number): { x: number; y: number }[] {
+  const r = featureRect(f);
+  const out: { x: number; y: number }[] = [];
+  for (const [a, b] of [[-1, -1], [1, -1], [1, 1], [-1, 1]] as const) {
+    const tx = r.cx + a * r.halfU * r.ux + b * r.halfV * r.vx;
+    const ty = r.cy + a * r.halfU * r.uy + b * r.halfV * r.vy;
+    out.push(isoAt(tx * TILE_SIZE, ty * TILE_SIZE, elev));
+  }
+  return out;
+}
+
+function paintIsoQuad(c: CanvasRenderingContext2D, pts: readonly { x: number; y: number }[], fill: string, edge: string, zoom: number, cross: boolean): void {
+  c.beginPath();
+  for (let i = 0; i < pts.length; i++) {
+    const p = pts[i]!;
+    if (i === 0) c.moveTo(p.x, p.y);
+    else c.lineTo(p.x, p.y);
+  }
+  c.closePath();
+  c.globalAlpha = cross ? 0.45 : 0.88;
+  c.fillStyle = fill;
+  c.fill();
+  c.globalAlpha = 1;
+  c.strokeStyle = edge;
+  c.lineWidth = 1.5 / zoom;
+  c.stroke();
+  if (!cross || pts.length < 4) return;
+  c.beginPath();
+  c.moveTo(pts[0]!.x, pts[0]!.y);
+  c.lineTo(pts[2]!.x, pts[2]!.y);
+  c.moveTo(pts[1]!.x, pts[1]!.y);
+  c.lineTo(pts[3]!.x, pts[3]!.y);
+  c.stroke();
+}
+
+function paintIsoRoute(
+  c: CanvasRenderingContext2D,
+  live: M.Sheet,
+  picture: M.Sheet,
+  from: { x: number; y: number },
+  points: readonly { x: number; y: number }[],
+  loop: boolean,
+  zoom: number,
+): void {
+  const at = (p: { x: number; y: number }): { x: number; y: number } =>
+    isoAt((p.x + 0.5) * TILE_SIZE, (p.y + 0.5) * TILE_SIZE, previewElev(live, picture, p.x, p.y));
+  c.strokeStyle = "#e8b84a";
+  c.lineWidth = 1.8 / zoom;
+  c.setLineDash([6 / zoom, 4 / zoom]);
+  c.beginPath();
+  const a = at(from);
+  c.moveTo(a.x, a.y);
+  for (const p of points) {
+    const q = at(p);
+    c.lineTo(q.x, q.y);
+  }
+  if (loop && points.length > 1) {
+    const q = at(points[0]!);
+    c.lineTo(q.x, q.y);
+  }
+  c.stroke();
+  c.setLineDash([]);
+  c.fillStyle = "#e8b84a";
+  for (const p of points) {
+    const q = at(p);
+    c.beginPath();
+    c.arc(q.x, q.y, 3 / zoom, 0, Math.PI * 2);
+    c.fill();
+  }
+}
+
+function paintIsoAim(c: CanvasRenderingContext2D, live: M.Sheet, picture: M.Sheet, x: number, y: number, deg: number, zoom: number): void {
+  const elev = previewElev(live, picture, x, y);
+  const a = (deg * Math.PI) / 180;
+  const from = isoAt((x + 0.5) * TILE_SIZE, (y + 0.5) * TILE_SIZE, elev);
+  const to = isoAt((x + 0.5 + Math.cos(a) * 4) * TILE_SIZE, (y + 0.5 + Math.sin(a) * 4) * TILE_SIZE, elev);
+  c.strokeStyle = "#e8b84a";
+  c.lineWidth = 1.5 / zoom;
+  c.beginPath();
+  c.moveTo(from.x, from.y);
+  c.lineTo(to.x, to.y);
+  c.stroke();
+}
+
+function paintIsoUnit(c: CanvasRenderingContext2D, live: M.Sheet, picture: M.Sheet, u: MapUnit, fill: string, edge: string, cross: boolean, zoom: number): void {
+  if (u.inside) return;
+  const elev = previewElev(live, picture, u.x, u.y);
+  const wx = (u.x + 0.5) * TILE_SIZE;
+  const wy = (u.y + 0.5) * TILE_SIZE;
+  const p = isoAt(wx, wy, elev);
+  const r = Math.max(6, Math.min(12, (catalog(u.type).radius / TILE_SIZE) * (ISO_TILE_W / 2)));
+  c.globalAlpha = cross ? 0.55 : 0.9;
+  c.fillStyle = fill;
+  c.strokeStyle = edge;
+  c.lineWidth = 1.5 / zoom;
+  c.beginPath();
+  c.arc(p.x, p.y, r, 0, Math.PI * 2);
+  c.fill();
+  c.stroke();
+  c.globalAlpha = 1;
+  if (cross) {
+    c.beginPath();
+    c.moveTo(p.x - r, p.y - r);
+    c.lineTo(p.x + r, p.y + r);
+    c.moveTo(p.x + r, p.y - r);
+    c.lineTo(p.x - r, p.y + r);
+    c.stroke();
+    return;
+  }
+  const a = (u.facing * Math.PI) / 180;
+  const tip = isoAt(wx + Math.cos(a) * TILE_SIZE, wy + Math.sin(a) * TILE_SIZE, elev);
+  c.strokeStyle = "#1d1c18";
+  c.beginPath();
+  c.moveTo(p.x, p.y);
+  c.lineTo(tip.x, tip.y);
+  c.stroke();
+}
+
+/** The same sketch in the in-game view: diamonds for ground, footprints for everything else. */
+function paintIsoEdits(c: CanvasRenderingContext2D, live: M.Sheet, picture: M.Sheet, w: number, h: number): void {
+  const pieces = pendingPieces;
+  if (!renderPending || !pieces) return;
+  const zoom = Math.max(isoCam.zoom, 0.0001);
+  c.save();
+  paintIsoGround(c, live, picture, w, h);
+  for (const f of pieces.featureBodies.removed) {
+    paintIsoQuad(c, isoFeatureQuad(f, previewElev(live, picture, featureRect(f).cx, featureRect(f).cy)), "#ff5a4a", "#ff5a4a", zoom, true);
+  }
+  for (const f of pieces.featureBodies.added) {
+    const [fill, edge] = featureColors(f.type);
+    const rect = featureRect(f);
+    paintIsoQuad(c, isoFeatureQuad(f, previewElev(live, picture, rect.cx, rect.cy)), fill, edge, zoom, false);
+  }
+  for (const f of pieces.features.added) {
+    if (f.patrol?.length) paintIsoRoute(c, live, picture, towerTile(f), f.patrol, !!f.loop, zoom);
+    if (hasSpotlight(f.type)) {
+      const from = towerTile(f);
+      paintIsoAim(c, live, picture, from.x, from.y, towerSpot(f), zoom);
+    }
+  }
+  const dot = ISO_TILE_W * 0.28;
+  for (const l of pieces.lamps.removed) {
+    const p = isoAt((l.x + 0.5) * TILE_SIZE, (l.y + 0.5) * TILE_SIZE, previewElev(live, picture, l.x, l.y));
+    c.strokeStyle = "#ff5a4a";
+    c.lineWidth = 1.5 / zoom;
+    c.beginPath();
+    c.arc(p.x, p.y, dot, 0, Math.PI * 2);
+    c.stroke();
+  }
+  for (const l of pieces.lamps.added) {
+    const p = isoAt((l.x + 0.5) * TILE_SIZE, (l.y + 0.5) * TILE_SIZE, previewElev(live, picture, l.x, l.y));
+    c.fillStyle = `rgb(${STREET_LAMPS[l.type].rgb})`;
+    c.strokeStyle = "#1d1c18";
+    c.lineWidth = 1.25 / zoom;
+    c.beginPath();
+    c.arc(p.x, p.y, dot, 0, Math.PI * 2);
+    c.fill();
+    c.stroke();
+  }
+  for (const p of pieces.clutter.removed) {
+    const q = isoAt((p.x + 0.5) * TILE_SIZE, (p.y + 0.5) * TILE_SIZE, previewElev(live, picture, p.x, p.y));
+    c.strokeStyle = "#ff5a4a";
+    c.lineWidth = 1.5 / zoom;
+    c.strokeRect(q.x - dot, q.y - dot, dot * 2, dot * 2);
+  }
+  for (const p of pieces.clutter.added) {
+    const q = isoAt((p.x + 0.5) * TILE_SIZE, (p.y + 0.5) * TILE_SIZE, previewElev(live, picture, p.x, p.y));
+    c.fillStyle = "#b08850";
+    c.strokeStyle = "#2a2016";
+    c.lineWidth = 1 / zoom;
+    c.fillRect(q.x - dot, q.y - dot, dot * 2, dot * 2);
+    c.strokeRect(q.x - dot, q.y - dot, dot * 2, dot * 2);
+  }
+  for (const u of pieces.unitBodies.removed) paintIsoUnit(c, live, picture, u, "rgba(255,90,74,0.45)", "#ff5a4a", true, zoom);
+  for (const u of pieces.unitBodies.added) paintIsoUnit(c, live, picture, u, "#8c8c88", "#e8b84a", false, zoom);
+  for (const u of pieces.units.added) {
+    if (u.inside) continue;
+    if (u.patrol?.length) paintIsoRoute(c, live, picture, u, u.patrol, !!u.loop, zoom);
+    if (hasSpotlight(u.type)) paintIsoAim(c, live, picture, u.x, u.y, u.spot ?? u.facing, zoom);
+  }
+  c.font = `${11 / zoom}px "Share Tech Mono", monospace`;
+  c.textAlign = "center";
+  c.textBaseline = "middle";
+  const spawnRing = SPAWN_PAD_R * Math.hypot(ISO_TILE_W / 2, ISO_TILE_H / 2);
+  for (const sp of pieces.spawns.removed) {
+    const p = isoAt((sp.x + 0.5) * TILE_SIZE, (sp.y + 0.5) * TILE_SIZE, previewElev(live, picture, sp.x, sp.y));
+    c.setLineDash([6 / zoom, 4 / zoom]);
+    c.strokeStyle = "#ff5a4a";
+    c.lineWidth = 1.5 / zoom;
+    c.beginPath();
+    c.arc(p.x, p.y, spawnRing, 0, Math.PI * 2);
+    c.stroke();
+    c.setLineDash([]);
+    c.fillStyle = "#ff5a4a";
+    c.fillText(String(sp.id), p.x, p.y);
+  }
+  for (const sp of pieces.spawns.added) {
+    const p = isoAt((sp.x + 0.5) * TILE_SIZE, (sp.y + 0.5) * TILE_SIZE, previewElev(live, picture, sp.x, sp.y));
+    c.setLineDash([6 / zoom, 4 / zoom]);
+    c.strokeStyle = "#e8b84a";
+    c.lineWidth = 1.5 / zoom;
+    c.beginPath();
+    c.arc(p.x, p.y, spawnRing, 0, Math.PI * 2);
+    c.stroke();
+    c.setLineDash([]);
+    c.fillStyle = "#e8b84a";
+    c.beginPath();
+    c.arc(p.x, p.y, ISO_TILE_W * 0.45, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = "#140e0a";
+    c.fillText(String(sp.id), p.x, p.y);
+  }
+  c.restore();
+}
+
 // --- stage drawing -------------------------------------------------------------
 
 /** Fill and edge on the plan: houses in brick, concrete defences in grey, sandbags in burlap, wire in steel. */
@@ -797,6 +1427,7 @@ function drawStage(): void {
   }
   if (view.zoom === 0) fitView(canvas, s);
   if (!ground || ground.width !== s.width || ground.height !== s.height) repaintGround(s);
+  syncDraft(live);
   const c = canvas.getContext("2d");
   if (!c || !ground) return;
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -808,6 +1439,9 @@ function drawStage(): void {
   const sy = (y: number): number => view.py + y * z;
   c.imageSmoothingEnabled = false;
   c.drawImage(ground, view.px, view.py, s.width * z, s.height * z);
+  if (draft && renderPending && draft.width === s.width && draft.height === s.height) {
+    c.drawImage(draft, view.px, view.py, s.width * z, s.height * z);
+  }
   c.strokeStyle = "#8b2e1f";
   c.lineWidth = 2;
   c.strokeRect(view.px - 1, view.py - 1, s.width * z + 2, s.height * z + 2);
@@ -975,6 +1609,7 @@ function drawStage(): void {
       c.setLineDash([]);
     }
   }
+  paintPlanEdits(c, sx, sy, z, drawHouse);
 
   if (hover.inside) {
     const ghost = houseGhost();
@@ -1320,6 +1955,7 @@ function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
         : null,
     night: nightView,
   }, queueDraw);
+  if (renderPending) paintIsoEdits(c, live, s, w, h);
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (pointerOver && hover.inside && turningTool()) {
     const p = isoScreenOf(s, isoCam, hover.x, hover.y);
