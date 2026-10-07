@@ -109,10 +109,6 @@ export interface IsoOverlay {
   night?: boolean;
   /** The sheet's neutral units and what the Units tools show about them. */
   units?: UnitOverlay;
-  /** Footprints of pieces the last picture has not caught up with. */
-  frames?: readonly { f: MapFeature; color: string }[];
-  /** Where a start sits in the edits, when that is not where the picture drew it. */
-  spawnPin?: { x: number; y: number } | null;
 }
 
 /** Fine-tile points of a patrol route, as the builder holds them. */
@@ -138,12 +134,8 @@ export interface UnitOverlay {
   garrisons: ReadonlyMap<number, { count: number; cap: number }>;
   /** A rotate order's aim: the selected unit turns toward this tile. */
   aim: { x: number; y: number } | null;
-  /** Tile the rotate line starts from, when that is not the picture's selected unit. */
-  aimFrom?: { x: number; y: number } | null;
   /** Spotlight beams to outline: a Watch Tower's, a Fire-Control Tower's, or a Battle Ship's, from world point (x, y), heading in radians. */
   beams: readonly SpotBeam[];
-  /** Rings on tiles the last picture has not caught up with. */
-  pins?: readonly { x: number; y: number; color: string; dashed?: boolean }[];
 }
 
 export interface SpotBeam {
@@ -213,8 +205,6 @@ let seenPeak = 0;
 /** The sheet may differ from the bake; compare before the next frame. */
 let unsynced = true;
 let rebakeAll = true;
-/** A build is preparing the next picture. Keep drawing the bake already on screen. */
-let holdBake = false;
 let artHooked = false;
 /** A settled change over more of the sheet than this is baked whole instead of restamped. */
 const RESTAMP_SHARE = 0.3;
@@ -256,17 +246,6 @@ function scrapOf(s: Sheet): ScrapCell[] {
 /** The sheet changed (a stroke ended, undo, a placement): the next frame repaints what differs. */
 export function isoChanged(): void {
   unsynced = true;
-}
-
-/** While a build prepares the next picture, frames keep the bake already on screen. */
-export function isoHoldBake(on: boolean): void {
-  holdBake = on;
-}
-
-/** Bake `s` now. `redraw` runs once, if ground art was still loading. */
-export function isoCommit(s: Sheet, redraw: () => void): void {
-  isoChanged();
-  ensureBake(s, redraw);
 }
 
 function restampBox(s: Sheet, x0: number, y0: number, x1: number, y1: number, spread?: number): void {
@@ -341,7 +320,6 @@ function ensureBake(s: Sheet, redraw: () => void): TerrainBake | null {
       redraw();
     });
   }
-  if (holdBake && terrain) return terrain;
   if (bakedFor !== s) rebakeAll = true;
   else if (unsynced) sync(s);
   if (terrain && !rebakeAll) return terrain;
@@ -895,18 +873,20 @@ export function isoDraw(
   if (uo) {
     for (const beam of uo.beams) drawBeam(c, s, beam, z);
     for (const route of uo.routes) drawRoute(c, s, route, z);
-    const aimFrom = uo.aimFrom ?? (uo.selected >= 0 ? uo.list[uo.selected] : null);
-    if (uo.aim && aimFrom) {
-      const a = at((aimFrom.x + 0.5) * TILE_SIZE, (aimFrom.y + 0.5) * TILE_SIZE, heightOf(s, aimFrom.x, aimFrom.y));
-      const b = at((uo.aim.x + 0.5) * TILE_SIZE, (uo.aim.y + 0.5) * TILE_SIZE, heightOf(s, uo.aim.x, uo.aim.y));
-      c.strokeStyle = "#e8b84a";
-      c.lineWidth = 1.5 / z;
-      c.setLineDash([5 / z, 4 / z]);
-      c.beginPath();
-      c.moveTo(a.x, a.y);
-      c.lineTo(b.x, b.y);
-      c.stroke();
-      c.setLineDash([]);
+    if (uo.aim && uo.selected >= 0) {
+      const u = uo.list[uo.selected];
+      if (u) {
+        const a = at((u.x + 0.5) * TILE_SIZE, (u.y + 0.5) * TILE_SIZE, heightOf(s, u.x, u.y));
+        const b = at((uo.aim.x + 0.5) * TILE_SIZE, (uo.aim.y + 0.5) * TILE_SIZE, heightOf(s, uo.aim.x, uo.aim.y));
+        c.strokeStyle = "#e8b84a";
+        c.lineWidth = 1.5 / z;
+        c.setLineDash([5 / z, 4 / z]);
+        c.beginPath();
+        c.moveTo(a.x, a.y);
+        c.lineTo(b.x, b.y);
+        c.stroke();
+        c.setLineDash([]);
+      }
     }
     // Men inside a building: a count over its roof, as the match's garrison pips read.
     c.textAlign = "center";
@@ -935,7 +915,6 @@ export function isoDraw(
       unitRing(c, s, g.x, g.y, g.bad ? "#ff5a4a" : "#7dff6a", z);
       if (!drawMapUnit(c, s, g, 0.6)) loading = true;
     }
-    for (const pin of uo.pins ?? []) unitRing(c, s, pin.x, pin.y, pin.color, z, pin.dashed);
   }
 
   if (o.clutterGhost) {
@@ -1066,15 +1045,6 @@ export function isoDraw(
     c.lineWidth = 1.5 / z;
     quadPath(c, groundRing(s, o.brush.x, o.brush.y, Math.max(0.5, o.brush.r + 0.5)));
     c.stroke();
-  }
-  for (const fr of o.frames ?? []) frame(c, s, fr.f, fr.color, z);
-  if (o.spawnPin) {
-    c.setLineDash([6 / z, 4 / z]);
-    c.strokeStyle = "#e8b84a";
-    c.lineWidth = 2 / z;
-    quadPath(c, groundRing(s, o.spawnPin.x, o.spawnPin.y, SPAWN_PAD_R));
-    c.stroke();
-    c.setLineDash([]);
   }
   return loading;
 }
