@@ -9,6 +9,7 @@ import {
   wadesOf,
   isMotorVehicle,
   REVERSE_TILES,
+  rollsThroughWoods,
   snapTankYaw,
   TICK_DT,
   TILE_SIZE,
@@ -19,7 +20,7 @@ import { crushWireUnder } from "./field.js";
 import { moveSpeedMul, takeDamage } from "./crits.js";
 import { diving } from "./naval.js";
 import { setPath } from "./path.js";
-import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, jetAloft, occupant, sailable, tileCenter, tileIndex, underDeck, walkable, worldToTile } from "./geo.js";
+import { allies, crushTreeAt, fellTreeAt, inBounds, isTree, isWall, isWater, jetAloft, occupant, sailable, tileCenter, tileIndex, underDeck, walkable, worldToTile } from "./geo.js";
 import { crushClutterUnder } from "./clutter.js";
 import { buildSpatial, queryCircle, relocate, spatialGrid } from "./spatial.js";
 import type { Entity, MatchState } from "./types.js";
@@ -102,13 +103,18 @@ function tileFree(state: MatchState, e: Entity, x: number, y: number): boolean {
   return true;
 }
 
+/** How far past its own plate the Apocalypse fells trees as it rolls, in sim tiles. */
+const WOODS_FELL_REACH_TILES = 1.5;
+
 export function crushTreesUnder(state: MatchState, e: Entity): void {
   if (!isActiveUnit(e) || !isMotorVehicle(e.type)) return;
   if (!rolling(e)) return;
   crushClutterUnder(state, e);
   crushWireUnder(state, e);
   const ts = state.tileSize;
-  const r = e.radius + ts * 0.45;
+  // The Apocalypse shoulders down woods as it goes: groves too, and the trunks just beside its plate.
+  const woods = rollsThroughWoods(e.type);
+  const r = e.radius + ts * (woods ? WOODS_FELL_REACH_TILES : 0.45);
   const x0 = worldToTile(e.x - r, ts);
   const x1 = worldToTile(e.x + r, ts);
   const y0 = worldToTile(e.y - r, ts);
@@ -122,7 +128,7 @@ export function crushTreesUnder(state: MatchState, e: Entity): void {
       const dx = e.x - cx;
       const dy = e.y - cy;
       if (dx * dx + dy * dy > reach) continue;
-      if (!crushTreeAt(state, x, y)) continue;
+      if (!(woods ? fellTreeAt(state, x, y) : crushTreeAt(state, x, y))) continue;
       state.impacts.push({
         id: state.nextId++,
         ownerId: e.ownerId,

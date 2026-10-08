@@ -1177,7 +1177,7 @@ function tankLayer(): TurretSpriteDef {
 }
 /**
  * Apocalypse: the Tiger's layers plus the roof CIWS, which aims on its own facing.
- * Drawn well up from the Tiger, as its hull is: a size up, then 30% on top.
+ * Drawn well up from the Tiger, as its hull is: a size up, then 30% and 15% on top.
  */
 export const APOCALYPSE_SPRITE: UnitSpriteDef = {
   image: new Image(),
@@ -1185,7 +1185,7 @@ export const APOCALYPSE_SPRITE: UnitSpriteDef = {
   frames: 1,
   frameSize: 128,
   fps: 8,
-  drawSize: Math.round(54 * 1.3 * UNIT_VISUAL_SCALE),
+  drawSize: Math.round(54 * 1.3 * 1.15 * UNIT_VISUAL_SCALE),
   contactY: 0.92,
   turret: tankLayer(),
   gun: tankLayer(),

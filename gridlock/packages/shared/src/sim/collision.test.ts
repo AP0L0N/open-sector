@@ -535,7 +535,7 @@ describe("Apocalypse runs over lighter hulls", () => {
     assert.ok(state.entities.has(victim.id) && !victim.wreck && victim.hp > 0);
   });
 
-  it("takes a footprint 30% wider than the old 15", () => {
-    assert.equal(catalog("apocalypse").radius, 19.5);
+  it("takes a footprint 30% and then 15% wider than the old 15", () => {
+    assert.ok(Math.abs(catalog("apocalypse").radius - 15 * 1.3 * 1.15) < 0.05);
   });
 });

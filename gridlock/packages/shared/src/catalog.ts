@@ -4481,8 +4481,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     power: 0,
     tileW: 1,
     tileH: 1,
-    radius: 19.5,
-    moveTilesPerSec: paced(1.1),
+    radius: 22.4,
+    moveTilesPerSec: paced(0.935),
     turnDegPerSec: 60,
     rangeTiles: TIGER_RANGE_TILES,
     sightTiles: t(8),
@@ -4506,7 +4506,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     mgAmmo: APOCALYPSE_CIWS_BELT,
     leavesWreck: true,
     wreckHp: 55,
-    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. It rolls flat an enemy StuG, Walker, supply truck, Nebelwerfer, or field gun in its path, and leaves no wreck; it runs down a Cyborg, but the Cyborg Commander is too big to go under. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts some of them, then planes, infantry, and sometimes a Walker or a truck. A secondary mount, it sprays wider than a pad CIWS and overheats after a little over a second on the trigger. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
+    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. It rolls flat an enemy StuG, Walker, supply truck, Nebelwerfer, or field gun in its path, and leaves no wreck. It drives straight through woods, felling every tree it brushes; it runs down a Cyborg, but the Cyborg Commander is too big to go under. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts some of them, then planes, infantry, and sometimes a Walker or a truck. A secondary mount, it sprays wider than a pad CIWS and overheats after a little over a second on the trigger. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
   },
   /** Spec: gridlock/packages/client/src/assets/units/ss3/stug-iii-ausf-g-late-saukopf.md */
   ss3: {
@@ -5704,6 +5704,11 @@ export function crushes(mover: EntityType, victim: EntityType): boolean {
   if (victim === "cyborgcommander") return false;
   if (isInfantryType(victim)) return true;
   return mover === "apocalypse" && APOCALYPSE_CRUSHES.includes(victim);
+}
+
+/** A hull heavy enough to drive straight through woods, not only over a lone tree: the Apocalypse. */
+export function rollsThroughWoods(type: EntityType): boolean {
+  return type === "apocalypse";
 }
 
 /**
