@@ -313,8 +313,9 @@ describe("night sight for every eye", () => {
 });
 
 describe("headlights", () => {
-  it("run on armored ground hulls and the Cyborg, not on foot soldiers or planes", () => {
-    assert.equal(hasHeadlight("cyborg"), true);
+  it("run on armored ground hulls, not on Cyborgs, foot soldiers or planes", () => {
+    assert.equal(hasHeadlight("cyborg"), false);
+    assert.equal(hasHeadlight("cyborgcommander"), false);
     assert.equal(hasHeadlight("ss3"), true);
     assert.equal(hasHeadlight("rifleman"), false);
     assert.equal(hasHeadlight("stuka"), false);
@@ -412,12 +413,12 @@ describe("headlights", () => {
 
   it("go out when the hull is a passenger", () => {
     const { state, a } = emptyField();
-    const cy = trooper(state, "cyborg", a, 100, 128);
-    cy.facing = 0;
-    const r = sightTilesForEntity(state, cy);
+    const tank = trooper(state, "ss3", a, 100, 128);
+    tank.facing = 0;
+    const r = sightTilesForEntity(state, tank);
     state.tick = NIGHT_TICK;
     assert.equal(lit(state, a, 100 + r - 2, 128), true);
-    cy.garrisonedIn = 9999;
+    tank.garrisonedIn = 9999;
     assert.equal(lit(state, a, 100 + r - 2, 128), false);
   });
 });
