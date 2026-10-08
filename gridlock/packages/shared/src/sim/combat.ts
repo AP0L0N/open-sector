@@ -1243,6 +1243,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       skipsFriendly(state, e, target) ||
       dropsEmptyGarrison(state, e, target) ||
       walkerSparesBuilding(state, e, target) ||
+      travelSparesBuilding(state, e, target) ||
       dropsWreck(e, target) ||
       dropsUnharmedArmor(state, e, target) ||
       dropsProofWall(state, e, target)
@@ -1448,6 +1449,17 @@ function walkerSparesBuilding(state: MatchState, e: Entity, target: Entity): boo
   return !(
     garrisonIsHostile(state, e.ownerId, target) && garrisonLooksOccupied(state, e.ownerId, target)
   );
+}
+
+/**
+ * A unit fighting on the move (attack-move, Move, patrol, escort) goes for the enemy, not his
+ * works: walls, sandbags, houses, and base buildings are left standing. A building with an enemy
+ * garrison showing, or a gun of its own (CIWS, Ram), is still fair game.
+ */
+function travelSparesBuilding(state: MatchState, e: Entity, target: Entity): boolean {
+  if (target.kind !== "building" || !travelFights(e) || forceUnderway(e)) return false;
+  if (garrisonIsHostile(state, e.ownerId, target) && garrisonLooksOccupied(state, e.ownerId, target)) return false;
+  return isGarrisonable(target.type) || !(catalog(target.type).rangeTiles > 0);
 }
 
 /**
@@ -3485,6 +3497,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (isBridge(o.type) || isRubble(o)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
+    if (travelSparesBuilding(state, e, o)) continue;
     if (concreteProof(state, e, o)) continue;
     if (outOfReachAloft(state, e, o)) continue;
     // An emplacement leaves alone what stands behind its traverse.
