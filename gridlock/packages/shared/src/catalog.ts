@@ -888,6 +888,16 @@ export function techNeeds(unit: TrainType): readonly BuildingType[] {
   return typeof need === "string" ? [need] : need;
 }
 
+/** Advanced defences: the yard queues one only while every building listed here stands. */
+export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[]>> = {
+  leitturm: ["research"],
+  flak: ["research"],
+  pak43: ["research"],
+  casemate: ["research"],
+  ciws: ["research", "radar"],
+  ram: ["research", "radar"],
+};
+
 export interface CatalogEntry {
   type: EntityType;
   kind: EntityKind;

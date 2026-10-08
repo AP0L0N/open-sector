@@ -10,6 +10,7 @@ import {
   STANCE_LABEL,
   TRAIN_QUEUE_CAP,
   techNeeds,
+  BUILD_REQUIRES,
   TRAIN_TYPES,
   TICK_DT,
   WALKER_ONE_BURST,
@@ -274,6 +275,7 @@ export function mountBattlefield(
         return;
       }
       if (q) return;
+      if (m && buildTechNeed(m, type).length > 0) return;
       ctx.net.send({ type: "cmd.build", building: type });
     });
     btn?.addEventListener("contextmenu", (e) => {
@@ -365,6 +367,12 @@ export function mountBattlefield(
 }
 
 /** The construction lane this cameo belongs to. Base, defence, and line lanes do not block each other. */
+/** Buildings you still need standing before the yard will queue `type` (BUILD_REQUIRES). */
+function buildTechNeed(m: MatchSnapshot, type: BuildingType | YardFieldType): BuildingType[] {
+  const need = BUILD_REQUIRES[type as BuildingType] ?? [];
+  return need.filter((t) => !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === t && e.hp > 0 && !e.wreck));
+}
+
 function laneQueue(m: MatchSnapshot | null | undefined, type: BuildingType | YardFieldType) {
   if (!m) return null;
   if (isYardField(type)) return m.you.lineQueue;
@@ -606,7 +614,15 @@ export function paintBattleHud(ctx: Ctx): void {
     if (!btn) continue;
     const lane = laneQueue(m, type);
     const job = lane?.type === type ? lane : null;
-    btn.disabled = !coreUp || (!!lane && !job);
+    // A job already queued stays live so it can still be placed, paused, or cancelled.
+    const techNeed = job ? [] : buildTechNeed(m, type);
+    btn.disabled = !coreUp || (!!lane && !job) || techNeed.length > 0;
+    btn.classList.toggle("needs-tech", techNeed.length > 0);
+    btn.dataset.baseTitle ??= btn.title;
+    btn.title =
+      techNeed.length > 0
+        ? `${catalog(type).name} — needs a ${techNeed.map((t) => catalog(t).name).join(" and a ")}.`
+        : btn.dataset.baseTitle;
     const pip = btn.querySelector(".pip") as HTMLElement | null;
     if (pip && job) {
       pip.style.width = `${Math.round((job.progressTicks / job.totalTicks) * 100)}%`;
