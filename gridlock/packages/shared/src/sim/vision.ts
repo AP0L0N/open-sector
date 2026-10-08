@@ -1229,11 +1229,14 @@ function alliedSight(state: MatchState, playerId: string): { e: Entity; p: Sight
 type RayEye = { p: SightParams; box: TileBounds; dead: boolean };
 
 type RaySight = {
-  /** `state.phaseRev` the eyes were last checked against the roster. */
+  /** `state.phaseRev` the eyes were last checked against the roster, and the side's vision key then. */
   rev: number;
+  key: number;
   eyes: Map<number, RayEye>;
   /** Eyes whose reach touches each RAY_CELL-tile square, so a tile asks only the eyes near it. Dead ones are skipped and swept out now and then. */
   buckets: RayEye[][];
+  /** Dead eyes still listed in each bucket. */
+  deadIn: Int32Array;
   /** Buckets per row. */
   cols: number;
   rows: number;
@@ -1290,8 +1293,10 @@ function raySightOf(state: MatchState, playerId: string): RaySight {
     for (let i = 0; i < cols * rows; i++) buckets.push([]);
     sight = {
       rev: -1,
+      key: 0,
       eyes: new Map(),
       buckets,
+      deadIn: new Int32Array(cols * rows),
       cols,
       rows,
       cover,
@@ -1311,6 +1316,10 @@ function raySightOf(state: MatchState, playerId: string): RaySight {
   }
   if (sightKeyMemoDepth > 0 && sight.rev === state.phaseRev) return sight;
   sight.rev = state.phaseRev;
+  // The key hashes every allied eye's tile and reach: unchanged, the index stands as it is.
+  const key = visionKey(state, playerId);
+  if (key === sight.key && sight.eyes.size > 0) return sight;
+  sight.key = key;
   const live = new Set<number>();
   for (const { e, p } of alliedSight(state, playerId)) {
     live.add(e.id);
@@ -1353,9 +1362,11 @@ function dropRayEye(sight: RaySight, eye: RayEye): void {
       const cell = cy * sight.cols + cx;
       sight.cellGen[cell]!++;
       const bucket = sight.buckets[cell]!;
-      let dead = 0;
-      for (let k = 0; k < bucket.length; k++) if (bucket[k]!.dead) dead++;
-      if (dead * 2 > bucket.length) sight.buckets[cell] = bucket.filter((x) => !x.dead);
+      const dead = ++sight.deadIn[cell]!;
+      if (dead * 2 > bucket.length) {
+        sight.buckets[cell] = bucket.filter((x) => !x.dead);
+        sight.deadIn[cell] = 0;
+      }
     }
   }
 }
