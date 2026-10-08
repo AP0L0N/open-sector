@@ -558,6 +558,7 @@ export type EntityType =
   | "casemate"
   | "hochstand"
   | "leitturm"
+  | "spotlight"
   | "mgnest"
   | "pak36"
   | "pak43"
@@ -612,6 +613,7 @@ export type BuildingType =
   | "casemate"
   | "hochstand"
   | "leitturm"
+  | "spotlight"
   | "mgnest"
   | "pak36"
   | "pak43"
@@ -778,6 +780,7 @@ export const BUILDING_TYPES: readonly BuildingType[] = [
   "casemate",
   "hochstand",
   "leitturm",
+  "spotlight",
   "mgnest",
   "pak36",
   "pak43",
@@ -826,6 +829,7 @@ export const ROTATABLE_BUILDINGS: readonly BuildingType[] = [
   "casemate",
   "hochstand",
   "leitturm",
+  "spotlight",
   "mgnest",
   "pak36",
   "pak43",
@@ -1020,6 +1024,11 @@ export interface CatalogEntry {
    * Raised with garrisonCap riflemen already at it.
    */
   crewGun?: boolean;
+  /**
+   * A spotlight worked by its garrison (the Spotlight post). The lamp burns, turns, and sweeps
+   * only with someone living at it. Raised with garrisonCap riflemen already at it, like a crewed gun.
+   */
+  lampCrew?: boolean;
   /**
    * Traverse each side of the way the emplacement was turned, degrees. The gun never lays
    * outside it: what stands behind the arc is left alone. Omit for all round.
@@ -2350,6 +2359,19 @@ export const SPOTLIGHT_HALF_DEG = 14;
 /** How fast the cab lamp turns, for Rotate and for a patrol sweep. */
 export const SPOTLIGHT_TURN_DEG_PER_SEC = 18;
 /**
+ * Spotlight post. The cab lamp on a steel pole over a sandbagged foot, worked by one
+ * man who comes with it. Its beam reaches as far as the tower's, cast from the pole top.
+ * Shoot the lamp and it goes dark with the man unhurt; kill the man and the lamp goes
+ * dark until another soldier takes his place. Fell the pole and both are gone.
+ */
+export const SPOTLIGHT_POST_COST = 150;
+/** Elevation units from the ground to the lamp: lower than the tower cab, over the treetops. */
+export const SPOTLIGHT_POLE_HEIGHT = 9;
+/** Occupant HP multiplier at the post. A tower is 3×. */
+export const SPOTLIGHT_POST_HP_MUL = 1.5;
+/** Share of each hit on the post that reaches the man at it: a few sandbags at its foot. */
+export const SPOTLIGHT_POST_WOUND_MUL = 0.75;
+/**
  * Armored ground hulls and the Cyborg run a headlight in the dark. Down the
  * hull's nose it gives back the unit's own daylight sight; everywhere else
  * the night ring stands. The Mammoth adds two more, one to each side, and
@@ -3673,6 +3695,38 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonTypes: BUNKER_TYPES,
     capturable: false,
     blurb: `Flak-tower block of concrete for ${LEITTURM_GARRISON_CAP} infantry, the troops a bunker takes. From the galleries they see far across the field, and their weapons reach farther than from any other post. Walls almost as good as a bunker's. A spotlight on the roof lights the ground at night. Dear and slow to pour. Enemy infantry cannot capture it.`,
+  },
+  spotlight: {
+    type: "spotlight",
+    kind: "building",
+    name: "Spotlight",
+    letter: "l",
+    cost: SPOTLIGHT_POST_COST,
+    buildSeconds: 6,
+    hp: 260,
+    power: 0,
+    tileW: t(1),
+    tileH: t(1),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    lampCrew: true,
+    garrisonCap: 1,
+    garrisonHpMul: SPOTLIGHT_POST_HP_MUL,
+    garrisonWoundMul: SPOTLIGHT_POST_WOUND_MUL,
+    garrisonWindows: 1,
+    garrisonFloors: 1,
+    garrisonSightBonus: 0,
+    garrisonFullArms: true,
+    garrisonTypes: BUNKER_TYPES,
+    capturable: false,
+    blurb: `The Watch Tower's searchlight on a steel pole, worked by one man, who comes with it. At night its beam lights a long cone of ground; Rotate swings it, and Patrol sweeps it between spots. Turn it before you place it to set where it first looks. The lamp burns only with someone at it: kill the man and it goes dark until another soldier takes his place. A bullet can smash the lamp and leave the man standing; an engineer fits a new one. He fires his own weapon from the foot of the pole, behind a few sandbags.`,
   },
   mgnest: {
     type: "mgnest",
@@ -6067,6 +6121,11 @@ export function wadeSpeedOf(type: EntityType): number {
 /** An emplaced gun worked by its garrison: the MG Nest, the Paks, the Flak. See CatalogEntry.crewGun. */
 export function crewGunOf(type: EntityType): boolean {
   return catalog(type).crewGun === true;
+}
+
+/** A lamp worked by its garrison: the Spotlight post. See CatalogEntry.lampCrew. */
+export function lampCrewOf(type: EntityType): boolean {
+  return catalog(type).lampCrew === true;
 }
 
 /**

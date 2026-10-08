@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""WW2 German crewed guns: MG 42 nest, 3.7 cm Pak 36, 8.8 cm Pak 43, 3.7 cm Flak 37.
+"""WW2 German crewed guns: MG 42 nest, 3.7 cm Pak 36, 8.8 cm Pak 43, 3.7 cm Flak 37, and the Spotlight post.
 
 Each gun is a static base (pit, parapet, sandbags, crates) and a traversing gun sheet:
   <id>.png            the unturned base, with its cast shadow
@@ -352,6 +352,56 @@ def flak_gun(L: LM, crew: int) -> None:
         wf.soldier(crew_at(L, -4.8, 3.4, 0.5, 1.4), "stand", "clip")
 
 
+# ---------------------------------------------------------------- Spotlight post, t(1) x t(1)
+#
+# The Watch Tower's searchlight on a steel pole. The base is the sandbagged foot; the pole, the
+# training column, and the man at it turn with the lamp, so they live in the gun sheet (column 0
+# empty, column 1 manned). The lamp head itself is drawn by the client on the pole top (lampZ in
+# spotlight.json), lit at night and turned with the beam, as on the tower.
+
+SPOT_POLE_TOP = 34.0
+
+
+def spotlight_base(ground: bool = True) -> ra.Mesh:
+    m = ra.Mesh()
+    L = LM(m, cx=16.0, cy=16.0)
+    if ground:
+        L.cyl((0, 0, 0), (0, 0, 0.12), 8.8, 8.8, "pit", n=18)
+        wf.annulus(L, 9.4, 12.4, 9.6, 10.8, 0.0, 1.0, "bank", -math.pi + 0.7, math.pi - 0.7, 14, per_seg_part=False)
+    # Two low courses of bags round the front, open behind where the man comes and goes.
+    wf.bag_ring(L, 7.4, 9.8, 2, 1.15, -math.pi + 0.75, math.pi - 0.75, 3.0)
+    # The concrete footing the pole is bolted to.
+    L.box((-2.6, -2.6, 0.0), (2.6, 2.6, 0.7), "acon", top="slab")
+    # Spare carbons and a cable drum by the way in.
+    L.box((-7.4, 2.4, 0.0), (-5.8, 4.6, 1.2), "ammo")
+    L.cyl((-6.4, -3.6, 0.0), (-6.4, -3.6, 1.6), 1.4, 1.4, "timber", n=12)
+    L.cyl((-6.4, -3.6, 1.6), (-6.4, -3.6, 1.7), 0.9, 0.9, "gunsteel", n=12, part=False)
+    return m
+
+
+def spotlight_gun(L: LM, crew: int) -> None:
+    top = SPOT_POLE_TOP
+    # Base plate, the tapered steel pole, a collar halfway, and the head plate the lamp sits on.
+    L.cyl((0, 0, 0.7), (0, 0, 1.3), 1.9, 1.7, "gunsteel", n=12)
+    L.cyl((0, 0, 1.3), (0, 0, top - 0.6), 0.95, 0.65, "steel", n=12)
+    L.cyl((0, 0, top * 0.5 - 0.4), (0, 0, top * 0.5 + 0.4), 1.05, 1.0, "gunsteel", n=12)
+    L.cyl((0, 0, top - 0.6), (0, 0, top), 2.1, 2.1, "gunsteel", n=14)
+    # Training column behind the pole: the handwheel the man turns the lamp with, cable up the pole.
+    L.cyl((-2.6, 0, 0.7), (-2.6, 0, 4.6), 0.55, 0.45, "gunsteel", n=8)
+    L.box((-3.2, -0.8, 4.6), (-2.0, 0.8, 5.6), "gunsteel")
+    L.cyl((-3.25, 0, 5.1), (-3.45, 0, 5.1), 1.3, 1.3, "steel", n=14, part=False)
+    L.rod((-2.6, 0.3, 1.0), (-0.7, 0.3, 2.0), 0.18, "bore", n=4)
+    if crew >= 1:
+        wf.soldier(crew_at(L, -5.2, 0.0, 0.0), "stand", "aim")
+    if crew >= 2:
+        # Cameo only (no sheet column): the drum lamp the client otherwise draws on the head plate.
+        L.cyl((0, 0, top), (0, 0, top + 1.6), 1.6, 1.4, "gunsteel", n=10)
+        L.cyl((-3.0, 0, top + 5.6), (3.4, 0, top + 5.1), 2.7, 2.7, "steel", n=16)
+        L.cyl((3.4, 0, top + 5.1), (3.6, 0, top + 5.1), 2.35, 2.35, "brass", n=16, part=False)
+        for s in (-1, 1):
+            L.rod((0, s * 3.2, top + 1.6), (0, s * 3.2, top + 5.4), 0.4, "gunsteel")
+
+
 # ---------------------------------------------------------------- render
 
 
@@ -387,6 +437,10 @@ GUNS = {
     "flak": Gun(
         "flak", 64.0, (8, 8), 22.0, 10.0, 2, flak_base, flak_gun, FL_T, FL_LEN * math.cos(FL_EL), 1.45,
         extra={"muzzleZ": round((FL_T + FL_LEN * math.sin(FL_EL)) * 1.45, 2), "elevationDeg": 57},
+    ),
+    "spotlight": Gun(
+        "spotlight", 32.0, (4, 4), 32.0, 20.0, 1, spotlight_base, spotlight_gun, SPOT_POLE_TOP, 2.0,
+        extra={"lampZ": SPOT_POLE_TOP},
     ),
 }
 
@@ -466,7 +520,9 @@ def render_gun(out_dir: Path, g: Gun, turned: bool = True) -> dict:
     print(g.name, "metrics", info)
 
     both = base.copy()
-    both.alpha_composite(cells[14][cols - 1])
+    # The Spotlight's lamp is drawn by the client; its cameo gets one baked on (crew 2 is the lamp pass).
+    lamp = gun_layer(g, gun_mesh(g, yaw_for_row(14), 2), cv) if g.name == "spotlight" else None
+    both.alpha_composite(lamp or cells[14][cols - 1])
     wf.cameo(both, out_dir / f"{g.name}-cameo.png", wf.solid_box(both))
     wf.on_grass(both).save(wf.PREVIEW / f"{g.name}.png")
 

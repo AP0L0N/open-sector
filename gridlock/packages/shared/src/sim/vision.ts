@@ -9,6 +9,7 @@ import {
   SPOTLIGHT_HALF_DEG,
   SPOTLIGHT_REACH_TILES,
   TOWER_EYE_HEIGHT,
+  SPOTLIGHT_POLE_HEIGHT,
   TICK_DT,
   catalog,
   entityIsScouting,
@@ -84,6 +85,8 @@ export type SightSource = {
   crits?: readonly Crit[];
   /** A building whose owner is short on power has a dark lamp and shorter sight. */
   unpowered?: boolean;
+  /** Who is inside: the Spotlight post's lamp burns only with its man. */
+  garrison?: readonly unknown[] | { count: number };
 };
 
 /** Light at the moment sight is painted: how far it carries, whether lamps are lit, and match seconds for lamps that sweep. */
@@ -340,11 +343,24 @@ function spotOf(e: SightSource, light: SightLight, daySight: number, eye: number
   if (!light.spots) return NO_SPOT;
   if (e.kind === "building" || hasSpotlight(e.type)) {
     if (!hasSpotlight(e.type)) return NO_SPOT;
-    if (!spotlightLit({ type: e.type, ownerId: e.ownerId, hp: e.hp ?? 1, ruined: e.ruined, wreck: e.wreck, crits: e.crits, unpowered: e.unpowered })) {
+    if (
+      !spotlightLit({
+        type: e.type,
+        ownerId: e.ownerId,
+        hp: e.hp ?? 1,
+        ruined: e.ruined,
+        wreck: e.wreck,
+        crits: e.crits,
+        unpowered: e.unpowered,
+        garrison: e.garrison,
+      })
+    ) {
       return NO_SPOT;
     }
     const a = lampHeading(spotFacingOf({ facing: e.facing ?? 0, spotFacing: e.spotFacing }));
-    return { sr: SPOTLIGHT_REACH_TILES, sdx: Math.cos(a), sdy: Math.sin(a), scos: SPOT_COS, seye: TOWER_EYE_HEIGHT };
+    // The pole lamp shines from its own height, under the tower cab's.
+    const seye = e.type === "spotlight" ? SPOTLIGHT_POLE_HEIGHT : TOWER_EYE_HEIGHT;
+    return { sr: SPOTLIGHT_REACH_TILES, sdx: Math.cos(a), sdy: Math.sin(a), scos: SPOT_COS, seye };
   }
   if (!headlightLit(e) || daySight <= 0) return NO_SPOT;
   const facing = e.facing ?? 0;
@@ -802,6 +818,7 @@ function visionKey(state: MatchState, playerId: string): number {
     if (e.kind === "building") h = mix(h, e.unpowered ? 1 : 0);
     if (light.spots && hasSpotlight(e.type)) {
       h = mix(h, e.crits.includes("lamp") ? 0 : 1);
+      h = mix(h, e.garrison.length);
       h = mix(h, Math.round(lampHeading(spotFacingOf(e)) * 4096));
     }
     if (light.spots && headlightLit(e)) {

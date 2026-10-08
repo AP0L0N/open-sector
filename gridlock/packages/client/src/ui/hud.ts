@@ -1160,6 +1160,7 @@ const TYPE_ORDER: EntityType[] = [
   "tower",
   "hochstand",
   "leitturm",
+  "spotlight",
   "mgnest",
   "pak36",
   "pak43",
