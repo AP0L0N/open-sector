@@ -912,46 +912,42 @@ function alliedSight(state: MatchState, playerId: string): { e: Entity; p: Sight
 }
 
 /**
- * The fog mask read one tile at a time, for combat's handful of sight checks
- * between snapshots. Equal to the tile `visionMask` would build right now:
- * the same observers, cover, and small-island sealing.
+ * Sight for a side that paints no fog mask: CPU seats and the neutral
+ * garrison. A tile is seen when one allied eye near it has a clear ray to
+ * it, under the rules `visionMask` sweeps with, without the small-island
+ * sealing a painted picture gets. Answers are kept per tile until the side's
+ * eyes or the cover move.
  */
-type LazyVision = {
+type RaySight = {
   key: number;
   observers: SightParams[];
-  /** Observers whose reach touches each LAZY_CELL-tile square, so a tile asks only the eyes near it. */
+  /** Observers whose reach touches each RAY_CELL-tile square, so a tile asks only the eyes near it. */
   buckets: SightParams[][];
   /** Buckets per row. */
   cols: number;
   cover: CoverField;
-  /** -1 unknown, else the painted (pre-seal) value. */
-  raw: Int8Array;
-  /** After filling small unseen islands. */
-  filled: Int8Array;
-  /** After also hiding small seen islands. */
-  sealed: Int8Array;
-  /** Each eye's swept disc, made the first time a tile near it is asked. */
-  discs: Map<SightParams, Set<number>>;
+  /** -1 unknown, else 0 or 1. */
+  seen: Int8Array;
 };
 
-const lazyVisions = new WeakMap<MatchState, Map<string, LazyVision>>();
+const raySights = new WeakMap<MatchState, Map<string, RaySight>>();
 /** Side of one observer bucket, in tiles. */
-const LAZY_CELL = 8;
+const RAY_CELL = 8;
 
-function lazyVisionOf(state: MatchState, playerId: string, key: number): LazyVision {
-  let byPlayer = lazyVisions.get(state);
+function raySightOf(state: MatchState, playerId: string, key: number): RaySight {
+  let byPlayer = raySights.get(state);
   if (!byPlayer) {
     byPlayer = new Map();
-    lazyVisions.set(state, byPlayer);
+    raySights.set(state, byPlayer);
   }
   const side = sightSideOf(state, playerId);
   const hit = byPlayer.get(side);
-  if (hit && hit.key === key) return hit;
+  const cover = coverOf(state);
+  if (hit && hit.key === key && hit.cover === cover) return hit;
   const n = state.width * state.height;
-  const live = coverOf(state);
   const observers = alliedSight(state, playerId).map((o) => o.p);
-  const cols = Math.ceil(state.width / LAZY_CELL);
-  const rows = Math.ceil(state.height / LAZY_CELL);
+  const cols = Math.ceil(state.width / RAY_CELL);
+  const rows = Math.ceil(state.height / RAY_CELL);
   const buckets: SightParams[][] = [];
   for (let i = 0; i < cols * rows; i++) buckets.push([]);
   for (const p of observers) {
@@ -966,65 +962,45 @@ function lazyVisionOf(state: MatchState, playerId: string, key: number): LazyVis
       x1 = Math.max(x1, p.fx + p.fw - 1);
       y1 = Math.max(y1, p.fy + p.fh - 1);
     }
-    const cx0 = Math.max(0, Math.floor(x0 / LAZY_CELL));
-    const cx1 = Math.min(cols - 1, Math.floor(x1 / LAZY_CELL));
-    const cy0 = Math.max(0, Math.floor(y0 / LAZY_CELL));
-    const cy1 = Math.min(rows - 1, Math.floor(y1 / LAZY_CELL));
+    const cx0 = Math.max(0, Math.floor(x0 / RAY_CELL));
+    const cx1 = Math.min(cols - 1, Math.floor(x1 / RAY_CELL));
+    const cy0 = Math.max(0, Math.floor(y0 / RAY_CELL));
+    const cy1 = Math.min(rows - 1, Math.floor(y1 / RAY_CELL));
     for (let cy = cy0; cy <= cy1; cy++) {
       for (let cx = cx0; cx <= cx1; cx++) buckets[cy * cols + cx]!.push(p);
     }
   }
-  const cover: CoverField = {
-    terrain: live.terrain,
-    occupy: live.occupy,
-    hull: Int32Array.from(live.hull as Int32Array),
-    smoke: Uint8Array.from(live.smoke as Uint8Array),
-  };
-  // The same flags `visionMask` rays with, so each tile asked costs one fast ray per nearby eye.
-  const losFlags = hit?.cover.losFlags ?? new Uint8Array(n);
-  losFlags.set(live.losFlags!);
-  cover.losFlags = losFlags;
-  armSightBlocks(state.heights, state.width, state.height, state.digRev);
-  const lazy: LazyVision = {
-    key,
-    observers,
-    buckets,
-    cols,
-    cover,
-    discs: new Map(),
-    raw: hit?.raw ?? new Int8Array(n),
-    filled: hit?.filled ?? new Int8Array(n),
-    sealed: hit?.sealed ?? new Int8Array(n),
-  };
-  lazy.raw.fill(-1);
-  lazy.filled.fill(-1);
-  lazy.sealed.fill(-1);
-  byPlayer.set(side, lazy);
-  return lazy;
+  const seen = hit && hit.seen.length === n ? hit.seen : new Int8Array(n);
+  seen.fill(-1);
+  const sight: RaySight = { key, observers, buckets, cols, cover, seen };
+  byPlayer.set(side, sight);
+  return sight;
 }
 
-/** Same test as `paintSightParams`, for one tile. The eye's disc is swept once per picture and kept. */
-function observerLightsTile(
-  lazy: LazyVision,
+/** The sweep's test for one tile and one eye: in reach, a clear ray, no smoke on it, or under the eye's lamp. */
+function paramSeesTile(
   p: SightParams,
   x: number,
   y: number,
-  elev: ArrayLike<number>,
+  elev: Uint8Array,
   width: number,
   height: number,
   cover: CoverField,
 ): boolean {
   if (p.fw > 0 && x >= p.fx && x < p.fx + p.fw && y >= p.fy && y < p.fy + p.fh) return true;
   if (p.radius > 0) {
-    let disc = lazy.discs.get(p);
-    if (!disc) {
+    const d = sightDist(x, y, p.ox, p.oy);
+    const h0 = elevAtSafe(elev, width, height, p.ox, p.oy);
+    const extra = p.uphill > 0 ? levelSightExtra(h0, elevAtSafe(elev, width, height, x, y), p.uphill) : 0;
+    if (d <= p.radius + extra) {
       cover.ignoreOccupyId = p.ignore;
-      const out: LitList = { tiles: new Int32Array(1024), n: 0 };
-      sweepSight(p, width, height, elev, cover, out);
-      disc = new Set(out.tiles.subarray(0, out.n));
-      lazy.discs.set(p, disc);
+      if (
+        losClear(elev, width, height, p.ox, p.oy, x, y, cover, p.eye) &&
+        !(d > SMOKE_PEEK_TILES && coverSmokeAt(cover, width, height, x, y))
+      ) {
+        return true;
+      }
     }
-    if (disc.has(y * width + x)) return true;
   }
   return spotLightsTile(p, x, y, elev, width, height, cover);
 }
@@ -1061,112 +1037,35 @@ function losClear(
   return hasFullLos(elev, width, height, ox, oy, x, y, cover, eye);
 }
 
-function lazyRaw(state: MatchState, lazy: LazyVision, i: number): number {
-  const known = lazy.raw[i]!;
-  if (known >= 0) return known;
+function rayTileLit(state: MatchState, sight: RaySight, x: number, y: number): boolean {
   const width = state.width;
-  const x = i % width;
-  const y = (i / width) | 0;
+  if (x < 0 || y < 0 || x >= width || y >= state.height) return false;
+  const i = y * width + x;
+  const known = sight.seen[i]!;
+  if (known >= 0) return known === 1;
   let lit = 0;
-  const near = lazy.buckets[((y / LAZY_CELL) | 0) * lazy.cols + ((x / LAZY_CELL) | 0)] ?? lazy.observers;
-  for (const p of near) {
-    if (observerLightsTile(lazy, p, x, y, state.heights, width, state.height, lazy.cover)) {
+  const near = sight.buckets[((y / RAY_CELL) | 0) * sight.cols + ((x / RAY_CELL) | 0)] ?? sight.observers;
+  for (let k = 0; k < near.length; k++) {
+    if (paramSeesTile(near[k]!, x, y, state.heights, width, state.height, sight.cover)) {
       lit = 1;
       break;
     }
   }
-  lazy.raw[i] = lit;
-  return lit;
+  sight.seen[i] = lit;
+  return lit === 1;
 }
 
-const fillQueue = new Int32Array(FOV_ISLAND_LIMIT + 2);
-const sealQueue = new Int32Array(FOV_ISLAND_LIMIT + 2);
-
-/**
- * Flood the 8-connected `from` island holding `start`, reading tiles through
- * `at`, and stop once it outgrows FOV_ISLAND_LIMIT. Returns the island size,
- * capped at the limit + 1, with its tiles at the front of `q`.
- */
-function islandSize(
-  width: number,
-  height: number,
-  start: number,
-  from: number,
-  q: Int32Array,
-  at: (i: number) => number,
-): number {
-  q[0] = start;
-  let n = 1;
-  for (let k = 0; k < n; k++) {
-    const cur = q[k]!;
-    const cx = cur % width;
-    const cy = (cur / width) | 0;
-    for (const [dx, dy] of FOV_N8) {
-      const nx = cx + dx;
-      const ny = cy + dy;
-      if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-      const ni = ny * width + nx;
-      if (at(ni) !== from) continue;
-      let dup = false;
-      for (let j = 0; j < n; j++) {
-        if (q[j] === ni) {
-          dup = true;
-          break;
-        }
-      }
-      if (dup) continue;
-      q[n++] = ni;
-      if (n > FOV_ISLAND_LIMIT) return n;
-    }
-  }
-  return n;
-}
-
-function lazyFilled(state: MatchState, lazy: LazyVision, i: number): number {
-  const known = lazy.filled[i]!;
-  if (known >= 0) return known;
-  if (lazyRaw(state, lazy, i) === 1) {
-    lazy.filled[i] = 1;
-    return 1;
-  }
-  const n = islandSize(state.width, state.height, i, 0, fillQueue, (j) => lazyRaw(state, lazy, j));
-  const v = n <= FOV_ISLAND_LIMIT ? 1 : 0;
-  for (let k = 0; k < n; k++) lazy.filled[fillQueue[k]!] = v;
-  return v;
-}
-
-function lazySealed(state: MatchState, lazy: LazyVision, i: number): number {
-  const known = lazy.sealed[i]!;
-  if (known >= 0) return known;
-  if (lazyFilled(state, lazy, i) === 0) {
-    lazy.sealed[i] = 0;
-    return 0;
-  }
-  const n = islandSize(state.width, state.height, i, 1, sealQueue, (j) => lazyFilled(state, lazy, j));
-  const v = n <= FOV_ISLAND_LIMIT ? 0 : 1;
-  for (let k = 0; k < n; k++) lazy.sealed[sealQueue[k]!] = v;
-  return v;
-}
-
-function lazyTileLit(state: MatchState, lazy: LazyVision, x: number, y: number): boolean {
-  if (x < 0 || y < 0) return false;
-  const i = y * state.width + x;
-  if (i < 0 || i >= lazy.raw.length) return false;
-  return lazySealed(state, lazy, i) === 1;
-}
-
-function lazyEntityVisible(state: MatchState, playerId: string, key: number, e: Entity): boolean {
-  const lazy = lazyVisionOf(state, playerId, key);
+function rayEntityVisible(state: MatchState, playerId: string, key: number, e: Entity): boolean {
+  const sight = raySightOf(state, playerId, key);
   if (e.kind === "building") {
     for (let y = e.tileY; y < e.tileY + e.tileH; y++) {
       for (let x = e.tileX; x < e.tileX + e.tileW; x++) {
-        if (x < 0 || y < 0 || x >= state.width || y >= state.height) continue;
-        if (lazyTileLit(state, lazy, x, y)) return true;
+        if (rayTileLit(state, sight, x, y)) return true;
       }
     }
     return false;
   }
-  return lazyTileLit(state, lazy, worldToTile(e.x, state.tileSize), worldToTile(e.y, state.tileSize));
+  return rayTileLit(state, sight, worldToTile(e.x, state.tileSize), worldToTile(e.y, state.tileSize));
 }
 
 /**
@@ -1183,7 +1082,7 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
   const side = sightSideOf(state, playerId);
   const cached = state.visionByPlayer.get(side);
   if (cached && state.visionKeyByPlayer.get(side) === key) return cached;
-  lazyVisions.get(state)?.delete(side);
+  raySights.get(state)?.delete(side);
   const width = state.width;
   const height = state.height;
   const mask = new Uint8Array(width * height);
@@ -1443,165 +1342,23 @@ export function canSeeEntity(state: MatchState, playerId: string, e: Entity, mas
   return entityVisibleToPlayer(state, playerId, e);
 }
 
+/**
+ * A human side reads its painted mask, built now if the one it holds is
+ * stale, so combat and the snapshot agree. A CPU seat or the neutral
+ * garrison asks the rays instead of painting.
+ */
 function entityVisibleToPlayer(state: MatchState, playerId: string, e: Entity): boolean {
-  if (FOV_ISLAND_LIMIT > 0) {
-    const key = visionKey(state, playerId);
-    const side = sightSideOf(state, playerId);
-    const cached = state.visionByPlayer.get(side);
-    if (cached && state.visionKeyByPlayer.get(side) === key) {
-      return entityOnMask(e, cached, state.width, state.height, state.tileSize);
-    }
-    return lazyEntityVisible(state, playerId, key, e);
+  const player = state.players.get(playerId);
+  if (player && !player.ai) {
+    return entityOnMask(e, visionMask(state, playerId), state.width, state.height, state.tileSize);
   }
-  if (state.seeTick !== state.tick) {
-    state.seeByPlayer.clear();
-    state.seeTick = state.tick;
+  const key = visionKey(state, playerId);
+  const side = sightSideOf(state, playerId);
+  const cached = state.visionByPlayer.get(side);
+  if (cached && state.visionKeyByPlayer.get(side) === key) {
+    return entityOnMask(e, cached, state.width, state.height, state.tileSize);
   }
-  let cache = state.seeByPlayer.get(playerId);
-  if (!cache) {
-    cache = new Map();
-    state.seeByPlayer.set(playerId, cache);
-  }
-  const hit = cache.get(e.id);
-  if (hit !== undefined) return hit;
-  const vis = observersSeeEntity(state, playerId, e);
-  cache.set(e.id, vis);
-  return vis;
-}
-
-function observersSeeEntity(state: MatchState, playerId: string, e: Entity): boolean {
-  const cover = coverOf(state);
-  if (e.kind === "building") {
-    for (let y = e.tileY; y < e.tileY + e.tileH; y++) {
-      for (let x = e.tileX; x < e.tileX + e.tileW; x++) {
-        if (x < 0 || y < 0 || x >= state.width || y >= state.height) continue;
-        if (tileVisibleToAllies(state, playerId, x, y, cover)) return true;
-      }
-    }
-    return false;
-  }
-  return tileVisibleToAllies(
-    state,
-    playerId,
-    worldToTile(e.x, state.tileSize),
-    worldToTile(e.y, state.tileSize),
-    cover,
-  );
-}
-
-function tileVisibleToAllies(
-  state: MatchState,
-  playerId: string,
-  tx: number,
-  ty: number,
-  cover: CoverField,
-): boolean {
-  for (const obs of state.entities.values()) {
-    if (obs.hp <= 0 || obs.wreck) continue;
-    if (!allies(state, playerId, obs.ownerId)) continue;
-    if (observerSeesTile(state, obs, tx, ty, cover)) return true;
-  }
-  return false;
-}
-
-function observerSeesTile(
-  state: MatchState,
-  obs: Entity,
-  tx: number,
-  ty: number,
-  cover: CoverField,
-): boolean {
-  const width = state.width;
-  const height = state.height;
-  const elev = state.heights;
-  const ignore = coverIgnoreId(obs);
-  cover.ignoreOccupyId = ignore;
-  if (obs.kind === "building") {
-    if (
-      tx >= obs.tileX &&
-      ty >= obs.tileY &&
-      tx < obs.tileX + obs.tileW &&
-      ty < obs.tileY + obs.tileH
-    ) {
-      return true;
-    }
-    let maxH = 0;
-    for (let y = obs.tileY; y < obs.tileY + obs.tileH; y++) {
-      for (let x = obs.tileX; x < obs.tileX + obs.tileW; x++) {
-        if (x < 0 || y < 0 || x >= width || y >= height) continue;
-        const h = elev[y * width + x] ?? 0;
-        if (h > maxH) maxH = h;
-      }
-    }
-    const ox = obs.tileX + Math.floor(obs.tileW / 2);
-    const oy = obs.tileY + Math.floor(obs.tileH / 2);
-    const light = sightLightAt(state.tick);
-    const radius = nightTiles(occupantSightTiles(state, obs) ?? lowPowerSight(sightTilesOf(obs.type, maxH), obs.unpowered), light.mul);
-    const seen = tileInSight(
-      tx,
-      ty,
-      ox,
-      oy,
-      radius,
-      width,
-      height,
-      elev,
-      cover,
-      observerEyeForEntity(obs),
-      uphillSightForEntity(obs),
-    );
-    if (seen) return true;
-    const p = sightParams(obs, width, height, state.tileSize, elev, light);
-    return spotLightsTile(p, tx, ty, elev, width, height, cover);
-  }
-  const ox = worldToTile(obs.x, state.tileSize);
-  const oy = worldToTile(obs.y, state.tileSize);
-  const h = elevAtSafe(elev, width, height, ox, oy);
-  const light = sightLightAt(state.tick);
-  const radius = nightTiles(
-    occupantSightTiles(state, obs) ??
-      (entityIsScouting(obs) ? sightTilesOf("rifleman", h) : sightTilesOf(obs.type, h, liveSightExtra(obs))),
-    light.mul,
-  );
-  const seen = tileInSight(
-    tx,
-    ty,
-    ox,
-    oy,
-    radius,
-    width,
-    height,
-    elev,
-    cover,
-    occupantEye(state, obs) ?? observerEyeForEntity(obs),
-    uphillSightForEntity(obs),
-  );
-  if (seen || !light.spots || !headlightLit(obs)) return seen;
-  const p = sightParams(obs, width, height, state.tileSize, elev, light);
-  return spotLightsTile(p, tx, ty, elev, width, height, cover);
-}
-
-function tileInSight(
-  tx: number,
-  ty: number,
-  ox: number,
-  oy: number,
-  radius: number,
-  width: number,
-  height: number,
-  elev: ArrayLike<number>,
-  cover: CoverField | undefined,
-  observerEye: number,
-  uphillBonus: number,
-): boolean {
-  if (radius <= 0) return ox === tx && oy === ty;
-  const d = sightDist(tx, ty, ox, oy);
-  const h0 = elevAtSafe(elev, width, height, ox, oy);
-  const extra = levelSightExtra(h0, elevAtSafe(elev, width, height, tx, ty), uphillBonus);
-  if (d > radius + extra) return false;
-  if (!hasFullLos(elev, width, height, ox, oy, tx, ty, cover, observerEye)) return false;
-  if (cover && coverSmokeAt(cover, width, height, tx, ty) && d > SMOKE_PEEK_TILES) return false;
-  return true;
+  return rayEntityVisible(state, playerId, key, e);
 }
 
 export function canSeeWorld(state: MatchState, mask: Uint8Array, wx: number, wy: number): boolean {

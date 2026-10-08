@@ -125,12 +125,59 @@ export function queryCapsules(
   radius: number,
   close: boolean,
 ): Entity[] {
-  const keep = new Map<number, Entity>();
-  const pull = (x: number, y: number): void => {
-    const hit = queryCircle(grid, x, y, radius);
-    for (let i = 0; i < hit.length; i++) keep.set(hit[i]!.id, hit[i]!);
-  };
   if (points.length === 0) return [];
+  const cells = capsuleCells(grid, points, radius, close);
+  beginStamp();
+  const out: Entity[] = [];
+  for (let k = 0; k < cells.length; k++) {
+    const bucket = grid.buckets[cells[k]!];
+    if (!bucket) continue;
+    for (let j = 0; j < bucket.length; j++) {
+      const id = bucket[j]!;
+      if (!mark(id)) continue;
+      const e = grid.byId.get(id);
+      if (e) out.push(e);
+    }
+  }
+  out.sort(byId);
+  return out;
+}
+
+/** Cells a capsule around a polyline covers, kept per route so a patrol does not re-walk its line every tick. */
+const capsuleCellCache = new WeakMap<readonly { x: number; y: number }[], Map<string, number[]>>();
+
+function capsuleCells(
+  grid: SpatialGrid,
+  points: readonly { x: number; y: number }[],
+  radius: number,
+  close: boolean,
+): number[] {
+  const key = `${radius}|${close ? 1 : 0}|${grid.cell}|${grid.cols}|${grid.rows}`;
+  let byKey = capsuleCellCache.get(points);
+  if (!byKey) {
+    byKey = new Map();
+    capsuleCellCache.set(points, byKey);
+  }
+  const hit = byKey.get(key);
+  if (hit) return hit;
+  const seen = new Set<number>();
+  const cells: number[] = [];
+  const c = grid.cell;
+  const pull = (x: number, y: number): void => {
+    const x0 = clamp((x - radius) / c, grid.cols);
+    const x1 = clamp((x + radius) / c, grid.cols);
+    const y0 = clamp((y - radius) / c, grid.rows);
+    const y1 = clamp((y + radius) / c, grid.rows);
+    for (let cy = y0; cy <= y1; cy++) {
+      const row = cy * grid.cols;
+      for (let cx = x0; cx <= x1; cx++) {
+        const i = row + cx;
+        if (seen.has(i)) continue;
+        seen.add(i);
+        cells.push(i);
+      }
+    }
+  };
   if (points.length === 1) {
     pull(points[0]!.x, points[0]!.y);
   } else {
@@ -140,16 +187,15 @@ export function queryCapsules(
       const a = points[i]!;
       const b = points[(i + 1) % n]!;
       const dist = Math.hypot(b.x - a.x, b.y - a.y);
-      const steps = Math.max(1, Math.ceil(dist / grid.cell));
+      const steps = Math.max(1, Math.ceil(dist / c));
       for (let s = 0; s <= steps; s++) {
         const t = s / steps;
         pull(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t);
       }
     }
   }
-  const out = [...keep.values()];
-  out.sort(byId);
-  return out;
+  byKey.set(key, cells);
+  return cells;
 }
 
 /** Entities whose indexed body can meet the segment. Same reuse rule as `queryCircle`. */

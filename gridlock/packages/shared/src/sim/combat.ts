@@ -1018,13 +1018,16 @@ function releaseForceUnderway(e: Entity): void {
  * Patrol contact. Runs before movement so a unit peels off the same tick an
  * enemy comes within weapon range of its route. The order stays a patrol.
  */
-/** One fog mask per owner, so target checks read a tile instead of casting a ray each time. */
+/**
+ * One fog mask per human side, so that side's target checks and snapshot
+ * read a tile. CPU seats and the neutral garrison paint no picture: their
+ * target checks ask a ray per tile (`canSeeEntity`), which is far cheaper
+ * than sweeping every eye of a busy map each tick.
+ */
 function warmSight(state: MatchState): void {
-  const owners = new Set<string>();
-  for (const e of state.entities.values()) {
-    if (e.hp <= 0 || e.wreck || owners.has(e.ownerId)) continue;
-    owners.add(e.ownerId);
-    visionMask(state, e.ownerId);
+  for (const p of state.players.values()) {
+    if (p.ai) continue;
+    visionMask(state, p.playerId);
   }
 }
 
