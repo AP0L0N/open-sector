@@ -59,6 +59,7 @@ import { keepRubbleStanding, toRubble } from "./rubble.js";
 import { toWreck } from "./wreck.js";
 import { freshClutterHp } from "./clutter.js";
 import { tickPower } from "./power.js";
+import { holdSightKeys } from "./vision.js";
 
 export function createMatch(
   room: RoomState,
@@ -119,6 +120,7 @@ export function createMatch(
     sceneryRev: 0,
     sceneryKey: 0,
     sceneryKeyTick: -1,
+    phaseRev: 0,
   };
 
   for (const slot of commanders(room)) {
@@ -254,7 +256,17 @@ function standMapUnits(state: MatchState, map: MapDef, raised: ReadonlyMap<numbe
 
 export function step(state: MatchState, dt = TICK_DT): void {
   if (state.ended) return;
+  holdSightKeys(true);
+  try {
+    stepHeld(state, dt);
+  } finally {
+    holdSightKeys(false);
+  }
+}
+
+function stepHeld(state: MatchState, dt: number): void {
   state.tick += 1;
+  state.phaseRev++;
   state.impacts = [];
   state.launches = [];
   restampForts(state);
@@ -279,6 +291,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickPatrol(state);
   groundLstBows(state);
   tickMovement(state, dt);
+  state.phaseRev++;
   // After movement, before collision, so a charging walker detonates on
   // infantry he is overlapping instead of crushing them and walking on.
   tickWalkerCharge(state);
@@ -289,8 +302,10 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickSubmarines(state, dt);
   tickDestroyers(state, dt);
   tickJets(state, dt);
+  state.phaseRev++;
   tickCollision(state, dt);
   syncTowedGuns(state);
+  state.phaseRev++;
   tickMines(state, dt);
   tickCrates(state, dt);
   tickField(state, dt);
@@ -299,8 +314,10 @@ export function step(state: MatchState, dt = TICK_DT): void {
   tickSmelters(state, dt);
   tickBuild(state, dt);
   tickTrain(state, dt);
+  state.phaseRev++;
   tickCombat(state, dt);
   tickLasers(state);
+  state.phaseRev++;
   tickProjectiles(state, dt);
   syncTorpedoes(state);
   tickFires(state, dt);
@@ -309,6 +326,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   reapDead(state);
   reapLostHqs(state);
   checkWin(state);
+  state.phaseRev++;
 }
 
 /** One wall-clock tick: `gameSpeed` sim steps (max 5×). A paused skirmish stays put. */
@@ -317,15 +335,21 @@ export function stepMatch(state: MatchState, dt = TICK_DT): void {
   const n = clampGameSpeed(state.gameSpeed);
   const impacts: ImpactView[] = [];
   const launches: RocketLaunchView[] = [];
-  for (let i = 0; i < n; i++) {
-    step(state, dt);
-    impacts.push(...state.impacts);
-    launches.push(...state.launches);
-    if (state.ended) break;
+  holdSightKeys(true);
+  try {
+    for (let i = 0; i < n; i++) {
+      step(state, dt);
+      impacts.push(...state.impacts);
+      launches.push(...state.launches);
+      if (state.ended) break;
+    }
+    state.impacts = impacts;
+    state.launches = launches;
+    state.phaseRev++;
+    tickAi(state);
+  } finally {
+    holdSightKeys(false);
   }
-  state.impacts = impacts;
-  state.launches = launches;
-  tickAi(state);
 }
 
 function reapDead(state: MatchState): void {

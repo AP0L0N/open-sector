@@ -240,6 +240,8 @@ export const HEIGHT_DOWNHILL_COST = 0.9 ** (1 / TILE_SUBDIV);
 export const HEIGHT_SIGHT_BONUS = 4;
 /** Extra sight tiles infantry gain per elevation step of a tile above or below them. */
 export const INFANTRY_UPHILL_SIGHT = 3;
+/** The uphill bonus reaches at most this many tiles past catalog sight, whatever the hill. */
+export const SIGHT_UPHILL_MAX_TILES = 24;
 /** Extra sight tiles a hull gains per elevation step of a tile above or below it. */
 export const HULL_LEVEL_SIGHT = 1;
 /**

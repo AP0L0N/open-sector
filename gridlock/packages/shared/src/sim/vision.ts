@@ -4,6 +4,7 @@ import {
   GARRISON_HIDE_SIGHT,
   garrisonSightBonusOf,
   HEIGHT_MAX,
+  SIGHT_UPHILL_MAX_TILES,
   SMOKE_PEEK_TILES,
   HEADLIGHT_HALF_DEG,
   SPOTLIGHT_HALF_DEG,
@@ -24,6 +25,7 @@ import {
   clearLosFastPath,
   fillLosFlags,
   hasFullLos,
+  losFlagAt,
   hasFullLosFlagged,
   heightsWithDug,
   observerEyeForEntity,
@@ -35,7 +37,7 @@ import {
   uphillSightForEntity,
   type CoverField,
 } from "./elevation.js";
-import { allies, fillHullCover, fillSightOccupy, footprint, inBounds, worldToTile } from "./geo.js";
+import { allies, fillHullCover, fillSightOccupy, footprint, inBounds, stampArmoredHull, worldToTile } from "./geo.js";
 import { armSightBlocks, clearSightBlocks, litPush, sweepSight, type LitList } from "./sight-sweep.js";
 export { armSightBlocks, clearSightBlocks };
 import { hiddenSubmarine, sonarSpotted } from "./naval.js";
@@ -460,7 +462,7 @@ function sameFlanks(
 /** Chebyshev reach of the box `paintSight` scans, uphill bonus included. */
 function sightBoxRadius(p: SightParams, elev: boolean): number {
   let r = 0;
-  if (p.radius > 0) r = !elev ? p.radius : p.radius + (p.uphill > 0 ? HEIGHT_MAX * p.uphill : 0);
+  if (p.radius > 0) r = !elev ? p.radius : p.radius + (p.uphill > 0 ? Math.min(SIGHT_UPHILL_MAX_TILES, HEIGHT_MAX * p.uphill) : 0);
   return Math.max(r, p.sr);
 }
 
@@ -620,7 +622,52 @@ function coverIgnoreId(e: { kind: string; id?: number; garrisonedIn?: number | n
   return e.garrisonedIn ?? e.id ?? 0;
 }
 
-type CoverCache = { key: number; cover: CoverField; env: SightEnv | null };
+type CoverCache = {
+  /** `coverKey`: buildings, rubble, trees, dug ground. A change rebuilds the cover. */
+  key: number;
+  cover: CoverField;
+  env: SightEnv | null;
+  /** Bumps on every change, the static rebuilds and the hull and smoke refreshes alike. */
+  rev: number;
+  /** `dynamicCoverKey` the hull and smoke layers match. */
+  dynamicKey: number;
+  /** Tiles each armored hull stamps now, so a move clears exactly those. */
+  hullTiles: Map<number, number[]>;
+  /** The smoke mask as last laid, for the tiles a cloud change touched, and whether it holds any smoke. */
+  smokeWas: Uint8Array;
+  hadSmoke: boolean;
+};
+
+/** `CoverCache.rev` for the cover `coverOf` returns now. */
+function coverRevOf(state: MatchState): number {
+  return coverCaches.get(state)?.rev ?? 0;
+}
+
+/** Stamp every armored hull and remember which tiles each one took. */
+function stampHulls(state: MatchState, hull: Int32Array, into: Map<number, number[]>): void {
+  into.clear();
+  const width = state.width;
+  const height = state.height;
+  const ts = state.tileSize;
+  for (const e of state.entities.values()) {
+    if (e.kind !== "unit" || !isArmoredType(e.type)) continue;
+    stampArmoredHull(hull, width, height, ts, e);
+    const r = catalog(e.type).radius;
+    if (r <= 0) continue;
+    const tiles: number[] = [];
+    const x0 = Math.max(0, worldToTile(e.x - r, ts));
+    const x1 = Math.min(width - 1, worldToTile(e.x + r, ts));
+    const y0 = Math.max(0, worldToTile(e.y - r, ts));
+    const y1 = Math.min(height - 1, worldToTile(e.y + r, ts));
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const i = y * width + x;
+        if (hull[i] === e.id) tiles.push(i);
+      }
+    }
+    into.set(e.id, tiles);
+  }
+}
 
 /** One rebuild of the cover: the tiles whose ground or footprint changed, or `all` when too many did. */
 type CoverDiff = { rev: number; tiles: Int32Array; all: boolean };
@@ -705,11 +752,52 @@ function coverStillGood(m: SightMemo, p: SightParams, r: number, h: CoverHistory
 
 const coverCaches = new WeakMap<MatchState, CoverCache>();
 
-/** Everything the sight cover is built from, hashed, so the grids are rebuilt only once something in them moved. */
+type KeyMemo = { rev: number; key: number };
+const coverKeyMemos = new WeakMap<MatchState, KeyMemo>();
+const visionKeyMemos = new WeakMap<MatchState, Map<string, KeyMemo>>();
+
+/**
+ * While a tick runs, the sight keys are hashed once per phase (`state.phaseRev`)
+ * instead of once per check: bodies hold still inside a phase. Outside a tick
+ * (a command between ticks, a test moving a unit by hand) every check hashes
+ * afresh. `stepMatch` and `step` hold this while they run.
+ */
+let sightKeyMemoDepth = 0;
+
+export function holdSightKeys(on: boolean): void {
+  sightKeyMemoDepth += on ? 1 : -1;
+  if (sightKeyMemoDepth < 0) sightKeyMemoDepth = 0;
+}
+
+/** `coverKeyNow`, once per phase while a tick runs. */
 function coverKey(state: MatchState): number {
+  if (sightKeyMemoDepth === 0) return coverKeyNow(state);
+  const m = coverKeyMemos.get(state);
+  if (m && m.rev === state.phaseRev) return m.key;
+  const key = coverKeyNow(state);
+  coverKeyMemos.set(state, { rev: state.phaseRev, key });
+  return key;
+}
+
+/** Everything the sight cover is built from, hashed, so the grids are rebuilt only once something in them moved. */
+function coverKeyNow(state: MatchState): number {
   let h = mix(2166136261, state.clearedTrees.length);
   h = mix(h, state.digRev);
   h = mix(h, state.width);
+  for (const e of state.entities.values()) {
+    if (e.kind !== "building") continue;
+    h = mix(h, e.id);
+    h = mix(h, e.tileX);
+    h = mix(h, e.tileY);
+    h = mix(h, Math.round(e.hp));
+    h = mix(h, e.ruined ? 1 : 0);
+  }
+  return h;
+}
+
+/** The hulls and clouds on the ground: the layers of the cover that move every tick and are refreshed in place. */
+function dynamicCoverKeyNow(state: MatchState): number {
+  let h = 2166136261;
   for (const c of state.smokeClouds) {
     h = mix(h, c.id);
     h = mix(h, Math.round(c.x));
@@ -717,41 +805,103 @@ function coverKey(state: MatchState): number {
     h = mix(h, Math.round(c.life * 64));
   }
   for (const e of state.entities.values()) {
-    if (e.kind === "building") {
-      h = mix(h, e.id);
-      h = mix(h, e.tileX);
-      h = mix(h, e.tileY);
-      h = mix(h, Math.round(e.hp));
-      h = mix(h, e.ruined ? 1 : 0);
-    } else if (isArmoredType(e.type)) {
-      h = mix(h, e.id);
-      h = mix(h, Math.round(e.x));
-      h = mix(h, Math.round(e.y));
-    }
+    if (e.kind !== "unit" || !isArmoredType(e.type)) continue;
+    h = mix(h, e.id);
+    h = mix(h, Math.round(e.x));
+    h = mix(h, Math.round(e.y));
   }
   return h;
+}
+
+const dynamicKeyMemos = new WeakMap<MatchState, KeyMemo>();
+
+function dynamicCoverKey(state: MatchState): number {
+  if (sightKeyMemoDepth === 0) return dynamicCoverKeyNow(state);
+  const m = dynamicKeyMemos.get(state);
+  if (m && m.rev === state.phaseRev) return m.key;
+  const key = dynamicCoverKeyNow(state);
+  dynamicKeyMemos.set(state, { rev: state.phaseRev, key });
+  return key;
 }
 
 /** The cover every eye of every side reads this tick, with its LOS flags. Rebuilt when `coverKey` moves. */
 function coverOf(state: MatchState): CoverField {
   const key = coverKey(state);
   const hit = coverCaches.get(state);
-  if (hit && hit.key === key) return hit.cover;
   const n = state.width * state.height;
+  if (hit && hit.key === key) {
+    const dyn = dynamicCoverKey(state);
+    if (dyn !== hit.dynamicKey) {
+      memoStats.coverRefreshed++;
+      refreshDynamicCover(state, hit);
+      hit.dynamicKey = dyn;
+      hit.rev++;
+      hit.env = null;
+    }
+    return hit.cover;
+  }
+  memoStats.coverRebuilt++;
   if (state.hullMask.length !== n) state.hullMask = new Int32Array(n);
-  fillHullCover(state.entities.values(), state.tileSize, state.width, state.height, state.hullMask);
+  state.hullMask.fill(0);
+  const hullTiles = new Map<number, number[]>();
+  stampHulls(state, state.hullMask, hullTiles);
+  const smoke = ensureSmokeMask(state);
   const cover: CoverField = {
     terrain: state.terrain,
     // Rubble heaps are left out: they hold the ground but a sight ray passes over them.
     occupy: fillSightOccupy(state),
     hull: state.hullMask,
-    smoke: ensureSmokeMask(state),
+    smoke,
     losFlags: hit?.cover.losFlags?.length === n ? hit.cover.losFlags : new Uint8Array(n),
   };
   fillLosFlags(cover, cover.losFlags!);
-  coverCaches.set(state, { key, cover, env: null });
+  const smokeWas = hit?.smokeWas.length === n ? hit.smokeWas : new Uint8Array(n);
+  smokeWas.set(smoke);
+  coverCaches.set(state, {
+    key,
+    cover,
+    env: null,
+    rev: (hit?.rev ?? 0) + 1,
+    dynamicKey: dynamicCoverKey(state),
+    hullTiles,
+    smokeWas,
+    hadSmoke: state.smokeClouds.length > 0,
+  });
   recordCoverDiff(state, cover);
   return cover;
+}
+
+/**
+ * Hulls or clouds moved: clear the tiles the hulls held, stamp them where
+ * they stand now, lay the smoke again, and recompute the LOS flags on just
+ * the tiles that changed hands. The rest of the cover is untouched.
+ */
+function refreshDynamicCover(state: MatchState, hit: CoverCache): void {
+  const cover = hit.cover;
+  const hull = cover.hull as Int32Array;
+  const flags = cover.losFlags!;
+  const touched: number[] = [];
+  for (const tiles of hit.hullTiles.values()) {
+    for (let k = 0; k < tiles.length; k++) {
+      hull[tiles[k]!] = 0;
+      touched.push(tiles[k]!);
+    }
+  }
+  stampHulls(state, hull, hit.hullTiles);
+  for (const tiles of hit.hullTiles.values()) for (let k = 0; k < tiles.length; k++) touched.push(tiles[k]!);
+  const smoke = cover.smoke as Uint8Array;
+  const hasSmoke = state.smokeClouds.length > 0;
+  if (hasSmoke || hit.hadSmoke) {
+    state.smokeMaskTick = -1;
+    ensureSmokeMask(state);
+    const was = hit.smokeWas;
+    for (let i = 0; i < smoke.length; i++) {
+      if (smoke[i] !== was[i]) touched.push(i);
+    }
+    was.set(smoke);
+    hit.hadSmoke = hasSmoke;
+  }
+  for (let k = 0; k < touched.length; k++) flags[touched[k]!] = losFlagAt(cover, touched[k]!);
 }
 
 function ensureSmokeMask(state: MatchState): Uint8Array {
@@ -770,7 +920,23 @@ function mix(h: number, v: number): number {
   return Math.imul(h ^ (v | 0), 16777619);
 }
 
+/** `visionKeyNow`, once per side per phase while a tick runs: the hundreds of sight checks inside one phase share it. */
 function visionKey(state: MatchState, playerId: string): number {
+  if (sightKeyMemoDepth === 0) return visionKeyNow(state, playerId);
+  const side = sightSideOf(state, playerId);
+  let bySide = visionKeyMemos.get(state);
+  if (!bySide) {
+    bySide = new Map();
+    visionKeyMemos.set(state, bySide);
+  }
+  const m = bySide.get(side);
+  if (m && m.rev === state.phaseRev) return m.key;
+  const key = visionKeyNow(state, playerId);
+  bySide.set(side, { rev: state.phaseRev, key });
+  return key;
+}
+
+function visionKeyNow(state: MatchState, playerId: string): number {
   let h = 2166136261;
   h = mix(h, state.clearedTrees.length);
   h = mix(h, state.digRev);
@@ -874,6 +1040,8 @@ type SightMemo = {
   sweptTick: number;
   /** Cover rebuild the tiles are known good for (`CoverHistory.rev`). */
   coverRev: number;
+  /** Ground the eye could light when `tiles` were made, for the repaint of a mask. */
+  box?: TileBounds;
   tiles: Int32Array | null;
 };
 
@@ -891,6 +1059,8 @@ export const MOVE_STALE_TICKS = 6;
  * stall the server.
  */
 export const SWEEP_BUDGET = 16;
+/** An eye this close to one swept in the same paint, with the same reach, takes that eye's tiles instead of sweeping. */
+export const SQUAD_SIGHT_TILES = 2;
 
 /**
  * Ticks an eye keeps its tiles after a hull near it moved. The hull's old
@@ -991,11 +1161,16 @@ function coverKeyNear(env: SightEnv, boxes: TileBox[], grid: ArrayLike<number>, 
 }
 
 /** Why memos were rebuilt, for benchmarks. */
-export const memoStats = { hit: 0, fresh: 0, smoke: 0, params: 0, hulls: 0, cover: 0, drift: 0, deferred: 0 };
+export const memoStats = { hit: 0, fresh: 0, smoke: 0, params: 0, hulls: 0, cover: 0, drift: 0, deferred: 0, shared: 0, coverRebuilt: 0, coverRefreshed: 0, paints: 0 };
 
 /** Same eye, same reach: only its tile may differ. */
 function sameSightParamsButPlace(a: SightParams, b: SightParams): boolean {
   return sameSightParams({ ...a, ox: b.ox, oy: b.oy }, b);
+}
+
+/** Two eyes that see alike: same reach, height, uphill bonus and lamp, whoever they belong to and wherever they stand. */
+function sameSightReach(a: SightParams, b: SightParams): boolean {
+  return sameSightParams({ ...a, ox: b.ox, oy: b.oy, ignore: b.ignore }, b);
 }
 /** The tiles of the eye being swept, kept in its memo. */
 const sweepKeep: LitList = { tiles: new Int32Array(8192), n: 0 };
@@ -1034,63 +1209,138 @@ function alliedSight(state: MatchState, playerId: string): { e: Entity; p: Sight
  * sealing a painted picture gets. Answers are kept per tile until the side's
  * eyes or the cover move.
  */
+type RayEye = { p: SightParams; box: TileBounds; dead: boolean };
+
 type RaySight = {
-  key: number;
-  observers: SightParams[];
-  /** Observers whose reach touches each RAY_CELL-tile square, so a tile asks only the eyes near it. */
-  buckets: SightParams[][];
+  /** `state.phaseRev` the eyes were last checked against the roster. */
+  rev: number;
+  eyes: Map<number, RayEye>;
+  /** Eyes whose reach touches each RAY_CELL-tile square, so a tile asks only the eyes near it. Dead ones are skipped and swept out now and then. */
+  buckets: RayEye[][];
   /** Buckets per row. */
   cols: number;
+  rows: number;
   cover: CoverField;
-  /** -1 unknown, else 0 or 1. */
+  coverRev: number;
+  /** 0 or 1 per tile, good while `seenGen` matches its cell's `cellGen`. */
   seen: Int8Array;
+  seenGen: Int32Array;
+  /** Bumped for a cell whenever an eye near it moved or the cover changed, so its tiles forget their answers without a scan. */
+  cellGen: Int32Array;
 };
 
 const raySights = new WeakMap<MatchState, Map<string, RaySight>>();
 /** Side of one observer bucket, in tiles. */
 const RAY_CELL = 8;
 
-function raySightOf(state: MatchState, playerId: string, key: number): RaySight {
+/** The tiles an eye can light, as a box: its reach around it, and its footprint. */
+function eyeBounds(p: SightParams, width: number, height: number): TileBounds {
+  const r = sightBoxRadius(p, true);
+  let x0 = p.ox - r;
+  let x1 = p.ox + r;
+  let y0 = p.oy - r;
+  let y1 = p.oy + r;
+  if (p.fw > 0) {
+    x0 = Math.min(x0, p.fx);
+    y0 = Math.min(y0, p.fy);
+    x1 = Math.max(x1, p.fx + p.fw - 1);
+    y1 = Math.max(y1, p.fy + p.fh - 1);
+  }
+  return { x0: Math.max(0, x0), y0: Math.max(0, y0), x1: Math.min(width - 1, x1), y1: Math.min(height - 1, y1) };
+}
+
+/**
+ * The side's eyes, brought up to date once per phase: only an eye that moved
+ * or changed reach is re-bucketed, and only the cells it could light before
+ * and after forget their answers. A new cover forgets every cell.
+ */
+function raySightOf(state: MatchState, playerId: string): RaySight {
   let byPlayer = raySights.get(state);
   if (!byPlayer) {
     byPlayer = new Map();
     raySights.set(state, byPlayer);
   }
   const side = sightSideOf(state, playerId);
-  const hit = byPlayer.get(side);
+  const width = state.width;
+  const height = state.height;
+  const n = width * height;
   const cover = coverOf(state);
-  if (hit && hit.key === key && hit.cover === cover) return hit;
-  const n = state.width * state.height;
-  const observers = alliedSight(state, playerId).map((o) => o.p);
-  const cols = Math.ceil(state.width / RAY_CELL);
-  const rows = Math.ceil(state.height / RAY_CELL);
-  const buckets: SightParams[][] = [];
-  for (let i = 0; i < cols * rows; i++) buckets.push([]);
-  for (const p of observers) {
-    const r = sightBoxRadius(p, true);
-    let x0 = p.ox - r;
-    let x1 = p.ox + r;
-    let y0 = p.oy - r;
-    let y1 = p.oy + r;
-    if (p.fw > 0) {
-      x0 = Math.min(x0, p.fx);
-      y0 = Math.min(y0, p.fy);
-      x1 = Math.max(x1, p.fx + p.fw - 1);
-      y1 = Math.max(y1, p.fy + p.fh - 1);
-    }
-    const cx0 = Math.max(0, Math.floor(x0 / RAY_CELL));
-    const cx1 = Math.min(cols - 1, Math.floor(x1 / RAY_CELL));
-    const cy0 = Math.max(0, Math.floor(y0 / RAY_CELL));
-    const cy1 = Math.min(rows - 1, Math.floor(y1 / RAY_CELL));
+  let sight = byPlayer.get(side);
+  if (!sight) {
+    const cols = Math.ceil(width / RAY_CELL);
+    const rows = Math.ceil(height / RAY_CELL);
+    const buckets: RayEye[][] = [];
+    for (let i = 0; i < cols * rows; i++) buckets.push([]);
+    sight = {
+      rev: -1,
+      eyes: new Map(),
+      buckets,
+      cols,
+      rows,
+      cover,
+      coverRev: -1,
+      seen: new Int8Array(n),
+      seenGen: new Int32Array(n),
+      cellGen: new Int32Array(cols * rows).fill(1),
+    };
+    byPlayer.set(side, sight);
+  }
+  const coverRev = coverRevOf(state);
+  if (sight.cover !== cover || sight.coverRev !== coverRev) {
+    sight.cover = cover;
+    sight.coverRev = coverRev;
+    const gens = sight.cellGen;
+    for (let i = 0; i < gens.length; i++) gens[i]!++;
+  }
+  if (sightKeyMemoDepth > 0 && sight.rev === state.phaseRev) return sight;
+  sight.rev = state.phaseRev;
+  const live = new Set<number>();
+  for (const { e, p } of alliedSight(state, playerId)) {
+    live.add(e.id);
+    const old = sight.eyes.get(e.id);
+    if (old && sameSightParams(old.p, p)) continue;
+    if (old) dropRayEye(sight, old);
+    const eye: RayEye = { p, box: eyeBounds(p, width, height), dead: false };
+    const b = eye.box;
+    const cx0 = (b.x0 / RAY_CELL) | 0;
+    const cx1 = (b.x1 / RAY_CELL) | 0;
+    const cy0 = (b.y0 / RAY_CELL) | 0;
+    const cy1 = (b.y1 / RAY_CELL) | 0;
     for (let cy = cy0; cy <= cy1; cy++) {
-      for (let cx = cx0; cx <= cx1; cx++) buckets[cy * cols + cx]!.push(p);
+      for (let cx = cx0; cx <= cx1; cx++) {
+        const cell = cy * sight.cols + cx;
+        sight.buckets[cell]!.push(eye);
+        sight.cellGen[cell]!++;
+      }
+    }
+    sight.eyes.set(e.id, eye);
+  }
+  for (const [id, eye] of sight.eyes) {
+    if (live.has(id)) continue;
+    dropRayEye(sight, eye);
+    sight.eyes.delete(id);
+  }
+  return sight;
+}
+
+/** Mark the eye dead for its cells and forget their answers; a cell mostly dead is swept clean. */
+function dropRayEye(sight: RaySight, eye: RayEye): void {
+  eye.dead = true;
+  const b = eye.box;
+  const cx0 = (b.x0 / RAY_CELL) | 0;
+  const cx1 = (b.x1 / RAY_CELL) | 0;
+  const cy0 = (b.y0 / RAY_CELL) | 0;
+  const cy1 = (b.y1 / RAY_CELL) | 0;
+  for (let cy = cy0; cy <= cy1; cy++) {
+    for (let cx = cx0; cx <= cx1; cx++) {
+      const cell = cy * sight.cols + cx;
+      sight.cellGen[cell]!++;
+      const bucket = sight.buckets[cell]!;
+      let dead = 0;
+      for (let k = 0; k < bucket.length; k++) if (bucket[k]!.dead) dead++;
+      if (dead * 2 > bucket.length) sight.buckets[cell] = bucket.filter((x) => !x.dead);
     }
   }
-  const seen = hit && hit.seen.length === n ? hit.seen : new Int8Array(n);
-  seen.fill(-1);
-  const sight: RaySight = { key, observers, buckets, cols, cover, seen };
-  byPlayer.set(side, sight);
-  return sight;
 }
 
 /** The sweep's test for one tile and one eye: in reach, a clear ray, no smoke on it, or under the eye's lamp. */
@@ -1157,22 +1407,26 @@ function rayTileLit(state: MatchState, sight: RaySight, x: number, y: number): b
   const width = state.width;
   if (x < 0 || y < 0 || x >= width || y >= state.height) return false;
   const i = y * width + x;
-  const known = sight.seen[i]!;
-  if (known >= 0) return known === 1;
+  const cell = ((y / RAY_CELL) | 0) * sight.cols + ((x / RAY_CELL) | 0);
+  const gen = sight.cellGen[cell]!;
+  if (sight.seenGen[i] === gen) return sight.seen[i] === 1;
   let lit = 0;
-  const near = sight.buckets[((y / RAY_CELL) | 0) * sight.cols + ((x / RAY_CELL) | 0)] ?? sight.observers;
+  const near = sight.buckets[cell]!;
   for (let k = 0; k < near.length; k++) {
-    if (paramSeesTile(near[k]!, x, y, state.heights, width, state.height, sight.cover)) {
+    const eye = near[k]!;
+    if (eye.dead) continue;
+    if (paramSeesTile(eye.p, x, y, state.heights, width, state.height, sight.cover)) {
       lit = 1;
       break;
     }
   }
   sight.seen[i] = lit;
+  sight.seenGen[i] = gen;
   return lit === 1;
 }
 
-function rayEntityVisible(state: MatchState, playerId: string, key: number, e: Entity): boolean {
-  const sight = raySightOf(state, playerId, key);
+function rayEntityVisible(state: MatchState, playerId: string, e: Entity): boolean {
+  const sight = raySightOf(state, playerId);
   if (e.kind === "building") {
     for (let y = e.tileY; y < e.tileY + e.tileH; y++) {
       for (let x = e.tileX; x < e.tileX + e.tileW; x++) {
@@ -1193,6 +1447,44 @@ function sightSideOf(state: MatchState, playerId: string): string {
   return p && p.team > 0 ? `team:${p.team}` : playerId;
 }
 
+/** Which paint of a mask array this is; the snapshot's run-length cache is keyed on it. */
+const maskRevs = new WeakMap<Uint8Array, number>();
+/** The two mask buffers a side alternates between, so a paint can start from the last one. */
+const maskBuffers = new WeakMap<MatchState, Map<string, Uint8Array[]>>();
+
+export function maskRevOf(mask: Uint8Array): number {
+  return maskRevs.get(mask) ?? 0;
+}
+
+/** Observers this eye could copy its tiles from: swept or copied this paint, same reach, within SQUAD_SIGHT_TILES. */
+type SquadSource = { p: SightParams; tiles: Int32Array };
+
+function unionBounds(a: TileBounds | null, b: TileBounds): TileBounds {
+  if (!a) return { ...b };
+  return { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) };
+}
+
+function stampInside(mask: Uint8Array, tiles: Int32Array, width: number, b: TileBounds): void {
+  for (let k = 0; k < tiles.length; k++) {
+    const i = tiles[k]!;
+    const x = i % width;
+    if (x < b.x0 || x > b.x1) continue;
+    const y = (i - x) / width;
+    if (y < b.y0 || y > b.y1) continue;
+    mask[i] = 1;
+  }
+}
+
+function boxesTouch(a: TileBounds, b: TileBounds): boolean {
+  return a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1;
+}
+
+/**
+ * The side's fog mask: 1 where an allied eye lights the ground. Painted from
+ * the last mask: only the ground around the eyes that swept, copied, or left
+ * this time is cleared, re-stamped from every eye that reaches it, and
+ * re-sealed; the rest stands. Nothing to repaint returns the same array.
+ */
 export function visionMask(state: MatchState, playerId: string): Uint8Array {
   const key = visionKey(state, playerId);
   const side = sightSideOf(state, playerId);
@@ -1201,36 +1493,29 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
   raySights.get(state)?.delete(side);
   const width = state.width;
   const height = state.height;
-  const mask = new Uint8Array(width * height);
+  const n = width * height;
   const cover = coverOf(state);
   const history = coverHistoryOf(state);
   const observers = alliedSight(state, playerId);
   const memo = sightMemoOf(state);
   const env = sightEnvOf(state, cover);
   const tick = state.tick;
-  type Sweep = { id: number; p: SightParams; hulls: number; smoke: number; m: SightMemo | undefined };
+  type Sweep = { id: number; p: SightParams; box: TileBounds; hulls: number; smoke: number; m: SightMemo | undefined };
   const fresh: Sweep[] = [];
   const stale: Sweep[] = [];
-  // Where any eye can reach: the only ground the paint and the sealing need to look at.
-  const reach = { x0: width, y0: height, x1: -1, y1: -1 };
+  const live = new Set<number>();
+  // Ground whose paint may change: around every eye that sweeps, copies, or left.
+  let dirty: TileBounds | null = null;
   for (const { e, p } of observers) {
-    const box = sightBoxRadius(p, true);
-    if (p.ox - box < reach.x0) reach.x0 = p.ox - box;
-    if (p.oy - box < reach.y0) reach.y0 = p.oy - box;
-    if (p.ox + box > reach.x1) reach.x1 = p.ox + box;
-    if (p.oy + box > reach.y1) reach.y1 = p.oy + box;
-    if (p.fw > 0) {
-      if (p.fx < reach.x0) reach.x0 = p.fx;
-      if (p.fy < reach.y0) reach.y0 = p.fy;
-      if (p.fx + p.fw - 1 > reach.x1) reach.x1 = p.fx + p.fw - 1;
-      if (p.fy + p.fh - 1 > reach.y1) reach.y1 = p.fy + p.fh - 1;
-    }
-    const hulls = coverKeyNear(env, env.hulls, env.hull, p, Math.min(box, HULL_MEMO_TILES), width, height);
-    const smoke = coverKeyNear(env, env.clouds, env.smoke, p, box, width, height);
+    live.add(e.id);
+    const box = eyeBounds(p, width, height);
+    const reach = sightBoxRadius(p, true);
+    const hulls = coverKeyNear(env, env.hulls, env.hull, p, Math.min(reach, HULL_MEMO_TILES), width, height);
+    const smoke = coverKeyNear(env, env.clouds, env.smoke, p, reach, width, height);
     const m = memo.get(e.id);
     if (!m || !m.tiles) {
       memoStats.fresh++;
-      fresh.push({ id: e.id, p, hulls, smoke, m });
+      fresh.push({ id: e.id, p, box, hulls, smoke, m });
       continue;
     }
     // The eye walked on: a short drift keeps its tiles; a longer one, or a change of reach, sweeps.
@@ -1245,10 +1530,8 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
       (samePlace || drifted) &&
       m.smoke === smoke &&
       (m.hulls === hulls || tick - m.sweptTick < HULL_STALE_TICKS) &&
-      coverStillGood(m, p, box, history, width);
+      coverStillGood(m, p, reach, history, width);
     if (good) {
-      const tiles = m.tiles;
-      for (let i = 0; i < tiles.length; i++) mask[tiles[i]!] = 1;
       if (drifted) memoStats.drift++;
       else memoStats.hit++;
       continue;
@@ -1257,48 +1540,96 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
     else if (!samePlace) memoStats.params++;
     else if (m.hulls !== hulls) memoStats.hulls++;
     else memoStats.cover++;
-    stale.push({ id: e.id, p, hulls, smoke, m });
+    stale.push({ id: e.id, p, box, hulls, smoke, m });
+  }
+  // Eyes that left this side (dead, wrecked, gone): their ground is repainted without them. Another side's eyes stay.
+  for (const [id, m] of memo) {
+    if (live.has(id)) continue;
+    const e = state.entities.get(id);
+    if (e && e.hp > 0 && !e.wreck && !allies(state, playerId, e.ownerId)) continue;
+    if (m.box) dirty = unionBounds(dirty, m.box);
+    memo.delete(id);
   }
   // The eyes longest without a sweep go first. Past the budget an eye keeps last tick's tiles and waits a tick.
   stale.sort((a, b) => a.m!.sweptTick - b.m!.sweptTick || a.id - b.id);
-  const sweeps = fresh.concat(stale.slice(0, SWEEP_BUDGET));
-  for (let k = SWEEP_BUDGET; k < stale.length; k++) {
-    const tiles = stale[k]!.m!.tiles!;
-    for (let i = 0; i < tiles.length; i++) mask[tiles[i]!] = 1;
-    memoStats.deferred++;
+  const todo = fresh.concat(stale);
+  for (let k = fresh.length + SWEEP_BUDGET; k < todo.length; k++) memoStats.deferred++;
+  const work = todo.slice(0, fresh.length + SWEEP_BUDGET);
+  // Start from the last paint when there is one; the other buffer takes this paint, so a changed mask is a new array.
+  let bufs = maskBuffers.get(state);
+  if (!bufs) {
+    bufs = new Map();
+    maskBuffers.set(state, bufs);
   }
-  armLosFastPath(state.heights, cover.losFlags!, width, height, history.rev);
+  let pair = bufs.get(side);
+  if (!pair || pair[0]!.length !== n) {
+    pair = [new Uint8Array(n), new Uint8Array(n)];
+    bufs.set(side, pair);
+  }
+  const prev = cached && cached.length === n ? cached : null;
+  if (work.length === 0 && dirty === null && prev) {
+    state.visionKeyByPlayer.set(side, key);
+    state.visionTick = tick;
+    return prev;
+  }
+  const mask = pair[0] === prev ? pair[1]! : pair[0]!;
+  memoStats.paints++;
+  if (sweepScratchMask.length !== n) sweepScratchMask = new Uint8Array(n);
+  const squad: SquadSource[] = [];
+  armLosFastPath(state.heights, cover.losFlags!, width, height, coverRevOf(state));
   armSightBlocks(state.heights, width, height, state.digRev);
   try {
-    for (const s of sweeps) {
-      sweepKeep.n = 0;
-      paintSightParams(mask, width, height, s.p, state.heights, cover, sweepKeep);
-      memo.set(s.id, {
-        p: s.p,
-        hulls: s.hulls,
-        smoke: s.smoke,
-        sweptTick: tick,
-        coverRev: history.rev,
-        tiles: sweepKeep.tiles.slice(0, sweepKeep.n),
-      });
+    // Sweep, or copy a squad mate's tiles, into the memo first; the mask is painted below.
+    for (const s of work) {
+      if (s.m?.box) dirty = unionBounds(dirty, s.m.box);
+      dirty = unionBounds(dirty, s.box);
+      let tiles: Int32Array | null = null;
+      for (const q of squad) {
+        if (
+          Math.abs(q.p.ox - s.p.ox) <= SQUAD_SIGHT_TILES &&
+          Math.abs(q.p.oy - s.p.oy) <= SQUAD_SIGHT_TILES &&
+          sameSightReach(q.p, s.p)
+        ) {
+          tiles = q.tiles;
+          break;
+        }
+      }
+      if (tiles) memoStats.shared++;
+      else {
+        sweepKeep.n = 0;
+        paintSightParams(sweepScratchMask, width, height, s.p, state.heights, cover, sweepKeep);
+        tiles = sweepKeep.tiles.slice(0, sweepKeep.n);
+        for (let k = 0; k < tiles.length; k++) sweepScratchMask[tiles[k]!] = 0;
+        squad.push({ p: s.p, tiles });
+      }
+      memo.set(s.id, { p: s.p, box: s.box, hulls: s.hulls, smoke: s.smoke, sweptTick: tick, coverRev: history.rev, tiles });
     }
-    for (const id of memo.keys()) if (!state.entities.has(id)) memo.delete(id);
-    if (reach.x1 >= reach.x0 && reach.y1 >= reach.y0) {
-      sealFovIslands(mask, width, height, FOV_ISLAND_LIMIT, {
-        x0: Math.max(0, reach.x0),
-        y0: Math.max(0, reach.y0),
-        x1: Math.min(width - 1, reach.x1),
-        y1: Math.min(height - 1, reach.y1),
-      });
+    if (prev) {
+      mask.set(prev);
+    } else {
+      mask.fill(0);
+      dirty = { x0: 0, y0: 0, x1: width - 1, y1: height - 1 };
     }
+    const box = dirty!;
+    for (let y = box.y0; y <= box.y1; y++) mask.fill(0, y * width + box.x0, y * width + box.x1 + 1);
+    for (const { e } of observers) {
+      const m = memo.get(e.id);
+      if (!m || !m.tiles || !m.box || !boxesTouch(m.box, box)) continue;
+      stampInside(mask, m.tiles, width, box);
+    }
+    sealFovIslands(mask, width, height, FOV_ISLAND_LIMIT, box);
   } finally {
     clearLosFastPath();
   }
+  maskRevs.set(mask, (maskRevs.get(mask) ?? 0) + 1);
   state.visionByPlayer.set(side, mask);
   state.visionKeyByPlayer.set(side, key);
-  state.visionTick = state.tick;
+  state.visionTick = tick;
   return mask;
 }
+
+/** A spare mask the sweep paints into; its tiles are wiped again after each sweep. */
+let sweepScratchMask = new Uint8Array(0);
 
 export function visionMaskFromSnapshot(
   snap: MatchSnapshot,
@@ -1522,7 +1853,7 @@ function entityVisibleToPlayer(state: MatchState, playerId: string, e: Entity): 
   if (cached && state.visionKeyByPlayer.get(side) === key) {
     return entityOnMask(e, cached, state.width, state.height, state.tileSize);
   }
-  return rayEntityVisible(state, playerId, key, e);
+  return rayEntityVisible(state, playerId, e);
 }
 
 export function canSeeWorld(state: MatchState, mask: Uint8Array, wx: number, wy: number): boolean {

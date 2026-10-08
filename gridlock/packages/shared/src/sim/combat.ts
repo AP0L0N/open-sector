@@ -1095,13 +1095,14 @@ function patrolContact(state: MatchState, e: Entity, o: Entity): boolean {
   if (!route) return false;
   if (o.kind !== "unit" || o.hp <= 0 || o.wreck || o.id === e.id || o.garrisonedIn != null) return false;
   if (isCrashing(o) || ownerless(o) || allies(state, e.ownerId, o.ownerId)) return false;
-  if (!canSeeEntity(state, e.ownerId, o) || outOfReachAloft(state, e, o)) return false;
-  if (!inNeutralSight(state, e, o)) return false;
-  if (e.ship && shipAirTarget(o)) return false;
-  if (dropsUnharmedArmor(state, e, o)) return false;
+  // The cheap reach checks first: most of the pool is too far to be worth a sight ray.
   const range = weaponRangeWorld(state, e);
   if (range <= 0) return false;
-  return distToRoute(route, o.x, o.y, e.order?.loop === true) <= range;
+  if (!inNeutralSight(state, e, o)) return false;
+  if (distToRoute(route, o.x, o.y, e.order?.loop === true) > range) return false;
+  if (e.ship && shipAirTarget(o)) return false;
+  if (outOfReachAloft(state, e, o) || dropsUnharmedArmor(state, e, o)) return false;
+  return canSeeEntity(state, e.ownerId, o);
 }
 
 /**
