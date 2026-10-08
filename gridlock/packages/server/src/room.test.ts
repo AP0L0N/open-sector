@@ -341,6 +341,44 @@ describe("hub map builder play test", () => {
     }
   });
 
+  it("drops the tester on the start they picked", () => {
+    const starts = [
+      { id: 1, x: 30, y: 30 },
+      { id: 2, x: 30, y: 160 },
+      { id: 3, x: 160, y: 160 },
+    ];
+    for (const pick of [1, 2, 3]) {
+      const hub = new Hub();
+      try {
+        const a = client(hub, "A");
+        hub.handle("A", { type: "hello", name: "Alpha" });
+        hub.handle("A", { type: "map.test", map: testSheet(newPlaytestMapId(), starts), spawnId: pick });
+        assert.deepEqual(a.of("room.error"), []);
+        assert.equal(a.of("match.start").length, 1);
+        const room = hub.rooms.get(hub.sessions.get("A")!.roomId!)!;
+        assert.equal(room.slots.find((sl) => sl.playerId === "A")?.spawnId, pick);
+      } finally {
+        hub.shutdown();
+      }
+    }
+  });
+
+  it("refuses a start the sheet does not have, and leaves no room behind", () => {
+    const hub = new Hub();
+    try {
+      const a = client(hub, "A");
+      hub.handle("A", { type: "hello", name: "Alpha" });
+      const id = newPlaytestMapId();
+      hub.handle("A", { type: "map.test", map: testSheet(id, [{ id: 1, x: 30, y: 30 }]), spawnId: 3 });
+      assert.equal(a.of("room.error").length, 1);
+      assert.equal(a.of("match.start").length, 0);
+      assert.equal(hub.sessions.get("A")!.roomId, null);
+      assert.equal(getMap(id), undefined);
+    } finally {
+      hub.shutdown();
+    }
+  });
+
   it("refuses a sheet with no start, or a play test under a saved map's id", () => {
     const hub = new Hub();
     try {

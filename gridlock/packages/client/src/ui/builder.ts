@@ -240,6 +240,8 @@ let dirty = false;
 let newOpen = false;
 let msg = { text: "", tone: "" as "" | "bad" | "good" };
 let pendingSave: string | null = null;
+/** Start the next play test drops the tester on; 0 draws one at random. */
+let testSpawn = 0;
 /** Edits made to the open sheet. A save ack clears `dirty` only if none landed while it was in flight. */
 let edits = 0;
 let savingEdits = 0;
@@ -1997,8 +1999,8 @@ function setAutoSave(on: boolean): void {
 }
 
 /**
- * Drop straight into the sheet as it stands, alone, on the first start. The
- * map is not saved; Esc in the fight offers the way back here.
+ * Drop straight into the sheet as it stands, alone, on the chosen start (or a
+ * random one). The map is not saved; Esc in the fight offers the way back here.
  */
 function playtest(ctx: Ctx): void {
   const s = sheet;
@@ -2014,7 +2016,9 @@ function playtest(ctx: Ctx): void {
   say("Starting play test…");
   ctx.playMode = "skirmish";
   ctx.net.send({ type: "hello", name: ctx.name });
-  ctx.net.send({ type: "map.test", map: spec });
+  // A start removed since it was picked falls back to random.
+  const spawnId = s.spawns.some((sp) => sp.id === testSpawn) ? testSpawn : 0;
+  ctx.net.send({ type: "map.test", map: spec, spawnId });
 }
 
 /** The hub stored our map. */
@@ -2824,6 +2828,28 @@ function newForm(ctx: Ctx): HTMLElement {
   return wrap;
 }
 
+/**
+ * Which start the play test drops on. Starts are placed and removed without
+ * rebuilding the header, so the list is refilled each time it is opened.
+ */
+function testSpawnPick(): HTMLElement {
+  const pick = el("select", { class: "bld-test-start", attrs: { title: "Start position the play test drops you on" } });
+  const fill = (): void => {
+    const ids = (sheet?.spawns ?? []).map((sp) => sp.id).sort((a, b) => a - b);
+    if (!ids.includes(testSpawn)) testSpawn = 0;
+    pick.replaceChildren(el("option", { text: "Random start", attrs: { value: "0" } }));
+    for (const id of ids) pick.append(el("option", { text: `Start ${id}`, attrs: { value: String(id) } }));
+    pick.value = String(testSpawn);
+  };
+  fill();
+  pick.addEventListener("pointerdown", fill);
+  pick.addEventListener("focus", fill);
+  pick.addEventListener("change", () => {
+    testSpawn = Number(pick.value);
+  });
+  return pick;
+}
+
 function header(ctx: Ctx): HTMLElement {
   const head = el("div", { class: "bld-head" });
   head.append(el("h1", { text: "MAP BUILDER" }));
@@ -2897,6 +2923,7 @@ function header(ctx: Ctx): HTMLElement {
   if (editing) head.append(autoLabel);
   btn("Save", "btn-primary", () => save(ctx), !editing);
   btn("Save copy", "", () => save(ctx, { copy: true }), !editing);
+  if (editing) head.append(testSpawnPick());
   btn("Play test", "", () => playtest(ctx), !editing);
   btn("Back", "btn-ghost", () => {
     if (dirty && sheet && !confirm("Leave with unsaved changes? They stay here until you open another map.")) return;
