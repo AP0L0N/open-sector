@@ -1412,6 +1412,32 @@ export const FORCE_FIELD_DOWN_DELAY = 12;
 /** Field points a second while it recharges. Empty to full in five seconds. */
 export const FORCE_FIELD_REGEN_PER_SEC = 40;
 /**
+ * Weapons power to the field: the laser goes dark, and the field holds this many
+ * times its points and recharges this many times as fast. Back to the laser, the
+ * surplus bleeds off at once.
+ */
+export const FORCE_FIELD_DIVERT_MUL = 5;
+/** The Commander's plating mends itself, very slowly: HP a second while he lives. */
+export const COMMANDER_HP_REGEN_PER_SEC = 0.5;
+
+export const COMMANDER_FIELD_MODES = [
+  {
+    id: "laser" as const,
+    name: "Laser",
+    blurb: "Power to the cutting laser. The field holds its normal points.",
+  },
+  {
+    id: "field" as const,
+    name: "Shield",
+    blurb: `Weapons power to the force field: it holds ${FORCE_FIELD_DIVERT_MUL}× the points and recharges ${FORCE_FIELD_DIVERT_MUL}× as fast. The laser is dark and he cannot attack.`,
+  },
+] as const;
+
+/** Most force-field points a Commander can hold right now. */
+export function forceFieldMax(e: { fieldDivert?: true }): number {
+  return e.fieldDivert ? FORCE_FIELD_HP * FORCE_FIELD_DIVERT_MUL : FORCE_FIELD_HP;
+}
+/**
  * The laser on a soldier: it always cuts out to full reach and sweeps across
  * the target from one side to the other, LASER_SWEEP_HALF_DEG either side of
  * him, in LASER_SWEEP_SECONDS. Every soldier the beam passes, friend or foe,
@@ -4838,7 +4864,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LASER.penetration,
     caliber: LASER.caliber,
     spreadDeg: LASER.spreadDeg,
-    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. While he lives your Cyborgs keep running without a Cyborg Central, and any shut-down Cyborg near him, yours or the enemy's, is taken over by his uplink in a few seconds, one at a time. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
+    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. He can put the laser's power into it: the field then holds five times the points and recharges five times as fast, but he cannot attack. His plating mends itself, very slowly. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. While he lives your Cyborgs keep running without a Cyborg Central, and any shut-down Cyborg near him, yours or the enemy's, is taken over by his uplink in a few seconds, one at a time. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
   titan: {
     type: "titan",
