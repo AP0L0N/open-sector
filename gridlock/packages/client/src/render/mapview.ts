@@ -970,6 +970,8 @@ export class MapView {
   private cookOffsSeen = new Set<number>();
   /** A Titan's reactor went up: ground zero and when it was first seen. Kept while its scorch lasts. */
   private nukes: { id: number; x: number; y: number; at: number }[] = [];
+  /** Every ground zero this match. Bushes and signposts inside one stay gone for good. */
+  private nukeZones: { x: number; y: number }[] = [];
   /** Black smoke off burning fuel. Same drift as rocket smoke, sooty colour. `shade` 1 is black. */
   private fireSmoke: RocketPuff[] = [];
   /** Per Pyro: when his newest glob was first seen, where the burst is laid, and the host if he is inside. */
@@ -1371,7 +1373,10 @@ export class MapView {
       if (i.airZ != null && i.kind === "miss") continue;
       if (i.nuke) {
         // A Titan's reactor: its own flash, shockwave, and mushroom cloud, not a shell burst.
-        if (!this.nukes.some((n) => n.id === i.id)) this.nukes.push({ id: i.id, x: i.x, y: i.y, at: now });
+        if (!this.nukes.some((n) => n.id === i.id)) {
+          this.nukes.push({ id: i.id, x: i.x, y: i.y, at: now });
+          this.nukeZones.push({ x: i.x, y: i.y });
+        }
         continue;
       }
       if (i.cookoff) {
@@ -4230,10 +4235,11 @@ export class MapView {
     this.drawTreeFalls();
     this.drawSmokeClouds();
     this.drawImpacts();
-    this.drawNukes();
     this.drawBarrageTracers();
     // Complete fog of war goes over everything in the world; only the HUD draws above it.
     if (bake) this.drawShroud();
+    // A reactor's cloud towers over the fog: everyone sees it go up, wherever it is.
+    this.drawNukes();
 
     const toPlace = this.placeMode ? this.readyBuilding() : null;
     if (toPlace && this.mouseX >= 0) {
@@ -5982,10 +5988,13 @@ export class MapView {
     };
     for (const e of this.curr.entities) cover(e);
     for (const e of this.ghosts.values()) cover(e);
+    const blastR = TITAN_NUKE.radiusTiles * ts;
     for (const it of decorFor(map).standing) {
       if (built.has(it.ty * w + it.tx) || !this.known(it.tx, it.ty)) continue;
       const wx = (it.tx + it.ox) * ts;
       const wy = (it.ty + it.oy) * ts;
+      // A reactor blast levels every bush and signpost in reach; boulders stay.
+      if ((it.kind === "bush" || it.kind === "sign") && this.nukeZones.some((z) => Math.hypot(z.x - wx, z.y - wy) <= blastR)) continue;
       const p = this.toScreen(wx, wy);
       if (p.x < -64 || p.y < -16 || p.x > vw + 64 || p.y > vh + 64) continue;
       const faces = DECOR_FACES[it.kind];

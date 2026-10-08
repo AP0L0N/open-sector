@@ -4,6 +4,7 @@ import {
   FORCE_FIELD_HP,
   FORCE_FIELD_REGEN_PER_SEC,
   LASER,
+  LASER_ARMOR_DAMAGE,
   LASER_BEAM_HALF_WIDTH,
   LASER_FIRE_RADIUS,
   LASER_FIRE_SECONDS,
@@ -250,7 +251,7 @@ function strikeLine(state: MatchState, e: Entity, target: Entity, bearing: numbe
   if (target.kind === "building" && livingGarrison(state, target).length > 0 && garrisonIsHostile(state, e.ownerId, target)) {
     woundGarrison(state, target, LASER_LINE_DAMAGE, LASER.caliber);
   } else {
-    coverStrike(target, LASER_LINE_DAMAGE, state.tick, false);
+    coverStrike(target, target.kind === "unit" ? LASER_ARMOR_DAMAGE : LASER_LINE_DAMAGE, state.tick, false);
   }
   const lethal = before > 0 && target.hp <= 0;
   state.impacts.push({
