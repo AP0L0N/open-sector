@@ -133,7 +133,10 @@ export function aimAngle(
   return facing + (rand() * 2 - 1) * ((cone * Math.PI) / 180);
 }
 
-export function resolveHit(opts: {
+/** Calibre from which a round counts as a big gun's shell (tank, field, and ship guns). */
+export const BIG_GUN_CALIBER = 40;
+
+type HitOpts = {
   gun: Pick<CatalogEntry, "damage" | "penetration" | "caliber">;
   target: CatalogEntry;
   targetFacing: number;
@@ -144,7 +147,31 @@ export function resolveHit(opts: {
   rand: () => number;
   /** Use gun.damage as the final number. Scoped infantry hits set this. */
   exact?: boolean;
-}): HitResolution {
+};
+
+export function resolveHit(opts: HitOpts): HitResolution {
+  const res = resolveHitOnPlate(opts);
+  const resist = opts.target.shellResist;
+  if (!resist || opts.gun.caliber < BIG_GUN_CALIBER || res.damage <= 0) return res;
+  return softenShell(opts, res, resist);
+}
+
+/**
+ * A hull built to soak shells (the Titan): an outright kill lands instead as the
+ * heaviest hit that gun can deal, and every shell does `resist` of its harm.
+ */
+function softenShell(opts: HitOpts, res: HitResolution, resist: number): HitResolution {
+  const outright = res.kind === "kill";
+  const heavy = Math.round(opts.gun.damage * clamp(res.overmatch, 0.85, 2.4));
+  const base = outright ? Math.max(heavy, Math.round(opts.targetHpMax * 0.2)) : res.damage;
+  const damage = Math.min(opts.targetHp, Math.max(1, Math.round(base * resist)));
+  let kind: HitResolution["kind"] = res.kind;
+  if (damage >= opts.targetHp) kind = "kill";
+  else if (outright) kind = "pen";
+  return { ...res, kind, damage };
+}
+
+function resolveHitOnPlate(opts: HitOpts): HitResolution {
   const { gun, target, rand } = opts;
   if (!isArmored(target) || target.kind === "building") {
     const damage = opts.exact

@@ -317,6 +317,11 @@ export const TITAN_RANGE_TILES = TIGER_RANGE_TILES;
 export const TITAN_WADE_SPEED = 0.6;
 /** Seconds to plant the outriggers, and again to pull them up. */
 export const TITAN_BRACE_SECONDS = 2.5;
+/**
+ * Titan's frame soaks heavy shells: it takes half a big gun's damage, and no
+ * shell kills it outright. A Jagdtiger needs four or five hits, not one.
+ */
+export const TITAN_SHELL_RESIST = 0.5;
 /** Hit-point multiplier while braced. HP keeps its share of max across the change. */
 export const TITAN_BRACED_HP_MUL = 1.75;
 /**
@@ -1045,6 +1050,11 @@ export interface CatalogEntry {
   wadeSpeed?: number;
   /** Deploy braces the unit in place: stationary, hull locked, max HP × this. */
   bracedHpMul?: number;
+  /**
+   * Share of a big gun's damage (a tank, field, or ship gun) this hull takes.
+   * Such a shell never kills it outright either: it lands as a heavy hit.
+   */
+  shellResist?: number;
   /** Shoulder rocket pods (TITAN_ROCKET). They fire from water, where the main gun cannot. */
   rockets?: boolean;
   /** Rockets in a full rack. Only a supply truck refills it. */
@@ -4837,7 +4847,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     letter: "X",
     cost: 8000,
     buildSeconds: 18,
-    hp: 200,
+    hp: 400,
     power: 0,
     tileW: 1,
     tileH: 1,
@@ -4868,7 +4878,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: TITAN_ROCKET_AMMO,
     bracedHpMul: TITAN_BRACED_HP_MUL,
-    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up. Leg jets lift it for a short hop over anything: aloft the gun is stowed and only the pods fire, and only anti-air weapons reach it; the burners take a long while to recover. Its reactor makes it a bomb: destroyed, it goes up in a small nuclear blast that wrecks everything close by, friend or foe. Shot down in the air, it drops straight down and goes up on the ground. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
+    shellResist: TITAN_SHELL_RESIST,
+    blurb: "Heavy assault walker, built to take a beating: tank shells do it half harm, and no single shell kills it outright. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up. Leg jets lift it for a short hop over anything: aloft the gun is stowed and only the pods fire, and only anti-air weapons reach it; the burners take a long while to recover. Its reactor makes it a bomb: destroyed, it goes up in a small nuclear blast that wrecks everything close by, friend or foe. Shot down in the air, it drops straight down and goes up on the ground. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
   mammoth: {
     type: "mammoth",
