@@ -33,6 +33,16 @@ const tigerGunGlob = import.meta.glob("../assets/units/tiger/gun/*.png", {
   import: "default",
 }) as Record<string, string>;
 
+const feuerwirbelHullGlob = import.meta.glob("../assets/units/feuerwirbel/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const feuerwirbelTurretGlob = import.meta.glob("../assets/units/feuerwirbel/turret/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 const apocalypseHullGlob = import.meta.glob("../assets/units/apocalypse/hull/*.png", {
   eager: true,
   import: "default",
@@ -454,6 +464,35 @@ export function bindJagdtigerSheets(hullImage: HTMLImageElement, gunImage: HTMLI
     })
     .catch((err) => {
       console.error("jagdtiger turntable", err);
+    });
+}
+
+let feuerwirbelPrevious: ComposedTurntable | null = null;
+
+/**
+ * Feuerwirbel: hull with the bow flame projector + the twin-gatling turret, one transform for both
+ * (tools/sprites/render_feuerwirbel.py). The static feuerwirbel-cameo.png is the sidebar portrait.
+ */
+export function bindFeuerwirbelSheets(hullImage: HTMLImageElement, turretImage: HTMLImageElement): void {
+  let hullUrls: string[];
+  let turretUrls: string[];
+  try {
+    hullUrls = pickTurntableUrls(feuerwirbelHullGlob);
+    turretUrls = pickTurntableUrls(feuerwirbelTurretGlob);
+  } catch (err) {
+    console.error("feuerwirbel turntable", err);
+    return;
+  }
+  void Promise.all([Promise.all(hullUrls.map(loadImage)), Promise.all(turretUrls.map(loadImage))])
+    .then(([hullImgs, turretImgs]) => composeAligned([hullImgs, turretImgs], TIGER_OPTS))
+    .then((next) => {
+      revoke(feuerwirbelPrevious);
+      feuerwirbelPrevious = next;
+      hullImage.src = next.sheetUrls[0] ?? "";
+      turretImage.src = next.sheetUrls[1] ?? "";
+    })
+    .catch((err) => {
+      console.error("feuerwirbel turntable", err);
     });
 }
 

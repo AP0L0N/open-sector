@@ -59,6 +59,12 @@ import {
   FLAK_SCATTER_FAR,
   FLAK_SCATTER_NEAR,
   FLAK_SHELL_SPEED,
+  FLAMER_SCATTER_ACROSS,
+  FLAMER_SPLASH,
+  HULL_FLAMER_ARC_DEG,
+  HULL_FLAMER_RANGE_TILES,
+  gatlingTurretOf,
+  hullFlamerOf,
   antiAirGunOf,
   armorFirstOf,
   crewGunOf,
@@ -228,7 +234,7 @@ import { setPath } from "./path.js";
 import { nextRand } from "./rng.js";
 import { isSupplyBullet, noteSupplyHit, stowedInTransport, supplyRiderFights, syncSupplyRiders } from "./supply.js";
 import { spawnSmokeCloud } from "./smoke.js";
-import { heGroundFire, stepFlame, throwFlame } from "./flame.js";
+import { burnShare, heGroundFire, hullHose, stepFlame, throwFlame } from "./flame.js";
 import { fireLaser } from "./laser.js";
 import { distToRoute } from "./patrol.js";
 import { activateSpatial, anyHostileNear, clearSpatial, queryCapsules, queryCircle, querySegment, spatialGrid, type SpatialGrid } from "./spatial.js";
@@ -381,6 +387,7 @@ export function tickCombat(state: MatchState, dt: number): void {
     if (e.ship) tickShipCiws(state, e, dt, downed);
     if (interceptRockets(state, e, downed)) continue;
     fireAtCurrent(state, e, dt);
+    if (hullFlamerOf(e.type)) tickHullFlamer(state, e, dt);
   }
   // Rocket racks: their own clock, whatever the main gun is doing. Titan pods also pick their own target.
   for (const e of state.entities.values()) {
@@ -610,6 +617,86 @@ function tickRoofCiws(state: MatchState, e: Entity, dt: number, downed: Set<numb
   }
   e.ciwsFireTick = state.tick;
   e.mgCooldown = TICK_DT;
+}
+
+/** Bow projector reach: its own base, plus the height bonus every gun gets. */
+function hullFlamerRange(state: MatchState, e: Entity): number {
+  return rangeTilesOf(e.type, entityHeight(state, e), HULL_FLAMER_RANGE_TILES) * state.tileSize;
+}
+
+/** Fire hurts it: a soldier or a soft vehicle in the open, or a house with an enemy garrison showing. */
+function flameWorthIt(state: MatchState, e: Entity, o: Entity): boolean {
+  if (o.id === e.id || o.hp <= 0 || o.wreck || allies(state, e.ownerId, o.ownerId)) return false;
+  if (o.kind === "unit") return burnShare(o) > 0;
+  return isGarrisonable(o.type) && garrisonIsHostile(state, e.ownerId, o) && garrisonLooksOccupied(state, e.ownerId, o);
+}
+
+/** The point lies inside the projector's arc off the nose. */
+function inBowArc(e: Entity, x: number, y: number): boolean {
+  return Math.abs(angleOff(e.facing, Math.atan2(y - e.y, x - e.x))) <= (HULL_FLAMER_ARC_DEG * Math.PI) / 180 + 1e-6;
+}
+
+/** A soldier of this side stands where the jet or its splash would reach him. */
+function friendInJet(state: MatchState, e: Entity, from: { x: number; y: number }, x: number, y: number): boolean {
+  const len = Math.hypot(x - from.x, y - from.y);
+  if (len < 1e-6) return false;
+  const ux = (x - from.x) / len;
+  const uy = (y - from.y) / len;
+  const pad = FLAMER_SPLASH + FLAMER_SCATTER_ACROSS;
+  for (const o of poolCircle(state, from.x, from.y, len + pad)) {
+    if (o.id === e.id || o.kind !== "unit" || o.hp <= 0 || o.wreck || o.garrisonedIn != null) continue;
+    if (!isInfantryType(o.type) || !allies(state, e.ownerId, o.ownerId) || isAirborne(o)) continue;
+    const dx = o.x - from.x;
+    const dy = o.y - from.y;
+    const along = dx * ux + dy * uy;
+    if (along < -o.radius || along > len + pad) continue;
+    if (Math.abs(dx * uy - dy * ux) <= o.radius + pad) return true;
+  }
+  return false;
+}
+
+/** The nearest thing inside the bow arc and the jet's reach that fire can hurt, seen by the side. */
+function bowFlameTarget(state: MatchState, e: Entity, range: number): Entity | undefined {
+  let best: Entity | undefined;
+  let bestD = range * range;
+  for (const o of poolCircle(state, e.x, e.y, range)) {
+    const d = (o.x - e.x) ** 2 + (o.y - e.y) ** 2;
+    if (d > bestD || !inBowArc(e, o.x, o.y) || !flameWorthIt(state, e, o)) continue;
+    if (!canSeeEntity(state, e.ownerId, o)) continue;
+    bestD = d;
+    best = o;
+  }
+  return best;
+}
+
+/**
+ * The Feuerwirbel's bow projector. Its own clock (mgCooldown) and fuel (mgAmmo),
+ * whatever the gatlings are doing. It never traverses: it burns the main target
+ * when that sits inside the arc off the nose and inside its reach, else the
+ * nearest soldier, soft vehicle, or manned house there. A stopped hull turns
+ * onto a main target close enough to burn. A force-attack on the ground burns
+ * that point once the nose bears. The jet holds while a friend stands in it.
+ */
+function tickHullFlamer(state: MatchState, e: Entity, dt: number): void {
+  if (e.mgAmmo <= 0 || e.garrisonedIn != null) return;
+  const range = hullFlamerRange(state, e);
+  const main = currentTarget(state, e);
+  const forced = e.order?.kind === "forceattack";
+  const point =
+    !main && forced && e.order?.x != null && e.order?.y != null ? { x: e.order.x, y: e.order.y } : null;
+  const want = main && flameWorthIt(state, e, main) ? main : point;
+  const wantDist = want ? Math.hypot(want.x - e.x, want.y - e.y) : Infinity;
+  // The driver brings the nose round onto the fight when it is close enough to burn.
+  if (want && wantDist <= range && e.waypoints.length === 0 && !immobilized(e) && !inBowArc(e, want.x, want.y)) {
+    turnToward(e, want.x, want.y, catalog(e.type).turnDegPerSec * hullTurnMul(e), dt);
+  }
+  if (e.mgCooldown > 0) return;
+  const aim = want && wantDist <= range && inBowArc(e, want.x, want.y) ? want : bowFlameTarget(state, e, range);
+  if (!aim) return;
+  const hose = hullHose(e);
+  // A forced burn goes on whoever is in the way; the projector's own pick never burns a friend.
+  if (!forced && friendInJet(state, e, hose.nozzle!, aim.x, aim.y)) return;
+  throwFlame(state, e, aim.x, aim.y, range, forced, hose);
 }
 
 /** A Battle Ship CIWS mount's reach: the roof mount's rule on its own base. */
@@ -1364,7 +1451,7 @@ function dropsWreck(e: Entity, target: Entity): boolean {
  * A player attack or force-attack still fires.
  */
 function dropsUnharmedArmor(state: MatchState, e: Entity, target: Entity): boolean {
-  if (!isInfantryType(e.type) && !radarLaidOf(e.type)) return false;
+  if (!isInfantryType(e.type) && !radarLaidOf(e.type) && !gatlingTurretOf(e.type)) return false;
   if (e.order?.kind === "forceattack") return false;
   if (e.order?.kind === "attack" && !e.order.auto) return false;
   return !infantryRoundCanHarm(state, e, target);
@@ -1408,7 +1495,9 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
   }
   const def = catalog(target.type);
   if (!isArmored(def)) return true;
-  if (radarLaidOf(e.type)) {
+  // A gatling turret's rounds sometimes bite a Walker or a truck, like the Cyborg's arm.
+  if (gatlingTurretOf(e.type) && isLightHull(def)) return true;
+  if (radarLaidOf(e.type) || gatlingTurretOf(e.type)) {
     if (entityIsScouting(target)) return true;
     return armorHarmPossible({
       gun: catalog(e.type),
@@ -1453,11 +1542,11 @@ function infantryRoundCanHarm(state: MatchState, e: Entity, target: Entity): boo
 }
 
 /**
- * Walker gatlings never bring a building down. They still fire while a hostile
- * garrison is the thing inside. Tanks keep an order on the walls.
+ * Walker gatlings never bring a building down, nor do a gatling turret's. They still
+ * fire while a hostile garrison is the thing inside. Tanks keep an order on the walls.
  */
 function walkerSparesBuilding(state: MatchState, e: Entity, target: Entity): boolean {
-  if (e.type !== "walker" || target.kind !== "building") return false;
+  if ((e.type !== "walker" && !gatlingTurretOf(e.type)) || target.kind !== "building") return false;
   return !(
     garrisonIsHostile(state, e.ownerId, target) && garrisonLooksOccupied(state, e.ownerId, target)
   );
@@ -1640,14 +1729,14 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   if (useMg && target && gunArcOk && !isInfantryType(target.type)) return;
   // Only the coaxial meets a drone. The main gun holds; rockets and small arms go on.
   const atDrone = !!target?.drone;
-  if (atDrone && hasMg(e.type) && !rocketsOf(e.type) && e.type !== "walker") return;
+  if (atDrone && hasMg(e.type) && !rocketsOf(e.type) && e.type !== "walker" && !gatlingTurretOf(e.type)) return;
 
   if (!holedUp && !gunArcOk) return;
 
   // The Titan's main gun stays silent in water, and never lays on a drone. Its pods fire on their own in tickRocketPods.
   if (rocketsOf(e.type) && (unitInWater(state, e) || atDrone)) return;
 
-  if (e.type === "walker") {
+  if (e.type === "walker" || gatlingTurretOf(e.type)) {
     if (target && walkerSparesBuilding(state, e, target)) return;
     fireWalker(state, e, aimX, aimY, range, dist, target);
     return;
@@ -2572,7 +2661,8 @@ function fireWalker(
     shoot(aimX, aimY, per * guns, target, dist);
   }
   if (e.clip < before) {
-    e.gatlingFire = { tick: state.tick, arms: guns };
+    // A gatling turret's pair fires together: both muzzles flash.
+    e.gatlingFire = { tick: state.tick, arms: gatlingTurretOf(e.type) ? 2 : guns };
     if (second) e.gatlingFire.offAim = Math.atan2(second.y - e.y, second.x - e.x);
   }
   e.cooldown = gun.cooldown;
@@ -2710,8 +2800,9 @@ function heatGatling(e: Entity, rounds: number): void {
 }
 
 function wantsMg(e: Entity, target: Entity): boolean {
-  // The roof mount spends that belt on its own (tickRoofCiws); there is no coaxial.
-  if (!hasMg(e.type) || e.mgAmmo <= 0 || roofCiwsOf(e.type)) return false;
+  // The roof mount spends that belt on its own (tickRoofCiws), and a bow flamer's fuel rides
+  // there (tickHullFlamer); neither has a coaxial.
+  if (!hasMg(e.type) || e.mgAmmo <= 0 || roofCiwsOf(e.type) || hullFlamerOf(e.type)) return false;
   if (isInfantryType(target.type) || target.drone) return true;
   return entityIsScouting(target);
 }
@@ -2836,8 +2927,9 @@ function fireRound(
   },
 ): void {
   const target = opts?.target;
-  // Walker, Cyborg, pad CIWS, and the Apocalypse roof. Not the Gunner's MG42, not the main gun.
-  const gatling =!!opts?.radar || e.type === "walker" || e.type === "ciws" || e.type === "cyborg";
+  // Walker, Cyborg, pad CIWS, the Apocalypse roof, and a gatling turret. Not the Gunner's MG42, not a cannon.
+  const gatling =
+    !!opts?.radar || e.type === "walker" || e.type === "ciws" || e.type === "cyborg" || gatlingTurretOf(e.type);
   // A gatling hoses its rounds; a cheap gun or a secondary mount hoses them wider.
   const spray = (gatling ? gatlingSprayOf(e.type) : 1) * (opts?.spreadMul ?? 1);
   const moving = !!target && (target.waypoints.length > 0 || target.state === "move");
@@ -3190,7 +3282,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const occupied = wallsShieldGarrison(state, e);
     // A walker round stops on the wall. It does not chew the structure, even
     // when the house is empty or the target is a Core.
-    const walkerWall = e.kind === "building" && shooter?.type === "walker";
+    const walkerWall = e.kind === "building" && !!shooter && (shooter.type === "walker" || gatlingTurretOf(shooter.type));
     const chipWalls = (!occupied || p.caliber >= GARRISON_STRUCTURAL_CALIBER) && !walkerWall;
     let dealt = res.damage;
     if (chipWalls) {
@@ -3571,7 +3663,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (coneOnly && !inGuardCone(e, o)) continue;
     if (!canSeeEntity(state, e.ownerId, o)) continue;
     if (!canAimWeapon(state, e, o.x, o.y, o)) continue;
-    if (isInfantryType(e.type) && !infantryRoundCanHarm(state, e, o)) continue;
+    if ((isInfantryType(e.type) || gatlingTurretOf(e.type)) && !infantryRoundCanHarm(state, e, o)) continue;
     near.push({ o, d, i: near.length });
   }
   if (bestAir) return bestAir;

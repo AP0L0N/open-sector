@@ -267,6 +267,7 @@ import wardenWreckUrl from "../assets/units/wrecks/warden.png";
 import apocalypseWreckUrl from "../assets/units/wrecks/apocalypse.png";
 import ss3WreckUrl from "../assets/units/wrecks/ss3.png";
 import jagdtigerWreckUrl from "../assets/units/wrecks/jagdtiger.png";
+import feuerwirbelWreckUrl from "../assets/units/wrecks/feuerwirbel.png";
 import supplyWreckUrl from "../assets/units/wrecks/supply.png";
 import nebelwerferWreckUrl from "../assets/units/wrecks/nebelwerfer.png";
 import haulerWreckUrl from "../assets/units/wrecks/hauler.png";
@@ -301,6 +302,7 @@ import {
   bindAircraftSheets,
   bindCasemateSheets,
   bindJagdtigerSheets,
+  bindFeuerwirbelSheets,
   bindDroneSheets,
   bindAswHeliSheets,
   bindFighterSheets,
@@ -1236,6 +1238,24 @@ export const JAGDTIGER_SPRITE: UnitSpriteDef = {
 };
 bindJagdtigerSheets(JAGDTIGER_SPRITE.image, JAGDTIGER_SPRITE.gun!.image);
 
+/**
+ * Feuerwirbel: hull (with the fixed bow flame projector) + the twin-gatling turret,
+ * which aims on its own facing. No long barrel sets the fit, so the cell is filled by
+ * the hull itself and it draws smaller than the Tiger at the same meters per pixel.
+ */
+export const FEUERWIRBEL_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(34 * UNIT_VISUAL_SCALE),
+  contactY: 0.92,
+  turret: tankLayer(),
+  facingSpace: "world",
+};
+bindFeuerwirbelSheets(FEUERWIRBEL_SPRITE.image, FEUERWIRBEL_SPRITE.turret!.image);
+
 export const SUPPLY_SPRITE: UnitSpriteDef = {
   image: new Image(),
   dirs: TANK_FACE_DIRS,
@@ -1628,6 +1648,7 @@ const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   apocalypse: wreckSheet(apocalypseWreckUrl, APOCALYPSE_SPRITE),
   ss3: wreckSheet(ss3WreckUrl, SS3_SPRITE),
   jagdtiger: wreckSheet(jagdtigerWreckUrl, JAGDTIGER_SPRITE),
+  feuerwirbel: wreckSheet(feuerwirbelWreckUrl, FEUERWIRBEL_SPRITE),
   supply: wreckSheet(supplyWreckUrl, SUPPLY_SPRITE),
   nebelwerfer: wreckSheet(nebelwerferWreckUrl, NEBELWERFER_SPRITE),
   hauler: wreckSheet(haulerWreckUrl, HAULER_SPRITE),
@@ -1664,6 +1685,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   apocalypse: APOCALYPSE_SPRITE,
   ss3: SS3_SPRITE,
   jagdtiger: JAGDTIGER_SPRITE,
+  feuerwirbel: FEUERWIRBEL_SPRITE,
   supply: SUPPLY_SPRITE,
   gunboat: GUNBOAT_SPRITE,
   supplyboat: SUPPLYBOAT_SPRITE,

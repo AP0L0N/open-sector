@@ -10,6 +10,8 @@ import {
 import {
   buildingCenter,
   clearOrder,
+  fellTreeAt,
+  footprint,
   hqOf,
   occupyEntity,
   tilesBlockedOrScrap,
@@ -20,11 +22,12 @@ import {
 import { repathIfBlocked } from "./orders.js";
 import type { Entity, MatchState } from "./types.js";
 
+/** Trees under the Core are no bar: finishDeploy fells them, as raiseBuilding does for a base structure. */
 export function canDeployAt(state: MatchState, tileX: number, tileY: number): boolean {
   const def = catalog("core");
   const tx = tileX - Math.floor(def.tileW / 2);
   const ty = tileY - Math.floor(def.tileH / 2);
-  if (tilesBlockedOrScrap(state, tx, ty, def.tileW, def.tileH)) return false;
+  if (tilesBlockedOrScrap(state, tx, ty, def.tileW, def.tileH, false)) return false;
   return true;
 }
 
@@ -41,7 +44,7 @@ export function beginDeploy(state: MatchState, e: Entity): string | null {
     const core = catalog("core");
     const tx = e.tileX - Math.floor(core.tileW / 2);
     const ty = e.tileY - Math.floor(core.tileH / 2);
-    if (tilesBlockedOrScrap(state, tx, ty, core.tileW, core.tileH)) {
+    if (tilesBlockedOrScrap(state, tx, ty, core.tileW, core.tileH, false)) {
       return `Need a clear ${core.tileW}×${core.tileH} to deploy.`;
     }
     e.state = "deploy";
@@ -111,11 +114,12 @@ function finishDeploy(state: MatchState, rig: Entity): void {
   const coreDef = catalog("core");
   const tx = rig.tileX - Math.floor(coreDef.tileW / 2);
   const ty = rig.tileY - Math.floor(coreDef.tileH / 2);
-  if (tilesBlockedOrScrap(state, tx, ty, coreDef.tileW, coreDef.tileH)) {
+  if (tilesBlockedOrScrap(state, tx, ty, coreDef.tileW, coreDef.tileH, false)) {
     rig.state = "idle";
     rig.deployTime = 0;
     return;
   }
+  for (const t of footprint(tx, ty, coreDef.tileW, coreDef.tileH)) fellTreeAt(state, t.x, t.y);
   const frac = rig.hp / rig.hpMax;
   state.entities.delete(rig.id);
   const c = buildingCenter(tx, ty, coreDef.tileW, coreDef.tileH, state.tileSize);
