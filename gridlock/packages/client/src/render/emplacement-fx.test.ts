@@ -10,7 +10,7 @@ describe("crewed gun shot look", () => {
     const small = emplacementShotLook("pak36");
     const big = emplacementShotLook("pak43");
     assert.ok(big.smoke >= small.smoke * 2, "a much larger blast cloud");
-    assert.ok(big.muzzle > small.muzzle);
+    assert.equal(big.muzzle, 0, "no front smoke; the blast behind the pit carries it");
     assert.ok(PAK43_FX_CALIBER_MUL > 1.5);
     const flakLook = emplacementShotLook("flak");
     assert.ok(flakLook.smoke > 0, "the blast behind the Flak stays");
