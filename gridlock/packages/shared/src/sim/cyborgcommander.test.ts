@@ -8,7 +8,7 @@ import {
   FORCE_FIELD_HP,
   LASER,
   LASER_FIRE_RADIUS,
-  LASER_LINE_DAMAGE,
+  LASER_ARMOR_DAMAGE,
   LASER_SWEEP_CYBORG_DAMAGE,
   LASER_SWEEP_HALF_DEG,
   TECH_REQUIRES,
@@ -213,7 +213,7 @@ describe("cyborg commander", () => {
     cmd.order = { kind: "attack", targetId: tank.id };
     tickCombat(state, TICK_DT);
     assert.ok(cmd.laser?.line, "a line, not a sweep");
-    assert.equal(tank.hp, tank.hpMax - LASER_LINE_DAMAGE);
+    assert.equal(tank.hp, tank.hpMax - LASER_ARMOR_DAMAGE);
     runBeam(state, cmd);
     assert.equal(bystander.hp, bystander.hpMax, "the line does not sweep");
   });
@@ -237,7 +237,7 @@ describe("cyborg commander", () => {
     assert.equal(ownBorg.hp, ownBorg.hpMax - LASER_SWEEP_CYBORG_DAMAGE, "his own Cyborg takes the heavy cut");
     assert.equal(aside.hp, aside.hpMax, "off the line");
     assert.equal(behind.hp, behind.hpMax, "past the target the beam has stopped");
-    assert.equal(tank.hp, tank.hpMax - LASER_LINE_DAMAGE);
+    assert.equal(tank.hp, tank.hpMax - LASER_ARMOR_DAMAGE);
   });
 
   it("is stopped by a building in the way", () => {

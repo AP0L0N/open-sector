@@ -1429,11 +1429,14 @@ export const LASER_BEAM_HALF_WIDTH = 2;
 /**
  * The laser on anything else (a hull, a building, a wreck): one straight beam
  * onto the target for LASER_LINE_SECONDS. It cuts through any plate from any
- * face, for a moderate LASER_LINE_DAMAGE. A small fire is left where it lands,
+ * face, for a moderate LASER_LINE_DAMAGE; an armored unit (a hull or a wreck)
+ * takes LASER_ARMOR_DAMAGE instead. A small fire is left where it lands,
  * and the trees and soldiers (his own too) between him and the target burn.
  */
 export const LASER_LINE_SECONDS = 0.35;
 export const LASER_LINE_DAMAGE = 30;
+/** The line on an armored unit: half again the line's damage. */
+export const LASER_ARMOR_DAMAGE = LASER_LINE_DAMAGE * 1.5;
 /** Seconds the emitter recharges between shots. */
 export const LASER_RECHARGE = 4;
 /** The beam's fires: smaller and shorter-lived than a flamethrower's patch. */
@@ -1444,7 +1447,7 @@ export const LASER_FIRE_SPACING = LASER_FIRE_RADIUS * 1.25;
 export const LASER = {
   id: "laser" as const,
   name: "Cutting laser",
-  blurb: "Always cuts out to full reach. On soldiers it sweeps across them and burns down every soldier the beam passes, his own too, leaving a line of fire on the ground. Trees in its path burn down. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Recharges between shots; never needs a truck.",
+  blurb: "Always cuts out to full reach. On soldiers it sweeps across them and burns down every soldier the beam passes, his own too, leaving a line of fire on the ground. Trees in its path burn down. On a hull or a building it is one straight beam that cuts any plate: heavy damage to a hull, moderate to a building. Recharges between shots; never needs a truck.",
   damage: LASER_LINE_DAMAGE,
   penetration: 999,
   caliber: 20,
@@ -4839,7 +4842,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LASER.penetration,
     caliber: LASER.caliber,
     spreadDeg: LASER.spreadDeg,
-    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. While he lives your Cyborgs keep running without a Cyborg Central, and any shut-down Cyborg near him, yours or the enemy's, is taken over by his uplink in a few seconds, one at a time. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
+    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate: heavy damage to a hull, moderate to a building. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. While he lives your Cyborgs keep running without a Cyborg Central, and any shut-down Cyborg near him, yours or the enemy's, is taken over by his uplink in a few seconds, one at a time. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
   titan: {
     type: "titan",
