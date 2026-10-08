@@ -854,6 +854,40 @@ describe("hold position", () => {
   });
 });
 
+describe("attack-move targets", () => {
+  function wallAndGun(): { state: MatchState; gun: Entity; wall: Entity; bags: Entity } {
+    const { state } = twoPlayerMatch();
+    stripOwner(state, "B");
+    clearCover(state);
+    const ts = state.tileSize;
+    const gun = makeEntity(state, "warden", "A", tileCenter(20, ts), tileCenter(24, ts));
+    gun.facing = 0;
+    gun.turretFacing = 0;
+    const wall = makeEntity(state, "wall", "B", tileCenter(24, ts), tileCenter(24, ts));
+    const bags = makeEntity(state, "sandbags", "B", tileCenter(24, ts), tileCenter(26, ts));
+    return { state, gun, wall, bags };
+  }
+
+  it("an idle tank still shells an enemy wall in reach", () => {
+    const { state, gun, wall } = wallAndGun();
+    tickCombat(state, TICK_DT);
+    assert.equal(gun.attackTarget, wall.id);
+  });
+
+  it("passes enemy walls and sandbags by and takes the enemy soldier", () => {
+    const { state, gun, wall, bags } = wallAndGun();
+    const ts = state.tileSize;
+    applyCommand(state, "A", { type: "cmd.attackmove", ids: [gun.id], x: tileCenter(60, ts), y: tileCenter(24, ts) });
+    for (let i = 0; i < 10; i++) step(state, TICK_DT);
+    assert.notEqual(gun.attackTarget, wall.id);
+    assert.notEqual(gun.attackTarget, bags.id);
+    const man = makeEntity(state, "rifleman", "B", gun.x + ts * 3, gun.y);
+    man.holdPosition = true;
+    tickCombat(state, TICK_DT);
+    assert.equal(gun.attackTarget, man.id);
+  });
+});
+
 describe("moving units in combat", () => {
   it("lets an idle enemy fire on a unit that is walking past", () => {
     const { state } = twoPlayerMatch();
