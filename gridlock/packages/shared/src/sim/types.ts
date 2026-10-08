@@ -6,6 +6,11 @@ export interface Vec {
   y: number;
 }
 
+export interface Waypoint extends Vec {
+  /** A point of a bridge lane (`laneOverBridges`): the walk to it stays out of the water. */
+  deck?: true;
+}
+
 export interface TrainJob {
   id: number;
   type: TrainType;
@@ -339,7 +344,7 @@ export interface Entity {
   tileH: number;
   radius: number;
   order: Order | null;
-  waypoints: Vec[];
+  waypoints: Waypoint[];
   /** The goal tile the last path search could not reach, and when. Cleared by the next path found. */
   pathFail?: { tx: number; ty: number; tick: number };
   /** The spot the current path was asked for, so a steer can tell it already aims there. */

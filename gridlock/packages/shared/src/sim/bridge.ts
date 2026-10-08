@@ -64,6 +64,7 @@ import {
   worldToTile,
 } from "./geo.js";
 import { tileHeight as heightAt } from "./elevation.js";
+import { forgetBridgeLanes } from "./bridge-lane.js";
 import { repathIfBlocked } from "./orders.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
@@ -145,6 +146,7 @@ export function restampBridges(state: MatchState): void {
   const key = bridgeStampKey(state);
   if (state.bridgeClear && bridgeStamps.get(state) === key) return;
   bridgeStamps.set(state, key);
+  forgetBridgeLanes(state);
   const deck = state.bridgeDeck;
   const clear = (state.bridgeClear ??= new Uint8Array(deck.length));
   for (let i = 0; i < deck.length; i++) {
