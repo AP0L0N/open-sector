@@ -403,6 +403,7 @@ export class SoundTracker {
     const me = match.youPlayerId;
     let lostOwn = false;
     let gainedOwn = false;
+    let wokeOwn = false;
     let bossSpoke = false;
     for (const e of match.entities) {
       const prev = this.prevById.get(e.id);
@@ -412,7 +413,11 @@ export class SoundTracker {
         if (prev.ownerId === me) lostOwn = true;
       } else if (!e.shutdown && prev.shutdown) {
         out.push({ kind: "unitsfx", type: e.type, cue: "reboot", x: e.x, y: e.y });
-        if (e.ownerId === me) gainedOwn = true;
+        // Woken by an uplink he was acquired; without one his own link came back.
+        if (e.ownerId === me) {
+          if (prev.takeover?.by != null && byId.get(prev.takeover.by)?.ownerId === me) gainedOwn = true;
+          else wokeOwn = true;
+        }
       }
       if (e.takeover && e.takeover.by !== prev.takeover?.by) {
         const boss = byId.get(e.takeover.by);
@@ -427,10 +432,9 @@ export class SoundTracker {
       out.push({ kind: "voice", type: "cyborg", event: "shutdown" });
       out.push({ kind: "announce", event: "cyborgsoffline" });
     }
-    if (gainedOwn) {
-      out.push({ kind: "voice", type: "cyborg", event: "online" });
-      out.push({ kind: "announce", event: "cyborgacquired" });
-    }
+    if (gainedOwn || wokeOwn) out.push({ kind: "voice", type: "cyborg", event: "online" });
+    if (gainedOwn) out.push({ kind: "announce", event: "cyborgacquired" });
+    else if (wokeOwn) out.push({ kind: "announce", event: "cyborglinkrestored" });
     const down = match.you.cyborgShutdownIn != null;
     if (down && !this.linkDown) out.push({ kind: "announce", event: "cyborglinklost" });
     // Cleared while your Cyborgs are still yours: the link is back, not lost.

@@ -356,4 +356,14 @@ describe("SoundTracker cyborg link", () => {
     assert.deepEqual(voices(woke), ["cyborg:online"]);
     assert.deepEqual(says(woke), ["cyborgacquired"]);
   });
+
+  it("your dark Cyborgs waking on their own link: one 'link restored', not 'acquired'", () => {
+    const t = new SoundTracker();
+    const dark = (id: number) => unit(id, "cyborg", "", { shutdown: true });
+    t.step(snap({ entities: [dark(1), dark(2)] }), 0);
+    const woke = t.step(snap({ entities: [unit(1, "cyborg"), unit(2, "cyborg")] }), 100);
+    assert.deepEqual(sfx(woke), ["cyborg:reboot", "cyborg:reboot"]);
+    assert.deepEqual(voices(woke), ["cyborg:online"]);
+    assert.deepEqual(says(woke), ["cyborglinkrestored"]);
+  });
 });

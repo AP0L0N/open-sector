@@ -180,8 +180,11 @@ export function headlightLit(e: {
   garrisonedIn?: number | null;
   air?: unknown;
   crits?: readonly Crit[];
+  shutdown?: true;
 }): boolean {
   if (hasCrit({ crits: e.crits ?? [] }, "lamp")) return false;
+  // A shut-down Cyborg's headlight goes out with the rest of him.
+  if (e.shutdown) return false;
   return e.kind === "unit" && hasHeadlight(e.type) && (e.hp ?? 1) > 0 && !e.wreck && e.garrisonedIn == null && !e.air;
 }
 

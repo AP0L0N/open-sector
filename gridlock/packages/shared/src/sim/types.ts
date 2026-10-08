@@ -545,6 +545,8 @@ export interface Entity {
    * stands still, answers nothing, and fires at nothing until a Cyborg Commander takes him over.
    */
   shutdown?: true;
+  /** Shut-down Cyborg only: the side he went dark on. He wakes on it again once its link is back. */
+  shutdownFrom?: string;
   /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
   takeover?: { by: number; ticks: number };
   /** Cyborg Commander only: force-field points left. Hits come off these before HP. */

@@ -921,7 +921,8 @@ export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[
  * or on a living Cyborg Commander of his own side. With neither, CYBORG_SHUTDOWN_SECONDS
  * after the link drops every Cyborg of that player on the field shuts down: he stops
  * where he stands, belongs to no one, answers no orders, and fires at nothing. Nobody
- * fires at him on their own either; a force-attack still can.
+ * fires at him on their own either; a force-attack still can. When that player's link
+ * is back, his dark Cyborgs wake up on his side again, unless a Commander took them first.
  */
 export const CYBORG_SHUTDOWN_SECONDS = 4;
 /** A living Cyborg Commander takes over a shut-down Cyborg this close, friend's or foe's. */
@@ -3603,7 +3604,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Assembly hall and uplink mast that run your cyborgs. Unlocks the Cyborg, and with a Research Facility the Cyborg Commander. Your Cyborgs live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down and belongs to no one. A living Cyborg Commander keeps them running without it, and takes over any shut-down Cyborg near him, yours or the enemy's.`,
+    blurb: `Assembly hall and uplink mast that run your cyborgs. Unlocks the Cyborg, and with a Research Facility the Cyborg Commander. Your Cyborgs live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down and belongs to no one. Get the link back (a new Central, or the power) and they wake up yours again, unless a Cyborg Commander took them first. A living Cyborg Commander keeps them running without it, and takes over any shut-down Cyborg near him, yours or the enemy's.`,
   },
   radar: {
     type: "radar",
@@ -4813,7 +4814,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: GATLING.penetration,
     caliber: GATLING.caliber,
     spreadDeg: GATLING.spreadDeg,
-    blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. It fires with tracers and overheats after under two seconds on the trigger. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back. He runs on the uplink from your Cyborg Central or a living Cyborg Commander of yours: without either he shuts down a few seconds later and belongs to no one until a Commander takes him over.",
+    blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. It fires with tracers and overheats after under two seconds on the trigger. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back. He runs on the uplink from your Cyborg Central or a living Cyborg Commander of yours: without either he shuts down a few seconds later and belongs to no one. He wakes up yours again once your link is back, unless a Cyborg Commander takes him over first.",
   },
   cyborgcommander: {
     type: "cyborgcommander",
