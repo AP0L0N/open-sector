@@ -114,6 +114,21 @@ describe("SoundTracker", () => {
     ]);
   });
 
+  it("hears a bow flamer's jet apart from its turret gatlings, one burst per squeeze", () => {
+    const t = new SoundTracker();
+    const ents = [unit(1, "feuerwirbel")];
+    t.step(snap({ entities: ents }), 0);
+    const glob = (id: number) => ({ id, fromId: 1, x: 0, y: 0, vx: 1, vy: 0, caliber: 1, bounced: false, flame: true });
+    const round = { id: 9, kind: "miss", fromId: 1, caliber: 13, x: 0, y: 0, vx: 0, vy: 0, ownerId: ME };
+    const evs = t.step(snap({ entities: ents, projectiles: [glob(1), glob(2)] as never, impacts: [round] as never }), 100);
+    assert.deepEqual(
+      kinds(evs, "fire").map((e) => (e as { weapon: string }).weapon).sort(),
+      ["flame", "small"],
+    );
+    assert.equal(kinds(t.step(snap({ entities: ents, projectiles: [glob(3)] as never }), 600), "fire").length, 0, "same squeeze");
+    assert.equal(kinds(t.step(snap({ entities: ents, projectiles: [glob(4)] as never }), 1700), "fire").length, 1, "next burst");
+  });
+
   it("throttles a machine gun's hitscan rounds into bursts", () => {
     const t = new SoundTracker();
     const ents = [unit(1, "gunner")];

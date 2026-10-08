@@ -675,6 +675,8 @@ const HP_FILL_HOSTILE_VIVID = "#ff5a4a";
 /** Sprite alpha when a building volume sits in front of a body. */
 const OCCLUDED_UNIT_ALPHA = 0.46;
 const FIELD_SITE_ALPHA = 0.8;
+/** Narrowest an engineer's build bar draws, in screen pixels: wide enough for "BUILD 100%". */
+const BUILD_BAR_MIN_W = 56;
 const UNIT_SIGHT_FADE_MS = 250;
 
 type DrawItem = DrawKey & { run: () => void };
@@ -4166,6 +4168,7 @@ export class MapView {
     }
     items.sort(compareDrawOrder);
     for (const it of items) it.run();
+    this.flushWorkBars();
     // Over the ground and everything on it; shots and blasts after stay bright in the dark.
     this.drawNight();
 
@@ -6991,6 +6994,7 @@ export class MapView {
     // The force field stacks a second bar over the health bar: the icons clear both.
     this.drawCrits(e, right + 2, e.field && !e.wreck ? Math.min(head - 18, barBase - 27) : head - 18);
     this.drawDeployProgress(e, s.x - size * 0.45, s.y + 6, size * 0.9);
+    this.drawBuildProgress(e, s.x - size * 0.45, s.y + 6, size * 0.9);
     if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
       const prog = e.deployProgress ?? 0;
       const footprint = this.ts() * (1 + 2 * prog);
@@ -8223,7 +8227,42 @@ export class MapView {
 
   private drawDeployProgress(e: EntityView, x: number, y: number, w: number): void {
     if (e.state !== "deploy" && e.state !== "undeploy") return;
-    const p = Math.max(0, Math.min(1, e.deployProgress ?? 0));
+    const label = e.state === "undeploy" ? "PACK" : "DEPLOY";
+    this.drawWorkBar(label, e.deployProgress ?? 0, x, y, w);
+  }
+
+  /** An engineer at work shows the job's progress under his feet, like a Rig unpacking. */
+  private drawBuildProgress(e: EntityView, x: number, y: number, w: number): void {
+    if (e.state !== "build" || e.wreck || e.garrisonedIn) return;
+    const p = e.buildSite?.progress ?? e.bridgeSite?.progress ?? e.fieldSites?.[0]?.progress;
+    if (p == null) return;
+    // A soldier is narrower than the label; widen the bar about his middle so it still reads.
+    const bw = Math.max(w, BUILD_BAR_MIN_W);
+    this.drawWorkBar("BUILD", p, x - (bw - w) / 2, y, bw);
+  }
+
+  /** Work bars queued this frame. They paint after the world so a tree or roof in front cannot hide them. */
+  private workBars: (() => void)[] = [];
+
+  /** The amber bar and percent shared by deploying, packing, and building. Queued; see `flushWorkBars`. */
+  private drawWorkBar(label: string, progress: number, x: number, y: number, w: number): void {
+    const alpha = this.ctx.globalAlpha;
+    this.workBars.push(() => {
+      this.ctx.globalAlpha = alpha;
+      this.paintWorkBar(label, progress, x, y, w);
+    });
+  }
+
+  private flushWorkBars(): void {
+    const ctx = this.ctx;
+    const prev = ctx.globalAlpha;
+    for (const bar of this.workBars) bar();
+    this.workBars.length = 0;
+    ctx.globalAlpha = prev;
+  }
+
+  private paintWorkBar(label: string, progress: number, x: number, y: number, w: number): void {
+    const p = Math.max(0, Math.min(1, progress));
     const ctx = this.ctx;
     ctx.fillStyle = "#111";
     ctx.fillRect(x, y + 2, w, 5);
@@ -8235,7 +8274,6 @@ export class MapView {
     ctx.font = "10px 'Share Tech Mono', monospace";
     ctx.textAlign = "center";
     ctx.fillStyle = "#e8dcc4";
-    const label = e.state === "undeploy" ? "PACK" : "DEPLOY";
     ctx.fillText(`${label} ${Math.round(p * 100)}%`, x + w / 2, y + 16);
   }
 

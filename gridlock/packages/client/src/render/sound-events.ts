@@ -40,7 +40,7 @@ export type AnnounceEvent =
   | "defeat";
 
 /** What went off: bullets (and autocannon), a shell or bomb, a rocket, or the Cyborg Commander's laser. */
-export type Weapon = "small" | "shell" | "rocket" | "beam";
+export type Weapon = "small" | "shell" | "rocket" | "beam" | "flame";
 
 /** The Cyborg Commander's force field: it soaked a hit, it went down, or it came back on. */
 export type ShieldCue = "hit" | "down" | "up";
@@ -123,6 +123,8 @@ const ROCKET_GAP_MS: Record<string, number> = {
   titan: 2500,
 };
 const DEFAULT_ROCKET_GAP_MS = 600;
+/** Flamethrower globs: one burst sample covers a squeeze of the trigger (the Pyro's lance, a bow projector). */
+const FLAME_GAP_MS = 1400;
 /** Least time between two force-field shimmers from one unit. A gatling would otherwise buzz every tick. */
 const SHIELD_HIT_GAP_MS = 220;
 /** A shell's impact after its own projectile was already heard is not a second shot. */
@@ -150,6 +152,7 @@ export class SoundTracker {
   private seenBodies = new Set<number>();
   private lastFire = new Map<number, number>();
   private lastRocket = new Map<number, number>();
+  private lastFlame = new Map<number, number>();
   private lastShellFire = new Map<number, number>();
   private lastShieldHit = new Map<number, number>();
   private lastLoadLine = new Map<number, number>();
@@ -204,8 +207,11 @@ export class SoundTracker {
           ? (FIRE_GAP_MS[s.type] ?? DEFAULT_FIRE_GAP_MS)
           : kind === "rocket"
             ? (ROCKET_GAP_MS[s.type] ?? DEFAULT_ROCKET_GAP_MS)
-            : (SHELL_GAP_MS[s.type] ?? 0);
-      const track = kind === "rocket" ? this.lastRocket : this.lastFire;
+            : kind === "flame"
+              ? FLAME_GAP_MS
+              : (SHELL_GAP_MS[s.type] ?? 0);
+      // A bow flamer and its turret guns keep apart, so one never mutes the other.
+      const track = kind === "rocket" ? this.lastRocket : kind === "flame" ? this.lastFlame : this.lastFire;
       if (now - (track.get(shooterId) ?? -Infinity) < gap) return;
       track.set(shooterId, now);
       if (kind === "shell") this.lastShellFire.set(shooterId, now);
@@ -244,7 +250,7 @@ export class SoundTracker {
     for (const p of match.projectiles) {
       if (p.bounced || this.seenShots.has(p.id)) continue;
       this.seenShots.add(p.id);
-      fire(p.fromId, p.rocket ? "rocket" : isShell(p.caliber) || p.mortar || p.bomb ? "shell" : "small");
+      fire(p.fromId, p.flame ? "flame" : p.rocket ? "rocket" : isShell(p.caliber) || p.mortar || p.bomb ? "shell" : "small");
     }
     for (const l of match.launches ?? []) {
       if (this.seenShots.has(l.id)) continue;
