@@ -59,9 +59,13 @@ function seedCore(state: MatchState, owner = "A", tx = 4, ty = 4): Entity {
   return makeEntity(state, "core", owner, tileCenter(tx, ts), tileCenter(ty, ts), { tileX: tx, tileY: ty });
 }
 
+/** An Airfield, with the Research Facility and Radar every bomber needs, and a Dynamo to run them. */
 function seedAirfield(state: MatchState, tx = 30, ty = 30, owner = "A"): Entity {
   const ts = state.tileSize;
   const def = catalog("airfield");
+  makeEntity(state, "research", owner, tileCenter(tx, ts), tileCenter(ty - 6, ts), { tileX: tx, tileY: ty - 6 });
+  makeEntity(state, "radar", owner, tileCenter(tx + 6, ts), tileCenter(ty - 6, ts), { tileX: tx + 6, tileY: ty - 6 });
+  makeEntity(state, "dynamo", owner, tileCenter(tx + 12, ts), tileCenter(ty - 6, ts), { tileX: tx + 12, tileY: ty - 6 });
   return makeEntity(state, "airfield", owner, (tx + def.tileW / 2) * ts, (ty + def.tileH / 2) * ts, {
     tileX: tx,
     tileY: ty,

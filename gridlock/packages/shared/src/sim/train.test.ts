@@ -477,9 +477,9 @@ describe("research gate", () => {
     makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 });
     seedMuster(state, 20, 10);
     const gated = Object.keys(TECH_REQUIRES) as TrainType[];
-    assert.deepEqual([...gated].sort(), ["apocalypse", "battleship", "cyborg", "cyborgcommander", "destroyer", "droneop", "jagdtiger", "jumpjet", "mammoth", "nebelwerfer", "submarine", "titan", "warden"]);
-    // Ships ask for the Marine Base first; their gate is checked on its own below.
-    for (const unit of gated.filter((u) => producerType(u) !== "dock")) {
+    assert.deepEqual([...gated].sort(), ["apocalypse", "battleship", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "he111", "jagdtiger", "jumpjet", "mammoth", "nebelwerfer", "stuka", "submarine", "titan", "warden"]);
+    // Ships ask for the Marine Base first, bombers for the Airfield; their gates are checked on their own.
+    for (const unit of gated.filter((u) => producerType(u) !== "dock" && producerType(u) !== "airfield")) {
       const r = applyCommand(state, "A", { type: "cmd.train", unit });
       assert.equal(r.ok, false, unit);
       if (!r.ok) assert.equal(r.message, "Need a Research Facility.");

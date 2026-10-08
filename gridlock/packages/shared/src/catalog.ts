@@ -879,6 +879,9 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   submarine: "research",
   destroyer: "research",
   battleship: ["research", "radar"],
+  stuka: "research",
+  he111: "research",
+  bv222: ["research", "radar"],
 };
 
 /** Every tech building this unit needs standing, in the order a player is told about them. */
