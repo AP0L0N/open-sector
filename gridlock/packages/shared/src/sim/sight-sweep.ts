@@ -11,7 +11,7 @@
  * tile shows only from SMOKE_PEEK_TILES. Where the walker casts one ray per
  * tile, O(R³), the sweep touches each tile once, O(R²).
  */
-import { GROVE_SIGHT_BUDGET, HEIGHT_MAX, LOS_TERRAIN_SLACK, SMOKE_PEEK_TILES } from "../catalog.js";
+import { GROVE_SIGHT_BUDGET, HEIGHT_MAX, LOS_TERRAIN_SLACK, SIGHT_UPHILL_MAX_TILES, SMOKE_PEEK_TILES } from "../catalog.js";
 import { groveSightCost, TILE_BLOCKED } from "../maps.js";
 import { coverSmokeAt, levelSightExtra, type CoverField } from "./elevation.js";
 
@@ -307,7 +307,7 @@ export function sweepSight(
 ): void {
   if (p.radius <= 0) return;
   const uphill = p.uphill > 0 ? p.uphill : 0;
-  const maxR = Math.ceil(p.radius + (uphill > 0 ? HEIGHT_MAX * uphill : 0));
+  const maxR = Math.ceil(p.radius + (uphill > 0 ? Math.min(SIGHT_UPHILL_MAX_TILES, HEIGHT_MAX * uphill) : 0));
   const ox = p.ox;
   const oy = p.oy;
   const h0 = elevAtSafe(elev, width, height, ox, oy);

@@ -255,7 +255,8 @@ export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number
       case "unitsfx": {
         const url = pick(unitFolder(ev.type), `sfx-${ev.cue}`);
         const mix = url ? mixAt(ev.x, ev.y) : null;
-        if (url && mix) playSample(url, mix, { volume: 0.6, maxVoices: 2 });
+        // A hull crumpling under the Apocalypse is heard over the fight around it.
+        if (url && mix) playSample(url, mix, { volume: ev.cue === "crush" ? 0.9 : 0.6, maxVoices: 2, jitter: ev.cue === "crush" ? 0.04 : undefined });
         break;
       }
       case "announce":

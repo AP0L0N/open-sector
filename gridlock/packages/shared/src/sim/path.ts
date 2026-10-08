@@ -96,6 +96,7 @@ export function setPath(state: MatchState, e: Entity, toX: number, toY: number):
   }
   const pts = pathToWorld(state, e.x, e.y, toX, toY, e.type);
   e.waypoints = pts;
+  e.pathGoal = { x: toX, y: toY, tick: state.tick };
   if (pts.length > 0) {
     e.pathFail = undefined;
     return true;

@@ -20,6 +20,7 @@
     "stress": "node --import tsx src/sim/stress.bench.ts",
     "stress:map": "node --import tsx src/sim/map-stress.bench.ts",
     "stress:neutral": "node --import tsx src/sim/neutral-stress.bench.ts",
+    "stress:duel": "node --import tsx src/sim/duel-stress.bench.ts",
     "contact": "node --import tsx src/sim/contact.bench.ts"
   },
   "devDependencies": {

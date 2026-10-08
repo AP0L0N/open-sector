@@ -153,6 +153,9 @@ describe("CIWS catalog", () => {
     state.players.get("A")!.scrap = 50_000;
     makeEntity(state, "core", "A", tileCenter(120, ts), tileCenter(120, ts), { tileX: 118, tileY: 118 });
     makeEntity(state, "dynamo", "A", 0, 0, { tileX: 110, tileY: 110 });
+    assert.equal(applyCommand(state, "A", { type: "cmd.build", building: "ciws" }).ok, false, "needs a Research Facility and a Radar Station");
+    makeEntity(state, "research", "A", 0, 0, { tileX: 104, tileY: 128 });
+    makeEntity(state, "radar", "A", 0, 0, { tileX: 110, tileY: 128 });
     assert.equal(applyCommand(state, "A", { type: "cmd.build", building: "ciws" }).ok, true);
     const t = until(state, 600, () => state.players.get("A")!.defence?.ready === true);
     assert.ok(t >= 0, "the CIWS finishes building");

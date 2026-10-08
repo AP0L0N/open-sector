@@ -9,7 +9,8 @@ import {
   SHELL_TYPES,
   STANCE_LABEL,
   TRAIN_QUEUE_CAP,
-  TECH_REQUIRES,
+  techNeeds,
+  BUILD_REQUIRES,
   TRAIN_TYPES,
   TICK_DT,
   WALKER_ONE_BURST,
@@ -274,6 +275,7 @@ export function mountBattlefield(
         return;
       }
       if (q) return;
+      if (m && buildTechNeed(m, type).length > 0) return;
       ctx.net.send({ type: "cmd.build", building: type });
     });
     btn?.addEventListener("contextmenu", (e) => {
@@ -321,14 +323,7 @@ export function mountBattlefield(
         return;
       }
       if (m && !canQueueMore(m, unit)) return;
-      const techNeed = TECH_REQUIRES[unit];
-      if (
-        techNeed &&
-        m &&
-        !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === techNeed && e.hp > 0 && !e.wreck)
-      ) {
-        return;
-      }
+      if (m && hudTechMissing(m, unit)) return;
       ctx.net.send({ type: "cmd.train", unit });
     });
     btn?.addEventListener("contextmenu", (e) => {
@@ -372,6 +367,12 @@ export function mountBattlefield(
 }
 
 /** The construction lane this cameo belongs to. Base, defence, and line lanes do not block each other. */
+/** Buildings you still need standing before the yard will queue `type` (BUILD_REQUIRES). */
+function buildTechNeed(m: MatchSnapshot, type: BuildingType | YardFieldType): BuildingType[] {
+  const need = BUILD_REQUIRES[type as BuildingType] ?? [];
+  return need.filter((t) => !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === t && e.hp > 0 && !e.wreck));
+}
+
 function laneQueue(m: MatchSnapshot | null | undefined, type: BuildingType | YardFieldType) {
   if (!m) return null;
   if (isYardField(type)) return m.you.lineQueue;
@@ -479,6 +480,14 @@ function oneAtATimeHeld(m: MatchSnapshot, unit: TrainType): "alive" | "queued" |
   const mine = m.entities.filter((e) => e.ownerId === m.youPlayerId);
   if (mine.some((e) => e.type === unit && e.hp > 0 && !e.wreck)) return "alive";
   return mine.some((e) => e.trainQueue?.some((j) => j.type === unit)) ? "queued" : null;
+}
+
+/** First tech building this unit still needs you to have standing, or null. Mirrors the sim's techMissing. */
+function hudTechMissing(m: MatchSnapshot, unit: TrainType): BuildingType | null {
+  for (const need of techNeeds(unit)) {
+    if (!m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === need && e.hp > 0 && !e.wreck)) return need;
+  }
+  return null;
 }
 
 /** An Airfield with a hardstand left for one more plane (parked, flying, or queued). Other producers always pass. */
@@ -605,7 +614,15 @@ export function paintBattleHud(ctx: Ctx): void {
     if (!btn) continue;
     const lane = laneQueue(m, type);
     const job = lane?.type === type ? lane : null;
-    btn.disabled = !coreUp || (!!lane && !job);
+    // A job already queued stays live so it can still be placed, paused, or cancelled.
+    const techNeed = job ? [] : buildTechNeed(m, type);
+    btn.disabled = !coreUp || (!!lane && !job) || techNeed.length > 0;
+    btn.classList.toggle("needs-tech", techNeed.length > 0);
+    btn.dataset.baseTitle ??= btn.title;
+    btn.title =
+      techNeed.length > 0
+        ? `${catalog(type).name} — needs a ${techNeed.map((t) => catalog(t).name).join(" and a ")}.`
+        : btn.dataset.baseTitle;
     const pip = btn.querySelector(".pip") as HTMLElement | null;
     if (pip && job) {
       pip.style.width = `${Math.round((job.progressTicks / job.totalTicks) * 100)}%`;
@@ -636,9 +653,8 @@ export function paintBattleHud(ctx: Ctx): void {
     const paused = heads.length > 0 && heads.every((j) => j.paused);
     const training = heads.some((j) => !j.paused);
     const padsFull = want === "airfield" && hasProducer && !canQueueMore(m, unit);
-    const tech = TECH_REQUIRES[unit];
-    const techMissing =
-      !!tech && !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === tech && e.hp > 0 && !e.wreck);
+    const tech = hudTechMissing(m, unit);
+    const techMissing = tech != null;
     // One at a time: greyed out while yours stands. While one is queued the cameo stays live to pause or cancel it.
     const held = oneAtATimeHeld(m, unit);
     const looping = (m.you.continuous ?? []).includes(unit);
@@ -655,7 +671,7 @@ export function paintBattleHud(ctx: Ctx): void {
     btn.title = padsFull
       ? `${name} — every hardstand is taken. Build another Airfield.`
       : techMissing
-        ? `${name} — needs a ${catalog(tech!).name}.`
+        ? `${name} — needs a ${catalog(tech).name}.`
         : held === "alive"
           ? `${name} — only one at a time. Yours is still in the field.`
           : held === "queued"
@@ -1160,6 +1176,7 @@ const TYPE_ORDER: EntityType[] = [
   "tower",
   "hochstand",
   "leitturm",
+  "spotlight",
   "mgnest",
   "pak36",
   "pak43",

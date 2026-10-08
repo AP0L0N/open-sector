@@ -1,6 +1,7 @@
 import {
   isBridge,
   isConcreteLine,
+  CREWED_GUNS,
   AIR_HIT_BAND,
   APOCALYPSE_CIWS_INTERCEPT_CHANCE,
   APOCALYPSE_CIWS_RANGE_TILES,
@@ -230,7 +231,7 @@ import { spawnSmokeCloud } from "./smoke.js";
 import { heGroundFire, stepFlame, throwFlame } from "./flame.js";
 import { fireLaser } from "./laser.js";
 import { distToRoute } from "./patrol.js";
-import { activateSpatial, clearSpatial, queryCapsules, queryCircle, querySegment, spatialGrid, type SpatialGrid } from "./spatial.js";
+import { activateSpatial, anyHostileNear, clearSpatial, queryCapsules, queryCircle, querySegment, spatialGrid, type SpatialGrid } from "./spatial.js";
 import { canSeeEntity, visionMask } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
 import { escorting, reversing, stepTurn, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
@@ -1094,13 +1095,14 @@ function patrolContact(state: MatchState, e: Entity, o: Entity): boolean {
   if (!route) return false;
   if (o.kind !== "unit" || o.hp <= 0 || o.wreck || o.id === e.id || o.garrisonedIn != null) return false;
   if (isCrashing(o) || ownerless(o) || allies(state, e.ownerId, o.ownerId)) return false;
-  if (!canSeeEntity(state, e.ownerId, o) || outOfReachAloft(state, e, o)) return false;
-  if (!inNeutralSight(state, e, o)) return false;
-  if (e.ship && shipAirTarget(o)) return false;
-  if (dropsUnharmedArmor(state, e, o)) return false;
+  // The cheap reach checks first: most of the pool is too far to be worth a sight ray.
   const range = weaponRangeWorld(state, e);
   if (range <= 0) return false;
-  return distToRoute(route, o.x, o.y, e.order?.loop === true) <= range;
+  if (!inNeutralSight(state, e, o)) return false;
+  if (distToRoute(route, o.x, o.y, e.order?.loop === true) > range) return false;
+  if (e.ship && shipAirTarget(o)) return false;
+  if (outOfReachAloft(state, e, o) || dropsUnharmedArmor(state, e, o)) return false;
+  return canSeeEntity(state, e.ownerId, o);
 }
 
 /**
@@ -1116,7 +1118,7 @@ function focusPatrolGroup(state: MatchState, members: Entity[], grid: SpatialGri
     const route = e.order!.route!;
     const loop = e.order?.loop === true;
     const range = weaponRangeWorld(state, e);
-    const pool = range > 0 ? queryCapsules(grid, route, range + e.radius, loop) : [];
+    const pool = range > 0 ? queryCapsules(grid, route, range + e.radius, loop, state, e.ownerId) : [];
     for (const o of pool) {
       if (!patrolContact(state, e, o)) continue;
       let row = rows.get(o.id);
@@ -1559,6 +1561,11 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   }
   const crawlingGun = stanceOf(e) === "crawl" && infantryGunFor(e)?.id !== "mortar";
   if (!ground && crawlingGun && sandbagsBlockGun(state, e.x, e.y, aimX, aimY)) {
+    if (!holedUp) e.state = "attack";
+    return;
+  }
+  // The nest's belt does not refill: it holds rather than pour it into bags on a rise in front.
+  if (!ground && e.type === "mgnest" && sandbagsBlockGun(state, e.x, e.y, aimX, aimY, entityHeight(state, e))) {
     if (!holedUp) e.state = "attack";
     return;
   }
@@ -3031,7 +3038,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const z1 = p.z;
     // A round from overhead drops over the bags and the concrete. A torpedo never meets them: they stand ashore.
     const overheadShot = !!p.plunging || !!p.fromAbove || !!p.torpedo;
-    const bagHit = overheadShot ? null : sandbagSweep(state, x0, y0, p.x, p.y, isTankShell(p));
+    const bagHit = overheadShot ? null : sandbagSweep(state, x0, y0, p.x, p.y, isTankShell(p), crewGunHeight(state, p.fromId));
     const concrete = overheadShot ? null : wallSweep(state, x0, y0, p.x, p.y);
     const struck = nearestSweepHit(state, x0, y0, p, z0, z1);
     const blocker = concrete && (!bagHit || concrete.t < bagHit.t) ? concrete : bagHit;
@@ -3043,8 +3050,11 @@ export function tickProjectiles(state: MatchState, dt: number): void {
         pushImpact(state, p, "hit", blocker.x, blocker.y);
         continue;
       }
-      woundBehindSandbags(state, blocker.e, x0, y0, p.damage);
-      ruinSandbags(state, blocker.e);
+      // A bullet buries itself in the bags. Only a shell knocks them down.
+      if (isTankShell(p)) {
+        woundBehindSandbags(state, blocker.e, x0, y0, p.damage);
+        ruinSandbags(state, blocker.e);
+      }
       pushImpact(state, p, "hit", blocker.x, blocker.y);
       continue;
     }
@@ -3387,6 +3397,13 @@ function lampShotOf(p: Projectile): "bullet" | "sniper" | undefined {
   return "bullet";
 }
 
+/** Ground height of the crewed gun (MG Nest, Paks, Flak) that fired, or undefined for anyone else. */
+function crewGunHeight(state: MatchState, fromId: number): number | undefined {
+  const gun = state.entities.get(fromId);
+  if (!gun || !CREWED_GUNS.includes(gun.type as (typeof CREWED_GUNS)[number])) return undefined;
+  return entityHeight(state, gun);
+}
+
 function nearestSweepHit(
   state: MatchState,
   x0: number,
@@ -3490,7 +3507,10 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   const airRange2 = bestAirD;
   const near: { o: Entity; d: number; i: number }[] = [];
   const grid = spatialGrid();
-  const pool = grid ? queryCircle(grid, e.x, e.y, Math.max(range, range * airReachOf(e))) : state.entities.values();
+  const reach = Math.max(range, range * airReachOf(e));
+  // Nothing of a hostile side within reach: most guns on a quiet field stop here.
+  if (grid && !anyHostileNear(grid, state, e.ownerId, e.x, e.y, reach)) return undefined;
+  const pool = grid ? queryCircle(grid, e.x, e.y, reach) : state.entities.values();
   for (const o of pool) {
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn || isCrashing(o)) continue;
     // Reach first: most of the field is too far to be worth the checks below.

@@ -16,6 +16,7 @@ import {
   isCivilianType,
   isGarrisonable,
   isInfantryType,
+  lampCrewOf,
   LST_TUB_EXPOSURE,
   NEUTRAL_OWNER,
 } from "../catalog.js";
@@ -369,12 +370,12 @@ export function enterGarrison(state: MatchState, unit: Entity, house: Entity): b
 }
 
 /**
- * An emplaced gun comes with its crew: every empty place at it gets a rifleman of
- * `ownerId` (the gun's owner by default). Later losses are made good by hand, like any garrison.
+ * An emplaced gun, or a Spotlight post, comes with its crew: every empty place at it gets a
+ * rifleman of `ownerId` (the gun's owner by default). Later losses are made good by hand, like any garrison.
  */
 export function manGun(state: MatchState, gun: Entity, ownerId: string = gun.ownerId): Entity[] {
   const crew: Entity[] = [];
-  if (!crewGunOf(gun.type) || gun.hp <= 0) return crew;
+  if (!(crewGunOf(gun.type) || lampCrewOf(gun.type)) || gun.hp <= 0) return crew;
   while (garrisonSpace(state, gun) > 0) {
     const u = makeEntity(state, GUN_CREW_TYPE, ownerId, gun.x, gun.y, { facing: gun.facing });
     if (!enterGarrison(state, u, gun)) {
