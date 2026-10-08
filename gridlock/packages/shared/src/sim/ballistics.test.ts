@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { catalog, HANDGUN, MG42, RIFLE, SCOPED, SHELLS, TANK_MG } from "../catalog.js";
+import { catalog, HANDGUN, MG42, RIFLE, SCOPED, SHELLS, TANK_MG, TITAN_SHELL_RESIST } from "../catalog.js";
 import {
   aimAngle,
   armorHarmPossible,
@@ -367,5 +367,42 @@ describe("aimAngle", () => {
     const atMax = aimAngle(0, 10, max, max, () => 1, false, 1, 1, sight);
     assert.ok(Math.abs(atMax) > Math.abs(atSight), `sight=${atSight} max=${atMax}`);
     assert.ok(Math.abs(atMax) > Math.abs(atSight) * (LONG_SHOT_SPREAD * 0.9), `sight=${atSight} max=${atMax}`);
+  });
+});
+
+describe("Titan shell resistance", () => {
+  const titan = catalog("titan");
+  const jagdtiger = catalog("jagdtiger");
+  const plain = { ...titan, shellResist: undefined };
+  const shot = (target: typeof titan, vx: number, vy: number, gun = jagdtiger) =>
+    resolveHit({ gun, target, targetFacing: 0, targetHp: titan.hp, targetHpMax: titan.hp, vx, vy, rand: seq([0.5, 0.5, 0.5]) });
+
+  it("has twice its old hit points", () => {
+    assert.equal(titan.hp, 400);
+    assert.equal(titan.shellResist, TITAN_SHELL_RESIST);
+  });
+
+  it("no Jagdtiger shell kills it outright, from any face", () => {
+    for (const [vx, vy] of [[-1, 0], [0, 1], [1, 0]] as const) {
+      const unshielded = shot(plain, vx, vy);
+      const res = shot(titan, vx, vy);
+      assert.notEqual(res.kind, "kill", `face ${res.face}`);
+      assert.ok(res.damage > 0 && res.damage < titan.hp / 3, `face ${res.face} dmg=${res.damage}`);
+      assert.ok(res.damage < unshielded.damage, `face ${res.face}`);
+    }
+  });
+
+  it("takes half a tank gun's harm", () => {
+    const tiger = catalog("warden");
+    const full = shot(plain, -1, 0, tiger);
+    const res = shot(titan, -1, 0, tiger);
+    assert.ok(full.damage > 0);
+    assert.equal(res.damage, Math.max(1, Math.round(full.damage * TITAN_SHELL_RESIST)));
+  });
+
+  it("small arms are untouched by the rule", () => {
+    const res = shot(titan, -1, 0, catalog("rifleman"));
+    const base = shot(plain, -1, 0, catalog("rifleman"));
+    assert.deepEqual(res, base);
   });
 });
