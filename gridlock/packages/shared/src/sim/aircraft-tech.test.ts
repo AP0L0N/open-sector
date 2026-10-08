@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { techRequiresOf } from "../catalog.js";
+import { techNeeds } from "../catalog.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch } from "./match.js";
 import { techMissing } from "./train.js";
@@ -21,10 +21,10 @@ function twoPlayerMatch(): MatchState {
 
 describe("bomber tech", () => {
   it("Stuka and He 111 need Research; the BV 222 needs Research and Radar", () => {
-    assert.deepEqual(techRequiresOf("stuka"), ["research"]);
-    assert.deepEqual(techRequiresOf("he111"), ["research"]);
-    assert.deepEqual(techRequiresOf("bv222"), ["research", "radar"]);
-    assert.deepEqual(techRequiresOf("fw190"), []);
+    assert.deepEqual(techNeeds("stuka"), ["research"]);
+    assert.deepEqual(techNeeds("he111"), ["research"]);
+    assert.deepEqual(techNeeds("bv222"), ["research", "radar"]);
+    assert.deepEqual(techNeeds("fw190"), []);
   });
 
   it("unlocks each bomber once its buildings stand", () => {

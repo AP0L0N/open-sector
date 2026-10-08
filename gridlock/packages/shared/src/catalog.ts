@@ -240,6 +240,8 @@ export const HEIGHT_DOWNHILL_COST = 0.9 ** (1 / TILE_SUBDIV);
 export const HEIGHT_SIGHT_BONUS = 4;
 /** Extra sight tiles infantry gain per elevation step of a tile above or below them. */
 export const INFANTRY_UPHILL_SIGHT = 3;
+/** The uphill bonus reaches at most this many tiles past catalog sight, whatever the hill. */
+export const SIGHT_UPHILL_MAX_TILES = 24;
 /** Extra sight tiles a hull gains per elevation step of a tile above or below it. */
 export const HULL_LEVEL_SIGHT = 1;
 /**
@@ -558,6 +560,7 @@ export type EntityType =
   | "casemate"
   | "hochstand"
   | "leitturm"
+  | "spotlight"
   | "mgnest"
   | "pak36"
   | "pak43"
@@ -612,6 +615,7 @@ export type BuildingType =
   | "casemate"
   | "hochstand"
   | "leitturm"
+  | "spotlight"
   | "mgnest"
   | "pak36"
   | "pak43"
@@ -778,6 +782,7 @@ export const BUILDING_TYPES: readonly BuildingType[] = [
   "casemate",
   "hochstand",
   "leitturm",
+  "spotlight",
   "mgnest",
   "pak36",
   "pak43",
@@ -826,6 +831,7 @@ export const ROTATABLE_BUILDINGS: readonly BuildingType[] = [
   "casemate",
   "hochstand",
   "leitturm",
+  "spotlight",
   "mgnest",
   "pak36",
   "pak43",
@@ -858,10 +864,7 @@ export function canContinuousTrain(type: string): type is TrainType {
   return isTrainType(type) && !isOneAtATime(type) && !isAircraftType(type);
 }
 
-/**
- * Advanced units: their producer also needs this building standing before a job can be queued.
- * A list means every one of them must stand.
- */
+/** Advanced units: their producer also needs this building (or every one listed) standing before a job can be queued. */
 export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly BuildingType[]>> = {
   warden: "research",
   apocalypse: "research",
@@ -873,17 +876,30 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   nebelwerfer: "research",
   droneop: "research",
   jumpjet: "research",
+  submarine: "research",
+  destroyer: "research",
+  battleship: ["research", "radar"],
   stuka: "research",
   he111: "research",
   bv222: ["research", "radar"],
 };
 
-/** Every tech building this unit needs standing. Empty when it needs none. */
-export function techRequiresOf(unit: TrainType): readonly BuildingType[] {
+/** Every tech building this unit needs standing, in the order a player is told about them. */
+export function techNeeds(unit: TrainType): readonly BuildingType[] {
   const need = TECH_REQUIRES[unit];
   if (!need) return [];
   return typeof need === "string" ? [need] : need;
 }
+
+/** Advanced defences: the yard queues one only while every building listed here stands. */
+export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[]>> = {
+  leitturm: ["research"],
+  flak: ["research"],
+  pak43: ["research"],
+  casemate: ["research"],
+  ciws: ["research", "radar"],
+  ram: ["research", "radar"],
+};
 
 export interface CatalogEntry {
   type: EntityType;
@@ -1033,6 +1049,11 @@ export interface CatalogEntry {
    * Raised with garrisonCap riflemen already at it.
    */
   crewGun?: boolean;
+  /**
+   * A spotlight worked by its garrison (the Spotlight post). The lamp burns, turns, and sweeps
+   * only with someone living at it. Raised with garrisonCap riflemen already at it, like a crewed gun.
+   */
+  lampCrew?: boolean;
   /**
    * Traverse each side of the way the emplacement was turned, degrees. The gun never lays
    * outside it: what stands behind the arc is left alone. Omit for all round.
@@ -2363,6 +2384,19 @@ export const SPOTLIGHT_HALF_DEG = 14;
 /** How fast the cab lamp turns, for Rotate and for a patrol sweep. */
 export const SPOTLIGHT_TURN_DEG_PER_SEC = 18;
 /**
+ * Spotlight post. The cab lamp on a steel pole over a sandbagged foot, worked by one
+ * man who comes with it. Its beam reaches as far as the tower's, cast from the pole top.
+ * Shoot the lamp and it goes dark with the man unhurt; kill the man and the lamp goes
+ * dark until another soldier takes his place. Fell the pole and both are gone.
+ */
+export const SPOTLIGHT_POST_COST = 150;
+/** Elevation units from the ground to the lamp: lower than the tower cab, over the treetops. */
+export const SPOTLIGHT_POLE_HEIGHT = 9;
+/** Occupant HP multiplier at the post. A tower is 3×. */
+export const SPOTLIGHT_POST_HP_MUL = 1.5;
+/** Share of each hit on the post that reaches the man at it: a few sandbags at its foot. */
+export const SPOTLIGHT_POST_WOUND_MUL = 0.75;
+/**
  * Armored ground hulls and the Cyborg run a headlight in the dark. Down the
  * hull's nose it gives back the unit's own daylight sight; everywhere else
  * the night ring stands. The Mammoth adds two more, one to each side, and
@@ -3401,7 +3435,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Cyborg Commander, Titan, Nebelwerfer, and Drone Op.",
+    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Cyborg Commander, Titan, Nebelwerfer, Drone Op, Submarine, and Destroyer, and with a Radar Station the Battle Ship.",
   },
   radar: {
     type: "radar",
@@ -3423,7 +3457,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Ops hut and a dish on a lattice mast. Lights the radar panel in the command bar: without a standing Radar Station the panel is dark. The dish sweeps far past anyone's eyes for aircraft. An enemy plane or drone in the air that nobody can see shows as a blinking contact on the panel only; nothing changes on the field until someone sees it.",
+    blurb: "Ops hut and a dish on a lattice mast. Lights the radar panel in the command bar: without a standing Radar Station the panel is dark. The dish sweeps far past anyone's eyes for aircraft. An enemy plane or drone in the air that nobody can see shows as a blinking contact on the panel only; nothing changes on the field until someone sees it. With a Research Facility it unlocks the Battle Ship.",
   },
   ciws: {
     type: "ciws",
@@ -3686,6 +3720,38 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonTypes: BUNKER_TYPES,
     capturable: false,
     blurb: `Flak-tower block of concrete for ${LEITTURM_GARRISON_CAP} infantry, the troops a bunker takes. From the galleries they see far across the field, and their weapons reach farther than from any other post. Walls almost as good as a bunker's. A spotlight on the roof lights the ground at night. Dear and slow to pour. Enemy infantry cannot capture it.`,
+  },
+  spotlight: {
+    type: "spotlight",
+    kind: "building",
+    name: "Spotlight",
+    letter: "l",
+    cost: SPOTLIGHT_POST_COST,
+    buildSeconds: 6,
+    hp: 260,
+    power: 0,
+    tileW: t(1),
+    tileH: t(1),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    lampCrew: true,
+    garrisonCap: 1,
+    garrisonHpMul: SPOTLIGHT_POST_HP_MUL,
+    garrisonWoundMul: SPOTLIGHT_POST_WOUND_MUL,
+    garrisonWindows: 1,
+    garrisonFloors: 1,
+    garrisonSightBonus: 0,
+    garrisonFullArms: true,
+    garrisonTypes: BUNKER_TYPES,
+    capturable: false,
+    blurb: `The Watch Tower's searchlight on a steel pole, worked by one man, who comes with it. At night its beam lights a long cone of ground; Rotate swings it, and Patrol sweeps it between spots. Turn it before you place it to set where it first looks. The lamp burns only with someone at it: kill the man and it goes dark until another soldier takes his place. A bullet can smash the lamp and leave the man standing; an engineer fits a new one. He fires his own weapon from the foot of the pole, behind a few sandbags.`,
   },
   mgnest: {
     type: "mgnest",
@@ -6080,6 +6146,11 @@ export function wadeSpeedOf(type: EntityType): number {
 /** An emplaced gun worked by its garrison: the MG Nest, the Paks, the Flak. See CatalogEntry.crewGun. */
 export function crewGunOf(type: EntityType): boolean {
   return catalog(type).crewGun === true;
+}
+
+/** A lamp worked by its garrison: the Spotlight post. See CatalogEntry.lampCrew. */
+export function lampCrewOf(type: EntityType): boolean {
+  return catalog(type).lampCrew === true;
 }
 
 /**
