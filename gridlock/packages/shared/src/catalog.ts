@@ -864,8 +864,8 @@ export function canContinuousTrain(type: string): type is TrainType {
   return isTrainType(type) && !isOneAtATime(type) && !isAircraftType(type);
 }
 
-/** Advanced units: their producer also needs this building standing before a job can be queued. */
-export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
+/** Advanced units: their producer also needs this building (or every one listed) standing before a job can be queued. */
+export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly BuildingType[]>> = {
   warden: "research",
   apocalypse: "research",
   jagdtiger: "research",
@@ -876,7 +876,17 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
   nebelwerfer: "research",
   droneop: "research",
   jumpjet: "research",
+  submarine: "research",
+  destroyer: "research",
+  battleship: ["research", "radar"],
 };
+
+/** Every tech building this unit needs standing, in the order a player is told about them. */
+export function techNeeds(unit: TrainType): readonly BuildingType[] {
+  const need = TECH_REQUIRES[unit];
+  if (!need) return [];
+  return typeof need === "string" ? [need] : need;
+}
 
 export interface CatalogEntry {
   type: EntityType;
@@ -3412,7 +3422,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Cyborg Commander, Titan, Nebelwerfer, and Drone Op.",
+    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Cyborg, Cyborg Commander, Titan, Nebelwerfer, Drone Op, Submarine, and Destroyer, and with a Radar Station the Battle Ship.",
   },
   radar: {
     type: "radar",
@@ -3434,7 +3444,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Ops hut and a dish on a lattice mast. Lights the radar panel in the command bar: without a standing Radar Station the panel is dark. The dish sweeps far past anyone's eyes for aircraft. An enemy plane or drone in the air that nobody can see shows as a blinking contact on the panel only; nothing changes on the field until someone sees it.",
+    blurb: "Ops hut and a dish on a lattice mast. Lights the radar panel in the command bar: without a standing Radar Station the panel is dark. The dish sweeps far past anyone's eyes for aircraft. An enemy plane or drone in the air that nobody can see shows as a blinking contact on the panel only; nothing changes on the field until someone sees it. With a Research Facility it unlocks the Battle Ship.",
   },
   ciws: {
     type: "ciws",
