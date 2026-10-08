@@ -715,9 +715,10 @@ export type ClientMessage =
   /**
    * Map Builder play test. The hub loads the unsaved sheet as a private map
    * (id from `newPlaytestMapId`), seats the sender alone, and starts at once.
-   * One start position is enough.
+   * One start position is enough. `spawnId` picks the start to drop on;
+   * 0 or missing draws one at random.
    */
-  | { type: "map.test"; map: CustomMapSpec }
+  | { type: "map.test"; map: CustomMapSpec; spawnId?: number }
   | { type: "chat"; text: string }
   /** `queue`: Shift-queued. The unit runs it after its current and earlier queued orders finish. */
   /** `facing`: world radians the unit turns to after it arrives. A held move click sets it. */

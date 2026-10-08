@@ -40,6 +40,13 @@
 
 .bld-head .spacer { flex: 1 1 0; }
 
+/* Play test start, sized to sit in the button row. */
+.bld-head .bld-test-start {
+  width: auto;
+  padding: 7px 8px;
+  font-size: 0.85rem;
+}
+
 .bld-head .bld-auto {
   margin: 0;
   padding-bottom: 9px;
