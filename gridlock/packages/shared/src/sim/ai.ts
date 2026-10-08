@@ -23,7 +23,7 @@ import {
   SMELTER_SCRAP_PER_SEC,
   STUKA_BOMBS,
   SUPPLY_CARGO,
-  TECH_REQUIRES,
+  techNeeds,
   TICK_HZ,
   UNIT_CAP,
   anchorsBuildRange,
@@ -439,8 +439,7 @@ function neediest(
   let best: { unit: TrainType; want: number; share: number } | null = null;
   for (const row of army) {
     // A locked rank is not needy yet: saving for it would stall the whole factory.
-    const tech = TECH_REQUIRES[row.unit];
-    if (tech && !ownsLive(state, p.playerId, tech)) continue;
+    if (techNeeds(row.unit).some((tech) => !ownsLive(state, p.playerId, tech))) continue;
     const want = wantOf(state, p, row.unit, row.want);
     const share = countType(state, p.playerId, row.unit) / want;
     if (share >= 1 || share >= (best?.share ?? Infinity)) continue;

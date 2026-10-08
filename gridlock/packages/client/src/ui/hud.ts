@@ -9,7 +9,7 @@ import {
   SHELL_TYPES,
   STANCE_LABEL,
   TRAIN_QUEUE_CAP,
-  TECH_REQUIRES,
+  techNeeds,
   TRAIN_TYPES,
   TICK_DT,
   WALKER_ONE_BURST,
@@ -321,14 +321,7 @@ export function mountBattlefield(
         return;
       }
       if (m && !canQueueMore(m, unit)) return;
-      const techNeed = TECH_REQUIRES[unit];
-      if (
-        techNeed &&
-        m &&
-        !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === techNeed && e.hp > 0 && !e.wreck)
-      ) {
-        return;
-      }
+      if (m && hudTechMissing(m, unit)) return;
       ctx.net.send({ type: "cmd.train", unit });
     });
     btn?.addEventListener("contextmenu", (e) => {
@@ -479,6 +472,14 @@ function oneAtATimeHeld(m: MatchSnapshot, unit: TrainType): "alive" | "queued" |
   const mine = m.entities.filter((e) => e.ownerId === m.youPlayerId);
   if (mine.some((e) => e.type === unit && e.hp > 0 && !e.wreck)) return "alive";
   return mine.some((e) => e.trainQueue?.some((j) => j.type === unit)) ? "queued" : null;
+}
+
+/** First tech building this unit still needs you to have standing, or null. Mirrors the sim's techMissing. */
+function hudTechMissing(m: MatchSnapshot, unit: TrainType): BuildingType | null {
+  for (const need of techNeeds(unit)) {
+    if (!m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === need && e.hp > 0 && !e.wreck)) return need;
+  }
+  return null;
 }
 
 /** An Airfield with a hardstand left for one more plane (parked, flying, or queued). Other producers always pass. */
@@ -636,9 +637,8 @@ export function paintBattleHud(ctx: Ctx): void {
     const paused = heads.length > 0 && heads.every((j) => j.paused);
     const training = heads.some((j) => !j.paused);
     const padsFull = want === "airfield" && hasProducer && !canQueueMore(m, unit);
-    const tech = TECH_REQUIRES[unit];
-    const techMissing =
-      !!tech && !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === tech && e.hp > 0 && !e.wreck);
+    const tech = hudTechMissing(m, unit);
+    const techMissing = tech != null;
     // One at a time: greyed out while yours stands. While one is queued the cameo stays live to pause or cancel it.
     const held = oneAtATimeHeld(m, unit);
     const looping = (m.you.continuous ?? []).includes(unit);
@@ -655,7 +655,7 @@ export function paintBattleHud(ctx: Ctx): void {
     btn.title = padsFull
       ? `${name} — every hardstand is taken. Build another Airfield.`
       : techMissing
-        ? `${name} — needs a ${catalog(tech!).name}.`
+        ? `${name} — needs a ${catalog(tech).name}.`
         : held === "alive"
           ? `${name} — only one at a time. Yours is still in the field.`
           : held === "queued"

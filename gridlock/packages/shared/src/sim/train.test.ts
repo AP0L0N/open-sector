@@ -7,7 +7,7 @@ import { createMatch, step } from "./match.js";
 import { paidForProgress } from "./production.js";
 import { snapshotFor } from "./snapshot.js";
 import { makeEntity, tileCenter } from "./geo.js";
-import { oneAtATimeTaken, techMissing } from "./train.js";
+import { oneAtATimeTaken, producerType, techMissing } from "./train.js";
 import type { MatchState } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
@@ -476,8 +476,9 @@ describe("research gate", () => {
     makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 });
     seedMuster(state, 20, 10);
     const gated = Object.keys(TECH_REQUIRES) as TrainType[];
-    assert.deepEqual([...gated].sort(), ["apocalypse", "cyborg", "cyborgcommander", "droneop", "jagdtiger", "jumpjet", "mammoth", "nebelwerfer", "titan", "warden"]);
-    for (const unit of gated) {
+    assert.deepEqual([...gated].sort(), ["apocalypse", "battleship", "cyborg", "cyborgcommander", "destroyer", "droneop", "jagdtiger", "jumpjet", "mammoth", "nebelwerfer", "submarine", "titan", "warden"]);
+    // Ships ask for the Marine Base first; their gate is checked on its own below.
+    for (const unit of gated.filter((u) => producerType(u) !== "dock")) {
       const r = applyCommand(state, "A", { type: "cmd.train", unit });
       assert.equal(r.ok, false, unit);
       if (!r.ok) assert.equal(r.message, "Need a Research Facility.");
@@ -501,6 +502,27 @@ describe("research gate", () => {
     makeEntity(state, "research", "B", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
     assert.equal(techMissing(state, "A", "cyborg"), "research");
     assert.equal(techMissing(state, "B", "cyborg"), null);
+  });
+});
+
+describe("naval tech gate", () => {
+  it("needs a Research Facility for the Submarine and Destroyer, and a Radar Station too for the Battle Ship", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    for (const unit of ["submarine", "destroyer", "battleship"] as const) assert.equal(techMissing(state, "A", unit), "research", unit);
+    assert.equal(techMissing(state, "A", "gunboat"), null);
+
+    const lab = makeEntity(state, "research", "A", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
+    assert.equal(techMissing(state, "A", "submarine"), null);
+    assert.equal(techMissing(state, "A", "destroyer"), null);
+    assert.equal(techMissing(state, "A", "battleship"), "radar");
+
+    makeEntity(state, "radar", "A", tileCenter(20, ts), tileCenter(14, ts), { tileX: 20, tileY: 14 });
+    assert.equal(techMissing(state, "A", "battleship"), null);
+
+    lab.hp = 0;
+    assert.equal(techMissing(state, "A", "battleship"), "research");
+    assert.equal(techMissing(state, "A", "submarine"), "research");
   });
 });
 
