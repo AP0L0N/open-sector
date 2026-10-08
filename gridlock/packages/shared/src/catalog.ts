@@ -2665,6 +2665,76 @@ export const JET_CLIMB_PER_SEC = 9;
 /** Air speed. Faster than he runs. Same UNIT_PACE cut as the walk. */
 export const JET_FLY_TILES_PER_SEC = paced(4);
 
+/** One type's jet flight: how long, how high, how fast, and how the pack refills. */
+export interface JetFlightDef {
+  fuelSeconds: number;
+  takeoffMinSeconds: number;
+  landReserve: number;
+  refuelDelay: number;
+  refuelPerSec: number;
+  alt: number;
+  climbPerSec: number;
+  flyTilesPerSec: number;
+  /** Shot down in the air, it falls straight to the ground before it dies (the Titan). */
+  crashes?: boolean;
+}
+
+export const JUMPJET_FLIGHT: JetFlightDef = {
+  fuelSeconds: JET_FUEL_SECONDS,
+  takeoffMinSeconds: JET_TAKEOFF_MIN_SECONDS,
+  landReserve: JET_LAND_RESERVE,
+  refuelDelay: JET_REFUEL_DELAY,
+  refuelPerSec: JET_REFUEL_PER_SEC,
+  alt: JET_ALT,
+  climbPerSec: JET_CLIMB_PER_SEC,
+  flyTilesPerSec: JET_FLY_TILES_PER_SEC,
+};
+
+/**
+ * Titan's leg jets. A short hop, not a flight: a few seconds over a river, a
+ * wall, or a line of men, then a long wait for the burners to cool. Aloft the
+ * main gun is stowed and only the shoulder pods fire, and only anti-air
+ * weapons reach it. Shot down, it drops straight down and goes up on the ground.
+ */
+export const TITAN_JET_FUEL_SECONDS = 6;
+export const TITAN_JET_FLIGHT: JetFlightDef = {
+  fuelSeconds: TITAN_JET_FUEL_SECONDS,
+  takeoffMinSeconds: 3,
+  landReserve: 1,
+  refuelDelay: 8,
+  /** An empty burner is ready again 30 s after the delay. */
+  refuelPerSec: TITAN_JET_FUEL_SECONDS / 30,
+  alt: 10,
+  climbPerSec: 7,
+  flyTilesPerSec: paced(2.6),
+  crashes: true,
+};
+/** Elevation units per second² a dead Titan falls with, from rest. */
+export const TITAN_FALL_ACCEL = 20;
+
+/**
+ * Titan's reactor. Whenever a Titan is destroyed, on the ground or after it
+ * falls out of the air, it goes up in a small nuclear blast: everything in the
+ * inner ring is gone, and the damage falls off to the edge. Friend and foe alike.
+ * Armor does not help: hulls lose a share of their max HP.
+ */
+export const TITAN_NUKE = {
+  /** Outer edge of the blast. */
+  radiusTiles: t(4.5),
+  /** Inside this, everything takes the full blow. */
+  coreTiles: t(1.5),
+  /** Soldiers, the drone, soft targets: HP at full. */
+  damage: 400,
+  /** Hulls and walkers: share of max HP at full. */
+  armorShare: 1.1,
+  /** Structures: HP at full. */
+  buildingDamage: 1800,
+  /** Share of the full blow left at the outer edge. */
+  edgeShare: 0.12,
+  /** Fires the blast leaves burning around ground zero. */
+  fires: 10,
+} as const;
+
 /**
  * Transport LST deck mount: a heavy machine gun in a shielded tub. Nobody carries it.
  * The first two soldiers aboard who can shoot man the two tubs and fire this instead
@@ -4557,7 +4627,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     kind: "unit",
     name: "Titan",
     letter: "X",
-    cost: 5000,
+    cost: 8000,
     buildSeconds: 18,
     hp: 200,
     power: 0,
@@ -4590,7 +4660,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: TITAN_ROCKET_AMMO,
     bracedHpMul: TITAN_BRACED_HP_MUL,
-    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
+    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up. Leg jets lift it for a short hop over anything: aloft the gun is stowed and only the pods fire, and only anti-air weapons reach it; the burners take a long while to recover. Its reactor makes it a bomb: destroyed, it goes up in a small nuclear blast that wrecks everything close by, friend or foe. Shot down in the air, it drops straight down and goes up on the ground. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
   mammoth: {
     type: "mammoth",
@@ -5522,6 +5592,18 @@ const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "
 /** Soldier with a jet pack: the Jump Jet. */
 export function isJumpJetType(type: EntityType): boolean {
   return type === "jumpjet";
+}
+
+/** The jet flight a type carries: the Jump Jet's pack, the Titan's leg jets, or none. */
+export function jetFlightOf(type: EntityType): JetFlightDef | null {
+  if (type === "jumpjet") return JUMPJET_FLIGHT;
+  if (type === "titan") return TITAN_JET_FLIGHT;
+  return null;
+}
+
+/** Goes up in a small nuclear blast when destroyed: the Titan. */
+export function nukesOnDeath(type: EntityType): boolean {
+  return type === "titan";
 }
 
 /** Flies: the Stuka, the Fw 190, the BV 222, and the He 111. */

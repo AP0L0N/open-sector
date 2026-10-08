@@ -118,6 +118,11 @@ export function tickMovement(state: MatchState, dt: number): void {
     if (e.state === "deploy" || e.state === "undeploy") continue;
     // Aircraft fly in tickAir; paratroopers drift down in tickChutes.
     if (e.air || e.chute) continue;
+    // A Titan shot down in the air drops straight down in tickJets.
+    if (e.jet?.crash) {
+      e.waypoints = [];
+      continue;
+    }
     // An unarmed hull only remembers the aim so the soldiers inside can shoot.
     if (e.order?.kind === "forceattack" && !fires(e.type)) {
       e.waypoints = [];

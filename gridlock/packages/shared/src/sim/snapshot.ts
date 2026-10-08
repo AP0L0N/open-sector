@@ -11,6 +11,7 @@ import {
   DRONE_LAUNCH_MIN_SECONDS,
   JET_FUEL_SECONDS,
   JET_TAKEOFF_MIN_SECONDS,
+  jetFlightOf,
   AIRFIELD_PADS,
   beltOf,
   catalog,
@@ -552,9 +553,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
             alt: e.jet.alt,
             up: friendly && e.jet.up ? true : undefined,
             fuel: friendly ? e.jet.fuel : undefined,
-            fuelMax: friendly ? JET_FUEL_SECONDS : undefined,
-            takeoffMin: friendly ? JET_TAKEOFF_MIN_SECONDS : undefined,
+            fuelMax: friendly ? (jetFlightOf(e.type)?.fuelSeconds ?? JET_FUEL_SECONDS) : undefined,
+            takeoffMin: friendly ? (jetFlightOf(e.type)?.takeoffMinSeconds ?? JET_TAKEOFF_MIN_SECONDS) : undefined,
             refuel: friendly && e.jet.refuel > 0 && e.jet.alt <= 0 ? e.jet.refuel : undefined,
+            crash: e.jet.crash ? true : undefined,
           }
         : undefined,
     });

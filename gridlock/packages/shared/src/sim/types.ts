@@ -226,7 +226,7 @@ export interface SupplyCrate {
   turn: number;
 }
 
-/** Jump Jet only: his jet pack. */
+/** Jump Jet's pack, or the Titan's leg jets. */
 export interface JetState {
   /** Elevation units above the ground under him. 0 while he walks. */
   alt: number;
@@ -236,6 +236,10 @@ export interface JetState {
   fuel: number;
   /** Seconds on the ground before the pack starts to refill. */
   refuel: number;
+  /** Shot down in the air: falling straight down, already dead. Titan only. */
+  crash?: boolean;
+  /** Falling speed while crashing, elevation units per second. */
+  fall?: number;
 }
 
 /** Drone Op only: the one quadcopter he flies. */
@@ -562,7 +566,7 @@ export interface Entity {
   heli?: HeliState;
   /** Paratrooper on the way down. No orders, no fire; small arms can reach him. */
   chute?: Chute;
-  /** Jump Jet only. */
+  /** Jump Jet, and the Titan's leg jets. */
   jet?: JetState;
 }
 

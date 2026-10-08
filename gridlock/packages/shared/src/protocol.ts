@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 114;
+export const PROTOCOL_VERSION = 115;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -341,10 +341,11 @@ export interface EntityView {
    */
   droneLink?: { mode: DroneMode; droneId?: number; charge: number; chargeMax: number; rebuild?: number; launchMin: number };
   /**
-   * Jump Jet's pack. Everyone sees the height (`alt`, elevation units over
-   * the ground). Fuel, whether he is lit, and the refill are friendly-only.
+   * Jump Jet's pack, or the Titan's leg jets. Everyone sees the height (`alt`,
+   * elevation units over the ground) and a Titan falling dead out of the air
+   * (`crash`). Fuel, whether he is lit, and the refill are friendly-only.
    */
-  jet?: { alt: number; up?: boolean; fuel?: number; fuelMax?: number; takeoffMin?: number; refuel?: number };
+  jet?: { alt: number; up?: boolean; fuel?: number; fuelMax?: number; takeoffMin?: number; refuel?: number; crash?: boolean };
   /**
    * Destroyer's deck. Friendly-only. `heli`: on deck and loaded, loading (`rearm` seconds left),
    * in the air, or lost (`replace` seconds until a new one). `mines` on the rail out of `minesMax`.
@@ -499,6 +500,8 @@ export interface ImpactView {
   intercept?: boolean;
   /** A killed Pyro's fuel tanks went up. A big rolling fireball, then burning ground around him. */
   cookoff?: boolean;
+  /** A Titan's reactor went up here: a small nuclear blast on the ground. */
+  nuke?: boolean;
   /** A tank's HE shell burst here: a hull-sized fireball, and the ground around it is set burning. */
   heBurst?: boolean;
   /** A submarine's torpedo went off here. On a hull: the hull-sized fireball inside the water column. Otherwise the column alone. */

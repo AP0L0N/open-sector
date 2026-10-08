@@ -131,9 +131,9 @@ export function isAirborne(e: { air?: AirState | { alt: number; phase?: string }
   return airAlt(e) > 0.5;
 }
 
-/** Shot down and still falling. Nothing hurts it until the airframe hits. */
-export function isCrashing(e: { air?: { phase?: string } | null }): boolean {
-  return e.air?.phase === "crash";
+/** Shot down and still falling (a plane, or a Titan off its leg jets). Nothing hurts it until it hits. */
+export function isCrashing(e: { air?: { phase?: string } | null; jet?: { crash?: boolean } }): boolean {
+  return e.air?.phase === "crash" || !!e.jet?.crash;
 }
 
 /**

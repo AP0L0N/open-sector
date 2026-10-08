@@ -1964,11 +1964,13 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: `Special (${SPECIAL_HOTKEY.toUpperCase()})`,
     });
   }
-  const jets = units.filter((e) => e.jet && e.hp > 0);
+  const jets = units.filter((e) => e.jet && e.hp > 0 && !e.jet.crash);
   if (jets.length) {
+    // A Titan alone in the selection: its leg jets, not a soldier's pack.
+    const titans = jets.every((e) => e.type === "titan");
     const grounded = jets.filter((e) => !e.jet!.up);
     const ready = grounded.filter(
-      (e) => e.jet!.fuel != null && e.jet!.fuel >= (e.jet!.takeoffMin ?? 0) && !e.crits?.includes("leg") && !e.swimming,
+      (e) => e.jet!.fuel != null && e.jet!.fuel >= (e.jet!.takeoffMin ?? 0) && !e.crits?.includes("leg") && !e.swimming && !e.wading,
     );
     if (grounded.length) {
       const low = grounded.find((e) => e.jet!.fuel != null && e.jet!.fuel < (e.jet!.takeoffMin ?? 0));
@@ -1977,9 +1979,13 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
         act: "jet-up",
         label: "Take off",
         title: ready.length
-          ? "Light the jet pack (J). He flies straight over anything while the fuel lasts. Only machine guns, gatlings, the CIWS and RAM, and Titan rockets reach him up there; his bursts come down on men in cover."
+          ? titans
+            ? "Fire the leg jets (J). A short hop straight over anything: up there the gun is stowed and only the rocket pods fire, and only anti-air weapons reach it. Shot down, it falls and its reactor goes up on the ground."
+            : "Light the jet pack (J). He flies straight over anything while the fuel lasts. Only machine guns, gatlings, the CIWS and RAM, and Titan rockets reach him up there; his bursts come down on men in cover."
           : low
-            ? "Jet pack refuelling"
+            ? titans
+              ? "Leg jets cooling"
+              : "Jet pack refuelling"
             : "Cannot take off from here",
         disabled: ready.length === 0,
       });
@@ -1989,7 +1995,9 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
         slot: "jet-land",
         act: "jet-land",
         label: "Land",
-        title: "Set down on the nearest open ground (J). He lands by himself when the pack runs low.",
+        title: titans
+          ? "Set down on the nearest open ground (J). It lands by itself when the burners run low."
+          : "Set down on the nearest open ground (J). He lands by himself when the pack runs low.",
       });
     }
   }

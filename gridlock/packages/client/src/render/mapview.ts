@@ -129,7 +129,10 @@ import {
   type ShellHoleView,
   wallRiseLimit,
   wallRunTops,
+  TITAN_NUKE,
 } from "@gridlock/shared";
+import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
+import { drawTitanThrust } from "./titan-jet-fx.js";
 import {
   FX_BOOM,
   FX_SMOKE,
@@ -945,6 +948,8 @@ export class MapView {
   private flameParticles: FlameParticle[] = [];
   private flameFrameAt = 0;
   private cookOffsSeen = new Set<number>();
+  /** A Titan's reactor went up: ground zero and when it was first seen. Kept while its scorch lasts. */
+  private nukes: { id: number; x: number; y: number; at: number }[] = [];
   /** Black smoke off burning fuel. Same drift as rocket smoke, sooty colour. `shade` 1 is black. */
   private fireSmoke: RocketPuff[] = [];
   /** Per Pyro: when his newest glob was first seen, where the burst is laid, and the host if he is inside. */
@@ -1335,6 +1340,11 @@ export class MapView {
       if (i.kind === "crush") continue;
       // A 20mm round that missed a plane climbed away into the sky: its tracer is all there is.
       if (i.airZ != null && i.kind === "miss") continue;
+      if (i.nuke) {
+        // A Titan's reactor: its own flash, shockwave, and mushroom cloud, not a shell burst.
+        if (!this.nukes.some((n) => n.id === i.id)) this.nukes.push({ id: i.id, x: i.x, y: i.y, at: now });
+        continue;
+      }
       if (i.cookoff) {
         // A fuel fireball, not a shell burst: it has its own particles and smoke.
         if (!this.cookOffsSeen.has(i.id)) {
@@ -4112,6 +4122,7 @@ export class MapView {
     this.collectShipWakes(items);
     this.collectMuzzleSmoke(items);
     this.collectFires(items, w, h);
+    this.collectNukeScorch(items);
     this.collectAirdrops(items, w, h);
     for (const m of this.takeMoveClicks()) {
       items.push({
@@ -4165,6 +4176,7 @@ export class MapView {
     this.drawTreeFalls();
     this.drawSmokeClouds();
     this.drawImpacts();
+    this.drawNukes();
     this.drawBarrageTracers();
     // Complete fog of war goes over everything in the world; only the HUD draws above it.
     if (bake) this.drawShroud();
@@ -6685,7 +6697,12 @@ export class MapView {
     const p = this.lerpEnt(e);
     const size = def.drawSize;
     const s = this.toScreen(p.x, p.y);
-    s.y -= this.airLift(e);
+    const lift = this.airLift(e);
+    s.y -= lift;
+    // A Titan on its leg jets: burner flames under the feet, drawn before the body covers their roots.
+    if (e.type === "titan" && lift > 0.5 && !e.jet?.crash && !e.wreck) {
+      drawTitanThrust(this.ctx, s, { x: s.x, y: s.y + lift }, size, 1, performance.now(), e.id);
+    }
     const hex = this.ownerColor(e);
     const dir = facingToIso(p.facing, this.ts());
     const turretDir = facingToIso(p.turretFacing ?? p.facing, this.ts());
@@ -7154,7 +7171,8 @@ export class MapView {
     const blend = Math.min(1, (now - this.snapAt) / 100);
     const live = new Set<number>();
     for (const e of this.curr.entities) {
-      if (e.air?.phase !== "crash") continue;
+      // A plane going down, or a Titan falling dead off its leg jets.
+      if (e.air?.phase !== "crash" && !e.jet?.crash) continue;
       live.add(e.id);
       const prev = this.prevById.get(e.id);
       const x = prev ? prev.x + (e.x - prev.x) * blend : e.x;
@@ -7506,6 +7524,44 @@ export class MapView {
       heat = Math.max(heat, patchHeat(f.life, f.lifeMax));
     }
     return heat;
+  }
+
+  /** Ground zero on screen and the blast radius as screen half-axes (2:1 view). */
+  private nukeFrame(n: { x: number; y: number }): { g: IsoPt; rx: number; ry: number } {
+    const elev = this.elevAt(n.x, n.y);
+    const g = this.toScreen(n.x, n.y, elev);
+    const r = (TITAN_NUKE.radiusTiles * this.ts()) / Math.SQRT2;
+    const ex = this.toScreen(n.x + r, n.y - r, elev);
+    const ey = this.toScreen(n.x + r, n.y + r, elev);
+    return { g, rx: Math.abs(ex.x - g.x), ry: Math.abs(ey.y - g.y) };
+  }
+
+  /** Burned ground at every recent ground zero, under everything standing. */
+  private collectNukeScorch(items: DrawItem[]): void {
+    const now = performance.now();
+    this.nukes = this.nukes.filter((n) => now - n.at < NUKE_SCORCH_MS);
+    for (const n of this.nukes) {
+      items.push({
+        layer: GROUND_DECAL_DRAW_LAYER,
+        z: isoDepth(n.x, n.y),
+        run: () => {
+          const f = this.nukeFrame(n);
+          drawNukeScorch(this.ctx, f.g, f.rx, f.ry, now - n.at, n.id);
+        },
+      });
+    }
+  }
+
+  /** The blasts themselves: over everything in the world, the flash over the whole view. */
+  private drawNukes(): void {
+    const now = performance.now();
+    for (const n of this.nukes) {
+      const age = now - n.at;
+      if (age > NUKE_FX_MS) continue;
+      const f = this.nukeFrame(n);
+      drawNuke(this.ctx, f.g, f.rx, f.ry, age, n.id);
+    }
+    for (const n of this.nukes) drawNukeFlash(this.ctx, now - n.at);
   }
 
   /** The Pyro's tanks going up: a boiling fireball, fuel thrown clear, and a tall column of black smoke. */
