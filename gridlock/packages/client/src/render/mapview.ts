@@ -4546,23 +4546,38 @@ export class MapView {
       ctx.globalCompositeOperation = "source-over";
     }
     if (glow <= 0) {
-      const reach = SPOTLIGHT_REACH_TILES * this.ts();
-      const half = (SPOTLIGHT_HALF_DEG * Math.PI) / 180;
-      ctx.setLineDash([5, 6]);
-      ctx.lineWidth = 1.25;
-      ctx.strokeStyle = "rgba(255, 226, 150, 0.55)";
+      // By day a selected lamp of yours (Watch Tower, Fire-Control Tower, Spotlight) shows where its beam would fall.
       for (const { e, facing } of lamps) {
-        if (e.type !== "tower" || !this.selected.has(e.id) || e.ownerId !== this.curr.youPlayerId) continue;
-        const pts = beamPolygon(e.x, e.y, facing, reach, half, 16).map((p) => this.toScreen(p.x, p.y));
-        ctx.beginPath();
-        pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-        ctx.closePath();
-        ctx.stroke();
+        if (e.kind !== "building" || !this.selected.has(e.id) || e.ownerId !== this.curr.youPlayerId) continue;
+        this.drawBeamOutline(e.x, e.y, facing, false);
       }
-      ctx.setLineDash([]);
     }
     ctx.restore();
     this.lensAt.clear();
+  }
+
+  /**
+   * A building lamp's beam on the ground, dashed: the cone a selected lamp lights, or the one a
+   * placement ghost will light. `fill` washes the cone faintly, for the ghost.
+   */
+  private drawBeamOutline(wx: number, wy: number, facing: number, fill: boolean): void {
+    const ctx = this.ctx;
+    const reach = SPOTLIGHT_REACH_TILES * this.ts();
+    const half = (SPOTLIGHT_HALF_DEG * Math.PI) / 180;
+    const pts = beamPolygon(wx, wy, facing, reach, half, 16).map((p) => this.toScreen(p.x, p.y));
+    ctx.save();
+    ctx.beginPath();
+    pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    ctx.closePath();
+    if (fill) {
+      ctx.fillStyle = "rgba(255, 226, 150, 0.12)";
+      ctx.fill();
+    }
+    ctx.setLineDash([5, 6]);
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = fill ? "rgba(255, 226, 150, 0.8)" : "rgba(255, 226, 150, 0.55)";
+    ctx.stroke();
+    ctx.restore();
   }
 
   /**
@@ -8358,6 +8373,8 @@ export class MapView {
       const west = this.toScreen(x, y + bh, elev);
       const n = this.toScreen(x, y, elev);
       const ctx = this.ctx;
+      // A lamp building shows the cone its beam will light, turned with the ghost.
+      if (hasSpotlight(type)) this.drawBeamOutline(site.x, site.y, facing, true);
       ctx.save();
       ctx.globalAlpha = 0.28;
       ctx.fillStyle = top;
