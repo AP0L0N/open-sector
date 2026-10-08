@@ -919,10 +919,9 @@ export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[
 /**
  * Cyborg link. A Cyborg runs on the uplink from a standing, powered Cyborg Central,
  * or on a living Cyborg Commander of his own side. With neither, CYBORG_SHUTDOWN_SECONDS
- * after the link drops every Cyborg of that player on the field shuts down: he stops
- * where he stands, belongs to no one, answers no orders, and fires at nothing. Nobody
- * fires at him on their own either; a force-attack still can. When that player's link
- * is back, his dark Cyborgs wake up on his side again, unless a Commander took them first.
+ * after the link drops every Cyborg of that player on the field shuts down: still his,
+ * but he stops where he stands, answers no orders, and fires at nothing. When that
+ * player's link is back his dark Cyborgs wake up, unless an enemy Commander took them first.
  */
 export const CYBORG_SHUTDOWN_SECONDS = 4;
 /** A living Cyborg Commander takes over a shut-down Cyborg this close, friend's or foe's. */
@@ -3604,7 +3603,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Assembly hall and uplink mast that run your cyborgs. Unlocks the Cyborg, and with a Research Facility the Cyborg Commander. Your Cyborgs live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down and belongs to no one. Get the link back (a new Central, or the power) and they wake up yours again, unless a Cyborg Commander took them first. A living Cyborg Commander keeps them running without it, and takes over any shut-down Cyborg near him, yours or the enemy's.`,
+    blurb: `Assembly hall and uplink mast that run your cyborgs. Unlocks the Cyborg, and with a Research Facility the Cyborg Commander. Your Cyborgs live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down: still yours, but dead still and silent. Get the link back (a new Central, or the power) and they wake up, unless an enemy Cyborg Commander took them first. A living Cyborg Commander keeps yours running without it, and takes over any enemy's shut-down Cyborg near him.`,
   },
   radar: {
     type: "radar",
@@ -4814,7 +4813,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: GATLING.penetration,
     caliber: GATLING.caliber,
     spreadDeg: GATLING.spreadDeg,
-    blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. It fires with tracers and overheats after under two seconds on the trigger. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back. He runs on the uplink from your Cyborg Central or a living Cyborg Commander of yours: without either he shuts down a few seconds later and belongs to no one. He wakes up yours again once your link is back, unless a Cyborg Commander takes him over first.",
+    blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. It fires with tracers and overheats after under two seconds on the trigger. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back. He runs on the uplink from your Cyborg Central or a living Cyborg Commander of yours: without either he shuts down a few seconds later: still yours, but still and silent. He wakes up once your link is back, unless an enemy Cyborg Commander takes him over first.",
   },
   cyborgcommander: {
     type: "cyborgcommander",
@@ -4839,7 +4838,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LASER.penetration,
     caliber: LASER.caliber,
     spreadDeg: LASER.spreadDeg,
-    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. While he lives your Cyborgs keep running without a Cyborg Central, and any shut-down Cyborg near him, yours or the enemy's, is taken over by his uplink in a few seconds, one at a time. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
+    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. While he lives your Cyborgs keep running without a Cyborg Central, and any enemy shut-down Cyborg near him is taken over by his uplink in a few seconds, one at a time. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
   titan: {
     type: "titan",

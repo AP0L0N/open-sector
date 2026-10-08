@@ -3621,8 +3621,6 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (d > Math.max(airRange2, bestD)) continue;
     // Only a force-attack aims at a bridge. Nothing aims at a heap of rubble.
     if (isBridge(o.type) || isRubble(o)) continue;
-    // A shut-down Cyborg is no threat: only a force-attack aims at him.
-    if (o.shutdown) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
     if (sparesBuilding(state, e, o)) continue;

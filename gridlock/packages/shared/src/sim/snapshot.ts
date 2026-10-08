@@ -572,7 +572,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
   // The countdown shows only while you still have a Cyborg on the field to lose.
   const linkIn = you ? cyborgShutdownIn(state, youPlayerId) : null;
   const cyborgShutdown =
-    linkIn != null && linkIn > 0 && [...state.entities.values()].some((e) => e.ownerId === youPlayerId && e.type === "cyborg" && e.hp > 0 && !e.wreck)
+    linkIn != null && linkIn > 0 && [...state.entities.values()].some((e) => e.ownerId === youPlayerId && e.type === "cyborg" && e.hp > 0 && !e.wreck && !e.shutdown)
       ? Math.round(linkIn * 10) / 10
       : undefined;
   return {

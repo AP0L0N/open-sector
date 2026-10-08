@@ -131,7 +131,7 @@ export interface EntityView {
   shielded?: boolean;
   /** Cyborg Commander's force field: points left and the full charge. Everyone who sees him sees it. */
   field?: { hp: number; max: number };
-  /** Cyborg shut down for want of a link: no one's, still, silent. Everyone who sees him sees it. */
+  /** Cyborg shut down for want of a link: still his side's, but still and silent. Everyone who sees him sees it. */
   shutdown?: true;
   /** Shut-down Cyborg a Cyborg Commander (`by`) is taking over; `u` is the share done, 0–1. */
   takeover?: { by: number; u: number };

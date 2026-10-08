@@ -3738,7 +3738,8 @@ export class MapView {
     if (!shift) this.selected.clear();
     for (const e of this.curr.entities) {
       if (e.kind !== "unit" || e.ownerId !== this.curr.youPlayerId || e.wreck || e.garrisonedIn) continue;
-      // A running torpedo is nobody's to command.
+      // A shut-down Cyborg takes no orders; a running torpedo is nobody's to command.
+      if (e.shutdown) continue;
       if (isTorpedoBody(e.type)) continue;
       const p = this.lerpEnt(e);
       const s = this.toScreen(p.x, p.y);
@@ -3771,7 +3772,7 @@ export class MapView {
       .map((id) => this.currById.get(id))
       .filter((e): e is EntityView => !!e && !e.wreck && e.hp > 0);
     const you = this.curr.youPlayerId;
-    const own = selected.filter((e) => e.ownerId === you);
+    const own = selected.filter((e) => e.ownerId === you && !e.shutdown);
     if (own.length === 0 && !selected.some((e) => e.garrison?.ownerId === you)) return;
     const producers = own.filter(isProducerView);
     if (producers.length > 0 && !own.some((e) => e.kind === "unit")) {

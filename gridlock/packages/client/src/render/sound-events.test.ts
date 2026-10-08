@@ -327,7 +327,7 @@ describe("SoundTracker cyborg link", () => {
   it("powers your squad down with one line, not one per Cyborg", () => {
     const t = new SoundTracker();
     t.step(snap({ entities: [unit(1, "cyborg"), unit(2, "cyborg")] }, { cyborgShutdownIn: 1 }), 0);
-    const dark = t.step(snap({ entities: [unit(1, "cyborg", "", { shutdown: true }), unit(2, "cyborg", "", { shutdown: true })] }), 100);
+    const dark = t.step(snap({ entities: [unit(1, "cyborg", ME, { shutdown: true }), unit(2, "cyborg", ME, { shutdown: true })] }), 100);
     assert.deepEqual(sfx(dark), ["cyborg:shutdown", "cyborg:shutdown"]);
     assert.deepEqual(voices(dark), ["cyborg:shutdown"]);
     assert.deepEqual(says(dark), ["cyborgsoffline"], "and no 'link restored' as the countdown clears");
@@ -336,7 +336,7 @@ describe("SoundTracker cyborg link", () => {
   it("an enemy Cyborg going dark is only heard where he stands", () => {
     const t = new SoundTracker();
     t.step(snap({ entities: [unit(1, "cyborg", "p2")] }), 0);
-    const dark = t.step(snap({ entities: [unit(1, "cyborg", "", { shutdown: true })] }), 100);
+    const dark = t.step(snap({ entities: [unit(1, "cyborg", "p2", { shutdown: true })] }), 100);
     assert.deepEqual(sfx(dark), ["cyborg:shutdown"]);
     assert.deepEqual(voices(dark), []);
     assert.deepEqual(says(dark), []);
@@ -345,11 +345,11 @@ describe("SoundTracker cyborg link", () => {
   it("your Commander opens an uplink, and the Cyborg wakes up yours", () => {
     const t = new SoundTracker();
     const boss = unit(5, "cyborgcommander");
-    t.step(snap({ entities: [boss, unit(1, "cyborg", "", { shutdown: true })] }), 0);
-    const link = t.step(snap({ entities: [boss, unit(1, "cyborg", "", { shutdown: true, takeover: { by: 5, u: 0.1 } })] }), 100);
+    t.step(snap({ entities: [boss, unit(1, "cyborg", "p2", { shutdown: true })] }), 0);
+    const link = t.step(snap({ entities: [boss, unit(1, "cyborg", "p2", { shutdown: true, takeover: { by: 5, u: 0.1 } })] }), 100);
     assert.deepEqual(sfx(link), ["cyborgcommander:uplink"]);
     assert.deepEqual(voices(link), ["cyborgcommander:takeover"]);
-    const still = t.step(snap({ entities: [boss, unit(1, "cyborg", "", { shutdown: true, takeover: { by: 5, u: 0.6 } })] }), 200);
+    const still = t.step(snap({ entities: [boss, unit(1, "cyborg", "p2", { shutdown: true, takeover: { by: 5, u: 0.6 } })] }), 200);
     assert.deepEqual(sfx(still), [], "the uplink is heard as it opens");
     const woke = t.step(snap({ entities: [boss, unit(1, "cyborg")] }), 300);
     assert.deepEqual(sfx(woke), ["cyborg:reboot"]);
@@ -359,7 +359,7 @@ describe("SoundTracker cyborg link", () => {
 
   it("your dark Cyborgs waking on their own link: one 'link restored', not 'acquired'", () => {
     const t = new SoundTracker();
-    const dark = (id: number) => unit(id, "cyborg", "", { shutdown: true });
+    const dark = (id: number) => unit(id, "cyborg", ME, { shutdown: true });
     t.step(snap({ entities: [dark(1), dark(2)] }), 0);
     const woke = t.step(snap({ entities: [unit(1, "cyborg"), unit(2, "cyborg")] }), 100);
     assert.deepEqual(sfx(woke), ["cyborg:reboot", "cyborg:reboot"]);

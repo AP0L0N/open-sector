@@ -792,7 +792,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     : e.shutdown
       ? e.takeover
         ? `  ·  SHUT DOWN — uplink ${Math.round(e.takeover.u * 100)}%`
-        : "  ·  SHUT DOWN — wakes when his side's link is back, or a Cyborg Commander takes him over"
+        : "  ·  SHUT DOWN — wakes when the link is back, unless an enemy Cyborg Commander takes him over"
       : "";
   const injuries =
     e.crits && e.crits.length > 0
