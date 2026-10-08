@@ -4443,7 +4443,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     power: 0,
     tileW: 1,
     tileH: 1,
-    radius: 15,
+    radius: 19.5,
     moveTilesPerSec: paced(1.1),
     turnDegPerSec: 60,
     rangeTiles: TIGER_RANGE_TILES,
@@ -4468,7 +4468,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     mgAmmo: APOCALYPSE_CIWS_BELT,
     leavesWreck: true,
     wreckHp: 55,
-    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts some of them, then planes, infantry, and sometimes a Walker or a truck. A secondary mount, it sprays wider than a pad CIWS and overheats after a little over a second on the trigger. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
+    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. It rolls flat an enemy StuG, Walker, supply truck, Nebelwerfer, or field gun in its path, and leaves no wreck; it runs down a Cyborg, but the Cyborg Commander is too big to go under. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts some of them, then planes, infantry, and sometimes a Walker or a truck. A secondary mount, it sprays wider than a pad CIWS and overheats after a little over a second on the trigger. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
   },
   /** Spec: gridlock/packages/client/src/assets/units/ss3/stug-iii-ausf-g-late-saukopf.md */
   ss3: {
@@ -5652,6 +5652,20 @@ export function isInfantryType(type: EntityType): boolean {
  */
 export function isCyborg(type: EntityType): boolean {
   return type === "cyborg" || type === "cyborgcommander";
+}
+
+/** The lighter hulls, guns, and trucks the Apocalypse rolls flat. */
+const APOCALYPSE_CRUSHES: readonly EntityType[] = ["ss3", "walker", "supply", "nebelwerfer", "artillery"];
+
+/**
+ * Whether a rolling armored hull of type `mover` runs over a `victim`. Every hull
+ * runs down infantry, all but the Cyborg Commander, who is too big to go under.
+ * The Apocalypse also flattens the lighter hulls in APOCALYPSE_CRUSHES.
+ */
+export function crushes(mover: EntityType, victim: EntityType): boolean {
+  if (victim === "cyborgcommander") return false;
+  if (isInfantryType(victim)) return true;
+  return mover === "apocalypse" && APOCALYPSE_CRUSHES.includes(victim);
 }
 
 /**

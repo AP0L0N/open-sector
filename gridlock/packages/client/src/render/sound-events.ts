@@ -60,9 +60,10 @@ export type SoundEvent =
   | { kind: "voice"; type: string; event: "ready" | "special" | "load" }
   /**
    * A unit's own effect at a point, played without an order: the ASW helicopter settling back on
-   * its deck, or one of your defences going up (sandbags thumped down, a gun set in its pit).
+   * its deck, one of your defences going up (sandbags thumped down, a gun set in its pit), or
+   * (crush) an Apocalypse rolling a hull flat.
    */
-  | { kind: "unitsfx"; type: string; cue: "special"; x: number; y: number }
+  | { kind: "unitsfx"; type: string; cue: "special" | "crush"; x: number; y: number }
   | { kind: "announce"; event: AnnounceEvent };
 
 /** Least time between two fire sounds from one shooter, by type. A burst sample covers the rest. */
@@ -239,6 +240,11 @@ export class SoundTracker {
       if (this.seenImpacts.has(i.id)) continue;
       this.seenImpacts.add(i.id);
       if (i.kind === "crush") continue;
+      // An Apocalypse rolled a hull flat: steel crumpling under its tracks.
+      if (i.crusher != null) {
+        out.push({ kind: "unitsfx", type: "apocalypse", cue: "crush", x: i.x, y: i.y });
+        continue;
+      }
       // The laser's burn is heard when the beam opens (below), not again where it lands.
       if (i.laser) continue;
       // Hitscan rounds and shells too quick for a snapshot are only seen landing.
