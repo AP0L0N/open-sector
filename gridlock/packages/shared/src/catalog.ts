@@ -1829,11 +1829,13 @@ export const FEUERWIRBEL_MOUNT_AT = [0.9, -1.0] as const;
 export const FEUERWIRBEL_HALF_LENGTH_M = 3.35;
 /**
  * The bow projector throws the Pyro's globs, a burst at a time, from a hull tank
- * that holds ten bursts. It never traverses: the jet leaves within this many degrees
- * either side of the nose, and the driver turns the hull onto a target inside its reach.
+ * that holds HULL_FLAMER_BURSTS bursts. It never traverses: the jet leaves within this many
+ * degrees either side of the nose, and the driver turns the hull onto a target inside its reach.
  */
 export const HULL_FLAMER_ARC_DEG = 12;
-export const HULL_FLAMER_FUEL = FLAMER_BURST * 10;
+/** Bursts in a full hull tank: a big tank of fuel, enough to keep burning through a long fight. */
+export const HULL_FLAMER_BURSTS = 50;
+export const HULL_FLAMER_FUEL = FLAMER_BURST * HULL_FLAMER_BURSTS;
 /** The pause between bursts. A pump, not a man's grip: a little shorter than the Pyro's. */
 export const HULL_FLAMER_BURST_PAUSE = 1.2;
 
@@ -4765,7 +4767,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     leavesWreck: true,
     wreckHp: 30,
     hasScout: true,
-    blurb: `Flame tank. Two CIWS mounts on the deck, fore and aft, each a gatling of ${FEUERWIRBEL_MOUNT_SHOTS_PER_TICK * 10} rounds a second on the fastest traverse on the field. Each picks its own target: with two or more enemies in reach they never share one. They look for anything in the air first, then cut down soldiers, and sometimes bite a Walker or a truck. Tank plate turns them, and they do not bring a building down. Each overheats after a little under three seconds on the trigger. A flame projector fixed in the bow fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points; the driver turns the hull onto a target close enough to burn. The jet burns every soldier in its path, friends too, so it holds while one stands in the line. The ${FEUERWIRBEL_BELT}-round belt and ten bursts of fuel refill only from a supply truck. Lighter plate than a Tiger.`,
+    blurb: `Flame tank. Two CIWS mounts on the deck, fore and aft, each a gatling of ${FEUERWIRBEL_MOUNT_SHOTS_PER_TICK * 10} rounds a second on the fastest traverse on the field. Each picks its own target: with two or more enemies in reach they never share one. They look for anything in the air first, then cut down soldiers, and sometimes bite a Walker or a truck. Tank plate turns them, and they do not bring a building down. Each overheats after a little under three seconds on the trigger. A flame projector fixed in the bow fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points; the driver turns the hull onto a target close enough to burn. The jet burns every soldier in its path, friends too, so it holds while one stands in the line. The ${FEUERWIRBEL_BELT}-round belt and ${HULL_FLAMER_BURSTS} bursts of fuel refill only from a supply truck. Lighter plate than a Tiger.`,
   },
   walker: {
     type: "walker",

@@ -7,6 +7,7 @@ import {
   HULL_FLAMER_ARC_DEG,
   HULL_FLAMER_FUEL,
   HULL_FLAMER_RANGE_TILES,
+  FLAMER_BURST,
   FLAMER_RANGE_TILES,
   TECH_REQUIRES,
   TICK_DT,
@@ -123,6 +124,7 @@ describe("feuerwirbel catalog", () => {
   it("has a bow flamer that outreaches the Pyro but not its own gatlings, fuelled in the coaxial slot", () => {
     assert.equal(hullFlamerOf("feuerwirbel"), true);
     assert.equal(fw.mgAmmo, HULL_FLAMER_FUEL);
+    assert.equal(HULL_FLAMER_FUEL, FLAMER_BURST * 50, "fifty bursts in the hull tank");
     assert.ok(HULL_FLAMER_RANGE_TILES > FLAMER_RANGE_TILES);
     assert.ok(HULL_FLAMER_RANGE_TILES < FEUERWIRBEL_RANGE_TILES);
     assert.equal(supplyShortOf("feuerwirbel", undefined, HULL_FLAMER_FUEL - 1, FEUERWIRBEL_BELT), true);
