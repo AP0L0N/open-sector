@@ -1118,7 +1118,7 @@ function focusPatrolGroup(state: MatchState, members: Entity[], grid: SpatialGri
     const route = e.order!.route!;
     const loop = e.order?.loop === true;
     const range = weaponRangeWorld(state, e);
-    const pool = range > 0 ? queryCapsules(grid, route, range + e.radius, loop) : [];
+    const pool = range > 0 ? queryCapsules(grid, route, range + e.radius, loop, state, e.ownerId) : [];
     for (const o of pool) {
       if (!patrolContact(state, e, o)) continue;
       let row = rows.get(o.id);
