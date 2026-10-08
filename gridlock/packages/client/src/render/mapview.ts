@@ -9,8 +9,8 @@ import {
   rectWorld,
   turnedBox,
   catalog,
-  gatlingTurretOf,
   hullFlamerOf,
+  twinCiwsMountPoint,
   isCyborg,
   FW190_WING_GUN_OFFSET,
   clampIsoCamera,
@@ -216,6 +216,8 @@ import {
   spriteReady,
   BATTLESHIP_LAYERS,
   BATTLESHIP_SPRITE,
+  FEUERWIRBEL_CIWS_SHEET,
+  FEUERWIRBEL_SPRITE,
   unitSpritePaintRect,
   wreckSpriteFor,
   GUNNER_DIE_SPRITE,
@@ -344,7 +346,13 @@ import { spatialMix } from "../ui/spatial-sfx.js";
 import { playSoundEvents, updateAmbient, warmBattle } from "../ui/game-audio.js";
 import { SoundTracker } from "./sound-events.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
-import { bowNozzle, TWIN_GATLING_LIFT, twinGatlingMuzzles } from "./gatling-turret.js";
+import {
+  FEUERWIRBEL_BORE_LIFT,
+  feuerwirbelMountLayers,
+  feuerwirbelMountMuzzle,
+  feuerwirbelMuzzleReachWorld,
+  feuerwirbelNozzle,
+} from "./feuerwirbel-mounts.js";
 import { roofCiwsMuzzle } from "./roof-ciws.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, CIWS_SOURCE_ZOOM, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { ciwsBurstTracers, ciwsTracers } from "./ciws-tracer.js";
@@ -1673,7 +1681,31 @@ export class MapView {
     const ground = (x: number, y: number) => this.elevAt(x, y);
     for (const e of match.entities) {
       if (e.wreck) continue;
-      if (e.type === "walker" || e.type === "cyborg" || gatlingTurretOf(e.type)) {
+      if (e.mounts) {
+        // Each round leaves whichever firing mount faces it best, like the Battle Ship's.
+        const rounds = byGun.get(e.id);
+        const firing = e.mounts.flatMap((m, i) => (m.fire ? [{ m, i }] : []));
+        if (!rounds?.length || firing.length === 0) continue;
+        const p = this.lerpEnt(e);
+        const size = this.spriteOf(e)?.drawSize ?? 48;
+        const reach = feuerwirbelMuzzleReachWorld(catalog(e.type).radius);
+        const z = this.elevAt(p.x, p.y) + (FEUERWIRBEL_BORE_LIFT * size) / ISO_ELEVATION;
+        const off = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+        for (const { m, i } of firing) {
+          const at = twinCiwsMountPoint({ ...p, type: e.type }, i);
+          const mine = rounds.filter((r) => {
+            const a = Math.atan2(r.y - p.y, r.x - p.x);
+            return firing.reduce((best, f) => (off(a, f.m.facing) < off(a, best.m.facing) ? f : best)).i === i;
+          });
+          const muzzle = { x: at.x + Math.cos(m.facing) * reach, y: at.y + Math.sin(m.facing) * reach, z };
+          for (const tr of ciwsTracers(muzzle, mine, ground, now, ts)) {
+            this.tracers.push(tr);
+            this.barrageLandAt.set(tr.id, tracerLandsAt(tr));
+          }
+        }
+        continue;
+      }
+      if (e.type === "walker" || e.type === "cyborg") {
         const rounds = byGun.get(e.id);
         if (!rounds?.length) continue;
         const muzzles = this.armMuzzlesWorld(e);
@@ -1809,12 +1841,6 @@ export class MapView {
     const r = catalog(e.type).radius;
     const fx = Math.cos(facing);
     const fy = Math.sin(facing);
-    if (gatlingTurretOf(e.type)) {
-      // The turret pair: out past the pivot, one cluster each side, at barrel height on the sprite.
-      const z = this.elevAt(p.x, p.y) + (TWIN_GATLING_LIFT * size) / ISO_ELEVATION;
-      const at = (side: number) => ({ x: p.x + fx * r - fy * side, y: p.y + fy * r + fx * side, z });
-      return [at(r * 0.15), at(-r * 0.15)];
-    }
     const walker = e.type === "walker";
     // Out ahead of the body, and on the Walker one arm to each side; at arm height on the sprite.
     const ahead = r * (walker ? 0.9 : 0.6);
@@ -6768,6 +6794,18 @@ export class MapView {
     if (!e.wreck) this.drawShipLamp(e, facing, ox, oy, size);
   }
 
+  /** The Feuerwirbel's two CIWS mounts, each on its ring and its own facing row, far one first. */
+  private drawTwinMounts(mounts: NonNullable<EntityView["mounts"]>, facing: number, ox: number, oy: number, size: number): void {
+    const sheet = FEUERWIRBEL_CIWS_SHEET;
+    if (!sheet.image.complete || sheet.image.naturalWidth === 0) return;
+    const cell = sheet.frameSize;
+    const left = ox - size / 2;
+    const top = oy - size * FEUERWIRBEL_SPRITE.contactY;
+    for (const l of feuerwirbelMountLayers(facing, mounts.map((m) => m.facing), size, this.ts())) {
+      this.ctx.drawImage(sheet.image, 0, l.row * cell, cell, cell, left + l.dx, top + l.dy, size, size);
+    }
+  }
+
   /** The Battle Ship's searchlight on top of the fire-control director, turned like its beam. */
   private drawShipLamp(e: EntityView, facing: number, ox: number, oy: number, size: number): void {
     const mount = shipLampMount(facing, size, this.ts());
@@ -6892,6 +6930,8 @@ export class MapView {
     }
     // A sunk hulk has its superstructure and turrets baked in; the grey stand-in still needs them.
     if (drawn && e.ship && (!e.wreck || sheet === def)) this.drawShipLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
+    // A wrecked Feuerwirbel's mounts are torn off; its hulk sheet shows the empty rings.
+    if (drawn && e.mounts && !e.wreck) this.drawTwinMounts(e.mounts, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
     ctx.restore();
     ctx.restore();
     if (drawn && e.ship && !e.wreck) {
@@ -6908,18 +6948,22 @@ export class MapView {
     }
     if (drawn && e.gatling && !e.wreck) {
       const now = performance.now();
-      if (gatlingTurretOf(e.type)) {
-        // The turret pair: both clusters flash at once, a size down from a Walker's arm.
-        const muzzles = twinGatlingMuzzles(s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size, p.turretFacing ?? p.facing);
-        muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size * 0.6, now, e.id + i * 2));
-      } else {
-        const muzzles = gatlingMuzzles(s.x, s.y, size, p.turretFacing ?? p.facing, e.gatling.arms, e.gatling.off);
-        muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2));
-      }
+      const muzzles = gatlingMuzzles(s.x, s.y, size, p.turretFacing ?? p.facing, e.gatling.arms, e.gatling.off);
+      muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2));
+    }
+    if (drawn && e.mounts && !e.wreck) {
+      // Each CIWS mount flashes at its own barrels, on its own bearing.
+      const now = performance.now();
+      const cy = s.y + hullShiftY + unitGroundSink(size);
+      e.mounts.forEach((m, i) => {
+        if (!m.fire) return;
+        const muzzle = feuerwirbelMountMuzzle(s.x + hullShiftX, cy, i, p.facing, m.facing, size, this.ts());
+        drawGatlingFlash(ctx, muzzle, size * 0.45, now, e.id + i * 7);
+      });
     }
     if (drawn && hullFlamerOf(e.type) && !e.wreck && e.mgAmmo !== 0) {
       // The igniter at the bow projector stays lit while there is fuel to light.
-      const m = bowNozzle(s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size, p.facing);
+      const m = feuerwirbelNozzle(s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), p.facing, size, this.ts());
       drawPilotLight(ctx, m.x, m.y, performance.now(), e.id);
     }
     if (drawn && e.ciws?.fire && !e.wreck) {

@@ -435,6 +435,8 @@ export interface Entity {
   surfacedTick?: number;
   /** Battle Ship: its turrets and CIWS mounts, each on its own clock. Missing on every other type. */
   ship?: ShipState;
+  /** Feuerwirbel: its two CIWS mounts, fore and aft, each with its own traverse, target, heat, and clock. */
+  twinCiws?: TwinCiwsMount[];
   /** Submarine: depth and air. Missing means surfaced with full air. */
   dive?: DiveState;
   /** CPU or neutral submarine: sim tick it may come up again after its last enemy contact. */
@@ -612,6 +614,17 @@ export interface ShipCiws {
   heat: number;
   overheat: number;
   /** Sim tick it last fired, on a unit or a rocket. */
+  fireTick?: number;
+}
+
+/** One CIWS mount on a twin-mount hull. The belt is the hull's (Entity.clip); heat is the mount's own. */
+export interface TwinCiwsMount {
+  facing: number;
+  target: number | null;
+  cooldown: number;
+  heat: number;
+  overheat: number;
+  /** Sim tick it last fired. */
   fireTick?: number;
 }
 

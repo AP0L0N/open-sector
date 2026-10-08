@@ -1105,11 +1105,12 @@ export interface CatalogEntry {
   /** Main-gun barrels. A twin mount fires them one after another. Default 1. */
   twinGuns?: boolean;
   /**
-   * The turret carries gatlings, not a cannon (the Feuerwirbel): bullets fed from `belt`,
-   * heated like every gatling, never brought to bear on a building it cannot empty, and
-   * held off tank plate they cannot mark unless the player names the target.
+   * Two CIWS mounts on the deck instead of a gun (the Feuerwirbel). Each traverses, picks,
+   * heats, and fires on its own (tickTwinCiws), and with more than one enemy in reach they
+   * never share a target. Both feed from `belt`. Like every gatling they never bring a building
+   * down and hold off tank plate they cannot mark unless the player names the target.
    */
-  gatlingTurret?: boolean;
+  twinCiws?: boolean;
   /**
    * A flame projector fixed in the bow (the Feuerwirbel). It fires on its own clock, only
    * inside HULL_FLAMER_ARC_DEG of the nose, at what fire can hurt. Its fuel rides in the
@@ -1806,17 +1807,22 @@ export const FLAMER = {
 } as const satisfies InfantryGun;
 
 /**
- * Feuerwirbel. A flame tank: two gatlings side by side on a fast turret for
+ * Feuerwirbel. A flame tank: two CIWS mounts on the deck, fore and aft, for
  * soldiers and anything in the air, and a flame projector fixed in the bow.
  *
- * Each gatling is the Walker's gun on a heavier round that sometimes bites a
- * Walker or a truck. Both fire together, four rounds a tick, from one belt.
+ * Each mount is one gatling, the Walker's gun on a heavier round that sometimes
+ * bites a Walker or a truck, with its own traverse, target, and heat. They feed
+ * from one belt.
  */
-export const FEUERWIRBEL_SHOTS_PER_TICK = WALKER_SHOTS_PER_TICK;
-/** Both guns' belt. Like the Walker's backpack it never reloads; only a supply truck refills it. */
+export const FEUERWIRBEL_MOUNT_SHOTS_PER_TICK = WALKER_ONE_BURST;
+/** Both mounts' belt. Like the Walker's backpack it never reloads; only a supply truck refills it. */
 export const FEUERWIRBEL_BELT = 1600;
-/** The turret is light and power-traversed: the fastest on the field, past the Tiger's and the Walker's torso. */
-export const FEUERWIRBEL_TURRET_TURN = 300;
+/** Each mount is light and power-traversed: faster than any turret on the field, past the Tiger's and the Walker's torso. */
+export const FEUERWIRBEL_MOUNT_TURN = 300;
+/** Mount pivots along the keel, meters from the hull's centre: fore, then aft (render_feuerwirbel.py MOUNT_X). */
+export const FEUERWIRBEL_MOUNT_AT = [0.9, -1.0] as const;
+/** The model's half length in meters, which the sim radius stands for. */
+export const FEUERWIRBEL_HALF_LENGTH_M = 3.35;
 /**
  * The bow projector throws the Pyro's globs, a burst at a time, from a hull tank
  * that holds ten bursts. It never traverses: the jet leaves within this many degrees
@@ -2566,18 +2572,20 @@ export const CYBORG_HEAT: GatlingHeat = { perRound: 1 / 28.8, coolPerSec: 0.1, o
 /** Apocalypse roof mount. 20 a second. Half again the heat per round: a little over a second on the trigger. */
 export const APOCALYPSE_CIWS_HEAT: GatlingHeat = { perRound: 1.5 / 32.4, coolPerSec: 0.12, overheatSeconds: 4 };
 /**
- * Feuerwirbel. Two gatlings, 40 rounds a second, but a tank's water jackets: about two
- * seconds on the trigger, then three to cool. Short bursts never lock it.
+ * One Feuerwirbel mount. 20 a second on a tank's water jacket: a little under three
+ * seconds on the trigger, then three to cool. Each mount heats on its own.
  */
-export const FEUERWIRBEL_HEAT: GatlingHeat = { perRound: 1 / 64, coolPerSec: 0.14, overheatSeconds: 3 };
+export const FEUERWIRBEL_MOUNT_HEAT: GatlingHeat = { perRound: 1 / 40, coolPerSec: 0.14, overheatSeconds: 3 };
 
-/** The gatling's heat, or null for a unit without one. The Apocalypse's is its roof mount. */
+/**
+ * The gatling's heat, or null for a unit without one. The Apocalypse's is its roof mount.
+ * The Feuerwirbel's two mounts keep their own (FEUERWIRBEL_MOUNT_HEAT), not the hull's.
+ */
 export function gatlingHeatOf(type: EntityType): GatlingHeat | null {
   if (type === "ciws") return CIWS_HEAT;
   if (type === "walker") return WALKER_HEAT;
   if (type === "cyborg") return CYBORG_HEAT;
   if (type === "apocalypse") return APOCALYPSE_CIWS_HEAT;
-  if (type === "feuerwirbel") return FEUERWIRBEL_HEAT;
   return null;
 }
 
@@ -4714,7 +4722,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     hasScout: true,
     blurb: "Heavy tank destroyer. No turret: the 128mm sits in a fixed casemate and swings only a little either side of the nose, so the slow hull must turn to aim. The thickest front plate on the field, heavy sides, a thin rear. Its armor-piercing shell goes through any front plate and usually kills a Tiger in one hit, from the longest reach of any tank gun. A long reload between shots, and no HEAT or smoke on the rack.",
   },
-  /** Flame tank: twin gatlings on a fast turret, a flame projector fixed in the bow. */
+  /** Flame tank: two CIWS mounts on the deck, a flame projector fixed in the bow. */
   feuerwirbel: {
     type: "feuerwirbel",
     kind: "unit",
@@ -4736,16 +4744,16 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: SMALL_ARMS_SPEED,
     turnInPlace: true,
     tracked: true,
-    turretTurnDegPerSec: FEUERWIRBEL_TURRET_TURN,
+    // The mounts' traverse. No turret on the hull: this keeps the aim off the hull, which never turns to shoot.
+    turretTurnDegPerSec: FEUERWIRBEL_MOUNT_TURN,
     armorFront: 60,
     armorSide: 28,
     armorRear: 14,
     penetration: 12,
     caliber: 13,
     spreadDeg: 4,
-    shotsPerTick: FEUERWIRBEL_SHOTS_PER_TICK,
     belt: FEUERWIRBEL_BELT,
-    gatlingTurret: true,
+    twinCiws: true,
     antiAir: true,
     airFirst: true,
     hullFlamer: true,
@@ -4753,7 +4761,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     leavesWreck: true,
     wreckHp: 30,
     hasScout: true,
-    blurb: `Flame tank. Two gatlings side by side on the fastest turret on the field, ${FEUERWIRBEL_SHOTS_PER_TICK * 10} rounds a second between them: they look for anything in the air first, then cut down soldiers, and sometimes bite a Walker or a truck. Tank plate turns them, and they do not bring a building down. They overheat after about two seconds on the trigger. A flame projector fixed in the bow fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points; the driver turns the hull onto a target close enough to burn. The jet burns every soldier in its path, friends too, so it holds while one stands in the line. The ${FEUERWIRBEL_BELT}-round belt and ten bursts of fuel refill only from a supply truck. Lighter plate than a Tiger.`,
+    blurb: `Flame tank. Two CIWS mounts on the deck, fore and aft, each a gatling of ${FEUERWIRBEL_MOUNT_SHOTS_PER_TICK * 10} rounds a second on the fastest traverse on the field. Each picks its own target: with two or more enemies in reach they never share one. They look for anything in the air first, then cut down soldiers, and sometimes bite a Walker or a truck. Tank plate turns them, and they do not bring a building down. Each overheats after a little under three seconds on the trigger. A flame projector fixed in the bow fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points; the driver turns the hull onto a target close enough to burn. The jet burns every soldier in its path, friends too, so it holds while one stands in the line. The ${FEUERWIRBEL_BELT}-round belt and ten bursts of fuel refill only from a supply truck. Lighter plate than a Tiger.`,
   },
   walker: {
     type: "walker",
@@ -6438,9 +6446,9 @@ export function roofCiwsOf(type: EntityType): boolean {
   return catalog(type).roofCiws === true;
 }
 
-/** Gatlings in the turret instead of a cannon. See CatalogEntry.gatlingTurret. */
-export function gatlingTurretOf(type: EntityType): boolean {
-  return catalog(type).gatlingTurret === true;
+/** Two CIWS mounts on the deck instead of a gun. See CatalogEntry.twinCiws. */
+export function twinCiwsOf(type: EntityType): boolean {
+  return catalog(type).twinCiws === true;
 }
 
 /** A flame projector fixed in the bow. See CatalogEntry.hullFlamer. */

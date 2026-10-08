@@ -111,6 +111,18 @@ function ciwsView(state: MatchState, e: Entity): EntityView["ciws"] {
   return fire ? { facing: e.ciwsFacing ?? e.turretFacing, fire: true } : { facing: e.ciwsFacing ?? e.turretFacing };
 }
 
+/** Feuerwirbel mounts: facings and fire like ciwsView; heat only for the owner's side. */
+function twinCiwsView(state: MatchState, e: Entity, friendly: boolean): EntityView["mounts"] {
+  if (!e.twinCiws) return undefined;
+  const window = Math.max(1, clampGameSpeed(state.gameSpeed));
+  return e.twinCiws.map((m) => ({
+    facing: m.facing,
+    ...(!e.wreck && m.fireTick != null && state.tick - m.fireTick < window ? { fire: true as const } : {}),
+    ...(friendly ? { heat: m.heat } : {}),
+    ...(friendly && m.overheat > 0 ? { hot: true as const } : {}),
+  }));
+}
+
 /** Battle Ship turrets and CIWS mounts. Shells and belts only for the ship's own side. */
 function shipView(state: MatchState, e: Entity, friendly: boolean): EntityView["ship"] {
   const ship = e.ship;
@@ -477,6 +489,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       charging: e.type === "walker" && e.charging ? true : undefined,
       gatling: gatlingView(state, e),
       ciws: ciwsView(state, e),
+      mounts: twinCiwsView(state, e, friendly),
       ship: shipView(state, e, friendly),
       reload: friendly && (isInfantryType(e.type) || beltOf(e.type)) && e.reload > 0 ? e.reload : undefined,
       bipod: plantRemaining(e, friendly),
