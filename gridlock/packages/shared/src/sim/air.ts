@@ -21,13 +21,16 @@ import {
   AIR_CRASH_TURN_MAX,
   AIR_CRASH_TURN_MIN,
   AIR_CRUISE_ALT,
+  AIR_HIGH_ALT,
+  airCruiseAltOf,
+  airFuelOf,
+  isReconType,
   AIR_DIVE_CONE_DEG,
   AIR_DIVE_PER_SEC,
   AIR_DIVE_START_TILES,
   AIR_EXTEND_TILES,
   AIR_FINAL_TILES,
   AIR_FUEL_RESERVE,
-  AIR_FUEL_SECONDS,
   AIR_GROUND_TURN_MUL,
   AIR_ORBIT_TILES,
   AIR_REFUEL_PER_SEC,
@@ -129,6 +132,11 @@ export const PARK_HEADING = Math.PI / 2;
 /** In the air (or rolling off the pad). A parked plane is a ground target. */
 export function isAirborne(e: { air?: AirState | { alt: number; phase?: string }; jet?: { alt: number } }): boolean {
   return airAlt(e) > 0.5;
+}
+
+/** A plane (not a drone) up at AIR_HIGH_ALT, where only anti-air guns reach it. */
+export function planeIsHigh(e: { air?: AirState | null; drone?: unknown }): boolean {
+  return !!e.air && !e.drone && e.air.phase !== "crash" && e.air.alt >= AIR_HIGH_ALT;
 }
 
 /** Shot down and still falling (a plane, or a Titan off its leg jets). Nothing hurts it until it hits. */
@@ -423,6 +431,8 @@ function secondsHome(state: MatchState, e: Entity, home: Entity): number {
 
 function spent(state: MatchState, e: Entity): boolean {
   if (isTransportType(e.type)) return !hasCargo(state, e);
+  // A recon plane has nothing to spend: only the tank sends it home.
+  if (isReconType(e.type)) return false;
   // Once the bomb is gone the sortie is over; the belts are only for the way in.
   if (e.air!.bombed) return true;
   return e.air!.bombs <= 0 && !hasRounds(e);
@@ -431,7 +441,7 @@ function spent(state: MatchState, e: Entity): boolean {
 /** Bomb, belts, and tank all the way up. A troop bay is full when someone is aboard. */
 function loadFull(state: MatchState, e: Entity): boolean {
   const a = e.air!;
-  if (a.fuel < AIR_FUEL_SECONDS - 1e-3) return false;
+  if (a.fuel < airFuelOf(e.type) - 1e-3) return false;
   const load = airLoadoutOf(e.type);
   if (isTransportType(e.type) && a.payload === "troops") return hasCargo(state, e);
   return a.bombs >= load.bombs && a.rounds >= load.rounds - 1e-3;
@@ -584,7 +594,7 @@ function servicePad(state: MatchState, e: Entity, dt: number): void {
   }
   const pow = powerOf(state, e.ownerId);
   const s = dt * productionSpeed(pow.provided, pow.used);
-  a.fuel = Math.min(AIR_FUEL_SECONDS, a.fuel + AIR_REFUEL_PER_SEC * s);
+  a.fuel = Math.min(airFuelOf(e.type), a.fuel + AIR_REFUEL_PER_SEC * s);
   e.hp = Math.min(e.hpMax, e.hp + AIR_REPAIR_PER_SEC * s);
   const load = airLoadoutOf(e.type);
   // Belts fill in the same time whatever they hold.
@@ -687,7 +697,7 @@ function tickFly(state: MatchState, e: Entity, dt: number): void {
     }
   }
   if (!e.order) loiterHere(e);
-  let altGoal = AIR_CRUISE_ALT;
+  let altGoal = airCruiseAltOf(e.type);
   const turned = edgeTurn(state, e, dt);
   const o = e.order!;
   e.state = "move";
@@ -704,6 +714,16 @@ function tickFly(state: MatchState, e: Entity, dt: number): void {
       steerTo(state, e, f.x, f.y, dt);
       if (Math.hypot(f.x - e.x, f.y - e.y) < state.tileSize * 6) a.phase = "landing";
     }
+  } else if (isReconType(e.type) && (o.kind === "attack" || o.kind === "forceattack")) {
+    // No guns: sent at something, it flies over and circles there, following a unit it can see.
+    const t = o.targetId != null ? state.entities.get(o.targetId) : undefined;
+    e.attackTarget = null;
+    if (t && t.hp > 0 && canSeeEntity(state, e.ownerId, t)) {
+      o.x = t.x;
+      o.y = t.y;
+    }
+    if (o.x == null || o.y == null) loiterHere(e);
+    else if (!turned) flyToOrOrbit(state, e, o.x, o.y, dt);
   } else if (o.kind === "attack" && o.targetId != null) {
     const t = state.entities.get(o.targetId);
     if (!t || t.hp <= 0 || (isAirborne(t) && !gunsHurt(e, t)) || allies(state, e.ownerId, t.ownerId)) {
@@ -1174,6 +1194,8 @@ function fireBarrage(state: MatchState, e: Entity, tx: number, ty: number, targe
         z: z0,
         vz: -((z0 - zEnd) / run) * gun.projectileSpeed,
         fromAbove: aloft ? undefined : true,
+        // Air to air: the rounds climb with the fighter, even to a plane up at AIR_HIGH_ALT.
+        antiAir: aloft ? true : undefined,
         landX: aloft ? undefined : lx,
         landY: aloft ? undefined : ly,
         harmAllies: forced ? true : undefined,

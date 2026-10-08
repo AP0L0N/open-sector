@@ -37,6 +37,7 @@ describe("sidebarGroupOf", () => {
     assert.equal(sidebarGroupOf("fw190"), "aircraft");
     assert.equal(sidebarGroupOf("bv222"), "aircraft");
     assert.equal(sidebarGroupOf("he111"), "aircraft");
+    assert.equal(sidebarGroupOf("blackbird"), "aircraft");
     assert.equal(sidebarGroupOf("gunboat"), "naval");
     assert.equal(sidebarGroupOf("supplyboat"), "naval");
     assert.equal(sidebarGroupOf("submarine"), "naval");
@@ -51,7 +52,7 @@ describe("sidebarGroupOf", () => {
       const costs = g[id].map((e) => catalog(e.type).cost);
       assert.deepEqual(costs, [...costs].sort((a, b) => a - b), id);
     }
-    assert.deepEqual(g.aircraft.map((e) => e.type), ["fw190", "stuka", "he111", "bv222"]);
+    assert.deepEqual(g.aircraft.map((e) => e.type), ["fw190", "stuka", "blackbird", "he111", "bv222"]);
     assert.deepEqual(g.naval.map((e) => e.type), ["gunboat", "supplyboat", "submarine", "destroyer", "lst", "battleship"]);
   });
 });

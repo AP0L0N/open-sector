@@ -279,6 +279,7 @@ import stukaWreckUrl from "../assets/units/wrecks/stuka.png";
 import fw190WreckUrl from "../assets/units/wrecks/fw190.png";
 import bv222WreckUrl from "../assets/units/wrecks/bv222.png";
 import he111WreckUrl from "../assets/units/wrecks/he111.png";
+import blackbirdWreckUrl from "../assets/units/wrecks/blackbird.png";
 import gunboatWreckUrl from "../assets/units/wrecks/gunboat.png";
 import destroyerWreckUrl from "../assets/units/wrecks/destroyer.png";
 import lstWreckUrl from "../assets/units/wrecks/lst.png";
@@ -308,6 +309,7 @@ import {
   bindFighterSheets,
   bindTransportSheets,
   bindTorpedoBomberSheets,
+  bindReconSheets,
   bindSupplySheets,
   bindNavalSheets,
   bindBattleshipSheets,
@@ -1485,6 +1487,22 @@ export const HE111_SPRITE: UnitSpriteDef = {
 bindTorpedoBomberSheets(HE111_SPRITE.image);
 
 /**
+ * Blackbird recon jet. Same camera and cell as the Stuka; its long nose-to-tail fills the
+ * cell, so it is drawn a little over the He 111's size to read long and sleek.
+ */
+export const BLACKBIRD_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(80 * UNIT_VISUAL_SCALE),
+  contactY: 0.8,
+  facingSpace: "world",
+};
+bindReconSheets(BLACKBIRD_SPRITE.image);
+
+/**
  * Drone Op's quadcopter. Same camera and 128 cell as the Stuka; its rotor span reads about
  * twice a rifleman's width. The map lifts it by altitude over its own ground shadow.
  */
@@ -1659,6 +1677,7 @@ const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   fw190: wreckSheet(fw190WreckUrl, FW190_SPRITE),
   bv222: wreckSheet(bv222WreckUrl, BV222_SPRITE),
   he111: wreckSheet(he111WreckUrl, HE111_SPRITE),
+  blackbird: wreckSheet(blackbirdWreckUrl, BLACKBIRD_SPRITE),
   // Ships settle on the bottom: the superstructure and turrets are baked into the hulk.
   gunboat: wreckSheet(gunboatWreckUrl, GUNBOAT_SPRITE),
   destroyer: wreckSheet(destroyerWreckUrl, DESTROYER_SPRITE),
@@ -1700,6 +1719,7 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   fw190: FW190_SPRITE,
   bv222: BV222_SPRITE,
   he111: HE111_SPRITE,
+  blackbird: BLACKBIRD_SPRITE,
   drone: DRONE_SPRITE,
   aswheli: ASWHELI_SPRITE,
   rig: RIG_SPRITE,

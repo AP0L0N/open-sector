@@ -64,16 +64,24 @@ export function droneIsHigh(e: { air?: { alt: number } }): boolean {
  */
 export function reachesDrone(shooter: Entity, drone: Entity): boolean {
   const gun = infantryGunFor(shooter);
-  // A high drone takes bullets only: the RAM's rockets are radar-laid but never reach it.
   // The Battle Ship's CIWS mounts reach a drone, high or low.
   if (isBattleship(shooter.type)) return true;
-  if (droneIsHigh(drone)) {
-    return shooter.type === "walker" || (radarLaidOf(shooter.type) && !rocketsOf(shooter.type)) || antiAirGunOf(shooter.type) || !!gun?.antiAir;
-  }
+  if (droneIsHigh(drone)) return reachesHighFlyer(shooter);
   if (shooter.type === "walker" || radarLaidOf(shooter.type) || hasMg(shooter.type) || antiAirGunOf(shooter.type)) return true;
   // Titan pods reach a low drone. An artillery rack's lobbed rockets never do.
   if (rocketsOf(shooter.type)) return rocketRackOf(shooter.type).antiAir;
   return !!gun && gun.id !== "mortar";
+}
+
+/**
+ * Who can lay a gun on something flying high: a drone on Surveillance, or a plane
+ * at AIR_HIGH_ALT (the Blackbird). Bullets only, from anti-air guns: the MG42, the
+ * gatlings, the CIWS, the Flak. The RAM's rockets are radar-laid but never reach it.
+ */
+export function reachesHighFlyer(shooter: Entity): boolean {
+  if (isBattleship(shooter.type)) return true;
+  if (shooter.type === "walker" || (radarLaidOf(shooter.type) && !rocketsOf(shooter.type)) || antiAirGunOf(shooter.type)) return true;
+  return !!infantryGunFor(shooter)?.antiAir;
 }
 
 /** This round can strike this drone. Shells, mortar bombs, and plane bombs pass it by. */

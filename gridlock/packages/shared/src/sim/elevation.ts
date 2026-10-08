@@ -26,6 +26,8 @@ import {
   RADAR_LONG_RANGE_MUL,
   SUB_SUBMERGED_SIGHT_TILES,
   AIRCRAFT_FLYING_SIGHT_BONUS,
+  BLACKBIRD_FLYING_SIGHT_BONUS,
+  isReconType,
   TANK_GUN_CLIMB,
   TANK_GUN_ELEV_DEG,
   GROVE_SIGHT_BUDGET,
@@ -168,7 +170,8 @@ export function droneSightExtra(e: { type: EntityType; air?: { alt: number } }):
 
 /**
  * Sight on top of the catalog that depends on how the unit sits right now: a drone's
- * height, a plane in the air (AIRCRAFT_FLYING_SIGHT_BONUS), or a submarine below with
+ * height, a plane in the air (AIRCRAFT_FLYING_SIGHT_BONUS, the Blackbird's
+ * BLACKBIRD_FLYING_SIGHT_BONUS), or a submarine below with
  * only its periscope up (SUB_SUBMERGED_SIGHT_TILES). Negative for a diving submarine.
  */
 export function liveSightExtra(e: {
@@ -180,7 +183,9 @@ export function liveSightExtra(e: {
   if (submergesOf(e.type) && (e.dive?.down || e.submerged)) {
     return Math.min(0, SUB_SUBMERGED_SIGHT_TILES - catalog(e.type).sightTiles - sightBonusTilesOf(e.type));
   }
-  if (isAircraftType(e.type) && airAlt(e) > 0) return AIRCRAFT_FLYING_SIGHT_BONUS;
+  if (isAircraftType(e.type) && airAlt(e) > 0) {
+    return isReconType(e.type) ? BLACKBIRD_FLYING_SIGHT_BONUS : AIRCRAFT_FLYING_SIGHT_BONUS;
+  }
   return droneSightExtra(e);
 }
 

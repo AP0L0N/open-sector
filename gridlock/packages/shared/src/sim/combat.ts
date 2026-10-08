@@ -242,9 +242,9 @@ import { canSeeEntity, visionMask } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
 import { escorting, reversing, stepTurn, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
 import { allyInLine, holdForAlly, needsClearLine } from "./lineoffire.js";
-import { airTargetSpreadMul, isAirborne, isCrashing, reachesAircraft, stepBomb } from "./air.js";
+import { airTargetSpreadMul, isAirborne, isCrashing, planeIsHigh, reachesAircraft, stepBomb } from "./air.js";
 import { stepCluster } from "./airdrop.js";
-import { projectileMeetsDrone, reachesDrone } from "./drone.js";
+import { projectileMeetsDrone, reachesDrone, reachesHighFlyer } from "./drone.js";
 import { jetAloft, reachesJet } from "./jet.js";
 import { nightSightMul, nightTiles } from "./night.js";
 import { afloat, armTorpedo, diving, hiddenSubmarine, surface, surfaceToStrike, torpedoCannotReach } from "./naval.js";
@@ -1026,6 +1026,8 @@ function outOfReachAloft(state: MatchState, e: Entity, target: Entity): boolean 
   if (target.drone) return !reachesDrone(e, target);
   // A Jump Jet in the air: anti-air weapons only.
   if (target.jet) return isAirborne(target) && !reachesJet(e);
+  // A plane up at AIR_HIGH_ALT: anti-air guns only.
+  if (planeIsHigh(target)) return !reachesHighFlyer(e);
   return isAirborne(target) && !reachesAircraft(e);
 }
 
@@ -2175,6 +2177,7 @@ function podValue(state: MatchState, e: Entity, o: Entity): number {
       : 0;
   }
   if (o.drone && !reachesDrone(e, o)) return 0;
+  if (planeIsHigh(o)) return 0;
   if (isAirborne(o)) return rocketRackOf(e.type).antiAir ? 3 : 0;
   if (isInfantryType(o.type)) return 2;
   return isArmored(catalog(o.type)) ? 3 : 2;
@@ -3542,6 +3545,8 @@ function nearestSweepHit(
     if (e.drone && !projectileMeetsDrone(p, e)) continue;
     // Only anti-air fire meets a Jump Jet in the air. A rifle round passes under him.
     if (e.jet && isAirborne(e) && !p.antiAir) continue;
+    // A plane up at AIR_HIGH_ALT: only anti-air fire climbs that far.
+    if (planeIsHigh(e) && !p.antiAir) continue;
     if (isAirborne(e)) {
       // Only a round near the plane's height meets it. Everything else passes under or over.
       if (Math.abs(shotZ - (entityHeight(state, e) + airAlt(e))) > AIR_HIT_BAND) continue;
