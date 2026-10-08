@@ -15,6 +15,7 @@ import {
   HEIGHT_UPHILL_BOOST,
   HEIGHT_UPHILL_PACE,
   HEIGHT_UPHILL_SPEED,
+  SLOPE_MOVEMENT,
   HEIGHT_WORLD,
   HULL_EYE_HEIGHT,
   HULL_LEVEL_SIGHT,
@@ -196,19 +197,25 @@ export function climbableDelta(dh: number): boolean {
   return Math.abs(dh) <= HEIGHT_STEP_MAX;
 }
 
-export function slopeSpeedMul(dh: number): number {
+/** Pace over a climb or descent of `dh` levels. 1 everywhere while SLOPE_MOVEMENT is off; `on` lets a test read the rule. */
+export function slopeSpeedMul(dh: number, on = SLOPE_MOVEMENT): number {
+  if (!on) return 1;
   if (dh > 0) return HEIGHT_UPHILL_PACE * Math.min(1, HEIGHT_UPHILL_BOOST * HEIGHT_UPHILL_SPEED ** dh);
   if (dh < 0) return HEIGHT_DOWNHILL_SPEED ** -dh;
   return 1;
 }
 
-export function slopeCostMul(dh: number): number {
+/** A* step cost over a climb or descent of `dh` levels. 1 everywhere while SLOPE_MOVEMENT is off. */
+export function slopeCostMul(dh: number, on = SLOPE_MOVEMENT): number {
+  if (!on) return 1;
   if (dh > 0) return HEIGHT_UPHILL_COST ** dh;
   if (dh < 0) return HEIGHT_DOWNHILL_COST ** -dh;
   return 1;
 }
 
-export function minSlopeCostMul(): number {
+/** The cheapest step cost a slope can give, for the A* heuristic. */
+export function minSlopeCostMul(on = SLOPE_MOVEMENT): number {
+  if (!on) return 1;
   return Math.min(1, HEIGHT_DOWNHILL_COST);
 }
 

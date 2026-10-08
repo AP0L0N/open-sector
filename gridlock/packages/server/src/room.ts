@@ -164,7 +164,7 @@ export class Hub {
         this.onMapDelete(session, msg.id, msg.key);
         break;
       case "map.test":
-        this.onMapTest(session, msg.map);
+        this.onMapTest(session, msg.map, msg.spawnId);
         break;
       default:
         if (msg.type.startsWith("cmd.")) this.onCmd(session, msg);
@@ -401,9 +401,11 @@ export class Hub {
 
   /**
    * Map Builder play test: load the sheet as a private map, open a skirmish on
-   * it with the sender alone, and start. Nothing is stored or announced.
+   * it with the sender alone on `spawnId` (random when 0 or missing), and
+   * start. Nothing is stored or announced.
    */
-  private onMapTest(session: Session, map: unknown): void {
+  private onMapTest(session: Session, map: unknown, spawnId?: unknown): void {
+    if (spawnId !== undefined && !Number.isInteger(spawnId)) return this.err(session, "bad_payload", "Invalid start position.");
     const id = (map as { id?: unknown } | null)?.id;
     if (typeof id !== "string" || !isPlaytestMapId(id)) return this.err(session, "bad_payload", "Invalid play test.");
     const using = this.roomsOnMap(id);
@@ -416,6 +418,15 @@ export class Hub {
     if (room?.mapId !== id) {
       unregisterMap(id);
       return;
+    }
+    if (spawnId) {
+      const picked = updateSelf(room, session.playerId, { spawnId: spawnId as number });
+      if (!picked.ok) {
+        // The room is still a bare lobby: close it so the tester stays in the builder.
+        this.err(session, picked.code, picked.message);
+        this.leaveInternal(session.playerId, true);
+        return;
+      }
     }
     this.onStart(session);
   }

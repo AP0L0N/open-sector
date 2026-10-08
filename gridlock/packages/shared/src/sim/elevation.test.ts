@@ -5,6 +5,7 @@ import {
   HEIGHT_UPHILL_BOOST,
   HEIGHT_UPHILL_PACE,
   HEIGHT_SIGHT_BONUS,
+  SLOPE_MOVEMENT,
   HEIGHT_MAX,
   HEIGHT_WORLD,
   HULL_EYE_HEIGHT,
@@ -34,6 +35,7 @@ import {
   observerEyeOf,
   rangeTilesOf,
   sightTilesOf,
+  minSlopeCostMul,
   slopeCostMul,
   slopeSpeedMul,
   uphillSightOf,
@@ -72,16 +74,25 @@ function dropRig(state: MatchState): void {
 }
 
 describe("slope multipliers", () => {
-  it("speeds climbs by 200% and speeds descents", () => {
-    assert.equal(slopeSpeedMul(0), 1);
+  it("speeds climbs by 200% and speeds descents when the rule is on", () => {
+    assert.equal(slopeSpeedMul(0, true), 1);
     const climb = (dh: number) => HEIGHT_UPHILL_PACE * Math.min(1, HEIGHT_UPHILL_BOOST * 0.55 ** (dh / TILE_SUBDIV));
     assert.equal(HEIGHT_UPHILL_PACE, 3);
-    assert.ok(Math.abs(slopeSpeedMul(1) - climb(1)) < 1e-9);
-    assert.ok(Math.abs(slopeSpeedMul(8) - climb(8)) < 1e-9);
-    assert.ok(slopeSpeedMul(1) > 1);
-    assert.ok(slopeSpeedMul(-1) > 1);
-    assert.ok(slopeCostMul(1) > 1);
-    assert.ok(slopeCostMul(-1) < 1);
+    assert.ok(Math.abs(slopeSpeedMul(1, true) - climb(1)) < 1e-9);
+    assert.ok(Math.abs(slopeSpeedMul(8, true) - climb(8)) < 1e-9);
+    assert.ok(slopeSpeedMul(1, true) > 1);
+    assert.ok(slopeSpeedMul(-1, true) > 1);
+    assert.ok(slopeCostMul(1, true) > 1);
+    assert.ok(slopeCostMul(-1, true) < 1);
+  });
+
+  it("treats every slope as level ground while SLOPE_MOVEMENT is off", () => {
+    if (SLOPE_MOVEMENT) return;
+    for (const dh of [-8, -1, 0, 1, 8]) {
+      assert.equal(slopeSpeedMul(dh), 1, `speed at ${dh}`);
+      assert.equal(slopeCostMul(dh), 1, `cost at ${dh}`);
+    }
+    assert.equal(minSlopeCostMul(), 1);
   });
 });
 
@@ -206,7 +217,16 @@ describe("movement on slopes", () => {
     return Math.hypot(e.x - from.x, e.y - from.y);
   }
 
+  it("walks a terrace at level pace while SLOPE_MOVEMENT is off", () => {
+    if (SLOPE_MOVEMENT) return;
+    const flatDist = firstTickDist(0);
+    const upDist = firstTickDist(TILE_SUBDIV);
+    assert.ok(flatDist > 1, `flat moved ${flatDist}`);
+    assert.ok(Math.abs(upDist - flatDist) < 1e-6, `uphill ${upDist} vs flat ${flatDist}`);
+  });
+
   it("climbs a terrace at three times the old uphill pace", () => {
+    if (!SLOPE_MOVEMENT) return;
     const flatDist = firstTickDist(0);
     const upDist = firstTickDist(TILE_SUBDIV);
     const pace = HEIGHT_UPHILL_PACE * HEIGHT_UPHILL_BOOST * 0.55;
@@ -215,6 +235,7 @@ describe("movement on slopes", () => {
   });
 
   it("crosses a single uphill step in one tick", () => {
+    if (!SLOPE_MOVEMENT) return;
     const flatDist = firstTickDist(0);
     const upDist = firstTickDist(1);
     assert.ok(flatDist < TILE_SIZE, `flat still short of the tile ${flatDist}`);
