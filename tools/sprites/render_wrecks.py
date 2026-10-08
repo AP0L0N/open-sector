@@ -389,6 +389,7 @@ SPECS = [
     Spec("apocalypse", 128, 0.92, "turret", src="apocalypse", layers=["hull", "turret", "gun", "ciws"], turn=-2, keep=0.5, holes=4, debris=18),
     Spec("ss3", 128, 0.92, "casemate", src="ss3", layers=["hull", "gun"], keep=0.4),
     Spec("jagdtiger", 128, 0.92, "casemate", src="jagdtiger", layers=["hull", "gun"], keep=0.36, holes=4, debris=16),
+    Spec("feuerwirbel", 128, 0.92, "turret", src="feuerwirbel", layers=["hull", "turret"], turn=3, holes=3, soot=0.62, debris=14),
     Spec("supply", 128, 0.92, "soft", src="supply-truck", layers=["hull"], holes=4, bites=5, soot=0.68, debris=16),
     Spec("nebelwerfer", 128, 0.92, "launcher", src="nebelwerfer", layers=["hull", "launcher"], turn=2, holes=3, bites=4, soot=0.6),
     Spec("hauler", 128, 0.92, "soft", sheets={"hull": "hauler-hull.png"}, holes=3, bites=4, debris=16),
