@@ -6,7 +6,8 @@ import { isAirborne, isCrashing } from "./air.js";
 import { applyCommand } from "./commands.js";
 import { makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
-import { nukeFalloff } from "./nuke.js";
+import { nukeFalloff, nukeFlattens } from "./nuke.js";
+import { TILE_EMPTY, TILE_TREE, getMap } from "../maps.js";
 import { snapshotFor } from "./snapshot.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
@@ -193,5 +194,61 @@ describe("Titan reactor", () => {
     assert.equal(t.y, y);
     assert.equal(t.jet!.alt, 0, "the blast is on the ground");
     assert.ok(victim.hp <= 0 || !state.entities.has(victim.id));
+  });
+});
+
+describe("Titan reactor levels the small things", () => {
+  it("burns down every tree in the blast and none past it", () => {
+    const state = twoPlayerMatch();
+    const t = put(state, "titan", "A", 120, 120);
+    const r = TITAN_NUKE.radiusTiles;
+    const inside = [[120, 121], [124, 118], [120 + r - 1, 120]];
+    const outside = [[120 + r + 3, 120], [120, 120 - r - 3]];
+    for (const [x, y] of [...inside, ...outside]) state.terrain[y! * state.width + x!] = TILE_TREE;
+    t.hp = 0;
+    step(state, TICK_DT);
+    for (const [x, y] of inside) assert.notEqual(state.terrain[y! * state.width + x!], TILE_TREE, `tree at ${x},${y}`);
+    for (const [x, y] of outside) assert.equal(state.terrain[y! * state.width + x!], TILE_TREE, `tree at ${x},${y}`);
+  });
+
+  it("flattens small buildings, small units, and their men, even at the edge; armor and the HQ are spared that", () => {
+    const state = twoPlayerMatch();
+    for (let y = 100; y < 140; y++) for (let x = 100; x < 140; x++) state.terrain[y * state.width + x] = TILE_EMPTY;
+    const t = put(state, "titan", "A", 120, 120);
+    const edge = 120 + TITAN_NUKE.radiusTiles - 2;
+    const plant = put(state, "dynamo", "B", 104, 118);
+    const truck = put(state, "supply", "B", edge, 120);
+    const cyborg = put(state, "cyborg", "B", 120, edge);
+    const tank = put(state, "warden", "B", edge, 124);
+    assert.equal(nukeFlattens(plant), true);
+    assert.equal(nukeFlattens(tank), false);
+    assert.equal(nukeFlattens({ ...t, type: "core", kind: "building" } as Entity), false);
+    t.hp = 0;
+    step(state, TICK_DT);
+    for (const e of [plant, truck, cyborg]) assert.ok(e.hp <= 0 || e.wreck || !state.entities.has(e.id), `${e.type} should be gone`);
+    assert.ok(tank.hp > 0 && !tank.wreck, "a hull at the edge survives, battered");
+  });
+
+  it("smashes every crate, drum, and cart in reach", () => {
+    const state = twoPlayerMatch();
+    const pieces = getMap(state.mapId)!.clutter ?? [];
+    assert.ok(pieces.length > 0, "yard-64 has clutter");
+    const c = pieces[0]!;
+    const t = put(state, "titan", "A", c.x, c.y);
+    t.hp = 0;
+    step(state, TICK_DT);
+    const r = TITAN_NUKE.radiusTiles - 1;
+    pieces.forEach((q, i) => {
+      if (Math.hypot(q.x - c.x, q.y - c.y) <= r) assert.equal(state.clutterHp[i], 0, `piece ${i}`);
+    });
+  });
+
+  it("everyone sees the cloud, even far off in the fog", () => {
+    const state = twoPlayerMatch();
+    const t = put(state, "titan", "A", 120, 120);
+    t.hp = 0;
+    step(state, TICK_DT);
+    const seen = snapshotFor(state, "B").impacts.some((i) => i.nuke);
+    assert.ok(seen);
   });
 });

@@ -643,8 +643,9 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
             }
           : {}),
       })),
+    // A reactor going up is seen from everywhere: the cloud towers over the fog.
     impacts: state.impacts.filter(
-      (i) => allies(state, youPlayerId, i.ownerId) || canSeeWorld(state, vis, i.x, i.y),
+      (i) => i.nuke || allies(state, youPlayerId, i.ownerId) || canSeeWorld(state, vis, i.x, i.y),
     ),
     launches: state.launches.filter((l) => {
       const from = state.entities.get(l.fromId);

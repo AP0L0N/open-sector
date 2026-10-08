@@ -1,9 +1,11 @@
-import { TITAN_NUKE, isArmoredType, isGarrisonable, isInfantryType } from "../catalog.js";
+import { TITAN_NUKE, catalog, isArmoredType, isBridge, isGarrisonable, isInfantryType } from "../catalog.js";
 import type { ImpactView } from "../protocol.js";
 import { takeDamage } from "./crits.js";
 import { coverStrike } from "./field.js";
 import { igniteAt } from "./flame.js";
-import { livingGarrison, woundGarrison } from "./garrison.js";
+import { blastClutter } from "./clutter.js";
+import { burnTreeAt, worldToTile } from "./geo.js";
+import { killGarrison, livingGarrison, woundGarrison } from "./garrison.js";
 import { nextRand } from "./rng.js";
 import { hideScout } from "./scout.js";
 import type { Entity, MatchState } from "./types.js";
@@ -22,10 +24,47 @@ export function nukeFalloff(dist: number, core: number, radius: number): number 
   return 1 - (1 - TITAN_NUKE.edgeShare) * u;
 }
 
+/** Largest footprint, in sub-tiles, the blast levels outright: two cells by two. */
+export const NUKE_FLATTEN_FOOTPRINT = 8 * 8;
+/** A hull with less front plate than this is light: a truck, a boat, a Walker, a gun. Tanks have far more. */
+export const NUKE_LIGHT_ARMOR = 40;
+/** A body wider than this is a ship, not a small unit. */
+export const NUKE_SMALL_RADIUS = 16;
+
+/**
+ * Levelled outright anywhere inside the blast: soldiers, the drone, light
+ * vehicles and small boats, and structures no bigger than two cells by two.
+ * Tanks, big ships, and bigger buildings take the falloff damage instead.
+ * Never the HQ, nor a bridge.
+ */
+export function nukeFlattens(o: Entity): boolean {
+  if (o.type === "core" || o.type === "rig") return false;
+  if (o.kind === "building") return !isBridge(o.type) && o.tileW * o.tileH <= NUKE_FLATTEN_FOOTPRINT;
+  if (isInfantryType(o.type) || !isArmoredType(o.type)) return true;
+  const def = catalog(o.type);
+  return def.armorFront < NUKE_LIGHT_ARMOR && def.radius <= NUKE_SMALL_RADIUS;
+}
+
+/** Every tree inside the blast burns down. */
+function burnTreesInBlast(state: MatchState, x: number, y: number, radius: number): void {
+  const ts = state.tileSize;
+  const x0 = worldToTile(x - radius, ts);
+  const y0 = worldToTile(y - radius, ts);
+  const x1 = worldToTile(x + radius, ts);
+  const y1 = worldToTile(y + radius, ts);
+  for (let ty = y0; ty <= y1; ty++) {
+    for (let tx = x0; tx <= x1; tx++) {
+      const cx = (tx + 0.5) * ts;
+      const cy = (ty + 0.5) * ts;
+      if (Math.hypot(cx - x, cy - y) <= radius) burnTreeAt(state, tx, ty);
+    }
+  }
+}
+
 /**
  * The Titan's reactor goes up where it stands: a small nuclear blast on the
- * ground. Everything in reach is hurt, friend or foe, and the walls of a
- * house are no help to the men inside. Planes high overhead are clear of it.
+ * ground. Everything in reach is hurt, friend or foe; trees, small buildings,
+ * and small units are levelled outright. Planes high overhead are clear of it.
  */
 export function detonateNuke(state: MatchState, src: Entity): void {
   const ts = state.tileSize;
@@ -38,6 +77,12 @@ export function detonateNuke(state: MatchState, src: Entity): void {
     const d = Math.hypot(o.x - src.x, o.y - src.y);
     const fall = nukeFalloff(d, core, reach);
     if (fall <= 0) continue;
+    if (nukeFlattens(o)) {
+      // Nothing small is left standing: the men inside go with the walls.
+      killGarrison(state, o);
+      o.hp = 0;
+      continue;
+    }
     let dmg: number;
     if (o.kind === "building") {
       dmg = Math.round(TITAN_NUKE.buildingDamage * fall);
@@ -54,6 +99,8 @@ export function detonateNuke(state: MatchState, src: Entity): void {
     if (o.kind === "unit") coverStrike(o, dmg, state.tick, true);
     else takeDamage(o, dmg, state.tick);
   }
+  burnTreesInBlast(state, src.x, src.y, radius);
+  blastClutter(state, src.x, src.y, radius);
   // The ground round ground zero is left burning.
   const spin = nextRand(state) * Math.PI * 2;
   igniteAt(state, src.x, src.y, src.ownerId);
