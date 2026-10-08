@@ -347,6 +347,8 @@ export interface Entity {
   waypoints: Waypoint[];
   /** The goal tile the last path search could not reach, and when. Cleared by the next path found. */
   pathFail?: { tx: number; ty: number; tick: number };
+  /** The spot the current path was asked for, so a steer can tell it already aims there. */
+  pathGoal?: { x: number; y: number; tick: number };
   /** What a charging Walker is running at. Looked over again every few ticks. */
   chargeTargetId?: number;
   cooldown: number;
@@ -941,6 +943,8 @@ export interface MatchState {
   scrapRev: number;
   /** Bumps whenever a house or map defence changes, so a client is sent the scenery list again. */
   sceneryRev: number;
+  /** Bumps between the phases of a tick that move bodies, so sight keys are hashed once per phase, not per check. */
+  phaseRev: number;
   /** Hash of the scenery list `sceneryRev` was last bumped for, and the tick it was taken. */
   sceneryKey: number;
   sceneryKeyTick: number;

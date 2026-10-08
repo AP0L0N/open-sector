@@ -1,5 +1,6 @@
 import {
   catalog,
+  crushes,
   hasTurret,
   isArmoredType,
   isInfantryType,
@@ -20,7 +21,7 @@ import { diving } from "./naval.js";
 import { setPath } from "./path.js";
 import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, jetAloft, occupant, sailable, tileCenter, tileIndex, underDeck, walkable, worldToTile } from "./geo.js";
 import { crushClutterUnder } from "./clutter.js";
-import { buildSpatial, queryCircle, relocate } from "./spatial.js";
+import { buildSpatial, queryCircle, relocate, spatialGrid } from "./spatial.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** Ground unit that takes part in collision. Aircraft never do, parked or flying, nor a Jump Jet in the air. */
@@ -43,9 +44,16 @@ export function rolling(e: Entity): boolean {
 
 export function canCrush(state: MatchState, mover: Entity, victim: Entity): boolean {
   if (!isActiveUnit(mover) || !isActiveUnit(victim)) return false;
-  if (!isArmoredType(mover.type) || !isInfantryType(victim.type)) return false;
+  if (!isArmoredType(mover.type) || !crushes(mover.type, victim.type)) return false;
   if (allies(state, mover.ownerId, victim.ownerId)) return false;
   return rolling(mover);
+}
+
+/** Hulls run flat under an Apocalypse this step. They leave no wreck behind. */
+const flattened = new WeakSet<Entity>();
+
+export function wasFlattened(e: Entity): boolean {
+  return flattened.has(e);
 }
 
 /** Friendly infantry step out of an armored hull's way. A hull never gives way to them. */
@@ -136,6 +144,9 @@ export function crushTreesUnder(state: MatchState, e: Entity): void {
 const FRIENDLY_MOVER_SQUEEZE = 0.6;
 
 /** The unit `e` would run into standing at (x, y), if any. */
+/** Tiles a body may have walked since the movement grid was built: the fastest hull covers under one a tick. */
+const MOVE_GRID_PAD_TILES = 2;
+
 function blockerAt(
   state: MatchState,
   e: Entity,
@@ -146,7 +157,11 @@ function blockerAt(
 ): Entity | null {
   const r = e.radius;
   const moving = rolling(e);
-  for (const o of state.entities.values()) {
+  // With a phase grid up (movement), only the bodies near the spot; the pad covers a tick of walking since it was built.
+  const grid = spatialGrid();
+  // The shared query buffer is safe here: nothing in the loop below asks the grid again.
+  const pool = grid ? queryCircle(grid, x, y, r + grid.maxRadius + MOVE_GRID_PAD_TILES * state.tileSize) : state.entities.values();
+  for (const o of pool) {
     if (o.id === e.id || o.id === ignoreId || o.hp <= 0 || o.garrisonedIn) continue;
     if (passes?.(o)) continue;
     if (o.kind === "building" || o.air || jetAloft(o) || passesUnder(e, o, state)) continue;
@@ -712,9 +727,11 @@ export function tickCollision(state: MatchState, dt = TICK_DT): void {
       const dy = a.y - b.y;
       if (dx * dx + dy * dy >= need * need) continue;
       if (!canCrush(state, a, b)) continue;
-      // The whole bar: a soldier dies, a cyborg on his legs is torn down to crawling.
+      // The whole bar: a soldier dies, a hull goes flat, a cyborg on his legs is torn down to crawling.
       takeDamage(b, b.hp, state.tick);
       if (b.hp > 0) continue;
+      const flat = !isInfantryType(b.type);
+      if (flat) flattened.add(b);
       state.impacts.push({
         id: state.nextId++,
         ownerId: a.ownerId,
@@ -723,6 +740,7 @@ export function tickCollision(state: MatchState, dt = TICK_DT): void {
         y: b.y,
         vx: a.x - b.x,
         vy: a.y - b.y,
+        ...(flat ? { crusher: a.id } : {}),
       });
     }
   }

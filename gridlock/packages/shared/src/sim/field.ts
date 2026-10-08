@@ -19,6 +19,7 @@ import {
   isRepairableUnit,
   stanceOf,
   TILE_SIZE,
+  TILE_SUBDIV,
   WALL_RISE_MAX_SLABS,
   wallSlabHeight,
   WRECK_SCRAP_SECONDS,
@@ -62,6 +63,11 @@ export const HULL_FIX_SECONDS = 3;
 export const SANDBAG_COVER_DEPTH = 22;
 /** Extra hit points while crouched or crawling against intact sandbags, as a share of catalog HP. */
 export const SANDBAG_COVER_BONUS = 0.5;
+/**
+ * A crewed gun fires over sandbags whose ground stands less than this many
+ * height steps above its own. One terrace: bags on a rise above it still stop the round.
+ */
+export const SANDBAG_CLEAR_RISE = TILE_SUBDIV;
 /** How far past the concrete face a unit still counts as beside the wall. */
 export const WALL_COVER_DEPTH = 26;
 /** Extra hit points while beside an intact wall, as a share of catalog HP. */
@@ -1080,10 +1086,12 @@ function sandbagOnSegment(
   y0: number,
   x1: number,
   y1: number,
+  gunH?: number,
 ): { e: Entity; t: number; x: number; y: number } | null {
   let best: { e: Entity; t: number; x: number; y: number } | null = null;
   for (const e of state.entities.values()) {
     if (e.type !== "sandbags" || e.ruined || e.hp <= 0) continue;
+    if (gunH != null && bagGround(state, e) - gunH < SANDBAG_CLEAR_RISE) continue;
     const span = fieldSpan("sandbags")!;
     const t = segmentObbT(x0, y0, x1, y1, e.x, e.y, e.facing, span.length / 2, span.thick / 2);
     if (t == null) continue;
@@ -1100,9 +1108,16 @@ export function sandbagSweep(
   x1: number,
   y1: number,
   tankShell: boolean,
+  gunH?: number,
 ): { e: Entity; t: number; x: number; y: number } | null {
+  // A crewed gun's round, shell or bullet, clears level bags and meets only those on a rise above it.
+  if (gunH != null) return sandbagOnSegment(state, x0, y0, x1, y1, gunH);
   if (!tankShell) return null;
   return sandbagOnSegment(state, x0, y0, x1, y1);
+}
+
+function bagGround(state: MatchState, bag: Entity): number {
+  return state.heights[tileIndex(state, worldToTile(bag.x, state.tileSize), worldToTile(bag.y, state.tileSize))] ?? 0;
 }
 
 function wallOnSegment(
@@ -1453,7 +1468,10 @@ function tickGates(state: MatchState, dt: number): void {
   }
 }
 
-/** A crawling gun cannot shoot across intact sandbags. Mortar bombs arc over. */
-export function sandbagsBlockGun(state: MatchState, x0: number, y0: number, x1: number, y1: number): boolean {
-  return sandbagOnSegment(state, x0, y0, x1, y1) != null;
+/**
+ * A crawling gun cannot shoot across intact sandbags. Mortar bombs arc over.
+ * With `gunH`, a crewed gun at that height: only bags on a rise above it stand in the way.
+ */
+export function sandbagsBlockGun(state: MatchState, x0: number, y0: number, x1: number, y1: number, gunH?: number): boolean {
+  return sandbagOnSegment(state, x0, y0, x1, y1, gunH) != null;
 }

@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 114;
+export const PROTOCOL_VERSION = 115;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -480,6 +480,8 @@ export interface ImpactView {
   splash?: boolean;
   /** Shooter. Used to place the muzzle flash when the round never made a snapshot. */
   fromId?: number;
+  /** A hull rolled flat: the Apocalypse that ran it over. It bumps over the hulk with a crunch. */
+  crusher?: number;
   /** Loaded 75mm type. Omitted for small-arms and crush. */
   shell?: ShellType;
   /** Mortar bomb. The burst is a vertical dirt or water column, not a tank cone. */
