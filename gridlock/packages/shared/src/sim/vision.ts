@@ -1503,6 +1503,25 @@ function stampInside(mask: Uint8Array, tiles: Int32Array, width: number, b: Tile
   }
 }
 
+/** The box around a lit list, or null when it is empty. */
+function tileListBounds(tiles: Int32Array, width: number): TileBounds | null {
+  if (tiles.length === 0) return null;
+  let x0 = width;
+  let x1 = -1;
+  let y0 = Infinity;
+  let y1 = -1;
+  for (let k = 0; k < tiles.length; k++) {
+    const i = tiles[k]!;
+    const x = i % width;
+    const y = (i - x) / width;
+    if (x < x0) x0 = x;
+    if (x > x1) x1 = x;
+    if (y < y0) y0 = y;
+    if (y > y1) y1 = y;
+  }
+  return { x0, y0, x1, y1 };
+}
+
 function boxesTouch(a: TileBounds, b: TileBounds): boolean {
   return a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1;
 }
@@ -1620,7 +1639,6 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
     // Sweep, or copy a squad mate's tiles, into the memo first; the mask is painted below.
     for (const s of work) {
       if (s.m?.box) soil(s.m.box);
-      soil(s.box);
       let tiles: Int32Array | null = null;
       for (const q of squad) {
         if (
@@ -1640,7 +1658,10 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
         for (let k = 0; k < tiles.length; k++) sweepScratchMask[tiles[k]!] = 0;
         squad.push({ p: s.p, tiles });
       }
-      memo.set(s.id, { p: s.p, box: s.box, hulls: s.hulls, smoke: s.smoke, sweptTick: tick, coverRev: history.rev, tiles });
+      // The ground actually lit is usually well inside the reach box: keep that, so later repaints stay small.
+      const litBox = tileListBounds(tiles, width) ?? s.box;
+      soil(litBox);
+      memo.set(s.id, { p: s.p, box: litBox, hulls: s.hulls, smoke: s.smoke, sweptTick: tick, coverRev: history.rev, tiles });
     }
     if (prev) {
       mask.set(prev);

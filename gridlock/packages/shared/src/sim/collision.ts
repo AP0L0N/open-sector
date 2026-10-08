@@ -159,7 +159,8 @@ function blockerAt(
   const moving = rolling(e);
   // With a phase grid up (movement), only the bodies near the spot; the pad covers a tick of walking since it was built.
   const grid = spatialGrid();
-  const pool = grid ? queryCircle(grid, x, y, r + grid.maxRadius + MOVE_GRID_PAD_TILES * state.tileSize).slice() : state.entities.values();
+  // The shared query buffer is safe here: nothing in the loop below asks the grid again.
+  const pool = grid ? queryCircle(grid, x, y, r + grid.maxRadius + MOVE_GRID_PAD_TILES * state.tileSize) : state.entities.values();
   for (const o of pool) {
     if (o.id === e.id || o.id === ignoreId || o.hp <= 0 || o.garrisonedIn) continue;
     if (passes?.(o)) continue;
