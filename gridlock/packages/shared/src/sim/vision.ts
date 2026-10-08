@@ -131,20 +131,31 @@ export function sealFovIslands(
   width: number,
   height: number,
   limit = FOV_ISLAND_LIMIT,
+  within?: TileBounds,
 ): void {
   if (limit <= 0) return;
   const tiles = width * height;
   ensureFovScratch(tiles, limit);
   // Only ground at the edge of what is lit can change colour, so each pass walks the lit box and one tile around it.
-  const a = litBounds(mask, width, height);
+  // A caller that knows where its eyes reach passes that box, grown by an island, and saves the scan of the whole mask.
+  const a = within ? growBounds(within, limit + 1, width, height) : litBounds(mask, width, height);
   if (!a) return;
   recolorSmallIslands(mask, width, height, tiles, 0, 1, limit, a);
-  const b = litBounds(mask, width, height);
+  const b = within ? a : litBounds(mask, width, height);
   if (!b) return;
   recolorSmallIslands(mask, width, height, tiles, 1, 0, limit, b);
 }
 
 type TileBounds = { x0: number; y0: number; x1: number; y1: number };
+
+function growBounds(b: TileBounds, by: number, width: number, height: number): TileBounds {
+  return {
+    x0: Math.max(0, b.x0 - by),
+    y0: Math.max(0, b.y0 - by),
+    x1: Math.min(width - 1, b.x1 + by),
+    y1: Math.min(height - 1, b.y1 + by),
+  };
+}
 
 /** The box around every lit tile, grown by one tile and clamped to the map. Null when nothing is lit. */
 function litBounds(mask: Uint8Array, width: number, height: number): TileBounds | null {
@@ -210,7 +221,10 @@ function recolorSmallIslands(
   const seen = fovSeen;
   const stack = fovStack;
   const small = fovSmall;
-  seen.fill(FOV_SEEN_CLEAR, 0, tiles);
+  // A flood that starts in the box can walk one more island past it before it is called large.
+  const clearY0 = Math.max(0, box.y0 - limit - 1);
+  const clearY1 = Math.min(height - 1, box.y1 + limit + 1);
+  seen.fill(FOV_SEEN_CLEAR, clearY0 * width, Math.min(tiles, (clearY1 + 1) * width));
   for (let y = box.y0; y <= box.y1; y++) {
     for (let x = box.x0; x <= box.x1; x++) {
       const start = y * width + x;
@@ -608,6 +622,87 @@ function coverIgnoreId(e: { kind: string; id?: number; garrisonedIn?: number | n
 
 type CoverCache = { key: number; cover: CoverField; env: SightEnv | null };
 
+/** One rebuild of the cover: the tiles whose ground or footprint changed, or `all` when too many did. */
+type CoverDiff = { rev: number; tiles: Int32Array; all: boolean };
+
+/** Rebuilds of the cover kept for memo checks; an eye swept earlier than this many is swept again. */
+const COVER_DIFFS_KEPT = 64;
+/** More changed tiles than this in one rebuild and every eye is swept again. */
+const COVER_DIFF_MAX = 2048;
+
+/**
+ * Which cover rebuild the match is on, and what the recent rebuilds that
+ * changed any ground or footprint did change, so an eye re-sweeps only for
+ * a change in its reach. Rebuilds for a hull or a cloud alone change no
+ * tile here and are not kept. `forgotBelow`: an eye last checked before this
+ * revision may have missed a change that is no longer kept.
+ */
+type CoverHistory = { rev: number; forgotBelow: number; occupy: Int32Array; terrain: Uint8Array; diffs: CoverDiff[] };
+
+const coverHistories = new WeakMap<MatchState, CoverHistory>();
+
+function coverHistoryOf(state: MatchState): CoverHistory {
+  let h = coverHistories.get(state);
+  if (!h) {
+    h = { rev: 0, forgotBelow: 0, occupy: new Int32Array(0), terrain: new Uint8Array(0), diffs: [] };
+    coverHistories.set(state, h);
+  }
+  return h;
+}
+
+/** Note what this rebuild of the cover changed against the last one. */
+function recordCoverDiff(state: MatchState, cover: CoverField): void {
+  const h = coverHistoryOf(state);
+  const n = state.width * state.height;
+  const occupy = cover.occupy as Int32Array;
+  const terrain = cover.terrain;
+  h.rev++;
+  if (h.occupy.length !== n) {
+    h.occupy = Int32Array.from(occupy);
+    h.terrain = Uint8Array.from(terrain);
+    h.diffs = [];
+    h.forgotBelow = h.rev;
+    return;
+  }
+  const changed: number[] = [];
+  let all = false;
+  for (let i = 0; i < n; i++) {
+    if (occupy[i] === h.occupy[i] && terrain[i] === h.terrain[i]) continue;
+    if (changed.length >= COVER_DIFF_MAX) {
+      all = true;
+      break;
+    }
+    changed.push(i);
+  }
+  if (changed.length === 0 && !all) return;
+  h.occupy.set(occupy);
+  h.terrain.set(terrain);
+  h.diffs.push({ rev: h.rev, tiles: Int32Array.from(changed), all });
+  while (h.diffs.length > COVER_DIFFS_KEPT) {
+    const dropped = h.diffs.shift()!;
+    h.forgotBelow = dropped.rev;
+  }
+}
+
+/** True when nothing the cover changed since the eye's sweep lies within `r` tiles of it. Brings the memo up to date when so. */
+function coverStillGood(m: SightMemo, p: SightParams, r: number, h: CoverHistory, width: number): boolean {
+  if (m.coverRev === h.rev) return true;
+  if (m.coverRev < h.forgotBelow) return false;
+  for (const d of h.diffs) {
+    if (d.rev <= m.coverRev) continue;
+    if (d.all) return false;
+    const tiles = d.tiles;
+    for (let k = 0; k < tiles.length; k++) {
+      const i = tiles[k]!;
+      const x = i % width;
+      const y = (i - x) / width;
+      if (Math.abs(x - p.ox) <= r && Math.abs(y - p.oy) <= r) return false;
+    }
+  }
+  m.coverRev = h.rev;
+  return true;
+}
+
 const coverCaches = new WeakMap<MatchState, CoverCache>();
 
 /** Everything the sight cover is built from, hashed, so the grids are rebuilt only once something in them moved. */
@@ -655,6 +750,7 @@ function coverOf(state: MatchState): CoverField {
   };
   fillLosFlags(cover, cover.losFlags!);
   coverCaches.set(state, { key, cover, env: null });
+  recordCoverDiff(state, cover);
   return cover;
 }
 
@@ -776,8 +872,25 @@ type SightMemo = {
   smoke: number;
   /** Tick of the sweep that made `tiles`. */
   sweptTick: number;
+  /** Cover rebuild the tiles are known good for (`CoverHistory.rev`). */
+  coverRev: number;
   tiles: Int32Array | null;
 };
+
+/**
+ * A walking eye keeps its tiles while it has drifted at most this many tiles
+ * from where it swept, for at most MOVE_STALE_TICKS. Sight around a corner
+ * comes half a second late; the sweeps per tick fall by about half.
+ */
+export const MOVE_STALE_TILES = 2;
+export const MOVE_STALE_TICKS = 6;
+/**
+ * Eyes that re-sweep in one paint of a side's mask. The rest keep their last
+ * tiles one more tick and go first next time. A count, not a clock, so every
+ * client runs the same sim; it bounds a tick instead of letting a big army
+ * stall the server.
+ */
+export const SWEEP_BUDGET = 16;
 
 /**
  * Ticks an eye keeps its tiles after a hull near it moved. The hull's old
@@ -817,10 +930,8 @@ function sightEnvOf(state: MatchState, cover: CoverField): SightEnv {
 }
 
 function buildSightEnv(state: MatchState, cover: CoverField): SightEnv {
-  let base = mix(2166136261, state.digRev);
-  const terrain = state.terrain;
-  const occupy = cover.occupy;
-  for (let i = 0; i < terrain.length; i++) base = mix(base, terrain[i]! * 31 + occupy[i]!);
+  // Ground and footprints are not hashed here: what they changed is in the cover history, so only the eyes in reach of a change re-sweep.
+  const base = mix(2166136261, state.digRev);
   const ts = state.tileSize;
   const hulls: TileBox[] = [];
   for (const e of state.entities.values()) {
@@ -880,7 +991,12 @@ function coverKeyNear(env: SightEnv, boxes: TileBox[], grid: ArrayLike<number>, 
 }
 
 /** Why memos were rebuilt, for benchmarks. */
-export const memoStats = { hit: 0, fresh: 0, smoke: 0, params: 0, hulls: 0 };
+export const memoStats = { hit: 0, fresh: 0, smoke: 0, params: 0, hulls: 0, cover: 0, drift: 0, deferred: 0 };
+
+/** Same eye, same reach: only its tile may differ. */
+function sameSightParamsButPlace(a: SightParams, b: SightParams): boolean {
+  return sameSightParams({ ...a, ox: b.ox, oy: b.oy }, b);
+}
 /** The tiles of the eye being swept, kept in its memo. */
 const sweepKeep: LitList = { tiles: new Int32Array(8192), n: 0 };
 
@@ -1087,46 +1203,94 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
   const height = state.height;
   const mask = new Uint8Array(width * height);
   const cover = coverOf(state);
+  const history = coverHistoryOf(state);
   const observers = alliedSight(state, playerId);
   const memo = sightMemoOf(state);
   const env = sightEnvOf(state, cover);
-  const movers: { id: number; p: SightParams }[] = [];
+  const tick = state.tick;
+  type Sweep = { id: number; p: SightParams; hulls: number; smoke: number; m: SightMemo | undefined };
+  const fresh: Sweep[] = [];
+  const stale: Sweep[] = [];
+  // Where any eye can reach: the only ground the paint and the sealing need to look at.
+  const reach = { x0: width, y0: height, x1: -1, y1: -1 };
   for (const { e, p } of observers) {
     const box = sightBoxRadius(p, true);
+    if (p.ox - box < reach.x0) reach.x0 = p.ox - box;
+    if (p.oy - box < reach.y0) reach.y0 = p.oy - box;
+    if (p.ox + box > reach.x1) reach.x1 = p.ox + box;
+    if (p.oy + box > reach.y1) reach.y1 = p.oy + box;
+    if (p.fw > 0) {
+      if (p.fx < reach.x0) reach.x0 = p.fx;
+      if (p.fy < reach.y0) reach.y0 = p.fy;
+      if (p.fx + p.fw - 1 > reach.x1) reach.x1 = p.fx + p.fw - 1;
+      if (p.fy + p.fh - 1 > reach.y1) reach.y1 = p.fy + p.fh - 1;
+    }
     const hulls = coverKeyNear(env, env.hulls, env.hull, p, Math.min(box, HULL_MEMO_TILES), width, height);
     const smoke = coverKeyNear(env, env.clouds, env.smoke, p, box, width, height);
     const m = memo.get(e.id);
-    if (
-      m &&
-      m.tiles &&
-      m.smoke === smoke &&
-      sameSightParams(m.p, p) &&
-      (m.hulls === hulls || state.tick - m.sweptTick < HULL_STALE_TICKS)
-    ) {
-      const tiles = m.tiles;
-      for (let i = 0; i < tiles.length; i++) mask[tiles[i]!] = 1;
-      memoStats.hit++;
+    if (!m || !m.tiles) {
+      memoStats.fresh++;
+      fresh.push({ id: e.id, p, hulls, smoke, m });
       continue;
     }
-    if (!m || !m.tiles) memoStats.fresh++;
-    else if (m.smoke !== smoke) memoStats.smoke++;
-    else if (!sameSightParams(m.p, p)) memoStats.params++;
-    else memoStats.hulls++;
-    memo.set(e.id, { p, hulls, smoke, sweptTick: state.tick, tiles: null });
-    movers.push({ id: e.id, p });
+    // The eye walked on: a short drift keeps its tiles; a longer one, or a change of reach, sweeps.
+    const samePlace = sameSightParams(m.p, p);
+    const drifted =
+      !samePlace &&
+      sameSightParamsButPlace(m.p, p) &&
+      Math.abs(m.p.ox - p.ox) <= MOVE_STALE_TILES &&
+      Math.abs(m.p.oy - p.oy) <= MOVE_STALE_TILES &&
+      tick - m.sweptTick < MOVE_STALE_TICKS;
+    const good =
+      (samePlace || drifted) &&
+      m.smoke === smoke &&
+      (m.hulls === hulls || tick - m.sweptTick < HULL_STALE_TICKS) &&
+      coverStillGood(m, p, box, history, width);
+    if (good) {
+      const tiles = m.tiles;
+      for (let i = 0; i < tiles.length; i++) mask[tiles[i]!] = 1;
+      if (drifted) memoStats.drift++;
+      else memoStats.hit++;
+      continue;
+    }
+    if (m.smoke !== smoke) memoStats.smoke++;
+    else if (!samePlace) memoStats.params++;
+    else if (m.hulls !== hulls) memoStats.hulls++;
+    else memoStats.cover++;
+    stale.push({ id: e.id, p, hulls, smoke, m });
   }
-  // An eye that held still re-stamped its kept tiles above; only the movers sweep, and keep theirs.
-  armLosFastPath(state.heights, cover.losFlags!, width, height);
+  // The eyes longest without a sweep go first. Past the budget an eye keeps last tick's tiles and waits a tick.
+  stale.sort((a, b) => a.m!.sweptTick - b.m!.sweptTick || a.id - b.id);
+  const sweeps = fresh.concat(stale.slice(0, SWEEP_BUDGET));
+  for (let k = SWEEP_BUDGET; k < stale.length; k++) {
+    const tiles = stale[k]!.m!.tiles!;
+    for (let i = 0; i < tiles.length; i++) mask[tiles[i]!] = 1;
+    memoStats.deferred++;
+  }
+  armLosFastPath(state.heights, cover.losFlags!, width, height, history.rev);
   armSightBlocks(state.heights, width, height, state.digRev);
   try {
-    for (const { id, p } of movers) {
+    for (const s of sweeps) {
       sweepKeep.n = 0;
-      paintSightParams(mask, width, height, p, state.heights, cover, sweepKeep);
-      const m = memo.get(id);
-      if (m) m.tiles = sweepKeep.tiles.slice(0, sweepKeep.n);
+      paintSightParams(mask, width, height, s.p, state.heights, cover, sweepKeep);
+      memo.set(s.id, {
+        p: s.p,
+        hulls: s.hulls,
+        smoke: s.smoke,
+        sweptTick: tick,
+        coverRev: history.rev,
+        tiles: sweepKeep.tiles.slice(0, sweepKeep.n),
+      });
     }
     for (const id of memo.keys()) if (!state.entities.has(id)) memo.delete(id);
-    sealFovIslands(mask, width, height);
+    if (reach.x1 >= reach.x0 && reach.y1 >= reach.y0) {
+      sealFovIslands(mask, width, height, FOV_ISLAND_LIMIT, {
+        x0: Math.max(0, reach.x0),
+        y0: Math.max(0, reach.y0),
+        x1: Math.min(width - 1, reach.x1),
+        y1: Math.min(height - 1, reach.y1),
+      });
+    }
   } finally {
     clearLosFastPath();
   }

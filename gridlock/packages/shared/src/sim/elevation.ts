@@ -557,12 +557,23 @@ let losBlockMax = new Uint8Array(0);
 let losBlockCols = 0;
 let losBlockRows = 0;
 let losFast = false;
+let losArmedElev: Uint8Array | null = null;
+let losArmedFlags: Uint8Array | null = null;
+let losArmedRev = NaN;
 
 /**
  * Summarise cover and height so a ray across empty flat ground can return
  * without walking. Only `hasFullLosFlagged` consults it, and only while armed.
  */
-export function armLosFastPath(elev: Uint8Array, flags: Uint8Array, width: number, height: number): void {
+export function armLosFastPath(elev: Uint8Array, flags: Uint8Array, width: number, height: number, rev = NaN): void {
+  // The same cover as last time, by the caller's revision: the blocks still stand.
+  if (losArmedElev === elev && losArmedFlags === flags && losArmedRev === rev && losBlockCols > 0) {
+    losFast = true;
+    return;
+  }
+  losArmedElev = elev;
+  losArmedFlags = flags;
+  losArmedRev = rev;
   const cols = Math.ceil(width / LOS_BLOCK);
   const rows = Math.ceil(height / LOS_BLOCK);
   const n = cols * rows;

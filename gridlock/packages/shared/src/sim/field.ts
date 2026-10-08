@@ -995,16 +995,24 @@ export function tickField(state: MatchState, dt: number): void {
  * infantry stand in its cover. Two sides there at once leave it neutral.
  */
 function claimNeutralSections(state: MatchState): void {
+  // The infantry on their feet, once, instead of the whole roster for every section.
+  let foot: Entity[] | null = null;
   for (const sec of state.entities.values()) {
     if (sec.type !== "sandbags" && sec.type !== "wall") continue;
     if ((sec.ownerId && sec.ownerId !== NEUTRAL_OWNER) || sec.ruined || sec.hp <= 0) continue;
+    if (!foot) {
+      foot = [];
+      for (const u of state.entities.values()) {
+        if (u.kind !== "unit" || u.hp <= 0 || u.garrisonedIn != null || !u.ownerId || !isInfantryType(u.type) || aloft(u)) continue;
+        foot.push(u);
+      }
+    }
     const span = fieldSpan(sec.type)!;
     const reach = sec.type === "sandbags" ? SANDBAG_COVER_DEPTH : WALL_COVER_DEPTH;
     const { fx, fy, tx, ty } = wallAxes(sec.facing);
     let taker: Entity | null = null;
     let contested = false;
-    for (const u of state.entities.values()) {
-      if (u.kind !== "unit" || u.hp <= 0 || u.garrisonedIn != null || !u.ownerId || !isInfantryType(u.type) || aloft(u)) continue;
+    for (const u of foot) {
       const dx = u.x - sec.x;
       const dy = u.y - sec.y;
       if (Math.abs(dx * tx + dy * ty) > span.length / 2 + 8) continue;

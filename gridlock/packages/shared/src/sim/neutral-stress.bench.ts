@@ -7,6 +7,7 @@
  *
  * SCALE=2 tiles the base map 2x2 (yard-64 -> 512x512 fine tiles).
  * PATROL=1 gives every neutral a short looped patrol so it moves.
+ * OWNER=human hands the placed units to the human seat, so their sight is painted into a mask.
  * MIX=rifleman,warden,... picks the neutral unit types.
  */
 import { createRoom, hostSlot, startMatch, updateSelf } from "../lobby.js";
@@ -81,6 +82,11 @@ updateSelf(room, "A", { ready: true });
 const started = startMatch(room, "A", () => 0);
 if (!started.ok) throw new Error(started.message);
 const state = createMatch(room, started.value);
+if (process.env.OWNER === "human") {
+  for (const e of state.entities.values()) {
+    if (e.kind === "unit" && e.ownerId === "") e.ownerId = "A";
+  }
+}
 console.log(`map ${id} ${w}x${h}, placed ${units.length} neutral units (patrol ${patrol}), ${nAi} CPUs, entities ${state.entities.size}`);
 
 let simMs = 0;

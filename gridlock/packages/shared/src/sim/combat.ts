@@ -1066,10 +1066,18 @@ export function tickPatrol(state: MatchState): void {
       else groups.set(g, [e]);
     }
   }
-  for (const members of groups.values()) focusPatrolGroup(state, members, grid);
-  for (const e of solo) focusPatrolGroup(state, [e], grid);
+  // A patrol looks along its line every other tick, half of them each tick, and keeps its contact between looks.
+  for (const [g, members] of groups) {
+    if ((state.tick + g) % PATROL_CONTACT_EVERY === 0) focusPatrolGroup(state, members, grid);
+  }
+  for (const e of solo) {
+    if ((state.tick + e.id) % PATROL_CONTACT_EVERY === 0) focusPatrolGroup(state, [e], grid);
+  }
   clearSpatial();
 }
+
+/** Ticks between two looks along a patrol line for contacts. */
+const PATROL_CONTACT_EVERY = 2;
 
 /** A patrol member who can actually shoot. Haulers, medics, and a dry pyro keep walking. */
 function patrolCanFight(e: Entity): boolean {
