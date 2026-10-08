@@ -69,6 +69,7 @@ export type SoundEvent =
 const FIRE_GAP_MS: Record<string, number> = {
   gunner: 450,
   walker: 500,
+  feuerwirbel: 500,
   cyborg: 500,
   apocalypse: 450,
   mammoth: 450,

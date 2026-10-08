@@ -32,7 +32,7 @@ describe("sidebarGroupOf", () => {
     for (const t of ["rifleman", "gunner", "sniper", "engineer", "medic", "cyborg", "droneop", "jumpjet"] as const) {
       assert.equal(sidebarGroupOf(t), "infantry", t);
     }
-    for (const t of ["hauler", "warden", "ss3", "jagdtiger", "walker", "titan", "mammoth", "supply"] as const) assert.equal(sidebarGroupOf(t), "tanks", t);
+    for (const t of ["hauler", "warden", "ss3", "jagdtiger", "feuerwirbel", "walker", "titan", "mammoth", "supply"] as const) assert.equal(sidebarGroupOf(t), "tanks", t);
     assert.equal(sidebarGroupOf("stuka"), "aircraft");
     assert.equal(sidebarGroupOf("fw190"), "aircraft");
     assert.equal(sidebarGroupOf("bv222"), "aircraft");

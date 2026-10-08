@@ -44,6 +44,7 @@ import {
   hasAmmo,
   hasMg,
   gatlingHeatOf,
+  hullFlamerOf,
   RADAR_RANGE_MODES,
   roofCiwsOf,
   hasScout,
@@ -1111,6 +1112,7 @@ const TYPE_ORDER: EntityType[] = [
   "apocalypse",
   "ss3",
   "jagdtiger",
+  "feuerwirbel",
   "walker",
   "cyborg",
   "cyborgcommander",
@@ -1546,11 +1548,15 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
   if (hasMg(focus.type) || gatlingHeatOf(focus.type)) {
     const mine = live.filter((e) => e.ownerId === you);
     // A gatling without a coaxial belt feeds from its clip (the Walker's rack, the Cyborg's drum, the CIWS belt).
-    const belt = mine.reduce((n, e) => n + (hasMg(focus.type) ? (e.mgAmmo ?? 0) : (e.clip ?? 0)), 0);
+    // A bow flamer's fuel rides in the coaxial slot, so its turret gatlings feed from the clip too.
+    const flamer = hullFlamerOf(focus.type);
+    const coax = hasMg(focus.type) && !flamer;
+    const belt = mine.reduce((n, e) => n + (coax ? (e.mgAmmo ?? 0) : (e.clip ?? 0)), 0);
     const heat = mine.length ? mine.reduce((n, e) => n + (e.mgHeat ?? 0), 0) / mine.length : 0;
     const hot = mine.some((e) => (e.mgOverheat ?? 0) > 0);
-    const beltName = roofCiwsOf(focus.type) || focus.type === "ciws" ? "20mm" : hasMg(focus.type) ? "MG" : "Gatling";
-    setField(body, "mg-label", hot ? `${beltName}  ${belt}  overheated` : `${beltName}  ${belt}`);
+    const beltName = roofCiwsOf(focus.type) || focus.type === "ciws" ? "20mm" : coax ? "MG" : "Gatling";
+    const fuel = flamer ? `  ·  Fuel ${mine.reduce((n, e) => n + (e.mgAmmo ?? 0), 0)}` : "";
+    setField(body, "mg-label", (hot ? `${beltName}  ${belt}  overheated` : `${beltName}  ${belt}`) + fuel);
     const bar = body.querySelector('[data-field="mg-heat"]');
     if (bar instanceof HTMLElement) {
       bar.classList.toggle("is-hot", hot);

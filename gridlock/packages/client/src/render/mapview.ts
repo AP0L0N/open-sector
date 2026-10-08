@@ -9,6 +9,8 @@ import {
   rectWorld,
   turnedBox,
   catalog,
+  gatlingTurretOf,
+  hullFlamerOf,
   isCyborg,
   FW190_WING_GUN_OFFSET,
   clampIsoCamera,
@@ -338,6 +340,7 @@ import { spatialMix } from "../ui/spatial-sfx.js";
 import { playSoundEvents, updateAmbient, warmBattle } from "../ui/game-audio.js";
 import { SoundTracker } from "./sound-events.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
+import { bowNozzle, TWIN_GATLING_LIFT, twinGatlingMuzzles } from "./gatling-turret.js";
 import { roofCiwsMuzzle } from "./roof-ciws.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, CIWS_SOURCE_ZOOM, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { ciwsBurstTracers, ciwsTracers } from "./ciws-tracer.js";
@@ -600,6 +603,7 @@ const EXTRUDE: Record<EntityType, number> = {
   apocalypse: 32,
   ss3: 20,
   jagdtiger: 26,
+  feuerwirbel: 24,
   rifleman: 26,
   gunner: 26,
   sniper: 26,
@@ -1645,7 +1649,7 @@ export class MapView {
     const ground = (x: number, y: number) => this.elevAt(x, y);
     for (const e of match.entities) {
       if (e.wreck) continue;
-      if (e.type === "walker" || e.type === "cyborg") {
+      if (e.type === "walker" || e.type === "cyborg" || gatlingTurretOf(e.type)) {
         const rounds = byGun.get(e.id);
         if (!rounds?.length) continue;
         const muzzles = this.armMuzzlesWorld(e);
@@ -1781,6 +1785,12 @@ export class MapView {
     const r = catalog(e.type).radius;
     const fx = Math.cos(facing);
     const fy = Math.sin(facing);
+    if (gatlingTurretOf(e.type)) {
+      // The turret pair: out past the pivot, one cluster each side, at barrel height on the sprite.
+      const z = this.elevAt(p.x, p.y) + (TWIN_GATLING_LIFT * size) / ISO_ELEVATION;
+      const at = (side: number) => ({ x: p.x + fx * r - fy * side, y: p.y + fy * r + fx * side, z });
+      return [at(r * 0.15), at(-r * 0.15)];
+    }
     const walker = e.type === "walker";
     // Out ahead of the body, and on the Walker one arm to each side; at arm height on the sprite.
     const ahead = r * (walker ? 0.9 : 0.6);
@@ -6838,8 +6848,19 @@ export class MapView {
     }
     if (drawn && e.gatling && !e.wreck) {
       const now = performance.now();
-      const muzzles = gatlingMuzzles(s.x, s.y, size, p.turretFacing ?? p.facing, e.gatling.arms, e.gatling.off);
-      muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2));
+      if (gatlingTurretOf(e.type)) {
+        // The turret pair: both clusters flash at once, a size down from a Walker's arm.
+        const muzzles = twinGatlingMuzzles(s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size, p.turretFacing ?? p.facing);
+        muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size * 0.6, now, e.id + i * 2));
+      } else {
+        const muzzles = gatlingMuzzles(s.x, s.y, size, p.turretFacing ?? p.facing, e.gatling.arms, e.gatling.off);
+        muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2));
+      }
+    }
+    if (drawn && hullFlamerOf(e.type) && !e.wreck && e.mgAmmo !== 0) {
+      // The igniter at the bow projector stays lit while there is fuel to light.
+      const m = bowNozzle(s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size, p.facing);
+      drawPilotLight(ctx, m.x, m.y, performance.now(), e.id);
     }
     if (drawn && e.ciws?.fire && !e.wreck) {
       const m = roofCiwsMuzzle(s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size, e.ciws.facing);

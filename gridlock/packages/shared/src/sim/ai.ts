@@ -193,6 +193,7 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield" | "dock
     { unit: "warden", want: 3 },
     { unit: "walker", want: 2 },
     { unit: "jagdtiger", want: 1 },
+    { unit: "feuerwirbel", want: 1 },
     { unit: "mammoth", want: 1 },
     { unit: "apocalypse", want: 1 },
     { unit: "supply", want: 1 },
