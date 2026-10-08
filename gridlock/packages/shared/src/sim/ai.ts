@@ -51,7 +51,7 @@ import { droneCall, subDepthCall, tickNeutralCrews } from "./ai-crew.js";
 import { isAirborne } from "./air.js";
 import { droneOf } from "./drone.js";
 import { turnedBox } from "../building-rect.js";
-import { buildingSiteError } from "./build.js";
+import { buildingSiteError, buildTechMissing } from "./build.js";
 import { applyCommand } from "./commands.js";
 import { canRepairTarget, canScrapWreck, gateSiteAt } from "./field.js";
 import { allies, footprintGap, hasCore, hqOf, inBuildRadius, isWater, nearestWalkable, scrapAt, tilesBlockedOrScrap, walkable } from "./geo.js";
@@ -820,6 +820,8 @@ function defenceLane(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan):
   // A site with no room is skipped for a while and the next one tried, a few per pass.
   let tries = 3;
   for (const next of nextDefences(state, p, hq, plan)) {
+    // A locked defence waits for its Research Facility or Radar. Do not save scrap for it yet.
+    if (buildTechMissing(state, p.playerId, next.type).length > 0) continue;
     if (p.scrap < catalog(next.type).cost || tries-- <= 0) return;
     if (next.site) {
       // Check the ground now, so the scrap is not sunk into a gun with nowhere to stand.

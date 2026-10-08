@@ -213,6 +213,9 @@ describe("RAM catalog", () => {
     makeEntity(state, "core", "A", tileCenter(120, ts), tileCenter(120, ts), { tileX: 118, tileY: 118 });
     const d = catalog("dynamo");
     makeEntity(state, "dynamo", "A", (110 + d.tileW / 2) * ts, (110 + d.tileH / 2) * ts, { tileX: 110, tileY: 110 });
+    assert.equal(applyCommand(state, "A", { type: "cmd.build", building: "ram" }).ok, false, "needs a Research Facility and a Radar Station");
+    makeEntity(state, "research", "A", 0, 0, { tileX: 104, tileY: 128 });
+    makeEntity(state, "radar", "A", 0, 0, { tileX: 110, tileY: 128 });
     assert.equal(applyCommand(state, "A", { type: "cmd.build", building: "ram" }).ok, true);
     const t = until(state, 900, () => state.players.get("A")!.defence?.ready === true);
     assert.ok(t >= 0, "the RAM finishes building");

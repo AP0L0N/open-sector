@@ -1,4 +1,5 @@
 import {
+  BUILD_REQUIRES,
   buildRadiusOf,
   catalog,
   isCivilianType,
@@ -87,6 +88,18 @@ function resolveJob(p: SimPlayer, building?: BuildingType | YardFieldType): Stru
   return p.structure ?? p.defence ?? p.line;
 }
 
+/** Buildings `type` still needs before the yard may queue it (BUILD_REQUIRES); empty once all stand. */
+export function buildTechMissing(state: MatchState, playerId: string, type: BuildingType | YardFieldType): BuildingType[] {
+  const need = BUILD_REQUIRES[type as BuildingType];
+  if (!need) return [];
+  return need.filter((t) => {
+    for (const e of state.entities.values()) {
+      if (e.ownerId === playerId && e.type === t && e.hp > 0 && !e.wreck) return false;
+    }
+    return true;
+  });
+}
+
 export function startBuild(state: MatchState, playerId: string, type: BuildingType | YardFieldType): string | null {
   const p = state.players.get(playerId);
   if (!p || !p.alive) return "You are out of the fight.";
@@ -94,6 +107,8 @@ export function startBuild(state: MatchState, playerId: string, type: BuildingTy
   const slot = slotOf(type);
   if (jobIn(p, slot)) return "Construction already underway.";
   const def = catalog(type);
+  const missing = buildTechMissing(state, playerId, type);
+  if (missing.length > 0) return `Need a ${missing.map((t) => catalog(t).name).join(" and a ")}.`;
   putJob(p, slot, {
     type,
     progressTicks: 0,
