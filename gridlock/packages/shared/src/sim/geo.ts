@@ -33,6 +33,7 @@ import {
   rocketAmmoOf,
   rocketsOf,
   isMotorVehicle,
+  rollsThroughWoods,
   MAX_BOAT_RADIUS,
   MAX_UNIT_RADIUS,
   rollReloadMul,
@@ -264,7 +265,7 @@ export function walkable(state: MatchState, x: number, y: number, type?: EntityT
   if (isTree(state, x, y)) {
     if (!type) return false;
     if (isInfantryType(type)) return true;
-    if (isMotorVehicle(type) && isSingleTree(state, x, y)) return true;
+    if (isMotorVehicle(type) && (isSingleTree(state, x, y) || rollsThroughWoods(type))) return true;
     return false;
   }
   return true;

@@ -6,6 +6,11 @@ export interface Vec {
   y: number;
 }
 
+export interface Waypoint extends Vec {
+  /** A point of a bridge lane (`laneOverBridges`): the walk to it stays out of the water. */
+  deck?: true;
+}
+
 export interface TrainJob {
   id: number;
   type: TrainType;
@@ -343,9 +348,11 @@ export interface Entity {
   tileH: number;
   radius: number;
   order: Order | null;
-  waypoints: Vec[];
+  waypoints: Waypoint[];
   /** The goal tile the last path search could not reach, and when. Cleared by the next path found. */
   pathFail?: { tx: number; ty: number; tick: number };
+  /** The spot the current path was asked for, so a steer can tell it already aims there. */
+  pathGoal?: { x: number; y: number; tick: number };
   /** What a charging Walker is running at. Looked over again every few ticks. */
   chargeTargetId?: number;
   cooldown: number;
@@ -533,6 +540,13 @@ export interface Entity {
   selfHpSeen?: number;
   /** Cyborg only: sim tick until which nothing takes his HP. Set when the legs are torn off. */
   shieldUntilTick?: number;
+  /**
+   * Cyborg only: shut down for want of a link (sim/cyborg-link.ts). He belongs to no one,
+   * stands still, answers nothing, and fires at nothing until a Cyborg Commander takes him over.
+   */
+  shutdown?: true;
+  /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
+  takeover?: { by: number; ticks: number };
   /** Cyborg Commander only: force-field points left. Hits come off these before HP. */
   field?: number;
   /** Cyborg Commander only: tick of the last hit on him, field or body. The recharge waits on it. */
@@ -836,6 +850,8 @@ export interface SimPlayer {
   aiPlan?: AiPlan;
   /** Fraction of a scrap point the Smelters have earned but not yet paid. `scrap` stays whole. */
   scrapCarry: number;
+  /** Sim tick this side's Cyborgs lost their link (no powered Cyborg Central, no living Commander). Absent while linked. */
+  cyborgLinkLostTick?: number;
   /**
    * Units this commander keeps training. Each of his producers for that unit
    * holds one job until he turns it off. Absent when none.
@@ -940,6 +956,8 @@ export interface MatchState {
   scrapRev: number;
   /** Bumps whenever a house or map defence changes, so a client is sent the scenery list again. */
   sceneryRev: number;
+  /** Bumps between the phases of a tick that move bodies, so sight keys are hashed once per phase, not per check. */
+  phaseRev: number;
   /** Hash of the scenery list `sceneryRev` was last bumped for, and the tick it was taken. */
   sceneryKey: number;
   sceneryKeyTick: number;

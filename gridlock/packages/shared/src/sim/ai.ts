@@ -23,7 +23,7 @@ import {
   SMELTER_SCRAP_PER_SEC,
   STUKA_BOMBS,
   SUPPLY_CARGO,
-  TECH_REQUIRES,
+  techNeeds,
   TICK_HZ,
   UNIT_CAP,
   anchorsBuildRange,
@@ -51,7 +51,7 @@ import { droneCall, subDepthCall, tickNeutralCrews } from "./ai-crew.js";
 import { isAirborne } from "./air.js";
 import { droneOf } from "./drone.js";
 import { turnedBox } from "../building-rect.js";
-import { buildingSiteError } from "./build.js";
+import { buildingSiteError, buildTechMissing } from "./build.js";
 import { applyCommand } from "./commands.js";
 import { canRepairTarget, canScrapWreck, gateSiteAt } from "./field.js";
 import { allies, footprintGap, hasCore, hqOf, inBuildRadius, isWater, nearestWalkable, scrapAt, tilesBlockedOrScrap, walkable } from "./geo.js";
@@ -219,7 +219,7 @@ export const EASY_ARMY: Readonly<Record<"muster" | "armory" | "airfield" | "dock
 /**
  * Base structures, one after another, each until the side owns `n`. Smelter second so its scrap
  * funds the Barracks and the first towers, and a second Smelter right behind the Barracks to pay
- * for the army. The Machine Shop waits for a tower; the Marine Base, Research, air, and the Radar
+ * for the army. The Machine Shop waits for a tower; the Marine Base, Research, Cyborg Central, air, and the Radar
  * Station wait until the base is fortified. With all of that standing, more Smelters up to EASY_WANT_SMELTERS.
  */
 const BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
@@ -231,6 +231,7 @@ const BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   // Only with water in the yard that reaches the enemy or the middle (wantDock).
   { type: "dock", n: 1 },
   { type: "research", n: 1 },
+  { type: "cyborgcentral", n: 1 },
   { type: "airfield", n: 1 },
   { type: "radar", n: 1 },
 ];
@@ -239,7 +240,7 @@ const CORE_BUILDINGS: readonly BuildingType[] = ["dynamo", "smelter", "muster"];
 /** Troops train only once these stand, so scrap is held for them while they go up. */
 const FACTORIES: readonly BuildingType[] = [...CORE_BUILDINGS, "armory"];
 /** Extras that wait for a fortified base. */
-const AFTER_FORTIFY: readonly BuildingType[] = ["dock", "research", "airfield", "radar"];
+const AFTER_FORTIFY: readonly BuildingType[] = ["dock", "research", "cyborgcentral", "airfield", "radar"];
 
 /** Unarmed units that walk out with a wave beside a fighter. */
 const ESCORTS: ReadonlySet<string> = new Set(["medic", "supply", "droneop"]);
@@ -439,8 +440,7 @@ function neediest(
   let best: { unit: TrainType; want: number; share: number } | null = null;
   for (const row of army) {
     // A locked rank is not needy yet: saving for it would stall the whole factory.
-    const tech = TECH_REQUIRES[row.unit];
-    if (tech && !ownsLive(state, p.playerId, tech)) continue;
+    if (techNeeds(row.unit).some((tech) => !ownsLive(state, p.playerId, tech))) continue;
     const want = wantOf(state, p, row.unit, row.want);
     const share = countType(state, p.playerId, row.unit) / want;
     if (share >= 1 || share >= (best?.share ?? Infinity)) continue;
@@ -820,6 +820,8 @@ function defenceLane(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan):
   // A site with no room is skipped for a while and the next one tried, a few per pass.
   let tries = 3;
   for (const next of nextDefences(state, p, hq, plan)) {
+    // A locked defence waits for its Research Facility or Radar. Do not save scrap for it yet.
+    if (buildTechMissing(state, p.playerId, next.type).length > 0) continue;
     if (p.scrap < catalog(next.type).cost || tries-- <= 0) return;
     if (next.site) {
       // Check the ground now, so the scrap is not sunk into a gun with nowhere to stand.

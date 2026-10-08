@@ -242,7 +242,7 @@ describe("injuries", () => {
       rig: 1.3,
       hauler: 1.9,
       warden: 1.45,
-      apocalypse: 1.1,
+      apocalypse: 0.935,
       ss3: 1.55,
       jagdtiger: 1.0,
       walker: 1.3,

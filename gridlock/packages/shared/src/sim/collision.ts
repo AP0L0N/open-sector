@@ -1,5 +1,6 @@
 import {
   catalog,
+  crushes,
   hasTurret,
   isArmoredType,
   isInfantryType,
@@ -8,6 +9,7 @@ import {
   wadesOf,
   isMotorVehicle,
   REVERSE_TILES,
+  rollsThroughWoods,
   snapTankYaw,
   TICK_DT,
   TILE_SIZE,
@@ -18,9 +20,9 @@ import { crushWireUnder } from "./field.js";
 import { moveSpeedMul, takeDamage } from "./crits.js";
 import { diving } from "./naval.js";
 import { setPath } from "./path.js";
-import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, jetAloft, occupant, sailable, tileCenter, tileIndex, underDeck, walkable, worldToTile } from "./geo.js";
+import { allies, crushTreeAt, fellTreeAt, inBounds, isTree, isWall, isWater, jetAloft, occupant, sailable, tileCenter, tileIndex, underDeck, walkable, worldToTile } from "./geo.js";
 import { crushClutterUnder } from "./clutter.js";
-import { buildSpatial, queryCircle, relocate } from "./spatial.js";
+import { buildSpatial, queryCircle, relocate, spatialGrid } from "./spatial.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** Ground unit that takes part in collision. Aircraft never do, parked or flying, nor a Jump Jet in the air. */
@@ -43,9 +45,16 @@ export function rolling(e: Entity): boolean {
 
 export function canCrush(state: MatchState, mover: Entity, victim: Entity): boolean {
   if (!isActiveUnit(mover) || !isActiveUnit(victim)) return false;
-  if (!isArmoredType(mover.type) || !isInfantryType(victim.type)) return false;
+  if (!isArmoredType(mover.type) || !crushes(mover.type, victim.type)) return false;
   if (allies(state, mover.ownerId, victim.ownerId)) return false;
   return rolling(mover);
+}
+
+/** Hulls run flat under an Apocalypse this step. They leave no wreck behind. */
+const flattened = new WeakSet<Entity>();
+
+export function wasFlattened(e: Entity): boolean {
+  return flattened.has(e);
 }
 
 /** Friendly infantry step out of an armored hull's way. A hull never gives way to them. */
@@ -94,13 +103,18 @@ function tileFree(state: MatchState, e: Entity, x: number, y: number): boolean {
   return true;
 }
 
+/** How far past its own plate the Apocalypse fells trees as it rolls, in sim tiles. */
+const WOODS_FELL_REACH_TILES = 1.5;
+
 export function crushTreesUnder(state: MatchState, e: Entity): void {
   if (!isActiveUnit(e) || !isMotorVehicle(e.type)) return;
   if (!rolling(e)) return;
   crushClutterUnder(state, e);
   crushWireUnder(state, e);
   const ts = state.tileSize;
-  const r = e.radius + ts * 0.45;
+  // The Apocalypse shoulders down woods as it goes: groves too, and the trunks just beside its plate.
+  const woods = rollsThroughWoods(e.type);
+  const r = e.radius + ts * (woods ? WOODS_FELL_REACH_TILES : 0.45);
   const x0 = worldToTile(e.x - r, ts);
   const x1 = worldToTile(e.x + r, ts);
   const y0 = worldToTile(e.y - r, ts);
@@ -114,7 +128,7 @@ export function crushTreesUnder(state: MatchState, e: Entity): void {
       const dx = e.x - cx;
       const dy = e.y - cy;
       if (dx * dx + dy * dy > reach) continue;
-      if (!crushTreeAt(state, x, y)) continue;
+      if (!(woods ? fellTreeAt(state, x, y) : crushTreeAt(state, x, y))) continue;
       state.impacts.push({
         id: state.nextId++,
         ownerId: e.ownerId,
@@ -136,6 +150,9 @@ export function crushTreesUnder(state: MatchState, e: Entity): void {
 const FRIENDLY_MOVER_SQUEEZE = 0.6;
 
 /** The unit `e` would run into standing at (x, y), if any. */
+/** Tiles a body may have walked since the movement grid was built: the fastest hull covers under one a tick. */
+const MOVE_GRID_PAD_TILES = 2;
+
 function blockerAt(
   state: MatchState,
   e: Entity,
@@ -146,7 +163,11 @@ function blockerAt(
 ): Entity | null {
   const r = e.radius;
   const moving = rolling(e);
-  for (const o of state.entities.values()) {
+  // With a phase grid up (movement), only the bodies near the spot; the pad covers a tick of walking since it was built.
+  const grid = spatialGrid();
+  // The shared query buffer is safe here: nothing in the loop below asks the grid again.
+  const pool = grid ? queryCircle(grid, x, y, r + grid.maxRadius + MOVE_GRID_PAD_TILES * state.tileSize) : state.entities.values();
+  for (const o of pool) {
     if (o.id === e.id || o.id === ignoreId || o.hp <= 0 || o.garrisonedIn) continue;
     if (passes?.(o)) continue;
     if (o.kind === "building" || o.air || jetAloft(o) || passesUnder(e, o, state)) continue;
@@ -169,6 +190,26 @@ function blockerAt(
     return o;
   }
   return null;
+}
+
+/**
+ * A move to (x, y) would put a man walking a bridge into the water: he is out of
+ * it now, on the deck or bound for a point of its lane, and not making for water
+ * on purpose. Neither a step round a friend, a shove, nor the deck's stepped edge
+ * takes him in.
+ */
+function dipsIn(state: MatchState, e: Entity, x: number, y: number): boolean {
+  const ts = state.tileSize;
+  if (!isWater(state, worldToTile(x, ts), worldToTile(y, ts))) return false;
+  if (isWater(state, worldToTile(e.x, ts), worldToTile(e.y, ts))) return false;
+  const wp = e.waypoints[0];
+  if (wp && isWater(state, worldToTile(wp.x, ts), worldToTile(wp.y, ts))) return false;
+  return !!wp?.deck || state.bridgeDeck[worldToTile(e.y, ts) * state.width + worldToTile(e.x, ts)] === 1;
+}
+
+/** Wet at (x, y): open water under a world point. */
+function wetAt(state: MatchState, x: number, y: number): boolean {
+  return isWater(state, worldToTile(x, state.tileSize), worldToTile(y, state.tileSize));
 }
 
 function canStand(state: MatchState, e: Entity, x: number, y: number, ignoreId?: number): boolean {
@@ -199,7 +240,7 @@ export function resolveMove(
     for (const sign of [1, -1] as const) {
       const sx = e.x + px * sign * step * mul;
       const sy = e.y + py * sign * step * mul;
-      if (tryPos(sx, sy)) return { x: sx, y: sy, blocked: false };
+      if (!dipsIn(state, e, sx, sy) && tryPos(sx, sy)) return { x: sx, y: sy, blocked: false };
     }
   }
   for (let f = 0.7; f >= 0.15; f -= 0.2) {
@@ -255,6 +296,27 @@ export function moveWithCollision(
   } else {
     wantX = e.x + (dx / dist) * step;
     wantY = e.y + (dy / dist) * step;
+  }
+  // Bound along a bridge, a straight line off the deck's stepped edge would dip
+  // into the water for a step or two: slide along the deck instead. One already
+  // in the water beside it climbs out where a slide lands him dry.
+  if (!tracks && wetAt(state, wantX, wantY)) {
+    const slide = Math.abs(wantX - e.x) >= Math.abs(wantY - e.y)
+      ? [{ x: wantX, y: e.y }, { x: e.x, y: wantY }]
+      : [{ x: e.x, y: wantY }, { x: wantX, y: e.y }];
+    if (dipsIn(state, e, wantX, wantY)) {
+      const dry = slide.find((p) => !wetAt(state, p.x, p.y));
+      wantX = dry?.x ?? e.x;
+      wantY = dry?.y ?? e.y;
+      arrive = false;
+    } else if (wp.deck && wetAt(state, e.x, e.y)) {
+      const dry = slide.find((p) => !wetAt(state, p.x, p.y));
+      if (dry) {
+        wantX = dry.x;
+        wantY = dry.y;
+        arrive = false;
+      }
+    }
   }
   const pos = tracks ? resolveAxisMove(state, e, wantX, wantY) : resolveMove(state, e, wantX, wantY);
   e.x = pos.x;
@@ -671,9 +733,11 @@ export function tickCollision(state: MatchState, dt = TICK_DT): void {
       const dy = a.y - b.y;
       if (dx * dx + dy * dy >= need * need) continue;
       if (!canCrush(state, a, b)) continue;
-      // The whole bar: a soldier dies, a cyborg on his legs is torn down to crawling.
+      // The whole bar: a soldier dies, a hull goes flat, a cyborg on his legs is torn down to crawling.
       takeDamage(b, b.hp, state.tick);
       if (b.hp > 0) continue;
+      const flat = !isInfantryType(b.type);
+      if (flat) flattened.add(b);
       state.impacts.push({
         id: state.nextId++,
         ownerId: a.ownerId,
@@ -682,6 +746,7 @@ export function tickCollision(state: MatchState, dt = TICK_DT): void {
         y: b.y,
         vx: a.x - b.x,
         vy: a.y - b.y,
+        ...(flat ? { crusher: a.id } : {}),
       });
     }
   }
@@ -774,7 +839,7 @@ function tryShift(state: MatchState, e: Entity, dx: number, dy: number): void {
   if (e.wreck) return;
   const nx = e.x + dx;
   const ny = e.y + dy;
-  if (!tileFree(state, e, nx, ny)) return;
+  if (!tileFree(state, e, nx, ny) || dipsIn(state, e, nx, ny)) return;
   e.x = nx;
   e.y = ny;
   e.tileX = worldToTile(e.x, state.tileSize);

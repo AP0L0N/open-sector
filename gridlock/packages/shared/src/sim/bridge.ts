@@ -64,6 +64,7 @@ import {
   worldToTile,
 } from "./geo.js";
 import { tileHeight as heightAt } from "./elevation.js";
+import { forgetBridgeLanes } from "./bridge-lane.js";
 import { repathIfBlocked } from "./orders.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
@@ -125,7 +126,27 @@ export function bridgeBrickProblemFor(state: MatchState, type: BridgeType, span:
  * Lay the deck grid again from the standing bricks. Water under an intact brick
  * is walkable land; under wreckage, or once the brick is gone, it is water again.
  */
+/** Hash of every bridge brick's standing, so the deck is re-laid only when one went up, fell, or was ruined. */
+function bridgeStampKey(state: MatchState): number {
+  let h = 2166136261;
+  for (const e of state.entities.values()) {
+    if (!isBridge(e.type)) continue;
+    h = Math.imul(h ^ e.id, 16777619);
+    h = Math.imul(h ^ (e.hp > 0 ? 1 : 0), 16777619);
+    h = Math.imul(h ^ (e.ruined ? 1 : 0), 16777619);
+    h = Math.imul(h ^ (e.deckLevel ?? 0), 16777619);
+  }
+  h = Math.imul(h ^ state.digRev, 16777619);
+  return h;
+}
+
+const bridgeStamps = new WeakMap<MatchState, number>();
+
 export function restampBridges(state: MatchState): void {
+  const key = bridgeStampKey(state);
+  if (state.bridgeClear && bridgeStamps.get(state) === key) return;
+  bridgeStamps.set(state, key);
+  forgetBridgeLanes(state);
   const deck = state.bridgeDeck;
   const clear = (state.bridgeClear ??= new Uint8Array(deck.length));
   for (let i = 0; i < deck.length; i++) {

@@ -12,6 +12,7 @@ import {
 import { adjacentToBuilding, hqOf, rallyPoint, unitInWater, worldToTile } from "./geo.js";
 import { wantsCapture, pathToCapture } from "./capture.js";
 import { moveWithCollision, pathAroundParked, stepGiveWay, tickMakeWay, tickShuffle } from "./collision.js";
+import { activateSpatial, clearSpatial } from "./spatial.js";
 import { hullTurnMul, moveSpeedMul } from "./crits.js";
 import { openSpotNear, spotTaken, unitClearance } from "./formation.js";
 import { sidestepGoal } from "./lineoffire.js";
@@ -111,6 +112,16 @@ export function turnTurretToward(e: Entity, tx: number, ty: number, degPerSec: n
 }
 
 export function tickMovement(state: MatchState, dt: number): void {
+  // One grid for the phase: every blocker probe asks the bodies near a spot instead of the whole roster.
+  activateSpatial(state);
+  try {
+    tickMovementBodies(state, dt);
+  } finally {
+    clearSpatial();
+  }
+}
+
+function tickMovementBodies(state: MatchState, dt: number): void {
   tickMakeWay(state);
   tickShuffle(state);
   for (const e of state.entities.values()) {
@@ -373,12 +384,14 @@ function steerPatrol(state: MatchState, e: Entity): boolean {
   }
 
   const close = Math.hypot(dest.x - e.x, dest.y - e.y) <= Math.max(state.tileSize * 2, e.radius * 4);
-  if (e.waypoints.length === 0 && close) {
+  // The path was asked for this spot: the pulled or nearest-walkable end it got is the best there is,
+  // so a spot on a tree or a ledge does not cost a new search every tick. Reaching that end is the leg done.
+  const goal = e.pathGoal;
+  const aimed = !!goal && Math.hypot(goal.x - dest.x, goal.y - dest.y) <= state.tileSize;
+  if (e.waypoints.length === 0 && (close || aimed)) {
     commitPatrolArrival(state, e);
     return false;
   }
-  const goal = e.waypoints[e.waypoints.length - 1];
-  const aimed = !!goal && Math.hypot(goal.x - dest.x, goal.y - dest.y) <= state.tileSize;
   if (!aimed) setPath(state, e, dest.x, dest.y);
   return false;
 }

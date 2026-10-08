@@ -40,6 +40,14 @@
     "die": [
       "System... failure...",
       "Still... firing..."
+    ],
+    "shutdown": [
+      "Uplink lost... shutting... down...",
+      "No signal... powering... down..."
+    ],
+    "online": [
+      "Uplink accepted. New command recognized.",
+      "Rebooted. Awaiting your orders."
     ]
   },
   "sfx": {
@@ -60,6 +68,18 @@
       "duration": 3.0,
       "variants": 1,
       "influence": 0.6
+    },
+    "shutdown": {
+      "prompt": "Cyborg soldier shutting down: a descending electric power-down whine, servo motors winding down and stalling, a last relay click and a hiss of hydraulics as heavy metal limbs sag and lock, a fading electronic hum, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 2,
+      "influence": 0.7
+    },
+    "reboot": {
+      "prompt": "Cyborg soldier rebooting under a new command signal: a quick digital chirp sequence, a rising electric power-up whine, servo motors spinning up and limbs locking into place with heavy metallic clunks, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 2,
+      "influence": 0.7
     }
   }
 }

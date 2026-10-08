@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 115;
+export const PROTOCOL_VERSION = 117;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -131,6 +131,10 @@ export interface EntityView {
   shielded?: boolean;
   /** Cyborg Commander's force field: points left and the full charge. Everyone who sees him sees it. */
   field?: { hp: number; max: number };
+  /** Cyborg shut down for want of a link: no one's, still, silent. Everyone who sees him sees it. */
+  shutdown?: true;
+  /** Shut-down Cyborg a Cyborg Commander (`by`) is taking over; `u` is the share done, 0–1. */
+  takeover?: { by: number; u: number };
   /**
    * Cyborg Commander's laser now cutting. A sweep runs from a0 to a1 (world radians);
    * `u` is the share already cut and `dur` the whole sweep in seconds. `lens` is the
@@ -387,6 +391,11 @@ export interface YouState {
   /** A Radar Station stands on your side. False leaves the command bar's radar panel dark. */
   radar: boolean;
   /**
+   * Seconds until your Cyborgs shut down: no powered Cyborg Central and no living Cyborg
+   * Commander. Omitted while they are linked, or when you have none on the field.
+   */
+  cyborgShutdownIn?: number;
+  /**
    * Units you keep training. Each producer of that unit holds one job until a
    * right-click turns it off. Omitted when none.
    */
@@ -481,6 +490,8 @@ export interface ImpactView {
   splash?: boolean;
   /** Shooter. Used to place the muzzle flash when the round never made a snapshot. */
   fromId?: number;
+  /** A hull rolled flat: the Apocalypse that ran it over. It bumps over the hulk with a crunch. */
+  crusher?: number;
   /** Loaded 75mm type. Omitted for small-arms and crush. */
   shell?: ShellType;
   /** Mortar bomb. The burst is a vertical dirt or water column, not a tank cone. */

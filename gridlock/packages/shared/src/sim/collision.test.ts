@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { TICK_DT, catalog } from "../catalog.js";
+import { MAX_UNIT_RADIUS, TICK_DT, UNIT_SPACE_PAD, catalog } from "../catalog.js";
 import { applyCommand } from "./commands.js";
 import { makeEntity, tileCenter, walkable, worldToTile } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { astar } from "./path.js";
+import type { EntityType } from "../catalog.js";
 import type { Entity, MatchState } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
@@ -148,7 +149,8 @@ describe("warden wrecks", () => {
     const ty = worldToTile(tank.y, ts);
     assert.equal(walkable(state, tx, ty, "warden"), false);
     assert.equal(walkable(state, tx + 1, ty, "warden"), false);
-    const need = tank.radius + catalog("warden").radius;
+    // Clearance is for the biggest hull ashore, so any of them can path round the wreck.
+    const need = tank.radius + MAX_UNIT_RADIUS + UNIT_SPACE_PAD;
     const far = Math.ceil(need / ts) + 1;
     assert.equal(walkable(state, tx + far, ty, "warden"), true);
   });
@@ -472,5 +474,68 @@ describe("parked friends make room", () => {
       last = dir;
     }
     assert.ok(flips <= 2, `soldier reversed ${flips} times`);
+  });
+});
+
+describe("Apocalypse runs over lighter hulls", () => {
+  /** An unarmed Apocalypse rolling east at `victim`, parked a little ahead of its nose. */
+  function charge(victimType: EntityType, victimOwner = "B", moverType: EntityType = "apocalypse") {
+    const { state } = twoPlayerMatch();
+    state.heights.fill(0);
+    const ts = state.tileSize;
+    const y = tileCenter(16, ts);
+    const tank = makeEntity(state, moverType, "A", tileCenter(30, ts), y);
+    tank.facing = 0;
+    tank.turretFacing = 0;
+    tank.ammo = {};
+    tank.mgAmmo = 0;
+    const victim = makeEntity(state, victimType, victimOwner, tank.x + tank.radius + 12, y);
+    victim.ammo = {};
+    victim.mgAmmo = 0;
+    victim.rockets = 0;
+    applyCommand(state, "A", { type: "cmd.move", ids: [tank.id], x: tileCenter(60, ts), y });
+    return { state, tank, victim };
+  }
+
+  for (const type of ["ss3", "walker", "supply", "nebelwerfer", "artillery"] as const) {
+    it(`flattens an enemy ${type} and leaves no wreck`, () => {
+      const { state, tank, victim } = charge(type);
+      let bumps = 0;
+      for (let i = 0; i < 120; i++) {
+        step(state, TICK_DT);
+        bumps += state.impacts.filter((im) => im.crusher === tank.id).length;
+      }
+      assert.ok(!state.entities.has(victim.id), `${type} hp=${victim.hp} wreck=${victim.wreck}`);
+      assert.equal(bumps, 1, "one crunch for the client to bump and play");
+      assert.ok(tank.x > victim.x, "the Apocalypse rolled on through");
+    });
+  }
+
+  it("runs a Cyborg off his legs", () => {
+    const { state, victim } = charge("cyborg");
+    ticks(state, 60);
+    assert.ok(!state.entities.has(victim.id) || victim.hp < catalog("cyborg").hp, `cyborg hp=${victim.hp}`);
+  });
+
+  it("cannot run over a Cyborg Commander", () => {
+    const { state, victim } = charge("cyborgcommander");
+    ticks(state, 120);
+    assert.ok(state.entities.has(victim.id) && victim.hp === catalog("cyborgcommander").hp, `commander hp=${victim.hp}`);
+  });
+
+  it("does not flatten a friendly StuG", () => {
+    const { state, victim } = charge("ss3", "A");
+    ticks(state, 120);
+    assert.ok(state.entities.has(victim.id) && !victim.wreck && victim.hp > 0);
+  });
+
+  it("is the only hull that does: a Warden cannot flatten a StuG", () => {
+    const { state, victim } = charge("ss3", "B", "warden");
+    ticks(state, 120);
+    assert.ok(state.entities.has(victim.id) && !victim.wreck && victim.hp > 0);
+  });
+
+  it("takes a footprint 30% and then 15% wider than the old 15", () => {
+    assert.ok(Math.abs(catalog("apocalypse").radius - 15 * 1.3 * 1.15) < 0.05);
   });
 });

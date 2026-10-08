@@ -919,6 +919,7 @@ input[type="range"] { padding: 0; }
 #build-ciws,
 #build-research,
 #build-radar,
+#build-cyborgcentral,
 #build-bunker,
 #build-tower,
 #build-ram,
@@ -1156,6 +1157,11 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/radar-cameo.png");
 }
+#build-cyborgcentral {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/cyborgcentral-cameo.png");
+}
 #build-bunker {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
@@ -1190,6 +1196,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/leitturm-cameo.png");
+}
+#build-spotlight {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/spotlight-cameo.png");
 }
 #build-mgnest {
   background-image:
@@ -1495,6 +1506,7 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="casemate"] { background-image: url("../assets/buildings/casemate-cameo.png"); }
 .config-type[data-type="hochstand"] { background-image: url("../assets/buildings/hochstand-cameo.png"); }
 .config-type[data-type="leitturm"] { background-image: url("../assets/buildings/leitturm-cameo.png"); }
+.config-type[data-type="spotlight"] { background-image: url("../assets/buildings/spotlight-cameo.png"); }
 .config-type[data-type="mgnest"] { background-image: url("../assets/buildings/mgnest-cameo.png"); }
 .config-type[data-type="pak36"] { background-image: url("../assets/buildings/pak36-cameo.png"); }
 .config-type[data-type="pak43"] { background-image: url("../assets/buildings/pak43-cameo.png"); }

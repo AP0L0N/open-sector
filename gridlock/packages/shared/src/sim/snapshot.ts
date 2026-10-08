@@ -23,6 +23,8 @@ import {
   garrisonCapOf,
   isCivilianType,
   NEUTRAL_OWNER,
+  CYBORG_TAKEOVER_SECONDS,
+  secondsToTicks,
   hasMg,
   gatlingHeatOf,
   roofCiwsOf,
@@ -57,9 +59,10 @@ import { medicTendView } from "./heal.js";
 import { supplyHasDriver, supplyRiders } from "./supply.js";
 import { powerOf } from "./power.js";
 import { radarContacts, radarOnline } from "./radar.js";
+import { cyborgShutdownIn } from "./cyborg-link.js";
 import { aswDeckView, sonarContacts } from "./destroyer.js";
 import { scrapCap } from "./smelter.js";
-import { canSeeWorld, encodeVisionRuns, entityOnMask, visionMask } from "./vision.js";
+import { canSeeWorld, encodeVisionRuns, entityOnMask, maskRevOf, visionMask } from "./vision.js";
 import { spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, LaserBeam, MatchState, Order, QueueableCommand, StructureJob } from "./types.js";
 import type {
@@ -402,6 +405,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       wreck: e.wreck || undefined,
       shielded: e.hp > 0 && cyborgShielded(e, state.tick) ? true : undefined,
       field: e.hp > 0 && hasForceField(e.type) ? { hp: Math.round(e.field ?? 0), max: FORCE_FIELD_HP } : undefined,
+      shutdown: e.shutdown,
+      takeover: e.takeover ? { by: e.takeover.by, u: Math.min(1, e.takeover.ticks / secondsToTicks(CYBORG_TAKEOVER_SECONDS)) } : undefined,
       laser: e.laser ? laserView(e.laser, state.tick) : undefined,
       crits: e.crits.length > 0 ? [...e.crits] : undefined,
       stance: isInfantryType(e.type) ? e.stance : undefined,
@@ -564,6 +569,12 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
   const scrap = opts.scrap === false ? undefined : scrapCells(state);
   const hq = you ? state.entities.get(you.hqId) : undefined;
   const radar = you ? radarOnline(state, youPlayerId) : false;
+  // The countdown shows only while you still have a Cyborg on the field to lose.
+  const linkIn = you ? cyborgShutdownIn(state, youPlayerId) : null;
+  const cyborgShutdown =
+    linkIn != null && linkIn > 0 && [...state.entities.values()].some((e) => e.ownerId === youPlayerId && e.type === "cyborg" && e.hp > 0 && !e.wreck)
+      ? Math.round(linkIn * 10) / 10
+      : undefined;
   return {
     tick: state.tick,
     gameSpeed: clampGameSpeed(state.gameSpeed),
@@ -583,6 +594,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       alive: you?.alive ?? false,
       hqId: hq && hq.hp > 0 ? hq.id : (you?.hqId ?? null),
       radar,
+      ...(cyborgShutdown != null ? { cyborgShutdownIn: cyborgShutdown } : {}),
       ...(you?.continuous && you.continuous.length > 0 ? { continuous: [...you.continuous] } : {}),
     },
     players: [...state.players.values()].map((p) => ({
@@ -696,15 +708,15 @@ function laserView(beam: LaserBeam, tick: number): NonNullable<EntityView["laser
   };
 }
 
-const runsByMask = new WeakMap<Uint8Array, number[]>();
+const runsByMask = new WeakMap<Uint8Array, { rev: number; runs: number[] }>();
 
-/** Masks are reused until the fog changes, so each one is encoded once. */
+/** A mask array is repainted in place between paints, so each paint is encoded once. */
 function visionRuns(vis: Uint8Array): number[] {
-  let runs = runsByMask.get(vis);
-  if (!runs) {
-    runs = encodeVisionRuns(vis);
-    runsByMask.set(vis, runs);
-  }
+  const rev = maskRevOf(vis);
+  const hit = runsByMask.get(vis);
+  if (hit && hit.rev === rev) return hit.runs;
+  const runs = encodeVisionRuns(vis);
+  runsByMask.set(vis, { rev, runs });
   return runs;
 }
 

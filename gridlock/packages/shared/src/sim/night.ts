@@ -10,6 +10,7 @@ import {
   isArmoredType,
   isCyborg,
   isDroneType,
+  lampCrewOf,
   type Crit,
   DUSK_SECONDS,
   NEUTRAL_OWNER,
@@ -125,9 +126,9 @@ export function spotlightsOn(tick: number): boolean {
   return daylightAt(tick) < SPOTLIGHT_ON_DAYLIGHT;
 }
 
-/** The Watch Tower's cab lamp, the Fire-Control Tower's roof lamp, and the Battle Ship's searchlight on the bridge. */
+/** The Watch Tower's cab lamp, the Fire-Control Tower's roof lamp, the Spotlight post's pole lamp, and the Battle Ship's searchlight on the bridge. */
 export function hasSpotlight(type: EntityType): boolean {
-  return type === "tower" || type === "leitturm" || type === "battleship";
+  return type === "tower" || type === "leitturm" || type === "spotlight" || type === "battleship";
 }
 
 /**
@@ -193,6 +194,7 @@ export function lampHeading(a: number): number {
 /**
  * A tower someone holds carries a working lamp. A neutral one stands dark.
  * A ship is always crewed: a map's neutral Battle Ship burns its searchlight too.
+ * The Spotlight post's lamp needs its man: with nobody living at it, it stands dark.
  */
 export function spotlightManned(e: {
   type: EntityType;
@@ -202,9 +204,20 @@ export function spotlightManned(e: {
   ruined?: boolean;
   wreck?: boolean;
   crits?: readonly Crit[];
+  shutdown?: true;
+  /** The sim's occupant ids, or a snapshot's head count. Read for a post that needs its man. */
+  garrison?: readonly unknown[] | { count: number };
 }): boolean {
   if (hasCrit({ crits: e.crits ?? [] }, "lamp")) return false;
+  if (lampCrewOf(e.type) && crewAt(e.garrison) <= 0) return false;
+  // A shut-down Cyborg's headlight goes out with the rest of him.
+  if (e.shutdown) return false;
   return hasSpotlight(e.type) && (e.ownerId !== NEUTRAL_OWNER || e.kind === "unit") && e.hp > 0 && !e.ruined && !e.wreck;
+}
+
+function crewAt(g: readonly unknown[] | { count: number } | undefined): number {
+  if (!g) return 0;
+  return Array.isArray(g) ? g.length : (g as { count: number }).count;
 }
 
 /** A held lamp that burns: a tower's goes dark while its owner is short on power. */
