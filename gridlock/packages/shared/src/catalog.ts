@@ -219,6 +219,11 @@ export const HEIGHT_BASE = t(2);
 export const HEIGHT_MAX = t(8);
 /** Adjacent walkable tiles may differ by at most this many levels. */
 export const HEIGHT_STEP_MAX = 1;
+/**
+ * Slopes change a unit's pace and a path's cost. Off: every tile walks like
+ * level ground, and the constants below are kept for when it comes back.
+ */
+export const SLOPE_MOVEMENT = false;
 /** Move-speed multiplier per adjacent-tile climb. TILE_SUBDIV steps ≈ one old terrace. */
 export const HEIGHT_UPHILL_SPEED = 0.55 ** (1 / TILE_SUBDIV);
 /** Every unit climbs this much faster than HEIGHT_UPHILL_SPEED alone, before HEIGHT_UPHILL_PACE. */
