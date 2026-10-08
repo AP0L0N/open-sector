@@ -276,6 +276,7 @@ export function restoreMatch(
     sceneryRev: 0,
     sceneryKey: 0,
     sceneryKeyTick: -1,
+    phaseRev: 0,
     paused: false,
   };
   for (const e of entities.values()) occupyEntity(state, e);

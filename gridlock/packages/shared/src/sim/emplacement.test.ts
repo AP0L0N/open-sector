@@ -17,6 +17,7 @@ import {
   TICK_DT,
   TILE_SUBDIV,
   TOWER_GARRISON_CAP,
+  fieldSpan,
   TOWER_SIGHT_BONUS,
   catalog,
   garrisonCapOf,
@@ -31,7 +32,8 @@ import { applyCommand } from "./commands.js";
 import { garrisonCanShoot, inMountArc, tickProjectiles } from "./combat.js";
 import { needsSupply } from "./supply.js";
 import { reachesAircraft } from "./air.js";
-import { destroyEntity, makeEntity } from "./geo.js";
+import { destroyEntity, makeEntity, worldToTile } from "./geo.js";
+import { SANDBAG_CLEAR_RISE, restampForts } from "./field.js";
 import { enterGarrison, exitGarrison, livingGarrison } from "./garrison.js";
 import { createMatch, step } from "./match.js";
 import type { Entity, MatchState } from "./types.js";
@@ -114,6 +116,84 @@ describe("new bunkers and towers", () => {
     for (const type of ["tobruk", "casemate", "hochstand", "leitturm", ...CREWED_GUNS]) {
       assert.ok((MAP_DEFENCE_TYPES as readonly string[]).includes(type), type);
     }
+  });
+});
+
+/**
+ * A line of A's sandbags across the gun's front, 6 tiles out, on a band of ground at `bagH`.
+ * Ground nearer the gun stands at `gunH`, ground beyond at 0.
+ */
+function bagsInFront(state: MatchState, g: Entity, gunH: number, bagH: number): Entity[] {
+  const ts = state.tileSize;
+  const bx = g.x + 6 * ts;
+  const lo = worldToTile(bx - 2 * ts, ts);
+  const hi = worldToTile(bx + 2 * ts, ts);
+  for (let y = 70; y <= 190; y++) {
+    for (let x = 70; x <= 190; x++) state.heights[y * state.width + x] = x < lo ? gunH : x <= hi ? bagH : 0;
+  }
+  const span = fieldSpan("sandbags")!;
+  const bags: Entity[] = [];
+  for (let k = -4; k <= 4; k++) {
+    const b = makeEntity(state, "sandbags", "A", bx, g.y + k * span.length, { facing: 0 });
+    b.facing = 0;
+    bags.push(b);
+  }
+  restampForts(state);
+  return bags;
+}
+
+describe("crewed guns over sandbags", () => {
+  for (const type of ["mgnest", "pak36", "pak43"] as BuildingType[]) {
+    const prey = type === "mgnest" ? "rifleman" : "ss3";
+    it(`${type} fires over its own sandbags on level ground`, () => {
+      const state = match();
+      const g = gun(state, type);
+      const bags = bagsInFront(state, g, 0, 0);
+      const man = foe(state, prey, g, 14, 0);
+      assert.ok(until(state, 300, () => man.hp < catalog(prey).hp), `${prey} kept ${man.hp}`);
+      assert.ok(bags.every((b) => !b.ruined && b.hp === b.hpMax), "the bags stand");
+    });
+
+    it(`${type} fires down over sandbags below it`, () => {
+      const state = match();
+      const g = gun(state, type);
+      const bags = bagsInFront(state, g, TILE_SUBDIV + 2, 0);
+      const man = foe(state, prey, g, 14, 0);
+      assert.ok(until(state, 300, () => man.hp < catalog(prey).hp), `${prey} kept ${man.hp}`);
+      assert.ok(bags.every((b) => !b.ruined), "the bags stand");
+    });
+
+    it(`${type} is stopped by sandbags a terrace above it`, () => {
+      const state = match();
+      const g = gun(state, type);
+      const bags = bagsInFront(state, g, 0, SANDBAG_CLEAR_RISE);
+      foe(state, prey, g, 14, 0);
+      // The gun's own rounds only: the crewman's rifle is not the gun.
+      const seen: { x: number }[] = [];
+      until(state, 300, () => {
+        seen.push(...state.impacts.filter((i) => i.fromId === g.id));
+        return false;
+      });
+      const first = seen[0];
+      if (type === "mgnest") {
+        assert.equal(first, undefined, "the nest held its fire");
+        assert.equal(g.clip, MGNEST_BELT, "the nest holds its belt");
+        assert.ok(bags.every((b) => !b.ruined));
+      } else {
+        assert.ok(first, "the gun fired");
+        assert.ok(Math.abs(first.x - bags[0]!.x) <= state.tileSize, `first shell landed at ${first.x}, not the bags`);
+        assert.ok(bags.some((b) => b.ruined), "the shell knocked the bags down");
+      }
+    });
+  }
+
+  it("a sandbag a little above the gun is still level enough to fire over", () => {
+    const state = match();
+    const g = gun(state, "pak43");
+    const bags = bagsInFront(state, g, 0, SANDBAG_CLEAR_RISE - 1);
+    const tank = foe(state, "ss3", g, 14, 0);
+    assert.ok(until(state, 300, () => tank.hp < catalog("ss3").hp));
+    assert.ok(bags.every((b) => !b.ruined));
   });
 });
 
