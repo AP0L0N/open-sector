@@ -3993,7 +3993,9 @@ export class MapView {
 
   /**
    * Complete fog of war: ground you have never seen is black, with a soft edge
-   * where exploring has reached. Laid over the sight veil, under everything standing.
+   * where exploring has reached. The topmost world layer: laid after every unit,
+   * building, tree, decal, effect and the night, so nothing on unknown ground shows
+   * through. Only cursors, placement ghosts and command overlays draw above it.
    */
   private drawShroud(): void {
     const field = this.shroudField;
@@ -4037,7 +4039,6 @@ export class MapView {
     if (bake) {
       blitTerrain(ctx, bake, this.camX, this.camY, w, h);
       this.drawGroundFog();
-      this.drawShroud();
     }
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "low";
@@ -4166,6 +4167,8 @@ export class MapView {
     this.drawSmokeClouds();
     this.drawImpacts();
     this.drawBarrageTracers();
+    // Complete fog of war goes over everything in the world; only the HUD draws above it.
+    if (bake) this.drawShroud();
 
     const toPlace = this.placeMode ? this.readyBuilding() : null;
     if (toPlace && this.mouseX >= 0) {
