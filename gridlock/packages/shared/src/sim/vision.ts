@@ -1087,6 +1087,46 @@ export const HULL_STALE_TICKS = 5;
 
 const sightMemos = new WeakMap<MatchState, Map<number, SightMemo>>();
 
+/**
+ * Sweeps by place: the tile an eye stood on and how it saw, whoever it was.
+ * A patrol walking its loop again, or a file of soldiers following a leader,
+ * finds the ground already swept and takes it under the same checks a
+ * memo gets. Entries older than PLACE_MEMO_TICKS are dropped now and then.
+ */
+const placeMemos = new WeakMap<MatchState, Map<number, SightMemo>>();
+const PLACE_MEMO_TICKS = 600;
+const PLACE_MEMO_PRUNE_EVERY = 200;
+
+function placeMemoOf(state: MatchState): Map<number, SightMemo> {
+  let memo = placeMemos.get(state);
+  if (!memo) {
+    memo = new Map();
+    placeMemos.set(state, memo);
+  }
+  return memo;
+}
+
+/** How an eye sees, apart from where it stands: reach, height, uphill bonus, lamp, footprint. */
+function sightReachKey(p: SightParams): number {
+  let h = mix(2166136261, p.radius);
+  h = mix(h, Math.round(p.eye * 64));
+  h = mix(h, Math.round(p.uphill * 64));
+  h = mix(h, p.fw);
+  h = mix(h, p.fh);
+  h = mix(h, p.sr);
+  h = mix(h, Math.round(p.sdx * 4096));
+  h = mix(h, Math.round(p.sdy * 4096));
+  h = mix(h, Math.round(p.scos * 4096));
+  h = mix(h, Math.round(p.seye * 64));
+  const flanks = p.flanks;
+  if (flanks) for (let i = 0; i < flanks.length; i++) h = mix(mix(h, Math.round(flanks[i]!.dx * 4096)), Math.round(flanks[i]!.dy * 4096));
+  return h;
+}
+
+function placeKey(p: SightParams, width: number): number {
+  return mix(mix(sightReachKey(p), p.oy * width + p.ox), p.fw > 0 ? p.fy * width + p.fx : -1);
+}
+
 function sightMemoOf(state: MatchState): Map<number, SightMemo> {
   let memo = sightMemos.get(state);
   if (!memo) {
@@ -1178,7 +1218,7 @@ function coverKeyNear(env: SightEnv, boxes: TileBox[], grid: ArrayLike<number>, 
 }
 
 /** Why memos were rebuilt, for benchmarks. */
-export const memoStats = { hit: 0, fresh: 0, smoke: 0, params: 0, hulls: 0, cover: 0, drift: 0, deferred: 0, shared: 0, coverRebuilt: 0, coverRefreshed: 0, paints: 0 };
+export const memoStats = { hit: 0, fresh: 0, smoke: 0, params: 0, hulls: 0, cover: 0, drift: 0, deferred: 0, shared: 0, placed: 0, coverRebuilt: 0, coverRefreshed: 0, paints: 0 };
 
 /** Same eye, same reach: only its tile may differ. */
 function sameSightParamsButPlace(a: SightParams, b: SightParams): boolean {
@@ -1631,6 +1671,10 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
   }
   const mask = pair[0] === prev ? pair[1]! : pair[0]!;
   memoStats.paints++;
+  const places = placeMemoOf(state);
+  if (tick % PLACE_MEMO_PRUNE_EVERY === 0) {
+    for (const [k, m] of places) if (tick - m.sweptTick > PLACE_MEMO_TICKS) places.delete(k);
+  }
   if (sweepScratchMask.length !== n) sweepScratchMask = new Uint8Array(n);
   const squad: SquadSource[] = [];
   armLosFastPath(state.heights, cover.losFlags!, width, height, coverRevOf(state));
@@ -1652,6 +1696,23 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
       }
       if (tiles) memoStats.shared++;
       else {
+        // Someone swept from this very tile, seeing the same way, and nothing in reach changed since.
+        const pm = places.get(placeKey(s.p, width));
+        if (
+          pm &&
+          pm.tiles &&
+          pm.p.ox === s.p.ox &&
+          pm.p.oy === s.p.oy &&
+          sameSightReach(pm.p, s.p) &&
+          pm.smoke === s.smoke &&
+          (pm.hulls === s.hulls || tick - pm.sweptTick < HULL_STALE_TICKS) &&
+          coverStillGood(pm, s.p, sightBoxRadius(s.p, true), history, width)
+        ) {
+          tiles = pm.tiles;
+          memoStats.placed++;
+        }
+      }
+      if (!tiles) {
         sweepKeep.n = 0;
         paintSightParams(sweepScratchMask, width, height, s.p, state.heights, cover, sweepKeep);
         tiles = sweepKeep.tiles.slice(0, sweepKeep.n);
@@ -1661,7 +1722,9 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
       // The ground actually lit is usually well inside the reach box: keep that, so later repaints stay small.
       const litBox = tileListBounds(tiles, width) ?? s.box;
       soil(litBox);
-      memo.set(s.id, { p: s.p, box: litBox, hulls: s.hulls, smoke: s.smoke, sweptTick: tick, coverRev: history.rev, tiles });
+      const entry: SightMemo = { p: s.p, box: litBox, hulls: s.hulls, smoke: s.smoke, sweptTick: tick, coverRev: history.rev, tiles };
+      memo.set(s.id, entry);
+      places.set(placeKey(s.p, width), entry);
     }
     if (prev) {
       mask.set(prev);
