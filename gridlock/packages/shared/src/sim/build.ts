@@ -7,6 +7,7 @@ import {
   isDefenceStructure,
   isFieldStructure,
   isYardField,
+  onLineLane,
   onWaterBuilding,
   secondsToTicks,
   SELL_REFUND,
@@ -52,9 +53,9 @@ import type { Entity, MatchState, SimPlayer, StructureJob } from "./types.js";
 
 type BuildSlot = "structure" | "defence" | "line";
 
-/** Sandbag and wall lines take so long that they get a lane of their own. */
+/** Sandbag and wall lines take so long that they get a lane of their own; the Spotlight post shares it. */
 function slotOf(type: BuildingType | YardFieldType): BuildSlot {
-  if (isYardField(type)) return "line";
+  if (onLineLane(type)) return "line";
   return isDefenceStructure(type) ? "defence" : "structure";
 }
 

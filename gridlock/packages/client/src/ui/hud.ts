@@ -67,6 +67,7 @@ import {
   launcherOnlyOf,
   isStance,
   isYardField,
+  onLineLane,
   producerType,
   productionSpeed,
   shellsFor,
@@ -375,7 +376,7 @@ function buildTechNeed(m: MatchSnapshot, type: BuildingType | YardFieldType): Bu
 
 function laneQueue(m: MatchSnapshot | null | undefined, type: BuildingType | YardFieldType) {
   if (!m) return null;
-  if (isYardField(type)) return m.you.lineQueue;
+  if (onLineLane(type)) return m.you.lineQueue;
   return isDefenceStructure(type) ? m.you.defenceQueue : m.you.structureQueue;
 }
 

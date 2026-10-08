@@ -26,6 +26,12 @@ describe("radar reach ring", () => {
     assert.equal(r.air, r.ground);
   });
 
+  it("shows one reach for the Flak, its full reach", () => {
+    const r = radarReachTiles("flak", HEIGHT_BASE, false);
+    assert.equal(r.ground, catalog("flak").rangeTiles);
+    assert.equal(r.air, r.ground);
+  });
+
   it("adds the height bonus from the highest tile under the pad, as the sim does", () => {
     const width = 4;
     const heights = [0, 0, 0, 0, 0, 1, 3, 0, 0, 2, 1, 0, 0, 0, 0, 0];

@@ -1,5 +1,5 @@
 /**
- * The reach a selected CIWS or RAM ring shows. Client-only; it mirrors the
+ * The reach a selected CIWS, RAM, or Flak ring shows. Client-only; it mirrors the
  * sim's weaponRangeWorld for a pad: catalog reach plus the height bonus on the
  * highest tile under the pad, Max range on top, and for the CIWS its longer
  * reach on a plane in the air. Day or night, the reach is the same.

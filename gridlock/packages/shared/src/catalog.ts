@@ -5474,6 +5474,11 @@ export function isYardField(type: string): type is YardFieldType {
   return (YARD_FIELD_TYPES as readonly string[]).includes(type);
 }
 
+/** Builds in the yard's line lane, beside sandbags and walls, apart from the other defences: the lines and the Spotlight post. */
+export function onLineLane(type: string): boolean {
+  return isYardField(type) || type === "spotlight";
+}
+
 /**
  * Guns, garrisons, and the sandbag and wall lines: the Defences tab.
  * Guns and garrisons build on their own lane, beside a base structure;

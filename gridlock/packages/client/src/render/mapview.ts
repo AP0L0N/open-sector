@@ -94,6 +94,7 @@ import {
   isRotatableBuilding,
   isDefenceStructure,
   isYardField,
+  onLineLane,
   previewConstruct,
   previewField,
   previewPlace,
@@ -2322,7 +2323,7 @@ export class MapView {
 
   private typeReady(type: BuildingType | YardFieldType): boolean {
     if (!isDefenceStructure(type) && this.curr.you.placingType === type) return true;
-    const q = isYardField(type)
+    const q = onLineLane(type)
       ? this.curr.you.lineQueue
       : isDefenceStructure(type)
         ? this.curr.you.defenceQueue
@@ -4653,14 +4654,14 @@ export class MapView {
   }
 
   /**
-   * Faint blue dashed ring of a selected CIWS or RAM's reach, the reach the sim
+   * Faint blue dashed ring of a selected CIWS, RAM, or Flak's reach, the reach the sim
    * fires to (radar-reach.ts): Max range when it is set. The CIWS reaches
    * farther for a plane, so it shows that ring and a fainter one inside for the ground.
    */
   private drawRadarReach(): void {
     const you = this.curr.youPlayerId;
     const mounts = this.curr.entities.filter(
-      (e) => this.selected.has(e.id) && e.ownerId === you && e.hp > 0 && !e.wreck && radarLaidOf(e.type),
+      (e) => this.selected.has(e.id) && e.ownerId === you && e.hp > 0 && !e.wreck && (radarLaidOf(e.type) || e.type === "flak"),
     );
     if (mounts.length === 0) return;
     const ts = this.ts();

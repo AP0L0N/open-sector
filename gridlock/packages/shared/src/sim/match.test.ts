@@ -220,6 +220,33 @@ describe("construction", () => {
     assert.equal(state.players.get("A")!.scrap, before);
   });
 
+  it("builds the Spotlight post in the sandbag and wall lane, beside a defence", () => {
+    const { state } = twoPlayerMatch();
+    const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig")!;
+    applyCommand(state, "A", { type: "cmd.deploy", id: rig.id });
+    ticks(state, 35);
+    const tower = applyCommand(state, "A", { type: "cmd.build", building: "tower" });
+    assert.equal(tower.ok, true, !tower.ok ? tower.message : "");
+    const lamp = applyCommand(state, "A", { type: "cmd.build", building: "spotlight" });
+    assert.equal(lamp.ok, true, !lamp.ok ? lamp.message : "");
+    const p = state.players.get("A")!;
+    assert.equal(p.defence?.type, "tower");
+    assert.equal(p.line?.type, "spotlight");
+    const you = snapshotFor(state, "A").you;
+    assert.equal(you.lineQueue?.type, "spotlight");
+    assert.equal(you.defenceQueue?.type, "tower");
+    const core = [...state.entities.values()].find((e) => e.type === "core" && e.ownerId === "A")!;
+    const bags = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [],
+      structure: "sandbags",
+      x: (core.tileX + core.tileW + 2) * state.tileSize,
+      y: core.tileY * state.tileSize,
+      facing: 0,
+    });
+    assert.equal(bags.ok, false, "the line lane is busy with the lamp");
+  });
+
   it("builds a defence while a base structure is underway", () => {
     const { state } = twoPlayerMatch();
     const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig")!;
