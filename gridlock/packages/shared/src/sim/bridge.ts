@@ -64,6 +64,7 @@ import {
   worldToTile,
 } from "./geo.js";
 import { tileHeight as heightAt } from "./elevation.js";
+import { forgetBridgeLanes } from "./bridge-lane.js";
 import { repathIfBlocked } from "./orders.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
@@ -126,6 +127,7 @@ export function bridgeBrickProblemFor(state: MatchState, type: BridgeType, span:
  * is walkable land; under wreckage, or once the brick is gone, it is water again.
  */
 export function restampBridges(state: MatchState): void {
+  forgetBridgeLanes(state);
   const deck = state.bridgeDeck;
   const clear = (state.bridgeClear ??= new Uint8Array(deck.length));
   for (let i = 0; i < deck.length; i++) {

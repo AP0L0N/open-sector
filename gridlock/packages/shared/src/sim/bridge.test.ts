@@ -10,6 +10,7 @@ import { createMatch, step } from "./match.js";
 import { bridgeBrickProblemFor, bridgeRoundDamage, guardBridges, raiseBridge, settleBridges } from "./bridge.js";
 import { foldScenery, snapshotFor } from "./snapshot.js";
 import { previewBridge } from "./preview.js";
+import { laneLift } from "./bridge-lane.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
 function twoPlayerMatch(mapId = "yard-64"): { state: MatchState; a: string; b: string } {
@@ -491,6 +492,64 @@ describe("bridge deck level", () => {
       crossed = boat.y > w(ROW + 6, state);
     }
     assert.ok(crossed, `boat stuck at ${boat.x / state.tileSize}, ${boat.y / state.tileSize}`);
+  });
+
+  it("a man crossing on a slant keeps one lane up the deck, a little toward its far edge, at full pace", () => {
+    const { state, a } = twoPlayerMatch();
+    river(state);
+    standBridge(state);
+    const man = makeEntity(state, "rifleman", a, w(RIVER_X - 6, state), w(ROW + 5, state));
+    const goal = { x: w(RIVER_X + RIVER_W + 6, state), y: w(ROW - 5, state) };
+    assert.equal(applyCommand(state, a, { type: "cmd.move", ids: [man.id], ...goal }).ok, true);
+    const lane = w(ROW, state) + laneLift({ x: 0, y: 0, facing: 0, length: 1 }, bridgeWidth("bridge"), state.tileSize).y;
+    assert.ok(lane < w(ROW, state), "the lane lies toward the edge higher on screen");
+    const pace = catalog("rifleman").moveTilesPerSec * state.tileSize * TICK_DT;
+    let onDeck = 0;
+    for (let i = 0; i < 600; i++) {
+      const ox = man.x;
+      const oy = man.y;
+      step(state, TICK_DT);
+      const tx = Math.floor(man.x / state.tileSize);
+      if (tx < RIVER_X || tx >= RIVER_X + RIVER_W) continue;
+      onDeck++;
+      assert.equal(unitInWater(state, man), false, "walks, never swims");
+      assert.ok(Math.abs(man.y - lane) < 0.5, `off the lane at y ${man.y.toFixed(1)}, lane ${lane.toFixed(1)}`);
+      assert.ok(Math.abs(Math.hypot(man.x - ox, man.y - oy) - pace) < 0.05, "the deck neither slows nor hurries him");
+    }
+    assert.ok(onDeck > 10, "he crossed by the bridge");
+    assert.ok(Math.hypot(man.x - goal.x, man.y - goal.y) < 1, "and got where he was sent");
+  });
+
+  it("men meeting on a narrow deck jostle on it, never off it into the river", () => {
+    const { state, a } = twoPlayerMatch();
+    river(state);
+    standBridge(state);
+    const west = { x: w(RIVER_X - 6, state), y: w(ROW, state) };
+    const east = { x: w(RIVER_X + RIVER_W + 6, state), y: w(ROW, state) };
+    const men: Entity[] = [];
+    for (let i = 0; i < 3; i++) {
+      const goingEast = i % 2 === 0;
+      const from = goingEast ? west : east;
+      const to = goingEast ? east : west;
+      const man = makeEntity(state, "rifleman", a, from.x, from.y + (i - 1) * 6);
+      assert.equal(applyCommand(state, a, { type: "cmd.patrol", ids: [man.id], points: [from, to] }).ok, true);
+      men.push(man);
+    }
+    let swum = 0;
+    for (let i = 0; i < 1500; i++) {
+      step(state, TICK_DT);
+      for (const m of men) if (unitInWater(state, m)) swum++;
+    }
+    assert.equal(swum, 0, `${swum} man-ticks in the river`);
+  });
+
+  it("a deck running up the screen keeps its lane in the middle", () => {
+    const up = laneLift({ x: 0, y: 0, facing: Math.PI / 4, length: 24 }, bridgeWidth("bigbridge"), 8);
+    assert.ok(Math.hypot(up.x, up.y) < 1e-9);
+    const across = laneLift({ x: 0, y: 0, facing: -Math.PI / 4, length: 24 }, bridgeWidth("bigbridge"), 8);
+    assert.ok(across.x + across.y < -1, "a deck across the screen lifts its lane up it");
+    const narrow = laneLift({ x: 0, y: 0, facing: -Math.PI / 4, length: 24 }, bridgeWidth("bridge"), 8);
+    assert.ok(Math.hypot(narrow.x, narrow.y) <= bridgeWidth("bridge") / 2 - 4 * Math.SQRT2, "the lane never leaves the decked tiles");
   });
 
   it("a deck low over the water closes it to every boat", () => {

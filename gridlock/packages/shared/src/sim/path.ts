@@ -1,6 +1,7 @@
 import { isNavalType, PATH_RETRY_TICKS, WATER_PATH_COST, type EntityType } from "../catalog.js";
 import { inBounds, isWater, nearestWalkable, tileCenter, walkable, worldToTile } from "./geo.js";
 import { climbableDelta, minSlopeCostMul, slopeCostMul, tileHeight } from "./elevation.js";
+import { laneOverBridges } from "./bridge-lane.js";
 import type { Entity, MatchState, Vec } from "./types.js";
 
 const ORTHO = 10;
@@ -82,7 +83,7 @@ export function pathToWorld(
     last.x = toX;
     last.y = toY;
   }
-  return pullString(state, fromX, fromY, pts, type, sx, sy, tiles);
+  return laneOverBridges(state, fromX, fromY, pullString(state, fromX, fromY, pts, type, sx, sy, tiles), type);
 }
 
 export function setPath(state: MatchState, e: Entity, toX: number, toY: number): boolean {

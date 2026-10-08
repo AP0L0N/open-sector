@@ -171,6 +171,26 @@ function blockerAt(
   return null;
 }
 
+/**
+ * A move to (x, y) would put a man walking a bridge into the water: he is out of
+ * it now, on the deck or bound for a point of its lane, and not making for water
+ * on purpose. Neither a step round a friend, a shove, nor the deck's stepped edge
+ * takes him in.
+ */
+function dipsIn(state: MatchState, e: Entity, x: number, y: number): boolean {
+  const ts = state.tileSize;
+  if (!isWater(state, worldToTile(x, ts), worldToTile(y, ts))) return false;
+  if (isWater(state, worldToTile(e.x, ts), worldToTile(e.y, ts))) return false;
+  const wp = e.waypoints[0];
+  if (wp && isWater(state, worldToTile(wp.x, ts), worldToTile(wp.y, ts))) return false;
+  return !!wp?.deck || state.bridgeDeck[worldToTile(e.y, ts) * state.width + worldToTile(e.x, ts)] === 1;
+}
+
+/** Wet at (x, y): open water under a world point. */
+function wetAt(state: MatchState, x: number, y: number): boolean {
+  return isWater(state, worldToTile(x, state.tileSize), worldToTile(y, state.tileSize));
+}
+
 function canStand(state: MatchState, e: Entity, x: number, y: number, ignoreId?: number): boolean {
   return tileFree(state, e, x, y) && !blockerAt(state, e, x, y, ignoreId);
 }
@@ -199,7 +219,7 @@ export function resolveMove(
     for (const sign of [1, -1] as const) {
       const sx = e.x + px * sign * step * mul;
       const sy = e.y + py * sign * step * mul;
-      if (tryPos(sx, sy)) return { x: sx, y: sy, blocked: false };
+      if (!dipsIn(state, e, sx, sy) && tryPos(sx, sy)) return { x: sx, y: sy, blocked: false };
     }
   }
   for (let f = 0.7; f >= 0.15; f -= 0.2) {
@@ -255,6 +275,27 @@ export function moveWithCollision(
   } else {
     wantX = e.x + (dx / dist) * step;
     wantY = e.y + (dy / dist) * step;
+  }
+  // Bound along a bridge, a straight line off the deck's stepped edge would dip
+  // into the water for a step or two: slide along the deck instead. One already
+  // in the water beside it climbs out where a slide lands him dry.
+  if (!tracks && wetAt(state, wantX, wantY)) {
+    const slide = Math.abs(wantX - e.x) >= Math.abs(wantY - e.y)
+      ? [{ x: wantX, y: e.y }, { x: e.x, y: wantY }]
+      : [{ x: e.x, y: wantY }, { x: wantX, y: e.y }];
+    if (dipsIn(state, e, wantX, wantY)) {
+      const dry = slide.find((p) => !wetAt(state, p.x, p.y));
+      wantX = dry?.x ?? e.x;
+      wantY = dry?.y ?? e.y;
+      arrive = false;
+    } else if (wp.deck && wetAt(state, e.x, e.y)) {
+      const dry = slide.find((p) => !wetAt(state, p.x, p.y));
+      if (dry) {
+        wantX = dry.x;
+        wantY = dry.y;
+        arrive = false;
+      }
+    }
   }
   const pos = tracks ? resolveAxisMove(state, e, wantX, wantY) : resolveMove(state, e, wantX, wantY);
   e.x = pos.x;
@@ -774,7 +815,7 @@ function tryShift(state: MatchState, e: Entity, dx: number, dy: number): void {
   if (e.wreck) return;
   const nx = e.x + dx;
   const ny = e.y + dy;
-  if (!tileFree(state, e, nx, ny)) return;
+  if (!tileFree(state, e, nx, ny) || dipsIn(state, e, nx, ny)) return;
   e.x = nx;
   e.y = ny;
   e.tileX = worldToTile(e.x, state.tileSize);
