@@ -319,6 +319,7 @@ import {
   tankGunRecoils,
   type GunRecoil,
 } from "./gun-recoil.js";
+import { bumpTilt, crushBump } from "./crush-bump.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
 import { emplacementShotLook, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
 import {
@@ -584,6 +585,7 @@ const EXTRUDE: Record<EntityType, number> = {
   casemate: 24,
   hochstand: 72,
   leitturm: 86,
+  spotlight: 50,
   mgnest: 10,
   pak36: 12,
   pak43: 14,
@@ -598,7 +600,7 @@ const EXTRUDE: Record<EntityType, number> = {
   rig: 22,
   hauler: 16,
   warden: 28,
-  apocalypse: 32,
+  apocalypse: 42,
   ss3: 20,
   jagdtiger: 26,
   rifleman: 26,
@@ -856,6 +858,8 @@ export class MapView {
   private lightLayer: HTMLCanvasElement | null = null;
   /** Lamp heading on screen per tower, eased toward the snapshot. */
   private spotShown = new Map<number, number>();
+  /** Last heading each lamp showed, kept while it is dark so it does not snap. */
+  private spotRest = new Map<number, number>();
   private spotFrameAt = 0;
   /** Where each tower's searchlight lens landed this frame, for its glow at night. */
   private lensAt = new Map<number, SearchlightPose>();
@@ -974,6 +978,9 @@ export class MapView {
   /** Field guns whose crew is on the trail, and when the gun last moved (ms). */
   private gunHaulAt = new Map<number, number>();
   private gunRecoil = new Map<number, GunRecoil>();
+  /** When an Apocalypse began riding over a hull it rolled flat (ms), by its id. */
+  private crushBumps = new Map<number, number>();
+  private crushBumpSeen = new Set<number>();
   private muzzleSmokes: MuzzleSmokePuff[] = [];
   private fieldGunSmokes: FieldGunSmokePuff[] = [];
   private occBuildings: {
@@ -1333,6 +1340,12 @@ export class MapView {
       if (i.fromId != null && (i.caliber ?? 0) > 0 && (i.caliber ?? 0) < 40 && i.kind !== "crush") {
         const shooter = this.currById.get(i.fromId);
         if (shooter && isInfantryType(shooter.type) && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
+      }
+      // The impact rides along in later snapshots: only its first sighting starts the bump.
+      if (i.crusher != null && !this.crushBumpSeen.has(i.id)) {
+        if (this.crushBumpSeen.size > 200) this.crushBumpSeen.clear();
+        this.crushBumpSeen.add(i.id);
+        this.crushBumps.set(i.crusher, now);
       }
       if (i.kind === "crush") continue;
       // A 20mm round that missed a plane climbed away into the sky: its tracer is all there is.
@@ -4545,23 +4558,38 @@ export class MapView {
       ctx.globalCompositeOperation = "source-over";
     }
     if (glow <= 0) {
-      const reach = SPOTLIGHT_REACH_TILES * this.ts();
-      const half = (SPOTLIGHT_HALF_DEG * Math.PI) / 180;
-      ctx.setLineDash([5, 6]);
-      ctx.lineWidth = 1.25;
-      ctx.strokeStyle = "rgba(255, 226, 150, 0.55)";
+      // By day a selected lamp of yours (Watch Tower, Fire-Control Tower, Spotlight) shows where its beam would fall.
       for (const { e, facing } of lamps) {
-        if (e.type !== "tower" || !this.selected.has(e.id) || e.ownerId !== this.curr.youPlayerId) continue;
-        const pts = beamPolygon(e.x, e.y, facing, reach, half, 16).map((p) => this.toScreen(p.x, p.y));
-        ctx.beginPath();
-        pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-        ctx.closePath();
-        ctx.stroke();
+        if (e.kind !== "building" || !this.selected.has(e.id) || e.ownerId !== this.curr.youPlayerId) continue;
+        this.drawBeamOutline(e.x, e.y, facing, false);
       }
-      ctx.setLineDash([]);
     }
     ctx.restore();
     this.lensAt.clear();
+  }
+
+  /**
+   * A building lamp's beam on the ground, dashed: the cone a selected lamp lights, or the one a
+   * placement ghost will light. `fill` washes the cone faintly, for the ghost.
+   */
+  private drawBeamOutline(wx: number, wy: number, facing: number, fill: boolean): void {
+    const ctx = this.ctx;
+    const reach = SPOTLIGHT_REACH_TILES * this.ts();
+    const half = (SPOTLIGHT_HALF_DEG * Math.PI) / 180;
+    const pts = beamPolygon(wx, wy, facing, reach, half, 16).map((p) => this.toScreen(p.x, p.y));
+    ctx.save();
+    ctx.beginPath();
+    pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    ctx.closePath();
+    if (fill) {
+      ctx.fillStyle = "rgba(255, 226, 150, 0.12)";
+      ctx.fill();
+    }
+    ctx.setLineDash([5, 6]);
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = fill ? "rgba(255, 226, 150, 0.8)" : "rgba(255, 226, 150, 0.55)";
+    ctx.stroke();
+    ctx.restore();
   }
 
   /**
@@ -6097,7 +6125,8 @@ export class MapView {
           // The gun sheet shares the unturned pad's canvas: a turned pad still lays it out on that.
           const pad = this.unturnedPad(e, elev) ?? { x: south.x, y: south.y, w: footprintW };
           const base = unturnedBuildingSprite(e.type) ?? spr;
-          const aim = e.turretFacing ?? e.facing;
+          // A pole lamp's man and training column turn with the lamp, not a gun.
+          const aim = gun?.lampZ != null ? this.lampShownFacing(e) : (e.turretFacing ?? e.facing);
           if (e.type === "ciws") this.drawCiwsGun(base, pad.x, pad.y, pad.w, 1, aim, ghost ? undefined : e);
           else if (e.type === "ram") this.drawCiwsGun(base, pad.x, pad.y, pad.w, 1, aim, undefined, RAM_TURRET_SHEET);
           else if (gun) {
@@ -6105,6 +6134,7 @@ export class MapView {
             const crew = ghost ? gun.cols - 1 : Math.min(gun.cols - 1, e.garrison?.count ?? 0);
             // The MG nest flashes at its muzzle while it fires, like a gatling.
             this.drawCiwsGun(base, pad.x, pad.y, pad.w, 1, aim, ghost ? undefined : e, gun.sheet, crew, gun.cols, gun);
+            if (gun.lampZ != null) this.drawTowerLamp(e, pad.x, pad.y, pad.w, ghost, gun);
           }
           if (!ghost && this.selected.has(e.id) && mountArcDegOf(e.type) != null) {
             this.drawMountArc(e.type, e.x, e.y, e.facing, elev, 0.5);
@@ -6176,13 +6206,55 @@ export class MapView {
    * (eased like the beam, so lamp and light swing together). The lens burns
    * while the beam is lit and goes dark when a crit smashes it or power runs short.
    */
-  private drawTowerLamp(e: EntityView, southX: number, southY: number, footprintW: number, ghost: boolean): void {
-    const facing = this.spotShown.get(e.id) ?? e.spotFacing ?? Math.PI / 4;
+  private drawTowerLamp(
+    e: EntityView,
+    southX: number,
+    southY: number,
+    footprintW: number,
+    ghost: boolean,
+    /** The Spotlight post: the lamp sits on this layer's pole top instead of a tower roof. */
+    pole?: GunLayer,
+  ): void {
+    const facing = this.lampShownFacing(e);
     const broken = !!e.crits?.includes("lamp");
     const burning = !ghost && e.spotFacing != null && e.hp > 0 && !broken && !e.unpowered;
     const lit = burning ? lampGlow(daylightAt(this.curr.tick)) : 0;
-    const pose = drawTowerSearchlight(this.ctx, southX, southY, footprintW, facing, { lit, broken });
+    let pose: SearchlightPose;
+    if (pole?.lampZ != null) {
+      pose = this.drawPoleLamp(southX, southY, footprintW, pole.lampZ, pole.pad.padWidth, facing, { lit, broken });
+    } else {
+      pose = drawTowerSearchlight(this.ctx, southX, southY, footprintW, facing, { lit, broken });
+    }
     if (!ghost) this.lensAt.set(e.id, pose);
+  }
+
+  /** The Spotlight post's lamp on its pole's head plate, `lampZ` mesh units over a pad laid at this south corner. */
+  private drawPoleLamp(
+    southX: number,
+    southY: number,
+    footprintW: number,
+    lampZ: number,
+    padWidth: number,
+    facing: number,
+    look: { lit: number; broken: boolean },
+  ): SearchlightPose {
+    // Screen px per mesh unit, then up from the pad's south corner to the centre of the head plate.
+    const u = (CIWS_SOURCE_ZOOM * footprintW) / padWidth;
+    const halfDiag = padWidth / CIWS_SOURCE_ZOOM / 4;
+    return drawSearchlightAt(this.ctx, southX, southY - (halfDiag + lampZ) * u, u, facing, look);
+  }
+
+  /**
+   * Heading a lamp shows this frame: eased like its beam while it burns. A dark lamp keeps the
+   * heading it last showed (a post whose man fell does not snap back), else the way it was set.
+   */
+  private lampShownFacing(e: EntityView): number {
+    const shown = this.spotShown.get(e.id) ?? e.spotFacing;
+    if (shown != null) {
+      this.spotRest.set(e.id, shown);
+      return shown;
+    }
+    return this.spotRest.get(e.id) ?? (e.type === "spotlight" ? e.facing : Math.PI / 4);
   }
 
   /** CIWS gun (or RAM launcher) row over its pad, laid on `turretFacing`, and the CIWS barrel flash while it fires. */
@@ -6742,6 +6814,17 @@ export class MapView {
       ctx.translate(s.x, s.y);
       ctx.rotate(roll);
       ctx.translate(-s.x, -s.y);
+    }
+    const bumpAt = this.crushBumps.get(e.id);
+    if (bumpAt != null) {
+      const bump = e.wreck ? null : crushBump(bumpAt, performance.now(), size);
+      if (!bump) this.crushBumps.delete(e.id);
+      else {
+        // Up over the hulk, pivoting on the ground point under the hull.
+        ctx.translate(s.x, s.y);
+        ctx.rotate(bumpTilt(bump.pitch, dir.x, dir.y));
+        ctx.translate(-s.x, -s.y - bump.liftPx);
+      }
     }
     if (e.wreck && !corpse && sheet === def) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
     // A shut-down Cyborg is dark: the machine is off.
@@ -8337,6 +8420,8 @@ export class MapView {
       const west = this.toScreen(x, y + bh, elev);
       const n = this.toScreen(x, y, elev);
       const ctx = this.ctx;
+      // A lamp building shows the cone its beam will light, turned with the ghost.
+      if (hasSpotlight(type)) this.drawBeamOutline(site.x, site.y, facing, true);
       ctx.save();
       ctx.globalAlpha = 0.28;
       ctx.fillStyle = top;
@@ -8348,20 +8433,27 @@ export class MapView {
       const ground = buildingGroundFor(type, facing);
       if (ground && spriteReady(ground)) drawBuildingSprite(ctx, ground, south.x, south.y, east.x - west.x);
       drawBuildingSprite(ctx, spr, south.x, south.y, east.x - west.x);
-      if (hasSpotlight(type)) {
+      // The ghost lays its gun the way the site is turned, on the unturned pad its sheet shares.
+      const gun = gunLayerFor(type);
+      if (hasSpotlight(type) && gun?.lampZ == null) {
         // The lamp starts out along the tower's front, as the placed tower's does.
         const pad = this.unturnedPad(site, elev) ?? { x: south.x, y: south.y, w: east.x - west.x };
         drawTowerSearchlight(ctx, pad.x, pad.y, pad.w, facing, { lit: 0, broken: false });
       }
       ctx.restore();
-      // The ghost lays its gun the way the site is turned, on the unturned pad its sheet shares.
-      const gun = gunLayerFor(type);
       if (type === "ciws" || type === "ram" || gun) {
         const pad = this.unturnedPad(site, elev) ?? { x: south.x, y: south.y, w: east.x - west.x };
         const base = unturnedBuildingSprite(type) ?? spr;
         if (type === "ciws") this.drawCiwsGun(base, pad.x, pad.y, pad.w, 0.55, facing);
         else if (type === "ram") this.drawCiwsGun(base, pad.x, pad.y, pad.w, 0.55, facing, undefined, RAM_TURRET_SHEET);
         else if (gun) this.drawCiwsGun(base, pad.x, pad.y, pad.w, 0.55, facing, undefined, gun.sheet, gun.cols - 1, gun.cols);
+        if (gun?.lampZ != null) {
+          // The pole lamp starts out the way the post is turned.
+          ctx.save();
+          ctx.globalAlpha = 0.55;
+          this.drawPoleLamp(pad.x, pad.y, pad.w, gun.lampZ, gun.pad.padWidth, facing, { lit: 0, broken: false });
+          ctx.restore();
+        }
         this.drawMountArc(type, site.x, site.y, facing, elev, 0.8);
       }
       ctx.strokeStyle = top;

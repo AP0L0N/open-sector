@@ -258,7 +258,9 @@ export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number
       case "unitsfx": {
         const url = pick(unitFolder(ev.type), `sfx-${ev.cue}`);
         const mix = url ? mixAt(ev.x, ev.y) : null;
-        if (url && mix) playSample(url, mix, { volume: ev.cue === "special" ? 0.6 : 0.75, maxVoices: 2, jitter: ev.cue === "special" ? undefined : 0.04 });
+        // A hull crumpling under the Apocalypse is heard over the fight around it; a Cyborg link cue sits between.
+        const volume = ev.cue === "crush" ? 0.9 : ev.cue === "special" ? 0.6 : 0.75;
+        if (url && mix) playSample(url, mix, { volume, maxVoices: 2, jitter: ev.cue === "special" ? undefined : 0.04 });
         break;
       }
       case "announce":

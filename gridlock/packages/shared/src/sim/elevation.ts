@@ -21,6 +21,7 @@ import {
   HULL_LEVEL_SIGHT,
   INFANTRY_EYE_HEIGHT,
   INFANTRY_UPHILL_SIGHT,
+  SIGHT_UPHILL_MAX_TILES,
   LOS_TERRAIN_SLACK,
   RADAR_LONG_RANGE_MUL,
   SUB_SUBMERGED_SIGHT_TILES,
@@ -245,7 +246,7 @@ export function uphillSightOf(type: EntityType): number {
 /** Extra fog tiles from a per-step bonus across an elevation delta. */
 export function levelSightExtra(fromH: number, toH: number, perStep: number): number {
   if (perStep <= 0) return 0;
-  return Math.abs(toH - fromH) * perStep;
+  return Math.min(SIGHT_UPHILL_MAX_TILES, Math.abs(toH - fromH) * perStep);
 }
 
 export function observerEyeForEntity(e: {
@@ -538,22 +539,25 @@ const LOS_FLAG_COVER = 1;
 /** `fillLosFlags` bit: a grove tile that spends the see-through budget. */
 const LOS_FLAG_TREE = 2;
 
+/** The `fillLosFlags` bits of one tile. */
+export function losFlagAt(cover: CoverField, i: number): number {
+  const { terrain, occupy, hull, smoke } = cover;
+  const tile = terrain[i];
+  let f = isGroveTile(tile ?? 0) ? LOS_FLAG_TREE : 0;
+  if (
+    tile === TILE_BLOCKED ||
+    (occupy[i] ?? 0) !== 0 ||
+    (hull ? (hull[i] ?? 0) !== 0 : false) ||
+    (smoke ? (smoke[i] ?? 0) !== 0 : false)
+  ) {
+    f |= LOS_FLAG_COVER;
+  }
+  return f;
+}
+
 /** Per-tile blockers for `hasFullLosFlagged`. Rebuild whenever cover changes. */
 export function fillLosFlags(cover: CoverField, out: Uint8Array): void {
-  const { terrain, occupy, hull, smoke } = cover;
-  for (let i = 0; i < out.length; i++) {
-    const tile = terrain[i];
-    let f = isGroveTile(tile ?? 0) ? LOS_FLAG_TREE : 0;
-    if (
-      tile === TILE_BLOCKED ||
-      (occupy[i] ?? 0) !== 0 ||
-      (hull ? (hull[i] ?? 0) !== 0 : false) ||
-      (smoke ? (smoke[i] ?? 0) !== 0 : false)
-    ) {
-      f |= LOS_FLAG_COVER;
-    }
-    out[i] = f;
-  }
+  for (let i = 0; i < out.length; i++) out[i] = losFlagAt(cover, i);
 }
 
 /** Tiles per fast-path block. A clear block skips the ray; a marked one falls through to it. */

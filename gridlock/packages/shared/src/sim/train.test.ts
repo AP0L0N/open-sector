@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { ONE_AT_A_TIME, TECH_REQUIRES, TRAIN_QUEUE_CAP, canContinuousTrain, catalog, secondsToTicks, TICK_DT, type TrainType } from "../catalog.js";
+import { BUILD_REQUIRES, ONE_AT_A_TIME, TECH_REQUIRES, TRAIN_QUEUE_CAP, canContinuousTrain, catalog, secondsToTicks, TICK_DT, type TrainType } from "../catalog.js";
 import { applyCommand } from "./commands.js";
+import { buildTechMissing } from "./build.js";
 import { createMatch, step } from "./match.js";
 import { paidForProgress } from "./production.js";
 import { snapshotFor } from "./snapshot.js";
 import { makeEntity, tileCenter } from "./geo.js";
-import { oneAtATimeTaken, techMissing } from "./train.js";
+import { oneAtATimeTaken, producerType, techMissing } from "./train.js";
 import type { MatchState } from "./types.js";
 
 function twoPlayerMatch(): { state: MatchState; a: string; b: string } {
@@ -476,9 +477,10 @@ describe("research gate", () => {
     makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 });
     seedMuster(state, 20, 10);
     const gated = Object.keys(TECH_REQUIRES) as TrainType[];
-    assert.deepEqual([...gated].sort(), ["apocalypse", "cyborg", "cyborgcommander", "droneop", "jagdtiger", "jumpjet", "mammoth", "nebelwerfer", "titan", "warden"]);
+    assert.deepEqual([...gated].sort(), ["apocalypse", "battleship", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "he111", "jagdtiger", "jumpjet", "mammoth", "nebelwerfer", "stuka", "submarine", "titan", "warden"]);
     const cyborgs = new Set<TrainType>(["cyborg", "cyborgcommander"]);
-    for (const unit of gated) {
+    // Ships ask for the Marine Base first, bombers for the Airfield; their gates are checked on their own.
+    for (const unit of gated.filter((u) => producerType(u) !== "dock" && producerType(u) !== "airfield")) {
       const r = applyCommand(state, "A", { type: "cmd.train", unit });
       assert.equal(r.ok, false, unit);
       if (!r.ok) assert.equal(r.message, unit === "cyborg" ? "Need a Cyborg Central." : "Need a Research Facility.", unit);
@@ -513,6 +515,76 @@ describe("research gate", () => {
     assert.equal(techMissing(state, "B", "cyborgcommander"), null);
     assert.equal(techMissing(state, "A", "cyborg"), "cyborgcentral");
     assert.equal(techMissing(state, "B", "cyborg"), null);
+  });
+});
+
+describe("defence tech gate", () => {
+  it("locks the heavy defences until a Research Facility stands, and CIWS and RAM until a Radar Station too", () => {
+    const { state } = twoPlayerMatch();
+    seedCore(state);
+    const ts = state.tileSize;
+    state.players.get("A")!.scrap = 100_000;
+    assert.deepEqual(Object.keys(BUILD_REQUIRES).sort(), ["casemate", "ciws", "flak", "leitturm", "pak43", "ram"]);
+    const tryBuild = (building: "leitturm" | "flak" | "pak43" | "casemate" | "ciws" | "ram") => {
+      const r = applyCommand(state, "A", { type: "cmd.build", building });
+      if (r.ok) applyCommand(state, "A", { type: "cmd.cancel", what: "structure", building });
+      return r;
+    };
+    for (const b of ["leitturm", "flak", "pak43", "casemate"] as const) {
+      const r = tryBuild(b);
+      assert.equal(r.ok, false, b);
+      if (!r.ok) assert.equal(r.message, "Need a Research Facility.");
+    }
+    for (const b of ["ciws", "ram"] as const) {
+      const r = tryBuild(b);
+      assert.equal(r.ok, false, b);
+      if (!r.ok) assert.equal(r.message, `Need a ${catalog("research").name} and a ${catalog("radar").name}.`);
+    }
+    assert.equal(applyCommand(state, "A", { type: "cmd.build", building: "pak36" }).ok, true);
+    applyCommand(state, "A", { type: "cmd.cancel", what: "structure", building: "pak36" });
+
+    const lab = makeEntity(state, "research", "A", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
+    for (const b of ["leitturm", "flak", "pak43", "casemate"] as const) assert.equal(tryBuild(b).ok, true, b);
+    assert.deepEqual(buildTechMissing(state, "A", "ciws"), ["radar"]);
+    assert.equal(tryBuild("ram").ok, false);
+
+    makeEntity(state, "radar", "A", tileCenter(14, ts), tileCenter(14, ts), { tileX: 14, tileY: 14 });
+    assert.equal(tryBuild("ciws").ok, true);
+    assert.equal(tryBuild("ram").ok, true);
+
+    lab.hp = 0;
+    assert.deepEqual(buildTechMissing(state, "A", "ram"), ["research"]);
+    assert.equal(tryBuild("flak").ok, false);
+  });
+
+  it("does not count another player's Research Facility or Radar", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    makeEntity(state, "research", "B", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
+    makeEntity(state, "radar", "B", tileCenter(14, ts), tileCenter(14, ts), { tileX: 14, tileY: 14 });
+    assert.deepEqual(buildTechMissing(state, "A", "ciws"), ["research", "radar"]);
+    assert.deepEqual(buildTechMissing(state, "B", "ciws"), []);
+  });
+});
+
+describe("naval tech gate", () => {
+  it("needs a Research Facility for the Submarine and Destroyer, and a Radar Station too for the Battle Ship", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    for (const unit of ["submarine", "destroyer", "battleship"] as const) assert.equal(techMissing(state, "A", unit), "research", unit);
+    assert.equal(techMissing(state, "A", "gunboat"), null);
+
+    const lab = makeEntity(state, "research", "A", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });
+    assert.equal(techMissing(state, "A", "submarine"), null);
+    assert.equal(techMissing(state, "A", "destroyer"), null);
+    assert.equal(techMissing(state, "A", "battleship"), "radar");
+
+    makeEntity(state, "radar", "A", tileCenter(20, ts), tileCenter(14, ts), { tileX: 20, tileY: 14 });
+    assert.equal(techMissing(state, "A", "battleship"), null);
+
+    lab.hp = 0;
+    assert.equal(techMissing(state, "A", "battleship"), "research");
+    assert.equal(techMissing(state, "A", "submarine"), "research");
   });
 });
 

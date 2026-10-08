@@ -18,6 +18,8 @@ import { foldScenery, snapshotFor } from "./snapshot.js";
 import {
   armSightBlocks,
   HULL_STALE_TICKS,
+  MOVE_STALE_TICKS,
+  MOVE_STALE_TILES,
   canSeeEntity,
   clearSightBlocks,
   decodeVisionRuns,
@@ -373,8 +375,9 @@ describe("visionMask cache", () => {
     const first = visionMask(state, a);
     const rig = [...state.entities.values()].find((e) => e.ownerId === a && e.kind === "unit");
     assert.ok(rig);
-    rig.x += state.tileSize;
-    rig.y += state.tileSize;
+    // Past the drift a walking eye may keep, so the mask is painted again.
+    rig.x += state.tileSize * (MOVE_STALE_TILES + 1);
+    rig.y += state.tileSize * (MOVE_STALE_TILES + 1);
     const next = visionMask(state, a);
     assert.notEqual(next, first);
     assert.equal(visionMask(state, a), next);
@@ -648,8 +651,10 @@ describe("visionMask sight cache", () => {
     const { state, a, b } = twoPlayerMatch();
     const ts = state.tileSize;
     const walkers: Entity[] = [];
+    // Spaced past SQUAD_SIGHT_TILES so no eye copies a mate's tiles; the ticks between
+    // paints outrun MOVE_STALE_TICKS so a walker does not keep its last place's tiles.
     for (let i = 0; i < 10; i++) {
-      const u = makeEntity(state, i % 4 === 0 ? "warden" : "rifleman", a, tileCenter(30 + i * 7, ts), tileCenter(50, ts));
+      const u = makeEntity(state, i % 4 === 0 ? "warden" : "rifleman", a, tileCenter(30 + i * 14, ts), tileCenter(50, ts));
       if (i % 2 === 0) walkers.push(u);
     }
     makeEntity(state, "ss3", b, tileCenter(70, ts), tileCenter(60, ts));
@@ -657,7 +662,7 @@ describe("visionMask sight cache", () => {
       for (const u of walkers) u.x += ts;
       if (t === 3) spawnSmokeCloud(state, tileCenter(55, ts), tileCenter(58, ts), 0, 1);
       // Hull shadows may lag HULL_STALE_TICKS; past that the picture must equal a fresh paint.
-      state.tick += HULL_STALE_TICKS;
+      state.tick += Math.max(HULL_STALE_TICKS, MOVE_STALE_TICKS);
       const got = visionMask(state, a);
       const want = freshMask(state, a);
       assert.deepEqual(got, want, `step ${t}`);

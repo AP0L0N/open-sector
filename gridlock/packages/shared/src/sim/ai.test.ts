@@ -546,7 +546,7 @@ describe("easy CPU", () => {
     waitCore(state, aiId);
     campaign(state, aiId);
     baseSitesTried(state, aiId);
-    withBase(state, aiId, ["dynamo", "smelter", "muster", "dynamo"]);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "dynamo", "research"]);
     troopers(state, aiId, 4);
     const spot = findDiamondSmelterTile(state)!;
     assert.ok(spot, "yard-64 has diamond scrap in the middle");
@@ -575,7 +575,7 @@ describe("easy CPU", () => {
     ringTried(state, aiId);
     const plan = planOf(state, aiId);
     for (const k of ["mg", "pak", "pit", "look"]) plan.siteRetry[`base:${k}`] = Number.MAX_SAFE_INTEGER;
-    withBase(state, aiId, ["dynamo", "smelter", "muster", "dynamo"]);
+    withBase(state, aiId, ["dynamo", "smelter", "muster", "dynamo", "research"]);
     troopers(state, aiId, 4);
     const hq = coreOf(state, aiId);
     makeEntity(state, "ciws", aiId, hq.x - 80, hq.y, { tileX: hq.tileX - 12, tileY: hq.tileY });
@@ -607,7 +607,12 @@ describe("easy CPU", () => {
     cpu.scrap = 10000;
     micro(state, aiId);
     assert.ok(planOf(state, aiId).airSeenTick != null, "the plane was seen");
-    assert.equal(cpu.defence?.type, "ciws");
+    assert.notEqual(cpu.defence?.type, "ciws", "no CIWS before a Research Facility and a Radar Station stand");
+    cpu.defence = null;
+    makeEntity(state, "research", aiId, hq.x + 16 * 8, hq.y + 16 * 8, { tileX: hq.tileX + 16, tileY: hq.tileY + 16 });
+    makeEntity(state, "radar", aiId, hq.x - 12 * 8, hq.y + 16 * 8, { tileX: hq.tileX - 12, tileY: hq.tileY + 16 });
+    micro(state, aiId);
+    assert.equal(state.players.get(aiId)!.defence?.type, "ciws");
   });
 
   it("trains rocketmen past their usual number once enemy planes are about", () => {

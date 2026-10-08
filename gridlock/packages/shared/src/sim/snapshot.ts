@@ -61,7 +61,7 @@ import { radarContacts, radarOnline } from "./radar.js";
 import { cyborgShutdownIn } from "./cyborg-link.js";
 import { aswDeckView, sonarContacts } from "./destroyer.js";
 import { scrapCap } from "./smelter.js";
-import { canSeeWorld, encodeVisionRuns, entityOnMask, visionMask } from "./vision.js";
+import { canSeeWorld, encodeVisionRuns, entityOnMask, maskRevOf, visionMask } from "./vision.js";
 import { spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, LaserBeam, MatchState, Order, QueueableCommand, StructureJob } from "./types.js";
 import type {
@@ -706,15 +706,15 @@ function laserView(beam: LaserBeam, tick: number): NonNullable<EntityView["laser
   };
 }
 
-const runsByMask = new WeakMap<Uint8Array, number[]>();
+const runsByMask = new WeakMap<Uint8Array, { rev: number; runs: number[] }>();
 
-/** Masks are reused until the fog changes, so each one is encoded once. */
+/** A mask array is repainted in place between paints, so each paint is encoded once. */
 function visionRuns(vis: Uint8Array): number[] {
-  let runs = runsByMask.get(vis);
-  if (!runs) {
-    runs = encodeVisionRuns(vis);
-    runsByMask.set(vis, runs);
-  }
+  const rev = maskRevOf(vis);
+  const hit = runsByMask.get(vis);
+  if (hit && hit.rev === rev) return hit.runs;
+  const runs = encodeVisionRuns(vis);
+  runsByMask.set(vis, { rev, runs });
   return runs;
 }
 

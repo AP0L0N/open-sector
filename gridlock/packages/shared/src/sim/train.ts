@@ -1,4 +1,4 @@
-import { AIRFIELD_PADS, canContinuousTrain, catalog, isAircraftType, isNavalType, isOneAtATime, secondsToTicks, techLacking, TECH_REQUIRES, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
+import { AIRFIELD_PADS, canContinuousTrain, catalog, isAircraftType, isNavalType, isOneAtATime, secondsToTicks, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, parkHeading } from "./air.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear, packRadius, packSlots } from "./formation.js";
@@ -14,14 +14,19 @@ export function producerType(unit: TrainType): "muster" | "armory" | "airfield" 
   return "armory";
 }
 
-/** Tech building this unit still needs, or null once the player has one standing. */
+/** First tech building this unit still needs, or null once the player has every one standing. */
 export function techMissing(state: MatchState, playerId: string, unit: TrainType): BuildingType | null {
-  if (!TECH_REQUIRES[unit]) return null;
-  const standing = new Set<string>();
-  for (const e of state.entities.values()) {
-    if (e.ownerId === playerId && e.kind === "building" && e.hp > 0 && !e.wreck) standing.add(e.type);
+  for (const need of techNeeds(unit)) {
+    let have = false;
+    for (const e of state.entities.values()) {
+      if (e.ownerId === playerId && e.type === need && e.hp > 0 && !e.wreck) {
+        have = true;
+        break;
+      }
+    }
+    if (!have) return need;
   }
-  return techLacking(unit, (t) => standing.has(t));
+  return null;
 }
 
 /**

@@ -61,7 +61,7 @@ describe("jagdtiger catalog", () => {
     assert.equal(jt.name, "Jagdtiger");
     assert.ok(TRAIN_TYPES.includes("jagdtiger"));
     assert.equal(producerType("jagdtiger"), "armory");
-    assert.deepEqual(TECH_REQUIRES.jagdtiger, ["research"]);
+    assert.equal(TECH_REQUIRES.jagdtiger, "research");
     assert.equal(hasTurret("jagdtiger"), false);
     assert.equal(jt.turretTurnDegPerSec, undefined);
     assert.equal(gunArcDegOf("jagdtiger"), 10);

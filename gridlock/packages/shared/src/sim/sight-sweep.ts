@@ -11,7 +11,7 @@
  * tile shows only from SMOKE_PEEK_TILES. Where the walker casts one ray per
  * tile, O(R³), the sweep touches each tile once, O(R²).
  */
-import { GROVE_SIGHT_BUDGET, HEIGHT_MAX, LOS_TERRAIN_SLACK, SMOKE_PEEK_TILES } from "../catalog.js";
+import { GROVE_SIGHT_BUDGET, HEIGHT_MAX, LOS_TERRAIN_SLACK, SIGHT_UPHILL_MAX_TILES, SMOKE_PEEK_TILES } from "../catalog.js";
 import { groveSightCost, TILE_BLOCKED } from "../maps.js";
 import { coverSmokeAt, levelSightExtra, type CoverField } from "./elevation.js";
 
@@ -307,7 +307,7 @@ export function sweepSight(
 ): void {
   if (p.radius <= 0) return;
   const uphill = p.uphill > 0 ? p.uphill : 0;
-  const maxR = Math.ceil(p.radius + (uphill > 0 ? HEIGHT_MAX * uphill : 0));
+  const maxR = Math.ceil(p.radius + (uphill > 0 ? Math.min(SIGHT_UPHILL_MAX_TILES, HEIGHT_MAX * uphill) : 0));
   const ox = p.ox;
   const oy = p.oy;
   const h0 = elevAtSafe(elev, width, height, ox, oy);
@@ -331,6 +331,7 @@ export function sweepSight(
   const occupy = cover?.occupy;
   const hull = cover?.hull;
   const flags = cover?.losFlags;
+  const smoke = cover?.smoke;
   const ignore = p.ignore;
   const risers = sightBlocksFor === elev ? sightRisers : null;
   sweepStats.sweeps++;
@@ -369,19 +370,31 @@ export function sweepSight(
     if (d <= p.radius + (uphill > 0 ? levelSightExtra(h0, h, uphill) : 0)) {
       const slopeT = (h - hEye) * invs[k]!;
       const hid = hull ? (hull[i] ?? 0) : 0;
-      let lit = false;
-      for (let m = -PEEK_BINS; m <= PEEK_BINS && !lit; m++) {
-        let b = bc + m;
-        if (b < 0) b += bins;
-        else if (b >= bins) b -= bins;
+      let lit: boolean;
+      if (PEEK_BINS === 0) {
         lit =
-          opaqueBins[b] === 0 &&
-          groveBins[b]! <= GROVE_SIGHT_BUDGET &&
-          slopeBins[b]! <= slopeT &&
-          (hullBins[b] === 0 || hullBins[b] === hid);
+          opaqueBins[bc] === 0 &&
+          groveBins[bc]! <= GROVE_SIGHT_BUDGET &&
+          slopeBins[bc]! <= slopeT &&
+          (hullBins[bc] === 0 || hullBins[bc] === hid);
+      } else {
+        lit = false;
+        for (let m = -PEEK_BINS; m <= PEEK_BINS && !lit; m++) {
+          let b = bc + m;
+          if (b < 0) b += bins;
+          else if (b >= bins) b -= bins;
+          lit =
+            opaqueBins[b] === 0 &&
+            groveBins[b]! <= GROVE_SIGHT_BUDGET &&
+            slopeBins[b]! <= slopeT &&
+            (hullBins[b] === 0 || hullBins[b] === hid);
+        }
       }
-      if (lit && cover && d > SMOKE_PEEK_TILES && coverSmokeAt(cover, width, height, x, y)) lit = false;
-      if (lit) litPush(out, i);
+      if (lit && cover && d > SMOKE_PEEK_TILES && (smoke ? smoke[i] !== 0 : coverSmokeAt(cover, width, height, x, y))) lit = false;
+      if (lit) {
+        if (out.n === out.tiles.length) litPush(out, i);
+        else out.tiles[out.n++] = i;
+      }
     }
     // The same tile as a blocker of what lies beyond it.
     let stops = false;
@@ -394,7 +407,7 @@ export function sweepSight(
         else {
           const occ = occupy[i] ?? 0;
           if (occ !== 0 && occ !== ignore) stops = true;
-          else if (coverSmokeAt(cover, width, height, x, y)) stops = true;
+          else if (smoke ? smoke[i] !== 0 : coverSmokeAt(cover, width, height, x, y)) stops = true;
         }
         if (hull) {
           const hv = hull[i] ?? 0;
