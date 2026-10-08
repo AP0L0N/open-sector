@@ -1521,8 +1521,18 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
   const fresh: Sweep[] = [];
   const stale: Sweep[] = [];
   const live = new Set<number>();
-  // Ground whose paint may change: around every eye that sweeps, copies, or left.
-  let dirty: TileBounds | null = null;
+  // Ground whose paint may change: around every eye that sweeps, copies, or left. Boxes that touch merge.
+  const dirty: TileBounds[] = [];
+  const soil = (b: TileBounds): void => {
+    for (let k = 0; k < dirty.length; k++) {
+      const d = dirty[k]!;
+      if (boxesTouch(d, b)) {
+        dirty[k] = unionBounds(d, b);
+        return;
+      }
+    }
+    dirty.push({ ...b });
+  };
   for (const { e, p } of observers) {
     live.add(e.id);
     const box = eyeBounds(p, width, height);
@@ -1564,7 +1574,7 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
     if (live.has(id)) continue;
     const e = state.entities.get(id);
     if (e && e.hp > 0 && !e.wreck && !allies(state, playerId, e.ownerId)) continue;
-    if (m.box) dirty = unionBounds(dirty, m.box);
+    if (m.box) soil(m.box);
     memo.delete(id);
   }
   // The eyes longest without a sweep go first. Past the budget an eye keeps last tick's tiles and waits a tick.
@@ -1584,7 +1594,7 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
     bufs.set(side, pair);
   }
   const prev = cached && cached.length === n ? cached : null;
-  if (work.length === 0 && dirty === null && prev) {
+  if (work.length === 0 && dirty.length === 0 && prev) {
     state.visionKeyByPlayer.set(side, key);
     state.visionTick = tick;
     return prev;
@@ -1598,8 +1608,8 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
   try {
     // Sweep, or copy a squad mate's tiles, into the memo first; the mask is painted below.
     for (const s of work) {
-      if (s.m?.box) dirty = unionBounds(dirty, s.m.box);
-      dirty = unionBounds(dirty, s.box);
+      if (s.m?.box) soil(s.m.box);
+      soil(s.box);
       let tiles: Int32Array | null = null;
       for (const q of squad) {
         if (
@@ -1625,16 +1635,27 @@ export function visionMask(state: MatchState, playerId: string): Uint8Array {
       mask.set(prev);
     } else {
       mask.fill(0);
-      dirty = { x0: 0, y0: 0, x1: width - 1, y1: height - 1 };
+      dirty.length = 0;
+      dirty.push({ x0: 0, y0: 0, x1: width - 1, y1: height - 1 });
     }
-    const box = dirty!;
-    for (let y = box.y0; y <= box.y1; y++) mask.fill(0, y * width + box.x0, y * width + box.x1 + 1);
-    for (const { e } of observers) {
-      const m = memo.get(e.id);
-      if (!m || !m.tiles || !m.box || !boxesTouch(m.box, box)) continue;
-      stampInside(mask, m.tiles, width, box);
+    // Merge again: a late box may have bridged two earlier ones.
+    for (let i = 0; i < dirty.length; i++) {
+      for (let j = dirty.length - 1; j > i; j--) {
+        if (boxesTouch(dirty[i]!, dirty[j]!)) {
+          dirty[i] = unionBounds(dirty[i]!, dirty[j]!);
+          dirty.splice(j, 1);
+        }
+      }
     }
-    sealFovIslands(mask, width, height, FOV_ISLAND_LIMIT, box);
+    for (const box of dirty) {
+      for (let y = box.y0; y <= box.y1; y++) mask.fill(0, y * width + box.x0, y * width + box.x1 + 1);
+      for (const { e } of observers) {
+        const m = memo.get(e.id);
+        if (!m || !m.tiles || !m.box || !boxesTouch(m.box, box)) continue;
+        stampInside(mask, m.tiles, width, box);
+      }
+      sealFovIslands(mask, width, height, FOV_ISLAND_LIMIT, box);
+    }
   } finally {
     clearLosFastPath();
   }

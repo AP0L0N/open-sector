@@ -11,6 +11,7 @@ import {
   PROJECTILE_RADIUS,
   isBattleship,
 } from "../catalog.js";
+import { allies } from "./geo.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** Cell side, in fine tiles. A rifle's reach is a handful of these. */
@@ -34,6 +35,11 @@ export type SpatialGrid = {
   maxRadius: number;
   /** Extra reach past a blast so a building center or a ship's bow is not missed. */
   splashPad: number;
+  /** One bit per owner that has something a gun can aim at, per cell: a side can tell at a glance whether any foe is in reach. */
+  cellOwners: Int32Array;
+  ownerBit: Map<string, number>;
+  /** Bits of the owners hostile to a side, by that side, made on first use. */
+  hostileBits: Map<string, number>;
 };
 
 let active: SpatialGrid | null = null;
@@ -69,6 +75,9 @@ export function buildSpatial(state: MatchState): SpatialGrid {
     cellsOf: new Map(),
     maxRadius: 0,
     splashPad: 0,
+    cellOwners: new Int32Array(cols * rows),
+    ownerBit: new Map(),
+    hostileBits: new Map(),
   };
   for (const e of state.entities.values()) {
     if (e.hp <= 0 || e.garrisonedIn) continue;
@@ -207,6 +216,46 @@ export function querySegment(grid: SpatialGrid, x0: number, y0: number, x1: numb
   return buf;
 }
 
+/** Something a gun may aim at: any unit, a side's building, or a neutral one with people in it. */
+function aimable(e: Entity): boolean {
+  if (e.kind === "unit") return true;
+  return e.ownerId !== "" || e.garrison.length > 0;
+}
+
+function ownerBitOf(grid: SpatialGrid, ownerId: string): number {
+  let bit = grid.ownerBit.get(ownerId);
+  if (bit === undefined) {
+    bit = 1 << Math.min(30, grid.ownerBit.size);
+    grid.ownerBit.set(ownerId, bit);
+  }
+  return bit;
+}
+
+/** True when a cell within `radius` of the point holds something of an owner hostile to `ownerId`. */
+export function anyHostileNear(grid: SpatialGrid, state: MatchState, ownerId: string, x: number, y: number, radius: number): boolean {
+  let mask = grid.hostileBits.get(ownerId);
+  if (mask === undefined) {
+    mask = 0;
+    for (const [owner, bit] of grid.ownerBit) {
+      if (!allies(state, ownerId, owner)) mask |= bit;
+    }
+    grid.hostileBits.set(ownerId, mask);
+  }
+  if (mask === 0) return false;
+  const c = grid.cell;
+  const x0 = clamp((x - radius) / c, grid.cols);
+  const x1 = clamp((x + radius) / c, grid.cols);
+  const y0 = clamp((y - radius) / c, grid.rows);
+  const y1 = clamp((y + radius) / c, grid.rows);
+  for (let cy = y0; cy <= y1; cy++) {
+    const row = cy * grid.cols;
+    for (let cx = x0; cx <= x1; cx++) {
+      if ((grid.cellOwners[row + cx]! & mask) !== 0) return true;
+    }
+  }
+  return false;
+}
+
 function insert(grid: SpatialGrid, e: Entity): void {
   grid.byId.set(e.id, e);
   const cells: number[] = [];
@@ -243,12 +292,15 @@ function coverAabb(grid: SpatialGrid, id: number, cells: number[], x0: number, y
   const cx1 = clamp(x1 / c, grid.cols);
   const cy0 = clamp(y0 / c, grid.rows);
   const cy1 = clamp(y1 / c, grid.rows);
+  const e = grid.byId.get(id);
+  const bit = e && aimable(e) ? ownerBitOf(grid, e.ownerId) : 0;
   for (let cy = cy0; cy <= cy1; cy++) {
     const row = cy * grid.cols;
     for (let cx = cx0; cx <= cx1; cx++) {
       const i = row + cx;
       grid.buckets[i]!.push(id);
       cells.push(i);
+      if (bit) grid.cellOwners[i] = (grid.cellOwners[i] ?? 0) | bit;
     }
   }
 }
