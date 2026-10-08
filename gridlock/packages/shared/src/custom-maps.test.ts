@@ -622,6 +622,28 @@ describe("custom map lamps", () => {
     assert.deepEqual(r.spec.lamps, [{ type: "streetlamp", x: 60, y: 60 }]);
   });
 
+  it("keeps where an aimed lamp points, and drops a facing from one that lights all round", () => {
+    const r = validateCustomMap(
+      sheet({
+        lamps: [
+          { type: "spotpole", x: 60, y: 60, facing: 135 },
+          { type: "yardflood", x: 64, y: 60, facing: -90 },
+          { type: "yardflood", x: 68, y: 60 },
+          { type: "sodium", x: 72, y: 60, facing: 45 },
+        ],
+      }),
+    );
+    assert.ok(r.ok);
+    assert.deepEqual(r.spec.lamps, [
+      { type: "spotpole", x: 60, y: 60, facing: 135 },
+      { type: "yardflood", x: 64, y: 60, facing: 270 },
+      { type: "yardflood", x: 68, y: 60, facing: 90 },
+      { type: "sodium", x: 72, y: 60 },
+    ]);
+    assert.deepEqual(buildCustomMap(r.spec).lamps, r.spec.lamps);
+    assert.equal(validateCustomMap(sheet({ lamps: [{ type: "spotpole", x: 60, y: 60, facing: 12.5 }] })).ok, false);
+  });
+
   it("stands the industrial buildings on the field", () => {
     const features = [
       { type: "factory" as const, x: 60, y: 60, facing: 0 },

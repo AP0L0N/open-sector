@@ -136,20 +136,33 @@ export interface MapFeature {
 }
 
 /** Street lamps a map can stand on its ground. Drawing only: they light the night, they do not block or reveal. */
-export type LampType = "gaslamp" | "streetlamp" | "floodlight";
-export const LAMP_TYPES: readonly LampType[] = ["gaslamp", "streetlamp", "floodlight"];
+export type LampType = "gaslamp" | "streetlamp" | "floodlight" | "twinlamp" | "sodium" | "spotpole" | "yardflood";
+export const LAMP_TYPES: readonly LampType[] = ["gaslamp", "streetlamp", "floodlight", "twinlamp", "sodium", "spotpole", "yardflood"];
 
 export const LAMP_NAMES: Record<LampType, string> = {
   gaslamp: "Gas Lamp",
   streetlamp: "Street Lamp",
   floodlight: "Floodlight",
+  twinlamp: "Boulevard Lamp",
+  sodium: "Sodium Lamp",
+  spotpole: "Spotlight Pole",
+  yardflood: "Work Floodlight",
 };
+
+/** Lamps that throw their light one way, along `facing`, instead of all round the post. */
+export const AIMED_LAMP_TYPES: readonly LampType[] = ["spotpole", "yardflood"];
+
+export function isAimedLamp(type: LampType): boolean {
+  return AIMED_LAMP_TYPES.includes(type);
+}
 
 export interface MapLamp {
   type: LampType;
   /** Fine tile the post stands on. */
   x: number;
   y: number;
+  /** Aimed lamps only: where the beam points, whole degrees, 0 = east, 90 = south. */
+  facing?: number;
 }
 
 /**

@@ -39,7 +39,7 @@ import {
 } from "@gridlock/shared";
 import { buildingGroundElev } from "../render/building-ground.js";
 import { decorFor } from "../render/decor.js";
-import { NIGHT_SHADE_MAX, STREET_LAMPS, beamPolygon, spotBeamGround } from "../render/night.js";
+import { NIGHT_SHADE_MAX, STREET_LAMPS, aimedLampGround, beamPolygon, spotBeamGround } from "../render/night.js";
 import { paintNight, type NightHalo, type NightLayers, type NightLightPool } from "../render/night-paint.js";
 import { drawSandbags } from "../render/sandbags.js";
 import { drawBarbwire } from "../render/barbwire.js";
@@ -48,7 +48,7 @@ import { brickDeckElev, drawBrick, layoutBridges, type BrickIn, type BrickLayout
 import {
   BUSH_FACES,
   CLUTTER_SPRITES,
-  LAMP_SPRITES,
+  lampSprite,
   groveFaces,
   SIGN_FACES,
   STUMP_FACES,
@@ -102,7 +102,7 @@ export interface IsoOverlay {
   spawnGhost: { x: number; y: number; bad: boolean } | null;
   brush: { x: number; y: number; r: number } | null;
   /** Where the Street lamps tool would stand a post. */
-  lampGhost?: { x: number; y: number; type: LampType; bad: boolean } | null;
+  lampGhost?: { x: number; y: number; type: LampType; facing: number; bad: boolean } | null;
   /** Where the Clutter tool would stand a piece. */
   clutterGhost?: { x: number; y: number; type: ClutterType; bad: boolean } | null;
   /** Draw the field at full dark: lamps burning, tower spotlights on. */
@@ -675,12 +675,21 @@ export function isoNightLights(s: Sheet): { pools: NightLightPool[]; halos: Nigh
     const wx = (l.x + 0.5) * ts;
     const wy = (l.y + 0.5) * ts;
     const foot = at(wx, wy, heightOf(s, l.x, l.y));
-    pools.push({ x: foot.x, y: foot.y, rx: spec.reachTiles * ts * k, a: 1, rgb: spec.rgb, cut: spec.cut, warm: spec.warm });
-    const spr = LAMP_SPRITES[l.type];
+    if (spec.beam) {
+      for (const b of aimedLampGround(spec, wx, wy, ((l.facing ?? 90) * Math.PI) / 180, ts)) {
+        const p = at(b.x, b.y, groundAt(s, b.x, b.y));
+        pools.push({ x: p.x, y: p.y, rx: b.r * k, a: b.a, rgb: spec.rgb, cut: spec.cut, warm: spec.warm });
+      }
+    } else {
+      pools.push({ x: foot.x, y: foot.y, rx: spec.reachTiles * ts * k, a: 1, rgb: spec.rgb, cut: spec.cut, warm: spec.warm });
+    }
+    const spr = lampSprite(l.type, l.facing);
     const h = spr.image.naturalHeight;
     if (!h) continue;
     const q = spec.drawH / h;
-    halos.push({ x: foot.x + (spr.bulbX - spr.contactX) * q, y: foot.y + (spr.bulbY - spr.contactY) * q, r: spec.halo, rgb: spec.rgb, a: 1 });
+    for (const bulb of spr.bulbs) {
+      halos.push({ x: foot.x + (bulb.x - spr.contactX) * q, y: foot.y + (bulb.y - spr.contactY) * q, r: spec.halo, rgb: spec.rgb, a: 1 });
+    }
   }
   const reach = SPOTLIGHT_REACH_TILES * ts;
   const half = (SPOTLIGHT_HALF_DEG * Math.PI) / 180;
@@ -832,7 +841,7 @@ export function isoDraw(
     const wy = (l.y + 0.5) * TILE_SIZE;
     const p = at(wx, wy, heightOf(s, l.x, l.y));
     if (!onScreen(p, 96)) continue;
-    const spr = LAMP_SPRITES[l.type];
+    const spr = lampSprite(l.type, l.facing);
     items.push({ z: isoDepth(wx, wy), run: () => void (drawPropSprite(c, spr, p.x, p.y, STREET_LAMPS[l.type].drawH) || (loading = true)) });
   }
   for (const k of liveClutter(s)) {
@@ -937,13 +946,21 @@ export function isoDraw(
     const p = at((g.x + 0.5) * TILE_SIZE, (g.y + 0.5) * TILE_SIZE, heightOf(s, g.x, g.y));
     c.save();
     c.globalAlpha = 0.6;
-    if (!drawPropSprite(c, LAMP_SPRITES[g.type], p.x, p.y, STREET_LAMPS[g.type].drawH)) loading = true;
+    if (!drawPropSprite(c, lampSprite(g.type, g.facing), p.x, p.y, STREET_LAMPS[g.type].drawH)) loading = true;
     c.restore();
-    // The ground it will light.
+    // The ground it will light: all round the post, or the wedge an aimed lamp throws.
     c.setLineDash([6 / z, 4 / z]);
     c.strokeStyle = tint;
     c.lineWidth = 1.5 / z;
-    quadPath(c, groundRing(s, g.x, g.y, STREET_LAMPS[g.type].reachTiles));
+    const spec = STREET_LAMPS[g.type];
+    if (spec.beam) {
+      const wx = (g.x + 0.5) * TILE_SIZE;
+      const wy = (g.y + 0.5) * TILE_SIZE;
+      const wedge = beamPolygon(wx, wy, (g.facing * Math.PI) / 180, spec.reachTiles * TILE_SIZE, (spec.beam.halfDeg * Math.PI) / 180);
+      quadPath(c, wedge.map((q) => at(q.x, q.y, groundAt(s, q.x, q.y))));
+    } else {
+      quadPath(c, groundRing(s, g.x, g.y, spec.reachTiles));
+    }
     c.stroke();
     c.setLineDash([]);
   }

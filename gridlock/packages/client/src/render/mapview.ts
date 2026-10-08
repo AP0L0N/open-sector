@@ -115,6 +115,7 @@ import {
   type ClientMessage,
   type CorpseView,
   type EntityType,
+  LAMP_TYPES,
   type LampType,
   type MapLamp,
   type FieldStructureType,
@@ -186,7 +187,7 @@ import {
   BUSH_FACES,
   SIGN_FACES,
   CLUTTER_SPRITES,
-  LAMP_SPRITES,
+  lampSprite,
   STUMP_FACES,
   CRATER_FACES,
   CIWS_TURRET_SHEET,
@@ -473,7 +474,9 @@ import {
   nightShade,
   stackedLight,
   STREET_LAMPS,
+  aimedLampGround,
   streetLampFlicker,
+  type StreetLampSpec,
   workLightBearings,
   workLightCount,
   wreckNightAlpha,
@@ -481,32 +484,28 @@ import {
 
 type NightPool = { x: number; y: number; rx: number; a: number; kind: "tower" | "head" | "work" | "missile" | LampType };
 /** How much of the night tint each kind of pool lifts, per pool (they overlap), and how much it warms. */
+const streetLampPools = <K extends "cut" | "warm" | "rgb">(key: K) =>
+  Object.fromEntries(LAMP_TYPES.map((t) => [t, STREET_LAMPS[t][key]])) as Record<LampType, StreetLampSpec[K]>;
 const POOL_CUT: Record<NightPool["kind"], number> = {
   tower: 0.7,
   head: 0.8,
   work: 0.75,
   missile: 0.4,
-  gaslamp: STREET_LAMPS.gaslamp.cut,
-  streetlamp: STREET_LAMPS.streetlamp.cut,
-  floodlight: STREET_LAMPS.floodlight.cut,
+  ...streetLampPools("cut"),
 };
 const POOL_WARM: Record<NightPool["kind"], number> = {
   tower: 0.2,
   head: 0.24,
   work: 0.2,
   missile: 0.14,
-  gaslamp: STREET_LAMPS.gaslamp.warm,
-  streetlamp: STREET_LAMPS.streetlamp.warm,
-  floodlight: STREET_LAMPS.floodlight.warm,
+  ...streetLampPools("warm"),
 };
 const POOL_RGB: Record<NightPool["kind"], string> = {
   tower: "255, 236, 180",
   head: "255, 242, 205",
   work: "255, 212, 140",
   missile: "255, 214, 150",
-  gaslamp: STREET_LAMPS.gaslamp.rgb,
-  streetlamp: STREET_LAMPS.streetlamp.rgb,
-  floodlight: STREET_LAMPS.floodlight.rgb,
+  ...streetLampPools("rgb"),
 };
 
 /** Built structures that keep work lights burning round the yard. Not bunkers, guns, walls, or the towers, which have their own lamps. */
@@ -4323,10 +4322,15 @@ export class MapView {
         }
       }
     }
-    // The map's street lamps: a still pool round each post.
+    // The map's street lamps: a still pool round each post, or an aimed lamp's beam.
     for (const { lamp, wx, wy } of this.standingLamps()) {
       const spec = STREET_LAMPS[lamp.type];
-      lay(wx, wy, spec.reachTiles * ts, streetLampFlicker(lamp.type, lamp.x, lamp.y, nowSec), lamp.type);
+      const flicker = streetLampFlicker(lamp.type, lamp.x, lamp.y, nowSec);
+      if (!spec.beam) {
+        lay(wx, wy, spec.reachTiles * ts, flicker, lamp.type);
+        continue;
+      }
+      for (const b of aimedLampGround(spec, wx, wy, ((lamp.facing ?? 90) * Math.PI) / 180, ts)) lay(b.x, b.y, b.r, b.a * flicker, lamp.type);
     }
     return out;
   }
@@ -4416,7 +4420,7 @@ export class MapView {
     for (const { lamp, wx, wy } of this.standingLamps()) {
       const p = this.toScreen(wx, wy);
       if (p.x < -64 || p.y < -16 || p.x > vw + 64 || p.y > vh + 96) continue;
-      const spr = LAMP_SPRITES[lamp.type];
+      const spr = lampSprite(lamp.type, lamp.facing);
       const veil = this.fogField?.veil(wx / ts, wy / ts, now) ?? 0;
       items.push({
         layer: STANDING_DRAW_LAYER,
@@ -4438,23 +4442,25 @@ export class MapView {
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     for (const { lamp, wx, wy } of lamps) {
-      const spr = LAMP_SPRITES[lamp.type];
+      const spr = lampSprite(lamp.type, lamp.facing);
       const spec = STREET_LAMPS[lamp.type];
       const h = spr.image.naturalHeight;
       if (!h) continue;
       const k = spec.drawH / h;
       const foot = this.toScreen(wx, wy);
-      const x = foot.x + (spr.bulbX - spr.contactX) * k;
-      const y = foot.y + (spr.bulbY - spr.contactY) * k;
       const a = glow * streetLampFlicker(lamp.type, lamp.x, lamp.y, nowSec);
-      const g = ctx.createRadialGradient(x, y, 0, x, y, spec.halo);
-      g.addColorStop(0, `rgba(255, 250, 230, ${0.85 * a})`);
-      g.addColorStop(0.3, `rgba(${spec.rgb}, ${0.5 * a})`);
-      g.addColorStop(1, `rgba(${spec.rgb}, 0)`);
-      ctx.fillStyle = g;
-      ctx.beginPath();
-      ctx.arc(x, y, spec.halo, 0, Math.PI * 2);
-      ctx.fill();
+      for (const bulb of spr.bulbs) {
+        const x = foot.x + (bulb.x - spr.contactX) * k;
+        const y = foot.y + (bulb.y - spr.contactY) * k;
+        const g = ctx.createRadialGradient(x, y, 0, x, y, spec.halo);
+        g.addColorStop(0, `rgba(255, 250, 230, ${0.85 * a})`);
+        g.addColorStop(0.3, `rgba(${spec.rgb}, ${0.5 * a})`);
+        g.addColorStop(1, `rgba(${spec.rgb}, 0)`);
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(x, y, spec.halo, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
     ctx.restore();
   }

@@ -194,13 +194,38 @@ export interface StreetLampSpec {
   /** Share of the night tint its pool lifts, and how much it warms the ground. */
   cut: number;
   warm: number;
+  /**
+   * An aimed lamp: its light is a beam `reachTiles` long and `halfDeg` either
+   * side of where it points, plus a small spill round the foot. Absent, the
+   * pool lies all round the post.
+   */
+  beam?: { halfDeg: number; spillTiles: number };
 }
 
 export const STREET_LAMPS: Record<LampType, StreetLampSpec> = {
   gaslamp: { drawH: 30, reachTiles: 5, rgb: "255, 184, 102", halo: 9, cut: 0.72, warm: 0.3 },
   streetlamp: { drawH: 42, reachTiles: 7, rgb: "255, 206, 136", halo: 12, cut: 0.78, warm: 0.26 },
   floodlight: { drawH: 50, reachTiles: 10, rgb: "222, 234, 255", halo: 15, cut: 0.85, warm: 0.18 },
+  twinlamp: { drawH: 43, reachTiles: 8, rgb: "255, 222, 170", halo: 10, cut: 0.8, warm: 0.24 },
+  sodium: { drawH: 47, reachTiles: 8, rgb: "255, 168, 70", halo: 12, cut: 0.8, warm: 0.36 },
+  spotpole: { drawH: 44, reachTiles: 16, rgb: "232, 240, 255", halo: 12, cut: 0.85, warm: 0.16, beam: { halfDeg: 13, spillTiles: 1.5 } },
+  yardflood: { drawH: 31, reachTiles: 9, rgb: "255, 236, 200", halo: 11, cut: 0.82, warm: 0.22, beam: { halfDeg: 36, spillTiles: 1.5 } },
 };
+
+/**
+ * An aimed street lamp's light on the ground in world px: a dim spill round
+ * the foot, then a beam out along `facing` (radians), as a tower's spotlight lays it.
+ */
+export function aimedLampGround(spec: StreetLampSpec, x: number, y: number, facing: number, tile: number): { x: number; y: number; r: number; a: number }[] {
+  const beam = spec.beam!;
+  const out = [{ x, y, r: beam.spillTiles * tile, a: 0.55 }];
+  const c = Math.cos(facing);
+  const s = Math.sin(facing);
+  for (const b of beamBlobs(spec.reachTiles * tile, (beam.halfDeg * Math.PI) / 180, { start: 0.08, count: 18, widen: 1.15 })) {
+    out.push({ x: x + c * b.d, y: y + s * b.d, r: b.r, a: b.a });
+  }
+  return out;
+}
 
 /**
  * How bright a street lamp burns this instant, 0..1 of full. A gas mantle

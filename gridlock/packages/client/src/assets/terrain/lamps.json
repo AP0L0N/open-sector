@@ -7,8 +7,12 @@
     ],
     "contactX": 20.0,
     "contactY": 144.7,
-    "bulbX": 20.0,
-    "bulbY": 27.7
+    "bulbs": [
+      [
+        20.0,
+        27.7
+      ]
+    ]
   },
   "streetlamp": {
     "file": "lamp-streetlamp.png",
@@ -18,8 +22,12 @@
     ],
     "contactX": 18.0,
     "contactY": 159.6,
-    "bulbX": 51.6,
-    "bulbY": 51.1
+    "bulbs": [
+      [
+        51.6,
+        51.1
+      ]
+    ]
   },
   "floodlight": {
     "file": "lamp-floodlight.png",
@@ -29,7 +37,497 @@
     ],
     "contactX": 25.0,
     "contactY": 179.5,
-    "bulbX": 35.8,
-    "bulbY": 25.9
+    "bulbs": [
+      [
+        35.8,
+        25.9
+      ]
+    ]
+  },
+  "twinlamp": {
+    "file": "lamp-twinlamp.png",
+    "size": [
+      137,
+      194
+    ],
+    "contactX": 39.0,
+    "contactY": 172.1,
+    "bulbs": [
+      [
+        62.8,
+        12.5
+      ],
+      [
+        15.2,
+        36.3
+      ]
+    ]
+  },
+  "sodium": {
+    "file": "lamp-sodium.png",
+    "size": [
+      123,
+      194
+    ],
+    "contactX": 15.6,
+    "contactY": 156.6,
+    "bulbs": [
+      [
+        70.6,
+        40.8
+      ]
+    ]
+  },
+  "spotpole": {
+    "size": [
+      164,
+      189
+    ],
+    "contactX": 27.2,
+    "contactY": 172.3,
+    "faces": [
+      {
+        "file": "lamp-spotpole-00.png",
+        "bulbs": [
+          [
+            42.8,
+            32.4
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-01.png",
+        "bulbs": [
+          [
+            38.2,
+            34.2
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-02.png",
+        "bulbs": [
+          [
+            32.9,
+            35.3
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-03.png",
+        "bulbs": [
+          [
+            27.2,
+            35.6
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-04.png",
+        "bulbs": [
+          [
+            21.5,
+            35.3
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-05.png",
+        "bulbs": [
+          [
+            16.2,
+            34.2
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-06.png",
+        "bulbs": [
+          [
+            11.6,
+            32.4
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-07.png",
+        "bulbs": [
+          [
+            8.1,
+            30.1
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-08.png",
+        "bulbs": [
+          [
+            5.9,
+            27.5
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-09.png",
+        "bulbs": [
+          [
+            5.2,
+            24.6
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-10.png",
+        "bulbs": [
+          [
+            5.9,
+            21.8
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-11.png",
+        "bulbs": [
+          [
+            8.1,
+            19.1
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-12.png",
+        "bulbs": [
+          [
+            11.6,
+            16.8
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-13.png",
+        "bulbs": [
+          [
+            16.2,
+            15.1
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-14.png",
+        "bulbs": [
+          [
+            21.5,
+            14.0
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-15.png",
+        "bulbs": [
+          [
+            27.2,
+            13.6
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-16.png",
+        "bulbs": [
+          [
+            32.9,
+            14.0
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-17.png",
+        "bulbs": [
+          [
+            38.2,
+            15.1
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-18.png",
+        "bulbs": [
+          [
+            42.8,
+            16.8
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-19.png",
+        "bulbs": [
+          [
+            46.3,
+            19.1
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-20.png",
+        "bulbs": [
+          [
+            48.5,
+            21.8
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-21.png",
+        "bulbs": [
+          [
+            49.2,
+            24.6
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-22.png",
+        "bulbs": [
+          [
+            48.5,
+            27.5
+          ]
+        ]
+      },
+      {
+        "file": "lamp-spotpole-23.png",
+        "bulbs": [
+          [
+            46.3,
+            30.1
+          ]
+        ]
+      }
+    ]
+  },
+  "yardflood": {
+    "size": [
+      231,
+      162
+    ],
+    "contactX": 79.0,
+    "contactY": 119.6,
+    "faces": [
+      {
+        "file": "lamp-yardflood-00.png",
+        "bulbs": [
+          [
+            91.5,
+            33.4
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-01.png",
+        "bulbs": [
+          [
+            87.8,
+            34.8
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-02.png",
+        "bulbs": [
+          [
+            83.6,
+            35.7
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-03.png",
+        "bulbs": [
+          [
+            79.0,
+            36.0
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-04.png",
+        "bulbs": [
+          [
+            74.4,
+            35.7
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-05.png",
+        "bulbs": [
+          [
+            70.2,
+            34.8
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-06.png",
+        "bulbs": [
+          [
+            66.5,
+            33.4
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-07.png",
+        "bulbs": [
+          [
+            63.7,
+            31.6
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-08.png",
+        "bulbs": [
+          [
+            61.9,
+            29.5
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-09.png",
+        "bulbs": [
+          [
+            61.3,
+            27.2
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-10.png",
+        "bulbs": [
+          [
+            61.9,
+            24.9
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-11.png",
+        "bulbs": [
+          [
+            63.7,
+            22.8
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-12.png",
+        "bulbs": [
+          [
+            66.5,
+            20.9
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-13.png",
+        "bulbs": [
+          [
+            70.2,
+            19.5
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-14.png",
+        "bulbs": [
+          [
+            74.4,
+            18.7
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-15.png",
+        "bulbs": [
+          [
+            79.0,
+            18.4
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-16.png",
+        "bulbs": [
+          [
+            83.6,
+            18.7
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-17.png",
+        "bulbs": [
+          [
+            87.8,
+            19.5
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-18.png",
+        "bulbs": [
+          [
+            91.5,
+            20.9
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-19.png",
+        "bulbs": [
+          [
+            94.3,
+            22.8
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-20.png",
+        "bulbs": [
+          [
+            96.1,
+            24.9
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-21.png",
+        "bulbs": [
+          [
+            96.7,
+            27.2
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-22.png",
+        "bulbs": [
+          [
+            96.1,
+            29.5
+          ]
+        ]
+      },
+      {
+        "file": "lamp-yardflood-23.png",
+        "bulbs": [
+          [
+            94.3,
+            31.6
+          ]
+        ]
+      }
+    ]
   }
 }

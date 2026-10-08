@@ -38,6 +38,7 @@ import {
   featureRectsOverlap,
   getMap,
   isBuiltinMap,
+  isAimedLamp,
   isClutterType,
   isLampType,
   isMapBridge,
@@ -442,7 +443,13 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     // Two posts on one tile, or a post inside a lot, is dropped rather than refused.
     if (lampAt.has(y * width + x) || lampBlocked(features, x, y)) continue;
     lampAt.add(y * width + x);
-    lamps.push({ type: o.type, x, y });
+    if (!isAimedLamp(o.type)) {
+      lamps.push({ type: o.type, x, y });
+      continue;
+    }
+    const facing = o.facing ?? 90;
+    if (!Number.isInteger(facing)) return bad("Bad lamp.");
+    lamps.push({ type: o.type, x, y, facing: (((facing as number) % 360) + 360) % 360 });
   }
 
   const rawClutter = m.clutter ?? [];

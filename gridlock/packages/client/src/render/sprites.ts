@@ -178,9 +178,7 @@ import clutterTiresUrl from "../assets/terrain/clutter/tires.png";
 import clutterTiresBrokenUrl from "../assets/terrain/clutter/tires-broken.png";
 import clutterBinsUrl from "../assets/terrain/clutter/bins.png";
 import clutterBinsBrokenUrl from "../assets/terrain/clutter/bins-broken.png";
-import lampGaslampUrl from "../assets/terrain/lamp-gaslamp.png";
-import lampStreetlampUrl from "../assets/terrain/lamp-streetlamp.png";
-import lampFloodlightUrl from "../assets/terrain/lamp-floodlight.png";
+import lampManifest from "../assets/terrain/lamps.json";
 import signpost2Url from "../assets/terrain/signpost-2.png";
 import trooperSheetUrl from "../assets/units/trooper-walk.png";
 import trooperCrouchUrl from "../assets/units/trooper-crouch.png";
@@ -2164,17 +2162,42 @@ export const STUMP_FACES: PropSprite[] = [prop(stump1Url, 113, 125), prop(stump2
 /** Contact is the post foot; boards overhang to either side. */
 export const SIGN_FACES: PropSprite[] = [prop(signpost1Url, 171, 300), prop(signpost2Url, 25, 300)];
 
-/** Street lamp post. Contact is the foot; the bulb is the source pixel the night glow sits on. Metrics from tools/sprites/render_industry.py (lamps.json). */
+/** Street lamp post. Contact is the foot; the bulbs are the source pixels the night glow sits on. Metrics from tools/sprites/render_industry.py (lamps.json). */
 export interface LampSprite extends PropSprite {
-  bulbX: number;
-  bulbY: number;
+  bulbs: { x: number; y: number }[];
 }
 
-export const LAMP_SPRITES: Record<LampType, LampSprite> = {
-  gaslamp: { ...prop(lampGaslampUrl, 20, 144.7), bulbX: 20, bulbY: 27.7 },
-  streetlamp: { ...prop(lampStreetlampUrl, 18, 159.6), bulbX: 51.6, bulbY: 51.1 },
-  floodlight: { ...prop(lampFloodlightUrl, 25, 179.5), bulbX: 35.8, bulbY: 25.9 },
-};
+type LampEntry = { contactX: number; contactY: number } & (
+  | { file: string; bulbs: number[][] }
+  | { faces: { file: string; bulbs: number[][] }[] }
+);
+const lampUrls = import.meta.glob("../assets/terrain/lamp-*.png", { eager: true, import: "default" }) as Record<string, string>;
+
+function lampFace(file: string, contactX: number, contactY: number, bulbs: number[][]): LampSprite {
+  const url = lampUrls[`../assets/terrain/${file}`];
+  if (!url) throw new Error(`lamp sprite ${file} missing`);
+  return { ...prop(url, contactX, contactY), bulbs: bulbs.map(([x, y]) => ({ x: x!, y: y! })) };
+}
+
+/** Every face of each lamp. One entry for a lamp that lights all round; an aimed lamp's faces turn 15° apart from east toward south. */
+export const LAMP_FACES = Object.fromEntries(
+  Object.entries(lampManifest as Record<string, LampEntry>).map(([type, e]) => [
+    type,
+    "faces" in e ? e.faces.map((f) => lampFace(f.file, e.contactX, e.contactY, f.bulbs)) : [lampFace(e.file, e.contactX, e.contactY, e.bulbs)],
+  ]),
+) as Record<LampType, LampSprite[]>;
+
+/** The face a lamp is drawn with: an aimed lamp's nearest to `facing` (whole degrees, 0 east, 90 south). */
+export function lampSprite(type: LampType, facing = 0): LampSprite {
+  const faces = LAMP_FACES[type];
+  const k = Math.round((((facing % 360) + 360) % 360) / (360 / faces.length)) % faces.length;
+  return faces[k]!;
+}
+
+/** The face each lamp shows in the palette: an aimed lamp looks toward the viewer, a little to the right. */
+export const LAMP_SPRITES = Object.fromEntries(
+  Object.keys(LAMP_FACES).map((type) => [type, lampSprite(type as LampType, 60)]),
+) as Record<LampType, LampSprite>;
 
 /** A piece of map clutter standing, or the flat wreck it leaves. `drawH` is screen px at zoom 1. */
 export interface ClutterSprite extends PropSprite {

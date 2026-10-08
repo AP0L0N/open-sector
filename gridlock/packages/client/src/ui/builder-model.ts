@@ -56,6 +56,7 @@ import {
   PLAYTEST_MAP_PREFIX,
   rollHeights,
   turnQuarter,
+  isAimedLamp,
   validateCustomMap,
   type CustomMapSpec,
   type MapDef,
@@ -223,11 +224,11 @@ export function lampProblem(s: Sheet, x: number, y: number): string | null {
   return null;
 }
 
-/** Stand a lamp of `type` on the tile. Null when placed, else the reason. */
-export function placeLamp(s: Sheet, type: LampType, x: number, y: number): string | null {
+/** Stand a lamp of `type` on the tile; an aimed one points along `facing` (degrees, 0 east, 90 south). Null when placed, else the reason. */
+export function placeLamp(s: Sheet, type: LampType, x: number, y: number, facing = 90): string | null {
   const problem = lampProblem(s, x, y);
   if (problem) return problem;
-  s.lamps.push({ type, x, y });
+  s.lamps.push(isAimedLamp(type) ? { type, x, y, facing } : { type, x, y });
   return null;
 }
 

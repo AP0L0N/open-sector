@@ -18,6 +18,7 @@ import {
   CLUTTER_TYPES,
   LAMP_NAMES,
   LAMP_TYPES,
+  isAimedLamp,
   SPAWN_PAD_R,
   DIAMOND_SCRAP_MUL,
   TILE_DIAMOND_SCRAP,
@@ -594,9 +595,9 @@ function placingType(): MapFeatureType | null {
   return null;
 }
 
-/** A defence, the Road, or a Bridge is armed: the wheel turns it. */
+/** A defence, the Road, a Bridge, a unit, or an aimed lamp is armed: the wheel turns it. */
 function turningTool(): boolean {
-  return tool.id === "defence" || tool.id === "road" || tool.id === "bridge" || tool.id === "unit";
+  return tool.id === "defence" || tool.id === "road" || tool.id === "bridge" || tool.id === "unit" || (tool.id === "lamp" && isAimedLamp(tool.lamp));
 }
 
 /** The armed tool draws a line: sandbags, barbwire, teeth, a wall, a road, or a bridge. */
@@ -747,17 +748,27 @@ function drawStage(): void {
     c.setLineDash([]);
   };
   for (const f of s.features) drawHouse(f, ...featureColors(f.type));
-  const lampMark = (x: number, y: number, type: LampType, ring: string | null): void => {
+  const lampMark = (x: number, y: number, type: LampType, facing: number | undefined, ring: string | null): void => {
     const cx = sx(x + 0.5);
     const cy = sy(y + 0.5);
-    const rgb = STREET_LAMPS[type].rgb;
-    const reach = STREET_LAMPS[type].reachTiles * z;
+    const spec = STREET_LAMPS[type];
+    const rgb = spec.rgb;
+    const reach = spec.reachTiles * z;
     const glow = c.createRadialGradient(cx, cy, 0, cx, cy, reach);
     glow.addColorStop(0, `rgba(${rgb}, 0.32)`);
     glow.addColorStop(1, `rgba(${rgb}, 0)`);
     c.fillStyle = glow;
     c.beginPath();
-    c.arc(cx, cy, reach, 0, Math.PI * 2);
+    if (spec.beam) {
+      // An aimed lamp lights a wedge out along its facing.
+      const a = ((facing ?? 90) * Math.PI) / 180;
+      const half = (spec.beam.halfDeg * Math.PI) / 180;
+      c.moveTo(cx, cy);
+      c.arc(cx, cy, reach, a - half, a + half);
+      c.closePath();
+    } else {
+      c.arc(cx, cy, reach, 0, Math.PI * 2);
+    }
     c.fill();
     const r = Math.max(2.5, Math.min(6, z * 0.9));
     c.fillStyle = `rgb(${rgb})`;
@@ -768,7 +779,7 @@ function drawStage(): void {
     c.fill();
     c.stroke();
   };
-  for (const l of M.liveLamps(s)) lampMark(l.x, l.y, l.type, null);
+  for (const l of M.liveLamps(s)) lampMark(l.x, l.y, l.type, l.facing, null);
   const clutterMark = (x: number, y: number, ring: string | null): void => {
     const r = Math.max(1.5, Math.min(4, z * 0.6));
     c.fillStyle = "#b08850";
@@ -783,7 +794,7 @@ function drawStage(): void {
   }
   if (tool.id === "lamp" && hover.inside && !drag) {
     const bad = M.lampProblem(s, hover.x, hover.y) !== null;
-    lampMark(hover.x, hover.y, tool.lamp, bad ? "#ff5a4a" : "#7dff6a");
+    lampMark(hover.x, hover.y, tool.lamp, turnDegrees(tool.turn), bad ? "#ff5a4a" : "#7dff6a");
   }
   drawPlanUnits(c, s, sx, sy, z);
   const picked = selectedFeature();
@@ -1077,7 +1088,7 @@ function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
     units: unitOverlay(s),
     lampGhost:
       tool.id === "lamp" && hover.inside && !drag
-        ? { x: hover.x, y: hover.y, type: tool.lamp, bad: M.lampProblem(s, hover.x, hover.y) !== null }
+        ? { x: hover.x, y: hover.y, type: tool.lamp, facing: turnDegrees(tool.turn), bad: M.lampProblem(s, hover.x, hover.y) !== null }
         : null,
     clutterGhost:
       tool.id === "clutter" && hover.inside && !drag
@@ -1720,7 +1731,7 @@ function onDown(e: PointerEvent): void {
   if (tool.id === "unit") return placeUnitAt(t.x, t.y);
   if (tool.id === "lamp") {
     pushUndo();
-    const problem = M.placeLamp(s, tool.lamp, t.x, t.y);
+    const problem = M.placeLamp(s, tool.lamp, t.x, t.y, turnDegrees(tool.turn));
     if (problem) {
       undo.pop();
       return say(problem, "bad");
@@ -2167,23 +2178,27 @@ function lampThumb(type: LampType): HTMLCanvasElement {
     const img = spr.image;
     if (!g || !img.naturalHeight) return;
     // Scale by height and stand the post at the middle; the cast shadow runs off to the right.
-    const k = (cv.height - 6) / img.naturalHeight;
+    // A wide one (the work floodlight and its generator) is fitted by width instead.
+    const k = Math.min((cv.height - 6) / img.naturalHeight, (cv.width * 1.6) / img.naturalWidth);
     g.clearRect(0, 0, cv.width, cv.height);
     const x0 = cv.width / 2 - spr.contactX * k;
     const y0 = cv.height - 3 - spr.contactY * k;
     g.drawImage(img, x0, y0, img.naturalWidth * k, img.naturalHeight * k);
     // Lit, so the dark post reads on the dark panel and the colour of its light shows.
-    const bx = x0 + spr.bulbX * k;
-    const by = y0 + spr.bulbY * k;
-    const halo = g.createRadialGradient(bx, by, 0, bx, by, 14);
-    halo.addColorStop(0, "rgba(255, 250, 230, 0.95)");
-    halo.addColorStop(0.35, `rgba(${STREET_LAMPS[type].rgb}, 0.6)`);
-    halo.addColorStop(1, `rgba(${STREET_LAMPS[type].rgb}, 0)`);
+    const r = spr.bulbs.length > 1 ? 10 : 14;
     g.globalCompositeOperation = "lighter";
-    g.fillStyle = halo;
-    g.beginPath();
-    g.arc(bx, by, 14, 0, Math.PI * 2);
-    g.fill();
+    for (const bulb of spr.bulbs) {
+      const bx = x0 + bulb.x * k;
+      const by = y0 + bulb.y * k;
+      const halo = g.createRadialGradient(bx, by, 0, bx, by, r);
+      halo.addColorStop(0, "rgba(255, 250, 230, 0.95)");
+      halo.addColorStop(0.35, `rgba(${STREET_LAMPS[type].rgb}, 0.6)`);
+      halo.addColorStop(1, `rgba(${STREET_LAMPS[type].rgb}, 0)`);
+      g.fillStyle = halo;
+      g.beginPath();
+      g.arc(bx, by, r, 0, Math.PI * 2);
+      g.fill();
+    }
     g.globalCompositeOperation = "source-over";
   };
   if (spr.image.complete && spr.image.naturalWidth > 0) paint();
@@ -2543,14 +2558,19 @@ function toolsPanel(ctx: Ctx): HTMLElement {
   );
 
   const lamps = el("div", { class: "bld-palette three" });
+  const aimedLamps = el("div", { class: "bld-palette three" });
   for (const type of LAMP_TYPES) {
-    const reach = `${(STREET_LAMPS[type].reachTiles * 2) / TILE_SUBDIV} cells lit`;
-    lamps.append(
-      asset(LAMP_NAMES[type], reach, tool.id === "lamp" && tool.lamp === type, lampThumb(type), `${LAMP_NAMES[type]}: lights the ground round it after dark.`, () =>
-        setTool(ctx, { id: "lamp", lamp: type }),
-      ),
+    const aimed = isAimedLamp(type);
+    const reach = `${(STREET_LAMPS[type].reachTiles * 2) / TILE_SUBDIV} cells ${aimed ? "of beam" : "lit"}`;
+    const blurb = aimed ? `${LAMP_NAMES[type]}: throws a beam the way it faces after dark. Scroll turns it.` : `${LAMP_NAMES[type]}: lights the ground round it after dark.`;
+    (aimed ? aimedLamps : lamps).append(
+      asset(LAMP_NAMES[type], reach, tool.id === "lamp" && tool.lamp === type, lampThumb(type), blurb, () => setTool(ctx, { id: "lamp", lamp: type })),
     );
   }
+  const lampFaceRow = el("div", { class: "bld-row" });
+  const lampTurnLabel = el("span", { class: "bld-val", text: `Faces ${turnDegrees(tool.turn)}°` });
+  if (stage && tool.id === "lamp" && isAimedLamp(tool.lamp)) stage.turnLabel = lampTurnLabel;
+  lampFaceRow.append(turnBy(-1, "⟲ 15°", "Turn 15° counter-clockwise"), lampTurnLabel, turnBy(1, "15° ⟳", "Turn 15° clockwise"));
   const clutter = el("div", { class: "bld-palette four" });
   for (const type of CLUTTER_TYPES) {
     clutter.append(
@@ -2620,6 +2640,13 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       el("p", {
         class: "bld-hint",
         text: "Light up after dusk. Dress only: they do not block a man or a shot, and a structure raised on one hides it. Shift+click removes.",
+      }),
+      el("h3", { class: "bld-sub", text: "Aimed lights" }),
+      aimedLamps,
+      lampFaceRow,
+      el("p", {
+        class: "bld-hint",
+        text: "Throw their light one way instead of all round the post. Scroll turns the next one 15° and R a quarter (Ctrl+scroll zooms); the wedge shows the ground it will light.",
       }),
       el("h3", { class: "bld-sub", text: "Clutter" }),
       clutter,

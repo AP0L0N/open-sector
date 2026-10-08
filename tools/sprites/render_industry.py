@@ -19,11 +19,20 @@ one mirrored: every face fills the same W x H box.
   shed       t(7) x t(2)  engine shed: two tracks run the length of it, a smoke-stained roof, a water crane
   boiler     t(3) x t(6)  boiler house: coal bunker, conveyor, boiler hall, tall stack
 
-and three street lamps, one image each (props, no facings):
+and street lamps. The ones that light all round are one image each (props, no facings):
 
   gaslamp     short cast-iron post with a glazed lantern
   streetlamp  tall post with a swan-neck arm and a bell shade
   floodlight  yard mast with two flood heads
+  twinlamp    boulevard post with two scroll arms and two globes
+  sodium      concrete post with a long outreach arm and a cobra head
+
+The aimed ones throw a beam one way, so the builder turns them before placing.
+Each is modelled looking east and turned through AIM_FACES faces, 15 degrees apart,
+clockwise on screen (east toward south), the steps `tool.turn` takes:
+
+  spotpole    steel pole with a drum searchlight on a yoke, tipped down
+  yardflood   tripod work light with a square flood head and a generator box
 
 Look: the inked structure style of render_airfield.py (same mesh, raster,
 ink, silhouette, key light, and cast shadow), so the lots read as the same
@@ -37,8 +46,9 @@ every face shares one palette, one scale, and one yard.
 
 Buildings land in <out>/buildings/<type>{,-s,-w,-n}.png with industry.json
 (pad metrics per face, for `building()` in render/sprites.ts). Lamps land in
-<out>/terrain/lamp-<type>.png with their contact and bulb pixels in
-lamps.json (for `LAMP_SPRITES`).
+<out>/terrain/lamp-<type>.png (an aimed lamp: lamp-<type>-<NN>.png, NN = face)
+with their contact and bulb pixels in lamps.json (for `LAMP_SPRITES`). Every face
+of an aimed lamp shares one canvas and one crop, so it draws at one scale.
 """
 
 from __future__ import annotations
@@ -52,6 +62,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 import render_airfield as ra
+from turn_faces import turn_mesh
 
 HERE = Path(__file__).resolve().parent
 PREVIEW = HERE / "preview"
@@ -200,6 +211,10 @@ def tex(mat: str, P: np.ndarray, n: np.ndarray) -> np.ndarray:
         return base("#fff2c8")
     if mat == "lens_cool":
         return base("#f0f6ff")
+    if mat == "lens_sodium":
+        return base("#ffc772")
+    if mat == "glass_globe":
+        return base("#fbe6b8")
     if mat == "glass_lamp":
         return base("#f6dc9a")
     if mat == "post":
@@ -788,12 +803,121 @@ def floodlight(m: ra.Mesh) -> dict:
     return {"bulb": (1.8, 0.0, 26.5)}
 
 
+def twinlamp(m: ra.Mesh) -> dict:
+    # Boulevard post: stepped plinth, fluted shaft, a scroll arm each way, two globes.
+    m.cyl((0, 0, 0), (0, 0, 1.0), 1.6, 1.4, "post_green", n=12)
+    m.cyl((0, 0, 1.0), (0, 0, 2.6), 1.1, 0.8, "post_green", n=12)
+    m.cyl((0, 0, 2.6), (0, 0, 17.5), 0.5, 0.36, "post_green", n=10)
+    m.cyl((0, 0, 17.5), (0, 0, 18.3), 0.75, 0.75, "post_green", n=10)
+    bulbs = []
+    for side in (-1, 1):
+        m.new_part()
+        pts = []
+        for i in range(7):
+            a = math.pi / 2 * i / 6
+            pts.append((0.0, side * (0.4 + 3.0 * math.sin(a)), 17.9 + 1.6 * (1 - math.cos(a))))
+        for a, b in zip(pts, pts[1:]):
+            m.cyl(a, b, 0.24, 0.24, "post_green", n=8, part=False)
+        y = pts[-1][1]
+        z = pts[-1][2]
+        m.cyl((0, y, z), (0, y, z + 0.5), 0.55, 0.55, "post_green", n=10)
+        m.cyl((0, y, z + 0.5), (0, y, z + 1.6), 0.9, 1.25, "glass_globe", n=12)
+        m.cyl((0, y, z + 1.6), (0, y, z + 2.6), 1.25, 0.6, "glass_globe", n=12)
+        m.cyl((0, y, z + 2.6), (0, y, z + 3.1), 0.45, 0.2, "post_green", n=8)
+        bulbs.append((0.0, y, z + 1.6))
+    m.cyl((0, 0, 18.3), (0, 0, 20.2), 0.3, 0.08, "post_green", n=8)
+    return {"bulbs": bulbs}
+
+
+def sodium(m: ra.Mesh) -> dict:
+    # Square concrete post, a straight outreach arm rising a little, a cobra head with a sodium lens.
+    m.box((-1.1, -1.1, 0), (1.1, 1.1, 1.2), "concrete")
+    m.cyl((0, 0, 1.2), (0, 0, 24.0), 0.75, 0.5, "concrete", n=4)
+    m.cyl((0, 0, 22.6), (6.2, 0, 23.8), 0.22, 0.22, "galv", n=8)
+    m.cyl((0, 0, 21.2), (2.4, 0, 22.9), 0.16, 0.16, "galv", n=6, part=False)
+    m.new_part()
+    m.cyl((5.4, 0.0, 24.1), (9.6, 0.0, 23.5), 0.75, 1.15, "galv", n=10)
+    m.cyl((9.6, 0, 23.5), (10.3, 0, 23.35), 1.15, 0.4, "galv", n=10, part=False)
+    m.cyl((7.0, 0, 23.0), (9.8, 0, 22.7), 0.8, 0.8, "lens_sodium", n=10, part=False)
+    return {"bulbs": [(8.6, 0.0, 22.4)]}
+
+
+def tilted_box(m: ra.Mesh, c, fwd, up, w: float, h: float, d: float, mat: str, front: str | None = None) -> None:
+    """A box centred on c, `d` deep along fwd, `h` tall along up, `w` wide across. The front face may take its own material."""
+    c, f, u = np.asarray(c, float), np.asarray(fwd, float), np.asarray(up, float)
+    f = f / np.linalg.norm(f)
+    u = u - f * np.dot(u, f)
+    u = u / np.linalg.norm(u)
+    r = np.cross(f, u)
+    m.new_part()
+    P = {}
+    for i in (-1, 1):
+        for j in (-1, 1):
+            for k in (-1, 1):
+                P[i, j, k] = m.v(c + f * i * d / 2 + r * j * w / 2 + u * k * h / 2)
+    m.quad(P[1, -1, -1], P[1, 1, -1], P[1, 1, 1], P[1, -1, 1], front or mat)
+    m.quad(P[-1, -1, -1], P[-1, 1, -1], P[-1, 1, 1], P[-1, -1, 1], mat)
+    m.quad(P[-1, -1, 1], P[1, -1, 1], P[1, 1, 1], P[-1, 1, 1], mat)
+    m.quad(P[-1, -1, -1], P[1, -1, -1], P[1, 1, -1], P[-1, 1, -1], mat)
+    m.quad(P[-1, -1, -1], P[1, -1, -1], P[1, -1, 1], P[-1, -1, 1], mat)
+    m.quad(P[-1, 1, -1], P[1, 1, -1], P[1, 1, 1], P[-1, 1, 1], mat)
+
+
+def spotpole(m: ra.Mesh) -> dict:
+    # Steel pole on a footing, rungs up the back, a cradle, a drum light on a yoke looking east and down.
+    m.box((-1.6, -1.6, 0), (1.6, 1.6, 1.0), "concrete")
+    m.cyl((0, 0, 1.0), (0, 0, 20.0), 0.6, 0.45, "galv", n=10)
+    for z in range(3, 19, 2):
+        m.box((-1.15, -0.5, z), (-1.0, 0.5, z + 0.18), "galv", part=False)
+    m.cyl((0, 0, 20.0), (0, 0, 20.5), 2.4, 2.4, "iron", n=12)
+    m.cyl((0, 0, 20.5), (0, 0, 22.4), 0.35, 0.35, "iron", n=8)
+    for y in (-1.5, 1.5):
+        m.box((-0.3, y - 0.18, 21.4), (0.3, y + 0.18, 23.6), "iron", part=False)
+    tilt = math.radians(22)
+    ax = np.array([math.cos(tilt), 0.0, -math.sin(tilt)])
+    mid = np.array([0.3, 0.0, 23.2])
+    back = mid - ax * 1.7
+    nose = mid + ax * 1.8
+    m.cyl(back, nose, 1.15, 1.45, "iron", n=16)
+    lens = nose + ax * 0.12
+    m.cyl(nose, lens, 1.32, 1.32, "lens_cool", n=16)
+    m.cyl(back - ax * 0.7, back, 0.6, 0.95, "iron", n=12)
+    return {"bulbs": [tuple(lens + ax * 0.3)]}
+
+
+def yardflood(m: ra.Mesh) -> dict:
+    # Tripod work light: three splayed legs, a short mast, a square flood head tipped down, a generator behind.
+    top = (0.0, 0.0, 9.0)
+    for k in range(3):
+        a = math.pi + (k - 1) * 2 * math.pi / 3
+        m.cyl((3.0 * math.cos(a), 3.0 * math.sin(a), 0.0), top, 0.22, 0.22, "iron", n=6)
+    m.cyl(top, (0, 0, 11.2), 0.3, 0.3, "galv", n=8)
+    m.box((-0.2, -1.6, 10.9), (0.2, 1.6, 11.3), "galv")
+    tilt = math.radians(28)
+    f = np.array([math.cos(tilt), 0.0, -math.sin(tilt)])
+    c = np.array([0.9, 0.0, 11.9])
+    tilted_box(m, c, f, (0, 0, 1), 3.4, 2.8, 1.2, "iron")
+    tilted_box(m, c + f * 0.62, f, (0, 0, 1), 2.9, 2.3, 0.06, "iron", front="lens")
+    m.box((-6.6, -1.6, 0), (-3.6, 1.6, 2.4), "iron", top="galv")
+    m.box((-6.2, -1.2, 2.4), (-5.4, -0.4, 3.0), "galv", part=False)
+    return {"bulbs": [tuple(c + f * 0.75)]}
+
+
 LAMPS = {
     # type: (builder, zoom)
     "gaslamp": (gaslamp, 9.0),
     "streetlamp": (streetlamp, 7.0),
     "floodlight": (floodlight, 6.0),
+    "twinlamp": (twinlamp, 7.0),
+    "sodium": (sodium, 6.4),
 }
+
+# Lamps that throw their light one way: turned through AIM_FACES faces before placing.
+AIMED = {
+    "spotpole": (spotpole, 6.6),
+    "yardflood": (yardflood, 8.0),
+}
+AIM_FACES = 24
 
 
 # ---------------------------------------------------------------- render
@@ -877,6 +1001,10 @@ def render_building(name: str, out_dir: Path) -> list[dict]:
     return faces
 
 
+def bulb_list(info: dict) -> list:
+    return info["bulbs"] if "bulbs" in info else [info["bulb"]]
+
+
 def render_lamp(name: str, out_dir: Path) -> dict:
     build, zoom = LAMPS[name]
     ra.ZOOM = zoom
@@ -890,16 +1018,49 @@ def render_lamp(name: str, out_dir: Path) -> dict:
     file = f"lamp-{name}.png"
     img.save(out_dir / file, optimize=True)
     c = screen(cv, 0, 0, 0)
-    b = screen(cv, *info["bulb"])
     meta = {
         "file": file,
         "size": list(img.size),
         "contactX": round(c[0] - bb[0], 1),
         "contactY": round(c[1] - bb[1], 1),
-        "bulbX": round(b[0] - bb[0], 1),
-        "bulbY": round(b[1] - bb[1], 1),
+        "bulbs": [[round(x - bb[0], 1), round(y - bb[1], 1)] for x, y in (screen(cv, *q) for q in bulb_list(info))],
     }
     print("wrote", out_dir / file, meta)
+    return meta
+
+
+def render_aimed(name: str, out_dir: Path) -> dict:
+    """Every face of an aimed lamp on one canvas, cropped to the union of their pixels, so all draw at one scale."""
+    build, zoom = AIMED[name]
+    ra.ZOOM = zoom
+    meshes, bulbs = [], []
+    for k in range(AIM_FACES):
+        m = ra.Mesh()
+        info = build(m)
+        a = 2 * math.pi * k / AIM_FACES
+        turn_mesh(m, a, 0.0, 0.0)
+        cs, sn = math.cos(a), math.sin(a)
+        bulbs.append([(x * cs - y * sn, x * sn + y * cs, z) for x, y, z in bulb_list(info)])
+        meshes.append(m)
+    union = ra.Mesh()
+    union.verts = [v for m in meshes for v in m.verts]
+    cv = canvas_for(union, [(-8, -8), (8, -8), (-8, 8), (8, 8)])
+    imgs = [shade_frame(m, None, cv, lambda gx, gy: ra.smooth(16.0, 6.0, np.hypot(gx, gy))) for m in meshes]
+    boxes = [im.getbbox() or (0, 0, im.width, im.height) for im in imgs]
+    bb = (min(q[0] for q in boxes), min(q[1] for q in boxes), max(q[2] for q in boxes), max(q[3] for q in boxes))
+    c = screen(cv, 0, 0, 0)
+    faces = []
+    for k, (im, bs) in enumerate(zip(imgs, bulbs)):
+        file = f"lamp-{name}-{k:02d}.png"
+        im.crop(bb).save(out_dir / file, optimize=True)
+        faces.append({"file": file, "bulbs": [[round(x - bb[0], 1), round(y - bb[1], 1)] for x, y in (screen(cv, *q) for q in bs)]})
+    meta = {
+        "size": [bb[2] - bb[0], bb[3] - bb[1]],
+        "contactX": round(c[0] - bb[0], 1),
+        "contactY": round(c[1] - bb[1], 1),
+        "faces": faces,
+    }
+    print("wrote", out_dir / f"lamp-{name}-NN.png", meta["size"], meta["contactX"], meta["contactY"])
     return meta
 
 
@@ -910,6 +1071,9 @@ def preview(asset_dir: Path, names: list[str]) -> None:
         if n in BUILDINGS:
             for s in FACES:
                 tiles.append(Image.open(asset_dir / "buildings" / f"{n}{s}.png"))
+        elif n in AIMED:
+            for k in range(0, AIM_FACES, 3):
+                tiles.append(Image.open(asset_dir / "terrain" / f"lamp-{n}-{k:02d}.png"))
         else:
             tiles.append(Image.open(asset_dir / "terrain" / f"lamp-{n}.png"))
     h = 300
@@ -936,7 +1100,7 @@ def main() -> None:
     ap.add_argument("--preview", action="store_true")
     args = ap.parse_args()
     out = Path(args.out)
-    names = [n for n in args.only.split(",") if n] or [*BUILDINGS, *LAMPS]
+    names = [n for n in args.only.split(",") if n] or [*BUILDINGS, *LAMPS, *AIMED]
     bdir = out / "buildings"
     ldir = out / "terrain"
     bjson = bdir / "industry.json"
@@ -950,6 +1114,8 @@ def main() -> None:
             bman[n] = render_building(n, bdir)
         elif n in LAMPS:
             lman[n] = render_lamp(n, ldir)
+        elif n in AIMED:
+            lman[n] = render_aimed(n, ldir)
         else:
             raise SystemExit(f"unknown type {n}")
     if bman:
