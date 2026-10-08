@@ -62,6 +62,7 @@ import { radarContacts, radarOnline } from "./radar.js";
 import { cyborgShutdownIn } from "./cyborg-link.js";
 import { aswDeckView, sonarContacts } from "./destroyer.js";
 import { scrapCap } from "./smelter.js";
+import { thermalContacts } from "./thermal.js";
 import { canSeeWorld, encodeVisionRuns, entityOnMask, maskRevOf, visionMask } from "./vision.js";
 import { spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, LaserBeam, MatchState, Order, QueueableCommand, StructureJob } from "./types.js";
@@ -691,6 +692,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
     vision: you ? visionRuns(vis) : undefined,
     radar: radar ? radarContacts(state, youPlayerId, vis) : undefined,
     sonar: you ? nonEmpty(sonarContacts(state, youPlayerId)) : undefined,
+    thermal: you ? nonEmpty(thermalContacts(state, youPlayerId, vis)) : undefined,
     winner: state.winner,
   };
 }

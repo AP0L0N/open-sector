@@ -283,6 +283,7 @@ import { drawSearchlightAt, drawTowerSearchlight, type SearchlightPose } from ".
 import { drawTorpedoBody } from "./torpedo-draw.js";
 import { drawRadarContact, drawRadarOffline, radarContactLit } from "./radar-panel.js";
 import { drawSonarContact, drawWaterMine } from "./sonar-fx.js";
+import { drawHeatContact, drawScanContact } from "./thermal-fx.js";
 import {
   drawTrackKick,
   spawnTrackKickPuffs,
@@ -819,6 +820,7 @@ export class MapView {
   /** The previous snapshot's projectiles, sonar contacts and crates by id, for the between-snapshot blend. */
   private prevProjById = new Map<number, ProjectileView>();
   private prevSonarById = new Map<number, NonNullable<MatchSnapshot["sonar"]>[number]>();
+  private prevThermalById = new Map<number, NonNullable<MatchSnapshot["thermal"]>[number]>();
   private prevCrateById = new Map<number, MatchSnapshot["crates"][number]>();
   /** Walker legs: ground walked so far and where the hull was last frame. */
   private walkerOdo = new Map<number, { x: number; y: number; d: number }>();
@@ -1301,6 +1303,7 @@ export class MapView {
     this.prevById = this.currById;
     this.prevProjById = new Map(this.prev.projectiles.map((p) => [p.id, p]));
     this.prevSonarById = new Map((this.prev.sonar ?? []).map((c) => [c.id, c]));
+    this.prevThermalById = new Map((this.prev.thermal ?? []).map((c) => [c.id, c]));
     this.prevCrateById = new Map((this.prev.crates ?? []).map((c) => [c.id, c]));
     this.curr = match;
     this.currById = new Map(match.entities.map((e) => [e.id, e]));
@@ -4279,6 +4282,22 @@ export class MapView {
     this.drawDroneLeash();
     this.drawRadarReach();
     this.drawSonarContacts();
+    this.drawThermalContacts();
+  }
+
+  /** What your Cyborgs read through the fog: a soldier's heat, or a hull under the APS scan grid. */
+  private drawThermalContacts(): void {
+    const contacts = this.curr.thermal;
+    if (!contacts?.length) return;
+    const now = performance.now();
+    const unit = this.ts() * 2;
+    const t = Math.min(1, (now - this.snapAt) / 100);
+    for (const c of contacts) {
+      const prev = this.prevThermalById.get(c.id);
+      const s = this.toScreen(prev ? prev.x + (c.x - prev.x) * t : c.x, prev ? prev.y + (c.y - prev.y) * t : c.y);
+      const draw = c.armored ? drawScanContact : drawHeatContact;
+      draw(this.ctx, s.x, s.y, { nowMs: now, id: c.id, unit });
+    }
   }
 
   /** Submarines your Destroyers hear: a ping on the water over the fog, seen or not. */
@@ -9666,6 +9685,11 @@ export class MapView {
       ctx.fillRect((c.x / ts) * scale - 4, (c.y / ts) * scale - 4, 8, 8);
       ctx.fillStyle = "#6ee6be";
       ctx.fillRect((c.x / ts) * scale - 2, (c.y / ts) * scale - 2, 4, 4);
+    }
+    // Cyborg contacts: orange for heat, cyan for a hull on the APS radar.
+    for (const c of this.curr.thermal ?? []) {
+      ctx.fillStyle = c.armored ? "#78e1ff" : "#e0781a";
+      ctx.fillRect((c.x / ts) * scale - 1.5, (c.y / ts) * scale - 1.5, 3, 3);
     }
   }
 }

@@ -132,11 +132,11 @@ export function hasSpotlight(type: EntityType): boolean {
 }
 
 /**
- * Armored ground hulls and the Cyborg carry a headlight. Planes and drones fly
- * dark, and so does a submarine.
+ * Armored ground hulls carry a headlight. Planes and drones fly dark, and so
+ * does a submarine. Cyborgs carry no lamp: they see by thermal (sim/thermal.ts).
  */
 export function hasHeadlight(type: EntityType): boolean {
-  if (isCyborg(type)) return true;
+  if (isCyborg(type)) return false;
   if (catalog(type).submerges) return false;
   return isArmoredType(type) && !isAircraftType(type) && !isDroneType(type) && !hasSpotlight(type);
 }
@@ -180,11 +180,8 @@ export function headlightLit(e: {
   garrisonedIn?: number | null;
   air?: unknown;
   crits?: readonly Crit[];
-  shutdown?: true;
 }): boolean {
   if (hasCrit({ crits: e.crits ?? [] }, "lamp")) return false;
-  // A shut-down Cyborg's headlight goes out with the rest of him.
-  if (e.shutdown) return false;
   return e.kind === "unit" && hasHeadlight(e.type) && (e.hp ?? 1) > 0 && !e.wreck && e.garrisonedIn == null && !e.air;
 }
 
@@ -207,14 +204,11 @@ export function spotlightManned(e: {
   ruined?: boolean;
   wreck?: boolean;
   crits?: readonly Crit[];
-  shutdown?: true;
   /** The sim's occupant ids, or a snapshot's head count. Read for a post that needs its man. */
   garrison?: readonly unknown[] | { count: number };
 }): boolean {
   if (hasCrit({ crits: e.crits ?? [] }, "lamp")) return false;
   if (lampCrewOf(e.type) && crewAt(e.garrison) <= 0) return false;
-  // A shut-down Cyborg's headlight goes out with the rest of him.
-  if (e.shutdown) return false;
   return hasSpotlight(e.type) && (e.ownerId !== NEUTRAL_OWNER || e.kind === "unit") && e.hp > 0 && !e.ruined && !e.wreck;
 }
 
