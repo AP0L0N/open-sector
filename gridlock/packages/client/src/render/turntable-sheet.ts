@@ -38,7 +38,7 @@ const feuerwirbelHullGlob = import.meta.glob("../assets/units/feuerwirbel/hull/*
   import: "default",
 }) as Record<string, string>;
 
-const feuerwirbelTurretGlob = import.meta.glob("../assets/units/feuerwirbel/turret/*.png", {
+const feuerwirbelCiwsGlob = import.meta.glob("../assets/units/feuerwirbel/ciws/*.png", {
   eager: true,
   import: "default",
 }) as Record<string, string>;
@@ -470,26 +470,27 @@ export function bindJagdtigerSheets(hullImage: HTMLImageElement, gunImage: HTMLI
 let feuerwirbelPrevious: ComposedTurntable | null = null;
 
 /**
- * Feuerwirbel: hull with the bow flame projector + the twin-gatling turret, one transform for both
- * (tools/sprites/render_feuerwirbel.py). The static feuerwirbel-cameo.png is the sidebar portrait.
+ * Feuerwirbel: hull with the bow flame projector + one CIWS mount sheet, one transform for both
+ * (tools/sprites/render_feuerwirbel.py). The client draws the mount twice, on its two rings
+ * (feuerwirbel-mounts.ts). The static feuerwirbel-cameo.png is the sidebar portrait.
  */
-export function bindFeuerwirbelSheets(hullImage: HTMLImageElement, turretImage: HTMLImageElement): void {
+export function bindFeuerwirbelSheets(hullImage: HTMLImageElement, ciwsImage: HTMLImageElement): void {
   let hullUrls: string[];
-  let turretUrls: string[];
+  let ciwsUrls: string[];
   try {
     hullUrls = pickTurntableUrls(feuerwirbelHullGlob);
-    turretUrls = pickTurntableUrls(feuerwirbelTurretGlob);
+    ciwsUrls = pickTurntableUrls(feuerwirbelCiwsGlob);
   } catch (err) {
     console.error("feuerwirbel turntable", err);
     return;
   }
-  void Promise.all([Promise.all(hullUrls.map(loadImage)), Promise.all(turretUrls.map(loadImage))])
-    .then(([hullImgs, turretImgs]) => composeAligned([hullImgs, turretImgs], TIGER_OPTS))
+  void Promise.all([Promise.all(hullUrls.map(loadImage)), Promise.all(ciwsUrls.map(loadImage))])
+    .then(([hullImgs, ciwsImgs]) => composeAligned([hullImgs, ciwsImgs], TIGER_OPTS))
     .then((next) => {
       revoke(feuerwirbelPrevious);
       feuerwirbelPrevious = next;
       hullImage.src = next.sheetUrls[0] ?? "";
-      turretImage.src = next.sheetUrls[1] ?? "";
+      ciwsImage.src = next.sheetUrls[1] ?? "";
     })
     .catch((err) => {
       console.error("feuerwirbel turntable", err);

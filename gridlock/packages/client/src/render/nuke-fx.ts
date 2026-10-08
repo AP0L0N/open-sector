@@ -11,8 +11,10 @@
  * `rx` / `ry`, the half-axes of the blast radius on screen.
  */
 
+/** The cloud's clock runs this much faster than the flash and the ring: it clears 20% sooner. */
+export const NUKE_CLOUD_PACE = 1.25;
 /** How long the cloud stays up, ms. */
-export const NUKE_FX_MS = 11000;
+export const NUKE_FX_MS = 11000 / NUKE_CLOUD_PACE;
 /** How long the scorch stays on the ground, ms (the last third fades). */
 export const NUKE_SCORCH_MS = 45000;
 /** The flash over the whole view, ms. */
@@ -46,17 +48,19 @@ export function nukePhase(age: number): NukePhase {
   const a = Math.max(0, age);
   const f = 1 - clamp01(a / NUKE_FLASH_MS);
   const ringT = clamp01(a / NUKE_RING_MS);
-  const surgeT = clamp01(a / 3200);
+  // Cloud time: rise, cooling, surge, and fade all run on it.
+  const c = a * NUKE_CLOUD_PACE;
+  const surgeT = clamp01(c / 3200);
   return {
     flash: f * f,
     ring: 1.35 * easeOut(ringT),
     ringAlpha: ringT >= 1 ? 0 : 1 - ringT,
     surge: 0.25 + 0.9 * easeOut(surgeT),
-    surgeAlpha: 0.75 * (1 - clamp01((a - 2500) / (NUKE_FX_MS - 2500))),
-    capR: 0.18 + 0.34 * easeOut(clamp01(a / 3000)) + 0.08 * clamp01((a - 3000) / 7000),
-    capRise: 1.05 * easeOut(clamp01(a / 6500)),
-    heat: 1 - clamp01(a / 4200),
-    alpha: 1 - clamp01((a - 7000) / (NUKE_FX_MS - 7000)),
+    surgeAlpha: 0.75 * (1 - clamp01((c - 2500) / (11000 - 2500))),
+    capR: 0.18 + 0.34 * easeOut(clamp01(c / 3000)) + 0.08 * clamp01((c - 3000) / 7000),
+    capRise: 1.05 * easeOut(clamp01(c / 6500)),
+    heat: 1 - clamp01(c / 4200),
+    alpha: 1 - clamp01((c - 7000) / (11000 - 7000)),
   };
 }
 

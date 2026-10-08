@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 119;
+export const PROTOCOL_VERSION = 120;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -170,6 +170,11 @@ export interface EntityView {
   gatling?: { arms: 1 | 2; off?: number };
   /** Apocalypse roof mount: its world facing, and `fire` when it shot during the last step. */
   ciws?: { facing: number; fire?: true };
+  /**
+   * Feuerwirbel CIWS mounts, fore then aft: facing, and whether it fired in the last batch of
+   * ticks. Heat (0–1) and an overheat lock for the owner's side only.
+   */
+  mounts?: { facing: number; fire?: true; heat?: number; hot?: true }[];
   /**
    * Battle Ship: each main turret's world facing and, for its own side, the shells left in each
    * barrel; each CIWS mount's facing, `fire` when it shot during the last step, and its belt.

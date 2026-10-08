@@ -796,7 +796,7 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
     : e.shutdown
       ? e.takeover
         ? `  ·  SHUT DOWN — uplink ${Math.round(e.takeover.u * 100)}%`
-        : "  ·  SHUT DOWN — a Cyborg Commander can take him over"
+        : "  ·  SHUT DOWN — wakes when his side's link is back, or a Cyborg Commander takes him over"
       : "";
   const injuries =
     e.crits && e.crits.length > 0
@@ -1603,8 +1603,10 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
     const flamer = hullFlamerOf(focus.type);
     const coax = hasMg(focus.type) && !flamer;
     const belt = mine.reduce((n, e) => n + (coax ? (e.mgAmmo ?? 0) : (e.clip ?? 0)), 0);
-    const heat = mine.length ? mine.reduce((n, e) => n + (e.mgHeat ?? 0), 0) / mine.length : 0;
-    const hot = mine.some((e) => (e.mgOverheat ?? 0) > 0);
+    // Twin CIWS mounts heat apart: the bar shows the hotter one, and either locking reads as overheated.
+    const heatOf = (e: EntityView) => (e.mounts ? Math.max(0, ...e.mounts.map((m) => m.heat ?? 0)) : (e.mgHeat ?? 0));
+    const heat = mine.length ? mine.reduce((n, e) => n + heatOf(e), 0) / mine.length : 0;
+    const hot = mine.some((e) => (e.mounts ? e.mounts.some((m) => m.hot) : (e.mgOverheat ?? 0) > 0));
     const beltName = roofCiwsOf(focus.type) || focus.type === "ciws" ? "20mm" : coax ? "MG" : "Gatling";
     const fuel = flamer ? `  ·  Fuel ${mine.reduce((n, e) => n + (e.mgAmmo ?? 0), 0)}` : "";
     setField(body, "mg-label", (hot ? `${beltName}  ${belt}  overheated` : `${beltName}  ${belt}`) + fuel);

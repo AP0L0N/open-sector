@@ -921,7 +921,8 @@ export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[
  * or on a living Cyborg Commander of his own side. With neither, CYBORG_SHUTDOWN_SECONDS
  * after the link drops every Cyborg of that player on the field shuts down: he stops
  * where he stands, belongs to no one, answers no orders, and fires at nothing. Nobody
- * fires at him on their own either; a force-attack still can.
+ * fires at him on their own either; a force-attack still can. When that player's link
+ * is back, his dark Cyborgs wake up on his side again, unless a Commander took them first.
  */
 export const CYBORG_SHUTDOWN_SECONDS = 4;
 /** A living Cyborg Commander takes over a shut-down Cyborg this close, friend's or foe's. */
@@ -1105,11 +1106,12 @@ export interface CatalogEntry {
   /** Main-gun barrels. A twin mount fires them one after another. Default 1. */
   twinGuns?: boolean;
   /**
-   * The turret carries gatlings, not a cannon (the Feuerwirbel): bullets fed from `belt`,
-   * heated like every gatling, never brought to bear on a building it cannot empty, and
-   * held off tank plate they cannot mark unless the player names the target.
+   * Two CIWS mounts on the deck instead of a gun (the Feuerwirbel). Each traverses, picks,
+   * heats, and fires on its own (tickTwinCiws), and with more than one enemy in reach they
+   * never share a target. Both feed from `belt`. Like every gatling they never bring a building
+   * down and hold off tank plate they cannot mark unless the player names the target.
    */
-  gatlingTurret?: boolean;
+  twinCiws?: boolean;
   /**
    * A flame projector fixed in the bow (the Feuerwirbel). It fires on its own clock, only
    * inside HULL_FLAMER_ARC_DEG of the nose, at what fire can hurt. Its fuel rides in the
@@ -1454,11 +1456,14 @@ export const LASER_BEAM_HALF_WIDTH = 2;
 /**
  * The laser on anything else (a hull, a building, a wreck): one straight beam
  * onto the target for LASER_LINE_SECONDS. It cuts through any plate from any
- * face, for a moderate LASER_LINE_DAMAGE. A small fire is left where it lands,
+ * face, for a moderate LASER_LINE_DAMAGE; an armored unit (a hull or a wreck)
+ * takes LASER_ARMOR_DAMAGE instead. A small fire is left where it lands,
  * and the trees and soldiers (his own too) between him and the target burn.
  */
 export const LASER_LINE_SECONDS = 0.35;
 export const LASER_LINE_DAMAGE = 30;
+/** The line on an armored unit: half again the line's damage. */
+export const LASER_ARMOR_DAMAGE = LASER_LINE_DAMAGE * 1.5;
 /** Seconds the emitter recharges between shots. */
 export const LASER_RECHARGE = 4;
 /** The beam's fires: smaller and shorter-lived than a flamethrower's patch. */
@@ -1469,7 +1474,7 @@ export const LASER_FIRE_SPACING = LASER_FIRE_RADIUS * 1.25;
 export const LASER = {
   id: "laser" as const,
   name: "Cutting laser",
-  blurb: "Always cuts out to full reach. On soldiers it sweeps across them and burns down every soldier the beam passes, his own too, leaving a line of fire on the ground. Trees in its path burn down. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Recharges between shots; never needs a truck.",
+  blurb: "Always cuts out to full reach. On soldiers it sweeps across them and burns down every soldier the beam passes, his own too, leaving a line of fire on the ground. Trees in its path burn down. On a hull or a building it is one straight beam that cuts any plate: heavy damage to a hull, moderate to a building. Recharges between shots; never needs a truck.",
   damage: LASER_LINE_DAMAGE,
   penetration: 999,
   caliber: 20,
@@ -1832,17 +1837,22 @@ export const FLAMER = {
 } as const satisfies InfantryGun;
 
 /**
- * Feuerwirbel. A flame tank: two gatlings side by side on a fast turret for
+ * Feuerwirbel. A flame tank: two CIWS mounts on the deck, fore and aft, for
  * soldiers and anything in the air, and a flame projector fixed in the bow.
  *
- * Each gatling is the Walker's gun on a heavier round that sometimes bites a
- * Walker or a truck. Both fire together, four rounds a tick, from one belt.
+ * Each mount is one gatling, the Walker's gun on a heavier round that sometimes
+ * bites a Walker or a truck, with its own traverse, target, and heat. They feed
+ * from one belt.
  */
-export const FEUERWIRBEL_SHOTS_PER_TICK = WALKER_SHOTS_PER_TICK;
-/** Both guns' belt. Like the Walker's backpack it never reloads; only a supply truck refills it. */
+export const FEUERWIRBEL_MOUNT_SHOTS_PER_TICK = WALKER_ONE_BURST;
+/** Both mounts' belt. Like the Walker's backpack it never reloads; only a supply truck refills it. */
 export const FEUERWIRBEL_BELT = 1600;
-/** The turret is light and power-traversed: the fastest on the field, past the Tiger's and the Walker's torso. */
-export const FEUERWIRBEL_TURRET_TURN = 300;
+/** Each mount is light and power-traversed: faster than any turret on the field, past the Tiger's and the Walker's torso. */
+export const FEUERWIRBEL_MOUNT_TURN = 300;
+/** Mount pivots along the keel, meters from the hull's centre: fore, then aft (render_feuerwirbel.py MOUNT_X). */
+export const FEUERWIRBEL_MOUNT_AT = [0.9, -1.0] as const;
+/** The model's half length in meters, which the sim radius stands for. */
+export const FEUERWIRBEL_HALF_LENGTH_M = 3.35;
 /**
  * The bow projector throws the Pyro's globs, a burst at a time, from a hull tank
  * that holds ten bursts. It never traverses: the jet leaves within this many degrees
@@ -2592,18 +2602,20 @@ export const CYBORG_HEAT: GatlingHeat = { perRound: 1 / 28.8, coolPerSec: 0.1, o
 /** Apocalypse roof mount. 20 a second. Half again the heat per round: a little over a second on the trigger. */
 export const APOCALYPSE_CIWS_HEAT: GatlingHeat = { perRound: 1.5 / 32.4, coolPerSec: 0.12, overheatSeconds: 4 };
 /**
- * Feuerwirbel. Two gatlings, 40 rounds a second, but a tank's water jackets: about two
- * seconds on the trigger, then three to cool. Short bursts never lock it.
+ * One Feuerwirbel mount. 20 a second on a tank's water jacket: a little under three
+ * seconds on the trigger, then three to cool. Each mount heats on its own.
  */
-export const FEUERWIRBEL_HEAT: GatlingHeat = { perRound: 1 / 64, coolPerSec: 0.14, overheatSeconds: 3 };
+export const FEUERWIRBEL_MOUNT_HEAT: GatlingHeat = { perRound: 1 / 40, coolPerSec: 0.14, overheatSeconds: 3 };
 
-/** The gatling's heat, or null for a unit without one. The Apocalypse's is its roof mount. */
+/**
+ * The gatling's heat, or null for a unit without one. The Apocalypse's is its roof mount.
+ * The Feuerwirbel's two mounts keep their own (FEUERWIRBEL_MOUNT_HEAT), not the hull's.
+ */
 export function gatlingHeatOf(type: EntityType): GatlingHeat | null {
   if (type === "ciws") return CIWS_HEAT;
   if (type === "walker") return WALKER_HEAT;
   if (type === "cyborg") return CYBORG_HEAT;
   if (type === "apocalypse") return APOCALYPSE_CIWS_HEAT;
-  if (type === "feuerwirbel") return FEUERWIRBEL_HEAT;
   return null;
 }
 
@@ -3629,7 +3641,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Assembly hall and uplink mast that run your cyborgs. Unlocks the Cyborg, and with a Research Facility the Cyborg Commander. Your Cyborgs live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down and belongs to no one. A living Cyborg Commander keeps them running without it, and takes over any shut-down Cyborg near him, yours or the enemy's.`,
+    blurb: `Assembly hall and uplink mast that run your cyborgs. Unlocks the Cyborg, and with a Research Facility the Cyborg Commander. Your Cyborgs live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down and belongs to no one. Get the link back (a new Central, or the power) and they wake up yours again, unless a Cyborg Commander took them first. A living Cyborg Commander keeps them running without it, and takes over any shut-down Cyborg near him, yours or the enemy's.`,
   },
   radar: {
     type: "radar",
@@ -4740,7 +4752,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     hasScout: true,
     blurb: "Heavy tank destroyer. No turret: the 128mm sits in a fixed casemate and swings only a little either side of the nose, so the slow hull must turn to aim. The thickest front plate on the field, heavy sides, a thin rear. Its armor-piercing shell goes through any front plate and usually kills a Tiger in one hit, from the longest reach of any tank gun. A long reload between shots, and no HEAT or smoke on the rack.",
   },
-  /** Flame tank: twin gatlings on a fast turret, a flame projector fixed in the bow. */
+  /** Flame tank: two CIWS mounts on the deck, a flame projector fixed in the bow. */
   feuerwirbel: {
     type: "feuerwirbel",
     kind: "unit",
@@ -4762,16 +4774,16 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     projectileSpeed: SMALL_ARMS_SPEED,
     turnInPlace: true,
     tracked: true,
-    turretTurnDegPerSec: FEUERWIRBEL_TURRET_TURN,
+    // The mounts' traverse. No turret on the hull: this keeps the aim off the hull, which never turns to shoot.
+    turretTurnDegPerSec: FEUERWIRBEL_MOUNT_TURN,
     armorFront: 60,
     armorSide: 28,
     armorRear: 14,
     penetration: 12,
     caliber: 13,
     spreadDeg: 4,
-    shotsPerTick: FEUERWIRBEL_SHOTS_PER_TICK,
     belt: FEUERWIRBEL_BELT,
-    gatlingTurret: true,
+    twinCiws: true,
     antiAir: true,
     airFirst: true,
     hullFlamer: true,
@@ -4779,7 +4791,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     leavesWreck: true,
     wreckHp: 30,
     hasScout: true,
-    blurb: `Flame tank. Two gatlings side by side on the fastest turret on the field, ${FEUERWIRBEL_SHOTS_PER_TICK * 10} rounds a second between them: they look for anything in the air first, then cut down soldiers, and sometimes bite a Walker or a truck. Tank plate turns them, and they do not bring a building down. They overheat after about two seconds on the trigger. A flame projector fixed in the bow fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points; the driver turns the hull onto a target close enough to burn. The jet burns every soldier in its path, friends too, so it holds while one stands in the line. The ${FEUERWIRBEL_BELT}-round belt and ten bursts of fuel refill only from a supply truck. Lighter plate than a Tiger.`,
+    blurb: `Flame tank. Two CIWS mounts on the deck, fore and aft, each a gatling of ${FEUERWIRBEL_MOUNT_SHOTS_PER_TICK * 10} rounds a second on the fastest traverse on the field. Each picks its own target: with two or more enemies in reach they never share one. They look for anything in the air first, then cut down soldiers, and sometimes bite a Walker or a truck. Tank plate turns them, and they do not bring a building down. Each overheats after a little under three seconds on the trigger. A flame projector fixed in the bow fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points; the driver turns the hull onto a target close enough to burn. The jet burns every soldier in its path, friends too, so it holds while one stands in the line. The ${FEUERWIRBEL_BELT}-round belt and ten bursts of fuel refill only from a supply truck. Lighter plate than a Tiger.`,
   },
   walker: {
     type: "walker",
@@ -4839,7 +4851,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: GATLING.penetration,
     caliber: GATLING.caliber,
     spreadDeg: GATLING.spreadDeg,
-    blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. It fires with tracers and overheats after under two seconds on the trigger. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back. He runs on the uplink from your Cyborg Central or a living Cyborg Commander of yours: without either he shuts down a few seconds later and belongs to no one until a Commander takes him over.",
+    blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. It fires with tracers and overheats after under two seconds on the trigger. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back. He runs on the uplink from your Cyborg Central or a living Cyborg Commander of yours: without either he shuts down a few seconds later and belongs to no one. He wakes up yours again once your link is back, unless a Cyborg Commander takes him over first.",
   },
   cyborgcommander: {
     type: "cyborgcommander",
@@ -4864,7 +4876,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LASER.penetration,
     caliber: LASER.caliber,
     spreadDeg: LASER.spreadDeg,
-    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. He can put the laser's power into it: the field then holds five times the points and recharges five times as fast, but he cannot attack. His plating mends itself, very slowly. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. While he lives your Cyborgs keep running without a Cyborg Central, and any shut-down Cyborg near him, yours or the enemy's, is taken over by his uplink in a few seconds, one at a time. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
+    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. He can put the laser's power into it: the field then holds five times the points and recharges five times as fast, but he cannot attack. His plating mends itself, very slowly. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate: heavy damage to a hull, moderate to a building. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. While he lives your Cyborgs keep running without a Cyborg Central, and any shut-down Cyborg near him, yours or the enemy's, is taken over by his uplink in a few seconds, one at a time. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
   titan: {
     type: "titan",
@@ -6464,9 +6476,9 @@ export function roofCiwsOf(type: EntityType): boolean {
   return catalog(type).roofCiws === true;
 }
 
-/** Gatlings in the turret instead of a cannon. See CatalogEntry.gatlingTurret. */
-export function gatlingTurretOf(type: EntityType): boolean {
-  return catalog(type).gatlingTurret === true;
+/** Two CIWS mounts on the deck instead of a gun. See CatalogEntry.twinCiws. */
+export function twinCiwsOf(type: EntityType): boolean {
+  return catalog(type).twinCiws === true;
 }
 
 /** A flame projector fixed in the bow. See CatalogEntry.hullFlamer. */
