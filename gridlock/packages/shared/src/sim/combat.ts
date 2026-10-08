@@ -1118,6 +1118,8 @@ function canFight(e: Entity): boolean {
   if (e.type === "artillery" && gunCrewOf(e) === 0) return false;
   // A shut-down Cyborg fires at nothing.
   if (e.shutdown) return false;
+  // A Cyborg Commander with the laser's power in his field fires nothing.
+  if (e.fieldDivert) return false;
   // An emplaced gun with nobody at it is silent, and so is one whose crew lies low.
   if (crewGunOf(e.type) && (e.garrison.length === 0 || e.garrisonHide)) return false;
   // A Titan falling dead out of the air fires nothing on the way down.

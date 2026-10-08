@@ -1,8 +1,10 @@
 import {
+  COMMANDER_HP_REGEN_PER_SEC,
   FORCE_FIELD_DELAY,
+  FORCE_FIELD_DIVERT_MUL,
   FORCE_FIELD_DOWN_DELAY,
-  FORCE_FIELD_HP,
   FORCE_FIELD_REGEN_PER_SEC,
+  forceFieldMax,
   LASER,
   LASER_ARMOR_DAMAGE,
   LASER_BEAM_HALF_WIDTH,
@@ -35,15 +37,26 @@ export const LASER_SAMPLES = 9;
 /**
  * The force field comes back after a while out of the fire. A field that still
  * holds starts after FORCE_FIELD_DELAY; one knocked flat waits FORCE_FIELD_DOWN_DELAY.
+ * With the laser's power diverted, it holds and recharges FORCE_FIELD_DIVERT_MUL times over.
+ * His plating mends itself at COMMANDER_HP_REGEN_PER_SEC, under fire or not.
  */
 export function tickForceFields(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (!hasForceField(e.type) || e.hp <= 0) continue;
+    // Whole points, one every so often, so the readout never shows a fraction.
+    if (e.hp < e.hpMax && state.tick % secondsToTicks(1 / COMMANDER_HP_REGEN_PER_SEC) === 0) {
+      e.hp = Math.min(e.hpMax, e.hp + 1);
+    }
+    const max = forceFieldMax(e);
     const field = e.field ?? 0;
-    if (field >= FORCE_FIELD_HP) continue;
+    if (field >= max) {
+      e.field = max;
+      continue;
+    }
     const quiet = field > 0 ? FORCE_FIELD_DELAY : FORCE_FIELD_DOWN_DELAY;
     if (e.fieldHitTick != null && state.tick - e.fieldHitTick < secondsToTicks(quiet)) continue;
-    e.field = Math.min(FORCE_FIELD_HP, field + FORCE_FIELD_REGEN_PER_SEC * dt);
+    const rate = FORCE_FIELD_REGEN_PER_SEC * (e.fieldDivert ? FORCE_FIELD_DIVERT_MUL : 1);
+    e.field = Math.min(max, field + rate * dt);
   }
 }
 

@@ -553,6 +553,8 @@ export interface Entity {
   takeover?: { by: number; ticks: number };
   /** Cyborg Commander only: force-field points left. Hits come off these before HP. */
   field?: number;
+  /** Cyborg Commander only: weapons power diverted to the field. The laser is dark; he does not fire. */
+  fieldDivert?: true;
   /** Cyborg Commander only: tick of the last hit on him, field or body. The recharge waits on it. */
   fieldHitTick?: number;
   /** Cyborg Commander only: the laser beam he is cutting with now. */
