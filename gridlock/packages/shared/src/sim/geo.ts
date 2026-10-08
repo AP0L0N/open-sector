@@ -10,6 +10,7 @@ import {
   FORCE_FIELD_HP,
   hasForceField,
   JET_FUEL_SECONDS,
+  jetFlightOf,
   airLoadoutOf,
   anchorsBuildRange,
   beltOf,
@@ -32,6 +33,7 @@ import {
   rocketAmmoOf,
   rocketsOf,
   isMotorVehicle,
+  rollsThroughWoods,
   MAX_BOAT_RADIUS,
   MAX_UNIT_RADIUS,
   rollReloadMul,
@@ -81,9 +83,9 @@ export function newAirState(homeId: number | null, pad: number, type: EntityType
   };
 }
 
-/** Jump Jet's pack: full, on the ground. */
-export function newJetState(): JetState {
-  return { alt: 0, up: false, fuel: JET_FUEL_SECONDS, refuel: 0 };
+/** A full pack (or the Titan's leg jets), on the ground. */
+export function newJetState(type: EntityType = "jumpjet"): JetState {
+  return { alt: 0, up: false, fuel: jetFlightOf(type)?.fuelSeconds ?? JET_FUEL_SECONDS, refuel: 0 };
 }
 
 /** A Jump Jet off the ground or lifting off. He flies over men, walls, and water. */
@@ -263,7 +265,7 @@ export function walkable(state: MatchState, x: number, y: number, type?: EntityT
   if (isTree(state, x, y)) {
     if (!type) return false;
     if (isInfantryType(type)) return true;
-    if (isMotorVehicle(type) && isSingleTree(state, x, y)) return true;
+    if (isMotorVehicle(type) && (isSingleTree(state, x, y) || rollsThroughWoods(type))) return true;
     return false;
   }
   return true;
@@ -746,7 +748,7 @@ export function makeEntity(
   if (type === "battleship") e.ship = newShipState(facing);
   if (type === "droneop") e.droneLink = newDroneLink();
   if (hasSonar(type)) e.asw = newAswDeck();
-  if (type === "jumpjet") e.jet = newJetState();
+  if (jetFlightOf(type)) e.jet = newJetState(type);
   state.entities.set(id, e);
   occupyEntity(state, e);
   return e;

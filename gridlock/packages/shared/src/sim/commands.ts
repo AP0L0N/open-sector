@@ -555,7 +555,7 @@ function cmdLayMine(state: MatchState, playerId: string, ids: number[]): CmdResu
 
 function cmdJet(state: MatchState, playerId: string, ids: number[], action: "up" | "land"): CmdResult {
   const jets = owned(state, playerId, ids).filter((e) => e.jet && e.hp > 0);
-  if (jets.length === 0) return fail("not_yours", "Select a Jump Jet.");
+  if (jets.length === 0) return fail("not_yours", "Select a Jump Jet or a Titan.");
   if (action === "land") {
     for (const e of jets) landJet(e);
     return ok();

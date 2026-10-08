@@ -10,7 +10,7 @@ import type { SpatialMix } from "./spatial-sfx.js";
 import { playClip, playLoop, playSample, preloadSample, type Clip, type Loop } from "./audio.js";
 import { AMBIENT_KINDS, ambientMix, type AmbientKind, type Mover } from "../render/ambient.js";
 import { buildBank, LineDeck } from "./sound-bank.js";
-import type { ShieldCue, SoundEvent, Weapon } from "../render/sound-events.js";
+import type { LinkVoice, ShieldCue, SoundEvent, Weapon } from "../render/sound-events.js";
 import { leadType, orderCue, type UnitCue } from "./order-cues.js";
 import type { ClientMessage, MatchSnapshot } from "@gridlock/shared";
 
@@ -47,7 +47,7 @@ let speakers: ReadonlySet<number> = new Set();
 /** One answer from a unit type. `special` falls back to `move` for units without one. Returns whether a line played. */
 export function unitVoice(
   type: string,
-  cue: UnitCue | "ready" | "load" | "shield_down" | "shield_up",
+  cue: UnitCue | "ready" | "load" | "shield_down" | "shield_up" | LinkVoice,
   opts: { withSfx?: boolean; ids?: readonly number[] } = {},
 ): boolean {
   const folder = unitFolder(type);
@@ -86,6 +86,9 @@ const ANNOUNCE_GAP_MS: Record<string, number> = {
   cancelled: 900,
   lowpower: 15_000,
   sonarcontact: 8000,
+  cyborglinklost: 8000,
+  cyborgsoffline: 8000,
+  cyborgacquired: 4000,
 };
 const lastAnnounce = new Map<string, number>();
 const queue: string[] = [];
@@ -255,7 +258,9 @@ export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number
       case "unitsfx": {
         const url = pick(unitFolder(ev.type), `sfx-${ev.cue}`);
         const mix = url ? mixAt(ev.x, ev.y) : null;
-        if (url && mix) playSample(url, mix, { volume: 0.6, maxVoices: 2 });
+        // A hull crumpling under the Apocalypse is heard over the fight around it; a Cyborg link cue sits between.
+        const volume = ev.cue === "crush" ? 0.9 : ev.cue === "special" ? 0.6 : 0.75;
+        if (url && mix) playSample(url, mix, { volume, maxVoices: 2, jitter: ev.cue === "special" ? undefined : 0.04 });
         break;
       }
       case "announce":

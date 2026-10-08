@@ -131,7 +131,10 @@ import {
   type ShellHoleView,
   wallRiseLimit,
   wallRunTops,
+  TITAN_NUKE,
 } from "@gridlock/shared";
+import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
+import { drawTitanThrust } from "./titan-jet-fx.js";
 import {
   FX_BOOM,
   FX_SMOKE,
@@ -321,6 +324,7 @@ import {
   tankGunRecoils,
   type GunRecoil,
 } from "./gun-recoil.js";
+import { bumpTilt, crushBump } from "./crush-bump.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
 import { emplacementShotLook, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
 import {
@@ -419,6 +423,7 @@ import {
 import { pyroNozzleScreen } from "./pyro-nozzle.js";
 import { cyborgCommanderLens } from "./cyborgcommander-muzzle.js";
 import { beamEnd, beamShare, drawForceField, drawLaserBeam } from "./laser-beam.js";
+import { drawShutdownMark, drawUplink, SHUTDOWN_UNIT_FILTER } from "./cyborg-link-fx.js";
 import { inScreenRect, unitGroundSink, unitPickRect, type ScreenRect } from "./unit-hit.js";
 import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
@@ -578,6 +583,7 @@ const EXTRUDE: Record<EntityType, number> = {
   ciws: 26,
   research: 40,
   radar: 44,
+  cyborgcentral: 44,
   bunker: 18,
   tower: 66,
   ram: 26,
@@ -600,7 +606,7 @@ const EXTRUDE: Record<EntityType, number> = {
   rig: 22,
   hauler: 16,
   warden: 28,
-  apocalypse: 32,
+  apocalypse: 48,
   ss3: 20,
   jagdtiger: 26,
   feuerwirbel: 24,
@@ -952,6 +958,8 @@ export class MapView {
   private flameParticles: FlameParticle[] = [];
   private flameFrameAt = 0;
   private cookOffsSeen = new Set<number>();
+  /** A Titan's reactor went up: ground zero and when it was first seen. Kept while its scorch lasts. */
+  private nukes: { id: number; x: number; y: number; at: number }[] = [];
   /** Black smoke off burning fuel. Same drift as rocket smoke, sooty colour. `shade` 1 is black. */
   private fireSmoke: RocketPuff[] = [];
   /** Per Pyro: when his newest glob was first seen, where the burst is laid, and the host if he is inside. */
@@ -979,6 +987,9 @@ export class MapView {
   /** Field guns whose crew is on the trail, and when the gun last moved (ms). */
   private gunHaulAt = new Map<number, number>();
   private gunRecoil = new Map<number, GunRecoil>();
+  /** When an Apocalypse began riding over a hull it rolled flat (ms), by its id. */
+  private crushBumps = new Map<number, number>();
+  private crushBumpSeen = new Set<number>();
   private muzzleSmokes: MuzzleSmokePuff[] = [];
   private fieldGunSmokes: FieldGunSmokePuff[] = [];
   private occBuildings: {
@@ -1339,9 +1350,20 @@ export class MapView {
         const shooter = this.currById.get(i.fromId);
         if (shooter && isInfantryType(shooter.type) && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
       }
+      // The impact rides along in later snapshots: only its first sighting starts the bump.
+      if (i.crusher != null && !this.crushBumpSeen.has(i.id)) {
+        if (this.crushBumpSeen.size > 200) this.crushBumpSeen.clear();
+        this.crushBumpSeen.add(i.id);
+        this.crushBumps.set(i.crusher, now);
+      }
       if (i.kind === "crush") continue;
       // A 20mm round that missed a plane climbed away into the sky: its tracer is all there is.
       if (i.airZ != null && i.kind === "miss") continue;
+      if (i.nuke) {
+        // A Titan's reactor: its own flash, shockwave, and mushroom cloud, not a shell burst.
+        if (!this.nukes.some((n) => n.id === i.id)) this.nukes.push({ id: i.id, x: i.x, y: i.y, at: now });
+        continue;
+      }
       if (i.cookoff) {
         // A fuel fireball, not a shell burst: it has its own particles and smoke.
         if (!this.cookOffsSeen.has(i.id)) {
@@ -4125,6 +4147,7 @@ export class MapView {
     this.collectShipWakes(items);
     this.collectMuzzleSmoke(items);
     this.collectFires(items, w, h);
+    this.collectNukeScorch(items);
     this.collectAirdrops(items, w, h);
     for (const m of this.takeMoveClicks()) {
       items.push({
@@ -4178,6 +4201,7 @@ export class MapView {
     this.drawTreeFalls();
     this.drawSmokeClouds();
     this.drawImpacts();
+    this.drawNukes();
     this.drawBarrageTracers();
     // Complete fog of war goes over everything in the world; only the HUD draws above it.
     if (bake) this.drawShroud();
@@ -4556,23 +4580,38 @@ export class MapView {
       ctx.globalCompositeOperation = "source-over";
     }
     if (glow <= 0) {
-      const reach = SPOTLIGHT_REACH_TILES * this.ts();
-      const half = (SPOTLIGHT_HALF_DEG * Math.PI) / 180;
-      ctx.setLineDash([5, 6]);
-      ctx.lineWidth = 1.25;
-      ctx.strokeStyle = "rgba(255, 226, 150, 0.55)";
+      // By day a selected lamp of yours (Watch Tower, Fire-Control Tower, Spotlight) shows where its beam would fall.
       for (const { e, facing } of lamps) {
-        if (e.type !== "tower" || !this.selected.has(e.id) || e.ownerId !== this.curr.youPlayerId) continue;
-        const pts = beamPolygon(e.x, e.y, facing, reach, half, 16).map((p) => this.toScreen(p.x, p.y));
-        ctx.beginPath();
-        pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-        ctx.closePath();
-        ctx.stroke();
+        if (e.kind !== "building" || !this.selected.has(e.id) || e.ownerId !== this.curr.youPlayerId) continue;
+        this.drawBeamOutline(e.x, e.y, facing, false);
       }
-      ctx.setLineDash([]);
     }
     ctx.restore();
     this.lensAt.clear();
+  }
+
+  /**
+   * A building lamp's beam on the ground, dashed: the cone a selected lamp lights, or the one a
+   * placement ghost will light. `fill` washes the cone faintly, for the ghost.
+   */
+  private drawBeamOutline(wx: number, wy: number, facing: number, fill: boolean): void {
+    const ctx = this.ctx;
+    const reach = SPOTLIGHT_REACH_TILES * this.ts();
+    const half = (SPOTLIGHT_HALF_DEG * Math.PI) / 180;
+    const pts = beamPolygon(wx, wy, facing, reach, half, 16).map((p) => this.toScreen(p.x, p.y));
+    ctx.save();
+    ctx.beginPath();
+    pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    ctx.closePath();
+    if (fill) {
+      ctx.fillStyle = "rgba(255, 226, 150, 0.12)";
+      ctx.fill();
+    }
+    ctx.setLineDash([5, 6]);
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = fill ? "rgba(255, 226, 150, 0.8)" : "rgba(255, 226, 150, 0.55)";
+    ctx.stroke();
+    ctx.restore();
   }
 
   /**
@@ -6742,7 +6781,12 @@ export class MapView {
     const p = this.lerpEnt(e);
     const size = def.drawSize;
     const s = this.toScreen(p.x, p.y);
-    s.y -= this.airLift(e);
+    const lift = this.airLift(e);
+    s.y -= lift;
+    // A Titan on its leg jets: burner flames under the feet, drawn before the body covers their roots.
+    if (e.type === "titan" && lift > 0.5 && !e.jet?.crash && !e.wreck) {
+      drawTitanThrust(this.ctx, s, { x: s.x, y: s.y + lift }, size, 1, performance.now(), e.id);
+    }
     const hex = this.ownerColor(e);
     const dir = facingToIso(p.facing, this.ts());
     const turretDir = facingToIso(p.turretFacing ?? p.facing, this.ts());
@@ -6798,7 +6842,20 @@ export class MapView {
       ctx.rotate(roll);
       ctx.translate(-s.x, -s.y);
     }
+    const bumpAt = this.crushBumps.get(e.id);
+    if (bumpAt != null) {
+      const bump = e.wreck ? null : crushBump(bumpAt, performance.now(), size);
+      if (!bump) this.crushBumps.delete(e.id);
+      else {
+        // Up over the hulk, pivoting on the ground point under the hull.
+        ctx.translate(s.x, s.y);
+        ctx.rotate(bumpTilt(bump.pitch, dir.x, dir.y));
+        ctx.translate(-s.x, -s.y - bump.liftPx);
+      }
+    }
     if (e.wreck && !corpse && sheet === def) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
+    // A shut-down Cyborg is dark: the machine is off.
+    else if (!e.wreck && e.shutdown) ctx.filter = SHUTDOWN_UNIT_FILTER;
     // A map's neutral unit is grey: no one's colours, everyone's enemy.
     else if (!e.wreck && !e.ownerId) ctx.filter = NEUTRAL_UNIT_FILTER;
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
@@ -6888,6 +6945,7 @@ export class MapView {
         e.id,
       );
     }
+    if (drawn && !e.wreck && e.shutdown) drawShutdownMark(ctx, s.x, s.y + unitGroundSink(size), size, performance.now(), e.id);
     if (drawn && !e.wreck && isInfantryType(e.type) && !e.swimming) {
       const heat = this.fireHeatAt(p.x, p.y);
       if (heat > 0) drawBodyFlames(ctx, s.x, s.y, size, heat, performance.now(), e.id);
@@ -7222,7 +7280,8 @@ export class MapView {
     const blend = Math.min(1, (now - this.snapAt) / 100);
     const live = new Set<number>();
     for (const e of this.curr.entities) {
-      if (e.air?.phase !== "crash") continue;
+      // A plane going down, or a Titan falling dead off its leg jets.
+      if (e.air?.phase !== "crash" && !e.jet?.crash) continue;
       live.add(e.id);
       const prev = this.prevById.get(e.id);
       const x = prev ? prev.x + (e.x - prev.x) * blend : e.x;
@@ -7564,6 +7623,27 @@ export class MapView {
       const from = { x: s.x + lens.x, y: s.y + unitGroundSink(size) + lens.y };
       drawLaserBeam(ctx, from, this.toScreen(end.x, end.y), now, e.id);
     }
+    this.drawUplinks(now);
+  }
+
+  /** A Cyborg Commander's uplink to the shut-down Cyborg he is taking over, with its progress ring. */
+  private drawUplinks(now: number): void {
+    const ctx = this.ctx;
+    for (const e of this.curr.entities) {
+      const link = e.takeover;
+      if (!link || e.wreck) continue;
+      const boss = this.curr.entities.find((o) => o.id === link.by);
+      if (!boss || boss.wreck) continue;
+      const bp = this.lerpEnt(boss);
+      const cp = this.lerpEnt(e);
+      const bossSize = spriteFor(boss.type, boss.stance)?.drawSize ?? 20;
+      const size = spriteFor(e.type, e.stance)?.drawSize ?? 20;
+      const bs = this.toScreen(bp.x, bp.y);
+      const cs = this.toScreen(cp.x, cp.y);
+      const from = { x: bs.x, y: bs.y + unitGroundSink(bossSize) - bossSize * 0.55 };
+      const to = { x: cs.x, y: cs.y + unitGroundSink(size) - size * 0.35 };
+      drawUplink(ctx, from, to, link.u, size * 0.45, now, e.id);
+    }
   }
 
   /** Hottest burning patch under a ground point, 0–1. */
@@ -7574,6 +7654,44 @@ export class MapView {
       heat = Math.max(heat, patchHeat(f.life, f.lifeMax));
     }
     return heat;
+  }
+
+  /** Ground zero on screen and the blast radius as screen half-axes (2:1 view). */
+  private nukeFrame(n: { x: number; y: number }): { g: IsoPt; rx: number; ry: number } {
+    const elev = this.elevAt(n.x, n.y);
+    const g = this.toScreen(n.x, n.y, elev);
+    const r = (TITAN_NUKE.radiusTiles * this.ts()) / Math.SQRT2;
+    const ex = this.toScreen(n.x + r, n.y - r, elev);
+    const ey = this.toScreen(n.x + r, n.y + r, elev);
+    return { g, rx: Math.abs(ex.x - g.x), ry: Math.abs(ey.y - g.y) };
+  }
+
+  /** Burned ground at every recent ground zero, under everything standing. */
+  private collectNukeScorch(items: DrawItem[]): void {
+    const now = performance.now();
+    this.nukes = this.nukes.filter((n) => now - n.at < NUKE_SCORCH_MS);
+    for (const n of this.nukes) {
+      items.push({
+        layer: GROUND_DECAL_DRAW_LAYER,
+        z: isoDepth(n.x, n.y),
+        run: () => {
+          const f = this.nukeFrame(n);
+          drawNukeScorch(this.ctx, f.g, f.rx, f.ry, now - n.at, n.id);
+        },
+      });
+    }
+  }
+
+  /** The blasts themselves: over everything in the world, the flash over the whole view. */
+  private drawNukes(): void {
+    const now = performance.now();
+    for (const n of this.nukes) {
+      const age = now - n.at;
+      if (age > NUKE_FX_MS) continue;
+      const f = this.nukeFrame(n);
+      drawNuke(this.ctx, f.g, f.rx, f.ry, age, n.id);
+    }
+    for (const n of this.nukes) drawNukeFlash(this.ctx, now - n.at);
   }
 
   /** The Pyro's tanks going up: a boiling fireball, fuel thrown clear, and a tall column of black smoke. */
@@ -8379,6 +8497,8 @@ export class MapView {
       const west = this.toScreen(x, y + bh, elev);
       const n = this.toScreen(x, y, elev);
       const ctx = this.ctx;
+      // A lamp building shows the cone its beam will light, turned with the ghost.
+      if (hasSpotlight(type)) this.drawBeamOutline(site.x, site.y, facing, true);
       ctx.save();
       ctx.globalAlpha = 0.28;
       ctx.fillStyle = top;

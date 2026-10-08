@@ -10,6 +10,7 @@ import {
   STANCE_LABEL,
   TRAIN_QUEUE_CAP,
   techNeeds,
+  BUILD_REQUIRES,
   TRAIN_TYPES,
   TICK_DT,
   WALKER_ONE_BURST,
@@ -275,6 +276,7 @@ export function mountBattlefield(
         return;
       }
       if (q) return;
+      if (m && buildTechNeed(m, type).length > 0) return;
       ctx.net.send({ type: "cmd.build", building: type });
     });
     btn?.addEventListener("contextmenu", (e) => {
@@ -366,6 +368,12 @@ export function mountBattlefield(
 }
 
 /** The construction lane this cameo belongs to. Base, defence, and line lanes do not block each other. */
+/** Buildings you still need standing before the yard will queue `type` (BUILD_REQUIRES). */
+function buildTechNeed(m: MatchSnapshot, type: BuildingType | YardFieldType): BuildingType[] {
+  const need = BUILD_REQUIRES[type as BuildingType] ?? [];
+  return need.filter((t) => !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === t && e.hp > 0 && !e.wreck));
+}
+
 function laneQueue(m: MatchSnapshot | null | undefined, type: BuildingType | YardFieldType) {
   if (!m) return null;
   if (isYardField(type)) return m.you.lineQueue;
@@ -583,9 +591,12 @@ export function paintBattleHud(ctx: Ctx): void {
   if (power) {
     const spd = productionSpeed(m.you.provided, m.you.used);
     const slow = m.you.lowPower ? ` · SLOW ×${spd.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}` : "";
-    const next = `POWER <b>${m.you.used} / ${m.you.provided}</b>${slow}`;
+    // No powered Cyborg Central and no Commander: your Cyborgs are about to go dark.
+    const link = m.you.cyborgShutdownIn;
+    const cyborgs = link != null ? ` · <b class="cyborg-link">CYBORGS OFF IN ${Math.ceil(link)}s</b>` : "";
+    const next = `POWER <b>${m.you.used} / ${m.you.provided}</b>${slow}${cyborgs}`;
     if (power.innerHTML !== next) power.innerHTML = next;
-    power.classList.toggle("low-power", m.you.lowPower);
+    power.classList.toggle("low-power", m.you.lowPower || link != null);
   }
   const speed = document.getElementById("hud-speed");
   if (speed) {
@@ -607,7 +618,15 @@ export function paintBattleHud(ctx: Ctx): void {
     if (!btn) continue;
     const lane = laneQueue(m, type);
     const job = lane?.type === type ? lane : null;
-    btn.disabled = !coreUp || (!!lane && !job);
+    // A job already queued stays live so it can still be placed, paused, or cancelled.
+    const techNeed = job ? [] : buildTechNeed(m, type);
+    btn.disabled = !coreUp || (!!lane && !job) || techNeed.length > 0;
+    btn.classList.toggle("needs-tech", techNeed.length > 0);
+    btn.dataset.baseTitle ??= btn.title;
+    btn.title =
+      techNeed.length > 0
+        ? `${catalog(type).name} — needs a ${techNeed.map((t) => catalog(t).name).join(" and a ")}.`
+        : btn.dataset.baseTitle;
     const pip = btn.querySelector(".pip") as HTMLElement | null;
     if (pip && job) {
       pip.style.width = `${Math.round((job.progressTicks / job.totalTicks) * 100)}%`;
@@ -768,7 +787,13 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
   const armor = armorLabel(e.type);
   const plates = armor ? `  ·  armor ${armor}` : "";
   const field = e.field ? `  ·  field ${e.field.hp}/${e.field.max}${e.field.hp <= 0 ? " (down)" : ""}` : "";
-  const wreck = e.wreck ? "  ·  WRECK" : "";
+  const wreck = e.wreck
+    ? "  ·  WRECK"
+    : e.shutdown
+      ? e.takeover
+        ? `  ·  SHUT DOWN — uplink ${Math.round(e.takeover.u * 100)}%`
+        : "  ·  SHUT DOWN — a Cyborg Commander can take him over"
+      : "";
   const injuries =
     e.crits && e.crits.length > 0
       ? `  ·  ${e.crits.map((c) => (isCyborg(e.type) && c === "leg" ? "legs torn off" : CRIT_LABEL[c])).join(", ")}${e.shielded ? " (plating holds — cannot be hurt yet)" : ""}`
@@ -1156,6 +1181,7 @@ const TYPE_ORDER: EntityType[] = [
   "ciws",
   "research",
   "radar",
+  "cyborgcentral",
   "bunker",
   "tobruk",
   "casemate",
@@ -1971,11 +1997,13 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: `Special (${SPECIAL_HOTKEY.toUpperCase()})`,
     });
   }
-  const jets = units.filter((e) => e.jet && e.hp > 0);
+  const jets = units.filter((e) => e.jet && e.hp > 0 && !e.jet.crash);
   if (jets.length) {
+    // A Titan alone in the selection: its leg jets, not a soldier's pack.
+    const titans = jets.every((e) => e.type === "titan");
     const grounded = jets.filter((e) => !e.jet!.up);
     const ready = grounded.filter(
-      (e) => e.jet!.fuel != null && e.jet!.fuel >= (e.jet!.takeoffMin ?? 0) && !e.crits?.includes("leg") && !e.swimming,
+      (e) => e.jet!.fuel != null && e.jet!.fuel >= (e.jet!.takeoffMin ?? 0) && !e.crits?.includes("leg") && !e.swimming && !e.wading,
     );
     if (grounded.length) {
       const low = grounded.find((e) => e.jet!.fuel != null && e.jet!.fuel < (e.jet!.takeoffMin ?? 0));
@@ -1984,9 +2012,13 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
         act: "jet-up",
         label: "Take off",
         title: ready.length
-          ? "Light the jet pack (J). He flies straight over anything while the fuel lasts. Only machine guns, gatlings, the CIWS and RAM, and Titan rockets reach him up there; his bursts come down on men in cover."
+          ? titans
+            ? "Fire the leg jets (J). A short hop straight over anything: up there the gun is stowed and only the rocket pods fire, and only anti-air weapons reach it. Shot down, it falls and its reactor goes up on the ground."
+            : "Light the jet pack (J). He flies straight over anything while the fuel lasts. Only machine guns, gatlings, the CIWS and RAM, and Titan rockets reach him up there; his bursts come down on men in cover."
           : low
-            ? "Jet pack refuelling"
+            ? titans
+              ? "Leg jets cooling"
+              : "Jet pack refuelling"
             : "Cannot take off from here",
         disabled: ready.length === 0,
       });
@@ -1996,7 +2028,9 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
         slot: "jet-land",
         act: "jet-land",
         label: "Land",
-        title: "Set down on the nearest open ground (J). He lands by himself when the pack runs low.",
+        title: titans
+          ? "Set down on the nearest open ground (J). It lands by itself when the burners run low."
+          : "Set down on the nearest open ground (J). He lands by himself when the pack runs low.",
       });
     }
   }

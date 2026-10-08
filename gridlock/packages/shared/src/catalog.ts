@@ -573,6 +573,7 @@ export type EntityType =
   | "flak"
   | "research"
   | "radar"
+  | "cyborgcentral"
   | "stuka"
   | "fw190"
   | "bv222"
@@ -627,7 +628,8 @@ export type BuildingType =
   | "pak43"
   | "flak"
   | "research"
-  | "radar";
+  | "radar"
+  | "cyborgcentral";
 /**
  * Placed by an engineer. Sandbags and walls can also be queued from the Defences tab. The gate comes
  * only from there. Barbwire is laid by maps for now: the Map Builder stands it like sandbags.
@@ -795,6 +797,7 @@ export const BUILDING_TYPES: readonly BuildingType[] = [
   "flak",
   "research",
   "radar",
+  "cyborgcentral",
 ];
 /**
  * Emplaced guns: the building is the gun, and its garrison is the crew. It fires only while
@@ -876,8 +879,8 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   apocalypse: "research",
   jagdtiger: "research",
   feuerwirbel: "research",
-  cyborg: "research",
-  cyborgcommander: "research",
+  cyborg: "cyborgcentral",
+  cyborgcommander: ["research", "cyborgcentral"],
   titan: "research",
   mammoth: "research",
   nebelwerfer: "research",
@@ -886,6 +889,9 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   submarine: "research",
   destroyer: "research",
   battleship: ["research", "radar"],
+  stuka: "research",
+  he111: "research",
+  bv222: ["research", "radar"],
 };
 
 /** Every tech building this unit needs standing, in the order a player is told about them. */
@@ -894,6 +900,29 @@ export function techNeeds(unit: TrainType): readonly BuildingType[] {
   if (!need) return [];
   return typeof need === "string" ? [need] : need;
 }
+
+/** Advanced defences: the yard queues one only while every building listed here stands. */
+export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[]>> = {
+  leitturm: ["research"],
+  flak: ["research"],
+  pak43: ["research"],
+  casemate: ["research"],
+  ciws: ["research", "radar"],
+  ram: ["research", "radar"],
+};
+
+/**
+ * Cyborg link. A Cyborg runs on the uplink from a standing, powered Cyborg Central,
+ * or on a living Cyborg Commander of his own side. With neither, CYBORG_SHUTDOWN_SECONDS
+ * after the link drops every Cyborg of that player on the field shuts down: he stops
+ * where he stands, belongs to no one, answers no orders, and fires at nothing. Nobody
+ * fires at him on their own either; a force-attack still can.
+ */
+export const CYBORG_SHUTDOWN_SECONDS = 4;
+/** A living Cyborg Commander takes over a shut-down Cyborg this close, friend's or foe's. */
+export const CYBORG_TAKEOVER_RANGE_TILES = t(8);
+/** Seconds of uplink a Commander needs to take one shut-down Cyborg. He takes them one at a time. */
+export const CYBORG_TAKEOVER_SECONDS = 3;
 
 export interface CatalogEntry {
   type: EntityType;
@@ -2748,6 +2777,76 @@ export const JET_CLIMB_PER_SEC = 9;
 /** Air speed. Faster than he runs. Same UNIT_PACE cut as the walk. */
 export const JET_FLY_TILES_PER_SEC = paced(4);
 
+/** One type's jet flight: how long, how high, how fast, and how the pack refills. */
+export interface JetFlightDef {
+  fuelSeconds: number;
+  takeoffMinSeconds: number;
+  landReserve: number;
+  refuelDelay: number;
+  refuelPerSec: number;
+  alt: number;
+  climbPerSec: number;
+  flyTilesPerSec: number;
+  /** Shot down in the air, it falls straight to the ground before it dies (the Titan). */
+  crashes?: boolean;
+}
+
+export const JUMPJET_FLIGHT: JetFlightDef = {
+  fuelSeconds: JET_FUEL_SECONDS,
+  takeoffMinSeconds: JET_TAKEOFF_MIN_SECONDS,
+  landReserve: JET_LAND_RESERVE,
+  refuelDelay: JET_REFUEL_DELAY,
+  refuelPerSec: JET_REFUEL_PER_SEC,
+  alt: JET_ALT,
+  climbPerSec: JET_CLIMB_PER_SEC,
+  flyTilesPerSec: JET_FLY_TILES_PER_SEC,
+};
+
+/**
+ * Titan's leg jets. A short hop, not a flight: a few seconds over a river, a
+ * wall, or a line of men, then a long wait for the burners to cool. Aloft the
+ * main gun is stowed and only the shoulder pods fire, and only anti-air
+ * weapons reach it. Shot down, it drops straight down and goes up on the ground.
+ */
+export const TITAN_JET_FUEL_SECONDS = 6;
+export const TITAN_JET_FLIGHT: JetFlightDef = {
+  fuelSeconds: TITAN_JET_FUEL_SECONDS,
+  takeoffMinSeconds: 3,
+  landReserve: 1,
+  refuelDelay: 8,
+  /** An empty burner is ready again 30 s after the delay. */
+  refuelPerSec: TITAN_JET_FUEL_SECONDS / 30,
+  alt: 10,
+  climbPerSec: 7,
+  flyTilesPerSec: paced(2.6),
+  crashes: true,
+};
+/** Elevation units per second² a dead Titan falls with, from rest. */
+export const TITAN_FALL_ACCEL = 20;
+
+/**
+ * Titan's reactor. Whenever a Titan is destroyed, on the ground or after it
+ * falls out of the air, it goes up in a small nuclear blast: everything in the
+ * inner ring is gone, and the damage falls off to the edge. Friend and foe alike.
+ * Armor does not help: hulls lose a share of their max HP.
+ */
+export const TITAN_NUKE = {
+  /** Outer edge of the blast. */
+  radiusTiles: t(4.5),
+  /** Inside this, everything takes the full blow. */
+  coreTiles: t(1.5),
+  /** Soldiers, the drone, soft targets: HP at full. */
+  damage: 400,
+  /** Hulls and walkers: share of max HP at full. */
+  armorShare: 1.1,
+  /** Structures: HP at full. */
+  buildingDamage: 1800,
+  /** Share of the full blow left at the outer edge. */
+  edgeShare: 0.12,
+  /** Fires the blast leaves burning around ground zero. */
+  fires: 10,
+} as const;
+
 /**
  * Transport LST deck mount: a heavy machine gun in a shielded tub. Nobody carries it.
  * The first two soldiers aboard who can shoot man the two tubs and fire this instead
@@ -3472,7 +3571,29 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Feuerwirbel, Cyborg, Cyborg Commander, Titan, Nebelwerfer, Drone Op, Submarine, and Destroyer, and with a Radar Station the Battle Ship.",
+    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Feuerwirbel, Titan, Nebelwerfer, Drone Op, Submarine, and Destroyer, with a Radar Station the Battle Ship, and with a Cyborg Central the Cyborg Commander.",
+  },
+  cyborgcentral: {
+    type: "cyborgcentral",
+    kind: "building",
+    name: "Cyborg Central",
+    letter: "Y",
+    cost: 2000,
+    buildSeconds: 20,
+    hp: 900,
+    power: -60,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: `Assembly hall and uplink mast that run your cyborgs. Unlocks the Cyborg, and with a Research Facility the Cyborg Commander. Your Cyborgs live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down and belongs to no one. A living Cyborg Commander keeps them running without it, and takes over any shut-down Cyborg near him, yours or the enemy's.`,
   },
   radar: {
     type: "radar",
@@ -4480,8 +4601,8 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     power: 0,
     tileW: 1,
     tileH: 1,
-    radius: 15,
-    moveTilesPerSec: paced(1.1),
+    radius: 22.4,
+    moveTilesPerSec: paced(0.935),
     turnDegPerSec: 60,
     rangeTiles: TIGER_RANGE_TILES,
     sightTiles: t(8),
@@ -4505,7 +4626,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     mgAmmo: APOCALYPSE_CIWS_BELT,
     leavesWreck: true,
     wreckHp: 55,
-    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts some of them, then planes, infantry, and sometimes a Walker or a truck. A secondary mount, it sprays wider than a pad CIWS and overheats after a little over a second on the trigger. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
+    blurb: `Super-heavy tank. Two 105mm guns on one turret fire one after the other, a short gap and then a long reload, through a Tiger's front plate. Thick plate on every face, a slow hull and a slow turret. It rolls flat an enemy StuG, Walker, supply truck, Nebelwerfer, or field gun in its path, and leaves no wreck. It drives straight through woods, felling every tree it brushes; it runs down a Cyborg, but the Cyborg Commander is too big to go under. A small radar-laid 20mm CIWS on the turret roof lays itself, apart from the main guns: incoming missiles first, and it bursts some of them, then planes, infantry, and sometimes a Walker or a truck. A secondary mount, it sprays wider than a pad CIWS and overheats after a little over a second on the trigger. The ${APOCALYPSE_CIWS_BELT}-round belt refills only from a supply truck.`,
   },
   /** Spec: gridlock/packages/client/src/assets/units/ss3/stug-iii-ausf-g-late-saukopf.md */
   ss3: {
@@ -4682,7 +4803,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: GATLING.penetration,
     caliber: GATLING.caliber,
     spreadDeg: GATLING.spreadDeg,
-    blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. It fires with tracers and overheats after under two seconds on the trigger. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back.",
+    blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. It fires with tracers and overheats after under two seconds on the trigger. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back. He runs on the uplink from your Cyborg Central or a living Cyborg Commander of yours: without either he shuts down a few seconds later and belongs to no one until a Commander takes him over.",
   },
   cyborgcommander: {
     type: "cyborgcommander",
@@ -4707,14 +4828,14 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LASER.penetration,
     caliber: LASER.caliber,
     spreadDeg: LASER.spreadDeg,
-    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
+    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate for moderate damage. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. While he lives your Cyborgs keep running without a Cyborg Central, and any shut-down Cyborg near him, yours or the enemy's, is taken over by his uplink in a few seconds, one at a time. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
   titan: {
     type: "titan",
     kind: "unit",
     name: "Titan",
     letter: "X",
-    cost: 5000,
+    cost: 8000,
     buildSeconds: 18,
     hp: 200,
     power: 0,
@@ -4747,7 +4868,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: TITAN_ROCKET_AMMO,
     bracedHpMul: TITAN_BRACED_HP_MUL,
-    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
+    blurb: "Heavy assault walker. The Tiger's gun on a traversing torso, loaded with armor-piercing shot only, and a four-rocket pod on the shoulders that picks its own target, apart from the gun, and ripples its salvo one rocket after another. Sixteen rockets in the rack; a supply truck refills them. Rockets scatter wide at full reach and draw in as the target closes. They shred infantry, dent tanks, usually break a track from the side or rear, and can burst beside a plane in the air. Switch the pods off to save them. Wades through water with only its torso showing: the main gun stays silent there, the rockets still fire. Deploy plants the outriggers: it cannot move, and its hit points grow by three-quarters until it packs up. Leg jets lift it for a short hop over anything: aloft the gun is stowed and only the pods fire, and only anti-air weapons reach it; the burners take a long while to recover. Its reactor makes it a bomb: destroyed, it goes up in a small nuclear blast that wrecks everything close by, friend or foe. Shot down in the air, it drops straight down and goes up on the ground. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
   mammoth: {
     type: "mammoth",
@@ -5681,6 +5802,18 @@ export function isJumpJetType(type: EntityType): boolean {
   return type === "jumpjet";
 }
 
+/** The jet flight a type carries: the Jump Jet's pack, the Titan's leg jets, or none. */
+export function jetFlightOf(type: EntityType): JetFlightDef | null {
+  if (type === "jumpjet") return JUMPJET_FLIGHT;
+  if (type === "titan") return TITAN_JET_FLIGHT;
+  return null;
+}
+
+/** Goes up in a small nuclear blast when destroyed: the Titan. */
+export function nukesOnDeath(type: EntityType): boolean {
+  return type === "titan";
+}
+
 /** Flies: the Stuka, the Fw 190, the BV 222, and the He 111. */
 export function isAircraftType(type: EntityType): boolean {
   return catalog(type).aircraft === true;
@@ -5730,6 +5863,25 @@ export function isInfantryType(type: EntityType): boolean {
  */
 export function isCyborg(type: EntityType): boolean {
   return type === "cyborg" || type === "cyborgcommander";
+}
+
+/** The lighter hulls, guns, and trucks the Apocalypse rolls flat. */
+const APOCALYPSE_CRUSHES: readonly EntityType[] = ["ss3", "walker", "supply", "nebelwerfer", "artillery"];
+
+/**
+ * Whether a rolling armored hull of type `mover` runs over a `victim`. Every hull
+ * runs down infantry, all but the Cyborg Commander, who is too big to go under.
+ * The Apocalypse also flattens the lighter hulls in APOCALYPSE_CRUSHES.
+ */
+export function crushes(mover: EntityType, victim: EntityType): boolean {
+  if (victim === "cyborgcommander") return false;
+  if (isInfantryType(victim)) return true;
+  return mover === "apocalypse" && APOCALYPSE_CRUSHES.includes(victim);
+}
+
+/** A hull heavy enough to drive straight through woods, not only over a lone tree: the Apocalypse. */
+export function rollsThroughWoods(type: EntityType): boolean {
+  return type === "apocalypse";
 }
 
 /**

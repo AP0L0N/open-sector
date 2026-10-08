@@ -13,6 +13,7 @@ import {
   hqOf,
   occupyEntity,
   tilesBlockedOrScrap,
+  jetAloft,
   unitInWater,
   vacateEntity,
 } from "./geo.js";
@@ -68,6 +69,7 @@ function beginBrace(state: MatchState, e: Entity): string | null {
   if (e.specialCooldown > 0) return "Special recharging.";
   if (e.state === "deploy" || e.state === "undeploy") return "Already transforming.";
   if (!e.braced && unitInWater(state, e)) return "Cannot brace in water.";
+  if (jetAloft(e)) return "Cannot brace in the air.";
   clearOrder(e);
   e.state = e.braced ? "undeploy" : "deploy";
   e.deployTime = 0;

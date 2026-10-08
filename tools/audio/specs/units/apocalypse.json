@@ -71,6 +71,12 @@
       "duration": 1.5,
       "variants": 2,
       "influence": 0.7
+    },
+    "crush": {
+      "prompt": "Gigantic super-heavy tank rolling over a smaller armored vehicle and crushing it flat, thick steel plates crumpling and buckling with a deep metallic crunch, glass and metal parts snapping, heavy tracks clanking as the tank lurches up and slams back down, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 2,
+      "influence": 0.7
     }
   }
 }

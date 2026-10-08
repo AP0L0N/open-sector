@@ -204,11 +204,14 @@ export function spotlightManned(e: {
   ruined?: boolean;
   wreck?: boolean;
   crits?: readonly Crit[];
+  shutdown?: true;
   /** The sim's occupant ids, or a snapshot's head count. Read for a post that needs its man. */
   garrison?: readonly unknown[] | { count: number };
 }): boolean {
   if (hasCrit({ crits: e.crits ?? [] }, "lamp")) return false;
   if (lampCrewOf(e.type) && crewAt(e.garrison) <= 0) return false;
+  // A shut-down Cyborg's headlight goes out with the rest of him.
+  if (e.shutdown) return false;
   return hasSpotlight(e.type) && (e.ownerId !== NEUTRAL_OWNER || e.kind === "unit") && e.hp > 0 && !e.ruined && !e.wreck;
 }
 

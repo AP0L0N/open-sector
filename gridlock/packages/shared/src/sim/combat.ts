@@ -245,7 +245,7 @@ import { allyInLine, holdForAlly, needsClearLine } from "./lineoffire.js";
 import { airTargetSpreadMul, isAirborne, isCrashing, reachesAircraft, stepBomb } from "./air.js";
 import { stepCluster } from "./airdrop.js";
 import { projectileMeetsDrone, reachesDrone } from "./drone.js";
-import { reachesJet } from "./jet.js";
+import { jetAloft, reachesJet } from "./jet.js";
 import { nightSightMul, nightTiles } from "./night.js";
 import { afloat, armTorpedo, diving, hiddenSubmarine, surface, surfaceToStrike, torpedoCannotReach } from "./naval.js";
 import { shipHullT, shipKeelDist, shipMountPoint, turretBearing } from "./battleship.js";
@@ -374,7 +374,7 @@ export function tickCombat(state: MatchState, dt: number): void {
   for (const e of state.entities.values()) {
     if (!canFight(e) || !supplyRiderFights(state, e)) continue;
     tickWeaponClocks(e, dt);
-    if (waterSilences(state, e) || garrisonIsHiding(state, e) || powerSilences(e)) continue;
+    if (waterSilences(state, e) || flightStowsGun(e) || garrisonIsHiding(state, e) || powerSilences(e)) continue;
     resolveTarget(state, e);
   }
   tickStance(state);
@@ -382,7 +382,7 @@ export function tickCombat(state: MatchState, dt: number): void {
   // Missiles launched later in this tick (a Rocketer, a Titan pod) are born at or after this id.
   const bornAt = state.nextId;
   for (const e of state.entities.values()) {
-    if (!canFight(e) || !supplyRiderFights(state, e) || waterSilences(state, e) || garrisonIsHiding(state, e) || powerSilences(e)) continue;
+    if (!canFight(e) || !supplyRiderFights(state, e) || waterSilences(state, e) || flightStowsGun(e) || garrisonIsHiding(state, e) || powerSilences(e)) continue;
     if (roofCiwsOf(e.type)) tickRoofCiws(state, e, dt, downed);
     if (e.ship) tickShipCiws(state, e, dt, downed);
     if (interceptRockets(state, e, downed)) continue;
@@ -991,6 +991,11 @@ function waterSilences(state: MatchState, e: Entity): boolean {
   return unitInWater(state, e) && !rocketsOf(e.type);
 }
 
+/** A Titan on its leg jets: the main gun is stowed, and only the shoulder pods fire. */
+function flightStowsGun(e: Entity): boolean {
+  return rocketsOf(e.type) && jetAloft(e);
+}
+
 /** A CIWS or RAM runs on its radar. Short on power, it neither lays nor fires. */
 function powerSilences(e: Entity): boolean {
   return e.kind === "building" && !!e.unpowered && radarLaidOf(e.type);
@@ -1000,8 +1005,12 @@ function canFight(e: Entity): boolean {
   // Aircraft fire their own guns and bombs in tickAir.
   // A paratrooper under his canopy keeps his rifle slung until he is down.
   if (e.type === "artillery" && gunCrewOf(e) === 0) return false;
+  // A shut-down Cyborg fires at nothing.
+  if (e.shutdown) return false;
   // An emplaced gun with nobody at it is silent, and so is one whose crew lies low.
   if (crewGunOf(e.type) && (e.garrison.length === 0 || e.garrisonHide)) return false;
+  // A Titan falling dead out of the air fires nothing on the way down.
+  if (e.jet?.crash) return false;
   return fires(e.type) && e.hp > 0 && !e.wreck && !e.air && !e.chute && e.state !== "deploy" && e.state !== "undeploy";
 }
 
@@ -1205,7 +1214,7 @@ function focusPatrolGroup(state: MatchState, members: Entity[], grid: SpatialGri
     const route = e.order!.route!;
     const loop = e.order?.loop === true;
     const range = weaponRangeWorld(state, e);
-    const pool = range > 0 ? queryCapsules(grid, route, range + e.radius, loop) : [];
+    const pool = range > 0 ? queryCapsules(grid, route, range + e.radius, loop, state, e.ownerId) : [];
     for (const o of pool) {
       if (!patrolContact(state, e, o)) continue;
       let row = rows.get(o.id);
@@ -3612,6 +3621,8 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (d > Math.max(airRange2, bestD)) continue;
     // Only a force-attack aims at a bridge. Nothing aims at a heap of rubble.
     if (isBridge(o.type) || isRubble(o)) continue;
+    // A shut-down Cyborg is no threat: only a force-attack aims at him.
+    if (o.shutdown) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
     if (sparesBuilding(state, e, o)) continue;

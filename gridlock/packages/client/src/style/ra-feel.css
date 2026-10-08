@@ -920,6 +920,7 @@ input[type="range"] { padding: 0; }
 #build-ciws,
 #build-research,
 #build-radar,
+#build-cyborgcentral,
 #build-bunker,
 #build-tower,
 #build-ram,
@@ -1161,6 +1162,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/radar-cameo.png");
+}
+#build-cyborgcentral {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/cyborgcentral-cameo.png");
 }
 #build-bunker {
   background-image:

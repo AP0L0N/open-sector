@@ -32,6 +32,10 @@ export type AnnounceEvent =
   | "captured"
   | "buildingcaptured"
   | "sonarcontact"
+  | "cyborglinklost"
+  | "cyborglinkrestored"
+  | "cyborgsoffline"
+  | "cyborgacquired"
   | "victory"
   | "defeat";
 
@@ -57,13 +61,22 @@ export type SoundEvent =
    * One of your units speaks without being clicked: it just left the factory, (special) did its work
    * on its own, or (load) took someone aboard.
    */
-  | { kind: "voice"; type: string; event: "ready" | "special" | "load" }
+  | { kind: "voice"; type: string; event: "ready" | "special" | "load" | LinkVoice }
   /**
    * A unit's own effect at a point, played without an order: the ASW helicopter settling back on
-   * its deck, or one of your defences going up (sandbags thumped down, a gun set in its pit).
+   * its deck, one of your defences going up (sandbags thumped down, a gun set in its pit), or
+   * (crush) an Apocalypse rolling a hull flat.
    */
-  | { kind: "unitsfx"; type: string; cue: "special"; x: number; y: number }
+  | { kind: "unitsfx"; type: string; cue: "special" | "crush" | LinkSfx; x: number; y: number }
   | { kind: "announce"; event: AnnounceEvent };
+
+/**
+ * Cyborg link cues. A Cyborg powering down (`shutdown`) and booting up on his new side
+ * (`reboot`); a Cyborg Commander's uplink opening on one (`uplink`, from his folder).
+ */
+export type LinkSfx = "shutdown" | "reboot" | "uplink";
+/** A Cyborg of yours going dark or waking up yours; your Commander starting a takeover. */
+export type LinkVoice = "shutdown" | "online" | "takeover";
 
 /** Least time between two fire sounds from one shooter, by type. A burst sample covers the rest. */
 const FIRE_GAP_MS: Record<string, number> = {
@@ -143,6 +156,8 @@ export class SoundTracker {
   /** Share of health left, not raw hp: bracing or packing up rescales both hp and hpMax. */
   private lastHp = new Map<number, number>();
   private lowPower = false;
+  /** Your Cyborgs were counting down to shutdown in the last snapshot. */
+  private linkDown = false;
   /** Submarines your sonar heard in the last snapshot. One that was not there is a new contact. */
   private sonarHeard = new Set<number>();
   private queueReady = new Map<string, boolean>();
@@ -170,6 +185,7 @@ export class SoundTracker {
       for (const i of match.impacts ?? []) this.seenImpacts.add(i.id);
       for (const b of match.bodies ?? []) this.seenBodies.add(b.id);
       this.lowPower = match.you.lowPower;
+      this.linkDown = match.you.cyborgShutdownIn != null;
       this.sonarHeard = new Set((match.sonar ?? []).map((c) => c.id));
       this.noteQueues(match, out, true);
       this.prevById = byId;
@@ -240,6 +256,11 @@ export class SoundTracker {
       if (this.seenImpacts.has(i.id)) continue;
       this.seenImpacts.add(i.id);
       if (i.kind === "crush") continue;
+      // An Apocalypse rolled a hull flat: steel crumpling under its tracks.
+      if (i.crusher != null) {
+        out.push({ kind: "unitsfx", type: "apocalypse", cue: "crush", x: i.x, y: i.y });
+        continue;
+      }
       // The laser's burn is heard when the beam opens (below), not again where it lands.
       if (i.laser) continue;
       // Hitscan rounds and shells too quick for a snapshot are only seen landing.
@@ -262,6 +283,8 @@ export class SoundTracker {
       out.push({ kind: "death", type: b.type, infantry: true, x: b.x, y: b.y });
       if (b.ownerId === me) out.push({ kind: "announce", event: "unitlost" });
     }
+
+    this.noteCyborgLinks(match, byId, out);
 
     let ownBuildingHit = false;
     let ownUnitHit = false;
@@ -364,6 +387,49 @@ export class SoundTracker {
     if (this.lastRocket.size > 500) this.lastRocket.clear();
     if (this.lastShieldHit.size > 500) this.lastShieldHit.clear();
     return out;
+  }
+
+  /**
+   * Cyborgs going dark, an uplink opening, a Cyborg waking up on his new side, and your
+   * link countdown starting or clearing. A whole squad shutting down speaks once.
+   */
+  private noteCyborgLinks(match: MatchSnapshot, byId: Map<number, EntityView>, out: SoundEvent[]): void {
+    const me = match.youPlayerId;
+    let lostOwn = false;
+    let gainedOwn = false;
+    let bossSpoke = false;
+    for (const e of match.entities) {
+      const prev = this.prevById.get(e.id);
+      if (!prev || e.wreck) continue;
+      if (e.shutdown && !prev.shutdown) {
+        out.push({ kind: "unitsfx", type: e.type, cue: "shutdown", x: e.x, y: e.y });
+        if (prev.ownerId === me) lostOwn = true;
+      } else if (!e.shutdown && prev.shutdown) {
+        out.push({ kind: "unitsfx", type: e.type, cue: "reboot", x: e.x, y: e.y });
+        if (e.ownerId === me) gainedOwn = true;
+      }
+      if (e.takeover && e.takeover.by !== prev.takeover?.by) {
+        const boss = byId.get(e.takeover.by);
+        out.push({ kind: "unitsfx", type: boss?.type ?? "cyborgcommander", cue: "uplink", x: e.x, y: e.y });
+        if (boss?.ownerId === me && !bossSpoke) {
+          bossSpoke = true;
+          out.push({ kind: "voice", type: boss.type, event: "takeover" });
+        }
+      }
+    }
+    if (lostOwn) {
+      out.push({ kind: "voice", type: "cyborg", event: "shutdown" });
+      out.push({ kind: "announce", event: "cyborgsoffline" });
+    }
+    if (gainedOwn) {
+      out.push({ kind: "voice", type: "cyborg", event: "online" });
+      out.push({ kind: "announce", event: "cyborgacquired" });
+    }
+    const down = match.you.cyborgShutdownIn != null;
+    if (down && !this.linkDown) out.push({ kind: "announce", event: "cyborglinklost" });
+    // Cleared while your Cyborgs are still yours: the link is back, not lost.
+    else if (!down && this.linkDown && !lostOwn) out.push({ kind: "announce", event: "cyborglinkrestored" });
+    this.linkDown = down;
   }
 
   /** Construction lanes: a new job is "Building", the flip to ready is "Construction complete". */
