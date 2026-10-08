@@ -416,6 +416,7 @@ import {
 import { pyroNozzleScreen } from "./pyro-nozzle.js";
 import { cyborgCommanderLens } from "./cyborgcommander-muzzle.js";
 import { beamEnd, beamShare, drawForceField, drawLaserBeam } from "./laser-beam.js";
+import { drawShutdownMark, drawUplink, SHUTDOWN_UNIT_FILTER } from "./cyborg-link-fx.js";
 import { inScreenRect, unitGroundSink, unitPickRect, type ScreenRect } from "./unit-hit.js";
 import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
@@ -575,6 +576,7 @@ const EXTRUDE: Record<EntityType, number> = {
   ciws: 26,
   research: 40,
   radar: 44,
+  cyborgcentral: 44,
   bunker: 18,
   tower: 66,
   ram: 26,
@@ -6742,6 +6744,8 @@ export class MapView {
       ctx.translate(-s.x, -s.y);
     }
     if (e.wreck && !corpse && sheet === def) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
+    // A shut-down Cyborg is dark: the machine is off.
+    else if (!e.wreck && e.shutdown) ctx.filter = SHUTDOWN_UNIT_FILTER;
     // A map's neutral unit is grey: no one's colours, everyone's enemy.
     else if (!e.wreck && !e.ownerId) ctx.filter = NEUTRAL_UNIT_FILTER;
     // The ship's mounts are placed on the sim's own spots: no ground sink under the hull.
@@ -6820,6 +6824,7 @@ export class MapView {
         e.id,
       );
     }
+    if (drawn && !e.wreck && e.shutdown) drawShutdownMark(ctx, s.x, s.y + unitGroundSink(size), size, performance.now(), e.id);
     if (drawn && !e.wreck && isInfantryType(e.type) && !e.swimming) {
       const heat = this.fireHeatAt(p.x, p.y);
       if (heat > 0) drawBodyFlames(ctx, s.x, s.y, size, heat, performance.now(), e.id);
@@ -7495,6 +7500,27 @@ export class MapView {
       const lens = cyborgCommanderLens(engineRowFromScreen(dir.x, dir.y), legless, size);
       const from = { x: s.x + lens.x, y: s.y + unitGroundSink(size) + lens.y };
       drawLaserBeam(ctx, from, this.toScreen(end.x, end.y), now, e.id);
+    }
+    this.drawUplinks(now);
+  }
+
+  /** A Cyborg Commander's uplink to the shut-down Cyborg he is taking over, with its progress ring. */
+  private drawUplinks(now: number): void {
+    const ctx = this.ctx;
+    for (const e of this.curr.entities) {
+      const link = e.takeover;
+      if (!link || e.wreck) continue;
+      const boss = this.curr.entities.find((o) => o.id === link.by);
+      if (!boss || boss.wreck) continue;
+      const bp = this.lerpEnt(boss);
+      const cp = this.lerpEnt(e);
+      const bossSize = spriteFor(boss.type, boss.stance)?.drawSize ?? 20;
+      const size = spriteFor(e.type, e.stance)?.drawSize ?? 20;
+      const bs = this.toScreen(bp.x, bp.y);
+      const cs = this.toScreen(cp.x, cp.y);
+      const from = { x: bs.x, y: bs.y + unitGroundSink(bossSize) - bossSize * 0.55 };
+      const to = { x: cs.x, y: cs.y + unitGroundSink(size) - size * 0.35 };
+      drawUplink(ctx, from, to, link.u, size * 0.45, now, e.id);
     }
   }
 

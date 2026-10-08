@@ -84,7 +84,7 @@ describe("mammoth", () => {
     assert.equal(def.kind, "unit");
     assert.ok(TRAIN_TYPES.includes("mammoth"));
     assert.equal(producerType("mammoth"), "armory");
-    assert.equal(TECH_REQUIRES.mammoth, "research");
+    assert.deepEqual(TECH_REQUIRES.mammoth, ["research"]);
     assert.equal(garrisonCapOf("mammoth"), 5);
     assert.deepEqual(def.garrisonTypes, BUNKER_TYPES);
     assert.equal(def.wades, true);

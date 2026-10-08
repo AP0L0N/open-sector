@@ -123,7 +123,7 @@ describe("Apocalypse catalog", () => {
     const tiger = catalog("warden");
     assert.ok(TRAIN_TYPES.includes("apocalypse"));
     assert.equal(producerType("apocalypse"), "armory");
-    assert.equal(TECH_REQUIRES.apocalypse, "research");
+    assert.deepEqual(TECH_REQUIRES.apocalypse, ["research"]);
     assert.equal(def.name, "Apocalypse");
     assert.equal(hasTurret("apocalypse"), true);
     assert.equal(mainGunBarrels("apocalypse"), 2);

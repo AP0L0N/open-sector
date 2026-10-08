@@ -9,7 +9,7 @@ import {
   SHELL_TYPES,
   STANCE_LABEL,
   TRAIN_QUEUE_CAP,
-  TECH_REQUIRES,
+  techLacking,
   TRAIN_TYPES,
   TICK_DT,
   WALKER_ONE_BURST,
@@ -321,14 +321,7 @@ export function mountBattlefield(
         return;
       }
       if (m && !canQueueMore(m, unit)) return;
-      const techNeed = TECH_REQUIRES[unit];
-      if (
-        techNeed &&
-        m &&
-        !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === techNeed && e.hp > 0 && !e.wreck)
-      ) {
-        return;
-      }
+      if (m && techLackingFor(m, unit)) return;
       ctx.net.send({ type: "cmd.train", unit });
     });
     btn?.addEventListener("contextmenu", (e) => {
@@ -581,9 +574,12 @@ export function paintBattleHud(ctx: Ctx): void {
   if (power) {
     const spd = productionSpeed(m.you.provided, m.you.used);
     const slow = m.you.lowPower ? ` · SLOW ×${spd.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}` : "";
-    const next = `POWER <b>${m.you.used} / ${m.you.provided}</b>${slow}`;
+    // No powered Cyborg Central and no Commander: your Cyborgs are about to go dark.
+    const link = m.you.cyborgShutdownIn;
+    const cyborgs = link != null ? ` · <b class="cyborg-link">CYBORGS OFF IN ${Math.ceil(link)}s</b>` : "";
+    const next = `POWER <b>${m.you.used} / ${m.you.provided}</b>${slow}${cyborgs}`;
     if (power.innerHTML !== next) power.innerHTML = next;
-    power.classList.toggle("low-power", m.you.lowPower);
+    power.classList.toggle("low-power", m.you.lowPower || link != null);
   }
   const speed = document.getElementById("hud-speed");
   if (speed) {
@@ -636,9 +632,8 @@ export function paintBattleHud(ctx: Ctx): void {
     const paused = heads.length > 0 && heads.every((j) => j.paused);
     const training = heads.some((j) => !j.paused);
     const padsFull = want === "airfield" && hasProducer && !canQueueMore(m, unit);
-    const tech = TECH_REQUIRES[unit];
-    const techMissing =
-      !!tech && !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === tech && e.hp > 0 && !e.wreck);
+    const tech = techLackingFor(m, unit);
+    const techMissing = tech != null;
     // One at a time: greyed out while yours stands. While one is queued the cameo stays live to pause or cancel it.
     const held = oneAtATimeHeld(m, unit);
     const looping = (m.you.continuous ?? []).includes(unit);
@@ -767,7 +762,13 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
   const armor = armorLabel(e.type);
   const plates = armor ? `  ·  armor ${armor}` : "";
   const field = e.field ? `  ·  field ${e.field.hp}/${e.field.max}${e.field.hp <= 0 ? " (down)" : ""}` : "";
-  const wreck = e.wreck ? "  ·  WRECK" : "";
+  const wreck = e.wreck
+    ? "  ·  WRECK"
+    : e.shutdown
+      ? e.takeover
+        ? `  ·  SHUT DOWN — uplink ${Math.round(e.takeover.u * 100)}%`
+        : "  ·  SHUT DOWN — a Cyborg Commander can take him over"
+      : "";
   const injuries =
     e.crits && e.crits.length > 0
       ? `  ·  ${e.crits.map((c) => (isCyborg(e.type) && c === "leg" ? "legs torn off" : CRIT_LABEL[c])).join(", ")}${e.shielded ? " (plating holds — cannot be hurt yet)" : ""}`
@@ -1100,6 +1101,11 @@ function infantryClipShown(e: EntityView, gunId: string): number {
   return gun?.clip ?? 0;
 }
 
+/** The first tech building you still lack for `unit` (TECH_REQUIRES), or null. */
+function techLackingFor(m: MatchSnapshot, unit: TrainType): BuildingType | null {
+  return techLacking(unit, (t) => m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === t && e.hp > 0 && !e.wreck));
+}
+
 const TYPE_ORDER: EntityType[] = [
   "fw190",
   "bv222",
@@ -1154,6 +1160,7 @@ const TYPE_ORDER: EntityType[] = [
   "ciws",
   "research",
   "radar",
+  "cyborgcentral",
   "bunker",
   "tobruk",
   "casemate",

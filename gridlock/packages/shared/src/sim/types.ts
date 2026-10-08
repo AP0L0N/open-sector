@@ -529,6 +529,13 @@ export interface Entity {
   selfHpSeen?: number;
   /** Cyborg only: sim tick until which nothing takes his HP. Set when the legs are torn off. */
   shieldUntilTick?: number;
+  /**
+   * Cyborg only: shut down for want of a link (sim/cyborg-link.ts). He belongs to no one,
+   * stands still, answers nothing, and fires at nothing until a Cyborg Commander takes him over.
+   */
+  shutdown?: true;
+  /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
+  takeover?: { by: number; ticks: number };
   /** Cyborg Commander only: force-field points left. Hits come off these before HP. */
   field?: number;
   /** Cyborg Commander only: tick of the last hit on him, field or body. The recharge waits on it. */
@@ -832,6 +839,8 @@ export interface SimPlayer {
   aiPlan?: AiPlan;
   /** Fraction of a scrap point the Smelters have earned but not yet paid. `scrap` stays whole. */
   scrapCarry: number;
+  /** Sim tick this side's Cyborgs lost their link (no powered Cyborg Central, no living Commander). Absent while linked. */
+  cyborgLinkLostTick?: number;
   /**
    * Units this commander keeps training. Each of his producers for that unit
    * holds one job until he turns it off. Absent when none.

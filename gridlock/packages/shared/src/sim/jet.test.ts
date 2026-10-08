@@ -62,7 +62,7 @@ describe("Jump Jet", () => {
   it("is trained at the Muster behind Research, carries an assault rifle and a handgun", () => {
     assert.ok(TRAIN_TYPES.includes("jumpjet"));
     assert.equal(producerType("jumpjet"), "muster");
-    assert.equal(TECH_REQUIRES.jumpjet, "research");
+    assert.deepEqual(TECH_REQUIRES.jumpjet, ["research"]);
     assert.deepEqual(infantryLoadout("jumpjet"), [ASSAULT, HANDGUN]);
     assert.equal(catalog("jumpjet").name, "Jump Jet");
   });

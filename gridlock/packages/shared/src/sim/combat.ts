@@ -912,6 +912,8 @@ function canFight(e: Entity): boolean {
   // Aircraft fire their own guns and bombs in tickAir.
   // A paratrooper under his canopy keeps his rifle slung until he is down.
   if (e.type === "artillery" && gunCrewOf(e) === 0) return false;
+  // A shut-down Cyborg fires at nothing.
+  if (e.shutdown) return false;
   // An emplaced gun with nobody at it is silent, and so is one whose crew lies low.
   if (crewGunOf(e.type) && (e.garrison.length === 0 || e.garrisonHide)) return false;
   return fires(e.type) && e.hp > 0 && !e.wreck && !e.air && !e.chute && e.state !== "deploy" && e.state !== "undeploy";
@@ -3500,6 +3502,8 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (d > Math.max(airRange2, bestD)) continue;
     // Only a force-attack aims at a bridge. Nothing aims at a heap of rubble.
     if (isBridge(o.type) || isRubble(o)) continue;
+    // A shut-down Cyborg is no threat: only a force-attack aims at him.
+    if (o.shutdown) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
     if (sparesBuilding(state, e, o)) continue;

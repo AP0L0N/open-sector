@@ -202,8 +202,11 @@ export function spotlightManned(e: {
   ruined?: boolean;
   wreck?: boolean;
   crits?: readonly Crit[];
+  shutdown?: true;
 }): boolean {
   if (hasCrit({ crits: e.crits ?? [] }, "lamp")) return false;
+  // A shut-down Cyborg's headlight goes out with the rest of him.
+  if (e.shutdown) return false;
   return hasSpotlight(e.type) && (e.ownerId !== NEUTRAL_OWNER || e.kind === "unit") && e.hp > 0 && !e.ruined && !e.wreck;
 }
 

@@ -80,7 +80,7 @@ describe("cyborg commander", () => {
     assert.equal(def.cost, 5000);
     assert.ok(TRAIN_TYPES.includes("cyborgcommander"));
     assert.equal(producerType("cyborgcommander"), "armory");
-    assert.equal(TECH_REQUIRES.cyborgcommander, "research");
+    assert.deepEqual(TECH_REQUIRES.cyborgcommander, ["research", "cyborgcentral"]);
     assert.equal(isCyborg("cyborgcommander"), true);
     assert.equal(isRepairableUnit("cyborgcommander"), true);
     assert.equal(hasForceField("cyborgcommander"), true);

@@ -1,0 +1,18 @@
+{
+  "key": "cyborgcentral",
+  "out": "units/cyborgcentral",
+  "sfx": {
+    "special": {
+      "prompt": "Large sci-fi machine facility powering up: heavy relays slamming on, a deep reactor hum rising, electric arcs crackling up a tall antenna mast and a pulsing radio uplink tone, close, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Large sci-fi machine facility destroyed: a big explosion, a reactor core bursting with an electric whine and crackling arcs, sheet metal tearing and a tall steel mast crashing down, debris raining onto the ground, medium distance outdoors, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

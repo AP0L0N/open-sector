@@ -59,6 +59,7 @@ import { keepRubbleStanding, toRubble } from "./rubble.js";
 import { toWreck } from "./wreck.js";
 import { freshClutterHp } from "./clutter.js";
 import { tickPower } from "./power.js";
+import { tickCyborgLink } from "./cyborg-link.js";
 
 export function createMatch(
   room: RoomState,
@@ -262,6 +263,7 @@ export function step(state: MatchState, dt = TICK_DT): void {
   // Only rounds aimed at a bridge hurt it; every other knock this step is undone below.
   const bridgeHp = guardBridges(state);
   tickPower(state);
+  tickCyborgLink(state);
   tickSmoke(state, dt);
   tickSpotlights(state, dt);
   tickStance(state);
