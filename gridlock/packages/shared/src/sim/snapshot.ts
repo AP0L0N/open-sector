@@ -1,7 +1,7 @@
 import {
   bridgeBuildSeconds,
   isBridge,
-  AIR_FUEL_SECONDS,
+  airFuelOf,
   ARTILLERY_CREW,
   ARTILLERY_CREW_HP,
   ARTILLERY_SETUP_SECONDS,
@@ -535,7 +535,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
             phase: e.air.phase,
             alt: e.air.alt,
             fuel: friendly ? e.air.fuel : undefined,
-            fuelMax: friendly ? AIR_FUEL_SECONDS : undefined,
+            fuelMax: friendly ? airFuelOf(e.type) : undefined,
             bombs: friendly ? e.air.bombs : undefined,
             rounds: friendly ? e.air.rounds : undefined,
             homeId: friendly && e.air.homeId != null ? e.air.homeId : undefined,

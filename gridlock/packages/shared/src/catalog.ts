@@ -583,6 +583,7 @@ export type EntityType =
   | "fw190"
   | "bv222"
   | "he111"
+  | "blackbird"
   | "droneop"
   | "drone"
   | "aswheli"
@@ -757,7 +758,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "shed",
   "boiler",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "blackbird" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -858,7 +859,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "blackbird", "droneop", "jumpjet"];
 
 /**
  * A player fields only one of each of these at a time. While it lives, another
@@ -896,6 +897,7 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   battleship: ["research", "radar"],
   stuka: "research",
   he111: "research",
+  blackbird: ["research", "radar"],
   bv222: ["research", "radar"],
 };
 
@@ -1144,6 +1146,12 @@ export interface CatalogEntry {
    * only over water, and the torpedo always runs its full length.
    */
   airTorpedo?: boolean;
+  /**
+   * Unarmed reconnaissance plane (the Blackbird). No bomb, no guns, no bay: it flies over and
+   * looks. Flies at BLACKBIRD_CRUISE_ALT, carries BLACKBIRD_FUEL_SECONDS, and sees
+   * BLACKBIRD_FLYING_SIGHT_BONUS farther in the air.
+   */
+  recon?: boolean;
   /**
    * Hull sonar (the Destroyer): it hears every enemy submarine within SONAR_RANGE_TILES, down or up,
    * and carries an ASW helicopter that goes out after what it hears, and lays water mines.
@@ -2215,6 +2223,26 @@ export const HE111_RUN_IN_TILES = t(20);
 export const HE111_DROP_ARC_DEG = 8;
 /** Per second: the share of that throw still left. */
 export const PARA_DRAG = 0.35;
+
+/**
+ * Blackbird reconnaissance jet. No guns, no bomb, no bay: it flies over and
+ * looks. It cruises far above every other plane, out of reach of everything
+ * but anti-air guns, and it is the fastest thing in the air. It carries a
+ * little more fuel than the others and sees farther than any of them. Sent
+ * at a unit or a point, it overflies it and circles there.
+ */
+/** Cruise height. Above AIR_HIGH_ALT. */
+export const BLACKBIRD_CRUISE_ALT = 40;
+/**
+ * A plane at or above this height is out of reach for everything but anti-air
+ * guns (the MG42, the gatlings, the CIWS, the Flak) and a fighter that climbs
+ * after it, as a high drone is. The others cruise at AIR_CRUISE_ALT, well under it.
+ */
+export const AIR_HIGH_ALT = 32;
+/** Seconds of flight in its tank, over AIR_FUEL_SECONDS for the others. */
+export const BLACKBIRD_FUEL_SECONDS = 130;
+/** Sight it gains in the air, in place of AIRCRAFT_FLYING_SIGHT_BONUS. */
+export const BLACKBIRD_FLYING_SIGHT_BONUS = t(18);
 /** Bomblets scattered by one canister. Each lies where it falls as a mine. */
 export const CLUSTER_MINES = 14;
 export const CLUSTER_RADIUS_TILES = t(2.5);
@@ -5408,6 +5436,32 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     wreckHp: 36,
     blurb: `Twin-engined torpedo bomber. No guns and no bomb: one torpedo under the belly, the same one a submarine fires. It attacks only what is in the water — a boat, a submarine surfaced or down, a swimmer, a Marine Base — and only with water under it. It comes down low over the water on the way in and lets the torpedo go when the target is ${TORPEDO_RANGE_TILES / TILE_SUBDIV} tiles off the nose, the submarine's own reach. The torpedo always runs its full length, even on a force attack, and strikes the first thing in the water across its path, friend or foe, surfaced or submerged. It runs slow and in plain sight; any gun can shoot it apart before it arrives. One torpedo a sortie: then it flies home to land, refuel, and load another. Low on the run in, rifles and anti-aircraft guns reach it easily. It has no tracks to lose. A hit that wrecks the engine brings it down at once: it falls trailing smoke and crashes as a wreck.`,
   },
+  /** Blackbird reconnaissance jet. Lives on an Airfield pad. */
+  blackbird: {
+    type: "blackbird",
+    kind: "unit",
+    name: "Blackbird",
+    letter: "y",
+    cost: 2200,
+    buildSeconds: 24,
+    hp: 90,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 14,
+    moveTilesPerSec: paced(9),
+    turnDegPerSec: 70,
+    rangeTiles: 0,
+    sightTiles: t(12),
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    aircraft: true,
+    recon: true,
+    wreckHp: 22,
+    blurb: `Reconnaissance jet. No guns and no bomb: it only looks. It flies higher and faster than any other plane and reveals the widest circle of ground in the air, ${(t(12) + BLACKBIRD_FLYING_SIGHT_BONUS) / TILE_SUBDIV} tiles around it. Up there only anti-air guns — the MG42, gatlings, the CIWS, the Flak — and a fighter that climbs after it can reach it; rifles and rockets cannot. Its tank holds ${BLACKBIRD_FUEL_SECONDS} seconds of flight, more than the others. Send it at a point or a unit and it flies over and circles there; on guard or patrol it keeps watching the area. It comes home to land and refuel when the tank runs low. It has no tracks to lose. A hit that wrecks the engine brings it down at once: it falls trailing smoke and crashes as a wreck.`,
+  },
   droneop: {
     type: "droneop",
     kind: "unit",
@@ -5864,7 +5918,7 @@ export function nukesOnDeath(type: EntityType): boolean {
   return type === "titan";
 }
 
-/** Flies: the Stuka, the Fw 190, the BV 222, and the He 111. */
+/** Flies: the Stuka, the Fw 190, the BV 222, the He 111, and the Blackbird. */
 export function isAircraftType(type: EntityType): boolean {
   return catalog(type).aircraft === true;
 }
@@ -5876,12 +5930,29 @@ export function airLoadoutOf(type: EntityType): { bombs: number; rounds: number 
   if (type === "bv222") return { bombs: 1, rounds: 0 };
   // The He 111's torpedo rides in the bomb slot: hung on the pad, spent on the run.
   if (dropsTorpedo(type)) return { bombs: HE111_TORPEDOES, rounds: 0 };
+  // The Blackbird carries cameras only.
+  if (isReconType(type)) return { bombs: 0, rounds: 0 };
   return { bombs: STUKA_BOMBS, rounds: STUKA_MG_ROUNDS };
 }
 
 /** Torpedo bomber: drops the submarine's torpedo over water instead of a bomb. */
 export function dropsTorpedo(type: EntityType): boolean {
   return catalog(type).airTorpedo === true;
+}
+
+/** Reconnaissance plane: no weapons, flies over and looks. */
+export function isReconType(type: EntityType): boolean {
+  return catalog(type).recon === true;
+}
+
+/** Height a plane cruises at between runs. */
+export function airCruiseAltOf(type: EntityType): number {
+  return isReconType(type) ? BLACKBIRD_CRUISE_ALT : AIR_CRUISE_ALT;
+}
+
+/** Seconds of flight in a full tank. */
+export function airFuelOf(type: EntityType): number {
+  return isReconType(type) ? BLACKBIRD_FUEL_SECONDS : AIR_FUEL_SECONDS;
 }
 
 /** Transport: drops a load (AirDrop) instead of attacking. */

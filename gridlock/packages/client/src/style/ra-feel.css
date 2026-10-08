@@ -911,6 +911,7 @@ input[type="range"] { padding: 0; }
 #train-fw190,
 #train-bv222,
 #train-he111,
+#train-blackbird,
 #build-dynamo,
 #build-smelter,
 #build-muster,
@@ -1263,6 +1264,11 @@ input[type="range"] { padding: 0; }
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     var(--he111-cameo, url("../assets/units/he111/hull/0013.png"));
 }
+#train-blackbird {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    var(--blackbird-cameo, url("../assets/units/blackbird/hull/0013.png"));
+}
 #train-gunboat {
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
@@ -1534,6 +1540,10 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="he111"],
 .prod-job[data-type="he111"] {
   background-image: var(--he111-cameo, url("../assets/units/he111/hull/0013.png"));
+}
+.config-type[data-type="blackbird"],
+.prod-job[data-type="blackbird"] {
+  background-image: var(--blackbird-cameo, url("../assets/units/blackbird/hull/0013.png"));
 }
 .config-type[data-type="gunboat"],
 .prod-job[data-type="gunboat"] {
