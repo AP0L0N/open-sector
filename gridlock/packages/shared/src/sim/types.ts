@@ -934,4 +934,9 @@ export interface MatchState {
   digRev: number;
   /** Bumps whenever `scrapYield` changes, so a client is sent the fields again. */
   scrapRev: number;
+  /** Bumps whenever a house or map defence changes, so a client is sent the scenery list again. */
+  sceneryRev: number;
+  /** Hash of the scenery list `sceneryRev` was last bumped for, and the tick it was taken. */
+  sceneryKey: number;
+  sceneryKeyTick: number;
 }

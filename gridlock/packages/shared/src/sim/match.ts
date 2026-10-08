@@ -116,6 +116,9 @@ export function createMatch(
     dug: new Map(),
     digRev: 0,
     scrapRev: 0,
+    sceneryRev: 0,
+    sceneryKey: 0,
+    sceneryKeyTick: -1,
   };
 
   for (const slot of commanders(room)) {

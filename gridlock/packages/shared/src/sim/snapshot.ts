@@ -293,6 +293,58 @@ function sceneryView(e: Entity): EntityView {
 export interface SnapshotOptions {
   /** Include the scrap fields. Off for a tick snapshot whose receiver already holds the current `scrapRev`. */
   scrap?: boolean;
+  /** Include the scenery list. Off for a tick snapshot whose receiver already holds the current `sceneryRev`. */
+  scenery?: boolean;
+}
+
+/** A house or untaken map defence: ground the fog does not hide. */
+function isScenery(e: Entity): boolean {
+  return e.kind === "building" && (isCivilianType(e.type) || e.ownerId === NEUTRAL_OWNER);
+}
+
+/**
+ * Bump `sceneryRev` when the scenery list changed since it was last read
+ * this match, and return it. Cheap enough to ask once a tick per snapshot.
+ */
+export function refreshSceneryRev(state: MatchState): number {
+  if (state.sceneryKeyTick === state.tick) return state.sceneryRev;
+  let h = 2166136261;
+  for (const e of state.entities.values()) {
+    if (e.hp <= 0 || !isScenery(e)) continue;
+    h = Math.imul(h ^ e.id, 16777619);
+    h = Math.imul(h ^ Math.round(e.hp), 16777619);
+    h = Math.imul(h ^ (e.ruined ? 1 : 0), 16777619);
+    h = Math.imul(h ^ e.tileX, 16777619);
+    h = Math.imul(h ^ e.tileY, 16777619);
+  }
+  if (h !== state.sceneryKey || state.sceneryKeyTick < 0) {
+    state.sceneryKey = h;
+    state.sceneryRev++;
+  }
+  state.sceneryKeyTick = state.tick;
+  return state.sceneryRev;
+}
+
+/**
+ * The client's view of a snapshot: the scenery list it holds (this
+ * snapshot's, else the last one's) folded back into `entities`, so every
+ * house and map defence is there as before. The ones in sight came in full.
+ */
+export function foldScenery(next: MatchSnapshot, prev: MatchSnapshot | null = null): MatchSnapshot {
+  const scenery = next.scenery ?? prev?.scenery ?? [];
+  if (scenery.length === 0) return next;
+  const seen = new Set(next.entities.map((e) => e.id));
+  const entities = next.entities.concat(scenery.filter((s) => !seen.has(s.id)));
+  return { ...next, scenery, entities };
+}
+
+/** Every house and untaken map defence standing, in sight or not. */
+function sceneryList(state: MatchState): EntityView[] {
+  const out: EntityView[] = [];
+  for (const e of state.entities.values()) {
+    if (e.hp > 0 && isScenery(e)) out.push(sceneryView(e));
+  }
+  return out;
 }
 
 export function snapshotFor(state: MatchState, youPlayerId: string, opts: SnapshotOptions = {}): MatchSnapshot {
@@ -306,11 +358,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
     if (e.garrisonedIn && !friendly) continue;
     // A submerged boat shows only to an enemy whose Destroyer sonar hears it, fog or not.
     if (!friendly && hiddenSubmarine(state, youPlayerId, e)) continue;
-    if (!friendly && !sonarSpotted(state, youPlayerId, e) && !entityOnMask(e, vis, state.width, state.height, state.tileSize)) {
-      // Houses and untaken map defences are part of the ground: their shape shows through the fog.
-      if (e.kind === "building" && (isCivilianType(e.type) || e.ownerId === NEUTRAL_OWNER)) entities.push(sceneryView(e));
-      continue;
-    }
+    // Houses and untaken map defences out of sight are part of the ground: the client draws them from the scenery list.
+    if (!friendly && !sonarSpotted(state, youPlayerId, e) && !entityOnMask(e, vis, state.width, state.height, state.tileSize)) continue;
     const job = e.queue[0];
     const transport = isTransportType(e.type);
     const supplyBed = e.type === "supply" && !e.wreck;
@@ -609,6 +658,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
     holes: state.holes.map((h) => ({ ...h })),
     ...(state.clutterHp.some((hp) => hp <= 0) ? { brokenClutter: brokenClutter(state) } : {}),
     ...(state.dug.size > 0 ? { dug: dugCells(state) } : {}),
+    scenery: opts.scenery ? sceneryList(state) : undefined,
     vision: you ? visionRuns(vis) : undefined,
     radar: radar ? radarContacts(state, youPlayerId, vis) : undefined,
     sonar: you ? nonEmpty(sonarContacts(state, youPlayerId)) : undefined,

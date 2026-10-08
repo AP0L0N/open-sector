@@ -1,6 +1,6 @@
 import "./style/ra-feel.css";
 import type { CustomMapSpec, ServerMessage } from "@gridlock/shared";
-import { DEFAULT_MAP_ID, getMap, isPlaytestMapId, listMaps, loadCustomMap, unregisterMap } from "@gridlock/shared";
+import { DEFAULT_MAP_ID, foldScenery, getMap, isPlaytestMapId, listMaps, loadCustomMap, unregisterMap } from "@gridlock/shared";
 import { GameSocket } from "./net/client.js";
 import type { Ctx, Screen } from "./ctx.js";
 import { getMusic, getSfx, setMusic, setSfx } from "./ui/audio.js";
@@ -38,6 +38,7 @@ const DEPLOY_SCREEN_MS = 500;
 let deployTimer: ReturnType<typeof setTimeout> | null = null;
 /** A frame already booked to apply the latest snapshot; a burst of ticks lands as one render. */
 let snapshotFrame = 0;
+
 
 const params = new URLSearchParams(location.search);
 const roomParam = params.get("room");
@@ -261,7 +262,7 @@ function onMessage(msg: ServerMessage): void {
       ctx.render();
       break;
     case "match.start":
-      ctx.match = msg.match;
+      ctx.match = foldScenery(msg.match, null);
       ctx.chat = [];
       ctx.winner = null;
       ctx.screen = "deploy";
@@ -272,8 +273,8 @@ function onMessage(msg: ServerMessage): void {
       }, DEPLOY_SCREEN_MS);
       break;
     case "match.snapshot":
-      // The scrap grid only rides along when it changed; otherwise the last one stands.
-      ctx.match = msg.match.scrap || !ctx.match ? msg.match : { ...msg.match, scrap: ctx.match.scrap };
+      // The scrap grid and the scenery list only ride along when they changed; otherwise the last ones stand.
+      ctx.match = foldScenery(msg.match.scrap || !ctx.match ? msg.match : { ...msg.match, scrap: ctx.match.scrap }, ctx.match);
       if (msg.match.winner) ctx.winner = msg.match.winner;
       // Snapshots that pile up between two frames are applied once, from the latest `ctx.match`.
       if (ctx.screen === "battle" && !snapshotFrame) {
@@ -286,7 +287,7 @@ function onMessage(msg: ServerMessage): void {
     case "match.resume":
       ctx.room = msg.room;
       ctx.playMode = msg.room.mode;
-      ctx.match = msg.match;
+      ctx.match = foldScenery(msg.match, null);
       ctx.winner = msg.match.winner ?? null;
       ctx.leaveOpen = false;
       ctx.pausePane = "menu";

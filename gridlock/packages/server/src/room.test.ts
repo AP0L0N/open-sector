@@ -386,6 +386,35 @@ describe("snapshot wire diet", () => {
     }
   });
 
+  it("sends the scenery list with match.start, then only after a house changes", () => {
+    const hub = new Hub();
+    try {
+      const { a, roomId } = started(hub);
+      const start = a.of("match.start")[0];
+      assert.ok(start);
+      assert.ok(Array.isArray(start.match.scenery));
+      const match = hub.matches.get(roomId)!;
+      const houses = start.match.scenery!.filter((e) => e.kind === "building");
+      assert.ok(houses.length > 0, "yard-64 has civilian buildings");
+      hub["tickRoom"](roomId);
+      const snap = a.of("match.snapshot").at(-1);
+      assert.ok(snap);
+      assert.equal(snap.match.scenery, undefined);
+      // Out of sight, a house is not in `entities` either: the client keeps drawing it from the list.
+      assert.equal(snap.match.entities.some((e) => e.id === houses[0]!.id), false);
+      const house = match.entities.get(houses[0]!.id)!;
+      house.hp = Math.max(1, house.hp - 50);
+      hub["tickRoom"](roomId);
+      const again = a.of("match.snapshot").at(-1)!.match.scenery;
+      assert.ok(Array.isArray(again));
+      assert.equal(again!.find((e) => e.id === house.id)?.hp, house.hp);
+      hub["tickRoom"](roomId);
+      assert.equal(a.of("match.snapshot").at(-1)?.match.scenery, undefined);
+    } finally {
+      hub.shutdown();
+    }
+  });
+
   it("skips tick snapshots for a backlogged socket and resumes once it drains", () => {
     const hub = new Hub();
     try {

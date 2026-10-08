@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 113;
+export const PROTOCOL_VERSION = 114;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -650,6 +650,14 @@ export interface MatchSnapshot {
    * keeps the last one received.
    */
   scrap?: ScrapCell[];
+  /**
+   * Houses and untaken map defences: part of the ground, so their shape
+   * shows through the fog. Sent with `match.start` and `match.resume`, then
+   * again only in a snapshot after one of them changed. A snapshot without
+   * it keeps the last list; `entities` carries only the ones in your sight,
+   * in full, and the client draws the rest from this list.
+   */
+  scenery?: EntityView[];
   /**
    * Tree tiles removed this match. Empty until the first one falls.
    * `burn` is a tree a flamethrower force-attack set alight.

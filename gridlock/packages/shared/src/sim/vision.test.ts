@@ -14,7 +14,7 @@ import { destroyEntity, fillHullCover, fillSightOccupy, makeEntity, tileCenter }
 import { createMatch, step } from "./match.js";
 import { armLosFastPath, clearLosFastPath, fillLosFlags, hasFullLosFlagged, observerEyeForEntity, sightTilesOf } from "./elevation.js";
 import { fillSmokeMask, spawnSmokeCloud } from "./smoke.js";
-import { snapshotFor } from "./snapshot.js";
+import { foldScenery, snapshotFor } from "./snapshot.js";
 import {
   armSightBlocks,
   HULL_STALE_TICKS,
@@ -576,7 +576,7 @@ describe("map houses in fog", () => {
     const ts = state.tileSize;
     const house = makeEntity(state, "manor", b, tileCenter(200, ts), tileCenter(200, ts), { tileX: 200, tileY: 200 });
     const tower = makeEntity(state, "tower", b, tileCenter(190, ts), tileCenter(200, ts), { tileX: 190, tileY: 200 });
-    const snap = snapshotFor(state, a);
+    const snap = foldScenery(snapshotFor(state, a, { scenery: true }));
     const seen = snap.entities.find((e) => e.id === house.id);
     assert.ok(seen, "house out of sight is sent");
     assert.equal(seen.ownerId, "");

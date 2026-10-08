@@ -9,7 +9,7 @@ export { shipMountPoint } from "./battleship.js";
 export { fireStats, hullTurnMul, immobilized, moveSpeedMul, rollCrits, rollLamp } from "./crits.js";
 export { commandedStance, effectiveStance, tickStance } from "./stance.js";
 export { applyCommand } from "./commands.js";
-export { snapshotFor } from "./snapshot.js";
+export { foldScenery, refreshSceneryRev, snapshotFor } from "./snapshot.js";
 export { burnVariant } from "./remains.js";
 export { previewBridge, previewConstruct, previewField, previewPlace, previewSite, previewYardField } from "./preview.js";
 export { earnScrap, scrapCap, smelterCount, smelterIncome, smelterOnScrap, smelterRateOn, smelterCrowded, smelterScrapNeeded, smelterSiteOk } from "./smelter.js";

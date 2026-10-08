@@ -8,7 +8,7 @@ import { applyCommand } from "./commands.js";
 import { hqOf, isWater, makeEntity, tileCenter, unitInWater, walkable } from "./geo.js";
 import { createMatch, step } from "./match.js";
 import { bridgeBrickProblemFor, bridgeRoundDamage, guardBridges, raiseBridge, settleBridges } from "./bridge.js";
-import { snapshotFor } from "./snapshot.js";
+import { foldScenery, snapshotFor } from "./snapshot.js";
 import { previewBridge } from "./preview.js";
 import type { Entity, MatchState, Projectile } from "./types.js";
 
@@ -368,7 +368,7 @@ describe("bridge damage", () => {
     state.bridgeHits = new Map([[br.id, br.hp + 10]]);
     settleBridges(state, guardBridges(state));
     assert.equal(br.ruined, true);
-    const snap = snapshotFor(state, a).entities.find((e) => e.id === br.id);
+    const snap = foldScenery(snapshotFor(state, a, { scenery: true })).entities.find((e) => e.id === br.id);
     assert.equal(snap?.ruined, true);
     assert.equal(snap?.span, br.span);
     const eng = makeEntity(state, "engineer", a, w(RIVER_X - 8, state), w(ROW, state));
@@ -401,12 +401,12 @@ describe("bridge preview", () => {
       { x: w(84, state), y },
       { x: w(112, state), y },
     ];
-    const shown = previewBridge(snapshotFor(state, a), "bridge", pts);
+    const shown = previewBridge(foldScenery(snapshotFor(state, a, { scenery: true })), "bridge", pts);
     assert.ok(shown.length > 0);
     for (const b of shown) assert.equal(b.problem, bridgeBrickProblemFor(state, "bridge", b.span));
     assert.ok(shown.every((b) => b.problem === null), shown.map((b) => b.problem).join(","));
     for (const b of shown) raiseBridge(state, "bridge", b.span);
-    const again = previewBridge(snapshotFor(state, a), "bridge", pts);
+    const again = previewBridge(foldScenery(snapshotFor(state, a, { scenery: true })), "bridge", pts);
     assert.ok(again.every((b) => /Another bridge/.test(b.problem ?? "")));
   });
 });

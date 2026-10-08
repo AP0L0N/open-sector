@@ -273,6 +273,9 @@ export function restoreMatch(
     dug,
     digRev: 0,
     scrapRev: 0,
+    sceneryRev: 0,
+    sceneryKey: 0,
+    sceneryKeyTick: -1,
     paused: false,
   };
   for (const e of entities.values()) occupyEntity(state, e);

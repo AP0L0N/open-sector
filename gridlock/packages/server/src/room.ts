@@ -18,6 +18,7 @@ import {
   joinRoom,
   leaveRoom,
   nudgeGameSpeed,
+  refreshSceneryRev,
   setMap,
   snapshotFor,
   applySaveSeats,
@@ -43,6 +44,8 @@ export class Session {
   dropTimer: ReturnType<typeof setTimeout> | null = null;
   /** `scrapRev` of the last scrap grid this socket was sent; -1 before any. */
   scrapRev = -1;
+  /** `sceneryRev` of the last scenery list this socket was sent; -1 before any. */
+  sceneryRev = -1;
   /** True while the socket still holds unsent bytes past the backlog limit. A tick snapshot is skipped then. */
   backlogged: () => boolean = () => false;
   constructor(
@@ -201,11 +204,14 @@ export class Hub {
     }
   }
 
-  /** The player's view, with the scrap grid only when this socket has not seen the current one. `full` forces it. */
+  /** The player's view, with the scrap grid and the scenery list only when this socket has not seen the current ones. `full` forces both. */
   private snapshotView(session: Session, match: MatchState, full = false): MatchSnapshot {
     const scrap = full || session.scrapRev !== match.scrapRev;
-    const view = snapshotFor(match, session.playerId, { scrap });
+    const sceneryRev = refreshSceneryRev(match);
+    const scenery = full || session.sceneryRev !== sceneryRev;
+    const view = snapshotFor(match, session.playerId, { scrap, scenery });
     if (scrap) session.scrapRev = match.scrapRev;
+    if (scenery) session.sceneryRev = sceneryRev;
     return view;
   }
 
