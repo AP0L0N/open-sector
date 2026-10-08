@@ -17,7 +17,6 @@ import {
   fires,
   radarLaidOf,
   aimsOwnGun,
-  mountArcDegOf,
   hasSpotlight,
   headlightLit,
   hullLamps,
@@ -322,7 +321,7 @@ import {
 } from "./gun-recoil.js";
 import { bumpTilt, crushBump } from "./crush-bump.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
-import { emplacementShotLook, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
+import { emplacementShotLook, facingConeDegOf, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
 import {
   BATTLESHIP_WORLD_PER_UNIT,
   battleshipLayers,
@@ -6120,7 +6119,7 @@ export class MapView {
             this.drawCiwsGun(base, pad.x, pad.y, pad.w, 1, aim, ghost ? undefined : e, gun.sheet, crew, gun.cols, gun);
             if (gun.lampZ != null) this.drawTowerLamp(e, pad.x, pad.y, pad.w, ghost, gun);
           }
-          if (!ghost && this.selected.has(e.id) && mountArcDegOf(e.type) != null) {
+          if (!ghost && this.selected.has(e.id) && facingConeDegOf(e.type) != null) {
             this.drawMountArc(e.type, e.x, e.y, e.facing, elev, 0.5);
           }
         } else if (hasSpotlight(e.type)) {
@@ -6303,7 +6302,7 @@ export class MapView {
    * was set. Drawn on the placement ghost and on a selected gun, so the turn is chosen by eye.
    */
   private drawMountArc(type: EntityType, x: number, y: number, facing: number, elev: number, alpha: number): void {
-    const arc = mountArcDegOf(type);
+    const arc = facingConeDegOf(type);
     if (arc == null) return;
     const ts = this.ts();
     const reach = catalog(type).rangeTiles * ts;
