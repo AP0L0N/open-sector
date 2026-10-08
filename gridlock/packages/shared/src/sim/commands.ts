@@ -68,6 +68,7 @@ import { droneOf, guardDrone, launchDrone, orderDrone, recallDrone, setDroneMode
 import { landJet, takeOff } from "./jet.js";
 import { setDive } from "./naval.js";
 import { layMine } from "./destroyer.js";
+import { orderMineLay } from "./minelauncher.js";
 import { aimSpotlightPatrol, hasSpotlight, spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, MatchState, QueueableCommand, Vec } from "./types.js";
 
@@ -301,6 +302,11 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.laymine":
       if (!Array.isArray(msg.ids)) return fail("bad_payload", "Bad mine order.");
       return cmdLayMine(state, playerId, msg.ids);
+    case "cmd.minelay":
+      if (!Array.isArray(msg.ids) || typeof msg.x !== "number" || typeof msg.y !== "number") {
+        return fail("bad_payload", "Bad mine order.");
+      }
+      return wrap(orderMineLay(state, playerId, owned(state, playerId, msg.ids), msg.x, msg.y), "busy");
     default:
       return fail("bad_payload", "Unknown command.");
   }
@@ -318,6 +324,7 @@ const QUEUEABLE = new Set<string>([
   "cmd.supply",
   "cmd.disable",
   "cmd.board",
+  "cmd.minelay",
 ]);
 
 /** Unqueued orders that replace what a unit was doing, and so drop its queue. */

@@ -2256,6 +2256,21 @@ export const MAMMOTH_MG_ARC = 25;
 export const MAMMOTH_MG_RANGE_TILES = t(8);
 /** Move-speed share while the Mammoth is wading. Thirty percent slower than dry ground. */
 export const MAMMOTH_WADE_SPEED = 0.7;
+/**
+ * Mine launcher on the rear deck. Each pack is one canister lobbed onto the
+ * ground, where it bursts into the same field a BV 222 drops (CLUSTER_MINES).
+ * Only a supply truck or a crate puts packs back.
+ */
+export const MAMMOTH_MINE_PACKS = 3;
+/** Farthest point the launcher reaches, from the hull centre. */
+export const MAMMOTH_MINE_RANGE_TILES = t(12);
+/** Seconds between two packs, while the next is fed into the launcher. */
+export const MAMMOTH_MINE_RELOAD_SECONDS = 4;
+/** Canister flight from the deck to the ground, seconds and peak height. */
+export const MAMMOTH_MINE_FLIGHT_SECONDS = 1.6;
+export const MAMMOTH_MINE_APEX = 48;
+/** Supply points a truck or crate spends on one pack. A shell is SUPPLY_SHELL_COST. */
+export const MAMMOTH_MINE_SUPPLY_COST = 10;
 /** A medic inside: every occupant regains this share of max HP each second. Does not stack. */
 export const BUNKER_MEDIC_REGEN_FRAC = 0.004;
 /** An engineer inside: the bunker regains this much HP each second. Does not stack. */
@@ -4923,7 +4938,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonFullArms: true,
     garrisonTypes: BUNKER_TYPES,
     garrisonDiesWithHost: true,
-    blurb: `Armored battle platform on four legs. Very slow, very thick plate on every face, and in water it is thirty percent slower, sunk to the waist so only the body shows. Its own weapon is a twin machine gun under the cab that swings only a little either side of the nose, and falls silent in water. It carries ${MAMMOTH_GARRISON_CAP} of the infantry a Bunker takes, and every one of them fires out of the slits along its flanks, even while it wades. Force attack on the hull aims every soldier inside who can reach that point; they stay aboard. Nothing reaches them while the hull holds — but if it is destroyed, everyone inside dies with it. Nothing throws a track. A hit in the rear can still wreck the engine and stop it. At night a lamp on the nose and one on each flank light the ground out to its daylight sight. The flank lamps drift slowly through a small arc.`,
+    blurb: `Armored battle platform on four legs. Very slow, very thick plate on every face, and in water it is thirty percent slower, sunk to the waist so only the body shows. Its own weapon is a twin machine gun under the cab that swings only a little either side of the nose, and falls silent in water. It carries ${MAMMOTH_GARRISON_CAP} of the infantry a Bunker takes, and every one of them fires out of the slits along its flanks, even while it wades. Force attack on the hull aims every soldier inside who can reach that point; they stay aboard. Nothing reaches them while the hull holds — but if it is destroyed, everyone inside dies with it. Nothing throws a track. A hit in the rear can still wreck the engine and stop it. At night a lamp on the nose and one on each flank light the ground out to its daylight sight. The flank lamps drift slowly through a small arc. A launcher on the rear deck holds ${MAMMOTH_MINE_PACKS} packs of mines: Deploy mines, then click the ground inside the ring it shows, and it lobs a canister that bursts into a field of ${CLUSTER_MINES} mines — the same field a BV 222 drops, live under friend and foe alike. Click farther out and it walks until the point is in reach. A supply truck or a crate refills the packs.`,
   },
   nebelwerfer: {
     type: "nebelwerfer",
@@ -6266,9 +6281,11 @@ export function supplyShortOf(
   clip: number | undefined,
   rockets?: number,
   heavy?: number,
+  minePacks?: number,
 ): boolean {
   const def = catalog(type);
   if ((heavy ?? 0) < heavyAmmoOf(type)) return true;
+  if ((minePacks ?? 0) < minePacksOf(type)) return true;
   if ((rockets ?? 0) < rocketAmmoOf(type)) return true;
   if (def.ammo) {
     for (const shell of SHELL_TYPES) {
@@ -6475,6 +6492,11 @@ export function launcherOnlyOf(type: EntityType): boolean {
 /** Rockets in a full rack. 0 on every type without pods. */
 export function rocketAmmoOf(type: EntityType): number {
   return rocketsOf(type) ? (catalog(type).rocketAmmo ?? 0) : 0;
+}
+
+/** Mine packs the launcher holds when full. Only the Mammoth has one. */
+export function minePacksOf(type: EntityType): number {
+  return type === "mammoth" ? MAMMOTH_MINE_PACKS : 0;
 }
 
 /** High-penetration missiles this type carries when full. The Rocketer holds one. */

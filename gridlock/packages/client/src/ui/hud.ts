@@ -35,6 +35,7 @@ import {
   AIR_DROPS,
   AIR_DROP_INFO,
   BV222_TROOPS,
+  MAMMOTH_MINE_PACKS,
   isAirDrop,
   isTransportType,
   catalog,
@@ -2098,6 +2099,22 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       disabled: winded,
     });
   }
+  const minelayers = units.filter((e) => e.minePacks != null);
+  if (minelayers.length > 0) {
+    const packs = minelayers.reduce((n, e) => n + (e.minePacks ?? 0), 0);
+    const cap = MAMMOTH_MINE_PACKS * minelayers.length;
+    out.push({
+      slot: "deploy-mines",
+      act: "deploy-mines",
+      label: `Deploy mines (${packs}/${cap})`,
+      title:
+        packs <= 0
+          ? "The launcher is empty. A supply truck or a dropped crate refills it, one pack at a time."
+          : "Click the ground inside the ring: the launcher lobs one pack that bursts into a mine field, live under friend and foe alike. Click past the ring and it walks until the point is in reach. Shift queues several.",
+      on: !!view?.mineLayMode,
+      disabled: packs <= 0,
+    });
+  }
   const ships = units.filter((e) => e.asw);
   if (ships.length > 0) {
     const mines = ships.reduce((n, e) => n + e.asw!.mines, 0);
@@ -2329,6 +2346,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   if (act === "stop") {
     view.setAttackMoveMode(false);
     view.setForceAttackMode(false);
+    view.setMineLayMode(false);
     view.setRotateMode(false);
     view.setGuardMode(false);
     view.setPatrolMode(false);
@@ -2352,6 +2370,10 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   if (act === "jet-up" || act === "jet-land") {
     const ids = units.filter((e) => e.jet).map((e) => e.id);
     if (ids.length) ctx.net.send({ type: "cmd.jet", ids, action: act === "jet-up" ? "up" : "land" });
+    return;
+  }
+  if (act === "deploy-mines") {
+    if (units.some((e) => (e.minePacks ?? 0) > 0)) view.setMineLayMode(!view.mineLayMode);
     return;
   }
   if (act === "lay-mine") {
@@ -2388,6 +2410,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   if (act === "hold") {
     view.setAttackMoveMode(false);
     view.setForceAttackMode(false);
+    view.setMineLayMode(false);
     view.setRotateMode(false);
     view.setGuardMode(false);
     view.setPatrolMode(false);

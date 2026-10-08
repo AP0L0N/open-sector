@@ -196,6 +196,29 @@ def pod(m: Mesh, sy: int) -> None:
     m.box((hx - 0.3, hy - 0.04, POD_Z + 2.0), (hx - 0.22, hy + 0.04, POD_Z + 2.9), "metal")
 
 
+def mine_launcher(m: Mesh) -> None:
+    """Mine launcher on the rear deck, starboard of the cupola: a turntable, a cradle, and a dark
+    six-tube box raised toward the bow with a yellow band behind the dark muzzles."""
+    bx, by = -1.55, -0.52
+    z0 = DECK_Z + 0.25
+    cyl(m, (bx, by, z0 + 0.07), 2, 0.42, 0.14, "metal", 16)
+    m.box((bx - 0.28, by - 0.3, z0 + 0.14), (bx + 0.22, by + 0.3, z0 + 0.42), "frame")
+    p0 = np.array([bx - 0.45, by, z0 + 0.55])
+    p1 = np.array([bx + 0.5, by, z0 + 1.15])
+    a = (p1 - p0) / np.linalg.norm(p1 - p0)
+    # Cradle struts from the turntable up under the tube box.
+    for dy in (-0.24, 0.24):
+        beam(m, (bx - 0.1, by + dy, z0 + 0.2), (bx + 0.05, by + dy, z0 + 0.82), 0.08, 0.14, "metal")
+    beam(m, tuple(p0), tuple(p1), 0.74, 0.5, "frame")
+    beam(m, tuple(p1 - a * 0.24), tuple(p1 - a * 0.1), 0.78, 0.54, "hazard")
+    side = np.array([0.0, 1.0, 0.0])
+    up = np.cross(a, side)
+    for dy in (-0.22, 0.0, 0.22):
+        for du in (-0.11, 0.11):
+            c = p1 + side * dy + up * du
+            beam(m, tuple(c - a * 0.02), tuple(c + a * 0.05), 0.15, 0.15, "tire")
+
+
 def sink(m: Mesh, dz: float) -> None:
     m.verts = [np.asarray(v, dtype=np.float64) + np.array([0.0, 0.0, dz]) for v in m.verts]
 
@@ -287,6 +310,7 @@ def build_hull(frame: int | None = None) -> Mesh:
         m.box((-2.98, s * 0.75 - 0.22, DECK_Z - 0.2), (-2.88, s * 0.75 + 0.22, DECK_Z + 0.25), "frame")
     for y in (-0.25, 0.1):
         m.box((-2.85, y, 3.1), (-2.55, y + 0.3, 3.7), "frame")
+    mine_launcher(m)
     for s in (-1, 1):
         pod(m, s)
     t = None if frame is None else 2 * math.pi * frame / WALK_FRAMES

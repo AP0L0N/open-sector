@@ -50,7 +50,8 @@ export interface Order {
     | "supply"
     | "disable"
     | "tow"
-    | "land";
+    | "land"
+    | "minelay";
   x?: number;
   y?: number;
   /** World radians. Guard destination facing. */
@@ -121,7 +122,8 @@ export type QueueableCommand = Extract<
       | "cmd.repair"
       | "cmd.supply"
       | "cmd.disable"
-      | "cmd.board";
+      | "cmd.board"
+      | "cmd.minelay";
   }
 >;
 
@@ -402,6 +404,10 @@ export interface Entity {
   rockets?: number;
   /** High-penetration missiles carried. The Rocketer holds one. Missing means none. */
   heavy?: number;
+  /** Mine packs left in the Mammoth's launcher. Missing on types without one. */
+  minePacks?: number;
+  /** Seconds until the Mammoth's launcher has the next pack fed. 0 or missing when ready. */
+  mineReload?: number;
   /** Rockets still to leave in the salvo under way. 0 or missing between salvos. */
   rocketSalvo?: number;
   /** Player switched the pods off. Missing means on. */
@@ -678,6 +684,8 @@ export interface Projectile {
   apex?: number;
   /** Seconds from the tube to the ground. */
   flightTime?: number;
+  /** A mine canister lobbed up from the ground (the Mammoth's launcher), not dropped from a plane: it climbs before it falls. */
+  lobbed?: boolean;
   /** Force-attack: the blast also catches allies, and a tree on the aim burns. */
   harmAllies?: boolean;
   /** Force-attack aim, before the glob scatters. Not sent to clients. */

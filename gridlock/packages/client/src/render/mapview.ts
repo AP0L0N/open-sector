@@ -132,6 +132,8 @@ import {
   wallRiseLimit,
   wallRunTops,
   TITAN_NUKE,
+  CLUSTER_RADIUS_TILES,
+  MAMMOTH_MINE_RANGE_TILES,
 } from "@gridlock/shared";
 import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
 import { drawTitanThrust } from "./titan-jet-fx.js";
@@ -1019,6 +1021,8 @@ export class MapView {
   /** The draft was closed onto an earlier spot. The tail before that spot is already gone. */
   private patrolLoop = false;
   forceAttackMode = false;
+  /** Deploy mines: the next ground click sends the selected Mammoths' launchers there. */
+  mineLayMode = false;
   rotateMode = false;
   /** Rotate light: the rotate click swings only the selected Battle Ships' searchlights. */
   rotateLight = false;
@@ -1095,6 +1099,7 @@ export class MapView {
     if (on) {
       this.placeMode = false;
       this.forceAttackMode = false;
+      this.mineLayMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
@@ -1121,6 +1126,7 @@ export class MapView {
       this.placeMode = false;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
+      this.mineLayMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
@@ -1135,8 +1141,27 @@ export class MapView {
     if (this.forceAttackMode === on) return;
     this.forceAttackMode = on;
     if (on) {
+      this.mineLayMode = false;
       this.placeMode = false;
       this.attackMoveMode = false;
+      this.rotateMode = false;
+      this.fieldPlace = null;
+      this.constructPlace = null;
+      this.bridgePlace = null;
+      this.setGuardMode(false);
+      this.setPatrolMode(false);
+    }
+    this.onAttackMoveMode();
+    this.onPlaceMode();
+  }
+
+  setMineLayMode(on: boolean): void {
+    if (this.mineLayMode === on) return;
+    this.mineLayMode = on;
+    if (on) {
+      this.placeMode = false;
+      this.attackMoveMode = false;
+      this.forceAttackMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
@@ -1156,6 +1181,7 @@ export class MapView {
       this.placeMode = false;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
+      this.mineLayMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
       this.bridgePlace = null;
@@ -1173,6 +1199,7 @@ export class MapView {
       this.placeMode = false;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
+      this.mineLayMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
@@ -1200,6 +1227,7 @@ export class MapView {
       this.yardArm = null;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
+      this.mineLayMode = false;
       this.rotateMode = false;
       this.guardMode = false;
       this.setPatrolMode(false);
@@ -1226,6 +1254,7 @@ export class MapView {
       this.yardArm = null;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
+      this.mineLayMode = false;
       this.rotateMode = false;
       this.guardMode = false;
       this.setPatrolMode(false);
@@ -1248,6 +1277,7 @@ export class MapView {
       this.yardArm = null;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
+      this.mineLayMode = false;
       this.rotateMode = false;
       this.guardMode = false;
       this.setPatrolMode(false);
@@ -1511,6 +1541,7 @@ export class MapView {
     if (this.attackMoveMode && this.ownSelectedIds().length === 0) this.setAttackMoveMode(false);
     if (this.patrolMode && this.ownPatrolIds().length === 0) this.setPatrolMode(false);
     if (this.forceAttackMode && this.ownForceIds().length === 0) this.setForceAttackMode(false);
+    if (this.mineLayMode && this.ownMineLayerIds().length === 0) this.setMineLayMode(false);
     if (this.rotateMode && (this.rotateLight ? this.ownShipLampIds() : this.ownRotateIds()).length === 0) {
       this.setRotateMode(false);
     }
@@ -2370,6 +2401,7 @@ export class MapView {
     this.placeMode = true;
     this.attackMoveMode = false;
     this.forceAttackMode = false;
+    this.mineLayMode = false;
     this.rotateMode = false;
     this.guardMode = false;
     this.guardDragging = false;
@@ -2400,6 +2432,7 @@ export class MapView {
     this.placeMode = true;
     this.attackMoveMode = false;
     this.forceAttackMode = false;
+    this.mineLayMode = false;
     this.rotateMode = false;
     this.guardMode = false;
     this.guardDragging = false;
@@ -2447,9 +2480,10 @@ export class MapView {
           this.onPlaceMode();
           return;
         }
-        if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode || this.fieldPlace || this.constructPlace || this.bridgePlace) {
+        if (this.attackMoveMode || this.forceAttackMode || this.mineLayMode || this.rotateMode || this.guardMode || this.fieldPlace || this.constructPlace || this.bridgePlace) {
           this.setAttackMoveMode(false);
           this.setForceAttackMode(false);
+          this.setMineLayMode(false);
           this.setRotateMode(false);
           this.setGuardMode(false);
           this.fieldPlace = null;
@@ -2492,6 +2526,10 @@ export class MapView {
         if (this.fieldPlace || this.readyYardField()) {
           const w = this.screenToWorld(mx, my);
           this.fieldDrag = { x: w.x, y: w.y };
+          return;
+        }
+        if (this.mineLayMode) {
+          this.commitMineLay(mx, my);
           return;
         }
         if (this.forceAttackMode) {
@@ -2669,12 +2707,13 @@ export class MapView {
     }
     if (
       k === "escape" &&
-      (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode || this.patrolMode)
+      (this.attackMoveMode || this.forceAttackMode || this.mineLayMode || this.rotateMode || this.guardMode || this.patrolMode)
     ) {
       e.preventDefault();
       e.stopPropagation();
       this.setAttackMoveMode(false);
       this.setForceAttackMode(false);
+      this.setMineLayMode(false);
       this.setRotateMode(false);
       this.setGuardMode(false);
       this.setPatrolMode(false);
@@ -2736,6 +2775,7 @@ export class MapView {
       e.preventDefault();
       this.setAttackMoveMode(false);
       this.setForceAttackMode(false);
+      this.setMineLayMode(false);
       this.setRotateMode(false);
       this.setGuardMode(false);
       this.setPatrolMode(false);
@@ -2786,6 +2826,7 @@ export class MapView {
         this.queuedFromMode = false;
         this.setAttackMoveMode(false);
         this.setForceAttackMode(false);
+        this.setMineLayMode(false);
         this.setRotateMode(false);
       }
     }
@@ -2809,6 +2850,7 @@ export class MapView {
     this.moveFace = null;
     this.setAttackMoveMode(false);
     this.setForceAttackMode(false);
+    this.setMineLayMode(false);
     this.setRotateMode(false);
     this.setGuardMode(false);
     this.setPatrolMode(false);
@@ -3054,6 +3096,26 @@ export class MapView {
     }
     const w = this.screenToWorld(px, py);
     this.command({ type: "cmd.forceattack", ids, x: w.x, y: w.y });
+  }
+
+  /** Own selected Mammoths with a pack left in the launcher. */
+  private ownMineLayerIds(): number[] {
+    const you = this.curr.youPlayerId;
+    const out: number[] = [];
+    for (const id of this.selected) {
+      const ent = this.currById.get(id);
+      if (ent && ent.ownerId === you && ent.hp > 0 && !ent.wreck && (ent.minePacks ?? 0) > 0) out.push(id);
+    }
+    return out;
+  }
+
+  private commitMineLay(px: number, py: number): void {
+    const ids = this.ownMineLayerIds();
+    if (!this.keepModeForQueue()) this.setMineLayMode(false);
+    if (ids.length === 0) return;
+    const w = this.screenToWorld(px, py);
+    this.pulseMoveClick(w.x, w.y);
+    this.command({ type: "cmd.minelay", ids, x: w.x, y: w.y });
   }
 
   private commitRotate(px: number, py: number): void {
@@ -4245,6 +4307,7 @@ export class MapView {
     this.drawPlanOverlay();
     this.drawDroneLeash();
     this.drawRadarReach();
+    this.drawMineLayReach();
     this.drawSonarContacts();
   }
 
@@ -4730,6 +4793,62 @@ export class MapView {
         ctx.strokeStyle = "rgba(110, 170, 255, 0.25)";
         ring(e, reach.ground * ts);
       }
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Deploy mines armed: a dashed ring of launcher reach round each selected Mammoth,
+   * and at the cursor the ground the field will cover. Past every ring it walks first.
+   */
+  private drawMineLayReach(): void {
+    if (!this.mineLayMode) return;
+    const hulls = this.ownMineLayerIds()
+      .map((id) => this.currById.get(id))
+      .filter((e): e is EntityView => !!e);
+    if (hulls.length === 0) return;
+    const ts = this.ts();
+    const reach = MAMMOTH_MINE_RANGE_TILES * ts;
+    const ctx = this.ctx;
+    const ring = (x: number, y: number, r: number) => {
+      ctx.beginPath();
+      for (let i = 0; i <= 96; i++) {
+        const a = (i / 96) * Math.PI * 2;
+        const s = this.toScreen(x + Math.cos(a) * r, y + Math.sin(a) * r);
+        if (i === 0) ctx.moveTo(s.x, s.y);
+        else ctx.lineTo(s.x, s.y);
+      }
+      ctx.stroke();
+    };
+    ctx.save();
+    ctx.setLineDash([6, 5]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(232, 184, 74, 0.6)";
+    for (const e of hulls) ring(e.x, e.y, reach);
+    if (!this.overControl && this.mouseX >= 0 && this.mouseY >= 0) {
+      const w = this.screenToWorld(this.mouseX, this.mouseY);
+      const inReach = hulls.some((e) => Math.hypot(w.x - e.x, w.y - e.y) <= reach);
+      ctx.setLineDash([3, 4]);
+      ctx.strokeStyle = inReach ? "rgba(232, 184, 74, 0.9)" : "rgba(220, 120, 80, 0.85)";
+      ring(w.x, w.y, CLUSTER_RADIUS_TILES * ts);
+      ctx.setLineDash([]);
+      ctx.font = "11px 'Share Tech Mono', monospace";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      const word = inReach ? "MINES" : "MOVE + MINES";
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#140e0a";
+      ctx.fillStyle = inReach ? "#e8b84a" : "#dc7850";
+      ctx.strokeText(word, this.mouseX + 12, this.mouseY + 8);
+      ctx.fillText(word, this.mouseX + 12, this.mouseY + 8);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = ctx.fillStyle;
+      ctx.beginPath();
+      ctx.moveTo(this.mouseX, this.mouseY - 8);
+      ctx.lineTo(this.mouseX, this.mouseY + 8);
+      ctx.moveTo(this.mouseX - 8, this.mouseY);
+      ctx.lineTo(this.mouseX + 8, this.mouseY);
+      ctx.stroke();
     }
     ctx.restore();
   }
@@ -8310,6 +8429,7 @@ export class MapView {
       (this.attackMoveMode ||
         this.patrolMode ||
         this.forceAttackMode ||
+        this.mineLayMode ||
         this.rotateMode ||
         this.guardMode ||
         (this.ctrlHeld && this.ownForceIds().length > 0)) &&

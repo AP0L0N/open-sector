@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 118;
+export const PROTOCOL_VERSION = 119;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -228,6 +228,10 @@ export interface EntityView {
   rockets?: number;
   /** Rocketer's high-penetration missile, 0 or 1. Friendly snapshots. A supply truck refills it. */
   heavy?: number;
+  /** Mine packs left in the Mammoth's launcher, out of MAMMOTH_MINE_PACKS. Friendly snapshots. A supply truck refills them. */
+  minePacks?: number;
+  /** Seconds until the Mammoth's launcher has the next pack fed. Friendly snapshots; omitted when ready. */
+  mineReload?: number;
   /** CIWS or RAM set to Max range. Friendly snapshots; omitted at normal reach. */
   longRange?: boolean;
   /** Held watch tower's spotlight heading, radians. Everyone who sees the tower sees the beam. */
@@ -875,6 +879,11 @@ export type ClientMessage =
   | { type: "cmd.dive"; ids: number[]; down: boolean }
   /** Destroyers lay one water mine each over the stern. */
   | { type: "cmd.laymine"; ids: number[] }
+  /**
+   * Mammoths lob one mine pack each at (x, y). Out of launcher reach, they walk
+   * until it is in reach, then fire.
+   */
+  | { type: "cmd.minelay"; ids: number[]; x: number; y: number; queue?: boolean }
   | { type: "cmd.speed"; delta: number }
   /** Skirmish only. Holds the sim without changing game speed. */
   | { type: "match.pause"; paused: boolean }
