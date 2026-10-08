@@ -6979,7 +6979,8 @@ export class MapView {
     if (!e.wreck) this.drawGarrisonBars(e, right + 4, head - 2);
     if (e.tend != null && !e.wreck) this.drawHealMark(e);
     this.drawScoutBar(e, s.x - size * 0.22, barBase - 6);
-    this.drawCrits(e, right + 2, head - 18);
+    // The force field stacks a second bar over the health bar: the icons clear both.
+    this.drawCrits(e, right + 2, e.field && !e.wreck ? Math.min(head - 18, barBase - 27) : head - 18);
     this.drawDeployProgress(e, s.x - size * 0.45, s.y + 6, size * 0.9);
     if (e.type === "rig" && (e.state === "deploy" || e.state === "undeploy")) {
       const prog = e.deployProgress ?? 0;
