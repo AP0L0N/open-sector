@@ -7,6 +7,8 @@
  *
  * Baseline 2026-10-08 (N=20, before the round-2 work): sim 22-29 ms/tick,
  * two snapshots 1-2 ms, worst 80-180 ms. Target: <= 8 ms mean, worst < 40.
+ * The cpu figure is this process's CPU time per tick: steadier than the
+ * wall clock when the machine is busy with something else.
  */
 import fs from "node:fs";
 import { createRoom, joinRoom, hostSlot, startMatch, updateSelf } from "../lobby.js";
@@ -54,10 +56,13 @@ for (const pid of ["A", "B"]) {
   }
 }
 console.log(`Test01: 2 humans x ${n} infantry (${walk ? "walking" : "standing"}), ${nAi} CPUs, entities ${state.entities.size}`);
-let simMs = 0, snapMs = 0, worst = 0, over = 0;
+let simMs = 0, snapMs = 0, worst = 0, over = 0, cpuUs = 0;
 for (let t = 1; t <= ticks; t++) {
   const a = performance.now();
+  const cpu0 = process.cpuUsage();
   stepMatch(state);
+  const cpu1 = process.cpuUsage(cpu0);
+  cpuUs += cpu1.user + cpu1.system;
   const b = performance.now();
   snapshotFor(state, "A", { scrap: false });
   snapshotFor(state, "B", { scrap: false });
@@ -65,8 +70,8 @@ for (let t = 1; t <= ticks; t++) {
   simMs += b - a; snapMs += c - b; worst = Math.max(worst, c - a); if (c - a >= 50) over++;
   if (t % every === 0) {
     let units = 0; for (const e of state.entities.values()) if (e.kind === "unit" && e.hp > 0) units++;
-    console.log(`tick ${t} units ${units} | sim ${(simMs / every).toFixed(2)} ms snapshots(2) ${(snapMs / every).toFixed(2)} ms worst ${worst.toFixed(1)} over50 ${over} | sweeps/tick ${(sweepStats.sweeps / every).toFixed(1)} tiles/sweep ${(sweepStats.tiles / Math.max(1, sweepStats.sweeps)).toFixed(0)} memo ${JSON.stringify(memoStats)}`);
-    simMs = snapMs = worst = 0; over = 0;
+    console.log(`tick ${t} units ${units} | sim ${(simMs / every).toFixed(2)} ms (cpu ${(cpuUs / 1000 / every).toFixed(2)} ms) snapshots(2) ${(snapMs / every).toFixed(2)} ms worst ${worst.toFixed(1)} over50 ${over} | sweeps/tick ${(sweepStats.sweeps / every).toFixed(1)} tiles/sweep ${(sweepStats.tiles / Math.max(1, sweepStats.sweeps)).toFixed(0)} memo ${JSON.stringify(memoStats)}`);
+    simMs = snapMs = worst = 0; over = 0; cpuUs = 0;
     for (const k of Object.keys(sweepStats)) (sweepStats as Record<string, number>)[k] = 0;
     for (const k of Object.keys(memoStats)) (memoStats as Record<string, number>)[k] = 0;
   }

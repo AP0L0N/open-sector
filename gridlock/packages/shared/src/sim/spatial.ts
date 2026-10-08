@@ -133,9 +133,18 @@ export function queryCapsules(
   points: readonly { x: number; y: number }[],
   radius: number,
   close: boolean,
+  /** With a side given, an empty list comes back at once when no cell on the line holds a foe of it. */
+  state?: MatchState,
+  ownerId?: string,
 ): Entity[] {
   if (points.length === 0) return [];
   const cells = capsuleCells(grid, points, radius, close);
+  if (state && ownerId !== undefined) {
+    const mask = hostileBitsOf(grid, state, ownerId);
+    let any = false;
+    for (let k = 0; k < cells.length && !any; k++) any = (grid.cellOwners[cells[k]!]! & mask) !== 0;
+    if (!any) return [];
+  }
   beginStamp();
   const out: Entity[] = [];
   for (let k = 0; k < cells.length; k++) {
@@ -231,8 +240,8 @@ function ownerBitOf(grid: SpatialGrid, ownerId: string): number {
   return bit;
 }
 
-/** True when a cell within `radius` of the point holds something of an owner hostile to `ownerId`. */
-export function anyHostileNear(grid: SpatialGrid, state: MatchState, ownerId: string, x: number, y: number, radius: number): boolean {
+/** Bits of every owner hostile to `ownerId`, made once per grid. */
+function hostileBitsOf(grid: SpatialGrid, state: MatchState, ownerId: string): number {
   let mask = grid.hostileBits.get(ownerId);
   if (mask === undefined) {
     mask = 0;
@@ -241,6 +250,12 @@ export function anyHostileNear(grid: SpatialGrid, state: MatchState, ownerId: st
     }
     grid.hostileBits.set(ownerId, mask);
   }
+  return mask;
+}
+
+/** True when a cell within `radius` of the point holds something of an owner hostile to `ownerId`. */
+export function anyHostileNear(grid: SpatialGrid, state: MatchState, ownerId: string, x: number, y: number, radius: number): boolean {
+  const mask = hostileBitsOf(grid, state, ownerId);
   if (mask === 0) return false;
   const c = grid.cell;
   const x0 = clamp((x - radius) / c, grid.cols);
