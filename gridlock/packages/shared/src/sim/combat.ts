@@ -117,6 +117,7 @@ import {
   isCivilianType,
   isRubble,
   isGarrisonable,
+  NEUTRAL_OWNER,
   isInfantryType,
   isSmokeShell,
   stanceOf,
@@ -1243,7 +1244,7 @@ function resolveTarget(state: MatchState, e: Entity): Entity | undefined {
       skipsFriendly(state, e, target) ||
       dropsEmptyGarrison(state, e, target) ||
       walkerSparesBuilding(state, e, target) ||
-      travelSparesBuilding(state, e, target) ||
+      sparesBuilding(state, e, target) ||
       dropsWreck(e, target) ||
       dropsUnharmedArmor(state, e, target) ||
       dropsProofWall(state, e, target)
@@ -1452,12 +1453,16 @@ function walkerSparesBuilding(state: MatchState, e: Entity, target: Entity): boo
 }
 
 /**
- * A unit fighting on the move (attack-move, Move, patrol, escort) goes for the enemy, not his
- * works: walls, sandbags, houses, and base buildings are left standing. A building with an enemy
- * garrison showing, or a gun of its own (CIWS, Ram), is still fair game.
+ * Self-picked fire goes for the enemy, not his works: walls, sandbags, houses, and base buildings
+ * are left standing by a unit fighting on the move (attack-move, Move, patrol, escort), by a
+ * defence (a crewed gun, the CIWS, the Ram), and by anyone when they belong to no side.
+ * A building with an enemy garrison showing, or a gun of its own (CIWS, Ram), is still fair game.
+ * A target the player named is kept.
  */
-function travelSparesBuilding(state: MatchState, e: Entity, target: Entity): boolean {
-  if (target.kind !== "building" || !travelFights(e) || forceUnderway(e)) return false;
+function sparesBuilding(state: MatchState, e: Entity, target: Entity): boolean {
+  if (target.kind !== "building") return false;
+  if (e.order?.kind === "forceattack" || (e.order?.kind === "attack" && !e.order.auto)) return false;
+  if (!travelFights(e) && e.kind !== "building" && target.ownerId !== NEUTRAL_OWNER) return false;
   if (garrisonIsHostile(state, e.ownerId, target) && garrisonLooksOccupied(state, e.ownerId, target)) return false;
   return isGarrisonable(target.type) || !(catalog(target.type).rangeTiles > 0);
 }
@@ -3497,7 +3502,7 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
     if (isBridge(o.type) || isRubble(o)) continue;
     if (allies(state, e.ownerId, o.ownerId)) continue;
     if (walkerSparesBuilding(state, e, o)) continue;
-    if (travelSparesBuilding(state, e, o)) continue;
+    if (sparesBuilding(state, e, o)) continue;
     if (concreteProof(state, e, o)) continue;
     if (outOfReachAloft(state, e, o)) continue;
     // An emplacement leaves alone what stands behind its traverse.

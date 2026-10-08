@@ -11,6 +11,7 @@ import {
   HEIGHT_BASE,
   HULL_EYE_HEIGHT,
   MG42,
+  NEUTRAL_OWNER,
   NIGHT_SECONDS,
   PTRD_CLOSE_TILES,
   SHELLS,
@@ -872,6 +873,14 @@ describe("attack-move targets", () => {
     const { state, gun, wall } = wallAndGun();
     tickCombat(state, TICK_DT);
     assert.equal(gun.attackTarget, wall.id);
+  });
+
+  it("an idle tank leaves a wall that belongs to no side alone", () => {
+    const { state, gun, wall, bags } = wallAndGun();
+    destroyEntity(state, bags);
+    wall.ownerId = NEUTRAL_OWNER;
+    tickCombat(state, TICK_DT);
+    assert.ok(gun.attackTarget == null, `tank took ${gun.attackTarget}`);
   });
 
   it("passes enemy walls and sandbags by and takes the enemy soldier", () => {

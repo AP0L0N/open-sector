@@ -163,6 +163,21 @@ describe("crewed guns", () => {
     assert.ok(off <= (catalog("mgnest").mountArcDeg! * Math.PI) / 180 + 1e-6);
   });
 
+  it("leave walls and sandbags be, neutral or enemy, and wait for the enemy", () => {
+    const state = match();
+    const ts = state.tileSize;
+    const pak = gun(state, "pak43");
+    const works = [
+      makeEntity(state, "wall", NEUTRAL_OWNER, pak.x + 6 * ts, pak.y),
+      makeEntity(state, "wall", "B", pak.x + 8 * ts, pak.y + 2 * ts),
+      makeEntity(state, "sandbags", "B", pak.x + 5 * ts, pak.y - 2 * ts),
+    ];
+    assert.equal(until(state, 60, () => pak.attackTarget != null), false, `gun took ${pak.attackTarget}`);
+    assert.ok(works.every((w) => w.hp === w.hpMax));
+    const man = foe(state, "rifleman", pak, 10, 0);
+    assert.ok(until(state, 60, () => pak.attackTarget === man.id));
+  });
+
   it("an AT gun picks the tank over a nearer soldier", () => {
     const state = match();
     const pak = gun(state, "pak43");
