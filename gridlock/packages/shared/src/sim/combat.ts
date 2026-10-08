@@ -1,6 +1,7 @@
 import {
   isBridge,
   isConcreteLine,
+  CREWED_GUNS,
   AIR_HIT_BAND,
   APOCALYPSE_CIWS_INTERCEPT_CHANCE,
   APOCALYPSE_CIWS_RANGE_TILES,
@@ -1562,6 +1563,11 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
     if (!holedUp) e.state = "attack";
     return;
   }
+  // The nest's belt does not refill: it holds rather than pour it into bags on a rise in front.
+  if (!ground && e.type === "mgnest" && sandbagsBlockGun(state, e.x, e.y, aimX, aimY, entityHeight(state, e))) {
+    if (!holedUp) e.state = "attack";
+    return;
+  }
   // A friend in the line: hold, look for another target, step aside. Patience runs out and it fires anyway.
   const forced = !!ground || e.order?.kind === "forceattack";
   if (holdForAlly(state, e, target, forced, range, () => retargetClearLine(state, e, target))) {
@@ -3031,7 +3037,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
     const z1 = p.z;
     // A round from overhead drops over the bags and the concrete. A torpedo never meets them: they stand ashore.
     const overheadShot = !!p.plunging || !!p.fromAbove || !!p.torpedo;
-    const bagHit = overheadShot ? null : sandbagSweep(state, x0, y0, p.x, p.y, isTankShell(p));
+    const bagHit = overheadShot ? null : sandbagSweep(state, x0, y0, p.x, p.y, isTankShell(p), crewGunHeight(state, p.fromId));
     const concrete = overheadShot ? null : wallSweep(state, x0, y0, p.x, p.y);
     const struck = nearestSweepHit(state, x0, y0, p, z0, z1);
     const blocker = concrete && (!bagHit || concrete.t < bagHit.t) ? concrete : bagHit;
@@ -3043,8 +3049,11 @@ export function tickProjectiles(state: MatchState, dt: number): void {
         pushImpact(state, p, "hit", blocker.x, blocker.y);
         continue;
       }
-      woundBehindSandbags(state, blocker.e, x0, y0, p.damage);
-      ruinSandbags(state, blocker.e);
+      // A bullet buries itself in the bags. Only a shell knocks them down.
+      if (isTankShell(p)) {
+        woundBehindSandbags(state, blocker.e, x0, y0, p.damage);
+        ruinSandbags(state, blocker.e);
+      }
       pushImpact(state, p, "hit", blocker.x, blocker.y);
       continue;
     }
@@ -3385,6 +3394,13 @@ function lampShotOf(p: Projectile): "bullet" | "sniper" | undefined {
   if (!isSupplyBullet(p.caliber, p.shell, p.flight)) return undefined;
   if (p.hpFraction != null && p.caliber < PTRD_CALIBER) return "sniper";
   return "bullet";
+}
+
+/** Ground height of the crewed gun (MG Nest, Paks, Flak) that fired, or undefined for anyone else. */
+function crewGunHeight(state: MatchState, fromId: number): number | undefined {
+  const gun = state.entities.get(fromId);
+  if (!gun || !CREWED_GUNS.includes(gun.type as (typeof CREWED_GUNS)[number])) return undefined;
+  return entityHeight(state, gun);
 }
 
 function nearestSweepHit(
