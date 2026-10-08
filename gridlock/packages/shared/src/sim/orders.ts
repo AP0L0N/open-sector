@@ -12,6 +12,7 @@ import {
 import { adjacentToBuilding, hqOf, rallyPoint, unitInWater, worldToTile } from "./geo.js";
 import { wantsCapture, pathToCapture } from "./capture.js";
 import { moveWithCollision, pathAroundParked, stepGiveWay, tickMakeWay, tickShuffle } from "./collision.js";
+import { activateSpatial, clearSpatial } from "./spatial.js";
 import { hullTurnMul, moveSpeedMul } from "./crits.js";
 import { openSpotNear, spotTaken, unitClearance } from "./formation.js";
 import { sidestepGoal } from "./lineoffire.js";
@@ -111,6 +112,16 @@ export function turnTurretToward(e: Entity, tx: number, ty: number, degPerSec: n
 }
 
 export function tickMovement(state: MatchState, dt: number): void {
+  // One grid for the phase: every blocker probe asks the bodies near a spot instead of the whole roster.
+  activateSpatial(state);
+  try {
+    tickMovementBodies(state, dt);
+  } finally {
+    clearSpatial();
+  }
+}
+
+function tickMovementBodies(state: MatchState, dt: number): void {
   tickMakeWay(state);
   tickShuffle(state);
   for (const e of state.entities.values()) {

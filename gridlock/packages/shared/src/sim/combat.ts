@@ -231,7 +231,7 @@ import { spawnSmokeCloud } from "./smoke.js";
 import { heGroundFire, stepFlame, throwFlame } from "./flame.js";
 import { fireLaser } from "./laser.js";
 import { distToRoute } from "./patrol.js";
-import { activateSpatial, clearSpatial, queryCapsules, queryCircle, querySegment, spatialGrid, type SpatialGrid } from "./spatial.js";
+import { activateSpatial, anyHostileNear, clearSpatial, queryCapsules, queryCircle, querySegment, spatialGrid, type SpatialGrid } from "./spatial.js";
 import { canSeeEntity, visionMask } from "./vision.js";
 import { hideScout, woundScout } from "./scout.js";
 import { escorting, reversing, stepTurn, turnToward, turnTurretTo, turnTurretToward } from "./orders.js";
@@ -3507,7 +3507,10 @@ function acquire(state: MatchState, e: Entity, coneOnly = false): Entity | undef
   const airRange2 = bestAirD;
   const near: { o: Entity; d: number; i: number }[] = [];
   const grid = spatialGrid();
-  const pool = grid ? queryCircle(grid, e.x, e.y, Math.max(range, range * airReachOf(e))) : state.entities.values();
+  const reach = Math.max(range, range * airReachOf(e));
+  // Nothing of a hostile side within reach: most guns on a quiet field stop here.
+  if (grid && !anyHostileNear(grid, state, e.ownerId, e.x, e.y, reach)) return undefined;
+  const pool = grid ? queryCircle(grid, e.x, e.y, reach) : state.entities.values();
   for (const o of pool) {
     if (o.hp <= 0 || o.id === e.id || o.wreck || o.garrisonedIn || isCrashing(o)) continue;
     // Reach first: most of the field is too far to be worth the checks below.

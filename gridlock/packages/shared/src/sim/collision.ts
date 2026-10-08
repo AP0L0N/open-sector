@@ -20,7 +20,7 @@ import { diving } from "./naval.js";
 import { setPath } from "./path.js";
 import { allies, crushTreeAt, inBounds, isTree, isWall, isWater, jetAloft, occupant, sailable, tileCenter, tileIndex, underDeck, walkable, worldToTile } from "./geo.js";
 import { crushClutterUnder } from "./clutter.js";
-import { buildSpatial, queryCircle, relocate } from "./spatial.js";
+import { buildSpatial, queryCircle, relocate, spatialGrid } from "./spatial.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** Ground unit that takes part in collision. Aircraft never do, parked or flying, nor a Jump Jet in the air. */
@@ -136,6 +136,9 @@ export function crushTreesUnder(state: MatchState, e: Entity): void {
 const FRIENDLY_MOVER_SQUEEZE = 0.6;
 
 /** The unit `e` would run into standing at (x, y), if any. */
+/** Tiles a body may have walked since the movement grid was built: the fastest hull covers under one a tick. */
+const MOVE_GRID_PAD_TILES = 2;
+
 function blockerAt(
   state: MatchState,
   e: Entity,
@@ -146,7 +149,10 @@ function blockerAt(
 ): Entity | null {
   const r = e.radius;
   const moving = rolling(e);
-  for (const o of state.entities.values()) {
+  // With a phase grid up (movement), only the bodies near the spot; the pad covers a tick of walking since it was built.
+  const grid = spatialGrid();
+  const pool = grid ? queryCircle(grid, x, y, r + grid.maxRadius + MOVE_GRID_PAD_TILES * state.tileSize).slice() : state.entities.values();
+  for (const o of pool) {
     if (o.id === e.id || o.id === ignoreId || o.hp <= 0 || o.garrisonedIn) continue;
     if (passes?.(o)) continue;
     if (o.kind === "building" || o.air || jetAloft(o) || passesUnder(e, o, state)) continue;
