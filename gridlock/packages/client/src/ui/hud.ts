@@ -9,7 +9,7 @@ import {
   SHELL_TYPES,
   STANCE_LABEL,
   TRAIN_QUEUE_CAP,
-  TECH_REQUIRES,
+  techRequiresOf,
   TRAIN_TYPES,
   TICK_DT,
   WALKER_ONE_BURST,
@@ -321,14 +321,7 @@ export function mountBattlefield(
         return;
       }
       if (m && !canQueueMore(m, unit)) return;
-      const techNeed = TECH_REQUIRES[unit];
-      if (
-        techNeed &&
-        m &&
-        !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === techNeed && e.hp > 0 && !e.wreck)
-      ) {
-        return;
-      }
+      if (m && techLacking(m, unit)) return;
       ctx.net.send({ type: "cmd.train", unit });
     });
     btn?.addEventListener("contextmenu", (e) => {
@@ -468,6 +461,14 @@ function canQueueMore(m: MatchSnapshot, unit: TrainType): boolean {
   const producers = m.entities.filter((e) => e.ownerId === m.youPlayerId && e.type === want && e.hp > 0);
   if (producers.length === 0) return false;
   return producers.some((e) => (e.trainQueue?.length ?? 0) < TRAIN_QUEUE_CAP && padFree(e));
+}
+
+/** First tech building this unit still needs from you, or null once every one stands. */
+function techLacking(m: MatchSnapshot, unit: TrainType): BuildingType | null {
+  for (const need of techRequiresOf(unit)) {
+    if (!m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === need && e.hp > 0 && !e.wreck)) return need;
+  }
+  return null;
 }
 
 /**
@@ -636,9 +637,8 @@ export function paintBattleHud(ctx: Ctx): void {
     const paused = heads.length > 0 && heads.every((j) => j.paused);
     const training = heads.some((j) => !j.paused);
     const padsFull = want === "airfield" && hasProducer && !canQueueMore(m, unit);
-    const tech = TECH_REQUIRES[unit];
-    const techMissing =
-      !!tech && !m.entities.some((e) => e.ownerId === m.youPlayerId && e.type === tech && e.hp > 0 && !e.wreck);
+    const tech = techLacking(m, unit);
+    const techMissing = tech != null;
     // One at a time: greyed out while yours stands. While one is queued the cameo stays live to pause or cancel it.
     const held = oneAtATimeHeld(m, unit);
     const looping = (m.you.continuous ?? []).includes(unit);

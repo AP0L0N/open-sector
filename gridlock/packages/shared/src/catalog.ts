@@ -858,8 +858,11 @@ export function canContinuousTrain(type: string): type is TrainType {
   return isTrainType(type) && !isOneAtATime(type) && !isAircraftType(type);
 }
 
-/** Advanced units: their producer also needs this building standing before a job can be queued. */
-export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
+/**
+ * Advanced units: their producer also needs this building standing before a job can be queued.
+ * A list means every one of them must stand.
+ */
+export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly BuildingType[]>> = {
   warden: "research",
   apocalypse: "research",
   jagdtiger: "research",
@@ -870,7 +873,17 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType>> = {
   nebelwerfer: "research",
   droneop: "research",
   jumpjet: "research",
+  stuka: "research",
+  he111: "research",
+  bv222: ["research", "radar"],
 };
+
+/** Every tech building this unit needs standing. Empty when it needs none. */
+export function techRequiresOf(unit: TrainType): readonly BuildingType[] {
+  const need = TECH_REQUIRES[unit];
+  if (!need) return [];
+  return typeof need === "string" ? [need] : need;
+}
 
 export interface CatalogEntry {
   type: EntityType;
