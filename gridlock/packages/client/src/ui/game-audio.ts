@@ -129,7 +129,7 @@ export function warmUnit(type: string): void {
   if (warmed.has(type)) return;
   warmed.add(type);
   const folder = unitFolder(type);
-  for (const cue of ["sfx-fire", "sfx-fire_line", "sfx-rockets", "sfx-die", "voice-die", "sfx-shield_hit"]) {
+  for (const cue of ["sfx-fire", "sfx-fire_line", "sfx-fire_flame", "sfx-rockets", "sfx-die", "voice-die", "sfx-shield_hit"]) {
     for (const url of bank.get(folder, cue)) preloadSample(url);
   }
 }
@@ -185,6 +185,8 @@ function fireUrl(type: string, weapon: Weapon, line?: boolean): string | null {
   const folder = unitFolder(type);
   if (weapon === "beam" && line) return pick(folder, "sfx-fire_line") ?? pick(folder, "sfx-fire");
   if (weapon === "rocket") return pick(folder, "sfx-rockets") ?? pick(folder, "sfx-fire");
+  // A tank with a bow flamer beside its guns has a take of its own for the jet; the Pyro's jet is his fire.
+  if (weapon === "flame") return pick(folder, "sfx-fire_flame") ?? pick(folder, "sfx-fire");
   return pick(folder, "sfx-fire");
 }
 

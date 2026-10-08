@@ -1241,9 +1241,10 @@ export const JAGDTIGER_SPRITE: UnitSpriteDef = {
 bindJagdtigerSheets(JAGDTIGER_SPRITE.image, JAGDTIGER_SPRITE.gun!.image);
 
 /**
- * Feuerwirbel: hull (with the fixed bow flame projector) + the twin-gatling turret,
- * which aims on its own facing. No long barrel sets the fit, so the cell is filled by
- * the hull itself and it draws smaller than the Tiger at the same meters per pixel.
+ * Feuerwirbel: the hull (with the fixed bow flame projector and two empty mount rings).
+ * No long barrel sets the fit, so the cell is filled by the hull itself and it draws
+ * smaller than the Tiger at the same meters per pixel. The two CIWS mounts are drawn
+ * by the map view from FEUERWIRBEL_CIWS_SHEET, each on its own ring and facing.
  */
 export const FEUERWIRBEL_SPRITE: UnitSpriteDef = {
   image: new Image(),
@@ -1253,10 +1254,11 @@ export const FEUERWIRBEL_SPRITE: UnitSpriteDef = {
   fps: 8,
   drawSize: Math.round(34 * UNIT_VISUAL_SCALE),
   contactY: 0.92,
-  turret: tankLayer(),
   facingSpace: "world",
 };
-bindFeuerwirbelSheets(FEUERWIRBEL_SPRITE.image, FEUERWIRBEL_SPRITE.turret!.image);
+/** One CIWS mount, pivot on the model origin, on the hull's composed fit. */
+export const FEUERWIRBEL_CIWS_SHEET: TurretSpriteDef = tankLayer();
+bindFeuerwirbelSheets(FEUERWIRBEL_SPRITE.image, FEUERWIRBEL_CIWS_SHEET.image);
 
 export const SUPPLY_SPRITE: UnitSpriteDef = {
   image: new Image(),

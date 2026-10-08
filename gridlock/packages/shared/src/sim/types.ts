@@ -435,6 +435,8 @@ export interface Entity {
   surfacedTick?: number;
   /** Battle Ship: its turrets and CIWS mounts, each on its own clock. Missing on every other type. */
   ship?: ShipState;
+  /** Feuerwirbel: its two CIWS mounts, fore and aft, each with its own traverse, target, heat, and clock. */
+  twinCiws?: TwinCiwsMount[];
   /** Submarine: depth and air. Missing means surfaced with full air. */
   dive?: DiveState;
   /** CPU or neutral submarine: sim tick it may come up again after its last enemy contact. */
@@ -545,10 +547,14 @@ export interface Entity {
    * stands still, answers nothing, and fires at nothing until a Cyborg Commander takes him over.
    */
   shutdown?: true;
+  /** Shut-down Cyborg only: the side he went dark on. He wakes on it again once its link is back. */
+  shutdownFrom?: string;
   /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
   takeover?: { by: number; ticks: number };
   /** Cyborg Commander only: force-field points left. Hits come off these before HP. */
   field?: number;
+  /** Cyborg Commander only: weapons power diverted to the field. The laser is dark; he does not fire. */
+  fieldDivert?: true;
   /** Cyborg Commander only: tick of the last hit on him, field or body. The recharge waits on it. */
   fieldHitTick?: number;
   /** Cyborg Commander only: the laser beam he is cutting with now. */
@@ -612,6 +618,17 @@ export interface ShipCiws {
   heat: number;
   overheat: number;
   /** Sim tick it last fired, on a unit or a rocket. */
+  fireTick?: number;
+}
+
+/** One CIWS mount on a twin-mount hull. The belt is the hull's (Entity.clip); heat is the mount's own. */
+export interface TwinCiwsMount {
+  facing: number;
+  target: number | null;
+  cooldown: number;
+  heat: number;
+  overheat: number;
+  /** Sim tick it last fired. */
   fireTick?: number;
 }
 

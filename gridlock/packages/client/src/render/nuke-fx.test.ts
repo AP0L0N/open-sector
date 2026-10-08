@@ -35,6 +35,12 @@ describe("nuke fx", () => {
     assert.ok(smoke[0] < 120 && smoke[1] < 120, "cold smoke is dark");
   });
 
+  it("the cloud clears 20% sooner than the first cut's 11 s", () => {
+    assert.equal(NUKE_FX_MS, 8800);
+    assert.ok(nukePhase(NUKE_FX_MS * 0.9).alpha > 0);
+    assert.equal(nukePhase(NUKE_FX_MS).alpha, 0);
+  });
+
   it("the cloud is gone by the end, the scorch outlives it and then fades", () => {
     assert.equal(nukePhase(NUKE_FX_MS).alpha, 0);
     assert.ok(nukeScorchAlpha(NUKE_FX_MS) > 0.3);

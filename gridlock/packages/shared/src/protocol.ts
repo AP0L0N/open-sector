@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 118;
+export const PROTOCOL_VERSION = 120;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -162,12 +162,19 @@ export interface EntityView {
    * turned it off. Omitted for everyone else.
    */
   selfDestruct?: boolean;
+  /** Own Cyborg Commander with the laser's power in his force field. Omitted otherwise. */
+  fieldDivert?: true;
   /** Walker is charging to detonate. Anyone who can see him sees it. */
   charging?: true;
   /** Walker arms that fired during the last step. `off` is the second arm's bearing when it took another target. */
   gatling?: { arms: 1 | 2; off?: number };
   /** Apocalypse roof mount: its world facing, and `fire` when it shot during the last step. */
   ciws?: { facing: number; fire?: true };
+  /**
+   * Feuerwirbel CIWS mounts, fore then aft: facing, and whether it fired in the last batch of
+   * ticks. Heat (0–1) and an overheat lock for the owner's side only.
+   */
+  mounts?: { facing: number; fire?: true; heat?: number; hot?: true }[];
   /**
    * Battle Ship: each main turret's world facing and, for its own side, the shells left in each
    * barrel; each CIWS mount's facing, `fire` when it shot during the last step, and its belt.
@@ -760,6 +767,8 @@ export type ClientMessage =
   | { type: "cmd.guns"; ids: number[]; guns: 1 | 2 }
   /** Walker self-destroy. On by default. `on: false` is Hold together. */
   | { type: "cmd.selfdestruct"; ids: number[]; on: boolean }
+  /** Cyborg Commander: `on` puts the laser's power into the force field. He cannot attack while it is. */
+  | { type: "cmd.fielddivert"; ids: number[]; on: boolean }
   | { type: "cmd.rockets"; ids: number[]; on: boolean }
   | { type: "cmd.reach"; ids: number[]; max: boolean }
   | { type: "cmd.build"; building: BuildingType | YardFieldType }
