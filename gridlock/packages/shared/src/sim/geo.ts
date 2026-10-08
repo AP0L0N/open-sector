@@ -5,7 +5,7 @@ import {
   WATER_MINES,
   ARTILLERY_CREW_HP,
   LINE_BUILD_RADIUS,
-  AIR_FUEL_SECONDS,
+  airFuelOf,
   DRONE_BATTERY_SECONDS,
   FORCE_FIELD_HP,
   hasForceField,
@@ -43,6 +43,7 @@ import {
   SCRAP_TILE_YIELD,
   DIAMOND_SCRAP_TILE_YIELD,
   UNIT_SPACE_PAD,
+  twinCiwsOf,
   type EntityType,
 } from "../catalog.js";
 import { buildingRect, buildingTilesOf, isTurnedBuilding, rectContains, segmentRectT } from "../building-rect.js";
@@ -60,6 +61,7 @@ import {
 } from "../maps.js";
 import { nextRand } from "./rng.js";
 import { newShipState } from "./battleship.js";
+import { newTwinCiws } from "./twin-ciws.js";
 import type { AirState, AswDeck, DroneLink, Entity, JetState, MatchState } from "./types.js";
 
 /** Fresh flight state: fuelled, armed, parked on `pad` of Airfield `homeId`. */
@@ -69,7 +71,7 @@ export function newAirState(homeId: number | null, pad: number, type: EntityType
     phase: "parked",
     alt: 0,
     speed: 0,
-    fuel: AIR_FUEL_SECONDS,
+    fuel: airFuelOf(type),
     bombs: load.bombs,
     rounds: load.rounds,
     homeId,
@@ -748,6 +750,7 @@ export function makeEntity(
   if (def.aircraft) e.air = newAirState(null, 0, type);
   if (type === "artillery") e.gunCrew = Array.from({ length: ARTILLERY_CREW }, () => ARTILLERY_CREW_HP);
   if (type === "battleship") e.ship = newShipState(facing);
+  if (twinCiwsOf(type)) e.twinCiws = newTwinCiws(facing);
   if (type === "droneop") e.droneLink = newDroneLink();
   if (hasSonar(type)) e.asw = newAswDeck();
   if (jetFlightOf(type)) e.jet = newJetState(type);

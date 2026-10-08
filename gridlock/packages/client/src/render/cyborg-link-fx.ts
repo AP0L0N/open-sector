@@ -13,23 +13,12 @@ function hash(seed: number, k: number): number {
 }
 
 /**
- * Over a shut-down Cyborg: a dim red eye that blinks slowly, and now and then a
- * short spark off his frame. (x, y) is his foot point on screen; `size` the sheet size.
+ * Over a shut-down Cyborg: now and then a short spark off his dead frame. No glow:
+ * the machine is off. (x, y) is his foot point on screen; `size` the sheet size.
  */
 export function drawShutdownMark(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, nowMs: number, seed: number): void {
-  const eyeX = x + size * 0.04;
-  const eyeY = y - size * 0.46;
-  const blink = 0.5 + 0.5 * Math.sin(nowMs * 0.0021 + seed);
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  const r = Math.max(2, size * 0.07);
-  const g = ctx.createRadialGradient(eyeX, eyeY, 0, eyeX, eyeY, r * 2.4);
-  g.addColorStop(0, `rgba(255, 60, 40, ${0.55 * blink})`);
-  g.addColorStop(1, "rgba(255, 40, 20, 0)");
-  ctx.fillStyle = g;
-  ctx.beginPath();
-  ctx.arc(eyeX, eyeY, r * 2.4, 0, Math.PI * 2);
-  ctx.fill();
   // A spark every couple of seconds, a different spot each time.
   const period = 2300 + hash(seed, 1) * 900;
   const cycle = Math.floor((nowMs + hash(seed, 2) * period) / period);

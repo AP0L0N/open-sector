@@ -80,6 +80,8 @@ import {
   WALKER_GUN_MODES,
   WALKER_SELF_DESTRUCT_HP,
   WALKER_SELF_DESTRUCT_MODES,
+  COMMANDER_FIELD_MODES,
+  hasForceField,
   type BuildingType,
   type YardFieldType,
   type EntityType,
@@ -345,7 +347,7 @@ export function mountBattlefield(
     });
   }
 
-  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-selfdestruct], [data-rockets], [data-reach], [data-payload]", (t) => {
+  bindPress(config, "[data-config-type], [data-shell], [data-weapon], [data-guns], [data-selfdestruct], [data-fielddivert], [data-rockets], [data-reach], [data-payload]", (t) => {
     runConfigAction(ctx, t);
   });
 
@@ -787,13 +789,15 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
           : "";
   const armor = armorLabel(e.type);
   const plates = armor ? `  ·  armor ${armor}` : "";
-  const field = e.field ? `  ·  field ${e.field.hp}/${e.field.max}${e.field.hp <= 0 ? " (down)" : ""}` : "";
+  const field = e.field
+    ? `  ·  field ${e.field.hp}/${e.field.max}${e.field.hp <= 0 ? " (down)" : ""}${e.fieldDivert ? " · SHIELD POWER" : ""}`
+    : "";
   const wreck = e.wreck
     ? "  ·  WRECK"
     : e.shutdown
       ? e.takeover
         ? `  ·  SHUT DOWN — uplink ${Math.round(e.takeover.u * 100)}%`
-        : "  ·  SHUT DOWN — a Cyborg Commander can take him over"
+        : "  ·  SHUT DOWN — wakes when his side's link is back, or a Cyborg Commander takes him over"
       : "";
   const injuries =
     e.crits && e.crits.length > 0
@@ -834,7 +838,9 @@ function paintInspect(ctx: Ctx, view: MapView | null): void {
       : null;
   const mag =
     gun && e.clip != null && !e.wreck
-      ? e.reload && e.reload > 0
+      ? e.fieldDivert
+        ? `  ·  ${gun.name} dark`
+        : e.reload && e.reload > 0
         ? `  ·  ${gun.name} reloading ${e.reload.toFixed(1)}s`
         : `  ·  ${gun.name} ${e.clip}/${gun.clip}`
       : "";
@@ -1080,7 +1086,7 @@ function updateRocketRack(body: HTMLElement, type: EntityType, mine: EntityView[
 }
 
 function loadoutButton(opts: {
-  attr: "data-shell" | "data-weapon" | "data-guns" | "data-selfdestruct" | "data-rockets" | "data-reach" | "data-payload";
+  attr: "data-shell" | "data-weapon" | "data-guns" | "data-selfdestruct" | "data-fielddivert" | "data-rockets" | "data-reach" | "data-payload";
   id: string;
   name: string;
   blurb: string;
@@ -1131,6 +1137,7 @@ const TYPE_ORDER: EntityType[] = [
   "fw190",
   "bv222",
   "he111",
+  "blackbird",
   "stuka",
   "drone",
   "aswheli",
@@ -1284,6 +1291,7 @@ function configBodyLayout(focus: EntityView, live: EntityView[], wrecks: EntityV
   else if (isInfantryType(focus.type)) {
     parts.push("inf", infantryLoadout(focus.type).map((g) => g.id).join("+"));
     if (mine.length > 0 && infantryLoadout(focus.type).length > 0) parts.push("guns");
+    if (mine.length > 0 && hasForceField(focus.type)) parts.push("divert");
   } else if (beltOf(focus.type)) parts.push("belt");
   else if (focus.kind === "unit" && def.damage > 0) parts.push("smallarms");
   if (isInfantryType(focus.type)) parts.push("posture");
@@ -1387,6 +1395,15 @@ function buildConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
         );
       }
       body.append(el("div", { class: "tiny", text: "Weapon" }), rack);
+    }
+    if (hasForceField(focus.type) && mine.length > 0) {
+      const power = el("div", { class: "shell-rack" });
+      for (const mode of COMMANDER_FIELD_MODES) {
+        power.append(
+          loadoutButton({ attr: "data-fielddivert", id: mode.id, name: mode.name, blurb: mode.blurb, count: "", on: false }),
+        );
+      }
+      body.append(el("div", { class: "tiny", text: "Power" }), power);
     }
     if (loadout.length > 0) body.append(el("p", { class: "tiny", attrs: { "data-field": "clip" } }));
   } else if (beltOf(focus.type)) {
@@ -1521,6 +1538,15 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
         });
       }
     }
+    if (hasForceField(focus.type) && mine.length > 0) {
+      const shield = mine.every((e) => e.fieldDivert);
+      const laser = mine.every((e) => !e.fieldDivert);
+      for (const mode of COMMANDER_FIELD_MODES) {
+        const btn = body.querySelector(`[data-fielddivert="${mode.id}"]`);
+        if (!(btn instanceof HTMLElement)) continue;
+        updateLoadoutButton(btn, { count: "", on: mode.id === "field" ? shield : laser });
+      }
+    }
     if (loadout.length > 0) setField(body, "clip", infantryClipLine(live));
   } else if (beltOf(focus.type)) {
     setField(body, "clip", beltLine(live));
@@ -1559,7 +1585,7 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
               : focus.type === "cyborg"
                 ? "Stands under fire — no crouch, no prone. Near death the legs tear off and he drags himself on, still firing. A medic or an engineer brings the legs back. Only a supply truck refills the drum. He shells a structure; he does not capture it."
               : focus.type === "cyborgcommander"
-                ? "Stands under fire — no crouch, no prone. The blue bar is his force field: it takes every hit first and comes back on after a while out of the fire. The laser always cuts to full reach: a sweep across soldiers burns every man it passes, yours too, and one beam cuts a hull and anyone in front of it. Trees in the path burn down. Near death the legs tear off and he drags himself on, still firing. He shells a structure; he does not capture it."
+                ? "Stands under fire — no crouch, no prone. The blue bar is his force field: it takes every hit first and comes back on after a while out of the fire. Power: Shield puts the laser's power into it, five times the points and five times the recharge, but he cannot attack. His plating mends itself, very slowly. The laser always cuts to full reach: a sweep across soldiers burns every man it passes, yours too, and one beam cuts a hull and anyone in front of it. Trees in the path burn down. Near death the legs tear off and he drags himself on, still firing. He shells a structure; he does not capture it."
               : "Capture player structures at point-blank. Civilian houses are garrisoned, not captured.",
     );
   }
@@ -1579,8 +1605,10 @@ function patchConfigBody(body: HTMLElement, focus: EntityView, live: EntityView[
     const flamer = hullFlamerOf(focus.type);
     const coax = hasMg(focus.type) && !flamer;
     const belt = mine.reduce((n, e) => n + (coax ? (e.mgAmmo ?? 0) : (e.clip ?? 0)), 0);
-    const heat = mine.length ? mine.reduce((n, e) => n + (e.mgHeat ?? 0), 0) / mine.length : 0;
-    const hot = mine.some((e) => (e.mgOverheat ?? 0) > 0);
+    // Twin CIWS mounts heat apart: the bar shows the hotter one, and either locking reads as overheated.
+    const heatOf = (e: EntityView) => (e.mounts ? Math.max(0, ...e.mounts.map((m) => m.heat ?? 0)) : (e.mgHeat ?? 0));
+    const heat = mine.length ? mine.reduce((n, e) => n + heatOf(e), 0) / mine.length : 0;
+    const hot = mine.some((e) => (e.mounts ? e.mounts.some((m) => m.hot) : (e.mgOverheat ?? 0) > 0));
     const beltName = roofCiwsOf(focus.type) || focus.type === "ciws" ? "20mm" : coax ? "MG" : "Gatling";
     const fuel = flamer ? `  ·  Fuel ${mine.reduce((n, e) => n + (e.mgAmmo ?? 0), 0)}` : "";
     setField(body, "mg-label", (hot ? `${beltName}  ${belt}  overheated` : `${beltName}  ${belt}`) + fuel);
@@ -2309,6 +2337,15 @@ function runConfigAction(ctx: Ctx, t: HTMLElement): void {
       .map((ent) => ent.id);
     if (ids.length === 0) return;
     ctx.net.send({ type: "cmd.selfdestruct", ids, on: charge === "on" });
+    return;
+  }
+  const divert = t.dataset.fielddivert;
+  if (divert === "laser" || divert === "field") {
+    const ids = selectedOfType(ctx, viewRef, configFocus)
+      .filter((ent) => ent.ownerId === ctx.match!.youPlayerId && !ent.wreck && hasForceField(ent.type))
+      .map((ent) => ent.id);
+    if (ids.length === 0) return;
+    ctx.net.send({ type: "cmd.fielddivert", ids, on: divert === "field" });
     return;
   }
   const weapon = t.dataset.weapon;

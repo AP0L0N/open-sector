@@ -15,6 +15,7 @@ import { applyCommand } from "./commands.js";
 import { cyborgLinked, cyborgShutdownIn } from "./cyborg-link.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
+import { headlightLit } from "./night.js";
 import { snapshotFor } from "./snapshot.js";
 import type { Entity, MatchState } from "./types.js";
 
@@ -154,6 +155,21 @@ describe("cyborg link", () => {
     assert.equal(seen?.shutdown, true);
   });
 
+  it("puts his headlight out, and lights it again once he is taken over", () => {
+    const { state, a } = match();
+    const ts = state.tileSize;
+    const cy = cyborg(state, a, 60, 40);
+    assert.equal(headlightLit(cy), true);
+    ticks(state, GRACE + 2);
+    assert.equal(headlightLit(cy), false);
+    const view = snapshotFor(state, a).entities.find((e) => e.id === cy.id)!;
+    assert.equal(headlightLit(view), false, "the client draws no beam either");
+    makeEntity(state, "cyborgcommander", a, cy.x - 2 * ts, cy.y);
+    ticks(state, TAKEOVER + 2);
+    assert.equal(cy.ownerId, a);
+    assert.equal(headlightLit(cy), true);
+  });
+
   it("lets a Cyborg Commander take over a shut-down Cyborg in reach, the enemy's too", () => {
     const { state, a, b } = match();
     const ts = state.tileSize;
@@ -176,11 +192,11 @@ describe("cyborg link", () => {
   });
 
   it("takes them one at a time, and not from out of reach", () => {
-    const { state, a } = match();
+    const { state, a, b } = match();
     const ts = state.tileSize;
-    const near = cyborg(state, a, 60, 40);
-    const next = cyborg(state, a, 60, 44);
-    const far = cyborg(state, a, 60, 40 + CYBORG_TAKEOVER_RANGE_TILES + 30);
+    const near = cyborg(state, b, 60, 40);
+    const next = cyborg(state, b, 60, 44);
+    const far = cyborg(state, b, 60, 40 + CYBORG_TAKEOVER_RANGE_TILES + 30);
     ticks(state, GRACE + 2);
     const boss = makeEntity(state, "cyborgcommander", a, near.x - 2 * ts, near.y);
     ticks(state, 2);
@@ -196,9 +212,9 @@ describe("cyborg link", () => {
   });
 
   it("starts over when the Commander walks out of reach", () => {
-    const { state, a } = match();
+    const { state, a, b } = match();
     const ts = state.tileSize;
-    const cy = cyborg(state, a, 60, 40);
+    const cy = cyborg(state, b, 60, 40);
     ticks(state, GRACE + 2);
     const boss = makeEntity(state, "cyborgcommander", a, cy.x - 2 * ts, cy.y);
     ticks(state, Math.floor(TAKEOVER / 2));
@@ -207,5 +223,72 @@ describe("cyborg link", () => {
     ticks(state, 1);
     assert.equal(cy.takeover, undefined);
     assert.equal(cy.ownerId, NEUTRAL_OWNER);
+  });
+
+  it("wakes your dark Cyborgs up yours again once a new Central stands", () => {
+    const { state, a } = match();
+    const { hub } = central(state, a, 6, 6);
+    const cy = cyborg(state, a, 60, 40);
+    hub.hp = 0;
+    ticks(state, GRACE + 2);
+    assert.equal(cy.shutdown, true);
+    assert.equal(cy.shutdownFrom, a);
+    ticks(state, GRACE * 3);
+    assert.equal(cy.ownerId, NEUTRAL_OWNER, "still dark while the link stays down");
+    central(state, a, 20, 6);
+    ticks(state, 1);
+    assert.equal(cy.ownerId, a);
+    assert.equal(cy.shutdown, undefined);
+    assert.equal(cy.shutdownFrom, undefined);
+    // Linked again, he stays up.
+    ticks(state, GRACE * 2);
+    assert.equal(cy.ownerId, a);
+  });
+
+  it("wakes them once the power is back", () => {
+    const { state, a } = match();
+    const { dynamo } = central(state, a, 6, 6);
+    const cy = cyborg(state, a, 60, 40);
+    destroyEntity(state, dynamo);
+    ticks(state, GRACE + 2);
+    assert.equal(cy.shutdown, true);
+    const ts = state.tileSize;
+    makeEntity(state, "dynamo", a, tileCenter(20, ts), tileCenter(12, ts), { tileX: 20, tileY: 12 });
+    ticks(state, 1);
+    assert.equal(cy.ownerId, a);
+    assert.equal(cy.shutdown, undefined);
+  });
+
+  it("does not take back a Cyborg an enemy Commander already took over", () => {
+    const { state, a, b } = match();
+    const ts = state.tileSize;
+    const { hub } = central(state, a, 6, 6);
+    const cy = cyborg(state, a, 60, 40);
+    hub.hp = 0;
+    ticks(state, GRACE + 2);
+    makeEntity(state, "cyborgcommander", b, cy.x + 2 * ts, cy.y);
+    ticks(state, TAKEOVER + 2);
+    assert.equal(cy.ownerId, b);
+    central(state, a, 20, 6);
+    ticks(state, GRACE);
+    assert.equal(cy.ownerId, b, "he is the enemy's for good");
+  });
+
+  it("wins him back mid-takeover when the link returns first", () => {
+    const { state, a, b } = match();
+    const ts = state.tileSize;
+    const { hub } = central(state, a, 6, 6);
+    const cy = cyborg(state, a, 60, 40);
+    hub.hp = 0;
+    ticks(state, GRACE + 2);
+    makeEntity(state, "cyborgcommander", b, cy.x + 2 * ts, cy.y);
+    ticks(state, Math.floor(TAKEOVER / 2));
+    assert.ok(cy.takeover, "the enemy uplink is running");
+    central(state, a, 20, 6);
+    ticks(state, 1);
+    assert.equal(cy.ownerId, a);
+    assert.equal(cy.takeover, undefined);
+    ticks(state, TAKEOVER * 2);
+    assert.equal(cy.ownerId, a, "a linked Cyborg is not up for takeover");
   });
 });

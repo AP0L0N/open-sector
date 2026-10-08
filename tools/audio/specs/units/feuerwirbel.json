@@ -1,0 +1,72 @@
+{
+  "key": "feuerwirbel",
+  "out": "units/feuerwirbel",
+  "voice": {
+    "name": "Open Sector - Feuerwirbel",
+    "description": "Sharp, sardonic female tank commander in her late thirties, low husky alto with a clipped Central European edge, quick and dry, talks fast like an anti-aircraft gunner who has no patience for slow targets, cool amusement under the words, faint crackle as if heard over a tank radio.",
+    "sample": "Feuerwirbel. Two guns on the turret, fire in the bow, and I turn faster than anything you have seen. Planes first, then the infantry. If they get close enough to see my face, they are close enough to burn. Keep up.",
+    "stability": 0.45,
+    "similarity": 0.8,
+    "style": 0.45
+  },
+  "lines": {
+    "select": [
+      "Feuerwirbel.",
+      "Turret's spinning.",
+      "Barrels warm.",
+      "Talk fast.",
+      "[laughs] Who needs burning?"
+    ],
+    "move": [
+      "Rolling.",
+      "On my way.",
+      "Moving, eyes up.",
+      "Fast as she goes.",
+      "Changing position."
+    ],
+    "attack": [
+      "Hose them down!",
+      "[laughs] Light them up.",
+      "Out of my sky!",
+      "Burn them out.",
+      "[shouting] Both guns!"
+    ],
+    "ready": [
+      "Feuerwirbel ready. Watch the sky."
+    ],
+    "hit": [
+      "[shouting] Mind the tanks!",
+      "Plate's holding. Barely."
+    ],
+    "die": [
+      "[screaming] The fuel's caught!",
+      "[groans] Too hot..."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Twin turret-mounted rotary gatling guns on a tank firing a fast short burst together, heavy buzzsaw roar with whirring barrels and a stream of brass casings clattering on steel, medium distance outdoors, no music, no voice",
+      "duration": 1.5,
+      "variants": 3,
+      "influence": 0.7
+    },
+    "fire_flame": {
+      "prompt": "Vehicle-mounted flamethrower on a tank firing a short burst, pressurized fuel jet ignites with a deep roaring whoosh, sputtering hiss and crackling flames, medium distance outdoors, no music, no voice",
+      "duration": 2.0,
+      "variants": 2,
+      "influence": 0.7
+    },
+    "move": {
+      "prompt": "Medium WWII tank engine revving and steel tracks clanking forward, liquid fuel sloshing in tanks on the hull, short one-shot, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Tank destroyed, its fuel tanks rupture into a huge whooshing fireball, metal blast and roaring flames crackling, medium distance outdoors, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

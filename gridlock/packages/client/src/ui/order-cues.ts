@@ -20,6 +20,7 @@ const UNIT_CUES: Partial<Record<ClientMessage["type"], UnitCue>> = {
   "cmd.forceattack": "attack",
   "cmd.deploy": "special",
   "cmd.selfdestruct": "special",
+  "cmd.fielddivert": "special",
   "cmd.construct": "special",
   "cmd.bridge": "special",
   "cmd.field": "special",

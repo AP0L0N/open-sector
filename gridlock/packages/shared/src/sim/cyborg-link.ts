@@ -7,8 +7,11 @@ import type { Entity, MatchState } from "./types.js";
  * Cyborg link. A side's Cyborgs run on the uplink from its own standing Cyborg Central
  * while its power holds, or on its own living Cyborg Commander. With neither, after
  * CYBORG_SHUTDOWN_SECONDS every Cyborg of that side on the field shuts down: he belongs
- * to no one, stops, and fires at nothing. A living Commander takes over any shut-down
- * Cyborg within CYBORG_TAKEOVER_RANGE_TILES, one at a time, CYBORG_TAKEOVER_SECONDS each.
+ * to no one, stops, and fires at nothing. Once that side's link is back (a new Central,
+ * power restored, a Commander of its own), its dark Cyborgs wake up on it again. Before
+ * that, a living Commander takes over any shut-down Cyborg within
+ * CYBORG_TAKEOVER_RANGE_TILES, one at a time, CYBORG_TAKEOVER_SECONDS each; one taken
+ * over is his side's for good.
  * Runs right after tickPower, before anything moves or fires.
  */
 
@@ -58,28 +61,32 @@ export function cyborgShutdownIn(state: MatchState, playerId: string): number | 
   return Math.max(0, secondsToTicks(CYBORG_SHUTDOWN_SECONDS) - (state.tick - lost)) / secondsToTicks(1);
 }
 
-/** The Cyborg powers down where he stands and is no one's. */
+/** The Cyborg powers down where he stands and is no one's. He remembers his side. */
 export function shutDownCyborg(e: Entity): void {
   clearOrder(e);
   e.orderQueue = undefined;
   e.holdPosition = false;
+  if (e.ownerId) e.shutdownFrom = e.ownerId;
   e.ownerId = NEUTRAL_OWNER;
   e.shutdown = true;
   e.takeover = undefined;
 }
 
-/** The Commander's uplink completes: the Cyborg wakes on his side, with no order. */
+/** He wakes on `ownerId`'s side with no order: a Commander's uplink, or his own side's link come back. */
 function takeOver(e: Entity, ownerId: string): void {
   e.ownerId = ownerId;
   e.shutdown = undefined;
+  e.shutdownFrom = undefined;
   e.takeover = undefined;
   clearOrder(e);
 }
 
 export function tickCyborgLink(state: MatchState): void {
   const grace = secondsToTicks(CYBORG_SHUTDOWN_SECONDS);
+  const linked = new Set<string>();
   for (const p of state.players.values()) {
     if (!p.alive || cyborgLinked(state, p.playerId)) {
+      if (p.alive) linked.add(p.playerId);
       p.cyborgLinkLostTick = undefined;
       continue;
     }
@@ -87,6 +94,12 @@ export function tickCyborgLink(state: MatchState): void {
     if (state.tick - p.cyborgLinkLostTick < grace) continue;
     for (const e of state.entities.values()) {
       if (e.ownerId === p.playerId && fieldCyborg(e) && !e.shutdown) shutDownCyborg(e);
+    }
+  }
+  // The link is back: his own side's dark Cyborgs wake up, even mid-takeover by someone else.
+  if (linked.size > 0) {
+    for (const e of state.entities.values()) {
+      if (e.shutdown && e.shutdownFrom && linked.has(e.shutdownFrom) && fieldCyborg(e)) takeOver(e, e.shutdownFrom);
     }
   }
   tickTakeovers(state);

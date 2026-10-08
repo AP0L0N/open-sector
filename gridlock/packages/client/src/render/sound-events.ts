@@ -40,7 +40,7 @@ export type AnnounceEvent =
   | "defeat";
 
 /** What went off: bullets (and autocannon), a shell or bomb, a rocket, or the Cyborg Commander's laser. */
-export type Weapon = "small" | "shell" | "rocket" | "beam";
+export type Weapon = "small" | "shell" | "rocket" | "beam" | "flame";
 
 /** The Cyborg Commander's force field: it soaked a hit, it went down, or it came back on. */
 export type ShieldCue = "hit" | "down" | "up";
@@ -123,6 +123,8 @@ const ROCKET_GAP_MS: Record<string, number> = {
   titan: 2500,
 };
 const DEFAULT_ROCKET_GAP_MS = 600;
+/** Flamethrower globs: one burst sample covers a squeeze of the trigger (the Pyro's lance, a bow projector). */
+const FLAME_GAP_MS = 1400;
 /** Least time between two force-field shimmers from one unit. A gatling would otherwise buzz every tick. */
 const SHIELD_HIT_GAP_MS = 220;
 /** A shell's impact after its own projectile was already heard is not a second shot. */
@@ -150,6 +152,7 @@ export class SoundTracker {
   private seenBodies = new Set<number>();
   private lastFire = new Map<number, number>();
   private lastRocket = new Map<number, number>();
+  private lastFlame = new Map<number, number>();
   private lastShellFire = new Map<number, number>();
   private lastShieldHit = new Map<number, number>();
   private lastLoadLine = new Map<number, number>();
@@ -204,8 +207,11 @@ export class SoundTracker {
           ? (FIRE_GAP_MS[s.type] ?? DEFAULT_FIRE_GAP_MS)
           : kind === "rocket"
             ? (ROCKET_GAP_MS[s.type] ?? DEFAULT_ROCKET_GAP_MS)
-            : (SHELL_GAP_MS[s.type] ?? 0);
-      const track = kind === "rocket" ? this.lastRocket : this.lastFire;
+            : kind === "flame"
+              ? FLAME_GAP_MS
+              : (SHELL_GAP_MS[s.type] ?? 0);
+      // A bow flamer and its turret guns keep apart, so one never mutes the other.
+      const track = kind === "rocket" ? this.lastRocket : kind === "flame" ? this.lastFlame : this.lastFire;
       if (now - (track.get(shooterId) ?? -Infinity) < gap) return;
       track.set(shooterId, now);
       if (kind === "shell") this.lastShellFire.set(shooterId, now);
@@ -244,7 +250,7 @@ export class SoundTracker {
     for (const p of match.projectiles) {
       if (p.bounced || this.seenShots.has(p.id)) continue;
       this.seenShots.add(p.id);
-      fire(p.fromId, p.rocket ? "rocket" : isShell(p.caliber) || p.mortar || p.bomb ? "shell" : "small");
+      fire(p.fromId, p.flame ? "flame" : p.rocket ? "rocket" : isShell(p.caliber) || p.mortar || p.bomb ? "shell" : "small");
     }
     for (const l of match.launches ?? []) {
       if (this.seenShots.has(l.id)) continue;
@@ -397,6 +403,7 @@ export class SoundTracker {
     const me = match.youPlayerId;
     let lostOwn = false;
     let gainedOwn = false;
+    let wokeOwn = false;
     let bossSpoke = false;
     for (const e of match.entities) {
       const prev = this.prevById.get(e.id);
@@ -406,7 +413,11 @@ export class SoundTracker {
         if (prev.ownerId === me) lostOwn = true;
       } else if (!e.shutdown && prev.shutdown) {
         out.push({ kind: "unitsfx", type: e.type, cue: "reboot", x: e.x, y: e.y });
-        if (e.ownerId === me) gainedOwn = true;
+        // Woken by an uplink he was acquired; without one his own link came back.
+        if (e.ownerId === me) {
+          if (prev.takeover?.by != null && byId.get(prev.takeover.by)?.ownerId === me) gainedOwn = true;
+          else wokeOwn = true;
+        }
       }
       if (e.takeover && e.takeover.by !== prev.takeover?.by) {
         const boss = byId.get(e.takeover.by);
@@ -421,10 +432,9 @@ export class SoundTracker {
       out.push({ kind: "voice", type: "cyborg", event: "shutdown" });
       out.push({ kind: "announce", event: "cyborgsoffline" });
     }
-    if (gainedOwn) {
-      out.push({ kind: "voice", type: "cyborg", event: "online" });
-      out.push({ kind: "announce", event: "cyborgacquired" });
-    }
+    if (gainedOwn || wokeOwn) out.push({ kind: "voice", type: "cyborg", event: "online" });
+    if (gainedOwn) out.push({ kind: "announce", event: "cyborgacquired" });
+    else if (wokeOwn) out.push({ kind: "announce", event: "cyborglinkrestored" });
     const down = match.you.cyborgShutdownIn != null;
     if (down && !this.linkDown) out.push({ kind: "announce", event: "cyborglinklost" });
     // Cleared while your Cyborgs are still yours: the link is back, not lost.

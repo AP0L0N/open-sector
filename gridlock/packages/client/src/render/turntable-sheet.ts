@@ -38,7 +38,7 @@ const feuerwirbelHullGlob = import.meta.glob("../assets/units/feuerwirbel/hull/*
   import: "default",
 }) as Record<string, string>;
 
-const feuerwirbelTurretGlob = import.meta.glob("../assets/units/feuerwirbel/turret/*.png", {
+const feuerwirbelCiwsGlob = import.meta.glob("../assets/units/feuerwirbel/ciws/*.png", {
   eager: true,
   import: "default",
 }) as Record<string, string>;
@@ -123,6 +123,11 @@ const he111HullGlob = import.meta.glob("../assets/units/he111/hull/*.png", {
   import: "default",
 }) as Record<string, string>;
 
+const blackbirdHullGlob = import.meta.glob("../assets/units/blackbird/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 const droneHullGlob = import.meta.glob("../assets/units/drone/hull/*.png", {
   eager: true,
   import: "default",
@@ -182,6 +187,8 @@ export const FW190_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
 export const BV222_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
 /** He 111: same aircraft fit as the Stuka; the wingspan fills the cell. */
 export const HE111_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
+/** Blackbird: same aircraft fit as the Stuka; its length fills the cell. */
+export const BLACKBIRD_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
 /** Quadcopter: same aircraft fit as the Stuka; the rotor span fills the cell, the pod's belly sits on the contact line. */
 export const DRONE_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
 /**
@@ -470,26 +477,27 @@ export function bindJagdtigerSheets(hullImage: HTMLImageElement, gunImage: HTMLI
 let feuerwirbelPrevious: ComposedTurntable | null = null;
 
 /**
- * Feuerwirbel: hull with the bow flame projector + the twin-gatling turret, one transform for both
- * (tools/sprites/render_feuerwirbel.py). The static feuerwirbel-cameo.png is the sidebar portrait.
+ * Feuerwirbel: hull with the bow flame projector + one CIWS mount sheet, one transform for both
+ * (tools/sprites/render_feuerwirbel.py). The client draws the mount twice, on its two rings
+ * (feuerwirbel-mounts.ts). The static feuerwirbel-cameo.png is the sidebar portrait.
  */
-export function bindFeuerwirbelSheets(hullImage: HTMLImageElement, turretImage: HTMLImageElement): void {
+export function bindFeuerwirbelSheets(hullImage: HTMLImageElement, ciwsImage: HTMLImageElement): void {
   let hullUrls: string[];
-  let turretUrls: string[];
+  let ciwsUrls: string[];
   try {
     hullUrls = pickTurntableUrls(feuerwirbelHullGlob);
-    turretUrls = pickTurntableUrls(feuerwirbelTurretGlob);
+    ciwsUrls = pickTurntableUrls(feuerwirbelCiwsGlob);
   } catch (err) {
     console.error("feuerwirbel turntable", err);
     return;
   }
-  void Promise.all([Promise.all(hullUrls.map(loadImage)), Promise.all(turretUrls.map(loadImage))])
-    .then(([hullImgs, turretImgs]) => composeAligned([hullImgs, turretImgs], TIGER_OPTS))
+  void Promise.all([Promise.all(hullUrls.map(loadImage)), Promise.all(ciwsUrls.map(loadImage))])
+    .then(([hullImgs, ciwsImgs]) => composeAligned([hullImgs, ciwsImgs], TIGER_OPTS))
     .then((next) => {
       revoke(feuerwirbelPrevious);
       feuerwirbelPrevious = next;
       hullImage.src = next.sheetUrls[0] ?? "";
-      turretImage.src = next.sheetUrls[1] ?? "";
+      ciwsImage.src = next.sheetUrls[1] ?? "";
     })
     .catch((err) => {
       console.error("feuerwirbel turntable", err);
@@ -730,6 +738,30 @@ export function bindTorpedoBomberSheets(hullImage: HTMLImageElement): void {
     })
     .catch((err) => {
       console.error("he111 turntable", err);
+    });
+}
+
+let blackbirdPrevious: ComposedTurntable | null = null;
+
+/** Blackbird drop-ins: one hull sheet and a cameo, same fit rules as the Stuka. */
+export function bindReconSheets(hullImage: HTMLImageElement): void {
+  let hullUrls: string[];
+  try {
+    hullUrls = pickTurntableUrls(blackbirdHullGlob);
+  } catch (err) {
+    console.error("blackbird turntable", err);
+    return;
+  }
+  void Promise.all(hullUrls.map(loadImage))
+    .then((hullImgs) => composeAligned([hullImgs], BLACKBIRD_OPTS))
+    .then((next) => {
+      revoke(blackbirdPrevious);
+      blackbirdPrevious = next;
+      hullImage.src = next.sheetUrls[0] ?? "";
+      applyCameo(next.cameoUrl, "--blackbird-cameo");
+    })
+    .catch((err) => {
+      console.error("blackbird turntable", err);
     });
 }
 
