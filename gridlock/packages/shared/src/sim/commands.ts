@@ -32,6 +32,8 @@ import {
   isTorpedoBody,
   submergesOf,
   ORDER_QUEUE_MAX,
+  forceFieldMax,
+  hasForceField,
   pickLoadedShell,
   PENETRATOR_ARM_SECONDS,
   reloadSecondsOf,
@@ -139,6 +141,9 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.selfdestruct":
       if (typeof msg.on !== "boolean") return fail("bad_payload", "Unknown self-destroy setting.");
       return cmdSelfDestruct(state, playerId, msg.ids, msg.on);
+    case "cmd.fielddivert":
+      if (typeof msg.on !== "boolean") return fail("bad_payload", "Unknown field setting.");
+      return cmdFieldDivert(state, playerId, msg.ids, msg.on);
     case "cmd.build":
       if (isYardField(msg.building)) return fail("bad_payload", "Place that on the map.");
       if (!isBuildingType(msg.building)) return fail("bad_payload", "Unknown structure.");
@@ -942,7 +947,7 @@ function cmdForceAttack(
     n++;
   }
   for (const e of units) {
-    if (!fires(e.type)) continue;
+    if (!fires(e.type) || e.fieldDivert) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
     if (t && e.id === t.id) continue;
     e.guardFacing = null;
@@ -1024,7 +1029,7 @@ function cmdAttack(state: MatchState, playerId: string, ids: number[], targetId:
   const units = owned(state, playerId, ids);
   if (units.length === 0) return fail("not_yours", "No owned units.");
   for (const e of units) {
-    if (!fires(e.type)) continue;
+    if (!fires(e.type) || e.fieldDivert) continue;
     if (e.state === "deploy" || e.state === "undeploy") continue;
     if (e.id === t.id) continue;
     e.order = { kind: "attack", targetId: t.id };
@@ -1388,6 +1393,24 @@ function cmdGuns(state: MatchState, playerId: string, ids: number[], guns: 1 | 2
   const units = owned(state, playerId, ids).filter((e) => e.type === "walker");
   if (units.length === 0) return fail("not_yours", "Select a Walker.");
   for (const e of units) e.gatlingGuns = guns;
+  return ok();
+}
+
+/** The Commander's laser power into his force field, or back. Diverted, he does not fire. */
+function cmdFieldDivert(state: MatchState, playerId: string, ids: number[], on: boolean): CmdResult {
+  const units = owned(state, playerId, ids).filter((e) => hasForceField(e.type));
+  if (units.length === 0) return fail("not_yours", "Select a Cyborg Commander.");
+  for (const e of units) {
+    e.fieldDivert = on ? true : undefined;
+    if (on) {
+      // The emitter goes dark now: the beam in flight and the order to fire both end.
+      e.laser = undefined;
+      e.attackTarget = null;
+      if (e.order?.kind === "attack" || e.order?.kind === "forceattack") clearOrder(e);
+    } else if (e.field != null) {
+      e.field = Math.min(e.field, forceFieldMax(e));
+    }
+  }
   return ok();
 }
 
