@@ -38,7 +38,7 @@ import { groundLstBows } from "./lst.js";
 import { tickSmoke } from "./smoke.js";
 import { maybeCookOff, tickFires } from "./flame.js";
 import { tickBipod, tickStance } from "./stance.js";
-import { tickCollision } from "./collision.js";
+import { tickCollision, wasFlattened } from "./collision.js";
 import { tickDeploy } from "./deploy.js";
 import { tickSmelters } from "./smelter.js";
 import { tickConstructs } from "./construct.js";
@@ -358,8 +358,8 @@ function reapDead(state: MatchState): void {
     if (!e.wreck && e.garrison.length && garrisonDiesWithHostOf(e.type)) {
       for (const u of killGarrison(state, e)) dead.push(u.id);
     }
-    // A tank that goes down with its LST leaves no hulk of its own.
-    if (!e.wreck && leavesWreck(e.type) && e.type !== "core" && e.type !== "rig" && e.garrisonedIn == null) {
+    // A tank that goes down with its LST, or flat under an Apocalypse, leaves no hulk of its own.
+    if (!e.wreck && leavesWreck(e.type) && e.type !== "core" && e.type !== "rig" && e.garrisonedIn == null && !wasFlattened(e)) {
       toWreck(state, e);
       madeWreck = true;
       continue;

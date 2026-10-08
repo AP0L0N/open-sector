@@ -319,6 +319,7 @@ import {
   tankGunRecoils,
   type GunRecoil,
 } from "./gun-recoil.js";
+import { bumpTilt, crushBump } from "./crush-bump.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
 import { emplacementShotLook, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
 import {
@@ -596,7 +597,7 @@ const EXTRUDE: Record<EntityType, number> = {
   rig: 22,
   hauler: 16,
   warden: 28,
-  apocalypse: 32,
+  apocalypse: 42,
   ss3: 20,
   jagdtiger: 26,
   rifleman: 26,
@@ -972,6 +973,9 @@ export class MapView {
   /** Field guns whose crew is on the trail, and when the gun last moved (ms). */
   private gunHaulAt = new Map<number, number>();
   private gunRecoil = new Map<number, GunRecoil>();
+  /** When an Apocalypse began riding over a hull it rolled flat (ms), by its id. */
+  private crushBumps = new Map<number, number>();
+  private crushBumpSeen = new Set<number>();
   private muzzleSmokes: MuzzleSmokePuff[] = [];
   private fieldGunSmokes: FieldGunSmokePuff[] = [];
   private occBuildings: {
@@ -1331,6 +1335,12 @@ export class MapView {
       if (i.fromId != null && (i.caliber ?? 0) > 0 && (i.caliber ?? 0) < 40 && i.kind !== "crush") {
         const shooter = this.currById.get(i.fromId);
         if (shooter && isInfantryType(shooter.type) && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
+      }
+      // The impact rides along in later snapshots: only its first sighting starts the bump.
+      if (i.crusher != null && !this.crushBumpSeen.has(i.id)) {
+        if (this.crushBumpSeen.size > 200) this.crushBumpSeen.clear();
+        this.crushBumpSeen.add(i.id);
+        this.crushBumps.set(i.crusher, now);
       }
       if (i.kind === "crush") continue;
       // A 20mm round that missed a plane climbed away into the sky: its tracer is all there is.
@@ -6740,6 +6750,17 @@ export class MapView {
       ctx.translate(s.x, s.y);
       ctx.rotate(roll);
       ctx.translate(-s.x, -s.y);
+    }
+    const bumpAt = this.crushBumps.get(e.id);
+    if (bumpAt != null) {
+      const bump = e.wreck ? null : crushBump(bumpAt, performance.now(), size);
+      if (!bump) this.crushBumps.delete(e.id);
+      else {
+        // Up over the hulk, pivoting on the ground point under the hull.
+        ctx.translate(s.x, s.y);
+        ctx.rotate(bumpTilt(bump.pitch, dir.x, dir.y));
+        ctx.translate(-s.x, -s.y - bump.liftPx);
+      }
     }
     if (e.wreck && !corpse && sheet === def) ctx.filter = "grayscale(1) brightness(0.68) contrast(1.08)";
     // A map's neutral unit is grey: no one's colours, everyone's enemy.

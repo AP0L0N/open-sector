@@ -1,5 +1,6 @@
 import {
   catalog,
+  crushes,
   hasTurret,
   isArmoredType,
   isInfantryType,
@@ -43,9 +44,16 @@ export function rolling(e: Entity): boolean {
 
 export function canCrush(state: MatchState, mover: Entity, victim: Entity): boolean {
   if (!isActiveUnit(mover) || !isActiveUnit(victim)) return false;
-  if (!isArmoredType(mover.type) || !isInfantryType(victim.type)) return false;
+  if (!isArmoredType(mover.type) || !crushes(mover.type, victim.type)) return false;
   if (allies(state, mover.ownerId, victim.ownerId)) return false;
   return rolling(mover);
+}
+
+/** Hulls run flat under an Apocalypse this step. They leave no wreck behind. */
+const flattened = new WeakSet<Entity>();
+
+export function wasFlattened(e: Entity): boolean {
+  return flattened.has(e);
 }
 
 /** Friendly infantry step out of an armored hull's way. A hull never gives way to them. */
@@ -671,9 +679,11 @@ export function tickCollision(state: MatchState, dt = TICK_DT): void {
       const dy = a.y - b.y;
       if (dx * dx + dy * dy >= need * need) continue;
       if (!canCrush(state, a, b)) continue;
-      // The whole bar: a soldier dies, a cyborg on his legs is torn down to crawling.
+      // The whole bar: a soldier dies, a hull goes flat, a cyborg on his legs is torn down to crawling.
       takeDamage(b, b.hp, state.tick);
       if (b.hp > 0) continue;
+      const flat = !isInfantryType(b.type);
+      if (flat) flattened.add(b);
       state.impacts.push({
         id: state.nextId++,
         ownerId: a.ownerId,
@@ -682,6 +692,7 @@ export function tickCollision(state: MatchState, dt = TICK_DT): void {
         y: b.y,
         vx: a.x - b.x,
         vy: a.y - b.y,
+        ...(flat ? { crusher: a.id } : {}),
       });
     }
   }
