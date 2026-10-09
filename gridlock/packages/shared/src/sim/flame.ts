@@ -433,7 +433,7 @@ export function tickFires(state: MatchState, dt: number): void {
     const before = e.hp;
     coverStrike(e, FIRE_BURN_DPS * share * heat * dt, state.tick, false);
     markFireKill(e, before);
-    if (e.hp > 0 && isInfantryType(e.type) && e.type !== "pyro") stepOutOfFire(state, e);
+    if (e.hp > 0 && isInfantryType(e.type) && !isCyborg(e.type) && e.type !== "pyro") stepOutOfFire(state, e);
   }
 }
 
