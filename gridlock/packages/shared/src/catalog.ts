@@ -2931,12 +2931,13 @@ export const JUMPJET_FLIGHT: JetFlightDef = {
 };
 
 /**
- * Titan's leg jets. A short hop, not a flight: a few seconds over a river, a
+ * Titan's leg jets. A short hop, not a flight: a dozen-odd seconds over a river, a
  * wall, or a line of men, then a long wait for the burners to cool. Aloft the
  * main gun is stowed and only the shoulder pods fire, and only anti-air
  * weapons reach it. Shot down, it drops straight down and goes up on the ground.
  */
-export const TITAN_JET_FUEL_SECONDS = 12;
+/** 12 s, then a fifth more: 14.4 s on the burners. */
+export const TITAN_JET_FUEL_SECONDS = 14.4;
 export const TITAN_JET_FLIGHT: JetFlightDef = {
   fuelSeconds: TITAN_JET_FUEL_SECONDS,
   takeoffMinSeconds: 3,
