@@ -1559,8 +1559,8 @@ export const WALKER_SPRITE: UnitSpriteDef = {
  * (tools/sprites/render_titan.py), so the torso sits on the hips at any aim.
  */
 const TITAN_CELL = 192;
-/** 15% over its first 60: the Titan towers over a Tiger. */
-const TITAN_DRAW = Math.round(60 * 1.15 * UNIT_VISUAL_SCALE);
+/** 15% over its first 60, then 15% again: the Titan towers over a Tiger. */
+const TITAN_DRAW = Math.round(60 * 1.15 * 1.15 * UNIT_VISUAL_SCALE);
 const TITAN_CONTACT_Y = 0.84;
 
 function titanOverlay(src: string): TurretSpriteDef {
