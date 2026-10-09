@@ -428,9 +428,34 @@ export function stepMatch(state: MatchState, dt = TICK_DT): void {
   }
 }
 
+/** Whether the route from where `e` stands through its waypoints passes within reach of any hulk made this tick. */
+function routeMeetsWreck(e: Entity, wrecks: readonly Entity[], tileSize: number): boolean {
+  let ax = e.x;
+  let ay = e.y;
+  for (const w of e.waypoints) {
+    const bx = w.x;
+    const by = w.y;
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    for (const h of wrecks) {
+      const reach = h.radius + e.radius + 2 * tileSize;
+      let t = len2 > 0 ? ((h.x - ax) * dx + (h.y - ay) * dy) / len2 : 0;
+      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      const px = ax + dx * t - h.x;
+      const py = ay + dy * t - h.y;
+      if (px * px + py * py <= reach * reach) return true;
+    }
+    ax = bx;
+    ay = by;
+  }
+  return false;
+}
+
 function reapDead(state: MatchState): void {
   const dead: number[] = [];
-  let madeWreck = false;
+  /** Hulks made this tick: only the units whose route runs by one re-plan. */
+  const wrecks: Entity[] = [];
   // A wrecked engine destroys an aircraft at once. It does not limp on.
   for (const e of state.entities.values()) {
     if (e.hp <= 0 || e.wreck || e.air?.phase === "crash" || e.drone) continue;
@@ -473,7 +498,7 @@ function reapDead(state: MatchState): void {
     // A tank that goes down with its LST, or flat under an Apocalypse, leaves no hulk of its own.
     if (!e.wreck && leavesWreck(e.type) && e.type !== "core" && e.type !== "rig" && e.garrisonedIn == null && !wasFlattened(e)) {
       toWreck(state, e);
-      madeWreck = true;
+      wrecks.push(e);
       continue;
     }
     if (e.type === "pyro") maybeCookOff(state, e);
@@ -484,9 +509,10 @@ function reapDead(state: MatchState): void {
     }
     dead.push(e.id);
   }
-  if (madeWreck) {
+  if (wrecks.length > 0) {
     for (const o of state.entities.values()) {
-      if (o.kind === "unit" && !o.wreck && o.hp > 0) repathIfBlocked(state, o);
+      if (o.kind !== "unit" || o.wreck || o.hp <= 0 || o.waypoints.length === 0) continue;
+      if (routeMeetsWreck(o, wrecks, state.tileSize)) repathIfBlocked(state, o);
     }
   }
   const hqOwners = new Set<string>();

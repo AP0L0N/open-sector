@@ -453,7 +453,7 @@ function tickResupply(state: MatchState, truck: Entity, dt: number): void {
   }
   if (!nearTruck(state, truck, target, SUPPLY_REACH)) {
     truck.state = "move";
-    if (truck.waypoints.length === 0 || state.tick % 8 === 0) {
+    if (truck.waypoints.length === 0 || (state.tick + truck.id) % 8 === 0) {
       const spot = approachPoint(state, target, truck);
       setPath(state, truck, spot.x, spot.y);
     }
@@ -515,7 +515,7 @@ function tickDisable(state: MatchState, truck: Entity, dt: number): void {
   if (d > disableReach(state.tileSize, truck.radius)) {
     truck.state = "move";
     truck.work = 0;
-    if (truck.waypoints.length === 0 || state.tick % 8 === 0) {
+    if (truck.waypoints.length === 0 || (state.tick + truck.id) % 8 === 0) {
       const spot = disableStand(truck, mine, state.tileSize);
       setPath(state, truck, spot.x, spot.y);
     }
@@ -610,7 +610,7 @@ function tickBoard(state: MatchState, unit: Entity): void {
     return;
   }
   unit.state = "move";
-  if (unit.waypoints.length === 0 || state.tick % 8 === 0) {
+  if (unit.waypoints.length === 0 || (state.tick + unit.id) % 8 === 0) {
     const spot = approachPoint(state, truck, unit);
     setPath(state, unit, spot.x, spot.y);
   }

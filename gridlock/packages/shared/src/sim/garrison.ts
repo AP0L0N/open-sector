@@ -672,7 +672,7 @@ export function tickGarrison(state: MatchState): void {
       continue;
     }
     // Walked out its path without touching a wall (its door got blocked): head for another side.
-    if (e.waypoints.length === 0 && state.tick % 5 === 0) {
+    if (e.waypoints.length === 0 && (state.tick + e.id) % 5 === 0) {
       const door = approachTile(state, house, e);
       if (door) setPath(state, e, tileCenter(door.x, state.tileSize), tileCenter(door.y, state.tileSize));
     }

@@ -44,10 +44,70 @@ export type SpatialGrid = {
 
 let active: SpatialGrid | null = null;
 
-/** Rebuild the grid and make it the one circle and segment queries inside this phase share. */
+/** Bring the match's grid up to date and make it the one circle and segment queries inside this phase share. */
 export function activateSpatial(state: MatchState): SpatialGrid {
-  active = buildSpatial(state);
+  active = syncSpatial(state);
   return active;
+}
+
+const persistent = new WeakMap<MatchState, SpatialGrid>();
+
+/**
+ * The match's one grid, brought up to date: bodies that left their cells are
+ * filed again, newcomers filed, the dead and the garrisoned dropped, and the
+ * owner bits laid afresh. A fresh build allocated a bucket per cell and a
+ * cell list per body, and the tick asked for one five times over.
+ */
+export function syncSpatial(state: MatchState): SpatialGrid {
+  const cell = CELL_TILES * state.tileSize;
+  const cols = Math.max(1, Math.ceil((state.width * state.tileSize) / cell));
+  const rows = Math.max(1, Math.ceil((state.height * state.tileSize) / cell));
+  let grid = persistent.get(state);
+  if (!grid || grid.cell !== cell || grid.cols !== cols || grid.rows !== rows) {
+    grid = buildSpatial(state);
+    persistent.set(state, grid);
+    return grid;
+  }
+  grid.cellOwners.fill(0);
+  grid.hostileBits.clear();
+  for (const [id, e] of grid.byId) {
+    if (state.entities.get(id) !== e || e.hp <= 0 || e.garrisonedIn) remove(grid, id);
+  }
+  for (const e of state.entities.values()) {
+    if (e.hp <= 0 || e.garrisonedIn) continue;
+    const cells = grid.cellsOf.get(e.id);
+    if (!cells) {
+      insert(grid, e);
+      continue;
+    }
+    aabbOf(grid, e);
+    const n = (ax1 - ax0 + 1) * (ay1 - ay0 + 1);
+    if (cells.length === n && cells[0] === ay0 * cols + ax0 && cells[n - 1] === ay1 * cols + ax1) {
+      const bit = aimable(e) ? ownerBitOf(grid, e.ownerId) : 0;
+      if (bit) {
+        for (let k = 0; k < n; k++) {
+          const i = cells[k]!;
+          grid.cellOwners[i] = (grid.cellOwners[i] ?? 0) | bit;
+        }
+      }
+    } else {
+      relocate(grid, e);
+    }
+  }
+  return grid;
+}
+
+function remove(grid: SpatialGrid, id: number): void {
+  const prev = grid.cellsOf.get(id);
+  if (prev) {
+    for (let i = 0; i < prev.length; i++) {
+      const bucket = grid.buckets[prev[i]!]!;
+      const at = bucket.indexOf(id);
+      if (at >= 0) bucket.splice(at, 1);
+    }
+  }
+  grid.byId.delete(id);
+  grid.cellsOf.delete(id);
 }
 
 /** The grid `activateSpatial` built, if this phase has one. */
@@ -88,19 +148,8 @@ export function buildSpatial(state: MatchState): SpatialGrid {
 
 /** After a separation shove, so the next pair sees where this unit stands now. */
 export function relocate(grid: SpatialGrid, e: Entity): void {
-  const prev = grid.cellsOf.get(e.id);
-  if (prev) {
-    for (let i = 0; i < prev.length; i++) {
-      const bucket = grid.buckets[prev[i]!]!;
-      const at = bucket.indexOf(e.id);
-      if (at >= 0) bucket.splice(at, 1);
-    }
-  }
-  if (e.hp <= 0 || e.garrisonedIn) {
-    grid.byId.delete(e.id);
-    grid.cellsOf.delete(e.id);
-    return;
-  }
+  remove(grid, e.id);
+  if (e.hp <= 0 || e.garrisonedIn) return;
   insert(grid, e);
 }
 
@@ -236,6 +285,8 @@ function ownerBitOf(grid: SpatialGrid, ownerId: string): number {
   if (bit === undefined) {
     bit = 1 << Math.min(30, grid.ownerBit.size);
     grid.ownerBit.set(ownerId, bit);
+    // A side seen for the first time: every hostile mask made before it is short a bit.
+    grid.hostileBits.clear();
   }
   return bit;
 }
@@ -271,19 +322,19 @@ export function anyHostileNear(grid: SpatialGrid, state: MatchState, ownerId: st
   return false;
 }
 
-function insert(grid: SpatialGrid, e: Entity): void {
-  grid.byId.set(e.id, e);
-  const cells: number[] = [];
-  grid.cellsOf.set(e.id, cells);
+/** The cell box `aabbOf` last worked out: columns ax0..ax1, rows ay0..ay1. */
+let ax0 = 0;
+let ay0 = 0;
+let ax1 = 0;
+let ay1 = 0;
+
+/** The cells a body's indexed footprint covers, into ax0..ay1. Widens the grid's pads as it goes. */
+function aabbOf(grid: SpatialGrid, e: Entity): void {
   if (e.kind === "building") {
     const ts = grid.cell / CELL_TILES;
     const bonus = Math.min(e.tileW, e.tileH) * ts * 0.25;
     if (bonus > grid.splashPad) grid.splashPad = bonus;
-    const x0 = e.tileX * ts - PAD;
-    const y0 = e.tileY * ts - PAD;
-    const x1 = (e.tileX + e.tileW) * ts + PAD;
-    const y1 = (e.tileY + e.tileH) * ts + PAD;
-    coverAabb(grid, e.id, cells, x0, y0, x1, y1);
+    cellBox(grid, e.tileX * ts - PAD, e.tileY * ts - PAD, (e.tileX + e.tileW) * ts + PAD, (e.tileY + e.tileH) * ts + PAD);
     return;
   }
   if (e.radius > grid.maxRadius) grid.maxRadius = e.radius;
@@ -294,26 +345,32 @@ function insert(grid: SpatialGrid, e: Entity): void {
     const beam = BATTLESHIP_HALF_BEAM + PAD;
     const ex = Math.abs(c) * BATTLESHIP_HALF_LENGTH + Math.abs(s) * beam;
     const ey = Math.abs(s) * BATTLESHIP_HALF_LENGTH + Math.abs(c) * beam;
-    coverAabb(grid, e.id, cells, e.x - ex, e.y - ey, e.x + ex, e.y + ey);
+    cellBox(grid, e.x - ex, e.y - ey, e.x + ex, e.y + ey);
     return;
   }
   const r = e.radius + PAD;
-  coverAabb(grid, e.id, cells, e.x - r, e.y - r, e.x + r, e.y + r);
+  cellBox(grid, e.x - r, e.y - r, e.x + r, e.y + r);
 }
 
-function coverAabb(grid: SpatialGrid, id: number, cells: number[], x0: number, y0: number, x1: number, y1: number): void {
+function cellBox(grid: SpatialGrid, x0: number, y0: number, x1: number, y1: number): void {
   const c = grid.cell;
-  const cx0 = clamp(x0 / c, grid.cols);
-  const cx1 = clamp(x1 / c, grid.cols);
-  const cy0 = clamp(y0 / c, grid.rows);
-  const cy1 = clamp(y1 / c, grid.rows);
-  const e = grid.byId.get(id);
-  const bit = e && aimable(e) ? ownerBitOf(grid, e.ownerId) : 0;
-  for (let cy = cy0; cy <= cy1; cy++) {
+  ax0 = clamp(x0 / c, grid.cols);
+  ax1 = clamp(x1 / c, grid.cols);
+  ay0 = clamp(y0 / c, grid.rows);
+  ay1 = clamp(y1 / c, grid.rows);
+}
+
+function insert(grid: SpatialGrid, e: Entity): void {
+  grid.byId.set(e.id, e);
+  const cells: number[] = [];
+  grid.cellsOf.set(e.id, cells);
+  aabbOf(grid, e);
+  const bit = aimable(e) ? ownerBitOf(grid, e.ownerId) : 0;
+  for (let cy = ay0; cy <= ay1; cy++) {
     const row = cy * grid.cols;
-    for (let cx = cx0; cx <= cx1; cx++) {
+    for (let cx = ax0; cx <= ax1; cx++) {
       const i = row + cx;
-      grid.buckets[i]!.push(id);
+      grid.buckets[i]!.push(e.id);
       cells.push(i);
       if (bit) grid.cellOwners[i] = (grid.cellOwners[i] ?? 0) | bit;
     }

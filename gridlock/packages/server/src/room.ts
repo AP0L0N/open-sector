@@ -194,15 +194,20 @@ export class Hub {
     this.broadcast(roomId, { type: "room.state", room });
   }
 
-  private broadcastSnapshots(roomId: string): void {
+  /** Sends this tick's snapshot to every member whose socket is clear. Returns the first one sent, for the slow-tick log. */
+  private broadcastSnapshots(roomId: string): MatchSnapshot | null {
     const match = this.matches.get(roomId);
-    if (!match) return;
+    if (!match) return null;
+    let first: MatchSnapshot | null = null;
     for (const id of this.members.get(roomId) ?? []) {
       const session = this.sessions.get(id);
       // A stale snapshot is worthless once the next one is due: let a slow socket drain instead of piling on.
       if (!session || session.backlogged()) continue;
-      session.send({ type: "match.snapshot", match: this.snapshotView(session, match) });
+      const view = this.snapshotView(session, match);
+      first ??= view;
+      session.send({ type: "match.snapshot", match: view });
     }
+    return first;
   }
 
   /** The player's view, with the scrap grid and the scenery list only when this socket has not seen the current ones. `full` forces both. */
@@ -521,15 +526,12 @@ export class Hub {
     }
     match.pendingComms = [];
     const t1 = Date.now();
-    this.broadcastSnapshots(roomId);
+    const sent = this.broadcastSnapshots(roomId);
     const snapMs = Date.now() - t1;
     const ms = simMs + snapMs;
     if (ms >= 50) {
-      const members = [...(this.members.get(roomId) ?? [])];
-      const watcher = members[0];
-      const bytes = watcher
-        ? Buffer.byteLength(JSON.stringify({ type: "match.snapshot", match: snapshotFor(match, watcher, { scrap: false }) }))
-        : 0;
+      // The size of a snapshot already built: a slow tick must not pay for a second one.
+      const bytes = sent ? Buffer.byteLength(JSON.stringify({ type: "match.snapshot", match: sent })) : 0;
       log("room.slow", {
         room: roomId,
         ms,
@@ -537,7 +539,7 @@ export class Hub {
         snapMs,
         entities: match.entities.size,
         bytes,
-        players: members.length,
+        players: this.members.get(roomId)?.size ?? 0,
       });
     }
     if (match.ended) {

@@ -97,7 +97,7 @@ function tickConstruct(state: MatchState, e: Entity, dt: number): void {
   const site = siteOf(building, o.tileX, o.tileY);
   if (!atSite(state, e, site)) {
     e.state = "move";
-    if (e.waypoints.length === 0 || state.tick % 8 === 0) {
+    if (e.waypoints.length === 0 || (state.tick + e.id) % 8 === 0) {
       const spot = standSpot(state, site);
       setPath(state, e, spot.x, spot.y);
     }

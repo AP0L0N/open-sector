@@ -324,7 +324,8 @@ function tickMovementBodies(state: MatchState, dt: number): void {
     );
     e.tileX = worldToTile(e.x, state.tileSize);
     e.tileY = worldToTile(e.y, state.tileSize);
-    if (e.waypoints.length > 0 && Math.hypot(e.x - ox, e.y - oy) < 0.25 && state.tick % 10 === 0) {
+    // Staggered by id: a whole jam re-planning on the same tick is one long tick.
+    if (e.waypoints.length > 0 && Math.hypot(e.x - ox, e.y - oy) < 0.25 && (state.tick + e.id) % 10 === 0) {
       const last = e.waypoints[e.waypoints.length - 1];
       if (last) pathAroundParked(state, e, last.x, last.y);
     }

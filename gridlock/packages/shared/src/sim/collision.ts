@@ -22,7 +22,7 @@ import { diving } from "./naval.js";
 import { setPath } from "./path.js";
 import { allies, crushTreeAt, fellTreeAt, inBounds, isTree, isWall, isWater, jetAloft, occupant, sailable, tileCenter, tileIndex, underDeck, walkable, worldToTile } from "./geo.js";
 import { crushClutterUnder } from "./clutter.js";
-import { buildSpatial, queryCircle, relocate, spatialGrid } from "./spatial.js";
+import { queryCircle, relocate, spatialGrid, syncSpatial } from "./spatial.js";
 import type { Entity, MatchState } from "./types.js";
 
 /** Ground unit that takes part in collision. Aircraft never do, parked or flying, nor a Jump Jet in the air. */
@@ -719,7 +719,7 @@ export function tickCollision(state: MatchState, dt = TICK_DT): void {
   const units = [...state.entities.values()].filter(
     (e) => e.kind === "unit" && e.hp > 0 && !e.garrisonedIn && !e.air && !e.chute && !jetAloft(e) && !isTorpedoBody(e.type),
   );
-  const grid = buildSpatial(state);
+  const grid = syncSpatial(state);
   const members = new Set(units.map((e) => e.id));
   const touch = (a: Entity): readonly Entity[] => queryCircle(grid, a.x, a.y, a.radius + grid.maxRadius).slice();
   for (const a of units) {

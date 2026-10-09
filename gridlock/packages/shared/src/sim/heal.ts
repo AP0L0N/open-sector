@@ -162,7 +162,7 @@ function approach(state: MatchState, medic: Entity, patient: Entity): void {
   const drifted =
     ox == null || oy == null || Math.hypot(anchor.x - ox, anchor.y - oy) > state.tileSize;
   medic.order = { kind: "move", x: anchor.x, y: anchor.y, auto: true };
-  if (medic.waypoints.length === 0 || state.tick % 5 === 0 || drifted) {
+  if (medic.waypoints.length === 0 || (state.tick + medic.id) % 5 === 0 || drifted) {
     setPath(state, medic, anchor.x, anchor.y);
   }
 }

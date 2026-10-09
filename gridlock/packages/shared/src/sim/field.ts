@@ -49,6 +49,7 @@ import { claimNeutral } from "./garrison.js";
 import { setPath } from "./path.js";
 import type { Entity, MatchState } from "./types.js";
 import { isSunkWreck, salvageWreck } from "./wreck.js";
+import { sightKeysHeld } from "./vision.js";
 import { bridgeRepairSpot, canRebuildBridge, nearBridge, rebuildBridge, rebuildSecondsOf } from "./bridge.js";
 
 /** Extra reach past the wall face where the engineer stands to build. */
@@ -643,7 +644,7 @@ function tickWall(state: MatchState, e: Entity, dt: number, structure: ConcreteL
   if (e.waypoints.length > 0) return;
   if (Math.hypot(e.x - spot.x, e.y - spot.y) > WORK_REACH) {
     e.state = "move";
-    if (state.tick % 8 === 0) setPath(state, e, spot.x, spot.y);
+    if ((state.tick + e.id) % 8 === 0) setPath(state, e, spot.x, spot.y);
     return;
   }
   if (e.work <= 0) {
@@ -724,7 +725,7 @@ function tickBuild(state: MatchState, e: Entity, dt: number): void {
   if (e.waypoints.length > 0) return;
   if (Math.hypot(e.x - spot.x, e.y - spot.y) > WORK_REACH) {
     e.state = "move";
-    if (state.tick % 8 === 0) setPath(state, e, spot.x, spot.y);
+    if ((state.tick + e.id) % 8 === 0) setPath(state, e, spot.x, spot.y);
     return;
   }
   if (e.work <= 0) {
@@ -769,7 +770,7 @@ function tickRepair(state: MatchState, e: Entity, dt: number): void {
   }
   if (!nearRepair(e, target, state.tileSize)) {
     e.state = "move";
-    if (e.waypoints.length === 0 || state.tick % 8 === 0) {
+    if (e.waypoints.length === 0 || (state.tick + e.id) % 8 === 0) {
       const spot = repairSpot(e, target, state.tileSize);
       setPath(state, e, spot.x, spot.y);
     }
@@ -870,19 +871,153 @@ function autoRepair(state: MatchState): void {
   }
 }
 
+/**
+ * A field section with its axes worked out once, filed under every cell it can
+ * matter to. Cover, crushing and shot sweeps ask the cell instead of the roster:
+ * with every unit and every round asking every tick, the roster walk was units
+ * times sections and rounds times sections.
+ */
+interface FieldSection {
+  e: Entity;
+  fx: number;
+  fy: number;
+  tx: number;
+  ty: number;
+}
+
+interface FieldIndex {
+  key: number;
+  /** The phase the key was last checked in: every unit and round asks in the same phase, so the roster is hashed once. */
+  rev: number;
+  cell: number;
+  cols: number;
+  rows: number;
+  buckets: (FieldSection[] | undefined)[];
+}
+
+const fieldIndexes = new WeakMap<MatchState, FieldIndex>();
+/** Cell side of the section index, in sim tiles. */
+const FIELD_CELL_TILES = 8;
+/**
+ * How far from its centre a section is filed, world px: past half the longest
+ * span plus the deepest reach any query adds (cover depth, a hull's crush pad,
+ * a round's own width). A query then reads only the cell its point is in.
+ */
+const FIELD_FILE_REACH = 96;
+const NO_SECTIONS: readonly FieldSection[] = [];
+let sectionStamp = new Int32Array(1024);
+let sectionGen = 1;
+
+function mixKey(h: number, v: number): number {
+  return Math.imul(h ^ v, 16777619) >>> 0;
+}
+
+/** The standing sections, hashed by id, so the index is laid again only when one is raised or taken down. */
+function fieldIndexKey(state: MatchState): number {
+  let h = 2166136261;
+  let n = 0;
+  for (const e of state.entities.values()) {
+    if (!isFieldStructure(e.type)) continue;
+    h = mixKey(h, e.id);
+    n++;
+  }
+  return mixKey(h, n);
+}
+
+function fieldIndexOf(state: MatchState): FieldIndex {
+  const old = fieldIndexes.get(state);
+  // Inside a tick the roster is hashed once per phase. A test raising a wall by hand between calls hashes afresh.
+  if (old && old.rev === state.phaseRev && sightKeysHeld()) return old;
+  const key = fieldIndexKey(state);
+  if (old && old.key === key) {
+    old.rev = state.phaseRev;
+    return old;
+  }
+  const cell = FIELD_CELL_TILES * state.tileSize;
+  const cols = Math.max(1, Math.ceil((state.width * state.tileSize) / cell));
+  const rows = Math.max(1, Math.ceil((state.height * state.tileSize) / cell));
+  const index: FieldIndex = { key, rev: state.phaseRev, cell, cols, rows, buckets: new Array(cols * rows) };
+  for (const e of state.entities.values()) {
+    if (!isFieldStructure(e.type)) continue;
+    const { fx, fy, tx, ty } = wallAxes(e.facing);
+    const s: FieldSection = { e, fx, fy, tx, ty };
+    const cx0 = fieldCell((e.x - FIELD_FILE_REACH) / cell, cols);
+    const cx1 = fieldCell((e.x + FIELD_FILE_REACH) / cell, cols);
+    const cy0 = fieldCell((e.y - FIELD_FILE_REACH) / cell, rows);
+    const cy1 = fieldCell((e.y + FIELD_FILE_REACH) / cell, rows);
+    for (let cy = cy0; cy <= cy1; cy++) {
+      for (let cx = cx0; cx <= cx1; cx++) {
+        const i = cy * cols + cx;
+        (index.buckets[i] ??= []).push(s);
+      }
+    }
+  }
+  fieldIndexes.set(state, index);
+  return index;
+}
+
+function fieldCell(t: number, n: number): number {
+  if (t < 0) return 0;
+  const i = t | 0;
+  return i >= n ? n - 1 : i;
+}
+
+/** The sections that can touch a point, in id order. */
+function sectionsAt(state: MatchState, x: number, y: number): readonly FieldSection[] {
+  const index = fieldIndexOf(state);
+  const cx = fieldCell(x / index.cell, index.cols);
+  const cy = fieldCell(y / index.cell, index.rows);
+  return index.buckets[cy * index.cols + cx] ?? NO_SECTIONS;
+}
+
+/** The sections that can touch a segment, each once. The array is reused by the next call. */
+const sectionsBuf: FieldSection[] = [];
+function sectionsAlong(state: MatchState, x0: number, y0: number, x1: number, y1: number): readonly FieldSection[] {
+  const index = fieldIndexOf(state);
+  const cx0 = fieldCell(Math.min(x0, x1) / index.cell, index.cols);
+  const cx1 = fieldCell(Math.max(x0, x1) / index.cell, index.cols);
+  const cy0 = fieldCell(Math.min(y0, y1) / index.cell, index.rows);
+  const cy1 = fieldCell(Math.max(y0, y1) / index.cell, index.rows);
+  if (cx0 === cx1 && cy0 === cy1) return index.buckets[cy0 * index.cols + cx0] ?? NO_SECTIONS;
+  sectionsBuf.length = 0;
+  sectionGen++;
+  if (sectionGen >= 0x7fffffff) {
+    sectionStamp.fill(0);
+    sectionGen = 1;
+  }
+  for (let cy = cy0; cy <= cy1; cy++) {
+    for (let cx = cx0; cx <= cx1; cx++) {
+      const bucket = index.buckets[cy * index.cols + cx];
+      if (!bucket) continue;
+      for (const s of bucket) {
+        const id = s.e.id;
+        if (id >= sectionStamp.length) {
+          const next = new Int32Array(Math.max(id + 1, sectionStamp.length * 2));
+          next.set(sectionStamp);
+          sectionStamp = next;
+        }
+        if (sectionStamp[id] === sectionGen) continue;
+        sectionStamp[id] = sectionGen;
+        sectionsBuf.push(s);
+      }
+    }
+  }
+  return sectionsBuf;
+}
+
 /** Crouched or crawling infantry tucked against an intact sandbag wall. */
 export function sandbagCoverBonus(state: MatchState, e: Entity): number {
   if (e.hp <= 0 || e.garrisonedIn != null || !isInfantryType(e.type)) return 0;
   const stance = stanceOf(e);
   if (stance !== "crouch" && stance !== "crawl") return 0;
   const span = fieldSpan("sandbags")!;
-  for (const bag of state.entities.values()) {
+  for (const s of sectionsAt(state, e.x, e.y)) {
+    const bag = s.e;
     if (bag.type !== "sandbags" || bag.ruined || bag.hp <= 0) continue;
-    const { fx, fy, tx, ty } = wallAxes(bag.facing);
     const dx = e.x - bag.x;
     const dy = e.y - bag.y;
-    const along = dx * tx + dy * ty;
-    const across = dx * fx + dy * fy;
+    const along = dx * s.tx + dy * s.ty;
+    const across = dx * s.fx + dy * s.fy;
     if (Math.abs(along) > span.length / 2 + 8) continue;
     const depth = Math.abs(across) - span.thick / 2;
     if (depth < -6 || depth > SANDBAG_COVER_DEPTH) continue;
@@ -927,13 +1062,13 @@ export function wallCoverBonus(state: MatchState, e: Entity): number {
   if (e.hp <= 0 || e.wreck || e.kind !== "unit" || e.garrisonedIn != null || aloft(e)) return 0;
   const span = fieldSpan("wall");
   if (!span) return 0;
-  for (const wall of state.entities.values()) {
+  for (const s of sectionsAt(state, e.x, e.y)) {
+    const wall = s.e;
     if (wall.type !== "wall" || wall.ruined || wall.hp <= 0) continue;
-    const { fx, fy, tx, ty } = wallAxes(wall.facing);
     const dx = e.x - wall.x;
     const dy = e.y - wall.y;
-    const along = dx * tx + dy * ty;
-    const across = dx * fx + dy * fy;
+    const along = dx * s.tx + dy * s.ty;
+    const across = dx * s.fx + dy * s.fy;
     if (Math.abs(along) > span.length / 2 + 8) continue;
     const depth = Math.abs(across) - span.thick / 2;
     if (depth < -6 || depth > WALL_COVER_DEPTH) continue;
@@ -1052,7 +1187,8 @@ const WIRE_CRUSH_PAD = 2;
 export function crushWireUnder(state: MatchState, e: Entity): void {
   const span = fieldSpan("barbwire")!;
   const pad = e.radius + WIRE_CRUSH_PAD;
-  for (const w of state.entities.values()) {
+  for (const s of sectionsAt(state, e.x, e.y)) {
+    const w = s.e;
     if (w.type !== "barbwire" || w.ruined || w.hp <= 0) continue;
     if (Math.abs(w.x - e.x) > span.length + pad || Math.abs(w.y - e.y) > span.length + pad) continue;
     if (inFieldRect(e.x, e.y, w.x, w.y, w.facing, span.length + pad * 2, span.thick + pad * 2)) ruinWire(state, w);
@@ -1089,13 +1225,15 @@ function sandbagOnSegment(
   gunH?: number,
 ): { e: Entity; t: number; x: number; y: number } | null {
   let best: { e: Entity; t: number; x: number; y: number } | null = null;
-  for (const e of state.entities.values()) {
+  const span = fieldSpan("sandbags")!;
+  for (const s of sectionsAlong(state, x0, y0, x1, y1)) {
+    const e = s.e;
     if (e.type !== "sandbags" || e.ruined || e.hp <= 0) continue;
     if (gunH != null && bagGround(state, e) - gunH < SANDBAG_CLEAR_RISE) continue;
-    const span = fieldSpan("sandbags")!;
     const t = segmentObbT(x0, y0, x1, y1, e.x, e.y, e.facing, span.length / 2, span.thick / 2);
     if (t == null) continue;
-    if (best && t >= best.t) continue;
+    // The nearest; a dead heat goes to the lower id, as the roster walk broke it.
+    if (best && (t > best.t || (t === best.t && e.id > best.e.id))) continue;
     best = { e, t, x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t };
   }
   return best;
@@ -1128,14 +1266,16 @@ function wallOnSegment(
   y1: number,
 ): { e: Entity; t: number; x: number; y: number } | null {
   let best: { e: Entity; t: number; x: number; y: number } | null = null;
-  for (const e of state.entities.values()) {
+  for (const s of sectionsAlong(state, x0, y0, x1, y1)) {
+    const e = s.e;
     if (!isConcreteLine(e.type) || e.hp <= 0 || e.ruined) continue;
     // A lifted boom is open air: rounds fly through the gap.
     if (gateOpen(e)) continue;
     const span = fieldSpan(e.type)!;
     const t = segmentObbT(x0, y0, x1, y1, e.x, e.y, e.facing, span.length / 2, span.thick / 2);
     if (t == null) continue;
-    if (best && t >= best.t) continue;
+    // The nearest; a dead heat goes to the lower id, as the roster walk broke it.
+    if (best && (t > best.t || (t === best.t && e.id > best.e.id))) continue;
     best = { e, t, x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t };
   }
   return best;

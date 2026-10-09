@@ -354,7 +354,7 @@ function tickBridgeBuild(state: MatchState, e: Entity, dt: number): void {
         return;
       }
     } else e.bridgeStuck = 0;
-    if (e.waypoints.length === 0 || state.tick % 8 === 0) {
+    if (e.waypoints.length === 0 || (state.tick + e.id) % 8 === 0) {
       const spot = standSpot(state, e, span);
       setPath(state, e, spot.x, spot.y);
     }

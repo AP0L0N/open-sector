@@ -1504,9 +1504,25 @@ interface Sea {
   strike: Map<string, Map<number, Vec | null>>;
   /** Each side's Marine Base footprint in its yard, or null. */
   dock: Map<string, { tx: number; ty: number } | null>;
+  /** Each side's Marine Base footprint out past the yard, for an engineer to raise, or null. */
+  outDock: Map<string, { tx: number; ty: number } | null>;
+  /** Tick the site answers above were last thrown away. */
+  sitesAt: number;
 }
 
 const seaCache = new WeakMap<MatchState, Sea>();
+
+/**
+ * How long a side keeps its strike points and Marine Base sites while the water itself is unchanged.
+ * Each answer is a walk over the whole map; a base or a harbour raised meanwhile is seen on the next pass.
+ */
+export const CPU_SITE_CACHE_TICKS = 10 * TICK_HZ;
+
+function sameBody(a: Int32Array, b: Int32Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
 
 function seaOf(state: MatchState): Sea {
   const old = seaCache.get(state);
@@ -1541,6 +1557,18 @@ function seaOf(state: MatchState): Sea {
       }
     }
     size.push(n);
+  }
+  // The same water as last pass: the depths, strike points and sites still hold. Every strike point
+  // and site is a walk over the whole map, so they are kept until the water changes or they go stale.
+  if (old && sameBody(old.body, body)) {
+    old.tick = state.tick;
+    if (state.tick - old.sitesAt >= CPU_SITE_CACHE_TICKS) {
+      old.strike = new Map();
+      old.dock = new Map();
+      old.outDock = new Map();
+      old.sitesAt = state.tick;
+    }
+    return old;
   }
   // Depth: rings out from the banks, 8-neighbour, so a hull is kept off the shore on every side.
   const depth = new Int16Array(w * h);
@@ -1583,7 +1611,7 @@ function seaOf(state: MatchState): Sea {
     }
     ring = next;
   }
-  const sea: Sea = { tick: state.tick, body, size, depth, deepest, strike: new Map(), dock: new Map() };
+  const sea: Sea = { tick: state.tick, body, size, depth, deepest, strike: new Map(), dock: new Map(), outDock: new Map(), sitesAt: state.tick };
   seaCache.set(state, sea);
   return sea;
 }
@@ -1751,7 +1779,9 @@ function raiseDock(state: MatchState, p: SimPlayer, hq: Entity): void {
   if (countType(state, p.playerId, "dock") > 0 || dockUnderWay(state, p.playerId)) return;
   if (p.scrap < catalog("dock").cost || !powerFor(state, p.playerId, "dock")) return;
   if (dockSite(state, p.playerId)) return;
-  const spot = findDockTile(state, p.playerId, false);
+  const sea = seaOf(state);
+  if (!sea.outDock.has(p.playerId)) sea.outDock.set(p.playerId, findDockTile(state, p.playerId, false));
+  const spot = sea.outDock.get(p.playerId);
   if (!spot) return;
   const def = catalog("dock");
   const at = { x: (spot.tx + def.tileW / 2) * state.tileSize, y: (spot.ty + def.tileH / 2) * state.tileSize };
@@ -2020,6 +2050,10 @@ function expandSmelters(state: MatchState, p: SimPlayer, hq: Entity): void {
  * footprint nearest the Core. The diamond field is left to the force that takes the middle.
  */
 export function findOutlyingSmelterTile(state: MatchState, playerId: string, hq: Entity): { tx: number; ty: number } | null {
+  return siteMemo(state, `outsmelter:${playerId}:${hq.id}`, () => findOutlyingSmelterTileNow(state, playerId, hq));
+}
+
+function findOutlyingSmelterTileNow(state: MatchState, playerId: string, hq: Entity): { tx: number; ty: number } | null {
   const def = catalog("smelter");
   const foes: Vec[] = [];
   for (const q of state.players.values()) {
@@ -2315,7 +2349,46 @@ export function findBuildTile(
  * The scrap field nearest the HQ that is still in build range: the footprint with the
  * most scrap under it, nearest first. Null when no field within reach can take a Smelter.
  */
+/** A site answer, good while the scrap, the roster and the clock all stand where they were. */
+interface SiteMemo {
+  tick: number;
+  scrapRev: number;
+  roster: number;
+  spot: { tx: number; ty: number } | null;
+}
+
+const siteMemos = new WeakMap<MatchState, Map<string, SiteMemo>>();
+
+/**
+ * A Smelter site is a walk over every tile of the map. Asked again within a strategy pass with the
+ * scrap field and the roster unchanged, the last answer stands.
+ */
+function siteMemo(state: MatchState, key: string, find: () => { tx: number; ty: number } | null): { tx: number; ty: number } | null {
+  let memos = siteMemos.get(state);
+  if (!memos) {
+    memos = new Map();
+    siteMemos.set(state, memos);
+  }
+  const old = memos.get(key);
+  if (
+    old &&
+    old.scrapRev === state.scrapRev &&
+    old.roster === state.entities.size &&
+    state.tick >= old.tick &&
+    state.tick - old.tick < CPU_MICRO_EVERY_TICKS
+  ) {
+    return old.spot;
+  }
+  const spot = find();
+  memos.set(key, { tick: state.tick, scrapRev: state.scrapRev, roster: state.entities.size, spot });
+  return spot;
+}
+
 export function findSmelterTile(state: MatchState, playerId: string): { tx: number; ty: number } | null {
+  return siteMemo(state, `smelter:${playerId}`, () => findSmelterTileNow(state, playerId));
+}
+
+function findSmelterTileNow(state: MatchState, playerId: string): { tx: number; ty: number } | null {
   const def = catalog("smelter");
   const hq = hqOf(state, playerId);
   if (!hq) return null;

@@ -37,6 +37,11 @@ const LANE_BEND = 0.02;
 interface LaneBrick {
   span: BridgeSpan;
   width: number;
+  /** Box round the deck plus the sampling pad: a path stretch outside it never meets this brick. */
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
 }
 
 const laneCache = new WeakMap<MatchState, LaneBrick[]>();
@@ -50,12 +55,31 @@ function intactBricks(state: MatchState): LaneBrick[] {
   let out = laneCache.get(state);
   if (out) return out;
   out = [];
+  const ts = state.tileSize;
   for (const e of state.entities.values()) {
     if (!isBridge(e.type) || e.hp <= 0 || e.ruined) continue;
-    out.push({ span: { x: e.x, y: e.y, facing: e.facing, length: e.span ?? 0 }, width: bridgeWidth(e.type) });
+    const width = bridgeWidth(e.type);
+    const length = e.span ?? 0;
+    const r = Math.hypot(length / 2 + ts, width / 2 + ts);
+    out.push({ span: { x: e.x, y: e.y, facing: e.facing, length }, width, x0: e.x - r, y0: e.y - r, x1: e.x + r, y1: e.y + r });
   }
   laneCache.set(state, out);
   return out;
+}
+
+/** Bricks whose box meets the box of a path stretch, in brick order. The array is reused by the next call. */
+const nearBricks: LaneBrick[] = [];
+function bricksNear(bricks: readonly LaneBrick[], ax: number, ay: number, bx: number, by: number): LaneBrick[] {
+  const x0 = Math.min(ax, bx);
+  const x1 = Math.max(ax, bx);
+  const y0 = Math.min(ay, by);
+  const y1 = Math.max(ay, by);
+  nearBricks.length = 0;
+  for (const b of bricks) {
+    if (b.x1 < x0 || b.x0 > x1 || b.y1 < y0 || b.y0 > y1) continue;
+    nearBricks.push(b);
+  }
+  return nearBricks;
 }
 
 function onDeck(state: MatchState, x: number, y: number): boolean {
@@ -168,11 +192,19 @@ function deckRuns(state: MatchState, bricks: readonly LaneBrick[], fromX: number
   let ay = fromY;
   for (let seg = 0; seg < pts.length; seg++) {
     const p = pts[seg]!;
+    // Only the bricks this stretch can reach: most of a route is nowhere near water.
+    const near = bricksNear(bricks, ax, ay, p.x, p.y);
+    if (near.length === 0) {
+      close();
+      ax = p.x;
+      ay = p.y;
+      continue;
+    }
     const n = Math.max(1, Math.ceil(Math.hypot(p.x - ax, p.y - ay) / LANE_STEP));
     for (let i = seg === 0 ? 0 : 1; i <= n; i++) {
       const x = ax + ((p.x - ax) * i) / n;
       const y = ay + ((p.y - ay) * i) / n;
-      const brick = brickAt(bricks, x, y, 0) ?? brickAt(bricks, x, y, ts);
+      const brick = brickAt(near, x, y, 0) ?? brickAt(near, x, y, ts);
       if (!brick) {
         close();
         continue;

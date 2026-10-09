@@ -207,7 +207,7 @@ export function tickPlaneBoarding(state: MatchState): void {
       continue;
     }
     e.state = "move";
-    if (e.waypoints.length === 0 || state.tick % 8 === 0) walkToPlane(state, e, plane);
+    if (e.waypoints.length === 0 || (state.tick + e.id) % 8 === 0) walkToPlane(state, e, plane);
   }
 }
 

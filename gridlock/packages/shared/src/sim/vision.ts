@@ -806,6 +806,11 @@ export function holdSightKeys(on: boolean): void {
   if (sightKeyMemoDepth < 0) sightKeyMemoDepth = 0;
 }
 
+/** True while a tick runs: a per-phase memo of the roster is safe, since nothing outside the sim moves it. */
+export function sightKeysHeld(): boolean {
+  return sightKeyMemoDepth > 0;
+}
+
 /** `coverKeyNow`, once per phase while a tick runs. */
 function coverKey(state: MatchState): number {
   if (sightKeyMemoDepth === 0) return coverKeyNow(state);
@@ -816,7 +821,11 @@ function coverKey(state: MatchState): number {
   return key;
 }
 
-/** Everything the sight cover is built from, hashed, so the grids are rebuilt only once something in them moved. */
+/**
+ * Everything the sight cover is built from, hashed, so the grids are rebuilt only once something in them moved.
+ * A building's hit points are not in it: a shell knocking chips off a wall leaves the line of sight where it was,
+ * and hashing the bar would rebuild the whole cover every tick of a fight beside a wall. Only standing or down counts.
+ */
 function coverKeyNow(state: MatchState): number {
   let h = mix(2166136261, state.clearedTrees.length);
   h = mix(h, state.digRev);
@@ -826,7 +835,7 @@ function coverKeyNow(state: MatchState): number {
     h = mix(h, e.id);
     h = mix(h, e.tileX);
     h = mix(h, e.tileY);
-    h = mix(h, Math.round(e.hp));
+    h = mix(h, e.hp <= 0 ? 0 : 1);
     h = mix(h, e.ruined ? 1 : 0);
   }
   return h;

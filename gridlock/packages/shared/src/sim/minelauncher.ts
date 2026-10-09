@@ -102,7 +102,7 @@ export function tickMineLaunchers(state: MatchState, dt: number): void {
     }
     if (Math.hypot(o.x - e.x, o.y - e.y) > mineLaunchReach(state)) {
       e.state = "move";
-      if (e.waypoints.length === 0 || state.tick % 8 === 0) {
+      if (e.waypoints.length === 0 || (state.tick + e.id) % 8 === 0) {
         // Nowhere to walk and still short: the order ends rather than standing forever.
         if (!setPath(state, e, o.x, o.y) && e.waypoints.length === 0) stop(e);
       }

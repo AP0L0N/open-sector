@@ -167,7 +167,7 @@ function tickCrewWalk(state: MatchState, unit: Entity, gun: Entity): void {
     return;
   }
   unit.state = "move";
-  if (unit.waypoints.length === 0 || state.tick % 8 === 0) {
+  if (unit.waypoints.length === 0 || (state.tick + unit.id) % 8 === 0) {
     const spot = crewSpot(gun, unit);
     setPath(state, unit, spot.x, spot.y);
   }
@@ -255,7 +255,7 @@ function tickTowOrder(state: MatchState, truck: Entity): void {
     return;
   }
   truck.state = "move";
-  if (truck.waypoints.length === 0 || state.tick % 8 === 0) {
+  if (truck.waypoints.length === 0 || (state.tick + truck.id) % 8 === 0) {
     const spot = trailPoint(gun, truck);
     setPath(state, truck, spot.x, spot.y);
   }
