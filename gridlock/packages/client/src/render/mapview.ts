@@ -379,6 +379,7 @@ const FIELD_BAR_FILL = "#7cc8ff";
 import { INTERCEPT_BURST_SIZE, RAM_MISS_BURST_SIZE, interceptorTrail } from "./ram.js";
 import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
+import { drawOwnerPennant, drawOwnerRing, ownerRingPoints, ownerRingRadius } from "./owner-mark.js";
 import { buildingShadowFootprint, convexHull, drawCastShadows, shadowOffset, treeShadowFootprint } from "./cast-shadow.js";
 import { buildingGroundElev, drawYardWear, WALL_SHARE, wallFootprint, yardWearFootprint } from "./building-ground.js";
 import { footprintPeak, radarReachTiles, showsReachRing } from "./radar-reach.js";
@@ -4415,6 +4416,7 @@ export class MapView {
     items.push({ layer: HOLE_DRAW_LAYER, z: -Infinity, run: () => drawCastShadows(this.ctx, castShadows) });
     this.collectRemains(items);
     this.collectUnitShadows(items);
+    this.collectOwnerRings(items, w, h, now);
     this.collectMaulerCarts(items, w, h);
     this.collectGunCrews(items, w, h);
     this.collectTrackKicks(items);
@@ -5895,6 +5897,27 @@ export class MapView {
     }
   }
 
+  /** Every unit stands in a ring of its commander's colour, under its blob and everything standing. */
+  private collectOwnerRings(items: DrawItem[], w: number, h: number, now: number): void {
+    for (const e of this.curr.entities) {
+      if (e.kind !== "unit" || e.wreck || e.garrisonedIn != null || isTorpedoBody(e.type)) continue;
+      const p = this.lerpEnt(e);
+      const c = this.toScreen(p.x, p.y);
+      if (c.x < -48 || c.y < -48 || c.x > w + 48 || c.y > h + 48) continue;
+      const fade = this.sightFade(e, now);
+      if (fade <= 0) continue;
+      const infantry = isInfantryType(e.type);
+      const radius = ownerRingRadius(catalog(e.type).radius, infantry ? INFANTRY_VISUAL_SCALE : UNIT_VISUAL_SCALE, infantry);
+      const pts = ownerRingPoints(p.x, p.y, radius).map((q) => this.toScreen(q.x, q.y));
+      const hex = this.ownerColor(e);
+      items.push({
+        layer: HOLE_DRAW_LAYER,
+        z: isoDepth(p.x, p.y),
+        run: () => drawOwnerRing(this.ctx, pts, hex, (e.submerged ? SUBMERGED_ALPHA : 1) * fade),
+      });
+    }
+  }
+
   /** Mauler carts draw as their own depth-sorted object behind the hitch. */
   private collectMaulerCarts(items: DrawItem[], w: number, h: number): void {
     const now = performance.now();
@@ -6657,6 +6680,10 @@ export class MapView {
       ctx.textAlign = "center";
       ctx.fillStyle = "#e8dcc4";
       ctx.fillText(name, stack.x, stack.y - 12);
+    }
+    // Whose it is: a pennant in the owner's colour, or the colour of whoever holds a house.
+    if (e.ownerId || e.garrison?.ownerId) {
+      drawOwnerPennant(ctx, Math.round(stack.x - layoutW / 2 - 6), Math.round(stack.y + 6), hex, ghost ? 0.6 : 1);
     }
     if (!ghost) {
       this.maybeHp(e, stack.x - layoutW / 2, stack.y + 3, layoutW);
