@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { EntityView, MatchSnapshot } from "@gridlock/shared";
-import { impactSound, SoundTracker, type SoundEvent } from "./sound-events.js";
+import { impactSound, SENSOR_CALL_GAP_MS, SoundTracker, type SoundEvent } from "./sound-events.js";
 
 const ME = "p1";
 
@@ -52,6 +52,24 @@ describe("SoundTracker", () => {
     assert.equal(announced(t.step(snap({ sonar: sonar([7, 8]) } as never), 300)), 0);
     assert.equal(announced(t.step(snap({}), 400)), 0, "lost contact is quiet");
     assert.equal(announced(t.step(snap({ sonar: sonar([8]) } as never), 500)), 1, "heard again");
+  });
+
+  it("lets the Cyborg that read a new contact call it, radar before heat, once per gap", () => {
+    const t = new SoundTracker();
+    const borg = unit(1, "cyborg");
+    const boss = unit(2, "cyborgcommander");
+    const heat = (id: number, by: number) => ({ id, x: 0, y: 0, by });
+    const armor = (id: number, by: number) => ({ id, x: 0, y: 0, by, armored: true as const });
+    const calls = (evs: SoundEvent[]) => kinds(evs, "voice").filter((e) => ["thermal", "radar"].includes((e as { event: string }).event));
+    t.step(snap({ entities: [borg, boss], thermal: [heat(7, 1)] } as never), 0);
+    assert.deepEqual(calls(t.step(snap({ entities: [borg, boss], thermal: [heat(7, 1)] } as never), 100)), [], "already read at the start");
+    assert.deepEqual(calls(t.step(snap({ entities: [borg, boss], thermal: [heat(7, 1), heat(8, 1), armor(9, 2)] } as never), 200)), [
+      { kind: "voice", type: "cyborgcommander", event: "radar" },
+    ]);
+    assert.deepEqual(calls(t.step(snap({ entities: [borg, boss], thermal: [heat(10, 1)] } as never), 300)), [], "inside the gap");
+    assert.deepEqual(calls(t.step(snap({ entities: [borg, boss], thermal: [heat(11, 1)] } as never), 300 + SENSOR_CALL_GAP_MS)), [
+      { kind: "voice", type: "cyborg", event: "thermal" },
+    ]);
   });
 
   it("an ASW helicopter's sortie: pilot answers on take-off without the announcer, calls the drop, and lands with its deck sound", () => {

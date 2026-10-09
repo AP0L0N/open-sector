@@ -61,7 +61,7 @@ export type SoundEvent =
    * One of your units speaks without being clicked: it just left the factory, (special) did its work
    * on its own, or (load) took someone aboard.
    */
-  | { kind: "voice"; type: string; event: "ready" | "special" | "load" | LinkVoice }
+  | { kind: "voice"; type: string; event: "ready" | "special" | "load" | LinkVoice | SensorVoice }
   /**
    * A unit's own effect at a point, played without an order: the ASW helicopter settling back on
    * its deck, one of your defences going up (sandbags thumped down, a gun set in its pit), or
@@ -77,6 +77,9 @@ export type SoundEvent =
 export type LinkSfx = "shutdown" | "reboot" | "uplink";
 /** A Cyborg of yours going dark or waking up yours; your Commander starting a takeover. */
 export type LinkVoice = "shutdown" | "online" | "takeover";
+
+/** A Cyborg calling a new contact: a soldier's heat (`thermal`) or a moving hull on the Commander's APS radar (`radar`). */
+export type SensorVoice = "thermal" | "radar";
 
 /** Least time between two fire sounds from one shooter, by type. A burst sample covers the rest. */
 const FIRE_GAP_MS: Record<string, number> = {
@@ -132,6 +135,8 @@ const SHELL_ECHO_MS = 2500;
 
 const UNDER_ATTACK_GAP_MS = 25_000;
 const UNIT_ATTACK_GAP_MS = 30_000;
+/** Least time between two Cyborg contact calls. A squad sweeping a treeline would otherwise chatter. */
+export const SENSOR_CALL_GAP_MS = 10_000;
 /** A building at or under this share of its health that vanishes was destroyed, not sold. */
 const LOST_HP_SHARE = 0.4;
 
@@ -163,6 +168,9 @@ export class SoundTracker {
   private linkDown = false;
   /** Submarines your sonar heard in the last snapshot. One that was not there is a new contact. */
   private sonarHeard = new Set<number>();
+  /** Thermal and APS contacts in the last snapshot. One that was not there is a new contact. */
+  private thermalHeard = new Set<number>();
+  private sensorCallAt = -Infinity;
   private queueReady = new Map<string, boolean>();
   private queueType = new Map<string, string | null>();
   private underAttackAt = -Infinity;
@@ -190,6 +198,7 @@ export class SoundTracker {
       this.lowPower = match.you.lowPower;
       this.linkDown = match.you.cyborgShutdownIn != null;
       this.sonarHeard = new Set((match.sonar ?? []).map((c) => c.id));
+      this.thermalHeard = new Set((match.thermal ?? []).map((c) => c.id));
       this.noteQueues(match, out, true);
       this.prevById = byId;
       out.push({ kind: "announce", event: "start" });
@@ -377,6 +386,7 @@ export class SoundTracker {
     const heard = new Set((match.sonar ?? []).map((c) => c.id));
     if ([...heard].some((id) => !this.sonarHeard.has(id))) out.push({ kind: "announce", event: "sonarcontact" });
     this.sonarHeard = heard;
+    this.noteThermal(match, byId, out, now);
 
     if (match.winner && !this.ended) {
       this.ended = true;
@@ -440,6 +450,21 @@ export class SoundTracker {
     // Cleared while your Cyborgs are still yours: the link is back, not lost.
     else if (!down && this.linkDown && !lostOwn) out.push({ kind: "announce", event: "cyborglinkrestored" });
     this.linkDown = down;
+  }
+
+  /**
+   * A new thermal or APS contact: the Cyborg that read it calls it. A moving hull on the
+   * radar is called before a soldier's heat. One call per SENSOR_CALL_GAP_MS.
+   */
+  private noteThermal(match: MatchSnapshot, byId: Map<number, EntityView>, out: SoundEvent[], now: number): void {
+    const contacts = match.thermal ?? [];
+    const fresh = contacts.filter((c) => !this.thermalHeard.has(c.id));
+    this.thermalHeard = new Set(contacts.map((c) => c.id));
+    const c = fresh.find((f) => f.armored) ?? fresh[0];
+    if (!c || now - this.sensorCallAt < SENSOR_CALL_GAP_MS) return;
+    const type = byId.get(c.by)?.type ?? (c.armored ? "cyborgcommander" : "cyborg");
+    this.sensorCallAt = now;
+    out.push({ kind: "voice", type, event: c.armored ? "radar" : "thermal" });
   }
 
   /** Construction lanes: a new job is "Building", the flip to ready is "Construction complete". */

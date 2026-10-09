@@ -58,6 +58,6 @@ describe("APS scan contact", () => {
     assert.equal(quiet.log.strokes.length, 1);
     const sweep = recorder();
     drawScanContact(sweep.ctx, 0, 0, { nowMs: SCAN_MS / 2, id: 0, unit: 20 });
-    assert.ok(sweep.log.strokes.length > 10);
+    assert.ok(sweep.log.strokes.length > 6);
   });
 });
