@@ -13,8 +13,8 @@ Blender path does, so the engine and compose tools treat them alike.
             gridlock/packages/client/src/assets/units/bv222/hull/0001.png … 0016.png
   he111     the He 111 torpedo bomber, same camera and face order; its wingspan sets the scale.
             gridlock/packages/client/src/assets/units/he111/hull/0001.png … 0016.png
-  blackbird the Blackbird recon jet, same camera and face order; its length sets the scale.
-            gridlock/packages/client/src/assets/units/blackbird/hull/0001.png … 0016.png
+  horten    the Horten VII flying wing, same camera and face order; its wingspan sets the scale.
+            gridlock/packages/client/src/assets/units/horten/hull/0001.png … 0016.png
   drone     the Drone Op's quadcopter, same camera and face order.
             gridlock/packages/client/src/assets/units/drone/hull/0001.png … 0016.png
   aswheli   the Destroyer's ASW helicopter, same camera and face order.
@@ -84,9 +84,6 @@ MAT = {
     "rust": (hex_rgb("#8b3a2a"), 0.05, 1.0),
     "sock": (hex_rgb("#c45a12"), 0.0, 1.0),
     "white": (hex_rgb("#d8d4c4"), 0.0, 1.0),
-    # The Blackbird's near-black heat paint, a little sheen on it, and its darker smoked glass.
-    "jet": (hex_rgb("#2b2f3a"), 0.30, 1.0),
-    "jetglass": (hex_rgb("#5d7480"), 0.50, 1.0),
     # Wade pool. Close to the map's water tile, with a pale lip of foam.
     "water": (hex_rgb("#1e5564"), 0.04, 1.0),
     "foam": (hex_rgb("#d5e4e0"), 0.02, 1.0),
@@ -593,77 +590,81 @@ def build_he111() -> Mesh:
     return m
 
 
-def build_blackbird() -> Mesh:
-    """Blackbird recon jet in meters. +x nose, +y left wing, +z up. Nacelle bellies lowest.
+def build_horten() -> Mesh:
+    """Horten H.VII flying wing in meters. +x nose, +y left wing, +z up. Belly lowest.
 
-    A long slim fuselage with flat chines running from the nose back into a
-    thin delta wing, two big engine nacelles at mid-span with a pointed inlet
-    spike up front, two fins on the nacelles canted in toward each other, and a
-    small cockpit glazing well forward. All near-black. Neutral band ahead of
-    the tail and neutral fin tips for the team tint. The sheet flies level, so
-    no gear hangs down.
+    No fuselage and no tail: a thick centre section with a glazed two-seat
+    canopy faired into the leading edge, a swept wing tapering to narrow tips,
+    and two Argus engines buried in the wing either side of the centre, each
+    turning a pusher propeller behind the trailing edge on an extension shaft.
+    Splinter camo on top, pale underneath. A neutral band across the centre
+    section's back, neutral wingtip panels, and neutral spinners for the team
+    tint. The sheet flies level, so no gear hangs down.
     """
     m = Mesh()
-    zc = 1.05  # fuselage and nacelle centerline over the nacelle bellies
+    zc = 1.15  # centre-section chord line over the belly
+    # Centre section: a short, deep lifting body, blunt in front, thinning to the trailing edge.
     stations = [
-        (16.4, 0.05, 0.05, 0.02),
-        (14.2, 0.42, 0.30, 0.04),
-        (11.5, 0.72, 0.48, 0.08),
-        (8.5, 0.92, 0.60, 0.10),
-        (4.0, 1.05, 0.66, 0.08),
-        (0.0, 1.05, 0.66, 0.04),
-        (-5.0, 0.95, 0.60, 0.00),
-        (-8.5, 0.80, 0.52, 0.00),
-        (-10.0, 0.72, 0.48, 0.00),
-        (-13.5, 0.40, 0.30, 0.00),
-        (-15.8, 0.10, 0.10, 0.00),
+        (2.75, 0.10, 0.10, 0.00),
+        (2.45, 0.62, 0.46, 0.02),
+        (1.60, 0.90, 0.66, 0.04),
+        (0.20, 0.95, 0.70, 0.04),
+        (-1.40, 0.92, 0.56, 0.02),
+        (-2.60, 0.80, 0.36, 0.00),
+        (-3.50, 0.66, 0.12, 0.00),
     ]
     rings = [ellipse_ring(x, 0.0, zc + oz, hw, hh, 18) for x, hw, hh, oz in stations]
+    n_ring = len(rings[0])
 
-    def fus_mat(r: int, s: int) -> str:
-        return "team" if r == 7 else "jet"
+    def body_mat(r: int, s: int) -> str:
+        if r == 0:
+            return "metal"
+        if math.sin(2 * math.pi * (s + 0.5) / n_ring) < -0.4:
+            return "under"
+        if r == 4 and math.sin(2 * math.pi * (s + 0.5) / n_ring) > 0.3:
+            return "team"  # band across the back, where the others carry it ahead of the tail
+        return "camo"
 
-    m.loft(rings, fus_mat)
-    # Cockpit glazing: a low hood well forward, framed.
-    can = [ellipse_ring(x, 0.0, zc + 0.48, hw, hh, 12) for x, hw, hh in ((11.4, 0.10, 0.05), (10.6, 0.40, 0.30), (9.0, 0.44, 0.34), (7.6, 0.18, 0.10))]
-    m.loft(can, lambda r, s: "jet" if r == 0 or s % 4 == 0 else "jetglass")
-    # Chines: thin flat plates widening from the nose back into the wing's leading edge.
+    m.loft(rings, body_mat)
+    # Tandem canopy: a long low glazed hood on the centre section, framed.
+    can = [(2.25, 0.16, 0.08), (1.85, 0.40, 0.34), (0.70, 0.44, 0.42), (-0.30, 0.38, 0.32), (-0.95, 0.12, 0.08)]
+    can_rings = [ellipse_ring(x, 0.0, zc + 0.52, hw, hh, 14) for x, hw, hh in can]
+    m.loft(can_rings, lambda r, s: "frame" if r == 0 or s % 4 == 0 or r == 2 else "glass")
+    # Swept wing: root, engine bay, outer panel, and a narrow tip. A little dihedral.
     wz = zc - 0.05
+    panels = [
+        (2.05, -3.30, 0.80, 0.00),
+        (1.45, -3.05, 2.40, 0.10),
+        (-0.30, -2.90, 5.50, 0.28),
+        (-2.10, -3.40, 8.90, 0.48),
+        (-2.75, -3.45, 9.95, 0.55),
+    ]
+    thick = [0.80, 0.66, 0.42, 0.18, 0.10]
+    eng_y = 2.40
     for side in (1, -1):
-        wing_panel(m, (14.0, 13.6, 0.40 * side, wz), (4.0, -1.0, 2.10 * side, wz), "jet", "jet", 0.10, 0.14)
-        wing_panel(m, (4.0, -1.0, 2.10 * side, wz), (1.0, -2.0, 3.00 * side, wz), "jet", "jet", 0.14, 0.18)
-    # Thin delta wing out to a short, square tip.
-    for side in (1, -1):
-        wing_panel(m, (1.2, -12.6, 1.00 * side, wz), (-6.6, -12.4, 5.00 * side, wz - 0.02), "jet", "jet", 0.30, 0.20)
-        wing_panel(m, (-6.6, -12.4, 5.00 * side, wz - 0.02), (-10.2, -12.2, 8.45 * side, wz - 0.06), "jet", "jet", 0.20, 0.08)
-    # Engine nacelles through the wing at mid-span, an inlet spike out front, open exhausts at the back.
-    ny = 4.0
-    for side in (1, -1):
-        y = ny * side
-        nac = [
-            ellipse_ring(x, y, zc, r, r, 16)
-            for x, r in ((1.6, 0.62), (0.6, 0.78), (-4.0, 0.86), (-11.0, 0.86), (-13.6, 0.80), (-14.4, 0.70))
+        for i in range(len(panels) - 1):
+            (l0, t0, y0, z0), (l1, t1, y1, z1) = panels[i], panels[i + 1]
+            top = "team" if i == len(panels) - 2 else "camo"
+            wing_panel(m, (l0, t0, y0 * side, wz + z0), (l1, t1, y1 * side, wz + z1), top, "under", thick[i], thick[i + 1])
+        # Engine bay: a low hump over the buried Argus, a cooling intake in the leading edge.
+        y = eng_y * side
+        ez = wz + 0.10
+        hump = [
+            ellipse_ring(x, y, ez, hw, hh, 12)
+            for x, hw, hh in ((1.35, 0.12, 0.10), (0.90, 0.40, 0.42), (-1.40, 0.42, 0.40), (-2.80, 0.26, 0.22), (-3.15, 0.16, 0.14))
         ]
-        m.loft(nac, lambda r, s: "metal" if r == 0 else "jet", cap0=False)
-        spike = [ellipse_ring(x, y, zc, r, r, 12) for x, r in ((4.4, 0.03), (3.0, 0.30), (1.4, 0.52))]
-        m.loft(spike, "metal")
-        exh = [ellipse_ring(x, y, zc, r, r, 12) for x, r in ((-14.4, 0.58), (-14.45, 0.02))]
-        m.loft(exh, "tire")
-        # Fin on top of the nacelle, canted in toward the fuselage, its tip neutral for the team tint.
-        lean = -0.95 * side
-        root = zc + 0.70
-        fin = [
-            [np.array([-9.8, y - 0.08, root]), np.array([-14.0, y - 0.08, root]), np.array([-14.0, y + 0.08, root]), np.array([-9.8, y + 0.08, root])],
-            [np.array([-12.0, y + lean * 0.75 - 0.06, root + 2.4]), np.array([-14.3, y + lean * 0.75 - 0.06, root + 2.4]), np.array([-14.3, y + lean * 0.75 + 0.06, root + 2.4]), np.array([-12.0, y + lean * 0.75 + 0.06, root + 2.4])],
-        ]
-        m.loft(fin, "jet")
-        tip = [
-            fin[1],
-            [np.array([-12.6, y + lean - 0.05, root + 3.2]), np.array([-14.4, y + lean - 0.05, root + 3.2]), np.array([-14.4, y + lean + 0.05, root + 3.2]), np.array([-12.6, y + lean + 0.05, root + 3.2])],
-        ]
-        m.loft(tip, "team")
+        m.loft(hump, lambda r, s: "metal" if r == 0 else "under" if math.sin(2 * math.pi * (s + 0.5) / 12) < -0.5 else "camo")
+        # Extension shaft fairing, the spinner, and a translucent pusher disc behind the trailing edge.
+        shaft = [ellipse_ring(x, y, ez, r, r, 10) for x, r in ((-3.10, 0.16), (-3.45, 0.10))]
+        m.loft(shaft, "metal")
+        spin = [ellipse_ring(x, y, ez, r, r, 10) for x, r in ((-3.45, 0.20), (-3.75, 0.14), (-3.95, 0.02))]
+        m.loft(spin, "team")
+        ctr = m.v((-3.55, y, ez))
+        n = 28
+        rim = [m.v((-3.55, y + 1.15 * math.cos(2 * math.pi * k / n), ez + 1.15 * math.sin(2 * math.pi * k / n))) for k in range(n)]
+        for k in range(n):
+            m.tri(ctr, rim[k], rim[(k + 1) % n], "prop")
     return m
-
 
 def build_aswheli() -> Mesh:
     """The Destroyer's ASW helicopter in meters. +x nose, +y left, +z up. Skids at z=0.
@@ -955,10 +956,10 @@ def render_he111(out: Path, cell: int = 256, ss: int = 4) -> None:
     render_turntable(build_he111(), out, "he111_hull", "he111-hull.json", 0.038, 1.6, cell=cell, ss=ss)
 
 
-def render_blackbird(out: Path, cell: int = 256, ss: int = 4) -> None:
-    # A 32.7 m airframe on a 16.9 m span: the length, not the span, sets the scale, so the
-    # long nose-to-tail fills the cell on the broadside faces the way the Stuka's span does.
-    render_turntable(build_blackbird(), out, "blackbird_hull", "blackbird-hull.json", 0.026, 1.4, cell=cell, ss=ss)
+def render_horten(out: Path, cell: int = 256, ss: int = 4) -> None:
+    # A 20 m span: like the He 111, the wingspan sets the scale and fills the cell
+    # the way the Stuka's does (span x scale ~ 0.84 of the cell).
+    render_turntable(build_horten(), out, "horten_hull", "horten-hull.json", 0.042, 1.2, cell=cell, ss=ss)
 
 
 def render_drone(out: Path, cell: int = 256, ss: int = 4) -> None:
@@ -1063,15 +1064,15 @@ def render_turntable(
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["stuka", "fw190", "bv222", "he111", "blackbird", "drone", "aswheli"])
+    ap.add_argument("what", choices=["stuka", "fw190", "bv222", "he111", "horten", "drone", "aswheli"])
     ap.add_argument("--out", required=True)
     args = ap.parse_args()
     if args.what == "bv222":
         render_bv222(Path(args.out))
     elif args.what == "he111":
         render_he111(Path(args.out))
-    elif args.what == "blackbird":
-        render_blackbird(Path(args.out))
+    elif args.what == "horten":
+        render_horten(Path(args.out))
     elif args.what == "drone":
         render_drone(Path(args.out))
     elif args.what == "aswheli":

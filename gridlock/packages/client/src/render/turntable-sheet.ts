@@ -123,7 +123,7 @@ const he111HullGlob = import.meta.glob("../assets/units/he111/hull/*.png", {
   import: "default",
 }) as Record<string, string>;
 
-const blackbirdHullGlob = import.meta.glob("../assets/units/blackbird/hull/*.png", {
+const hortenHullGlob = import.meta.glob("../assets/units/horten/hull/*.png", {
   eager: true,
   import: "default",
 }) as Record<string, string>;
@@ -187,8 +187,8 @@ export const FW190_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
 export const BV222_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
 /** He 111: same aircraft fit as the Stuka; the wingspan fills the cell. */
 export const HE111_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
-/** Blackbird: same aircraft fit as the Stuka; its length fills the cell. */
-export const BLACKBIRD_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
+/** Horten VII: same aircraft fit as the Stuka; the wingspan fills the cell. */
+export const HORTEN_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
 /** Quadcopter: same aircraft fit as the Stuka; the rotor span fills the cell, the pod's belly sits on the contact line. */
 export const DRONE_OPTS: TurntableSheetOpts = { ...STUKA_OPTS };
 /**
@@ -741,27 +741,27 @@ export function bindTorpedoBomberSheets(hullImage: HTMLImageElement): void {
     });
 }
 
-let blackbirdPrevious: ComposedTurntable | null = null;
+let hortenPrevious: ComposedTurntable | null = null;
 
-/** Blackbird drop-ins: one hull sheet and a cameo, same fit rules as the Stuka. */
+/** Horten VII drop-ins: one hull sheet and a cameo, same fit rules as the Stuka. */
 export function bindReconSheets(hullImage: HTMLImageElement): void {
   let hullUrls: string[];
   try {
-    hullUrls = pickTurntableUrls(blackbirdHullGlob);
+    hullUrls = pickTurntableUrls(hortenHullGlob);
   } catch (err) {
-    console.error("blackbird turntable", err);
+    console.error("horten turntable", err);
     return;
   }
   void Promise.all(hullUrls.map(loadImage))
-    .then((hullImgs) => composeAligned([hullImgs], BLACKBIRD_OPTS))
+    .then((hullImgs) => composeAligned([hullImgs], HORTEN_OPTS))
     .then((next) => {
-      revoke(blackbirdPrevious);
-      blackbirdPrevious = next;
+      revoke(hortenPrevious);
+      hortenPrevious = next;
       hullImage.src = next.sheetUrls[0] ?? "";
-      applyCameo(next.cameoUrl, "--blackbird-cameo");
+      applyCameo(next.cameoUrl, "--horten-cameo");
     })
     .catch((err) => {
-      console.error("blackbird turntable", err);
+      console.error("horten turntable", err);
     });
 }
 

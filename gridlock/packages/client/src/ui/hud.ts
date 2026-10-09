@@ -1136,7 +1136,7 @@ const TYPE_ORDER: EntityType[] = [
   "fw190",
   "bv222",
   "he111",
-  "blackbird",
+  "horten",
   "stuka",
   "drone",
   "aswheli",
