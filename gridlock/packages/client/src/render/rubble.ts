@@ -1,4 +1,8 @@
 /**
+ * A fallen house's ruin (art from tools/sprites/render_ruins.py, see `ruinSpriteFor`) burns on for
+ * minutes after the fall: the timing of those fires is here. The procedural heap below is
+ * the stand-in drawn until the ruin's image has loaded.
+ *
  * A fallen house: the rubble heap drawn where the building stood. The sim keeps the
  * footprint impassable but lets sight over it, so the drawing stays low: a dust floor,
  * broken wall stubs along the back edges, and fallen blocks and timbers inside the lot.
@@ -32,6 +36,35 @@ export interface RubbleDraw {
   alpha: number;
   /** World point `up` world units above the ground to screen. */
   project: (wx: number, wy: number, up: number) => { x: number; y: number };
+}
+
+/** A fallen house's main fire burns at full height this long, game ms. */
+export const RUIN_FIRE_FULL_MS = 45_000;
+/** ...then dies down to embers by here. */
+export const RUIN_FIRE_OUT_MS = 150_000;
+/** The heap smoulders, smoking thinner and greyer, until here. */
+export const RUIN_SMOKE_OUT_MS = 300_000;
+
+/** How long seat `index` burns against the main fire: the main one longest, the rest 55–90% of it. */
+export function ruinFireLife(id: number, index: number): number {
+  if (index === 0) return 1;
+  const h = Math.imul((id * 31 + index * 7919) >>> 0, 2654435761) >>> 0;
+  return 0.55 + ((h >>> 8) / 0x1000000) * 0.35;
+}
+
+/**
+ * One fire seat on a ruin `ageMs` (game time) after the fall: flame heat 0–1, then the
+ * smoulder's smoke 0–1 once the flames are low. Both 0 once it is cold.
+ */
+export function ruinFireState(ageMs: number, life: number): { heat: number; smoke: number } {
+  const full = RUIN_FIRE_FULL_MS * life;
+  const out = RUIN_FIRE_OUT_MS * life;
+  const cold = RUIN_SMOKE_OUT_MS * life;
+  if (ageMs < 0 || ageMs >= cold) return { heat: 0, smoke: 0 };
+  // Flares up over the first seconds, holds, then sinks to a bed of embers.
+  const heat = ageMs < full ? Math.min(1, 0.55 + ageMs / 4000) : ageMs < out ? 1 - (ageMs - full) / (out - full) : 0;
+  const smoke = ageMs < out ? Math.max(0.35, heat) : 0.35 * (1 - (ageMs - out) / (cold - out));
+  return { heat: Math.max(0, heat), smoke: Math.max(0, smoke) };
 }
 
 /** Tallest piece of a heap as a share of a tile. Well under a crouched man. */
