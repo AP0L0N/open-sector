@@ -1287,17 +1287,26 @@ export function scrapCells(s: Sheet): number {
   return n;
 }
 
-/** Cells from a start within which a scrap field is in the yard's build range once the Rig unpacks. */
-const HOME_SCRAP_CELLS = BUILD_RADIUS / TILE_SUBDIV + 2;
-
-/** Start numbers with no scrap cell near enough for the yard to place a Smelter. */
+/**
+ * Start numbers with no scrap tile near enough for the yard to place a Smelter. The Core
+ * unpacks centred on the start; a Smelter goes up within BUILD_RADIUS of it (Chebyshev,
+ * footprint to footprint) and needs scrap under any one of its tiles.
+ */
 export function startsFarFromScrap(s: Sheet): number[] {
+  const core = catalog("core");
+  const smelter = catalog("smelter");
+  const reachX = BUILD_RADIUS + smelter.tileW - 1;
+  const reachY = BUILD_RADIUS + smelter.tileH - 1;
   const out: number[] = [];
   for (const sp of s.spawns) {
+    const cx0 = sp.x - Math.floor(core.tileW / 2);
+    const cy0 = sp.y - Math.floor(core.tileH / 2);
+    const cx1 = cx0 + core.tileW - 1;
+    const cy1 = cy0 + core.tileH - 1;
     let near = false;
-    for (let y = Math.max(0, sp.y - HOME_SCRAP_CELLS); y <= Math.min(s.height - 1, sp.y + HOME_SCRAP_CELLS) && !near; y++) {
-      for (let x = Math.max(0, sp.x - HOME_SCRAP_CELLS); x <= Math.min(s.width - 1, sp.x + HOME_SCRAP_CELLS); x++) {
-        if (isScrapTile(s.tiles[y * s.width + x]) && Math.hypot(x - sp.x, y - sp.y) <= HOME_SCRAP_CELLS) {
+    for (let y = Math.max(0, cy0 - reachY); y <= Math.min(s.height - 1, cy1 + reachY) && !near; y++) {
+      for (let x = Math.max(0, cx0 - reachX); x <= Math.min(s.width - 1, cx1 + reachX); x++) {
+        if (isScrapTile(s.tiles[y * s.width + x])) {
           near = true;
           break;
         }
