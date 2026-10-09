@@ -20,12 +20,13 @@ import {
   fellTreeAt,
   hasCore,
   inBounds,
+  allies,
   inBuildRadius,
   footprint,
   isWater,
   makeEntity,
   occupant,
-  tileNearOwnBuildings,
+  tileNearAlliedBuildings,
   scrapAt,
   tileListBlocked,
   tilesBlocked,
@@ -327,10 +328,11 @@ export function raiseBuilding(
   return b;
 }
 
-function pieceNearOwnBuildings(state: MatchState, ownerId: string, structure: YardFieldType, piece: FieldPiece): boolean {
+function pieceNearAlliedBuildings(state: MatchState, ownerId: string, structure: YardFieldType, piece: FieldPiece): boolean {
   const tiles = fieldTiles(state, structure, piece.x, piece.y, piece.facing, 0);
   if (tiles.length === 0) return false;
-  return tiles.some((t) => tileNearOwnBuildings(state.entities.values(), ownerId, t.x, t.y));
+  const isAlly = (o: string) => allies(state, ownerId, o);
+  return tiles.some((t) => tileNearAlliedBuildings(state.entities.values(), isAlly, t.x, t.y));
 }
 
 /**
@@ -379,7 +381,7 @@ export function placeBaseField(
       stop = "Cannot place there.";
       break;
     }
-    if (!pieceNearOwnBuildings(state, playerId, structure, piece)) {
+    if (!pieceNearAlliedBuildings(state, playerId, structure, piece)) {
       stop = "Too far from your base.";
       break;
     }
