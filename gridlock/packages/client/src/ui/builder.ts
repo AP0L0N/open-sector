@@ -155,7 +155,7 @@ const GROUND: readonly GroundKind[] = [
 const SURFACE_GROUND: readonly GroundKind[] = [
   { tile: TILE_EMPTY, name: "Grass", img: grassUrl, hint: "Open ground. Paints over anything." },
   { tile: TILE_WATER, name: "Water", img: waterUrl, hint: "Pond. Sinks to the valley floor." },
-  { tile: TILE_ROCK, name: "Rock", img: rockUrl, hint: "Rocky slope. Blocks walking, not sight." },
+  { tile: TILE_ROCK, name: "Rock", img: rockUrl, hint: "Bare bedrock. A look only: units walk and build on it." },
 ];
 
 interface CoverKind {
@@ -2498,7 +2498,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       brushRow,
       el("p", {
         class: "bld-hint",
-        text: "The brush paints ground, lays a surface over open ground, shapes elevation, and stamps mountains. [ and ] change the size. Meadow, dirt, sand, and stones are looks only. Grass, water, and rock change the ground. A mountain's rock opens where the ground beside it matches its height.",
+        text: "The brush paints ground, lays a surface over open ground, shapes elevation, and stamps mountains. [ and ] change the size. Meadow, dirt, sand, stones, and rock are looks only. Grass and water change the ground. A mountain's rock opens where the ground beside it matches its height.",
       }),
     ),
   );
@@ -2683,7 +2683,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       bridgeFaceRow,
       el("p", {
         class: "bld-hint",
-        text: "Laid brick by brick, like a wall: click where it starts, click each corner, Enter lays it, right-click takes a corner back. The deck keeps the level of the ground you start on; its piles or piers reach down to whatever is under it, and the water stays water. Start it high on a bank and small boats sail under it (never the LST or the Battle Ship). Bricks stand on water or open ground, not on rock or woods. They belong to no one: anyone crosses, only a force-attack hurts one, and a brick shot down drops into the water while the rest stands.",
+        text: "Laid brick by brick, like a wall: click where it starts, click each corner, Enter lays it, right-click takes a corner back. The deck keeps the level of the ground you start on; its piles or piers reach down to whatever is under it, and the water stays water. Start it high on a bank and small boats sail under it (never the LST or the Battle Ship). Bricks stand on water or open ground, not on mountain rock or woods. They belong to no one: anyone crosses, only a force-attack hurts one, and a brick shot down drops into the water while the rest stands.",
       }),
     ),
   );

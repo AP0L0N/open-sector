@@ -146,6 +146,7 @@ import {
   torpedoesOf,
   isTorpedoBody,
   isLowFieldWork,
+  TITAN_POD_ARC_DEG,
 } from "../catalog.js";
 import { aimableBridge, bridgeSweep, strikeBridge, tagBridgeRounds } from "./bridge.js";
 import type { ImpactKind, ImpactView } from "../protocol.js";
@@ -398,7 +399,7 @@ export function tickCombat(state: MatchState, dt: number): void {
   // Rocket racks: their own clock, whatever the main gun is doing. Titan pods also pick their own target.
   for (const e of state.entities.values()) {
     if (!rocketsOf(e.type) || !canFight(e) || powerSilences(e)) continue;
-    tickRocketPods(state, e);
+    tickRocketPods(state, e, dt);
   }
   // The roof mount's first look ran before those launches. Catch the new missiles before they fly.
   for (const e of state.entities.values()) {
@@ -1729,7 +1730,7 @@ function fireAtCurrent(state: MatchState, e: Entity, dt: number): void {
   const turreted = hasTurret(e.type);
   let remainingDeg = 180;
   if (turreted) {
-    remainingDeg = slewTurret(e, target, dt, ground);
+    remainingDeg = slewTurret(state, e, target, dt, ground);
   }
 
   const aimX = ground?.x ?? target?.x;
@@ -2216,7 +2217,7 @@ function launchMortar(
  * A laid launcher (the Nebelwerfer) has no other gun: it fires on the unit's
  * own target, only while halted, and only once the frame bears on it.
  */
-function tickRocketPods(state: MatchState, e: Entity): void {
+function tickRocketPods(state: MatchState, e: Entity, dt: number): void {
   if (stowedInTransport(state, e)) {
     e.rocketSalvo = 0;
     e.rocketTarget = null;
@@ -2236,6 +2237,14 @@ function tickRocketPods(state: MatchState, e: Entity): void {
   }
   e.rocketTarget = aim.target?.id ?? null;
   if (rack.laid && (e.waypoints.length > 0 || !launcherBears(e, aim.x, aim.y))) return;
+  // Titan pods ride the torso. Aloft the gun is stowed, so the pods' own target turns it; they fire once it bears.
+  if (!rack.laid) {
+    if (flightStowsGun(e)) {
+      const def = catalog(e.type);
+      turnTurretToward(e, aim.x, aim.y, def.turretTurnDegPerSec ?? def.turnDegPerSec, dt);
+    }
+    if (!podBears(e, aim.x, aim.y)) return;
+  }
   const range = weaponRangeWorld(state, e);
   const dist = Math.hypot(aim.x - e.x, aim.y - e.y);
   fireRockets(state, e, rack, aim.x, aim.y, range, dist, aim.target);
@@ -2269,6 +2278,19 @@ function launcherBears(e: Entity, x: number, y: number): boolean {
   while (d > Math.PI) d -= Math.PI * 2;
   while (d < -Math.PI) d += Math.PI * 2;
   return Math.abs(d) <= (gunArcDegOf(e.type) * Math.PI) / 180;
+}
+
+/** The torso, and the pods fixed on it, faces (x, y) within TITAN_POD_ARC_DEG. */
+function podBears(e: Entity, x: number, y: number): boolean {
+  return Math.abs(angleOff(e.turretFacing ?? e.facing, Math.atan2(y - e.y, x - e.x))) <= (TITAN_POD_ARC_DEG * Math.PI) / 180;
+}
+
+/** The main gun is laying the torso: it has a target, or a forced aim on the ground. */
+function gunSteersTorso(state: MatchState, e: Entity): boolean {
+  if (flightStowsGun(e)) return false;
+  if (currentTarget(state, e)) return true;
+  const o = e.order;
+  return o?.kind === "forceattack" && o.x != null && o.y != null;
 }
 
 /** The main gun's target, if it has one. */
@@ -2319,9 +2341,11 @@ function podCanReach(state: MatchState, e: Entity, o: Entity, range: number): bo
 /**
  * Where the pods fire next. A player's force-attack wins. A salvo under way
  * stays on its target while it lives. Otherwise the pods take the best target
- * in reach, and among targets as good as the main gun's they take a different
- * one, so a Titan facing two tanks works both. With nothing else in reach they
- * back up the main gun, even on a structure it was ordered to shell.
+ * in reach — only on the torso's bearing while the main gun lays it — and among
+ * targets as good as the main gun's they take a different one, so two tanks in
+ * line both get worked. With nothing else in reach they back up the main gun,
+ * even on a structure it was ordered to shell. They fire only once the torso
+ * bears (tickRocketPods).
  */
 function podAim(state: MatchState, e: Entity): { x: number; y: number; target?: Entity } | null {
   const range = weaponRangeWorld(state, e);
@@ -2339,9 +2363,13 @@ function podAim(state: MatchState, e: Entity): { x: number; y: number; target?: 
     }
   }
   const main = mainTargetId(e);
+  // While the main gun lays the torso, the pods take only what lies on its bearing.
+  // Otherwise their pick turns the torso (slewTurret, or tickRocketPods aloft).
+  const onBearing = gunSteersTorso(state, e);
   let best: Entity | undefined;
   let bestScore = -Infinity;
   for (const c of poolCircle(state, e.x, e.y, range)) {
+    if (onBearing && !podBears(e, c.x, c.y)) continue;
     const value = podValue(state, e, c);
     if (value <= 0 || !podCanReach(state, e, c, range)) continue;
     // Tier first, then nearest. The main gun's target drops half a tier, so an
@@ -2947,6 +2975,7 @@ function mayFireSmoke(e: Entity): boolean {
 }
 
 function slewTurret(
+  state: MatchState,
   e: Entity,
   target: Entity | undefined,
   dt: number,
@@ -2958,6 +2987,9 @@ function slewTurret(
   if (arc != null) return slewInArc(e, target, ground, arc, rate, dt);
   if (ground) return turnTurretToward(e, ground.x, ground.y, rate, dt);
   if (target && target.hp > 0) return turnTurretToward(e, target.x, target.y, rate, dt);
+  // The gun has nothing: a Titan's torso turns its pods onto their own target (a plane, say).
+  const pods = rocketsOf(e.type) && !rocketRackOf(e.type).laid && e.rocketTarget != null ? state.entities.get(e.rocketTarget) : undefined;
+  if (pods && pods.hp > 0) return turnTurretToward(e, pods.x, pods.y, rate, dt);
   if (e.order?.kind === "rotate" && e.order.x != null && e.order.y != null) {
     return turnTurretToward(e, e.order.x, e.order.y, rate, dt);
   }

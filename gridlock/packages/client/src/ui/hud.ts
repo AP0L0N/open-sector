@@ -2060,11 +2060,14 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       on: !!view?.rotateMode && !view.rotateLight,
     });
     if (units.some((e) => hasSpotlight(e.type) && e.spotFacing != null)) {
+      const titanOnly = units.every((e) => !hasSpotlight(e.type) || e.type === "titan");
       out.push({
         slot: "rotate-light",
         act: "rotate-light",
         label: "Rotate light",
-        title: "Swing the searchlight, then click where it should point. At night its beam lights the water far out. It turns with the ship.",
+        title: titanOnly
+          ? "Swing the torso lamp, then click where it should point. At night its beam lights the ground far out; up on the leg jets it lights one wide pool ahead. It turns with the Titan."
+          : "Swing the searchlight, then click where it should point. At night its beam lights the water far out. It turns with the ship.",
         on: !!view?.rotateMode && !!view.rotateLight,
       });
     }

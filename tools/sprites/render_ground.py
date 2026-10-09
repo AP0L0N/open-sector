@@ -253,6 +253,100 @@ def stones(seed: int) -> np.ndarray:
     return out * (0.88 + grain * 0.24)[..., None]
 
 
+def voronoi(rng: np.random.Generator, size: int, cells: int, squash: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Periodic jittered Voronoi: (F1, F2 - F1, owning cell id) per pixel.
+    `squash` > 1 shortens distances across y, so cells lie long like a flat plane in the 2:1 view."""
+    step = size / cells
+    gy, gx = np.mgrid[0:cells, 0:cells]
+    px = ((gx + rng.uniform(0.1, 0.9, (cells, cells))) * step).ravel()
+    py = ((gy + rng.uniform(0.1, 0.9, (cells, cells))) * step).ravel()
+    yy, xx = np.mgrid[0:size, 0:size].astype(float)
+    f1 = np.full((size, size), np.inf)
+    f2 = np.full((size, size), np.inf)
+    own = np.zeros((size, size), int)
+    for k in range(px.size):
+        dx = np.abs(xx - px[k])
+        dx = np.minimum(dx, size - dx)
+        dy = np.abs(yy - py[k])
+        dy = np.minimum(dy, size - dy) * squash
+        d = np.sqrt(dx * dx + dy * dy)
+        closer = d < f1
+        f2 = np.where(closer, f1, np.minimum(f2, d))
+        own = np.where(closer, k, own)
+        f1 = np.where(closer, d, f1)
+    return f1, f2 - f1, own
+
+
+def rock(seed: int) -> np.ndarray:
+    """Weathered bedrock breaking the turf: jointed slabs stepping up and down, meandering
+    fractures, lichen colonies, grit and moss in the joints, loose scree. Built as a height
+    field and lit from the north-west, so it reads as relief rather than paint."""
+    rng = np.random.default_rng(seed)
+    s = SIZE
+    yy, xx = np.mgrid[0:s, 0:s].astype(float)
+    # Slabs: Voronoi cells, each at its own level. Only some shared edges open into joints;
+    # elsewhere neighbouring slabs are one weathered surface with a step between them.
+    _f1, gap, own = voronoi(rng, s, 6, 1.8)
+    n_cells = own.max() + 1
+    lift = rng.uniform(0, 1, n_cells) ** 1.5 * 14.0
+    step = lift[own]
+    # Soften each step over a few pixels so the light catches a rounded edge, not a cliff.
+    for _ in range(7):
+        step = (step * 2 + np.roll(step, 1, 0) + np.roll(step, -1, 0) + np.roll(step, 1, 1) + np.roll(step, -1, 1)) / 6
+    open_n = fbm(rng, s, 2.3, aniso=1.4)
+    joint_w = (0.8 + 2.6 * smoothstep(0.45, 0.75, open_n)) * (0.7 + 0.6 * fbm(rng, s, 1.6))
+    joint = (1 - smoothstep(0.0, 1.0, gap / np.maximum(joint_w, 0.05))) * smoothstep(0.42, 0.58, open_n)
+    # Fractures: ridged noise gives long meandering lines, kept to patches of the sheet.
+    r1 = 1 - np.abs(fbm(rng, s, 1.9, aniso=1.5) * 2 - 1)
+    fracture = smoothstep(0.93, 0.985, r1) * smoothstep(0.4, 0.6, fbm(rng, s, 2.2))
+    # Bedding: faint ledges along the long axis, bent by slow noise.
+    bend = (fbm(rng, s, 2.4, aniso=1.4) - 0.5) * 3.0
+    ledge = (((yy * 11 + xx * 2) / s + bend) % 1.0) ** 3 * 1.6
+    swell = (fbm(rng, s, 2.0, aniso=1.6) - 0.5) * 10
+    rough = fbm(rng, s, 1.15, aniso=1.3, cutoff=8)
+    pits = fbm(rng, s, 0.7, cutoff=60)
+    h = step + swell + ledge + (rough - 0.5) * 4.0 + (pits - 0.5) * 1.2 - joint * 6.0 - fracture * 2.5
+    # Light from the north-west (screen up-left), mostly from above; y is foreshortened.
+    gx = (np.roll(h, -1, 1) - np.roll(h, 1, 1)) * 0.5
+    gy = (np.roll(h, -1, 0) - np.roll(h, 1, 0)) * 0.5 * 1.6
+    nz = 1.0 / np.sqrt(gx * gx + gy * gy + 1.0)
+    nx, ny = -gx * nz, -gy * nz
+    lx, ly, lz = -0.5, -0.4, 0.77
+    lam = np.clip(nx * lx + ny * ly + nz * lz, 0, 1)
+    shade = 0.35 + 0.8 * lam
+    # Cavities hold shadow: height below its blurred neighbourhood.
+    blur = h.copy()
+    for _ in range(4):
+        blur = (blur + np.roll(blur, 2, 0) + np.roll(blur, -2, 0) + np.roll(blur, 2, 1) + np.roll(blur, -2, 1)) / 5
+    cavity = np.clip((blur - h) / 3.0, 0, 1)
+    shade = shade * (1 - 0.5 * cavity)
+    # Albedo: cold grey stone, a slight shift slab to slab, faint iron stain.
+    tone = np.clip(fbm(rng, s, 2.0, aniso=1.5) * 0.75 + rng.uniform(0, 0.25, n_cells)[own], 0, 1)
+    base = ramp([(0, "#504c45"), (0.45, "#67635a"), (0.8, "#78736a"), (1, "#837d70")], tone)
+    grain = fbm(rng, s, 0.9, aniso=1.2, cutoff=40)
+    base = base * (0.88 + grain * 0.24)[..., None]
+    iron = smoothstep(0.66, 0.86, fbm(rng, s, 2.1, aniso=1.6))
+    base = mix(base, base * np.array([1.07, 0.96, 0.84]), iron * 0.45)
+    # Lichen: small colonies, a clump of specks where a slow field allows it.
+    where = fbm(rng, s, 2.0, aniso=1.4)
+    flecks = fbm(rng, s, 0.6, cutoff=50)
+    pale = smoothstep(0.6, 0.75, where) * smoothstep(0.52, 0.62, flecks) * (1 - joint)
+    base = mix(base, rgb("#9a9a78"), pale * 0.6)
+    dark = smoothstep(0.36, 0.2, where) * smoothstep(0.5, 0.7, 1 - flecks) * (1 - joint)
+    base = mix(base, rgb("#3a3830"), dark * 0.35)
+    out = base * shade[..., None]
+    # Joints fill with grit and a little moss.
+    moss = fbm(rng, s, 1.8)
+    fill = mix(rgb("#2a241c"), rgb("#2e3923"), smoothstep(0.45, 0.7, moss))
+    out = mix(out, fill * (0.8 + 0.3 * grain)[..., None], np.clip(joint * 1.3, 0, 1) * 0.85)
+    out = mix(out, out * 0.5, fracture * 0.5)
+    # Loose scree gathered by the joints: a lit chip and its shadow down-right.
+    chips = speck_layer(rng, s, 900, (0.6, 1.5)) * np.clip(joint * 3 + 0.15, 0, 1)
+    out = mix(out, out * 0.55, np.roll(chips, (1, 1), (0, 1)) * 0.7)
+    out = mix(out, out * 1.3 + 12, chips * 0.6)
+    return out
+
+
 def swamp(seed: int) -> np.ndarray:
     rng = np.random.default_rng(seed)
     s = SIZE
@@ -291,6 +385,7 @@ SURFACES = {
     "ground-sand": lambda: sand(67),
     "ground-stones": lambda: stones(71),
     "ground-swamp": lambda: swamp(83),
+    "ground-rock": lambda: rock(101),
 }
 
 

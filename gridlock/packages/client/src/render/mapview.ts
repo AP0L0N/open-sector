@@ -22,6 +22,9 @@ import {
   aimsOwnGun,
   mountArcDegOf,
   hasSpotlight,
+  lampPools,
+  TITAN_LAMP_POOL_AHEAD_TILES,
+  TITAN_LAMP_POOL_RADIUS_TILES,
   headlightLit,
   hullLamps,
   HEADLIGHT_HALF_DEG,
@@ -645,7 +648,7 @@ const EXTRUDE: Record<EntityType, number> = {
   bridge: 4,
   bigbridge: 6,
   walker: 30,
-  titan: 40,
+  titan: 46,
   mammoth: 15,
   nebelwerfer: 22,
   artillery: 14,
@@ -1037,7 +1040,7 @@ export class MapView {
   private patrolLoop = false;
   forceAttackMode = false;
   rotateMode = false;
-  /** Rotate light: the rotate click swings only the selected Battle Ships' searchlights. */
+  /** Rotate light: the rotate click swings only the selected Battle Ships' and Titans' lamps. */
   rotateLight = false;
   guardMode = false;
   /**
@@ -3063,7 +3066,7 @@ export class MapView {
     return out;
   }
 
-  /** Own Battle Ships in the selection whose searchlight burns: what Rotate light swings. */
+  /** Own Battle Ships and Titans in the selection whose lamp burns: what Rotate light swings. */
   private ownShipLampIds(): number[] {
     const out: number[] = [];
     for (const id of this.selected) {
@@ -4422,7 +4425,17 @@ export class MapView {
     for (const { e, facing } of lamps) {
       const c = Math.cos(facing);
       const s = Math.sin(facing);
-      for (const b of towerBlobs) lay(e.x + c * b.d, e.y + s * b.d, b.r, b.a, "tower");
+      const at = e.kind === "unit" ? this.lerpEnt(e) : e;
+      // A Titan on its leg jets tips the lamp down onto one wide pool ahead of it.
+      if (lampPools(e)) {
+        const ahead = TITAN_LAMP_POOL_AHEAD_TILES * ts;
+        const r = TITAN_LAMP_POOL_RADIUS_TILES * ts;
+        // Two stacked pools: a flat bright disc with a soft rim, not a glow fading from the middle.
+        lay(at.x + c * ahead, at.y + s * ahead, r * 1.3, 0.9, "tower");
+        lay(at.x + c * ahead, at.y + s * ahead, r * 0.9, 0.7, "tower");
+        continue;
+      }
+      for (const b of towerBlobs) lay(at.x + c * b.d, at.y + s * b.d, b.r, b.a, "tower");
     }
     const headHalf = (HEADLIGHT_HALF_DEG * Math.PI) / 180;
     for (const e of this.curr.entities) {
@@ -4707,6 +4720,13 @@ export class MapView {
         this.drawBeamOutline(e.x, e.y, facing, false);
       }
     }
+    // A selected Titan of yours shows its lamp's reach day and night: the beam's cone, or aloft the pool's ring.
+    for (const { e, facing } of lamps) {
+      if (e.type !== "titan" || !this.selected.has(e.id) || e.ownerId !== this.curr.youPlayerId) continue;
+      const at = this.lerpEnt(e);
+      if (lampPools(e)) this.drawPoolOutline(at.x, at.y, facing);
+      else this.drawBeamOutline(at.x, at.y, facing, false);
+    }
     ctx.restore();
     this.lensAt.clear();
   }
@@ -4731,6 +4751,30 @@ export class MapView {
     ctx.setLineDash([5, 6]);
     ctx.lineWidth = 1.25;
     ctx.strokeStyle = fill ? "rgba(255, 226, 150, 0.8)" : "rgba(255, 226, 150, 0.55)";
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** A Titan aloft: the dashed ring of the one pool its lamp lights, out ahead along `facing`. */
+  private drawPoolOutline(wx: number, wy: number, facing: number): void {
+    const ctx = this.ctx;
+    const ts = this.ts();
+    const ahead = TITAN_LAMP_POOL_AHEAD_TILES * ts;
+    const r = TITAN_LAMP_POOL_RADIUS_TILES * ts;
+    const cx = wx + Math.cos(facing) * ahead;
+    const cy = wy + Math.sin(facing) * ahead;
+    ctx.save();
+    ctx.beginPath();
+    for (let i = 0; i <= 32; i++) {
+      const a = (i / 32) * Math.PI * 2;
+      const p = this.toScreen(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+    ctx.setLineDash([5, 6]);
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = "rgba(255, 226, 150, 0.55)";
     ctx.stroke();
     ctx.restore();
   }
@@ -6912,6 +6956,21 @@ export class MapView {
     this.lensAt.set(e.id, pose);
   }
 
+  /**
+   * The Titan's big lamp on the torso top, between the pods, turned like its beam.
+   * (ox, oy) is the contact on screen. The braced and wading torsos ride lower in
+   * their sheets (12 and 32 of 192 cell px), so the lamp drops with them.
+   */
+  private drawTitanLamp(e: EntityView, ox: number, oy: number, size: number, def: UnitSpriteDef): void {
+    const drop = def === TITAN_BRACED_SPRITE ? 12 / 192 : def === TITAN_WADE_SPRITE ? 32 / 192 : 0;
+    const broken = !!e.crits?.includes("lamp");
+    const burning = e.spotFacing != null && e.hp > 0 && !broken;
+    const lit = burning ? lampGlow(daylightAt(this.curr.tick)) : 0;
+    const heading = this.spotShown.get(e.id) ?? e.spotFacing ?? e.facing;
+    const pose = drawSearchlightAt(this.ctx, ox, oy - size * (0.5 - drop), size * 0.021, heading, { lit, broken });
+    this.lensAt.set(e.id, pose);
+  }
+
   private drawSpritedUnit(e: EntityView, def: UnitSpriteDef): void {
     const ctx = this.ctx;
     const p = this.lerpEnt(e);
@@ -7027,6 +7086,7 @@ export class MapView {
     if (drawn && e.ship && (!e.wreck || sheet === def)) this.drawShipLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
     // A wrecked Feuerwirbel's mounts are torn off; its hulk sheet shows the empty rings.
     if (drawn && e.mounts && !e.wreck) this.drawTwinMounts(e.mounts, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
+    if (drawn && e.type === "titan" && !e.wreck) this.drawTitanLamp(e, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size, def);
     ctx.restore();
     ctx.restore();
     if (drawn && e.ship && !e.wreck) {

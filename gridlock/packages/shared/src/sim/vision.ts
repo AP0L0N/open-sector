@@ -11,6 +11,8 @@ import {
   SPOTLIGHT_REACH_TILES,
   TOWER_EYE_HEIGHT,
   SPOTLIGHT_POLE_HEIGHT,
+  TITAN_LAMP_POOL_AHEAD_TILES,
+  TITAN_LAMP_POOL_RADIUS_TILES,
   TICK_DT,
   catalog,
   entityIsScouting,
@@ -49,6 +51,7 @@ import {
   headlightLit,
   hullLamps,
   lampHeading,
+  lampPools,
   nightSightMul,
   nightTiles,
   spotFacingOf,
@@ -77,6 +80,8 @@ export type SightSource = {
   scoutHp?: number;
   /** Aircraft height. A plane in the air looks down over hills. */
   air?: { alt: number };
+  /** Leg jets or a jet pack. A Titan aloft turns its lamp into a pool on the ground. */
+  jet?: { alt: number };
   /** Read for a watch tower's lamp. */
   facing?: number;
   spotFacing?: number;
@@ -327,6 +332,9 @@ type SightParams = {
   seye: number;
   /** Mammoth flank lamps, same reach and width as the nose light. Absent on every other eye. */
   flanks?: readonly { dx: number; dy: number }[];
+  /** A Titan aloft: the lamp lights one round pool this wide, `spa` tiles out along the heading, instead of a cone. */
+  spr?: number;
+  spa?: number;
 };
 
 type SpotPaint = {
@@ -336,6 +344,8 @@ type SpotPaint = {
   scos: number;
   seye: number;
   flanks?: readonly { dx: number; dy: number }[];
+  spr?: number;
+  spa?: number;
 };
 
 const NO_SPOT: SpotPaint = { sr: 0, sdx: 0, sdy: 0, scos: 1, seye: 0 };
@@ -360,8 +370,14 @@ function spotOf(e: SightSource, light: SightLight, daySight: number, eye: number
       return NO_SPOT;
     }
     const a = lampHeading(spotFacingOf({ facing: e.facing ?? 0, spotFacing: e.spotFacing }));
-    // The pole lamp shines from its own height, under the tower cab's.
-    const seye = e.type === "spotlight" ? SPOTLIGHT_POLE_HEIGHT : TOWER_EYE_HEIGHT;
+    // Up on its jets the Titan's lamp tips down onto one pool ahead, lit from its height.
+    if (lampPools(e)) {
+      const spa = TITAN_LAMP_POOL_AHEAD_TILES;
+      const spr = TITAN_LAMP_POOL_RADIUS_TILES;
+      return { sr: Math.ceil(spa + spr), sdx: Math.cos(a), sdy: Math.sin(a), scos: 1, seye: eye, spr, spa };
+    }
+    // The pole lamp shines from its own height, under the tower cab's. The Titan's rides its torso.
+    const seye = e.type === "spotlight" ? SPOTLIGHT_POLE_HEIGHT : e.kind === "unit" && e.type === "titan" ? eye : TOWER_EYE_HEIGHT;
     return { sr: SPOTLIGHT_REACH_TILES, sdx: Math.cos(a), sdy: Math.sin(a), scos: SPOT_COS, seye };
   }
   if (!headlightLit(e) || daySight <= 0) return NO_SPOT;
@@ -459,6 +475,8 @@ function sameSightParams(a: SightParams, b: SightParams): boolean {
     a.sdy === b.sdy &&
     a.scos === b.scos &&
     a.seye === b.seye &&
+    a.spr === b.spr &&
+    a.spa === b.spa &&
     sameFlanks(a.flanks, b.flanks)
   );
 }
@@ -485,6 +503,9 @@ function sightBoxRadius(p: SightParams, elev: boolean): number {
 /** One lamp's beam reaches this tile, before line of sight and smoke. */
 function inSpotCone(p: SightParams, sdx: number, sdy: number, x: number, y: number): boolean {
   if (p.sr <= 0) return false;
+  if (p.spr != null && p.spa != null) {
+    return Math.hypot(x - (p.ox + sdx * p.spa), y - (p.oy + sdy * p.spa)) <= p.spr;
+  }
   const d = sightDist(x, y, p.ox, p.oy);
   if (d < 1 || d > p.sr) return false;
   const dx = x - p.ox;
@@ -986,6 +1007,7 @@ function visionKeyNow(state: MatchState, playerId: string): number {
       h = mix(h, e.crits.includes("lamp") ? 0 : 1);
       h = mix(h, e.garrison.length);
       h = mix(h, Math.round(lampHeading(spotFacingOf(e)) * 4096));
+      h = mix(h, lampPools(e) ? 1 : 0);
     }
     if (light.spots && headlightLit(e)) {
       const facing = e.facing ?? 0;
@@ -1118,6 +1140,8 @@ function sightReachKey(p: SightParams): number {
   h = mix(h, Math.round(p.sdy * 4096));
   h = mix(h, Math.round(p.scos * 4096));
   h = mix(h, Math.round(p.seye * 64));
+  h = mix(h, Math.round((p.spr ?? 0) * 64));
+  h = mix(h, Math.round((p.spa ?? 0) * 64));
   const flanks = p.flanks;
   if (flanks) for (let i = 0; i < flanks.length; i++) h = mix(mix(h, Math.round(flanks[i]!.dx * 4096)), Math.round(flanks[i]!.dy * 4096));
   return h;
