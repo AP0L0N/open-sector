@@ -477,7 +477,7 @@ describe("research gate", () => {
     makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 });
     seedMuster(state, 20, 10);
     const gated = Object.keys(TECH_REQUIRES) as TrainType[];
-    assert.deepEqual([...gated].sort(), ["apocalypse", "battleship", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "feuerwirbel", "he111", "horten", "jagdtiger", "jumpjet", "mammoth", "nebelwerfer", "stuka", "submarine", "titan", "warden"]);
+    assert.deepEqual([...gated].sort(), ["apocalypse", "battleship", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "he111", "horten", "jagdtiger", "jumpjet", "mammoth", "nebelwerfer", "stuka", "submarine", "titan", "warden"]);
     const cyborgs = new Set<TrainType>(["cyborg", "cyborgcommander"]);
     // Ships ask for the Marine Base first, bombers for the Airfield; their gates are checked on their own.
     for (const unit of gated.filter((u) => producerType(u) !== "dock" && producerType(u) !== "airfield")) {
@@ -486,6 +486,8 @@ describe("research gate", () => {
       if (!r.ok) assert.equal(r.message, unit === "cyborg" ? "Need a Cyborg Central." : "Need a Research Facility.", unit);
     }
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "ss3" }).ok, true);
+    // The Feuerwirbel needs only the Machine Shop.
+    assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "feuerwirbel" }).ok, true);
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "rifleman" }).ok, true);
 
     const lab = makeEntity(state, "research", "A", tileCenter(10, ts), tileCenter(14, ts), { tileX: 10, tileY: 14 });

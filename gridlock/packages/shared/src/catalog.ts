@@ -884,7 +884,6 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   warden: "research",
   apocalypse: "research",
   jagdtiger: "research",
-  feuerwirbel: "research",
   cyborg: "cyborgcentral",
   cyborgcommander: ["research", "cyborgcentral"],
   titan: "research",
@@ -3662,7 +3661,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Feuerwirbel, Titan, Nebelwerfer, Drone Op, Submarine, and Destroyer, with a Radar Station the Battle Ship, and with a Cyborg Central the Cyborg Commander.",
+    blurb: "Lab block with an observatory dome and a coil annex. Unlocks the Tiger, Apocalypse, Jagdtiger, Titan, Nebelwerfer, Drone Op, Submarine, and Destroyer, with a Radar Station the Battle Ship, and with a Cyborg Central the Cyborg Commander.",
   },
   cyborgcentral: {
     type: "cyborgcentral",
