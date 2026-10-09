@@ -9,8 +9,8 @@
  */
 import type { BarrageTracer } from "./barrage-tracer.js";
 
-/** One round in this many carries a tracer. */
-export const CIWS_TRACER_EVERY = 3;
+/** One round in this many carries a tracer. The rest are plain ball: no streak. */
+export const CIWS_TRACER_EVERY = 9;
 /** Ms the rounds of one snapshot are spread over. One sim tick at normal speed. */
 export const CIWS_STREAM_MS = 100;
 /** World px a tracer covers per ms. Fast, but slow enough to see. */
@@ -18,8 +18,8 @@ export const CIWS_TRACER_PX_PER_MS = 2.2;
 /** Shortest and longest flight of one streak, ms. */
 export const CIWS_TRACER_MIN_MS = 40;
 export const CIWS_TRACER_MAX_MS = 180;
-/** Streaks in a burst at a rocket. */
-export const CIWS_BURST_TRACERS = 3;
+/** Streaks in a burst at a rocket. One, like the belt: a tracer in nine. */
+export const CIWS_BURST_TRACERS = 1;
 /** Degrees the burst streaks fan either side of the bearing. */
 export const CIWS_BURST_FAN_DEG = 6;
 
