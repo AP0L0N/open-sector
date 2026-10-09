@@ -549,12 +549,11 @@ export interface Entity {
   /** Cyborg only: sim tick until which nothing takes his HP. Set when the legs are torn off. */
   shieldUntilTick?: number;
   /**
-   * Cyborg only: shut down for want of a link (sim/cyborg-link.ts). He belongs to no one,
-   * stands still, answers nothing, and fires at nothing until a Cyborg Commander takes him over.
+   * Cyborg only: shut down for want of a link (sim/cyborg-link.ts). Still his side's, but he
+   * stands still, takes no orders, and fires at nothing until the link is back or an enemy
+   * Cyborg Commander takes him over.
    */
   shutdown?: true;
-  /** Shut-down Cyborg only: the side he went dark on. He wakes on it again once its link is back. */
-  shutdownFrom?: string;
   /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
   takeover?: { by: number; ticks: number };
   /** Cyborg Commander only: force-field points left. Hits come off these before HP. */

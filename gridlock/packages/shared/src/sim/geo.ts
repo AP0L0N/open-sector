@@ -52,7 +52,6 @@ import {
   TILE_DIAMOND_SCRAP,
   TILE_EMPTY,
   TILE_FENCE,
-  TILE_ROCK,
   TILE_SCRAP,
   TILE_WATER,
   isGroveTile,
@@ -335,7 +334,6 @@ export function initGrids(map: MapDef): {
       t === TILE_BLOCKED ||
       t === TILE_WATER ||
       t === TILE_FENCE ||
-      t === TILE_ROCK ||
       isMountainCliff(map.tiles, map.heights, map.width, map.height, x, y)
     ) {
       blocked[i] = 1;

@@ -216,7 +216,6 @@ export function restoreMatch(
       ...e,
       ownerId: mapOwner(e.ownerId),
       captureOwnerId: e.captureOwnerId ? mapOwner(e.captureOwnerId) : e.captureOwnerId,
-      shutdownFrom: e.shutdownFrom ? mapOwner(e.shutdownFrom) : e.shutdownFrom,
     });
   }
   for (const p of save.projectiles) bump(p.id);

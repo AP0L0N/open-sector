@@ -180,6 +180,31 @@ describe("trees", () => {
     assert.equal(at(93, y - 9), TILE_TREE);
   });
 
+  it("walks a Titan through a forest, felling the trees beside it too", () => {
+    const { state } = twoPlayerMatch();
+    const ts = state.tileSize;
+    const y = 60;
+    clearPad(state, 60, y - 12, 130, y + 12);
+    for (let gy = y - 10; gy <= y + 10; gy++) {
+      for (let gx = 86; gx <= 100; gx++) plant(state, gx, gy);
+    }
+    assert.equal(walkable(state, 93, y, "titan"), true);
+    const titan = makeEntity(state, "titan", "A", tileCenter(70, ts), tileCenter(y, ts));
+    titan.facing = 0;
+    titan.turretFacing = 0;
+    applyCommand(state, "A", { type: "cmd.move", ids: [titan.id], x: tileCenter(116, ts), y: tileCenter(y, ts) });
+    ticks(state, 600);
+    assert.ok(titan.x > tileCenter(110, ts), `stopped at tile ${titan.x / ts}`);
+    const at = (gx: number, gy: number) => state.terrain[gy * state.width + gx];
+    const beside = Math.floor((titan.radius + ts) / ts);
+    for (let gx = 86; gx <= 100; gx++) {
+      assert.equal(at(gx, y), TILE_EMPTY, `centreline ${gx}`);
+      assert.equal(at(gx, y + beside), TILE_EMPTY, `beside ${gx}`);
+      assert.equal(at(gx, y - beside), TILE_EMPTY, `beside ${gx}`);
+    }
+    assert.equal(at(93, y + 9), TILE_TREE);
+  });
+
   it("destroys a lone tree as soon as the hull overlaps it", () => {
     const { state } = twoPlayerMatch();
     const ts = state.tileSize;

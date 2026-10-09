@@ -92,11 +92,11 @@ function bullets(state: MatchState, e: Entity): number {
 const fw = catalog("feuerwirbel");
 
 describe("feuerwirbel catalog", () => {
-  it("is a turreted tank trained at the Armory behind Research", () => {
+  it("is trained at the Armory with no Research Facility needed", () => {
     assert.equal(fw.name, "Feuerwirbel");
     assert.ok(TRAIN_TYPES.includes("feuerwirbel"));
     assert.equal(producerType("feuerwirbel"), "armory");
-    assert.equal(TECH_REQUIRES.feuerwirbel, "research");
+    assert.equal(TECH_REQUIRES.feuerwirbel, undefined);
     assert.equal(hasTurret("feuerwirbel"), true);
     assert.equal(fw.tracked, true);
     assert.equal(fw.leavesWreck, true);

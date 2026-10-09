@@ -4,7 +4,6 @@ import {
   CYBORG_SHUTDOWN_SECONDS,
   CYBORG_TAKEOVER_RANGE_TILES,
   CYBORG_TAKEOVER_SECONDS,
-  NEUTRAL_OWNER,
   TICK_DT,
   isCivilianType,
   secondsToTicks,
@@ -15,8 +14,8 @@ import { applyCommand } from "./commands.js";
 import { cyborgLinked, cyborgShutdownIn } from "./cyborg-link.js";
 import { destroyEntity, makeEntity, tileCenter } from "./geo.js";
 import { createMatch, step } from "./match.js";
-import { headlightLit } from "./night.js";
 import { snapshotFor } from "./snapshot.js";
+import { thermalContacts } from "./thermal.js";
 import type { Entity, MatchState } from "./types.js";
 
 function match(): { state: MatchState; a: string; b: string } {
@@ -89,7 +88,7 @@ describe("cyborg link", () => {
     ticks(state, GRACE);
     for (const c of [cy, cy2]) {
       assert.equal(c.shutdown, true);
-      assert.equal(c.ownerId, NEUTRAL_OWNER);
+      assert.equal(c.ownerId, a, "still yours");
       assert.equal(c.order, null);
       assert.deepEqual(c.waypoints, []);
     }
@@ -104,7 +103,7 @@ describe("cyborg link", () => {
     destroyEntity(state, dynamo);
     ticks(state, GRACE + 2);
     assert.equal(cy.shutdown, true);
-    assert.equal(cy.ownerId, NEUTRAL_OWNER);
+    assert.equal(cy.ownerId, a);
   });
 
   it("does not shut down if the link comes back within the grace", () => {
@@ -135,39 +134,67 @@ describe("cyborg link", () => {
     assert.equal(cy.shutdown, true);
   });
 
-  it("goes silent: no orders, no fire, and nobody picks him on their own", () => {
+  it("goes silent: takes no orders and fires at nothing", () => {
     const { state, a, b } = match();
+    const ts = state.tileSize;
     const cy = cyborg(state, a, 60, 40);
     ticks(state, GRACE + 2);
     assert.equal(cy.shutdown, true);
-    const moved = applyCommand(state, a, { type: "cmd.move", ids: [cy.id], x: cy.x + 40, y: cy.y });
-    assert.ok(!moved.ok || cy.waypoints.length === 0, "the old owner's order does nothing");
-    // An enemy rifleman right beside him neither draws his fire nor fires at him.
-    const ts = state.tileSize;
+    const x0 = cy.x;
+    applyCommand(state, a, { type: "cmd.move", ids: [cy.id], x: cy.x + 80, y: cy.y });
+    ticks(state, 30);
+    assert.equal(cy.x, x0, "an order goes nowhere");
+    assert.deepEqual(cy.waypoints, []);
+    // An enemy rifleman right beside him draws no fire.
     const rifle = makeEntity(state, "rifleman", b, cy.x + ts * 3, cy.y);
-    const hp = cy.hp;
+    rifle.holdPosition = true;
     const rifleHp = rifle.hp;
-    ticks(state, 60);
-    assert.equal(cy.hp, hp);
+    ticks(state, 40);
     assert.equal(rifle.hp, rifleHp);
-    assert.equal(rifle.attackTarget ?? null, null);
     const seen = snapshotFor(state, b).entities.find((e) => e.id === cy.id);
     assert.equal(seen?.shutdown, true);
+    assert.equal(seen?.ownerId, a, "the enemy sees him as yours");
   });
 
-  it("puts his headlight out, and lights it again once he is taken over", () => {
-    const { state, a } = match();
+  it("is never picked by his own side, though the enemy may shoot him", () => {
+    const { state, a, b } = match();
     const ts = state.tileSize;
     const cy = cyborg(state, a, 60, 40);
-    assert.equal(headlightLit(cy), true);
     ticks(state, GRACE + 2);
-    assert.equal(headlightLit(cy), false);
-    const view = snapshotFor(state, a).entities.find((e) => e.id === cy.id)!;
-    assert.equal(headlightLit(view), false, "the client draws no beam either");
-    makeEntity(state, "cyborgcommander", a, cy.x - 2 * ts, cy.y);
+    assert.equal(cy.shutdown, true);
+    const friend = makeEntity(state, "gunner", a, cy.x + ts * 3, cy.y);
+    friend.holdPosition = true;
+    const hp = cy.hp;
+    ticks(state, 60);
+    assert.equal(cy.hp, hp, "his own side holds fire");
+    assert.notEqual(friend.attackTarget, cy.id);
+    const foe = makeEntity(state, "gunner", b, cy.x - ts * 3, cy.y);
+    foe.holdPosition = true;
+    ticks(state, 100);
+    assert.ok(cy.hp < hp, `the enemy fires on him (hp ${cy.hp})`);
+  });
+
+  it("darkens his thermal scanner, and lights it again once he is taken over", () => {
+    const { state, a, b } = match();
+    const ts = state.tileSize;
+    const cy = cyborg(state, a, 60, 40);
+    const blind = new Uint8Array(state.width * state.height);
+    /** A fresh foe 6 tiles off his nose, read once and taken away again. */
+    const heard = (): boolean => {
+      cy.facing = 0;
+      const foe = makeEntity(state, "rifleman", b, cy.x + 6 * ts, cy.y);
+      const hit = thermalContacts(state, a, blind).some((c) => c.id === foe.id);
+      destroyEntity(state, foe);
+      return hit;
+    };
+    assert.equal(heard(), true);
+    ticks(state, GRACE + 2);
+    assert.equal(heard(), false, "a shut-down Cyborg reads nothing");
+    const cmd = makeEntity(state, "cyborgcommander", a, cy.x - 2 * ts, cy.y);
     ticks(state, TAKEOVER + 2);
     assert.equal(cy.ownerId, a);
-    assert.equal(headlightLit(cy), true);
+    destroyEntity(state, cmd);
+    assert.equal(heard(), true, "his own scanner, not the Commander's");
   });
 
   it("lets a Cyborg Commander take over a shut-down Cyborg in reach, the enemy's too", () => {
@@ -208,7 +235,7 @@ describe("cyborg link", () => {
     assert.equal(next.ownerId, a);
     ticks(state, TAKEOVER * 3);
     assert.equal(far.shutdown, true, "out of reach stays dark");
-    assert.equal(far.ownerId, NEUTRAL_OWNER);
+    assert.equal(far.ownerId, b);
   });
 
   it("starts over when the Commander walks out of reach", () => {
@@ -222,7 +249,7 @@ describe("cyborg link", () => {
     boss.x = cy.x - (CYBORG_TAKEOVER_RANGE_TILES + 10) * ts;
     ticks(state, 1);
     assert.equal(cy.takeover, undefined);
-    assert.equal(cy.ownerId, NEUTRAL_OWNER);
+    assert.equal(cy.ownerId, b);
   });
 
   it("wakes your dark Cyborgs up yours again once a new Central stands", () => {
@@ -232,14 +259,13 @@ describe("cyborg link", () => {
     hub.hp = 0;
     ticks(state, GRACE + 2);
     assert.equal(cy.shutdown, true);
-    assert.equal(cy.shutdownFrom, a);
+    assert.equal(cy.ownerId, a);
     ticks(state, GRACE * 3);
-    assert.equal(cy.ownerId, NEUTRAL_OWNER, "still dark while the link stays down");
+    assert.equal(cy.shutdown, true, "still dark while the link stays down");
     central(state, a, 20, 6);
     ticks(state, 1);
     assert.equal(cy.ownerId, a);
     assert.equal(cy.shutdown, undefined);
-    assert.equal(cy.shutdownFrom, undefined);
     // Linked again, he stays up.
     ticks(state, GRACE * 2);
     assert.equal(cy.ownerId, a);
