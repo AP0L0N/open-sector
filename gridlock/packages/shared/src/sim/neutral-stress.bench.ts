@@ -1,5 +1,5 @@
 /**
- * Stress run with neutral map units: one idle human, NAI Easy CPUs, and NUNITS
+ * Stress run with neutral map units: one idle human, NAI Defensive CPUs, and NUNITS
  * neutral units scattered over the open ground of MAP. Prints sim / snapshot
  * ms per tick every EVERY ticks (mean over that window).
  *

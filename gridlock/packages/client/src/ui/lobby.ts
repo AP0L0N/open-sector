@@ -1,4 +1,6 @@
 import {
+  AI_DIFFICULTIES,
+  AI_PROFILES,
   COLORS,
   getMap,
   listMaps,
@@ -72,7 +74,7 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
     let nameText = "OPEN";
     if (slot.status === "closed") nameText = "CLOSED";
     if (slot.status === "human") nameText = slot.name ?? "Commander";
-    if (slot.status === "ai") nameText = slot.name ?? "Easy CPU";
+    if (slot.status === "ai") nameText = slot.name ?? `${AI_PROFILES[slot.ai ?? "defensive"].label} CPU`;
     tr.append(el("td", { text: nameText }));
 
     const colorTd = el("td");
@@ -183,6 +185,18 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
     act.style.gap = "4px";
     act.style.alignItems = "center";
     if (isHost && slot.status === "ai") {
+      // The CPU's type: switch it in place.
+      const typeSel = el("select", { attrs: { title: "CPU type" } });
+      typeSel.style.width = "9rem";
+      for (const d of AI_DIFFICULTIES) {
+        const o = el("option", { text: AI_PROFILES[d].label, attrs: { value: d } });
+        if ((slot.ai ?? "defensive") === d) o.selected = true;
+        typeSel.append(o);
+      }
+      typeSel.addEventListener("change", () =>
+        ctx.net.send({ type: "slot.host", slotIndex: slot.index, ai: typeSel.value as (typeof AI_DIFFICULTIES)[number] }),
+      );
+      act.append(typeSel);
       act.append(
         tinyBtn("Remove", false, () =>
           ctx.net.send({ type: "slot.host", slotIndex: slot.index, kick: true }),
@@ -195,11 +209,13 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
         ),
       );
     } else if (isHost && slot.status !== "human") {
-      act.append(
-        tinyBtn("Easy", false, () =>
-          ctx.net.send({ type: "slot.host", slotIndex: slot.index, status: "ai" }),
-        ),
-      );
+      for (const d of AI_DIFFICULTIES) {
+        act.append(
+          tinyBtn(AI_PROFILES[d].label, false, () =>
+            ctx.net.send({ type: "slot.host", slotIndex: slot.index, status: "ai", ai: d }),
+          ),
+        );
+      }
       if (!skirmish) {
         act.append(
           tinyBtn(slot.status === "closed" ? "Open" : "Close", true, () =>
@@ -246,7 +262,10 @@ export function renderLobby(root: HTMLElement, ctx: Ctx): void {
       class: "tiny",
       text: `${filled} / ${room.maxSlots} commanders${cpus ? ` · ${cpus} CPU` : ""} · map seats ${map?.spawns.length ?? 0}`,
     }),
-    el("p", { class: "tiny", text: "Host: Easy on an open slot for a CPU that builds up and pushes now and then." }),
+    el("p", {
+      class: "tiny",
+      text: `Host: seat a CPU on an open slot. ${AI_DIFFICULTIES.map((d) => `${AI_PROFILES[d].label} ${AI_PROFILES[d].blurb}`).join("; ")}.`,
+    }),
   );
   if (!skirmish) {
     const codeRow = el("div", { class: "code-row" });

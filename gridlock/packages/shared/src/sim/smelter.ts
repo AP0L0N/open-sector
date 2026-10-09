@@ -15,11 +15,8 @@ import {
 } from "../catalog.js";
 import { footprintGap, scrapAt, scrapTilesUnder, tilesBlocked } from "./geo.js";
 import { powerOf, productionSpeed } from "./power.js";
-import type { AiDifficulty } from "../protocol.js";
+import { aiProfile } from "./ai-profile.js";
 import type { Entity, MatchState, SimPlayer } from "./types.js";
-
-/** The CPU's head start: its Smelters pour this many times the normal rate. */
-export const AI_SMELTER_MUL: Readonly<Record<AiDifficulty, number>> = { easy: 2 };
 
 /** Scrap tiles a Smelter footprint needs under it. */
 export function smelterScrapNeeded(): number {
@@ -92,7 +89,7 @@ export function smelterIncome(state: MatchState, playerId: string): number {
     }
   }
   const ai = state.players.get(playerId)?.ai;
-  return ai ? n * AI_SMELTER_MUL[ai] : n;
+  return ai ? n * aiProfile(ai).smelterMul : n;
 }
 
 /** Smelters this commander has standing, finished or not on scrap. */

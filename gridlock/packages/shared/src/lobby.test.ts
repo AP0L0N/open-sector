@@ -229,16 +229,16 @@ describe("lobby rules", () => {
     if (!open.ok) assert.equal(open.code, "closed");
   });
 
-  it("lets the host drop an Easy CPU on an open slot", () => {
+  it("lets the host drop a Defensive CPU on an open slot", () => {
     const r = room();
     const add = hostSlot(r, "host", 1, { status: "ai" });
     assert.equal(add.ok, true, !add.ok ? add.message : "");
     const cpu = r.slots[1];
     assert.equal(cpu?.status, "ai");
-    assert.equal(cpu?.ai, "easy");
+    assert.equal(cpu?.ai, "defensive");
     assert.equal(cpu?.ready, true);
     assert.equal(cpu?.playerId, "ai:1");
-    assert.equal(cpu?.name, "Easy CPU");
+    assert.equal(cpu?.name, "Defensive CPU");
     assert.notEqual(cpu?.colorId, r.slots[0]?.colorId);
     updateSelf(r, "host", { ready: true });
     const started = startMatch(r, "host");
@@ -256,7 +256,24 @@ describe("lobby rules", () => {
     assert.equal(r.slots[0]?.team, 0);
   });
 
-  it("lets the host remove an Easy CPU", () => {
+  it("seats a CPU of the asked type and switches it in place", () => {
+    const r = room();
+    assert.equal(hostSlot(r, "host", 1, { status: "ai", ai: "aggressive" }).ok, true);
+    assert.equal(r.slots[1]?.ai, "aggressive");
+    assert.equal(r.slots[1]?.name, "Aggressive CPU");
+    const color = r.slots[1]?.colorId;
+    assert.equal(hostSlot(r, "host", 1, { ai: "balanced" }).ok, true);
+    assert.equal(r.slots[1]?.ai, "balanced");
+    assert.equal(r.slots[1]?.name, "Balanced CPU");
+    assert.equal(r.slots[1]?.playerId, "ai:1");
+    assert.equal(r.slots[1]?.colorId, color, "switching the type keeps the seat");
+    const bad = hostSlot(r, "host", 1, { ai: "easy" as never });
+    assert.equal(bad.ok, false);
+    if (!bad.ok) assert.equal(bad.code, "bad_payload");
+    assert.equal(r.slots[1]?.ai, "balanced");
+  });
+
+  it("lets the host remove a CPU", () => {
     const r = room();
     assert.equal(hostSlot(r, "host", 1, { status: "ai" }).ok, true);
     assert.equal(hostSlot(r, "host", 1, { kick: true }).ok, true);

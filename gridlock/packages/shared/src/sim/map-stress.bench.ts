@@ -1,5 +1,5 @@
 /**
- * Ablation stress run on a Map Builder map file: one idle human vs NAI Easy CPUs.
+ * Ablation stress run on a Map Builder map file: one idle human vs NAI Defensive CPUs.
  *
  *   cd gridlock/packages/shared && FILE=../../data/maps/c-9u3jzf0dh6.json node --import tsx <this file>
  *

@@ -2,6 +2,8 @@ export { createMatch, step, stepMatch } from "./match.js";
 export { SAVE_VERSION, applySaveSeats, exportSave, restoreMatch } from "./save.js";
 export type { RestoredMatch, SaveGame, SaveResult, SaveSeat } from "./save.js";
 export { tickAi, findBuildTile, findSmelterTile } from "./ai.js";
+export { AI_PROFILES, aiProfile } from "./ai-profile.js";
+export type { AiProfile } from "./ai-profile.js";
 export { tickCollision, moveWithCollision } from "./collision.js";
 export { toWreck } from "./wreck.js";
 export { toRubble } from "./rubble.js";

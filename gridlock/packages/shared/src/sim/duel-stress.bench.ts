@@ -3,7 +3,7 @@
  * with N infantry walking a loop toward the middle, plus the map's neutrals.
  *
  *   N=20 TICKS=900 EVERY=300 npm run stress:duel -w @gridlock/shared
- *   WALK=0 stands them still; NAI adds Easy CPUs; FILE picks another map.
+ *   WALK=0 stands them still; NAI adds Defensive CPUs; FILE picks another map.
  *
  * Baseline 2026-10-08 (N=20, before the round-2 work): sim 22-29 ms/tick,
  * two snapshots 1-2 ms, worst 80-180 ms. Target: <= 8 ms mean, worst < 40.

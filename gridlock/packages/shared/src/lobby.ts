@@ -4,6 +4,7 @@ import {
   MIN_HUMANS_TO_START,
   MIN_SLOTS,
   SLOT_COUNT,
+  isAiDifficulty,
   type AiDifficulty,
   type ErrorCode,
   type RoomMode,
@@ -13,6 +14,7 @@ import {
 } from "./protocol.js";
 import { COLORS } from "./colors.js";
 import { getMap } from "./maps.js";
+import { AI_PROFILES } from "./sim/ai-profile.js";
 
 export type LobbyResult<T = void> =
   | { ok: true; value: T }
@@ -72,9 +74,8 @@ export function isAiPlayerId(id: string): boolean {
   return id.startsWith("ai:");
 }
 
-export function aiLabel(difficulty: AiDifficulty = "easy"): string {
-  if (difficulty === "easy") return "Easy CPU";
-  return "CPU";
+export function aiLabel(difficulty: AiDifficulty = "defensive"): string {
+  return `${AI_PROFILES[difficulty].label} CPU`;
 }
 
 export function createRoom(opts: {
@@ -235,12 +236,15 @@ export function hostSlot(
     colorId?: number;
     team?: number;
     spawnId?: number;
+    /** CPU type to seat, or to switch the CPU already in the slot to. */
+    ai?: AiDifficulty;
   },
 ): LobbyResult<void> {
   if (room.hostId !== hostId) return fail("not_host", "Only the host can do that.");
   if (room.phase !== "lobby") return fail("started", "Match already started.");
   const slot = room.slots[slotIndex];
   if (!slot) return fail("bad_slot", "No such slot.");
+  if (action.ai !== undefined && !isAiDifficulty(action.ai)) return fail("bad_payload", "No such CPU type.");
 
   if (action.kick || action.status === "closed" || action.status === "open" || action.status === "ai") {
     if (slot.playerId === hostId) return fail("bad_slot", "Host cannot kick or close their own slot.");
@@ -264,7 +268,10 @@ export function hostSlot(
     if (slot.status !== "ai" && commanders(room).length >= seatsOf(room)) {
       return fail("too_many", `This map seats ${seatsOf(room)}.`);
     }
-    fillAiSlot(room, slot, "easy");
+    if (slot.status === "ai") setAiType(slot, action.ai ?? slot.ai ?? "defensive");
+    else fillAiSlot(room, slot, action.ai ?? "defensive");
+  } else if (action.ai !== undefined && slot.status === "ai") {
+    setAiType(slot, action.ai);
   }
 
   if (slot.status === "ai") {
@@ -279,12 +286,16 @@ export function hostSlot(
 function fillAiSlot(room: RoomState, slot: Slot, difficulty: AiDifficulty): void {
   slot.status = "ai";
   slot.playerId = aiPlayerId(slot.index);
-  slot.name = aiLabel(difficulty);
-  slot.ai = difficulty;
+  setAiType(slot, difficulty);
   slot.ready = true;
   slot.team = 0;
   slot.spawnId = 0;
   slot.colorId = firstFreeColor(room, slot.playerId);
+}
+
+function setAiType(slot: Slot, difficulty: AiDifficulty): void {
+  slot.ai = difficulty;
+  slot.name = aiLabel(difficulty);
 }
 
 function patchAiSeat(
