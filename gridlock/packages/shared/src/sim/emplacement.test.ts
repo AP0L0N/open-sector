@@ -4,6 +4,7 @@ import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
   AIR_CRUISE_ALT,
   BUNKER_GARRISON_CAP,
+  FLAK_BURST_DAMAGE,
   FLAK_FUSE_SCATTER_Z,
   FLAK_RACK,
   FLAK_SCATTER_FAR,
@@ -467,6 +468,43 @@ describe("crewed gun ammunition", () => {
     const burst = state.impacts.find((i) => i.flak);
     assert.ok(burst && burst.z === AIR_CRUISE_ALT, "the client gets a burst at the plane's height");
     assert.equal(state.projectiles.length, 0);
+  });
+
+  it("one flak burst takes a little off every plane of a loose formation", () => {
+    const state = match();
+    const flak = gun(state, "flak");
+    const x = flak.x + 20 * state.tileSize;
+    const y = flak.y;
+    const wing = [planeOver(state, "B", x, y), planeOver(state, "B", x + 40, y - 24), planeOver(state, "B", x - 36, y + 30)];
+    const hp = wing.map((p) => p.hp);
+    state.projectiles = [
+      {
+        id: state.nextId++,
+        ownerId: "A",
+        team: 0,
+        x,
+        y,
+        vx: 0,
+        vy: 0,
+        damage: catalog("flak").damage,
+        penetration: 10,
+        caliber: 37,
+        life: 0.001,
+        ignoreId: flak.id,
+        fromId: flak.id,
+        bounced: false,
+        shell: "he",
+        flight: "flak",
+        z: AIR_CRUISE_ALT + 6,
+        vz: 0,
+      },
+    ];
+    tickProjectiles(state, TICK_DT);
+    wing.forEach((p, i) => {
+      const lost = hp[i]! - p.hp;
+      assert.ok(lost > 0, `plane ${i} is hit`);
+      assert.ok(lost <= FLAK_BURST_DAMAGE * 1.2, `plane ${i} loses only a little (${lost})`);
+    });
   });
 
   it("a forced aim at the ground puts a barrage up over that point", () => {

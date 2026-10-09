@@ -201,14 +201,14 @@ describe("SoundTracker", () => {
     assert.equal(kinds(bang, "fire").length, 0);
   });
 
-  it("one Bofors burst covers the shells that follow, then the gun is heard again", () => {
+  it("the Flak is heard once a shell, every 0.4 s it fires", () => {
     const t = new SoundTracker();
     const flak = building(4, "flak");
     t.step(snap({ entities: [flak] }), 0);
     const shot = (id: number) => ({ id, fromId: 4, x: 4, y: 4, vx: 1, vy: 0, caliber: 37, bounced: false, flak: true, z: 3 });
     assert.equal(kinds(t.step(snap({ entities: [flak], projectiles: [shot(1)] as never }), 100), "fire").length, 1);
-    assert.equal(kinds(t.step(snap({ entities: [flak], projectiles: [shot(2)] as never }), 500), "fire").length, 0);
-    assert.equal(kinds(t.step(snap({ entities: [flak], projectiles: [shot(3)] as never }), 1700), "fire").length, 1);
+    assert.equal(kinds(t.step(snap({ entities: [flak], projectiles: [shot(2)] as never }), 500), "fire").length, 1);
+    assert.equal(kinds(t.step(snap({ entities: [flak], projectiles: [shot(3)] as never }), 900), "fire").length, 1);
   });
 
   it("one of your new structures goes up with its own setting-up sound; an enemy's is quiet", () => {

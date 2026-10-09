@@ -75,7 +75,7 @@ export function reachesDrone(shooter: Entity, drone: Entity): boolean {
 
 /**
  * Who can lay a gun on something flying high: a drone on Surveillance, or a plane
- * at AIR_HIGH_ALT (the Blackbird). Bullets only, from anti-air guns: the MG42, the
+ * at AIR_HIGH_ALT (the Horten VII). Bullets only, from anti-air guns: the MG42, the
  * gatlings, the CIWS, the Flak. The RAM's rockets are radar-laid but never reach it.
  */
 export function reachesHighFlyer(shooter: Entity): boolean {
