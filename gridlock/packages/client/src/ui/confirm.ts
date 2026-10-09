@@ -2,7 +2,7 @@ import { el } from "./dom.js";
 
 /**
  * A yes/no warning over the battlefield before an order that cannot be taken back
- * (Delete scraps the selection, S sells structures). Enter confirms, Esc backs out.
+ * (Delete scraps the selection, Sell sells structures). Enter confirms, Esc backs out.
  * The fight keeps running behind it; while it is up, map hotkeys and the pause key wait.
  */
 export interface ConfirmOpts {

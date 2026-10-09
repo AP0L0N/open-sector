@@ -2757,9 +2757,7 @@ export class MapView {
     }
     if (k === STOP_HOTKEY) {
       e.preventDefault();
-      // Structures alone in the selection: S sells them. Any own unit keeps S as Stop.
-      if (this.ownSelectedIds().length === 0 && this.ownSellable().length) this.sellSelected();
-      else this.stopSelected();
+      this.stopSelected();
       return;
     }
     if (k === ATTACK_MOVE_HOTKEY) {

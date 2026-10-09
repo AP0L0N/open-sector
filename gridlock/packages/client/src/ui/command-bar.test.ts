@@ -70,7 +70,7 @@ describe("icons and keys", () => {
     assert.equal(commandHotkey("stop"), "S");
     assert.equal(commandHotkey("stance-crawl"), "Z");
     assert.equal(commandHotkey("ungarrison"), "U");
-    assert.equal(commandHotkey("sell"), "S");
+    assert.equal(commandHotkey("sell"), undefined);
     assert.equal(commandHotkey("delete"), "Del");
     assert.equal(commandHotkey("unhitch"), undefined);
   });
