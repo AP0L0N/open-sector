@@ -4,7 +4,7 @@ import {
   AIR_CRUISE_ALT,
   catalog,
   fires,
-  MORTAR_APEX_NEAR,
+  MORTAR_APEX_FAR,
   MORTAR_FLIGHT_FAR,
   MORTAR_RANGE_TILES,
   NEBELWERFER_MIN_RANGE_TILES,
@@ -240,7 +240,7 @@ describe("nebelwerfer", () => {
     assert.equal(seen.size, 0, `target ${near} tiles away is too close`);
   });
 
-  it("fires far past its own eyes on what a spotter sees, fast and on a flat arc", () => {
+  it("fires far past its own eyes on what a spotter sees, fast and on a high arc", () => {
     const { state, y } = range();
     const n = launcher(state, 30, y);
     const far = NEBELWERFER_RANGE_TILES - 4;
@@ -259,17 +259,59 @@ describe("nebelwerfer", () => {
     assert.ok(salvo.length > 0, "the rockets go out to full reach");
     const r = salvo[0]!;
     const z0 = r.z ?? 0;
-    assert.ok((r.apex ?? 0) > 0, "a slight arc");
-    assert.ok((r.apex ?? 0) <= MORTAR_APEX_NEAR / 2, `far flatter than a mortar lob (apex ${r.apex})`);
+    assert.ok((r.apex ?? 0) > NEBELWERFER_ROCKET.apexNear!, "arcs higher on a long shot");
+    assert.ok((r.apex ?? 0) < MORTAR_APEX_FAR, `flatter than a mortar lob (apex ${r.apex})`);
     assert.ok((r.flightTime ?? 99) < MORTAR_FLIGHT_FAR, `fast (flight ${r.flightTime}s)`);
     let peak = z0;
     for (let i = 0; i < 60 && state.projectiles.includes(r); i++) {
       step(state, TICK_DT);
       if (state.projectiles.includes(r)) peak = Math.max(peak, r.z ?? 0);
     }
-    assert.ok(peak > z0 && peak - z0 <= (r.apex ?? 0) + 1, `rises a little over its line (peak ${peak}, from ${z0})`);
+    assert.ok(peak > z0 && peak - z0 <= (r.apex ?? 0) + 1, `rises over its line (peak ${peak}, from ${z0})`);
     assert.equal(state.projectiles.includes(r), false, "it bursts at the far end");
     assert.ok(Math.abs(r.x - foe.x) < NEBELWERFER_ROCKET.scatterFarTiles * state.tileSize * 1.3, "lands near the target");
+  });
+
+  it("lobs a salvo over its own line on the way to the target", () => {
+    const { state, y, ts } = range();
+    const x0 = 30;
+    const n = launcher(state, x0, y);
+    const dist = Math.round(NEBELWERFER_RANGE_TILES * 0.6);
+    for (let d = 3; d < dist - 1; d += 2) {
+      for (const dy of [-1, 0, 1]) {
+        if (d % 4 !== 1) {
+          dummy(state, "A", x0 + d, y + dy);
+          continue;
+        }
+        const tank = makeEntity(state, "warden", "A", tileCenter(x0 + d, ts), tileCenter(y + dy, ts));
+        tank.holdPosition = true;
+        tank.cooldown = 1e9;
+        tank.hp = tank.hpMax = 1e9;
+      }
+    }
+    const foe = dummy(state, "B", x0 + dist, y);
+    applyCommand(state, "A", { type: "cmd.attack", ids: [n.id], targetId: foe.id });
+    // A rocket gone with more than a tick of flight left burst on something on the way.
+    const left = new Map<number, number>();
+    let launched = 0;
+    let short = 0;
+    for (let i = 0; i < SALVO_TICKS + 40; i++) {
+      step(state, TICK_DT);
+      const live = new Set<number>();
+      for (const p of rocketsFrom(state, n)) {
+        if (!left.has(p.id)) launched++;
+        live.add(p.id);
+        left.set(p.id, p.life);
+      }
+      for (const [id, life] of left) {
+        if (live.has(id)) continue;
+        if (life > TICK_DT * 1.01) short++;
+        left.delete(id);
+      }
+    }
+    assert.ok(launched >= NEBELWERFER_SALVO, `a full salvo goes out (${launched})`);
+    assert.equal(short, 0, `${short} of ${launched} rockets burst on the friendly line`);
+    assert.ok(foe.hp < foe.hpMax, "the salvo comes down on the target");
   });
 
   it("scatters wider than the Titan's pods and hits lighter", () => {

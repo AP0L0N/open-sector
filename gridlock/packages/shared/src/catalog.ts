@@ -457,10 +457,11 @@ export const TITAN_ROCKET_RACK: RocketRackDef = {
  * Nebelwerfer: twelve tubes on an armored truck. It rolls into place, stops,
  * swings the frame onto the target, and empties the frame in about a second:
  * one to three rockets at a time, never all twelve at once. The rockets fly
- * fast on a flat arc like a Titan's, far past its own eyes: the longest reach
+ * fast on a high arc, below a mortar's, far past its own eyes: the longest reach
  * in the game. Force attack throws them at any point in that reach, seen or
- * not, and they pass over whatever stands in the way. A shot at a target still
- * meets a tank or a tree in the path. They scatter
+ * not, and they pass over whatever stands in the way. A shot at a target clears
+ * the units along the way and still meets a tank or a tree close to where it
+ * comes down. They scatter
  * wide at full reach and draw in as the target closes, and each burst is lighter than a
  * Titan rocket — a salvo blankets an area rather than finding one soldier.
  * Five full salvos in the rack.
@@ -486,8 +487,10 @@ export const NEBELWERFER_ROCKET: RocketRackDef = {
   penetration: 22,
   caliber: 150,
   antiAir: false,
-  apexNear: 6,
-  apexFar: 16,
+  // High enough that the rockets come down steeply: only a unit within about a
+  // tile of the burst stands under the falling end of the arc.
+  apexNear: 24,
+  apexFar: 48,
   minRangeTiles: NEBELWERFER_MIN_RANGE_TILES,
   laid: true,
 };
@@ -5167,7 +5170,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     rockets: true,
     rocketAmmo: NEBELWERFER_ROCKET_AMMO,
     rocketRack: NEBELWERFER_ROCKET,
-    blurb: "Rocket artillery on an armored truck. Twelve tubes on a traversing frame, emptied in about a second, one to three rockets at a time. The rockets fly fast on a flat arc — the longest reach on the field. Force attack sends them anywhere in that reach, even into ground the side cannot see, and they fly over tanks and trees on the way. It will not fire inside four tiles. Its own eyes are short. Aimed at a target, a tank or tree in the path still takes the rocket. It must stop and swing the frame onto the target before it fires. Rockets scatter wide at full reach and draw in as the target closes: a salvo blankets an area and shreds infantry in the open. Armor only dents, but a side or rear hit usually breaks a tank's tracks. Five salvos in the rack; a supply truck refills it. Switch the tubes off to hold fire. Thin plate — keep it behind the line.",
+    blurb: "Rocket artillery on an armored truck. Twelve tubes on a traversing frame, emptied in about a second, one to three rockets at a time. The rockets fly fast on a high arc, over your own troops — the longest reach on the field. Force attack sends them anywhere in that reach, even into ground the side cannot see, and they fly over tanks and trees on the way. It will not fire inside four tiles. Its own eyes are short. Aimed at a target, a tank or tree in the path still takes the rocket. It must stop and swing the frame onto the target before it fires. Rockets scatter wide at full reach and draw in as the target closes: a salvo blankets an area and shreds infantry in the open. Armor only dents, but a side or rear hit usually breaks a tank's tracks. Five salvos in the rack; a supply truck refills it. Switch the tubes off to hold fire. Thin plate — keep it behind the line.",
   },
   artillery: {
     type: "artillery",
