@@ -220,6 +220,33 @@ describe("construction", () => {
     assert.equal(state.players.get("A")!.scrap, before);
   });
 
+  it("builds the Spotlight post in the sandbag and wall lane, beside a defence", () => {
+    const { state } = twoPlayerMatch();
+    const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig")!;
+    applyCommand(state, "A", { type: "cmd.deploy", id: rig.id });
+    ticks(state, 35);
+    const tower = applyCommand(state, "A", { type: "cmd.build", building: "tower" });
+    assert.equal(tower.ok, true, !tower.ok ? tower.message : "");
+    const lamp = applyCommand(state, "A", { type: "cmd.build", building: "spotlight" });
+    assert.equal(lamp.ok, true, !lamp.ok ? lamp.message : "");
+    const p = state.players.get("A")!;
+    assert.equal(p.defence?.type, "tower");
+    assert.equal(p.line?.type, "spotlight");
+    const you = snapshotFor(state, "A").you;
+    assert.equal(you.lineQueue?.type, "spotlight");
+    assert.equal(you.defenceQueue?.type, "tower");
+    const core = [...state.entities.values()].find((e) => e.type === "core" && e.ownerId === "A")!;
+    const bags = applyCommand(state, "A", {
+      type: "cmd.field",
+      ids: [],
+      structure: "sandbags",
+      x: (core.tileX + core.tileW + 2) * state.tileSize,
+      y: core.tileY * state.tileSize,
+      facing: 0,
+    });
+    assert.equal(bags.ok, false, "the line lane is busy with the lamp");
+  });
+
   it("builds a defence while a base structure is underway", () => {
     const { state } = twoPlayerMatch();
     const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig")!;
@@ -342,6 +369,32 @@ describe("construction", () => {
     const sell = applyCommand(state, "A", { type: "cmd.sell", id: dyn.id });
     assert.equal(sell.ok, true);
     assert.equal(state.players.get("A")!.scrap, scrap + 250);
+  });
+
+  it("deletes own units and structures for nothing, never the Core or Rig", () => {
+    const { state } = twoPlayerMatch();
+    const rig = [...state.entities.values()].find((e) => e.ownerId === "A" && e.type === "rig")!;
+    assert.equal(applyCommand(state, "A", { type: "cmd.delete", ids: [rig.id] }).ok, false);
+    applyCommand(state, "A", { type: "cmd.deploy", id: rig.id });
+    ticks(state, 35);
+    applyCommand(state, "A", { type: "cmd.build", building: "dynamo" });
+    ticks(state, catalog("dynamo").buildSeconds * 10 + 2);
+    const core = [...state.entities.values()].find((e) => e.type === "core" && e.ownerId === "A")!;
+    applyCommand(state, "A", { type: "cmd.place", building: "dynamo", tx: core.tileX + core.tileW, ty: core.tileY });
+    const dyn = [...state.entities.values()].find((e) => e.type === "dynamo")!;
+    const man = makeEntity(state, "rifleman", "A", 24 * 32, 20 * 32);
+    const foe = makeEntity(state, "rifleman", "B", 60 * 32, 60 * 32);
+    const scrap = state.players.get("A")!.scrap;
+
+    const res = applyCommand(state, "A", { type: "cmd.delete", ids: [dyn.id, man.id, core.id, foe.id] });
+    assert.equal(res.ok, true);
+    ticks(state, 1);
+    assert.equal(state.entities.has(dyn.id), false);
+    assert.equal(state.entities.has(man.id), false);
+    assert.equal(state.entities.get(core.id)?.hp, core.hpMax);
+    assert.ok((state.entities.get(foe.id)?.hp ?? 0) > 0);
+    assert.equal(state.players.get("A")!.scrap <= scrap, true);
+    assert.equal(state.players.get("A")!.alive, true);
   });
 
   it("builds an Armory and trains a Warden", () => {

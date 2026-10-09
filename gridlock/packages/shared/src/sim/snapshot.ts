@@ -435,6 +435,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       rocketReload: friendly && (e.rocketCooldown ?? 0) > 0 ? e.rocketCooldown : undefined,
       rockets: friendly && e.rockets != null ? e.rockets : undefined,
       heavy: friendly && e.type === "rocketer" ? (e.heavy ?? 0) : undefined,
+      minePacks: friendly && e.minePacks != null ? e.minePacks : undefined,
+      mineReload: friendly && (e.mineReload ?? 0) > 0 ? Math.round((e.mineReload ?? 0) * 10) / 10 : undefined,
       rocketsOff: friendly && e.rocketsOff ? true : undefined,
       longRange: friendly && e.longRange ? true : undefined,
       spotFacing: spotlightManned(e) ? spotFacingOf(e) : undefined,
@@ -587,7 +589,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
   // The countdown shows only while you still have a Cyborg on the field to lose.
   const linkIn = you ? cyborgShutdownIn(state, youPlayerId) : null;
   const cyborgShutdown =
-    linkIn != null && linkIn > 0 && [...state.entities.values()].some((e) => e.ownerId === youPlayerId && e.type === "cyborg" && e.hp > 0 && !e.wreck)
+    linkIn != null && linkIn > 0 && [...state.entities.values()].some((e) => e.ownerId === youPlayerId && e.type === "cyborg" && e.hp > 0 && !e.wreck && !e.shutdown)
       ? Math.round(linkIn * 10) / 10
       : undefined;
   return {

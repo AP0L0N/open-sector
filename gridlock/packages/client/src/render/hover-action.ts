@@ -55,6 +55,7 @@ export type HoverEntity = Pick<
   | "ammo"
   | "rockets"
   | "heavy"
+  | "minePacks"
   | "mgAmmo"
   | "clip"
   | "crits"
@@ -218,7 +219,7 @@ function canSupplyHit(
   if (hit.ship && shipShortOf(hit.ship.turrets.flatMap((t) => t.ammo ?? []), hit.ship.ciws.flatMap((c) => c.ammo ?? []))) {
     return true;
   }
-  return supplyShortOf(hit.type, hit.ammo, hit.mgAmmo, hit.clip, hit.rockets, hit.heavy);
+  return supplyShortOf(hit.type, hit.ammo, hit.mgAmmo, hit.clip, hit.rockets, hit.heavy, hit.minePacks);
 }
 
 function isArmoredWreck(hit: HoverEntity): boolean {

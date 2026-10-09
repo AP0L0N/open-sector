@@ -38,7 +38,7 @@ export interface BridgeGround {
   tileSize: number;
   /** Open water (no deck over it yet). */
   water(tx: number, ty: number): boolean;
-  /** Land a brick may rest on: not rock, wall, fence, a building, or a standing tree. */
+  /** Land a brick may rest on: not a cliff, wall, fence, a building, or a standing tree. */
   footing(tx: number, ty: number): boolean;
   /** Bricks already standing, and wreckage. A new brick may meet them end to end, not overlap. */
   bricks?: readonly BridgeBrick[];

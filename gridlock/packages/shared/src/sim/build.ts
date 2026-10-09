@@ -7,6 +7,7 @@ import {
   isDefenceStructure,
   isFieldStructure,
   isYardField,
+  onLineLane,
   onWaterBuilding,
   secondsToTicks,
   SELL_REFUND,
@@ -52,9 +53,9 @@ import type { Entity, MatchState, SimPlayer, StructureJob } from "./types.js";
 
 type BuildSlot = "structure" | "defence" | "line";
 
-/** Sandbag and wall lines take so long that they get a lane of their own. */
+/** Sandbag and wall lines take so long that they get a lane of their own; the Spotlight post shares it. */
 function slotOf(type: BuildingType | YardFieldType): BuildSlot {
-  if (isYardField(type)) return "line";
+  if (onLineLane(type)) return "line";
   return isDefenceStructure(type) ? "defence" : "structure";
 }
 
@@ -411,4 +412,23 @@ export function sellBuilding(state: MatchState, playerId: string, id: number): s
   destroyEntity(state, e);
   if (isFieldStructure(e.type)) restampForts(state);
   return null;
+}
+
+/**
+ * The player scraps their own units and structures for nothing. Each goes down as if killed:
+ * the end-of-tick reap leaves the corpse, wreck, or rubble. Men inside a structure walk out first.
+ * The Core and the Rig cannot be scrapped, nor a captured civilian building.
+ */
+export function deleteOwn(state: MatchState, playerId: string, ids: readonly number[]): string | null {
+  let n = 0;
+  for (const id of ids) {
+    const e = state.entities.get(id);
+    if (!e || e.ownerId !== playerId || e.hp <= 0 || e.wreck) continue;
+    if (e.type === "core" || e.type === "rig") continue;
+    if (e.kind === "building" && isCivilianType(e.type)) continue;
+    if (e.kind === "building" && e.garrison.length) spillGarrison(state, e, { damage: false });
+    e.hp = 0;
+    n++;
+  }
+  return n ? null : "Nothing to scrap.";
 }

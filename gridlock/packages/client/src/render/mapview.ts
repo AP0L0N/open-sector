@@ -9,6 +9,7 @@ import {
   rectWorld,
   turnedBox,
   catalog,
+  SELL_REFUND,
   hullFlamerOf,
   twinCiwsMountPoint,
   isCyborg,
@@ -19,8 +20,10 @@ import {
   fires,
   radarLaidOf,
   aimsOwnGun,
-  mountArcDegOf,
   hasSpotlight,
+  lampPools,
+  TITAN_LAMP_POOL_AHEAD_TILES,
+  TITAN_LAMP_POOL_RADIUS_TILES,
   headlightLit,
   hullLamps,
   HEADLIGHT_HALF_DEG,
@@ -96,6 +99,7 @@ import {
   isRotatableBuilding,
   isDefenceStructure,
   isYardField,
+  onLineLane,
   previewConstruct,
   previewField,
   previewPlace,
@@ -132,6 +136,8 @@ import {
   wallRiseLimit,
   wallRunTops,
   TITAN_NUKE,
+  CLUSTER_RADIUS_TILES,
+  MAMMOTH_MINE_RANGE_TILES,
 } from "@gridlock/shared";
 import { drawNuke, drawNukeFlash, drawNukeScorch, NUKE_FX_MS, NUKE_SCORCH_MS } from "./nuke-fx.js";
 import { drawTitanThrust } from "./titan-jet-fx.js";
@@ -329,7 +335,7 @@ import {
 } from "./gun-recoil.js";
 import { bumpTilt, crushBump } from "./crush-bump.js";
 import { drawFieldGunSmoke, fieldGunSmokePose, spawnFieldGunSmoke, type FieldGunSmokePuff } from "./field-gun-smoke.js";
-import { emplacementShotLook, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
+import { emplacementShotLook, facingConeDegOf, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
 import {
   BATTLESHIP_WORLD_PER_UNIT,
   battleshipLayers,
@@ -344,6 +350,7 @@ import {
   type MuzzleSmokePuff,
 } from "./muzzle-smoke.js";
 import { spatialMix } from "../ui/spatial-sfx.js";
+import { closeConfirm, confirmOpen, showConfirm } from "../ui/confirm.js";
 import { playSoundEvents, updateAmbient, warmBattle } from "../ui/game-audio.js";
 import { SoundTracker } from "./sound-events.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
@@ -370,7 +377,7 @@ import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
 import { buildingShadowFootprint, convexHull, drawCastShadows, shadowOffset, treeShadowFootprint } from "./cast-shadow.js";
 import { buildingGroundElev, drawYardWear, WALL_SHARE, wallFootprint, yardWearFootprint } from "./building-ground.js";
-import { footprintPeak, radarReachTiles } from "./radar-reach.js";
+import { footprintPeak, radarReachTiles, showsReachRing } from "./radar-reach.js";
 import {
   airBurstPuffs,
   flakCloudPuffs,
@@ -551,6 +558,8 @@ import { heightsChanged } from "./height-mesh.js";
 /** Special-action key. D pans with W and the arrow keys; A/S are orders. */
 export const SPECIAL_HOTKEY = "e";
 export const STOP_HOTKEY = "s";
+/** `KeyboardEvent.key`, lower-cased. */
+export const DELETE_HOTKEY = "delete";
 export const ATTACK_MOVE_HOTKEY = "a";
 export const PATROL_HOTKEY = "y";
 /** Click this close to a placed spot, in view pixels, to close the loop on it. */
@@ -641,7 +650,7 @@ const EXTRUDE: Record<EntityType, number> = {
   bridge: 4,
   bigbridge: 6,
   walker: 30,
-  titan: 40,
+  titan: 46,
   mammoth: 15,
   nebelwerfer: 22,
   artillery: 14,
@@ -1032,8 +1041,10 @@ export class MapView {
   /** The draft was closed onto an earlier spot. The tail before that spot is already gone. */
   private patrolLoop = false;
   forceAttackMode = false;
+  /** Deploy mines: the next ground click sends the selected Mammoths' launchers there. */
+  mineLayMode = false;
   rotateMode = false;
-  /** Rotate light: the rotate click swings only the selected Battle Ships' searchlights. */
+  /** Rotate light: the rotate click swings only the selected Battle Ships' and Titans' lamps. */
   rotateLight = false;
   guardMode = false;
   /**
@@ -1108,6 +1119,7 @@ export class MapView {
     if (on) {
       this.placeMode = false;
       this.forceAttackMode = false;
+      this.mineLayMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
@@ -1134,6 +1146,7 @@ export class MapView {
       this.placeMode = false;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
+      this.mineLayMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
@@ -1148,8 +1161,27 @@ export class MapView {
     if (this.forceAttackMode === on) return;
     this.forceAttackMode = on;
     if (on) {
+      this.mineLayMode = false;
       this.placeMode = false;
       this.attackMoveMode = false;
+      this.rotateMode = false;
+      this.fieldPlace = null;
+      this.constructPlace = null;
+      this.bridgePlace = null;
+      this.setGuardMode(false);
+      this.setPatrolMode(false);
+    }
+    this.onAttackMoveMode();
+    this.onPlaceMode();
+  }
+
+  setMineLayMode(on: boolean): void {
+    if (this.mineLayMode === on) return;
+    this.mineLayMode = on;
+    if (on) {
+      this.placeMode = false;
+      this.attackMoveMode = false;
+      this.forceAttackMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
@@ -1169,6 +1201,7 @@ export class MapView {
       this.placeMode = false;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
+      this.mineLayMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
       this.bridgePlace = null;
@@ -1186,6 +1219,7 @@ export class MapView {
       this.placeMode = false;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
+      this.mineLayMode = false;
       this.rotateMode = false;
       this.fieldPlace = null;
       this.constructPlace = null;
@@ -1213,6 +1247,7 @@ export class MapView {
       this.yardArm = null;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
+      this.mineLayMode = false;
       this.rotateMode = false;
       this.guardMode = false;
       this.setPatrolMode(false);
@@ -1239,6 +1274,7 @@ export class MapView {
       this.yardArm = null;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
+      this.mineLayMode = false;
       this.rotateMode = false;
       this.guardMode = false;
       this.setPatrolMode(false);
@@ -1261,6 +1297,7 @@ export class MapView {
       this.yardArm = null;
       this.attackMoveMode = false;
       this.forceAttackMode = false;
+      this.mineLayMode = false;
       this.rotateMode = false;
       this.guardMode = false;
       this.setPatrolMode(false);
@@ -1528,6 +1565,7 @@ export class MapView {
     if (this.attackMoveMode && this.ownSelectedIds().length === 0) this.setAttackMoveMode(false);
     if (this.patrolMode && this.ownPatrolIds().length === 0) this.setPatrolMode(false);
     if (this.forceAttackMode && this.ownForceIds().length === 0) this.setForceAttackMode(false);
+    if (this.mineLayMode && this.ownMineLayerIds().length === 0) this.setMineLayMode(false);
     if (this.rotateMode && (this.rotateLight ? this.ownShipLampIds() : this.ownRotateIds()).length === 0) {
       this.setRotateMode(false);
     }
@@ -2366,6 +2404,7 @@ export class MapView {
 
   destroy(): void {
     this.destroyed = true;
+    closeConfirm();
     cancelAnimationFrame(this.raf);
     window.removeEventListener("keydown", this.onKey, true);
     window.removeEventListener("keyup", this.onKeyUp, true);
@@ -2381,7 +2420,7 @@ export class MapView {
 
   private typeReady(type: BuildingType | YardFieldType): boolean {
     if (!isDefenceStructure(type) && this.curr.you.placingType === type) return true;
-    const q = isYardField(type)
+    const q = onLineLane(type)
       ? this.curr.you.lineQueue
       : isDefenceStructure(type)
         ? this.curr.you.defenceQueue
@@ -2405,6 +2444,7 @@ export class MapView {
     this.placeMode = true;
     this.attackMoveMode = false;
     this.forceAttackMode = false;
+    this.mineLayMode = false;
     this.rotateMode = false;
     this.guardMode = false;
     this.guardDragging = false;
@@ -2435,6 +2475,7 @@ export class MapView {
     this.placeMode = true;
     this.attackMoveMode = false;
     this.forceAttackMode = false;
+    this.mineLayMode = false;
     this.rotateMode = false;
     this.guardMode = false;
     this.guardDragging = false;
@@ -2482,9 +2523,10 @@ export class MapView {
           this.onPlaceMode();
           return;
         }
-        if (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode || this.fieldPlace || this.constructPlace || this.bridgePlace) {
+        if (this.attackMoveMode || this.forceAttackMode || this.mineLayMode || this.rotateMode || this.guardMode || this.fieldPlace || this.constructPlace || this.bridgePlace) {
           this.setAttackMoveMode(false);
           this.setForceAttackMode(false);
+          this.setMineLayMode(false);
           this.setRotateMode(false);
           this.setGuardMode(false);
           this.fieldPlace = null;
@@ -2527,6 +2569,10 @@ export class MapView {
         if (this.fieldPlace || this.readyYardField()) {
           const w = this.screenToWorld(mx, my);
           this.fieldDrag = { x: w.x, y: w.y };
+          return;
+        }
+        if (this.mineLayMode) {
+          this.commitMineLay(mx, my);
           return;
         }
         if (this.forceAttackMode) {
@@ -2682,6 +2728,8 @@ export class MapView {
   private onKey = (e: KeyboardEvent): void => {
     const tag = (e.target as HTMLElement | null)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    // The Delete / Sell warning owns the keyboard until it is answered.
+    if (confirmOpen()) return;
     const k = e.key.toLowerCase();
     if (k === "control") {
       this.ctrlHeld = true;
@@ -2704,12 +2752,13 @@ export class MapView {
     }
     if (
       k === "escape" &&
-      (this.attackMoveMode || this.forceAttackMode || this.rotateMode || this.guardMode || this.patrolMode)
+      (this.attackMoveMode || this.forceAttackMode || this.mineLayMode || this.rotateMode || this.guardMode || this.patrolMode)
     ) {
       e.preventDefault();
       e.stopPropagation();
       this.setAttackMoveMode(false);
       this.setForceAttackMode(false);
+      this.setMineLayMode(false);
       this.setRotateMode(false);
       this.setGuardMode(false);
       this.setPatrolMode(false);
@@ -2743,6 +2792,11 @@ export class MapView {
       this.specialSelected();
       return;
     }
+    if (k === DELETE_HOTKEY) {
+      e.preventDefault();
+      this.deleteSelected();
+      return;
+    }
     if (k === STOP_HOTKEY) {
       e.preventDefault();
       this.stopSelected();
@@ -2771,6 +2825,7 @@ export class MapView {
       e.preventDefault();
       this.setAttackMoveMode(false);
       this.setForceAttackMode(false);
+      this.setMineLayMode(false);
       this.setRotateMode(false);
       this.setGuardMode(false);
       this.setPatrolMode(false);
@@ -2821,6 +2876,7 @@ export class MapView {
         this.queuedFromMode = false;
         this.setAttackMoveMode(false);
         this.setForceAttackMode(false);
+        this.setMineLayMode(false);
         this.setRotateMode(false);
       }
     }
@@ -2844,6 +2900,7 @@ export class MapView {
     this.moveFace = null;
     this.setAttackMoveMode(false);
     this.setForceAttackMode(false);
+    this.setMineLayMode(false);
     this.setRotateMode(false);
     this.setGuardMode(false);
     this.setPatrolMode(false);
@@ -2853,6 +2910,60 @@ export class MapView {
       if (!seen.has(id)) ids.push(id);
     }
     if (ids.length) this.command({ type: "cmd.stop", ids });
+  }
+
+  /** Own structures in the selection that can be sold: not the Core, not a captured civilian building. */
+  private ownSellable(): EntityView[] {
+    const out: EntityView[] = [];
+    for (const id of this.selected) {
+      const ent = this.currById.get(id);
+      if (!ent || ent.ownerId !== this.curr.youPlayerId || ent.kind !== "building" || ent.wreck || ent.hp <= 0) continue;
+      if (ent.type === "core" || isCivilianType(ent.type)) continue;
+      out.push(ent);
+    }
+    return out;
+  }
+
+  /** Own units and structures Delete may scrap: everything but the Core, the Rig, and captured civilian buildings. */
+  private ownDeletable(): EntityView[] {
+    const out: EntityView[] = [];
+    for (const id of this.selected) {
+      const ent = this.currById.get(id);
+      if (!ent || ent.ownerId !== this.curr.youPlayerId || ent.wreck || ent.hp <= 0) continue;
+      if (ent.type === "core" || ent.type === "rig") continue;
+      if (ent.kind === "building" && isCivilianType(ent.type)) continue;
+      out.push(ent);
+    }
+    return out;
+  }
+
+  /** Ask first, then scrap the selection for nothing. The ids are fixed when the warning opens. */
+  deleteSelected(): void {
+    const list = this.ownDeletable();
+    if (list.length === 0) return;
+    const ids = list.map((e) => e.id);
+    showConfirm({
+      title: list.length === 1 ? `Delete ${catalog(list[0]!.type).name}?` : `Delete ${list.length} selected?`,
+      body: "Destroyed on the spot, with no scrap back. This cannot be undone.",
+      yes: "Delete",
+      onYes: () => this.command({ type: "cmd.delete", ids }),
+    });
+  }
+
+  /** Ask first, then sell the selected structures for their refund. */
+  sellSelected(): void {
+    const list = this.ownSellable();
+    if (list.length === 0) return;
+    const refund = list.reduce((sum, e) => sum + (e.ruined ? 0 : Math.floor(catalog(e.type).cost * SELL_REFUND)), 0);
+    const ids = list.map((e) => e.id);
+    showConfirm({
+      title: list.length === 1 ? `Sell ${catalog(list[0]!.type).name}?` : `Sell ${list.length} structures?`,
+      body: `Returns ${refund} scrap. Anyone inside walks out.`,
+      yes: "Sell",
+      onYes: () => {
+        for (const id of ids) this.command({ type: "cmd.sell", id });
+      },
+    });
   }
 
   private aimingForceAttack(): boolean {
@@ -2997,7 +3108,7 @@ export class MapView {
     return out;
   }
 
-  /** Own Battle Ships in the selection whose searchlight burns: what Rotate light swings. */
+  /** Own Battle Ships and Titans in the selection whose lamp burns: what Rotate light swings. */
   private ownShipLampIds(): number[] {
     const out: number[] = [];
     for (const id of this.selected) {
@@ -3089,6 +3200,26 @@ export class MapView {
     }
     const w = this.screenToWorld(px, py);
     this.command({ type: "cmd.forceattack", ids, x: w.x, y: w.y });
+  }
+
+  /** Own selected Mammoths with a pack left in the launcher. */
+  private ownMineLayerIds(): number[] {
+    const you = this.curr.youPlayerId;
+    const out: number[] = [];
+    for (const id of this.selected) {
+      const ent = this.currById.get(id);
+      if (ent && ent.ownerId === you && ent.hp > 0 && !ent.wreck && (ent.minePacks ?? 0) > 0) out.push(id);
+    }
+    return out;
+  }
+
+  private commitMineLay(px: number, py: number): void {
+    const ids = this.ownMineLayerIds();
+    if (!this.keepModeForQueue()) this.setMineLayMode(false);
+    if (ids.length === 0) return;
+    const w = this.screenToWorld(px, py);
+    this.pulseMoveClick(w.x, w.y);
+    this.command({ type: "cmd.minelay", ids, x: w.x, y: w.y });
   }
 
   private commitRotate(px: number, py: number): void {
@@ -3768,7 +3899,8 @@ export class MapView {
     if (!shift) this.selected.clear();
     for (const e of this.curr.entities) {
       if (e.kind !== "unit" || e.ownerId !== this.curr.youPlayerId || e.wreck || e.garrisonedIn) continue;
-      // A running torpedo is nobody's to command.
+      // A shut-down Cyborg takes no orders; a running torpedo is nobody's to command.
+      if (e.shutdown) continue;
       if (isTorpedoBody(e.type)) continue;
       const p = this.lerpEnt(e);
       const s = this.toScreen(p.x, p.y);
@@ -3801,7 +3933,7 @@ export class MapView {
       .map((id) => this.currById.get(id))
       .filter((e): e is EntityView => !!e && !e.wreck && e.hp > 0);
     const you = this.curr.youPlayerId;
-    const own = selected.filter((e) => e.ownerId === you);
+    const own = selected.filter((e) => e.ownerId === you && !e.shutdown);
     if (own.length === 0 && !selected.some((e) => e.garrison?.ownerId === you)) return;
     const producers = own.filter(isProducerView);
     if (producers.length > 0 && !own.some((e) => e.kind === "unit")) {
@@ -4281,6 +4413,7 @@ export class MapView {
     this.drawPlanOverlay();
     this.drawDroneLeash();
     this.drawRadarReach();
+    this.drawMineLayReach();
     this.drawSonarContacts();
     this.drawThermalContacts();
   }
@@ -4356,7 +4489,17 @@ export class MapView {
     for (const { e, facing } of lamps) {
       const c = Math.cos(facing);
       const s = Math.sin(facing);
-      for (const b of towerBlobs) lay(e.x + c * b.d, e.y + s * b.d, b.r, b.a, "tower");
+      const at = e.kind === "unit" ? this.lerpEnt(e) : e;
+      // A Titan on its leg jets tips the lamp down onto one wide pool ahead of it.
+      if (lampPools(e)) {
+        const ahead = TITAN_LAMP_POOL_AHEAD_TILES * ts;
+        const r = TITAN_LAMP_POOL_RADIUS_TILES * ts;
+        // Two stacked pools: a flat bright disc with a soft rim, not a glow fading from the middle.
+        lay(at.x + c * ahead, at.y + s * ahead, r * 1.3, 0.9, "tower");
+        lay(at.x + c * ahead, at.y + s * ahead, r * 0.9, 0.7, "tower");
+        continue;
+      }
+      for (const b of towerBlobs) lay(at.x + c * b.d, at.y + s * b.d, b.r, b.a, "tower");
     }
     const headHalf = (HEADLIGHT_HALF_DEG * Math.PI) / 180;
     for (const e of this.curr.entities) {
@@ -4641,6 +4784,13 @@ export class MapView {
         this.drawBeamOutline(e.x, e.y, facing, false);
       }
     }
+    // A selected Titan of yours shows its lamp's reach day and night: the beam's cone, or aloft the pool's ring.
+    for (const { e, facing } of lamps) {
+      if (e.type !== "titan" || !this.selected.has(e.id) || e.ownerId !== this.curr.youPlayerId) continue;
+      const at = this.lerpEnt(e);
+      if (lampPools(e)) this.drawPoolOutline(at.x, at.y, facing);
+      else this.drawBeamOutline(at.x, at.y, facing, false);
+    }
     ctx.restore();
     this.lensAt.clear();
   }
@@ -4665,6 +4815,30 @@ export class MapView {
     ctx.setLineDash([5, 6]);
     ctx.lineWidth = 1.25;
     ctx.strokeStyle = fill ? "rgba(255, 226, 150, 0.8)" : "rgba(255, 226, 150, 0.55)";
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** A Titan aloft: the dashed ring of the one pool its lamp lights, out ahead along `facing`. */
+  private drawPoolOutline(wx: number, wy: number, facing: number): void {
+    const ctx = this.ctx;
+    const ts = this.ts();
+    const ahead = TITAN_LAMP_POOL_AHEAD_TILES * ts;
+    const r = TITAN_LAMP_POOL_RADIUS_TILES * ts;
+    const cx = wx + Math.cos(facing) * ahead;
+    const cy = wy + Math.sin(facing) * ahead;
+    ctx.save();
+    ctx.beginPath();
+    for (let i = 0; i <= 32; i++) {
+      const a = (i / 32) * Math.PI * 2;
+      const p = this.toScreen(cx + Math.cos(a) * r, cy + Math.sin(a) * r);
+      if (i === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+    ctx.setLineDash([5, 6]);
+    ctx.lineWidth = 1.25;
+    ctx.strokeStyle = "rgba(255, 226, 150, 0.55)";
     ctx.stroke();
     ctx.restore();
   }
@@ -4747,14 +4921,14 @@ export class MapView {
   }
 
   /**
-   * Faint blue dashed ring of a selected CIWS or RAM's reach, the reach the sim
-   * fires to (radar-reach.ts): Max range when it is set. The CIWS reaches
+   * Faint blue dashed ring of a selected CIWS, RAM, Flak 37 or Pak 43's reach, the
+   * reach the sim fires to (radar-reach.ts): Max range when it is set. The CIWS reaches
    * farther for a plane, so it shows that ring and a fainter one inside for the ground.
    */
   private drawRadarReach(): void {
     const you = this.curr.youPlayerId;
     const mounts = this.curr.entities.filter(
-      (e) => this.selected.has(e.id) && e.ownerId === you && e.hp > 0 && !e.wreck && radarLaidOf(e.type),
+      (e) => this.selected.has(e.id) && e.ownerId === you && e.hp > 0 && !e.wreck && showsReachRing(e.type),
     );
     if (mounts.length === 0) return;
     const ts = this.ts();
@@ -4782,6 +4956,62 @@ export class MapView {
         ctx.strokeStyle = "rgba(110, 170, 255, 0.25)";
         ring(e, reach.ground * ts);
       }
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Deploy mines armed: a dashed ring of launcher reach round each selected Mammoth,
+   * and at the cursor the ground the field will cover. Past every ring it walks first.
+   */
+  private drawMineLayReach(): void {
+    if (!this.mineLayMode) return;
+    const hulls = this.ownMineLayerIds()
+      .map((id) => this.currById.get(id))
+      .filter((e): e is EntityView => !!e);
+    if (hulls.length === 0) return;
+    const ts = this.ts();
+    const reach = MAMMOTH_MINE_RANGE_TILES * ts;
+    const ctx = this.ctx;
+    const ring = (x: number, y: number, r: number) => {
+      ctx.beginPath();
+      for (let i = 0; i <= 96; i++) {
+        const a = (i / 96) * Math.PI * 2;
+        const s = this.toScreen(x + Math.cos(a) * r, y + Math.sin(a) * r);
+        if (i === 0) ctx.moveTo(s.x, s.y);
+        else ctx.lineTo(s.x, s.y);
+      }
+      ctx.stroke();
+    };
+    ctx.save();
+    ctx.setLineDash([6, 5]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(232, 184, 74, 0.6)";
+    for (const e of hulls) ring(e.x, e.y, reach);
+    if (!this.overControl && this.mouseX >= 0 && this.mouseY >= 0) {
+      const w = this.screenToWorld(this.mouseX, this.mouseY);
+      const inReach = hulls.some((e) => Math.hypot(w.x - e.x, w.y - e.y) <= reach);
+      ctx.setLineDash([3, 4]);
+      ctx.strokeStyle = inReach ? "rgba(232, 184, 74, 0.9)" : "rgba(220, 120, 80, 0.85)";
+      ring(w.x, w.y, CLUSTER_RADIUS_TILES * ts);
+      ctx.setLineDash([]);
+      ctx.font = "11px 'Share Tech Mono', monospace";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      const word = inReach ? "MINES" : "MOVE + MINES";
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "#140e0a";
+      ctx.fillStyle = inReach ? "#e8b84a" : "#dc7850";
+      ctx.strokeText(word, this.mouseX + 12, this.mouseY + 8);
+      ctx.fillText(word, this.mouseX + 12, this.mouseY + 8);
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = ctx.fillStyle;
+      ctx.beginPath();
+      ctx.moveTo(this.mouseX, this.mouseY - 8);
+      ctx.lineTo(this.mouseX, this.mouseY + 8);
+      ctx.moveTo(this.mouseX - 8, this.mouseY);
+      ctx.lineTo(this.mouseX + 8, this.mouseY);
+      ctx.stroke();
     }
     ctx.restore();
   }
@@ -6216,7 +6446,7 @@ export class MapView {
             this.drawCiwsGun(base, pad.x, pad.y, pad.w, 1, aim, ghost ? undefined : e, gun.sheet, crew, gun.cols, gun);
             if (gun.lampZ != null) this.drawTowerLamp(e, pad.x, pad.y, pad.w, ghost, gun);
           }
-          if (!ghost && this.selected.has(e.id) && mountArcDegOf(e.type) != null) {
+          if (!ghost && this.selected.has(e.id) && facingConeDegOf(e.type) != null) {
             this.drawMountArc(e.type, e.x, e.y, e.facing, elev, 0.5);
           }
         } else if (hasSpotlight(e.type)) {
@@ -6399,7 +6629,7 @@ export class MapView {
    * was set. Drawn on the placement ghost and on a selected gun, so the turn is chosen by eye.
    */
   private drawMountArc(type: EntityType, x: number, y: number, facing: number, elev: number, alpha: number): void {
-    const arc = mountArcDegOf(type);
+    const arc = facingConeDegOf(type);
     if (arc == null) return;
     const ts = this.ts();
     const reach = catalog(type).rangeTiles * ts;
@@ -6846,6 +7076,21 @@ export class MapView {
     this.lensAt.set(e.id, pose);
   }
 
+  /**
+   * The Titan's big lamp on the torso top, between the pods, turned like its beam.
+   * (ox, oy) is the contact on screen. The braced and wading torsos ride lower in
+   * their sheets (12 and 32 of 192 cell px), so the lamp drops with them.
+   */
+  private drawTitanLamp(e: EntityView, ox: number, oy: number, size: number, def: UnitSpriteDef): void {
+    const drop = def === TITAN_BRACED_SPRITE ? 12 / 192 : def === TITAN_WADE_SPRITE ? 32 / 192 : 0;
+    const broken = !!e.crits?.includes("lamp");
+    const burning = e.spotFacing != null && e.hp > 0 && !broken;
+    const lit = burning ? lampGlow(daylightAt(this.curr.tick)) : 0;
+    const heading = this.spotShown.get(e.id) ?? e.spotFacing ?? e.facing;
+    const pose = drawSearchlightAt(this.ctx, ox, oy - size * (0.5 - drop), size * 0.021, heading, { lit, broken });
+    this.lensAt.set(e.id, pose);
+  }
+
   private drawSpritedUnit(e: EntityView, def: UnitSpriteDef): void {
     const ctx = this.ctx;
     const p = this.lerpEnt(e);
@@ -6961,6 +7206,7 @@ export class MapView {
     if (drawn && e.ship && (!e.wreck || sheet === def)) this.drawShipLayers(e, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
     // A wrecked Feuerwirbel's mounts are torn off; its hulk sheet shows the empty rings.
     if (drawn && e.mounts && !e.wreck) this.drawTwinMounts(e.mounts, p.facing, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size);
+    if (drawn && e.type === "titan" && !e.wreck) this.drawTitanLamp(e, s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), size, def);
     ctx.restore();
     ctx.restore();
     if (drawn && e.ship && !e.wreck) {
@@ -8383,6 +8629,7 @@ export class MapView {
       (this.attackMoveMode ||
         this.patrolMode ||
         this.forceAttackMode ||
+        this.mineLayMode ||
         this.rotateMode ||
         this.guardMode ||
         (this.ctrlHeld && this.ownForceIds().length > 0)) &&

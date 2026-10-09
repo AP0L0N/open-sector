@@ -17,6 +17,7 @@ import {
   TICK_DT,
   TITAN_BRACE_SECONDS,
   TITAN_BRACED_HP_MUL,
+  TITAN_POD_ARC_DEG,
   TITAN_WADE_SPEED,
   TRAIN_TYPES,
 } from "../catalog.js";
@@ -421,14 +422,68 @@ describe("titan", () => {
     assert.ok((titan.cooldown ?? 0) > 0 && (titan.rocketCooldown ?? 0) > 0, "each weapon runs its own reload");
   });
 
-  it("lays the pods on a second tank while the main gun works the first", () => {
+  it("leaves a tank off the torso's bearing alone while the main gun works the first", () => {
     const { state, y, ts } = range();
     const titan = makeEntity(state, "titan", "A", tileCenter(70, ts), tileCenter(y, ts));
     titan.facing = 0;
     titan.turretFacing = 0;
     titan.holdPosition = true;
     const first = makeEntity(state, "warden", "B", tileCenter(86, ts), tileCenter(y, ts));
-    const second = makeEntity(state, "warden", "B", tileCenter(84, ts), tileCenter(y + 6, ts));
+    const side = makeEntity(state, "warden", "B", tileCenter(84, ts), tileCenter(y + 6, ts));
+    for (const t of [first, side]) {
+      t.holdPosition = true;
+      t.cooldown = 99;
+    }
+    unkillable(first, side);
+    applyCommand(state, "A", { type: "cmd.attack", ids: [titan.id], targetId: first.id });
+    const seen = new Map<number, number>();
+    for (let i = 0; i < Math.ceil(3 / TICK_DT); i++) {
+      watchLaunches(state, titan, 1, seen);
+      assert.notEqual(titan.rocketTarget, side.id, "the pods face where the torso faces");
+    }
+    assert.equal(mainTargetOf(titan), first.id, "the main gun stays on its ordered tank");
+    assert.equal(titan.rocketTarget, first.id, "the pods back up the gun on its bearing");
+    assert.ok(seen.size > 0);
+    for (const p of rocketsFrom(state, titan)) {
+      assert.ok(Math.hypot(p.landX! - first.x, p.landY! - first.y) < Math.hypot(p.landX! - side.x, p.landY! - side.y), "every rocket goes down the torso's bearing");
+    }
+  });
+
+  it("holds the pods until the torso turns onto a target behind it", () => {
+    const { state, y, ts } = range();
+    const titan = makeEntity(state, "titan", "A", tileCenter(84, ts), tileCenter(y, ts));
+    titan.facing = 0;
+    titan.turretFacing = 0;
+    titan.holdPosition = true;
+    const foe = makeEntity(state, "warden", "B", tileCenter(68, ts), tileCenter(y, ts));
+    foe.holdPosition = true;
+    foe.cooldown = 99;
+    unkillable(foe);
+    applyCommand(state, "A", { type: "cmd.attack", ids: [titan.id], targetId: foe.id });
+    const bearing = Math.atan2(foe.y - titan.y, foe.x - titan.x);
+    const off = () => {
+      let d = bearing - titan.turretFacing;
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      return (Math.abs(d) * 180) / Math.PI;
+    };
+    const seen = new Map<number, number>();
+    for (let i = 0; i < Math.ceil(4 / TICK_DT); i++) {
+      const before = seen.size;
+      watchLaunches(state, titan, 1, seen);
+      if (seen.size > before) assert.ok(off() <= TITAN_POD_ARC_DEG + 1e-6, `a rocket left ${off().toFixed(1)}° off the torso`);
+    }
+    assert.ok(seen.size > 0, "once the torso is round, the pods fire");
+  });
+
+  it("lays the pods on a second tank on the same bearing while the main gun works the first", () => {
+    const { state, y, ts } = range();
+    const titan = makeEntity(state, "titan", "A", tileCenter(70, ts), tileCenter(y, ts));
+    titan.facing = 0;
+    titan.turretFacing = 0;
+    titan.holdPosition = true;
+    const first = makeEntity(state, "warden", "B", tileCenter(90, ts), tileCenter(y, ts));
+    const second = makeEntity(state, "warden", "B", tileCenter(82, ts), tileCenter(y + 1, ts));
     for (const t of [first, second]) {
       t.holdPosition = true;
       t.cooldown = 99;

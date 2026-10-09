@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { catalog } from "@gridlock/shared";
+import { MAMMOTH_MINE_PACKS, catalog } from "@gridlock/shared";
 import { canGuardUnit, resolveHoverAction, type HoverEntity } from "./hover-action.js";
 
 const YOU = "p1";
@@ -295,6 +295,16 @@ describe("resolveHoverAction", () => {
     const loaded = { ammo: { ...def.ammo }, mgAmmo: def.mgAmmo };
     const spent = unit({ id: 60, type: "titan", ...loaded, rockets: 0 });
     const full = unit({ id: 61, type: "titan", ...loaded, rockets: def.rocketAmmo });
+    assert.equal(act({ selected: [crewed], hit: spent }), "supply");
+    assert.notEqual(act({ selected: [crewed], hit: full }), "supply");
+  });
+
+  it("offers mine packs to a Mammoth with an empty launcher even when its gun is full", () => {
+    const crewed = unit({ id: 41, type: "supply", bed: { crew: true, seats: 0 }, supply: 120 });
+    const def = catalog("mammoth");
+    const belt = { clip: def.belt, mgAmmo: def.mgAmmo };
+    const spent = unit({ id: 62, type: "mammoth", ...belt, minePacks: 0 });
+    const full = unit({ id: 63, type: "mammoth", ...belt, minePacks: MAMMOTH_MINE_PACKS });
     assert.equal(act({ selected: [crewed], hit: spent }), "supply");
     assert.notEqual(act({ selected: [crewed], hit: full }), "supply");
   });

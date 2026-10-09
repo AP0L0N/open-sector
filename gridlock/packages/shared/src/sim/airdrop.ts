@@ -58,7 +58,7 @@ import {
   walkable,
   worldToTile,
 } from "./geo.js";
-import { mortarFalloff } from "./mortar.js";
+import { mortarAirZ, mortarFalloff } from "./mortar.js";
 import { setPath } from "./path.js";
 import { noteImpactSurface } from "./remains.js";
 import { nextRand } from "./rng.js";
@@ -429,7 +429,8 @@ export function stepCluster(state: MatchState, p: Projectile, dt: number): boole
   p.y += p.vy * stepDt;
   p.life -= dt;
   const u = Math.min(1, Math.max(0, (total - Math.max(0, p.life)) / total));
-  p.z = (p.apex ?? 0) * (1 - u * u);
+  // Dropped from a plane it only falls; lobbed off a Mammoth's deck it climbs first.
+  p.z = p.lobbed ? mortarAirZ(u, p.apex ?? 0) : (p.apex ?? 0) * (1 - u * u);
   if (p.life > 0) return true;
   if (p.landX != null && p.landY != null) {
     p.x = p.landX;

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 Map dress props for the terrain layer — boulders, stone rubble, stumps,
-signposts, and the tileable rock ground texture.
+and signposts. The rock ground texture lives in render_ground.py.
 
-These are props and a tile, not unit sheets: one image each, no facings.
+These are props, not unit sheets: one image each, no facings.
 Variety in game comes from picking a variant and mirroring it. The camera is
 the same high 2:1 three-quarter view as the tree and bush sheets, light from
 the upper left, no outline, no ground. Shipped PNGs are keyed to alpha
@@ -419,34 +419,6 @@ def render_signpost(seed: int) -> Image.Image:
     return to_image(rgb, a)
 
 
-# --------------------------------------------------------------------------- rock ground
-
-
-def render_rock_tex(seed: int, size: int = 384) -> Image.Image:
-    rng = np.random.default_rng(seed)
-    h = w = size
-    ids, _, edge = voronoi(h, w, 38, rng, tile=True)
-    cell_tone = 0.88 + 0.22 * rng.random(38)
-    broad = fbm(h, w, 96, rng, 3, tile=size)
-    mid = fbm(h, w, 24, rng, 3, tile=size)
-    fine = fbm(h, w, 6, rng, 2, tile=size)
-    grit = rng.random((h, w))
-    base = np.array([108, 102, 92], float)
-    tone = (cell_tone[ids] * 0.5 + (0.75 + 0.5 * mid) * 0.5) * (0.84 + 0.26 * broad)
-    tone *= (0.86 + 0.28 * fine) * (0.9 + 0.2 * grit)
-    # Cracks along some slab seams only, broken up by noise.
-    broken = np.clip((fbm(h, w, 20, rng, 2, tile=size) - 0.42) * 4, 0, 1)
-    crack = np.clip(1 - edge / 1.6, 0, 1) * broken
-    tone *= 1 - 0.38 * crack
-    # Pale grit flecks.
-    tone += (grit > 0.985) * 0.25
-    col = base[None, None, :] * tone[..., None]
-    warm = (fbm(h, w, 48, rng, 2, tile=size) - 0.5) * 22
-    col[..., 0] += warm
-    col[..., 2] -= warm * 0.6
-    return Image.fromarray(np.clip(col, 0, 255).astype(np.uint8), "RGB")
-
-
 # --------------------------------------------------------------------------- scrap
 #
 # Battlefield salvage built from convex solids: drums, tyres, I-beams, bent
@@ -771,10 +743,6 @@ def main() -> None:
             cx, cy = contact(img, kind)
             print(f"{name}: {img.width}x{img.height} contact {cx},{cy}")
             shots.append(img)
-    if not only or "rock" in only:
-        tex = render_rock_tex(101)
-        tex.save(OUT / "ground-rock.png", optimize=True)
-        print(f"ground-rock.png: {tex.width}x{tex.height}")
     if args.preview and shots:
         PREVIEW.mkdir(exist_ok=True)
         W = sum(s.width for s in shots) + 10 * len(shots)

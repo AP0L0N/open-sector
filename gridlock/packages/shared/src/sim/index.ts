@@ -128,6 +128,7 @@ export {
   nightTiles,
   spotlightsOn,
   hasSpotlight,
+  lampPools,
   hasHeadlight,
   headlightLit,
   hullLamps,

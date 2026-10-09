@@ -48,6 +48,7 @@ import { guardBridges, placeBrick, restampBridges, settleBridges, tickBridges } 
 import { tickHeal } from "./heal.js";
 import { tickForceFields, tickLasers } from "./laser.js";
 import { tickSupply } from "./supply.js";
+import { tickMineLaunchers } from "./minelauncher.js";
 import { syncTowedGuns, tickArtillery } from "./artillery.js";
 import { tickShipRearm } from "./battleship.js";
 import { tickMovement, repathIfBlocked } from "./orders.js";
@@ -291,6 +292,7 @@ function stepHeld(state: MatchState, dt: number): void {
   tickShipRearm(state, dt);
   tickArtillery(state, dt);
   tickPlaneBoarding(state);
+  tickMineLaunchers(state, dt);
   tickOrderQueue(state);
   tickPatrol(state);
   groundLstBows(state);
