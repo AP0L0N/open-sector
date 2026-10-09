@@ -73,6 +73,7 @@ export type MapDefenceType =
   | "pak36"
   | "pak43"
   | "flak"
+  | "spotlight"
   | "sandbags"
   | "barbwire"
   | "teeth"
@@ -85,6 +86,7 @@ export const MAP_DEFENCE_TYPES: readonly MapDefenceType[] = [
   "tower",
   "hochstand",
   "leitturm",
+  "spotlight",
   "mgnest",
   "pak36",
   "pak43",
@@ -106,12 +108,29 @@ export const MAP_SECTION_TYPES: readonly MapSectionType[] = ["sandbags", "barbwi
  */
 export type MapBridgeType = BridgeType;
 export const MAP_BRIDGE_TYPES: readonly MapBridgeType[] = ["bridge", "bigbridge"];
-export type MapFeatureType = CivilianType | MapDefenceType | MapBridgeType;
+/**
+ * Base structures a map stands ready-built: the ones a commander raises in a match, plus the
+ * Core. A Core belongs to a start and stands in for that commander's Rig. The Airfield turns in
+ * BUILDING_TURN_STEPs like a defence; the rest stand square.
+ */
+export type MapBaseType = "core" | "dynamo" | "smelter" | "muster" | "armory" | "airfield" | "dock" | "research" | "cyborgcentral" | "radar" | "ciws" | "ram";
+export const MAP_BASE_TYPES: readonly MapBaseType[] = ["core", "dynamo", "smelter", "muster", "armory", "airfield", "dock", "research", "cyborgcentral", "radar", "ciws", "ram"];
+export type MapFeatureType = CivilianType | MapDefenceType | MapBridgeType | MapBaseType;
+
+export function isMapBase(type: string): type is MapBaseType {
+  return (MAP_BASE_TYPES as readonly string[]).includes(type);
+}
 
 export interface MapFeature {
   type: MapFeatureType;
   x: number;
   y: number;
+  /**
+   * The start whose commander owns it, 1..maxPlayers. Left out, it stands neutral. An owned
+   * building belongs to whoever is seated on that start and is left out when nobody is.
+   * Sections and bridge bricks are always neutral.
+   */
+  owner?: number;
   /** Cardinal face. 0 = east, then south, west, north. A section looks this way and runs across it. */
   facing: number;
   /**
@@ -166,16 +185,23 @@ export interface MapLamp {
 }
 
 /**
- * A neutral unit the map stands on the field at the start. It belongs to no one,
- * fires on anyone in its sight, and never leaves its post except to walk `patrol`.
+ * A unit the map stands on the field at the start. With no `owner` it is neutral: it belongs
+ * to no one, fires on anyone in its sight, and never leaves its post except to walk `patrol`
+ * or stand its `guard`. Owned, it is the seated commander's from the first tick.
  */
 export interface MapUnit {
   type: TrainType;
-  /** Fine tile it stands on. */
+  /** Fine tile it stands on. A plane: a tile of the Airfield lot it parks on. */
   x: number;
   y: number;
   /** Heading in whole degrees, 0 = east, 90 = south. */
   facing: number;
+  /** The start whose commander owns it, 1..maxPlayers. Left out, it stands neutral. */
+  owner?: number;
+  /** A plane's hardstand on its Airfield, 0..AIRFIELD_PADS - 1. */
+  pad?: number;
+  /** Fine tile it walks to and guards, facing `facing`. A plane flies there and circles. Patrol wins when both are set. */
+  guard?: { x: number; y: number };
   /** Fine tiles of a patrol route, walked from where it stands. */
   patrol?: { x: number; y: number }[];
   /** The route closes into a loop instead of running out and back. */

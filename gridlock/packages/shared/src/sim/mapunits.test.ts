@@ -172,3 +172,62 @@ describe("map spotlights", () => {
     assert.ok(near(ship.spotFacing!, Math.PI));
   });
 });
+
+describe("a start's map objects", () => {
+  const ofType = (state: MatchState, type: string): Entity[] => [...state.entities.values()].filter((e) => e.type === type);
+
+  it("belong to the commander seated there, idle until told", () => {
+    const { state, a } = neutralMatch([{ type: "rifleman", x: MID, y: MID, facing: 0, owner: 1 }], [{ type: "dynamo", x: MID + 20, y: MID, facing: 0, owner: 1 }]);
+    const [man] = ofType(state, "rifleman");
+    assert.equal(man?.ownerId, a);
+    assert.equal(man?.holdPosition, false);
+    assert.equal(man?.order, null);
+    assert.equal(ofType(state, "dynamo")[0]?.ownerId, a);
+  });
+
+  it("are left out when nobody sits on their start", () => {
+    const { state } = neutralMatch([{ type: "rifleman", x: MID, y: MID, facing: 0, owner: 2 }], [{ type: "dynamo", x: MID + 20, y: MID, facing: 0, owner: 2 }]);
+    assert.equal(ofType(state, "rifleman").length, 0);
+    assert.equal(ofType(state, "dynamo").length, 0);
+  });
+
+  it("stand in a ready-built Core for that commander's Rig", () => {
+    const { state, a } = neutralMatch([], [{ type: "core", x: MID, y: MID, facing: 0, owner: 1 }]);
+    const [core] = ofType(state, "core");
+    assert.equal(core?.ownerId, a);
+    assert.equal(state.players.get(a)?.hqId, core?.id);
+    const rigs = ofType(state, "rig");
+    assert.equal(rigs.length, 1, "only the other seat unpacks a Rig");
+    assert.notEqual(rigs[0]?.ownerId, a);
+  });
+
+  it("park a plane on its Airfield's hardstand, and fly it to a guard point", () => {
+    const field: MapFeature = { type: "airfield", x: MID, y: MID, facing: 0, turn: 2, owner: 1 };
+    const { state, a } = neutralMatch(
+      [
+        { type: "stuka", x: MID + 2, y: MID + 2, facing: 0, owner: 1, pad: 2 },
+        { type: "fw190", x: MID + 3, y: MID + 2, facing: 0, owner: 1, pad: 0, guard: { x: MID, y: MID + 60 } },
+      ],
+      [field],
+    );
+    const [strip] = ofType(state, "airfield");
+    const [stuka] = ofType(state, "stuka");
+    assert.equal(stuka?.ownerId, a);
+    assert.equal(stuka?.air?.homeId, strip?.id);
+    assert.equal(stuka?.air?.pad, 2);
+    assert.equal(stuka?.air?.phase, "parked");
+    const [fighter] = ofType(state, "fw190");
+    assert.equal(fighter?.order?.kind, "guard");
+    assert.equal(fighter?.air?.phase, "takeoff", "fuelled and armed, it rolls at once");
+  });
+
+  it("walk a map unit to its guard point", () => {
+    const { state } = neutralMatch([{ type: "rifleman", x: MID, y: MID, facing: 90, guard: { x: MID + 20, y: MID } }]);
+    const [n] = neutrals(state);
+    assert.equal(n?.order?.kind, "guard");
+    assert.equal(n?.holdPosition, true);
+    const x0 = n!.x;
+    for (let i = 0; i < 60; i++) step(state);
+    assert.ok(n!.x > x0 + state.tileSize, "it set off for the point");
+  });
+});

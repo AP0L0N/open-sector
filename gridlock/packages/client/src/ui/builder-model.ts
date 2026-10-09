@@ -5,11 +5,22 @@ import {
   CUSTOM_MAP_MAX_CLUTTER,
   CUSTOM_MAP_MAX_LAMPS,
   CUSTOM_MAP_MAX_UNITS,
+  AIRFIELD_PADS,
+  airfieldPadWorld,
   copyMapUnit,
+  featureLotSite,
+  featureOnWater,
   featureSeat,
   garrisonCandidate,
+  isAircraftType,
+  mapAirfieldAt,
+  mapFeatureTurns,
+  mapPadsTaken,
   mapUnitHostAt,
   mapUnitProblem,
+  onWaterBuilding,
+  parkHeading,
+  sameMapOwner,
   FIELD_TURN_MAX,
   GROUND_GRASS,
   GROUND_KINDS,
@@ -284,9 +295,153 @@ export function scatterSheetClutter(s: Sheet, seed: string): number {
 export function liveUnits(s: Sheet): MapUnit[] {
   const kept: MapUnit[] = [];
   for (const u of s.units) {
-    if (!mapUnitProblem({ ...s, units: kept }, u.type, u.x, u.y, -1, u.inside)) kept.push(copyMapUnit(u));
+    if (!mapUnitProblem({ ...s, units: kept }, u.type, u.x, u.y, -1, u.inside, sideOf(u))) kept.push(copyMapUnit(u));
   }
   return kept;
+}
+
+/** The side a map object stands for, as `mapUnitProblem` reads it: its owner and, for a plane, its hardstand. */
+export function sideOf(u: { owner?: number; pad?: number }): { owner?: number; pad?: number } {
+  return { ...(u.owner != null ? { owner: u.owner } : {}), ...(u.pad != null ? { pad: u.pad } : {}) };
+}
+
+/** The start a map object belongs to, 0 when neutral. */
+export function ownerOf(o: { owner?: number }): number {
+  return o.owner ?? 0;
+}
+
+/** Give a map object to a start, or to no one with 0. */
+export function setOwnerOf(o: { owner?: number }, owner: number): void {
+  if (owner > 0) o.owner = owner;
+  else delete o.owner;
+}
+
+/** The Airfield's box as the sim's pad helpers read it. */
+function airfieldRectOf(f: MapFeature): { type: MapFeature["type"]; facing: number; tileX: number; tileY: number; tileW: number; tileH: number } {
+  const site = featureLotSite(f);
+  return { type: f.type, facing: site.facing, tileX: site.tx, tileY: site.ty, tileW: site.w, tileH: site.h };
+}
+
+/** World px of hardstand `pad` on Airfield `f`. */
+export function padWorld(f: MapFeature, pad: number): { x: number; y: number } {
+  return airfieldPadWorld(airfieldRectOf(f), pad, TILE_SIZE);
+}
+
+/** Fine tile under hardstand `pad` of Airfield `f`. */
+export function padTile(f: MapFeature, pad: number): { x: number; y: number } {
+  const p = padWorld(f, pad);
+  return { x: Math.floor(p.x / TILE_SIZE), y: Math.floor(p.y / TILE_SIZE) };
+}
+
+/** Where a plane sits in the world: its hardstand, or its tile when it has none. */
+export function planeWorld(s: Sheet, u: MapUnit): { x: number; y: number } {
+  const f = s.features[mapAirfieldAt(s.features, u.x, u.y)];
+  if (f && u.pad != null) return padWorld(f, u.pad);
+  return { x: (u.x + 0.5) * TILE_SIZE, y: (u.y + 0.5) * TILE_SIZE };
+}
+
+/** A parked plane's heading on Airfield `f`, whole degrees, as the match parks one. */
+export function padHeading(f: MapFeature): number {
+  return wrapDegrees(Math.round((parkHeading(airfieldRectOf(f), TILE_SIZE) * 180) / Math.PI));
+}
+
+/**
+ * Where a plane dropped on fine tile (x, y) would park: the Airfield there and its nearest
+ * free hardstand, or why it cannot. `ignore` is the plane being moved, which frees its own pad.
+ */
+export function planeSpot(
+  s: Sheet,
+  x: number,
+  y: number,
+  owner: number,
+  ignore = -1,
+): { host: number; pad: number; x: number; y: number; facing: number } | string {
+  const host = mapAirfieldAt(s.features, x, y);
+  const f = s.features[host];
+  if (!f) return "Planes park on an Airfield.";
+  if (!sameMapOwner(f, { ...(owner ? { owner } : {}) })) return "That Airfield is another side's.";
+  const taken = mapPadsTaken(s, host, ignore);
+  let best = -1;
+  let bestD = Infinity;
+  for (let pad = 0; pad < AIRFIELD_PADS; pad++) {
+    if (taken.has(pad)) continue;
+    const p = padWorld(f, pad);
+    const d = Math.hypot(p.x / TILE_SIZE - (x + 0.5), p.y / TILE_SIZE - (y + 0.5));
+    if (d < bestD) {
+      bestD = d;
+      best = pad;
+    }
+  }
+  if (best < 0) return `Every hardstand on that Airfield is taken (${AIRFIELD_PADS} planes).`;
+  const t = padTile(f, best);
+  return { host, pad: best, x: t.x, y: t.y, facing: padHeading(f) };
+}
+
+/** Park a plane on the Airfield under (x, y). Null when it is down, else the reason. */
+export function placePlane(s: Sheet, type: TrainType, x: number, y: number, owner: number): string | null {
+  if (s.units.length >= CUSTOM_MAP_MAX_UNITS) return `At most ${CUSTOM_MAP_MAX_UNITS} units.`;
+  const spot = planeSpot(s, x, y, owner);
+  if (typeof spot === "string") return spot;
+  const u: MapUnit = { type, x: spot.x, y: spot.y, facing: spot.facing, pad: spot.pad };
+  setOwnerOf(u, owner);
+  s.units.push(u);
+  return null;
+}
+
+/** Planes parked on `features[host]`, by unit index. */
+export function planesOn(s: Sheet, host: number): number[] {
+  const f = s.features[host];
+  if (!f || f.type !== "airfield") return [];
+  const out: number[] = [];
+  s.units.forEach((u, i) => {
+    if (isAircraftType(u.type) && featureContains(f, u.x + 0.5, u.y + 0.5)) out.push(i);
+  });
+  return out;
+}
+
+/** Send a unit to guard fine tile (x, y). A patrol it had is dropped: one order at a time. */
+export function setGuard(s: Sheet, index: number, x: number, y: number): string | null {
+  const u = s.units[index];
+  if (!u) return "Nothing selected.";
+  if (u.inside) return "A man inside a building holds it.";
+  u.guard = { x: Math.max(0, Math.min(s.width - 1, x)), y: Math.max(0, Math.min(s.height - 1, y)) };
+  delete u.patrol;
+  delete u.loop;
+  return null;
+}
+
+/** Drop a unit's guard point and patrol: it stands where it is. */
+export function clearOrders(s: Sheet, index: number): void {
+  const u = s.units[index];
+  if (!u) return;
+  delete u.guard;
+  delete u.patrol;
+  delete u.loop;
+}
+
+/**
+ * Hand a building to a start (0 for neutral). The men inside and the planes on an
+ * Airfield go with it. A Core cannot be neutral.
+ */
+export function setFeatureOwner(s: Sheet, index: number, owner: number): string | null {
+  const f = s.features[index];
+  if (!f) return "Nothing selected.";
+  if (f.type === "core" && owner === 0) return "A Core belongs to a start.";
+  if (isMapLine(f.type)) return "Sections and bridges belong to no one.";
+  setOwnerOf(f, owner);
+  for (const i of unitsInside(s, index)) setOwnerOf(s.units[i]!, owner);
+  for (const i of planesOn(s, index)) setOwnerOf(s.units[i]!, owner);
+  return null;
+}
+
+/** Hand a free-standing unit to a start (0 for neutral). A man inside or a plane on a pad follows its building instead. */
+export function setUnitOwner(s: Sheet, index: number, owner: number): string | null {
+  const u = s.units[index];
+  if (!u) return "Nothing selected.";
+  if (u.inside) return "A man inside a building is its side's.";
+  if (isAircraftType(u.type)) return "A plane is its Airfield's side's.";
+  setOwnerOf(u, owner);
+  return null;
 }
 
 /** Index of the unit nearest the cursor within `reach` fine tiles, or -1. */
@@ -304,10 +459,18 @@ export function unitIndexAt(s: Sheet, tx: number, ty: number, reach = 1.5): numb
 }
 
 /** Why a unit cannot stand on this fine tile, or null. `ignore` is the unit being moved. */
-export function unitProblem(s: Sheet, type: TrainType, x: number, y: number, ignore = -1, inside = false): string | null {
+export function unitProblem(
+  s: Sheet,
+  type: TrainType,
+  x: number,
+  y: number,
+  ignore = -1,
+  inside = false,
+  side: { owner?: number; pad?: number } = {},
+): string | null {
   if (ignore < 0 && s.units.length >= CUSTOM_MAP_MAX_UNITS) return `At most ${CUSTOM_MAP_MAX_UNITS} units.`;
-  if (!inside && isMountainCliff(s.tiles, s.heights, s.width, s.height, x, y)) return "That rock is impassable.";
-  return mapUnitProblem(s, type, x, y, ignore, inside);
+  if (!inside && !isAircraftType(type) && isMountainCliff(s.tiles, s.heights, s.width, s.height, x, y)) return "That rock is impassable.";
+  return mapUnitProblem(s, type, x, y, ignore, inside, side);
 }
 
 /** The building a unit dropped on (x, y) would garrison, or -1: infantry over a house, bunker, or tower that takes it. */
@@ -317,14 +480,16 @@ export function garrisonHostAt(s: Sheet, type: TrainType, x: number, y: number):
   return f && garrisonCandidate(f.type, type) ? host : -1;
 }
 
-/** Put a neutral soldier inside `features[host]`, on its centre tile. Null when it went in, else the reason. */
+/** Put a soldier inside `features[host]`, on its centre tile, on the building's side. Null when he went in, else the reason. */
 export function garrisonUnit(s: Sheet, type: TrainType, host: number, facing: number): string | null {
   const f = s.features[host];
   if (!f) return "Nothing to garrison.";
   const seat = featureSeat(f);
-  const problem = unitProblem(s, type, seat.x, seat.y, -1, true);
+  const problem = unitProblem(s, type, seat.x, seat.y, -1, true, sideOf(f));
   if (problem) return problem;
-  s.units.push({ type, x: seat.x, y: seat.y, facing: wrapDegrees(facing), inside: true });
+  const u: MapUnit = { type, x: seat.x, y: seat.y, facing: wrapDegrees(facing), inside: true };
+  setOwnerOf(u, ownerOf(f));
+  s.units.push(u);
   return null;
 }
 
@@ -377,7 +542,7 @@ export function unloadGarrison(s: Sheet, host: number): number {
       for (let y = b.y0 - ring; y < b.y1 + ring; y++) {
         for (let x = b.x0 - ring; x < b.x1 + ring; x++) {
           if (x > b.x0 - ring && x < b.x1 + ring - 1 && y > b.y0 - ring && y < b.y1 + ring - 1) continue;
-          if (unitProblem(s, u.type, x, y, i)) continue;
+          if (unitProblem(s, u.type, x, y, i, false, sideOf(u))) continue;
           const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
           if (d < bestD) {
             bestD = d;
@@ -395,24 +560,44 @@ export function unloadGarrison(s: Sheet, host: number): number {
   return out;
 }
 
-/** Stand a neutral unit on the tile facing `facing` degrees. Null when placed, else the reason. */
-export function placeUnit(s: Sheet, type: TrainType, x: number, y: number, facing: number): string | null {
-  const problem = unitProblem(s, type, x, y);
+/** Stand a unit on the tile facing `facing` degrees, for start `owner` (0 for neutral). Null when placed, else the reason. */
+export function placeUnit(s: Sheet, type: TrainType, x: number, y: number, facing: number, owner = 0): string | null {
+  if (isAircraftType(type)) return placePlane(s, type, x, y, owner);
+  const problem = unitProblem(s, type, x, y, -1, false, owner ? { owner } : {});
   if (problem) return problem;
-  s.units.push({ type, x, y, facing: wrapDegrees(facing) });
+  const u: MapUnit = { type, x, y, facing: wrapDegrees(facing) };
+  setOwnerOf(u, owner);
+  s.units.push(u);
   return null;
 }
 
-/** Move a placed unit `dx`, `dy` fine tiles from where it stood at `from`. Its route moves with it. Null when it moved. */
+/** Move a placed unit `dx`, `dy` fine tiles from where it stood at `from`. Its route moves with it; a plane takes the nearest free pad there. Null when it moved. */
 export function moveUnit(s: Sheet, index: number, from: MapUnit, dx: number, dy: number): string | null {
   if (!s.units[index]) return "Nothing selected.";
+  if (isAircraftType(from.type)) {
+    const spot = planeSpot(s, from.x + dx, from.y + dy, ownerOf(from), index);
+    if (typeof spot === "string") return spot;
+    const plane = copyMapUnit(from);
+    plane.x = spot.x;
+    plane.y = spot.y;
+    plane.pad = spot.pad;
+    plane.facing = spot.facing;
+    s.units[index] = plane;
+    return null;
+  }
   const x = from.x + dx;
   const y = from.y + dy;
-  const problem = unitProblem(s, from.type, x, y, index);
+  const problem = unitProblem(s, from.type, x, y, index, false, sideOf(from));
   if (problem) return problem;
   const next = copyMapUnit(from);
   next.x = x;
   next.y = y;
+  if (next.guard) {
+    next.guard = {
+      x: Math.max(0, Math.min(s.width - 1, next.guard.x + dx)),
+      y: Math.max(0, Math.min(s.height - 1, next.guard.y + dy)),
+    };
+  }
   if (next.patrol) {
     next.patrol = next.patrol.map((p) => ({
       x: Math.max(0, Math.min(s.width - 1, p.x + dx)),
@@ -443,9 +628,39 @@ export function degreesToward(x0: number, y0: number, x1: number, y1: number): n
   return wrapDegrees((Math.atan2(y1 - y0, x1 - x0) * 180) / Math.PI);
 }
 
-/** Same pass a saved map gets: pads, house lots, water floor, one-step slopes. */
-export function settle(s: Sheet): void {
+/**
+ * Same pass a saved map gets: pads, house lots, water floor, one-step slopes. Returns the
+ * box of tiles it changed, so the plan image repaints only that: the pass reaches past
+ * the edit (a lot group, a ramp relaxed to its fixpoint), so the box comes from a diff,
+ * not a guess.
+ */
+export function settle(s: Sheet): Dirty {
+  const tiles = Uint8Array.from(s.tiles);
+  const heights = Uint8Array.from(s.heights);
   normalizeTerrain(s.tiles, s.heights, s.width, s.height, s.spawns, s.features);
+  const box = gridDiff(s.width, tiles, s.tiles);
+  return gridDiff(s.width, heights, s.heights, box);
+}
+
+/** The box round every cell where `before` and `after` differ, grown into `into`. */
+export function gridDiff(width: number, before: ArrayLike<number>, after: ArrayLike<number>, into: Dirty = emptyDirty()): Dirty {
+  const n = Math.min(before.length, after.length);
+  for (let i = 0; i < n; i++) {
+    if (before[i] === after[i]) continue;
+    touch(into, i % width, (i / width) | 0);
+  }
+  return into;
+}
+
+export function unionDirty(a: Dirty, b: Dirty): Dirty {
+  return { x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0), x1: Math.max(a.x1, b.x1), y1: Math.max(a.y1, b.y1) };
+}
+
+/** The box of ground that differs between an undo mark and the sheet as it stands now. */
+export function markDiff(m: SheetMark, s: Sheet): Dirty {
+  const box = gridDiff(s.width, m.tiles, s.tiles);
+  gridDiff(s.width, m.heights, s.heights, box);
+  return gridDiff(s.width, m.ground, s.ground, box);
 }
 
 function inBounds(s: Sheet, x: number, y: number): boolean {
@@ -648,9 +863,9 @@ export function wrapTurn(turn: number): number {
   return ((Math.round(turn) % n) + n) % n;
 }
 
-/** True for the features that turn in 15° steps: bunkers, towers, sandbags, walls, bridge bricks. */
+/** True for the features that turn in 15° steps: bunkers, towers, the Airfield, sandbags, walls, bridge bricks. */
 export function turnsFine(type: MapFeatureType): boolean {
-  return (MAP_DEFENCE_TYPES as readonly string[]).includes(type) || isMapBridge(type);
+  return mapFeatureTurns(type);
 }
 
 /**
@@ -922,6 +1137,7 @@ export function houseProblem(s: Sheet, f: MapFeature, ignore = -1): string | nul
   }
   if (s.features.some((o, i) => i !== ignore && featuresOverlap(o, f))) return "Overlaps another building.";
   if (featureOnPad(f, s.spawns)) return "Too close to a start position.";
+  if (onWaterBuilding(f.type) && !featureOnWater(f, s)) return `A ${catalog(f.type).name} has to stand on water.`;
   return bridgeFooting(s, f);
 }
 
@@ -1004,12 +1220,48 @@ export function clearPadHouses(s: Sheet): number {
   return before - s.features.length;
 }
 
-/** Change the seat count. Starts numbered above it are removed; returns how many. */
+/**
+ * Change the seat count. Starts numbered above it are removed, and what those starts
+ * owned stands neutral (a Core, which cannot, goes). Returns how many starts went.
+ */
 export function setMaxPlayers(s: Sheet, n: number): number {
   s.maxPlayers = n;
   const before = s.spawns.length;
   s.spawns = s.spawns.filter((sp) => sp.id <= n);
+  const gone: MapFeature[] = [];
+  s.features = s.features.filter((f) => {
+    if (ownerOf(f) <= n) return true;
+    if (f.type === "core") {
+      gone.push(f);
+      return false;
+    }
+    delete f.owner;
+    return true;
+  });
+  for (const f of gone) dropGarrison(s, f);
+  for (const u of s.units) if (ownerOf(u) > n) delete u.owner;
   return before - s.spawns.length;
+}
+
+/** Starts that own something on the sheet but are not placed. */
+export function ownersWithoutStart(s: Sheet): number[] {
+  const owners = new Set<number>();
+  for (const f of s.features) if (f.owner) owners.add(f.owner);
+  for (const u of s.units) if (u.owner) owners.add(u.owner);
+  return [...owners].filter((id) => !s.spawns.some((sp) => sp.id === id)).sort((a, b) => a - b);
+}
+
+/** Smelters standing with no scrap under any of their tiles: they would yield nothing. */
+export function smeltersOffScrap(s: Sheet): number {
+  let n = 0;
+  for (const f of s.features) {
+    if (f.type !== "smelter") continue;
+    const b = featureBox(f);
+    let scrap = false;
+    for (let y = b.y0; y < b.y1 && !scrap; y++) for (let x = b.x0; x < b.x1; x++) if (isScrapTile(s.tiles[y * s.width + x])) scrap = true;
+    if (!scrap) n++;
+  }
+  return n;
 }
 
 /** What still stops a save, or null when it would go through. */

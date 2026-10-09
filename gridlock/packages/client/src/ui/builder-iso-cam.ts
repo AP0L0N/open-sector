@@ -20,6 +20,29 @@ export function isoFit(cam: IsoCam, s: Sheet, w: number, h: number): void {
   cam.camY = mid.y - isoLift(midH) - h / 2;
 }
 
+/** Put tile (tx, ty), on its own height, at the middle of a `w` × `h` stage. The minimap's click. */
+export function isoCenterOn(cam: IsoCam, s: Sheet, tx: number, ty: number, w: number, h: number): void {
+  const p = worldToIso((tx + 0.5) * TILE_SIZE, (ty + 0.5) * TILE_SIZE, TILE_SIZE);
+  const cx = Math.max(0, Math.min(s.width - 1, Math.floor(tx)));
+  const cy = Math.max(0, Math.min(s.height - 1, Math.floor(ty)));
+  const z = isoLift(s.heights[cy * s.width + cx] ?? 0);
+  cam.camX = p.x - w / 2 / cam.zoom;
+  cam.camY = p.y - z - h / 2 / cam.zoom;
+}
+
+/** The stage's four corners as fine-tile points on the flat ground, clockwise from top-left: the minimap's viewport. */
+export function isoViewTiles(cam: IsoCam, w: number, h: number): { x: number; y: number }[] {
+  return [
+    [0, 0],
+    [w, 0],
+    [w, h],
+    [0, h],
+  ].map(([sx, sy]) => {
+    const p = isoToWorld(cam.camX + sx! / cam.zoom, cam.camY + sy! / cam.zoom, TILE_SIZE);
+    return { x: p.x / TILE_SIZE, y: p.y / TILE_SIZE };
+  });
+}
+
 /** Zoom by the wheel, keeping the ground under the pointer where it is. */
 export function isoZoomAt(cam: IsoCam, mx: number, my: number, deltaY: number): void {
   const next = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, cam.zoom * (deltaY < 0 ? 1.15 : 1 / 1.15)));
