@@ -243,6 +243,12 @@ import cyborgCommanderCrawlUrl from "../assets/units/cyborgcommander-crawl.png";
 import cyborgCommanderCrawlFireUrl from "../assets/units/cyborgcommander-crawl-fire.png";
 import cyborgCommanderDieUrl from "../assets/units/cyborgcommander-die.png";
 import cyborgCommanderSwimUrl from "../assets/units/cyborgcommander-swim.png";
+import simunit2WalkUrl from "../assets/units/simunit2-walk.png";
+import simunit2FireUrl from "../assets/units/simunit2-fire.png";
+import simunit2CrawlUrl from "../assets/units/simunit2-crawl.png";
+import simunit2CrawlFireUrl from "../assets/units/simunit2-crawl-fire.png";
+import simunit2DieUrl from "../assets/units/simunit2-die.png";
+import simunit2SwimUrl from "../assets/units/simunit2-swim.png";
 import engineerWalkUrl from "../assets/units/engineer-walk.png";
 import engineerCrouchUrl from "../assets/units/engineer-crouch.png";
 import engineerCrawlUrl from "../assets/units/engineer-crawl.png";
@@ -1027,6 +1033,17 @@ export const CYBORGCOMMANDER_CRAWL_FIRE_SPRITE: UnitSpriteDef = {
 };
 export const CYBORGCOMMANDER_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(cyborgCommanderDieUrl) };
 
+/**
+ * Sim Unit II (render_simunit2.py): the Cyborg's camera, cells, and contact points on a
+ * lighter frame with an energy dagger in each hand. Only the sheets differ.
+ */
+export const SIMUNIT2_SPRITE: UnitSpriteDef = { ...CYBORG_SPRITE, image: loadSheet(simunit2WalkUrl) };
+/** The slash: both blades out and lit. Held while the cut plays. */
+export const SIMUNIT2_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(simunit2FireUrl) };
+export const SIMUNIT2_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(simunit2CrawlUrl) };
+export const SIMUNIT2_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(simunit2CrawlFireUrl) };
+export const SIMUNIT2_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(simunit2DieUrl) };
+
 export const ENGINEER_SPRITE: UnitSpriteDef = {
   image: loadSheet(engineerWalkUrl),
   dirs: 16,
@@ -1136,6 +1153,7 @@ const SWIM_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   jumpjet: swimSprite(jumpjetSwimUrl),
   cyborg: swimSprite(cyborgSwimUrl),
   cyborgcommander: swimSprite(cyborgCommanderSwimUrl),
+  simunit2: swimSprite(simunit2SwimUrl),
 };
 
 /** 16-dir hatch head (helmet + face). Row 0 = 0001 = south, one frame. */
@@ -1742,6 +1760,7 @@ const INFANTRY_DIE: Partial<Record<EntityType, UnitSpriteDef>> = {
   jumpjet: JUMPJET_DIE_SPRITE,
   cyborg: CYBORG_DIE_SPRITE,
   cyborgcommander: CYBORGCOMMANDER_DIE_SPRITE,
+  simunit2: SIMUNIT2_DIE_SPRITE,
 };
 
 /** The one-shot collapse sheet. Undefined for vehicles and buildings. */
@@ -1808,6 +1827,7 @@ export function spriteFor(type: EntityType, stance?: Stance, swimming = false): 
   }
   if (type === "cyborg") return stance === "crawl" ? CYBORG_CRAWL_SPRITE : CYBORG_SPRITE;
   if (type === "cyborgcommander") return stance === "crawl" ? CYBORGCOMMANDER_CRAWL_SPRITE : CYBORGCOMMANDER_SPRITE;
+  if (type === "simunit2") return stance === "crawl" ? SIMUNIT2_CRAWL_SPRITE : SIMUNIT2_SPRITE;
   return UNIT_SPRITES[type];
 }
 

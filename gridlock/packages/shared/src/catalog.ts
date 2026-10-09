@@ -285,7 +285,7 @@ export const HEIGHT_RANGE_BONUS = 2;
  * A rifle carries well past a pistol, and the scope is the longest direct-fire
  * reach on the field: it sits just inside the sniper's scoped sight.
  *
- * Cells: handgun 3, flamethrower 3.5, Feuerwirbel flame 4.5, walker 8, cyborg 8, rifle 9,
+ * Cells: Sim Unit daggers 1.5, handgun 3, flamethrower 3.5, Feuerwirbel flame 4.5, walker 8, cyborg 8, rifle 9,
  * Feuerwirbel gatlings 10, MG42 11, StuG 12, PTRD 13,
  * Rocketer 12, Tiger and Titan 14, scoped rifle 15, Jagdtiger 16, mortar 23 (it will not drop inside 3),
  * Nebelwerfer 24 (it will not fire inside 4).
@@ -297,6 +297,10 @@ export const ASSAULT_RANGE_TILES = t(7.5);
 export const MG42_RANGE_TILES = t(11);
 export const WALKER_RANGE_TILES = t(8);
 export const CYBORG_RANGE_TILES = WALKER_RANGE_TILES;
+/** Sim Unit II's energy daggers: arm's reach. He closes to it himself. */
+export const SIMUNIT_REACH_TILES = t(1.5);
+/** How far a Sim Unit II looks for someone to close on by himself. Inside his own eyes. */
+export const SIMUNIT_HUNT_TILES = t(7);
 export const SCOPED_RANGE_TILES = t(15);
 export const PTRD_RANGE_TILES = t(13);
 /** Rocketer's tube. Short of the Titan's pods: one man laying it off his shoulder. */
@@ -547,6 +551,7 @@ export type EntityType =
   | "walker"
   | "cyborg"
   | "cyborgcommander"
+  | "simunit2"
   | "titan"
   | "mammoth"
   | "nebelwerfer"
@@ -760,7 +765,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "shed",
   "boiler",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -861,7 +866,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
 
 /**
  * A player fields only one of each of these at a time. While it lives, another
@@ -888,6 +893,7 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   jagdtiger: "research",
   cyborg: "cyborgcentral",
   cyborgcommander: ["research", "cyborgcentral"],
+  simunit2: ["research", "cyborgcentral"],
   titan: "research",
   mammoth: "research",
   nebelwerfer: "research",
@@ -1180,8 +1186,8 @@ export interface ShellDef {
 }
 
 /** Infantry small-arm. CatalogEntry still holds the unit; this is the gun. */
-export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator" | "laser" | "deckmg";
-export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator", "laser", "deckmg"];
+export type InfantryWeaponId = "rifle" | "handgun" | "mg42" | "scoped" | "mortar" | "ptrd" | "gatling" | "launcher" | "flamer" | "assault" | "penetrator" | "laser" | "daggers" | "deckmg";
+export const INFANTRY_WEAPON_IDS: readonly InfantryWeaponId[] = ["rifle", "handgun", "mg42", "scoped", "mortar", "ptrd", "gatling", "launcher", "flamer", "assault", "penetrator", "laser", "daggers", "deckmg"];
 export interface InfantryGun {
   id: InfantryWeaponId;
   name: string;
@@ -1441,6 +1447,45 @@ export const FORCE_FIELD_REGEN_PER_SEC = 40;
 export const FORCE_FIELD_DIVERT_MUL = 5;
 /** The Commander's plating mends itself, very slowly: HP a second while he lives. */
 export const COMMANDER_HP_REGEN_PER_SEC = 0.5;
+
+/**
+ * Sim Unit II. A light, fast cyborg frame built for the knife: a short energy
+ * dagger in each hand, and a blink drive that throws him SIMUNIT_BLINK_RANGE_TILES
+ * in an instant on one charge, which comes back by itself in
+ * SIMUNIT_BLINK_RECHARGE_SECONDS. The daggers cut a soldier down in two slashes,
+ * open a Walker or a truck at SIMUNIT_LIGHT_MUL of that, and barely scratch a
+ * tank or a wall. Against a structure or a hull with enemy soldiers inside he
+ * blinks in, spends SIMUNIT_PURGE_SECONDS among them, kills every soldier
+ * aboard, and blinks back out: that is the one order that spends his charge on
+ * a target, and only a hostile garrison offers it.
+ */
+export const SIMUNIT_SLASH_DAMAGE = 22;
+/** Slash cooldown, seconds: two cuts a second, one hand then the other. */
+export const SIMUNIT_SLASH_SECONDS = 0.45;
+/** Share of a slash a light hull (a Walker, a truck) takes. */
+export const SIMUNIT_LIGHT_MUL = 0.5;
+/** Share of a slash a heavy plate takes: little to nothing. */
+export const SIMUNIT_HEAVY_MUL = 0.05;
+/** Share of a slash a wall takes. */
+export const SIMUNIT_BUILDING_MUL = 0.15;
+export const SIMUNIT_BLINK_RANGE_TILES = t(12);
+export const SIMUNIT_BLINK_RECHARGE_SECONDS = 18;
+/** Seconds inside a hostile garrison before every soldier in it is dead and he is out again. */
+export const SIMUNIT_PURGE_SECONDS = 2;
+
+export const DAGGERS = {
+  id: "daggers" as const,
+  name: "Energy daggers",
+  blurb: "A short blade in each hand. Arm's reach: he runs the target down himself. Two slashes kill a soldier; a Walker or a truck takes half; a tank or a wall takes almost nothing. Never needs a truck.",
+  damage: SIMUNIT_SLASH_DAMAGE,
+  penetration: 0,
+  caliber: 8,
+  spreadDeg: 0,
+  cooldown: SIMUNIT_SLASH_SECONDS,
+  clip: 1,
+  reload: 0,
+  rangeTiles: SIMUNIT_REACH_TILES,
+} as const satisfies InfantryGun;
 
 export const COMMANDER_FIELD_MODES = [
   {
@@ -3001,6 +3046,7 @@ export const INFANTRY_GUNS: Record<InfantryWeaponId, InfantryGun> = {
   penetrator: PENETRATOR,
   flamer: FLAMER,
   laser: LASER,
+  daggers: DAGGERS,
   deckmg: DECK_MG,
 };
 
@@ -3418,6 +3464,7 @@ export const LST_TUB_EXPOSURE = 0.3;
 export const LST_BAY_LOAD: Partial<Record<EntityType, number>> = {
   cyborg: 2,
   cyborgcommander: 2,
+  simunit2: 1,
   walker: 3,
   artillery: 4,
   supply: 4,
@@ -3713,7 +3760,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     damage: 0,
     projectileSpeed: 0,
     ...UNARMED,
-    blurb: `Assembly hall and uplink mast that run your cyborgs. Unlocks the Cyborg, and with a Research Facility the Cyborg Commander. Your Cyborgs live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down: still yours, but dead still and silent. Get the link back (a new Central, or the power) and they wake up, unless an enemy Cyborg Commander took them first. A living Cyborg Commander keeps yours running without it, and takes over any enemy's shut-down Cyborg near him.`,
+    blurb: `Assembly hall and uplink mast that run your cyborgs. Unlocks the Cyborg, and with a Research Facility the Cyborg Commander and the Sim Unit II. Your Cyborgs and Sim Units live on its uplink: if it falls or your power runs short while no Cyborg Commander of yours lives, ${CYBORG_SHUTDOWN_SECONDS} seconds later every Cyborg of yours on the field shuts down: still yours, but dead still and silent. Get the link back (a new Central, or the power) and they wake up, unless an enemy Cyborg Commander took them first. A living Cyborg Commander keeps yours running without it, and takes over any enemy's shut-down Cyborg near him.`,
   },
   radar: {
     type: "radar",
@@ -4950,6 +4997,31 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: LASER.spreadDeg,
     blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. He can put the laser's power into it: the field then holds five times the points and recharges five times as fast, but he cannot attack. His plating mends itself, very slowly. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate: heavy damage to a hull, moderate to a building. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. His thermal scanner and APS radar read all round him: enemy soldiers glow as heat and armored hulls show under a scan grid, through fog, cover and dark. While he lives your Cyborgs keep running without a Cyborg Central, and any enemy shut-down Cyborg near him is taken over by his uplink in a few seconds, one at a time. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
+  simunit2: {
+    type: "simunit2",
+    kind: "unit",
+    name: "Sim Unit II",
+    letter: "I",
+    cost: 1400,
+    buildSeconds: 14,
+    hp: 220,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(2.6 * INFANTRY_PACE),
+    turnDegPerSec: 1200,
+    rangeTiles: SIMUNIT_REACH_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: DAGGERS.cooldown,
+    damage: DAGGERS.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: DAGGERS.penetration,
+    caliber: DAGGERS.caliber,
+    spreadDeg: DAGGERS.spreadDeg,
+    blurb: `A light, fast cyborg built for the knife. An energy dagger in each hand: he runs a soldier down and cuts him down in two slashes, opens a Walker or a truck at half that, and barely scratches a tank or a wall. A blink drive throws him up to ${SIMUNIT_BLINK_RANGE_TILES / TILE_SUBDIV} cells in an instant on one charge, back by itself in ${SIMUNIT_BLINK_RECHARGE_SECONDS} seconds. Right-click an enemy structure or hull with soldiers inside and he blinks in among them, kills every soldier aboard in ${SIMUNIT_PURGE_SECONDS} seconds, and blinks back out; only a hostile garrison offers it. Like the Cyborg he can shut down where he stands: dark and still, he reads as no one's machine and enemy guns pass him by until he powers up. Near death his legs are torn off and he crawls on, still cutting. Medics heal him, engineers repair him. He runs on your Cyborg Central's uplink or a living Cyborg Commander, like the Cyborg.`,
+  },
   titan: {
     type: "titan",
     kind: "unit",
@@ -5947,7 +6019,7 @@ export function armorLabel(type: EntityType): string | null {
   return `F${d.armorFront} / S${d.armorSide} / R${d.armorRear}`;
 }
 
-const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "cyborgcommander", "droneop", "jumpjet"];
+const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "cyborgcommander", "simunit2", "droneop", "jumpjet"];
 
 /** Soldier with a jet pack: the Jump Jet. */
 export function isJumpJetType(type: EntityType): boolean {
@@ -6031,7 +6103,26 @@ export function isInfantryType(type: EntityType): boolean {
  * no random limb hits, legs tied to HP.
  */
 export function isCyborg(type: EntityType): boolean {
-  return type === "cyborg" || type === "cyborgcommander";
+  return type === "cyborg" || type === "cyborgcommander" || isSimUnit(type);
+}
+
+/** The Sim Unit line: light cyborg frames. Sim Unit II is the first of them. */
+export function isSimUnit(type: EntityType): boolean {
+  return type === "simunit2";
+}
+
+/**
+ * Can shut down on an order and stand dark: the Cyborg and the Sim Units, not the
+ * Commander. Powered down he takes no orders, fires nothing, and enemy guns do not
+ * pick him on their own; the enemy sees no one's machine. Power up resumes at once.
+ */
+export function canPowerDown(type: EntityType): boolean {
+  return type === "cyborg" || isSimUnit(type);
+}
+
+/** Fights with the energy daggers: Sim Unit II. */
+export function meleeOf(type: EntityType): boolean {
+  return isSimUnit(type);
 }
 
 /** The lighter hulls, guns, and trucks the Apocalypse rolls flat. */
@@ -6095,6 +6186,7 @@ export function primaryInfantryGun(type: EntityType): InfantryGun | null {
   if (type === "mortarman") return MORTAR;
   if (type === "cyborg") return GATLING;
   if (type === "cyborgcommander") return LASER;
+  if (type === "simunit2") return DAGGERS;
   if (type === "jumpjet") return ASSAULT;
   return null;
 }
@@ -6110,6 +6202,7 @@ export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
   if (type === "mortarman") return [MORTAR];
   if (type === "cyborg") return [GATLING];
   if (type === "cyborgcommander") return [LASER];
+  if (type === "simunit2") return [DAGGERS];
   if (type === "jumpjet") return [ASSAULT, HANDGUN];
   return [];
 }

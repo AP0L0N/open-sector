@@ -22,6 +22,7 @@ export function drawActionCursor(
   else if (action === "ungarrison") drawGarrison(ctx, t, true);
   else if (action === "attack") drawAttack(ctx, t);
   else if (action === "capture") drawCapture(ctx, t);
+  else if (action === "purge") drawRepair(ctx, "PURGE");
   else if (action === "repair") drawRepair(ctx, "FIX");
   else if (action === "scrap") drawRepair(ctx, "SCRAP");
   else if (action === "supply") drawRepair(ctx, "AMMO");

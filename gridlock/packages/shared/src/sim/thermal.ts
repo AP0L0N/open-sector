@@ -23,6 +23,7 @@ function sensorLive(state: MatchState, playerId: string, e: Entity): boolean {
     e.hp > 0 &&
     !e.wreck &&
     !e.shutdown &&
+    !e.dormant &&
     e.garrisonedIn == null &&
     allies(state, playerId, e.ownerId)
   );

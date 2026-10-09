@@ -1,5 +1,5 @@
 import type { AirDrop, BridgeType, BuildingType, Crit, DroneMode, EntityType, FieldStructureType, InfantryWeaponId, ShellType, Stance, TrainType, YardFieldType } from "../catalog.js";
-import type { AiDifficulty, ClientMessage, CorpseView, EntityState, ImpactView, RocketLaunchView, ShellHoleView } from "../protocol.js";
+import type { AiDifficulty, BlinkView, ClientMessage, CorpseView, EntityState, ImpactView, RocketLaunchView, ShellHoleView } from "../protocol.js";
 
 export interface Vec {
   x: number;
@@ -51,7 +51,9 @@ export interface Order {
     | "disable"
     | "tow"
     | "land"
-    | "minelay";
+    | "minelay"
+    | "blink"
+    | "purge";
   x?: number;
   y?: number;
   /** World radians. Guard destination facing. */
@@ -123,7 +125,9 @@ export type QueueableCommand = Extract<
       | "cmd.supply"
       | "cmd.disable"
       | "cmd.board"
-      | "cmd.minelay";
+      | "cmd.minelay"
+      | "cmd.blink"
+      | "cmd.purge";
   }
 >;
 
@@ -556,6 +560,15 @@ export interface Entity {
   shutdown?: true;
   /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
   takeover?: { by: number; ticks: number };
+  /**
+   * Cyborg and Sim Unit: powered down on his own side's order (sim/simunit.ts). Still his, but
+   * still and silent, and no enemy gun picks him by itself. Power up ends it at once.
+   */
+  dormant?: true;
+  /** Sim Unit II: the tick his blink drive is charged again. Unset or past means ready. */
+  blinkReady?: number;
+  /** Sim Unit II inside a hostile garrison: the host, where he came from, and the tick he is done. */
+  purge?: { hostId: number; from: Vec; until: number };
   /** Cyborg Commander only: force-field points left. Hits come off these before HP. */
   field?: number;
   /** Cyborg Commander only: weapons power diverted to the field. The laser is dark; he does not fire. */
@@ -940,6 +953,8 @@ export interface MatchState {
   /** Supply crates from a transport. Empty until the first drop. */
   crates: SupplyCrate[];
   impacts: ImpactView[];
+  /** Sim Unit blinks this tick, for the client's flash. */
+  blinks: BlinkView[];
   /** Rockets launched this tick (this wall-clock step after stepMatch). */
   launches: RocketLaunchView[];
   rngState: number;
