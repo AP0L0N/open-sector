@@ -18,11 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-<<<<<<< HEAD
-export const PROTOCOL_VERSION = 125;
-=======
-export const PROTOCOL_VERSION = 124;
->>>>>>> worktree-worktree-sim-unit-2
+export const PROTOCOL_VERSION = 126;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -818,16 +814,13 @@ export type ClientMessage =
   | { type: "cmd.selfdestruct"; ids: number[]; on: boolean }
   /** Cyborg Commander: `on` puts the laser's power into the force field. He cannot attack while it is. */
   | { type: "cmd.fielddivert"; ids: number[]; on: boolean }
-<<<<<<< HEAD
   | { type: "cmd.engagecontacts"; ids: number[]; on: boolean }
-=======
   /** Cyborg and Sim Unit: `on` shuts him down where he stands (dark, still, passed over by enemy guns); off powers him up. */
   | { type: "cmd.powerdown"; ids: number[]; on: boolean }
   /** Sim Unit II: blink to (x, y). Past his reach he walks until it is in reach, then blinks. */
   | { type: "cmd.blink"; ids: number[]; x: number; y: number; queue?: boolean }
   /** Sim Unit II: blink into a hostile garrison (`targetId`), kill every soldier aboard, and blink back out. */
   | { type: "cmd.purge"; ids: number[]; targetId: number; queue?: boolean }
->>>>>>> worktree-worktree-sim-unit-2
   | { type: "cmd.rockets"; ids: number[]; on: boolean }
   | { type: "cmd.reach"; ids: number[]; max: boolean }
   | { type: "cmd.build"; building: BuildingType | YardFieldType }

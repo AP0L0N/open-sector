@@ -562,13 +562,11 @@ export interface Entity {
   shutdown?: true;
   /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
   takeover?: { by: number; ticks: number };
-<<<<<<< HEAD
   /** Cyborg only: fires on what his side's thermal and APS read, seen or not, inside his reach. */
   engageContacts?: true;
   /** Armored hull only: where it stood last tick and the last tick it moved, for the Commander's APS radar (sim/thermal.ts). */
   apsAt?: { x: number; y: number };
   apsMovedTick?: number;
-=======
   /**
    * Cyborg and Sim Unit: powered down on his own side's order (sim/simunit.ts). Still his, but
    * still and silent, and no enemy gun picks him by itself. Power up ends it at once.
@@ -578,7 +576,6 @@ export interface Entity {
   blinkReady?: number;
   /** Sim Unit II inside a hostile garrison: the host, where he came from, and the tick he is done. */
   purge?: { hostId: number; from: Vec; until: number };
->>>>>>> worktree-worktree-sim-unit-2
   /** Cyborg Commander only: force-field points left. Hits come off these before HP. */
   field?: number;
   /** Cyborg Commander only: weapons power diverted to the field. The laser is dark; he does not fire. */

@@ -148,11 +148,9 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.fielddivert":
       if (typeof msg.on !== "boolean") return fail("bad_payload", "Unknown field setting.");
       return cmdFieldDivert(state, playerId, msg.ids, msg.on);
-<<<<<<< HEAD
     case "cmd.engagecontacts":
       if (typeof msg.on !== "boolean") return fail("bad_payload", "Unknown contact setting.");
       return cmdEngageContacts(state, playerId, msg.ids, msg.on);
-=======
     case "cmd.powerdown":
       if (typeof msg.on !== "boolean" || !Array.isArray(msg.ids)) return fail("bad_payload", "Unknown power setting.");
       return cmdPowerDown(state, playerId, msg.ids, msg.on);
@@ -162,7 +160,6 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.purge":
       if (!Array.isArray(msg.ids) || typeof msg.targetId !== "number") return fail("bad_payload", "Bad purge order.");
       return cmdPurge(state, playerId, msg.ids, msg.targetId);
->>>>>>> worktree-worktree-sim-unit-2
     case "cmd.build":
       if (isYardField(msg.building)) return fail("bad_payload", "Place that on the map.");
       if (!isBuildingType(msg.building)) return fail("bad_payload", "Unknown structure.");
@@ -1448,13 +1445,14 @@ function cmdFieldDivert(state: MatchState, playerId: string, ids: number[], on: 
   return ok();
 }
 
-<<<<<<< HEAD
 /** Cyborgs fire on what their side's thermal and APS read, out of sight but inside their reach. */
 function cmdEngageContacts(state: MatchState, playerId: string, ids: number[], on: boolean): CmdResult {
   const units = owned(state, playerId, ids).filter((e) => isCyborg(e.type));
   if (units.length === 0) return fail("not_yours", "Select a Cyborg.");
   for (const e of units) e.engageContacts = on ? true : undefined;
-=======
+  return ok();
+}
+
 /** Shut a Cyborg or a Sim Unit down where he stands, or power him up again. */
 function cmdPowerDown(state: MatchState, playerId: string, ids: number[], on: boolean): CmdResult {
   let n = 0;
@@ -1498,7 +1496,6 @@ function cmdPurge(state: MatchState, playerId: string, ids: number[], targetId: 
     e.order = { kind: "purge", targetId: host.id };
     e.state = "move";
   }
->>>>>>> worktree-worktree-sim-unit-2
   return ok();
 }
 

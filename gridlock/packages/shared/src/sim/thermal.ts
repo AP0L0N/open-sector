@@ -19,24 +19,9 @@ import type { Entity, MatchState } from "./types.js";
 const THERMAL_HALF = (THERMAL_HALF_DEG * Math.PI) / 180;
 const APS_MOVE_MEMORY_TICKS = secondsToTicks(APS_MOVE_MEMORY_SECONDS);
 
-<<<<<<< HEAD
-/** A Cyborg whose sensors read: alive, out in the open, and not shut down. */
+/** A Cyborg whose sensors read: alive, out in the open, not shut down, and not powered down. */
 export function sensorLive(e: Entity): boolean {
-  return e.kind === "unit" && isCyborg(e.type) && e.hp > 0 && !e.wreck && !e.shutdown && e.garrisonedIn == null;
-=======
-/** A Cyborg whose sensors read: on this side, alive, out in the open, and not shut down. */
-function sensorLive(state: MatchState, playerId: string, e: Entity): boolean {
-  return (
-    e.kind === "unit" &&
-    isCyborg(e.type) &&
-    e.hp > 0 &&
-    !e.wreck &&
-    !e.shutdown &&
-    !e.dormant &&
-    e.garrisonedIn == null &&
-    allies(state, playerId, e.ownerId)
-  );
->>>>>>> worktree-worktree-sim-unit-2
+  return e.kind === "unit" && isCyborg(e.type) && e.hp > 0 && !e.wreck && !e.shutdown && !e.dormant && e.garrisonedIn == null;
 }
 
 /** An armored hull on the ground or the water: what the APS radar can read. */
