@@ -370,7 +370,7 @@ import { drawCyborgDeathSparks } from "./cyborg-sparks.js";
 import { drawGroundShadow, unitCastsShadow, unitShadowFootprint } from "./unit-shadow.js";
 import { buildingShadowFootprint, convexHull, drawCastShadows, shadowOffset, treeShadowFootprint } from "./cast-shadow.js";
 import { buildingGroundElev, drawYardWear, WALL_SHARE, wallFootprint, yardWearFootprint } from "./building-ground.js";
-import { footprintPeak, radarReachTiles } from "./radar-reach.js";
+import { footprintPeak, radarReachTiles, showsReachRing } from "./radar-reach.js";
 import {
   airBurstPuffs,
   flakCloudPuffs,
@@ -4747,14 +4747,14 @@ export class MapView {
   }
 
   /**
-   * Faint blue dashed ring of a selected CIWS or RAM's reach, the reach the sim
-   * fires to (radar-reach.ts): Max range when it is set. The CIWS reaches
+   * Faint blue dashed ring of a selected CIWS, RAM, Flak 37 or Pak 43's reach, the
+   * reach the sim fires to (radar-reach.ts): Max range when it is set. The CIWS reaches
    * farther for a plane, so it shows that ring and a fainter one inside for the ground.
    */
   private drawRadarReach(): void {
     const you = this.curr.youPlayerId;
     const mounts = this.curr.entities.filter(
-      (e) => this.selected.has(e.id) && e.ownerId === you && e.hp > 0 && !e.wreck && radarLaidOf(e.type),
+      (e) => this.selected.has(e.id) && e.ownerId === you && e.hp > 0 && !e.wreck && showsReachRing(e.type),
     );
     if (mounts.length === 0) return;
     const ts = this.ts();

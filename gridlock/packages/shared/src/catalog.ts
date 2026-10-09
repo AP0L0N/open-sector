@@ -2453,12 +2453,15 @@ export const FLAK_RANGE_TILES = t(14);
 export const FLAK_WOUND_MUL = 0.5;
 /** Flak shells in the ready racks. A supply truck refills them. */
 export const FLAK_RACK = 64;
-/** World px from the burst at which a flying body still takes something. Full damage inside a third of it. */
-export const FLAK_BURST_RADIUS = 26;
+/**
+ * World px from the burst at which a flying body still takes something: about two tiles, wider
+ * than a formation, so one shell catches every plane flying close together. Full damage inside a third of it.
+ */
+export const FLAK_BURST_RADIUS = 64;
 /** Elevation units above or below the burst that still count. Planes cruise at AIR_CRUISE_ALT. */
-export const FLAK_BURST_DEPTH = 9;
-/** Damage at the heart of a burst. A Stuka takes about five close ones; most bursts land off its heart. */
-export const FLAK_BURST_DAMAGE = 26;
+export const FLAK_BURST_DEPTH = 14;
+/** Damage at the heart of a burst: small, since nearly every burst finds something. A Stuka takes about a dozen. */
+export const FLAK_BURST_DAMAGE = 10;
 /**
  * Scatter of the burst off the predicted point, world px, at point blank and at full reach.
  * Thirty percent wider than the first lay (12 and 34).
@@ -4166,7 +4169,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonSightBonus: 0,
     garrisonTypes: BUNKER_TYPES,
     capturable: false,
-    blurb: `A 37mm anti-aircraft gun in a sandbagged ring, worked by two men, who come with it. It lays only on what is in the air: planes, Jump Jets, drones, and men under canopies. Its time-fused shells burst at the target's height in a black cloud, and everything flying inside the burst is hurt, so one shell can catch two planes at once. It leads a plane on its heading, but the fuse scatters: moderately accurate. Force attack on the ground puts a barrage up over that point. ${FLAK_RACK} shells in the racks; a supply truck brings more. Turns all the way round. With one man left it fires at half pace; with none it is silent until soldiers take their places. Rifle fire on it finds the crew. Cannot move.`,
+    blurb: `A 37mm anti-aircraft gun in a sandbagged ring, worked by two men, who come with it. It lays only on what is in the air: planes, Jump Jets, drones, and men under canopies. Its time-fused shells burst at the target's height in a wide black cloud, and everything flying inside it takes a little damage, so planes that fly close together are all hit at once. It leads a plane on its heading, but the fuse scatters: moderately accurate. Force attack on the ground puts a barrage up over that point. ${FLAK_RACK} shells in the racks; a supply truck brings more. Turns all the way round. With one man left it fires at half pace; with none it is silent until soldiers take their places. Rifle fire on it finds the crew. Cannot move.`,
   },
   sandbags: {
     type: "sandbags",

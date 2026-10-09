@@ -3,10 +3,11 @@
   "out": "units/flak",
   "sfx": {
     "fire": {
-      "source": "imports/bofors-l60.opus",
+      "prompt": "A single shot from a World War 2 German 37mm Flak 37 anti-aircraft autocannon firing upward: one sharp, hard, cracking bang with a punchy low thump, the breech slamming back with a heavy steel clack and a brass shell casing ringing on the ground, a short dry echo across an open field, medium distance outdoors, no music, no voice",
+      "duration": 1.0,
       "variants": 3,
-      "pitch": [1.0, 0.97, 1.03],
-      "lufs": -9
+      "influence": 0.7,
+      "lufs": -10
     },
     "die": {
       "prompt": "Anti-aircraft gun position hit by bombs, a blast, ready ammunition clips cooking off in a crackling string of pops, sandbags and steel debris falling, medium distance outdoors, no music, no voice",
