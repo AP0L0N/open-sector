@@ -907,7 +907,7 @@ export interface MatchState {
   roomId: string;
   mapId: string;
   tick: number;
-  /** Sim steps per wall-clock tick. 1–5. */
+  /** Sim steps per wall-clock tick. 1–8. */
   gameSpeed: number;
   /** Skirmish hold. The wall-clock tick keeps drawing and does not step the sim. */
   paused?: boolean;
