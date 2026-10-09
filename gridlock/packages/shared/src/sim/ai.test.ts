@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { BUILD_RADIUS, DIAMOND_SCRAP_MUL, SCRAP_TILE_YIELD, SMELTER_SCRAP_PER_SEC, START_SCRAP, SUPPLY_CARGO, catalog } from "../catalog.js";
 import { createRoom, hostSlot, startMatch, updateSelf } from "../lobby.js";
+import type { AiDifficulty } from "../protocol.js";
+import { AI_PROFILES } from "./ai-profile.js";
 import {
-  EASY_ARMY,
-  EASY_EXPAND_TILES,
-  EASY_FLEET_MIN,
-  EASY_FORTIFY_MAX_TICKS,
-  EASY_SEA_REACH_TILES,
-  EASY_WAVE_MIN,
+  CPU_ARMY,
+  CPU_EXPAND_TILES,
+  CPU_FLEET_MIN,
+  CPU_SEA_REACH_TILES,
   aiPlanOf,
   diamondCentre,
   findBuildTile,
@@ -17,6 +17,7 @@ import {
   findSmelterTile,
   rankOf,
   tickAi,
+  waveSize,
 } from "./ai.js";
 import { TILE_WATER } from "../maps.js";
 import { hasCore, inBuildRadius, isWater, makeEntity, scrapAt } from "./geo.js";
@@ -25,7 +26,7 @@ import { smelterRateOn } from "./smelter.js";
 import { producerType } from "./train.js";
 import type { AiPlan, Entity, MatchState, Vec } from "./types.js";
 
-function humanVsEasy(): { state: MatchState; aiId: string } {
+function humanVsEasy(difficulty: AiDifficulty = "defensive"): { state: MatchState; aiId: string } {
   const made = createRoom({
     id: "AI1",
     hostId: "A",
@@ -35,7 +36,7 @@ function humanVsEasy(): { state: MatchState; aiId: string } {
   });
   if (!made.ok) throw new Error(made.message);
   const room = made.value;
-  const add = hostSlot(room, "A", 1, { status: "ai" });
+  const add = hostSlot(room, "A", 1, { status: "ai", ai: difficulty });
   if (!add.ok) throw new Error(add.message);
   updateSelf(room, "A", { ready: true });
   const started = startMatch(room, "A", () => 0);
@@ -163,12 +164,12 @@ function mean(xs: number[]): number {
   return xs.reduce((a, b) => a + b, 0) / xs.length;
 }
 
-describe("easy CPU", () => {
+describe("CPU types", () => {
   it("spawns a Rig for the CPU seat", () => {
     const { state, aiId } = humanVsEasy();
     const cpu = state.players.get(aiId);
     assert.ok(cpu);
-    assert.equal(cpu!.ai, "easy");
+    assert.equal(cpu!.ai, "defensive");
     assert.ok([...state.entities.values()].some((e) => e.ownerId === aiId && e.type === "rig"));
     assert.equal(state.initialHumans, 2);
   });
@@ -280,7 +281,7 @@ describe("easy CPU", () => {
     waitCore(state, aiId);
     campaign(state, aiId);
     hold(state, aiId);
-    fighters(state, aiId, "rifleman", EASY_WAVE_MIN - 3);
+    fighters(state, aiId, "rifleman", AI_PROFILES.defensive.waveMin - 3);
     wavePass(state, aiId);
     assert.equal(planOf(state, aiId).forces.length, 0, "a small army waits");
     fighters(state, aiId, "rifleman", 3, 24);
@@ -470,9 +471,48 @@ describe("easy CPU", () => {
   it("campaigns anyway once fortifying has taken too long", () => {
     const { state, aiId } = humanVsEasy();
     waitCore(state, aiId);
-    state.tick = EASY_FORTIFY_MAX_TICKS;
+    state.tick = AI_PROFILES.defensive.fortifyMaxTicks;
     micro(state, aiId);
     assert.equal(planOf(state, aiId).posture, "campaign");
+  });
+
+  it("an Aggressive CPU campaigns once the front tower and the Bunker stand, walls or not", () => {
+    const { state, aiId } = humanVsEasy("aggressive");
+    waitCore(state, aiId);
+    const cpu = state.players.get(aiId)!;
+    assert.equal(cpu.ai, "aggressive");
+    assert.equal(cpu.aiNextAttackTick, AI_PROFILES.aggressive.attackFirstTicks);
+    const plan = planOf(state, aiId);
+    // Front and Bunker tried; the flank towers are still to come, and no tower is walled or crewed.
+    for (const k of ["front", "bunker"]) plan.siteRetry[`base:${k}`] = Number.MAX_SAFE_INTEGER;
+    cpu.scrap = 0;
+    micro(state, aiId);
+    assert.equal(plan.posture, "campaign");
+  });
+
+  it("a Defensive CPU still waits for its flank towers", () => {
+    const { state, aiId } = humanVsEasy("defensive");
+    waitCore(state, aiId);
+    const cpu = state.players.get(aiId)!;
+    assert.equal(cpu.aiNextAttackTick, AI_PROFILES.defensive.attackFirstTicks);
+    const plan = planOf(state, aiId);
+    for (const k of ["front", "bunker"]) plan.siteRetry[`base:${k}`] = Number.MAX_SAFE_INTEGER;
+    cpu.scrap = 0;
+    micro(state, aiId);
+    assert.equal(plan.posture, "fortify");
+  });
+
+  it("sizes and times its waves by type: Aggressive smallest first, fastest growing, most often", () => {
+    assert.equal(waveSize(AI_PROFILES.defensive, 0), AI_PROFILES.defensive.waveMin);
+    assert.equal(waveSize(AI_PROFILES.aggressive, 0), AI_PROFILES.aggressive.waveMin);
+    assert.ok(AI_PROFILES.aggressive.waveMin < AI_PROFILES.balanced.waveMin);
+    assert.ok(AI_PROFILES.balanced.waveMin < AI_PROFILES.defensive.waveMin);
+    assert.equal(waveSize(AI_PROFILES.aggressive, 3), AI_PROFILES.aggressive.waveMin + 3 * AI_PROFILES.aggressive.waveGrowth);
+    assert.equal(waveSize(AI_PROFILES.aggressive, 99), AI_PROFILES.aggressive.waveMax);
+    assert.ok(AI_PROFILES.aggressive.attackEveryTicks < AI_PROFILES.balanced.attackEveryTicks);
+    assert.ok(AI_PROFILES.balanced.attackEveryTicks < AI_PROFILES.defensive.attackEveryTicks);
+    assert.ok(AI_PROFILES.aggressive.fortifyMaxTicks < AI_PROFILES.balanced.fortifyMaxTicks);
+    assert.ok(AI_PROFILES.balanced.fortifyMaxTicks < AI_PROFILES.defensive.fortifyMaxTicks);
   });
 
   it("sends an engineer to raise a Smelter on the diamond scrap once a force holds the middle", () => {
@@ -538,7 +578,7 @@ describe("easy CPU", () => {
     const ty = eng.order!.tileY!;
     assert.ok(smelterRateOn((x, y) => scrapAt(state, x, y), tx, ty) > 0, "the Smelter stands on the field");
     assert.equal(inBuildRadius(state, aiId, tx, ty, def.tileW, def.tileH, BUILD_RADIUS), false, "out past the yard");
-    assert.ok(Math.hypot(tx - hq.tileX, ty - hq.tileY) <= EASY_EXPAND_TILES + def.tileW);
+    assert.ok(Math.hypot(tx - hq.tileX, ty - hq.tileY) <= CPU_EXPAND_TILES + def.tileW);
   });
 
   it("raises a fire-control tower on the middle, then watch towers, once the diamond Smelter stands", () => {
@@ -620,7 +660,7 @@ describe("easy CPU", () => {
     waitCore(state, aiId);
     withBase(state, aiId, ["dynamo", "smelter", "muster", "dynamo"]);
     // Every Barracks rank is full, the rocketmen too, until planes are seen.
-    for (const row of EASY_ARMY.muster) fighters(state, aiId, row.unit, row.want, 16 * EASY_ARMY.muster.indexOf(row));
+    for (const row of CPU_ARMY.muster) fighters(state, aiId, row.unit, row.want, 16 * CPU_ARMY.muster.indexOf(row));
     const muster = [...state.entities.values()].find((e) => e.ownerId === aiId && e.type === "muster")!;
     const cpu = state.players.get(aiId)!;
     cpu.structure = null;
@@ -708,7 +748,7 @@ describe("easy CPU", () => {
   });
 
   it("lists every army row under the factory that trains it", () => {
-    for (const [factory, rows] of Object.entries(EASY_ARMY)) {
+    for (const [factory, rows] of Object.entries(CPU_ARMY)) {
       for (const row of rows) assert.equal(producerType(row.unit), factory, row.unit);
     }
   });
@@ -716,7 +756,7 @@ describe("easy CPU", () => {
   it("builds the Cyborg Central right after Research", () => {
     const { state } = humanVsEasy();
     const aiId = "A";
-    state.players.get(aiId)!.ai = "easy";
+    state.players.get(aiId)!.ai = "defensive";
     waitCore(state, aiId);
     campaign(state, aiId);
     withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "dynamo"]);
@@ -733,7 +773,7 @@ describe("easy CPU", () => {
     // The west seat's yard has room for the strip; the NE corner of yard-64 does not.
     const { state } = humanVsEasy();
     const aiId = "A";
-    state.players.get(aiId)!.ai = "easy";
+    state.players.get(aiId)!.ai = "defensive";
     waitCore(state, aiId);
     campaign(state, aiId);
     withBase(state, aiId, ["dynamo", "smelter", "muster", "armory", "research", "dynamo", "cyborgcentral", "dynamo"]);
@@ -1275,7 +1315,7 @@ describe("easy CPU at sea", () => {
     for (const e of fleet) {
       assert.equal(e.order?.kind, "attackmove", e.type);
       const d = Math.hypot(e.order!.x! - foe.x, e.order!.y! - foe.y) / state.tileSize;
-      assert.ok(d <= EASY_SEA_REACH_TILES + 12, `sails to the water by the Core, ${d.toFixed(0)} tiles off`);
+      assert.ok(d <= CPU_SEA_REACH_TILES + 12, `sails to the water by the Core, ${d.toFixed(0)} tiles off`);
     }
     assert.deepEqual(planOf(state, aiId).fleet?.ids.slice().sort(), fleet.map((e) => e.id).sort());
     for (const f of planOf(state, aiId).forces) for (const e of fleet) assert.ok(!f.ids.includes(e.id), "ships stay out of the land waves");
@@ -1295,11 +1335,11 @@ describe("easy CPU at sea", () => {
     const ty = Math.floor(end.y / ts) - (def.tileH >> 1);
     const theirs = makeEntity(state, "dock", "A", (tx + def.tileW / 2) * ts, (ty + def.tileH / 2) * ts, { tileX: tx, tileY: ty });
     const dock = harbour(state, aiId);
-    const fleet = boats(state, aiId, "gunboat", EASY_FLEET_MIN, dock);
+    const fleet = boats(state, aiId, "gunboat", CPU_FLEET_MIN, dock);
     wavePass(state, aiId);
     const to = planOf(state, aiId).fleet?.to;
     assert.ok(to, "the fleet sails");
-    assert.ok(Math.hypot(to.x - theirs.x, to.y - theirs.y) / ts <= EASY_SEA_REACH_TILES, "bound for the enemy harbour");
+    assert.ok(Math.hypot(to.x - theirs.x, to.y - theirs.y) / ts <= CPU_SEA_REACH_TILES, "bound for the enemy harbour");
     for (const e of fleet) assert.equal(e.order?.kind, "attackmove");
   });
 
@@ -1309,7 +1349,7 @@ describe("easy CPU at sea", () => {
     campaign(state, aiId);
     channel(state, aiId);
     const dock = harbour(state, aiId);
-    const few = boats(state, aiId, "gunboat", EASY_FLEET_MIN - 1, dock);
+    const few = boats(state, aiId, "gunboat", CPU_FLEET_MIN - 1, dock);
     wavePass(state, aiId);
     for (const e of few) assert.notEqual(e.order?.kind, "attackmove");
     assert.equal(planOf(state, aiId).fleet, undefined);

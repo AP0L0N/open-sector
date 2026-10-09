@@ -1,6 +1,6 @@
 import { canContinuousTrain, clampGameSpeed, type TrainType } from "../catalog.js";
 import { getMap, TILE_EMPTY } from "../maps.js";
-import { MAX_SLOTS, MIN_SLOTS, SLOT_COUNT, type AiDifficulty, type SlotStatus } from "../protocol.js";
+import { MAX_SLOTS, MIN_SLOTS, SLOT_COUNT, isAiDifficulty, type AiDifficulty, type SlotStatus } from "../protocol.js";
 import { restampForts } from "./field.js";
 import { restampBridges } from "./bridge.js";
 import { initGrids, occupyEntity } from "./geo.js";
@@ -197,6 +197,8 @@ export function restoreMatch(
   for (const p of save.players) {
     const playerId = mapOwner(p.playerId);
     const player = { ...p, playerId };
+    // Saves from before the CPU types carry "easy": that CPU plays on as Defensive.
+    if (player.ai != null && !isAiDifficulty(player.ai)) player.ai = "defensive";
     const continuous = cleanContinuous(p.continuous);
     if (continuous) player.continuous = continuous;
     else delete player.continuous;
@@ -319,7 +321,8 @@ export function applySaveSeats(room: RoomState, save: SaveGame, humanPlayerId: s
       slot.status = "ai";
       slot.playerId = src.playerId;
       slot.name = src.name;
-      slot.ai = src.ai ?? "easy";
+      // Saves from before the CPU types carry "easy": that CPU plays on as Defensive.
+      slot.ai = isAiDifficulty(src.ai) ? src.ai : "defensive";
       slot.ready = true;
     }
   }
@@ -441,6 +444,7 @@ function seatOk(v: unknown): v is SaveSeat {
   if (!Number.isInteger(s.spawnId) || s.spawnId < 0 || s.spawnId > SLOT_COUNT) return false;
   if (s.playerId != null && (typeof s.playerId !== "string" || s.playerId.length > 80)) return false;
   if (s.name != null && typeof s.name !== "string") return false;
-  if (s.ai != null && s.ai !== "easy") return false;
+  // "easy" is the type older saves carry; it loads as Defensive.
+  if (s.ai != null && (s.ai as string) !== "easy" && !isAiDifficulty(s.ai)) return false;
   return true;
 }

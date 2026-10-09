@@ -27,6 +27,7 @@ import {
   startMatch,
   stepMatch,
   updateSelf,
+  type AiDifficulty,
   type ClientMessage,
   type ErrorCode,
   type MatchSnapshot,
@@ -343,6 +344,7 @@ export class Hub {
       colorId?: number;
       team?: number;
       spawnId?: number;
+      ai?: AiDifficulty;
     },
   ): void {
     const room = this.roomOf(session);
@@ -354,6 +356,7 @@ export class Hub {
       colorId: msg.colorId,
       team: msg.team,
       spawnId: msg.spawnId,
+      ai: msg.ai,
     });
     if (!res.ok) return this.err(session, res.code, res.message);
     if (victim && victim !== session.playerId && !findPlayerSlot(room, victim)) {

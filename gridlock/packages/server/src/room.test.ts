@@ -168,16 +168,16 @@ describe("hub rooms", () => {
     }
   });
 
-  it("host can add an Easy CPU and start vs it", () => {
+  it("host can add a Balanced CPU and start vs it", () => {
     const hub = new Hub();
     try {
       const a = client(hub, "A");
       hub.handle("A", { type: "hello", name: "Alpha" });
       hub.handle("A", { type: "room.create", mapId: "yard-64", maxSlots: 8, mode: "skirmish" });
-      hub.handle("A", { type: "slot.host", slotIndex: 1, status: "ai" });
+      hub.handle("A", { type: "slot.host", slotIndex: 1, status: "ai", ai: "balanced" });
       const lobby = a.of("room.state").at(-1);
       assert.equal(lobby?.room.slots[1]?.status, "ai");
-      assert.equal(lobby?.room.slots[1]?.ai, "easy");
+      assert.equal(lobby?.room.slots[1]?.ai, "balanced");
       hub.handle("A", { type: "room.start" });
       const start = a.of("match.start")[0];
       assert.ok(start);

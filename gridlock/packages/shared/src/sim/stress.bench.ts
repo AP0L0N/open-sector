@@ -1,5 +1,5 @@
 /**
- * Headless stress run: one idle human against NAI Easy CPUs on one map, timing
+ * Headless stress run: one idle human against NAI Defensive CPUs on one map, timing
  * `stepMatch` and the human's snapshot as the armies grow.
  *
  *   npm run stress -w @gridlock/shared
