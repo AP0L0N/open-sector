@@ -556,6 +556,22 @@ describe("mountains", () => {
     assert.equal(isMountainCliff(tiles, heights, w, h, 2, 3), true);
     assert.ok(MOUNTAIN_MIN_HEIGHT >= 12);
   });
+
+  it("walks over rock like open ground; only mountain cliffs block", () => {
+    const yard = MAPS["yard-64"]!;
+    const grids = initGrids(yard);
+    let rock = 0;
+    for (let i = 0; i < yard.tiles.length; i++) {
+      if (yard.tiles[i] !== TILE_ROCK) continue;
+      rock++;
+      assert.equal(grids.blocked[i], 0, `rock blocks at ${i % yard.width},${(i / yard.width) | 0}`);
+    }
+    assert.ok(rock > 0);
+    const w = 5;
+    const tiles = [TILE_ROCK, TILE_ROCK, TILE_FENCE, TILE_ROCK, TILE_EMPTY];
+    const grid = initGrids({ id: "r", name: "r", width: w, height: 1, tileSize: 8, tiles, heights: tiles.map(() => HEIGHT_BASE), maxHeight: HEIGHT_BASE, spawns: [], features: [] });
+    assert.deepEqual([...grid.blocked], [0, 0, 1, 0, 0]);
+  });
 });
 
 describe("ground cover", () => {
