@@ -410,6 +410,10 @@ SPECS = [
     # Same cell as render_battleship.py's CELL: the client reads the hulk on the live sheet's cell.
     Spec("battleship", 384, 0.56, "sunk", src="battleship", layers=["hull", "super", "turret", "ciws"], raw=True,
          turn=3, holes=6, bites=4, soot=0.5, debris=14, sink=15, list_deg=-3),
+    # Borg walkers (render_stalker.py, render_behemoth.py, render_ravager.py): the Tiger's turret recipe.
+    Spec("stalker", 128, 0.92, "turret", src="stalker", layers=["hull", "turret", "gun"], turn=3, keep=0.45),
+    Spec("behemoth", 128, 0.92, "turret", src="behemoth", layers=["hull", "turret", "gun"], turn=-2, keep=0.5, holes=4, debris=18),
+    Spec("ravager", 128, 0.92, "turret", src="ravager", layers=["hull", "turret", "gun"], turn=2, keep=0.55, holes=3, soot=0.6, debris=14),
 ]
 
 

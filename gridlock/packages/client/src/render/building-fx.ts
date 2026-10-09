@@ -2,9 +2,9 @@ import type { EntityType, EntityView } from "@gridlock/shared";
 import type { BuildingSpriteDef } from "./sprites.js";
 
 /** Buildings that train units. Full-strength overlay only while a job is running. */
-const PRODUCERS = new Set<EntityType>(["muster", "smelter", "armory", "assimilator", "cyborgcentral"]);
+const PRODUCERS = new Set<EntityType>(["muster", "smelter", "armory", "assimilator", "cyborgcentral", "forge"]);
 /** Keep a quiet always-on overlay: blinks, the Smelter's chimneys, the lab's coil. */
-const IDLE_ALWAYS = new Set<EntityType>(["core", "dynamo", "smelter", "research", "radar", "cyborgcentral", "hivecore", "fusionnode", "assimilator"]);
+const IDLE_ALWAYS = new Set<EntityType>(["core", "dynamo", "smelter", "research", "radar", "cyborgcentral", "hivecore", "fusionnode", "assimilator", "forge", "nexus"]);
 /** Chimney smoke never fades below this, so an idle Smelter still reads as lit. */
 const IDLE_SMOKE_GAIN = 0.75;
 
@@ -170,6 +170,43 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
       { x: 324, y: 118, r: 5, color: "#7fe3ff", period: 1500, phase: 0.66, mode: "pulse" },
     ],
     smoke: [{ x: 204, y: 164, rise: 40, thin: true }],
+  },
+  // Nanite Forge (render_borg_base.py, forge.json): the maw breathes, the apron chevrons chase out, the vats pulse, a pod blinks in the claw.
+  forge: {
+    lights: [
+      { x: 127, y: 125, r: 18, color: "#6dffc8", period: 2600, phase: 0.0, mode: "pulse" },
+      { x: 115, y: 152, r: 5, color: "#6dffc8", period: 1200, phase: 0.0, mode: "pulse" },
+      { x: 105, y: 157, r: 5, color: "#6dffc8", period: 1200, phase: 0.33, mode: "pulse" },
+      { x: 95, y: 162, r: 5, color: "#6dffc8", period: 1200, phase: 0.66, mode: "pulse" },
+      { x: 286, y: 128, r: 9, color: "#7dffd0", period: 1800, phase: 0.0, mode: "pulse" },
+      { x: 246, y: 148, r: 9, color: "#7dffd0", period: 1800, phase: 0.33, mode: "pulse" },
+      { x: 206, y: 168, r: 9, color: "#7dffd0", period: 1800, phase: 0.66, mode: "pulse" },
+      { x: 155, y: 65, r: 5, color: "#7fe3ff", period: 2400, phase: 0.0, mode: "pulse" },
+      { x: 129, y: 74, r: 5, color: "#7fe3ff", period: 2400, phase: 0.33, mode: "pulse" },
+      { x: 102, y: 84, r: 5, color: "#7fe3ff", period: 2400, phase: 0.66, mode: "pulse" },
+      { x: 224, y: 35, r: 6, color: "#b6fff0", period: 1100, phase: 0.0, mode: "blink" },
+    ],
+    smoke: [{ x: 264, y: 129, rise: 30, thin: true }],
+  },
+  // Neural Nexus (nexus.json): the brain pulses, the rib collars chase, the crown tips sweep round, the mast beacon flickers.
+  nexus: {
+    lights: [
+      { x: 210, y: 149, r: 16, color: "#6dffc8", period: 2000, phase: 0.0, mode: "pulse" },
+      { x: 233, y: 184, r: 5, color: "#7fe3ff", period: 1600, phase: 0.0, mode: "pulse" },
+      { x: 187, y: 184, r: 5, color: "#7fe3ff", period: 1600, phase: 0.2, mode: "pulse" },
+      { x: 154, y: 167, r: 5, color: "#7fe3ff", period: 1600, phase: 0.4, mode: "pulse" },
+      { x: 266, y: 167, r: 5, color: "#7fe3ff", period: 1600, phase: 0.6, mode: "pulse" },
+      { x: 266, y: 144, r: 5, color: "#7fe3ff", period: 1600, phase: 0.8, mode: "pulse" },
+      { x: 210, y: 72, r: 4, color: "#b6fff0", period: 1500, phase: 0.0, mode: "blink" },
+      { x: 162, y: 58, r: 4, color: "#b6fff0", period: 1500, phase: 0.167, mode: "blink" },
+      { x: 162, y: 30, r: 4, color: "#b6fff0", period: 1500, phase: 0.333, mode: "blink" },
+      { x: 210, y: 16, r: 4, color: "#b6fff0", period: 1500, phase: 0.5, mode: "blink" },
+      { x: 258, y: 30, r: 4, color: "#b6fff0", period: 1500, phase: 0.667, mode: "blink" },
+      { x: 258, y: 58, r: 4, color: "#b6fff0", period: 1500, phase: 0.833, mode: "blink" },
+      { x: 210, y: 30, r: 5, color: "#8ff7ff", period: 900, phase: 0.0, mode: "pulse" },
+      { x: 174, y: 236, r: 5, color: "#6dffc8", period: 2400, phase: 0.0, mode: "pulse" },
+      { x: 246, y: 236, r: 5, color: "#6dffc8", period: 2400, phase: 0.5, mode: "pulse" },
+    ],
   },
   // Spots from tools/sprites/render_cyborgcentral.py (cyborgcentral.json): red sensor band, reactor core, emitter rings climbing the mast, mast lamp.
   cyborgcentral: {

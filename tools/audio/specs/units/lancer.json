@@ -1,0 +1,53 @@
+{
+  "key": "lancer",
+  "out": "units/lancer",
+  "voice": {
+    "name": "Open Sector - Lancer",
+    "description": "Deep, slow, gravelly synthetic male voice of a heavy alien cyborg trooper carrying a plasma lance: rough grinding texture, a low resonant electric hum under every word like a transformer, heavily processed and metallic, emotionless and patient, measured machine cadence with long pauses, menacing and certain.",
+    "sample": "Lancer drone. The lance is charged. Armor is only matter, and matter will be taken. Point us at the iron and we will pierce it. The collective does not hurry. It does not miss.",
+    "stability": 0.65,
+    "similarity": 0.8,
+    "style": 0.3,
+    "speed": 0.9
+  },
+  "lines": {
+    "select": [
+      "Lancer.",
+      "The lance is charged.",
+      "Show us iron.",
+      "[whispers] We hum."
+    ],
+    "move": [
+      "Advancing.",
+      "Lancer moves.",
+      "Slow. Certain.",
+      "The hive directs."
+    ],
+    "attack": [
+      "Piercing armor.",
+      "Lance discharging.",
+      "Iron is matter."
+    ],
+    "ready": [
+      "Lancer assembled."
+    ],
+    "die": [
+      "[groans] Lance... fading...",
+      "Returning... to the hive..."
+    ]
+  },
+  "sfx": {
+    "rockets": {
+      "prompt": "Sci-fi shoulder plasma lance firing: a quick rising high-pitched electric charge whine, then a heavy concussive energy thump and a crackling plasma bolt hissing away, close, outdoors battlefield, no music, no voice",
+      "duration": 1.8,
+      "variants": 2,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Steady rhythmic walking footsteps of a heavy robot soldier, left right left right, five slow heavy metal footfalls on gravel spread evenly over two and a half seconds, hydraulic hiss and servo groan between steps, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.45
+    }
+  }
+}

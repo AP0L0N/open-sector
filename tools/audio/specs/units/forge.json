@@ -1,0 +1,18 @@
+{
+  "key": "forge",
+  "out": "units/forge",
+  "sfx": {
+    "special": {
+      "prompt": "Alien nanite forge powering up: clanking metal assembly arms, a swarm of tiny machines buzzing and clicking as they build, bubbling vats hissing out steam, a heavy press slamming, a low synthetic hum rising, close, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Alien nanite factory destroyed: vats bursting with a hissing rush of liquid, assembly machinery screeching and seizing, an energy core exploding with crackling electric arcs, heavy alien metal frame collapsing, medium distance outdoors, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

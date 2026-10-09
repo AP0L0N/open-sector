@@ -558,6 +558,11 @@ export type EntityType =
   | "cyborg"
   | "cyborgcommander"
   | "simunit2"
+  | "borgdrone"
+  | "lancer"
+  | "stalker"
+  | "ravager"
+  | "behemoth"
   | "titan"
   | "mammoth"
   | "nebelwerfer"
@@ -595,6 +600,10 @@ export type EntityType =
   | "research"
   | "radar"
   | "cyborgcentral"
+  | "forge"
+  | "nexus"
+  | "spineturret"
+  | "pulsespire"
   | "stuka"
   | "fw190"
   | "bv222"
@@ -653,7 +662,11 @@ export type BuildingType =
   | "radar"
   | "cyborgcentral"
   | "fusionnode"
-  | "assimilator";
+  | "assimilator"
+  | "forge"
+  | "nexus"
+  | "spineturret"
+  | "pulsespire";
 /**
  * Placed by an engineer. Sandbags and walls can also be queued from the Defences tab. The gate comes
  * only from there. Barbwire is laid by maps for now: the Map Builder stands it like sandbags.
@@ -776,7 +789,7 @@ export const CIVILIAN_TYPES: readonly CivilianType[] = [
   "shed",
   "boiler",
 ];
-export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
+export type TrainType = "rifleman" | "gunner" | "sniper" | "atinfantry" | "rocketer" | "pyro" | "mortarman" | "engineer" | "medic" | "warden" | "apocalypse" | "ss3" | "jagdtiger" | "feuerwirbel" | "walker" | "cyborg" | "cyborgcommander" | "simunit2" | "borgdrone" | "lancer" | "stalker" | "ravager" | "behemoth" | "titan" | "mammoth" | "nebelwerfer" | "artillery" | "supply" | "gunboat" | "supplyboat" | "submarine" | "battleship" | "destroyer" | "lst" | "stuka" | "fw190" | "bv222" | "he111" | "horten" | "droneop" | "jumpjet";
 export type EntityKind = "unit" | "building";
 /** Optional unit/building ability. */
 export type SpecialAction = "deploy";
@@ -824,6 +837,10 @@ export const BUILDING_TYPES: readonly BuildingType[] = [
   "cyborgcentral",
   "fusionnode",
   "assimilator",
+  "forge",
+  "nexus",
+  "spineturret",
+  "pulsespire",
 ];
 /**
  * Emplaced guns: the building is the gun, and its garrison is the crew. It fires only while
@@ -879,7 +896,7 @@ export const BUILDING_FACINGS = 24;
 export function isRotatableBuilding(type: string): type is BuildingType {
   return (ROTATABLE_BUILDINGS as readonly string[]).includes(type);
 }
-export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
+export const TRAIN_TYPES: readonly TrainType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "warden", "apocalypse", "ss3", "jagdtiger", "feuerwirbel", "walker", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "lancer", "stalker", "ravager", "behemoth", "titan", "mammoth", "nebelwerfer", "artillery", "supply", "gunboat", "supplyboat", "submarine", "battleship", "destroyer", "lst", "stuka", "fw190", "bv222", "he111", "horten", "droneop", "jumpjet"];
 
 /**
  * A player fields only one of each of these at a time. While it lives, another
@@ -907,6 +924,9 @@ export const TECH_REQUIRES: Partial<Record<TrainType, BuildingType | readonly Bu
   cyborg: "cyborgcentral",
   cyborgcommander: "cyborgcentral",
   simunit2: "cyborgcentral",
+  borgdrone: "cyborgcentral",
+  lancer: "cyborgcentral",
+  behemoth: "nexus",
   titan: "research",
   mammoth: "research",
   nebelwerfer: "research",
@@ -948,6 +968,15 @@ export const BORG_TYPES: ReadonlySet<EntityType> = new Set<EntityType>([
   "cyborg",
   "cyborgcommander",
   "simunit2",
+  "borgdrone",
+  "lancer",
+  "stalker",
+  "ravager",
+  "behemoth",
+  "forge",
+  "nexus",
+  "spineturret",
+  "pulsespire",
 ]);
 /** The faction that fields `type`. Neutral structures and civilian buildings read as Earth United. */
 export function factionOf(type: string): Faction {
@@ -1007,7 +1036,21 @@ export const BUILD_REQUIRES: Partial<Record<BuildingType, readonly BuildingType[
   casemate: ["research"],
   ciws: ["research", "radar"],
   ram: ["research", "radar"],
+  pulsespire: ["nexus"],
 };
+
+/** The Borg vehicle factory: trains every Borg unit that is not a cyborg. */
+export const BORG_FACTORY = "forge";
+/** A standing, powered Nanite Forge rearms its owner's units and Pulse Spires within this reach. */
+export const FORGE_REARM_TILES = t(6);
+/** Seconds between two rearm passes of a Forge. */
+export const FORGE_REARM_SECONDS = 2;
+/** Hand-outs (a shell, a rocket, or a belt's worth of rounds) each unit in reach takes per pass. */
+export const FORGE_REARM_PER_PASS = 2;
+/** Buildings that light the radar panel: the Radar Station, and the Borg Neural Nexus. */
+export function isRadarStation(type: string): boolean {
+  return type === "radar" || type === "nexus";
+}
 
 /**
  * Cyborg link. A Cyborg runs on the uplink from a standing, powered Cyborg Central,
@@ -1164,6 +1207,11 @@ export interface CatalogEntry {
    * the gun to any height, and shoots rockets out of the air.
    */
   radarLaid?: boolean;
+  /**
+   * A crewless building gun (the Borg Spine Turret and Pulse Spire). It lays and fires on its own
+   * like a turret, needs nobody at it, and falls silent while its owner is short on power.
+   */
+  poweredGun?: boolean;
   /**
    * A radar-laid 20mm mount on the turret roof (the Apocalypse). It traverses and
    * picks targets on its own, apart from the main gun. Incoming missiles come
@@ -3346,6 +3394,26 @@ export const PAK43_SHELLS: Record<ShellType, ShellDef> = {
   smoke: { id: "smoke", name: "Smoke", blurb: "Not carried.", damage: 0, penetration: 0, caliber: 88, spreadDeg: 6 },
 };
 
+/** Borg Pulse Spire: an armor-piercing pulse between the Pak 36's and the Pak 43's. Only AP is carried. */
+export const PULSE_SPIRE_SHELLS: Record<ShellType, ShellDef> = {
+  ap: {
+    id: "ap",
+    name: "Pulse",
+    blurb: "Armor-piercing pulse. Goes through a Tiger's front plate; a Jagdtiger's front holds.",
+    damage: 70,
+    penetration: 130,
+    caliber: 75,
+    spreadDeg: 1.8,
+  },
+  he: { id: "he", name: "HE", blurb: "Not carried.", damage: 60, penetration: 12, caliber: 75, spreadDeg: 4 },
+  heat: { id: "heat", name: "HEAT", blurb: "Not carried.", damage: 60, penetration: 100, caliber: 75, spreadDeg: 3 },
+  smoke: { id: "smoke", name: "Smoke", blurb: "Not carried.", damage: 0, penetration: 0, caliber: 75, spreadDeg: 6 },
+};
+/** Charges in a Pulse Spire's ring. A powered Nanite Forge in reach recharges it. */
+export const PULSE_SPIRE_RACK = 14;
+/** Share of a shell's damage the Behemoth's carapace lets through. */
+export const BEHEMOTH_SHELL_RESIST = 0.75;
+
 /** Flak 37 rack: time-fused 37mm that bursts in the air (CatalogEntry.airOnly). */
 export const FLAK_SHELLS: Record<ShellType, ShellDef> = {
   ap: { id: "ap", name: "AP", blurb: "Not carried.", damage: 20, penetration: 30, caliber: 37, spreadDeg: 2 },
@@ -5222,6 +5290,275 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     spreadDeg: DAGGERS.spreadDeg,
     blurb: `A light, fast cyborg built for the knife. An energy dagger in each hand: he runs a soldier down and cuts him down in two slashes, opens a Walker or a truck at half that, and barely scratches a tank or a wall. A blink drive throws him up to ${SIMUNIT_BLINK_RANGE_TILES / TILE_SUBDIV} cells in an instant on one charge, back by itself in ${SIMUNIT_BLINK_RECHARGE_SECONDS} seconds. Right-click an enemy structure or hull with soldiers inside and he blinks in among them, kills every soldier aboard in ${SIMUNIT_PURGE_SECONDS} seconds, and blinks back out; only a hostile garrison offers it. Like the Cyborg he can shut down where he stands: dark and still, he reads as no one's machine and enemy guns pass him by until he powers up. Near death his legs are torn off and he crawls on, still cutting. Medics heal him, engineers repair him. He runs on your Cyborg Central's uplink or a living Cyborg Commander, like the Cyborg.`,
   },
+  borgdrone: {
+    type: "borgdrone",
+    kind: "unit",
+    name: "Drone",
+    letter: "o",
+    cost: 350,
+    buildSeconds: 10,
+    hp: 150,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(1.9 * INFANTRY_PACE),
+    turnDegPerSec: 1200,
+    rangeTiles: RIFLE_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: RIFLE.cooldown,
+    damage: RIFLE.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    ...UNARMED,
+    penetration: RIFLE.penetration,
+    caliber: RIFLE.caliber,
+    spreadDeg: RIFLE.spreadDeg,
+    blurb: "The hive's line soldier: a body taken and fitted with a pulse carbine in place of a forearm. It shoots like a rifle, a clip and then a short recharge. Several times a soldier's hit points for a few riflemen's price, but slower on its feet. No stance orders; it fights standing. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, like the Cyborg, and shuts down without them.",
+  },
+  lancer: {
+    type: "lancer",
+    kind: "unit",
+    name: "Lancer",
+    letter: "j",
+    cost: 900,
+    buildSeconds: 14,
+    hp: 240,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 7,
+    moveTilesPerSec: paced(1.45 * INFANTRY_PACE),
+    turnDegPerSec: 1000,
+    rangeTiles: LAUNCHER_RANGE_TILES,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: LAUNCHER.cooldown,
+    damage: LAUNCHER.damage,
+    projectileSpeed: TITAN_ROCKET_SPEED,
+    ...UNARMED,
+    penetration: LAUNCHER.penetration,
+    caliber: LAUNCHER.caliber,
+    spreadDeg: LAUNCHER.spreadDeg,
+    blurb: "Anti-armor cyborg. A plasma lance rides its shoulder and throws a burning bolt like a rocket: loose at full reach, tighter up close, a burst among soldiers that dents a tank. The capacitor on its back recharges the lance between shots. Heavy plating keeps it standing where a Rocketer would fall. No stance orders. Near death its legs are torn off and it crawls on, still firing. Medics heal it, engineers repair it. It runs on your Cyborg Central's uplink or a living Cyborg Commander, and shuts down without them.",
+  },
+  /** Borg heavy assimilator: four legs and a turreted disruptor, the hive's answer to the Tiger. */
+  stalker: {
+    type: "stalker",
+    kind: "unit",
+    name: "Stalker",
+    letter: "y",
+    cost: 650,
+    buildSeconds: 15,
+    hp: 135,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 12,
+    moveTilesPerSec: paced(1.5),
+    turnDegPerSec: 110,
+    rangeTiles: t(13),
+    sightTiles: t(8),
+    cooldown: 6.5,
+    damage: 55,
+    projectileSpeed: TANK_SHELL_SPEED,
+    turnInPlace: true,
+    turretTurnDegPerSec: 200,
+    armorFront: 70,
+    armorSide: 30,
+    armorRear: 18,
+    penetration: 95,
+    caliber: 75,
+    spreadDeg: 3,
+    ammo: { ap: 12, he: 6 },
+    defaultShell: "ap",
+    leavesWreck: true,
+    wreckHp: 35,
+    blurb: "Heavy assimilator on four long legs, a domed turret on its back. The disruptor throws an armor-piercing bolt about as hard as a Tiger's gun, or a burst for soldiers, from a little less reach. Thinner in front than a Tiger, but its legs turn it quicker. No tracks to lose. The rack refills by itself near a powered Nanite Forge of yours.",
+  },
+  /** Borg heavy assimilator: fast raptor hull, spine gatling turret, nanite flamer in the jaw. */
+  ravager: {
+    type: "ravager",
+    kind: "unit",
+    name: "Ravager",
+    letter: "v",
+    cost: 500,
+    buildSeconds: 13,
+    hp: 115,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 11,
+    moveTilesPerSec: paced(1.8),
+    turnDegPerSec: 120,
+    rangeTiles: t(10),
+    sightTiles: t(9),
+    cooldown: TICK_DT,
+    damage: 8,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    turnInPlace: true,
+    turretTurnDegPerSec: 260,
+    armorFront: 50,
+    armorSide: 24,
+    armorRear: 14,
+    penetration: 12,
+    caliber: 13,
+    spreadDeg: 4,
+    shotsPerTick: 2,
+    hullFlamer: true,
+    mgAmmo: HULL_FLAMER_FUEL,
+    leavesWreck: true,
+    wreckHp: 28,
+    blurb: `Fast heavy assimilator built to hunt soldiers. A spine gatling on a quick turret grows its own needles and never runs dry; tank plate turns them, and they do not bring a building down. A nanite flamer in the jaw fires on its own at soldiers and soft vehicles inside a short reach, but only where the nose points, and burns every soldier in its path, friends too. ${HULL_FLAMER_BURSTS} bursts of nanite gel, refilled near a powered Nanite Forge of yours. Lighter plate than a Stalker.`,
+  },
+  /** Borg heavy assimilator: six legs, twin disruptors, a carapace that sheds shells. */
+  behemoth: {
+    type: "behemoth",
+    kind: "unit",
+    name: "Behemoth",
+    letter: "b",
+    cost: 4000,
+    buildSeconds: 26,
+    hp: 240,
+    power: 0,
+    tileW: 1,
+    tileH: 1,
+    radius: 20,
+    moveTilesPerSec: paced(0.9),
+    turnDegPerSec: 55,
+    rangeTiles: t(15),
+    sightTiles: t(9),
+    cooldown: 8.5,
+    damage: APOCALYPSE_SHELLS.ap.damage,
+    projectileSpeed: TANK_SHELL_SPEED,
+    turnInPlace: true,
+    turretTurnDegPerSec: 120,
+    armorFront: 125,
+    armorSide: 70,
+    armorRear: 40,
+    penetration: APOCALYPSE_SHELLS.ap.penetration,
+    caliber: APOCALYPSE_SHELLS.ap.caliber,
+    spreadDeg: APOCALYPSE_SHELLS.ap.spreadDeg,
+    shells: APOCALYPSE_SHELLS,
+    twinGuns: true,
+    ammo: { ap: 16, he: 8 },
+    defaultShell: "ap",
+    shellResist: BEHEMOTH_SHELL_RESIST,
+    leavesWreck: true,
+    wreckHp: 60,
+    blurb: `The largest of the heavy assimilators: a carapace on six legs with twin disruptors on one turret. They fire one after the other, a short gap and then a long reload, through a Tiger's front plate, from farther than any tank but the Jagdtiger. The layered carapace sheds part of every shell that hits it (it takes ${Math.round(BEHEMOTH_SHELL_RESIST * 100)}% of the damage). Slow on its legs and slow on the turret. Its rack refills near a powered Nanite Forge of yours. Needs a Neural Nexus.`,
+  },
+  /** Borg vehicle factory. */
+  forge: {
+    type: "forge",
+    kind: "building",
+    name: "Nanite Forge",
+    letter: "N",
+    cost: 900,
+    buildSeconds: 20,
+    hp: 1000,
+    power: -35,
+    tileW: t(3),
+    tileH: t(3),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: `A ribbed hangar over vats of nanite gel. It grows the heavy assimilators: the Stalker, the Ravager, and, with a Neural Nexus standing, the Behemoth. The Borg drive no supply trucks: while it stands and your power holds, the Forge refills the racks, belts, and fuel of your units and Pulse Spires within ${FORGE_REARM_TILES / TILE_SUBDIV} cells of it.`,
+  },
+  /** Borg tech and sensor building. */
+  nexus: {
+    type: "nexus",
+    kind: "building",
+    name: "Neural Nexus",
+    letter: "X",
+    cost: 4500,
+    buildSeconds: 26,
+    hp: 900,
+    power: -70,
+    tileW: t(2),
+    tileH: t(2),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    rangeTiles: 0,
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 0,
+    damage: 0,
+    projectileSpeed: 0,
+    ...UNARMED,
+    blurb: "A neural core in a cage of ribs under a crown of sensor spines: the hive thinks here. It unlocks the Behemoth and the Pulse Spire, and it lights the radar panel like a Radar Station: an enemy plane or drone nobody can see shows as a blinking contact on the panel. Costs about what a Research Facility does, and draws more power.",
+  },
+  /** Borg anti-infantry gun: crewless, runs on base power. */
+  spineturret: {
+    type: "spineturret",
+    kind: "building",
+    name: "Spine Turret",
+    letter: "s",
+    cost: 500,
+    buildSeconds: 9,
+    hp: 500,
+    power: -15,
+    tileW: t(1),
+    tileH: t(1),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    turretTurnDegPerSec: 140,
+    rangeTiles: t(12),
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: TICK_DT,
+    damage: MG42.damage,
+    projectileSpeed: SMALL_ARMS_SPEED,
+    armorFront: 0,
+    armorSide: 0,
+    armorRear: 0,
+    penetration: MG42.penetration,
+    caliber: MG42.caliber,
+    spreadDeg: 3,
+    shotsPerTick: MG42.shotsPerTick,
+    poweredGun: true,
+    capturable: false,
+    blurb: "A chitin bulb rooted in the ground with a twin needle gatling for a head. Nobody works it: it lays itself all the way round and cuts down soldiers at an MG42's pace from a little short of an MG Nest's reach, and grows its own needles, so it never runs dry. Tank plate turns them, and they do not bring a building down. Short on power, it falls silent. Cannot move.",
+  },
+  /** Borg anti-armor gun: crewless, runs on base power. */
+  pulsespire: {
+    type: "pulsespire",
+    kind: "building",
+    name: "Pulse Spire",
+    letter: "q",
+    cost: 1600,
+    buildSeconds: 14,
+    hp: 800,
+    power: -30,
+    tileW: t(1),
+    tileH: t(1),
+    radius: 0,
+    moveTilesPerSec: 0,
+    turnDegPerSec: 0,
+    turretTurnDegPerSec: 45,
+    rangeTiles: t(15),
+    sightTiles: INFANTRY_SIGHT_TILES,
+    cooldown: 3,
+    damage: PULSE_SPIRE_SHELLS.ap.damage,
+    projectileSpeed: TANK_SHELL_SPEED,
+    armorFront: 0,
+    armorSide: 0,
+    armorRear: 0,
+    penetration: PULSE_SPIRE_SHELLS.ap.penetration,
+    caliber: PULSE_SPIRE_SHELLS.ap.caliber,
+    spreadDeg: PULSE_SPIRE_SHELLS.ap.spreadDeg,
+    ammo: { ap: PULSE_SPIRE_RACK },
+    defaultShell: "ap",
+    shells: PULSE_SPIRE_SHELLS,
+    armorFirst: true,
+    poweredGun: true,
+    capturable: false,
+    blurb: `A tall spire with a long emitter and a ring of green fire. Nobody works it: it turns all the way round, slowly, and throws an armor-piercing pulse through a Tiger's front plate from farther than a Pak 36 reaches. Tanks first. ${PULSE_SPIRE_RACK} charges in the ring; a powered Nanite Forge within reach recharges it. Short on power, it falls silent. Needs a Neural Nexus. Cannot move.`,
+  },
   titan: {
     type: "titan",
     kind: "unit",
@@ -6219,7 +6556,7 @@ export function armorLabel(type: EntityType): string | null {
   return `F${d.armorFront} / S${d.armorSide} / R${d.armorRear}`;
 }
 
-const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "cyborgcommander", "simunit2", "droneop", "jumpjet"];
+const INFANTRY_TYPES: readonly EntityType[] = ["rifleman", "gunner", "sniper", "atinfantry", "rocketer", "pyro", "mortarman", "engineer", "medic", "cyborg", "cyborgcommander", "simunit2", "borgdrone", "lancer", "droneop", "jumpjet"];
 
 /** Soldier with a jet pack: the Jump Jet. */
 export function isJumpJetType(type: EntityType): boolean {
@@ -6303,7 +6640,15 @@ export function isInfantryType(type: EntityType): boolean {
  * no random limb hits, legs tied to HP.
  */
 export function isCyborg(type: EntityType): boolean {
-  return type === "cyborg" || type === "cyborgcommander" || isSimUnit(type);
+  return type === "cyborg" || type === "cyborgcommander" || isSimUnit(type) || type === "borgdrone" || type === "lancer";
+}
+
+/**
+ * Runs on the uplink from a Cyborg Central or a living Cyborg Commander, and shuts down
+ * without either: every cyborg but the Commander himself.
+ */
+export function onUplink(type: EntityType): boolean {
+  return isCyborg(type) && type !== "cyborgcommander";
 }
 
 /** The Sim Unit line: light cyborg frames. Sim Unit II is the first of them. */
@@ -6317,7 +6662,7 @@ export function isSimUnit(type: EntityType): boolean {
  * pick him on their own; the enemy sees no one's machine. Power up resumes at once.
  */
 export function canPowerDown(type: EntityType): boolean {
-  return type === "cyborg" || isSimUnit(type);
+  return onUplink(type);
 }
 
 /** Fights with the energy daggers: Sim Unit II. */
@@ -6387,6 +6732,8 @@ export function primaryInfantryGun(type: EntityType): InfantryGun | null {
   if (type === "cyborg") return GATLING;
   if (type === "cyborgcommander") return LASER;
   if (type === "simunit2") return DAGGERS;
+  if (type === "borgdrone") return RIFLE;
+  if (type === "lancer") return LAUNCHER;
   if (type === "jumpjet") return ASSAULT;
   return null;
 }
@@ -6403,6 +6750,8 @@ export function infantryLoadout(type: EntityType): readonly InfantryGun[] {
   if (type === "cyborg") return [GATLING];
   if (type === "cyborgcommander") return [LASER];
   if (type === "simunit2") return [DAGGERS];
+  if (type === "borgdrone") return [RIFLE];
+  if (type === "lancer") return [LAUNCHER];
   if (type === "jumpjet") return [ASSAULT, HANDGUN];
   return [];
 }
@@ -6857,7 +7206,7 @@ export function lampCrewOf(type: EntityType): boolean {
  * takes Stop, Rotate (where the gun rests between targets), and Force attack.
  */
 export function aimsOwnGun(type: EntityType): boolean {
-  return radarLaidOf(type) || crewGunOf(type);
+  return radarLaidOf(type) || crewGunOf(type) || poweredGunOf(type);
 }
 
 /** Traverse each side of an emplacement's set facing, degrees, or null when it turns all round. */
@@ -6883,6 +7232,11 @@ export function airOnlyOf(type: EntityType): boolean {
 /** Picks armored hulls first: the Paks. */
 export function armorFirstOf(type: EntityType): boolean {
   return catalog(type).armorFirst === true;
+}
+
+/** A crewless Borg gun that runs on base power: the Spine Turret, the Pulse Spire. See CatalogEntry.poweredGun. */
+export function poweredGunOf(type: EntityType): boolean {
+  return catalog(type).poweredGun === true;
 }
 
 /** A radar-laid mount: the CIWS or the RAM. See CatalogEntry.radarLaid. */

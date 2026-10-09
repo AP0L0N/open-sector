@@ -1,0 +1,53 @@
+{
+  "key": "borgdrone",
+  "out": "units/borgdrone",
+  "voice": {
+    "name": "Open Sector - Borg Drone",
+    "description": "A thin, flat, hollow chorus of many young androgynous voices speaking the same words in perfect unison, like a single drone of an alien cyborg hive: lighter and younger than a commander, emotionless and obedient, airy and slightly metallic with a faint electronic buzz and a hollow tube-like resonance, quick clipped machine cadence, no personality of its own.",
+    "sample": "Drone online. We are linked to the collective. Our carbine is charged. Give the directive and we comply. The hive speaks and the drone obeys. Matter will be taken.",
+    "stability": 0.7,
+    "similarity": 0.8,
+    "style": 0.2,
+    "speed": 1.05
+  },
+  "lines": {
+    "select": [
+      "Drone listening.",
+      "We are linked.",
+      "Directive?",
+      "[whispers] The hive speaks."
+    ],
+    "move": [
+      "Complying.",
+      "Drone moves.",
+      "Path received.",
+      "As the hive wills."
+    ],
+    "attack": [
+      "Engaging organics.",
+      "Carbine charged.",
+      "Resistance is irrelevant."
+    ],
+    "ready": [
+      "Drone grown. Linked."
+    ],
+    "die": [
+      "[gasps] Link... severed...",
+      "Drone... silent..."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Single short shot from a sci-fi electric pulse carbine: a sharp snapping electric crack with a quick zap and a tiny sizzling tail, close, outdoors battlefield, no music, no voice",
+      "duration": 0.6,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Steady rhythmic walking footsteps of a light robot soldier, left right left right, eight quick light metal footfalls on gravel spread evenly over two seconds with small servo whirs between steps, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.45
+    }
+  }
+}

@@ -48,6 +48,8 @@ import researchUrl from "../assets/buildings/research.png";
 import cyborgCentralUrl from "../assets/buildings/cyborgcentral.png";
 import hiveCoreUrl from "../assets/buildings/hivecore.png";
 import fusionNodeUrl from "../assets/buildings/fusionnode.png";
+import forgeUrl from "../assets/buildings/forge.png";
+import nexusUrl from "../assets/buildings/nexus.png";
 import assimilatorUrl from "../assets/buildings/assimilator.png";
 import radarUrl from "../assets/buildings/radar.png";
 import dockUrl from "../assets/buildings/dock.png";
@@ -252,6 +254,18 @@ import simunit2CrawlUrl from "../assets/units/simunit2-crawl.png";
 import simunit2CrawlFireUrl from "../assets/units/simunit2-crawl-fire.png";
 import simunit2DieUrl from "../assets/units/simunit2-die.png";
 import simunit2SwimUrl from "../assets/units/simunit2-swim.png";
+import borgdroneWalkUrl from "../assets/units/borgdrone-walk.png";
+import borgdroneFireUrl from "../assets/units/borgdrone-fire.png";
+import borgdroneCrawlUrl from "../assets/units/borgdrone-crawl.png";
+import borgdroneCrawlFireUrl from "../assets/units/borgdrone-crawl-fire.png";
+import borgdroneDieUrl from "../assets/units/borgdrone-die.png";
+import borgdroneSwimUrl from "../assets/units/borgdrone-swim.png";
+import lancerWalkUrl from "../assets/units/lancer-walk.png";
+import lancerFireUrl from "../assets/units/lancer-fire.png";
+import lancerCrawlUrl from "../assets/units/lancer-crawl.png";
+import lancerCrawlFireUrl from "../assets/units/lancer-crawl-fire.png";
+import lancerDieUrl from "../assets/units/lancer-die.png";
+import lancerSwimUrl from "../assets/units/lancer-swim.png";
 import engineerWalkUrl from "../assets/units/engineer-walk.png";
 import engineerCrouchUrl from "../assets/units/engineer-crouch.png";
 import engineerCrawlUrl from "../assets/units/engineer-crawl.png";
@@ -274,6 +288,9 @@ import haulerHullUrl from "../assets/units/hauler-hull.png";
 import haulerCartUrl from "../assets/units/hauler-cart.png";
 import wardenWreckUrl from "../assets/units/wrecks/warden.png";
 import apocalypseWreckUrl from "../assets/units/wrecks/apocalypse.png";
+import stalkerWreckUrl from "../assets/units/wrecks/stalker.png";
+import behemothWreckUrl from "../assets/units/wrecks/behemoth.png";
+import ravagerWreckUrl from "../assets/units/wrecks/ravager.png";
 import ss3WreckUrl from "../assets/units/wrecks/ss3.png";
 import jagdtigerWreckUrl from "../assets/units/wrecks/jagdtiger.png";
 import feuerwirbelWreckUrl from "../assets/units/wrecks/feuerwirbel.png";
@@ -323,6 +340,7 @@ import {
   bindNavalSheets,
   bindBattleshipSheets,
   bindApocalypseSheets,
+  bindBorgWalkerSheets,
   bindNebelwerferSheets,
   bindArtillerySheets,
   bindTurntableSheets,
@@ -1047,6 +1065,17 @@ export const SIMUNIT2_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, imag
 export const SIMUNIT2_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(simunit2CrawlUrl) };
 export const SIMUNIT2_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(simunit2CrawlFireUrl) };
 export const SIMUNIT2_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(simunit2DieUrl) };
+/** Drone and Lancer (render_borgdrone.py, render_lancer.py): Sim Unit II's lock, their own frames. */
+export const BORGDRONE_SPRITE: UnitSpriteDef = { ...CYBORG_SPRITE, image: loadSheet(borgdroneWalkUrl) };
+export const BORGDRONE_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(borgdroneFireUrl) };
+export const BORGDRONE_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(borgdroneCrawlUrl) };
+export const BORGDRONE_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(borgdroneCrawlFireUrl) };
+export const BORGDRONE_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(borgdroneDieUrl) };
+export const LANCER_SPRITE: UnitSpriteDef = { ...CYBORG_SPRITE, image: loadSheet(lancerWalkUrl) };
+export const LANCER_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_FIRE_SPRITE, image: loadSheet(lancerFireUrl) };
+export const LANCER_CRAWL_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_SPRITE, image: loadSheet(lancerCrawlUrl) };
+export const LANCER_CRAWL_FIRE_SPRITE: UnitSpriteDef = { ...CYBORG_CRAWL_FIRE_SPRITE, image: loadSheet(lancerCrawlFireUrl) };
+export const LANCER_DIE_SPRITE: UnitSpriteDef = { ...CYBORG_DIE_SPRITE, image: loadSheet(lancerDieUrl) };
 
 export const ENGINEER_SPRITE: UnitSpriteDef = {
   image: loadSheet(engineerWalkUrl),
@@ -1158,6 +1187,8 @@ const SWIM_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   cyborg: swimSprite(cyborgSwimUrl),
   cyborgcommander: swimSprite(cyborgCommanderSwimUrl),
   simunit2: swimSprite(simunit2SwimUrl),
+  borgdrone: swimSprite(borgdroneSwimUrl),
+  lancer: swimSprite(lancerSwimUrl),
 };
 
 /** 16-dir hatch head (helmet + face). Row 0 = 0001 = south, one frame. */
@@ -1224,6 +1255,27 @@ bindApocalypseSheets(
   APOCALYPSE_SPRITE.gun!.image,
   APOCALYPSE_SPRITE.mount!.image,
 );
+
+/** A Borg heavy assimilator on the Tiger's cell; the legs are the hull. Sized by the art's metres per cell. */
+function borgWalker(id: "stalker" | "behemoth" | "ravager", size: number): UnitSpriteDef {
+  const def: UnitSpriteDef = {
+    image: new Image(),
+    dirs: TANK_FACE_DIRS,
+    frames: 1,
+    frameSize: 128,
+    fps: 8,
+    drawSize: Math.round(size * UNIT_VISUAL_SCALE),
+    contactY: 0.92,
+    turret: tankLayer(),
+    gun: tankLayer(),
+    facingSpace: "world",
+  };
+  bindBorgWalkerSheets(id, def.image, def.turret!.image, def.gun!.image);
+  return def;
+}
+export const STALKER_SPRITE = borgWalker("stalker", 49);
+export const BEHEMOTH_SPRITE = borgWalker("behemoth", 68);
+export const RAVAGER_SPRITE = borgWalker("ravager", 29);
 
 const ss3Gun: TurretSpriteDef = {
   image: new Image(),
@@ -1701,6 +1753,9 @@ function wreckSheet(src: string, live: UnitSpriteDef): UnitSpriteDef {
 const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   warden: wreckSheet(wardenWreckUrl, TIGER_SPRITE),
   apocalypse: wreckSheet(apocalypseWreckUrl, APOCALYPSE_SPRITE),
+  stalker: wreckSheet(stalkerWreckUrl, STALKER_SPRITE),
+  behemoth: wreckSheet(behemothWreckUrl, BEHEMOTH_SPRITE),
+  ravager: wreckSheet(ravagerWreckUrl, RAVAGER_SPRITE),
   ss3: wreckSheet(ss3WreckUrl, SS3_SPRITE),
   jagdtiger: wreckSheet(jagdtigerWreckUrl, JAGDTIGER_SPRITE),
   feuerwirbel: wreckSheet(feuerwirbelWreckUrl, FEUERWIRBEL_SPRITE),
@@ -1739,6 +1794,9 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   titan: TITAN_SPRITE,
   warden: TIGER_SPRITE,
   apocalypse: APOCALYPSE_SPRITE,
+  stalker: STALKER_SPRITE,
+  behemoth: BEHEMOTH_SPRITE,
+  ravager: RAVAGER_SPRITE,
   ss3: SS3_SPRITE,
   jagdtiger: JAGDTIGER_SPRITE,
   feuerwirbel: FEUERWIRBEL_SPRITE,
@@ -1778,6 +1836,8 @@ const INFANTRY_DIE: Partial<Record<EntityType, UnitSpriteDef>> = {
   cyborg: CYBORG_DIE_SPRITE,
   cyborgcommander: CYBORGCOMMANDER_DIE_SPRITE,
   simunit2: SIMUNIT2_DIE_SPRITE,
+  borgdrone: BORGDRONE_DIE_SPRITE,
+  lancer: LANCER_DIE_SPRITE,
 };
 
 /** The one-shot collapse sheet. Undefined for vehicles and buildings. */
@@ -1845,6 +1905,8 @@ export function spriteFor(type: EntityType, stance?: Stance, swimming = false): 
   if (type === "cyborg") return stance === "crawl" ? CYBORG_CRAWL_SPRITE : CYBORG_SPRITE;
   if (type === "cyborgcommander") return stance === "crawl" ? CYBORGCOMMANDER_CRAWL_SPRITE : CYBORGCOMMANDER_SPRITE;
   if (type === "simunit2") return stance === "crawl" ? SIMUNIT2_CRAWL_SPRITE : SIMUNIT2_SPRITE;
+  if (type === "borgdrone") return stance === "crawl" ? BORGDRONE_CRAWL_SPRITE : BORGDRONE_SPRITE;
+  if (type === "lancer") return stance === "crawl" ? LANCER_CRAWL_SPRITE : LANCER_SPRITE;
   return UNIT_SPRITES[type];
 }
 
@@ -1909,6 +1971,10 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   fusionnode: building(fusionNodeUrl, 384, 210, 277.9, 210, 10.9),
   // Claw-rig over a glowing intake pit: the Borg scrap smelter, t(3) like the Smelter.
   assimilator: building(assimilatorUrl, 384, 204, 256.2, 204, 54.2),
+  // Ribbed hangar, glowing maw, nanite vats, crane claw: the Borg vehicle factory, t(3) like the Machine Shop.
+  forge: building(forgeUrl, 384, 204, 232.2, 188, 22.2),
+  // Neural core in a rib cage under a sensor crown: Borg tech and radar, t(2).
+  nexus: building(nexusUrl, 384, 210, 322.9, 210, 19.9),
   // Ops hut, lattice mast, dish. Metrics from tools/sprites/render_radar.py (radar.json); the stack hangs over the dish.
   radar: building(radarUrl, 384, 210, 354, 216, 58),
   // The pier stands in its pond: a hard edge, no blend onto ground that is not there.
@@ -1947,7 +2013,7 @@ const buildingUrls = import.meta.glob("../assets/buildings/*.png", { eager: true
  * The WW2 forts and crewed guns (tools/sprites/render_ww2_*.py): each <type>.png with its pad
  * metrics in <type>.json beside it, picked up by name.
  */
-const FORT_TYPES: readonly EntityType[] = ["tobruk", "casemate", "hochstand", "leitturm", "spotlight", "mgnest", "pak36", "pak43", "flak"];
+const FORT_TYPES: readonly EntityType[] = ["tobruk", "casemate", "hochstand", "leitturm", "spotlight", "mgnest", "pak36", "pak43", "flak", "spineturret", "pulsespire"];
 for (const type of FORT_TYPES) {
   const info = padManifests[`../assets/buildings/${type}.json`];
   const url = buildingUrls[`../assets/buildings/${type}.png`];

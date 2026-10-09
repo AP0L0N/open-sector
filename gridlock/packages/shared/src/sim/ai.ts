@@ -248,7 +248,7 @@ const FACES_ENEMY: ReadonlySet<string> = new Set(["mgnest", "pak36", "pak43", "f
 /** Long guns: they walk two ranks back and fire over the line. */
 const BACK_RANK: ReadonlySet<string> = new Set(["sniper", "mortarman", "nebelwerfer", "jagdtiger", "artillery"]);
 /** Short reach and thick skin: the front rank beside the hulls. */
-const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "simunit2", "pyro"]);
+const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "simunit2", "borgdrone", "lancer", "pyro"]);
 
 type Rank = "front" | "mid" | "back";
 interface Site {
@@ -329,7 +329,8 @@ function thinkCpu(state: MatchState, p: SimPlayer): void {
 }
 
 /**
- * Borg base: Fusion Node, Assimilator, Cyborg Central, then a second Assimilator and more power.
+ * Borg base: Fusion Node, Assimilator, Cyborg Central, then a second Assimilator and more power,
+ * the Nanite Forge, a pair of Spine Turrets, and later the Neural Nexus and its Pulse Spires.
  * With all of that standing, more Assimilators up to the type's wantSmelters.
  */
 const BORG_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
@@ -338,12 +339,30 @@ const BORG_BUILD_ORDER: readonly { type: BuildingType; n: number }[] = [
   { type: "cyborgcentral", n: 1 },
   { type: "assimilator", n: CPU_FORTIFY_SMELTERS },
   { type: "fusionnode", n: 2 },
+  { type: "forge", n: 1 },
+  { type: "spineturret", n: 2 },
+  { type: "fusionnode", n: 3 },
+  { type: "nexus", n: 1 },
+  { type: "pulsespire", n: 2 },
 ];
-/** The Borg army, all from the Cyborg Central. */
+/** The Borg cyborgs, from the Cyborg Central. */
 export const BORG_ARMY: readonly { unit: TrainType; want: number }[] = [
-  { unit: "cyborg", want: 8 },
-  { unit: "simunit2", want: 3 },
+  { unit: "borgdrone", want: 6 },
+  { unit: "cyborg", want: 6 },
+  { unit: "lancer", want: 3 },
+  { unit: "simunit2", want: 2 },
   { unit: "cyborgcommander", want: 1 },
+];
+/** The Borg heavy assimilators, from the Nanite Forge. */
+export const BORG_HEAVY: readonly { unit: TrainType; want: number }[] = [
+  { unit: "stalker", want: 4 },
+  { unit: "ravager", want: 2 },
+  { unit: "behemoth", want: 1 },
+];
+/** Each Borg factory and the ranks it fills. */
+const BORG_FACTORIES: readonly { factory: BuildingType; army: readonly { unit: TrainType; want: number }[] }[] = [
+  { factory: "cyborgcentral", army: BORG_ARMY },
+  { factory: "forge", army: BORG_HEAVY },
 ];
 
 /**
@@ -361,12 +380,13 @@ function thinkBorg(state: MatchState, p: SimPlayer, hq: Entity, plan: AiPlan): v
       }
     }
   }
-  if (ownsLive(state, p.playerId, "cyborgcentral")) {
+  for (const { factory, army } of BORG_FACTORIES) {
+    if (!ownsLive(state, p.playerId, factory)) continue;
     // Pay for the next building first while the base is short of one.
     const next = nextBorgBuilding(state, p);
-    const reserve = next && countType(state, p.playerId, "cyborgcentral") === 0 ? catalog(next).cost : 0;
-    if (queuedOn(state, p.playerId, "cyborgcentral") < TRAIN_QUEUE_SOFT * countType(state, p.playerId, "cyborgcentral")) {
-      const pick = neediest(state, p, BORG_ARMY);
+    const reserve = next && countType(state, p.playerId, factory) === 0 ? catalog(next).cost : 0;
+    if (queuedOn(state, p.playerId, factory) < TRAIN_QUEUE_SOFT * countType(state, p.playerId, factory)) {
+      const pick = neediest(state, p, army);
       if (pick && countType(state, p.playerId, pick.unit) < pick.want && p.scrap >= catalog(pick.unit).cost + reserve) {
         applyCommand(state, p.playerId, { type: "cmd.train", unit: pick.unit });
       }
@@ -1152,7 +1172,7 @@ function crewBunkers(state: MatchState, p: SimPlayer, plan: AiPlan): void {
 function rallyFactories(state: MatchState, p: SimPlayer, hq: Entity): void {
   let at: Vec | undefined;
   for (const b of state.entities.values()) {
-    if (b.ownerId !== p.playerId || b.hp <= 0 || (b.type !== "muster" && b.type !== "armory" && b.type !== "cyborgcentral")) continue;
+    if (b.ownerId !== p.playerId || b.hp <= 0 || (b.type !== "muster" && b.type !== "armory" && b.type !== "cyborgcentral" && b.type !== "forge")) continue;
     at ??= homeMuster(state, p, hq);
     if (b.rally && Math.hypot(b.rally.x - at.x, b.rally.y - at.y) < 2 * state.tileSize) continue;
     applyCommand(state, p.playerId, { type: "cmd.rally", ids: [b.id], x: at.x, y: at.y });

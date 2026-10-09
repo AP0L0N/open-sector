@@ -168,6 +168,9 @@ const HEAVY_FIRE = new Set([
   "stuka",
   "fw190",
   "pak43",
+  "stalker",
+  "behemoth",
+  "pulsespire",
 ]);
 const HEAVY_FIRE_VOLUME = 1;
 /** Their `fire` is a cannon, a bomb or a broadside: their machine guns and CIWS must not set it off. */

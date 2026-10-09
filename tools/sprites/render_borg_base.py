@@ -576,10 +576,320 @@ def assimilator_spots() -> dict:
     }
 
 
+# ---------------------------------------------------------------- extra materials (Forge, Nexus)
+
+# The Forge's maw and the Nexus brain: frames set by their builders, read by the texture.
+MAW: dict[str, float] = {}
+BRAIN: dict[str, float] = {}
+
+_tex_v1 = tex
+
+
+def tex_v2(mat: str, P: np.ndarray, n: np.ndarray) -> np.ndarray:
+    X, Y, Z = P[:, 0], P[:, 1], P[:, 2]
+    nf = ra.vnoise(X / 1.1 + Z * 0.7, Y / 1.1 - Z * 0.5, 7)
+    nm = ra.fbm(X / 6 + Z * 0.2, Y / 6 + Z * 0.3, 9, 3)
+
+    def base(h):
+        return np.broadcast_to(rgb(h), (len(X), 3)).copy()
+
+    if mat == "chitin":
+        # Dark green-grey carapace plate: glossy mottling, a dark groove every few units along the vault.
+        c = base("#6b7773") * (0.88 + 0.16 * nm[:, None]) * (0.94 + 0.1 * nf[:, None])
+        c[np.mod(Y, 4.0) < 0.45] *= 0.66
+        return c
+    if mat == "chitin_dark":
+        return base("#3c4644") * (0.9 + 0.16 * nm[:, None])
+    s = _flat(n)
+    if mat == "maw":
+        # The assembly bay seen through the door: hot at the floor centre, dimmer up the arch, ribbed.
+        dx = (X - MAW["x"]) / MAW["hw"]
+        dz = (Z - MAW["z0"]) / MAW["h"]
+        r = np.clip(np.hypot(dx, dz * 0.9), 0, 1)
+        c = ra.mix(base("#e6fff4"), base("#1f8f6e"), r ** 0.8)
+        c[np.mod(X - MAW["x"] + 40.0, 4.0) < 0.5] *= 0.55
+        return c / s
+    if mat == "vat":
+        # Nanite slurry behind glass: bright, with darker drifting clouds and a pale top.
+        cl = ra.smooth(0.45, 0.75, ra.fbm(X / 2.0 + Z * 0.3, Y / 2.0 - Z * 0.4, 71, 3))
+        c = ra.mix(base("#7dffd0"), base("#1d7a5c"), cl * 0.75)
+        return c / s
+    if mat == "neural":
+        # The brain: folded lobes, bright ridges and dark sulci.
+        w = np.sin(ra.fbm(X / 3.0 + Z * 0.15, Y / 3.0 - Z * 0.35, 73, 3) * 22.0 + Z * 0.6)
+        c = ra.mix(base("#bfffe8"), base("#2cc995"), ra.smooth(-0.2, 0.7, w))
+        c[np.abs(w) < 0.22] = rgb("#0f4a3a")
+        return c / s
+    return _tex_v1(mat, P, n)
+
+
+ra.tex = tex_v2
+
+
+# ---------------------------------------------------------------- Nanite Forge, t(3) x t(3)
+
+NF = 96.0
+NF_CX = 36.0          # vault axis runs along y at this x
+NF_Y0, NF_Y1 = 14.0, 74.0
+NF_SEGS = 5
+NF_Z0 = 4.0
+NF_HW = (21.0, 27.0)  # half-width back -> front
+NF_HT = (25.0, 33.0)  # height back -> front
+NF_VATS = [(80.0, 30.0), (80.0, 50.0), (80.0, 70.0)]
+NF_VAT_R = 6.4
+NF_VAT_TOP = 19.0
+NF_PYLON = (76.0, 10.0)
+NF_CLAW = (44.0, 34.0)
+NF_ARM_Z = 48.0
+NF_MAW_W = 0.7
+NF_MAW_H = 0.74
+
+
+def vault_prof(cx: float, hw: float, ht: float, z0: float, n: int = 18) -> list[tuple[float, float]]:
+    out = []
+    for i in range(n + 1):
+        t = math.pi * i / n
+        out.append((cx - hw * math.cos(t), z0 + ht * max(0.0, math.sin(t)) ** 0.8))
+    return out
+
+
+def vault_shell(m: ra.Mesh, cx: float, y0: float, y1: float, hw0: float, ht0: float, hw1: float, ht1: float, z0: float, mat: str) -> None:
+    m.new_part()
+    a = vault_prof(cx, hw0, ht0, z0)
+    b = vault_prof(cx, hw1, ht1, z0)
+    va = [m.v((x, y0, z)) for x, z in a]
+    vb = [m.v((x, y1, z)) for x, z in b]
+    for i in range(len(a) - 1):
+        m.quad(va[i], va[i + 1], vb[i + 1], vb[i], mat)
+
+
+def arch_face(m: ra.Mesh, cx: float, y: float, hw_in: float, ht_in: float, hw_out: float, ht_out: float, z0: float, mat: str) -> None:
+    """The flat annular arch between two profiles at one y (a rib's front face)."""
+    m.new_part()
+    a = vault_prof(cx, hw_in, ht_in, z0)
+    b = vault_prof(cx, hw_out, ht_out, z0)
+    va = [m.v((x, y, z)) for x, z in a]
+    vb = [m.v((x, y, z)) for x, z in b]
+    for i in range(len(a) - 1):
+        m.quad(va[i], va[i + 1], vb[i + 1], vb[i], mat)
+
+
+def nf_seg(i: int) -> tuple[float, float, float, float, float, float]:
+    """Segment i: y0, y1, and half-width / height at each end. Each one telescopes a little larger."""
+    L = (NF_Y1 - NF_Y0) / NF_SEGS
+    y0 = NF_Y0 + i * L
+    y1 = y0 + L
+    f0 = i / NF_SEGS
+    f1 = (i + 1) / NF_SEGS
+    hw0 = NF_HW[0] + (NF_HW[1] - NF_HW[0]) * f0
+    ht0 = NF_HT[0] + (NF_HT[1] - NF_HT[0]) * f0
+    hw1 = NF_HW[0] + (NF_HW[1] - NF_HW[0]) * f1
+    ht1 = NF_HT[0] + (NF_HT[1] - NF_HT[0]) * f1
+    # Each plate narrows toward its back edge so the next one overlaps it like a shell.
+    return y0, y1, hw0 - 2.0, ht0 - 2.0, hw1, ht1
+
+
+def build_forge(with_pad: bool) -> ra.Mesh:
+    m = ra.Mesh()
+    if with_pad:
+        pad(m, NF, NF)
+    cx = NF_CX
+    # Plinth under the vault, with a glowing seam.
+    m.box((cx - 31.0, NF_Y0 - 5.0, 1.0), (cx + 31.0, NF_Y1 + 3.0, 3.0), "steel_dark")
+    m.box((cx - 30.4, NF_Y0 - 4.4, 3.0), (cx + 30.4, NF_Y1 + 2.4, 3.5), "glow")
+    m.box((cx - 30.0, NF_Y0 - 4.0, 3.5), (cx + 30.0, NF_Y1 + 2.0, NF_Z0), "steel", top="roof")
+    # The carapace: telescoping shell plates, each with a heavy rib at its front lip and a glow seam.
+    for i in range(NF_SEGS):
+        y0, y1, hw0, ht0, hw1, ht1 = nf_seg(i)
+        vault_shell(m, cx, y0, y1, hw0, ht0, hw1, ht1, NF_Z0, "chitin")
+        # Rib: a raised band over the lip.
+        vault_shell(m, cx, y1 - 2.2, y1, hw1 + 0.6, ht1 + 0.6, hw1 + 1.4, ht1 + 1.4, NF_Z0, "chitin_dark")
+        arch_face(m, cx, y1, hw1 - 2.0, ht1 - 2.0, hw1 + 1.4, ht1 + 1.4, NF_Z0, "chitin_dark")
+        if i < NF_SEGS - 1:
+            # Glow seam where the next plate slides out from under this rib.
+            vault_shell(m, cx, y1, y1 + 1.3, hw1 - 0.3, ht1 - 0.3, hw1 - 0.3, ht1 - 0.3, NF_Z0, "glow")
+    # Back wall.
+    m.new_part()
+    _, _, hwb, htb, _, _ = nf_seg(0)
+    m.poly([(x, NF_Y0, z) for x, z in vault_prof(cx, hwb, htb, NF_Z0)], "chitin_dark")
+    # Front: a dark frame wall and the glowing maw where the walkers come out.
+    hwf, htf = NF_HW[1], NF_HT[1]
+    yf = NF_Y1
+    m.new_part()
+    m.poly([(x, yf + 0.05, z) for x, z in vault_prof(cx, hwf - 1.9, htf - 1.9, NF_Z0)], "steel_dark")
+    MAW.update({"x": cx, "z0": NF_Z0, "hw": hwf * NF_MAW_W, "h": htf * NF_MAW_H})
+    m.new_part()
+    m.poly([(x, yf + 0.3, z) for x, z in vault_prof(cx, hwf * NF_MAW_W, htf * NF_MAW_H, NF_Z0, n=16)], "maw")
+    # Mandible frame round the maw: a thick arch and teeth along its edge.
+    arch_face(m, cx, yf + 1.4, hwf * NF_MAW_W, htf * NF_MAW_H, hwf * NF_MAW_W + 2.6, htf * NF_MAW_H + 2.6, NF_Z0, "steel_dark")
+    vault_shell(m, cx, yf + 0.3, yf + 1.4, hwf * NF_MAW_W + 2.6, htf * NF_MAW_H + 2.6, hwf * NF_MAW_W + 2.6, htf * NF_MAW_H + 2.6, NF_Z0, "steel_dark")
+    arch_face(m, cx, yf + 1.8, hwf * NF_MAW_W + 0.4, htf * NF_MAW_H + 0.4, hwf * NF_MAW_W + 1.0, htf * NF_MAW_H + 1.0, NF_Z0, "glow")
+    prof = vault_prof(cx, hwf * NF_MAW_W, htf * NF_MAW_H, NF_Z0, n=10)
+    for k in range(1, len(prof) - 1):
+        x, z = prof[k]
+        ix = cx + (x - cx) * 0.78
+        iz = NF_Z0 + (z - NF_Z0) * 0.8
+        m.cyl((x, yf + 1.2, z), (ix, yf + 2.4, iz), 1.3, 0.15, "spine", n=6)
+    # Apron: a ramp out to the pad edge with glowing guide strips.
+    m.box((cx - 15.0, yf + 1.0, 1.0), (cx + 15.0, NF - 3.0, 2.0), "steel", top="roof")
+    for s in (-1, 1):
+        m.box((cx + s * 11.0 - 0.8, yf + 2.0, 2.0), (cx + s * 11.0 + 0.8, NF - 4.0, 2.25), "glow")
+    for y in (yf + 6.0, yf + 11.0, yf + 16.0):
+        m.box((cx - 3.0, y, 2.0), (cx + 3.0, y + 1.2, 2.25), "glow")
+    # Dorsal spines along the ridge.
+    for i in range(NF_SEGS):
+        y0, y1, hw0, ht0, hw1, ht1 = nf_seg(i)
+        yb = y1 - 2.0
+        zb = NF_Z0 + ht1 + 1.0
+        m.cyl((cx, yb, zb - 1.0), (cx, yb - 4.0, zb + 5.5 + i * 0.6), 1.8, 0.25, "spine", n=6)
+    # Nanite vats on the east side, linked into the vault.
+    for vx, vy in NF_VATS:
+        m.cyl((vx, vy, 1.0), (vx, vy, 4.0), NF_VAT_R + 2.0, NF_VAT_R + 1.4, "steel_dark", n=16)
+        m.cyl((vx, vy, 4.0), (vx, vy, NF_VAT_TOP - 3.0), NF_VAT_R, NF_VAT_R, "vat", n=16)
+        for k in range(6):
+            a = 2 * math.pi * k / 6 + 0.3
+            px, py = vx + (NF_VAT_R + 0.3) * math.cos(a), vy + (NF_VAT_R + 0.3) * math.sin(a)
+            m.cyl((px, py, 4.0), (px, py, NF_VAT_TOP - 3.0), 0.55, 0.55, "spine", n=5)
+        m.cyl((vx, vy, NF_VAT_TOP - 3.0), (vx, vy, NF_VAT_TOP), NF_VAT_R + 0.8, NF_VAT_R * 0.5, "steel_dark", n=16)
+        m.cyl((vx, vy, NF_VAT_TOP), (vx, vy, NF_VAT_TOP + 1.6), 1.6, 1.2, "core", n=10)
+        m.cyl((vx - NF_VAT_R, vy, 9.0), (cx + 24.0, vy, 10.0), 1.3, 1.3, "pipe", n=8)
+        collar(m, (vx - NF_VAT_R, vy, 9.0), (cx + 24.0, vy, 10.0), 0.5, 1.8, 0.4, "glow")
+    # Crane: a pylon at the back-west corner, a jointed arm out over the vault, a claw holding a pod.
+    px_, py_ = NF_PYLON
+    m.box((px_ - 4.5, py_ - 4.5, 1.0), (px_ + 4.5, py_ + 4.5, 5.0), "steel_dark", top="roof")
+    m.cyl((px_, py_, 5.0), (px_, py_, NF_ARM_Z), 3.0, 2.2, "spine", n=8)
+    for f in (0.3, 0.6):
+        collar(m, (px_, py_, 5.0), (px_, py_, NF_ARM_Z), f, 3.0, 0.5, "glow")
+    ball(m, (px_, py_, NF_ARM_Z), 3.4, "steel", rings=4, n=10)
+    kx, ky = NF_CLAW
+    elbow = (px_ + (kx - px_) * 0.55, py_ + (ky - py_) * 0.55, NF_ARM_Z + 6.0)
+    m.cyl((px_, py_, NF_ARM_Z), elbow, 2.2, 1.9, "steel", n=8)
+    ball(m, elbow, 2.4, "steel_dark", rings=4, n=10)
+    wrist = (kx, ky, NF_ARM_Z - 2.0)
+    m.cyl(elbow, wrist, 1.9, 1.5, "steel", n=8)
+    collar(m, elbow, wrist, 0.4, 1.9, 0.4, "glow")
+    w = np.asarray(wrist, float)
+    ball(m, wrist, 2.0, "steel_dark", rings=4, n=10)
+    for k in range(3):
+        a = 2 * math.pi * k / 3 + 0.5
+        mid = w + np.array([3.0 * math.cos(a), 3.0 * math.sin(a), -2.5])
+        tip = w + np.array([1.6 * math.cos(a), 1.6 * math.sin(a), -6.5])
+        m.cyl(w, mid, 1.0, 0.8, "spine", n=5)
+        m.cyl(mid, tip, 0.8, 0.2, "spine", n=5)
+    # The pod it carries: a glowing walker core being lowered in.
+    ball(m, (kx, ky, NF_ARM_Z - 6.5), 2.6, "core", rings=5, n=10)
+    return m
+
+
+def forge_spots() -> dict:
+    cx = NF_CX
+    hwf, htf = NF_HW[1], NF_HT[1]
+    kx, ky = NF_CLAW
+    segs = [nf_seg(i) for i in range(NF_SEGS - 1)]
+    return {
+        "maw": (cx, NF_Y1 + 0.3, NF_Z0 + htf * NF_MAW_H * 0.35),
+        "apron": [(cx, NF_Y1 + y + 0.6, 2.25) for y in (6.0, 11.0, 16.0)],
+        "vats": [(vx - NF_VAT_R * 0.7, vy + NF_VAT_R * 0.7, 11.0) for vx, vy in NF_VATS],
+        "pod": (kx, ky, NF_ARM_Z - 6.5),
+        "seams": [(cx - hw1 * 0.95, y1 + 0.35, NF_Z0 + ht1 * 0.35) for _, y1, _, _, hw1, ht1 in segs[1:]],
+        "smoke": (NF_VATS[1][0], NF_VATS[1][1], NF_VAT_TOP + 1.6),
+        "stack": (cx, (NF_Y0 + NF_Y1) / 2, NF_Z0 + NF_HT[1] + 12.0),
+    }
+
+
+# ---------------------------------------------------------------- Neural Nexus, t(2) x t(2)
+
+NX = 64.0
+NX_C = (31.0, 31.0)
+NX_BRAIN_Z = 25.0
+NX_BRAIN_R = 9.0
+NX_RIBS = 8
+NX_MAST_TOP = 64.0
+NX_CROWN_Z = 54.0
+NX_PRONGS = 6
+
+
+def nx_rib(i: int) -> list[np.ndarray]:
+    cx, cy = NX_C
+    a = 2 * math.pi * (i + 0.5) / NX_RIBS
+    pts = []
+    for t in np.linspace(0.0, 1.0, 7):
+        r = 14.0 + 3.5 * math.sin(math.pi * t * 0.8) - 10.5 * t ** 1.6
+        z = 9.0 + 33.0 * t
+        pts.append(np.array([cx + r * math.cos(a), cy + r * math.sin(a), z]))
+    return pts
+
+
+def nx_prong(i: int) -> tuple[np.ndarray, np.ndarray]:
+    cx, cy = NX_C
+    a = 2 * math.pi * i / NX_PRONGS + math.pi / 4
+    b = np.array([cx + 3.0 * math.cos(a), cy + 3.0 * math.sin(a), NX_CROWN_Z])
+    t = np.array([cx + 13.0 * math.cos(a), cy + 13.0 * math.sin(a), NX_CROWN_Z + 6.0])
+    return b, t
+
+
+def build_nexus(with_pad: bool) -> ra.Mesh:
+    global RIB_C
+    RIB_C = NX_C
+    m = ra.Mesh()
+    if with_pad:
+        pad(m, NX, NX)
+    cx, cy = NX_C
+    # Octagonal plinth like the Fusion Node, a glowing seam, a ribbed drum.
+    m.cyl((cx, cy, 1.0), (cx, cy, 4.0), 26.0, 25.0, "steel_dark", n=8)
+    m.cyl((cx, cy, 4.0), (cx, cy, 4.6), 24.6, 24.6, "glow", n=8, caps=False)
+    m.cyl((cx, cy, 4.6), (cx, cy, 7.0), 24.0, 22.0, "steel", n=8)
+    m.cyl((cx, cy, 7.0), (cx, cy, 11.0), 15.0, 13.0, "ribbed", n=24)
+    m.cyl((cx, cy, 11.0), (cx, cy, 11.6), 13.2, 13.2, "glow", n=24, caps=False)
+    m.cyl((cx, cy, 11.6), (cx, cy, 14.0), 12.0, 8.0, "steel_dark", n=24)
+    # The brain, on a short stalk, in its cage.
+    m.cyl((cx, cy, 13.0), (cx, cy, NX_BRAIN_Z - 6.0), 3.0, 2.4, "spine", n=10)
+    ball(m, (cx, cy, NX_BRAIN_Z), NX_BRAIN_R, "neural", rings=10, n=22, squash=1.12)
+    for i in range(NX_RIBS):
+        pts = nx_rib(i)
+        for k in range(len(pts) - 1):
+            r0 = 1.5 - 0.12 * k
+            m.cyl(pts[k], pts[k + 1], r0, r0 - 0.12, "spine", n=6)
+        collar(m, pts[2], pts[3], 0.5, 1.6, 0.45, "glow")
+    # Where the ribs meet: a collar, and the mast rising out of it.
+    m.cyl((cx, cy, 40.0), (cx, cy, 44.0), 6.0, 4.5, "steel_dark", n=14)
+    m.cyl((cx, cy, 44.0), (cx, cy, NX_MAST_TOP), 3.0, 1.0, "ribbed", n=10)
+    for z in (46.0, 50.0):
+        m.cyl((cx, cy, z), (cx, cy, z + 0.7), 3.0 - (z - 44.0) * 0.1 + 0.4, 3.0 - (z - 44.0) * 0.1 + 0.4, "glow", n=10, caps=False)
+    # The sensor crown: a ring, prongs fanning out, a node lit at each tip.
+    m.cyl((cx, cy, NX_CROWN_Z - 0.6), (cx, cy, NX_CROWN_Z + 0.6), 4.2, 4.2, "steel_dark", n=14)
+    m.cyl((cx, cy, NX_CROWN_Z + 2.0), (cx, cy, NX_CROWN_Z + 2.5), 9.5, 9.5, "glow", n=24, caps=False)
+    for i in range(NX_PRONGS):
+        b, t = nx_prong(i)
+        m.cyl(b, t, 1.0, 0.35, "spine", n=6)
+        ball(m, tuple(t), 1.2, "core", rings=4, n=8)
+    ball(m, (cx, cy, NX_MAST_TOP + 0.8), 1.6, "core", rings=4, n=10)
+    # Two pickup pods on the plinth, toward the camera, looking out.
+    for k in (-1, 1):
+        px, py = cx + 15.0 + k * 6.0, cy + 15.0 - k * 6.0
+        m.cyl((px, py, 7.0), (px, py, 10.0), 3.0, 2.4, "steel_dark", n=10)
+        ball(m, (px, py, 11.0), 2.0, "core", rings=4, n=10)
+    return m
+
+
+def nexus_spots() -> dict:
+    cx, cy = NX_C
+    return {
+        "brain": (cx, cy, NX_BRAIN_Z),
+        "ribs": [tuple(axis_point(nx_rib(i)[2], nx_rib(i)[3], 0.5)) for i in range(NX_RIBS)],
+        "crown": [tuple(nx_prong(i)[1]) for i in range(NX_PRONGS)],
+        "beacon": (cx, cy, NX_MAST_TOP + 0.8),
+        "pods": [(cx + 15.0 + k * 6.0, cy + 15.0 - k * 6.0, 11.0) for k in (-1, 1)],
+        "stack": (cx, cy, NX_MAST_TOP + 4.0),
+    }
+
+
 BUILDINGS = {
     "hivecore": (HC, HC, 2.0, build_hivecore, hivecore_spots),
     "fusionnode": (FN, FN, 3.0, build_fusionnode, fusionnode_spots),
     "assimilator": (AS, AS, 2.0, build_assimilator, assimilator_spots),
+    "forge": (NF, NF, 2.0, build_forge, forge_spots),
+    "nexus": (NX, NX, 3.0, build_nexus, nexus_spots),
 }
 
 

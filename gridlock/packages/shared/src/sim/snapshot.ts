@@ -61,7 +61,7 @@ import { powerOf } from "./power.js";
 import { radarContacts, radarOnline } from "./radar.js";
 import { cyborgShutdownIn } from "./cyborg-link.js";
 import { blinkCharge, purgeProgress } from "./simunit.js";
-import { isSimUnit } from "../catalog.js";
+import { isSimUnit, onUplink } from "../catalog.js";
 import { aswDeckView, sonarContacts } from "./destroyer.js";
 import { scrapCap } from "./smelter.js";
 import { thermalContacts } from "./thermal.js";
@@ -611,7 +611,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
   // The countdown shows only while you still have a Cyborg on the field to lose.
   const linkIn = you ? cyborgShutdownIn(state, youPlayerId) : null;
   const cyborgShutdown =
-    linkIn != null && linkIn > 0 && [...state.entities.values()].some((e) => e.ownerId === youPlayerId && e.type === "cyborg" && e.hp > 0 && !e.wreck && !e.shutdown)
+    linkIn != null && linkIn > 0 && [...state.entities.values()].some((e) => e.ownerId === youPlayerId && onUplink(e.type) && e.hp > 0 && !e.wreck && !e.shutdown)
       ? Math.round(linkIn * 10) / 10
       : undefined;
   return {

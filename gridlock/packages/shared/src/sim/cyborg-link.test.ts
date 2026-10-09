@@ -95,6 +95,20 @@ describe("cyborg link", () => {
     assert.equal(snapshotFor(state, a).you.cyborgShutdownIn, undefined, "nothing left to lose");
   });
 
+  it("shuts a Drone and a Lancer down too, and counts them toward the warning", () => {
+    const { state, a } = match();
+    const { hub } = central(state, a, 6, 6);
+    const ts = state.tileSize;
+    const drone = makeEntity(state, "borgdrone", a, tileCenter(60, ts), tileCenter(40, ts));
+    const lancer = makeEntity(state, "lancer", a, tileCenter(64, ts), tileCenter(40, ts));
+    ticks(state, 2);
+    hub.hp = 0;
+    ticks(state, 2);
+    assert.ok((snapshotFor(state, a).you.cyborgShutdownIn ?? 0) > 0, "the countdown shows with only a Drone and a Lancer to lose");
+    ticks(state, GRACE);
+    for (const c of [drone, lancer]) assert.equal(c.shutdown, true, c.type);
+  });
+
   it("shuts them down when power runs short, even with the Central standing", () => {
     const { state, a } = match();
     const { dynamo } = central(state, a, 6, 6);

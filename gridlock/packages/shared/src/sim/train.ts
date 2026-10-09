@@ -1,4 +1,4 @@
-import { AIRFIELD_PADS, canContinuousTrain, catalog, inFaction, isAircraftType, isCyborg, isNavalType, isOneAtATime, secondsToTicks, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
+import { AIRFIELD_PADS, BORG_FACTORY, canContinuousTrain, catalog, factionOf, inFaction, isAircraftType, isCyborg, isNavalType, isOneAtATime, secondsToTicks, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, parkHeading } from "./air.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear, packRadius, packSlots } from "./formation.js";
@@ -10,8 +10,10 @@ import type { Entity, MatchState, TrainJob } from "./types.js";
 /** The refusal when a player asks for the other faction's building or unit. */
 export const NOT_YOUR_FACTION = "Not available to your faction.";
 
-export function producerType(unit: TrainType): "muster" | "armory" | "airfield" | "dock" | "cyborgcentral" {
+export function producerType(unit: TrainType): "muster" | "armory" | "airfield" | "dock" | "cyborgcentral" | "forge" {
   if (isCyborg(unit)) return "cyborgcentral";
+  // Every other Borg unit is a heavy assimilator, grown at the Nanite Forge.
+  if (factionOf(unit) === "borg") return BORG_FACTORY;
   if (unit === "rifleman" || unit === "gunner" || unit === "sniper" || unit === "atinfantry" || unit === "rocketer" || unit === "pyro" || unit === "mortarman" || unit === "engineer" || unit === "medic" || unit === "droneop" || unit === "jumpjet") return "muster";
   if (isAircraftType(unit)) return "airfield";
   if (isNavalType(unit)) return "dock";
@@ -89,6 +91,7 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
     if (want === "muster") return "Need a Barracks.";
     if (want === "dock") return "Need a Marine Base.";
     if (want === "cyborgcentral") return "Need a Cyborg Central.";
+    if (want === "forge") return "Need a Nanite Forge.";
     return "Need a Machine Shop.";
   }
   const tech = techMissing(state, playerId, unit);
@@ -122,6 +125,7 @@ function producerNeeded(unit: TrainType): string {
   if (want === "muster") return "Need a Barracks.";
   if (want === "dock") return "Need a Marine Base.";
   if (want === "cyborgcentral") return "Need a Cyborg Central.";
+  if (want === "forge") return "Need a Nanite Forge.";
   return "Need a Machine Shop.";
 }
 
@@ -423,7 +427,7 @@ function packAtDoor(state: MatchState, from: Entity, fresh: Entity, door: { x: n
 }
 
 export function isProducer(e: Entity): boolean {
-  return e.kind === "building" && (e.type === "muster" || e.type === "armory" || e.type === "dock" || e.type === "cyborgcentral");
+  return e.kind === "building" && (e.type === "muster" || e.type === "armory" || e.type === "dock" || e.type === "cyborgcentral" || e.type === "forge");
 }
 
 /** Sets the rally point on every owned producer in `ids`. A point on the building's own footprint clears it. */

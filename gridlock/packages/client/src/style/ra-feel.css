@@ -589,6 +589,21 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="simunit2"] {
   background-image: url("../assets/units/simunit2-cameo.png");
 }
+.prod-job[data-type="borgdrone"] {
+  background-image: url("../assets/units/borgdrone-cameo.png");
+}
+.prod-job[data-type="lancer"] {
+  background-image: url("../assets/units/lancer-cameo.png");
+}
+.prod-job[data-type="stalker"] {
+  background-image: url("../assets/units/stalker-cameo.png");
+}
+.prod-job[data-type="ravager"] {
+  background-image: url("../assets/units/ravager-cameo.png");
+}
+.prod-job[data-type="behemoth"] {
+  background-image: url("../assets/units/behemoth-cameo.png");
+}
 .prod-job[data-type="titan"] {
   background-image: url("../assets/units/titan-cameo.png");
 }
@@ -900,6 +915,11 @@ input[type="range"] { padding: 0; }
 #train-cyborg,
 #train-cyborgcommander,
 #train-simunit2,
+#train-borgdrone,
+#train-lancer,
+#train-stalker,
+#train-ravager,
+#train-behemoth,
 #train-titan,
 #train-mammoth,
 #train-nebelwerfer,
@@ -928,6 +948,10 @@ input[type="range"] { padding: 0; }
 #build-cyborgcentral,
 #build-fusionnode,
 #build-assimilator,
+#build-forge,
+#build-nexus,
+#build-spineturret,
+#build-pulsespire,
 #build-bunker,
 #build-tower,
 #build-ram,
@@ -1042,6 +1066,31 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/simunit2-cameo.png");
+}
+#train-borgdrone {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/borgdrone-cameo.png");
+}
+#train-lancer {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/lancer-cameo.png");
+}
+#train-stalker {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/stalker-cameo.png");
+}
+#train-ravager {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/ravager-cameo.png");
+}
+#train-behemoth {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/behemoth-cameo.png");
 }
 #train-titan {
   background-image:
@@ -1189,6 +1238,26 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/buildings/assimilator-cameo.png");
+}
+#build-forge {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/forge-cameo.png");
+}
+#build-nexus {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/nexus-cameo.png");
+}
+#build-spineturret {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/spineturret-cameo.png");
+}
+#build-pulsespire {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/buildings/pulsespire-cameo.png");
 }
 #build-bunker {
   background-image:
@@ -1519,6 +1588,11 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="feuerwirbel"],
 .prod-job[data-type="feuerwirbel"] { background-image: url("../assets/units/feuerwirbel-cameo.png"); }
 .config-type[data-type="apocalypse"] { background-image: url("../assets/units/apocalypse-cameo.png"); }
+.config-type[data-type="borgdrone"] { background-image: url("../assets/units/borgdrone-cameo.png"); }
+.config-type[data-type="lancer"] { background-image: url("../assets/units/lancer-cameo.png"); }
+.config-type[data-type="stalker"] { background-image: url("../assets/units/stalker-cameo.png"); }
+.config-type[data-type="ravager"] { background-image: url("../assets/units/ravager-cameo.png"); }
+.config-type[data-type="behemoth"] { background-image: url("../assets/units/behemoth-cameo.png"); }
 .config-type[data-type="walker"],
 .prod-job[data-type="walker"] { background-image: url("../assets/units/walker-cameo.png"); }
 .config-type[data-type="cyborg"],
@@ -1548,6 +1622,10 @@ input[type="range"] { padding: 0; }
 .config-type[data-type="hivecore"] { background-image: url("../assets/buildings/hivecore-cameo.png"); }
 .config-type[data-type="fusionnode"] { background-image: url("../assets/buildings/fusionnode-cameo.png"); }
 .config-type[data-type="assimilator"] { background-image: url("../assets/buildings/assimilator-cameo.png"); }
+.config-type[data-type="forge"] { background-image: url("../assets/buildings/forge-cameo.png"); }
+.config-type[data-type="nexus"] { background-image: url("../assets/buildings/nexus-cameo.png"); }
+.config-type[data-type="spineturret"] { background-image: url("../assets/buildings/spineturret-cameo.png"); }
+.config-type[data-type="pulsespire"] { background-image: url("../assets/buildings/pulsespire-cameo.png"); }
 .config-type[data-type="dynamo"] { background-image: url("../assets/buildings/dynamo-cameo.png"); }
 .config-type[data-type="smelter"] { background-image: url("../assets/buildings/smelter-cameo.png"); }
 .config-type[data-type="muster"] { background-image: url("../assets/buildings/muster-cameo.png"); }

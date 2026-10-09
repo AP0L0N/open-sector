@@ -1,0 +1,62 @@
+{
+  "unit": "stalker",
+  "fit_scale": 0.5825,
+  "empty_dirs": [],
+  "clipped_dirs": [],
+  "hull_size_pop_dirs": [
+    "S",
+    "N"
+  ],
+  "hull_heights": [
+    47,
+    51,
+    56,
+    60,
+    52,
+    60,
+    56,
+    52,
+    47,
+    52,
+    56,
+    60,
+    52,
+    60,
+    56,
+    51
+  ],
+  "hull_bottoms": [
+    113,
+    115,
+    118,
+    120,
+    116,
+    121,
+    119,
+    117,
+    114,
+    117,
+    119,
+    121,
+    116,
+    120,
+    118,
+    115
+  ],
+  "cellPerMeter": 0.0792,
+  "originCell": [
+    0.5,
+    0.7867
+  ],
+  "originLift": 0.1333,
+  "union_m": [
+    11.83,
+    7.07
+  ],
+  "drawSize_at_ref": 61,
+  "model": {
+    "boreZ": 2.32,
+    "muzzleReach": 5.85,
+    "turretRingZ": 1.8
+  }
+}

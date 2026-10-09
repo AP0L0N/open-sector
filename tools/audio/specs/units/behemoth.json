@@ -1,0 +1,55 @@
+{
+  "key": "behemoth",
+  "out": "units/behemoth",
+  "voice": {
+    "name": "Open Sector - Heavy Assimilator",
+    "voice_id": "Wgg1tJ9YWBePARF1jEf7",
+    "note": "Shares the Heavy Assimilator voice designed for the Stalker (voices/stalker.json); slower delivery for the biggest machine.",
+    "description": "Enormous, slow machine voice of a giant legged alien war machine of a cyborg hive: very deep sub-bass layered voice, as if several huge synthetic voices speak at once an octave apart, grinding metallic overtones and a rumbling engine-like drone beneath every word, cold, emotionless and inevitable, each word heavy and deliberate with long pauses.",
+    "stability": 0.75,
+    "similarity": 0.8,
+    "style": 0.2,
+    "speed": 0.8
+  },
+  "lines": {
+    "select": [
+      "Behemoth.",
+      "We are the mountain.",
+      "The collective is vast."
+    ],
+    "move": [
+      "The earth trembles.",
+      "Advancing. Inevitable.",
+      "All paths are ours."
+    ],
+    "attack": [
+      "Twin disruptors.",
+      "Erase them.",
+      "Resistance ends here."
+    ],
+    "ready": [
+      "Behemoth rises."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Distant, massive double boom of two enormous energy disruptor cannons firing together on an open battlefield: a colossal deep electric blast, heavy crackling discharge and a long thundering rolling echo, no music, no voice",
+      "duration": 5.0,
+      "variants": 2,
+      "influence": 0.6,
+      "lufs": -9
+    },
+    "move": {
+      "prompt": "Colossal legged alien war machine taking two enormous slow ground-shaking steps: very deep metallic thuds, massive hydraulic pistons groaning and hissing, heavy servo grind, the ground rumbling, close, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "die": {
+      "prompt": "Colossal legged alien war machine destroyed: a huge deep explosion with massive electric arcs discharging, a giant synthetic drone groaning down in pitch, huge steel frame tearing apart and crashing to the ground with a long rumble, medium distance outdoors, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

@@ -1,0 +1,54 @@
+{
+  "key": "stalker",
+  "out": "units/stalker",
+  "voice": {
+    "name": "Open Sector - Heavy Assimilator",
+    "description": "Enormous, slow machine voice of a giant legged alien war machine of a cyborg hive: very deep sub-bass layered voice, as if several huge synthetic voices speak at once an octave apart, grinding metallic overtones and a rumbling engine-like drone beneath every word, cold, emotionless and inevitable, each word heavy and deliberate with long pauses.",
+    "sample": "Heavy assimilator awake. We walk, and the ground breaks beneath us. Your armor is matter. Your walls are matter. All of it returns to the collective. We do not hurry. We arrive.",
+    "stability": 0.7,
+    "similarity": 0.8,
+    "style": 0.25,
+    "speed": 0.85
+  },
+  "lines": {
+    "select": [
+      "Stalker.",
+      "We are watching.",
+      "The hive points."
+    ],
+    "move": [
+      "Striding.",
+      "The ground yields.",
+      "Hunting."
+    ],
+    "attack": [
+      "Disruptor charged.",
+      "Unmake them.",
+      "Prey acquired."
+    ],
+    "ready": [
+      "Stalker awakened."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Distant, powerful boom of a huge energy disruptor cannon firing in an open field, a loud deep blast like a heavy tank gun with a sharp electric crackle on top and a long rolling echo, no music, no voice",
+      "duration": 4.5,
+      "variants": 2,
+      "influence": 0.6,
+      "lufs": -9
+    },
+    "move": {
+      "prompt": "Large four-legged alien war machine stalking forward: quick heavy hydraulic legs stepping in rhythm, metallic thuds on dirt, servo whine and pneumatic hiss, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "die": {
+      "prompt": "Large legged alien war machine destroyed: a heavy metal explosion with crackling electric arcs discharging, a dying synthetic drone winding down in pitch, steel legs buckling and the body crashing to the ground, medium distance outdoors, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

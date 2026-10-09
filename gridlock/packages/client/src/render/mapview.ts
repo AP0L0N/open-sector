@@ -451,6 +451,18 @@ import { beamEnd, beamShare, drawForceField, drawLaserBeam } from "./laser-beam.
 import { drawShutdownMark, drawUplink, SHUTDOWN_UNIT_FILTER } from "./cyborg-link-fx.js";
 import { BLINK_FX_MS, drawBlinkFx, drawPurgeMark } from "./blink-fx.js";
 import { SIMUNIT2_CRAWL_FIRE_SPRITE, SIMUNIT2_CRAWL_SPRITE, SIMUNIT2_DIE_SPRITE, SIMUNIT2_FIRE_SPRITE, SIMUNIT2_SPRITE, UNIT_SPRITE_DRAW_SIZE } from "./sprites.js";
+import {
+  BORGDRONE_CRAWL_FIRE_SPRITE,
+  BORGDRONE_CRAWL_SPRITE,
+  BORGDRONE_DIE_SPRITE,
+  BORGDRONE_FIRE_SPRITE,
+  BORGDRONE_SPRITE,
+  LANCER_CRAWL_FIRE_SPRITE,
+  LANCER_CRAWL_SPRITE,
+  LANCER_DIE_SPRITE,
+  LANCER_FIRE_SPRITE,
+  LANCER_SPRITE,
+} from "./sprites.js";
 import { inScreenRect, unitGroundSink, unitPickRect, type ScreenRect } from "./unit-hit.js";
 import { engineRowFromProjectedFacing, engineRowFromScreen } from "./turntable.js";
 import { drawSelectFrame, fieldFrameCorners } from "./select-frame.js";
@@ -608,6 +620,10 @@ const EXTRUDE: Record<EntityType, number> = {
   assimilator: 50,
   fusionnode: 34,
   seed: 22,
+  forge: 52,
+  nexus: 58,
+  spineturret: 14,
+  pulsespire: 30,
   armory: 54,
   muster: 38,
   dynamo: 30,
@@ -656,6 +672,11 @@ const EXTRUDE: Record<EntityType, number> = {
   cyborg: 26,
   cyborgcommander: 26,
   simunit2: 26,
+  borgdrone: 24,
+  lancer: 27,
+  stalker: 28,
+  ravager: 22,
+  behemoth: 46,
   sandbags: 12,
   barbwire: 9,
   wall: 18,
@@ -740,7 +761,7 @@ const TORPEDO_WAKE_MUL = 6;
 
 function isProducerView(e: EntityView): boolean {
   // The Airfield trains too, but its planes park on the strip; it has no rally point.
-  return e.kind === "building" && (e.type === "muster" || isSmelterType(e.type) || e.type === "armory" || e.type === "dock" || e.type === "cyborgcentral");
+  return e.kind === "building" && (e.type === "muster" || isSmelterType(e.type) || e.type === "armory" || e.type === "dock" || e.type === "cyborgcentral" || e.type === "forge");
 }
 
 function hpBarFill(ratio: number, hostile: boolean, vivid = false): string {
@@ -7070,6 +7091,21 @@ export class MapView {
       if (sheet === "crawl") return SIMUNIT2_CRAWL_SPRITE;
       if (sheet === "swim") return spriteFor("simunit2", "stand", true);
       return SIMUNIT2_SPRITE;
+    }
+    if (e.type === "borgdrone" || e.type === "lancer") {
+      const drone = e.type === "borgdrone";
+      const sheet = cyborgSheet({
+        swimming: e.swimming,
+        wreck: e.wreck,
+        stance: e.stance,
+        shotAgeMs: this.infantryShotAge(e.id),
+      });
+      if (sheet === "die") return drone ? BORGDRONE_DIE_SPRITE : LANCER_DIE_SPRITE;
+      if (sheet === "fire") return drone ? BORGDRONE_FIRE_SPRITE : LANCER_FIRE_SPRITE;
+      if (sheet === "crawl-fire") return drone ? BORGDRONE_CRAWL_FIRE_SPRITE : LANCER_CRAWL_FIRE_SPRITE;
+      if (sheet === "crawl") return drone ? BORGDRONE_CRAWL_SPRITE : LANCER_CRAWL_SPRITE;
+      if (sheet === "swim") return spriteFor(e.type, "stand", true);
+      return drone ? BORGDRONE_SPRITE : LANCER_SPRITE;
     }
     if (e.type === "cyborgcommander") {
       // He holds the firing pose while the beam is out.

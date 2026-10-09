@@ -60,6 +60,7 @@ import { tickSimUnits } from "./simunit.js";
 import type { BlinkView } from "../protocol.js";
 import { syncTowedGuns, tickArtillery } from "./artillery.js";
 import { tickShipRearm } from "./battleship.js";
+import { tickForgeRearm } from "./forge.js";
 import { tickMovement, repathIfBlocked } from "./orders.js";
 import { tickWalkerCharge } from "./walker-charge.js";
 import { tickOrderQueue } from "./commands.js";
@@ -362,6 +363,7 @@ function stepHeld(state: MatchState, dt: number): void {
   tickGarrisonCare(state, dt);
   tickSupply(state, dt);
   tickShipRearm(state, dt);
+  tickForgeRearm(state);
   tickArtillery(state, dt);
   tickPlaneBoarding(state);
   tickMineLaunchers(state, dt);

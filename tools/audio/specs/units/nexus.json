@@ -1,0 +1,18 @@
+{
+  "key": "nexus",
+  "out": "units/nexus",
+  "sfx": {
+    "special": {
+      "prompt": "Alien neural sensor structure coming online: a smooth rising electronic hum swelling up, then soft sonar-like sensor pings echoing outward at a steady pace, faint data chirps and a calm pulsing throb, close, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Alien neural sensor structure destroyed: a descending electronic shriek and distorted sensor pings glitching out, an energy core bursting with crackling arcs, alien metal and crystal shattering and collapsing, medium distance outdoors, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

@@ -117,6 +117,7 @@ import { garrisonRoster, type GarrisonSeat } from "./garrison-roster.js";
 import { commandHotkey, commandIconSvg, groupCommands, hasCommandIcon } from "./command-bar.js";
 import {
   SIDEBAR_GROUPS,
+  groupLabel,
   groupEntries,
   groupState,
   type SidebarGroup,
@@ -225,12 +226,13 @@ export function mountBattlefield(
   setAnnouncerFaction(hudFaction);
   const entries = groupEntries(hudFaction);
   for (const g of SIDEBAR_GROUPS) {
+    const look = groupLabel(g, hudFaction);
     const tab = el("button", {
       class: "group-tab",
-      attrs: { type: "button", id: "group-tab-" + g.id, role: "tab", title: g.label, "data-group": g.id },
+      attrs: { type: "button", id: "group-tab-" + g.id, role: "tab", title: look.label, "data-group": g.id },
       html:
         `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="${g.icon}"/></svg>` +
-        `<span class="group-tab-label">${g.short}</span><span class="group-light"></span>`,
+        `<span class="group-tab-label">${look.short}</span><span class="group-light"></span>`,
     });
     tabs.append(tab);
     const grid = el("div", { class: "cameos", attrs: { id: "cameos-" + g.id, role: "tabpanel" } });
@@ -469,7 +471,8 @@ function paintGroupTabs(): void {
     tab.dataset.state = groupState(flags);
   }
   const heading = document.getElementById("group-heading");
-  const label = SIDEBAR_GROUPS.find((g) => g.id === sidebarGroup)?.label ?? "";
+  const group = SIDEBAR_GROUPS.find((g) => g.id === sidebarGroup);
+  const label = group ? groupLabel(group, hudFaction).label : "";
   if (heading && heading.textContent !== label) heading.textContent = label;
 }
 
@@ -1196,7 +1199,12 @@ const TYPE_ORDER: EntityType[] = [
   "jagdtiger",
   "feuerwirbel",
   "walker",
+  "behemoth",
+  "stalker",
+  "ravager",
   "cyborg",
+  "borgdrone",
+  "lancer",
   "cyborgcommander",
   "simunit2",
   "titan",

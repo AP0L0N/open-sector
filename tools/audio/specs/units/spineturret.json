@@ -1,0 +1,24 @@
+{
+  "key": "spineturret",
+  "out": "units/spineturret",
+  "sfx": {
+    "fire": {
+      "prompt": "Short burst from an alien electric needle gatling turret: a rapid stream of sharp metallic needle shots ticking out very fast with an electric whine spinning up and down, close, outdoors battlefield, no music, no voice",
+      "duration": 1.2,
+      "variants": 2,
+      "influence": 0.65
+    },
+    "special": {
+      "prompt": "Alien defensive turret unfurling: a row of metal spines sliding and snapping out one after another with sharp clicks, servo whir, a short electric charge-up hum, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "die": {
+      "prompt": "Alien spined gun turret destroyed: a sharp metal explosion, electric sparks and short circuit crackle, spines snapping and clattering to the ground, a dying synthetic whine, medium distance outdoors, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

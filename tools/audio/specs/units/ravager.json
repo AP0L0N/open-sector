@@ -1,0 +1,60 @@
+{
+  "key": "ravager",
+  "out": "units/ravager",
+  "voice": {
+    "name": "Open Sector - Heavy Assimilator",
+    "voice_id": "Wgg1tJ9YWBePARF1jEf7",
+    "note": "Shares the Heavy Assimilator voice designed for the Stalker (voices/stalker.json).",
+    "description": "Enormous, slow machine voice of a giant legged alien war machine of a cyborg hive: very deep sub-bass layered voice, as if several huge synthetic voices speak at once an octave apart, grinding metallic overtones and a rumbling engine-like drone beneath every word, cold, emotionless and inevitable, each word heavy and deliberate with long pauses.",
+    "stability": 0.65,
+    "similarity": 0.8,
+    "style": 0.3,
+    "speed": 0.9
+  },
+  "lines": {
+    "select": [
+      "Ravager.",
+      "Hungry.",
+      "We devour."
+    ],
+    "move": [
+      "Trampling forward.",
+      "Nothing stands.",
+      "Onward. Consume."
+    ],
+    "attack": [
+      "Burn them down.",
+      "Strip them to matter.",
+      "Shred. Burn. Take."
+    ],
+    "ready": [
+      "Ravager unleashed."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Rapid burst from a heavy alien electric needle gatling: a fast buzzing stream of sharp metallic needle shots with crackling electric snaps and a whining spin-up and spin-down, close, outdoors battlefield, no music, no voice",
+      "duration": 1.5,
+      "variants": 2,
+      "influence": 0.65
+    },
+    "fire_flame": {
+      "prompt": "Alien nanite flamethrower blast: a pressurized hiss bursting into a roaring rushing jet of fire with a fizzing, crackling swarm-like sizzle, close, outdoors, no music, no voice",
+      "duration": 1.8,
+      "variants": 2,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Big six-legged alien war machine scuttling forward: fast heavy hydraulic legs clattering in quick rhythm, metal claws thudding into dirt, servo whine and pneumatic hiss, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "die": {
+      "prompt": "Heavy legged alien war machine destroyed: a fiery metal explosion with fuel bursting, crackling electric arcs discharging, a dying synthetic drone sliding down in pitch, legs collapsing and the hull crashing to the ground, medium distance outdoors, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

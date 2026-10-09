@@ -1,0 +1,25 @@
+{
+  "key": "pulsespire",
+  "out": "units/pulsespire",
+  "sfx": {
+    "fire": {
+      "prompt": "Distant, powerful shot of a huge energy tower firing a heavy pulse bolt on an open battlefield: a deep electric boom, a sharp crackling zap and a long rolling echo, no music, no voice",
+      "duration": 4.0,
+      "variants": 2,
+      "influence": 0.6,
+      "lufs": -9
+    },
+    "special": {
+      "prompt": "Alien energy spire powering up: spinning energy rings accelerating with a rising whirring hum, electric crackle building, a bright resonant tone locking in at the top, close, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "die": {
+      "prompt": "Alien energy tower destroyed: an overloading power core shrieking and bursting in a plasma explosion, spinning rings grinding to a halt, electric arcs crackling out, metal spire toppling and crashing, medium distance outdoors, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

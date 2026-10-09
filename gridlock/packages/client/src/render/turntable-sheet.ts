@@ -887,3 +887,57 @@ export function bindTurntableSheets(
 }
 
 export { TIGER_OPTS };
+
+/** The Borg heavy assimilators' layers (tools/sprites/render_{stalker,behemoth,ravager}.py), one glob per layer. */
+const borgWalkerGlobs = {
+  stalker: [
+    import.meta.glob("../assets/units/stalker/hull/*.png", { eager: true, import: "default" }),
+    import.meta.glob("../assets/units/stalker/turret/*.png", { eager: true, import: "default" }),
+    import.meta.glob("../assets/units/stalker/gun/*.png", { eager: true, import: "default" }),
+  ],
+  behemoth: [
+    import.meta.glob("../assets/units/behemoth/hull/*.png", { eager: true, import: "default" }),
+    import.meta.glob("../assets/units/behemoth/turret/*.png", { eager: true, import: "default" }),
+    import.meta.glob("../assets/units/behemoth/gun/*.png", { eager: true, import: "default" }),
+  ],
+  ravager: [
+    import.meta.glob("../assets/units/ravager/hull/*.png", { eager: true, import: "default" }),
+    import.meta.glob("../assets/units/ravager/turret/*.png", { eager: true, import: "default" }),
+    import.meta.glob("../assets/units/ravager/gun/*.png", { eager: true, import: "default" }),
+  ],
+} as Record<"stalker" | "behemoth" | "ravager", Record<string, string>[]>;
+
+const borgWalkerPrevious: Partial<Record<keyof typeof borgWalkerGlobs, ComposedTurntable>> = {};
+
+/**
+ * A Borg heavy assimilator: legs (the hull), turret, and gun, one transform for all three, on the
+ * Tiger's cell. The static <id>-cameo.png stands in the sidebar; no runtime cameo.
+ */
+export function bindBorgWalkerSheets(
+  id: keyof typeof borgWalkerGlobs,
+  hullImage: HTMLImageElement,
+  turretImage: HTMLImageElement,
+  gunImage: HTMLImageElement,
+): void {
+  let urls: string[][];
+  try {
+    urls = borgWalkerGlobs[id].map((g) => pickTurntableUrls(g));
+  } catch (err) {
+    console.error(`${id} turntable`, err);
+    return;
+  }
+  void Promise.all(urls.map((layer) => Promise.all(layer.map(loadImage))))
+    .then((layers) => composeAligned(layers, TIGER_OPTS))
+    .then((next) => {
+      const prev = borgWalkerPrevious[id];
+      if (prev) revoke(prev);
+      borgWalkerPrevious[id] = next;
+      hullImage.src = next.sheetUrls[0] ?? "";
+      turretImage.src = next.sheetUrls[1] ?? "";
+      gunImage.src = next.sheetUrls[2] ?? "";
+      URL.revokeObjectURL(next.cameoUrl);
+    })
+    .catch((err) => {
+      console.error(`${id} turntable`, err);
+    });
+}

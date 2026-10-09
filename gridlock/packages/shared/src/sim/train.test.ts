@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
-import { BUILD_REQUIRES, ONE_AT_A_TIME, TECH_REQUIRES, TRAIN_QUEUE_CAP, canContinuousTrain, catalog, secondsToTicks, TICK_DT, type TrainType } from "../catalog.js";
+import { BUILD_REQUIRES, ONE_AT_A_TIME, TECH_REQUIRES, TRAIN_QUEUE_CAP, canContinuousTrain, catalog, factionOf, secondsToTicks, TICK_DT, type TrainType } from "../catalog.js";
 import { applyCommand } from "./commands.js";
 import { buildTechMissing } from "./build.js";
 import { createMatch, step } from "./match.js";
@@ -477,14 +477,14 @@ describe("research gate", () => {
     makeEntity(state, "armory", "A", tileCenter(20, ts), tileCenter(4, ts), { tileX: 20, tileY: 4 });
     seedMuster(state, 20, 10);
     const gated = Object.keys(TECH_REQUIRES) as TrainType[];
-    assert.deepEqual([...gated].sort(), ["apocalypse", "battleship", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "he111", "horten", "jagdtiger", "jumpjet", "mammoth", "nebelwerfer", "simunit2", "stuka", "submarine", "titan", "warden"]);
-    const cyborgs = new Set<TrainType>(["cyborg", "cyborgcommander", "simunit2"]);
+    assert.deepEqual([...gated].sort(), ["apocalypse", "battleship", "behemoth", "borgdrone", "bv222", "cyborg", "cyborgcommander", "destroyer", "droneop", "he111", "horten", "jagdtiger", "jumpjet", "lancer", "mammoth", "nebelwerfer", "simunit2", "stuka", "submarine", "titan", "warden"]);
+    const cyborgs = new Set<TrainType>(["cyborg", "cyborgcommander", "simunit2", "borgdrone", "lancer"]);
     // Ships ask for the Marine Base first, bombers for the Airfield; their gates are checked on their own.
     for (const unit of gated.filter((u) => producerType(u) !== "dock" && producerType(u) !== "airfield")) {
       const r = applyCommand(state, "A", { type: "cmd.train", unit });
       assert.equal(r.ok, false, unit);
-      // The cyborgs are Borg: Earth United cannot train them at all.
-      if (!r.ok) assert.equal(r.message, cyborgs.has(unit) ? "Not available to your faction." : "Need a Research Facility.", unit);
+      // The cyborgs and heavy assimilators are Borg: Earth United cannot train them at all.
+      if (!r.ok) assert.equal(r.message, factionOf(unit) === "borg" ? "Not available to your faction." : "Need a Research Facility.", unit);
     }
     assert.equal(applyCommand(state, "A", { type: "cmd.train", unit: "ss3" }).ok, true);
     // The Feuerwirbel needs only the Machine Shop.
@@ -526,7 +526,7 @@ describe("defence tech gate", () => {
     seedCore(state);
     const ts = state.tileSize;
     state.players.get("A")!.scrap = 100_000;
-    assert.deepEqual(Object.keys(BUILD_REQUIRES).sort(), ["casemate", "ciws", "flak", "leitturm", "pak43", "ram"]);
+    assert.deepEqual(Object.keys(BUILD_REQUIRES).sort(), ["casemate", "ciws", "flak", "leitturm", "pak43", "pulsespire", "ram"]);
     const tryBuild = (building: "leitturm" | "flak" | "pak43" | "casemate" | "ciws" | "ram") => {
       const r = applyCommand(state, "A", { type: "cmd.build", building });
       if (r.ok) applyCommand(state, "A", { type: "cmd.cancel", what: "structure", building });

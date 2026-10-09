@@ -1,0 +1,65 @@
+{
+  "unit": "ravager",
+  "fit_scale": 0.7317,
+  "empty_dirs": [],
+  "clipped_dirs": [],
+  "hull_size_pop_dirs": [
+    "S",
+    "SSW",
+    "SSE"
+  ],
+  "hull_heights": [
+    73,
+    72,
+    68,
+    64,
+    64,
+    68,
+    63,
+    61,
+    58,
+    61,
+    63,
+    68,
+    64,
+    64,
+    68,
+    72
+  ],
+  "hull_bottoms": [
+    119,
+    118,
+    116,
+    119,
+    119,
+    120,
+    117,
+    114,
+    111,
+    114,
+    117,
+    120,
+    119,
+    119,
+    116,
+    118
+  ],
+  "cellPerMeter": 0.1317,
+  "originCell": [
+    0.5,
+    0.7802
+  ],
+  "originLift": 0.1398,
+  "union_m": [
+    7.12,
+    4.69
+  ],
+  "drawSize_at_ref": 36,
+  "model": {
+    "boreZ": 2.15,
+    "muzzleReach": 2.75,
+    "turretRingZ": 1.86,
+    "nozzleX": 3.35,
+    "nozzleZ": 0.92
+  }
+}
