@@ -1376,7 +1376,7 @@ export const WALKER_SELF_DESTRUCT_MODES = [
  * away and he drags himself on one arm, still firing. A medic closes the
  * flesh and an engineer patches the plating; either brings the legs back.
  */
-export const CYBORG_DRUM = 600;
+export const CYBORG_DRUM = 300;
 /** Legs are torn off at or under this share of max HP. */
 export const CYBORG_LEGS_LOST_HP = 0.3;
 /** Healed or repaired back to this share of max HP, the legs work again. */
@@ -1393,7 +1393,7 @@ export const CYBORG_REPAIR_PER_SEC = 5;
 export const GATLING = {
   id: "gatling" as const,
   name: "Gatling arm",
-  blurb: "One Walker gatling on the arm: 1,200 rounds a minute from a 600-round drum. The drum does not reload by itself — bring a supply truck.",
+  blurb: "One Walker gatling on the arm: 1,200 rounds a minute from a 300-round drum. The drum does not reload by itself — bring a supply truck.",
   damage: MG42.damage,
   penetration: MG42.penetration,
   caliber: MG42.caliber,
@@ -1410,14 +1410,18 @@ export const GATLING = {
 /**
  * Cyborg sensors in place of a headlight. A Cyborg's thermal scanner picks up
  * enemy soldiers in a cone off his facing, THERMAL_HALF_DEG either side, out to
- * THERMAL_RANGE_TILES. The Commander's thermal and APS radar read all round him
- * out to COMMANDER_SCAN_RANGE_TILES, soldiers and armored hulls alike. Neither
- * needs a line of sight, and neither lets anyone shoot: a contact is a mark on
- * the map, not a target. A shut-down Cyborg's scanner is dark.
+ * THERMAL_RANGE_TILES. The Commander's thermal reads soldiers all round him out
+ * to COMMANDER_SCAN_RANGE_TILES; his APS radar reads armored hulls all round
+ * him out to COMMANDER_APS_RANGE_TILES, but only a hull that moved within the
+ * last APS_MOVE_MEMORY_SECONDS. Neither needs a line of sight. A contact is a
+ * mark on the map; a Cyborg set to engage contacts fires at it blind. A
+ * shut-down Cyborg's scanner is dark.
  */
 export const THERMAL_RANGE_TILES = t(10);
 export const THERMAL_HALF_DEG = 35;
 export const COMMANDER_SCAN_RANGE_TILES = t(13);
+export const COMMANDER_APS_RANGE_TILES = t(20);
+export const APS_MOVE_MEMORY_SECONDS = 1;
 
 /**
  * Cyborg Commander. An officer-grade cyborg: the Cyborg's frame and crawl rule,
@@ -4932,7 +4936,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: GATLING.penetration,
     caliber: GATLING.caliber,
     spreadDeg: GATLING.spreadDeg,
-    blurb: "Half soldier, half machine. A gatling arm fed from a 600-round drum that only a supply truck refills. It fires with tracers and overheats after under two seconds on the trigger. He carries no lamp: a thermal scanner marks enemy soldiers in a cone ahead of him, through fog, cover and dark. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back. He runs on the uplink from your Cyborg Central or a living Cyborg Commander of yours: without either he shuts down a few seconds later: still yours, but still and silent. He wakes up once your link is back, unless an enemy Cyborg Commander takes him over first.",
+    blurb: "Half soldier, half machine. A gatling arm fed from a 300-round drum that only a supply truck refills. It fires with tracers and overheats after under two seconds on the trigger. He carries no lamp: a thermal scanner marks enemy soldiers in a cone ahead of him, through fog, cover and dark. Set to Engage, he fires on whatever his side's scanners read inside his reach, seen or not. A round sometimes bites a Walker or a truck. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him, and either brings the legs back. He runs on the uplink from your Cyborg Central or a living Cyborg Commander of yours: without either he shuts down a few seconds later: still yours, but still and silent. He wakes up once your link is back, unless an enemy Cyborg Commander takes him over first.",
   },
   cyborgcommander: {
     type: "cyborgcommander",
@@ -4957,7 +4961,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     penetration: LASER.penetration,
     caliber: LASER.caliber,
     spreadDeg: LASER.spreadDeg,
-    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. He can put the laser's power into it: the field then holds five times the points and recharges five times as fast, but he cannot attack. His plating mends itself, very slowly. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate: heavy damage to a hull, moderate to a building. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. His thermal scanner and APS radar read all round him: enemy soldiers glow as heat and armored hulls show under a scan grid, through fog, cover and dark. While he lives your Cyborgs keep running without a Cyborg Central, and any enemy shut-down Cyborg near him is taken over by his uplink in a few seconds, one at a time. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
+    blurb: "An officer of machines. A force field takes every hit before his plating does, and comes back on after a while out of the fire. He can put the laser's power into it: the field then holds five times the points and recharges five times as fast, but he cannot attack. His plating mends itself, very slowly. His cutting laser always reaches full range: on soldiers it sweeps across them in a short arc and burns down every soldier the red beam passes, friend or foe, and every tree in its path, leaving a line of fire on the ground. On a hull or a building it is one straight beam that cuts any plate: heavy damage to a hull, moderate to a building. Near death his legs are torn off and he crawls on, still firing. Medics heal him, engineers repair him. His thermal scanner and APS radar read all round him: enemy soldiers glow as heat, and armored hulls on the move show under a scan grid farther out, through fog, cover and dark. Set to Engage, he cuts at whatever the scanners read inside his reach, seen or not. While he lives your Cyborgs keep running without a Cyborg Central, and any enemy shut-down Cyborg near him is taken over by his uplink in a few seconds, one at a time. Only one at a time: while yours stands, or one is in a queue, another cannot be ordered.",
   },
   titan: {
     type: "titan",

@@ -88,6 +88,7 @@ const ICONS: Record<string, string> = {
   patrol: '<path d="M3 6.5a5 3.2 0 0110 0M13 9.5a5 3.2 0 01-10 0"/><path d="M13 3.5v3h-3M3 12.5v-3h3"/>',
   guard: '<path d="M8 1.5l5.5 2v4.2c0 3.2-2.3 5.5-5.5 6.8-3.2-1.3-5.5-3.6-5.5-6.8V3.5z"/>',
   hold: '<circle cx="8" cy="5" r="3"/><path d="M8 8v6.5M4 14.5h8"/>',
+  engage: CROSSHAIR + '<path d="M3 1.5c1 1 1 2 0 3M13 11.5c1 1 1 2 0 3"/>',
   rotate: '<path d="M13 8a5 5 0 11-1.5-3.6"/><path d="M12 1.5V5H8.5"/>',
   "rotate-light": '<path d="M1.5 6.5h3v3h-3zM4.5 6.2l3-2v7.6l-3-2"/><path d="M10 5.5l4.5-2M10 8h5M10 10.5l4.5 2"/>',
   "stance-stand":

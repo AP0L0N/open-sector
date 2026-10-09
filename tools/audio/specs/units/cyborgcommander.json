@@ -52,6 +52,16 @@
       "You belong to me now.",
       "Override. Obey.",
       "Rewriting your loyalty."
+    ],
+    "thermal": [
+      "Heat signatures.",
+      "Thermal contact.",
+      "I see their warmth."
+    ],
+    "radar": [
+      "Radar contact. Armor moving.",
+      "Steel in motion.",
+      "Armored contact on the scope."
     ]
   },
   "sfx": {
