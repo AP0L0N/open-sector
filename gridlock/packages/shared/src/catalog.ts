@@ -2456,12 +2456,16 @@ export const FLAK_WOUND_MUL = 0.5;
 /** Flak shells in the ready racks. A supply truck refills them. */
 export const FLAK_RACK = 64;
 /**
- * World px from the burst at which a flying body still takes something: about two tiles, wider
- * than a formation, so one shell catches every plane flying close together. Full damage inside a third of it.
+ * World px from the burst at which a flying body still takes something: about four tiles, as wide
+ * as the black cloud is drawn, so a plane seen inside the smoke is hurt and one shell catches a
+ * whole formation. Full damage inside a third of it.
  */
-export const FLAK_BURST_RADIUS = 64;
-/** Elevation units above or below the burst that still count. Planes cruise at AIR_CRUISE_ALT. */
-export const FLAK_BURST_DEPTH = 14;
+export const FLAK_BURST_RADIUS = 128;
+/**
+ * Elevation units above or below the burst that still count: wide enough that a plane diving to
+ * its release or strafing height while the shell climbs is still caught. Planes cruise at AIR_CRUISE_ALT.
+ */
+export const FLAK_BURST_DEPTH = 24;
 /** Damage at the heart of a burst: small, since nearly every burst finds something. A Stuka takes about a dozen. */
 export const FLAK_BURST_DAMAGE = 10;
 /**
