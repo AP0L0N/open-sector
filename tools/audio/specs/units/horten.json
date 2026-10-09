@@ -1,0 +1,59 @@
+{
+  "key": "horten",
+  "out": "units/horten",
+  "voice": {
+    "name": "Open Sector - Horten VII",
+    "description": "Young German reconnaissance pilot in his late twenties speaking English with a light, clipped German accent over a crackly 1940s aircraft intercom, cool, precise and quietly proud, soft mid voice, very sure of his strange tailless aircraft, calm and observant, sounds like he is high above the war watching it through a camera.",
+    "sample": "Horten Seven, at altitude. Nothing up here can catch us. Below, three columns on the road to the river. Cameras running. I count them, I photograph them, and I am gone before their guns even look up.",
+    "stability": 0.6,
+    "similarity": 0.8,
+    "style": 0.3
+  },
+  "lines": {
+    "select": [
+      "Horten Seven.",
+      "Reconnaissance, ready.",
+      "Cameras loaded.",
+      "Eyes in the sky.",
+      "The wing is ready."
+    ],
+    "move": [
+      "Climbing.",
+      "Course set.",
+      "I will have a look.",
+      "Jawohl, on my way.",
+      "Over there in a moment."
+    ],
+    "attack": [
+      "No guns. Only cameras.",
+      "I will photograph them.",
+      "Flying over the target.",
+      "Marking them for you."
+    ],
+    "ready": [
+      "Horten Seven fueled and ready. Cameras loaded."
+    ],
+    "hit": [
+      "[gasps] They reached us!",
+      "Hit. The wing still holds."
+    ],
+    "die": [
+      "[shouting] I am going down!",
+      "The wing is gone. Aus."
+    ]
+  },
+  "sfx": {
+    "move": {
+      "prompt": "WWII twin-engine propeller airplane with pusher propellers taking off, two small air-cooled piston engines buzzing and rising in pitch as it accelerates down a grass runway and climbs away, close, outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.55
+    },
+    "die": {
+      "prompt": "WWII propeller airplane shot down, engines sputtering and coughing, whistling descent and crash with explosion and splintering wood and metal, outdoors, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.55
+    }
+  }
+}

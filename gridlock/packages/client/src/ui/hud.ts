@@ -105,6 +105,7 @@ import { announce, selectionVoice } from "./game-audio.js";
 import { el } from "./dom.js";
 import { renderOptionsPane } from "./pause.js";
 import { garrisonRoster, type GarrisonSeat } from "./garrison-roster.js";
+import { commandHotkey, commandIconSvg, groupCommands, hasCommandIcon } from "./command-bar.js";
 import {
   SIDEBAR_GROUPS,
   groupEntries,
@@ -169,11 +170,23 @@ export function mountBattlefield(
   const body = el("div", { class: "battle-canvas-wrap" });
   const canvas = el("canvas", { attrs: { id: "map-canvas" } });
   const queue = el("div", { class: "prod-queue", attrs: { id: "prod-queue" } });
+  // Occupants of the selected host, down the left edge; click one to send it out.
+  const rosterDock = el("div", { class: "garrison-dock" });
+  const rosterPanel = el("div", { class: "garrison-panel hidden", attrs: { id: "garrison-panel" } });
   const roster = el("div", { class: "garrison-roster", attrs: { id: "garrison-roster" } });
+  rosterPanel.append(
+    el("div", { class: "garrison-head", attrs: { id: "garrison-head" } }),
+    roster,
+    el("div", { class: "garrison-hint", text: "Click to send out" }),
+  );
+  rosterDock.append(rosterPanel);
+  // The command bar, centred under the map.
   const actions = el("div", { class: "quick-actions", attrs: { id: "quick-actions" } });
   const commands = el("div", { class: "battle-commands" });
-  commands.append(roster, actions);
-  body.append(canvas, queue, commands);
+  commands.append(actions);
+  const tip = el("div", { class: "cmd-tip", attrs: { id: "cmd-tip", role: "tooltip" } });
+  body.append(canvas, queue, rosterDock, commands, tip);
+  bindCommandTips(body, tip);
 
   const side = el("aside", { class: "sidebar" });
   const radarHead = el("div", { class: "radar-head" });
@@ -353,6 +366,12 @@ export function mountBattlefield(
   bindPress(actions, "[data-act]", (btn) => {
     if (!btn.dataset.act || !viewRef || !ctx.match) return;
     runQuickAction(ctx, viewRef, btn.dataset.act);
+  });
+
+  bindPress(roster, ".garrison-seat", (seat) => {
+    const id = Number(seat.dataset.id);
+    if (seat.dataset.mine !== "1" || !Number.isFinite(id)) return;
+    ctx.net.send({ type: "cmd.ungarrison", ids: [id] });
   });
 
   bindPress(queue, ".prod-job", (job) => {
@@ -1136,7 +1155,7 @@ const TYPE_ORDER: EntityType[] = [
   "fw190",
   "bv222",
   "he111",
-  "blackbird",
+  "horten",
   "stuka",
   "drone",
   "aswheli",
@@ -1701,14 +1720,37 @@ function paintConfig(ctx: Ctx, view: MapView | null): void {
 
 function paintGarrisonRoster(ctx: Ctx, view: MapView | null): void {
   const root = document.getElementById("garrison-roster");
-  if (!root) return;
-  const hosts = new Set<number>();
+  const panel = document.getElementById("garrison-panel");
+  if (!root || !panel) return;
+  const hosts = new Map<number, EntityView>();
   if (ctx.match && view) {
     for (const e of selectedViews(ctx, view)) {
-      if ((e.garrison?.count ?? 0) > 0 && e.hp > 0) hosts.add(e.id);
+      if ((e.garrison?.count ?? 0) > 0 && e.hp > 0) hosts.set(e.id, e);
     }
   }
-  const seats = ctx.match ? garrisonRoster(ctx.match.entities, hosts) : [];
+  const seats = ctx.match ? garrisonRoster(ctx.match.entities, new Set(hosts.keys())) : [];
+  panel.classList.toggle("hidden", seats.length === 0);
+  if (seats.length > 0) {
+    const head = document.getElementById("garrison-head");
+    const host = hosts.size === 1 ? [...hosts.values()][0] : null;
+    const text = host
+      ? `${catalog(host.type).name}  ${host.garrison?.count ?? seats.length}/${host.garrison?.cap ?? seats.length}`
+      : `Garrison  ${seats.length}`;
+    if (head && head.textContent !== text) head.textContent = text;
+    const cols = seats.length > 5 ? "2" : "1";
+    if (root.dataset.cols !== cols) root.dataset.cols = cols;
+  }
+  const you = ctx.match?.youPlayerId;
+  const ids = new Set(seats.map((s) => s.id));
+  const mine = new Set<number>();
+  const hostOf = new Map<number, number>();
+  if (ctx.match && ids.size) {
+    for (const e of ctx.match.entities) {
+      if (!ids.has(e.id)) continue;
+      if (e.ownerId === you) mine.add(e.id);
+      if (e.garrisonedIn != null) hostOf.set(e.id, e.garrisonedIn);
+    }
+  }
   const sig = seats.map((s) => s.id).join(",");
   if (root.dataset.seats !== sig) {
     root.dataset.seats = sig;
@@ -1718,14 +1760,17 @@ function paintGarrisonRoster(ctx: Ctx, view: MapView | null): void {
   for (let i = 0; i < seats.length; i++) {
     const node = nodes[i] as HTMLElement | undefined;
     const seat = seats[i];
-    if (node && seat) patchGarrisonSeat(node, seat);
+    if (!node || !seat) continue;
+    const host = hosts.get(hostOf.get(seat.id) ?? -1);
+    patchGarrisonSeat(node, seat, mine.has(seat.id), host ? !!tankDeckOf(host.type) : false);
   }
+  syncCommandTip();
 }
 
 function garrisonSeatNode(seat: GarrisonSeat): HTMLElement {
-  const name = catalog(seat.type).name;
-  const node = el("div", { class: "garrison-seat", attrs: { "data-id": String(seat.id), title: name } });
-  const cameo = el("div", { class: "config-type", attrs: { "data-type": seat.type, title: name } });
+  const node = el("div", { class: "garrison-seat", attrs: { "data-id": String(seat.id), role: "button" } });
+  const cameo = el("div", { class: "config-type", attrs: { "data-type": seat.type } });
+  cameo.append(el("span", { class: "seat-exit", html: commandIconSvg("ungarrison") }));
   const bars = el("div", { class: "seat-bars" });
   const hp = el("span", { class: "seat-track" });
   hp.append(el("span", { class: "seat-hp" }));
@@ -1738,14 +1783,19 @@ function garrisonSeatNode(seat: GarrisonSeat): HTMLElement {
   return node;
 }
 
-function patchGarrisonSeat(node: HTMLElement, seat: GarrisonSeat): void {
+function patchGarrisonSeat(node: HTMLElement, seat: GarrisonSeat, mine: boolean, deck: boolean): void {
   const name = catalog(seat.type).name;
-  node.title = name;
+  const tip = mine
+    ? deck
+      ? "Click: this one goes ashore down the ramp. The bow must be on the beach."
+      : "Click: this one leaves; the rest stay inside."
+    : "An ally's soldier.";
+  setTip(node, name, tip, undefined, "right");
+  node.dataset.mine = mine ? "1" : "0";
+  node.setAttribute("aria-label", mine ? `${name}: send out` : name);
+  node.classList.toggle("is-foreign", !mine);
   const cameo = node.querySelector(".config-type");
-  if (cameo instanceof HTMLElement && cameo.dataset.type !== seat.type) {
-    cameo.dataset.type = seat.type;
-    cameo.title = name;
-  }
+  if (cameo instanceof HTMLElement && cameo.dataset.type !== seat.type) cameo.dataset.type = seat.type;
   const hp = node.querySelector(".seat-hp");
   if (hp instanceof HTMLElement) {
     hp.style.width = `${Math.round(seat.hp * 100)}%`;
@@ -1767,19 +1817,101 @@ function patchGarrisonSeat(node: HTMLElement, seat: GarrisonSeat): void {
   }
 }
 
+/** Tooltip text lives on the element; one shared box shows it on hover. */
+function setTip(node: HTMLElement, title: string, body: string, key?: string, side: "top" | "right" = "top"): void {
+  if (node.dataset.tipTitle !== title) node.dataset.tipTitle = title;
+  if (node.dataset.tip !== body) node.dataset.tip = body;
+  if ((node.dataset.tipKey ?? "") !== (key ?? "")) {
+    if (key) node.dataset.tipKey = key;
+    else delete node.dataset.tipKey;
+  }
+  if (node.dataset.tipSide !== side) node.dataset.tipSide = side;
+  if (tipAnchor === node) showCommandTip(node);
+}
+
+let tipAnchor: HTMLElement | null = null;
+
+function bindCommandTips(wrap: HTMLElement, tip: HTMLElement): void {
+  tipAnchor = null;
+  tip.classList.remove("is-shown");
+  wrap.addEventListener("pointerover", (e) => {
+    const target = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-tip-title]");
+    if (!target || !wrap.contains(target)) return;
+    showCommandTip(target);
+  });
+  wrap.addEventListener("pointerout", (e) => {
+    if (!tipAnchor) return;
+    const to = e.relatedTarget as Node | null;
+    if (to && tipAnchor.contains(to)) return;
+    hideCommandTip();
+  });
+  wrap.addEventListener("pointerdown", () => hideCommandTip(), { capture: true });
+}
+
+function showCommandTip(anchor: HTMLElement): void {
+  const tip = document.getElementById("cmd-tip");
+  const wrap = tip?.parentElement;
+  if (!tip || !wrap) return;
+  tipAnchor = anchor;
+  const head = el("div", { class: "cmd-tip-head" });
+  head.append(el("span", { class: "cmd-tip-title", text: anchor.dataset.tipTitle ?? "" }));
+  if (anchor.dataset.tipKey) head.append(el("kbd", { class: "cmd-tip-key", text: anchor.dataset.tipKey }));
+  const parts: HTMLElement[] = [head];
+  if (anchor.dataset.tip) parts.push(el("div", { class: "cmd-tip-body", text: anchor.dataset.tip }));
+  tip.replaceChildren(...parts);
+  tip.classList.add("is-shown");
+  const box = wrap.getBoundingClientRect();
+  const at = anchor.getBoundingClientRect();
+  const w = tip.offsetWidth;
+  const h = tip.offsetHeight;
+  let left: number;
+  let top: number;
+  if (anchor.dataset.tipSide === "right") {
+    left = at.right - box.left + 8;
+    top = at.top - box.top + at.height / 2 - h / 2;
+  } else {
+    left = at.left - box.left + at.width / 2 - w / 2;
+    top = at.top - box.top - h - 8;
+  }
+  left = Math.max(6, Math.min(box.width - w - 6, left));
+  top = Math.max(6, Math.min(box.height - h - 6, top));
+  tip.style.left = `${Math.round(left)}px`;
+  tip.style.top = `${Math.round(top)}px`;
+}
+
+function hideCommandTip(): void {
+  tipAnchor = null;
+  document.getElementById("cmd-tip")?.classList.remove("is-shown");
+}
+
+/** A rebuilt bar can drop the hovered button without a pointerout. */
+function syncCommandTip(): void {
+  if (tipAnchor && !tipAnchor.isConnected) hideCommandTip();
+}
+
 function paintQuickActions(ctx: Ctx, view: MapView | null): void {
   const root = document.getElementById("quick-actions");
   if (!root || !ctx.match) return;
-  const items = listQuickActions(ctx, view);
-  const sig = items.map((i) => i.slot).join(",");
-  const existing = [...root.children].map((c) => (c as HTMLElement).dataset.slot ?? "").join(",");
-  if (sig !== existing) {
-    root.replaceChildren(...items.map(makeQact));
+  const groups = groupCommands(listQuickActions(ctx, view));
+  const sig = groups.map((g) => `${g.id}:${g.items.map((i) => i.slot).join(",")}`).join("|");
+  if (root.dataset.sig !== sig) {
+    root.dataset.sig = sig;
+    root.replaceChildren(
+      ...groups.map((g) => {
+        const group = el("div", { class: "cmd-group", attrs: { "data-group": g.id, role: "group", "aria-label": g.label } });
+        const btns = el("div", { class: "cmd-group-btns" });
+        btns.append(...g.items.map(makeQact));
+        group.append(el("span", { class: "cmd-group-label", text: g.label }), btns);
+        return group;
+      }),
+    );
+    syncCommandTip();
     return;
   }
-  const nodes = root.children;
+  const nodes = root.querySelectorAll<HTMLElement>(".qact");
+  const items = groups.flatMap((g) => g.items);
   for (let i = 0; i < items.length; i++) {
-    const node = nodes[i] as HTMLElement | undefined;
+    const node = nodes[i];
     const item = items[i];
     if (node && item) updateQact(node, item);
   }
@@ -1794,6 +1926,12 @@ interface QAct {
   disabled?: boolean;
   /** The one thing the player is being asked to do now: lit up so it cannot be missed. */
   urgent?: boolean;
+  /** Icon key in command-bar.ts; defaults to the act. */
+  icon?: string;
+  /** Show this unit or building's cameo instead of an icon. */
+  cameo?: EntityType;
+  /** Small count in the corner, e.g. mines left. */
+  badge?: string;
 }
 
 function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
@@ -1874,13 +2012,14 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       act: "forceattack",
       label: "Drop here",
       title: "Fly over a point and drop the load: mines, a supply crate, or the paratroops (hold Ctrl and click).",
+      icon: "drop",
       on: !!view?.forceAttackMode,
     });
   } else if (units.length || mounts.length || garrisonForce.length) {
     out.push({
       slot: "forceattack",
       act: "forceattack",
-      label: "Force attack here",
+      label: "Force attack",
       title:
         "Fire at a point or any unit, including friendlies (hold Ctrl and click). Every selected gun in range fires at that point, even if it cannot see it. Soldiers inside a selected garrison shoot too, when they can reach. Smoke fires once. A Move given afterwards keeps the aim while the guns can still reach it and bear on it from the course.",
       on: !!view?.forceAttackMode,
@@ -1982,6 +2121,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
             ? `Raise a ${def.name} on open water, any distance from the yard, for ${def.cost} scrap. Every tile under it must be water; he swims out to the site. He pays when he starts and works ${Math.round(engineerBuildSeconds(building))}s. It trains boats there and pushes your build range out to it.`
             : `Raise a ${def.name} on a scrap field, any distance from the yard, for ${def.cost} scrap. Click the field with at least half the footprint on scrap. He pays when he starts and works ${Math.round(engineerBuildSeconds(building))}s. It pours ${SMELTER_SCRAP_PER_SEC} scrap a second and pushes your build range out to it.`,
         on: view?.constructPlace === building,
+        cameo: building,
       });
     }
     for (const bridge of BRIDGES_HIDDEN ? [] : BRIDGE_TYPES) {
@@ -1993,6 +2133,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
         label: def.name,
         title: `Bridge water ${wide} wide. Draw it like a wall, from one shore across: click each corner, Enter lays it. He lays it brick by brick, ${bridgeCost(bridge)} scrap a brick (${bridgeCostPerTile(bridge) * TILE_SUBDIV} a cell), paid as he starts each one. Anyone can cross it. Only a force-attack fires on it; a brick shot down drops into the water and an engineer rebuilds it.`,
         on: view?.bridgePlace === bridge,
+        badge: bridge === "bigbridge" ? "2" : undefined,
       });
     }
   }
@@ -2017,12 +2158,16 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   }
   const specialUnits = units.filter((e) => specialOf(e.type) && specialReady(e.type, e.state, e.specialCooldown ?? 0));
   if (specialUnits.length > 0) {
+    // A braced Titan's special pulls the outriggers up.
+    const pack = specialUnits.every((e) => e.braced);
     out.push({
       slot: "deploy",
       act: "deploy",
-      // A braced Titan's special pulls the outriggers up.
-      label: specialUnits.every((e) => e.braced) ? "Pack" : "Deploy",
-      title: `Special (${SPECIAL_HOTKEY.toUpperCase()})`,
+      label: pack ? "Pack" : "Deploy",
+      title: pack
+        ? `Pull the outriggers up and move again (${SPECIAL_HOTKEY.toUpperCase()})`
+        : `Special: unpack, brace, or set up (${SPECIAL_HOTKEY.toUpperCase()})`,
+      icon: pack ? "pack" : "deploy",
     });
   }
   const jets = units.filter((e) => e.jet && e.hp > 0 && !e.jet.crash);
@@ -2133,7 +2278,8 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
     out.push({
       slot: "lay-mine",
       act: "lay-mine",
-      label: `Lay Mine (${mines})`,
+      label: "Lay mine",
+      badge: String(mines),
       title:
         mines <= 0
           ? "The mine rail is empty. Beside a Marine Base it fills again, one mine at a time."
@@ -2247,11 +2393,24 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
   return out;
 }
 
+function qactIcon(item: QAct): string {
+  if (item.icon) return item.icon;
+  if (item.slot.startsWith("bridge-")) return "bridge";
+  return item.act;
+}
+
+/** The face of a button: an icon, a cameo, or (for a long one-off like Confirm) words. */
+function qactFace(item: QAct): string {
+  if (item.cameo) return `cameo:${item.cameo}`;
+  const icon = qactIcon(item);
+  if (item.urgent || !hasCommandIcon(icon)) return `text:${icon}`;
+  return `icon:${icon}`;
+}
+
 function makeQact(item: QAct): HTMLButtonElement {
   const b = el("button", {
     class: "qact",
-    text: item.label,
-    attrs: { type: "button", "data-act": item.act, "data-slot": item.slot, title: item.title },
+    attrs: { type: "button", "data-act": item.act, "data-slot": item.slot },
   });
   updateQact(b, item);
   return b;
@@ -2260,14 +2419,39 @@ function makeQact(item: QAct): HTMLButtonElement {
 function updateQact(node: HTMLElement, item: QAct): void {
   if (node.dataset.act !== item.act) node.dataset.act = item.act;
   if (node.dataset.slot !== item.slot) node.dataset.slot = item.slot;
-  if (node.textContent !== item.label) node.textContent = item.label;
-  if (node.title !== item.title) node.title = item.title;
+  const key = commandHotkey(item.act);
+  const face = qactFace(item);
+  const label = item.label;
+  if (node.dataset.face !== face || node.dataset.label !== label || (node.dataset.key ?? "") !== (key ?? "")) {
+    node.dataset.face = face;
+    node.dataset.label = label;
+    if (key) node.dataset.key = key;
+    else delete node.dataset.key;
+    const parts: string[] = [];
+    if (face.startsWith("cameo:")) parts.push(`<span class="config-type qact-cameo" data-type="${item.cameo}"></span>`);
+    else if (face.startsWith("icon:")) parts.push(commandIconSvg(qactIcon(item)));
+    else parts.push(`${commandIconSvg(qactIcon(item)) || commandIconSvg("confirm")}<span class="qact-label">${escapeHtml(item.label)}</span>`);
+    if (key && key.length === 1 && !face.startsWith("text:")) parts.push(`<span class="qact-key">${key}</span>`);
+    parts.push(`<span class="qact-badge"></span>`);
+    node.innerHTML = parts.join("");
+  }
+  const badge = node.querySelector(".qact-badge");
+  if (badge && badge.textContent !== (item.badge ?? "")) badge.textContent = item.badge ?? "";
+  node.classList.toggle("is-wide", face.startsWith("text:"));
+  node.setAttribute("aria-label", item.label);
+  // The key already shows in the tooltip header; drop the "(S)" copy from the description.
+  const body = key ? item.title.replace(/\s*\((?:[A-Z]|Enter)\)/g, "") : item.title;
+  setTip(node, item.label, body, key);
   node.classList.toggle("is-on", !!item.on);
   node.classList.toggle("is-urgent", !!item.urgent);
   node.classList.toggle("is-disabled", !!item.disabled);
   node.setAttribute("aria-disabled", item.disabled ? "true" : "false");
+  node.setAttribute("aria-pressed", item.on ? "true" : "false");
 }
 
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"]/g, (c) => (c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : "&quot;"));
+}
 
 function runConfigAction(ctx: Ctx, t: HTMLElement): void {
   if (t.dataset.configType) {
