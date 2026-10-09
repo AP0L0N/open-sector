@@ -220,6 +220,7 @@ import {
   FEUERWIRBEL_SPRITE,
   unitSpritePaintRect,
   wreckSpriteFor,
+  ruinSpriteFor,
   GUNNER_DIE_SPRITE,
   GUNNER_FIRE_SPRITE,
   HAULER_CART_SPRITE,
@@ -413,7 +414,7 @@ import { AIR_DRAW_LAYER, aircraftShadowScale, airLiftPx, drawFallingBomb, inAir,
 import { layCrashTrail, layChargeTrail, CRASH_PUFF_CAP, CHARGE_PUFF_CAP } from "./crash-smoke.js";
 import { canopySway, drawCanopy, drawCrate, drawMine, troopCanopySpan } from "./airdrop-fx.js";
 import { barrageTracers, tracerLandsAt, tracerSpan, type BarrageTracer } from "./barrage-tracer.js";
-import { RUBBLE_MAX_RISE, drawRubble } from "./rubble.js";
+import { RUBBLE_MAX_RISE, drawRubble, ruinFireLife, ruinFireState } from "./rubble.js";
 import { courseHeight, drawSandbags } from "./sandbags.js";
 import { drawBarbwire } from "./barbwire.js";
 import { fieldPointsWithCursor, pinFieldPoint, undoFieldPoint } from "./field-place.js";
@@ -895,6 +896,10 @@ export class MapView {
   private ghosts = new Map<number, EntityView>();
   /** Wall-clock ms when a wreck was first drawn; drives hull-fire burnout. */
   private wreckBornAt = new Map<number, number>();
+  /** Wall-clock ms when a fallen house was first drawn as a ruin; drives its fires. */
+  private ruinBornAt = new Map<number, number>();
+  /** Last smoke puff off each ruin fire seat (id * 16 + seat). */
+  private ruinSmokeAt = new Map<number, number>();
   /** Wall-clock ms of the last small-arms shot from an infantry unit. */
   private infantryShotAt = new Map<number, number>();
   /** Fw 190 barrage streaks in flight, with the gun and impact heights (absolute elevation). */
@@ -6164,7 +6169,23 @@ export class MapView {
       drawSelectFrame(ctx, pts, { hostile: this.hostileEntity(e), now: performance.now() });
     }
     if (isRubble(e)) {
-      // A fallen house is a low heap: it keeps the lot, hides nothing, and carries no bars.
+      // A fallen house is its own burnt-out shell: it keeps the lot, hides nothing, and carries no bars.
+      const ruin = ruinSpriteFor(e.type, e.facing);
+      if (ruin && spriteReady(ruin.sprite)) {
+        const spr = ruin.sprite;
+        const footprintW = east.x - west.x;
+        const scale = footprintW / spr.padWidth;
+        const bounds = {
+          x: south.x - spr.padSouthX * scale,
+          y: south.y - spr.padSouthY * scale,
+          w: spr.image.naturalWidth * scale,
+          h: spr.image.naturalHeight * scale,
+        };
+        const lift = this.groundSpan(x + bw / 2, y + bh / 2, 10) / 10;
+        this.drawVeiled(e, elev, ruin.rise * lift, bounds, () => drawBuildingSprite(this.ctx, spr, south.x, south.y, footprintW));
+        if (!ghost) this.drawRuinFires(e, ruin.fires, elev, lift);
+        return;
+      }
       const north = this.toScreen(x, y, elev);
       const rise = ts * RUBBLE_MAX_RISE;
       const bounds = { x: west.x - 2, y: north.y - rise - 2, w: east.x - west.x + 4, h: south.y - north.y + rise + 4 };
@@ -7121,6 +7142,82 @@ export class MapView {
       const oy = uy * size * along * 0.45 + ux * size * across * 0.45 - size * (i === 0 ? 0.47 : 0.4) * lift;
       // The flame sets its own alpha; carry the hull's sight and night fade into it.
       drawWreckFire(this.ctx, x + ox, y + oy, now, e.id * 13 + i * 29, a * this.ctx.globalAlpha);
+    }
+  }
+
+  /**
+   * A fallen house burns on in its heap: each fire seat flares, holds for most of a
+   * minute, sinks to embers, then smoulders grey for minutes more. Seen fires only:
+   * a remembered ruin in the fog shows cold.
+   */
+  private drawRuinFires(
+    e: EntityView,
+    seats: readonly { x: number; y: number; z: number; size: number }[],
+    elev: number,
+    lift: number,
+  ): void {
+    if (!seats.length) return;
+    const now = performance.now();
+    let born = this.ruinBornAt.get(e.id);
+    if (born === undefined) {
+      born = now;
+      this.ruinBornAt.set(e.id, born);
+    }
+    const ts = this.ts();
+    const cx = Math.floor(e.tileX + e.tileW / 2);
+    const cy = Math.floor(e.tileY + e.tileH / 2);
+    if (!this.lit(cx, cy)) return;
+    const speed = this.curr.gameSpeed || 1;
+    // Game time since the fall, kept across speed changes by advancing at the current speed.
+    const age = (now - born) * speed;
+    const ctx = this.ctx;
+    const x0 = e.tileX * ts;
+    const y0 = e.tileY * ts;
+    const span = Math.sqrt(e.tileW * e.tileH) * ts;
+    const wind = 0.28 + 0.12 * Math.sin(now * 0.00037);
+    for (let i = 0; i < seats.length; i++) {
+      const seat = seats[i]!;
+      const { heat, smoke } = ruinFireState(age, ruinFireLife(e.id, i));
+      if (heat <= 0 && smoke <= 0) continue;
+      const wx = x0 + seat.x;
+      const wy = y0 + seat.y;
+      const g = this.toScreen(wx, wy, elev);
+      const s = { x: g.x, y: g.y - seat.z * lift };
+      const radius = Math.min(15, Math.max(6, span * 0.085)) * seat.size;
+      const rx = this.groundSpan(wx, wy, radius);
+      const seed = (e.id * 131 + i * 977) >>> 0;
+      if (heat > 0) {
+        drawFireGlow(ctx, s.x, s.y, rx, heat, now, seed);
+        drawFuelBed(ctx, s.x, s.y, rx, heat, now, seed);
+        for (const t of fireTongues(seed, rx, Math.round(6 + 8 * seat.size))) {
+          drawTongue(ctx, s.x + t.u * rx * 0.9, s.y + t.v * rx * 0.45, tonguePose(t, now, heat, wind), 0.95);
+        }
+      }
+      // Embers glow on in the heap after the flames are down.
+      drawEmbers(ctx, s.x, s.y - 2, rx, Math.max(heat, smoke * 0.5), now, seed);
+      const key = e.id * 16 + i;
+      const last = this.ruinSmokeAt.get(key) ?? 0;
+      const every = (FIRE_SMOKE_EVERY_MS * 1.4) / Math.max(0.15, smoke);
+      if (now - last < every) continue;
+      this.ruinSmokeAt.set(key, now);
+      const rnd = flameRng((seed * 2246822519 + Math.floor(now)) >>> 0);
+      const size = Math.max(0.8, radius / 9);
+      this.fireSmoke.push({
+        x: wx + (rnd() - 0.5) * radius,
+        y: wy + (rnd() - 0.5) * radius,
+        z: elev + seat.z + 2 + rnd() * 2,
+        dx: 12 + rnd() * 12,
+        dy: -8 - rnd() * 8,
+        rise: 10 + rnd() * 10,
+        at: now,
+        life: 3800 + rnd() * 2200,
+        r0: 3 * size,
+        r1: (14 + rnd() * 10) * size,
+        alpha: (0.28 + rnd() * 0.14) * (0.4 + 0.6 * smoke),
+        // Black while it burns, grey once it only smoulders.
+        shade: heat > 0 ? 0.6 + 0.35 * heat : 0.45,
+        seed: (seed * 7 + Math.floor(now)) >>> 0,
+      });
     }
   }
 

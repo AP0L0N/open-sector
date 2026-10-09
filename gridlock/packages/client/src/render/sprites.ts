@@ -2430,6 +2430,51 @@ export function buildingSpriteFor(type: EntityType, facing = 0): BuildingSpriteD
   return BUILDING_SPRITES[type];
 }
 
+interface RuinFaceInfo extends TurnedFaceInfo {
+  /** Tallest remnant left standing, world px. */
+  rise: number;
+  /** Where the heap keeps burning: lot-local world px [x, y, z, size]. */
+  fires: [number, number, number, number][];
+}
+
+/** A fallen house's ruin for one face, and the seats of the fires on its heap. */
+export interface RuinSprite {
+  sprite: BuildingSpriteDef;
+  rise: number;
+  fires: { x: number; y: number; z: number; size: number }[];
+}
+
+const ruinManifest = import.meta.glob("../assets/ruins/ruins.json", { eager: true, import: "default" }) as Record<
+  string,
+  Record<string, (RuinFaceInfo | null)[]>
+>;
+const ruinUrls = import.meta.glob("../assets/ruins/*.png", { eager: true, import: "default" }) as Record<string, string>;
+
+/** Ruins from tools/sprites/render_ruins.py, fetched the first time a house of that face falls. */
+const RUINS: Partial<Record<EntityType, RuinSprite[]>> = {};
+for (const [type, faces] of Object.entries(Object.values(ruinManifest)[0] ?? {})) {
+  const out: RuinSprite[] = [];
+  for (const info of faces) {
+    const url = info && ruinUrls[`../assets/ruins/${info.file}`];
+    if (!info || !url) break;
+    out.push({
+      sprite: lazyBuilding(url, info, false),
+      rise: info.rise,
+      fires: info.fires.map(([x, y, z, size]) => ({ x, y, z, size })),
+    });
+  }
+  if (out.length === 4) RUINS[type as EntityType] = out;
+}
+
+/** The ruin a fallen civilian house leaves, turned the way the house stood. */
+export function ruinSpriteFor(type: EntityType, facing = 0): RuinSprite | undefined {
+  const faces = RUINS[type];
+  if (!faces) return undefined;
+  const ruin = faces[buildingFaceIndex(facing) % faces.length]!;
+  wake(ruin.sprite);
+  return ruin;
+}
+
 /** Iso-pixel height used to ghost units standing behind this sprite. */
 export function buildingOccludeEz(
   def: BuildingSpriteDef | undefined,
