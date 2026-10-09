@@ -97,7 +97,6 @@ import {
   GUARD_HOTKEY,
   MapView,
   ROTATE_HOTKEY,
-  SELL_HOTKEY,
   SPECIAL_HOTKEY,
   STOP_HOTKEY,
 } from "../render/mapview.js";
@@ -2332,7 +2331,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       slot: "sell",
       act: "sell",
       label: "Sell",
-      title: `Sell selected structures for half their cost (${SELL_HOTKEY.toUpperCase()} with no units selected). Asks first.`,
+      title: "Sell selected structures for half their cost. The key sells only while no units are selected. Asks first.",
     });
   }
   if (
@@ -2343,7 +2342,7 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       slot: "delete",
       act: "delete",
       label: "Delete",
-      title: "Destroy the selection on the spot, with no scrap back (Del). Asks first.",
+      title: "Destroy the selection on the spot, with no scrap back. Asks first.",
     });
   }
   const deck = houses.find((e) => tankDeckOf(e.type));

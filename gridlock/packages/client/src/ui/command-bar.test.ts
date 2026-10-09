@@ -59,7 +59,7 @@ describe("groupCommands", () => {
 
 describe("icons and keys", () => {
   it("draws every common order as an icon", () => {
-    for (const act of ["stop", "attackmove", "forceattack", "patrol", "guard", "hold", "rotate", "ungarrison", "sell"]) {
+    for (const act of ["stop", "attackmove", "forceattack", "patrol", "guard", "hold", "rotate", "ungarrison", "sell", "delete"]) {
       assert.ok(hasCommandIcon(act), act);
       assert.match(commandIconSvg(act), /^<svg viewBox="0 0 16 16"/);
     }
@@ -70,6 +70,8 @@ describe("icons and keys", () => {
     assert.equal(commandHotkey("stop"), "S");
     assert.equal(commandHotkey("stance-crawl"), "Z");
     assert.equal(commandHotkey("ungarrison"), "U");
-    assert.equal(commandHotkey("sell"), undefined);
+    assert.equal(commandHotkey("sell"), "S");
+    assert.equal(commandHotkey("delete"), "Del");
+    assert.equal(commandHotkey("unhitch"), undefined);
   });
 });

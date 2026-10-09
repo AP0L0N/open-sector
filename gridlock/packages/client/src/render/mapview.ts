@@ -553,8 +553,6 @@ import { heightsChanged } from "./height-mesh.js";
 /** Special-action key. D pans with W and the arrow keys; A/S are orders. */
 export const SPECIAL_HOTKEY = "e";
 export const STOP_HOTKEY = "s";
-/** S also sells when the selection is own structures only. */
-export const SELL_HOTKEY = STOP_HOTKEY;
 /** `KeyboardEvent.key`, lower-cased. */
 export const DELETE_HOTKEY = "delete";
 export const ATTACK_MOVE_HOTKEY = "a";

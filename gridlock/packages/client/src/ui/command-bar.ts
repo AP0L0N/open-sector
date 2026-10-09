@@ -16,7 +16,7 @@ export const COMMAND_GROUPS: readonly { id: CommandGroup; label: string }[] = [
   { id: "structure", label: "Structure" },
 ];
 
-const ORDERS = new Set(["stop", "attackmove", "forceattack", "patrol", "guard", "hold", "rotate", "rotate-light"]);
+const ORDERS = new Set(["stop", "attackmove", "forceattack", "patrol", "guard", "hold", "rotate", "rotate-light", "delete"]);
 const CARGO = new Set(["garrison", "ungarrison", "garrison-watch", "garrison-hide", "unboard", "unhitch"]);
 const STRUCTURE = new Set(["sell", "gate-lock"]);
 
@@ -63,6 +63,9 @@ const HOTKEYS: Record<string, string> = {
   garrison: "U",
   ungarrison: "U",
   "confirm-field": "Enter",
+  // S sells only when no own unit is selected; with units it is Stop.
+  sell: "S",
+  delete: "Del",
 };
 
 export function commandHotkey(act: string): string | undefined {
@@ -117,6 +120,7 @@ const ICONS: Record<string, string> = {
   "garrison-hide": '<rect x="2.5" y="2.5" width="11" height="11"/><path d="M2.5 5.5h11M2.5 8h11M2.5 10.5h11"/>',
   unhitch: '<path d="M6.2 9.8l-2 2a2 2 0 01-2.9-2.9l2-2M9.8 6.2l2-2a2 2 0 012.9 2.9l-2 2"/><path d="M5.5 4.5L4.5 2M10.5 11.5l1 2.5M4 6.5H1.8M12 9.5h2.2"/>',
   sell: '<circle cx="8" cy="8" r="6.2"/><path d="M10.2 5.6H7.1a1.3 1.3 0 000 2.6h1.8a1.3 1.3 0 010 2.6H5.8M8 3.8v1.8M8 10.8v1.6"/>',
+  delete: '<path d="M2 4h12M6 4V2.2h4V4M3.6 4l.9 10h7l.9-10M6.5 6.5v5M9.5 6.5v5"/>',
   "field-sandbags":
     '<rect x="1.5" y="9.5" width="6.2" height="4" rx="2"/><rect x="8.3" y="9.5" width="6.2" height="4" rx="2"/><rect x="4.9" y="5" width="6.2" height="4" rx="2"/>',
   "field-teeth": '<path d="M1 14l3.5-7.5L8 14zM8 14l3.5-7.5L15 14z"/>',
