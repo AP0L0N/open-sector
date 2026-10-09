@@ -2982,7 +2982,8 @@ function slewTurret(
   ground?: { x: number; y: number } | null,
 ): number {
   const def = catalog(e.type);
-  const rate = def.turretTurnDegPerSec ?? def.turnDegPerSec;
+  // A short-handed crew swings the gun as slowly as it loads it.
+  const rate = (def.turretTurnDegPerSec ?? def.turnDegPerSec) / crewPace(e);
   const arc = mountArcDegOf(e.type);
   if (arc != null) return slewInArc(e, target, ground, arc, rate, dt);
   if (ground) return turnTurretToward(e, ground.x, ground.y, rate, dt);
@@ -3041,7 +3042,7 @@ function slewInArc(
   return (angleOff(e.turretFacing, bearing) * 180) / Math.PI;
 }
 
-/** Short-handed crew: each shot and belt change takes garrisonCap / crew times as long. */
+/** Short-handed crew: each shot, belt change, and swing of the gun takes garrisonCap / crew times as long. */
 function crewPace(e: Entity): number {
   if (!crewGunOf(e.type)) return 1;
   return garrisonCapOf(e.type) / Math.max(1, e.garrison.length);

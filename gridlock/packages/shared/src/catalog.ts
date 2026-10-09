@@ -1082,7 +1082,7 @@ export interface CatalogEntry {
   roofCiws?: boolean;
   /**
    * An emplaced gun worked by its garrison (CREWED_GUNS). It fires only with a living crew
-   * inside; short-handed, each shot and belt change takes garrisonCap / crew times as long.
+   * inside; short-handed, each shot, belt change, and swing of the gun takes garrisonCap / crew times as long.
    * Raised with garrisonCap riflemen already at it.
    */
   crewGun?: boolean;

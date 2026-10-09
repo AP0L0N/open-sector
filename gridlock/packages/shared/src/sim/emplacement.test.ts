@@ -283,6 +283,26 @@ describe("crewed guns", () => {
     assert.ok(Math.abs(b.cooldown - fullCooldown * 2) < 0.05, `${b.cooldown} vs ${fullCooldown}`);
   });
 
+  it("short-handed, a two-man gun swings at half pace", () => {
+    const swing = (lone: boolean) => {
+      const state = match();
+      const pak = gun(state, "pak43");
+      if (lone) {
+        const [first] = livingGarrison(state, pak);
+        assert.ok(first && exitGarrison(state, first));
+      }
+      const start = pak.turretFacing;
+      // Straight behind: far enough that neither crew gets there in a few ticks.
+      assert.equal(applyCommand(state, "A", { type: "cmd.rotate", ids: [pak.id], x: pak.x - 100, y: pak.y + 1 }).ok, true);
+      for (let i = 0; i < 3; i++) step(state, TICK_DT);
+      return Math.abs(pak.turretFacing - start);
+    };
+    const full = swing(false);
+    const half = swing(true);
+    assert.ok(full > 0 && full < Math.PI - 0.1, `full crew swung ${full}`);
+    assert.ok(Math.abs(half - full / 2) < 1e-6, `${half} vs ${full}`);
+  });
+
   it("only the Flak and the MG reach a plane", () => {
     const state = match();
     for (const [type, aa] of [
