@@ -1668,80 +1668,69 @@ input[type="range"] { padding: 0; }
   width: 100%;
 }
 
+/* Command bar: centred under the map, orders grouped, icons with a shared tooltip. */
 .battle-commands {
+  /* Both edges, not left: 50%, so the bar may use the full width before it wraps. */
   position: absolute;
-  left: 10px;
+  left: 12px;
+  right: 12px;
   bottom: 10px;
   z-index: 6;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  max-width: min(420px, calc(100% - 24px));
+  justify-content: center;
   pointer-events: none;
 }
-.garrison-roster {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  max-height: 148px;
-  overflow-y: auto;
-  pointer-events: auto;
-  max-width: 100%;
-}
-.garrison-roster:empty { display: none; }
-.garrison-seat {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 44px;
-}
-.garrison-seat .config-type {
-  width: 44px;
-  height: 32px;
-  cursor: default;
-}
-.garrison-seat .config-type:hover { border-color: var(--rust); }
-.seat-bars {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.seat-track {
-  display: block;
-  height: 3px;
-  background: #0a0806;
-  border: 1px solid #3a2418;
-}
-.seat-track[hidden] { display: none; }
-.seat-track > span {
-  display: block;
-  height: 100%;
-  width: 0;
-}
-/* Same fills as the map bars: HP_FILL_* and AMMO_PRIMARY_FILL / AMMO_SECONDARY_FILL. */
-.seat-hp { background: #6aaa58; }
-.seat-hp.is-mid { background: #b8923c; }
-.seat-hp.is-low { background: #b45448; }
-.seat-ammo { background: rgba(226, 190, 72, 0.95); }
-.seat-ammo.is-secondary { background: rgba(178, 176, 168, 0.9); }
 .quick-actions {
   position: relative;
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  justify-content: center;
+  align-items: flex-end;
+  gap: 4px 0;
+  padding: 4px 6px 6px;
+  background: linear-gradient(rgba(30, 20, 14, 0.92), rgba(14, 10, 8, 0.94));
+  border: 2px solid var(--rust);
+  box-shadow: 0 3px 0 #000, inset 0 1px 0 #4a2c1c, 0 6px 18px rgba(0, 0, 0, 0.45);
   pointer-events: auto;
   max-width: 100%;
 }
 .quick-actions:empty { display: none; }
+.cmd-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 0 7px;
+}
+.cmd-group + .cmd-group { border-left: 1px solid #3a2418; }
+.cmd-group-label {
+  font-family: "Oswald", sans-serif;
+  font-size: 0.56rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--amber-dim);
+  line-height: 1.2;
+  user-select: none;
+}
+.cmd-group-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
 .qact {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
   font-family: "Oswald", sans-serif;
   font-weight: 600;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   font-size: 0.78rem;
-  min-width: 72px;
-  padding: 0.45rem 0.7rem;
   color: var(--amber);
   background: linear-gradient(#3a2418, #1a100c);
   border: 2px solid var(--rust);
@@ -1750,13 +1739,58 @@ input[type="range"] { padding: 0; }
   touch-action: manipulation;
   user-select: none;
 }
-.qact:hover { border-color: var(--rust-hi); filter: brightness(1.1); }
+.qact > svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 0 #000);
+}
+.qact.is-wide {
+  width: auto;
+  padding: 0 0.8rem;
+}
+.qact.is-wide > svg { width: 16px; height: 16px; }
+.qact-key {
+  position: absolute;
+  left: 2px;
+  top: 0;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 0.56rem;
+  letter-spacing: 0;
+  color: var(--muted);
+  pointer-events: none;
+}
+.qact-badge {
+  position: absolute;
+  right: 1px;
+  bottom: 0;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 0.6rem;
+  letter-spacing: 0;
+  padding: 0 2px;
+  background: rgba(8, 6, 4, 0.8);
+  pointer-events: none;
+}
+.qact-badge:empty { display: none; }
+.qact .qact-cameo {
+  position: absolute;
+  inset: 2px;
+  width: auto;
+  height: auto;
+  border: 0;
+  box-shadow: none;
+  pointer-events: none;
+}
+.qact:hover { border-color: var(--rust-hi); filter: brightness(1.15); }
 .qact:active { transform: translateY(1px); box-shadow: inset 0 1px 0 #6a4030, 0 1px 0 #000; }
 .qact.is-on {
   border-color: var(--danger);
   color: #ffb0a0;
+  background: linear-gradient(#4a2016, #24100a);
   box-shadow: 0 0 0 1px var(--danger), inset 0 1px 0 #6a4030, 0 2px 0 #000;
 }
+.qact.is-on .qact-key { color: #ffb0a0; }
 .qact.is-urgent {
   color: #1a100c;
   background: linear-gradient(#f3cd63, #c98a1e);
@@ -1775,6 +1809,157 @@ input[type="range"] { padding: 0; }
   cursor: not-allowed;
   filter: none;
 }
+.cmd-group[data-group="structure"] .qact[data-act="sell"]:hover {
+  border-color: var(--danger);
+  color: #ffb0a0;
+}
+
+/* One tooltip for the bar and the garrison panel: name, key, what it does. */
+.cmd-tip {
+  position: absolute;
+  z-index: 8;
+  max-width: 300px;
+  padding: 6px 9px 7px;
+  background: rgba(12, 8, 6, 0.96);
+  border: 1px solid var(--amber-dim);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+  color: #e6d6b8;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.08s;
+}
+.cmd-tip.is-shown {
+  opacity: 1;
+  visibility: visible;
+}
+.cmd-tip-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Oswald", sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--amber);
+  font-size: 0.8rem;
+}
+.cmd-tip-key {
+  margin-left: auto;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0;
+  padding: 0 5px;
+  border: 1px solid var(--amber-dim);
+  border-bottom-width: 2px;
+  color: var(--amber);
+  background: #1a100c;
+}
+.cmd-tip-body { margin-top: 3px; }
+
+/* Garrison: occupants of the selected host down the left edge. Click one to send it out. */
+.garrison-dock {
+  position: absolute;
+  left: 10px;
+  top: 170px;
+  bottom: 80px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+.garrison-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 100%;
+  padding: 5px 6px 6px;
+  background: linear-gradient(rgba(30, 20, 14, 0.92), rgba(14, 10, 8, 0.94));
+  border: 2px solid var(--rust);
+  box-shadow: 0 3px 0 #000, inset 0 1px 0 #4a2c1c, 0 6px 18px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+}
+.garrison-panel.hidden { display: none; }
+.garrison-head {
+  font-family: "Oswald", sans-serif;
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--amber);
+  white-space: pre;
+}
+.garrison-hint {
+  font-size: 0.6rem;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.garrison-roster {
+  display: grid;
+  grid-template-columns: 64px;
+  gap: 6px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  min-height: 0;
+}
+.garrison-roster[data-cols="2"] { grid-template-columns: repeat(2, 64px); }
+.garrison-seat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 64px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.garrison-seat .config-type {
+  width: 64px;
+  height: 48px;
+  cursor: pointer;
+}
+.garrison-seat .seat-exit {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--amber);
+  background: rgba(10, 6, 4, 0.55);
+  opacity: 0;
+  transition: opacity 0.08s;
+  pointer-events: none;
+}
+.garrison-seat .seat-exit svg { width: 24px; height: 24px; filter: drop-shadow(0 1px 0 #000); }
+.garrison-seat:hover .config-type { border-color: var(--amber); }
+.garrison-seat:hover .seat-exit { opacity: 1; }
+.garrison-seat:active .config-type { transform: translateY(1px); }
+.garrison-seat.is-foreign { cursor: default; }
+.garrison-seat.is-foreign .config-type { cursor: default; opacity: 0.75; }
+.garrison-seat.is-foreign:hover .config-type { border-color: var(--rust); }
+.garrison-seat.is-foreign .seat-exit { display: none; }
+.seat-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.seat-track {
+  display: block;
+  height: 4px;
+  background: #0a0806;
+  border: 1px solid #3a2418;
+}
+.seat-track[hidden] { display: none; }
+.seat-track > span {
+  display: block;
+  height: 100%;
+  width: 0;
+}
+/* Same fills as the map bars: HP_FILL_* and AMMO_PRIMARY_FILL / AMMO_SECONDARY_FILL. */
+.seat-hp { background: #6aaa58; }
+.seat-hp.is-mid { background: #b8923c; }
+.seat-hp.is-low { background: #b45448; }
+.seat-ammo { background: rgba(226, 190, 72, 0.95); }
+.seat-ammo.is-secondary { background: rgba(178, 176, 168, 0.9); }
 
 @media (max-width: 860px) {
   .lobby {
