@@ -541,6 +541,49 @@ describe("crewed gun ammunition", () => {
     assert.ok(up != null && up > 0, "the shell climbs");
     assert.ok((flak.ammo.he ?? 0) < FLAK_RACK);
   });
+
+  it("a forced attack on a friendly plane hurts it; an unforced burst leaves friends alone", () => {
+    const state = match();
+    const flak = gun(state, "flak");
+    const ts = state.tileSize;
+    const own = planeOver(state, "A", flak.x + 8 * ts, flak.y);
+    const hp = own.hp;
+    assert.equal(
+      applyCommand(state, "A", { type: "cmd.forceattack", ids: [flak.id], x: own.x, y: own.y, targetId: own.id }).ok,
+      true,
+    );
+    assert.ok(until(state, 200, () => own.hp < hp), "the forced burst takes something off our own plane");
+
+    const calm = match();
+    const g = gun(calm, "flak");
+    const x = g.x + 20 * calm.tileSize;
+    const friend = planeOver(calm, "A", x, g.y);
+    const before = friend.hp;
+    calm.projectiles = [
+      {
+        id: calm.nextId++,
+        ownerId: "A",
+        team: 0,
+        x,
+        y: g.y,
+        vx: 0,
+        vy: 0,
+        damage: catalog("flak").damage,
+        penetration: 10,
+        caliber: 37,
+        life: 0.001,
+        ignoreId: g.id,
+        fromId: g.id,
+        bounced: false,
+        shell: "he",
+        flight: "flak",
+        z: AIR_CRUISE_ALT,
+        vz: 0,
+      },
+    ];
+    tickProjectiles(calm, TICK_DT);
+    assert.equal(friend.hp, before, "an unforced burst passes a friendly plane by");
+  });
 });
 
 describe("crewed guns on a map", () => {

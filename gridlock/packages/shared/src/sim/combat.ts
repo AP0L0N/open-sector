@@ -2087,6 +2087,7 @@ function fireFlak(state: MatchState, e: Entity, aimX: number, aimY: number, rang
     bounced: false,
     shell,
     antiAir: true,
+    harmAllies: e.order?.kind === "forceattack",
     flight: "flak",
     z: z0,
     vz: (pz - z0) / flight,
@@ -2107,7 +2108,8 @@ function burstFlak(state: MatchState, p: Projectile): void {
   for (const o of poolCircle(state, p.x, p.y, FLAK_BURST_RADIUS, grid?.maxRadius ?? 0)) {
     if (o.hp <= 0 || o.wreck || o.garrisonedIn != null || isCrashing(o)) continue;
     if (!isAirborne(o) && !o.drone) continue;
-    if (o.ownerId !== "" && allies(state, p.ownerId, o.ownerId)) continue;
+    // A forced shot hurts whoever flies in the cloud, friend or foe, as a forced shell does on the ground.
+    if (!p.harmAllies && o.ownerId !== "" && allies(state, p.ownerId, o.ownerId)) continue;
     if (Math.abs(entityHeight(state, o) + airAlt(o) - z) > FLAK_BURST_DEPTH) continue;
     const d = Math.max(0, Math.hypot(o.x - p.x, o.y - p.y) - o.radius);
     if (d > FLAK_BURST_RADIUS) continue;
