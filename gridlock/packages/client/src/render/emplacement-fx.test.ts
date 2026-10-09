@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { FLAK_RACK, MGNEST_BELT, PAK36_RACK, PAK43_RACK } from "@gridlock/shared";
+import { FLAK_RACK, MGNEST_BELT, PAK36_RACK, PAK43_RACK, mountArcDegOf } from "@gridlock/shared";
 import { ammoBarRatios } from "./ammo-bars.js";
-import { emplacementShotLook, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
+import { emplacementShotLook, facingConeDegOf, PAK43_FX_CALIBER_MUL } from "./emplacement-fx.js";
 import { FLAK_CLOUD_MS, airBurstPuffs, flakCloudPuffs } from "./rocket-smoke.js";
 
 describe("crewed gun shot look", () => {
@@ -10,11 +10,17 @@ describe("crewed gun shot look", () => {
     const small = emplacementShotLook("pak36");
     const big = emplacementShotLook("pak43");
     assert.ok(big.smoke >= small.smoke * 2, "a much larger blast cloud");
-    assert.ok(big.muzzle > small.muzzle);
+    assert.equal(big.muzzle, 0, "no front smoke; the blast behind the pit carries it");
     assert.ok(PAK43_FX_CALIBER_MUL > 1.5);
     const flakLook = emplacementShotLook("flak");
     assert.ok(flakLook.smoke > 0, "the blast behind the Flak stays");
     assert.equal(flakLook.muzzle, 0, "no front smoke; the spark is enough");
+  });
+
+  it("the Pak 43 shows a cone as wide as the Pak 36's, though it still lays all round", () => {
+    assert.equal(facingConeDegOf("pak43"), facingConeDegOf("pak36"));
+    assert.equal(mountArcDegOf("pak43"), null, "the sim keeps its all-round traverse");
+    assert.equal(facingConeDegOf("flak"), null);
   });
 
   it("a flak burst is a black cloud that is gone inside a second", () => {

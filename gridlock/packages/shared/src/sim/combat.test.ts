@@ -1191,6 +1191,34 @@ describe("withdraw", () => {
     );
   });
 
+  for (const type of ["cyborg", "cyborgcommander", "ss3"] as const) {
+    it(`${type} holds when hit from out of sight`, () => {
+      const { state } = twoPlayerMatch();
+      state.heights.fill(0);
+      state.blocked.fill(0);
+      clearCivilians(state);
+      const ts = state.tileSize;
+      const victim = makeEntity(state, type, "A", tileCenter(40, ts), tileCenter(40, ts));
+      const shooter = makeEntity(state, "rifleman", "B", tileCenter(110, ts), tileCenter(40, ts));
+      victim.facing = 0;
+      const p = fireShell(state, {
+        x: victim.x - 16,
+        y: victim.y,
+        vx: catalog("rifleman").projectileSpeed,
+        vy: 0,
+        damage: 12,
+        penetration: 6,
+        caliber: 8,
+      });
+      p.fromId = shooter.id;
+      p.ownerId = "B";
+      p.team = 2;
+      for (let i = 0; i < 18; i++) step(state, TICK_DT);
+      assert.ok(victim.hp > 0, "victim should survive the rifle hit");
+      assert.notEqual(victim.order?.kind, "withdraw");
+    });
+  }
+
   it("stays put when the shooter is in sight", () => {
     const { state } = twoPlayerMatch();
     state.heights.fill(0);

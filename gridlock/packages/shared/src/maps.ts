@@ -414,8 +414,9 @@ export const TILE_ROAD = 5;
 /** Wooden fence. Blocks walking. A shot still passes over it. */
 export const TILE_FENCE = 6;
 /**
- * Rocky slope. Blocks walking the same way a fence does, and does not stop
- * sight or a shot, so a hilltop still looks down across it.
+ * Rocky ground: bare bedrock breaking through the turf. A look only. It walks,
+ * builds, sights, and shoots like open ground. The impassable rock around a
+ * mountain cap is a cliff (isMountainCliff), not this tile.
  */
 export const TILE_ROCK = 7;
 /**
@@ -1997,7 +1998,7 @@ function levelHouseLots(
   relaxSlopes(heights, width, height, locked, tiles);
 }
 
-/** Open-ground flood (4-neighbour) from `sx, sy`. Rock, water, fence, and blocks stop it. */
+/** Open-ground flood (4-neighbour) from `sx, sy`. Rock, water, fence, and blocks stop it, so outcrops keep to the flanks and never close a way. */
 function floodWalk(tiles: readonly number[], width: number, height: number, sx: number, sy: number): Uint8Array {
   const seen = new Uint8Array(width * height);
   const open = (t: number | undefined): boolean =>

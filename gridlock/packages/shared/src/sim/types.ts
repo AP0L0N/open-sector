@@ -50,7 +50,8 @@ export interface Order {
     | "supply"
     | "disable"
     | "tow"
-    | "land";
+    | "land"
+    | "minelay";
   x?: number;
   y?: number;
   /** World radians. Guard destination facing. */
@@ -121,7 +122,8 @@ export type QueueableCommand = Extract<
       | "cmd.repair"
       | "cmd.supply"
       | "cmd.disable"
-      | "cmd.board";
+      | "cmd.board"
+      | "cmd.minelay";
   }
 >;
 
@@ -402,6 +404,10 @@ export interface Entity {
   rockets?: number;
   /** High-penetration missiles carried. The Rocketer holds one. Missing means none. */
   heavy?: number;
+  /** Mine packs left in the Mammoth's launcher. Missing on types without one. */
+  minePacks?: number;
+  /** Seconds until the Mammoth's launcher has the next pack fed. 0 or missing when ready. */
+  mineReload?: number;
   /** Rockets still to leave in the salvo under way. 0 or missing between salvos. */
   rocketSalvo?: number;
   /** Player switched the pods off. Missing means on. */
@@ -421,6 +427,8 @@ export interface Entity {
   spotAim?: number;
   /** Battle Ship: hull heading the lamp was last carried round with. */
   spotHull?: number;
+  /** Rotate light fixed the Titan's lamp on a heading. Missing: it sweeps on its own (TITAN_LAMP_SWEEP_DEG). Dropped when the Titan moves. */
+  spotHeld?: boolean;
   /** Entity the Titan's pods are laying on, apart from the main gun's target. */
   rocketTarget?: number | null;
   /** Last Walker volley: sim tick, arms that fired, and the off-arm bearing when it took a second target. */
@@ -543,12 +551,11 @@ export interface Entity {
   /** Cyborg only: sim tick until which nothing takes his HP. Set when the legs are torn off. */
   shieldUntilTick?: number;
   /**
-   * Cyborg only: shut down for want of a link (sim/cyborg-link.ts). He belongs to no one,
-   * stands still, answers nothing, and fires at nothing until a Cyborg Commander takes him over.
+   * Cyborg only: shut down for want of a link (sim/cyborg-link.ts). Still his side's, but he
+   * stands still, takes no orders, and fires at nothing until the link is back or an enemy
+   * Cyborg Commander takes him over.
    */
   shutdown?: true;
-  /** Shut-down Cyborg only: the side he went dark on. He wakes on it again once its link is back. */
-  shutdownFrom?: string;
   /** Shut-down Cyborg only: the Cyborg Commander taking him over, and ticks of uplink so far. */
   takeover?: { by: number; ticks: number };
   /** Cyborg Commander only: force-field points left. Hits come off these before HP. */
@@ -695,6 +702,8 @@ export interface Projectile {
   apex?: number;
   /** Seconds from the tube to the ground. */
   flightTime?: number;
+  /** A mine canister lobbed up from the ground (the Mammoth's launcher), not dropped from a plane: it climbs before it falls. */
+  lobbed?: boolean;
   /** Force-attack: the blast also catches allies, and a tree on the aim burns. */
   harmAllies?: boolean;
   /** Force-attack aim, before the glob scatters. Not sent to clients. */

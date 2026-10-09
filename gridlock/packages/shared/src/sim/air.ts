@@ -407,6 +407,15 @@ function edgeTurn(state: MatchState, e: Entity, dt: number): boolean {
 }
 
 /**
+ * Length of the straight final. A plane with a wide turning circle (the fast
+ * Horten) gets a longer one, room to settle onto the centreline and a glide
+ * slope it can sink down at its speed.
+ */
+function finalLength(state: MatchState, e: Entity): number {
+  return Math.max(AIR_FINAL_TILES * state.tileSize, 3 * turnRadius(state, e));
+}
+
+/**
  * Start of the straight final: out along the strip centreline past the end
  * away from the plane's hardstand, so it lands long and rolls out toward it.
  * Kept inside the map so the approach never runs off it.
@@ -414,7 +423,7 @@ function edgeTurn(state: MatchState, e: Entity, dt: number): boolean {
 function finalFix(state: MatchState, e: Entity, home: Entity): { x: number; y: number } {
   const ts = state.tileSize;
   const rw = airfieldRunway(home, ts);
-  const len = AIR_FINAL_TILES * ts;
+  const len = finalLength(state, e);
   const fix = runwayPoint(rw, padAlong(home, e.air!.pad, ts) <= 0 ? rw.u1 + len : rw.u0 - len);
   const m = turnRadius(state, e);
   const w = state.width * state.tileSize;
@@ -422,11 +431,20 @@ function finalFix(state: MatchState, e: Entity, home: Entity): { x: number; y: n
   return { x: Math.max(m, Math.min(w - m, fix.x)), y: Math.max(m, Math.min(h - m, fix.y)) };
 }
 
-/** Seconds to fly home and land from here. */
+/**
+ * How far out from the final fix a plane above AIR_CRUISE_ALT starts down to it:
+ * the ground covered while it sheds the height, plus a couple of turns to line up.
+ */
+function letDownDistance(state: MatchState, e: Entity): number {
+  const drop = Math.max(0, e.air!.alt - AIR_CRUISE_ALT);
+  return (drop / AIR_DIVE_PER_SEC) * cruiseSpeed(state, e) + 4 * turnRadius(state, e) + 6 * state.tileSize;
+}
+
+/** Seconds to fly home and land from here, with one full turn to come round onto the final. */
 function secondsHome(state: MatchState, e: Entity, home: Entity): number {
   const pad = airfieldPadWorld(home, e.air!.pad, state.tileSize);
-  const d = Math.hypot(pad.x - e.x, pad.y - e.y) + AIR_FINAL_TILES * state.tileSize * 2;
-  return d / Math.max(1, cruiseSpeed(state, e));
+  const d = Math.hypot(pad.x - e.x, pad.y - e.y) + finalLength(state, e) * 2;
+  return d / Math.max(1, cruiseSpeed(state, e)) + (Math.PI * 2) / Math.max(1e-6, turnRate(e));
 }
 
 function spent(state: MatchState, e: Entity): boolean {
@@ -709,10 +727,16 @@ function tickFly(state: MatchState, e: Entity, dt: number): void {
   } else if (o.kind === "land") {
     if (!home) {
       loiterHere(e);
-    } else if (!turned) {
+    } else {
       const f = finalFix(state, e, home);
-      steerTo(state, e, f.x, f.y, dt);
-      if (Math.hypot(f.x - e.x, f.y - e.y) < state.tileSize * 6) a.phase = "landing";
+      const d = Math.hypot(f.x - e.x, f.y - e.y);
+      // The glide slope starts at AIR_CRUISE_ALT. A plane that cruises higher lets down
+      // to it near the field, in time to be there before the final.
+      if (altGoal > AIR_CRUISE_ALT && d < letDownDistance(state, e)) altGoal = AIR_CRUISE_ALT;
+      if (!turned) {
+        steerTo(state, e, f.x, f.y, dt);
+        if (d < state.tileSize * 6) a.phase = "landing";
+      }
     }
   } else if (isReconType(e.type) && (o.kind === "attack" || o.kind === "forceattack")) {
     // No guns: sent at something, it flies over and circles there, following a unit it can see.
@@ -1614,7 +1638,7 @@ function tickLanding(state: MatchState, e: Entity, dt: number): void {
     return;
   }
   const rw = airfieldRunway(home, ts);
-  const final = AIR_FINAL_TILES * ts;
+  const final = finalLength(state, e);
   const at = runwayLocal(rw, e.x, e.y);
   e.state = "move";
   if (a.touched) {
@@ -1646,7 +1670,8 @@ function tickLanding(state: MatchState, e: Entity, dt: number): void {
   const u = Math.max(0, Math.min(1, along / final));
   const lined =
     Math.abs(lateral) < final * 0.25 && Math.abs(angOff(dir > 0 ? rw.heading : rw.heading + Math.PI, e.facing)) < Math.PI / 6;
-  approachAlt(a, lined ? AIR_CRUISE_ALT * u : Math.max(4, a.alt), dt);
+  // Not lined up yet it holds its height, but never above the top of the glide slope.
+  approachAlt(a, lined ? AIR_CRUISE_ALT * u : Math.max(4, Math.min(a.alt, AIR_CRUISE_ALT)), dt);
   a.speed = AIR_ROLL_SPEED + (1 - AIR_ROLL_SPEED) * u;
   if (a.alt <= 0.5 && along <= 2 * ts && Math.abs(lateral) <= rw.half) {
     a.alt = 0;

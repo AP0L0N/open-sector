@@ -35,6 +35,8 @@ import {
   supplyShortOf,
   rocketAmmoOf,
   heavyAmmoOf,
+  MAMMOTH_MINE_SUPPLY_COST,
+  minePacksOf,
   PENETRATOR_ARM_SECONDS,
   PENETRATOR_SUPPLY_COST,
   weaponFitsTruck,
@@ -134,7 +136,7 @@ export function canBoardTruck(state: MatchState, unit: Entity, truck: Entity): s
 export function needsSupply(e: Entity): boolean {
   if (e.hp <= 0 || e.wreck || e.garrisonedIn != null) return false;
   if (e.ship && shipShortOf(shipBarrels(e).map((b) => b.ammo), e.ship.ciws.map((c) => c.ammo))) return true;
-  return supplyShortOf(e.type, e.ammo, e.mgAmmo, e.clip, e.rockets, e.heavy);
+  return supplyShortOf(e.type, e.ammo, e.mgAmmo, e.clip, e.rockets, e.heavy, e.minePacks);
 }
 
 function shipBarrels(e: Entity): { ammo: number }[] {
@@ -363,6 +365,15 @@ function giveHeavy(truck: { supply: number }, e: Entity): boolean {
   return true;
 }
 
+/** One mine pack back into the Mammoth's launcher. Costs more than a shell. */
+function giveMinePack(truck: { supply: number }, e: Entity): boolean {
+  const max = minePacksOf(e.type);
+  if (max <= 0 || (e.minePacks ?? 0) >= max || truck.supply < MAMMOTH_MINE_SUPPLY_COST) return false;
+  e.minePacks = (e.minePacks ?? 0) + 1;
+  truck.supply -= MAMMOTH_MINE_SUPPLY_COST;
+  return true;
+}
+
 /** One rocket back into the Titan's rack. Costs the same as a shell. */
 function giveRocket(e: Entity): boolean {
   const max = rocketAmmoOf(e.type);
@@ -415,6 +426,7 @@ function giveRounds(e: Entity, n: number): boolean {
 export function transferOnce(truck: { supply: number }, target: Entity): boolean {
   if (truck.supply <= 0) return false;
   if (giveHeavy(truck, target)) return true;
+  if (giveMinePack(truck, target)) return true;
   if (truck.supply >= SUPPLY_SHELL_COST && (giveShell(target) || giveRocket(target) || giveShipShell(target))) {
     truck.supply -= SUPPLY_SHELL_COST;
     return true;

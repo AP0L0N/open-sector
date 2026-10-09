@@ -51,7 +51,7 @@ import { forceAimHolds, garrisonCanShoot, garrisonShotReaches, relayGarrisonForc
 import { approachTile, canGarrison, exitGarrison, garrisonOwner, livingGarrison, setGarrisonHide } from "./garrison.js";
 import { rampAshore } from "./lst.js";
 import { setScoutOut } from "./scout.js";
-import { cancelStructure, pauseStructure, placeBaseField, placeBuilding, sellBuilding, startBuild } from "./build.js";
+import { cancelStructure, deleteOwn, pauseStructure, placeBaseField, placeBuilding, sellBuilding, startBuild } from "./build.js";
 import { orderFieldBuild, orderRepair, setGatesLocked } from "./field.js";
 import { orderConstruct } from "./construct.js";
 import { orderBridge } from "./bridge.js";
@@ -70,7 +70,8 @@ import { droneOf, guardDrone, launchDrone, orderDrone, recallDrone, setDroneMode
 import { landJet, takeOff } from "./jet.js";
 import { setDive } from "./naval.js";
 import { layMine } from "./destroyer.js";
-import { aimSpotlightPatrol, hasSpotlight, spotFacingOf, spotlightManned } from "./night.js";
+import { orderMineLay } from "./minelauncher.js";
+import { aimSpotlightPatrol, hasSpotlight, lampUnderway, spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, MatchState, QueueableCommand, Vec } from "./types.js";
 
 /** The corners of a `cmd.field` line, or undefined when the message has none worth reading. */
@@ -191,6 +192,9 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
       return wrap(setRally(state, playerId, msg.ids, msg.x, msg.y), "bad_payload");
     case "cmd.sell":
       return wrap(sellBuilding(state, playerId, msg.id), "not_yours");
+    case "cmd.delete":
+      if (!Array.isArray(msg.ids)) return fail("bad_payload", "Select something to scrap.");
+      return wrap(deleteOwn(state, playerId, msg.ids), "not_yours");
     case "cmd.deploy": {
       const err = deployId(state, playerId, msg.id);
       return wrap(err, "busy");
@@ -306,6 +310,11 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.laymine":
       if (!Array.isArray(msg.ids)) return fail("bad_payload", "Bad mine order.");
       return cmdLayMine(state, playerId, msg.ids);
+    case "cmd.minelay":
+      if (!Array.isArray(msg.ids) || typeof msg.x !== "number" || typeof msg.y !== "number") {
+        return fail("bad_payload", "Bad mine order.");
+      }
+      return wrap(orderMineLay(state, playerId, owned(state, playerId, msg.ids), msg.x, msg.y), "busy");
     default:
       return fail("bad_payload", "Unknown command.");
   }
@@ -323,6 +332,7 @@ const QUEUEABLE = new Set<string>([
   "cmd.supply",
   "cmd.disable",
   "cmd.board",
+  "cmd.minelay",
 ]);
 
 /** Unqueued orders that replace what a unit was doing, and so drop its queue. */
@@ -1088,13 +1098,16 @@ function cmdRotate(
     ? []
     : owned(state, playerId, ids).filter((e) => e.state !== "deploy" && e.state !== "undeploy" && !e.garrisonedIn);
   const mounts = light ? [] : ownedMounts(state, playerId, ids);
-  const lamps = ownedLamps(state, playerId, ids, light);
+  // A Titan on the march keeps its lamp on its own sweep: Rotate light waits for it to stand.
+  const lamps = ownedLamps(state, playerId, ids, light).filter((e) => !lampUnderway(e));
   if (units.length === 0 && mounts.length === 0 && lamps.length === 0) {
     return fail("not_yours", light ? "No spotlight to turn." : "No owned units.");
   }
-  // The lamp swings over at its own pace; see tickSpotlights. A tower's patrol sweep ends here.
+  // The lamp swings over at its own pace; see tickSpotlights. A tower's patrol sweep ends here,
+  // and a Titan's own sweep until it next moves.
   for (const e of lamps) {
     if (e.kind === "building" && e.order?.kind === "patrol") e.order = null;
+    if (e.type === "titan") e.spotHeld = true;
     e.spotFacing = spotFacingOf(e);
     e.spotAim = Math.atan2(y - e.y, x - e.x);
   }

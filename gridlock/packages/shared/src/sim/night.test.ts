@@ -15,6 +15,10 @@ import {
   NIGHT_SIGHT_MUL,
   SPOTLIGHT_REACH_TILES,
   SPOTLIGHT_TURN_DEG_PER_SEC,
+  TITAN_LAMP_SWEEP_DEG,
+  TITAN_LAMP_SWEEP_PERIOD_SECONDS,
+  TITAN_LAMP_POOL_AHEAD_TILES,
+  TITAN_LAMP_POOL_RADIUS_TILES,
   BUILDING_TYPES,
   TICK_DT,
   TRAIN_TYPES,
@@ -420,5 +424,110 @@ describe("headlights", () => {
     assert.equal(lit(state, a, 100 + r - 2, 128), true);
     tank.garrisonedIn = 9999;
     assert.equal(lit(state, a, 100 + r - 2, 128), false);
+  });
+});
+
+describe("Titan lamp", () => {
+  it("carries the tower's spotlight in place of a headlight", () => {
+    assert.equal(hasSpotlight("titan"), true);
+    assert.equal(hasHeadlight("titan"), false);
+  });
+
+  it("lights a beam out to the tower's reach, and nothing beside it", () => {
+    const { state, a } = emptyField();
+    const titan = trooper(state, "titan", a, 100, 128);
+    titan.facing = 0;
+    state.tick = NIGHT_TICK;
+    const far = SPOTLIGHT_REACH_TILES - 6;
+    assert.equal(lit(state, a, 100 + far, 128), true, "lit down the beam");
+    assert.equal(lit(state, a, 100, 128 + far), false, "dark abeam");
+    assert.equal(lit(state, a, 100 - far, 128), false, "dark behind");
+  });
+
+  it("Rotate light swings only the lamp; the hull and torso stay put", () => {
+    const { state, a } = emptyField();
+    const titan = trooper(state, "titan", a, 100, 128);
+    titan.facing = 0;
+    titan.turretFacing = 0;
+    const r = applyCommand(state, a, { type: "cmd.rotate", ids: [titan.id], x: titan.x, y: titan.y + 500, light: true });
+    assert.equal(r.ok, true);
+    assert.equal(titan.order?.kind === "rotate", false, "the Titan was not told to turn");
+    const settle = Math.ceil(90 / (SPOTLIGHT_TURN_DEG_PER_SEC * TICK_DT)) + 2;
+    for (let i = 0; i < settle; i++) tickSpotlights(state, TICK_DT);
+    assert.ok(Math.abs(titan.spotFacing! - Math.PI / 2) < 1e-9, "the lamp settles on the heading");
+    assert.equal(titan.facing, 0);
+    assert.equal(titan.turretFacing, 0);
+    state.tick = NIGHT_TICK;
+    const far = SPOTLIGHT_REACH_TILES - 6;
+    assert.equal(lit(state, a, 100, 128 + far), true, "the beam went round");
+    assert.equal(lit(state, a, 100 + far, 128), false);
+  });
+
+  it("aloft, tips down to one round pool ahead of it", () => {
+    const { state, a } = emptyField();
+    const titan = trooper(state, "titan", a, 100, 128);
+    titan.facing = 0;
+    state.tick = NIGHT_TICK;
+    titan.jet!.alt = 10;
+    titan.jet!.up = true;
+    const ahead = TITAN_LAMP_POOL_AHEAD_TILES;
+    const rad = TITAN_LAMP_POOL_RADIUS_TILES;
+    assert.equal(lit(state, a, 100 + ahead, 128), true, "the middle of the pool");
+    assert.equal(lit(state, a, 100 + ahead, 128 + Math.floor(rad) - 1), true, "the pool is round, not a thin beam");
+    assert.equal(lit(state, a, 100 + ahead, 128 + Math.ceil(rad) + 2), false, "dark past the pool's edge");
+    assert.equal(lit(state, a, 100 + Math.ceil(ahead + rad) + 3, 128), false, "no beam reaching on past it");
+    assert.equal(lit(state, a, 100 - ahead, 128), false, "dark behind");
+    titan.jet!.alt = 0;
+    titan.jet!.up = false;
+    assert.equal(lit(state, a, 100 + SPOTLIGHT_REACH_TILES - 6, 128), true, "landed, the beam is back");
+  });
+
+  it("left alone, sweeps a little either side of the nose", () => {
+    const { state, a } = emptyField();
+    const titan = trooper(state, "titan", a, 100, 128);
+    titan.facing = 0;
+    const sweep = (TITAN_LAMP_SWEEP_DEG * Math.PI) / 180;
+    let lo = 0;
+    let hi = 0;
+    let step = 0;
+    let was: number | undefined;
+    for (let i = 0; i < Math.round(TITAN_LAMP_SWEEP_PERIOD_SECONDS / TICK_DT); i++) {
+      state.tick += 1;
+      tickSpotlights(state, TICK_DT);
+      const at = titan.spotFacing!;
+      lo = Math.min(lo, at);
+      hi = Math.max(hi, at);
+      if (was != null) step = Math.max(step, Math.abs(at - was));
+      was = at;
+    }
+    assert.ok(lo < -sweep * 0.9 && hi > sweep * 0.9, "the beam reaches both ends of its arc");
+    assert.ok(lo >= -sweep - 1e-9 && hi <= sweep + 1e-9, "and no further");
+    assert.ok(step <= ((SPOTLIGHT_TURN_DEG_PER_SEC * Math.PI) / 180) * TICK_DT, "no faster than the lamp can turn");
+    assert.equal(titan.facing, 0, "the hull never moved");
+  });
+
+  it("Rotate light holds the lamp until the Titan moves, and is refused on the march", () => {
+    const { state, a } = emptyField();
+    const titan = trooper(state, "titan", a, 100, 128);
+    titan.facing = 0;
+    const aim = { type: "cmd.rotate" as const, ids: [titan.id], x: titan.x, y: titan.y + 500, light: true };
+    assert.equal(applyCommand(state, a, aim).ok, true);
+    const settle = Math.ceil(90 / (SPOTLIGHT_TURN_DEG_PER_SEC * TICK_DT)) + 2;
+    for (let i = 0; i < settle * 3; i++) {
+      state.tick += 1;
+      tickSpotlights(state, TICK_DT);
+    }
+    assert.ok(Math.abs(titan.spotFacing! - Math.PI / 2) < 1e-9, "held on the heading long after it settled, not sweeping");
+    titan.state = "move";
+    state.tick += 1;
+    tickSpotlights(state, TICK_DT);
+    assert.equal(titan.spotHeld, undefined, "moving off lets the heading go");
+    assert.ok(Math.abs(titan.spotFacing!) <= (TITAN_LAMP_SWEEP_DEG * Math.PI) / 180 + 1e-9, "back on its sweep off the nose");
+    const r = applyCommand(state, a, aim);
+    assert.equal(r.ok, false, "no Rotate light on the march");
+    assert.equal(titan.spotHeld, undefined);
+    titan.state = "idle";
+    assert.equal(applyCommand(state, a, aim).ok, true, "standing again, it takes the order");
+    assert.equal(titan.spotHeld, true);
   });
 });

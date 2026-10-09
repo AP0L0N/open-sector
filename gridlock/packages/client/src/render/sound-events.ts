@@ -102,8 +102,8 @@ const FIRE_GAP_MS: Record<string, number> = {
   bunker: 140,
   tower: 140,
   mgnest: 450,
-  // The imported Bofors take is one 1.5 s burst of shells, so the next cue waits it out.
-  flak: 1500,
+  // One 37mm report a shell: the gun fires every 0.4 s.
+  flak: 350,
 };
 const DEFAULT_FIRE_GAP_MS = 140;
 /** An LST loading a column calls it once, not once a soldier. */

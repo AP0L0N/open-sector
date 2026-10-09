@@ -56,7 +56,6 @@ import {
   TILE_BLOCKED,
   TILE_FENCE,
   TILE_MOUNTAIN,
-  TILE_ROCK,
   isGroveTile,
   isScrapTile,
   lampBlocked,
@@ -986,7 +985,7 @@ export function brickDeck(s: Sheet, f: MapFeature): number {
   );
 }
 
-/** Ground a bridge brick may not stand on: rock, woods, fences, and blocked ground. Water and open land take one. */
+/** Ground a bridge brick may not stand on: woods, fences, mountain rock, and blocked ground. Water and open land take one. */
 function bridgeFooting(s: Sheet, f: MapFeature): string | null {
   if (!isMapBridge(f.type)) return null;
   const a = (f.turn ?? f.facing * QUARTER_TURN) * BUILDING_TURN_STEP;
@@ -999,7 +998,6 @@ function bridgeFooting(s: Sheet, f: MapFeature): string | null {
     footing: (x: number, y: number) => {
       const t = s.tiles[y * s.width + x];
       return (
-        t !== TILE_ROCK &&
         !isGroveTile(t ?? 0) &&
         t !== TILE_FENCE &&
         t !== TILE_BLOCKED &&

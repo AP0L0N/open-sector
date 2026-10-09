@@ -22,6 +22,7 @@ import {
   catalog,
   coverHeightOf,
   hasTracks,
+  isAircraftType,
   wreckHpOf,
 } from "../catalog.js";
 import { TILE_EMPTY } from "../maps.js";
@@ -736,6 +737,27 @@ describe("fuel", () => {
     plane.air!.fuel = 8;
     ticks(state, 2);
     assert.equal(plane.order?.kind, "land");
+  });
+
+  it("every plane on guard far off comes home on a low tank and lands instead of circling dry", () => {
+    for (const type of TRAIN_TYPES.filter((t) => isAircraftType(t))) {
+      for (const [dx, dy] of [[70, 0], [-70, 0], [0, 70], [0, -70], [50, 50], [-50, -50]] as const) {
+        const state = twoPlayerMatch();
+        seedCore(state);
+        const field = seedAirfield(state, 90, 110);
+        const plane = spawnUnit(state, "A", type, field, false);
+        assert.ok(plane?.air, `${type} should spawn on a pad`);
+        const ts = state.tileSize;
+        const gx = field.x + dx * ts;
+        const gy = field.y + dy * ts;
+        assert.equal(applyCommand(state, "A", { type: "cmd.guard", ids: [plane.id], x: gx, y: gy, facing: 0 }).ok, true);
+        assert.ok(until(state, 400, () => plane.air?.phase === "fly") >= 0, `${type} should take off`);
+        const home = until(state, 4000, () => plane.order?.kind === "land" || !plane.air || plane.hp <= 0);
+        assert.ok(home >= 0 && plane.order?.kind === "land", `${type} toward (${dx}, ${dy}) should turn for home`);
+        const parked = until(state, 4000, () => plane.air?.phase === "parked" || !plane.air || plane.hp <= 0);
+        assert.ok(parked >= 0 && plane.air?.phase === "parked", `${type} toward (${dx}, ${dy}) should land, not run dry`);
+      }
+    }
   });
 
   it("goes down when the fuel runs out with no pad to reach", () => {
