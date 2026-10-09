@@ -147,7 +147,7 @@ export function warmUnit(type: string): void {
 }
 
 export function warmBattle(): void {
-  for (const cue of ["explosion_small", "explosion_large", "shell_impact", "ricochet", "penetrate", "splash", "intercept", "cookoff", "explosion_building", "mine_explode", "flak_burst"]) {
+  for (const cue of ["explosion_small", "explosion_large", "shell_impact", "ricochet", "penetrate", "splash", "intercept", "cookoff", "explosion_building", "mine_explode", "flak_burst", "energy_hit", "energy_burst"]) {
     for (const url of bank.get("sfx/battle", `sfx-${cue}`)) preloadSample(url);
   }
 }
@@ -186,6 +186,8 @@ const IMPACT_VOLUME: Record<string, number> = {
   splash: 0.45,
   intercept: 0.5,
   flak_burst: 0.55,
+  energy_hit: 0.35,
+  energy_burst: 0.8,
 };
 
 /** Force-field cues: the shimmer is quick and light, the collapse and the recharge carry. */
@@ -198,6 +200,11 @@ const SHIELD_VOLUME: Record<ShieldCue, number> = { hit: 0.4, down: 0.75, up: 0.6
 function fireUrl(type: string, weapon: Weapon, line?: boolean): string | null {
   if (weapon === "small" && BIG_GUN_ONLY.has(type)) return null;
   const folder = unitFolder(type);
+  // The Behemoth's landing ring has its own crackle, not its cannon.
+  if (weapon === "beam" && !line) {
+    const ring = pick(folder, "sfx-laser_ring");
+    if (ring) return ring;
+  }
   if (weapon === "beam" && line) return pick(folder, "sfx-fire_line") ?? pick(folder, "sfx-fire");
   if (weapon === "rocket") return pick(folder, "sfx-rockets") ?? pick(folder, "sfx-fire");
   // A tank with a bow flamer beside its guns has a take of its own for the jet; the Pyro's jet is his fire.
@@ -278,7 +285,7 @@ export function playSoundEvents(events: readonly SoundEvent[], mixAt: (x: number
         const url = pick(unitFolder(ev.type), `sfx-${ev.cue}`);
         const mix = url ? mixAt(ev.x, ev.y) : null;
         // A hull crumpling under the Apocalypse and a Stuka's siren are heard over the fight around them; a Cyborg link cue sits between.
-        const volume = ev.cue === "crush" || ev.cue === "dive" ? 0.9 : ev.cue === "special" ? 0.6 : 0.75;
+        const volume = ev.cue === "crush" || ev.cue === "dive" || ev.cue === "lunge" ? 0.9 : ev.cue === "special" ? 0.6 : 0.75;
         if (url && mix) playSample(url, mix, { volume, maxVoices: 2, jitter: ev.cue === "special" ? undefined : 0.04 });
         break;
       }

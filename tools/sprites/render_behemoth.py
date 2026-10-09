@@ -48,7 +48,11 @@ CY_FRAC = 0.6
 LAYERS = ("hull", "turret", "gun")
 
 
-def build_hull() -> Mesh:
+STRIDE = 0.7  # half the foot's travel along the nose, m
+LIFT = 0.75  # foot clearance at mid-swing, m
+
+
+def build_hull(frame: int | None = None) -> Mesh:
     m = Mesh()
     ellipsoid(m, (BODY[0], 0, BODY[2] - 0.35), (BODY_R[0] * 0.9, BODY_R[1] * 0.85, 0.6), "chitin", rings=12, seg=16)
     shell(m, BODY, BODY_R, 5, team=(0, 0), seg=20)
@@ -69,14 +73,19 @@ def build_hull() -> Mesh:
     # Tail: a spiked vent.
     tube(m, (-3.9, 0, 1.9), (-4.6, 0, 1.6), 0.55, 0.25, "chitin")
     knob(m, (-4.65, 0, 1.6), 0.24, "seam")
-    # Six heavy legs, splayed wide.
+    # Six heavy legs, splayed wide. Walk: alternating tripods (left front + right middle +
+    # left rear, then the other three). frame None = the static turntable pose.
     for s in (-1, 1):
-        for hip_x, dx in ((1.9, 0.9), (-0.3, 0.0), (-2.4, -0.9)):
+        for i, (hip_x, dx) in enumerate(((1.9, 0.9), (-0.3, 0.0), (-2.4, -0.9))):
             hip = (hip_x, s * 1.8, 1.7)
             knee = (hip_x + dx * 0.6, s * 3.25, 3.15)
             ankle = (hip_x + dx * 1.05, s * 3.85, 0.75)
             foot = (hip_x + dx * 1.15, s * 3.95, 0.0)
-            leg(m, hip, knee, ankle, foot, r=0.44)
+            if frame is None:
+                leg(m, hip, knee, ankle, foot, r=0.44)
+            else:
+                fx, fz = bw.gait(frame, (i + (s > 0)) % 2, STRIDE, LIFT)
+                bw.posed_leg(m, hip, knee, ankle, foot, fx, fz, LIFT, r=0.44)
     # Turret ring, left empty.
     bw.cylinder_z(m, 0.0, 0.0, RING_R + 0.1, RING_Z - 0.08, RING_Z, "seam", 28)
     bw.cylinder_z(m, 0.0, 0.0, RING_R, RING_Z - 0.06, RING_Z + 0.06, "chitin", 28)
@@ -124,14 +133,20 @@ def main() -> None:
     ap.add_argument("--out", required=True, help="unit folder; writes hull/ turret/ gun/ inside it")
     ap.add_argument("--ss", type=int, default=4)
     ap.add_argument("--check-only", action="store_true")
+    ap.add_argument("--walk-only", action="store_true", help="keep the turntable folders; bake only the walk sheets")
+    ap.add_argument("--jobs", type=int, default=8)
     args = ap.parse_args()
     out = Path(args.out)
-    if not args.check_only:
-        common = dict(scale_frac=SCALE_FRAC, z_mid=Z_MID, cy_frac=CY_FRAC, ss=args.ss)
-        for name, build in zip(LAYERS, (build_hull, build_turret, build_gun)):
-            render_turntable(build(), out / name, f"behemoth_{name}", f"behemoth-{name}.json", **common)
-    bw.check("behemoth", out, list(LAYERS), SCALE_FRAC, Z_MID, CY_FRAC, model=MODEL, ref_draw_px_per_m=6.0)
-    bw.cameo("behemoth", out, list(LAYERS))
+    if not args.walk_only:
+        if not args.check_only:
+            common = dict(scale_frac=SCALE_FRAC, z_mid=Z_MID, cy_frac=CY_FRAC, ss=args.ss)
+            for name, build in zip(LAYERS, (build_hull, build_turret, build_gun)):
+                render_turntable(build(), out / name, f"behemoth_{name}", f"behemoth-{name}.json", **common)
+        bw.check("behemoth", out, list(LAYERS), SCALE_FRAC, Z_MID, CY_FRAC, model=MODEL, ref_draw_px_per_m=6.0)
+        bw.cameo("behemoth", out, list(LAYERS))
+        if args.check_only:
+            return
+    bw.bake("behemoth", out, build_hull, SCALE_FRAC, Z_MID, CY_FRAC, ss=args.ss, jobs=args.jobs)
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@
   "out": "units/spineturret",
   "sfx": {
     "fire": {
-      "prompt": "Short burst from an alien electric needle gatling turret: a rapid stream of sharp metallic needle shots ticking out very fast with an electric whine spinning up and down, close, outdoors battlefield, no music, no voice",
+      "prompt": "Short burst from a sci-fi rapid pulse repeater turret: a fast stream of short sharp electric energy zaps, crackling laser blaster snaps with an electric whine rising and falling, no gunpowder, no bullets, close, outdoors battlefield, no music, no voice",
       "duration": 1.2,
       "variants": 2,
       "influence": 0.65

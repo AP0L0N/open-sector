@@ -59,6 +59,7 @@ import {
   spotlightsOn,
 } from "./night.js";
 import type { Entity, MatchState } from "./types.js";
+import { hiddenBurrowed } from "./burrow.js";
 
 export type SightSource = {
   id?: number;
@@ -1998,6 +1999,7 @@ export function canSeeEntity(state: MatchState, playerId: string, e: Entity, mas
   if (e.hp <= 0) return false;
   if (allies(state, playerId, e.ownerId)) return true;
   if (hiddenSubmarine(state, playerId, e)) return false;
+  if (hiddenBurrowed(state, playerId, e)) return false;
   if (sonarSpotted(state, playerId, e)) return true;
   if (mask) return entityOnMask(e, mask, state.width, state.height, state.tileSize);
   return entityVisibleToPlayer(state, playerId, e);

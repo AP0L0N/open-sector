@@ -7,7 +7,9 @@ alloy, dark chitin, the Seed's glow (borg_walker.py). The Apocalypse's layout:
 hull / turret / gun are passes of one locked camera with one scale and one
 origin, so the client composes them with one transform (composeAligned,
 TIGER_OPTS: cell 128, contactY 0.92). The turret and gun turn on the model
-origin. Legs are static (one frame, like every tank layer).
+origin. The turntable folders are the static pose (the wrecks come from them);
+bw.bake() then writes stalker-legs.png (8 trot frames x 16), stalker-turret.png
+and stalker-gun.png (1 x 16) at 128 px with the runtime's one transform.
 
   hull    spider body, sensor head, four legs, an empty turret ring.
   turret  the dome with its mantlet socket. No barrel.
@@ -45,7 +47,11 @@ CY_FRAC = 0.6
 LAYERS = ("hull", "turret", "gun")
 
 
-def build_hull() -> Mesh:
+STRIDE = 0.7  # half the foot's travel along the nose, m
+LIFT = 0.6  # foot clearance at mid-swing, m
+
+
+def build_hull(frame: int | None = None) -> Mesh:
     m = Mesh()
     # Chitin belly, then the ribbed alloy shell over it; gray team plate on the rear rib.
     ellipsoid(m, (BODY[0], 0, BODY[2] - 0.22), (BODY_R[0] * 0.9, BODY_R[1] * 0.82, 0.42), "chitin", rings=10, seg=14)
@@ -62,10 +68,17 @@ def build_hull() -> Mesh:
     # Side vents on the flanks.
     for s in (-1, 1):
         tube_x(m, -1.4, -0.4, s * 1.36, 1.35, 0.1, "seam", n=6)
-    # Four legs splayed at the corners, low and wide.
+    # Four legs splayed at the corners, low and wide. Walk: a trot, diagonal pairs together
+    # (front-left with rear-right). frame None = the static turntable pose.
     for s in (-1, 1):
-        leg(m, (1.0, s * 1.15, 1.2), (1.55, s * 2.3, 2.4), (2.0, s * 2.75, 0.6), (2.1, s * 2.85, 0.0), r=0.34)
-        leg(m, (-1.35, s * 1.15, 1.2), (-1.85, s * 2.3, 2.4), (-2.3, s * 2.75, 0.6), (-2.4, s * 2.85, 0.0), r=0.34)
+        for front, pts in ((True, ((1.0, s * 1.15, 1.2), (1.55, s * 2.3, 2.4), (2.0, s * 2.75, 0.6), (2.1, s * 2.85, 0.0))),
+                           (False, ((-1.35, s * 1.15, 1.2), (-1.85, s * 2.3, 2.4), (-2.3, s * 2.75, 0.6), (-2.4, s * 2.85, 0.0)))):
+            if frame is None:
+                leg(m, *pts, r=0.34)
+            else:
+                group = 0 if (front == (s > 0)) else 1
+                dx, dz = bw.gait(frame, group, STRIDE, LIFT)
+                bw.posed_leg(m, *pts, dx, dz, LIFT, r=0.34)
     # Turret ring, left empty for the turret sheet; a glow seam round it.
     bw.cylinder_z(m, 0.0, 0.0, RING_R + 0.08, RING_Z - 0.06, RING_Z, "seam", 24)
     bw.cylinder_z(m, 0.0, 0.0, RING_R, RING_Z - 0.04, RING_Z + 0.05, "chitin", 24)
@@ -110,14 +123,20 @@ def main() -> None:
     ap.add_argument("--out", required=True, help="unit folder; writes hull/ turret/ gun/ inside it")
     ap.add_argument("--ss", type=int, default=4)
     ap.add_argument("--check-only", action="store_true")
+    ap.add_argument("--walk-only", action="store_true", help="keep the turntable folders; bake only the walk sheets")
+    ap.add_argument("--jobs", type=int, default=8)
     args = ap.parse_args()
     out = Path(args.out)
-    if not args.check_only:
-        common = dict(scale_frac=SCALE_FRAC, z_mid=Z_MID, cy_frac=CY_FRAC, ss=args.ss)
-        for name, build in zip(LAYERS, (build_hull, build_turret, build_gun)):
-            render_turntable(build(), out / name, f"stalker_{name}", f"stalker-{name}.json", **common)
-    bw.check("stalker", out, list(LAYERS), SCALE_FRAC, Z_MID, CY_FRAC, model=MODEL)
-    bw.cameo("stalker", out, list(LAYERS))
+    if not args.walk_only:
+        if not args.check_only:
+            common = dict(scale_frac=SCALE_FRAC, z_mid=Z_MID, cy_frac=CY_FRAC, ss=args.ss)
+            for name, build in zip(LAYERS, (build_hull, build_turret, build_gun)):
+                render_turntable(build(), out / name, f"stalker_{name}", f"stalker-{name}.json", **common)
+        bw.check("stalker", out, list(LAYERS), SCALE_FRAC, Z_MID, CY_FRAC, model=MODEL)
+        bw.cameo("stalker", out, list(LAYERS))
+        if args.check_only:
+            return
+    bw.bake("stalker", out, build_hull, SCALE_FRAC, Z_MID, CY_FRAC, ss=args.ss, jobs=args.jobs)
 
 
 if __name__ == "__main__":

@@ -96,6 +96,58 @@ def leg(m: Mesh, hip, knee, ankle, foot, r: float = 0.3, plate: bool = True) -> 
         tube(m, a, b, r * 0.62, r * 0.42, "chitin", n=6)
 
 
+WALK_FRAMES = 8
+
+
+def gait(frame: int, group: int, stride: float, lift: float) -> tuple[float, float]:
+    """Foot offset (dx along the nose, dz up) for one leg group on one of WALK_FRAMES.
+
+    Two groups half a cycle apart (spider trot / alternating tripods). Each foot
+    swings forward over the first half of its own cycle (arc up and over) and is
+    planted for the second half, sliding back under the body at a constant rate
+    (it holds still on the ground while the body walks over it). Frame 0 has
+    group 0 at the start of its swing and group 1 at the start of its stance:
+    every foot is down, so it is the idle stand.
+    """
+    q = ((frame / WALK_FRAMES) + 0.5 * group) % 1.0
+    if q < 0.5:
+        u = q / 0.5
+        return -stride * math.cos(math.pi * u), lift * math.sin(math.pi * u)
+    u = (q - 0.5) / 0.5
+    return stride * (1 - 2 * u), 0.0
+
+
+def solve_knee(hip, knee0, ankle0, ankle) -> np.ndarray:
+    """Two-bone IK keeping the authored bone lengths and the authored bend direction."""
+    hip, knee0, ankle0, ankle = (np.asarray(p, float) for p in (hip, knee0, ankle0, ankle))
+    l1 = float(np.linalg.norm(knee0 - hip))
+    l2 = float(np.linalg.norm(ankle0 - knee0))
+    d0 = (ankle0 - hip) / np.linalg.norm(ankle0 - hip)
+    bend = (knee0 - hip) - d0 * float(np.dot(knee0 - hip, d0))
+    d = ankle - hip
+    dist = float(np.linalg.norm(d))
+    dn = d / dist
+    dist = min(max(dist, abs(l1 - l2) + 1e-3), l1 + l2 - 1e-3)
+    perp = bend - dn * float(np.dot(bend, dn))
+    perp /= np.linalg.norm(perp)
+    along = (l1 * l1 - l2 * l2 + dist * dist) / (2 * dist)
+    h = math.sqrt(max(0.0, l1 * l1 - along * along))
+    return hip + dn * along + perp * h
+
+
+def posed_leg(m: Mesh, hip, knee, ankle, foot, dx: float, dz: float, lift: float, r: float = 0.3, plate: bool = True) -> None:
+    """leg() with the foot moved by (dx, dz); the knee re-solved, the claw curls back as it rises."""
+    hip, knee, ankle, foot = (np.asarray(p, float) for p in (hip, knee, ankle, foot))
+    off = np.array([dx, 0.0, dz])
+    a2 = ankle + off
+    claw = foot - ankle
+    k = dz / lift if lift > 0 else 0.0
+    curl = np.array([-0.35 * k * np.linalg.norm(claw), 0.0, 0.25 * k * np.linalg.norm(claw)])
+    f2 = a2 + claw + curl
+    k2 = solve_knee(hip, knee, ankle, a2)
+    leg(m, hip, k2, a2, f2, r=r, plate=plate)
+
+
 def shell(m: Mesh, c, r, plates: int, team: tuple[int, int] | None = None, seg: int = 18, seam: float = 0.04) -> None:
     """Ribbed alloy shell along x: render_seed.plated with the grey-green alloy over a chitin belly."""
     cx, cy, cz = c
@@ -325,3 +377,145 @@ def cameo(unit: str, out: Path, layers: list[str], face: str = "0014", gain: flo
     path = out.parent / f"{unit}-cameo.png"
     canvas.save(path)
     print("wrote", path)
+
+
+# ---------------------------------------------------------------- baked walk sheets
+
+
+def render_faces(mesh: Mesh, scale_frac: float, z_mid: float, cy_frac: float, faces=range(16), cell: int = 256, ss: int = 4) -> list[Image.Image]:
+    """render_procedural.render_turntable's camera and passes, kept in memory (one image per face)."""
+    size = cell * ss
+    scale = size * scale_frac
+    ce, se = math.cos(rp.CAM_ELEV), math.sin(rp.CAM_ELEV)
+    out = []
+    for k in faces:
+        phi = math.pi / 2 + k * math.pi / 8
+        yaw = rp.screen_to_ground_yaw(phi)
+        cy, sy_ = math.cos(yaw), math.sin(yaw)
+
+        def to_world(p: np.ndarray) -> np.ndarray:
+            x, y, z = p[..., 0], p[..., 1], p[..., 2]
+            return np.stack([x * cy - y * sy_, x * sy_ + y * cy, z], axis=-1)
+
+        def to_screen(verts: np.ndarray):
+            wv = to_world(verts)
+            X, Y, Z = wv[:, 0], wv[:, 1], wv[:, 2]
+            return size / 2 + X * scale, size * cy_frac - (Y * se + (Z - z_mid) * ce) * scale, -Y * ce + Z * se
+
+        def normal_fn(a, b, c):
+            return to_world(a), to_world(b), to_world(c)
+
+        fr = rp.rasterize(mesh, to_screen, (size, size), normal_fn)
+        fr = rp.add_outline(fr, max(1, ss))
+        out.append(rp.downsample(fr, ss))
+    return out
+
+
+_JOB: dict = {}
+
+
+def _render_job(task: tuple[int, int]) -> tuple[int, int, Image.Image]:
+    f, k = task
+    j = _JOB
+    img = render_faces(j["meshes"][f], j["scale_frac"], j["z_mid"], j["cy_frac"], faces=[k], ss=j["ss"])[0]
+    return f, k, img
+
+
+def bake(unit: str, out: Path, build_frame, scale_frac: float, z_mid: float, cy_frac: float, ss: int = 4, jobs: int = 8) -> dict:
+    """Bake <unit>-legs.png (WALK_FRAMES x 16), <unit>-turret.png and <unit>-gun.png (1 x 16) at CELL.
+
+    The fit (scale, ox, oy) is the runtime's composeAligned over the shipped hull/turret/gun
+    turntable folders, so the baked sheets sit exactly where the runtime-composed ones do:
+    same on-screen size, same contact line, the turret on the ring. Every walk frame is
+    placed with that one transform.
+    """
+    import multiprocessing as mp
+
+    raw = {n: frames(out / n) for n in ("hull", "turret", "gun")}
+    scale, ox, oy, _ = fit([raw["hull"], raw["turret"], raw["gun"]])
+    _JOB.update(meshes=[build_frame(f) for f in range(WALK_FRAMES)], scale_frac=scale_frac, z_mid=z_mid, cy_frac=cy_frac, ss=ss)
+    tasks = [(f, k) for f in range(WALK_FRAMES) for k in range(16)]
+    with mp.get_context("fork").Pool(jobs) as pool:
+        done = pool.map(_render_job, tasks, chunksize=1)
+    legs_src = {(f, k): img for f, k, img in done}
+
+    legs = Image.new("RGBA", (WALK_FRAMES * CELL, 16 * CELL))
+    cells: dict[tuple[int, int], Image.Image] = {}
+    for (f, k), img in legs_src.items():
+        c = place(img, scale, ox, oy)
+        cells[(f, k)] = c
+        legs.alpha_composite(c, (f * CELL, k * CELL))
+    tur = Image.new("RGBA", (CELL, 16 * CELL))
+    gun = Image.new("RGBA", (CELL, 16 * CELL))
+    tcells = [place(im, scale, ox, oy) for im in raw["turret"]]
+    gcells = [place(im, scale, ox, oy) for im in raw["gun"]]
+    for k in range(16):
+        tur.alpha_composite(tcells[k], (0, k * CELL))
+        gun.alpha_composite(gcells[k], (0, k * CELL))
+    legs.save(UNITS / f"{unit}-legs.png")
+    tur.save(UNITS / f"{unit}-turret.png")
+    gun.save(UNITS / f"{unit}-gun.png")
+
+    # Checks: empty / clipped cells, and the bbox per row across frames (gait only, no scale pop).
+    empty, clipped, pops = [], [], []
+    h0 = [bbox(cells[(0, k)])[3] - bbox(cells[(0, k)])[1] for k in range(16)]
+    med = sorted(h0)[8]
+    rows = {}
+    for k in range(16):
+        hs, bots, ws = [], [], []
+        for f in range(WALK_FRAMES):
+            b = bbox(cells[(f, k)])
+            if not b:
+                empty.append(f"{NAMES[k]}:f{f}")
+                continue
+            if b[0] <= 0 or b[1] <= 0 or b[2] >= CELL or b[3] >= CELL:
+                clipped.append(f"{NAMES[k]}:f{f}")
+            hs.append(b[3] - b[1])
+            ws.append(b[2] - b[0])
+            bots.append(b[3])
+        rows[NAMES[k]] = {"h": [min(hs), max(hs)], "w": [min(ws), max(ws)], "bottom": [min(bots), max(bots)]}
+        if abs(h0[k] - med) / med > 0.12:
+            pops.append(NAMES[k])
+    for n, cs in (("turret", tcells), ("gun", gcells)):
+        for k, c in enumerate(cs):
+            b = bbox(c)
+            if not b:
+                empty.append(f"{n}:{NAMES[k]}")
+            elif b[0] <= 0 or b[1] <= 0 or b[2] >= CELL or b[3] >= CELL:
+                clipped.append(f"{n}:{NAMES[k]}")
+
+    # Preview: S, E, N, W (+ SE, NW) rows, all frames, legs + turret + gun assembled, 2x, labeled, contact line.
+    big, lab = 2, 14
+    pick = [("S", 0), ("E", 12), ("N", 8), ("W", 4), ("SE", 14), ("NW", 6)]
+    pv = Image.new("RGB", (WALK_FRAMES * CELL * big, len(pick) * (CELL * big + lab)), (107, 83, 64))
+    d = ImageDraw.Draw(pv)
+    for ri, (name, k) in enumerate(pick):
+        for f in range(WALK_FRAMES):
+            a = assemble({"hull": [cells[(f, i)] for i in range(16)], "turret": tcells, "gun": gcells}, k, k)
+            a = a.resize((CELL * big, CELL * big), Image.NEAREST)
+            x, y = f * CELL * big, ri * (CELL * big + lab)
+            pv.paste(a.convert("RGB"), (x, y + lab), a)
+            cyl = y + lab + round(CONTACT_Y * CELL * big)
+            d.line((x, cyl, x + CELL * big, cyl), fill=(160, 40, 40))
+            d.text((x + 4, y + 1), f"{name} f{f}", fill=(240, 236, 220))
+    pv.save(PREVIEW / f"{unit}-walk.png")
+    bg = Image.new("RGBA", legs.size, (107, 83, 64, 255))
+    bg.alpha_composite(legs)
+    bg.convert("RGB").save(PREVIEW / f"{unit}-legs-sheet.png")
+
+    report = {
+        "unit": unit,
+        "cell": CELL,
+        "frames": WALK_FRAMES,
+        "contactY": CONTACT_Y,
+        "fit": [round(scale, 4), round(ox, 2), round(oy, 2)],
+        "empty": empty,
+        "clipped": clipped,
+        "size_pop_dirs_f0": pops,
+        "rows": rows,
+    }
+    (PREVIEW / f"{unit}-walk.json").write_text(json.dumps(report, indent=1) + "\n")
+    print(json.dumps({k: report[k] for k in ("unit", "fit", "empty", "clipped", "size_pop_dirs_f0")}))
+    for n, r in rows.items():
+        print(f"  {n:4s} h {r['h']} w {r['w']} bottom {r['bottom']}")
+    return report

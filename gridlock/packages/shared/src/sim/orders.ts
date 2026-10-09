@@ -137,6 +137,11 @@ function tickMovementBodies(state: MatchState, dt: number): void {
     if (e.state === "deploy" || e.state === "undeploy") continue;
     // Aircraft fly in tickAir; paratroopers drift down in tickChutes.
     if (e.air || e.chute) continue;
+    // A lunging Behemoth flies its arc in tickLunges; a Stalker under the ground stays put.
+    if (e.lunge || e.burrow) {
+      e.waypoints = [];
+      continue;
+    }
     // A Titan shot down in the air drops straight down in tickJets.
     if (e.jet?.crash) {
       e.waypoints = [];

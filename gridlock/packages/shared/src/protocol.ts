@@ -19,7 +19,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 128;
+export const PROTOCOL_VERSION = 129;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -149,6 +149,14 @@ export interface EntityView {
   dormant?: true;
   /** Sim Unit II, own side only: blink drive charge, 0–1. 1 is ready. */
   blink?: { u: number };
+  /** Behemoth in the air on a lunge: height off the ground, world px. */
+  lungeAlt?: number;
+  /** Behemoth, own side only: lunge charge, 0–1. 1 is ready. */
+  lungeCharge?: number;
+  /** Behemoth landing laser sweeps: green, not the Commander's red. */
+  greenLaser?: true;
+  /** Stalker digging in, under the ground (own side only), or rising. */
+  burrow?: "digging" | "down" | "rising";
   /** Sim Unit II inside a hostile garrison, own side only: the host and the share of the purge done, 0–1. */
   purge?: { hostId: number; u: number };
   /**
@@ -481,6 +489,8 @@ export interface ProjectileView {
   y: number;
   vx: number;
   vy: number;
+  /** Fired by the Borg: drawn and heard as an energy bolt, pulse, or plasma shot. The sim treats it as its round kind. */
+  energy?: true;
   caliber: number;
   fromId: number;
   bounced: boolean;
@@ -533,6 +543,8 @@ export interface ImpactView {
   id: number;
   ownerId: string;
   kind: ImpactKind;
+  /** Landed by a Borg weapon: an energy burst rather than a bullet strike or a shell blast. */
+  energy?: true;
   x: number;
   y: number;
   vx: number;
@@ -829,6 +841,10 @@ export type ClientMessage =
   | { type: "cmd.engagecontacts"; ids: number[]; on: boolean }
   /** Cyborg and Sim Unit: `on` shuts him down where he stands (dark, still, passed over by enemy guns); off powers him up. */
   | { type: "cmd.powerdown"; ids: number[]; on: boolean }
+  /** Behemoth: lunge at (x, y), short of it when the point is past its reach. */
+  | { type: "cmd.lunge"; ids: number[]; x: number; y: number }
+  /** Stalker: dig in under the ground (`on`), or break back out. */
+  | { type: "cmd.burrow"; ids: number[]; on: boolean }
   /** Sim Unit II: blink to (x, y). Past his reach he walks until it is in reach, then blinks. */
   | { type: "cmd.blink"; ids: number[]; x: number; y: number; queue?: boolean }
   /** Sim Unit II: blink into a hostile garrison (`targetId`), kill every soldier aboard, and blink back out. */

@@ -1,0 +1,18 @@
+{
+  "key": "spawnpool",
+  "out": "units/spawnpool",
+  "sfx": {
+    "special": {
+      "prompt": "Alien biomechanical shipyard on water powering up: deep bubbling and churning of a glowing spawning pool, wet organic gurgles and splashes, chitin hatch plates clanking open, a rising synthetic electric hum and a slow pulsing throb, close, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Alien biomechanical shipyard on water destroyed: an energy core exploding with crackling electric arcs, a huge hissing rush of steam and churning water, alien metal and chitin structure groaning and collapsing into the water with heavy splashes, medium distance outdoors, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

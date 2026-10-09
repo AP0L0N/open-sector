@@ -61,6 +61,8 @@ export function drawGatlingFlash(
   size: number,
   now: number,
   seed: number,
+  /** A Borg pulse repeater: the flash is green light, not powder flame. */
+  energy?: boolean,
 ): void {
   const phase = Math.floor(now / 45 + seed) % 3;
   const len = size * (0.16 + phase * 0.04);
@@ -69,7 +71,7 @@ export function drawGatlingFlash(
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
   ctx.globalAlpha = phase === 1 ? 0.75 : 1;
-  ctx.fillStyle = "#ffd76a";
+  ctx.fillStyle = energy ? "#7dffc0" : "#ffd76a";
   ctx.beginPath();
   ctx.moveTo(m.x + dx * len, m.y + dy * len);
   ctx.lineTo(m.x - dy * w, m.y + dx * w);
@@ -80,7 +82,7 @@ export function drawGatlingFlash(
   const spread = phase === 0 ? 0.55 : -0.55;
   const sx = dx * Math.cos(spread) - dy * Math.sin(spread);
   const sy = dx * Math.sin(spread) + dy * Math.cos(spread);
-  ctx.strokeStyle = "#fff0b0";
+  ctx.strokeStyle = energy ? "#d8fff0" : "#fff0b0";
   ctx.lineWidth = Math.max(1, size * 0.025);
   ctx.beginPath();
   ctx.moveTo(m.x, m.y);

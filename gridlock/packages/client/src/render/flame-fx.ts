@@ -13,6 +13,8 @@
 
 /** A burning-fuel particle. World ground point, `h` screen pixels above the ground. */
 export interface FlameParticle {
+  /** Thrown by a Borg plasma jet: drawn green, and it leaves no soot. */
+  energy?: boolean;
   x: number;
   y: number;
   h: number;

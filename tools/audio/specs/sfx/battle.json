@@ -130,6 +130,25 @@
       "duration": 1.2,
       "variants": 2,
       "influence": 0.6
+    },
+    "energy_hit": {
+      "prompt": "Small sci-fi energy bolt hitting dirt and metal: a quick sharp electric zap and sizzle on impact with a tiny crackle of sparks, close, no music, no voice",
+      "duration": 0.7,
+      "variants": 3,
+      "influence": 0.65
+    },
+    "energy_burst": {
+      "prompt": "A big sci-fi plasma shell slamming into the ground nearby in an open field: a heavy electric boom, a burst of earth, and a crackling discharge of electric arcs snapping and fizzing out, short echo, no gunpowder, no music, no voice",
+      "duration": 3.0,
+      "variants": 3,
+      "influence": 0.6,
+      "lufs": -10
+    },
+    "energy_laser": {
+      "prompt": "Short sci-fi laser beam sweeping across a target and burning it: a searing high electric zap with a hot sizzling burn hiss, quick sweep, close, no music, no voice",
+      "duration": 1.0,
+      "variants": 2,
+      "influence": 0.65
     }
   }
 }

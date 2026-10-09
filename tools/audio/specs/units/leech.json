@@ -1,0 +1,53 @@
+{
+  "key": "leech",
+  "out": "units/leech",
+  "voice": {
+    "name": "Open Sector - Borg Swarm",
+    "description": "A fast, hissing swarm chorus of many small synthetic voices speaking the same words together, like a hive of insect-like machines piloting alien craft: thin and sharp, raspy and buzzing, with dry clicking and a faint wet chitter between words, emotionless and eager, quick clipped cadence, a slightly metallic hollow resonance under the voice.",
+    "sample": "The swarm hears you. We skim the water, we split the sky, we hunt beneath the waves. Point and we strike. Many wings, one mind. The collective is hungry and the prey is near.",
+    "stability": 0.55,
+    "similarity": 0.8,
+    "style": 0.35,
+    "speed": 1.05
+  },
+  "lines": {
+    "select": [
+      "Leech skims.",
+      "The swarm hears.",
+      "We glide."
+    ],
+    "move": [
+      "Skimming.",
+      "Across the water.",
+      "Swift. Silent."
+    ],
+    "attack": [
+      "Bleed them.",
+      "Plasma burning.",
+      "Latch on."
+    ],
+    "ready": [
+      "Leech spawned."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Small sci-fi plasma cannon on a fast boat firing: a quick bright electric plasma bolt shot with a punchy energy thump and a short crackling sizzle, energy weapon, no gunpowder, close, outdoors on water, no music, no voice",
+      "duration": 1.0,
+      "variants": 2,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Fast alien skiff boat skimming across water: a hissing high-pressure hydrojet whoosh accelerating, spray splashing and slapping off the hull, a light electric hum, close, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Small alien plasma boat destroyed on water: a sharp energy explosion with crackling electric arcs, a power core bursting with a fizz, a big splash and hissing steam as the wreck sinks with bubbles, medium distance outdoors, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

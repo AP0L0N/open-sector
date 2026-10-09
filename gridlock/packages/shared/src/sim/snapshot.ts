@@ -1,4 +1,7 @@
 import {
+  canLunge,
+  factionOf,
+  isAirfieldType,
   bridgeBuildSeconds,
   isBridge,
   airFuelOf,
@@ -61,6 +64,8 @@ import { powerOf } from "./power.js";
 import { radarContacts, radarOnline } from "./radar.js";
 import { cyborgShutdownIn } from "./cyborg-link.js";
 import { blinkCharge, purgeProgress } from "./simunit.js";
+import { lungeAlt, lungeCharge } from "./lunge.js";
+import { hiddenBurrowed } from "./burrow.js";
 import { isSimUnit, onUplink } from "../catalog.js";
 import { aswDeckView, sonarContacts } from "./destroyer.js";
 import { scrapCap } from "./smelter.js";
@@ -392,6 +397,8 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
     if (e.garrisonedIn && !friendly) continue;
     // A submerged boat shows only to an enemy whose Destroyer sonar hears it, fog or not.
     if (!friendly && hiddenSubmarine(state, youPlayerId, e)) continue;
+    // A Stalker down under the ground shows to no enemy.
+    if (hiddenBurrowed(state, youPlayerId, e)) continue;
     // Houses and untaken map defences out of sight are part of the ground: the client draws them from the scenery list.
     if (!friendly && !sonarSpotted(state, youPlayerId, e) && !entityOnMask(e, vis, state.width, state.height, state.tileSize)) continue;
     const job = e.queue[0];
@@ -439,6 +446,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       shutdown: e.shutdown,
       dormant: e.dormant,
       blink: friendly && isSimUnit(e.type) && !e.wreck ? { u: blinkCharge(state, e) } : undefined,
+      lungeAlt: e.lunge ? Math.round(lungeAlt(state, e) * 10) / 10 : undefined,
+      lungeCharge: friendly && canLunge(e.type) && !e.wreck ? Math.round(lungeCharge(state, e) * 100) / 100 : undefined,
+      greenLaser: e.laser && factionOf(e.type) === "borg" && e.type !== "cyborgcommander" ? true : undefined,
+      burrow: e.burrow ? e.burrow.phase : undefined,
       purge: friendly && e.purge ? { hostId: e.purge.hostId, u: purgeProgress(state, e) ?? 0 } : undefined,
       takeover: e.takeover ? { by: e.takeover.by, u: Math.min(1, e.takeover.ticks / secondsToTicks(CYBORG_TAKEOVER_SECONDS)) } : undefined,
       laser: e.laser ? laserView(e.laser, state.tick) : undefined,
@@ -570,7 +581,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
         : undefined,
       chute: e.chute ? e.chute.alt : undefined,
       pads:
-        friendly && e.type === "airfield" ? { used: padsTaken(state, e).size, cap: AIRFIELD_PADS } : undefined,
+        friendly && isAirfieldType(e.type) ? { used: padsTaken(state, e).size, cap: AIRFIELD_PADS } : undefined,
       drone: e.drone
         ? {
             mode: e.drone.mode,
@@ -655,6 +666,7 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
         y: wire(p.y),
         vx: wire(p.vx),
         vy: wire(p.vy),
+        ...(energyShot(state, p.ownerId) ? { energy: true as const } : {}),
         caliber: p.caliber,
         fromId: p.fromId,
         bounced: p.bounced,
@@ -684,9 +696,9 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
           : {}),
       })),
     // A reactor going up is seen from everywhere: the cloud towers over the fog.
-    impacts: state.impacts.filter(
-      (i) => i.nuke || allies(state, youPlayerId, i.ownerId) || canSeeWorld(state, vis, i.x, i.y),
-    ),
+    impacts: state.impacts
+      .filter((i) => i.nuke || allies(state, youPlayerId, i.ownerId) || canSeeWorld(state, vis, i.x, i.y))
+      .map((i) => (energyShot(state, i.ownerId) ? { ...i, energy: true as const } : i)),
     launches: state.launches.filter((l) => {
       const from = state.entities.get(l.fromId);
       return (from != null && allies(state, youPlayerId, from.ownerId)) || canSeeWorld(state, vis, l.x, l.y);
@@ -783,4 +795,9 @@ function visibleBodies(state: MatchState, youPlayerId: string, vis: Uint8Array):
     });
   }
   return bodies;
+}
+
+/** Every Borg weapon is an energy weapon: their shots and hits go out flagged so the client draws and voices them that way. */
+function energyShot(state: MatchState, ownerId: string): boolean {
+  return state.players.get(ownerId)?.faction === "borg";
 }

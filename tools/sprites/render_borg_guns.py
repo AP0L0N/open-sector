@@ -8,8 +8,8 @@ Same file set and JSON schema as render_ww2_guns.py, so the client draws them as
   <id>-gun.png        16 rows x 1 column: the traversing head. Crewless, so crewCols is 1 and
                       column 0 (nobody at the gun) is the only one. Every cell is the size and
                       anchor of <id>.png.
-
-Not rotatable buildings, so no <id>/00..23.png turned faces.
+  <id>/00..23.png     the base turned in 15 degree steps, <id>/faces.json (turn_faces.py), so the
+                      player can turn it before placing, as the WW2 guns.
 
   spineturret  t(1)  anti-infantry: a squat chitin bulb on clawed roots, a twin needle gatling head
   pulsespire   t(1)  anti-armour: a tall tapered spire, a long emitter barrel through green energy rings
@@ -200,12 +200,13 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True, help="buildings asset folder")
     ap.add_argument("--only", nargs="*", choices=sorted(GUNS))
+    ap.add_argument("--no-turned", action="store_true", help="skip the 24 turned base faces (quick look)")
     args = ap.parse_args()
     for name, g in GUNS.items():
         if args.only and name not in args.only:
             continue
-        # Not rotatable: no turned faces.
-        wg.render_gun(Path(args.out), g, turned=False)
+        # Rotatable before placing: <id>/00..23.png + faces.json, as the WW2 guns.
+        wg.render_gun(Path(args.out), g, turned=not args.no_turned)
 
 
 if __name__ == "__main__":

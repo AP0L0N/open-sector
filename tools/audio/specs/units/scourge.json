@@ -1,0 +1,54 @@
+{
+  "key": "scourge",
+  "out": "units/scourge",
+  "voice": {
+    "name": "Open Sector - Borg Swarm",
+    "voice_id": "ChQdep4yvSgTU4K86vAg",
+    "note": "Shares the Borg Swarm voice designed for the Leech (voices/leech.json); slower and heavier for the bomber.",
+    "description": "A fast, hissing swarm chorus of many small synthetic voices speaking the same words together, like a hive of insect-like machines piloting alien craft: thin and sharp, raspy and buzzing, with dry clicking and a faint wet chitter between words, emotionless and eager, quick clipped cadence, a slightly metallic hollow resonance under the voice.",
+    "stability": 0.6,
+    "similarity": 0.8,
+    "style": 0.3,
+    "speed": 0.95
+  },
+  "lines": {
+    "select": [
+      "Scourge circles.",
+      "Heavy wings.",
+      "The payload waits."
+    ],
+    "move": [
+      "Droning onward.",
+      "We darken the sky.",
+      "Flying high."
+    ],
+    "attack": [
+      "Diving.",
+      "Plasma falls.",
+      "Scour them clean."
+    ],
+    "ready": [
+      "Scourge is airborne."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Sci-fi dive bomber strafing with pulse guns: a short rapid string of sharp electric energy bolt zaps, crackling laser blaster snaps, energy weapon, no gunpowder, no bullets, close, outdoors, no music, no voice",
+      "duration": 1.2,
+      "variants": 2,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Large beetle-like alien bomber flying past overhead: a deep heavy droning wing hum, slow powerful insect wingbeats throbbing as it passes by left to right, a low electric drone, outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Large beetle-like alien bomber shot down: a heavy plasma explosion in the air with crackling electric arcs, the deep wing drone groaning down in pitch as it falls, a big crash and energy burst on the ground, medium distance outdoors, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

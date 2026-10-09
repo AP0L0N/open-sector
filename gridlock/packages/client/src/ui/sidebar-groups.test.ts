@@ -25,11 +25,12 @@ describe("sidebarGroupOf", () => {
 
   it("gives the Borg their base, defences, cyborgs, and heavy assimilators, and nothing of Earth United's", () => {
     const g = groupEntries("borg");
-    assert.deepEqual(g.structures.map((e) => e.type).sort(), ["assimilator", "cyborgcentral", "forge", "fusionnode", "nexus"]);
+    assert.deepEqual(g.structures.map((e) => e.type).sort(), ["aerie", "assimilator", "cyborgcentral", "forge", "fusionnode", "nexus", "spawnpool"]);
     assert.deepEqual(g.defences.map((e) => e.type).sort(), ["pulsespire", "spineturret"]);
     assert.deepEqual(g.infantry.map((e) => e.type).sort(), ["borgdrone", "cyborg", "cyborgcommander", "lancer", "simunit2"]);
     assert.deepEqual(g.tanks.map((e) => e.type).sort(), ["behemoth", "ravager", "stalker"]);
-    assert.equal(g.naval.length + g.aircraft.length, 0);
+    assert.deepEqual(g.naval.map((e) => e.type).sort(), ["leech", "lurker"]);
+    assert.deepEqual(g.aircraft.map((e) => e.type).sort(), ["scourge", "wasp"]);
     const eu = Object.values(groupEntries("eu")).flat().map((e) => e.type);
     assert.equal(eu.includes("cyborg"), false);
     assert.equal(eu.includes("cyborgcentral"), false);

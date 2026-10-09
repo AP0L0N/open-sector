@@ -1,4 +1,5 @@
 import {
+  isAirfieldType,
   BV222_TROOPS,
   isAircraftType,
   isDroneType,
@@ -149,7 +150,7 @@ export function resolveHoverAction(args: {
   if (args.mine && trucks.length > 0) return "disable";
   // Your own strip: planes go home to land and rearm.
   const planes = ownUnits.some((e) => !!e.air && !e.drone);
-  if (hit && planes && hit.type === "airfield" && hit.ownerId === you && hit.hp > 0 && !hit.wreck) return "land";
+  if (hit && planes && isAirfieldType(hit.type) && hit.ownerId === you && hit.hp > 0 && !hit.wreck) return "land";
   return null;
 }
 

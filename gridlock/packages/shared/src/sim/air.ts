@@ -1,5 +1,6 @@
 import { buildingRect, rectLocal, rectWorld, type BuildingRect } from "../building-rect.js";
 import {
+  isAirfieldType,
   AIR_BELT_REARM_PER_SEC,
   AIR_CLIMB_PER_SEC,
   AIR_CRASH_BUILDING_DAMAGE,
@@ -287,7 +288,7 @@ function liveHome(state: MatchState, e: Entity): Entity | null {
   const id = e.air?.homeId;
   if (id == null) return null;
   const f = state.entities.get(id);
-  if (!f || f.hp <= 0 || f.type !== "airfield" || f.ownerId !== e.ownerId) return null;
+  if (!f || f.hp <= 0 || !isAirfieldType(f.type) || f.ownerId !== e.ownerId) return null;
   return f;
 }
 
@@ -302,7 +303,7 @@ function ensureHome(state: MatchState, e: Entity): Entity | null {
   let bestPad = 0;
   let bestD = Infinity;
   for (const f of state.entities.values()) {
-    if (f.type !== "airfield" || f.hp <= 0 || f.ownerId !== e.ownerId) continue;
+    if (!isAirfieldType(f.type) || f.hp <= 0 || f.ownerId !== e.ownerId) continue;
     // A Stuka in that field's queue already holds a pad. Taking it would stall the queue.
     if (padsSpoken(state, f) >= AIRFIELD_PADS) continue;
     const pad = freePad(state, f, e.id);

@@ -33,13 +33,13 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Rapid burst from a heavy alien electric needle gatling: a fast buzzing stream of sharp metallic needle shots with crackling electric snaps and a whining spin-up and spin-down, close, outdoors battlefield, no music, no voice",
+      "prompt": "Rapid burst from a heavy sci-fi needle pulse gatling energy weapon: a fast buzzing stream of thin sharp energy pulses, crackling electric snaps and laser zaps with a whining spin-up and spin-down, no gunpowder, no bullets, close, outdoors battlefield, no music, no voice",
       "duration": 1.5,
       "variants": 2,
       "influence": 0.65
     },
     "fire_flame": {
-      "prompt": "Alien nanite flamethrower blast: a pressurized hiss bursting into a roaring rushing jet of fire with a fizzing, crackling swarm-like sizzle, close, outdoors, no music, no voice",
+      "prompt": "Sci-fi plasma jet torch blast: a sharp electric ignition snap bursting into a roaring rushing stream of searing plasma, an intense electric hiss and buzzing crackle of arcing energy, like a giant plasma cutter, close, outdoors, no music, no voice",
       "duration": 1.8,
       "variants": 2,
       "influence": 0.65

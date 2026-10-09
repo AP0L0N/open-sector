@@ -1,0 +1,54 @@
+{
+  "key": "wasp",
+  "out": "units/wasp",
+  "voice": {
+    "name": "Open Sector - Borg Swarm",
+    "voice_id": "ChQdep4yvSgTU4K86vAg",
+    "note": "Shares the Borg Swarm voice designed for the Leech (voices/leech.json); quicker for the fighter.",
+    "description": "A fast, hissing swarm chorus of many small synthetic voices speaking the same words together, like a hive of insect-like machines piloting alien craft: thin and sharp, raspy and buzzing, with dry clicking and a faint wet chitter between words, emotionless and eager, quick clipped cadence, a slightly metallic hollow resonance under the voice.",
+    "stability": 0.5,
+    "similarity": 0.8,
+    "style": 0.4,
+    "speed": 1.1
+  },
+  "lines": {
+    "select": [
+      "Wasp aloft.",
+      "Wings ready.",
+      "We buzz."
+    ],
+    "move": [
+      "Swarming.",
+      "Wings beat.",
+      "Into the sky."
+    ],
+    "attack": [
+      "Sting them.",
+      "Pulse cannons hot.",
+      "Swarm the prey."
+    ],
+    "ready": [
+      "Wasp takes wing."
+    ]
+  },
+  "sfx": {
+    "fire": {
+      "prompt": "Sci-fi fighter firing twin pulse cannons: two quick bursts of sharp electric energy bolts, rapid laser blaster zaps with crackling sizzle, energy weapon, no gunpowder, no bullets, close, outdoors, no music, no voice",
+      "duration": 1.0,
+      "variants": 2,
+      "influence": 0.65
+    },
+    "move": {
+      "prompt": "Insect-like alien fighter craft flying past overhead: a high-pitched fast insect wing buzz rising and falling as it passes by left to right, a thin electric whine, outdoors, no music, no voice",
+      "duration": 2.0,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Insect-like alien fighter shot down: a sharp energy explosion in the air with crackling electric arcs, the wing buzz sputtering and spiralling down in pitch, a crash and burst on the ground, medium distance outdoors, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

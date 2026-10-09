@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, hostSlot, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
+  isNavalType,
+  isAircraftType,
   BORG_TYPES,
   FORGE_REARM_SECONDS,
   BUILDING_TYPES,
@@ -77,6 +79,7 @@ describe("factions in the catalog", () => {
     assert.deepEqual(
       [...BORG_TYPES].sort(),
       [
+        "aerie",
         "assimilator",
         "behemoth",
         "borgdrone",
@@ -87,19 +90,27 @@ describe("factions in the catalog", () => {
         "fusionnode",
         "hivecore",
         "lancer",
+        "leech",
+        "lurker",
         "nexus",
         "pulsespire",
         "ravager",
+        "scourge",
         "seed",
         "simunit2",
+        "spawnpool",
         "spineturret",
         "stalker",
+        "wasp",
       ],
     );
     for (const t of ["rig", "core", "dynamo", "smelter", "rifleman", "ss3", "muster", "sandbags"]) assert.equal(factionOf(t), "eu", t);
     for (const t of BUILDING_TYPES.filter((b) => factionOf(b) === "borg")) assert.ok(BORG_TYPES.has(t));
-    // Cyborgs come from the Central, every other Borg unit from the Nanite Forge.
-    for (const t of TRAIN_TYPES.filter((u) => factionOf(u) === "borg")) assert.equal(producerType(t), isCyborg(t) ? "cyborgcentral" : "forge", t);
+    // Cyborgs come from the Central, ships from the Spawning Pool, planes from the Aerie, the rest from the Nanite Forge.
+    for (const t of TRAIN_TYPES.filter((u) => factionOf(u) === "borg")) {
+      const want = isCyborg(t) ? "cyborgcentral" : isNavalType(t) ? "spawnpool" : isAircraftType(t) ? "aerie" : "forge";
+      assert.equal(producerType(t), want, t);
+    }
     for (const t of ["stalker", "ravager", "behemoth"] as const) assert.equal(producerType(t), "forge");
     for (const t of ["borgdrone", "lancer"] as const) assert.ok(isCyborg(t) && onUplink(t) && isInfantryType(t), t);
     assert.ok(!onUplink("cyborgcommander"));
@@ -290,6 +301,59 @@ describe("a Borg seat", () => {
     for (let i = 0; i < secondsToTicks(FORGE_REARM_SECONDS * 4) + 1; i++) step(state, TICK_DT);
     assert.ok((near.ammo.ap ?? 0) + (near.ammo.he ?? 0) > 0, "the Forge refills the near Stalker");
     assert.equal((far.ammo.ap ?? 0) + (far.ammo.he ?? 0), 0, "the far one waits");
+  });
+
+  it("grows ships at a Spawning Pool and planes at an Aerie, which parks them on its pads", () => {
+    assert.equal(producerType("leech"), "spawnpool");
+    assert.equal(producerType("lurker"), "spawnpool");
+    assert.equal(producerType("wasp"), "aerie");
+    assert.equal(producerType("scourge"), "aerie");
+    assert.equal(producerType("gunboat"), "dock");
+    assert.equal(producerType("fw190"), "airfield");
+    const state = openField();
+    unpack(state, "B");
+    const ts = state.tileSize;
+    state.players.get("B")!.scrap = 50_000;
+    const none = applyCommand(state, "B", { type: "cmd.train", unit: "wasp" });
+    assert.equal(none.ok, false);
+    if (!none.ok) assert.equal(none.message, "Need an Aerie.");
+    makeEntity(state, "fusionnode", "B", tileCenter(100, ts), tileCenter(100, ts), { tileX: 100, tileY: 100 });
+    makeEntity(state, "fusionnode", "B", tileCenter(100, ts), tileCenter(110, ts), { tileX: 100, tileY: 110 });
+    const aerie = makeEntity(state, "aerie", "B", tileCenter(120, ts), tileCenter(140, ts), { tileX: 120, tileY: 140 });
+    assert.equal(applyCommand(state, "B", { type: "cmd.train", unit: "wasp" }).ok, true);
+    const locked = applyCommand(state, "B", { type: "cmd.train", unit: "scourge" });
+    assert.equal(locked.ok, false);
+    if (!locked.ok) assert.equal(locked.message, "Need a Neural Nexus.");
+    for (let i = 0; i < secondsToTicks(catalog("wasp").buildSeconds) * 3 && aerie.queue.length > 0; i++) step(state, TICK_DT);
+    const wasp = [...state.entities.values()].find((e) => e.type === "wasp");
+    assert.ok(wasp, "the Wasp rolls out");
+    assert.equal(wasp!.air?.homeId, aerie.id, "homed on its Aerie");
+    const ship = applyCommand(state, "B", { type: "cmd.train", unit: "leech" });
+    assert.equal(ship.ok, false);
+    if (!ship.ok) assert.equal(ship.message, "Need a Spawning Pool.");
+  });
+
+  it("flags every Borg shot and hit as energy, and no Earth United one", () => {
+    const state = openField();
+    const ts = state.tileSize;
+    makeEntity(state, "borgdrone", "B", tileCenter(120, ts), tileCenter(120, ts));
+    makeEntity(state, "rifleman", "A", tileCenter(120, ts), tileCenter(128, ts));
+    let borgHit = false;
+    let euHit = false;
+    for (let i = 0; i < 80; i++) {
+      step(state, TICK_DT);
+      const snap = snapshotFor(state, "A");
+      for (const p of snap.projectiles) assert.equal(p.energy, state.players.get(state.entities.get(p.fromId)?.ownerId ?? "")?.faction === "borg" ? true : undefined);
+      for (const hit of snap.impacts) {
+        if (hit.ownerId === "B") borgHit ||= hit.energy === true;
+        if (hit.ownerId === "A") {
+          assert.equal(hit.energy, undefined);
+          euHit = true;
+        }
+      }
+    }
+    assert.ok(borgHit, "where a Drone's pulse lands is energy");
+    assert.ok(euHit, "the rifleman fired too");
   });
 
   it("lets the host seat a Borg CPU, and refuses an unknown faction", () => {

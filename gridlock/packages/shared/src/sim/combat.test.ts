@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createRoom, joinRoom, startMatch, updateSelf } from "../lobby.js";
 import {
+  isAircraftType,
   ALLY_LINE_PATIENCE_SECONDS,
   DAY_SECONDS,
   DUSK_SECONDS,
@@ -2561,7 +2562,7 @@ describe("force attack out of sight", () => {
   const NIGHT_TICK = Math.round((DAY_SECONDS + DUSK_SECONDS + NIGHT_SECONDS / 2) / TICK_DT);
   /** Armed ground units. Planes fly their own runs; ships need water. */
   const GROUND_GUNS = TRAIN_TYPES.filter(
-    (t) => fires(t) && !isNavalType(t) && !["stuka", "fw190", "bv222", "he111", "droneop"].includes(t),
+    (t) => fires(t) && !isNavalType(t) && !isAircraftType(t) && !["stuka", "fw190", "bv222", "he111", "droneop"].includes(t),
   );
 
   function bareField(night: boolean): MatchState {

@@ -38,7 +38,7 @@
   },
   "sfx": {
     "rockets": {
-      "prompt": "Sci-fi shoulder plasma lance firing: a quick rising high-pitched electric charge whine, then a heavy concussive energy thump and a crackling plasma bolt hissing away, close, outdoors battlefield, no music, no voice",
+      "prompt": "Sci-fi plasma lance energy weapon firing: a quick rising high-pitched electric charge-up whine, then a heavy plasma bolt released with a deep concussive energy thump and a crackling sizzling whoosh streaking away, no rocket motor, no explosion, close, outdoors battlefield, no music, no voice",
       "duration": 1.8,
       "variants": 2,
       "influence": 0.65

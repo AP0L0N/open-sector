@@ -1,4 +1,4 @@
-import { AIRFIELD_PADS, BORG_FACTORY, canContinuousTrain, catalog, factionOf, inFaction, isAircraftType, isCyborg, isNavalType, isOneAtATime, secondsToTicks, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
+import { AIRFIELD_PADS, BORG_FACTORY, airfieldOf, canContinuousTrain, catalog, dockOf, isDockType, factionOf, inFaction, isAirfieldType, isAircraftType, isCyborg, isNavalType, isOneAtATime, secondsToTicks, techNeeds, TRAIN_QUEUE_CAP, UNIT_CAP, UNIT_SPACE_PAD, type BuildingType, type TrainType } from "../catalog.js";
 import { airfieldPadWorld, freePad, padsSpoken, parkHeading } from "./air.js";
 import { makeEntity, newAirState, ownedUnits, rallyPoint, worldToTile } from "./geo.js";
 import { openSpotNear, packRadius, packSlots } from "./formation.js";
@@ -10,14 +10,30 @@ import type { Entity, MatchState, TrainJob } from "./types.js";
 /** The refusal when a player asks for the other faction's building or unit. */
 export const NOT_YOUR_FACTION = "Not available to your faction.";
 
-export function producerType(unit: TrainType): "muster" | "armory" | "airfield" | "dock" | "cyborgcentral" | "forge" {
+export function producerType(unit: TrainType): "muster" | "armory" | "airfield" | "aerie" | "dock" | "spawnpool" | "cyborgcentral" | "forge" {
   if (isCyborg(unit)) return "cyborgcentral";
+  const faction = factionOf(unit);
+  if (isAircraftType(unit)) return airfieldOf(faction);
+  if (isNavalType(unit)) return dockOf(faction);
   // Every other Borg unit is a heavy assimilator, grown at the Nanite Forge.
-  if (factionOf(unit) === "borg") return BORG_FACTORY;
+  if (faction === "borg") return BORG_FACTORY;
   if (unit === "rifleman" || unit === "gunner" || unit === "sniper" || unit === "atinfantry" || unit === "rocketer" || unit === "pyro" || unit === "mortarman" || unit === "engineer" || unit === "medic" || unit === "droneop" || unit === "jumpjet") return "muster";
-  if (isAircraftType(unit)) return "airfield";
-  if (isNavalType(unit)) return "dock";
   return "armory";
+}
+
+/** "Need a Barracks.", "Need an Airfield.": the producer a unit is waiting on. */
+function needProducer(want: ReturnType<typeof producerType>): string {
+  if (want === "muster") return "Need a Barracks.";
+  if (want === "dock") return "Need a Marine Base.";
+  if (want === "armory") return "Need a Machine Shop.";
+  const name = catalog(want).name;
+  return /^[AEIOU]/.test(name) ? `Need an ${name}.` : `Need a ${name}.`;
+}
+
+/** The refusal when every one of the player's fields has all its pads spoken for. */
+function padsFull(want: BuildingType): string {
+  const name = catalog(want).name;
+  return `${name} pads full (${AIRFIELD_PADS} planes). Build another ${name}.`;
 }
 
 /** First tech building this unit still needs, or null once the player has every one standing. */
@@ -74,7 +90,7 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
   for (const e of state.entities.values()) {
     if (e.ownerId !== playerId || e.type !== want || e.hp <= 0) continue;
     if (e.queue.length >= TRAIN_QUEUE_CAP) continue;
-    if (want === "airfield" && padsSpoken(state, e) >= AIRFIELD_PADS) continue;
+    if (isAirfieldType(want) && padsSpoken(state, e) >= AIRFIELD_PADS) continue;
     const load = e.queue.reduce((s, j) => s + (j.totalTicks - j.progressTicks), 0);
     if (load < bestLoad) {
       bestLoad = load;
@@ -85,14 +101,9 @@ export function startTrain(state: MatchState, playerId: string, unit: TrainType)
     const busy = [...state.entities.values()].some(
       (e) => e.ownerId === playerId && e.type === want && e.hp > 0,
     );
-    if (busy && want === "airfield") return `Airfield pads full (${AIRFIELD_PADS} planes). Build another Airfield.`;
+    if (busy && isAirfieldType(want)) return padsFull(want);
     if (busy) return "Queue is full.";
-    if (want === "airfield") return "Need an Airfield.";
-    if (want === "muster") return "Need a Barracks.";
-    if (want === "dock") return "Need a Marine Base.";
-    if (want === "cyborgcentral") return "Need a Cyborg Central.";
-    if (want === "forge") return "Need a Nanite Forge.";
-    return "Need a Machine Shop.";
+    return needProducer(want);
   }
   const tech = techMissing(state, playerId, unit);
   if (tech) return `Need a ${catalog(tech).name}.`;
@@ -120,13 +131,7 @@ function trainQueued(state: MatchState, playerId: string, unit: TrainType): bool
 }
 
 function producerNeeded(unit: TrainType): string {
-  const want = producerType(unit);
-  if (want === "airfield") return "Need an Airfield.";
-  if (want === "muster") return "Need a Barracks.";
-  if (want === "dock") return "Need a Marine Base.";
-  if (want === "cyborgcentral") return "Need a Cyborg Central.";
-  if (want === "forge") return "Need a Nanite Forge.";
-  return "Need a Machine Shop.";
+  return needProducer(producerType(unit));
 }
 
 /** Put one job on this producer. Same gates as `startTrain`, aimed at one building. */
@@ -141,9 +146,7 @@ function queueOn(state: MatchState, playerId: string, unit: TrainType, building:
   if (ownedUnits(state, playerId) + queuedCount(state, playerId) >= UNIT_CAP) return "Unit cap reached.";
   if (building.ownerId !== playerId || building.hp <= 0 || building.type !== producerType(unit)) return producerNeeded(unit);
   if (building.queue.length >= TRAIN_QUEUE_CAP) return "Queue is full.";
-  if (building.type === "airfield" && padsSpoken(state, building) >= AIRFIELD_PADS) {
-    return `Airfield pads full (${AIRFIELD_PADS} planes). Build another Airfield.`;
-  }
+  if (isAirfieldType(building.type) && padsSpoken(state, building) >= AIRFIELD_PADS) return padsFull(building.type);
   const tech = techMissing(state, playerId, unit);
   if (tech) return `Need a ${catalog(tech).name}.`;
   pushTrainJob(state, building, unit);
@@ -332,7 +335,7 @@ export function spawnUnit(
   if (!ignoreCap && ownedUnits(state, playerId) >= UNIT_CAP) return null;
   if (isAircraftType(type)) {
     // A plane rolls out onto a free hardstand and waits there for orders.
-    const pad = from.type === "airfield" ? freePad(state, from) : null;
+    const pad = isAirfieldType(from.type) ? freePad(state, from) : null;
     if (pad == null) return null;
     const at = airfieldPadWorld(from, pad, state.tileSize);
     const plane = makeEntity(state, type, playerId, at.x, at.y, { facing: parkHeading(from, state.tileSize) });
@@ -427,7 +430,7 @@ function packAtDoor(state: MatchState, from: Entity, fresh: Entity, door: { x: n
 }
 
 export function isProducer(e: Entity): boolean {
-  return e.kind === "building" && (e.type === "muster" || e.type === "armory" || e.type === "dock" || e.type === "cyborgcentral" || e.type === "forge");
+  return e.kind === "building" && (e.type === "muster" || e.type === "armory" || isDockType(e.type) || e.type === "cyborgcentral" || e.type === "forge");
 }
 
 /** Sets the rally point on every owned producer in `ids`. A point on the building's own footprint clears it. */

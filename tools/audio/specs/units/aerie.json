@@ -1,0 +1,18 @@
+{
+  "key": "aerie",
+  "out": "units/aerie",
+  "sfx": {
+    "special": {
+      "prompt": "Alien biomechanical airfield nest powering up: chitin landing pads unfolding with heavy clicks, a swarm of insect wings buzzing briefly inside the hive, an electric charge hum rising and soft energy beacons pulsing on, close, no music, no voice",
+      "duration": 3.5,
+      "variants": 1,
+      "influence": 0.6
+    },
+    "die": {
+      "prompt": "Alien biomechanical airfield nest destroyed: an energy core bursting in a plasma explosion with crackling electric arcs, a dying insect buzz and synthetic whine fading out, chitin and alien metal towers cracking and crashing down, medium distance outdoors, no music, no voice",
+      "duration": 4.0,
+      "variants": 1,
+      "influence": 0.6
+    }
+  }
+}

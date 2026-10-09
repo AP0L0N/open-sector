@@ -1,4 +1,7 @@
 import {
+  canLunge,
+  canBurrow,
+  isAirfieldType,
   BUILDING_TYPES,
   YARD_FIELD_TYPES,
   isHqBuilding,
@@ -698,7 +701,7 @@ export function paintBattleHud(ctx: Ctx): void {
     const primary = heads.slice().sort((a, b) => b.progress - a.progress)[0];
     const paused = heads.length > 0 && heads.every((j) => j.paused);
     const training = heads.some((j) => !j.paused);
-    const padsFull = want === "airfield" && hasProducer && !canQueueMore(m, unit);
+    const padsFull = isAirfieldType(want) && hasProducer && !canQueueMore(m, unit);
     const tech = hudTechMissing(m, unit);
     const techMissing = tech != null;
     // One at a time: greyed out while yours stands. While one is queued the cameo stays live to pause or cancel it.
@@ -1191,6 +1194,8 @@ const TYPE_ORDER: EntityType[] = [
   "he111",
   "horten",
   "stuka",
+  "wasp",
+  "scourge",
   "drone",
   "aswheli",
   "warden",
@@ -1214,6 +1219,8 @@ const TYPE_ORDER: EntityType[] = [
   "supply",
   "hauler",
   "gunboat",
+  "leech",
+  "lurker",
   "supplyboat",
   "submarine",
   "battleship",
@@ -1247,7 +1254,9 @@ const TYPE_ORDER: EntityType[] = [
   "muster",
   "armory",
   "airfield",
+  "aerie",
   "dock",
+  "spawnpool",
   "ciws",
   "research",
   "radar",
@@ -2365,6 +2374,34 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       badge: ready ? undefined : `${Math.round(charge * 100)}%`,
     });
   }
+  const lungers = units.filter((e) => canLunge(e.type) && !e.wreck && e.lungeAlt == null);
+  if (lungers.length > 0) {
+    const charge = Math.min(...lungers.map((e) => e.lungeCharge ?? 1));
+    const ready = charge >= 1;
+    out.push({
+      slot: "lunge",
+      act: "lunge",
+      label: "Lunge",
+      title: ready
+        ? "Click the ground: its legs throw it up and forward, short of the point if it is past the ring. Where it lands, green lasers lash out all round, burning enemy soldiers and setting the ground alight."
+        : `The legs are recharging (${Math.round(charge * 100)}%).`,
+      on: !!view?.blinkMode,
+      disabled: !ready,
+      badge: ready ? undefined : `${Math.round(charge * 100)}%`,
+    });
+  }
+  const stalkers = units.filter((e) => canBurrow(e.type) && !e.wreck);
+  if (stalkers.length > 0) {
+    const down = stalkers.some((e) => e.burrow === "down" || e.burrow === "digging");
+    out.push({
+      slot: "burrow",
+      act: down ? "unburrow" : "burrow",
+      label: down ? "Rise" : "Burrow",
+      title: down
+        ? "Break out of the ground. It comes up with its gun already laid and fires at once."
+        : "Dig in where it stands. Once under, no enemy sees it or can pick it; it neither moves nor fires until it rises.",
+    });
+  }
   const dark = units.filter((e) => e.dormant);
   const canDark = units.filter((e) => canPowerDown(e.type) && !e.dormant && !e.shutdown && !e.garrisonedIn && !e.purge);
   if (dark.length > 0) {
@@ -2705,6 +2742,15 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
   }
   if (act === "deploy-mines") {
     if (units.some((e) => (e.minePacks ?? 0) > 0)) view.setMineLayMode(!view.mineLayMode);
+    return;
+  }
+  if (act === "lunge") {
+    if (units.some((e) => canLunge(e.type) && (e.lungeCharge ?? 1) >= 1)) view.setBlinkMode(!view.blinkMode);
+    return;
+  }
+  if (act === "burrow" || act === "unburrow") {
+    const ids = units.filter((e) => canBurrow(e.type) && !e.wreck).map((e) => e.id);
+    if (ids.length) ctx.net.send({ type: "cmd.burrow", ids, on: act === "burrow" });
     return;
   }
   if (act === "blink") {

@@ -3,7 +3,7 @@
   "out": "units/pulsespire",
   "sfx": {
     "fire": {
-      "prompt": "Distant, powerful shot of a huge energy tower firing a heavy pulse bolt on an open battlefield: a deep electric boom, a sharp crackling zap and a long rolling echo, no music, no voice",
+      "prompt": "Distant, powerful shot of a huge sci-fi energy tower firing a heavy pulse bolt on an open battlefield: a loud deep electric energy boom, a sharp crackling plasma zap and a long rolling echo, energy weapon, no gunpowder, no music, no voice",
       "duration": 4.0,
       "variants": 2,
       "influence": 0.6,

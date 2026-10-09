@@ -2,9 +2,9 @@ import type { EntityType, EntityView } from "@gridlock/shared";
 import type { BuildingSpriteDef } from "./sprites.js";
 
 /** Buildings that train units. Full-strength overlay only while a job is running. */
-const PRODUCERS = new Set<EntityType>(["muster", "smelter", "armory", "assimilator", "cyborgcentral", "forge"]);
+const PRODUCERS = new Set<EntityType>(["muster", "smelter", "armory", "assimilator", "cyborgcentral", "forge", "spawnpool"]);
 /** Keep a quiet always-on overlay: blinks, the Smelter's chimneys, the lab's coil. */
-const IDLE_ALWAYS = new Set<EntityType>(["core", "dynamo", "smelter", "research", "radar", "cyborgcentral", "hivecore", "fusionnode", "assimilator", "forge", "nexus"]);
+const IDLE_ALWAYS = new Set<EntityType>(["core", "dynamo", "smelter", "research", "radar", "cyborgcentral", "hivecore", "fusionnode", "assimilator", "forge", "nexus", "spawnpool", "aerie"]);
 /** Chimney smoke never fades below this, so an idle Smelter still reads as lit. */
 const IDLE_SMOKE_GAIN = 0.75;
 
@@ -170,6 +170,64 @@ const DEFS: Partial<Record<EntityType, BuildingAnimDef>> = {
       { x: 324, y: 118, r: 5, color: "#7fe3ff", period: 1500, phase: 0.66, mode: "pulse" },
     ],
     smoke: [{ x: 204, y: 164, rise: 40, thin: true }],
+  },
+  // Spawning Pool and Aerie (render_borg_harbour.py; spots from spawnpool.json, aerie.json).
+  spawnpool: {
+    lights: [
+      { x: 210, y: 141, r: 22, color: "#6dffc8", period: 2600, phase: 0, mode: "pulse" },
+      { x: 167, y: 93, r: 6, color: "#b6fff0", period: 1800, phase: 0, mode: "pulse" },
+      { x: 158, y: 74, r: 6, color: "#b6fff0", period: 1800, phase: 0.25, mode: "pulse" },
+      { x: 228, y: 53, r: 6, color: "#b6fff0", period: 1800, phase: 0.5, mode: "pulse" },
+      { x: 261, y: 70, r: 6, color: "#b6fff0", period: 1800, phase: 0.75, mode: "pulse" },
+      { x: 134, y: 161, r: 5, color: "#6dffc8", period: 2200, phase: 0, mode: "pulse" },
+      { x: 145, y: 102, r: 5, color: "#6dffc8", period: 2200, phase: 0.333, mode: "pulse" },
+      { x: 263, y: 97, r: 5, color: "#6dffc8", period: 2200, phase: 0.667, mode: "pulse" },
+      { x: 178, y: 91, r: 7, color: "#7dffd0", period: 1400, phase: 0.3, mode: "pulse" },
+    ],
+    smoke: [{ x: 210, y: 141, rise: 34, thin: true }],
+  },
+  aerie: {
+    lights: [
+      { x: 185, y: 246, r: 14, color: "#6dffc8", period: 2400, phase: 0, mode: "pulse" },
+      { x: 332, y: 320, r: 14, color: "#6dffc8", period: 2400, phase: 0.25, mode: "pulse" },
+      { x: 473, y: 390, r: 14, color: "#6dffc8", period: 2400, phase: 0.5, mode: "pulse" },
+      { x: 620, y: 464, r: 14, color: "#6dffc8", period: 2400, phase: 0.75, mode: "pulse" },
+      { x: 253, y: 131, r: 4, color: "#8cffb8", period: 1600, phase: 0, mode: "pulse" },
+      { x: 179, y: 168, r: 4, color: "#8cffb8", period: 1600, phase: 0, mode: "pulse" },
+      { x: 301, y: 155, r: 4, color: "#8cffb8", period: 1600, phase: 0.077, mode: "pulse" },
+      { x: 227, y: 192, r: 4, color: "#8cffb8", period: 1600, phase: 0.077, mode: "pulse" },
+      { x: 349, y: 179, r: 4, color: "#8cffb8", period: 1600, phase: 0.154, mode: "pulse" },
+      { x: 275, y: 216, r: 4, color: "#8cffb8", period: 1600, phase: 0.154, mode: "pulse" },
+      { x: 397, y: 203, r: 4, color: "#8cffb8", period: 1600, phase: 0.231, mode: "pulse" },
+      { x: 323, y: 240, r: 4, color: "#8cffb8", period: 1600, phase: 0.231, mode: "pulse" },
+      { x: 445, y: 227, r: 4, color: "#8cffb8", period: 1600, phase: 0.308, mode: "pulse" },
+      { x: 371, y: 264, r: 4, color: "#8cffb8", period: 1600, phase: 0.308, mode: "pulse" },
+      { x: 493, y: 251, r: 4, color: "#8cffb8", period: 1600, phase: 0.385, mode: "pulse" },
+      { x: 419, y: 288, r: 4, color: "#8cffb8", period: 1600, phase: 0.385, mode: "pulse" },
+      { x: 541, y: 275, r: 4, color: "#8cffb8", period: 1600, phase: 0.462, mode: "pulse" },
+      { x: 467, y: 312, r: 4, color: "#8cffb8", period: 1600, phase: 0.462, mode: "pulse" },
+      { x: 589, y: 299, r: 4, color: "#8cffb8", period: 1600, phase: 0.538, mode: "pulse" },
+      { x: 515, y: 336, r: 4, color: "#8cffb8", period: 1600, phase: 0.538, mode: "pulse" },
+      { x: 637, y: 323, r: 4, color: "#8cffb8", period: 1600, phase: 0.615, mode: "pulse" },
+      { x: 563, y: 360, r: 4, color: "#8cffb8", period: 1600, phase: 0.615, mode: "pulse" },
+      { x: 685, y: 347, r: 4, color: "#8cffb8", period: 1600, phase: 0.692, mode: "pulse" },
+      { x: 611, y: 384, r: 4, color: "#8cffb8", period: 1600, phase: 0.692, mode: "pulse" },
+      { x: 733, y: 371, r: 4, color: "#8cffb8", period: 1600, phase: 0.769, mode: "pulse" },
+      { x: 659, y: 408, r: 4, color: "#8cffb8", period: 1600, phase: 0.769, mode: "pulse" },
+      { x: 781, y: 395, r: 4, color: "#8cffb8", period: 1600, phase: 0.846, mode: "pulse" },
+      { x: 707, y: 432, r: 4, color: "#8cffb8", period: 1600, phase: 0.846, mode: "pulse" },
+      { x: 829, y: 419, r: 4, color: "#8cffb8", period: 1600, phase: 0.923, mode: "pulse" },
+      { x: 755, y: 456, r: 4, color: "#8cffb8", period: 1600, phase: 0.923, mode: "pulse" },
+      { x: 348, y: 144, r: 16, color: "#6dffc8", period: 3000, phase: 0, mode: "pulse" },
+      { x: 677, y: 272, r: 8, color: "#7dffd0", period: 1800, phase: 0, mode: "pulse" },
+      { x: 695, y: 297, r: 8, color: "#7dffd0", period: 1800, phase: 0.333, mode: "pulse" },
+      { x: 749, y: 304, r: 8, color: "#7dffd0", period: 1800, phase: 0.667, mode: "pulse" },
+      { x: 822, y: 319, r: 5, color: "#b6fff0", period: 1500, phase: 0, mode: "pulse" },
+      { x: 838, y: 351, r: 5, color: "#b6fff0", period: 1500, phase: 0.5, mode: "pulse" },
+      { x: 578, y: 137, r: 6, color: "#8ff7ff", period: 1200, phase: 0, mode: "pulse" },
+      { x: 878, y: 333, r: 5, color: "#b6fff0", period: 1100, phase: 0, mode: "blink" },
+      { x: 588, y: 112, r: 6, color: "#b6fff0", period: 1600, phase: 0, mode: "blink" },
+    ],
   },
   // Nanite Forge (render_borg_base.py, forge.json): the maw breathes, the apron chevrons chase out, the vats pulse, a pod blinks in the claw.
   forge: {

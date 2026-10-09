@@ -158,7 +158,19 @@ const lstHullGlob = import.meta.glob("../assets/units/lst/hull/*.png", {
   import: "default",
 }) as Record<string, string>;
 
+const leechHullGlob = import.meta.glob("../assets/units/leech/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
+const lurkerHullGlob = import.meta.glob("../assets/units/lurker/hull/*.png", {
+  eager: true,
+  import: "default",
+}) as Record<string, string>;
+
 const navalHullGlobs = {
+  leech: leechHullGlob,
+  lurker: lurkerHullGlob,
   gunboat: gunboatHullGlob,
   submarine: submarineHullGlob,
   supplyboat: supplyboatHullGlob,
@@ -888,56 +900,33 @@ export function bindTurntableSheets(
 
 export { TIGER_OPTS };
 
-/** The Borg heavy assimilators' layers (tools/sprites/render_{stalker,behemoth,ravager}.py), one glob per layer. */
-const borgWalkerGlobs = {
-  stalker: [
-    import.meta.glob("../assets/units/stalker/hull/*.png", { eager: true, import: "default" }),
-    import.meta.glob("../assets/units/stalker/turret/*.png", { eager: true, import: "default" }),
-    import.meta.glob("../assets/units/stalker/gun/*.png", { eager: true, import: "default" }),
-  ],
-  behemoth: [
-    import.meta.glob("../assets/units/behemoth/hull/*.png", { eager: true, import: "default" }),
-    import.meta.glob("../assets/units/behemoth/turret/*.png", { eager: true, import: "default" }),
-    import.meta.glob("../assets/units/behemoth/gun/*.png", { eager: true, import: "default" }),
-  ],
-  ravager: [
-    import.meta.glob("../assets/units/ravager/hull/*.png", { eager: true, import: "default" }),
-    import.meta.glob("../assets/units/ravager/turret/*.png", { eager: true, import: "default" }),
-    import.meta.glob("../assets/units/ravager/gun/*.png", { eager: true, import: "default" }),
-  ],
-} as Record<"stalker" | "behemoth" | "ravager", Record<string, string>[]>;
 
-const borgWalkerPrevious: Partial<Record<keyof typeof borgWalkerGlobs, ComposedTurntable>> = {};
+/** The Borg planes (tools/sprites/render_borg_air.py): one hull sheet each, the Stuka's fit. */
+const planeHullGlobs = {
+  wasp: import.meta.glob("../assets/units/wasp/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
+  scourge: import.meta.glob("../assets/units/scourge/hull/*.png", { eager: true, import: "default" }) as Record<string, string>,
+} as const;
 
-/**
- * A Borg heavy assimilator: legs (the hull), turret, and gun, one transform for all three, on the
- * Tiger's cell. The static <id>-cameo.png stands in the sidebar; no runtime cameo.
- */
-export function bindBorgWalkerSheets(
-  id: keyof typeof borgWalkerGlobs,
-  hullImage: HTMLImageElement,
-  turretImage: HTMLImageElement,
-  gunImage: HTMLImageElement,
-): void {
-  let urls: string[][];
+const planePrevious = new Map<keyof typeof planeHullGlobs, ComposedTurntable>();
+
+export function bindPlaneSheets(kind: keyof typeof planeHullGlobs, hullImage: HTMLImageElement): void {
+  let hullUrls: string[];
   try {
-    urls = borgWalkerGlobs[id].map((g) => pickTurntableUrls(g));
+    hullUrls = pickTurntableUrls(planeHullGlobs[kind]);
   } catch (err) {
-    console.error(`${id} turntable`, err);
+    console.error(`${kind} turntable`, err);
     return;
   }
-  void Promise.all(urls.map((layer) => Promise.all(layer.map(loadImage))))
-    .then((layers) => composeAligned(layers, TIGER_OPTS))
+  void Promise.all(hullUrls.map(loadImage))
+    .then((hullImgs) => composeAligned([hullImgs], STUKA_OPTS))
     .then((next) => {
-      const prev = borgWalkerPrevious[id];
-      if (prev) revoke(prev);
-      borgWalkerPrevious[id] = next;
+      revoke(planePrevious.get(kind) ?? null);
+      planePrevious.set(kind, next);
       hullImage.src = next.sheetUrls[0] ?? "";
-      turretImage.src = next.sheetUrls[1] ?? "";
-      gunImage.src = next.sheetUrls[2] ?? "";
+      // The static <kind>-cameo.png stands in the sidebar.
       URL.revokeObjectURL(next.cameoUrl);
     })
     .catch((err) => {
-      console.error(`${id} turntable`, err);
+      console.error(`${kind} turntable`, err);
     });
 }

@@ -28,11 +28,15 @@
     ],
     "ready": [
       "Stalker awakened."
+    ],
+    "special": [
+      "Submerging.",
+      "Ambush."
     ]
   },
   "sfx": {
     "fire": {
-      "prompt": "Distant, powerful boom of a huge energy disruptor cannon firing in an open field, a loud deep blast like a heavy tank gun with a sharp electric crackle on top and a long rolling echo, no music, no voice",
+      "prompt": "Distant, powerful blast of a huge sci-fi plasma disruptor cannon firing in an open field: a deep heavy electric plasma boom with a sharp sizzling energy discharge crackling on top and a long rolling echo, energy weapon, no gunpowder, no music, no voice",
       "duration": 4.5,
       "variants": 2,
       "influence": 0.6,
@@ -40,6 +44,18 @@
     },
     "move": {
       "prompt": "Large four-legged alien war machine stalking forward: quick heavy hydraulic legs stepping in rhythm, metallic thuds on dirt, servo whine and pneumatic hiss, close, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "burrow": {
+      "prompt": "Large four-legged machine burrowing into the ground: metal legs digging fast into earth, grinding and scraping through soil and stones, servo whine and hydraulic hiss, loose dirt pouring and sliding down over the hull as it sinks under, close, outdoors, no music, no voice",
+      "duration": 2.5,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "unburrow": {
+      "prompt": "Large legged machine erupting up out of the ground: a sudden heavy upward burst of earth, dirt and rocks bursting into the air and raining down, metal legs scraping free, a hydraulic hiss and servo surge, close, outdoors, no music, no voice",
       "duration": 2.5,
       "variants": 1,
       "influence": 0.65

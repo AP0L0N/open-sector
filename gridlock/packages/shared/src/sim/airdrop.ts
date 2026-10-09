@@ -1,4 +1,5 @@
 import {
+  isAirfieldType,
   BV222_TROOPS,
   CLUSTER_FALL_SECONDS,
   CLUSTER_MINES,
@@ -101,7 +102,7 @@ function parkedTransport(e: Entity): boolean {
 function homeField(state: MatchState, plane: Entity): Entity | undefined {
   const id = plane.air?.homeId;
   const f = id != null ? state.entities.get(id) : undefined;
-  return f && f.hp > 0 && f.type === "airfield" ? f : undefined;
+  return f && f.hp > 0 && isAirfieldType(f.type) ? f : undefined;
 }
 
 /** Ground units jump. A plane, a drone, and a boat do not climb into the bay. */

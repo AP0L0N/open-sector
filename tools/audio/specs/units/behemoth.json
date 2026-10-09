@@ -29,11 +29,15 @@
     ],
     "ready": [
       "Behemoth rises."
+    ],
+    "special": [
+      "Leap.",
+      "We descend upon them."
     ]
   },
   "sfx": {
     "fire": {
-      "prompt": "Distant, massive double boom of two enormous energy disruptor cannons firing together on an open battlefield: a colossal deep electric blast, heavy crackling discharge and a long thundering rolling echo, no music, no voice",
+      "prompt": "Distant, massive double blast of two enormous sci-fi plasma cannons firing one right after the other on an open battlefield: colossal deep electric plasma booms, a heavy crackling energy discharge and a long thundering rolling echo, energy weapon, no gunpowder, no music, no voice",
       "duration": 5.0,
       "variants": 2,
       "influence": 0.6,
@@ -42,6 +46,18 @@
     "move": {
       "prompt": "Colossal legged alien war machine taking two enormous slow ground-shaking steps: very deep metallic thuds, massive hydraulic pistons groaning and hissing, heavy servo grind, the ground rumbling, close, no music, no voice",
       "duration": 3.0,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "lunge": {
+      "prompt": "Colossal legged sci-fi war machine making a huge hydraulic leap: massive leg pistons firing with a violent pneumatic bang and hiss, a screaming high servo whine as it flies through the air, then an enormous heavy metal landing slam that shakes the ground with a deep thud and rattling debris, close, outdoors, no music, no voice",
+      "duration": 3.0,
+      "variants": 1,
+      "influence": 0.65
+    },
+    "laser_ring": {
+      "prompt": "A burst of several sci-fi green laser beams firing out at once in all directions from a giant machine: a sharp rising electric charge then many crackling searing laser zaps overlapping in a quick ring, sizzling energy hiss and arcing static fading out, energy weapon, no gunpowder, close, outdoors, no music, no voice",
+      "duration": 2.0,
       "variants": 1,
       "influence": 0.65
     },

@@ -16,7 +16,9 @@ export type ImpactSound =
   | "intercept"
   | "cookoff"
   | "explosion_building"
-  | "flak_burst";
+  | "flak_burst"
+  | "energy_hit"
+  | "energy_burst";
 
 export type AnnounceEvent =
   | "start"
@@ -67,7 +69,7 @@ export type SoundEvent =
    * its deck, one of your defences going up (sandbags thumped down, a gun set in its pit),
    * (crush) an Apocalypse rolling a hull flat, or (dive) a Stuka's siren as it tips over into its dive.
    */
-  | { kind: "unitsfx"; type: string; cue: "special" | "crush" | "dive" | LinkSfx; x: number; y: number }
+  | { kind: "unitsfx"; type: string; cue: "special" | "crush" | "dive" | "lunge" | "burrow" | "unburrow" | LinkSfx; x: number; y: number }
   | { kind: "announce"; event: AnnounceEvent };
 
 /**
@@ -338,6 +340,12 @@ export class SoundTracker {
         out.push({ kind: "death", type: e.type, infantry: false, x: e.x, y: e.y });
         if (e.ownerId === me) out.push({ kind: "announce", event: "unitlost" });
       }
+      // A Behemoth's legs fire it into the air; a Stalker digs in or bursts out.
+      if (prev && prev.lungeAlt == null && e.lungeAlt != null) out.push({ kind: "unitsfx", type: e.type, cue: "lunge", x: e.x, y: e.y });
+      if (prev && prev.burrow !== e.burrow) {
+        if (e.burrow === "digging") out.push({ kind: "unitsfx", type: e.type, cue: "burrow", x: e.x, y: e.y });
+        else if (e.burrow === "rising") out.push({ kind: "unitsfx", type: e.type, cue: "unburrow", x: e.x, y: e.y });
+      }
       if (prev && prev.ownerId !== e.ownerId && isBuildingType(e.type)) {
         if (e.ownerId === me) out.push({ kind: "announce", event: "captured" });
         else if (prev.ownerId === me) out.push({ kind: "announce", event: "buildingcaptured" });
@@ -511,6 +519,12 @@ export function impactSound(i: MatchSnapshot["impacts"][number]): ImpactSound | 
   if (i.splash || i.torpedo) return i.torpedo ? "explosion_large" : "splash";
   if (i.blast || i.bomb) return "explosion_large";
   if (i.kind === "kill" && isShell(i.caliber)) return "explosion_large";
+  // A Borg bolt lands as light: a plasma burst for a cannon or a lance, a zap for the small pulses
+  // (one in four of a stream, or a repeater would drown out the fight).
+  if (i.energy) {
+    if (i.rocket || i.heBurst || isShell(i.caliber)) return "energy_burst";
+    return ((i.id % 4) + 4) % 4 === 0 ? "energy_hit" : null;
+  }
   if (i.rocket || i.mortar || i.heBurst) return "explosion_small";
   if (!isShell(i.caliber)) return null; // bullets: the shot itself carries the sound
   if (i.kind === "ricochet" || i.kind === "glance") return "ricochet";

@@ -574,6 +574,14 @@ export interface Entity {
   dormant?: true;
   /** Sim Unit II: the tick his blink drive is charged again. Unset or past means ready. */
   blinkReady?: number;
+  /** Behemoth in the air on a lunge (sim/lunge.ts): from, to, and the ticks it left and lands. */
+  lunge?: { x0: number; y0: number; x1: number; y1: number; t0: number; t1: number };
+  /** Behemoth: the tick its legs can lunge again. Unset or past means ready. */
+  lungeReady?: number;
+  /** Behemoth just landed: landing laser sweeps still to come. */
+  lungeRing?: number;
+  /** Stalker under the ground or on its way (sim/burrow.ts). Down, no enemy sees it. */
+  burrow?: { phase: "digging" | "down" | "rising"; until: number };
   /** Sim Unit II inside a hostile garrison: the host, where he came from, and the tick he is done. */
   purge?: { hostId: number; from: Vec; until: number };
   /** Cyborg Commander only: force-field points left. Hits come off these before HP. */
@@ -791,6 +799,8 @@ export interface LaserBeam {
   swept: number;
   /** Units already burned by this sweep. */
   hit: number[];
+  /** The Behemoth's landing sweeps: they pass over their own side's men. */
+  foesOnly?: boolean;
 }
 
 export interface GroundFire {

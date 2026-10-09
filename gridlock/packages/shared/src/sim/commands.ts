@@ -1,4 +1,7 @@
 import {
+  canLunge,
+  canBurrow,
+  isAirfieldType,
   carriesShell,
   fires,
   hasAmmo,
@@ -48,6 +51,8 @@ import {
 } from "../catalog.js";
 import type { ClientMessage, ErrorCode } from "../protocol.js";
 import { powerDown, powerUp, purgeDenied } from "./simunit.js";
+import { startLunge } from "./lunge.js";
+import { startBurrow, startUnburrow } from "./burrow.js";
 import { pathToCapture, wantsCapture } from "./capture.js";
 import { allies, clearOrder, hqOf, worldToTile } from "./geo.js";
 import { endWalkerCharge } from "./walker-charge.js";
@@ -164,6 +169,12 @@ function runCommand(state: MatchState, playerId: string, msg: ClientMessage): Cm
     case "cmd.powerdown":
       if (typeof msg.on !== "boolean" || !Array.isArray(msg.ids)) return fail("bad_payload", "Unknown power setting.");
       return cmdPowerDown(state, playerId, msg.ids, msg.on);
+    case "cmd.lunge":
+      if (!Array.isArray(msg.ids) || typeof msg.x !== "number" || typeof msg.y !== "number") return fail("bad_payload", "Bad lunge order.");
+      return cmdLunge(state, playerId, msg.ids, msg.x, msg.y);
+    case "cmd.burrow":
+      if (!Array.isArray(msg.ids) || typeof msg.on !== "boolean") return fail("bad_payload", "Bad burrow order.");
+      return cmdBurrow(state, playerId, msg.ids, msg.on);
     case "cmd.blink":
       if (!Array.isArray(msg.ids) || typeof msg.x !== "number" || typeof msg.y !== "number") return fail("bad_payload", "Bad blink order.");
       return cmdBlink(state, playerId, msg.ids, msg.x, msg.y);
@@ -677,7 +688,7 @@ function routeAircraft(state: MatchState, playerId: string, msg: ClientMessage):
       case "cmd.attack": {
         const t = state.entities.get(msg.targetId);
         if (!t || t.hp <= 0 || t.id === e.id) break;
-        if (t.type === "airfield" && t.ownerId === playerId) orderAircraft(state, e, { kind: "land" });
+        if (isAirfieldType(t.type) && t.ownerId === playerId) orderAircraft(state, e, { kind: "land" });
         else if (!allies(state, playerId, t.ownerId) && !isBridge(t.type)) {
           orderAircraft(state, e, { kind: "attack", targetId: t.id, x: t.x, y: t.y });
         }
@@ -1480,6 +1491,32 @@ function cmdPowerDown(state: MatchState, playerId: string, ids: number[], on: bo
     n++;
   }
   if (n === 0) return fail("not_yours", "Select a Cyborg or a Sim Unit.");
+  return ok();
+}
+
+/** Behemoth: lunge at the point. Each selected Behemoth that can goes; the first refusal is the answer when none can. */
+function cmdLunge(state: MatchState, playerId: string, ids: number[], x: number, y: number): CmdResult {
+  const units = owned(state, playerId, ids).filter((e) => canLunge(e.type));
+  if (units.length === 0) return fail("not_yours", "Select a Behemoth.");
+  let why: string | null = null;
+  let n = 0;
+  for (const e of units) {
+    const r = startLunge(state, e, x, y);
+    if (r) why ??= r;
+    else n++;
+  }
+  return n > 0 ? ok() : fail("busy", why ?? "It cannot lunge now.");
+}
+
+/** Stalker: dig in, or break back out. A burrowed Stalker still answers this order. */
+function cmdBurrow(state: MatchState, playerId: string, ids: number[], on: boolean): CmdResult {
+  let n = 0;
+  for (const id of ids) {
+    const e = state.entities.get(id);
+    if (!e || e.ownerId !== playerId || !canBurrow(e.type) || e.hp <= 0 || e.wreck) continue;
+    if (on ? startBurrow(state, e) : startUnburrow(state, e)) n++;
+  }
+  if (n === 0) return fail("not_yours", on ? "Select a Stalker on its legs." : "Select a burrowed Stalker.");
   return ok();
 }
 

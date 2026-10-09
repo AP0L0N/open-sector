@@ -1,4 +1,5 @@
 import {
+  isDockType,
   BATTLESHIP_BARREL_AMMO,
   BATTLESHIP_BARRELS_PER_TURRET,
   BATTLESHIP_CIWS_AT,
@@ -101,7 +102,7 @@ export function besideMarineBase(state: MatchState, e: Entity): boolean {
   const ts = state.tileSize;
   const reach = BATTLESHIP_REARM_TILES * ts + e.radius;
   for (const b of state.entities.values()) {
-    if (b.type !== "dock" || b.hp <= 0 || b.wreck || !allies(state, e.ownerId, b.ownerId)) continue;
+    if (!isDockType(b.type) || b.hp <= 0 || b.wreck || !allies(state, e.ownerId, b.ownerId)) continue;
     const nx = Math.max(b.tileX * ts, Math.min(e.x, (b.tileX + b.tileW) * ts));
     const ny = Math.max(b.tileY * ts, Math.min(e.y, (b.tileY + b.tileH) * ts));
     if (Math.hypot(e.x - nx, e.y - ny) <= reach) return true;

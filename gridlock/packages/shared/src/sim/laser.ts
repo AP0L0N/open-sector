@@ -28,7 +28,7 @@ import { takeDamage } from "./crits.js";
 import { coverStrike, wallSweep } from "./field.js";
 import { igniteAt } from "./flame.js";
 import { garrisonIsHostile, livingGarrison, woundGarrison } from "./garrison.js";
-import { burnTreeAt, occupant, tileCenter, worldToTile } from "./geo.js";
+import { allies, burnTreeAt, occupant, tileCenter, worldToTile } from "./geo.js";
 import type { Entity, LaserBeam, MatchState } from "./types.js";
 
 /** Points along a sweep where the beam's length is measured. */
@@ -132,6 +132,29 @@ export function fireLaser(
   };
 }
 
+/**
+ * A sweep of `half` either side of `bearing` out to `range`, cut over `seconds`, from wherever `e`
+ * stands. The Behemoth's landing ring. With `foesOnly` it passes over its own side's men.
+ */
+export function fireSweep(state: MatchState, e: Entity, bearing: number, half: number, range: number, seconds: number, foesOnly?: boolean): void {
+  const a0 = bearing - half;
+  const a1 = bearing + half;
+  const lens: number[] = [];
+  for (let i = 0; i < LASER_SAMPLES; i++) {
+    lens.push(Math.round(beamLength(state, e, a0 + ((a1 - a0) * i) / (LASER_SAMPLES - 1), range)));
+  }
+  e.laser = {
+    a0,
+    a1,
+    startTick: state.tick,
+    endTick: state.tick + Math.max(1, secondsToTicks(seconds)),
+    lens,
+    swept: 0,
+    hit: [],
+    ...(foesOnly ? { foesOnly: true } : {}),
+  };
+}
+
 /** Beam length at share `u` of the sweep. */
 export function laserLenAt(lens: readonly number[], u: number): number {
   if (lens.length === 1) return lens[0]!;
@@ -174,8 +197,9 @@ function cutSweep(state: MatchState, e: Entity, beam: LaserBeam, u0: number, u1:
   for (const o of state.entities.values()) {
     if (o.id === e.id || o.kind !== "unit" || o.hp <= 0 || o.wreck || o.garrisonedIn != null) continue;
     if (!isInfantryType(o.type) || o.drone || isAirborne(o)) continue;
-    // The beam does not know whose men it passes: friend or foe, they burn.
+    // The beam does not know whose men it passes: friend or foe, they burn. The Behemoth's ring spares its own.
     if (beam.hit.includes(o.id)) continue;
+    if (beam.foesOnly && allies(state, e.ownerId, o.ownerId)) continue;
     const dx = o.x - e.x;
     const dy = o.y - e.y;
     const d = Math.hypot(dx, dy);

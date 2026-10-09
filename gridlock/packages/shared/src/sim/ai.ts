@@ -15,6 +15,8 @@
  */
 
 import {
+  isAirfieldType,
+  isDockType,
   BATTLESHIP_BARREL_AMMO,
   BUILD_RADIUS,
   DEFENCE_BUILD_RADIUS,
@@ -1186,7 +1188,7 @@ function watchSky(state: MatchState, p: SimPlayer, plan: AiPlan): void {
   if (plan.airSeenTick != null) return;
   for (const e of state.entities.values()) {
     if (e.hp <= 0 || !e.ownerId || allies(state, p.playerId, e.ownerId)) continue;
-    if (!isAircraftType(e.type) && !isDroneType(e.type) && e.type !== "airfield") continue;
+    if (!isAircraftType(e.type) && !isDroneType(e.type) && !isAirfieldType(e.type)) continue;
     if (!canSeeEntity(state, p.playerId, e)) continue;
     plan.airSeenTick = state.tick;
     return;
@@ -1784,7 +1786,7 @@ function strikeWater(state: MatchState, playerId: string, id: number): Vec | nul
     // An enemy Marine Base on the same water: its fleet's home, and a target the guns and torpedoes can reach.
     const me = hqOf(state, playerId);
     const harbours = [...state.entities.values()].filter(
-      (b) => b.type === "dock" && b.hp > 0 && !!b.ownerId && !allies(state, playerId, b.ownerId),
+      (b) => isDockType(b.type) && b.hp > 0 && !!b.ownerId && !allies(state, playerId, b.ownerId),
     );
     if (me) harbours.sort((a, b) => Math.hypot(a.x - me.x, a.y - me.y) - Math.hypot(b.x - me.x, b.y - me.y));
     for (const b of harbours) goals.push({ at: b, slack: Math.max(b.tileW, b.tileH) / 2 });
@@ -1983,7 +1985,7 @@ function sailHome(state: MatchState, p: SimPlayer, ships: Entity[]): void {
     let dock: Entity | undefined;
     let bestD = Infinity;
     for (const b of state.entities.values()) {
-      if (b.ownerId !== p.playerId || b.type !== "dock" || b.hp <= 0) continue;
+      if (b.ownerId !== p.playerId || !isDockType(b.type) || b.hp <= 0) continue;
       const d = Math.hypot(b.x - e.x, b.y - e.y);
       if (d < bestD) {
         dock = b;
@@ -2023,7 +2025,7 @@ function shellShore(state: MatchState, p: SimPlayer, e: Entity, sites: Entity[])
 /** A seen enemy near a Marine Base pulls the warships lying at home on the same water. */
 function guardHarbour(state: MatchState, p: SimPlayer, home: Entity[]): boolean {
   const reach = CPU_HARBOUR_DEFEND_TILES * state.tileSize;
-  const docks = [...state.entities.values()].filter((b) => b.ownerId === p.playerId && b.type === "dock" && b.hp > 0);
+  const docks = [...state.entities.values()].filter((b) => b.ownerId === p.playerId && isDockType(b.type) && b.hp > 0);
   if (docks.length === 0) return false;
   let intruder: Entity | undefined;
   let bestD = Infinity;

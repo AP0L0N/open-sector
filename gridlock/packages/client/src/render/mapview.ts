@@ -1,4 +1,10 @@
 import {
+  STALKER_BURROW_SECONDS,
+  STALKER_UNBURROW_SECONDS,
+  canLunge,
+  BEHEMOTH_LUNGE_RANGE_TILES,
+  isDockType,
+  factionOf,
   AIRFIELD_BACK_DEPTH,
   BUILDING_TURN_STEP,
   buildingRect,
@@ -375,6 +381,7 @@ import {
 import { roofCiwsMuzzle } from "./roof-ciws.js";
 import { CIWS_INTERCEPT_LIFT, CIWS_MUZZLE_REACH, CIWS_SOURCE_ZOOM, ciwsMuzzleLift, ciwsTurretCell, ciwsTurretRow } from "./ciws.js";
 import { ciwsBurstTracers, ciwsTracers } from "./ciws-tracer.js";
+import { drawEnergyBolt, drawEnergyBurst, drawEnergyMuzzle, drawPlasmaOrb, energyBolts, energyBurstMs } from "./energy-fx.js";
 import { PTRD_MUZZLE_LIFT, ptrdTracers } from "./ptrd-tracer.js";
 import { ROOF_CIWS_LIFT } from "./roof-ciws.js";
 
@@ -563,6 +570,8 @@ function workLit(e: EntityView): boolean {
   if (e.kind !== "building" || e.hp <= 0 || e.wreck || e.ruined) return false;
   if (!e.ownerId || e.ownerId === NEUTRAL_OWNER || e.unpowered) return false;
   if (isGarrisonable(e.type)) return false;
+  // The Borg light nothing.
+  if (factionOf(e.type) === "borg") return false;
   return isHqBuilding(e.type) || (BUILDING_TYPES as readonly string[]).includes(e.type);
 }
 import {
@@ -632,6 +641,8 @@ const EXTRUDE: Record<EntityType, number> = {
   dynamo: 30,
   airfield: 14,
   dock: 12,
+  spawnpool: 12,
+  aerie: 14,
   ciws: 26,
   research: 40,
   radar: 44,
@@ -650,6 +661,8 @@ const EXTRUDE: Record<EntityType, number> = {
   flak: 18,
   stuka: 14,
   fw190: 12,
+  wasp: 12,
+  scourge: 14,
   bv222: 22,
   he111: 17,
   horten: 17,
@@ -696,8 +709,10 @@ const EXTRUDE: Record<EntityType, number> = {
   artillery: 14,
   supply: 18,
   gunboat: 10,
+  leech: 10,
   supplyboat: 9,
   submarine: 7,
+  lurker: 7,
   battleship: 20,
   destroyer: 14,
   lst: 16,
@@ -754,6 +769,8 @@ function ownerAllied(match: MatchSnapshot, ownerId: string | undefined): boolean
 
 /** How much of a submerged submarine its owner still sees through the water. */
 const SUBMERGED_ALPHA = 0.5;
+/** Share of a burrowed Stalker's drawn height under the ground line. */
+const BURROW_DOWN_SINK = 0.85;
 /** Hull fires on a sunk ship sit this share of the usual height: the hulk rides low in the water. */
 const WRECK_FIRE_LIFT: Partial<Record<EntityType, number>> = { gunboat: 0.75, destroyer: 0.5, lst: 0.45, battleship: 0.3 };
 /** Half a torpedo's drawn length, world px, and how far behind it its wake trails, in body halves. */
@@ -764,7 +781,7 @@ const TORPEDO_WAKE_MUL = 6;
 
 function isProducerView(e: EntityView): boolean {
   // The Airfield trains too, but its planes park on the strip; it has no rally point.
-  return e.kind === "building" && (e.type === "muster" || isSmelterType(e.type) || e.type === "armory" || e.type === "dock" || e.type === "cyborgcentral" || e.type === "forge");
+  return e.kind === "building" && (e.type === "muster" || isSmelterType(e.type) || e.type === "armory" || isDockType(e.type) || e.type === "cyborgcentral" || e.type === "forge");
 }
 
 function hpBarFill(ratio: number, hostile: boolean, vivid = false): string {
@@ -960,7 +977,7 @@ export class MapView {
   /** Wall-clock ms of the last small-arms shot from an infantry unit. */
   private infantryShotAt = new Map<number, number>();
   /** Fw 190 barrage streaks in flight, with the gun and impact heights (absolute elevation). */
-  private tracers: (BarrageTracer & { z0: number; z1: number })[] = [];
+  private tracers: (BarrageTracer & { z0: number; z1: number; energy?: true; heavy?: boolean })[] = [];
   /** Mount id and tick of each rocket burst already given its fan of tracers. */
   private ciwsBurstSeen = new Set<string>();
   /** Impact id -> wall-clock ms its barrage streak lands. The impact waits for it. */
@@ -998,6 +1015,8 @@ export class MapView {
     torpedo?: boolean;
     /** A Flak 37 shell burst in the air at `z`: the air flash, no ground puff. */
     flak?: boolean;
+    /** A Borg weapon's: drawn as green light. */
+    energy?: true;
   }[] = [];
   private fxIds = new Set<number>();
   /** When each crater was struck, for its smoulder. Holes already there on first sight never smoke. */
@@ -1098,6 +1117,8 @@ export class MapView {
   mineLayMode = false;
   /** Blink: the next ground click sends the selected Sim Units' blink drives there. */
   blinkMode = false;
+  /** Each burrowing Stalker's phase and when this client first drew it, for the sink animation. */
+  private burrowSeen = new Map<number, { phase: string; at: number }>();
   /** Blink flashes in flight: both ends in world px and when they started. */
   private blinkFx: { from: { x: number; y: number }; to: { x: number; y: number }; at: number; inside?: boolean }[] = [];
   private seenBlinks = new Set<number>();
@@ -1517,7 +1538,7 @@ export class MapView {
       }
       // An impact rides along in snapshots after its tick; once its fx is up, nothing below is new.
       if (this.fxIds.has(i.id)) continue;
-      if (i.rocket && i.shot != null) {
+      if (i.rocket && i.shot != null && !i.energy) {
         // Close the trail to the burst: from the last drawn head, or from the pod
         // when the rocket flew and burst between snapshots.
         const from = this.rocketLast.get(i.shot) ?? this.rocketLaunched.get(i.shot);
@@ -1531,7 +1552,7 @@ export class MapView {
           this.rocketHost.delete(i.shot);
         }
       }
-      if (i.rocket && i.z != null) {
+      if (i.rocket && i.z != null && !i.energy) {
         this.rocketPuffs.push(...airBurstPuffs(i.x, i.y, i.z, now, i.id));
       }
       // A Flak 37 shell burst: a wide black cloud that hangs at the fuse height. No tracer on the way up.
@@ -1652,7 +1673,7 @@ export class MapView {
     if (this.patrolMode && this.ownPatrolIds().length === 0) this.setPatrolMode(false);
     if (this.forceAttackMode && this.ownForceIds().length === 0) this.setForceAttackMode(false);
     if (this.mineLayMode && this.ownMineLayerIds().length === 0) this.setMineLayMode(false);
-    if (this.blinkMode && this.ownSimUnitIds().length === 0) this.setBlinkMode(false);
+    if (this.blinkMode && this.ownSimUnitIds().length === 0 && this.ownLungerIds().length === 0) this.setBlinkMode(false);
     if (this.rotateMode && (this.rotateLight ? this.ownShipLampIds() : this.ownRotateIds()).length === 0) {
       this.setRotateMode(false);
     }
@@ -1815,6 +1836,18 @@ export class MapView {
     const ground = (x: number, y: number) => this.elevAt(x, y);
     for (const e of match.entities) {
       if (e.wreck) continue;
+      if (factionOf(e.type) === "borg") {
+        // Every Borg gun fires light: a green bolt from the muzzle to each hit. Lasers, plasma
+        // orbs, torpedoes, and daggers draw themselves elsewhere.
+        const shots = byGun.get(e.id)?.filter((i) => !i.rocket && !i.laser && !i.torpedo && !i.mortar && i.kind !== "crush" && (i.caliber ?? 0) > 0);
+        if (!shots?.length || e.type === "simunit2" || e.type === "cyborgcommander") continue;
+        const muzzle = this.energyMuzzleWorld(e, shots[0]!);
+        for (const bolt of energyBolts(muzzle, shots, ground, now, ts)) {
+          this.tracers.push(bolt);
+          this.barrageLandAt.set(bolt.id, tracerLandsAt(bolt));
+        }
+        continue;
+      }
       if (e.mounts) {
         // Each round leaves whichever firing mount faces it best, like the Battle Ship's.
         const rounds = byGun.get(e.id);
@@ -1967,6 +2000,28 @@ export class MapView {
     return { x: p.x, y: p.y, z: this.elevAt(p.x, p.y) + (ROOF_CIWS_LIFT * size) / ISO_ELEVATION };
   }
 
+  /**
+   * Where a Borg gun's bolts leave: the Cyborg's arm, a turret's barrel tip out along its traverse,
+   * or the muzzle of a hull, a soldier, or a plane at about the height its sprite carries the gun.
+   */
+  private energyMuzzleWorld(e: EntityView, toward: { x: number; y: number }): { x: number; y: number; z: number } {
+    if (e.type === "cyborg") return this.armMuzzlesWorld(e)[0]!;
+    const p = this.lerpEnt(e);
+    const ground = this.elevAt(p.x, p.y);
+    const aim = Math.atan2(toward.y - p.y, toward.x - p.x);
+    if (e.kind === "building") {
+      const gun = gunLayerFor(e.type);
+      const reach = gun?.muzzleReach ?? 10;
+      const facing = e.turretFacing ?? aim;
+      return { x: e.x + Math.cos(facing) * reach, y: e.y + Math.sin(facing) * reach, z: ground + (gun ? gun.gunZ * 2 : 16) / ISO_ELEVATION };
+    }
+    const size = this.spriteOf(e)?.drawSize ?? 40;
+    const r = catalog(e.type).radius;
+    const facing = isInfantryType(e.type) ? aim : (p.turretFacing ?? p.facing);
+    const lift = (isInfantryType(e.type) ? 0.5 : 0.38) * size + this.airLift(e);
+    return { x: p.x + Math.cos(facing) * r, y: p.y + Math.sin(facing) * r, z: ground + lift / ISO_ELEVATION };
+  }
+
   /** World points and elevation of the gatling barrels on a Walker's arms (one or both) or a Cyborg's arm. */
   private armMuzzlesWorld(e: EntityView): { x: number; y: number; z: number }[] {
     const p = this.lerpEnt(e);
@@ -2001,6 +2056,10 @@ export class MapView {
         this.toScreen(tr.x0 + (tr.x1 - tr.x0) * u, tr.y0 + (tr.y1 - tr.y0) * u, tr.z0 + (tr.z1 - tr.z0) * u);
       const head = at(span.head);
       const tail = at(span.tail);
+      if (tr.energy) {
+        drawEnergyBolt(ctx, tail, head, !!tr.heavy);
+        continue;
+      }
       ctx.strokeStyle = "rgba(255, 170, 60, 0.35)";
       ctx.lineWidth = 4;
       ctx.beginPath();
@@ -2046,17 +2105,21 @@ export class MapView {
       return;
     }
     this.gunRecoil.set(shooter.id, { at: now });
-    this.muzzleSmokes.push(
-      ...spawnMuzzleSmoke({
-        x: shot.x,
-        y: shot.y,
-        dirX: shot.vx,
-        dirY: shot.vy,
-        now,
-        seed: (shot.id * 2654435761 + Math.floor(now)) >>> 0,
-        scale: (spr?.drawSize ?? 48) / 48,
-      }),
-    );
+    const energy = factionOf(shooter.type) === "borg";
+    // A plasma cannon throws no powder smoke.
+    if (!energy) {
+      this.muzzleSmokes.push(
+        ...spawnMuzzleSmoke({
+          x: shot.x,
+          y: shot.y,
+          dirX: shot.vx,
+          dirY: shot.vy,
+          now,
+          seed: (shot.id * 2654435761 + Math.floor(now)) >>> 0,
+          scale: (spr?.drawSize ?? 48) / 48,
+        }),
+      );
+    }
     this.addFx({
       id: shot.id + 8_000_000,
       kind: "muzzle",
@@ -2067,6 +2130,7 @@ export class MapView {
       at: now,
       caliber: shot.caliber,
       lift: Math.round((spr?.drawSize ?? 48) * 0.38),
+      ...(energy ? { energy: true as const } : {}),
     });
   }
 
@@ -2106,16 +2170,19 @@ export class MapView {
       );
     }
     this.gunRecoil.set(shooter.id, { at: now });
-    this.fieldGunSmokes.push(
-      ...spawnFieldGunSmoke({
-        x: shooter.x,
-        y: shooter.y,
-        facing,
-        radius: look.smoke,
-        now,
-        seed: (shotId * 2246822519 + Math.floor(now)) >>> 0,
-      }),
-    );
+    const energy = factionOf(shooter.type) === "borg";
+    if (!energy) {
+      this.fieldGunSmokes.push(
+        ...spawnFieldGunSmoke({
+          x: shooter.x,
+          y: shooter.y,
+          facing,
+          radius: look.smoke,
+          now,
+          seed: (shotId * 2246822519 + Math.floor(now)) >>> 0,
+        }),
+      );
+    }
     this.addFx({
       id: shotId + 8_000_000,
       kind: "muzzle",
@@ -2126,6 +2193,7 @@ export class MapView {
       at: now,
       caliber: caliber * (shooter.type === "pak43" ? PAK43_FX_CALIBER_MUL : 1),
       lift: Math.round(lift),
+      ...(energy ? { energy: true as const } : {}),
     });
   }
 
@@ -3335,11 +3403,25 @@ export class MapView {
 
   private commitBlink(px: number, py: number): void {
     const ids = this.ownSimUnitIds();
+    const lungers = this.ownLungerIds();
     if (!this.keepModeForQueue()) this.setBlinkMode(false);
-    if (ids.length === 0) return;
+    if (ids.length === 0 && lungers.length === 0) return;
     const w = this.screenToWorld(px, py);
     this.pulseMoveClick(w.x, w.y);
-    this.command({ type: "cmd.blink", ids, x: w.x, y: w.y });
+    if (ids.length > 0) this.command({ type: "cmd.blink", ids, x: w.x, y: w.y });
+    // The same click throws any selected Behemoth on a lunge.
+    if (lungers.length > 0) this.command({ type: "cmd.lunge", ids: lungers, x: w.x, y: w.y });
+  }
+
+  /** Selected Behemoths of yours on their legs. */
+  private ownLungerIds(): number[] {
+    const you = this.curr.youPlayerId;
+    const out: number[] = [];
+    for (const id of this.selected) {
+      const ent = this.currById.get(id);
+      if (ent && ent.ownerId === you && ent.hp > 0 && !ent.wreck && canLunge(ent.type) && ent.lungeAlt == null) out.push(id);
+    }
+    return out;
   }
 
   private commitMineLay(px: number, py: number): void {
@@ -3762,6 +3844,12 @@ export class MapView {
 
   /** Screen pixels a plane (or a Jump Jet) sits above its ground point. 0 for everything on the ground. */
   private airLift(e: EntityView): number {
+    // A Behemoth on a lunge rides its arc; between snapshots it eases toward the next height.
+    if (e.lungeAlt != null) {
+      const prev = this.prevById.get(e.id)?.lungeAlt ?? 0;
+      const t = Math.min(1, (performance.now() - this.snapAt) / 100);
+      return airLiftPx(prev + (e.lungeAlt - prev) * t);
+    }
     if (!e.air && !e.jet && e.chute == null) return 0;
     const t = Math.min(1, (performance.now() - this.snapAt) / 100);
     return airLiftPx(lerpAirAlt(this.prevById.get(e.id), e, t));
@@ -5152,9 +5240,35 @@ export class MapView {
     ctx.restore();
   }
 
+  /** Lunge armed: a dashed green ring of the legs' reach round each selected Behemoth. */
+  private drawLungeReach(): void {
+    const units = this.ownLungerIds()
+      .map((id) => this.currById.get(id))
+      .filter((e): e is EntityView => !!e);
+    if (units.length === 0) return;
+    const reach = BEHEMOTH_LUNGE_RANGE_TILES * this.ts();
+    const ctx = this.ctx;
+    ctx.save();
+    ctx.setLineDash([6, 5]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = "rgba(110, 255, 180, 0.65)";
+    for (const e of units) {
+      ctx.beginPath();
+      for (let i = 0; i <= 96; i++) {
+        const a = (i / 96) * Math.PI * 2;
+        const s = this.toScreen(e.x + Math.cos(a) * reach, e.y + Math.sin(a) * reach);
+        if (i === 0) ctx.moveTo(s.x, s.y);
+        else ctx.lineTo(s.x, s.y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   /** Blink armed: a dashed cyan ring of the drive's reach round each selected Sim Unit. Past it he walks first. */
   private drawBlinkReach(): void {
     if (!this.blinkMode) return;
+    this.drawLungeReach();
     const units = this.ownSimUnitIds()
       .map((id) => this.currById.get(id))
       .filter((e): e is EntityView => !!e);
@@ -7208,6 +7322,51 @@ export class MapView {
     }
   }
 
+  /** Share of a Stalker's body under the ground now, 0–1: sinking while it digs, rising as it breaks out. */
+  private burrowSink(e: EntityView): number {
+    const phase = e.burrow;
+    if (!phase) return 0;
+    const now = performance.now();
+    const seen = this.burrowSeen.get(e.id);
+    const since = seen && seen.phase === phase ? seen.at : now;
+    if (!seen || seen.phase !== phase) this.burrowSeen.set(e.id, { phase, at: now });
+    const speed = Math.max(1, this.curr.gameSpeed || 1);
+    if (phase === "down") return BURROW_DOWN_SINK;
+    if (phase === "digging") return BURROW_DOWN_SINK * Math.min(1, ((now - since) * speed) / (STALKER_BURROW_SECONDS * 1000));
+    return BURROW_DOWN_SINK * (1 - Math.min(1, ((now - since) * speed) / (STALKER_UNBURROW_SECONDS * 1000)));
+  }
+
+  /**
+   * A Stalker going under, under, or coming up: the body sinks below the ground line, which
+   * cuts it off, over a churned ring of dirt. Down, its owner sees only its back, faint.
+   */
+  private drawBurrowed(e: EntityView, spr: UnitSpriteDef): void {
+    const ctx = this.ctx;
+    const sink = this.burrowSink(e);
+    const p = this.lerpEnt(e);
+    const g = this.toScreen(p.x, p.y);
+    const size = spr.drawSize;
+    // Churned earth round the hole.
+    ctx.save();
+    ctx.fillStyle = "rgba(62, 46, 30, 0.85)";
+    ctx.beginPath();
+    ctx.ellipse(g.x, g.y, size * 0.42, size * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(96, 74, 48, 0.9)";
+    ctx.beginPath();
+    ctx.ellipse(g.x, g.y - 1, size * 0.3, size * 0.13, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(g.x - size * 2, g.y - size * 3, size * 4, size * 3);
+    ctx.clip();
+    ctx.translate(0, sink * size * 0.7);
+    if (e.burrow === "down") ctx.globalAlpha *= 0.55;
+    this.drawSpritedUnit(e, spr);
+    ctx.restore();
+  }
+
   private drawUnitAt(e: EntityView): void {
     if (isTorpedoBody(e.type)) {
       this.drawTorpedo(e);
@@ -7215,6 +7374,10 @@ export class MapView {
     }
     const spr = this.spriteOf(e);
     if (spr) {
+      if (e.burrow && !e.wreck) {
+        this.drawBurrowed(e, spr);
+        return;
+      }
       // Your own submarine running submerged shows faint under the surface.
       const prev = this.ctx.globalAlpha;
       if (e.submerged && !e.wreck) this.ctx.globalAlpha = prev * SUBMERGED_ALPHA;
@@ -7419,7 +7582,7 @@ export class MapView {
     // A hulk has its own burnt-out sheet on the same cell and contact; without one it greys the live art.
     const sheet = this.drawnSheet(e, def);
     let frameIndex: number | undefined;
-    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === CYBORGCOMMANDER_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
+    if (def === TROOPER_DIE_SPRITE || def === GUNNER_DIE_SPRITE || def === SNIPER_DIE_SPRITE || def === ATINFANTRY_DIE_SPRITE || def === ROCKETER_DIE_SPRITE || def === PYRO_DIE_SPRITE || def === MORTARMAN_DIE_SPRITE || def === ENGINEER_DIE_SPRITE || def === MEDIC_DIE_SPRITE || def === DRONEOP_DIE_SPRITE || def === CYBORG_DIE_SPRITE || def === CYBORGCOMMANDER_DIE_SPRITE || def === SIMUNIT2_DIE_SPRITE || def === BORGDRONE_DIE_SPRITE || def === LANCER_DIE_SPRITE || def === JUMPJET_DIE_SPRITE) frameIndex = heldFrame(this.corpseAge(e.id), def.fps, def.frames);
     else if (def === TROOPER_RIFLE_FIRE_SPRITE || def === GUNNER_FIRE_SPRITE || def === SNIPER_FIRE_SPRITE || def === ATINFANTRY_FIRE_SPRITE || def === ROCKETER_FIRE_SPRITE || def === PYRO_FIRE_SPRITE || def === JUMPJET_FIRE_SPRITE) {
       frameIndex = heldFrame(this.infantryShotAge(e.id) ?? 0, def.fps, def.frames);
     } else if (def === JUMPJET_FLY_SPRITE) {
@@ -7501,7 +7664,8 @@ export class MapView {
     if (drawn && e.gatling && !e.wreck) {
       const now = performance.now();
       const muzzles = gatlingMuzzles(s.x, s.y, size, p.turretFacing ?? p.facing, e.gatling.arms, e.gatling.off);
-      muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2));
+      const energy = factionOf(e.type) === "borg";
+      muzzles.forEach((m, i) => drawGatlingFlash(ctx, m, size, now, e.id + i * 2, energy));
     }
     if (drawn && e.mounts && !e.wreck) {
       // Each CIWS mount flashes at its own barrels, on its own bearing.
@@ -7513,7 +7677,7 @@ export class MapView {
         drawGatlingFlash(ctx, muzzle, size * 0.45, now, e.id + i * 7);
       });
     }
-    if (drawn && hullFlamerOf(e.type) && !e.wreck && e.mgAmmo !== 0) {
+    if (drawn && hullFlamerOf(e.type) && !e.wreck && e.mgAmmo !== 0 && factionOf(e.type) !== "borg") {
       // The igniter at the bow projector stays lit while there is fuel to light.
       const m = feuerwirbelNozzle(s.x + hullShiftX, s.y + hullShiftY + unitGroundSink(size), p.facing, size, this.ts());
       drawPilotLight(ctx, m.x, m.y, performance.now(), e.id);
@@ -8085,7 +8249,8 @@ export class MapView {
     if (host) this.flashAperture(host, p, now, false);
     else {
       this.rocketFrom.set(p.id, { x: p.x, y: p.y, z: p.z ?? 0 });
-      if (shooter && !shooter.wreck) {
+      const energy = !!shooter && factionOf(shooter.type) === "borg";
+      if (shooter && !shooter.wreck && !energy) {
         this.rocketPuffs.push(
           ...backblastPuffs({
             x: shooter.x,
@@ -8109,9 +8274,10 @@ export class MapView {
         at: now,
         caliber: 20,
         lift: isoLift(p.z ?? 0) - isoLift(this.elevAt(p.x, p.y)),
+        ...(energy ? { energy: true as const } : {}),
       });
     }
-    if (shooter?.type === "rocketer" && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
+    if ((shooter?.type === "rocketer" || shooter?.type === "lancer") && !shooter.wreck) this.infantryShotAt.set(shooter.id, now);
   }
 
   /** Window or hull-slit flash. A rocket's trail and backblast start at that mouth. */
@@ -8214,7 +8380,7 @@ export class MapView {
     const now = performance.now();
     const blend = Math.min(1, (now - this.snapAt) / 100);
     const live = new Set<number>();
-    const heads: { x: number; y: number; dx: number; dy: number; id: number; heavy: boolean }[] = [];
+    const heads: { x: number; y: number; dx: number; dy: number; id: number; heavy: boolean; energy: boolean }[] = [];
     for (const p of this.curr.projectiles) {
       if (!p.rocket) continue;
       live.add(p.id);
@@ -8224,7 +8390,7 @@ export class MapView {
       const wz = prev?.z != null && p.z != null ? prev.z + (p.z - prev.z) * blend : (p.z ?? 0);
       const head = this.garrisonRocketHead(p.id, { x: wx, y: wy, z: wz }, p.vx, p.vy);
       const last = this.rocketLast.get(p.id) ?? this.rocketFrom.get(p.id) ?? head;
-      this.rocketPuffs.push(...trailPuffs(last, head, now, (p.id * 2654435761 + Math.floor(now)) >>> 0));
+      if (!p.energy) this.rocketPuffs.push(...trailPuffs(last, head, now, (p.id * 2654435761 + Math.floor(now)) >>> 0));
       this.rocketLast.set(p.id, head);
       const s = this.toScreen(head.x, head.y, head.z);
       const tail = this.toScreen(last.x, last.y, last.z);
@@ -8239,6 +8405,7 @@ export class MapView {
         dy: moved ? dy : s.y - fallback.y,
         id: p.id,
         heavy: !!p.heavy,
+        energy: !!p.energy,
       });
     }
     for (const id of [...this.rocketLast.keys()]) {
@@ -8267,7 +8434,10 @@ export class MapView {
     }
     ctx.restore();
     this.rocketPuffs = keep;
-    for (const h of heads) drawRocketHead(ctx, h.x, h.y, h.dx, h.dy, h.id, h.heavy);
+    for (const h of heads) {
+      if (h.energy) drawPlasmaOrb(ctx, h.x, h.y, h.dx, h.dy, h.heavy);
+      else drawRocketHead(ctx, h.x, h.y, h.dx, h.dy, h.id, h.heavy);
+    }
   }
 
   /**
@@ -8303,6 +8473,16 @@ export class MapView {
       const p = this.lerpEnt(e);
       const end = beamEnd(beam, p.x, p.y, u);
       const s = this.toScreen(p.x, p.y);
+      if (e.greenLaser) {
+        // The Behemoth's landing ring: green beams from its belly, painted as the red beam turned green.
+        const size = this.spriteOf(e)?.drawSize ?? 60;
+        const from = { x: s.x, y: s.y - this.airLift(e) - size * 0.22 };
+        ctx.save();
+        ctx.filter = "hue-rotate(135deg) saturate(1.3) brightness(1.15)";
+        drawLaserBeam(ctx, from, this.toScreen(end.x, end.y), now, e.id);
+        ctx.restore();
+        continue;
+      }
       const legless = e.stance === "crawl";
       const size = spriteFor(e.type, e.stance)?.drawSize ?? 20;
       const dir = facingToIso(p.facing, ts);
@@ -8593,9 +8773,10 @@ export class MapView {
       const e = this.currById.get(id);
       const nozzle = this.flameNozzle(id, e, jet);
       if (!nozzle) continue;
-      this.flameParticles.push(
-        ...jetParticles({ nozzle, land: jet.land, now, dtMs, seed: (id * 2654435761 + Math.floor(now * 7)) >>> 0 }),
-      );
+      const born = jetParticles({ nozzle, land: jet.land, now, dtMs, seed: (id * 2654435761 + Math.floor(now * 7)) >>> 0 });
+      // The Ravager's nanite jet is plasma: green, and no soot.
+      if (e && factionOf(e.type) === "borg") for (const fp of born) fp.energy = true;
+      this.flameParticles.push(...born);
     }
     if (this.flameParticles.length > FLAME_PARTICLE_CAP) {
       this.flameParticles.splice(0, this.flameParticles.length - FLAME_PARTICLE_CAP);
@@ -8621,6 +8802,7 @@ export class MapView {
     const steps = Math.max(1, Math.ceil(dtMs / 20));
     const dt = dtMs / 1000 / steps;
     const keep: FlameParticle[] = [];
+    const plasma: FlameParticle[] = [];
     // Deeper fuel first, so the fire nearer the camera paints over the far side.
     this.flameParticles.sort((a, b) => a.x + a.y - (b.x + b.y));
     ctx.save();
@@ -8629,7 +8811,7 @@ export class MapView {
       const wasDown = p.landed;
       let alive = true;
       for (let k = steps - 1; k >= 0 && alive; k--) alive = stepFlameParticle(p, now - k * dt * 1000, dt);
-      if (alive && !wasDown && p.landed && flameRng(p.seed ^ 0x51)() < 0.12) {
+      if (alive && !wasDown && p.landed && !p.energy && flameRng(p.seed ^ 0x51)() < 0.12) {
         // Where the fuel splashes down it throws off a curl of black smoke.
         this.fireSmoke.push({
           x: p.x,
@@ -8648,7 +8830,7 @@ export class MapView {
         });
       }
       if (!alive) {
-        if (p.landed && flameRng(p.seed)() < 0.18) {
+        if (p.landed && !p.energy && flameRng(p.seed)() < 0.18) {
           this.fireSmoke.push({
             x: p.x,
             y: p.y,
@@ -8668,10 +8850,25 @@ export class MapView {
         continue;
       }
       keep.push(p);
+      if (p.energy) {
+        plasma.push(p);
+        continue;
+      }
       const look = flameParticleLook(p, now);
       if (!look) continue;
       const s = this.toScreen(p.x, p.y);
       drawFlameParticle(ctx, s.x, s.y - p.h, look.r, look.heat, look.alpha);
+    }
+    if (plasma.length > 0) {
+      // The same fire, turned to the Borg's green.
+      ctx.filter = "hue-rotate(115deg) saturate(1.4)";
+      for (const p of plasma) {
+        const look = flameParticleLook(p, now);
+        if (!look) continue;
+        const s = this.toScreen(p.x, p.y);
+        drawFlameParticle(ctx, s.x, s.y - p.h, look.r, look.heat, look.alpha);
+      }
+      ctx.filter = "none";
     }
     ctx.restore();
     this.flameParticles = keep;
@@ -8732,6 +8929,26 @@ export class MapView {
     const ctx = this.ctx;
     const keep: typeof this.fx = [];
     for (const f of this.fx) {
+      // A Borg hit is light, not metal: a green burst in place of dirt, sparks, and fireball.
+      const energyHit = !!f.energy && !f.death && !f.intercept && f.kind !== "muzzle" && f.kind !== "kill" && !f.splash;
+      if (energyHit || (f.energy && f.kind === "muzzle")) {
+        const life = f.kind === "muzzle" ? fxLifeMs("muzzle", false) : energyBurstMs(f.caliber);
+        const age = now - f.at;
+        if (age > life) {
+          this.fxIds.delete(f.id);
+          continue;
+        }
+        keep.push(f);
+        if (age < 0) continue;
+        const s = this.toScreen(f.x, f.y, f.z ?? undefined);
+        if (f.kind === "muzzle") {
+          const tip = this.toScreen(f.x + f.vx * 0.08, f.y + f.vy * 0.08);
+          drawEnergyMuzzle(ctx, s.x + (f.sx ?? 0), s.y - (f.lift ?? 0), tip.x - s.x, tip.y - s.y, age / life, f.caliber);
+        } else {
+          drawEnergyBurst(ctx, s.x, s.y - (f.lift ?? (f.kind === "miss" || f.kind === "puff" ? 0 : 8)), age / life, f.id, f.caliber);
+        }
+        continue;
+      }
       const burst = groundBurst(f);
       // A torpedo on a hull: the fireball goes up inside the water column.
       const wet = f.death && !f.torpedo ? undefined : waterBurst(f);

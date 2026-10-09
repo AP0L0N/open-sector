@@ -53,6 +53,22 @@ import nexusUrl from "../assets/buildings/nexus.png";
 import assimilatorUrl from "../assets/buildings/assimilator.png";
 import radarUrl from "../assets/buildings/radar.png";
 import dockUrl from "../assets/buildings/dock.png";
+import stalkerLegsUrl from "../assets/units/stalker-legs.png";
+import stalkerTurretUrl from "../assets/units/stalker-turret.png";
+import stalkerGunUrl from "../assets/units/stalker-gun.png";
+import behemothLegsUrl from "../assets/units/behemoth-legs.png";
+import behemothTurretUrl from "../assets/units/behemoth-turret.png";
+import behemothGunUrl from "../assets/units/behemoth-gun.png";
+import ravagerLegsUrl from "../assets/units/ravager-legs.png";
+import ravagerTurretUrl from "../assets/units/ravager-turret.png";
+import ravagerGunUrl from "../assets/units/ravager-gun.png";
+import leechWreckUrl from "../assets/units/wrecks/leech.png";
+import lurkerWreckUrl from "../assets/units/wrecks/lurker.png";
+import waspWreckUrl from "../assets/units/wrecks/wasp.png";
+import scourgeWreckUrl from "../assets/units/wrecks/scourge.png";
+import spawnPoolUrl from "../assets/buildings/spawnpool.png";
+import aerieUrl from "../assets/buildings/aerie.png";
+import aerieGroundUrl from "../assets/buildings/aerie-ground.png";
 import ramUrl from "../assets/buildings/ram.png";
 import ramTurretUrl from "../assets/buildings/ram-turret.png";
 import cottageUrl from "../assets/buildings/cottage.png";
@@ -340,7 +356,7 @@ import {
   bindNavalSheets,
   bindBattleshipSheets,
   bindApocalypseSheets,
-  bindBorgWalkerSheets,
+  bindPlaneSheets,
   bindNebelwerferSheets,
   bindArtillerySheets,
   bindTurntableSheets,
@@ -1257,25 +1273,24 @@ bindApocalypseSheets(
 );
 
 /** A Borg heavy assimilator on the Tiger's cell; the legs are the hull. Sized by the art's metres per cell. */
-function borgWalker(id: "stalker" | "behemoth" | "ravager", size: number): UnitSpriteDef {
-  const def: UnitSpriteDef = {
-    image: new Image(),
+function borgWalker(legs: string, turret: string, gun: string, size: number, fps: number): UnitSpriteDef {
+  const overlay = (src: string): TurretSpriteDef => ({ image: loadSheet(src), dirs: TANK_FACE_DIRS, frames: 1, frameSize: 128 });
+  return {
+    image: loadSheet(legs),
     dirs: TANK_FACE_DIRS,
-    frames: 1,
+    frames: 8,
     frameSize: 128,
-    fps: 8,
+    fps,
     drawSize: Math.round(size * UNIT_VISUAL_SCALE),
     contactY: 0.92,
-    turret: tankLayer(),
-    gun: tankLayer(),
+    turret: overlay(turret),
+    gun: overlay(gun),
     facingSpace: "world",
   };
-  bindBorgWalkerSheets(id, def.image, def.turret!.image, def.gun!.image);
-  return def;
 }
-export const STALKER_SPRITE = borgWalker("stalker", 49);
-export const BEHEMOTH_SPRITE = borgWalker("behemoth", 68);
-export const RAVAGER_SPRITE = borgWalker("ravager", 29);
+export const STALKER_SPRITE = borgWalker(stalkerLegsUrl, stalkerTurretUrl, stalkerGunUrl, 49, 10);
+export const BEHEMOTH_SPRITE = borgWalker(behemothLegsUrl, behemothTurretUrl, behemothGunUrl, 68, 7);
+export const RAVAGER_SPRITE = borgWalker(ravagerLegsUrl, ravagerTurretUrl, ravagerGunUrl, 29, 12);
 
 const ss3Gun: TurretSpriteDef = {
   image: new Image(),
@@ -1529,6 +1544,58 @@ export const FW190_SPRITE: UnitSpriteDef = {
 };
 bindFighterSheets(FW190_SPRITE.image);
 
+/** Leech: the Borg attack boat, on the Attack Boat's cell and scale. */
+export const LEECH_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(48 * UNIT_VISUAL_SCALE),
+  contactY: 0.74,
+  facingSpace: "world",
+};
+bindNavalSheets("leech", LEECH_SPRITE.image);
+
+/** Lurker: the Borg submarine, about the Submarine's footprint. */
+export const LURKER_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(64 * 1.2 * UNIT_VISUAL_SCALE),
+  contactY: 0.74,
+  facingSpace: "world",
+};
+bindNavalSheets("lurker", LURKER_SPRITE.image);
+
+/** Wasp: the Borg fighter, the Fw 190's camera and scale. */
+export const WASP_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(56 * UNIT_VISUAL_SCALE),
+  contactY: 0.8,
+  facingSpace: "world",
+};
+bindPlaneSheets("wasp", WASP_SPRITE.image);
+
+/** Scourge: the Borg dive bomber, the Stuka's camera and scale. */
+export const SCOURGE_SPRITE: UnitSpriteDef = {
+  image: new Image(),
+  dirs: TANK_FACE_DIRS,
+  frames: 1,
+  frameSize: 128,
+  fps: 8,
+  drawSize: Math.round(63 * UNIT_VISUAL_SCALE),
+  contactY: 0.8,
+  facingSpace: "world",
+};
+bindPlaneSheets("scourge", SCOURGE_SPRITE.image);
+
 /**
  * BV 222 transport. Same camera and cell as the Stuka; its wingspan fills the cell,
  * so it is drawn well over the Stuka's size to read as the big, slow flying boat it is —
@@ -1767,15 +1834,19 @@ const WRECK_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   mammoth: wreckSheet(mammothWreckUrl, MAMMOTH_SPRITE),
   stuka: wreckSheet(stukaWreckUrl, STUKA_SPRITE),
   fw190: wreckSheet(fw190WreckUrl, FW190_SPRITE),
+  wasp: wreckSheet(waspWreckUrl, WASP_SPRITE),
+  scourge: wreckSheet(scourgeWreckUrl, SCOURGE_SPRITE),
   bv222: wreckSheet(bv222WreckUrl, BV222_SPRITE),
   he111: wreckSheet(he111WreckUrl, HE111_SPRITE),
   horten: wreckSheet(hortenWreckUrl, HORTEN_SPRITE),
   // Ships settle on the bottom: the superstructure and turrets are baked into the hulk.
   gunboat: wreckSheet(gunboatWreckUrl, GUNBOAT_SPRITE),
+  leech: wreckSheet(leechWreckUrl, LEECH_SPRITE),
   destroyer: wreckSheet(destroyerWreckUrl, DESTROYER_SPRITE),
   lst: wreckSheet(lstWreckUrl, LST_SPRITE),
   aswheli: wreckSheet(aswheliWreckUrl, ASWHELI_SPRITE),
   submarine: wreckSheet(submarineWreckUrl, SUBMARINE_SPRITE),
+  lurker: wreckSheet(lurkerWreckUrl, LURKER_SPRITE),
   battleship: wreckSheet(battleshipWreckUrl, BATTLESHIP_SPRITE),
 };
 
@@ -1802,8 +1873,10 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   feuerwirbel: FEUERWIRBEL_SPRITE,
   supply: SUPPLY_SPRITE,
   gunboat: GUNBOAT_SPRITE,
+  leech: LEECH_SPRITE,
   supplyboat: SUPPLYBOAT_SPRITE,
   submarine: SUBMARINE_SPRITE,
+  lurker: LURKER_SPRITE,
   battleship: BATTLESHIP_SPRITE,
   destroyer: DESTROYER_SPRITE,
   lst: LST_SPRITE,
@@ -1812,6 +1885,8 @@ const UNIT_SPRITES: Partial<Record<EntityType, UnitSpriteDef>> = {
   artillery: ARTILLERY_SPRITE,
   stuka: STUKA_SPRITE,
   fw190: FW190_SPRITE,
+  wasp: WASP_SPRITE,
+  scourge: SCOURGE_SPRITE,
   bv222: BV222_SPRITE,
   he111: HE111_SPRITE,
   horten: HORTEN_SPRITE,
@@ -1979,6 +2054,10 @@ const BUILDING_SPRITES: Partial<Record<EntityType, BuildingSpriteDef>> = {
   radar: building(radarUrl, 384, 210, 354, 216, 58),
   // The pier stands in its pond: a hard edge, no blend onto ground that is not there.
   dock: building(dockUrl, 384, 210, 354, 214, 92, false),
+  // Chitin ring round a birthing pool, floating on open water like the Marine Base (render_borg_harbour.py).
+  spawnpool: building(spawnPoolUrl, 384, 210, 240.1, 163.3, 28.1, false),
+  // Launch spine and four nests on the Airfield's canvas and pads.
+  aerie: building(aerieUrl, 960, 652, 552, 588, 100, false),
   // Concrete pillbox. Metrics from tools/sprites/render_bunker.py (bunker.json). Turned faces in TURNED_FACES.
   bunker: building(bunkerUrl, 384, 222, 264, 222, 99),
   // Concrete shaft and slitted cab. Metrics from tools/sprites/render_tower.py (tower.json). Turned faces in TURNED_FACES.
@@ -2141,6 +2220,7 @@ export const RAM_TURRET_SHEET: HTMLImageElement = loadSheet(ramTurretUrl);
  */
 const BUILDING_GROUNDS: Partial<Record<EntityType, BuildingSpriteDef>> = {
   airfield: building(airfieldGroundUrl, 960, 652, 552, 604, 112, false),
+  aerie: building(aerieGroundUrl, 960, 652, 552, 588, 100, false),
 };
 
 export function buildingGroundFor(type: EntityType, facing = 0): BuildingSpriteDef | undefined {

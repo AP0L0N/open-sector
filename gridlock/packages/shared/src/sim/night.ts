@@ -1,4 +1,5 @@
 import {
+  factionOf,
   DAY_SECONDS,
   LAMP_HEADING_STEP_DEG,
   MAMMOTH_LAMP_PERIOD_SECONDS,
@@ -168,10 +169,11 @@ export function titanLampSweep(id: number, seconds: number): number {
 
 /**
  * Armored ground hulls carry a headlight. Planes and drones fly dark, and so
- * does a submarine. Cyborgs carry no lamp: they see by thermal (sim/thermal.ts).
+ * does a submarine. Cyborgs carry no lamp: they see by thermal (sim/thermal.ts). Nothing
+ * of the Borg carries a lamp at all.
  */
 export function hasHeadlight(type: EntityType): boolean {
-  if (isCyborg(type)) return false;
+  if (isCyborg(type) || factionOf(type) === "borg") return false;
   if (catalog(type).submerges) return false;
   return isArmoredType(type) && !isAircraftType(type) && !isDroneType(type) && !hasSpotlight(type);
 }

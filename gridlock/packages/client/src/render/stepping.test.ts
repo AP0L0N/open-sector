@@ -6,6 +6,13 @@ const here = { x: 100, y: 100 };
 const onward = { x: 103, y: 100 };
 
 describe("unitStepping", () => {
+  it("walks a Borg spider's legs only while it covers ground", () => {
+    for (const type of ["stalker", "behemoth", "ravager"]) {
+      assert.equal(unitStepping({ type, state: "move", prev: here, curr: here }), false, type);
+      assert.equal(unitStepping({ type, state: "move", prev: here, curr: onward }), true, type);
+    }
+  });
+
   it("steps on a plain move order", () => {
     assert.equal(unitStepping({ type: "trooper", state: "move", prev: here, curr: here }), true);
   });

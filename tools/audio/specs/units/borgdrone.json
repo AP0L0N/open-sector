@@ -38,7 +38,7 @@
   },
   "sfx": {
     "fire": {
-      "prompt": "Single short shot from a sci-fi electric pulse carbine: a sharp snapping electric crack with a quick zap and a tiny sizzling tail, close, outdoors battlefield, no music, no voice",
+      "prompt": "Single shot from a sci-fi energy pulse carbine: one sharp bright electric pulse crack, a quick laser blaster zap with a tiny sizzling energy tail, no gunpowder, no bullet, close, outdoors battlefield, no music, no voice",
       "duration": 0.6,
       "variants": 3,
       "influence": 0.65
