@@ -205,7 +205,7 @@ function slotColumn(ctx: Ctx, slots: SaveSlot[], mode: "save" | "load"): HTMLEle
     const map = getMap(slot.mapId)?.name ?? slot.mapId;
     pick.append(
       el("span", { text: slot.name }),
-      el("small", { text: `${map} · ${matchClock(slot.tick).text} · ${stamp(slot.savedAt)}` }),
+      el("small", { text: `${map} · ${matchClock(slot.tick, getMap(slot.mapId)?.night).text} · ${stamp(slot.savedAt)}` }),
     );
     pick.addEventListener("click", () => {
       if (mode === "save") {

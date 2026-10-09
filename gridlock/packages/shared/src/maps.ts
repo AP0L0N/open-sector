@@ -58,6 +58,8 @@ export interface MapDef {
    * Drawing only: sight and the sim are the same either way.
    */
   shroud?: boolean;
+  /** Always night time: the day never comes, so sight stays cut and the lamps burn all match. */
+  night?: boolean;
   /** Set on maps made in the Map Builder. Built-in maps leave it out and cannot be edited. */
   custom?: { author: string; updatedAt: number };
 }

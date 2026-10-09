@@ -24,7 +24,7 @@ export function newSaveId(): string {
 /** Name offered in the save field: the map, then the match clock. */
 export function suggestSaveName(mapId: string, tick: number): string {
   const map = getMap(mapId)?.name ?? "Skirmish";
-  return `${map} ${matchClock(tick).text}`.slice(0, 32);
+  return `${map} ${matchClock(tick, getMap(mapId)?.night).text}`.slice(0, 32);
 }
 
 export function cleanSaveName(raw: string, fallback: string): string {

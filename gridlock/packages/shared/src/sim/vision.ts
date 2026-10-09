@@ -101,8 +101,8 @@ export type SightLight = { mul: number; spots: boolean; sec: number };
 
 const DAYLIGHT: SightLight = { mul: 1, spots: false, sec: 0 };
 
-export function sightLightAt(tick: number): SightLight {
-  return { mul: nightSightMul(tick), spots: spotlightsOn(tick), sec: tick * TICK_DT };
+export function sightLightAt(tick: number, alwaysNight = false): SightLight {
+  return { mul: nightSightMul(tick, alwaysNight), spots: spotlightsOn(tick, alwaysNight), sec: tick * TICK_DT };
 }
 
 const SPOT_COS = Math.cos((SPOTLIGHT_HALF_DEG * Math.PI) / 180);
@@ -986,7 +986,7 @@ function visionKeyNow(state: MatchState, playerId: string): number {
   let h = 2166136261;
   h = mix(h, state.clearedTrees.length);
   h = mix(h, state.digRev);
-  const light = sightLightAt(state.tick);
+  const light = sightLightAt(state.tick, getMap(state.mapId)?.night);
   h = mix(h, Math.round(light.mul * 4096));
   h = mix(h, light.spots ? 1 : 0);
   for (const e of state.entities.values()) {
@@ -1276,7 +1276,7 @@ function alliedSight(state: MatchState, playerId: string): { e: Entity; p: Sight
   const radius = new Map<number, number>();
   for (const e of observers) radius.set(e.id, observerRadius(state, e));
   observers.sort((a, b) => radius.get(b.id)! - radius.get(a.id)!);
-  const light = sightLightAt(state.tick);
+  const light = sightLightAt(state.tick, getMap(state.mapId)?.night);
   return observers.map((e) => {
     const sightTiles = occupantSightTiles(state, e) ?? (entityIsScouting(e) ? sightTilesForEntity(state, e) : undefined);
     const observerEye = occupantEye(state, e);
@@ -1852,7 +1852,7 @@ export function visionMaskFromSnapshot(
         smoke,
       }
     : undefined;
-  const light = sightLightAt(snap.tick);
+  const light = sightLightAt(snap.tick, map?.night);
   const allied: EntityView[] = [];
   for (const e of snap.entities) {
     if (e.wreck) continue;

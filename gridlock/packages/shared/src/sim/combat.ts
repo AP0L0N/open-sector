@@ -262,6 +262,7 @@ import { stepCluster } from "./airdrop.js";
 import { projectileMeetsDrone, reachesDrone, reachesHighFlyer } from "./drone.js";
 import { jetAloft, reachesJet } from "./jet.js";
 import { nightSightMul, nightTiles } from "./night.js";
+import { getMap } from "../maps.js";
 import { afloat, armTorpedo, diving, hiddenSubmarine, surface, surfaceToStrike, torpedoCannotReach } from "./naval.js";
 import { shipHullT, shipKeelDist, shipMountPoint, turretBearing } from "./battleship.js";
 import { syncLstCrew } from "./lst.js";
@@ -2989,7 +2990,7 @@ function aimRemainingDeg(e: Entity, aimX: number, aimY: number): number {
  * that sight — a Tiger or StuG firing on a spotter — opens LONG_SHOT_SPREAD.
  */
 function accurateWeaponRange(state: MatchState, e: Entity, range: number): number {
-  const sight = nightTiles(sightTilesForEntity(state, e), nightSightMul(state.tick)) * state.tileSize;
+  const sight = nightTiles(sightTilesForEntity(state, e), nightSightMul(state.tick, getMap(state.mapId)?.night)) * state.tileSize;
   return Math.min(range, sight);
 }
 

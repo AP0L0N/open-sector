@@ -316,7 +316,7 @@ let gameView = store()?.getItem(GAME_VIEW_STORE) === "1";
 let nightView = store()?.getItem(NIGHT_VIEW_STORE) === "1";
 /** Every patrol stays on the sheet. Off, only the selected unit or tower shows its route. */
 let patrolAlways = store()?.getItem(PATROL_ALWAYS_STORE) === "1";
-/** The Night time checkbox, hidden while the plan view is up. */
+/** The Show night time checkbox, hidden while the plan view is up. */
 let nightToggle: HTMLElement | null = null;
 const isoCam: IsoCam = { zoom: 0, camX: 0, camY: 0 };
 let hover: { x: number; y: number; inside: boolean } = { x: 0, y: 0, inside: false };
@@ -397,6 +397,7 @@ function say(text: string, tone: "" | "bad" | "good" = ""): void {
   msg = { text, tone };
   if (stage) {
     stage.msg.textContent = text;
+    stage.msg.title = text;
     stage.msg.className = `bld-msg ${tone}`;
     stage.msg.hidden = !text;
   }
@@ -1305,7 +1306,7 @@ function spotBeams(): SpotBeam[] {
   return out;
 }
 
-/** The stage's view checkboxes: Always visible patrol, Night time (while the In-game view is up), and In-game view. */
+/** The stage's view checkboxes: Always visible patrol, Show night time (while the In-game view is up), and In-game view. */
 function viewToggles(): HTMLElement {
   const row = el("div", { class: "bld-view-toggles" });
   const night = el("label", {
@@ -1315,7 +1316,7 @@ function viewToggles(): HTMLElement {
   const box = el("input", { attrs: { type: "checkbox" } });
   box.checked = nightView;
   box.addEventListener("change", () => setNightView(box.checked));
-  night.append(box, el("span", { text: "Night time" }));
+  night.append(box, el("span", { text: "Show night time" }));
   night.hidden = !gameView;
   nightToggle = night;
   row.append(patrolAlwaysToggle(), night, gameViewToggle());
@@ -3403,16 +3404,59 @@ function sidePanel(ctx: Ctx): HTMLElement {
   mini.addEventListener("pointerup", release);
   mini.addEventListener("pointercancel", release);
   mini.addEventListener("lostpointercapture", release);
-  const checks = el("ul", { class: "bld-checks" });
-  panel.append(section("Map", mini, el("p", { class: "bld-hint", text: "Click or drag to look there." })), section("Checks", checks));
-  const maps = el("div", { class: "bld-maps" });
-  panel.append(section("Maps", maps));
-  if (stage) {
-    stage.mini = mini;
-    stage.checks = checks;
-    stage.maps = maps;
+  const s = sheet;
+  if (s && !newOpen) {
+    const checks = el("ul", { class: "bld-checks" });
+    panel.append(
+      section("Map", mini, el("p", { class: "bld-hint", text: "Click or drag to look there." })),
+      section("Checks", checks),
+      section("Map settings", ...mapSettings(ctx, s)),
+    );
+    if (stage) {
+      stage.mini = mini;
+      stage.checks = checks;
+    }
+  } else {
+    // The start page: open, copy, or delete a map.
+    const maps = el("div", { class: "bld-maps" });
+    panel.append(section("Maps", maps));
+    if (stage) stage.maps = maps;
   }
   return panel;
+}
+
+/** The sheet's match rules, saved with the map: Complete fog of war and Always night time. */
+function mapSettings(ctx: Ctx, s: M.Sheet): HTMLElement[] {
+  const flag = (text: string, title: string, on: boolean, set: (on: boolean) => void, said: (on: boolean) => string): HTMLElement => {
+    const box = el("input", { attrs: { type: "checkbox" } });
+    box.checked = on;
+    box.addEventListener("change", () => {
+      pushUndo();
+      set(box.checked);
+      finishStroke();
+      say(said(box.checked));
+      mountOrRefresh(ctx);
+    });
+    const label = el("label", { class: "check bld-setting", text, attrs: { title } });
+    label.prepend(box);
+    return label;
+  };
+  return [
+    flag(
+      "Complete fog of war",
+      "Players see nothing of the map until their units have explored it",
+      s.shroud,
+      (on) => (s.shroud = on),
+      (on) => (on ? "Complete fog of war: unexplored ground starts black." : "Complete fog of war off: the map is known from the start."),
+    ),
+    flag(
+      "Always night time",
+      "The day never comes: sight stays short and the lamps burn all match",
+      s.night,
+      (on) => (s.night = on),
+      (on) => (on ? "Always night time: the match is fought in the dark." : "Always night time off: the match runs day and night."),
+    ),
+  ];
 }
 
 function paintMapList(ctx: Ctx): void {
@@ -3495,7 +3539,7 @@ function newForm(ctx: Ctx): HTMLElement {
   });
   row.append(create);
   if (sheet) {
-    const cancel = el("button", { class: "btn btn-ghost", text: "Cancel", attrs: { type: "button" } });
+    const cancel = el("button", { class: "btn btn-ghost", text: `Resume ${sheet.name || "map"}`, attrs: { type: "button" } });
     cancel.addEventListener("click", () => {
       newOpen = false;
       mountOrRefresh(ctx);
@@ -3560,26 +3604,11 @@ function header(ctx: Ctx): HTMLElement {
       mountOrRefresh(ctx);
     });
     playersField.append(el("label", { text: "Max players" }), players);
-    const shroud = el("input", { attrs: { type: "checkbox" } });
-    shroud.checked = s.shroud;
-    shroud.addEventListener("change", () => {
-      pushUndo();
-      s.shroud = shroud.checked;
-      finishStroke();
-      say(s.shroud ? "Complete fog of war: unexplored ground starts black." : "Complete fog of war off: the map is known from the start.");
-      mountOrRefresh(ctx);
-    });
-    const shroudLabel = el("label", {
-      class: "check bld-auto",
-      text: "Complete fog of war",
-      attrs: { title: "Players see nothing of the map until their units have explored it" },
-    });
-    shroudLabel.prepend(shroud);
     const cells = s.width / TILE_SUBDIV;
     const label = CUSTOM_MAP_SIZES.find((z) => z.cells === cells)?.label ?? "";
-    head.append(nameField, playersField, shroudLabel, el("div", { class: "bld-size", text: `${label} · ${cells}×${cells} cells` }));
+    head.append(nameField, playersField, el("div", { class: "bld-size", text: `${label} · ${cells}×${cells} cells` }));
   }
-  const note = el("div", { class: `bld-msg ${msg.tone}`, text: msg.text });
+  const note = el("div", { class: `bld-msg ${msg.tone}`, text: msg.text, attrs: { title: msg.text } });
   note.hidden = !msg.text;
   head.append(note, el("div", { class: "spacer" }));
   const btn = (text: string, cls: string, onClick: () => void, disabled = false): void => {
@@ -3589,12 +3618,6 @@ function header(ctx: Ctx): HTMLElement {
     head.append(b);
   };
   const editing = Boolean(s) && !newOpen;
-  btn("New", "btn-ghost", () => {
-    if (dirty && sheet && !confirm("Discard unsaved changes to this map?")) return;
-    newOpen = true;
-    mountOrRefresh(ctx);
-  }, newOpen);
-  btn("Undo", "btn-ghost", () => step(undo, redo), !editing || undo.length === 0);
   const auto = el("input", { attrs: { type: "checkbox" } });
   auto.checked = autoSave;
   auto.addEventListener("change", () => setAutoSave(auto.checked));
@@ -3605,7 +3628,13 @@ function header(ctx: Ctx): HTMLElement {
   btn("Save copy", "", () => save(ctx, { copy: true }), !editing);
   if (editing) head.append(testSpawnPick());
   btn("Play test", "", () => playtest(ctx), !editing);
+  // From the sheet, Back steps out to the start page: New map and the map list. The sheet waits there to be resumed.
   btn("Back", "btn-ghost", () => {
+    if (editing) {
+      newOpen = true;
+      mountOrRefresh(ctx);
+      return;
+    }
     if (dirty && sheet && !confirm("Leave with unsaved changes? They stay here until you open another map.")) return;
     ctx.goto("menu");
   });

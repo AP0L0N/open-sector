@@ -2549,6 +2549,11 @@ export class MapView {
     this.onPlaceMode();
   }
 
+  /** Daylight at the frame's tick: 0 all match on an always-night map. */
+  private daylight(): number {
+    return daylightAt(this.curr.tick, getMap(this.curr.mapId)?.night);
+  }
+
   private map() {
     const m = getMap(this.curr.mapId);
     if (!m) throw new Error("missing map");
@@ -4273,7 +4278,7 @@ export class MapView {
     if (!e.wreck || !this.fogField) return 1;
     const ts = this.ts();
     const p = this.lerpEnt(e);
-    return wreckNightAlpha(daylightAt(this.curr.tick), this.fogField.sample(p.x / ts, p.y / ts, now));
+    return wreckNightAlpha(this.daylight(), this.fogField.sample(p.x / ts, p.y / ts, now));
   }
 
   /** Soft veil over ground out of sight, laid on the hills. Drawn under everything standing. */
@@ -4282,7 +4287,7 @@ export class MapView {
     if (!field) return;
     const now = performance.now();
     // Out of sight at night is near black: the dark sight rings and lamps read on the ground.
-    const look = nightFog(daylightAt(this.curr.tick), FOG_VEIL_ALPHA, FOG_RGB);
+    const look = nightFog(this.daylight(), FOG_VEIL_ALPHA, FOG_RGB);
     if (this.fogGl === undefined) this.fogGl = FogGl.create();
     const gl = this.fogGl;
     if (gl) {
@@ -4826,7 +4831,7 @@ export class MapView {
    */
   private drawNight(): void {
     const lamps = this.easedLamps();
-    const daylight = daylightAt(this.curr.tick);
+    const daylight = this.daylight();
     const shade = nightShade(daylight);
     const glow = lampGlow(daylight);
     const ctx = this.ctx;
@@ -6730,7 +6735,7 @@ export class MapView {
     const facing = this.lampShownFacing(e);
     const broken = !!e.crits?.includes("lamp");
     const burning = !ghost && e.spotFacing != null && e.hp > 0 && !broken && !e.unpowered;
-    const lit = burning ? lampGlow(daylightAt(this.curr.tick)) : 0;
+    const lit = burning ? lampGlow(this.daylight()) : 0;
     let pose: SearchlightPose;
     if (pole?.lampZ != null) {
       pose = this.drawPoleLamp(southX, southY, footprintW, pole.lampZ, pole.pad.padWidth, facing, { lit, broken });
@@ -7286,7 +7291,7 @@ export class MapView {
     const mount = shipLampMount(facing, size, this.ts());
     const broken = !!e.crits?.includes("lamp");
     const burning = e.spotFacing != null && e.hp > 0 && !broken;
-    const lit = burning ? lampGlow(daylightAt(this.curr.tick)) : 0;
+    const lit = burning ? lampGlow(this.daylight()) : 0;
     const heading = this.spotShown.get(e.id) ?? e.spotFacing ?? facing;
     const pose = drawSearchlightAt(this.ctx, ox + mount.dx, oy + mount.dy, mount.u, heading, { lit, broken });
     this.lensAt.set(e.id, pose);

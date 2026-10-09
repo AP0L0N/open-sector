@@ -103,6 +103,8 @@ export interface Sheet {
   units: MapUnit[];
   /** Complete fog of war: ground nobody has seen yet plays black. */
   shroud: boolean;
+  /** Always night time: the match never leaves the dark. */
+  night: boolean;
 }
 
 /** Ground a start pad clears. Roads may run through it. */
@@ -135,6 +137,7 @@ export function newSheet(opts: {
     clutter: [],
     units: [],
     shroud: false,
+    night: false,
   };
   settle(sheet);
   return sheet;
@@ -158,6 +161,7 @@ export function sheetFromSpec(spec: CustomMapSpec): Sheet {
     clutter: (spec.clutter ?? []).map((c) => ({ ...c })),
     units: (spec.units ?? []).map(copyMapUnit),
     shroud: spec.shroud === true,
+    night: spec.night === true,
   };
   settle(sheet);
   return sheet;
@@ -180,6 +184,7 @@ export function sheetToSpec(s: Sheet): CustomMapSpec {
     ...(s.clutter.length > 0 ? { clutter: liveClutter(s) } : {}),
     ...(s.units.length > 0 ? { units: liveUnits(s) } : {}),
     ...(s.shroud ? { shroud: true as const } : {}),
+    ...(s.night ? { night: true as const } : {}),
     updatedAt: 0,
   };
 }
@@ -202,6 +207,7 @@ export function sheetToMap(s: Sheet, id = "__builder__"): MapDef {
     clutter: liveClutter(s),
     units: liveUnits(s),
     ...(s.shroud ? { shroud: true } : {}),
+    ...(s.night ? { night: true } : {}),
   };
 }
 
@@ -1329,6 +1335,7 @@ export interface SheetMark {
   units: MapUnit[];
   maxPlayers: number;
   shroud: boolean;
+  night: boolean;
 }
 
 export function markSheet(s: Sheet): SheetMark {
@@ -1343,6 +1350,7 @@ export function markSheet(s: Sheet): SheetMark {
     units: s.units.map(copyMapUnit),
     maxPlayers: s.maxPlayers,
     shroud: s.shroud,
+    night: s.night,
   };
 }
 
@@ -1357,4 +1365,5 @@ export function restoreSheet(s: Sheet, m: SheetMark): void {
   s.units = m.units.map(copyMapUnit);
   s.maxPlayers = m.maxPlayers;
   s.shroud = m.shroud;
+  s.night = m.night;
 }

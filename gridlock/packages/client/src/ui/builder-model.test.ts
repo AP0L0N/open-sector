@@ -611,6 +611,22 @@ describe("builder complete fog of war", () => {
   });
 });
 
+describe("builder always night time", () => {
+  it("starts off and carries the flag through save, reopen, play test, and undo", () => {
+    const s = fresh();
+    assert.equal(s.night, false);
+    assert.equal("night" in sheetToSpec(s), false);
+    const before = markSheet(s);
+    s.night = true;
+    assert.equal(sheetToSpec(s).night, true);
+    assert.equal(sheetFromSpec(sheetToSpec(s)).night, true);
+    assert.equal(playtestSpec(s, "p-check").night, true);
+    assert.equal(sheetToMap(s).night, true);
+    restoreSheet(s, before);
+    assert.equal(s.night, false);
+  });
+});
+
 describe("builder dirty boxes", () => {
   /** Every index where two grids differ lies inside `box`. */
   const covered = (width: number, a: readonly number[], b: readonly number[], box: { x0: number; y0: number; x1: number; y1: number }): boolean =>

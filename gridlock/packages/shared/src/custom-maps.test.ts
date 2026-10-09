@@ -707,6 +707,32 @@ describe("custom map complete fog of war", () => {
   });
 });
 
+describe("custom map always night time", () => {
+  it("keeps the night flag through validate, build, and copy", () => {
+    const r = validateCustomMap(sheet({ id: "c-night00001", night: true }));
+    assert.ok(r.ok);
+    assert.equal(r.spec.night, true);
+    const loaded = loadCustomMap(r.spec);
+    assert.ok(loaded.ok);
+    try {
+      assert.equal(loaded.map.night, true);
+      const copy = specFromMap("c-night00001", { id: "c-night00002", name: "Copy", author: "T" });
+      assert.equal(copy?.night, true);
+    } finally {
+      unregisterMap("c-night00001");
+    }
+  });
+
+  it("leaves the flag out when off or not exactly true", () => {
+    for (const night of [undefined, false as never, "yes" as never, 1 as never]) {
+      const r = validateCustomMap(sheet({ night }));
+      assert.ok(r.ok);
+      assert.equal("night" in r.spec, false);
+      assert.equal(buildCustomMap(r.spec).night, undefined);
+    }
+  });
+});
+
 describe("custom map ground cover", () => {
   it("keeps painted cover through validation, the built map, and a copy of it", () => {
     const n = SIDE * SIDE;
