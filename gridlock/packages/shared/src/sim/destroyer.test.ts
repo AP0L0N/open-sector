@@ -133,14 +133,13 @@ describe("Destroyer sonar", () => {
     assert.deepEqual(sonarContacts(state, "B"), [], "the other side hears nothing");
   });
 
-  it("goes out on the owner's snapshot only, and a boat it hears below is in sight past the fog", () => {
+  it("goes out on the owner's snapshot only, and a boat it hears below is in sight though eyes cannot find it", () => {
     const state = sea();
     const d = spawn(state, "destroyer", "A", 60, 120);
     d.asw!.torpedoes = 0; // keep the helicopter home for this one
     d.asw!.rearm = 1e6;
     d.cooldown = 1e6;
-    const gap = catalog("destroyer").sightTiles + 3 * T;
-    assert.ok(gap < SONAR_RANGE_TILES, "past the ship's own sight, inside the ring");
+    const gap = SONAR_RANGE_TILES - 3 * T;
     const s = sub(state, "B", 60 + gap, 120);
     step(state, TICK_DT);
     const mine = snapshotFor(state, "A");
