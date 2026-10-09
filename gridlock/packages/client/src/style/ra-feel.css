@@ -1349,6 +1349,21 @@ input[type="range"] { padding: 0; }
   min-width: 320px;
 }
 
+/* Delete / Sell warning over the battlefield: lighter dim, the fight shows through. */
+.confirm-back {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 45;
+}
+
+.confirm-back .modal {
+  max-width: min(420px, calc(100vw - 32px));
+}
+
 .sheet {
   width: min(440px, 94vw);
   max-height: min(80vh, 640px);

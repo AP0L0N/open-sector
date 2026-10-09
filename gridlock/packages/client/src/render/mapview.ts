@@ -9,6 +9,7 @@ import {
   rectWorld,
   turnedBox,
   catalog,
+  SELL_REFUND,
   hullFlamerOf,
   twinCiwsMountPoint,
   isCyborg,
@@ -344,6 +345,7 @@ import {
   type MuzzleSmokePuff,
 } from "./muzzle-smoke.js";
 import { spatialMix } from "../ui/spatial-sfx.js";
+import { closeConfirm, confirmOpen, showConfirm } from "../ui/confirm.js";
 import { playSoundEvents, updateAmbient, warmBattle } from "../ui/game-audio.js";
 import { SoundTracker } from "./sound-events.js";
 import { drawGatlingFlash, gatlingMuzzles } from "./gatling-flash.js";
@@ -551,6 +553,10 @@ import { heightsChanged } from "./height-mesh.js";
 /** Special-action key. D pans with W and the arrow keys; A/S are orders. */
 export const SPECIAL_HOTKEY = "e";
 export const STOP_HOTKEY = "s";
+/** S also sells when the selection is own structures only. */
+export const SELL_HOTKEY = STOP_HOTKEY;
+/** `KeyboardEvent.key`, lower-cased. */
+export const DELETE_HOTKEY = "delete";
 export const ATTACK_MOVE_HOTKEY = "a";
 export const PATROL_HOTKEY = "y";
 /** Click this close to a placed spot, in view pixels, to close the loop on it. */
@@ -2366,6 +2372,7 @@ export class MapView {
 
   destroy(): void {
     this.destroyed = true;
+    closeConfirm();
     cancelAnimationFrame(this.raf);
     window.removeEventListener("keydown", this.onKey, true);
     window.removeEventListener("keyup", this.onKeyUp, true);
@@ -2682,6 +2689,8 @@ export class MapView {
   private onKey = (e: KeyboardEvent): void => {
     const tag = (e.target as HTMLElement | null)?.tagName;
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    // The Delete / Sell warning owns the keyboard until it is answered.
+    if (confirmOpen()) return;
     const k = e.key.toLowerCase();
     if (k === "control") {
       this.ctrlHeld = true;
@@ -2743,9 +2752,16 @@ export class MapView {
       this.specialSelected();
       return;
     }
+    if (k === DELETE_HOTKEY) {
+      e.preventDefault();
+      this.deleteSelected();
+      return;
+    }
     if (k === STOP_HOTKEY) {
       e.preventDefault();
-      this.stopSelected();
+      // Structures alone in the selection: S sells them. Any own unit keeps S as Stop.
+      if (this.ownSelectedIds().length === 0 && this.ownSellable().length) this.sellSelected();
+      else this.stopSelected();
       return;
     }
     if (k === ATTACK_MOVE_HOTKEY) {
@@ -2853,6 +2869,60 @@ export class MapView {
       if (!seen.has(id)) ids.push(id);
     }
     if (ids.length) this.command({ type: "cmd.stop", ids });
+  }
+
+  /** Own structures in the selection that can be sold: not the Core, not a captured civilian building. */
+  private ownSellable(): EntityView[] {
+    const out: EntityView[] = [];
+    for (const id of this.selected) {
+      const ent = this.currById.get(id);
+      if (!ent || ent.ownerId !== this.curr.youPlayerId || ent.kind !== "building" || ent.wreck || ent.hp <= 0) continue;
+      if (ent.type === "core" || isCivilianType(ent.type)) continue;
+      out.push(ent);
+    }
+    return out;
+  }
+
+  /** Own units and structures Delete may scrap: everything but the Core, the Rig, and captured civilian buildings. */
+  private ownDeletable(): EntityView[] {
+    const out: EntityView[] = [];
+    for (const id of this.selected) {
+      const ent = this.currById.get(id);
+      if (!ent || ent.ownerId !== this.curr.youPlayerId || ent.wreck || ent.hp <= 0) continue;
+      if (ent.type === "core" || ent.type === "rig") continue;
+      if (ent.kind === "building" && isCivilianType(ent.type)) continue;
+      out.push(ent);
+    }
+    return out;
+  }
+
+  /** Ask first, then scrap the selection for nothing. The ids are fixed when the warning opens. */
+  deleteSelected(): void {
+    const list = this.ownDeletable();
+    if (list.length === 0) return;
+    const ids = list.map((e) => e.id);
+    showConfirm({
+      title: list.length === 1 ? `Delete ${catalog(list[0]!.type).name}?` : `Delete ${list.length} selected?`,
+      body: "Destroyed on the spot, with no scrap back. This cannot be undone.",
+      yes: "Delete",
+      onYes: () => this.command({ type: "cmd.delete", ids }),
+    });
+  }
+
+  /** Ask first, then sell the selected structures for their refund. */
+  sellSelected(): void {
+    const list = this.ownSellable();
+    if (list.length === 0) return;
+    const refund = list.reduce((sum, e) => sum + (e.ruined ? 0 : Math.floor(catalog(e.type).cost * SELL_REFUND)), 0);
+    const ids = list.map((e) => e.id);
+    showConfirm({
+      title: list.length === 1 ? `Sell ${catalog(list[0]!.type).name}?` : `Sell ${list.length} structures?`,
+      body: `Returns ${refund} scrap. Anyone inside walks out.`,
+      yes: "Sell",
+      onYes: () => {
+        for (const id of ids) this.command({ type: "cmd.sell", id });
+      },
+    });
   }
 
   private aimingForceAttack(): boolean {

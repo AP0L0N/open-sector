@@ -97,6 +97,7 @@ import {
   GUARD_HOTKEY,
   MapView,
   ROTATE_HOTKEY,
+  SELL_HOTKEY,
   SPECIAL_HOTKEY,
   STOP_HOTKEY,
 } from "../render/mapview.js";
@@ -2181,7 +2182,23 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
     });
   }
   if (buildings.some((e) => e.type !== "core" && !isCivilianType(e.type))) {
-    out.push({ slot: "sell", act: "sell", label: "Sell", title: "Sell selected structures" });
+    out.push({
+      slot: "sell",
+      act: "sell",
+      label: "Sell",
+      title: `Sell selected structures for half their cost (${SELL_HOTKEY.toUpperCase()} with no units selected). Asks first.`,
+    });
+  }
+  if (
+    units.some((e) => e.type !== "rig") ||
+    buildings.some((e) => e.type !== "core" && !isCivilianType(e.type))
+  ) {
+    out.push({
+      slot: "delete",
+      act: "delete",
+      label: "Delete",
+      title: "Destroy the selection on the spot, with no scrap back (Del). Asks first.",
+    });
   }
   const deck = houses.find((e) => tankDeckOf(e.type));
   if (houses.some((h) => units.some((e) => e.id !== h.id && garrisonCandidate(h.type, e.type)))) {
@@ -2480,9 +2497,11 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     return;
   }
   if (act === "sell") {
-    for (const e of buildings) {
-      if (e.type !== "core" && !isCivilianType(e.type)) ctx.net.send({ type: "cmd.sell", id: e.id });
-    }
+    view.sellSelected();
+    return;
+  }
+  if (act === "delete") {
+    view.deleteSelected();
     return;
   }
   if (act === "garrison") {
