@@ -1,7 +1,7 @@
 .builder {
   display: grid;
   /* The tools column carries a 48px rail beside its page, so the page keeps the width it had. */
-  grid-template-columns: 296px minmax(0, 1fr) 290px;
+  grid-template-columns: 385px minmax(0, 1fr) 290px;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 12px;
   height: 100%;
@@ -176,11 +176,12 @@
 }
 .bld-inspector .bld-sel { margin-top: 0; }
 
-/* Quick tools in the stage's corner: select, erase, undo, redo, the brush size, the turn. */
+/* Quick tools along the stage's bottom edge, centred: select, erase, undo, redo, the brush size, the turn. */
 .bld-toolbar {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -189,7 +190,7 @@
   border: 1px solid #3a2418;
   max-width: calc(100% - 16px);
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: center;
 }
 .bld-tb-btn {
   display: grid;
@@ -212,8 +213,6 @@
 .bld-tb-group input[type="range"] { width: 90px; margin: 0; }
 .bld-tb-group .bld-val { min-width: 0; font-size: 0.7rem; }
 .bld-tb-label { font-family: "Share Tech Mono", monospace; font-size: 0.65rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
-/* View toggles sit under the toolbar. */
-.bld-view-toggles { top: 50px; }
 
 .bld-side h2 {
   font-size: 0.85rem;
@@ -411,10 +410,11 @@
   touch-action: none;
 }
 
+/* The cursor readout sits top-left, clear of the toolbar along the bottom and the toggles top-right. */
 .bld-status {
   position: absolute;
   left: 8px;
-  bottom: 8px;
+  top: 8px;
   font-family: "Share Tech Mono", monospace;
   font-size: 0.72rem;
   color: var(--text);
@@ -422,7 +422,11 @@
   border: 1px solid #3a2418;
   padding: 4px 8px;
   pointer-events: none;
-  max-width: calc(100% - 16px);
+  /* Stops short of the toggles in the opposite corner; the idle hint is the only long one. */
+  max-width: calc(100% - 420px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bld-msg {
@@ -543,6 +547,6 @@
 .bld-new .btn-row { margin-top: 16px; }
 
 @media (max-width: 1100px) {
-  .builder { grid-template-columns: 266px minmax(0, 1fr); }
+  .builder { grid-template-columns: 346px minmax(0, 1fr); }
   .bld-side { display: none; }
 }
