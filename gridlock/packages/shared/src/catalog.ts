@@ -1614,7 +1614,7 @@ export const SIMUNIT_LIGHT_MUL = 0.5;
 export const SIMUNIT_HEAVY_MUL = 0.05;
 /** Share of a slash a wall takes. */
 export const SIMUNIT_BUILDING_MUL = 0.15;
-export const SIMUNIT_BLINK_RANGE_TILES = t(12);
+export const SIMUNIT_BLINK_RANGE_TILES = t(8.4);
 export const SIMUNIT_BLINK_RECHARGE_SECONDS = 18;
 /** Seconds inside a hostile garrison before every soldier in it is dead and he is out again. */
 export const SIMUNIT_PURGE_SECONDS = 2;
