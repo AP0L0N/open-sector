@@ -27,7 +27,8 @@ import type { Entity, MatchState } from "./types.js";
  *
  * Blink strike: an enemy soldier or hull he is going for, standing past the daggers'
  * reach and inside the blink's, he blinks onto while the charge is up, and cuts the
- * same tick. A gap under SIMUNIT_STRIKE_MIN_TILES he walks.
+ * same tick. A force-attack target gets the same, friend, wreck, or wall. A gap under
+ * SIMUNIT_STRIKE_MIN_TILES he walks.
  *
  * Power-down: a Cyborg or a Sim Unit told to shut down stands dark where he is. He
  * takes no order but power-up, fires nothing, and no enemy gun picks him by itself:
@@ -238,14 +239,19 @@ function blinkOut(state: MatchState, e: Entity, host: Entity | undefined): void 
   e.state = "idle";
 }
 
-/** The enemy he is going for: a named attack, an auto pick, or the one an attack-move holds. */
+/**
+ * The enemy he is going for: a named attack, an auto pick, or the one an attack-move holds.
+ * A force-attack is whatever the player put the cursor on: a friend, a wreck, a building.
+ */
 function strikeTarget(state: MatchState, e: Entity): Entity | undefined {
   const o = e.order;
-  const id = o?.kind === "attack" || o?.kind === "forceattack" ? (o.targetId ?? e.attackTarget) : e.attackTarget;
+  const forced = o?.kind === "forceattack";
+  const id = o?.kind === "attack" || forced ? (o.targetId ?? e.attackTarget) : e.attackTarget;
   if (id == null) return undefined;
   const t = state.entities.get(id);
-  if (!t || t.kind !== "unit" || t.hp <= 0 || t.wreck || t.garrisonedIn != null || t.drone || isAirborne(t)) return undefined;
-  if (allies(state, e.ownerId, t.ownerId)) return undefined;
+  if (!t || t.id === e.id || t.hp <= 0 || t.garrisonedIn != null || t.drone || isAirborne(t)) return undefined;
+  if (forced) return t;
+  if (t.kind !== "unit" || t.wreck || allies(state, e.ownerId, t.ownerId)) return undefined;
   // A dark machine, or a Sim Unit inside on a purge, is only worth the charge when the player named it.
   if (hiddenFromAuto(t) && !(o?.kind === "attack" && !o.auto) && o?.kind !== "forceattack") return undefined;
   return t;
@@ -257,11 +263,16 @@ function tickBlinkStrike(state: MatchState, e: Entity): void {
   const t = strikeTarget(state, e);
   if (!t || inStrikeReach(state, e, t)) return;
   if (gapTo(state, e, t) < SIMUNIT_STRIKE_MIN_TILES * state.tileSize) return;
-  if (!inBlinkReach(state, e, t.x, t.y)) return;
-  // Land at his own arm's length on the near side of the target.
-  const d = Math.hypot(e.x - t.x, e.y - t.y) || 1;
-  const off = catalog(t.type).radius + catalog(e.type).radius;
-  const at = landing(state, e, t.x + ((e.x - t.x) / d) * off, t.y + ((e.y - t.y) / d) * off);
+  // Aim at the near side of the target: its middle for a body, the closest point of the wall for a building.
+  const ts = state.tileSize;
+  const wall = t.kind === "building";
+  const nx = wall ? Math.min(Math.max(e.x, t.tileX * ts), (t.tileX + t.tileW) * ts) : t.x;
+  const ny = wall ? Math.min(Math.max(e.y, t.tileY * ts), (t.tileY + t.tileH) * ts) : t.y;
+  if (!inBlinkReach(state, e, nx, ny)) return;
+  // Land at his own arm's length from it.
+  const d = Math.hypot(e.x - nx, e.y - ny) || 1;
+  const off = (wall ? 0 : catalog(t.type).radius) + catalog(e.type).radius;
+  const at = landing(state, e, nx + ((e.x - nx) / d) * off, ny + ((e.y - ny) / d) * off);
   if (!at) return;
   spendCharge(state, e);
   teleport(state, e, at.x, at.y);

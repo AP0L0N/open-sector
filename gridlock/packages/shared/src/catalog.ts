@@ -1653,7 +1653,7 @@ export const SIMUNIT_LIGHT_MUL = 0.5;
 export const SIMUNIT_HEAVY_MUL = 0.05;
 /** Share of a slash a wall takes. */
 export const SIMUNIT_BUILDING_MUL = 0.15;
-export const SIMUNIT_BLINK_RANGE_TILES = t(12);
+export const SIMUNIT_BLINK_RANGE_TILES = t(8.4);
 export const SIMUNIT_BLINK_RECHARGE_SECONDS = 18;
 /** Behemoth lunge: how far its legs throw it, cells. */
 export const BEHEMOTH_LUNGE_RANGE_TILES = t(9);

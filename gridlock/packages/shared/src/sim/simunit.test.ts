@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  SIMUNIT_BLINK_RANGE_TILES,
   SIMUNIT_BLINK_RECHARGE_SECONDS,
   SIMUNIT_PURGE_SECONDS,
   SIMUNIT_REACH_TILES,
@@ -121,11 +122,51 @@ describe("Sim Unit II daggers", () => {
     const { state, a, b } = match();
     const ts = state.tileSize;
     const su = unit(state, "simunit2", a, 40, 40);
-    const rifle = unit(state, "rifleman", b, 84, 40);
+    const rifle = unit(state, "rifleman", b, 72, 40);
     applyCommand(state, a, { type: "cmd.attack", ids: [su.id], targetId: rifle.id });
     ticks(state, 2);
     assert.ok(Math.hypot(su.x - rifle.x, su.y - rifle.y) < ts * 4, "beside him");
     assert.ok(!state.entities.has(rifle.id) || rifle.hp <= 0);
+  });
+
+  it("walks at a target past the blink, and blinks once it is in", () => {
+    const { state, a, b } = match();
+    const ts = state.tileSize;
+    const su = unit(state, "simunit2", a, 40, 40);
+    const rifle = unit(state, "rifleman", b, 76, 40);
+    rifle.holdPosition = true;
+    assert.ok(SIMUNIT_BLINK_RANGE_TILES * ts < Math.hypot(rifle.x - su.x, rifle.y - su.y), "9 cells is past the blink");
+    applyCommand(state, a, { type: "cmd.attack", ids: [su.id], targetId: rifle.id });
+    ticks(state, 2);
+    assert.equal(blinkCharge(state, su), 1, "no blink from out there");
+    assert.ok(su.x < tileCenter(45, ts), "still walking");
+    ticks(state, 30);
+    assert.ok(!state.entities.has(rifle.id) || rifle.hp <= 0, "closed, blinked, cut");
+    assert.ok(blinkCharge(state, su) < 1);
+  });
+
+  it("blinks onto a force-attack target, friend or not", () => {
+    const { state, a } = match();
+    const ts = state.tileSize;
+    const su = unit(state, "simunit2", a, 40, 40);
+    const own = unit(state, "rifleman", a, 64, 40);
+    const res = applyCommand(state, a, { type: "cmd.forceattack", ids: [su.id], targetId: own.id, x: own.x, y: own.y });
+    assert.equal(res.ok, true, !res.ok ? res.message : "");
+    ticks(state, 2);
+    assert.ok(Math.hypot(su.x - own.x, su.y - own.y) < ts * 4, `beside him, at ${su.x / ts}`);
+    assert.ok(blinkCharge(state, su) < 1, "the charge went on it");
+    assert.ok(!state.entities.has(own.id) || own.hp <= 0, "cut down");
+  });
+
+  it("blinks to the wall of a building he is told to force-attack", () => {
+    const { state, a, b } = match();
+    const ts = state.tileSize;
+    const su = unit(state, "simunit2", a, 40, 40);
+    const depot = makeEntity(state, "dynamo", b, tileCenter(64, ts), tileCenter(40, ts), { tileX: 64, tileY: 40 });
+    applyCommand(state, a, { type: "cmd.forceattack", ids: [su.id], targetId: depot.id, x: depot.x, y: depot.y });
+    ticks(state, 2);
+    assert.ok(blinkCharge(state, su) < 1, "the charge went on it");
+    assert.ok(gapTo(state, su, depot) <= weaponRangeWorld(state, su), `at the wall, gap ${gapTo(state, su, depot)}`);
   });
 
   it("walks a short gap rather than spend the blink, and cannot cut from a cell off", () => {
