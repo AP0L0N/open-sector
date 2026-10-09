@@ -838,6 +838,9 @@ export class MapView {
   private prevById = new Map<number, EntityView>();
   /** The current snapshot's entities by id, built once per snapshot: lookups per impact, shot and frame stay cheap. */
   private currById = new Map<number, EntityView>();
+  /** Each unit's blended pose, worked out once a frame: shadows, dust, lamps and the sprite all ask for it. */
+  private poseCache = new Map<number, { frame: number; e: EntityView; pose: { x: number; y: number; facing: number; turretFacing: number } }>();
+  private poseFrame = 0;
   /** The previous snapshot's projectiles, sonar contacts and crates by id, for the between-snapshot blend. */
   private prevProjById = new Map<number, ProjectileView>();
   private prevSonarById = new Map<number, NonNullable<MatchSnapshot["sonar"]>[number]>();
@@ -1374,6 +1377,7 @@ export class MapView {
   setSnapshot(match: MatchSnapshot): void {
     this.prev = this.curr;
     this.prevById = this.currById;
+    this.poseCache.clear();
     this.prevProjById = new Map(this.prev.projectiles.map((p) => [p.id, p]));
     this.prevSonarById = new Map((this.prev.sonar ?? []).map((c) => [c.id, c]));
     this.prevThermalById = new Map((this.prev.thermal ?? []).map((c) => [c.id, c]));
@@ -1602,7 +1606,7 @@ export class MapView {
       if (!live.has(id)) this.infantryShotAt.delete(id);
     }
     for (const id of [...this.selected]) {
-      if (!match.entities.some((e) => e.id === id)) this.selected.delete(id);
+      if (!this.currById.has(id)) this.selected.delete(id);
     }
     if (this.attackMoveMode && this.ownSelectedIds().length === 0) this.setAttackMoveMode(false);
     if (this.patrolMode && this.ownPatrolIds().length === 0) this.setPatrolMode(false);
@@ -2394,8 +2398,11 @@ export class MapView {
     for (const e of match.entities) {
       if (e.kind === "building" && e.ownerId !== match.youPlayerId) this.ghosts.set(e.id, e);
     }
+    if (this.ghosts.size === 0) return;
+    const live = new Set<number>();
+    for (const e of match.entities) live.add(e.id);
     for (const [id, g] of this.ghosts) {
-      if (match.entities.some((e) => e.id === id)) continue;
+      if (live.has(id)) continue;
       if (entityOnMask(g, vis, map.width, map.height, map.tileSize)) this.ghosts.delete(id);
     }
   }
@@ -3704,6 +3711,16 @@ export class MapView {
   }
 
   private lerpEnt(e: EntityView): { x: number; y: number; facing: number; turretFacing: number } {
+    // Asked five to eight times a frame for every unit; the blend is the same within a frame. A copy goes out,
+    // so a caller that nudges its pose does not nudge the next one's.
+    const hit = this.poseCache.get(e.id);
+    if (hit && hit.frame === this.poseFrame && hit.e === e) return { ...hit.pose };
+    const pose = this.lerpEntNow(e);
+    this.poseCache.set(e.id, { frame: this.poseFrame, e, pose });
+    return { ...pose };
+  }
+
+  private lerpEntNow(e: EntityView): { x: number; y: number; facing: number; turretFacing: number } {
     const turretNow = e.turretFacing ?? e.facing;
     const t = Math.min(1, (performance.now() - this.snapAt) / 100);
     const prev = this.prevById.get(e.id);
@@ -4167,6 +4184,7 @@ export class MapView {
       this.clamp();
     }
     this.syncCursor();
+    this.poseFrame++;
     this.draw();
     this.drawMini();
     this.raf = requestAnimationFrame((nt) => this.frame(nt));
@@ -7514,10 +7532,19 @@ export class MapView {
     const map = this.map();
     const ts = map.tileSize;
     const w = map.width;
+    // Craters and the dead pile up over a long match and the server sends them all; only the ones on
+    // screen are worth an item, a sort slot and, for a body, a walk over every building for its fade.
+    const view = this.viewSize();
+    const pad = 160;
+    const offScreen = (x: number, y: number): boolean => {
+      const s = this.toScreen(x, y);
+      return s.x < -pad || s.y < -pad || s.x > view.w + pad || s.y > view.h + pad;
+    };
     for (const hole of this.curr.holes ?? []) {
       const tx = worldToTile(hole.x, ts);
       const ty = worldToTile(hole.y, ts);
       if (tx < 0 || ty < 0 || tx >= w || ty >= map.height) continue;
+      if (offScreen(hole.x, hole.y)) continue;
       const seen = this.explored?.[ty * w + tx] === 1;
       const lit = this.lit(tx, ty);
       if (!seen && !lit) continue;
@@ -7533,6 +7560,7 @@ export class MapView {
       if (!liveBodies.has(id)) this.burnSeen.delete(id);
     }
     for (const body of this.curr.bodies ?? []) {
+      if (offScreen(body.x, body.y)) continue;
       const z = isoDepth(body.x, body.y);
       items.push({
         layer: CORPSE_DRAW_LAYER,
