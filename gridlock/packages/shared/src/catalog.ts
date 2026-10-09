@@ -1021,6 +1021,8 @@ export interface CatalogEntry {
   garrisonTypes?: readonly EntityType[];
   /** Share of incoming fire that reaches the occupants. Default 1. */
   garrisonWoundMul?: number;
+  /** Share of a bullet hit (below GARRISON_STRUCTURAL_CALIBER, no shell, no arc) that reaches the occupants, after garrisonWoundMul. Default 1. */
+  garrisonBulletMul?: number;
   /** Sight and weapon reach added while inside, watch mode. Default GARRISON_WATCH_SIGHT_BONUS. */
   garrisonSightBonus?: number;
   /** Weapon reach added while inside, watch mode. Default garrisonSightBonus. */
@@ -2303,6 +2305,14 @@ export const BUNKER_GARRISON_CAP = 5;
 export const BUNKER_GARRISON_HP_MUL = 5;
 /** Share of each hit on the bunker that reaches the men inside. */
 export const BUNKER_WOUND_MUL = 0.35;
+/**
+ * Share of a bullet hit that reaches the men behind a firing slit, on top
+ * of the wound share. A rifle, MG, or gatling round has to find a slit; a
+ * shell or a burst does not. One third: small arms need three times the
+ * rounds to shoot a Bunker or Watch Tower crew out that the wall share
+ * alone would ask.
+ */
+export const SLIT_BULLET_WOUND_MUL = 1 / 3;
 /** Solid height of the roof slab, elevation units. A one-story house is STORY_COVER_HEIGHT. */
 export const BUNKER_COVER_HEIGHT = 4;
 /** Infantry that fit through the door and the firing slits. */
@@ -3800,6 +3810,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonCap: BUNKER_GARRISON_CAP,
     garrisonHpMul: BUNKER_GARRISON_HP_MUL,
     garrisonWoundMul: BUNKER_WOUND_MUL,
+    garrisonBulletMul: SLIT_BULLET_WOUND_MUL,
     garrisonWindows: 2,
     garrisonFloors: 1,
     garrisonSightBonus: 0,
@@ -3834,6 +3845,7 @@ const ENTRIES: Record<EntityType, CatalogEntry> = {
     garrisonCap: TOWER_GARRISON_CAP,
     garrisonHpMul: TOWER_GARRISON_HP_MUL,
     garrisonWoundMul: TOWER_WOUND_MUL,
+    garrisonBulletMul: SLIT_BULLET_WOUND_MUL,
     garrisonWindows: 4,
     garrisonFloors: TOWER_FLOORS,
     garrisonSightBonus: TOWER_SIGHT_BONUS,
@@ -6275,6 +6287,11 @@ export function garrisonAdmits(house: EntityType, unit: EntityType): boolean {
 
 export function garrisonWoundMulOf(type: EntityType): number {
   return catalog(type).garrisonWoundMul ?? 1;
+}
+
+/** Share of a bullet hit that reaches a garrison, after garrisonWoundMul. A firing slit stops most of it. */
+export function garrisonBulletMulOf(type: EntityType): number {
+  return catalog(type).garrisonBulletMul ?? 1;
 }
 
 /** Sight and reach a watch garrison gains inside. Tall houses see farther; a bunker does not. */

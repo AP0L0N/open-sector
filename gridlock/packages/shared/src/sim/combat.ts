@@ -217,6 +217,7 @@ import {
   garrisonLooksOccupied,
   livingGarrison,
   garrisonMuzzleToward,
+  isBulletRound,
   woundDeckGunners,
   syncHullGarrisons,
   wallsShieldGarrison,
@@ -3298,7 +3299,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       if (isConcreteLine(blocker.e.type)) {
         // A shell chips the concrete. Any round that stops on a manned Large wall reaches the slits.
         if (isTankShell(p)) takeDamage(blocker.e, Math.max(1, Math.round(p.damage)), state.tick);
-        if (wallsShieldGarrison(state, blocker.e)) woundGarrison(state, blocker.e, p.damage, p.caliber, false);
+        if (wallsShieldGarrison(state, blocker.e)) woundGarrison(state, blocker.e, p.damage, p.caliber, false, isBulletRound(p));
         pushImpact(state, p, "hit", blocker.x, blocker.y);
         continue;
       }
@@ -3461,7 +3462,7 @@ export function tickProjectiles(state: MatchState, dt: number): void {
       }
       hideScout(state, e);
     }
-    if (occupied) woundGarrison(state, e, res.damage, p.caliber, !!p.plunging);
+    if (occupied) woundGarrison(state, e, res.damage, p.caliber, !!p.plunging, isBulletRound(p));
     else woundDeckGunners(state, e, p.damage);
     // A bullet that meets the body can smash the lamps, even when it only sparks.
     if (e.hp > 0 && !e.wreck) rollLamp(e, lampShotOf(p), rand);
