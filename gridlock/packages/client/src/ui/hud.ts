@@ -59,6 +59,7 @@ import {
   tankDeckOf,
   isHiddenField,
   hasSpotlight,
+  lampUnderway,
   isInfantryType,
   isInfantryWeaponId,
   isShellType,
@@ -2061,16 +2062,20 @@ function listQuickActions(ctx: Ctx, view: MapView | null): QAct[] {
       title: `Face a direction (${ROTATE_HOTKEY.toUpperCase()}). Tanks turn hull and turret.`,
       on: !!view?.rotateMode && !view.rotateLight,
     });
-    if (units.some((e) => hasSpotlight(e.type) && e.spotFacing != null)) {
-      const titanOnly = units.every((e) => !hasSpotlight(e.type) || e.type === "titan");
+    const lampUnits = units.filter((e) => hasSpotlight(e.type) && e.spotFacing != null);
+    if (lampUnits.length) {
+      const titanOnly = lampUnits.every((e) => e.type === "titan");
+      // A Titan on the march keeps its lamp on its own sweep; the order waits for it to stand.
+      const underway = lampUnits.every((e) => lampUnderway(e));
       out.push({
         slot: "rotate-light",
         act: "rotate-light",
         label: "Rotate light",
         title: titanOnly
-          ? "Swing the torso lamp, then click where it should point. At night its beam lights the ground far out; up on the leg jets it lights one wide pool ahead. It turns with the Titan."
+          ? "Hold the torso lamp on a spot: click where it should point. Left alone it sweeps a little either side of the nose. At night its beam lights the ground far out; up on the leg jets it lights one wide pool ahead. It turns with the Titan, and goes back to sweeping once the Titan moves."
           : "Swing the searchlight, then click where it should point. At night its beam lights the water far out. It turns with the ship.",
         on: !!view?.rotateMode && !!view.rotateLight,
+        disabled: underway,
       });
     }
   } else if (mounts.length) {
@@ -2666,7 +2671,7 @@ function runQuickAction(ctx: Ctx, view: MapView, act: string): void {
     return;
   }
   if (act === "rotate-light") {
-    if (units.some((e) => hasSpotlight(e.type) && e.spotFacing != null)) {
+    if (units.some((e) => hasSpotlight(e.type) && e.spotFacing != null && !lampUnderway(e))) {
       view.setRotateMode(!(view.rotateMode && view.rotateLight), true);
     }
     return;

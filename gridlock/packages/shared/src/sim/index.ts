@@ -129,6 +129,8 @@ export {
   spotlightsOn,
   hasSpotlight,
   lampPools,
+  lampUnderway,
+  titanLampSweep,
   hasHeadlight,
   headlightLit,
   hullLamps,

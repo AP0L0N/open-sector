@@ -71,7 +71,7 @@ import { landJet, takeOff } from "./jet.js";
 import { setDive } from "./naval.js";
 import { layMine } from "./destroyer.js";
 import { orderMineLay } from "./minelauncher.js";
-import { aimSpotlightPatrol, hasSpotlight, spotFacingOf, spotlightManned } from "./night.js";
+import { aimSpotlightPatrol, hasSpotlight, lampUnderway, spotFacingOf, spotlightManned } from "./night.js";
 import type { Entity, MatchState, QueueableCommand, Vec } from "./types.js";
 
 /** The corners of a `cmd.field` line, or undefined when the message has none worth reading. */
@@ -1098,13 +1098,16 @@ function cmdRotate(
     ? []
     : owned(state, playerId, ids).filter((e) => e.state !== "deploy" && e.state !== "undeploy" && !e.garrisonedIn);
   const mounts = light ? [] : ownedMounts(state, playerId, ids);
-  const lamps = ownedLamps(state, playerId, ids, light);
+  // A Titan on the march keeps its lamp on its own sweep: Rotate light waits for it to stand.
+  const lamps = ownedLamps(state, playerId, ids, light).filter((e) => !lampUnderway(e));
   if (units.length === 0 && mounts.length === 0 && lamps.length === 0) {
     return fail("not_yours", light ? "No spotlight to turn." : "No owned units.");
   }
-  // The lamp swings over at its own pace; see tickSpotlights. A tower's patrol sweep ends here.
+  // The lamp swings over at its own pace; see tickSpotlights. A tower's patrol sweep ends here,
+  // and a Titan's own sweep until it next moves.
   for (const e of lamps) {
     if (e.kind === "building" && e.order?.kind === "patrol") e.order = null;
+    if (e.type === "titan") e.spotHeld = true;
     e.spotFacing = spotFacingOf(e);
     e.spotAim = Math.atan2(y - e.y, x - e.x);
   }

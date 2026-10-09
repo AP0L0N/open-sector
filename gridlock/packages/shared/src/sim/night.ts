@@ -19,6 +19,8 @@ import {
   SPOTLIGHT_ON_DAYLIGHT,
   SPOTLIGHT_TURN_DEG_PER_SEC,
   TICK_DT,
+  TITAN_LAMP_SWEEP_DEG,
+  TITAN_LAMP_SWEEP_PERIOD_SECONDS,
 } from "../catalog.js";
 import type { EntityType } from "../protocol.js";
 import { patrolLegIndex, stepPatrolLeg } from "./patrol.js";
@@ -137,6 +139,22 @@ export function hasSpotlight(type: EntityType): boolean {
  */
 export function lampPools(e: { type: EntityType; jet?: { alt: number } }): boolean {
   return e.type === "titan" && (e.jet?.alt ?? 0) > 0;
+}
+
+/**
+ * A Titan on the march or up on its leg jets. Rotate light is refused, and a
+ * heading it held is let go, so the lamp goes back to its own sweep.
+ */
+export function lampUnderway(e: { type: EntityType; state: string; jet?: { alt: number } }): boolean {
+  return e.type === "titan" && (e.state === "move" || (e.jet?.alt ?? 0) > 0);
+}
+
+const TITAN_LAMP_SWEEP = (TITAN_LAMP_SWEEP_DEG * Math.PI) / 180;
+const TITAN_LAMP_OMEGA = (2 * Math.PI) / TITAN_LAMP_SWEEP_PERIOD_SECONDS;
+
+/** Radians off the Titan's nose its lamp sweeps to at `seconds` into the match, left alone. Each Titan on its own beat. */
+export function titanLampSweep(id: number, seconds: number): number {
+  return TITAN_LAMP_SWEEP * Math.sin(seconds * TITAN_LAMP_OMEGA + (id % 4096) * 0.37);
 }
 
 /**
@@ -273,7 +291,9 @@ export function aimSpotlightPatrol(e: Entity): void {
 
 /**
  * Swing every held lamp toward the heading Rotate or a patrol spot gave it.
- * A lamp on a hull (the Battle Ship) is carried round as the ship turns.
+ * A lamp on a hull (the Battle Ship) is carried round as the ship turns. A
+ * Titan's lamp sweeps either side of the nose on its own until Rotate light
+ * holds it, and moving off lets it go again.
  */
 export function tickSpotlights(state: MatchState, dt: number): void {
   const max = ((SPOTLIGHT_TURN_DEG_PER_SEC * Math.PI) / 180) * dt;
@@ -283,6 +303,16 @@ export function tickSpotlights(state: MatchState, dt: number): void {
     if (e.kind === "unit") {
       if (e.spotFacing != null) e.spotFacing = wrap(e.spotFacing + wrap(e.facing - (e.spotHull ?? e.facing)));
       e.spotHull = e.facing;
+      if (e.type === "titan") {
+        if (lampUnderway(e)) {
+          e.spotHeld = undefined;
+          e.spotAim = undefined;
+        }
+        if (!e.spotHeld && e.spotAim == null) {
+          e.spotFacing = wrap(e.facing + titanLampSweep(e.id, state.tick * dt));
+          continue;
+        }
+      }
     }
     const at = spotFacingOf(e);
     e.spotFacing = at;

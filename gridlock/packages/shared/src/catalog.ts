@@ -2559,6 +2559,14 @@ export const TITAN_LAMP_POOL_RADIUS_TILES = t(4.5);
 /** How fast the cab lamp turns, for Rotate and for a patrol sweep. */
 export const SPOTLIGHT_TURN_DEG_PER_SEC = 18;
 /**
+ * The Titan's lamp, left alone, sweeps a small arc either side of the hull's nose:
+ * this many degrees each way, out and back once every TITAN_LAMP_SWEEP_PERIOD_SECONDS.
+ * Rotate light holds it on one heading until the Titan next moves; on the march
+ * or up on its jets it only sweeps.
+ */
+export const TITAN_LAMP_SWEEP_DEG = 18;
+export const TITAN_LAMP_SWEEP_PERIOD_SECONDS = 8;
+/**
  * Spotlight post. The cab lamp on a steel pole over a sandbagged foot, worked by one
  * man who comes with it. Its beam reaches as far as the tower's, cast from the pole top.
  * Shoot the lamp and it goes dark with the man unhurt; kill the man and the lamp goes

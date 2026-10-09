@@ -427,6 +427,8 @@ export interface Entity {
   spotAim?: number;
   /** Battle Ship: hull heading the lamp was last carried round with. */
   spotHull?: number;
+  /** Rotate light fixed the Titan's lamp on a heading. Missing: it sweeps on its own (TITAN_LAMP_SWEEP_DEG). Dropped when the Titan moves. */
+  spotHeld?: boolean;
   /** Entity the Titan's pods are laying on, apart from the main gun's target. */
   rocketTarget?: number | null;
   /** Last Walker volley: sim tick, arms that fired, and the off-arm bearing when it took a second target. */
