@@ -270,7 +270,7 @@ python3 tools/sprites/render_infantry.py --only rifleman --draft
 
 The script writes the engine PNGs, cameos, east locks, and the Pyro lance table in `pyro-nozzle.ts`. It exits 2 if a row is empty or clipped. A `size_pop` on a north row is the weapon changing the bbox, not a scale change, when the body stays the same size.
 
-**Cyborg** stays on `tools/sprites/render_cyborg.py`. He has no crouch sheet.
+**Cyborg** stays on `tools/sprites/render_cyborg.py`. He has no crouch sheet. The **Cyborg Commander** (`render_cyborgcommander.py`) and the **Sim Unit II** (`render_simunit2.py`) are forks under the same lock: same camera, cell, contact points, and row order, so the client reuses the Cyborg's sprite defs with their file names.
 
 Vehicles are 1 frame. Do not invent track-cycle frames unless the engine `frames` value changes.
 
@@ -404,12 +404,13 @@ Human infantry and the Cyborg are the procedural model in Animation. The turntab
 | Cyborg | die | 4 | torso face down, gatling flung aside, one leg beside him |
 | All infantry | cameo | 1 | crop of the east stand, 72×72, feet near the bottom |
 | Cyborg | swim | 8 | chest-deep in the shared pool (`render_cyborg.py`) |
+| Sim Unit II | walk, fire, crawl, crawl-fire, die, swim | 8, 4, 8, 4, 4, 8 | light cyborg frame on the Cyborg's lock, about 8% lighter: graphite plating, teal trim, cyan visor band, a flat drive pack with two lit slots, an energy dagger in each hand, no gun (`tools/sprites/render_simunit2.py`). Fire is the slash: one blade thrust then the other, the lit blade longest on frames 1 and 3. Crawl drags on the left blade with the right forward; die lays both blades dark beside him |
 | Rifleman | swim | 8 | `infantry-swim.png` (also the fallback) |
 | Other human infantry | swim | 8 | `render_infantry.py`: chest-deep in the same pool, arms paddling |
 
 Stand is column 0 of the walk sheet. The client plays later columns only while the unit is moving, and frame 0 is inside that loop, so it has to be a real step.
 
-File names stay `trooper-*.png` for the Rifleman. The other humans are `gunner`, `sniper`, `atinfantry`, `rocketer`, `pyro`, `mortarman`, `medic`, `engineer`, `droneop`, and `jumpjet`. Human sheets come from `python3 tools/sprites/render_infantry.py`. Cyborg files are `cyborg-*.png`; they come from `python tools/sprites/render_cyborg.py`, which renders 16 unique yaws of one locked-camera model (no mirroring) and pins the ground contact to `contactY` on every frame — re-run it after editing the model instead of hand-editing the PNGs. Its contact is a pivot, not the lowest pixel: the point between the feet (walk / fire, `0.88`, so the striding toe stays inside the cell), the hips-on-dirt point (crawl, `0.72`), and the corpse's footprint centre (die, `0.72`). The script fails if any row spills past the cell edge (`clipped_dirs` in the manifest). Shipped PNGs go in `gridlock/packages/client/src/assets/units/`. East locks from the human renderer land in `tools/sprites/src/<id>-east.png`.
+File names stay `trooper-*.png` for the Rifleman. The other humans are `gunner`, `sniper`, `atinfantry`, `rocketer`, `pyro`, `mortarman`, `medic`, `engineer`, `droneop`, and `jumpjet`. Human sheets come from `python3 tools/sprites/render_infantry.py`. Cyborg files are `cyborg-*.png` (Commander `cyborgcommander-*.png`, Sim Unit II `simunit2-*.png` from `render_simunit2.py`); they come from `python tools/sprites/render_cyborg.py`, which renders 16 unique yaws of one locked-camera model (no mirroring) and pins the ground contact to `contactY` on every frame — re-run it after editing the model instead of hand-editing the PNGs. Its contact is a pivot, not the lowest pixel: the point between the feet (walk / fire, `0.88`, so the striding toe stays inside the cell), the hips-on-dirt point (crawl, `0.72`), and the corpse's footprint centre (die, `0.72`). The script fails if any row spills past the cell edge (`clipped_dirs` in the manifest). Shipped PNGs go in `gridlock/packages/client/src/assets/units/`. East locks from the human renderer land in `tools/sprites/src/<id>-east.png`.
 
 ### Turntable shot
 

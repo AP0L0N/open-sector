@@ -23,7 +23,7 @@ export const DRONE_SCOUT_CHARGE = 0.9;
 
 /** An enemy soldier, hull, or boat this side can see. Houses and empty defences are not the enemy. */
 function seenFoe(state: MatchState, ownerId: string, o: Entity): boolean {
-  if (o.kind !== "unit" || o.hp <= 0 || o.wreck || o.garrisonedIn != null) return false;
+  if (o.kind !== "unit" || o.hp <= 0 || o.wreck || o.garrisonedIn != null || o.dormant) return false;
   if (ownerless(o) || allies(state, ownerId, o.ownerId)) return false;
   return canSeeEntity(state, ownerId, o);
 }

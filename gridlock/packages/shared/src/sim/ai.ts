@@ -179,6 +179,7 @@ export const CPU_ARMY: Readonly<Record<"muster" | "armory" | "airfield" | "dock"
     { unit: "supply", want: 1 },
     { unit: "cyborg", want: 1 },
     { unit: "cyborgcommander", want: 1 },
+    { unit: "simunit2", want: 1 },
     { unit: "titan", want: 1 },
     { unit: "nebelwerfer", want: 1 },
   ],
@@ -248,7 +249,7 @@ const FACES_ENEMY: ReadonlySet<string> = new Set(["mgnest", "pak36", "pak43", "f
 /** Long guns: they walk two ranks back and fire over the line. */
 const BACK_RANK: ReadonlySet<string> = new Set(["sniper", "mortarman", "nebelwerfer", "jagdtiger", "artillery"]);
 /** Short reach and thick skin: the front rank beside the hulls. */
-const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "pyro"]);
+const FRONT_INFANTRY: ReadonlySet<string> = new Set(["cyborg", "cyborgcommander", "simunit2", "pyro"]);
 
 type Rank = "front" | "mid" | "back";
 interface Site {
@@ -1148,7 +1149,7 @@ function defendPoint(
   let intruder: Entity | undefined;
   let bestD = Infinity;
   for (const e of state.entities.values()) {
-    if (e.kind !== "unit" || e.hp <= 0 || e.wreck || !e.ownerId || e.air || isTorpedoBody(e.type)) continue;
+    if (e.kind !== "unit" || e.hp <= 0 || e.wreck || !e.ownerId || e.air || e.dormant || isTorpedoBody(e.type)) continue;
     if (allies(state, p.playerId, e.ownerId)) continue;
     const d = Math.hypot(e.x - at.x, e.y - at.y);
     if (d > reach || d >= bestD) continue;
@@ -1892,7 +1893,7 @@ function guardHarbour(state: MatchState, p: SimPlayer, home: Entity[]): boolean 
   let intruder: Entity | undefined;
   let bestD = Infinity;
   for (const e of state.entities.values()) {
-    if (e.kind !== "unit" || e.hp <= 0 || e.wreck || !e.ownerId || e.air || isTorpedoBody(e.type)) continue;
+    if (e.kind !== "unit" || e.hp <= 0 || e.wreck || !e.ownerId || e.air || e.dormant || isTorpedoBody(e.type)) continue;
     if (allies(state, p.playerId, e.ownerId)) continue;
     const d = Math.min(...docks.map((b) => Math.hypot(e.x - b.x, e.y - b.y)));
     if (d > reach || d >= bestD || !canSeeEntity(state, p.playerId, e)) continue;

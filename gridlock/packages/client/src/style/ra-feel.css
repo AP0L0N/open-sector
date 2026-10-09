@@ -586,6 +586,9 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="cyborgcommander"] {
   background-image: url("../assets/units/cyborgcommander-cameo.png");
 }
+.prod-job[data-type="simunit2"] {
+  background-image: url("../assets/units/simunit2-cameo.png");
+}
 .prod-job[data-type="titan"] {
   background-image: url("../assets/units/titan-cameo.png");
 }
@@ -896,6 +899,7 @@ input[type="range"] { padding: 0; }
 #train-walker,
 #train-cyborg,
 #train-cyborgcommander,
+#train-simunit2,
 #train-titan,
 #train-mammoth,
 #train-nebelwerfer,
@@ -1031,6 +1035,11 @@ input[type="range"] { padding: 0; }
   background-image:
     linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
     url("../assets/units/cyborgcommander-cameo.png");
+}
+#train-simunit2 {
+  background-image:
+    linear-gradient(90deg, rgba(18, 12, 8, 0.72) 0%, rgba(18, 12, 8, 0.28) 55%, rgba(18, 12, 8, 0.08) 100%),
+    url("../assets/units/simunit2-cameo.png");
 }
 #train-titan {
   background-image:
@@ -1504,6 +1513,8 @@ input[type="range"] { padding: 0; }
 .prod-job[data-type="cyborg"] { background-image: url("../assets/units/cyborg-cameo.png"); }
 .config-type[data-type="cyborgcommander"],
 .prod-job[data-type="cyborgcommander"] { background-image: url("../assets/units/cyborgcommander-cameo.png"); }
+.config-type[data-type="simunit2"],
+.prod-job[data-type="simunit2"] { background-image: url("../assets/units/simunit2-cameo.png"); }
 .config-type[data-type="titan"],
 .prod-job[data-type="titan"] { background-image: url("../assets/units/titan-cameo.png"); }
 .config-type[data-type="supply"],

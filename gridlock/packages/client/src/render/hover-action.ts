@@ -16,6 +16,7 @@ import {
   isInfantryType,
   isNavalType,
   isRepairableUnit,
+  isSimUnit,
   isSupplyCarrier,
   shipShortOf,
   supplyDepotOf,
@@ -28,6 +29,7 @@ export type HoverAction =
   | "ungarrison"
   | "attack"
   | "capture"
+  | "purge"
   | "repair"
   | "scrap"
   | "board"
@@ -130,6 +132,9 @@ export function resolveHoverAction(args: {
     if (occupying && selectedHere && freeInf.length === 0) return "ungarrison";
   }
 
+  // A Sim Unit on a host with enemy soldiers inside: he blinks in among them.
+  const blinkers = ownUnits.filter((e) => isSimUnit(e.type) && !e.garrisonedIn);
+  if (hit && blinkers.length > 0 && canPurgeHit(hit, you, args.allied)) return "purge";
   // Only troops that stand a capture offer one: no Engineer, no Cyborg, no Cyborg Commander.
   if (hit && inf.some((e) => canCaptureType(e.type)) && canCaptureTarget(hit, you, args.allied)) return "capture";
   if (hit && ownUnits.length > 0 && isAttackTarget(hit, you, args.allied)) {
@@ -258,6 +263,15 @@ function canCaptureTarget(
   if (hit.ownerId === you || allied(hit.ownerId)) return false;
   if ((hit.garrison?.count ?? 0) > 0) return false;
   return true;
+}
+
+/** A live host with enemy soldiers inside that the viewer can read: hostile to you, or the map's own. */
+function canPurgeHit(hit: HoverEntity, you: string, allied: (ownerId: string | undefined) => boolean): boolean {
+  if (hit.hp <= 0 || hit.wreck || hit.ruined) return false;
+  const g = hit.garrison;
+  if (!g || (g.count ?? 0) <= 0) return false;
+  if (g.neutral) return true;
+  return !!g.ownerId && g.ownerId !== you && !allied(g.ownerId);
 }
 
 function isAttackTarget(
