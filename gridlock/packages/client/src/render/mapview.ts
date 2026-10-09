@@ -740,6 +740,12 @@ function hpBarFill(ratio: number, hostile: boolean, vivid = false): string {
   return vivid ? HP_FILL_LOW_VIVID : HP_FILL_LOW;
 }
 
+function sameRuns(a: readonly number[], b: readonly number[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
 function sameMask(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
@@ -2347,7 +2353,9 @@ export class MapView {
     }
     let vis: Uint8Array;
     if (match.vision) {
-      if (this.visRuns === match.vision && this.vis) {
+      // Every parsed snapshot is a fresh array, so the runs are compared, not the reference: a few
+      // thousand numbers against decoding every tile of the map and then comparing those.
+      if (this.vis && this.visRuns && sameRuns(this.visRuns, match.vision)) {
         this.syncGhosts(match, this.vis);
         return;
       }

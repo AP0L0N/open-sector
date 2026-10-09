@@ -367,6 +367,20 @@ function sceneryList(state: MatchState): EntityView[] {
   return out;
 }
 
+/**
+ * A world coordinate for the wire, to a tenth of a pixel. The sim keeps the full double; the client
+ * draws on a pixel grid and blends two snapshots 100 ms apart, so the extra fifteen digits were only
+ * bytes to stringify, send and parse, for every unit, every tick, every client.
+ */
+function wire(v: number): number {
+  return Math.round(v * 10) / 10;
+}
+
+/** A heading for the wire, to a thousandth of a radian: finer than the finest sheet's sixteen faces. */
+function wireAngle(a: number): number {
+  return Math.round(a * 1000) / 1000;
+}
+
 export function snapshotFor(state: MatchState, youPlayerId: string, opts: SnapshotOptions = {}): MatchSnapshot {
   const you = state.players.get(youPlayerId);
   const power = you ? powerOf(state, youPlayerId) : { provided: 0, used: 0, lowPower: false };
@@ -390,10 +404,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       type: e.type,
       // Powered down, he reads to the other side as no one's machine.
       ownerId: e.dormant && !friendly ? NEUTRAL_OWNER : e.ownerId,
-      x: e.x,
-      y: e.y,
-      facing: e.facing,
-      turretFacing: hasTurret(e.type) ? e.turretFacing : undefined,
+      x: wire(e.x),
+      y: wire(e.y),
+      facing: wireAngle(e.facing),
+      turretFacing: hasTurret(e.type) ? wireAngle(e.turretFacing) : undefined,
       hp: e.hp,
       hpMax: e.hpMax,
       state: e.state,
@@ -636,10 +650,10 @@ export function snapshotFor(state: MatchState, youPlayerId: string, opts: Snapsh
       .filter((p) => allies(state, youPlayerId, p.ownerId) || canSeeWorld(state, vis, p.x, p.y))
       .map((p) => ({
         id: p.id,
-        x: p.x,
-        y: p.y,
-        vx: p.vx,
-        vy: p.vy,
+        x: wire(p.x),
+        y: wire(p.y),
+        vx: wire(p.vx),
+        vy: wire(p.vy),
         caliber: p.caliber,
         fromId: p.fromId,
         bounced: p.bounced,
