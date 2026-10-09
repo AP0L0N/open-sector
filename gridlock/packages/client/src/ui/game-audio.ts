@@ -10,7 +10,7 @@ import type { SpatialMix } from "./spatial-sfx.js";
 import { playClip, playLoop, playSample, preloadSample, type Clip, type Loop } from "./audio.js";
 import { AMBIENT_KINDS, ambientMix, type AmbientKind, type Mover } from "../render/ambient.js";
 import { buildBank, LineDeck } from "./sound-bank.js";
-import type { LinkVoice, ShieldCue, SoundEvent, Weapon } from "../render/sound-events.js";
+import type { LinkVoice, SensorVoice, ShieldCue, SoundEvent, Weapon } from "../render/sound-events.js";
 import { leadType, orderCue, type UnitCue } from "./order-cues.js";
 import type { ClientMessage, MatchSnapshot } from "@gridlock/shared";
 
@@ -47,7 +47,7 @@ let speakers: ReadonlySet<number> = new Set();
 /** One answer from a unit type. `special` falls back to `move` for units without one. Returns whether a line played. */
 export function unitVoice(
   type: string,
-  cue: UnitCue | "ready" | "load" | "shield_down" | "shield_up" | LinkVoice,
+  cue: UnitCue | "ready" | "load" | "shield_down" | "shield_up" | LinkVoice | SensorVoice,
   opts: { withSfx?: boolean; ids?: readonly number[] } = {},
 ): boolean {
   const folder = unitFolder(type);

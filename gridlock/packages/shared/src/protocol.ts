@@ -18,7 +18,7 @@ import type {
 import type { CustomMapSpec } from "./custom-maps.js";
 import type { SaveGame } from "./sim/save.js";
 
-export const PROTOCOL_VERSION = 123;
+export const PROTOCOL_VERSION = 124;
 export const SLOT_COUNT = 8;
 export const MIN_SLOTS = 2;
 export const MAX_SLOTS = 8;
@@ -164,6 +164,8 @@ export interface EntityView {
   selfDestruct?: boolean;
   /** Own Cyborg Commander with the laser's power in his force field. Omitted otherwise. */
   fieldDivert?: true;
+  /** Own Cyborg or Cyborg Commander set to fire on thermal and APS contacts out of sight. Omitted otherwise. */
+  engageContacts?: true;
   /** Walker is charging to detonate. Anyone who can see him sees it. */
   charging?: true;
   /** Walker arms that fired during the last step. `off` is the second arm's bearing when it took another target. */
@@ -438,12 +440,14 @@ export interface SonarContactView {
 /**
  * An enemy your Cyborgs pick up but nobody sees: a soldier's heat in a Cyborg's
  * thermal cone or round a Cyborg Commander, or an armored hull on the
- * Commander's APS radar (`armored`). Off the fog mask only. World pixels.
+ * Commander's APS radar while it moves (`armored`). Off the fog mask only.
+ * World pixels. `by` is the id of your Cyborg that read it.
  */
 export interface ThermalContactView {
   id: number;
   x: number;
   y: number;
+  by: number;
   armored?: true;
 }
 
@@ -787,6 +791,7 @@ export type ClientMessage =
   | { type: "cmd.selfdestruct"; ids: number[]; on: boolean }
   /** Cyborg Commander: `on` puts the laser's power into the force field. He cannot attack while it is. */
   | { type: "cmd.fielddivert"; ids: number[]; on: boolean }
+  | { type: "cmd.engagecontacts"; ids: number[]; on: boolean }
   | { type: "cmd.rockets"; ids: number[]; on: boolean }
   | { type: "cmd.reach"; ids: number[]; max: boolean }
   | { type: "cmd.build"; building: BuildingType | YardFieldType }

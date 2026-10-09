@@ -28,7 +28,7 @@
       "Target acquired.",
       "Commence termination.",
       "Spinning up.",
-      "[laughs] Six hundred rounds."
+      "[laughs] Three hundred rounds."
     ],
     "ready": [
       "Cyborg unit, fully assembled."
@@ -48,6 +48,12 @@
     "online": [
       "Uplink accepted. New command recognized.",
       "Rebooted. Awaiting your orders."
+    ],
+    "thermal": [
+      "Heat signature.",
+      "Thermal contact.",
+      "Warm bodies ahead.",
+      "Contact. Organic."
     ]
   },
   "sfx": {

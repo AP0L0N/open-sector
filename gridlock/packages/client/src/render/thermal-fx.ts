@@ -5,7 +5,7 @@
  */
 
 /** One breath of a heat spot. */
-export const HEAT_PULSE_MS = 1100;
+export const HEAT_PULSE_MS = 1600;
 /** One APS sweep: the grid runs over the hull for SCAN_MS of every SCAN_PERIOD_MS. */
 export const SCAN_PERIOD_MS = 2400;
 export const SCAN_MS = 1000;
@@ -40,19 +40,19 @@ export function drawHeatContact(
   const k = heatPulse(opts.nowMs, opts.id);
   const u = opts.unit;
   ctx.save();
-  const rg = u * (0.5 + 0.15 * k);
-  ctx.fillStyle = `rgba(190, 80, 10, ${(0.2 + 0.15 * k).toFixed(3)})`;
+  const rg = u * (0.24 + 0.05 * k);
+  ctx.fillStyle = `rgba(190, 80, 10, ${(0.1 + 0.08 * k).toFixed(3)})`;
   ctx.beginPath();
   ctx.ellipse(x, y, rg, rg / 2, 0, 0, Math.PI * 2);
   ctx.fill();
-  const by = y - u * 0.32;
-  ctx.fillStyle = `rgba(215, 105, 15, ${(0.5 + 0.25 * k).toFixed(3)})`;
+  const by = y - u * 0.15;
+  ctx.fillStyle = `rgba(215, 105, 15, ${(0.3 + 0.15 * k).toFixed(3)})`;
   ctx.beginPath();
-  ctx.ellipse(x, by, u * (0.2 + 0.04 * k), u * (0.36 + 0.05 * k), 0, 0, Math.PI * 2);
+  ctx.ellipse(x, by, u * (0.09 + 0.015 * k), u * (0.16 + 0.02 * k), 0, 0, Math.PI * 2);
   ctx.fill();
-  ctx.fillStyle = `rgba(255, 200, 60, ${(0.45 + 0.4 * k).toFixed(3)})`;
+  ctx.fillStyle = `rgba(255, 200, 60, ${(0.25 + 0.25 * k).toFixed(3)})`;
   ctx.beginPath();
-  ctx.ellipse(x, by - u * 0.04, u * 0.1, u * 0.2, 0, 0, Math.PI * 2);
+  ctx.ellipse(x, by - u * 0.02, u * 0.045, u * 0.09, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.restore();
 }
@@ -68,7 +68,7 @@ export function drawScanContact(
   y: number,
   opts: { nowMs: number; id: number; unit: number },
 ): void {
-  const w = opts.unit * 1.15;
+  const w = opts.unit * 0.6;
   const h = w / 2;
   // Grid corners: top, right, bottom, left. A point on it is top + u·(right − top) + v·(left − top).
   const at = (u: number, v: number): [number, number] => [x + (u - v) * w, y - h + (u + v) * h];
@@ -80,7 +80,7 @@ export function drawScanContact(
   };
   ctx.save();
   ctx.lineWidth = 1;
-  ctx.strokeStyle = "rgba(120, 225, 255, 0.28)";
+  ctx.strokeStyle = "rgba(120, 225, 255, 0.14)";
   ctx.beginPath();
   ctx.moveTo(x, y - h);
   ctx.lineTo(x + w, y);
@@ -91,14 +91,13 @@ export function drawScanContact(
   const s = scanPhase(opts.nowMs, opts.id);
   if (s != null) {
     const a = Math.sin(Math.PI * s);
-    ctx.strokeStyle = `rgba(120, 225, 255, ${(0.55 * a).toFixed(3)})`;
-    const n = 5;
+    ctx.strokeStyle = `rgba(120, 225, 255, ${(0.28 * a).toFixed(3)})`;
+    const n = 3;
     for (let i = 0; i <= n; i++) {
       line(at(i / n, 0), at(i / n, 1));
       line(at(0, i / n), at(1, i / n));
     }
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = `rgba(215, 248, 255, ${a.toFixed(3)})`;
+    ctx.strokeStyle = `rgba(215, 248, 255, ${(0.55 * a).toFixed(3)})`;
     line(at(s, 0), at(s, 1));
   }
   ctx.restore();
