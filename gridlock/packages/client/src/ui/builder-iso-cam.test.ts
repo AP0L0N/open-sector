@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { TILE_SIZE, isoLift, worldToIso } from "@gridlock/shared";
-import { isoFit, isoPick, isoZoomAt, type IsoCam } from "./builder-iso-cam.js";
+import { isoCenterOn, isoFit, isoPick, isoViewTiles, isoZoomAt, type IsoCam } from "./builder-iso-cam.js";
 import { newSheet } from "./builder-model.js";
 
 function flatSheet() {
@@ -60,5 +60,26 @@ describe("map builder in-game view camera", () => {
     assert.deepEqual(isoPick(s, cam, 250, 180), before);
     for (let i = 0; i < 60; i++) isoZoomAt(cam, 250, 180, 100);
     assert.equal(cam.zoom, 0.15);
+  });
+
+  it("centres the stage on a minimap tile, at any zoom, and reports the tiles under its corners", () => {
+    const s = flatSheet();
+    s.heights[20 * s.width + 150] = 8;
+    const cam: IsoCam = { zoom: 0, camX: 0, camY: 0 };
+    isoFit(cam, s, 800, 600);
+    for (const zoom of [1, 2.3, 0.4]) {
+      cam.zoom = zoom;
+      isoCenterOn(cam, s, 150, 20, 800, 600);
+      const hit = isoPick(s, cam, 400, 300);
+      assert.ok(hit.inside);
+      assert.ok(Math.abs(hit.x - 150) <= 1 && Math.abs(hit.y - 20) <= 1, `centred at zoom ${zoom}: ${hit.x}, ${hit.y}`);
+      const corners = isoViewTiles(cam, 800, 600);
+      assert.equal(corners.length, 4);
+      // The viewport surrounds the tile it was centred on.
+      const xs = corners.map((c) => c.x);
+      const ys = corners.map((c) => c.y);
+      assert.ok(Math.min(...xs) < 150 && Math.max(...xs) > 150);
+      assert.ok(Math.min(...ys) < 20 && Math.max(...ys) > 20);
+    }
   });
 });

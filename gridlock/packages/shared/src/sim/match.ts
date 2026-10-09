@@ -16,12 +16,12 @@ import {
   TICK_DT,
 } from "../catalog.js";
 import { featureAngle, featureLotSite, getMap, isMapBridge, isMapSection, type MapDef } from "../maps.js";
-import { mapUnitHostAt } from "../custom-maps.js";
+import { mapAirfieldAt, mapUnitHostAt } from "../custom-maps.js";
 import { commanders } from "../lobby.js";
 import { EASY_ATTACK_FIRST_TICKS, tickAi } from "./ai.js";
 import type { ImpactView, RocketLaunchView, RoomState } from "../protocol.js";
-import { buildingCenter, destroyEntity, initGrids, makeEntity, tileCenter } from "./geo.js";
-import { aircraftDown, beginAircraftCrash, isAirborne, tickAir } from "./air.js";
+import { buildingCenter, destroyEntity, initGrids, makeEntity, newAirState, tileCenter } from "./geo.js";
+import { aircraftDown, airfieldPadWorld, beginAircraftCrash, isAirborne, orderAircraft, parkHeading, tickAir } from "./air.js";
 import { ejectParatroopers, loseRiders, syncPlaneRiders, tickChutes, tickCrates, tickMines, tickPlaneBoarding } from "./airdrop.js";
 import { tickDrones } from "./drone.js";
 import { beginJetCrash, tickJets } from "./jet.js";
@@ -126,42 +126,25 @@ export function createMatch(
     phaseRev: 0,
   };
 
+  // Who sits on which start: a map object owned by a start is that commander's, and is left out when nobody sits there.
+  const seated = new Map<number, string>();
   for (const slot of commanders(room)) {
-    const pid = slot.playerId!;
-    const pos = spawns.get(pid);
-    if (!pos) continue;
-    const x = tileCenter(pos.x, map.tileSize);
-    const y = tileCenter(pos.y, map.tileSize);
-    const rig = makeEntity(state, "rig", pid, x, y);
-    const towardX = map.width / 2 - pos.x;
-    const towardY = map.height / 2 - pos.y;
-    rig.facing = Math.atan2(towardY, towardX);
-    rig.turretFacing = rig.facing;
-    players.set(pid, {
-      playerId: pid,
-      name: slot.name ?? "Commander",
-      colorId: slot.colorId,
-      team: slot.team,
-      alive: true,
-      scrap: START_SCRAP,
-      scrapCarry: 0,
-      structure: null,
-      defence: null,
-      line: null,
-      placingType: null,
-      hqId: rig.id,
-      ai: slot.ai,
-      aiNextAttackTick: slot.ai ? EASY_ATTACK_FIRST_TICKS : 0,
-    });
+    const pos = spawns.get(slot.playerId!);
+    if (pos) seated.set(pos.spawnId, slot.playerId!);
   }
+  const ownerOf = (o: { owner?: number }): string | null => (o.owner == null ? NEUTRAL_OWNER : (seated.get(o.owner) ?? null));
 
-  // Houses and map defences stand neutral. A defence changes hands when someone takes it.
+  // Houses and map defences stand neutral unless the map gave them to a start. A defence changes hands when someone takes it.
   const sections: Entity[] = [];
   /** The building each map feature raised, by feature index, for the troops a map puts inside. */
   const raised = new Map<number, Entity>();
+  /** A ready-built Core by the start it belongs to: that commander begins with it instead of a Rig. */
+  const coreOf = new Map<number, Entity>();
   let bricks = 0;
   (map.features ?? []).forEach((f, fi) => {
     const facing = featureAngle({ ...f, facing: f.facing ?? 0 });
+    const owner = ownerOf(f);
+    if (owner === null && !isMapBridge(f.type) && !isMapSection(f.type)) return;
     if (isMapBridge(f.type)) {
       placeBrick(
         state,
@@ -186,13 +169,14 @@ export function createMatch(
     // A turned bunker or tower stands on its turned site, like one the player placed.
     const site = featureLotSite({ ...f, facing: f.facing ?? 0 });
     const c = buildingCenter(site.tx, site.ty, site.w, site.h, map.tileSize);
-    const b = makeEntity(state, f.type, NEUTRAL_OWNER, c.x, c.y, {
+    const b = makeEntity(state, f.type, owner!, c.x, c.y, {
       tileX: site.tx,
       tileY: site.ty,
       tileW: site.w,
       tileH: site.h,
       facing,
     });
+    if (f.type === "core" && f.owner != null) coreOf.set(f.owner, b);
     // The tower's lamp rests where the map pointed it, and lights that way once someone holds it.
     if (f.spot != null) b.spotFacing = (f.spot * Math.PI) / 180;
     if (f.patrol?.length && hasSpotlight(f.type)) {
@@ -208,43 +192,105 @@ export function createMatch(
     restampForts(state);
   }
   if (bricks > 0) restampBridges(state);
-  standMapUnits(state, map, raised);
-  // A map's gun is crewed like one the player raises: neutral riflemen in every place the map left empty.
-  for (const b of raised.values()) manGun(state, b, NEUTRAL_OWNER);
+
+  for (const slot of commanders(room)) {
+    const pid = slot.playerId!;
+    const pos = spawns.get(pid);
+    if (!pos) continue;
+    // A start the map built a Core on begins from that Core; the rest unpack a Rig.
+    const core = coreOf.get(pos.spawnId);
+    let hqId: number;
+    if (core) {
+      hqId = core.id;
+    } else {
+      const x = tileCenter(pos.x, map.tileSize);
+      const y = tileCenter(pos.y, map.tileSize);
+      const rig = makeEntity(state, "rig", pid, x, y);
+      const towardX = map.width / 2 - pos.x;
+      const towardY = map.height / 2 - pos.y;
+      rig.facing = Math.atan2(towardY, towardX);
+      rig.turretFacing = rig.facing;
+      hqId = rig.id;
+    }
+    players.set(pid, {
+      playerId: pid,
+      name: slot.name ?? "Commander",
+      colorId: slot.colorId,
+      team: slot.team,
+      alive: true,
+      scrap: START_SCRAP,
+      scrapCarry: 0,
+      structure: null,
+      defence: null,
+      line: null,
+      placingType: null,
+      hqId,
+      ai: slot.ai,
+      aiNextAttackTick: slot.ai ? EASY_ATTACK_FIRST_TICKS : 0,
+    });
+  }
+
+  standMapUnits(state, map, raised, ownerOf);
+  // A map's gun is crewed like one the player raises: its side's riflemen in every place the map left empty.
+  for (const b of raised.values()) manGun(state, b, b.ownerId);
 
   return state;
 }
 
 /**
- * The map's neutral troops. Grey, no one's, they shoot at anyone their own eyes
- * find and hold their post: each stands guard on its heading, walks its patrol
- * route, or sits inside the house or bunker it was put in.
+ * The map's troops. A neutral one is grey and no one's: it shoots at anyone its own eyes
+ * find and holds its post, standing guard on its heading, walking its patrol route, or
+ * sitting inside the house or bunker it was put in. An owned one is the seated commander's
+ * from the first tick and stands idle until told otherwise, unless the map gave it a guard
+ * point or a patrol. A plane sits on its Airfield's hardstand.
  */
-function standMapUnits(state: MatchState, map: MapDef, raised: ReadonlyMap<number, Entity>): void {
+function standMapUnits(
+  state: MatchState,
+  map: MapDef,
+  raised: ReadonlyMap<number, Entity>,
+  ownerOf: (o: { owner?: number }) => string | null,
+): void {
   const ts = map.tileSize;
+  const features = map.features ?? [];
   for (const mu of map.units ?? []) {
+    const owner = ownerOf(mu);
+    if (owner === null) continue;
     const facing = (mu.facing * Math.PI) / 180;
     const x = tileCenter(mu.x, ts);
     const y = tileCenter(mu.y, ts);
+    const loop = mu.loop === true;
+    const patrol = mu.patrol?.length ? mu.patrol.map((p) => ({ x: tileCenter(p.x, ts), y: tileCenter(p.y, ts) })) : null;
+    const guard = mu.guard ? { x: tileCenter(mu.guard.x, ts), y: tileCenter(mu.guard.y, ts) } : null;
+    if (isAircraftType(mu.type)) {
+      const field = raised.get(mapAirfieldAt(features, mu.x, mu.y));
+      if (!field || field.ownerId !== owner) continue;
+      const pad = mu.pad ?? 0;
+      const at = airfieldPadWorld(field, pad, ts);
+      const plane = makeEntity(state, mu.type, owner, at.x, at.y, { facing: parkHeading(field, ts) });
+      plane.air = newAirState(field.id, pad, mu.type);
+      if (patrol) {
+        const route = buildPatrolRoute(state, plane, patrol, 0, 0, loop);
+        orderAircraft(state, plane, { kind: "patrol", route, leg: loop ? 0 : 1, dir: 1, ...(loop ? { loop: true } : {}) });
+      } else if (guard) {
+        orderAircraft(state, plane, { kind: "guard", x: guard.x, y: guard.y, facing });
+      }
+      continue;
+    }
     if (mu.inside) {
-      const house = raised.get(mapUnitHostAt(map.features ?? [], mu.x, mu.y));
-      if (!house) continue;
-      const e = makeEntity(state, mu.type, NEUTRAL_OWNER, house.x, house.y, { facing });
+      const house = raised.get(mapUnitHostAt(features, mu.x, mu.y));
+      if (!house || house.ownerId !== owner) continue;
+      const e = makeEntity(state, mu.type, owner, house.x, house.y, { facing });
       if (!enterGarrison(state, e, house)) destroyEntity(state, e);
       continue;
     }
-    const e = makeEntity(state, mu.type, NEUTRAL_OWNER, x, y, { facing });
-    // Never chases: a target out of reach is left to come closer.
-    e.holdPosition = true;
+    const e = makeEntity(state, mu.type, owner, x, y, { facing });
     // A Battle Ship's searchlight starts where the map pointed it, and turns with the hull from there.
     if (mu.spot != null && hasSpotlight(mu.type)) {
       e.spotFacing = (mu.spot * Math.PI) / 180;
       e.spotHull = facing;
     }
-    if (mu.patrol?.length) {
-      const loop = mu.loop === true;
-      const points = mu.patrol.map((p) => ({ x: tileCenter(p.x, ts), y: tileCenter(p.y, ts) }));
-      const route = buildPatrolRoute(state, e, points, 0, 0, loop);
+    if (patrol) {
+      const route = buildPatrolRoute(state, e, patrol, 0, 0, loop);
       const leg = loop ? 0 : 1;
       e.order = { kind: "patrol", route, leg, dir: 1, ...(loop ? { loop: true } : {}) };
       e.state = "move";
@@ -252,6 +298,18 @@ function standMapUnits(state: MatchState, map: MapDef, raised: ReadonlyMap<numbe
       setPath(state, e, dest.x, dest.y);
       continue;
     }
+    if (guard) {
+      // As Guard (G) orders it in a match: walk there, then hold that heading.
+      e.holdPosition = true;
+      e.guardFacing = facing;
+      e.order = { kind: "guard", x: guard.x, y: guard.y, facing };
+      e.state = "move";
+      setPath(state, e, guard.x, guard.y);
+      continue;
+    }
+    if (owner !== NEUTRAL_OWNER) continue;
+    // Neutral and never chasing: a target out of reach is left to come closer.
+    e.holdPosition = true;
     e.guardFacing = facing;
     e.order = { kind: "guard", x, y, facing };
   }

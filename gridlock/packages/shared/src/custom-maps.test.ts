@@ -333,7 +333,7 @@ describe("map defences and play tests", () => {
       }),
     );
     assert.equal(crossed.ok, false, "two sections crossing on one tile overlap");
-    assert.equal(validateCustomMap(sheet({ features: [{ type: "dynamo" as never, x: 64, y: 64, facing: 0 }] })).ok, false);
+    assert.equal(validateCustomMap(sheet({ features: [{ type: "rig" as never, x: 64, y: 64, facing: 0 }] })).ok, false);
   });
 
   it("takes defences turned in 15° steps, and sections between tiles", () => {
@@ -747,5 +747,79 @@ describe("custom map ground cover", () => {
     odd[5] = 99;
     assert.equal(validateCustomMap(sheet({ ground: encodeRuns(odd) })).ok, false);
     assert.equal(validateCustomMap(sheet({ ground: [GROUND_DIRT, 7] })).ok, false);
+  });
+});
+
+describe("owned map objects", () => {
+  it("keeps a start's buildings and units, and refuses an owner off the roster", () => {
+    const features = [
+      { type: "dynamo" as const, x: 64, y: 64, facing: 0, owner: 1 },
+      { type: "bunker" as const, x: 80, y: 80, facing: 0 },
+    ];
+    const units = [
+      { type: "rifleman" as const, x: 96, y: 60, facing: 90, owner: 2 },
+      { type: "ss3" as const, x: 110, y: 80, facing: 0, guard: { x: 130, y: 80 } },
+    ];
+    const r = validateCustomMap(sheet({ features, units }));
+    assert.ok(r.ok, r.ok ? "" : r.message);
+    assert.deepEqual(r.spec.features, features);
+    assert.deepEqual(r.spec.units, units);
+    assert.deepEqual(buildCustomMap(r.spec).units, units);
+    assert.equal(validateCustomMap(sheet({ features: [{ type: "dynamo", x: 64, y: 64, facing: 0, owner: 3 }] })).ok, false, "no third start");
+    assert.equal(validateCustomMap(sheet({ units: [{ type: "rifleman", x: 96, y: 60, facing: 0, owner: 0 }] })).ok, false);
+    // A section stands for no one, whatever the sheet says.
+    const line = validateCustomMap(sheet({ features: [{ type: "wall", x: 100, y: 100, facing: 0, owner: 1 }] }));
+    assert.ok(line.ok);
+    assert.equal(line.spec.features[0]!.owner, undefined);
+  });
+
+  it("refuses a Core without a start, and a Marine Base off the water", () => {
+    assert.equal(validateCustomMap(sheet({ features: [{ type: "core", x: 64, y: 64, facing: 0 }] })).ok, false);
+    const owned = validateCustomMap(sheet({ features: [{ type: "core", x: 64, y: 64, facing: 0, owner: 1 }] }));
+    assert.ok(owned.ok, owned.ok ? "" : owned.message);
+    assert.equal(validateCustomMap(sheet({ features: [{ type: "dock", x: 64, y: 64, facing: 0 }] })).ok, false);
+    const n = SIDE * SIDE;
+    const tiles = new Array<number>(n).fill(TILE_EMPTY);
+    for (let y = 56; y < 96; y++) for (let x = 56; x < 112; x++) tiles[y * SIDE + x] = TILE_WATER;
+    const afloat = validateCustomMap(sheet({ tiles: encodeRuns(tiles), features: [{ type: "dock", x: 64, y: 64, facing: 0 }] }));
+    assert.ok(afloat.ok, afloat.ok ? "" : afloat.message);
+  });
+
+  it("keeps a man inside his own side's bunker only", () => {
+    const bunker = { type: "bunker" as const, x: 80, y: 100, facing: 0, owner: 1 };
+    const own = validateCustomMap(sheet({ features: [bunker], units: [{ type: "gunner", x: 81, y: 101, facing: 0, inside: true, owner: 1 }] }));
+    assert.ok(own.ok);
+    assert.equal(own.spec.units?.length, 1);
+    const other = validateCustomMap(sheet({ features: [bunker], units: [{ type: "gunner", x: 81, y: 101, facing: 0, inside: true, owner: 2 }] }));
+    assert.ok(other.ok);
+    assert.equal(other.spec.units, undefined, "dropped, not refused");
+  });
+
+  it("parks a plane on a free hardstand of its own side's Airfield", () => {
+    const field = { type: "airfield" as const, x: 64, y: 64, facing: 0, turn: 3, owner: 1 };
+    const plane = { type: "stuka" as const, x: 70, y: 70, facing: 0, owner: 1, pad: 2 };
+    const r = validateCustomMap(sheet({ features: [field], units: [plane] }));
+    assert.ok(r.ok, r.ok ? "" : r.message);
+    assert.deepEqual(r.spec.units, [plane]);
+    assert.deepEqual(buildCustomMap(r.spec).units, [plane]);
+    // No pad, a pad off the field, a plane off the field, another side's field, a taken pad, the transport.
+    assert.equal(validateCustomMap(sheet({ features: [field], units: [{ ...plane, pad: undefined }] })).ok, false);
+    assert.equal(validateCustomMap(sheet({ features: [field], units: [{ ...plane, pad: 4 }] })).ok, false);
+    const dropped = validateCustomMap(
+      sheet({
+        features: [field],
+        units: [{ ...plane, x: 120, y: 120 }, { ...plane, owner: 2 }, plane, { ...plane, x: 72, type: "fw190" }],
+      }),
+    );
+    assert.ok(dropped.ok);
+    assert.deepEqual(dropped.spec.units, [plane]);
+    assert.equal(validateCustomMap(sheet({ features: [field], units: [{ ...plane, type: "bv222" }] })).ok, false);
+  });
+
+  it("keeps a Spotlight post with its heading and sweep", () => {
+    const post = { type: "spotlight" as const, x: 64, y: 64, facing: 0, turn: 5, spot: 270, patrol: [{ x: 80, y: 64 }, { x: 64, y: 80 }], loop: true };
+    const r = validateCustomMap(sheet({ features: [post] }));
+    assert.ok(r.ok, r.ok ? "" : r.message);
+    assert.deepEqual(r.spec.features, [{ ...post, facing: 1 }]);
   });
 });

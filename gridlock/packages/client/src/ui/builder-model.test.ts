@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { copyMapUnit, mapAirfieldAt } from "@gridlock/shared";
+import { clearOrders, gridDiff, markDiff, markSheet, ownersWithoutStart, planesOn, setFeatureOwner, setGuard, setMaxPlayers, setUnitOwner, unionDirty } from "./builder-model.js";
 import {
   GROUND_GRASS,
   GROUND_SAND,
@@ -606,5 +608,116 @@ describe("builder complete fog of war", () => {
     assert.equal(sheetToMap(s).shroud, true);
     restoreSheet(s, before);
     assert.equal(s.shroud, false);
+  });
+});
+
+describe("builder dirty boxes", () => {
+  /** Every index where two grids differ lies inside `box`. */
+  const covered = (width: number, a: readonly number[], b: readonly number[], box: { x0: number; y0: number; x1: number; y1: number }): boolean =>
+    a.every((v, i) => v === b[i] || ((i % width) >= box.x0 && (i % width) < box.x1 && ((i / width) | 0) >= box.y0 && ((i / width) | 0) < box.y1));
+
+  it("reports nothing to repaint when settle changes nothing", () => {
+    const s = fresh();
+    const box = settle(s);
+    assert.ok(box.x1 <= box.x0, "empty");
+  });
+
+  it("boxes every cell settle touched: a lot levelled on a hill, a start's pad, a pond floor", () => {
+    const s = newSheet({ id: "c-model00002", name: "Hills", author: "T", cells: 48, maxPlayers: 2, hills: true, seed: "hills" });
+    settle(s);
+    const tiles = s.tiles.slice();
+    const heights = s.heights.slice();
+    s.features.push(houseAt("warehouse", 96, 96, 0));
+    s.spawns.push({ id: 1, x: 40, y: 40 });
+    paintDisk(s, 150, 150, 4, TILE_WATER);
+    const box = settle(s);
+    assert.ok(box.x1 > box.x0, "something settled");
+    assert.ok(covered(s.width, tiles, s.tiles, box), "tiles outside the box did not change");
+    assert.ok(covered(s.width, heights, s.heights, box), "heights outside the box did not change");
+  });
+
+  it("diffs grids and undo marks into one box", () => {
+    const a = [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    const b = [0, 0, 0, 0, 1, 0, 0, 0, 2];
+    assert.deepEqual(gridDiff(3, a, b), { x0: 1, y0: 1, x1: 3, y1: 3 });
+    assert.deepEqual(unionDirty({ x0: 0, y0: 0, x1: 1, y1: 1 }, { x0: 4, y0: 4, x1: 5, y1: 5 }), { x0: 0, y0: 0, x1: 5, y1: 5 });
+    const s = fresh();
+    const mark = markSheet(s);
+    s.ground[7 * s.width + 5] = GROUND_SAND;
+    s.heights[20 * s.width + 30] = HEIGHT_BASE + 1;
+    assert.deepEqual(markDiff(mark, s), { x0: 5, y0: 7, x1: 31, y1: 21 });
+  });
+});
+
+describe("builder sides, planes, and guard", () => {
+  it("stands a unit and a building for a start, and hands them over", () => {
+    const s = fresh();
+    assert.equal(placeUnit(s, "rifleman", 90, 90, 0, 1), null);
+    assert.equal(s.units[0]!.owner, 1);
+    assert.equal(placeUnit(s, "gunner", 100, 90, 0), null);
+    assert.equal(s.units[1]!.owner, undefined);
+    s.features.push({ ...houseAt("bunker", 120, 120, 0), owner: 1 });
+    settle(s);
+    assert.equal(garrisonUnit(s, "rifleman", 0, 0), null);
+    assert.equal(s.units[2]!.owner, 1, "a man inside takes the building's side");
+    assert.equal(setUnitOwner(s, 2, 0), "A man inside a building is its side's.");
+    assert.equal(setFeatureOwner(s, 0, 2), null);
+    assert.equal(s.units[2]!.owner, 2, "and follows it when it changes hands");
+    assert.equal(setUnitOwner(s, 0, 0), null);
+    assert.equal(s.units[0]!.owner, undefined);
+    s.features.push({ ...houseAt("core", 160, 160, 0), owner: 1 });
+    assert.equal(setFeatureOwner(s, 1, 0), "A Core belongs to a start.");
+    assert.equal(liveUnits(s).length, 3);
+  });
+
+  it("parks planes on the nearest free hardstand of their own Airfield", () => {
+    const s = fresh();
+    s.features.push({ ...houseAt("airfield", 96, 96, 0, 2), owner: 1 });
+    settle(s);
+    assert.equal(placeUnit(s, "stuka", 60, 60, 0, 1), "Planes park on an Airfield.");
+    assert.equal(placeUnit(s, "stuka", 100, 100, 0), "That Airfield is another side's.");
+    const pads = new Set<number>();
+    for (let i = 0; i < 4; i++) {
+      assert.equal(placeUnit(s, "stuka", 100, 100, 0, 1), null);
+      pads.add(s.units[i]!.pad!);
+    }
+    assert.equal(pads.size, 4, "four planes, four pads");
+    assert.ok(s.units.every((u) => u.owner === 1 && mapAirfieldAt(s.features, u.x, u.y) === 0), "each sits on the field");
+    assert.ok(placeUnit(s, "fw190", 100, 100, 0, 1)!.startsWith("Every hardstand"));
+    assert.equal(liveUnits(s).length, 4);
+    // A plane moves between pads of a field, never onto bare ground.
+    const first = copyMapUnit(s.units[0]!);
+    assert.ok(moveUnit(s, 0, first, -60, -60));
+    assert.equal(setUnitOwner(s, 0, 2), "A plane is its Airfield's side's.");
+    assert.equal(setFeatureOwner(s, 0, 2), null);
+    assert.ok(s.units.every((u) => u.owner === 2), "the planes change hands with the field");
+    assert.equal(planesOn(s, 0).length, 4);
+  });
+
+  it("sends a unit to a guard point, one order at a time", () => {
+    const s = fresh();
+    placeUnit(s, "rifleman", 90, 90, 0);
+    s.units[0]!.patrol = [{ x: 100, y: 90 }];
+    assert.equal(setGuard(s, 0, 120, 90), null);
+    assert.deepEqual(s.units[0]!.guard, { x: 120, y: 90 });
+    assert.equal(s.units[0]!.patrol, undefined, "the patrol went");
+    assert.equal(moveUnit(s, 0, copyMapUnit(s.units[0]!), 4, 0), null);
+    assert.deepEqual(s.units[0]!.guard, { x: 124, y: 90 }, "the point moves with it");
+    assert.deepEqual(sheetToSpec(s).units?.[0]?.guard, { x: 124, y: 90 }, "and is saved");
+    clearOrders(s, 0);
+    assert.equal(s.units[0]!.guard, undefined);
+  });
+
+  it("stands a dropped start's things neutral when the seat count falls", () => {
+    const s = fresh(4);
+    s.features.push({ ...houseAt("dynamo", 120, 120, 0), owner: 4 }, { ...houseAt("core", 160, 160, 0), owner: 4 });
+    placeUnit(s, "rifleman", 90, 90, 0, 4);
+    placeUnit(s, "rifleman", 60, 60, 0, 2);
+    setMaxPlayers(s, 2);
+    assert.equal(s.features.length, 1, "the Core went");
+    assert.equal(s.features[0]!.owner, undefined);
+    assert.equal(s.units[0]!.owner, undefined);
+    assert.equal(s.units[1]!.owner, 2);
+    assert.deepEqual(ownersWithoutStart(s), [2]);
   });
 });

@@ -9,7 +9,10 @@ import {
   TOWER_EYE_HEIGHT,
   TILE_SIZE,
   isGroveTile,
+  AIRFIELD_PADS,
   catalog,
+  colorHex,
+  isAircraftType,
   featureAngle,
   facingToIso,
   featureBox,
@@ -78,7 +81,7 @@ import { treeStamp } from "../render/tree-burn.js";
 import { WALL_STYLE, drawWall, wallJoins, wallTopElev, type WallSection } from "../render/wall.js";
 import { lineFrame, lineProfile, lineShapes, type LinePiece } from "../render/line-bend.js";
 import type { IsoCam } from "./builder-iso-cam.js";
-import { brickDeck, liveClutter, liveLamps, type Dirty, type Sheet } from "./builder-model.js";
+import { brickDeck, liveClutter, liveLamps, padWorld, planeWorld, type Dirty, type Sheet } from "./builder-model.js";
 
 /**
  * The Map Builder's "In-game view": the sheet drawn the way a match draws it
@@ -90,6 +93,8 @@ import { brickDeck, liveClutter, liveLamps, type Dirty, type Sheet } from "./bui
 const ISO_ID = "__builder_iso__";
 
 export interface IsoOverlay {
+  /** The sheet's revision: what a frame derives from the sheet is cached against it. Left out, every frame derives afresh. */
+  rev?: number;
   selectedFeature: number;
   hoverFeature: number;
   selectedSpawn: number;
@@ -121,6 +126,8 @@ export interface RouteDraw {
   cursor?: { x: number; y: number } | null;
   /** Drawn bright: the selected unit's route, or the one being drawn. */
   strong: boolean;
+  /** A guard walk to one point, drawn dotted, rather than a patrol. */
+  guard?: boolean;
 }
 
 export interface UnitOverlay {
@@ -128,7 +135,9 @@ export interface UnitOverlay {
   selected: number;
   hover: number;
   /** The unit the Units tool would stand on the cursor tile. */
-  ghost: { type: TrainType; x: number; y: number; facing: number; bad: boolean } | null;
+  ghost: { type: TrainType; x: number; y: number; facing: number; bad: boolean; owner?: number; pad?: number } | null;
+  /** Outline every Airfield's hardstands: a plane is being placed or is selected. */
+  pads?: boolean;
   routes: readonly RouteDraw[];
   /** Men inside a building, by feature index, for its badge. */
   garrisons: ReadonlyMap<number, { count: number; cap: number }>;
@@ -163,13 +172,31 @@ function drawBeam(c: CanvasRenderingContext2D, s: Sheet, b: SpotBeam, zoom: numb
   c.restore();
 }
 
-/** Draw one neutral unit as the battlefield draws it, greyed. False while its art loads. */
-function drawMapUnit(c: CanvasRenderingContext2D, s: Sheet, u: { type: TrainType; x: number; y: number; facing: number }, alpha = 1): boolean {
+/** World px a map unit stands at: a plane on its hardstand, anyone else on its tile. */
+function unitWorld(s: Sheet, u: { type: TrainType; x: number; y: number; pad?: number }): { x: number; y: number } {
+  if (isAircraftType(u.type)) return planeWorld(s, u as MapUnit);
+  return { x: (u.x + 0.5) * TILE_SIZE, y: (u.y + 0.5) * TILE_SIZE };
+}
+
+/** Draw one map unit as the battlefield draws it: greyed when neutral, in its side's colour under it when a start's. False while its art loads. */
+function drawMapUnit(c: CanvasRenderingContext2D, s: Sheet, u: { type: TrainType; x: number; y: number; facing: number; owner?: number; pad?: number }, alpha = 1): boolean {
   const def = spriteFor(u.type);
-  const p = at((u.x + 0.5) * TILE_SIZE, (u.y + 0.5) * TILE_SIZE, heightOf(s, u.x, u.y));
+  const w = unitWorld(s, u);
+  const p = at(w.x, w.y, heightOf(s, u.x, u.y));
   const facing = (u.facing * Math.PI) / 180;
+  const side = u.owner ? colorHex(u.owner - 1) : null;
+  if (side) {
+    // A start's unit stands on a disc of its side's colour, as the match's selection marks a side.
+    c.save();
+    c.globalAlpha = alpha * 0.75;
+    c.fillStyle = side;
+    c.beginPath();
+    c.ellipse(p.x, p.y, 7, 3.5, 0, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+  }
   if (!def) {
-    c.fillStyle = "#8c8c88";
+    c.fillStyle = side ?? "#8c8c88";
     c.beginPath();
     c.arc(p.x, p.y - 4, 4, 0, Math.PI * 2);
     c.fill();
@@ -178,10 +205,44 @@ function drawMapUnit(c: CanvasRenderingContext2D, s: Sheet, u: { type: TrainType
   const dir = facingToIso(facing, TILE_SIZE);
   c.save();
   c.globalAlpha = alpha;
-  c.filter = NEUTRAL_UNIT_FILTER;
+  if (!side) c.filter = NEUTRAL_UNIT_FILTER;
   const drawn = drawUnitSprite(c, def, p.x, p.y, dir.x, dir.y, { moving: false, id: 0, now: 0, facing, turretFacing: facing });
   c.restore();
   return drawn;
+}
+
+/** An Airfield's four hardstands outlined on the ground, in its side's colour. */
+function drawPads(c: CanvasRenderingContext2D, s: Sheet, f: MapFeature, zoom: number): void {
+  const elev = lotElev(s, f);
+  c.save();
+  c.strokeStyle = f.owner ? colorHex(f.owner - 1) : "#e8dcc4";
+  c.globalAlpha = 0.8;
+  c.lineWidth = 1.5 / zoom;
+  c.setLineDash([3 / zoom, 3 / zoom]);
+  for (let pad = 0; pad < AIRFIELD_PADS; pad++) {
+    const w = padWorld(f, pad);
+    const pts: IsoPt[] = [];
+    for (let k = 0; k < 24; k++) {
+      const a = (k / 24) * Math.PI * 2;
+      pts.push(at(w.x + Math.cos(a) * TILE_SIZE * 1.2, w.y + Math.sin(a) * TILE_SIZE * 1.2, elev));
+    }
+    quadPath(c, pts);
+    c.stroke();
+  }
+  c.restore();
+}
+
+/** A start's building wears a solid edge in its side's colour round its lot. */
+function sideEdge(c: CanvasRenderingContext2D, s: Sheet, f: MapFeature, zoom: number, bridge?: BrickLayout): void {
+  if (!f.owner) return;
+  const { pts } = boxCorners(s, f, 1, bridge);
+  c.save();
+  c.globalAlpha = 0.85;
+  c.strokeStyle = colorHex(f.owner - 1);
+  c.lineWidth = 2 / zoom;
+  quadPath(c, pts);
+  c.stroke();
+  c.restore();
 }
 
 /** A ring on the ground round a unit's tile. */
@@ -220,7 +281,10 @@ const DECOR_FACES: Record<string, readonly PropSprite[]> = {
   stump: STUMP_FACES,
 };
 
-/** The sheet as a map, sharing its arrays: cheap enough to make every frame. */
+/**
+ * The sheet as a map, sharing its arrays: cheap enough to make every frame. Its peak is
+ * the bake's, kept by `remember` and raised as a brush lifts ground, not scanned each call.
+ */
 function liveMap(s: Sheet): MapDef {
   return {
     id: ISO_ID,
@@ -230,7 +294,7 @@ function liveMap(s: Sheet): MapDef {
     tileSize: TILE_SIZE,
     tiles: s.tiles,
     heights: s.heights,
-    maxHeight: peakHeight(s.heights),
+    maxHeight: seenPeak,
     ground: s.ground,
     spawns: s.spawns,
     features: s.features,
@@ -248,7 +312,8 @@ export function isoChanged(): void {
   unsynced = true;
 }
 
-function restampBox(s: Sheet, x0: number, y0: number, x1: number, y1: number, spread?: number): void {
+/** Restamp the tiles in a box. `scrap` is every scrap cell on the sheet; left out, the sheet is scanned for them. */
+function restampBox(s: Sheet, x0: number, y0: number, x1: number, y1: number, spread?: number, scrap?: ScrapCell[]): void {
   if (!terrain) return;
   const idx: number[] = [];
   const ax = Math.max(0, x0);
@@ -256,13 +321,88 @@ function restampBox(s: Sheet, x0: number, y0: number, x1: number, y1: number, sp
   const bx = Math.min(s.width, x1);
   const by = Math.min(s.height, y1);
   for (let y = ay; y < by; y++) for (let x = ax; x < bx; x++) idx.push(y * s.width + x);
-  restampTiles(terrain, liveMap(s), idx, scrapOf(s), spread);
+  restampTiles(terrain, liveMap(s), idx, scrap ?? scrapOf(s), spread);
 }
 
-/** Repaint just the ground a brush touched, so a stroke shows while it is drawn. */
+/**
+ * Repaint just the ground a brush touched, so a stroke shows while it is drawn. The scrap
+ * set and the peak are brought up from the bake's by the box alone, so a brush frame never
+ * walks the whole sheet.
+ */
 export function isoRestamp(s: Sheet, box: Dirty): void {
-  if (!terrain || bakedFor !== s || rebakeAll || box.x1 <= box.x0) return;
-  restampBox(s, box.x0 - 1, box.y0 - 1, box.x1 + 1, box.y1 + 1);
+  // A settled commit is pending: sync() restamps the whole difference next frame, this box included.
+  if (!terrain || bakedFor !== s || rebakeAll || unsynced || box.x1 <= box.x0) return;
+  const scrap = new Set(terrain.scrap);
+  const ax = Math.max(0, box.x0);
+  const ay = Math.max(0, box.y0);
+  const bx = Math.min(s.width, box.x1);
+  const by = Math.min(s.height, box.y1);
+  let touchedScrap = false;
+  for (let y = ay; y < by; y++) {
+    for (let x = ax; x < bx; x++) {
+      const i = y * s.width + x;
+      const now = isScrapTile(s.tiles[i]);
+      if (now !== scrap.has(i)) touchedScrap = true;
+      if (now) scrap.add(i);
+      else scrap.delete(i);
+      const h = s.heights[i] ?? 0;
+      if (h > seenPeak) seenPeak = h;
+    }
+  }
+  const cells = [...scrap].map((i) => ({ x: i % s.width, y: (i / s.width) | 0 }));
+  const rim = touchedScrap ? SCRAP_SOFT_REACH : 1;
+  restampBox(s, box.x0 - rim, box.y0 - rim, box.x1 + rim, box.y1 + rim, touchedScrap ? 1.1 : undefined, cells);
+}
+
+/** What a frame derives from the whole sheet, kept until the sheet's revision moves on. */
+interface Derived {
+  /** Tiles under a lot: decor is not drawn there. */
+  built: Set<number>;
+  sectionsByType: Map<string, (WallSection & { type: string })[]>;
+  looks: Map<MapFeature, LineLook>;
+  bridges: Map<MapFeature, { brick: BrickIn; layout: BrickLayout }>;
+  lamps: ReturnType<typeof liveLamps>;
+  clutter: ReturnType<typeof liveClutter>;
+}
+
+let derived: Derived | null = null;
+let derivedFor: Sheet | null = null;
+let derivedRev = -1;
+
+function sectionsOf(list: readonly MapFeature[]): (WallSection & { type: string })[] {
+  return list
+    .filter((f) => isMapSection(f.type))
+    .map((f): WallSection & { type: string } => {
+      const span = fieldSpan(f.type)!;
+      return {
+        type: f.type,
+        x: (f.x + 0.5) * TILE_SIZE,
+        y: (f.y + 0.5) * TILE_SIZE,
+        facing: featureAngle(f),
+        length: span.length,
+        thick: span.thick,
+      };
+    });
+}
+
+function derivedOf(s: Sheet, rev: number | undefined): Derived {
+  if (derived && derivedFor === s && rev != null && derivedRev === rev) return derived;
+  const built = new Set<number>();
+  for (const f of s.features) {
+    if (isMapLine(f.type)) continue;
+    const b = featureBox(f);
+    for (let y = b.y0; y < b.y1; y++) for (let x = b.x0; x < b.x1; x++) built.add(y * s.width + x);
+  }
+  const sectionsByType = new Map<string, (WallSection & { type: string })[]>();
+  for (const sec of sectionsOf(s.features)) {
+    const list = sectionsByType.get(sec.type);
+    if (list) list.push(sec);
+    else sectionsByType.set(sec.type, [sec]);
+  }
+  derived = { built, sectionsByType, looks: lineLooks(s, s.features), bridges: bridgeLayouts(s, s.features), lamps: liveLamps(s), clutter: liveClutter(s) };
+  derivedFor = s;
+  derivedRev = rev ?? -1;
+  return derived;
 }
 
 function remember(s: Sheet): void {
@@ -324,6 +464,8 @@ function ensureBake(s: Sheet, redraw: () => void): TerrainBake | null {
   else if (unsynced) sync(s);
   if (terrain && !rebakeAll) return terrain;
   forgetTerrain(ISO_ID);
+  // A fresh bake sizes its atlas to the sheet's real peak.
+  seenPeak = peakHeight(s.heights);
   terrain = bakeTerrain(liveMap(s), scrapOf(s));
   bakedFor = s;
   rebakeAll = false;
@@ -634,7 +776,8 @@ function drawRoute(c: CanvasRenderingContext2D, s: Sheet, r: RouteDraw, zoom: nu
   c.globalAlpha = r.strong ? 1 : 0.45;
   c.strokeStyle = "#e8b84a";
   c.lineWidth = (r.strong ? 1.8 : 1.2) / zoom;
-  c.setLineDash([6 / zoom, 4 / zoom]);
+  // A guard walk is dotted; a patrol route dashed.
+  c.setLineDash(r.guard ? [2 / zoom, 3 / zoom] : [6 / zoom, 4 / zoom]);
   c.beginPath();
   path.forEach((q, i) => {
     const p = pt(q);
@@ -755,12 +898,7 @@ export function isoDraw(
   const tx1 = Math.min(s.width - 1, Math.ceil(Math.max(...corners.map((p) => p.x)) / TILE_SIZE) + lift);
   const ty1 = Math.min(s.height - 1, Math.ceil(Math.max(...corners.map((p) => p.y)) / TILE_SIZE) + lift);
 
-  const built = new Set<number>();
-  for (const f of s.features) {
-    if (isMapLine(f.type)) continue;
-    const b = featureBox(f);
-    for (let y = b.y0; y < b.y1; y++) for (let x = b.x0; x < b.x1; x++) built.add(y * s.width + x);
-  }
+  const { built, sectionsByType, looks, bridges, lamps, clutter } = derivedOf(s, o.rev);
 
   for (let ty = ty0; ty <= ty1; ty++) {
     for (let tx = tx0; tx <= tx1; tx++) {
@@ -792,24 +930,15 @@ export function isoDraw(
     items.push({ z: it.kind === "bush" ? -Infinity : isoDepth(wx, wy), run: () => void drawPropSprite(c, spr, p.x, p.y, it.drawH, it.flip) });
   }
 
-  const sectionsOf = (list: readonly MapFeature[]) =>
-    list
-      .filter((f) => isMapSection(f.type))
-      .map((f): WallSection & { type: string } => {
-        const span = fieldSpan(f.type)!;
-        return {
-          type: f.type,
-          x: (f.x + 0.5) * TILE_SIZE,
-          y: (f.y + 0.5) * TILE_SIZE,
-          facing: featureAngle(f),
-          length: span.length,
-          thick: span.thick,
-        };
-      });
-  const sections = sectionsOf(s.features);
-  const looks = lineLooks(s, s.features);
-  const bridges = bridgeLayouts(s, s.features);
+  // Lots, sections, and bricks well past the view are skipped; the joins between sections are already worked out for all.
+  const featureSeen = (f: MapFeature): boolean => {
+    const b = featureBox(f);
+    const wx = ((b.x0 + b.x1) / 2) * TILE_SIZE;
+    const wy = ((b.y0 + b.y1) / 2) * TILE_SIZE;
+    return onScreen(at(wx, wy, heightOf(s, Math.floor(wx / TILE_SIZE), Math.floor(wy / TILE_SIZE))), 320);
+  };
   s.features.forEach((f, i) => {
+    if (!featureSeen(f)) return;
     const look = bridges.get(f);
     if (look) {
       // A bridge lies on the water, under everything that stands.
@@ -825,18 +954,20 @@ export function isoDraw(
     }
     const b = featureBox(f);
     const zKey = isoDepth(((b.x0 + b.x1) / 2) * TILE_SIZE, ((b.y0 + b.y1) / 2) * TILE_SIZE);
-    const same = sections.filter((o) => o.type === f.type);
+    const same = sectionsByType.get(f.type) ?? [];
     items.push({
       z: zKey,
       run: () => {
         if (!drawFeature(c, s, f, same, looks.get(f))) loading = true;
+        sideEdge(c, s, f, z);
+        if (f.type === "airfield" && o.units?.pads) drawPads(c, s, f, z);
         if (i === o.selectedFeature) frame(c, s, f, "#e8b84a", z);
         else if (i === o.hoverFeature) frame(c, s, f, "rgba(255,244,220,0.7)", z);
       },
     });
   });
 
-  for (const l of liveLamps(s)) {
+  for (const l of lamps) {
     const wx = (l.x + 0.5) * TILE_SIZE;
     const wy = (l.y + 0.5) * TILE_SIZE;
     const p = at(wx, wy, heightOf(s, l.x, l.y));
@@ -844,7 +975,7 @@ export function isoDraw(
     const spr = lampSprite(l.type, l.facing);
     items.push({ z: isoDepth(wx, wy), run: () => void (drawPropSprite(c, spr, p.x, p.y, STREET_LAMPS[l.type].drawH) || (loading = true)) });
   }
-  for (const k of liveClutter(s)) {
+  for (const k of clutter) {
     const wx = (k.x + 0.5) * TILE_SIZE;
     const wy = (k.y + 0.5) * TILE_SIZE;
     const p = at(wx, wy, heightOf(s, k.x, k.y));
@@ -857,8 +988,7 @@ export function isoDraw(
   if (uo) {
     uo.list.forEach((u, i) => {
       if (u.inside) return;
-      const wx = (u.x + 0.5) * TILE_SIZE;
-      const wy = (u.y + 0.5) * TILE_SIZE;
+      const { x: wx, y: wy } = unitWorld(s, u);
       if (!onScreen(at(wx, wy, heightOf(s, u.x, u.y)), 96)) return;
       items.push({
         z: isoDepth(wx, wy),
@@ -998,11 +1128,13 @@ export function isoDraw(
   }
 
   // Ghosts as the match shows a placement: tinted ground, faded art. A drawn line's pieces join each other.
-  const ghostSections = sectionsOf(o.ghosts.map((g) => g.f));
+  // Nothing is worked out for them on a frame with no ghost.
+  const ghostFeats = o.ghosts.map((g) => g.f);
+  const ghostSections = ghostFeats.length > 0 ? sectionsOf(ghostFeats) : [];
   // A ghost line bends and slopes with the sections already laid, as it will once it is down.
-  const ghostLooks = lineLooks(s, [...o.ghosts.map((g) => g.f), ...s.features]);
+  const ghostLooks = ghostFeats.length > 0 ? lineLooks(s, [...ghostFeats, ...s.features]) : looks;
   // A ghost bridge meets the bricks already laid, so its ends arch or join as they will.
-  const ghostBridges = bridgeLayouts(s, [...o.ghosts.map((g) => g.f), ...s.features]);
+  const ghostBridges = ghostFeats.length > 0 ? bridgeLayouts(s, [...ghostFeats, ...s.features]) : bridges;
   const ghostOrder = [...o.ghosts].sort((a, b) => isoDepth(a.f.x, a.f.y) - isoDepth(b.f.x, b.f.y));
   for (const { f, bad } of ghostOrder) {
     const tint = bad ? "#ff5a4a" : "#7dff6a";

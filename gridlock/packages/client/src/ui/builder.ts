@@ -34,13 +34,17 @@ import {
   TILE_SUBDIV,
   TILE_TREE,
   TILE_WATER,
+  MAP_AIR_TYPES,
+  MAP_BASE_TYPES,
   MAP_DEFENCE_TYPES,
   MAP_UNIT_TYPES,
   PATROL_POINTS_MAX,
   catalog,
+  colorHex,
   connectPatrolPoints,
   copyMapUnit,
   garrisonCapOf,
+  isAircraftType,
   isInfantryType,
   featureAngle,
   featureBox,
@@ -49,9 +53,12 @@ import {
   fieldSpan,
   getMap,
   isCivilianType,
+  isMapBase,
   isMapSection,
   isMapBridge,
   isMountainCliff,
+  mapAirfieldAt,
+  AIRFIELD_PADS,
   MAP_BRIDGE_TYPES,
   bridgeBrickLength,
   bridgePath,
@@ -67,10 +74,13 @@ import {
   type CivilianType,
   type ClutterType,
   type LampType,
+  type MapBaseType,
   type MapDefenceType,
   type MapSectionType,
   type MapFeature,
   type MapFeatureType,
+  type MapClutter,
+  type MapLamp,
   type MapUnit,
   type TrainType,
 } from "@gridlock/shared";
@@ -95,11 +105,10 @@ import cactusUrl from "../assets/terrain/cactus-1.png";
 import rockUrl from "../assets/terrain/ground-rock.png";
 import { drawBrick, layoutBridges } from "../render/bridge.js";
 import { el } from "./dom.js";
-import { drawMapPreview } from "./map-preview.js";
 import * as M from "./builder-model.js";
 import { isoChanged, isoDraw, isoRestamp, type RouteDraw, type SpotBeam, type UnitOverlay } from "./builder-iso.js";
 import { SIDEBAR_GROUPS, sidebarGroupOf, type SidebarGroup } from "./sidebar-groups.js";
-import { isoFit, isoPick, isoScreenOf, isoZoomAt, type IsoCam } from "./builder-iso-cam.js";
+import { isoCenterOn, isoFit, isoPick, isoScreenOf, isoViewTiles, isoZoomAt, type IsoCam } from "./builder-iso-cam.js";
 
 const KEY_STORE = "gridlock.mapKey";
 const MINE_STORE = "gridlock.myMaps";
@@ -108,7 +117,6 @@ const AUTO_SAVE_MS = 30_000;
 const GAME_VIEW_STORE = "gridlock.builderGameView";
 const NIGHT_VIEW_STORE = "gridlock.builderNightView";
 const PATROL_ALWAYS_STORE = "gridlock.builderPatrolAlways";
-const PREVIEW_ID = "__builder__";
 const UNDO_DEPTH = 40;
 /** Raise / Lower apply one step this often while the button is held. */
 const LIFT_EVERY_MS = 70;
@@ -122,6 +130,7 @@ type ToolId =
   | "ground"
   | "cover"
   | "house"
+  | "base"
   | "defence"
   | "lamp"
   | "clutter"
@@ -130,6 +139,9 @@ type ToolId =
   | "unit"
   | "spawn"
   | "erase";
+
+/** The placing tools a Shift+click erases from, and that set down a lot. */
+const LOT_TOOLS: readonly ToolId[] = ["house", "base", "defence"];
 
 interface GroundKind {
   tile: number;
@@ -195,6 +207,8 @@ interface Tool {
   /** The surface the Cover brush lays. */
   cover: number;
   house: CivilianType;
+  /** The base structure the Base tool sets down. */
+  base: MapBaseType;
   defence: MapDefenceType;
   lamp: LampType;
   /** The piece the Clutter tool stands down. */
@@ -218,22 +232,21 @@ interface Tool {
 /** What the Select tool holds: a placed building or defence by index, or a start by number. */
 type Selection = { kind: "feature"; index: number } | { kind: "spawn"; id: number } | { kind: "unit"; index: number };
 
-/** Unit tabs, as the match's sidebar groups them. Aircraft are not map units. */
-const UNIT_TABS: readonly SidebarGroup[] = ["infantry", "tanks", "naval"];
+/** Unit tabs, as the match's sidebar groups them. Aircraft park on an Airfield. */
+const UNIT_TABS: readonly SidebarGroup[] = ["infantry", "tanks", "naval", "aircraft"];
 const COLLAPSE_STORE = "gridlock.builderCollapsed";
 
 interface Stage {
   root: HTMLElement;
   canvas: HTMLCanvasElement;
   status: HTMLElement;
-  preview: HTMLCanvasElement | null;
+  /** The side panel's minimap: the whole sheet top-down, with the stage's viewport on it. Click or drag it to look there. */
+  mini: HTMLCanvasElement | null;
   msg: HTMLElement;
   checks: HTMLElement | null;
   maps: HTMLElement | null;
   /** What the Select tool holds, and its Turn / Delete buttons. */
   sel: HTMLElement | null;
-  /** The Defences heading readout, kept current while the wheel turns. */
-  turnLabel: HTMLElement | null;
 }
 
 let sheet: M.Sheet | null = null;
@@ -257,6 +270,7 @@ const tool: Tool = {
   tile: TILE_WATER,
   cover: GROUND_DIRT,
   house: "cottage",
+  base: "dynamo",
   defence: "bunker",
   lamp: "streetlamp",
   clutter: "crates",
@@ -270,6 +284,8 @@ const tool: Tool = {
   roadWidth: M.ROAD_WIDTH,
 };
 let selected: Selection | null = null;
+/** Whose side the next building or unit is placed for: a start number, or 0 for neutral. */
+let placeOwner = 0;
 /** The Units tab on show. */
 let unitTab: SidebarGroup = "infantry";
 /**
@@ -277,8 +293,9 @@ let unitTab: SidebarGroup = "infantry";
  * Rotate (R) turns it toward the next click; Patrol (Y) takes clicks, a click on an
  * earlier point closes a loop, and right-click or Enter sets the route.
  */
-/** Order being given in the In-game view: a unit's Rotate or Patrol, or a spotlight's aim ("spot") or sweep. */
-let unitMode: null | "rotate" | "patrol" | "spot" = null;
+/** Order being given in the In-game view: a unit's Rotate, Guard, or Patrol, or a spotlight's aim ("spot") or sweep. */
+type UnitMode = null | "rotate" | "guard" | "patrol" | "spot";
+let unitMode: UnitMode = null;
 const patrolDraft: { points: { x: number; y: number }[]; loop: boolean } = { points: [], loop: false };
 /** Tool sections folded shut, by title. Kept across visits. */
 const collapsed = loadCollapsed();
@@ -309,9 +326,22 @@ let groundPx: ImageData | null = null;
 /** Tiles brushed since the last frame. */
 let pendingGround: M.Dirty = M.emptyDirty();
 let drawQueued = false;
-let previewTimer: ReturnType<typeof setTimeout> | null = null;
-/** The cached preview bake no longer matches the sheet. */
-let previewStale = true;
+/** The pointer is down on the minimap: moves keep steering the stage. */
+let miniHeld = false;
+/**
+ * Bumped whenever the sheet's content changes, including mid-stroke and mid-drag. What a
+ * frame derives from the sheet (lamps still standing, garrison counts, wall bends, bridge
+ * layouts) is cached against it, so an idle or hover frame recomputes nothing.
+ */
+let rev = 0;
+let planCache: { rev: number; sheet: M.Sheet; lamps: MapLamp[]; clutter: MapClutter[]; garrisons: Map<number, { count: number; cap: number }> } | null = null;
+
+/** The plan view's per-frame lists, computed once per sheet revision. */
+function planDerived(s: M.Sheet): { lamps: MapLamp[]; clutter: MapClutter[]; garrisons: Map<number, { count: number; cap: number }> } {
+  if (planCache && planCache.sheet === s && planCache.rev === rev) return planCache;
+  planCache = { rev, sheet: s, lamps: M.liveLamps(s), clutter: M.liveClutter(s), garrisons: garrisonCounts(s) };
+  return planCache;
+}
 let keysBound = false;
 let ctxRef: Ctx | null = null;
 /** Screen px/s the arrow keys pan the stage, the same on-screen speed as a match. */
@@ -381,17 +411,33 @@ function pushUndo(): void {
   redo.length = 0;
 }
 
-function changed(): void {
+/**
+ * The sheet changed. With `box`, only that ground is repainted on the next frame (a stroke's
+ * own damage is already pending; the box is what settle added); without it, the whole image.
+ */
+function changed(box?: M.Dirty): void {
   dirty = true;
   edits++;
-  previewStale = true;
+  rev++;
+  // A settled commit restamps everything that differs; a stroke's deferred patch is covered.
+  reliefPending = M.emptyDirty();
   if (sheet) heightsChanged(sheet.heights);
   isoChanged();
-  pendingGround = M.emptyDirty();
-  repaintGround();
+  if (box) markGround(box);
+  else repaintGround();
   queueDraw();
-  schedulePreview();
-  paintChecks();
+  scheduleChecks();
+}
+
+let checksTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Refresh the Checks list once the edits pause: it validates the whole sheet, too much for every stroke. */
+function scheduleChecks(delay = 200): void {
+  if (checksTimer) clearTimeout(checksTimer);
+  checksTimer = setTimeout(() => {
+    checksTimer = null;
+    paintChecks();
+  }, delay);
 }
 
 function openSheet(next: M.Sheet, isDirty: boolean): void {
@@ -405,17 +451,17 @@ function openSheet(next: M.Sheet, isDirty: boolean): void {
   isoCam.zoom = 0;
   isoChanged();
   ground = null;
-  previewStale = true;
 }
 
 function step(from: M.SheetMark[], to: M.SheetMark[]): void {
   if (!sheet) return;
   const mark = from.pop();
   if (!mark) return;
-  to.push(M.markSheet(sheet));
+  const before = M.markSheet(sheet);
+  to.push(before);
   M.restoreSheet(sheet, mark);
   selected = null;
-  changed();
+  changed(M.markDiff(before, sheet));
   if (ctxRef) mountOrRefresh(ctxRef);
 }
 
@@ -518,6 +564,8 @@ function repaintGround(box?: M.Dirty): void {
   const g = ground.getContext("2d");
   if (!g) return;
   groundPx ??= g.createImageData(s.width, s.height);
+  // A whole repaint covers whatever was pending.
+  if (!box) pendingGround = M.emptyDirty();
   const x0 = box ? Math.max(0, box.x0 - 1) : 0;
   const y0 = box ? Math.max(0, box.y0 - 1) : 0;
   const x1 = box ? Math.min(s.width, box.x1 + 1) : s.width;
@@ -547,17 +595,54 @@ function markGround(box: M.Dirty): void {
   queueDraw();
 }
 
+/**
+ * In the In-game view a relief stroke relights the whole ground mesh and restamps a
+ * lift-grown patch on every repaint, ~90 ms a frame: at most this often while the brush is
+ * down, so the pointer keeps up. The release settles and restamps everything that differs.
+ */
+const RELIEF_RESTAMP_MS = 150;
+let reliefPending: M.Dirty = M.emptyDirty();
+let reliefLast = 0;
+let reliefTimer: ReturnType<typeof setTimeout> | null = null;
+
+function reliefTool(): boolean {
+  return tool.id === "raise" || tool.id === "lower" || tool.id === "level" || tool.id === "mountain";
+}
+
 function flushGround(): void {
-  if (pendingGround.x1 <= pendingGround.x0) return;
+  if (pendingGround.x1 <= pendingGround.x0) return flushRelief();
   const box = pendingGround;
   pendingGround = M.emptyDirty();
+  rev++;
   repaintGround(box);
-  if (sheet && gameView) {
-    if (tool.id === "raise" || tool.id === "lower" || tool.id === "level" || tool.id === "mountain" || tool.id === "ground") {
-      heightsChanged(sheet.heights);
-    }
-    isoRestamp(sheet, box);
+  if (!sheet || !gameView) return;
+  if (reliefTool() && drag?.kind === "brush") {
+    reliefPending = M.unionDirty(reliefPending, box);
+    flushRelief();
+    return;
   }
+  if (reliefTool() || tool.id === "ground") heightsChanged(sheet.heights);
+  isoRestamp(sheet, box);
+}
+
+/** Relight and restamp what a relief stroke has raised since the last time, once RELIEF_RESTAMP_MS have passed. */
+function flushRelief(): void {
+  if (!sheet || !gameView || reliefPending.x1 <= reliefPending.x0) return;
+  const now = performance.now();
+  const wait = RELIEF_RESTAMP_MS - (now - reliefLast);
+  if (wait > 0) {
+    // The pointer may stop: a timer brings the patch up even without another move.
+    reliefTimer ??= setTimeout(() => {
+      reliefTimer = null;
+      queueDraw();
+    }, wait);
+    return;
+  }
+  reliefLast = now;
+  const box = reliefPending;
+  reliefPending = M.emptyDirty();
+  heightsChanged(sheet.heights);
+  isoRestamp(sheet, box);
 }
 
 // --- stage drawing -------------------------------------------------------------
@@ -570,7 +655,19 @@ function featureColors(type: MapFeatureType): [string, string] {
   if (type === "teeth") return ["#b4b2a8", "#2a2924"];
   if (type === "bridge") return ["#8b6b45", "#2f2114"];
   if (type === "bigbridge") return ["#a8a49a", "#3a3833"];
+  if (type === "core") return ["#d8b060", "#3a2a10"];
+  if (isMapBase(type)) return ["#a89c86", "#2a2418"];
   return ["#9c9a90", "#1d1c18"];
+}
+
+/** The colour a start's side is drawn in: the lobby's palette by start number. Null for neutral. */
+function sideColor(o: { owner?: number }): string | null {
+  return o.owner ? colorHex(o.owner - 1) : null;
+}
+
+/** "Neutral" or "Start N", as the inspector and checks name a side. */
+function sideName(owner: number): string {
+  return owner ? `Start ${owner}` : "Neutral";
 }
 
 function fitView(canvas: HTMLCanvasElement, s: M.Sheet): void {
@@ -593,13 +690,16 @@ function queueDraw(): void {
 /** The building or defence the placing tools would set down. */
 function placingType(): MapFeatureType | null {
   if (tool.id === "house") return tool.house;
+  if (tool.id === "base") return tool.base;
   if (tool.id === "defence") return tool.defence;
   return null;
 }
 
-/** A defence, the Road, a Bridge, a unit, or an aimed lamp is armed: the wheel turns it. */
+/** A defence, a turning base structure, the Road, a Bridge, a unit, or an aimed lamp is armed: the wheel turns it. */
 function turningTool(): boolean {
-  return tool.id === "defence" || tool.id === "road" || tool.id === "bridge" || tool.id === "unit" || (tool.id === "lamp" && isAimedLamp(tool.lamp));
+  if (tool.id === "base") return M.turnsFine(tool.base);
+  if (tool.id === "unit") return !isAircraftType(tool.unit);
+  return tool.id === "defence" || tool.id === "road" || tool.id === "bridge" || (tool.id === "lamp" && isAimedLamp(tool.lamp));
 }
 
 /** The armed tool draws a line: sandbags, barbwire, teeth, a wall, a road, or a bridge. */
@@ -669,7 +769,18 @@ function drawStage(): void {
   c.setTransform(dpr, 0, 0, dpr, 0, 0);
   c.fillStyle = "#070605";
   c.fillRect(0, 0, w, h);
-  if (gameView) return drawGameView(c, s, w, h, dpr);
+  if (gameView) {
+    drawGameView(c, s, w, h, dpr);
+    drawMini();
+    return;
+  }
+  drawPlanView(c, s, w, h);
+  drawMini();
+}
+
+/** The plan view: the top-down ground image, lots, lamps, clutter, units, starts, and the armed tool's ghost. */
+function drawPlanView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: number): void {
+  if (!ground) return;
   const z = view.zoom;
   const sx = (x: number): number => view.px + x * z;
   const sy = (y: number): number => view.py + y * z;
@@ -706,9 +817,21 @@ function drawStage(): void {
     c.closePath();
     c.fillStyle = fill;
     c.fill();
-    c.strokeStyle = edge;
-    c.lineWidth = 1.5;
+    // A start's building wears its side's colour on the edge.
+    const side = sideColor(f);
+    c.strokeStyle = side ?? edge;
+    c.lineWidth = side ? 2.5 : 1.5;
     c.stroke();
+    if (f.type === "airfield") {
+      // The hardstands planes park on.
+      c.fillStyle = side ?? edge;
+      for (let pad = 0; pad < AIRFIELD_PADS; pad++) {
+        const p = M.padWorld(f, pad);
+        c.beginPath();
+        c.arc(sx(p.x / TILE_SIZE), sy(p.y / TILE_SIZE), Math.max(1.5, z * 0.8), 0, Math.PI * 2);
+        c.fill();
+      }
+    }
     const bw = r.halfU * 2 * z;
     const bh = r.halfV * 2 * z;
     if (isMapBridge(f.type)) {
@@ -781,7 +904,7 @@ function drawStage(): void {
     c.fill();
     c.stroke();
   };
-  for (const l of M.liveLamps(s)) lampMark(l.x, l.y, l.type, l.facing, null);
+  for (const l of planDerived(s).lamps) lampMark(l.x, l.y, l.type, l.facing, null);
   const clutterMark = (x: number, y: number, ring: string | null): void => {
     const r = Math.max(1.5, Math.min(4, z * 0.6));
     c.fillStyle = "#b08850";
@@ -790,7 +913,7 @@ function drawStage(): void {
     c.fillRect(sx(x + 0.5) - r, sy(y + 0.5) - r, r * 2, r * 2);
     c.strokeRect(sx(x + 0.5) - r, sy(y + 0.5) - r, r * 2, r * 2);
   };
-  for (const p of M.liveClutter(s)) clutterMark(p.x, p.y, null);
+  for (const p of planDerived(s).clutter) clutterMark(p.x, p.y, null);
   if (tool.id === "clutter" && hover.inside && !drag) {
     clutterMark(hover.x, hover.y, M.clutterProblem(s, hover.x, hover.y) !== null ? "#ff5a4a" : "#7dff6a");
   }
@@ -913,7 +1036,8 @@ function drawPlanUnits(c: CanvasRenderingContext2D, s: M.Sheet, sx: (x: number) 
     else if (rt.loop && rt.points.length > 1) pts.push(rt.points[0]!);
     c.globalAlpha = rt.strong ? 1 : 0.45;
     c.lineWidth = rt.strong ? 1.8 : 1.2;
-    c.setLineDash([5, 4]);
+    // A guard walk is dotted; a patrol route dashed.
+    c.setLineDash(rt.guard ? [2, 3] : [5, 4]);
     c.beginPath();
     pts.forEach((p, i) => (i === 0 ? c.moveTo(sx(p.x + 0.5), sy(p.y + 0.5)) : c.lineTo(sx(p.x + 0.5), sy(p.y + 0.5))));
     c.stroke();
@@ -921,18 +1045,19 @@ function drawPlanUnits(c: CanvasRenderingContext2D, s: M.Sheet, sx: (x: number) 
     c.fillStyle = "#e8b84a";
     for (const p of rt.points) {
       c.beginPath();
-      c.arc(sx(p.x + 0.5), sy(p.y + 0.5), 2.5, 0, Math.PI * 2);
+      if (rt.guard) c.rect(sx(p.x + 0.5) - 3, sy(p.y + 0.5) - 3, 6, 6);
+      else c.arc(sx(p.x + 0.5), sy(p.y + 0.5), 2.5, 0, Math.PI * 2);
       c.fill();
     }
   }
   c.globalAlpha = 1;
-  const disc = (u: { type: TrainType; x: number; y: number; facing: number }, ring: string | null, alpha = 1): void => {
+  const disc = (u: { type: TrainType; x: number; y: number; facing: number; owner?: number }, ring: string | null, alpha = 1): void => {
     const cx = sx(u.x + 0.5);
     const cy = sy(u.y + 0.5);
     const r = Math.max(3, Math.min(9, (catalog(u.type).radius / TILE_SIZE) * z));
     const a = (u.facing * Math.PI) / 180;
     c.globalAlpha = alpha;
-    c.fillStyle = "#8c8c88";
+    c.fillStyle = sideColor(u) ?? "#8c8c88";
     c.strokeStyle = ring ?? "#1d1c18";
     c.lineWidth = ring ? 2 : 1.25;
     c.beginPath();
@@ -956,7 +1081,7 @@ function drawPlanUnits(c: CanvasRenderingContext2D, s: M.Sheet, sx: (x: number) 
   c.textAlign = "center";
   c.textBaseline = "middle";
   c.font = "700 11px 'Share Tech Mono', monospace";
-  for (const [fi, g] of garrisonCounts(s)) {
+  for (const [fi, g] of planDerived(s).garrisons) {
     const f = s.features[fi];
     if (!f) continue;
     const rc = featureRect(f);
@@ -1013,17 +1138,28 @@ function unitRoutes(s: M.Sheet): RouteDraw[] {
       });
       return;
     }
+    if (i === sel && unitMode === "guard" && hover.inside) {
+      out.push({ from: u, points: [{ x: hover.x, y: hover.y }], loop: false, strong: true, guard: true });
+      return;
+    }
     if (u.patrol?.length) out.push({ from: u, points: u.patrol, loop: !!u.loop, strong: i === sel });
+    else if (u.guard) out.push({ from: u, points: [u.guard], loop: false, strong: i === sel, guard: true });
   });
   return M.routesToShow(out, patrolAlways);
 }
 
-/** The unit the Units tool would set down under the cursor; inside a building it shows nothing. */
+/** The unit the Units tool would set down under the cursor; inside a building it shows nothing. A plane shows on the pad it would take. */
 function unitGhost(s: M.Sheet): (MapUnit & { bad: boolean }) | null {
   if (tool.id !== "unit" || !hover.inside || drag) return null;
+  if (isAircraftType(tool.unit)) {
+    const spot = M.planeSpot(s, hover.x, hover.y, placeOwner);
+    if (typeof spot === "string") return { type: tool.unit, x: hover.x, y: hover.y, facing: 0, bad: true };
+    return { type: tool.unit, x: spot.x, y: spot.y, facing: spot.facing, pad: spot.pad, bad: false, ...(placeOwner ? { owner: placeOwner } : {}) };
+  }
   if (isInfantryType(tool.unit) && M.garrisonHostAt(s, tool.unit, hover.x, hover.y) >= 0) return null;
   const facing = turnDegrees(tool.turn);
-  return { type: tool.unit, x: hover.x, y: hover.y, facing, bad: M.unitProblem(s, tool.unit, hover.x, hover.y) !== null };
+  const bad = M.unitProblem(s, tool.unit, hover.x, hover.y, -1, false, placeOwner ? { owner: placeOwner } : {}) !== null;
+  return { type: tool.unit, x: hover.x, y: hover.y, facing, bad, ...(placeOwner ? { owner: placeOwner } : {}) };
 }
 
 /** The rotate and line hint beside the cursor, at screen point (ax, ay). */
@@ -1074,13 +1210,16 @@ function drawGameView(c: CanvasRenderingContext2D, s: M.Sheet, w: number, h: num
     spawnGhost = { x: hover.x, y: hover.y, bad: M.spawnProblem(s, hover.x, hover.y) !== null };
   }
   const loading = isoDraw(c, s, isoCam, w, h, dpr, {
+    rev,
     selectedFeature: selected?.kind === "feature" ? selected.index : -1,
     hoverFeature:
       tool.id === "select" && hover.inside && !drag
         ? M.featureIndexAt(s, hover.x, hover.y)
         : tool.id === "unit" && hover.inside && isInfantryType(tool.unit)
           ? M.garrisonHostAt(s, tool.unit, hover.x, hover.y)
-          : -1,
+          : tool.id === "unit" && hover.inside && isAircraftType(tool.unit)
+            ? mapAirfieldAt(s.features, hover.x, hover.y)
+            : -1,
     selectedSpawn: selected?.kind === "spawn" ? selected.id : 0,
     ghosts,
     lineStart: pieces.length > 0 || road.length > 0 ? (line.points[0] ?? line.press) : null,
@@ -1115,9 +1254,11 @@ function unitOverlay(s: M.Sheet): UnitOverlay {
     hover: tool.id === "select" && hover.inside && !drag ? standingUnitAt(s, hover.x, hover.y) : -1,
     ghost: g,
     routes: unitRoutes(s),
-    garrisons: garrisonCounts(s),
+    garrisons: planDerived(s).garrisons,
     aim: unitMode === "rotate" && hover.inside ? { x: hover.x, y: hover.y } : null,
     beams: spotBeams(),
+    // Hardstands show while a plane is being placed or is selected.
+    pads: (tool.id === "unit" && isAircraftType(tool.unit)) || (selected?.kind === "unit" && isAircraftType(s.units[selected.index]?.type ?? "rifleman")),
   };
 }
 
@@ -1242,16 +1383,28 @@ function statusHint(): string {
 
 // --- painting --------------------------------------------------------------
 
+/**
+ * A press that may move a piece. `marked` is set once an undo mark has been pushed, which
+ * waits for the first real move: a plain click on a piece costs no copy of the grids.
+ */
 type Drag =
   | { kind: "brush"; lastX: number; lastY: number; timer: ReturnType<typeof setInterval> | null }
-  | { kind: "spawn"; id: number; moved: boolean }
-  | { kind: "move"; index: number; from: MapFeature; startX: number; startY: number; moved: boolean }
-  | { kind: "unit"; index: number; from: MapUnit; startX: number; startY: number; moved: boolean }
+  | { kind: "spawn"; id: number; moved: boolean; marked: boolean }
+  | { kind: "move"; index: number; from: MapFeature; startX: number; startY: number; moved: boolean; marked: boolean }
+  | { kind: "unit"; index: number; from: MapUnit; startX: number; startY: number; moved: boolean; marked: boolean }
   /** A press on a sandbag or wall line: the release pins its start or its next corner. */
   | { kind: "line" }
   /** Right or middle drag. A right click that never moved takes back a line corner. */
   | { kind: "pan"; x: number; y: number; px: number; py: number; button: number; moved: boolean; camX: number; camY: number }
-  | { kind: "erase" };
+  /** The Eraser held down: everything it passes over goes in one commit, one undo step. */
+  | { kind: "erase"; erased: boolean };
+
+/** Push the undo mark for a drag the first time it moves something. */
+function markDrag(d: { marked: boolean }): void {
+  if (d.marked) return;
+  pushUndo();
+  d.marked = true;
+}
 
 let drag: Drag | null = null;
 
@@ -1408,35 +1561,42 @@ function placeUnitAt(x: number, y: number): void {
     }
     problem = M.garrisonUnit(s, tool.unit, host, facing);
   } else {
-    problem = M.placeUnit(s, tool.unit, x, y, facing);
+    problem = M.placeUnit(s, tool.unit, x, y, facing, placeOwner);
   }
   if (problem) {
     undo.pop();
     return say(problem, "bad");
   }
   const f = host >= 0 ? s.features[host] : undefined;
-  say(f ? `${catalog(tool.unit).name} garrisons the ${catalog(f.type).name}.` : "");
+  if (f) say(`${catalog(tool.unit).name} garrisons the ${catalog(f.type).name}${M.ownerOf(f) !== placeOwner ? ` and takes its side (${sideName(M.ownerOf(f))})` : ""}.`);
+  else if (isAircraftType(tool.unit)) {
+    const plane = s.units[s.units.length - 1]!;
+    say(`${catalog(tool.unit).name} parks on hardstand ${(plane.pad ?? 0) + 1}${M.ownerOf(plane) !== placeOwner ? ` for ${sideName(M.ownerOf(plane))}` : ""}.`);
+  } else say("");
   finishStroke();
 }
 
 /**
- * Rotate (R) or Patrol (Y) for the selected unit, as the match gives those orders, or
+ * Rotate (R), Guard (G), or Patrol (Y) for the selected unit, as the match gives those orders, or
  * for a Watch Tower's or Fire-Control Tower's spotlight: Rotate aims it ("spot") and Patrol sets its sweep.
- * A Battle Ship's searchlight is aimed with "spot" too. In-game view only.
+ * A Battle Ship's searchlight is aimed with "spot" too. A plane takes Guard and Patrol, never Rotate. In-game view only.
  */
-function setUnitMode(mode: null | "rotate" | "patrol" | "spot"): void {
+function setUnitMode(mode: UnitMode): void {
   const u = selectedUnit();
   const tower = selectedTower();
   if (mode && ((!u && !tower) || !gameView)) {
-    if ((u || tower) && !gameView) say("Rotate and Patrol are given in the In-game view.", "bad");
+    if ((u || tower) && !gameView) say("Rotate, Guard, and Patrol are given in the In-game view.", "bad");
     return;
   }
   if (mode === "rotate" && tower) mode = "spot";
   if (mode === "spot" && u && !hasSpotlight(u.type)) return;
+  if (mode === "rotate" && u && isAircraftType(u.type)) return;
+  if (mode === "guard" && (tower || u?.inside)) return;
   unitMode = unitMode === mode ? null : mode;
   patrolDraft.points = [];
   patrolDraft.loop = false;
   if (unitMode === "rotate") say("Click where it should face. Esc cancels.");
+  else if (unitMode === "guard") say(u && isAircraftType(u.type) ? "Click the ground it should circle over. Esc cancels." : "Click where it should walk to and stand guard. Esc cancels.");
   else if (unitMode === "spot") say("Click where the spotlight should point. Esc cancels.");
   else if (unitMode === "patrol" && tower)
     say("Click the points the spotlight sweeps. Click an earlier point to close a loop. Right-click or Enter sets the sweep; Esc cancels.");
@@ -1458,6 +1618,35 @@ function commitSpot(x: number, y: number): void {
   (tower ?? ship!).spot = spot;
   unitMode = null;
   say(`Spotlight points ${spot}°.`);
+  finishStroke();
+  paintSelection();
+}
+
+/** Send the selected unit to guard the clicked tile, as Guard (G) does in a match. */
+function commitGuard(x: number, y: number): void {
+  const s = sheet;
+  if (!s || selected?.kind !== "unit") return;
+  pushUndo();
+  const problem = M.setGuard(s, selected.index, x, y);
+  unitMode = null;
+  if (problem) {
+    undo.pop();
+    return say(problem, "bad");
+  }
+  const u = s.units[selected.index]!;
+  say(isAircraftType(u.type) ? `Guard set: it takes off and circles over ${x}, ${y}.` : `Guard set: it walks to ${x}, ${y} and holds there.`);
+  finishStroke();
+  paintSelection();
+}
+
+/** Drop the selected unit's guard point and patrol: it stands where it is. */
+function stopSelected(): void {
+  const s = sheet;
+  if (!s || selected?.kind !== "unit") return;
+  pushUndo();
+  M.clearOrders(s, selected.index);
+  unitMode = null;
+  say("Orders cleared: it stands where it is.");
   finishStroke();
   paintSelection();
 }
@@ -1514,6 +1703,8 @@ function commitPatrol(): void {
     u.patrol = patrolDraft.points.map((p) => ({ ...p }));
     if (patrolDraft.loop) u.loop = true;
     else delete u.loop;
+    // One order at a time: a patrol replaces a guard point.
+    if (!tower) delete (u as MapUnit).guard;
     if (tower) say(patrolDraft.loop ? "Sweep set: the spotlight circles the points." : "Sweep set: the spotlight swings out and back.");
     else say(patrolDraft.loop ? "Patrol set: it circles the loop." : "Patrol set: it walks out and back.");
   }
@@ -1547,11 +1738,16 @@ function placeAt(x: number, y: number, quiet: boolean): boolean {
   const type = placingType();
   if (!s || !type) return false;
   const f = M.houseAt(type, x, y, tool.facing, tool.turn);
+  if (type === "core" && !placeOwner) {
+    if (!quiet) say("A Core belongs to a start: pick one under Place for.", "bad");
+    return false;
+  }
   const problem = M.houseProblem(s, f);
   if (problem) {
     if (!quiet) say(problem, "bad");
     return false;
   }
+  if (!isMapSection(type) && !isMapBridge(type)) M.setOwnerOf(f, placeOwner);
   s.features.push(f);
   return true;
 }
@@ -1637,14 +1833,15 @@ function wheelTurn(e: WheelEvent): void {
   }
   if (steps === 0) return;
   tool.turn = M.wrapTurn(tool.turn + steps);
-  if (stage?.turnLabel) stage.turnLabel.textContent = `Faces ${turnDegrees(tool.turn)}°`;
+  paintTurnLabels();
   queueDraw();
 }
 
-function finishStroke(): void {
+/** An edit is done: settle the ground as a save would, and repaint what settling changed (`all` for a whole new relief). */
+function finishStroke(all = false): void {
   if (!sheet) return;
-  M.settle(sheet);
-  changed();
+  const settled = M.settle(sheet);
+  changed(all ? undefined : settled);
 }
 
 function onDown(e: PointerEvent): void {
@@ -1669,23 +1866,24 @@ function onDown(e: PointerEvent): void {
   const brushing = isBrush(tool.id) && !(tool.id === "level" && e.altKey);
   if (brushing ? !brushReaches(t.x, t.y) : !t.inside) return;
   if (unitMode === "rotate") return commitRotate(t.x, t.y);
+  if (unitMode === "guard") return commitGuard(t.x, t.y);
   if (unitMode === "spot") return commitSpot(t.x, t.y);
   if (unitMode === "patrol") return addPatrolPoint(t.x, t.y);
   if (tool.id === "level" && e.altKey) {
     tool.level = s.heights[t.y * s.width + t.x]!;
-    if (ctxRef) mountOrRefresh(ctxRef);
+    refreshPalette();
     say(`Level set to ${tool.level}.`);
     return;
   }
   if (
     tool.id === "erase" ||
-    (e.shiftKey && (tool.id === "house" || tool.id === "defence" || tool.id === "lamp" || tool.id === "clutter" || tool.id === "unit" || tool.id === "spawn" || tool.id === "select"))
+    (e.shiftKey && (LOT_TOOLS.includes(tool.id) || tool.id === "lamp" || tool.id === "clutter" || tool.id === "unit" || tool.id === "spawn" || tool.id === "select"))
   ) {
+    // The whole drag is one edit: the mark goes down now, the commit waits for the release.
     pushUndo();
-    if (eraseAt(t.x, t.y)) finishStroke();
-    else undo.pop();
-    drag = { kind: "erase" };
+    drag = { kind: "erase", erased: eraseAt(t.x, t.y) };
     paintSelection();
+    queueDraw();
     return;
   }
   if (tool.id === "select") {
@@ -1694,16 +1892,13 @@ function onDown(e: PointerEvent): void {
     const si = ui < 0 && fi < 0 ? M.spawnIndexAt(s, t.x, t.y) : -1;
     if (ui >= 0) {
       selected = { kind: "unit", index: ui };
-      pushUndo();
-      drag = { kind: "unit", index: ui, from: copyMapUnit(s.units[ui]!), startX: t.x, startY: t.y, moved: false };
+      drag = { kind: "unit", index: ui, from: copyMapUnit(s.units[ui]!), startX: t.x, startY: t.y, moved: false, marked: false };
     } else if (fi >= 0) {
       selected = { kind: "feature", index: fi };
-      pushUndo();
-      drag = { kind: "move", index: fi, from: { ...s.features[fi]! }, startX: t.x, startY: t.y, moved: false };
+      drag = { kind: "move", index: fi, from: { ...s.features[fi]! }, startX: t.x, startY: t.y, moved: false, marked: false };
     } else if (si >= 0) {
       selected = { kind: "spawn", id: s.spawns[si]!.id };
-      pushUndo();
-      drag = { kind: "spawn", id: s.spawns[si]!.id, moved: false };
+      drag = { kind: "spawn", id: s.spawns[si]!.id, moved: false, marked: false };
     } else {
       selected = null;
     }
@@ -1720,7 +1915,7 @@ function onDown(e: PointerEvent): void {
     queueDraw();
     return;
   }
-  if (tool.id === "house" || tool.id === "defence") {
+  if (LOT_TOOLS.includes(tool.id)) {
     pushUndo();
     if (!placeAt(t.x, t.y, false)) {
       undo.pop();
@@ -1756,8 +1951,7 @@ function onDown(e: PointerEvent): void {
   if (tool.id === "spawn") {
     const at = M.spawnIndexAt(s, t.x, t.y);
     if (at >= 0) {
-      pushUndo();
-      drag = { kind: "spawn", id: s.spawns[at]!.id, moved: false };
+      drag = { kind: "spawn", id: s.spawns[at]!.id, moved: false, marked: false };
       return;
     }
     const id = M.nextSpawnId(s);
@@ -1815,27 +2009,37 @@ function onMove(e: PointerEvent): void {
     drag.lastX = t.x;
     drag.lastY = t.y;
   } else if (drag?.kind === "erase" && t.inside) {
-    if (eraseAt(t.x, t.y)) finishStroke();
+    if (eraseAt(t.x, t.y)) {
+      drag.erased = true;
+      rev++;
+      paintSelection();
+    }
   } else if (drag?.kind === "move" && t.inside) {
     // Holds the last spot that fit; a refused one leaves it where it was. Its garrison rides along.
+    markDrag(drag);
     const before = { ...s.features[drag.index]! };
     if (!M.moveFeature(s, drag.index, drag.from, t.x - drag.startX, t.y - drag.startY)) {
       const f = s.features[drag.index]!;
       M.reseatGarrison(s, before, f);
       drag.moved = f.x !== drag.from.x || f.y !== drag.from.y;
+      rev++;
     }
   } else if (drag?.kind === "unit" && t.inside) {
+    markDrag(drag);
     if (!M.moveUnit(s, drag.index, drag.from, t.x - drag.startX, t.y - drag.startY)) {
       const u = s.units[drag.index]!;
       drag.moved = u.x !== drag.from.x || u.y !== drag.from.y;
+      rev++;
     }
   } else if (drag?.kind === "spawn" && t.inside) {
     const moving = drag;
     const sp = s.spawns.find((o) => o.id === moving.id);
     if (sp && !M.spawnProblem(s, t.x, t.y, sp.id)) {
+      markDrag(moving);
       sp.x = t.x;
       sp.y = t.y;
       moving.moved = true;
+      rev++;
     }
   }
   queueDraw();
@@ -1862,9 +2066,12 @@ function onUp(): void {
     queueDraw();
   } else if (d.kind === "pan") {
     if (d.button === 2 && !d.moved && linePending()) undoLinePoint();
+  } else if (d.kind === "erase") {
+    if (d.erased) finishStroke();
+    else undo.pop();
   } else if (d.kind === "move") {
     if (!d.moved) {
-      undo.pop();
+      if (d.marked) undo.pop();
       say(selectedTower() ? "Drag to move it. R aims its spotlight, Y sets its sweep, Delete removes it." : "Drag to move it. R turns it, Delete removes it.");
       return;
     }
@@ -1872,15 +2079,22 @@ function onUp(): void {
     finishStroke();
   } else if (d.kind === "unit") {
     if (!d.moved) {
-      undo.pop();
-      say(gameView ? "Drag to move it. R rotates it, Y gives it a patrol, Delete removes it." : "Drag to move it. Delete removes it. Rotate and Patrol are in the In-game view.");
+      if (d.marked) undo.pop();
+      const plane = isAircraftType(sheet?.units[d.index]?.type ?? "rifleman");
+      say(
+        gameView
+          ? plane
+            ? "Drag it to another hardstand. G sends it to circle a spot, Y gives it a patrol, Delete removes it."
+            : "Drag to move it. R rotates it, G sends it to guard a spot, Y gives it a patrol, Delete removes it."
+          : "Drag to move it. Delete removes it. Rotate, Guard, and Patrol are in the In-game view.",
+      );
       return;
     }
     say("");
     finishStroke();
   } else if (d.kind === "spawn") {
     if (!d.moved) {
-      undo.pop();
+      if (d.marked) undo.pop();
       say(
         tool.id === "select"
           ? "Drag a start to move it. Delete removes it."
@@ -1923,17 +2137,111 @@ function groundName(t: number, cover = GROUND_GRASS): string {
   return (GROUND.find((g) => g.tile === t) ?? SURFACE_GROUND.find((g) => g.tile === t) ?? LAID_GROUND.find((g) => g.tile === t))?.name.toLowerCase() ?? "blocked";
 }
 
-// --- preview & checks ----------------------------------------------------------
+// --- minimap & checks ----------------------------------------------------------
 
-function schedulePreview(delay = 600): void {
-  if (previewTimer) clearTimeout(previewTimer);
-  previewTimer = setTimeout(() => {
-    previewTimer = null;
-    if (!stage?.preview || !sheet) return;
-    if (previewStale) forgetTerrain(PREVIEW_ID);
-    previewStale = false;
-    drawMapPreview(stage.preview, M.sheetToMap(sheet, PREVIEW_ID));
-  }, delay);
+/** Minimap scale and offset: the sheet fitted square inside the canvas, as the match's minimap fits the map. */
+function miniFit(mini: HTMLCanvasElement, s: M.Sheet): { scale: number; ox: number; oy: number; w: number; h: number } {
+  const w = mini.clientWidth;
+  const h = mini.clientHeight;
+  const scale = Math.min(w / s.width, h / s.height);
+  return { scale, ox: (w - s.width * scale) / 2, oy: (h - s.height * scale) / 2, w, h };
+}
+
+/**
+ * The minimap, drawn every stage frame: the same one-pixel-per-tile ground the plan view
+ * shows, each building and unit as a mark in its side's colour, the starts, and the
+ * stage's viewport.
+ */
+function drawMini(): void {
+  const mini = stage?.mini;
+  const s = sheet;
+  if (!mini || !s || !ground || !stage) return;
+  const fit = miniFit(mini, s);
+  if (fit.w === 0 || fit.h === 0) return;
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  if (mini.width !== Math.floor(fit.w * dpr) || mini.height !== Math.floor(fit.h * dpr)) {
+    mini.width = Math.floor(fit.w * dpr);
+    mini.height = Math.floor(fit.h * dpr);
+  }
+  const c = mini.getContext("2d");
+  if (!c) return;
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.fillStyle = "#0a0806";
+  c.fillRect(0, 0, fit.w, fit.h);
+  const sx = (x: number): number => fit.ox + x * fit.scale;
+  const sy = (y: number): number => fit.oy + y * fit.scale;
+  c.imageSmoothingEnabled = false;
+  c.drawImage(ground, fit.ox, fit.oy, s.width * fit.scale, s.height * fit.scale);
+  // Buildings as the match's minimap marks them: a block per lot, in its side's colour.
+  for (const f of s.features) {
+    if (isMapBridge(f.type)) continue;
+    const b = featureBox(f);
+    c.fillStyle = sideColor(f) ?? (isMapSection(f.type) ? "#9c9a90" : isCivilianType(f.type) ? "#c9a27a" : "#d8d4c8");
+    c.fillRect(sx(b.x0), sy(b.y0), Math.max(2, (b.x1 - b.x0) * fit.scale), Math.max(2, (b.y1 - b.y0) * fit.scale));
+  }
+  for (const u of s.units) {
+    if (u.inside) continue;
+    c.fillStyle = sideColor(u) ?? "#8c8c88";
+    c.fillRect(sx(u.x + 0.5) - 1.5, sy(u.y + 0.5) - 1.5, 3, 3);
+  }
+  c.textAlign = "center";
+  c.textBaseline = "middle";
+  c.font = "700 9px 'Share Tech Mono', monospace";
+  for (const sp of s.spawns) {
+    c.fillStyle = "#140e0a";
+    c.beginPath();
+    c.arc(sx(sp.x + 0.5), sy(sp.y + 0.5), 6, 0, Math.PI * 2);
+    c.fill();
+    c.strokeStyle = "#e8b84a";
+    c.lineWidth = 1.5;
+    c.stroke();
+    c.fillStyle = "#e8b84a";
+    c.fillText(String(sp.id), sx(sp.x + 0.5), sy(sp.y + 0.5) + 0.5);
+  }
+  // The viewport: a box in the plan view, a diamond in the In-game view.
+  const w = stage.canvas.clientWidth;
+  const h = stage.canvas.clientHeight;
+  const corners = gameView
+    ? isoViewTiles(isoCam, w, h)
+    : [
+        { x: -view.px / view.zoom, y: -view.py / view.zoom },
+        { x: (w - view.px) / view.zoom, y: -view.py / view.zoom },
+        { x: (w - view.px) / view.zoom, y: (h - view.py) / view.zoom },
+        { x: -view.px / view.zoom, y: (h - view.py) / view.zoom },
+      ];
+  c.save();
+  c.beginPath();
+  c.rect(fit.ox, fit.oy, s.width * fit.scale, s.height * fit.scale);
+  c.clip();
+  c.strokeStyle = "#e8b84a";
+  c.lineWidth = 1;
+  c.beginPath();
+  corners.forEach((p, i) => (i === 0 ? c.moveTo(sx(p.x), sy(p.y)) : c.lineTo(sx(p.x), sy(p.y))));
+  c.closePath();
+  c.stroke();
+  c.restore();
+}
+
+/** Put the stage's middle over the sheet tile under a minimap point. */
+function miniCenter(e: PointerEvent): void {
+  const mini = stage?.mini;
+  const s = sheet;
+  if (!mini || !s || !stage) return;
+  const fit = miniFit(mini, s);
+  const rect = mini.getBoundingClientRect();
+  const tx = Math.max(0, Math.min(s.width - 1, (e.clientX - rect.left - fit.ox) / fit.scale));
+  const ty = Math.max(0, Math.min(s.height - 1, (e.clientY - rect.top - fit.oy) / fit.scale));
+  const w = stage.canvas.clientWidth;
+  const h = stage.canvas.clientHeight;
+  if (gameView) {
+    if (isoCam.zoom === 0) isoFit(isoCam, s, w, h);
+    isoCenterOn(isoCam, s, tx, ty, w, h);
+  } else {
+    if (view.zoom === 0) fitView(stage.canvas, s);
+    view.px = w / 2 - tx * view.zoom;
+    view.py = h / 2 - ty * view.zoom;
+  }
+  queueDraw();
 }
 
 function paintChecks(): void {
@@ -1951,13 +2259,24 @@ function paintChecks(): void {
   if (far.length > 0) add("warn", `Starts with no scrap in yard range: ${far.join(", ")} (an engineer would have to walk out)`);
   const defences = M.defenceCount(s);
   const bricks = s.features.filter((f) => isMapBridge(f.type)).length;
+  const bases = s.features.filter((f) => isMapBase(f.type)).length;
   const bridged = bricks > 0 ? ` · Bridge bricks: ${bricks}` : "";
-  add("ok", `Buildings: ${s.features.length - defences - bricks} · Neutral defences: ${defences}${bridged} · Lamps: ${M.liveLamps(s).length} · Clutter: ${M.liveClutter(s).length}`);
+  const based = bases > 0 ? ` · Base: ${bases}` : "";
+  add("ok", `Buildings: ${s.features.length - defences - bricks - bases}${based} · Defences: ${defences}${bridged} · Lamps: ${M.liveLamps(s).length} · Clutter: ${M.liveClutter(s).length}`);
   const units = M.liveUnits(s);
   const inside = units.filter((u) => u.inside).length;
-  if (units.length > 0) add("ok", `Neutral units: ${units.length}${inside ? ` (${inside} garrisoned)` : ""}`);
+  if (units.length > 0) {
+    const sides = new Map<number, number>();
+    for (const u of units) sides.set(M.ownerOf(u), (sides.get(M.ownerOf(u)) ?? 0) + 1);
+    const bySide = [...sides.entries()].sort((a, b) => a[0] - b[0]).map(([id, n]) => `${sideName(id)} ${n}`).join(" · ");
+    add("ok", `Units: ${units.length}${inside ? ` (${inside} garrisoned)` : ""} — ${bySide}`);
+  }
   const lost = s.units.length - units.length;
-  if (lost > 0) add("warn", `${lost} unit(s) lost their footing (water, a building, or a start pad) and will not be saved`);
+  if (lost > 0) add("warn", `${lost} unit(s) lost their footing (water, a building, a start pad, or a hardstand) and will not be saved`);
+  const orphans = M.ownersWithoutStart(s);
+  if (orphans.length > 0) add("warn", `Pieces placed for ${orphans.map((id) => `Start ${id}`).join(", ")} but that start is not on the map: they are left out of a match`);
+  const dry = M.smeltersOffScrap(s);
+  if (dry > 0) add("warn", `${dry} Smelter(s) with no scrap under them: they will yield nothing`);
   add(s.spawns.length > 0 ? "ok" : "warn", s.spawns.length > 0 ? "Play test: ready" : "Play test: place a start first");
   const problem = M.sheetProblem(s);
   if (problem && !problem.startsWith("Place all")) add("bad", problem);
@@ -2116,19 +2435,92 @@ function section(title: string, ...kids: Node[]): HTMLElement {
   return wrap;
 }
 
-function asset(label: string, sub: string, on: boolean, art: Node, title: string, pick: () => void): HTMLButtonElement {
-  const b = el("button", { class: `bld-asset${on ? " is-on" : ""}`, attrs: { type: "button", title } });
+/**
+ * A palette entry that arms `patch`. It lights when the tool matches the patch, and
+ * `refreshPalette` relights every entry in place when the tool changes, so a click does
+ * not rebuild the screen.
+ */
+function asset(label: string, sub: string, art: Node, title: string, patch: Partial<Tool>): HTMLButtonElement {
+  const key = toolKey({ ...tool, ...patch });
+  const b = el("button", { class: `bld-asset${key === toolKey(tool) ? " is-on" : ""}`, attrs: { type: "button", title, "data-tool": key } });
   b.append(art, el("span", { text: label }));
   if (sub) b.append(el("small", { text: sub }));
-  b.addEventListener("click", pick);
+  b.addEventListener("click", () => {
+    if (ctxRef) setTool(ctxRef, patch);
+  });
   return b;
+}
+
+/** The palette entry a tool state lights: its id and, for the tools with a sub-choice, that choice. */
+function toolKey(t: Tool): string {
+  switch (t.id) {
+    case "ground":
+      return `ground:${t.tile}`;
+    case "cover":
+      return `cover:${t.cover}`;
+    case "house":
+      return `house:${t.house}`;
+    case "base":
+      return `base:${t.base}`;
+    case "defence":
+      return `defence:${t.defence}`;
+    case "lamp":
+      return `lamp:${t.lamp}`;
+    case "clutter":
+      return `clutter:${t.clutter}`;
+    case "bridge":
+      return `bridge:${t.bridge}`;
+    case "unit":
+      return `unit:${t.unit}`;
+    default:
+      return t.id;
+  }
+}
+
+const DOOR_FACES = ["East", "South", "West", "North"];
+
+/** The "Faces N°" readout beside a turn row. Every one is kept current as the wheel or the buttons turn the tool. */
+function turnLabelEl(): HTMLElement {
+  return el("span", { class: "bld-val", text: `Faces ${turnDegrees(tool.turn)}°`, attrs: { "data-turn-label": "1" } });
+}
+
+/** Set every "Faces N°" readout to the tool's turn. */
+function paintTurnLabels(): void {
+  const root = stage?.root;
+  if (!root) return;
+  for (const l of root.querySelectorAll("[data-turn-label]")) l.textContent = `Faces ${turnDegrees(tool.turn)}°`;
+}
+
+/**
+ * Bring the palette up to the tool without rebuilding it: which entry is lit, the turn and
+ * door readouts, the sliders, and the Select box. A remount is for structural changes only.
+ */
+function refreshPalette(): void {
+  const root = stage?.root;
+  if (!root) return;
+  const key = toolKey(tool);
+  for (const b of root.querySelectorAll<HTMLElement>(".bld-asset[data-tool]")) b.classList.toggle("is-on", b.dataset.tool === key);
+  paintTurnLabels();
+  const door = root.querySelector("[data-door]");
+  if (door) door.textContent = `Door: ${DOOR_FACES[tool.facing]}`;
+  for (const input of root.querySelectorAll<HTMLInputElement>("input[data-field]")) {
+    const field = input.dataset.field as "level" | "mountain" | "brush" | "roadWidth";
+    const value = String(tool[field]);
+    if (input.value !== value) input.value = value;
+  }
+  for (const val of root.querySelectorAll<HTMLElement>("[data-field-val]")) {
+    const field = val.dataset.fieldVal;
+    val.textContent = field === "brush" ? `${tool.brush * 2 + 1} tiles` : field === "roadWidth" ? `${tool.roadWidth} tiles` : field === "level" ? `${tool.level}` : `${tool.mountain}`;
+  }
+  paintSelection();
+  queueDraw();
 }
 
 /**
  * A building's art at `angle` world radians: a house's quarter, a defence's 15° step. A crewed
  * gun shows its unturned pit with the barrel laid along `angle`, its crew at it.
  */
-function houseThumb(type: CivilianType | Exclude<MapDefenceType, MapSectionType>, angle: number): HTMLCanvasElement {
+function houseThumb(type: CivilianType | MapBaseType | Exclude<MapDefenceType, MapSectionType>, angle: number): HTMLCanvasElement {
   const cv = el("canvas");
   cv.width = 96;
   cv.height = 76;
@@ -2214,7 +2606,9 @@ function setTool(ctx: Ctx, patch: Partial<Tool>): void {
   Object.assign(tool, patch);
   if (patch.id && patch.id !== "select") unitMode = null;
   if (!lineTool()) dropLine();
-  mountOrRefresh(ctx);
+  // The house and defence thumbnails are drawn at the tool's facing: a turn redraws them. Anything else relights in place.
+  if ("facing" in patch || "turn" in patch) mountOrRefresh(ctx);
+  else refreshPalette();
 }
 
 /** Fill the Select box: what is held, and the buttons that act on it. */
@@ -2246,32 +2640,70 @@ function paintSelection(): void {
     return b;
   };
   const row = el("div", { class: "btn-row" });
+  /** A Neutral / Start N picker that hands the piece over, or a note on why it cannot change hands. */
+  const sidePick = (owner: number, hand: ((next: number) => string | null) | string): void => {
+    const line = el("div", { class: "bld-row bld-side-row" });
+    line.append(el("label", { text: "Side" }));
+    if (typeof hand === "string") {
+      line.append(el("span", { class: "bld-val", text: sideName(owner) }), el("small", { class: "bld-hint", text: hand }));
+      box.append(line);
+      return;
+    }
+    const pick = el("select");
+    for (let id = 0; id <= (s?.maxPlayers ?? 0); id++) {
+      const o = el("option", { text: sideName(id), attrs: { value: String(id) } });
+      if (id === owner) o.selected = true;
+      pick.append(o);
+    }
+    pick.addEventListener("change", () => {
+      pushUndo();
+      const problem = hand(Number(pick.value));
+      if (problem) {
+        undo.pop();
+        pick.value = String(owner);
+        return say(problem, "bad");
+      }
+      say("");
+      finishStroke();
+      paintSelection();
+    });
+    line.append(pick);
+    box.append(line);
+  };
   if (u && s) {
-    const route = u.patrol?.length ? ` · patrols ${u.patrol.length} point${u.patrol.length === 1 ? "" : "s"}${u.loop ? " in a loop" : ""}` : "";
+    const plane = isAircraftType(u.type);
+    const route = u.patrol?.length
+      ? ` · patrols ${u.patrol.length} point${u.patrol.length === 1 ? "" : "s"}${u.loop ? " in a loop" : ""}`
+      : u.guard
+        ? ` · guards ${u.guard.x}, ${u.guard.y}`
+        : "";
     const light = hasSpotlight(u.type) ? ` · light ${u.spot ?? u.facing}°` : "";
-    box.append(el("div", { class: "bld-sel-name", text: `Neutral ${catalog(u.type).name} · faces ${u.facing}°${light}${route}` }));
+    const where = plane ? ` · hardstand ${(u.pad ?? 0) + 1}` : ` · faces ${u.facing}°`;
+    box.append(el("div", { class: "bld-sel-name", text: `${sideName(M.ownerOf(u))} ${catalog(u.type).name}${where}${light}${route}` }));
+    const ui = selected?.kind === "unit" ? selected.index : -1;
+    if (u.inside) sidePick(M.ownerOf(u), "A man inside a building is its side's.");
+    else if (plane) sidePick(M.ownerOf(u), "A plane is its Airfield's side's.");
+    else sidePick(M.ownerOf(u), (next) => M.setUnitOwner(s, ui, next));
     const iso = gameView;
     const why = iso ? "" : "Tick In-game view to give orders.";
+    if (!plane) row.append(btn("Rotate (R)", iso ? "Click where it should face." : why, unitMode === "rotate", () => setUnitMode("rotate"), !iso));
     row.append(
-      btn("Rotate (R)", iso ? "Click where it should face." : why, unitMode === "rotate", () => setUnitMode("rotate"), !iso),
+      btn("Guard (G)", iso ? (plane ? "Click the ground it circles over." : "Click where it walks to and holds.") : why, unitMode === "guard", () => setUnitMode("guard"), !iso),
       btn("Patrol (Y)", iso ? "Click points; an earlier point closes a loop; right-click sets it." : why, unitMode === "patrol", () => setUnitMode("patrol"), !iso),
     );
     if (hasSpotlight(u.type)) {
       row.append(btn("Rotate spotlight", iso ? "Click where the searchlight should point." : why, unitMode === "spot", () => setUnitMode("spot"), !iso));
     }
-    if (u.patrol?.length) {
-      row.append(
-        btn("Stop patrol", "It stands guard where it is.", false, () => {
-          patrolDraft.points = [];
-          patrolDraft.loop = false;
-          commitPatrol();
-        }),
-      );
+    if (u.patrol?.length || u.guard) {
+      row.append(btn("Stop", "Drop its orders: it stands where it is.", false, () => stopSelected()));
     }
     if (!iso) box.append(el("p", { class: "bld-hint", text: why }));
   } else if (f && s) {
     const faces = ["east", "south", "west", "north"];
     const heading = f.turn != null ? `${turnDegrees(f.turn)}°` : faces[f.facing & 3];
+    const fi = selected?.kind === "feature" ? selected.index : -1;
+    if (isMapSection(f.type) || isMapBridge(f.type)) sidePick(0, "Sections and bridges belong to no one.");
+    else sidePick(M.ownerOf(f), (next) => M.setFeatureOwner(s, fi, next));
     if (hasSpotlight(f.type)) {
       const sweep = f.patrol?.length ? ` · sweeps ${f.patrol.length} point${f.patrol.length === 1 ? "" : "s"}${f.loop ? " in a loop" : ""}` : "";
       box.append(el("div", { class: "bld-sel-name", text: `${catalog(f.type).name} · faces ${heading} · light ${towerSpot(f)}°${sweep}` }));
@@ -2301,9 +2733,13 @@ function paintSelection(): void {
     }
     const cap = garrisonCapOf(f.type);
     const inside = selected?.kind === "feature" ? M.unitsInside(s, selected.index) : [];
+    if (f.type === "airfield") {
+      const planes = M.planesOn(s, fi).map((i) => catalog(s.units[i]!.type).name).join(", ");
+      box.append(el("p", { class: "bld-hint", text: `Hardstands: ${M.planesOn(s, fi).length} / ${AIRFIELD_PADS}${planes ? ` (${planes})` : ""}. Drop a plane from Units › Air on it.` }));
+    }
     if (cap > 0) {
       const names = inside.map((i) => catalog(s.units[i]!.type).name).join(", ");
-      box.append(el("p", { class: "bld-hint", text: `Neutral garrison: ${inside.length} / ${cap}${names ? ` (${names})` : ""}` }));
+      box.append(el("p", { class: "bld-hint", text: `${sideName(M.ownerOf(f))} garrison: ${inside.length} / ${cap}${names ? ` (${names})` : ""}` }));
       if (inside.length > 0) {
         row.append(btn("Unload", gameView ? "Walk them out beside it." : "Tick In-game view to unload.", false, () => unloadSelected(), !gameView));
       }
@@ -2381,14 +2817,30 @@ function defenceThumb(type: MapDefenceType, turn: number): HTMLElement {
 
 function toolsPanel(ctx: Ctx): HTMLElement {
   const panel = el("div", { class: "bld-tools panel" });
+  // Whose side the next piece is placed for. A start's things are that commander's from the first tick.
+  const sideRow = el("div", { class: "bld-row bld-side-row bld-place-for" });
+  const sidePick = el("select", { attrs: { title: "Neutral pieces belong to no one. A start's pieces are its commander's from the first tick, and are left out when nobody sits there." } });
+  for (let id = 0; id <= (sheet?.maxPlayers ?? CUSTOM_MAP_MIN_PLAYERS); id++) {
+    const o = el("option", { text: sideName(id), attrs: { value: String(id) } });
+    if (id === placeOwner) o.selected = true;
+    sidePick.append(o);
+  }
+  sidePick.addEventListener("change", () => {
+    placeOwner = Number(sidePick.value);
+    say(placeOwner ? `Placing for Start ${placeOwner}: its commander owns what you set down.` : "Placing neutral: no one's, hostile to all.");
+    queueDraw();
+  });
+  const swatch = el("span", { class: "bld-side-swatch" });
+  swatch.style.background = placeOwner ? colorHex(placeOwner - 1) : "#8c8c88";
+  sidePick.addEventListener("change", () => {
+    swatch.style.background = placeOwner ? colorHex(placeOwner - 1) : "#8c8c88";
+  });
+  sideRow.append(el("label", { text: "Place for" }), swatch, sidePick);
+  panel.append(sideRow);
   const edit = el("div", { class: "bld-palette" });
   edit.append(
-    asset("Select", "move, turn, delete", tool.id === "select", el("span", { class: "bld-start-mark", text: "⬚" }), "Pick up a placed building, defence, or start. Drag to move it, R turns it, Delete removes it.", () =>
-      setTool(ctx, { id: "select" }),
-    ),
-    asset("Eraser", "buildings, lamps, clutter, starts", tool.id === "erase", el("span", { class: "bld-start-mark", text: "✕" }), "Remove buildings, defences, lamps, clutter, and starts.", () =>
-      setTool(ctx, { id: "erase" }),
-    ),
+    asset("Select", "move, turn, delete", el("span", { class: "bld-start-mark", text: "⬚" }), "Pick up a placed building, defence, or start. Drag to move it, R turns it, Delete removes it.", { id: "select" }),
+    asset("Eraser", "buildings, lamps, clutter, starts", el("span", { class: "bld-start-mark", text: "✕" }), "Remove buildings, defences, lamps, clutter, and starts.", { id: "erase" }),
   );
   const sel = el("div", { class: "bld-sel" });
   if (stage) stage.sel = sel;
@@ -2397,7 +2849,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
   const relief = el("div", { class: "bld-palette three" });
   const reliefTool = (id: ToolId, label: string, glyph: string, title: string): HTMLButtonElement => {
     const art = el("span", { class: "bld-start-mark", text: glyph });
-    return asset(label, "", tool.id === id, art, title, () => setTool(ctx, { id }));
+    return asset(label, "", art, title, { id });
   };
   relief.append(
     reliefTool("raise", "Raise", "▲", "Hold to lift the ground one step at a time."),
@@ -2405,9 +2857,9 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     reliefTool("level", "Level", "═", "Set ground to the level below. Alt+click samples a height."),
   );
   const levelRow = el("div", { class: "bld-row" });
-  const levelIn = el("input", { attrs: { type: "range", min: "0", max: String(HEIGHT_MAX), step: "1" } });
+  const levelIn = el("input", { attrs: { type: "range", min: "0", max: String(HEIGHT_MAX), step: "1", "data-field": "level" } });
   levelIn.value = String(tool.level);
-  const levelVal = el("span", { class: "bld-val", text: `${tool.level}` });
+  const levelVal = el("span", { class: "bld-val", text: `${tool.level}`, attrs: { "data-field-val": "level" } });
   levelIn.addEventListener("input", () => {
     tool.level = Number(levelIn.value);
     levelVal.textContent = `${tool.level}`;
@@ -2422,10 +2874,10 @@ function toolsPanel(ctx: Ctx): HTMLElement {
   );
   const mountainRow = el("div", { class: "bld-row" });
   const mountainIn = el("input", {
-    attrs: { type: "range", min: String(MOUNTAIN_MIN_HEIGHT), max: String(HEIGHT_MAX), step: "1" },
+    attrs: { type: "range", min: String(MOUNTAIN_MIN_HEIGHT), max: String(HEIGHT_MAX), step: "1", "data-field": "mountain" },
   });
   mountainIn.value = String(tool.mountain);
-  const mountainVal = el("span", { class: "bld-val", text: `${tool.mountain}` });
+  const mountainVal = el("span", { class: "bld-val", text: `${tool.mountain}`, attrs: { "data-field-val": "mountain" } });
   mountainIn.addEventListener("input", () => {
     tool.mountain = Math.max(MOUNTAIN_MIN_HEIGHT, Number(mountainIn.value));
     mountainVal.textContent = `${tool.mountain}`;
@@ -2440,7 +2892,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     pushUndo();
     s.tiles = s.tiles.map((t) => (t === TILE_MOUNTAIN ? TILE_EMPTY : t));
     s.heights = rollHeights(s.width, s.height, `${s.id}:${Date.now()}`, s.spawns);
-    finishStroke();
+    finishStroke(true);
   });
   const flat = el("button", { class: "btn btn-ghost bld-mini", text: "Flatten all", attrs: { type: "button" } });
   flat.addEventListener("click", () => {
@@ -2449,30 +2901,30 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     pushUndo();
     s.tiles = s.tiles.map((t) => (t === TILE_MOUNTAIN ? TILE_EMPTY : t));
     s.heights = s.heights.map(() => HEIGHT_BASE);
-    finishStroke();
+    finishStroke(true);
   });
   terrainBtns.append(roll, flat);
 
   const groundPal = el("div", { class: "bld-palette" });
   for (const g of GROUND) {
     const img = el("img", { attrs: { src: g.img, alt: "" } });
-    groundPal.append(asset(g.name, "", tool.id === "ground" && tool.tile === g.tile, img, g.hint, () => setTool(ctx, { id: "ground", tile: g.tile })));
+    groundPal.append(asset(g.name, "", img, g.hint, { id: "ground", tile: g.tile }));
   }
   const coverPal = el("div", { class: "bld-palette" });
   for (const c of COVER) {
     if (c.hidden) continue;
     const img = el("img", { attrs: { src: c.img, alt: "" } });
-    coverPal.append(asset(c.name, "", tool.id === "cover" && tool.cover === c.cover, img, c.hint, () => setTool(ctx, { id: "cover", cover: c.cover })));
+    coverPal.append(asset(c.name, "", img, c.hint, { id: "cover", cover: c.cover }));
   }
   for (const g of SURFACE_GROUND) {
     const img = el("img", { attrs: { src: g.img, alt: "" } });
-    coverPal.append(asset(g.name, "", tool.id === "ground" && tool.tile === g.tile, img, g.hint, () => setTool(ctx, { id: "ground", tile: g.tile })));
+    coverPal.append(asset(g.name, "", img, g.hint, { id: "ground", tile: g.tile }));
   }
 
   const brushRow = el("div", { class: "bld-row" });
-  const brushIn = el("input", { attrs: { type: "range", min: "0", max: "24", step: "1" } });
+  const brushIn = el("input", { attrs: { type: "range", min: "0", max: "24", step: "1", "data-field": "brush" } });
   brushIn.value = String(tool.brush);
-  const brushVal = el("span", { class: "bld-val", text: `${tool.brush * 2 + 1} tiles` });
+  const brushVal = el("span", { class: "bld-val", text: `${tool.brush * 2 + 1} tiles`, attrs: { "data-field-val": "brush" } });
   brushIn.addEventListener("input", () => {
     tool.brush = Number(brushIn.value);
     brushVal.textContent = `${tool.brush * 2 + 1} tiles`;
@@ -2508,14 +2960,11 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     const def = catalog(type);
     const size = `${def.tileW / TILE_SUBDIV}×${def.tileH / TILE_SUBDIV} cells`;
     houses.append(
-      asset(def.name, size, tool.id === "house" && tool.house === type, houseThumb(type, (tool.facing * Math.PI) / 2), def.blurb ?? def.name, () =>
-        setTool(ctx, { id: "house", house: type }),
-      ),
+      asset(def.name, size, houseThumb(type, (tool.facing * Math.PI) / 2), def.blurb ?? def.name, { id: "house", house: type }),
     );
   }
   const faceRow = el("div", { class: "bld-row" });
-  const faces = ["East", "South", "West", "North"];
-  const turn = el("button", { class: "btn btn-ghost bld-mini", text: `Door: ${faces[tool.facing]}`, attrs: { type: "button" } });
+  const turn = el("button", { class: "btn btn-ghost bld-mini", text: `Door: ${DOOR_FACES[tool.facing]}`, attrs: { type: "button", "data-door": "1" } });
   turn.addEventListener("click", () => setTool(ctx, { facing: (tool.facing + 1) & 3 }));
   faceRow.append(turn);
   panel.append(
@@ -2530,14 +2979,32 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     ),
   );
 
+  const bases = el("div", { class: "bld-palette" });
+  for (const type of MAP_BASE_TYPES) {
+    const def = catalog(type);
+    const size = `${def.tileW / TILE_SUBDIV}×${def.tileH / TILE_SUBDIV} cells`;
+    const angle = M.turnsFine(type) ? M.wrapTurn(tool.turn) * BUILDING_TURN_STEP : 0;
+    bases.append(
+      asset(def.name, size, houseThumb(type, angle), def.blurb ?? def.name, { id: "base", base: type }),
+    );
+  }
+  panel.append(
+    section(
+      "Base",
+      bases,
+      el("p", {
+        class: "bld-hint",
+        text: "A base ready-built, for a start or for no one. A Core stands in for its start's Rig: that commander begins with the base instead of unpacking. Neutral base structures are taken like any building. A Smelter wants scrap under it, a Marine Base water. The Airfield turns 15° on scroll and parks four planes on its hardstands. Shift+click removes.",
+      }),
+    ),
+  );
+
   const defences = el("div", { class: "bld-palette" });
   for (const type of MAP_DEFENCE_TYPES) {
     const def = catalog(type);
     const size = isMapSection(type) ? "one section" : `${def.tileW / TILE_SUBDIV}×${def.tileH / TILE_SUBDIV} cells`;
     defences.append(
-      asset(def.name, size, tool.id === "defence" && tool.defence === type, defenceThumb(type, tool.turn), def.blurb ?? def.name, () =>
-        setTool(ctx, { id: "defence", defence: type }),
-      ),
+      asset(def.name, size, defenceThumb(type, tool.turn), def.blurb ?? def.name, { id: "defence", defence: type }),
     );
   }
   const defFaceRow = el("div", { class: "bld-row" });
@@ -2546,8 +3013,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     b.addEventListener("click", () => setTool(ctx, { turn: M.wrapTurn(tool.turn + steps) }));
     return b;
   };
-  const turnLabel = el("span", { class: "bld-val", text: `Faces ${turnDegrees(tool.turn)}°` });
-  if (stage) stage.turnLabel = turnLabel;
+  const turnLabel = turnLabelEl();
   defFaceRow.append(turnBy(-1, "⟲ 15°", "Turn 15° counter-clockwise"), turnLabel, turnBy(1, "15° ⟳", "Turn 15° clockwise"));
   panel.append(
     section(
@@ -2568,19 +3034,16 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     const reach = `${(STREET_LAMPS[type].reachTiles * 2) / TILE_SUBDIV} cells ${aimed ? "of beam" : "lit"}`;
     const blurb = aimed ? `${LAMP_NAMES[type]}: throws a beam the way it faces after dark. Scroll turns it.` : `${LAMP_NAMES[type]}: lights the ground round it after dark.`;
     (aimed ? aimedLamps : lamps).append(
-      asset(LAMP_NAMES[type], reach, tool.id === "lamp" && tool.lamp === type, lampThumb(type), blurb, () => setTool(ctx, { id: "lamp", lamp: type })),
+      asset(LAMP_NAMES[type], reach, lampThumb(type), blurb, { id: "lamp", lamp: type }),
     );
   }
   const lampFaceRow = el("div", { class: "bld-row" });
-  const lampTurnLabel = el("span", { class: "bld-val", text: `Faces ${turnDegrees(tool.turn)}°` });
-  if (stage && tool.id === "lamp" && isAimedLamp(tool.lamp)) stage.turnLabel = lampTurnLabel;
+  const lampTurnLabel = turnLabelEl();
   lampFaceRow.append(turnBy(-1, "⟲ 15°", "Turn 15° counter-clockwise"), lampTurnLabel, turnBy(1, "15° ⟳", "Turn 15° clockwise"));
   const clutter = el("div", { class: "bld-palette four" });
   for (const type of CLUTTER_TYPES) {
     clutter.append(
-      asset(CLUTTER_NAMES[type], "breakable", tool.id === "clutter" && tool.clutter === type, clutterThumb(type), `${CLUTTER_NAMES[type]}: smashed flat by a tank or a shell.`, () =>
-        setTool(ctx, { id: "clutter", clutter: type }),
-      ),
+      asset(CLUTTER_NAMES[type], "breakable", clutterThumb(type), `${CLUTTER_NAMES[type]}: smashed flat by a tank or a shell.`, { id: "clutter", clutter: type }),
     );
   }
   const clutterBtns = el("div", { class: "btn-row" });
@@ -2608,14 +3071,12 @@ function toolsPanel(ctx: Ctx): HTMLElement {
   clutterBtns.append(strew, sweep);
   const decor = el("div", { class: "bld-palette" });
   decor.append(
-    asset("Road", "drawn line", tool.id === "road", el("img", { attrs: { src: dirtUrl, alt: "" } }), "Dirt lane. Same footing as grass.", () =>
-      setTool(ctx, { id: "road" }),
-    ),
+    asset("Road", "drawn line", el("img", { attrs: { src: dirtUrl, alt: "" } }), "Dirt lane. Same footing as grass.", { id: "road" }),
   );
   const roadRow = el("div", { class: "bld-row" });
-  const roadIn = el("input", { attrs: { type: "range", min: String(M.ROAD_WIDTH_MIN), max: String(M.ROAD_WIDTH_MAX), step: "1" } });
+  const roadIn = el("input", { attrs: { type: "range", min: String(M.ROAD_WIDTH_MIN), max: String(M.ROAD_WIDTH_MAX), step: "1", "data-field": "roadWidth" } });
   roadIn.value = String(tool.roadWidth);
-  const roadVal = el("span", { class: "bld-val", text: `${tool.roadWidth} tiles` });
+  const roadVal = el("span", { class: "bld-val", text: `${tool.roadWidth} tiles`, attrs: { "data-field-val": "roadWidth" } });
   roadIn.addEventListener("input", () => {
     tool.roadWidth = Number(roadIn.value);
     roadVal.textContent = `${tool.roadWidth} tiles`;
@@ -2624,8 +3085,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
   });
   roadRow.append(roadIn, roadVal);
   const roadFaceRow = el("div", { class: "bld-row" });
-  const roadTurnLabel = el("span", { class: "bld-val", text: `Faces ${turnDegrees(tool.turn)}°` });
-  if (stage && tool.id === "road") stage.turnLabel = roadTurnLabel;
+  const roadTurnLabel = turnLabelEl();
   roadFaceRow.append(turnBy(-1, "⟲ 15°", "Turn 15° counter-clockwise"), roadTurnLabel, turnBy(1, "15° ⟳", "Turn 15° clockwise"));
   panel.append(
     section(
@@ -2667,14 +3127,11 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     const def = catalog(type);
     const wide = type === "bigbridge" ? "two tanks wide" : "one tank wide";
     bridges.append(
-      asset(def.name, wide, tool.id === "bridge" && tool.bridge === type, bridgeThumb(type), def.blurb ?? def.name, () =>
-        setTool(ctx, { id: "bridge", bridge: type }),
-      ),
+      asset(def.name, wide, bridgeThumb(type), def.blurb ?? def.name, { id: "bridge", bridge: type }),
     );
   }
   const bridgeFaceRow = el("div", { class: "bld-row" });
-  const bridgeTurnLabel = el("span", { class: "bld-val", text: `Faces ${turnDegrees(tool.turn)}°` });
-  if (stage && tool.id === "bridge") stage.turnLabel = bridgeTurnLabel;
+  const bridgeTurnLabel = turnLabelEl();
   bridgeFaceRow.append(turnBy(-1, "⟲ 15°", "Turn 15° counter-clockwise"), bridgeTurnLabel, turnBy(1, "15° ⟳", "Turn 15° clockwise"));
   panel.append(
     section(
@@ -2707,12 +3164,11 @@ function toolsPanel(ctx: Ctx): HTMLElement {
     const def = catalog(type);
     const art = el("span", { class: "prod-job bld-unit-art", attrs: { "data-type": type } });
     unitPal.append(
-      asset(def.name, "", tool.id === "unit" && tool.unit === type, art, def.blurb ?? def.name, () => setTool(ctx, { id: "unit", unit: type })),
+      asset(def.name, "", art, def.blurb ?? def.name, { id: "unit", unit: type }),
     );
   }
   const unitFaceRow = el("div", { class: "bld-row" });
-  const unitTurnLabel = el("span", { class: "bld-val", text: `Faces ${turnDegrees(tool.turn)}°` });
-  if (stage && tool.id === "unit") stage.turnLabel = unitTurnLabel;
+  const unitTurnLabel = turnLabelEl();
   unitFaceRow.append(turnBy(-1, "⟲ 15°", "Turn 15° counter-clockwise"), unitTurnLabel, turnBy(1, "15° ⟳", "Turn 15° clockwise"));
   panel.append(
     section(
@@ -2723,7 +3179,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
       el("p", {
         class: "bld-hint",
         text:
-          "Neutral: grey, no one's, and hostile to every commander. They fire on anyone who comes into sight and never leave their post. Scroll turns the next one 15°. In the In-game view, drop infantry on a house, bunker, or tower to garrison it; select a unit to Rotate (R) it or give it a Patrol (Y), and select a held building to Unload it. Shift+click removes.",
+          "Placed neutral they are grey, no one's, and hostile to every commander: they fire on anyone in sight and never leave their post. Placed for a start they are that commander's from the first tick. Scroll turns the next one 15°. Planes park on a hardstand of an Airfield of their own side. In the In-game view, drop infantry on a house, bunker, or tower to garrison it; select a unit to Rotate (R) it, send it to Guard (G) a spot, or give it a Patrol (Y), and select a held building to Unload it. Shift+click removes.",
       }),
     ),
   );
@@ -2731,9 +3187,7 @@ function toolsPanel(ctx: Ctx): HTMLElement {
   const starts = el("div", { class: "bld-palette" });
   const next = sheet ? M.nextSpawnId(sheet) : 1;
   starts.append(
-    asset("Start", next === null ? "all placed" : `next: ${next}`, tool.id === "spawn", el("span", { class: "bld-start-mark", text: String(next ?? "✓") }), "Commander start position.", () =>
-      setTool(ctx, { id: "spawn" }),
-    ),
+    asset("Start", next === null ? "all placed" : `next: ${next}`, el("span", { class: "bld-start-mark", text: String(next ?? "✓") }), "Commander start position.", { id: "spawn" }),
   );
   panel.append(
     section(
@@ -2750,13 +3204,29 @@ function toolsPanel(ctx: Ctx): HTMLElement {
 
 function sidePanel(ctx: Ctx): HTMLElement {
   const panel = el("div", { class: "bld-side panel" });
-  const preview = el("canvas", { class: "bld-preview" });
+  const mini = el("canvas", { class: "bld-mini-map", attrs: { title: "Click or drag to look there" } });
+  mini.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    mini.setPointerCapture(e.pointerId);
+    miniHeld = true;
+    miniCenter(e);
+  });
+  mini.addEventListener("pointermove", (e) => {
+    if (miniHeld) miniCenter(e);
+  });
+  const release = (): void => {
+    miniHeld = false;
+  };
+  mini.addEventListener("pointerup", release);
+  mini.addEventListener("pointercancel", release);
+  mini.addEventListener("lostpointercapture", release);
   const checks = el("ul", { class: "bld-checks" });
-  panel.append(section("Preview", preview), section("Checks", checks));
+  panel.append(section("Map", mini, el("p", { class: "bld-hint", text: "Click or drag to look there." })), section("Checks", checks));
   const maps = el("div", { class: "bld-maps" });
   panel.append(section("Maps", maps));
   if (stage) {
-    stage.preview = preview;
+    stage.mini = mini;
     stage.checks = checks;
     stage.maps = maps;
   }
@@ -2889,7 +3359,7 @@ function header(ctx: Ctx): HTMLElement {
       s.name = name.value;
       dirty = true;
       edits++;
-      paintChecks();
+      scheduleChecks();
     });
     nameField.append(el("label", { text: "Name" }), name);
     const playersField = el("div", { class: "bld-field" });
@@ -2902,7 +3372,8 @@ function header(ctx: Ctx): HTMLElement {
     players.addEventListener("change", () => {
       pushUndo();
       const dropped = M.setMaxPlayers(s, Number(players.value));
-      if (dropped) say(`Removed ${dropped} start(s) numbered above ${s.maxPlayers}.`);
+      if (placeOwner > s.maxPlayers) placeOwner = 0;
+      if (dropped) say(`Removed ${dropped} start(s) numbered above ${s.maxPlayers}. What they owned stands neutral; their Cores are gone.`);
       finishStroke();
       mountOrRefresh(ctx);
     });
@@ -3028,6 +3499,8 @@ function bindKeys(): void {
       setUnitMode(selectedTower() ? "spot" : "rotate");
     } else if ((e.key === "y" || e.key === "Y") && (selected?.kind === "unit" || selectedTower())) {
       setUnitMode("patrol");
+    } else if ((e.key === "g" || e.key === "G") && selected?.kind === "unit") {
+      setUnitMode("guard");
     } else if (e.key === "Enter" && lineTool() && line.points.length > 0) {
       e.preventDefault();
       commitLine();
@@ -3057,16 +3530,16 @@ function bindKeys(): void {
       setTool(ctx, { facing: (tool.facing + 1) & 3 });
     } else if (e.key === "[" && tool.id === "road") {
       tool.roadWidth = Math.max(M.ROAD_WIDTH_MIN, tool.roadWidth - 1);
-      mountOrRefresh(ctx);
+      refreshPalette();
     } else if (e.key === "]" && tool.id === "road") {
       tool.roadWidth = Math.min(M.ROAD_WIDTH_MAX, tool.roadWidth + 1);
-      mountOrRefresh(ctx);
+      refreshPalette();
     } else if (e.key === "[") {
       tool.brush = Math.max(0, tool.brush - 1);
-      mountOrRefresh(ctx);
+      refreshPalette();
     } else if (e.key === "]") {
       tool.brush = Math.min(24, tool.brush + 1);
-      mountOrRefresh(ctx);
+      refreshPalette();
     }
   });
 }
@@ -3092,7 +3565,7 @@ export function renderBuilder(root: HTMLElement, ctx: Ctx): void {
   const wrap = el("div", { class: "builder" });
   const canvas = el("canvas");
   const status = el("div", { class: "bld-status", text: statusHint() });
-  stage = { root: screen, canvas, status, preview: null, msg: el("div"), checks: null, maps: null, sel: null, turnLabel: null };
+  stage = { root: screen, canvas, status, mini: null, msg: el("div"), checks: null, maps: null, sel: null };
   wrap.append(header(ctx));
   const tools = toolsPanel(ctx);
   paintSelection();
@@ -3121,8 +3594,5 @@ export function renderBuilder(root: HTMLElement, ctx: Ctx): void {
 
   paintMapList(ctx);
   paintChecks();
-  requestAnimationFrame(() => {
-    drawStage();
-    schedulePreview(0);
-  });
+  requestAnimationFrame(drawStage);
 }

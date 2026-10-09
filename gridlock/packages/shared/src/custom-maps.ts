@@ -1,4 +1,5 @@
 import {
+  AIRFIELD_PADS,
   BUILDING_FACINGS,
   CIVILIAN_TYPES,
   HEIGHT_MAX,
@@ -10,6 +11,8 @@ import {
   garrisonCapOf,
   isAircraftType,
   isNavalType,
+  isRotatableBuilding,
+  onWaterBuilding,
   type TrainType,
 } from "./catalog.js";
 import { PATROL_POINTS_MAX } from "./sim/patrol.js";
@@ -17,6 +20,7 @@ import { hasSpotlight } from "./sim/night.js";
 import {
   GROUND_GRASS,
   GROUND_KINDS,
+  MAP_BASE_TYPES,
   MAP_BRIDGE_TYPES,
   MAP_DEFENCE_TYPES,
   PLAYTEST_MAP_PREFIX,
@@ -119,8 +123,10 @@ export const CUSTOM_MAP_MAX_LAMPS = 300;
 export const CUSTOM_MAP_MAX_CLUTTER = 600;
 export const CUSTOM_MAP_MAX_UNITS = 200;
 
-/** Units a map may stand on the field: everything trained on the ground or the water. Aircraft need an airfield to live. */
-export const MAP_UNIT_TYPES: readonly TrainType[] = TRAIN_TYPES.filter((t) => !isAircraftType(t));
+/** Planes a map may park on an Airfield's hardstands. The BV 222 transport stays out. */
+export const MAP_AIR_TYPES: readonly TrainType[] = TRAIN_TYPES.filter((t) => isAircraftType(t) && t !== "bv222");
+/** Units a map may stand on the field: everything trained on the ground or the water, and the planes that park on an Airfield. */
+export const MAP_UNIT_TYPES: readonly TrainType[] = TRAIN_TYPES.filter((t) => !isAircraftType(t) || (MAP_AIR_TYPES as readonly string[]).includes(t));
 
 export function isMapUnitType(type: unknown): type is TrainType {
   return typeof type === "string" && (MAP_UNIT_TYPES as readonly string[]).includes(type);
@@ -157,6 +163,27 @@ export function mapUnitHostAt(features: readonly MapFeature[], x: number, y: num
   return features.findIndex((f) => featureContains(f, x + 0.5, y + 0.5));
 }
 
+/** The Airfield whose lot holds fine tile (x, y), or -1. */
+export function mapAirfieldAt(features: readonly MapFeature[], x: number, y: number): number {
+  return features.findIndex((f) => f.type === "airfield" && featureContains(f, x + 0.5, y + 0.5));
+}
+
+/** Pads of `features[host]` that map planes already park on. */
+export function mapPadsTaken(sheet: Pick<UnitGround, "features" | "units">, host: number, ignore = -1): Set<number> {
+  const f = sheet.features[host];
+  const taken = new Set<number>();
+  if (!f) return taken;
+  sheet.units.forEach((u, i) => {
+    if (i !== ignore && isAircraftType(u.type) && featureContains(f, u.x + 0.5, u.y + 0.5)) taken.add(u.pad ?? 0);
+  });
+  return taken;
+}
+
+/** Whether two map objects stand for the same side: both neutral, or both the same start's. */
+export function sameMapOwner(a: { owner?: number }, b: { owner?: number }): boolean {
+  return (a.owner ?? 0) === (b.owner ?? 0);
+}
+
 /** Map units already inside `features[host]`. */
 export function mapUnitsInside(sheet: UnitGround, host: number, ignore = -1): number {
   const f = sheet.features[host];
@@ -167,7 +194,9 @@ export function mapUnitsInside(sheet: UnitGround, host: number, ignore = -1): nu
 /**
  * Why a neutral `type` cannot stand on fine tile (x, y), or null. With `inside`,
  * why it cannot garrison the building there. `ignore` is the index in `units` of
- * the unit being moved, which does not block itself.
+ * the unit being moved, which does not block itself. `side` is the unit's owner and, for a
+ * plane, its hardstand: a plane parks on a free pad of an Airfield of its own side, and a
+ * man only starts inside a building of his own side.
  */
 export function mapUnitProblem(
   sheet: UnitGround,
@@ -176,13 +205,25 @@ export function mapUnitProblem(
   y: number,
   ignore = -1,
   inside = false,
+  side: { owner?: number; pad?: number } = {},
 ): string | null {
   if (x < 0 || y < 0 || x >= sheet.width || y >= sheet.height) return "Off the map.";
+  if (isAircraftType(type)) {
+    const host = mapAirfieldAt(sheet.features, x, y);
+    const f = sheet.features[host];
+    if (!f) return "Planes park on an Airfield.";
+    if (!sameMapOwner(f, side)) return "That Airfield is another side's.";
+    const pad = side.pad ?? -1;
+    if (!Number.isInteger(pad) || pad < 0 || pad >= AIRFIELD_PADS) return "No hardstand there.";
+    if (mapPadsTaken(sheet, host, ignore).has(pad)) return "That hardstand is taken.";
+    return null;
+  }
   if (inside) {
     const host = mapUnitHostAt(sheet.features, x, y);
     const f = sheet.features[host];
     if (!f) return "Not inside a building.";
     if (!garrisonCandidate(f.type, type)) return `A ${catalog(type).name} cannot garrison the ${catalog(f.type).name}.`;
+    if (!sameMapOwner(f, side)) return `The ${catalog(f.type).name} is another side's.`;
     if (mapUnitsInside(sheet, host, ignore) >= garrisonCapOf(f.type)) return `The ${catalog(f.type).name} is full.`;
     return null;
   }
@@ -267,8 +308,20 @@ function cleanText(raw: unknown, max: number): string {
   return raw.replace(/[\u0000-\u001F\u007F]/g, "").trim().slice(0, max);
 }
 
-/** Everything a builder map may stand on the field: houses, then the neutral defences. */
-export const MAP_FEATURE_TYPES: readonly MapFeatureType[] = [...CIVILIAN_TYPES, ...MAP_DEFENCE_TYPES, ...MAP_BRIDGE_TYPES];
+/** Everything a builder map may stand on the field: houses, base structures, defences, and bridge bricks. */
+export const MAP_FEATURE_TYPES: readonly MapFeatureType[] = [...CIVILIAN_TYPES, ...MAP_BASE_TYPES, ...MAP_DEFENCE_TYPES, ...MAP_BRIDGE_TYPES];
+
+/** Features that turn in 15° steps: the defences and base structures the player turns in a match, and bridge bricks. */
+export function mapFeatureTurns(type: string): boolean {
+  return isRotatableBuilding(type) || isMapSection(type) || isMapBridge(type);
+}
+
+/** A start id that may own a map object, or null when the field is absent or bad. */
+function cleanOwner(raw: unknown, maxPlayers: number): number | null | undefined {
+  if (raw == null) return undefined;
+  if (!Number.isInteger(raw) || (raw as number) < 1 || (raw as number) > maxPlayers) return null;
+  return raw as number;
+}
 
 export function newPlaytestMapId(rng: () => number = Math.random): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -278,6 +331,15 @@ export function newPlaytestMapId(rng: () => number = Math.random): string {
 }
 
 /** True when the feature's footprint touches a start's pad. */
+/** A Marine Base floats: every fine tile of its lot is water. */
+export function featureOnWater(f: MapFeature, sheet: { width: number; tiles: readonly number[] }): boolean {
+  const b = featureBox(f);
+  for (let y = b.y0; y < b.y1; y++) {
+    for (let x = b.x0; x < b.x1; x++) if (sheet.tiles[y * sheet.width + x] !== TILE_WATER) return false;
+  }
+  return true;
+}
+
 export function featureOnPad(f: MapFeature, spawns: readonly { x: number; y: number }[]): boolean {
   const b = featureBox(f);
   return spawns.some((s) => {
@@ -385,10 +447,13 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     const turn = o.turn;
     if (!Number.isInteger(facing)) return bad("Bad building.");
     if (turn != null) {
-      // Only defences and bridges turn finer than a quarter, in the match's own steps.
-      if (!(MAP_DEFENCE_TYPES as readonly string[]).includes(type) && !isMapBridge(type)) return bad("Bad building.");
+      // Only the pieces the player turns in a match turn finer than a quarter, in the match's own steps.
+      if (!mapFeatureTurns(type)) return bad("Bad building.");
       if (!Number.isInteger(turn) || (turn as number) < 0 || (turn as number) >= BUILDING_FACINGS) return bad("Bad building.");
     }
+    const owner = cleanOwner(o.owner, maxPlayers);
+    if (owner === null) return bad("Bad building.");
+    if (type === "core" && owner == null) return bad("A Core belongs to a start.");
     // A turned section may sit between tiles, on whole world pixels.
     const free = turn != null && isMapLine(type);
     const coord = (v: unknown): number | null => {
@@ -401,6 +466,8 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     if (fx === null || fy === null) return bad("Bad building.");
     const kind = type as MapFeatureType;
     const feat: MapFeature = { type: kind, x: fx, y: fy, facing: (facing as number) & 3 };
+    // Sections and bricks stand for no one.
+    if (owner != null && !isMapLine(kind)) feat.owner = owner;
     if (turn != null) {
       feat.turn = turn as number;
       feat.facing = turnQuarter(feat.turn);
@@ -423,6 +490,7 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
       return bad("Buildings sit on the cell grid.");
     }
     if (b.x0 < 0 || b.y0 < 0 || b.x1 > width || b.y1 > height) return bad("A building is off the map.");
+    if (onWaterBuilding(kind) && !featureOnWater(feat, { width, tiles })) return bad(`A ${catalog(kind).name} has to stand on water.`);
     if (features.some((o2) => featuresOverlap(o2, feat))) return bad("Two buildings overlap.");
     if (featureOnPad(feat, spawns)) return bad("A building stands on a start position.");
     features.push(feat);
@@ -477,10 +545,18 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     if (!isMapUnitType(o.type) || !Number.isInteger(o.x) || !Number.isInteger(o.y)) return bad("Bad unit.");
     const facing = o.facing ?? 0;
     if (typeof facing !== "number" || !Number.isFinite(facing)) return bad("Bad unit.");
+    const owner = cleanOwner(o.owner, maxPlayers);
+    if (owner === null) return bad("Bad unit.");
+    const plane = isAircraftType(o.type);
+    const pad = plane ? o.pad : undefined;
+    if (plane && (!Number.isInteger(pad) || (pad as number) < 0 || (pad as number) >= AIRFIELD_PADS)) return bad("Bad unit.");
     // A unit the ground or a building has since taken from under it is dropped rather than refused.
-    const inside = o.inside === true;
-    if (mapUnitProblem(ground, o.type, o.x as number, o.y as number, -1, inside)) continue;
+    const inside = !plane && o.inside === true;
+    const side = { ...(owner != null ? { owner } : {}), ...(plane ? { pad: pad as number } : {}) };
+    if (mapUnitProblem(ground, o.type, o.x as number, o.y as number, -1, inside, side)) continue;
     const unit: MapUnit = { type: o.type, x: o.x as number, y: o.y as number, facing: ((Math.round(facing) % 360) + 360) % 360 };
+    if (owner != null) unit.owner = owner;
+    if (plane) unit.pad = pad as number;
     const spot = o.type === "battleship" ? cleanSpot(o.spot) : null;
     if (spot != null) unit.spot = spot;
     if (inside) {
@@ -492,6 +568,9 @@ export function validateCustomMap(raw: unknown, opts: { playtest?: boolean } = {
     if (patrol) {
       unit.patrol = patrol;
       if (o.loop === true && patrol.length >= 2) unit.loop = true;
+    } else {
+      const guard = cleanPatrol(o.guard != null ? [o.guard] : null, width, height);
+      if (guard) unit.guard = guard[0]!;
     }
     units.push(unit);
   }
@@ -590,6 +669,9 @@ export function specFromMap(id: string, copy: { id: string; name: string; author
 /** A deep copy of a map unit, route and all. */
 export function copyMapUnit(u: MapUnit): MapUnit {
   const out: MapUnit = { type: u.type, x: u.x, y: u.y, facing: u.facing };
+  if (u.owner != null) out.owner = u.owner;
+  if (u.pad != null) out.pad = u.pad;
+  if (u.guard) out.guard = { x: u.guard.x, y: u.guard.y };
   if (u.patrol) out.patrol = u.patrol.map((p) => ({ x: p.x, y: p.y }));
   if (u.loop) out.loop = true;
   if (u.inside) out.inside = true;
